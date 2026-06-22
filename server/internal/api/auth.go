@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/channel/server/internal/auth"
 	"github.com/channel/server/internal/model"
@@ -72,6 +73,80 @@ func (s *Server) handleAppleAuth(w http.ResponseWriter, r *http.Request) {
 		"token": token,
 		"user":  user,
 	})
+}
+
+// POST /v1/auth/register
+// Body: { "email", "password", "name" }
+// 建立帳密使用者 → 簽自家 JWT 回傳(註冊即登入)。
+func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Name     string `json:"name"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	email := strings.TrimSpace(strings.ToLower(body.Email))
+	if email == "" || body.Password == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "email 與 password 不可為空")
+		return
+	}
+	if len(body.Password) < 6 {
+		writeErr(w, http.StatusBadRequest, "weak_password", "密碼至少 6 字元")
+		return
+	}
+	// email 已存在?
+	if _, _, err := s.store.FindUserByEmail(email); err == nil {
+		writeErr(w, http.StatusConflict, "email_taken", "此 email 已被註冊")
+		return
+	}
+	hash, err := auth.HashPassword(body.Password)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "hash_failed", err.Error())
+		return
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" {
+		name = email
+	}
+	user, err := s.store.CreatePasswordUser("usr_"+newID(), name, "#4A90D9", email, hash)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "create_failed", err.Error())
+		return
+	}
+	s.issueToken(w, user)
+}
+
+// POST /v1/auth/login
+// Body: { "email", "password" }
+// 驗證帳密 → 簽自家 JWT 回傳。
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	email := strings.TrimSpace(strings.ToLower(body.Email))
+	user, hash, err := s.store.FindUserByEmail(email)
+	// 帳號不存在或密碼錯誤,一律回相同錯誤(不洩漏帳號是否存在)。
+	if err != nil || hash == "" || auth.VerifyPassword(body.Password, hash) != nil {
+		writeErr(w, http.StatusUnauthorized, "invalid_credentials", "email 或密碼錯誤")
+		return
+	}
+	s.issueToken(w, user)
+}
+
+// issueToken 簽發 JWT 並以 { token, user } 回應(register/login 共用)。
+func (s *Server) issueToken(w http.ResponseWriter, user model.User) {
+	token, err := s.signer.Sign(user.ID, user.Name)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "sign_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": user})
 }
 
 // GET /v1/me — 用 Bearer token 取得目前登入使用者(驗證 token 是否仍有效)。

@@ -4,12 +4,26 @@ import (
 	"github.com/channel/server/internal/model"
 )
 
-// ListMessages 回傳頻道訊息,依時間舊到新(符合聊天畫面由上到下)。
+// ListMessages 回傳頻道全部訊息,依時間舊到新。
+// 供 LLM 查詢用(查詢需看頻道所有訊息);聊天畫面顯示請改用 ListMessagesByAuthor。
 func (s *Store) ListMessages(channelID string) ([]model.Message, error) {
 	const q = `
 SELECT id, channel_id, author_id, author_name, text, category, tags, summary, created_at
 FROM messages WHERE channel_id = ? ORDER BY created_at ASC;`
-	rows, err := s.db.Query(q, channelID)
+	return s.queryMessages(q, channelID)
+}
+
+// ListMessagesByAuthor 只回傳指定作者在該頻道發的訊息。
+// 聊天畫面用:每個人(含 owner)只看到自己輸入過的訊息。
+func (s *Store) ListMessagesByAuthor(channelID, authorID string) ([]model.Message, error) {
+	const q = `
+SELECT id, channel_id, author_id, author_name, text, category, tags, summary, created_at
+FROM messages WHERE channel_id = ? AND author_id = ? ORDER BY created_at ASC;`
+	return s.queryMessages(q, channelID, authorID)
+}
+
+func (s *Store) queryMessages(q string, args ...any) ([]model.Message, error) {
+	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}

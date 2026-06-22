@@ -40,12 +40,14 @@ func main() {
 
 	var analyzer llm.Analyzer = llm.NewRuleBased()
 	if *llmKind == "want" {
-		wantAnalyzer, err := llm.NewWant()
+		// 用 WantPool(per-session orchestrator 外殼)。現階段池內共用單一實例,
+		// 行為同改造前;未來 want 支援多實例後即可在池內 per-session 分流。
+		pool, err := llm.NewWantPool()
 		if err != nil {
 			log.Fatalf("初始化 want 分析器失敗: %v", err)
 		}
-		analyzer = wantAnalyzer
-		log.Printf("LLM 分析器: want 引擎")
+		analyzer = pool
+		log.Printf("LLM 分析器: want 引擎(WantPool)")
 	} else {
 		log.Printf("LLM 分析器: 規則式")
 	}
@@ -60,15 +62,28 @@ func main() {
 }
 
 // seedUsers 確保可邀請的使用者目錄存在(冪等,每次啟動都套用)。
+// 同時為示範使用者設定可登入的 email 與預設密碼(開發測試用),
+// 帳號為 <name>@channel.dev,密碼一律 "password"。
 func seedUsers(st *store.Store) error {
-	directory := []model.User{
-		{ID: "usr_alice", Name: "Alice", AvatarColor: "#E07A5F"},
-		{ID: "usr_bob", Name: "Bob", AvatarColor: "#3D9970"},
-		{ID: "usr_carol", Name: "Carol", AvatarColor: "#B07AE0"},
-		{ID: "usr_dave", Name: "Dave", AvatarColor: "#E0B24A"},
+	directory := []struct {
+		user  model.User
+		email string
+	}{
+		{model.User{ID: "usr_alice", Name: "Alice", AvatarColor: "#E07A5F"}, "alice@channel.dev"},
+		{model.User{ID: "usr_bob", Name: "Bob", AvatarColor: "#3D9970"}, "bob@channel.dev"},
+		{model.User{ID: "usr_carol", Name: "Carol", AvatarColor: "#B07AE0"}, "carol@channel.dev"},
+		{model.User{ID: "usr_dave", Name: "Dave", AvatarColor: "#E0B24A"}, "dave@channel.dev"},
 	}
-	for _, u := range directory {
-		if err := st.UpsertUser(u); err != nil {
+	// 預設密碼只算一次雜湊(四個帳號共用同一明文 "password")。
+	devHash, err := auth.HashPassword("password")
+	if err != nil {
+		return err
+	}
+	for _, d := range directory {
+		if err := st.UpsertUser(d.user); err != nil {
+			return err
+		}
+		if err := st.SetUserPassword(d.user.ID, d.email, devHash); err != nil {
 			return err
 		}
 	}
@@ -77,11 +92,11 @@ func seedUsers(st *store.Store) error {
 
 // seedIfEmpty 在沒有任何頻道時建立一個示範頻道(對齊 App 端 Mock)。
 func seedIfEmpty(st *store.Store) error {
-	chs, err := st.ListChannels()
+	n, err := st.CountChannels()
 	if err != nil {
 		return err
 	}
-	if len(chs) > 0 {
+	if n > 0 {
 		return nil
 	}
 	me := model.User{ID: "usr_me", Name: "我", AvatarColor: "#4A90D9"}

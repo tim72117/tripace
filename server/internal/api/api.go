@@ -41,6 +41,8 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("POST /v1/auth/apple", s.handleAppleAuth)
+	mux.HandleFunc("POST /v1/auth/register", s.handleRegister)
+	mux.HandleFunc("POST /v1/auth/login", s.handleLogin)
 	mux.HandleFunc("GET /v1/me", s.handleMe)
 	mux.HandleFunc("GET /v1/channels", s.handleListChannels)
 	mux.HandleFunc("POST /v1/channels", s.handleCreateChannel)
@@ -50,16 +52,17 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /v1/channels/{id}/members", s.handleAddMember)
 	mux.HandleFunc("POST /v1/channels/{id}/query", s.handleQuery)
 	mux.HandleFunc("GET /v1/users/search", s.handleSearchUsers)
-	return logging(mux)
+	return logging(cors(mux))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// GET /v1/channels
-func (s *Server) handleListChannels(w http.ResponseWriter, _ *http.Request) {
-	chs, err := s.store.ListChannels()
+// GET /v1/channels — 只回目前使用者參與的頻道。
+func (s *Server) handleListChannels(w http.ResponseWriter, r *http.Request) {
+	user := s.userFor(r)
+	chs, err := s.store.ListChannelsForUser(user.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
 		return
@@ -91,9 +94,11 @@ func (s *Server) handleCreateChannel(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET /v1/channels/{id}/messages
+// 聊天畫面:每個人(含 owner)只看到自己輸入過的訊息。
 func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	msgs, err := s.store.ListMessages(id)
+	user := s.userFor(r)
+	msgs, err := s.store.ListMessagesByAuthor(id, user.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
 		return
@@ -105,9 +110,27 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /v1/channels/{id}/messages  { "text": "..." }
+// 只有頻道 owner 能發訊息(普通成員只能用 LLM 查詢)。
 // 訊息先經 LLM 分類/標注,再存入資料庫,回傳處理後的訊息。
 func (s *Server) handlePostMessage(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	user := s.userFor(r)
+
+	// 權限:非 owner 不能發訊息。
+	owner, err := s.store.GetChannelOwner(id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "channel_not_found", "頻道不存在")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "owner_check_failed", err.Error())
+		return
+	}
+	if user.ID != owner {
+		writeErr(w, http.StatusForbidden, "not_owner", "只有頻道擁有者能發送訊息;成員可用查詢")
+		return
+	}
+
 	var body struct {
 		Text string `json:"text"`
 	}
@@ -120,7 +143,6 @@ func (s *Server) handlePostMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user := s.userFor(r)
 	ann := s.analyzer.Classify(text)
 	msg := model.Message{
 		ID:         "msg_" + newID(),
@@ -141,10 +163,12 @@ func (s *Server) handlePostMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 若使用 want 引擎,背景讓 agent 自主決定是否把這則訊息記成條目(record_entry 工具)。
+	// 若分析器支援背景記錄(want 引擎),讓 agent 自主決定是否把這則訊息記成條目
+	// (record_entry 工具)。用 Recorder interface 斷言,不綁具體型別。
+	// 以發訊息使用者的 ID 作為 session key(per-session 鋪路;現階段仍共用實例)。
 	// 放 goroutine 不阻塞回應。
-	if wa, ok := s.analyzer.(*llm.WantAnalyzer); ok {
-		go wa.RecordIfRelevant(text)
+	if rec, ok := s.analyzer.(llm.Recorder); ok {
+		go rec.RecordForSession(user.ID, text)
 	}
 
 	writeJSON(w, http.StatusCreated, msg)

@@ -11,16 +11,18 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
-// ListChannels 回傳所有頻道(原型階段不分使用者),依更新時間新到舊。
-func (s *Store) ListChannels() ([]model.Channel, error) {
+// ListChannelsForUser 回傳指定使用者參與(為成員)的頻道,依更新時間新到舊。
+// 頻道對應到各人:只看得到自己是成員的頻道。
+func (s *Store) ListChannelsForUser(userID string) ([]model.Channel, error) {
 	const q = `
-SELECT c.id, c.name, c.updated_at,
-       (SELECT COUNT(*) FROM members m WHERE m.channel_id = c.id) AS member_count,
+SELECT c.id, c.name, c.owner_id, c.updated_at,
+       (SELECT COUNT(*) FROM members m2 WHERE m2.channel_id = c.id) AS member_count,
        (SELECT text FROM messages msg WHERE msg.channel_id = c.id
         ORDER BY msg.created_at DESC LIMIT 1) AS last_preview
 FROM channels c
+JOIN members m ON m.channel_id = c.id AND m.user_id = ?
 ORDER BY c.updated_at DESC;`
-	rows, err := s.db.Query(q)
+	rows, err := s.db.Query(q, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +32,7 @@ ORDER BY c.updated_at DESC;`
 	for rows.Next() {
 		var c model.Channel
 		var preview sql.NullString
-		if err := rows.Scan(&c.ID, &c.Name, &c.UpdatedAt, &c.MemberCount, &preview); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.OwnerID, &c.UpdatedAt, &c.MemberCount, &preview); err != nil {
 			return nil, err
 		}
 		if preview.Valid {
@@ -41,7 +43,7 @@ ORDER BY c.updated_at DESC;`
 	return out, rows.Err()
 }
 
-// CreateChannel 建立頻道,建立者自動成為成員。
+// CreateChannel 建立頻道,建立者即為擁有者(owner),並自動成為成員。
 func (s *Store) CreateChannel(id, name string, creator model.User) (model.Channel, error) {
 	t := now()
 	tx, err := s.db.Begin()
@@ -50,8 +52,8 @@ func (s *Store) CreateChannel(id, name string, creator model.User) (model.Channe
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`INSERT INTO channels (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-		id, name, t, t); err != nil {
+	if _, err := tx.Exec(`INSERT INTO channels (id, name, owner_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		id, name, creator.ID, t, t); err != nil {
 		return model.Channel{}, fmt.Errorf("insert channel: %w", err)
 	}
 	if _, err := tx.Exec(`INSERT INTO members (channel_id, user_id, user_name, avatar_color) VALUES (?, ?, ?, ?)`,
@@ -61,7 +63,24 @@ func (s *Store) CreateChannel(id, name string, creator model.User) (model.Channe
 	if err := tx.Commit(); err != nil {
 		return model.Channel{}, err
 	}
-	return model.Channel{ID: id, Name: name, MemberCount: 1, UpdatedAt: t}, nil
+	return model.Channel{ID: id, Name: name, OwnerID: creator.ID, MemberCount: 1, UpdatedAt: t}, nil
+}
+
+// GetChannelOwner 回傳頻道的 owner_id;頻道不存在回 ErrNotFound。
+func (s *Store) GetChannelOwner(channelID string) (string, error) {
+	var owner string
+	err := s.db.QueryRow(`SELECT owner_id FROM channels WHERE id = ?`, channelID).Scan(&owner)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return owner, err
+}
+
+// CountChannels 回傳頻道總數(seed 判斷資料庫是否為空用,不分使用者)。
+func (s *Store) CountChannels() (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM channels`).Scan(&n)
+	return n, err
 }
 
 // channelExists 確認頻道存在。

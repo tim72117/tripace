@@ -36,8 +36,9 @@ func NewWant() (*WantAnalyzer, error) {
 	wanttypes.InitialWorkingDir = wd
 
 	// 空 provider/model => 用 settings.json。
-	// role 用內建的 "general"(免 .agents/ 檔案,啟動目錄在 server 也能載入)。
-	coord := wantorch.Setup("", "", "", "general")
+	// role 用 "assistant",want 會從 InitialWorkingDir/.agents/assistant.md 載入
+	// (啟動目錄須為 server,故為 server/.agents/assistant.md)。
+	coord := wantorch.Setup("", "", "", "assistant")
 	coord.OnError(func(err error) {
 		fmt.Printf("[want] 🔴 Agent Error: %v\n", err)
 	})

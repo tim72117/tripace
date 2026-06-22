@@ -36,6 +36,7 @@ func (s *Store) migrate() error {
 CREATE TABLE IF NOT EXISTS channels (
 	id           TEXT PRIMARY KEY,
 	name         TEXT NOT NULL,
+	owner_id     TEXT NOT NULL DEFAULT '',   -- 建立者(擁有者)的使用者 ID
 	created_at   DATETIME NOT NULL,
 	updated_at   DATETIME NOT NULL
 );
@@ -63,18 +64,23 @@ CREATE TABLE IF NOT EXISTS members (
 
 -- 可被搜尋並邀請的使用者目錄,同時是登入帳號。
 CREATE TABLE IF NOT EXISTS users (
-	id           TEXT PRIMARY KEY,
-	name         TEXT NOT NULL,
-	avatar_color TEXT NOT NULL,
-	apple_sub    TEXT UNIQUE          -- Apple 登入的穩定 ID,可為 NULL(seed 的示範使用者)
+	id            TEXT PRIMARY KEY,
+	name          TEXT NOT NULL,
+	avatar_color  TEXT NOT NULL,
+	apple_sub     TEXT UNIQUE,        -- Apple 登入的穩定 ID,可為 NULL(seed 的示範使用者)
+	email         TEXT UNIQUE,        -- 帳密登入的 email,可為 NULL(Apple 使用者)
+	password_hash TEXT                -- PBKDF2 密碼雜湊,可為 NULL(Apple 使用者)
 );
 `
 	_, err := s.db.Exec(schema)
 	if err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
-	// 對舊資料庫補上 apple_sub 欄位(欄位已存在時 SQLite 會報錯,忽略之)。
+	// 對舊資料庫補欄位(欄位已存在時 SQLite 會報錯,忽略之)。
 	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN apple_sub TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN email TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE users ADD COLUMN password_hash TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE channels ADD COLUMN owner_id TEXT NOT NULL DEFAULT ''`)
 	return nil
 }
 

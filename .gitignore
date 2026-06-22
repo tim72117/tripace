@@ -1,0 +1,25 @@
+# ---- Go server 執行期產物(不進版控) ----
+# SQLite 資料庫(server 啟動時自動建立 / seed)
+server/channel.db
+server/channel.db-shm
+server/channel.db-wal
+
+# LLM / agent 執行日誌與工作階段
+server/logs/
+server/sessions/
+server/entries.jsonl
+
+# ---- 編譯產物 ----
+*.exe
+server/server
+
+# ---- 系統 / 編輯器 ----
+.DS_Store
+Thumbs.db
+
+# ---- Xcode(iOS app)----
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# 注意:web/ 有自己的 .gitignore(node_modules、dist 等)

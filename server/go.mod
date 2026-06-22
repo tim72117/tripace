@@ -3,10 +3,10 @@ module github.com/channel/server
 go 1.26.3
 
 // want 是裸名 module(module want)且為私有本地源碼,無法 go get,
-// 用 replace 指向本地 ../want。
+// 用 replace 指向本地 want 源碼。want 在 c:\www\want(相對 server/ 往上兩層)。
 require want v0.0.0-00010101000000-000000000000
 
-replace want => ../want
+replace want => ../../want
 
 require modernc.org/sqlite v1.53.0
 
