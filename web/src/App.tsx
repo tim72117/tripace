@@ -127,6 +127,7 @@ function PhoneContent(props: ContentProps) {
         <ChatScreen
           cfg={cfg}
           channel={activeChannel}
+          user={props.user}
           onBack={() => setActiveChannel(null)}
         />
       ) : (
@@ -332,12 +333,16 @@ function ChannelsScreen({
 function ChatScreen({
   cfg,
   channel,
+  user,
   onBack,
 }: {
   cfg: ClientConfig
   channel: Channel
+  user: User
   onBack: () => void
 }) {
+  // 只有 owner 能發訊息;非 owner(普通成員)只能用查詢分頁。
+  const isOwner = channel.ownerID === user.id
   const [messages, setMessages] = useState<Message[]>([])
   const [draft, setDraft] = useState('')
   const [err, setErr] = useState<string | null>(null)
@@ -394,31 +399,37 @@ function ChatScreen({
         <ErrorBanner msg={err} />
         <div className="chat-list">
           {messages.map((m) => (
-            <MessageBubble key={m.id} msg={m} />
+            <MessageBubble key={m.id} msg={m} meID={user.id} />
           ))}
           {messages.length === 0 && !err && (
-            <div className="empty">尚無訊息,在下方輸入發送看看 LLM 怎麼標注。</div>
+            <div className="empty">
+              {isOwner
+                ? '尚無訊息,在下方輸入發送看看 LLM 怎麼標注。'
+                : '你是這個頻道的成員。成員看不到歷史訊息,也不能發送;\n請到「查詢」分頁用自然語言詢問頻道內容。'}
+            </div>
           )}
         </div>
       </div>
-      <div className="composer">
-        <input
-          value={draft}
-          placeholder="輸入訊息…"
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && send()}
-        />
-        <button onClick={send} disabled={sending || !draft.trim()}>
-          {sending ? '…' : '送出'}
-        </button>
-      </div>
+      {isOwner ? (
+        <div className="composer">
+          <input
+            value={draft}
+            placeholder="輸入訊息…"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && send()}
+          />
+          <button onClick={send} disabled={sending || !draft.trim()}>
+            {sending ? '…' : '送出'}
+          </button>
+        </div>
+      ) : null}
     </>
   )
 }
 
-function MessageBubble({ msg }: { msg: Message }) {
+function MessageBubble({ msg, meID }: { msg: Message; meID: string }) {
   // 測試台:把 LLM 標注(category / tags / summary)直接攤在泡泡上,一眼看後端回了什麼。
-  const mine = msg.authorID === 'usr_me'
+  const mine = msg.authorID === meID
   return (
     <div className={`bubble ${mine ? 'mine' : ''}`}>
       {!mine && (
