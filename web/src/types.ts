@@ -10,15 +10,14 @@ export interface Channel {
   updatedAt: string // ISO8601
 }
 
+// Message 是使用者說的「原話」:純文字 + 作者 + 時間。
+// LLM 處理後的結構化資訊(分類/標籤/摘要/事件時間)改放在 Entry。
 export interface Message {
   id: string
   channelID: string
   authorID: string
   authorName: string
   text: string
-  category: string | null
-  tags: string[]
-  summary: string | null
   createdAt: string // ISO8601
 }
 
@@ -44,6 +43,22 @@ export interface SearchAnswer {
   answer: string
   citedMessageIDs: string[]
   confidence?: number
+}
+
+// Entry 是主體:LLM 處理訊息後產出的「事件/條目」,承載所有結構化結果。
+// 可獨立存在,並可關聯多則來源訊息(多對多)。
+export interface Entry {
+  id: string
+  channelID: string
+  item: string // 事項描述
+  start: string // 'YYYY-MM-DD HH:MM' 或全日 'YYYY-MM-DD';可空
+  end?: string // 範圍結束;可空
+  allDay: boolean
+  // LLM 標注(原本在 Message 上,改放 Entry;目前後端先留空)。
+  category: string | null
+  tags: string[]
+  summary: string | null
+  createdAt: string // ISO8601
 }
 
 // login / register / apple 的回應:Me + token。

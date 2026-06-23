@@ -5,6 +5,8 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/channel/server/internal/api"
@@ -13,18 +15,32 @@ import (
 	"github.com/channel/server/internal/model"
 	"github.com/channel/server/internal/store"
 	"github.com/channel/server/internal/wanttools"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	// 載入 .env(若存在):讓 DATABASE_URL 等環境變數免手動 export。
+	// 找不到 .env 不算錯誤(維持本機 SQLite 後備)。
+	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
+		log.Printf("載入 .env: %v", err)
+	}
+
 	addr := flag.String("addr", ":8080", "HTTP 監聽位址")
-	dbPath := flag.String("db", "channel.db", "SQLite 資料庫檔案路徑")
+	dbPath := flag.String("db", "channel.db", "DB 連線:SQLite 檔案路徑,或 DATABASE_URL 未設時的後備")
 	seed := flag.Bool("seed", true, "資料庫為空時寫入示範資料")
 	jwtSecret := flag.String("jwt-secret", "dev-secret-change-me", "JWT 簽章金鑰")
 	devMode := flag.Bool("dev", true, "開發模式:Apple token 不驗簽章")
 	llmKind := flag.String("llm", "rule", "LLM 分析器:rule(規則式)| want(接 want 引擎)")
 	flag.Parse()
 
-	st, err := store.Open(*dbPath)
+	// DATABASE_URL(postgres://…,如 Neon)優先;未設時退回 -db 的 SQLite。
+	dsn := *dbPath
+	if env := os.Getenv("DATABASE_URL"); env != "" {
+		dsn = env
+	}
+
+	st, err := store.Open(dsn)
 	if err != nil {
 		log.Fatalf("open store: %v", err)
 	}
@@ -48,11 +64,12 @@ func main() {
 			log.Fatalf("初始化 want 分析器失敗: %v", err)
 		}
 		analyzer = pool
-		// 注入條目持久化:record_entry 工具解析出的條目寫進 DB,關聯到觸發的訊息。
-		wanttools.BindSink(func(messageID, channelID string, e wanttools.RecordedEntry) error {
-			return st.InsertEntry(model.Entry{
-				ID:        "ent_" + randHex(),
-				MessageID: messageID,
+		// 注入條目持久化:record_entry 工具解析出的條目同步寫進 DB(entry 為主體,
+		// 獨立寫入),回傳新 entry ID 供呼叫端與來源 message 建立關聯。
+		wanttools.BindSink(func(channelID string, e wanttools.RecordedEntry) (string, error) {
+			id := "ent_" + randHex()
+			err := st.InsertEntry(model.Entry{
+				ID:        id,
 				ChannelID: channelID,
 				Item:      e.Item,
 				Start:     e.Start,
@@ -60,7 +77,11 @@ func main() {
 				AllDay:    e.AllDay,
 				CreatedAt: nowUTC(),
 			})
+			return id, err
 		})
+		// 提供 query_entries 工具查詢用的 store:agent 提問時自己按時間範圍查條目,
+		// 取代把頻道訊息整包塞進 prompt。
+		wanttools.BindStore(st)
 		log.Printf("LLM 分析器: want 引擎(WantPool)")
 	} else {
 		log.Printf("LLM 分析器: 規則式")
@@ -69,7 +90,11 @@ func main() {
 	signer := auth.NewSigner(*jwtSecret, 30*24*time.Hour)
 	srv := api.New(st, analyzer, signer, *devMode)
 
-	log.Printf("Channel server 監聽 %s,DB=%s", *addr, *dbPath)
+	dbKind := "sqlite:" + dsn
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		dbKind = "postgres" // 不印含密碼的 DSN
+	}
+	log.Printf("Channel server 監聽 %s,DB=%s", *addr, dbKind)
 	if err := http.ListenAndServe(*addr, srv.Routes()); err != nil {
 		log.Fatalf("server: %v", err)
 	}
@@ -83,6 +108,9 @@ func seedUsers(st *store.Store) error {
 		user  model.User
 		email string
 	}{
+		// usr_me 是示範頻道(seedIfEmpty)的建立者/owner,需先存在於 users 表,
+		// 否則寫入 members 中介表會違反外鍵約束(Postgres 會擋,SQLite 預設放行)。
+		{model.User{ID: "usr_me", Name: "我", AvatarColor: "#4A90D9"}, "me@channel.dev"},
 		{model.User{ID: "usr_alice", Name: "Alice", AvatarColor: "#E07A5F"}, "alice@channel.dev"},
 		{model.User{ID: "usr_bob", Name: "Bob", AvatarColor: "#3D9970"}, "bob@channel.dev"},
 		{model.User{ID: "usr_carol", Name: "Carol", AvatarColor: "#B07AE0"}, "carol@channel.dev"},
@@ -118,22 +146,18 @@ func seedIfEmpty(st *store.Store) error {
 	if err != nil {
 		return err
 	}
-	an := llm.NewRuleBased()
+	// message 只存原文(LLM 標注改放 entry,seed 階段不產生 entry)。
 	for _, text := range []string{
 		"我們下週一下午三點開會,敲定 Q3 產品規格",
 		"記得把預算上調的提案準備好,大概要 +15%",
 		"登入頁的 bug 修好了嗎?",
 	} {
-		ann := an.Classify(text)
 		_ = st.InsertMessage(model.Message{
 			ID:         "msg_" + randHex(),
 			ChannelID:  ch.ID,
 			AuthorID:   me.ID,
 			AuthorName: me.Name,
 			Text:       text,
-			Category:   ann.Category,
-			Tags:       ann.Tags,
-			Summary:    ann.Summary,
 			CreatedAt:  nowUTC(),
 		})
 	}

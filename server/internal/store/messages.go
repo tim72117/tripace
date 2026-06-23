@@ -7,19 +7,12 @@ import (
 
 // toMessage 把 entity 轉成 API DTO。
 func toMessage(r messageRow) model.Message {
-	tags := r.Tags
-	if tags == nil {
-		tags = []string{}
-	}
 	return model.Message{
 		ID:         r.ID,
 		ChannelID:  r.ChannelID,
 		AuthorID:   r.AuthorID,
 		AuthorName: r.AuthorName,
 		Text:       r.Text,
-		Category:   r.Category,
-		Tags:       tags,
-		Summary:    r.Summary,
 		CreatedAt:  r.CreatedAt,
 	}
 }
@@ -48,7 +41,7 @@ func mapMessages(rows []messageRow) []model.Message {
 	return out
 }
 
-// InsertMessage 將訊息(含 LLM 標注結果)寫入資料庫,並更新頻道時間。
+// InsertMessage 將訊息(純原文)寫入資料庫,並更新頻道時間。
 func (s *Store) InsertMessage(m model.Message) error {
 	r := messageRow{
 		ID:         m.ID,
@@ -56,9 +49,6 @@ func (s *Store) InsertMessage(m model.Message) error {
 		AuthorID:   m.AuthorID,
 		AuthorName: m.AuthorName,
 		Text:       m.Text,
-		Category:   m.Category,
-		Tags:       m.Tags,
-		Summary:    m.Summary,
 		CreatedAt:  m.CreatedAt,
 	}
 	return s.db.Transaction(func(tx *gorm.DB) error {

@@ -88,10 +88,8 @@ func (RuleBasedAnalyzer) Answer(question string, pool []model.Message) model.Sea
 	}
 	var ranked []scored
 	for _, m := range pool {
-		hay := strings.ToLower(m.Text + " " + strings.Join(m.Tags, " "))
-		if m.Category != nil {
-			hay += " " + strings.ToLower(*m.Category)
-		}
+		// 標注(tags/category)已移至 entry,message 只剩原文;搜尋以原文為準。
+		hay := strings.ToLower(m.Text)
 		score := 0
 		for _, t := range terms {
 			if strings.Contains(hay, t) {

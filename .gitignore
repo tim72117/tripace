@@ -4,6 +4,10 @@ server/channel.db
 server/channel.db-shm
 server/channel.db-wal
 
+# 環境變數(含 DB 連線字串 / 密碼,務必不進版控)
+.env
+server/.env
+
 # LLM / agent 執行日誌與工作階段
 server/logs/
 server/sessions/

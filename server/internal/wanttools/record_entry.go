@@ -6,6 +6,7 @@ package wanttools
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"want/types"
 )
@@ -21,7 +22,7 @@ func init() {
 // 系統另記錄 recorded_at(寫入當下時間)作為審計用。
 var RecordEntryDeclaration = types.ToolDeclaration{
 	Name: "record_entry",
-	Description: "將一則項目記錄成帶有日期時間的條目,寫入記事檔。" +
+	Description: "將一則項目記錄成帶有日期時間的條目並保存。" +
 		"當使用者想把訊息存成待辦、行程、備忘或日誌條目時使用。每呼叫一次新增一筆。" +
 		"請從訊息解析出事件的時間,可以是單一時間點、時間範圍或全日事件。",
 	Type: "sync",
@@ -34,20 +35,24 @@ var RecordEntryDeclaration = types.ToolDeclaration{
 			},
 			"start": map[string]interface{}{
 				"type": "STRING",
-				"description": "事件開始時間。有明確時刻時用 'YYYY-MM-DD HH:MM';" +
-					"全日事件(allDay=true)時用 'YYYY-MM-DD'(不含時刻)。" +
-					"相對時間(如「明天」「週五早上十點」)請依提供的今天日期換算成絕對日期。" +
-					"訊息完全沒提到時間就留空字串。",
+				"description": "事件【日期】,用英文自然語言語詞表達(只給日期,不含時刻),系統自動換算。" +
+					"例如:'next Monday'、'tomorrow'、'this Friday'、'in 3 days'、'June 30'。" +
+					"不要自己算日期。沒提到日期就留空字串。",
+			},
+			"startTime": map[string]interface{}{
+				"type": "STRING",
+				"description": "事件開始的時刻,24 小時制 'HH:MM'(如 '10:00'、'15:30')。" +
+					"從使用者訊息直接取時刻,不要換算。沒提到時刻(全日事件)就留空字串。",
 			},
 			"end": map[string]interface{}{
 				"type": "STRING",
-				"description": "事件結束時間,格式同 start。" +
-					"只有當訊息表達時間範圍(如「三點到五點」「6/30 到 7/2」)時才填,否則留空字串。",
+				"description": "事件結束【日期】,格式同 start(英文日期語詞)。" +
+					"只有表達日期範圍(如「6/30 到 7/2」)時才填,否則留空字串。",
 			},
-			"allDay": map[string]interface{}{
-				"type": "BOOLEAN",
-				"description": "是否為全日事件(只有日期、沒有特定時刻,如「6月30號休假」)。" +
-					"有明確時刻時為 false。",
+			"endTime": map[string]interface{}{
+				"type": "STRING",
+				"description": "事件結束的時刻,24 小時制 'HH:MM'。" +
+					"只有表達時刻範圍(如「三點到五點」)時才填,否則留空字串。",
 			},
 		},
 		"required": []string{"item"},
@@ -83,10 +88,13 @@ func (t *RecordEntryTool) Execute(_ context.Context, args types.ToolArguments, _
 		return types.ToolCallResult{}, fmt.Errorf("item 不可為空")
 	}
 
-	// 事件時間由 LLM 從訊息解析。
-	start := args.GetString("start")
-	end := args.GetString("end")
-	allDay := args.GetBool("allDay")
+	// 事件時間:LLM 給「英文日期語詞」+「24h 時刻」。
+	// when 只把日期語詞確定性換算成絕對日期(避免 LLM 算錯),時刻直接用 LLM 給的數字。
+	now := time.Now()
+	start := combineDateTime(args.GetString("start"), args.GetString("startTime"), now)
+	end := combineDateTime(args.GetString("end"), args.GetString("endTime"), now)
+	// 全日 = 有日期但沒時刻(start 只有 10 字 'YYYY-MM-DD')。
+	allDay := len(start) == 10
 
 	// 交給 sink 持久化(帶上當前記錄 context 的 messageID / channelID)。
 	if err := emit(RecordedEntry{Item: item, Start: start, End: end, AllDay: allDay}); err != nil {

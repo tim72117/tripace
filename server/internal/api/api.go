@@ -51,6 +51,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/channels/{id}/members", s.handleListMembers)
 	mux.HandleFunc("POST /v1/channels/{id}/members", s.handleAddMember)
 	mux.HandleFunc("POST /v1/channels/{id}/query", s.handleQuery)
+	mux.HandleFunc("POST /v1/channels/{id}/assist", s.handleAssist)
 	mux.HandleFunc("GET /v1/channels/{id}/entries", s.handleListEntries)
 	return logging(cors(mux))
 }
@@ -143,20 +144,15 @@ func (s *Server) handlePostMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ann := s.analyzer.Classify(text)
+	// message 只存原文(LLM 標注改放 entry);若 agent 後續記錄條目,
+	// 會把條目關聯回這則 message。
 	msg := model.Message{
 		ID:         "msg_" + newID(),
 		ChannelID:  id,
 		AuthorID:   user.ID,
 		AuthorName: user.Name,
 		Text:       text,
-		Category:   ann.Category,
-		Tags:       ann.Tags,
-		Summary:    ann.Summary,
 		CreatedAt:  time.Now().UTC(),
-	}
-	if msg.Tags == nil {
-		msg.Tags = []string{}
 	}
 	if err := s.store.InsertMessage(msg); err != nil {
 		writeErr(w, http.StatusInternalServerError, "insert_failed", err.Error())
@@ -168,7 +164,16 @@ func (s *Server) handlePostMessage(w http.ResponseWriter, r *http.Request) {
 	// 以發訊息使用者的 ID 作為 session key(per-session 鋪路;現階段仍共用實例)。
 	// 放 goroutine 不阻塞回應。
 	if rec, ok := s.analyzer.(llm.Recorder); ok {
-		go rec.RecordForSession(user.ID, id, msg.ID, text)
+		// linkEntries:agent 跑完後,把本次寫入的 entry 關聯到這則 message(已寫入)。
+		linkEntries := func(entryIDs []string) error {
+			for _, eid := range entryIDs {
+				if err := s.store.LinkEntryMessage(eid, msg.ID); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		go rec.RecordForSession(user.ID, id, msg.ID, text, linkEntries)
 	}
 
 	writeJSON(w, http.StatusCreated, msg)
@@ -248,6 +253,95 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	answer := s.analyzer.Answer(q, pool)
 	writeJSON(w, http.StatusOK, answer)
+}
+
+// POST /v1/channels/{id}/assist  { "text": "..." }
+// owner 統一輸入:LLM 自主判斷「記錄事項」或「回答提問」。
+// - 記錄(recorded):把輸入存成訊息,並由 record_entry 產生關聯的 Entry,回 { kind:"recorded", message }。
+// - 回答(answer):不存訊息,回 { kind:"answer", answer }。
+// 只有頻道 owner 能用;分析器須支援 Assist(want 引擎),否則回 501。
+func (s *Server) handleAssist(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	user := s.userFor(r)
+
+	owner, err := s.store.GetChannelOwner(id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "channel_not_found", "頻道不存在")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "owner_check_failed", err.Error())
+		return
+	}
+	if user.ID != owner {
+		writeErr(w, http.StatusForbidden, "not_owner", "只有頻道擁有者能使用統一輸入")
+		return
+	}
+
+	assistant, ok := s.analyzer.(llm.Assistant)
+	if !ok {
+		writeErr(w, http.StatusNotImplemented, "assist_unsupported", "目前分析器不支援統一輸入(需 -llm want)")
+		return
+	}
+
+	var body struct {
+		Text string `json:"text"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	text := strings.TrimSpace(body.Text)
+	if text == "" {
+		writeErr(w, http.StatusBadRequest, "empty_text", "text 不可為空")
+		return
+	}
+
+	// 先產生 messageID:agent 若記錄條目,這則來源 message 會與條目建立關聯。
+	// 提問時 agent 會自己用 query_entries 工具查條目,不需在此撈頻道訊息。
+	msgID := "msg_" + newID()
+
+	// linkMessage:agent 決定「記錄」時呼叫(條目已由 emit 同步寫入)。
+	// 寫入來源 message(純原文,標注已移至 entry),再把它與本次寫入的
+	// entry(entryIDs)逐一建立多對多關聯。agent 只回答時不呼叫,故不留 message。
+	var savedMsg model.Message
+	linkMessage := func(entryIDs []string) error {
+		savedMsg = model.Message{
+			ID: msgID, ChannelID: id, AuthorID: user.ID, AuthorName: user.Name,
+			Text: text, CreatedAt: time.Now().UTC(),
+		}
+		if err := s.store.InsertMessage(savedMsg); err != nil {
+			return err
+		}
+		for _, eid := range entryIDs {
+			if err := s.store.LinkEntryMessage(eid, msgID); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	res := assistant.AssistForSession(user.ID, id, msgID, text, linkMessage)
+
+	if res.Kind == "error" {
+		writeErr(w, http.StatusInternalServerError, "assist_failed", res.Text)
+		return
+	}
+	if res.Kind == "recorded" {
+		// 記錄了 → message 與關聯 Entry 已由 Assist 在正確順序下寫入。
+		writeJSON(w, http.StatusOK, map[string]any{"kind": "recorded", "message": savedMsg})
+		return
+	}
+
+	// 回答了 → 不存訊息,只回答案;若 agent 用 present_entries 輸出了條目,一併回給前端用列表顯示。
+	entries := res.Entries
+	if entries == nil {
+		entries = []llm.AssistEntry{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"kind":    "answer",
+		"answer":  res.Text,
+		"entries": entries,
+	})
 }
 
 // GET /v1/channels/{id}/entries — 頻道的日期/事件條目(LLM 從訊息解析,關聯訊息)。

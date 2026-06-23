@@ -34,33 +34,39 @@ type channelRow struct {
 
 func (channelRow) TableName() string { return "channels" }
 
+// messageRow 是使用者說的「原話」:純文字 + 作者 + 時間。
+// LLM 處理後的結構化資訊(分類/標籤/摘要/事件時間)改存在 entryRow。
+// 一則 message 可關聯多個 entry(多對多,透過 entry_messages 中介表)。
 type messageRow struct {
 	ID         string    `gorm:"primaryKey;column:id"`
 	ChannelID  string    `gorm:"column:channel_id;not null;index"`
 	AuthorID   string    `gorm:"column:author_id;not null"`
 	AuthorName string    `gorm:"column:author_name;not null"`
 	Text       string    `gorm:"column:text;not null"`
-	Category   *string   `gorm:"column:category"`
-	Tags       []string  `gorm:"column:tags;serializer:json"` // JSON 陣列存單一 TEXT 欄位
-	Summary    *string   `gorm:"column:summary"`
 	CreatedAt  time.Time `gorm:"column:created_at;not null"`
-
-	// Has Many:此訊息衍生的條目(刪訊息級聯刪條目)。
-	Entries []entryRow `gorm:"foreignKey:MessageID;constraint:OnDelete:CASCADE"`
 }
 
 func (messageRow) TableName() string { return "messages" }
 
-// entryRow 是 LLM 解析出的日期/事件條目,關聯到觸發的訊息(刪訊息級聯刪條目)。
+// entryRow 是主體:LLM 處理一則(或多則)訊息後產出的「事件/條目」。
+// 承載所有 LLM 結構化結果——事件時間(item/start/end/allDay)與標注(category/tags/summary)。
+// entry 可獨立存在(不強制依附 message),並可關聯多則來源 message(多對多)。
 type entryRow struct {
 	ID        string    `gorm:"primaryKey;column:id"`
-	MessageID string    `gorm:"column:message_id;not null;index"`
 	ChannelID string    `gorm:"column:channel_id;not null;index"`
 	Item      string    `gorm:"column:item;not null"`
 	Start     string    `gorm:"column:start"`
 	End       string    `gorm:"column:end_at"` // end 是 SQL 保留字,欄位改名 end_at
 	AllDay    bool      `gorm:"column:all_day"`
+	// LLM 標注(原本在 message 上,改存 entry)。
+	Category  *string   `gorm:"column:category"`
+	Tags      []string  `gorm:"column:tags;serializer:json"` // JSON 陣列存單一 TEXT 欄位
+	Summary   *string   `gorm:"column:summary"`
 	CreatedAt time.Time `gorm:"column:created_at;not null"`
+
+	// 多對多:此 entry 的來源訊息(透過 entry_messages 中介表)。
+	// 刪 entry 時級聯解除關聯(中介表記錄一併清除)。
+	Messages []messageRow `gorm:"many2many:entry_messages;joinForeignKey:entry_id;joinReferences:message_id;constraint:OnDelete:CASCADE"`
 }
 
 func (entryRow) TableName() string { return "entries" }

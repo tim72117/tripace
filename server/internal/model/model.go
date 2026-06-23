@@ -13,15 +13,14 @@ type Channel struct {
 	UpdatedAt          time.Time `json:"updatedAt"`
 }
 
+// Message 是使用者說的「原話」:純文字 + 作者 + 時間。
+// LLM 處理後的結構化資訊(分類/標籤/摘要/事件時間)改放在 Entry。
 type Message struct {
 	ID         string    `json:"id"`
 	ChannelID  string    `json:"channelID"`
 	AuthorID   string    `json:"authorID"`
 	AuthorName string    `json:"authorName"`
 	Text       string    `json:"text"`
-	Category   *string   `json:"category"`
-	Tags       []string  `json:"tags"`
-	Summary    *string   `json:"summary"`
 	CreatedAt  time.Time `json:"createdAt"`
 }
 
@@ -51,14 +50,18 @@ type SearchAnswer struct {
 	Confidence      *float64 `json:"confidence,omitempty"`
 }
 
-// Entry 是 LLM(record_entry 工具)從訊息解析出的日期/事件條目,關聯到觸發的訊息。
+// Entry 是主體:LLM 處理訊息後產出的「事件/條目」,承載所有結構化結果。
+// 可獨立存在,並可關聯多則來源訊息(多對多)。
 type Entry struct {
 	ID        string    `json:"id"`
-	MessageID string    `json:"messageID"` // 觸發此條目的訊息
 	ChannelID string    `json:"channelID"`
-	Item      string    `json:"item"`             // 事項描述
-	Start     string    `json:"start"`            // 'YYYY-MM-DD HH:MM' 或全日 'YYYY-MM-DD';可空
-	End       string    `json:"end,omitempty"`    // 範圍結束;可空
-	AllDay    bool      `json:"allDay"`           // 全日事件
+	Item      string    `json:"item"`          // 事項描述
+	Start     string    `json:"start"`         // 'YYYY-MM-DD HH:MM' 或全日 'YYYY-MM-DD';可空
+	End       string    `json:"end,omitempty"` // 範圍結束;可空
+	AllDay    bool      `json:"allDay"`        // 全日事件
+	// LLM 標注(原本在 Message 上,改放 Entry;目前先留空,待後續接上 Classify)。
+	Category  *string   `json:"category"`
+	Tags      []string  `json:"tags"`
+	Summary   *string   `json:"summary"`
 	CreatedAt time.Time `json:"createdAt"`
 }

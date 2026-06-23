@@ -5,6 +5,7 @@
 import type {
   AuthResponse,
   Channel,
+  Entry,
   Me,
   Message,
   SearchAnswer,
@@ -228,4 +229,37 @@ export function semanticQuery(
     `/v1/channels/${encodeURIComponent(channelID)}/query`,
     { question },
   )
+}
+
+// present_entries 工具輸出、要展示給使用者的條目(不含 id/messageID)。
+export interface PresentedEntry {
+  item: string
+  start: string
+  end: string
+  allDay: boolean
+}
+
+// owner 統一輸入:LLM 自主判斷記錄事項或回答提問。
+// 回 { kind:"recorded", message } 或 { kind:"answer", answer, entries }。
+// answer 的 entries 是 agent 用 present_entries 輸出的條目(可空),前端用列表元件顯示。
+export type AssistResult =
+  | { kind: 'recorded'; message: Message }
+  | { kind: 'answer'; answer: string; entries: PresentedEntry[] }
+
+export function assist(cfg: ClientConfig, channelID: string, text: string) {
+  return request<AssistResult>(
+    cfg,
+    'POST',
+    `/v1/channels/${encodeURIComponent(channelID)}/assist`,
+    { text },
+  )
+}
+
+// 取頻道的 Entry 條目(LLM record_entry 工具處理後的結果)。
+export function fetchEntries(cfg: ClientConfig, channelID: string) {
+  return request<{ entries: Entry[] }>(
+    cfg,
+    'GET',
+    `/v1/channels/${encodeURIComponent(channelID)}/entries`,
+  ).then((r) => r.entries)
 }

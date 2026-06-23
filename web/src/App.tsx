@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import type { ApiCall, ClientConfig } from './api'
+import ReactMarkdown from 'react-markdown'
+import type { ApiCall, ClientConfig, PresentedEntry } from './api'
 import * as api from './api'
 import { ApiError, onApiCall } from './api'
-import type { Channel, Message, User } from './types'
+import type { Channel, Entry, Message, User } from './types'
 import { DebugPanel } from './DebugPanel'
 
 // baseURL 是連線設定,跨分頁共用 → localStorage。
@@ -15,6 +16,10 @@ const SS_USER = 'channel.user'
 const SS_EMAIL = 'channel.email'
 
 type Tab = 'channels' | 'settings'
+
+// 聊天訊息(後端 Message + 前端專用欄位)。
+// presented:agent 用 present_entries 輸出、要在答案泡泡下用列表顯示的條目。
+type ChatMessage = Message & { presented?: PresentedEntry[] }
 
 export function App() {
   // ---- 連線設定(可在設定頁改,存 localStorage,跨分頁共用) ----
@@ -93,7 +98,12 @@ export function App() {
           />
         </div>
       </div>
-      <DebugPanel calls={calls} onClear={() => setCalls([])} />
+      <DebugPanel
+        calls={calls}
+        onClear={() => setCalls([])}
+        cfg={cfg}
+        channel={activeChannel}
+      />
     </div>
   )
 }
@@ -359,7 +369,9 @@ function ChatScreen({
 }) {
   // owner 輸入=發訊息;成員輸入=語意查詢(回答顯示在訊息流,對齊 iOS App)。
   const isOwner = channel.ownerID === user.id
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  // Entry:LLM(record_entry 工具)從訊息解析出的條目,按 messageID 掛到對應訊息下方。
+  const [entries, setEntries] = useState<Entry[]>([])
   const [draft, setDraft] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
@@ -370,12 +382,18 @@ function ChatScreen({
   const load = useCallback(async () => {
     setErr(null)
     try {
-      setMessages(await api.fetchMessages(cfg, channel.id))
+      const [msgs, ents] = await Promise.all([
+        api.fetchMessages(cfg, channel.id),
+        // Entry 條目只有 owner 看得到自己頻道的(成員聊天為空,無需載入)。
+        isOwner ? api.fetchEntries(cfg, channel.id) : Promise.resolve([]),
+      ])
+      setMessages(msgs)
+      setEntries(ents)
     } catch (e) {
       setErr(errMsg(e))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg.baseURL, cfg.token, channel.id])
+  }, [cfg.baseURL, cfg.token, channel.id, isOwner])
 
   useEffect(() => {
     load()
@@ -385,6 +403,18 @@ function ChatScreen({
     bodyRef.current?.scrollTo(0, bodyRef.current.scrollHeight)
   }, [messages])
 
+  // 本地訊息(不寫入後端,純前端顯示用):查詢的提問/回答泡泡。
+  const mkLocalMsg = (
+    id: string,
+    authorID: string,
+    authorName: string,
+    text: string,
+  ): ChatMessage => ({
+    id, channelID: channel.id, authorID, authorName, text,
+    createdAt: new Date().toISOString(),
+  })
+
+  // owner 用:統一輸入送進 assist,LLM 自主判斷記錄事項或回答提問。
   const send = async () => {
     const text = draft.trim()
     if (!text) return
@@ -392,8 +422,24 @@ function ChatScreen({
     setErr(null)
     setDraft('')
     try {
-      const msg = await api.postMessage(cfg, channel.id, text)
-      setMessages((prev) => [...prev, msg])
+      const res = await api.assist(cfg, channel.id, text)
+      if (res.kind === 'recorded') {
+        // 記錄了 → 訊息泡泡進訊息流,稍後重拉 entries 掛上 Entry 卡。
+        setMessages((prev) => [...prev, res.message])
+        window.setTimeout(() => {
+          api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {})
+        }, 4000)
+      } else {
+        // 回答了 → 提問 + 答案兩個本地泡泡(不寫入頻道)。
+        // 答案泡泡掛上 agent 用 present_entries 輸出的條目,前端用列表元件顯示。
+        const ans = mkLocalMsg(`ans_${Date.now()}`, 'usr_assistant', '', res.answer)
+        ans.presented = res.entries
+        setMessages((prev) => [
+          ...prev,
+          mkLocalMsg(`ask_${Date.now()}`, user.id, user.name, text),
+          ans,
+        ])
+      }
     } catch (e) {
       setErr(errMsg(e))
       setDraft(text) // 失敗時還回草稿
@@ -409,17 +455,12 @@ function ChatScreen({
     setSending(true)
     setErr(null)
     setDraft('')
-    const now = new Date().toISOString()
-    const mkMsg = (id: string, authorID: string, authorName: string, text: string): Message => ({
-      id, channelID: channel.id, authorID, authorName, text,
-      category: null, tags: [], summary: null, createdAt: now,
-    })
-    setMessages((prev) => [...prev, mkMsg(`ask_${Date.now()}`, user.id, user.name, q)])
+    setMessages((prev) => [...prev, mkLocalMsg(`ask_${Date.now()}`, user.id, user.name, q)])
     try {
       const a = await api.semanticQuery(cfg, channel.id, q)
       setMessages((prev) => [
         ...prev,
-        mkMsg(`ans_${Date.now()}`, 'usr_assistant', '助手', a.answer),
+        mkLocalMsg(`ans_${Date.now()}`, 'usr_assistant', '', a.answer),
       ])
     } catch (e) {
       setErr(errMsg(e))
@@ -452,6 +493,15 @@ function ChatScreen({
       </div>
       <div className="screen-body" ref={bodyRef}>
         <ErrorBanner msg={err} />
+        {/* 以 entry 為主體:頻道的事件/條目列在最上方,點開可看關聯的來源訊息 */}
+        {entries.length > 0 && (
+          <div className="entry-list">
+            <div className="entry-list-title">事件 / 條目</div>
+            {entries.map((e) => (
+              <EntryCard key={e.id} entry={e} />
+            ))}
+          </div>
+        )}
         <div className="chat-list">
           {messages.map((m) => (
             <MessageBubble key={m.id} msg={m} meID={user.id} />
@@ -459,7 +509,7 @@ function ChatScreen({
           {messages.length === 0 && !err && (
             <div className="empty">
               {isOwner
-                ? '尚無訊息,在下方輸入發送看看 LLM 怎麼標注。'
+                ? '在下方輸入:記事(如「明天三點開會」)會存檔,提問(如「我哪天開會?」)會回答。'
                 : '你是這個頻道的成員。在下方用自然語言查詢頻道內容,回答會顯示在這裡。'}
             </div>
           )}
@@ -468,7 +518,7 @@ function ChatScreen({
       <div className="composer">
         <input
           value={draft}
-          placeholder={isOwner ? '輸入訊息…' : '用自然語言查詢這個頻道…'}
+          placeholder={isOwner ? '記事或提問…' : '用自然語言查詢這個頻道…'}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => isSubmitEnter(e) && (isOwner ? send() : ask())}
         />
@@ -483,28 +533,91 @@ function ChatScreen({
   )
 }
 
-function MessageBubble({ msg, meID }: { msg: Message; meID: string }) {
-  // 測試台:把 LLM 標注(category / tags / summary)直接攤在泡泡上,一眼看後端回了什麼。
+function MessageBubble({
+  msg,
+  meID,
+}: {
+  msg: ChatMessage
+  meID: string
+}) {
+  // 新模型:message 只剩原話,LLM 標注已移至 entry(在上方事件列表顯示)。
   const mine = msg.authorID === meID
+  // 只有助理「回答」訊息用 Markdown 渲染;使用者輸入/記事訊息維持純文字。
+  const isAnswer = msg.authorID === 'usr_assistant'
   return (
-    <div className={`bubble ${mine ? 'mine' : ''}`}>
-      {!mine && (
-        <div className="sub" style={{ marginBottom: 2 }}>
-          {msg.authorName}
+    <div className={`bubble-group ${mine ? 'mine' : ''}`}>
+      <div className={`bubble ${mine ? 'mine' : ''}`}>
+        {!mine && msg.authorName && (
+          <div className="sub" style={{ marginBottom: 2 }}>
+            {msg.authorName}
+          </div>
+        )}
+        {isAnswer ? (
+          <div className="text markdown">
+            <ReactMarkdown>{msg.text}</ReactMarkdown>
+          </div>
+        ) : (
+          <div className="text">{msg.text}</div>
+        )}
+      </div>
+      {/* agent 用 present_entries 輸出的條目,在答案泡泡下用列表顯示 */}
+      {msg.presented?.map((e, i) => (
+        <PresentedCard key={`p${i}`} entry={e} />
+      ))}
+    </div>
+  )
+}
+
+// PresentedCard 顯示 present_entries 輸出的條目(查詢結果列表用)。
+function PresentedCard({ entry }: { entry: PresentedEntry }) {
+  const when = entry.start
+    ? entry.allDay
+      ? entry.start.slice(0, 10)
+      : entry.start
+    : '未指定時間'
+  return (
+    <div className="entry-card">
+      <span className="entry-ico">📅</span>
+      <div className="entry-body">
+        <div className="entry-item">{entry.item}</div>
+        <div className="entry-when">
+          {when}
+          {entry.end ? ` ~ ${entry.end}` : ''}
         </div>
-      )}
-      <div className="text">{msg.text}</div>
-      {(msg.category || msg.tags.length > 0) && (
-        <div className="meta">
-          {msg.category && <span className="cat">{msg.category}</span>}
-          {msg.tags.map((t) => (
-            <span key={t} className="tag">
-              #{t}
-            </span>
-          ))}
+      </div>
+    </div>
+  )
+}
+
+// EntryCard 顯示 record_entry 工具解析出的條目(事項 + 時間)。
+function EntryCard({ entry }: { entry: Entry }) {
+  const when = entry.start
+    ? entry.allDay
+      ? entry.start.slice(0, 10)
+      : entry.start
+    : '未指定時間'
+  return (
+    <div className="entry-card">
+      <span className="entry-ico">📅</span>
+      <div className="entry-body">
+        <div className="entry-item">{entry.item}</div>
+        <div className="entry-when">
+          {when}
+          {entry.end ? ` ~ ${entry.end}` : ''}
         </div>
-      )}
-      {msg.summary && <div className="summary">摘要:{msg.summary}</div>}
+        {/* LLM 標注(已移至 entry;後端目前先留空,有值才顯示) */}
+        {(entry.category || entry.tags.length > 0) && (
+          <div className="meta">
+            {entry.category && <span className="cat">{entry.category}</span>}
+            {entry.tags.map((t) => (
+              <span key={t} className="tag">
+                #{t}
+              </span>
+            ))}
+          </div>
+        )}
+        {entry.summary && <div className="summary">摘要:{entry.summary}</div>}
+      </div>
     </div>
   )
 }

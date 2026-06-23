@@ -1,31 +1,128 @@
-import { useState } from 'react'
-import type { ApiCall } from './api'
+import { useCallback, useEffect, useState } from 'react'
+import type { ApiCall, ClientConfig } from './api'
+import * as api from './api'
+import type { Channel, Entry } from './types'
 
-// Debug panel:依時間倒序列出每筆 API 交易。
-// 點一筆可展開原始 request/response JSON、狀態碼、耗時 —— 開發測後端的主要工作面。
+// Debug panel:兩個分頁 —— API 交易紀錄、目前頻道的 Entry 條目。
+// API:依時間倒序列出每筆交易,點開看原始 request/response JSON。
+// Entries:看 record_entry 工具記了哪些結構化條目(item + 時間)。
+
+type DebugTab = 'api' | 'entries'
 
 export function DebugPanel({
   calls,
   onClear,
+  cfg,
+  channel,
 }: {
   calls: ApiCall[]
   onClear: () => void
+  cfg: ClientConfig
+  channel: Channel | null
 }) {
+  const [tab, setTab] = useState<DebugTab>('api')
+
   return (
     <div className="debug">
       <div className="debug-head">
-        <span className="h-title">⚡ API Debug · {calls.length} 筆</span>
-        <button onClick={onClear}>清除</button>
+        <div className="debug-tabs">
+          <button
+            className={tab === 'api' ? 'active' : ''}
+            onClick={() => setTab('api')}
+          >
+            ⚡ API · {calls.length}
+          </button>
+          <button
+            className={tab === 'entries' ? 'active' : ''}
+            onClick={() => setTab('entries')}
+          >
+            📅 Entries
+          </button>
+        </div>
+        {tab === 'api' && <button onClick={onClear}>清除</button>}
       </div>
+      {tab === 'api' ? (
+        <div className="debug-list">
+          {calls.length === 0 ? (
+            <div style={{ color: '#6e6e78', padding: 16, textAlign: 'center' }}>
+              尚無請求。在左側操作 app,這裡會即時記錄每次 API 交易。
+            </div>
+          ) : (
+            calls.map((c) => <CallRow key={c.id} call={c} />)
+          )}
+        </div>
+      ) : (
+        <EntriesView cfg={cfg} channel={channel} />
+      )}
+    </div>
+  )
+}
+
+// EntriesView 顯示目前頻道的 Entry 條目(record_entry 工具寫進 DB 的結構化資料)。
+function EntriesView({
+  cfg,
+  channel,
+}: {
+  cfg: ClientConfig
+  channel: Channel | null
+}) {
+  const [entries, setEntries] = useState<Entry[]>([])
+  const [err, setErr] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const load = useCallback(async () => {
+    if (!channel) return
+    setLoading(true)
+    setErr(null)
+    try {
+      setEntries(await api.fetchEntries(cfg, channel.id))
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg.baseURL, cfg.token, channel?.id])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  if (!channel) {
+    return (
       <div className="debug-list">
-        {calls.length === 0 ? (
-          <div style={{ color: '#6e6e78', padding: 16, textAlign: 'center' }}>
-            尚無請求。在左側操作 app,這裡會即時記錄每次 API 交易。
-          </div>
-        ) : (
-          calls.map((c) => <CallRow key={c.id} call={c} />)
-        )}
+        <div style={{ color: '#6e6e78', padding: 16, textAlign: 'center' }}>
+          先在左側進入一個頻道,這裡會顯示該頻道的 Entry 條目。
+        </div>
       </div>
+    )
+  }
+
+  return (
+    <div className="debug-list">
+      <div className="entries-head">
+        <span>頻道 {channel.name} · {entries.length} 筆</span>
+        <button onClick={load} disabled={loading}>
+          {loading ? '…' : '↻ 重整'}
+        </button>
+      </div>
+      {err && <pre className="json-err">{err}</pre>}
+      {!err && entries.length === 0 && !loading && (
+        <div style={{ color: '#6e6e78', padding: 16, textAlign: 'center' }}>
+          這個頻道還沒有 Entry。owner 記事(需 -llm want)後會出現。
+        </div>
+      )}
+      {entries.map((e) => (
+        <div key={e.id} className="entry-row">
+          <span className="entry-when-mono">
+            {e.start || '(無時間)'}
+            {e.end ? ` ~ ${e.end}` : ''}
+            {e.allDay ? ' 全日' : ''}
+          </span>
+          <span className="entry-item-mono">{e.item}</span>
+          <span className="entry-id-mono">{e.id}</span>
+        </div>
+      ))}
     </div>
   )
 }

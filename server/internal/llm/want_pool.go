@@ -78,13 +78,27 @@ func (p *WantPool) Answer(question string, msgs []model.Message) model.SearchAns
 // 現階段 For() 回共用實例(sessionID 暫不分流),但簽章已備好:
 // want 改造後,For(sessionID) 會回該 session 的獨立 orchestrator,
 // 條目就會 per-user 記錄,此處不需再改。
-func (p *WantPool) RecordForSession(sessionID, channelID, messageID, text string) {
-	p.For(sessionID).RecordForMessage(channelID, messageID, text)
+func (p *WantPool) RecordForSession(sessionID, channelID, messageID, text string, linkEntries func(entryIDs []string) error) {
+	p.For(sessionID).RecordForMessage(channelID, messageID, text, linkEntries)
+}
+
+// AssistForSession 依 session 取 analyzer,統一處理 owner 輸入(LLM 自主判斷回答/記錄)。
+// 提問時 agent 自己用 query_entries 工具查條目,無需傳入頻道訊息。
+// linkMessage:當 agent 決定「記錄」時,寫入來源 message 並與本次 emit 的
+// entry(entryIDs)建立多對多關聯;agent 只回答時不會被呼叫。
+func (p *WantPool) AssistForSession(sessionID, channelID, messageID, text string, linkMessage func(entryIDs []string) error) AssistResult {
+	return p.For(sessionID).Assist(channelID, messageID, text, linkMessage)
 }
 
 // Recorder 是「能在背景把訊息記成條目」的能力。WantPool 實作它。
 // api handler 用此 interface 做型別斷言,不綁具體型別。
 // sessionID 通常為發訊息使用者的 ID;解析出的條目會關聯到 messageID / channelID。
 type Recorder interface {
-	RecordForSession(sessionID, channelID, messageID, text string)
+	RecordForSession(sessionID, channelID, messageID, text string, linkEntries func(entryIDs []string) error)
+}
+
+// Assistant 是「統一處理 owner 輸入,LLM 自主判斷回答或記錄」的能力。
+// 只有 want 引擎(WantPool)實作;規則式分析器不支援(api handler 以斷言判斷)。
+type Assistant interface {
+	AssistForSession(sessionID, channelID, messageID, text string, linkMessage func(entryIDs []string) error) AssistResult
 }
