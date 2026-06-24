@@ -496,31 +496,28 @@ function ChatScreen({
     }
   }
 
-  // 成員用:自然語言查詢頻道,問答顯示在訊息流(本地,不寫入頻道)。
+  // 成員用:自然語言查詢頻道。問答持久化進裝置端 DB(重開頻道仍在,後端不存)。
   const ask = async () => {
     const q = draft.trim()
     if (!q) return
     setSending(true)
     setErr(null)
     setDraft('')
-    // 提問泡泡 + 處理中佔位泡泡(海浪動畫)。
+    // 提問泡泡(持久化)+ 處理中佔位泡泡(海浪動畫,暫態)。
+    const askMsg = mkLocalMsg(`ask_${Date.now()}`, user.id, user.name, q)
     const pendingID = `pending_${Date.now()}`
     const pending = mkLocalMsg(pendingID, ASSISTANT_ID, '', '')
     pending.pending = true
-    setMessages((prev) => [
-      ...prev,
-      mkLocalMsg(`ask_${Date.now()}`, user.id, user.name, q),
-      pending,
-    ])
+    setMessages((prev) => [...prev, askMsg, pending])
+    // 提問存裝置 DB。
+    void saveMessage(askMsg).catch(() => {})
     try {
       const a = await api.semanticQuery(cfg, channel.id, q)
-      // 佔位泡泡就地換成答案。
+      // 佔位泡泡就地換成答案,並把答案也存進裝置 DB。
+      const ansMsg = mkLocalMsg(`ans_${Date.now()}`, ASSISTANT_ID, '助手', a.answer)
+      void saveMessage(ansMsg).catch(() => {})
       setMessages((prev) =>
-        prev.map((m) =>
-          m.id === pendingID
-            ? mkLocalMsg(`ans_${Date.now()}`, ASSISTANT_ID, '', a.answer)
-            : m,
-        ),
+        prev.map((m) => (m.id === pendingID ? ansMsg : m)),
       )
     } catch (e) {
       setMessages((prev) => prev.filter((m) => m.id !== pendingID))

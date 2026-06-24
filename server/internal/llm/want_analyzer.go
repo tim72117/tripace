@@ -225,7 +225,6 @@ func (w *WantAnalyzer) Answer(question string, pool []model.Entry) model.SearchA
 
 // ---- prompt 與解析 ----
 
-
 func weekdayZH(d time.Weekday) string {
 	names := [...]string{"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"}
 	return names[d]
@@ -268,4 +267,3 @@ func buildAnswerPrompt(question string, pool []model.Entry) string {
 	sb.WriteString("\n\n請用繁體中文簡潔回答,只根據上述條目,不要編造。")
 	return sb.String()
 }
-

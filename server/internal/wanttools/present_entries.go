@@ -90,7 +90,7 @@ func (t *PresentEntriesTool) Execute(_ context.Context, args types.ToolArguments
 
 	summary := fmt.Sprintf("已加入展示:%s", e.Item)
 	return types.ToolCallResult{
-		Content: []types.ResultContentBlock{types.TextBlock(summary)},
+		Content:       []types.ResultContentBlock{types.TextBlock(summary)},
 		ToolUseResult: map[string]interface{}{"summary": summary},
 	}, nil
 }

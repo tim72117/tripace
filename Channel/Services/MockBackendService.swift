@@ -48,7 +48,7 @@ final class MockBackendService: BackendService {
     private var channels: [Channel]
     private var messagesByChannel: [String: [Message]]
     private var entriesByChannel: [String: [Entry]]
-    private var membersByChannel: [String: [User]]
+    private var membersByChannel: [String: [Member]]
 
     init() {
         let now = Date()
@@ -102,9 +102,18 @@ final class MockBackendService: BackendService {
             ],
         ]
 
+        // ch_001:我是 owner(editor);其他成員預設 viewer。
+        // ch_002:他人 owner,我是 viewer 成員。
         membersByChannel = [
-            "ch_001": [currentUser, directory[0], directory[1]],
-            "ch_002": [currentUser, directory[2]],
+            "ch_001": [
+                Self.member(currentUser, .editor),
+                Self.member(directory[0], .viewer),
+                Self.member(directory[1], .viewer),
+            ],
+            "ch_002": [
+                Self.member(currentUser, .viewer),
+                Self.member(directory[2], .editor),
+            ],
         ]
     }
 
@@ -122,16 +131,12 @@ final class MockBackendService: BackendService {
                          lastMessagePreview: nil, updatedAt: .now)
         channels.append(ch)
         messagesByChannel[ch.id] = []
-        membersByChannel[ch.id] = [currentUser]
+        // 建立者即 owner,給 editor 角色。
+        membersByChannel[ch.id] = [Self.member(currentUser, .editor)]
         return ch
     }
 
-    // MARK: 訊息
-
-    func fetchMessages(channelID: String) async throws -> [Message] {
-        try await fakeDelay(0.2)
-        return messagesByChannel[channelID] ?? []
-    }
+    // 原話(message)已移至裝置端 DB,Mock 不再提供 fetchMessages。
 
     // MARK: 條目(Entry)
 
@@ -158,20 +163,11 @@ final class MockBackendService: BackendService {
             return .answer(text: answer.answer, entries: Array(presented))
         }
 
-        // 記錄:存原話 + 產生關聯 Entry。
-        let message = Message(
-            id: "msg_\(UUID().uuidString.prefix(6))",
-            channelID: channelID,
-            authorID: currentUser.id,
-            authorName: currentUser.name,
-            text: trimmed,
-            createdAt: .now
-        )
-        messagesByChannel[channelID, default: []].append(message)
-
+        // 記錄:產生 Entry(後端)。原話不存後端,由前端存裝置端 DB。
         let (category, tags, summary) = Self.classify(trimmed)
+        let entryID = "ent_\(UUID().uuidString.prefix(6))"
         let entry = Entry(
-            id: "ent_\(UUID().uuidString.prefix(6))",
+            id: entryID,
             channelID: channelID,
             item: trimmed,
             start: "", allDay: false,
@@ -184,17 +180,17 @@ final class MockBackendService: BackendService {
             channels[idx].lastMessagePreview = trimmed
             channels[idx].updatedAt = .now
         }
-        return .recorded(message)
+        return .recorded(text: trimmed, entryIDs: [entryID])
     }
 
     // MARK: 成員
 
-    func fetchMembers(channelID: String) async throws -> [User] {
+    func fetchMembers(channelID: String) async throws -> [Member] {
         try await fakeDelay(0.2)
         return membersByChannel[channelID] ?? []
     }
 
-    func addMember(channelID: String, email: String) async throws -> [User] {
+    func addMember(channelID: String, email: String, role: ChannelRole) async throws -> [Member] {
         try await fakeDelay(0.3)
         // 以 email 前綴比對內建使用者(例如 alice@... → Alice);否則用 email 當名稱建立。
         let prefix = email.split(separator: "@").first.map(String.init) ?? email
@@ -203,11 +199,21 @@ final class MockBackendService: BackendService {
 
         var members = membersByChannel[channelID] ?? []
         if !members.contains(where: { $0.id == user.id }) {
-            members.append(user)
+            members.append(Self.member(user, role))
             membersByChannel[channelID] = members
             if let idx = channels.firstIndex(where: { $0.id == channelID }) {
                 channels[idx].memberCount = members.count
             }
+        }
+        return members
+    }
+
+    func setMemberRole(channelID: String, userID: String, role: ChannelRole) async throws -> [Member] {
+        try await fakeDelay(0.2)
+        var members = membersByChannel[channelID] ?? []
+        if let idx = members.firstIndex(where: { $0.id == userID }) {
+            members[idx].role = role
+            membersByChannel[channelID] = members
         }
         return members
     }
@@ -254,6 +260,11 @@ final class MockBackendService: BackendService {
     }
 
     // MARK: - 模擬 LLM 分類規則
+
+    /// 把 User 包成帶角色的 Member。
+    private static func member(_ u: User, _ role: ChannelRole) -> Member {
+        Member(id: u.id, name: u.name, avatarColor: u.avatarColor, role: role)
+    }
 
     /// 粗略判斷輸入是否為「提問」(決定 assist 走回答還是記錄)。
     private static func looksLikeQuestion(_ text: String) -> Bool {

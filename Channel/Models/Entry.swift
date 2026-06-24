@@ -117,9 +117,10 @@ struct PresentedEntry: Codable, Hashable {
 }
 
 /// owner 統一輸入(assist)的結果:LLM 自主判斷記錄事項或回答提問。
-/// - recorded:記錄了,回傳寫入的訊息。
+/// - recorded:記錄了。後端只回原話 text(原話不存後端,由前端存進裝置端 DB)
+///   與新寫入的 entryIDs(entry 在後端,前端重拉顯示)。
 /// - answer:回答了,不寫訊息;附帶 present_entries 輸出的條目(可空)。
 enum AssistResult {
-    case recorded(Message)
+    case recorded(text: String, entryIDs: [String])
     case answer(text: String, entries: [PresentedEntry])
 }

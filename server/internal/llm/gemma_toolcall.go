@@ -93,7 +93,8 @@ func ParseGemmaToolCalls(text string, idGen func(index int) string) (calls []typ
 }
 
 // parseOneGemmaCall 解析單段 body(已去除外層 <|tool_call> / <tool_call|>):
-//   call:NAME{ key:value, ... }
+//
+//	call:NAME{ key:value, ... }
 func parseOneGemmaCall(body, id string) (types.Content, bool) {
 	body = strings.TrimSpace(body)
 	if !strings.HasPrefix(body, gemmaCallPrefix) {

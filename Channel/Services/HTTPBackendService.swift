@@ -41,10 +41,7 @@ final class HTTPBackendService: BackendService {
 
     // MARK: 訊息
 
-    func fetchMessages(channelID: String) async throws -> [Message] {
-        let res: MessagesResponse = try await get("channels/\(channelID)/messages")
-        return res.messages
-    }
+    // 原話(message)已移至裝置端 DB,後端不再提供 messages 端點;故無 fetchMessages。
 
     func fetchEntries(channelID: String) async throws -> [Entry] {
         let res: EntriesResponse = try await get("channels/\(channelID)/entries")
@@ -56,10 +53,8 @@ final class HTTPBackendService: BackendService {
                                                  body: ["text": text])
         switch res.kind {
         case "recorded":
-            guard let message = res.message else {
-                throw BackendError.server("assist 回應缺少 message")
-            }
-            return .recorded(message)
+            // 原話不在後端;回原話 text 供前端存裝置端 DB,entryIDs 為新寫入的條目。
+            return .recorded(text: res.text ?? text, entryIDs: res.entryIDs ?? [])
         case "answer":
             return .answer(text: res.answer ?? "", entries: res.entries ?? [])
         default:
@@ -69,15 +64,23 @@ final class HTTPBackendService: BackendService {
 
     // MARK: 成員
 
-    func fetchMembers(channelID: String) async throws -> [User] {
+    func fetchMembers(channelID: String) async throws -> [Member] {
         let res: MembersResponse = try await get("channels/\(channelID)/members")
         return res.members
     }
 
-    func addMember(channelID: String, email: String) async throws -> [User] {
-        // 後端以 email 查出使用者後加入。
+    func addMember(channelID: String, email: String, role: ChannelRole) async throws -> [Member] {
+        // 後端以 email 查出使用者後加入;role 預設 viewer。
         let res: MembersResponse = try await post("channels/\(channelID)/members",
-                                                  body: ["email": email])
+                                                  body: ["email": email, "role": role.rawValue])
+        return res.members
+    }
+
+    func setMemberRole(channelID: String, userID: String, role: ChannelRole) async throws -> [Member] {
+        let res: MembersResponse = try await send(
+            "channels/\(channelID)/members/\(userID)",
+            method: "PATCH",
+            body: ["role": role.rawValue])
         return res.members
     }
 
@@ -203,14 +206,15 @@ final class HTTPBackendService: BackendService {
 // MARK: - 回應外殼
 
 private struct ChannelsResponse: Decodable { let channels: [Channel] }
-private struct MessagesResponse: Decodable { let messages: [Message] }
 private struct EntriesResponse: Decodable { let entries: [Entry] }
-private struct MembersResponse: Decodable { let members: [User] }
+private struct MembersResponse: Decodable { let members: [Member] }
 
-// assist 的標籤式回應:kind=recorded → message;kind=answer → answer + entries。
+// assist 的標籤式回應:
+// kind=recorded → text(原話)+ entryIDs(新寫入條目);kind=answer → answer + entries。
 private struct AssistEnvelope: Decodable {
     let kind: String
-    let message: Message?
+    let text: String?
+    let entryIDs: [String]?
     let answer: String?
     let entries: [PresentedEntry]?
 }

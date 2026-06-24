@@ -64,36 +64,27 @@ final class ChatStore {
     /// 本地快取(可為 nil,初始化失敗時降級為純線上)。
     private let local = LocalStore.shared
 
-    /// local-first 載入:先讀本地快取秒開,再背景 fetch 後端、寫回本地並覆蓋畫面。
-    /// owner 視角:訊息流只放本地查詢問答泡泡;記事原話已歸 entry,不灌進訊息流。
-    /// member 視角:訊息流顯示自己的查詢問答(後端 messages)。
+    /// local-first 載入。原話(message)的唯一真實來源是裝置端 LocalStore(後端不存原話);
+    /// Entry 由後端拉取(僅 owner)。
+    /// owner 視角:記事原話已歸 entry,訊息流不顯示原話泡泡,只保留本地查詢問答泡泡。
+    /// member 視角:訊息流顯示自己裝置存的查詢問答原話。
     func load() async {
-        // 1) 先顯本地(若有快取,畫面立即有內容)。owner 不從快取灌 messages(訊息流非記事用)。
-        if let local {
-            if !isOwner {
-                let cachedMsgs = local.messages(channelID: channel.id)
-                if !cachedMsgs.isEmpty { messages = cachedMsgs }
-            }
-            if isOwner {
-                let cachedEnts = local.entries(channelID: channel.id)
-                if !cachedEnts.isEmpty { entries = cachedEnts }
-            }
+        // 1) 原話一律從裝置端讀(owner 不灌進訊息流,member 才顯示)。
+        if let local, !isOwner {
+            messages = local.messages(channelID: channel.id)
+        }
+        if let local, isOwner {
+            let cachedEnts = local.entries(channelID: channel.id)
+            if !cachedEnts.isEmpty { entries = cachedEnts }
         }
 
-        // 2) 背景重拉後端,成功則覆蓋畫面 + 寫回本地;失敗時保留本地內容、不洗掉。
+        // 2) 背景重拉後端 Entry(只有 owner);原話不在後端,無需 fetch。
         isLoading = true
         do {
-            // Entry 條目只有 owner 看得到自己頻道的(成員聊天為空,無需載入)。
-            async let msgs = backend.fetchMessages(channelID: channel.id)
-            async let ents: [Entry] = isOwner
-                ? backend.fetchEntries(channelID: channel.id)
+            let freshEnts: [Entry] = isOwner
+                ? try await backend.fetchEntries(channelID: channel.id)
                 : []
-            let freshMsgs = try await msgs
-            let freshEnts = try await ents
-            // owner 的記事原話歸 entry,不顯示在訊息流;member 才把訊息灌進訊息流。
-            if !isOwner { messages = freshMsgs }
             entries = freshEnts
-            local?.replaceMessages(freshMsgs, channelID: channel.id)
             if isOwner { local?.replaceEntries(freshEnts, channelID: channel.id) }
         } catch {
             // 線上失敗:若本地有東西就靜默(離線可讀);完全沒快取才顯示錯誤。
@@ -125,10 +116,17 @@ final class ChatStore {
         do {
             let result = try await backend.assist(channelID: channel.id, text: trimmed)
             switch result {
-            case .recorded(let saved):
-                // 記錄了 → 內容已歸入上方 entry 卡,訊息流不保留這則原話泡泡(移除樂觀泡泡)。
+            case .recorded(let recordedText, _):
+                // 記錄了 → 原話存進裝置端 LocalStore(原話的唯一真實來源,後端不存);
+                // 內容已歸入上方 entry 卡,訊息流不保留這則原話泡泡(移除樂觀泡泡)。
                 messages.removeAll { $0.id == tempID }
-                local?.upsertMessage(saved) // 仍落地本地快取(後端也有存),只是不顯示
+                local?.upsertMessage(Message(
+                    id: "msg_\(UUID().uuidString.prefix(6))",
+                    channelID: channel.id,
+                    authorID: backend.currentUser.id,
+                    authorName: backend.currentUser.name,
+                    text: recordedText,
+                    createdAt: .now))
                 if let fresh = try? await backend.fetchEntries(channelID: channel.id) {
                     entries = fresh
                     local?.replaceEntries(fresh, channelID: channel.id)
@@ -164,20 +162,23 @@ final class ChatStore {
     /// 助手回答用的固定作者 ID(本地顯示,不存後端)。
     static let assistantID = "usr_assistant"
 
-    /// 成員用:把問題以自然語言查詢頻道,回答顯示在訊息流(本地,不寫入頻道)。
+    /// 成員用:把問題以自然語言查詢頻道。問答持久化進裝置端 LocalStore
+    /// (重開頻道仍在,後端不存)。
     func ask(_ question: String) async {
         let trimmed = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        // 我的提問氣泡。
-        messages.append(Message(
+        // 我的提問氣泡(持久化)。
+        let askMsg = Message(
             id: "ask_\(UUID().uuidString.prefix(6))",
             channelID: channel.id,
             authorID: backend.currentUser.id,
             authorName: backend.currentUser.name,
-            text: trimmed))
+            text: trimmed)
+        messages.append(askMsg)
+        local?.upsertMessage(askMsg)
 
-        // 助手「思考中」氣泡。
+        // 助手「思考中」氣泡(暫態佔位)。
         let pendingID = "ans_\(UUID().uuidString.prefix(6))"
         messages.append(Message(
             id: pendingID,
@@ -193,6 +194,13 @@ final class ChatStore {
                 messages[idx].text = answer.answer
                 messages[idx].isProcessing = false
             }
+            // 答案氣泡持久化(用同一 id,確保重載順序一致)。
+            local?.upsertMessage(Message(
+                id: pendingID,
+                channelID: channel.id,
+                authorID: ChatStore.assistantID,
+                authorName: "助手",
+                text: answer.answer))
         } catch {
             if let idx = messages.firstIndex(where: { $0.id == pendingID }) {
                 messages[idx].text = "查詢失敗:\(error.localizedDescription)"
