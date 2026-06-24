@@ -1,0 +1,30 @@
+# 避免把不必要 / 含密碼的檔案送進 build context(也加快建置)。
+# 注意:server/ 與 want/ 必須保留(編譯需要),這裡只排除產物與機密。
+
+# 機密:.env 含 DB 連線字串/密碼,絕不進映像(env 改用 --env-file / Cloud Run 變數注入)
+.env
+**/.env
+server/.env
+
+# Go 執行期產物與本機 DB
+server/channel.db
+server/channel.db-shm
+server/channel.db-wal
+server/server
+**/*.exe
+server/logs/
+server/sessions/
+server/entries.jsonl
+
+# 與後端無關的部分(縮小 context)
+Channel/
+Channel.xcodeproj/
+web/
+docs/
+build/
+**/node_modules/
+
+# 版控與系統檔
+.git/
+.gitignore
+**/.DS_Store
