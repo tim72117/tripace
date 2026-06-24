@@ -13,7 +13,8 @@ struct ChannelListView: View {
             if let store {
                 content(store)
             } else {
-                ProgressView()
+                // 首次載入(store 尚未建立):顯示骨架屏而非單純轉圈。
+                ChannelListSkeleton()
             }
         }
         .task { await setup() }
@@ -44,21 +45,29 @@ struct ChannelListView: View {
 
     @ViewBuilder
     private func content(_ store: ChannelStore) -> some View {
-        List {
-            ForEach(store.channels) { channel in
-                NavigationLink(value: channel) {
-                    ChannelRow(channel: channel)
+        Group {
+            // 尚無資料且仍在載入 → 骨架屏;否則顯示真實列表。
+            if store.channels.isEmpty && store.isLoading {
+                ChannelListSkeleton()
+            } else {
+                List {
+                    ForEach(store.channels) { channel in
+                        NavigationLink(value: channel) {
+                            ChannelRow(channel: channel)
+                        }
+                        .listRowSeparator(.hidden)
+                    }
                 }
+                .listStyle(.plain)
+                .overlay {
+                    if store.channels.isEmpty && !store.isLoading {
+                        ContentUnavailableView("還沒有頻道", systemImage: "bubble.left.and.bubble.right",
+                                               description: Text("點右上角 + 建立第一個頻道"))
+                    }
+                }
+                .refreshable { await store.load() }
             }
         }
-        .listStyle(.plain)
-        .overlay {
-            if store.channels.isEmpty && !store.isLoading {
-                ContentUnavailableView("還沒有頻道", systemImage: "bubble.left.and.bubble.right",
-                                       description: Text("點右上角 + 建立第一個頻道"))
-            }
-        }
-        .refreshable { await store.load() }
         .navigationDestination(for: Channel.self) { channel in
             ChatView(channel: channel)
         }
@@ -72,12 +81,47 @@ struct ChannelListView: View {
     }
 }
 
+/// 頻道列表的骨架屏:一疊灰色佔位列 + 流光,版面比照 ChannelRow。
+private struct ChannelListSkeleton: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<8, id: \.self) { _ in
+                ChannelRowSkeleton()
+            }
+            Spacer()
+        }
+        .shimmering()
+        .accessibilityLabel("載入中")
+    }
+}
+
+/// 單列骨架:左方頭像方塊 + 兩行文字佔位 + 右側時間佔位(對齊 ChannelRow)。
+private struct ChannelRowSkeleton: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            SkeletonBlock(height: 44, cornerRadius: 22) // 圓形頭像佔位(半徑=寬高一半)
+                .frame(width: 44)
+            VStack(alignment: .leading, spacing: 6) {
+                SkeletonBlock(width: 120, height: 13)
+                SkeletonBlock(width: 200, height: 11)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 6) {
+                SkeletonBlock(width: 36, height: 10)
+                SkeletonBlock(width: 28, height: 10)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 12)
+    }
+}
+
 private struct ChannelRow: View {
     let channel: Channel
 
     var body: some View {
         HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 10)
+            Circle()
                 .fill(Color.accentColor.gradient)
                 .frame(width: 44, height: 44)
                 .overlay {

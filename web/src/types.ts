@@ -55,8 +55,9 @@ export interface Entry {
   end?: string // 範圍結束;可空
   allDay: boolean
   // LLM 標注(原本在 Message 上,改放 Entry;目前後端先留空)。
+  // 後端標注未填時 tags 會回 null(非 []),消費端需 ?? [] 收斂。
   category: string | null
-  tags: string[]
+  tags: string[] | null
   summary: string | null
   createdAt: string // ISO8601
 }

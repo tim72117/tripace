@@ -58,6 +58,7 @@ type entryRow struct {
 	Start     string    `gorm:"column:start"`
 	End       string    `gorm:"column:end_at"` // end 是 SQL 保留字,欄位改名 end_at
 	AllDay    bool      `gorm:"column:all_day"`
+	Location  string    `gorm:"column:location"` // 地點(可空)
 	// LLM 標注(原本在 message 上,改存 entry)。
 	Category  *string   `gorm:"column:category"`
 	Tags      []string  `gorm:"column:tags;serializer:json"` // JSON 陣列存單一 TEXT 欄位

@@ -46,8 +46,25 @@ final class HTTPBackendService: BackendService {
         return res.messages
     }
 
-    func postMessage(channelID: String, text: String) async throws -> Message {
-        try await post("channels/\(channelID)/messages", body: ["text": text])
+    func fetchEntries(channelID: String) async throws -> [Entry] {
+        let res: EntriesResponse = try await get("channels/\(channelID)/entries")
+        return res.entries
+    }
+
+    func assist(channelID: String, text: String) async throws -> AssistResult {
+        let res: AssistEnvelope = try await post("channels/\(channelID)/assist",
+                                                 body: ["text": text])
+        switch res.kind {
+        case "recorded":
+            guard let message = res.message else {
+                throw BackendError.server("assist 回應缺少 message")
+            }
+            return .recorded(message)
+        case "answer":
+            return .answer(text: res.answer ?? "", entries: res.entries ?? [])
+        default:
+            throw BackendError.server("未知的 assist 結果:\(res.kind)")
+        }
     }
 
     // MARK: 成員
@@ -187,7 +204,16 @@ final class HTTPBackendService: BackendService {
 
 private struct ChannelsResponse: Decodable { let channels: [Channel] }
 private struct MessagesResponse: Decodable { let messages: [Message] }
+private struct EntriesResponse: Decodable { let entries: [Entry] }
 private struct MembersResponse: Decodable { let members: [User] }
+
+// assist 的標籤式回應:kind=recorded → message;kind=answer → answer + entries。
+private struct AssistEnvelope: Decodable {
+    let kind: String
+    let message: Message?
+    let answer: String?
+    let entries: [PresentedEntry]?
+}
 private struct Profile: Decodable { let email: String }
 private struct AuthResponse: Decodable { let token: String; let user: User; let profile: Profile }
 private struct MeResponse: Decodable { let user: User; let profile: Profile }

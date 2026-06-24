@@ -8,7 +8,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: "945VG76H3Z"
     CODE_SIGN_STYLE: Automatic
     TARGETED_DEVICE_FAMILY: "1,2"
 
@@ -27,3 +27,5 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Channel/Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: Channel/Resources/Channel.entitlements
+        # 本地快取用系統內建 SQLite(import SQLite3),連結 libsqlite3。
+        OTHER_LDFLAGS: -lsqlite3

@@ -47,6 +47,7 @@ final class MockBackendService: BackendService {
     // 記憶體狀態
     private var channels: [Channel]
     private var messagesByChannel: [String: [Message]]
+    private var entriesByChannel: [String: [Entry]]
     private var membersByChannel: [String: [User]]
 
     init() {
@@ -60,27 +61,44 @@ final class MockBackendService: BackendService {
                           updatedAt: now.addingTimeInterval(-7200))
         channels = [ch1, ch2]
 
+        // Message 只存原話(標注/事件時間已移至 Entry)。
         messagesByChannel = [
             "ch_001": [
                 Message(id: "msg_001", channelID: "ch_001", authorID: "usr_alice", authorName: "Alice",
                         text: "我們下週一下午三點開會,敲定 Q3 產品規格",
-                        category: "會議", tags: ["排程", "Q3", "規格"],
-                        summary: "下週一 15:00 開會敲定 Q3 規格",
                         createdAt: now.addingTimeInterval(-3600)),
                 Message(id: "msg_002", channelID: "ch_001", authorID: "usr_bob", authorName: "Bob",
                         text: "記得把預算上調的提案準備好,大概要 +15%",
-                        category: "任務", tags: ["預算", "提案"],
                         createdAt: now.addingTimeInterval(-1800)),
                 Message(id: "msg_003", channelID: "ch_001", authorID: "usr_me", authorName: "我",
                         text: "登入頁的 bug 修好了嗎?",
-                        category: "問題", tags: ["bug", "登入"],
                         createdAt: now.addingTimeInterval(-600)),
             ],
             "ch_002": [
                 Message(id: "msg_101", channelID: "ch_002", authorID: "usr_carol", authorName: "Carol",
                         text: "機票買好了嗎?七月初的那班",
-                        category: "問題", tags: ["機票", "行程"],
                         createdAt: now.addingTimeInterval(-7200)),
+            ],
+        ]
+
+        // Entry 是主體:結構化結果(事項 + 時間 + 標注)。owner 頻道(ch_001)才有。
+        let cal = Calendar.current
+        let nextMon = cal.date(byAdding: .day, value: 5, to: now) ?? now
+        entriesByChannel = [
+            "ch_001": [
+                Entry(id: "ent_001", channelID: "ch_001",
+                      item: "開會敲定 Q3 產品規格",
+                      start: Self.dateTimeStr(nextMon, hour: 15, minute: 0),
+                      allDay: false,
+                      location: "台北辦公室 3F 會議室",
+                      category: "會議", tags: ["排程", "Q3", "規格"],
+                      summary: "下週一 15:00 開會敲定 Q3 規格",
+                      createdAt: now.addingTimeInterval(-3600)),
+                Entry(id: "ent_002", channelID: "ch_001",
+                      item: "準備預算上調提案(約 +15%)",
+                      start: "", allDay: false,
+                      category: "任務", tags: ["預算", "提案"],
+                      createdAt: now.addingTimeInterval(-1800)),
             ],
         ]
 
@@ -115,29 +133,58 @@ final class MockBackendService: BackendService {
         return messagesByChannel[channelID] ?? []
     }
 
-    /// 模擬後端 LLM:整理 → 分類 → 標注。
-    func postMessage(channelID: String, text: String) async throws -> Message {
-        // 模擬 LLM 處理時間
-        try await fakeDelay(0.8)
+    // MARK: 條目(Entry)
 
-        let (category, tags, summary) = Self.classify(text)
+    func fetchEntries(channelID: String) async throws -> [Entry] {
+        try await fakeDelay(0.2)
+        return entriesByChannel[channelID] ?? []
+    }
+
+    // MARK: owner 統一輸入(assist)
+
+    /// 模擬後端 LLM 自主判斷:提問 → 回答(answer,不存訊息);否則 → 記錄(recorded)。
+    /// 記錄時把原話存成訊息,並產生承載標注/事件時間的 Entry。
+    func assist(channelID: String, text: String) async throws -> AssistResult {
+        try await fakeDelay(0.8)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 提問:不存訊息,語意查詢後回答,並附上相關條目供前端展示。
+        if Self.looksLikeQuestion(trimmed) {
+            let answer = try await semanticQuery(channelID: channelID, question: trimmed)
+            let presented = (entriesByChannel[channelID] ?? [])
+                .filter { Self.entryMatches($0, question: trimmed) }
+                .prefix(3)
+                .map { PresentedEntry(item: $0.item, start: $0.start, end: $0.end, allDay: $0.allDay) }
+            return .answer(text: answer.answer, entries: Array(presented))
+        }
+
+        // 記錄:存原話 + 產生關聯 Entry。
         let message = Message(
             id: "msg_\(UUID().uuidString.prefix(6))",
             channelID: channelID,
             authorID: currentUser.id,
             authorName: currentUser.name,
-            text: text,
-            category: category,
-            tags: tags,
-            summary: summary,
+            text: trimmed,
             createdAt: .now
         )
         messagesByChannel[channelID, default: []].append(message)
+
+        let (category, tags, summary) = Self.classify(trimmed)
+        let entry = Entry(
+            id: "ent_\(UUID().uuidString.prefix(6))",
+            channelID: channelID,
+            item: trimmed,
+            start: "", allDay: false,
+            category: category, tags: tags, summary: summary,
+            createdAt: .now
+        )
+        entriesByChannel[channelID, default: []].append(entry)
+
         if let idx = channels.firstIndex(where: { $0.id == channelID }) {
-            channels[idx].lastMessagePreview = text
+            channels[idx].lastMessagePreview = trimmed
             channels[idx].updatedAt = .now
         }
-        return message
+        return .recorded(message)
     }
 
     // MARK: 成員
@@ -171,11 +218,17 @@ final class MockBackendService: BackendService {
     func semanticQuery(channelID: String, question: String) async throws -> SearchAnswer {
         try await fakeDelay(1.0)
         let pool = messagesByChannel[channelID] ?? []
+        let entries = entriesByChannel[channelID] ?? []
+        // 標注/事件時間已移至 Entry:依訊息文字 + 同頻道 Entry 的標籤/分類/事項組成檢索文字。
+        let entryText = entries
+            .map { $0.item + " " + $0.tags.joined(separator: " ") + " " + ($0.category ?? "") }
+            .joined(separator: " ")
+            .lowercased()
 
-        // 簡易檢索:用問句斷詞與訊息文字/標籤做包含比對打分,取 Top-K。
+        // 簡易檢索:用問句斷詞與訊息文字 + Entry 標注做包含比對打分,取 Top-K。
         let terms = Self.tokenize(question)
         let scored = pool.map { msg -> (Message, Int) in
-            let haystack = (msg.text + " " + msg.tags.joined(separator: " ") + " " + (msg.category ?? "")).lowercased()
+            let haystack = (msg.text + " " + entryText).lowercased()
             let score = terms.reduce(0) { $0 + (haystack.contains($1) ? 1 : 0) }
             return (msg, score)
         }
@@ -201,6 +254,31 @@ final class MockBackendService: BackendService {
     }
 
     // MARK: - 模擬 LLM 分類規則
+
+    /// 粗略判斷輸入是否為「提問」(決定 assist 走回答還是記錄)。
+    private static func looksLikeQuestion(_ text: String) -> Bool {
+        if text.contains("?") || text.contains("?") { return true }
+        let qWords = ["嗎", "呢", "哪", "幾", "什麼", "怎麼", "為什麼", "誰", "何時", "多少", "是不是"]
+        return qWords.contains { text.contains($0) }
+    }
+
+    /// 條目是否與問句相關(供回答時挑選展示條目)。
+    private static func entryMatches(_ entry: Entry, question: String) -> Bool {
+        let terms = tokenize(question)
+        let hay = (entry.item + " " + entry.tags.joined(separator: " ") + " " + (entry.category ?? "")).lowercased()
+        return terms.contains { hay.contains($0) }
+    }
+
+    /// 組出 'YYYY-MM-DD HH:MM' 格式的時間字串。
+    private static func dateTimeStr(_ date: Date, hour: Int, minute: Int) -> String {
+        var comps = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        comps.hour = hour
+        comps.minute = minute
+        let d = Calendar.current.date(from: comps) ?? date
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        return f.string(from: d)
+    }
 
     private static func classify(_ text: String) -> (String?, [String], String?) {
         let lower = text.lowercased()

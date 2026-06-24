@@ -19,7 +19,8 @@ type Tab = 'channels' | 'settings'
 
 // 聊天訊息(後端 Message + 前端專用欄位)。
 // presented:agent 用 present_entries 輸出、要在答案泡泡下用列表顯示的條目。
-type ChatMessage = Message & { presented?: PresentedEntry[] }
+// pending:後端處理中的佔位泡泡,渲染海浪載入動畫(無文字),完成後就地替換。
+type ChatMessage = Message & { presented?: PresentedEntry[]; pending?: boolean }
 
 export function App() {
   // ---- 連線設定(可在設定頁改,存 localStorage,跨分頁共用) ----
@@ -421,26 +422,56 @@ function ChatScreen({
     setSending(true)
     setErr(null)
     setDraft('')
+    // 立刻插入處理中佔位泡泡(海浪動畫);完成後就地替換、失敗則移除。
+    const pendingID = `pending_${Date.now()}`
+    const pending = mkLocalMsg(pendingID, 'usr_assistant', '', '')
+    pending.pending = true
+    setMessages((prev) => [...prev, pending])
+    const drop = () => setMessages((prev) => prev.filter((m) => m.id !== pendingID))
+    // record 時 agent 非同步寫 entry,記下送出前的數量當基準,輪詢到變多才算寫完。
+    const baseCount = entries.length
     try {
       const res = await api.assist(cfg, channel.id, text)
       if (res.kind === 'recorded') {
-        // 記錄了 → 訊息泡泡進訊息流,稍後重拉 entries 掛上 Entry 卡。
-        setMessages((prev) => [...prev, res.message])
-        window.setTimeout(() => {
-          api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {})
-        }, 4000)
+        // 記錄了 → 波浪持續到 entry 真的寫入並顯示後才停。
+        // 輪詢 fetchEntries 直到筆數比送出前多(agent 寫好);逾時則放棄等待先停。
+        const deadline = Date.now() + 20000 // 上限 20s,避免 agent 卡住時無限轉
+        let shown = false
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 1000))
+          let next: Entry[]
+          try {
+            next = await api.fetchEntries(cfg, channel.id)
+          } catch {
+            continue // 暫時抓失敗就再試
+          }
+          if (next.length > baseCount) {
+            setEntries(next) // entry 已顯示在最上方列表
+            shown = true
+            break
+          }
+        }
+        if (!shown) {
+          // 逾時沒等到新 entry:仍刷新一次列表(可能 agent 沒產生條目)。
+          await api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {})
+        }
+        // entry 顯示後才把佔位泡泡換成已存訊息(此時波浪停止)。
+        setMessages((prev) =>
+          prev.map((m) => (m.id === pendingID ? res.message : m)),
+        )
       } else {
-        // 回答了 → 提問 + 答案兩個本地泡泡(不寫入頻道)。
+        // 回答了 → 佔位泡泡換成「提問 + 答案」兩個本地泡泡(不寫入頻道)。
         // 答案泡泡掛上 agent 用 present_entries 輸出的條目,前端用列表元件顯示。
         const ans = mkLocalMsg(`ans_${Date.now()}`, 'usr_assistant', '', res.answer)
         ans.presented = res.entries
         setMessages((prev) => [
-          ...prev,
+          ...prev.filter((m) => m.id !== pendingID),
           mkLocalMsg(`ask_${Date.now()}`, user.id, user.name, text),
           ans,
         ])
       }
     } catch (e) {
+      drop()
       setErr(errMsg(e))
       setDraft(text) // 失敗時還回草稿
     } finally {
@@ -455,14 +486,27 @@ function ChatScreen({
     setSending(true)
     setErr(null)
     setDraft('')
-    setMessages((prev) => [...prev, mkLocalMsg(`ask_${Date.now()}`, user.id, user.name, q)])
+    // 提問泡泡 + 處理中佔位泡泡(海浪動畫)。
+    const pendingID = `pending_${Date.now()}`
+    const pending = mkLocalMsg(pendingID, 'usr_assistant', '', '')
+    pending.pending = true
+    setMessages((prev) => [
+      ...prev,
+      mkLocalMsg(`ask_${Date.now()}`, user.id, user.name, q),
+      pending,
+    ])
     try {
       const a = await api.semanticQuery(cfg, channel.id, q)
-      setMessages((prev) => [
-        ...prev,
-        mkLocalMsg(`ans_${Date.now()}`, 'usr_assistant', '', a.answer),
-      ])
+      // 佔位泡泡就地換成答案。
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === pendingID
+            ? mkLocalMsg(`ans_${Date.now()}`, 'usr_assistant', '', a.answer)
+            : m,
+        ),
+      )
     } catch (e) {
+      setMessages((prev) => prev.filter((m) => m.id !== pendingID))
       setErr(errMsg(e))
     } finally {
       setSending(false)
@@ -546,13 +590,16 @@ function MessageBubble({
   const isAnswer = msg.authorID === 'usr_assistant'
   return (
     <div className={`bubble-group ${mine ? 'mine' : ''}`}>
-      <div className={`bubble ${mine ? 'mine' : ''}`}>
+      <div className={`bubble ${mine ? 'mine' : ''} ${msg.pending ? 'pending' : ''}`}>
         {!mine && msg.authorName && (
           <div className="sub" style={{ marginBottom: 2 }}>
             {msg.authorName}
           </div>
         )}
-        {isAnswer ? (
+        {msg.pending ? (
+          // 後端處理中:海浪載入動畫(色塊群組依序起伏)。
+          <WaveLoader />
+        ) : isAnswer ? (
           <div className="text markdown">
             <ReactMarkdown>{msg.text}</ReactMarkdown>
           </div>
@@ -563,6 +610,23 @@ function MessageBubble({
       {/* agent 用 present_entries 輸出的條目,在答案泡泡下用列表顯示 */}
       {msg.presented?.map((e, i) => (
         <PresentedCard key={`p${i}`} entry={e} />
+      ))}
+    </div>
+  )
+}
+
+// WaveLoader:後端處理中的海浪載入動畫。
+// 多個色塊依序上下起伏(animation-delay 漸進),整體像海浪由左而右流動。
+function WaveLoader() {
+  const bars = 5
+  return (
+    <div className="wave" aria-label="處理中" role="status">
+      {Array.from({ length: bars }, (_, i) => (
+        <span
+          key={i}
+          className="wave-bar"
+          style={{ animationDelay: `${i * 0.12}s` }}
+        />
       ))}
     </div>
   )
@@ -606,10 +670,11 @@ function EntryCard({ entry }: { entry: Entry }) {
           {entry.end ? ` ~ ${entry.end}` : ''}
         </div>
         {/* LLM 標注(已移至 entry;後端目前先留空,有值才顯示) */}
-        {(entry.category || entry.tags.length > 0) && (
+        {/* 後端可能回 tags:null(標注未填),以 ?? [] 收斂避免讀 length/map 出錯 */}
+        {(entry.category || (entry.tags ?? []).length > 0) && (
           <div className="meta">
             {entry.category && <span className="cat">{entry.category}</span>}
-            {entry.tags.map((t) => (
+            {(entry.tags ?? []).map((t) => (
               <span key={t} className="tag">
                 #{t}
               </span>

@@ -31,11 +31,21 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
-	<!-- 允許連本機明文 HTTP 後端(原型階段)。上線改用 HTTPS 後移除。 -->
+	<!-- 允許連明文 HTTP 後端(原型階段)。上線改用 HTTPS 後移除。 -->
+	<!-- NSAllowsLocalNetworking 只豁免區網/.local;100.65.2.62 是 Tailscale CGNAT 位址,
+	     不算 local network,需另列 NSExceptionDomains 例外才連得上。 -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>100.65.2.62</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
 	</dict>
 </dict>
 </plist>

@@ -1,13 +1,14 @@
 import SwiftUI
 
-/// 頻道聊天畫面:訊息流 + 底部輸入列。
-/// owner 輸入=發訊息(走 LLM 分類);成員輸入=語意查詢(走 RAG 回答,顯示在訊息流)。
+/// 頻道聊天畫面:Entry 條目 + 訊息流 + 底部輸入列。
+/// owner 輸入=統一輸入(assist,LLM 自主記事或回答);成員輸入=語意查詢(RAG 回答)。
 struct ChatView: View {
     let channel: Channel
     @Environment(AppState.self) private var app
     @State private var store: ChatStore?
     @State private var draft = ""
     @State private var showingMembers = false
+    @State private var showingTimeline = false
     @FocusState private var inputFocused: Bool
 
     /// 目前使用者是否為頻道擁有者。
@@ -28,9 +29,25 @@ struct ChatView: View {
             ToolbarItem(placement: .primaryAction) {
                 Button { showingMembers = true } label: { Image(systemName: "person.2") }
             }
+            // 時間軸:依時間排列頻道條目。
+            ToolbarItem(placement: .primaryAction) {
+                Button { showingTimeline = true } label: {
+                    Image(systemName: "clock")
+                }
+            }
         }
         .sheet(isPresented: $showingMembers) {
             NavigationStack { MembersView(channel: channel) }
+        }
+        .sheet(isPresented: $showingTimeline) {
+            NavigationStack {
+                TimelineView(entries: store?.entries ?? [])
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { showingTimeline = false }
+                        }
+                    }
+            }
         }
     }
 
@@ -40,8 +57,14 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 12) {
+                        // 以 entry 為主體:頻道的事件/條目列在最上方。
+                        if !store.entries.isEmpty {
+                            EntryListView(entries: store.entries)
+                        }
                         ForEach(store.messages) { msg in
-                            MessageRow(message: msg, isMe: msg.authorID == store.currentUserID)
+                            MessageRow(message: msg,
+                                       isMe: msg.authorID == store.currentUserID,
+                                       presented: store.presentedByMessage[msg.id] ?? [])
                                 .id(msg.id)
                         }
                     }
@@ -59,7 +82,7 @@ struct ChatView: View {
 
     private func inputBar(_ store: ChatStore) -> some View {
         HStack(spacing: 10) {
-            TextField(isOwner ? "輸入訊息…" : "用自然語言查詢這個頻道…",
+            TextField(isOwner ? "記事或提問…" : "用自然語言查詢這個頻道…",
                       text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 14).padding(.vertical, 8)

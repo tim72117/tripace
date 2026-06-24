@@ -36,7 +36,7 @@ final class ChannelStore {
     }
 }
 
-/// 單一頻道內的聊天狀態容器:訊息流、發訊息(樂觀更新 + LLM 標注回填)。
+/// 單一頻道內的聊天狀態容器:訊息流、Entry 條目、owner 統一輸入(assist)。
 @MainActor
 @Observable
 final class ChatStore {
@@ -44,6 +44,10 @@ final class ChatStore {
     let channel: Channel
 
     var messages: [Message] = []
+    /// LLM 解析出的事件/條目(承載結構化結果),顯示在訊息流上方。owner 才有。
+    var entries: [Entry] = []
+    /// 答案泡泡掛上的展示條目(present_entries 輸出),依訊息 ID 對應。
+    var presentedByMessage: [String: [PresentedEntry]] = [:]
     var isLoading = false
     var errorMessage: String?
 
@@ -54,17 +58,55 @@ final class ChatStore {
 
     var currentUserID: String { backend.currentUser.id }
 
+    /// 目前使用者是否為頻道擁有者。
+    private var isOwner: Bool { channel.ownerID == backend.currentUser.id }
+
+    /// 本地快取(可為 nil,初始化失敗時降級為純線上)。
+    private let local = LocalStore.shared
+
+    /// local-first 載入:先讀本地快取秒開,再背景 fetch 後端、寫回本地並覆蓋畫面。
+    /// owner 視角:訊息流只放本地查詢問答泡泡;記事原話已歸 entry,不灌進訊息流。
+    /// member 視角:訊息流顯示自己的查詢問答(後端 messages)。
     func load() async {
+        // 1) 先顯本地(若有快取,畫面立即有內容)。owner 不從快取灌 messages(訊息流非記事用)。
+        if let local {
+            if !isOwner {
+                let cachedMsgs = local.messages(channelID: channel.id)
+                if !cachedMsgs.isEmpty { messages = cachedMsgs }
+            }
+            if isOwner {
+                let cachedEnts = local.entries(channelID: channel.id)
+                if !cachedEnts.isEmpty { entries = cachedEnts }
+            }
+        }
+
+        // 2) 背景重拉後端,成功則覆蓋畫面 + 寫回本地;失敗時保留本地內容、不洗掉。
         isLoading = true
         do {
-            messages = try await backend.fetchMessages(channelID: channel.id)
+            // Entry 條目只有 owner 看得到自己頻道的(成員聊天為空,無需載入)。
+            async let msgs = backend.fetchMessages(channelID: channel.id)
+            async let ents: [Entry] = isOwner
+                ? backend.fetchEntries(channelID: channel.id)
+                : []
+            let freshMsgs = try await msgs
+            let freshEnts = try await ents
+            // owner 的記事原話歸 entry,不顯示在訊息流;member 才把訊息灌進訊息流。
+            if !isOwner { messages = freshMsgs }
+            entries = freshEnts
+            local?.replaceMessages(freshMsgs, channelID: channel.id)
+            if isOwner { local?.replaceEntries(freshEnts, channelID: channel.id) }
         } catch {
-            errorMessage = error.localizedDescription
+            // 線上失敗:若本地有東西就靜默(離線可讀);完全沒快取才顯示錯誤。
+            if messages.isEmpty && entries.isEmpty {
+                errorMessage = error.localizedDescription
+            }
         }
         isLoading = false
     }
 
-    /// 發送訊息:先樂觀插入「處理中」的訊息,再等後端 LLM 標注回傳後就地替換。
+    /// owner 統一輸入:送進 assist,LLM 自主判斷記錄事項或回答提問。
+    /// - 記錄(recorded):原話歸入上方 entry 卡,訊息流不留泡泡;重拉 entries。
+    /// - 回答(answer):提問 + 答案兩個本地泡泡(不寫入頻道),答案掛上展示條目。
     func send(_ text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -81,9 +123,33 @@ final class ChatStore {
         messages.append(optimistic)
 
         do {
-            let saved = try await backend.postMessage(channelID: channel.id, text: trimmed)
-            if let idx = messages.firstIndex(where: { $0.id == tempID }) {
-                messages[idx] = saved
+            let result = try await backend.assist(channelID: channel.id, text: trimmed)
+            switch result {
+            case .recorded(let saved):
+                // 記錄了 → 內容已歸入上方 entry 卡,訊息流不保留這則原話泡泡(移除樂觀泡泡)。
+                messages.removeAll { $0.id == tempID }
+                local?.upsertMessage(saved) // 仍落地本地快取(後端也有存),只是不顯示
+                if let fresh = try? await backend.fetchEntries(channelID: channel.id) {
+                    entries = fresh
+                    local?.replaceEntries(fresh, channelID: channel.id)
+                }
+            case .answer(let answer, let presented):
+                // 回答了 → 移除樂觀「處理中」泡泡,改放提問 + 答案兩個本地泡泡。
+                messages.removeAll { $0.id == tempID }
+                messages.append(Message(
+                    id: "ask_\(UUID().uuidString.prefix(6))",
+                    channelID: channel.id,
+                    authorID: backend.currentUser.id,
+                    authorName: backend.currentUser.name,
+                    text: trimmed))
+                let ansID = "ans_\(UUID().uuidString.prefix(6))"
+                messages.append(Message(
+                    id: ansID,
+                    channelID: channel.id,
+                    authorID: ChatStore.assistantID,
+                    authorName: "",
+                    text: answer))
+                if !presented.isEmpty { presentedByMessage[ansID] = presented }
             }
         } catch {
             // 失敗:標記該樂觀訊息,並帶上真正的失敗原因方便排查。

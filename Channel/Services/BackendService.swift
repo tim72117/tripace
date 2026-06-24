@@ -10,8 +10,14 @@ protocol BackendService {
 
     // 訊息
     func fetchMessages(channelID: String) async throws -> [Message]
-    /// 發送訊息。後端 LLM 在此整理/分類/標注,回傳處理後的訊息。
-    func postMessage(channelID: String, text: String) async throws -> Message
+
+    // 條目(Entry):LLM 從訊息解析出的事件/條目,承載結構化結果。
+    /// 取頻道的 Entry 條目(只有 owner 看得到自己頻道的)。
+    func fetchEntries(channelID: String) async throws -> [Entry]
+
+    // owner 統一輸入(assist):送進後端,LLM 自主判斷「記錄事項」或「回答提問」。
+    /// 記錄(recorded)會存成訊息並產生關聯 Entry;回答(answer)不存訊息,附帶展示條目。
+    func assist(channelID: String, text: String) async throws -> AssistResult
 
     // 成員
     func fetchMembers(channelID: String) async throws -> [User]
