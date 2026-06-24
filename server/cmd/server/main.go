@@ -34,6 +34,25 @@ func main() {
 	llmKind := flag.String("llm", "rule", "LLM 分析器:rule(規則式)| want(接 want 引擎)")
 	flag.Parse()
 
+	// Cloud Run 等托管環境只方便傳環境變數(不方便改 ENTRYPOINT 傳 flag),
+	// 故讓環境變數在有設時覆寫對應 flag 預設值;未設則維持本機 flag 行為不變。
+	// PORT 由平台注入(Cloud Run 預設 8080),覆寫監聽位址。
+	if p := os.Getenv("PORT"); p != "" {
+		*addr = ":" + p
+	}
+	if s := os.Getenv("JWT_SECRET"); s != "" {
+		*jwtSecret = s
+	}
+	if v := os.Getenv("DEV_MODE"); v != "" {
+		*devMode = v == "1" || strings.EqualFold(v, "true")
+	}
+	if v := os.Getenv("SEED"); v != "" {
+		*seed = v == "1" || strings.EqualFold(v, "true")
+	}
+	if v := os.Getenv("LLM_KIND"); v != "" {
+		*llmKind = v
+	}
+
 	// DATABASE_URL(postgres://…,如 Neon)優先;未設時退回 -db 的 SQLite。
 	dsn := *dbPath
 	if env := os.Getenv("DATABASE_URL"); env != "" {

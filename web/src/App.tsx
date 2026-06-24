@@ -112,6 +112,9 @@ export function App() {
 // 訪客身分(未登入),需與後端 guestUser 一致。
 const GUEST_USER: User = { id: 'usr_me', name: '訪客', avatarColor: '#8e8e93' }
 
+// 助手(assist 回答)的作者 ID,需與後端及 iOS ChatStore.assistantID 一致。
+const ASSISTANT_ID = 'usr_assistant'
+
 function StatusBar({ user }: { user: User | null }) {
   return (
     <div className="statusbar">
@@ -378,6 +381,7 @@ function ChatScreen({
   const [sending, setSending] = useState(false)
   // 成員管理在頻道內開啟(對齊 iOS App 的聊天頁右上角入口)。
   const [showMembers, setShowMembers] = useState(false)
+  const [showTimeline, setShowTimeline] = useState(false)
   const bodyRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
@@ -388,7 +392,9 @@ function ChatScreen({
         // Entry 條目只有 owner 看得到自己頻道的(成員聊天為空,無需載入)。
         isOwner ? api.fetchEntries(cfg, channel.id) : Promise.resolve([]),
       ])
-      setMessages(msgs)
+      // owner 視角:記事原話已歸 entry(顯示在上方卡片),訊息流不灌後端 messages,
+      // 只保留本地查詢問答泡泡;member 視角才把自己的問答訊息灌進訊息流。對齊 iOS。
+      setMessages(isOwner ? [] : msgs)
       setEntries(ents)
     } catch (e) {
       setErr(errMsg(e))
@@ -424,7 +430,7 @@ function ChatScreen({
     setDraft('')
     // 立刻插入處理中佔位泡泡(海浪動畫);完成後就地替換、失敗則移除。
     const pendingID = `pending_${Date.now()}`
-    const pending = mkLocalMsg(pendingID, 'usr_assistant', '', '')
+    const pending = mkLocalMsg(pendingID, ASSISTANT_ID, '', '')
     pending.pending = true
     setMessages((prev) => [...prev, pending])
     const drop = () => setMessages((prev) => prev.filter((m) => m.id !== pendingID))
@@ -455,14 +461,13 @@ function ChatScreen({
           // 逾時沒等到新 entry:仍刷新一次列表(可能 agent 沒產生條目)。
           await api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {})
         }
-        // entry 顯示後才把佔位泡泡換成已存訊息(此時波浪停止)。
-        setMessages((prev) =>
-          prev.map((m) => (m.id === pendingID ? res.message : m)),
-        )
+        // 記錄了 → 原話已歸入上方 entry 卡,訊息流不保留這則原話泡泡(移除佔位)。
+        // 對齊 iOS:記事原話存而不顯,內容由 entry 承載。
+        drop()
       } else {
         // 回答了 → 佔位泡泡換成「提問 + 答案」兩個本地泡泡(不寫入頻道)。
         // 答案泡泡掛上 agent 用 present_entries 輸出的條目,前端用列表元件顯示。
-        const ans = mkLocalMsg(`ans_${Date.now()}`, 'usr_assistant', '', res.answer)
+        const ans = mkLocalMsg(`ans_${Date.now()}`, ASSISTANT_ID, '', res.answer)
         ans.presented = res.entries
         setMessages((prev) => [
           ...prev.filter((m) => m.id !== pendingID),
@@ -488,7 +493,7 @@ function ChatScreen({
     setDraft('')
     // 提問泡泡 + 處理中佔位泡泡(海浪動畫)。
     const pendingID = `pending_${Date.now()}`
-    const pending = mkLocalMsg(pendingID, 'usr_assistant', '', '')
+    const pending = mkLocalMsg(pendingID, ASSISTANT_ID, '', '')
     pending.pending = true
     setMessages((prev) => [
       ...prev,
@@ -501,7 +506,7 @@ function ChatScreen({
       setMessages((prev) =>
         prev.map((m) =>
           m.id === pendingID
-            ? mkLocalMsg(`ans_${Date.now()}`, 'usr_assistant', '', a.answer)
+            ? mkLocalMsg(`ans_${Date.now()}`, ASSISTANT_ID, '', a.answer)
             : m,
         ),
       )
@@ -524,6 +529,13 @@ function ChatScreen({
     )
   }
 
+  // 時間軸:依時間排列頻道條目(對齊 iOS App:聊天頁 → 時鐘)。
+  if (showTimeline) {
+    return (
+      <TimelineScreen entries={entries} onBack={() => setShowTimeline(false)} />
+    )
+  }
+
   return (
     <>
       <div className="navbar">
@@ -531,6 +543,16 @@ function ChatScreen({
           ‹ 頻道
         </button>
         <span className="title">{channel.name}</span>
+        {/* 時間軸只對 owner 有意義(entry 只有 owner 看得到);有 entry 才顯示 */}
+        {entries.length > 0 && (
+          <button
+            className="btn"
+            onClick={() => setShowTimeline(true)}
+            title="時間軸"
+          >
+            🕐
+          </button>
+        )}
         <button className="btn" onClick={() => setShowMembers(true)} title="成員">
           👥
         </button>
@@ -587,11 +609,12 @@ function MessageBubble({
   // 新模型:message 只剩原話,LLM 標注已移至 entry(在上方事件列表顯示)。
   const mine = msg.authorID === meID
   // 只有助理「回答」訊息用 Markdown 渲染;使用者輸入/記事訊息維持純文字。
-  const isAnswer = msg.authorID === 'usr_assistant'
+  const isAnswer = msg.authorID === ASSISTANT_ID
   return (
     <div className={`bubble-group ${mine ? 'mine' : ''}`}>
       <div className={`bubble ${mine ? 'mine' : ''} ${msg.pending ? 'pending' : ''}`}>
-        {!mine && msg.authorName && (
+        {/* 助手回答泡泡不顯示作者名(不出現「助手」);對齊 iOS MessageRow */}
+        {!mine && !isAnswer && msg.authorName && (
           <div className="sub" style={{ marginBottom: 2 }}>
             {msg.authorName}
           </div>
@@ -669,6 +692,10 @@ function EntryCard({ entry }: { entry: Entry }) {
           {when}
           {entry.end ? ` ~ ${entry.end}` : ''}
         </div>
+        {/* 地點(可空);對齊 iOS,放在事項/時間之後、標注之前 */}
+        {entry.location && (
+          <div className="entry-loc">📍 {entry.location}</div>
+        )}
         {/* LLM 標注(已移至 entry;後端目前先留空,有值才顯示) */}
         {/* 後端可能回 tags:null(標注未填),以 ?? [] 收斂避免讀 length/map 出錯 */}
         {(entry.category || (entry.tags ?? []).length > 0) && (
@@ -682,6 +709,123 @@ function EntryCard({ entry }: { entry: Entry }) {
           </div>
         )}
         {entry.summary && <div className="summary">摘要:{entry.summary}</div>}
+      </div>
+    </div>
+  )
+}
+
+// ---- 時間軸頁 ----
+
+// dayKey 取 entry 的日期部分(YYYY-MM-DD)作為分組鍵;無 start 歸「未指定時間」。
+function dayKey(e: Entry): string {
+  return e.start ? e.start.slice(0, 10) : '未指定時間'
+}
+
+// groupByDay 把已排序的 entries 依日期分組,保留原順序。
+// 回傳 [{ day, entries }],每組一個時間軸節點(日期標題 + 當天事項)。
+function groupByDay(entries: Entry[]): { day: string; items: Entry[] }[] {
+  const groups: { day: string; items: Entry[] }[] = []
+  for (const e of entries) {
+    const day = dayKey(e)
+    const last = groups[groups.length - 1]
+    if (last && last.day === day) last.items.push(e)
+    else groups.push({ day, items: [e] })
+  }
+  return groups
+}
+
+// TimelineScreen 把頻道條目依「日期」分組排成垂直時間軸:每個日期一個軸點,
+// 底下列出當天所有事項。對齊 iOS TimelineView(左側軸線串圓點)。
+// entries 沿用後端/上層的排序(已依 start 排)。
+function TimelineScreen({
+  entries,
+  onBack,
+}: {
+  entries: Entry[]
+  onBack: () => void
+}) {
+  const groups = groupByDay(entries)
+  return (
+    <>
+      <div className="navbar">
+        <button className="btn" onClick={onBack}>
+          ‹ 返回
+        </button>
+        <span className="title">時間軸</span>
+        <span className="btn" style={{ visibility: 'hidden' }}>
+          ‹
+        </span>
+      </div>
+      <div className="screen-body">
+        {groups.length === 0 ? (
+          <div className="empty">還沒有條目。在頻道裡記事後,會在這裡依時間排列。</div>
+        ) : (
+          <div className="timeline">
+            {groups.map((g, i) => (
+              <TimelineRow
+                key={g.day}
+                day={g.day}
+                items={g.items}
+                isFirst={i === 0}
+                isLast={i === groups.length - 1}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+
+// TimelineRow 是時間軸的一節:左側軸線 + 圓點,右側「日期標題 + 當天所有事項」。
+// 圓點對齊日期那一行;當天多筆事項依序列在日期下方。
+function TimelineRow({
+  day,
+  items,
+  isFirst,
+  isLast,
+}: {
+  day: string
+  items: Entry[]
+  isFirst: boolean
+  isLast: boolean
+}) {
+  // 非全日事件取時刻(start 的 HH:MM 部分)顯示在事項旁;全日/無時間則不顯示。
+  const timeOf = (e: Entry): string => {
+    if (e.allDay || !e.start || e.start.length <= 10) return ''
+    return e.start.slice(11) // 'YYYY-MM-DD HH:MM' → 'HH:MM'
+  }
+  return (
+    <div className="tl-row">
+      {/* 左側軸線:首節不畫上半、末節不畫下半,讓軸線頭尾收齊 */}
+      <div className="tl-rail">
+        <div className={`tl-line tl-line-top ${isFirst ? 'hidden' : ''}`} />
+        <div className="tl-dot" />
+        <div className={`tl-line tl-line-bot ${isLast ? 'hidden' : ''}`} />
+      </div>
+      <div className="tl-group">
+        {/* 日期標題(對齊軸點) */}
+        <div className="tl-day">{day}</div>
+        {/* 當天的每一筆事項 */}
+        {items.map((e) => (
+          <div key={e.id} className="tl-card">
+            <div className="tl-item">
+              {timeOf(e) && <span className="tl-time">{timeOf(e)}</span>}
+              {e.item}
+            </div>
+            {e.location && <div className="entry-loc">📍 {e.location}</div>}
+            {(e.category || (e.tags ?? []).length > 0) && (
+              <div className="meta">
+                {e.category && <span className="cat">{e.category}</span>}
+                {(e.tags ?? []).map((t) => (
+                  <span key={t} className="tag">
+                    #{t}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   )

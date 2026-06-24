@@ -54,6 +54,7 @@ export interface Entry {
   start: string // 'YYYY-MM-DD HH:MM' 或全日 'YYYY-MM-DD';可空
   end?: string // 範圍結束;可空
   allDay: boolean
+  location?: string | null // 地點(可空);目前由人工/前端填,LLM 暫不自動抽取
   // LLM 標注(原本在 Message 上,改放 Entry;目前後端先留空)。
   // 後端標注未填時 tags 會回 null(非 []),消費端需 ?? [] 收斂。
   category: string | null

@@ -1,0 +1,117 @@
+name: iOS Build
+
+# 觸發方式:
+#  - push / PR 到 main:自動建置(catch 編譯錯誤)
+#  - workflow_dispatch:可在 GitHub 網頁或本地 `gh workflow run ios-build.yml` 手動觸發
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Channel/**'
+      - 'Channel.xcodeproj/**'
+      - 'project.yml'
+      - '.github/workflows/ios-build.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15 # 雲端 macOS runner,內建 Xcode
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        # 固定 Xcode 版本,避免 runner 預設版本變動造成不可預期的結果。
+        run: sudo xcode-select -switch /Applications/Xcode_16.app
+
+      - name: Install XcodeGen
+        # 專案以 project.yml 為來源,CI 先用 XcodeGen 重新生成 .xcodeproj,
+        # 確保與 project.yml 同步(避免本地忘了重生)。
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build (iOS Simulator, 不簽章)
+        # 只編譯確認能 build,不安裝到實機,故:
+        #  - sdk iphonesimulator:用模擬器 SDK,免實機憑證
+        #  - CODE_SIGNING_ALLOWED=NO:關閉簽章,CI 上沒有 Apple 憑證也能編譯
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Channel.xcodeproj \
+            -scheme Channel \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build \
+            | tee build.log
+
+      - name: Upload build log
+        # 不論成功失敗都上傳 log,方便在 Windows 下載查錯。
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+
+      - name: Locate and zip built .app
+        # Appetize 接受 .zip(內含 simulator .app)。用 ditto 保留 bundle 結構打包。
+        if: success()
+        run: |
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name 'Channel.app' -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "找不到 Channel.app"; exit 1
+          fi
+          echo "找到 app: $APP_PATH"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" Channel.zip
+          echo "已打包 Channel.zip"
+
+      - name: Upload .app artifact
+        # 把 zip 存成 GitHub artifact,可從網頁或 `gh run download` 取回。
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Channel-app
+          path: Channel.zip
+
+      - name: Upload to Appetize
+        # 編譯出的 simulator app 直接上傳 Appetize,回傳可在瀏覽器開的連結。
+        # 需要在 repo Secrets 設 APPETIZE_API_TOKEN;
+        # 選填 APPETIZE_PUBLIC_KEY:有設則「更新」既有 app(連結固定),沒設則「新建」。
+        if: success() && env.APPETIZE_API_TOKEN != ''
+        env:
+          APPETIZE_API_TOKEN: ${{ secrets.APPETIZE_API_TOKEN }}
+          APPETIZE_PUBLIC_KEY: ${{ secrets.APPETIZE_PUBLIC_KEY }}
+        run: |
+          if [ -n "$APPETIZE_PUBLIC_KEY" ]; then
+            echo "更新既有 Appetize app ($APPETIZE_PUBLIC_KEY)…"
+            ENDPOINT="https://api.appetize.io/v1/apps/$APPETIZE_PUBLIC_KEY"
+          else
+            echo "新建 Appetize app…"
+            ENDPOINT="https://api.appetize.io/v1/apps"
+          fi
+          RESP=$(curl -sS -X POST "$ENDPOINT" \
+            -H "X-API-KEY: $APPETIZE_API_TOKEN" \
+            -F "file=@Channel.zip" \
+            -F "platform=ios")
+          echo "$RESP"
+          # 取出 publicKey,組出瀏覽器可開的連結並寫進 job summary。
+          KEY=$(echo "$RESP" | python3 -c "import sys,json;print(json.load(sys.stdin).get('publicKey',''))" 2>/dev/null)
+          if [ -n "$KEY" ]; then
+            URL="https://appetize.io/app/$KEY"
+            echo "✅ Appetize 連結: $URL"
+            echo "### 📱 Appetize 連結" >> "$GITHUB_STEP_SUMMARY"
+            echo "[$URL]($URL)" >> "$GITHUB_STEP_SUMMARY"
+            if [ -z "$APPETIZE_PUBLIC_KEY" ]; then
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "> 提示:把這個 publicKey \`$KEY\` 設為 Secret \`APPETIZE_PUBLIC_KEY\`,之後每次建置會更新同一個 app(連結固定)。" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "⚠️ 未取得 publicKey,上傳可能失敗。回應如上。"
+            exit 1
+          fi
