@@ -38,6 +38,9 @@ jobs:
       - name: Build (iOS Simulator, 不簽章)
         # 只編譯確認能 build,不安裝到實機,故:
         #  - sdk iphonesimulator:用模擬器 SDK,免實機憑證
+        #  - destination generic/platform=iOS Simulator:不指定具體機型,
+        #    讓 Xcode 自選可用模擬器目的地——避免 runner 預設機型名稱變動
+        #    (如 iPhone 16 → iPhone 16 Pro)導致找不到 destination 而失敗。
         #  - CODE_SIGNING_ALLOWED=NO:關閉簽章,CI 上沒有 Apple 憑證也能編譯
         run: |
           set -o pipefail
@@ -46,7 +49,7 @@ jobs:
             -scheme Channel \
             -configuration Debug \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             clean build \
             | tee build.log

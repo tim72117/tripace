@@ -4,8 +4,9 @@ import ReactMarkdown from 'react-markdown'
 import type { ApiCall, ClientConfig, PresentedEntry } from './api'
 import * as api from './api'
 import { ApiError, onApiCall } from './api'
-import type { Channel, Entry, Message, User } from './types'
+import type { Channel, ChannelRole, Entry, Member, Message, User } from './types'
 import { DebugPanel } from './DebugPanel'
+import { listMessages, saveMessage } from './deviceDB'
 
 // baseURL 是連線設定,跨分頁共用 → localStorage。
 const LS_BASE = 'channel.baseURL'
@@ -387,13 +388,14 @@ function ChatScreen({
   const load = useCallback(async () => {
     setErr(null)
     try {
+      // 原話從「裝置端 DB」讀(與 server 隔離);entry 從後端讀(僅 owner)。
       const [msgs, ents] = await Promise.all([
-        api.fetchMessages(cfg, channel.id),
+        listMessages(channel.id),
         // Entry 條目只有 owner 看得到自己頻道的(成員聊天為空,無需載入)。
         isOwner ? api.fetchEntries(cfg, channel.id) : Promise.resolve([]),
       ])
-      // owner 視角:記事原話已歸 entry(顯示在上方卡片),訊息流不灌後端 messages,
-      // 只保留本地查詢問答泡泡;member 視角才把自己的問答訊息灌進訊息流。對齊 iOS。
+      // owner 視角:記事原話已歸 entry(顯示在上方卡片),訊息流不顯示原話泡泡,
+      // 只保留本地查詢問答泡泡;member 視角才把自己裝置的原話灌進訊息流。對齊 iOS。
       setMessages(isOwner ? [] : msgs)
       setEntries(ents)
     } catch (e) {
@@ -439,7 +441,17 @@ function ChatScreen({
     try {
       const res = await api.assist(cfg, channel.id, text)
       if (res.kind === 'recorded') {
-        // 記錄了 → 波浪持續到 entry 真的寫入並顯示後才停。
+        // 記錄了 → 把原話存進「裝置端 DB」(原話的權威來源,與 server 隔離)。
+        // res.text 為原話;後端不存原話,僅回它供前端落地裝置 DB。
+        await saveMessage({
+          id: `msg_${Date.now()}`,
+          channelID: channel.id,
+          authorID: user.id,
+          authorName: user.name,
+          text: res.text,
+          createdAt: new Date().toISOString(),
+        }).catch(() => {})
+        // 波浪持續到 entry 真的寫入並顯示後才停。
         // 輪詢 fetchEntries 直到筆數比送出前多(agent 寫好);逾時則放棄等待先停。
         const deadline = Date.now() + 20000 // 上限 20s,避免 agent 卡住時無限轉
         let shown = false
@@ -524,6 +536,7 @@ function ChatScreen({
       <MembersScreen
         cfg={cfg}
         channel={channel}
+        isOwner={isOwner}
         onBack={() => setShowMembers(false)}
       />
     )
@@ -836,13 +849,15 @@ function TimelineRow({
 function MembersScreen({
   cfg,
   channel,
+  isOwner,
   onBack,
 }: {
   cfg: ClientConfig
   channel: Channel
+  isOwner: boolean
   onBack: () => void
 }) {
-  const [members, setMembers] = useState<User[]>([])
+  const [members, setMembers] = useState<Member[]>([])
   const [email, setEmail] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
@@ -861,19 +876,31 @@ function MembersScreen({
     load()
   }, [load])
 
-  // 以 email 邀請(對齊 iOS App)。
+  // 以 email 邀請(對齊 iOS App);新成員預設 viewer(查詢權限)。
   const invite = async () => {
     const e = email.trim().toLowerCase()
     if (!e.includes('@')) return
     setAdding(true)
     setErr(null)
     try {
-      setMembers(await api.addMember(cfg, channel.id, e))
+      setMembers(await api.addMember(cfg, channel.id, e, 'viewer'))
       setEmail('')
     } catch (err) {
       setErr(errMsg(err))
     } finally {
       setAdding(false)
+    }
+  }
+
+  // owner 切換成員權限(editor ↔ viewer)。owner 自己不可改。
+  const toggleRole = async (m: Member) => {
+    if (m.id === channel.ownerID) return
+    const next: ChannelRole = m.role === 'editor' ? 'viewer' : 'editor'
+    setErr(null)
+    try {
+      setMembers(await api.setMemberRole(cfg, channel.id, m.id, next))
+    } catch (err) {
+      setErr(errMsg(err))
     }
   }
 
@@ -893,15 +920,37 @@ function MembersScreen({
           <ErrorBanner msg={err} />
           <div className="section-title">頻道成員 · {channel.name}</div>
             <ul className="list">
-              {members.map((u) => (
-                <li key={u.id} className="row">
-                  <Avatar user={u} />
-                  <div className="grow">
-                    <div className="name">{u.name}</div>
-                    <div className="sub">{u.id}</div>
-                  </div>
-                </li>
-              ))}
+              {members.map((m) => {
+                const isChannelOwner = m.id === channel.ownerID
+                const roleLabel = isChannelOwner
+                  ? '擁有者'
+                  : m.role === 'editor'
+                    ? '可修改'
+                    : '查詢'
+                return (
+                  <li key={m.id} className="row">
+                    <Avatar user={m} />
+                    <div className="grow">
+                      <div className="name">{m.name}</div>
+                      <div className="sub">{m.id}</div>
+                    </div>
+                    {/* owner 可切換非 owner 成員的權限;其餘只顯示角色標籤 */}
+                    {isOwner && !isChannelOwner ? (
+                      <button
+                        className={`role-chip ${m.role}`}
+                        onClick={() => toggleRole(m)}
+                        title="點擊切換 修改/查詢 權限"
+                      >
+                        {roleLabel}
+                      </button>
+                    ) : (
+                      <span className={`role-chip ${isChannelOwner ? 'owner' : m.role} static`}>
+                        {roleLabel}
+                      </span>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
             <div className="section-title">以 Email 邀請</div>
             <div className="field">

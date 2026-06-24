@@ -64,22 +64,10 @@ func (p *WantPool) For(sessionID string) *WantAnalyzer {
 }
 
 // ---- Analyzer interface:無 session 資訊的呼叫路徑轉發到共用實例 ----
-// 讓 WantPool 可直接當成 Analyzer 注入(等同目前單一 analyzer 的行為)。
+// 讓 WantPool 可直接當成 Analyzer 注入。
 
-func (p *WantPool) Classify(text string) Annotation {
-	return p.For("").Classify(text)
-}
-
-func (p *WantPool) Answer(question string, msgs []model.Message) model.SearchAnswer {
-	return p.For("").Answer(question, msgs)
-}
-
-// RecordForSession 依 session(使用者 ID)取對應 analyzer 背景記錄條目。
-// 現階段 For() 回共用實例(sessionID 暫不分流),但簽章已備好:
-// want 改造後,For(sessionID) 會回該 session 的獨立 orchestrator,
-// 條目就會 per-user 記錄,此處不需再改。
-func (p *WantPool) RecordForSession(sessionID, channelID, messageID, text string, linkEntries func(entryIDs []string) error) {
-	p.For(sessionID).RecordForMessage(channelID, messageID, text, linkEntries)
+func (p *WantPool) Answer(question string, entries []model.Entry) model.SearchAnswer {
+	return p.For("").Answer(question, entries)
 }
 
 // AssistForSession 依 session 取 analyzer,統一處理 owner 輸入(LLM 自主判斷回答/記錄)。
@@ -88,13 +76,6 @@ func (p *WantPool) RecordForSession(sessionID, channelID, messageID, text string
 // entry(entryIDs)建立多對多關聯;agent 只回答時不會被呼叫。
 func (p *WantPool) AssistForSession(sessionID, channelID, messageID, text string, linkMessage func(entryIDs []string) error) AssistResult {
 	return p.For(sessionID).Assist(channelID, messageID, text, linkMessage)
-}
-
-// Recorder 是「能在背景把訊息記成條目」的能力。WantPool 實作它。
-// api handler 用此 interface 做型別斷言,不綁具體型別。
-// sessionID 通常為發訊息使用者的 ID;解析出的條目會關聯到 messageID / channelID。
-type Recorder interface {
-	RecordForSession(sessionID, channelID, messageID, text string, linkEntries func(entryIDs []string) error)
 }
 
 // Assistant 是「統一處理 owner 輸入,LLM 自主判斷回答或記錄」的能力。

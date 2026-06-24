@@ -31,6 +31,18 @@ type User struct {
 	AvatarColor string `json:"avatarColor"`
 }
 
+// 頻道成員角色:決定該成員在頻道內的權限。
+const (
+	RoleEditor = "editor" // 可修改(記事/編輯條目);owner 預設為此。
+	RoleViewer = "viewer" // 只能查詢(自然語言提問),不能記事。
+)
+
+// Member 是頻道成員:公開身分 + 在該頻道的角色。
+type Member struct {
+	User
+	Role string `json:"role"` // "editor" | "viewer"
+}
+
 // Profile 是使用者的私密資料,只在「自己的帳號」端點回傳。
 type Profile struct {
 	Email string `json:"email"`

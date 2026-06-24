@@ -5,11 +5,11 @@
 import type {
   AuthResponse,
   Channel,
+  ChannelRole,
   Entry,
   Me,
-  Message,
+  Member,
   SearchAnswer,
-  User,
   APIErrorBody,
 } from './types'
 
@@ -183,38 +183,44 @@ export function createChannel(cfg: ClientConfig, name: string) {
   return request<Channel>(cfg, 'POST', '/v1/channels', { name })
 }
 
-export function fetchMessages(cfg: ClientConfig, channelID: string) {
-  return request<{ messages: Message[] }>(
-    cfg,
-    'GET',
-    `/v1/channels/${encodeURIComponent(channelID)}/messages`,
-  ).then((r) => r.messages)
-}
-
-export function postMessage(cfg: ClientConfig, channelID: string, text: string) {
-  return request<Message>(
-    cfg,
-    'POST',
-    `/v1/channels/${encodeURIComponent(channelID)}/messages`,
-    { text },
-  )
-}
+// 原話(message)已移至裝置端 DB(IndexedDB/sql.js),後端不再提供 messages 端點。
+// owner 記事走 assist(),member 查詢走 semanticQuery()。
 
 export function fetchMembers(cfg: ClientConfig, channelID: string) {
-  return request<{ members: User[] }>(
+  return request<{ members: Member[] }>(
     cfg,
     'GET',
     `/v1/channels/${encodeURIComponent(channelID)}/members`,
   ).then((r) => r.members)
 }
 
-// 以 email 邀請使用者加入頻道(對齊 iOS App;後端依 email 查出使用者)。
-export function addMember(cfg: ClientConfig, channelID: string, email: string) {
-  return request<{ members: User[] }>(
+// 以 email 邀請使用者加入頻道;role 預設 viewer(僅 owner 能加)。
+export function addMember(
+  cfg: ClientConfig,
+  channelID: string,
+  email: string,
+  role: ChannelRole = 'viewer',
+) {
+  return request<{ members: Member[] }>(
     cfg,
     'POST',
     `/v1/channels/${encodeURIComponent(channelID)}/members`,
-    { email },
+    { email, role },
+  ).then((r) => r.members)
+}
+
+// 變更成員角色(editor/viewer);僅 owner 能改。
+export function setMemberRole(
+  cfg: ClientConfig,
+  channelID: string,
+  userID: string,
+  role: ChannelRole,
+) {
+  return request<{ members: Member[] }>(
+    cfg,
+    'PATCH',
+    `/v1/channels/${encodeURIComponent(channelID)}/members/${encodeURIComponent(userID)}`,
+    { role },
   ).then((r) => r.members)
 }
 
@@ -240,10 +246,11 @@ export interface PresentedEntry {
 }
 
 // owner 統一輸入:LLM 自主判斷記錄事項或回答提問。
-// 回 { kind:"recorded", message } 或 { kind:"answer", answer, entries }。
-// answer 的 entries 是 agent 用 present_entries 輸出的條目(可空),前端用列表元件顯示。
+// recorded:原話不存後端,回 text(原話,前端存進裝置端 DB)+ entryIDs(新寫入條目);
+//   前端據此重拉 entries 顯示,並把原話存入裝置 DB。
+// answer:回 answer + entries(present_entries 輸出,可空)。
 export type AssistResult =
-  | { kind: 'recorded'; message: Message }
+  | { kind: 'recorded'; text: string; entryIDs: string[] }
   | { kind: 'answer'; answer: string; entries: PresentedEntry[] }
 
 export function assist(cfg: ClientConfig, channelID: string, text: string) {

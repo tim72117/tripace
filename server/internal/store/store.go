@@ -33,7 +33,7 @@ func Open(dsn string) (*Store, error) {
 	}
 
 	// many2many 的 members 中介表由 GORM 從關聯自動建立。
-	if err := db.AutoMigrate(&userRow{}, &channelRow{}, &messageRow{}, &entryRow{}); err != nil {
+	if err := db.AutoMigrate(&userRow{}, &channelRow{}, &entryRow{}); err != nil {
 		return nil, fmt.Errorf("automigrate: %w", err)
 	}
 	return &Store{db: db}, nil

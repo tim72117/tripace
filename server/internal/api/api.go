@@ -8,7 +8,6 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/channel/server/internal/auth"
 	"github.com/channel/server/internal/llm"
@@ -46,10 +45,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/me", s.handleMe)
 	mux.HandleFunc("GET /v1/channels", s.handleListChannels)
 	mux.HandleFunc("POST /v1/channels", s.handleCreateChannel)
-	mux.HandleFunc("GET /v1/channels/{id}/messages", s.handleListMessages)
-	mux.HandleFunc("POST /v1/channels/{id}/messages", s.handlePostMessage)
 	mux.HandleFunc("GET /v1/channels/{id}/members", s.handleListMembers)
 	mux.HandleFunc("POST /v1/channels/{id}/members", s.handleAddMember)
+	mux.HandleFunc("PATCH /v1/channels/{id}/members/{userID}", s.handleSetMemberRole)
 	mux.HandleFunc("POST /v1/channels/{id}/query", s.handleQuery)
 	mux.HandleFunc("POST /v1/channels/{id}/assist", s.handleAssist)
 	mux.HandleFunc("GET /v1/channels/{id}/entries", s.handleListEntries)
@@ -94,90 +92,8 @@ func (s *Server) handleCreateChannel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, ch)
 }
 
-// GET /v1/channels/{id}/messages
-// 聊天畫面:每個人(含 owner)只看到自己輸入過的訊息。
-func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	user := s.userFor(r)
-	msgs, err := s.store.ListMessagesByAuthor(id, user.ID)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
-		return
-	}
-	if msgs == nil {
-		msgs = []model.Message{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs})
-}
-
-// POST /v1/channels/{id}/messages  { "text": "..." }
-// 只有頻道 owner 能發訊息(普通成員只能用 LLM 查詢)。
-// 訊息先經 LLM 分類/標注,再存入資料庫,回傳處理後的訊息。
-func (s *Server) handlePostMessage(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	user := s.userFor(r)
-
-	// 權限:非 owner 不能發訊息。
-	owner, err := s.store.GetChannelOwner(id)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "channel_not_found", "頻道不存在")
-			return
-		}
-		writeErr(w, http.StatusInternalServerError, "owner_check_failed", err.Error())
-		return
-	}
-	if user.ID != owner {
-		writeErr(w, http.StatusForbidden, "not_owner", "只有頻道擁有者能發送訊息;成員可用查詢")
-		return
-	}
-
-	var body struct {
-		Text string `json:"text"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
-	text := strings.TrimSpace(body.Text)
-	if text == "" {
-		writeErr(w, http.StatusBadRequest, "empty_text", "text 不可為空")
-		return
-	}
-
-	// message 只存原文(LLM 標注改放 entry);若 agent 後續記錄條目,
-	// 會把條目關聯回這則 message。
-	msg := model.Message{
-		ID:         "msg_" + newID(),
-		ChannelID:  id,
-		AuthorID:   user.ID,
-		AuthorName: user.Name,
-		Text:       text,
-		CreatedAt:  time.Now().UTC(),
-	}
-	if err := s.store.InsertMessage(msg); err != nil {
-		writeErr(w, http.StatusInternalServerError, "insert_failed", err.Error())
-		return
-	}
-
-	// 若分析器支援背景記錄(want 引擎),讓 agent 自主決定是否把這則訊息記成條目
-	// (record_entry 工具)。用 Recorder interface 斷言,不綁具體型別。
-	// 以發訊息使用者的 ID 作為 session key(per-session 鋪路;現階段仍共用實例)。
-	// 放 goroutine 不阻塞回應。
-	if rec, ok := s.analyzer.(llm.Recorder); ok {
-		// linkEntries:agent 跑完後,把本次寫入的 entry 關聯到這則 message(已寫入)。
-		linkEntries := func(entryIDs []string) error {
-			for _, eid := range entryIDs {
-				if err := s.store.LinkEntryMessage(eid, msg.ID); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-		go rec.RecordForSession(user.ID, id, msg.ID, text, linkEntries)
-	}
-
-	writeJSON(w, http.StatusCreated, msg)
-}
+// 原話(message)已移至各裝置端 DB,後端不再保存或提供 messages 端點。
+// owner 記事走 POST /assist(LLM 解析成 entry),member 查詢走 POST /query(查 entry)。
 
 // GET /v1/channels/{id}/members
 func (s *Server) handleListMembers(w http.ResponseWriter, r *http.Request) {
@@ -188,18 +104,25 @@ func (s *Server) handleListMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if members == nil {
-		members = []model.User{}
+		members = []model.Member{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"members": members})
 }
 
-// POST /v1/channels/{id}/members  { "userID", "name", "avatarColor" }
-// POST /v1/channels/{id}/members  { "email": "..." }
-// 以 email 查出使用者後加入頻道。
+// POST /v1/channels/{id}/members  { "email": "...", "role": "editor"|"viewer" }
+// 以 email 查出使用者後加入頻道。role 留空預設 viewer。僅 owner 能加入成員。
 func (s *Server) handleAddMember(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	user := s.userFor(r)
+
+	// 權限:只有 owner 能加入/管理成員。
+	if !s.requireOwner(w, id, user.ID) {
+		return
+	}
+
 	var body struct {
 		Email string `json:"email"`
+		Role  string `json:"role"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -208,6 +131,10 @@ func (s *Server) handleAddMember(w http.ResponseWriter, r *http.Request) {
 	if email == "" {
 		writeErr(w, http.StatusBadRequest, "invalid_email", "email 不可為空")
 		return
+	}
+	role := body.Role
+	if role != model.RoleEditor && role != model.RoleViewer {
+		role = model.RoleViewer // 預設或非法值一律 viewer
 	}
 
 	u, _, err := s.store.FindUserByEmail(email)
@@ -220,7 +147,7 @@ func (s *Server) handleAddMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	members, err := s.store.AddMember(id, u)
+	members, err := s.store.AddMember(id, u, role)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeErr(w, http.StatusNotFound, "channel_not_found", "頻道不存在")
@@ -230,6 +157,85 @@ func (s *Server) handleAddMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"members": members})
+}
+
+// PATCH /v1/channels/{id}/members/{userID}  { "role": "editor"|"viewer" }
+// 變更成員角色。僅 owner 能改;不能改 owner 自己的角色(owner 恆為 editor)。
+func (s *Server) handleSetMemberRole(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	targetID := r.PathValue("userID")
+	user := s.userFor(r)
+
+	if !s.requireOwner(w, id, user.ID) {
+		return
+	}
+	if targetID == user.ID {
+		writeErr(w, http.StatusBadRequest, "cannot_change_owner", "不能變更頻道擁有者自己的角色")
+		return
+	}
+
+	var body struct {
+		Role string `json:"role"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if body.Role != model.RoleEditor && body.Role != model.RoleViewer {
+		writeErr(w, http.StatusBadRequest, "invalid_role", "role 須為 editor 或 viewer")
+		return
+	}
+
+	if err := s.store.SetMemberRole(id, targetID, body.Role); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "member_not_found", "該成員不在此頻道")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+	members, err := s.store.ListMembers(id)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"members": members})
+}
+
+// requireOwner 檢查 userID 是否為頻道 owner;非 owner 時寫入錯誤回應並回 false。
+func (s *Server) requireOwner(w http.ResponseWriter, channelID, userID string) bool {
+	owner, err := s.store.GetChannelOwner(channelID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "channel_not_found", "頻道不存在")
+			return false
+		}
+		writeErr(w, http.StatusInternalServerError, "owner_check_failed", err.Error())
+		return false
+	}
+	if userID != owner {
+		writeErr(w, http.StatusForbidden, "not_owner", "只有頻道擁有者能管理成員")
+		return false
+	}
+	return true
+}
+
+// requireEditor 檢查 userID 在頻道內是否有 editor 角色(可修改/記事);
+// 非成員或非 editor 時寫入錯誤回應並回 false。owner 預設即 editor。
+func (s *Server) requireEditor(w http.ResponseWriter, channelID, userID string) bool {
+	role, err := s.store.GetMemberRole(channelID, userID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusForbidden, "not_member", "你不是此頻道的成員")
+			return false
+		}
+		writeErr(w, http.StatusInternalServerError, "role_check_failed", err.Error())
+		return false
+	}
+	if role != model.RoleEditor {
+		writeErr(w, http.StatusForbidden, "not_editor", "只有具編輯權限的成員能記事;你目前是查詢權限")
+		return false
+	}
+	return true
 }
 
 // POST /v1/channels/{id}/query  { "question": "..." }
@@ -246,7 +252,8 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "empty_question", "question 不可為空")
 		return
 	}
-	pool, err := s.store.ListMessages(id)
+	// 原話已移至各裝置端,查詢改以頻道的 entry(事件/條目)為依據。
+	pool, err := s.store.ListEntriesByChannel(id)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
@@ -264,17 +271,8 @@ func (s *Server) handleAssist(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	user := s.userFor(r)
 
-	owner, err := s.store.GetChannelOwner(id)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "channel_not_found", "頻道不存在")
-			return
-		}
-		writeErr(w, http.StatusInternalServerError, "owner_check_failed", err.Error())
-		return
-	}
-	if user.ID != owner {
-		writeErr(w, http.StatusForbidden, "not_owner", "只有頻道擁有者能使用統一輸入")
+	// 記事(統一輸入)屬「修改」操作,需 editor 角色(owner 預設即 editor)。
+	if !s.requireEditor(w, id, user.ID) {
 		return
 	}
 
@@ -296,39 +294,27 @@ func (s *Server) handleAssist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 先產生 messageID:agent 若記錄條目,這則來源 message 會與條目建立關聯。
-	// 提問時 agent 會自己用 query_entries 工具查條目,不需在此撈頻道訊息。
+	// 產生 messageID 供 agent 記錄 context 用。原話(message)不存後端:
+	// 後端只收原話當 LLM 輸入,解析出的 entry 才落庫(emit 同步寫入)。
+	// 原話由前端存進「裝置端 DB」(與 server 隔離,local-first)。
 	msgID := "msg_" + newID()
 
-	// linkMessage:agent 決定「記錄」時呼叫(條目已由 emit 同步寫入)。
-	// 寫入來源 message(純原文,標注已移至 entry),再把它與本次寫入的
-	// entry(entryIDs)逐一建立多對多關聯。agent 只回答時不呼叫,故不留 message。
-	var savedMsg model.Message
-	linkMessage := func(entryIDs []string) error {
-		savedMsg = model.Message{
-			ID: msgID, ChannelID: id, AuthorID: user.ID, AuthorName: user.Name,
-			Text: text, CreatedAt: time.Now().UTC(),
-		}
-		if err := s.store.InsertMessage(savedMsg); err != nil {
-			return err
-		}
-		for _, eid := range entryIDs {
-			if err := s.store.LinkEntryMessage(eid, msgID); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	res := assistant.AssistForSession(user.ID, id, msgID, text, linkMessage)
+	// linkMessage 傳 nil:不再於後端寫入 message / 建立 entry↔message 關聯。
+	// 原話與其關聯改由各裝置端自行保存。
+	res := assistant.AssistForSession(user.ID, id, msgID, text, nil)
 
 	if res.Kind == "error" {
 		writeErr(w, http.StatusInternalServerError, "assist_failed", res.Text)
 		return
 	}
 	if res.Kind == "recorded" {
-		// 記錄了 → message 與關聯 Entry 已由 Assist 在正確順序下寫入。
-		writeJSON(w, http.StatusOK, map[string]any{"kind": "recorded", "message": savedMsg})
+		// 記錄了 → entry 已由 emit 同步寫入後端。回傳本次寫入的 entry 給前端,
+		// 前端據此更新顯示,並把對應原話存進自己的裝置端 DB。
+		writeJSON(w, http.StatusOK, map[string]any{
+			"kind":     "recorded",
+			"text":     text,
+			"entryIDs": res.EntryIDs,
+		})
 		return
 	}
 

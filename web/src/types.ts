@@ -28,6 +28,14 @@ export interface User {
   avatarColor: string
 }
 
+// 頻道成員角色:editor 可記事/編輯,viewer 只能查詢。對應後端 model 的 role。
+export type ChannelRole = 'editor' | 'viewer'
+
+// Member 是頻道成員:公開身分 + 在該頻道的角色。對應後端 model.Member(扁平結構)。
+export interface Member extends User {
+  role: ChannelRole
+}
+
 // Profile 是私密資料,只在「自己的帳號」端點回傳。
 export interface Profile {
   email: string

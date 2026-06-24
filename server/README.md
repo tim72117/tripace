@@ -7,8 +7,8 @@ Channel App 的後端。原型階段用 **SQLite** 持久化,訊息發送時經 
 
 - 純標準庫 `net/http`(Go 1.22+ 路由樣式),無 web 框架
 - `modernc.org/sqlite` — 純 Go SQLite driver,**免 CGO**,直接 `go build` 即可
-- LLM 能力抽象成 `llm.Analyzer` 介面;原型用關鍵字規則(`RuleBasedAnalyzer`),
-  之後換成呼叫你的真實 LLM 服務的實作即可,handler 不需更動。
+- LLM 能力抽象成 `llm.Analyzer` 介面;唯一實作是接 want 引擎的 `WantPool`(真實 LLM)。
+  不再有規則式(非 LLM)分析器——server 啟動即初始化 want,失敗則 fatal。
 
 ## 執行
 
@@ -43,8 +43,8 @@ server/
 ├── cmd/server/        main:flag、seed、啟動 HTTP
 └── internal/
     ├── model/         共用資料結構(JSON 對齊 App Codable)
-    ├── store/         SQLite 持久層(schema/migrate、channels、messages、members)
-    ├── llm/           Analyzer 介面 + 規則式分類/標注/RAG(原型)
+    ├── store/         持久層(schema/migrate、channels、entries、members);原話不存後端,改裝置端
+    ├── llm/           Analyzer 介面 + want LLM 引擎(WantPool);entry 查詢 RAG
     └── api/           HTTP handlers + middleware
 ```
 

@@ -26,31 +26,15 @@ type channelRow struct {
 	CreatedAt time.Time `gorm:"column:created_at;not null"`
 	UpdatedAt time.Time `gorm:"column:updated_at;not null"`
 
-	// Has Many:頻道的訊息(刪頻道時級聯刪訊息)。
-	Messages []messageRow `gorm:"foreignKey:ChannelID;constraint:OnDelete:CASCADE"`
 	// 多對多:頻道成員(透過 members 中介表)。
 	Members []userRow `gorm:"many2many:members;joinForeignKey:channel_id;joinReferences:user_id"`
 }
 
 func (channelRow) TableName() string { return "channels" }
 
-// messageRow 是使用者說的「原話」:純文字 + 作者 + 時間。
-// LLM 處理後的結構化資訊(分類/標籤/摘要/事件時間)改存在 entryRow。
-// 一則 message 可關聯多個 entry(多對多,透過 entry_messages 中介表)。
-type messageRow struct {
-	ID         string    `gorm:"primaryKey;column:id"`
-	ChannelID  string    `gorm:"column:channel_id;not null;index"`
-	AuthorID   string    `gorm:"column:author_id;not null"`
-	AuthorName string    `gorm:"column:author_name;not null"`
-	Text       string    `gorm:"column:text;not null"`
-	CreatedAt  time.Time `gorm:"column:created_at;not null"`
-}
-
-func (messageRow) TableName() string { return "messages" }
-
-// entryRow 是主體:LLM 處理一則(或多則)訊息後產出的「事件/條目」。
+// entryRow 是主體:LLM 處理使用者輸入後產出的「事件/條目」。
 // 承載所有 LLM 結構化結果——事件時間(item/start/end/allDay)與標注(category/tags/summary)。
-// entry 可獨立存在(不強制依附 message),並可關聯多則來源 message(多對多)。
+// 原話(message)不存後端,改由各裝置端 DB 保存(local-first)。
 type entryRow struct {
 	ID        string    `gorm:"primaryKey;column:id"`
 	ChannelID string    `gorm:"column:channel_id;not null;index"`
@@ -64,10 +48,6 @@ type entryRow struct {
 	Tags      []string  `gorm:"column:tags;serializer:json"` // JSON 陣列存單一 TEXT 欄位
 	Summary   *string   `gorm:"column:summary"`
 	CreatedAt time.Time `gorm:"column:created_at;not null"`
-
-	// 多對多:此 entry 的來源訊息(透過 entry_messages 中介表)。
-	// 刪 entry 時級聯解除關聯(中介表記錄一併清除)。
-	Messages []messageRow `gorm:"many2many:entry_messages;joinForeignKey:entry_id;joinReferences:message_id;constraint:OnDelete:CASCADE"`
 }
 
 func (entryRow) TableName() string { return "entries" }

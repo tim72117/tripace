@@ -31,7 +31,6 @@ func main() {
 	seed := flag.Bool("seed", true, "資料庫為空時寫入示範資料")
 	jwtSecret := flag.String("jwt-secret", "dev-secret-change-me", "JWT 簽章金鑰")
 	devMode := flag.Bool("dev", true, "開發模式:Apple token 不驗簽章")
-	llmKind := flag.String("llm", "rule", "LLM 分析器:rule(規則式)| want(接 want 引擎)")
 	flag.Parse()
 
 	// Cloud Run 等托管環境只方便傳環境變數(不方便改 ENTRYPOINT 傳 flag),
@@ -48,9 +47,6 @@ func main() {
 	}
 	if v := os.Getenv("SEED"); v != "" {
 		*seed = v == "1" || strings.EqualFold(v, "true")
-	}
-	if v := os.Getenv("LLM_KIND"); v != "" {
-		*llmKind = v
 	}
 
 	// DATABASE_URL(postgres://…,如 Neon)優先;未設時退回 -db 的 SQLite。
@@ -74,37 +70,32 @@ func main() {
 		}
 	}
 
-	var analyzer llm.Analyzer = llm.NewRuleBased()
-	if *llmKind == "want" {
-		// 用 WantPool(per-session orchestrator 外殼)。現階段池內共用單一實例,
-		// 行為同改造前;未來 want 支援多實例後即可在池內 per-session 分流。
-		pool, err := llm.NewWantPool()
-		if err != nil {
-			log.Fatalf("初始化 want 分析器失敗: %v", err)
-		}
-		analyzer = pool
-		// 注入條目持久化:record_entry 工具解析出的條目同步寫進 DB(entry 為主體,
-		// 獨立寫入),回傳新 entry ID 供呼叫端與來源 message 建立關聯。
-		wanttools.BindSink(func(channelID string, e wanttools.RecordedEntry) (string, error) {
-			id := "ent_" + randHex()
-			err := st.InsertEntry(model.Entry{
-				ID:        id,
-				ChannelID: channelID,
-				Item:      e.Item,
-				Start:     e.Start,
-				End:       e.End,
-				AllDay:    e.AllDay,
-				CreatedAt: nowUTC(),
-			})
-			return id, err
-		})
-		// 提供 query_entries 工具查詢用的 store:agent 提問時自己按時間範圍查條目,
-		// 取代把頻道訊息整包塞進 prompt。
-		wanttools.BindStore(st)
-		log.Printf("LLM 分析器: want 引擎(WantPool)")
-	} else {
-		log.Printf("LLM 分析器: 規則式")
+	// 唯一的分析器:want LLM 引擎(WantPool,per-session orchestrator 外殼)。
+	// 現階段池內共用單一實例;未來 want 支援多實例後即可在池內 per-session 分流。
+	// 初始化失敗直接 fatal(無規則式後備)。
+	pool, err := llm.NewWantPool()
+	if err != nil {
+		log.Fatalf("初始化 want 分析器失敗: %v", err)
 	}
+	var analyzer llm.Analyzer = pool
+	// 注入條目持久化:record_entry 工具解析出的條目同步寫進 DB(entry 為主體,
+	// 獨立寫入),回傳新 entry ID。
+	wanttools.BindSink(func(channelID string, e wanttools.RecordedEntry) (string, error) {
+		id := "ent_" + randHex()
+		err := st.InsertEntry(model.Entry{
+			ID:        id,
+			ChannelID: channelID,
+			Item:      e.Item,
+			Start:     e.Start,
+			End:       e.End,
+			AllDay:    e.AllDay,
+			CreatedAt: nowUTC(),
+		})
+		return id, err
+	})
+	// 提供 query_entries 工具查詢用的 store:agent 提問時自己按時間範圍查條目。
+	wanttools.BindStore(st)
+	log.Printf("LLM 分析器: want 引擎(WantPool)")
 
 	signer := auth.NewSigner(*jwtSecret, 30*24*time.Hour)
 	srv := api.New(st, analyzer, signer, *devMode)
@@ -165,20 +156,16 @@ func seedIfEmpty(st *store.Store) error {
 	if err != nil {
 		return err
 	}
-	// message 只存原文(LLM 標注改放 entry,seed 階段不產生 entry)。
-	for _, text := range []string{
-		"我們下週一下午三點開會,敲定 Q3 產品規格",
-		"記得把預算上調的提案準備好,大概要 +15%",
-		"登入頁的 bug 修好了嗎?",
+	// 原話不存後端;seed 直接寫入示範 entry(事件/條目),對齊「entry 為主體」。
+	for _, e := range []model.Entry{
+		{Item: "開會敲定 Q3 產品規格", Start: "2026-06-29 15:00"},
+		{Item: "準備預算上調提案(+15%)", Start: "2026-06-30", AllDay: true},
+		{Item: "修登入頁的 bug", Start: ""},
 	} {
-		_ = st.InsertMessage(model.Message{
-			ID:         "msg_" + randHex(),
-			ChannelID:  ch.ID,
-			AuthorID:   me.ID,
-			AuthorName: me.Name,
-			Text:       text,
-			CreatedAt:  nowUTC(),
-		})
+		e.ID = "ent_" + randHex()
+		e.ChannelID = ch.ID
+		e.CreatedAt = nowUTC()
+		_ = st.InsertEntry(e)
 	}
 	log.Printf("已寫入示範頻道 %s", ch.ID)
 	return nil

@@ -37,15 +37,6 @@ func (s *Store) InsertEntry(e model.Entry) error {
 	return s.db.Create(&r).Error
 }
 
-// LinkEntryMessage 在 entry 與 message 間建立多對多關聯(寫入 entry_messages 中介表)。
-// 兩者須已存在;重複關聯會被忽略(主鍵衝突視為已關聯)。
-func (s *Store) LinkEntryMessage(entryID, messageID string) error {
-	return s.db.Exec(
-		"INSERT INTO entry_messages (entry_id, message_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
-		entryID, messageID,
-	).Error
-}
-
 // ListEntriesByChannel 回傳頻道的所有條目,依開始時間排序。
 func (s *Store) ListEntriesByChannel(channelID string) ([]model.Entry, error) {
 	var rows []entryRow
@@ -73,16 +64,6 @@ func (s *Store) ListEntriesByRange(channelID, from, to string) ([]model.Entry, e
 	}
 	var rows []entryRow
 	err := q.Order("start ASC, created_at ASC").Find(&rows).Error
-	return mapEntries(rows), err
-}
-
-// ListEntriesByMessage 回傳某則訊息所關聯的條目(透過 entry_messages 中介表)。
-func (s *Store) ListEntriesByMessage(messageID string) ([]model.Entry, error) {
-	var rows []entryRow
-	err := s.db.
-		Joins("JOIN entry_messages em ON em.entry_id = entries.id").
-		Where("em.message_id = ?", messageID).
-		Order("entries.created_at ASC").Find(&rows).Error
 	return mapEntries(rows), err
 }
 
