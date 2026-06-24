@@ -5,14 +5,14 @@ name: iOS Build
 #  - workflow_dispatch:可在 GitHub 網頁或本地 `gh workflow run ios-build.yml` 手動觸發
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     paths:
       - 'Channel/**'
       - 'Channel.xcodeproj/**'
       - 'project.yml'
       - '.github/workflows/ios-build.yml'
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 jobs:
@@ -38,6 +38,8 @@ jobs:
       - name: Build (iOS Simulator, 不簽章)
         # 只編譯確認能 build,不安裝到實機,故:
         #  - sdk iphonesimulator:用模擬器 SDK,免實機憑證
+        #  - generic/platform=iOS Simulator:不指定機型,任一 iOS 模擬器都行
+        #    (避免寫死 iPhone 16 等機型;runner 的 Xcode 版本決定有哪些機型)
         #  - CODE_SIGNING_ALLOWED=NO:關閉簽章,CI 上沒有 Apple 憑證也能編譯
         run: |
           set -o pipefail
@@ -46,7 +48,7 @@ jobs:
             -scheme Channel \
             -configuration Debug \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             clean build \
             | tee build.log
