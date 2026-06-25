@@ -14,6 +14,9 @@ final class AuthStore {
     var email: String?
     var isSigningIn = false
     var errorMessage: String?
+    /// App 啟動還原 session 期間為 true:RootView 據此顯示 loading,
+    /// 避免在還原既有登入時先閃一下登入畫面。
+    var isRestoring = true
 
     var isSignedIn: Bool { user != nil }
 
@@ -26,8 +29,10 @@ final class AuthStore {
         self.backend = backend
     }
 
-    /// App 啟動時還原既有 session。
+    /// App 啟動時還原既有 session。完成(無論成功與否)後 isRestoring 轉 false,
+    /// RootView 才據 isSignedIn 決定顯示頻道或登入畫面。
     func restore() async {
+        defer { isRestoring = false }
         guard let token = TokenStore.load() else { return }
         backend.setAuthToken(token)
         // 若 backend 支援向後端確認身分,則確認;失敗就清除。

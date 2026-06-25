@@ -201,25 +201,77 @@ func (w *WantAnalyzer) Assist(channelID, messageID, text string, linkMessage fun
 	return AssistResult{Kind: "answer", Text: answer, Logged: 0, Entries: presented}
 }
 
-// Answer 請 LLM 依頻道的 entry(事件/條目)回答自然語言查詢。
-// LLM 失敗時回傳帶錯誤說明的 SearchAnswer(不再退回規則式)。
-// 引用來源以輕量檢索(citeEntries)挑出相關 entry ID。
-func (w *WantAnalyzer) Answer(question string, pool []model.Entry) model.SearchAnswer {
-	raw, err := w.generate(buildAnswerPrompt(question, pool))
-	if err != nil {
-		fmt.Printf("[want] Answer 失敗: %v\n", err)
-		conf := 0.0
-		return model.SearchAnswer{
-			Answer:          "查詢暫時無法完成,請稍後再試。",
-			CitedMessageIDs: []string{},
-			Confidence:      &conf,
+// Answer 讓 want agent 回答自然語言查詢:agent 依 assistant.md 指引,自己呼叫
+// query_entries 查條目、再對每筆相關條目呼叫 present_entries 呈現
+// (不用 citeEntries 關鍵字比對,也不把 pool 塞進 prompt)。
+// 跑完用 Presented() 取 agent 呈現的結構化條目,確保卡片與文字來自同一判斷。
+// channelID 必填:query_entries 工具靠 SetContext 得知要查哪個頻道。
+func (w *WantAnalyzer) Answer(channelID, question string) model.SearchAnswer {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	// present_entries 把結果累積進 wanttools.presented;RecordLock 會先重置,
+	// 跑完用 Presented() 取本次 agent 透過 present_entries 呈現的條目。
+	wanttools.RecordLock()
+	defer wanttools.RecordUnlock()
+	// 讓 query_entries 知道查哪個頻道(同 Assist 路徑;查詢不關聯 message,messageID 留空)。
+	wanttools.SetContext("", channelID)
+	defer wanttools.ClearContext()
+
+	state := wantui.NewCommonInferenceState()
+	var mu sync.Mutex
+	var sb strings.Builder
+	done := make(chan struct{})
+	var once sync.Once
+	finish := func() { once.Do(func() { close(done) }) }
+
+	unsub := w.coord.EventBus.Subscribe("agent.inference", func(payload interface{}) {
+		mu.Lock()
+		defer mu.Unlock()
+		result, handled := wantui.HandleInferenceMessage(payload, state)
+		if !handled || result == nil {
+			return
 		}
+		switch vm := result.(type) {
+		case wantui.TextViewModel:
+			if vm.Content != "" {
+				sb.WriteString(vm.Content)
+			}
+		case wantui.StatusViewModel:
+			// idle 表推論結束;給工具呼叫/文字事件一點到達窗口再結束。
+			if vm.Status == "idle" {
+				go func() { time.Sleep(1500 * time.Millisecond); finish() }()
+			}
+		}
+	})
+	defer unsub()
+
+	w.coord.Submit(buildAnswerPrompt(question))
+
+	select {
+	case <-done:
+	case <-time.After(90 * time.Second):
+		fmt.Printf("[want] Answer 逾時\n")
 	}
+
+	mu.Lock()
+	answer := strings.TrimSpace(sb.String())
+	mu.Unlock()
+
+	// 取 agent 透過 present_entries 呈現的結構化條目(LLM 自己挑的)。
+	var presented []model.PresentedEntry
+	for _, e := range wanttools.Presented() {
+		presented = append(presented, model.PresentedEntry{
+			Item: e.Item, Start: e.Start, End: e.End, AllDay: e.AllDay,
+		})
+	}
+
 	conf := 0.85
 	return model.SearchAnswer{
-		Answer:          strings.TrimSpace(raw),
-		CitedMessageIDs: citeEntries(question, pool),
+		Answer:          answer,
+		CitedMessageIDs: []string{},
 		Confidence:      &conf,
+		Entries:         presented,
 	}
 }
 
@@ -241,29 +293,12 @@ func buildAssistPrompt(text string) string {
 	return fmt.Sprintf("今天是 %s(%s)。\n\n使用者的輸入:%s", today, weekday, text)
 }
 
-func buildAnswerPrompt(question string, pool []model.Entry) string {
-	var sb strings.Builder
-	sb.WriteString("你是頻道條目查詢助手。以下是頻道中記錄的事件/條目,請依據它們回答使用者的問題。\n\n條目列表:\n")
-	for _, e := range pool {
-		sb.WriteString("・")
-		sb.WriteString(e.Item)
-		if e.Start != "" {
-			sb.WriteString("(")
-			sb.WriteString(e.Start)
-			if e.End != "" {
-				sb.WriteString(" ~ ")
-				sb.WriteString(e.End)
-			}
-			sb.WriteString(")")
-		}
-		if e.Location != "" {
-			sb.WriteString(" @")
-			sb.WriteString(e.Location)
-		}
-		sb.WriteString("\n")
-	}
-	sb.WriteString("\n使用者問題: ")
-	sb.WriteString(question)
-	sb.WriteString("\n\n請用繁體中文簡潔回答,只根據上述條目,不要編造。")
-	return sb.String()
+// buildAnswerPrompt 給成員查詢用。比照 buildAssistPrompt:只提供今天的日期與
+// 使用者問題;頻道既有條目不塞進 prompt——由 agent 依 assistant.md 指引自己呼叫
+// query_entries 查(可指定時間範圍)、再對每筆相關條目呼叫 present_entries 呈現。
+func buildAnswerPrompt(question string) string {
+	now := time.Now()
+	today := now.Format("2006-01-02")
+	weekday := weekdayZH(now.Weekday())
+	return fmt.Sprintf("今天是 %s(%s)。\n\n使用者的提問:%s", today, weekday, question)
 }

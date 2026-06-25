@@ -66,8 +66,8 @@ func (p *WantPool) For(sessionID string) *WantAnalyzer {
 // ---- Analyzer interface:無 session 資訊的呼叫路徑轉發到共用實例 ----
 // 讓 WantPool 可直接當成 Analyzer 注入。
 
-func (p *WantPool) Answer(question string, entries []model.Entry) model.SearchAnswer {
-	return p.For("").Answer(question, entries)
+func (p *WantPool) Answer(channelID, question string) model.SearchAnswer {
+	return p.For("").Answer(channelID, question)
 }
 
 // AssistForSession 依 session 取 analyzer,統一處理 owner 輸入(LLM 自主判斷回答/記錄)。

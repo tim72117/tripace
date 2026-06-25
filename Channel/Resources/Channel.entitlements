@@ -2,9 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.developer.applesignin</key>
-	<array>
-		<string>Default</string>
-	</array>
+	<!-- Apple 登入(com.apple.developer.applesignin)暫時移除:
+	     免費個人開發者帳號不支援此 capability,會擋住實機簽章。
+	     原內容已備份在 Channel.entitlements.bak;
+	     日後加入付費 Apple Developer Program 後還原即可。 -->
 </dict>
 </plist>

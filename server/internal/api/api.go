@@ -220,8 +220,23 @@ func (s *Server) requireOwner(w http.ResponseWriter, channelID, userID string) b
 }
 
 // requireEditor 檢查 userID 在頻道內是否有 editor 角色(可修改/記事);
-// 非成員或非 editor 時寫入錯誤回應並回 false。owner 預設即 editor。
+// 非成員或非 editor 時寫入錯誤回應並回 false。
+// owner 恆視為 editor:不論 members.role 為何(例如後補欄位時被預設成 viewer),
+// owner 一律放行,確保頻道擁有者永遠能記事。
 func (s *Server) requireEditor(w http.ResponseWriter, channelID, userID string) bool {
+	owner, err := s.store.GetChannelOwner(channelID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "channel_not_found", "頻道不存在")
+			return false
+		}
+		writeErr(w, http.StatusInternalServerError, "owner_check_failed", err.Error())
+		return false
+	}
+	if userID == owner {
+		return true
+	}
+
 	role, err := s.store.GetMemberRole(channelID, userID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -252,13 +267,9 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "empty_question", "question 不可為空")
 		return
 	}
-	// 原話已移至各裝置端,查詢改以頻道的 entry(事件/條目)為依據。
-	pool, err := s.store.ListEntriesByChannel(id)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
-		return
-	}
-	answer := s.analyzer.Answer(q, pool)
+	// 不再由 api 撈 pool:agent 依 assistant.md 自己呼叫 query_entries 查條目
+	// (用 channelID 定位頻道),再以 present_entries 呈現相關條目。
+	answer := s.analyzer.Answer(id, q)
 	writeJSON(w, http.StatusOK, answer)
 }
 

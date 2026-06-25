@@ -55,11 +55,22 @@ type Me struct {
 	Profile Profile `json:"profile"`
 }
 
+// PresentedEntry 是查詢回答附帶、要展示給使用者的結構化條目。
+// 形狀與 llm.AssistEntry / wanttools.PresentedEntry 一致,讓前端用同一套列表渲染。
+type PresentedEntry struct {
+	Item   string `json:"item"`
+	Start  string `json:"start"`
+	End    string `json:"end"`
+	AllDay bool   `json:"allDay"`
+}
+
 // SearchAnswer 對應語意查詢回應。
+// Entries 為結構化行程項目:回答文字保持簡短,項目改由前端用卡片列表顯示。
 type SearchAnswer struct {
-	Answer          string   `json:"answer"`
-	CitedMessageIDs []string `json:"citedMessageIDs"`
-	Confidence      *float64 `json:"confidence,omitempty"`
+	Answer          string           `json:"answer"`
+	CitedMessageIDs []string         `json:"citedMessageIDs"`
+	Confidence      *float64         `json:"confidence,omitempty"`
+	Entries         []PresentedEntry `json:"entries"`
 }
 
 // Entry 是主體:LLM 處理訊息後產出的「事件/條目」,承載所有結構化結果。
