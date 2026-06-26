@@ -46,6 +46,8 @@ final class ChatStore {
     var messages: [Message] = []
     /// LLM 解析出的事件/條目(承載結構化結果),顯示在訊息流上方。owner 才有。
     var entries: [Entry] = []
+    /// 後端依時間自動歸組的行程;頻道上方以行程列呈現,點入列出組內 entries。owner 才有。
+    var trips: [Trip] = []
     /// 答案泡泡掛上的展示條目(present_entries 輸出),依訊息 ID 對應。
     var presentedByMessage: [String: [PresentedEntry]] = [:]
     var isLoading = false
@@ -57,6 +59,11 @@ final class ChatStore {
     }
 
     var currentUserID: String { backend.currentUser.id }
+
+    /// 取某行程底下的所有條目(行程詳情畫面用)。
+    func entries(forTrip tripID: String) async throws -> [Entry] {
+        try await backend.fetchTripEntries(channelID: channel.id, tripID: tripID)
+    }
 
     /// 目前使用者是否為頻道擁有者。
     private var isOwner: Bool { channel.ownerID == backend.currentUser.id }
@@ -78,7 +85,7 @@ final class ChatStore {
             if !cachedEnts.isEmpty { entries = cachedEnts }
         }
 
-        // 2) 背景重拉後端 Entry(只有 owner);原話不在後端,無需 fetch。
+        // 2) 背景重拉後端 Entry/Trip(只有 owner);原話不在後端,無需 fetch。
         isLoading = true
         do {
             let freshEnts: [Entry] = isOwner
@@ -86,6 +93,10 @@ final class ChatStore {
                 : []
             entries = freshEnts
             if isOwner { local?.replaceEntries(freshEnts, channelID: channel.id) }
+            // Trip 由後端依時間自動歸組;成員看不到,不載入。
+            trips = isOwner
+                ? try await backend.fetchTrips(channelID: channel.id)
+                : []
         } catch {
             // 線上失敗:若本地有東西就靜默(離線可讀);完全沒快取才顯示錯誤。
             if messages.isEmpty && entries.isEmpty {
@@ -130,6 +141,10 @@ final class ChatStore {
                 if let fresh = try? await backend.fetchEntries(channelID: channel.id) {
                     entries = fresh
                     local?.replaceEntries(fresh, channelID: channel.id)
+                }
+                // 新記的事件可能讓後端重新歸組行程,一併刷新。
+                if let freshTrips = try? await backend.fetchTrips(channelID: channel.id) {
+                    trips = freshTrips
                 }
             case .answer(let answer, let presented):
                 // 回答了 → 移除樂觀「處理中」泡泡,改放提問 + 答案兩個本地泡泡。

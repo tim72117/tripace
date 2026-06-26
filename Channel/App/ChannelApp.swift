@@ -2,13 +2,18 @@ import SwiftUI
 
 @main
 struct ChannelApp: App {
-    /// 後端 base URL,依 build 組態自動切換:
-    /// - Debug(開發):dev server,經 Tailscale 連本機 Go server。
+    /// 後端 base URL,依 build 組態與執行環境自動切換:
+    /// - Debug + 模擬器:localhost,直連這台 Mac 上的 dev server(模擬器與 Mac 共用網路)。
+    /// - Debug + 實機:Tailscale IP,實機不在 Mac 上,經 Tailscale 連 Mac 的 dev server。
     /// - Release(正式):GCP Cloud Run。
-    /// 注意:dev 為明文 HTTP,需在 Info.plist 的 ATS 例外列出該位址才連得上。
+    /// 注意:dev 為明文 HTTP,需在 Info.plist 的 ATS 例外/local networking 允許才連得上。
     private static var backendBaseURL: URL {
         #if DEBUG
-        return URL(string: "http://100.117.181.90:8080/v1")!
+        #if targetEnvironment(simulator)
+        return URL(string: "http://localhost:8080/v1")!
+        #else
+        return URL(string: "http://100.65.2.62:8080/v1")!
+        #endif
         #else
         return URL(string: "https://channel-server-340121279179.asia-east1.run.app/v1")!
         #endif

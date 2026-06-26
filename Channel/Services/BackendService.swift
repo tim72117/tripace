@@ -14,6 +14,12 @@ protocol BackendService {
     /// 取頻道的 Entry 條目(只有 owner 看得到自己頻道的)。
     func fetchEntries(channelID: String) async throws -> [Entry]
 
+    // 行程(Trip):後端依時間自動把 entries 歸組成的行程分組。
+    /// 取頻道的行程分組(只有 owner 看得到自己頻道的)。
+    func fetchTrips(channelID: String) async throws -> [Trip]
+    /// 取某行程底下的所有條目。
+    func fetchTripEntries(channelID: String, tripID: String) async throws -> [Entry]
+
     // owner 統一輸入(assist):送進後端,LLM 自主判斷「記錄事項」或「回答提問」。
     /// 記錄(recorded)產生 Entry 並回原話 text(前端存裝置 DB);回答(answer)附帶展示條目。
     func assist(channelID: String, text: String) async throws -> AssistResult

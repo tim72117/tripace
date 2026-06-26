@@ -15,6 +15,8 @@ struct Entry: Identifiable, Codable, Hashable {
     var allDay: Bool
     /// 地點(可空);目前由人工/前端填,LLM 暫不自動抽取。
     var location: String?
+    /// 所屬行程(Trip);後端依時間自動歸組,未歸組為 nil。
+    var tripID: String?
 
     /// LLM 標注(原本在 Message 上,改放 Entry;後端目前先留空)。
     var category: String?
@@ -36,7 +38,7 @@ struct Entry: Identifiable, Codable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, channelID, item, start, end, allDay, location, category, tags, summary, createdAt
+        case id, channelID, item, start, end, allDay, location, tripID, category, tags, summary, createdAt
     }
 
     init(
@@ -47,6 +49,7 @@ struct Entry: Identifiable, Codable, Hashable {
         end: String? = nil,
         allDay: Bool = false,
         location: String? = nil,
+        tripID: String? = nil,
         category: String? = nil,
         tags: [String] = [],
         summary: String? = nil,
@@ -59,6 +62,7 @@ struct Entry: Identifiable, Codable, Hashable {
         self.end = end
         self.allDay = allDay
         self.location = location
+        self.tripID = tripID
         self.category = category
         self.tags = tags
         self.summary = summary
@@ -74,6 +78,7 @@ struct Entry: Identifiable, Codable, Hashable {
         end = try c.decodeIfPresent(String.self, forKey: .end)
         allDay = try c.decodeIfPresent(Bool.self, forKey: .allDay) ?? false
         location = try c.decodeIfPresent(String.self, forKey: .location)
+        tripID = try c.decodeIfPresent(String.self, forKey: .tripID)
         category = try c.decodeIfPresent(String.self, forKey: .category)
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
         summary = try c.decodeIfPresent(String.self, forKey: .summary)

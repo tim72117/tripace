@@ -48,6 +48,16 @@ final class HTTPBackendService: BackendService {
         return res.entries
     }
 
+    func fetchTrips(channelID: String) async throws -> [Trip] {
+        let res: TripsResponse = try await get("channels/\(channelID)/trips")
+        return res.trips
+    }
+
+    func fetchTripEntries(channelID: String, tripID: String) async throws -> [Entry] {
+        let res: EntriesResponse = try await get("channels/\(channelID)/trips/\(tripID)/entries")
+        return res.entries
+    }
+
     func assist(channelID: String, text: String) async throws -> AssistResult {
         let res: AssistEnvelope = try await post("channels/\(channelID)/assist",
                                                  body: ["text": text])
@@ -207,6 +217,7 @@ final class HTTPBackendService: BackendService {
 
 private struct ChannelsResponse: Decodable { let channels: [Channel] }
 private struct EntriesResponse: Decodable { let entries: [Entry] }
+private struct TripsResponse: Decodable { let trips: [Trip] }
 private struct MembersResponse: Decodable { let members: [Member] }
 
 // assist 的標籤式回應:

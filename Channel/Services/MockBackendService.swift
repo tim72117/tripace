@@ -145,6 +145,17 @@ final class MockBackendService: BackendService {
         return entriesByChannel[channelID] ?? []
     }
 
+    func fetchTrips(channelID: String) async throws -> [Trip] {
+        try await fakeDelay(0.2)
+        // Mock 無自動歸組:回空(行程列不顯示),由真實後端提供 Trip。
+        return []
+    }
+
+    func fetchTripEntries(channelID: String, tripID: String) async throws -> [Entry] {
+        try await fakeDelay(0.2)
+        return (entriesByChannel[channelID] ?? []).filter { $0.tripID == tripID }
+    }
+
     // MARK: owner 統一輸入(assist)
 
     /// 模擬後端 LLM 自主判斷:提問 → 回答(answer,不存訊息);否則 → 記錄(recorded)。

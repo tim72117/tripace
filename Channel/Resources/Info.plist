@@ -32,7 +32,8 @@
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
 	<!-- 允許連明文 HTTP 後端(開發階段,Debug build 用 dev server)。Release 走 HTTPS Cloud Run。 -->
-	<!-- NSAllowsLocalNetworking 只豁免區網/.local;100.117.181.90 是 Tailscale CGNAT 位址,
+	<!-- 模擬器走 localhost:由 NSAllowsLocalNetworking 豁免(localhost 算 local)。
+	     實機走 Tailscale 連這台 Mac 的 dev server;100.65.2.62 是 Tailscale CGNAT 位址,
 	     不算 local network,需另列 NSExceptionDomains 例外才連得上。 -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
@@ -40,7 +41,7 @@
 		<true/>
 		<key>NSExceptionDomains</key>
 		<dict>
-			<key>100.117.181.90</key>
+			<key>100.65.2.62</key>
 			<dict>
 				<key>NSExceptionAllowsInsecureHTTPLoads</key>
 				<true/>

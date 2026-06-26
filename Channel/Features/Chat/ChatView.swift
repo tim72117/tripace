@@ -57,6 +57,10 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 12) {
+                        // 行程列:後端歸組出的 Trip,點入列出組內條目。
+                        if !store.trips.isEmpty {
+                            TripBar(trips: store.trips, entries: store.entries, store: store)
+                        }
                         // 以 entry 為主體:頻道的事件/條目列在最上方。
                         if !store.entries.isEmpty {
                             EntryListView(entries: store.entries)
@@ -117,5 +121,48 @@ struct ChatView: View {
         let s = ChatStore(backend: app.backend, channel: channel)
         store = s
         await s.load()
+    }
+}
+
+/// 行程列:後端歸組出的 Trip 以橫向 chip 呈現,點入該行程的條目清單。
+/// 對應 web 的 trip-bar。
+private struct TripBar: View {
+    let trips: [Trip]
+    let entries: [Entry]
+    let store: ChatStore
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(trips) { trip in
+                    NavigationLink {
+                        TripEntriesView(trip: trip) { tripID in
+                            try await store.entries(forTrip: tripID)
+                        }
+                    } label: {
+                        chip(trip)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func chip(_ trip: Trip) -> some View {
+        let count = entries.filter { $0.tripID == trip.id }.count
+        return HStack(spacing: 6) {
+            Text("🧳 \(trip.title)")
+                .font(.subheadline)
+            if count > 0 {
+                Text("\(count)")
+                    .font(.caption2).fontWeight(.semibold)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.2), in: Capsule())
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 7)
+        .background(Color(.secondarySystemBackground), in: Capsule())
+        .foregroundStyle(.primary)
     }
 }
