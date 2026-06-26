@@ -1,7 +1,6 @@
 package wanttools
 
 import (
-	"context"
 	"fmt"
 
 	"want/types"
@@ -51,8 +50,21 @@ type PresentEntriesTool struct {
 	types.BaseToolConfig
 }
 
-func (t *PresentEntriesTool) Call(args types.ToolArguments, ctx types.ToolContext) (types.ToolCallResult, error) {
-	return t.Execute(context.Background(), args, ctx)
+// Call 把一筆展示條目加入清單:回傳 []ResultContentBlock(want 新規格),
+// 結果 map 以 ctx.EmitToolResult 發送。
+func (t *PresentEntriesTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]types.ResultContentBlock, error) {
+	// 一次一筆;多筆由 agent 多次呼叫(multi tool call),addPresented 累積成清單。
+	e := PresentedEntry{
+		Item:   args.GetString("item"),
+		Start:  args.GetString("start"),
+		End:    args.GetString("end"),
+		AllDay: args.GetBool("allDay"),
+	}
+	addPresented([]PresentedEntry{e})
+
+	summary := fmt.Sprintf("已加入展示:%s", e.Item)
+	ctx.EmitToolResult(map[string]interface{}{"summary": summary})
+	return []types.ResultContentBlock{types.TextBlock(summary)}, nil
 }
 
 // ValidateInput 在執行前驗證:item 不可為空(扁平參數,同 record_entry)。
@@ -76,21 +88,4 @@ func (t *PresentEntriesTool) RenderToolResult(data map[string]interface{}) strin
 		return msg
 	}
 	return "已加入展示"
-}
-
-func (t *PresentEntriesTool) Execute(_ context.Context, args types.ToolArguments, _ types.ToolContext) (types.ToolCallResult, error) {
-	// 一次一筆;多筆由 agent 多次呼叫(multi tool call),addPresented 累積成清單。
-	e := PresentedEntry{
-		Item:   args.GetString("item"),
-		Start:  args.GetString("start"),
-		End:    args.GetString("end"),
-		AllDay: args.GetBool("allDay"),
-	}
-	addPresented([]PresentedEntry{e})
-
-	summary := fmt.Sprintf("已加入展示:%s", e.Item)
-	return types.ToolCallResult{
-		Content:       []types.ResultContentBlock{types.TextBlock(summary)},
-		ToolUseResult: map[string]interface{}{"summary": summary},
-	}, nil
 }

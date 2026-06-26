@@ -88,6 +88,24 @@ function EntriesView({
     load()
   }, [load])
 
+  // 重置:清空此頻道的 entry/trip(破壞性,限 owner)。完成後重新載入。
+  const reset = useCallback(async () => {
+    if (!channel) return
+    if (!window.confirm(`確定清空頻道「${channel.name}」的所有條目與行程?此操作無法復原。`))
+      return
+    setLoading(true)
+    setErr(null)
+    try {
+      await api.resetChannelData(cfg, channel.id)
+      setEntries([])
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg.baseURL, cfg.token, channel?.id])
+
   if (!channel) {
     return (
       <div className="debug-list">
@@ -102,9 +120,14 @@ function EntriesView({
     <div className="debug-list">
       <div className="entries-head">
         <span>頻道 {channel.name} · {entries.length} 筆</span>
-        <button onClick={load} disabled={loading}>
-          {loading ? '…' : '↻ 重整'}
-        </button>
+        <span style={{ display: 'flex', gap: 6 }}>
+          <button onClick={load} disabled={loading}>
+            {loading ? '…' : '↻ 重整'}
+          </button>
+          <button onClick={reset} disabled={loading} className="danger">
+            🗑 重置
+          </button>
+        </span>
       </div>
       {err && <pre className="json-err">{err}</pre>}
       {!err && entries.length === 0 && !loading && (

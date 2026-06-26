@@ -51,6 +51,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /v1/channels/{id}/query", s.handleQuery)
 	mux.HandleFunc("POST /v1/channels/{id}/assist", s.handleAssist)
 	mux.HandleFunc("GET /v1/channels/{id}/entries", s.handleListEntries)
+	mux.HandleFunc("DELETE /v1/channels/{id}/entries", s.handleResetChannelData)
 	mux.HandleFunc("GET /v1/channels/{id}/trips", s.handleListTrips)
 	mux.HandleFunc("GET /v1/channels/{id}/trips/{tripID}/entries", s.handleListTripEntries)
 	return logging(cors(mux))
@@ -390,6 +391,20 @@ func (s *Server) handleListEntries(w http.ResponseWriter, r *http.Request) {
 		entries = []model.Entry{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
+}
+
+// DELETE /v1/channels/{id}/entries — 清空頻道的所有條目與行程(開發/測試重置用)。
+// 屬破壞性操作,限頻道 owner。
+func (s *Server) handleResetChannelData(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !s.requireOwner(w, id, s.userFor(r).ID) {
+		return
+	}
+	if err := s.store.DeleteChannelEntriesAndTrips(id); err != nil {
+		writeErr(w, http.StatusInternalServerError, "reset_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "reset"})
 }
 
 // GET /v1/channels/{id}/trips — 頻道的行程分組(後端依時間自動歸組)。

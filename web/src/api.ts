@@ -272,6 +272,15 @@ export function fetchEntries(cfg: ClientConfig, channelID: string) {
   ).then((r) => r.entries)
 }
 
+// 重置:清空頻道的所有條目與行程(開發/測試用,限 owner)。
+export function resetChannelData(cfg: ClientConfig, channelID: string) {
+  return request<{ status: string }>(
+    cfg,
+    'DELETE',
+    `/v1/channels/${encodeURIComponent(channelID)}/entries`,
+  )
+}
+
 // 取頻道的行程分組(後端依時間自動歸組)。
 export function fetchTrips(cfg: ClientConfig, channelID: string) {
   return request<{ trips: Trip[] }>(

@@ -1,6 +1,11 @@
 package store
 
-import "github.com/channel/server/internal/model"
+import (
+	"errors"
+
+	"github.com/channel/server/internal/model"
+	"gorm.io/gorm"
+)
 
 func toEntry(r entryRow) model.Entry {
 	return model.Entry{
@@ -37,6 +42,20 @@ func (s *Store) InsertEntry(e model.Entry) error {
 		CreatedAt: e.CreatedAt,
 	}
 	return s.db.Create(&r).Error
+}
+
+// GetEntry 依 ID 取單一條目;查無回 ErrNotFound。
+// add_to_trip 工具新建 trip 時用它取得 entry 的時間範圍當 trip 初值。
+func (s *Store) GetEntry(entryID string) (model.Entry, error) {
+	var r entryRow
+	err := s.db.Where("id = ?", entryID).First(&r).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return model.Entry{}, ErrNotFound
+	}
+	if err != nil {
+		return model.Entry{}, err
+	}
+	return toEntry(r), nil
 }
 
 // ListEntriesByChannel 回傳頻道的所有條目,依開始時間排序。

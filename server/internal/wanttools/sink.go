@@ -75,16 +75,17 @@ func ClearContext() { curMsgID, curChnID = "", "" }
 // emit 由工具呼叫,同步把條目寫入 store(entry 為主體,獨立寫入)。
 // 成功後記下 entry ID,供呼叫端在來源 message 寫入後建立關聯。
 // 未注入 sink(例如測試)時不持久化,僅計數。
-func emit(e RecordedEntry) error {
+// emit 同步寫入 entry,回傳新 entry 的 ID(供呼叫端如 record_entry 列候選 trip)。
+func emit(e RecordedEntry) (string, error) {
 	if sink == nil {
 		emitCount++ // 測試情境:仍計數,讓「是否記錄」判斷可運作。
-		return nil
+		return "", nil
 	}
 	id, err := sink(curChnID, e)
 	if err != nil {
-		return err
+		return "", err
 	}
 	emittedIDs = append(emittedIDs, id)
 	emitCount++
-	return nil
+	return id, nil
 }

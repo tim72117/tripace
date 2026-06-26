@@ -18,10 +18,10 @@ func TestEmitWritesSynchronously(t *testing.T) {
 	SetContext("msg_1", "ch_1")
 	defer ClearContext()
 
-	if err := emit(RecordedEntry{Item: "開會"}); err != nil {
+	if _, err := emit(RecordedEntry{Item: "開會"}); err != nil {
 		t.Fatalf("emit: %v", err)
 	}
-	if err := emit(RecordedEntry{Item: "交報告"}); err != nil {
+	if _, err := emit(RecordedEntry{Item: "交報告"}); err != nil {
 		t.Fatalf("emit: %v", err)
 	}
 
@@ -49,7 +49,7 @@ func TestEmitNoSinkStillCounts(t *testing.T) {
 	SetContext("msg_x", "ch_x")
 	defer ClearContext()
 
-	if err := emit(RecordedEntry{Item: "x"}); err != nil {
+	if _, err := emit(RecordedEntry{Item: "x"}); err != nil {
 		t.Fatalf("無 sink 時 emit 不應報錯: %v", err)
 	}
 	if EmitCount() != 1 {
@@ -68,7 +68,7 @@ func TestRecordLockResets(t *testing.T) {
 
 	RecordLock()
 	SetContext("msg_a", "ch_a")
-	_ = emit(RecordedEntry{Item: "殘留"})
+	_, _ = emit(RecordedEntry{Item: "殘留"})
 	ClearContext()
 	RecordUnlock()
 

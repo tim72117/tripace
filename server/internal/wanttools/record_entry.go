@@ -4,8 +4,8 @@
 package wanttools
 
 import (
-	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"want/types"
@@ -63,8 +63,71 @@ type RecordEntryTool struct {
 	types.BaseToolConfig
 }
 
-func (t *RecordEntryTool) Call(args types.ToolArguments, ctx types.ToolContext) (types.ToolCallResult, error) {
-	return t.Execute(context.Background(), args, ctx)
+// Call 執行工具:回傳 []ResultContentBlock(want 新規格);
+// 結果資料(原 ToolUseResult)改由 ctx.EmitToolResult 主動發送。
+func (t *RecordEntryTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]types.ResultContentBlock, error) {
+	item := args.GetString("item")
+	if item == "" {
+		return nil, fmt.Errorf("item 不可為空")
+	}
+
+	// 事件時間:LLM 給「英文日期語詞」+「24h 時刻」。
+	// when 只把日期語詞確定性換算成絕對日期(避免 LLM 算錯),時刻直接用 LLM 給的數字。
+	now := time.Now()
+	start := combineDateTime(args.GetString("start"), args.GetString("startTime"), now)
+	end := combineDateTime(args.GetString("end"), args.GetString("endTime"), now)
+	// 全日 = 有日期但沒時刻(start 只有 10 字 'YYYY-MM-DD')。
+	allDay := len(start) == 10
+
+	// 交給 sink 持久化(帶上當前記錄 context 的 channelID),取得新 entry ID。
+	// tripID 一律留 nil(不自動歸組):歸組改由 LLM 判斷後呼叫 add_to_trip。
+	entryID, err := emit(RecordedEntry{Item: item, Start: start, End: end, AllDay: allDay})
+	if err != nil {
+		return nil, fmt.Errorf("寫入條目失敗: %w", err)
+	}
+
+	resultMsg := fmt.Sprintf("已記錄(entryID=%s):%s %s", entryID, describeTime(start, end, allDay), item)
+
+	// 查「時間區間符合」的候選 trip,列給 LLM 判斷是否歸入(後端不自動歸組)。
+	suffix := tripCandidatesHint(entryID, start, end)
+	if suffix != "" {
+		resultMsg += "\n" + suffix
+	}
+
+	ctx.EmitToolResult(map[string]interface{}{
+		"message": resultMsg,
+		"entryID": entryID,
+		"start":   start,
+		"end":     end,
+		"allDay":  allDay,
+		"item":    item,
+	})
+	return []types.ResultContentBlock{types.TextBlock(resultMsg)}, nil
+}
+
+// tripCandidatesHint 查時間重疊的候選 trip,組成給 LLM 看的提示文字。
+// 有候選時提示 LLM:可呼叫 add_to_trip 把這個 entry 歸入某個 trip(或新建)。
+// 無候選 / store 未初始化 / 無時間,回空字串。
+func tripCandidatesHint(entryID, start, end string) string {
+	if entryStore == nil || start == "" {
+		return ""
+	}
+	trips, err := entryStore.FindOverlappingTrips(CurrentChannel(), start, end)
+	if err != nil || len(trips) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("這個條目時間上可能屬於以下行程,若屬於其中之一,請呼叫 add_to_trip(entryID='")
+	sb.WriteString(entryID)
+	sb.WriteString("', tripID=...)歸入;若都不相關,可不歸入或新建:\n")
+	for _, tr := range trips {
+		rng := tr.Start
+		if tr.End != "" {
+			rng += " ~ " + tr.End
+		}
+		sb.WriteString("・tripID=" + tr.ID + " 「" + tr.Title + "」(" + rng + ")\n")
+	}
+	return strings.TrimRight(sb.String(), "\n")
 }
 
 func (t *RecordEntryTool) RenderToolUse(args types.ToolArguments) string {
@@ -80,38 +143,6 @@ func (t *RecordEntryTool) RenderToolResult(data map[string]interface{}) string {
 		return msg
 	}
 	return "已記錄條目"
-}
-
-func (t *RecordEntryTool) Execute(_ context.Context, args types.ToolArguments, _ types.ToolContext) (types.ToolCallResult, error) {
-	item := args.GetString("item")
-	if item == "" {
-		return types.ToolCallResult{}, fmt.Errorf("item 不可為空")
-	}
-
-	// 事件時間:LLM 給「英文日期語詞」+「24h 時刻」。
-	// when 只把日期語詞確定性換算成絕對日期(避免 LLM 算錯),時刻直接用 LLM 給的數字。
-	now := time.Now()
-	start := combineDateTime(args.GetString("start"), args.GetString("startTime"), now)
-	end := combineDateTime(args.GetString("end"), args.GetString("endTime"), now)
-	// 全日 = 有日期但沒時刻(start 只有 10 字 'YYYY-MM-DD')。
-	allDay := len(start) == 10
-
-	// 交給 sink 持久化(帶上當前記錄 context 的 messageID / channelID)。
-	if err := emit(RecordedEntry{Item: item, Start: start, End: end, AllDay: allDay}); err != nil {
-		return types.ToolCallResult{}, fmt.Errorf("寫入條目失敗: %w", err)
-	}
-
-	resultMsg := fmt.Sprintf("已記錄:%s %s", describeTime(start, end, allDay), item)
-	return types.ToolCallResult{
-		Content: []types.ResultContentBlock{types.TextBlock(resultMsg)},
-		ToolUseResult: map[string]interface{}{
-			"message": resultMsg,
-			"start":   start,
-			"end":     end,
-			"allDay":  allDay,
-			"item":    item,
-		},
-	}, nil
 }
 
 // describeTime 把時間描述成人類可讀字串。

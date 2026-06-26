@@ -37,18 +37,18 @@ func NewMock(st *store.Store) *MockAnalyzer {
 //   - 看牙醫(範圍外 → 自成一個 Trip)
 //   - 買牛奶(無時間 → 不歸組)
 type scenario struct {
-	item       string
-	startDay   int    // 距今天數;-1 表示無時間
-	endDay     int    // 距今天數;<0 表示無 end(單點)
-	clock      string // 'HH:MM';空表全日
+	item     string
+	startDay int    // 距今天數;-1 表示無時間
+	endDay   int    // 距今天數;<0 表示無 end(單點)
+	clock    string // 'HH:MM';空表全日
 }
 
 var mockScenarios = []scenario{
-	{item: "東京住宿(新宿飯店)", startDay: 7, endDay: 10, clock: ""},      // 區間:7~10 天後
-	{item: "東京來回機票", startDay: 7, endDay: -1, clock: "09:30"},        // 落在住宿首日
-	{item: "與客戶開會討論合約", startDay: 8, endDay: -1, clock: "14:00"},  // 落在住宿範圍內
-	{item: "看牙醫", startDay: 30, endDay: -1, clock: "10:00"},            // 範圍外 → 自成 Trip
-	{item: "買牛奶", startDay: -1, endDay: -1, clock: ""},                 // 無時間 → 不歸組
+	{item: "東京住宿(新宿飯店)", startDay: 7, endDay: 10, clock: ""},     // 區間:7~10 天後
+	{item: "東京來回機票", startDay: 7, endDay: -1, clock: "09:30"},    // 落在住宿首日
+	{item: "與客戶開會討論合約", startDay: 8, endDay: -1, clock: "14:00"}, // 落在住宿範圍內
+	{item: "看牙醫", startDay: 30, endDay: -1, clock: "10:00"},      // 範圍外 → 自成 Trip
+	{item: "買牛奶", startDay: -1, endDay: -1, clock: ""},           // 無時間 → 不歸組
 }
 
 func newEntryID() string {
@@ -69,8 +69,13 @@ func fmtDate(day int, clock string) string {
 	return d.Format("2006-01-02") + " " + clock
 }
 
-// AssistForSession 模擬 owner 記事:取下一筆預設情境寫成 entry。
-// 不解析 text(僅作觸發);走真實 FindOrCreateTrip + InsertEntry。
+// AssistForSession 模擬 owner 記事:取下一筆預設情境寫成 entry。不解析 text(僅作觸發)。
+//
+// 走與 want 真實 LLM 一致的新流程(不再用 FindOrCreateTrip 自動歸組):
+//  1. 寫 entry,tripID 留 nil(等同 record_entry)。
+//  2. 查時間相符的候選 trip(等同 record_entry 列候選)。
+//  3. 模擬「LLM 的決定」:有候選就歸入第一個;無候選但有時間則新建 trip。
+//     (等同 LLM 判斷後呼叫 add_to_trip。mock 的規則是「有候選就歸入」。)
 func (m *MockAnalyzer) AssistForSession(_, channelID, _, _ string, _ func(entryIDs []string) error) AssistResult {
 	m.mu.Lock()
 	sc := mockScenarios[m.next%len(mockScenarios)]
@@ -84,11 +89,7 @@ func (m *MockAnalyzer) AssistForSession(_, channelID, _, _ string, _ func(entryI
 	}
 	allDay := start != "" && len(start) == 10
 
-	// 與 BindSink 閉包同樣的歸組+落庫路徑。
-	tripID, err := m.store.FindOrCreateTrip(channelID, start, end, sc.item)
-	if err != nil {
-		tripID = nil
-	}
+	// 1. 寫 entry(tripID 留 nil,不自動歸組)。
 	id := newEntryID()
 	if err := m.store.InsertEntry(model.Entry{
 		ID:        id,
@@ -97,10 +98,25 @@ func (m *MockAnalyzer) AssistForSession(_, channelID, _, _ string, _ func(entryI
 		Start:     start,
 		End:       end,
 		AllDay:    allDay,
-		TripID:    tripID,
 		CreatedAt: time.Now().UTC(),
 	}); err != nil {
 		return AssistResult{Kind: "error", Text: "mock 寫入失敗: " + err.Error()}
+	}
+
+	// 2~3. 有時間才考慮歸組:查候選,模擬 LLM 決定(有候選歸入第一個,否則新建)。
+	if start != "" {
+		candidates, err := m.store.FindOverlappingTrips(channelID, start, end)
+		if err == nil {
+			var tripID string
+			if len(candidates) > 0 {
+				tripID = candidates[0].ID // 模擬 LLM 判斷「屬於這個行程」
+			} else {
+				tripID, _ = m.store.CreateTrip(channelID, sc.item, start, end) // 模擬 LLM 新建
+			}
+			if tripID != "" {
+				_ = m.store.SetEntryTrip(id, &tripID)
+			}
+		}
 	}
 
 	return AssistResult{

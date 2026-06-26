@@ -89,21 +89,15 @@ func main() {
 		// 獨立寫入),回傳新 entry ID。
 		wanttools.BindSink(func(channelID string, e wanttools.RecordedEntry) (string, error) {
 			id := "ent_" + randHex()
-			// 依時間自動歸組:有跨度的區間事件框出行程,落在範圍內的單點事件歸入同一 Trip。
-			// 歸組失敗不阻斷記事(tripID 留 nil),確保條目仍寫入。
-			tripID, err := st.FindOrCreateTrip(channelID, e.Start, e.End, e.Item)
-			if err != nil {
-				log.Printf("FindOrCreateTrip 失敗(條目仍記錄): %v", err)
-				tripID = nil
-			}
-			err = st.InsertEntry(model.Entry{
+			// 寫入時不自動歸組(TripID 留 nil):record_entry 會列出時間相符的候選行程,
+			// 由 LLM 判斷後呼叫 add_to_trip 工具歸入(或新建)。
+			err := st.InsertEntry(model.Entry{
 				ID:        id,
 				ChannelID: channelID,
 				Item:      e.Item,
 				Start:     e.Start,
 				End:       e.End,
 				AllDay:    e.AllDay,
-				TripID:    tripID,
 				CreatedAt: nowUTC(),
 			})
 			return id, err

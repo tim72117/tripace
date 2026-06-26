@@ -26,6 +26,20 @@ func toTrip(r tripRow) model.Trip {
 	}
 }
 
+// CreateTrip 新建一筆行程並回傳其 ID(內部生 ID,供 add_to_trip 工具新建用)。
+func (s *Store) CreateTrip(channelID, title, start, end string) (string, error) {
+	id := newTripID()
+	err := s.InsertTrip(model.Trip{
+		ID:        id,
+		ChannelID: channelID,
+		Title:     title,
+		Start:     start,
+		End:       end,
+		CreatedAt: now(),
+	})
+	return id, err
+}
+
 // InsertTrip 寫入一筆行程。
 func (s *Store) InsertTrip(t model.Trip) error {
 	r := tripRow{
@@ -144,4 +158,47 @@ func (s *Store) FindOrCreateTrip(channelID, entryStart, entryEnd, item string) (
 		return nil, err
 	}
 	return tripID, nil
+}
+
+// DeleteChannelEntriesAndTrips 清空某頻道的所有 entries 與 trips(不動頻道/使用者本身)。
+// 開發/測試重置用。用交易確保兩者一起清。
+func (s *Store) DeleteChannelEntriesAndTrips(channelID string) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("channel_id = ?", channelID).Delete(&entryRow{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("channel_id = ?", channelID).Delete(&tripRow{}).Error
+	})
+}
+
+// FindOverlappingTrips 回傳頻道中時間區間與 [start, end] 重疊的候選 trip。
+// 供 record_entry 工具列出候選給 LLM 判斷(不寫入、不歸組)。
+// 重疊條件與 FindOrCreateTrip 一致:trip.Start <= entryEnd 且 trip.End >= entryStart
+// (字串字典序即時間序)。start 為空(無時間)時回空清單。
+func (s *Store) FindOverlappingTrips(channelID, start, end string) ([]model.Trip, error) {
+	if start == "" {
+		return []model.Trip{}, nil
+	}
+	eEnd := end
+	if eEnd == "" {
+		eEnd = start
+	}
+
+	var rows []tripRow
+	if err := s.db.Where("channel_id = ?", channelID).
+		Order("start ASC, created_at ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	out := make([]model.Trip, 0)
+	for i := range rows {
+		tEnd := rows[i].End
+		if tEnd == "" {
+			tEnd = rows[i].Start
+		}
+		if rows[i].Start != "" && rows[i].Start <= eEnd && tEnd >= start {
+			out = append(out, toTrip(rows[i]))
+		}
+	}
+	return out, nil
 }

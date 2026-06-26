@@ -726,6 +726,13 @@ body {
   font-family: var(--mono);
   font-size: 11px;
 }
+.entries-head button.danger {
+  background: #4a1f1f;
+  color: #ff9e9e;
+}
+.entries-head button.danger:hover {
+  background: #5f2626;
+}
 .entry-row {
   display: flex;
   flex-direction: column;
