@@ -59,6 +59,7 @@ export interface Entry {
   id: string
   channelID: string
   item: string // 事項描述
+  location?: string // 地點;可空
   start: string // 'YYYY-MM-DD HH:MM' 或全日 'YYYY-MM-DD';可空
   end?: string // 範圍結束;可空
   allDay: boolean

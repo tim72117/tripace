@@ -386,6 +386,8 @@ function ChatScreen({
   // 成員管理在頻道內開啟(對齊 iOS App 的聊天頁右上角入口)。
   const [showMembers, setShowMembers] = useState(false)
   const [showTimeline, setShowTimeline] = useState(false)
+  // 點選項目時顯示詳細資訊。
+  const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
@@ -544,10 +546,20 @@ function ChatScreen({
     )
   }
 
-  // 時間軸:依時間排列頻道條目(對齊 iOS App:聊天頁 → 時鐘)。
+  // 時間軸:依行程(粗線) + 條目(細線)排列。
   if (showTimeline) {
     return (
-      <TimelineScreen entries={entries} onBack={() => setShowTimeline(false)} />
+      <TimelineScreen trips={trips} entries={entries} onBack={() => setShowTimeline(false)} />
+    )
+  }
+
+  // 點選項目時顯示詳細資訊。
+  if (selectedEntry) {
+    return (
+      <EntryDetailModal
+        entry={selectedEntry}
+        onBack={() => setSelectedEntry(null)}
+      />
     )
   }
 
@@ -610,7 +622,9 @@ function ChatScreen({
           <div className="entry-list">
             <div className="entry-list-title">事件 / 條目</div>
             {entries.map((e) => (
-              <EntryCard key={e.id} entry={e} />
+              <div key={e.id} onClick={() => setSelectedEntry(e)} style={{ cursor: 'pointer' }}>
+                <EntryCard entry={e} />
+              </div>
             ))}
           </div>
         )}
@@ -780,17 +794,28 @@ function groupByDay(entries: Entry[]): { day: string; items: Entry[] }[] {
   return groups
 }
 
-// TimelineScreen 把頻道條目依「日期」分組排成垂直時間軸:每個日期一個軸點,
-// 底下列出當天所有事項。對齊 iOS TimelineView(左側軸線串圓點)。
-// entries 沿用後端/上層的排序(已依 start 排)。
+// TimelineScreen 把行程(粗線主軸) + 條目(細線分支)排成垂直時間軸。
+// trips 依時間排列,各 trip 下掛屬於它的 entries。
 function TimelineScreen({
+  trips,
   entries,
   onBack,
 }: {
+  trips: Trip[]
   entries: Entry[]
   onBack: () => void
 }) {
-  const groups = groupByDay(entries)
+  // 建立 tripID → entries 的對應(快速查詢某行程的條目)。
+  const entriesByTrip = new Map<string | null, Entry[]>()
+  for (const e of entries) {
+    const tripID = e.tripID ?? null
+    if (!entriesByTrip.has(tripID)) entriesByTrip.set(tripID, [])
+    entriesByTrip.get(tripID)!.push(e)
+  }
+
+  // 有行程則按行程顯示;否則按日期分組(兼容舊數據)。
+  const hasTrips = trips.length > 0
+
   return (
     <>
       <div className="navbar">
@@ -803,17 +828,38 @@ function TimelineScreen({
         </span>
       </div>
       <div className="screen-body">
-        {groups.length === 0 ? (
+        {entries.length === 0 ? (
           <div className="empty">還沒有條目。在頻道裡記事後,會在這裡依時間排列。</div>
-        ) : (
+        ) : hasTrips ? (
           <div className="timeline">
-            {groups.map((g, i) => (
+            {/* 粗線主軸: 行程 */}
+            {trips.map((trip, i) => {
+              const tripEntries = entriesByTrip.get(trip.id) ?? []
+              return (
+                <TimelineTripRow
+                  key={trip.id}
+                  trip={trip}
+                  entries={tripEntries}
+                  isFirst={i === 0}
+                  isLast={i === trips.length - 1}
+                />
+              )
+            })}
+            {/* 沒歸到行程的條目(tripID=null) */}
+            {entriesByTrip.has(null) && (
+              <TimelineUntrippedRow entries={entriesByTrip.get(null)!} isLast={true} />
+            )}
+          </div>
+        ) : (
+          // 兼容無 Trip 的舊模式:按日期分組
+          <div className="timeline">
+            {groupByDay(entries).map((g, i) => (
               <TimelineRow
                 key={g.day}
                 day={g.day}
                 items={g.items}
                 isFirst={i === 0}
-                isLast={i === groups.length - 1}
+                isLast={i === groupByDay(entries).length - 1}
               />
             ))}
           </div>
@@ -890,6 +936,119 @@ function TripEntriesScreen({
         )}
       </div>
     </>
+  )
+}
+
+// TimelineTripRow 是粗線行程軸:左側粗線跨 trip 時間段,右側行程名稱 + 其條目細線。
+function TimelineTripRow({
+  trip,
+  entries,
+  isFirst,
+  isLast,
+}: {
+  trip: Trip
+  entries: Entry[]
+  isFirst: boolean
+  isLast: boolean
+}) {
+  const range = trip.start ? `${trip.start}${trip.end ? ` ~ ${trip.end}` : ''}` : ''
+  return (
+    <div className="tl-trip-row">
+      {/* 左側粗線軸 */}
+      <div className="tl-rail">
+        <div className={`tl-line tl-line-thick tl-line-top ${isFirst ? 'hidden' : ''}`} />
+        <div className="tl-dot tl-dot-trip">🧳</div>
+        <div className={`tl-line tl-line-thick tl-line-bot ${isLast && entries.length === 0 ? 'hidden' : ''}`} />
+      </div>
+      <div className="tl-group">
+        {/* 行程標題與時間範圍 */}
+        <div className="tl-trip-header">
+          <div className="tl-trip-title">{trip.title}</div>
+          {range && <div className="tl-trip-range">{range}</div>}
+        </div>
+        {/* 行程內的條目(細線分支) */}
+        {entries.map((e, ei) => (
+          <TimelineTripEntryRow
+            key={e.id}
+            entry={e}
+            isLastEntry={ei === entries.length - 1}
+            isLastTrip={isLast}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// TimelineTripEntryRow 是細線條目:從粗線分出細線到具體條目。
+function TimelineTripEntryRow({
+  entry,
+  isLastEntry,
+  isLastTrip,
+}: {
+  entry: Entry
+  isLastEntry: boolean
+  isLastTrip: boolean
+}) {
+  const when = entry.start
+    ? entry.allDay
+      ? entry.start.slice(0, 10)
+      : entry.start
+    : '未指定時間'
+  return (
+    <div className="tl-entry-row">
+      {/* 細線:從粗軸分出 */}
+      <div className="tl-rail">
+        <div className={`tl-line tl-line-fine tl-line-top ${isLastEntry && isLastTrip ? 'hidden' : ''}`} />
+        <div className="tl-dot tl-dot-entry" />
+        <div className={`tl-line tl-line-fine tl-line-bot hidden`} />
+      </div>
+      <div className="tl-item-card">
+        <div className="tl-item">{entry.item}</div>
+        {entry.location && <div className="entry-loc">📍 {entry.location}</div>}
+        <div className="tl-time-label">{when}</div>
+        {(entry.category || (entry.tags ?? []).length > 0) && (
+          <div className="meta">
+            {entry.category && <span className="cat">{entry.category}</span>}
+            {(entry.tags ?? []).map((t) => (
+              <span key={t} className="tag">
+                #{t}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// TimelineUntrippedRow 顯示未歸屬於任何 Trip 的條目。
+function TimelineUntrippedRow({
+  entries,
+  isLast,
+}: {
+  entries: Entry[]
+  isLast: boolean
+}) {
+  return (
+    <div className="tl-untripped-row">
+      {entries.map((e) => (
+        <div key={e.id} className="tl-card">
+          <div className="tl-item">{e.item}</div>
+          {e.location && <div className="entry-loc">📍 {e.location}</div>}
+          {(e.category || (e.tags ?? []).length > 0) && (
+            <div className="meta">
+              {e.category && <span className="cat">{e.category}</span>}
+              {(e.tags ?? []).map((t) => (
+                <span key={t} className="tag">
+                  #{t}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -1299,6 +1458,113 @@ function LoginForm({
       >
         開發測試:可用 seed 帳號 alice@channel.dev / password
         (另有 bob、carol、dave)。或註冊新帳號。
+      </div>
+    </>
+  )
+}
+
+// 項目詳細資訊彈窗。
+function EntryDetailModal({
+  entry,
+  onBack,
+}: {
+  entry: Entry
+  onBack: () => void
+}) {
+  const when = entry.start
+    ? entry.allDay
+      ? entry.start.slice(0, 10)
+      : entry.start
+    : '未指定時間'
+
+  return (
+    <>
+      <div className="navbar">
+        <button className="btn" onClick={onBack}>
+          ‹ 返回
+        </button>
+        <span className="title">項目詳情</span>
+        <span className="btn" style={{ visibility: 'hidden' }} />
+      </div>
+      <div className="screen-body" style={{ padding: '16px' }}>
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ fontSize: 12, color: 'var(--ios-gray)', marginBottom: 4 }}>
+            名稱
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>
+            {entry.item}
+          </div>
+
+          {entry.location && (
+            <>
+              <div style={{ fontSize: 12, color: 'var(--ios-gray)', marginBottom: 4 }}>
+                地點
+              </div>
+              <div style={{ fontSize: 16, marginBottom: 16 }}>
+                📍 {entry.location}
+              </div>
+            </>
+          )}
+
+          <div style={{ fontSize: 12, color: 'var(--ios-gray)', marginBottom: 4 }}>
+            時間
+          </div>
+          <div style={{ fontSize: 16, marginBottom: 16 }}>
+            🕐 {when}
+            {entry.end ? ` ~ ${entry.end}` : ''}
+          </div>
+
+          {entry.summary && (
+            <>
+              <div style={{ fontSize: 12, color: 'var(--ios-gray)', marginBottom: 4 }}>
+                摘要
+              </div>
+              <div style={{ fontSize: 14, color: '#666', marginBottom: 16 }}>
+                {entry.summary}
+              </div>
+            </>
+          )}
+
+          {(entry.category || (entry.tags && entry.tags.length > 0)) && (
+            <>
+              <div style={{ fontSize: 12, color: 'var(--ios-gray)', marginBottom: 4 }}>
+                標籤
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {entry.category && (
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      padding: '4px 10px',
+                      background: '#e8f0ff',
+                      color: '#007aff',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 500,
+                    }}
+                  >
+                    {entry.category}
+                  </span>
+                )}
+                {entry.tags?.map((t) => (
+                  <span
+                    key={t}
+                    style={{
+                      display: 'inline-block',
+                      padding: '4px 10px',
+                      background: '#f2f2f7',
+                      color: '#666',
+                      borderRadius: 6,
+                      fontSize: 12,
+                    }}
+                  >
+                    #{t}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </>
   )

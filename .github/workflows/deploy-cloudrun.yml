@@ -1,0 +1,42 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  # 請修改以下值為您的 GCP 資訊
+  GCP_PROJECT_ID: "shuttle-045094509"
+  CLOUD_RUN_SERVICE: "channel-server"
+  CLOUD_RUN_REGION: "asia-east1"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.CLOUD_RUN_SERVICE }}
+          region: ${{ env.CLOUD_RUN_REGION }}
+          source: .
+
+      - name: Show Cloud Run URL
+        run: gcloud run services describe ${{ env.CLOUD_RUN_SERVICE }} --region ${{ env.CLOUD_RUN_REGION }} --format 'value(status.url)'
