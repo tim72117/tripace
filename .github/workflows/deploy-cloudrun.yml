@@ -7,7 +7,7 @@ on:
 
 env:
   # 請修改以下值為您的 GCP 資訊
-  GCP_PROJECT_ID: "your-project-id"
+  GCP_PROJECT_ID: "shuttle-045094509"
   CLOUD_RUN_SERVICE: "channel-server"
   CLOUD_RUN_REGION: "asia-east1"
 
