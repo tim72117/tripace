@@ -343,6 +343,7 @@ function ChatScreen({
   const bodyRef = useRef<HTMLDivElement>(null)
   const navbarRef = useRef<HTMLDivElement>(null)
   const lastScrollY = useRef(0)
+  const todayRef = useRef<HTMLDivElement>(null as unknown as HTMLDivElement)
 
   useEffect(() => {
     const el = bodyRef.current
@@ -397,7 +398,13 @@ function ChatScreen({
   }, [cfg.baseURL, cfg.token, channel.id])
 
   useEffect(() => {
-    bodyRef.current?.scrollTo(0, bodyRef.current.scrollHeight)
+    if (entries.length > 0 && todayRef.current && bodyRef.current) {
+      const el = todayRef.current
+      const body = bodyRef.current
+      body.scrollTo({ top: el.offsetTop - 60, behavior: 'instant' })
+    } else {
+      bodyRef.current?.scrollTo(0, bodyRef.current.scrollHeight)
+    }
   }, [messages, entries])
 
   // 本地訊息(不寫入後端,純前端顯示用):查詢的提問/回答泡泡。
@@ -565,7 +572,7 @@ function ChatScreen({
               {isOwner ? '在下方輸入記事，會依時間排列在這裡。' : '在下方查詢頻道內容。'}
             </div>
           ) : entries.length > 0 ? (
-            <MultiTrackTimeline entries={entries} />
+            <MultiTrackTimeline entries={entries} todayRef={todayRef} />
           ) : null}
         </div>
         <div className="composer">
@@ -825,8 +832,10 @@ function buildTLRows(entries: Entry[]): TLRow[] {
 
 // ---- 純渲染元件 ----
 
-function MultiTrackTimeline({ entries }: { entries: Entry[] }) {
+function MultiTrackTimeline({ entries, todayRef }: { entries: Entry[], todayRef?: React.RefObject<HTMLDivElement> }) {
   const rows = buildTLRows(entries)
+  const today = new Date().toISOString().slice(0, 10)
+  let todayAttached = false
   return (
     <div className="tl-grid">
       {rows.map(row => {
@@ -852,8 +861,11 @@ function MultiTrackTimeline({ entries }: { entries: Entry[] }) {
         )
         // entry row
         const { dot, lineTop, lineBot, card, dayLabel, isBlank } = row
+        const rowDate = row.day ?? ''
+        const isTodayAnchor = !todayAttached && todayRef && rowDate >= today && !isBlank
+        if (isTodayAnchor) todayAttached = true
         return (
-          <div key={row.key} className={`tl-grid-row${isBlank && !row.isPad ? ' blank' : ''}`}>
+          <div key={row.key} ref={isTodayAnchor ? todayRef : undefined} className={`tl-grid-row${isBlank && !row.isPad ? ' blank' : ''}`}>
             {/* 日欄 */}
             <div className="tl-col-label">
               {dayLabel && <span className="tl-date-day">{dayLabel}</span>}
