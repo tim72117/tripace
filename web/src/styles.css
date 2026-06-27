@@ -10,6 +10,7 @@
   --ios-green: #34c759;
   --ios-red: #ff3b30;
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --tl-trip-color: #ff9500; /* 行程主軸色(橘) */
 }
 
 * {
@@ -116,6 +117,11 @@ body {
   flex: 1 1 auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 0 8px;
+}
+.screen-body::-webkit-scrollbar {
+  display: none;
 }
 
 /* 底部 tab bar */
@@ -475,59 +481,295 @@ body {
 
 /* 時間軸:左側軸線串圓點 + 右側 entry 卡(對齊 iOS TimelineView) */
 .timeline {
-  padding: 8px 4px;
+  padding: 8px 12px;
 }
-.tl-row {
-  display: flex;
-  align-items: stretch;
-  gap: 12px;
-}
-.tl-rail {
-  position: relative;
-  width: 24px;
-  flex: 0 0 24px;
+/* 三欄 grid：[日期欄 36px] [軸線 24px] [卡片 auto] */
+.tl-grid {
   display: flex;
   flex-direction: column;
+}
+.tl-grid-row {
+  display: grid;
+  grid-template-columns: 36px 24px 1fr;
   align-items: center;
 }
-.tl-dot {
-  width: 12px;
-  height: 12px;
+/* 日期欄 */
+.tl-col-label {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 4px;
+  align-self: stretch;
+}
+/* 年 */
+.tl-year-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ios-gray);
+  font-family: var(--mono);
+  padding: 6px 4px 2px 0;
+}
+/* 月 */
+.tl-month-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ios-gray);
+  font-family: var(--mono);
+}
+/* 軸線欄 */
+.tl-col-axis {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+}
+/* 貫穿線：絕對定位，從欄頂到欄底 */
+.tl-vline {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  background: var(--ios-sep);
+  z-index: 0;
+}
+.tl-vline.top {
+  top: 0;
+  bottom: 50%;
+}
+.tl-vline.bot {
+  top: 50%;
+  bottom: 0;
+}
+.tl-vline.accent {
+  width: 3px;
+  background: var(--tl-trip-color);
+  opacity: 0.6;
+}
+/* 中間天列高 */
+.tl-grid-row.blank {
+  min-height: 20px;
+}
+/* 中間天的線在點的位置留出缺口 */
+.tl-grid-row.blank .tl-vline.top {
+  bottom: calc(50% + 6px);
+}
+.tl-grid-row.blank .tl-vline.bot {
+  top: calc(50% + 6px);
+}
+/* 中間天空心小點 */
+.tl-dot-blank {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--ios-blue);
-  margin-top: 6px;
+  border: 2px solid rgba(255, 149, 0, 0.5);
+  background: transparent;
+  position: relative;
+  z-index: 2;
   flex: 0 0 auto;
-  z-index: 1;
+}
+/* 卡片欄 */
+.tl-col-card {
+  padding: 4px 0 4px 8px;
+}
+.tl-date-year {
+  font-size: 9px;
+  color: var(--ios-gray);
+  font-family: var(--mono);
+  line-height: 1.2;
+}
+.tl-date-month {
+  font-size: 10px;
+  color: var(--ios-gray);
+  font-family: var(--mono);
+  line-height: 1.2;
+}
+.tl-date-day {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ios-blue);
+  font-family: var(--mono);
+  line-height: 1;
+}
+/* 上半線（整天頂部）／下半線（整天底部） */
+.tl-axis-line {
+  width: 2px;
+  background: var(--ios-sep);
+  align-self: center;
+}
+.tl-axis-line.top {
+  height: 8px;
+  flex: 0 0 8px;
+}
+.tl-axis-line.bot {
+  height: 8px;
+  flex: 0 0 8px;
+}
+.tl-axis-line.accent {
+  width: 3px;
+  background: var(--tl-trip-color);
+  opacity: 0.4;
+}
+/* 卡片欄 */
+.tl-card-col {
+  flex: 1 1 auto;
+  padding: 4px 0 4px 10px;
+}
+/* 主線點：橘色大點 */
+.tl-dot-main {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--tl-trip-color);
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+}
+/* 細項點：白底橘邊小點 */
+.tl-dot-sub {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--tl-trip-color);
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+}
+
+/* 中間天佔位點：小灰點 */
+.tl-dot-day {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ios-sep);
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
 }
 .tl-line {
   width: 2px;
   background: var(--ios-sep);
   align-self: center;
 }
+/* 頂層 trip 的粗線 */
+.tl-line-thick {
+  width: 3px;
+  background: var(--tl-trip-color);
+  align-self: center;
+  opacity: 0.4;
+}
+/* 細項的細線 */
+.tl-line-fine {
+  width: 1px;
+  background: var(--ios-gray);
+  align-self: center;
+  opacity: 0.3;
+}
 .tl-line-top {
-  height: 12px; /* 圓點上方那段(到 dot 的 margin-top) */
-  flex: 0 0 auto;
+  flex: 0 0 0px;
+  height: 0;
 }
 .tl-line-bot {
-  flex: 1 1 auto; /* 撐滿到下一節 */
+  flex: 1 1 auto;
 }
-.tl-line.hidden {
+.tl-line.hidden, .tl-line-thick.hidden, .tl-line-fine.hidden {
   background: transparent;
 }
-/* 一個節點的右側:日期標題 + 當天事項卡群 */
+/* 一個節點的右側:當天事項卡群 */
 .tl-group {
   flex: 1 1 auto;
   margin-bottom: 18px;
+  padding-left: 10px;
 }
-.tl-day {
-  font-size: 13px;
-  font-weight: 700;
+/* 主線結束標記卡：橘色虛線框，輕量顯示 */
+.tl-end-card {
+  border: 1.5px dashed rgba(255, 149, 0, 0.5);
+  border-radius: 8px;
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+}
+.tl-end-label {
+  font-size: 12px;
+  color: var(--tl-trip-color);
+  opacity: 0.8;
+}
+/* 圖卡橫向排列：內容 + 右側按鈕 */
+.tl-card-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tl-card-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* 開始導航按鈕：白底藍字，hover 反轉 */
+.tl-nav-btn {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #fff;
   color: var(--ios-blue);
-  font-family: var(--mono);
-  /* 對齊左側圓點(dot margin-top:6px,線高度),讓日期與軸點同一水平 */
-  line-height: 12px;
-  padding-top: 1px;
-  margin-bottom: 8px;
+  border: 1.5px solid var(--ios-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+.tl-nav-btn:hover {
+  background: var(--ios-blue);
+  color: #fff;
+}
+
+/* 主線 entry 卡：橘色左邊框 */
+.tl-main-card {
+  background: #fff8f0;
+  border: 1px solid rgba(255, 149, 0, 0.3);
+  border-left: 3px solid var(--tl-trip-color);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.tl-main-title {
+  font-weight: 600;
+  color: #1c1c1e;
+  font-size: 14px;
+}
+.tl-card-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease;
+  overflow: hidden;
+}
+.tl-card-expand.open {
+  grid-template-rows: 1fr;
+}
+.tl-card-expand-inner {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+}
+.tl-expand-row {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: #3a3a3c;
+}
+.tl-expand-label {
+  color: var(--ios-gray);
+  flex: 0 0 32px;
+}
+.tl-expand-summary {
+  font-size: 12px;
+  color: #3a3a3c;
+  line-height: 1.6;
+  margin-bottom: 4px;
 }
 /* 當天的每一筆事項小卡 */
 .tl-card {
@@ -555,6 +797,20 @@ body {
   color: var(--ios-blue);
   font-family: var(--mono);
   flex: 0 0 auto;
+}
+
+/* 區間 entry(會停留一段時間的子行程,如住宿):左側色條標示「持續性」 */
+.tl-card-span {
+  border-left: 3px solid var(--ios-blue);
+}
+/* 事項旁的結束範圍(~ 結束時刻/日期) */
+.tl-span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ios-blue);
+  font-family: var(--mono);
+  flex: 0 0 auto;
+  opacity: 0.75;
 }
 
 /* 輸入列 */
@@ -646,7 +902,7 @@ body {
 /* ---- Debug panel ---- */
 .debug {
   flex: 1 1 auto;
-  min-width: 380px;
+  min-width: 0;
   max-width: 620px;
   background: #0d0d0f;
   color: #d4d4d8;

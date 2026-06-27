@@ -3,6 +3,7 @@ package store
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"time"
 
 	"github.com/channel/server/internal/model"
 	"gorm.io/gorm"
@@ -13,6 +14,48 @@ func newTripID() string {
 	b := make([]byte, 4)
 	_, _ = rand.Read(b)
 	return "trip_" + hex.EncodeToString(b)
+}
+
+// 時間字串以「兩種格式 + 純日期視為當日邊界」正規化成 time.Time 後比較,
+// 避免裸字串比較的邊界 bug:例如 trip 範圍 '2026-06-25'(純日期)與事件
+// '2026-06-25 16:00' 在字串上 "2026-06-25" < "2026-06-25 16:00",會誤判不重疊。
+// 正規化後純日期 start 取當天 00:00、end 取當天 23:59:59,帶時刻者取該時刻。
+
+// parseLower 解析時間字串為「下界」:純日期 → 當天 00:00;帶時刻 → 該時刻。
+func parseLower(s string) (time.Time, bool) {
+	if t, err := time.Parse("2006-01-02 15:04", s); err == nil {
+		return t, true
+	}
+	if t, err := time.Parse("2006-01-02", s); err == nil {
+		return t, true // 當天 00:00:00
+	}
+	return time.Time{}, false
+}
+
+// parseUpper 解析時間字串為「上界」:純日期 → 當天 23:59:59;帶時刻 → 該時刻。
+func parseUpper(s string) (time.Time, bool) {
+	if t, err := time.Parse("2006-01-02 15:04", s); err == nil {
+		return t, true
+	}
+	if t, err := time.Parse("2006-01-02", s); err == nil {
+		return t.Add(24*time.Hour - time.Second), true // 當天 23:59:59
+	}
+	return time.Time{}, false
+}
+
+// rangesOverlap 判斷兩個時間區間 [aStart,aEnd] 與 [bStart,bEnd] 是否重疊。
+// 各端點以日期/日期時間正規化(start 取下界、end 取上界)後比較;
+// 任一端解析失敗時退回原本的字串比較(保守相容)。
+func rangesOverlap(aStart, aEnd, bStart, bEnd string) bool {
+	aLo, ok1 := parseLower(aStart)
+	aHi, ok2 := parseUpper(aEnd)
+	bLo, ok3 := parseLower(bStart)
+	bHi, ok4 := parseUpper(bEnd)
+	if ok1 && ok2 && ok3 && ok4 {
+		return !aLo.After(bHi) && !bLo.After(aHi)
+	}
+	// 任一端解析失敗:退回原本的字串重疊比較(aStart <= bEnd && aEnd >= bStart)。
+	return aStart <= bEnd && aEnd >= bStart
 }
 
 func toTrip(r tripRow) model.Trip {
@@ -116,7 +159,7 @@ func (s *Store) FindOrCreateTrip(channelID, entryStart, entryEnd, item string) (
 			if tEnd == "" {
 				tEnd = trips[i].Start
 			}
-			if trips[i].Start != "" && trips[i].Start <= eEnd && tEnd >= entryStart {
+			if trips[i].Start != "" && rangesOverlap(trips[i].Start, tEnd, entryStart, eEnd) {
 				// 命中:歸入並擴張 trip 範圍(取 min(start) / max(end))。
 				newStart := trips[i].Start
 				if entryStart < newStart {
@@ -160,6 +203,17 @@ func (s *Store) FindOrCreateTrip(channelID, entryStart, entryEnd, item string) (
 	return tripID, nil
 }
 
+// DeleteTrip 刪除單一行程(不動底下的 entries,只解除 trip_id 關聯)。
+func (s *Store) DeleteTrip(tripID string) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&entryRow{}).Where("trip_id = ?", tripID).
+			Update("trip_id", nil).Error; err != nil {
+			return err
+		}
+		return tx.Where("id = ?", tripID).Delete(&tripRow{}).Error
+	})
+}
+
 // DeleteChannelEntriesAndTrips 清空某頻道的所有 entries 與 trips(不動頻道/使用者本身)。
 // 開發/測試重置用。用交易確保兩者一起清。
 func (s *Store) DeleteChannelEntriesAndTrips(channelID string) error {
@@ -196,7 +250,7 @@ func (s *Store) FindOverlappingTrips(channelID, start, end string) ([]model.Trip
 		if tEnd == "" {
 			tEnd = rows[i].Start
 		}
-		if rows[i].Start != "" && rows[i].Start <= eEnd && tEnd >= start {
+		if rows[i].Start != "" && rangesOverlap(rows[i].Start, tEnd, start, eEnd) {
 			out = append(out, toTrip(rows[i]))
 		}
 	}

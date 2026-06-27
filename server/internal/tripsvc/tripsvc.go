@@ -1,0 +1,155 @@
+// Package tripsvc 是 entry/trip 的「行程服務層」:把記錄條目、找候選行程、
+// 歸入行程、以及 trip CRUD 的邏輯集中於此,作為單一真實來源。
+//
+// 設計原則:LLM 工具(wanttools)與 CLI(cmd/seedtrip)都只薄薄呼叫本層,
+// 不各自重刻歸組邏輯。互動模式對齊 LLM:
+//
+//  1. Record(記錄一筆 entry)→ 回傳 entryID + 時間重疊的「候選行程」
+//  2. 呼叫端(LLM 或 Claude Code)依語意判斷該 entry 是否屬於某候選
+//  3. AddToTrip(entryID, tripID)→ 歸入(tripID 留空則新建)
+//
+// 刻意「不自動歸組」:歸或不歸由呼叫端決定,與 LLM 真實路徑一致。
+package tripsvc
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"time"
+
+	"github.com/channel/server/internal/model"
+	"github.com/channel/server/internal/store"
+)
+
+func nowUTC() time.Time { return time.Now().UTC() }
+
+// Service 持有 store,提供 entry/trip 的行程操作。
+type Service struct {
+	st *store.Store
+}
+
+// New 建立服務。
+func New(st *store.Store) *Service { return &Service{st: st} }
+
+// newEntryID 產生 entry ID(對齊既有 ent_ 風格)。
+func newEntryID() string {
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	return "ent_" + hex.EncodeToString(b)
+}
+
+// RecordInput 是記錄一筆條目的輸入。時間為已換算好的絕對字串
+// ('YYYY-MM-DD' 或 'YYYY-MM-DD HH:MM');日期語詞換算由呼叫端(工具/CLI)先做。
+type RecordInput struct {
+	ChannelID string
+	Item      string
+	Start     string // 可空(無時間 entry)
+	End       string // 可空
+	Location  string // 可空
+}
+
+// RecordResult 是記錄結果:新 entry 與時間重疊的候選行程(供呼叫端判斷歸入)。
+type RecordResult struct {
+	EntryID    string       `json:"entryID"`
+	AllDay     bool         `json:"allDay"`
+	Candidates []model.Trip `json:"candidates"` // 時間重疊的既有 trip;空代表無候選
+}
+
+// Record 寫入一筆 entry(tripID 留空,不自動歸組),回傳候選行程。
+// 全日 = 有日期但沒時刻(start 只有 10 字 'YYYY-MM-DD')。
+func (s *Service) Record(in RecordInput) (RecordResult, error) {
+	allDay := len(in.Start) == 10
+	id := newEntryID()
+	e := model.Entry{
+		ID:        id,
+		ChannelID: in.ChannelID,
+		Item:      in.Item,
+		Start:     in.Start,
+		End:       in.End,
+		AllDay:    allDay,
+		Location:  in.Location,
+		CreatedAt: nowUTC(),
+	}
+	if err := s.st.InsertEntry(e); err != nil {
+		return RecordResult{}, err
+	}
+
+	// 找時間重疊的候選 trip(不歸入,只回給呼叫端判斷)。無時間則無候選。
+	var cands []model.Trip
+	if in.Start != "" {
+		c, err := s.st.FindOverlappingTrips(in.ChannelID, in.Start, in.End)
+		if err != nil {
+			return RecordResult{}, err
+		}
+		cands = c
+	}
+	if cands == nil {
+		cands = []model.Trip{}
+	}
+	return RecordResult{EntryID: id, AllDay: allDay, Candidates: cands}, nil
+}
+
+// AddToTrip 把 entry 歸入指定 trip;tripID 留空則以該 entry 的時間/標題新建 trip。
+// title 留空時新建用 entry.Item。回傳最終的 tripID。
+func (s *Service) AddToTrip(entryID, tripID, title string) (string, string, error) {
+	e, err := s.st.GetEntry(entryID)
+	if err != nil {
+		return "", "", err
+	}
+	if tripID == "" {
+		t := title
+		if t == "" {
+			t = e.Item
+		}
+		newID, err := s.st.CreateTrip(e.ChannelID, t, e.Start, e.End)
+		if err != nil {
+			return "", "", err
+		}
+		tripID = newID
+	}
+	if err := s.st.SetEntryTrip(entryID, &tripID); err != nil {
+		return "", "", err
+	}
+	return tripID, e.ChannelID, nil
+}
+
+// ---- CRUD 轉發(讓呼叫端不必直接依賴 store) ----
+
+// ListTrips 回頻道的所有行程。
+func (s *Service) ListTrips(channelID string) ([]model.Trip, error) {
+	return s.st.ListTripsByChannel(channelID)
+}
+
+// ListTripEntries 回某行程底下的所有條目。
+func (s *Service) ListTripEntries(channelID, tripID string) ([]model.Entry, error) {
+	return s.st.ListEntriesByTrip(channelID, tripID)
+}
+
+// FindCandidates 查時間重疊的候選行程(供「先 record 後 add」之外的查詢用)。
+func (s *Service) FindCandidates(channelID, start, end string) ([]model.Trip, error) {
+	return s.st.FindOverlappingTrips(channelID, start, end)
+}
+
+// UpdateEntryInput 是更新條目的輸入，留空欄位不更新。
+type UpdateEntryInput struct {
+	ID       string
+	Item     string
+	Start    string
+	End      string
+	Location string
+	Summary  string
+}
+
+// UpdateEntry 更新一筆 entry 的可編輯欄位。
+func (s *Service) UpdateEntry(in UpdateEntryInput) error {
+	return s.st.UpdateEntry(in.ID, in.Item, in.Start, in.End, in.Location, in.Summary)
+}
+
+// DeleteTrip 刪除單一行程(解除底下 entries 的 tripID,不刪 entries 本身)。
+func (s *Service) DeleteTrip(tripID string) error {
+	return s.st.DeleteTrip(tripID)
+}
+
+// Reset 清空頻道的所有 entries 與 trips(開發/測試用)。
+func (s *Service) Reset(channelID string) error {
+	return s.st.DeleteChannelEntriesAndTrips(channelID)
+}

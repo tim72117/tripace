@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import ReactMarkdown from 'react-markdown'
-import type { ApiCall, ClientConfig, PresentedEntry } from './api'
+import type { ClientConfig, PresentedEntry } from './api'
 import * as api from './api'
-import { ApiError, onApiCall } from './api'
-import type { Channel, ChannelRole, Entry, Member, Message, Trip, User } from './types'
-import { DebugPanel } from './DebugPanel'
+import { ApiError } from './api'
+import type { Channel, ChannelRole, Entry, Member, Message, User } from './types'
 import { listMessages, saveMessage } from './deviceDB'
 
 // baseURL 是連線設定,跨分頁共用 → localStorage。
@@ -23,14 +22,12 @@ type Tab = 'channels' | 'settings'
 // pending:後端處理中的佔位泡泡,渲染海浪載入動畫(無文字),完成後就地替換。
 type ChatMessage = Message & { presented?: PresentedEntry[]; pending?: boolean }
 
-export function App() {
-  // ---- 連線設定(可在設定頁改,存 localStorage,跨分頁共用) ----
+export function useAppState() {
   const [baseURL, setBaseURL] = useState(
     () => localStorage.getItem(LS_BASE) ?? 'http://localhost:8080',
   )
   useEffect(() => localStorage.setItem(LS_BASE, baseURL), [baseURL])
 
-  // ---- 登入身分(sessionStorage,分頁獨立) ----
   const [token, setToken] = useState<string | null>(
     () => sessionStorage.getItem(SS_TOKEN),
   )
@@ -38,12 +35,10 @@ export function App() {
     const raw = sessionStorage.getItem(SS_USER)
     return raw ? (JSON.parse(raw) as User) : null
   })
-  // email 是私密資料(profile),只有自己看得到。
   const [email, setEmail] = useState<string>(
     () => sessionStorage.getItem(SS_EMAIL) ?? '',
   )
 
-  // 登入成功:存 token + user + email(profile)到 sessionStorage。
   const onAuthed = useCallback((tok: string, u: User, mail: string) => {
     sessionStorage.setItem(SS_TOKEN, tok)
     sessionStorage.setItem(SS_USER, JSON.stringify(u))
@@ -62,50 +57,25 @@ export function App() {
     setEmail('')
   }, [])
 
-  const cfg: ClientConfig = { baseURL, token }
-
-  // ---- API 交易 log(debug panel 用) ----
-  const [calls, setCalls] = useState<ApiCall[]>([])
-  useEffect(() => onApiCall((c) => setCalls((prev) => [c, ...prev].slice(0, 100))), [])
-
-  // ---- 導航狀態 ----
   const [tab, setTab] = useState<Tab>('channels')
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null)
 
-  // 對齊 iOS App:未登入也能用(訪客身分,後端視為 usr_me),設定頁才登入/登出。
-  // 訪客 user 僅供顯示;cfg.token 為 null,後端據此當訪客。
+  const cfg: ClientConfig = { baseURL, token }
   const effectiveUser = user ?? GUEST_USER
 
+  return {
+    cfg, tab, setTab, activeChannel, setActiveChannel,
+    baseURL, setBaseURL, token, setToken,
+    user: effectiveUser, email, isGuest: user == null,
+    onAuthed, onLogout,
+  }
+}
+
+export function App() {
+  const props = useAppState()
   return (
-    <div className="workbench">
-      <div className="phone">
-        <div className="phone-screen">
-          <div className="notch" />
-          <StatusBar user={effectiveUser} />
-          <PhoneContent
-            cfg={cfg}
-            tab={tab}
-            setTab={setTab}
-            activeChannel={activeChannel}
-            setActiveChannel={setActiveChannel}
-            baseURL={baseURL}
-            setBaseURL={setBaseURL}
-            token={token}
-            setToken={setToken}
-            user={effectiveUser}
-            email={email}
-            isGuest={user == null}
-            onAuthed={onAuthed}
-            onLogout={onLogout}
-          />
-        </div>
-      </div>
-      <DebugPanel
-        calls={calls}
-        onClear={() => setCalls([])}
-        cfg={cfg}
-        channel={activeChannel}
-      />
+    <div className="web-app">
+      <PhoneContent {...props} />
     </div>
   )
 }
@@ -116,16 +86,8 @@ const GUEST_USER: User = { id: 'usr_me', name: '訪客', avatarColor: '#8e8e93' 
 // 助手(assist 回答)的作者 ID,需與後端及 iOS ChatStore.assistantID 一致。
 const ASSISTANT_ID = 'usr_assistant'
 
-function StatusBar({ user }: { user: User | null }) {
-  return (
-    <div className="statusbar">
-      <span>9:41</span>
-      <span>{user ? user.name : ''} 📶 🔋</span>
-    </div>
-  )
-}
 
-interface ContentProps {
+export interface ContentProps {
   cfg: ClientConfig
   tab: Tab
   setTab: (t: Tab) => void
@@ -142,7 +104,7 @@ interface ContentProps {
   onLogout: () => void
 }
 
-function PhoneContent(props: ContentProps) {
+export function PhoneContent(props: ContentProps) {
   const { cfg, tab, setTab, activeChannel, setActiveChannel } = props
 
   // 若在 channels tab 且選了頻道 → 顯示聊天頁(有返回)。
@@ -377,15 +339,11 @@ function ChatScreen({
   const [messages, setMessages] = useState<ChatMessage[]>([])
   // Entry:LLM(record_entry 工具)從訊息解析出的條目,按 messageID 掛到對應訊息下方。
   const [entries, setEntries] = useState<Entry[]>([])
-  // Trip:後端依時間自動歸組的行程;頻道上方以按鈕列呈現,點入列出組內 entries。
-  const [trips, setTrips] = useState<Trip[]>([])
-  const [activeTrip, setActiveTrip] = useState<Trip | null>(null)
   const [draft, setDraft] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   // 成員管理在頻道內開啟(對齊 iOS App 的聊天頁右上角入口)。
   const [showMembers, setShowMembers] = useState(false)
-  const [showTimeline, setShowTimeline] = useState(false)
   // 點選項目時顯示詳細資訊。
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -394,17 +352,12 @@ function ChatScreen({
     setErr(null)
     try {
       // 原話從「裝置端 DB」讀(與 server 隔離);entry/trip 從後端讀(僅 owner)。
-      const [msgs, ents, trps] = await Promise.all([
+      const [msgs, ents] = await Promise.all([
         listMessages(channel.id),
-        // Entry/Trip 只有 owner 看得到自己頻道的(成員聊天為空,無需載入)。
         isOwner ? api.fetchEntries(cfg, channel.id) : Promise.resolve([]),
-        isOwner ? api.fetchTrips(cfg, channel.id) : Promise.resolve([]),
       ])
-      // owner 視角:記事原話已歸 entry(顯示在上方卡片),訊息流不顯示原話泡泡,
-      // 只保留本地查詢問答泡泡;member 視角才把自己裝置的原話灌進訊息流。對齊 iOS。
       setMessages(isOwner ? [] : msgs)
       setEntries(ents)
-      setTrips(trps)
     } catch (e) {
       setErr(errMsg(e))
     }
@@ -414,6 +367,20 @@ function ChatScreen({
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    const base = cfg.baseURL.replace(/^http/, 'ws')
+    const ws = new WebSocket(`${base}/v1/channels/${channel.id}/ws`)
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data)
+        if (msg.event === 'entries_updated') {
+          api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {})
+        }
+      } catch {}
+    }
+    return () => ws.close()
+  }, [cfg.baseURL, cfg.token, channel.id])
 
   useEffect(() => {
     bodyRef.current?.scrollTo(0, bodyRef.current.scrollHeight)
@@ -546,31 +513,12 @@ function ChatScreen({
     )
   }
 
-  // 時間軸:依行程(粗線) + 條目(細線)排列。
-  if (showTimeline) {
-    return (
-      <TimelineScreen trips={trips} entries={entries} onBack={() => setShowTimeline(false)} />
-    )
-  }
-
   // 點選項目時顯示詳細資訊。
   if (selectedEntry) {
     return (
       <EntryDetailModal
         entry={selectedEntry}
         onBack={() => setSelectedEntry(null)}
-      />
-    )
-  }
-
-  // 行程:點頻道上方的 Trip 按鈕 → 列出該行程的條目。
-  if (activeTrip) {
-    return (
-      <TripEntriesScreen
-        cfg={cfg}
-        channel={channel}
-        trip={activeTrip}
-        onBack={() => setActiveTrip(null)}
       />
     )
   }
@@ -582,64 +530,28 @@ function ChatScreen({
           ‹ 頻道
         </button>
         <span className="title">{channel.name}</span>
-        {/* 時間軸只對 owner 有意義(entry 只有 owner 看得到);有 entry 才顯示 */}
-        {entries.length > 0 && (
-          <button
-            className="btn"
-            onClick={() => setShowTimeline(true)}
-            title="時間軸"
-          >
-            🕐
-          </button>
-        )}
         <button className="btn" onClick={() => setShowMembers(true)} title="成員">
           👥
         </button>
       </div>
-      {/* 行程按鈕列:後端歸組出的 Trip,點入列出組內條目 */}
-      {trips.length > 0 && (
-        <div className="trip-bar">
-          {trips.map((t) => {
-            const count = entries.filter((e) => e.tripID === t.id).length
-            return (
-              <button
-                key={t.id}
-                className="trip-chip"
-                onClick={() => setActiveTrip(t)}
-                title={`${t.start ?? ''}${t.end ? ` ~ ${t.end}` : ''}`}
-              >
-                🧳 {t.title}
-                {count > 0 && <span className="trip-count">{count}</span>}
-              </button>
-            )
-          })}
-        </div>
-      )}
       <div className="screen-body" ref={bodyRef}>
         <ErrorBanner msg={err} />
-        {/* 以 entry 為主體:頻道的事件/條目列在最上方,點開可看關聯的來源訊息 */}
-        {entries.length > 0 && (
-          <div className="entry-list">
-            <div className="entry-list-title">事件 / 條目</div>
-            {entries.map((e) => (
-              <div key={e.id} onClick={() => setSelectedEntry(e)} style={{ cursor: 'pointer' }}>
-                <EntryCard entry={e} />
-              </div>
+        {/* LLM 回答泡泡(記事後 agent 回應) */}
+        {messages.length > 0 && (
+          <div className="chat-list">
+            {messages.map((m) => (
+              <MessageBubble key={m.id} msg={m} meID={user.id} />
             ))}
           </div>
         )}
-        <div className="chat-list">
-          {messages.map((m) => (
-            <MessageBubble key={m.id} msg={m} meID={user.id} />
-          ))}
-          {messages.length === 0 && !err && (
-            <div className="empty">
-              {isOwner
-                ? '在下方輸入:記事(如「明天三點開會」)會存檔,提問(如「我哪天開會?」)會回答。'
-                : '你是這個頻道的成員。在下方用自然語言查詢頻道內容,回答會顯示在這裡。'}
-            </div>
-          )}
-        </div>
+        {/* Timeline:直接顯示，不需點 chip */}
+        {entries.length === 0 && messages.length === 0 ? (
+          <div className="empty">
+            {isOwner ? '在下方輸入記事，會依時間排列在這裡。' : '在下方查詢頻道內容。'}
+          </div>
+        ) : entries.length > 0 ? (
+          <MultiTrackTimeline entries={entries} />
+        ) : null}
       </div>
       <div className="composer">
         <input
@@ -736,372 +648,312 @@ function PresentedCard({ entry }: { entry: PresentedEntry }) {
   )
 }
 
-// EntryCard 顯示 record_entry 工具解析出的條目(事項 + 時間)。
-function EntryCard({ entry }: { entry: Entry }) {
-  const when = entry.start
-    ? entry.allDay
-      ? entry.start.slice(0, 10)
-      : entry.start
-    : '未指定時間'
-  return (
-    <div className="entry-card">
-      <span className="entry-ico">📅</span>
-      <div className="entry-body">
-        <div className="entry-item">{entry.item}</div>
-        <div className="entry-when">
-          {when}
-          {entry.end ? ` ~ ${entry.end}` : ''}
-        </div>
-        {/* 地點(可空);對齊 iOS,放在事項/時間之後、標注之前 */}
-        {entry.location && (
-          <div className="entry-loc">📍 {entry.location}</div>
-        )}
-        {/* LLM 標注(已移至 entry;後端目前先留空,有值才顯示) */}
-        {/* 後端可能回 tags:null(標注未填),以 ?? [] 收斂避免讀 length/map 出錯 */}
-        {(entry.category || (entry.tags ?? []).length > 0) && (
-          <div className="meta">
-            {entry.category && <span className="cat">{entry.category}</span>}
-            {(entry.tags ?? []).map((t) => (
-              <span key={t} className="tag">
-                #{t}
-              </span>
-            ))}
-          </div>
-        )}
-        {entry.summary && <div className="summary">摘要:{entry.summary}</div>}
-      </div>
-    </div>
-  )
-}
 
 // ---- 時間軸頁 ----
 
 // dayKey 取 entry 的日期部分(YYYY-MM-DD)作為分組鍵;無 start 歸「未指定時間」。
-function dayKey(e: Entry): string {
-  return e.start ? e.start.slice(0, 10) : '未指定時間'
+// ---- 跨度計算 ----
+
+
+// ---- 工具函式 ----
+
+function parseDateParts(d: string): { year: string; month: string; day: string } {
+  const [year = '', month = '', day = ''] = d.split('-')
+  return { year, month, day }
 }
 
-// groupByDay 把已排序的 entries 依日期分組,保留原順序。
-// 回傳 [{ day, entries }],每組一個時間軸節點(日期標題 + 當天事項)。
-function groupByDay(entries: Entry[]): { day: string; items: Entry[] }[] {
-  const groups: { day: string; items: Entry[] }[] = []
-  for (const e of entries) {
-    const day = dayKey(e)
-    const last = groups[groups.length - 1]
-    if (last && last.day === day) last.items.push(e)
-    else groups.push({ day, items: [e] })
+function entryTimeLabel(e: Entry): string {
+  if (e.allDay || !e.start || e.start.length <= 10) return ''
+  return e.start.slice(11)
+}
+
+function entrySpanLabel(e: Entry): string {
+  if (!e.end || e.end === e.start) return ''
+  const sd = e.start?.slice(0, 10) ?? ''
+  const ed = e.end.slice(0, 10)
+  if (sd === ed) {
+    const t = e.end.length > 10 ? e.end.slice(11) : ''
+    return t ? `~ ${t}` : ''
   }
-  return groups
+  return `~ ${ed}`
 }
 
-// TimelineScreen 把行程(粗線主軸) + 條目(細線分支)排成垂直時間軸。
-// trips 依時間排列,各 trip 下掛屬於它的 entries。
-function TimelineScreen({
-  trips,
-  entries,
-  onBack,
-}: {
-  trips: Trip[]
-  entries: Entry[]
-  onBack: () => void
-}) {
-  // 建立 tripID → entries 的對應(快速查詢某行程的條目)。
-  const entriesByTrip = new Map<string | null, Entry[]>()
-  for (const e of entries) {
-    const tripID = e.tripID ?? null
-    if (!entriesByTrip.has(tripID)) entriesByTrip.set(tripID, [])
-    entriesByTrip.get(tripID)!.push(e)
+// ---- 資料型別 ----
+
+// 每一列的種類
+type TLRow =
+  | { kind: 'year';  key: string; label: string; accent: boolean }
+  | { kind: 'month'; key: string; label: string; accent: boolean }
+  | { kind: 'entry'; key: string; day: string; dayLabel: string | null; dot: 'main' | 'sub' | 'marker'; isBlank: boolean; isPad: boolean; lineTop: 'accent' | 'normal' | 'none'; lineBot: 'accent' | 'normal' | 'none'; card: { kind: 'main' | 'sub' | 'end'; entry: Entry } | null }
+
+// ---- 建構函式 ----
+
+function buildTLRows(entries: Entry[]): TLRow[] {
+  const sorted = [...entries].sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''))
+
+  // 1. 判斷主線
+  // 主線條件：有結束時間且跨越不同日
+  const mainSet = new Set(sorted.filter(e => {
+    if (!e.end || e.end === e.start) return false
+    return e.end.slice(0, 10) !== (e.start ?? '').slice(0, 10)
+  }).map(e => e.id))
+  const mainEntries = sorted.filter(e => mainSet.has(e.id))
+
+  // 2. 某日是否在主線跨度內（用於畫橘線）
+  function inMainSpan(day: string): boolean {
+    return mainEntries.some(m => {
+      const s = (m.start ?? '').slice(0, 10)
+      const e = (m.end && m.end !== m.start ? m.end : m.start ?? '').slice(0, 10)
+      return day >= s && day <= e
+    })
   }
 
-  // 有行程則按行程顯示;否則按日期分組(兼容舊數據)。
-  const hasTrips = trips.length > 0
+  // 3. 收集所有要顯示的天（entry 起始日 + 主線中間天 + 主線結束日 + 最後結束隔天）
+  const daySet = new Set(sorted.map(e => e.start?.slice(0, 10) ?? '').filter(Boolean))
+  let lastMainEnd = ''
+  for (const m of mainEntries) {
+    const s = (m.start ?? '').slice(0, 10)
+    const e = (m.end && m.end !== m.start ? m.end : m.start ?? '').slice(0, 10)
+    if (!s || !e) continue
+    const d = new Date(s + 'T00:00:00')
+    const endD = new Date(e + 'T00:00:00')
+    while (d <= endD) { daySet.add(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1) }
+    if (e > lastMainEnd) lastMainEnd = e
+  }
+  if (lastMainEnd) {
+    const after = new Date(lastMainEnd + 'T00:00:00')
+    after.setDate(after.getDate() + 1)
+    daySet.add(after.toISOString().slice(0, 10))
+  }
+  const days = [...daySet].sort()
 
-  return (
-    <>
-      <div className="navbar">
-        <button className="btn" onClick={onBack}>
-          ‹ 返回
-        </button>
-        <span className="title">時間軸</span>
-        <span className="btn" style={{ visibility: 'hidden' }}>
-          ‹
-        </span>
-      </div>
-      <div className="screen-body">
-        {entries.length === 0 ? (
-          <div className="empty">還沒有條目。在頻道裡記事後,會在這裡依時間排列。</div>
-        ) : hasTrips ? (
-          <div className="timeline">
-            {/* 粗線主軸: 行程 */}
-            {trips.map((trip, i) => {
-              const tripEntries = entriesByTrip.get(trip.id) ?? []
-              return (
-                <TimelineTripRow
-                  key={trip.id}
-                  trip={trip}
-                  entries={tripEntries}
-                  isFirst={i === 0}
-                  isLast={i === trips.length - 1}
-                />
-              )
-            })}
-            {/* 沒歸到行程的條目(tripID=null) */}
-            {entriesByTrip.has(null) && (
-              <TimelineUntrippedRow entries={entriesByTrip.get(null)!} isLast={true} />
-            )}
-          </div>
-        ) : (
-          // 兼容無 Trip 的舊模式:按日期分組
-          <div className="timeline">
-            {groupByDay(entries).map((g, i) => (
-              <TimelineRow
-                key={g.day}
-                day={g.day}
-                items={g.items}
-                isFirst={i === 0}
-                isLast={i === groupByDay(entries).length - 1}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </>
-  )
-}
+  // 把主線結束標記當虛擬 entry，用 end 時間排入 sortedAll
+  type VEntry = { id: string; sortKey: string; isEnd: boolean; source: Entry }
+  const sortedAll: VEntry[] = sorted.map(e => ({ id: e.id, sortKey: e.start ?? '', isEnd: false, source: e }))
+  for (const m of mainEntries) {
+    const endStr = m.end && m.end !== m.start ? m.end : null
+    if (endStr) sortedAll.push({ id: `end-${m.id}`, sortKey: endStr, isEnd: true, source: m })
+  }
+  sortedAll.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
 
-// TripEntriesScreen 列出某行程(Trip)底下的所有條目。
-// 自帶 navbar 與本地 entries state(獨立載入,避免回流閃動);複用 EntryCard。
-function TripEntriesScreen({
-  cfg,
-  channel,
-  trip,
-  onBack,
-}: {
-  cfg: ClientConfig
-  channel: Channel
-  trip: Trip
-  onBack: () => void
-}) {
-  const [entries, setEntries] = useState<Entry[]>([])
-  const [err, setErr] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  // 4. 先把所有 entry 列（不含年月）按順序收集，再填線條
+  type Pre = Omit<Extract<TLRow, { kind: 'entry' }>, 'lineTop' | 'lineBot'>
+  const pre: Pre[] = []
 
-  useEffect(() => {
-    let live = true
-    setLoading(true)
-    api
-      .fetchTripEntries(cfg, channel.id, trip.id)
-      .then((es) => {
-        if (live) setEntries(es)
+  for (const day of days) {
+    const { day: dayNum } = parseDateParts(day)
+    const todayAll = sortedAll.filter(v => v.sortKey.slice(0, 10) === day)
+
+    const dayRows: Pre[] = []
+
+    if (todayAll.length === 0) {
+      dayRows.push({ kind: 'entry', key: `day-${day}`, day, dayLabel: null, isBlank: true, isPad: false, dot: 'marker', card: null })
+    } else {
+      todayAll.forEach(v => {
+        if (v.isEnd) {
+          dayRows.push({ kind: 'entry', key: v.id, day, dayLabel: null, isBlank: false, isPad: false, dot: 'main', card: { kind: 'end', entry: v.source } })
+        } else {
+          dayRows.push({
+            kind: 'entry', key: v.id, day, dayLabel: null, isBlank: false, isPad: false,
+            dot: mainSet.has(v.id) ? 'main' : 'sub',
+            card: { kind: mainSet.has(v.id) ? 'main' : 'sub', entry: v.source },
+          })
+        }
       })
-      .catch((e) => {
-        if (live) setErr(errMsg(e))
-      })
-      .finally(() => {
-        if (live) setLoading(false)
-      })
-    return () => {
-      live = false
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg.baseURL, cfg.token, channel.id, trip.id])
 
-  const range =
-    trip.start ? `${trip.start}${trip.end ? ` ~ ${trip.end}` : ''}` : ''
+    // 中間天佔位列不顯示日期
+    const isBlankDay = todayAll.length === 0
+    if (dayRows.length > 0 && !isBlankDay) dayRows[0] = { ...dayRows[0], dayLabel: dayNum }
+    dayRows.forEach(r => pre.push(r))
+  }
 
-  return (
-    <>
-      <div className="navbar">
-        <button className="btn" onClick={onBack}>
-          ‹ 返回
-        </button>
-        <span className="title">🧳 {trip.title}</span>
-        <span className="btn" style={{ visibility: 'hidden' }}>
-          ‹
-        </span>
-      </div>
-      <div className="screen-body">
-        {range && <div className="entry-list-title">{range}</div>}
-        <ErrorBanner msg={err} />
-        {loading ? (
-          <div className="empty">載入中…</div>
-        ) : entries.length === 0 ? (
-          <div className="empty">這個行程還沒有條目。</div>
-        ) : (
-          <div className="entry-list">
-            {entries.map((e) => (
-              <EntryCard key={e.id} entry={e} />
-            ))}
-          </div>
-        )}
-      </div>
-    </>
-  )
+  // 首尾各插一個灰色佔位列
+  const firstDay = pre[0]?.day ?? ''
+  const lastDay  = pre[pre.length - 1]?.day ?? ''
+  const padRow = (day: string): typeof pre[0] => ({ kind: 'entry', key: `pad-${day}`, day, dayLabel: null, isBlank: false, isPad: true, dot: 'marker', card: null })
+  const preWithPad = [padRow(firstDay), ...pre, padRow(lastDay)]
+
+  // 5. 填線條
+  const withLines = preWithPad.map((row, i): Extract<TLRow, { kind: 'entry' }> => {
+    const cur  = !row.isPad && inMainSpan(row.day)
+    const prev = i > 0 ? (!preWithPad[i - 1].isPad && inMainSpan(preWithPad[i - 1].day)) : false
+    const next = i < preWithPad.length - 1 ? (!preWithPad[i + 1].isPad && inMainSpan(preWithPad[i + 1].day)) : false
+    return {
+      ...row,
+      lineTop: i === 0 ? 'none' : (cur || prev) ? 'accent' : 'normal',
+      lineBot: i === preWithPad.length - 1 ? 'none' : (cur && next) ? 'accent' : 'normal',
+    }
+  })
+
+  // 6. 逐列輸出：遇到年/月變化先插年月列，再插 entry 列
+  const rows: TLRow[] = []
+  let prevYear = '', prevMonth = ''
+
+  for (const row of withLines) {
+    const { year, month } = parseDateParts(row.day)
+    const acc = !row.isPad && !row.isBlank && inMainSpan(row.day)
+    if (year !== prevYear) {
+      rows.push({ kind: 'year', key: `year-${row.day}`, label: year, accent: acc })
+      prevYear = year; prevMonth = ''
+    }
+    if (month !== prevMonth) {
+      rows.push({ kind: 'month', key: `month-${row.day}`, label: `${month}月`, accent: acc })
+      prevMonth = month
+    }
+    rows.push(row)
+  }
+
+  return rows
 }
 
-// TimelineTripRow 是粗線行程軸:左側粗線跨 trip 時間段,右側行程名稱 + 其條目細線。
-function TimelineTripRow({
-  trip,
-  entries,
-  isFirst,
-  isLast,
-}: {
-  trip: Trip
-  entries: Entry[]
-  isFirst: boolean
-  isLast: boolean
-}) {
-  const range = trip.start ? `${trip.start}${trip.end ? ` ~ ${trip.end}` : ''}` : ''
+// ---- 純渲染元件 ----
+
+function MultiTrackTimeline({ entries }: { entries: Entry[] }) {
+  const rows = buildTLRows(entries)
   return (
-    <div className="tl-trip-row">
-      {/* 左側粗線軸 */}
-      <div className="tl-rail">
-        <div className={`tl-line tl-line-thick tl-line-top ${isFirst ? 'hidden' : ''}`} />
-        <div className="tl-dot tl-dot-trip">🧳</div>
-        <div className={`tl-line tl-line-thick tl-line-bot ${isLast && entries.length === 0 ? 'hidden' : ''}`} />
-      </div>
-      <div className="tl-group">
-        {/* 行程標題與時間範圍 */}
-        <div className="tl-trip-header">
-          <div className="tl-trip-title">{trip.title}</div>
-          {range && <div className="tl-trip-range">{range}</div>}
-        </div>
-        {/* 行程內的條目(細線分支) */}
-        {entries.map((e, ei) => (
-          <TimelineTripEntryRow
-            key={e.id}
-            entry={e}
-            isLastEntry={ei === entries.length - 1}
-            isLastTrip={isLast}
-          />
-        ))}
-      </div>
+    <div className="tl-grid">
+      {rows.map(row => {
+        if (row.kind === 'year') return (
+          <div key={row.key} className="tl-grid-row">
+            <div className="tl-col-label tl-year-label">{row.label}</div>
+            <div className="tl-col-axis">
+              <div className={`tl-vline top${row.accent ? ' accent' : ''}`} />
+              <div className={`tl-vline bot${row.accent ? ' accent' : ''}`} />
+            </div>
+            <div className="tl-col-card" />
+          </div>
+        )
+        if (row.kind === 'month') return (
+          <div key={row.key} className="tl-grid-row">
+            <div className="tl-col-label tl-month-label">{row.label}</div>
+            <div className="tl-col-axis">
+              <div className={`tl-vline top${row.accent ? ' accent' : ''}`} />
+              <div className={`tl-vline bot${row.accent ? ' accent' : ''}`} />
+            </div>
+            <div className="tl-col-card" />
+          </div>
+        )
+        // entry row
+        const { dot, lineTop, lineBot, card, dayLabel, isBlank } = row
+        return (
+          <div key={row.key} className={`tl-grid-row${isBlank && !row.isPad ? ' blank' : ''}`}>
+            {/* 日欄 */}
+            <div className="tl-col-label">
+              {dayLabel && <span className="tl-date-day">{dayLabel}</span>}
+            </div>
+            {/* 軸線欄：絕對線 + 置中點 */}
+            <div className="tl-col-axis">
+              {lineTop !== 'none' && <div className={`tl-vline top${lineTop === 'accent' ? ' accent' : ''}`} />}
+              {lineBot !== 'none' && <div className={`tl-vline bot${lineBot === 'accent' ? ' accent' : ''}`} />}
+              {isBlank && !row.isPad
+                ? <div className="tl-dot-blank" />
+                : <div className={dot === 'main' ? 'tl-dot-main' : dot === 'sub' ? 'tl-dot-sub' : 'tl-dot-day'} />
+              }
+            </div>
+            {/* 卡片欄 */}
+            <div className="tl-col-card">
+              {card?.kind === 'main' && <MainCard entry={card.entry} />}
+              {card?.kind === 'sub'  && <SubCard  entry={card.entry} />}
+              {card?.kind === 'end'  && <EndCard  entry={card.entry} />}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
 
-// TimelineTripEntryRow 是細線條目:從粗線分出細線到具體條目。
-function TimelineTripEntryRow({
-  entry,
-  isLastEntry,
-  isLastTrip,
-}: {
-  entry: Entry
-  isLastEntry: boolean
-  isLastTrip: boolean
-}) {
-  const when = entry.start
-    ? entry.allDay
-      ? entry.start.slice(0, 10)
-      : entry.start
-    : '未指定時間'
+function PinIcon() {
   return (
-    <div className="tl-entry-row">
-      {/* 細線:從粗軸分出 */}
-      <div className="tl-rail">
-        <div className={`tl-line tl-line-fine tl-line-top ${isLastEntry && isLastTrip ? 'hidden' : ''}`} />
-        <div className="tl-dot tl-dot-entry" />
-        <div className={`tl-line tl-line-fine tl-line-bot hidden`} />
+    <svg width="9" height="12" viewBox="0 0 10 14" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: 2 }}>
+      <path d="M5 0C2.24 0 0 2.24 0 5c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5z" fill="currentColor"/>
+      <circle cx="5" cy="5" r="2" fill="white"/>
+    </svg>
+  )
+}
+
+function NavButton({ location }: { location: string }) {
+  const url = `https://maps.apple.com/?q=${encodeURIComponent(location)}`
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="tl-nav-btn" title="開始導航">
+      {/* 導航箭頭：向右上方的實心三角形 */}
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+        <path d="M2 12L22 2L12 22L9 13L2 12Z" />
+      </svg>
+    </a>
+  )
+}
+
+function MainCard({ entry }: { entry: Entry }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="tl-main-card tl-card-row" onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer' }}>
+      <div className="tl-card-content">
+        <div className="tl-item">
+          <span className="tl-main-title">{entry.item}</span>
+        </div>
+        {entry.location && <div className="entry-loc"><PinIcon /> {entry.location}</div>}
+        <div className={`tl-card-expand${open ? ' open' : ''}`}>
+          <div className="tl-card-expand-inner">
+            {entry.summary && <div className="tl-expand-summary">{entry.summary}</div>}
+            <div className="tl-expand-row">
+              <span className="tl-expand-label">開始</span>
+              <span>{entry.start ?? '—'}</span>
+            </div>
+            {entry.end && <div className="tl-expand-row">
+              <span className="tl-expand-label">結束</span>
+              <span>{entry.end}</span>
+            </div>}
+          </div>
+        </div>
       </div>
-      <div className="tl-item-card">
-        <div className="tl-item">{entry.item}</div>
-        {entry.location && <div className="entry-loc">📍 {entry.location}</div>}
-        <div className="tl-time-label">{when}</div>
+      {entry.location && <NavButton location={entry.location} />}
+    </div>
+  )
+}
+
+function EndCard({ entry }: { entry: Entry }) {
+  return (
+    <div className="tl-end-card">
+      <span className="tl-end-label">{entry.item} 結束</span>
+    </div>
+  )
+}
+
+function SubCard({ entry }: { entry: Entry }) {
+  const [open, setOpen] = useState(false)
+  const time = entryTimeLabel(entry)
+  const span = entrySpanLabel(entry)
+  const hasExpand = !!(entry.summary || entry.end)
+  return (
+    <div className={`tl-card tl-card-row${span ? ' tl-card-span' : ''}`}
+      onClick={() => hasExpand && setOpen(o => !o)}
+      style={hasExpand ? { cursor: 'pointer' } : undefined}>
+      <div className="tl-card-content">
+        <div className="tl-item">
+          {time && <span className="tl-time">{time}</span>}
+          {entry.item}
+          {span && <span className="tl-span">{span}</span>}
+        </div>
+        {entry.location && <div className="entry-loc"><PinIcon /> {entry.location}</div>}
         {(entry.category || (entry.tags ?? []).length > 0) && (
           <div className="meta">
             {entry.category && <span className="cat">{entry.category}</span>}
-            {(entry.tags ?? []).map((t) => (
-              <span key={t} className="tag">
-                #{t}
-              </span>
-            ))}
+            {(entry.tags ?? []).map(t => <span key={t} className="tag">#{t}</span>)}
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-
-// TimelineUntrippedRow 顯示未歸屬於任何 Trip 的條目。
-function TimelineUntrippedRow({
-  entries,
-  isLast,
-}: {
-  entries: Entry[]
-  isLast: boolean
-}) {
-  return (
-    <div className="tl-untripped-row">
-      {entries.map((e) => (
-        <div key={e.id} className="tl-card">
-          <div className="tl-item">{e.item}</div>
-          {e.location && <div className="entry-loc">📍 {e.location}</div>}
-          {(e.category || (e.tags ?? []).length > 0) && (
-            <div className="meta">
-              {e.category && <span className="cat">{e.category}</span>}
-              {(e.tags ?? []).map((t) => (
-                <span key={t} className="tag">
-                  #{t}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// TimelineRow 是時間軸的一節:左側軸線 + 圓點,右側「日期標題 + 當天所有事項」。
-// 圓點對齊日期那一行;當天多筆事項依序列在日期下方。
-function TimelineRow({
-  day,
-  items,
-  isFirst,
-  isLast,
-}: {
-  day: string
-  items: Entry[]
-  isFirst: boolean
-  isLast: boolean
-}) {
-  // 非全日事件取時刻(start 的 HH:MM 部分)顯示在事項旁;全日/無時間則不顯示。
-  const timeOf = (e: Entry): string => {
-    if (e.allDay || !e.start || e.start.length <= 10) return ''
-    return e.start.slice(11) // 'YYYY-MM-DD HH:MM' → 'HH:MM'
-  }
-  return (
-    <div className="tl-row">
-      {/* 左側軸線:首節不畫上半、末節不畫下半,讓軸線頭尾收齊 */}
-      <div className="tl-rail">
-        <div className={`tl-line tl-line-top ${isFirst ? 'hidden' : ''}`} />
-        <div className="tl-dot" />
-        <div className={`tl-line tl-line-bot ${isLast ? 'hidden' : ''}`} />
-      </div>
-      <div className="tl-group">
-        {/* 日期標題(對齊軸點) */}
-        <div className="tl-day">{day}</div>
-        {/* 當天的每一筆事項 */}
-        {items.map((e) => (
-          <div key={e.id} className="tl-card">
-            <div className="tl-item">
-              {timeOf(e) && <span className="tl-time">{timeOf(e)}</span>}
-              {e.item}
-            </div>
-            {e.location && <div className="entry-loc">📍 {e.location}</div>}
-            {(e.category || (e.tags ?? []).length > 0) && (
-              <div className="meta">
-                {e.category && <span className="cat">{e.category}</span>}
-                {(e.tags ?? []).map((t) => (
-                  <span key={t} className="tag">
-                    #{t}
-                  </span>
-                ))}
-              </div>
-            )}
+        <div className={`tl-card-expand${open ? ' open' : ''}`}>
+          <div className="tl-card-expand-inner">
+            {entry.summary && <div className="tl-expand-summary">{entry.summary}</div>}
+            {entry.end && <div className="tl-expand-row">
+              <span className="tl-expand-label">結束</span>
+              <span>{entry.end}</span>
+            </div>}
           </div>
-        ))}
+        </div>
       </div>
+      {entry.location && <NavButton location={entry.location} />}
     </div>
   )
 }

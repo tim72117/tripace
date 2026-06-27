@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// 行程詳情:列出某 Trip 底下的所有條目。獨立載入(避免回流閃動),複用 EntryCard。
+/// 行程詳情:點入某 Trip 後,把該行程的條目以時間軸(TimelineView)呈現。
+/// 獨立載入(避免回流閃動),複用 ChatView 既有的 TimelineView。
 /// 對應 web 的 TripEntriesScreen。
 struct TripEntriesView: View {
     let trip: Trip
@@ -11,25 +12,38 @@ struct TripEntriesView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
 
-    var body: some View {
-        List {
-            if let range = trip.rangeText {
-                Section {
-                    Text(range).font(.caption).foregroundStyle(.secondary)
-                }
+    /// timeline 需要依 start 排序;後端排序不保證,這裡再排一次。
+    /// 無 start 者排最後。
+    private var sortedEntries: [Entry] {
+        entries.sorted { a, b in
+            switch (a.start.isEmpty, b.start.isEmpty) {
+            case (true, true): return false
+            case (true, false): return false
+            case (false, true): return true
+            default: return a.start < b.start
             }
+        }
+    }
 
+    var body: some View {
+        Group {
             if isLoading {
-                HStack { Spacer(); ProgressView(); Spacer() }
+                ProgressView()
             } else if let errorMessage {
-                Text(errorMessage).foregroundStyle(.red).font(.callout)
-            } else if entries.isEmpty {
-                ContentUnavailableView("這個行程還沒有條目", systemImage: "tray")
+                ContentUnavailableView {
+                    Label("載入失敗", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                }
             } else {
-                Section {
-                    ForEach(entries) { entry in
-                        EntryCard(entry: entry)
+                VStack(alignment: .leading, spacing: 0) {
+                    // 行程日期範圍(在時間軸上方)。
+                    if let range = trip.rangeText {
+                        Text(range)
+                            .font(.caption.monospaced()).foregroundStyle(.secondary)
+                            .padding(.horizontal).padding(.top, 8)
                     }
+                    TimelineView(entries: sortedEntries)
                 }
             }
         }

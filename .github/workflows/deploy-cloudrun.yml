@@ -3,10 +3,16 @@ name: Deploy to Cloud Run
 on:
   push:
     branches: [main]
+    paths:
+      - 'server/**'
+      - 'web/**'
+      - 'want/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - '.github/workflows/deploy-cloudrun.yml'
   workflow_dispatch:
 
 env:
-  # 請修改以下值為您的 GCP 資訊
   GCP_PROJECT_ID: "shuttle-045094509"
   CLOUD_RUN_SERVICE: "channel-server"
   CLOUD_RUN_REGION: "asia-east1"
@@ -37,6 +43,18 @@ jobs:
           service: ${{ env.CLOUD_RUN_SERVICE }}
           region: ${{ env.CLOUD_RUN_REGION }}
           source: .
+          env_vars: |
+            DEV_MODE=false
+            SEED=false
+          secrets: |
+            DATABASE_URL=DATABASE_URL:latest
+            JWT_SECRET=JWT_SECRET:latest
 
       - name: Show Cloud Run URL
-        run: gcloud run services describe ${{ env.CLOUD_RUN_SERVICE }} --region ${{ env.CLOUD_RUN_REGION }} --format 'value(status.url)'
+        run: |
+          URL=$(gcloud run services describe ${{ env.CLOUD_RUN_SERVICE }} \
+            --region ${{ env.CLOUD_RUN_REGION }} \
+            --format 'value(status.url)')
+          echo "### 🚀 部署完成" >> "$GITHUB_STEP_SUMMARY"
+          echo "URL: $URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "$URL"

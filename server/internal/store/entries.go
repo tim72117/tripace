@@ -44,6 +44,30 @@ func (s *Store) InsertEntry(e model.Entry) error {
 	return s.db.Create(&r).Error
 }
 
+// UpdateEntry 更新一筆 entry 的可編輯欄位；留空字串的欄位不更新。
+func (s *Store) UpdateEntry(id, item, start, end, location, summary string) error {
+	fields := map[string]any{}
+	if item != "" {
+		fields["item"] = item
+	}
+	if start != "" {
+		fields["start"] = start
+	}
+	if end != "" {
+		fields["end_at"] = end
+	}
+	if location != "" {
+		fields["location"] = location
+	}
+	if summary != "" {
+		fields["summary"] = summary
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return s.db.Model(&entryRow{}).Where("id = ?", id).Updates(fields).Error
+}
+
 // GetEntry 依 ID 取單一條目;查無回 ErrNotFound。
 // add_to_trip 工具新建 trip 時用它取得 entry 的時間範圍當 trip 初值。
 func (s *Store) GetEntry(entryID string) (model.Entry, error) {

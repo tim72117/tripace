@@ -19,6 +19,7 @@ type Server struct {
 	store    *store.Store
 	analyzer llm.Analyzer
 	signer   *auth.Signer
+	hub      *Hub
 	// devMode:Apple token 不驗簽章(原型用)。
 	devMode bool
 	// 未登入時的預設使用者(維持可跳過登入的體驗)。
@@ -30,6 +31,7 @@ func New(st *store.Store, an llm.Analyzer, signer *auth.Signer, devMode bool) *S
 		store:     st,
 		analyzer:  an,
 		signer:    signer,
+		hub:       newHub(),
 		devMode:   devMode,
 		guestUser: model.User{ID: "usr_me", Name: "我", AvatarColor: "#4A90D9"},
 	}
@@ -54,6 +56,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /v1/channels/{id}/entries", s.handleResetChannelData)
 	mux.HandleFunc("GET /v1/channels/{id}/trips", s.handleListTrips)
 	mux.HandleFunc("GET /v1/channels/{id}/trips/{tripID}/entries", s.handleListTripEntries)
+	mux.HandleFunc("GET /v1/channels/{id}/ws", s.handleWS)
+	mux.HandleFunc("POST /internal/channels/{id}/notify", s.handleNotify)
 	return logging(cors(mux))
 }
 
@@ -359,6 +363,7 @@ func (s *Server) handleAssist(w http.ResponseWriter, r *http.Request) {
 	if res.Kind == "recorded" {
 		// 記錄了 → entry 已由 emit 同步寫入後端。回傳本次寫入的 entry 給前端,
 		// 前端據此更新顯示,並把對應原話存進自己的裝置端 DB。
+		s.hub.Broadcast(id, map[string]any{"event": "entries_updated", "channelID": id})
 		writeJSON(w, http.StatusOK, map[string]any{
 			"kind":     "recorded",
 			"text":     text,

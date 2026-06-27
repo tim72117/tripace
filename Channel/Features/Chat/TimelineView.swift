@@ -5,6 +5,8 @@ import SwiftUI
 /// entries 沿用後端/上層的排序(已依 start 排)。
 struct TimelineView: View {
     let entries: [Entry]
+    /// 導覽列標題。預設「時間軸」;trip 詳情等情境可傳行程名覆寫。
+    var navTitle: String = "時間軸"
 
     /// 依日期分組(保留原順序);無 start 歸「未指定時間」。
     private var groups: [(day: String, items: [Entry])] {

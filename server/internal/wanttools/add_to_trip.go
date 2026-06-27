@@ -22,30 +22,14 @@ func (t *AddToTripTool) ValidateInput(args types.ToolArguments, _ types.ToolCont
 // 無 tripID 則新建一個行程(用 entry 的時間範圍當初值)再加入。
 // 回傳 []ResultContentBlock(want 新規格),結果 map 以 ctx.EmitToolResult 發送。
 func (t *AddToTripTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]types.ResultContentBlock, error) {
-	if entryStore == nil {
-		return nil, fmt.Errorf("store 未初始化")
+	if tripService == nil {
+		return nil, fmt.Errorf("行程服務未初始化")
 	}
 	entryID := args.GetString("entryID")
-	tripID := args.GetString("tripID")
-
-	if tripID == "" {
-		// 無指定 trip → 新建:取該 entry 的時間範圍當行程初值。
-		e, err := entryStore.GetEntry(entryID)
-		if err != nil {
-			return nil, fmt.Errorf("找不到條目 %s: %w", entryID, err)
-		}
-		title := args.GetString("tripTitle")
-		if title == "" {
-			title = e.Item // 未給行程名則用事項描述
-		}
-		newID, err := entryStore.CreateTrip(e.ChannelID, title, e.Start, e.End)
-		if err != nil {
-			return nil, fmt.Errorf("新建行程失敗: %w", err)
-		}
-		tripID = newID
-	}
-
-	if err := entryStore.SetEntryTrip(entryID, &tripID); err != nil {
+	// 歸入/新建邏輯統一由 tripsvc 處理(與 CLI 共用);tripID 留空則新建,
+	// tripTitle 為新建時的行程名(留空則 tripsvc 用 entry.Item)。
+	tripID, _, err := tripService.AddToTrip(entryID, args.GetString("tripID"), args.GetString("tripTitle"))
+	if err != nil {
 		return nil, fmt.Errorf("歸入行程失敗: %w", err)
 	}
 

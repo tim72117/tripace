@@ -8,17 +8,22 @@
 #   docker build -t channel-server .
 # 本機跑(env 由 --env-file 注入,不會把 .env 烤進映像):
 #   docker run --rm -p 8080:8080 --env-file server/.env channel-server
-#
-# 排除規則放在根目錄的 .dockerignore。
 
-# ---- 階段 1:編譯 ----
+# ---- 階段 1:build 前端 ----
+FROM node:22-alpine AS web-build
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
+# ---- 階段 2:編譯 Go ----
 # 容器內須重現本地的相對結構:server/go.mod 的 replace 為 ../../want,
 # 即從 /src/server 往上兩層(/)再進 want → /want。故 server 放 /src/server、
 # want 放 /want,relative replace 才解析得到。
 FROM golang:1.26 AS build
 
 # 先單獨複製 go.mod / go.sum 以利 layer 快取(相依沒變時不重抓)。
-# want 是 replace 的本地 module,其 go.mod 也要先進來才能解析相依。
 COPY server/go.mod server/go.sum /src/server/
 COPY want/go.mod want/go.sum /want/
 RUN cd /src/server && go mod download
@@ -27,11 +32,14 @@ RUN cd /src/server && go mod download
 COPY server/ /src/server/
 COPY want/ /want/
 
+# 把前端 dist 放到 server embed 路徑
+COPY --from=web-build /web/dist /src/server/cmd/server/web/dist
+
 # 靜態編譯:關 CGO 產出不依賴 libc 的單一執行檔,可放進極小的 base image。
 RUN cd /src/server && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
     -o /out/server ./cmd/server
 
-# ---- 階段 2:執行 ----
+# ---- 階段 3:執行 ----
 # distroless:只含執行檔需要的最小 runtime,無 shell、體積小、攻擊面小。
 # 內含 CA 憑證,連 Neon(sslmode=require)的 TLS 才驗得過。
 FROM gcr.io/distroless/static-debian12:nonroot

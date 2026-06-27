@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/channel/server/internal/store"
+	"github.com/channel/server/internal/tripsvc"
 	"want/types"
 )
 
@@ -13,8 +14,14 @@ import (
 // 工具直接呼叫 store,不繞 sink;channelID 取自當前記錄 context(CurrentChannel)。
 var entryStore *store.Store
 
-// BindStore 提供 query_entries 工具查詢用的 store 實例(server 啟動時呼叫)。
-func BindStore(s *store.Store) { entryStore = s }
+// tripService 是行程服務層;add_to_trip 等工具經它操作,與 CLI 共用同一套邏輯。
+var tripService *tripsvc.Service
+
+// BindStore 提供工具查詢用的 store 實例,並一併建立 tripsvc 服務(server 啟動時呼叫)。
+func BindStore(s *store.Store) {
+	entryStore = s
+	tripService = tripsvc.New(s)
+}
 
 func init() {
 	types.RegisterTool(QueryEntriesDeclaration, func() types.ToolInterface {
