@@ -1049,80 +1049,53 @@ function MembersScreen({
   return (
     <>
       <div className="navbar">
-        <button className="btn" onClick={onBack}>
-          ‹ 返回
+        <button className="btn icon-btn" onClick={onBack}>
+          <ChevronLeft size={20} strokeWidth={1.8} />
         </button>
         <span className="title">成員</span>
-        <button className="btn" onClick={load}>
-          ↻
-        </button>
+        <span style={{ width: 36 }} />
       </div>
       <div className="screen-body">
-        <>
-          <ErrorBanner msg={err} />
-          <div className="section-title">頻道成員 · {channel.name}</div>
-            <ul className="list">
-              {members.map((m) => {
-                const isChannelOwner = m.id === channel.ownerID
-                const roleLabel = isChannelOwner
-                  ? '擁有者'
-                  : m.role === 'editor'
-                    ? '可修改'
-                    : '查詢'
-                return (
-                  <li key={m.id} className="row">
-                    <Avatar user={m} />
-                    <div className="grow">
-                      <div className="name">{m.name}</div>
-                      <div className="sub">{m.id}</div>
-                    </div>
-                    {/* owner 可切換非 owner 成員的權限;其餘只顯示角色標籤 */}
-                    {isOwner && !isChannelOwner ? (
-                      <button
-                        className={`role-chip ${m.role}`}
-                        onClick={() => toggleRole(m)}
-                        title="點擊切換 修改/查詢 權限"
-                      >
-                        {roleLabel}
-                      </button>
-                    ) : (
-                      <span className={`role-chip ${isChannelOwner ? 'owner' : m.role} static`}>
-                        {roleLabel}
-                      </span>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
-            <div className="section-title">以 Email 邀請</div>
-            <div className="field">
-              <input
-                value={email}
-                placeholder="輸入對方的 Email 後按 Enter"
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={(e) => isSubmitEnter(e) && invite()}
-              />
-            </div>
-            <div style={{ padding: '0 16px' }}>
-              <button
-                onClick={invite}
-                disabled={adding || !email.includes('@')}
-                style={{
-                  width: '100%',
-                  padding: 10,
-                  border: 'none',
-                  borderRadius: 10,
-                  background:
-                    adding || !email.includes('@') ? '#b3d4ff' : 'var(--ios-blue)',
-                  color: '#fff',
-                  fontSize: 15,
-                  cursor: 'pointer',
-                }}
-              >
-                {adding ? '邀請中…' : '邀請加入'}
-              </button>
-            </div>
-        </>
+        <ErrorBanner msg={err} />
+        <div className="section-title">頻道成員 · {channel.name}</div>
+        <ul className="list">
+          {members.map((m) => {
+            const isChannelOwner = m.id === channel.ownerID
+            const roleLabel = isChannelOwner ? '擁有者' : m.role === 'editor' ? '可修改' : '查詢'
+            return (
+              <li key={m.id} className="row">
+                <Avatar user={m} />
+                <div className="grow">
+                  <div className="name">{m.name}</div>
+                  <div className="sub">{m.id}</div>
+                </div>
+                {isOwner && !isChannelOwner ? (
+                  <button className={`role-chip ${m.role}`} onClick={() => toggleRole(m)} title="點擊切換 修改/查詢 權限">
+                    {roleLabel}
+                  </button>
+                ) : (
+                  <span className={`role-chip ${isChannelOwner ? 'owner' : m.role} static`}>
+                    {roleLabel}
+                  </span>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+        <div className="section-title">以 Email 邀請</div>
+        <div className="field">
+          <input
+            value={email}
+            placeholder="輸入對方的 Email 後按 Enter"
+            onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => isSubmitEnter(e) && invite()}
+          />
+        </div>
+        <div style={{ padding: '8px 16px 0' }}>
+          <button className="btn-primary" onClick={invite} disabled={adding || !email.includes('@')}>
+            {adding ? '邀請中…' : '邀請加入'}
+          </button>
+        </div>
       </div>
     </>
   )
@@ -1201,11 +1174,9 @@ function SettingsScreen({
             </div>
             <div className="row" onClick={onLogout}>
               <div className="grow">
-                <div className="name" style={{ color: 'var(--ios-red)' }}>
-                  登出
-                </div>
+                <div className="name" style={{ color: 'var(--ios-red)' }}>登出</div>
               </div>
-              <span className="chev">›</span>
+              <ChevronLeft size={16} strokeWidth={1.5} color="#c7c7cc" style={{ transform: 'rotate(180deg)' }} />
             </div>
           </>
         )}
@@ -1224,7 +1195,7 @@ function SettingsScreen({
             <div className="name">GET /health</div>
             <div className="sub">{health}</div>
           </div>
-          <span className="chev">測試 ›</span>
+          <ChevronLeft size={16} strokeWidth={1.5} color="#c7c7cc" style={{ transform: 'rotate(180deg)' }} />
         </div>
         <div className="section-title">說明</div>
         <div className="field" style={{ color: 'var(--ios-gray)', fontSize: 13 }}>

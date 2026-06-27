@@ -506,18 +506,19 @@ body {
   color: #1c1c1e;
 }
 .role-chip.editor {
-  background: #e3f0ff;
-  border-color: #b6d4fe;
-  color: var(--ios-blue);
+  background: #f0ebe4;
+  border-color: #d9c4aa;
+  color: var(--color-accent);
 }
 .role-chip.viewer {
-  background: #f2f2f7;
-  color: #8e8e93;
+  background: var(--ios-bg);
+  color: var(--ios-gray);
+  border-color: var(--ios-sep);
 }
 .role-chip.owner {
-  background: #fff4e0;
-  border-color: #ffe0a3;
-  color: #b8860b;
+  background: #f5f0e8;
+  border-color: #d9c4aa;
+  color: var(--color-dark);
 }
 .role-chip.static {
   cursor: default;
@@ -838,11 +839,11 @@ body {
 /* 主線 entry 卡：橘色左邊框 */
 .tl-main-card {
   background: #fff8f0;
-  border: 1px solid rgba(255, 149, 0, 0.3);
   border-left: 3px solid var(--tl-trip-color);
   border-radius: 10px;
   padding: 8px 10px;
   margin-bottom: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 .tl-main-title {
   font-weight: 600;
@@ -884,11 +885,10 @@ body {
 /* 當天的每一筆事項小卡 */
 .tl-card {
   background: var(--ios-card);
-  border: 1px solid var(--ios-sep);
   border-radius: 10px;
   padding: 8px 10px;
   margin-bottom: 6px;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 .tl-card:last-child {
   margin-bottom: 0;
@@ -911,7 +911,7 @@ body {
 
 /* 區間 entry(會停留一段時間的子行程,如住宿):左側色條標示「持續性」 */
 .tl-card-span {
-  border-left: 3px solid var(--ios-blue);
+  border-left: 3px solid var(--color-accent);
 }
 /* 事項旁的結束範圍(~ 結束時刻/日期) */
 .tl-span {
@@ -1006,6 +1006,28 @@ body {
   margin-top: 8px;
   font-size: 13px;
   color: var(--ios-gray);
+}
+
+/* 主要行動按鈕 */
+.btn-primary {
+  display: block;
+  width: 100%;
+  padding: 13px;
+  border: none;
+  border-radius: 12px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-primary:disabled {
+  background: #D9C4AA;
+  cursor: default;
+}
+.btn-primary:active:not(:disabled) {
+  opacity: 0.85;
 }
 
 /* 一般輸入框(設定 / 查詢) */
