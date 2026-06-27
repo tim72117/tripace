@@ -23,9 +23,15 @@ type Tab = 'channels' | 'settings'
 type ChatMessage = Message & { presented?: PresentedEntry[]; pending?: boolean }
 
 export function useAppState() {
-  const [baseURL, setBaseURL] = useState(
-    () => localStorage.getItem(LS_BASE) ?? 'http://localhost:8080',
-  )
+  const [baseURL, setBaseURL] = useState(() => {
+    const origin = `${window.location.protocol}//${window.location.host}`
+    const saved = localStorage.getItem(LS_BASE)
+    // localhost 以外的環境（如 Cloud Run）忽略舊的 localhost 設定
+    if (!saved || (saved.includes('localhost') && !origin.includes('localhost'))) {
+      return origin
+    }
+    return saved
+  })
   useEffect(() => localStorage.setItem(LS_BASE, baseURL), [baseURL])
 
   const [token, setToken] = useState<string | null>(
