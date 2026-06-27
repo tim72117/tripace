@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import ReactMarkdown from 'react-markdown'
+import {
+  MessageCircle, Settings, ChevronRight, ChevronLeft,
+  Users, Send, AlertCircle, Plus, LogIn,
+} from 'lucide-react'
 import type { ClientConfig, PresentedEntry } from './api'
 import * as api from './api'
 import { ApiError } from './api'
@@ -142,6 +146,8 @@ function TabScreen(props: ContentProps) {
         <ChannelsScreen
           cfg={props.cfg}
           user={props.user}
+          isGuest={props.isGuest}
+          onAuthed={props.onAuthed}
           onOpen={(c) => props.setActiveChannel(c)}
         />
       )
@@ -162,9 +168,9 @@ function TabScreen(props: ContentProps) {
 }
 
 function TabBar({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
-  const tabs: { key: Tab; ico: string; label: string }[] = [
-    { key: 'channels', ico: '💬', label: '頻道' },
-    { key: 'settings', ico: '⚙️', label: '設定' },
+  const tabs: { key: Tab; Icon: React.ElementType; label: string }[] = [
+    { key: 'channels', Icon: MessageCircle, label: '頻道' },
+    { key: 'settings', Icon: Settings, label: '設定' },
   ]
   return (
     <div className="tabbar">
@@ -174,8 +180,8 @@ function TabBar({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
           className={`tab ${tab === t.key ? 'active' : ''}`}
           onClick={() => setTab(t.key)}
         >
-          <span className="ico">{t.ico}</span>
-          {t.label}
+          <t.Icon size={22} strokeWidth={tab === t.key ? 2 : 1.5} />
+          <span>{t.label}</span>
         </button>
       ))}
     </div>
@@ -194,7 +200,7 @@ function Avatar({ user }: { user: { name: string; avatarColor: string } }) {
 
 function ErrorBanner({ msg }: { msg: string | null }) {
   if (!msg) return null
-  return <div className="banner">⚠️ {msg}</div>
+  return <div className="banner"><AlertCircle size={14} strokeWidth={2} style={{verticalAlign: 'middle', marginRight: 6}} />{msg}</div>
 }
 
 // 統一把 API 錯誤轉成可顯示訊息。
@@ -216,18 +222,22 @@ function isSubmitEnter(e: ReactKeyboardEvent): boolean {
 function ChannelsScreen({
   cfg,
   user,
+  isGuest,
+  onAuthed,
   onOpen,
 }: {
   cfg: ClientConfig
   user: User
+  isGuest: boolean
+  onAuthed: (token: string, user: User, email: string) => void
   onOpen: (c: Channel) => void
 }) {
   const [channels, setChannels] = useState<Channel[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  // 建頻道用 inline 輸入列(不用瀏覽器原生 prompt,VSCode 內建瀏覽器也能用)。
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
+  const [showLogin, setShowLogin] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -262,17 +272,28 @@ function ChannelsScreen({
   return (
     <>
       <div className="navbar">
-        <button className="btn" onClick={load} disabled={loading}>
-          ↻
+        <button className="btn icon-btn" onClick={() => setCreating((v) => !v)}>
+          <Plus size={20} strokeWidth={1.8} />
         </button>
         <span className="title">頻道</span>
-        <button
-          className="btn"
-          onClick={() => setCreating((v) => !v)}
-        >
-          {creating ? '✕' : '＋'}
-        </button>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {isGuest ? (
+            <button className="btn icon-btn" onClick={() => setShowLogin(v => !v)} title="登入">
+              <LogIn size={18} strokeWidth={1.8} />
+            </button>
+          ) : (
+            <Avatar user={user} />
+          )}
+        </div>
       </div>
+      {showLogin && isGuest && (
+        <div className="login-dropdown">
+          <LoginForm baseURL={cfg.baseURL} onAuthed={(tok, u, mail) => {
+            onAuthed(tok, u, mail)
+            setShowLogin(false)
+          }} />
+        </div>
+      )}
       {creating && (
         <div className="composer">
           <input
@@ -317,7 +338,7 @@ function ChannelsScreen({
                     {c.lastMessagePreview ?? '尚無訊息'} · {c.memberCount} 人
                   </div>
                 </div>
-                <span className="chev">›</span>
+                <ChevronRight size={16} strokeWidth={1.5} color="#c7c7cc" />
               </li>
             ))}
           </ul>
@@ -390,7 +411,7 @@ function ChatScreen({
 
   useEffect(() => {
     bodyRef.current?.scrollTo(0, bodyRef.current.scrollHeight)
-  }, [messages])
+  }, [messages, entries])
 
   // 本地訊息(不寫入後端,純前端顯示用):查詢的提問/回答泡泡。
   const mkLocalMsg = (
@@ -532,12 +553,12 @@ function ChatScreen({
   return (
     <>
       <div className="navbar">
-        <button className="btn" onClick={onBack}>
-          ‹ 頻道
+        <button className="btn icon-btn" onClick={onBack}>
+          <ChevronLeft size={20} strokeWidth={1.8} />
         </button>
         <span className="title">{channel.name}</span>
-        <button className="btn" onClick={() => setShowMembers(true)} title="成員">
-          👥
+        <button className="btn icon-btn" onClick={() => setShowMembers(true)} title="成員">
+          <Users size={18} strokeWidth={1.8} />
         </button>
       </div>
       <div className="screen-body" ref={bodyRef}>
@@ -570,7 +591,7 @@ function ChatScreen({
           onClick={isOwner ? send : ask}
           disabled={sending || !draft.trim()}
         >
-          {sending ? '…' : isOwner ? '送出' : '查詢'}
+          <Send size={16} strokeWidth={2} />
         </button>
       </div>
     </>
