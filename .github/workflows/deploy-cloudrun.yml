@@ -42,7 +42,7 @@ jobs:
           service: ${{ env.CLOUD_RUN_SERVICE }}
           region: ${{ env.CLOUD_RUN_REGION }}
           source: .
-          flags: --build-arg GH_PAT=${{ secrets.GH_PAT }}
+          flags: --set-build-env-vars GH_PAT=${{ secrets.GH_PAT }}
           env_vars: |
             DEV_MODE=false
             SEED=false
