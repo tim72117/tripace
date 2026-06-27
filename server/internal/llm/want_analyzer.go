@@ -11,6 +11,7 @@ import (
 	// 自訂 want 工具(record_entry):init() 註冊工具,並提供記錄 context/sink。
 	"github.com/channel/server/internal/wanttools"
 
+	wantconfig "github.com/tim72117/want/config"
 	wantorch "github.com/tim72117/want/orchestrator"
 	wanttypes "github.com/tim72117/want/types"
 	wantui "github.com/tim72117/want/ui"
@@ -25,16 +26,23 @@ type WantAnalyzer struct {
 	mu sync.Mutex
 }
 
-// NewWant 用 want 的設定(server/configs/settings.json,啟動目錄須為 server)初始化 orchestrator。
-// 初始化方式對齊 want/web/server.go。
+// NewWant 用 want 的設定初始化 orchestrator。
+// 環境變數 AI_PROVIDER / AI_MODEL / GOOGLE_API_KEY 優先於 configs/settings.json。
 func NewWant() (*WantAnalyzer, error) {
 	wd, _ := os.Getwd()
 	wanttypes.InitialWorkingDir = wd
 
-	// 空 provider/model => 用 settings.json。
-	// role 用 "assistant",want 會從 InitialWorkingDir/.agents/assistant.md 載入
-	// (啟動目錄須為 server,故為 server/.agents/assistant.md)。
-	coord := wantorch.Setup("", "", "", "assistant")
+	provider := os.Getenv("AI_PROVIDER")
+	model := os.Getenv("AI_MODEL")
+	if apiKey := os.Getenv("GOOGLE_API_KEY"); apiKey != "" {
+		wantconfig.GlobalSettings = &wantconfig.Settings{
+			Provider:     provider,
+			Model:        model,
+			GoogleAPIKey: apiKey,
+		}
+	}
+
+	coord := wantorch.Setup(provider, model, "", "assistant")
 	coord.OnError(func(err error) {
 		fmt.Printf("[want] 🔴 Agent Error: %v\n", err)
 	})
