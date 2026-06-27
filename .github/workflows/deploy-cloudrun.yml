@@ -37,24 +37,20 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Deploy to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: ${{ env.CLOUD_RUN_SERVICE }}
-          region: ${{ env.CLOUD_RUN_REGION }}
-          source: .
-          flags: --set-build-env-vars GH_PAT=${{ secrets.GH_PAT }}
-          env_vars: |
-            DEV_MODE=false
-            SEED=false
-          secrets: |
-            DATABASE_URL=DATABASE_URL:latest
-            JWT_SECRET=JWT_SECRET:latest
+        run: |
+          gcloud run deploy ${{ env.CLOUD_RUN_SERVICE }} \
+            --source . \
+            --region ${{ env.CLOUD_RUN_REGION }} \
+            --build-arg GH_PAT=${{ secrets.GH_PAT }} \
+            --update-env-vars DEV_MODE=false,SEED=false \
+            --update-secrets DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest \
+            --quiet
 
       - name: Show Cloud Run URL
         run: |
           URL=$(gcloud run services describe ${{ env.CLOUD_RUN_SERVICE }} \
             --region ${{ env.CLOUD_RUN_REGION }} \
             --format 'value(status.url)')
-          echo "### 🚀 部署完成" >> "$GITHUB_STEP_SUMMARY"
+          echo "### 部署完成" >> "$GITHUB_STEP_SUMMARY"
           echo "URL: $URL" >> "$GITHUB_STEP_SUMMARY"
           echo "$URL"
