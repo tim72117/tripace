@@ -57,7 +57,14 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/channels/{id}/trips", s.handleListTrips)
 	mux.HandleFunc("GET /v1/channels/{id}/trips/{tripID}/entries", s.handleListTripEntries)
 	mux.HandleFunc("GET /v1/channels/{id}/ws", s.handleWS)
+	// internal — 供 CLI / LLM 操作資料，不需登入
 	mux.HandleFunc("POST /internal/channels/{id}/notify", s.handleNotify)
+	mux.HandleFunc("POST /internal/channels/{id}/entries", s.handleInternalRecord)
+	mux.HandleFunc("POST /internal/entries/{id}/trip", s.handleInternalAddToTrip)
+	mux.HandleFunc("PATCH /internal/entries/{id}", s.handleInternalUpdateEntry)
+	mux.HandleFunc("GET /internal/channels/{id}/trips", s.handleInternalListTrips)
+	mux.HandleFunc("GET /internal/channels/{id}/trips/{tripID}/entries", s.handleInternalTripEntries)
+	mux.HandleFunc("DELETE /internal/channels/{id}/entries", s.handleInternalReset)
 	return logging(cors(mux))
 }
 
@@ -386,8 +393,33 @@ func (s *Server) handleAssist(w http.ResponseWriter, r *http.Request) {
 
 // GET /v1/channels/{id}/entries — 頻道的日期/事件條目(LLM 從訊息解析,關聯訊息)。
 func (s *Server) handleListEntries(w http.ResponseWriter, r *http.Request) {
+	s.writeEntries(w, r.PathValue("id"))
+}
+
+// DELETE /v1/channels/{id}/entries — 清空頻道的所有條目與行程(開發/測試重置用)。
+// 屬破壞性操作,限頻道 owner。
+func (s *Server) handleResetChannelData(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	entries, err := s.store.ListEntriesByChannel(id)
+	if !s.requireOwner(w, id, s.userFor(r).ID) {
+		return
+	}
+	s.resetChannel(w, id)
+}
+
+// GET /v1/channels/{id}/trips — 頻道的行程分組(後端依時間自動歸組)。
+func (s *Server) handleListTrips(w http.ResponseWriter, r *http.Request) {
+	s.writeTrips(w, r.PathValue("id"))
+}
+
+// GET /v1/channels/{id}/trips/{tripID}/entries — 某行程下的條目。
+func (s *Server) handleListTripEntries(w http.ResponseWriter, r *http.Request) {
+	s.writeTripEntries(w, r.PathValue("id"), r.PathValue("tripID"))
+}
+
+// ----- shared query helpers -----
+
+func (s *Server) writeEntries(w http.ResponseWriter, channelID string) {
+	entries, err := s.store.ListEntriesByChannel(channelID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
 		return
@@ -398,24 +430,8 @@ func (s *Server) handleListEntries(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
 }
 
-// DELETE /v1/channels/{id}/entries — 清空頻道的所有條目與行程(開發/測試重置用)。
-// 屬破壞性操作,限頻道 owner。
-func (s *Server) handleResetChannelData(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if !s.requireOwner(w, id, s.userFor(r).ID) {
-		return
-	}
-	if err := s.store.DeleteChannelEntriesAndTrips(id); err != nil {
-		writeErr(w, http.StatusInternalServerError, "reset_failed", err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "reset"})
-}
-
-// GET /v1/channels/{id}/trips — 頻道的行程分組(後端依時間自動歸組)。
-func (s *Server) handleListTrips(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	trips, err := s.store.ListTripsByChannel(id)
+func (s *Server) writeTrips(w http.ResponseWriter, channelID string) {
+	trips, err := s.store.ListTripsByChannel(channelID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
 		return
@@ -426,11 +442,8 @@ func (s *Server) handleListTrips(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"trips": trips})
 }
 
-// GET /v1/channels/{id}/trips/{tripID}/entries — 某行程下的條目。
-func (s *Server) handleListTripEntries(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	tripID := r.PathValue("tripID")
-	entries, err := s.store.ListEntriesByTrip(id, tripID)
+func (s *Server) writeTripEntries(w http.ResponseWriter, channelID, tripID string) {
+	entries, err := s.store.ListEntriesByTrip(channelID, tripID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
 		return
@@ -439,6 +452,14 @@ func (s *Server) handleListTripEntries(w http.ResponseWriter, r *http.Request) {
 		entries = []model.Entry{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
+}
+
+func (s *Server) resetChannel(w http.ResponseWriter, channelID string) {
+	if err := s.store.DeleteChannelEntriesAndTrips(channelID); err != nil {
+		writeErr(w, http.StatusInternalServerError, "reset_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "reset", "channel": channelID})
 }
 
 // ----- helpers -----

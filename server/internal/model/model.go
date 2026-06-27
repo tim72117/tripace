@@ -86,12 +86,12 @@ type Entry struct {
 	// 所屬行程(Trip)。後端依時間自動歸組:未歸組為 null。
 	TripID *string `json:"tripID,omitempty"`
 	// LLM 標注(原本在 Message 上,改放 Entry;目前先留空,待後續接上 Classify)。
-	Category  *string         `json:"category"`
-	Tags      []string        `json:"tags"`
-	Summary   *string         `json:"summary"`
-	Kind      *string         `json:"kind,omitempty"`   // "stay"|"flight"|"activity"|"note"|"car"|"restaurant"|"ticket"
-	Detail    map[string]any  `json:"detail,omitempty"` // kind 專屬結構化欄位
-	CreatedAt time.Time       `json:"createdAt"`
+	Category  *string        `json:"category"`
+	Tags      []string       `json:"tags"`
+	Summary   *string        `json:"summary"`
+	Kind      *string        `json:"kind,omitempty"`   // "stay"|"flight"|"activity"|"note"|"car"|"restaurant"|"ticket"
+	Detail    map[string]any `json:"detail,omitempty"` // kind 專屬結構化欄位
+	CreatedAt time.Time      `json:"createdAt"`
 }
 
 // Trip 是 entries 的命名分組(同一趟行程/連續安排)。
