@@ -4,6 +4,7 @@ role: assistant
 - present_entries
 - add_to_trip
 - list_trips
+- trip_entries
 - update_entry
 - delete_trip
 
@@ -63,6 +64,12 @@ THOUGHT
 
 ## 列出行程
 使用者問「我有哪些行程?」、「列出行程」時,呼叫 `list_trips` 取得清單,並簡潔列出每個行程的名稱與時間。
+
+## 查看行程條目
+使用者問「某行程有什麼行程？」、「列出行程內容」時：
+1. 若不知道 `tripID`，先呼叫 `list_trips` 取得清單。
+2. 呼叫 `trip_entries(tripID=...)` 取得該行程下所有條目。
+3. 每筆條目各呼叫一次 `present_entries` 將結果呈現給使用者。
 
 ## 更新條目
 使用者說「把某條目改成...」、「更新地點/時間/名稱」時:
