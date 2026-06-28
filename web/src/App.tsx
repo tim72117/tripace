@@ -343,6 +343,8 @@ function ChatScreen({
   // Entry:LLM(record_entry 工具)從訊息解析出的條目,按 messageID 掛到對應訊息下方。
   const [entries, setEntries] = useState<Entry[]>([])
   const [draft, setDraft] = useState('')
+  const [lastDraft, setLastDraft] = useState('')
+  const [inputFocused, setInputFocused] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   // 成員管理在頻道內開啟(對齊 iOS App 的聊天頁右上角入口)。
@@ -435,6 +437,7 @@ function ChatScreen({
     if (!text) return
     setSending(true)
     setErr(null)
+    setLastDraft(text)
     setDraft('')
     // 立刻插入處理中佔位泡泡(海浪動畫);完成後就地替換、失敗則移除。
     const pendingID = `pending_${Date.now()}`
@@ -585,18 +588,9 @@ function ChatScreen({
         </div>
       </div>
       <div className="chat-area">
-        <div className="screen-body" ref={bodyRef}>
+        <div className="screen-body" ref={bodyRef} onMouseDown={() => { setInputFocused(false); setMessages([]) }}>
           <ErrorBanner msg={err} />
-          {/* LLM 回答泡泡(記事後 agent 回應) */}
-          {messages.length > 0 && (
-            <div className="chat-list">
-              {messages.map((m) => (
-                <MessageBubble key={m.id} msg={m} meID={user.id} />
-              ))}
-            </div>
-          )}
-          {/* Timeline:直接顯示，不需點 chip */}
-          {entries.length === 0 && messages.length === 0 ? (
+          {entries.length === 0 && messages.length === 0 && !sending ? (
             <div className="empty">
               {isOwner ? '在下方輸入記事，會依時間排列在這裡。' : '在下方查詢頻道內容。'}
             </div>
@@ -604,19 +598,49 @@ function ChatScreen({
             <MultiTrackTimeline entries={entries} todayRef={todayRef} />
           ) : null}
         </div>
+
+        {/* 浮層：訊息對話區，覆蓋在時間軸上方，毛玻璃背景 */}
+        {(messages.length > 0 || sending || inputFocused) && (
+          <div className="chat-overlay" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="chat-overlay-inner">
+              {sending && lastDraft && (
+                <div className="bubble-group mine">
+                  <div className="bubble mine">
+                    <div className="text">{lastDraft}</div>
+                  </div>
+                </div>
+              )}
+              {messages.map((m) => (
+                <MessageBubble key={m.id} msg={m} meID={user.id} />
+              ))}
+              {sending && (
+                <div className="bubble-group">
+                  <div className="bubble pending">
+                    <WaveLoader />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="composer">
-        <input
-          value={draft}
-          placeholder={isOwner ? '記事或提問…' : '用自然語言查詢這個頻道…'}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => isSubmitEnter(e) && (isOwner ? send() : ask())}
-        />
-        <button
-          onClick={isOwner ? send : ask}
-          disabled={sending || !draft.trim()}
-        >
-          <Send size={16} strokeWidth={2} />
-        </button>
+          <div className="composer-row">
+            <input
+              value={draft}
+              placeholder={isOwner ? '記事或提問…' : '用自然語言查詢這個頻道…'}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => isSubmitEnter(e) && (isOwner ? send() : ask())}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
+            />
+            <button
+              onClick={isOwner ? send : ask}
+              disabled={sending || !draft.trim()}
+            >
+              <Send size={16} strokeWidth={2} />
+            </button>
+          </div>
         </div>
       </div>
     </>
