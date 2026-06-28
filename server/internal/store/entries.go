@@ -16,6 +16,8 @@ func toEntry(r entryRow) model.Entry {
 		End:       r.End,
 		AllDay:    r.AllDay,
 		Location:  r.Location,
+		Lat:       r.Lat,
+		Lng:       r.Lng,
 		TripID:    r.TripID,
 		Category:  r.Category,
 		Tags:      r.Tags,
@@ -37,6 +39,8 @@ func (s *Store) InsertEntry(e model.Entry) error {
 		End:       e.End,
 		AllDay:    e.AllDay,
 		Location:  e.Location,
+		Lat:       e.Lat,
+		Lng:       e.Lng,
 		TripID:    e.TripID,
 		Category:  e.Category,
 		Tags:      e.Tags,
@@ -46,6 +50,12 @@ func (s *Store) InsertEntry(e model.Entry) error {
 		CreatedAt: e.CreatedAt,
 	}
 	return s.db.Create(&r).Error
+}
+
+// SetEntryLatLng 更新 entry 的經緯度（由 geo goroutine 非同步呼叫）。
+func (s *Store) SetEntryLatLng(id string, lat, lng float64) error {
+	return s.db.Model(&entryRow{}).Where("id = ?", id).
+		Updates(map[string]any{"lat": lat, "lng": lng}).Error
 }
 
 // UpdateEntry 更新一筆 entry 的可編輯欄位；留空字串的欄位不更新。

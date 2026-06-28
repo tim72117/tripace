@@ -20,7 +20,7 @@ func newDBClient() *dbClient {
 	if err != nil {
 		fatal("open store: %v", err)
 	}
-	return &dbClient{st: st, svc: tripsvc.New(st)}
+	return &dbClient{st: st, svc: tripsvc.New(st, nil)}
 }
 
 type dbClient struct {

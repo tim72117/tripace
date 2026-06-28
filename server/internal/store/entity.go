@@ -42,7 +42,9 @@ type entryRow struct {
 	Start     string `gorm:"column:start"`
 	End       string `gorm:"column:end_at"` // end 是 SQL 保留字,欄位改名 end_at
 	AllDay    bool   `gorm:"column:all_day"`
-	Location  string `gorm:"column:location"` // 地點(可空)
+	Location string   `gorm:"column:location"`
+	Lat      *float64 `gorm:"column:lat"`
+	Lng      *float64 `gorm:"column:lng"`
 	// 所屬行程;NULL=未歸組。後端依時間自動歸組。
 	TripID *string `gorm:"column:trip_id;index"`
 	// LLM 標注(原本在 message 上,改存 entry)。

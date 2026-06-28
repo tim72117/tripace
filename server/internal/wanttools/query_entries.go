@@ -20,7 +20,7 @@ var tripService *tripsvc.Service
 // BindStore 提供工具查詢用的 store 實例,並一併建立 tripsvc 服務(server 啟動時呼叫)。
 func BindStore(s *store.Store) {
 	entryStore = s
-	tripService = tripsvc.New(s)
+	tripService = tripsvc.New(s, nil)
 }
 
 func init() {

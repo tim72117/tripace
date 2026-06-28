@@ -66,6 +66,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /internal/channels/{id}/entries", s.handleInternalRecord)
 	mux.HandleFunc("POST /internal/entries/{id}/trip", s.handleInternalAddToTrip)
 	mux.HandleFunc("PATCH /internal/entries/{id}", s.handleInternalUpdateEntry)
+	mux.HandleFunc("PATCH /internal/entries/{id}/latlng", s.handleInternalSetLatLng)
 	mux.HandleFunc("GET /internal/channels/{id}/trips", s.handleInternalListTrips)
 	mux.HandleFunc("GET /internal/channels/{id}/trips/{tripID}/entries", s.handleInternalTripEntries)
 	mux.HandleFunc("DELETE /internal/channels/{id}/entries", s.handleInternalReset)

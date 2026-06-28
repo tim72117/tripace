@@ -21,7 +21,7 @@ func (s *Server) handleInternalRecord(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid_body", "item 必填")
 		return
 	}
-	svc := tripsvc.New(s.store)
+	svc := tripsvc.New(s.store, nil)
 	res, err := svc.Record(tripsvc.RecordInput{
 		ChannelID: channelID,
 		Item:      body.Item,
@@ -46,7 +46,7 @@ func (s *Server) handleInternalAddToTrip(w http.ResponseWriter, r *http.Request)
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
-	svc := tripsvc.New(s.store)
+	svc := tripsvc.New(s.store, nil)
 	tripID, channelID, err := svc.AddToTrip(entryID, body.TripID, body.Title)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "add_to_trip_failed", err.Error())
@@ -73,7 +73,7 @@ func (s *Server) handleInternalUpdateEntry(w http.ResponseWriter, r *http.Reques
 		writeErr(w, http.StatusBadRequest, "invalid_body", err.Error())
 		return
 	}
-	svc := tripsvc.New(s.store)
+	svc := tripsvc.New(s.store, nil)
 	if err := svc.UpdateEntry(tripsvc.UpdateEntryInput{
 		ID:       entryID,
 		Item:     body.Item,
@@ -84,6 +84,24 @@ func (s *Server) handleInternalUpdateEntry(w http.ResponseWriter, r *http.Reques
 		Kind:     body.Kind,
 		Detail:   body.Detail,
 	}); err != nil {
+		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"updated": entryID})
+}
+
+// handleInternalSetLatLng PATCH /internal/entries/{id}/latlng
+func (s *Server) handleInternalSetLatLng(w http.ResponseWriter, r *http.Request) {
+	entryID := r.PathValue("id")
+	var body struct {
+		Lat float64 `json:"lat"`
+		Lng float64 `json:"lng"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_body", err.Error())
+		return
+	}
+	if err := s.store.SetEntryLatLng(entryID, body.Lat, body.Lng); err != nil {
 		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
 		return
 	}
