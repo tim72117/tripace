@@ -1158,17 +1158,16 @@ function ShareModal({
   onClose: () => void
 }) {
   const [token, setToken] = useState<string | null>(null)
+  const [editable, setEditable] = useState(false)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
-  const publicURL = token
-    ? `${window.location.origin}/public/${token}`
-    : null
+  const publicURL = token ? `${window.location.origin}/public/${token}` : null
 
   useEffect(() => {
     api.getPublicLink(cfg, channel.id)
-      .then(setToken)
+      .then((r) => { setToken(r.linkToken); setEditable(r.editable) })
       .catch(() => setToken(null))
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1178,12 +1177,24 @@ function ShareModal({
     setLoading(true)
     setErr(null)
     try {
-      const t = await api.createPublicLink(cfg, channel.id)
-      setToken(t)
+      const r = await api.createPublicLink(cfg, channel.id, editable)
+      setToken(r.linkToken)
+      setEditable(r.editable)
     } catch (e) {
       setErr(errMsg(e))
     } finally {
       setLoading(false)
+    }
+  }
+
+  const toggleEditable = async (val: boolean) => {
+    setEditable(val)
+    try {
+      const r = await api.createPublicLink(cfg, channel.id, val)
+      setToken(r.linkToken)
+      setEditable(r.editable)
+    } catch (e) {
+      setErr(errMsg(e))
     }
   }
 
@@ -1221,7 +1232,7 @@ function ShareModal({
         <ErrorBanner msg={err} />
         <div className="section-title">公開連結</div>
         <div className="field" style={{ color: 'var(--ios-gray)', fontSize: 13 }}>
-          任何人取得連結後即可查看此頻道的行程（唯讀，無需登入）。
+          任何人取得連結後即可查看此頻道的行程（無需登入）。
         </div>
         {loading ? (
           <div className="empty">載入中…</div>
@@ -1239,12 +1250,21 @@ function ShareModal({
               </button>
             </div>
             {isOwner && (
-              <div style={{ padding: '12px 16px 0' }}>
-                <button className="btn-danger" onClick={revoke}>
-                  <Trash2 size={14} strokeWidth={1.8} style={{ marginRight: 6 }} />
-                  撤銷連結
-                </button>
-              </div>
+              <>
+                <div className="share-toggle-row">
+                  <span className="share-toggle-label">允許訪客新增行程</span>
+                  <label className="ios-toggle">
+                    <input type="checkbox" checked={editable} onChange={(e) => toggleEditable(e.target.checked)} />
+                    <span className="ios-toggle-slider" />
+                  </label>
+                </div>
+                <div style={{ padding: '12px 16px 0' }}>
+                  <button className="btn-danger" onClick={revoke}>
+                    <Trash2 size={14} strokeWidth={1.8} style={{ marginRight: 6 }} />
+                    撤銷連結
+                  </button>
+                </div>
+              </>
             )}
           </>
         ) : (
@@ -1253,11 +1273,20 @@ function ShareModal({
               尚未建立公開連結。
             </div>
             {isOwner && (
-              <div style={{ padding: '0 16px' }}>
-                <button className="btn-primary" onClick={generate}>
-                  建立公開連結
-                </button>
-              </div>
+              <>
+                <div className="share-toggle-row">
+                  <span className="share-toggle-label">允許訪客新增行程</span>
+                  <label className="ios-toggle">
+                    <input type="checkbox" checked={editable} onChange={(e) => setEditable(e.target.checked)} />
+                    <span className="ios-toggle-slider" />
+                  </label>
+                </div>
+                <div style={{ padding: '8px 16px 0' }}>
+                  <button className="btn-primary" onClick={generate}>
+                    建立公開連結
+                  </button>
+                </div>
+              </>
             )}
           </>
         )}
@@ -1269,19 +1298,22 @@ function ShareModal({
 // ---- 公開分享頁（/public/{token}，無需登入） ----
 
 function PublicViewScreen({ token }: { token: string }) {
-  const [data, setData] = useState<{ channelID: string; channelName: string; entries: Entry[] } | null>(null)
+  const [data, setData] = useState<{ channelID: string; channelName: string; editable: boolean; entries: Entry[] } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [draft, setDraft] = useState('')
+  const [sending, setSending] = useState(false)
   const todayRef = useRef<HTMLDivElement>(null as unknown as HTMLDivElement)
   const bodyRef = useRef<HTMLDivElement>(null)
 
-  // 公開頁不依賴登入設定，直接用 localStorage 的 baseURL；
-  // 若與前端同源（正式部署）或使用者未設定過，則 fallback 到 same-origin fetch。
   const resolvedBase = (() => {
     const saved = localStorage.getItem('channel.baseURL')
     if (saved && !saved.includes(window.location.host)) return saved
     return window.location.origin
   })()
+
+  const reload = () =>
+    api.fetchPublicView(resolvedBase, token).then(setData).catch((e) => setErr(errMsg(e)))
 
   useEffect(() => {
     api.fetchPublicView(resolvedBase, token)
@@ -1301,6 +1333,20 @@ function PublicViewScreen({ token }: { token: string }) {
     }
   }, [data])
 
+  const send = async () => {
+    if (!draft.trim() || sending) return
+    setSending(true)
+    try {
+      await api.publicAssist(resolvedBase, token, draft.trim())
+      setDraft('')
+      await reload()
+    } catch (e) {
+      setErr(errMsg(e))
+    } finally {
+      setSending(false)
+    }
+  }
+
   return (
     <>
       <div className="navbar">
@@ -1317,6 +1363,21 @@ function PublicViewScreen({ token }: { token: string }) {
             : <MultiTrackTimeline entries={data.entries} todayRef={todayRef} />
         )}
       </div>
+      {data?.editable && (
+        <div className="composer">
+          <input
+            className="composer-input"
+            placeholder="新增行程…"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
+            disabled={sending}
+          />
+          <button className="composer-send" onClick={send} disabled={sending || !draft.trim()}>
+            <Send size={16} strokeWidth={2} />
+          </button>
+        </div>
+      )}
     </>
   )
 }

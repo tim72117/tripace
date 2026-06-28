@@ -77,6 +77,7 @@ type publicLinkRow struct {
 	ChannelID string    `gorm:"uniqueIndex;column:channel_id;not null"`
 	LinkToken string    `gorm:"uniqueIndex;column:link_token;not null"`
 	CreatedBy string    `gorm:"column:created_by;not null"`
+	Editable  bool      `gorm:"column:editable;not null;default:false"`
 	CreatedAt time.Time `gorm:"column:created_at;not null"`
 }
 

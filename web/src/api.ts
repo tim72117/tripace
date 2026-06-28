@@ -305,21 +305,22 @@ export function fetchTripEntries(
 }
 
 // 建立（或取得已有）頻道公開連結。
-export function createPublicLink(cfg: ClientConfig, channelID: string) {
-  return request<{ linkToken: string }>(
+export function createPublicLink(cfg: ClientConfig, channelID: string, editable: boolean) {
+  return request<{ linkToken: string; editable: boolean }>(
     cfg,
     'POST',
     `/v1/channels/${encodeURIComponent(channelID)}/public-link`,
-  ).then((r) => r.linkToken)
+    { editable },
+  )
 }
 
-// 取得頻道公開連結 token。
+// 取得頻道公開連結資訊。
 export function getPublicLink(cfg: ClientConfig, channelID: string) {
-  return request<{ linkToken: string }>(
+  return request<{ linkToken: string; editable: boolean }>(
     cfg,
     'GET',
     `/v1/channels/${encodeURIComponent(channelID)}/public-link`,
-  ).then((r) => r.linkToken)
+  )
 }
 
 // 刪除頻道公開連結。
@@ -336,6 +337,18 @@ export function fetchPublicView(baseURL: string, token: string) {
   return fetch(`${baseURL}/v1/public/${encodeURIComponent(token)}`)
     .then(async (r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
-      return r.json() as Promise<{ channelID: string; channelName: string; entries: Entry[] }>
+      return r.json() as Promise<{ channelID: string; channelName: string; editable: boolean; entries: Entry[] }>
     })
+}
+
+// 公開頁訪客送訊息（editable 連結專用）。
+export function publicAssist(baseURL: string, token: string, text: string) {
+  return fetch(`${baseURL}/v1/public/${encodeURIComponent(token)}/assist`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  }).then(async (r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return r.json()
+  })
 }

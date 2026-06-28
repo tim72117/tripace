@@ -1,35 +1,49 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 
+	"github.com/channel/server/internal/llm"
 	"github.com/channel/server/internal/store"
 )
 
 // POST /v1/channels/{id}/public-link — 建立（或取得已有）公開連結。
-// editor 以上才能操作。
 func (s *Server) handleCreatePublicLink(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	user := s.userFor(r)
 	if !s.requireEditor(w, id, user.ID) {
 		return
 	}
+	var body struct {
+		Editable bool `json:"editable"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
 
-	// 已有就直接回傳，避免重複建立。
-	token, err := s.store.GetPublicLink(id)
+	info, err := s.store.GetPublicLink(id)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
 	if errors.Is(err, store.ErrNotFound) {
-		token, err = s.store.CreatePublicLink(id, user.ID)
+		token, err := s.store.CreatePublicLink(id, user.ID, body.Editable)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, "create_failed", err.Error())
 			return
 		}
+		writeJSON(w, http.StatusOK, map[string]any{"linkToken": token, "editable": body.Editable})
+		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"linkToken": token})
+	// 已存在：若 editable 有變更則更新
+	if info.Editable != body.Editable {
+		if err := s.store.SetPublicLinkEditable(id, body.Editable); err != nil {
+			writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
+			return
+		}
+		info.Editable = body.Editable
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"linkToken": info.Token, "editable": info.Editable})
 }
 
 // GET /v1/channels/{id}/public-link — 查詢頻道的公開連結。
@@ -38,7 +52,7 @@ func (s *Server) handleGetPublicLink(w http.ResponseWriter, r *http.Request) {
 	if !s.requireMember(w, id, s.userFor(r).ID) {
 		return
 	}
-	token, err := s.store.GetPublicLink(id)
+	info, err := s.store.GetPublicLink(id)
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "not_found", "此頻道尚未建立公開連結")
 		return
@@ -47,7 +61,7 @@ func (s *Server) handleGetPublicLink(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"linkToken": token})
+	writeJSON(w, http.StatusOK, map[string]any{"linkToken": info.Token, "editable": info.Editable})
 }
 
 // DELETE /v1/channels/{id}/public-link — 刪除公開連結（撤銷分享）。
@@ -63,10 +77,10 @@ func (s *Server) handleDeletePublicLink(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// GET /public/{token} — 無需登入，讀取公開分享的頻道資料（唯讀）。
+// GET /v1/public/{token} — 無需登入，讀取公開分享的頻道資料。
 func (s *Server) handlePublicView(w http.ResponseWriter, r *http.Request) {
 	token := r.PathValue("token")
-	channelID, err := s.store.GetPublicLinkChannel(token)
+	info, err := s.store.GetPublicLinkChannel(token)
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "not_found", "找不到此分享連結")
 		return
@@ -76,19 +90,54 @@ func (s *Server) handlePublicView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	channelName, err := s.store.GetChannelName(channelID)
+	channelName, err := s.store.GetChannelName(info.ChannelID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "channel_failed", err.Error())
 		return
 	}
-	entries, err := s.store.ListEntriesByChannel(channelID)
+	entries, err := s.store.ListEntriesByChannel(info.ChannelID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "entries_failed", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"channelID":   channelID,
+		"channelID":   info.ChannelID,
 		"channelName": channelName,
+		"editable":    info.Editable,
 		"entries":     entries,
 	})
+}
+
+// POST /v1/public/{token}/assist — 公開頁訪客送訊息（僅 editable 連結允許）。
+func (s *Server) handlePublicAssist(w http.ResponseWriter, r *http.Request) {
+	token := r.PathValue("token")
+	info, err := s.store.GetPublicLinkChannel(token)
+	if errors.Is(err, store.ErrNotFound) {
+		writeErr(w, http.StatusNotFound, "not_found", "找不到此分享連結")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
+		return
+	}
+	if !info.Editable {
+		writeErr(w, http.StatusForbidden, "read_only", "此連結為唯讀")
+		return
+	}
+
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Text == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_body", "text 必填")
+		return
+	}
+
+	assistant, ok := s.analyzer.(llm.Assistant)
+	if !ok {
+		writeErr(w, http.StatusNotImplemented, "not_supported", "此伺服器不支援 assist")
+		return
+	}
+	res := assistant.AssistForSession("public:"+token, info.ChannelID, "", body.Text, nil)
+	writeJSON(w, http.StatusOK, res)
 }
