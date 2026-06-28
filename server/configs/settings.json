@@ -1,7 +1,0 @@
-{
-  "ollama_url": "http://localhost:11434",
-  "vllm_base_url": "https://vllm.e-gps.tw",
-  "provider": "vllm",
-  "model1": "gemini-3-flash-preview",
-  "model": "google/gemma-4-12b-it"
-}

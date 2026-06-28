@@ -8,6 +8,10 @@ server/channel.db-wal
 .env
 server/.env
 
+# LLM 設定(含 API key,不進版控)
+server/configs/settings.json
+configs/settings.json
+
 # LLM / agent 執行日誌與工作階段
 server/logs/
 server/sessions/
