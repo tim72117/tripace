@@ -1288,7 +1288,7 @@ function PublicViewScreen({ token }: { token: string }) {
     <>
       <div className="navbar">
         <span style={{ width: 36 }} />
-        <span className="title">行程分享</span>
+        <span className="title">{data?.trips?.[0]?.title ?? '行程'}</span>
         <span style={{ width: 36 }} />
       </div>
       <div className="screen-body" ref={bodyRef}>
