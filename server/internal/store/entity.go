@@ -67,3 +67,14 @@ type tripRow struct {
 }
 
 func (tripRow) TableName() string { return "trips" }
+
+// publicLinkRow 是頻道公開分享連結，一個頻道最多一條。
+type publicLinkRow struct {
+	ID        string    `gorm:"primaryKey;column:id"`
+	ChannelID string    `gorm:"uniqueIndex;column:channel_id;not null"`
+	LinkToken string    `gorm:"uniqueIndex;column:link_token;not null"`
+	CreatedBy string    `gorm:"column:created_by;not null"`
+	CreatedAt time.Time `gorm:"column:created_at;not null"`
+}
+
+func (publicLinkRow) TableName() string { return "public_links" }

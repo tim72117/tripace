@@ -1268,3 +1268,87 @@ pre {
 .json-err {
   color: #ffb454;
 }
+
+/* ---- 分享彈窗 ---- */
+.share-link-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px;
+  padding: 12px;
+  background: var(--ios-bg);
+  border-radius: 10px;
+  border: 1px solid var(--ios-sep);
+}
+.share-link-url {
+  flex: 1;
+  font-size: 13px;
+  color: var(--color-accent);
+  word-break: break-all;
+  font-family: var(--mono);
+}
+.share-link-copy {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+}
+.share-link-copy:active {
+  background: var(--ios-sep);
+}
+
+/* 危險操作按鈕（撤銷） */
+.btn-danger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 11px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  background: var(--ios-card);
+  color: var(--ios-red);
+  font-size: 15px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-danger:active {
+  opacity: 0.75;
+}
+
+/* ---- 帳號設定：token display ---- */
+.token-box {
+  margin: 0 16px 8px;
+  padding: 12px;
+  background: var(--ios-bg);
+  border-radius: 10px;
+  border: 1px solid var(--ios-sep);
+  font-family: var(--mono);
+  font-size: 12px;
+  word-break: break-all;
+  color: var(--color-dark);
+}
+.btn-secondary {
+  display: block;
+  width: 100%;
+  padding: 11px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  background: var(--ios-card);
+  color: var(--color-dark);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-secondary.success {
+  color: var(--ios-green);
+}
+.btn-secondary:active {
+  opacity: 0.75;
+}
