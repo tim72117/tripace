@@ -13,6 +13,10 @@
   ↓
 [判斷是否為可記錄事項]
   ↓ 是
+[判斷條目粒度]
+  ├─ 確定地點 → 單筆 record_entry（含 location）
+  └─ 無確定地點 / 流水式行程 → 合併成一筆 record_entry（無 location）
+  ↓
 [1. record_entry — 寫入條目]
   ↓
 [有 location？]
@@ -31,6 +35,31 @@
 
 ---
 
+## 條目粒度判斷
+
+### 何時拆成多筆
+
+每個有**確定地點**的事項各建一筆，方便之後補座標與導航：
+
+- ✅ 宿希爾頓嘉悅里酒店 → 一筆，`location = "希爾頓嘉悅里酒店"`
+- ✅ 前往築地市場 → 一筆，`location = "築地市場"`
+- ✅ 桃園機場出發 → 一筆，`location = "桃園國際機場"`
+
+### 何時合併成一筆
+
+以下情況合併為一筆，`location` 留空或填大範圍地名：
+
+| 情況 | 範例 | 合併方式 |
+|---|---|---|
+| 無確定地點 | 「在飛機上」、「轉機等待」 | 合併，item 描述整段，location 留空 |
+| 流水式移動 | 「搭車從A到B」、「開車遊覽沿途」 | 合併，item 描述行程，location 填起點或省略 |
+| 純時間區塊 | 「自由活動」、「休息」 | 合併，無 location |
+| 多段連續小事 | 「逛商場、買東西、吃午飯」 | 合併成一筆「市區自由行」，location 填城市名 |
+
+**原則：沒有明確單一地點就不強制拆開，合併成一筆描述即可。**
+
+---
+
 ## 步驟說明
 
 ### 步驟 1：record_entry — 寫入條目
@@ -40,9 +69,14 @@
 **輸入規則：**
 - `item`：事項描述，去掉時間與地點，只留核心描述（如「宿希爾頓嘉悅里酒店」）
 - `start`：日期，以英文自然語詞填入（如 `'June 29'`），系統負責換算成絕對日期
-- `startTime`：時刻，24 小時制（如 `'15:00'`），全日事件留空
-- `end`：結束日期（住宿、區間性事件才填）
-- `location`：地點名稱原文（如「希爾頓嘉悅里酒店」）
+- `startTime`：時刻，24 小時制（如 `'15:00'`）。若使用者**未提供時刻**，依事項類型推斷合理時間：
+  - 早餐 → `07:00`、午餐 → `12:00`、晚餐 → `18:00`
+  - 景點 / 活動（上午）→ `09:00`、（下午）→ `14:00`
+  - Check-in → `15:00`、Check-out → `11:00`
+  - 搭機（去程）→ 依常理，通常早上；（回程）→ 依常理
+  - 完全無從判斷 → 留空（全日事件）
+- `end`：結束日期（住宿、區間性事件才填）；若為住宿但只給一個日期，end 填隔天
+- `location`：地點名稱原文（如「希爾頓嘉悅里酒店」）；無確定地點則留空
 
 **回傳：**
 - `entryID`：新條目的 ID
@@ -106,11 +140,11 @@ geocode(place = "{城市名}" + "{location 原文}")
 
 ---
 
-## 範例：「6/29 宿希爾頓嘉悅里酒店」
+## 範例
+
+### 確定地點：「6/29 宿希爾頓嘉悅里酒店」
 
 ```
-使用者輸入：6/29 宿希爾頓嘉悅里酒店
-
 1. record_entry(
      item = "宿希爾頓嘉悅里酒店",
      start = "June 29",
@@ -118,20 +152,42 @@ geocode(place = "{城市名}" + "{location 原文}")
    )
    → entryID = "ent_xxxx", candidates = []
 
-2. list_trips()
-   → 找到「2025 宮古島」→ 推斷地區：宮古島
+2. list_trips() → 找到「2025 宮古島」→ 推斷地區：宮古島
 
 3. geocode(place = "宮古島希爾頓嘉悅里酒店")
-   → name: "Canopy by Hilton Okinawa Miyako Island Resort"
-   → address: "Kugai-550-7 Hirara, Miyakojima, Okinawa 906-0015, Japan"
+   → 📍 Canopy by Hilton Okinawa Miyako Island Resort
    → lat: 24.7994, lng: 125.2592
 
-   呈現給使用者：
-   📍 Canopy by Hilton Okinawa Miyako Island Resort
-   地址：Kugai-550-7 Hirara, Miyakojima, Okinawa 906-0015, Japan
-   座標：24.799449, 125.259220
-
 4. candidates 為空 → 跳過 add_to_trip
+```
+
+### 流水式行程：「6/29 早上逛市場、午餐、下午自由活動」
+
+```
+1. record_entry(
+     item = "市區自由行（逛市場、午餐、自由活動）",
+     start = "June 29",
+     location = ""          ← 無單一確定地點，留空
+   )
+   → entryID = "ent_yyyy", candidates = ["2025 宮古島"]
+
+2. location 為空 → 跳過 geocode
+
+3. add_to_trip(entryID="ent_yyyy", tripID="trip_宮古島")
+```
+
+### 移動段：「6/29 搭機那霸→宮古島」
+
+```
+1. record_entry(
+     item = "搭機那霸→宮古島",
+     start = "June 29",
+     startTime = "14:00",
+     location = ""          ← 移動過程，無單一地點
+   )
+   → entryID = "ent_zzzz"
+
+2. location 為空 → 跳過 geocode
 ```
 
 ---
