@@ -3,7 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import ReactMarkdown from 'react-markdown'
 import {
   ChevronLeft,
-  Users, Send, AlertCircle, Plus, LogIn, Share2, X, Copy, Check, Trash2,
+  Users, Send, AlertCircle, Plus, LogIn, Share2, Copy, Check, Trash2,
 } from 'lucide-react'
 import type { ClientConfig, PresentedEntry } from './api'
 import * as api from './api'
@@ -1299,10 +1299,6 @@ function PublicViewScreen({ token }: { token: string }) {
             ? <div className="empty">此頻道尚無行程。</div>
             : <MultiTrackTimeline entries={data.entries} todayRef={todayRef} />
         )}
-        <div className="field" style={{ color: 'var(--ios-gray)', fontSize: 12, marginTop: 16 }}>
-          <X size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-          此為唯讀公開分享頁。
-        </div>
       </div>
     </>
   )
