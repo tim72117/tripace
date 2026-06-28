@@ -302,3 +302,39 @@ export function fetchTripEntries(
     `/v1/channels/${encodeURIComponent(channelID)}/trips/${encodeURIComponent(tripID)}/entries`,
   ).then((r) => r.entries)
 }
+
+// 建立（或取得已有）頻道公開連結。
+export function createPublicLink(cfg: ClientConfig, channelID: string) {
+  return request<{ linkToken: string }>(
+    cfg,
+    'POST',
+    `/v1/channels/${encodeURIComponent(channelID)}/public-link`,
+  ).then((r) => r.linkToken)
+}
+
+// 取得頻道公開連結 token。
+export function getPublicLink(cfg: ClientConfig, channelID: string) {
+  return request<{ linkToken: string }>(
+    cfg,
+    'GET',
+    `/v1/channels/${encodeURIComponent(channelID)}/public-link`,
+  ).then((r) => r.linkToken)
+}
+
+// 刪除頻道公開連結。
+export function deletePublicLink(cfg: ClientConfig, channelID: string) {
+  return request<{ status: string }>(
+    cfg,
+    'DELETE',
+    `/v1/channels/${encodeURIComponent(channelID)}/public-link`,
+  )
+}
+
+// 存取公開分享連結（無需登入）。
+export function fetchPublicView(baseURL: string, token: string) {
+  return fetch(`${baseURL}/public/${encodeURIComponent(token)}`)
+    .then(async (r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      return r.json() as Promise<{ channelID: string; trips: Trip[]; entries: Entry[] }>
+    })
+}

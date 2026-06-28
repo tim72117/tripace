@@ -35,7 +35,7 @@ func Open(dsn string) (*Store, error) {
 	// members 中介表雖可由 many2many 關聯隱式建立,但那只會建 join 欄位
 	// (channel_id / user_id),不含額外的 role 欄。故明確把 memberLink 納入
 	// AutoMigrate,GORM 才會補上 role 欄(既有表則 ALTER ADD COLUMN,不損資料)。
-	if err := db.AutoMigrate(&userRow{}, &channelRow{}, &entryRow{}, &memberLink{}, &tripRow{}); err != nil {
+	if err := db.AutoMigrate(&userRow{}, &channelRow{}, &entryRow{}, &memberLink{}, &tripRow{}, &publicLinkRow{}); err != nil {
 		return nil, fmt.Errorf("automigrate: %w", err)
 	}
 	return &Store{db: db}, nil

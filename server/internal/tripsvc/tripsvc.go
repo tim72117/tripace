@@ -12,10 +12,13 @@
 package tripsvc
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"log"
 	"time"
 
+	"github.com/channel/server/internal/geo"
 	"github.com/channel/server/internal/model"
 	"github.com/channel/server/internal/store"
 )
@@ -24,11 +27,14 @@ func nowUTC() time.Time { return time.Now().UTC() }
 
 // Service 持有 store,提供 entry/trip 的行程操作。
 type Service struct {
-	st *store.Store
+	st  *store.Store
+	geo *geo.Client
 }
 
 // New 建立服務。
-func New(st *store.Store) *Service { return &Service{st: st} }
+func New(st *store.Store, geoClient *geo.Client) *Service {
+	return &Service{st: st, geo: geoClient}
+}
 
 // newEntryID 產生 entry ID(對齊既有 ent_ 風格)。
 func newEntryID() string {
@@ -71,6 +77,22 @@ func (s *Service) Record(in RecordInput) (RecordResult, error) {
 	}
 	if err := s.st.InsertEntry(e); err != nil {
 		return RecordResult{}, err
+	}
+
+	// 有地點時非同步補經緯度，失敗只記 log，不阻擋主流程。
+	if in.Location != "" && s.geo != nil {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			lat, lng, err := s.geo.Lookup(ctx, in.Location)
+			if err != nil {
+				log.Printf("geo lookup %q: %v", in.Location, err)
+				return
+			}
+			if err := s.st.SetEntryLatLng(id, lat, lng); err != nil {
+				log.Printf("set lat/lng entry %s: %v", id, err)
+			}
+		}()
 	}
 
 	// 找時間重疊的候選 trip(不歸入,只回給呼叫端判斷)。無時間則無候選。

@@ -3,7 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import ReactMarkdown from 'react-markdown'
 import {
   ChevronLeft,
-  Users, Send, AlertCircle, Plus, LogIn,
+  Users, Send, AlertCircle, Plus, LogIn, Share2, Copy, Check, Trash2,
 } from 'lucide-react'
 import type { ClientConfig, PresentedEntry } from './api'
 import * as api from './api'
@@ -81,6 +81,15 @@ export function useAppState() {
 
 export function App() {
   const props = useAppState()
+  // 偵測 /public/{token} 路徑，直接渲染公開分享頁
+  const publicMatch = window.location.pathname.match(/^\/public\/([^/]+)$/)
+  if (publicMatch) {
+    return (
+      <div className="web-app">
+        <PublicViewScreen token={publicMatch[1]} />
+      </div>
+    )
+  }
   return (
     <div className="web-app">
       <PhoneContent {...props} />
@@ -338,6 +347,8 @@ function ChatScreen({
   const [sending, setSending] = useState(false)
   // 成員管理在頻道內開啟(對齊 iOS App 的聊天頁右上角入口)。
   const [showMembers, setShowMembers] = useState(false)
+  // 分享彈窗
+  const [showShare, setShowShare] = useState(false)
   // 點選項目時顯示詳細資訊。
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -534,6 +545,17 @@ function ChatScreen({
     )
   }
 
+  if (showShare) {
+    return (
+      <ShareModal
+        cfg={cfg}
+        channel={channel}
+        isOwner={isOwner}
+        onClose={() => setShowShare(false)}
+      />
+    )
+  }
+
   // 點選項目時顯示詳細資訊。
   if (selectedEntry) {
     return (
@@ -551,9 +573,16 @@ function ChatScreen({
           <ChevronLeft size={20} strokeWidth={1.8} />
         </button>
         <span className="title">{channel.name}</span>
-        <button className="btn icon-btn" onClick={() => setShowMembers(true)} title="成員">
-          <Users size={18} strokeWidth={1.8} />
-        </button>
+        <div style={{ display: 'flex', gap: 2 }}>
+          {isOwner && (
+            <button className="btn icon-btn" onClick={() => setShowShare(true)} title="分享">
+              <Share2 size={18} strokeWidth={1.8} />
+            </button>
+          )}
+          <button className="btn icon-btn" onClick={() => setShowMembers(true)} title="成員">
+            <Users size={18} strokeWidth={1.8} />
+          </button>
+        </div>
       </div>
       <div className="chat-area">
         <div className="screen-body" ref={bodyRef}>
@@ -901,11 +930,12 @@ function PinIcon() {
   )
 }
 
-function NavButton({ location }: { location: string }) {
-  const url = `https://maps.apple.com/?q=${encodeURIComponent(location)}`
+function NavButton({ location, lat, lng }: { location: string; lat?: number | null; lng?: number | null }) {
+  const url = (lat != null && lng != null)
+    ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`
   return (
     <a href={url} target="_blank" rel="noopener noreferrer" className="tl-nav-btn" title="開始導航">
-      {/* 導航箭頭：向右上方的實心三角形 */}
       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
         <path d="M2 12L22 2L12 22L9 13L2 12Z" />
       </svg>
@@ -936,7 +966,7 @@ function MainCard({ entry }: { entry: Entry }) {
           </div>
         </div>
       </div>
-      {entry.location && <NavButton location={entry.location} />}
+      {entry.location && <NavButton location={entry.location} lat={entry.lat} lng={entry.lng} />}
     </div>
   )
 }
@@ -981,7 +1011,7 @@ function SubCard({ entry }: { entry: Entry }) {
           </div>
         </div>
       </div>
-      {entry.location && <NavButton location={entry.location} />}
+      {entry.location && <NavButton location={entry.location} lat={entry.lat} lng={entry.lng} />}
     </div>
   )
 }
@@ -1098,6 +1128,178 @@ function MembersScreen({
             {adding ? '邀請中…' : '邀請加入'}
           </button>
         </div>
+      </div>
+    </>
+  )
+}
+
+// ---- 分享彈窗 ----
+
+function ShareModal({
+  cfg,
+  channel,
+  isOwner,
+  onClose,
+}: {
+  cfg: ClientConfig
+  channel: Channel
+  isOwner: boolean
+  onClose: () => void
+}) {
+  const [token, setToken] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const publicURL = token
+    ? `${window.location.origin}/public/${token}`
+    : null
+
+  useEffect(() => {
+    api.getPublicLink(cfg, channel.id)
+      .then(setToken)
+      .catch(() => setToken(null))
+      .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg.baseURL, cfg.token, channel.id])
+
+  const generate = async () => {
+    setLoading(true)
+    setErr(null)
+    try {
+      const t = await api.createPublicLink(cfg, channel.id)
+      setToken(t)
+    } catch (e) {
+      setErr(errMsg(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const revoke = async () => {
+    setLoading(true)
+    setErr(null)
+    try {
+      await api.deletePublicLink(cfg, channel.id)
+      setToken(null)
+    } catch (e) {
+      setErr(errMsg(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const copy = () => {
+    if (!publicURL) return
+    navigator.clipboard.writeText(publicURL).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <>
+      <div className="navbar">
+        <button className="btn icon-btn" onClick={onClose}>
+          <ChevronLeft size={20} strokeWidth={1.8} />
+        </button>
+        <span className="title">分享頻道</span>
+        <span style={{ width: 36 }} />
+      </div>
+      <div className="screen-body">
+        <ErrorBanner msg={err} />
+        <div className="section-title">公開連結</div>
+        <div className="field" style={{ color: 'var(--ios-gray)', fontSize: 13 }}>
+          任何人取得連結後即可查看此頻道的行程（唯讀，無需登入）。
+        </div>
+        {loading ? (
+          <div className="empty">載入中…</div>
+        ) : token ? (
+          <>
+            <div className="share-link-box">
+              <div className="share-link-url">{publicURL}</div>
+              <button className="share-link-copy" onClick={copy} title="複製連結">
+                {copied ? <Check size={16} strokeWidth={2} /> : <Copy size={16} strokeWidth={1.8} />}
+              </button>
+            </div>
+            <div style={{ padding: '8px 16px 0' }}>
+              <button className="btn-primary" onClick={copy}>
+                {copied ? '✅ 已複製' : '複製連結'}
+              </button>
+            </div>
+            {isOwner && (
+              <div style={{ padding: '12px 16px 0' }}>
+                <button className="btn-danger" onClick={revoke}>
+                  <Trash2 size={14} strokeWidth={1.8} style={{ marginRight: 6 }} />
+                  撤銷連結
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="empty" style={{ padding: '24px 16px', textAlign: 'left' }}>
+              尚未建立公開連結。
+            </div>
+            {isOwner && (
+              <div style={{ padding: '0 16px' }}>
+                <button className="btn-primary" onClick={generate}>
+                  建立公開連結
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </>
+  )
+}
+
+// ---- 公開分享頁（/public/{token}，無需登入） ----
+
+function PublicViewScreen({ token }: { token: string }) {
+  const [data, setData] = useState<{ channelID: string; trips: import('./types').Trip[]; entries: Entry[] } | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const todayRef = useRef<HTMLDivElement>(null as unknown as HTMLDivElement)
+  const bodyRef = useRef<HTMLDivElement>(null)
+
+  // 公開頁不依賴登入設定，直接用 localStorage 的 baseURL；
+  // 若與前端同源（正式部署）或使用者未設定過，則 fallback 到 same-origin fetch。
+  const resolvedBase = (() => {
+    const saved = localStorage.getItem('channel.baseURL')
+    if (saved && !saved.includes(window.location.host)) return saved
+    return window.location.origin
+  })()
+
+  useEffect(() => {
+    api.fetchPublicView(resolvedBase, token)
+      .then(setData)
+      .catch((e) => setErr(errMsg(e)))
+      .finally(() => setLoading(false))
+  }, [resolvedBase, token])
+
+  useEffect(() => {
+    if (data && todayRef.current && bodyRef.current) {
+      bodyRef.current.scrollTo({ top: todayRef.current.offsetTop - 60, behavior: 'instant' })
+    }
+  }, [data])
+
+  return (
+    <>
+      <div className="navbar">
+        <span style={{ width: 36 }} />
+        <span className="title">{data?.trips?.[0]?.title ?? '行程'}</span>
+        <span style={{ width: 36 }} />
+      </div>
+      <div className="screen-body" ref={bodyRef}>
+        {loading && <div className="empty">載入中…</div>}
+        {err && <div className="banner"><AlertCircle size={14} strokeWidth={2} style={{ verticalAlign: 'middle', marginRight: 6 }} />{err}</div>}
+        {data && (
+          data.entries.length === 0
+            ? <div className="empty">此頻道尚無行程。</div>
+            : <MultiTrackTimeline entries={data.entries} todayRef={todayRef} />
+        )}
       </div>
     </>
   )
@@ -1280,20 +1482,11 @@ function LoginForm({
         </div>
       )}
       <ErrorBanner msg={err} />
-      <div style={{ padding: 16 }}>
+      <div style={{ padding: '0 16px 8px' }}>
         <button
+          className="btn-primary"
           onClick={submit}
           disabled={busy || !email.trim() || !password}
-          style={{
-            width: '100%',
-            padding: 12,
-            border: 'none',
-            borderRadius: 12,
-            background: busy ? '#b3d4ff' : 'var(--ios-blue)',
-            color: '#fff',
-            fontSize: 16,
-            cursor: 'pointer',
-          }}
         >
           {busy ? '處理中…' : mode === 'login' ? '登入' : '註冊並登入'}
         </button>
@@ -1302,7 +1495,7 @@ function LoginForm({
             {mode === 'login' ? '還沒有帳號?' : '已有帳號?'}
           </span>{' '}
           <span
-            style={{ color: 'var(--ios-blue)', cursor: 'pointer' }}
+            style={{ color: 'var(--color-accent)', cursor: 'pointer' }}
             onClick={() => {
               setMode(mode === 'login' ? 'register' : 'login')
               setErr(null)
@@ -1448,49 +1641,11 @@ function TokenDisplay({ token }: { token: string | null }) {
 
   return (
     <>
-      <div className="field" style={{ marginBottom: 12 }}>
-        <div
-          style={{
-            background: '#f5f5f5',
-            padding: 12,
-            borderRadius: 8,
-            fontFamily: 'monospace',
-            fontSize: 12,
-            wordBreak: 'break-all',
-            color: '#333',
-            marginBottom: 8,
-          }}
-        >
-          {displayToken}
-        </div>
-        <button
-          onClick={copyToken}
-          style={{
-            width: '100%',
-            padding: 10,
-            border: 'none',
-            borderRadius: 8,
-            background: copied ? '#34C759' : '#007AFF',
-            color: '#fff',
-            fontSize: 14,
-            fontWeight: 500,
-            cursor: 'pointer',
-            transition: 'background 0.2s',
-          }}
-        >
-          {copied ? '✅ 已複製' : '📋 複製 Token'}
+      <div className="token-box">{displayToken}</div>
+      <div style={{ padding: '0 16px 12px' }}>
+        <button className={`btn-secondary${copied ? ' success' : ''}`} onClick={copyToken}>
+          {copied ? '✅ 已複製' : '複製 Token'}
         </button>
-      </div>
-      <div className="field" style={{ color: 'var(--ios-gray)', fontSize: 13, marginBottom: 16 }}>
-        <strong>CLI 使用方式：</strong>
-        <div style={{ marginTop: 8, fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
-{`export CHANNEL_TOKEN="<你的 token>"
-
-# 設定行程：
-curl -X POST $CHANNEL_API_URL/v1/... \\
-  -H "Authorization: Bearer $CHANNEL_TOKEN" \\
-  -d '...'`}
-        </div>
       </div>
     </>
   )
