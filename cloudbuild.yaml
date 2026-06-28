@@ -23,6 +23,7 @@ steps:
       - --region=asia-east1
       - --update-env-vars=DEV_MODE=false,SEED=false
       - --update-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest
+      - --session-affinity
       - --quiet
 
 availableSecrets:
