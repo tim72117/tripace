@@ -1,11 +1,29 @@
-// Package model - Channel & Trip Sharing 數據結構定義
+// Package model - Sharing 數據結構定義
 package model
 
 import "database/sql/driver"
 import "encoding/json"
+import "errors"
 import "time"
 
-// ChannelShare 是頻道分享記錄
+// PublicLink 是公開連結
+// 簡化版：頻道所有者可生成公開連結，任何人無需登入即可訪問
+type PublicLink struct {
+	ID        string    `json:"id" gorm:"primaryKey"`
+	ChannelID string    `json:"channelID" gorm:"uniqueIndex"`
+	LinkToken string    `json:"linkToken" gorm:"uniqueIndex"` // 短 ID，如 ch_abc123xyz
+	CreatedBy string    `json:"createdBy"`                    // owner/editor
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// PublicLinkResponse 公開訪問的回應結構
+type PublicLinkResponse struct {
+	Channel Channel   `json:"channel"`
+	Trips   []Trip    `json:"trips"`
+	Entries []Entry   `json:"entries"`
+}
+
+// ChannelShare 是頻道分享記錄（已棄用，保留以相容性）
 // 允許用戶通過唯一的分享連結分享整個頻道，無需登入即可訪問
 type ChannelShare struct {
 	ID string `json:"id" gorm:"primaryKey"`
