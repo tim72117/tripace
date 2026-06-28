@@ -1,10 +1,90 @@
-// Package model - Trip Sharing 數據結構定義
+// Package model - Channel & Trip Sharing 數據結構定義
 package model
 
+import "database/sql/driver"
+import "encoding/json"
 import "time"
 
-// TripShare 是行程分享記錄
-// 用戶可以將自己頻道的行程分享給其他人或複製到其他頻道
+// ChannelShare 是頻道分享記錄
+// 允許用戶通過唯一的分享連結分享整個頻道，無需登入即可訪問
+type ChannelShare struct {
+	ID string `json:"id" gorm:"primaryKey"`
+
+	// 被分享的頻道
+	ChannelID string `json:"channelID" gorm:"uniqueIndex"`
+
+	// 分享者
+	CreatedBy string `json:"createdBy"` // 頻道 owner/editor
+
+	// 分享連結
+	ShareToken string `json:"shareToken" gorm:"uniqueIndex"`      // 短 token
+	ShareURL   string `json:"shareURL"`                            // 完整 URL
+
+	// 過期控制
+	ExpiresAt *time.Time `json:"expiresAt,omitempty" gorm:"index"` // null = 永不過期
+	IsActive  bool       `json:"isActive"`                         // 可手動停用
+
+	// 訪問控制
+	RequireAuth    bool    `json:"requireAuth"`            // 是否需要登入
+	AccessibleRoles *StringArray `json:"accessibleRoles"` // JSON: ["editor", "viewer"] 或 nil (所有人)
+
+	// 統計
+	ViewCount       int        `json:"viewCount"`
+	LastAccessedAt  *time.Time `json:"lastAccessedAt,omitempty"`
+
+	// 時間戳
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// ChannelShareAccessLog 是訪問審計日誌（可選）
+type ChannelShareAccessLog struct {
+	ID string `json:"id" gorm:"primaryKey"`
+
+	ShareID string `json:"shareID" gorm:"index"` // 參考 ChannelShare.ID
+
+	// 訪問者信息
+	UserID    *string `json:"userID,omitempty"` // null = 匿名訪問
+	IPAddress string  `json:"ipAddress,omitempty"`
+	UserAgent string  `json:"userAgent,omitempty"`
+
+	// 訪問詳情
+	AccessedAt     time.Time `json:"accessedAt"`
+	DurationSeconds *int      `json:"durationSeconds,omitempty"`
+}
+
+// StringArray 自訂類型：用於 JSON 序列化字串陣列
+type StringArray []string
+
+func (a StringArray) Value() (driver.Value, error) {
+	return json.Marshal(a)
+}
+
+func (a *StringArray) Scan(value interface{}) error {
+	bytes, ok := value.([]byte)
+	if !ok {
+		return errors.New("type assertion failed")
+	}
+	return json.Unmarshal(bytes, &a)
+}
+
+// ChannelShareResponse 是公開分享頁面的回應結構
+type ChannelShareResponse struct {
+	Channel    Channel    `json:"channel"`
+	Trips      []Trip     `json:"trips"`
+	Entries    []Entry    `json:"entries"`
+	ShareInfo  ShareInfo  `json:"shareInfo"`
+}
+
+// ShareInfo 分享信息
+type ShareInfo struct {
+	SharedBy  string     `json:"sharedBy"`  // 分享者名稱（不含 ID）
+	SharedAt  time.Time  `json:"sharedAt"`
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+}
+
+// TripShare 是行程分享記錄（已棄用，改用 ChannelShare）
+// 保留以相容性，後續可移除
 type TripShare struct {
 	ID string `json:"id" gorm:"primaryKey"`
 
@@ -23,26 +103,25 @@ type TripShare struct {
 	TargetChannelID string `json:"targetChannelID,omitempty" gorm:"index"`
 
 	// public 類型：生成公開連結
-	ShareToken string `json:"shareToken,omitempty" gorm:"uniqueIndex"`
+	ShareToken string     `json:"shareToken,omitempty" gorm:"uniqueIndex"`
 	ExpiresAt  *time.Time `json:"expiresAt,omitempty"` // 連結過期時間 (null = 永不過期)
 
 	// 分享狀態
-	Status     string `json:"status"` // "pending" | "accepted" | "declined" | "active"
+	Status     string     `json:"status"` // "pending" | "accepted" | "declined" | "active"
 	AcceptedAt *time.Time `json:"acceptedAt,omitempty"`
-	AcceptedBy string `json:"acceptedBy,omitempty"` // 實際接受的使用者
+	AcceptedBy string     `json:"acceptedBy,omitempty"` // 實際接受的使用者
 
 	// 複製結果：接收者複製到自己頻道後的新 Trip
 	DestinationTripID    string `json:"destinationTripID,omitempty"`
 	DestinationChannelID string `json:"destinationChannelID,omitempty"`
 
 	// 中繼資料
-	Message   string `json:"message,omitempty"` // 分享備註
+	Message   string    `json:"message,omitempty"` // 分享備註
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // TripShareHistory 是分享審計日誌
-// 記錄每個分享的所有操作歷史
 type TripShareHistory struct {
 	ID string `json:"id" gorm:"primaryKey"`
 
@@ -57,23 +136,5 @@ type TripShareHistory struct {
 	// 動作詳情（JSON）
 	Details map[string]any `json:"details,omitempty" gorm:"serializer:json"`
 
-	CreatedAt time.Time `json:"createdAt"`
-}
-
-// TripShareStats - 分享統計（用於推薦）
-type TripShareStats struct {
-	TripID          string `json:"tripID"`
-	TotalShares     int    `json:"totalShares"`
-	TotalCopies     int    `json:"totalCopies"`
-	LastSharedAt    *time.Time `json:"lastSharedAt"`
-	MostSharedBy    string `json:"mostSharedBy,omitempty"`
-}
-
-// ShareNotification - 分享通知（用於發送給接收者）
-type ShareNotification struct {
-	ID        string `json:"id"`
-	ShareID   string `json:"shareID"`
-	UserID    string `json:"userID"`
-	Read      bool   `json:"read"`
 	CreatedAt time.Time `json:"createdAt"`
 }
