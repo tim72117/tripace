@@ -593,7 +593,7 @@ function ChatScreen({
               {isOwner ? '在下方輸入記事，會依時間排列在這裡。' : '在下方查詢頻道內容。'}
             </div>
           ) : entries.length > 0 ? (
-            <MultiTrackTimeline entries={entries} todayRef={todayRef} />
+            <MultiTrackTimeline entries={entries} todayRef={todayRef} onEntryClick={setSelectedEntry} />
           ) : null}
         </div>
 
