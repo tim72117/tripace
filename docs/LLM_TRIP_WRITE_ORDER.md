@@ -142,3 +142,63 @@ go run ./cmd/cli record \
 # 步驟 4（有候選時）：歸入行程
 go run ./cmd/cli add-to-trip -entry ent_ac67259e58be -trip trip_xxxxxx
 ```
+go run ./cmd/cli add-to-trip -entry ent_ac67259e58be -trip trip_xxxxxx
+```
+
+---
+
+## 五、CLI 實際操作注意事項（從模擬中歸納）
+
+### GOOGLE_PLACES_API_KEY 需手動帶入
+
+CLI 不會自動讀取 `.env`，geocode 指令需明確帶環境變數：
+
+```bash
+GOOGLE_PLACES_API_KEY=<key> go run ./cmd/cli geocode -place "宮古島希爾頓嘉悅里酒店" -n 1
+```
+
+key 存放於 `server/.env`，不進版控。
+
+---
+
+### geocode 查詢字串要帶城市名
+
+查詢字串加上城市名可顯著提高 Google Places 回傳正確地區的機率：
+
+```
+✅ "宮古島希爾頓嘉悅里酒店"   → Canopy by Hilton Okinawa Miyako Island Resort
+❌ "希爾頓嘉悅里酒店"          → 可能回傳其他城市的同名飯店
+```
+
+回傳的 `address` 欄位包含完整地址（城市、縣市、國家），可用來確認地區是否正確。若不確定，可用 `-n 3` 取多筆候選後人工選擇正確的一筆。
+
+**若候選清單中沒有地區正確的結果，跳過 geocode，`record` 時不帶 `-location`，不寫入座標。** 寫入錯誤座標比沒有座標更糟。
+
+---
+
+### candidates 為空不代表不需要歸入
+
+第二段住宿或後續單點事件 `record` 後若 `candidates` 為空，可能是因為骨架的 trip end date 尚未擴張。此時仍需手動呼叫 `add-to-trip -trip <tripID>` 強制歸入：
+
+```bash
+go run ./cmd/cli add-to-trip -entry ent_xxxxxx -trip trip_186e4fbf
+```
+
+---
+
+### Trip 的 end date 顯示不會即時擴張
+
+`list-trips` 回傳的 trip `end` 欄位可能不反映最新歸入的 entries 日期，但所有 entries 仍已正確歸入該 trip。可用 `trip-entries` 確認：
+
+```bash
+go run ./cmd/cli trip-entries -channel ch_3eea1dd7 -trip trip_186e4fbf
+```
+
+---
+
+### 無地點的條目跳過 geocode
+
+以下類型不需要 geocode，直接 `record` 即可：
+- 泛指活動（租車、check-in、晚餐）
+- 無具體店名的行程（逛市區、超市補貨但不指定店家）
+- 回國／出發等移動事件

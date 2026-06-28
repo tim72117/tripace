@@ -63,8 +63,8 @@ export interface Entry {
   end?: string // 範圍結束;可空
   allDay: boolean
   location?: string | null // 地點(可空);目前由人工/前端填,LLM 暫不自動抽取
-  lat?: number // 緯度(用於地圖)
-  lng?: number // 經度(用於地圖)
+  lat?: number | null
+  lng?: number | null
   tripID?: string | null // 所屬行程;後端依時間自動歸組,未歸組為 null
   // LLM 標注(原本在 Message 上,改放 Entry;目前後端先留空)。
   // 後端標注未填時 tags 會回 null(非 []),消費端需 ?? [] 收斂。

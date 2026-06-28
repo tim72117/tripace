@@ -100,6 +100,8 @@ func main() {
 		cmdDeleteTrip(c, args)
 	case "reset":
 		cmdReset(c, args)
+	case "geocode":
+		cmdGeocode(args)
 	case "notify":
 		cmdNotify(args)
 	case "-h", "--help", "help":
