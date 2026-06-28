@@ -86,7 +86,7 @@ export function App() {
   if (publicMatch) {
     return (
       <div className="web-app">
-        <PublicViewScreen baseURL={props.baseURL} token={publicMatch[1]} />
+        <PublicViewScreen token={publicMatch[1]} />
       </div>
     )
   }
@@ -1256,19 +1256,27 @@ function ShareModal({
 
 // ---- 公開分享頁（/public/{token}，無需登入） ----
 
-function PublicViewScreen({ baseURL, token }: { baseURL: string; token: string }) {
+function PublicViewScreen({ token }: { token: string }) {
   const [data, setData] = useState<{ channelID: string; trips: import('./types').Trip[]; entries: Entry[] } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const todayRef = useRef<HTMLDivElement>(null as unknown as HTMLDivElement)
   const bodyRef = useRef<HTMLDivElement>(null)
 
+  // 公開頁不依賴登入設定，直接用 localStorage 的 baseURL；
+  // 若與前端同源（正式部署）或使用者未設定過，則 fallback 到 same-origin fetch。
+  const resolvedBase = (() => {
+    const saved = localStorage.getItem('channel.baseURL')
+    if (saved && !saved.includes(window.location.host)) return saved
+    return window.location.origin
+  })()
+
   useEffect(() => {
-    api.fetchPublicView(baseURL, token)
+    api.fetchPublicView(resolvedBase, token)
       .then(setData)
       .catch((e) => setErr(errMsg(e)))
       .finally(() => setLoading(false))
-  }, [baseURL, token])
+  }, [resolvedBase, token])
 
   useEffect(() => {
     if (data && todayRef.current && bodyRef.current) {
