@@ -738,8 +738,13 @@ type TLRow =
 
 function buildTLRows(entries: Entry[]): TLRow[] {
   const sorted = [...entries].sort((a, b) => {
-    const aTime = `${a.start ?? ''}${a.startTime ? ' ' + a.startTime : ''}`
-    const bTime = `${b.start ?? ''}${b.startTime ? ' ' + b.startTime : ''}`
+    // 有 start 的條目排在前，沒有的排在後
+    if (!a.start && b.start) return 1
+    if (a.start && !b.start) return -1
+    if (!a.start && !b.start) return 0
+    // 都有 start，按日期+時間排序
+    const aTime = `${a.start}${a.startTime ? ' ' + a.startTime : ''}`
+    const bTime = `${b.start}${b.startTime ? ' ' + b.startTime : ''}`
     return aTime.localeCompare(bTime)
   })
 
@@ -782,7 +787,8 @@ function buildTLRows(entries: Entry[]): TLRow[] {
   // 把主線結束標記當虛擬 entry，用 end 時間排入 sortedAll
   type VEntry = { id: string; sortKey: string; isEnd: boolean; source: Entry }
   const sortedAll: VEntry[] = sorted.map(e => {
-    const sortKey = `${e.start ?? ''}${e.startTime ? ' ' + e.startTime : ''}`
+    // 沒有 start 的用超大值排到後面，有的用日期+時間
+    const sortKey = e.start ? `${e.start}${e.startTime ? ' ' + e.startTime : ''}` : 'zzz'
     return { id: e.id, sortKey, isEnd: false, source: e }
   })
   for (const m of mainEntries) {
