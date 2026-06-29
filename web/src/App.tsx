@@ -737,7 +737,11 @@ type TLRow =
 // ---- 建構函式 ----
 
 function buildTLRows(entries: Entry[]): TLRow[] {
-  const sorted = [...entries].sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''))
+  const sorted = [...entries].sort((a, b) => {
+    const aTime = `${a.start ?? ''}${a.startTime ? ' ' + a.startTime : ''}`
+    const bTime = `${b.start ?? ''}${b.startTime ? ' ' + b.startTime : ''}`
+    return aTime.localeCompare(bTime)
+  })
 
   // 1. 判斷主線
   // 主線條件：有結束時間且跨越不同日
@@ -777,9 +781,12 @@ function buildTLRows(entries: Entry[]): TLRow[] {
 
   // 把主線結束標記當虛擬 entry，用 end 時間排入 sortedAll
   type VEntry = { id: string; sortKey: string; isEnd: boolean; source: Entry }
-  const sortedAll: VEntry[] = sorted.map(e => ({ id: e.id, sortKey: e.start ?? '', isEnd: false, source: e }))
+  const sortedAll: VEntry[] = sorted.map(e => {
+    const sortKey = `${e.start ?? ''}${e.startTime ? ' ' + e.startTime : ''}`
+    return { id: e.id, sortKey, isEnd: false, source: e }
+  })
   for (const m of mainEntries) {
-    const endStr = m.end && m.end !== m.start ? m.end : null
+    const endStr = m.end && m.end !== m.start ? `${m.end}${m.endTime ? ' ' + m.endTime : ''}` : null
     if (endStr) sortedAll.push({ id: `end-${m.id}`, sortKey: endStr, isEnd: true, source: m })
   }
   sortedAll.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
