@@ -742,7 +742,14 @@ function buildTLRows(entries: Entry[]): TLRow[] {
     if (!a.start && b.start) return 1
     if (a.start && !b.start) return -1
     if (!a.start && !b.start) return 0
-    // 都有 start，按日期+時間排序
+
+    // 都有 start，同一天内：有 startTime 排在前，沒有的排在後
+    const aHasTime = !!a.startTime
+    const bHasTime = !!b.startTime
+    if (aHasTime && !bHasTime) return -1
+    if (!aHasTime && bHasTime) return 1
+
+    // 都有時間或都沒有時間，按日期+時間排序
     const aTime = `${a.start}${a.startTime ? ' ' + a.startTime : ''}`
     const bTime = `${b.start}${b.startTime ? ' ' + b.startTime : ''}`
     return aTime.localeCompare(bTime)
@@ -787,12 +794,24 @@ function buildTLRows(entries: Entry[]): TLRow[] {
   // 把主線結束標記當虛擬 entry，用 end 時間排入 sortedAll
   type VEntry = { id: string; sortKey: string; isEnd: boolean; source: Entry }
   const sortedAll: VEntry[] = sorted.map(e => {
-    // 沒有 start 的用超大值排到後面，有的用日期+時間
-    const sortKey = e.start ? `${e.start}${e.startTime ? ' ' + e.startTime : ''}` : 'zzz'
+    // sortKey 格式：日期 + 時間戳(用於區分有無時間)
+    // 沒有 start：用 'zzz~' 排到最後
+    // 有 start 無 startTime：用 'YYYY-MM-DD~' (~ 排在空格後，無時間排在後)
+    // 有 start 有 startTime：用 'YYYY-MM-DD HH:MM'
+    let sortKey: string
+    if (!e.start) {
+      sortKey = 'zzz'
+    } else if (!e.startTime) {
+      sortKey = `${e.start}~` // ~ 的 ASCII (126) 大於空格 (32)，排到有時間條目後
+    } else {
+      sortKey = `${e.start} ${e.startTime}`
+    }
     return { id: e.id, sortKey, isEnd: false, source: e }
   })
   for (const m of mainEntries) {
-    const endStr = m.end && m.end !== m.start ? `${m.end}${m.endTime ? ' ' + m.endTime : ''}` : null
+    const endStr = m.end && m.end !== m.start
+      ? m.endTime ? `${m.end} ${m.endTime}` : `${m.end}~`
+      : null
     if (endStr) sortedAll.push({ id: `end-${m.id}`, sortKey: endStr, isEnd: true, source: m })
   }
   sortedAll.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
