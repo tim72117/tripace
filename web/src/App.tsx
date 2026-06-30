@@ -13,6 +13,8 @@ import { listMessages, saveMessage } from './deviceDB'
 
 // baseURL 是連線設定,跨分頁共用 → localStorage。
 const LS_BASE = 'channel.baseURL'
+// 默認頻道 ID (用戶設定的「目前行程」)
+const LS_DEFAULT_CHANNEL = 'channel.defaultChannelID'
 // token / user 是「登入身分」,改用 sessionStorage:每個分頁獨立,
 // 讓不同分頁能登入不同使用者(也為 per-session 鋪路)。
 const SS_TOKEN = 'channel.token'
@@ -232,6 +234,18 @@ function ChannelsScreen({
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    if (channels.length > 0) {
+      const defaultID = localStorage.getItem(LS_DEFAULT_CHANNEL)
+      if (defaultID) {
+        const defaultChannel = channels.find((c) => c.id === defaultID)
+        if (defaultChannel) {
+          onOpen(defaultChannel)
+        }
+      }
+    }
+  }, [channels, onOpen])
 
   const submitCreate = async () => {
     const name = newName.trim()
@@ -562,6 +576,7 @@ function ChatScreen({
           <ChevronLeft size={20} strokeWidth={1.8} />
         </button>
         <span className="title">{channel.name}</span>
+        <ChannelMenu channelID={channel.id} />
         <div style={{ display: 'flex', gap: 2 }}>
           {isOwner && (
             <button className="btn icon-btn" onClick={() => setShowShare(true)} title="分享">
@@ -1400,6 +1415,90 @@ function PublicViewScreen({ token }: { token: string }) {
         </div>
       )}
     </>
+  )
+}
+
+// ---- 頻道菜單(右上角設定) ----
+
+function ChannelMenu({ channelID }: { channelID: string }) {
+  const [open, setOpen] = useState(false)
+  const defaultID = localStorage.getItem(LS_DEFAULT_CHANNEL)
+  const isDefault = defaultID === channelID
+
+  const setAsDefault = () => {
+    localStorage.setItem(LS_DEFAULT_CHANNEL, channelID)
+    setOpen(false)
+  }
+
+  const clearDefault = () => {
+    localStorage.removeItem(LS_DEFAULT_CHANNEL)
+    setOpen(false)
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        className="btn icon-btn"
+        onClick={() => setOpen(!open)}
+        title="頻道設定"
+        style={{ padding: 0 }}
+      >
+        ⋯
+      </button>
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '100%',
+            right: 0,
+            background: 'var(--ios-white)',
+            border: '1px solid var(--ios-separator)',
+            borderRadius: 8,
+            marginTop: 4,
+            minWidth: 180,
+            zIndex: 1000,
+            boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+          }}
+        >
+          {!isDefault ? (
+            <button
+              onClick={setAsDefault}
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: '12px 16px',
+                textAlign: 'left',
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                fontSize: 14,
+                color: 'var(--ios-link)',
+                borderBottom: '1px solid var(--ios-separator)',
+              }}
+            >
+              ✓ 設為目前行程
+            </button>
+          ) : (
+            <button
+              onClick={clearDefault}
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: '12px 16px',
+                textAlign: 'left',
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                fontSize: 14,
+                color: '#FF3B30',
+              }}
+            >
+              ✗ 取消設定
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
