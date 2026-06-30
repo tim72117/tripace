@@ -217,10 +217,12 @@ function ChannelsScreen({
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [showLogin, setShowLogin] = useState(false)
+  const hasAutoNavigatedRef = useRef(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setErr(null)
+    hasAutoNavigatedRef.current = false
     try {
       setChannels(await api.fetchChannels(cfg))
     } catch (e) {
@@ -236,11 +238,12 @@ function ChannelsScreen({
   }, [load])
 
   useEffect(() => {
-    if (channels.length > 0) {
+    if (channels.length > 0 && !hasAutoNavigatedRef.current) {
       const defaultID = localStorage.getItem(LS_DEFAULT_CHANNEL)
       if (defaultID) {
         const defaultChannel = channels.find((c) => c.id === defaultID)
         if (defaultChannel) {
+          hasAutoNavigatedRef.current = true
           onOpen(defaultChannel)
         }
       }
