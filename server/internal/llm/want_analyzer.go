@@ -26,23 +26,24 @@ type WantAnalyzer struct {
 	mu sync.Mutex
 }
 
-// NewWant 用 want 的設定初始化 orchestrator。
-// 環境變數 AI_PROVIDER / AI_MODEL / GOOGLE_API_KEY 優先於 configs/settings.json。
+// NewWant 用 channel 自己的環境變數組裝 want 的 Settings,直接呼叫
+// SetupWith(純函式,不讀檔、不讀 env、不碰全域)初始化 orchestrator。
+// channel 作為「嵌入呼叫 want」的宿主,自行決定設定來源與機密存放,
+// 不依賴 want 的 configs/settings.json 路徑假設。
 func NewWant() (*WantAnalyzer, error) {
 	wd, _ := os.Getwd()
 	wanttypes.InitialWorkingDir = wd
 
-	provider := os.Getenv("AI_PROVIDER")
-	model := os.Getenv("AI_MODEL")
-	if apiKey := os.Getenv("GOOGLE_API_KEY"); apiKey != "" {
-		wantconfig.GlobalSettings = &wantconfig.Settings{
-			Provider:     provider,
-			Model:        model,
-			GoogleAPIKey: apiKey,
-		}
+	settings := &wantconfig.Settings{
+		Provider:        os.Getenv("AI_PROVIDER"),
+		Model:           os.Getenv("AI_MODEL"),
+		VLLMBaseURL:     os.Getenv("VLLM_BASE_URL"),
+		OllamaURL:       os.Getenv("OLLAMA_URL"),
+		GoogleAPIKey:    os.Getenv("GOOGLE_API_KEY"),
+		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
 	}
 
-	coord := wantorch.Setup(provider, model, "", "assistant")
+	coord := wantorch.SetupWith(settings, "assistant")
 	coord.OnError(func(err error) {
 		fmt.Printf("[want] 🔴 Agent Error: %v\n", err)
 	})
@@ -173,7 +174,7 @@ func (w *WantAnalyzer) Assist(channelID, messageID, text string, linkMessage fun
 	})
 	defer unsub()
 
-	w.coord.Submit(buildAssistPrompt(text))
+	w.coord.Submit(text)
 
 	select {
 	case <-done:
@@ -255,7 +256,7 @@ func (w *WantAnalyzer) Answer(channelID, question string) model.SearchAnswer {
 	})
 	defer unsub()
 
-	w.coord.Submit(buildAnswerPrompt(question))
+	w.coord.Submit(question)
 
 	select {
 	case <-done:
@@ -284,30 +285,6 @@ func (w *WantAnalyzer) Answer(channelID, question string) model.SearchAnswer {
 	}
 }
 
-// ---- prompt 與解析 ----
-
-func weekdayZH(d time.Weekday) string {
-	names := [...]string{"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"}
-	return names[d]
-}
-
-// buildAssistPrompt 給 owner 統一輸入用。
-// 判斷「記錄 vs 回答」的指引在 assistant role(.agents/assistant.md)的 system prompt。
-// 這裡只提供今天的日期與 owner 的輸入;頻道既有條目不再塞進 prompt——
-// 提問時由 agent 自己呼叫 query_entries 工具查(可指定時間範圍)。
-func buildAssistPrompt(text string) string {
-	now := time.Now()
-	today := now.Format("2006-01-02")
-	weekday := weekdayZH(now.Weekday())
-	return fmt.Sprintf("今天是 %s(%s)。\n\n使用者的輸入:%s", today, weekday, text)
-}
-
-// buildAnswerPrompt 給成員查詢用。比照 buildAssistPrompt:只提供今天的日期與
-// 使用者問題;頻道既有條目不塞進 prompt——由 agent 依 assistant.md 指引自己呼叫
-// query_entries 查(可指定時間範圍)、再對每筆相關條目呼叫 present_entries 呈現。
-func buildAnswerPrompt(question string) string {
-	now := time.Now()
-	today := now.Format("2006-01-02")
-	weekday := weekdayZH(now.Weekday())
-	return fmt.Sprintf("今天是 %s(%s)。\n\n使用者的提問:%s", today, weekday, question)
-}
+// ---- 解析 ----
+// 使用者輸入原封不動送給 agent,不再手動拼接日期等上下文。
+// 「今天」的基準點怎麼提供給 agent(相對日期換算用)待後續處理。

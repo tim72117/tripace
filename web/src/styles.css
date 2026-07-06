@@ -146,11 +146,111 @@ body {
   padding: 8px !important;
 }
 
-/* 登入下拉 */
+/* 登入下拉(內嵌於頻道列表 navbar) */
 .login-dropdown {
   border-bottom: 1px solid var(--ios-sep);
   background: var(--ios-card);
   padding: 8px 16px 16px;
+}
+
+/* 登入頁(訪客 gate,取代整個畫面):卡片上下左右置中 */
+.login-screen {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 20px;
+  overflow-y: auto;
+}
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--ios-card);
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.05);
+  padding: 28px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.login-card-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+.login-card-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-dark);
+}
+.login-card-subtitle {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--ios-gray);
+  line-height: 1.5;
+}
+/* 卡片內部沿用 .field/.section-title,改為無外框、留白一致的緊湊排版 */
+.login-card .section-title {
+  padding: 0 0 8px;
+}
+.login-card .field {
+  padding: 10px 0;
+  background: transparent;
+  border-bottom: none;
+  border: 1px solid var(--ios-sep);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+}
+.login-card .field:focus-within {
+  border-color: var(--color-accent);
+}
+.login-card .banner {
+  margin: 0 0 12px;
+}
+.login-card .btn-primary {
+  margin-top: 4px;
+}
+
+/* 登入表單按鈕區(送出按鈕 + 切換登入/註冊連結),供卡片與 dropdown 共用 */
+.login-form-actions {
+  padding: 0 16px 8px;
+}
+.login-form-switch {
+  text-align: center;
+  margin-top: 14px;
+  font-size: 14px;
+}
+.login-card .login-form-actions {
+  padding: 0;
+}
+
+/* 新增頻道輸入列(嵌在 navbar 下方的一般版面,非聊天室浮空輸入條) */
+.new-channel-composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--ios-card);
+  border-bottom: 0.5px solid var(--ios-sep);
+}
+.new-channel-composer input {
+  flex: 1;
+  border: 1.5px solid var(--ios-sep);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 16px;
+  outline: none;
+  background: var(--ios-bg);
+  transition: border-color 0.15s;
+}
+.new-channel-composer input:focus {
+  border-color: var(--color-accent);
+}
+.new-channel-composer .btn-primary {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 9px 16px;
+  font-size: 15px;
 }
 
 /* 內容捲動區 */

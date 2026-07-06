@@ -26,7 +26,9 @@ func main() {
 		log.Printf("載入 .env: %v", err)
 	}
 
-	addr := flag.String("addr", ":8080", "HTTP 監聽位址")
+	// 預設只綁 127.0.0.1:本機開發不對外部網路開放,Windows 防火牆不會跳出詢問框。
+	// 雲端(Cloud Run 等)需要監聽所有介面時,由下方 PORT 環境變數覆寫。
+	addr := flag.String("addr", "127.0.0.1:8080", "HTTP 監聽位址")
 	dbPath := flag.String("db", "channel.db", "DB 連線:SQLite 檔案路徑,或 DATABASE_URL 未設時的後備")
 	seed := flag.Bool("seed", true, "資料庫為空時寫入示範資料")
 	jwtSecret := flag.String("jwt-secret", "dev-secret-change-me", "JWT 簽章金鑰")

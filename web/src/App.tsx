@@ -125,6 +125,20 @@ export function PhoneContent(props: ContentProps) {
   const { cfg, activeChannel, setActiveChannel } = props
   const [inSettings, setInSettings] = useState(false)
 
+  if (props.isGuest) {
+    return (
+      <div className="login-screen">
+        <div className="login-card">
+          <div className="login-card-header">
+            <div className="login-card-title">歡迎使用 Channel</div>
+            <div className="login-card-subtitle">請先登入或註冊帳號,才能查看與使用頻道功能。</div>
+          </div>
+          <LoginForm baseURL={cfg.baseURL} onAuthed={props.onAuthed} />
+        </div>
+      </div>
+    )
+  }
+
   if (activeChannel) {
     return (
       <ChatScreen
@@ -291,7 +305,7 @@ function ChannelsScreen({
         </div>
       )}
       {creating && (
-        <div className="composer">
+        <div className="new-channel-composer">
           <input
             autoFocus
             value={newName}
@@ -305,7 +319,7 @@ function ChannelsScreen({
               }
             }}
           />
-          <button onClick={submitCreate} disabled={!newName.trim()}>
+          <button className="btn-primary" onClick={submitCreate} disabled={!newName.trim()}>
             建立
           </button>
         </div>
@@ -1682,7 +1696,7 @@ function LoginForm({
         </div>
       )}
       <ErrorBanner msg={err} />
-      <div style={{ padding: '0 16px 8px' }}>
+      <div className="login-form-actions">
         <button
           className="btn-primary"
           onClick={submit}
@@ -1690,7 +1704,7 @@ function LoginForm({
         >
           {busy ? '處理中…' : mode === 'login' ? '登入' : '註冊並登入'}
         </button>
-        <div style={{ textAlign: 'center', marginTop: 14, fontSize: 14 }}>
+        <div className="login-form-switch">
           <span style={{ color: 'var(--ios-gray)' }}>
             {mode === 'login' ? '還沒有帳號?' : '已有帳號?'}
           </span>{' '}
