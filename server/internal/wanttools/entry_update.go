@@ -2,9 +2,9 @@ package wanttools
 
 import (
 	"fmt"
+	"github.com/tim72117/want/types"
 	"strings"
 	"time"
-	"github.com/tim72117/want/types"
 )
 
 var UpdateEntryDeclaration = types.ToolDeclaration{

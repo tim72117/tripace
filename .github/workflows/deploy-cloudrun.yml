@@ -10,6 +10,11 @@ on:
       - '.dockerignore'
       - '.github/workflows/deploy-cloudrun.yml'
   workflow_dispatch:
+    inputs:
+      skip_build:
+        description: '只部署不重新 build（使用現有 latest image）'
+        type: boolean
+        default: false
 
 env:
   GCP_PROJECT_ID: "shuttle-045094509"

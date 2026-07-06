@@ -1,1 +1,1 @@
-{"root":["./src/App.tsx","./src/DebugApp.tsx","./src/DebugPanel.tsx","./src/api.ts","./src/deviceDB.ts","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/debugapp.tsx","./src/debugpanel.tsx","./src/api.ts","./src/devicedb.ts","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts"],"version":"5.9.3"}

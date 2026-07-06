@@ -84,9 +84,9 @@ type Entry struct {
 	StartTime string   `json:"startTime"`         // 'HH:MM';空=全日
 	End       string   `json:"end,omitempty"`     // 範圍結束日期;可空
 	EndTime   string   `json:"endTime,omitempty"` // 範圍結束時刻;可空
-	Location  string   `json:"location"`      // 地點(可空)
-	Lat       *float64 `json:"lat,omitempty"` // 緯度(由 Places API 自動補)
-	Lng       *float64 `json:"lng,omitempty"` // 經度
+	Location  string   `json:"location"`          // 地點(可空)
+	Lat       *float64 `json:"lat,omitempty"`     // 緯度(由 Places API 自動補)
+	Lng       *float64 `json:"lng,omitempty"`     // 經度
 	// 所屬行程(Trip)。後端依時間自動歸組:未歸組為 null。
 	TripID *string `json:"tripID,omitempty"`
 	// LLM 標注(原本在 Message 上,改放 Entry;目前先留空,待後續接上 Classify)。
