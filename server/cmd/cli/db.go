@@ -4,9 +4,9 @@ package main
 // 透過 -db 旗標啟用。
 
 import (
+	"github.com/joho/godotenv"
 	"github.com/tim72117/shuttle/internal/store"
 	"github.com/tim72117/shuttle/internal/tripsvc"
-	"github.com/joho/godotenv"
 	"os"
 )
 
