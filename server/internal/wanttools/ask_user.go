@@ -21,11 +21,11 @@ var AskUserDeclaration = types.ToolDeclaration{
 		"type": "OBJECT",
 		"properties": map[string]interface{}{
 			"askType": map[string]interface{}{
-				"type": "STRING",
+				"type":        "STRING",
 				"description": "要請使用者提供的資訊類型。目前支援:'date'(讓使用者選一個日期,如退房日)。",
 			},
 			"prompt": map[string]interface{}{
-				"type": "STRING",
+				"type":        "STRING",
 				"description": "顯示給使用者的提示文字,說明要提供什麼,例如「請選擇希爾頓的退房日期」。",
 			},
 		},

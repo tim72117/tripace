@@ -1,9 +1,9 @@
 {
-  "name": "channel-web-devconsole",
+  "name": "shuttle-web-devconsole",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Channel 後端開發測試台 — 套 iPhone 外框的 web app,用於開發時測試 Go server。",
+  "description": "Shuttle 後端開發測試台 — 套 iPhone 外框的 web app,用於開發時測試 Go server。",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

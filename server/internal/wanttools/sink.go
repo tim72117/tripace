@@ -41,13 +41,23 @@ type EntryUpdatingFn func(channelID, entryID string)
 // 請使用者補上缺失資訊(server 啟動時用 BindAskUser 注入)。
 type AskUserFn func(channelID, askType, prompt string)
 
+// TaskCreatedFn 廣播 task_created 事件(帶 taskID/date/text)給前端,
+// 讓前端在該日期下插入一張「新增中」佔位卡(server 啟動時用 BindTaskCreated 注入)。
+type TaskCreatedFn func(channelID string, taskID int, date, text string)
+
+// TaskEntryReadyFn 廣播 task_entry_ready 事件(帶 taskID/entryID)給前端,
+// 讓前端把對應的佔位卡直接替換成正式條目卡(server 啟動時用 BindTaskEntryReady 注入)。
+type TaskEntryReadyFn func(channelID string, taskID int, entryID string)
+
 var (
 	// recordMu 序列化整個「記錄一則訊息」的流程,確保 RecordLock 保護的計數/清單不交錯。
-	recordMu      sync.Mutex
-	sink          EntrySink
-	notifyFn      NotifyFn
-	entryUpdating EntryUpdatingFn
-	askUser       AskUserFn
+	recordMu       sync.Mutex
+	sink           EntrySink
+	notifyFn       NotifyFn
+	entryUpdating  EntryUpdatingFn
+	askUser        AskUserFn
+	taskCreated    TaskCreatedFn
+	taskEntryReady TaskEntryReadyFn
 	// emitCount 記本次 RecordLock 流程內 record_entry 被觸發的次數,
 	// 供呼叫端判斷 agent 究竟「記錄了」還是「只回答」。
 	emitCount int
@@ -91,6 +101,28 @@ func BindAskUser(fn AskUserFn) { askUser = fn }
 func NotifyAskUser(channelID, askType, prompt string) {
 	if askUser != nil {
 		askUser(channelID, askType, prompt)
+	}
+}
+
+// BindTaskCreated 注入 task_created 廣播函式(server 啟動時呼叫)。
+func BindTaskCreated(fn TaskCreatedFn) { taskCreated = fn }
+
+// NotifyTaskCreated 廣播 task_created(帶 taskID/date/text),供 task_plan 的
+// create 呼叫,讓前端在該日期下插入一張「新增中」佔位卡。
+func NotifyTaskCreated(channelID string, taskID int, date, text string) {
+	if taskCreated != nil {
+		taskCreated(channelID, taskID, date, text)
+	}
+}
+
+// BindTaskEntryReady 注入 task_entry_ready 廣播函式(server 啟動時呼叫)。
+func BindTaskEntryReady(fn TaskEntryReadyFn) { taskEntryReady = fn }
+
+// NotifyTaskEntryReady 廣播 task_entry_ready(帶 taskID/entryID),供 entry_add
+// 在完成且帶有 taskID 時呼叫,讓前端把對應的佔位卡直接替換成正式條目卡。
+func NotifyTaskEntryReady(channelID string, taskID int, entryID string) {
+	if taskEntryReady != nil {
+		taskEntryReady(channelID, taskID, entryID)
 	}
 }
 

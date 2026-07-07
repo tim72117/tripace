@@ -1,8 +1,8 @@
 # ---- Go server 執行期產物(不進版控) ----
 # SQLite 資料庫(server 啟動時自動建立 / seed)
-server/channel.db
-server/channel.db-shm
-server/channel.db-wal
+server/shuttle.db
+server/shuttle.db-shm
+server/shuttle.db-wal
 
 # 環境變數(含 DB 連線字串 / 密碼,務必不進版控)
 .env
@@ -16,6 +16,7 @@ configs/settings.json
 server/logs/
 server/sessions/
 server/entries.jsonl
+server/tmp/
 
 # ---- 編譯產物 ----
 *.exe

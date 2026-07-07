@@ -3,7 +3,7 @@ package llm
 import (
 	"sync"
 
-	"github.com/channel/server/internal/model"
+	"github.com/tim72117/shuttle/internal/model"
 )
 
 // WantPool 是 per-session orchestrator 的「外殼」。

@@ -8,9 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		0452E0FBFA4E2B2AB832F614 /* BackendService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01040E171402257D24C22488 /* BackendService.swift */; };
-		0A0E2987B5D6CF1FECA46D3A /* ChannelApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 447FFA9136EF9BB1DE65EEBC /* ChannelApp.swift */; };
+		0A0E2987B5D6CF1FECA46D3A /* ShuttleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 447FFA9136EF9BB1DE65EEBC /* ShuttleApp.swift */; };
 		1655FD808B028A4E23F165D8 /* AvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D5F0A1ACFD78EF1D3F43532 /* AvatarView.swift */; };
-		26D4CC361C95319C5AF031C5 /* Channel.entitlements.bak in Resources */ = {isa = PBXBuildFile; fileRef = E73EF4F0CFFB272239DA1446 /* Channel.entitlements.bak */; };
+		26D4CC361C95319C5AF031C5 /* Shuttle.entitlements.bak in Resources */ = {isa = PBXBuildFile; fileRef = E73EF4F0CFFB272239DA1446 /* Shuttle.entitlements.bak */; };
 		2CDA1B461D5D72106549ABB7 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66274154CFF79D5E0B2A2BC1 /* User.swift */; };
 		304A75AE3D8819791A0944C3 /* LocalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE3584596CE1711115F56473 /* LocalStore.swift */; };
 		345BAC13AADA272BCCA587C6 /* SQLite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B410D8AE3BCF00ECFC83B1 /* SQLite.swift */; };
@@ -43,7 +43,7 @@
 		14421E2F24661162B6BAC988 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		38CE53DBEEFA0A697B0923C3 /* ChannelStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelStore.swift; sourceTree = "<group>"; };
 		40B410D8AE3BCF00ECFC83B1 /* SQLite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLite.swift; sourceTree = "<group>"; };
-		447FFA9136EF9BB1DE65EEBC /* ChannelApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelApp.swift; sourceTree = "<group>"; };
+		447FFA9136EF9BB1DE65EEBC /* ShuttleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuttleApp.swift; sourceTree = "<group>"; };
 		4E7C2BCC15270F5FD5354D91 /* SearchAnswer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchAnswer.swift; sourceTree = "<group>"; };
 		4F9EC4B6F611338E25BD8625 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		5D5F0A1ACFD78EF1D3F43532 /* AvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarView.swift; sourceTree = "<group>"; };
@@ -66,14 +66,14 @@
 		E73EF4F0CFFB272239DA1446 /* Channel.entitlements.bak */ = {isa = PBXFileReference; path = Channel.entitlements.bak; sourceTree = "<group>"; };
 		E845140DD70751DFBB00D628 /* MockBackendService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockBackendService.swift; sourceTree = "<group>"; };
 		EE3584596CE1711115F56473 /* LocalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalStore.swift; sourceTree = "<group>"; };
-		FCB69B297B9DFA229F014CCD /* Channel.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Channel.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FCB69B297B9DFA229F014CCD /* Shuttle.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Shuttle.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
 		0E59F7F21481BD17CB1F86D6 /* App */ = {
 			isa = PBXGroup;
 			children = (
-				447FFA9136EF9BB1DE65EEBC /* ChannelApp.swift */,
+				447FFA9136EF9BB1DE65EEBC /* ShuttleApp.swift */,
 				6DA80EE5A573E77FDDC1D430 /* RootView.swift */,
 			);
 			path = App;
@@ -101,7 +101,7 @@
 		5213153131C47696D5A655A4 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				E73EF4F0CFFB272239DA1446 /* Channel.entitlements.bak */,
+				E73EF4F0CFFB272239DA1446 /* Shuttle.entitlements.bak */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -116,7 +116,7 @@
 			path = Stores;
 			sourceTree = "<group>";
 		};
-		577FFF27EF25AE878E93773A /* Channel */ = {
+		577FFF27EF25AE878E93773A /* Shuttle */ = {
 			isa = PBXGroup;
 			children = (
 				0E59F7F21481BD17CB1F86D6 /* App */,
@@ -126,7 +126,7 @@
 				697F31CD7ABE95B4403A42E8 /* Services */,
 				5771D9E4638890579FF4F19E /* Stores */,
 			);
-			path = Channel;
+			path = Shuttle;
 			sourceTree = "<group>";
 		};
 		650451E98E3692BCF30B2796 /* Local */ = {
@@ -175,7 +175,7 @@
 		9E27DE8741E03CF4799C17FC = {
 			isa = PBXGroup;
 			children = (
-				577FFF27EF25AE878E93773A /* Channel */,
+				577FFF27EF25AE878E93773A /* Shuttle */,
 				ADBCC83557D1A4F1A92303B5 /* Products */,
 			);
 			sourceTree = "<group>";

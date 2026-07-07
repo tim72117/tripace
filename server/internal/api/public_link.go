@@ -5,8 +5,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/channel/server/internal/llm"
-	"github.com/channel/server/internal/store"
+	"github.com/tim72117/shuttle/internal/llm"
+	"github.com/tim72117/shuttle/internal/store"
 )
 
 // POST /v1/channels/{id}/public-link — 建立（或取得已有）公開連結。

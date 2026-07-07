@@ -12,20 +12,24 @@ import type { Channel, ChannelRole, Entry, Member, Message, User } from './types
 import { listMessages, saveMessage } from './deviceDB'
 
 // baseURL 是連線設定,跨分頁共用 → localStorage。
-const LS_BASE = 'channel.baseURL'
+const LS_BASE = 'shuttle.baseURL'
 // 默認頻道 ID (用戶設定的「目前行程」)
-const LS_DEFAULT_CHANNEL = 'channel.defaultChannelID'
+const LS_DEFAULT_CHANNEL = 'shuttle.defaultChannelID'
 // token / user 是「登入身分」,改用 sessionStorage:每個分頁獨立,
 // 讓不同分頁能登入不同使用者(也為 per-session 鋪路)。
-const SS_TOKEN = 'channel.token'
-const SS_USER = 'channel.user'
-const SS_EMAIL = 'channel.email'
+const SS_TOKEN = 'shuttle.token'
+const SS_USER = 'shuttle.user'
+const SS_EMAIL = 'shuttle.email'
 
 
 // 聊天訊息(後端 Message + 前端專用欄位)。
 // presented:agent 用 present_entries 輸出、要在答案泡泡下用列表顯示的條目。
 // pending:後端處理中的佔位泡泡,渲染海浪載入動畫(無文字),完成後就地替換。
 type ChatMessage = Message & { presented?: PresentedEntry[]; pending?: boolean }
+
+// TaskPlaceholder:task_plan 建立任務時(WS task_created)在時間軸該日期下插入的「新增中」佔位卡。
+// entry_add 帶對應 taskID 完成寫入後(WS task_entry_ready)移除,由重抓的正式條目接手顯示。
+type TaskPlaceholder = { taskID: number; date: string; text: string }
 
 export function useAppState() {
   const [baseURL, setBaseURL] = useState(() => {
@@ -381,6 +385,9 @@ function ChatScreen({
   const [inputFocused, setInputFocused] = useState(false)
   // ask_user:agent 缺資訊(如住宿退房日)時,透過 WS 推來的請求;非 null 時前端開對應 UI。
   const [askUser, setAskUser] = useState<{ askType: string; prompt: string } | null>(null)
+  // taskPlaceholders:task_plan 建立中的任務,依 date 在時間軸插入佔位卡;
+  // 對應 entry_add(帶 taskID)完成後由 task_entry_ready 移除。
+  const [taskPlaceholders, setTaskPlaceholders] = useState<TaskPlaceholder[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   // 成員管理在頻道內開啟(對齊 iOS App 的聊天頁右上角入口)。
@@ -465,6 +472,13 @@ function ChatScreen({
         } else if (msg.event === 'ask_user' && msg.askType) {
           // agent 缺資訊,請使用者透過 UI 補上;開對應輸入元件(目前支援 date)。
           setAskUser({ askType: msg.askType, prompt: msg.prompt ?? '' })
+        } else if (msg.event === 'task_created' && typeof msg.taskID === 'number') {
+          // task_plan 建立任務:在該日期下插入一張「新增中」佔位卡。
+          setTaskPlaceholders((prev) => [...prev, { taskID: msg.taskID, date: msg.date ?? '', text: msg.text ?? '' }])
+        } else if (msg.event === 'task_entry_ready' && typeof msg.taskID === 'number') {
+          // entry_add 已完成對應步驟:移除佔位卡,並重抓條目讓正式卡片出現。
+          setTaskPlaceholders((prev) => prev.filter((p) => p.taskID !== msg.taskID))
+          api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {})
         }
       } catch {}
     }
@@ -646,7 +660,7 @@ function ChatScreen({
               {isOwner ? '在下方輸入記事，會依時間排列在這裡。' : '在下方查詢頻道內容。'}
             </div>
           ) : entries.length > 0 ? (
-            <MultiTrackTimeline entries={entries} todayRef={todayRef} updatingIDs={updatingEntryIDs} />
+            <MultiTrackTimeline entries={entries} todayRef={todayRef} updatingIDs={updatingEntryIDs} taskPlaceholders={taskPlaceholders} />
           ) : null}
         </div>
 
@@ -853,11 +867,13 @@ function entrySpanLabel(e: Entry): string {
 type TLRow =
   | { kind: 'year';  key: string; label: string; accent: boolean }
   | { kind: 'month'; key: string; label: string; accent: boolean }
-  | { kind: 'entry'; key: string; day: string; dayLabel: string | null; dot: 'main' | 'sub' | 'marker'; isBlank: boolean; isPad: boolean; lineTop: 'accent' | 'normal' | 'none'; lineBot: 'accent' | 'normal' | 'none'; card: { kind: 'main' | 'sub' | 'end'; entry: Entry } | null }
+  | { kind: 'entry'; key: string; day: string; dayLabel: string | null; dot: 'main' | 'sub' | 'marker'; isBlank: boolean; isPad: boolean; lineTop: 'accent' | 'normal' | 'none'; lineBot: 'accent' | 'normal' | 'none'; card: { kind: 'main' | 'sub' | 'end'; entry: Entry } | { kind: 'task'; placeholder: TaskPlaceholder } | null }
 
 // ---- 建構函式 ----
 
-function buildTLRows(entries: Entry[]): TLRow[] {
+// buildTLRows 接受正式條目與 task 佔位卡(只需 date,插在該日期清單最後面;
+// 沒有 date 的佔位卡無處可放,直接略過不顯示)。
+function buildTLRows(entries: Entry[], taskPlaceholders: TaskPlaceholder[] = []): TLRow[] {
   const sorted = [...entries].sort((a, b) => {
     // 有 start 的條目排在前，沒有的排在後
     if (!a.start && b.start) return 1
@@ -893,8 +909,11 @@ function buildTLRows(entries: Entry[]): TLRow[] {
     })
   }
 
-  // 3. 收集所有要顯示的天（entry 起始日 + 主線中間天 + 主線結束日 + 最後結束隔天）
+  // 3. 收集所有要顯示的天（entry 起始日 + 主線中間天 + 主線結束日 + 最後結束隔天 + 佔位卡日期）
   const daySet = new Set(sorted.map(e => e.start?.slice(0, 10) ?? '').filter(Boolean))
+  for (const p of taskPlaceholders) {
+    if (p.date) daySet.add(p.date.slice(0, 10))
+  }
   let lastMainEnd = ''
   for (const m of mainEntries) {
     const s = (m.start ?? '').slice(0, 10)
@@ -944,10 +963,11 @@ function buildTLRows(entries: Entry[]): TLRow[] {
   for (const day of days) {
     const { day: dayNum } = parseDateParts(day)
     const todayAll = sortedAll.filter(v => v.sortKey.slice(0, 10) === day)
+    const todayTasks = taskPlaceholders.filter(p => p.date.slice(0, 10) === day)
 
     const dayRows: Pre[] = []
 
-    if (todayAll.length === 0) {
+    if (todayAll.length === 0 && todayTasks.length === 0) {
       dayRows.push({ kind: 'entry', key: `day-${day}`, day, dayLabel: null, isBlank: true, isPad: false, dot: 'marker', card: null })
     } else {
       todayAll.forEach(v => {
@@ -961,10 +981,14 @@ function buildTLRows(entries: Entry[]): TLRow[] {
           })
         }
       })
+      // 佔位卡插在該日期清單最後面(不需精確排序)。
+      todayTasks.forEach(p => {
+        dayRows.push({ kind: 'entry', key: `task-${p.taskID}`, day, dayLabel: null, isBlank: false, isPad: false, dot: 'sub', card: { kind: 'task', placeholder: p } })
+      })
     }
 
     // 中間天佔位列不顯示日期
-    const isBlankDay = todayAll.length === 0
+    const isBlankDay = todayAll.length === 0 && todayTasks.length === 0
     if (dayRows.length > 0 && !isBlankDay) dayRows[0] = { ...dayRows[0], dayLabel: dayNum }
     dayRows.forEach(r => pre.push(r))
   }
@@ -1010,8 +1034,8 @@ function buildTLRows(entries: Entry[]): TLRow[] {
 
 // ---- 純渲染元件 ----
 
-function MultiTrackTimeline({ entries, todayRef, updatingIDs }: { entries: Entry[], todayRef?: React.RefObject<HTMLDivElement>, updatingIDs?: Set<string> }) {
-  const rows = buildTLRows(entries)
+function MultiTrackTimeline({ entries, todayRef, updatingIDs, taskPlaceholders }: { entries: Entry[], todayRef?: React.RefObject<HTMLDivElement>, updatingIDs?: Set<string>, taskPlaceholders?: TaskPlaceholder[] }) {
+  const rows = buildTLRows(entries, taskPlaceholders ?? [])
   const today = new Date().toISOString().slice(0, 10)
   let todayAttached = false
   return (
@@ -1062,6 +1086,7 @@ function MultiTrackTimeline({ entries, todayRef, updatingIDs }: { entries: Entry
               {card?.kind === 'main' && <MainCard entry={card.entry} updating={updatingIDs?.has(card.entry.id)} />}
               {card?.kind === 'sub'  && <SubCard  entry={card.entry} updating={updatingIDs?.has(card.entry.id)} />}
               {card?.kind === 'end'  && <EndCard  entry={card.entry} />}
+              {card?.kind === 'task' && <TaskPlaceholderCard placeholder={card.placeholder} />}
             </div>
           </div>
         )
@@ -1164,6 +1189,25 @@ function SubCard({ entry, updating }: { entry: Entry; updating?: boolean }) {
         </div>
       </div>
       {entry.location && <NavButton location={entry.location} lat={entry.lat} lng={entry.lng} />}
+    </div>
+  )
+}
+
+// task_plan 建立任務時插入的佔位卡:文字逐字波浪起伏,標示該步驟正在新增中,
+// entry_add 完成對應 taskID 後由 task_entry_ready 移除、換成正式條目卡。
+function TaskPlaceholderCard({ placeholder }: { placeholder: TaskPlaceholder }) {
+  const label = placeholder.text || '新增中'
+  return (
+    <div className="tl-card tl-card-row tl-task-placeholder">
+      <div className="tl-card-content">
+        <div className="tl-item tl-wave-text" aria-live="polite" aria-label={`${label}：新增中`}>
+          {[...label].map((ch, i) => (
+            <span key={i} className="tl-wave-char" style={{ animationDelay: `${i * 0.06}s` }}>
+              {ch === ' ' ? ' ' : ch}
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -1448,7 +1492,7 @@ function PublicViewScreen({ token }: { token: string }) {
   const bodyRef = useRef<HTMLDivElement>(null)
 
   const resolvedBase = (() => {
-    const saved = localStorage.getItem('channel.baseURL')
+    const saved = localStorage.getItem('shuttle.baseURL')
     if (saved && !saved.includes(window.location.host)) return saved
     return window.location.origin
   })()
@@ -1465,7 +1509,7 @@ function PublicViewScreen({ token }: { token: string }) {
 
   useEffect(() => {
     if (data?.channelName) document.title = data.channelName
-    return () => { document.title = 'Channel · 後端測試台' }
+    return () => { document.title = 'Shuttle · 後端測試台' }
   }, [data?.channelName])
 
   useEffect(() => {

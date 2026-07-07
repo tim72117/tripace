@@ -8,9 +8,19 @@ import (
 
 // Task 是 agent 規劃多步驟任務時的單一步驟(存於記憶體,per-channel)。
 type Task struct {
-	ID   int    `json:"id"`   // 頻道內遞增序號,供 update/complete 指定
-	Text string `json:"text"` // 步驟描述
-	Done bool   `json:"done"` // 是否已完成
+	ID   int    `json:"id"`             // 頻道內遞增序號,供 update/complete 指定
+	Text string `json:"text"`           // 步驟描述
+	Done bool   `json:"done"`           // 是否已完成
+	Date string `json:"date,omitempty"` // 絕對日期 'YYYY-MM-DD',留空表示不指定日期
+	Kind string `json:"kind,omitempty"` // 這一步屬於新增或更新:'add' | 'update',留空表示不分類
+}
+
+// TaskInput 是新增/更新任務時的欄位輸入(text 必填,date/kind 選填)。
+// 用結構體而非逐一參數,讓之後要加欄位時不必再改動 Create/Update 的呼叫端。
+type TaskInput struct {
+	Text string
+	Date string
+	Kind string
 }
 
 // taskStore 是 per-channel 的記憶體任務清單。
@@ -28,27 +38,27 @@ var tasks = &taskStore{
 }
 
 // Create 新增一筆任務,回傳新任務。
-func (s *taskStore) Create(channelID, text string) *Task {
+func (s *taskStore) Create(channelID string, in TaskInput) *Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.createLocked(channelID, text)
+	return s.createLocked(channelID, in)
 }
 
 // CreateMany 一次新增多筆任務(整個計畫一次寫入),回傳新增的任務清單。
-func (s *taskStore) CreateMany(channelID string, texts []string) []Task {
+func (s *taskStore) CreateMany(channelID string, inputs []TaskInput) []Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make([]Task, 0, len(texts))
-	for _, text := range texts {
-		out = append(out, *s.createLocked(channelID, text))
+	out := make([]Task, 0, len(inputs))
+	for _, in := range inputs {
+		out = append(out, *s.createLocked(channelID, in))
 	}
 	return out
 }
 
 // createLocked 在已持鎖的情況下新增一筆(供 Create / CreateMany 共用)。
-func (s *taskStore) createLocked(channelID, text string) *Task {
+func (s *taskStore) createLocked(channelID string, in TaskInput) *Task {
 	s.nextID[channelID]++
-	t := &Task{ID: s.nextID[channelID], Text: text, Done: false}
+	t := &Task{ID: s.nextID[channelID], Text: in.Text, Done: false, Date: in.Date, Kind: in.Kind}
 	s.byChan[channelID] = append(s.byChan[channelID], t)
 	return t
 }
@@ -66,13 +76,22 @@ func (s *taskStore) List(channelID string) []Task {
 	return out
 }
 
-// Update 改任務描述;找不到該 ID 回 error。
-func (s *taskStore) Update(channelID string, id int, text string) error {
+// Update 改任務欄位;只更新 in 裡非空的欄位(留空表示不修改,與 entry_update 慣例一致)。
+// 找不到該 ID 回 error。
+func (s *taskStore) Update(channelID string, id int, in TaskInput) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, t := range s.byChan[channelID] {
 		if t.ID == id {
-			t.Text = text
+			if in.Text != "" {
+				t.Text = in.Text
+			}
+			if in.Date != "" {
+				t.Date = in.Date
+			}
+			if in.Kind != "" {
+				t.Kind = in.Kind
+			}
 			return nil
 		}
 	}

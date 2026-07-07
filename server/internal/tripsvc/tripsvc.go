@@ -18,9 +18,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/channel/server/internal/geo"
-	"github.com/channel/server/internal/model"
-	"github.com/channel/server/internal/store"
+	"github.com/tim72117/shuttle/internal/geo"
+	"github.com/tim72117/shuttle/internal/model"
+	"github.com/tim72117/shuttle/internal/store"
 )
 
 func nowUTC() time.Time { return time.Now().UTC() }

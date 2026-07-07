@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/channel/server/internal/auth"
-	"github.com/channel/server/internal/llm"
-	"github.com/channel/server/internal/model"
-	"github.com/channel/server/internal/store"
+	"github.com/tim72117/shuttle/internal/auth"
+	"github.com/tim72117/shuttle/internal/llm"
+	"github.com/tim72117/shuttle/internal/model"
+	"github.com/tim72117/shuttle/internal/store"
 )
 
 type Server struct {
@@ -52,6 +52,22 @@ func (s *Server) NotifyEntryUpdating(channelID, entryID string) {
 // 讓前端開啟對應 UI(如日期選擇器)請使用者補上缺失資訊。
 func (s *Server) NotifyAskUser(channelID, askType, prompt string) {
 	s.hub.Broadcast(channelID, map[string]any{"event": "ask_user", "channelID": channelID, "askType": askType, "prompt": prompt})
+}
+
+// NotifyTaskCreated 廣播 task_created(帶 taskID/date/text)給指定頻道的訂閱者(供 wanttools 呼叫),
+// 讓前端在該日期下插入一張「新增中」佔位卡。
+func (s *Server) NotifyTaskCreated(channelID string, taskID int, date, text string) {
+	s.hub.Broadcast(channelID, map[string]any{
+		"event": "task_created", "channelID": channelID, "taskID": taskID, "date": date, "text": text,
+	})
+}
+
+// NotifyTaskEntryReady 廣播 task_entry_ready(帶 taskID/entryID)給指定頻道的訂閱者(供 wanttools 呼叫),
+// 讓前端把對應的佔位卡直接替換成正式條目卡。
+func (s *Server) NotifyTaskEntryReady(channelID string, taskID int, entryID string) {
+	s.hub.Broadcast(channelID, map[string]any{
+		"event": "task_entry_ready", "channelID": channelID, "taskID": taskID, "entryID": entryID,
+	})
 }
 
 // Routes 註冊路由(Go 1.22+ 的方法+路徑樣式)。

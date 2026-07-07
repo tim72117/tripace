@@ -1,6 +1,6 @@
-name: Channel
+name: Shuttle
 options:
-  bundleIdPrefix: com.channel.app
+  bundleIdPrefix: com.shuttle.app
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
@@ -13,19 +13,19 @@ settings:
     TARGETED_DEVICE_FAMILY: "1,2"
 
 targets:
-  Channel:
+  Shuttle:
     type: application
     platform: iOS
     sources:
-      - path: Channel
+      - path: Shuttle
         excludes:
           - Resources/Info.plist
-          - Resources/Channel.entitlements
+          - Resources/Shuttle.entitlements
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.channel.app.Channel
+        PRODUCT_BUNDLE_IDENTIFIER: com.shuttle.app.Shuttle
         GENERATE_INFOPLIST_FILE: NO
-        INFOPLIST_FILE: Channel/Resources/Info.plist
-        CODE_SIGN_ENTITLEMENTS: Channel/Resources/Channel.entitlements
+        INFOPLIST_FILE: Shuttle/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Shuttle/Resources/Shuttle.entitlements
         # 本地快取用系統內建 SQLite(import SQLite3),連結 libsqlite3。
         OTHER_LDFLAGS: -lsqlite3

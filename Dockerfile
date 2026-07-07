@@ -1,13 +1,13 @@
-# Channel server 容器映像。
+# Shuttle server 容器映像。
 # 重點:build context 必須是「專案根目錄」(含 server/ 與 want/),
 # 因為 server/go.mod 用 replace want => ../../want 指向本地 want 源碼,
 # context 限縮在 server/ 會看不到 want/ 而編譯失敗。
 # 故 COPY 路徑都相對「根目錄 context」寫(server/... 與 want/...)。
 #
 # 建置(從專案根目錄):
-#   docker build -t channel-server .
+#   docker build -t shuttle-server .
 # 本機跑(env 由 --env-file 注入,不會把 .env 烤進映像):
-#   docker run --rm -p 8080:8080 --env-file server/.env channel-server
+#   docker run --rm -p 8080:8080 --env-file server/.env shuttle-server
 
 # ---- 階段 1:build 前端 ----
 FROM node:22-alpine AS web-build

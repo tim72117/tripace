@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/channel/server/internal/tripsvc"
+	"github.com/tim72117/shuttle/internal/tripsvc"
 )
 
 // handleInternalListChannels GET /internal/channels

@@ -1,4 +1,4 @@
-# Channel — 智慧頻道 App
+# Shuttle — 智慧頻道 App
 
 一個 iOS App。使用者可以在頻道中輸入訊息,後端 LLM 服務會整理、分類、標注訊息內容;
 可以邀請朋友加入頻道;頻道成員可以用「語意輸入」的方式查詢頻道中的訊息,後端 LLM
@@ -30,7 +30,7 @@
 ## 開啟方式
 
 ```bash
-open Channel.xcodeproj
+open ios/Shuttle.xcodeproj
 ```
 
 選擇 iOS 模擬器後直接 ⌘R 執行。目前預設使用 `MockBackendService`,無需後端即可操作。

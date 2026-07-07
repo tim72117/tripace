@@ -56,6 +56,12 @@ var RecordEntryDeclaration = types.ToolDeclaration{
 					"選 'stay' 時必須同時提供 start(入住日)與 end(退房日);" +
 					"未給時刻時系統自動補 check-in 15:00 / check-out 11:00。",
 			},
+			"taskID": map[string]interface{}{
+				"type": "INTEGER",
+				"description": "若這筆記錄是在完成 task_plan 規劃的某個步驟時新增的," +
+					"帶上該步驟的任務序號(id),讓前端把對應的「新增中」佔位卡換成正式條目卡。" +
+					"與 task_plan 無關的一般記錄留空。",
+			},
 		},
 		"required": []string{"item"},
 	},
@@ -86,11 +92,16 @@ func (t *RecordEntryTool) Call(args types.ToolArguments, ctx types.ToolContext) 
 	endDate := resolveDate(args.GetString("end"), now)
 	endTime := args.GetString("endTime")
 
-	entryID, err := emit(ChannelFrom(ctx), RecordedEntry{
+	channelID := ChannelFrom(ctx)
+	entryID, err := emit(channelID, RecordedEntry{
 		Item: item, Start: startDate, StartTime: startTime, End: endDate, EndTime: endTime, Kind: kind,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to save entry: %w", err)
+	}
+
+	if taskID := args.GetInt("taskID"); taskID != 0 {
+		NotifyTaskEntryReady(channelID, taskID, entryID)
 	}
 
 	resultMsg := fmt.Sprintf("Recorded (entryID=%s): %s %s", entryID, describeTime(startDate, startTime, endDate, endTime), item)

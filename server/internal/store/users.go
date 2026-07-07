@@ -3,7 +3,7 @@ package store
 import (
 	"errors"
 
-	"github.com/channel/server/internal/model"
+	"github.com/tim72117/shuttle/internal/model"
 	"gorm.io/gorm"
 )
 

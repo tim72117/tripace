@@ -26,7 +26,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/channel/server/internal/tripsvc"
+	"github.com/tim72117/shuttle/internal/tripsvc"
 )
 
 // client 定義統一的操作介面，由 httpClient 或 dbClient 實作。

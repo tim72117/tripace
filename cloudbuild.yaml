@@ -6,20 +6,20 @@ steps:
       - |
         docker build \
           --build-arg GH_PAT=$$GH_PAT \
-          -t gcr.io/$PROJECT_ID/channel-server:$COMMIT_SHA \
+          -t gcr.io/$PROJECT_ID/shuttle-server:$COMMIT_SHA \
           .
     secretEnv: [GH_PAT]
 
   - name: gcr.io/cloud-builders/docker
-    args: [push, gcr.io/$PROJECT_ID/channel-server:$COMMIT_SHA]
+    args: [push, gcr.io/$PROJECT_ID/shuttle-server:$COMMIT_SHA]
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
       - run
       - deploy
-      - channel-server
-      - --image=gcr.io/$PROJECT_ID/channel-server:$COMMIT_SHA
+      - shuttle-server
+      - --image=gcr.io/$PROJECT_ID/shuttle-server:$COMMIT_SHA
       - --region=asia-east1
       - --update-env-vars=DEV_MODE=false,SEED=false
       - --update-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest
@@ -32,4 +32,4 @@ availableSecrets:
       env: GH_PAT
 
 images:
-  - gcr.io/$PROJECT_ID/channel-server:$COMMIT_SHA
+  - gcr.io/$PROJECT_ID/shuttle-server:$COMMIT_SHA

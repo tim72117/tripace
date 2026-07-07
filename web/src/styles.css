@@ -1062,6 +1062,67 @@ body {
   }
 }
 
+/* ---- task_plan 佔位卡:文字逐字波浪起伏,標示該步驟正在新增中 ---- */
+/* 沿用 .tl-card.updating 同一套光影邊框(見上方),讓佔位卡與「更新中」卡片視覺語彙一致。 */
+.tl-task-placeholder {
+  position: relative;
+  isolation: isolate;
+  animation: tl-card-breathe 2.6s ease-in-out infinite;
+}
+.tl-task-placeholder::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--tl-spin),
+    transparent 0deg,
+    transparent 250deg,
+    var(--color-accent) 300deg,
+    #fff5e8 330deg,
+    var(--color-accent) 350deg,
+    transparent 360deg
+  );
+  animation: tl-spin-border 2.6s linear infinite;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+.tl-wave-text {
+  flex-wrap: wrap;
+  color: #8a8a8e;
+}
+.tl-wave-char {
+  display: inline-block;
+  white-space: pre;
+  animation: tl-wave-char 1.2s ease-in-out infinite;
+}
+@keyframes tl-wave-char {
+  0%, 100% { transform: translateY(0); opacity: 0.55; }
+  50%      { transform: translateY(-4px); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-task-placeholder,
+  .tl-task-placeholder::before,
+  .tl-wave-char {
+    animation: none;
+  }
+  .tl-task-placeholder::before {
+    background: var(--color-accent);
+    opacity: 0.5;
+  }
+  .tl-wave-char {
+    opacity: 0.75;
+  }
+}
+
 .tl-item {
   font-size: 16px;
   color: #1c1c1e;

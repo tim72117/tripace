@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/channel/server/internal/model"
+	"github.com/tim72117/shuttle/internal/model"
 	// 自訂 want 工具(record_entry):init() 註冊工具,並提供記錄 context/sink。
-	"github.com/channel/server/internal/wanttools"
+	"github.com/tim72117/shuttle/internal/wanttools"
 
 	wantconfig "github.com/tim72117/want/config"
 	wantorch "github.com/tim72117/want/orchestrator"
@@ -26,9 +26,9 @@ type WantAnalyzer struct {
 	mu sync.Mutex
 }
 
-// NewWant 用 channel 自己的環境變數組裝 want 的 Settings,直接呼叫
+// NewWant 用 shuttle 自己的環境變數組裝 want 的 Settings,直接呼叫
 // SetupWith(純函式,不讀檔、不讀 env、不碰全域)初始化 orchestrator。
-// channel 作為「嵌入呼叫 want」的宿主,自行決定設定來源與機密存放,
+// shuttle 作為「嵌入呼叫 want」的宿主,自行決定設定來源與機密存放,
 // 不依賴 want 的 configs/settings.json 路徑假設。
 func NewWant() (*WantAnalyzer, error) {
 	wd, _ := os.Getwd()

@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/channel/server/internal/api"
-	"github.com/channel/server/internal/auth"
-	"github.com/channel/server/internal/llm"
-	"github.com/channel/server/internal/model"
-	"github.com/channel/server/internal/store"
-	"github.com/channel/server/internal/wanttools"
+	"github.com/tim72117/shuttle/internal/api"
+	"github.com/tim72117/shuttle/internal/auth"
+	"github.com/tim72117/shuttle/internal/llm"
+	"github.com/tim72117/shuttle/internal/model"
+	"github.com/tim72117/shuttle/internal/store"
+	"github.com/tim72117/shuttle/internal/wanttools"
 
 	"github.com/joho/godotenv"
 )
@@ -29,7 +29,7 @@ func main() {
 	// 預設只綁 127.0.0.1:本機開發不對外部網路開放,Windows 防火牆不會跳出詢問框。
 	// 雲端(Cloud Run 等)需要監聽所有介面時,由下方 PORT 環境變數覆寫。
 	addr := flag.String("addr", "127.0.0.1:8080", "HTTP 監聽位址")
-	dbPath := flag.String("db", "channel.db", "DB 連線:SQLite 檔案路徑,或 DATABASE_URL 未設時的後備")
+	dbPath := flag.String("db", "shuttle.db", "DB 連線:SQLite 檔案路徑,或 DATABASE_URL 未設時的後備")
 	seed := flag.Bool("seed", true, "資料庫為空時寫入示範資料")
 	jwtSecret := flag.String("jwt-secret", "dev-secret-change-me", "JWT 簽章金鑰")
 	devMode := flag.Bool("dev", true, "開發模式:Apple token 不驗簽章")
@@ -121,6 +121,8 @@ func main() {
 	wanttools.BindNotify(srv.NotifyEntriesUpdated)
 	wanttools.BindEntryUpdating(srv.NotifyEntryUpdating)
 	wanttools.BindAskUser(srv.NotifyAskUser)
+	wanttools.BindTaskCreated(srv.NotifyTaskCreated)
+	wanttools.BindTaskEntryReady(srv.NotifyTaskEntryReady)
 
 	dbKind := "sqlite:" + dsn
 	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {

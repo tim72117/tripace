@@ -1,6 +1,6 @@
-# Channel 後端服務(Golang + SQLite 原型)
+# Shuttle 後端服務(Golang + SQLite 原型)
 
-Channel App 的後端。原型階段用 **SQLite** 持久化,訊息發送時經 LLM 整理/分類/標注後存入資料庫;
+Shuttle App 的後端。原型階段用 **SQLite** 持久化,訊息發送時經 LLM 整理/分類/標注後存入資料庫;
 提供語意查詢(RAG)端點。對齊 [../docs/API.md](../docs/API.md)。
 
 ## 技術
@@ -14,7 +14,7 @@ Channel App 的後端。原型階段用 **SQLite** 持久化,訊息發送時經 
 
 ```bash
 cd server
-go run ./cmd/server                  # 預設 :8080,DB=channel.db,自動寫入示範頻道
+go run ./cmd/server                  # 預設 :8080,DB=shuttle.db,自動寫入示範頻道
 go run ./cmd/server -addr :8090 -db /tmp/c.db -seed=false
 ```
 

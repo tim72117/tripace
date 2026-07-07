@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/channel/server/internal/store"
+	"github.com/tim72117/shuttle/internal/store"
 	"github.com/tim72117/want/types"
 )
 
