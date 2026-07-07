@@ -54,11 +54,11 @@ func (s *Server) NotifyAskUser(channelID, askType, prompt string) {
 	s.hub.Broadcast(channelID, map[string]any{"event": "ask_user", "channelID": channelID, "askType": askType, "prompt": prompt})
 }
 
-// NotifyTaskCreated 廣播 task_created(帶 taskID/date/text)給指定頻道的訂閱者(供 wanttools 呼叫),
-// 讓前端在該日期下插入一張「新增中」佔位卡。
-func (s *Server) NotifyTaskCreated(channelID string, taskID int, date, text string) {
+// NotifyTaskCreated 廣播 task_created(帶 taskID/date/text/kind)給指定頻道的訂閱者(供 wanttools 呼叫),
+// 讓前端在該日期下插入一張標示動作(新增/更新)的佔位卡。
+func (s *Server) NotifyTaskCreated(channelID string, taskID int, date, text, kind string) {
 	s.hub.Broadcast(channelID, map[string]any{
-		"event": "task_created", "channelID": channelID, "taskID": taskID, "date": date, "text": text,
+		"event": "task_created", "channelID": channelID, "taskID": taskID, "date": date, "text": text, "kind": kind,
 	})
 }
 

@@ -41,9 +41,9 @@ type EntryUpdatingFn func(channelID, entryID string)
 // 請使用者補上缺失資訊(server 啟動時用 BindAskUser 注入)。
 type AskUserFn func(channelID, askType, prompt string)
 
-// TaskCreatedFn 廣播 task_created 事件(帶 taskID/date/text)給前端,
-// 讓前端在該日期下插入一張「新增中」佔位卡(server 啟動時用 BindTaskCreated 注入)。
-type TaskCreatedFn func(channelID string, taskID int, date, text string)
+// TaskCreatedFn 廣播 task_created 事件(帶 taskID/date/text/kind)給前端,
+// 讓前端在該日期下插入一張標示動作(新增/更新)的佔位卡(server 啟動時用 BindTaskCreated 注入)。
+type TaskCreatedFn func(channelID string, taskID int, date, text, kind string)
 
 // TaskEntryReadyFn 廣播 task_entry_ready 事件(帶 taskID/entryID)給前端,
 // 讓前端把對應的佔位卡直接替換成正式條目卡(server 啟動時用 BindTaskEntryReady 注入)。
@@ -107,11 +107,11 @@ func NotifyAskUser(channelID, askType, prompt string) {
 // BindTaskCreated 注入 task_created 廣播函式(server 啟動時呼叫)。
 func BindTaskCreated(fn TaskCreatedFn) { taskCreated = fn }
 
-// NotifyTaskCreated 廣播 task_created(帶 taskID/date/text),供 task_plan 的
-// create 呼叫,讓前端在該日期下插入一張「新增中」佔位卡。
-func NotifyTaskCreated(channelID string, taskID int, date, text string) {
+// NotifyTaskCreated 廣播 task_created(帶 taskID/date/text/kind),供 task_plan 的
+// create 呼叫,讓前端在該日期下插入一張標示動作(新增/更新)的佔位卡。
+func NotifyTaskCreated(channelID string, taskID int, date, text, kind string) {
 	if taskCreated != nil {
-		taskCreated(channelID, taskID, date, text)
+		taskCreated(channelID, taskID, date, text, kind)
 	}
 }
 

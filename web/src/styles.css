@@ -1095,18 +1095,27 @@ body {
     linear-gradient(#000 0 0);
   mask-composite: exclude;
 }
-.tl-wave-text {
-  flex-wrap: wrap;
+/* 覆寫繼承自 .tl-item 的 flex 排字:改回正常文字流。
+   用複合選擇器 .tl-item.tl-wave-text 提高特異性,確保穩定勝過 .tl-item
+   (兩者若同特異性,會因 .tl-item 在後而覆蓋掉本規則,造成 flex 的 gap 殘留成字距)。
+   父容器 font-size:0 消除 inline-block 子元素之間的固有空隙(inline-block 會依字級
+   插入一個空白字寬,中文字字相鄰時特別明顯);子 .tl-wave-char 再設回實際字級。 */
+.tl-item.tl-wave-text {
+  display: block;
+  font-size: 0;
+  letter-spacing: 0;
   color: #8a8a8e;
 }
 .tl-wave-char {
   display: inline-block;
   white-space: pre;
-  animation: tl-wave-char 1.2s ease-in-out infinite;
+  font-size: 16px;
+  letter-spacing: 0;
+  animation: tl-wave-char 1s ease-in-out infinite;
 }
 @keyframes tl-wave-char {
-  0%, 100% { transform: translateY(0); opacity: 0.55; }
-  50%      { transform: translateY(-4px); opacity: 1; }
+  0%, 40%, 100% { transform: translateY(0); }
+  20%           { transform: translateY(-4px); }
 }
 @media (prefers-reduced-motion: reduce) {
   .tl-task-placeholder,

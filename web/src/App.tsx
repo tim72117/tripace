@@ -29,17 +29,15 @@ type ChatMessage = Message & { presented?: PresentedEntry[]; pending?: boolean }
 
 // TaskPlaceholder:task_plan 建立任務時(WS task_created)在時間軸該日期下插入的「新增中」佔位卡。
 // entry_add 帶對應 taskID 完成寫入後(WS task_entry_ready)移除,由重抓的正式條目接手顯示。
-type TaskPlaceholder = { taskID: number; date: string; text: string }
+type TaskPlaceholder = { taskID: number; date: string; text: string; kind: string }
 
 export function useAppState() {
   const [baseURL, setBaseURL] = useState(() => {
-    const origin = `${window.location.protocol}//${window.location.host}`
     const saved = localStorage.getItem(LS_BASE)
-    // localhost 以外的環境（如 Cloud Run）忽略舊的 localhost 設定
-    if (!saved || (saved.includes('localhost') && !origin.includes('localhost'))) {
-      return origin
-    }
-    return saved
+    if (saved) return saved
+    // 未設定過:開發環境用 VITE_API_BASE(見 .env.development,固定指向 Go server),
+    // 其他情況(production 部署,前後端同源)用目前頁面 origin。
+    return import.meta.env.VITE_API_BASE || `${window.location.protocol}//${window.location.host}`
   })
   useEffect(() => localStorage.setItem(LS_BASE, baseURL), [baseURL])
 
@@ -474,7 +472,7 @@ function ChatScreen({
           setAskUser({ askType: msg.askType, prompt: msg.prompt ?? '' })
         } else if (msg.event === 'task_created' && typeof msg.taskID === 'number') {
           // task_plan 建立任務:在該日期下插入一張「新增中」佔位卡。
-          setTaskPlaceholders((prev) => [...prev, { taskID: msg.taskID, date: msg.date ?? '', text: msg.text ?? '' }])
+          setTaskPlaceholders((prev) => [...prev, { taskID: msg.taskID, date: msg.date ?? '', text: msg.text ?? '', kind: msg.kind ?? '' }])
         } else if (msg.event === 'task_entry_ready' && typeof msg.taskID === 'number') {
           // entry_add 已完成對應步驟:移除佔位卡,並重抓條目讓正式卡片出現。
           setTaskPlaceholders((prev) => prev.filter((p) => p.taskID !== msg.taskID))
@@ -1193,16 +1191,16 @@ function SubCard({ entry, updating }: { entry: Entry; updating?: boolean }) {
   )
 }
 
-// task_plan 建立任務時插入的佔位卡:文字逐字波浪起伏,標示該步驟正在新增中,
+// task_plan 建立任務時插入的佔位卡:顯示條目文字,逐字波浪起伏(不淡化);
 // entry_add 完成對應 taskID 後由 task_entry_ready 移除、換成正式條目卡。
 function TaskPlaceholderCard({ placeholder }: { placeholder: TaskPlaceholder }) {
-  const label = placeholder.text || '新增中'
+  const label = placeholder.text
   return (
     <div className="tl-card tl-card-row tl-task-placeholder">
       <div className="tl-card-content">
-        <div className="tl-item tl-wave-text" aria-live="polite" aria-label={`${label}：新增中`}>
+        <div className="tl-item tl-wave-text" aria-live="polite" aria-label={label}>
           {[...label].map((ch, i) => (
-            <span key={i} className="tl-wave-char" style={{ animationDelay: `${i * 0.06}s` }}>
+            <span key={i} className="tl-wave-char" style={{ animationDelay: `${i * 0.08}s` }}>
               {ch === ' ' ? ' ' : ch}
             </span>
           ))}

@@ -21,29 +21,40 @@ var TaskPlanDeclaration = types.ToolDeclaration{
 			"action": map[string]interface{}{
 				"type": "STRING",
 				"description": "操作類型:" +
-					"'create'(新增任務;用 texts 一次列出整個計畫,或 text 加單筆)| " +
+					"'create'(新增任務;用 items 一次列出整個計畫,或 text 加單筆)| " +
 					"'list'(列出全部任務)| " +
 					"'update'(改任務欄位,需 id,text/date/kind 擇一或多個要改的欄位)| " +
 					"'complete'(標記完成,需 id)| " +
 					"'delete'(刪除一筆,需 id)| " +
 					"'clear'(清空全部任務)。",
 			},
-			"texts": map[string]interface{}{
-				"type":        "ARRAY",
-				"items":       map[string]interface{}{"type": "STRING"},
-				"description": "多筆任務描述(action=create 時,一次寫入整個計畫,如 ['步驟1','步驟2'])。規劃多步驟時用此欄位一次建立,不要多次呼叫。",
-			},
-			"dates": map[string]interface{}{
-				"type":  "ARRAY",
-				"items": map[string]interface{}{"type": "STRING"},
-				"description": "對應 texts 每一筆的日期('YYYY-MM-DD',可留空字串表示不指定)。" +
-					"依索引與 texts 一一對齊;不需要日期的步驟該位置留空字串即可,不可省略整個陣列。",
-			},
-			"kinds": map[string]interface{}{
-				"type":  "ARRAY",
-				"items": map[string]interface{}{"type": "STRING"},
-				"description": "對應 texts 每一筆的分類:'add'(這步是新增)| 'update'(這步是更新)| 留空字串表示不分類。" +
-					"依索引與 texts 一一對齊。",
+			"items": map[string]interface{}{
+				"type": "ARRAY",
+				"items": map[string]interface{}{
+					"type": "OBJECT",
+					"properties": map[string]interface{}{
+						"text": map[string]interface{}{
+							"type":        "STRING",
+							"description": "任務描述。",
+						},
+						"date": map[string]interface{}{
+							"type":        "STRING",
+							"description": "任務日期'YYYY-MM-DD',不指定就留空字串。",
+						},
+						"kind": map[string]interface{}{
+							"type":        "STRING",
+							"description": "分類:'add'(這步是新增)| 'update'(這步是更新)| 留空字串表示不分類。",
+						},
+						"parentID": map[string]interface{}{
+							"type":        "INTEGER",
+							"description": "所屬第一層條目的 id;這批是某條目底下的施作步驟時填,第一層條目本身不填(或填 0)。",
+						},
+					},
+					"required": []string{"text"},
+				},
+				"description": "多筆任務(action=create 時一次寫入),每筆是 {text, date, kind, parentID} 物件。" +
+					"第一層條目留空 parentID,如 [{text:'訂希爾頓', date:'2026-06-29', kind:'add'}];" +
+					"某條目底下的施作步驟則整批帶同一 parentID,如 [{text:'查是否已存在', parentID:1}, {text:'查 geo 座標', parentID:1}]。",
 			},
 			"text": map[string]interface{}{
 				"type":        "STRING",
@@ -56,6 +67,10 @@ var TaskPlanDeclaration = types.ToolDeclaration{
 			"kind": map[string]interface{}{
 				"type":        "STRING",
 				"description": "單筆任務分類:'add' | 'update'(action=create 加單筆、或 action=update 時使用)。",
+			},
+			"parentID": map[string]interface{}{
+				"type":        "INTEGER",
+				"description": "單筆 create 時,若這是某第一層條目底下的施作步驟,填該條目的 id;第一層條目本身不填。",
 			},
 			"id": map[string]interface{}{
 				"type":        "INTEGER",
@@ -107,7 +122,11 @@ func (t *TaskPlanTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]
 		inputs := collectTaskInputs(args)
 		created := tasks.CreateMany(ch, inputs)
 		for _, t := range created {
-			NotifyTaskCreated(ch, t.ID, t.Date, t.Text)
+			// 只有第一層條目(ParentID=0)在前端插入「新增中」佔位卡;
+			// 施作步驟(查存在、查 geo 等)是執行細節,不需對應卡片。
+			if t.ParentID == 0 {
+				NotifyTaskCreated(ch, t.ID, t.Date, t.Text, t.Kind)
+			}
 		}
 		if len(created) == 1 {
 			msg = fmt.Sprintf("已新增任務 #%d:%s", created[0].ID, taskLabel(created[0]))
@@ -151,42 +170,39 @@ func (t *TaskPlanTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]
 	return []types.ResultContentBlock{types.TextBlock(msg)}, nil
 }
 
-// collectTaskInputs 蒐集 create 要新增的任務:優先取 texts[]/dates[]/kinds[](批次,依索引
-// 對齊),否則退回 text/date/kind(單筆)。跳過文字為空白的項目;dates/kinds 較短時,
-// 超出範圍的位置視為空字串(不指定日期/分類)。
+// collectTaskInputs 蒐集 create 要新增的任務:優先取 items[](批次,每筆是 {text,date,kind}
+// 物件),否則退回 text/date/kind(單筆)。跳過文字為空白的項目。
 func collectTaskInputs(args types.ToolArguments) []TaskInput {
-	texts := args.GetStringArray("texts")
-	if len(texts) == 0 {
+	raw, _ := args["items"].([]interface{})
+	if len(raw) == 0 {
 		if single := args.GetString("text"); single != "" {
-			texts = []string{single}
+			return []TaskInput{singleTaskInput(args)}
 		}
+		return nil
 	}
-	dates := args.GetStringArray("dates")
-	kinds := args.GetStringArray("kinds")
 
 	var out []TaskInput
-	for i, text := range texts {
-		if strings.TrimSpace(text) == "" {
+	for _, item := range raw {
+		obj, ok := item.(map[string]interface{})
+		if !ok {
 			continue
 		}
-		in := TaskInput{Text: text}
-		if i < len(dates) {
-			in.Date = dates[i]
-		}
-		if i < len(kinds) {
-			in.Kind = kinds[i]
+		in := singleTaskInput(types.ToolArguments(obj))
+		if strings.TrimSpace(in.Text) == "" {
+			continue
 		}
 		out = append(out, in)
 	}
 	return out
 }
 
-// singleTaskInput 取單筆操作(create 單筆 / update)用的 text/date/kind 欄位。
+// singleTaskInput 取單筆操作(create 單筆 / update)用的 text/date/kind/parentID 欄位。
 func singleTaskInput(args types.ToolArguments) TaskInput {
 	return TaskInput{
-		Text: args.GetString("text"),
-		Date: args.GetString("date"),
-		Kind: args.GetString("kind"),
+		Text:     args.GetString("text"),
+		Date:     args.GetString("date"),
+		Kind:     args.GetString("kind"),
+		ParentID: args.GetInt("parentID"),
 	}
 }
 
@@ -203,18 +219,41 @@ func taskLabel(t Task) string {
 }
 
 // renderTaskList 把任務清單排成給 agent 閱讀的文字(含完成狀態勾選、日期、分類)。
+// 兩層階層:先列第一層條目(ParentID=0),每個條目底下縮排列出其施作步驟。
+// 找不到父項的孤兒步驟(父項已被刪除)仍以頂層列出,避免遺漏。
 func renderTaskList(list []Task) string {
 	if len(list) == 0 {
 		return "(目前沒有任務)"
 	}
+
+	// 依 parentID 分組子步驟;同時記錄哪些 id 存在,判斷孤兒。
+	children := map[int][]Task{}
+	exists := map[int]bool{}
+	for _, t := range list {
+		exists[t.ID] = true
+		if t.ParentID != 0 {
+			children[t.ParentID] = append(children[t.ParentID], t)
+		}
+	}
+
 	var sb strings.Builder
 	sb.WriteString("目前任務:")
-	for _, t := range list {
+	writeLine := func(t Task, indent string) {
 		box := "[ ]"
 		if t.Done {
 			box = "[x]"
 		}
-		sb.WriteString(fmt.Sprintf("\n%s #%d %s", box, t.ID, taskLabel(t)))
+		sb.WriteString(fmt.Sprintf("\n%s%s #%d %s", indent, box, t.ID, taskLabel(t)))
+	}
+	for _, t := range list {
+		// 只從頂層(ParentID=0 或父項不存在的孤兒)展開,子步驟由父項那圈縮排列出。
+		if t.ParentID != 0 && exists[t.ParentID] {
+			continue
+		}
+		writeLine(t, "")
+		for _, c := range children[t.ID] {
+			writeLine(c, "  ")
+		}
 	}
 	return sb.String()
 }

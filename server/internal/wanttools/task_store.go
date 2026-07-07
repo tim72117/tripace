@@ -6,21 +6,25 @@ import (
 	"sync"
 )
 
-// Task 是 agent 規劃多步驟任務時的單一步驟(存於記憶體,per-channel)。
+// Task 是 agent 規劃任務時的單一項目(存於記憶體,per-channel)。分兩層:
+// 第一層(ParentID=0)是「確定要新增的條目」;第二層(ParentID=某第一層 id)是
+// 該條目底下的施作步驟(如查是否已存在、查 geo 座標)。
 type Task struct {
-	ID   int    `json:"id"`             // 頻道內遞增序號,供 update/complete 指定
-	Text string `json:"text"`           // 步驟描述
-	Done bool   `json:"done"`           // 是否已完成
-	Date string `json:"date,omitempty"` // 絕對日期 'YYYY-MM-DD',留空表示不指定日期
-	Kind string `json:"kind,omitempty"` // 這一步屬於新增或更新:'add' | 'update',留空表示不分類
+	ID       int    `json:"id"`                 // 頻道內遞增序號,供 update/complete 指定
+	Text     string `json:"text"`               // 項目描述
+	Done     bool   `json:"done"`               // 是否已完成
+	Date     string `json:"date,omitempty"`     // 絕對日期 'YYYY-MM-DD',留空表示不指定日期
+	Kind     string `json:"kind,omitempty"`     // 這一步屬於新增或更新:'add' | 'update',留空表示不分類
+	ParentID int    `json:"parentID,omitempty"` // 所屬第一層條目的 id;0 表示自己就是第一層條目
 }
 
-// TaskInput 是新增/更新任務時的欄位輸入(text 必填,date/kind 選填)。
+// TaskInput 是新增/更新任務時的欄位輸入(text 必填,date/kind/parentID 選填)。
 // 用結構體而非逐一參數,讓之後要加欄位時不必再改動 Create/Update 的呼叫端。
 type TaskInput struct {
-	Text string
-	Date string
-	Kind string
+	Text     string
+	Date     string
+	Kind     string
+	ParentID int
 }
 
 // taskStore 是 per-channel 的記憶體任務清單。
@@ -58,7 +62,7 @@ func (s *taskStore) CreateMany(channelID string, inputs []TaskInput) []Task {
 // createLocked 在已持鎖的情況下新增一筆(供 Create / CreateMany 共用)。
 func (s *taskStore) createLocked(channelID string, in TaskInput) *Task {
 	s.nextID[channelID]++
-	t := &Task{ID: s.nextID[channelID], Text: in.Text, Done: false, Date: in.Date, Kind: in.Kind}
+	t := &Task{ID: s.nextID[channelID], Text: in.Text, Done: false, Date: in.Date, Kind: in.Kind, ParentID: in.ParentID}
 	s.byChan[channelID] = append(s.byChan[channelID], t)
 	return t
 }
