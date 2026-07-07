@@ -1,8 +1,7 @@
 # Shuttle server 容器映像。
-# 重點:build context 必須是「專案根目錄」(含 server/ 與 want/),
-# 因為 server/go.mod 用 replace want => ../../want 指向本地 want 源碼,
-# context 限縮在 server/ 會看不到 want/ 而編譯失敗。
-# 故 COPY 路徑都相對「根目錄 context」寫(server/... 與 want/...)。
+# build context 為「專案根目錄」,COPY 路徑相對根目錄寫(server/...)。
+# server/go.mod 的 github.com/tim72117/want 透過 GOPRIVATE + GH_PAT
+# 從 GitHub 下載(見下方 build 階段),不依賴本地 want/ 源碼。
 #
 # 建置(從專案根目錄):
 #   docker build -t shuttle-server .
@@ -18,9 +17,6 @@ COPY web/ ./
 RUN npm run build
 
 # ---- 階段 2:編譯 Go ----
-# 容器內須重現本地的相對結構:server/go.mod 的 replace 為 ../../want,
-# 即從 /src/server 往上兩層(/)再進 want → /want。故 server 放 /src/server、
-# want 放 /want,relative replace 才解析得到。
 FROM golang:1.26 AS build
 
 ARG GH_PAT
