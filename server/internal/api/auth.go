@@ -17,6 +17,13 @@ func (s *Server) userFor(r *http.Request) model.User {
 	if err != nil {
 		return s.guestUser
 	}
+	return s.userFromToken(token)
+}
+
+// userFromToken 驗證 JWT 字串並解析出使用者;token 無效時回訪客。
+// 供 userFor(header 取 token)與 WS 升級(query string 取 token,瀏覽器原生
+// WebSocket API 不支援自訂 header)共用同一套驗證邏輯。
+func (s *Server) userFromToken(token string) model.User {
 	claims, err := s.signer.Verify(token)
 	if err != nil {
 		return s.guestUser

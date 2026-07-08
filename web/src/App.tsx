@@ -442,7 +442,10 @@ function ChatScreen({
 
   useEffect(() => {
     const base = cfg.baseURL.replace(/^http/, 'ws')
-    const ws = new WebSocket(`${base}/v1/channels/${channel.id}/ws`)
+    // 瀏覽器原生 WebSocket API 不支援自訂 header,token 改用 query string 帶,
+    // 供後端驗證是否為此頻道成員(見 server/internal/api/ws.go handleWS)。
+    const tokenQS = cfg.token ? `?token=${encodeURIComponent(cfg.token)}` : ''
+    const ws = new WebSocket(`${base}/v1/channels/${channel.id}/ws${tokenQS}`)
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data)

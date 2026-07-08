@@ -85,12 +85,16 @@ type TaskPlanTool struct {
 	types.BaseToolConfig
 }
 
-func (t *TaskPlanTool) ValidateInput(args types.ToolArguments, _ types.ToolContext) error {
+func (t *TaskPlanTool) ValidateInput(args types.ToolArguments, ctx types.ToolContext) error {
 	action := args.GetString("action")
 	switch action {
 	case "create":
-		if len(collectTaskInputs(args)) == 0 {
+		inputs := collectTaskInputs(args)
+		if len(inputs) == 0 {
 			return fmt.Errorf("action=create 需要 text 或 texts")
+		}
+		if err := validateParentIDs(ChannelFrom(ctx), inputs); err != nil {
+			return err
 		}
 	case "update":
 		if args.GetInt("id") == 0 {
@@ -120,6 +124,12 @@ func (t *TaskPlanTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]
 	switch action {
 	case "create":
 		inputs := collectTaskInputs(args)
+		// 與 ValidateInput 同樣的檢查在此重複一次(縱深防禦):Call 不假設引擎
+		// 必然先呼叫 ValidateInput 才呼叫 Call,避免任何繞過驗證的呼叫路徑
+		// 寫入指向不存在或超過兩層的 parentID。
+		if err := validateParentIDs(ch, inputs); err != nil {
+			return nil, err
+		}
 		created := tasks.CreateMany(ch, inputs)
 		for _, t := range created {
 			// 只有第一層條目(ParentID=0)在前端插入「新增中」佔位卡;
@@ -168,6 +178,41 @@ func (t *TaskPlanTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]
 
 	ctx.EmitToolResult(map[string]interface{}{"message": msg})
 	return []types.ResultContentBlock{types.TextBlock(msg)}, nil
+}
+
+// validateParentIDs 檢查每筆 input 的 ParentID(若非 0)是否指向該頻道內一筆
+// 已存在、且本身是第一層(ParentID==0)的任務。拒絕:
+//   - 指向不存在的 id(可能是 LLM 記錯/用了另一頻道的 id)
+//   - 指向另一筆第二層任務(避免超過兩層的鏈式 parent,設計上只允許兩層)
+//
+// create 尚未寫入任何一筆前就驗證完畢,不合法時整批拒絕,避免部分寫入的
+// 不一致狀態(例如 3 筆裡 1 筆 parentID 有誤,不應該讓另外 2 筆先寫入)。
+// 同一批次(inputs 內)彼此之間不可能有合法的 parentID 引用,因為新 id
+// 要等寫入後才會產生;parentID 因此只能指向「已存在於 store 的舊資料」。
+func validateParentIDs(channelID string, inputs []TaskInput) error {
+	var existing []Task
+	for _, in := range inputs {
+		if in.ParentID == 0 {
+			continue
+		}
+		if existing == nil {
+			existing = tasks.List(channelID)
+		}
+		var parent *Task
+		for i := range existing {
+			if existing[i].ID == in.ParentID {
+				parent = &existing[i]
+				break
+			}
+		}
+		if parent == nil {
+			return fmt.Errorf("parentID=%d 不存在", in.ParentID)
+		}
+		if parent.ParentID != 0 {
+			return fmt.Errorf("parentID=%d 本身是施作步驟,不能再掛子步驟(只允許兩層)", in.ParentID)
+		}
+	}
+	return nil
 }
 
 // collectTaskInputs 蒐集 create 要新增的任務:優先取 items[](批次,每筆是 {text,date,kind}

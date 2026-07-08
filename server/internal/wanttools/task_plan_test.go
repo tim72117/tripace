@@ -194,6 +194,71 @@ func callCreateRaw(t *testing.T, ch string, raw []interface{}) []Task {
 	return tasks.List(ch)
 }
 
+// TestTaskPlanValidateInputRejectsMissingParentID 驗證 ValidateInput(引擎真正呼叫
+// Call 前會先跑這關,見 want@v0.0.2 internal/agent_tool.go)拒絕指向不存在 id 的
+// parentID,且不寫入任何一筆(整批失敗,不留下部分寫入的髒狀態)。
+func TestTaskPlanValidateInputRejectsMissingParentID(t *testing.T) {
+	ch := "ch_bad_parent_missing"
+	tasks.Clear(ch)
+	t.Cleanup(func() { tasks.Clear(ch) })
+
+	tool := &TaskPlanTool{}
+	args := types.ToolArguments{"action": "create", "items": []interface{}{
+		map[string]interface{}{"text": "查 geo", "parentID": 999},
+	}}
+	if err := tool.ValidateInput(args, newTaskCtx(ch)); err == nil {
+		t.Fatal("parentID 指向不存在的 id,ValidateInput 應回錯誤")
+	}
+	if len(tasks.List(ch)) != 0 {
+		t.Fatalf("驗證失敗時不應寫入任何任務,實得 %d 筆", len(tasks.List(ch)))
+	}
+}
+
+// TestTaskPlanValidateInputRejectsThirdLayer 驗證 parentID 不能指向另一筆「本身也是
+// 第二層」的任務——設計上只允許兩層,拒絕形成三層以上的鏈式 parent。
+func TestTaskPlanValidateInputRejectsThirdLayer(t *testing.T) {
+	ch := "ch_bad_parent_chain"
+	tasks.Clear(ch)
+	t.Cleanup(func() { tasks.Clear(ch) })
+
+	// 建第一層(id=1)與其下第二層施作步驟(id=2, parentID=1)。
+	callCreate(t, ch, []map[string]interface{}{{"text": "訂希爾頓"}})
+	callCreateRaw(t, ch, []interface{}{
+		map[string]interface{}{"text": "查是否已存在", "parentID": 1},
+	})
+
+	// 嘗試把新任務掛在 id=2(本身是第二層)底下,應被拒絕。
+	tool := &TaskPlanTool{}
+	args := types.ToolArguments{"action": "create", "items": []interface{}{
+		map[string]interface{}{"text": "再查一次", "parentID": 2},
+	}}
+	if err := tool.ValidateInput(args, newTaskCtx(ch)); err == nil {
+		t.Fatal("parentID 指向第二層任務(超過兩層),ValidateInput 應回錯誤")
+	}
+	if got := len(tasks.List(ch)); got != 2 {
+		t.Fatalf("驗證失敗不應新增任何任務,應維持 2 筆,實得 %d", got)
+	}
+}
+
+// TestTaskPlanCallRejectsInvalidParentID 驗證 Call 本身也重複做同樣的檢查(縱深防禦),
+// 即使呼叫端繞過 ValidateInput 直接呼叫 Call,無效 parentID 仍不會被寫入。
+func TestTaskPlanCallRejectsInvalidParentID(t *testing.T) {
+	ch := "ch_call_defense"
+	tasks.Clear(ch)
+	t.Cleanup(func() { tasks.Clear(ch) })
+
+	tool := &TaskPlanTool{}
+	args := types.ToolArguments{"action": "create", "items": []interface{}{
+		map[string]interface{}{"text": "查 geo", "parentID": 42},
+	}}
+	if _, err := tool.Call(args, newTaskCtx(ch)); err == nil {
+		t.Fatal("Call 應拒絕指向不存在 id 的 parentID(即使繞過 ValidateInput 直接呼叫)")
+	}
+	if len(tasks.List(ch)) != 0 {
+		t.Fatal("Call 拒絕時不應寫入任何任務")
+	}
+}
+
 // TestTaskPlanTwoLayerParentID 驗證兩層結構:先建第一層條目拿到 id,再帶 parentID
 // 建立其底下的施作步驟,子步驟的 ParentID 應正確指回第一層條目的 id。
 func TestTaskPlanTwoLayerParentID(t *testing.T) {
