@@ -35,9 +35,9 @@ func (c *dbClient) listChannels() (any, error) {
 	return map[string]any{"channels": channels}, err
 }
 
-func (c *dbClient) record(channelID, item, start, startTime, end, endTime, location string) (any, error) {
+func (c *dbClient) record(channelID, title, start, startTime, end, endTime, location string) (any, error) {
 	return c.svc.Record(tripsvc.RecordInput{
-		ChannelID: channelID, Item: item,
+		ChannelID: channelID, Title: title,
 		Start: start, StartTime: startTime,
 		End: end, EndTime: endTime,
 		Location: location,
@@ -77,4 +77,10 @@ func (c *dbClient) deleteTrip(tripID string) error {
 
 func (c *dbClient) reset(channelID string) error {
 	return c.svc.Reset(channelID)
+}
+
+// dropLegacyColumns 是一次性維運操作:清掉 entries 表已改名淘汰的舊欄位
+// (item/summary)。只在 -db 模式下有意義,故只掛在 dbClient 上,不進 client 介面。
+func (c *dbClient) dropLegacyColumns() ([]string, error) {
+	return c.st.DropLegacyEntryColumns()
 }

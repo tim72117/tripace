@@ -5,15 +5,17 @@
 //
 // 子命令:
 //
-//	record       -channel ID -item 文字 [-start ... -end ... -location ...]
+//	record       -channel ID -title 文字 [-start ... -end ... -location ...]
 //	add-to-trip  -entry ID [-trip ID] [-title 文字]
 //	list-trips   -channel ID
 //	trip-entries -channel ID -trip ID
 //	candidates   -channel ID -start ... [-end ...]
-//	update-entry -entry ID [-item ...] [-start ...] [-end ...] [-location ...] [-summary ...] [-kind ...] [-detail JSON]
+//	update-entry -entry ID [-title ...] [-start ...] [-end ...] [-location ...] [-note ...] [-kind ...] [-detail JSON]
 //	delete-trip  -trip ID
 //	reset        -channel ID
 //	notify       -channel ID
+//
+//	drop-legacy-columns  一次性維運指令,用於清除已改名的舊資料庫欄位(僅 -db 模式)
 //
 // 所有輸出為 JSON（方便 Claude Code 解析）。
 package main
@@ -32,7 +34,7 @@ import (
 // client 定義統一的操作介面，由 httpClient 或 dbClient 實作。
 type client interface {
 	listChannels() (any, error)
-	record(channelID, item, start, startTime, end, endTime, location string) (any, error)
+	record(channelID, title, start, startTime, end, endTime, location string) (any, error)
 	addToTrip(entryID, tripID, title string) (string, string, error)
 	listTrips(channelID string) (any, error)
 	tripEntries(channelID, tripID string) (any, error)
@@ -110,6 +112,8 @@ func main() {
 		cmdGeocode(args)
 	case "notify":
 		cmdNotify(args)
+	case "drop-legacy-columns":
+		cmdDropLegacyColumns(useDB, db)
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -128,17 +132,17 @@ func cmdListChannels(c client) {
 func cmdEntryAdd(c client, args []string) {
 	fs := flag.NewFlagSet("entry-add", flag.ExitOnError)
 	channel := fs.String("channel", "", "頻道 ID（必填）")
-	item := fs.String("item", "", "事項描述（必填）")
+	title := fs.String("title", "", "事項描述（必填）")
 	start := fs.String("start", "", "開始日期 'YYYY-MM-DD'")
 	startTime := fs.String("start-time", "", "開始時刻 'HH:MM'")
 	end := fs.String("end", "", "結束日期 'YYYY-MM-DD'（區間用）")
 	endTime := fs.String("end-time", "", "結束時刻 'HH:MM'")
 	location := fs.String("location", "", "地點")
 	_ = fs.Parse(args)
-	if *channel == "" || *item == "" {
-		fatal("entry-add 需要 -channel 與 -item")
+	if *channel == "" || *title == "" {
+		fatal("entry-add 需要 -channel 與 -title")
 	}
-	res, err := c.record(*channel, *item, *start, *startTime, *end, *endTime, *location)
+	res, err := c.record(*channel, *title, *start, *startTime, *end, *endTime, *location)
 	if err != nil {
 		fatal("entry-add: %v", err)
 	}
@@ -148,11 +152,11 @@ func cmdEntryAdd(c client, args []string) {
 func cmdEntryUpdate(c client, args []string) {
 	fs := flag.NewFlagSet("entry-update", flag.ExitOnError)
 	id := fs.String("entry", "", "entry ID（必填）")
-	item := fs.String("item", "", "事項描述")
+	title := fs.String("title", "", "事項描述")
 	start := fs.String("start", "", "開始時間")
 	end := fs.String("end", "", "結束時間")
 	location := fs.String("location", "", "地點")
-	summary := fs.String("summary", "", "細節描述")
+	note := fs.String("note", "", "細節描述")
 	kind := fs.String("kind", "", "類型: stay|flight|activity|note|car|restaurant|ticket")
 	detail := fs.String("detail", "", "kind 專屬細節（JSON 字串）")
 	_ = fs.Parse(args)
@@ -166,8 +170,8 @@ func cmdEntryUpdate(c client, args []string) {
 		}
 	}
 	if err := c.updateEntry(tripsvc.UpdateEntryInput{
-		ID: *id, Item: *item, Start: *start, End: *end, Location: *location,
-		Summary: *summary, Kind: *kind, Detail: detailMap,
+		ID: *id, Title: *title, Start: *start, End: *end, Location: *location,
+		Note: *note, Kind: *kind, Detail: detailMap,
 	}); err != nil {
 		fatal("entry-update: %v", err)
 	}
@@ -212,6 +216,29 @@ func cmdNotify(args []string) {
 	output(map[string]string{"notified": *channel})
 }
 
+// cmdDropLegacyColumns 是一次性維運指令:清掉 entries 表已改名淘汰的舊欄位
+// (item -> title, summary -> note 改名後留下的死欄位)。
+//
+// 這不是常規的業務操作，而是直接動資料庫 schema，因此只在 -db 模式下有意義；
+// 沒加 -db 就直接 fatal，不嘗試走 HTTP client(HTTP 沒有也不該有對應端點)。
+func cmdDropLegacyColumns(useDB bool, db *dbClient) {
+	if !useDB {
+		fatal("drop-legacy-columns 只能搭配 -db 使用（這是直接動資料庫 schema 的一次性維運操作，不走 HTTP）")
+	}
+	dropped, err := db.dropLegacyColumns()
+	if err != nil {
+		fatal("drop-legacy-columns: %v", err)
+	}
+	if len(dropped) == 0 {
+		output(map[string]any{
+			"dropped": []string{},
+			"message": "舊欄位（item/summary）已不存在，無需操作",
+		})
+		return
+	}
+	output(map[string]any{"dropped": dropped})
+}
+
 func notifyChannel(channelID, apiURL string) {
 	url := apiURL + "/internal/channels/" + channelID + "/notify"
 	resp, err := http.Post(url, "application/json", nil)
@@ -243,15 +270,19 @@ func usage() {
   -db       直連 PostgreSQL（需要 DATABASE_URL，不走 HTTP）
 
 子命令:
-  record       -channel ID -item 文字 [-start 'YYYY-MM-DD[ HH:MM]'] [-end ...] [-location ...]
+  record       -channel ID -title 文字 [-start 'YYYY-MM-DD[ HH:MM]'] [-end ...] [-location ...]
   add-to-trip  -entry ID [-trip ID] [-title 文字]
   list-trips   -channel ID
   trip-entries -channel ID -trip ID
   candidates   -channel ID -start ... [-end ...]
-  update-entry -entry ID [-item ...] [-start ...] [-end ...] [-location ...] [-summary ...] [-kind ...] [-detail JSON]
+  update-entry -entry ID [-title ...] [-start ...] [-end ...] [-location ...] [-note ...] [-kind ...] [-detail JSON]
   delete-trip  -trip ID
   reset        -channel ID
   notify       -channel ID [-api URL]
+
+  drop-legacy-columns  [僅限 -db] 一次性維運指令，清除已改名的舊資料庫欄位
+                        (entries.item/entries.summary，已改名為 title/note)。
+                        非常規操作，不加 -db 會直接報錯。
 
 所有輸出為 JSON。
 `)
