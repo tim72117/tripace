@@ -1,9 +1,10 @@
 // 產品介紹 landing page:依 Shuttle 行程規劃的實際功能撰寫。
-// 路由:pathname = /landing(見 App.tsx)。全寬呈現,不套 iPhone 外框。
+// 路由:pathname = /(見 App.tsx)。全寬呈現,不套 iPhone 外框。
 import {
   MessageSquareText, CalendarRange, Layers, Search,
   Users, Share2, Navigation,
 } from 'lucide-react'
+import './landing.css'
 
 // 產品核心功能,對齊 App 實作(assist 記事、時間軸、行程歸組、語意查詢、協作、分享、導航)。
 const FEATURES = [
@@ -53,7 +54,7 @@ export function LandingPage() {
       <header className="landing-nav">
         <div className="landing-nav-inner">
           <span className="landing-logo">Shuttle</span>
-          <a className="landing-nav-cta" href="/">開始使用</a>
+          <a className="landing-nav-cta" href="/app">開始使用</a>
         </div>
       </header>
 
@@ -70,8 +71,8 @@ export function LandingPage() {
           排上時間軸、歸成一趟行程,還能和同行的人一起編輯、分享。
         </p>
         <div className="landing-cta-row">
-          <a className="landing-btn-primary" href="/">免費開始</a>
-          <a className="landing-btn-ghost" href="/?debug">看看 Demo</a>
+          <a className="landing-btn-primary" href="/app">免費開始</a>
+          <a className="landing-btn-ghost" href="/app?debug">看看 Demo</a>
         </div>
       </section>
 
@@ -108,7 +109,7 @@ export function LandingPage() {
       {/* 結尾行動呼籲 */}
       <section className="landing-final">
         <h2 className="landing-final-title">下一趟旅程,從一句話開始</h2>
-        <a className="landing-btn-primary" href="/">立即開始規劃</a>
+        <a className="landing-btn-primary" href="/app">立即開始規劃</a>
       </section>
 
       <footer className="landing-footer">
