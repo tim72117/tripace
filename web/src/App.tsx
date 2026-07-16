@@ -10,6 +10,7 @@ import * as api from './api'
 import { ApiError } from './api'
 import type { Channel, ChannelRole, Entry, Member, Message, User } from './types'
 import { listMessages, saveMessage } from './deviceDB'
+import { LandingPage } from './LandingPage'
 
 // baseURL 是連線設定,跨分頁共用 → localStorage。
 const LS_BASE = 'shuttle.baseURL'
@@ -85,6 +86,10 @@ export function useAppState() {
 
 export function App() {
   const props = useAppState()
+  // 偵測 /landing 路徑，直接渲染產品介紹 landing page(全寬,不套 phone 外框)
+  if (window.location.pathname === '/landing') {
+    return <LandingPage />
+  }
   // 偵測 /public/{token} 路徑，直接渲染公開分享頁
   const publicMatch = window.location.pathname.match(/^\/public\/([^/]+)$/)
   if (publicMatch) {
