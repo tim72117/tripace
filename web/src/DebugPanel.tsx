@@ -1,29 +1,38 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ApiCall, ClientConfig } from './api'
+import type { CSSProperties } from 'react'
+import type { ApiCall, ClientConfig, WsEvent } from './api'
 import * as api from './api'
 import type { Channel, Entry } from './types'
 
-// Debug panel:兩個分頁 —— API 交易紀錄、目前頻道的 Entry 條目。
+// Debug panel:三個分頁 —— API 交易紀錄、WS 事件、目前頻道的 Entry 條目。
 // API:依時間倒序列出每筆交易,點開看原始 request/response JSON。
+// WS 事件:後端主動推送的介面更新事件(entries_updated/ask_user/task_created/
+//   recommended_places 等,見 server/internal/api/ws.go 的各個 Notify* 方法)。
 // Entries:看 record_entry 工具記了哪些結構化條目(item + 時間)。
 
-type DebugTab = 'api' | 'entries'
+type DebugTab = 'api' | 'ws' | 'entries'
 
 export function DebugPanel({
   calls,
   onClear,
+  wsEvents,
+  onClearWsEvents,
   cfg,
   channel,
+  style,
 }: {
   calls: ApiCall[]
   onClear: () => void
+  wsEvents: WsEvent[]
+  onClearWsEvents: () => void
   cfg: ClientConfig
   channel: Channel | null
+  style?: CSSProperties
 }) {
   const [tab, setTab] = useState<DebugTab>('api')
 
   return (
-    <div className="debug">
+    <div className="debug" style={style}>
       <div className="debug-head">
         <div className="debug-tabs">
           <button
@@ -33,6 +42,12 @@ export function DebugPanel({
             ⚡ API · {calls.length}
           </button>
           <button
+            className={tab === 'ws' ? 'active' : ''}
+            onClick={() => setTab('ws')}
+          >
+            📡 WS · {wsEvents.length}
+          </button>
+          <button
             className={tab === 'entries' ? 'active' : ''}
             onClick={() => setTab('entries')}
           >
@@ -40,6 +55,7 @@ export function DebugPanel({
           </button>
         </div>
         {tab === 'api' && <button onClick={onClear}>清除</button>}
+        {tab === 'ws' && <button onClick={onClearWsEvents}>清除</button>}
       </div>
       {tab === 'api' ? (
         <div className="debug-list">
@@ -49,6 +65,17 @@ export function DebugPanel({
             </div>
           ) : (
             calls.map((c) => <CallRow key={c.id} call={c} />)
+          )}
+        </div>
+      ) : tab === 'ws' ? (
+        <div className="debug-list">
+          {wsEvents.length === 0 ? (
+            <div style={{ color: '#6e6e78', padding: 16, textAlign: 'center' }}>
+              尚無事件。後端透過 WebSocket 主動推送的介面更新事件(entries_updated、
+              recommended_places 等)會即時顯示在這裡。
+            </div>
+          ) : (
+            wsEvents.map((e) => <WsEventRow key={e.id} evt={e} />)
           )}
         </div>
       ) : (
@@ -145,6 +172,28 @@ function EntriesView({
           <span className="entry-id-mono">{e.id}</span>
         </div>
       ))}
+    </div>
+  )
+}
+
+// WsEventRow 顯示單筆 WS 事件,點擊展開看原始 payload JSON(對齊 CallRow 的互動模式)。
+function WsEventRow({ evt }: { evt: WsEvent }) {
+  const [open, setOpen] = useState(false)
+  const time = evt.receivedAt.slice(11, 19) // 只取 HH:MM:SS,列表夠用
+
+  return (
+    <div className="call">
+      <div className="call-head" onClick={() => setOpen((o) => !o)}>
+        <span className="method POST">{evt.event}</span>
+        <span className="call-path">{evt.channelID ?? ''}</span>
+        <span className="dur">{time}</span>
+      </div>
+      {open && (
+        <div className="call-body">
+          <div className="kv-label">Payload</div>
+          <pre>{pretty(evt.payload)}</pre>
+        </div>
+      )}
     </div>
   )
 }

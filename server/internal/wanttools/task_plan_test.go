@@ -19,22 +19,22 @@ func (c *fakeToolCtx) GetSessionEnvs() map[string]string            { return c.e
 func (c *fakeToolCtx) EmitToolResult(result map[string]interface{}) { c.lastResult = result }
 
 // 以下為滿足 types.ToolContext interface 的其餘方法(task_plan 不使用)。
-func (c *fakeToolCtx) AddMessage(string, types.Experience)                        {}
-func (c *fakeToolCtx) CommitToolResult(*types.ToolUse, ...types.Experience)       {}
-func (c *fakeToolCtx) GetAgentID() string                                         { return "" }
-func (c *fakeToolCtx) GetWorkingDirectory() string                               { return "" }
-func (c *fakeToolCtx) SetWorkingDirectory(string)                                 {}
-func (c *fakeToolCtx) GetAppState() types.AppState                                { return types.AppState{} }
-func (c *fakeToolCtx) SetAppState(func(types.AppState) types.AppState)            {}
-func (c *fakeToolCtx) GetLastSnapshotFile() string                                { return "" }
-func (c *fakeToolCtx) SetLastSnapshotFile(string)                                 {}
-func (c *fakeToolCtx) SetSessionEnvs(map[string]string)                           {}
-func (c *fakeToolCtx) GetReadFileState() interface{}                              { return nil }
-func (c *fakeToolCtx) GetStagedChanges() interface{}                              { return nil }
-func (c *fakeToolCtx) GetExposedTools() []string                                  { return nil }
-func (c *fakeToolCtx) SetExposedTools([]string)                                   {}
-func (c *fakeToolCtx) EmitEvent(interface{})                                      {}
-func (c *fakeToolCtx) EmitError(error)                                            {}
+func (c *fakeToolCtx) AddMessage(string, types.Experience)                  {}
+func (c *fakeToolCtx) CommitToolResult(*types.ToolUse, ...types.Experience) {}
+func (c *fakeToolCtx) GetAgentID() string                                   { return "" }
+func (c *fakeToolCtx) GetWorkingDirectory() string                          { return "" }
+func (c *fakeToolCtx) SetWorkingDirectory(string)                           {}
+func (c *fakeToolCtx) GetAppState() types.AppState                          { return types.AppState{} }
+func (c *fakeToolCtx) SetAppState(func(types.AppState) types.AppState)      {}
+func (c *fakeToolCtx) GetLastSnapshotFile() string                          { return "" }
+func (c *fakeToolCtx) SetLastSnapshotFile(string)                           {}
+func (c *fakeToolCtx) SetSessionEnvs(map[string]string)                     {}
+func (c *fakeToolCtx) GetReadFileState() interface{}                        { return nil }
+func (c *fakeToolCtx) GetStagedChanges() interface{}                        { return nil }
+func (c *fakeToolCtx) GetExposedTools() []string                            { return nil }
+func (c *fakeToolCtx) SetExposedTools([]string)                             {}
+func (c *fakeToolCtx) EmitEvent(interface{})                                {}
+func (c *fakeToolCtx) EmitError(error)                                      {}
 func (c *fakeToolCtx) RequestInteraction(map[string]interface{}) (interface{}, error) {
 	return nil, nil
 }

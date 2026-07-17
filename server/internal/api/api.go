@@ -70,6 +70,14 @@ func (s *Server) NotifyTaskEntryReady(channelID string, taskID int, entryID stri
 	})
 }
 
+// NotifyRecommendedPlaces 廣播 recommended_places(帶景點候選清單)給指定頻道的訂閱者
+// (供 wanttools 的 recommend_nearby 工具呼叫),讓前端在對話下方顯示推薦景點卡片。
+func (s *Server) NotifyRecommendedPlaces(channelID string, places []map[string]any) {
+	s.hub.Broadcast(channelID, map[string]any{
+		"event": "recommended_places", "channelID": channelID, "places": places,
+	})
+}
+
 // Routes 註冊路由(Go 1.22+ 的方法+路徑樣式)。
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()

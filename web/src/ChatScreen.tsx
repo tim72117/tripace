@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import {
   ChevronLeft,
-  Users, Send, Share2, Copy, Check, Trash2,
+  Users, Send, Share2, Copy, Check, Trash2, X, Sparkles, MessageSquareText,
 } from 'lucide-react'
 import type { ClientConfig, PresentedEntry } from './api'
 import * as api from './api'
@@ -10,6 +10,7 @@ import type { Channel, ChannelRole, Entry, Member, Message, User } from './types
 import { listMessages, saveMessage } from './deviceDB'
 import { Avatar, ErrorBanner, errMsg, isSubmitEnter, LS_DEFAULT_CHANNEL } from './App'
 import { MultiTrackTimeline, type TaskPlaceholder } from './Timeline'
+import { RecommendedPlacesList, type RecommendedPlace } from './RecommendedPlaces'
 
 // 助手(assist 回答)的作者 ID,需與後端及 iOS ChatStore.assistantID 一致。
 const ASSISTANT_ID = 'usr_assistant'
@@ -41,11 +42,21 @@ export function ChatScreen({
   const [draft, setDraft] = useState('')
   const [lastDraft, setLastDraft] = useState('')
   const [inputFocused, setInputFocused] = useState(false)
+  // composerExpanded:輸入列預設只顯示「推薦」「對話」兩顆圓形功能鈕(不佔文字輸入
+  // 的水平空間);點「對話」鈕後這顆鈕原地展開成輸入框寬度(CSS transition),
+  // 「推薦」鈕留在旁邊不消失。輸入框失焦且沒有草稿內容時收合回圓鈕初始狀態。
+  const [composerExpanded, setComposerExpanded] = useState(false)
   // ask_user:agent 缺資訊(如住宿退房日)時,透過 WS 推來的請求;非 null 時前端開對應 UI。
   const [askUser, setAskUser] = useState<{ askType: string; prompt: string } | null>(null)
   // taskPlaceholders:task_plan 建立中的任務,依 date 在時間軸插入佔位卡;
   // 對應 entry_add(帶 taskID)完成後由 task_entry_ready 移除。
   const [taskPlaceholders, setTaskPlaceholders] = useState<TaskPlaceholder[]>([])
+  // recommendedPlaces:recommend_nearby 工具查到的景點候選清單,WS 收到
+  // recommended_places 事件時整批換掉,並自動彈出 RecommendedPlacesModal 顯示
+  // (見 recommend_nearby.go)。showRecommendedPlaces 控制彈窗開關,使用者可關閉;
+  // 關閉後不會自動再彈出,除非收到下一次新的 recommended_places 事件。
+  const [recommendedPlaces, setRecommendedPlaces] = useState<RecommendedPlace[]>([])
+  const [showRecommendedPlaces, setShowRecommendedPlaces] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   // 成員管理在頻道內開啟(對齊 iOS App 的聊天頁右上角入口)。
@@ -101,6 +112,9 @@ export function ChatScreen({
   const MIN_UPDATING_MS = 800
 
   useEffect(() => {
+    // 切換頻道時清空上一個頻道查到的推薦景點並關閉彈窗,避免殘留跨頻道資料。
+    setRecommendedPlaces([])
+    setShowRecommendedPlaces(false)
     const base = cfg.baseURL.replace(/^http/, 'ws')
     // 瀏覽器原生 WebSocket API 不支援自訂 header,token 改用 query string 帶,
     // 供後端驗證是否為此頻道成員(見 server/internal/api/ws.go handleWS)。
@@ -109,6 +123,9 @@ export function ChatScreen({
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data)
+        // 不論下方有沒有對應的處理分支,先記一筆供 debug panel 顯示
+        // (見 api.ts emitWsEvent / DebugPanel 的「WS 事件」分頁)。
+        api.emitWsEvent(msg)
         if (msg.event === 'entry_updating' && msg.entryID) {
           // 條目開始更新:對應卡片亮起「更新中」動畫,並記錄起始時間。
           updatingSinceRef.current.set(msg.entryID, Date.now())
@@ -140,6 +157,23 @@ export function ChatScreen({
           // entry_add 已完成對應步驟:移除佔位卡,並重抓條目讓正式卡片出現。
           setTaskPlaceholders((prev) => prev.filter((p) => p.taskID !== msg.taskID))
           api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {})
+        } else if (msg.event === 'recommended_places' && Array.isArray(msg.places)) {
+          // recommend_nearby 查詢完成:整批換成本次候選清單(目前後端只回傳
+          // name/address/lat/lng/primaryType,rating/userRatingCount 補 0 對齊型別)。
+          setRecommendedPlaces(
+            msg.places.map((p: Record<string, unknown>) => ({
+              name: String(p.name ?? ''),
+              address: String(p.address ?? ''),
+              lat: Number(p.lat ?? 0),
+              lng: Number(p.lng ?? 0),
+              rating: Number(p.rating ?? 0),
+              userRatingCount: Number(p.userRatingCount ?? 0),
+              primaryType: String(p.primaryType ?? ''),
+              photoUrl: typeof p.photoUrl === 'string' ? p.photoUrl : undefined,
+              summary: typeof p.summary === 'string' ? p.summary : undefined,
+            })),
+          )
+          setShowRecommendedPlaces(true)
         }
       } catch {}
     }
@@ -241,12 +275,12 @@ export function ChatScreen({
   }
 
   // 成員用:自然語言查詢頻道。問答持久化進裝置端 DB(重開頻道仍在,後端不存)。
-  const ask = async () => {
-    const q = draft.trim()
+  const ask = async (overrideText?: string) => {
+    const q = (overrideText ?? draft).trim()
     if (!q) return
     setSending(true)
     setErr(null)
-    setDraft('')
+    if (overrideText === undefined) setDraft('')
     // 提問泡泡(持久化)+ 處理中佔位泡泡(海浪動畫,暫態)。
     const askMsg = mkLocalMsg(`ask_${Date.now()}`, user.id, user.name, q)
     const pendingID = `pending_${Date.now()}`
@@ -318,7 +352,7 @@ export function ChatScreen({
           <ErrorBanner msg={err} />
           {entries.length === 0 && messages.length === 0 && !sending ? (
             <div className="empty">
-              {isOwner ? '在下方輸入記事，會依時間排列在這裡。' : '在下方查詢頻道內容。'}
+              {isOwner ? '在下方輸入記事，會依時間排列在這裡。' : '在下方查詢這趟行程的內容。'}
             </div>
           ) : entries.length > 0 ? (
             <MultiTrackTimeline entries={entries} todayRef={todayRef} updatingIDs={updatingEntryIDs} taskPlaceholders={taskPlaceholders} />
@@ -345,20 +379,51 @@ export function ChatScreen({
 
         <div className="composer">
           <div className="composer-row">
-            <input
-              value={draft}
-              placeholder={isOwner ? '記事或提問…' : '用自然語言查詢這個頻道…'}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => isSubmitEnter(e) && (isOwner ? send() : ask())}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
-            />
             <button
-              onClick={isOwner ? () => send() : ask}
-              disabled={sending || !draft.trim()}
+              className="composer-fn-btn"
+              onClick={() => {
+                // 直接送出固定語句,不動 draft:isOwner 記事流程會被情況 D
+                // 判定為推薦意圖並呼叫 recommend_nearby;非 owner 走查詢流程,
+                // 一樣是問一句話交給 AI 回答(見 assistant_agent.go recommendThought)。
+                const q = '推薦附近的景點'
+                isOwner ? send(q) : ask(q)
+              }}
+              disabled={sending}
+              title="推薦附近景點"
             >
-              <Send size={16} strokeWidth={2} />
+              <Sparkles size={20} strokeWidth={1.8} />
             </button>
+            {composerExpanded ? (
+              <>
+                <input
+                  autoFocus
+                  value={draft}
+                  placeholder={isOwner ? '記事或提問…' : '用自然語言查詢這趟行程…'}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => isSubmitEnter(e) && (isOwner ? send() : ask())}
+                  onFocus={() => setInputFocused(true)}
+                  onBlur={() => {
+                    setInputFocused(false)
+                    // 沒有草稿內容才收合,避免使用者打到一半失焦(例如點了送出鈕)就消失。
+                    if (!draft.trim()) setComposerExpanded(false)
+                  }}
+                />
+                <button
+                  onClick={() => (isOwner ? send() : ask())}
+                  disabled={sending || !draft.trim()}
+                >
+                  <Send size={18} strokeWidth={2} />
+                </button>
+              </>
+            ) : (
+              <button
+                className="composer-fn-btn"
+                onClick={() => setComposerExpanded(true)}
+                title="對話"
+              >
+                <MessageSquareText size={20} strokeWidth={1.8} />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -374,7 +439,40 @@ export function ChatScreen({
           }}
         />
       )}
+      {showRecommendedPlaces && recommendedPlaces.length > 0 && (
+        <RecommendedPlacesModal
+          places={recommendedPlaces}
+          onClose={() => setShowRecommendedPlaces(false)}
+        />
+      )}
     </>
+  )
+}
+
+// RecommendedPlacesModal:recommend_nearby 查詢完成後自動彈出,顯示本次候選景點卡片。
+// 使用者可點右上角關閉鈕或背景遮罩關閉;關閉後不會自動再彈出,只有下一次收到新的
+// recommended_places 事件才會再次開啟(見上方 ws.onmessage 的 setShowRecommendedPlaces(true))。
+function RecommendedPlacesModal({
+  places,
+  onClose,
+}: {
+  places: RecommendedPlace[]
+  onClose: () => void
+}) {
+  return (
+    <div className="rp-modal-backdrop" onClick={onClose}>
+      <div className="rp-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="rp-modal-head">
+          <span className="rp-modal-title">推薦景點 · {places.length} 個</span>
+          <button className="btn icon-btn" onClick={onClose} title="關閉">
+            <X size={18} strokeWidth={1.8} />
+          </button>
+        </div>
+        <div className="rp-modal-body">
+          <RecommendedPlacesList places={places} />
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -569,7 +667,7 @@ function MembersScreen({
       </div>
       <div className="screen-body">
         <ErrorBanner msg={err} />
-        <div className="section-title">頻道成員 · {channel.name}</div>
+        <div className="section-title">行程成員 · {channel.name}</div>
         <ul className="list">
           {members.map((m) => {
             const isChannelOwner = m.id === channel.ownerID
@@ -696,14 +794,14 @@ function ShareModal({
         <button className="btn icon-btn" onClick={onClose}>
           <ChevronLeft size={20} strokeWidth={1.8} />
         </button>
-        <span className="title">分享頻道</span>
+        <span className="title">分享行程</span>
         <span style={{ width: 36 }} />
       </div>
       <div className="screen-body">
         <ErrorBanner msg={err} />
         <div className="section-title">公開連結</div>
         <div className="field" style={{ color: 'var(--ios-gray)', fontSize: 13 }}>
-          任何人取得連結後即可查看此頻道的行程（無需登入）。
+          任何人取得連結後即可查看此行程的內容（無需登入）。
         </div>
         {loading ? (
           <div className="empty">載入中…</div>
@@ -766,7 +864,7 @@ function ShareModal({
   )
 }
 
-// ---- 頻道菜單(右上角設定) ----
+// ---- 行程菜單(右上角設定) ----
 
 function ChannelMenu({ channelID }: { channelID: string }) {
   const [open, setOpen] = useState(false)
@@ -788,7 +886,7 @@ function ChannelMenu({ channelID }: { channelID: string }) {
       <button
         className="btn icon-btn"
         onClick={() => setOpen(!open)}
-        title="頻道設定"
+        title="行程設定"
         style={{ padding: 0 }}
       >
         ⋯
@@ -824,7 +922,7 @@ function ChannelMenu({ channelID }: { channelID: string }) {
                 borderBottom: '1px solid var(--ios-separator)',
               }}
             >
-              ✓ 設為目前行程
+              ✓ 開啟時自動進入
             </button>
           ) : (
             <button
@@ -841,7 +939,7 @@ function ChannelMenu({ channelID }: { channelID: string }) {
                 color: '#FF3B30',
               }}
             >
-              ✗ 取消設定
+              ✗ 取消自動進入
             </button>
           )}
         </div>

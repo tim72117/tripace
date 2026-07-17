@@ -49,6 +49,10 @@ type TaskCreatedFn func(channelID string, taskID int, date, text, kind string)
 // 讓前端把對應的佔位卡直接替換成正式條目卡(server 啟動時用 BindTaskEntryReady 注入)。
 type TaskEntryReadyFn func(channelID string, taskID int, entryID string)
 
+// RecommendedPlacesFn 廣播 recommended_places 事件(帶景點候選清單)給前端,
+// 讓前端在對話下方顯示推薦景點卡片(server 啟動時用 BindRecommendedPlaces 注入)。
+type RecommendedPlacesFn func(channelID string, places []map[string]any)
+
 var (
 	// recordMu 序列化整個「記錄一則訊息」的流程,確保 RecordLock 保護的計數/清單不交錯。
 	recordMu       sync.Mutex
@@ -56,8 +60,9 @@ var (
 	notifyFn       NotifyFn
 	entryUpdating  EntryUpdatingFn
 	askUser        AskUserFn
-	taskCreated    TaskCreatedFn
-	taskEntryReady TaskEntryReadyFn
+	taskCreated       TaskCreatedFn
+	taskEntryReady    TaskEntryReadyFn
+	recommendedPlaces RecommendedPlacesFn
 	// emitCount 記本次 RecordLock 流程內 record_entry 被觸發的次數,
 	// 供呼叫端判斷 agent 究竟「記錄了」還是「只回答」。
 	emitCount int
@@ -123,6 +128,17 @@ func BindTaskEntryReady(fn TaskEntryReadyFn) { taskEntryReady = fn }
 func NotifyTaskEntryReady(channelID string, taskID int, entryID string) {
 	if taskEntryReady != nil {
 		taskEntryReady(channelID, taskID, entryID)
+	}
+}
+
+// BindRecommendedPlaces 注入 recommended_places 廣播函式(server 啟動時呼叫)。
+func BindRecommendedPlaces(fn RecommendedPlacesFn) { recommendedPlaces = fn }
+
+// NotifyRecommendedPlaces 廣播 recommended_places(帶景點候選清單),供 recommend_nearby
+// 工具呼叫,讓前端在對話下方顯示推薦景點卡片。
+func NotifyRecommendedPlaces(channelID string, places []map[string]any) {
+	if recommendedPlaces != nil {
+		recommendedPlaces(channelID, places)
 	}
 }
 

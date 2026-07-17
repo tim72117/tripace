@@ -1161,7 +1161,7 @@ body {
   z-index: 10;
   display: flex;
   flex-direction: column;
-  padding: 10px 24px calc(8px + env(safe-area-inset-bottom, 0px));
+  padding: 14px 24px calc(12px + env(safe-area-inset-bottom, 0px));
   background: transparent;
   pointer-events: none;
 }
@@ -1171,7 +1171,7 @@ body {
   pointer-events: auto;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 .composer input,
 .composer button {
@@ -1199,8 +1199,8 @@ body {
   background: var(--color-accent);
   color: #fff;
   border-radius: 50%;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1213,6 +1213,35 @@ body {
 .composer button:disabled {
   background: #D9C4AA;
   cursor: default;
+}
+
+/* 功能鈕(推薦/對話):跟送出鈕同尺寸圓形,底色改用卡片白+邊框,
+   跟送出鈕(強調色實心)區分「功能切換」與「送出動作」的視覺層級。 */
+.composer-fn-btn {
+  background: var(--ios-card) !important;
+  color: var(--color-accent) !important;
+  border: 1.5px solid var(--ios-sep) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+.composer-fn-btn:disabled {
+  background: var(--ios-card) !important;
+  color: var(--ios-gray) !important;
+  opacity: 0.6;
+}
+
+/* 對話鈕展開動畫:input 從 0 寬度(圓鈕收合處)平滑展開到撐滿剩餘空間。
+   用 max-width 而非 width,讓 flex:1 仍決定展開後的最終寬度。 */
+.composer input {
+  animation: composer-input-expand 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+}
+@keyframes composer-input-expand {
+  from { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; }
+  to { max-width: 100%; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .composer input {
+    animation: none;
+  }
 }
 
 /* 查詢結果 */
@@ -1658,13 +1687,16 @@ pre {
   padding-top: 12px;
 }
 
-/* 右側主要區塊：撐滿剩餘空間,內部直接放 ChatScreen(完全不修改其內部實作) */
+/* 右側主要區塊：寬螢幕時不拉滿,限制最大寬度並置中,避免時間軸/聊天內容被拉得過寬 */
 .desktop-main {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
   position: relative;
 }
 .desktop-empty-state {
@@ -1674,4 +1706,207 @@ pre {
   justify-content: center;
   color: var(--ios-gray);
   font-size: 16px;
+}
+
+/* ---- 推薦景點卡片(RecommendedPlaces.tsx) ---- */
+/* 直向列表:手機寬度下卡片獨佔一列;桌面版用 max-width 限制單卡寬度、置中排列。 */
+.recommended-places-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+.recommended-place-card {
+  background: var(--ios-card);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.rp-photo {
+  position: relative;
+  width: 100%;
+  height: 150px;
+  background: var(--ios-sep);
+}
+.rp-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* 無 photoUrl 時的佔位視覺:漸層色塊 + 圖示 + 文字,明確標示「這是佔位圖」而非破圖。 */
+.rp-photo-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: rgba(255, 255, 255, 0.85);
+}
+.rp-photo-placeholder span {
+  font-size: 12px;
+}
+.rp-type-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  backdrop-filter: blur(4px);
+}
+.rp-body {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.rp-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-dark);
+}
+.rp-rating {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--ios-gray);
+}
+.rp-rating-empty {
+  font-size: 13px;
+  color: var(--ios-gray);
+  font-style: italic;
+}
+.rp-stars {
+  display: inline-flex;
+  gap: 1px;
+  color: var(--ios-sep);
+}
+.rp-star.filled {
+  color: var(--color-accent);
+  fill: var(--color-accent);
+}
+.rp-rating-value {
+  font-weight: 600;
+  color: var(--color-dark);
+}
+.rp-rating-count {
+  color: var(--ios-gray);
+}
+.rp-address {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--ios-gray);
+  line-height: 1.4;
+}
+.rp-address svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.rp-summary {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #3a3a3c;
+}
+.rp-summary-empty {
+  color: var(--ios-gray);
+  font-style: italic;
+}
+
+/* 桌面版:限制卡片最大寬度,避免拉滿整個寬螢幕。 */
+@media (min-width: 768px) {
+  .recommended-places-list {
+    max-width: 420px;
+    margin: 0 auto;
+  }
+}
+
+/* ---- 推薦景點彈出視窗(RecommendedPlacesModal):recommend_nearby 查詢完成後
+   自動彈出,置中顯示、背景遮罩,對齊 .ask-user-backdrop 的浮層模式但用置中卡片
+   (內容是可捲動清單,不適合底部 sheet)。 ---- */
+.rp-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: rgba(0, 0, 0, 0.4);
+  animation: ask-user-fade 0.2s ease;
+}
+.rp-modal {
+  width: 100%;
+  max-width: 420px;
+  max-height: 80%;
+  background: var(--ios-bg);
+  border-radius: 18px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  animation: rp-modal-pop 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.rp-modal-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 8px 14px 16px;
+  background: var(--ios-card);
+  border-bottom: 1px solid var(--ios-sep);
+}
+.rp-modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-dark);
+}
+.rp-modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+@keyframes rp-modal-pop {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rp-modal-backdrop,
+  .rp-modal {
+    animation: none;
+  }
+}
+
+/* ---- 推薦景點地圖(RecommendedPlacesMap,UI 試做用):Maps JavaScript API
+   極簡風格底圖 + 多標記,見 DebugApp 的地圖試做切換。---- */
+.rp-map {
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  background: var(--ios-sep); /* SDK 載入前的底色,避免白閃 */
+}
+.rp-map-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 320px;
+  padding: 24px;
+  text-align: center;
+  color: var(--ios-red);
+  background: var(--ios-card);
+}
+.rp-map-error-detail {
+  font-size: 12px;
+  color: var(--ios-gray);
 }

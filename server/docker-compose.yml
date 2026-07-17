@@ -8,22 +8,22 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: channel-postgres
+    container_name: shuttle-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: channel
-      POSTGRES_PASSWORD: channel
-      POSTGRES_DB: channel
+      POSTGRES_USER: shuttle
+      POSTGRES_PASSWORD: shuttle
+      POSTGRES_DB: shuttle
     ports:
       - "5432:5432"
     volumes:
-      - channel-pgdata:/var/lib/postgresql/data
+      - shuttle-pgdata:/var/lib/postgresql/data
     healthcheck:
       # server 啟動前可確認 DB 已就緒
-      test: ["CMD-SHELL", "pg_isready -U channel -d channel"]
+      test: ["CMD-SHELL", "pg_isready -U shuttle -d shuttle"]
       interval: 5s
       timeout: 3s
       retries: 5
 
 volumes:
-  channel-pgdata:
+  shuttle-pgdata:

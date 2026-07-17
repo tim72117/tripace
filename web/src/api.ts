@@ -58,6 +58,40 @@ function emit(call: ApiCall) {
   for (const fn of listeners) fn(call)
 }
 
+// 一筆後端主動推送的 WebSocket 事件紀錄(entries_updated/ask_user/task_created/
+// recommended_places 等,見 server/internal/api/ws.go 的各個 Notify* 方法)。
+// 跟 ApiCall 分開記錄:WS 是伺服器主動推播,沒有 method/status/duration 這類
+// request/response 概念,只有事件名稱 + payload + 收到的時間點。
+export interface WsEvent {
+  id: number
+  event: string
+  channelID: string | null
+  payload: unknown
+  receivedAt: string // ISO8601
+}
+
+let wsEventSeq = 0
+type WsListener = (evt: WsEvent) => void
+const wsListeners = new Set<WsListener>()
+
+export function onWsEvent(fn: WsListener): () => void {
+  wsListeners.add(fn)
+  return () => wsListeners.delete(fn)
+}
+
+// emitWsEvent 供 ChatScreen 的 ws.onmessage 呼叫,把每則收到的原始訊息記一筆,
+// 供 DebugPanel 顯示「後端主動發出的介面更新事件」。
+export function emitWsEvent(raw: Record<string, unknown>) {
+  const evt: WsEvent = {
+    id: ++wsEventSeq,
+    event: typeof raw.event === 'string' ? raw.event : '(unknown)',
+    channelID: typeof raw.channelID === 'string' ? raw.channelID : null,
+    payload: raw,
+    receivedAt: nowISO(),
+  }
+  for (const fn of wsListeners) fn(evt)
+}
+
 // 因為 scripts 環境不允許 Date.now(),但這是瀏覽器執行的 app(非 workflow script),
 // performance.now() 與 new Date() 都可用,用來計時與標時間。
 function nowISO(): string {

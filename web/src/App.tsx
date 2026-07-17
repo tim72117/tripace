@@ -16,7 +16,7 @@ import { MultiTrackTimeline } from './Timeline'
 // 未設時退回目前頁面 origin(production 前後端同源部署)。
 export const BASE_URL: string =
   import.meta.env.VITE_API_BASE || `${window.location.protocol}//${window.location.host}`
-// 默認頻道 ID (用戶設定的「目前行程」)
+// 默認頻道 ID (用戶設定的「開啟時自動進入」)
 export const LS_DEFAULT_CHANNEL = 'shuttle.defaultChannelID'
 // 登入身分存 localStorage:跨分頁共用同一身分(一般網站慣例)。
 const AUTH_TOKEN_KEY = 'shuttle.auth.token'
@@ -140,7 +140,7 @@ export function PhoneContent(props: ContentProps) {
         <div className="login-card">
           <div className="login-card-header">
             <div className="login-card-title">歡迎使用 Shuttle</div>
-            <div className="login-card-subtitle">請先登入或註冊帳號,才能查看與使用頻道功能。</div>
+            <div className="login-card-subtitle">請先登入或註冊帳號,才能查看與使用行程功能。</div>
           </div>
           <LoginForm baseURL={cfg.baseURL} onAuthed={props.onAuthed} />
         </div>
@@ -220,7 +220,7 @@ function DesktopContent(props: ContentProps) {
             onBack={() => setActiveChannel(null)}
           />
         ) : (
-          <div className="desktop-empty-state">選擇一個頻道開始</div>
+          <div className="desktop-empty-state">選擇一個行程開始</div>
         )}
       </main>
     </div>
@@ -248,8 +248,8 @@ function DesktopChannelList({
   return (
     <div className="desktop-channel-list">
       <div className="desktop-sidebar-head">
-        <span className="desktop-sidebar-title">頻道</span>
-        <button className="btn icon-btn" onClick={() => setCreating((v) => !v)} title="新增頻道">
+        <span className="desktop-sidebar-title">行程</span>
+        <button className="btn icon-btn" onClick={() => setCreating((v) => !v)} title="新增行程">
           <Plus size={18} strokeWidth={1.8} />
         </button>
       </div>
@@ -258,7 +258,7 @@ function DesktopChannelList({
           <input
             autoFocus
             value={newName}
-            placeholder="新頻道名稱…"
+            placeholder="新行程名稱…"
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
               if (isSubmitEnter(e)) submitCreate()
@@ -277,7 +277,7 @@ function DesktopChannelList({
       <div className="desktop-channel-scroll">
         {channels.length === 0 && !err ? (
           <div className="empty">
-            {loading ? '載入中…' : '沒有頻道，按上方 ＋ 建立一個。'}
+            {loading ? '載入中…' : '沒有行程，按上方 ＋ 建立一個。'}
           </div>
         ) : (
           channels.map((c) => (
@@ -528,7 +528,7 @@ function ChannelsScreen({
         <button className="btn icon-btn" onClick={() => setCreating((v) => !v)}>
           <Plus size={20} strokeWidth={1.8} />
         </button>
-        <span className="title">頻道</span>
+        <span className="title">行程</span>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           {isGuest ? (
             <button className="btn icon-btn" onClick={() => setShowLogin(v => !v)} title="登入">
@@ -554,7 +554,7 @@ function ChannelsScreen({
           <input
             autoFocus
             value={newName}
-            placeholder="新頻道名稱…"
+            placeholder="新行程名稱…"
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
               if (isSubmitEnter(e)) submitCreate()
@@ -573,7 +573,7 @@ function ChannelsScreen({
         <ErrorBanner msg={err} />
         {channels.length === 0 && !err ? (
           <div className="empty">
-            {loading ? '載入中…' : '沒有頻道。按右上 ＋ 建立一個。'}
+            {loading ? '載入中…' : '沒有行程。按左上 ＋ 建立一個。'}
           </div>
         ) : (
           <ul className="list">
@@ -660,7 +660,7 @@ function PublicViewScreen({ token }: { token: string }) {
         {err && <div className="banner"><AlertCircle size={14} strokeWidth={2} style={{ verticalAlign: 'middle', marginRight: 6 }} />{err}</div>}
         {data && (
           data.entries.length === 0
-            ? <div className="empty">此頻道尚無行程。</div>
+            ? <div className="empty">此行程尚無內容。</div>
             : <MultiTrackTimeline entries={data.entries} todayRef={todayRef} />
         )}
       </div>

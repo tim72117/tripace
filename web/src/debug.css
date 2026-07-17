@@ -1,85 +1,68 @@
 /* Debug 除錯介面專屬樣式(?debug 模式)。
-   套 iPhone 外框(.workbench/.phone/.phone-screen/.notch/.statusbar)
-   搭配右側 debug panel(.debug 開頭),只給開發者看程式用,
-   跟一般使用者用的 /app(styles.css)完全無交集。
+   左側同步一般 /app 版面(.workbench-main 內直接放 .web-app,依寬度自動切換
+   手機版/桌面版,不再模擬 iPhone 外框),中間可拖曳分隔線(.workbench-resizer)
+   調整右側 debug panel(.debug 開頭)寬度,只給開發者看程式用。
    見 DebugApp.tsx / DebugPanel.tsx。 */
 
-/* ---- 整體版面:左 phone + 右 debug ---- */
+/* ---- 整體版面:左 App 內容 + 可拖曳分隔線 + 右 debug ---- */
 .workbench {
   display: flex;
-  min-height: 100vh;
-  gap: 32px;
-  padding: 32px;
-  align-items: flex-start;
+  height: 100vh;
+  align-items: stretch;
   background: #1c1c1e;
 }
 
-/* ---- iPhone 外框 ---- */
-.phone {
-  flex: 0 0 auto;
-  width: 390px;
-  height: 844px;
-  background: #000;
-  border-radius: 56px;
-  padding: 12px;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
-  position: sticky;
-  top: 32px;
-}
-
-.phone-screen {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  background: var(--ios-bg);
-  border-radius: 44px;
+/* 左側:跟一般使用者看到的 /app 完全同步的內容區,吃剩餘寬度。 */
+.workbench-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100vh;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
+}
+/* 覆蓋 .web-app 手機版的 480px 寬度上限與置中,讓它依 workbench-main 實際
+   寬度自行決定要不要切到桌面版佈局(見 App.tsx useIsDesktop)。 */
+.workbench-main.web-app {
+  max-width: none;
+  margin: 0;
+  height: 100%;
 }
 
-/* 瀏海 */
-.notch {
+/* 中間分隔線:滑鼠移上去顯示 col-resize 游標,拖曳調整右側 debug panel 寬度。 */
+.workbench-resizer {
+  flex: 0 0 6px;
+  cursor: col-resize;
+  background: #111113;
+  position: relative;
+}
+.workbench-resizer:hover,
+.workbench-resizer:active {
+  background: #3a3a3e;
+}
+.workbench-resizer::after {
+  content: '';
   position: absolute;
-  top: 0;
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
-  width: 150px;
-  height: 30px;
-  background: #000;
-  border-bottom-left-radius: 18px;
-  border-bottom-right-radius: 18px;
-  z-index: 50;
-}
-
-/* 狀態列 */
-.statusbar {
-  height: 50px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  padding: 0 28px 6px;
-  font-size: 16px;
-  font-weight: 600;
-  flex: 0 0 auto;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 32px;
+  border-radius: 1px;
+  background: #55555a;
 }
 
 /* ---- Debug panel ---- */
 .debug {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
-  max-width: 620px;
   background: #0d0d0f;
   color: #d4d4d8;
-  border-radius: 16px;
+  border-radius: 0;
   font-family: var(--mono);
   font-size: 12.5px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 64px);
-  position: sticky;
-  top: 32px;
+  height: 100vh;
 }
 .debug-head {
   display: flex;

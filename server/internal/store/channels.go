@@ -26,7 +26,7 @@ func (s *Store) ListChannelsForUser(userID string) ([]model.Channel, error) {
 		Table("channels c").
 		Select(`c.id, c.name, c.owner_id, c.updated_at,
 			(SELECT COUNT(*) FROM members m2 WHERE m2.channel_id = c.id) AS member_count,
-			(SELECT item FROM entries e WHERE e.channel_id = c.id
+			(SELECT title FROM entries e WHERE e.channel_id = c.id
 			 ORDER BY e.created_at DESC LIMIT 1) AS last_message_preview`).
 		Joins("JOIN members m ON m.channel_id = c.id AND m.user_id = ?", userID).
 		Order("c.updated_at DESC").

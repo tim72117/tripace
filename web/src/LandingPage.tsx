@@ -72,7 +72,6 @@ export function LandingPage() {
         </p>
         <div className="landing-cta-row">
           <a className="landing-btn-primary" href="/app">免費開始</a>
-          <a className="landing-btn-ghost" href="/app?debug">看看 Demo</a>
         </div>
       </section>
 

@@ -135,19 +135,6 @@
   transform: translateY(-1px);
   box-shadow: 0 12px 28px rgba(var(--lp-ocean-rgb), 0.44);
 }
-.landing-btn-ghost {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--lp-ocean-deep);
-  background: var(--lp-card);
-  border: 1px solid var(--lp-sand);
-  padding: 14px 28px;
-  border-radius: 999px;
-  text-decoration: none;
-  transition: transform 0.15s, border-color 0.15s;
-}
-.landing-btn-ghost:hover { transform: translateY(-1px); border-color: var(--lp-sand-deep); }
-
 /* 區塊標題 */
 .landing-section-title {
   text-align: center;
