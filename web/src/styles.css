@@ -72,7 +72,7 @@ body {
   flex: 1;
   text-align: center;
 }
-.navbar .btn {
+.btn {
   color: var(--ios-blue);
   background: none;
   border: none;
@@ -84,12 +84,16 @@ body {
   gap: 4px;
   font-size: 17px;
 }
-.navbar .btn:disabled {
+.btn:disabled {
   color: var(--ios-gray);
   cursor: default;
 }
-.navbar .btn:active {
+.btn:active {
   background: var(--ios-sep);
+}
+.btn:focus-visible {
+  outline: 2px solid var(--ios-blue);
+  outline-offset: 2px;
 }
 .icon-btn {
   padding: 8px !important;
