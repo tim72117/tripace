@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 
 	"github.com/tim72117/shuttle/internal/tripsvc"
 )
@@ -32,6 +33,11 @@ func (c *httpClient) do(method, path string, body any) (map[string]any, error) {
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	// /internal/* 現在需要共享密鑰(見 server internalAuth middleware);
+	// 未設定 INTERNAL_API_TOKEN 時不帶這個 header,對齊 server 端本機開發放行的預設值。
+	if token := os.Getenv("INTERNAL_API_TOKEN"); token != "" {
+		req.Header.Set("X-Internal-Token", token)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

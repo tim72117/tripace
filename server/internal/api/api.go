@@ -13,6 +13,7 @@ import (
 	"github.com/tim72117/shuttle/internal/llm"
 	"github.com/tim72117/shuttle/internal/model"
 	"github.com/tim72117/shuttle/internal/store"
+	"github.com/tim72117/shuttle/internal/tripsvc"
 )
 
 type Server struct {
@@ -101,6 +102,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /v1/channels/{id}/assist", s.handleAssist)
 	mux.HandleFunc("GET /v1/channels/{id}/entries", s.handleListEntries)
 	mux.HandleFunc("DELETE /v1/channels/{id}/entries", s.handleResetChannelData)
+	mux.HandleFunc("PATCH /v1/entries/{id}", s.handleUpdateEntry)
 	mux.HandleFunc("GET /v1/channels/{id}/trips", s.handleListTrips)
 	mux.HandleFunc("GET /v1/channels/{id}/trips/{tripID}/entries", s.handleListTripEntries)
 	mux.HandleFunc("GET /v1/channels/{id}/ws", s.handleWS)
@@ -109,16 +111,24 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /v1/channels/{id}/public-link", s.handleDeletePublicLink)
 	mux.HandleFunc("GET /v1/public/{token}", s.handlePublicView)
 	mux.HandleFunc("POST /v1/public/{token}/assist", s.handlePublicAssist)
-	// internal — 供 CLI / LLM 操作資料，不需登入
-	mux.HandleFunc("GET /internal/channels", s.handleInternalListChannels)
-	mux.HandleFunc("POST /internal/channels/{id}/notify", s.handleNotify)
-	mux.HandleFunc("POST /internal/channels/{id}/entries", s.handleInternalRecord)
-	mux.HandleFunc("POST /internal/entries/{id}/trip", s.handleInternalAddToTrip)
-	mux.HandleFunc("PATCH /internal/entries/{id}", s.handleInternalUpdateEntry)
-	mux.HandleFunc("PATCH /internal/entries/{id}/latlng", s.handleInternalSetLatLng)
-	mux.HandleFunc("GET /internal/channels/{id}/trips", s.handleInternalListTrips)
-	mux.HandleFunc("GET /internal/channels/{id}/trips/{tripID}/entries", s.handleInternalTripEntries)
-	mux.HandleFunc("DELETE /internal/channels/{id}/entries", s.handleInternalReset)
+
+	// internal — 供 CLI(cmd/cli)/自動化腳本操作資料,不走使用者登入驗證,
+	// 改用 internalAuth 檢查共享密鑰(INTERNAL_API_TOKEN),避免任何知道
+	// entryID/channelID 的外部呼叫者繞過上面 /v1/* 的 requireOwner/
+	// requireEditor 檢查(這兩組路由掛在同一個對外 port,路徑命名本身
+	// 不構成安全邊界,見 middleware.go internalAuth 的說明)。
+	internalMux := http.NewServeMux()
+	internalMux.HandleFunc("GET /internal/channels", s.handleInternalListChannels)
+	internalMux.HandleFunc("POST /internal/channels/{id}/notify", s.handleNotify)
+	internalMux.HandleFunc("POST /internal/channels/{id}/entries", s.handleInternalRecord)
+	internalMux.HandleFunc("POST /internal/entries/{id}/trip", s.handleInternalAddToTrip)
+	internalMux.HandleFunc("PATCH /internal/entries/{id}", s.handleInternalUpdateEntry)
+	internalMux.HandleFunc("PATCH /internal/entries/{id}/latlng", s.handleInternalSetLatLng)
+	internalMux.HandleFunc("GET /internal/channels/{id}/trips", s.handleInternalListTrips)
+	internalMux.HandleFunc("GET /internal/channels/{id}/trips/{tripID}/entries", s.handleInternalTripEntries)
+	internalMux.HandleFunc("DELETE /internal/channels/{id}/entries", s.handleInternalReset)
+	mux.Handle("/internal/", internalAuth(internalMux))
+
 	return logging(cors(mux))
 }
 
@@ -462,6 +472,59 @@ func (s *Server) handleResetChannelData(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	s.resetChannel(w, id)
+}
+
+// PATCH /v1/entries/{id} — 手動編輯條目(不經 AI,前端表單直接送出要改的欄位)。
+// entryID 本身不帶 channelID,故先查出該條目所屬頻道,再依 editor 權限放行;
+// 只更新請求帶了值的欄位(空字串視為不改,見 store.UpdateEntry),未帶到的欄位維持原值。
+func (s *Server) handleUpdateEntry(w http.ResponseWriter, r *http.Request) {
+	entryID := r.PathValue("id")
+	entry, err := s.store.GetEntry(entryID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "entry_not_found", "條目不存在")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "lookup_failed", err.Error())
+		return
+	}
+	if !s.requireEditor(w, entry.ChannelID, s.userFor(r).ID) {
+		return
+	}
+
+	var body struct {
+		Title     string         `json:"title"`
+		Start     string         `json:"start"`
+		StartTime string         `json:"startTime"`
+		End       string         `json:"end"`
+		EndTime   string         `json:"endTime"`
+		Location  string         `json:"location"`
+		Note      string         `json:"note"`
+		Kind      string         `json:"kind"`
+		Detail    map[string]any `json:"detail"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+
+	svc := tripsvc.New(s.store, nil)
+	if err := svc.UpdateEntry(tripsvc.UpdateEntryInput{
+		ID:        entryID,
+		Title:     body.Title,
+		Start:     body.Start,
+		StartTime: body.StartTime,
+		End:       body.End,
+		EndTime:   body.EndTime,
+		Location:  body.Location,
+		Note:      body.Note,
+		Kind:      body.Kind,
+		Detail:    body.Detail,
+	}); err != nil {
+		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+	s.hub.Broadcast(entry.ChannelID, map[string]any{"event": "entries_updated", "channelID": entry.ChannelID})
+	writeJSON(w, http.StatusOK, map[string]string{"updated": entryID})
 }
 
 // GET /v1/channels/{id}/trips — 頻道的行程分組(後端依時間自動歸組)。
