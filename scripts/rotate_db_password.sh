@@ -35,8 +35,9 @@ unset DB_PASSWORD ENCODED_PASSWORD DSN
 
 echo ""
 echo "完成:Cloud SQL 密碼與 Secret Manager 已同步。"
-echo "接著執行以下指令重新部署 channel-server,讓它讀取最新 secret 版本:"
+echo "接著執行以下指令重新部署 tripace-server,讓它讀取最新 secret 版本"
+echo "(:latest 而非寫死 digest,確保用到目前實際在跑的 image):"
 echo ""
-echo "  gcloud run deploy channel-server --project=${SECRET_PROJECT} --region=asia-east1 \\"
-echo "    --image=asia-east1-docker.pkg.dev/${SECRET_PROJECT}/cloud-run-source-deploy/channel-server@sha256:ec01884dc0fe0d0e3e556483735d6205955c901149f61107274b197eb6d101e1 \\"
+echo "  gcloud run deploy tripace-server --project=${SECRET_PROJECT} --region=asia-east1 \\"
+echo "    --image=asia-east1-docker.pkg.dev/${SECRET_PROJECT}/cloud-run-source-deploy/tripace-server:latest \\"
 echo "    --quiet"

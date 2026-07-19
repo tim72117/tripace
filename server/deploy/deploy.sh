@@ -7,7 +7,7 @@
 # 可覆寫的環境變數:
 #   PROJECT_ID  (必填) GCP 專案 ID
 #   REGION      區域,預設 asia-east1
-#   SERVICE     Cloud Run 服務名,預設 channel-server
+#   SERVICE     Cloud Run 服務名,預設 tripace-server
 #   DEV_MODE    Apple token 是否跳過驗簽,預設 true(正式上線改 false)
 #   SEED        啟動是否寫示範資料,預設 false
 #   LLM_KIND    rule | want,預設 rule
@@ -15,7 +15,7 @@ set -euo pipefail
 
 PROJECT_ID="${PROJECT_ID:?請設定 PROJECT_ID,例: PROJECT_ID=shuttle-xxxxx}"
 REGION="${REGION:-asia-east1}"
-SERVICE="${SERVICE:-channel-server}"
+SERVICE="${SERVICE:-tripace-server}"
 DEV_MODE="${DEV_MODE:-true}"
 SEED="${SEED:-false}"
 LLM_KIND="${LLM_KIND:-rule}"

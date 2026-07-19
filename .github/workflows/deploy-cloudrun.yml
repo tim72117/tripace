@@ -18,9 +18,9 @@ on:
 
 env:
   GCP_PROJECT_ID: "shuttle-045094509"
-  CLOUD_RUN_SERVICE: "channel-server"
+  CLOUD_RUN_SERVICE: "tripace-server"
   CLOUD_RUN_REGION: "asia-east1"
-  IMAGE: "asia-east1-docker.pkg.dev/shuttle-045094509/cloud-run-source-deploy/channel-server"
+  IMAGE: "asia-east1-docker.pkg.dev/shuttle-045094509/cloud-run-source-deploy/tripace-server"
   CLOUDSQL_INSTANCE: "onagent-prod:asia-east1:onagent-db"
 
 jobs:
