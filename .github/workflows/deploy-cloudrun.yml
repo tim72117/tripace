@@ -61,6 +61,7 @@ jobs:
           gcloud run deploy ${{ env.CLOUD_RUN_SERVICE }} \
             --image=${{ env.IMAGE }}:${{ github.sha }} \
             --region=${{ env.CLOUD_RUN_REGION }} \
+            --allow-unauthenticated \
             --add-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
             --update-env-vars=DEV_MODE=false,SEED=false,AI_PROVIDER=googleapis,AI_MODEL=gemini-2.5-flash-lite \
             --update-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,GOOGLE_API_KEY=GOOGLE_API_KEY:latest \
