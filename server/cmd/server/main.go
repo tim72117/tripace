@@ -171,9 +171,32 @@ func main() {
 	mux.Handle("/", staticHandler())
 
 	log.Printf("Tripace server 監聽 %s,DB=%s", *addr, dbKind)
-	if err := http.ListenAndServe(*addr, mux); err != nil {
+	if err := http.ListenAndServe(*addr, withLegacyDomainRedirect(mux)); err != nil {
 		log.Fatalf("server: %v", err)
 	}
+}
+
+// 舊網域(遷移前)與正式網域(遷移後)。整個服務原掛在 legacyDomain,現遷移到
+// canonicalDomain(各自獨立的 Cloud Run 服務,非同服務雙網域)。集中定義成
+// 具名常數,未來若再換網域只需改這兩處,不必到 withLegacyDomainRedirect 內部找字串。
+const (
+	legacyDomain    = "app.shuttle.tools"
+	canonicalDomain = "tripace.shuttle.tools"
+)
+
+// withLegacyDomainRedirect 包在最外層(所有路由,含 /v1、/internal、/admin、
+// 靜態檔案共用):請求 Host 若是舊網域 legacyDomain,整站 301 導到
+// canonicalDomain 的相同 path + query string,讓沿用舊網址的使用者與
+// 搜尋引擎索引盡量轉移到新網域;其餘 Host 一律原樣放行到 next,不做任何處理。
+func withLegacyDomainRedirect(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Host == legacyDomain {
+			target := "https://" + canonicalDomain + r.URL.RequestURI()
+			http.Redirect(w, r, target, http.StatusMovedPermanently)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // withAdminCORS 讓 /admin/* 支援跨來源、帶憑證(cookie)的請求:回顯呼叫端的
