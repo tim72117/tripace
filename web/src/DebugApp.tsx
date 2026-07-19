@@ -6,10 +6,9 @@ import { useAppState, PhoneContent } from './App'
 import { DebugPanel } from './DebugPanel'
 import { RecommendedPlacesList, FAKE_RECOMMENDED_PLACES } from './RecommendedPlaces'
 import { RecommendedPlacesMap } from './RecommendedPlacesMap'
-import { ClientToolsDemo } from './ClientToolsDemo'
 import './debug.css'
 
-type DemoMode = 'app' | 'cards' | 'map' | 'clienttools'
+type DemoMode = 'app' | 'cards' | 'map'
 
 // 推薦景點卡片 UI 試做:純假資料展示,不串接任何 API,只是讓主內容區
 // 換成 RecommendedPlacesList,方便直接在既有 debug 工作台看到卡片渲染效果。
@@ -113,8 +112,6 @@ export function DebugApp() {
           <RecommendedPlacesDemo />
         ) : demoMode === 'map' ? (
           <RecommendedPlacesMapDemo />
-        ) : demoMode === 'clienttools' ? (
-          <ClientToolsDemo />
         ) : (
           <PhoneContent {...props} />
         )}
@@ -134,13 +131,6 @@ export function DebugApp() {
           title="切換推薦景點地圖 UI 試做(假資料)"
         >
           {demoMode === 'map' ? '← 回到 App' : '推薦景點地圖試做'}
-        </button>
-        <button
-          className="btn-secondary"
-          onClick={() => setDemoMode((m) => (m === 'clienttools' ? 'app' : 'clienttools'))}
-          title="切換「LLM 呼叫前端 tool」試做:一份只存在前端記憶體的旅程清單,由 LLM 透過 WS 呼叫工具操作"
-        >
-          {demoMode === 'clienttools' ? '← 回到 App' : 'LLM 前端工具試做'}
         </button>
       </div>
       <DebugPanel
