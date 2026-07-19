@@ -19,11 +19,11 @@ import { ASSIST_LANG_KEY, getAssistLang } from './assistLang'
 export const BASE_URL: string =
   import.meta.env.VITE_API_BASE || `${window.location.protocol}//${window.location.host}`
 // 默認頻道 ID (用戶設定的「開啟時自動進入」)
-export const LS_DEFAULT_CHANNEL = 'shuttle.defaultChannelID'
+export const LS_DEFAULT_CHANNEL = 'tripace.defaultChannelID'
 // 登入身分存 localStorage:跨分頁共用同一身分(一般網站慣例)。
-const AUTH_TOKEN_KEY = 'shuttle.auth.token'
-const AUTH_USER_KEY = 'shuttle.auth.user'
-const AUTH_EMAIL_KEY = 'shuttle.auth.email'
+const AUTH_TOKEN_KEY = 'tripace.auth.token'
+const AUTH_USER_KEY = 'tripace.auth.user'
+const AUTH_EMAIL_KEY = 'tripace.auth.email'
 
 export function useAppState() {
   const [token, setToken] = useState<string | null>(
@@ -140,7 +140,7 @@ export function PhoneContent(props: ContentProps) {
       <div className="login-screen">
         <div className="login-card">
           <div className="login-card-header">
-            <div className="login-card-title">歡迎使用 Shuttle</div>
+            <div className="login-card-title">歡迎使用 Tripace</div>
             <div className="login-card-subtitle">請先登入或註冊帳號,才能查看與使用行程功能。</div>
           </div>
           <LoginForm baseURL={cfg.baseURL} onAuthed={props.onAuthed} />
@@ -781,7 +781,7 @@ function PublicViewScreen({ token }: { token: string }) {
 
   useEffect(() => {
     if (data?.channelName) document.title = data.channelName
-    return () => { document.title = 'Shuttle · 後端測試台' }
+    return () => { document.title = 'Tripace · 後端測試台' }
   }, [data?.channelName])
 
   useEffect(() => {

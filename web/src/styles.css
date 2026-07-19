@@ -1,4 +1,4 @@
-/* Shuttle 後端測試台樣式。
+/* Tripace 後端測試台樣式。
    左:套 iPhone 外框的 app 視圖;右:可展開的 debug panel。 */
 
 :root {
@@ -978,6 +978,24 @@ body {
   line-height: 1.6;
   margin-bottom: 4px;
 }
+/* 卡片展開後的「編輯」入口:小巧、不搶眼,只有 cfg(owner)存在時才會渲染。 */
+.tl-edit-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 8px;
+  background: var(--ios-bg);
+  color: var(--color-accent);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.tl-edit-btn:active {
+  background: var(--ios-sep);
+}
 /* 當天的每一筆事項小卡 */
 .tl-card {
   background: var(--ios-card);
@@ -1719,6 +1737,105 @@ pre {
 @media (prefers-reduced-motion: reduce) {
   .ask-user-backdrop,
   .ask-user-sheet {
+    animation: none;
+  }
+}
+
+/* ---- 手動編輯條目表單(EditEntrySheet,Timeline.tsx):底部滑出,
+   對齊 .ask-user-backdrop/.ask-user-sheet 的浮層模式,但欄位較多,
+   內容區可捲動(edit-entry-body),日期/時刻兩欄並排省空間。 ---- */
+.edit-entry-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.32);
+  animation: ask-user-fade 0.2s ease;
+}
+.edit-entry-sheet {
+  background: var(--ios-card);
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.18);
+  animation: ask-user-slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.edit-entry-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 8px 12px 20px;
+  border-bottom: 1px solid var(--ios-sep);
+}
+.edit-entry-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-dark);
+}
+.edit-entry-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.edit-entry-row {
+  display: flex;
+  gap: 10px;
+}
+.edit-entry-row .edit-entry-field {
+  flex: 1;
+  min-width: 0;
+}
+.edit-entry-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.edit-entry-field span {
+  font-size: 12.5px;
+  color: var(--ios-gray);
+  font-weight: 600;
+}
+.edit-entry-field input,
+.edit-entry-field textarea {
+  box-sizing: border-box;
+  font-size: 16px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--ios-sep);
+  border-radius: 10px;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  outline: none;
+  font-family: inherit;
+  resize: none;
+}
+.edit-entry-field input:focus,
+.edit-entry-field textarea:focus {
+  border-color: var(--color-accent);
+}
+.edit-entry-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 12px;
+  padding: 14px 20px calc(14px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--ios-sep);
+}
+.edit-entry-actions .btn-primary,
+.edit-entry-actions .btn-secondary {
+  flex: 1;
+  padding: 12px;
+  font-size: 15px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .edit-entry-backdrop,
+  .edit-entry-sheet {
     animation: none;
   }
 }

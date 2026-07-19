@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tim72117/shuttle/internal/store"
+	"github.com/tim72117/tripace/internal/store"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -44,7 +44,7 @@ type Admin struct {
 	Email string
 }
 
-// Store 是管理員身分/登入態的存取層,底層透過 shuttle 既有的 store.Store
+// Store 是管理員身分/登入態的存取層,底層透過 tripace 既有的 store.Store
 // (GORM)操作 admin_users / admin_sessions 兩張表。
 type Store struct {
 	db *store.Store
@@ -53,7 +53,7 @@ type Store struct {
 	Secure bool
 }
 
-// New 建立一個 adminauth.Store,包著 shuttle 的 store.Store。
+// New 建立一個 adminauth.Store,包著 tripace 的 store.Store。
 func New(db *store.Store, secure bool) *Store {
 	return &Store{db: db, Secure: secure}
 }
@@ -198,7 +198,7 @@ func randomID() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-// randHex 產生管理員帳號 ID 的隨機後綴,比照 shuttle 既有的 ID 產生慣例
+// randHex 產生管理員帳號 ID 的隨機後綴,比照 tripace 既有的 ID 產生慣例
 // (server/cmd/server/helpers.go 的 randHex、server/internal/api/api.go 的
 // newID:皆為 4 bytes 隨機值轉 hex)。adminauth 是獨立套件,不便直接呼叫那兩個
 // unexported 函式,故在此照同樣邏輯本地實作一份,不引入不同的 ID 產生方式。

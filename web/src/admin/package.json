@@ -1,8 +1,8 @@
 {
-  "name": "@shuttle/admin",
+  "name": "@tripace/admin",
   "version": "0.1.0",
   "private": true,
-  "description": "Admin back-office SPA for Shuttle operators: view registered users. A separate app and identity system from the main developer console.",
+  "description": "Admin back-office SPA for Tripace operators: view registered users. A separate app and identity system from the main developer console.",
   "type": "module",
   "scripts": {
     "dev": "vite --port 5174",

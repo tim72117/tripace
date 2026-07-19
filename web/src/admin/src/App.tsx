@@ -44,7 +44,7 @@ function Login({ onLoggedIn }: { onLoggedIn: (email: string) => void }) {
   return (
     <div className="center">
       <form className="card login" onSubmit={submit}>
-        <h1>Shuttle admin</h1>
+        <h1>Tripace admin</h1>
         <p className="muted">Operator sign-in. Separate from developer accounts.</p>
         <label>
           Email
@@ -104,7 +104,7 @@ function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOu
     <div className="page">
       <header className="topbar">
         <div>
-          <h1>Shuttle admin</h1>
+          <h1>Tripace admin</h1>
           <span className="muted">{adminEmail}</span>
         </div>
         <button className="ghost" onClick={logout}>

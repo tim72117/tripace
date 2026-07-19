@@ -1,8 +1,8 @@
 // Command dumpthought 是一個極簡單的一次性命令列小工具:讀取一個語言代碼,
-// 印出 shuttle 正式 LLM agent(server/internal/llm/assistant_agent.go)
+// 印出 tripace 正式 LLM agent(server/internal/llm/assistant_agent.go)
 // 依該語言組好的完整 system prompt(thought)文字到標準輸出。
 //
-// 這個工具屬於 shuttle 主專案的一部分(同 cmd/server、cmd/cli,同屬 shuttle
+// 這個工具屬於 tripace 主專案的一部分(同 cmd/server、cmd/cli,同屬 tripace
 // module),合法 import internal/llm——但這個工具存在的目的,是讓完全獨立、
 // 依專案架構原則不能 import internal/llm 的 agentbench(server/cmd/agentbench)
 // 可以透過「執行子程序、讀 stdout」的方式間接取得正式 thought 內容,而不需要
@@ -26,7 +26,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/tim72117/shuttle/internal/llm"
+	"github.com/tim72117/tripace/internal/llm"
 )
 
 func main() {

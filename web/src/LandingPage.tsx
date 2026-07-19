@@ -1,4 +1,4 @@
-// 產品介紹 landing page:依 Shuttle 行程規劃的實際功能撰寫。
+// 產品介紹 landing page:依 Tripace 行程規劃的實際功能撰寫。
 // 路由:pathname = /(見 App.tsx)。全寬呈現,不套 iPhone 外框。
 import {
   MessageSquareText, CalendarRange, Layers, Search,
@@ -53,7 +53,7 @@ export function LandingPage() {
       {/* 導覽列 */}
       <header className="landing-nav">
         <div className="landing-nav-inner">
-          <span className="landing-logo">Shuttle</span>
+          <span className="landing-logo">Tripace</span>
           <a className="landing-nav-cta" href="/app">開始使用</a>
         </div>
       </header>
@@ -67,7 +67,7 @@ export function LandingPage() {
           用口語把行程<br />變成<span className="lp-accent">一目了然的時間軸</span>
         </h1>
         <p className="landing-subtitle">
-          Shuttle 讓你用自然語言記錄行程,AI 自動整理成事項、時間與地點,
+          Tripace 讓你用自然語言記錄行程,AI 自動整理成事項、時間與地點,
           排上時間軸、歸成一趟行程,還能和同行的人一起編輯、分享。
         </p>
         <div className="landing-cta-row">
@@ -112,7 +112,7 @@ export function LandingPage() {
       </section>
 
       <footer className="landing-footer">
-        <span className="landing-footer-brand">Shuttle · 行程規劃</span>
+        <span className="landing-footer-brand">Tripace · 行程規劃</span>
       </footer>
     </div>
   )

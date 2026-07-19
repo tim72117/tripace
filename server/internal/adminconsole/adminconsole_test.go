@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tim72117/shuttle/internal/adminauth"
-	"github.com/tim72117/shuttle/internal/store"
+	"github.com/tim72117/tripace/internal/adminauth"
+	"github.com/tim72117/tripace/internal/store"
 )
 
 // newTestStore 用 SQLite 記憶體 DB 建一個乾淨的 store,對齊

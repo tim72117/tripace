@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tim72117/shuttle/internal/model"
-	"github.com/tim72117/shuttle/internal/store"
+	"github.com/tim72117/tripace/internal/model"
+	"github.com/tim72117/tripace/internal/store"
 )
 
 // MockAnalyzer 是不接真實 LLM 的假分析器,供 web 介面實際操作、看完整資料流。

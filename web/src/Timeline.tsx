@@ -1,5 +1,17 @@
 import { useState } from 'react'
+import { Pencil, X } from 'lucide-react'
 import type { Entry } from './types'
+import type { ClientConfig } from './api'
+import * as api from './api'
+import { ApiError } from './api'
+
+// 對齊 App.tsx 的 errMsg,但不 import App.tsx(App.tsx 已 import 本檔的
+// MultiTrackTimeline,互相 import 會造成循環依賴),在此重寫等價的極簡版本。
+function timelineErrMsg(e: unknown): string {
+  if (e instanceof ApiError) return e.message
+  if (e instanceof Error) return e.message
+  return String(e)
+}
 
 // TaskPlaceholder:task_plan 建立任務時(WS task_created)在時間軸該日期下插入的「新增中」佔位卡。
 // entry_add 帶對應 taskID 完成寫入後(WS task_entry_ready)移除,由重抓的正式條目接手顯示。
@@ -195,7 +207,19 @@ function buildTLRows(entries: Entry[], taskPlaceholders: TaskPlaceholder[] = [])
 
 // ---- 純渲染元件 ----
 
-export function MultiTrackTimeline({ entries, todayRef, updatingIDs, taskPlaceholders }: { entries: Entry[], todayRef?: React.RefObject<HTMLDivElement>, updatingIDs?: Set<string>, taskPlaceholders?: TaskPlaceholder[] }) {
+export function MultiTrackTimeline({
+  entries, todayRef, updatingIDs, taskPlaceholders, cfg, onEntryUpdated,
+}: {
+  entries: Entry[]
+  todayRef?: React.RefObject<HTMLDivElement>
+  updatingIDs?: Set<string>
+  taskPlaceholders?: TaskPlaceholder[]
+  // cfg 未傳(如公開分享頁 PublicViewScreen)時卡片不顯示編輯按鈕——手動編輯需要
+  // Bearer token 走 requireEditor(見 server PATCH /v1/entries/{id}),公開頁走
+  // 另一套 token-based 匿名機制(publicAssist),兩者不共用,故不接這個功能。
+  cfg?: ClientConfig
+  onEntryUpdated?: () => void
+}) {
   const rows = buildTLRows(entries, taskPlaceholders ?? [])
   const today = new Date().toISOString().slice(0, 10)
   let todayAttached = false
@@ -244,8 +268,8 @@ export function MultiTrackTimeline({ entries, todayRef, updatingIDs, taskPlaceho
             </div>
             {/* 卡片欄 */}
             <div className="tl-col-card">
-              {card?.kind === 'main' && <MainCard entry={card.entry} updating={updatingIDs?.has(card.entry.id)} />}
-              {card?.kind === 'sub'  && <SubCard  entry={card.entry} updating={updatingIDs?.has(card.entry.id)} />}
+              {card?.kind === 'main' && <MainCard entry={card.entry} updating={updatingIDs?.has(card.entry.id)} cfg={cfg} onEntryUpdated={onEntryUpdated} />}
+              {card?.kind === 'sub'  && <SubCard  entry={card.entry} updating={updatingIDs?.has(card.entry.id)} cfg={cfg} onEntryUpdated={onEntryUpdated} />}
               {card?.kind === 'end'  && <EndCard  entry={card.entry} />}
               {card?.kind === 'task' && <TaskPlaceholderCard placeholder={card.placeholder} />}
             </div>
@@ -278,8 +302,11 @@ function NavButton({ location, lat, lng }: { location: string; lat?: number | nu
   )
 }
 
-function MainCard({ entry, updating }: { entry: Entry; updating?: boolean }) {
+function MainCard({
+  entry, updating, cfg, onEntryUpdated,
+}: { entry: Entry; updating?: boolean; cfg?: ClientConfig; onEntryUpdated?: () => void }) {
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
   return (
     <div className={`tl-main-card tl-card-row${updating ? ' updating' : ''}`} onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer' }}>
       <div className="tl-card-content">
@@ -298,10 +325,26 @@ function MainCard({ entry, updating }: { entry: Entry; updating?: boolean }) {
               <span className="tl-expand-label">結束</span>
               <span>{entry.endTime ? `${entry.end} ${entry.endTime}` : entry.end}</span>
             </div>}
+            {cfg && (
+              <button
+                className="tl-edit-btn"
+                onClick={(e) => { e.stopPropagation(); setEditing(true) }}
+              >
+                <Pencil size={13} strokeWidth={1.8} /> 編輯
+              </button>
+            )}
           </div>
         </div>
       </div>
       {entry.location && <NavButton location={entry.location} lat={entry.lat} lng={entry.lng} />}
+      {editing && cfg && (
+        <EditEntrySheet
+          cfg={cfg}
+          entry={entry}
+          onClose={() => setEditing(false)}
+          onSaved={() => { setEditing(false); onEntryUpdated?.() }}
+        />
+      )}
     </div>
   )
 }
@@ -314,8 +357,11 @@ function EndCard({ entry }: { entry: Entry }) {
   )
 }
 
-function SubCard({ entry, updating }: { entry: Entry; updating?: boolean }) {
+function SubCard({
+  entry, updating, cfg, onEntryUpdated,
+}: { entry: Entry; updating?: boolean; cfg?: ClientConfig; onEntryUpdated?: () => void }) {
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
   const time = entryTimeLabel(entry)
   const span = entrySpanLabel(entry)
   return (
@@ -346,10 +392,26 @@ function SubCard({ entry, updating }: { entry: Entry; updating?: boolean }) {
               <span className="tl-expand-label">結束</span>
               <span>{entry.endTime ? `${entry.end} ${entry.endTime}` : entry.end}</span>
             </div>}
+            {cfg && (
+              <button
+                className="tl-edit-btn"
+                onClick={(e) => { e.stopPropagation(); setEditing(true) }}
+              >
+                <Pencil size={13} strokeWidth={1.8} /> 編輯
+              </button>
+            )}
           </div>
         </div>
       </div>
       {entry.location && <NavButton location={entry.location} lat={entry.lat} lng={entry.lng} />}
+      {editing && cfg && (
+        <EditEntrySheet
+          cfg={cfg}
+          entry={entry}
+          onClose={() => setEditing(false)}
+          onSaved={() => { setEditing(false); onEntryUpdated?.() }}
+        />
+      )}
     </div>
   )
 }
@@ -367,6 +429,109 @@ function TaskPlaceholderCard({ placeholder }: { placeholder: TaskPlaceholder }) 
               {ch === ' ' ? ' ' : ch}
             </span>
           ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// EditEntrySheet:手動編輯條目的表單,對齊 server PATCH /v1/entries/{id}
+// (handleUpdateEntry)。只傳使用者實際改過的欄位——server 端把空字串視為
+// 「不改該欄位」(見 store.UpdateEntry),故欄位留空不會意外清空原有值,
+// 但也代表**目前無法透過這個表單把某欄位清空**,只能改成別的值。
+// position:fixed 疊在整個視窗最上層,不依賴卡片容器的 position:relative。
+function EditEntrySheet({
+  cfg, entry, onClose, onSaved,
+}: {
+  cfg: ClientConfig
+  entry: Entry
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [title, setTitle] = useState(entry.title)
+  const [start, setStart] = useState(entry.start)
+  const [startTime, setStartTime] = useState(entry.startTime)
+  const [end, setEnd] = useState(entry.end ?? '')
+  const [endTime, setEndTime] = useState(entry.endTime ?? '')
+  const [location, setLocation] = useState(entry.location ?? '')
+  const [note, setNote] = useState(entry.note ?? '')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const save = async () => {
+    if (!title.trim()) {
+      setErr('標題不可為空')
+      return
+    }
+    setSaving(true)
+    setErr(null)
+    try {
+      await api.updateEntry(cfg, entry.id, {
+        title: title.trim(),
+        start,
+        startTime,
+        end,
+        endTime,
+        location,
+        note,
+      })
+      onSaved()
+    } catch (e) {
+      setErr(timelineErrMsg(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="edit-entry-backdrop" onClick={(e) => { e.stopPropagation(); onClose() }}>
+      <div className="edit-entry-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="edit-entry-head">
+          <span className="edit-entry-title">編輯條目</span>
+          <button className="btn icon-btn" onClick={onClose} title="關閉">
+            <X size={18} strokeWidth={1.8} />
+          </button>
+        </div>
+        <div className="edit-entry-body">
+          {err && <div className="banner">{err}</div>}
+          <label className="edit-entry-field">
+            <span>標題</span>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+          </label>
+          <div className="edit-entry-row">
+            <label className="edit-entry-field">
+              <span>開始日期</span>
+              <input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
+            </label>
+            <label className="edit-entry-field">
+              <span>開始時刻</span>
+              <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+            </label>
+          </div>
+          <div className="edit-entry-row">
+            <label className="edit-entry-field">
+              <span>結束日期</span>
+              <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
+            </label>
+            <label className="edit-entry-field">
+              <span>結束時刻</span>
+              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+            </label>
+          </div>
+          <label className="edit-entry-field">
+            <span>地點</span>
+            <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="留空表示不改" />
+          </label>
+          <label className="edit-entry-field">
+            <span>備註</span>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="留空表示不改" />
+          </label>
+        </div>
+        <div className="edit-entry-actions">
+          <button className="btn-secondary" onClick={onClose} disabled={saving}>取消</button>
+          <button className="btn-primary" onClick={save} disabled={saving || !title.trim()}>
+            {saving ? '儲存中…' : '儲存'}
+          </button>
         </div>
       </div>
     </div>

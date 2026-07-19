@@ -3,7 +3,7 @@
 package llm
 
 import (
-	"github.com/tim72117/shuttle/internal/model"
+	"github.com/tim72117/tripace/internal/model"
 )
 
 // Analyzer 是 LLM 能力的抽象。唯一實作為接 want 引擎的 WantPool。

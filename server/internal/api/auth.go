@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/tim72117/shuttle/internal/auth"
-	"github.com/tim72117/shuttle/internal/model"
-	"github.com/tim72117/shuttle/internal/store"
+	"github.com/tim72117/tripace/internal/auth"
+	"github.com/tim72117/tripace/internal/model"
+	"github.com/tim72117/tripace/internal/store"
 )
 
 // userFor 從請求的 Authorization header 解析目前使用者。

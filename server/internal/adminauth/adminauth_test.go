@@ -4,7 +4,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/tim72117/shuttle/internal/store"
+	"github.com/tim72117/tripace/internal/store"
 )
 
 // newTestStore 用 SQLite 記憶體 DB 建一個乾淨的 store,對齊
@@ -20,7 +20,7 @@ func newTestStore(t *testing.T) *store.Store {
 }
 
 // TestBootstrapAndLogin 涵蓋原 adminauth_integration_test.go 的行為,改用
-// shuttle 的 GORM store(SQLite 記憶體)取代原本連真的 Postgres 的整合測試,
+// tripace 的 GORM store(SQLite 記憶體)取代原本連真的 Postgres 的整合測試,
 // 免外部依賴、可跑進一般 `go test ./...`。
 func TestBootstrapAndLogin(t *testing.T) {
 	st := newTestStore(t)

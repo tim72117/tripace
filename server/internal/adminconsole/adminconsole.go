@@ -9,9 +9,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/tim72117/shuttle/internal/adminauth"
-	"github.com/tim72117/shuttle/internal/model"
-	"github.com/tim72117/shuttle/internal/store"
+	"github.com/tim72117/tripace/internal/adminauth"
+	"github.com/tim72117/tripace/internal/model"
+	"github.com/tim72117/tripace/internal/store"
 )
 
 // Handler serves /admin/api/*. Auth 是管理員身分/登入態存取層;Store 提供

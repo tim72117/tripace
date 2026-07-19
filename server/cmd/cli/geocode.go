@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/tim72117/shuttle/internal/geo"
+	"github.com/tim72117/tripace/internal/geo"
 )
 
 func cmdGeocode(args []string) {

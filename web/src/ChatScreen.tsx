@@ -367,7 +367,14 @@ export function ChatScreen({
               {isOwner ? '在下方輸入記事，會依時間排列在這裡。' : '在下方查詢這趟行程的內容。'}
             </div>
           ) : entries.length > 0 ? (
-            <MultiTrackTimeline entries={entries} todayRef={todayRef} updatingIDs={updatingEntryIDs} taskPlaceholders={taskPlaceholders} />
+            <MultiTrackTimeline
+              entries={entries}
+              todayRef={todayRef}
+              updatingIDs={updatingEntryIDs}
+              taskPlaceholders={taskPlaceholders}
+              cfg={isOwner ? cfg : undefined}
+              onEntryUpdated={() => api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {})}
+            />
           ) : null}
         </div>
 

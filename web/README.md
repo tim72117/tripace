@@ -1,4 +1,4 @@
-# Shuttle Web — 後端開發測試台
+# Tripace Web — 後端開發測試台
 
 套 iPhone 外框的 web app,**用途是開發時方便測試 Go 後端**(不是正式產品)。
 左側是像 app 的操作介面,右側是 debug panel,即時顯示每次 API 的原始

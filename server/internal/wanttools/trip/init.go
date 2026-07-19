@@ -3,9 +3,9 @@ package trip
 import (
 	"strings"
 
-	"github.com/tim72117/shuttle/internal/store"
-	"github.com/tim72117/shuttle/internal/tripsvc"
-	"github.com/tim72117/shuttle/internal/wanttools"
+	"github.com/tim72117/tripace/internal/store"
+	"github.com/tim72117/tripace/internal/tripsvc"
+	"github.com/tim72117/tripace/internal/wanttools"
 	"github.com/tim72117/want/types"
 )
 

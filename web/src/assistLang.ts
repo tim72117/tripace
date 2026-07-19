@@ -9,7 +9,7 @@
 // (App.tsx 本來就 import * as api from './api')。
 export type AssistLang = 'zh-TW' | 'en'
 
-export const ASSIST_LANG_KEY = 'shuttle.assistLang'
+export const ASSIST_LANG_KEY = 'tripace.assistLang'
 
 const DEFAULT_ASSIST_LANG: AssistLang = 'zh-TW'
 

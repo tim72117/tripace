@@ -7,8 +7,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'ios/Shuttle/**'
-      - 'ios/Shuttle.xcodeproj/**'
+      - 'ios/Tripace/**'
+      - 'ios/Tripace.xcodeproj/**'
       - 'ios/project.yml'
       - '.github/workflows/ios-build.yml'
   pull_request:
@@ -47,8 +47,8 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild \
-            -project Shuttle.xcodeproj \
-            -scheme Shuttle \
+            -project Tripace.xcodeproj \
+            -scheme Tripace \
             -configuration Debug \
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
@@ -69,21 +69,21 @@ jobs:
         if: success()
         working-directory: ios
         run: |
-          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name 'Shuttle.app' -type d | head -1)
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name 'Tripace.app' -type d | head -1)
           if [ -z "$APP_PATH" ]; then
-            echo "找不到 Shuttle.app"; exit 1
+            echo "找不到 Tripace.app"; exit 1
           fi
           echo "找到 app: $APP_PATH"
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" Shuttle.zip
-          echo "已打包 Shuttle.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" Tripace.zip
+          echo "已打包 Tripace.zip"
 
       - name: Upload .app artifact
         # 把 zip 存成 GitHub artifact,可從網頁或 `gh run download` 取回。
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Shuttle-app
-          path: ios/Shuttle.zip
+          name: Tripace-app
+          path: ios/Tripace.zip
 
       - name: Upload to Appetize
         # 編譯出的 simulator app 直接上傳 Appetize,回傳可在瀏覽器開的連結。
@@ -103,7 +103,7 @@ jobs:
           fi
           RESP=$(curl -sS -X POST "$ENDPOINT" \
             -H "X-API-KEY: $APPETIZE_API_TOKEN" \
-            -F "file=@ios/Shuttle.zip" \
+            -F "file=@ios/Tripace.zip" \
             -F "platform=ios")
           echo "$RESP"
           # 取出 publicKey,組出瀏覽器可開的連結並寫進 job summary。

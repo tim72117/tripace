@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/tim72117/shuttle/internal/tripsvc"
+	"github.com/tim72117/tripace/internal/tripsvc"
 )
 
 type httpClient struct {

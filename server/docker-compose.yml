@@ -8,22 +8,22 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: shuttle-postgres
+    container_name: tripace-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: shuttle
-      POSTGRES_PASSWORD: shuttle
-      POSTGRES_DB: shuttle
+      POSTGRES_USER: tripace
+      POSTGRES_PASSWORD: tripace
+      POSTGRES_DB: tripace
     ports:
       - "5432:5432"
     volumes:
-      - shuttle-pgdata:/var/lib/postgresql/data
+      - tripace-pgdata:/var/lib/postgresql/data
     healthcheck:
       # server 啟動前可確認 DB 已就緒
-      test: ["CMD-SHELL", "pg_isready -U shuttle -d shuttle"]
+      test: ["CMD-SHELL", "pg_isready -U tripace -d tripace"]
       interval: 5s
       timeout: 3s
       retries: 5
 
 volumes:
-  shuttle-pgdata:
+  tripace-pgdata:

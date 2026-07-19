@@ -1,12 +1,12 @@
-# Shuttle server 容器映像。
+# Tripace server 容器映像。
 # build context 為「專案根目錄」,COPY 路徑相對根目錄寫(server/...)。
 # server/go.mod 的 github.com/tim72117/want 透過 GOPRIVATE + GH_PAT
 # 從 GitHub 下載(見下方 build 階段),不依賴本地 want/ 源碼。
 #
 # 建置(從專案根目錄):
-#   docker build -t shuttle-server .
+#   docker build -t tripace-server .
 # 本機跑(env 由 --env-file 注入,不會把 .env 烤進映像):
-#   docker run --rm -p 8080:8080 --env-file server/.env shuttle-server
+#   docker run --rm -p 8080:8080 --env-file server/.env tripace-server
 
 # ---- 階段 1:build 前端 ----
 FROM node:22-alpine AS web-build

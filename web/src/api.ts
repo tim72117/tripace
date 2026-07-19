@@ -308,6 +308,28 @@ export function fetchEntries(cfg: ClientConfig, channelID: string) {
   ).then((r) => r.entries)
 }
 
+// 手動編輯條目(不經 AI),對齊 server 的 PATCH /v1/entries/{id}(handleUpdateEntry)。
+// 只傳有要改的欄位:空字串/undefined 視為不改該欄位(見 store.UpdateEntry),
+// 呼叫端不需帶齊 Entry 全部欄位,只需帶使用者在表單裡實際改過的值。
+export interface UpdateEntryInput {
+  title?: string
+  start?: string
+  startTime?: string
+  end?: string
+  endTime?: string
+  location?: string
+  note?: string
+}
+
+export function updateEntry(cfg: ClientConfig, entryID: string, input: UpdateEntryInput) {
+  return request<{ updated: string }>(
+    cfg,
+    'PATCH',
+    `/v1/entries/${encodeURIComponent(entryID)}`,
+    input,
+  )
+}
+
 // 重置:清空頻道的所有條目與行程(開發/測試用,限 owner)。
 export function resetChannelData(cfg: ClientConfig, channelID: string) {
   return request<{ status: string }>(

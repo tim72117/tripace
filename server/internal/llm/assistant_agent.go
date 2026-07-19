@@ -236,8 +236,8 @@ func buildThought(lang string) string {
 // BuildThought 是 buildThought 的公開版本,回傳依語言代碼組好的完整
 // system prompt 文字。
 //
-// 這是專門給 cmd/dumpthought(shuttle 專案內部的一次性命令列小工具,同屬
-// shuttle module,合法呼叫同 module 內其他套件的公開函式)取用正式 thought
+// 這是專門給 cmd/dumpthought(tripace 專案內部的一次性命令列小工具,同屬
+// tripace module,合法呼叫同 module 內其他套件的公開函式)取用正式 thought
 // 內容用的,讓 dumpthought 印到 stdout 供外部獨立工具(agentbench)透過子程序
 // 呼叫的方式取得——不是給 agentbench 直接 import 用(agentbench 依專案架構
 // 原則完全不 import internal/llm,詳見 cmd/agentbench 的說明)。

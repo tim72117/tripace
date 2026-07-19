@@ -9,14 +9,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tim72117/shuttle/internal/adminauth"
-	"github.com/tim72117/shuttle/internal/adminconsole"
-	"github.com/tim72117/shuttle/internal/api"
-	"github.com/tim72117/shuttle/internal/auth"
-	"github.com/tim72117/shuttle/internal/llm"
-	"github.com/tim72117/shuttle/internal/model"
-	"github.com/tim72117/shuttle/internal/store"
-	"github.com/tim72117/shuttle/internal/wanttools"
+	"github.com/tim72117/tripace/internal/adminauth"
+	"github.com/tim72117/tripace/internal/adminconsole"
+	"github.com/tim72117/tripace/internal/api"
+	"github.com/tim72117/tripace/internal/auth"
+	"github.com/tim72117/tripace/internal/llm"
+	"github.com/tim72117/tripace/internal/model"
+	"github.com/tim72117/tripace/internal/store"
+	"github.com/tim72117/tripace/internal/toolschema"
+	"github.com/tim72117/tripace/internal/wanttools"
 
 	"github.com/joho/godotenv"
 )
@@ -31,7 +32,7 @@ func main() {
 	// 預設只綁 127.0.0.1:本機開發不對外部網路開放,Windows 防火牆不會跳出詢問框。
 	// 雲端(Cloud Run 等)需要監聽所有介面時,由下方 PORT 環境變數覆寫。
 	addr := flag.String("addr", "127.0.0.1:8080", "HTTP 監聽位址")
-	dbPath := flag.String("db", "shuttle.db", "DB 連線:SQLite 檔案路徑,或 DATABASE_URL 未設時的後備")
+	dbPath := flag.String("db", "tripace.db", "DB 連線:SQLite 檔案路徑,或 DATABASE_URL 未設時的後備")
 	seed := flag.Bool("seed", true, "資料庫為空時寫入示範資料")
 	jwtSecret := flag.String("jwt-secret", "dev-secret-change-me", "JWT 簽章金鑰")
 	devMode := flag.Bool("dev", true, "開發模式:Apple token 不驗簽章")
@@ -84,6 +85,12 @@ func main() {
 
 	// 分析器:預設 want LLM 引擎;-llm mock 改用假分析器(供 web 實際操作,免連 LLM)。
 	var analyzer llm.Analyzer
+	// clientToolsAnalyzer 非 nil 時,main() 結尾會呼叫 srv.EnableClientTools 掛上
+	// 「LLM 呼叫前端 tool」試做(POC)專用端點(/internal/clienttools/*)。
+	// 只有 want 引擎(非 mock)才會建立——這個試做需要真的能呼叫 LLM 推論,
+	// mock 分析器沒有 want orchestrator 可用。
+	var clientToolsAnalyzer *llm.ClientToolsAnalyzer
+	var clientToolsRegistry *toolschema.Registry
 	if *llmKind == "mock" {
 		// mock 不接真 LLM:送出觸發預設情境,直接用 store 寫 entry(走相同的
 		// FindOrCreateTrip 歸組路徑)。不需 BindSink/BindStore(那是 want 工具用的)。
@@ -123,10 +130,31 @@ func main() {
 		// 提供 query_entries 工具查詢用的 store:agent 提問時自己按時間範圍查條目。
 		wanttools.BindStore(st)
 		log.Printf("LLM 分析器: want 引擎(WantPool)")
+
+		// clienttools POC:載入 server/tools/*.yaml 定義的前端工具,建立獨立的
+		// agent role + orchestrator(見 llm.NewClientToolsAnalyzer 的說明,為何
+		// 不能重用上面的 WantPool/assistant orchestrator)。載入失敗(YAML 格式
+		// 錯誤等)只記警告、不 fatal——這是試做功能,不該擋掉正式 server 啟動。
+		clientToolsDir := os.Getenv("CLIENTTOOLS_DIR")
+		if clientToolsDir == "" {
+			clientToolsDir = "tools"
+		}
+		if registry, err := toolschema.NewRegistry(clientToolsDir); err != nil {
+			log.Printf("[clienttools] 載入工具定義失敗(%s),試做端點停用: %v", clientToolsDir, err)
+		} else if app, ok := registry.Get("clienttools"); !ok {
+			log.Printf("[clienttools] %s 未定義 appId=clienttools,試做端點停用", clientToolsDir)
+		} else {
+			clientToolsAnalyzer = llm.NewClientToolsAnalyzer(app)
+			clientToolsRegistry = registry
+			log.Printf("[clienttools] 已載入 %d 個前端工具(appId=clienttools),POC 端點已啟用", len(app.Tools))
+		}
 	}
 
 	signer := auth.NewSigner(*jwtSecret, 30*24*time.Hour)
 	srv := api.New(st, analyzer, signer, *devMode)
+	if clientToolsAnalyzer != nil {
+		srv.EnableClientTools(clientToolsRegistry, clientToolsAnalyzer)
+	}
 	wanttools.BindNotify(srv.NotifyEntriesUpdated)
 	wanttools.BindEntryUpdating(srv.NotifyEntryUpdating)
 	wanttools.BindAskUser(srv.NotifyAskUser)
@@ -170,7 +198,7 @@ func main() {
 
 	mux.Handle("/", staticHandler())
 
-	log.Printf("Channel server 監聽 %s,DB=%s", *addr, dbKind)
+	log.Printf("Tripace server 監聽 %s,DB=%s", *addr, dbKind)
 	if err := http.ListenAndServe(*addr, mux); err != nil {
 		log.Fatalf("server: %v", err)
 	}
@@ -188,7 +216,7 @@ func withAdminCORS(next http.Handler) http.Handler {
 			w.Header().Set("Vary", "Origin")
 		}
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		w.Header().Set("Access-Control-Max-Age", "86400")
 		if r.Method == http.MethodOptions {

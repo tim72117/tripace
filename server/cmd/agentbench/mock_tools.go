@@ -1,19 +1,19 @@
 // Command agentbench 的 mock 工具:完整複製 server/internal/wanttools 底下
 // 各工具「給 LLM 看」的 Declaration(Name/Description/Parameters 一字不改),
-// 但 Call 一律是空實作——不寫資料庫、不打外部 API、不碰任何 shuttle 業務邏輯,
+// 但 Call 一律是空實作——不寫資料庫、不打外部 API、不碰任何 tripace 業務邏輯,
 // 只回傳一個「已收到」的成功結果讓對話能自然接續下去。
 //
 // 為什麼 mock 化(而非直接 import server/internal/wanttools 複用):
 // wanttools 裡的 entry_add/entry_query/entry_update/entry_delete 依賴
 // entryStore(BindStore 注入的真實 DB 連線),task_plan 依賴 per-channel 的
 // 記憶體任務清單,geocode/recommend_nearby 會打真正的 Google Places API——
-// 這些全是 agentbench 明確要避免牽扯進來的「shuttle 正式業務邏輯」。
+// 這些全是 agentbench 明確要避免牽扯進來的「tripace 正式業務邏輯」。
 // agentbench 的目的是測試「LLM 決策邏輯本身」(有沒有呼叫對工具、參數對不對),
 // 不是測試工具執行的業務正確性,所以每個工具的 Call 都只捕捉「被呼叫了、
 // 參數是什麼」(由 orchestrator 的 agent.inference 事件流已經提供,見
 // capture.go),不需要真的執行任何副作用。
 //
-// 這裡刻意不 import github.com/tim72117/shuttle/internal/wanttools:
+// 這裡刻意不 import github.com/tim72117/tripace/internal/wanttools:
 // 一來避免 types.RegisterTool 對同一個 Name(如 "entry_add")重複註冊到
 // 同一個全域 types.GlobalRegistry 造成 Factories 互相覆蓋的疑慮,
 // 二來讓 agentbench 完全獨立於 wanttools 目前的實作細節(DB/API 相依),

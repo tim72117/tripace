@@ -109,7 +109,7 @@ func NewSessionManager(settings *wantconfig.Settings) *SessionManager {
 // Thought 與 OfficialThoughtLang 是取得 thought 內容的兩種擇一方式:
 //   - Thought 有值 → 直接採用(維持原本手動貼字串的行為不變,向後相容)。
 //   - Thought 為空、OfficialThoughtLang 有值 → 透過 officialthought.go 的
-//     子程序機制取得 shuttle 正式 LLM agent 的 system prompt,存進 session
+//     子程序機制取得 tripace 正式 LLM agent 的 system prompt,存進 session
 //     內部的 thought 欄位(見 Session.thought)。之後這個 session 的
 //     thought 就是這份存好的副本,不會每次都重新呼叫子程序——只有建立時
 //     (這裡)與明確 PATCH 時(見 PatchInput)才會觸發子程序呼叫。

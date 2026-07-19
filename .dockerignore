@@ -7,9 +7,9 @@
 server/.env
 
 # Go 執行期產物與本機 DB
-server/shuttle.db
-server/shuttle.db-shm
-server/shuttle.db-wal
+server/tripace.db
+server/tripace.db-shm
+server/tripace.db-wal
 server/server
 **/*.exe
 server/logs/

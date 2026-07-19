@@ -1,6 +1,6 @@
-name: Shuttle
+name: Tripace
 options:
-  bundleIdPrefix: com.shuttle.app
+  bundleIdPrefix: com.tripace.app
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
@@ -13,19 +13,19 @@ settings:
     TARGETED_DEVICE_FAMILY: "1,2"
 
 targets:
-  Shuttle:
+  Tripace:
     type: application
     platform: iOS
     sources:
-      - path: Shuttle
+      - path: Tripace
         excludes:
           - Resources/Info.plist
-          - Resources/Shuttle.entitlements
+          - Resources/Tripace.entitlements
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.shuttle.app.Shuttle
+        PRODUCT_BUNDLE_IDENTIFIER: com.tripace.app.Tripace
         GENERATE_INFOPLIST_FILE: NO
-        INFOPLIST_FILE: Shuttle/Resources/Info.plist
-        CODE_SIGN_ENTITLEMENTS: Shuttle/Resources/Shuttle.entitlements
+        INFOPLIST_FILE: Tripace/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Tripace/Resources/Tripace.entitlements
         # 本地快取用系統內建 SQLite(import SQLite3),連結 libsqlite3。
         OTHER_LDFLAGS: -lsqlite3

@@ -4,7 +4,7 @@ import "time"
 
 // adminUserRow 是管理員帳號(對照 adminauth 的 Admin),與一般使用者(userRow)
 // 完全分離的資料表:沒有註冊 API,只能靠 Bootstrap(啟動時讀環境變數)產生。
-// ID 比照 shuttle 慣例採字串(如 adm_xxx),不用原始參考版本的 BIGSERIAL。
+// ID 比照 tripace 慣例採字串(如 adm_xxx),不用原始參考版本的 BIGSERIAL。
 type adminUserRow struct {
 	ID           string    `gorm:"primaryKey;column:id"`
 	Email        string    `gorm:"column:email;not null;uniqueIndex"`

@@ -3,7 +3,7 @@
 // tool call」),透過本機 HTTP API 讓外部推論軟體(如 Claude Code)連接、
 // 驅動測試、取得結果,還能中途調整測試設定反覆試驗。
 //
-// 這不是 shuttle 產品本身要對外提供的功能,也不是 want 套件
+// 這不是 tripace 產品本身要對外提供的功能,也不是 want 套件
 // (github.com/tim72117/want)內建的工具——是一個完全獨立的 cmd,
 // 用來除錯 server/internal/llm/assistant_agent.go 定義的那份 thought。
 //
