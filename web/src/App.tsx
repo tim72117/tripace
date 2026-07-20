@@ -3,6 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   ChevronLeft, ChevronDown, Check,
   Send, AlertCircle, Plus, LogIn, X, Settings, LogOut,
+  List, Calendar,
 } from 'lucide-react'
 import type { ClientConfig } from './api'
 import * as api from './api'
@@ -10,7 +11,8 @@ import { ApiError } from './api'
 import type { Channel, Entry, User } from './types'
 import { LandingPage } from './LandingPage'
 import { ChatScreen } from './ChatScreen'
-import { MultiTrackTimeline } from './Timeline'
+import type { DesktopTimelineMirror } from './ChatScreen'
+import { MultiTrackTimeline, type TaskPlaceholder } from './Timeline'
 import type { AssistLang } from './assistLang'
 import { ASSIST_LANG_KEY, getAssistLang } from './assistLang'
 
@@ -192,6 +194,17 @@ export function PhoneContent(props: ContentProps) {
 
 // ---- 桌面版佈局(寬度 >= 768px):左側邊欄(頻道列表 + 使用者選單)+ 右側 ChatScreen ----
 
+// PanelMode:side panel 目前顯示的內容;null 代表收合(主區全寬)。
+type PanelMode = 'channels' | 'timeline' | null
+
+// 時間軸鏡像資料的初始值(尚未收到 ChatScreen 鏡像前,或未選擇行程時使用)。
+const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
+  entries: [],
+  updatingEntryIDs: new Set<string>(),
+  taskPlaceholders: [] as TaskPlaceholder[],
+  refetchEntries: () => {},
+}
+
 function DesktopContent(props: ContentProps) {
   const { cfg, activeChannel, setActiveChannel } = props
   // settingsOpen 獨立於 DesktopUserMenu 內部的 popover 開關狀態:選單裡點「設定」
@@ -202,24 +215,75 @@ function DesktopContent(props: ContentProps) {
   // 提升到這裡、和 .desktop-layout 同層,搭配 CSS 的 position: fixed 疊加,
   // 才能保證 dialog 蓋住整個桌面版佈局(含側欄)最上層。
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // panelMode:rail/side panel 的狀態集中放在 DesktopContent 這一層(而非 rail 或
+  // panel 元件內部),因為 rail 的點擊要決定 panel 顯示什麼、panel 收合後也要能
+  // 反過來影響 rail 的高亮標記,兩者需共享同一份狀態才不會不同步。
+  // 預設值 'channels':進入桌面版時 panel 開啟且顯示頻道列表(維持既有使用者習慣)。
+  const [panelMode, setPanelMode] = useState<PanelMode>('channels')
+  // timelineMirror:ChatScreen 透過 desktopChat.onTimelineData 鏡像過來的時間軸資料
+  // (entries/updatingEntryIDs/taskPlaceholders/refetchEntries)。ChatScreen 是這份
+  // 資料唯一的擁有者(它的 WS 連線即時維護這些 state),這裡只是接住鏡像後轉交給
+  // side panel 的 MultiTrackTimeline,不可以自己另外 fetch 或開第二條 WS。
+  const [timelineMirror, setTimelineMirror] = useState<DesktopTimelineMirror>(EMPTY_TIMELINE_MIRROR)
+  const todayRef = useRef<HTMLDivElement>(null as unknown as HTMLDivElement)
+
+  // 切換行程時,先清空鏡像資料,避免新行程的 ChatScreen 還沒送出第一次鏡像前,
+  // side panel 短暫顯示上一個行程的時間軸內容。
+  useEffect(() => {
+    setTimelineMirror(EMPTY_TIMELINE_MIRROR)
+  }, [activeChannel?.id])
+
+  const onTimelineData = useCallback((data: DesktopTimelineMirror) => {
+    setTimelineMirror(data)
+  }, [])
 
   return (
     <>
       <div className="desktop-layout">
-        <aside className="desktop-sidebar">
-          <DesktopChannelList
-            cfg={cfg}
-            activeChannelID={activeChannel?.id ?? null}
-            onOpen={(c) => setActiveChannel(c)}
-          />
-          <DesktopUserMenu
-            cfg={cfg}
-            user={props.user}
-            isGuest={props.isGuest}
-            onAuthed={props.onAuthed}
-            onLogout={props.onLogout}
-            onOpenSettings={() => setSettingsOpen(true)}
-          />
+        <DesktopRail
+          panelMode={panelMode}
+          onSelect={(mode) => setPanelMode((cur) => (cur === mode ? null : mode))}
+          timelineDisabled={!activeChannel}
+          user={props.user}
+          isGuest={props.isGuest}
+          cfg={cfg}
+          onAuthed={props.onAuthed}
+          onLogout={props.onLogout}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
+        <aside className={`desktop-sidepanel${panelMode ? '' : ' collapsed'}${panelMode === 'timeline' ? ' wide' : ''}`}>
+          <div className="desktop-sidepanel-inner">
+            {panelMode === 'channels' && (
+              <DesktopChannelList
+                cfg={cfg}
+                activeChannelID={activeChannel?.id ?? null}
+                onOpen={(c) => setActiveChannel(c)}
+              />
+            )}
+            {panelMode === 'timeline' && (
+              <div className="desktop-timeline-panel">
+                <div className="desktop-sidebar-head">
+                  <span className="desktop-sidebar-title">時間軸</span>
+                </div>
+                <div className="desktop-timeline-scroll">
+                  {!activeChannel ? (
+                    <div className="empty">選擇一個行程後顯示時間軸。</div>
+                  ) : timelineMirror.entries.length === 0 ? (
+                    <div className="empty">尚無行程內容。</div>
+                  ) : (
+                    <MultiTrackTimeline
+                      entries={timelineMirror.entries}
+                      todayRef={todayRef}
+                      updatingIDs={timelineMirror.updatingEntryIDs}
+                      taskPlaceholders={timelineMirror.taskPlaceholders}
+                      cfg={activeChannel.ownerID === props.user.id ? cfg : undefined}
+                      onEntryUpdated={timelineMirror.refetchEntries}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </aside>
         <main className="desktop-main">
           {activeChannel ? (
@@ -228,6 +292,7 @@ function DesktopContent(props: ContentProps) {
               channel={activeChannel}
               user={props.user}
               onBack={() => setActiveChannel(null)}
+              desktopChat={{ onTimelineData }}
             />
           ) : (
             <div className="desktop-empty-state">選擇一個行程開始</div>
@@ -243,6 +308,62 @@ function DesktopContent(props: ContentProps) {
         />
       )}
     </>
+  )
+}
+
+// DesktopRail:最左緣 48px 固定寬的 icon rail(比照 VSCode activity bar / Slack
+// 頻道列)。上方兩顆圖示鈕切換 side panel 內容(再點一次啟用中的圖示會收合 panel),
+// 底部放 DesktopUserMenu。當前啟用的圖示用左緣 accent 豎條 + 底色標記(見 styles.css
+// .desktop-rail-btn.active)。
+function DesktopRail({
+  panelMode,
+  onSelect,
+  timelineDisabled,
+  user,
+  isGuest,
+  cfg,
+  onAuthed,
+  onLogout,
+  onOpenSettings,
+}: {
+  panelMode: PanelMode
+  onSelect: (mode: 'channels' | 'timeline') => void
+  timelineDisabled: boolean
+  user: User
+  isGuest: boolean
+  cfg: ClientConfig
+  onAuthed: (token: string, user: User, email: string) => void
+  onLogout: () => void
+  onOpenSettings: () => void
+}) {
+  return (
+    <nav className="desktop-rail">
+      <div className="desktop-rail-buttons">
+        <button
+          className={`desktop-rail-btn${panelMode === 'channels' ? ' active' : ''}`}
+          onClick={() => onSelect('channels')}
+          title="頻道列表"
+        >
+          <List size={20} strokeWidth={1.8} />
+        </button>
+        <button
+          className={`desktop-rail-btn${panelMode === 'timeline' ? ' active' : ''}`}
+          onClick={() => !timelineDisabled && onSelect('timeline')}
+          disabled={timelineDisabled}
+          title={timelineDisabled ? '請先選擇一個行程' : '時間軸'}
+        >
+          <Calendar size={20} strokeWidth={1.8} />
+        </button>
+      </div>
+      <DesktopUserMenu
+        cfg={cfg}
+        user={user}
+        isGuest={isGuest}
+        onAuthed={onAuthed}
+        onLogout={onLogout}
+        onOpenSettings={onOpenSettings}
+      />
+    </nav>
   )
 }
 
@@ -827,7 +948,7 @@ function PublicViewScreen({ token }: { token: string }) {
             placeholder="新增行程…"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
+            onKeyDown={(e) => isSubmitEnter(e) && !e.shiftKey && send()}
             disabled={sending}
           />
           <button onClick={send} disabled={sending || !draft.trim()}>

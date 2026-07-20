@@ -443,6 +443,16 @@ func (s *Server) handleAssist(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Text string `json:"text"`
 		Lang string `json:"lang,omitempty"`
+		// ClientToolsSessionID:前端 ChatScreen.tsx 另開的第二條 WS 連線
+		// (/internal/clienttools/ws)收到 ack 後拿到的 sessionId(見
+		// clienttools_ws.go handleHello)。帶上這個欄位,want_analyzer.go 的
+		// Assist 才能透過 orch.SetSessionEnvs 把它交給 trip_entry_* 工具,
+		// 讓工具執行時經 ctx.GetSessionEnvs() 找到同一個 WS session、把呼叫
+		// 轉發回瀏覽器分頁(見 clienttools/interaction.go 的 askPage)。
+		// 空字串(前端尚未連上第二條 WS,或這次改動前的舊前端)時,
+		// trip_entry_* 工具呼叫會直接失敗回「no session id on this call」
+		// ——不影響其餘工具(entry_query/entry_delete/geocode 等)照常運作。
+		ClientToolsSessionID string `json:"clientToolsSessionId,omitempty"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -461,7 +471,7 @@ func (s *Server) handleAssist(w http.ResponseWriter, r *http.Request) {
 	// linkMessage 傳 nil:不再於後端寫入 message / 建立 entry↔message 關聯。
 	// 原話與其關聯改由各裝置端自行保存。
 	// Lang 為使用者設定的 LLM 回答語言偏好("zh-TW"/"en"),空字串由下游視為預設(繁體中文)。
-	res := assistant.AssistForSession(user.ID, id, msgID, text, body.Lang, nil)
+	res := assistant.AssistForSession(user.ID, id, msgID, text, body.Lang, body.ClientToolsSessionID, nil)
 
 	if res.Kind == "error" {
 		writeErr(w, http.StatusInternalServerError, "assist_failed", res.Text)

@@ -139,17 +139,30 @@ type AssistResult struct {
 // 呼叫 BuildPromptBuilder(lang) 產生本次專用的 system prompt,在 Submit 前
 // 透過 orch.SetPromptBuilder(...) 動態換掉,讓 LLM 依此次的語言設定作答
 // (見 assistant_agent.go BuildPromptBuilder 的技術說明)。
+// clientToolsSessionID:前端 ChatScreen.tsx 開的第二條 clienttools WS 連線
+// (/internal/clienttools/ws)的 sessionId(見 clienttools_ws.go 的
+// AckPayload.SessionID)。trip_entry_add/trip_entry_delete/trip_entry_update/
+// trip_entry_list(assistant role 白名單裡取代 entry_add/entry_update 的
+// 工具,見 assistant_agent.go)執行時會呼叫 clienttools.askPage,靠
+// ctx.GetSessionEnvs()["sessionID"] 找到 clienttools.RegisterAsker 註冊的
+// 那個 WS session,才能把呼叫轉發回瀏覽器分頁(見 clienttools/interaction.go
+// 的 InteractionAsker 文件註解)。這裡把它一併塞進同一次 SetSessionEnvs 呼叫
+// ——同 channelID/messageID 一樣不進 LLM 的 prompt,只在 w.mu 已序列化呼叫
+// 的前提下,於 Submit 前設定、Submit 後這輪工具呼叫都讀到同一份值,不會被
+// 下一次呼叫覆寫覆蓋(mu 序列化保證)。空字串(前端尚未連上第二條 WS)時,
+// trip_entry_* 呼叫會在 askPage 得到明確錯誤,不影響其餘工具。
 // linkMessage:agent 記錄了條目時,寫入來源 message 並把它與本次 emit 的
 // entry(參數 entryIDs)建立多對多關聯。只回答時不呼叫。由 api 層提供(持有 store)。
-func (w *WantAnalyzer) Assist(channelID, messageID, text, lang string, linkMessage func(entryIDs []string) error) AssistResult {
+func (w *WantAnalyzer) Assist(channelID, messageID, text, lang, clientToolsSessionID string, linkMessage func(entryIDs []string) error) AssistResult {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	wanttools.RecordLock()
 	defer wanttools.RecordUnlock()
-	// 輔助資訊(channelID/messageID)透過 SessionEnvs 隨 ToolUseContext 傳遞給工具,
-	// 不進送給 LLM 的 prompt,也不經過任何套件級全域變數。
-	w.orch.SetSessionEnvs(map[string]string{"channelID": channelID, "messageID": messageID})
+	// 輔助資訊(channelID/messageID/sessionID)透過 SessionEnvs 隨
+	// ToolUseContext 傳遞給工具,不進送給 LLM 的 prompt,也不經過任何
+	// 套件級全域變數。
+	w.orch.SetSessionEnvs(map[string]string{"channelID": channelID, "messageID": messageID, "sessionID": clientToolsSessionID})
 	// 本次呼叫要用的 system prompt(依語言動態組裝);w.mu 已序列化所有呼叫,
 	// 此處「設定 → Submit → 等待完成」不會與其他呼叫交錯覆寫彼此的 PromptBuilder。
 	w.orch.SetPromptBuilder(BuildPromptBuilder(lang))

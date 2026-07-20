@@ -6,9 +6,10 @@ import { useAppState, PhoneContent } from './App'
 import { DebugPanel } from './DebugPanel'
 import { RecommendedPlacesList, FAKE_RECOMMENDED_PLACES } from './RecommendedPlaces'
 import { RecommendedPlacesMap } from './RecommendedPlacesMap'
+import { ClientToolsDemo } from './clienttools/ClientToolsDemo'
 import './debug.css'
 
-type DemoMode = 'app' | 'cards' | 'map'
+type DemoMode = 'app' | 'cards' | 'map' | 'clienttools'
 
 // 推薦景點卡片 UI 試做:純假資料展示,不串接任何 API,只是讓主內容區
 // 換成 RecommendedPlacesList,方便直接在既有 debug 工作台看到卡片渲染效果。
@@ -40,6 +41,24 @@ function RecommendedPlacesMapDemo() {
       </div>
       <div className="screen-body" style={{ padding: 0 }}>
         <RecommendedPlacesMap places={FAKE_RECOMMENDED_PLACES} />
+      </div>
+    </>
+  )
+}
+
+// LLM 呼叫前端 tool 試做:ClientToolsDemo 本身是完整自足的雙欄畫面(cts-root/
+// cts-main/cts-log),不含 navbar,比照 RecommendedPlacesDemo/RecommendedPlacesMapDemo
+// 額外包一層 navbar,維持三個 demo 切換時外觀一致。
+function ClientToolsDemoWrapper() {
+  return (
+    <>
+      <div className="navbar">
+        <span style={{ width: 36 }} />
+        <span className="title">Client Tools 試做</span>
+        <span style={{ width: 36 }} />
+      </div>
+      <div className="screen-body" style={{ padding: 0 }}>
+        <ClientToolsDemo />
       </div>
     </>
   )
@@ -112,6 +131,8 @@ export function DebugApp() {
           <RecommendedPlacesDemo />
         ) : demoMode === 'map' ? (
           <RecommendedPlacesMapDemo />
+        ) : demoMode === 'clienttools' ? (
+          <ClientToolsDemoWrapper />
         ) : (
           <PhoneContent {...props} />
         )}
@@ -131,6 +152,13 @@ export function DebugApp() {
           title="切換推薦景點地圖 UI 試做(假資料)"
         >
           {demoMode === 'map' ? '← 回到 App' : '推薦景點地圖試做'}
+        </button>
+        <button
+          className="btn-secondary"
+          onClick={() => setDemoMode((m) => (m === 'clienttools' ? 'app' : 'clienttools'))}
+          title="切換 LLM 呼叫前端 tool 試做(WebSocket)"
+        >
+          {demoMode === 'clienttools' ? '← 回到 App' : 'clienttools 試做'}
         </button>
       </div>
       <DebugPanel

@@ -3,11 +3,13 @@
 # appId 固定為 "clienttools":web/src/ClientToolsDemo.tsx(DebugApp.tsx 的試做
 # 區塊)連線時,hello.appId 帶這個值,後端 clientToolsSession.handleHello
 # (server/internal/api/clienttools_ws.go)依此從 toolschema.Registry 解析出
-# 下面這組工具清單回傳給前端(ack.toolNames),同時 llm.NewClientToolsAnalyzer
-# (server/internal/llm/clienttools_agent.go)註冊的獨立 agent role 白名單也
-# 鎖定只暴露這幾個工具給 LLM,不會跟正式的 assistant agent
-# (server/internal/llm/assistant_agent.go)或其 entry_add/entry_query 等
-# 工具混在一起。
+# 下面這組工具清單回傳給前端(ack.toolNames)。llm.NewClientToolsAnalyzer
+# (server/internal/llm/clienttools_agent.go)註冊的獨立 clienttoolsRole 白名單
+# 也只暴露這幾個工具給這個試做頁面專用的 LLM 對話——但這些工具本身現在也
+# 同時被正式的 assistant agent(server/internal/llm/assistant_agent.go)使用
+# (取代原本直接寫 Postgres 的 entry_add/entry_update),兩個 role 共用 want
+# 全域 tool registry 裡的同一份工具定義,只是各自的對話/推論仍走各自獨立的
+# orchestrator,不會互相干擾(見 clienttools_agent.go 開頭註解)。
 #
 # 型別(kind)怎麼選,是這份試做的核心設計決定:
 # - trip_entry_add / trip_entry_list  → query:LLM 需要拿到「真正發生的結果」
@@ -32,6 +34,11 @@ thought: |
     trip_entry_update。不要憑猜測編造 id。
   - 使用者單純問「現在清單裡有什麼」時,呼叫 trip_entry_list 查詢,再用查到
     的資料回答,不要編造內容。
+  - trip_entry_list 是分頁查詢:offset(從第幾筆開始,0-based)與 limit
+    (單次最多回傳幾筆)兩者都必填,不能省略。不要假設清單一定很短——先用
+    offset=0 查一批,查到的 total 若大於目前已看過的筆數,代表還有更多,
+    要用下一個 offset(前一次的 offset + limit)繼續呼叫,直到涵蓋完
+    total 筆或已經蒐集到足夠回答使用者問題的資訊為止。
 
   完成工具呼叫後,用簡短的一句話告訴使用者做了什麼(例如「已新增『東京晴空塔』
   到 7/18」),不要聲稱自己做了工具沒有實際完成的事,也不要要求使用者等待
@@ -121,20 +128,32 @@ tools:
 
   - name: trip_entry_list
     description: >-
-      查詢前端旅程 entry 清單目前的完整內容。使用者問「清單裡有什麼」,
-      或你需要先找到正確 id 才能刪除/修改某一筆時呼叫。
+      分頁查詢前端旅程 entry 清單的內容。使用者問「清單裡有什麼」,或你需要
+      先找到正確 id 才能刪除/修改某一筆時呼叫。offset 與 limit 必填、不能
+      省略——清單筆數可能很多,不要假設一次就能拿到全部:回傳的 total 是
+      清單總筆數,若大於你目前已查到的筆數,代表還沒查完,要用下一個
+      offset(前一次的 offset + limit)再呼叫一次繼續翻頁。
     kind: query
     parameters:
       type: object
-      description: 無參數,直接呼叫查詢目前完整清單。
-      properties: {}
+      description: 分頁查詢參數,offset 與 limit 皆為必填。
+      properties:
+        offset:
+          type: integer
+          description: 從第幾筆開始查詢(0-based)。查第一批請填 0。
+        limit:
+          type: integer
+          description: 單次最多回傳幾筆。
+      required:
+        - offset
+        - limit
     returns:
       type: object
-      description: 前端回報的目前清單內容。
+      description: 前端回報的分頁查詢結果。
       properties:
         entries:
           type: array
-          description: 目前清單裡的每一筆項目。
+          description: 這一頁查到的項目(從 offset 開始,最多 limit 筆)。
           items:
             type: object
             description: 一筆旅程 entry。
@@ -154,3 +173,6 @@ tools:
               note:
                 type: string
                 description: 備註,可能為空字串。
+        total:
+          type: integer
+          description: 清單目前的總筆數(不受 offset/limit 影響)。用來判斷是否已查完整份清單、還要不要用下一個 offset 繼續翻頁。

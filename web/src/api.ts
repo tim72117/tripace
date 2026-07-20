@@ -290,12 +290,19 @@ export type AssistResult =
   | { kind: 'recorded'; text: string; entryIDs: string[] }
   | { kind: 'answer'; answer: string; entries: PresentedEntry[] }
 
-export function assist(cfg: ClientConfig, channelID: string, text: string) {
+// clientToolsSessionId:ChatScreen.tsx 另開的第二條 clienttools WS 連線
+// (/internal/clienttools/ws)收到 ack 後拿到的 sessionId,讓後端的
+// trip_entry_add/trip_entry_update 工具(取代 entry_add/entry_update,見
+// server/internal/llm/assistant_agent.go)能透過這個 id 找到同一條 WS 連線、
+// 把工具呼叫轉發回這個分頁執行(見 server/internal/clienttools/interaction.go)。
+// undefined(第二條連線尚未連上)時後端仍會照常處理其餘工具,只有
+// trip_entry_* 這幾個會失敗。
+export function assist(cfg: ClientConfig, channelID: string, text: string, clientToolsSessionId?: string) {
   return request<AssistResult>(
     cfg,
     'POST',
     `/v1/channels/${encodeURIComponent(channelID)}/assist`,
-    { text, lang: getAssistLang() },
+    { text, lang: getAssistLang(), clientToolsSessionId },
   )
 }
 

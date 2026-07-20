@@ -1851,8 +1851,91 @@ pre {
   overflow: hidden;
 }
 
-/* 側欄:固定寬度,常駐顯示頻道列表 + 使用者設定入口 */
-.desktop-sidebar {
+/* ---- icon rail(最左緣 48px 固定寬,VSCode activity bar / Slack 頻道列模式):
+   上方兩顆圖示鈕切換 side panel 內容,底部是 DesktopUserMenu。---- */
+.desktop-rail {
+  flex: 0 0 48px;
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--ios-card);
+  border-right: 1px solid var(--ios-sep);
+  min-height: 0;
+  padding: 8px 0;
+}
+.desktop-rail-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+.desktop-rail-btn {
+  position: relative;
+  width: 100%;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.desktop-rail-btn:hover:not(:disabled) {
+  background: var(--ios-bg);
+  color: var(--color-accent);
+}
+.desktop-rail-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+.desktop-rail-btn:disabled {
+  color: var(--ios-sep);
+  cursor: not-allowed;
+}
+/* 啟用中的圖示:左緣 accent 豎條 + 淡底色標記(比照 VSCode activity bar)。 */
+.desktop-rail-btn.active {
+  color: var(--color-accent);
+  background: var(--ios-bg);
+}
+.desktop-rail-btn.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--color-accent);
+}
+/* rail 內的使用者選單:只顯示頭像(rail 只有 48px 寬,放不下名稱文字),
+   popover 往右彈出蓋住 side panel(而非 side panel 原本的往上展開),
+   透過 .desktop-rail .desktop-user-* 選擇器覆寫,不影響其他地方共用的樣式。 */
+.desktop-rail .desktop-user-menu {
+  width: 100%;
+  border-top: none;
+  padding: 8px 0;
+  margin-top: auto;
+}
+.desktop-rail .desktop-user-trigger {
+  justify-content: center;
+  padding: 8px 0;
+}
+.desktop-rail .desktop-user-trigger .grow {
+  display: none;
+}
+.desktop-rail .desktop-user-popover {
+  left: calc(100% + 6px);
+  right: auto;
+  bottom: 8px;
+  width: 260px;
+}
+
+/* side panel:改造自原本的 desktop-sidebar,內容可切換(頻道列表/時間軸)、
+   可收合(主區跟著縮放的 push 模式,非 overlay);寬度切換與收合都走 CSS transition。 */
+.desktop-sidepanel {
   flex: 0 0 272px;
   width: 272px;
   display: flex;
@@ -1860,6 +1943,40 @@ pre {
   background: var(--ios-card);
   border-right: 1px solid var(--ios-sep);
   min-height: 0;
+  overflow: hidden;
+  transition: flex-basis 0.2s ease, width 0.2s ease, border-color 0.2s ease;
+}
+.desktop-sidepanel.wide {
+  flex-basis: 380px;
+  width: 380px;
+}
+.desktop-sidepanel.collapsed {
+  flex-basis: 0;
+  width: 0;
+  border-right-color: transparent;
+}
+/* inner 維持完整寬度渲染內容,收合時靠外層 width:0 裁掉,避免收合過程中內容
+   本身被壓縮換行(transition 期間看起來會很醜)。 */
+.desktop-sidepanel-inner {
+  width: 272px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.desktop-sidepanel.wide .desktop-sidepanel-inner {
+  width: 380px;
+}
+.desktop-timeline-panel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.desktop-timeline-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 4px 8px 12px;
 }
 
 /* 側欄上半：頻道列表 */

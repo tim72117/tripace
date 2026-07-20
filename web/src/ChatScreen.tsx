@@ -11,6 +11,9 @@ import { listMessages, saveMessage } from './deviceDB'
 import { Avatar, ErrorBanner, errMsg, isSubmitEnter, LS_DEFAULT_CHANNEL } from './App'
 import { MultiTrackTimeline, type TaskPlaceholder } from './Timeline'
 import { RecommendedPlacesList, type RecommendedPlace } from './RecommendedPlaces'
+import { ClientToolsBridge } from './clienttools/ClientToolsBridge'
+import { defaultClientTools } from './clienttools/tools'
+import type { TripEntry } from './clienttools/tripEntryTools'
 
 // 助手(assist 回答)的作者 ID,需與後端及 iOS ChatStore.assistantID 一致。
 const ASSISTANT_ID = 'usr_assistant'
@@ -20,16 +23,36 @@ const ASSISTANT_ID = 'usr_assistant'
 // pending:後端處理中的佔位泡泡,渲染海浪載入動畫(無文字),完成後就地替換。
 type ChatMessage = Message & { presented?: PresentedEntry[]; pending?: boolean }
 
+// DesktopTimelineMirror:桌面版時間軸所需的資料快照,由 ChatScreen 透過
+// desktopChat.onTimelineData 鏡像給外層 DesktopContent(見下方 useEffect)。
+// refetchEntries 讓 side panel 裡的 MultiTrackTimeline 在手動編輯(onEntryUpdated)
+// 後能觸發 ChatScreen 內部重抓,不必讓 panel 自己另開一份資料來源。
+export type DesktopTimelineMirror = {
+  entries: Entry[]
+  updatingEntryIDs: Set<string>
+  taskPlaceholders: TaskPlaceholder[]
+  refetchEntries: () => void
+}
+
+// desktopChat:非 undefined 時代表目前在桌面模式(由 DesktopContent 傳入)——
+// 主區不渲染時間軸、改把時間軸資料透過 onTimelineData 鏡像給外層 side panel。
+// 手機路徑完全不傳這個 prop,行為與改版前一致。
+export interface DesktopChatOptions {
+  onTimelineData: (data: DesktopTimelineMirror) => void
+}
+
 export function ChatScreen({
   cfg,
   channel,
   user,
   onBack,
+  desktopChat,
 }: {
   cfg: ClientConfig
   channel: Channel
   user: User
   onBack: () => void
+  desktopChat?: DesktopChatOptions
 }) {
   // owner 輸入=發訊息;成員輸入=語意查詢(回答顯示在訊息流,對齊 iOS App)。
   const isOwner = channel.ownerID === user.id
@@ -62,6 +85,24 @@ export function ChatScreen({
   const [showRecommendedPlaces, setShowRecommendedPlaces] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  // clienttools 技術可行性驗證:第二條獨立連線(/internal/clienttools/ws),
+  // 讓正式對話的 assistant LLM 改呼叫 trip_entry_add/trip_entry_update
+  // (取代原本直接寫 Postgres 的 entry_add/entry_update,見
+  // server/internal/llm/assistant_agent.go)時,有個瀏覽器分頁能實際執行、
+  // 看到結果。這份清單(clientToolsEntries)是全新、獨立的一份前端記憶體
+  // 清單——完全不是上面的 entries state,也不進任何裝置端/後端資料庫,重新
+  // 整理頁面就會消失,依 ClientToolsBridge 既有的 ToolContext 設計(同
+  // ClientToolsDemo.tsx 的既有試做頁面)。這次刻意不要求把它渲染進時間軸
+  // (MultiTrackTimeline)——時間軸的渲染邏輯與資料來源(entries state)完全
+  // 不受這條連線影響,見下方 clientToolsSessionId 傳給 api.assist 之外,
+  // 沒有任何程式碼路徑讓這條連線碰到 entries/updatingEntryIDs/taskPlaceholders。
+  // clientToolsSessionId:連線 ack 後拿到的 sessionId,send() 呼叫 api.assist
+  // 時一併帶上,讓後端 trip_entry_* 工具能找到這條連線並轉發呼叫執行(見
+  // server/internal/llm/want_analyzer.go Assist 的 SetSessionEnvs 說明)。
+  const [clientToolsEntries, setClientToolsEntries] = useState<TripEntry[]>([])
+  const [clientToolsStatus, setClientToolsStatus] = useState<'connecting' | 'open' | 'closed'>('connecting')
+  const [clientToolsSessionId, setClientToolsSessionId] = useState<string | null>(null)
+  const clientToolsSessionIdRef = useRef<string | null>(null)
   // 成員管理在頻道內開啟(對齊 iOS App 的聊天頁右上角入口)。
   const [showMembers, setShowMembers] = useState(false)
   // 分享彈窗
@@ -108,6 +149,23 @@ export function ChatScreen({
   useEffect(() => {
     load()
   }, [load])
+
+  // 桌面模式:把時間軸所需的 state(entries/updatingEntryIDs/taskPlaceholders)
+  // 鏡像給外層 DesktopContent 的 side panel,讓 panel 的 MultiTrackTimeline 與
+  // 主區共用同一份資料,不必自己另開 WS 或另外 fetch。refetchEntries 供 panel
+  // 手動編輯(onEntryUpdated)後觸發重抓——直接複用下面 fetchEntries 的邏輯。
+  // 用 useEffect(而非在 render 期間呼叫)是因為 render 期間呼叫外層 setState
+  // 會觸發 React 警告(cannot update a component while rendering a different component)。
+  useEffect(() => {
+    if (!desktopChat) return
+    desktopChat.onTimelineData({
+      entries,
+      updatingEntryIDs,
+      taskPlaceholders,
+      refetchEntries: () => api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {}),
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desktopChat, entries, updatingEntryIDs, taskPlaceholders, cfg.baseURL, cfg.token, channel.id])
 
   // updatingSince:記每個更新中 entryID 的起始時間,用來保證「更新中」動畫最短顯示 800ms
   // (entry_update 後端很快完成,不設下限會一閃而過看不見)。
@@ -192,6 +250,43 @@ export function ChatScreen({
     return () => ws.close()
   }, [cfg.baseURL, cfg.token, channel.id])
 
+  // clienttools 技術可行性驗證專用的第二條連線(見上方 clientToolsEntries 的
+  // 說明)。只有 owner 會呼叫 send()/api.assist(見下方),故只在 isOwner 時
+  // 建立這條連線,對齊既有第一條 WS 也只在 owner 情境下才有實質作用的前提
+  // ——member 走 ask()/semanticQuery,不會用到 sessionId。
+  // 這條連線目前沿用 /internal/clienttools/ws(掛在 internalAuth 底下,未帶
+  // 使用者身分驗證),是本次任務明確接受的已知安全缺口,留待後續處理。
+  useEffect(() => {
+    if (!isOwner) return
+    const bridge = new ClientToolsBridge(
+      defaultClientTools,
+      {
+        onStatusChange: setClientToolsStatus,
+        onToolNamesChange: () => {},
+        onEntriesChange: setClientToolsEntries,
+        // assistant_message 是 clienttoolsRole 專屬對話(ClientToolsDemo.tsx
+        // 那條路徑)的回覆,這條連線在 ChatScreen 裡只用來讓 trip_entry_*
+        // 工具找到執行對象,不會透過這條連線送 prompt,故不需要顯示文字回覆。
+        onAssistantText: () => {},
+        onLog: () => {},
+        onBusyChange: () => {},
+        onSessionId: (id) => {
+          clientToolsSessionIdRef.current = id
+          setClientToolsSessionId(id)
+        },
+      },
+      [],
+    )
+    bridge.connect()
+    return () => {
+      bridge.disconnect()
+      clientToolsSessionIdRef.current = null
+      setClientToolsSessionId(null)
+      setClientToolsStatus('closed')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在頻道/owner 身分變動時重新連線,同第一條 WS 的依賴慣例。
+  }, [cfg.baseURL, channel.id, isOwner])
+
   useEffect(() => {
     if (entries.length > 0 && todayRef.current && bodyRef.current) {
       const el = todayRef.current
@@ -229,7 +324,12 @@ export function ChatScreen({
     // record 時 agent 非同步寫 entry,記下送出前的數量當基準,輪詢到變多才算寫完。
     const baseCount = entries.length
     try {
-      const res = await api.assist(cfg, channel.id, text)
+      // clientToolsSessionIdRef(而非 state)：send 是個 async 函式，用 ref
+      // 讀「呼叫當下最新的連線狀態」，避免閉包捕捉到建立當下（可能連線還沒
+      // ack）的舊值——同 sending/lastDraft 等其餘欄位在此函式裡都直接讀
+      // state 的既有寫法不同，是因為這裡要的是「送出當下的最新值」而非
+      // 「render 當下」的值，两者在 WS 非同步 ack 到達的情境下可能不同。
+      const res = await api.assist(cfg, channel.id, text, clientToolsSessionIdRef.current ?? undefined)
       if (res.kind === 'recorded') {
         // 記錄了 → 把原話存進「裝置端 DB」(原話的權威來源,與 server 隔離)。
         // res.text 為原話;後端不存原話,僅回它供前端落地裝置 DB。
@@ -359,10 +459,64 @@ export function ChatScreen({
           </button>
         </div>
       </div>
+      {/* clienttools 技術可行性驗證用的除錯區塊:顯示 LLM 透過
+          trip_entry_add/trip_entry_update/trip_entry_delete 操作、只存在
+          這個分頁記憶體(clientToolsEntries state)的旅程清單——刻意不整合
+          進下方的 MultiTrackTimeline,純粹讓人能實際看到 LLM 呼叫前端 tool
+          的結果,比照 ClientToolsDemo.tsx 的簡易表格風格,不做精緻 UI 整合。
+          只有 owner(會呼叫 send()/api.assist)才看得到,對齊下面建立第二條
+          連線的條件。放在 navbar 與 .chat-area 之間(而非 .chat-area 內部)
+          ——.chat-area 內的 .chat-overlay 是 position: absolute 蓋住整個
+          .chat-area 的浮層,除錯區塊若放在 .chat-area 內會被它蓋住;放在
+          外面則完全不受影響,固定顯示在頂端。 */}
+      {isOwner && (
+        <div style={{
+          margin: '8px 16px', padding: '10px 12px', borderRadius: 10,
+          border: '1px solid var(--border, #33333322)', background: 'var(--surface, #00000008)',
+          fontSize: 13,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <strong>clienttools 除錯清單</strong>
+            <span style={{ opacity: 0.6 }}>
+              ({clientToolsStatus === 'open' ? `已連線${clientToolsSessionId ? ` · ${clientToolsSessionId}` : ''}` : clientToolsStatus === 'connecting' ? '連線中…' : '已斷線'})
+            </span>
+          </div>
+          {clientToolsEntries.length === 0 ? (
+            <div style={{ opacity: 0.6 }}>目前清單是空的(LLM 呼叫 trip_entry_add 後會顯示在這裡)。</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', opacity: 0.6 }}>
+                  <th style={{ fontWeight: 400, paddingRight: 8 }}>標題</th>
+                  <th style={{ fontWeight: 400, paddingRight: 8 }}>日期</th>
+                  <th style={{ fontWeight: 400, paddingRight: 8 }}>時刻</th>
+                  <th style={{ fontWeight: 400 }}>備註</th>
+                </tr>
+              </thead>
+              <tbody>
+                {clientToolsEntries.map((e) => (
+                  <tr key={e.id}>
+                    <td style={{ paddingRight: 8 }}>{e.title}</td>
+                    <td style={{ paddingRight: 8 }}>{e.date}</td>
+                    <td style={{ paddingRight: 8 }}>{e.time}</td>
+                    <td>{e.note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
       <div className="chat-area">
         <div className="screen-body" ref={bodyRef} onMouseDown={() => { setInputFocused(false); setMessages([]) }}>
           <ErrorBanner msg={err} />
-          {entries.length === 0 && messages.length === 0 && !sending ? (
+          {desktopChat ? (
+            // 桌面模式:主區不渲染時間軸(時間軸只活在左側 side panel 的時間軸模式裡),
+            // 平時顯示引導文字;chat-overlay/composer 的既有邏輯完全不受影響。
+            <div className="empty">
+              {isOwner ? '在下方輸入記事，會依時間排列在左側時間軸。' : '在下方查詢這趟行程的內容。'}
+            </div>
+          ) : entries.length === 0 && messages.length === 0 && !sending ? (
             <div className="empty">
               {isOwner ? '在下方輸入記事，會依時間排列在這裡。' : '在下方查詢這趟行程的內容。'}
             </div>
