@@ -65,6 +65,26 @@ type TaskEntryReadyFn func(channelID string, taskID int, entryID string)
 // 讓前端在對話下方顯示推薦景點卡片(server 啟動時用 BindRecommendedPlaces 注入)。
 type RecommendedPlacesFn func(channelID string, places []map[string]any)
 
+// TripEntryPayload 是 entry_query 查到、要推播給前端旅程清單表格的一筆條目,
+// 欄位對齊前端 TripEntry(web/src/clienttools/tripEntryTools.ts)與
+// server/tools/clienttools.yaml 裡 trip_entry_add/trip_entry_list 的欄位
+// 命名(title/date/time/note),而非 model.Entry 的 start/startTime 命名——
+// 這樣前端收到後不需要再做一次欄位名稱轉換,可直接當 TripEntry 使用。
+type TripEntryPayload struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Date  string `json:"date"`
+	Time  string `json:"time"`
+	Note  string `json:"note"`
+}
+
+// EntriesLoadedFn 廣播 entries_loaded 事件(帶 entry_query 查到的條目清單)給
+// 前端,讓前端合併進旅程清單表格供使用者查看/編輯(server 啟動時用
+// BindEntriesLoaded 注入)。沿用 RecommendedPlacesFn/AskChoiceFn 的風格,用
+// []map[string]any 而非 TripEntryPayload,避免 api 套件為了此簽章反向依賴
+// wanttools;NotifyEntriesLoaded 負責把 []TripEntryPayload 轉成這個形狀。
+type EntriesLoadedFn func(channelID string, entries []map[string]any)
+
 var (
 	// recordMu 序列化整個「記錄一則訊息」的流程,確保 RecordLock 保護的計數/清單不交錯。
 	recordMu          sync.Mutex
@@ -76,6 +96,7 @@ var (
 	taskCreated       TaskCreatedFn
 	taskEntryReady    TaskEntryReadyFn
 	recommendedPlaces RecommendedPlacesFn
+	entriesLoaded     EntriesLoadedFn
 	// emitCount 記本次 RecordLock 流程內 record_entry 被觸發的次數,
 	// 供呼叫端判斷 agent 究竟「記錄了」還是「只回答」。
 	emitCount int
@@ -167,6 +188,22 @@ func BindRecommendedPlaces(fn RecommendedPlacesFn) { recommendedPlaces = fn }
 func NotifyRecommendedPlaces(channelID string, places []map[string]any) {
 	if recommendedPlaces != nil {
 		recommendedPlaces(channelID, places)
+	}
+}
+
+// BindEntriesLoaded 注入 entries_loaded 廣播函式(server 啟動時呼叫)。
+func BindEntriesLoaded(fn EntriesLoadedFn) { entriesLoaded = fn }
+
+// NotifyEntriesLoaded 廣播 entries_loaded(帶轉換成 TripEntryPayload 的條目清單),
+// 供 entry_query 工具呼叫,讓前端把查到的條目合併進旅程清單表格供使用者查看/編輯。
+// entries 為空陣列時仍會廣播(讓前端知道「這次查詢查無結果」),由前端決定如何呈現。
+func NotifyEntriesLoaded(channelID string, entries []TripEntryPayload) {
+	if entriesLoaded != nil {
+		out := make([]map[string]any, len(entries))
+		for i, e := range entries {
+			out[i] = map[string]any{"id": e.ID, "title": e.Title, "date": e.Date, "time": e.Time, "note": e.Note}
+		}
+		entriesLoaded(channelID, out)
 	}
 }
 

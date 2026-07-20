@@ -358,8 +358,24 @@ body {
 }
 .bubble.mine {
   align-self: flex-end;
-  background: var(--ios-blue);
-  color: #fff;
+  /* 降低深度:原本純色 --ios-blue 太深;改用中性淡色而非棕色系調淡透明度
+     (比照 .avatar-empty 的既有模式:淡底 --ios-sep + 深棕字 --color-dark,
+     維持整體設計語言一致)。--ios-sep 跟 --color-dark 對比度 8.89:1,可讀性
+     遠超 WCAG AA 門檻;跟卡片背景對比度 1.32:1,雖淡但仍可辨識,泡泡靠
+     align-self: flex-end 與既有 box-shadow 撐住輪廓。只影響這個泡泡,
+     不動全域 --ios-blue 變數,按鈕/連結/焦點框等其餘 22 處引用不受影響。 */
+  background: var(--ios-sep);
+  color: var(--color-dark);
+}
+/* LLM 回答輸出文字時不套用泡泡外觀(見 MessageBubble 的 bare 判斷):
+   拿掉卡片背景/圓角/陽影/內距,直接呈現純文字;寬度也不再限制在 78%,
+   否則沒有卡片邊界視覺支撐時,一段較長文字仍被截斷會顯得不自然。 */
+.bubble.bare {
+  max-width: 100%;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
 }
 .bubble .text {
   font-size: 17px;
@@ -546,6 +562,11 @@ body {
 .bubble-group.mine {
   align-self: flex-end;
   align-items: flex-end;
+  /* 加大與上一則訊息的間距:父層 .chat-messages/.chat-overlay-inner 的
+     gap: 10px 是所有訊息共用的基礎間距,這裡額外疊加 margin-top 讓使用者
+     這則泡泡的分段感更明顯,不影響其他訊息之間(如連續兩則助手回答)維持
+     原本 10px。 */
+  margin-top: 12px;
 }
 .bubble-group .bubble {
   max-width: 100%;
@@ -1176,6 +1197,7 @@ body {
 /* 對話區：相對定位容器，讓 composer 可以 absolute 貼底浮空 */
 .chat-area {
   flex: 1 1 auto;
+  min-height: 0; /* 解除 flex 子項預設撐開父層的行為,讓內部改由 .screen-body 自己捲動 */
   position: relative;
   overflow: hidden;
   display: flex;
@@ -1183,7 +1205,19 @@ body {
 }
 .chat-area .screen-body {
   flex: 1 1 auto;
-  padding-bottom: 80px; /* 預留 composer 高度，最後一則訊息能完整滾出 */
+  min-height: 0; /* 同上:沒有這行,內容過長時會撐開 .chat-area 進而撐開整頁,而非自己內部捲動 */
+  padding-bottom: 104px; /* 預留 composer 高度(約80px)+24px間隙,捲到底時最後一則訊息跟輸入框之間留一點呼吸空間,不緊貼在一起 */
+}
+
+/* 桌面版對話區(desktopChat 分支專用):引導文字/訊息泡泡在同一個 .screen-body
+   容器內、走一般文件流,不再套用手機版的 .chat-overlay 浮層疊層+獨立捲動設計
+   (桌面版時間軸已在左側 side panel,右欄底層沒有需要被浮層蓋住看見的內容)。
+   補上跟原本 .chat-overlay-inner 一致的 flex 排版,讓 .bubble-group 之間維持
+   原有的 10px 間距(.bubble-group 本身不帶 margin,依賴父層 gap)。 */
+.chat-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 /* 對話浮層：覆蓋在時間軸上方，毛玻璃背景，從 composer 往上延伸 */
@@ -1214,7 +1248,9 @@ body {
   gap: 10px;
 }
 
-/* 輸入列：浮空固定在對話區底部 */
+/* 輸入列：浮空固定在對話區底部,整列包在一張卡片容器裡(白底/圓角/陰影
+   只在這層出現一次),內部的 input/按鈕不再各自帶白底邊框陰影——視覺上
+   呈現成一個完整獨立的對話框,而非各自漂浮的元件群。 */
 .composer {
   position: absolute;
   bottom: 0;
@@ -1228,12 +1264,20 @@ body {
   pointer-events: none;
 }
 
-/* input + send 按鈕同一列 */
+/* input + send 按鈕同一列,這層就是「卡片」本身:白底/圓角/陰影集中在此。 */
 .composer-row {
   pointer-events: auto;
   display: flex;
   align-items: center;
   gap: 12px;
+  background: var(--ios-card);
+  border-radius: 28px;
+  padding: 8px 8px 8px 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.15s;
+}
+.composer-row:focus-within {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.06);
 }
 .composer input,
 .composer button {
@@ -1241,19 +1285,11 @@ body {
 }
 .composer input {
   flex: 1;
-  flex: 1;
-  border: 1.5px solid var(--ios-sep);
-  border-radius: 24px;
-  padding: 11px 18px;
+  border: none;
+  padding: 8px 0;
   font-size: 17px;
   outline: none;
-  background: var(--ios-card);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.composer input:focus {
-  border-color: var(--color-accent);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.06);
+  background: transparent;
 }
 .composer button {
   flex: 0 0 auto;
@@ -1281,33 +1317,17 @@ body {
   outline-offset: 2px;
 }
 
-/* 功能鈕(推薦/對話):跟送出鈕同尺寸圓形,底色改用卡片白+邊框,
-   跟送出鈕(強調色實心)區分「功能切換」與「送出動作」的視覺層級。 */
+/* 功能鈕(推薦/對話):跟送出鈕同尺寸圓形,不再自帶白底/邊框/陰影
+   (外層 .composer-row 已提供卡片背景),只用顏色跟送出鈕(強調色實心)
+   區分「功能切換」與「送出動作」的視覺層級。 */
 .composer-fn-btn {
-  background: var(--ios-card) !important;
+  background: transparent !important;
   color: var(--color-accent) !important;
-  border: 1.5px solid var(--ios-sep) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
 }
 .composer-fn-btn:disabled {
-  background: var(--ios-card) !important;
+  background: transparent !important;
   color: var(--ios-gray) !important;
   opacity: 0.6;
-}
-
-/* 對話鈕展開動畫:input 從 0 寬度(圓鈕收合處)平滑展開到撐滿剩餘空間。
-   用 max-width 而非 width,讓 flex:1 仍決定展開後的最終寬度。 */
-.composer input {
-  animation: composer-input-expand 0.22s cubic-bezier(0.32, 0.72, 0, 1);
-}
-@keyframes composer-input-expand {
-  from { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; }
-  to { max-width: 100%; opacity: 1; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .composer input {
-    animation: none;
-  }
 }
 
 /* 查詢結果 */
@@ -1922,6 +1942,15 @@ pre {
 .desktop-rail .desktop-user-trigger {
   justify-content: center;
   padding: 8px 0;
+}
+/* 頭像縮小(38px→30px):原尺寸在 48px 寬的 rail 裡左右只留 5px,比上方
+   .desktop-rail-btn 圖示(20px,左右留 14px)侷促很多,視覺上明顯擠壓。
+   縮小後左右留 9px,呼吸空間跟圖示按鈕的量級接近,同時仍比純圖示大一圈,
+   保留頭像該有的存在感(不縮到跟圖示同尺寸,兩者承載的資訊份量不同)。 */
+.desktop-rail .desktop-user-trigger .avatar {
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
 }
 .desktop-rail .desktop-user-trigger .grow {
   display: none;

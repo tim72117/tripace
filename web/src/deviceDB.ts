@@ -10,6 +10,7 @@ import initSqlJs from 'sql.js'
 import type { Database, SqlJsStatic } from 'sql.js'
 import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url'
 import type { Message } from './types'
+import type { TripEntry } from './clienttools/tripEntryTools'
 
 const IDB_NAME = 'channel-device-db'
 const IDB_STORE = 'sqlite'
@@ -25,6 +26,20 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel_id, created_at);
+
+-- clienttools 技術可行性驗證用的旅程清單(見 ChatScreen.tsx clientToolsEntries)。
+-- 純前端記憶體資料的持久化落地,與後端 entries 表無關、不同步——ClientToolsBridge
+-- 每次工具執行後回傳的是「整批最新清單」而非單筆增量,故用 replaceTripEntries
+-- 整批覆寫而非逐筆 upsert,rowid 隱含順序即維持該次回傳的清單順序。
+CREATE TABLE IF NOT EXISTS trip_entries (
+  channel_id  TEXT NOT NULL,
+  id          TEXT NOT NULL,
+  title       TEXT NOT NULL,
+  date        TEXT NOT NULL,
+  time        TEXT NOT NULL,
+  note        TEXT NOT NULL,
+  PRIMARY KEY (channel_id, id)
+);
 `
 
 let SQL: SqlJsStatic | null = null
@@ -114,5 +129,43 @@ export async function listMessages(channelID: string): Promise<Message[]> {
     authorName: row[3] as string,
     text: row[4] as string,
     createdAt: row[5] as string,
+  }))
+}
+
+// ---- 旅程清單(clienttools 技術可行性驗證用)讀寫 API ----
+
+// replaceTripEntries 用給定的整批清單覆寫某頻道目前存的旅程清單(先刪舊、
+// 再依序插入新的)。呼叫端(ChatScreen 的 onEntriesChange)每次拿到的都是
+// ClientToolsBridge 回傳的完整最新清單,不是單筆增量,故用整批覆寫而非逐筆
+// upsert——這樣才能正確反映刪除(清單裡消失的那筆會在覆寫時一併被移除)。
+export async function replaceTripEntries(channelID: string, entries: TripEntry[]): Promise<void> {
+  await initDeviceDB()
+  if (!db) return
+  db.run('DELETE FROM trip_entries WHERE channel_id = ?', [channelID])
+  for (const e of entries) {
+    db.run(
+      `INSERT INTO trip_entries (channel_id, id, title, date, time, note)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [channelID, e.id, e.title, e.date, e.time, e.note],
+    )
+  }
+  await persist()
+}
+
+// listTripEntries 回傳某頻道目前存的旅程清單,依寫入順序(rowid)。
+export async function listTripEntries(channelID: string): Promise<TripEntry[]> {
+  await initDeviceDB()
+  if (!db) return []
+  const res = db.exec(
+    `SELECT id, title, date, time, note FROM trip_entries WHERE channel_id = ? ORDER BY rowid ASC`,
+    [channelID],
+  )
+  if (res.length === 0) return []
+  return res[0].values.map((row) => ({
+    id: row[0] as string,
+    title: row[1] as string,
+    date: row[2] as string,
+    time: row[3] as string,
+    note: row[4] as string,
   }))
 }

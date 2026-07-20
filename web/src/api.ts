@@ -14,6 +14,7 @@ import type {
   APIErrorBody,
 } from './types'
 import { getAssistLang } from './assistLang'
+import type { TripEntry } from './clienttools/tripEntryTools'
 
 // 一筆 API 交易的完整紀錄,debug panel 與 console log 都靠它。
 export interface ApiCall {
@@ -343,6 +344,50 @@ export function resetChannelData(cfg: ClientConfig, channelID: string) {
     cfg,
     'DELETE',
     `/v1/channels/${encodeURIComponent(channelID)}/entries`,
+  )
+}
+
+// ---- 旅程清單「儲存」按鈕專用的逐筆 upsert API(見 ChatScreen.tsx 的儲存邏輯)。
+// 對齊後端 server/internal/api/api.go 新增的 handleCreateTripEntry/
+// handleUpdateTripEntry/handleDeleteTripEntry,body/回應形狀直接沿用
+// TripEntry 的欄位命名(title/date/time/note),不像 updateEntry() 那樣需要
+// start/startTime 這種對齊 model.Entry 的命名轉換。
+
+// 新增一筆旅程清單項目(不含 id,由後端產生)。對齊 POST /v1/channels/{id}/entries。
+export function createTripEntry(
+  cfg: ClientConfig,
+  channelID: string,
+  input: Omit<TripEntry, 'id'>,
+) {
+  return request<TripEntry>(
+    cfg,
+    'POST',
+    `/v1/channels/${encodeURIComponent(channelID)}/entries`,
+    input,
+  )
+}
+
+// 修改既有一筆旅程清單項目。對齊 PUT /v1/channels/{id}/entries/{entryID}。
+export function updateTripEntry(
+  cfg: ClientConfig,
+  channelID: string,
+  entryID: string,
+  input: Omit<TripEntry, 'id'>,
+) {
+  return request<{ updated: string }>(
+    cfg,
+    'PUT',
+    `/v1/channels/${encodeURIComponent(channelID)}/entries/${encodeURIComponent(entryID)}`,
+    input,
+  )
+}
+
+// 刪除既有一筆旅程清單項目。對齊 DELETE /v1/channels/{id}/entries/{entryID}。
+export function deleteTripEntry(cfg: ClientConfig, channelID: string, entryID: string) {
+  return request<{ deleted: string }>(
+    cfg,
+    'DELETE',
+    `/v1/channels/${encodeURIComponent(channelID)}/entries/${encodeURIComponent(entryID)}`,
   )
 }
 

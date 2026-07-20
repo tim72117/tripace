@@ -189,6 +189,7 @@ func main() {
 	wanttools.BindTaskCreated(srv.NotifyTaskCreated)
 	wanttools.BindTaskEntryReady(srv.NotifyTaskEntryReady)
 	wanttools.BindRecommendedPlaces(srv.NotifyRecommendedPlaces)
+	wanttools.BindEntriesLoaded(srv.NotifyEntriesLoaded)
 
 	dbKind := "sqlite:" + dsn
 	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {

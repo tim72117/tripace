@@ -131,22 +131,29 @@ const addThought = `
 當需要讓使用者從多個選項中選一個時(如多個房型、多個候選行程擇一等情境),呼叫 ` + "`ask_choice`" + ` 請使用者透過 UI 選單挑選,**不要用文字把選項列出來請使用者用文字回覆**。ask_choice 同樣是非同步的:呼叫後本輪結束,使用者選定後會再次觸發你。
 `
 
-// queryThought 情況 B:查詢條目並回答。
+// queryThought 情況 B:查詢條目(載入前端表格,不再讀結果回答)。
 // 內含一個 %s 佔位符,執行期由 langName() 代入使用者設定的回答語言(如「繁體中文」/「English」)。
+//
+// 注意(entry_query 改造):entry_query 不再把查到的條目內容回給 LLM 讀取——
+// 查到的結果改成整批推播到前端表格,由使用者自己在表格裡查看/編輯,LLM 只會
+// 拿到一句「已載入 N 筆到前端表格」的簡短確認文字(見 entry_query.go)。
+// 故下面的指引也從「查完自己讀來回答」改成「觸發查詢範圍,交給前端顯示」,
+// 不再要求 LLM 逐筆呼叫 entry_present 或根據條目內容組文字答案。
 const queryThought = `
-# 情況 B:提問 →  用 entry_query 查條目再回答
+# 情況 B:提問 →  用 entry_query 觸發查詢,結果交給前端表格顯示
 
-若輸入是在「問問題」(想知道某段時間有什麼安排、查記過的事),呼叫 ` + "`entry_query`" + ` 工具查詢已記錄的條目,再根據查到的結果回答:
+若輸入是在「問問題」(想知道某段時間有什麼安排、查記過的事),呼叫 ` + "`entry_query`" + ` 工具查詢已記錄的條目——**這個工具不會把條目內容回給你**,查到的結果會直接推播到前端的旅程清單表格讓使用者自己查看,你只需要決定正確的查詢範圍並觸發查詢。
+
+**回答任何問題前一律先查詢一次,不可省略、不可依賴先前對話中查過的舊結果或自己的記憶回答**——行程內容可能在對話期間被使用者透過其他管道(如手動編輯)異動過,即使剛才才查過同一段時間範圍,只要是新的一次提問,就要重新呼叫 ` + "`entry_query`" + ` 取得當下最新內容。
 
 - 把問題的時間範圍**拆成起點與終點兩個英文時間語詞**填入 ` + "`from`" + ` / ` + "`to`" + `(系統自動換算,不要自己算日期):
   - 「這週有什麼?」→ ` + "`from='last Monday'`" + `、` + "`to='next Sunday'`" + `(涵蓋本週)。
   - 「明天的安排?」→ ` + "`from='tomorrow'`" + `、` + "`to='tomorrow'`" + `。
   - 「下個月?」→ 用涵蓋下個月的兩個英文語詞當起訖。
   - 沒有明確時間範圍(如「我有哪些待辦?」)→ ` + "`from`" + ` / ` + "`to`" + ` 都留空字串,查全部。
-- **只根據查到的條目回答,不要編造。**
-- 查到條目後,**每一筆條目各呼叫一次 ` + "`entry_present`" + ` 工具**傳給前端(有 3 筆就呼叫 3 次),前端會把它們匯整成卡片列表顯示。直接用查到的條目時間,不要自己換算。
-- 文字回答用%s簡潔帶過即可(如「以下是你這週的安排:」),條目細節交給 ` + "`entry_present`" + ` 的卡片呈現,不必在文字裡重複列出每一筆。
-- 查無條目時,不呼叫 ` + "`entry_present`" + `,如實說明「這段期間沒有記錄的安排」,不要硬湊答案。
+- 工具回傳的只是一句確認文字(如「已載入 3 筆到前端表格」)與筆數,**不含任何條目的具體內容**——不要把它當成資料來源去回答使用者「有哪些安排」這類問題,也不要編造或憑記憶補內容。
+- 文字回覆用%s簡潔帶過即可(如「已經幫你查好這段期間的安排,顯示在下方表格」),把「請使用者自己看表格」的意思帶到,不要複述任何條目細節(你也拿不到)。
+- 查詢完成後不需要再呼叫其他工具把結果呈現出來——前端表格就是這次查詢的呈現方式。
 `
 
 // recommendThought 情況 D:推薦附近景點。
@@ -183,18 +190,16 @@ const updateThought = `
 7. ` + "`date`" + ` 若要改,同樣要換算成絕對日期 ` + "`'YYYY-MM-DD'`" + `(見情況 A「今天」的換算規則),不要填英文語詞。
 `
 
-// deleteThought 情況 C 之二:刪除條目。
-const deleteThought = `
-## 情況 C:刪除條目 → 先查詢,再呼叫 entry_delete
-
-使用者說「刪掉某一筆」、「移除某條目」、「刪除全部」時,**一律先查詢過條目,才能刪除,不可跳過查詢直接刪除**:
-1. 先用 ` + "`entry_query`" + ` 查詢符合條件的條目(根據用戶提到的時間/內容等;「刪除全部」則 from/to 留空查全部)。
-2. **找到 1 筆** → 向使用者確認(「確定要刪除『條目名』嗎?」),確認後呼叫 ` + "`entry_delete(entryID=...)`" + `。
-3. **找不到** → 告訴使用者「找不到符合的條目」,請求補充資訊。
-4. **多於 1 筆** → 列出找到的條目讓使用者確認要刪哪些(或全部),確認後**用一次 ` + "`entry_delete(entryIDs=[...])`" + ` 帶入所有要刪的 ID,一次刪完**。
-   > **重要:刪除多筆時務必用 entryIDs 陣列一次呼叫,絕對不要分成多次 entry_delete 呼叫**——分多次呼叫容易漏刪或格式出錯,導致以為刪完了其實還有殘留。
-5. 刪除後,**再用 ` + "`entry_query`" + ` 複查一次確認真的沒有殘留**,才告知使用者已完成;若仍有殘留,用 entryIDs 把殘留的一次補刪。
-`
+// deleteThought(情況 C 之二:刪除條目)已移除。
+//
+// 原本教 LLM 呼叫 entry_delete 直接刪 Postgres,但 entry_delete 這次已停用
+// 並物理刪除(見本檔案 init() 的白名單異動說明)、白名單也未納入替代的
+// trip_entry_delete(clienttools 轉發工具)——依這次重構的設計,刪除 Postgres
+// 既有條目改由使用者在前端旅程清單表格手動移除該列、按「儲存」時由前端 diff
+// 出「消失的列」呼叫新增的 DELETE /v1/channels/{channelID}/entries/{entryID}
+// API 完成(見 server/internal/api 新增的 entries CRUD handler),不再是
+// LLM 對話觸發的動作。若之後要恢復「LLM 幫忙刪除」的體驗,需另外評估是否要
+// 把 trip_entry_delete 加入白名單並重寫這段 Thought,不在此次任務範圍內。
 
 // styleThought 回覆風格指引。
 const styleThought = `
@@ -208,7 +213,7 @@ const styleThought = `
 // queryThought、recommendThought 的回答語言——執行期由 buildThought() 用
 // time.Now() 與 langName() 代入。todayThought 放在最前面,讓 addThought
 // 裡「見上方『今天』段落」的說法對得上實際順序。
-const thoughtTemplate = todayThought + introThought + addThought + queryThought + recommendThought + updateThought + deleteThought + styleThought
+const thoughtTemplate = todayThought + introThought + addThought + queryThought + recommendThought + updateThought + styleThought
 
 // defaultAssistLang 是未帶語言參數時的後備語言(維持改動前的行為:固定繁體中文)。
 const defaultAssistLang = "zh-TW"
@@ -272,9 +277,12 @@ func init() {
 		// entry_add/entry_update 移除(改用下面兩個 trip_entry_* 取代——這兩個
 		// 由 clienttools 機制轉發到瀏覽器分頁執行,不再直接寫 Postgres,詳見
 		// server/internal/clienttools/tool.go、server/tools/clienttools.yaml)。
-		// entry_query/entry_present/entry_delete/geocode/recommend_nearby/
-		// ask_user/ask_choice/task_plan 維持原樣、繼續走原本直接寫 DB 的路徑
-		// ——這次任務明確只要求停用 entry_add/entry_update。
+		// entry_present/entry_delete 這次同樣移除(不再是直接寫/讀 Postgres 給
+		// LLM 自己讀的工具);entry_query 保留但已改造(見 entry_query.go 開頭
+		// 註解)——查詢範圍仍由 LLM 決定,但查到的結果改成整批推播到前端表格,
+		// 不再組成文字回給 LLM 讀,LLM 只會拿到一句簡短確認文字。
+		// geocode/recommend_nearby/ask_user/ask_choice/task_plan 維持原樣、
+		// 繼續走原本直接寫 DB 或呼叫外部 API 的路徑,不受這次改動影響。
 		// trip_entry_add/trip_entry_update 名稱與參數對齊 server/tools/
 		// clienttools.yaml 宣告(title/date/time/note 等英文欄位),與下方
 		// addThought/updateThought 教 LLM 用的 entry_add 中文欄位風格
@@ -284,7 +292,7 @@ func init() {
 		// 自建的,與 entry_query 查到的 entryID 不是同一組),漏掉這個工具會讓
 		// LLM 呼叫 trip_entry_list 時被 want 引擎的白名單擋下,trip_entry_update
 		// 整條路徑實際上無法運作。
-		Tools: []string{"trip_entry_add", "trip_entry_list", "entry_query", "entry_present", "trip_entry_update", "entry_delete", "geocode", "recommend_nearby", "ask_user", "ask_choice", "task_plan"},
+		Tools:     []string{"trip_entry_add", "trip_entry_list", "entry_query", "trip_entry_update", "geocode", "recommend_nearby", "ask_user", "ask_choice", "task_plan"},
 		WhenToUse: "頻道中的生活記事助理。當使用者在頻道發送訊息時,負責把值得記錄的待辦、行程、會議、提醒記成條目,整理分類訊息,並依頻道內容回答使用者的自然語言查詢。",
 		Thought:   buildThought(defaultAssistLang),
 
