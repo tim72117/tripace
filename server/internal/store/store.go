@@ -3,6 +3,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -73,6 +74,17 @@ func (s *Store) Close() error {
 		return err
 	}
 	return sqlDB.Close()
+}
+
+// Ping 對底層資料庫連線發一次 ping(SQLite/Postgres 皆適用),供健康檢查
+// (adminconsole 的 /admin/api/health/external)使用。ctx 帶 timeout/deadline
+// 由呼叫端控制,這裡不自行加逾時。
+func (s *Store) Ping(ctx context.Context) error {
+	sqlDB, err := s.db.DB()
+	if err != nil {
+		return fmt.Errorf("get underlying *sql.DB: %w", err)
+	}
+	return sqlDB.PingContext(ctx)
 }
 
 // now 統一回傳 UTC 時間。

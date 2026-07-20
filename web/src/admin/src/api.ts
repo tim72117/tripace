@@ -25,6 +25,19 @@ export interface UsersResponse {
   users: UserSummary[]
 }
 
+// One row of the external-service health check. Mirrors
+// adminconsole.ExternalServiceStatus on the backend (server/internal/
+// adminconsole/health.go). status is "ok" | "error" | "skipped" — skipped
+// means the corresponding env var isn't set on this deployment (e.g. no
+// GOOGLE_API_KEY in local dev), not a failure.
+export interface ExternalServiceStatus {
+  name: string
+  kind: string
+  status: 'ok' | 'error' | 'skipped'
+  latencyMs: number
+  detail: string
+}
+
 // Same resolution strategy as the main web app's api.ts BASE: an explicit
 // VITE_ADMIN_API_URL for local dev against a separately-running backend,
 // falling back to the serving origin (correct in production, where the
@@ -67,4 +80,10 @@ export const api = {
   me: (): Promise<AdminUser> => request('GET', '/admin/api/me').then((r) => r.json()),
 
   listUsers: (): Promise<UsersResponse> => request('GET', '/admin/api/users').then((r) => r.json()),
+
+  // Triggers a fresh round of checks server-side each call (no caching) —
+  // only call this on explicit user action (page load / "recheck" click),
+  // never on a timer: some checks (Places API) incur a small real cost.
+  checkExternalHealth: (): Promise<ExternalServiceStatus[]> =>
+    request('GET', '/admin/api/health/external').then((r) => r.json()),
 }

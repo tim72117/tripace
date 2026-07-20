@@ -1,8 +1,9 @@
 // Package adminconsole 提供管理後台 API,掛載於 /admin/api/*。刻意是與
 // internal/api(一般使用者/前端用的 API)分開的獨立 handler:獨立身分系統
 // (internal/adminauth)、獨立 cookie、自己的 withAdmin 關卡(fail-closed:
-// 非通過驗證的管理員一律拒絕)。這次整合範圍只有「管理員登入」+「使用者
-// 列表查詢」——不含方案(plan)/額度(quota)/用量追蹤,那些功能明確排除在外。
+// 非通過驗證的管理員一律拒絕)。整合範圍為「管理員登入」+「使用者
+// 列表查詢」+「外部服務健康檢查」(health.go)——不含方案(plan)/額度
+// (quota)/用量追蹤,那些功能明確排除在外。
 package adminconsole
 
 import (
@@ -32,6 +33,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/api/logout", h.logout)
 	mux.HandleFunc("GET /admin/api/me", h.withAdmin(h.me))
 	mux.HandleFunc("GET /admin/api/users", h.withAdmin(h.listUsers))
+	mux.HandleFunc("GET /admin/api/health/external", h.withAdmin(h.listExternalHealth))
 }
 
 // withAdmin 是每一條特權管理路由共用的關卡:解析管理員 session cookie,
