@@ -55,7 +55,7 @@ func main() {
 		*seed = v == "1" || strings.EqualFold(v, "true")
 	}
 
-	// DATABASE_URL(postgres://…,如 Neon)優先;未設時退回 -db 的 SQLite。
+	// DATABASE_URL(postgres://…,正式環境為 Cloud SQL)優先;未設時退回 -db 的 SQLite。
 	dsn := *dbPath
 	if env := os.Getenv("DATABASE_URL"); env != "" {
 		dsn = env

@@ -24,6 +24,7 @@ build/
 **/node_modules/
 # web dist 也排除:Dockerfile 在容器內 build
 web/dist/
+web/admin/dist/
 
 # 版控與系統檔
 .git/

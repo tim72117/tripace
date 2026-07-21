@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/glebarez/sqlite" // 純 Go SQLite driver,免 CGO
-	"gorm.io/driver/postgres"    // Postgres driver(Neon / Cloud SQL)
+	"gorm.io/driver/postgres"    // Postgres driver(正式環境為 Cloud SQL)
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -30,7 +30,7 @@ type Store struct {
 }
 
 // Open 開啟(或建立)資料庫並用 AutoMigrate 套用 schema。
-// dsn 為 postgres:// 或 postgresql:// 開頭時用 Postgres(Neon / Cloud SQL),
+// dsn 為 postgres:// 或 postgresql:// 開頭時用 Postgres(正式環境為 Cloud SQL),
 // 否則視為 SQLite 檔案路徑。store 介面不變,GORM 查詢兩邊通用。
 func Open(dsn string) (*Store, error) {
 	db, err := gorm.Open(dialector(dsn), &gorm.Config{

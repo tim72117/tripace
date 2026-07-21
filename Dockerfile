@@ -38,7 +38,7 @@ RUN cd /src/server && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -
 
 # ---- 階段 3:執行 ----
 # distroless:只含執行檔需要的最小 runtime,無 shell、體積小、攻擊面小。
-# 內含 CA 憑證,連 Neon(sslmode=require)的 TLS 才驗得過。
+# 內含 CA 憑證,連 Cloud SQL(sslmode=require)的 TLS 才驗得過。
 FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
 COPY --from=build /out/server /app/server

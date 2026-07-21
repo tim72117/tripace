@@ -125,7 +125,7 @@ done
 
 # ---- 2. 真實 shuttle/tripace server(SQLite,指向 mockllm 當 vLLM) ----
 # DATABASE_URL 特意設成空字串(而非直接不設):server/.env 若存在且設了
-# DATABASE_URL(如指向 Neon Postgres 的開發用連線字串),main.go 的
+# DATABASE_URL(如指向雲端 Postgres 的開發用連線字串),main.go 的
 # godotenv.Load() 不會覆蓋「已存在於環境變數裡」的值,即使那個值是空字串——
 # 空字串仍算「已存在」,.env 檔裡的值就不會覆寫進來。main.go 接著判斷
 # `os.Getenv("DATABASE_URL") != ""` 為 false,才會真的退回 -db 指定的 SQLite

@@ -60,6 +60,12 @@ func main() {
 
 	mux := http.NewServeMux()
 	adminconsole.NewHandler(adminAuth, st).Register(mux)
+	// admin SPA(web/admin,base: '/admin/')embed 進這支 binary,同源掛在
+	// /admin/ 底下(見 static.go)——不再需要獨立部署前端、也不需要跨源
+	// CORS/cookie 設定就能直接開啟 Cloud Run URL 使用。/admin/api/* 已被
+	// 上面 Register 註冊,http.ServeMux 依規則優先匹配較精確的 pattern,
+	// 不會被這裡的 /admin/ 攔截。
+	mux.Handle("/admin/", staticHandler())
 
 	log.Printf("adminserver 監聽 %s", addr)
 	if err := http.ListenAndServe(addr, withAdminCORS(mux)); err != nil {

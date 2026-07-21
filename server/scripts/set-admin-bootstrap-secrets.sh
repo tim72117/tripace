@@ -13,13 +13,28 @@
 #   ./scripts/set-admin-bootstrap-secrets.sh admin@example.com
 #
 # 需求:已安裝並登入 gcloud(gcloud auth login),且對目標專案有
-# Secret Manager 的建立/新增版本權限(roles/secretmanager.admin 或等效)。
+# Secret Manager 的建立/新增版本權限(roles/secretmanager.admin 或等效)、
+# 以及授予 IAM 綁定的權限(roles/secretmanager.admin 或
+# roles/resourcemanager.projectIamAdmin 等能執行
+# secrets add-iam-policy-binding 的角色)。
+#
+# 這支腳本除了寫入 secret 值本身,還會授權 Cloud Run 執行服務帳號讀取
+# 這兩個新 secret(見下方 grant_accessor)——GCP Secret Manager 的存取權限
+# 是逐個 secret 授權的,不會因為服務帳號已經能讀 DATABASE_URL 等既有 secret
+# 就自動能讀新建的 secret。若漏了這一步,adminserver 部署時會卡在
+# SecretsAccessCheckFailed(Permission denied on secret ... for Revision
+# service account ...),Cloud Run revision 永遠無法就緒。
 
 set -euo pipefail
 
 PROJECT="shuttle-045094509"
 EMAIL_SECRET="ADMIN_BOOTSTRAP_EMAIL"
 PASSWORD_SECRET="ADMIN_BOOTSTRAP_PASSWORD"
+# Cloud Run 服務(tripace-server、tripace-adminserver)目前都用這個專案預設
+# 的運算服務帳號執行(deploy-cloudrun.yml/deploy-admin.yml 都沒有另外指定
+# --service-account),故 secret 的 accessor 授權也是授給它。若之後改成
+# 專用的 service account,這裡要跟著改。
+RUNTIME_SA="340121279179-compute@developer.gserviceaccount.com"
 
 if [ $# -ne 1 ]; then
   echo "用法: $0 <管理員 email>" >&2
@@ -77,10 +92,28 @@ upsert_secret "$EMAIL_SECRET" "$EMAIL"
 echo "設定 $PASSWORD_SECRET…"
 upsert_secret "$PASSWORD_SECRET" "$PASSWORD"
 
+# grant_accessor <secret 名稱>:授予 RUNTIME_SA 讀取這個 secret 的權限
+# (roles/secretmanager.secretAccessor,綁在 secret 層級而非專案層級,權限
+# 範圍最小化)。add-iam-policy-binding 本身是冪等操作,重複執行不會出錯或
+# 疊加重複綁定,故不需要先檢查是否已授權過。
+grant_accessor() {
+  local name="$1"
+  gcloud secrets add-iam-policy-binding "$name" \
+    --project="$PROJECT" \
+    --member="serviceAccount:$RUNTIME_SA" \
+    --role="roles/secretmanager.secretAccessor" \
+    --quiet >/dev/null
+  echo "✓ 已授權 $RUNTIME_SA 讀取「$name」"
+}
+
+echo "授權 Cloud Run 執行服務帳號讀取密鑰…"
+grant_accessor "$EMAIL_SECRET"
+grant_accessor "$PASSWORD_SECRET"
+
 echo "---"
 echo "完成。deploy-admin.yml 下次部署時會透過"
 echo "  --update-secrets=...,ADMIN_BOOTSTRAP_EMAIL=ADMIN_BOOTSTRAP_EMAIL:latest,ADMIN_BOOTSTRAP_PASSWORD=ADMIN_BOOTSTRAP_PASSWORD:latest"
-echo "自動引用這兩個 secret 的最新版本。"
+echo "自動引用這兩個 secret 的最新版本,且執行服務帳號已有權限讀取。"
 echo
 echo "若這是第一次部署 adminserver,且該 email 尚未有對應的管理員帳號,"
 echo "下次啟動時會自動建立;已存在則不會被重設密碼(冪等)。"

@@ -22,6 +22,12 @@ server/tmp/
 *.exe
 server/server
 
+# go:embed 的前端 build 產物,只在 Docker build 過程中由 COPY --from=web-build
+# 產生(見 Dockerfile、Dockerfile.admin),本機驗證/除錯時手動複製進來的副本
+# 不該進版控。
+server/cmd/server/web/dist/
+server/cmd/adminserver/web/dist/
+
 # ---- 系統 / 編輯器 ----
 .DS_Store
 Thumbs.db

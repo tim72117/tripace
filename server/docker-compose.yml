@@ -1,4 +1,4 @@
-# 本地開發用 Postgres。取代雲端 Neon,方便離線/快速開發測試。
+# 本地開發用 Postgres。取代雲端 Postgres(Cloud SQL),方便離線/快速開發測試。
 # 用法:
 #   docker compose up -d          # 啟動(背景)
 #   docker compose down           # 停止(保留資料)

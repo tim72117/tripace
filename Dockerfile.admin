@@ -4,8 +4,11 @@
 # 只是編譯目標換成 ./cmd/adminserver。
 #
 # 與主服務 Dockerfile 的差異:
-#   - 不需要 web-build 階段:adminserver 不 embed 任何前端(web/admin 是
-#     獨立部署的 Vite SPA,見 web/admin/vite.config.ts 的說明)。
+#   - web-build 階段只 build web/admin(獨立的 Vite SPA,base: '/admin/',
+#     見 web/admin/vite.config.ts),不是主服務的 web/。build 產物 embed
+#     進 adminserver 這支 binary(見 server/cmd/adminserver/static.go 的
+#     //go:embed web/dist),同源掛在 /admin/ 底下,不再需要獨立部署前端
+#     或跨源 CORS 設定。
 #   - 不需要複製 server/tools 目錄:那是給 -llm=want 的 clienttools 工具
 #     定義用,adminserver 完全不含 LLM/want 相關邏輯(見 server/cmd/
 #     adminserver/main.go 開頭註解:只依賴 internal/model、internal/store、
@@ -16,7 +19,15 @@
 # 本機跑:
 #   docker run --rm -p 8081:8081 --env-file server/.env tripace-adminserver
 
-# ---- 階段 1:編譯 Go ----
+# ---- 階段 1:build 前端(admin SPA) ----
+FROM node:22-alpine AS web-build
+WORKDIR /web
+COPY web/admin/package.json web/admin/package-lock.json ./
+RUN npm ci
+COPY web/admin/ ./
+RUN npm run build
+
+# ---- 階段 2:編譯 Go ----
 FROM golang:1.26 AS build
 
 ARG GH_PAT
@@ -30,11 +41,14 @@ RUN cd /src/server && GOPRIVATE=github.com/tim72117/want go mod download
 # adminserver 不會連結 want/llm/api 等 internal 套件,見上方說明)。
 COPY server/ /src/server/
 
+# 把 admin SPA 的 build 產物放到 adminserver embed 路徑。
+COPY --from=web-build /web/dist /src/server/cmd/adminserver/web/dist
+
 # 靜態編譯:關 CGO 產出不依賴 libc 的單一執行檔,可放進極小的 base image。
 RUN cd /src/server && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
     -o /out/adminserver ./cmd/adminserver
 
-# ---- 階段 2:執行 ----
+# ---- 階段 3:執行 ----
 # distroless:只含執行檔需要的最小 runtime,無 shell、體積小、攻擊面小。
 # 內含 CA 憑證,連 Cloud SQL(sslmode=require 等)的 TLS 才驗得過。
 FROM gcr.io/distroless/static-debian12:nonroot
