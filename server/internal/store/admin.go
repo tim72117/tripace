@@ -93,6 +93,32 @@ func (s *Store) DeleteAdminSession(sessionID string) error {
 	return s.db.Where("id = ?", sessionID).Delete(&adminSessionRow{}).Error
 }
 
+// DeleteAdminSessionsByUser 刪除某管理員底下所有 session(強制登出所有裝置)。
+// 供 cmd/adminpasswd(改密碼的獨立 CLI 小工具)在更新密碼後呼叫——換密碼後
+// 舊的登入態(cookie)不該繼續有效,否則攻擊者若在密碼外洩前就已經竊得 session
+// cookie,換密碼這個動作起不到防護作用。查無任何 session 不算錯誤(冪等)。
+func (s *Store) DeleteAdminSessionsByUser(adminUserID string) error {
+	return s.db.Where("admin_user_id = ?", adminUserID).Delete(&adminSessionRow{}).Error
+}
+
+// UpdateAdminPassword 覆寫某個管理員帳號(依 email 找)的密碼雜湊。找不到該
+// email 回傳 ErrNotFound。僅供 cmd/adminpasswd 呼叫——沒有對外的 HTTP API
+// (adminconsole 目前不提供改密碼端點,見該套件的說明),刻意讓「換密碼」這個
+// 高權限操作只能透過需要 GCP 存取權限的獨立管道執行,不擴大正式服務本身的
+// 攻擊面。
+func (s *Store) UpdateAdminPassword(email, passwordHash string) error {
+	res := s.db.Model(&adminUserRow{}).
+		Where("lower(email) = lower(?)", email).
+		Update("password_hash", passwordHash)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // ListUsers 列出一般使用者清單,供 /admin/api/users 使用。刻意只回傳基本資訊
 // (id/email/name/大頭貼顏色),不含方案/額度/用量——那些功能不在這次整合範圍內。
 // userRow 目前沒有 CreatedAt 欄位,故不虛構「建立時間」這個回傳欄位。
