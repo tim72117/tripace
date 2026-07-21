@@ -3,7 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   ChevronLeft, ChevronDown, Check,
   Send, AlertCircle, Plus, LogIn, X, Settings, LogOut,
-  List, Calendar, Sparkles, GalleryHorizontal, Map,
+  List, Calendar, Sparkles, GalleryHorizontal, Map, Navigation,
 } from 'lucide-react'
 import type { ClientConfig } from './api'
 import * as api from './api'
@@ -149,6 +149,10 @@ export function PhoneContent(props: ContentProps) {
       <div className="login-screen">
         <div className="login-card">
           <div className="login-card-header">
+            <div className="login-card-logo">
+              <Navigation size={20} strokeWidth={2} />
+              <span>Tripace</span>
+            </div>
             <div className="login-card-title">歡迎使用 Tripace</div>
             <div className="login-card-subtitle">請先登入或註冊帳號,才能查看與使用行程功能。</div>
           </div>
@@ -1197,35 +1201,31 @@ function LoginForm({
 
   return (
     <>
-      <div className="section-title">{mode === 'login' ? '登入' : '註冊'}</div>
       <div className="field">
-        <label>Email</label>
         <input
           value={email}
           type="email"
           autoComplete="email"
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
+          placeholder="輸入你的 Email"
         />
       </div>
       <div className="field">
-        <label>密碼</label>
         <input
           type="password"
           value={password}
           autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
           onChange={(e) => setPassword(e.target.value)}
           onKeyDown={(e) => isSubmitEnter(e) && submit()}
-          placeholder="至少 6 字元"
+          placeholder="輸入密碼(至少 6 字元)"
         />
       </div>
       {mode === 'register' && (
         <div className="field">
-          <label>顯示名稱(可選)</label>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="留空則用 email"
+            placeholder="顯示名稱(可選,留空則用 email)"
           />
         </div>
       )}

@@ -106,7 +106,10 @@ body {
   padding: 8px 16px 16px;
 }
 
-/* 登入頁(訪客 gate,取代整個畫面):卡片上下左右置中 */
+/* 登入頁(訪客 gate,取代整個畫面):卡片上下左右置中。
+   背景複製自 LandingPage 的 .landing(海水色暈由上往下過渡到暖沙背景),
+   讓從 landing page 點「開始使用」進來的視覺是無縫銜接的度假意象;
+   進入 App 主體(登入後)後才切回 --ios-bg 的暖棕主題,兩者刻意分開。 */
 .login-screen {
   flex: 1 1 auto;
   display: flex;
@@ -114,13 +117,16 @@ body {
   justify-content: center;
   padding: 24px 20px;
   overflow-y: auto;
+  background:
+    linear-gradient(180deg, rgba(34, 189, 178, 0.22) 0%, rgba(34, 189, 178, 0) 520px),
+    #ede2cc; /* --lp-bg */
 }
 .login-card {
   width: 100%;
   max-width: 360px;
-  background: var(--ios-card);
+  background: #fdf8ec; /* --lp-card,暖白卡片,呼應 landing 而非 App 主體的 --ios-card */
   border-radius: 16px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 24px rgba(4, 128, 137, 0.12), 0 1px 4px rgba(4, 128, 137, 0.06);
   padding: 28px 24px 24px;
   display: flex;
   flex-direction: column;
@@ -129,6 +135,29 @@ body {
 .login-card-header {
   text-align: center;
   margin-bottom: 20px;
+}
+/* 品牌 Logo(圖示 + 文字):呼應 LandingPage 的度假配色(海青→沙金漸層),
+   跟 .landing-title .lp-accent 用同一套漸層手法,但這裡不在 .landing 底下
+   (那些 --lp-* 變數是 scoped 在 .landing),故直接寫入同樣的色值。 */
+.login-card-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.login-card-logo svg {
+  color: #048089; /* --lp-ocean,圖示維持實色,不隨文字漸層透明化 */
+}
+.login-card-logo span {
+  background: linear-gradient(90deg, #048089, #cd9b3f); /* --lp-ocean → --lp-sand */
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 .login-card-title {
   font-size: 20px;
@@ -141,18 +170,23 @@ body {
   color: var(--ios-gray);
   line-height: 1.5;
 }
-/* 卡片內部沿用 .field/.section-title,改為無外框、留白一致的緊湊排版 */
-.login-card .section-title {
-  padding: 0 0 8px;
-}
+/* 卡片內部沿用 .field,改為無 label、大圓角膠囊狀輸入框(參考極簡登入頁
+   慣例:無外框標籤、靠 placeholder 提示,輸入框本身是明顯的圓角膠囊)。
+   膠囊本身用純白(跟 .login-card 的暖白底 #fdf8ec 略有區隔,才看得出
+   輪廓,不只靠邊框線撐場面)。 */
 .login-card .field {
-  padding: 10px 0;
-  background: transparent;
+  padding: 14px 20px;
+  background: #ffffff;
   border-bottom: none;
   border: 1px solid var(--ios-sep);
-  border-radius: 10px;
-  padding: 10px 14px;
+  border-radius: 24px;
   margin-bottom: 10px;
+}
+/* input 元素本身瀏覽器預設會帶不透明白色背景(不會跟著外層圓角走),
+   若不覆寫,會在圓角膠囊邊界露出直角的色塊邊緣。明確設透明,讓整個
+   膠囊視覺統一由外層 .field 的白色決定,不要在 input 這層重複疊色。 */
+.login-card .field input {
+  background: transparent;
 }
 .login-card .field:focus-within {
   border-color: var(--color-accent);
@@ -160,8 +194,13 @@ body {
 .login-card .banner {
   margin: 0 0 12px;
 }
+/* 送出按鈕:滿版寬度、大圓角膠囊、加大垂直 padding,呼應同一套極簡風格。 */
 .login-card .btn-primary {
+  width: 100%;
   margin-top: 4px;
+  padding: 14px 20px;
+  border-radius: 24px;
+  font-size: 16px;
 }
 
 /* 登入表單按鈕區(送出按鈕 + 切換登入/註冊連結),供卡片與 dropdown 共用 */
