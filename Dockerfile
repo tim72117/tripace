@@ -42,6 +42,10 @@ RUN cd /src/server && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -
 FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
 COPY --from=build /out/server /app/server
+# clienttools 工具定義目錄(-clienttools-dir 預設 "tools",相對工作目錄
+# /app):main.go 只要 -llm=want 就會載入,找不到就 log.Fatalf 讓容器直接
+# 啟動失敗,故正式部署也需要這份檔案在映像裡,不能只當開發期路徑。
+COPY --from=build /src/server/tools /app/tools
 
 # Cloud Run 會注入 PORT(預設 8080);main.go 讀 PORT 覆寫監聽位址。
 EXPOSE 8080
