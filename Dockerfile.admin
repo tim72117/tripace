@@ -1,0 +1,46 @@
+# adminserver 容器映像(管理後台,獨立於主服務 tripace-server)。
+# build context 為「專案根目錄」,COPY 路徑相對根目錄寫(server/...),
+# 與根目錄的 Dockerfile(主服務用)共用同一份 server/ 原始碼與 go.mod,
+# 只是編譯目標換成 ./cmd/adminserver。
+#
+# 與主服務 Dockerfile 的差異:
+#   - 不需要 web-build 階段:adminserver 不 embed 任何前端(web/admin 是
+#     獨立部署的 Vite SPA,見 web/admin/vite.config.ts 的說明)。
+#   - 不需要複製 server/tools 目錄:那是給 -llm=want 的 clienttools 工具
+#     定義用,adminserver 完全不含 LLM/want 相關邏輯(見 server/cmd/
+#     adminserver/main.go 開頭註解:只依賴 internal/model、internal/store、
+#     internal/adminauth、internal/adminconsole)。
+#
+# 建置(從專案根目錄):
+#   docker build -f Dockerfile.admin -t tripace-adminserver .
+# 本機跑:
+#   docker run --rm -p 8081:8081 --env-file server/.env tripace-adminserver
+
+# ---- 階段 1:編譯 Go ----
+FROM golang:1.26 AS build
+
+ARG GH_PAT
+RUN git config --global url."https://${GH_PAT}@github.com/".insteadOf "https://github.com/"
+
+# 先單獨複製 go.mod / go.sum 以利 layer 快取(相依沒變時不重抓)。
+COPY server/go.mod server/go.sum /src/server/
+RUN cd /src/server && GOPRIVATE=github.com/tim72117/want go mod download
+
+# 再複製完整源碼(跟主服務共用同一份 server/,go build 只編譯用到的部分,
+# adminserver 不會連結 want/llm/api 等 internal 套件,見上方說明)。
+COPY server/ /src/server/
+
+# 靜態編譯:關 CGO 產出不依賴 libc 的單一執行檔,可放進極小的 base image。
+RUN cd /src/server && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+    -o /out/adminserver ./cmd/adminserver
+
+# ---- 階段 2:執行 ----
+# distroless:只含執行檔需要的最小 runtime,無 shell、體積小、攻擊面小。
+# 內含 CA 憑證,連 Cloud SQL(sslmode=require 等)的 TLS 才驗得過。
+FROM gcr.io/distroless/static-debian12:nonroot
+WORKDIR /app
+COPY --from=build /out/adminserver /app/adminserver
+
+# Cloud Run 會注入 PORT;main.go 讀 PORT 覆寫監聽位址(預設 :8081)。
+EXPOSE 8081
+ENTRYPOINT ["/app/adminserver"]

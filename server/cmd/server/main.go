@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tim72117/tripace/internal/adminauth"
-	"github.com/tim72117/tripace/internal/adminconsole"
 	"github.com/tim72117/tripace/internal/api"
 	"github.com/tim72117/tripace/internal/auth"
 	"github.com/tim72117/tripace/internal/llm"
@@ -37,7 +35,6 @@ func main() {
 	jwtSecret := flag.String("jwt-secret", "dev-secret-change-me", "JWT 簽章金鑰")
 	devMode := flag.Bool("dev", true, "開發模式:Apple token 不驗簽章")
 	llmKind := flag.String("llm", "want", "分析器:want(真實 LLM)| mock(假 LLM,送出觸發預設情境,供 web 操作)")
-	adminEnabled := flag.Bool("admin", false, "是否啟用管理後台(/admin/api/*);未設時整個功能完全不注冊,如同不存在")
 	clientToolsPOC := flag.Bool("clienttools-poc", false, "是否啟用「LLM 呼叫前端 tool」試做(POC,/internal/clienttools/*);預設不啟用,端點維持回 503。僅在 -llm=want 下有意義(需要 want provider 已初始化)")
 	clientToolsDir := flag.String("clienttools-dir", "tools", "clienttools POC 的工具定義目錄(*.yaml),相對路徑同 -db 慣例,相對於執行時的工作目錄")
 	flag.Parse()
@@ -56,12 +53,6 @@ func main() {
 	}
 	if v := os.Getenv("SEED"); v != "" {
 		*seed = v == "1" || strings.EqualFold(v, "true")
-	}
-	// ADMIN_ENABLED 是管理後台這整個功能的總開關。未設定(或設成非 truthy 值)時,
-	// 完全不會建立 adminauth/adminconsole 的任何東西,也不會掛任何 /admin/* 路由,
-	// 就跟這個功能不存在一樣——刻意不给它任何「半啟用」的中間狀態。
-	if v := os.Getenv("ADMIN_ENABLED"); v != "" {
-		*adminEnabled = v == "1" || strings.EqualFold(v, "true")
 	}
 
 	// DATABASE_URL(postgres://…,如 Neon)優先;未設時退回 -db 的 SQLite。
@@ -201,27 +192,10 @@ func main() {
 	mux.Handle("/internal/", srv.Routes())
 	mux.Handle("/health", srv.Routes())
 
-	// 管理後台(/admin/api/*)完全獨立於上面的業務路由:只有 *adminEnabled 為真
-	// 才會建立 adminauth/adminconsole 的 handler 並注冊路由。未啟用時,這裡整段
-	// 都不會執行,adminconsole.NewHandler 不會被呼叫、/admin/* 完全不會被注冊,
-	// 效果上就跟這個功能從未存在一樣。
-	if *adminEnabled {
-		adminAuth := adminauth.New(st, !*devMode)
-		if created, err := adminAuth.Bootstrap(os.Getenv("ADMIN_BOOTSTRAP_EMAIL"), os.Getenv("ADMIN_BOOTSTRAP_PASSWORD")); err != nil {
-			log.Printf("admin bootstrap: %v", err)
-		} else if created {
-			log.Printf("已建立管理員帳號 %s", os.Getenv("ADMIN_BOOTSTRAP_EMAIL"))
-		}
-		log.Printf("管理後台已啟用(目前管理員帳號數: %d)", adminAuth.Count())
-
-		adminMux := http.NewServeMux()
-		adminconsole.NewHandler(adminAuth, st).Register(adminMux)
-		// /admin/* 獨立套一層 CORS:管理 SPA(web/src/admin)是完全獨立部署的
-		// Vite 專案,呼叫時帶 credentials: 'include'(見 web/src/admin/src/api.ts),
-		// 故不能用 "*" 當 Allow-Origin(帶憑證的跨站請求瀏覽器會擋),改為回顯
-		// 請求的 Origin,並開 Allow-Credentials。
-		mux.Handle("/admin/", withAdminCORS(adminMux))
-	}
+	// 管理後台(/admin/api/*)已拆分成獨立的 cmd/adminserver binary/Cloud Run
+	// 服務,不再由這支主服務 binary 掛載——見 server/cmd/adminserver/main.go。
+	// 這裡刻意不留任何 /admin/* 路由,主服務完全不含 adminauth/adminconsole
+	// 的程式碼依賴(達成安全隔離:即使主業務程式碼有漏洞,不會牽連管理後台)。
 
 	mux.Handle("/", staticHandler())
 
@@ -248,29 +222,6 @@ func withLegacyDomainRedirect(next http.Handler) http.Handler {
 		if r.Host == legacyDomain {
 			target := "https://" + canonicalDomain + r.URL.RequestURI()
 			http.Redirect(w, r, target, http.StatusMovedPermanently)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-// withAdminCORS 讓 /admin/* 支援跨來源、帶憑證(cookie)的請求:回顯呼叫端的
-// Origin(而非 "*"),並開啟 Access-Control-Allow-Credentials,讓獨立部署的
-// 管理 SPA(web/src/admin,credentials: 'include')能在開發/正式環境都正常
-// 帶到 admin_session cookie。僅影響 /admin/* 這條路徑,不影響既有 /v1、/internal
-// 路由(那些路由的 CORS 由 internal/api 的 cors() 自行處理,維持原樣)。
-func withAdminCORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if origin := r.Header.Get("Origin"); origin != "" {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Vary", "Origin")
-		}
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.Header().Set("Access-Control-Max-Age", "86400")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		next.ServeHTTP(w, r)

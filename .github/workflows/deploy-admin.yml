@@ -1,0 +1,85 @@
+name: Deploy Admin to Cloud Run
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/cmd/adminserver/**'
+      - 'server/internal/adminauth/**'
+      - 'server/internal/adminconsole/**'
+      - 'server/internal/model/**'
+      - 'server/internal/store/**'
+      - 'server/go.mod'
+      - 'server/go.sum'
+      - 'Dockerfile.admin'
+      - '.dockerignore'
+      - '.github/workflows/deploy-admin.yml'
+  workflow_dispatch:
+    inputs:
+      skip_build:
+        description: '只部署不重新 build（使用現有 latest image）'
+        type: boolean
+        default: false
+
+env:
+  GCP_PROJECT_ID: "shuttle-045094509"
+  CLOUD_RUN_SERVICE: "tripace-adminserver"
+  CLOUD_RUN_REGION: "asia-east1"
+  IMAGE: "asia-east1-docker.pkg.dev/shuttle-045094509/cloud-run-source-deploy/tripace-adminserver"
+  CLOUDSQL_INSTANCE: "onagent-prod:asia-east1:onagent-db"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker asia-east1-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        if: ${{ !inputs.skip_build }}
+        run: |
+          docker build \
+            -f Dockerfile.admin \
+            --build-arg GH_PAT=${{ secrets.GH_PAT }} \
+            -t ${{ env.IMAGE }}:${{ github.sha }} \
+            -t ${{ env.IMAGE }}:latest \
+            .
+
+      - name: Push image
+        if: ${{ !inputs.skip_build }}
+        run: |
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+          docker push ${{ env.IMAGE }}:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.CLOUD_RUN_SERVICE }} \
+            --image=${{ env.IMAGE }}:${{ inputs.skip_build && 'latest' || github.sha }} \
+            --region=${{ env.CLOUD_RUN_REGION }} \
+            --allow-unauthenticated \
+            --add-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
+            --update-env-vars=DEV_MODE=false \
+            --update-secrets=DATABASE_URL=DATABASE_URL:latest,ADMIN_BOOTSTRAP_EMAIL=ADMIN_BOOTSTRAP_EMAIL:latest,ADMIN_BOOTSTRAP_PASSWORD=ADMIN_BOOTSTRAP_PASSWORD:latest \
+            --quiet
+
+      - name: Show Cloud Run URL
+        run: |
+          URL=$(gcloud run services describe ${{ env.CLOUD_RUN_SERVICE }} \
+            --region ${{ env.CLOUD_RUN_REGION }} \
+            --format 'value(status.url)')
+          echo "### Admin 部署完成" >> "$GITHUB_STEP_SUMMARY"
+          echo "URL: $URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "$URL"
