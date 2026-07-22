@@ -1,4 +1,5 @@
-import type { ClientTool, ToolContext } from '../ClientToolsBridge'
+import type { ClientTool } from '../ClientToolsBridge'
+import { defineTool } from '../../sdk-proposals/defineTool'
 import { asNonNegativeInt, type TripBatches } from '../tripEntryTools'
 
 // BatchSummary — 一個批次的摘要,形狀對齊 server/tools/clienttools.yaml
@@ -54,11 +55,28 @@ export function listTripBatches(
   return { result: { batches: batches.slice(offset, offset + limit), total } }
 }
 
-// tripListBatches — trip_list_batches 工具宣告。純讀取、不改動
-// allBatches,所以不需要呼叫 ctx.setAllBatches。
-export const tripListBatches: ClientTool = {
-  name: 'trip_list_batches',
-  handle: (args, ctx: ToolContext) => {
+// TripListBatchesArgs — trip_list_batches 的 args 型別,對齊 server/tools/
+// clienttools.yaml 的 parameters schema(offset/limit 皆必填)。跟
+// TripEntryListArgs(見 tripEntryList.ts)同樣的取捨:offset/limit 仍宣告
+// 成 unknown,「防禦性轉型」留給 listTripBatches 內部的 asNonNegativeInt
+// 處理(LLM 實際傳回來的數字參數不保證是原生 number)。
+type TripListBatchesArgs = {
+  offset: unknown
+  limit: unknown
+}
+
+function parseTripListBatchesArgs(raw: unknown): TripListBatchesArgs {
+  const r = (raw ?? {}) as Record<string, unknown>
+  return { offset: r.offset, limit: r.limit }
+}
+
+// tripListBatches — trip_list_batches 工具宣告,用 defineTool 包裝(見
+// sdk-proposals/defineTool.ts 的設計說明)。純讀取、不改動 allBatches,所以
+// 不需要呼叫 ctx.setAllBatches。
+export const tripListBatches: ClientTool = defineTool<TripListBatchesArgs>(
+  'trip_list_batches',
+  parseTripListBatchesArgs,
+  (args, ctx) => {
     return listTripBatches(ctx.getAllBatches(), args).result
   },
-}
+)

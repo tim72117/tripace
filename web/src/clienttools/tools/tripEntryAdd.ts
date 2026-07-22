@@ -1,4 +1,5 @@
-import type { ClientTool, ToolContext } from '../ClientToolsBridge'
+import type { ClientTool } from '../ClientToolsBridge'
+import { defineTool } from '../../sdk-proposals/defineTool'
 import { asString, type TripBatches, type TripEntry } from '../tripEntryTools'
 
 // newTripEntryId：核心用途是 trip_entry_add 產生新 id,因此邏輯搬進來跟工具
@@ -33,18 +34,48 @@ export function addTripEntry(
   return { allBatches: nextAllBatches, result: { id: entry.id, key, title: entry.title, date: entry.date } }
 }
 
-// tripEntryAdd — trip_entry_add 工具宣告。這裡只負責接線:透過 ctx 讀當下
-// allBatches、把純函式回傳的新 allBatches 寫回 ctx、回傳 result 給 bridge
-// 送回 LLM。key 是必填參數(見 clienttools.yaml),缺漏時視為空字串批次
-// (asString 對非字串一律回傳空字串)——空字串本身也是一個合法的 key,不
-// 特別擋下,讓 bridge 層保持單純,異常輸入的處理交給呼叫端(LLM)的工具
-// schema 必填驗證負責。
-export const tripEntryAdd: ClientTool = {
-  name: 'trip_entry_add',
-  handle: (args, ctx: ToolContext) => {
-    const key = asString(args.key)
-    const { allBatches: next, result } = addTripEntry(ctx.getAllBatches(), key, args)
+// TripEntryAddArgs — trip_entry_add 的 args 型別,對齊 server/tools/
+// clienttools.yaml 裡這個工具的 parameters schema(key 必填,title/date/
+// time/note 皆為字串、選填)。宣告這個型別本身不會驗證任何東西——真正的
+// runtime 驗證在下面的 parseTripEntryAddArgs,型別只是「parse 完之後長什麼
+// 樣子」的宣告,兩者透過 defineTool 綁定,不會不同步(見 defineTool.ts 的
+// 設計說明)。
+type TripEntryAddArgs = {
+  key: string
+  title?: string
+  date?: string
+  time?: string
+  note?: string
+}
+
+// parseTripEntryAddArgs — 把 unknown 的 raw args 轉成型別安全的
+// TripEntryAddArgs,取代原本在 handle 內部逐欄位呼叫 asString 的寫法。
+// 沿用既有的 asString 慣例(非字串一律回退空字串,不 throw)——key 缺漏時
+// 視為空字串批次,不特別擋下(異常輸入的處理交給呼叫端 LLM 的工具 schema
+// 必填驗證負責,同原本的既有取捨,這裡沒有改變行為,只是把轉型邏輯集中
+// 到一個有名字、有回傳型別的函式,而非分散寫在 handle 內文裡)。
+function parseTripEntryAddArgs(raw: unknown): TripEntryAddArgs {
+  const r = (raw ?? {}) as Record<string, unknown>
+  return {
+    key: asString(r.key),
+    title: asString(r.title) || undefined,
+    date: asString(r.date) || undefined,
+    time: asString(r.time) || undefined,
+    note: asString(r.note) || undefined,
+  }
+}
+
+// tripEntryAdd — trip_entry_add 工具宣告,用 defineTool 包裝(見 defineTool.ts
+// 的設計說明)。跟改寫前相比,handle 內部直接拿到型別安全的 TripEntryAddArgs
+// (args.key 是 string,不用再 asString(args.key)),轉型只在 parseTripEntryAddArgs
+// 這一處集中處理。這裡只負責接線:透過 ctx 讀當下 allBatches、把純函式
+// addTripEntry 回傳的新 allBatches 寫回 ctx、回傳 result 給 bridge 送回 LLM。
+export const tripEntryAdd: ClientTool = defineTool<TripEntryAddArgs>(
+  'trip_entry_add',
+  parseTripEntryAddArgs,
+  (args, ctx) => {
+    const { allBatches: next, result } = addTripEntry(ctx.getAllBatches(), args.key, args)
     ctx.setAllBatches(next)
     return result
   },
-}
+)

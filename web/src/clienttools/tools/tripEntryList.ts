@@ -1,4 +1,5 @@
-import type { ClientTool, ToolContext } from '../ClientToolsBridge'
+import type { ClientTool } from '../ClientToolsBridge'
+import { defineTool } from '../../sdk-proposals/defineTool'
 import { asNonNegativeInt, asString, type TripBatches, type TripEntry } from '../tripEntryTools'
 
 // listTripEntries：分頁查詢某一批(key)的純邏輯,不改動 allBatches,純讀取,
@@ -26,18 +27,36 @@ export function listTripEntries(
   return { result: { entries: entries.slice(offset, offset + limit), total } }
 }
 
-// tripEntryList — trip_entry_list 工具宣告。純讀取、不改動 allBatches,所以
-// 不需要呼叫 ctx.setAllBatches;但仍需讓呼叫端(ChatScreen.tsx)知道「這個 key
-// 剛被查詢過」,才能在答案訊息底下顯示對應的清單——「內容比對」機制
-// (ChatScreen.tsx 的 changedBatchKeys)對純讀取工具永遠偵測不到變化,故改用
-// ctx.notifyBatchQueried 這個平行、獨立的通知口子主動回報(見 ClientToolsBridge.ts
-// ToolContext 型別定義處的完整說明)。
-export const tripEntryList: ClientTool = {
-  name: 'trip_entry_list',
-  handle: (args, ctx: ToolContext) => {
-    const key = asString(args.key)
-    const result = listTripEntries(ctx.getAllBatches(), key, args).result
-    ctx.notifyBatchQueried(key)
+// TripEntryListArgs — trip_entry_list 的 args 型別,對齊 server/tools/
+// clienttools.yaml 的 parameters schema(key/offset/limit 皆必填,但這裡
+// offset/limit 仍宣告成可能是任意 unknown 值——LLM 實際傳回來的數字參數
+// 不保證是原生 number,見 tripEntryTools.ts 的 asNonNegativeInt 說明;把
+// 「防禦性轉型」留給 listTripEntries 內部的 asNonNegativeInt 處理,這裡
+// 只確保 key 一定是 string)。
+type TripEntryListArgs = {
+  key: string
+  offset: unknown
+  limit: unknown
+}
+
+function parseTripEntryListArgs(raw: unknown): TripEntryListArgs {
+  const r = (raw ?? {}) as Record<string, unknown>
+  return { key: asString(r.key), offset: r.offset, limit: r.limit }
+}
+
+// tripEntryList — trip_entry_list 工具宣告,用 defineTool 包裝(見 defineTool.ts
+// 的設計說明)。純讀取、不改動 allBatches,所以不需要呼叫 ctx.setAllBatches;
+// 但仍需讓呼叫端(ChatScreen.tsx)知道「這個 key 剛被查詢過」,才能在答案訊息
+// 底下顯示對應的清單——「內容比對」機制(ChatScreen.tsx 的 changedBatchKeys)
+// 對純讀取工具永遠偵測不到變化,故改用 ctx.notifyBatchQueried 這個平行、獨立
+// 的通知口子主動回報(見 ClientToolsBridge.ts ToolContext 型別定義處的完整
+// 說明)。
+export const tripEntryList: ClientTool = defineTool<TripEntryListArgs>(
+  'trip_entry_list',
+  parseTripEntryListArgs,
+  (args, ctx) => {
+    const result = listTripEntries(ctx.getAllBatches(), args.key, args).result
+    ctx.notifyBatchQueried(args.key)
     return result
   },
-}
+)

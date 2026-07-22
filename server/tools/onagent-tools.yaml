@@ -1,0 +1,234 @@
+# onagent 平台(https://github.com/tim72117/onagent)上 tripace app 的工具
+# 定義來源檔——跟 clienttools.yaml(tripace 自家 clienttools WS 機制用)是
+# 兩套完全獨立的系統,分開維護,格式也不完全相同:
+#   - onagent 沒有 clienttools.yaml 的 appId 概念(appId 由 CLI 指令參數決定,
+#     見下方用法),也不支援 clienttools.yaml 部分擴充欄位。
+#   - kind: query 是 onagent 這邊必填的行為決定欄位(未設定時預設是 action
+#     型,fire-and-forget,前端回傳的內容永遠不會餵回 LLM——這三個工具都是
+#     讓 LLM 需要看到執行結果的查詢/確認類工具,漏加 kind: query 會導致
+#     LLM 完全看不到查詢/新增結果卻不會有任何錯誤訊息,難以察覺)。
+#
+# 這份檔案本身不會被 server(cmd/server)讀取或用到——onagent 是外部平台,
+# 前端串接程式碼在 web/src/OnagentBridgeDemo.tsx(測試用),透過
+# web/src/sdk-proposals/toAgentBridgeTools.ts 把這裡列的三個工具對應的
+# ClientTool(web/src/clienttools/tools/ 底下)接上 AgentBridge。
+#
+# 用法(需要 onagent CLI,見 .claude/skills/onagent-cli-setup):
+#   onagent save-tools -api <onagent 後端 URL> tripace server/tools/onagent-tools.yaml
+#
+# 本機開發注意:onagent 後端與 tripace-server 是兩個完全獨立的服務,不要
+# 假設同一個埠——本機曾經誤把兩者都當成 8080(tripace-server 的埠),但
+# tripace-server 的靜態檔案 fallback 對任何未知路徑都回 200 + 一段 HTML,
+# 製造出「看起來有回應但其實沒人真的處理請求」的假象,一度誤導判斷。
+# 目前本機 onagent 後端實際監聽 8081,執行上面的指令前務必先確認
+# `curl -s <url>/console/apps` 回傳的是 JSON(401 未登入或實際資料都算對),
+# 不是 <!doctype html> 開頭的內容。
+
+appId: tripace
+tools:
+  - name: trip_entry_add
+    description: >-
+      在前端的旅程 entry 清單新增一筆新項目。使用者想加入一筆新的行程/景點/
+      活動時呼叫。成功後會回傳新項目的 id 與這次用的 key,之後若要刪除或
+      修改這筆,要用這個 id 與 key。
+    kind: query
+    parameters:
+      type: object
+      description: 新增一筆旅程 entry 所需的欄位。
+      properties:
+        key:
+          type: string
+          description: >-
+            要新增進哪一批清單的識別字串。延續現有批次就填該批次的 key;
+            全新規劃就自訂一個新的語意化 key(如 tokyo_trip)。不確定目前
+            有哪些批次時,先呼叫 trip_list_batches 查詢。
+        title:
+          type: string
+          description: 項目標題,例如「東京晴空塔」、「築地市場早餐」。
+        date:
+          type: string
+          description: 項目日期,格式 'YYYY-MM-DD'。使用者說「明天」「後天」等相對日期時,自行換算成絕對日期後填入。
+        time:
+          type: string
+          description: 項目時刻,24 小時制 'HH:MM'。使用者沒有提到時刻時留空字串(表示全天/未定時)。
+        note:
+          type: string
+          description: 補充備註,例如地點、注意事項。沒有時留空字串。
+      required:
+        - key
+        - title
+        - date
+    returns:
+      type: object
+      description: 前端新增成功後回報的結果。
+      properties:
+        id:
+          type: string
+          description: 新項目的 id,之後刪除/修改要用這個。
+        key:
+          type: string
+          description: 這次實際存入的批次 key——記住它,後續同一批的操作要沿用。
+        title:
+          type: string
+          description: 實際存入的標題(回顯確認)。
+        date:
+          type: string
+          description: 實際存入的日期(回顯確認)。
+
+  - name: trip_entry_list
+    description: >-
+      分頁查詢前端旅程 entry 清單(某一批)的內容。使用者問「清單裡有什麼」,
+      或你需要先找到正確 id 才能刪除/修改某一筆時呼叫。key、offset、limit
+      皆必填、不能省略——清單筆數可能很多,不要假設一次就能拿到全部:回傳的
+      total 是該批清單總筆數,若大於你目前已查到的筆數,代表還沒查完,要用
+      下一個 offset(前一次的 offset + limit)再呼叫一次繼續翻頁。
+    kind: query
+    parameters:
+      type: object
+      description: 分頁查詢參數,key、offset、limit 皆為必填。
+      properties:
+        key:
+          type: string
+          description: 要查詢哪一批清單。不確定目前有哪些批次時,先呼叫 trip_list_batches 查詢。
+        offset:
+          type: integer
+          description: 從第幾筆開始查詢(0-based)。查第一批請填 0。
+        limit:
+          type: integer
+          description: 單次最多回傳幾筆。
+      required:
+        - key
+        - offset
+        - limit
+    returns:
+      type: object
+      description: 前端回報的分頁查詢結果。
+      properties:
+        entries:
+          type: array
+          description: 這一頁查到的項目(從 offset 開始,最多 limit 筆)。
+          items:
+            type: object
+            description: 一筆旅程 entry。
+            properties:
+              id:
+                type: string
+                description: 項目 id。
+              title:
+                type: string
+                description: 項目標題。
+              date:
+                type: string
+                description: 項目日期。
+              time:
+                type: string
+                description: 項目時刻,可能為空字串。
+              note:
+                type: string
+                description: 備註,可能為空字串。
+        total:
+          type: integer
+          description: 清單目前的總筆數(不受 offset/limit 影響)。用來判斷是否已查完整份清單、還要不要用下一個 offset 繼續翻頁。
+
+  - name: trip_list_batches
+    description: >-
+      分頁查詢目前前端記憶體裡存在哪些批次(key)的旅程清單,每批附上摘要資訊
+      (筆數、日期範圍、代表性標題)。在新增/查詢/修改任何一筆前,若不確定
+      使用者這次講的內容屬於哪一批、或該沿用現有 key 還是開新的,先呼叫這個
+      工具查看現況再自行判斷。offset、limit 皆必填、不能省略——批次數量可能
+      持續累積,不要假設一次就能拿到全部:回傳的 total 是目前批次總數,若
+      大於你目前已查到的筆數,代表還沒查完,要用下一個 offset(前一次的
+      offset + limit)再呼叫一次繼續翻頁。
+    kind: query
+    parameters:
+      type: object
+      description: 分頁查詢參數,offset、limit 皆為必填。
+      properties:
+        offset:
+          type: integer
+          description: 從第幾批開始查詢(0-based)。查第一批請填 0。
+        limit:
+          type: integer
+          description: 單次最多回傳幾批。
+      required:
+        - offset
+        - limit
+    returns:
+      type: object
+      description: 前端回報的分頁查詢結果。
+      properties:
+        batches:
+          type: array
+          description: 這一頁查到的批次(從 offset 開始,最多 limit 筆),依最近建立/修改排序。
+          items:
+            type: object
+            description: 一個批次的摘要,足夠讓你判斷「這批大概是什麼」。
+            properties:
+              key:
+                type: string
+                description: 這批清單的 key,後續操作這批要帶這個值。
+              count:
+                type: integer
+                description: 這批目前有幾筆項目。
+              firstDate:
+                type: string
+                description: 這批項目中最早的日期('YYYY-MM-DD'),沒有項目時為空字串。
+              lastDate:
+                type: string
+                description: 這批項目中最晚的日期('YYYY-MM-DD'),沒有項目時為空字串。
+              sampleTitles:
+                type: array
+                description: 最多三筆代表性標題(依項目順序取前幾筆),用來快速判斷這批的主題。
+                items:
+                  type: string
+
+  - name: trip_entry_delete
+    description: >-
+      從前端的旅程 entry 清單刪除一筆項目。需要先知道正確的 key 與 id
+      ——不確定時先呼叫 trip_list_batches / trip_entry_list 查詢。
+    kind: action
+    parameters:
+      type: object
+      description: 要刪除的項目所屬的 key 與 id。
+      properties:
+        key:
+          type: string
+          description: 該項目所屬批次的 key。不確定時先呼叫 trip_list_batches 查詢現有批次。
+        id:
+          type: string
+          description: 要刪除的項目 id(呼叫 trip_entry_list 或先前 trip_entry_add 的回傳取得)。
+      required:
+        - key
+        - id
+
+  - name: trip_entry_update
+    description: >-
+      修改前端旅程 entry 清單中既有一筆項目的欄位。只需傳入要改的欄位,
+      其餘留空字串表示不修改。需要先知道正確的 key 與 id
+      ——不確定時先呼叫 trip_list_batches / trip_entry_list 查詢。
+    kind: action
+    parameters:
+      type: object
+      description: 要修改的項目所屬的 key、id,與要更新的欄位。
+      properties:
+        key:
+          type: string
+          description: 該項目所屬批次的 key。不確定時先呼叫 trip_list_batches 查詢現有批次。
+        id:
+          type: string
+          description: 要修改的項目 id。
+        title:
+          type: string
+          description: 新標題。留空字串表示不修改。
+        date:
+          type: string
+          description: 新日期,格式 'YYYY-MM-DD'。留空字串表示不修改。
+        time:
+          type: string
+          description: 新時刻,24 小時制 'HH:MM'。留空字串表示不修改。
+        note:
+          type: string
+          description: 新備註。留空字串表示不修改。
+      required:
+        - key
+        - id

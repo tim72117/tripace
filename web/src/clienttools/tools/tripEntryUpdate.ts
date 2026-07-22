@@ -1,4 +1,5 @@
-import type { ClientTool, ToolContext } from '../ClientToolsBridge'
+import type { ClientTool } from '../ClientToolsBridge'
+import { defineTool } from '../../sdk-proposals/defineTool'
 import { asString, type TripBatches } from '../tripEntryTools'
 
 // updateTripEntry：修改一筆旅程 entry 的純邏輯,不含 React 依賴。找不到對應
@@ -30,14 +31,44 @@ export function updateTripEntry(
   return { allBatches: nextAllBatches, result: { updated: id } }
 }
 
-// tripEntryUpdate — trip_entry_update 工具宣告。找不到對應 key/id 時
+// TripEntryUpdateArgs — trip_entry_update 的 args 型別,對齊 server/tools/
+// clienttools.yaml 的 parameters schema(key、id 必填,title/date/time/note
+// 皆選填)。time/note 刻意保留 unknown(而非轉成 string)——updateTripEntry
+// 內部用 `args.time !== undefined` 判斷「這個欄位有沒有被傳」跟「被傳成
+// 空字串」是不同語意(只傳其中幾個欄位表示「其餘不修改」,見該函式的說明),
+// parseArgs 若把 undefined 也轉成空字串,會讓這個判斷永遠為 true、改變既有
+// 行為,故這兩個欄位不能用 asString 統一轉型,原樣傳遞給 updateTripEntry
+// 內部處理。
+type TripEntryUpdateArgs = {
+  key: string
+  id: string
+  title?: string
+  date?: string
+  time: unknown
+  note: unknown
+}
+
+function parseTripEntryUpdateArgs(raw: unknown): TripEntryUpdateArgs {
+  const r = (raw ?? {}) as Record<string, unknown>
+  return {
+    key: asString(r.key),
+    id: asString(r.id),
+    title: asString(r.title) || undefined,
+    date: asString(r.date) || undefined,
+    time: r.time,
+    note: r.note,
+  }
+}
+
+// tripEntryUpdate — trip_entry_update 工具宣告,用 defineTool 包裝(見
+// sdk-proposals/defineTool.ts 的設計說明)。找不到對應 key/id 時
 // updateTripEntry 會 throw,交給 bridge 統一轉成 tool_result 的 error 回應。
-export const tripEntryUpdate: ClientTool = {
-  name: 'trip_entry_update',
-  handle: (args, ctx: ToolContext) => {
-    const key = asString(args.key)
-    const { allBatches: next, result } = updateTripEntry(ctx.getAllBatches(), key, args)
+export const tripEntryUpdate: ClientTool = defineTool<TripEntryUpdateArgs>(
+  'trip_entry_update',
+  parseTripEntryUpdateArgs,
+  (args, ctx) => {
+    const { allBatches: next, result } = updateTripEntry(ctx.getAllBatches(), args.key, args)
     ctx.setAllBatches(next)
     return result
   },
-}
+)

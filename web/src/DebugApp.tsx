@@ -6,9 +6,10 @@ import { useAppState, PhoneContent } from './App'
 import { DebugPanel } from './DebugPanel'
 import { RecommendedPlacesList, RecommendedPlacesRow, FAKE_RECOMMENDED_PLACES } from './RecommendedPlaces'
 import { RecommendedPlacesMap } from './RecommendedPlacesMap'
+import { OnagentBridgeDemo } from './OnagentBridgeDemo'
 import './debug.css'
 
-type DemoMode = 'app' | 'cards' | 'row' | 'map'
+type DemoMode = 'app' | 'cards' | 'row' | 'map' | 'onagent'
 
 // 推薦景點卡片 UI 試做:純假資料展示,不串接任何 API,只是讓主內容區
 // 換成 RecommendedPlacesList,方便直接在既有 debug 工作台看到卡片渲染效果。
@@ -132,6 +133,8 @@ export function DebugApp() {
           <RecommendedPlacesRowDemo />
         ) : demoMode === 'map' ? (
           <RecommendedPlacesMapDemo />
+        ) : demoMode === 'onagent' ? (
+          <OnagentBridgeDemo />
         ) : (
           <PhoneContent {...props} />
         )}
@@ -158,6 +161,13 @@ export function DebugApp() {
           title="切換推薦景點地圖 UI 試做(假資料)"
         >
           {demoMode === 'map' ? '← 回到 App' : '推薦景點地圖試做'}
+        </button>
+        <button
+          className="btn-secondary"
+          onClick={() => setDemoMode((m) => (m === 'onagent' ? 'app' : 'onagent'))}
+          title="測試透過 onagent 平台呼叫 trip_entry_add"
+        >
+          {demoMode === 'onagent' ? '← 回到 App' : 'onagent 串接試做'}
         </button>
       </div>
       <DebugPanel
