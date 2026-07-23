@@ -1,0 +1,8 @@
+%% ReAct agent 行為骨架——節點語法約定與完整說明見同目錄 README.md
+%% (mermaid v11 對開頭多行 %% 註解區塊解析不穩定,故此檔只留最短單行註解)
+
+flowchart TD
+    start([收到一句話]) --> hasLocation{有明確地點?}
+    hasLocation -->|是| callGeocode[[geocode]]
+    hasLocation -->|否| replyNoted((回覆:記下))
+    callGeocode --> replyGeocoded((回覆:座標))

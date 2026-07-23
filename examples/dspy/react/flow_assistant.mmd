@@ -1,0 +1,76 @@
+%% assistant_agent.go 行為骨架簡化摘要——完整說明見同目錄 flow_assistant.md
+%% (mermaid v11 對開頭多行 %% 註解區塊解析不穩定,故此檔只留最短單行註解)
+
+flowchart TD
+    start(["收到使用者一則輸入"]) --> classify{"意圖:查詢、規劃、推薦或想去哪裡?"}
+
+    %% ---- 情況 B:查詢 ----
+    classify -->|查詢| callTripEntryListForQuery[["trip_entry_list"]]
+    callTripEntryListForQuery --> replyQueried(("回覆:已載入"))
+
+    %% ---- 情況「推薦」:底下再分兩種子情境,都不接著寫入行程。
+    %% 跟「規劃→地點是區域→詢問推薦」那段是否要合併,待之後評估。
+    classify -->|推薦| recommendKind{"鄰近推薦或開放式提問(有什麼地方可以去)?"}
+
+    %% 子情境一:已有明確參考地點,查鄰近的其他地點
+    recommendKind -->|鄰近推薦| callRecommendNearbyTop[["recommend_nearby"]]
+    callRecommendNearbyTop --> replyRecommendedNearby(("回覆:推薦"))
+
+    %% 子情境二:開放式提問(如「有什麼地方可以去」),沒有明確參考地點
+    recommendKind -->|開放式提問| callRecommendOpen[["recommend_nearby"]]
+    callRecommendOpen --> replyRecommendedOpen(("回覆:推薦地點"))
+
+    %% ---- 情況「想去哪裡」:先判斷目的地範圍——大區域就詢問要不要推薦
+    %% 行程,同意才查;特定定點則直接加入行程,不需要先確認。
+    classify -->|想去哪裡| destinationScope{"目的地是大區域或特定定點?"}
+
+    %% 大區域 → 詢問要不要推薦行程,同意才查;不同意則改問使用者要不要
+    %% 自己提供更詳細的行程資訊(如具體地點、日期),而非就此結束對話
+    destinationScope -->|大區域| askUserDestinationRecommend[["ask_user"]]
+    askUserDestinationRecommend --> userWantsDestinationRecommend{"使用者同意推薦?"}
+    userWantsDestinationRecommend -->|同意| callRecommendDestination[["recommend_nearby"]]
+    callRecommendDestination --> replyDestinationRecommended(("回覆:推薦行程"))
+    userWantsDestinationRecommend -->|不同意| askUserDetailedItinerary[["ask_user"]]
+    askUserDetailedItinerary --> replyAskDetailedItinerary(("回覆:詢問詳細行程"))
+
+    %% 特定定點 → 直接加入行程
+    destinationScope -->|特定定點| callTripEntryAddDestination[["trip_entry_add"]]
+    callTripEntryAddDestination --> replyDestinationAdded(("回覆:已記下"))
+
+    %% ---- 情況「規劃」:合併原本情況 A(新增)與情況 C(更新)。
+    %% 前置統一先用 trip_entry_list 找目標(取代原本情況 A 用 entry_query
+    %% 查重的前置動作)——找到就走更新流程,找不到就走新增流程(含地點
+    %% 處理三分支)。
+    classify -->|規劃| callTripEntryList[["trip_entry_list"]]
+    callTripEntryList --> listResult{"找到幾筆?"}
+
+    %% 找到 → 更新流程(原情況 C)
+    listResult -->|多筆| askChoiceWhich[["ask_choice"]]
+    askChoiceWhich --> callTripEntryUpdateFromChoice[["trip_entry_update"]]
+    callTripEntryUpdateFromChoice --> replyUpdated(("回覆:已更新"))
+    listResult -->|1筆| dupCheckUpdate{"改完會跟其他條目重複?"}
+    dupCheckUpdate -->|是| askUserDupUpdate[["ask_user"]]
+    askUserDupUpdate --> replyDupConfirm(("回覆:確認重複"))
+    dupCheckUpdate -->|否| callTripEntryUpdate[["trip_entry_update"]]
+    callTripEntryUpdate --> replyUpdated2(("回覆:已更新"))
+
+    %% 找不到 → 新增流程(原情況 A,含地點處理三分支)
+    listResult -->|0筆| hasLocation{"有明確可定位地點?"}
+
+    %% 地點是單一地點 → geocode 確認
+    hasLocation -->|單一地點| callGeocode[["geocode"]]
+    callGeocode --> callTripEntryAddWithGeo[["trip_entry_add"]]
+    callTripEntryAddWithGeo --> replyAddedWithGeo(("回覆:已記下且座標"))
+
+    %% 地點是區域 → 詢問要不要推薦,同意才查
+    hasLocation -->|區域,非單一地點| askUserRecommend[["ask_user"]]
+    askUserRecommend --> userWantsRecommend{"使用者同意推薦?"}
+    userWantsRecommend -->|同意| callRecommendNearby[["recommend_nearby"]]
+    callRecommendNearby --> callTripEntryAddWithRecommend[["trip_entry_add"]]
+    callTripEntryAddWithRecommend --> replyAddedWithRecommend(("回覆:已記下且推薦"))
+    userWantsRecommend -->|不同意| callTripEntryAddNoRecommend[["trip_entry_add"]]
+    callTripEntryAddNoRecommend --> replyAddedNoRecommend(("回覆:已記下"))
+
+    %% 無地點 → 直接新增
+    hasLocation -->|無地點| callTripEntryAddNoLocation[["trip_entry_add"]]
+    callTripEntryAddNoLocation --> replyAddedPlain(("回覆:已記下"))

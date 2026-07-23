@@ -38,6 +38,13 @@ server/migrate-photo-assets
 # 的增減(binary、設定檔等)又被 git 追蹤提示。
 .claude/skills/onagent-cli-setup/
 
+examples/dspy/dspy
+examples/dspy/react/react
+
+# go run . gendata 的輸出——每次都能重新生成,人工確認完才拿去 go run . train
+examples/dspy/react/dataset.json
+examples/dspy/react/dataset_*.json
+
 # go:embed 的前端 build 產物,只在 Docker build 過程中由 COPY --from=web-build
 # 產生(見 Dockerfile、Dockerfile.admin),本機驗證/除錯時手動複製進來的副本
 # 不該進版控。webadmin/dist 先前漏排除,導致本機手動複製的 admin build
