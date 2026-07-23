@@ -21,6 +21,12 @@ server/tmp/
 # ---- 編譯產物 ----
 *.exe
 server/server
+examples/dspy/dspy
+examples/dspy/react/react
+
+# go run . gendata 的輸出——每次都能重新生成,人工確認完才拿去 go run . train
+examples/dspy/react/dataset.json
+examples/dspy/react/dataset_*.json
 
 # go:embed 的前端 build 產物,只在 Docker build 過程中由 COPY --from=web-build
 # 產生(見 Dockerfile、Dockerfile.admin),本機驗證/除錯時手動複製進來的副本

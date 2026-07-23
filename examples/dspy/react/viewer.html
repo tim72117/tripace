@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<title>Mermaid Flow Viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f4f1;
+    --surface: #ffffff;
+    --border: #dcd9d3;
+    --text: #232323;
+    --text-dim: #6b6862;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1c;
+      --surface: #232326;
+      --border: #38373c;
+      --text: #e8e6e1;
+      --text-dim: #9b988f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    overflow-x: hidden;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 20px 60px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .hint { color: var(--text-dim); font-size: 13px; margin: 0 0 18px; }
+  .controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  button, label.filebtn {
+    font-size: 13px;
+    padding: 7px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+  }
+  button:hover, label.filebtn:hover { border-color: var(--text-dim); }
+  input[type="file"] { display: none; }
+  /* #src 只當渲染邏輯的資料來源(render() 讀 src.value),畫面上不需要
+     顯示 .mmd 原始文字內容,故直接隱藏——貼上內容這個用法因此不再可用,
+     但選檔/拖曳/熱重載都不依賴使用者看得到這個欄位,不受影響。 */
+  textarea#src { display: none; }
+  /* .diagram-card 刻意放在 .wrap 外面(見 body 結構),不繼承 .wrap 的
+     max-width: 1200px 限制,天然撐滿瀏覽器可視寬度——比起把 .wrap 內的
+     卡片用 100vw+負 margin 硬跳出去(容易因捲軸寬度計算誤差產生幾px
+     溢出),讓它單純長在 body 底下直接吃滿寬度更穩健。 */
+  .diagram-card {
+    width: 100%;
+    margin: 18px 0 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    min-height: 120px;
+    box-sizing: border-box;
+  }
+  /* SVG 依容器寬度自適應縮放,不會產生橫向捲軸——mermaid 輸出的 SVG
+     預設帶固定 width/height 屬性,這裡蓋掉讓它改吃容器寬度百分比,並
+     保持長寬比(height: auto)。用 min()確保無論 --zoom 設多少,寬度都
+     不會超過容器 100%,徹底避免橫向溢出/捲軸。 */
+  .diagram-card svg {
+    display: block;
+    width: min(calc(var(--zoom, 80) * 1%), 100%);
+    height: auto;
+  }
+  .error {
+    color: #c0392b;
+    font-family: ui-monospace, monospace;
+    font-size: 13px;
+    white-space: pre-wrap;
+  }
+  .filename { font-size: 12.5px; color: var(--text-dim); margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Mermaid Flow Viewer</h1>
+  <p class="hint">
+    純本機靜態頁面,不需要伺服器。選擇或拖曳同目錄的 <code>.mmd</code> 檔案
+    (如 flow.mmd、flow_assistant.mmd)即可自動渲染。
+  </p>
+
+  <div class="controls">
+    <label class="filebtn">
+      選擇 .mmd 檔案
+      <input type="file" id="fileInput" accept=".mmd,.mermaid,.md,text/plain" />
+    </label>
+    <button id="renderBtn">渲染</button>
+    <button id="clearBtn">清空</button>
+    <label style="font-size:13px; color:var(--text-dim); display:flex; align-items:center; gap:6px;">
+      縮放
+      <input type="range" id="zoomRange" min="10" max="100" step="5" value="80" />
+      <span id="zoomValue">80%</span>
+    </label>
+    <label style="font-size:13px; color:var(--text-dim); display:flex; align-items:center; gap:6px;">
+      <input type="checkbox" id="autoReload" checked />
+      自動重新載入(需用 serve.py 啟動,file:// 開啟無效)
+    </label>
+    <span id="reloadStatus" style="font-size:12px; color:var(--text-dim);"></span>
+  </div>
+  <div class="filename" id="filename"></div>
+
+  <textarea id="src"></textarea>
+</div>
+
+<div class="diagram-card" id="output"></div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default",
+    securityLevel: "loose",
+    flowchart: { htmlLabels: true },
+    themeVariables: { fontSize: "20px" },
+  });
+
+  const fileInput = document.getElementById("fileInput");
+  const renderBtn = document.getElementById("renderBtn");
+  const clearBtn = document.getElementById("clearBtn");
+  const src = document.getElementById("src");
+  const output = document.getElementById("output");
+  const filename = document.getElementById("filename");
+
+  // 選檔/拖曳載入的檔案,若跟目前伺服器目錄下的檔名相符,同步寫回網址
+  // ?file= 參數(用 replaceState,不觸發整頁刷新、不新增瀏覽歷史紀錄)。
+  // 這樣重新整理瀏覽器時 loadQueryFileOnce 才會抓到同一份檔案,而不是
+  // 退回原本網址帶的舊檔案或空白——選檔本身不透過 fetch,無法簡單
+  // 驗證這個檔名是否真的能被伺服器讀到,寫入網址後續 fetch 失敗時
+  // loadQueryFileOnce 自己的錯誤處理會顯示出來。
+  function syncQueryFile(name) {
+    queryFile = name;
+    const url = new URL(location.href);
+    url.searchParams.set("file", name);
+    history.replaceState(null, "", url);
+    autoReloadBox.disabled = false;
+    lastContent = null; // 換了檔案,強制下次輪詢視為「有變化」
+    startPolling();
+  }
+
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    filename.textContent = "已載入: " + file.name;
+    src.value = await file.text();
+    render();
+    syncQueryFile(file.name);
+  });
+
+  ["dragover"].forEach((evt) =>
+    document.body.addEventListener(evt, (e) => e.preventDefault())
+  );
+  document.body.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    filename.textContent = "已載入(拖曳): " + file.name;
+    src.value = await file.text();
+    render();
+    syncQueryFile(file.name);
+  });
+
+  clearBtn.addEventListener("click", () => {
+    src.value = "";
+    output.innerHTML = "";
+    filename.textContent = "";
+  });
+
+  renderBtn.addEventListener("click", render);
+
+  let renderSeq = 0;
+
+  // 從伺服器啟動(serve.py)時可帶 ?file=xxx.mmd 自動載入並渲染——用
+  // fetch 讀同目錄檔案在 file:// 開啟時會被瀏覽器 CORS 擋掉,故只有透過
+  // http:// 才會用這個路徑,file:// 手動打開時仍走上面的選檔/拖曳/貼上。
+  let queryFile = new URLSearchParams(location.search).get("file");
+  const autoReloadBox = document.getElementById("autoReload");
+  const reloadStatus = document.getElementById("reloadStatus");
+  let lastContent = null;
+  let pollTimer = null;
+
+  async function loadQueryFileOnce(isPoll) {
+    if (!queryFile) return;
+    try {
+      const res = await fetch(queryFile, { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const text = await res.text();
+      if (isPoll && text === lastContent) return; // 內容沒變,不重繪避免閃爍
+      lastContent = text;
+      filename.textContent = "已載入: " + queryFile;
+      src.value = text;
+      render();
+      if (isPoll) {
+        reloadStatus.textContent = "已於 " + new Date().toLocaleTimeString() + " 偵測到變更並重新渲染";
+      }
+    } catch (err) {
+      filename.textContent = "自動載入 " + queryFile + " 失敗: " + err.message;
+    }
+  }
+
+  // 熱重載:每 1 秒重新 fetch 同一份檔案比對內容字串,變了才重繪——純
+  // 前端輪詢,不需要 WebSocket/額外套件,serve.py 本身不用改。只在網址帶
+  // ?file= 且勾選「自動重新載入」時運作。
+  function startPolling() {
+    stopPolling();
+    if (!queryFile || !autoReloadBox.checked) return;
+    pollTimer = setInterval(() => loadQueryFileOnce(true), 1000);
+  }
+  function stopPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+    reloadStatus.textContent = "";
+  }
+
+  // change 監聽器一律綁定,不受初始 queryFile 是否存在影響——選檔/拖曳
+  // (syncQueryFile)可能在頁面載入後才讓 queryFile 從空變成有值,若只在
+  // 「一開始網址就帶 ?file=」時才綁定,之後選檔案觸發的 startPolling
+  // 會正常執行,但使用者手動切換「自動重新載入」勾選框會沒有反應。
+  autoReloadBox.addEventListener("change", startPolling);
+  if (queryFile) {
+    loadQueryFileOnce(false).then(startPolling);
+  } else {
+    autoReloadBox.disabled = true;
+  }
+
+  async function render() {
+    const code = src.value.trim();
+    // 清空舊內容前先鎖住目前的容器高度,避免 innerHTML = "" 那一瞬間
+    // 容器因為沒有子元素撐開而塌縮到 min-height,新圖渲染完才又撐開造成
+    // 畫面「跳一下」——渲染完成後(成功或失敗都算)在最後解除鎖定,讓
+    // 容器改回依內容自然撐開的高度。
+    const lockedHeight = output.getBoundingClientRect().height;
+    if (lockedHeight > 0) output.style.minHeight = lockedHeight + "px";
+
+    output.innerHTML = "";
+    if (!code) {
+      output.style.minHeight = "";
+      return;
+    }
+    const id = "mmd-" + Date.now() + "-" + (renderSeq++);
+    try {
+      const { svg } = await mermaid.render(id, code);
+      output.innerHTML = svg;
+      applyZoom();
+    } catch (err) {
+      const pre = document.createElement("pre");
+      pre.className = "error";
+      pre.textContent = "渲染失敗:\n" + (err && err.message ? err.message : String(err));
+      output.appendChild(pre);
+    } finally {
+      output.style.minHeight = "";
+    }
+  }
+
+  const zoomRange = document.getElementById("zoomRange");
+  const zoomValue = document.getElementById("zoomValue");
+
+  zoomRange.addEventListener("input", applyZoom);
+
+  // 縮放改用 CSS width 百分比(見上方 .diagram-card svg 規則),寬度變化
+  // 會連帶讓 height: auto 等比例調整,容器高度自然被撐開,不需要額外
+  // 手動計算/寫入 min-height。
+  function applyZoom() {
+    const zoom = parseFloat(zoomRange.value);
+    zoomValue.textContent = zoom + "%";
+    output.style.setProperty("--zoom", zoom);
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+%% 意圖分類骨架——完整說明見同目錄 README.md
+%% (mermaid v11 對開頭多行 %% 註解區塊解析不穩定,故此檔只留最短單行註解)
+
+flowchart TD
+    start(["收到使用者一則輸入"]) --> classify{"意圖:查詢、規劃、直接推薦、開放式提問或想去哪裡?"}
+
+    %% ---- 情況 B:查詢——不含實際查詢資料庫的動作,直接到終點 ----
+    classify -->|查詢| replyQueried(("回覆:已載入"))
+
+    %% ---- 情況「推薦」:在 classify 這一層就先分成兩條意圖分支(直接
+    %% 推薦、開放式提問),不再另立一層決策節點——分類階段就要能分辨
+    %% 「已有明確參考地點要找鄰近推薦」跟「完全開放式地問有什麼地方可以
+    %% 去」這兩種不同的輸入型態。兩條分支最終呼叫的都是同一個
+    %% recommend_nearby 工具(取得建議,非寫入資料庫),真正合併成單一
+    %% 共用節點 callRecommendNearby,匯流後統一接到同一個終點——注意:
+    %% 「直接推薦」「開放式提問」「想去哪裡同意推薦」三條推理路徑因此會
+    %% 展開出完全相同的 flowPath.id(path id 是節點 id 序列組成,節點真正
+    %% 合併就無法再靠 id 區分來源),屬於刻意接受的取捨,不影響
+    %% generateDataset 生成訓練資料的邏輯本身。
+    classify -->|直接推薦| callRecommendNearby[["recommend_nearby"]]
+    classify -->|開放式提問,如「有什麼地方可以去」| callRecommendNearby
+    callRecommendNearby --> replyRecommended(("回覆:推薦"))
+
+    %% ---- 情況「想去哪裡」:保留判斷目的地範圍、詢問要不要推薦的決策/
+    %% 互動節點;拿掉最後實際寫入行程的 trip_entry_add,改直接到終點。
+    %% 使用者同意推薦時呼叫的也是同一個 recommend_nearby,匯入上面的
+    %% callRecommendNearby 共用節點。
+    classify -->|想去哪裡| destinationScope{"目的地是大區域或特定定點?"}
+
+    destinationScope -->|大區域| askUserDestinationRecommend[["ask_user"]]
+    askUserDestinationRecommend --> userWantsDestinationRecommend{"使用者同意推薦?"}
+    userWantsDestinationRecommend -->|同意| callRecommendNearby
+    userWantsDestinationRecommend -->|不同意| askUserDetailedItinerary[["ask_user"]]
+    askUserDetailedItinerary --> replyAskDetailedItinerary(("回覆:詢問詳細行程"))
+
+    %% 特定定點——不是這條路徑的終點,而是接到 flow_trip_action.mmd
+    %% 的入口:用 ([...]) 起點形狀標記「更新資料的動作起點」,parser 會把
+    %% 它當成一個獨立的新起點展開,故「想去哪裡→特定定點」這條路徑不會
+    %% 在 flow_intent.mmd 裡收斂成一條完整路徑(沒有終點),是刻意如此
+    %% ——這段行為交給另一張圖負責,不在意圖分類的職責範圍內。
+    destinationScope -->|特定定點| toTripActionUpdate(["更新資料的動作起點"])
+
+    %% ---- 情況「規劃」:整段都是查目標/新增/更新資料的流程,不含非資料
+    %% 操作的互動決策,故不展開細節,直接到終點。
+    classify -->|規劃| replyPlan(("回覆:規劃"))

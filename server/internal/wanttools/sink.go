@@ -251,7 +251,9 @@ func addPresented(es []PresentedEntry) { presented = append(presented, es...) }
 func RecommendedPlaces() []RecommendedPlace { return recommendedPlaces }
 
 // addRecommendedPlaces 由 recommend_nearby 工具呼叫,累積本次查到的候選景點。
-func addRecommendedPlaces(ps []RecommendedPlace) { recommendedPlaces = append(recommendedPlaces, ps...) }
+func addRecommendedPlaces(ps []RecommendedPlace) {
+	recommendedPlaces = append(recommendedPlaces, ps...)
+}
 
 // emit 由工具呼叫,同步把條目寫入 store(entry 為主體,獨立寫入)。
 // channelID 由呼叫端透過 ChannelFrom(ctx) 取得後傳入,emit 本身不碰任何全域頻道狀態。
