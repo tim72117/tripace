@@ -108,7 +108,7 @@ export function App({ isDemo = false }: { isDemo?: boolean } = {}) {
       </div>
     )
   }
-  // /app 路徑:開發測試台本體(套 iPhone 外框)
+  // /app 路徑:主要應用畫面本體(套 iPhone 外框,寬螢幕自動切桌面版佈局)
   return (
     <div className="web-app">
       <PhoneContent {...props} isDemo={isDemo} />
@@ -994,7 +994,7 @@ function PublicViewScreen({ token }: { token: string }) {
 
   useEffect(() => {
     if (data?.channelName) document.title = data.channelName
-    return () => { document.title = 'Tripace · 後端測試台' }
+    return () => { document.title = 'Tripace' }
   }, [data?.channelName])
 
   useEffect(() => {
@@ -1157,7 +1157,7 @@ function SettingsScreen({
         </div>
         <div className="section-title">說明</div>
         <div className="field" style={{ color: 'var(--ios-gray)', fontSize: 13 }}>
-          開發用後端測試台。登入身分存於 localStorage,跨分頁共用同一身分。
+          登入身分存於 localStorage,跨分頁共用同一身分。
           右側 debug panel 記錄每次 API 交易。
         </div>
       </div>

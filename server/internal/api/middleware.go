@@ -17,8 +17,9 @@ func logging(next http.Handler) http.Handler {
 	})
 }
 
-// cors 開放跨來源請求,供本機 web 測試台(Vite dev server,不同 port)呼叫。
-// 僅供開發使用:放行所有來源,並回應 preflight。正式環境應收斂 Allow-Origin。
+// cors 開放跨來源請求,供本機 web 開發伺服器(Vite dev server,不同 port)呼叫。
+// 目前放行所有來源並回應 preflight——**正式環境應收斂 Allow-Origin 為白名單**,
+// 這是已知待處理項目,不應僅視為開發階段的暫時設定。
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")

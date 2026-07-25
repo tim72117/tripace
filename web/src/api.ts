@@ -1,6 +1,6 @@
-// API client — 測試台的心臟。
+// API client。
 // 每次呼叫都產生一筆 ApiCall 交易紀錄(含原始 request/response、狀態碼、耗時),
-// 無論成功或失敗都會記錄,供 debug panel 顯示。這是「開發時測試後端」的核心價值。
+// 無論成功或失敗都會記錄,供 debug panel 顯示,方便排查問題。
 
 import type {
   AuthResponse,

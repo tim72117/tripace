@@ -1,8 +1,8 @@
-# Tripace Web — 後端開發測試台
+# Tripace Web
 
-套 iPhone 外框的 web app,**用途是開發時方便測試 Go 後端**(不是正式產品)。
-左側是像 app 的操作介面,右側是 debug panel,即時顯示每次 API 的原始
-request/response JSON、HTTP 狀態碼與耗時。
+套 iPhone 外框的 web app,是 Tripace 的主要應用介面(寬螢幕會自動切換成
+桌面版佈局)。左側是操作介面,右側是可展開的 debug panel,即時顯示每次
+API 的原始 request/response JSON、HTTP 狀態碼與耗時,方便排查問題。
 
 ## 快速開始
 
@@ -11,7 +11,7 @@ request/response JSON、HTTP 狀態碼與耗時。
 cd ../server
 go run ./cmd/server -addr :8080 -llm rule    # 或 -llm want 接 want 引擎
 
-# 2. 啟動測試台(本目錄)
+# 2. 啟動開發伺服器(本目錄)
 npm install      # 第一次
 npm run dev      # → http://localhost:5173
 ```
@@ -48,17 +48,18 @@ npm run dev      # → http://localhost:5173
 
 ## 注意
 
-- 後端已加開發用 CORS middleware(`server/internal/api/middleware.go` 的 `cors`),
-  放行所有來源,所以前端可獨立跑在 5173。正式環境應收斂 `Allow-Origin`。
+- 後端目前的 CORS middleware(`server/internal/api/middleware.go` 的 `cors`)
+  放行所有來源,方便本機開發時前端獨立跑在 5173。**正式環境應收斂
+  `Allow-Origin` 為白名單**,這是已知待處理項目。
 - 型別定義在 `src/types.ts`,與後端 `model.go` 嚴格對齊;後端改欄位時要同步這裡。
-- Sign in with Apple 在純 web 無法走原生流程;此測試台改用「手貼 token / 訪客」測認證。
+- Sign in with Apple 在純 web 無法走原生流程,改用「手貼 token / 訪客」登入。
 
 ## 結構
 
 ```
 src/
 ├── main.tsx         # 進入點,依 ?debug query 決定渲染 App 或 DebugApp
-├── App.tsx          # 路由分派(/、/public/{token}、其餘走測試台)+ iPhone 殼
+├── App.tsx          # 路由分派(/、/public/{token}、其餘走主應用畫面)+ iPhone 殼
 │                     # + 頻道列表/設定/登入頁 + 共用工具(Avatar/ErrorBanner/errMsg 等)
 ├── ChatScreen.tsx    # 聊天頁(owner 發訊息、成員以自然語言查詢)+ 成員管理 + 分享彈窗
 ├── Timeline.tsx      # 多軌時間軸渲染,ChatScreen 與公開分享頁共用
