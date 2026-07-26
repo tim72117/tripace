@@ -1,15 +1,16 @@
 package store
 
-import "testing"
-
 // TestMiyakoTrip 驗證使用者實測案例:三筆分散的「單點」事件
 //   - 宮古島          2026-06-21
 //   - 游泳            2026-06-29
 //   - 宮古島換旅館     2026-07-03
 //
 // 三者皆為單點(無區間跨度)、日期彼此不重疊,且無區間事件當骨架,
-// 故依 FindOrCreateTrip 的重疊判定(trip.Start <= eEnd && tEnd >= eStart),
+// 故依 FindOrCreateTrip 的重疊判定(trip.StartAt <= eEnd && tEnd >= eStart),
 // 彼此互不命中 → 預期各自新建 trip,不會歸成同一個「宮古島」行程。
+
+import "testing"
+
 func TestMiyakoTrip(t *testing.T) {
 	s := newTestStore(t)
 	ch := "ch_miyako"
@@ -26,7 +27,7 @@ func TestMiyakoTrip(t *testing.T) {
 
 	tripOf := map[string]string{} // item -> tripID
 	for _, in := range inputs {
-		tid, err := s.FindOrCreateTrip(ch, in.start, "", in.item)
+		tid, err := s.FindOrCreateTrip(ch, mustParseUTC(t, in.start), nil, "UTC", in.item)
 		if err != nil {
 			t.Fatalf("%s: %v", in.item, err)
 		}
@@ -43,7 +44,7 @@ func TestMiyakoTrip(t *testing.T) {
 	}
 	t.Logf("總共產生 %d 個 trip:", len(trips))
 	for _, tr := range trips {
-		t.Logf("  - %s 「%s」(%s ~ %s)", tr.ID, tr.Title, tr.Start, tr.End)
+		t.Logf("  - %s 「%s」(%v ~ %v)", tr.ID, tr.Title, tr.StartAt, tr.EndAt)
 	}
 
 	// 斷言:三筆分散單點事件 → 三個獨立 trip(不歸組)。
@@ -66,7 +67,7 @@ func TestMiyakoTrip_WithSpan(t *testing.T) {
 	ch := "ch_miyako2"
 
 	// 骨架:有跨度的區間事件。
-	span, err := s.FindOrCreateTrip(ch, "2026-06-21", "2026-07-05", "宮古島旅遊")
+	span, err := s.FindOrCreateTrip(ch, mustParseUTC(t, "2026-06-21"), mustParseUTC(t, "2026-07-05"), "UTC", "宮古島旅遊")
 	if err != nil || span == nil {
 		t.Fatalf("span: %v / %v", err, deref(span))
 	}
@@ -75,7 +76,7 @@ func TestMiyakoTrip_WithSpan(t *testing.T) {
 		{"游泳", "2026-06-29"},
 		{"宮古島換旅館", "2026-07-03"},
 	} {
-		tid, err := s.FindOrCreateTrip(ch, in.start, "", in.item)
+		tid, err := s.FindOrCreateTrip(ch, mustParseUTC(t, in.start), nil, "UTC", in.item)
 		if err != nil {
 			t.Fatalf("%s: %v", in.item, err)
 		}
@@ -89,5 +90,5 @@ func TestMiyakoTrip_WithSpan(t *testing.T) {
 	if len(trips) != 1 {
 		t.Fatalf("有區間骨架時應歸成 1 個 trip,卻有 %d 個", len(trips))
 	}
-	t.Logf("歸成單一行程: %s ~ %s", trips[0].Start, trips[0].End)
+	t.Logf("歸成單一行程: %v ~ %v", trips[0].StartAt, trips[0].EndAt)
 }

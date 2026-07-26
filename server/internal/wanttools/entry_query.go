@@ -92,7 +92,20 @@ func (t *QueryEntriesTool) Call(args types.ToolArguments, ctx types.ToolContext)
 	}
 	// channelID 取自本次呼叫的 SessionEnvs(agent 不需自己帶)。
 	channelID := ChannelFrom(ctx)
-	entries, err := entryStore.ListEntriesByRange(channelID, from, to)
+
+	// from/to 是 'YYYY-MM-DD' 日期字串,ListEntriesByRange 現在吃 time.Time
+	// (見 store 的 timestamptz 改動)——用 DefaultTimeZone() 詮釋這兩個日期
+	// 代表「查詢者當地時間的這幾天」:from 取當天 00:00(下界),to 取當天
+	// 23:59(上界,含當天),對齊舊版字串比較「to 補 23:59」的既有語意。
+	loc := store.DefaultTimeZone()
+	var fromAt, toAt time.Time
+	if t, _ := store.ParseLocalDateTime(from, "", loc); t != nil {
+		fromAt = *t
+	}
+	if t, _ := store.ParseLocalDateTime(to, "23:59", loc); t != nil {
+		toAt = *t
+	}
+	entries, err := entryStore.ListEntriesByRange(channelID, fromAt, toAt)
 	if err != nil {
 		return nil, fmt.Errorf("查詢條目失敗: %w", err)
 	}
@@ -116,8 +129,10 @@ func (t *QueryEntriesTool) Call(args types.ToolArguments, ctx types.ToolContext)
 
 // toTripEntryPayloads 把 store 查到的 model.Entry 轉成前端 TripEntry 格式
 // (TripEntryPayload,見 sink.go),欄位對齊 server/tools/clienttools.yaml 的
-// title/date/time/note 命名——date 取 model.Entry.Start、time 取 StartTime
-// (model.Entry 的日期/時刻本就分開存放,直接對應,不需另外拆解字串)。
+// title/date/time/note 命名——這是刻意維持不變的邊界:clienttools 系統
+// (trip_entry_add 等)是完全獨立於 store 的前端 state,不受這次 store 改成
+// timestamptz 的影響,故這裡把 model.Entry.StartAt(UTC)用其 TZ 換算回
+// date/time 字串,讓前端收到的仍是它原本認得的格式,不需要跟著改動。
 // Note 是 *string(可為 nil),nil 時轉成空字串,對齊 TripEntry.note 恆為 string
 // 的欄位型別(前端沒有「未設定」與「空字串」的區別)。
 func toTripEntryPayloads(entries []model.Entry) []TripEntryPayload {
@@ -127,11 +142,13 @@ func toTripEntryPayloads(entries []model.Entry) []TripEntryPayload {
 		if e.Note != nil {
 			note = *e.Note
 		}
+		loc := store.LoadTimeZoneOrDefault(e.TZ)
+		date, timeStr := store.FormatLocalDateTime(e.StartAt, loc, e.AllDay)
 		out = append(out, TripEntryPayload{
 			ID:    e.ID,
 			Title: e.Title,
-			Date:  e.Start,
-			Time:  e.StartTime,
+			Date:  date,
+			Time:  timeStr,
 			Note:  note,
 		})
 	}

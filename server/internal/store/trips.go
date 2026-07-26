@@ -16,46 +16,14 @@ func newTripID() string {
 	return "trip_" + hex.EncodeToString(b)
 }
 
-// 時間字串以「兩種格式 + 純日期視為當日邊界」正規化成 time.Time 後比較,
-// 避免裸字串比較的邊界 bug:例如 trip 範圍 '2026-06-25'(純日期)與事件
-// '2026-06-25 16:00' 在字串上 "2026-06-25" < "2026-06-25 16:00",會誤判不重疊。
-// 正規化後純日期 start 取當天 00:00、end 取當天 23:59:59,帶時刻者取該時刻。
-
-// parseLower 解析時間字串為「下界」:純日期 → 當天 00:00;帶時刻 → 該時刻。
-func parseLower(s string) (time.Time, bool) {
-	if t, err := time.Parse("2006-01-02 15:04", s); err == nil {
-		return t, true
-	}
-	if t, err := time.Parse("2006-01-02", s); err == nil {
-		return t, true // 當天 00:00:00
-	}
-	return time.Time{}, false
-}
-
-// parseUpper 解析時間字串為「上界」:純日期 → 當天 23:59:59;帶時刻 → 該時刻。
-func parseUpper(s string) (time.Time, bool) {
-	if t, err := time.Parse("2006-01-02 15:04", s); err == nil {
-		return t, true
-	}
-	if t, err := time.Parse("2006-01-02", s); err == nil {
-		return t.Add(24*time.Hour - time.Second), true // 當天 23:59:59
-	}
-	return time.Time{}, false
-}
-
 // rangesOverlap 判斷兩個時間區間 [aStart,aEnd] 與 [bStart,bEnd] 是否重疊。
-// 各端點以日期/日期時間正規化(start 取下界、end 取上界)後比較;
-// 任一端解析失敗時退回原本的字串比較(保守相容)。
-func rangesOverlap(aStart, aEnd, bStart, bEnd string) bool {
-	aLo, ok1 := parseLower(aStart)
-	aHi, ok2 := parseUpper(aEnd)
-	bLo, ok3 := parseLower(bStart)
-	bHi, ok4 := parseUpper(bEnd)
-	if ok1 && ok2 && ok3 && ok4 {
-		return !aLo.After(bHi) && !bLo.After(aHi)
-	}
-	// 任一端解析失敗:退回原本的字串重疊比較(aStart <= bEnd && aEnd >= bStart)。
-	return aStart <= bEnd && aEnd >= bStart
+// 改成原生 time.Time 比較後(2026-07),不再需要舊版 parseLower/parseUpper
+// 那套「日期字串正規化成當日邊界」的字串 hack——時間本身已經是精確的
+// timestamp,直接比較端點即可,不會再有「純日期」與「帶時刻」字典序不一致
+// 的邊界 bug。呼叫端負責在「單點事件」情境下把空的 end 補成等於 start
+// (見 FindOrCreateTrip/FindOverlappingTrips),這裡只單純做區間重疊判斷。
+func rangesOverlap(aStart, aEnd, bStart, bEnd time.Time) bool {
+	return !aStart.After(bEnd) && !bStart.After(aEnd)
 }
 
 func toTrip(r tripRow) model.Trip {
@@ -63,21 +31,23 @@ func toTrip(r tripRow) model.Trip {
 		ID:        r.ID,
 		ChannelID: r.ChannelID,
 		Title:     r.Title,
-		Start:     r.Start,
-		End:       r.End,
+		StartAt:   r.StartAt,
+		EndAt:     r.EndAt,
+		TZ:        r.TZ,
 		CreatedAt: r.CreatedAt,
 	}
 }
 
 // CreateTrip 新建一筆行程並回傳其 ID(內部生 ID,供 add_to_trip 工具新建用)。
-func (s *Store) CreateTrip(channelID, title, start, end string) (string, error) {
+func (s *Store) CreateTrip(channelID, title string, startAt, endAt *time.Time, tz string) (string, error) {
 	id := newTripID()
 	err := s.InsertTrip(model.Trip{
 		ID:        id,
 		ChannelID: channelID,
 		Title:     title,
-		Start:     start,
-		End:       end,
+		StartAt:   startAt,
+		EndAt:     endAt,
+		TZ:        tz,
 		CreatedAt: now(),
 	})
 	return id, err
@@ -89,18 +59,19 @@ func (s *Store) InsertTrip(t model.Trip) error {
 		ID:        t.ID,
 		ChannelID: t.ChannelID,
 		Title:     t.Title,
-		Start:     t.Start,
-		End:       t.End,
+		StartAt:   t.StartAt,
+		EndAt:     t.EndAt,
+		TZ:        t.TZ,
 		CreatedAt: t.CreatedAt,
 	}
 	return s.db.Create(&r).Error
 }
 
-// ListTripsByChannel 回傳頻道所有行程,依開始時間排序(字典序即時間序)。
+// ListTripsByChannel 回傳頻道所有行程,依開始時間排序。
 func (s *Store) ListTripsByChannel(channelID string) ([]model.Trip, error) {
 	var rows []tripRow
 	err := s.db.Where("channel_id = ?", channelID).
-		Order("start ASC, created_at ASC").Find(&rows).Error
+		Order("start_at ASC, created_at ASC").Find(&rows).Error
 	out := make([]model.Trip, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, toTrip(r))
@@ -112,7 +83,7 @@ func (s *Store) ListTripsByChannel(channelID string) ([]model.Trip, error) {
 func (s *Store) ListEntriesByTrip(channelID, tripID string) ([]model.Entry, error) {
 	var rows []entryRow
 	err := s.db.Where("channel_id = ? AND trip_id = ?", channelID, tripID).
-		Order("start ASC, created_at ASC").Find(&rows).Error
+		Order("start_at ASC, created_at ASC").Find(&rows).Error
 	return mapEntries(rows), err
 }
 
@@ -125,21 +96,23 @@ func (s *Store) SetEntryTrip(entryID string, tripID *string) error {
 // FindOrCreateTrip 是歸組核心:依時間把新 entry 歸入現有行程或新建。
 //
 // 歸組邏輯(以「區間事件為骨架」):
-//   - entryStart 為空(無時間)→ 不歸組,回 (nil, nil)。
+//   - entryStart 為 nil(無時間)→ 不歸組,回 (nil, nil)。
 //   - 掃頻道現有 trips,若新 entry 的時間區間 [entryStart, entryEnd] 與某 trip 的
-//     [trip.Start, trip.End] 重疊 → 歸入該 trip,並擴張 trip 範圍(取聯集)。
+//     [trip.StartAt, trip.EndAt] 重疊 → 歸入該 trip,並擴張 trip 範圍(取聯集)。
 //     重疊判定即「有跨度的住宿/出差等事件框出的行程範圍」涵蓋了單點事件。
 //   - 無命中 → 新建 trip(以此 entry 的起訖與 item 當初值)。
 //
-// start/end 以 ISO 字串儲存(字典序即時間序),故區間比較用字串。
+// tz 是新 entry 的時區;新建 trip 時作為該 trip 的時區初值,歸入既有 trip 時
+// 不覆蓋既有 trip 的 tz(維持「trip 的時區以第一筆 entry 為準」的簡化假設——
+// 同一趟行程混合多個時區的情境不在這次改動範圍內)。
 // 全程用交易包起,避免併發重複建 trip。
-func (s *Store) FindOrCreateTrip(channelID, entryStart, entryEnd, item string) (*string, error) {
-	if entryStart == "" {
+func (s *Store) FindOrCreateTrip(channelID string, entryStart, entryEnd *time.Time, tz, item string) (*string, error) {
+	if entryStart == nil {
 		return nil, nil // 無時間 entry 不歸組
 	}
-	// 單點事件 end 為空時,以 start 當訖點。
+	// 單點事件 end 為 nil 時,以 start 當訖點。
 	eEnd := entryEnd
-	if eEnd == "" {
+	if eEnd == nil {
 		eEnd = entryStart
 	}
 
@@ -147,38 +120,42 @@ func (s *Store) FindOrCreateTrip(channelID, entryStart, entryEnd, item string) (
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var trips []tripRow
 		if err := tx.Where("channel_id = ?", channelID).
-			Order("start ASC, created_at ASC").Find(&trips).Error; err != nil {
+			Order("start_at ASC, created_at ASC").Find(&trips).Error; err != nil {
 			return err
 		}
 
 		// 找第一個時間區間重疊的 trip。
-		// 重疊條件:trip.Start <= entryEnd 且 trip.End >= entryStart。
-		// trip 的 End 可能為空(單點 trip),空時以 Start 當訖點比較。
+		// 重疊條件:trip.StartAt <= entryEnd 且 trip.EndAt >= entryStart。
+		// trip 的 EndAt 可能為 nil(單點 trip),此時以 StartAt 當訖點比較。
 		for i := range trips {
-			tEnd := trips[i].End
-			if tEnd == "" {
-				tEnd = trips[i].Start
+			if trips[i].StartAt == nil {
+				continue
 			}
-			if trips[i].Start != "" && rangesOverlap(trips[i].Start, tEnd, entryStart, eEnd) {
-				// 命中:歸入並擴張 trip 範圍(取 min(start) / max(end))。
-				newStart := trips[i].Start
-				if entryStart < newStart {
-					newStart = entryStart
-				}
-				newEnd := tEnd
-				if eEnd > newEnd {
-					newEnd = eEnd
-				}
-				if newStart != trips[i].Start || newEnd != trips[i].End {
-					if err := tx.Model(&tripRow{}).Where("id = ?", trips[i].ID).
-						Updates(map[string]interface{}{"start": newStart, "end_at": newEnd}).Error; err != nil {
-						return err
-					}
-				}
-				id := trips[i].ID
-				tripID = &id
-				return nil
+			tEnd := trips[i].EndAt
+			if tEnd == nil {
+				tEnd = trips[i].StartAt
 			}
+			if !rangesOverlap(*trips[i].StartAt, *tEnd, *entryStart, *eEnd) {
+				continue
+			}
+			// 命中:歸入並擴張 trip 範圍(取 min(start) / max(end))。
+			newStart := *trips[i].StartAt
+			if entryStart.Before(newStart) {
+				newStart = *entryStart
+			}
+			newEnd := *tEnd
+			if eEnd.After(newEnd) {
+				newEnd = *eEnd
+			}
+			if !newStart.Equal(*trips[i].StartAt) || !newEnd.Equal(*tEnd) {
+				if err := tx.Model(&tripRow{}).Where("id = ?", trips[i].ID).
+					Updates(map[string]interface{}{"start_at": newStart, "end_at": newEnd}).Error; err != nil {
+					return err
+				}
+			}
+			id := trips[i].ID
+			tripID = &id
+			return nil
 		}
 
 		// 無命中:新建 trip。
@@ -187,8 +164,9 @@ func (s *Store) FindOrCreateTrip(channelID, entryStart, entryEnd, item string) (
 			ID:        id,
 			ChannelID: channelID,
 			Title:     item,
-			Start:     entryStart,
-			End:       eEnd,
+			StartAt:   entryStart,
+			EndAt:     eEnd,
+			TZ:        tz,
 			CreatedAt: now(),
 		}
 		if err := tx.Create(&nt).Error; err != nil {
@@ -227,30 +205,32 @@ func (s *Store) DeleteChannelEntriesAndTrips(channelID string) error {
 
 // FindOverlappingTrips 回傳頻道中時間區間與 [start, end] 重疊的候選 trip。
 // 供 record_entry 工具列出候選給 LLM 判斷(不寫入、不歸組)。
-// 重疊條件與 FindOrCreateTrip 一致:trip.Start <= entryEnd 且 trip.End >= entryStart
-// (字串字典序即時間序)。start 為空(無時間)時回空清單。
-func (s *Store) FindOverlappingTrips(channelID, start, end string) ([]model.Trip, error) {
-	if start == "" {
+// 重疊條件與 FindOrCreateTrip 一致。start 為 nil(無時間)時回空清單。
+func (s *Store) FindOverlappingTrips(channelID string, start, end *time.Time) ([]model.Trip, error) {
+	if start == nil {
 		return []model.Trip{}, nil
 	}
 	eEnd := end
-	if eEnd == "" {
+	if eEnd == nil {
 		eEnd = start
 	}
 
 	var rows []tripRow
 	if err := s.db.Where("channel_id = ?", channelID).
-		Order("start ASC, created_at ASC").Find(&rows).Error; err != nil {
+		Order("start_at ASC, created_at ASC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
 
 	out := make([]model.Trip, 0)
 	for i := range rows {
-		tEnd := rows[i].End
-		if tEnd == "" {
-			tEnd = rows[i].Start
+		if rows[i].StartAt == nil {
+			continue
 		}
-		if rows[i].Start != "" && rangesOverlap(rows[i].Start, tEnd, start, eEnd) {
+		tEnd := rows[i].EndAt
+		if tEnd == nil {
+			tEnd = rows[i].StartAt
+		}
+		if rangesOverlap(*rows[i].StartAt, *tEnd, *start, *eEnd) {
 			out = append(out, toTrip(rows[i]))
 		}
 	}

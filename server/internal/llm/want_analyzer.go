@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tim72117/tripace/internal/model"
+	"github.com/tim72117/tripace/internal/store"
 	// 自訂 want 工具(record_entry):init() 註冊工具,並提供記錄 context/sink。
 	"github.com/tim72117/tripace/internal/wanttools"
 
@@ -315,10 +316,22 @@ func (w *WantAnalyzer) Answer(channelID, question, lang string) model.SearchAnsw
 	mu.Unlock()
 
 	// 取 agent 透過 present_entries 呈現的結構化條目(LLM 自己挑的)。
+	// wanttools.PresentedEntry 仍是 date/time 字串(LLM 直接輸出的格式,見
+	// wanttools/sink.go 的說明),這裡轉成 model.PresentedEntry 的 timestamptz
+	// 欄位時比照 tripsvc 用 DefaultTimeZone() 詮釋——這條路徑目前不在任何
+	// role 的白名單裡(present_entries 已被 entry_query 取代,見
+	// assistant_agent.go 的 init() 註解),保留只是不讓舊程式碼編譯失敗。
 	var presented []model.PresentedEntry
 	for _, e := range wanttools.Presented() {
+		loc := store.DefaultTimeZone()
+		startAt, allDay := store.ParseLocalDateTime(e.Start, e.StartTime, loc)
+		endAt, _ := store.ParseLocalDateTime(e.End, e.EndTime, loc)
+		tz := ""
+		if startAt != nil {
+			tz = loc.String()
+		}
 		presented = append(presented, model.PresentedEntry{
-			Title: e.Title, Start: e.Start, StartTime: e.StartTime, End: e.End, EndTime: e.EndTime,
+			Title: e.Title, StartAt: startAt, EndAt: endAt, TZ: tz, AllDay: allDay,
 		})
 	}
 

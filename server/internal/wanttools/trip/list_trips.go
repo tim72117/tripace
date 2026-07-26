@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/tim72117/tripace/internal/store"
 	"github.com/tim72117/want/types"
 )
 
@@ -40,16 +41,19 @@ func (t *ListTripsTool) Call(args types.ToolArguments, ctx types.ToolContext) ([
 	sb.WriteString(fmt.Sprintf("%d trip(s):\n", len(trips)))
 	tripList := make([]map[string]interface{}, 0, len(trips))
 	for _, tr := range trips {
-		rng := tr.Start
-		if tr.End != "" {
-			rng += " ~ " + tr.End
+		loc := store.LoadTimeZoneOrDefault(tr.TZ)
+		start := formatTripBoundary(tr.StartAt, loc)
+		end := formatTripBoundary(tr.EndAt, loc)
+		rng := start
+		if end != "" {
+			rng += " ~ " + end
 		}
 		sb.WriteString(fmt.Sprintf("・tripID=%s 「%s」(%s)\n", tr.ID, tr.Title, rng))
 		tripList = append(tripList, map[string]interface{}{
 			"tripID": tr.ID,
 			"title":  tr.Title,
-			"start":  tr.Start,
-			"end":    tr.End,
+			"start":  start,
+			"end":    end,
 		})
 	}
 	msg := strings.TrimRight(sb.String(), "\n")

@@ -67,12 +67,13 @@ type Me struct {
 
 // PresentedEntry 是查詢回答附帶、要展示給使用者的結構化條目。
 // 形狀與 llm.AssistEntry / wanttools.PresentedEntry 一致,讓前端用同一套列表渲染。
+// 時間欄位語意同 Entry(見其註解)。
 type PresentedEntry struct {
-	Title     string `json:"title"`
-	Start     string `json:"start"`
-	StartTime string `json:"startTime"`
-	End       string `json:"end"`
-	EndTime   string `json:"endTime"`
+	Title   string     `json:"title"`
+	StartAt *time.Time `json:"startAt,omitempty"`
+	EndAt   *time.Time `json:"endAt,omitempty"`
+	TZ      string     `json:"tz,omitempty"`
+	AllDay  bool       `json:"allDay,omitempty"`
 }
 
 // SearchAnswer 對應語意查詢回應。
@@ -86,17 +87,23 @@ type SearchAnswer struct {
 
 // Entry 是主體:LLM 處理訊息後產出的「事件/條目」,承載所有結構化結果。
 // 可獨立存在,並可關聯多則來源訊息(多對多)。
+//
+// 時間欄位(2026-07 從字串改為 timestamptz,見 store/entity.go 的完整說明):
+// StartAt/EndAt 是 UTC 絕對時刻,TZ 是事件所屬的 IANA 時區(如 "Asia/Tokyo")。
+// 顯示端一律應以 TZ 換算再呈現給使用者,而非用裝置/瀏覽器的當地時區——
+// 旅遊行程的時間是「目的地當地時間」,不是「觀看者所在地時間」,兩者在使用者
+// 抵達目的地前後會不一致。AllDay=true 時 StartAt 存當日在 TZ 時區的 00:00。
 type Entry struct {
-	ID        string   `json:"id"`
-	ChannelID string   `json:"channelID"`
-	Title     string   `json:"title"`             // 事項描述
-	Start     string   `json:"start"`             // 'YYYY-MM-DD';可空
-	StartTime string   `json:"startTime"`         // 'HH:MM';空=全日
-	End       string   `json:"end,omitempty"`     // 範圍結束日期;可空
-	EndTime   string   `json:"endTime,omitempty"` // 範圍結束時刻;可空
-	Location  string   `json:"location"`          // 地點(可空)
-	Lat       *float64 `json:"lat,omitempty"`     // 緯度(由 Places API 自動補)
-	Lng       *float64 `json:"lng,omitempty"`     // 經度
+	ID        string     `json:"id"`
+	ChannelID string     `json:"channelID"`
+	Title     string     `json:"title"`             // 事項描述
+	StartAt   *time.Time `json:"startAt,omitempty"` // UTC;nil=無時間資訊
+	EndAt     *time.Time `json:"endAt,omitempty"`   // UTC;nil=無結束時間
+	TZ        string     `json:"tz,omitempty"`      // IANA 時區名,如 "Asia/Tokyo"
+	AllDay    bool       `json:"allDay,omitempty"`  // true=全日事件(忽略時刻部分)
+	Location  string     `json:"location"`          // 地點(可空)
+	Lat       *float64   `json:"lat,omitempty"`     // 緯度(由 Places API 自動補)
+	Lng       *float64   `json:"lng,omitempty"`     // 經度
 	// 所屬行程(Trip)。後端依時間自動歸組:未歸組為 null。
 	TripID *string `json:"tripID,omitempty"`
 	// LLM 標注(原本在 Message 上,改放 Entry;目前先留空,待後續接上 Classify)。
@@ -110,12 +117,13 @@ type Entry struct {
 
 // Trip 是 entries 的命名分組(同一趟行程/連續安排)。
 // 由後端依時間自動歸組:有跨度的「區間性」事件(如住宿、出差)框出行程範圍,
-// 落在範圍內的單點事件(如機票、開會)歸入同一 Trip。
+// 落在範圍內的單點事件(如機票、開會)歸入同一 Trip。時間欄位語意同 Entry。
 type Trip struct {
-	ID        string    `json:"id"`
-	ChannelID string    `json:"channelID"`
-	Title     string    `json:"title"`         // 行程名(暫用首筆 entry.Title)
-	Start     string    `json:"start"`         // 行程起(ISO 字串,字典序=時間序);可空
-	End       string    `json:"end,omitempty"` // 行程訖;可空
-	CreatedAt time.Time `json:"createdAt"`
+	ID        string     `json:"id"`
+	ChannelID string     `json:"channelID"`
+	Title     string     `json:"title"`             // 行程名(暫用首筆 entry.Title)
+	StartAt   *time.Time `json:"startAt,omitempty"` // 行程起(UTC);可空
+	EndAt     *time.Time `json:"endAt,omitempty"`   // 行程訖(UTC);可空
+	TZ        string     `json:"tz,omitempty"`      // IANA 時區名
+	CreatedAt time.Time  `json:"createdAt"`
 }

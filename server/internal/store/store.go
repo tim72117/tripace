@@ -51,10 +51,26 @@ func Open(dsn string) (*Store, error) {
 	// 完全不相關的功能(登入、查頻道列表等)也會一起無法使用。故改成記錄一則
 	// 明顯的警示 log 後繼續,讓 server 降級啟動;只有實際用到未同步欄位的功能
 	// 才會在被呼叫到時出錯,這是可接受的降級行為。
+	//
+	// renameLegacyTimeColumns 必須在 AutoMigrate 之前:entries/trips 的時間
+	// 欄位從字串改成 timestamptz,AutoMigrate 不會自動改既有欄位型別,故先把
+	// 舊字串欄位改名讓出位置,AutoMigrate 才能建出正確型別的新欄位;
+	// backfillTimestamps 則在 AutoMigrate 之後,把改名保存的舊值解析回填進
+	// 新欄位、確認回填完成才刪除暫存欄位(見 migrate_timestamps.go)。
 	migrationOK := true
+	if err := renameLegacyTimeColumns(db); err != nil {
+		log.Printf("!!! 時間欄位遷移(改名階段)失敗,資料庫 schema 可能未同步,請盡快檢查: %v", err)
+		migrationOK = false
+	}
 	if err := db.AutoMigrate(&userRow{}, &channelRow{}, &entryRow{}, &memberLink{}, &tripRow{}, &publicLinkRow{}, &adminUserRow{}, &adminSessionRow{}); err != nil {
 		log.Printf("!!! AutoMigrate 失敗,資料庫 schema 可能未同步,部分功能可能異常或無法使用,請盡快檢查: %v", err)
 		migrationOK = false
+	}
+	if migrationOK {
+		if err := backfillTimestamps(db); err != nil {
+			log.Printf("!!! 時間欄位遷移(回填階段)失敗,舊資料可能仍留在暫存欄位,請盡快檢查: %v", err)
+			migrationOK = false
+		}
 	}
 	return &Store{db: db, MigrationOK: migrationOK}, nil
 }

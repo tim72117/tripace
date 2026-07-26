@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/tim72117/tripace/internal/auth"
 	"github.com/tim72117/tripace/internal/llm"
@@ -664,7 +665,15 @@ func (s *Server) handleDeleteTripEntry(w http.ResponseWriter, r *http.Request) {
 
 // PATCH /v1/entries/{id} — 手動編輯條目(不經 AI,前端表單直接送出要改的欄位)。
 // entryID 本身不帶 channelID,故先查出該條目所屬頻道,再依 editor 權限放行;
-// 只更新請求帶了值的欄位(空字串視為不改,見 store.UpdateEntry),未帶到的欄位維持原值。
+// 只更新請求帶了值的欄位,未帶到的欄位維持原值。
+//
+// 時間欄位直接收 ISO 8601 timestamp(而非 tripsvc.UpdateEntryInput 那套
+// 給 CLI 用的「日期時刻字串」接口)——這個 handler 對應的正是
+// model.Entry 本身(GET 這個資源時回的就是 startAt/endAt/tz/allDay,PATCH
+// 用同一種格式回填,讀寫契約一致,前端不需要在兩種時間表示法之間轉換)。
+// startAt 為 nil 時代表不更新任何時間欄位(呼應 store.EntryTimeUpdate 的
+// 逐欄位語意);要更新時 startAt 必填,tz 留空由 store.UpdateEntry 呼叫端
+// (這裡)決定要不要補 DefaultTimeZone()。
 func (s *Server) handleUpdateEntry(w http.ResponseWriter, r *http.Request) {
 	entryID := r.PathValue("id")
 	entry, err := s.store.GetEntry(entryID)
@@ -681,33 +690,34 @@ func (s *Server) handleUpdateEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Title     string         `json:"title"`
-		Start     string         `json:"start"`
-		StartTime string         `json:"startTime"`
-		End       string         `json:"end"`
-		EndTime   string         `json:"endTime"`
-		Location  string         `json:"location"`
-		Note      string         `json:"note"`
-		Kind      string         `json:"kind"`
-		Detail    map[string]any `json:"detail"`
+		Title    string         `json:"title"`
+		StartAt  *time.Time     `json:"startAt"`
+		EndAt    *time.Time     `json:"endAt"`
+		TZ       string         `json:"tz"`
+		AllDay   *bool          `json:"allDay"`
+		Location string         `json:"location"`
+		Note     string         `json:"note"`
+		Kind     string         `json:"kind"`
+		Detail   map[string]any `json:"detail"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
 
-	svc := tripsvc.New(s.store, nil)
-	if err := svc.UpdateEntry(tripsvc.UpdateEntryInput{
-		ID:        entryID,
-		Title:     body.Title,
-		Start:     body.Start,
-		StartTime: body.StartTime,
-		End:       body.End,
-		EndTime:   body.EndTime,
-		Location:  body.Location,
-		Note:      body.Note,
-		Kind:      body.Kind,
-		Detail:    body.Detail,
-	}); err != nil {
+	var tu store.EntryTimeUpdate
+	if body.StartAt != nil {
+		tz := body.TZ
+		if tz == "" {
+			tz = store.DefaultTimeZone().String()
+		}
+		allDay := false
+		if body.AllDay != nil {
+			allDay = *body.AllDay
+		}
+		tu = store.EntryTimeUpdate{StartAt: body.StartAt, EndAt: body.EndAt, TZ: &tz, AllDay: &allDay}
+	}
+
+	if err := s.store.UpdateEntry(entryID, body.Title, tu, body.Location, body.Note, body.Kind, body.Detail); err != nil {
 		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
 		return
 	}

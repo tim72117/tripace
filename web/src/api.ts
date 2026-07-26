@@ -275,12 +275,13 @@ export function semanticQuery(
 }
 
 // present_entries 工具輸出、要展示給使用者的條目(不含 id/messageID)。
+// 時間欄位語意同 types.ts 的 Entry(ISO 8601 timestamp + tz + allDay)。
 export interface PresentedEntry {
   title: string
-  start: string
-  startTime: string
-  end: string
-  endTime: string
+  startAt?: string
+  endAt?: string
+  tz?: string
+  allDay?: boolean
 }
 
 // recommend_nearby 工具查到、要展示給使用者的一筆候選景點。
@@ -329,14 +330,17 @@ export function fetchEntries(cfg: ClientConfig, channelID: string) {
 }
 
 // 手動編輯條目(不經 AI),對齊 server 的 PATCH /v1/entries/{id}(handleUpdateEntry)。
-// 只傳有要改的欄位:空字串/undefined 視為不改該欄位(見 store.UpdateEntry),
+// 只傳有要改的欄位:undefined 視為不改該欄位(見 store.UpdateEntry),
 // 呼叫端不需帶齊 Entry 全部欄位,只需帶使用者在表單裡實際改過的值。
+// startAt 為 undefined 時完全不更新任何時間欄位;要更新時 startAt 必填,
+// tz/allDay 選填(留空由後端用 DefaultTimeZone()/false 補上)——對齊後端
+// tripsvc.UpdateEntry 的欄位耦合語意(startAt 是時間更新是否發生的旗標)。
 export interface UpdateEntryInput {
   title?: string
-  start?: string
-  startTime?: string
-  end?: string
-  endTime?: string
+  startAt?: string
+  endAt?: string
+  tz?: string
+  allDay?: boolean
   location?: string
   note?: string
 }

@@ -4,6 +4,7 @@ import type { Entry } from './types'
 import type { ClientConfig } from './api'
 import * as api from './api'
 import { ApiError } from './api'
+import { combineLocalDateTime, formatLocal } from './timefmt'
 
 // 對齊 App.tsx 的 errMsg,但不 import App.tsx(App.tsx 已 import 本檔的
 // MultiTrackTimeline,互相 import 會造成循環依賴),在此重寫等價的極簡版本。
@@ -24,14 +25,33 @@ function parseDateParts(d: string): { year: string; month: string; day: string }
   return { year, month, day }
 }
 
+// LocalView 是 entry 的時間欄位依其自己時區(entry.tz)換算後的本地日期/
+// 時刻字串,語意對齊改動前的 start/startTime/end/endTime——buildTLRows
+// 內部的排序、分組、主線判斷演算法完全操作這組衍生字串,不直接碰
+// startAt/endAt(ISO UTC timestamp)。這樣原本針對字串設計的演算法邏輯
+// 幾乎不需要改,只是字串的來源從「直接讀欄位」換成「用 tz 換算 ISO
+// timestamp 得到」,把這次時間表示法改動的影響面降到最低。
+interface LocalView {
+  start: string // 'YYYY-MM-DD';無時間為空字串
+  startTime: string // 'HH:MM';全日或無時間為空字串
+  end: string
+  endTime: string
+}
+
+function localViewOf(e: Entry): LocalView {
+  const s = formatLocal(e.startAt, e.tz, e.allDay)
+  const en = formatLocal(e.endAt, e.tz, e.allDay)
+  return { start: s.date, startTime: s.time, end: en.date, endTime: en.time }
+}
+
 function entryTimeLabel(e: Entry): string {
-  return e.startTime ?? ''
+  return localViewOf(e).startTime
 }
 
 function entrySpanLabel(e: Entry): string {
-  if (!e.end || e.end === e.start) return ''
-  if (e.end === e.start) return e.endTime ? `~ ${e.endTime}` : ''
-  return e.endTime ? `~ ${e.end} ${e.endTime}` : `~ ${e.end}`
+  const v = localViewOf(e)
+  if (!v.end || v.end === v.start) return ''
+  return v.endTime ? `~ ${v.end} ${v.endTime}` : `~ ${v.end}`
 }
 
 // ---- 資料型別 ----
@@ -47,50 +67,59 @@ type TLRow =
 // buildTLRows 接受正式條目與 task 佔位卡(只需 date,插在該日期清單最後面;
 // 沒有 date 的佔位卡無處可放,直接略過不顯示)。
 function buildTLRows(entries: Entry[], taskPlaceholders: TaskPlaceholder[] = []): TLRow[] {
+  // V:每個 entry 的本地日期/時刻字串衍生值(見 LocalView 的說明)——下面
+  // 整段排序/分組/主線判斷演算法都透過 V.get(id) 取值,不直接讀
+  // entry.start/startTime/end/endTime(這些欄位在改動後已不存在)。
+  const V = new Map<string, LocalView>(entries.map(e => [e.id, localViewOf(e)]))
+  const start = (e: Entry) => V.get(e.id)!.start
+  const startTime = (e: Entry) => V.get(e.id)!.startTime
+  const end = (e: Entry) => V.get(e.id)!.end
+  const endTime = (e: Entry) => V.get(e.id)!.endTime
+
   const sorted = [...entries].sort((a, b) => {
     // 有 start 的條目排在前，沒有的排在後
-    if (!a.start && b.start) return 1
-    if (a.start && !b.start) return -1
-    if (!a.start && !b.start) return 0
+    if (!start(a) && start(b)) return 1
+    if (start(a) && !start(b)) return -1
+    if (!start(a) && !start(b)) return 0
 
     // 都有 start，同一天内：有 startTime 排在前，沒有的排在後
-    const aHasTime = !!a.startTime
-    const bHasTime = !!b.startTime
+    const aHasTime = !!startTime(a)
+    const bHasTime = !!startTime(b)
     if (aHasTime && !bHasTime) return -1
     if (!aHasTime && bHasTime) return 1
 
     // 都有時間或都沒有時間，按日期+時間排序
-    const aTime = `${a.start}${a.startTime ? ' ' + a.startTime : ''}`
-    const bTime = `${b.start}${b.startTime ? ' ' + b.startTime : ''}`
+    const aTime = `${start(a)}${startTime(a) ? ' ' + startTime(a) : ''}`
+    const bTime = `${start(b)}${startTime(b) ? ' ' + startTime(b) : ''}`
     return aTime.localeCompare(bTime)
   })
 
   // 1. 判斷主線
   // 主線條件：有結束時間且跨越不同日
   const mainSet = new Set(sorted.filter(e => {
-    if (!e.end || e.end === e.start) return false
-    return e.end.slice(0, 10) !== (e.start ?? '').slice(0, 10)
+    if (!end(e) || end(e) === start(e)) return false
+    return end(e).slice(0, 10) !== (start(e) ?? '').slice(0, 10)
   }).map(e => e.id))
   const mainEntries = sorted.filter(e => mainSet.has(e.id))
 
   // 2. 某日是否在主線跨度內（用於畫橘線）
   function inMainSpan(day: string): boolean {
     return mainEntries.some(m => {
-      const s = (m.start ?? '').slice(0, 10)
-      const e = (m.end && m.end !== m.start ? m.end : m.start ?? '').slice(0, 10)
+      const s = (start(m) ?? '').slice(0, 10)
+      const e = (end(m) && end(m) !== start(m) ? end(m) : start(m) ?? '').slice(0, 10)
       return day >= s && day <= e
     })
   }
 
   // 3. 收集所有要顯示的天（entry 起始日 + 主線中間天 + 主線結束日 + 最後結束隔天 + 佔位卡日期）
-  const daySet = new Set(sorted.map(e => e.start?.slice(0, 10) ?? '').filter(Boolean))
+  const daySet = new Set(sorted.map(e => start(e)?.slice(0, 10) ?? '').filter(Boolean))
   for (const p of taskPlaceholders) {
     if (p.date) daySet.add(p.date.slice(0, 10))
   }
   let lastMainEnd = ''
   for (const m of mainEntries) {
-    const s = (m.start ?? '').slice(0, 10)
-    const e = (m.end && m.end !== m.start ? m.end : m.start ?? '').slice(0, 10)
+    const s = (start(m) ?? '').slice(0, 10)
+    const e = (end(m) && end(m) !== start(m) ? end(m) : start(m) ?? '').slice(0, 10)
     if (!s || !e) continue
     const d = new Date(s + 'T00:00:00')
     const endD = new Date(e + 'T00:00:00')
@@ -112,18 +141,18 @@ function buildTLRows(entries: Entry[], taskPlaceholders: TaskPlaceholder[] = [])
     // 有 start 無 startTime：用 'YYYY-MM-DD~' (~ 排在空格後，無時間排在後)
     // 有 start 有 startTime：用 'YYYY-MM-DD HH:MM'
     let sortKey: string
-    if (!e.start) {
+    if (!start(e)) {
       sortKey = 'zzz'
-    } else if (!e.startTime) {
-      sortKey = `${e.start}~` // ~ 的 ASCII (126) 大於空格 (32)，排到有時間條目後
+    } else if (!startTime(e)) {
+      sortKey = `${start(e)}~` // ~ 的 ASCII (126) 大於空格 (32)，排到有時間條目後
     } else {
-      sortKey = `${e.start} ${e.startTime}`
+      sortKey = `${start(e)} ${startTime(e)}`
     }
     return { id: e.id, sortKey, isEnd: false, source: e }
   })
   for (const m of mainEntries) {
-    const endStr = m.end && m.end !== m.start
-      ? m.endTime ? `${m.end} ${m.endTime}` : `${m.end}~`
+    const endStr = end(m) && end(m) !== start(m)
+      ? endTime(m) ? `${end(m)} ${endTime(m)}` : `${end(m)}~`
       : null
     if (endStr) sortedAll.push({ id: `end-${m.id}`, sortKey: endStr, isEnd: true, source: m })
   }
@@ -307,6 +336,7 @@ function MainCard({
 }: { entry: Entry; updating?: boolean; cfg?: ClientConfig; onEntryUpdated?: () => void }) {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(false)
+  const v = localViewOf(entry)
   return (
     <div className={`tl-main-card tl-card-row${updating ? ' updating' : ''}`} onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer' }}>
       <div className="tl-card-content">
@@ -319,11 +349,11 @@ function MainCard({
             {entry.note && <div className="tl-expand-summary">{entry.note}</div>}
             <div className="tl-expand-row">
               <span className="tl-expand-label">開始</span>
-              <span>{entry.start ? (entry.startTime ? `${entry.start} ${entry.startTime}` : entry.start) : '—'}</span>
+              <span>{v.start ? (v.startTime ? `${v.start} ${v.startTime}` : v.start) : '—'}</span>
             </div>
-            {entry.end && <div className="tl-expand-row">
+            {v.end && <div className="tl-expand-row">
               <span className="tl-expand-label">結束</span>
-              <span>{entry.endTime ? `${entry.end} ${entry.endTime}` : entry.end}</span>
+              <span>{v.endTime ? `${v.end} ${v.endTime}` : v.end}</span>
             </div>}
             {cfg && (
               <button
@@ -364,6 +394,7 @@ function SubCard({
   const [editing, setEditing] = useState(false)
   const time = entryTimeLabel(entry)
   const span = entrySpanLabel(entry)
+  const v = localViewOf(entry)
   return (
     <div className={`tl-card tl-card-row${span ? ' tl-card-span' : ''}${updating ? ' updating' : ''}`}
       onClick={() => setOpen(o => !o)}
@@ -384,13 +415,13 @@ function SubCard({
         <div className={`tl-card-expand${open ? ' open' : ''}`}>
           <div className="tl-card-expand-inner">
             {entry.note && <div className="tl-expand-summary">{entry.note}</div>}
-            {entry.start && <div className="tl-expand-row">
+            {v.start && <div className="tl-expand-row">
               <span className="tl-expand-label">開始</span>
-              <span>{entry.startTime ? `${entry.start} ${entry.startTime}` : entry.start}</span>
+              <span>{v.startTime ? `${v.start} ${v.startTime}` : v.start}</span>
             </div>}
-            {entry.end && <div className="tl-expand-row">
+            {v.end && <div className="tl-expand-row">
               <span className="tl-expand-label">結束</span>
-              <span>{entry.endTime ? `${entry.end} ${entry.endTime}` : entry.end}</span>
+              <span>{v.endTime ? `${v.end} ${v.endTime}` : v.end}</span>
             </div>}
             {cfg && (
               <button
@@ -436,10 +467,17 @@ function TaskPlaceholderCard({ placeholder }: { placeholder: TaskPlaceholder }) 
 }
 
 // EditEntrySheet:手動編輯條目的表單,對齊 server PATCH /v1/entries/{id}
-// (handleUpdateEntry)。只傳使用者實際改過的欄位——server 端把空字串視為
-// 「不改該欄位」(見 store.UpdateEntry),故欄位留空不會意外清空原有值,
-// 但也代表**目前無法透過這個表單把某欄位清空**,只能改成別的值。
+// (handleUpdateEntry)。只傳使用者實際改過的欄位——server 端把空字串/
+// undefined 視為「不改該欄位」(見 store.UpdateEntry),故欄位留空不會意外
+// 清空原有值,但也代表**目前無法透過這個表單把某欄位清空**,只能改成別的值。
 // position:fixed 疊在整個視窗最上層,不依賴卡片容器的 position:relative。
+//
+// 表單內部仍操作「日期字串 + 時刻字串」(<input type="date"/"time"> 天生
+// 就是這個格式),用 localViewOf(entry) 從 startAt/tz/allDay 換算出初始值,
+// 提交時再用 combineLocalDateTime 轉回 ISO timestamp——時區沿用這筆 entry
+// 原本的 tz(entry.tz),不是編輯者當下裝置的時區:同一趟東京行程不會因為
+// 誰在台北編輯就被悄悄改成台北時間。allDay 沿用「時刻欄位留空即全日」的
+// 既有 UI 慣例,不額外加開關。
 function EditEntrySheet({
   cfg, entry, onClose, onSaved,
 }: {
@@ -448,11 +486,12 @@ function EditEntrySheet({
   onClose: () => void
   onSaved: () => void
 }) {
+  const initial = localViewOf(entry)
   const [title, setTitle] = useState(entry.title)
-  const [start, setStart] = useState(entry.start)
-  const [startTime, setStartTime] = useState(entry.startTime)
-  const [end, setEnd] = useState(entry.end ?? '')
-  const [endTime, setEndTime] = useState(entry.endTime ?? '')
+  const [start, setStart] = useState(initial.start)
+  const [startTime, setStartTime] = useState(initial.startTime)
+  const [end, setEnd] = useState(initial.end)
+  const [endTime, setEndTime] = useState(initial.endTime)
   const [location, setLocation] = useState(entry.location ?? '')
   const [note, setNote] = useState(entry.note ?? '')
   const [saving, setSaving] = useState(false)
@@ -466,12 +505,13 @@ function EditEntrySheet({
     setSaving(true)
     setErr(null)
     try {
+      const tz = entry.tz
       await api.updateEntry(cfg, entry.id, {
         title: title.trim(),
-        start,
-        startTime,
-        end,
-        endTime,
+        startAt: combineLocalDateTime(start, startTime, tz),
+        endAt: combineLocalDateTime(end, endTime, tz),
+        tz,
+        allDay: !startTime,
         location,
         note,
       })

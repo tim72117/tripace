@@ -5,6 +5,7 @@ import type { AssistPlace, PresentedEntry } from './api'
 import { ASSISTANT_ID, ENTRY_QUERY_BATCH_KEY, type ChatMessage } from './chatTypes'
 import { RecommendedPlacesList, type RecommendedPlace } from './RecommendedPlaces'
 import type { TripBatches, TripEntry } from './clienttools/tripEntryTools'
+import { formatLocalDisplay } from './timefmt'
 
 export function MessageBubble({
   msg,
@@ -281,13 +282,9 @@ function WaveLoader() {
 
 // PresentedCard 顯示 present_entries 輸出的條目(查詢結果列表用)。
 function PresentedCard({ entry }: { entry: PresentedEntry }) {
-  const allDay = !entry.startTime
-  const when = entry.start
-    ? allDay ? entry.start : `${entry.start} ${entry.startTime}`
-    : '未指定時間'
-  const endLabel = entry.end
-    ? entry.endTime ? ` ~ ${entry.end} ${entry.endTime}` : ` ~ ${entry.end}`
-    : ''
+  const when = formatLocalDisplay(entry.startAt, entry.tz, entry.allDay) || '未指定時間'
+  const end = formatLocalDisplay(entry.endAt, entry.tz, entry.allDay)
+  const endLabel = end && end !== when ? ` ~ ${end}` : ''
   return (
     <div className="entry-card">
       <span className="entry-ico">📅</span>

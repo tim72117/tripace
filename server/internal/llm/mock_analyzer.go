@@ -80,11 +80,18 @@ func (m *MockAnalyzer) AssistForSession(_, channelID, _, _, _ string, _ func(ent
 	m.next++
 	m.mu.Unlock()
 
-	startDate := fmtDate(sc.startDay)
-	startTime := sc.clock
-	var endDate string
+	// mock 情境本來就只是「距今天數 + 24 小時制時刻」的字串,用
+	// store.ParseLocalDateTime 組成 UTC 時刻,跟真實 LLM 寫入路徑
+	// (tripsvc.Record)用同一套轉換邏輯,行為才會一致。
+	loc := store.DefaultTimeZone()
+	startAt, allDay := store.ParseLocalDateTime(fmtDate(sc.startDay), sc.clock, loc)
+	var endAt *time.Time
 	if sc.endDay >= 0 {
-		endDate = fmtDate(sc.endDay)
+		endAt, _ = store.ParseLocalDateTime(fmtDate(sc.endDay), "", loc)
+	}
+	tz := ""
+	if startAt != nil {
+		tz = loc.String()
 	}
 
 	// 1. 寫 entry(tripID 留 nil,不自動歸組)。
@@ -93,23 +100,24 @@ func (m *MockAnalyzer) AssistForSession(_, channelID, _, _, _ string, _ func(ent
 		ID:        id,
 		ChannelID: channelID,
 		Title:     sc.title,
-		Start:     startDate,
-		StartTime: startTime,
-		End:       endDate,
+		StartAt:   startAt,
+		EndAt:     endAt,
+		TZ:        tz,
+		AllDay:    allDay,
 		CreatedAt: time.Now().UTC(),
 	}); err != nil {
 		return AssistResult{Kind: "error", Text: "mock 寫入失敗: " + err.Error()}
 	}
 
 	// 2~3. 有時間才考慮歸組:查候選,模擬 LLM 決定(有候選歸入第一個,否則新建)。
-	if startDate != "" {
-		candidates, err := m.store.FindOverlappingTrips(channelID, startDate, endDate)
+	if startAt != nil {
+		candidates, err := m.store.FindOverlappingTrips(channelID, startAt, endAt)
 		if err == nil {
 			var tripID string
 			if len(candidates) > 0 {
 				tripID = candidates[0].ID // 模擬 LLM 判斷「屬於這個行程」
 			} else {
-				tripID, _ = m.store.CreateTrip(channelID, sc.title, startDate, endDate) // 模擬 LLM 新建
+				tripID, _ = m.store.CreateTrip(channelID, sc.title, startAt, endAt, tz) // 模擬 LLM 新建
 			}
 			if tripID != "" {
 				_ = m.store.SetEntryTrip(id, &tripID)
@@ -140,17 +148,22 @@ func (m *MockAnalyzer) Answer(channelID, _, _ string) model.SearchAnswer {
 	sb.WriteString(fmt.Sprintf("(mock)這個頻道目前有 %d 筆安排:\n", len(entries)))
 	presented := make([]model.PresentedEntry, 0, len(entries))
 	for _, e := range entries {
-		when := e.Start
+		loc := store.LoadTimeZoneOrDefault(e.TZ)
+		date, timeStr := store.FormatLocalDateTime(e.StartAt, loc, e.AllDay)
+		when := date
+		if timeStr != "" {
+			when += " " + timeStr
+		}
 		if when == "" {
 			when = "(未指定時間)"
 		}
 		sb.WriteString("・" + when + " " + e.Title + "\n")
 		presented = append(presented, model.PresentedEntry{
-			Title:     e.Title,
-			Start:     e.Start,
-			StartTime: e.StartTime,
-			End:       e.End,
-			EndTime:   e.EndTime,
+			Title:   e.Title,
+			StartAt: e.StartAt,
+			EndAt:   e.EndAt,
+			TZ:      e.TZ,
+			AllDay:  e.AllDay,
 		})
 	}
 

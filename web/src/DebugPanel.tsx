@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import type { ApiCall, ClientConfig, WsEvent } from './api'
 import * as api from './api'
 import type { Channel, Entry } from './types'
+import { formatLocalDisplay } from './timefmt'
 
 // Debug panel:三個分頁 —— API 交易紀錄、WS 事件、目前頻道的 Entry 條目。
 // API:依時間倒序列出每筆交易,點開看原始 request/response JSON。
@@ -162,16 +163,20 @@ function EntriesView({
           這個頻道還沒有 Entry。owner 記事(需 -llm want)後會出現。
         </div>
       )}
-      {entries.map((e) => (
-        <div key={e.id} className="entry-row">
-          <span className="entry-when-mono">
-            {e.start ? (e.startTime ? `${e.start} ${e.startTime}` : `${e.start} 全日`) : '(無時間)'}
-            {e.end ? ` ~ ${e.endTime ? `${e.end} ${e.endTime}` : e.end}` : ''}
-          </span>
-          <span className="entry-item-mono">{e.title}</span>
-          <span className="entry-id-mono">{e.id}</span>
-        </div>
-      ))}
+      {entries.map((e) => {
+        const start = formatLocalDisplay(e.startAt, e.tz, e.allDay)
+        const end = formatLocalDisplay(e.endAt, e.tz, e.allDay)
+        return (
+          <div key={e.id} className="entry-row">
+            <span className="entry-when-mono">
+              {start ? (e.allDay ? `${start} 全日` : start) : '(無時間)'}
+              {end ? ` ~ ${end}` : ''}
+            </span>
+            <span className="entry-item-mono">{e.title}</span>
+            <span className="entry-id-mono">{e.id}</span>
+          </div>
+        )
+      })}
     </div>
   )
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/tim72117/tripace/internal/store"
 	"github.com/tim72117/want/types"
 )
 
@@ -57,11 +58,14 @@ func (t *TripEntriesTool) Call(args types.ToolArguments, ctx types.ToolContext) 
 	sb.WriteString(fmt.Sprintf("Trip %s — %d entry(s):\n", tripID, len(entries)))
 	entryList := make([]map[string]interface{}, 0, len(entries))
 	for _, e := range entries {
+		loc := store.LoadTimeZoneOrDefault(e.TZ)
+		start := formatTripBoundary(e.StartAt, loc)
+		end := formatTripBoundary(e.EndAt, loc)
 		line := fmt.Sprintf("・[entryID=%s] %s", e.ID, e.Title)
-		if e.Start != "" {
-			line += fmt.Sprintf(" (%s", e.Start)
-			if e.End != "" && e.End != e.Start {
-				line += " ~ " + e.End
+		if start != "" {
+			line += fmt.Sprintf(" (%s", start)
+			if end != "" && end != start {
+				line += " ~ " + end
 			}
 			line += ")"
 		}
@@ -72,8 +76,8 @@ func (t *TripEntriesTool) Call(args types.ToolArguments, ctx types.ToolContext) 
 		entryList = append(entryList, map[string]interface{}{
 			"entryID":  e.ID,
 			"title":    e.Title,
-			"start":    e.Start,
-			"end":      e.End,
+			"start":    start,
+			"end":      end,
 			"location": e.Location,
 			"kind":     e.Kind,
 		})
