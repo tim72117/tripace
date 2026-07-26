@@ -67,12 +67,13 @@ type Me struct {
 
 // PresentedEntry 是查詢回答附帶、要展示給使用者的結構化條目。
 // 形狀與 llm.AssistEntry / wanttools.PresentedEntry 一致,讓前端用同一套列表渲染。
+// 時間欄位語意同 Entry(見其註解)。
 type PresentedEntry struct {
-	Title     string `json:"title"`
-	Start     string `json:"start"`
-	StartTime string `json:"startTime"`
-	End       string `json:"end"`
-	EndTime   string `json:"endTime"`
+	Title   string     `json:"title"`
+	StartAt *time.Time `json:"startAt,omitempty"`
+	EndAt   *time.Time `json:"endAt,omitempty"`
+	TZ      string     `json:"tz,omitempty"`
+	AllDay  bool       `json:"allDay,omitempty"`
 }
 
 // SearchAnswer 對應語意查詢回應。
@@ -275,17 +276,23 @@ type ItineraryPage struct {
 
 // Entry 是主體:LLM 處理訊息後產出的「事件/條目」,承載所有結構化結果。
 // 可獨立存在,並可關聯多則來源訊息(多對多)。
+//
+// 時間欄位(2026-07 從字串改為 timestamptz,見 store/entity.go 的完整說明):
+// StartAt/EndAt 是 UTC 絕對時刻,TZ 是事件所屬的 IANA 時區(如 "Asia/Tokyo")。
+// 顯示端一律應以 TZ 換算再呈現給使用者,而非用裝置/瀏覽器的當地時區——
+// 旅遊行程的時間是「目的地當地時間」,不是「觀看者所在地時間」,兩者在使用者
+// 抵達目的地前後會不一致。AllDay=true 時 StartAt 存當日在 TZ 時區的 00:00。
 type Entry struct {
-	ID        string   `json:"id"`
-	TripID    string   `json:"tripID"`
-	Title     string   `json:"title"`             // 事項描述
-	Start     string   `json:"start"`             // 'YYYY-MM-DD';可空
-	StartTime string   `json:"startTime"`         // 'HH:MM';空=全日
-	End       string   `json:"end,omitempty"`     // 範圍結束日期;可空
-	EndTime   string   `json:"endTime,omitempty"` // 範圍結束時刻;可空
-	Location  string   `json:"location"`          // 地點(可空)
-	Lat       *float64 `json:"lat,omitempty"`     // 緯度(由 Places API 自動補)
-	Lng       *float64 `json:"lng,omitempty"`     // 經度
+	ID        string     `json:"id"`
+	TripID    string     `json:"tripID"`
+	Title     string     `json:"title"`             // 事項描述
+	StartAt   *time.Time `json:"startAt,omitempty"` // UTC;nil=無時間資訊
+	EndAt     *time.Time `json:"endAt,omitempty"`   // UTC;nil=無結束時間
+	TZ        string     `json:"tz,omitempty"`      // IANA 時區名,如 "Asia/Tokyo"
+	AllDay    bool       `json:"allDay,omitempty"`  // true=全日事件(忽略時刻部分)
+	Location  string     `json:"location"`          // 地點(可空)
+	Lat       *float64   `json:"lat,omitempty"`     // 緯度(由 Places API 自動補)
+	Lng       *float64   `json:"lng,omitempty"`     // 經度
 	// PlaceID 是這組座標對應的 Google Place ID,供之後跟 Places API 其他
 	// 已快取的資料(如 photo_cache/place_details_cache)關聯比對用——只有
 	// 座標來自後端呼叫 Geocoding API 查詢時才會有值(見

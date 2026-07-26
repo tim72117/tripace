@@ -2,6 +2,12 @@
 // 作為單一真實來源。
 //
 // 設計原則:LLM 工具(wanttools)與 CLI 都只薄薄呼叫本層,不各自重刻。
+//
+// 時間表示法邊界(2026-07):對外(RecordInput/UpdateEntryInput 等)仍是
+// 「日期字串 + 24 小時制時刻字串」這種人類可讀格式,對齊 REST API/CLI/前端
+// 既有輸入慣例;內部呼叫 store.ParseLocalDateTime 轉成 UTC timestamp 才寫入
+// store。時區目前用 store.DefaultTimeZone()(可用 DEFAULT_TIME_ZONE 環境變數
+// 覆寫)——呼叫端沒有提供時區資訊,這是刻意的簡化,見該函式註解。
 package tripsvc
 
 import (
@@ -36,7 +42,7 @@ func newEntryID() string {
 	return "ent_" + hex.EncodeToString(b)
 }
 
-// RecordInput 是記錄一筆條目的輸入。
+// RecordInput 是記錄一筆條目的輸入。時間欄位維持字串格式(見套件註解)。
 type RecordInput struct {
 	TripID    string
 	Title     string
@@ -62,14 +68,21 @@ type RecordResult struct {
 // Record 寫入一筆 entry。
 func (s *Service) Record(in RecordInput) (RecordResult, error) {
 	id := newEntryID()
+	loc := store.DefaultTimeZone()
+	startAt, allDay := store.ParseLocalDateTime(in.Start, in.StartTime, loc)
+	endAt, _ := store.ParseLocalDateTime(in.End, in.EndTime, loc)
+	tz := ""
+	if startAt != nil {
+		tz = loc.String()
+	}
 	e := model.Entry{
 		ID:        id,
 		TripID:    in.TripID,
 		Title:     in.Title,
-		Start:     in.Start,
-		StartTime: in.StartTime,
-		End:       in.End,
-		EndTime:   in.EndTime,
+		StartAt:   startAt,
+		EndAt:     endAt,
+		TZ:        tz,
+		AllDay:    allDay,
 		Location:  in.Location,
 		CreatedAt: nowUTC(),
 	}
@@ -101,7 +114,8 @@ func (s *Service) Record(in RecordInput) (RecordResult, error) {
 
 // ---- CRUD 轉發(讓呼叫端不必直接依賴 store) ----
 
-// UpdateEntryInput 是更新條目的輸入，留空欄位不更新。
+// UpdateEntryInput 是更新條目的輸入，留空欄位不更新。時間欄位維持字串格式
+// (見套件註解)。
 type UpdateEntryInput struct {
 	ID        string
 	Title     string
@@ -116,8 +130,28 @@ type UpdateEntryInput struct {
 }
 
 // UpdateEntry 更新一筆 entry 的可編輯欄位。
+// Start 與 End 各自獨立判斷是否要更新(對齊舊版 string 欄位「空字串=不更新
+// 這個欄位」的逐欄位語意)——handleUpdateEntry(PATCH,手動編輯表單)允許只
+// 補 End、不動既有 Start 這種用法,若把兩者綁在一起判斷會漏掉這種情境。
+// AllDay 只在 Start 被更新時才跟著算(全日與否是由 StartTime 是否給了決定,
+// 與 End 無關);TZ 只要 Start 或 End 任一被更新就一併寫入(這次操作決定的
+// 時區,兩個時間點理應一致)。
 func (s *Service) UpdateEntry(in UpdateEntryInput) error {
-	return s.st.UpdateEntry(in.ID, in.Title, in.Start, in.StartTime, in.End, in.EndTime, in.Location, in.Note, in.Kind, in.Detail)
+	var tu store.EntryTimeUpdate
+	loc := store.DefaultTimeZone()
+	if in.Start != "" {
+		startAt, allDay := store.ParseLocalDateTime(in.Start, in.StartTime, loc)
+		tu.StartAt, tu.AllDay = startAt, &allDay
+	}
+	if in.End != "" {
+		endAt, _ := store.ParseLocalDateTime(in.End, in.EndTime, loc)
+		tu.EndAt = endAt
+	}
+	if in.Start != "" || in.End != "" {
+		tz := loc.String()
+		tu.TZ = &tz
+	}
+	return s.st.UpdateEntry(in.ID, in.Title, tu, in.Location, in.Note, in.Kind, in.Detail)
 }
 
 // Reset 清空行程的所有 entries(開發/測試用)。

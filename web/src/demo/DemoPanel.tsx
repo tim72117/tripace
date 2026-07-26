@@ -5,6 +5,7 @@ import * as api from '../api'
 import type { Entry } from '../types'
 import type { Trip } from '../trip/types'
 import styles from './DemoPanel.module.css'
+import { formatLocalDisplay } from '../timefmt'
 
 // DemoPanel:只在 DEBUG_PANEL_ENABLED 開啟(見 DesktopShared.tsx)、且點開
 // 桌面版 rail 上的 API/WS 狀態面板圖示時才會出現(見 planning/member/desktop/Content.tsx 的
@@ -185,16 +186,20 @@ function EntriesView({
           這個旅程還沒有 Entry。owner 記事(需 -llm want)後會出現。
         </div>
       )}
-      {entries.map((e) => (
-        <div key={e.id} className={styles.entryRow}>
-          <span className={styles.entryWhenMono}>
-            {e.start ? (e.startTime ? `${e.start} ${e.startTime}` : `${e.start} 全日`) : '(無時間)'}
-            {e.end ? ` ~ ${e.endTime ? `${e.end} ${e.endTime}` : e.end}` : ''}
-          </span>
-          <span className={styles.entryItemMono}>{e.title}</span>
-          <span className={styles.entryIdMono}>{e.id}</span>
-        </div>
-      ))}
+      {entries.map((e) => {
+        const start = formatLocalDisplay(e.startAt, e.tz, e.allDay)
+        const end = formatLocalDisplay(e.endAt, e.tz, e.allDay)
+        return (
+          <div key={e.id} className={styles.entryRow}>
+            <span className={styles.entryWhenMono}>
+              {start ? (e.allDay ? `${start} 全日` : start) : '(無時間)'}
+              {end ? ` ~ ${end}` : ''}
+            </span>
+            <span className={styles.entryItemMono}>{e.title}</span>
+            <span className={styles.entryIdMono}>{e.id}</span>
+          </div>
+        )
+      })}
     </div>
   )
 }

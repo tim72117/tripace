@@ -74,10 +74,26 @@ func Open(dsn string) (*Store, error) {
 	// 進入 main、正式環境未部署過,不存在「既有資料庫殘留舊索引」需要
 	// 處理的情境,AutoMigrate 建的新表從一開始就是正確的複合索引,不需要
 	// 額外的舊索引清理邏輯。
+	//
+	// renameLegacyTimeColumns 必須在 AutoMigrate 之前:entries 的時間
+	// 欄位從字串改成 timestamptz,AutoMigrate 不會自動改既有欄位型別,故先把
+	// 舊字串欄位改名讓出位置,AutoMigrate 才能建出正確型別的新欄位;
+	// backfillTimestamps 則在 AutoMigrate 之後,把改名保存的舊值解析回填進
+	// 新欄位、確認回填完成才刪除暫存欄位(見 migrate_timestamps.go)。
 	migrationOK := true
+	if err := renameLegacyTimeColumns(db); err != nil {
+		log.Printf("!!! 時間欄位遷移(改名階段)失敗,資料庫 schema 可能未同步,請盡快檢查: %v", err)
+		migrationOK = false
+	}
 	if err := db.AutoMigrate(&userRow{}, &tripRow{}, &entryRow{}, &memberLink{}, &publicLinkRow{}, &cliAuthSessionRow{}, &attractionRow{}, &contentPageRow{}, &itineraryPageRow{}, &blogProfileRow{}, &uploadedPhotoRow{}, &photoVariantRow{}, &photoCacheRow{}, &placeDetailsCacheRow{}, &googlePlacePhotoRow{}, &placePexelsPhotoRow{}, &pexelsPhotoCacheRow{}, &photoAssetRow{}, &apiRequestLogRow{}, &geoAPICallLogRow{}, &geoRateLimitRow{}, &geoFieldMaskRow{}, &geoSettingRow{}, &planAiChatMessageRow{}); err != nil {
 		log.Printf("!!! AutoMigrate 失敗,資料庫 schema 可能未同步,部分功能可能異常或無法使用,請盡快檢查: %v", err)
 		migrationOK = false
+	}
+	if migrationOK {
+		if err := backfillTimestamps(db); err != nil {
+			log.Printf("!!! 時間欄位遷移(回填階段)失敗,舊資料可能仍留在暫存欄位,請盡快檢查: %v", err)
+			migrationOK = false
+		}
 	}
 	return &Store{db: db, MigrationOK: migrationOK}, nil
 }

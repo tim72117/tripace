@@ -566,14 +566,28 @@ func seedIfEmpty(st *store.Store) error {
 		return err
 	}
 	// 原話不存後端;seed 直接寫入示範 entry(事件/條目),對齊「entry 為主體」。
-	for _, e := range []model.Entry{
-		{Title: "開會敲定 Q3 產品規格", Start: "2026-06-29", StartTime: "15:00"},
-		{Title: "準備預算上調提案(+15%)", Start: "2026-06-30"},
-		{Title: "修登入頁的 bug", Start: ""},
+	// date/clock 維持人類可讀字串,用 DefaultTimeZone() 轉成 UTC timestamp——
+	// seed 資料跟真實寫入路徑(tripsvc.Record)用同一套轉換規則。
+	loc := store.DefaultTimeZone()
+	for _, seed := range []struct{ title, date, clock string }{
+		{"開會敲定 Q3 產品規格", "2026-06-29", "15:00"},
+		{"準備預算上調提案(+15%)", "2026-06-30", ""},
+		{"修登入頁的 bug", "", ""},
 	} {
-		e.ID = "ent_" + randHex()
-		e.TripID = tr.ID
-		e.CreatedAt = nowUTC()
+		startAt, allDay := store.ParseLocalDateTime(seed.date, seed.clock, loc)
+		tz := ""
+		if startAt != nil {
+			tz = loc.String()
+		}
+		e := model.Entry{
+			ID:        "ent_" + randHex(),
+			TripID:    tr.ID,
+			Title:     seed.title,
+			StartAt:   startAt,
+			TZ:        tz,
+			AllDay:    allDay,
+			CreatedAt: nowUTC(),
+		}
 		_ = st.InsertEntry(e)
 	}
 	log.Printf("已寫入示範行程 %s", tr.ID)

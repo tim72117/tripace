@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as api from '../../../api'
 import type { ClientConfig } from '../../../api'
+import { combineLocalDateTime, resolveTz } from '../../../timefmt'
 import { itemKey, type GeoSelectedKey } from '../../explore/selectedKey'
 import { PanelHead } from '../../../components/PanelHead'
 import styles from './CandidateList.module.css'
@@ -376,14 +377,20 @@ export function CandidateList({
 
   // handleAssignDate:「未排定日期」分組標題按下後,選好日期按確定時觸發
   // ——把選到的 date 一次寫回這個分組底下所有 entry(PATCH /v1/entries/
-  // {id},只帶 start,不動其餘欄位,理由同 Timeline.tsx EditEntrySheet 的
+  // {id},只帶日期(startAt/tz/allDay),不動其餘欄位,理由同 Timeline.tsx EditEntrySheet 的
   // 既有慣例)。逐筆平行送出(Promise.all),任何一筆失敗就整批視為失敗、
   // 讓 NoDateDayHead 顯示錯誤訊息、輸入列維持開啟——不做部分成功的複雜
   // 狀態呈現,失敗時使用者可以直接重試(已成功的那幾筆重送一次 PATCH 同一個
   // 日期是幂等操作,不會有副作用)。全部成功才呼叫 onDatesAssigned 通知
   // 上游重新查詢,讓這些項目在下一次渲染自然移到正確的日期分組。
   const handleAssignDate = async (entries: (GeoCandidate & { kind: 'entry' })[], date: string) => {
-    await Promise.all(entries.map((e) => api.updateEntry(cfg, e.id, { start: date })))
+    // PATCH 的時間欄位是 startAt(UTC)+ tz + allDay(見 api.updateEntry):這批
+    // 「未排定日期」的 entry 本來就沒有 startAt/tz,故以 timefmt 的預設時區把
+    // 選到的日期換算成當地 00:00 的全日事件,並明確帶上同一個 tz,讓換算與
+    // 儲存用的時區一致。
+    const tz = resolveTz(undefined)
+    const startAt = combineLocalDateTime(date, '', tz)
+    await Promise.all(entries.map((e) => api.updateEntry(cfg, e.id, { startAt, tz, allDay: true })))
     onDatesAssigned?.()
   }
 

@@ -6,6 +6,7 @@ import type { ClientConfig, GeoGeocodeCandidate, GeoSearchResult, GeoTripEntry }
 import { fetchEntries, geocodeCandidateToSearchResult } from '../../api'
 import { useStableCallback } from '../../hooks/useStableCallback'
 import type { GeoPanTarget } from '../explore/selection'
+import { formatLocal } from '../../timefmt'
 
 // mapLocatedTripEntries:把 fetchEntries 查回的完整 Entry 清單篩出有座標的
 // 那批、轉成 GeoTripEntry 形狀——供下方「換旅程」與「補上日期後刷新」
@@ -14,16 +15,21 @@ function mapLocatedTripEntries(entries: Awaited<ReturnType<typeof fetchEntries>>
   const located = entries.filter(
     (e): e is typeof e & { lat: number; lng: number } => e.lat != null && e.lng != null,
   )
-  return located.map((e) => ({
-    id: e.id,
-    name: e.title,
-    lat: e.lat,
-    lng: e.lng,
-    location: e.location,
-    kind: e.kind,
-    start: e.start,
-    startTime: e.startTime,
-  }))
+  return located.map((e) => {
+    // GeoTripEntry 的 start/startTime 是給日層架分組用的本地日期/時刻字串,
+    // 由 Entry 的 startAt(UTC)依其自己的 tz 換算(見 timefmt.ts),不用瀏覽器時區。
+    const local = formatLocal(e.startAt, e.tz, e.allDay)
+    return {
+      id: e.id,
+      name: e.title,
+      lat: e.lat,
+      lng: e.lng,
+      location: e.location,
+      kind: e.kind,
+      start: local.date,
+      startTime: local.time,
+    }
+  })
 }
 
 // useMapState:從原本的 GeoOutlinePanel.tsx(已退役,其餘職責併入 planning/member/desktop/Content.tsx)拆出來的純資料邏輯——原本

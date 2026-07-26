@@ -198,7 +198,7 @@ describe('PlanPhoneView：加入行程的日期選擇 sheet 流程', () => {
     // 上方檔案開頭的完整說明:onTripEntriesChange 已不再是 PlanMap
     // 的 prop,必須透過這支底層 API 函式驅動真實的資料流)。
     fetchEntriesMock.mockResolvedValueOnce([
-      { id: 'entry_1', title: '既有安排', lat: 25.05, lng: 121.58, location: '', start: '2026-09-05', startTime: '', kind: 'activity' } as never,
+      { id: 'entry_1', title: '既有安排', lat: 25.05, lng: 121.58, location: '', startAt: '2026-09-04T16:00:00Z', tz: 'Asia/Taipei', allDay: true, kind: 'activity' } as never,
     ])
     const { container } = renderView()
     await waitFor(() => expect(fetchEntriesMock).toHaveBeenCalled())
@@ -226,7 +226,7 @@ describe('PlanPhoneView：加入行程的日期選擇 sheet 流程', () => {
 
     // 理由同上一個測試——先設定好 fetchEntries 的回傳值再掛載元件。
     fetchEntriesMock.mockResolvedValueOnce([
-      { id: 'entry_1', title: '既有安排', lat: 25.05, lng: 121.58, location: '', start: '2026-09-05', startTime: '', kind: 'activity' } as never,
+      { id: 'entry_1', title: '既有安排', lat: 25.05, lng: 121.58, location: '', startAt: '2026-09-04T16:00:00Z', tz: 'Asia/Taipei', allDay: true, kind: 'activity' } as never,
     ])
     const { container } = renderView()
     await waitFor(() => expect(fetchEntriesMock).toHaveBeenCalled())

@@ -13,13 +13,15 @@ func newTestEntry(t *testing.T, s *Store, id string) string {
 	if err != nil {
 		t.Fatalf("create trip: %v", err)
 	}
+	startAt, allDay := ParseLocalDateTime("2026-07-31", "09:00", DefaultTimeZone())
 	e := model.Entry{
-		ID:        "ent_" + id,
-		TripID:    tr.ID,
-		Title:     "原始標題",
-		Start:     "2026-07-31",
-		StartTime: "09:00",
-		Location:  "花蓮 光復橋",
+		ID:       "ent_" + id,
+		TripID:   tr.ID,
+		Title:    "原始標題",
+		StartAt:  startAt,
+		TZ:       DefaultTimeZone().String(),
+		AllDay:   allDay,
+		Location: "花蓮 光復橋",
 	}
 	if err := s.InsertEntry(e); err != nil {
 		t.Fatalf("insert entry: %v", err)
@@ -42,7 +44,7 @@ func TestEntryCRUD(t *testing.T) {
 	}
 
 	// 更新:改標題與地點。
-	if err := s.UpdateEntry(id, "新標題", "", "", "", "", "花蓮 富興客棧", "", "", nil); err != nil {
+	if err := s.UpdateEntry(id, "新標題", EntryTimeUpdate{}, "花蓮 富興客棧", "", "", nil); err != nil {
 		t.Fatalf("UpdateEntry: %v", err)
 	}
 
@@ -80,7 +82,7 @@ func TestEntryUpdateDetail(t *testing.T) {
 		"dwellMin":   nil,
 		"isLongRest": false,
 	}
-	if err := s.UpdateEntry(id, "", "", "", "", "", "", "", "", detail); err != nil {
+	if err := s.UpdateEntry(id, "", EntryTimeUpdate{}, "", "", "", detail); err != nil {
 		t.Fatalf("UpdateEntry with detail: %v", err)
 	}
 
