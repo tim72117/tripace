@@ -1,0 +1,54 @@
+{
+  "trainSet": [
+    {
+      "text": "記得明天早上要準時跟對方確認會議內容。",
+      "pathID": "start-\u003eclassify-\u003ereplyQueried"
+    },
+    {
+      "text": "剛剛在台北101觀景台看完日落，肚子好餓想找附近的餐廳。",
+      "pathID": "start-\u003eclassify-\u003ecallRecommendNearby-\u003ereplyRecommended"
+    },
+    {
+      "text": "剛剛在台北 101 觀景台看風景超美，肚子餓了想找附近好吃的。",
+      "pathID": "start-\u003eclassify-\u003ecallRecommendNearby-\u003ereplyRecommended"
+    },
+    {
+      "text": "剛剛在台北101觀景台看著夕陽，風景真的太美了。",
+      "pathID": "start-\u003eclassify-\u003edestinationScope-\u003easkUserDestinationRecommend-\u003euserWantsDestinationRecommend-\u003ecallRecommendNearby-\u003ereplyRecommended"
+    },
+    {
+      "text": "今天在台北 101 觀景台看到的夕陽真的太美了。",
+      "pathID": "start-\u003eclassify-\u003edestinationScope-\u003easkUserDestinationRecommend-\u003euserWantsDestinationRecommend-\u003easkUserDetailedItinerary-\u003ereplyAskDetailedItinerary"
+    },
+    {
+      "text": "記得要把行李裡沒帶的換洗衣服補齊。",
+      "pathID": "start-\u003eclassify-\u003ereplyPlan"
+    }
+  ],
+  "evalSet": [
+    {
+      "text": "記得要在回程前把行李箱裡的雜物清掉。",
+      "pathID": "start-\u003eclassify-\u003ereplyQueried"
+    },
+    {
+      "text": "剛到台北101，肚子好餓想找附近的餐廳吃點東西。",
+      "pathID": "start-\u003eclassify-\u003ecallRecommendNearby-\u003ereplyRecommended"
+    },
+    {
+      "text": "剛到台北101，肚子好餓想找附近好吃的餐廳。",
+      "pathID": "start-\u003eclassify-\u003ecallRecommendNearby-\u003ereplyRecommended"
+    },
+    {
+      "text": "現在人在台北 101 附近，想找附近好吃的餐廳。",
+      "pathID": "start-\u003eclassify-\u003edestinationScope-\u003easkUserDestinationRecommend-\u003euserWantsDestinationRecommend-\u003ecallRecommendNearby-\u003ereplyRecommended"
+    },
+    {
+      "text": "今天在台北 101 觀景台看夕陽真的超美。",
+      "pathID": "start-\u003eclassify-\u003edestinationScope-\u003easkUserDestinationRecommend-\u003euserWantsDestinationRecommend-\u003easkUserDetailedItinerary-\u003ereplyAskDetailedItinerary"
+    },
+    {
+      "text": "記得檢查護照跟換好外幣。",
+      "pathID": "start-\u003eclassify-\u003ereplyPlan"
+    }
+  ]
+}
