@@ -1,14 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
 import { AgentBridge } from '@onagent/bridge'
-import { isSubmitEnter } from './App'
-import { tripEntryAdd, newTripEntryId } from './clienttools/tools/tripEntryAdd'
-import { tripEntryList } from './clienttools/tools/tripEntryList'
-import { tripListBatches } from './clienttools/tools/tripListBatches'
-import { tripEntryDelete } from './clienttools/tools/tripEntryDelete'
-import { tripEntryUpdate } from './clienttools/tools/tripEntryUpdate'
-import type { ToolContext } from './clienttools/ClientToolsBridge'
-import type { TripBatches } from './clienttools/tripEntryTools'
-import { toAgentBridgeTools } from './sdk-proposals/toAgentBridgeTools'
+import { isSubmitEnter } from '../App'
+import { tripEntryAdd, newTripEntryId } from './tools/tripEntryAdd'
+import { tripEntryList } from './tools/tripEntryList'
+import { tripListBatches } from './tools/tripListBatches'
+import { tripEntryDelete } from './tools/tripEntryDelete'
+import { tripEntryUpdate } from './tools/tripEntryUpdate'
+import type { TripBatches } from './tripEntryTools'
+import { toAgentBridgeTools } from '../sdk-proposals/toAgentBridgeTools'
+
+// OnagentToolCtx — 這個測試頁面需要的 context 形狀,結構對齊
+// ClientToolsBridge.ts 的 ToolContext,但刻意在這裡自己宣告一份,不 import
+// 那個檔案——這個頁面走的是完全獨立於 ClientToolsBridge 的資料流(見上方
+// 說明:透過 onagent 平台,不是 tripace 自己的 clienttools_ws.go),不該為了
+// 借一個型別而牽連進 ClientToolsBridge.ts 的 import 圖。
+//
+// 這裡需要完整三個欄位(getAllBatches/setAllBatches/notifyBatchQueried),
+// 跟個別工具檔案(tripEntryAdd.ts 等)各自宣告最小子集不同——因為
+// toAgentBridgeTools 的簽章是 toAgentBridgeTools<Ctx>(tools: ClientTool<Ctx>[],
+// ctx: Ctx, ...),一次陣列只能有一個 Ctx,而這裡混了五個工具、各自最小需求
+// 不同(tripEntryAdd/Delete/Update 要 setAllBatches,tripEntryList 要
+// notifyBatchQueried,tripListBatches 只要 getAllBatches),ctx 必須同時滿足
+// 全部五個工具的需求聯集,也就是完整的三個欄位,沒有更小的子集可用。
+type OnagentToolCtx = {
+  getAllBatches: () => TripBatches
+  setAllBatches: (next: TripBatches) => void
+  notifyBatchQueried: (key: string) => void
+}
 
 // SEED_BATCH_KEY:預先放一批種子資料,讓 trip_entry_list 一開始就有東西可
 // 查(不用先靠 trip_entry_add 造資料才能測查詢),比照 ClientToolsDemo.tsx
@@ -34,10 +52,12 @@ const SEED_BATCH_KEY = 'demo'
 // 差別在於 tools map 的 handler 簽章更單純(只收 args、回傳 result),ClientTool
 // 則多收一個 ToolContext(getAllBatches/setAllBatches/notifyBatchQueried)。
 // 這裡直接重用這五個 ClientTool 物件本身(而非只借用它們內部的純函式邏輯),
-// 用 toAgentBridgeTools(見 sdk-proposals/ 目錄的說明——模擬「若 SDK 願意
-// 補上陣列註冊功能」的試做)把整批工具一次轉成 AgentBridge 要的 tools map,
-// 不用像最初那版手動為每個工具寫一行轉接程式碼,新增工具只需要加進下面的
-// 陣列——**但同時要記得 onagent 平台上這個 app 也要推送對應的 tool schema
+// 用 toAgentBridgeTools(見 sdk-proposals/toAgentBridgeTools.ts 的說明——
+// @onagent/bridge 0.0.2 現在原生支援陣列輸入,這個轉接層改成只負責幫每個
+// 工具綁定 ctx、其餘交給 SDK 原生的 toToolRecord 處理)把整批工具一次轉成
+// AgentBridge 要的 tools map,不用像最初那版手動為每個工具寫一行轉接程式碼,
+// 新增工具只需要加進下面的陣列——**但同時要記得 onagent 平台上這個 app 也
+// 要推送對應的 tool schema
 // (用 onagent save-tools),兩邊要保持同步:平台有 schema、前端沒 handler
 // 會讓 LLM 呼叫時收到 no handler registered;前端有 handler、平台沒 schema
 // 則 LLM 永遠不知道這個工具存在、永遠不會呼叫到(這正是 trip_list_batches
@@ -86,7 +106,7 @@ export function OnagentBridgeDemo() {
     // allBatchesRef;notifyBatchQueried 由 tripEntryList 呼叫(純讀取工具,
     // 用它回報「剛查詢了這個 key」,見 tripEntryList.ts 的說明),這裡接上
     // log 讓查詢確實觸發時看得到。
-    const onagentToolContext: ToolContext = {
+    const onagentToolContext: OnagentToolCtx = {
       getAllBatches: () => allBatchesRef.current,
       setAllBatches: (next) => {
         allBatchesRef.current = next
