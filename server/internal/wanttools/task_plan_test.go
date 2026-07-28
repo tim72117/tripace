@@ -8,14 +8,14 @@ import (
 )
 
 // fakeToolCtx 是 types.ToolContext 的測試假物件:只實作 task_plan 會用到的
-// GetSessionEnvs(供 ChannelFrom 取 channelID)與 EmitToolResult(記下最後結果供斷言),
+// GetSystemToolContext(供 ChannelFrom 取 channelID)與 EmitToolResult(記下最後結果供斷言),
 // 其餘 interface 方法一律 no-op / 回傳零值。
 type fakeToolCtx struct {
 	envs       map[string]string
 	lastResult map[string]interface{}
 }
 
-func (c *fakeToolCtx) GetSessionEnvs() map[string]string            { return c.envs }
+func (c *fakeToolCtx) GetSystemToolContext() map[string]string      { return c.envs }
 func (c *fakeToolCtx) EmitToolResult(result map[string]interface{}) { c.lastResult = result }
 
 // 以下為滿足 types.ToolContext interface 的其餘方法(task_plan 不使用)。
@@ -28,7 +28,7 @@ func (c *fakeToolCtx) GetAppState() types.AppState                          { re
 func (c *fakeToolCtx) SetAppState(func(types.AppState) types.AppState)      {}
 func (c *fakeToolCtx) GetLastSnapshotFile() string                          { return "" }
 func (c *fakeToolCtx) SetLastSnapshotFile(string)                           {}
-func (c *fakeToolCtx) SetSessionEnvs(map[string]string)                     {}
+func (c *fakeToolCtx) SetSystemToolContext(map[string]string)               {}
 func (c *fakeToolCtx) GetReadFileState() interface{}                        { return nil }
 func (c *fakeToolCtx) GetStagedChanges() interface{}                        { return nil }
 func (c *fakeToolCtx) GetExposedTools() []string                            { return nil }

@@ -1,5 +1,5 @@
 // Package model 定義 API 與資料層共用的資料結構。
-// JSON 欄位對齊 docs/API.md,讓 iOS App 的 Codable 模型可直接解析。
+// JSON 欄位對齊 docs/knowledge/api.md,讓 iOS App 的 Codable 模型可直接解析。
 package model
 
 import "time"

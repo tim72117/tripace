@@ -318,8 +318,12 @@ func (t *TaskPlanTool) RenderToolResult(data map[string]interface{}) string {
 	return "task_plan done"
 }
 
-func init() {
-	types.RegisterTool(TaskPlanDeclaration, func() types.ToolInterface {
-		return &TaskPlanTool{}
-	})
-}
+// taskPlanRegistration 實作 types.ToolRegistration(見 ask_user.go 開頭的
+// package 內命名說明)。
+type taskPlanRegistration struct{}
+
+func (taskPlanRegistration) Declaration() types.ToolDeclaration { return TaskPlanDeclaration }
+func (taskPlanRegistration) New() types.ToolInterface           { return &TaskPlanTool{} }
+
+// TaskPlanToolRegistration 是本工具向登記處自我介紹的入口。
+var TaskPlanToolRegistration types.ToolRegistration = taskPlanRegistration{}

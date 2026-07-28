@@ -77,8 +77,12 @@ func (t *GeocodeTool) RenderToolResult(data map[string]interface{}) string {
 	return fmt.Sprintf("📍 %s\n%s\n(%.6f, %.6f)", name, address, lat, lng)
 }
 
-func init() {
-	types.RegisterTool(GeocodeDeclaration, func() types.ToolInterface {
-		return &GeocodeTool{}
-	})
-}
+// geocodeRegistration 實作 types.ToolRegistration(見 ask_user.go 開頭的
+// package 內命名說明)。
+type geocodeRegistration struct{}
+
+func (geocodeRegistration) Declaration() types.ToolDeclaration { return GeocodeDeclaration }
+func (geocodeRegistration) New() types.ToolInterface           { return &GeocodeTool{} }
+
+// GeocodeToolRegistration 是本工具向登記處自我介紹的入口。
+var GeocodeToolRegistration types.ToolRegistration = geocodeRegistration{}

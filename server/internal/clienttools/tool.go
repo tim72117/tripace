@@ -4,26 +4,34 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/tim72117/tripace/internal/toolregistry"
 	"github.com/tim72117/tripace/internal/toolschema"
 	"github.com/tim72117/want/types"
 )
 
-// RegisterApp registers every tool in app into want's global tool registry
-// (types.RegisterTool), choosing forwardingTool or queryTool per
+// RegisterApp registers every tool in app into reg (a shared
+// *toolregistry.Registry also fed by wanttools' own static tools — see
+// cmd/server/main.go), choosing forwardingTool or queryTool per
 // toolschema.ToolKind — mirrors agent's registerForwardingTool
 // (backend/internal/inference/agent_roles.go), minus the per-app agent-role
 // bookkeeping that lives in agent_role.go here instead (this POC has exactly
 // one app, so there's no RegisterPlatformTools-style loop over many apps).
-func RegisterApp(app *toolschema.App) []string {
+//
+// Unlike wanttools' compile-time-known tools (each a package-level
+// types.ToolRegistration value), app.Tools is a runtime-loaded, variable-length
+// list (from *.yaml — see toolschema.NewRegistry), so each tool's
+// types.ToolRegistration has to be constructed on the fly here rather than
+// living as a static var.
+func RegisterApp(app *toolschema.App, reg *toolregistry.Registry) []string {
 	names := make([]string, 0, len(app.Tools))
 	for _, t := range app.Tools {
 		names = append(names, t.Name)
-		registerOne(t)
+		registerOne(t, reg)
 	}
 	return names
 }
 
-func registerOne(t toolschema.Tool) {
+func registerOne(t toolschema.Tool, reg *toolregistry.Registry) {
 	decl := types.ToolDeclaration{
 		Name:        t.Name,
 		Description: t.Description,
@@ -31,12 +39,14 @@ func registerOne(t toolschema.Tool) {
 		Parameters:  parameterSchemaToWant(t.Parameters),
 	}
 	if t.Kind == toolschema.ToolKindQuery {
-		types.RegisterTool(decl, func() types.ToolInterface {
+		reg.AddDeclaration(decl)
+		reg.AddFactory(decl.Name, func() types.ToolInterface {
 			return &queryTool{name: t.Name}
 		})
 		return
 	}
-	types.RegisterTool(decl, func() types.ToolInterface {
+	reg.AddDeclaration(decl)
+	reg.AddFactory(decl.Name, func() types.ToolInterface {
 		return &forwardingTool{name: t.Name}
 	})
 }
@@ -45,9 +55,9 @@ func registerOne(t toolschema.Tool) {
 // page actually executes the call and reports back (via askPage), but only
 // the success/failure of that report ever reaches the LLM — never the
 // page's actual returned data. Mirrors agent's forwardingTool
-// (backend/internal/inference/agent_roles.go) exactly, with sessionEnvs
-// (ctx.GetSessionEnvs()) replacing ctx.GetAgentID() as askPage's session key
-// — see interaction.go's InteractionAsker doc comment for why.
+// (backend/internal/inference/agent_roles.go) exactly, with systemToolContext
+// (ctx.GetSystemToolContext()) replacing ctx.GetAgentID() as askPage's session
+// key — see interaction.go's InteractionAsker doc comment for why.
 type forwardingTool struct {
 	types.BaseToolConfig
 	name string
@@ -61,7 +71,7 @@ func (f *forwardingTool) Call(args types.ToolArguments, ctx types.ToolContext) (
 		return nil, fmt.Errorf("marshal args for %s: %w", f.name, err)
 	}
 
-	if _, err := askPage(ctx.GetSessionEnvs(), f.name, raw, toolschema.ToolKindAction); err != nil {
+	if _, err := askPage(ctx.GetSystemToolContext(), f.name, raw, toolschema.ToolKindAction); err != nil {
 		return nil, fmt.Errorf("execute %s: %w", f.name, err)
 	}
 
@@ -104,7 +114,7 @@ func (q *queryTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]typ
 		return nil, fmt.Errorf("marshal args for %s: %w", q.name, err)
 	}
 
-	answerJSON, err := askPage(ctx.GetSessionEnvs(), q.name, raw, toolschema.ToolKindQuery)
+	answerJSON, err := askPage(ctx.GetSystemToolContext(), q.name, raw, toolschema.ToolKindQuery)
 	if err != nil {
 		return nil, fmt.Errorf("query %s: %w", q.name, err)
 	}

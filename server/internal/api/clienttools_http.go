@@ -28,7 +28,7 @@ import (
 // (see web/src/DebugApp.tsx).
 func (s *Server) handleClientToolsWS(w http.ResponseWriter, r *http.Request) {
 	if s.clientToolsAnalyzer == nil {
-		http.Error(w, `{"error":"clienttools_disabled","message":"clienttools POC 未啟用(啟動時 want 分析器初始化失敗或使用 -llm mock)"}`, http.StatusServiceUnavailable)
+		http.Error(w, `{"error":"clienttools_disabled","message":"clienttools POC 未啟用(啟動時 want 分析器初始化失敗)"}`, http.StatusServiceUnavailable)
 		return
 	}
 

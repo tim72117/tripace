@@ -4,6 +4,8 @@ import (
 	"sync"
 
 	"github.com/tim72117/tripace/internal/model"
+
+	wanttypes "github.com/tim72117/want/types"
 )
 
 // WantPool 是 per-session orchestrator 的「外殼」。
@@ -30,8 +32,10 @@ type WantPool struct {
 
 // NewWantPool 初始化共用的 WantAnalyzer 並包成 pool。
 // 失敗(want 初始化失敗)時回傳 error,呼叫端可決定退回規則式。
-func NewWantPool() (*WantPool, error) {
-	shared, err := NewWant()
+//
+// toolbox 轉傳給 NewWant(見該處說明)。
+func NewWantPool(toolbox wanttypes.ToolProvider) (*WantPool, error) {
+	shared, err := NewWant(toolbox)
 	if err != nil {
 		return nil, err
 	}

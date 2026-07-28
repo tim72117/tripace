@@ -1,4 +1,4 @@
-// Package api 提供對齊 docs/API.md 的 HTTP handlers。
+// Package api 提供對齊 docs/knowledge/api.md 的 HTTP handlers。
 package api
 
 import (
@@ -50,9 +50,9 @@ func New(st *store.Store, an llm.Analyzer, signer *auth.Signer, devMode bool) *S
 // EnableClientTools wires the "LLM calls a frontend tool" POC's
 // /internal/clienttools/* endpoints (see clienttools_http.go/
 // clienttools_ws.go). Optional and separate from New() (rather than a
-// constructor parameter) so main.go can call it only when a real want
-// analyzer is available — this POC has no meaning under -llm mock, and
-// New() itself has no such precondition for its other args.
+// constructor parameter) so main.go can call it only once a real want
+// analyzer is available; New() itself has no such precondition for its
+// other args.
 func (s *Server) EnableClientTools(registry *toolschema.Registry, analyzer *llm.ClientToolsAnalyzer) {
 	s.clientToolsRegistry = registry
 	s.clientToolsAnalyzer = analyzer
@@ -452,8 +452,8 @@ func (s *Server) handleAssist(w http.ResponseWriter, r *http.Request) {
 		// ClientToolsSessionID:前端 ChatScreen.tsx 另開的第二條 WS 連線
 		// (/internal/clienttools/ws)收到 ack 後拿到的 sessionId(見
 		// clienttools_ws.go handleHello)。帶上這個欄位,want_analyzer.go 的
-		// Assist 才能透過 orch.SetSessionEnvs 把它交給 trip_entry_* 工具,
-		// 讓工具執行時經 ctx.GetSessionEnvs() 找到同一個 WS session、把呼叫
+		// Assist 才能透過 orch.SetSystemToolContext 把它交給 trip_entry_* 工具,
+		// 讓工具執行時經 ctx.GetSystemToolContext() 找到同一個 WS session、把呼叫
 		// 轉發回瀏覽器分頁(見 clienttools/interaction.go 的 askPage)。
 		// 空字串(前端尚未連上第二條 WS,或這次改動前的舊前端)時,
 		// trip_entry_* 工具呼叫會直接失敗回「no session id on this call」

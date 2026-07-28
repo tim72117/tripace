@@ -14,8 +14,10 @@ import (
 	"github.com/tim72117/tripace/internal/llm"
 	"github.com/tim72117/tripace/internal/model"
 	"github.com/tim72117/tripace/internal/store"
+	"github.com/tim72117/tripace/internal/toolregistry"
 	"github.com/tim72117/tripace/internal/toolschema"
 	"github.com/tim72117/tripace/internal/wanttools"
+	tripwanttools "github.com/tim72117/tripace/internal/wanttools/trip"
 
 	"github.com/joho/godotenv"
 )
@@ -34,8 +36,7 @@ func main() {
 	seed := flag.Bool("seed", true, "資料庫為空時寫入示範資料")
 	jwtSecret := flag.String("jwt-secret", "dev-secret-change-me", "JWT 簽章金鑰")
 	devMode := flag.Bool("dev", true, "開發模式:Apple token 不驗簽章")
-	llmKind := flag.String("llm", "want", "分析器:want(真實 LLM)| mock(假 LLM,送出觸發預設情境,供 web 操作)")
-	clientToolsPOC := flag.Bool("clienttools-poc", false, "是否啟用「LLM 呼叫前端 tool」試做(POC,/internal/clienttools/*);預設不啟用,端點維持回 503。僅在 -llm=want 下有意義(需要 want provider 已初始化)")
+	clientToolsPOC := flag.Bool("clienttools-poc", false, "是否啟用「LLM 呼叫前端 tool」試做(POC,/internal/clienttools/*)的啟動 log;端點本身一律啟用,這個開關只影響下面是否印出試做專屬的那行 log")
 	clientToolsDir := flag.String("clienttools-dir", "tools", "clienttools POC 的工具定義目錄(*.yaml),相對路徑同 -db 慣例,相對於執行時的工作目錄")
 	flag.Parse()
 
@@ -76,48 +77,55 @@ func main() {
 		}
 	}
 
-	// 分析器:預設 want LLM 引擎;-llm mock 改用假分析器(供 web 實際操作,免連 LLM)。
-	var analyzer llm.Analyzer
-	if *llmKind == "mock" {
-		// mock 不接真 LLM:送出觸發預設情境,直接用 store 寫 entry(走相同的
-		// FindOrCreateTrip 歸組路徑)。不需 BindSink/BindStore(那是 want 工具用的)。
-		analyzer = llm.NewMock(st)
-		log.Printf("LLM 分析器: mock(假 LLM,送出觸發預設情境)")
-	} else {
-		// want LLM 引擎(WantPool,per-session orchestrator 外殼)。初始化失敗直接 fatal。
-		pool, err := llm.NewWantPool()
-		if err != nil {
-			log.Fatalf("初始化 want 分析器失敗: %v", err)
-		}
-		analyzer = pool
-		// 注入條目持久化:record_entry 工具解析出的條目同步寫進 DB(entry 為主體,
-		// 獨立寫入),回傳新 entry ID。
-		wanttools.BindSink(func(channelID string, e wanttools.RecordedEntry) (string, error) {
-			id := "ent_" + randHex()
-			// kind 空字串存 nil(model.Entry.Kind 為 *string),非空才帶指標。
-			var kind *string
-			if e.Kind != "" {
-				kind = &e.Kind
-			}
-			// 寫入時不自動歸組(TripID 留 nil):record_entry 會列出時間相符的候選行程,
-			// 由 LLM 判斷後呼叫 add_to_trip 工具歸入(或新建)。
-			err := st.InsertEntry(model.Entry{
-				ID:        id,
-				ChannelID: channelID,
-				Title:     e.Title,
-				Start:     e.Start,
-				StartTime: e.StartTime,
-				End:       e.End,
-				EndTime:   e.EndTime,
-				Kind:      kind,
-				CreatedAt: nowUTC(),
-			})
-			return id, err
-		})
-		// 提供 query_entries 工具查詢用的 store:agent 提問時自己按時間範圍查條目。
-		wanttools.BindStore(st)
-		log.Printf("LLM 分析器: want 引擎(WantPool)")
+	// toolRegistry 是 want v0.2.0 起,tripace 自己組裝、餵給每一個
+	// *wantorch.Orchestrator 的共用工具登記表(want 已無 process 級全域工具
+	// 登記表,見 internal/toolregistry 套件說明)。先登記 wanttools/
+	// wanttools/trip 這兩個 package 的靜態工具(編譯期已知,不依賴任何執行期
+	// 設定);clienttools 的動態工具(依 -clientTools-dir 底下的 *.yaml 載入
+	// 數量、名稱不定)則稍後在下方 -llm=want 分支確定 app 內容後才追加進同一份
+	// registry——Toolbox.Declarations()/GetFactory() 每次呼叫都讀 Registry
+	// 當下內容(不快取),故「orchestrator 已建立、之後才追加工具」是安全的,
+	// 只要在任何一次實際推論發生前完成全部登記即可(main() 這裡的登記全在
+	// http.ListenAndServe 開始接受請求之前完成,見 toolregistry.Registry 的
+	// 執行緒安全性假設)。
+	toolRegistry := toolregistry.NewRegistry()
+	wanttools.RegisterBuiltinTools(toolRegistry)
+	tripwanttools.RegisterBuiltinTools(toolRegistry)
+
+	// 分析器:want LLM 引擎(WantPool,per-session orchestrator 外殼)。
+	// 初始化失敗直接 fatal——這是唯一的分析器實作,沒有可退回的假分析器。
+	pool, err := llm.NewWantPool(toolregistry.NewToolbox(toolRegistry))
+	if err != nil {
+		log.Fatalf("初始化 want 分析器失敗: %v", err)
 	}
+	var analyzer llm.Analyzer = pool
+	// 注入條目持久化:record_entry 工具解析出的條目同步寫進 DB(entry 為主體,
+	// 獨立寫入),回傳新 entry ID。
+	wanttools.BindSink(func(channelID string, e wanttools.RecordedEntry) (string, error) {
+		id := "ent_" + randHex()
+		// kind 空字串存 nil(model.Entry.Kind 為 *string),非空才帶指標。
+		var kind *string
+		if e.Kind != "" {
+			kind = &e.Kind
+		}
+		// 寫入時不自動歸組(TripID 留 nil):record_entry 會列出時間相符的候選行程,
+		// 由 LLM 判斷後呼叫 add_to_trip 工具歸入(或新建)。
+		err := st.InsertEntry(model.Entry{
+			ID:        id,
+			ChannelID: channelID,
+			Title:     e.Title,
+			Start:     e.Start,
+			StartTime: e.StartTime,
+			End:       e.End,
+			EndTime:   e.EndTime,
+			Kind:      kind,
+			CreatedAt: nowUTC(),
+		})
+		return id, err
+	})
+	// 提供 query_entries 工具查詢用的 store:agent 提問時自己按時間範圍查條目。
+	wanttools.BindStore(st)
+	log.Printf("LLM 分析器: want 引擎(WantPool)")
 
 	signer := auth.NewSigner(*jwtSecret, 30*24*time.Hour)
 	srv := api.New(st, analyzer, signer, *devMode)
@@ -126,51 +134,39 @@ func main() {
 	// 過去只在 -clienttools-poc 這個試做開關底下才會執行;但現在正式 assistant
 	// role(assistant_agent.go)的 Tools 白名單已經改用 trip_entry_add/
 	// trip_entry_update 取代 entry_add/entry_update,是正式對話會用到的東西了,
-	// 不能再綁死在一個語意上是「試做開關」的 flag 底下——若使用者只帶 -llm=want
-	// 沒帶 -clienttools-poc,assistant role 白名單裡列的 trip_entry_* 工具會
-	// 在 want 的全域 registry 裡完全不存在,LLM 一旦嘗試呼叫就會失敗。
-	// 故這裡改成:只要 -llm=want(不論 -clienttools-poc 是否開啟),就一定
-	// 執行這段註冊 + EnableClientTools(掛 /internal/clienttools/* 端點,見
-	// clienttools_ws.go)——ChatScreen.tsx 的第二條 WS 連線需要這個端點存在,
-	// 才能把 assistant 對話的 sessionID 註冊進 clienttools.RegisterAsker
-	// (見 want_analyzer.go Assist/Answer 的 SetSessionEnvs 說明)。
-	// -clienttools-poc 本身保留(不拿掉、不改名),但不再是「工具有沒有被註冊」
-	// 的唯一開關;它目前只影響是否印出下面這行試做專屬的啟動 log。
+	// 不能再綁死在一個語意上是「試做開關」的 flag 底下——不註冊的話,assistant
+	// role 白名單裡列的 trip_entry_* 工具會在 toolRegistry 裡完全不存在,LLM
+	// 一旦嘗試呼叫就會失敗。故這裡一律執行這段註冊 + EnableClientTools(掛
+	// /internal/clienttools/* 端點,見 clienttools_ws.go)——ChatScreen.tsx 的
+	// 第二條 WS 連線需要這個端點存在,才能把 assistant 對話的 sessionID 註冊進
+	// clienttools.RegisterAsker(見 want_analyzer.go Assist/Answer 的
+	// SetSystemToolContext 說明)。-clienttools-poc 本身保留(不拿掉、不改名),
+	// 但只影響是否印出下面這行試做專屬的啟動 log,不再是「工具有沒有被註冊」
+	// 的開關(唯一的分析器分支現在一律是 want,不需要再靠這個開關判斷)。
 	// 任何一步失敗都直接 log.Fatalf,不靜默略過——否則伺服器會「看起來啟動
 	// 成功」但 /internal/clienttools/* 端點其實還是回 503(EnableClientTools
 	// 沒被呼叫時的行為),或 assistant 對話呼叫 trip_entry_add 時才第一次
 	// 發現工具不存在,造成誤判。
-	if *llmKind == "want" {
-		// NewClientToolsAnalyzer 內部假設 want provider 已經初始化過一次(見
-		// clienttools_agent.go 的文件註解:它不會自己呼叫 wantorch.SetupWith,
-		// 第一次 Submit 時若 GlobalEngine 還是 nil 會 panic)。此處已在
-		// -llm=want 分支內(NewWantPool 已完成 provider 初始化),條件成立。
-		registry, err := toolschema.NewRegistry(*clientToolsDir)
-		if err != nil {
-			log.Fatalf("載入 clienttools 工具定義目錄 %s 失敗: %v", *clientToolsDir, err)
-		}
-		app, ok := registry.Get("clienttools")
-		if !ok {
-			log.Fatalf("clienttools 工具定義目錄 %s 底下找不到 appId=clienttools 的 App", *clientToolsDir)
-		}
-		// 註冊 trip_entry_add/trip_entry_delete/trip_entry_update/trip_entry_list
-		// 進 want 的全域 tool registry(clienttools.RegisterApp,在
-		// NewClientToolsAnalyzer 內部呼叫),讓 assistant role 的白名單真的能
-		// 呼叫到這些工具,同時保留 clienttoolsRole 這條獨立 orchestrator
-		// 供 DebugApp.tsx 的既有試做頁面沿用(不受這次改動影響)。
-		clientToolsAnalyzer := llm.NewClientToolsAnalyzer(app)
-		srv.EnableClientTools(registry, clientToolsAnalyzer)
-		if *clientToolsPOC {
-			log.Printf("clienttools POC 試做頁面已啟用(/internal/clienttools/*,工具目錄=%s)", *clientToolsDir)
-		} else {
-			log.Printf("trip_entry_* 工具已註冊(供正式 assistant 對話使用;/internal/clienttools/* 端點同時可用,工具目錄=%s)", *clientToolsDir)
-		}
-	} else if *clientToolsPOC {
-		// -clienttools-poc 帶了但 -llm 不是 want:過去這裡會 log.Fatalf
-		// (clienttools POC 需要已初始化的 want provider)。這個檢查繼續保留
-		// ——mock 分析器不會建立任何 want provider,靜默忽略這個 flag 只會讓
-		// 使用者以為試做已啟用,實際上呼叫時才 panic。
-		log.Fatalf("clienttools POC 需要 -llm=want(已初始化的 want provider);目前 -llm=%s", *llmKind)
+	registry, err := toolschema.NewRegistry(*clientToolsDir)
+	if err != nil {
+		log.Fatalf("載入 clienttools 工具定義目錄 %s 失敗: %v", *clientToolsDir, err)
+	}
+	app, ok := registry.Get("clienttools")
+	if !ok {
+		log.Fatalf("clienttools 工具定義目錄 %s 底下找不到 appId=clienttools 的 App", *clientToolsDir)
+	}
+	// 註冊 trip_entry_add/trip_entry_delete/trip_entry_update/trip_entry_list
+	// 進上面已經建立、也已經餵給 assistant orchestrator 的同一份
+	// toolRegistry(clienttools.RegisterApp,在 NewClientToolsAnalyzer
+	// 內部呼叫),讓 assistant role 的白名單真的能呼叫到這些工具,同時保留
+	// clienttoolsRole 這條獨立 orchestrator 供 DebugApp.tsx 的既有試做頁面
+	// 沿用(不受這次改動影響)。
+	clientToolsAnalyzer := llm.NewClientToolsAnalyzer(app, toolRegistry)
+	srv.EnableClientTools(registry, clientToolsAnalyzer)
+	if *clientToolsPOC {
+		log.Printf("clienttools POC 試做頁面已啟用(/internal/clienttools/*,工具目錄=%s)", *clientToolsDir)
+	} else {
+		log.Printf("trip_entry_* 工具已註冊(供正式 assistant 對話使用;/internal/clienttools/* 端點同時可用,工具目錄=%s)", *clientToolsDir)
 	}
 
 	wanttools.BindNotify(srv.NotifyEntriesUpdated)

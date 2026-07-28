@@ -164,8 +164,14 @@ func (t *RecommendNearbyTool) RenderToolResult(data map[string]interface{}) stri
 	return "已找到推薦景點"
 }
 
-func init() {
-	types.RegisterTool(RecommendNearbyDeclaration, func() types.ToolInterface {
-		return &RecommendNearbyTool{}
-	})
+// recommendNearbyRegistration 實作 types.ToolRegistration(見 ask_user.go
+// 開頭的 package 內命名說明)。
+type recommendNearbyRegistration struct{}
+
+func (recommendNearbyRegistration) Declaration() types.ToolDeclaration {
+	return RecommendNearbyDeclaration
 }
+func (recommendNearbyRegistration) New() types.ToolInterface { return &RecommendNearbyTool{} }
+
+// RecommendNearbyToolRegistration 是本工具向登記處自我介紹的入口。
+var RecommendNearbyToolRegistration types.ToolRegistration = recommendNearbyRegistration{}

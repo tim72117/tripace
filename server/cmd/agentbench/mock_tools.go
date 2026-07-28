@@ -14,15 +14,16 @@
 // capture.go),不需要真的執行任何副作用。
 //
 // 這裡刻意不 import github.com/tim72117/tripace/internal/wanttools:
-// 一來避免 types.RegisterTool 對同一個 Name(如 "entry_add")重複註冊到
-// 同一個全域 types.GlobalRegistry 造成 Factories 互相覆蓋的疑慮,
-// 二來讓 agentbench 完全獨立於 wanttools 目前的實作細節(DB/API 相依),
-// 之後 wanttools 的 Declaration 若調整,兩邊也不會意外互相牽連。
+// 一來避免與 wanttools 用同一個 Name(如 "entry_add")各自登記進不同
+// registry 時互相混淆的疑慮,二來讓 agentbench 完全獨立於 wanttools 目前的
+// 實作細節(DB/API 相依),之後 wanttools 的 Declaration 若調整,兩邊也不會
+// 意外互相牽連。
 package main
 
 import (
 	"fmt"
 
+	"github.com/tim72117/tripace/internal/toolregistry"
 	"github.com/tim72117/want/types"
 )
 
@@ -403,43 +404,47 @@ var taskPlanDeclaration = types.ToolDeclaration{
 	},
 }
 
-// registerMockTool 用共用的 mockTool 邏輯註冊一個工具,summary 決定
+// registerMockTool 用共用的 mockTool 邏輯把一個工具登記進 reg,summary 決定
 // RenderToolUse 與 Call 成功訊息的文字內容。
-func registerMockTool(decl types.ToolDeclaration, summary func(args types.ToolArguments) string) {
-	types.RegisterTool(decl, func() types.ToolInterface {
+func registerMockTool(reg *toolregistry.Registry, decl types.ToolDeclaration, summary func(args types.ToolArguments) string) {
+	reg.AddDeclaration(decl)
+	reg.AddFactory(decl.Name, func() types.ToolInterface {
 		return &mockTool{summary: summary}
 	})
 }
 
-func init() {
-	registerMockTool(entryAddDeclaration, func(a types.ToolArguments) string {
+// registerMockTools 把本檔案定義的 9 個 mock 工具登記進 reg,取代原本
+// init() 副作用註冊的機制(want v0.2.0 起,全域 types.RegisterTool 已移除,
+// 每個 orchestrator 改為顯式注入 toolbox——見 cmd/agentbench/main.go)。
+func registerMockTools(reg *toolregistry.Registry) {
+	registerMockTool(reg, entryAddDeclaration, func(a types.ToolArguments) string {
 		return fmt.Sprintf("[mock] Recorded entry: %s", a.GetString("title"))
 	})
-	registerMockTool(entryQueryDeclaration, func(a types.ToolArguments) string {
+	registerMockTool(reg, entryQueryDeclaration, func(a types.ToolArguments) string {
 		return fmt.Sprintf("[mock] Queried entries from=%q to=%q: (no data, mock 環境未接真實 store)", a.GetString("from"), a.GetString("to"))
 	})
-	registerMockTool(entryUpdateDeclaration, func(a types.ToolArguments) string {
+	registerMockTool(reg, entryUpdateDeclaration, func(a types.ToolArguments) string {
 		return fmt.Sprintf("[mock] Updated entry %s", a.GetString("entryID"))
 	})
-	registerMockTool(entryDeleteDeclaration, func(a types.ToolArguments) string {
+	registerMockTool(reg, entryDeleteDeclaration, func(a types.ToolArguments) string {
 		if ids := a.GetStringArray("entryIDs"); len(ids) > 0 {
 			return fmt.Sprintf("[mock] Deleted entries %v", ids)
 		}
 		return fmt.Sprintf("[mock] Deleted entry %s", a.GetString("entryID"))
 	})
-	registerMockTool(entryPresentDeclaration, func(a types.ToolArguments) string {
+	registerMockTool(reg, entryPresentDeclaration, func(a types.ToolArguments) string {
 		return fmt.Sprintf("[mock] Presented entry: %s", a.GetString("title"))
 	})
-	registerMockTool(geocodeDeclaration, func(a types.ToolArguments) string {
+	registerMockTool(reg, geocodeDeclaration, func(a types.ToolArguments) string {
 		return fmt.Sprintf("[mock] Geocoded %q: lat=25.000000, lng=121.000000 (假座標,mock 環境未接真實地圖 API)", a.GetString("place"))
 	})
-	registerMockTool(recommendNearbyDeclaration, func(a types.ToolArguments) string {
+	registerMockTool(reg, recommendNearbyDeclaration, func(a types.ToolArguments) string {
 		return fmt.Sprintf("[mock] Nearby recommendations for %q: (no data, mock 環境未接真實地圖 API)", a.GetString("place"))
 	})
-	registerMockTool(askUserDeclaration, func(a types.ToolArguments) string {
+	registerMockTool(reg, askUserDeclaration, func(a types.ToolArguments) string {
 		return fmt.Sprintf("[mock] Asked user (%s): %s", a.GetString("askType"), a.GetString("prompt"))
 	})
-	registerMockTool(taskPlanDeclaration, func(a types.ToolArguments) string {
+	registerMockTool(reg, taskPlanDeclaration, func(a types.ToolArguments) string {
 		return fmt.Sprintf("[mock] task_plan action=%s", a.GetString("action"))
 	})
 }
