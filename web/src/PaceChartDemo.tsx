@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { PaceRouteMap } from './PaceRouteMap'
+import { Share2 } from 'lucide-react'
 
 // 單車配速表(UI 試做):手機優先的直向卡片堆疊,每張卡片是一個檢查站,
 // 核心資訊是「離站時間」(視覺上用最大字級呈現)。設計與互動邏輯直接
@@ -240,6 +240,8 @@ function todayStr(): string {
 export function PaceChartDemo() {
   const [routeIdx, setRouteIdx] = useState(0)
   const [nowMark, setNowMark] = useState<NowMark | null>(null)
+  // copied:分享按鈕點擊後短暫顯示「已複製連結」的回饋文字,2 秒後恢復。
+  const [copied, setCopied] = useState(false)
   const route = ROUTES[routeIdx]
   // 沿用 App.tsx todayRef 的既有寫法:型別維持非 nullable 的 RefObject<HTMLDivElement>
   // (跟 React 18 的 RefObject<T> 定義一致,才能直接傳給 <div ref>),掛載前用
@@ -279,6 +281,25 @@ export function PaceChartDemo() {
           </button>
         ))}
       </div>
+
+      {/* 這是 ?demo 才會出現的固定示範資料(花東193公路),不是真實使用者
+          頻道,分享出去的公開頁不需要登入、不涉及任何真實資料權限問題——
+          跟 /public/{token} 那套給真實頻道用的公開分享連結是分開的機制,
+          直接複製一個固定網址即可,不用走後端建立/驗證 token 那套流程。 */}
+      <button
+        type="button"
+        className="pace-share-btn"
+        onClick={() => {
+          const url = `${window.location.origin}/demo/pace`
+          navigator.clipboard.writeText(url).then(() => {
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+          })
+        }}
+      >
+        <Share2 size={14} strokeWidth={2} />
+        {copied ? '已複製連結' : '分享這個配速表'}
+      </button>
 
       <p className="pace-eyebrow">{route.meta.eyebrow}</p>
       <h1 className="pace-title">{route.meta.title}</h1>
@@ -336,11 +357,6 @@ export function PaceChartDemo() {
           />
         ))}
       </div>
-
-      <div className="pace-table-title">
-        <span>路線地圖示範</span>
-      </div>
-      <PaceRouteMap />
 
       <footer className="pace-footer">{route.meta.footer}</footer>
     </div>

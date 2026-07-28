@@ -2059,6 +2059,30 @@ pre {
   flex-direction: column;
   min-height: 0;
 }
+/* 配速表改放側欄顯示(demo-pace,見 App.tsx DesktopContent)。捲動權明確
+   收在這一層、不依賴 .pace-chart 自己的 flex/min-height:0/overflow-y:auto
+   ——同一種多層 flex 傳遞鏈在 .phone-demo-drawer-body 跟 .desktop-main 這
+   兩處都實測發現沒有正確生效過(見那兩處的說明),這裡不再假設理論上應該
+   生效,直接沿用同一套已經證實可行的做法。 */
+.desktop-sidepanel-pace {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+.desktop-sidepanel-pace .pace-chart {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow-y: visible;
+  max-width: none;
+  margin: 0;
+  /* .pace-chart 原本的 padding: 18px 16px 40px 是手機滿版寬度情境下訂的,
+     搬進這個較窄的側欄後左右 16px 顯得太擠、跟邊緣幾乎貼齊,這裡加大左右
+     間距讓內容有明顯留白。 */
+  padding-left: 24px;
+  padding-right: 24px;
+}
 .desktop-timeline-scroll {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -2250,6 +2274,9 @@ pre {
 .desktop-main:has(> .pace-chart) {
   max-width: none;
   overflow-y: auto;
+  /* 同 .phone-demo-drawer-body 的理由:只設 overflow-y 會連帶讓水平軸也
+     變成可捲動,明確鎖死避免內容稍微超寬就變成可以左右拖曳。 */
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
 }
 .desktop-main > .pace-chart {
@@ -2374,6 +2401,10 @@ pre {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* 只設 overflow-y 不設 overflow-x 時,規範會把水平軸的計算值一併變成
+     auto(不會維持單純的 visible)——內容只要有一點點超出容器寬度就會變成
+     可以左右拖曳捲動,不是預期行為,故明確鎖死水平軸。 */
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   /* 疊層本身貼齊螢幕邊緣(見 .phone-demo-drawer),裡面的內容(如 .pace-chart)
      自己的 padding 不夠讓整塊面板跟螢幕邊界留出視覺呼吸空間,這裡額外補一層
@@ -2389,6 +2420,54 @@ pre {
   flex: 0 0 auto;
   min-height: auto;
   overflow-y: visible;
+}
+
+/* 手機版配速表的滑動雙頁(PacePhoneSwipe.tsx):左頁清單、右頁地圖,左右
+   滑動切換,對應桌面版「側欄放清單、主區放地圖」同時顯示的版面(手機螢幕
+   窄放不下並排)。捲動權收在 .pace-phone-swipe-page(各頁各自獨立捲動),
+   .pace-phone-swipe 本身撐滿 .phone-demo-drawer-body 給的空間、不再讓外層
+   也嘗試捲動整塊(兩層都捲會讓水平滑動手勢跟垂直捲動手勢互相干擾)。 */
+.pace-phone-swipe {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pace-phone-swipe-track {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  width: 200%;
+}
+.pace-phone-swipe-page {
+  flex: 0 0 50%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.pace-phone-swipe-dots {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 0;
+}
+.pace-phone-swipe-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: var(--ios-sep);
+  cursor: pointer;
+}
+.pace-phone-swipe-dot.active {
+  background: var(--color-accent);
 }
 
 /* ---- 推薦景點卡片(RecommendedPlaces.tsx) ---- */
@@ -2610,6 +2689,120 @@ pre {
 }
 .rp-map-error-detail {
   font-size: 12px;
+  color: var(--ios-gray);
+}
+
+/* PaceRouteMap 的「目前位置」定位失敗提示——刻意不用 .rp-map-error 那種
+   取代整個地圖的樣式,定位失敗只影響這個附加標記,路線本身仍正常顯示,
+   用一行小字疊在地圖下方即可,不需要整塊區域跳錯誤畫面。 */
+.pace-route-map-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 4px;
+}
+/* .rp-map 本身沒有 position: relative,「回到目前位置」按鈕需要疊在地圖
+   右下角,故外面包一層建立定位容器,不直接改 .rp-map(那個 class 是跟
+   RecommendedPlacesMap.tsx 共用的,不該為了這裡的需求動到共用樣式)。
+   .rp-map 的 height: 100% 需要一個有明確高度的父層才能算出實際值——這裡
+   若不給明確高度,.rp-map 只會退回它自己的 min-height: 320px,不會隨周圍
+   容器變大,固定卡在很矮的一塊。 */
+.pace-route-map-frame {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 320px;
+}
+.pace-route-map-recenter {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 5;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ios-sep);
+  border-radius: 50%;
+  background: var(--ios-card);
+  color: var(--color-accent);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+}
+/* 「模擬沿路線移動」是測試/demo 用途,不是給一般使用者用的正式功能,故
+   刻意用文字+圖示(而非只有圖示的 .pace-route-map-recenter 那種常駐控制項
+   樣式),一眼能看出這顆按鈕性質不同。 */
+.pace-route-map-simulate {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 999px;
+  background: var(--ios-card);
+  color: var(--ios-gray);
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+}
+.pace-route-map-simulate.active {
+  color: #fff;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+/* 疊在「模擬移動」正上方(bottom: 50px = 10px 間距 + 模擬按鈕本身約 32px
+   高 + 8px 空隙),樣式沿用同一組 pill 按鈕外觀。 */
+.pace-route-map-heading {
+  position: absolute;
+  left: 10px;
+  bottom: 50px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 999px;
+  background: var(--ios-card);
+  color: var(--ios-gray);
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+}
+.pace-route-map-heading.active {
+  color: #fff;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+/* 效果試做:固定疊一張檢查點卡片在地圖左上角(見 PaceRouteMap.tsx)。
+   .pace-stop 本身已經有卡片樣式(背景/邊框/陰影,見 PaceChartDemo 那邊的
+   定義),這裡只需要負責定位跟限制寬度,不重複定義卡片外觀。 */
+.pace-route-map-card {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  width: calc(100% - 20px);
+  max-width: 260px;
+}
+/* 半透明玻璃感,讓底下的地圖隱約透出來——手法沿用 .chat-overlay 那組既有
+   的 backdrop-filter 用法(見上方),不重新發明一套。只覆寫背景色(改成
+   半透明),文字本身維持完全不透明、可讀性不受影響——不能直接對整個
+   .pace-route-map-card 設 opacity,那樣連文字都會一起變淡。 */
+.pace-route-map-card .pace-stop {
+  background: rgba(253, 252, 250, 0.78);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+}
+.pace-route-map-me-err {
+  font-size: 11.5px;
   color: var(--ios-gray);
 }
 
@@ -3086,6 +3279,19 @@ pre {
   color: #fff;
   background: var(--ios-blue);
   border-color: var(--ios-blue);
+}
+.pace-share-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 6px 0 14px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ios-blue);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 /* 頂部摘要列:sticky,捲動時貼在 .pace-chart 內部頂端。*/

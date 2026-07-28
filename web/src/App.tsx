@@ -21,6 +21,8 @@ import { RecommendedPlacesMap } from './RecommendedPlacesMap'
 import { ClientToolsDemo } from './clienttools/bridge/ClientToolsDemo'
 import { OnagentBridgeDemo } from './clienttools/OnagentBridgeDemo'
 import { PaceChartDemo } from './PaceChartDemo'
+import { PaceRouteMap } from './PaceRouteMap'
+import { PacePhoneSwipe } from './PacePhoneSwipe'
 import { DebugPanel } from './DebugPanel'
 
 // baseURL 由建置時的 VITE_API_BASE 決定(見 .env.development),不開放使用者於 UI 修改;
@@ -123,10 +125,53 @@ export function App({ isDemo = false }: { isDemo?: boolean } = {}) {
       </div>
     )
   }
+  // /demo/pace 路徑:配速表 demo 的公開分享頁(見 PaceChartDemo.tsx 的
+  // 「分享這個配速表」按鈕)。這是固定示範資料(花東193公路),不是真實
+  // 使用者頻道,不需要登入、不涉及任何真實資料權限問題——跟 /public/{token}
+  // 那套給真實頻道用的公開分享是分開的機制,不走後端建立/驗證 token 那套
+  // 流程,單純是一個固定網址。
+  if (window.location.pathname === '/demo/pace') {
+    return (
+      <div className="web-app">
+        <PublicPaceDemoPage />
+      </div>
+    )
+  }
   // /app 路徑:主要應用畫面本體(套 iPhone 外框,寬螢幕自動切桌面版佈局)
   return (
     <div className="web-app">
       <PhoneContent {...props} isDemo={isDemo} />
+    </div>
+  )
+}
+
+// PublicPaceDemoPage:/demo/pace 的公開分享頁內容(見 App() 的路由判斷)。
+// 版型直接比照登入後 demo-pace 面板的樣子(側欄清單 + 主區地圖,見
+// DesktopContent 的 demo-pace 分支),只是不放最左側的 DesktopRail(頻道/
+// 時間軸/使用者選單那條圖示列,公開頁不需要、也沒有登入身分可以顯示)。
+// 沿用同一套 .desktop-sidepanel/.desktop-main class,不是重新設計一份
+// 版型;.desktop-layout 底下少了 DesktopRail 這個 flex sibling 不影響
+// sidepanel/main 各自的排版,不需要額外 CSS。手機寬度沿用跟登入後手機版
+// 一致的 PacePhoneSwipe(滑動雙頁),不需要另外做一份。
+function PublicPaceDemoPage() {
+  const isDesktop = useIsDesktop()
+  if (!isDesktop) {
+    return <PacePhoneSwipe />
+  }
+  return (
+    <div className="desktop-layout">
+      <aside className="desktop-sidepanel wide">
+        <div className="desktop-sidepanel-inner">
+          <div className="desktop-sidepanel-pace">
+            <PaceChartDemo />
+          </div>
+        </div>
+      </aside>
+      <main className="desktop-main">
+        <div className="desktop-demo-panel">
+          <PaceRouteMap />
+        </div>
+      </main>
     </div>
   )
 }
@@ -281,7 +326,7 @@ function PhoneDemoDrawer({
         </button>
       </div>
       <div className="phone-demo-drawer-body">
-        <DemoPanelContent mode={mode} />
+        {mode === 'demo-pace' ? <PacePhoneSwipe /> : <DemoPanelContent mode={mode} />}
       </div>
     </div>
   )
@@ -396,12 +441,14 @@ function DesktopContent(props: ContentProps) {
   const [debugWsEvents, setDebugWsEvents] = useState<WsEvent[]>([])
   useEffect(() => onApiCall((c) => setDebugCalls((prev) => [c, ...prev].slice(0, 100))), [])
   useEffect(() => onWsEvent((e) => setDebugWsEvents((prev) => [e, ...prev].slice(0, 100))), [])
-  // isSidepanelMode:panelMode 是不是「該展開 side panel」的模式——只有
-  // channels/timeline 這兩種正式功能會用到 side panel;demo-cards/demo-row/
-  // demo-map 這三種試做模式改成顯示在右側 .desktop-main(取代 ChatScreen,
-  // 見下方渲染邏輯),不佔用 side panel,故不能讓 side panel 因為 panelMode
-  // 有值就誤判成該展開,否則會出現一個空白的展開面板。
-  const isSidepanelMode = panelMode === 'channels' || panelMode === 'timeline'
+  // isSidepanelMode:panelMode 是不是「該展開 side panel」的模式——
+  // channels/timeline 這兩種正式功能,加上 demo-pace(配速表改放側欄顯示,
+  // 跟 timeline 用同一種「side panel 開、main 區顯示 ChatScreen/空狀態」
+  // 版面)。其餘 demo-cards/demo-row/demo-map/demo-clienttools/demo-onagent
+  // 這幾種試做模式維持顯示在右側 .desktop-main(取代 ChatScreen,見下方
+  // 渲染邏輯),不佔用 side panel,故不能讓 side panel 因為 panelMode 有值
+  // 就誤判成該展開,否則會出現一個空白的展開面板。
+  const isSidepanelMode = panelMode === 'channels' || panelMode === 'timeline' || panelMode === 'demo-pace'
 
   // 切換行程時,先清空鏡像資料,避免新行程的 ChatScreen 還沒送出第一次鏡像前,
   // side panel 短暫顯示上一個行程的時間軸內容。
@@ -440,7 +487,7 @@ function DesktopContent(props: ContentProps) {
           showDebugPanel={showDebugPanel}
           onToggleDebugPanel={() => setShowDebugPanel((v) => !v)}
         />
-        <aside className={`desktop-sidepanel${isSidepanelMode ? '' : ' collapsed'}${panelMode === 'timeline' ? ' wide' : ''}`}>
+        <aside className={`desktop-sidepanel${isSidepanelMode ? '' : ' collapsed'}${panelMode === 'timeline' || panelMode === 'demo-pace' ? ' wide' : ''}`}>
           <div className="desktop-sidepanel-inner">
             {panelMode === 'channels' && (
               <DesktopChannelList
@@ -472,11 +519,24 @@ function DesktopContent(props: ContentProps) {
                 </div>
               </div>
             )}
+            {panelMode === 'demo-pace' && (
+              <div className="desktop-sidepanel-pace">
+                <DemoPanelContent mode="demo-pace" />
+              </div>
+            )}
           </div>
         </aside>
         <main className="desktop-main">
-          {panelMode === 'demo-cards' || panelMode === 'demo-row' || panelMode === 'demo-map'
-            || panelMode === 'demo-clienttools' || panelMode === 'demo-onagent' || panelMode === 'demo-pace' ? (
+          {panelMode === 'demo-pace' ? (
+            // 配速表拆成兩塊:檢查站清單留在左側 side panel(見上方
+            // .desktop-sidepanel-pace),地圖需要較寬的空間,改在右側主區
+            // 顯示——跟 timeline 模式「側欄放清單、主區放詳細內容」是同一種
+            // 版面邏輯。PaceRouteMap 本身不吃 props,直接掛載即可。
+            <div className="desktop-demo-panel">
+              <PaceRouteMap />
+            </div>
+          ) : panelMode === 'demo-cards' || panelMode === 'demo-row' || panelMode === 'demo-map'
+            || panelMode === 'demo-clienttools' || panelMode === 'demo-onagent' ? (
             <DemoPanelContent mode={panelMode} />
           ) : activeChannel ? (
             <ChatScreen
