@@ -1,5 +1,9 @@
 node_modules
 dist
+# vite-plugin-pwa 的 devOptions.enabled: true(本機開發模式下也啟用 PWA,
+# 見 vite.config.ts)會在這裡寫出開發用的 service worker 產物,跟 dist 一樣
+# 是每次啟動都重新產生的建置產物,不應提交進版控。
+dev-dist
 *.local
 .vite
 
