@@ -47,17 +47,18 @@ import (
 // object owns the actual WS connection. RegisterAsker/lookupAsker is the
 // bridge: the WS session registers itself here (keyed by its own session id)
 // when it starts, and deregisters when the connection closes. The calling
-// tool recovers the session id from ctx.GetSessionEnvs()["sessionID"] — set
-// once via orch.SetSessionEnvs before Submit, the same SessionEnvs plumbing
-// shuttle's existing wanttools package already uses for channelID (see
-// wanttools.ChannelFrom) — rather than ctx.GetAgentID(), because in this
-// want version AgentID is fixed per *orchestrator.Orchestrator instance for
-// its whole lifetime (see orchestrator.NewOrchestrator: generated once, not
-// per-session), unlike the agent project's platform where AgentID is
-// prefixed per-WS-session by the host. This POC's dedicated orchestrator
-// (see agent_role.go) serves exactly one browser tab's prompts at a time,
-// so a single SessionEnvs-carried id is enough to identify "the tab this
-// call should ask" without needing want itself to be session-aware.
+// tool recovers the session id from ctx.GetSystemToolContext()["sessionID"]
+// — set once via orch.SetSystemToolContext before Submit, the same
+// SystemToolContext plumbing shuttle's existing wanttools package already
+// uses for channelID (see wanttools.ChannelFrom) — rather than
+// ctx.GetAgentID(), because in this want version AgentID is fixed per
+// *orchestrator.Orchestrator instance for its whole lifetime (see
+// orchestrator.NewOrchestrator: generated once, not per-session), unlike the
+// agent project's platform where AgentID is prefixed per-WS-session by the
+// host. This POC's dedicated orchestrator (see agent_role.go) serves exactly
+// one browser tab's prompts at a time, so a single SystemToolContext-carried
+// id is enough to identify "the tab this call should ask" without needing
+// want itself to be session-aware.
 type InteractionAsker interface {
 	AskInteraction(toolName string, args json.RawMessage, kind toolschema.ToolKind) (json.RawMessage, error)
 }

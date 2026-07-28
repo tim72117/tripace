@@ -208,15 +208,15 @@ func NotifyEntriesLoaded(channelID string, entries []TripEntryPayload) {
 	}
 }
 
-// ChannelFrom 從 ctx 的 SessionEnvs 讀 channelID:這份資料綁在本次呼叫的
-// ToolUseContext 上(由 want_analyzer.go 於 Submit 前透過 orch.SetSessionEnvs 寫入),
+// ChannelFrom 從 ctx 的 SystemToolContext 讀 channelID:這份資料綁在本次呼叫的
+// ToolUseContext 上(由 want_analyzer.go 於 Submit 前透過 orch.SetSystemToolContext 寫入),
 // 不經過任何套件級全域變數,也不會被組進送給 LLM 的 prompt。
 // ctx 為 nil 或未設定時回空字串(呼叫端應自行判斷是否視為錯誤)。
 func ChannelFrom(ctx types.ToolContext) string {
 	if ctx == nil {
 		return ""
 	}
-	envs := ctx.GetSessionEnvs()
+	envs := ctx.GetSystemToolContext()
 	if envs == nil {
 		return ""
 	}

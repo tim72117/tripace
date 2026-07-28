@@ -14,8 +14,10 @@ import (
 	"github.com/tim72117/tripace/internal/llm"
 	"github.com/tim72117/tripace/internal/model"
 	"github.com/tim72117/tripace/internal/store"
+	"github.com/tim72117/tripace/internal/toolregistry"
 	"github.com/tim72117/tripace/internal/toolschema"
 	"github.com/tim72117/tripace/internal/wanttools"
+	tripwanttools "github.com/tim72117/tripace/internal/wanttools/trip"
 
 	"github.com/joho/godotenv"
 )
@@ -76,6 +78,21 @@ func main() {
 		}
 	}
 
+	// toolRegistry 是 want v0.2.0 起,tripace 自己組裝、餵給每一個
+	// *wantorch.Orchestrator 的共用工具登記表(want 已無 process 級全域工具
+	// 登記表,見 internal/toolregistry 套件說明)。先登記 wanttools/
+	// wanttools/trip 這兩個 package 的靜態工具(編譯期已知,不依賴任何執行期
+	// 設定);clienttools 的動態工具(依 -clientTools-dir 底下的 *.yaml 載入
+	// 數量、名稱不定)則稍後在下方 -llm=want 分支確定 app 內容後才追加進同一份
+	// registry——Toolbox.Declarations()/GetFactory() 每次呼叫都讀 Registry
+	// 當下內容(不快取),故「orchestrator 已建立、之後才追加工具」是安全的,
+	// 只要在任何一次實際推論發生前完成全部登記即可(main() 這裡的登記全在
+	// http.ListenAndServe 開始接受請求之前完成,見 toolregistry.Registry 的
+	// 執行緒安全性假設)。
+	toolRegistry := toolregistry.NewRegistry()
+	wanttools.RegisterBuiltinTools(toolRegistry)
+	tripwanttools.RegisterBuiltinTools(toolRegistry)
+
 	// 分析器:預設 want LLM 引擎;-llm mock 改用假分析器(供 web 實際操作,免連 LLM)。
 	var analyzer llm.Analyzer
 	if *llmKind == "mock" {
@@ -85,7 +102,7 @@ func main() {
 		log.Printf("LLM 分析器: mock(假 LLM,送出觸發預設情境)")
 	} else {
 		// want LLM 引擎(WantPool,per-session orchestrator 外殼)。初始化失敗直接 fatal。
-		pool, err := llm.NewWantPool()
+		pool, err := llm.NewWantPool(toolregistry.NewToolbox(toolRegistry))
 		if err != nil {
 			log.Fatalf("初始化 want 分析器失敗: %v", err)
 		}
@@ -128,12 +145,12 @@ func main() {
 	// trip_entry_update 取代 entry_add/entry_update,是正式對話會用到的東西了,
 	// 不能再綁死在一個語意上是「試做開關」的 flag 底下——若使用者只帶 -llm=want
 	// 沒帶 -clienttools-poc,assistant role 白名單裡列的 trip_entry_* 工具會
-	// 在 want 的全域 registry 裡完全不存在,LLM 一旦嘗試呼叫就會失敗。
+	// 在 toolRegistry 裡完全不存在,LLM 一旦嘗試呼叫就會失敗。
 	// 故這裡改成:只要 -llm=want(不論 -clienttools-poc 是否開啟),就一定
 	// 執行這段註冊 + EnableClientTools(掛 /internal/clienttools/* 端點,見
 	// clienttools_ws.go)——ChatScreen.tsx 的第二條 WS 連線需要這個端點存在,
 	// 才能把 assistant 對話的 sessionID 註冊進 clienttools.RegisterAsker
-	// (見 want_analyzer.go Assist/Answer 的 SetSessionEnvs 說明)。
+	// (見 want_analyzer.go Assist/Answer 的 SetSystemToolContext 說明)。
 	// -clienttools-poc 本身保留(不拿掉、不改名),但不再是「工具有沒有被註冊」
 	// 的唯一開關;它目前只影響是否印出下面這行試做專屬的啟動 log。
 	// 任何一步失敗都直接 log.Fatalf,不靜默略過——否則伺服器會「看起來啟動
@@ -154,11 +171,12 @@ func main() {
 			log.Fatalf("clienttools 工具定義目錄 %s 底下找不到 appId=clienttools 的 App", *clientToolsDir)
 		}
 		// 註冊 trip_entry_add/trip_entry_delete/trip_entry_update/trip_entry_list
-		// 進 want 的全域 tool registry(clienttools.RegisterApp,在
-		// NewClientToolsAnalyzer 內部呼叫),讓 assistant role 的白名單真的能
-		// 呼叫到這些工具,同時保留 clienttoolsRole 這條獨立 orchestrator
-		// 供 DebugApp.tsx 的既有試做頁面沿用(不受這次改動影響)。
-		clientToolsAnalyzer := llm.NewClientToolsAnalyzer(app)
+		// 進上面已經建立、也已經餵給 assistant orchestrator 的同一份
+		// toolRegistry(clienttools.RegisterApp,在 NewClientToolsAnalyzer
+		// 內部呼叫),讓 assistant role 的白名單真的能呼叫到這些工具,同時保留
+		// clienttoolsRole 這條獨立 orchestrator 供 DebugApp.tsx 的既有試做頁面
+		// 沿用(不受這次改動影響)。
+		clientToolsAnalyzer := llm.NewClientToolsAnalyzer(app, toolRegistry)
 		srv.EnableClientTools(registry, clientToolsAnalyzer)
 		if *clientToolsPOC {
 			log.Printf("clienttools POC 試做頁面已啟用(/internal/clienttools/*,工具目錄=%s)", *clientToolsDir)

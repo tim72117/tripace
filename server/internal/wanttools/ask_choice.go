@@ -125,8 +125,12 @@ func (t *AskChoiceTool) RenderToolResult(data map[string]interface{}) string {
 	return "Asked user to choose"
 }
 
-func init() {
-	types.RegisterTool(AskChoiceDeclaration, func() types.ToolInterface {
-		return &AskChoiceTool{}
-	})
-}
+// askChoiceRegistration 實作 types.ToolRegistration(見 ask_user.go 開頭的
+// package 內命名說明)。
+type askChoiceRegistration struct{}
+
+func (askChoiceRegistration) Declaration() types.ToolDeclaration { return AskChoiceDeclaration }
+func (askChoiceRegistration) New() types.ToolInterface           { return &AskChoiceTool{} }
+
+// AskChoiceToolRegistration 是本工具向登記處自我介紹的入口。
+var AskChoiceToolRegistration types.ToolRegistration = askChoiceRegistration{}

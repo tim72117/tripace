@@ -13,7 +13,7 @@
 //   - 每個 Orchestrator 有自己的 EventBus(orchestrator.go: NewOrchestrator
 //     裡 EventBus: events.NewEventBus()),彼此的工具呼叫/文字/狀態事件
 //     不會互相流竄。
-//   - orch.SetPromptBuilder / orch.SetSessionEnvs 是 per-orchestrator 欄位,
+//   - orch.SetPromptBuilder / orch.SetSystemToolContext 是 per-orchestrator 欄位,
 //     多個 session 各自獨立呼叫不會互相覆寫。
 //   - 這樣每個 session 可以真正同時、平行地各自送出 run 請求而不必共用一把鎖
 //     序列化(共用單一 orchestrator 動態換 prompt 的做法,如
@@ -33,6 +33,7 @@ import (
 
 	wantconfig "github.com/tim72117/want/config"
 	wantorch "github.com/tim72117/want/orchestrator"
+	wanttypes "github.com/tim72117/want/types"
 
 	"github.com/tim72117/want/pkg/agentreg"
 )
@@ -92,14 +93,19 @@ type SessionManager struct {
 	sessions map[string]*Session
 	nextID   int
 
-	settings *wantconfig.Settings // 所有 session 共用的 LLM provider 設定(來自環境變數)
+	settings *wantconfig.Settings   // 所有 session 共用的 LLM provider 設定(來自環境變數)
+	toolbox  wanttypes.ToolProvider // 所有 session 共用的 mock 工具集合(見 mock_tools.go)
 }
 
-// NewSessionManager 用給定的 LLM provider 設定建立一個空的 session 管理器。
-func NewSessionManager(settings *wantconfig.Settings) *SessionManager {
+// NewSessionManager 用給定的 LLM provider 設定與工具集合建立一個空的 session
+// 管理器。toolbox 由呼叫端(main.go)組好、餵給每個 session 各自的
+// orchestrator(want v0.2.0 起,Orchestrator.Toolbox 是每個 orchestrator 各自
+// 持有的注入值,不再有 process 級全域工具登記表)。
+func NewSessionManager(settings *wantconfig.Settings, toolbox wanttypes.ToolProvider) *SessionManager {
 	return &SessionManager{
 		sessions: make(map[string]*Session),
 		settings: settings,
+		toolbox:  toolbox,
 	}
 }
 
@@ -204,7 +210,7 @@ func (m *SessionManager) Create(in CreateSessionInput) (*Session, error) {
 
 	registerAgentDefinition(role, thought, in.Tools)
 
-	orch := wantorch.SetupWith(m.settings, role)
+	orch := wantorch.SetupWith(m.settings, m.toolbox, role)
 
 	created := time.Now()
 	s := &Session{
@@ -397,7 +403,7 @@ func (s *Session) Run(input string) RunResult {
 	// session 沒設定 expected(met == nil)或已達成(*met == true)都不追問,
 	// 維持向後相容:沒設定 expected 時,整段追問邏輯完全不會執行。
 	if met != nil && !*met {
-		question := followUpQuestion(s.expected, outcome)
+		question := followUpQuestion(s.expected)
 
 		followUpResult := runInference(s.orch, question)
 

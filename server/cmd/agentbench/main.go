@@ -25,8 +25,9 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/tim72117/tripace/internal/toolregistry"
+
 	wantconfig "github.com/tim72117/want/config"
-	wanttypes "github.com/tim72117/want/types"
 
 	"github.com/joho/godotenv"
 )
@@ -45,10 +46,12 @@ func main() {
 		*addr = v
 	}
 
-	// want 需要 InitialWorkingDir 才能定位 .agents 目錄(掃描磁碟版角色定義)
-	// 與預設 workspace;同 llm.NewWant() 的做法。
+	// want 需要工作目錄才能定位 .agents 目錄(掃描磁碟版角色定義)與預設
+	// workspace;同 llm.NewWant() 的做法——want v0.2.0 起 InitialWorkingDir
+	// 已移入 internal、不可再從外部賦值,改用 settings.Workspace 帶絕對路徑
+	// (見 want orchestrator/init_helper.go SetupWith:絕對路徑直接採用),
+	// 效果相同。
 	wd, _ := os.Getwd()
-	wanttypes.InitialWorkingDir = wd
 
 	// 所有 session 共用同一份 LLM provider 設定(來自環境變數),
 	// 同 server/internal/llm/want_analyzer.go NewWant() 的組裝方式。
@@ -59,6 +62,7 @@ func main() {
 		OllamaURL:       os.Getenv("OLLAMA_URL"),
 		GoogleAPIKey:    os.Getenv("GOOGLE_API_KEY"),
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
+		Workspace:       wd,
 	}
 
 	if settings.Provider == "" {
@@ -66,7 +70,13 @@ func main() {
 			"請設定 AI_PROVIDER/AI_MODEL 等環境變數(可複用 server/.env)。")
 	}
 
-	mgr := NewSessionManager(settings)
+	// 所有 session 共用同一份 mock 工具集合(見 mock_tools.go)。want v0.2.0
+	// 起,每個 orchestrator 需要各自注入 toolbox,不再有 process 級全域工具
+	// 登記表。
+	toolReg := toolregistry.NewRegistry()
+	registerMockTools(toolReg)
+
+	mgr := NewSessionManager(settings, toolregistry.NewToolbox(toolReg))
 
 	mux := http.NewServeMux()
 	registerRoutes(mux, mgr)

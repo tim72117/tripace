@@ -34,7 +34,7 @@ const dumpthoughtModulePath = "./cmd/dumpthought"
 //  1. 環境變數 TRIPACE_SERVER_DIR 有設定就直接採用(最明確、不受啟動目錄影響)。
 //  2. 否則假設 agentbench 本身就是在 tripace 的 server/ 目錄下啟動的
 //     (同 agentbench 現有的慣例:main.go 文件註解要求 `go run ./cmd/agentbench`、
-//     且啟動時已經用 os.Getwd() 當 wanttypes.InitialWorkingDir、嘗試載入當下
+//     且啟動時已經用 os.Getwd() 當 want Settings.Workspace、嘗試載入當下
 //     目錄的 .env——這些既有邏輯都預設 CWD 就是 server/),回傳目前工作目錄。
 //
 // 回傳前會用 looksLikeTripaceServerDir 驗證解析出的目錄,驗證失敗時回傳清楚的

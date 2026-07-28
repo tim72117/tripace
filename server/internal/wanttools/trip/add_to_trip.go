@@ -86,8 +86,14 @@ func (t *AddToTripTool) RenderToolResult(data map[string]interface{}) string {
 	return "Entry added to trip"
 }
 
-func init() {
-	types.RegisterTool(AddToTripDeclaration, func() types.ToolInterface {
-		return &AddToTripTool{}
-	})
-}
+// addToTripRegistration 實作 types.ToolRegistration。本 package 內有多個工具
+// 檔案共用同一個 package(trip),故每個工具各自匯出獨立命名的 registration 值
+// (XxxToolRegistration),不能共用 var Tool 這個名字(同
+// wanttools/ask_user.go 開頭的命名說明)。
+type addToTripRegistration struct{}
+
+func (addToTripRegistration) Declaration() types.ToolDeclaration { return AddToTripDeclaration }
+func (addToTripRegistration) New() types.ToolInterface           { return &AddToTripTool{} }
+
+// AddToTripToolRegistration 是本工具向登記處自我介紹的入口。
+var AddToTripToolRegistration types.ToolRegistration = addToTripRegistration{}

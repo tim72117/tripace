@@ -66,8 +66,12 @@ func (t *DeleteTripTool) RenderToolResult(data map[string]interface{}) string {
 	return "Trip deleted"
 }
 
-func init() {
-	types.RegisterTool(DeleteTripDeclaration, func() types.ToolInterface {
-		return &DeleteTripTool{}
-	})
-}
+// deleteTripRegistration 實作 types.ToolRegistration(見 add_to_trip.go 開頭
+// 的 package 內命名說明)。
+type deleteTripRegistration struct{}
+
+func (deleteTripRegistration) Declaration() types.ToolDeclaration { return DeleteTripDeclaration }
+func (deleteTripRegistration) New() types.ToolInterface           { return &DeleteTripTool{} }
+
+// DeleteTripToolRegistration 是本工具向登記處自我介紹的入口。
+var DeleteTripToolRegistration types.ToolRegistration = deleteTripRegistration{}

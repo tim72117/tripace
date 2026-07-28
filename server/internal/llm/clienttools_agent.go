@@ -16,19 +16,23 @@ package llm
 // assistant_agent.go's Tools whitelist now includes trip_entry_add/
 // trip_entry_update (replacing entry_add/entry_update, which wrote directly
 // to Postgres) alongside this POC's own clienttoolsRole whitelist. Both
-// roles resolve the same tools from want's one process-wide global tool
-// registry (types.RegisterTool — see clienttools/tool.go's RegisterApp,
-// which this constructor still calls). That's intentional and safe: which
-// *role* a given orchestrator's dispatch loop resolves per call still keeps
-// the two conversation flows' prompts/histories/inference turns apart (see
-// want's orchestrator.go Start()'s toolUseContext :=
-// internal.LoadToolUseContext(agentID, orch.Role, ...)); only the tool
-// *declarations* are now shared, not the orchestrators, sessions, or
-// mutexes. See want_analyzer.go's Assist for how the assistant flow's HTTP
-// request/response turn threads its own sessionID (from the browser's
-// separate /internal/clienttools/ws connection — see ChatScreen.tsx) through
-// SetSessionEnvs so trip_entry_* tools reach the right WS session
-// regardless of which role invoked them.
+// roles resolve the same tools from one shared *toolregistry.Registry (see
+// clienttools/tool.go's RegisterApp, which this constructor still calls,
+// and cmd/server/main.go where that same registry also feeds wanttools'
+// static tools into the "assistant" orchestrator) — want v0.2.0 removed the
+// process-wide global tool registry this comment originally described;
+// each *wantorch.Orchestrator now holds its own injected Toolbox, so
+// tripace has to build and share one Registry across both orchestrators
+// itself. That's intentional and safe: which *role* a given orchestrator's
+// dispatch loop resolves per call still keeps the two conversation flows'
+// prompts/histories/inference turns apart (see want's orchestrator.go
+// Start()'s toolUseContext := internal.LoadToolUseContext(agentID,
+// orch.Role, ...)); only the tool *declarations* are shared, not the
+// orchestrators, sessions, or mutexes. See want_analyzer.go's Assist for how
+// the assistant flow's HTTP request/response turn threads its own sessionID
+// (from the browser's separate /internal/clienttools/ws connection — see
+// ChatScreen.tsx) through SetSystemToolContext so trip_entry_* tools reach
+// the right WS session regardless of which role invoked them.
 //
 // A second *wantorch.Orchestrator instance (not a second call to
 // wantorch.SetupWith/orchestrator.Setup) is what actually keeps these
@@ -52,6 +56,7 @@ import (
 	"time"
 
 	"github.com/tim72117/tripace/internal/clienttools"
+	"github.com/tim72117/tripace/internal/toolregistry"
 	"github.com/tim72117/tripace/internal/toolschema"
 
 	wantorch "github.com/tim72117/want/orchestrator"
@@ -92,16 +97,20 @@ type ClientToolsAnalyzer struct {
 }
 
 // NewClientToolsAnalyzer registers app's tools (via clienttools.RegisterApp)
-// and this POC's agent role into want's global registries, then builds and
-// starts a dedicated orchestrator for it. Must be called after want's
-// provider has already been initialized once (see NewWant/NewWantPool in
-// want_analyzer.go/want_pool.go, called first in cmd/server/main.go) — this
-// constructor does NOT call wantorch.SetupWith/orchestrator.Setup, so it
-// relies on that having already happened; calling it before any WantAnalyzer
-// exists would panic inside want's dispatch loop the first time a prompt is
-// submitted (GlobalEngine still nil).
-func NewClientToolsAnalyzer(app *toolschema.App) *ClientToolsAnalyzer {
-	toolNames := clienttools.RegisterApp(app)
+// into reg — the same shared *toolregistry.Registry wanttools' static tools
+// are registered into (see cmd/server/main.go) — and this POC's agent role
+// into want's agent-role loader, then builds and starts a dedicated
+// orchestrator for it, wired to reg via Toolbox (want v0.2.0 has no
+// process-wide global tool registry — see this file's doc comment above).
+// Must be called after want's provider has already been initialized once
+// (see NewWant/NewWantPool in want_analyzer.go/want_pool.go, called first in
+// cmd/server/main.go) — this constructor does NOT call
+// wantorch.SetupWith/orchestrator.Setup, so it relies on that having already
+// happened; calling it before any WantAnalyzer exists would panic inside
+// want's dispatch loop the first time a prompt is submitted (GlobalEngine
+// still nil).
+func NewClientToolsAnalyzer(app *toolschema.App, reg *toolregistry.Registry) *ClientToolsAnalyzer {
+	toolNames := clienttools.RegisterApp(app, reg)
 
 	thought := app.Thought
 	if thought == "" {
@@ -123,6 +132,10 @@ func NewClientToolsAnalyzer(app *toolschema.App) *ClientToolsAnalyzer {
 	})
 
 	orch := wantorch.NewOrchestrator(clienttoolsRole)
+	// SetupWith(want_analyzer.go 用的路徑)本身會做這件事;這裡沒有呼叫
+	// SetupWith(只需要一個新 orchestrator 實例,provider 已由第一個
+	// WantAnalyzer 初始化過),故手動指派 Toolbox。
+	orch.Toolbox = toolregistry.NewToolbox(reg)
 	orch.OnError(func(err error) {
 		fmt.Printf("[clienttools] 🔴 Agent Error: %v\n", err)
 	})
@@ -132,10 +145,10 @@ func NewClientToolsAnalyzer(app *toolschema.App) *ClientToolsAnalyzer {
 }
 
 // Prompt submits text as this POC's single agent's next user turn, tagging
-// the call with sessionID via SetSessionEnvs so clienttools.askPage (called
-// from inside a trip_entry_* tool's Call, running on want's own dispatch
-// goroutine — see clienttools/tool.go) can find its way back to the right
-// WS session's pendingCalls (see clienttools.RegisterAsker /
+// the call with sessionID via SetSystemToolContext so clienttools.askPage
+// (called from inside a trip_entry_* tool's Call, running on want's own
+// dispatch goroutine — see clienttools/tool.go) can find its way back to the
+// right WS session's pendingCalls (see clienttools.RegisterAsker /
 // server/internal/api/clienttools_ws.go). Blocks until the whole turn (all
 // tool calls the LLM made this round, and their round trips to the browser)
 // has settled or clientToolsTimeout elapses — same idle-detection pattern
@@ -161,7 +174,7 @@ func (c *ClientToolsAnalyzer) Prompt(sessionID, text string) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.orch.SetSessionEnvs(map[string]string{"sessionID": sessionID})
+	c.orch.SetSystemToolContext(map[string]string{"sessionID": sessionID})
 
 	state := wantui.NewCommonInferenceState()
 	var mu sync.Mutex
@@ -170,7 +183,7 @@ func (c *ClientToolsAnalyzer) Prompt(sessionID, text string) (string, error) {
 	var once sync.Once
 	finish := func() { once.Do(func() { close(done) }) }
 
-	unsub := c.orch.EventBus.Subscribe("agent.inference", func(payload interface{}) {
+	unsub := c.orch.Subscribe("agent.inference", func(payload interface{}) {
 		mu.Lock()
 		defer mu.Unlock()
 

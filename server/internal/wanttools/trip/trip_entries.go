@@ -98,8 +98,12 @@ func (t *TripEntriesTool) RenderToolResult(data map[string]interface{}) string {
 	return "Trip entries listed"
 }
 
-func init() {
-	types.RegisterTool(TripEntriesDeclaration, func() types.ToolInterface {
-		return &TripEntriesTool{}
-	})
-}
+// tripEntriesRegistration 實作 types.ToolRegistration(見 add_to_trip.go 開頭
+// 的 package 內命名說明)。
+type tripEntriesRegistration struct{}
+
+func (tripEntriesRegistration) Declaration() types.ToolDeclaration { return TripEntriesDeclaration }
+func (tripEntriesRegistration) New() types.ToolInterface           { return &TripEntriesTool{} }
+
+// TripEntriesToolRegistration 是本工具向登記處自我介紹的入口。
+var TripEntriesToolRegistration types.ToolRegistration = tripEntriesRegistration{}

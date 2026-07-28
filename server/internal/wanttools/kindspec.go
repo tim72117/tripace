@@ -6,7 +6,7 @@ import "github.com/tim72117/want/types"
 //
 // 不同類型的條目(住宿 stay、航班 flight、餐飲 restaurant…)有各自的欄位要求
 // 與預設值。每個類型實作一份 KindSpec,註冊到 kindRegistry;entry_add 不需知道
-// 任何特定類型的細節,只查表委派——這與本套件既有的 types.RegisterTool 模式一致。
+// 任何特定類型的細節,只查表委派。
 //
 // 擴充新類型:新增一個 kind_<name>.go,實作 KindSpec,並在其 init() 呼叫 RegisterKind。
 // entry_add.go 本身不需改動。

@@ -8,7 +8,8 @@ import (
 	"time"
 
 	"github.com/tim72117/tripace/internal/model"
-	// 自訂 want 工具(record_entry):init() 註冊工具,並提供記錄 context/sink。
+	// 自訂 want 工具(record_entry):提供記錄 context/sink,工具本身透過
+	// RegisterBuiltinTools 顯式登記(見 want_pool.go/main.go),不再靠 init()。
 	"github.com/tim72117/tripace/internal/wanttools"
 
 	wantconfig "github.com/tim72117/want/config"
@@ -30,9 +31,13 @@ type WantAnalyzer struct {
 // SetupWith(純函式,不讀檔、不讀 env、不碰全域)初始化 orchestrator。
 // tripace 作為「嵌入呼叫 want」的宿主,自行決定設定來源與機密存放,
 // 不依賴 want 的 configs/settings.json 路徑假設。
-func NewWant() (*WantAnalyzer, error) {
+//
+// toolbox 是本次(assistant role)要注入的工具集合(want v0.2.0 起,
+// Orchestrator.Toolbox 是每個 orchestrator 各自持有的注入值,不再有 process
+// 級全域工具登記表)——呼叫端(want_pool.go/main.go)組好共用的
+// *toolregistry.Registry 後包成 Toolbox 傳入。
+func NewWant(toolbox wanttypes.ToolProvider) (*WantAnalyzer, error) {
 	wd, _ := os.Getwd()
-	wanttypes.InitialWorkingDir = wd
 
 	settings := &wantconfig.Settings{
 		Provider:        os.Getenv("AI_PROVIDER"),
@@ -41,15 +46,16 @@ func NewWant() (*WantAnalyzer, error) {
 		OllamaURL:       os.Getenv("OLLAMA_URL"),
 		GoogleAPIKey:    os.Getenv("GOOGLE_API_KEY"),
 		AnthropicAPIKey: os.Getenv("ANTHROPIC_API_KEY"),
+		// 絕對路徑直接採用(見 want orchestrator/init_helper.go SetupWith),
+		// 取代舊版直接寫 wanttypes.InitialWorkingDir(v0.2.0 已移入 internal,
+		// 不可再從外部賦值)的做法,效果相同(orch.Workspace 最終值皆為 wd)。
+		Workspace: wd,
 	}
 
-	orch := wantorch.SetupWith(settings, "assistant")
+	orch := wantorch.SetupWith(settings, toolbox, "assistant")
 	orch.OnError(func(err error) {
 		fmt.Printf("[want] 🔴 Agent Error: %v\n", err)
 	})
-
-	// 掛載各工具自帶的服務路由(同 web/server.go)。
-	wanttypes.MountServices()
 
 	return &WantAnalyzer{orch: orch}, nil
 }
@@ -68,7 +74,7 @@ func (w *WantAnalyzer) generate(prompt string) (string, error) {
 	var once sync.Once
 	finish := func() { once.Do(func() { close(done) }) }
 
-	unsub := w.orch.EventBus.Subscribe("agent.inference", func(payload interface{}) {
+	unsub := w.orch.Subscribe("agent.inference", func(payload interface{}) {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -156,9 +162,9 @@ type AssistResult struct {
 // AckPayload.SessionID)。trip_entry_add/trip_entry_delete/trip_entry_update/
 // trip_entry_list(assistant role 白名單裡取代 entry_add/entry_update 的
 // 工具,見 assistant_agent.go)執行時會呼叫 clienttools.askPage,靠
-// ctx.GetSessionEnvs()["sessionID"] 找到 clienttools.RegisterAsker 註冊的
+// ctx.GetSystemToolContext()["sessionID"] 找到 clienttools.RegisterAsker 註冊的
 // 那個 WS session,才能把呼叫轉發回瀏覽器分頁(見 clienttools/interaction.go
-// 的 InteractionAsker 文件註解)。這裡把它一併塞進同一次 SetSessionEnvs 呼叫
+// 的 InteractionAsker 文件註解)。這裡把它一併塞進同一次 SetSystemToolContext 呼叫
 // ——同 channelID/messageID 一樣不進 LLM 的 prompt,只在 w.mu 已序列化呼叫
 // 的前提下,於 Submit 前設定、Submit 後這輪工具呼叫都讀到同一份值,不會被
 // 下一次呼叫覆寫覆蓋(mu 序列化保證)。空字串(前端尚未連上第二條 WS)時,
@@ -174,7 +180,7 @@ func (w *WantAnalyzer) Assist(channelID, messageID, text, lang, clientToolsSessi
 	// 輔助資訊(channelID/messageID/sessionID)透過 SessionEnvs 隨
 	// ToolUseContext 傳遞給工具,不進送給 LLM 的 prompt,也不經過任何
 	// 套件級全域變數。
-	w.orch.SetSessionEnvs(map[string]string{"channelID": channelID, "messageID": messageID, "sessionID": clientToolsSessionID})
+	w.orch.SetSystemToolContext(map[string]string{"channelID": channelID, "messageID": messageID, "sessionID": clientToolsSessionID})
 	// 本次呼叫要用的 system prompt(依語言動態組裝);w.mu 已序列化所有呼叫,
 	// 此處「設定 → Submit → 等待完成」不會與其他呼叫交錯覆寫彼此的 PromptBuilder。
 	w.orch.SetPromptBuilder(BuildPromptBuilder(lang))
@@ -186,7 +192,7 @@ func (w *WantAnalyzer) Assist(channelID, messageID, text, lang, clientToolsSessi
 	var once sync.Once
 	finish := func() { once.Do(func() { close(done) }) }
 
-	unsub := w.orch.EventBus.Subscribe("agent.inference", func(payload interface{}) {
+	unsub := w.orch.Subscribe("agent.inference", func(payload interface{}) {
 		mu.Lock()
 		defer mu.Unlock()
 		result, handled := wantui.HandleInferenceMessage(payload, state)
@@ -270,7 +276,7 @@ func (w *WantAnalyzer) Answer(channelID, question, lang string) model.SearchAnsw
 	wanttools.RecordLock()
 	defer wanttools.RecordUnlock()
 	// 讓 query_entries 知道查哪個頻道(同 Assist 路徑;查詢不關聯 message,故不設 messageID)。
-	w.orch.SetSessionEnvs(map[string]string{"channelID": channelID})
+	w.orch.SetSystemToolContext(map[string]string{"channelID": channelID})
 	// 本次呼叫要用的 system prompt(依語言動態組裝),同 Assist 的做法。
 	w.orch.SetPromptBuilder(BuildPromptBuilder(lang))
 
@@ -281,7 +287,7 @@ func (w *WantAnalyzer) Answer(channelID, question, lang string) model.SearchAnsw
 	var once sync.Once
 	finish := func() { once.Do(func() { close(done) }) }
 
-	unsub := w.orch.EventBus.Subscribe("agent.inference", func(payload interface{}) {
+	unsub := w.orch.Subscribe("agent.inference", func(payload interface{}) {
 		mu.Lock()
 		defer mu.Unlock()
 		result, handled := wantui.HandleInferenceMessage(payload, state)

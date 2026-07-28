@@ -82,8 +82,14 @@ func (t *AskUserTool) RenderToolResult(data map[string]interface{}) string {
 	return "Asked user"
 }
 
-func init() {
-	types.RegisterTool(AskUserDeclaration, func() types.ToolInterface {
-		return &AskUserTool{}
-	})
-}
+// askUserRegistration 實作 types.ToolRegistration,供 RegisterBuiltinTools 組裝。
+// wanttools 底下多個工具共用同一個 package,故每個工具各自匯出獨立命名的
+// registration 值(XxxToolRegistration),不能像 want 自己的內建工具(一個
+// package 一個工具)那樣共用 var Tool 這個名字。
+type askUserRegistration struct{}
+
+func (askUserRegistration) Declaration() types.ToolDeclaration { return AskUserDeclaration }
+func (askUserRegistration) New() types.ToolInterface            { return &AskUserTool{} }
+
+// AskUserToolRegistration 是本工具向登記處自我介紹的入口。
+var AskUserToolRegistration types.ToolRegistration = askUserRegistration{}

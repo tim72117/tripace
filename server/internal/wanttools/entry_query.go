@@ -27,12 +27,6 @@ func BindStore(s *store.Store) {
 	entryStore = s
 }
 
-func init() {
-	types.RegisterTool(QueryEntriesDeclaration, func() types.ToolInterface {
-		return &QueryEntriesTool{}
-	})
-}
-
 // QueryEntriesDeclaration 是給 LLM 看的工具宣告。
 // 用於決定查詢範圍、把頻道中已記錄的條目(待辦/行程/會議等)載入到前端的
 // 旅程清單表格——查到的結果不會回傳給 LLM 閱讀,LLM 只會收到一句確認文字,
@@ -156,3 +150,13 @@ func (t *QueryEntriesTool) RenderToolResult(data map[string]interface{}) string 
 	}
 	return "查詢完成"
 }
+
+// queryEntriesRegistration 實作 types.ToolRegistration(見 ask_user.go 開頭的
+// package 內命名說明)。
+type queryEntriesRegistration struct{}
+
+func (queryEntriesRegistration) Declaration() types.ToolDeclaration { return QueryEntriesDeclaration }
+func (queryEntriesRegistration) New() types.ToolInterface           { return &QueryEntriesTool{} }
+
+// QueryEntriesToolRegistration 是本工具向登記處自我介紹的入口。
+var QueryEntriesToolRegistration types.ToolRegistration = queryEntriesRegistration{}
