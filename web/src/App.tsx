@@ -3,13 +3,14 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   ChevronLeft, ChevronDown, Check,
   Send, AlertCircle, Plus, LogIn, X, Settings, LogOut,
-  List, Calendar, Sparkles, GalleryHorizontal, Map, Navigation, Wrench, Radio, Activity,
+  List, Calendar, Sparkles, GalleryHorizontal, Map, Navigation, Wrench, Radio, Activity, Bike, Menu,
 } from 'lucide-react'
 import type { ClientConfig, ApiCall, WsEvent } from './api'
 import * as api from './api'
 import { ApiError, onApiCall, onWsEvent } from './api'
 import type { Channel, Entry, User } from './types'
 import { LandingPage } from './LandingPage'
+import { CliAuthPage } from './CliAuthPage'
 import { ChatScreen } from './ChatScreen'
 import type { DesktopTimelineMirror } from './ChatScreen'
 import { MultiTrackTimeline, type TaskPlaceholder } from './Timeline'
@@ -19,6 +20,7 @@ import { RecommendedPlacesList, RecommendedPlacesRow, FAKE_RECOMMENDED_PLACES } 
 import { RecommendedPlacesMap } from './RecommendedPlacesMap'
 import { ClientToolsDemo } from './clienttools/bridge/ClientToolsDemo'
 import { OnagentBridgeDemo } from './clienttools/OnagentBridgeDemo'
+import { PaceChartDemo } from './PaceChartDemo'
 import { DebugPanel } from './DebugPanel'
 
 // baseURL 由建置時的 VITE_API_BASE 決定(見 .env.development),不開放使用者於 UI 修改;
@@ -111,6 +113,16 @@ export function App({ isDemo = false }: { isDemo?: boolean } = {}) {
       </div>
     )
   }
+  // /cli-auth 路徑:`tripace-cli login --web` 開瀏覽器落地的核准頁面
+  // (見 CliAuthPage.tsx)。與 /public/{token} 一樣是獨立於主要 App 狀態機
+  // 之外的頁面,不套用 PhoneContent 那套登入/頻道/聊天畫面切換邏輯。
+  if (window.location.pathname === '/cli-auth') {
+    return (
+      <div className="web-app">
+        <CliAuthPage />
+      </div>
+    )
+  }
   // /app 路徑:主要應用畫面本體(套 iPhone 外框,寬螢幕自動切桌面版佈局)
   return (
     <div className="web-app">
@@ -146,6 +158,12 @@ export function PhoneContent(props: ContentProps) {
   // 寬度 >= 768px:改走桌面版佈局(側欄 + 主要區塊)。登入前不分寬度,一律走下面的
   // 登入畫面(登入前沒有頻道/聊天可看,不必特地做桌面版登入版面)。
   const isDesktop = useIsDesktop()
+  // demoDrawerOpen/demoPanelMode:手機版存取 demo 面板(DemoPanelContent,
+  // 見上方定義)的入口。桌面版本來就有 DesktopRail 可以切換這些面板,不需要
+  // 這組 state——isDesktop 為 true 時下面會直接 return <DesktopContent>,
+  // 不會走到用這組 state 的漢堡按鈕/抽屜。
+  const [demoDrawerOpen, setDemoDrawerOpen] = useState(false)
+  const [demoPanelMode, setDemoPanelMode] = useState<DemoPanelMode>('demo-pace')
 
   if (props.isGuest) {
     return (
@@ -169,32 +187,24 @@ export function PhoneContent(props: ContentProps) {
     return <DesktopContent {...props} />
   }
 
-  if (activeChannel) {
-    return (
-      <ChatScreen
-        cfg={cfg}
-        channel={activeChannel}
-        user={props.user}
-        onBack={() => setActiveChannel(null)}
-      />
-    )
-  }
-
-  if (inSettings) {
-    return (
-      <SettingsScreen
-        cfg={props.cfg}
-        user={props.user}
-        email={props.email}
-        isGuest={props.isGuest}
-        onAuthed={props.onAuthed}
-        onLogout={() => { props.onLogout(); setInSettings(false) }}
-        onBack={() => setInSettings(false)}
-      />
-    )
-  }
-
-  return (
+  const content = activeChannel ? (
+    <ChatScreen
+      cfg={cfg}
+      channel={activeChannel}
+      user={props.user}
+      onBack={() => setActiveChannel(null)}
+    />
+  ) : inSettings ? (
+    <SettingsScreen
+      cfg={props.cfg}
+      user={props.user}
+      email={props.email}
+      isGuest={props.isGuest}
+      onAuthed={props.onAuthed}
+      onLogout={() => { props.onLogout(); setInSettings(false) }}
+      onBack={() => setInSettings(false)}
+    />
+  ) : (
     <ChannelsScreen
       cfg={props.cfg}
       user={props.user}
@@ -203,6 +213,77 @@ export function PhoneContent(props: ContentProps) {
       onOpen={(c) => setActiveChannel(c)}
       onOpenSettings={() => setInSettings(true)}
     />
+  )
+
+  // 漢堡按鈕/抽屜只在網址帶 ?demo 時出現,跟桌面版 DesktopRail 的 demo 項目
+  // 用同一個 isDemo 閘門——正式的手機版體驗完全不受影響、不多出任何按鈕。
+  if (!props.isDemo) return content
+
+  return (
+    <>
+      {content}
+      <button
+        type="button"
+        className="phone-demo-hamburger"
+        onClick={() => setDemoDrawerOpen(true)}
+        title="Demo 面板(?demo)"
+      >
+        <Menu size={20} strokeWidth={2} />
+      </button>
+      {demoDrawerOpen && (
+        <PhoneDemoDrawer
+          mode={demoPanelMode}
+          onSelect={setDemoPanelMode}
+          onClose={() => setDemoDrawerOpen(false)}
+        />
+      )}
+    </>
+  )
+}
+
+// PhoneDemoDrawer:手機版存取 demo 面板的全螢幕疊層,只從上面 PhoneContent
+// 的漢堡按鈕開啟。上排是 6 個 demo 面板的迷你按鈕列(圖示對齊 DesktopRail
+// 用的同一組,維持視覺一致性),不整顆搬 DesktopRail 過來——那顆混了頻道
+// 列表/時間軸/設定/登出的切換,手機版本來就有自己的入口,搬過來只是多餘。
+function PhoneDemoDrawer({
+  mode,
+  onSelect,
+  onClose,
+}: {
+  mode: DemoPanelMode
+  onSelect: (mode: DemoPanelMode) => void
+  onClose: () => void
+}) {
+  const items: { mode: DemoPanelMode; icon: typeof Sparkles; title: string }[] = [
+    { mode: 'demo-cards', icon: Sparkles, title: '推薦景點卡片' },
+    { mode: 'demo-row', icon: GalleryHorizontal, title: '推薦景點橫滑' },
+    { mode: 'demo-map', icon: Map, title: '推薦景點地圖' },
+    { mode: 'demo-clienttools', icon: Wrench, title: 'ClientToolsBridge' },
+    { mode: 'demo-onagent', icon: Radio, title: 'onagent 串接' },
+    { mode: 'demo-pace', icon: Bike, title: '單車配速表' },
+  ]
+  return (
+    <div className="phone-demo-drawer">
+      <div className="phone-demo-drawer-tabs">
+        {items.map(({ mode: m, icon: Icon, title }) => (
+          <button
+            key={m}
+            type="button"
+            className={`phone-demo-drawer-tab${mode === m ? ' active' : ''}`}
+            onClick={() => onSelect(m)}
+            title={title}
+          >
+            <Icon size={20} strokeWidth={1.8} />
+          </button>
+        ))}
+        <button type="button" className="phone-demo-drawer-close" onClick={onClose} title="關閉">
+          <X size={20} strokeWidth={1.8} />
+        </button>
+      </div>
+      <div className="phone-demo-drawer-body">
+        <DemoPanelContent mode={mode} />
+      </div>
+    </div>
   )
 }
 
@@ -215,12 +296,64 @@ export function PhoneContent(props: ContentProps) {
 // ClientToolsBridge/clienttools_ws.go,後者走 onagent 平台,見
 // clienttools/ClientToolsDemo.tsx / OnagentBridgeDemo.tsx 的說明),原本只能
 // 從獨立的 ?debug 工作台(DebugApp.tsx)進入,現在併入這裡統一用 ?demo 存取。
+// 'demo-pace':單車配速表試做(假資料,真實路線里程/時刻表,見
+// PaceChartDemo.tsx),純 UI 展示,不涉及 LLM/tool 呼叫。
 // 只有網址帶 ?demo 時 rail 上才會出現對應按鈕(見 DesktopRail),與正式的
 // channels/timeline 分開命名以便一眼區分。
 type PanelMode =
   | 'channels' | 'timeline'
-  | 'demo-cards' | 'demo-row' | 'demo-map' | 'demo-clienttools' | 'demo-onagent'
+  | 'demo-cards' | 'demo-row' | 'demo-map' | 'demo-clienttools' | 'demo-onagent' | 'demo-pace'
   | null
+
+// DemoPanelMode:PanelMode 扣掉 channels/timeline/null 之後只剩的 6 種 demo
+// 面板——這幾個是唯一「桌面/手機共用」的部分(channels/timeline 是桌面版
+// side panel 的概念,手機版本來就有自己的頻道列表/時間軸入口,不需要重複)。
+export type DemoPanelMode = Exclude<PanelMode, 'channels' | 'timeline' | null>
+
+// DemoPanelContent:6 個 demo 面板的內容渲染,供 DesktopContent 的 <main> 與
+// 手機版 PhoneDemoDrawer 共用,避免同一段 JSX 兩處各寫一份、之後改一邊忘了
+// 改另一邊。
+function DemoPanelContent({ mode }: { mode: DemoPanelMode }) {
+  if (mode === 'demo-cards') {
+    return (
+      <div className="desktop-demo-panel">
+        <div className="desktop-sidebar-head">
+          <span className="desktop-sidebar-title">推薦景點卡片(試做)</span>
+        </div>
+        <div className="desktop-timeline-scroll">
+          <RecommendedPlacesList places={FAKE_RECOMMENDED_PLACES} />
+        </div>
+      </div>
+    )
+  }
+  if (mode === 'demo-row') {
+    return (
+      <div className="desktop-demo-panel">
+        <div className="desktop-sidebar-head">
+          <span className="desktop-sidebar-title">推薦景點橫滑(試做)</span>
+        </div>
+        <div className="desktop-timeline-scroll">
+          <RecommendedPlacesRow places={FAKE_RECOMMENDED_PLACES} />
+        </div>
+      </div>
+    )
+  }
+  if (mode === 'demo-map') {
+    return (
+      <div className="desktop-demo-panel">
+        <div className="desktop-sidebar-head">
+          <span className="desktop-sidebar-title">推薦景點地圖(試做)</span>
+        </div>
+        <div className="desktop-timeline-scroll" style={{ padding: 0 }}>
+          <RecommendedPlacesMap places={FAKE_RECOMMENDED_PLACES} />
+        </div>
+      </div>
+    )
+  }
+  if (mode === 'demo-clienttools') return <ClientToolsDemo />
+  if (mode === 'demo-onagent') return <OnagentBridgeDemo />
+  return <PaceChartDemo />
+}
 
 // 時間軸鏡像資料的初始值(尚未收到 ChatScreen 鏡像前,或未選擇行程時使用)。
 const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
@@ -342,37 +475,9 @@ function DesktopContent(props: ContentProps) {
           </div>
         </aside>
         <main className="desktop-main">
-          {panelMode === 'demo-cards' ? (
-            <div className="desktop-demo-panel">
-              <div className="desktop-sidebar-head">
-                <span className="desktop-sidebar-title">推薦景點卡片(試做)</span>
-              </div>
-              <div className="desktop-timeline-scroll">
-                <RecommendedPlacesList places={FAKE_RECOMMENDED_PLACES} />
-              </div>
-            </div>
-          ) : panelMode === 'demo-row' ? (
-            <div className="desktop-demo-panel">
-              <div className="desktop-sidebar-head">
-                <span className="desktop-sidebar-title">推薦景點橫滑(試做)</span>
-              </div>
-              <div className="desktop-timeline-scroll">
-                <RecommendedPlacesRow places={FAKE_RECOMMENDED_PLACES} />
-              </div>
-            </div>
-          ) : panelMode === 'demo-map' ? (
-            <div className="desktop-demo-panel">
-              <div className="desktop-sidebar-head">
-                <span className="desktop-sidebar-title">推薦景點地圖(試做)</span>
-              </div>
-              <div className="desktop-timeline-scroll" style={{ padding: 0 }}>
-                <RecommendedPlacesMap places={FAKE_RECOMMENDED_PLACES} />
-              </div>
-            </div>
-          ) : panelMode === 'demo-clienttools' ? (
-            <ClientToolsDemo />
-          ) : panelMode === 'demo-onagent' ? (
-            <OnagentBridgeDemo />
+          {panelMode === 'demo-cards' || panelMode === 'demo-row' || panelMode === 'demo-map'
+            || panelMode === 'demo-clienttools' || panelMode === 'demo-onagent' || panelMode === 'demo-pace' ? (
+            <DemoPanelContent mode={panelMode} />
           ) : activeChannel ? (
             <ChatScreen
               cfg={cfg}
@@ -509,6 +614,13 @@ function DesktopRail({
               title="onagent 平台串接試做"
             >
               <Radio size={20} strokeWidth={1.8} />
+            </button>
+            <button
+              className={`desktop-rail-btn desktop-rail-btn-demo${panelMode === 'demo-pace' ? ' active' : ''}`}
+              onClick={() => onSelect('demo-pace')}
+              title="單車配速表(試做)"
+            >
+              <Bike size={20} strokeWidth={1.8} />
             </button>
             <button
               className={`desktop-rail-btn desktop-rail-btn-demo${showDebugPanel ? ' active' : ''}`}
@@ -1241,7 +1353,9 @@ function SettingsScreen({
 
 // ---- 登入表單(內嵌於設定頁,訪客可登入 / 註冊) ----
 
-function LoginForm({
+// 匯出供 CliAuthPage.tsx 重用(CLI 瀏覽器登入核准頁未登入時顯示的登入表單,
+// 與這裡登入前主畫面用的是同一顆元件,不另外刻一份 UI)。
+export function LoginForm({
   baseURL,
   onAuthed,
 }: {

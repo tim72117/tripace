@@ -169,8 +169,10 @@ function buildTLRows(entries: Entry[], taskPlaceholders: TaskPlaceholder[] = [])
   // 首尾各插一個灰色佔位列
   const firstDay = pre[0]?.day ?? ''
   const lastDay  = pre[pre.length - 1]?.day ?? ''
-  const padRow = (day: string): typeof pre[0] => ({ kind: 'entry', key: `pad-${day}`, day, dayLabel: null, isBlank: false, isPad: true, dot: 'marker', card: null })
-  const preWithPad = [padRow(firstDay), ...pre, padRow(lastDay)]
+  // key 用 top/bottom 區分，不能只靠 day:時間軸只有單一天資料(或整個
+  // 空白)時 firstDay 會等於 lastDay(甚至都是空字串)，用 day 當 key 會撞。
+  const padRow = (position: 'top' | 'bottom', day: string): typeof pre[0] => ({ kind: 'entry', key: `pad-${position}`, day, dayLabel: null, isBlank: false, isPad: true, dot: 'marker', card: null })
+  const preWithPad = [padRow('top', firstDay), ...pre, padRow('bottom', lastDay)]
 
   // 5. 填線條
   const withLines = preWithPad.map((row, i): Extract<TLRow, { kind: 'entry' }> => {

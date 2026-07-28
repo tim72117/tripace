@@ -2233,6 +2233,37 @@ pre {
   margin: 0 auto;
   position: relative;
 }
+/* .pace-chart 原本假設「自己 overflow-y: auto,父層 min-height: 0 一路傳遞」
+   在 .desktop-main 底下就夠用——實測(對照手機版 .phone-demo-drawer 同款
+   問題)這套多層 flex 傳遞鏈在這個專案的實際渲染環境下並不可靠,桌面版
+   配速表因此長期捲不動。改成跟手機版一致的做法:捲動權明確收在
+   .desktop-main,.pace-chart 改自然高度不再自己捲——用 :has() 精準只命中
+   「.desktop-main 裡面裝的是配速表」這個情境,.desktop-main 被 ChatScreen
+   用(.screen-body 自己已經有獨立的 overflow-y: auto)的其餘情況完全不受
+   影響,不會變成雙層捲動。
+   .desktop-main 本身平常有 max-width: 860px; margin: 0 auto(置中、限寬的
+   內容欄),捲動軸若掛在這層,會貼著這個限寬框的邊緣、出現在螢幕中間,不是
+   右側面板真正的最右邊緣——這裡额外把限寬/置中拿掉,讓這個情境下的
+   .desktop-main 撐滿整個可用寬度,捲動軸才會貼齊面板真正的右邊界;
+   .pace-chart 自己既有的 max-width: 480px; margin: 0 auto 會接手負責把
+   實際內容置中、不被拉寬變形,兩層各司其職。 */
+.desktop-main:has(> .pace-chart) {
+  max-width: none;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.desktop-main > .pace-chart {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow-y: visible;
+  /* .pace-chart 原本自己就有 max-width: 480px; margin: 0 auto,但外層
+     .desktop-main 改成 flex column + max-width: none(見上)撐滿寬度後,
+     內容卡片視覺上跟著貼滿整個外框寬度——這裡明確重申寬度限制,不依賴
+     跨檔案的層疊繼承是否如預期生效。 */
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+}
 .desktop-empty-state {
   flex: 1 1 auto;
   display: flex;
@@ -2250,6 +2281,114 @@ pre {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+/* ---- 手機版存取 demo 面板的入口(見 App.tsx PhoneContent/PhoneDemoDrawer):
+   桌面版用 DesktopRail 常駐圖示列切換,手機版窄螢幕放不下,改成一顆漢堡
+   按鈕開啟全螢幕疊層。只在網址帶 ?demo 時才會出現(isDemo 閘門在 App.tsx
+   判斷,這裡的樣式本身不做任何顯示與否的邏輯判斷)。 ---- */
+.phone-demo-hamburger {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 40;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ios-sep);
+  border-radius: 50%;
+  background: var(--ios-card);
+  color: var(--color-accent);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+}
+/* 疊層本身即扮演 .desktop-layout 的角色(overflow: hidden 建立裁切邊界),
+   .phone-demo-drawer-body 才是實際負責 min-height: 0 傳遞下去的一層——
+   跟桌面版 .desktop-layout -> .desktop-main -> .pace-chart 是同一種
+   「一路傳遞 flex/min-height:0,只在最終葉節點設 overflow-y: auto」模式,
+   確保 PaceChartDemo 等內容原本在桌面版能捲動,搬進這個疊層也一樣能捲動。 */
+.phone-demo-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--ios-bg);
+}
+.phone-demo-drawer-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  background: var(--ios-card);
+  border-bottom: 1px solid var(--ios-sep);
+  overflow-x: auto;
+}
+.phone-demo-drawer-tab {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--ios-gray);
+  opacity: 0.75;
+  cursor: pointer;
+}
+.phone-demo-drawer-tab.active {
+  opacity: 1;
+  color: var(--color-accent);
+  background: var(--ios-bg);
+}
+.phone-demo-drawer-close {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
+}
+/* 原本設計是讓 .pace-chart 沿用桌面版那套「flex/min-height:0 一路往下傳,
+   只在最終葉節點 overflow-y: auto」的模式(跟 .desktop-layout ->
+   .desktop-main -> .pace-chart 同款),但套進 position: fixed 的疊層後,
+   實機測試發現這串多層傳遞在行動瀏覽器上並未正確生效、整塊面板捲不動——
+   不深究確切成因,改用更直接、不依賴巢狀 flex 傳遞鏈的做法:捲動權明確
+   收在這一層(overflow-y: auto + 明確高度),不假設子層(.pace-chart 或其他
+   5 個 demo 面板各自的內部結構)會正確把 overflow 傳上來。 */
+.phone-demo-drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  /* 疊層本身貼齊螢幕邊緣(見 .phone-demo-drawer),裡面的內容(如 .pace-chart)
+     自己的 padding 不夠讓整塊面板跟螢幕邊界留出視覺呼吸空間,這裡額外補一層
+     外框間距。上方留較少(貼著 tabs 列即可),下方留 safe-area 避免被手勢列擋住。 */
+  padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+}
+/* .pace-chart 在桌面版(.desktop-main 底下)自己負責 overflow-y: auto,但在
+   這個疊層裡捲動權已經收在 .phone-demo-drawer-body(見上),這裡改成自然
+   高度的普通區塊,避免兩層各自 overflow-y: auto 疊在一起、變成「巢狀捲動」
+   (使用者分不清該滑哪一層,體感會很卡)。只針對這個情境覆寫,不影響
+   .pace-chart 在桌面版原本的行為。 */
+.phone-demo-drawer-body .pace-chart {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow-y: visible;
 }
 
 /* ---- 推薦景點卡片(RecommendedPlaces.tsx) ---- */
@@ -2869,4 +3008,364 @@ pre {
   word-break: break-all;
   max-height: 80px;
   overflow-y: auto;
+}
+
+/* ---- 單車配速表(PaceChartDemo.tsx,試做) ---- */
+/* 里程/時刻數字用等寬字體對齊(比照原型 pace-chart.html 的 .mono),
+   跟全站 --mono 變數共用同一套字體堆疊,額外加 tabular-nums 讓數字
+   等寬對齊(--mono 變數本身沒有這個屬性,故獨立成一個 class 補上)。 */
+.pace-mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+/* 手機優先的直向卡片堆疊,渲染在 .desktop-demo-panel 裡(見 App.tsx),
+   自己負責 flex: 1 1 auto + overflow-y: auto(取代其他 demo panel 常見的
+   「.desktop-sidebar-head + .desktop-timeline-scroll」兩截式結構)——
+   因為這個元件本身就有自己的標題/摘要列(對齊 pace-chart.html 原型的
+   .page 版面),不是一個只有 body 要捲動的簡單清單。
+   顏色/字體全部沿用全站既有的 --ios-*/--color-* token(見檔案開頭 :root),
+   專案沒有 prefers-color-scheme/data-theme 這套機制,故不新增深色模式。 */
+.pace-chart {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  max-width: 480px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 18px 16px 40px;
+}
+
+.pace-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--ios-blue);
+  margin: 0 0 6px;
+}
+
+.pace-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  margin: 0 0 4px;
+  color: var(--color-dark);
+}
+
+.pace-route-sub {
+  font-size: 13.5px;
+  color: var(--ios-gray);
+  margin: 0 0 16px;
+}
+
+/* 路線分頁(多段真實路線 + 示範路線切換),橫向捲動避免窄螢幕擠壓。*/
+.pace-route-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pace-route-tab {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ios-gray);
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 999px;
+  padding: 6px 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pace-route-tab.is-active {
+  color: #fff;
+  background: var(--ios-blue);
+  border-color: var(--ios-blue);
+}
+
+/* 頂部摘要列:sticky,捲動時貼在 .pace-chart 內部頂端。*/
+.pace-summary {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--ios-bg);
+  padding: 10px 0 12px;
+  margin: 0 -16px 4px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.pace-stat-row {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr 1fr;
+  gap: 1px;
+  background: var(--ios-sep);
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.pace-stat {
+  background: var(--ios-card);
+  padding: 10px 10px 9px;
+  min-width: 0;
+}
+
+.pace-stat-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ios-gray);
+  margin-bottom: 4px;
+}
+
+.pace-stat-value {
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  color: var(--color-dark);
+}
+.pace-stat-value.accent {
+  color: var(--color-accent);
+}
+.pace-stat-value .unit {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ios-gray);
+}
+
+/* 距離進度條 + 目前位置圓點 */
+.pace-strip-wrap {
+  margin: 14px 2px 18px;
+}
+.pace-strip-track {
+  position: relative;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--ios-sep);
+}
+.pace-strip-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--ios-blue), var(--color-accent));
+}
+.pace-strip-now {
+  position: absolute;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--ios-card);
+  border: 3px solid var(--color-accent);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 3px var(--ios-bg);
+}
+.pace-strip-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: var(--ios-gray);
+}
+
+.pace-assumptions {
+  font-size: 12px;
+  color: var(--ios-gray);
+  line-height: 1.55;
+  margin: 0 0 18px;
+  padding: 9px 12px;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 9px;
+}
+.pace-assumptions b {
+  color: var(--color-dark);
+  font-weight: 600;
+}
+
+.pace-table-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ios-gray);
+  margin: 0 0 8px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.pace-table-title .count {
+  color: var(--ios-gray);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.pace-stops {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 每個檢查站卡片:左側地點/標籤/里程,右側最大字級的離站時間(核心資訊)。*/
+.pace-stop {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* 長休息站(成功鎮午餐):警示色系底色跟其他短暫停留區分,沿用 --ios-red
+   系(此處刻意調成偏暖橘的警示感,而非直接用全站 --ios-red 那個「錯誤」語意色,
+   兩者要能區分開——長休息不是錯誤狀態)。 */
+.pace-stop.is-rest-long {
+  background: #fdf3e7;
+  border-color: #e8caa0;
+}
+
+/* 目前站(依裝置時間自動標記) */
+.pace-stop.is-now {
+  background: #eef2f5;
+  border-color: var(--ios-blue);
+  border-width: 1.5px;
+}
+
+.pace-stop.is-finish {
+  border-color: var(--color-accent);
+  border-width: 1.5px;
+}
+
+.pace-stop-left {
+  min-width: 0;
+}
+
+.pace-now-flag {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--ios-blue);
+  margin-bottom: 4px;
+}
+.pace-now-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ios-blue);
+  box-shadow: 0 0 0 3px rgba(124, 111, 91, 0.25);
+}
+
+.pace-loc-name {
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.005em;
+  line-height: 1.25;
+  color: var(--color-dark);
+}
+
+.pace-loc-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.pace-tag {
+  font-weight: 650;
+  color: var(--ios-blue);
+}
+.pace-stop.is-rest-long .pace-tag-rest {
+  color: #a5620e;
+}
+.pace-stop.is-finish .pace-tag-finish {
+  color: var(--color-accent);
+}
+
+.pace-km-val {
+  color: var(--ios-gray);
+  font-weight: 500;
+}
+
+.pace-stop-right {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pace-dep-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ios-gray);
+  margin-bottom: 2px;
+}
+
+/* 核心數字:離站時間,整份配速表視覺上最突出的資訊。*/
+.pace-dep-val {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  color: var(--color-dark);
+}
+.pace-stop.is-finish .pace-dep-val {
+  color: var(--color-accent);
+  font-size: 19px;
+}
+
+.pace-dwell-val {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--ios-gray);
+}
+.pace-dwell-val.long {
+  color: #a5620e;
+  font-weight: 700;
+}
+
+.pace-start-badge,
+.pace-finish-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.pace-start-badge {
+  color: var(--ios-blue);
+}
+.pace-finish-badge {
+  color: var(--color-accent);
+}
+
+.pace-footer {
+  margin-top: 20px;
+  font-size: 11.5px;
+  color: var(--ios-gray);
+  line-height: 1.65;
+  padding: 0 2px;
 }
