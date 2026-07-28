@@ -1,11 +1,11 @@
 package api
 
 import (
-	"crypto/subtle"
 	"log"
 	"net/http"
-	"os"
 	"time"
+
+	"github.com/tim72117/tripace/internal/auth"
 )
 
 // logging 記錄每個請求的方法、路徑與耗時。
@@ -41,20 +41,25 @@ func cors(next http.Handler) http.Handler {
 // 沒有這層驗證,任何知道 entryID/channelID 的人都能直接打 /internal/* 繞過
 // /v1/* 的權限檢查(例如繞過 requireOwner 清空任意頻道)。
 //
-// INTERNAL_API_TOKEN 未設定時:本機開發預設放行(維持 CLI 免設定即可用的體驗),
-// 並在啟動時記一次警告;正式環境部署務必設定,否則等同完全不設防。
-func internalAuth(next http.Handler) http.Handler {
-	token := os.Getenv("INTERNAL_API_TOKEN")
-	if token == "" {
-		log.Printf("[警告] INTERNAL_API_TOKEN 未設定,/internal/* 端點目前不受保護(僅建議本機開發使用)")
-	}
+// 驗證方式與 /v1/* 一般使用者相同:解析 Authorization: Bearer <token>,用
+// signer.Verify 驗證這是一把有效的自家 JWT(見 internal/auth.Signer)。CLI 端
+// 透過 `tripace-cli login --web` 走瀏覽器核准流程換到這個 JWT(見
+// cmd/cli/login.go、/v1/cli-auth/* 端點),不再有任何「環境變數沒設定就整段
+// 跳過驗證放行」的分支——舊版用共享密鑰 INTERNAL_API_TOKEN/X-Internal-Token
+// 的機制已完全移除:那個機制在正式環境未設定該環境變數時會直接不設防,已確認
+// 正式環境(Cloud Run tripace-server)實際上就處於這個狀態,任何人都能不登入
+// 直接讀寫刪除任意頻道資料;改用 JWT 後不存在「忘記設定就等於不設防」這種
+// 失效模式,驗證失敗一律回 401。
+func internalAuth(signer *auth.Signer, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if token != "" {
-			got := r.Header.Get("X-Internal-Token")
-			if subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
-				http.Error(w, `{"error":"unauthorized","message":"缺少或錯誤的 X-Internal-Token"}`, http.StatusUnauthorized)
-				return
-			}
+		token, err := auth.ParseBearer(r.Header.Get("Authorization"))
+		if err != nil {
+			http.Error(w, `{"error":"unauthorized","message":"缺少或格式錯誤的 Authorization: Bearer token"}`, http.StatusUnauthorized)
+			return
+		}
+		if _, err := signer.Verify(token); err != nil {
+			http.Error(w, `{"error":"unauthorized","message":"token 無效或過期,請先執行 tripace-cli login --web 登入"}`, http.StatusUnauthorized)
+			return
 		}
 		next.ServeHTTP(w, r)
 	})

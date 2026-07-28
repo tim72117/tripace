@@ -3,8 +3,14 @@
 // 預設走 HTTP 存取本地或遠端 server（/internal/ API）。
 // 加 -db 旗標改為直連 PostgreSQL（需要 DATABASE_URL）。
 //
+// /internal/ API 需要先登入:執行一次 `tripace-cli login --web`（走瀏覽器
+// 核准流程，見 login.go），換到的 JWT 會存在本機（見 token.go），之後的指令
+// 都會自動帶上，不需要每次都重新登入。
+//
 // 子命令:
 //
+//	login --web    透過瀏覽器核准登入，換取本機快取的 token（其餘指令的前置條件）
+//	create-channel -name 文字
 //	record       -channel ID -title 文字 [-start ... -end ... -location ...]
 //	add-to-trip  -entry ID [-trip ID] [-title 文字]
 //	list-trips   -channel ID
@@ -34,6 +40,7 @@ import (
 // client 定義統一的操作介面，由 httpClient 或 dbClient 實作。
 type client interface {
 	listChannels() (any, error)
+	createChannel(name string) (any, error)
 	record(channelID, title, start, startTime, end, endTime, location string) (any, error)
 	addToTrip(entryID, tripID, title string) (string, string, error)
 	listTrips(channelID string) (any, error)
@@ -88,8 +95,14 @@ func main() {
 	}
 
 	switch cmd {
+	case "login":
+		if err := runLogin(apiURL, args); err != nil {
+			fatal("login: %v", err)
+		}
 	case "list-channels":
 		cmdListChannels(c)
+	case "create-channel":
+		cmdCreateChannel(c, args)
 	case "entry-add":
 		cmdEntryAdd(c, args)
 	case "entry-update":
@@ -125,6 +138,20 @@ func cmdListChannels(c client) {
 	res, err := c.listChannels()
 	if err != nil {
 		fatal("list-channels: %v", err)
+	}
+	output(res)
+}
+
+func cmdCreateChannel(c client, args []string) {
+	fs := flag.NewFlagSet("create-channel", flag.ExitOnError)
+	name := fs.String("name", "", "頻道名稱（必填）")
+	_ = fs.Parse(args)
+	if *name == "" {
+		fatal("create-channel 需要 -name")
+	}
+	res, err := c.createChannel(*name)
+	if err != nil {
+		fatal("create-channel: %v", err)
 	}
 	output(res)
 }
@@ -239,9 +266,22 @@ func cmdDropLegacyColumns(useDB bool, db *dbClient) {
 	output(map[string]any{"dropped": dropped})
 }
 
+// notifyChannel 直接用 http.Post(不經 httpClient.do),故 /internal/* 現在
+// 要求的 Authorization: Bearer token 得在這裡自己補上;讀不到本機 token 或
+// 請求失敗都只是靜默放棄通知(維持原本的 best-effort 行為——這只是即時推播
+// 更新用的通知,不是資料寫入本身,失敗不影響資料正確性,不值得讓呼叫端也
+// 跟著失敗或印出錯誤)。
 func notifyChannel(channelID, apiURL string) {
-	url := apiURL + "/internal/channels/" + channelID + "/notify"
-	resp, err := http.Post(url, "application/json", nil)
+	token, err := loadToken()
+	if err != nil {
+		return
+	}
+	req, err := http.NewRequest(http.MethodPost, apiURL+"/internal/channels/"+channelID+"/notify", nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return
 	}
@@ -270,6 +310,12 @@ func usage() {
   -db       直連 PostgreSQL（需要 DATABASE_URL，不走 HTTP）
 
 子命令:
+  login --web [-console URL]
+               透過瀏覽器核准登入，換取本機快取的 token（其餘子命令的前置條件）。
+               -console URL 只影響開瀏覽器要導去的核准頁面 origin，API 呼叫仍打
+               -api（預設等於 -api，正式環境不需要帶；本機另外跑 Vite dev server
+               時可用 -console http://localhost:5173）
+  create-channel -name 文字
   record       -channel ID -title 文字 [-start 'YYYY-MM-DD[ HH:MM]'] [-end ...] [-location ...]
   add-to-trip  -entry ID [-trip ID] [-title 文字]
   list-trips   -channel ID

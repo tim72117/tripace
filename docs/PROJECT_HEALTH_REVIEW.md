@@ -5,7 +5,7 @@
 ## 安全性(優先處理)
 
 - **CORS 全開放 `*`**(`server/internal/api/middleware.go` 的 `cors()`)——程式碼自己的註解寫著「僅供開發使用,正式環境應收斂 Allow-Origin」,但目前正式環境也是這個設定,沒有依環境切換的邏輯。建議至少讀環境變數決定允許的 origin 清單。
-- **`INTERNAL_API_TOKEN` 未設定時預設放行**(`server/internal/api/middleware.go` 的 `internalAuth`)——仰賴部署者「記得」設定,一旦漏掉,`/internal/*` 路由等同無防護。建議改成正式環境(`DEV_MODE=false`)沒設這個 token 就直接 `log.Fatalf` 拒絕啟動,比照 `ADMIN_BOOTSTRAP_*` 那種「缺了就明確報錯」的模式,別讓沉默失敗變成安全洞。
+- ~~**`INTERNAL_API_TOKEN` 未設定時預設放行**~~——**已解決**:`internalAuth`(`server/internal/api/middleware.go`)已改為與 `/v1/*` 一般使用者共用同一套 JWT 驗證(`auth.Signer`),不再有共享密鑰環境變數,也不存在「忘記設定就等於不設防」的分支,驗證失敗一律回 401。CLI 端透過 `tripace-cli login --web` 換發 JWT。
 - `web/.env.development`(無 `.local` 後綴)目前被 git 追蹤,值得確認裡面有沒有不該進版控的東西。
 
 ## 測試(目前是最大缺口)

@@ -6,14 +6,27 @@ package api
 //
 // Both live under /internal/ (see api.go's Routes, guarded by
 // middleware.go's internalAuth) rather than under /v1/ — this POC has no
-// per-user auth model of its own (see the task's own framing: this is a
-// local try-it POC, not a feature behind shuttle's real login), and
-// /internal/ is already shuttle's convention for "no user-facing auth,
-// trusted caller only" endpoints (see api.go's own comment on
-// handleInternalRecord and friends). INTERNAL_API_TOKEN unset (the
-// out-of-the-box local dev state — see middleware.go's internalAuth) means
-// these are open with no auth at all, matching the task's explicit "不需要
-// 驗證,這只是本機試做用".
+// per-user auth model of its own, and /internal/ is already shuttle's
+// convention for "no per-channel auth, trusted caller only" endpoints (see
+// api.go's own comment on handleInternalRecord and friends).
+//
+// internalAuth no longer has a "no token configured, allow through" branch
+// (that was the old shared-secret INTERNAL_API_TOKEN scheme, since
+// removed) — it now requires the same Authorization: Bearer JWT as every
+// other /internal/* endpoint, verified against the same auth.Signer as
+// /v1/*. Failing that check is a hard 401, same as any other /internal/*
+// call.
+//
+// Known gap (not fixed by this comment, just recorded here so it isn't
+// mistaken for "works"): the frontend caller,
+// web/src/clienttools/bridge/ClientToolsBridge.ts's connect(), opens the WS
+// with `new WebSocket(wsURL())` and does not attach any Authorization
+// header or token — a plain browser WebSocket constructor has no mechanism
+// to set custom headers. In a real browser this connection is therefore
+// expected to fail internalAuth's check and get rejected before the WS
+// handshake completes. This gap predates this comment and isn't something
+// this change fixes; it's flagged here so the POC's actual state is
+// visible rather than silently implied to work end-to-end.
 
 import (
 	"net/http"

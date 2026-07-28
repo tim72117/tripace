@@ -210,6 +210,32 @@ export function register(
   })
 }
 
+// ---- CLI 瀏覽器登入(`tripace-cli login --web`)。start/exchange 由 CLI 自己
+// 呼叫(見 server/cmd/cli/login.go),不經過這個前端 client;這裡只有網頁端
+// 核准畫面(CliAuthPage.tsx)要用到的兩個端點。----
+
+// 取得 id 對應的 CLI 顯示名稱,供核准頁面顯示「XXX 想要登入」。不需登入
+// (id 本身就是這個查詢唯一需要的憑證),但沿用 request() 一律會在 cfg.token
+// 存在時帶上 Authorization header,對這個端點無影響(server 端不檢查)。
+export function getCliAuthName(cfg: ClientConfig, id: string) {
+  return request<{ name: string }>(
+    cfg,
+    'GET',
+    `/v1/cli-auth/${encodeURIComponent(id)}`,
+  )
+}
+
+// 核准 id 對應的登入請求——呼叫端須已登入(cfg.token 有效),否則 401。
+// 成功後回傳 CLI 本地伺服器的 redirectUri,呼叫端據此把瀏覽器導過去、帶上
+// ?code={id},讓 CLI 換到剛核發的 token(見 CliAuthPage.tsx 的 approve())。
+export function approveCliAuth(cfg: ClientConfig, id: string) {
+  return request<{ redirectUri: string }>(
+    cfg,
+    'POST',
+    `/v1/cli-auth/${encodeURIComponent(id)}/approve`,
+  )
+}
+
 export function fetchChannels(cfg: ClientConfig) {
   return request<{ channels: Channel[] }>(cfg, 'GET', '/v1/channels').then(
     (r) => r.channels,

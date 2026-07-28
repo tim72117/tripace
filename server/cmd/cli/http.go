@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 
 	"github.com/tim72117/tripace/internal/tripsvc"
 )
@@ -34,11 +33,15 @@ func (c *httpClient) do(method, path string, body any) (map[string]any, error) {
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	// /internal/* 現在需要共享密鑰(見 server internalAuth middleware);
-	// 未設定 INTERNAL_API_TOKEN 時不帶這個 header,對齊 server 端本機開發放行的預設值。
-	if token := os.Getenv("INTERNAL_API_TOKEN"); token != "" {
-		req.Header.Set("X-Internal-Token", token)
+	// /internal/* 現在需要有效的 JWT(見 server internalAuth middleware),
+	// 讀本機登入時存下的 token(見 token.go)。讀不到就代表還沒登入——
+	// 明確失敗、給出清楚的下一步,不要靜默送出沒有驗證的請求(那樣只會換來一個
+	// 難懂的 401,而且掩蓋了「其實只是還沒登入」這個真正原因)。
+	token, err := loadToken()
+	if err != nil {
+		return nil, fmt.Errorf("尚未登入,請先執行 `tripace-cli login --web` 登入: %w", err)
 	}
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -56,6 +59,15 @@ func (c *httpClient) do(method, path string, body any) (map[string]any, error) {
 
 func (c *httpClient) listChannels() (any, error) {
 	return c.do("GET", "/internal/channels", nil)
+}
+
+// createChannel 走 /v1/channels(不是 /internal/):建立頻道天生就需要一個
+// 「以誰的身分當 owner」,/internal/ 底下的其餘端點都刻意不涉及這個問題
+// (直接對已存在的 channelID/entryID 操作),但 /v1/channels 本來就是設計成
+// 用呼叫端的已驗證身分(userFor)當 owner,CLI 登入後拿到的就是這樣一把
+// token,直接打這條路徑即可,不需要另外在 /internal/ 底下重造一份。
+func (c *httpClient) createChannel(name string) (any, error) {
+	return c.do("POST", "/v1/channels", map[string]any{"name": name})
 }
 
 func (c *httpClient) record(channelID, title, start, startTime, end, endTime, location string) (any, error) {

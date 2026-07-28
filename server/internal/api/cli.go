@@ -2,8 +2,10 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
+	"github.com/tim72117/tripace/internal/store"
 	"github.com/tim72117/tripace/internal/tripsvc"
 )
 
@@ -106,6 +108,31 @@ func (s *Server) handleInternalUpdateEntry(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"updated": entryID})
+}
+
+// handleInternalDeleteEntry DELETE /internal/entries/{id}
+// 刪除單一 entry。不像 /v1/channels/{id}/entries/{entryID} 版本
+// (handleDeleteTripEntry)需要路徑上的 channelID 來源比對——這裡的信任邊界
+// 是 internalAuth 這把 JWT 本身,不是「呼叫端剛好也知道正確的 channelID」,
+// 與同檔案其餘 handleInternal* 系列(如 handleInternalUpdateEntry)的作法
+// 一致。先查一次 entry 只是為了拿 ChannelID 供下面 broadcast 使用。
+func (s *Server) handleInternalDeleteEntry(w http.ResponseWriter, r *http.Request) {
+	entryID := r.PathValue("id")
+	entry, err := s.store.GetEntry(entryID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "entry_not_found", "條目不存在")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "lookup_failed", err.Error())
+		return
+	}
+	if err := s.store.DeleteEntry(entryID); err != nil {
+		writeErr(w, http.StatusInternalServerError, "delete_failed", err.Error())
+		return
+	}
+	s.hub.Broadcast(entry.ChannelID, map[string]any{"event": "entries_updated", "channelID": entry.ChannelID})
+	writeJSON(w, http.StatusOK, map[string]string{"deleted": entryID})
 }
 
 // handleInternalSetLatLng PATCH /internal/entries/{id}/latlng

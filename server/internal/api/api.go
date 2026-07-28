@@ -139,17 +139,32 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/public/{token}", s.handlePublicView)
 	mux.HandleFunc("POST /v1/public/{token}/assist", s.handlePublicAssist)
 
-	// internal — 供 CLI(cmd/cli)/自動化腳本操作資料,不走使用者登入驗證,
-	// 改用 internalAuth 檢查共享密鑰(INTERNAL_API_TOKEN),避免任何知道
-	// entryID/channelID 的外部呼叫者繞過上面 /v1/* 的 requireOwner/
-	// requireEditor 檢查(這兩組路由掛在同一個對外 port,路徑命名本身
-	// 不構成安全邊界,見 middleware.go internalAuth 的說明)。
+	// cli-auth — CLI(cmd/cli)瀏覽器登入流程(`tripace-cli login --web`),
+	// 換回一個能通過下面 internalAuth 的 JWT。start/exchange 不需登入:
+	// start 是整個流程最一開始的呼叫,此時 CLI 還沒有任何憑證;exchange 靠的
+	// 是 id 本身(32 bytes 隨機、單次使用)當憑證,而不是使用者身分。
+	// approve 則相反,必須是真正登入的使用者(見 handleApproveCliAuth 內部
+	// 明確拒絕訪客身分的檢查),核准的當下才簽出要交給 CLI 的 JWT。
+	// 詳細安全性設計見 internal/store/cliauth.go 的說明。
+	mux.HandleFunc("POST /v1/cli-auth/start", s.handleStartCliAuth)
+	mux.HandleFunc("GET /v1/cli-auth/{id}", s.handleGetCliAuth)
+	mux.HandleFunc("POST /v1/cli-auth/{id}/approve", s.handleApproveCliAuth)
+	mux.HandleFunc("POST /v1/cli-auth/{id}/exchange", s.handleExchangeCliAuth)
+
+	// internal — 供 CLI(cmd/cli)/自動化腳本操作資料,不走 /v1/* 那套
+	// requireOwner/requireEditor 頻道層級的權限檢查,改由 internalAuth 要求
+	// 呼叫端帶有效的自家 JWT(與 /v1/* 一般使用者同一套 auth.Signer),避免任何
+	// 知道 entryID/channelID 的外部呼叫者繞過上面 /v1/* 的權限檢查(這兩組路由
+	// 掛在同一個對外 port,路徑命名本身不構成安全邊界,見 middleware.go
+	// internalAuth 的說明)。CLI 端透過 `tripace-cli login --web` 取得這把 JWT
+	// (見 /v1/cli-auth/* 路由與 cmd/cli/login.go)。
 	internalMux := http.NewServeMux()
 	internalMux.HandleFunc("GET /internal/channels", s.handleInternalListChannels)
 	internalMux.HandleFunc("POST /internal/channels/{id}/notify", s.handleNotify)
 	internalMux.HandleFunc("POST /internal/channels/{id}/entries", s.handleInternalRecord)
 	internalMux.HandleFunc("POST /internal/entries/{id}/trip", s.handleInternalAddToTrip)
 	internalMux.HandleFunc("PATCH /internal/entries/{id}", s.handleInternalUpdateEntry)
+	internalMux.HandleFunc("DELETE /internal/entries/{id}", s.handleInternalDeleteEntry)
 	internalMux.HandleFunc("PATCH /internal/entries/{id}/latlng", s.handleInternalSetLatLng)
 	internalMux.HandleFunc("GET /internal/channels/{id}/trips", s.handleInternalListTrips)
 	internalMux.HandleFunc("GET /internal/channels/{id}/trips/{tripID}/entries", s.handleInternalTripEntries)
@@ -157,15 +172,15 @@ func (s *Server) Routes() http.Handler {
 
 	// clienttools — 「LLM 呼叫前端 tool」試做(POC)專用端點,見
 	// clienttools_http.go/clienttools_ws.go。與上面既有 /internal/* 端點
-	// 一樣掛在 internalAuth 之後(INTERNAL_API_TOKEN 未設時完全不受保護,
-	// 符合本試做「不需要驗證,僅本機試做用」的要求)。EnableClientTools
-	// 未呼叫時(main.go 未啟用或 want 分析器初始化失敗)這幾個 handler
-	// 內部會各自回 503,不需要在路由層額外判斷。
+	// 一樣掛在 internalAuth 之後,故同樣需要有效的 JWT 才能呼叫(這是
+	// internalAuth 改寫後的直接結果,並非這個 POC 專屬的額外限制——
+	// EnableClientTools 未呼叫時(main.go 未啟用或 want 分析器初始化失敗)
+	// 這幾個 handler 內部會各自回 503,不需要在路由層額外判斷)。
 	internalMux.HandleFunc("GET /internal/clienttools/ws", s.handleClientToolsWS)
 	internalMux.HandleFunc("POST /internal/clienttools/test-prompt", s.handleClientToolsTestPrompt)
 	internalMux.HandleFunc("GET /internal/clienttools/info", s.handleClientToolsInfo)
 
-	mux.Handle("/internal/", internalAuth(internalMux))
+	mux.Handle("/internal/", internalAuth(s.signer, internalMux))
 
 	return logging(cors(mux))
 }

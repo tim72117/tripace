@@ -20,7 +20,7 @@ Web(`web/src`)、Admin SPA(`web/admin`)四個前端各自呼叫哪些端點、
                     │  internal/  │
                     │  api        │
                     └──────┬──────┘
-                           │  /internal/*(共享密鑰 INTERNAL_API_TOKEN)
+                           │  /internal/*(JWT,同 /v1/* 的 auth.Signer)
                            ▼
                     ┌─────────────┐
                     │  cmd/cli    │  ← 唯一呼叫 /internal/* 的呼叫端
@@ -29,8 +29,11 @@ Web(`web/src`)、Admin SPA(`web/admin`)四個前端各自呼叫哪些端點、
 
 **核心結論:iOS App 與 Web 共用同一組 `/v1/*` API**(同一批 handler、同一套
 `requireOwner`/`requireEditor`/`requireMember` 權限檢查)。`/internal/*` 是
-另一組獨立路由,只給 `cmd/cli` 用,不經過使用者登入驗證,改用共享密鑰
-(`X-Internal-Token` header,見下方「安全邊界」)。`/admin/api/*` 是第三組,
+另一組獨立路由,只給 `cmd/cli` 用,不走 `/v1/*` 那套頻道層級的
+`requireOwner`/`requireEditor`/`requireMember` 檢查,改用 `internalAuth`
+middleware 要求 `Authorization: Bearer` 帶一把有效的 JWT(見下方「安全邊界」)
+——與 `/v1/*` 一般使用者同一套 `auth.Signer`,CLI 端透過
+`tripace-cli login --web` 走瀏覽器核准流程換發。`/admin/api/*` 是第三組,
 只給獨立部署的管理後台 SPA 用,走 session cookie 驗證,跟前兩組完全不共用
 handler、不共用 store 存取層以外的任何程式碼。
 
@@ -65,17 +68,22 @@ handler、不共用 store 存取層以外的任何程式碼。
 
 ## 三、`/internal/*` 完整路由表(只給 `cmd/cli` 用)
 
-這組路由不經過使用者登入,直接操作 `store`/`tripsvc`,設計目的是讓 CLI 或
-自動化腳本能繞過「先登入拿 Bearer token」的流程直接操作資料。**改用共享密鑰**
-`INTERNAL_API_TOKEN`(見 `middleware.go` 的 `internalAuth`)。
+這組路由不走 `/v1/*` 那套頻道層級的權限檢查(`requireOwner`/`requireEditor`/
+`requireMember`),直接操作 `store`/`tripsvc`,設計目的是讓 CLI 或自動化腳本
+能繞過「先登入拿頻道成員身分」的流程直接操作資料。**改用 JWT**:呼叫端須帶
+`Authorization: Bearer <token>`,由 `internalAuth`(見 `middleware.go`)以
+`auth.Signer.Verify` 驗證,與 `/v1/*` 一般使用者共用同一套 signer。CLI 端
+透過 `tripace-cli login --web` 走瀏覽器核准流程換發這把 JWT(見
+`/v1/cli-auth/*` 路由與 `cmd/cli/login.go`)。
 
 | 方法 | 路徑 | Handler | CLI 呼叫方法(cmd/cli/http.go) |
 |---|---|---|---|
 | GET | /internal/channels | handleInternalListChannels | listChannels() |
-| POST | /internal/channels/{id}/notify | handleNotify | (未包裝,CLI 未呼叫) |
+| POST | /internal/channels/{id}/notify | handleNotify | notifyChannel()(main.go,未經 httpClient.do) |
 | POST | /internal/channels/{id}/entries | handleInternalRecord | record() |
 | POST | /internal/entries/{id}/trip | handleInternalAddToTrip | addToTrip() |
 | PATCH | /internal/entries/{id} | handleInternalUpdateEntry | updateEntry() |
+| DELETE | /internal/entries/{id} | handleInternalDeleteEntry | deleteEntry() |
 | PATCH | /internal/entries/{id}/latlng | handleInternalSetLatLng | (未包裝,CLI 未呼叫) |
 | GET | /internal/channels/{id}/trips | handleInternalListTrips | listTrips() |
 | GET | /internal/channels/{id}/trips/{tripID}/entries | handleInternalTripEntries | tripEntries() |
@@ -151,14 +159,20 @@ Admin SPA 是跨網域呼叫並帶 cookie(`credentials: 'include'`),不能沿用
 
 **已修復**(`server/internal/api/middleware.go` 的 `internalAuth`):
 `/internal/*` 現在改走獨立的 `internalMux`,套上 `internalAuth` middleware,
-比對請求的 `X-Internal-Token` header 是否等於環境變數 `INTERNAL_API_TOKEN`
-(`crypto/subtle.ConstantTimeCompare`,避免 timing attack)。
+解析請求的 `Authorization: Bearer <token>`,以 `auth.Signer.Verify` 驗證這是
+一把有效的自家 JWT——與 `/v1/*` 一般使用者同一套 `auth.Signer`。
 
-- **未設定 `INTERNAL_API_TOKEN`**:本機開發預設放行(維持 CLI 免設定即可用
-  的體驗),但啟動時會印一次警告。
-- **正式環境務必設定**此環境變數,否則等同完全不設防。設定後 `cmd/cli`
-  需要讀到同一個環境變數值(`os.Getenv("INTERNAL_API_TOKEN")`,見
-  `cmd/cli/http.go`)才能成功呼叫。
+- **驗證失敗一律回 401**:不論是缺 header、格式錯誤,還是 token 無效/過期,
+  沒有任何「環境變數沒設定就整段跳過驗證放行」的分支,不存在舊機制那種
+  「忘記設定就等於不設防」的失效模式。
+- `cmd/cli` 端透過 `tripace-cli login --web` 走瀏覽器核准流程(見
+  `/v1/cli-auth/*` 路由、`cmd/cli/login.go`)換發這把 JWT,存在本機(見
+  `cmd/cli/token.go`),之後的指令自動帶上,不需要另外設定任何環境變數。
+- 舊版共享密鑰機制(`X-Internal-Token` header 比對環境變數
+  `INTERNAL_API_TOKEN`,未設定時本機放行)已完全移除——已確認正式環境
+  (Cloud Run `tripace-server`)先前實際上就處於「未設定、完全不設防」的
+  狀態,任何人都能不登入直接讀寫刪除任意頻道資料,是這次改走 JWT 要修復的
+  真實風險,不只是理論疑慮。
 
 ## 七、待辦 / 已知缺口
 
@@ -169,9 +183,9 @@ Admin SPA 是跨網域呼叫並帶 cookie(`credentials: 'include'`),不能沿用
 2. **`/internal/entries/{id}/trip`(歸入行程)沒有對應的 `/v1/*` 端點**,
    使用者目前無法在前端手動把條目歸入某個行程,只能靠 AI 對話(`entry_add`
    工具帶時間相符時系統會列候選行程)或 CLI。
-3. **`INTERNAL_API_TOKEN` 尚未在任何 `.env`(本機或正式環境)實際設定過**,
-   目前僅補了 `.env.example` 的說明與程式碼支援,正式環境部署前必須手動
-   設定這個環境變數,否則 `/internal/*` 仍是不設防狀態。
+3. ~~`INTERNAL_API_TOKEN` 尚未在任何 `.env`(本機或正式環境)實際設定過~~
+   ——已隨共享密鑰機制整個移除而不再適用,`/internal/*` 現在強制要求有效
+   JWT,不存在「忘記設定環境變數」這種失效模式(見上方「安全邊界」)。
 4. `main.go` 呼叫 `srv.Routes()` 三次(`/v1/`、`/internal/`、`/health` 各一次)
    組出三個獨立但內容相同的 mux 實體,`internalAuth` 因此在啟動時會重複
    建構、重複印警告訊息三次。不影響功能正確性(已用真實 HTTP 請求驗證
