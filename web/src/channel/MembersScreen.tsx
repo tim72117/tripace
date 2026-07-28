@@ -3,7 +3,7 @@ import { ChevronLeft } from 'lucide-react'
 import type { ClientConfig } from '../api'
 import * as api from '../api'
 import type { Channel, ChannelRole, Member } from '../types'
-import { Avatar, ErrorBanner, errMsg, isSubmitEnter } from '../App'
+import { Avatar, ErrorBanner, errMsg, isSubmitEnter } from '../AppCommon'
 
 // ---- 成員頁 ----
 

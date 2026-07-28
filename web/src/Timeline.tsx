@@ -4,6 +4,7 @@ import type { Entry } from './types'
 import type { ClientConfig } from './api'
 import * as api from './api'
 import { ApiError } from './api'
+import styles from './Timeline.module.css'
 
 // 對齊 App.tsx 的 errMsg,但不 import App.tsx(App.tsx 已 import 本檔的
 // MultiTrackTimeline,互相 import 會造成循環依賴),在此重寫等價的極簡版本。
@@ -226,26 +227,26 @@ export function MultiTrackTimeline({
   const today = new Date().toISOString().slice(0, 10)
   let todayAttached = false
   return (
-    <div className="tl-grid">
+    <div className={styles.grid}>
       {rows.map(row => {
         if (row.kind === 'year') return (
-          <div key={row.key} className="tl-grid-row">
-            <div className="tl-col-label tl-year-label">{row.label}</div>
-            <div className="tl-col-axis">
-              <div className={`tl-vline top${row.accent ? ' accent' : ''}`} />
-              <div className={`tl-vline bot${row.accent ? ' accent' : ''}`} />
+          <div key={row.key} className={styles.gridRow}>
+            <div className={`${styles.colLabel} ${styles.yearLabel}`}>{row.label}</div>
+            <div className={styles.colAxis}>
+              <div className={`${styles.vline} ${styles.top}${row.accent ? ` ${styles.accent}` : ''}`} />
+              <div className={`${styles.vline} ${styles.bot}${row.accent ? ` ${styles.accent}` : ''}`} />
             </div>
-            <div className="tl-col-card" />
+            <div className={styles.colCard} />
           </div>
         )
         if (row.kind === 'month') return (
-          <div key={row.key} className="tl-grid-row">
-            <div className="tl-col-label tl-month-label">{row.label}</div>
-            <div className="tl-col-axis">
-              <div className={`tl-vline top${row.accent ? ' accent' : ''}`} />
-              <div className={`tl-vline bot${row.accent ? ' accent' : ''}`} />
+          <div key={row.key} className={styles.gridRow}>
+            <div className={`${styles.colLabel} ${styles.monthLabel}`}>{row.label}</div>
+            <div className={styles.colAxis}>
+              <div className={`${styles.vline} ${styles.top}${row.accent ? ` ${styles.accent}` : ''}`} />
+              <div className={`${styles.vline} ${styles.bot}${row.accent ? ` ${styles.accent}` : ''}`} />
             </div>
-            <div className="tl-col-card" />
+            <div className={styles.colCard} />
           </div>
         )
         // entry row
@@ -254,22 +255,22 @@ export function MultiTrackTimeline({
         const isTodayAnchor = !todayAttached && todayRef && rowDate >= today && !isBlank
         if (isTodayAnchor) todayAttached = true
         return (
-          <div key={row.key} ref={isTodayAnchor ? todayRef : undefined} className={`tl-grid-row${isBlank && !row.isPad ? ' blank' : ''}`}>
+          <div key={row.key} ref={isTodayAnchor ? todayRef : undefined} className={`${styles.gridRow}${isBlank && !row.isPad ? ` ${styles.blank}` : ''}`}>
             {/* 日欄 */}
-            <div className="tl-col-label">
-              {dayLabel && <span className="tl-date-day">{dayLabel}</span>}
+            <div className={styles.colLabel}>
+              {dayLabel && <span className={styles.dateDay}>{dayLabel}</span>}
             </div>
             {/* 軸線欄：絕對線 + 置中點 */}
-            <div className="tl-col-axis">
-              {lineTop !== 'none' && <div className={`tl-vline top${lineTop === 'accent' ? ' accent' : ''}`} />}
-              {lineBot !== 'none' && <div className={`tl-vline bot${lineBot === 'accent' ? ' accent' : ''}`} />}
+            <div className={styles.colAxis}>
+              {lineTop !== 'none' && <div className={`${styles.vline} ${styles.top}${lineTop === 'accent' ? ` ${styles.accent}` : ''}`} />}
+              {lineBot !== 'none' && <div className={`${styles.vline} ${styles.bot}${lineBot === 'accent' ? ` ${styles.accent}` : ''}`} />}
               {isBlank && !row.isPad
-                ? <div className="tl-dot-blank" />
-                : <div className={dot === 'main' ? 'tl-dot-main' : dot === 'sub' ? 'tl-dot-sub' : 'tl-dot-day'} />
+                ? <div className={styles.dotBlank} />
+                : <div className={dot === 'main' ? styles.dotMain : dot === 'sub' ? styles.dotSub : styles.dotDay} />
               }
             </div>
             {/* 卡片欄 */}
-            <div className="tl-col-card">
+            <div className={styles.colCard}>
               {card?.kind === 'main' && <MainCard entry={card.entry} updating={updatingIDs?.has(card.entry.id)} cfg={cfg} onEntryUpdated={onEntryUpdated} />}
               {card?.kind === 'sub'  && <SubCard  entry={card.entry} updating={updatingIDs?.has(card.entry.id)} cfg={cfg} onEntryUpdated={onEntryUpdated} />}
               {card?.kind === 'end'  && <EndCard  entry={card.entry} />}
@@ -296,7 +297,7 @@ function NavButton({ location, lat, lng }: { location: string; lat?: number | nu
     ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
     : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="tl-nav-btn" title="開始導航">
+    <a href={url} target="_blank" rel="noopener noreferrer" className={styles.navBtn} title="開始導航">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
         <path d="M2 12L22 2L12 22L9 13L2 12Z" />
       </svg>
@@ -310,26 +311,26 @@ function MainCard({
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   return (
-    <div className={`tl-main-card tl-card-row${updating ? ' updating' : ''}`} onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer' }}>
-      <div className="tl-card-content">
-        <div className="tl-item">
-          <span className="tl-main-title">{entry.title}</span>
+    <div className={`${styles.mainCard} ${styles.cardRow}${updating ? ` ${styles.updating}` : ''}`} onClick={() => setOpen(o => !o)} style={{ cursor: 'pointer' }}>
+      <div className={styles.cardContent}>
+        <div className={styles.item}>
+          <span className={styles.mainTitle}>{entry.title}</span>
         </div>
         {entry.location && <div className="entry-loc"><PinIcon /> {entry.location}</div>}
-        <div className={`tl-card-expand${open ? ' open' : ''}`}>
-          <div className="tl-card-expand-inner">
-            {entry.note && <div className="tl-expand-summary">{entry.note}</div>}
-            <div className="tl-expand-row">
-              <span className="tl-expand-label">開始</span>
+        <div className={`${styles.cardExpand}${open ? ` ${styles.open}` : ''}`}>
+          <div className={styles.cardExpandInner}>
+            {entry.note && <div className={styles.expandSummary}>{entry.note}</div>}
+            <div className={styles.expandRow}>
+              <span className={styles.expandLabel}>開始</span>
               <span>{entry.start ? (entry.startTime ? `${entry.start} ${entry.startTime}` : entry.start) : '—'}</span>
             </div>
-            {entry.end && <div className="tl-expand-row">
-              <span className="tl-expand-label">結束</span>
+            {entry.end && <div className={styles.expandRow}>
+              <span className={styles.expandLabel}>結束</span>
               <span>{entry.endTime ? `${entry.end} ${entry.endTime}` : entry.end}</span>
             </div>}
             {cfg && (
               <button
-                className="tl-edit-btn"
+                className={styles.editBtn}
                 onClick={(e) => { e.stopPropagation(); setEditing(true) }}
               >
                 <Pencil size={13} strokeWidth={1.8} /> 編輯
@@ -353,8 +354,8 @@ function MainCard({
 
 function EndCard({ entry }: { entry: Entry }) {
   return (
-    <div className="tl-end-card">
-      <span className="tl-end-label">{entry.title} 結束</span>
+    <div className={styles.endCard}>
+      <span className={styles.endLabel}>{entry.title} 結束</span>
     </div>
   )
 }
@@ -367,14 +368,14 @@ function SubCard({
   const time = entryTimeLabel(entry)
   const span = entrySpanLabel(entry)
   return (
-    <div className={`tl-card tl-card-row${span ? ' tl-card-span' : ''}${updating ? ' updating' : ''}`}
+    <div className={`${styles.card} ${styles.cardRow}${span ? ` ${styles.cardSpan}` : ''}${updating ? ` ${styles.updating}` : ''}`}
       onClick={() => setOpen(o => !o)}
       style={{ cursor: 'pointer' }}>
-      <div className="tl-card-content">
-        <div className="tl-item">
-          {time && <span className="tl-time">{time}</span>}
+      <div className={styles.cardContent}>
+        <div className={styles.item}>
+          {time && <span className={styles.time}>{time}</span>}
           {entry.title}
-          {span && <span className="tl-span">{span}</span>}
+          {span && <span className={styles.span}>{span}</span>}
         </div>
         {entry.location && <div className="entry-loc"><PinIcon /> {entry.location}</div>}
         {(entry.category || (entry.tags ?? []).length > 0) && (
@@ -383,20 +384,20 @@ function SubCard({
             {(entry.tags ?? []).map(t => <span key={t} className="tag">#{t}</span>)}
           </div>
         )}
-        <div className={`tl-card-expand${open ? ' open' : ''}`}>
-          <div className="tl-card-expand-inner">
-            {entry.note && <div className="tl-expand-summary">{entry.note}</div>}
-            {entry.start && <div className="tl-expand-row">
-              <span className="tl-expand-label">開始</span>
+        <div className={`${styles.cardExpand}${open ? ` ${styles.open}` : ''}`}>
+          <div className={styles.cardExpandInner}>
+            {entry.note && <div className={styles.expandSummary}>{entry.note}</div>}
+            {entry.start && <div className={styles.expandRow}>
+              <span className={styles.expandLabel}>開始</span>
               <span>{entry.startTime ? `${entry.start} ${entry.startTime}` : entry.start}</span>
             </div>}
-            {entry.end && <div className="tl-expand-row">
-              <span className="tl-expand-label">結束</span>
+            {entry.end && <div className={styles.expandRow}>
+              <span className={styles.expandLabel}>結束</span>
               <span>{entry.endTime ? `${entry.end} ${entry.endTime}` : entry.end}</span>
             </div>}
             {cfg && (
               <button
-                className="tl-edit-btn"
+                className={styles.editBtn}
                 onClick={(e) => { e.stopPropagation(); setEditing(true) }}
               >
                 <Pencil size={13} strokeWidth={1.8} /> 編輯
@@ -423,11 +424,11 @@ function SubCard({
 function TaskPlaceholderCard({ placeholder }: { placeholder: TaskPlaceholder }) {
   const label = placeholder.text
   return (
-    <div className="tl-card tl-card-row tl-task-placeholder">
-      <div className="tl-card-content">
-        <div className="tl-item tl-wave-text" aria-live="polite" aria-label={label}>
+    <div className={`${styles.card} ${styles.cardRow} ${styles.taskPlaceholder}`}>
+      <div className={styles.cardContent}>
+        <div className={`${styles.item} ${styles.waveText}`} aria-live="polite" aria-label={label}>
           {[...label].map((ch, i) => (
-            <span key={i} className="tl-wave-char" style={{ animationDelay: `${i * 0.08}s` }}>
+            <span key={i} className={styles.waveChar} style={{ animationDelay: `${i * 0.08}s` }}>
               {ch === ' ' ? ' ' : ch}
             </span>
           ))}
@@ -486,50 +487,50 @@ function EditEntrySheet({
   }
 
   return (
-    <div className="edit-entry-backdrop" onClick={(e) => { e.stopPropagation(); onClose() }}>
-      <div className="edit-entry-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="edit-entry-head">
-          <span className="edit-entry-title">編輯條目</span>
+    <div className={styles.backdrop} onClick={(e) => { e.stopPropagation(); onClose() }}>
+      <div className={styles.sheet} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.head}>
+          <span className={styles.title}>編輯條目</span>
           <button className="btn icon-btn" onClick={onClose} title="關閉">
             <X size={18} strokeWidth={1.8} />
           </button>
         </div>
-        <div className="edit-entry-body">
+        <div className={styles.body}>
           {err && <div className="banner">{err}</div>}
-          <label className="edit-entry-field">
+          <label className={styles.field}>
             <span>標題</span>
             <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
           </label>
-          <div className="edit-entry-row">
-            <label className="edit-entry-field">
+          <div className={styles.row}>
+            <label className={styles.field}>
               <span>開始日期</span>
               <input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
             </label>
-            <label className="edit-entry-field">
+            <label className={styles.field}>
               <span>開始時刻</span>
               <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
             </label>
           </div>
-          <div className="edit-entry-row">
-            <label className="edit-entry-field">
+          <div className={styles.row}>
+            <label className={styles.field}>
               <span>結束日期</span>
               <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
             </label>
-            <label className="edit-entry-field">
+            <label className={styles.field}>
               <span>結束時刻</span>
               <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
             </label>
           </div>
-          <label className="edit-entry-field">
+          <label className={styles.field}>
             <span>地點</span>
             <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="留空表示不改" />
           </label>
-          <label className="edit-entry-field">
+          <label className={styles.field}>
             <span>備註</span>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="留空表示不改" />
           </label>
         </div>
-        <div className="edit-entry-actions">
+        <div className={styles.actions}>
           <button className="btn-secondary" onClick={onClose} disabled={saving}>取消</button>
           <button className="btn-primary" onClick={save} disabled={saving || !title.trim()}>
             {saving ? '儲存中…' : '儲存'}

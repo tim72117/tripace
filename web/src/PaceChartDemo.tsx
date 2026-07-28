@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Share2 } from 'lucide-react'
+import styles from './PaceChartDemo.module.css'
 
 // 單車配速表(UI 試做):手機優先的直向卡片堆疊,每張卡片是一個檢查站,
 // 核心資訊是「離站時間」(視覺上用最大字級呈現)。設計與互動邏輯直接
@@ -34,7 +35,6 @@ interface RouteMeta {
   startTime: string
   finishTime: string
   avgSpeedKmh: number | null
-  assumptions: string
   footer: string
   date: string
 }
@@ -66,7 +66,6 @@ const LEG1_CHECKPOINTS: Checkpoint[] = [
 const LEG1_META: RouteMeta = {
   title: '光復橋 → 富興客棧', subtitle: '193縣道・大農大富平地森林園區段', eyebrow: '配速表 · 花東193公路(Day 1 上半)',
   totalKm: 21.0, startTime: '09:00', finishTime: '12:30', avgSpeedKmh: null,
-  assumptions: '手寫 pace note 轉錄,時刻為紙條原始紀錄的離站/抵達時間,非估算值。沒記錄到時刻的轉彎指示一併列出,只是不計入進度條。',
   footer: '里程與地標依手寫 pace note 轉錄。',
   date: '2026-07-31',
 }
@@ -81,7 +80,6 @@ const LEG2_CHECKPOINTS: Checkpoint[] = [
 const LEG2_META: RouteMeta = {
   title: '193縣道83K → 老家後山菜', subtitle: '瑞穗・虎爺溫泉段', eyebrow: '配速表 · 花東193公路(Day 1 下半)',
   totalKm: 16.3, startTime: '14:50', finishTime: '18:00', avgSpeedKmh: null,
-  assumptions: '手寫 pace note 轉錄,時刻為紙條原始紀錄的離站/抵達時間,非估算值。里程從紙條原始數字起算(非重新歸零)。',
   footer: '里程與地標依手寫 pace note 轉錄。',
   date: '2026-07-31',
 }
@@ -97,7 +95,6 @@ const LEG3_CHECKPOINTS: Checkpoint[] = [
 const LEG3_META: RouteMeta = {
   title: '青蓮寺 → 安通溫泉', subtitle: '193縣道・玉里柴埔天堂路段', eyebrow: '配速表 · 花東193公路(Day 2 上半)',
   totalKm: 28.0, startTime: '08:30', finishTime: '13:00', avgSpeedKmh: null,
-  assumptions: '手寫 pace note 轉錄,時刻為紙條原始紀錄的離站/抵達時間,非估算值。沒記錄到時刻的轉彎指示一併列出,只是不計入進度條。',
   footer: '里程與地標依手寫 pace note 轉錄。',
   date: '2026-08-01',
 }
@@ -112,7 +109,6 @@ const LEG4_CHECKPOINTS: Checkpoint[] = [
 const LEG4_META: RouteMeta = {
   title: '安通鐵路驛站 → 太司步廊', subtitle: '板塊交接上橋段', eyebrow: '配速表 · 花東193公路(Day 2 下半)',
   totalKm: 7.5, startTime: '13:00', finishTime: '16:40', avgSpeedKmh: null,
-  assumptions: '手寫 pace note 轉錄,時刻為紙條原始紀錄的離站/抵達時間,非估算值。終點「太司步廊」紙條沒記錄時刻(最後一個有時刻的點是忠孝紀念碑 16:40)。',
   footer: '里程與地標依手寫 pace note 轉錄。',
   date: '2026-08-01',
 }
@@ -170,9 +166,9 @@ function computeNowMark(checkpoints: Checkpoint[], totalKm: number, nowMin: numb
 // ---- 呈現用小工具 ----
 
 function tagColorClass(cp: Checkpoint): string {
-  if (cp.isLongRest) return 'pace-tag pace-tag-rest'
-  if (cp.isFinish) return 'pace-tag pace-tag-finish'
-  return 'pace-tag'
+  if (cp.isLongRest) return `${styles.tag} ${styles.tagRest}`
+  if (cp.isFinish) return `${styles.tag} ${styles.tagFinish}`
+  return styles.tag
 }
 
 function CheckpointCard({
@@ -185,10 +181,10 @@ function CheckpointCard({
   cardRef?: React.RefObject<HTMLDivElement>
 }) {
   const stateClass = [
-    'pace-stop',
-    cp.isLongRest ? 'is-rest-long' : '',
-    cp.isFinish ? 'is-finish' : '',
-    isNow ? 'is-now' : '',
+    styles.stop,
+    cp.isLongRest ? styles.isRestLong : '',
+    cp.isFinish ? styles.isFinish : '',
+    isNow ? styles.isNow : '',
   ].filter(Boolean).join(' ')
 
   // 核心數字:起點/中途站顯示離站時間(離站是配速表的重點),終點顯示抵達時間。
@@ -199,28 +195,28 @@ function CheckpointCard({
 
   return (
     <div className={stateClass} ref={cardRef}>
-      <div className="pace-stop-left">
+      <div className={styles.stopLeft}>
         {isNow && (
-          <div className="pace-now-flag">
-            <span className="pace-now-dot" />
+          <div className={styles.nowFlag}>
+            <span className={styles.nowDot} />
             目前站
           </div>
         )}
-        {cp.isStart && <div className="pace-start-badge">🚩 起點</div>}
-        {cp.isFinish && <div className="pace-finish-badge">🏁 終點</div>}
-        <div className="pace-loc-name">{cp.name}</div>
+        {cp.isStart && <div className={styles.startBadge}>🚩 起點</div>}
+        {cp.isFinish && <div className={styles.finishBadge}>🏁 終點</div>}
+        <div className={styles.locName}>{cp.name}</div>
         {(cp.tag || cp.km !== null) && (
-          <div className="pace-loc-meta">
+          <div className={styles.locMeta}>
             {cp.tag && <span className={tagColorClass(cp)}>{cp.tag}</span>}
-            {cp.km !== null && <span className="pace-km-val pace-mono">{cp.km.toFixed(1)} km</span>}
+            {cp.km !== null && <span className={`${styles.kmVal} ${styles.mono}`}>{cp.km.toFixed(1)} km</span>}
           </div>
         )}
       </div>
-      <div className="pace-stop-right">
-        <div className="pace-dep-label">{coreLabel}</div>
-        <div className="pace-dep-val pace-mono">{coreValue}</div>
+      <div className={styles.stopRight}>
+        <div className={styles.depLabel}>{coreLabel}</div>
+        <div className={`${styles.depVal} ${styles.mono}`}>{coreValue}</div>
         {cp.arrive && !cp.isFinish && (
-          <span className={cp.isLongRest ? 'pace-dwell-val long' : 'pace-dwell-val'}>
+          <span className={cp.isLongRest ? `${styles.dwellVal} ${styles.long}` : styles.dwellVal}>
             抵 {cp.arrive}・停 {cp.dwellMin}m{cp.isLongRest ? ' 午餐' : ''}
           </span>
         )}
@@ -269,12 +265,12 @@ export function PaceChartDemo() {
 
   return (
     <div className="pace-chart">
-      <div className="pace-route-tabs">
+      <div className={styles.routeTabs}>
         {ROUTES.map((r, i) => (
           <button
             key={r.key}
             type="button"
-            className={i === routeIdx ? 'pace-route-tab is-active' : 'pace-route-tab'}
+            className={i === routeIdx ? `${styles.routeTab} ${styles.isActive}` : styles.routeTab}
             onClick={() => setRouteIdx(i)}
           >
             {r.label}
@@ -288,7 +284,7 @@ export function PaceChartDemo() {
           直接複製一個固定網址即可,不用走後端建立/驗證 token 那套流程。 */}
       <button
         type="button"
-        className="pace-share-btn"
+        className={styles.shareBtn}
         onClick={() => {
           const url = `${window.location.origin}/demo/pace`
           navigator.clipboard.writeText(url).then(() => {
@@ -301,53 +297,49 @@ export function PaceChartDemo() {
         {copied ? '已複製連結' : '分享這個配速表'}
       </button>
 
-      <p className="pace-eyebrow">{route.meta.eyebrow}</p>
-      <h1 className="pace-title">{route.meta.title}</h1>
-      <p className="pace-route-sub">{route.meta.subtitle}</p>
+      <p className={styles.eyebrow}>{route.meta.eyebrow}</p>
+      <h1 className={styles.title}>{route.meta.title}</h1>
+      <p className={styles.routeSub}>{route.meta.subtitle}</p>
 
-      <div className="pace-summary">
-        <div className="pace-stat-row">
-          <div className="pace-stat">
-            <div className="pace-stat-label">總里程</div>
-            <div className="pace-stat-value accent pace-mono">
-              {route.meta.totalKm.toFixed(1)}<span className="unit"> km</span>
+      <div className={styles.summary}>
+        <div className={styles.statRow}>
+          <div className={styles.stat}>
+            <div className={styles.statLabel}>總里程</div>
+            <div className={`${styles.statValue} ${styles.accent} ${styles.mono}`}>
+              {route.meta.totalKm.toFixed(1)}<span className={styles.unit}> km</span>
             </div>
           </div>
-          <div className="pace-stat">
-            <div className="pace-stat-label">出發</div>
-            <div className="pace-stat-value pace-mono">{route.meta.startTime}</div>
+          <div className={styles.stat}>
+            <div className={styles.statLabel}>出發</div>
+            <div className={`${styles.statValue} ${styles.mono}`}>{route.meta.startTime}</div>
           </div>
-          <div className="pace-stat">
-            <div className="pace-stat-label">抵達</div>
-            <div className="pace-stat-value pace-mono">{route.meta.finishTime}</div>
+          <div className={styles.stat}>
+            <div className={styles.statLabel}>抵達</div>
+            <div className={`${styles.statValue} ${styles.mono}`}>{route.meta.finishTime}</div>
           </div>
         </div>
       </div>
 
-      <div className="pace-strip-wrap">
-        <div className="pace-strip-track">
-          <div className="pace-strip-fill" />
+      <div className={styles.stripWrap}>
+        <div className={styles.stripTrack}>
+          <div className={styles.stripFill} />
           {nowMark && (
-            <div className="pace-strip-now" style={{ left: `${nowMark.fracKm * 100}%` }} />
+            <div className={styles.stripNow} style={{ left: `${nowMark.fracKm * 100}%` }} />
           )}
         </div>
-        <div className="pace-strip-labels">
+        <div className={styles.stripLabels}>
           <span>0 km</span>
           <span>{(route.meta.totalKm / 2).toFixed(0)} km</span>
           <span>{route.meta.totalKm.toFixed(0)} km</span>
         </div>
       </div>
 
-      <p className="pace-assumptions">
-        <b>配速假設</b> — {route.meta.assumptions}
-      </p>
-
-      <div className="pace-table-title">
+      <div className={styles.tableTitle}>
         <span>檢查站</span>
-        <span className="count">{route.checkpoints.length} 站</span>
+        <span className={styles.count}>{route.checkpoints.length} 站</span>
       </div>
 
-      <div className="pace-stops">
+      <div className={styles.stops}>
         {route.checkpoints.map((cp, i) => (
           <CheckpointCard
             key={cp.name}
@@ -358,7 +350,7 @@ export function PaceChartDemo() {
         ))}
       </div>
 
-      <footer className="pace-footer">{route.meta.footer}</footer>
+      <footer className={styles.footer}>{route.meta.footer}</footer>
     </div>
   )
 }

@@ -2,17 +2,27 @@ import { useRef, useState } from 'react'
 import type { TouchEvent as ReactTouchEvent } from 'react'
 import { PaceChartDemo } from './PaceChartDemo'
 import { PaceRouteMap } from './PaceRouteMap'
+import styles from './PacePhoneSwipe.module.css'
 
-// 手機版配速表的滑動雙頁:左頁是檢查站清單(PaceChartDemo,已經不含地圖,
-// 見 PaceChartDemo.tsx 的拆分)、右頁是地圖(PaceRouteMap)。桌面版是側欄
-// 放清單、主區同時顯示地圖(見 App.tsx DesktopContent 的 demo-pace 分支),
-// 手機螢幕窄放不下兩塊並排,改成左右滑動切換,兩頁各自全螢幕寬。
+// 手機版配速表:地圖(PaceRouteMap)是固定不動的底層,檢查站清單
+// (PaceChartDemo,已經不含地圖,見 PaceChartDemo.tsx 的拆分)是從左邊滑入
+// 蓋在地圖上面的抽屜面板(off-canvas / drawer navigation,Material Design
+// 的正式元件名稱)。桌面版是側欄放清單、主區同時顯示地圖(見 App.tsx
+// DesktopContent 的 demo-pace 分支),手機螢幕窄放不下兩塊並排,用抽屜取代
+// 並排——這是刻意選用抽屜而非輪播(carousel):輪播模式下兩頁等寬一起被
+// 拖曳平移,地圖(主要內容)會跟著清單一起被拖動;抽屜模式下地圖固定不動,
+// 只有清單這個抽屜面板滑入/滑出蓋在地圖上面。
 //
-// 拖曳中關閉 CSS transition、即時跟手(dragOffset);放開手指後依滑動距離
-// 判斷是否切頁,清空 dragOffset、只靠 page 決定最終位置,重新開啟
-// transition 做回彈/切頁動畫——業界輪播元件常見的標準手法。
+// 拖曳手勢只掛在抽屜面板本身(.pace-drawer-panel),不掛在地圖或整個外層
+// 容器——地圖需要保留它自己原生的縮放/平移觸控(Maps JS API 自己處理),
+// 掛在整個容器上會互搶同一個觸控手勢。收合狀態下改用一顆固定顯示的把手
+// 按鈕開啟抽屜,不做「在地圖上滑動也能拉開抽屜」,同樣是為了不跟地圖的
+// 原生手勢衝突。
+const DRAWER_WIDTH_PERCENT = 82
+
 export function PacePhoneSwipe() {
-  const [page, setPage] = useState<0 | 1>(0)
+  // 預設抽屜開啟(先看到清單),對應桌面版側欄預設就是展開顯示清單的慣例。
+  const [open, setOpen] = useState(true)
   const [dragOffset, setDragOffset] = useState(0)
   const startXRef = useRef<number | null>(null)
   const draggingRef = useRef(false)
@@ -23,53 +33,61 @@ export function PacePhoneSwipe() {
   }
   function onTouchMove(e: ReactTouchEvent) {
     if (!draggingRef.current || startXRef.current === null) return
-    setDragOffset(e.touches[0].clientX - startXRef.current)
+    // 抽屜開啟時只能往左拖(關閉方向,delta 為負);已經是開啟狀態時 delta
+    // 不可能為正(沒有更右可以拖的位置),超過 0 律鎖在 0,避免抽屜被拖出
+    // 螢幕右側外的空白區域。
+    const delta = Math.min(0, e.touches[0].clientX - startXRef.current)
+    setDragOffset(delta)
   }
   function onTouchEnd() {
     if (!draggingRef.current) return
     draggingRef.current = false
     const threshold = 60
-    if (dragOffset < -threshold && page === 0) setPage(1)
-    else if (dragOffset > threshold && page === 1) setPage(0)
+    if (dragOffset < -threshold) setOpen(false)
     setDragOffset(0)
     startXRef.current = null
   }
 
-  const baseTranslate = page === 0 ? '0%' : '-50%'
+  const translate = open ? `calc(${dragOffset}px)` : `calc(-100% + ${dragOffset}px)`
 
   return (
-    <div className="pace-phone-swipe">
+    <div className="pace-drawer-wrap">
+      <div className={styles.map}>
+        <PaceRouteMap />
+      </div>
+
+      {open && (
+        <div
+          className={styles.backdrop}
+          onClick={() => setOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       <div
-        className="pace-phone-swipe-track"
+        className={styles.panel}
         style={{
-          transform: `translateX(calc(${baseTranslate} + ${dragOffset}px))`,
+          width: `${DRAWER_WIDTH_PERCENT}%`,
+          transform: `translateX(${translate})`,
           transition: draggingRef.current ? 'none' : 'transform 0.25s ease',
         }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
-        <div className="pace-phone-swipe-page">
-          <PaceChartDemo />
-        </div>
-        <div className="pace-phone-swipe-page">
-          <PaceRouteMap />
-        </div>
+        <PaceChartDemo />
       </div>
-      <div className="pace-phone-swipe-dots">
+
+      {!open && (
         <button
           type="button"
-          className={`pace-phone-swipe-dot${page === 0 ? ' active' : ''}`}
-          onClick={() => setPage(0)}
-          aria-label="檢查站清單"
-        />
-        <button
-          type="button"
-          className={`pace-phone-swipe-dot${page === 1 ? ' active' : ''}`}
-          onClick={() => setPage(1)}
-          aria-label="地圖"
-        />
-      </div>
+          className={styles.handle}
+          onClick={() => setOpen(true)}
+          aria-label="開啟檢查站清單"
+        >
+          ›
+        </button>
+      )}
     </div>
   )
 }

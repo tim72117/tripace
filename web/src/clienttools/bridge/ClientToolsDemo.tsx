@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { isSubmitEnter } from '../../App'
+import { isSubmitEnter } from '../../AppCommon'
 import { type TripBatches } from '../tripEntryTools'
 import { ClientToolsBridge, type ConnStatus, type LogEntry } from './ClientToolsBridge'
 import { defaultClientTools } from '../tools'

@@ -1,0 +1,369 @@
+/* PaceChartDemo.tsx 專屬樣式(CSS Modules)。命名省略掉原本的 pace- 前綴
+   (例如 .stop 對應原本的 .pace-stop)——模組本身 import 時已經有明確的
+   命名空間(如 import styles from './PaceChartDemo.module.css'),裡面的
+   class 不需要再重複加前綴。
+
+   .stop 系列(stop/stopLeft/startBadge/locName/locMeta/kmVal/mono/
+   stopRight/depLabel/depVal)有被 PaceRouteMap.tsx 直接 import 這個 module
+   重用(疊在地圖上的檢查點卡片示範),沿用同一份卡片外觀,不是複製一份。 */
+
+.mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 手機優先的直向卡片堆疊,渲染在 .desktop-demo-panel/.desktop-sidepanel-pace
+   裡(見 App.tsx),自己負責 flex: 1 1 auto + overflow-y: auto(取代其他
+   demo panel 常見的「.desktop-sidebar-head + .desktop-timeline-scroll」
+   兩截式結構)——因為這個元件本身就有自己的標題/摘要列(對齊 pace-chart.html
+   原型的 .page 版面),不是一個只有 body 要捲動的簡單清單。
+   顏色/字體全部沿用全站既有的 --ios-x / --color-x token(見 styles.css 開頭
+   :root),專案沒有 prefers-color-scheme/data-theme 這套機制,故不新增
+   深色模式。這個 class 名稱刻意保留全域(:global),因為 styles.css 裡有
+   好幾條全域規則(.desktop-main:has(.pace-route-map-wrap) 的鄰居們、
+   .phone-demo-drawer-body .pace-chart 等)需要從外部用固定字串偵測到它,
+   雜湊過的名稱無法讓外部全域 CSS 選擇器可靠指到。 */
+:global(.pace-chart) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  max-width: 480px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 18px 16px 40px;
+}
+
+.eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--ios-blue);
+  margin: 0 0 6px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  margin: 0 0 4px;
+  color: var(--color-dark);
+}
+
+.routeSub {
+  font-size: 13.5px;
+  color: var(--ios-gray);
+  margin: 0 0 16px;
+}
+
+/* 路線分頁(4 段真實路線切換),橫向捲動避免窄螢幕擠壓。*/
+.routeTabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.routeTab {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ios-gray);
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 999px;
+  padding: 6px 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.routeTab.isActive {
+  color: #fff;
+  background: var(--ios-blue);
+  border-color: var(--ios-blue);
+}
+.shareBtn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 6px 0 14px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ios-blue);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* 頂部摘要列:sticky,捲動時貼在 .chart 內部頂端。*/
+.summary {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--ios-bg);
+  padding: 10px 0 12px;
+  margin: 0 -16px 4px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.statRow {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr 1fr;
+  gap: 1px;
+  background: var(--ios-sep);
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.stat {
+  background: var(--ios-card);
+  padding: 10px 10px 9px;
+  min-width: 0;
+}
+
+.statLabel {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ios-gray);
+  margin-bottom: 4px;
+}
+
+.statValue {
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  color: var(--color-dark);
+}
+.statValue.accent {
+  color: var(--color-accent);
+}
+.statValue .unit {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ios-gray);
+}
+
+/* 距離進度條 + 目前位置圓點 */
+.stripWrap {
+  margin: 14px 2px 18px;
+}
+.stripTrack {
+  position: relative;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--ios-sep);
+}
+.stripFill {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--ios-blue), var(--color-accent));
+}
+.stripNow {
+  position: absolute;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--ios-card);
+  border: 3px solid var(--color-accent);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 3px var(--ios-bg);
+}
+.stripLabels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: var(--ios-gray);
+}
+
+.tableTitle {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ios-gray);
+  margin: 0 0 8px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.tableTitle .count {
+  color: var(--ios-gray);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.stops {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 每個檢查站卡片:左側地點/標籤/里程,右側最大字級的離站時間(核心資訊)。
+   PaceRouteMap.tsx 的地圖疊卡示範直接 import 重用這幾個 class(stop/
+   stopLeft/startBadge/locName/locMeta/kmVal/stopRight/depLabel/depVal)。 */
+.stop {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* 長休息站(成功鎮午餐):警示色系底色跟其他短暫停留區分,沿用 --ios-red
+   系(此處刻意調成偏暖橘的警示感,而非直接用全站 --ios-red 那個「錯誤」語意色,
+   兩者要能區分開——長休息不是錯誤狀態)。 */
+.stop.isRestLong {
+  background: #fdf3e7;
+  border-color: #e8caa0;
+}
+
+/* 目前站(依裝置時間自動標記) */
+.stop.isNow {
+  background: #eef2f5;
+  border-color: var(--ios-blue);
+  border-width: 1.5px;
+}
+
+.stop.isFinish {
+  border-color: var(--color-accent);
+  border-width: 1.5px;
+}
+
+.stopLeft {
+  min-width: 0;
+}
+
+.nowFlag {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--ios-blue);
+  margin-bottom: 4px;
+}
+.nowDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ios-blue);
+  box-shadow: 0 0 0 3px rgba(124, 111, 91, 0.25);
+}
+
+.locName {
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.005em;
+  line-height: 1.25;
+  color: var(--color-dark);
+}
+
+.locMeta {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.tag {
+  font-weight: 650;
+  color: var(--ios-blue);
+}
+.stop.isRestLong .tagRest {
+  color: #a5620e;
+}
+.stop.isFinish .tagFinish {
+  color: var(--color-accent);
+}
+
+.kmVal {
+  color: var(--ios-gray);
+  font-weight: 500;
+}
+
+.stopRight {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.depLabel {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ios-gray);
+  margin-bottom: 2px;
+}
+
+/* 核心數字:離站時間,整份配速表視覺上最突出的資訊。*/
+.depVal {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  color: var(--color-dark);
+}
+.stop.isFinish .depVal {
+  color: var(--color-accent);
+  font-size: 19px;
+}
+
+.dwellVal {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--ios-gray);
+}
+.dwellVal.long {
+  color: #a5620e;
+  font-weight: 700;
+}
+
+.startBadge,
+.finishBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.startBadge {
+  color: var(--ios-blue);
+}
+.finishBadge {
+  color: var(--color-accent);
+}
+
+.footer {
+  margin-top: 20px;
+  font-size: 11.5px;
+  color: var(--ios-gray);
+  line-height: 1.65;
+  padding: 0 2px;
+}

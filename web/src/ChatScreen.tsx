@@ -13,7 +13,7 @@ import {
   saveMessageRecommendedPlaces,
   saveMessageTripListKeys,
 } from './deviceDB'
-import { ErrorBanner, errMsg, isSubmitEnter } from './App'
+import { ErrorBanner, errMsg, isSubmitEnter } from './AppCommon'
 import { MultiTrackTimeline, type TaskPlaceholder } from './Timeline'
 import { ClientToolsBridge } from './clienttools/bridge/ClientToolsBridge'
 import { defaultClientTools } from './clienttools/tools'

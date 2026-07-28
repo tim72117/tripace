@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { AgentBridge } from '@onagent/bridge'
-import { isSubmitEnter } from '../App'
+import { isSubmitEnter } from '../AppCommon'
 import { tripEntryAdd, newTripEntryId } from './tools/tripEntryAdd'
 import { tripEntryList } from './tools/tripEntryList'
 import { tripListBatches } from './tools/tripListBatches'

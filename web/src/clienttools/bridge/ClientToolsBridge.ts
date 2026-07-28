@@ -1,4 +1,4 @@
-import { BASE_URL } from '../../App'
+import { BASE_URL } from '../../AppCommon'
 import type { TripBatches } from '../tripEntryTools'
 import { toToolRecord, type ClientTool, type ClientToolHandler } from '../../sdk-proposals/arrayTools'
 

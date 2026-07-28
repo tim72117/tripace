@@ -1,0 +1,133 @@
+/* PaceRouteMap.tsx 專屬樣式(CSS Modules,自動加上雜湊避免跟其他元件的
+   class 名稱衝突)。.rp-map/.rp-map-error* 是跟 RecommendedPlacesMap.tsx
+   共用的既有全域樣式,刻意不搬進來,留在 styles.css。
+
+   wrap 這個 class 特別用 :global() 保留原名不雜湊——App.tsx 的全域樣式裡
+   有 .desktop-main:has(.pace-route-map-wrap) 這條規則需要從外部偵測到這個
+   class,CSS Modules 預設雜湊過的名稱在編譯時不固定,無法讓外部全域 CSS
+   選擇器可靠地指到它,故這個(且僅這個)class 刻意保留可預期的原始名稱。 */
+:global(.pace-route-map-wrap) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 4px;
+}
+/* .rp-map 本身沒有 position: relative,「回到目前位置」按鈕需要疊在地圖
+   右下角,故外面包一層建立定位容器,不直接改 .rp-map(那個 class 是跟
+   RecommendedPlacesMap.tsx 共用的,不該為了這裡的需求動到共用樣式)。
+   .rp-map 的 height: 100% 需要一個有明確高度的父層才能算出實際值——這裡
+   若不給明確高度,.rp-map 只會退回它自己的 min-height: 320px,不會隨周圍
+   容器變大,固定卡在很矮的一塊。 */
+.frame {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 320px;
+}
+.recenter {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 5;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ios-sep);
+  border-radius: 50%;
+  background: var(--ios-card);
+  color: var(--color-accent);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+}
+/* 「模擬沿路線移動」是測試/demo 用途,不是給一般使用者用的正式功能,故
+   刻意用文字+圖示(而非只有圖示的 .recenter 那種常駐控制項樣式),
+   一眼能看出這顆按鈕性質不同。 */
+.simulate {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 999px;
+  background: var(--ios-card);
+  color: var(--ios-gray);
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+}
+.simulate.active {
+  color: #fff;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+/* 疊在「模擬移動」正上方(bottom: 50px = 10px 間距 + 模擬按鈕本身約 32px
+   高 + 8px 空隙),樣式沿用同一組 pill 按鈕外觀。 */
+.heading {
+  position: absolute;
+  left: 10px;
+  bottom: 50px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 999px;
+  background: var(--ios-card);
+  color: var(--ios-gray);
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+}
+.heading.active {
+  color: #fff;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+/* 效果試做:固定疊 3 張檢查點卡片在地圖左上角,微錯開(每張垂直往下
+   偏移 8px,水平位置不變)做出「一疊卡片」的堆疊感,同時仍看得到後面
+   卡片的邊緣。z-index 依序遞增,越後面(越下面)的卡片疊在越上層,
+   符合視覺上「由遠到近」的直覺。卡片本身外觀(背景/邊框/陰影)沿用
+   PaceChartDemo.module.css 的 .paceStop(元件內直接 import 該 module、
+   把 class 一併套在 JSX 上,不是用 CSS 選擇器跨檔案指過去),這裡的
+   .card* 系列只負責定位跟限制寬度。 */
+.card {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: calc(100% - 20px);
+  max-width: 260px;
+}
+.cardStack1 {
+  z-index: 5;
+}
+.cardStack2 {
+  z-index: 6;
+  transform: translateY(8px);
+}
+.cardStack3 {
+  z-index: 7;
+  transform: translateY(16px);
+}
+/* 半透明玻璃感,讓底下的地圖隱約透出來——手法沿用 .chat-overlay 那組既有
+   的 backdrop-filter 用法,不重新發明一套。只覆寫背景色(改成半透明),
+   文字本身維持完全不透明、可讀性不受影響——不能直接對整張卡片設 opacity,
+   那樣連文字都會一起變淡。這個 class 要跟 PaceChartDemo.module.css 的
+   .paceStop 一起套在同一個元素上(組合 className,不是巢狀選擇器)。 */
+.cardStopOverride {
+  background: rgba(253, 252, 250, 0.78);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+}
+.meErr {
+  font-size: 11.5px;
+  color: var(--ios-gray);
+}

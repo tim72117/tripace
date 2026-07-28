@@ -3,7 +3,7 @@ import { ChevronLeft, Copy, Check, Trash2 } from 'lucide-react'
 import type { ClientConfig } from '../api'
 import * as api from '../api'
 import type { Channel } from '../types'
-import { ErrorBanner, errMsg } from '../App'
+import { ErrorBanner, errMsg } from '../AppCommon'
 
 // ---- 分享彈窗 ----
 

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { LocateFixed, Play, Square, Compass } from 'lucide-react'
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
+import styles from './PaceRouteMap.module.css'
+import chartStyles from './PaceChartDemo.module.css'
 
 // 配速表路線地圖(UI 試做用):用固定寫死的 5 個花蓮地點,呼叫新版 Routes
 // API(computeRoutes)算出一條真實路線(沿路網走,不是自己手動連 marker 畫
@@ -392,30 +394,61 @@ export function PaceRouteMap() {
 
   return (
     <div className="pace-route-map-wrap">
-      <div className="pace-route-map-frame">
+      <div className={styles.frame}>
         <div ref={containerRef} className="rp-map" />
-        {/* 效果試做:固定疊一張檢查點卡片在地圖左上角,樣式直接沿用
-            PaceChartDemo.tsx 的 .pace-stop 系列 class,不新增樣式——先看
-            這個方向的視覺效果如何,還沒接點擊 marker 切換內容的互動。 */}
-        <div className="pace-route-map-card">
-          <div className="pace-stop">
-            <div className="pace-stop-left">
-              <div className="pace-start-badge">🚩 起點</div>
-              <div className="pace-loc-name">光復橋</div>
-              <div className="pace-loc-meta">
-                <span className="pace-km-val pace-mono">0.0 km</span>
+        {/* 效果試做:固定疊 3 張檢查點卡片在地圖左上角,垂直微錯開做出堆疊感
+            (見 PaceRouteMap.module.css 的 .cardStack1/2/3),卡片外觀直接
+            沿用 PaceChartDemo.module.css 的 .stop 系列 class(import 該
+            module、組合 className,不是跨檔案 CSS 選擇器)——先看這個方向的
+            視覺效果如何,還沒接點擊 marker 切換內容的互動,里程/時刻皆為
+            示範用固定值,非即時資料。 */}
+        <div className={`${styles.card} ${styles.cardStack1}`}>
+          <div className={`${chartStyles.stop} ${styles.cardStopOverride}`}>
+            <div className={chartStyles.stopLeft}>
+              <div className={chartStyles.startBadge}>🚩 起點</div>
+              <div className={chartStyles.locName}>光復橋</div>
+              <div className={chartStyles.locMeta}>
+                <span className={`${chartStyles.kmVal} ${chartStyles.mono}`}>0.0 km</span>
               </div>
             </div>
-            <div className="pace-stop-right">
-              <div className="pace-dep-label">出發</div>
-              <div className="pace-dep-val pace-mono">09:00</div>
+            <div className={chartStyles.stopRight}>
+              <div className={chartStyles.depLabel}>出發</div>
+              <div className={`${chartStyles.depVal} ${chartStyles.mono}`}>09:00</div>
+            </div>
+          </div>
+        </div>
+        <div className={`${styles.card} ${styles.cardStack2}`}>
+          <div className={`${chartStyles.stop} ${styles.cardStopOverride}`}>
+            <div className={chartStyles.stopLeft}>
+              <div className={chartStyles.locName}>大農大富平地森林園區</div>
+              <div className={chartStyles.locMeta}>
+                <span className={`${chartStyles.kmVal} ${chartStyles.mono}`}>10.5 km</span>
+              </div>
+            </div>
+            <div className={chartStyles.stopRight}>
+              <div className={chartStyles.depLabel}>離站</div>
+              <div className={`${chartStyles.depVal} ${chartStyles.mono}`}>10:55</div>
+            </div>
+          </div>
+        </div>
+        <div className={`${styles.card} ${styles.cardStack3}`}>
+          <div className={`${chartStyles.stop} ${styles.cardStopOverride}`}>
+            <div className={chartStyles.stopLeft}>
+              <div className={chartStyles.locName}>大富火車站</div>
+              <div className={chartStyles.locMeta}>
+                <span className={`${chartStyles.kmVal} ${chartStyles.mono}`}>17.0 km</span>
+              </div>
+            </div>
+            <div className={chartStyles.stopRight}>
+              <div className={chartStyles.depLabel}>離站</div>
+              <div className={`${chartStyles.depVal} ${chartStyles.mono}`}>12:00</div>
             </div>
           </div>
         </div>
         {mePos && (
           <button
             type="button"
-            className="pace-route-map-recenter"
+            className={styles.recenter}
             title="回到目前位置"
             onClick={() => {
               mapRef.current?.panTo(mePos)
@@ -427,7 +460,7 @@ export function PaceRouteMap() {
         )}
         <button
           type="button"
-          className={`pace-route-map-simulate${simulating ? ' active' : ''}`}
+          className={simulating ? `${styles.simulate} ${styles.active}` : styles.simulate}
           title={simulating ? '停止模擬移動' : '模擬沿路線移動(測試用)'}
           onClick={() => setSimulating((v) => !v)}
         >
@@ -436,7 +469,7 @@ export function PaceRouteMap() {
         </button>
         <button
           type="button"
-          className={`pace-route-map-heading${headingUp ? ' active' : ''}`}
+          className={headingUp ? `${styles.heading} ${styles.active}` : styles.heading}
           title={headingUp ? '關閉導航模式(改回正北朝上)' : '開啟導航模式(地圖跟著行進方向旋轉)'}
           onClick={() => {
             setHeadingUp((v) => {
@@ -451,7 +484,7 @@ export function PaceRouteMap() {
           導航模式
         </button>
       </div>
-      {meErr && <div className="pace-route-map-me-err">無法取得目前位置:{meErr}</div>}
+      {meErr && <div className={styles.meErr}>無法取得目前位置:{meErr}</div>}
     </div>
   )
 }

@@ -1,0 +1,543 @@
+/* Timeline.tsx 專屬樣式(CSS Modules)。命名省略掉原本的 tl-/edit-entry-
+   前綴(例如 .grid 對應原本的 .tl-grid,.sheet 對應 .edit-entry-sheet)——
+   import 時已經有明確的命名空間,不需要重複加前綴。
+
+   本檔案沒有任何 class 需要 :global() 保留原名——沒有其他檔案的 CSS
+   選擇器(含 App.tsx 的 :has() 規則)需要從外部偵測這裡的 class,MultiTrackTimeline
+   /EditEntrySheet 也沒有被其他元件以 CSS 選擇器方式跨檔案引用。
+
+   .btn-primary/.btn-secondary 是全站共用的按鈕樣式(見 styles.css),這裡
+   用 :global() 選中它們(組合選擇器 .actions :global(.btn-primary)),
+   不是把它們也一併搬進本 module。
+
+   fade/slideUp 這兩個 keyframes 效果對齊 styles.css 的 .ask-user-backdrop/
+   .ask-user-sheet(彈出詢問框)用的 ask-user-fade/ask-user-slide-up——
+   內容完全相同,但在這裡各自重新宣告一份本地版本,而非跨檔案引用:
+   postcss-modules 的 :global() 只能用在選擇器/class token 位置,不支援
+   寫在 animation-name 這種屬性值裡(實測會直接編譯失敗,`Double colon`
+   語法錯誤),兩個 @keyframes 定義本身又小又穩定,直接各自複製一份比
+   硬要跨檔案共用划算。 */
+
+/* 三欄 grid:[日期欄 36px] [軸線 24px] [卡片 auto] */
+.grid {
+  display: flex;
+  flex-direction: column;
+}
+.gridRow {
+  display: grid;
+  grid-template-columns: 36px 24px 1fr;
+  align-items: center;
+}
+/* 日期欄 */
+.colLabel {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 4px;
+  align-self: stretch;
+}
+/* 年 */
+.yearLabel {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ios-gray);
+  font-family: var(--mono);
+  padding: 6px 4px 2px 0;
+}
+/* 月 */
+.monthLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ios-gray);
+  font-family: var(--mono);
+}
+/* 軸線欄 */
+.colAxis {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+}
+/* 貫穿線:絕對定位,從欄頂到欄底 */
+.vline {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  background: var(--ios-sep);
+  z-index: 0;
+}
+.vline.top {
+  top: 0;
+  bottom: 50%;
+}
+.vline.bot {
+  top: 50%;
+  bottom: 0;
+}
+.vline.accent {
+  width: 3px;
+  background: var(--tl-trip-color);
+  opacity: 0.6;
+}
+/* 中間天列高 */
+.gridRow.blank {
+  min-height: 20px;
+}
+/* 中間天的線在點的位置留出缺口 */
+.gridRow.blank .vline.top {
+  bottom: calc(50% + 6px);
+}
+.gridRow.blank .vline.bot {
+  top: calc(50% + 6px);
+}
+/* 中間天空心小點 */
+.dotBlank {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 149, 0, 0.5);
+  background: transparent;
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+}
+/* 卡片欄 */
+.colCard {
+  padding: 4px 0 4px 8px;
+}
+.dateDay {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ios-blue);
+  font-family: var(--mono);
+  line-height: 1;
+}
+/* 主線點:橘色大點 */
+.dotMain {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--tl-trip-color);
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+}
+/* 細項點:白底橘邊小點 */
+.dotSub {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ios-card);
+  border: 2px solid var(--tl-trip-color);
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+}
+/* 中間天佔位點:小灰點 */
+.dotDay {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ios-sep);
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+}
+/* 主線結束標記卡:橘色虛線框,輕量顯示 */
+.endCard {
+  border: 1.5px dashed rgba(255, 149, 0, 0.5);
+  border-radius: 8px;
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+}
+.endLabel {
+  font-size: 13px;
+  color: var(--tl-trip-color);
+  opacity: 0.8;
+}
+/* 圖卡橫向排列:內容 + 右側按鈕 */
+.cardRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cardContent {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* 開始導航按鈕:白底藍字,hover 反轉 */
+.navBtn {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--ios-card);
+  color: var(--ios-blue);
+  border: 1.5px solid var(--ios-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+.navBtn:hover {
+  background: var(--ios-blue);
+  color: #fff;
+}
+.navBtn:focus-visible {
+  outline: 2px solid var(--ios-blue);
+  outline-offset: 2px;
+}
+
+/* 主線 entry 卡:橘色左邊框 */
+.mainCard {
+  background: #fff8f0;
+  border-left: 3px solid var(--tl-trip-color);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.mainTitle {
+  font-weight: 600;
+  color: #1c1c1e;
+  font-size: 16px;
+}
+.cardExpand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease;
+  overflow: hidden;
+}
+.cardExpand.open {
+  grid-template-rows: 1fr;
+}
+.cardExpandInner {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+}
+.expandRow {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  color: #3a3a3c;
+}
+.expandLabel {
+  color: var(--ios-gray);
+  flex: 0 0 32px;
+}
+.expandSummary {
+  font-size: 13px;
+  color: #3a3a3c;
+  line-height: 1.6;
+  margin-bottom: 4px;
+}
+/* 卡片展開後的「編輯」入口:小巧、不搶眼,只有 cfg(owner)存在時才會渲染。 */
+.editBtn {
+  align-self: flex-start;
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 8px;
+  background: var(--ios-bg);
+  color: var(--color-accent);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.editBtn:active {
+  background: var(--ios-sep);
+}
+/* 當天的每一筆事項小卡 */
+.card {
+  background: var(--ios-card);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.card:last-child {
+  margin-bottom: 0;
+}
+
+/* ---- 條目更新中:光影沿卡片外框旋轉 ---- */
+/* entry_update 工具執行期間,對應卡片(MainCard=.mainCard / SubCard=.card)
+   套 .updating。做法:卡片自身 position:relative,::before 蓋一圈略大的
+   旋轉 conic-gradient,用 mask 只露出邊框那一圈 → 亮點沿框轉動。同步一個
+   呼吸陰影加強存在感。 */
+@property --tl-spin {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+.mainCard.updating,
+.card.updating {
+  position: relative;
+  isolation: isolate;
+  animation: cardBreathe 2.6s ease-in-out infinite;
+}
+.mainCard.updating::before,
+.card.updating::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 2px; /* 光環可見厚度 */
+  background: conic-gradient(
+    from var(--tl-spin),
+    transparent 0deg,
+    transparent 250deg,
+    var(--color-accent) 300deg,
+    #fff5e8 330deg,
+    var(--color-accent) 350deg,
+    transparent 360deg
+  );
+  animation: spinBorder 2.6s linear infinite;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+@keyframes spinBorder {
+  from { --tl-spin: 0deg; }
+  to   { --tl-spin: 360deg; }
+}
+@keyframes cardBreathe {
+  0%, 100% { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04); }
+  50%      { box-shadow: 0 2px 12px rgba(196, 149, 106, 0.3), 0 1px 2px rgba(0, 0, 0, 0.04); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mainCard.updating,
+  .card.updating,
+  .mainCard.updating::before,
+  .card.updating::before {
+    animation: none;
+  }
+  /* 靜態退場:仍以強調色外框標示更新中,只是不轉動 */
+  .mainCard.updating::before,
+  .card.updating::before {
+    background: var(--color-accent);
+    opacity: 0.5;
+  }
+}
+
+/* ---- task_plan 佔位卡:文字逐字波浪起伏,標示該步驟正在新增中 ---- */
+/* 沿用 .card.updating 同一套光影邊框(見上方),讓佔位卡與「更新中」卡片
+   視覺語彙一致。 */
+.taskPlaceholder {
+  position: relative;
+  isolation: isolate;
+  animation: cardBreathe 2.6s ease-in-out infinite;
+}
+.taskPlaceholder::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--tl-spin),
+    transparent 0deg,
+    transparent 250deg,
+    var(--color-accent) 300deg,
+    #fff5e8 330deg,
+    var(--color-accent) 350deg,
+    transparent 360deg
+  );
+  animation: spinBorder 2.6s linear infinite;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+/* 覆寫繼承自 .item 的 flex 排字:改回正常文字流。
+   用複合選擇器 .item.waveText 提高特異性,確保穩定勝過 .item
+   (兩者若同特異性,會因 .item 在後而覆蓋掉本規則,造成 flex 的 gap 殘留成字距)。
+   父容器 font-size:0 消除 inline-block 子元素之間的固有空隙(inline-block 會依字級
+   插入一個空白字寬,中文字字相鄰時特別明顯);子 .waveChar 再設回實際字級。 */
+.item.waveText {
+  display: block;
+  font-size: 0;
+  letter-spacing: 0;
+  color: #8a8a8e;
+}
+.waveChar {
+  display: inline-block;
+  white-space: pre;
+  font-size: 16px;
+  letter-spacing: 0;
+  animation: waveChar 1s ease-in-out infinite;
+}
+@keyframes waveChar {
+  0%, 40%, 100% { transform: translateY(0); }
+  20%           { transform: translateY(-4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .taskPlaceholder,
+  .taskPlaceholder::before,
+  .waveChar {
+    animation: none;
+  }
+  .taskPlaceholder::before {
+    background: var(--color-accent);
+    opacity: 0.5;
+  }
+  .waveChar {
+    opacity: 0.75;
+  }
+}
+
+.item {
+  font-size: 16px;
+  color: #1c1c1e;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+/* 事項旁的時刻(非全日事件) */
+.time {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ios-blue);
+  font-family: var(--mono);
+  flex: 0 0 auto;
+}
+
+/* 區間 entry(會停留一段時間的子行程,如住宿):左側色條標示「持續性」 */
+.cardSpan {
+  border-left: 3px solid var(--color-accent);
+}
+/* 事項旁的結束範圍(~ 結束時刻/日期) */
+.span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ios-blue);
+  font-family: var(--mono);
+  flex: 0 0 auto;
+  opacity: 0.75;
+}
+
+/* ---- 手動編輯條目表單(EditEntrySheet):底部滑出,對齊 styles.css 裡
+   .ask-user-backdrop/.ask-user-sheet 的浮層模式,但欄位較多,內容區可捲動
+   (.body),日期/時刻兩欄並排省空間。 ---- */
+@keyframes fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.32);
+  animation: fade 0.2s ease;
+}
+.sheet {
+  background: var(--ios-card);
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.18);
+  animation: slideUp 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 8px 12px 20px;
+  border-bottom: 1px solid var(--ios-sep);
+}
+.title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-dark);
+}
+.body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.row {
+  display: flex;
+  gap: 10px;
+}
+.row .field {
+  flex: 1;
+  min-width: 0;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.field span {
+  font-size: 12.5px;
+  color: var(--ios-gray);
+  font-weight: 600;
+}
+.field input,
+.field textarea {
+  box-sizing: border-box;
+  font-size: 16px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--ios-sep);
+  border-radius: 10px;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  outline: none;
+  font-family: inherit;
+  resize: none;
+}
+.field input:focus,
+.field textarea:focus {
+  border-color: var(--color-accent);
+}
+.actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 12px;
+  padding: 14px 20px calc(14px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--ios-sep);
+}
+.actions :global(.btn-primary),
+.actions :global(.btn-secondary) {
+  flex: 1;
+  padding: 12px;
+  font-size: 15px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .backdrop,
+  .sheet {
+    animation: none;
+  }
+}

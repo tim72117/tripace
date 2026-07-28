@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigation } from 'lucide-react'
 import * as api from './api'
 import { ApiError } from './api'
-import { useAppState, LoginForm, ErrorBanner, errMsg } from './App'
+import { useAppState, LoginForm, ErrorBanner, errMsg } from './AppCommon'
 
 type Status = 'checking' | 'ready' | 'approving' | 'approved' | 'error'
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LS_DEFAULT_CHANNEL } from '../App'
+import { LS_DEFAULT_CHANNEL } from '../AppCommon'
 
 // ---- 行程菜單(右上角設定) ----
 

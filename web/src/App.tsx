@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
-  ChevronLeft, ChevronDown, Check,
+  ChevronLeft, ChevronDown,
   Send, AlertCircle, Plus, LogIn, X, Settings, LogOut,
   List, Calendar, Sparkles, GalleryHorizontal, Map, Navigation, Wrench, Radio, Activity, Bike, Menu,
 } from 'lucide-react'
 import type { ClientConfig, ApiCall, WsEvent } from './api'
 import * as api from './api'
-import { ApiError, onApiCall, onWsEvent } from './api'
+import { onApiCall, onWsEvent } from './api'
 import type { Channel, Entry, User } from './types'
 import { LandingPage } from './LandingPage'
 import { CliAuthPage } from './CliAuthPage'
@@ -16,68 +15,19 @@ import type { DesktopTimelineMirror } from './ChatScreen'
 import { MultiTrackTimeline, type TaskPlaceholder } from './Timeline'
 import type { AssistLang } from './assistLang'
 import { ASSIST_LANG_KEY, getAssistLang } from './assistLang'
-import { RecommendedPlacesList, RecommendedPlacesRow, FAKE_RECOMMENDED_PLACES } from './RecommendedPlaces'
-import { RecommendedPlacesMap } from './RecommendedPlacesMap'
-import { ClientToolsDemo } from './clienttools/bridge/ClientToolsDemo'
-import { OnagentBridgeDemo } from './clienttools/OnagentBridgeDemo'
 import { PaceChartDemo } from './PaceChartDemo'
 import { PaceRouteMap } from './PaceRouteMap'
 import { PacePhoneSwipe } from './PacePhoneSwipe'
 import { DebugPanel } from './DebugPanel'
-
-// baseURL 由建置時的 VITE_API_BASE 決定(見 .env.development),不開放使用者於 UI 修改;
-// 未設時退回目前頁面 origin(production 前後端同源部署)。
-export const BASE_URL: string =
-  import.meta.env.VITE_API_BASE || `${window.location.protocol}//${window.location.host}`
-// 默認頻道 ID (用戶設定的「開啟時自動進入」)
-export const LS_DEFAULT_CHANNEL = 'tripace.defaultChannelID'
-// 登入身分存 localStorage:跨分頁共用同一身分(一般網站慣例)。
-const AUTH_TOKEN_KEY = 'tripace.auth.token'
-const AUTH_USER_KEY = 'tripace.auth.user'
-const AUTH_EMAIL_KEY = 'tripace.auth.email'
-
-export function useAppState() {
-  const [token, setToken] = useState<string | null>(
-    () => localStorage.getItem(AUTH_TOKEN_KEY),
-  )
-  const [user, setUser] = useState<User | null>(() => {
-    const raw = localStorage.getItem(AUTH_USER_KEY)
-    return raw ? (JSON.parse(raw) as User) : null
-  })
-  const [email, setEmail] = useState<string>(
-    () => localStorage.getItem(AUTH_EMAIL_KEY) ?? '',
-  )
-
-  const onAuthed = useCallback((tok: string, u: User, mail: string) => {
-    localStorage.setItem(AUTH_TOKEN_KEY, tok)
-    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(u))
-    localStorage.setItem(AUTH_EMAIL_KEY, mail)
-    setToken(tok)
-    setUser(u)
-    setEmail(mail)
-  }, [])
-
-  const onLogout = useCallback(() => {
-    localStorage.removeItem(AUTH_TOKEN_KEY)
-    localStorage.removeItem(AUTH_USER_KEY)
-    localStorage.removeItem(AUTH_EMAIL_KEY)
-    setToken(null)
-    setUser(null)
-    setEmail('')
-  }, [])
-
-  const [activeChannel, setActiveChannel] = useState<Channel | null>(null)
-
-  const cfg: ClientConfig = { baseURL: BASE_URL, token }
-  const effectiveUser = user ?? GUEST_USER
-
-  return {
-    cfg, activeChannel, setActiveChannel,
-    token, setToken,
-    user: effectiveUser, email, isGuest: user == null,
-    onAuthed, onLogout,
-  }
-}
+import {
+  BASE_URL, LS_DEFAULT_CHANNEL, useAppState,
+  Avatar, ErrorBanner, errMsg, isSubmitEnter, LoginForm,
+  type ContentProps,
+} from './AppCommon'
+import {
+  type PanelMode, type DemoPanelMode, DemoPanelContent,
+  LangSelect, TokenDisplay,
+} from './DesktopShared'
 
 // 桌面版斷點,需與 styles.css 的 @media (min-width: 768px) 一致。
 const DESKTOP_BREAKPOINT = 768
@@ -174,27 +124,6 @@ function PublicPaceDemoPage() {
       </main>
     </div>
   )
-}
-
-// 訪客身分(未登入),需與後端 guestUser 一致。
-const GUEST_USER: User = { id: 'usr_me', name: '訪客', avatarColor: '#8C7B6A' }
-
-export interface ContentProps {
-  cfg: ClientConfig
-  activeChannel: Channel | null
-  setActiveChannel: (c: Channel | null) => void
-  token: string | null
-  setToken: (t: string | null) => void
-  user: User
-  email: string
-  isGuest: boolean
-  onAuthed: (token: string, user: User, email: string) => void
-  onLogout: () => void
-  // isDemo:網址帶 ?demo 時為 true,只影響桌面版 DesktopRail 是否多顯示試做用
-  // 導覽項目(見 DesktopRail)。手機版完全不讀這個值,行為不受影響。可選是因為
-  // DebugApp.tsx 的 PhoneContent 用法（demoMode==='app' 分支）不涉及 ?demo 邏輯，
-  // 不需要跟著補這個 prop。
-  isDemo?: boolean
 }
 
 export function PhoneContent(props: ContentProps) {
@@ -333,72 +262,7 @@ function PhoneDemoDrawer({
 }
 
 // ---- 桌面版佈局(寬度 >= 768px):左側邊欄(頻道列表 + 使用者選單)+ 右側 ChatScreen ----
-
-// PanelMode:side panel 目前顯示的內容;null 代表收合(主區全寬)。
-// 'demo-cards'/'demo-row'/'demo-map':試做用的推薦景點呈現方式(假資料,見
-// RecommendedPlaces.tsx/RecommendedPlacesMap.tsx)。'demo-clienttools'/
-// 'demo-onagent':「LLM 呼叫前端 tool」試做的兩條資料流(前者走 tripace 自己的
-// ClientToolsBridge/clienttools_ws.go,後者走 onagent 平台,見
-// clienttools/ClientToolsDemo.tsx / OnagentBridgeDemo.tsx 的說明),原本只能
-// 從獨立的 ?debug 工作台(DebugApp.tsx)進入,現在併入這裡統一用 ?demo 存取。
-// 'demo-pace':單車配速表試做(假資料,真實路線里程/時刻表,見
-// PaceChartDemo.tsx),純 UI 展示,不涉及 LLM/tool 呼叫。
-// 只有網址帶 ?demo 時 rail 上才會出現對應按鈕(見 DesktopRail),與正式的
-// channels/timeline 分開命名以便一眼區分。
-type PanelMode =
-  | 'channels' | 'timeline'
-  | 'demo-cards' | 'demo-row' | 'demo-map' | 'demo-clienttools' | 'demo-onagent' | 'demo-pace'
-  | null
-
-// DemoPanelMode:PanelMode 扣掉 channels/timeline/null 之後只剩的 6 種 demo
-// 面板——這幾個是唯一「桌面/手機共用」的部分(channels/timeline 是桌面版
-// side panel 的概念,手機版本來就有自己的頻道列表/時間軸入口,不需要重複)。
-export type DemoPanelMode = Exclude<PanelMode, 'channels' | 'timeline' | null>
-
-// DemoPanelContent:6 個 demo 面板的內容渲染,供 DesktopContent 的 <main> 與
-// 手機版 PhoneDemoDrawer 共用,避免同一段 JSX 兩處各寫一份、之後改一邊忘了
-// 改另一邊。
-function DemoPanelContent({ mode }: { mode: DemoPanelMode }) {
-  if (mode === 'demo-cards') {
-    return (
-      <div className="desktop-demo-panel">
-        <div className="desktop-sidebar-head">
-          <span className="desktop-sidebar-title">推薦景點卡片(試做)</span>
-        </div>
-        <div className="desktop-timeline-scroll">
-          <RecommendedPlacesList places={FAKE_RECOMMENDED_PLACES} />
-        </div>
-      </div>
-    )
-  }
-  if (mode === 'demo-row') {
-    return (
-      <div className="desktop-demo-panel">
-        <div className="desktop-sidebar-head">
-          <span className="desktop-sidebar-title">推薦景點橫滑(試做)</span>
-        </div>
-        <div className="desktop-timeline-scroll">
-          <RecommendedPlacesRow places={FAKE_RECOMMENDED_PLACES} />
-        </div>
-      </div>
-    )
-  }
-  if (mode === 'demo-map') {
-    return (
-      <div className="desktop-demo-panel">
-        <div className="desktop-sidebar-head">
-          <span className="desktop-sidebar-title">推薦景點地圖(試做)</span>
-        </div>
-        <div className="desktop-timeline-scroll" style={{ padding: 0 }}>
-          <RecommendedPlacesMap places={FAKE_RECOMMENDED_PLACES} />
-        </div>
-      </div>
-    )
-  }
-  if (mode === 'demo-clienttools') return <ClientToolsDemo />
-  if (mode === 'demo-onagent') return <OnagentBridgeDemo />
-  return <PaceChartDemo />
-}
+// PanelMode/DemoPanelMode/DemoPanelContent 定義搬到 DesktopShared.tsx(見上方 import)。
 
 // 時間軸鏡像資料的初始值(尚未收到 ChatScreen 鏡像前,或未選擇行程時使用)。
 const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
@@ -858,67 +722,7 @@ function DesktopUserMenu({
   )
 }
 
-// LLM 回答語言下拉選單:自訂觸發列 + 選項清單,取代原生 <select>,樣式與互動
-// 比照 iOS 風格(觸發列排版沿用 .field input,選項清單沿用 .desktop-user-popover
-// 的浮層視覺——卡片背景、圓角、陰影)。SettingsDialog(桌面版)/SettingsScreen
-// (手機版)共用同一份實作,只各自傳入目前值與 onChange;兩處容器寬度不同但
-// 元件本身以 width: 100% 撐滿父層 .field,不需要為此分開兩份程式碼。
-// 點擊外部關閉的實作模式沿用 DesktopUserMenu:useRef 抓容器 + mousedown 監聽
-// 判斷點擊處是否在容器內。
-const ASSIST_LANG_OPTIONS: { value: AssistLang; label: string }[] = [
-  { value: 'zh-TW', label: '繁體中文' },
-  { value: 'en', label: '英文' },
-]
-
-function LangSelect({
-  value,
-  onChange,
-}: {
-  value: AssistLang
-  onChange: (v: AssistLang) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const boxRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onClickOutside = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [open])
-
-  const current = ASSIST_LANG_OPTIONS.find((o) => o.value === value)
-
-  return (
-    <div className="lang-select" ref={boxRef}>
-      <button
-        type="button"
-        className="lang-select-trigger"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span>{current?.label ?? value}</span>
-        <ChevronDown size={16} strokeWidth={1.8} color="var(--ios-gray)" />
-      </button>
-      {open && (
-        <div className="lang-select-popover">
-          {ASSIST_LANG_OPTIONS.map((o) => (
-            <button
-              type="button"
-              key={o.value}
-              className="lang-select-option"
-              onClick={() => { onChange(o.value); setOpen(false) }}
-            >
-              <span>{o.label}</span>
-              {o.value === value && <Check size={16} strokeWidth={2} color="var(--ios-blue)" />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
+// LangSelect 定義搬到 DesktopShared.tsx(見上方 import)。
 
 // 桌面版「設定」dialog:點選 DesktopUserMenu 的「設定」項目後開啟,置中卡片彈窗,
 // 視覺沿用原 RecommendedPlacesModal(已移除)留下的 .rp-modal-backdrop/.rp-modal
@@ -1015,39 +819,6 @@ function SettingsDialog({
   )
 }
 
-
-// ---- 共用小元件 ----
-
-export function Avatar({ user }: { user: { name: string; avatarColor: string } }) {
-  const hasColor = !!user.avatarColor
-  return (
-    <div
-      className={hasColor ? 'avatar' : 'avatar avatar-empty'}
-      style={hasColor ? { background: user.avatarColor } : undefined}
-    >
-      {user.name.slice(0, 1)}
-    </div>
-  )
-}
-
-export function ErrorBanner({ msg }: { msg: string | null }) {
-  if (!msg) return null
-  return <div className="banner"><AlertCircle size={14} strokeWidth={2} style={{verticalAlign: 'middle', marginRight: 6}} />{msg}</div>
-}
-
-// 統一把 API 錯誤轉成可顯示訊息。
-export function errMsg(e: unknown): string {
-  if (e instanceof ApiError) return e.message
-  if (e instanceof Error) return e.message
-  return String(e)
-}
-
-// Enter 送出,但略過輸入法(注音/中日韓)組字中的 Enter——
-// 組字選字時的 Enter 是「確認選字」,不該觸發送出。
-export function isSubmitEnter(e: ReactKeyboardEvent): boolean {
-  // isComposing:組字進行中。keyCode 229:IME 處理中的按鍵。
-  return e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229
-}
 
 // ---- 頻道列表:共用資料邏輯(抓取/建立/自動導向預設頻道) ----
 // 手機版 ChannelsScreen(整頁列表)與桌面版側欄列表共用同一份 state 管理與 API 呼叫,
@@ -1411,133 +1182,4 @@ function SettingsScreen({
   )
 }
 
-// ---- 登入表單(內嵌於設定頁,訪客可登入 / 註冊) ----
-
-// 匯出供 CliAuthPage.tsx 重用(CLI 瀏覽器登入核准頁未登入時顯示的登入表單,
-// 與這裡登入前主畫面用的是同一顆元件,不另外刻一份 UI)。
-export function LoginForm({
-  baseURL,
-  onAuthed,
-}: {
-  baseURL: string
-  onAuthed: (token: string, user: User, email: string) => void
-}) {
-  const [mode, setMode] = useState<'login' | 'register'>('login')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [name, setName] = useState('')
-  const [err, setErr] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  const cfg: ClientConfig = { baseURL, token: null }
-
-  const submit = async () => {
-    setErr(null)
-    setBusy(true)
-    try {
-      const res =
-        mode === 'login'
-          ? await api.login(cfg, email.trim(), password)
-          : await api.register(cfg, email.trim(), password, name.trim())
-      onAuthed(res.token, res.user, res.profile.email)
-    } catch (e) {
-      setErr(errMsg(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <>
-      <div className="field">
-        <input
-          value={email}
-          type="email"
-          autoComplete="email"
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="輸入你的 Email"
-        />
-      </div>
-      <div className="field">
-        <input
-          type="password"
-          value={password}
-          autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-          onChange={(e) => setPassword(e.target.value)}
-          onKeyDown={(e) => isSubmitEnter(e) && submit()}
-          placeholder="輸入密碼(至少 6 字元)"
-        />
-      </div>
-      {mode === 'register' && (
-        <div className="field">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="顯示名稱(可選,留空則用 email)"
-          />
-        </div>
-      )}
-      <ErrorBanner msg={err} />
-      <div className="login-form-actions">
-        <button
-          className="btn-primary"
-          onClick={submit}
-          disabled={busy || !email.trim() || !password}
-        >
-          {busy ? '處理中…' : mode === 'login' ? '登入' : '註冊並登入'}
-        </button>
-        <div className="login-form-switch">
-          <span style={{ color: 'var(--ios-gray)' }}>
-            {mode === 'login' ? '還沒有帳號?' : '已有帳號?'}
-          </span>{' '}
-          <span
-            style={{ color: 'var(--color-accent)', cursor: 'pointer' }}
-            onClick={() => {
-              setMode(mode === 'login' ? 'register' : 'login')
-              setErr(null)
-            }}
-          >
-            {mode === 'login' ? '註冊' : '登入'}
-          </span>
-        </div>
-      </div>
-      <div
-        className="field"
-        style={{ color: 'var(--ios-gray)', fontSize: 13 }}
-      >
-        註冊或登入即表示你同意:僅將本服務用於個人行程規劃與測試,
-        不得上傳他人隱私或違法內容;服務資料可能因開發調整而變動或清除,
-        請勿作為唯一備份來源。
-      </div>
-    </>
-  )
-}
-
-
-function TokenDisplay({ token }: { token: string | null }) {
-  const [copied, setCopied] = useState(false)
-
-  const copyToken = () => {
-    if (token) {
-      navigator.clipboard.writeText(token).then(() => {
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
-      })
-    }
-  }
-
-  if (!token) return null
-
-  const displayToken = token.substring(0, 20) + '...' + token.substring(token.length - 10)
-
-  return (
-    <>
-      <div className="token-box">{displayToken}</div>
-      <div style={{ padding: '0 16px 12px' }}>
-        <button className={`btn-secondary${copied ? ' success' : ''}`} onClick={copyToken}>
-          {copied ? '✅ 已複製' : '複製 Token'}
-        </button>
-      </div>
-    </>
-  )
-}
+// TokenDisplay 定義搬到 DesktopShared.tsx(見上方 import)。

@@ -1,0 +1,71 @@
+/* PacePhoneSwipe.tsx 專屬樣式(CSS Modules)。手機版配速表:抽屜模式
+   (off-canvas / drawer navigation),不是輪播——地圖(.map)固定當底層永遠
+   顯示,檢查站清單(.panel)是從左邊滑入蓋在地圖上面的抽屜面板。選抽屜不選
+   輪播的理由:輪播模式兩頁等寬一起被拖曳平移,地圖(主要內容)會跟著清單
+   一起被拖動,不是想要的效果;抽屜模式地圖固定不動,只有清單面板自己滑入
+   滑出。
+
+   wrap 這個 class 特別用 :global() 保留原名不雜湊——App.tsx 的全域樣式裡
+   有 .phone-demo-drawer-body:has(> .pace-drawer-wrap) 這條規則需要從外部
+   偵測到它,理由與 PaceRouteMap.module.css 的 wrap class 相同。 */
+:global(.pace-drawer-wrap) {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.map {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.35);
+}
+.panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: var(--ios-bg);
+  box-shadow: 2px 0 16px rgba(0, 0, 0, 0.2);
+  /* 拖曳手勢只掛在這個面板本身(見 PacePhoneSwipe.tsx),沒有這行,瀏覽器
+     原生的水平平移會跟自訂的 JS transform 拖曳同時反應——理由同其他幾處
+     已修過的同類問題(見 App.tsx .phone-demo-drawer-body 的說明)。pan-y
+     保留垂直捲動(清單本身要能上下捲)給瀏覽器原生處理,只有水平方向交給
+     JS。 */
+  touch-action: pan-y;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.handle {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 15;
+  width: 22px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 0 10px 10px 0;
+  background: var(--ios-card);
+  color: var(--color-accent);
+  font-size: 20px;
+  line-height: 1;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+}
