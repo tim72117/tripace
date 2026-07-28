@@ -1,7 +1,7 @@
 # Tripace 後端服務(Golang + SQLite 原型)
 
 Tripace App 的後端。原型階段用 **SQLite** 持久化,訊息發送時經 LLM 整理/分類/標注後存入資料庫;
-提供語意查詢(RAG)端點。對齊 [../docs/API.md](../docs/API.md)。
+提供語意查詢(RAG)端點。對齊 [../docs/knowledge/api.md](../docs/knowledge/api.md)。
 
 ## 技術
 

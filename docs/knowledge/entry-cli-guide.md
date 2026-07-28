@@ -1,6 +1,6 @@
 # 條目 CLI 操作指南
 
-> 條目寫入的完整流程說明（步驟順序、輸入規則、範例）見 `docs/ENTRY_WRITE_ORDER.md`。
+> 條目寫入的完整流程說明（步驟順序、輸入規則、範例）見 `docs/knowledge/entry-write-order.md`。
 > 本文件只提供對應的 CLI 指令與實作時的注意事項。
 
 ---
@@ -65,4 +65,4 @@ key 存放於 `server/.env`，不進版控。
 
 ## 相關文件
 
-- `docs/ENTRY_WRITE_ORDER.md` — 條目寫入的完整流程說明、輸入規則與範例
+- `docs/knowledge/entry-write-order.md` — 條目寫入的完整流程說明、輸入規則與範例

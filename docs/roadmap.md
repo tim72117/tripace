@@ -11,7 +11,7 @@
 - [x] 語意查詢畫面(顯示回答 + 引用來源)
 
 ## 階段二：接真實 Golang 後端
-- [ ] 實作 `HTTPBackendService`(依 docs/API.md)
+- [ ] 實作 `HTTPBackendService`(依 docs/knowledge/api.md)
 - [ ] App 啟動依環境切換 Mock / HTTP 後端
 - [ ] 認證流程(Bearer token)
 - [ ] 錯誤處理與重試 / 離線快取

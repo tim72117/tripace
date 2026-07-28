@@ -11,7 +11,7 @@
 > `server/internal/llm/assistant_agent.go` 的 `addThought` 常數，此處不再重複，
 > 只保留該常數沒有的細節：條目粒度判斷、geocode 技術規格、範例、多筆處理順序。
 >
-> CLI 指令對照與實作注意事項見 `docs/ENTRY_CLI_GUIDE.md`。
+> CLI 指令對照與實作注意事項見 `docs/knowledge/entry-cli-guide.md`。
 
 ---
 
@@ -206,6 +206,6 @@ entry_add(
 ## 相關文件
 
 - `server/internal/llm/assistant_agent.go` — `addThought` 常數，實際餵給 LLM 的固定順序與欄位規則
-- `docs/ENTRY_CLI_GUIDE.md` — entry_add / entry_query / geocode 的 CLI 指令對照與實作注意事項
-- `trip/LLM_RECORD_TRIP_GROUPING.md` — 條目與行程（Trip）的歸組邏輯（`add_to_trip`，trip 相關開發目前暫停）
-- `trip/LLM_TRIP_BUILD_ORDER.md` — 整趟行程的建立順序
+- `docs/knowledge/entry-cli-guide.md` — entry_add / entry_query / geocode 的 CLI 指令對照與實作注意事項
+- `docs/knowledge/llm-record-trip-grouping.md` — 條目與行程（Trip）的歸組邏輯（`add_to_trip`，trip 相關開發目前暫停）
+- `docs/knowledge/llm-trip-build-order.md` — 整趟行程的建立順序

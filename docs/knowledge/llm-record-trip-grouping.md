@@ -2,7 +2,7 @@
 
 > 本文件從條目記錄流程中拆出，只保留會實際異動 Trip 歸屬的操作
 > （`add_to_trip`）。地區推斷已改用既有的 `entry_query` 查詢鄰近條目，
-> 不再需要獨立查詢 Trip 的工具，詳見 `docs/ENTRY_WRITE_ORDER.md`。
+> 不再需要獨立查詢 Trip 的工具，詳見 `docs/knowledge/entry-write-order.md`。
 >
 > **狀態：trip 相關開發目前暫停。** 本文件描述的 `add_to_trip` 工具
 > 目前尚未在程式碼中實作（僅為設計規劃）。
@@ -41,7 +41,7 @@
 2. candidates 為空 → 跳過 add_to_trip
 ```
 
-（此範例的 `entry_query`／`geocode` 查詢部分見 `docs/ENTRY_WRITE_ORDER.md`。）
+（此範例的 `entry_query`／`geocode` 查詢部分見 `docs/knowledge/entry-write-order.md`。）
 
 ---
 
@@ -55,6 +55,6 @@
 
 ## 相關文件
 
-- `docs/ENTRY_WRITE_ORDER.md` — 條目寫入的完整流程說明、輸入規則與範例（已不涉及 Trip）
-- `docs/ENTRY_CLI_GUIDE.md` — entry_add / entry_query / geocode 的 CLI 指令對照
-- `trip/LLM_TRIP_BUILD_ORDER.md` — 整趟行程的建立順序（區間事件先建、單點事件後建）
+- `docs/knowledge/entry-write-order.md` — 條目寫入的完整流程說明、輸入規則與範例（已不涉及 Trip）
+- `docs/knowledge/entry-cli-guide.md` — entry_add / entry_query / geocode 的 CLI 指令對照
+- `docs/knowledge/llm-trip-build-order.md` — 整趟行程的建立順序（區間事件先建、單點事件後建）

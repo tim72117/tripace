@@ -1,6 +1,6 @@
 # 實作優先序:10 個項目的落地順序
 
-> 產生方式:2026-07-20,以 [FEATURE_BRAINSTORM.md](FEATURE_BRAINSTORM.md) 統整出的 10 個項目為對象,對照目前程式碼實況排出實作順序。
+> 產生方式:2026-07-20,以 [feature-brainstorm.md](feature-brainstorm.md) 統整出的 10 個項目為對象,對照目前程式碼實況排出實作順序。
 > 排序原則:**(1) 建立在現有基礎上的先做**(缺口小、風險低)、**(2) 信任基礎建設優先於華麗功能**(diff 預覽/undo 沒做好,AI 改壞一次行程使用者就走了)、**(3) 共用基礎建設要一次到位**(候選池、路線資料被多個項目依賴)、**(4) 獲客功能等產品核心穩了再放大**。
 
 ## 現況盤點(排序的依據)
@@ -11,11 +11,11 @@
 |---|---|
 | LLM 對話操作時間軸(entry_add/update/delete、ask_user/ask_choice、query_entries) | ✅ 正式功能 |
 | 附近景點推薦(recommend_nearby,Places Nearby/Text Search,含照片) | ✅ 正式功能 |
-| Entry 資料模型含 Location/Lat/Lng 欄位、Kind 分類、Detail 結構化欄位 | ⚠️ 欄位已有,但主力寫入路徑(AI 對話的 entry_add)不落地 location/座標——只有 CLI/internal 路徑會補 geocode。地圖與地理功能前必須先修這個資料洞,詳見 ITINERARY_UX_DESIGN.md 6.2 |
+| Entry 資料模型含 Location/Lat/Lng 欄位、Kind 分類、Detail 結構化欄位 | ⚠️ 欄位已有,但主力寫入路徑(AI 對話的 entry_add)不落地 location/座標——只有 CLI/internal 路徑會補 geocode。地圖與地理功能前必須先修這個資料洞,詳見 design/itinerary-ux-design.md 6.2 |
 | WebSocket 即時推送(entries_updated、entry_updating、recommended_places…) | ✅ 正式功能 |
 | 行程公開分享(/public/{token}) | ✅ 正式功能 |
 | 多人成員與編輯者權限 | ✅ 正式功能 |
-| 手動編輯 | ⚠️ 後端 PATCH /v1/entries/{id} 已有,前端編輯 UI 未做(見 ITINERARY_UX_DESIGN.md) |
+| 手動編輯 | ⚠️ 後端 PATCH /v1/entries/{id} 已有,前端編輯 UI 未做(見 design/itinerary-ux-design.md) |
 | 地圖(Maps JS API 極簡風格) | ⚠️ 僅 debug 工作台試做,未進正式畫面 |
 | Entry 的 place_id | ❌ 未儲存(營業時間查詢的前提) |
 | 點對點交通時間(Routes/Distance Matrix) | ❌ 未接 |
@@ -39,7 +39,7 @@
 **工程量**:小(建立在第 2 位之上)。**依賴**:第 2 位。
 
 ### 第 4 位:接駁自動補齊(交通資料基礎建設)
-**為什麼第四**:Routes/Distance Matrix API 的接入是一次性基建,同時解鎖三件事——行程健檢第二階段(「趕不到」警示)、時間軸相鄰點的移動時間呈現(地理理解的核心,見 ITINERARY_UX_DESIGN.md)、後續今天模式的重排依據。放在健檢第一階段之後是因為它有 API 成本,需要先設計好快取策略(只算相鄰段、行程變動才重算)。
+**為什麼第四**:Routes/Distance Matrix API 的接入是一次性基建,同時解鎖三件事——行程健檢第二階段(「趕不到」警示)、時間軸相鄰點的移動時間呈現(地理理解的核心,見 design/itinerary-ux-design.md)、後續今天模式的重排依據。放在健檢第一階段之後是因為它有 API 成本,需要先設計好快取策略(只算相鄰段、行程變動才重算)。
 **要補的缺口**:Routes API 接入與快取層;時間軸「兩點之間」的移動時間 UI;銜接不可能的警示併入健檢。
 **工程量**:中。**依賴**:Entry 座標(已有)。
 

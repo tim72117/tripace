@@ -26,7 +26,7 @@
 **部署與團隊現實**
 - **只有單一 prod 環境**，無 dev/staging，push main 直接上線。
 - GCP 專案分散在兩個（`shuttle-045094509` 放 Cloud Run/Secret Manager、`onagent-prod` 放 Cloud SQL），是改名遺留的歷史問題——跨專案的監控聚合會稍微麻煩一點點（但不是阻礙）。
-- 小團隊維運。`docs/PROJECT_HEALTH_REVIEW.md` 已明文點出「沒有 APM/tracing/error-tracking 整合」，並記錄了一次**真實事故**：`adminserver` 曾漏設 `AI_PROVIDER` / `GOOGLE_API_KEY` / `GOOGLE_PLACES_API_KEY`，導致健康檢查在正式環境一直回報未設定卻沒人即時發現（commit `dba5145`）。**這個事故正是本研究最好的動機**：一個「閾值告警 + 錯誤追蹤」的基礎層，本來就該把這種問題更早攔下來。
+- 小團隊維運。`docs/project-health-review.md` 已明文點出「沒有 APM/tracing/error-tracking 整合」，並記錄了一次**真實事故**：`adminserver` 曾漏設 `AI_PROVIDER` / `GOOGLE_API_KEY` / `GOOGLE_PLACES_API_KEY`，導致健康檢查在正式環境一直回報未設定卻沒人即時發現（commit `dba5145`）。**這個事故正是本研究最好的動機**：一個「閾值告警 + 錯誤追蹤」的基礎層，本來就該把這種問題更早攔下來。
 
 **一句話總結現況**：完全空白、零 sunk cost、零工具鏈包袱，但也沒有任何既有東西可延用。這是「從零選型」的最佳時機，也意味著**每一分導入成本都是淨新增**，所以「摩擦力」在這個專案裡的權重要調高。
 
@@ -257,7 +257,7 @@
 
 1. **零 sunk cost，但每分導入成本都是淨新增。** 沒有既有工具鏈包袱是好事，但也意味著「摩擦力」權重要調高——在這個階段，**能零埋碼/零維運就拿到的能力，價值遠高於理論上更強但要自己養的能力**。
 2. **單一 prod、無 staging → 「多養一個服務」的風險被放大。** 自架 Prometheus/Grafana/Jaeger/PostHog 這類方案，等於為了監控主服務又生出一組「自己也需要被監控、也會掛、也要升級備份」的服務。**「監控系統自己掛了誰通知你」這個悖論，在沒有 staging 可緩衝的單一 prod 上尤其致命。**
-3. **小團隊 → 維運心力是最稀缺資源。** 現成託管方案把運維外包給 Google/Sentry/PostHog；自架則把這份心力全壓回團隊。以現階段規模，**過度複雜的方案本身就是風險**（`docs/PROJECT_HEALTH_REVIEW.md` 已隱含這個判斷）。
+3. **小團隊 → 維運心力是最稀缺資源。** 現成託管方案把運維外包給 Google/Sentry/PostHog；自架則把這份心力全壓回團隊。以現階段規模，**過度複雜的方案本身就是風險**（`docs/project-health-review.md` 已隱含這個判斷）。
 
 **唯一該做的「自建」是灰色地帶那一步**：把 `log.Printf` 換成 `log/slog` 結構化輸出（+ request_id）。因為它成本低、無 lock-in（標準庫）、且是讓 GCP Logging/Error Reporting/Aligning 和窮人版追蹤全部生效的共同地基。
 

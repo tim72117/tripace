@@ -5,7 +5,7 @@
 > 方法:五個面向並行探查(後端架構、前端架構、部署維運、安全與資料模型、產品功能與 iOS)
 > **本報告只做評估,不改動任何程式碼。**
 >
-> 前情:`docs/PROJECT_HEALTH_REVIEW.md`(2026-07-22)是兩天前的結構性檢視,
+> 前情:`docs/project-health-review.md`(2026-07-22)是兩天前的結構性檢視,
 > 本報告在其基礎上做更深入的逐檔調查,並補上安全性與資料模型的完整分析。
 > 兩份重疊處已在文中標注,新發現的問題會特別點出。
 
@@ -438,7 +438,7 @@ email/password + Apple 登入、admin 後台、裝置端本地 DB(原話不落�
 - **走 `/internal/*` 路徑**,靠 `X-Internal-Token` 保護,但該 middleware fail-open。
 - 全域 map 且 **session 未綁定 user/channel 驗證**,有 session 劫持風險。
 - 前端關閉分頁 → 工具呼叫直接失敗,LLM 只收到錯誤字串。
-- **仍被文件定位為 POC**(`docs/CLIENTTOOLS_DESIGN_NOTES.md`),卻已接上正式對話流程。
+- **仍被文件定位為 POC**(`docs/knowledge/clienttools-design-notes.md`),卻已接上正式對話流程。
 
 ### 6.3 iOS:實質停止維護
 
@@ -473,10 +473,10 @@ PDF/CSV——行程 app 沒有日曆匯出是明顯缺口)、**通知**(零推�
 
 | 狀態 | 文件 |
 |---|---|
-| **已過時** | `docs/API.md`(開頭仍寫「認證之後再加」)、`docs/ARCHITECTURE.md`(2026-06-22 的純 iOS 架構圖,完全沒有 Go 後端/web/clienttools)、`docs/ROADMAP.md`(階段二「實作 HTTPBackendService」未打勾但早已完成)、根目錄 `README.md`(仍寫「一個 iOS App」「預設使用 MockBackendService」) |
-| **設計提案(未必等於現況)** | `docs/trip/TRIP_SHARING_*`、`CHANNEL_SHARING_*`、`PUBLIC_LINK_*`——四份 design+flow 成對且內容重疊,channel sharing 與 trip sharing 兩套設計並存,實際只做了 public link |
-| **仍準確** | `CLIENTTOOLS_DESIGN_NOTES.md`、`PROJECT_HEALTH_REVIEW.md`、`ENTRY_WRITE_ORDER.md`、`trip/LLM_TRIP_BUILD_ORDER.md` |
-| **純腦力激盪** | `FEATURE_BRAINSTORM.md`、`FEATURE_PRIORITIES.md`、`NAMING_IDEAS_PACE.md`、`ITINERARY_UX_DESIGN.md`(686 行,最大一份) |
+| **已過時** | `docs/knowledge/api.md`(開頭仍寫「認證之後再加」)、`docs/knowledge/architecture.md`(2026-06-22 的純 iOS 架構圖,完全沒有 Go 後端/web/clienttools)、`docs/roadmap.md`(階段二「實作 HTTPBackendService」未打勾但早已完成)、根目錄 `README.md`(仍寫「一個 iOS App」「預設使用 MockBackendService」) |
+| **設計提案(未必等於現況)** | `docs/design/trip-sharing-*`、`docs/design/channel-sharing-*`、`docs/design/public-link-*`——四份 design+flow 成對且內容重疊,channel sharing 與 trip sharing 兩套設計並存,實際只做了 public link |
+| **仍準確** | `docs/knowledge/clienttools-design-notes.md`、`docs/project-health-review.md`、`docs/knowledge/entry-write-order.md`、`docs/knowledge/llm-trip-build-order.md` |
+| **純腦力激盪** | `docs/feature-brainstorm.md`、`docs/feature-priorities.md`、`docs/naming-ideas-pace.md`、`docs/design/itinerary-ux-design.md`(686 行,最大一份) |
 
 無 ADR(architecture decision records)、無 onboarding/runbook/incident 文件、
 無 `CLAUDE.md`。
@@ -632,7 +632,7 @@ reset-admin-password.yml 的註解品質遠高於一般專案),部分彌補了�
 | 91 | 加 smoke test:部署後自動打幾個關鍵端點,失敗即 rollback |
 | 92 | 建立 ADR 目錄記錄架構決策(為什麼選 want、為什麼有 clienttools) |
 | 93 | 寫 runbook:如何 rollback、如何處理 DB migration 失敗、on-call 流程 |
-| 94 | 統一 `docs/` 現況(過時的 API.md/ARCHITECTURE.md/ROADMAP.md/README.md) |
+| 94 | 統一 `docs/` 現況(過時的 knowledge/api.md/knowledge/architecture.md/roadmap.md/README.md) |
 | 95 | GCP 資源改名從 `shuttle-045094509` 遷到 tripace 命名 |
 
 #### B-5. 值得評估但不急
@@ -647,7 +647,7 @@ reset-admin-password.yml 的註解品質遠高於一般專案),部分彌補了�
 
 ---
 
-## 附錄:本次評估與 `PROJECT_HEALTH_REVIEW.md`(2026-07-22)的差異
+## 附錄:本次評估與 `docs/project-health-review.md`(2026-07-22)的差異
 
 **兩份都提到的**:CORS 全開、`INTERNAL_API_TOKEN` fail-open、測試覆蓋率低、
 CI 不跑測試、want v0.0.2 依賴風險、clienttools 重複造輪子、前端版本分岔、

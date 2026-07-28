@@ -161,7 +161,13 @@ want 不原生支援 OTel（🔴 那部分繞不掉），但應用層有大量�
 
 **可行性 🟢｜工作量 M**
 
-**問題**：前一份文件建議 19 說「要測 api 就得起真 analyzer、拖進所有 init 工具」。但實際上 want **已經提供了測試替身的基建**——`InitializeWithConfig` 認 `mock` provider（腳本驅動、不打真 API），Tripace 自己也有 `internal/mockllm/`（`script.go`/`server.go`）和 `internal/llm/mock_analyzer.go`。**緩解**：把 api handler 對 LLM 的依賴，從「直接拿 `WantPool`」改成「依賴一個 `Analyzer` interface」（`want_pool.go` 其實已經定義了 `Analyzer`/`Assistant` interface，且有 `mock_analyzer.go`！），測試時注入 mock。api handler 測試就不必起真 want，只驗證 HTTP 層邏輯（路由、驗證、序列化、錯誤碼）。**為什麼重要**：接縫**已經存在**（interface + mock_analyzer 都有），缺的只是 api 層真的透過 interface 注入而非直接 new。這是把 `internal/api` 從零測試撬起來的支點，且大半基建現成。工作量 M。
+**2026-07-28 更新**：這個想法後來實作了，但採用的具體機制跟本節原始寫法不同，記錄如下供對照。
+
+**問題**：前一份文件建議 19 說「要測 api 就得起真 analyzer、拖進所有 init 工具」。但實際上 want **已經提供了測試替身的基建**——`InitializeWithConfig` 認 `mock` provider（腳本驅動、不打真 API），Tripace 自己也有 `internal/mockllm/`（`script.go`/`server.go`）。
+
+**原始緩解方案（已不採用）**：本節原本提議把 api handler 對 LLM 的依賴從「直接拿 `WantPool`」改成「依賴一個 `Analyzer` interface」,測試時注入 `internal/llm/mock_analyzer.go`(`MockAnalyzer`)。**這個方案已經放棄並移除**（`mock_analyzer.go` 已刪除,原本供手動操作用的 `-llm mock` CLI 開關也一併拿掉）——`MockAnalyzer` 完全繞過 want 的 orchestrator/EventBus/工具分派機制,測不到任何 want 整合層的行為(如併發稽核報告 concurrency-audit-2026-07.md 點名的 B1-B4/C1/C2 那幾類問題),只驗證 HTTP 層邏輯,槓桿效果不如原本設想的大。
+
+**實際採用方案**：改用 `internal/mockllm.Server`——這個假 vLLM HTTP 伺服器讓 want 的**真實** orchestrator 整條鏈路(`Submit`→dispatch→`RunAgent`→工具呼叫→EventBus)照常運作,只有背後的語言模型換成可控劇本(`Engine`)。測試時起一個 in-process 的 `mockllm.Server`,指向它建構真的 `WantPool`,api handler 測試因此能真的驗證「HTTP → want 整合層 → 工具執行」這整條路徑,而不只是 HTTP 層本身,且因為劇本是決定性的,斷言不需要像打真 LLM 那樣刻意避開輸出文字內容。搭配 `//go:build` tag 把「用 mockllm」與「用真 LLM」的測試拆成兩個檔案,預設 `go test ./...` 只跑 mockllm 版(快、免外部依賴),真 LLM 版需要明確帶 tag 才會編譯進去。實作見 `server/internal/api/`(`assist_inference_mockllm_test.go` / `assist_inference_real_llm_test.go`)。
 
 ### M19. 把 `wanttools` 全域狀態改造後，工具可獨立單元測試（與 M3 同源）
 

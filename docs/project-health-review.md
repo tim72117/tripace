@@ -30,8 +30,8 @@
 
 ## 文件
 
-- `docs/API.md` 開頭寫「認證之後再加」,但程式碼裡 JWT/Apple 登入/admin session 認證都已實作完成,這份文件的認證章節已過時。
-- `docs/ARCHITECTURE.md` 自 2026-06-22(專案第一天)後未再更新,期間架構變動很大(多套 auth、clienttools 整套機制都是後來加的),與現況脫節風險高。
+- `docs/knowledge/api.md` 開頭寫「認證之後再加」,但程式碼裡 JWT/Apple 登入/admin session 認證都已實作完成,這份文件的認證章節已過時。
+- `docs/knowledge/architecture.md` 自 2026-06-22(專案第一天)後未再更新,期間架構變動很大(多套 auth、clienttools 整套機制都是後來加的),與現況脫節風險高。
 - 沒有 `CLAUDE.md`——如果之後還會用 Claude Code 協作,建立這個檔案能大幅降低每次對話重新建立上下文的成本。
 
 ## 部署維運

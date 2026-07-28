@@ -9,7 +9,7 @@
 - ✅ 可編譯執行的 SwiftUI Xcode 專案骨架
 - ✅ 完整 iOS 介面與導航流程
 - ✅ Mock 假後端(本地模擬分類、標注、語意查詢回應)
-- ⏳ 真實後端(使用者的 Golang LLM 服務)— 之後依 `docs/API.md` 規格接入
+- ⏳ 真實後端(使用者的 Golang LLM 服務)— 之後依 `docs/knowledge/api.md` 規格接入
 
 ## 核心流程
 
@@ -37,6 +37,6 @@ open ios/Tripace.xcodeproj
 
 ## 文件
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 整體架構、模組分層、資料流
-- [docs/API.md](docs/API.md) — 後端 REST API 規格(給 Golang 服務實作)
-- [docs/ROADMAP.md](docs/ROADMAP.md) — 開發里程碑
+- [docs/knowledge/architecture.md](docs/knowledge/architecture.md) — 整體架構、模組分層、資料流
+- [docs/knowledge/api.md](docs/knowledge/api.md) — 後端 REST API 規格(給 Golang 服務實作)
+- [docs/roadmap.md](docs/roadmap.md) — 開發里程碑
