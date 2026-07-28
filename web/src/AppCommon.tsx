@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { AlertCircle } from 'lucide-react'
 import type { ClientConfig } from './api'
@@ -219,4 +219,70 @@ export function LoginForm({
       </div>
     </>
   )
+}
+
+// ---- 頻道列表:共用資料邏輯(抓取/建立/自動導向預設頻道) ----
+// 手機版 ChannelsScreen(整頁列表,見 App.tsx)與桌面版側欄列表
+// DesktopChannelList(見 DesktopLayout.tsx)共用同一份 state 管理與 API
+// 呼叫,只有呈現方式(渲染 JSX)不同,避免整套重寫一份。放在這裡(而非
+// DesktopLayout.tsx)是因為手機版也要用,放桌面檔案會讓 App.tsx 得回頭
+// import 桌面檔案,形成循環依賴。
+export function useChannelsState(cfg: ClientConfig, onOpen: (c: Channel) => void) {
+  const [channels, setChannels] = useState<Channel[]>([])
+  const [err, setErr] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState('')
+  const hasAutoNavigatedRef = useRef(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setErr(null)
+    hasAutoNavigatedRef.current = false
+    try {
+      setChannels(await api.fetchChannels(cfg))
+    } catch (e) {
+      setErr(errMsg(e))
+    } finally {
+      setLoading(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg.baseURL, cfg.token])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  useEffect(() => {
+    if (channels.length > 0 && !hasAutoNavigatedRef.current) {
+      const defaultID = localStorage.getItem(LS_DEFAULT_CHANNEL)
+      if (defaultID) {
+        const defaultChannel = channels.find((c) => c.id === defaultID)
+        if (defaultChannel) {
+          hasAutoNavigatedRef.current = true
+          onOpen(defaultChannel)
+        }
+      }
+    }
+  }, [channels, onOpen])
+
+  const submitCreate = async () => {
+    const name = newName.trim()
+    if (!name) return
+    try {
+      await api.createChannel(cfg, name)
+      setNewName('')
+      setCreating(false)
+      load()
+    } catch (e) {
+      setErr(errMsg(e))
+    }
+  }
+
+  return {
+    channels, err, loading,
+    creating, setCreating,
+    newName, setNewName,
+    submitCreate,
+  }
 }
