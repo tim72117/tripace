@@ -1,0 +1,51 @@
+# migrate 容器映像(一次性資料庫維運任務,搭配 Cloud Run Jobs 使用)。
+# build context 為「專案根目錄」,COPY 路徑相對根目錄寫(server/...),
+# 與根目錄的 Dockerfile(主服務)、Dockerfile.admin 共用同一份 server/
+# 原始碼與 go.mod,只是編譯目標換成 ./cmd/cli。
+#
+# 這支映像檔直接複用既有的 cmd/cli(entry/trip 操作工具,原本設計給
+# Claude Code/LLM 用,見 server/cmd/cli/main.go 開頭註解),不另外寫一支
+# 專屬的一次性維運入口——cmd/cli 已經支援 -db 直連模式跟
+# drop-legacy-columns 這類維運子命令,不需要重複實作。
+#
+# 跟 Dockerfile.admin 的差異:
+#   - 不需要 web-build 階段:cmd/cli 是純命令列工具,不 embed 任何前端。
+#   - 仍然需要 GH_PAT:雖然 go list -deps ./cmd/cli/... 確認實際編譯只用到
+#     internal/geo、internal/model、internal/store、internal/tripsvc,不
+#     連結 want/llm,但 go mod download 是依 go.mod 完整依賴清單下載(不是
+#     只抓某個 build target 實際用到的部分),go.mod 裡宣告了
+#     github.com/tim72117/want(給 cmd/server 用),故 go mod download 仍會
+#     嘗試抓取這個私有 repo,一樣需要 GH_PAT(實測驗證過:沒帶會在這一步
+#     卡住,錯誤是 "could not read Username for 'https://github.com'")。
+#
+# 用法(範例:清除 entries 表的 item/summary 舊欄位):
+#   docker build -f Dockerfile.migrate --build-arg GH_PAT=<token> -t tripace-migrate .
+#   docker run --rm -e DATABASE_URL="postgres://..." tripace-migrate \
+#     -db drop-legacy-columns
+#
+# 這支映像檔的 ENTRYPOINT 是 cli 本身(不含子命令),跑什麼維運操作由
+# `docker run`/Cloud Run Jobs 的 command/args 決定,同一支映像檔可以
+# 重複用在未來其他一次性維運需求上,不需要每次都建一支新映像檔。
+
+# ---- 階段 1:編譯 Go ----
+FROM golang:1.26 AS build
+
+ARG GH_PAT
+RUN git config --global url."https://${GH_PAT}@github.com/".insteadOf "https://github.com/"
+
+COPY server/go.mod server/go.sum /src/server/
+RUN cd /src/server && GOPRIVATE=github.com/tim72117/want go mod download
+
+COPY server/ /src/server/
+
+RUN cd /src/server && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+    -o /out/cli ./cmd/cli
+
+# ---- 階段 2:執行 ----
+# distroless:只含執行檔需要的最小 runtime,無 shell、體積小、攻擊面小。
+# 內含 CA 憑證,連 Cloud SQL(sslmode=require 等)的 TLS 才驗得過。
+FROM gcr.io/distroless/static-debian12:nonroot
+WORKDIR /app
+COPY --from=build /out/cli /app/cli
+
+ENTRYPOINT ["/app/cli"]

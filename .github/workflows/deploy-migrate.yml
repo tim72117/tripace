@@ -1,0 +1,96 @@
+name: Build and Run Migrate Job
+
+# 這支 workflow 建置 tripace-migrate 這個 Cloud Run Job 的映像檔、更新
+# Job 定義,並(可選)立即執行一次。跟 deploy-cloudrun.yml/deploy-admin.yml
+# 的 gcloud run deploy(Service,常駐處理流量)不同,這裡用的是
+# gcloud run jobs(執行完就結束、不留常駐 instance,見 Dockerfile.migrate
+# 的說明)。
+#
+# 不設 push 觸發:這是一次性維運工具,不該每次 push 到 main 就重跑一次
+# 資料庫維運操作(即使 drop-legacy-columns 本身是冪等的,其他未來可能加
+# 進來的維運操作不一定冪等)。只能手動觸發(workflow_dispatch),且需要
+# 明確指定要執行的子命令與參數,避免誤觸發。
+
+on:
+  workflow_dispatch:
+    inputs:
+      cli_args:
+        description: '要傳給 cmd/cli 的完整參數(例如: -db drop-legacy-columns)'
+        type: string
+        required: true
+      run_now:
+        description: '建置/更新 Job 定義後是否立即執行一次'
+        type: boolean
+        default: true
+
+env:
+  GCP_PROJECT_ID: "shuttle-045094509"
+  CLOUD_RUN_REGION: "asia-east1"
+  JOB_NAME: "tripace-migrate"
+  IMAGE: "asia-east1-docker.pkg.dev/shuttle-045094509/cloud-run-source-deploy/tripace-migrate"
+  CLOUDSQL_INSTANCE: "onagent-prod:asia-east1:onagent-db"
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker asia-east1-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f Dockerfile.migrate \
+            --build-arg GH_PAT=${{ secrets.GH_PAT }} \
+            -t ${{ env.IMAGE }}:${{ github.sha }} \
+            -t ${{ env.IMAGE }}:latest \
+            .
+
+      - name: Push image
+        run: |
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+          docker push ${{ env.IMAGE }}:latest
+
+      # gcloud run jobs deploy:第一次執行會建立 Job,之後執行是更新既有
+      # Job 的定義(映像檔版本、指令參數)——跟 run jobs create 不同,
+      # deploy 是「建立或更新」的冪等操作,不需要另外判斷 Job 存不存在。
+      - name: Deploy/update Cloud Run Job
+        run: |
+          gcloud run jobs deploy ${{ env.JOB_NAME }} \
+            --image=${{ env.IMAGE }}:${{ github.sha }} \
+            --region=${{ env.CLOUD_RUN_REGION }} \
+            --add-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
+            --update-secrets=DATABASE_URL=DATABASE_URL:latest \
+            --args="$(echo '${{ inputs.cli_args }}' | tr ' ' ',')" \
+            --max-retries=0 \
+            --task-timeout=300 \
+            --quiet
+
+      - name: Execute Job now
+        if: ${{ inputs.run_now }}
+        run: |
+          gcloud run jobs execute ${{ env.JOB_NAME }} \
+            --region=${{ env.CLOUD_RUN_REGION }} \
+            --wait \
+            --quiet
+
+      - name: Show execution logs link
+        if: ${{ inputs.run_now }}
+        run: |
+          echo "### Migrate Job 執行完成" >> "$GITHUB_STEP_SUMMARY"
+          echo "參數: \`${{ inputs.cli_args }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "查看完整 log:" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://console.cloud.google.com/run/jobs/details/${{ env.CLOUD_RUN_REGION }}/${{ env.JOB_NAME }}/executions?project=${{ env.GCP_PROJECT_ID }}" >> "$GITHUB_STEP_SUMMARY"
