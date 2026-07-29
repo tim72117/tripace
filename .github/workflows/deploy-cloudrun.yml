@@ -43,10 +43,23 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker asia-east1-docker.pkg.dev --quiet
 
+      # 前端 build 期間需要讀到 VITE_GOOGLE_MAPS_API_KEY(見 Dockerfile 的
+      # web-build 階段),這把 key 放 Secret Manager 而非 GitHub Secrets(理由
+      # 見 server/scripts/update-secret-manager.sh 的說明:換 key 只需更新
+      # Secret Manager 版本,不需要另外同步 GitHub Secrets)。這裡讀出來後
+      # 立刻 ::add-mask:: 遮罩,避免明文出現在 job log 裡。
+      - name: Read Google Maps API key from Secret Manager
+        id: maps_key
+        run: |
+          KEY=$(gcloud secrets versions access latest --secret=GOOGLE_MAPS_API_KEY --project=${{ env.GCP_PROJECT_ID }})
+          echo "::add-mask::$KEY"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
       - name: Build Docker image
         run: |
           docker build \
             --build-arg GH_PAT=${{ secrets.GH_PAT }} \
+            --build-arg VITE_GOOGLE_MAPS_API_KEY=${{ steps.maps_key.outputs.key }} \
             -t ${{ env.IMAGE }}:${{ github.sha }} \
             -t ${{ env.IMAGE }}:latest \
             .

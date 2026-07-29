@@ -8,7 +8,6 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: tripace-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: tripace
@@ -17,7 +16,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - tripace-pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
       # server 啟動前可確認 DB 已就緒
       test: ["CMD-SHELL", "pg_isready -U tripace -d tripace"]
@@ -26,4 +25,4 @@ services:
       retries: 5
 
 volumes:
-  tripace-pgdata:
+  pgdata:

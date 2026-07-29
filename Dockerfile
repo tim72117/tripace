@@ -14,6 +14,11 @@ WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
+# Vite 只在 build 當下讀取 VITE_* 環境變數並編譯進 bundle,故用 ARG 轉 ENV
+# 讓 npm run build 讀得到;金鑰本身放 GCP Secret Manager,由
+# deploy-cloudrun.yml 在呼叫 docker build 前讀出再當 --build-arg 傳入。
+ARG VITE_GOOGLE_MAPS_API_KEY
+ENV VITE_GOOGLE_MAPS_API_KEY=${VITE_GOOGLE_MAPS_API_KEY}
 RUN npm run build
 
 # ---- 階段 2:編譯 Go ----

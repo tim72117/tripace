@@ -31,7 +31,10 @@ fi
 echo "使用金鑰:${KEY:0:6}…${KEY: -4}(長度 ${#KEY})"
 
 # --- 呼叫新版 Places API (New) Text Search ---
-PLACE="${2:-宮古島希爾頓嘉悅里酒店}"
+# 預設用純英文地名:部分終端機 locale 非 UTF-8 時,中文字串經 shell 轉譯
+# 可能毀損成不合法的 UTF-8 位元組序列,curl 送出去 Google 會直接回一個 HTML
+# 版「400 Bad Request」(不是 Places API 正常 JSON 錯誤),誤導成金鑰有問題。
+PLACE="${2:-Hilton Miyakojima Resort}"
 echo "查詢地點:$PLACE"
 echo "---"
 
