@@ -4,6 +4,20 @@ import { type TripBatches } from '../tripEntryTools'
 import { ClientToolsBridge, type ConnStatus, type LogEntry } from './ClientToolsBridge'
 import { defaultClientTools } from '../tools'
 import { newTripEntryId } from '../tools/tripEntryAdd'
+import styles from './ClientToolsDemo.module.css'
+
+// status/dir 對應到 CSS Modules 雜湊過的 class 名稱——原本用字串樣板
+// `cts-status-${status}` 直接接原始 class 名,雜湊過的名稱無法這樣拼,
+// 改成小型對照表。
+const STATUS_CLASS: Record<ConnStatus, string> = {
+  open: styles.statusOpen,
+  connecting: styles.statusConnecting,
+  closed: styles.statusClosed,
+}
+const LOG_DIR_CLASS: Record<LogEntry['dir'], string> = {
+  out: styles.logOut,
+  in: styles.logIn,
+}
 
 // ClientToolsDemo — 「LLM 呼叫前端 tool」試做(POC)的畫面渲染。
 //
@@ -88,20 +102,20 @@ export function ClientToolsDemo() {
   }
 
   return (
-    <div className="cts-root">
-      <div className="cts-main">
-        <div className="cts-header">
-          <span className="cts-title">旅程清單(僅存在此頁面記憶體,不進資料庫)</span>
-          <span className={`cts-status cts-status-${status}`}>
+    <div className={styles.root}>
+      <div className={styles.main}>
+        <div className={styles.header}>
+          <span className={styles.title}>旅程清單(僅存在此頁面記憶體,不進資料庫)</span>
+          <span className={`${styles.status} ${STATUS_CLASS[status]}`}>
             {status === 'open' ? `已連線 · ${toolNames.length} 個工具` : status === 'connecting' ? '連線中…' : '已斷線'}
           </span>
         </div>
 
-        <div className="cts-entries">
+        <div className={styles.entries}>
           {entries.length === 0 ? (
-            <div className="cts-empty">目前清單是空的。</div>
+            <div className={styles.empty}>目前清單是空的。</div>
           ) : (
-            <table className="cts-table">
+            <table className={styles.table}>
               <thead>
                 <tr>
                   <th>批次</th>
@@ -114,13 +128,13 @@ export function ClientToolsDemo() {
               </thead>
               <tbody>
                 {entries.map((e) => (
-                  <tr key={`${e.key}:${e.id}`} className="cts-entry-row">
-                    <td className="cts-entry-key">{e.key}</td>
-                    <td className="cts-entry-title">{e.title}</td>
-                    <td className="cts-entry-when">{e.date}</td>
-                    <td className="cts-entry-when">{e.time}</td>
-                    <td className="cts-entry-note">{e.note}</td>
-                    <td className="cts-entry-id">{e.id}</td>
+                  <tr key={`${e.key}:${e.id}`} className={styles.entryRow}>
+                    <td>{e.key}</td>
+                    <td className={styles.entryTitle}>{e.title}</td>
+                    <td className={styles.entryWhen}>{e.date}</td>
+                    <td className={styles.entryWhen}>{e.time}</td>
+                    <td className={styles.entryNote}>{e.note}</td>
+                    <td className={styles.entryId}>{e.id}</td>
                   </tr>
                 ))}
               </tbody>
@@ -128,11 +142,11 @@ export function ClientToolsDemo() {
           )}
         </div>
 
-        {assistantText && <div className="cts-assistant">{assistantText}</div>}
+        {assistantText && <div className={styles.assistant}>{assistantText}</div>}
 
-        <div className="cts-inputrow">
+        <div className={styles.inputrow}>
           <input
-            className="cts-input"
+            className={styles.input}
             placeholder="跟 LLM 說一句話,例如「幫我新增一筆明天的東京晴空塔行程」"
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -155,15 +169,15 @@ export function ClientToolsDemo() {
         </div>
       </div>
 
-      <div className="cts-log">
-        <div className="cts-log-title">WS / HTTP 訊息記錄</div>
-        <div className="cts-log-list">
+      <div className={styles.log}>
+        <div className={styles.logTitle}>WS / HTTP 訊息記錄</div>
+        <div className={styles.logList}>
           {log.map((l) => (
-            <div key={l.id} className={`cts-log-entry cts-log-${l.dir}`}>
-              <div className="cts-log-summary">
-                <span className="cts-log-dir">{l.dir === 'out' ? '→' : '←'}</span> {l.summary}
+            <div key={l.id} className={`${styles.logEntry} ${LOG_DIR_CLASS[l.dir]}`}>
+              <div className={styles.logSummary}>
+                <span className={styles.logDir}>{l.dir === 'out' ? '→' : '←'}</span> {l.summary}
               </div>
-              {l.detail && <div className="cts-log-detail">{l.detail}</div>}
+              {l.detail && <div className={styles.logDetail}>{l.detail}</div>}
             </div>
           ))}
         </div>

@@ -1,0 +1,185 @@
+/* ClientToolsDemo.tsx 專屬樣式(CSS Modules)。命名省略掉原本的 cts- 前綴
+   (例如 .root 對應原本的 .cts-root)——import 時已經有明確的命名空間,
+   不需要重複加前綴。
+
+   沒有任何 class 需要 :global() 保留原名——沒有其他檔案的 CSS 選擇器
+   需要從外部偵測這裡的 class,ClientToolsDemo 本身也沒有被其他元件以
+   CSS 選擇器方式跨檔案引用。 */
+
+.root {
+  display: flex;
+  height: 100%;
+  color: #d4d4d8;
+  font-family: var(--mono);
+  background: #1c1c1e;
+}
+.main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 12px;
+  overflow-y: auto;
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+}
+.status {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #2a2a2e;
+  color: #8a8a93;
+}
+.statusOpen {
+  background: #1f4d2e;
+  color: #8ff0a4;
+}
+.statusConnecting {
+  background: #4a4a1f;
+  color: #f0e98f;
+}
+.statusClosed {
+  background: #5f1f1f;
+  color: #ff9e9e;
+}
+.entries {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 80px;
+}
+.empty {
+  color: #6e6e78;
+  font-size: 12px;
+  padding: 12px 0;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #26262b;
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 12px;
+}
+.table th {
+  text-align: left;
+  padding: 6px 10px;
+  background: #202024;
+  color: #8a8a93;
+  font-size: 11px;
+  font-weight: 600;
+  border-bottom: 1px solid #26262b;
+  white-space: nowrap;
+}
+.table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #202024;
+  vertical-align: top;
+}
+.entryRow {
+  background: #161619;
+}
+.entryRow:last-child td {
+  border-bottom: none;
+}
+.entryTitle {
+  color: #e8e8ea;
+  font-weight: 600;
+}
+.entryWhen {
+  color: #6cb6ff;
+  white-space: nowrap;
+}
+.entryNote {
+  color: #a8a8b0;
+}
+.entryId {
+  color: #6a6a72;
+  font-size: 10px;
+}
+.assistant {
+  border: 1px solid #2a3a2e;
+  background: #14201a;
+  color: #b8e8c8;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+}
+.inputrow {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+}
+.input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: #0d0d0f;
+  border: 1px solid #26262b;
+  color: #d4d4d8;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.input:disabled {
+  opacity: 0.6;
+}
+.log {
+  flex: 0 0 340px;
+  min-width: 0;
+  border-left: 1px solid #26262b;
+  background: #0d0d0f;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.logTitle {
+  padding: 12px 14px;
+  border-bottom: 1px solid #26262b;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+}
+.logList {
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.logEntry {
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  border: 1px solid #26262b;
+}
+.logOut {
+  background: #161c26;
+}
+.logIn {
+  background: #161619;
+}
+.logDir {
+  color: #6cb6ff;
+  font-weight: 700;
+}
+.logSummary {
+  color: #d4d4d8;
+  word-break: break-word;
+}
+.logDetail {
+  color: #8a8a93;
+  margin-top: 3px;
+  word-break: break-all;
+  max-height: 80px;
+  overflow-y: auto;
+}
