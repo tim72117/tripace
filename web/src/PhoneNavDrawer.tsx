@@ -64,6 +64,7 @@ export function PhoneNavDrawer({
   lastContentMode,
   onSelectedEntry,
   onRouteChange,
+  savedEntry,
   channelsDrawerOpen,
   onOpenChannels,
   user,
@@ -101,6 +102,9 @@ export function PhoneNavDrawer({
   // 通知——見 PaceChart.tsx 的 onRouteChange 說明,PhoneContent.tsx 再轉傳
   // 給主顯示區的 PaceRouteMap(地圖)。
   onRouteChange: (checkpoints: Checkpoint[]) => void
+  // savedEntry:地圖手動拖曳選點儲存座標成功後回報的結果,轉傳給 PaceChart
+  // 讓它就地更新自己的清單(見 PaceChart.tsx 的 savedEntry prop 說明)。
+  savedEntry?: { id: string; lat: number; lng: number } | null
   // channelsDrawerOpen:獨立行程抽屜(PhoneChannelsDrawer.tsx,疊在這個抽屜
   // 之上)目前是否開啟——驅動下方使用者頭像旁「行程」觸發鈕的 active 樣式。
   channelsDrawerOpen: boolean
@@ -251,6 +255,7 @@ export function PhoneNavDrawer({
               channelID={activeChannel?.id}
               onCheckpointClick={onSelectedEntry}
               onRouteChange={onRouteChange}
+              savedEntry={savedEntry}
             />
           ) : mode === 'channels' ? null : (
             <DemoPanelContent mode={mode} />

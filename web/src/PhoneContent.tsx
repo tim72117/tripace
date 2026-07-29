@@ -147,6 +147,11 @@ export function PhoneContent(props: ContentProps) {
   // 那一段 checkpoint 清單,透過 onRouteChange 鏡像過來,轉傳給主顯示區的
   // PaceRouteMap(地圖)——同一套模式比照桌面版 DesktopLayout.tsx。
   const [paceCheckpoints, setPaceCheckpoints] = useState<Checkpoint[]>([])
+  // savedEntry:PaceRouteMap 手動拖曳選點、儲存座標成功後回報的結果,轉傳給
+  // PhoneNavDrawer 的 PaceChart 讓它就地更新自己的 checkpointsBySegment
+  // (見 PaceChart.tsx 的 savedEntry prop 說明)——同一套模式比照桌面版
+  // DesktopLayout.tsx。
+  const [savedEntry, setSavedEntry] = useState<{ id: string; lat: number; lng: number } | null>(null)
 
   // 時間軸與對話(ChatScreen)顯示位置對調:'timeline' 分頁時,時間軸改到
   // 主顯示區滿版顯示,對話改顯示在抽屜欄裡(跟配速表分頁的「側欄放清單、
@@ -276,6 +281,7 @@ export function PhoneContent(props: ContentProps) {
               checkpoints={paceCheckpoints}
               selectedEntry={selectedEntry}
               onSelectedEntryDone={() => setSelectedEntry(null)}
+              onEntrySaved={setSavedEntry}
             />
           </>
         ) : effectiveMainMode === 'timeline' ? (
@@ -333,6 +339,7 @@ export function PhoneContent(props: ContentProps) {
         lastContentMode={lastContentMode}
         onSelectedEntry={setSelectedEntry}
         onRouteChange={setPaceCheckpoints}
+        savedEntry={savedEntry}
         channelsDrawerOpen={channelsDrawerOpen}
         onOpenChannels={onOpenChannels}
         user={props.user}

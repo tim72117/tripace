@@ -383,6 +383,7 @@ export function PaceChart({
   publicToken,
   onCheckpointClick,
   onRouteChange,
+  savedEntry,
 }: {
   // cfg:登入後正式介面(DesktopLayout.tsx)傳入自己的 ClientConfig,改走
   // 認證過的 fetchEntries 讀取資料。不傳時走公開連結 token(見下方
@@ -416,6 +417,17 @@ export function PaceChart({
   // 機制。可選是因為 PublicPaceDemoPage.tsx 公開分享頁沒有相鄰的地圖
   // 元件可以接收這份資料,不需要傳。
   onRouteChange?: (checkpoints: Checkpoint[]) => void
+  // savedEntry:地圖(PaceRouteMap.tsx)那邊手動拖曳選點、按下「儲存座標」
+  // 成功後,由共同的父層把「哪一筆存了什麼座標」轉傳回來——這裡收到後就地
+  // 更新 checkpointsBySegment 對應那一筆的 lat/lng,理由同
+  // handleCheckpointClick 內 geocode 成功後的本地 state patch:PaceChart
+  // 是 checkpointsBySegment 這份資料唯一的擁有者,PaceRouteMap 那邊的
+  // PATCH .../latlng 直接打後端、不會自動同步回這裡,沒有這個 prop 的話
+  // 存完座標後側欄清單/下一次算路線用的座標都還是存檔前的舊值,只能整頁
+  // 重新整理才會反映。用物件參照本身(而非拆開的 id/lat/lng)當 useEffect
+  // 依賴值,呼叫端每次「真的存了一筆新座標」才會建立新物件,不會因為父層
+  // 其他無關的重渲染而重複觸發。
+  savedEntry?: { id: string; lat: number; lng: number } | null
 }) {
   const [routeIdx, setRouteIdx] = useState(0)
   const [nowMark, setNowMark] = useState<NowMark | null>(null)
@@ -537,6 +549,24 @@ export function PaceChart({
     onRouteChange?.(route.checkpoints)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route.checkpoints])
+
+  // savedEntry 變動時,就地更新 checkpointsBySegment 對應那一筆的座標——
+  // 見上方 savedEntry prop 的說明,同一套 patch 寫法比照
+  // handleCheckpointClick 內 geocode 成功後的處理。
+  useEffect(() => {
+    if (!savedEntry) return
+    setCheckpointsBySegment((prev) => {
+      if (!prev) return prev
+      const next = new Map(prev)
+      for (const [key, list] of next) {
+        next.set(
+          key,
+          list.map((c) => (c.id === savedEntry.id ? { ...c, lat: savedEntry.lat, lng: savedEntry.lng } : c)),
+        )
+      }
+      return next
+    })
+  }, [savedEntry])
 
   // 自動捲動到目前站(等 nowMark 算出來、DOM 掛上 ref 之後才捲動)。
   useEffect(() => {

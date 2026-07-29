@@ -87,12 +87,19 @@ const INITIAL_ZOOM = 14
 // 資料(encodedPolyline 字串 + 每段 leg 的起訖座標)——POST
 // /internal/entries/compute-route 的回應形狀是 { entryIDs, titles, result:
 // {encoded, legs} },這裡只快取 result 那一層,對齊這個扁平形狀。cache key
-// 額外帶入 entryIDs 序列(見下方 routeCacheKey),同一組 checkpoint 才會
-// 命中快取,換一段路線(不同 entryIDs)自然會重新打一次 API,不需要再手動
-// 管理版本號。
-const ROUTE_CACHE_KEY_PREFIX = 'tripace.paceRouteMap.route.v4.'
-function routeCacheKey(entryIDs: string[]): string {
-  return ROUTE_CACHE_KEY_PREFIX + entryIDs.join(',')
+// 額外帶入 entryIDs 序列「以及每個 checkpoint 目前的 lat/lng」(見下方
+// routeCacheKey)——只看 entryIDs 不夠:使用者在地圖上手動拖曳選點、
+// 「儲存座標」寫入新座標後(見 onEntrySaved),entry 本身的 id 不變,但
+// 座標變了、對應的路線理論上也該跟著變,若 key 只由 entryIDs 組成,會
+// 命中座標修改前存下的舊快取,畫出一條已經過時的路線,使用者存了新座標
+// 卻在地圖上看不出差異(得整頁重新整理、讓 checkpoints 重新從後端
+// fetch,湊巧生出不同的 entryIDs 組合或乾脆繞過快取才會發現真的有存
+// 進去)。把座標本身也編進 key,座標一變 key 自然不同,不需要额外的
+// 快取失效(invalidate)邏輯,舊 key 對應的快取內容留著也無妨(不會再被
+// 讀到,只是 localStorage 裡多一筆不會再命中的死資料,不影響功能)。
+const ROUTE_CACHE_KEY_PREFIX = 'tripace.paceRouteMap.route.v5.'
+function routeCacheKey(checkpoints: { id: string; lat: number | null; lng: number | null }[]): string {
+  return ROUTE_CACHE_KEY_PREFIX + checkpoints.map((cp) => `${cp.id}:${cp.lat ?? ''},${cp.lng ?? ''}`).join(',')
 }
 interface RouteLatLng {
   latitude: number
@@ -120,6 +127,7 @@ export function PaceRouteMap({
   checkpoints,
   selectedEntry,
   onSelectedEntryDone,
+  onEntrySaved,
 }: {
   // checkpoints:目前選取的那一段路線(PaceChart 的 route.checkpoints,依
   // order 排序),由共同的父層(DesktopLayout.tsx/PhoneContent.tsx)透過
@@ -139,6 +147,15 @@ export function PaceRouteMap({
   // onSelectedEntryDone:儲存成功後通知父層清掉 selectedEntry,收起圖釘與
   // 儲存按鈕——state 本身放在父層(DesktopLayout.tsx),這個元件不擅自持有。
   onSelectedEntryDone?: () => void
+  // onEntrySaved:儲存座標成功後,把「哪一筆 entry、存了什麼座標」往上通知
+  // ——這裡的 saveLatLng 是直接打 PATCH .../latlng,不會讓側欄的 PaceChart
+  // 知道它自己的 checkpointsBySegment 裡對應那一筆的座標已經變了(那份
+  // state 只有 PaceChart 自己在管理)。沒有這個回呼,使用者存完座標後,
+  // 側欄清單、下一次 compute-route 用的 checkpoints 都還是存檔前的舊值,
+  // 必須整頁重新整理重新 fetch 才會反映——用途同 PaceChart.tsx 的
+  // geocode-on-click 補完座標後就地更新本地 state 那套邏輯,只是這裡的
+  // 座標來源是使用者手動拖曳地圖選點,不是自動 geocode。
+  onEntrySaved?: (entry: { id: string; lat: number; lng: number }) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
@@ -231,16 +248,30 @@ export function PaceRouteMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey])
 
-  // entryIDs/stopNames:從 checkpoints prop 動態推導——第一筆/最後一筆是
+  // leadingCheckpoints:從第一筆開始依序取,取到第一個沒有座標(lat/lng
+  // 為 null,尚未 geocode)的 checkpoint 就停止,不繼續往後取——理由是
+  // 後端 handleComputeRouteFromEntries 對「起訖點沒座標」只會嘗試用 title
+  // 查詢(常查不準,尤其是純轉彎指示這類非地名文字),與其把整批（含後面
+  // 還沒補座標的點）一次送出讓後端各自嘗試 fallback,不如只送出「從頭開始
+  // 已經確定有座標」這一段連續區間,路線至少能先正確畫出這一段;使用者
+  // 幫後面的點補上座標(見 PaceChart.tsx 的 geocode-on-click)後,checkpoints
+  // 陣列會反映最新座標,連續區間自然往後延伸,不需要額外的重試機制。
+  const firstMissingIdx = checkpoints.findIndex((cp) => cp.lat === null || cp.lng === null)
+  const leadingCheckpoints = firstMissingIdx === -1 ? checkpoints : checkpoints.slice(0, firstMissingIdx)
+  // entryIDs/stopNames:從 leadingCheckpoints 動態推導——第一筆/最後一筆是
   // origin/destination,中間的是 intermediates,直接對應後端 entryIDs 陣列
   // 語意(見上方 checkpoints prop 的說明)。少於 2 筆時不夠組出一條路線
   // (至少需要起訖點),整段路線計算直接跳過。
-  const entryIDs = checkpoints.map((cp) => cp.id)
-  const stopNames = checkpoints.map((cp) => cp.name)
+  const entryIDs = leadingCheckpoints.map((cp) => cp.id)
+  const stopNames = leadingCheckpoints.map((cp) => cp.name)
   // entryIDsKey:給下方 effect 當依賴值——checkpoints 陣列參照在父層每次
   // 重渲染都可能改變(即使內容相同),用內容序列化成字串才能正確判斷「這批
   // checkpoint 是否真的變了」,避免路線在父層無關的重渲染時被重複打 API。
-  const entryIDsKey = entryIDs.join(',')
+  // 這裡刻意也把座標編進去(跟 routeCacheKey 同一個理由,見該函式的說明)
+  // ——只用 entryIDs 組 key 的話,使用者存了新座標後 leadingCheckpoints 的
+  // id 序列不變,這個 effect 不會判定「依賴變了」,不會重新觸發,連
+  // localStorage 快取都不會被查到就直接跳過,問題比快取本身更前面一層。
+  const entryIDsKey = routeCacheKey(leadingCheckpoints)
 
   // 地圖就緒後才算路線:要有一個已存在的 map 物件才能畫 Polyline、才能
   // fitBounds。apiKey 這裡一定存在(mapReady 只可能在上面那個 effect 成功
@@ -259,7 +290,7 @@ export function PaceRouteMap({
       return
     }
     let cancelled = false
-    const cacheKey = routeCacheKey(entryIDs)
+    const cacheKey = entryIDsKey
 
     // 同一組 checkpoint(entryIDs 序列相同)路線結果理論上永遠一樣——先看
     // localStorage 有沒有存過,有的話直接用,不重打一次 computeRoutes(這是
@@ -444,6 +475,7 @@ export function PaceRouteMap({
         throw new Error(`儲存座標 ${res.status}: ${text.slice(0, 300)}`)
       }
       setSaveOk(true)
+      onEntrySaved?.({ id: selectedEntry.id, lat: pendingLatLng.lat, lng: pendingLatLng.lng })
       onSelectedEntryDone?.()
     } catch (e) {
       setSaveErr(e instanceof Error ? e.message : String(e))

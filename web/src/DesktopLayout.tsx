@@ -101,6 +101,11 @@ export function DesktopContent(props: ContentProps) {
   // sibling,資料只有 PaceChart 有,故用這個 state 中介,同一套模式比照
   // timelineMirror。初始值空陣列,PaceChart 掛載/切換段落後才會有內容。
   const [paceCheckpoints, setPaceCheckpoints] = useState<Checkpoint[]>([])
+  // savedEntry:PaceRouteMap 手動拖曳選點、儲存座標成功後回報的結果,轉傳給
+  // PaceChart 讓它就地更新自己的 checkpointsBySegment(見 PaceChart.tsx 的
+  // savedEntry prop 說明)——沒有這個,存完座標後側欄清單/下一次算路線用的
+  // 座標會停留在存檔前的舊值,得整頁重新整理才會反映。
+  const [savedEntry, setSavedEntry] = useState<{ id: string; lat: number; lng: number } | null>(null)
   // timelineMirror:ChatScreen 透過 desktopChat.onTimelineData 鏡像過來的時間軸資料
   // (entries/updatingEntryIDs/taskPlaceholders/refetchEntries)。ChatScreen 是這份
   // 資料唯一的擁有者(它的 WS 連線即時維護這些 state),這裡只是接住鏡像後轉交給
@@ -204,6 +209,7 @@ export function DesktopContent(props: ContentProps) {
                   channelID={activeChannel?.id}
                   onCheckpointClick={setSelectedEntry}
                   onRouteChange={setPaceCheckpoints}
+                  savedEntry={savedEntry}
                 />
               </div>
             )}
@@ -222,6 +228,7 @@ export function DesktopContent(props: ContentProps) {
                 checkpoints={paceCheckpoints}
                 selectedEntry={selectedEntry}
                 onSelectedEntryDone={() => setSelectedEntry(null)}
+                onEntrySaved={setSavedEntry}
               />
             </div>
           ) : panelMode === 'demo-cards' || panelMode === 'demo-row' || panelMode === 'demo-map'
