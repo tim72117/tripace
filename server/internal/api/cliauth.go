@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/tim72117/tripace/internal/auth"
-	"github.com/tim72117/tripace/internal/model"
 )
 
 // POST /v1/cli-auth/start
@@ -67,7 +66,12 @@ func (s *Server) handleApproveCliAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := s.store.FindUserByID(claims.Sub)
 	if err != nil {
-		user = model.User{ID: claims.Sub, Name: claims.Name, AvatarColor: "#8C7B6A"}
+		// token 簽章有效,但對應使用者已不存在於資料庫——不能像訪客那樣放行
+		// (見上方註解,這裡刻意不接受訪客核准是有意的例外設計),也不能偽造
+		// 一個假身份繼續簽發新 token,那會讓一個查無此人的身份無限循環延續
+		// 下去。一律要求重新登入取得對應真實使用者的新 token。
+		writeErr(w, http.StatusUnauthorized, "user_not_found", "使用者不存在,請重新登入")
+		return
 	}
 
 	cliToken, err := s.signer.Sign(user.ID, user.Name)

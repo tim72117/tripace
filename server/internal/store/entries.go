@@ -1,7 +1,9 @@
 package store
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/tim72117/tripace/internal/model"
 	"gorm.io/gorm"
@@ -88,7 +90,16 @@ func (s *Store) UpdateEntry(id, title, start, startTime, end, endTime, location,
 		fields["kind"] = kind
 	}
 	if detail != nil {
-		fields["detail"] = detail
+		// entryRow.Detail 的 `serializer:json` tag 只在透過具名 struct 更新時
+		// 生效(見 InsertEntry);這裡用 map[string]any 呼叫 Updates,GORM 無法
+		// 從欄位名稱字串反查回 struct tag,會把原始 Go map 直接交給資料庫驅動
+		// 編碼進 text 欄位,導致 "unable to encode map[string]interface{}"
+		// 錯誤。手動先序列化成 JSON 字串再放進 fields,繞開這個限制。
+		b, err := json.Marshal(detail)
+		if err != nil {
+			return fmt.Errorf("序列化 detail 失敗: %w", err)
+		}
+		fields["detail"] = string(b)
 	}
 	if len(fields) == 0 {
 		return nil

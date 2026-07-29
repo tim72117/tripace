@@ -20,7 +20,11 @@ func (s *Server) userFor(r *http.Request) model.User {
 	return s.userFromToken(token)
 }
 
-// userFromToken 驗證 JWT 字串並解析出使用者;token 無效時回訪客。
+// userFromToken 驗證 JWT 字串並解析出使用者;token 無效、或簽章有效但對應
+// 使用者已不存在於資料庫(例如資料庫被重建、帳號被刪除)時,一律回訪客——
+// 呼叫端(userFor/WS 升級)只認得「訪客」與「真實使用者」兩種結果,不該再
+// 悄悄冒出第三種「查無此人但仍偽造一個身份放行」的狀態,那會讓呼叫端誤以
+// 為拿到的是一個真實、通過資料庫驗證的使用者。
 // 供 userFor(header 取 token)與 WS 升級(query string 取 token,瀏覽器原生
 // WebSocket API 不支援自訂 header)共用同一套驗證邏輯。
 func (s *Server) userFromToken(token string) model.User {
@@ -28,11 +32,10 @@ func (s *Server) userFromToken(token string) model.User {
 	if err != nil {
 		return s.guestUser
 	}
-	// 以 token 內的身分為主;若 DB 查得到使用者就用最新資料。
 	if u, err := s.store.FindUserByID(claims.Sub); err == nil {
 		return u
 	}
-	return model.User{ID: claims.Sub, Name: claims.Name, AvatarColor: "#8C7B6A"}
+	return s.guestUser
 }
 
 // POST /v1/auth/apple
@@ -167,8 +170,11 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := s.store.FindUserByID(claims.Sub)
 	if err != nil {
-		// token 有效但使用者已不存在
-		user = model.User{ID: claims.Sub, Name: claims.Name, AvatarColor: "#8C7B6A"}
+		// token 簽章有效,但對應的使用者已不存在於資料庫(例如資料庫被重建、
+		// 帳號被刪除)——不該偽造一個假身份讓呼叫端誤以為登入正常,一律視同
+		// 未登入,要求重新登入取得對應真實使用者的新 token。
+		writeErr(w, http.StatusUnauthorized, "user_not_found", "使用者不存在,請重新登入")
+		return
 	}
 	email, _ := s.store.GetUserEmail(claims.Sub)
 	writeJSON(w, http.StatusOK, model.Me{

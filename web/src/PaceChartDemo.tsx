@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Share2 } from 'lucide-react'
 import styles from './PaceChartDemo.module.css'
+import { BASE_URL } from './AppCommon'
 
 // 單車配速表(UI 試做):手機優先的直向卡片堆疊,每張卡片是一個檢查站,
 // 核心資訊是「離站時間」(視覺上用最大字級呈現)。設計與互動邏輯直接
@@ -22,6 +23,72 @@ export interface Checkpoint {
   isStart?: boolean
   isFinish?: boolean
   isLongRest?: boolean // 長休息站(如午餐):視覺上用警示色系區分
+}
+
+// PublicEntry:GET /v1/public/{token} 回傳的 entries 陣列元素形狀(對應後端
+// model.Entry,只列出轉換成 Checkpoint 會用到的欄位)。detail 是我們自訂塞進
+// 去的配速表專屬資料(見 server/internal/store 的 Detail 欄位機制),後端對
+// 這個欄位沒有固定 schema 驗證,故這裡的型別只是前端這端的假設,不是後端
+// 強制保證的格式。
+// PaceSegment:對應後端 Detail.segment 的合法值,即這個元件四個分頁各自的
+// key——寫入端(cmd/cli entry-update -detail)與這裡的 key 命名必須一致。
+type PaceSegment = 'leg1' | 'leg2' | 'leg3' | 'leg4'
+
+interface PublicEntry {
+  id: string
+  title: string
+  detail: {
+    km: number | null
+    isStart: boolean
+    isFinish: boolean
+    dwellMin: number | null
+    isLongRest: boolean
+    tag?: string
+    departTime: string | null
+    arriveTime: string | null
+    // order:顯示順序,寫入時明確指定(見 server 端資料),不依賴
+    // ListEntriesByChannel 的 "start ASC, created_at ASC" 排序——同一天的
+    // checkpoint 全部同一個 start 日期,實際順序完全靠 created_at,一旦事後
+    // 用 entry-update 補資料(而非重新 entry-add),created_at 不會跟著變,
+    // 但也可能因為批次寫入時機不同而跟原始紙條順序對不上,故改成由這個
+    // 明確欄位決定顯示順序,不依賴任何隱含的資料庫寫入順序。
+    order: number
+    // segment:標記這筆屬於哪一段路線(leg1~leg4)。D1(2026-07-31)實際涵蓋
+    // leg1+leg2 兩段,單靠 start 日期無法區分同一天的兩個路段,故需要這個
+    // 明確欄位,不能只靠 start/order 反推。
+    segment: PaceSegment
+  } | null
+}
+
+// entryToCheckpoint:把後端 Entry 轉成這個元件既有的 Checkpoint 形狀,讓
+// 下方所有既有的呈現/「目前站」判斷邏輯不需要因為資料來源改變而跟著改。
+function entryToCheckpoint(e: PublicEntry): Checkpoint {
+  const d = e.detail
+  return {
+    name: e.title,
+    km: d?.km ?? null,
+    tag: d?.tag ?? null,
+    arrive: d?.arriveTime ?? null,
+    dwellMin: d?.dwellMin ?? null,
+    depart: d?.departTime ?? null,
+    isStart: d?.isStart ?? false,
+    isFinish: d?.isFinish ?? false,
+    isLongRest: d?.isLongRest ?? false,
+  }
+}
+
+// groupBySegment:依 detail.segment 分組、組內再依 detail.order 排序,回傳
+// 四段各自的 Checkpoint 陣列。缺少 segment/order 的條目(理論上不該發生)
+// 直接跳過,不強行塞進某一段造成錯誤分類。
+function groupBySegment(entries: PublicEntry[]): Record<PaceSegment, Checkpoint[]> {
+  const bySeg: Record<PaceSegment, PublicEntry[]> = { leg1: [], leg2: [], leg3: [], leg4: [] }
+  for (const e of entries) {
+    const seg = e.detail?.segment
+    if (seg && seg in bySeg) bySeg[seg].push(e)
+  }
+  const sorted = (list: PublicEntry[]) =>
+    [...list].sort((a, b) => (a.detail?.order ?? Infinity) - (b.detail?.order ?? Infinity)).map(entryToCheckpoint)
+  return { leg1: sorted(bySeg.leg1), leg2: sorted(bySeg.leg2), leg3: sorted(bySeg.leg3), leg4: sorted(bySeg.leg4) }
 }
 
 // RouteMeta:每段路線的摘要資訊。date 為必填(YYYY-MM-DD)——「目前站」
@@ -49,63 +116,34 @@ interface RouteMeta {
 // 里程數照紙條原始寫法保留,不強行從 0 起算(某幾段本來就是從路線中段
 // 開始記錄),故部分路段的進度條起點不是 0%。
 
-const LEG1_CHECKPOINTS: Checkpoint[] = [
-  { name: '光復橋啟', km: 0.0, tag: null, arrive: null, dwellMin: null, depart: '09:00', isStart: true },
-  { name: '左轉 明池街(花52)', km: null, tag: null, arrive: null, dwellMin: null, depart: null },
-  { name: 'R轉193', km: 5.0, tag: null, arrive: null, dwellMin: null, depart: null },
-  { name: '(68.5K路牌)〔補〕', km: 6.0, tag: '補給', arrive: null, dwellMin: null, depart: '10:00' },
-  { name: 'R轉大農大富', km: 9.3, tag: null, arrive: null, dwellMin: null, depart: null },
-  { name: '大農停車廠〔進〕', km: 10.5, tag: null, arrive: null, dwellMin: null, depart: '10:55' },
-  { name: 'L轉「南自行車道」', km: null, tag: null, arrive: null, dwellMin: null, depart: null },
-  { name: '七彩釣竿橋', km: 12.0, tag: null, arrive: null, dwellMin: null, depart: null },
-  { name: '過橋L轉、R.L往南自行車道', km: 12.1, tag: null, arrive: null, dwellMin: null, depart: '11:20' },
-  { name: '大富火車站', km: 17.0, tag: null, arrive: null, dwellMin: null, depart: '12:00' },
-  { name: '過富源國中續轉', km: 19.0, tag: null, arrive: null, dwellMin: null, depart: null },
-  { name: 'L轉富源火車路旁 富興客棧', km: 21.0, tag: null, arrive: '12:30', dwellMin: null, depart: null, isFinish: true },
-]
+// PACE_PUBLIC_LINK_TOKEN:本機測試用的公開分享連結 token(對應 ch_a5632424
+// 頻道,同時涵蓋 leg1~leg4 全部 4 段、28 筆 checkpoint)。這是暫時性的接法,
+// 只為了先驗證「前端讀 Entry」這條路徑可行——之後若要正式上線,這個 token
+// 不該寫死在程式碼裡,應該由頻道自己的設定或環境變數決定。
+const PACE_PUBLIC_LINK_TOKEN = 'lnk_77f2aa2b14c6'
+
+// 四段路線的摘要資訊(RouteMeta)。這些是純展示用的文字/彙總數字,後端
+// Entry/Detail 目前沒有對應的「整段路線摘要」資料結構可以承載,故仍維持
+// 手動維護的常數——跟 Checkpoint 本身(逐站資料,已改讀後端)是分開的兩件
+// 事,不在這次「把 checkpoint 資料串接到後端」的範圍內。
 const LEG1_META: RouteMeta = {
   title: '光復橋 → 富興客棧', subtitle: '193縣道・大農大富平地森林園區段', eyebrow: '配速表 · 花東193公路(Day 1 上半)',
   totalKm: 21.0, startTime: '09:00', finishTime: '12:30', avgSpeedKmh: null,
   footer: '里程與地標依手寫 pace note 轉錄。',
   date: '2026-07-31',
 }
-
-const LEG2_CHECKPOINTS: Checkpoint[] = [
-  { name: '193 83公里處', km: 6.6, tag: null, arrive: null, dwellMin: null, depart: '14:50', isStart: true },
-  { name: '屋拉力商店', km: 8.9, tag: null, arrive: null, dwellMin: null, depart: '15:10' },
-  { name: '瑞穗大橋', km: 9.0, tag: null, arrive: null, dwellMin: null, depart: null },
-  { name: '虎爺溫泉', km: 13.5, tag: null, arrive: null, dwellMin: null, depart: '17:40' },
-  { name: '老家後山菜', km: 16.3, tag: null, arrive: '18:00', dwellMin: null, depart: null, isFinish: true },
-]
 const LEG2_META: RouteMeta = {
   title: '193縣道83K → 老家後山菜', subtitle: '瑞穗・虎爺溫泉段', eyebrow: '配速表 · 花東193公路(Day 1 下半)',
   totalKm: 16.3, startTime: '14:50', finishTime: '18:00', avgSpeedKmh: null,
   footer: '里程與地標依手寫 pace note 轉錄。',
   date: '2026-07-31',
 }
-
-const LEG3_CHECKPOINTS: Checkpoint[] = [
-  { name: '青蓮寺', km: 0.0, tag: null, arrive: null, dwellMin: null, depart: '08:30', isStart: true },
-  { name: '花62接193', km: null, tag: null, arrive: null, dwellMin: null, depart: null },
-  { name: '泰林社區籃球場〔補〕', km: 6.8, tag: '補給', arrive: null, dwellMin: null, depart: '09:30' },
-  { name: '193 97.2K處、R轉玉里柴埔天堂路〔進〕', km: 9.0, tag: null, arrive: null, dwellMin: null, depart: '10:15' },
-  { name: '東豐愛心樹〔進〕', km: 17.0, tag: null, arrive: null, dwellMin: null, depart: '11:30' },
-  { name: '安通溫泉', km: 28.0, tag: null, arrive: '13:00', dwellMin: null, depart: null, isFinish: true },
-]
 const LEG3_META: RouteMeta = {
   title: '青蓮寺 → 安通溫泉', subtitle: '193縣道・玉里柴埔天堂路段', eyebrow: '配速表 · 花東193公路(Day 2 上半)',
   totalKm: 28.0, startTime: '08:30', finishTime: '13:00', avgSpeedKmh: null,
   footer: '里程與地標依手寫 pace note 轉錄。',
   date: '2026-08-01',
 }
-
-const LEG4_CHECKPOINTS: Checkpoint[] = [
-  { name: '安通鐵路驛站', km: 2.5, tag: null, arrive: null, dwellMin: null, depart: '13:00', isStart: true },
-  { name: '板塊交接上橋', km: 5.5, tag: null, arrive: null, dwellMin: null, depart: null },
-  { name: '忠孝紀念碑', km: 6.0, tag: null, arrive: null, dwellMin: null, depart: '16:40' },
-  { name: '出口．中心路一段R轉', km: null, tag: null, arrive: null, dwellMin: null, depart: null },
-  { name: '太司步廊', km: 7.5, tag: null, arrive: null, dwellMin: null, depart: null, isFinish: true },
-]
 const LEG4_META: RouteMeta = {
   title: '安通鐵路驛站 → 太司步廊', subtitle: '板塊交接上橋段', eyebrow: '配速表 · 花東193公路(Day 2 下半)',
   totalKm: 7.5, startTime: '13:00', finishTime: '16:40', avgSpeedKmh: null,
@@ -113,12 +151,18 @@ const LEG4_META: RouteMeta = {
   date: '2026-08-01',
 }
 
-const ROUTES: { key: string; label: string; checkpoints: Checkpoint[]; meta: RouteMeta }[] = [
-  { key: 'leg1', label: 'Day1 光復橋', checkpoints: LEG1_CHECKPOINTS, meta: LEG1_META },
-  { key: 'leg2', label: 'Day1 193/83K', checkpoints: LEG2_CHECKPOINTS, meta: LEG2_META },
-  { key: 'leg3', label: 'Day2 青蓮寺', checkpoints: LEG3_CHECKPOINTS, meta: LEG3_META },
-  { key: 'leg4', label: 'Day2 安通驛站', checkpoints: LEG4_CHECKPOINTS, meta: LEG4_META },
-]
+// buildRoutes:bySegment 是 fetch 回來、依 segment 分組排序好的資料(見
+// groupBySegment)——四段全部改讀後端,不再有任何寫死的 Checkpoint 常數。
+function buildRoutes(
+  bySegment: Record<PaceSegment, Checkpoint[]>,
+): { key: string; label: string; checkpoints: Checkpoint[]; meta: RouteMeta }[] {
+  return [
+    { key: 'leg1', label: 'Day1 光復橋', checkpoints: bySegment.leg1, meta: LEG1_META },
+    { key: 'leg2', label: 'Day1 193/83K', checkpoints: bySegment.leg2, meta: LEG2_META },
+    { key: 'leg3', label: 'Day2 青蓮寺', checkpoints: bySegment.leg3, meta: LEG3_META },
+    { key: 'leg4', label: 'Day2 安通驛站', checkpoints: bySegment.leg4, meta: LEG4_META },
+  ]
+}
 
 // ---- 「目前站」判斷邏輯(移植自原型的 highlightNow) ----
 
@@ -238,7 +282,44 @@ export function PaceChartDemo() {
   const [nowMark, setNowMark] = useState<NowMark | null>(null)
   // copied:分享按鈕點擊後短暫顯示「已複製連結」的回饋文字,2 秒後恢復。
   const [copied, setCopied] = useState(false)
-  const route = ROUTES[routeIdx]
+  // checkpointsBySegment/loadError:四段(leg1~leg4)全部改讀後端真實 Entry
+  // (見 PACE_PUBLIC_LINK_TOKEN 的說明),一次 fetch 拿全部 28 筆再依
+  // detail.segment 分組。null 代表還在載入中或已失敗——刻意不用假資料
+  // 頂著,fetch 失敗時要讓使用者看到明確的錯誤,而不是安靜地顯示一份可能
+  // 早已過時的寫死資料,掩蓋掉真實的失敗狀態。
+  const [checkpointsBySegment, setCheckpointsBySegment] = useState<Record<
+    PaceSegment,
+    Checkpoint[]
+  > | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${BASE_URL}/v1/public/${PACE_PUBLIC_LINK_TOKEN}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const text = await res.text().catch(() => '')
+          throw new Error(`載入配速表資料失敗(${res.status}): ${text.slice(0, 200)}`)
+        }
+        return res.json() as Promise<{ entries: PublicEntry[] }>
+      })
+      .then((data) => {
+        if (cancelled) return
+        setCheckpointsBySegment(groupBySegment(data.entries))
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setLoadError(e instanceof Error ? e.message : String(e))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const routes = buildRoutes(
+    checkpointsBySegment ?? { leg1: [], leg2: [], leg3: [], leg4: [] },
+  )
+  const route = routes[routeIdx]
   // 沿用 App.tsx todayRef 的既有寫法:型別維持非 nullable 的 RefObject<HTMLDivElement>
   // (跟 React 18 的 RefObject<T> 定義一致,才能直接傳給 <div ref>),掛載前用
   // as unknown as HTMLDivElement 頂住初始值,實際使用前一律先檢查 .current 是否存在。
@@ -263,10 +344,30 @@ export function PaceChartDemo() {
     }
   }, [nowMark])
 
+  // 四段 checkpoint 資料共用同一次 fetch,還在載入或已失敗時,四個分頁
+  // 都顯示同一組載入中/錯誤畫面,不再有「只影響其中一段」的情況。
+  if (loadError) {
+    return (
+      <div className="pace-chart">
+        <div className="rp-map-error">
+          <span>配速表載入失敗</span>
+          <span className="rp-map-error-detail">{loadError}</span>
+        </div>
+      </div>
+    )
+  }
+  if (checkpointsBySegment === null) {
+    return (
+      <div className="pace-chart">
+        <p className={styles.eyebrow}>載入配速表資料中…</p>
+      </div>
+    )
+  }
+
   return (
     <div className="pace-chart">
       <div className="pace-route-tabs">
-        {ROUTES.map((r, i) => (
+        {routes.map((r, i) => (
           <button
             key={r.key}
             type="button"
