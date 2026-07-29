@@ -1,22 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, Send, AlertCircle } from 'lucide-react'
-import type { ClientConfig, PublicLinkViewMode } from './api'
+import { useEffect, useRef, useState } from 'react'
+import { Send, AlertCircle } from 'lucide-react'
+import type { PublicLinkViewMode } from './api'
 import * as api from './api'
-import type { Entry, User } from './types'
+import type { Entry } from './types'
 import { MultiTrackTimeline } from './Timeline'
-import type { AssistLang } from './assistLang'
-import { ASSIST_LANG_KEY, getAssistLang } from './assistLang'
-import {
-  BASE_URL,
-  Avatar, errMsg, isSubmitEnter, LoginForm,
-} from './AppCommon'
-import { LangSelect, TokenDisplay } from './DesktopShared'
-import paceStyles from './PublicPaceView.module.css'
+import { BASE_URL, errMsg, isSubmitEnter, useIsDesktop } from './AppCommon'
+import { PaceChart, type Checkpoint } from './PaceChart'
+import { PaceRouteMap } from './PaceRouteMap'
+import { PacePhoneSwipe } from './PacePhoneSwipe'
 
-// PhoneScreens:手機版整頁畫面,從 App.tsx 拆出來——PublicViewScreen(公開
-// 分享頁)/SettingsScreen(設定頁)彼此不太耦合,但都只在手機版 PhoneContent
-// 裡被用到,合併成一個檔案。(原本的 ChannelsScreen 頻道列表已改為
-// PhoneNavDrawer.tsx 的行程列表分頁,不再是整頁元件。)
+// PhoneScreens:手機版公開分享頁(PublicViewScreen)——從 App.tsx 拆出來。
+// 設定頁(SettingsScreen)已經拆成獨立的 SettingsScreen.tsx,不再放這裡
+// (原本的 ChannelsScreen 頻道列表也已改為 PhoneNavDrawer.tsx 的行程列表
+// 分頁,不再是整頁元件)。
 
 // ---- 配速表模式的檢查站資料形狀 ----
 // 對應後端 Entry.detail 這個自訂 JSON 欄位裡,配速表專屬會用到的子集
@@ -44,55 +40,45 @@ function entryPaceDetail(e: Entry): PaceDetail | null {
   return detail as PaceDetail
 }
 
-// hasPaceData:分享彈窗選了「配速表」時,公開頁要判斷這個頻道的地點是否
-// 真的帶有配速表用的 detail 結構——這是額外用 CLI/entry-update 手動標註
+// hasPaceData:分享彈窗選了「路徑」時,公開頁要判斷這個頻道的地點是否
+// 真的帶有路徑用的 detail 結構——這是額外用 CLI/entry-update 手動標註
 // 的資料,不是分享彈窗本身能自動產生的,沒有這類資料時要顯示提示訊息,
-// 而不是渲染一個空清單假裝正常。
+// 而不是渲染一個空的抽屜欄假裝正常。
 function hasPaceData(entries: Entry[]): boolean {
   return entries.some((e) => entryPaceDetail(e) !== null)
 }
 
-// PublicPaceList:配速表模式下的檢查站清單——依 detail.segment 分組、組內
-// 依 detail.order 排序,呈現方式刻意精簡(不比照 PaceChart.tsx 那套固定
-// 路線分頁/摘要版面,那份版面綁定「花東193公路」demo 頻道寫死的路線標題
-// 與里程,不適合套用在任意頻道上),只列出各檢查站的名稱/里程/時刻。
-function PublicPaceList({ entries }: { entries: Entry[] }) {
-  const bySegment = useMemo(() => {
-    const groups = new Map<string, { entry: Entry; detail: PaceDetail }[]>()
-    for (const e of entries) {
-      const detail = entryPaceDetail(e)
-      if (!detail) continue
-      const list = groups.get(detail.segment) ?? []
-      list.push({ entry: e, detail })
-      groups.set(detail.segment, list)
-    }
-    for (const list of groups.values()) {
-      list.sort((a, b) => a.detail.order - b.detail.order)
-    }
-    return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))
-  }, [entries])
-
+// PublicPaceDrawerMap:路徑模式下的呈現——套用跟登入後正式介面/`/demo/pace`
+// 示範頁相同的「左側抽屜欄(PaceChart 檢查站清單)+ 主顯示區地圖
+// (PaceRouteMap)」結構(PacePhoneSwipe.tsx 手機寬度、桌面寬度則側欄+主區
+// 並排,比照 PublicPaceDemoPage.tsx 的桌面分支),取代原本精簡的卡片清單
+// (PublicPaceList,已移除)——這裡不帶上方功能列(navbar),因為
+// PublicViewScreen 本身已經有自己的 navbar(頻道名稱標題),不需要疊兩層。
+// checkpoints 狀態提升到這裡,理由同 DesktopLayout.tsx/PhoneContent.tsx:
+// PaceChart(抽屜/側欄)與 PaceRouteMap(地圖)是分開掛載的 sibling,靠
+// PaceChart 的 onRouteChange 把目前選取的段落鏡像上來再轉傳給地圖。
+// publicToken 直接傳這個分享頁自己的 token(見 PaceChart.tsx 的 publicToken
+// prop 說明),不是 /demo/pace 那個寫死的展示頻道 token。
+function PublicPaceDrawerMap({ token }: { token: string }) {
+  const isDesktop = useIsDesktop()
+  const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([])
+  if (!isDesktop) {
+    return <PacePhoneSwipe publicToken={token} checkpoints={checkpoints} onRouteChange={setCheckpoints} />
+  }
   return (
-    <div className={paceStyles.list}>
-      {bySegment.map(([segment, items]) => (
-        <div key={segment}>
-          {items.map(({ entry, detail }) => {
-            const time = detail.isFinish ? detail.arriveTime : (detail.departTime ?? detail.arriveTime)
-            return (
-              <div className={paceStyles.card} key={entry.id}>
-                <div className={paceStyles.cardLeft}>
-                  <div className={paceStyles.name}>{entry.title}</div>
-                  <div className={paceStyles.meta}>
-                    {detail.tag ? `${detail.tag} ・ ` : ''}
-                    {detail.km !== null ? `${detail.km.toFixed(1)} km` : '—'}
-                  </div>
-                </div>
-                <div className={paceStyles.time}>{time ?? '—'}</div>
-              </div>
-            )
-          })}
+    <div className="desktop-layout">
+      <aside className="desktop-sidepanel wide">
+        <div className="desktop-sidepanel-inner">
+          <div className="desktop-sidepanel-pace">
+            <PaceChart publicToken={token} onRouteChange={setCheckpoints} />
+          </div>
         </div>
-      ))}
+      </aside>
+      <main className="desktop-main">
+        <div className="desktop-demo-panel">
+          <PaceRouteMap checkpoints={checkpoints} />
+        </div>
+      </main>
     </div>
   )
 }
@@ -145,6 +131,15 @@ export function PublicViewScreen({ token }: { token: string }) {
     }
   }
 
+  // 路徑模式且真的有路徑資料時,改用抽屜欄+地圖的滿版結構(見
+  // PublicPaceDrawerMap 的說明)——那套結構自己已經佔滿整個畫面(比照
+  // PacePhoneSwipe.tsx/DesktopLayout.tsx 的定位方式),不需要再包一層這裡
+  // 的 .navbar/.screen-body,也不會有新增行程的輸入列(路徑模式不接寫入
+  // 互動,理由同時間軸模式以外的其餘邏輯不變)。
+  if (data && data.entries.length > 0 && data.viewMode === 'pace' && hasPaceData(data.entries)) {
+    return <PublicPaceDrawerMap token={token} />
+  }
+
   return (
     <>
       <div className="navbar">
@@ -159,16 +154,11 @@ export function PublicViewScreen({ token }: { token: string }) {
           data.entries.length === 0
             ? <div className="empty">此行程尚無內容。</div>
             : data.viewMode === 'pace'
-              ? (
-                hasPaceData(data.entries)
-                  ? <PublicPaceList entries={data.entries} />
-                  // 分享者選了「配速表」,但這個頻道的地點沒有配速表需要的
-                  // detail 結構(那是額外用 CLI/entry-update 手動標註的資料,
-                  // 分享彈窗本身不會自動產生)——顯示明確提示,不要求訪客
-                  // 自己猜「怎麼是空的」,也不要靜默退回時間軸掩蓋掉分享者
-                  // 原本的選擇。
-                  : <div className="empty">此行程尚無配速表資料。</div>
-              )
+              // 分享者選了「路徑」,但這個頻道的地點沒有路徑需要的 detail
+              // 結構(那是額外用 CLI/entry-update 手動標註的資料,分享彈窗
+              // 本身不會自動產生)——顯示明確提示,不要求訪客自己猜「怎麼
+              // 是空的」,也不要靜默退回時間軸掩蓋掉分享者原本的選擇。
+              ? <div className="empty">此行程尚無路徑資料。</div>
               : <MultiTrackTimeline entries={data.entries} todayRef={todayRef} />
         )}
       </div>
@@ -188,118 +178,6 @@ export function PublicViewScreen({ token }: { token: string }) {
           </div>
         </div>
       )}
-    </>
-  )
-}
-
-// ---- 設定頁(連線設定 + 測試 health) ----
-
-export function SettingsScreen({
-  cfg,
-  user,
-  email,
-  isGuest,
-  onAuthed,
-  onLogout,
-  onBack,
-}: {
-  cfg: ClientConfig
-  user: User
-  email: string
-  isGuest: boolean
-  onAuthed: (token: string, user: User, email: string) => void
-  onLogout: () => void
-  onBack?: () => void
-}) {
-  const [health, setHealth] = useState<string>('未測試')
-  const [assistLang, setAssistLang] = useState<AssistLang>(() => getAssistLang())
-
-  const ping = async () => {
-    setHealth('測試中…')
-    try {
-      const r = await api.health(cfg)
-      setHealth(`✅ ${r.status}`)
-    } catch (e) {
-      setHealth(`❌ ${errMsg(e)}`)
-    }
-  }
-
-  return (
-    <>
-      <div className="navbar">
-        {onBack ? (
-          <button className="btn icon-btn" onClick={onBack}>
-            <ChevronLeft size={20} strokeWidth={1.8} />
-          </button>
-        ) : (
-          <span style={{ width: 36 }} />
-        )}
-        <span className="title">設定</span>
-        <span style={{ width: 36 }} />
-      </div>
-      <div className="screen-body">
-        {isGuest ? (
-          <>
-            <div className="section-title">目前身分</div>
-            <div className="row">
-              <Avatar user={user} />
-              <div className="grow">
-                <div className="name">訪客</div>
-                <div className="sub">登入後發送的訊息會以你的身分顯示</div>
-              </div>
-            </div>
-            <LoginForm baseURL={cfg.baseURL} onAuthed={onAuthed} />
-          </>
-        ) : (
-          <>
-            <div className="section-title">目前登入</div>
-            <div className="row">
-              <Avatar user={user} />
-              <div className="grow">
-                <div className="name">{user.name}</div>
-                <div className="sub">{email || user.id}</div>
-              </div>
-            </div>
-            <div className="row" onClick={onLogout}>
-              <div className="grow">
-                <div className="name" style={{ color: 'var(--ios-red)' }}>登出</div>
-              </div>
-              <ChevronLeft size={16} strokeWidth={1.5} color="#c7c7cc" style={{ transform: 'rotate(180deg)' }} />
-            </div>
-            <div className="section-title">API Token (CLI 用)</div>
-            <TokenDisplay token={cfg.token} />
-          </>
-        )}
-        <div className="section-title">後端連線</div>
-        <div className="field">
-          <label>Base URL(由 VITE_API_BASE 設定,不可於此修改)</label>
-          <input value={cfg.baseURL} readOnly disabled />
-        </div>
-        <div className="section-title">LLM 回答語言</div>
-        <div className="field">
-          <label>助理回答(assist/語意查詢)使用的語言,不影響介面文字</label>
-          <LangSelect
-            value={assistLang}
-            onChange={(v) => {
-              setAssistLang(v)
-              localStorage.setItem(ASSIST_LANG_KEY, v)
-            }}
-          />
-        </div>
-        <div className="section-title">健康檢查</div>
-        <div className="row" onClick={ping}>
-          <div className="grow">
-            <div className="name">GET /health</div>
-            <div className="sub">{health}</div>
-          </div>
-          <ChevronLeft size={16} strokeWidth={1.5} color="#c7c7cc" style={{ transform: 'rotate(180deg)' }} />
-        </div>
-        <div className="section-title">說明</div>
-        <div className="field" style={{ color: 'var(--ios-gray)', fontSize: 13 }}>
-          登入身分存於 localStorage,跨分頁共用同一身分。
-          右側 debug panel 記錄每次 API 交易。
-        </div>
-      </div>
     </>
   )
 }

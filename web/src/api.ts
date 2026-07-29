@@ -354,6 +354,22 @@ export function fetchEntries(cfg: ClientConfig, channelID: string) {
   ).then((r) => r.entries)
 }
 
+// geocodeEntry:對齊 server 的 POST /internal/entries/{id}/geocode
+// (handleGeocodeEntry,見 entry_geocode.go)——用這筆 entry 現有的 title
+// 當查詢字串,伺服器端呼叫 Geocoding API 查出座標後自動寫回 entry。用途:
+// 配速表(PaceChart.tsx)點擊尚未有座標的檢查站卡片時,先呼叫這支端點
+// 補上座標,成功後才把結果(lat/lng)交給地圖(PaceRouteMap.tsx)平移
+// 過去——理由是「點卡片→地圖平移」這個既有互動假設 lat/lng 已知,沒座標
+// 的卡片不能直接套用同一條路徑,得先補資料才有座標可以平移。
+export function geocodeEntry(cfg: ClientConfig, entryID: string) {
+  return request<{ entryID: string; query: string; address: string; lat: number; lng: number }>(
+    cfg,
+    'POST',
+    `/internal/entries/${encodeURIComponent(entryID)}/geocode`,
+    {},
+  )
+}
+
 // 手動編輯條目(不經 AI),對齊 server 的 PATCH /v1/entries/{id}(handleUpdateEntry)。
 // 只傳有要改的欄位:空字串/undefined 視為不改該欄位(見 store.UpdateEntry),
 // 呼叫端不需帶齊 Entry 全部欄位,只需帶使用者在表單裡實際改過的值。

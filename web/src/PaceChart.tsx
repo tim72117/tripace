@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Share2 } from 'lucide-react'
 import styles from './PaceChart.module.css'
 import { BASE_URL } from './AppCommon'
-import { fetchEntries, type ClientConfig } from './api'
+import { fetchEntries, geocodeEntry, type ClientConfig } from './api'
 
 // 單車配速表(UI 試做):手機優先的直向卡片堆疊,每張卡片是一個檢查站,
 // 核心資訊是「離站時間」(視覺上用最大字級呈現)。設計與互動邏輯直接
@@ -39,9 +39,12 @@ export interface Checkpoint {
 // 去的配速表專屬資料(見 server/internal/store 的 Detail 欄位機制),後端對
 // 這個欄位沒有固定 schema 驗證,故這裡的型別只是前端這端的假設,不是後端
 // 強制保證的格式。
-// PaceSegment:對應後端 Detail.segment 的合法值,即這個元件四個分頁各自的
-// key——寫入端(cmd/cli entry-update -detail)與這裡的 key 命名必須一致。
-type PaceSegment = 'leg1' | 'leg2' | 'leg3' | 'leg4'
+// PaceSegment:對應後端 Detail.segment 的值——任意頻道可以自訂任何段名,
+// 不再假設固定是 leg1~leg4 這四個(那是原本花東193公路 demo 頻道自己選用
+// 的 key,不是後端強制的合法值集合)。型別因此收斂成單純的 string;
+// leg1~leg4 仍然是「已知/手動維護摘要資料」的其中幾個 key,見下方
+// KNOWN_ROUTE_META。
+type PaceSegment = string
 
 interface PublicEntry {
   id: string
@@ -97,31 +100,46 @@ function entryToCheckpoint(e: PublicEntry): Checkpoint {
 }
 
 // groupBySegment:依 detail.segment 分組、組內再依 detail.order 排序,回傳
-// 四段各自的 Checkpoint 陣列。缺少 segment/order 的條目(理論上不該發生)
-// 直接跳過,不強行塞進某一段造成錯誤分類。
-function groupBySegment(entries: PublicEntry[]): Record<PaceSegment, Checkpoint[]> {
-  const bySeg: Record<PaceSegment, PublicEntry[]> = { leg1: [], leg2: [], leg3: [], leg4: [] }
+// 一個依 segment 分組好的 Map,依 segment key 字母序排序(跟
+// PhoneScreens.tsx 的 PublicPaceList 同一套分組/排序寫法,見該檔案
+// `[...groups.entries()].sort(([a], [b]) => a.localeCompare(b))`)——任意
+// 頻道會出現任意數量、任意命名的 segment,不再假設剛好四段、也不再假設
+// key 一定是 leg1~leg4。缺少 segment 的條目(理論上不該發生)直接跳過,
+// 不強行塞進某一段造成錯誤分類。
+function groupBySegment(entries: PublicEntry[]): Map<string, Checkpoint[]> {
+  const groups = new Map<string, PublicEntry[]>()
   for (const e of entries) {
     const seg = e.detail?.segment
-    if (seg && seg in bySeg) bySeg[seg].push(e)
+    if (!seg) continue
+    const list = groups.get(seg) ?? []
+    list.push(e)
+    groups.set(seg, list)
   }
-  const sorted = (list: PublicEntry[]) =>
-    [...list].sort((a, b) => (a.detail?.order ?? Infinity) - (b.detail?.order ?? Infinity)).map(entryToCheckpoint)
-  return { leg1: sorted(bySeg.leg1), leg2: sorted(bySeg.leg2), leg3: sorted(bySeg.leg3), leg4: sorted(bySeg.leg4) }
+  const sorted = new Map<string, Checkpoint[]>()
+  for (const [seg, list] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    sorted.set(
+      seg,
+      [...list].sort((a, b) => (a.detail?.order ?? Infinity) - (b.detail?.order ?? Infinity)).map(entryToCheckpoint),
+    )
+  }
+  return sorted
 }
 
-// RouteMeta:每段路線的摘要資訊。date 為必填(YYYY-MM-DD)——「目前站」
-// 判斷需要拿裝置今天的日期跟這裡比對(見 computeNowMark 呼叫處),沒有
-// 「不綁日期」這種路線,故不用 string | null。
+// RouteMeta:每段路線的摘要資訊。title/subtitle/eyebrow 是純展示用文字,
+// 對任意頻道的 segment 沒有對應的後端資料來源,故改成可選——沒有值時
+// 對應的區塊直接不渲染(見下方渲染邏輯),不用假資料頂著。totalKm 同理
+// 可能算不出來(checkpoint 完全沒有 km 資料),故也允許 null。date 一樣
+// 允許 null/undefined——「目前站」判斷(computeNowMark)拿不到可靠日期時,
+// 直接視為不比對、不標記,不當成錯誤。
 interface RouteMeta {
-  title: string
-  subtitle: string
-  eyebrow: string
-  totalKm: number
+  title?: string
+  subtitle?: string
+  eyebrow?: string
+  totalKm: number | null
   startTime: string
   finishTime: string
   avgSpeedKmh: number | null
-  date: string
+  date?: string | null
 }
 
 // ---- 花東193公路 pace note(真實手寫紀錄轉錄,與 ch_57910e64 頻道底下的
@@ -142,42 +160,91 @@ interface RouteMeta {
 // useEffect),不綁定固定頻道,也不需要經過公開連結機制。
 const PACE_PUBLIC_LINK_TOKEN = import.meta.env.VITE_PACE_PUBLIC_LINK_TOKEN as string | undefined
 
-// 四段路線的摘要資訊(RouteMeta)。這些是純展示用的文字/彙總數字,後端
-// Entry/Detail 目前沒有對應的「整段路線摘要」資料結構可以承載,故仍維持
-// 手動維護的常數——跟 Checkpoint 本身(逐站資料,已改讀後端)是分開的兩件
-// 事,不在這次「把 checkpoint 資料串接到後端」的範圍內。
-const LEG1_META: RouteMeta = {
-  title: '光復橋 → 富興客棧', subtitle: '193縣道・大農大富平地森林園區段', eyebrow: '配速表 · 花東193公路(Day 1 上半)',
-  totalKm: 21.0, startTime: '09:00', finishTime: '12:30', avgSpeedKmh: null,
-  date: '2026-07-31',
+// KNOWN_ROUTE_META:已知/手動維護的路線摘要,目前只有花東193公路 demo
+// 頻道的 leg1~leg4 四段——這些是純展示用的文字/彙總數字,後端 Entry/Detail
+// 沒有對應的「整段路線摘要」資料結構可以承載,故仍維持手動維護的常數。
+// 任意真實頻道的 segment 名稱不會出現在這個表裡,會落到下方
+// computeRouteMeta() 的通用推算路徑,不是這裡的責任。
+const KNOWN_ROUTE_META: Record<string, RouteMeta> = {
+  leg1: {
+    title: '光復橋 → 富興客棧', subtitle: '193縣道・大農大富平地森林園區段', eyebrow: '路徑 · 花東193公路(Day 1 上半)',
+    totalKm: 21.0, startTime: '09:00', finishTime: '12:30', avgSpeedKmh: null,
+    date: '2026-07-31',
+  },
+  leg2: {
+    title: '193縣道83K → 老家後山菜', subtitle: '瑞穗・虎爺溫泉段', eyebrow: '路徑 · 花東193公路(Day 1 下半)',
+    totalKm: 16.3, startTime: '14:50', finishTime: '18:00', avgSpeedKmh: null,
+    date: '2026-07-31',
+  },
+  leg3: {
+    title: '青蓮寺 → 安通溫泉', subtitle: '193縣道・玉里柴埔天堂路段', eyebrow: '路徑 · 花東193公路(Day 2 上半)',
+    totalKm: 28.0, startTime: '08:30', finishTime: '13:00', avgSpeedKmh: null,
+    date: '2026-08-01',
+  },
+  leg4: {
+    title: '安通鐵路驛站 → 太司步廊', subtitle: '板塊交接上橋段', eyebrow: '路徑 · 花東193公路(Day 2 下半)',
+    totalKm: 7.5, startTime: '13:00', finishTime: '16:40', avgSpeedKmh: null,
+    date: '2026-08-01',
+  },
 }
-const LEG2_META: RouteMeta = {
-  title: '193縣道83K → 老家後山菜', subtitle: '瑞穗・虎爺溫泉段', eyebrow: '配速表 · 花東193公路(Day 1 下半)',
-  totalKm: 16.3, startTime: '14:50', finishTime: '18:00', avgSpeedKmh: null,
-  date: '2026-07-31',
+
+// KNOWN_ROUTE_LABELS:已知 segment 對應的分頁標籤文字,同樣只涵蓋
+// leg1~leg4——維持既有 demo 頻道的確切文案。
+const KNOWN_ROUTE_LABELS: Record<string, string> = {
+  leg1: 'Day1 光復橋',
+  leg2: 'Day1 193/83K',
+  leg3: 'Day2 青蓮寺',
+  leg4: 'Day2 安通驛站',
 }
-const LEG3_META: RouteMeta = {
-  title: '青蓮寺 → 安通溫泉', subtitle: '193縣道・玉里柴埔天堂路段', eyebrow: '配速表 · 花東193公路(Day 2 上半)',
-  totalKm: 28.0, startTime: '08:30', finishTime: '13:00', avgSpeedKmh: null,
-  date: '2026-08-01',
-}
-const LEG4_META: RouteMeta = {
-  title: '安通鐵路驛站 → 太司步廊', subtitle: '板塊交接上橋段', eyebrow: '配速表 · 花東193公路(Day 2 下半)',
-  totalKm: 7.5, startTime: '13:00', finishTime: '16:40', avgSpeedKmh: null,
-  date: '2026-08-01',
+
+// computeRouteMeta:任意頻道的 segment(不在 KNOWN_ROUTE_META 裡)沒有
+// 手動維護的摘要文字/數字可用,改由這一段的 checkpoints 本身推算出合理的
+// 預設值——totalKm 取最大 km(或終點站 km);startTime/finishTime 取第一筆
+// 有時刻的離站時間、最後一筆(終點優先)有時刻的抵達時間;title 用「起點
+// → 終點」名稱組出來;subtitle/eyebrow 沒有對應資料來源,留空(渲染端會
+// 因此不顯示這兩塊,見下方 JSX);date 沒有可靠來源,留 null,「目前站」
+// 判斷會因此直接不比對(不是當成錯誤)。
+function computeRouteMeta(checkpoints: Checkpoint[]): RouteMeta {
+  const kms = checkpoints.map((cp) => cp.km).filter((km): km is number => km !== null)
+  const finish = checkpoints.find((cp) => cp.isFinish)
+  const totalKm = finish?.km ?? (kms.length > 0 ? Math.max(...kms) : null)
+
+  const firstTimed = checkpoints.find((cp) => cp.depart !== null || cp.arrive !== null)
+  const startTime = firstTimed?.depart ?? firstTimed?.arrive ?? '—'
+  const lastTimed = [...checkpoints].reverse().find((cp) => cp.arrive !== null || cp.depart !== null)
+  const finishTime = (finish ?? lastTimed)?.arrive ?? lastTimed?.depart ?? '—'
+
+  const first = checkpoints[0]
+  const last = checkpoints[checkpoints.length - 1]
+  const title = first && last && first !== last ? `${first.name} → ${last.name}` : first?.name
+
+  return {
+    title,
+    subtitle: undefined,
+    eyebrow: undefined,
+    totalKm,
+    startTime,
+    finishTime,
+    avgSpeedKmh: null,
+    date: null,
+  }
 }
 
 // buildRoutes:bySegment 是 fetch 回來、依 segment 分組排序好的資料(見
-// groupBySegment)——四段全部改讀後端,不再有任何寫死的 Checkpoint 常數。
+// groupBySegment),依 segment key 字母序排列(Map 本身已經是排序過的,見
+// groupBySegment)。已知 segment(leg1~leg4)套用手動維護的
+// KNOWN_ROUTE_META/KNOWN_ROUTE_LABELS,維持既有 demo 頻道的確切文案;
+// 其餘任意 segment 落到 computeRouteMeta() 通用推算、標籤直接用 segment
+// key 本身(沒有更好的來源可用)。
 function buildRoutes(
-  bySegment: Record<PaceSegment, Checkpoint[]>,
+  bySegment: Map<string, Checkpoint[]>,
 ): { key: string; label: string; checkpoints: Checkpoint[]; meta: RouteMeta }[] {
-  return [
-    { key: 'leg1', label: 'Day1 光復橋', checkpoints: bySegment.leg1, meta: LEG1_META },
-    { key: 'leg2', label: 'Day1 193/83K', checkpoints: bySegment.leg2, meta: LEG2_META },
-    { key: 'leg3', label: 'Day2 青蓮寺', checkpoints: bySegment.leg3, meta: LEG3_META },
-    { key: 'leg4', label: 'Day2 安通驛站', checkpoints: bySegment.leg4, meta: LEG4_META },
-  ]
+  return [...bySegment.entries()].map(([key, checkpoints]) => ({
+    key,
+    label: KNOWN_ROUTE_LABELS[key] ?? key,
+    checkpoints,
+    meta: KNOWN_ROUTE_META[key] ?? computeRouteMeta(checkpoints),
+  }))
 }
 
 // ---- 「目前站」判斷邏輯(移植自原型的 highlightNow) ----
@@ -236,15 +303,19 @@ function CheckpointCard({
   isNow,
   cardRef,
   onClick,
+  geocoding,
 }: {
   cp: Checkpoint
   isNow: boolean
   cardRef?: React.RefObject<HTMLDivElement>
   // onClick:通知父層「使用者點了這個檢查站」,由 PaceChart 的
-  // onCheckpointClick prop 往下傳——沒有座標(cp.lat/lng 為 null)的卡片
-  // 完全不掛這個 handler,點擊沒有任何效果,不會呼叫一個沒有意義的
-  // (null, null) 平移。
+  // handleCheckpointClick 往下傳——沒有座標的卡片一樣會掛這個 handler
+  // (跟以前不同,以前完全不可點擊),點擊後由 handleCheckpointClick 決定
+  // 要不要先呼叫後端補座標(見該函式的說明),不是在這裡判斷。
   onClick?: () => void
+  // geocoding:這張卡片目前正在補座標(見 PaceChart 的 geocodingID)——
+  // 顯示「定位中…」取代原本的離站/抵達時間,同時停用點擊,避免重複觸發。
+  geocoding?: boolean
 }) {
   const stateClass = [
     styles.stop,
@@ -261,7 +332,7 @@ function CheckpointCard({
   const coreValue = !hasTime ? '—' : cp.isFinish ? cp.arrive : cp.depart
 
   return (
-    <div className={stateClass} ref={cardRef} onClick={onClick}>
+    <div className={stateClass} ref={cardRef} onClick={geocoding ? undefined : onClick}>
       <div className={styles.stopLeft}>
         {isNow && (
           <div className={styles.nowFlag}>
@@ -280,8 +351,14 @@ function CheckpointCard({
         )}
       </div>
       <div className={styles.stopRight}>
-        <div className={styles.depLabel}>{coreLabel}</div>
-        <div className={`${styles.depVal} ${styles.mono}`}>{coreValue}</div>
+        {geocoding ? (
+          <div className={`${styles.depVal} ${styles.mono}`}>定位中…</div>
+        ) : (
+          <>
+            <div className={styles.depLabel}>{coreLabel}</div>
+            <div className={`${styles.depVal} ${styles.mono}`}>{coreValue}</div>
+          </>
+        )}
         {cp.arrive && !cp.isFinish && (
           <span className={cp.isLongRest ? `${styles.dwellVal} ${styles.long}` : styles.dwellVal}>
             抵 {cp.arrive}・停 {cp.dwellMin}m{cp.isLongRest ? ' 午餐' : ''}
@@ -303,37 +380,67 @@ function todayStr(): string {
 export function PaceChart({
   cfg,
   channelID,
+  publicToken,
   onCheckpointClick,
+  onRouteChange,
 }: {
   // cfg:登入後正式介面(DesktopLayout.tsx)傳入自己的 ClientConfig,改走
-  // 認證過的 fetchEntries 讀取資料。不傳(PublicPaceDemoPage.tsx 公開分享頁)
-  // 則 fallback 走公開連結 token(見下方 useEffect)。
+  // 認證過的 fetchEntries 讀取資料。不傳時走公開連結 token(見下方
+  // useEffect),依 publicToken 是否有值決定用哪一個 token(見該 prop
+  // 說明)。
   cfg?: ClientConfig
   // channelID:登入後正式介面要讀取的頻道 ID,跟時間軸(MultiTrackTimeline)
   // 同一套邏輯——用使用者目前選取的 activeChannel?.id,不綁定固定頻道。
   // 沒有選取頻道時(undefined/null)顯示提示訊息,不發任何請求(見下方
   // useEffect)。cfg 為 undefined(公開分享頁)時這個 prop 不會被使用。
   channelID?: string | null
+  // publicToken:未登入的公開分享頁(cfg 為 undefined 時)要查詢的公開連結
+  // token——真正的分享連結 /public/{token}(見 PublicViewScreen.tsx,任意
+  // 使用者頻道的分享連結,網址列上的動態 token)應該傳這個 prop 指定實際的
+  // token。不傳時 fallback 用 PACE_PUBLIC_LINK_TOKEN(見下方常數說明,固定
+  // 的 demo 展示頻道專用,/demo/pace 那個獨立示範頁在用),維持該頁既有行為
+  // 不變。
+  publicToken?: string
   // onCheckpointClick:通知父層(DesktopLayout.tsx 登入後正式介面)使用者
   // 點了哪個檢查站,讓地圖(PaceRouteMap)能平移過去、進入手動微調座標模式。
   // 可選是因為 PublicPaceDemoPage.tsx(/demo/pace 公開分享頁)刻意不接這套
   // 互動(寫入座標需要登入身分,不該出現在公開頁),掛載時不傳這個 prop。
   onCheckpointClick?: (entry: { id: string; lat: number | null; lng: number | null }) => void
+  // onRouteChange:目前選取的那一段(routeIdx 對應的 route.checkpoints)
+  // 變動時往上通知——PaceRouteMap(地圖)畫路線需要這份依序排列的
+  // checkpoint 清單(entry id,依 order 排序),但地圖跟這個元件是分開掛載
+  // 的兩個 sibling(桌面版側欄+主區、手機版抽屜+主顯示區皆然),資料只有
+  // 這裡有,故用這個 callback 把「目前這一段有哪些 checkpoint」往上鏡像給
+  // 共同的父層(DesktopLayout.tsx/PhoneContent.tsx),再由父層轉傳給
+  // PaceRouteMap——同一套模式比照 ChatScreen 的 onTimelineData 鏡像
+  // 機制。可選是因為 PublicPaceDemoPage.tsx 公開分享頁沒有相鄰的地圖
+  // 元件可以接收這份資料,不需要傳。
+  onRouteChange?: (checkpoints: Checkpoint[]) => void
 }) {
   const [routeIdx, setRouteIdx] = useState(0)
   const [nowMark, setNowMark] = useState<NowMark | null>(null)
   // copied:分享按鈕點擊後短暫顯示「已複製連結」的回饋文字,2 秒後恢復。
   const [copied, setCopied] = useState(false)
-  // checkpointsBySegment/loadError:四段(leg1~leg4)全部改讀後端真實 Entry
-  // (見 PACE_PUBLIC_LINK_TOKEN 的說明),一次 fetch 拿全部 28 筆再依
-  // detail.segment 分組。null 代表還在載入中或已失敗——刻意不用假資料
+  // checkpointsBySegment/loadError:任意數量的段落,全部改讀後端真實 Entry
+  // (見 PACE_PUBLIC_LINK_TOKEN 的說明),一次 fetch 拿全部條目再依
+  // detail.segment 分組(見 groupBySegment,依實際出現過的 segment 值動態
+  // 建立,不假設剛好四段)。null 代表還在載入中或已失敗——刻意不用假資料
   // 頂著,fetch 失敗時要讓使用者看到明確的錯誤,而不是安靜地顯示一份可能
   // 早已過時的寫死資料,掩蓋掉真實的失敗狀態。
-  const [checkpointsBySegment, setCheckpointsBySegment] = useState<Record<
+  const [checkpointsBySegment, setCheckpointsBySegment] = useState<Map<
     PaceSegment,
     Checkpoint[]
   > | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  // geocodingID/geocodeErr:點擊尚未有座標的檢查站卡片時,先呼叫後端
+  // geocodeEntry(用這筆 entry 的 title 查座標並自動寫回)補上座標,成功後
+  // 才呼叫 onCheckpointClick 通知父層平移地圖——地圖(PaceRouteMap.tsx)的
+  // 既有互動假設 lat/lng 已知,沒座標的卡片不能直接套用同一條路徑。
+  // geocodingID 記錄「目前正在補座標的是哪一筆」,驅動該卡片的載入態視覺
+  // 回饋;一次只會有一筆在補(卡片點擊處理中會忽略後續點擊,見下方
+  // handleCheckpointClick)。
+  const [geocodingID, setGeocodingID] = useState<string | null>(null)
+  const [geocodeErr, setGeocodeErr] = useState<string | null>(null)
 
   useEffect(() => {
     // 登入後正式介面(cfg 有值)但還沒選頻道:比照時間軸「選擇一個行程後
@@ -346,18 +453,21 @@ export function PaceChart({
     let cancelled = false
     // 登入後正式介面(cfg 有值):走一般認證過的頻道 entries API,讀取
     // 使用者目前選取的頻道(channelID),不再經過公開連結 token。未登入的
-    // 公開分享頁(cfg 為 undefined):維持走公開連結 token(這是它本來就
-    // 該有的合法用途,不是臨時接法)。
+    // 公開分享頁(cfg 為 undefined):走公開連結 token——優先用呼叫端傳入的
+    // publicToken(真正的分享連結 /public/{token},見該 prop 說明),沒傳
+    // 才 fallback 用固定的 PACE_PUBLIC_LINK_TOKEN(/demo/pace 那個獨立示範
+    // 頁專用)。
+    const effectiveToken = publicToken ?? PACE_PUBLIC_LINK_TOKEN
     const load = cfg
       ? fetchEntries(cfg, channelID!).then((entries) => entries as unknown as PublicEntry[])
       : (() => {
-          if (!PACE_PUBLIC_LINK_TOKEN) {
+          if (!effectiveToken) {
             return Promise.reject(new Error('未設定 VITE_PACE_PUBLIC_LINK_TOKEN(見 web/.env.development)'))
           }
-          return fetch(`${BASE_URL}/v1/public/${PACE_PUBLIC_LINK_TOKEN}`).then(async (res) => {
+          return fetch(`${BASE_URL}/v1/public/${effectiveToken}`).then(async (res) => {
             if (!res.ok) {
               const text = await res.text().catch(() => '')
-              throw new Error(`載入配速表資料失敗(${res.status}): ${text.slice(0, 200)}`)
+              throw new Error(`載入路徑資料失敗(${res.status}): ${text.slice(0, 200)}`)
             }
             return (await res.json() as { entries: PublicEntry[] }).entries
           })
@@ -374,12 +484,30 @@ export function PaceChart({
     return () => {
       cancelled = true
     }
-  }, [cfg, channelID])
+  }, [cfg, channelID, publicToken])
 
-  const routes = buildRoutes(
-    checkpointsBySegment ?? { leg1: [], leg2: [], leg3: [], leg4: [] },
+  // routes/route 用 useMemo 包住,只在 checkpointsBySegment 真的變動(重新
+  // fetch 完成)時才重新建立——buildRoutes() 每次呼叫都會回傳新的陣列/物件
+  // 參照,若不memo,route.checkpoints 這個參照會在「每一次渲染」都不同,
+  // 即使底層資料完全沒變。這會讓下方 onRouteChange 那個 effect(依賴
+  // route.checkpoints)每次渲染都判定「依賴變了」而重新觸發、呼叫
+  // setPaceCheckpoints(在父層),導致父層重渲染、這裡再重渲染,形成無窮
+  // 迴圈(實測會直接跳出 React 的 "Maximum update depth exceeded" 警告)。
+  const routes = useMemo(
+    () => buildRoutes(checkpointsBySegment ?? new Map()),
+    [checkpointsBySegment],
   )
-  const route = routes[routeIdx]
+  // route:routes 現在长度不再保證固定為 4(依實際出現的 segment 數量而
+  // 定),理論上也可能是空陣列(頻道所有 entries 都沒有 detail.segment)。
+  // fallback 一個空段落,避免下方邏輯對 undefined 取屬性而炸掉——渲染端
+  // 對 checkpoints.length === 0 本身就有既有的空清單呈現方式,不需要額外
+  // 處理。
+  const route = routes[routeIdx] ?? {
+    key: '',
+    label: '',
+    checkpoints: [] as Checkpoint[],
+    meta: { totalKm: null, startTime: '—', finishTime: '—', avgSpeedKmh: null } as RouteMeta,
+  }
   // 沿用 App.tsx todayRef 的既有寫法:型別維持非 nullable 的 RefObject<HTMLDivElement>
   // (跟 React 18 的 RefObject<T> 定義一致,才能直接傳給 <div ref>),掛載前用
   // as unknown as HTMLDivElement 頂住初始值,實際使用前一律先檢查 .current 是否存在。
@@ -388,7 +516,10 @@ export function PaceChart({
   // 切換路線分頁、或裝置時間變動時重算一次即可(「進來看一眼」的情境,
   // 不需要每秒即時追蹤)。
   useEffect(() => {
-    if (route.meta.date !== todayStr()) {
+    // meta.date 沒有值(通用推算路徑,見 computeRouteMeta)或 totalKm 算不
+    // 出來時,直接不比對、不標記「目前站」,不當成錯誤——理由見 RouteMeta
+    // 的說明。
+    if (!route.meta.date || route.meta.date !== todayStr() || route.meta.totalKm === null) {
       setNowMark(null)
       return
     }
@@ -397,6 +528,16 @@ export function PaceChart({
     setNowMark(computeNowMark(route.checkpoints, route.meta.totalKm, nowMin))
   }, [route])
 
+  // 把目前這一段的 checkpoints 鏡像給外層(見上方 onRouteChange 的說明)。
+  // 依賴陣列刻意用 route.checkpoints(陣列參照,只有 checkpointsBySegment
+  // 真的重新 setState 或 routeIdx 切換時才會變),不放 onRouteChange 本身
+  // ——理由同 ChatScreen.tsx 的 onTimelineData effect:呼叫端若用內聯函式
+  // 傳入,每次重渲染都是新的參照,放進依賴陣列會導致這個 effect 過度重跑。
+  useEffect(() => {
+    onRouteChange?.(route.checkpoints)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.checkpoints])
+
   // 自動捲動到目前站(等 nowMark 算出來、DOM 掛上 ref 之後才捲動)。
   useEffect(() => {
     if (nowMark && nowCardRef.current) {
@@ -404,13 +545,52 @@ export function PaceChart({
     }
   }, [nowMark])
 
+  // handleCheckpointClick:點擊檢查站卡片——已經有座標的直接照原本邏輯通知
+  // 父層(onCheckpointClick);沒有座標的先呼叫後端 geocodeEntry 用 title
+  // 查座標並寫回,成功後才通知父層,讓地圖能照常平移過去。cfg 必為真值
+  // 才會呼叫這個函式(見下方 CheckpointCard 的 onClick 只在 cfg &&
+  // onCheckpointClick 都存在時才掛,公開分享頁沒有 cfg,不接這套互動,
+  // 理由同 onCheckpointClick prop 本身的說明)。
+  async function handleCheckpointClick(cp: Checkpoint) {
+    if (!onCheckpointClick) return
+    if (cp.lat !== null && cp.lng !== null) {
+      onCheckpointClick({ id: cp.id, lat: cp.lat, lng: cp.lng })
+      return
+    }
+    if (!cfg || geocodingID) return
+    setGeocodingID(cp.id)
+    setGeocodeErr(null)
+    try {
+      const result = await geocodeEntry(cfg, cp.id)
+      // 把查到的座標寫回本地狀態,讓卡片立刻反映「已有座標」(不用等下次
+      // 重新 fetch 整個頻道),理由同 checkpointsBySegment 本身的資料流:
+      // 這裡是唯一的資料來源,route/routes 都是從它 useMemo 出來的。
+      setCheckpointsBySegment((prev) => {
+        if (!prev) return prev
+        const next = new Map(prev)
+        for (const [key, list] of next) {
+          next.set(
+            key,
+            list.map((c) => (c.id === cp.id ? { ...c, lat: result.lat, lng: result.lng } : c)),
+          )
+        }
+        return next
+      })
+      onCheckpointClick({ id: cp.id, lat: result.lat, lng: result.lng })
+    } catch (e) {
+      setGeocodeErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setGeocodingID(null)
+    }
+  }
+
   // 跟時間軸(desktop-timeline-panel 的「選擇一個行程後顯示時間軸。」)
   // 同一套邏輯:登入後正式介面還沒選頻道時,只顯示提示,不當成錯誤、
   // 也不用「載入中」那組畫面(根本沒有發出任何請求)。
   if (cfg && !channelID) {
     return (
       <div className="pace-chart">
-        <div className="empty">選擇一個行程後顯示配速表。</div>
+        <div className="empty">選擇一個行程後顯示路徑。</div>
       </div>
     )
   }
@@ -421,7 +601,7 @@ export function PaceChart({
     return (
       <div className="pace-chart">
         <div className="rp-map-error">
-          <span>配速表載入失敗</span>
+          <span>路徑載入失敗</span>
           <span className="rp-map-error-detail">{loadError}</span>
         </div>
       </div>
@@ -430,7 +610,7 @@ export function PaceChart({
   if (checkpointsBySegment === null) {
     return (
       <div className="pace-chart">
-        <p className={styles.eyebrow}>載入配速表資料中…</p>
+        <p className={styles.eyebrow}>載入路徑資料中…</p>
       </div>
     )
   }
@@ -466,21 +646,29 @@ export function PaceChart({
         }}
       >
         <Share2 size={14} strokeWidth={2} />
-        {copied ? '已複製連結' : '分享這個配速表'}
+        {copied ? '已複製連結' : '分享這個路徑'}
       </button>
 
-      <p className={styles.eyebrow}>{route.meta.eyebrow}</p>
-      <h1 className={styles.title}>{route.meta.title}</h1>
-      <p className={styles.routeSub}>{route.meta.subtitle}</p>
+      {/* eyebrow/subtitle 是純裝飾文字,通用推算路徑(computeRouteMeta)
+          沒有對應資料來源,值為 undefined 時直接不渲染,不顯示假標題;
+          title 有值(已知路線的手動文案,或通用推算的「起點 → 終點」)才
+          渲染。 */}
+      {route.meta.eyebrow && <p className={styles.eyebrow}>{route.meta.eyebrow}</p>}
+      {route.meta.title && <h1 className={styles.title}>{route.meta.title}</h1>}
+      {route.meta.subtitle && <p className={styles.routeSub}>{route.meta.subtitle}</p>}
 
       <div className={styles.summary}>
         <div className={styles.statRow}>
-          <div className={styles.stat}>
-            <div className={styles.statLabel}>總里程</div>
-            <div className={`${styles.statValue} ${styles.accent} ${styles.mono}`}>
-              {route.meta.totalKm.toFixed(1)}<span className={styles.unit}> km</span>
+          {/* totalKm 可能算不出來(checkpoints 完全沒有 km 資料)——這種
+              情況下不顯示總里程這個 stat,而不是顯示 NaN/0.0。 */}
+          {route.meta.totalKm !== null && (
+            <div className={styles.stat}>
+              <div className={styles.statLabel}>總里程</div>
+              <div className={`${styles.statValue} ${styles.accent} ${styles.mono}`}>
+                {route.meta.totalKm.toFixed(1)}<span className={styles.unit}> km</span>
+              </div>
             </div>
-          </div>
+          )}
           <div className={styles.stat}>
             <div className={styles.statLabel}>出發</div>
             <div className={`${styles.statValue} ${styles.mono}`}>{route.meta.startTime}</div>
@@ -495,14 +683,14 @@ export function PaceChart({
       <div className={styles.stripWrap}>
         <div className={styles.stripTrack}>
           <div className={styles.stripFill} />
-          {nowMark && (
+          {nowMark && route.meta.totalKm !== null && (
             <div className={styles.stripNow} style={{ left: `${nowMark.fracKm * 100}%` }} />
           )}
         </div>
         <div className={styles.stripLabels}>
           <span>0 km</span>
-          <span>{(route.meta.totalKm / 2).toFixed(0)} km</span>
-          <span>{route.meta.totalKm.toFixed(0)} km</span>
+          <span>{route.meta.totalKm !== null ? (route.meta.totalKm / 2).toFixed(0) : '—'} km</span>
+          <span>{route.meta.totalKm !== null ? route.meta.totalKm.toFixed(0) : '—'} km</span>
         </div>
       </div>
 
@@ -511,6 +699,7 @@ export function PaceChart({
         <span className={styles.count}>{route.checkpoints.length} 站</span>
       </div>
 
+      {geocodeErr && <div className="banner">定位失敗:{geocodeErr}</div>}
       <div className={styles.stops}>
         {route.checkpoints.map((cp, i) => (
           <CheckpointCard
@@ -518,7 +707,8 @@ export function PaceChart({
             cp={cp}
             isNow={nowMark?.checkpointIndex === i}
             cardRef={nowMark?.checkpointIndex === i ? nowCardRef : undefined}
-            onClick={onCheckpointClick ? () => onCheckpointClick({ id: cp.id, lat: cp.lat, lng: cp.lng }) : undefined}
+            onClick={onCheckpointClick ? () => handleCheckpointClick(cp) : undefined}
+            geocoding={geocodingID === cp.id}
           />
         ))}
       </div>

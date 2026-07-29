@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { LocateFixed, Play, Square, Compass, MapPin, Check } from 'lucide-react'
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 import styles from './PaceRouteMap.module.css'
-import chartStyles from './PaceChart.module.css'
 import { BASE_URL } from './AppCommon'
+import type { Checkpoint } from './PaceChart'
 
 // SelectedEntry:使用者點擊某張檢查站卡片後選取的 entry,驅動地圖平移+
 // 中心選點圖釘+儲存座標這套互動(見下方 PaceRouteMap 的 selectedEntry/
@@ -42,12 +42,9 @@ export interface SelectedEntry {
 //
 // 目前打的是 POST /internal/entries/compute-route(見
 // server/internal/api/entry_geocode.go 的 handleComputeRouteFromEntries),
-// entryIDs 寫死成 ch_a5632424 頻道底下三筆已校正過座標的真實 entry(光復
-// 糖廠→民治街→大農大富平地森林園區停車場),不再是最初那組花蓮示範地點
-// (光復橋/大農大富/七彩釣竿橋/大富火車站/富興客棧)——這是暫時性的接法,
-// 只為了驗證這支新端點能不能驅動前端畫圖,entryID 之後應該改由呼叫端動態
-// 決定,不該寫死在元件裡。這支端點掛在 /internal/*,需要帶有效的自家 JWT
-// (見 middleware.go 的 internalAuth),故底下改用帶 Authorization header 的
+// entryIDs 改由 checkpoints prop 動態決定(見下方 props 說明)——不再寫死
+// 特定頻道的 entry。這支端點掛在 /internal/*,需要帶有效的自家 JWT(見
+// middleware.go 的 internalAuth),故底下改用帶 Authorization header 的
 // POST 呼叫,不再是原本 GET /v1/demo/pace-route 那種不需登入的公開呼叫。
 //
 // MINIMAL_MAP_STYLE/ensureOptionsSet 是從 RecommendedPlacesMap.tsx 複製過來
@@ -80,33 +77,23 @@ function ensureOptionsSet(apiKey: string) {
   setOptions({ key: apiKey, v: 'weekly' })
 }
 
-// COMPUTE_ROUTE_ENTRY_IDS:對應 ch_a5632424 頻道底下四筆 entry,依序為
-// origin/intermediates/destination(見上方檔案開頭說明)——依照它們在後端
-// Detail.order 的順序排列(0/1/2/5)。「R轉193」(ent_34d26e76a2a4)這筆刻意
-// 加進來測試:它是純轉彎指示,沒有具體地名、目前沒有 Lat/Lng,後端
-// handleComputeRouteFromEntries 對這種沒座標的 entry 會 fallback 用 Title
-// 當地址查詢——用途是驗證這種查無精確地點的中繼點,能不能靠前後已知座標
-// (民治街/停車場)的路網幾何脈絡合理定位,而不是靠它自己被獨立解析。
-const COMPUTE_ROUTE_ENTRY_IDS = ['ent_2a895ee67c5a', 'ent_82ebeadd8b36', 'ent_34d26e76a2a4', 'ent_84c38044ce40']
-
-// 沿路節點的顯示名稱,依序對應 COMPUTE_ROUTE_ENTRY_IDS 的 origin -> 中繼點 ->
-// destination,跟下方從 legs[].startLocation/endLocation 推導出的座標順序
-// 一一對應(見路線 effect 內的說明)。
-const STOP_NAMES = ['光復糖廠', '民治街', 'R轉193', '大農大富平地森林園區停車場']
-
-// 路線初始 center/zoom:花蓮光復鄉附近的合理預設值(三個點都在光復鄉境內,
-// 比原本花蓮示範資料的範圍小),路線算出來後會 fitBounds 到實際路線範圍,
-// 這裡不需要精確。
+// 路線初始 center/zoom:找不到任何 checkpoint 座標可用時的 fallback 值
+// (地圖仍需要一個起始中心點才能建立)——路線算出來後會 fitBounds 到實際
+// 路線範圍,這裡不需要精確,純粹避免地圖建立時 center 是 undefined。
 const INITIAL_CENTER = { lat: 23.64, lng: 121.42 }
 const INITIAL_ZOOM = 14
 
 // RouteCache:存進 localStorage 的快取形狀,只留下畫路線真正需要的最小
 // 資料(encodedPolyline 字串 + 每段 leg 的起訖座標)——POST
 // /internal/entries/compute-route 的回應形狀是 { entryIDs, titles, result:
-// {encoded, legs} },這裡只快取 result 那一層,對齊這個扁平形狀。
-// COMPUTE_ROUTE_ENTRY_IDS 每次更動(點位增減),cache key 版本號都要跟著
-// 往上加一,避免使用者本機讀到舊點位組合的快取路線。
-const ROUTE_CACHE_KEY = 'tripace.paceRouteMap.route.v3'
+// {encoded, legs} },這裡只快取 result 那一層,對齊這個扁平形狀。cache key
+// 額外帶入 entryIDs 序列(見下方 routeCacheKey),同一組 checkpoint 才會
+// 命中快取,換一段路線(不同 entryIDs)自然會重新打一次 API,不需要再手動
+// 管理版本號。
+const ROUTE_CACHE_KEY_PREFIX = 'tripace.paceRouteMap.route.v4.'
+function routeCacheKey(entryIDs: string[]): string {
+  return ROUTE_CACHE_KEY_PREFIX + entryIDs.join(',')
+}
 interface RouteLatLng {
   latitude: number
   longitude: number
@@ -130,9 +117,19 @@ function bearingBetween(a: google.maps.LatLng, b: google.maps.LatLng): number {
 }
 
 export function PaceRouteMap({
+  checkpoints,
   selectedEntry,
   onSelectedEntryDone,
 }: {
+  // checkpoints:目前選取的那一段路線(PaceChart 的 route.checkpoints,依
+  // order 排序),由共同的父層(DesktopLayout.tsx/PhoneContent.tsx)透過
+  // PaceChart 的 onRouteChange 鏡像過來——取代原本寫死的 4 筆 entry
+  // 常數,改成真的跟著使用者目前選取的頻道/路段變動。第一筆/最後一筆當
+  // origin/destination,中間的當 intermediates,直接對應後端
+  // handleComputeRouteFromEntries 的 entryIDs 陣列語意(見該檔案說明)。
+  // 少於 2 筆(該段還沒有 checkpoint,或還在載入中)時不計算路線,地圖
+  // 仍正常顯示,只是沒有 Polyline 可畫。
+  checkpoints: Checkpoint[]
   // selectedEntry:使用者在側欄點擊的檢查站(見 DesktopLayout.tsx 登入後
   // 正式介面的 pace 面板),非 null 時才顯示中央選點圖釘與「儲存座標」
   // 按鈕。可選是因為 PublicPaceDemoPage.tsx(/demo/pace 公開分享頁)刻意
@@ -234,21 +231,44 @@ export function PaceRouteMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey])
 
+  // entryIDs/stopNames:從 checkpoints prop 動態推導——第一筆/最後一筆是
+  // origin/destination,中間的是 intermediates,直接對應後端 entryIDs 陣列
+  // 語意(見上方 checkpoints prop 的說明)。少於 2 筆時不夠組出一條路線
+  // (至少需要起訖點),整段路線計算直接跳過。
+  const entryIDs = checkpoints.map((cp) => cp.id)
+  const stopNames = checkpoints.map((cp) => cp.name)
+  // entryIDsKey:給下方 effect 當依賴值——checkpoints 陣列參照在父層每次
+  // 重渲染都可能改變(即使內容相同),用內容序列化成字串才能正確判斷「這批
+  // checkpoint 是否真的變了」,避免路線在父層無關的重渲染時被重複打 API。
+  const entryIDsKey = entryIDs.join(',')
+
   // 地圖就緒後才算路線:要有一個已存在的 map 物件才能畫 Polyline、才能
   // fitBounds。apiKey 這裡一定存在(mapReady 只可能在上面那個 effect 成功
   // 拿到 apiKey 並建好地圖後才會變 true)。
   useEffect(() => {
     if (!mapReady || !mapRef.current || !apiKey) return
+    if (entryIDs.length < 2) {
+      // 不夠組出一條路線(該段還沒有 checkpoint,或還在載入中):清掉舊路線
+      // /節點,地圖仍正常顯示,只是沒有 Polyline 可畫。
+      polylineRef.current?.setMap(null)
+      polylineRef.current = null
+      stopMarkersRef.current.forEach((m) => m.setMap(null))
+      stopMarkersRef.current = []
+      routePathRef.current = null
+      setRouteErr(null)
+      return
+    }
     let cancelled = false
+    const cacheKey = routeCacheKey(entryIDs)
 
-    // 這 3 筆 entry 對應的地點是寫死不變的常數,路線結果理論上永遠一樣——
-    // 先看 localStorage 有沒有存過,有的話直接用,不重打一次 computeRoutes
-    // (這是按次計費的 REST API,每次掛載都重算是白花錢也是白花時間)。
-    // 存取失敗(無痕模式、額度滿了)都只是視同沒快取,不讓快取本身的問題
-    // 擋住地圖正常運作。
+    // 同一組 checkpoint(entryIDs 序列相同)路線結果理論上永遠一樣——先看
+    // localStorage 有沒有存過,有的話直接用,不重打一次 computeRoutes(這是
+    // 按次計費的 REST API,每次掛載都重算是白花錢也是白花時間)。存取失敗
+    // (無痕模式、額度滿了)都只是視同沒快取,不讓快取本身的問題擋住地圖
+    // 正常運作。
     let cached: RouteCache | null = null
     try {
-      const raw = localStorage.getItem(ROUTE_CACHE_KEY)
+      const raw = localStorage.getItem(cacheKey)
       if (raw) cached = JSON.parse(raw) as RouteCache
     } catch {
       cached = null
@@ -269,7 +289,7 @@ export function PaceRouteMap({
             'Content-Type': 'application/json',
             ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           },
-          body: JSON.stringify({ entryIDs: COMPUTE_ROUTE_ENTRY_IDS }),
+          body: JSON.stringify({ entryIDs }),
         })
           .then(async (res) => {
             if (!res.ok) {
@@ -282,7 +302,7 @@ export function PaceRouteMap({
           .then((result) => {
             if (!result.encoded) throw new Error('compute-route 回應沒有可用的路線')
             try {
-              localStorage.setItem(ROUTE_CACHE_KEY, JSON.stringify(result))
+              localStorage.setItem(cacheKey, JSON.stringify(result))
             } catch {
               // 存不進去(額度滿了/無痕模式)不影響這次渲染,下次一樣會重打
               // API,不是致命錯誤,不需要跳錯誤畫面。
@@ -311,15 +331,19 @@ export function PaceRouteMap({
         mapRef.current.fitBounds(bounds, 32)
 
         // 沿路節點:每段 leg 的起點接續下一段,故座標序列是「第一段的起點,
-        // 然後每一段各自的終點」——這樣剛好對到 ORIGIN -> 中繼點1..3 ->
-        // DESTINATION 這 5 個節點,順序與 STOP_NAMES 一致。
+        // 然後每一段各自的終點」——這樣剛好對到 ORIGIN -> 中繼點1..N ->
+        // DESTINATION 這幾個節點,順序與 stopNames 一致。注意:後端會跳過
+        // 沒座標的中繼點(見 entry_geocode.go 的說明),故 legs 的節點數量
+        // 可能少於 entryIDs 原始長度,stopNames[i] 對到的不一定是原始
+        // checkpoints 裡同一個 index 的名稱——這裡仍是目前唯一可用的近似
+        // 命名依據,查無對應名稱時 fallback 顯示「節點 N」。
         stopMarkersRef.current.forEach((m) => m.setMap(null))
         const stopPositions = decoded.legs.length > 0
           ? [decoded.legs[0].startLocation, ...decoded.legs.map((l) => l.endLocation)]
           : []
         stopMarkersRef.current = stopPositions.flatMap((loc, i) => {
           if (!loc || !mapRef.current) return []
-          const name = STOP_NAMES[i] ?? `節點 ${i + 1}`
+          const name = stopNames[i] ?? `節點 ${i + 1}`
           const marker = new google.maps.Marker({
             position: { lat: loc.latitude, lng: loc.longitude },
             map: mapRef.current,
@@ -345,7 +369,11 @@ export function PaceRouteMap({
     return () => {
       cancelled = true
     }
-  }, [mapReady, apiKey])
+    // stopNames 刻意不放進依賴陣列:它跟 entryIDsKey 是同一批 checkpoints
+    // 衍生出來的另一份陣列(參照每次重渲染都變,但內容跟 entryIDsKey 同步
+    // 變動),放進來只會造成重複觸發,不會多偵測到任何真正的變化。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, apiKey, entryIDsKey])
 
   // selectedEntry 改變(使用者點了另一張檢查站卡片)時平移地圖過去——用
   // 'idle' 而非 'center_changed' 追蹤中心點(見下面那個 effect),兩者是
@@ -524,55 +552,6 @@ export function PaceRouteMap({
     <div className="pace-route-map-wrap">
       <div className={styles.frame}>
         <div ref={containerRef} className="rp-map" />
-        {/* 效果試做:固定疊 3 張檢查點卡片在地圖左上角,垂直微錯開做出堆疊感
-            (見 PaceRouteMap.module.css 的 .cardStack1/2/3),卡片外觀直接
-            沿用 PaceChart.module.css 的 .stop 系列 class(import 該
-            module、組合 className,不是跨檔案 CSS 選擇器)——先看這個方向的
-            視覺效果如何,還沒接點擊 marker 切換內容的互動,里程/時刻皆為
-            示範用固定值,非即時資料。 */}
-        <div className={`${styles.card} ${styles.cardStack1}`}>
-          <div className={`${chartStyles.stop} ${styles.cardStopOverride}`}>
-            <div className={chartStyles.stopLeft}>
-              <div className={chartStyles.startBadge}>🚩 起點</div>
-              <div className={chartStyles.locName}>光復橋</div>
-              <div className={chartStyles.locMeta}>
-                <span className={`${chartStyles.kmVal} ${chartStyles.mono}`}>0.0 km</span>
-              </div>
-            </div>
-            <div className={chartStyles.stopRight}>
-              <div className={chartStyles.depLabel}>出發</div>
-              <div className={`${chartStyles.depVal} ${chartStyles.mono}`}>09:00</div>
-            </div>
-          </div>
-        </div>
-        <div className={`${styles.card} ${styles.cardStack2}`}>
-          <div className={`${chartStyles.stop} ${styles.cardStopOverride}`}>
-            <div className={chartStyles.stopLeft}>
-              <div className={chartStyles.locName}>大農大富平地森林園區</div>
-              <div className={chartStyles.locMeta}>
-                <span className={`${chartStyles.kmVal} ${chartStyles.mono}`}>10.5 km</span>
-              </div>
-            </div>
-            <div className={chartStyles.stopRight}>
-              <div className={chartStyles.depLabel}>離站</div>
-              <div className={`${chartStyles.depVal} ${chartStyles.mono}`}>10:55</div>
-            </div>
-          </div>
-        </div>
-        <div className={`${styles.card} ${styles.cardStack3}`}>
-          <div className={`${chartStyles.stop} ${styles.cardStopOverride}`}>
-            <div className={chartStyles.stopLeft}>
-              <div className={chartStyles.locName}>大富火車站</div>
-              <div className={chartStyles.locMeta}>
-                <span className={`${chartStyles.kmVal} ${chartStyles.mono}`}>17.0 km</span>
-              </div>
-            </div>
-            <div className={chartStyles.stopRight}>
-              <div className={chartStyles.depLabel}>離站</div>
-              <div className={`${chartStyles.depVal} ${chartStyles.mono}`}>12:00</div>
-            </div>
-          </div>
-        </div>
         {mePos && (
           <button
             type="button"

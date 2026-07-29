@@ -206,7 +206,7 @@ function ViewModePicker({
           className={value === 'pace' ? `${styles.viewModeBtn} ${styles.viewModeBtnActive}` : styles.viewModeBtn}
           onClick={() => onChange('pace')}
         >
-          配速表
+          路徑
         </button>
       </div>
     </div>

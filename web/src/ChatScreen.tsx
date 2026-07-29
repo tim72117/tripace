@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronLeft, Menu, Users, Send, Share2, Sparkles } from 'lucide-react'
+import { ChevronLeft, AlignLeft, Users, Send, Share2, Sparkles } from 'lucide-react'
 import type { ClientConfig } from './api'
 import * as api from './api'
 import type { Channel, Entry, User } from './types'
@@ -85,6 +85,7 @@ export function ChatScreen({
   user,
   onBack,
   onOpenDrawer,
+  mobileHeader,
   onTimelineData,
   desktopChat,
 }: {
@@ -98,6 +99,13 @@ export function ChatScreen({
   // 一顆單純「回列表」的按鈕。只在 !desktopChat(手機版)時使用;桌面版
   // ChatScreen 沒有這顆抽屜,維持原本點左上角呼叫 onBack 的行為不變。
   onOpenDrawer?: () => void
+  // mobileHeader:手機版專用,非 undefined 時完全不渲染這裡的 navbar——
+  // 手機版統一改用主顯示區的 MainNavBar(見 PhoneContent.tsx),分享/成員/
+  // 使用者頭像則收攏到 PhoneNavDrawer 抽屜欄分頁列右上角(見該檔案的
+  // 說明),ChatScreen 自己不再需要畫任何一種 navbar。'main'/'drawer' 兩個
+  // 值目前只用來跟 undefined(桌面版,維持原行為在這裡渲染 navbar)區分,
+  // 兩者本身在這裡的處理完全相同。
+  mobileHeader?: 'main' | 'drawer'
   // onTimelineData:手機版專用的時間軸資料鏡像——跟 desktopChat.onTimelineData
   // 是同一份資料形狀(DesktopTimelineMirror),差別只在時間軸現在改成手機版
   // 左側導覽抽屜(PhoneNavDrawer.tsx)的一個分頁,不是 ChatScreen 內部自己的
@@ -779,29 +787,31 @@ export function ChatScreen({
 
   return (
     <>
-      <div className="navbar" ref={navbarRef}>
-        {!desktopChat && onOpenDrawer ? (
-          <button className="btn icon-btn" onClick={onOpenDrawer} title="行程列表/配速表">
-            <Menu size={20} strokeWidth={1.8} />
-          </button>
-        ) : (
-          <button className="btn icon-btn" onClick={onBack}>
-            <ChevronLeft size={20} strokeWidth={1.8} />
-          </button>
-        )}
-        <span className="title">{channel.name}</span>
-        <ChannelMenu channelID={channel.id} />
-        <div style={{ display: 'flex', gap: 2 }}>
-          {isOwner && (
-            <button className="btn icon-btn" onClick={() => setShowShare(true)} title="分享">
-              <Share2 size={18} strokeWidth={1.8} />
+      {mobileHeader === undefined && (
+        <div className="navbar" ref={navbarRef}>
+          {!desktopChat && onOpenDrawer ? (
+            <button className="btn icon-btn" onClick={onOpenDrawer} title="行程列表/路徑">
+              <AlignLeft size={20} strokeWidth={1.8} />
+            </button>
+          ) : (
+            <button className="btn icon-btn" onClick={onBack}>
+              <ChevronLeft size={20} strokeWidth={1.8} />
             </button>
           )}
-          <button className="btn icon-btn" onClick={() => setShowMembers(true)} title="成員">
-            <Users size={18} strokeWidth={1.8} />
-          </button>
+          <span className="title">{channel.name}</span>
+          <ChannelMenu channelID={channel.id} />
+          <div style={{ display: 'flex', gap: 2 }}>
+            {isOwner && (
+              <button className="btn icon-btn" onClick={() => setShowShare(true)} title="分享">
+                <Share2 size={18} strokeWidth={1.8} />
+              </button>
+            )}
+            <button className="btn icon-btn" onClick={() => setShowMembers(true)} title="成員">
+              <Users size={18} strokeWidth={1.8} />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
       <div className={styles.area}>
         {desktopChat ? (
           // 桌面模式:主區不渲染時間軸(時間軸只活在左側 side panel 的時間軸模式裡)。

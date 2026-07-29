@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useIsDesktop } from './AppCommon'
-import { PaceChart } from './PaceChart'
+import { PaceChart, type Checkpoint } from './PaceChart'
 import { PaceRouteMap } from './PaceRouteMap'
 import { PacePhoneSwipe } from './PacePhoneSwipe'
 
@@ -18,21 +19,26 @@ import { PacePhoneSwipe } from './PacePhoneSwipe'
 // 不該出現在公開頁面上——只在 DesktopLayout.tsx(登入後正式介面)提供。
 export function PublicPaceDemoPage() {
   const isDesktop = useIsDesktop()
+  // checkpoints:比照登入後正式介面(DesktopLayout.tsx/PhoneContent.tsx)的
+  // 作法,PaceChart 目前選取的那一段透過 onRouteChange 鏡像上來,轉傳給
+  // PaceRouteMap 畫路線——公開頁沒有 cfg/channelID,PaceChart 走公開連結
+  // token 那條路徑抓資料,但鏡像機制本身是同一套,不需要另外處理。
+  const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([])
   if (!isDesktop) {
-    return <PacePhoneSwipe />
+    return <PacePhoneSwipe checkpoints={checkpoints} onRouteChange={setCheckpoints} />
   }
   return (
     <div className="desktop-layout">
       <aside className="desktop-sidepanel wide">
         <div className="desktop-sidepanel-inner">
           <div className="desktop-sidepanel-pace">
-            <PaceChart />
+            <PaceChart onRouteChange={setCheckpoints} />
           </div>
         </div>
       </aside>
       <main className="desktop-main">
         <div className="desktop-demo-panel">
-          <PaceRouteMap />
+          <PaceRouteMap checkpoints={checkpoints} />
         </div>
       </main>
     </div>

@@ -1,15 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { TouchEvent as ReactTouchEvent } from 'react'
 import {
-  List, Timeline, Plus, Sparkles, GalleryHorizontal, Map, Wrench, Radio, Route, Settings, MapPin,
+  List, Timeline, Sparkles, GalleryHorizontal, Map, Wrench, Radio, Route, Share2, Users,
 } from 'lucide-react'
 import type { Channel, User } from './types'
-import { Avatar, ErrorBanner, isSubmitEnter } from './AppCommon'
+import { Avatar } from './AppCommon'
 import { type DemoPanelMode, DemoPanelContent } from './DesktopShared'
-import { MultiTrackTimeline } from './Timeline'
-import { PaceChart } from './PaceChart'
+import { PaceChart, type Checkpoint } from './PaceChart'
 import type { SelectedEntry } from './PaceRouteMap'
-import type { DesktopTimelineMirror } from './ChatScreen'
+import { ChannelMenu } from './channel/ChannelMenu'
+import { MembersScreen } from './channel/MembersScreen'
 import type { ClientConfig } from './api'
 import styles from './PhoneNavDrawer.module.css'
 
@@ -17,13 +17,33 @@ import styles from './PhoneNavDrawer.module.css'
 // (整頁行程列表)、ChatScreen 自己的右側時間軸抽屜,與右下角漢堡按鈕開的
 // PhoneDemoDrawer(配速表/demo 面板),比照桌面版 DesktopLayout.tsx 的
 // DesktopRail(功能列)+ .desktop-sidepanel(側欄)結構:上方一排功能列
-// (行程列表/時間軸/配速表/demo-*,對應桌面版 rail 的 channels/timeline/
-// pace/demo-* 項目),下方視選取的分頁顯示對應內容,底部一顆使用者頭像列
-// 對應桌面版 DesktopUserMenu 的位置,點擊進入 SettingsScreen。
+// (時間軸/配速表/demo-*,對應桌面版 rail 的 timeline/pace/demo-* 項目),
+// 下方視選取的分頁顯示對應內容。
+//
+// 行程列表('channels')已經拆成獨立的另一個抽屜(PhoneChannelsDrawer.tsx),
+// 疊在這個抽屜之上(更高的 z-index)——不再是這裡分頁列的其中一顆,見
+// PhoneContent.tsx 的 channelsDrawerOpen。
+//
+// 分頁列右上角放三顆操作按鈕(分享/成員/使用者頭像),永遠顯示、不隨分頁
+// 切換而消失——分享/成員操作的對象是「目前選取的行程」(activeChannel),
+// 跟抽屜正在顯示哪個分頁無關;使用者頭像點擊直接開設定。這三顆原本分散在
+// ChatScreen 自己的 navbar(桌面版仍保留在那裡)與主顯示區的
+// MainNavBar,手機版統一收攏到這裡,理由是分享/成員操作即使對話沒有顯示在
+// 畫面上(例如正在看時間軸/配速表分頁)也該找得到入口,不該綁定在對話
+// 元件本身的 UI 裡。分享/成員點擊後在 .body 整塊換成 ShareModal/
+// MembersScreen(取代原本分頁內容),關閉後恢復,寫法比照 ChatScreen.tsx
+// 桌面版仍在用的同一套 showShare/showMembers 全螢幕切換模式。
 //
 // 'pace' 分頁只顯示檢查站清單(PaceChart),不含地圖——地圖(PaceRouteMap)
 // 對齊桌面版改成顯示在主顯示區(見 PhoneContent.tsx),不是抽屜欄自己的
 // 內容,理由同桌面版「側欄放清單、主區放地圖」的版面切分。
+//
+// 'timeline' 分頁反過來:對話(ChatScreen)才是內容,時間軸本身改到主顯示區
+// 滿版顯示(見 PhoneContent.tsx 的 TimelineMainView)——這裡只留一個空的
+// portal 投影目標(timelineSlotRef),ChatScreen 實際掛載處始終在
+// PhoneContent.tsx,不會因為分頁切換而重新掛載/重新連線。ChatScreen 投影
+// 進來時不帶自己的 navbar(見 ChatScreen.tsx 的 mobileHeader==='drawer'),
+// 這個抽屜自己的分頁列就是唯一的「上方列」。
 //
 // 滑入手勢仿照 PacePhoneSwipe.tsx 的抽屜模式(左側滑入,拖曳關閉),只是這裡
 // 疊在整個 PhoneContent 之上(相對於 .web-app 定位),不像 PacePhoneSwipe
@@ -39,21 +59,16 @@ export function PhoneNavDrawer({
   mode,
   onSelectMode,
   isDemo,
-  channels,
-  channelsErr,
-  channelsLoading,
-  creating,
-  setCreating,
-  newName,
-  setNewName,
-  submitCreate,
   activeChannel,
-  onSelectChannel,
-  timelineMirror,
+  timelineSlotRef,
   lastContentMode,
-  user,
   onSelectedEntry,
+  onRouteChange,
+  channelsDrawerOpen,
+  onOpenChannels,
+  user,
   onOpenSettings,
+  onOpenShare,
   onClose,
 }: {
   // open:面板一律掛載(不像先前的版本靠條件渲染整個元件),只用這個 boolean
@@ -65,32 +80,49 @@ export function PhoneNavDrawer({
   mode: DrawerMode
   onSelectMode: (mode: DrawerMode) => void
   isDemo: boolean
-  channels: Channel[]
-  channelsErr: string | null
-  channelsLoading: boolean
-  creating: boolean
-  setCreating: (v: boolean) => void
-  newName: string
-  setNewName: (v: string) => void
-  submitCreate: () => void
   activeChannel: Channel | null
-  onSelectChannel: (c: Channel) => void
-  // timelineMirror:ChatScreen 透過 PhoneContent.tsx 鏡像過來的時間軸資料,
-  // 跟桌面版 DesktopContent 傳給側欄時間軸分頁的是同一份形狀。
-  timelineMirror: DesktopTimelineMirror
+  // timelineSlotRef:'timeline' 分頁時,抽屜欄這裡不再自己顯示時間軸內容
+  // ——對齊使用者要求的「時間軸與對話顯示位置對調」,時間軸改到主顯示區
+  // 滿版顯示,這裡改顯示對話(ChatScreen)本身。ChatScreen 實際上仍然只在
+  // PhoneContent.tsx 掛載一次(避免每次切換分頁都重新掛載、重新連線
+  // WebSocket),用 React Portal 把它的畫面「投影」進這裡——這個 ref 就是
+  // portal 的投影目標容器,由 PhoneContent.tsx 建立/持有那個 DOM 節點。
+  timelineSlotRef: (node: HTMLDivElement | null) => void
   // lastContentMode:使用者上一次主動選取的「時間軸」或「配速表」分頁
-  // (見 PhoneContent.tsx 的說明)。目前在「行程列表」分頁瀏覽選新行程時,
-  // 這個分頁的功能列圖示要跟 lastContentMode 對應的那顆圖示同時顯示
-  // active——使用者觀點:行程列表只是借來挑選行程的工具畫面,不代表真的
-  // 離開了時間軸/配速表這個內容模式,兩顆圖示都該保持「選中」的視覺回饋。
+  // (見 PhoneContent.tsx 的說明)。瀏覽獨立行程抽屜選新行程時,這個分頁的
+  // 功能列圖示要跟 lastContentMode 對應的那顆圖示同時顯示 active——使用者
+  // 觀點:行程列表只是借來挑選行程的工具畫面,不代表真的離開了時間軸/
+  // 配速表這個內容模式,兩顆圖示都該保持「選中」的視覺回饋。
   lastContentMode: 'pace' | 'timeline' | null
-  user: User
   // onSelectedEntry:配速表分頁點擊檢查站卡片時往上通知,驅動主顯示區地圖
   // (PaceRouteMap,見 PhoneContent.tsx)平移過去。
   onSelectedEntry: (entry: SelectedEntry) => void
+  // onRouteChange:'pace' 分頁目前選取的那一段 checkpoint 清單變動時往上
+  // 通知——見 PaceChart.tsx 的 onRouteChange 說明,PhoneContent.tsx 再轉傳
+  // 給主顯示區的 PaceRouteMap(地圖)。
+  onRouteChange: (checkpoints: Checkpoint[]) => void
+  // channelsDrawerOpen:獨立行程抽屜(PhoneChannelsDrawer.tsx,疊在這個抽屜
+  // 之上)目前是否開啟——驅動下方使用者頭像旁「行程」觸發鈕的 active 樣式。
+  channelsDrawerOpen: boolean
+  // onOpenChannels:點擊行程觸發鈕時,開啟獨立的行程抽屜(不是切換這個抽屜
+  // 自己的 mode)。
+  onOpenChannels: () => void
+  user: User
+  // onOpenSettings:點擊右上角使用者頭像時直接開設定(不再先進選單),見
+  // PhoneContent.tsx 的 SettingsScreen 疊層。
   onOpenSettings: () => void
+  // onOpenShare:點擊分享按鈕時,開啟從底部滑出的分享面板(見
+  // PhoneContent.tsx 的 sharePanel)——跟使用者設定同一種呈現方式,不是
+  // 這個抽屜自己 .body 內的分頁切換,理由是分享/設定都是「離開目前操作
+  // 情境的獨立任務」,滿版由下往上滑入比較符合這種語意,不像分享/成員
+  // 按鈕過去那樣就地取代分頁內容。
+  onOpenShare: () => void
   onClose: () => void
 }) {
+  // showMembers:成員按鈕點擊後,.body 整塊換成 MembersScreen(取代原本
+  // 分頁內容)——分享已經改成獨立的滑出面板(見上方 onOpenShare),只有
+  // 成員維持這個抽屜自己的行內切換。
+  const [showMembers, setShowMembers] = useState(false)
   const [dragOffset, setDragOffset] = useState(0)
   const startXRef = useRef<number | null>(null)
   const draggingRef = useRef(false)
@@ -118,10 +150,9 @@ export function PhoneNavDrawer({
 
   const translate = open ? `${dragOffset}px` : `calc(-100% + ${dragOffset}px)`
 
-  const items: { mode: DrawerMode; icon: typeof List; title: string; disabled?: boolean }[] = [
-    { mode: 'channels', icon: List, title: '行程列表' },
+  const items: { mode: DrawerMode; icon: typeof Timeline; title: string; disabled?: boolean }[] = [
     { mode: 'timeline', icon: Timeline, title: '時間軸', disabled: !activeChannel },
-    { mode: 'pace', icon: Route, title: '配速表' },
+    { mode: 'pace', icon: Route, title: '路徑' },
     ...(isDemo
       ? [
         { mode: 'demo-cards' as DrawerMode, icon: Sparkles, title: '推薦景點卡片' },
@@ -150,11 +181,22 @@ export function PhoneNavDrawer({
         onTouchEnd={onTouchEnd}
       >
         <div className={styles.tabs}>
+          {/* 行程觸發鈕:放在功能列最左邊——點擊開啟獨立的行程抽屜
+              (PhoneChannelsDrawer.tsx,疊在這個抽屜之上),不是切換這個抽屜
+              自己的 mode——行程列表已經拆成獨立抽屜,見檔案開頭的說明。 */}
+          <button
+            type="button"
+            className={`${styles.tab}${channelsDrawerOpen ? ` ${styles.tabActive}` : ''}`}
+            onClick={onOpenChannels}
+            title="行程列表"
+          >
+            <List size={20} strokeWidth={1.8} />
+          </button>
           {items.map(({ mode: m, icon: Icon, title, disabled }) => {
             // isActive:一般情況就是「目前分頁就是這顆」;例外是使用者正在
-            // 「行程列表」分頁瀏覽選新行程時,先前正在看的時間軸/配速表分頁
+            // 獨立行程抽屜瀏覽選新行程時,先前正在看的時間軸/配速表分頁
             // 圖示要一起顯示 active(見上方 lastContentMode 的說明)。
-            const isActive = mode === m || (mode === 'channels' && lastContentMode === m)
+            const isActive = mode === m || (channelsDrawerOpen && lastContentMode === m)
             return (
               <button
                 key={m}
@@ -168,183 +210,53 @@ export function PhoneNavDrawer({
               </button>
             )
           })}
+          {/* 右上角操作群組:分享/成員(操作目前選取的行程,永遠顯示,不受
+              分頁切換影響)+ 使用者頭像(開設定)——見檔案開頭的說明。
+              margin-left: auto 把這一群推到分頁列最右側。 */}
+          <div className={styles.headerActions}>
+            {activeChannel && (
+              <>
+                <ChannelMenu channelID={activeChannel.id} />
+                {activeChannel.ownerID === user.id && (
+                  <button type="button" className={styles.tab} onClick={onOpenShare} title="分享">
+                    <Share2 size={18} strokeWidth={1.8} />
+                  </button>
+                )}
+                <button type="button" className={styles.tab} onClick={() => setShowMembers(true)} title="成員">
+                  <Users size={18} strokeWidth={1.8} />
+                </button>
+              </>
+            )}
+            <button type="button" className={styles.avatarBtn} onClick={onOpenSettings} title="設定">
+              <Avatar user={user} />
+            </button>
+          </div>
         </div>
         <div className={styles.body}>
-          {mode === 'channels' ? (
-            <ChannelsTabContent
-              channels={channels}
-              err={channelsErr}
-              loading={channelsLoading}
-              creating={creating}
-              setCreating={setCreating}
-              newName={newName}
-              setNewName={setNewName}
-              submitCreate={submitCreate}
-              activeChannelID={activeChannel?.id ?? null}
-              onSelectChannel={onSelectChannel}
+          {showMembers && activeChannel ? (
+            <MembersScreen
+              cfg={cfg}
+              channel={activeChannel}
+              isOwner={activeChannel.ownerID === user.id}
+              onBack={() => setShowMembers(false)}
             />
           ) : mode === 'timeline' ? (
-            <TimelineTabContent
-              cfg={cfg}
-              activeChannel={activeChannel}
-              user={user}
-              timelineMirror={timelineMirror}
-            />
+            // portal 投影目標,見上方 timelineSlotRef 的說明——這裡故意留空,
+            // 實際內容(ChatScreen)由 PhoneContent.tsx 投影進來,不帶自己的
+            // navbar(這個抽屜的分頁列本身就是唯一的「上方列」)。
+            <div ref={timelineSlotRef} className={styles.timelineChatSlot} />
           ) : mode === 'pace' ? (
-            <PaceChart cfg={cfg} channelID={activeChannel?.id} onCheckpointClick={onSelectedEntry} />
-          ) : (
+            <PaceChart
+              cfg={cfg}
+              channelID={activeChannel?.id}
+              onCheckpointClick={onSelectedEntry}
+              onRouteChange={onRouteChange}
+            />
+          ) : mode === 'channels' ? null : (
             <DemoPanelContent mode={mode} />
           )}
         </div>
-        <div className={styles.userRow}>
-          <Avatar user={user} />
-          <div className={styles.userName}>{user.name}</div>
-          <button type="button" className={styles.settingsBtn} onClick={onOpenSettings} title="設定">
-            <Settings size={18} strokeWidth={1.8} />
-          </button>
-        </div>
       </div>
     </>
-  )
-}
-
-// TimelineTabContent:時間軸分頁內容,對齊桌面版 DesktopContent 的
-// panelMode === 'timeline' 分支(同樣的兩層空狀態判斷、cfg 依 owner 身分
-// 決定是否可編輯)。todayRef/捲到今天的邏輯搬自原本 ChatScreen.tsx 的
-// 右側時間軸抽屜(該機制已移除,時間軸只剩這一個入口)。
-function TimelineTabContent({
-  cfg,
-  activeChannel,
-  user,
-  timelineMirror,
-}: {
-  cfg: ClientConfig
-  activeChannel: Channel | null
-  user: User
-  timelineMirror: DesktopTimelineMirror
-}) {
-  const todayRef = useRef<HTMLDivElement>(null as unknown as HTMLDivElement)
-  const bodyRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (timelineMirror.entries.length > 0 && todayRef.current && bodyRef.current) {
-      const el = todayRef.current
-      const body = bodyRef.current
-      body.scrollTo({ top: el.offsetTop - 60, behavior: 'instant' })
-    }
-  }, [timelineMirror.entries])
-
-  if (!activeChannel) {
-    return <div className="empty">選擇一個行程後顯示時間軸。</div>
-  }
-  if (timelineMirror.entries.length === 0) {
-    return <div className="empty">尚無行程內容。</div>
-  }
-  return (
-    <div className="screen-body" ref={bodyRef}>
-      <MultiTrackTimeline
-        entries={timelineMirror.entries}
-        todayRef={todayRef}
-        updatingIDs={timelineMirror.updatingEntryIDs}
-        taskPlaceholders={timelineMirror.taskPlaceholders}
-        cfg={activeChannel.ownerID === user.id ? cfg : undefined}
-        onEntryUpdated={timelineMirror.refetchEntries}
-      />
-    </div>
-  )
-}
-
-// ChannelsTabContent:行程列表分頁內容,從原本的 ChannelsScreen(整頁元件)
-// 搬過來——瀏覽/新增行程兩態切換的邏輯不變,只是不再包自己的 .navbar
-// (抽屜自己的功能列已經扮演了「上方導覽」的角色)。
-function ChannelsTabContent({
-  channels,
-  err,
-  loading,
-  creating,
-  setCreating,
-  newName,
-  setNewName,
-  submitCreate,
-  activeChannelID,
-  onSelectChannel,
-}: {
-  channels: Channel[]
-  err: string | null
-  loading: boolean
-  creating: boolean
-  setCreating: (v: boolean) => void
-  newName: string
-  setNewName: (v: string) => void
-  submitCreate: () => void
-  activeChannelID: string | null
-  onSelectChannel: (c: Channel) => void
-}) {
-  return (
-    <div className="screen-body">
-      <ErrorBanner msg={err} />
-      {channels.length === 0 && !err && (
-        <div className="empty">
-          {loading ? '載入中…' : '沒有行程。按下方「新增行程」建立一個。'}
-        </div>
-      )}
-      <ul className={styles.channelList}>
-        {/* 新增行程:跟下面實際的行程項目共用同一套 .channelItem 樣式(借來
-            瀏覽/新增行程的是同一個工具畫面,視覺上該是同一組清單的一份子,
-            不是另一顆突兀的強調色橫幅按鈕),只把大頭貼換成「＋」圖示徽章
-            區分。點擊後這個項目原地換成輸入框(composer),下面既有行程
-            清單維持可見、可捲動,不會像原本整塊消失。 */}
-        <li>
-          {creating ? (
-            <div className="new-channel-composer">
-              <input
-                autoFocus
-                value={newName}
-                placeholder="新行程名稱…"
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (isSubmitEnter(e)) submitCreate()
-                  if (e.key === 'Escape') {
-                    setCreating(false)
-                    setNewName('')
-                  }
-                }}
-              />
-              <button className="btn-primary" onClick={submitCreate} disabled={!newName.trim()}>
-                建立
-              </button>
-            </div>
-          ) : (
-            <button type="button" className={styles.channelItem} onClick={() => setCreating(true)}>
-              <div className={styles.newChannelIcon}>
-                <Plus size={18} strokeWidth={1.8} />
-              </div>
-              <div className={styles.channelGrow}>
-                <div className={styles.channelName}>新增行程</div>
-              </div>
-            </button>
-          )}
-        </li>
-        {channels.map((c) => (
-          <li key={c.id}>
-            <button
-              type="button"
-              className={`${styles.channelItem}${c.id === activeChannelID ? ` ${styles.channelItemActive}` : ''}`}
-              onClick={() => onSelectChannel(c)}
-            >
-              <div className={styles.newChannelIcon}>
-                <MapPin size={18} strokeWidth={1.8} />
-              </div>
-              <div className={styles.channelGrow}>
-                <div className={styles.channelName}>{c.name}</div>
-                <div className={styles.channelSub}>
-                  {c.lastMessagePreview ?? '尚無訊息'} · {c.memberCount} 人
-                </div>
-              </div>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
   )
 }

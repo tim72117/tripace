@@ -58,21 +58,25 @@
   color: var(--color-accent);
   background: var(--ios-bg);
 }
-.settingsBtn {
+/* 右上角操作群組(分享/成員/使用者頭像):margin-left: auto 貼齊分頁列
+   右緣,跟左側的行程/時間軸/配速表/demo 分頁圖示群組分開,理由見上方
+   PhoneNavDrawer.tsx 開頭的說明。 */
+.headerActions {
   flex: 0 0 auto;
-  width: 36px;
-  height: 36px;
   margin-left: auto;
   display: flex;
   align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 10px;
-  background: none;
-  color: var(--ios-gray);
-  cursor: pointer;
+  gap: 2px;
 }
-
+.avatarBtn {
+  flex: 0 0 auto;
+  border: none;
+  background: none;
+  padding: 0;
+  margin-left: 4px;
+  cursor: pointer;
+  border-radius: 50%;
+}
 /* 內容區:視選取的分頁顯示行程列表/時間軸/配速表/demo 面板,自己負責
    捲動——捲動權明確收在這一層,不依賴子層(.pace-chart、.screen-body 等)
    各自的巢狀 flex/overflow 傳遞鏈,避免行動瀏覽器上多層傳遞失效的既有
@@ -108,96 +112,19 @@
   overflow-y: visible;
 }
 
-/* 底部使用者頭像列,對應桌面版 DesktopUserMenu 在 rail 底部的位置——頭像/
-   名稱純顯示目前登入身分,右側獨立的設定按鈕(.settingsBtn)才是進
-   SettingsScreen(整頁)的入口,不做桌面版那種 popover 選單,手機版本來
-   就有自己的設定整頁,不需要重造一份選單 UI。 */
-.userRow {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid var(--ios-sep);
-  background: var(--ios-card);
-}
-.userName {
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--ios-blue);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 行程列表:比照桌面版 .desktop-channel-item(styles-desktop.css)的無邊框
-   列表項目,不用全站共用的 .row/.list(那組是卡片式、逐項 border-bottom
-   分隔線,SettingsScreen 等多處還在用,不能直接改全域樣式)——這裡的視覺
-   刻意跟桌面版側欄一致:透明背景、只在 hover/active 時出現底色、圓角。 */
-.channelList {
-  list-style: none;
-  margin: 0;
-  padding: 8px;
+/* 時間軸分頁:對調後這裡改放對話(ChatScreen,透過 PhoneContent.tsx 的
+   React Portal 投影進來,見 timelineSlotRef 的說明),不是自己的內容——
+   這個 class 本身是 CSS Modules 本地 class,不需要跨檔案偵測,不用像
+   .pace-chart 那樣寫成 :global() 的描述子選擇器。ChatScreen 自己內部是
+   navbar/訊息列表(自帶 .screen-body 捲動)/輸入列三個 flex column 子項,
+   理由同 .pace-chart 的案例——不該再讓 .body 也是一層 overflow-y: auto
+   的捲動容器疊在上面,故也攤平成跟隨外層自然高度、不自己管捲動,交給
+   ChatScreen 自己的 .screen-body 當唯一捲動擁有者。 */
+.timelineChatSlot {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  overflow-y: visible;
 }
-.channelItem {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px;
-  border: none;
-  border-radius: 8px;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  transition: background 0.12s;
-}
-.channelItem:hover {
-  background: var(--ios-bg);
-}
-/* 目前選取的行程:改用低調的灰底(--ios-sep,全站既有的暖灰分隔線色,
-   跟 .row:active 的按壓回饋色調同一路數),不用強調色實心底——強調色底
-   +白字的版本(比照桌面版 .desktop-channel-item.active)在這裡看起來太
-   搶眼,「目前選中」只是狀態提示,不需要跟「新增行程」按鈕那種需要主動
-   注意的操作搶視覺份量。 */
-.channelItemActive {
-  background: var(--ios-sep);
-}
-/* 行程項目的圖示徽章:取代原本的實心色塊大頭貼(Avatar),改用無色圖示
-   (MapPin/新增行程用的 Plus)——跟整個抽屜欄低調的視覺調性一致,同步套用
-   到桌面版的 .desktop-channel-icon(styles-desktop.css)。 */
-.newChannelIcon {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ios-gray);
-  background: var(--ios-sep);
-  flex: 0 0 auto;
-}
-.channelGrow {
-  flex: 1;
-  min-width: 0;
-}
-.channelName {
-  font-size: 14px;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.channelSub {
-  font-size: 12px;
-  color: var(--ios-gray);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-top: 1px;
-}
+

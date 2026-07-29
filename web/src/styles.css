@@ -70,22 +70,28 @@ body {
 }
 
 /* 導航列 */
+/* 樣式/高度刻意跟 PhoneNavDrawer.module.css 的 .tabs(抽屜欄上方功能列)
+   對齊——同一份 padding 公式(含 safe-area-inset-top 避讓瀏海/狀態列)、同一種
+   background/border-bottom 處理(不用陰影),讓主顯示區跟抽屜欄的上方欄視覺
+   高度一致,使用者在兩者之間切換時不會有跳動感。 */
 .navbar {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 10px 10px 10px;
   background: var(--ios-card);
-  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.06);
-  min-height: 52px;
+  border-bottom: 1px solid var(--ios-sep);
   transition: transform 0.25s ease, opacity 0.25s ease;
 }
 .navbar.navbar-hidden {
   transform: translateY(-100%);
   opacity: 0;
   pointer-events: none;
-  margin-bottom: -52px;
+  /* 對應上面 .navbar 新的高度公式(不含 safe-area 的部分):10px 上 padding +
+     10px 下 padding + icon-btn 固定 40px 高(見 .navbar .icon-btn),與抽屜欄
+     .tabs 的高度公式(PhoneNavDrawer.module.css)一致。 */
+  margin-bottom: -60px;
   transition: transform 0.25s ease, opacity 0.25s ease, margin-bottom 0.25s ease;
 }
 .navbar .title {
@@ -120,6 +126,22 @@ body {
 }
 .icon-btn {
   padding: 8px !important;
+}
+/* .navbar 裡的 icon-btn 固定成 40x40px 的方形按鈕框——跟抽屜欄分頁列
+   .tab(PhoneNavDrawer.module.css)同樣的 40x40px 尺寸,理由同上方 .navbar
+   統一樣式的說明:兩處上方列的實際高度要完全一致(10px padding + 40px
+   內容 + 10px padding = 60px),不能各自依 icon 尺寸+padding 算出略有落差
+   的高度(先前是 36px vs 40px,相差 4px)。 */
+.navbar .icon-btn {
+  width: 40px;
+  height: 40px;
+  justify-content: center;
+}
+/* 主顯示區上方列的時間軸/路徑切換圖示(PhoneContent.tsx 的 MainNavBar)
+   選中狀態——跟抽屜欄分頁列的 .tabActive(PhoneNavDrawer.module.css)同一種
+   低調強調色,不用實心底,理由同該處的說明。 */
+.icon-btn.active {
+  color: var(--color-accent);
 }
 
 /* 登入下拉(內嵌於頻道列表 navbar) */

@@ -13,7 +13,7 @@ import type { DesktopTimelineMirror } from './ChatScreen'
 import { MultiTrackTimeline, type TaskPlaceholder } from './Timeline'
 import type { AssistLang } from './assistLang'
 import { ASSIST_LANG_KEY, getAssistLang } from './assistLang'
-import { PaceChart } from './PaceChart'
+import { PaceChart, type Checkpoint } from './PaceChart'
 import { PaceRouteMap, type SelectedEntry } from './PaceRouteMap'
 import { DemoPanel } from './DemoPanel'
 import {
@@ -95,6 +95,12 @@ export function DesktopContent(props: ContentProps) {
   // PaceRouteMap 這裡跟那裡各自獨立掛載,狀態不共用,故這裡需要自己的
   // selectedEntry state,不能指望公開頁那份。
   const [selectedEntry, setSelectedEntry] = useState<SelectedEntry | null>(null)
+  // paceCheckpoints:PaceChart(左側 side panel)目前選取的那一段 checkpoint
+  // 清單,透過 onRouteChange 鏡像過來,再往下傳給 PaceRouteMap(右側主區的
+  // 地圖)——地圖畫路線需要知道「目前是哪一段」,但兩者是分開掛載的
+  // sibling,資料只有 PaceChart 有,故用這個 state 中介,同一套模式比照
+  // timelineMirror。初始值空陣列,PaceChart 掛載/切換段落後才會有內容。
+  const [paceCheckpoints, setPaceCheckpoints] = useState<Checkpoint[]>([])
   // timelineMirror:ChatScreen 透過 desktopChat.onTimelineData 鏡像過來的時間軸資料
   // (entries/updatingEntryIDs/taskPlaceholders/refetchEntries)。ChatScreen 是這份
   // 資料唯一的擁有者(它的 WS 連線即時維護這些 state),這裡只是接住鏡像後轉交給
@@ -193,7 +199,12 @@ export function DesktopContent(props: ContentProps) {
             )}
             {panelMode === 'pace' && (
               <div className="desktop-sidepanel-pace">
-                <PaceChart cfg={cfg} channelID={activeChannel?.id} onCheckpointClick={setSelectedEntry} />
+                <PaceChart
+                  cfg={cfg}
+                  channelID={activeChannel?.id}
+                  onCheckpointClick={setSelectedEntry}
+                  onRouteChange={setPaceCheckpoints}
+                />
               </div>
             )}
           </div>
@@ -207,7 +218,11 @@ export function DesktopContent(props: ContentProps) {
             // 儲存座標」互動只在這裡(登入後正式介面)提供,/demo/pace 公開
             // 分享頁刻意不接(見 PaceRouteMap.tsx 的 SelectedEntry 說明)。
             <div className="desktop-demo-panel">
-              <PaceRouteMap selectedEntry={selectedEntry} onSelectedEntryDone={() => setSelectedEntry(null)} />
+              <PaceRouteMap
+                checkpoints={paceCheckpoints}
+                selectedEntry={selectedEntry}
+                onSelectedEntryDone={() => setSelectedEntry(null)}
+              />
             </div>
           ) : panelMode === 'demo-cards' || panelMode === 'demo-row' || panelMode === 'demo-map'
             || panelMode === 'demo-clienttools' || panelMode === 'demo-onagent' ? (
@@ -312,7 +327,7 @@ function DesktopRail({
         <button
           className={`desktop-rail-btn${panelMode === 'pace' ? ' active' : ''}`}
           onClick={() => onSelect('pace')}
-          title="配速表"
+          title="路徑"
         >
           <Route size={20} strokeWidth={1.8} />
         </button>

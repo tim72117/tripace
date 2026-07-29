@@ -14,11 +14,18 @@ import (
 //
 // 跟既有的 PATCH /internal/entries/{id}/latlng(handleInternalSetLatLng)不同:
 // 那支端點要求呼叫端已經知道座標、直接寫入;這支端點一律用這筆 Entry 現有
-// 的 Title 當查詢字串,由伺服器端呼叫 Geocoding API(geo.Client.Geocode,與
-// internal/wanttools/geocode.go 用同一把 GOOGLE_PLACES_API_KEY,該 key 已
-// 額外授權 geocoding-backend.googleapis.com)查出座標後自動寫回
-// Entry.Lat/Lng——呼叫端不需要(也不能)另外指定查詢字串,查詢內容一律來自
-// 資料庫裡已經存在的資料,避免查詢字串跟實際 entry 內容對不上。
+// 的 Location(地點欄位,查無資料才 fallback 用 Title)當查詢字串,由伺服器端
+// 呼叫 Geocoding API(geo.Client.Geocode,與 internal/wanttools/geocode.go
+// 用同一把 GOOGLE_PLACES_API_KEY,該 key 已額外授權
+// geocoding-backend.googleapis.com)查出座標後自動寫回 Entry.Lat/Lng——
+// 呼叫端不需要(也不能)另外指定查詢字串,查詢內容一律來自資料庫裡已經存在的
+// 資料,避免查詢字串跟實際 entry 內容對不上。
+//
+// 優先用 Location 而非 Title:Title 常常是紙條上手寫的原始記事(可能夾雜
+// 轉彎描述、代碼,如「R轉193」「左轉民治街(花52)」),不是乾淨的地名;
+// Location 是額外標註的地點欄位,語意上就是給地理查詢用的,查詢結果通常
+// 更準確。Location 為空(沒有額外標註)時才退回用 Title,維持這支端點一律
+// 有結果可查(而不是要求呼叫端先確認 Location 是否存在)。
 //
 // 這裡刻意用 Geocoding API 而非 geo.Client.Search(Places API Text Search):
 // 實測 Places API 對「橋樑」「道路」這類地理要素(這批配速表 checkpoint 有
@@ -28,7 +35,7 @@ import (
 //
 // region 是唯一的選填參數,用來補充地區範圍輔助消歧義(例如同名地標在不同
 // 縣市都有時,「花蓮 大富火車站」比單查「大富火車站」更準確)——直接串接在
-// Title 前面組成實際送給 Geocoding API 的查詢字串。
+// 查詢字串前面組成實際送給 Geocoding API 的查詢字串。
 func (s *Server) handleGeocodeEntry(w http.ResponseWriter, r *http.Request) {
 	entryID := r.PathValue("id")
 
@@ -44,12 +51,16 @@ func (s *Server) handleGeocodeEntry(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "entry_not_found", "找不到此 entry: "+entryID)
 		return
 	}
-	if entry.Title == "" {
-		writeErr(w, http.StatusBadRequest, "invalid_input", "此 entry 的 title 為空,無從查詢")
+	queryBase := entry.Location
+	if queryBase == "" {
+		queryBase = entry.Title
+	}
+	if queryBase == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "此 entry 的 location/title 皆為空,無從查詢")
 		return
 	}
 
-	query := entry.Title
+	query := queryBase
 	if body.Region != "" {
 		query = body.Region + " " + query
 	}

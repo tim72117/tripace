@@ -1,0 +1,85 @@
+/* PhoneChannelsDrawer.tsx 專屬樣式(CSS Modules)。左側滑入抽屜,疊在
+   PhoneNavDrawer 之上(z-index 高於 PhoneNavDrawer.module.css 的 30/31)——
+   backdrop/panel 的寫法直接複製 PhoneNavDrawer.module.css 的同名規則,只是
+   疊層更高;.channelList 系列規則也是原封不動從那裡搬過來(視覺不變,只是
+   現在裝在獨立抽屜裡)。 */
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 32;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 33;
+  display: flex;
+  flex-direction: column;
+  background: var(--ios-bg);
+  box-shadow: 2px 0 16px rgba(0, 0, 0, 0.2);
+  touch-action: pan-y;
+}
+
+.channelList {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.channelItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: background 0.12s;
+}
+.channelItem:hover {
+  background: var(--ios-bg);
+}
+.channelItemActive {
+  background: var(--ios-sep);
+}
+.newChannelIcon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ios-gray);
+  background: var(--ios-sep);
+  flex: 0 0 auto;
+}
+.channelGrow {
+  flex: 1;
+  min-width: 0;
+}
+.channelName {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.channelSub {
+  font-size: 12px;
+  color: var(--ios-gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}

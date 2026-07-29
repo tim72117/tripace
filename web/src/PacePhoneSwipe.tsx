@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import type { TouchEvent as ReactTouchEvent } from 'react'
 import type { ClientConfig } from './api'
-import { PaceChart } from './PaceChart'
+import { PaceChart, type Checkpoint } from './PaceChart'
 import { PaceRouteMap } from './PaceRouteMap'
 import styles from './PacePhoneSwipe.module.css'
 
@@ -24,14 +24,27 @@ const DRAWER_WIDTH_PERCENT = 82
 export function PacePhoneSwipe({
   cfg,
   channelID,
+  publicToken,
+  checkpoints,
+  onRouteChange,
 }: {
   // cfg/channelID:登入後正式介面(見 PhoneContent.tsx 的 PhoneNavDrawer)傳入
   // 目前選取的頻道,改走認證過的 fetchEntries——跟桌面版 DesktopLayout.tsx
   // 的 <PaceChart cfg={cfg} channelID={activeChannel?.id} /> 同一套邏輯,不再
-  // 掛載時完全不傳而落到公開分享 token 的 fallback 路徑。/demo/pace 公開頁
-  // (PublicPaceDemoPage.tsx)不使用這個元件,不受影響。
+  // 掛載時完全不傳而落到公開分享 token 的 fallback 路徑。
   cfg?: ClientConfig
   channelID?: string | null
+  // publicToken:未登入的公開分享頁要查詢的公開連結 token,直接轉傳給
+  // PaceChart(見該檔案 publicToken prop 的說明)——真正的分享連結
+  // /public/{token}(PublicViewScreen.tsx)傳這個 prop 指定實際的 token;
+  // /demo/pace(PublicPaceDemoPage.tsx)不傳,fallback 用固定的 demo token。
+  publicToken?: string
+  // checkpoints/onRouteChange:PaceRouteMap 畫路線需要的 checkpoint 清單,
+  // 由呼叫端持有 state 並透過 PaceChart 的 onRouteChange 鏡像、往下傳給
+  // PaceRouteMap——這個元件本身不持有這份資料,只負責轉傳,同一套模式
+  // 比照 DesktopLayout.tsx/PhoneContent.tsx。
+  checkpoints: Checkpoint[]
+  onRouteChange: (checkpoints: Checkpoint[]) => void
 }) {
   // 預設抽屜開啟(先看到清單),對應桌面版側欄預設就是展開顯示清單的慣例。
   const [open, setOpen] = useState(true)
@@ -65,7 +78,7 @@ export function PacePhoneSwipe({
   return (
     <div className="pace-drawer-wrap">
       <div className={styles.map}>
-        <PaceRouteMap />
+        <PaceRouteMap checkpoints={checkpoints} />
       </div>
 
       {open && (
@@ -87,7 +100,7 @@ export function PacePhoneSwipe({
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
-        <PaceChart cfg={cfg} channelID={channelID} />
+        <PaceChart cfg={cfg} channelID={channelID} publicToken={publicToken} onRouteChange={onRouteChange} />
       </div>
 
       {!open && (
