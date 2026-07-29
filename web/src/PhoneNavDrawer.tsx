@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { TouchEvent as ReactTouchEvent } from 'react'
 import {
-  List, Timeline, Plus, Sparkles, GalleryHorizontal, Map, Wrench, Radio, Route, Settings,
+  List, Timeline, Plus, Sparkles, GalleryHorizontal, Map, Wrench, Radio, Route, Settings, MapPin,
 } from 'lucide-react'
 import type { Channel, User } from './types'
 import { Avatar, ErrorBanner, isSubmitEnter } from './AppCommon'
@@ -281,64 +281,70 @@ function ChannelsTabContent({
   onSelectChannel: (c: Channel) => void
 }) {
   return (
-    <>
-      {creating ? (
-        <div className="new-channel-composer">
-          <input
-            autoFocus
-            value={newName}
-            placeholder="新行程名稱…"
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (isSubmitEnter(e)) submitCreate()
-              if (e.key === 'Escape') {
-                setCreating(false)
-                setNewName('')
-              }
-            }}
-          />
-          <button className="btn-primary" onClick={submitCreate} disabled={!newName.trim()}>
-            建立
-          </button>
+    <div className="screen-body">
+      <ErrorBanner msg={err} />
+      {channels.length === 0 && !err && (
+        <div className="empty">
+          {loading ? '載入中…' : '沒有行程。按下方「新增行程」建立一個。'}
         </div>
-      ) : (
-        <button
-          type="button"
-          className="btn-primary new-channel-trigger"
-          onClick={() => setCreating(true)}
-        >
-          <Plus size={18} strokeWidth={1.8} />
-          新增行程
-        </button>
       )}
-      <div className="screen-body">
-        <ErrorBanner msg={err} />
-        {channels.length === 0 && !err ? (
-          <div className="empty">
-            {loading ? '載入中…' : '沒有行程。按上方「＋ 新增行程」建立一個。'}
-          </div>
-        ) : (
-          <ul className={styles.channelList}>
-            {channels.map((c) => (
-              <li key={c.id}>
-                <button
-                  type="button"
-                  className={`${styles.channelItem}${c.id === activeChannelID ? ` ${styles.channelItemActive}` : ''}`}
-                  onClick={() => onSelectChannel(c)}
-                >
-                  <Avatar user={{ name: c.name, avatarColor: 'var(--color-accent)' }} />
-                  <div className={styles.channelGrow}>
-                    <div className={styles.channelName}>{c.name}</div>
-                    <div className={styles.channelSub}>
-                      {c.lastMessagePreview ?? '尚無訊息'} · {c.memberCount} 人
-                    </div>
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </>
+      <ul className={styles.channelList}>
+        {/* 新增行程:跟下面實際的行程項目共用同一套 .channelItem 樣式(借來
+            瀏覽/新增行程的是同一個工具畫面,視覺上該是同一組清單的一份子,
+            不是另一顆突兀的強調色橫幅按鈕),只把大頭貼換成「＋」圖示徽章
+            區分。點擊後這個項目原地換成輸入框(composer),下面既有行程
+            清單維持可見、可捲動,不會像原本整塊消失。 */}
+        <li>
+          {creating ? (
+            <div className="new-channel-composer">
+              <input
+                autoFocus
+                value={newName}
+                placeholder="新行程名稱…"
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (isSubmitEnter(e)) submitCreate()
+                  if (e.key === 'Escape') {
+                    setCreating(false)
+                    setNewName('')
+                  }
+                }}
+              />
+              <button className="btn-primary" onClick={submitCreate} disabled={!newName.trim()}>
+                建立
+              </button>
+            </div>
+          ) : (
+            <button type="button" className={styles.channelItem} onClick={() => setCreating(true)}>
+              <div className={styles.newChannelIcon}>
+                <Plus size={18} strokeWidth={1.8} />
+              </div>
+              <div className={styles.channelGrow}>
+                <div className={styles.channelName}>新增行程</div>
+              </div>
+            </button>
+          )}
+        </li>
+        {channels.map((c) => (
+          <li key={c.id}>
+            <button
+              type="button"
+              className={`${styles.channelItem}${c.id === activeChannelID ? ` ${styles.channelItemActive}` : ''}`}
+              onClick={() => onSelectChannel(c)}
+            >
+              <div className={styles.newChannelIcon}>
+                <MapPin size={18} strokeWidth={1.8} />
+              </div>
+              <div className={styles.channelGrow}>
+                <div className={styles.channelName}>{c.name}</div>
+                <div className={styles.channelSub}>
+                  {c.lastMessagePreview ?? '尚無訊息'} · {c.memberCount} 人
+                </div>
+              </div>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }

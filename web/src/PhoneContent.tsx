@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import type { TouchEvent as ReactTouchEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import { ChatScreen, type DesktopTimelineMirror } from './ChatScreen'
@@ -124,6 +125,42 @@ export function PhoneContent(props: ContentProps) {
   // 跟桌面版 DesktopContent 同一套設計(見該檔案的說明)。
   const [selectedEntry, setSelectedEntry] = useState<SelectedEntry | null>(null)
 
+  // 主顯示區右滑開啟抽屜欄:只在觸控起點落在螢幕左邊緣一小段範圍內
+  // (EDGE_ZONE_PX)才開始追蹤,不是整個主顯示區域都能滑——主顯示區裡有
+  // 地圖(PaceRouteMap 需要自己的平移/縮放手勢)、訊息列表(ChatScreen 需要
+  // 垂直捲動)等本來就有手勢需求的內容,若整片區域都能觸發開抽屜,會跟這些
+  // 既有互動打架。只偵測「是否滑過門檻」就直接開啟,不做即時跟手的拖曳
+  // 位移(那需要把這裡的手勢狀態跟 PhoneNavDrawer.tsx 自己的關閉拖曳狀態
+  // 合併管理,複雜度不成比例)——開啟當下靠 PhoneNavDrawer 面板本身的
+  // CSS transition 播放滑入動畫,體感依然順暢。
+  const EDGE_ZONE_PX = 24
+  const SWIPE_OPEN_THRESHOLD_PX = 60
+  const edgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
+  const onMainTouchStart = (e: ReactTouchEvent) => {
+    const touch = e.touches[0]
+    edgeSwipeStartRef.current = touch.clientX <= EDGE_ZONE_PX ? { x: touch.clientX, y: touch.clientY } : null
+  }
+  const onMainTouchMove = (e: ReactTouchEvent) => {
+    const start = edgeSwipeStartRef.current
+    if (!start) return
+    const touch = e.touches[0]
+    const dx = touch.clientX - start.x
+    const dy = touch.clientY - start.y
+    // 垂直位移大於水平位移時判定使用者其實是想捲動(訊息列表/檢查站清單
+    // 等),放棄這次手勢,交還給底下元件本來的捲動行為。
+    if (Math.abs(dy) > Math.abs(dx)) {
+      edgeSwipeStartRef.current = null
+      return
+    }
+    if (dx >= SWIPE_OPEN_THRESHOLD_PX) {
+      setDrawerOpen(true)
+      edgeSwipeStartRef.current = null
+    }
+  }
+  const onMainTouchEnd = () => {
+    edgeSwipeStartRef.current = null
+  }
+
   if (props.isGuest) {
     return (
       <LoginCard title="歡迎使用 Tripace" subtitle="請先登入或註冊帳號,才能查看與使用行程功能。">
@@ -138,36 +175,47 @@ export function PhoneContent(props: ContentProps) {
 
   return (
     <>
-      {drawerMode === 'pace' ? (
-        // 配速表分頁:主顯示區改成地圖(對齊桌面版 .desktop-main 在
-        // panelMode === 'pace' 時顯示 PaceRouteMap 的邏輯),檢查站清單留在
-        // 抽屜欄裡(見下方 PhoneNavDrawer 的 mode === 'pace' 分支)。
-        // PaceRouteMap 本身不含 navbar(桌面版直接嵌在 .desktop-main 裡滿版
-        // 顯示,不需要),這裡額外包一層跟 ChatScreen/PhoneEmptyState 同款
-        // 的 navbar,確保左上角展開抽屜欄按鈕在所有主顯示畫面都一致存在,
-        // 不會因為切到配速表分頁就找不到入口。
-        <>
-          <div className="navbar">
-            <button className="btn icon-btn" onClick={() => setDrawerOpen(true)} title="行程列表/時間軸">
-              <Menu size={20} strokeWidth={1.8} />
-            </button>
-            <span className="title">配速表</span>
-            <span style={{ width: 36 }} />
-          </div>
-          <PaceRouteMap selectedEntry={selectedEntry} onSelectedEntryDone={() => setSelectedEntry(null)} />
-        </>
-      ) : activeChannel ? (
-        <ChatScreen
-          cfg={cfg}
-          channel={activeChannel}
-          user={props.user}
-          onBack={() => setActiveChannel(null)}
-          onOpenDrawer={() => setDrawerOpen(true)}
-          onTimelineData={onTimelineData}
-        />
-      ) : (
-        <PhoneEmptyState onOpenDrawer={() => setDrawerOpen(true)} />
-      )}
+      {/* 主顯示區容器:承接左邊緣右滑開啟抽屜欄的手勢(見上方
+          onMainTouchStart 等的說明),包住三種主顯示內容共用同一個手勢
+          偵測範圍。flex 屬性延續原本 .web-app 直接排列這些內容時的版面
+          (撐滿剩餘高度、內部再各自 flex column 排 navbar/內容/輸入列)。 */}
+      <div
+        className={styles.mainArea}
+        onTouchStart={onMainTouchStart}
+        onTouchMove={onMainTouchMove}
+        onTouchEnd={onMainTouchEnd}
+      >
+        {drawerMode === 'pace' ? (
+          // 配速表分頁:主顯示區改成地圖(對齊桌面版 .desktop-main 在
+          // panelMode === 'pace' 時顯示 PaceRouteMap 的邏輯),檢查站清單留在
+          // 抽屜欄裡(見下方 PhoneNavDrawer 的 mode === 'pace' 分支)。
+          // PaceRouteMap 本身不含 navbar(桌面版直接嵌在 .desktop-main 裡滿版
+          // 顯示,不需要),這裡額外包一層跟 ChatScreen/PhoneEmptyState 同款
+          // 的 navbar,確保左上角展開抽屜欄按鈕在所有主顯示畫面都一致存在,
+          // 不會因為切到配速表分頁就找不到入口。
+          <>
+            <div className="navbar">
+              <button className="btn icon-btn" onClick={() => setDrawerOpen(true)} title="行程列表/時間軸">
+                <Menu size={20} strokeWidth={1.8} />
+              </button>
+              <span className="title">配速表</span>
+              <span style={{ width: 36 }} />
+            </div>
+            <PaceRouteMap selectedEntry={selectedEntry} onSelectedEntryDone={() => setSelectedEntry(null)} />
+          </>
+        ) : activeChannel ? (
+          <ChatScreen
+            cfg={cfg}
+            channel={activeChannel}
+            user={props.user}
+            onBack={() => setActiveChannel(null)}
+            onOpenDrawer={() => setDrawerOpen(true)}
+            onTimelineData={onTimelineData}
+          />
+        ) : (
+          <PhoneEmptyState onOpenDrawer={() => setDrawerOpen(true)} />
+        )}
+      </div>
       <PhoneNavDrawer
         open={drawerOpen}
         cfg={cfg}

@@ -19,11 +19,26 @@
   box-sizing: border-box;
 }
 
+html {
+  /* 同 body 的 overscroll-behavior-y 說明——部分瀏覽器(尤其 Chrome for
+     Android)的下拉重新整理判斷是看 html 這層,只設 body 不夠保險,兩層
+     都鎖。 */
+  overscroll-behavior-y: none;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
   background: var(--ios-bg);
   color: var(--color-dark);
+  /* 鎖住瀏覽器原生的下拉重新整理/整頁彈性拉伸(overscroll bounce)——這個
+     app 本身內部到處都是自己管理捲動的容器(.screen-body/.body 等,各自
+     已設 overscroll-behavior-y: contain 擋住捲動穿透到父層),但瀏覽器
+     原生的「整頁下拉」手勢是在 body/html 這層攔截的,內層容器各自 contain
+     並不會連帶擋掉它。手機版導覽抽屜欄/設定面板等疊層都是用觸控手勢
+     操作,下拉重新整理誤觸發會直接把整個 App 狀態重置掉,體驗上完全不
+     該出現在一個看起來像原生 App 的介面裡。 */
+  overscroll-behavior-y: none;
 }
 
 /* ---- 正式網頁版面 ---- */
@@ -206,7 +221,13 @@ body {
 .row.active .sub {
   color: #fff;
 }
-.row .grow {
+/* 不限定 .row 祖先——.grow 的用途(flex:1 撐滿剩餘空間 + min-width:0 讓
+   子層的 text-overflow: ellipsis 能真的生效)是通用的,任何 flex row 裡
+   放一塊「文字可能過長要截斷」的內容都用得到,不是 .row 專屬。曾經只限定
+   在 .row .grow,導致 .desktop-channel-item/.desktop-user-trigger(見
+   styles-desktop.css)底下的同名 .grow 完全吃不到這條規則,文字過長時
+   直接撐破容器邊界而非省略號截斷。 */
+.grow {
   flex: 1;
   min-width: 0;
 }

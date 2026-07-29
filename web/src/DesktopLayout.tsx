@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ChevronDown, Settings, LogOut, X,
-  List, Timeline, Sparkles, GalleryHorizontal, Map, Wrench, Radio, Activity, Route, Plus,
+  List, Timeline, Sparkles, GalleryHorizontal, Map, Wrench, Radio, Activity, Route, Plus, MapPin,
 } from 'lucide-react'
 import type { ClientConfig, ApiCall, WsEvent } from './api'
 import * as api from './api'
@@ -401,53 +401,65 @@ function DesktopChannelList({
     <div className="desktop-channel-list">
       <div className="desktop-sidebar-head">
         <span className="desktop-sidebar-title">行程</span>
-        <button className="btn icon-btn" onClick={() => setCreating((v) => !v)} title="新增行程">
-          <Plus size={18} strokeWidth={1.8} />
-        </button>
       </div>
-      {creating && (
-        <div className="new-channel-composer">
-          <input
-            autoFocus
-            value={newName}
-            placeholder="新行程名稱…"
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (isSubmitEnter(e)) submitCreate()
-              if (e.key === 'Escape') {
-                setCreating(false)
-                setNewName('')
-              }
-            }}
-          />
-          <button className="btn-primary" onClick={submitCreate} disabled={!newName.trim()}>
-            建立
-          </button>
-        </div>
-      )}
       <ErrorBanner msg={err} />
       <div className="desktop-channel-scroll">
-        {channels.length === 0 && !err ? (
+        {channels.length === 0 && !err && (
           <div className="empty">
-            {loading ? '載入中…' : '沒有行程，按上方 ＋ 建立一個。'}
+            {loading ? '載入中…' : '沒有行程,按下方「新增行程」建立一個。'}
+          </div>
+        )}
+        {/* 新增行程:跟下面實際的行程項目共用同一套 .desktop-channel-item
+            樣式(對齊手機版 PhoneNavDrawer.tsx 的 ChannelsTabContent,同一組
+            清單的一份子,不是另外一顆獨立的圖示按鈕),只把大頭貼換成「＋」
+            圖示徽章區分。點擊後原地換成輸入框(composer),下面既有行程
+            清單維持可見。 */}
+        {creating ? (
+          <div className="new-channel-composer">
+            <input
+              autoFocus
+              value={newName}
+              placeholder="新行程名稱…"
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (isSubmitEnter(e)) submitCreate()
+                if (e.key === 'Escape') {
+                  setCreating(false)
+                  setNewName('')
+                }
+              }}
+            />
+            <button className="btn-primary" onClick={submitCreate} disabled={!newName.trim()}>
+              建立
+            </button>
           </div>
         ) : (
-          channels.map((c) => (
-            <button
-              key={c.id}
-              className={`desktop-channel-item${c.id === activeChannelID ? ' active' : ''}`}
-              onClick={() => onOpen(c)}
-            >
-              <Avatar user={{ name: c.name, avatarColor: 'var(--color-accent)' }} />
-              <div className="grow">
-                <div className="name">{c.name}</div>
-                <div className="sub">
-                  {c.lastMessagePreview ?? '尚無訊息'} · {c.memberCount} 人
-                </div>
-              </div>
-            </button>
-          ))
+          <button className="desktop-channel-item" onClick={() => setCreating(true)}>
+            <div className="desktop-channel-icon">
+              <Plus size={18} strokeWidth={1.8} />
+            </div>
+            <div className="grow">
+              <div className="name">新增行程</div>
+            </div>
+          </button>
         )}
+        {channels.map((c) => (
+          <button
+            key={c.id}
+            className={`desktop-channel-item${c.id === activeChannelID ? ' active' : ''}`}
+            onClick={() => onOpen(c)}
+          >
+            <div className="desktop-channel-icon">
+              <MapPin size={18} strokeWidth={1.8} />
+            </div>
+            <div className="grow">
+              <div className="name">{c.name}</div>
+              <div className="sub">
+                {c.lastMessagePreview ?? '尚無訊息'} · {c.memberCount} 人
+              </div>
+            </div>
+          </button>
+        ))}
       </div>
     </div>
   )

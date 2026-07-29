@@ -16,3 +16,14 @@
   background: var(--ios-bg);
   transition: transform 0.28s ease;
 }
+
+/* mainArea:承接主顯示區(ChatScreen/PhoneEmptyState/配速表地圖)左邊緣
+   右滑開啟抽屜欄的手勢範圍(見 PhoneContent.tsx 的 onMainTouchStart 等)。
+   flex 屬性延續原本這些內容直接排列在 .web-app 底下時的版面——撐滿剩餘
+   高度,內部各自(navbar/內容/輸入列)再用自己的 flex column 排列。 */
+.mainArea {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}

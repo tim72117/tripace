@@ -160,12 +160,27 @@
 .channelItem:hover {
   background: var(--ios-bg);
 }
+/* 目前選取的行程:改用低調的灰底(--ios-sep,全站既有的暖灰分隔線色,
+   跟 .row:active 的按壓回饋色調同一路數),不用強調色實心底——強調色底
+   +白字的版本(比照桌面版 .desktop-channel-item.active)在這裡看起來太
+   搶眼,「目前選中」只是狀態提示,不需要跟「新增行程」按鈕那種需要主動
+   注意的操作搶視覺份量。 */
 .channelItemActive {
-  background: var(--color-accent);
+  background: var(--ios-sep);
 }
-.channelItemActive .channelName,
-.channelItemActive .channelSub {
-  color: #fff;
+/* 行程項目的圖示徽章:取代原本的實心色塊大頭貼(Avatar),改用無色圖示
+   (MapPin/新增行程用的 Plus)——跟整個抽屜欄低調的視覺調性一致,同步套用
+   到桌面版的 .desktop-channel-icon(styles-desktop.css)。 */
+.newChannelIcon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ios-gray);
+  background: var(--ios-sep);
+  flex: 0 0 auto;
 }
 .channelGrow {
   flex: 1;
