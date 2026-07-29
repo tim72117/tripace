@@ -4,6 +4,7 @@ import type { ClientConfig } from '../api'
 import * as api from '../api'
 import type { Channel, ChannelRole, Member } from '../types'
 import { Avatar, ErrorBanner, errMsg, isSubmitEnter } from '../AppCommon'
+import styles from './MembersScreen.module.css'
 
 // ---- 成員頁 ----
 
@@ -89,11 +90,11 @@ export function MembersScreen({
                   <div className="sub">{m.id}</div>
                 </div>
                 {isOwner && !isChannelOwner ? (
-                  <button className={`role-chip ${m.role}`} onClick={() => toggleRole(m)} title="點擊切換 修改/查詢 權限">
+                  <button className={`${styles.chip} ${styles[m.role]}`} onClick={() => toggleRole(m)} title="點擊切換 修改/查詢 權限">
                     {roleLabel}
                   </button>
                 ) : (
-                  <span className={`role-chip ${isChannelOwner ? 'owner' : m.role} static`}>
+                  <span className={`${styles.chip} ${styles[isChannelOwner ? 'owner' : m.role]} ${styles.static}`}>
                     {roleLabel}
                   </span>
                 )}

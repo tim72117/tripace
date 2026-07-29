@@ -13,7 +13,7 @@ import { MultiTrackTimeline, type TaskPlaceholder } from './Timeline'
 import type { AssistLang } from './assistLang'
 import { ASSIST_LANG_KEY, getAssistLang } from './assistLang'
 import { PaceRouteMap } from './PaceRouteMap'
-import { DebugPanel } from './DebugPanel'
+import { DemoPanel } from './DemoPanel'
 import {
   Avatar, ErrorBanner, errMsg, isSubmitEnter, LoginForm, useChannelsState,
   type ContentProps,
@@ -181,7 +181,7 @@ export function DesktopContent(props: ContentProps) {
           )}
         </main>
         {props.isDemo && showDebugPanel && (
-          <DebugPanel
+          <DemoPanel
             calls={debugCalls}
             onClear={() => setDebugCalls([])}
             wsEvents={debugWsEvents}

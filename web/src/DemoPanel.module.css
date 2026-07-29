@@ -1,0 +1,198 @@
+/* DemoPanel.tsx 專屬樣式(CSS Modules)。命名省略掉原本的 debug-/
+   entries-/entry-/call-/kv- 等前綴——import 時已經有明確的命名空間,不需要
+   重複加前綴。
+
+   沒有任何 class 需要 :global()——沒有其他檔案的 CSS 選擇器需要從外部
+   偵測這裡的 class,DemoPanel 本身也沒有被其他元件以 CSS 選擇器方式
+   跨檔案引用(DesktopLayout.tsx 只是 import 元件本身、傳 props,不是靠
+   className 耦合)。
+
+   注意:原本的 .debug-head .h-title 規則在目前的 .tsx 裡完全沒有對應的
+   className="h-title" 用法(死 CSS,拆分前用 grep 確認過),故不搬過來,
+   避免延續無用規則。 */
+
+.panel {
+  flex: 0 0 auto;
+  min-width: 0;
+  background: #0d0d0f;
+  color: #d4d4d8;
+  border-radius: 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid #26262b;
+  color: #fff;
+}
+.head button {
+  background: #26262b;
+  color: #d4d4d8;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.list {
+  overflow-y: auto;
+  padding: 8px;
+}
+
+/* 分頁切換 */
+.tabs {
+  display: flex;
+  gap: 4px;
+}
+.tabs button {
+  background: transparent;
+  color: #8a8a93;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.tabs button.active {
+  background: #2a2a2e;
+  color: #fff;
+}
+
+/* Entries 列表 */
+.entriesHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #8a8a93;
+  font-size: 12px;
+  padding: 4px 6px 8px;
+}
+.entriesHead button {
+  background: #2a2a2e;
+  color: #ddd;
+  border: none;
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.entriesHead button.danger {
+  background: #4a1f1f;
+  color: #ff9e9e;
+}
+.entriesHead button.danger:hover {
+  background: #5f2626;
+}
+.entryRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #2a2a2e;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.entryWhenMono {
+  color: #6cb6ff;
+}
+.entryItemMono {
+  color: #e8e8ea;
+}
+.entryIdMono {
+  color: #6a6a72;
+  font-size: 10px;
+}
+.call {
+  border: 1px solid #26262b;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.callHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  background: #161619;
+}
+.callHead:hover {
+  background: #1d1d22;
+}
+.method {
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.methodGet {
+  background: #1f3a5f;
+  color: #8ec5ff;
+}
+.methodPost {
+  background: #1f4d2e;
+  color: #8ff0a4;
+}
+.methodDelete {
+  background: #5f1f1f;
+  color: #ff9e9e;
+}
+.methodOptions {
+  background: #4a4a1f;
+  color: #f0e98f;
+}
+.callPath {
+  flex: 1;
+  color: #c9c9d0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status {
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.statusOk {
+  background: #1f4d2e;
+  color: #8ff0a4;
+}
+.statusErr {
+  background: #5f1f1f;
+  color: #ff9e9e;
+}
+.statusFail {
+  background: #3a3a3a;
+  color: #ffb454;
+}
+.dur {
+  color: #6e6e78;
+  font-size: 11px;
+}
+.callBody {
+  padding: 10px;
+  border-top: 1px solid #26262b;
+  background: #0d0d0f;
+}
+.kvLabel {
+  color: #6e6e78;
+  margin: 8px 0 2px;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.kvLabel:first-child {
+  margin-top: 0;
+}
+.jsonErr {
+  color: #ffb454;
+}

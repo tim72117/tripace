@@ -1,0 +1,210 @@
+/* MessageBubble.tsx 專屬樣式(CSS Modules)。命名省略掉原本的 bubble-/
+   entry- 等前綴(例如 .group 對應原本的 .bubble-group)——import 時已經
+   有明確的命名空間,不需要重複加前綴。
+
+   沒有任何 class 需要 :global()——沒有其他檔案的 CSS 選擇器需要從外部
+   偵測這裡的 class。
+
+   .tag/.cat/.entry-loc 刻意不搬過來,留在 styles.css 當全域 class:
+   .tag 同時被 Timeline.tsx(SubCard 的標籤)使用,.cat 同時被 Timeline.tsx
+   /PhoneScreens.tsx(頻道「我的」/分類標籤)使用,.entry-loc 是 Timeline.tsx
+   專屬(跟這裡的 .entry-* 系列同名前綴但不同元件,拆分前用 grep 個別確認
+   過,不要混為一談)。
+
+   原本 styles.css 裡的 .bubble.mine .tag 規則已確認是死規則(.tag 從未
+   在任何 .bubble 底下渲染過,兩者是完全獨立的元件樹,見 Timeline.tsx 的
+   SubCard 跟這裡的 MessageBubble 各自獨立),拆分時不搬過來。
+   原本的 .bubble.pending 在 styles.css 裡被拆成兩處各補一部分屬性(不同
+   位置各寫一次),這裡合併成一條規則,效果相同。
+   .entry-body 這個 className 在原本的 .tsx 裡就沒有對應 CSS 規則(未
+   樣式化,同 ClientToolsDemo 那次拆分遇到的 .cts-entry-key),故不搬過來。 */
+
+.group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  max-width: 78%;
+}
+.group.mine {
+  align-self: flex-end;
+  align-items: flex-end;
+  /* 加大與上一則訊息的間距:父層 .chat-messages/.chat-overlay-inner 的
+     gap: 10px 是所有訊息共用的基礎間距,這裡額外疊加 margin-top 讓使用者
+     這則泡泡的分段感更明顯,不影響其他訊息之間(如連續兩則助手回答)維持
+     原本 10px。 */
+  margin-top: 12px;
+}
+.group .bubble {
+  max-width: 100%;
+}
+
+.bubble {
+  max-width: 78%;
+  padding: 8px 12px;
+  border-radius: 18px;
+  background: var(--ios-card);
+  align-self: flex-start;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06);
+}
+.bubble.mine {
+  align-self: flex-end;
+  /* 降低深度:原本純色 --ios-blue 太深;改用中性淡色而非棕色系調淡透明度
+     (比照 .avatar-empty 的既有模式:淡底 --ios-sep + 深棕字 --color-dark,
+     維持整體設計語言一致)。--ios-sep 跟 --color-dark 對比度 8.89:1,可讀性
+     遠超 WCAG AA 門檻;跟卡片背景對比度 1.32:1,雖淡但仍可辨識,泡泡靠
+     align-self: flex-end 與既有 box-shadow 撐住輪廓。只影響這個泡泡,
+     不動全域 --ios-blue 變數,按鈕/連結/焦點框等其餘引用不受影響。 */
+  background: var(--ios-sep);
+  color: var(--color-dark);
+}
+/* LLM 回答輸出文字時不套用泡泡外觀(見 MessageBubble 的 bare 判斷):
+   拿掉卡片背景/圓角/陽影/內距,直接呈現純文字;寬度也不再限制在 78%,
+   否則沒有卡片邊界視覺支撐時,一段較長文字仍被截斷會顯得不自然。 */
+.bubble.bare {
+  max-width: 100%;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.bubble .text {
+  font-size: 17px;
+  line-height: 1.35;
+}
+.bubble .meta {
+  margin-top: 5px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.bubble .summary {
+  margin-top: 4px;
+  font-size: 13px;
+  opacity: 0.8;
+  font-style: italic;
+}
+.bubble.pending {
+  padding: 10px 14px;
+  opacity: 0.55;
+}
+
+/* 助理回答的 Markdown 渲染:在泡泡內收斂間距、不走版 */
+.text.markdown > :first-child {
+  margin-top: 0;
+}
+.text.markdown > :last-child {
+  margin-bottom: 0;
+}
+.text.markdown p {
+  margin: 6px 0;
+}
+.text.markdown ul,
+.text.markdown ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+.text.markdown li {
+  margin: 2px 0;
+}
+.text.markdown code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.text.markdown pre {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 8px 10px;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.text.markdown pre code {
+  background: none;
+  padding: 0;
+}
+.text.markdown table {
+  border-collapse: collapse;
+  margin: 6px 0;
+  font-size: 15px;
+}
+.text.markdown th,
+.text.markdown td {
+  border: 1px solid var(--ios-sep);
+  padding: 4px 8px;
+  text-align: left;
+}
+.text.markdown a {
+  color: var(--ios-blue);
+}
+.text.markdown h1,
+.text.markdown h2,
+.text.markdown h3 {
+  font-size: 17px;
+  margin: 8px 0 4px;
+}
+
+/* ---- 處理中:海浪載入動畫 ---- */
+/* 多個色塊依序上下起伏(各 bar 的 animation-delay 漸進),像海浪由左而右流動。 */
+.wave {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+}
+.waveBar {
+  width: 5px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--ios-blue);
+  opacity: 0.55;
+  animation: wave 1s ease-in-out infinite;
+}
+@keyframes wave {
+  /* 起伏:色塊抬升 + 加深,谷底回落 + 變淡 → 連續錯位形成海浪。 */
+  0%,
+  100% {
+    transform: translateY(0) scaleY(1);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translateY(-6px) scaleY(2.4);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* 尊重系統「減少動態效果」:停動畫,改用固定半高色塊維持載入提示。 */
+  .waveBar {
+    animation: none;
+    transform: scaleY(1.6);
+    opacity: 0.6;
+  }
+}
+
+/* Entry 卡:record_entry 工具解析出的條目(PresentedCard) */
+.entryCard {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-left: 3px solid var(--ios-blue);
+  border-radius: 10px;
+  padding: 6px 10px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+}
+.entryIco {
+  font-size: 16px;
+}
+.entryItem {
+  font-size: 16px;
+  font-weight: 500;
+  color: #1c1c1e;
+}
+.entryWhen {
+  font-size: 13px;
+  color: var(--ios-blue);
+  font-family: var(--mono);
+}

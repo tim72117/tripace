@@ -1,4 +1,5 @@
 import { Star, MapPin, ImageOff } from 'lucide-react'
+import styles from './RecommendedPlaces.module.css'
 
 // 推薦景點卡片(UI 試做,假資料展示用)。
 //
@@ -56,24 +57,24 @@ function placeholderGradient(seed: string): string {
 // 避免出現 0 顆星或 NaN 之類看起來像 bug 的畫面。
 function RatingStars({ rating, userRatingCount }: { rating: number; userRatingCount: number }) {
   if (!rating || rating <= 0) {
-    return <span className="rp-rating rp-rating-empty">尚無評分</span>
+    return <span className={`${styles.rating} ${styles.ratingEmpty}`}>尚無評分</span>
   }
   const rounded = Math.round(rating)
   return (
-    <span className="rp-rating">
-      <span className="rp-stars" aria-hidden="true">
+    <span className={styles.rating}>
+      <span className={styles.stars} aria-hidden="true">
         {Array.from({ length: 5 }, (_, i) => (
           <Star
             key={i}
             size={13}
             strokeWidth={1.5}
-            className={i < rounded ? 'rp-star filled' : 'rp-star'}
+            className={i < rounded ? `${styles.star} ${styles.filled}` : styles.star}
           />
         ))}
       </span>
-      <span className="rp-rating-value">{rating.toFixed(1)}</span>
+      <span className={styles.ratingValue}>{rating.toFixed(1)}</span>
       {userRatingCount > 0 && (
-        <span className="rp-rating-count">({userRatingCount.toLocaleString('zh-Hant')})</span>
+        <span className={styles.ratingCount}>({userRatingCount.toLocaleString('zh-Hant')})</span>
       )}
     </span>
   )
@@ -81,29 +82,29 @@ function RatingStars({ rating, userRatingCount }: { rating: number; userRatingCo
 
 export function RecommendedPlaceCard({ place }: { place: RecommendedPlace }) {
   return (
-    <div className="recommended-place-card">
-      <div className="rp-photo" style={place.photoUrl ? undefined : { background: placeholderGradient(place.name) }}>
+    <div className={styles.card}>
+      <div className={styles.photo} style={place.photoUrl ? undefined : { background: placeholderGradient(place.name) }}>
         {place.photoUrl ? (
           <img src={place.photoUrl} alt={place.name} loading="lazy" />
         ) : (
-          <div className="rp-photo-placeholder">
+          <div className={styles.photoPlaceholder}>
             <ImageOff size={20} strokeWidth={1.5} />
             <span>佔位圖</span>
           </div>
         )}
-        <span className="rp-type-badge">{typeLabel(place.primaryType)}</span>
+        <span className={styles.typeBadge}>{typeLabel(place.primaryType)}</span>
       </div>
-      <div className="rp-body">
-        <div className="rp-name">{place.name}</div>
+      <div className={styles.body}>
+        <div className={styles.name}>{place.name}</div>
         <RatingStars rating={place.rating} userRatingCount={place.userRatingCount} />
-        <div className="rp-address">
+        <div className={styles.address}>
           <MapPin size={12} strokeWidth={1.8} />
           <span>{place.address}</span>
         </div>
         {place.summary ? (
-          <p className="rp-summary">{place.summary}</p>
+          <p className={styles.summary}>{place.summary}</p>
         ) : (
-          <p className="rp-summary rp-summary-empty">尚無景點介紹</p>
+          <p className={`${styles.summary} ${styles.summaryEmpty}`}>尚無景點介紹</p>
         )}
       </div>
     </div>
@@ -115,7 +116,7 @@ export function RecommendedPlacesList({ places }: { places: RecommendedPlace[] }
     return <div className="empty">目前沒有推薦景點。</div>
   }
   return (
-    <div className="recommended-places-list">
+    <div className={styles.list}>
       {places.map((p, i) => (
         <RecommendedPlaceCard key={`${p.name}-${i}`} place={p} />
       ))}
@@ -131,7 +132,7 @@ export function RecommendedPlacesRow({ places }: { places: RecommendedPlace[] })
     return <div className="empty">目前沒有推薦景點。</div>
   }
   return (
-    <div className="recommended-places-row">
+    <div className={styles.row}>
       {places.map((p, i) => (
         <RecommendedPlaceCard key={`${p.name}-${i}`} place={p} />
       ))}

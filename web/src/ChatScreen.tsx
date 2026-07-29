@@ -24,6 +24,7 @@ import { ChannelMenu } from './channel/ChannelMenu'
 import { ASSISTANT_ID, ENTRY_QUERY_BATCH_KEY, type ChatMessage } from './chatTypes'
 import { AskUserSheet, AskChoiceSheet, type AskChoiceOption } from './AskSheets'
 import { MessageBubble } from './MessageBubble'
+import styles from './ChatScreen.module.css'
 
 // mergeTripEntriesById 把 incoming 依 id 合併進 base:id 已存在於 base 就用
 // incoming 該筆覆寫(更新),id 不存在就附加到尾端(新增);base 裡這次
@@ -775,14 +776,14 @@ export function ChatScreen({
           </button>
         </div>
       </div>
-      <div className="chat-area">
+      <div className={styles.area}>
         {desktopChat ? (
           // 桌面模式:主區不渲染時間軸(時間軸只活在左側 side panel 的時間軸模式裡)。
           // 不同於手機版的浮層疊層設計(時間軸在底層、對話泡泡浮在上方,兩者各自
           // 獨立捲動)——桌面版沒有時間軸需要被浮層蓋住看見,底層只會是引導文字,
           // 故引導文字與對話泡泡改成同一個 .screen-body 容器內的一般文件流內容,
           // 整個對話區當一個整體捲動,捲軸貼齊右欄邊緣,不再套用 .chat-overlay。
-          <div className="screen-body chat-messages" ref={bodyRef} onMouseDown={() => setInputFocused(false)}>
+          <div className={`screen-body ${styles.messages}`} ref={bodyRef} onMouseDown={() => setInputFocused(false)}>
             <ErrorBanner msg={err} />
             {messages.length === 0 ? (
               <div className="empty">
@@ -816,8 +817,8 @@ export function ChatScreen({
 
             {/* 浮層：訊息對話區，覆蓋在時間軸上方，毛玻璃背景 */}
             {(messages.length > 0 || sending || inputFocused) && (
-              <div className="chat-overlay" onMouseDown={(e) => e.stopPropagation()}>
-                <div className="chat-overlay-inner" ref={chatOverlayInnerRef}>
+              <div className={styles.overlay} onMouseDown={(e) => e.stopPropagation()}>
+                <div className={styles.overlayInner} ref={chatOverlayInnerRef}>
                   {messages.map((m) => (
                     <MessageBubble key={m.id} msg={m} meID={user.id} tripBatches={clientToolsBatches} isLatest={m.id === latestAnswerID} onDeleteTripBatchEntries={deleteTripBatchEntries} />
                   ))}
@@ -827,10 +828,10 @@ export function ChatScreen({
           </>
         )}
 
-        <div className="composer">
-          <div className="composer-row">
+        <div className={styles.composer}>
+          <div className={styles.row}>
             <button
-              className="composer-fn-btn"
+              className={styles.fnBtn}
               onClick={() => {
                 // 直接送出固定語句,不動 draft:isOwner 記事流程會被情況 D
                 // 判定為推薦意圖並呼叫 recommend_nearby;非 owner 走查詢流程,

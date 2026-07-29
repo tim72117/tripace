@@ -5,6 +5,7 @@ import type { AssistPlace, PresentedEntry } from './api'
 import { ASSISTANT_ID, ENTRY_QUERY_BATCH_KEY, type ChatMessage } from './chatTypes'
 import { RecommendedPlacesList, type RecommendedPlace } from './RecommendedPlaces'
 import type { TripBatches, TripEntry } from './clienttools/tripEntryTools'
+import styles from './MessageBubble.module.css'
 
 export function MessageBubble({
   msg,
@@ -40,9 +41,12 @@ export function MessageBubble({
   // 拿掉會讓動畫裸露在對話流裡)。使用者自己的訊息(mine)不受影響。
   const bare = isAnswer && !msg.pending
   return (
-    <div className={`bubble-group ${mine ? 'mine' : ''}`} data-msg-id={msg.id}>
-      <div className={`bubble ${mine ? 'mine' : ''} ${msg.pending ? 'pending' : ''} ${bare ? 'bare' : ''}`}>
-        {/* 助手回答泡泡不顯示作者名(不出現「助手」);對齊 iOS MessageRow */}
+    <div className={`${styles.group} ${mine ? styles.mine : ''}`} data-msg-id={msg.id}>
+      <div className={`${styles.bubble} ${mine ? styles.mine : ''} ${msg.pending ? styles.pending : ''} ${bare ? styles.bare : ''}`}>
+        {/* 助手回答泡泡不顯示作者名(不出現「助手」);對齊 iOS MessageRow。
+            .sub 是全站共用的字幕樣式(見 styles.css,DesktopLayout.tsx/
+            PhoneScreens.tsx/MembersScreen.tsx 都有用),刻意不搬進這個
+            module,維持全域字串 className。 */}
         {!mine && !isAnswer && msg.authorName && (
           <div className="sub" style={{ marginBottom: 2 }}>
             {msg.authorName}
@@ -52,11 +56,11 @@ export function MessageBubble({
           // 後端處理中:海浪載入動畫(色塊群組依序起伏)。
           <WaveLoader />
         ) : isAnswer ? (
-          <div className="text markdown">
+          <div className={`${styles.text} ${styles.markdown}`}>
             <ReactMarkdown>{msg.text}</ReactMarkdown>
           </div>
         ) : (
-          <div className="text">{msg.text}</div>
+          <div className={styles.text}>{msg.text}</div>
         )}
       </div>
       {/* agent 用 present_entries 輸出的條目,在答案泡泡下用列表顯示。
@@ -267,11 +271,11 @@ function toRecommendedPlace(p: AssistPlace): RecommendedPlace {
 function WaveLoader() {
   const bars = 5
   return (
-    <div className="wave" aria-label="處理中" role="status">
+    <div className={styles.wave} aria-label="處理中" role="status">
       {Array.from({ length: bars }, (_, i) => (
         <span
           key={i}
-          className="wave-bar"
+          className={styles.waveBar}
           style={{ animationDelay: `${i * 0.12}s` }}
         />
       ))}
@@ -289,11 +293,12 @@ function PresentedCard({ entry }: { entry: PresentedEntry }) {
     ? entry.endTime ? ` ~ ${entry.end} ${entry.endTime}` : ` ~ ${entry.end}`
     : ''
   return (
-    <div className="entry-card">
-      <span className="entry-ico">📅</span>
-      <div className="entry-body">
-        <div className="entry-item">{entry.title}</div>
-        <div className="entry-when">{when}{endLabel}</div>
+    <div className={styles.entryCard}>
+      <span className={styles.entryIco}>📅</span>
+      {/* entry-body 原本就沒有對應的 CSS 規則(未樣式化),拆分時不補一條新的。 */}
+      <div>
+        <div className={styles.entryItem}>{entry.title}</div>
+        <div className={styles.entryWhen}>{when}{endLabel}</div>
       </div>
     </div>
   )

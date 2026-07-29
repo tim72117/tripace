@@ -1,0 +1,157 @@
+/* RecommendedPlaces.tsx 專屬樣式(CSS Modules)。命名省略掉原本的 rp-/
+   recommended- 等前綴(例如 .photo 對應原本的 .rp-photo,.card 對應
+   .recommended-place-card)——import 時已經有明確的命名空間,不需要重複
+   加前綴。
+
+   .rp-map/.rp-map-error* 是跟 RecommendedPlacesMap.tsx 共用的既有全域
+   樣式(不是這個檔案的東西,命名前綴長得像但完全是另一組),刻意不動、
+   留在 styles.css。.empty 是全站共用的空狀態文字樣式(DesktopLayout.tsx/
+   ChatScreen.tsx/PhoneScreens.tsx/ShareModal.tsx 都有用),同樣刻意不搬。
+
+   沒有任何 class 需要 :global()——沒有其他檔案的 CSS 選擇器需要從外部
+   偵測這裡的 class。
+
+   .star(對應原本的 .rp-star)原本就沒有自己的基底規則,只有
+   .rp-star.filled 這個修飾狀態存在,未填滿的星星沿用 Lucide Star 圖示
+   本身的預設外觀,拆分時原樣保留、不額外補一條基底規則。 */
+
+/* 直向列表:手機寬度下卡片獨佔一列;桌面版用 max-width 限制單卡寬度、置中排列。 */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+/* 桌面版:限制卡片最大寬度,避免拉滿整個寬螢幕。 */
+@media (min-width: 768px) {
+  .list {
+    max-width: 420px;
+    margin: 0 auto;
+  }
+}
+
+.card {
+  background: var(--ios-card);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.photo {
+  position: relative;
+  width: 100%;
+  height: 150px;
+  background: var(--ios-sep);
+}
+.photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* 無 photoUrl 時的佔位視覺:漸層色塊 + 圖示 + 文字,明確標示「這是佔位圖」而非破圖。 */
+.photoPlaceholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: rgba(255, 255, 255, 0.85);
+}
+.photoPlaceholder span {
+  font-size: 12px;
+}
+.typeBadge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  backdrop-filter: blur(4px);
+}
+.body {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-dark);
+}
+.rating {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--ios-gray);
+}
+.ratingEmpty {
+  font-size: 13px;
+  color: var(--ios-gray);
+  font-style: italic;
+}
+.stars {
+  display: inline-flex;
+  gap: 1px;
+  color: var(--ios-sep);
+}
+.star.filled {
+  color: var(--color-accent);
+  fill: var(--color-accent);
+}
+.ratingValue {
+  font-weight: 600;
+  color: var(--color-dark);
+}
+.ratingCount {
+  color: var(--ios-gray);
+}
+.address {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--ios-gray);
+  line-height: 1.4;
+}
+.address svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.summary {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #3a3a3c;
+}
+.summaryEmpty {
+  color: var(--ios-gray);
+  font-style: italic;
+}
+
+/* 橫向捲動版清單容器(RecommendedPlacesRow):比照 App Store/Netflix 橫向
+   卡片列。復用 .card 本身樣式,這裡只覆蓋外層排列方式(flex row +
+   overflow-x 捲動)與卡片固定寬度(避免被 flex 壓縮變形)。捲動軸用
+   scrollbar-width: thin 讓它不突兀,同時保留滑鼠滾輪/觸控板/觸控手勢的
+   原生橫向拖曳能力,不需要額外的 JS 或套件。 */
+.row {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  padding: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  width: 100%;
+}
+.row .card {
+  flex: 0 0 auto;
+  width: 240px;
+}

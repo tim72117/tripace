@@ -265,7 +265,7 @@ export function PaceChartDemo() {
 
   return (
     <div className="pace-chart">
-      <div className={styles.routeTabs}>
+      <div className="pace-route-tabs">
         {ROUTES.map((r, i) => (
           <button
             key={r.key}

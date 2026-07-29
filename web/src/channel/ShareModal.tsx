@@ -4,6 +4,7 @@ import type { ClientConfig } from '../api'
 import * as api from '../api'
 import type { Channel } from '../types'
 import { ErrorBanner, errMsg } from '../AppCommon'
+import styles from './ShareModal.module.css'
 
 // ---- 分享彈窗 ----
 
@@ -99,9 +100,9 @@ export function ShareModal({
           <div className="empty">載入中…</div>
         ) : token ? (
           <>
-            <div className="share-link-box">
-              <div className="share-link-url">{publicURL}</div>
-              <button className="share-link-copy" onClick={copy} title="複製連結">
+            <div className={styles.linkBox}>
+              <div className={styles.linkUrl}>{publicURL}</div>
+              <button className={styles.linkCopy} onClick={copy} title="複製連結">
                 {copied ? <Check size={16} strokeWidth={2} /> : <Copy size={16} strokeWidth={1.8} />}
               </button>
             </div>
@@ -112,11 +113,11 @@ export function ShareModal({
             </div>
             {isOwner && (
               <>
-                <div className="share-toggle-row">
-                  <span className="share-toggle-label">允許訪客新增行程</span>
-                  <label className="ios-toggle">
+                <div className={styles.toggleRow}>
+                  <span className={styles.toggleLabel}>允許訪客新增行程</span>
+                  <label className={styles.toggle}>
                     <input type="checkbox" checked={editable} onChange={(e) => toggleEditable(e.target.checked)} />
-                    <span className="ios-toggle-slider" />
+                    <span className={styles.toggleSlider} />
                   </label>
                 </div>
                 <div style={{ padding: '12px 16px 0' }}>
@@ -135,11 +136,11 @@ export function ShareModal({
             </div>
             {isOwner && (
               <>
-                <div className="share-toggle-row">
-                  <span className="share-toggle-label">允許訪客新增行程</span>
-                  <label className="ios-toggle">
+                <div className={styles.toggleRow}>
+                  <span className={styles.toggleLabel}>允許訪客新增行程</span>
+                  <label className={styles.toggle}>
                     <input type="checkbox" checked={editable} onChange={(e) => setEditable(e.target.checked)} />
-                    <span className="ios-toggle-slider" />
+                    <span className={styles.toggleSlider} />
                   </label>
                 </div>
                 <div style={{ padding: '8px 16px 0' }}>

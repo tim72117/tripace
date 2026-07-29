@@ -1,0 +1,72 @@
+/* LangSelect(DesktopShared.tsx)專屬樣式(CSS Modules)。命名省略掉原本的
+   lang-select- 前綴——import 時已經有明確的命名空間,不需要重複加前綴。
+
+   觸發列排版比照 .field input(同樣字級/無外框),讓它跟同一個 .field
+   容器裡其他欄位視覺一致;展開的選項清單比照 .desktop-user-popover 的
+   浮層視覺(卡片背景、圓角、陰影),讓它看起來像浮在上層的選單而非內嵌
+   頁面元素——這兩處都只是視覺上「比照」,不是 CSS 選擇器層級的依賴,
+   沒有任何 class 需要 :global()。 */
+.select {
+  position: relative;
+}
+.trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  outline: none;
+  font: inherit;
+  font-size: 17px;
+  font-family: var(--mono);
+  color: var(--color-dark);
+  cursor: pointer;
+  text-align: left;
+}
+.trigger:focus-visible {
+  outline: 2px solid var(--ios-blue);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  z-index: 10;
+  transition: opacity 0.1s ease;
+}
+.option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border: none;
+  border-bottom: 0.5px solid var(--ios-sep);
+  background: none;
+  font: inherit;
+  font-size: 15px;
+  color: var(--color-dark);
+  cursor: pointer;
+  text-align: left;
+}
+.option:last-child {
+  border-bottom: none;
+}
+.option:hover {
+  background: var(--ios-bg);
+}
+.option:focus-visible {
+  outline: 2px solid var(--ios-blue);
+  outline-offset: -2px;
+}

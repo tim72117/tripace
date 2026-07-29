@@ -1,0 +1,40 @@
+/* MembersScreen.tsx 專屬樣式(CSS Modules)。命名省略掉原本的 role-chip
+   前綴(例如 .chip 對應原本的 .role-chip)——import 時已經有明確的命名
+   空間,不需要重複加前綴。
+
+   沒有任何 class 需要 :global()——沒有其他檔案的 CSS 選擇器需要從外部
+   偵測這裡的 class。 */
+
+/* 成員權限標籤(可點切換 / 靜態顯示) */
+.chip {
+  flex: 0 0 auto;
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--ios-sep);
+  background: var(--ios-card);
+  cursor: pointer;
+  color: #1c1c1e;
+}
+.chip.editor {
+  background: #f0ebe4;
+  border-color: #d9c4aa;
+  color: var(--color-accent);
+}
+.chip.viewer {
+  background: var(--ios-bg);
+  color: var(--ios-gray);
+  border-color: var(--ios-sep);
+}
+.chip.owner {
+  background: #f5f0e8;
+  border-color: #d9c4aa;
+  color: var(--color-dark);
+}
+.chip.static {
+  cursor: default;
+}
+.chip:focus-visible {
+  outline: 2px solid var(--ios-blue);
+  outline-offset: 2px;
+}

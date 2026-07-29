@@ -1,0 +1,131 @@
+/* ?demo 模式相關全域樣式(分類拆分自 styles.css,非 CSS Modules——單純依
+   功能歸類到獨立檔案,仍是全域 class,見 main.tsx 的 import 順序)。
+   涵蓋手機版 demo 面板入口 .phone-demo- 開頭的 class(漢堡按鈕/抽屜),對應
+   PhoneContent.tsx 的 PhoneDemoDrawer。桌面版對應的 .desktop-rail-btn-demo、
+   .desktop-demo-panel 留在 styles-desktop.css(見該檔案開頭說明)。 */
+
+/* ---- 手機版存取 demo 面板的入口(見 App.tsx PhoneContent/PhoneDemoDrawer):
+   桌面版用 DesktopRail 常駐圖示列切換,手機版窄螢幕放不下,改成一顆漢堡
+   按鈕開啟全螢幕疊層。只在網址帶 ?demo 時才會出現(isDemo 閘門在 App.tsx
+   判斷,這裡的樣式本身不做任何顯示與否的邏輯判斷)。 ---- */
+.phone-demo-hamburger {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 40;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ios-sep);
+  border-radius: 50%;
+  background: var(--ios-card);
+  color: var(--color-accent);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+}
+/* 疊層本身即扮演 .desktop-layout 的角色(overflow: hidden 建立裁切邊界),
+   .phone-demo-drawer-body 才是實際負責 min-height: 0 傳遞下去的一層——
+   跟桌面版 .desktop-layout -> .desktop-main -> .pace-chart 是同一種
+   「一路傳遞 flex/min-height:0,只在最終葉節點設 overflow-y: auto」模式,
+   確保 PaceChartDemo 等內容原本在桌面版能捲動,搬進這個疊層也一樣能捲動。 */
+.phone-demo-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--ios-bg);
+}
+.phone-demo-drawer-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  background: var(--ios-card);
+  border-bottom: 1px solid var(--ios-sep);
+  overflow-x: auto;
+}
+.phone-demo-drawer-tab {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--ios-gray);
+  opacity: 0.75;
+  cursor: pointer;
+}
+.phone-demo-drawer-tab.active {
+  opacity: 1;
+  color: var(--color-accent);
+  background: var(--ios-bg);
+}
+.phone-demo-drawer-close {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
+}
+/* 原本設計是讓 .pace-chart 沿用桌面版那套「flex/min-height:0 一路往下傳,
+   只在最終葉節點 overflow-y: auto」的模式(跟 .desktop-layout ->
+   .desktop-main -> .pace-chart 同款),但套進 position: fixed 的疊層後,
+   實機測試發現這串多層傳遞在行動瀏覽器上並未正確生效、整塊面板捲不動——
+   不深究確切成因,改用更直接、不依賴巢狀 flex 傳遞鏈的做法:捲動權明確
+   收在這一層(overflow-y: auto + 明確高度),不假設子層(.pace-chart 或其他
+   5 個 demo 面板各自的內部結構)會正確把 overflow 傳上來。 */
+.phone-demo-drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* 只設 overflow-y 不設 overflow-x 時,規範會把水平軸的計算值一併變成
+     auto(不會維持單純的 visible)——內容只要有一點點超出容器寬度就會變成
+     可以左右拖曳捲動,不是預期行為,故明確鎖死水平軸。 */
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  /* 疊層本身貼齊螢幕邊緣(見 .phone-demo-drawer),裡面的內容(如 .pace-chart)
+     自己的 padding 不夠讓整塊面板跟螢幕邊界留出視覺呼吸空間,這裡額外補一層
+     外框間距。上方留較少(貼著 tabs 列即可),下方留 safe-area 避免被手勢列擋住。 */
+  padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+}
+/* 配速表(demo-pace)是抽屜模式(.pace-drawer-wrap,見 PacePhoneSwipe.tsx),
+   地圖/清單各自內部自己管捲動、自己撐滿高度——不該再讓 .phone-demo-drawer-
+   body 自己也是一個 overflow-y: auto 的捲動容器疊在上面,兩層機制互相干擾
+   會導致高度算不準(內層等著拿外層給的高度,外層卻是「內容多高就多高、
+   捲動處理溢出」的模式,雙方對不上)。用 :has() 精準只在裝著抽屜模式時
+   關掉這裡的捲動與 padding,改成單純的滿版容器,交給 .pace-drawer-wrap
+   完全接手。 */
+.phone-demo-drawer-body:has(> .pace-drawer-wrap) {
+  display: flex;
+  flex-direction: column;
+  overflow-y: hidden;
+  padding: 0;
+}
+/* .pace-chart 在桌面版(.desktop-main 底下)自己負責 overflow-y: auto,但在
+   這個疊層裡捲動權已經收在 .phone-demo-drawer-body(見上),這裡改成自然
+   高度的普通區塊,避免兩層各自 overflow-y: auto 疊在一起、變成「巢狀捲動」
+   (使用者分不清該滑哪一層,體感會很卡)。只針對這個情境覆寫,不影響
+   .pace-chart 在桌面版原本的行為。 */
+.phone-demo-drawer-body .pace-chart {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow-y: visible;
+}

@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Navigation } from 'lucide-react'
 import * as api from './api'
 import { ApiError } from './api'
-import { useAppState, LoginForm, ErrorBanner, errMsg } from './AppCommon'
+import { useAppState, LoginForm, LoginCard, ErrorBanner, errMsg } from './AppCommon'
 
 type Status = 'checking' | 'ready' | 'approving' | 'approved' | 'error'
 
@@ -66,87 +65,49 @@ export function CliAuthPage() {
   }
 
   if (status === 'checking') {
-    return <div className="login-screen"><div className="login-card">載入中…</div></div>
+    return <LoginCard>載入中…</LoginCard>
   }
 
   if (status === 'error') {
     return (
-      <div className="login-screen">
-        <div className="login-card">
-          <div className="login-card-header">
-            <div className="login-card-logo">
-              <Navigation size={20} strokeWidth={2} />
-              <span>Tripace</span>
-            </div>
-            <div className="login-card-title">無法完成登入</div>
-          </div>
-          <ErrorBanner msg={error} />
-        </div>
-      </div>
+      <LoginCard title="無法完成登入">
+        <ErrorBanner msg={error} />
+      </LoginCard>
     )
   }
 
   if (status === 'approved') {
     return (
-      <div className="login-screen">
-        <div className="login-card">
-          <div className="login-card-header">
-            <div className="login-card-logo">
-              <Navigation size={20} strokeWidth={2} />
-              <span>Tripace</span>
-            </div>
-            <div className="login-card-title">登入成功</div>
-            <div className="login-card-subtitle">可以關閉這個分頁,回到終端機繼續。</div>
-          </div>
-        </div>
-      </div>
+      <LoginCard title="登入成功" subtitle="可以關閉這個分頁,回到終端機繼續。" />
     )
   }
 
   if (isGuest) {
     return (
-      <div className="login-screen">
-        <div className="login-card">
-          <div className="login-card-header">
-            <div className="login-card-logo">
-              <Navigation size={20} strokeWidth={2} />
-              <span>Tripace</span>
-            </div>
-            <div className="login-card-title">歡迎使用 Tripace</div>
-            <div className="login-card-subtitle">
-              <strong>{cliName}</strong> 想要登入。請先登入或註冊帳號,才能核准這個請求。
-            </div>
-          </div>
-          <LoginForm baseURL={cfg.baseURL} onAuthed={onAuthed} />
-        </div>
-      </div>
+      <LoginCard
+        title="歡迎使用 Tripace"
+        subtitle={<><strong>{cliName}</strong> 想要登入。請先登入或註冊帳號,才能核准這個請求。</>}
+      >
+        <LoginForm baseURL={cfg.baseURL} onAuthed={onAuthed} pill />
+      </LoginCard>
     )
   }
 
   // 已登入,狀態為 'ready' 或 'approving':顯示核准畫面。
   return (
-    <div className="login-screen">
-      <div className="login-card">
-        <div className="login-card-header">
-          <div className="login-card-logo">
-            <Navigation size={20} strokeWidth={2} />
-            <span>Tripace</span>
-          </div>
-          <div className="login-card-title">CLI 登入請求</div>
-          <div className="login-card-subtitle">
-            <strong>{cliName}</strong> 想要以 <strong>{user.name}</strong> 的身分登入。
-          </div>
-        </div>
-        <ErrorBanner msg={error} />
-        <button
-          type="button"
-          className="btn-primary"
-          disabled={status === 'approving'}
-          onClick={approve}
-        >
-          {status === 'approving' ? '核准中…' : '核准登入'}
-        </button>
-      </div>
-    </div>
+    <LoginCard
+      title="CLI 登入請求"
+      subtitle={<><strong>{cliName}</strong> 想要以 <strong>{user.name}</strong> 的身分登入。</>}
+    >
+      <ErrorBanner msg={error} />
+      <button
+        type="button"
+        className="btn-primary"
+        disabled={status === 'approving'}
+        onClick={approve}
+      >
+        {status === 'approving' ? '核准中…' : '核准登入'}
+      </button>
+    </LoginCard>
   )
 }

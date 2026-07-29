@@ -6,6 +6,7 @@ import { RecommendedPlacesMap } from './RecommendedPlacesMap'
 import { ClientToolsDemo } from './clienttools/bridge/ClientToolsDemo'
 import { OnagentBridgeDemo } from './clienttools/OnagentBridgeDemo'
 import { PaceChartDemo } from './PaceChartDemo'
+import langSelectStyles from './LangSelect.module.css'
 
 // DesktopShared:桌面版與手機版都會用到的 UI 小塊,從 App.tsx 拆出來獨立成
 // 檔案——這些東西不屬於「純桌面版佈局」(見 DesktopLayout.tsx),因為手機版
@@ -113,22 +114,22 @@ export function LangSelect({
   const current = ASSIST_LANG_OPTIONS.find((o) => o.value === value)
 
   return (
-    <div className="lang-select" ref={boxRef}>
+    <div className={langSelectStyles.select} ref={boxRef}>
       <button
         type="button"
-        className="lang-select-trigger"
+        className={langSelectStyles.trigger}
         onClick={() => setOpen((v) => !v)}
       >
         <span>{current?.label ?? value}</span>
         <ChevronDown size={16} strokeWidth={1.8} color="var(--ios-gray)" />
       </button>
       {open && (
-        <div className="lang-select-popover">
+        <div className={langSelectStyles.popover}>
           {ASSIST_LANG_OPTIONS.map((o) => (
             <button
               type="button"
               key={o.value}
-              className="lang-select-option"
+              className={langSelectStyles.option}
               onClick={() => { onChange(o.value); setOpen(false) }}
             >
               <span>{o.label}</span>

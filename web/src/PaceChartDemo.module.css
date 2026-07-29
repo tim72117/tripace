@@ -57,8 +57,12 @@
   margin: 0 0 16px;
 }
 
-/* 路線分頁(4 段真實路線切換),橫向捲動避免窄螢幕擠壓。*/
-.routeTabs {
+/* 路線分頁(4 段真實路線切換),橫向捲動避免窄螢幕擠壓。這個 class 名稱
+   刻意保留全域(:global),理由同上方 .pace-chart——styles.css 裡的
+   .desktop-sidepanel-pace .pace-route-tabs 需要從外部用固定字串偵測到它
+   (幫分頁按鈕在側欄情境下補頂部間距),雜湊過的名稱會讓那條規則永遠
+   不命中。 */
+:global(.pace-route-tabs) {
   display: flex;
   gap: 6px;
   overflow-x: auto;

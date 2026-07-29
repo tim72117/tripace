@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { AlertCircle } from 'lucide-react'
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
+import { AlertCircle, Navigation } from 'lucide-react'
 import type { ClientConfig } from './api'
 import * as api from './api'
 import { ApiError } from './api'
@@ -24,6 +24,28 @@ const AUTH_EMAIL_KEY = 'tripace.auth.email'
 
 // 訪客身分(未登入),需與後端 guestUser 一致。
 const GUEST_USER: User = { id: 'usr_me', name: '訪客', avatarColor: '#8C7B6A' }
+
+// 桌面版斷點,需與 styles.css 的 @media (min-width: 768px) 一致。
+const DESKTOP_BREAKPOINT = 768
+
+// useIsDesktop:用 matchMedia 判斷目前寬度是否達到桌面斷點。
+// 用 JS 判斷、只渲染其中一種佈局(而非兩份 DOM 都渲染、用 CSS 切換顯示),
+// 是因為 ChatScreen 掛載時會建立 WebSocket 連線並各自 fetch 資料——
+// 若手機版與桌面版兩棵 DOM 同時存在,選中頻道時會同時掛載兩個 ChatScreen,
+// 造成重複連線與重複請求。供 App.tsx 的 PhoneContent/PublicPaceDemoPage
+// 共用,故放在這裡而非任一個消費端自己的檔案。
+export function useIsDesktop(): boolean {
+  const [isDesktop, setIsDesktop] = useState(
+    () => window.matchMedia(`(min-width: ${DESKTOP_BREAKPOINT}px)`).matches,
+  )
+  useEffect(() => {
+    const mql = window.matchMedia(`(min-width: ${DESKTOP_BREAKPOINT}px)`)
+    const onChange = () => setIsDesktop(mql.matches)
+    mql.addEventListener('change', onChange)
+    return () => mql.removeEventListener('change', onChange)
+  }, [])
+  return isDesktop
+}
 
 export interface ContentProps {
   cfg: ClientConfig
@@ -119,16 +141,59 @@ export function isSubmitEnter(e: ReactKeyboardEvent): boolean {
   return e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229
 }
 
+// ---- 登入卡片殼(全螢幕置中卡片,標題+副標+任意內容) ----
+
+// LoginCard:App.tsx 的訪客登入頁與 CliAuthPage.tsx 的 CLI 登入核准頁
+// (載入中/錯誤/成功/待登入/待核准共 5 種狀態)共用的卡片殼——原本這 6 處
+// 各自手寫了一份幾乎一模一樣的 .login-screen > .login-card > .login-card-header
+// 結構,只有標題/副標/內容不同,現在抽成一顆元件避免重複維護。
+// title 留空時不渲染 header(對齊 CliAuthPage 的「載入中…」狀態:只有
+// .login-card 包一段純文字,沒有 logo/標題)。
+export function LoginCard({
+  title,
+  subtitle,
+  children,
+}: {
+  title?: string
+  subtitle?: ReactNode
+  children?: ReactNode
+}) {
+  return (
+    <div className="login-screen">
+      <div className="login-card">
+        {title && (
+          <div className="login-card-header">
+            <div className="login-card-logo">
+              <Navigation size={20} strokeWidth={2} />
+              <span>Tripace</span>
+            </div>
+            <div className="login-card-title">{title}</div>
+            {subtitle && <div className="login-card-subtitle">{subtitle}</div>}
+          </div>
+        )}
+        {children}
+      </div>
+    </div>
+  )
+}
+
 // ---- 登入表單(內嵌於設定頁,訪客可登入 / 註冊) ----
 
 // 匯出供 CliAuthPage.tsx 重用(CLI 瀏覽器登入核准頁未登入時顯示的登入表單,
 // 與這裡登入前主畫面用的是同一顆元件,不另外刻一份 UI)。
+// pill:是否套用大圓角膠囊風格(見 styles.css 的 .login-form.pill)——
+// LoginForm 自己決定要不要套用,不再依賴外層容器(.login-card)用複合
+// 選擇器從外面蓋樣式。掛在 LoginCard(App.tsx 訪客頁、CliAuthPage.tsx)
+// 裡時傳 pill;掛在 .login-dropdown/SettingsScreen 訪客區塊/
+// DesktopUserMenu popover 這幾處維持預設(不傳,保留原本的一般樣式)。
 export function LoginForm({
   baseURL,
   onAuthed,
+  pill,
 }: {
   baseURL: string
   onAuthed: (token: string, user: User, email: string) => void
+  pill?: boolean
 }) {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
@@ -156,7 +221,7 @@ export function LoginForm({
   }
 
   return (
-    <>
+    <div className={pill ? 'login-form pill' : 'login-form'}>
       <div className="field">
         <input
           value={email}
@@ -217,7 +282,7 @@ export function LoginForm({
         不得上傳他人隱私或違法內容;服務資料可能因開發調整而變動或清除,
         請勿作為唯一備份來源。
       </div>
-    </>
+    </div>
   )
 }
 

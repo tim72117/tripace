@@ -184,8 +184,8 @@ export function PublicViewScreen({ token }: { token: string }) {
         )}
       </div>
       {data?.editable && (
-        <div className="composer">
-          <div className="composer-row">
+        <div className="public-composer">
+          <div className="public-composer-row">
           <input
             placeholder="新增行程…"
             value={draft}
