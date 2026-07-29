@@ -5,7 +5,6 @@ import { RecommendedPlacesList, RecommendedPlacesRow, FAKE_RECOMMENDED_PLACES } 
 import { RecommendedPlacesMap } from './RecommendedPlacesMap'
 import { ClientToolsDemo } from './clienttools/bridge/ClientToolsDemo'
 import { OnagentBridgeDemo } from './clienttools/OnagentBridgeDemo'
-import { PaceChartDemo } from './PaceChartDemo'
 import langSelectStyles from './LangSelect.module.css'
 
 // DesktopShared:桌面版與手機版都會用到的 UI 小塊,從 App.tsx 拆出來獨立成
@@ -21,23 +20,41 @@ import langSelectStyles from './LangSelect.module.css'
 // ClientToolsBridge/clienttools_ws.go,後者走 onagent 平台,見
 // clienttools/ClientToolsDemo.tsx / OnagentBridgeDemo.tsx 的說明),原本只能
 // 從獨立的 ?debug 工作台(DebugApp.tsx)進入,現在併入這裡統一用 ?demo 存取。
-// 'demo-pace':單車配速表試做(假資料,真實路線里程/時刻表,見
-// PaceChartDemo.tsx),純 UI 展示,不涉及 LLM/tool 呼叫。
-// 只有網址帶 ?demo 時桌面版 rail 上才會出現對應按鈕(見 DesktopLayout.tsx 的
-// DesktopRail),與正式的 channels/timeline 分開命名以便一眼區分。
+// 'pace':單車配速表(真實路線里程/時刻表,見 PaceChartDemo.tsx),已從
+// ?demo 限定的試做功能轉為正式導覽項目,所有使用者都能在 rail 上看到。
 export type PanelMode =
-  | 'channels' | 'timeline'
-  | 'demo-cards' | 'demo-row' | 'demo-map' | 'demo-clienttools' | 'demo-onagent' | 'demo-pace'
+  | 'channels' | 'timeline' | 'pace'
+  | 'demo-cards' | 'demo-row' | 'demo-map' | 'demo-clienttools' | 'demo-onagent'
   | null
 
-// DemoPanelMode:PanelMode 扣掉 channels/timeline/null 之後只剩的 6 種 demo
-// 面板——這幾個是唯一「桌面/手機共用」的部分(channels/timeline 是桌面版
-// side panel 的概念,手機版本來就有自己的頻道列表/時間軸入口,不需要重複)。
-export type DemoPanelMode = Exclude<PanelMode, 'channels' | 'timeline' | null>
+// PANEL_MODES:PanelMode 扣掉 null 之後的合法字串值列表——給 isPanelMode()
+// 在執行期驗證用(型別系統只在編譯期擋得住,URL 路徑參數是使用者可任意
+// 輸入的字串,需要執行期白名單檢查)。
+const PANEL_MODES = [
+  'channels', 'timeline', 'pace',
+  'demo-cards', 'demo-row', 'demo-map', 'demo-clienttools', 'demo-onagent',
+] as const
 
-// DemoPanelContent:6 個 demo 面板的內容渲染,供桌面版 DesktopContent 的
+// isPanelMode:驗證 URL 路徑參數(/app/:panelMode,見 App.tsx)是不是合法的
+// PanelMode 字串。使用者可能手動輸入或分享一個帶著錯字/過期參數的網址
+// (例如改名前的 'demo-pace' 或亂打的字串),這種不合法輸入不能直接當作
+// PanelMode 使用,否則後面 panelMode === 'xxx' 的判斷全部落空、side panel
+// 卡在一個「看起來選了某個 rail 按鈕、實際上什麼都不顯示」的中間態。
+export function isPanelMode(v: string | undefined): v is Exclude<PanelMode, null> {
+  return v != null && (PANEL_MODES as readonly string[]).includes(v)
+}
+
+// DemoPanelMode:PanelMode 扣掉 channels/timeline/pace/null 之後只剩的 5 種
+// demo 面板——這幾個是唯一「桌面/手機共用」的部分(channels/timeline/pace
+// 是桌面版 side panel 的正式功能,手機版本來就有自己的頻道列表/時間軸入口,
+// 不需要重複;pace 在手機版走 PacePhoneSwipe 獨立入口)。
+export type DemoPanelMode = Exclude<PanelMode, 'channels' | 'timeline' | 'pace' | null>
+
+// DemoPanelContent:5 個 demo 面板的內容渲染,供桌面版 DesktopContent 的
 // <main>(見 DesktopLayout.tsx)與手機版 PhoneDemoDrawer(見 App.tsx)共用,
-// 避免同一段 JSX 兩處各寫一份、之後改一邊忘了改另一邊。
+// 避免同一段 JSX 兩處各寫一份、之後改一邊忘了改另一邊。(配速表已轉為正式
+// 功能 'pace',不再屬於這組 demo 面板,渲染邏輯改為直接使用 PaceChartDemo/
+// PaceRouteMap,見 DesktopLayout.tsx / PhoneContent.tsx / PacePhoneSwipe.tsx。)
 export function DemoPanelContent({ mode }: { mode: DemoPanelMode }) {
   if (mode === 'demo-cards') {
     return (
@@ -76,8 +93,7 @@ export function DemoPanelContent({ mode }: { mode: DemoPanelMode }) {
     )
   }
   if (mode === 'demo-clienttools') return <ClientToolsDemo />
-  if (mode === 'demo-onagent') return <OnagentBridgeDemo />
-  return <PaceChartDemo />
+  return <OnagentBridgeDemo />
 }
 
 // LLM 回答語言下拉選單:自訂觸發列 + 選項清單,取代原生 <select>,樣式與互動

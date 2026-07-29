@@ -254,6 +254,12 @@
   border-width: 1.5px;
 }
 
+/* 有掛 onClick(即這筆 entry 有座標可平移地圖過去)的卡片才顯示手指游標,
+   讓使用者能分辨哪些卡片點了有反應——沒有座標的卡片不套用這個 class。 */
+.stop.isClickable {
+  cursor: pointer;
+}
+
 .stopLeft {
   min-width: 0;
 }

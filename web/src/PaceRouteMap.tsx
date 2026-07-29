@@ -1,9 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import { LocateFixed, Play, Square, Compass } from 'lucide-react'
+import { LocateFixed, Play, Square, Compass, MapPin, Check } from 'lucide-react'
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 import styles from './PaceRouteMap.module.css'
 import chartStyles from './PaceChartDemo.module.css'
 import { BASE_URL } from './AppCommon'
+
+// SelectedEntry:使用者點擊某張檢查站卡片後選取的 entry,驅動地圖平移+
+// 中心選點圖釘+儲存座標這套互動(見下方 PaceRouteMap 的 selectedEntry/
+// onSelectedEntryDone props)。定義在這裡(而非呼叫端的頁面元件)是因為
+// 這個型別描述的是 PaceRouteMap 的 props 形狀,由這個元件的擁有者決定,
+// 兩個呼叫端(DesktopLayout.tsx 的正式介面、以及後續若有其他頁面)都從
+// 這裡 import,不是各自為政各自定義一份。
+export interface SelectedEntry {
+  id: string
+  lat: number | null
+  lng: number | null
+}
 
 // 配速表路線地圖(UI 試做用):用固定寫死的 5 個花蓮地點,呼叫新版 Routes
 // API(computeRoutes)算出一條真實路線(沿路網走,不是自己手動連 marker 畫
@@ -117,7 +129,20 @@ function bearingBetween(a: google.maps.LatLng, b: google.maps.LatLng): number {
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
 }
 
-export function PaceRouteMap() {
+export function PaceRouteMap({
+  selectedEntry,
+  onSelectedEntryDone,
+}: {
+  // selectedEntry:使用者在側欄點擊的檢查站(見 DesktopLayout.tsx 登入後
+  // 正式介面的 pace 面板),非 null 時才顯示中央選點圖釘與「儲存座標」
+  // 按鈕。可選是因為 PublicPaceDemoPage.tsx(/demo/pace 公開分享頁)刻意
+  // 不接這套互動(寫入座標需要登入身分,不該出現在公開頁),掛載這個元件
+  // 時完全不傳這兩個 props。
+  selectedEntry?: SelectedEntry | null
+  // onSelectedEntryDone:儲存成功後通知父層清掉 selectedEntry,收起圖釘與
+  // 儲存按鈕——state 本身放在父層(DesktopLayout.tsx),這個元件不擅自持有。
+  onSelectedEntryDone?: () => void
+}) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
   const polylineRef = useRef<google.maps.Polyline | null>(null)
@@ -158,6 +183,19 @@ export function PaceRouteMap() {
   // headingUp:「導航模式」開關——開啟時地圖會跟著目前位置的行進方向旋轉
   // (heading-up,像真的導航 App 那樣),關閉時維持固定正北朝上。
   const [headingUp, setHeadingUp] = useState(false)
+  // pendingLatLng:選點圖釘目前指向的座標(畫面正中央對應的地圖經緯度),
+  // 每次地圖 idle(平移/縮放結束)時從 map.getCenter() 重新讀取——只有
+  // selectedEntry 非 null(使用者正在微調某個檢查站)時才需要追蹤,但 idle
+  // 監聽器本身是掛在地圖上、跟 selectedEntry 是否存在無關,故這裡不特別
+  // 依 selectedEntry 開關監聽器,只在按下「儲存座標」時才讀取這個值。
+  const [pendingLatLng, setPendingLatLng] = useState<{ lat: number; lng: number } | null>(null)
+  // saving/saveErr/saveOk:儲存座標(PATCH .../latlng)這個動作本身的狀態,
+  // 跟 err/routeErr/meErr 一樣分開,各自代表獨立的失敗情境,互不影響彼此
+  // 的顯示。saveOk 是短暫的成功提示,不需要計時器自動清除——選取關閉
+  // (selectedEntry 變回 null)時整組儲存 UI 都會跟著收起,不會殘留。
+  const [saving, setSaving] = useState(false)
+  const [saveErr, setSaveErr] = useState<string | null>(null)
+  const [saveOk, setSaveOk] = useState(false)
 
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined
 
@@ -308,6 +346,79 @@ export function PaceRouteMap() {
       cancelled = true
     }
   }, [mapReady, apiKey])
+
+  // selectedEntry 改變(使用者點了另一張檢查站卡片)時平移地圖過去——用
+  // 'idle' 而非 'center_changed' 追蹤中心點(見下面那個 effect),兩者是
+  // 分開的關注點:這裡只負責「跳去哪裡」,下面的 effect 只負責「持續讀出
+  // 目前中心點在哪」,不論中心點是被 panTo 帶動還是使用者手動拖曳出來的。
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || !selectedEntry) return
+    // lat/lng 其中之一是 null 代表這筆 entry 還沒有座標(尚未 geocode)——
+    // 維持地圖原本的中心不動即可,讓使用者自己從目前畫面找位置,不假裝
+    // 有一個座標可以跳過去。
+    if (selectedEntry.lat === null || selectedEntry.lng === null) return
+    mapRef.current.panTo({ lat: selectedEntry.lat, lng: selectedEntry.lng })
+  }, [mapReady, selectedEntry])
+
+  // 每次「選取新的一張」檢查站卡片,上一筆的儲存結果訊息就沒有意義了,
+  // 清掉避免顯示到不相干的舊訊息。刻意只在 selectedEntry 變成非 null 時
+  // 清除(不是任何變動就清),因為儲存成功後 saveLatLng 會呼叫
+  // onSelectedEntryDone 把 selectedEntry 變回 null——那個當下 saveOk 才
+  // 剛設成 true,若這裡連 selectedEntry 變 null 也觸發清除,成功提示會
+  // 在使用者還沒看到之前就被自己洗掉。
+  useEffect(() => {
+    if (!selectedEntry) return
+    setSaveErr(null)
+    setSaveOk(false)
+  }, [selectedEntry])
+
+  // 持續追蹤地圖中心點座標,供選點圖釘(固定疊在畫面正中央的 UI 元素)與
+  // 「儲存座標」按鈕使用——選 'idle'(平移/縮放動作結束後才觸發一次)而非
+  // 'center_changed'(拖曳過程中每個 frame 都觸發),避免拖地圖時高頻
+  // setState 拖慢畫面。這個監聽器本身不看 selectedEntry 是否存在,一直
+  // 掛著即可,只是没有選取任何檢查站時 pendingLatLng 不會被讀取/顯示。
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return
+    const map = mapRef.current
+    const listener = map.addListener('idle', () => {
+      const center = map.getCenter()
+      if (!center) return
+      setPendingLatLng({ lat: center.lat(), lng: center.lng() })
+    })
+    return () => listener.remove()
+  }, [mapReady])
+
+  // 儲存選點圖釘目前指向的座標——PATCH /internal/entries/{id}/latlng 掛在
+  // internalAuth 之後,需要帶自家 JWT,讀 token 的方式跟上面 compute-route
+  // 那段一致(同一把 localStorage key)。成功後通知父層清掉 selectedEntry,
+  // 圖釘與儲存按鈕會跟著收起;失敗只顯示錯誤訊息,不讓整頁崩潰,使用者可以
+  // 再調整位置重試一次。
+  async function saveLatLng() {
+    if (!selectedEntry || !pendingLatLng) return
+    setSaving(true)
+    setSaveErr(null)
+    try {
+      const authToken = localStorage.getItem('tripace.auth.token')
+      const res = await fetch(`${BASE_URL}/internal/entries/${selectedEntry.id}/latlng`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({ lat: pendingLatLng.lat, lng: pendingLatLng.lng }),
+      })
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        throw new Error(`儲存座標 ${res.status}: ${text.slice(0, 300)}`)
+      }
+      setSaveOk(true)
+      onSelectedEntryDone?.()
+    } catch (e) {
+      setSaveErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
 
   // 「現在位置」marker 的建立/更新邏輯——真實 GPS(下面的 effect)跟模擬移動
   // (再下面的 effect)共用同一份,避免兩處各寫一次、之後改一邊忘了改另一邊。
@@ -496,9 +607,36 @@ export function PaceRouteMap() {
           <Compass size={16} strokeWidth={2} />
           導航模式
         </button>
+        {selectedEntry && (
+          <>
+            {/* 選點圖釘:刻意不是 google.maps.Marker(那種釘在地理座標上,
+                地圖平移時它會跟著移動),而是純 CSS 疊在 .frame 容器正中央
+                的元素,靠 transform: translate(-50%, -100%) 讓圖釘尖端
+                (視覺上的下緣中點)對準畫面正中心點——地圖在圖釘底下自由
+                平移/縮放,圖釘本身位置永遠不動,這是 Google Maps 官方
+                「移動地圖選擇位置」的標準 UI 模式(Uber/Airbnb 那種拖地圖
+                選地址的介面)。目前中心點座標由上面的 idle 監聽器持續寫進
+                pendingLatLng,這裡的圖釘本身不需要知道座標數值。 */}
+            <div className={styles.centerPin}>
+              <MapPin size={36} strokeWidth={2} fill="#C4956A" color="#fff" />
+            </div>
+            <button
+              type="button"
+              className={styles.saveLatLng}
+              title="儲存目前圖釘指向的座標"
+              disabled={saving || !pendingLatLng}
+              onClick={saveLatLng}
+            >
+              <Check size={16} strokeWidth={2} />
+              {saving ? '儲存中…' : '儲存座標'}
+            </button>
+          </>
+        )}
       </div>
       {meErr && <div className={styles.meErr}>無法取得目前位置:{meErr}</div>}
       {routeErr && <div className={styles.meErr}>路徑載入失敗:{routeErr}</div>}
+      {saveErr && <div className={styles.meErr}>儲存座標失敗:{saveErr}</div>}
+      {saveOk && <div className={styles.meErr}>已儲存座標。</div>}
     </div>
   )
 }

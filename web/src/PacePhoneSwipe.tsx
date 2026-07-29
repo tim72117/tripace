@@ -7,8 +7,8 @@ import styles from './PacePhoneSwipe.module.css'
 // 手機版配速表:地圖(PaceRouteMap)是固定不動的底層,檢查站清單
 // (PaceChartDemo,已經不含地圖,見 PaceChartDemo.tsx 的拆分)是從左邊滑入
 // 蓋在地圖上面的抽屜面板(off-canvas / drawer navigation,Material Design
-// 的正式元件名稱)。桌面版是側欄放清單、主區同時顯示地圖(見 App.tsx
-// DesktopContent 的 demo-pace 分支),手機螢幕窄放不下兩塊並排,用抽屜取代
+// 的正式元件名稱)。桌面版是側欄放清單、主區同時顯示地圖(見
+// DesktopLayout.tsx DesktopContent 的 pace 分支),手機螢幕窄放不下兩塊並排,用抽屜取代
 // 並排——這是刻意選用抽屜而非輪播(carousel):輪播模式下兩頁等寬一起被
 // 拖曳平移,地圖(主要內容)會跟著清單一起被拖動;抽屜模式下地圖固定不動,
 // 只有清單這個抽屜面板滑入/滑出蓋在地圖上面。

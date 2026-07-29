@@ -131,3 +131,49 @@
   font-size: 11.5px;
   color: var(--ios-gray);
 }
+
+/* 選點圖釘:固定疊在 .frame 容器正中央,不隨地圖平移/縮放移動(地圖在
+   它底下自由移動,它本身位置永遠不變)——這是 Google Maps 官方「移動
+   地圖選擇位置」的標準 UI 模式(Uber/Airbnb 拖地圖選地址的介面),故意
+   不用 google.maps.Marker(那種釘在地理座標上,地圖一動它也會跟著動)。
+   transform: translate(-50%, -100%) 讓圖釘尖端(視覺下緣中點,對應
+   lucide MapPin 圖示底部的尖角)精準對準畫面正中心點,而不是圖示的
+   幾何中心對準——這樣「圖釘指向哪裡」跟「pendingLatLng 實際存的座標」
+   才會一致。pointer-events: none 讓底下的地圖仍可正常接收拖曳/縮放手勢,
+   不會被這層疊圖擋住。 */
+.centerPin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -100%);
+  z-index: 6;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+}
+
+/* 儲存座標按鈕:只在選取了某個檢查站(selectedEntry 非 null)時才顯示,
+   位置疊在「導航模式」正上方(bottom: 90px = 50px + 32px 高 + 8px 間距),
+   樣式沿用同一組 pill 按鈕外觀,disabled 時沿用瀏覽器預設灰階表現即可,
+   不需要額外覆寫。 */
+.saveLatLng {
+  position: absolute;
+  left: 10px;
+  bottom: 90px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+}
+.saveLatLng:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

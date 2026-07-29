@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
   ChevronDown, Settings, LogOut, X,
-  List, Calendar, Sparkles, GalleryHorizontal, Map, Wrench, Radio, Activity, Bike, Plus,
+  List, Calendar, Sparkles, GalleryHorizontal, Map, Wrench, Radio, Activity, Route, Plus,
 } from 'lucide-react'
 import type { ClientConfig, ApiCall, WsEvent } from './api'
 import * as api from './api'
@@ -12,14 +13,15 @@ import type { DesktopTimelineMirror } from './ChatScreen'
 import { MultiTrackTimeline, type TaskPlaceholder } from './Timeline'
 import type { AssistLang } from './assistLang'
 import { ASSIST_LANG_KEY, getAssistLang } from './assistLang'
-import { PaceRouteMap } from './PaceRouteMap'
+import { PaceChartDemo } from './PaceChartDemo'
+import { PaceRouteMap, type SelectedEntry } from './PaceRouteMap'
 import { DemoPanel } from './DemoPanel'
 import {
   Avatar, ErrorBanner, errMsg, isSubmitEnter, LoginForm, useChannelsState,
   type ContentProps,
 } from './AppCommon'
 import {
-  type PanelMode, DemoPanelContent, LangSelect, TokenDisplay,
+  type PanelMode, isPanelMode, DemoPanelContent, LangSelect, TokenDisplay,
 } from './DesktopShared'
 
 // DesktopLayout:桌面版(寬度 >= 768px)專屬佈局元件,從 App.tsx 拆出來——
@@ -29,6 +31,13 @@ import {
 // 分別在 DesktopShared.tsx/AppCommon.tsx——避免這裡跟 App.tsx(留著手機版
 // PhoneContent/PhoneDemoDrawer/SettingsScreen)互相 import 對方造成循環
 // 依賴。
+
+// PANEL_COLLAPSED_SEGMENT:/app/:panelMode 路徑參數裡代表「side panel 收合」
+// (原本的 panelMode === null)的專屬字串,不屬於 PanelMode 型別的合法值——
+// 純粹是路由層級的一個記號,不是業務上的「面板模式」。用一個明確字串
+// (而非讓 null 對應到 /app 無參數)是因為 /app 無參數依規格要 fallback 成
+// 'channels'(見 DesktopContent 內的說明),兩者不能共用同一個網址。
+const PANEL_COLLAPSED_SEGMENT = 'none'
 
 // 時間軸鏡像資料的初始值(尚未收到 ChatScreen 鏡像前,或未選擇行程時使用)。
 const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
@@ -48,11 +57,45 @@ export function DesktopContent(props: ContentProps) {
   // 提升到這裡、和 .desktop-layout 同層,搭配 CSS 的 position: fixed 疊加,
   // 才能保證 dialog 蓋住整個桌面版佈局(含側欄)最上層。
   const [settingsOpen, setSettingsOpen] = useState(false)
-  // panelMode:rail/side panel 的狀態集中放在 DesktopContent 這一層(而非 rail 或
-  // panel 元件內部),因為 rail 的點擊要決定 panel 顯示什麼、panel 收合後也要能
-  // 反過來影響 rail 的高亮標記,兩者需共享同一份狀態才不會不同步。
-  // 預設值 'channels':進入桌面版時 panel 開啟且顯示頻道列表(維持既有使用者習慣)。
-  const [panelMode, setPanelMode] = useState<PanelMode>('channels')
+  // panelMode:rail/side panel 的狀態改由網址驅動(/app/:panelMode,見 App.tsx),
+  // 不再是這一層自己的 useState——這樣瀏覽器上一頁/下一頁、重新整理、分享連結
+  // 都能還原到對應的 side panel/main 畫面。navigate 的部分見下方 setPanelMode。
+  //
+  // 「收合」(原本 panelMode === null)需要一個獨立於「沒有路徑參數」的網址
+  // 表示法,不能直接讓 null 對應到 /app(無參數)——因為下面這條規則要求
+  // /app 本身要 fallback 成 'channels'(維持既有使用者習慣),若兩者共用
+  // 同一個網址,「再點一次啟用中的圖示收合 panel」會導致 navigate 到 /app、
+  // 又立刻被 fallback 規則解回 'channels',使用者永遠無法真正收合側欄。
+  // 因此用 PANEL_COLLAPSED_SEGMENT('none')這個明確的路徑片段代表收合狀態,
+  // 跟「沒帶參數」區分開來。
+  //
+  // 網址沒帶 panelMode(例如直接訪問 /app)時 useParams() 回傳 undefined,
+  // 這裡 fallback 成 'channels'——維持進入桌面版時 panel 開啟且顯示頻道列表的
+  // 既有使用者習慣(這行為原本就是這裡的預設值,只是現在由「沒有路徑參數」
+  // 觸發而非 useState 初始值)。
+  //
+  // 網址帶了不合法的 panelMode 字串(不在 PanelMode 列表、也不是
+  // PANEL_COLLAPSED_SEGMENT 的字串)時,同樣 fallback 成 'channels' 而非收合
+  // ——理由:讓使用者從一個「看起來壞掉的網址」落地時,至少有個看得懂的畫面
+  // (頻道列表)可以操作,好過收合側欄後找不到任何導覽入口(rail 上也沒有
+  // 任何按鈕會是 active 狀態,使用者會搞不清楚目前在哪)。
+  const { panelMode: panelModeParam } = useParams<{ panelMode?: string }>()
+  const panelMode: PanelMode =
+    panelModeParam === PANEL_COLLAPSED_SEGMENT
+      ? null
+      : isPanelMode(panelModeParam) ? panelModeParam : 'channels'
+  const navigate = useNavigate()
+  // setPanelMode:取代原本的 useState setter,改成 navigate 到對應路徑。
+  // 沿用原本「再點一次啟用中的圖示會收合 panel」的行為——這裡收合改成導向
+  // /app/none(見上方說明),而不是 /app。
+  const setPanelMode = useCallback((mode: Exclude<PanelMode, null>) => {
+    navigate(panelMode === mode ? `/app/${PANEL_COLLAPSED_SEGMENT}` : `/app/${mode}`)
+  }, [navigate, panelMode])
+  // selectedEntry:配速表「點卡片→地圖平移→手動微調→儲存座標」互動用,
+  // 跟 PublicPaceDemoPage.tsx(/demo/pace 公開頁)同一套設計——PaceChartDemo/
+  // PaceRouteMap 這裡跟那裡各自獨立掛載,狀態不共用,故這裡需要自己的
+  // selectedEntry state,不能指望公開頁那份。
+  const [selectedEntry, setSelectedEntry] = useState<SelectedEntry | null>(null)
   // timelineMirror:ChatScreen 透過 desktopChat.onTimelineData 鏡像過來的時間軸資料
   // (entries/updatingEntryIDs/taskPlaceholders/refetchEntries)。ChatScreen 是這份
   // 資料唯一的擁有者(它的 WS 連線即時維護這些 state),這裡只是接住鏡像後轉交給
@@ -72,13 +115,13 @@ export function DesktopContent(props: ContentProps) {
   useEffect(() => onApiCall((c) => setDebugCalls((prev) => [c, ...prev].slice(0, 100))), [])
   useEffect(() => onWsEvent((e) => setDebugWsEvents((prev) => [e, ...prev].slice(0, 100))), [])
   // isSidepanelMode:panelMode 是不是「該展開 side panel」的模式——
-  // channels/timeline 這兩種正式功能,加上 demo-pace(配速表改放側欄顯示,
+  // channels/timeline/pace 這三種正式功能(pace 配速表側欄顯示檢查站清單,
   // 跟 timeline 用同一種「side panel 開、main 區顯示 ChatScreen/空狀態」
   // 版面)。其餘 demo-cards/demo-row/demo-map/demo-clienttools/demo-onagent
   // 這幾種試做模式維持顯示在右側 .desktop-main(取代 ChatScreen,見下方
   // 渲染邏輯),不佔用 side panel,故不能讓 side panel 因為 panelMode 有值
   // 就誤判成該展開,否則會出現一個空白的展開面板。
-  const isSidepanelMode = panelMode === 'channels' || panelMode === 'timeline' || panelMode === 'demo-pace'
+  const isSidepanelMode = panelMode === 'channels' || panelMode === 'timeline' || panelMode === 'pace'
 
   // 切換行程時,先清空鏡像資料,避免新行程的 ChatScreen 還沒送出第一次鏡像前,
   // side panel 短暫顯示上一個行程的時間軸內容。
@@ -105,7 +148,7 @@ export function DesktopContent(props: ContentProps) {
       <div className="desktop-layout">
         <DesktopRail
           panelMode={panelMode}
-          onSelect={(mode) => setPanelMode((cur) => (cur === mode ? null : mode))}
+          onSelect={setPanelMode}
           timelineDisabled={!activeChannel}
           user={props.user}
           isGuest={props.isGuest}
@@ -117,7 +160,7 @@ export function DesktopContent(props: ContentProps) {
           showDebugPanel={showDebugPanel}
           onToggleDebugPanel={() => setShowDebugPanel((v) => !v)}
         />
-        <aside className={`desktop-sidepanel${isSidepanelMode ? '' : ' collapsed'}${panelMode === 'timeline' || panelMode === 'demo-pace' ? ' wide' : ''}`}>
+        <aside className={`desktop-sidepanel${isSidepanelMode ? '' : ' collapsed'}${panelMode === 'timeline' || panelMode === 'pace' ? ' wide' : ''}`}>
           <div className="desktop-sidepanel-inner">
             {panelMode === 'channels' && (
               <DesktopChannelList
@@ -149,21 +192,23 @@ export function DesktopContent(props: ContentProps) {
                 </div>
               </div>
             )}
-            {panelMode === 'demo-pace' && (
+            {panelMode === 'pace' && (
               <div className="desktop-sidepanel-pace">
-                <DemoPanelContent mode="demo-pace" />
+                <PaceChartDemo onCheckpointClick={setSelectedEntry} />
               </div>
             )}
           </div>
         </aside>
         <main className="desktop-main">
-          {panelMode === 'demo-pace' ? (
+          {panelMode === 'pace' ? (
             // 配速表拆成兩塊:檢查站清單留在左側 side panel(見上方
             // .desktop-sidepanel-pace),地圖需要較寬的空間,改在右側主區
             // 顯示——跟 timeline 模式「側欄放清單、主區放詳細內容」是同一種
-            // 版面邏輯。PaceRouteMap 本身不吃 props,直接掛載即可。
+            // 版面邏輯。selectedEntry 這套「點卡片→地圖平移→手動微調→
+            // 儲存座標」互動只在這裡(登入後正式介面)提供,/demo/pace 公開
+            // 分享頁刻意不接(見 PaceRouteMap.tsx 的 SelectedEntry 說明)。
             <div className="desktop-demo-panel">
-              <PaceRouteMap />
+              <PaceRouteMap selectedEntry={selectedEntry} onSelectedEntryDone={() => setSelectedEntry(null)} />
             </div>
           ) : panelMode === 'demo-cards' || panelMode === 'demo-row' || panelMode === 'demo-map'
             || panelMode === 'demo-clienttools' || panelMode === 'demo-onagent' ? (
@@ -265,6 +310,13 @@ function DesktopRail({
         >
           <Calendar size={20} strokeWidth={1.8} />
         </button>
+        <button
+          className={`desktop-rail-btn${panelMode === 'pace' ? ' active' : ''}`}
+          onClick={() => onSelect('pace')}
+          title="配速表"
+        >
+          <Route size={20} strokeWidth={1.8} />
+        </button>
         {isDemo && (
           <>
             {/* 試做用導覽項目與正式功能之間的視覺分隔線,只在 ?demo 時出現,
@@ -304,13 +356,6 @@ function DesktopRail({
               title="onagent 平台串接試做"
             >
               <Radio size={20} strokeWidth={1.8} />
-            </button>
-            <button
-              className={`desktop-rail-btn desktop-rail-btn-demo${panelMode === 'demo-pace' ? ' active' : ''}`}
-              onClick={() => onSelect('demo-pace')}
-              title="單車配速表(試做)"
-            >
-              <Bike size={20} strokeWidth={1.8} />
             </button>
             <button
               className={`desktop-rail-btn desktop-rail-btn-demo${showDebugPanel ? ' active' : ''}`}

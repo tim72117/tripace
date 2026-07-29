@@ -14,6 +14,9 @@ import { BASE_URL } from './AppCommon'
 // 沒有 prefers-color-scheme/data-theme 這套深色模式機制,故不額外新增)。
 
 export interface Checkpoint {
+  // id:對應後端 Entry.id——點擊卡片要往上通知父層是哪一筆 entry,後續
+  // PATCH /internal/entries/{id}/latlng 儲存座標時需要用到。
+  id: string
   name: string
   km: number | null // null:純轉彎指示,紙條上沒寫里程(仍依原始順序顯示,只是不進里程進度條)
   tag: string | null // null:起點/終點無標籤(顯示起點/終點徽章代替)
@@ -72,6 +75,7 @@ interface PublicEntry {
 function entryToCheckpoint(e: PublicEntry): Checkpoint {
   const d = e.detail
   return {
+    id: e.id,
     name: e.title,
     km: d?.km ?? null,
     tag: d?.tag ?? null,
@@ -254,7 +258,7 @@ function CheckpointCard({
   const coreValue = !hasTime ? '—' : cp.isFinish ? cp.arrive : cp.depart
 
   return (
-    <div className={stateClass} ref={cardRef}>
+    <div className={stateClass} ref={cardRef} onClick={onClick}>
       <div className={styles.stopLeft}>
         {isNow && (
           <div className={styles.nowFlag}>
@@ -293,7 +297,15 @@ function todayStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export function PaceChartDemo() {
+export function PaceChartDemo({
+  onCheckpointClick,
+}: {
+  // onCheckpointClick:通知父層(DesktopLayout.tsx 登入後正式介面)使用者
+  // 點了哪個檢查站,讓地圖(PaceRouteMap)能平移過去、進入手動微調座標模式。
+  // 可選是因為 PublicPaceDemoPage.tsx(/demo/pace 公開分享頁)刻意不接這套
+  // 互動(寫入座標需要登入身分,不該出現在公開頁),掛載時不傳這個 prop。
+  onCheckpointClick?: (entry: { id: string; lat: number | null; lng: number | null }) => void
+}) {
   const [routeIdx, setRouteIdx] = useState(0)
   const [nowMark, setNowMark] = useState<NowMark | null>(null)
   // copied:分享按鈕點擊後短暫顯示「已複製連結」的回饋文字,2 秒後恢復。
@@ -463,6 +475,7 @@ export function PaceChartDemo() {
             cp={cp}
             isNow={nowMark?.checkpointIndex === i}
             cardRef={nowMark?.checkpointIndex === i ? nowCardRef : undefined}
+            onClick={onCheckpointClick ? () => onCheckpointClick({ id: cp.id, lat: cp.lat, lng: cp.lng }) : undefined}
           />
         ))}
       </div>

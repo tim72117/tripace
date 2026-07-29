@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronLeft, Users, Send, Share2, Sparkles } from 'lucide-react'
+import type { TouchEvent as ReactTouchEvent } from 'react'
+import { ChevronLeft, Users, Send, Share2, Sparkles, CalendarDays } from 'lucide-react'
 import type { ClientConfig } from './api'
 import * as api from './api'
 import type { Channel, Entry, User } from './types'
@@ -109,7 +110,6 @@ export function ChatScreen({
   // WS 收到 entry_updating 加入(並保證最短顯示 800ms),entries_updated(更新完成刷新)時清空。
   const [updatingEntryIDs, setUpdatingEntryIDs] = useState<Set<string>>(new Set())
   const [draft, setDraft] = useState('')
-  const [inputFocused, setInputFocused] = useState(false)
   // loaded:這個頻道的 load() 是否已完成過一次(見 load() 的 finally)。
   const [loaded, setLoaded] = useState(false)
   // ask_user:agent 缺資訊(如住宿退房日)時,透過 WS 推來的請求;非 null 時前端開對應 UI。
@@ -214,19 +214,62 @@ export function ChatScreen({
   const navbarRef = useRef<HTMLDivElement>(null)
   const lastScrollY = useRef(0)
   const todayRef = useRef<HTMLDivElement>(null as unknown as HTMLDivElement)
-  // chatOverlayInnerRef:手機版訊息浮層(.chat-overlay-inner)的捲動容器,
-  // 條件渲染(只在 messages.length > 0 || sending || inputFocused 時存在),
-  // 供進入頻道時「捲到最底」使用(桌面版走 bodyRef,見下方 useEffect)。
-  const chatOverlayInnerRef = useRef<HTMLDivElement>(null)
+  // chatMessagesRef:手機版訊息列表(現在是固定顯示的主要內容,不再是浮層)
+  // 的捲動容器,供進入頻道時「捲到最底」使用(桌面版走 bodyRef,見下方
+  // useEffect)。改版前這支 ref 叫 chatOverlayInnerRef、只在浮層條件渲染時
+  // 才存在;現在訊息列表一律渲染,ref 永遠掛得到,行為不變只是命名對齊
+  // 新的呈現方式。
+  const chatMessagesRef = useRef<HTMLDivElement>(null)
+  // timelineOpen:手機版時間軸抽屜的開關狀態,仿照 PacePhoneSwipe.tsx 的
+  // open/dragOffset 寫法。改版前時間軸是底層固定內容、對話是浮層蓋在上面;
+  // 改版後對話變成固定顯示的主要畫面,時間軸改成從右側滑入蓋在對話上方的
+  // 抽屜面板,預設收合(false)——使用者一進頻道先看到的是對話,需要查看
+  // 時間軸時才主動點開,對齊「對話是主要內容」的新設計。
+  const [timelineOpen, setTimelineOpen] = useState(false)
+  // dragOffset/startXRef/draggingRef:抽屜的觸控拖曳手勢狀態,同
+  // PacePhoneSwipe.tsx 的用法——dragOffset 是目前拖曳的像素位移(state,
+  // 驅動 transform 即時跟手),startXRef/draggingRef 是拖曳過程中的暫態
+  // 追蹤值(不需要觸發 re-render,用 ref)。
+  const [dragOffset, setDragOffset] = useState(0)
+  const startXRef = useRef<number | null>(null)
+  const draggingRef = useRef(false)
+
+  // 抽屜從右側滑入(時間軸相對對話是輔助/詳細內容,滑入方向與 navbar 右側
+  // 的開啟按鈕群組呼應),故拖曳方向與 PacePhoneSwipe.tsx(左側抽屜)左右相反:
+  // 開啟狀態下只能往右拖(關閉方向,delta 為正),故 delta 用 Math.max(0, …)
+  // 鎖住不可為負,避免抽屜被拖出螢幕左側外的空白區域。
+  function onTimelineTouchStart(e: ReactTouchEvent) {
+    startXRef.current = e.touches[0].clientX
+    draggingRef.current = true
+  }
+  function onTimelineTouchMove(e: ReactTouchEvent) {
+    if (!draggingRef.current || startXRef.current === null) return
+    const delta = Math.max(0, e.touches[0].clientX - startXRef.current)
+    setDragOffset(delta)
+  }
+  function onTimelineTouchEnd() {
+    if (!draggingRef.current) return
+    draggingRef.current = false
+    const threshold = 60
+    if (dragOffset > threshold) setTimelineOpen(false)
+    setDragOffset(0)
+    startXRef.current = null
+  }
 
   // 捲動時自動收合/浮現 navbar:只在手機版生效。桌面版 navbar 要持續顯示、
   // 寬度對齊右側顯示區(.desktop-main),不隨捲動收合——桌面版沒有手機那種
   // 「小螢幕捲動時讓出空間」的需求,收合反而會讓 navbar 寬度對齊的視覺
   // 一致性看起來不穩定。desktopChat 非 undefined 即代表目前是桌面模式
   // (見上方 desktopChat prop 的說明)。
+  //
+  // 改版前這裡監聽的是 bodyRef(當時是時間軸的捲動容器,也是手機版底層唯一
+  // 固定顯示的主要內容)。改版後訊息列表(chatMessagesRef)才是固定顯示的
+  // 主要內容,時間軸變成抽屜、只有開啟時才可視/可捲動——故改監聽
+  // chatMessagesRef,讓「捲動主要內容時收合 navbar」這個語意繼續對應到
+  // 使用者實際在看的畫面,而不是可能根本沒開啟的抽屜。
   useEffect(() => {
     if (desktopChat) return
-    const el = bodyRef.current
+    const el = chatMessagesRef.current
     const nav = navbarRef.current
     if (!el || !nav) return
     const onScroll = () => {
@@ -304,8 +347,9 @@ export function ChatScreen({
   // 監聽 messages,頻道進來時若沒有歷史訊息(messages.length===0)會無法
   // 區分「初次進入」與「之後使用者送出第一則新訊息」,導致這個 effect 被
   // 誤觸發、跟 scrollMessageToTop(送出訊息時捲到頂端)搶控制權。用
-  // requestAnimationFrame 等 loaded 變化觸發的渲染真正完成、DOM(含手機版
-  // 條件渲染的 .chat-overlay-inner)已存在,才捲動。
+  // requestAnimationFrame 等 loaded 變化觸發的渲染真正完成、DOM(手機版的
+  // 訊息列表現在一律渲染,不像改版前的浮層是條件渲染,但仍等一次渲染循環
+  // 確保內容已經填入)已存在,才捲動。
   //
   // 依賴陣列刻意用 !!desktopChat(布林值)而非 desktopChat 本身:desktopChat
   // 是 App.tsx 用內聯物件字面量 {{ onTimelineData }} 傳入的 prop,DesktopContent
@@ -317,7 +361,7 @@ export function ChatScreen({
   useEffect(() => {
     if (!loaded) return
     requestAnimationFrame(() => {
-      const container = desktopChat ? bodyRef.current : chatOverlayInnerRef.current
+      const container = desktopChat ? bodyRef.current : chatMessagesRef.current
       if (!container) return
       container.scrollTo({ top: container.scrollHeight, behavior: 'instant' })
     })
@@ -471,6 +515,11 @@ export function ChatScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在頻道/owner 身分變動時重新連線,同第一條 WS 的依賴慣例。
   }, [cfg.baseURL, channel.id, isOwner])
 
+  // entries 一有資料就捲到「今天」——桌面版 bodyRef 是右欄主要捲動容器;
+  // 手機版 bodyRef 現在指向時間軸抽屜面板內部的捲動容器(見下方 JSX),
+  // 抽屜就算尚未開啟這個 DOM 節點依然存在(只是 CSS 位移蓋在畫面外),故
+  // scrollTo 呼叫本身不受開關狀態影響,使用者之後點開抽屜時已經是捲到今天
+  // 的狀態,不需要另外等開啟時機重算一次。
   useEffect(() => {
     if (entries.length > 0 && todayRef.current && bodyRef.current) {
       const el = todayRef.current
@@ -492,8 +541,9 @@ export function ChatScreen({
 
   // 桌面版:把指定訊息(依 msgID)捲到可視區域頂端,讓 LLM 的回答有完整空間
   // 往下展開;內容若超出可視高度才繼續往上捲(瀏覽器原生行為接手,這裡只
-  // 負責初始定位)。手機版走 .chat-overlay 浮層獨立捲動,是完全不同的 DOM
-  // 結構,呼叫端要自行判斷 desktopChat 是否成立才呼叫這個函式。用
+  // 負責初始定位)。手機版訊息列表走自己獨立的捲動容器(chatMessagesRef),
+  // 是完全不同的 DOM 結構,呼叫端要自行判斷 desktopChat 是否成立才呼叫這個
+  // 函式。用
   // requestAnimationFrame 等這次觸發的渲染真正完成、DOM 節點已存在,才能
   // 量到正確位置。send()/ask() 共用同一份邏輯。
   const scrollMessageToTop = (msgID: string) => {
@@ -734,6 +784,11 @@ export function ChatScreen({
     }
   }
 
+  // timelineTranslate:時間軸抽屜面板目前的水平位移,同 PacePhoneSwipe.tsx
+  // 的 translate 計算方式,但左右相反——面板從右側滑入,收合狀態的起始位置
+  // 是 100%(完全推到容器右側外),開啟狀態是 0(完全貼齊)。
+  const timelineTranslate = timelineOpen ? `${dragOffset}px` : `calc(100% + ${dragOffset}px)`
+
   // 頻道內的成員管理(對齊 iOS App:聊天頁 → 成員)。
   if (showMembers) {
     return (
@@ -766,6 +821,15 @@ export function ChatScreen({
         <span className="title">{channel.name}</span>
         <ChannelMenu channelID={channel.id} />
         <div style={{ display: 'flex', gap: 2 }}>
+          {/* 時間軸抽屜開關:只在手機版(!desktopChat)顯示——桌面版時間軸
+              固定在左側 side panel,不需要另外開關。放進既有的圖示按鈕群組
+              (跟分享/成員同一列、同樣的 icon-btn 視覺),不另外新增一整塊
+              UI 區域,對齊這個 navbar 既有的慣例。 */}
+          {!desktopChat && (
+            <button className="btn icon-btn" onClick={() => setTimelineOpen(true)} title="行程時間軸">
+              <CalendarDays size={18} strokeWidth={1.8} />
+            </button>
+          )}
           {isOwner && (
             <button className="btn icon-btn" onClick={() => setShowShare(true)} title="分享">
               <Share2 size={18} strokeWidth={1.8} />
@@ -783,7 +847,7 @@ export function ChatScreen({
           // 獨立捲動)——桌面版沒有時間軸需要被浮層蓋住看見,底層只會是引導文字,
           // 故引導文字與對話泡泡改成同一個 .screen-body 容器內的一般文件流內容,
           // 整個對話區當一個整體捲動,捲軸貼齊右欄邊緣,不再套用 .chat-overlay。
-          <div className={`screen-body ${styles.messages}`} ref={bodyRef} onMouseDown={() => setInputFocused(false)}>
+          <div className={`screen-body ${styles.messages}`} ref={bodyRef}>
             <ErrorBanner msg={err} />
             {messages.length === 0 ? (
               <div className="empty">
@@ -797,34 +861,60 @@ export function ChatScreen({
           </div>
         ) : (
           <>
-            <div className="screen-body" ref={bodyRef} onMouseDown={() => { setInputFocused(false); setMessages([]) }}>
+            {/* 手機版:訊息列表是固定顯示的主要內容(取代改版前浮層蓋在時間軸
+                上方的設計),時間軸改成從右側滑入的抽屜,見下方 .timelinePanel。 */}
+            <div className={`screen-body ${styles.messages}`} ref={chatMessagesRef}>
               <ErrorBanner msg={err} />
-              {entries.length === 0 && messages.length === 0 && !sending ? (
+              {messages.length === 0 && !sending ? (
                 <div className="empty">
-                  {isOwner ? '在下方輸入記事，會依時間排列在這裡。' : '在下方查詢這趟行程的內容。'}
+                  {isOwner ? '在下方輸入記事，會依時間排列在時間軸(右上角圖示)。' : '在下方查詢這趟行程的內容。'}
                 </div>
-              ) : entries.length > 0 ? (
-                <MultiTrackTimeline
-                  entries={entries}
-                  todayRef={todayRef}
-                  updatingIDs={updatingEntryIDs}
-                  taskPlaceholders={taskPlaceholders}
-                  cfg={isOwner ? cfg : undefined}
-                  onEntryUpdated={() => api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {})}
-                />
-              ) : null}
+              ) : (
+                messages.map((m) => (
+                  <MessageBubble key={m.id} msg={m} meID={user.id} tripBatches={clientToolsBatches} isLatest={m.id === latestAnswerID} onDeleteTripBatchEntries={deleteTripBatchEntries} />
+                ))
+              )}
             </div>
 
-            {/* 浮層：訊息對話區，覆蓋在時間軸上方，毛玻璃背景 */}
-            {(messages.length > 0 || sending || inputFocused) && (
-              <div className={styles.overlay} onMouseDown={(e) => e.stopPropagation()}>
-                <div className={styles.overlayInner} ref={chatOverlayInnerRef}>
-                  {messages.map((m) => (
-                    <MessageBubble key={m.id} msg={m} meID={user.id} tripBatches={clientToolsBatches} isLatest={m.id === latestAnswerID} onDeleteTripBatchEntries={deleteTripBatchEntries} />
-                  ))}
-                </div>
-              </div>
+            {/* 抽屜開啟時的 backdrop:半透明遮罩,點擊可關閉抽屜(同
+                PacePhoneSwipe.tsx 的 backdrop 用法)。 */}
+            {timelineOpen && (
+              <div
+                className={styles.backdrop}
+                onClick={() => setTimelineOpen(false)}
+                aria-hidden="true"
+              />
             )}
+
+            {/* 時間軸抽屜面板:從右側滑入蓋在訊息列表上方。拖曳手勢只掛在
+                面板本身(同 PacePhoneSwipe.tsx 的理由)——MultiTrackTimeline
+                內部的條目卡片有自己的點擊/編輯互動,掛在整個外層容器上會
+                互搶手勢。 */}
+            <div
+              className={styles.timelinePanel}
+              style={{
+                transform: `translateX(${timelineTranslate})`,
+                transition: draggingRef.current ? 'none' : 'transform 0.25s ease',
+              }}
+              onTouchStart={onTimelineTouchStart}
+              onTouchMove={onTimelineTouchMove}
+              onTouchEnd={onTimelineTouchEnd}
+            >
+              <div className="screen-body" ref={bodyRef}>
+                {entries.length > 0 ? (
+                  <MultiTrackTimeline
+                    entries={entries}
+                    todayRef={todayRef}
+                    updatingIDs={updatingEntryIDs}
+                    taskPlaceholders={taskPlaceholders}
+                    cfg={isOwner ? cfg : undefined}
+                    onEntryUpdated={() => api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {})}
+                  />
+                ) : (
+                  <div className="empty">尚未有任何記事。</div>
+                )}
+              </div>
+            </div>
           </>
         )}
 
@@ -850,8 +940,6 @@ export function ChatScreen({
               placeholder={isOwner ? '記事或提問…' : '用自然語言查詢這趟行程…'}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => isSubmitEnter(e) && (isOwner ? send() : ask())}
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
             />
             <button
               onClick={() => (isOwner ? send() : ask())}
