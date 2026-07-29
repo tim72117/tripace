@@ -369,11 +369,3 @@
 .finishBadge {
   color: var(--color-accent);
 }
-
-.footer {
-  margin-top: 20px;
-  font-size: 11.5px;
-  color: var(--ios-gray);
-  line-height: 1.65;
-  padding: 0 2px;
-}

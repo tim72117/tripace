@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Share2 } from 'lucide-react'
 import styles from './PaceChartDemo.module.css'
 import { BASE_URL } from './AppCommon'
+import { fetchEntries, type ClientConfig } from './api'
 
 // 單車配速表(UI 試做):手機優先的直向卡片堆疊,每張卡片是一個檢查站,
 // 核心資訊是「離站時間」(視覺上用最大字級呈現)。設計與互動邏輯直接
@@ -115,7 +116,6 @@ interface RouteMeta {
   startTime: string
   finishTime: string
   avgSpeedKmh: number | null
-  footer: string
   date: string
 }
 
@@ -129,11 +129,17 @@ interface RouteMeta {
 // 里程數照紙條原始寫法保留,不強行從 0 起算(某幾段本來就是從路線中段
 // 開始記錄),故部分路段的進度條起點不是 0%。
 
-// PACE_PUBLIC_LINK_TOKEN:本機測試用的公開分享連結 token(對應 ch_a5632424
-// 頻道,同時涵蓋 leg1~leg4 全部 4 段、28 筆 checkpoint)。這是暫時性的接法,
-// 只為了先驗證「前端讀 Entry」這條路徑可行——之後若要正式上線,這個 token
-// 不該寫死在程式碼裡,應該由頻道自己的設定或環境變數決定。
-const PACE_PUBLIC_LINK_TOKEN = 'lnk_77f2aa2b14c6'
+// PACE_CHANNEL_ID:配速表資料所在的固定頻道(花東193公路 pace note,
+// 同時涵蓋 leg1~leg4 全部 4 段、28 筆 checkpoint)。這是一份固定的展示
+// 內容,不隨登入使用者目前選取的頻道改變。
+const PACE_CHANNEL_ID = 'ch_a5632424'
+
+// PACE_PUBLIC_LINK_TOKEN:未登入的公開分享頁(/demo/pace,見
+// PublicPaceDemoPage.tsx)讀取上述固定頻道用的公開分享連結 token。由
+// VITE_PACE_PUBLIC_LINK_TOKEN 決定(見 .env.development)。登入後的正式
+// 介面(DesktopLayout.tsx)不使用這個 token——已改用登入者自己的 cfg
+// 呼叫一般的 fetchEntries(見下方 useEffect),不需要經過公開連結機制。
+const PACE_PUBLIC_LINK_TOKEN = import.meta.env.VITE_PACE_PUBLIC_LINK_TOKEN as string | undefined
 
 // 四段路線的摘要資訊(RouteMeta)。這些是純展示用的文字/彙總數字,後端
 // Entry/Detail 目前沒有對應的「整段路線摘要」資料結構可以承載,故仍維持
@@ -142,25 +148,21 @@ const PACE_PUBLIC_LINK_TOKEN = 'lnk_77f2aa2b14c6'
 const LEG1_META: RouteMeta = {
   title: '光復橋 → 富興客棧', subtitle: '193縣道・大農大富平地森林園區段', eyebrow: '配速表 · 花東193公路(Day 1 上半)',
   totalKm: 21.0, startTime: '09:00', finishTime: '12:30', avgSpeedKmh: null,
-  footer: '里程與地標依手寫 pace note 轉錄。',
   date: '2026-07-31',
 }
 const LEG2_META: RouteMeta = {
   title: '193縣道83K → 老家後山菜', subtitle: '瑞穗・虎爺溫泉段', eyebrow: '配速表 · 花東193公路(Day 1 下半)',
   totalKm: 16.3, startTime: '14:50', finishTime: '18:00', avgSpeedKmh: null,
-  footer: '里程與地標依手寫 pace note 轉錄。',
   date: '2026-07-31',
 }
 const LEG3_META: RouteMeta = {
   title: '青蓮寺 → 安通溫泉', subtitle: '193縣道・玉里柴埔天堂路段', eyebrow: '配速表 · 花東193公路(Day 2 上半)',
   totalKm: 28.0, startTime: '08:30', finishTime: '13:00', avgSpeedKmh: null,
-  footer: '里程與地標依手寫 pace note 轉錄。',
   date: '2026-08-01',
 }
 const LEG4_META: RouteMeta = {
   title: '安通鐵路驛站 → 太司步廊', subtitle: '板塊交接上橋段', eyebrow: '配速表 · 花東193公路(Day 2 下半)',
   totalKm: 7.5, startTime: '13:00', finishTime: '16:40', avgSpeedKmh: null,
-  footer: '里程與地標依手寫 pace note 轉錄。',
   date: '2026-08-01',
 }
 
@@ -298,8 +300,13 @@ function todayStr(): string {
 }
 
 export function PaceChartDemo({
+  cfg,
   onCheckpointClick,
 }: {
+  // cfg:登入後正式介面(DesktopLayout.tsx)傳入自己的 ClientConfig,改走
+  // 認證過的 fetchEntries 讀取資料。不傳(PublicPaceDemoPage.tsx 公開分享頁)
+  // 則 fallback 走公開連結 token(見下方 useEffect)。
+  cfg?: ClientConfig
   // onCheckpointClick:通知父層(DesktopLayout.tsx 登入後正式介面)使用者
   // 點了哪個檢查站,讓地圖(PaceRouteMap)能平移過去、進入手動微調座標模式。
   // 可選是因為 PublicPaceDemoPage.tsx(/demo/pace 公開分享頁)刻意不接這套
@@ -323,17 +330,27 @@ export function PaceChartDemo({
 
   useEffect(() => {
     let cancelled = false
-    fetch(`${BASE_URL}/v1/public/${PACE_PUBLIC_LINK_TOKEN}`)
-      .then(async (res) => {
-        if (!res.ok) {
-          const text = await res.text().catch(() => '')
-          throw new Error(`載入配速表資料失敗(${res.status}): ${text.slice(0, 200)}`)
-        }
-        return res.json() as Promise<{ entries: PublicEntry[] }>
-      })
-      .then((data) => {
+    // 登入後正式介面(cfg 有值):走一般認證過的頻道 entries API,不再經過
+    // 公開連結 token。未登入的公開分享頁(cfg 為 undefined):維持走公開
+    // 連結 token(這是它本來就該有的合法用途,不是臨時接法)。
+    const load = cfg
+      ? fetchEntries(cfg, PACE_CHANNEL_ID).then((entries) => entries as unknown as PublicEntry[])
+      : (() => {
+          if (!PACE_PUBLIC_LINK_TOKEN) {
+            return Promise.reject(new Error('未設定 VITE_PACE_PUBLIC_LINK_TOKEN(見 web/.env.development)'))
+          }
+          return fetch(`${BASE_URL}/v1/public/${PACE_PUBLIC_LINK_TOKEN}`).then(async (res) => {
+            if (!res.ok) {
+              const text = await res.text().catch(() => '')
+              throw new Error(`載入配速表資料失敗(${res.status}): ${text.slice(0, 200)}`)
+            }
+            return (await res.json() as { entries: PublicEntry[] }).entries
+          })
+        })()
+    load
+      .then((entries) => {
         if (cancelled) return
-        setCheckpointsBySegment(groupBySegment(data.entries))
+        setCheckpointsBySegment(groupBySegment(entries))
       })
       .catch((e) => {
         if (cancelled) return
@@ -342,7 +359,7 @@ export function PaceChartDemo({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [cfg])
 
   const routes = buildRoutes(
     checkpointsBySegment ?? { leg1: [], leg2: [], leg3: [], leg4: [] },
@@ -479,8 +496,6 @@ export function PaceChartDemo({
           />
         ))}
       </div>
-
-      <footer className={styles.footer}>{route.meta.footer}</footer>
     </div>
   )
 }

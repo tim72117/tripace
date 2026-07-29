@@ -194,7 +194,7 @@ export function DesktopContent(props: ContentProps) {
             )}
             {panelMode === 'pace' && (
               <div className="desktop-sidepanel-pace">
-                <PaceChartDemo onCheckpointClick={setSelectedEntry} />
+                <PaceChartDemo cfg={cfg} onCheckpointClick={setSelectedEntry} />
               </div>
             )}
           </div>
