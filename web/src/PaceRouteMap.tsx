@@ -22,15 +22,21 @@ import { BASE_URL } from './AppCommon'
 // (3) 自己算 LatLngBounds 讓地圖自動縮放到看得到整條路線(舊版
 // DirectionsRenderer 這幾件事都是自動做的)。
 //
-// computeRoutes 改由後端代呼叫(GET /v1/demo/pace-route,見
-// server/internal/api/pace_route.go):前端的 VITE_GOOGLE_MAPS_API_KEY 只
-// 負責 Maps JavaScript API 的地圖渲染,計算類 REST API(Routes API)由後端
-// 用專用的 GOOGLE_PLACES_API_KEY 呼叫,不需要讓瀏覽器端的 key 承擔額外的
-// API 限制範圍——跟 RecommendedPlacesMap.tsx 仍直接呼叫 Places API (New) 的
+// computeRoutes 改由後端代呼叫,前端的 VITE_GOOGLE_MAPS_API_KEY 只負責
+// Maps JavaScript API 的地圖渲染,計算類 REST API(Routes API)由後端用
+// 專用的 GOOGLE_PLACES_API_KEY 呼叫,不需要讓瀏覽器端的 key 承擔額外的 API
+// 限制範圍——跟 RecommendedPlacesMap.tsx 仍直接呼叫 Places API (New) 的
 // places:searchText 不同,那是刻意保留的既有模式,這裡是特意搬到後端。
 //
-// 地點文字前綴「花蓮」是刻意的地址消歧義(避免解析到同名的其他縣市地點),
-// 照抄不要更動。
+// 目前打的是 POST /internal/entries/compute-route(見
+// server/internal/api/entry_geocode.go 的 handleComputeRouteFromEntries),
+// entryIDs 寫死成 ch_a5632424 頻道底下三筆已校正過座標的真實 entry(光復
+// 糖廠→民治街→大農大富平地森林園區停車場),不再是最初那組花蓮示範地點
+// (光復橋/大農大富/七彩釣竿橋/大富火車站/富興客棧)——這是暫時性的接法,
+// 只為了驗證這支新端點能不能驅動前端畫圖,entryID 之後應該改由呼叫端動態
+// 決定,不該寫死在元件裡。這支端點掛在 /internal/*,需要帶有效的自家 JWT
+// (見 middleware.go 的 internalAuth),故底下改用帶 Authorization header 的
+// POST 呼叫,不再是原本 GET /v1/demo/pace-route 那種不需登入的公開呼叫。
 //
 // MINIMAL_MAP_STYLE/ensureOptionsSet 是從 RecommendedPlacesMap.tsx 複製過來
 // 的獨立副本,刻意不 import 共用——那個檔案目前另有進行中的修改,這裡先不
@@ -62,25 +68,33 @@ function ensureOptionsSet(apiKey: string) {
   setOptions({ key: apiKey, v: 'weekly' })
 }
 
-// 沿路節點的顯示名稱,依序對應後端(server/internal/api/pace_route.go)寫死的
-// origin -> 3 個中繼點 -> destination,
-// 跟下方從 legs[].startLocation/endLocation 推導出的座標順序一一對應
-// (見路線 effect 內的說明)。
-const STOP_NAMES = ['光復橋', '大農大富平地森林園區', '七彩釣竿橋', '大富火車站', '富興客棧']
+// COMPUTE_ROUTE_ENTRY_IDS:對應 ch_a5632424 頻道底下四筆 entry,依序為
+// origin/intermediates/destination(見上方檔案開頭說明)——依照它們在後端
+// Detail.order 的順序排列(0/1/2/5)。「R轉193」(ent_34d26e76a2a4)這筆刻意
+// 加進來測試:它是純轉彎指示,沒有具體地名、目前沒有 Lat/Lng,後端
+// handleComputeRouteFromEntries 對這種沒座標的 entry 會 fallback 用 Title
+// 當地址查詢——用途是驗證這種查無精確地點的中繼點,能不能靠前後已知座標
+// (民治街/停車場)的路網幾何脈絡合理定位,而不是靠它自己被獨立解析。
+const COMPUTE_ROUTE_ENTRY_IDS = ['ent_2a895ee67c5a', 'ent_82ebeadd8b36', 'ent_34d26e76a2a4', 'ent_84c38044ce40']
 
-// 路線初始 center/zoom:花蓮光復鄉附近的合理預設值,路線算出來後會
-// fitBounds 到實際路線範圍,這裡不需要精確。
-const INITIAL_CENTER = { lat: 23.67, lng: 121.42 }
-const INITIAL_ZOOM = 13
+// 沿路節點的顯示名稱,依序對應 COMPUTE_ROUTE_ENTRY_IDS 的 origin -> 中繼點 ->
+// destination,跟下方從 legs[].startLocation/endLocation 推導出的座標順序
+// 一一對應(見路線 effect 內的說明)。
+const STOP_NAMES = ['光復糖廠', '民治街', 'R轉193', '大農大富平地森林園區停車場']
 
-// RouteCache:GET /v1/demo/pace-route 的回應形狀,也是存進 localStorage 的
-// 快取形狀(兩者刻意一致,拿到後直接原樣快取,不需要轉換)——只留下畫路線
-// 真正需要的最小資料(encodedPolyline 字串 + 每段 leg 的起訖座標)。後端的
-// 起訖點/中繼點是寫死常數,不會在執行期變動,故這裡用固定 key、不需要依賴
-// 這幾個值算 cache key;如果之後後端改了這幾個地點,記得同步把
-// ROUTE_CACHE_KEY 的版本號往上加一,否則使用者本機會繼續讀到舊地點的快取
-// 路線。
-const ROUTE_CACHE_KEY = 'tripace.paceRouteMap.route.v1'
+// 路線初始 center/zoom:花蓮光復鄉附近的合理預設值(三個點都在光復鄉境內,
+// 比原本花蓮示範資料的範圍小),路線算出來後會 fitBounds 到實際路線範圍,
+// 這裡不需要精確。
+const INITIAL_CENTER = { lat: 23.64, lng: 121.42 }
+const INITIAL_ZOOM = 14
+
+// RouteCache:存進 localStorage 的快取形狀,只留下畫路線真正需要的最小
+// 資料(encodedPolyline 字串 + 每段 leg 的起訖座標)——POST
+// /internal/entries/compute-route 的回應形狀是 { entryIDs, titles, result:
+// {encoded, legs} },這裡只快取 result 那一層,對齊這個扁平形狀。
+// COMPUTE_ROUTE_ENTRY_IDS 每次更動(點位增減),cache key 版本號都要跟著
+// 往上加一,避免使用者本機讀到舊點位組合的快取路線。
+const ROUTE_CACHE_KEY = 'tripace.paceRouteMap.route.v3'
 interface RouteLatLng {
   latitude: number
   longitude: number
@@ -127,6 +141,14 @@ export function PaceRouteMap() {
   // 得跟著定位到手了沒重新 render,單純存在 ref 裡不會觸發畫面更新。
   const [mePos, setMePos] = useState<{ lat: number; lng: number } | null>(null)
   const [mapReady, setMapReady] = useState(false)
+  // routeErr:路徑計算(compute-route)失敗時的錯誤訊息,跟上面的 err 分開——
+  // err 代表「地圖本身建立失敗」(缺 API key、SDK 載入失敗),沒有地圖可看,
+  // 才需要整頁換成 .rp-map-error 錯誤畫面;routeErr 只代表「地圖已經建好,
+  // 但這次沒能算出路線/沒有 Polyline 可畫」,地圖仍然可以正常顯示、平移、
+  // 縮放,不該因為路徑算不出來就讓整個地圖消失,只是不疊路徑線與沿路節點
+  // marker(這批 checkpoint 有些是純轉彎指示、查無精確座標,compute-route
+  // 可能因此回錯,見 server/internal/api/entry_geocode.go 的說明)。
+  const [routeErr, setRouteErr] = useState<string | null>(null)
   // simulating:「模擬沿路線移動」開關,測試/demo 用——瀏覽器開發者工具的
   // 定位覆寫功能只能設一個固定假座標,沒辦法模擬移動過程,故在元件內建這個
   // 模擬,重用已經算出來的真實路線座標,每隔一段時間往前挪一個點。開啟時
@@ -181,11 +203,11 @@ export function PaceRouteMap() {
     if (!mapReady || !mapRef.current || !apiKey) return
     let cancelled = false
 
-    // 這 5 個地點是寫死不變的常數,路線結果理論上永遠一樣——先看
-    // localStorage 有沒有存過,有的話直接用,不重打一次 computeRoutes(這是
-    // 按次計費的 REST API,每次掛載都重算是白花錢也是白花時間)。存取失敗
-    // (無痕模式、額度滿了)都只是視同沒快取,不讓快取本身的問題擋住地圖
-    // 正常運作。
+    // 這 3 筆 entry 對應的地點是寫死不變的常數,路線結果理論上永遠一樣——
+    // 先看 localStorage 有沒有存過,有的話直接用,不重打一次 computeRoutes
+    // (這是按次計費的 REST API,每次掛載都重算是白花錢也是白花時間)。
+    // 存取失敗(無痕模式、額度滿了)都只是視同沒快取,不讓快取本身的問題
+    // 擋住地圖正常運作。
     let cached: RouteCache | null = null
     try {
       const raw = localStorage.getItem(ROUTE_CACHE_KEY)
@@ -194,18 +216,33 @@ export function PaceRouteMap() {
       cached = null
     }
 
+    // POST /internal/entries/compute-route 掛在 internalAuth 之後,需要帶
+    // 有效的自家 JWT——訪客(未登入)沒有這把 token,呼叫會被 401 拒絕。
+    // AUTH_TOKEN_KEY 是 AppCommon.tsx 內部常數,這裡直接讀同一把
+    // localStorage key(見該檔案 login/register 成功後寫入的位置),避免
+    // 為了這次驗證改動 AppCommon 的匯出介面。
+    const authToken = localStorage.getItem('tripace.auth.token')
+
     const source: Promise<RouteCache> = cached
       ? Promise.resolve(cached)
-      : fetch(`${BASE_URL}/v1/demo/pace-route`)
+      : fetch(`${BASE_URL}/internal/entries/compute-route`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+          body: JSON.stringify({ entryIDs: COMPUTE_ROUTE_ENTRY_IDS }),
+        })
           .then(async (res) => {
             if (!res.ok) {
               const text = await res.text().catch(() => '')
-              throw new Error(`pace-route ${res.status}: ${text.slice(0, 300)}`)
+              throw new Error(`compute-route ${res.status}: ${text.slice(0, 300)}`)
             }
-            return res.json() as Promise<RouteCache>
+            const data = (await res.json()) as { result: RouteCache }
+            return data.result
           })
           .then((result) => {
-            if (!result.encoded) throw new Error('pace-route 回應沒有可用的路線')
+            if (!result.encoded) throw new Error('compute-route 回應沒有可用的路線')
             try {
               localStorage.setItem(ROUTE_CACHE_KEY, JSON.stringify(result))
             } catch {
@@ -262,7 +299,9 @@ export function PaceRouteMap() {
       })
       .catch((e) => {
         if (cancelled) return
-        setErr(e instanceof Error ? e.message : String(e))
+        // 路徑算不出來不觸發整頁 .rp-map-error 畫面(那是給「地圖本身建不
+        // 起來」用的),地圖仍正常顯示,只是沒有 Polyline/沿路節點可看。
+        setRouteErr(e instanceof Error ? e.message : String(e))
       })
 
     return () => {
@@ -459,6 +498,7 @@ export function PaceRouteMap() {
         </button>
       </div>
       {meErr && <div className={styles.meErr}>無法取得目前位置:{meErr}</div>}
+      {routeErr && <div className={styles.meErr}>路徑載入失敗:{routeErr}</div>}
     </div>
   )
 }

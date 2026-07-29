@@ -23,6 +23,11 @@ export interface Checkpoint {
   isStart?: boolean
   isFinish?: boolean
   isLongRest?: boolean // 長休息站(如午餐):視覺上用警示色系區分
+  // lat/lng:對應後端 Entry 的頂層座標欄位(不是 Detail 裡的東西),點擊這張
+  // 卡片時要能通知地圖平移過去就得知道座標;沒有座標(entry 尚未 geocode)
+  // 時為 null,呼叫端(PaceChartDemo)遇到 null 就不觸發平移,不假裝有位置。
+  lat: number | null
+  lng: number | null
 }
 
 // PublicEntry:GET /v1/public/{token} 回傳的 entries 陣列元素形狀(對應後端
@@ -37,6 +42,8 @@ type PaceSegment = 'leg1' | 'leg2' | 'leg3' | 'leg4'
 interface PublicEntry {
   id: string
   title: string
+  lat: number | null
+  lng: number | null
   detail: {
     km: number | null
     isStart: boolean
@@ -74,6 +81,8 @@ function entryToCheckpoint(e: PublicEntry): Checkpoint {
     isStart: d?.isStart ?? false,
     isFinish: d?.isFinish ?? false,
     isLongRest: d?.isLongRest ?? false,
+    lat: e.lat,
+    lng: e.lng,
   }
 }
 
@@ -219,16 +228,23 @@ function CheckpointCard({
   cp,
   isNow,
   cardRef,
+  onClick,
 }: {
   cp: Checkpoint
   isNow: boolean
   cardRef?: React.RefObject<HTMLDivElement>
+  // onClick:通知父層「使用者點了這個檢查站」,由 PaceChartDemo 的
+  // onCheckpointClick prop 往下傳——沒有座標(cp.lat/lng 為 null)的卡片
+  // 完全不掛這個 handler,點擊沒有任何效果,不會呼叫一個沒有意義的
+  // (null, null) 平移。
+  onClick?: () => void
 }) {
   const stateClass = [
     styles.stop,
     cp.isLongRest ? styles.isRestLong : '',
     cp.isFinish ? styles.isFinish : '',
     isNow ? styles.isNow : '',
+    onClick ? styles.isClickable : '',
   ].filter(Boolean).join(' ')
 
   // 核心數字:起點/中途站顯示離站時間(離站是配速表的重點),終點顯示抵達時間。

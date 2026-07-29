@@ -170,6 +170,8 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("PATCH /internal/entries/{id}", s.handleInternalUpdateEntry)
 	internalMux.HandleFunc("DELETE /internal/entries/{id}", s.handleInternalDeleteEntry)
 	internalMux.HandleFunc("PATCH /internal/entries/{id}/latlng", s.handleInternalSetLatLng)
+	internalMux.HandleFunc("POST /internal/entries/{id}/geocode", s.handleGeocodeEntry)
+	internalMux.HandleFunc("POST /internal/entries/compute-route", s.handleComputeRouteFromEntries)
 	internalMux.HandleFunc("GET /internal/channels/{id}/trips", s.handleInternalListTrips)
 	internalMux.HandleFunc("GET /internal/channels/{id}/trips/{tripID}/entries", s.handleInternalTripEntries)
 	internalMux.HandleFunc("DELETE /internal/channels/{id}/entries", s.handleInternalReset)

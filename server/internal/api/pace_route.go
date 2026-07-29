@@ -98,13 +98,50 @@ func (s *Server) handlePaceRoute(w http.ResponseWriter, r *http.Request) {
 }
 
 func computePaceRoute(ctx context.Context, apiKey string) (*paceRouteResult, error) {
-	waypoints := make([]map[string]any, 0, len(paceRouteWaypoints))
+	waypoints := make([]routeWaypoint, 0, len(paceRouteWaypoints))
 	for _, addr := range paceRouteWaypoints {
-		waypoints = append(waypoints, map[string]any{"address": addr})
+		waypoints = append(waypoints, routeWaypoint{Address: addr})
+	}
+	return computeRouteByWaypoints(ctx, apiKey,
+		routeWaypoint{Address: paceRouteOrigin}, waypoints, routeWaypoint{Address: paceRouteDestination})
+}
+
+// routeWaypoint 是 computeRoutes 的 origin/intermediates/destination 共用的
+// 輸入形狀:優先用座標(HasLatLng)、沒有座標才 fallback 用地址字串——座標
+// 是既有 Entry.Lat/Lng 查證過的精確位置,直接送座標給 Google 完全略過地址
+// 解析這一步,不會像「左轉 民治街(花52)」這種夾雜轉彎描述/括號代碼的
+// entry title 那樣讓 Google 的地址解析失敗、整條路線算不出來(實測過:同樣
+// 三個點,傳完整 title 當地址會讓 computeRoutes 回應空的 routes 陣列,改傳
+// 座標就能正確算出路線)。
+type routeWaypoint struct {
+	Lat       float64
+	Lng       float64
+	HasLatLng bool
+	Address   string
+}
+
+func (w routeWaypoint) toRequestValue() map[string]any {
+	if w.HasLatLng {
+		return map[string]any{
+			"location": map[string]any{
+				"latLng": map[string]any{"latitude": w.Lat, "longitude": w.Lng},
+			},
+		}
+	}
+	return map[string]any{"address": w.Address}
+}
+
+// computeRouteByWaypoints 是 computePaceRoute/handleComputeRouteFromEntries
+// 共用的核心:接受 routeWaypoint(座標優先、地址 fallback)組成的
+// origin/intermediates/destination,呼叫 computeRoutes 並回傳扁平化結果。
+func computeRouteByWaypoints(ctx context.Context, apiKey string, origin routeWaypoint, intermediates []routeWaypoint, destination routeWaypoint) (*paceRouteResult, error) {
+	waypoints := make([]map[string]any, 0, len(intermediates))
+	for _, wp := range intermediates {
+		waypoints = append(waypoints, wp.toRequestValue())
 	}
 	body, err := json.Marshal(map[string]any{
-		"origin":        map[string]any{"address": paceRouteOrigin},
-		"destination":   map[string]any{"address": paceRouteDestination},
+		"origin":        origin.toRequestValue(),
+		"destination":   destination.toRequestValue(),
 		"intermediates": waypoints,
 		"travelMode":    "DRIVE",
 	})
