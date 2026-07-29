@@ -609,6 +609,11 @@ export function PaceChart({
       onCheckpointClick({ id: cp.id, lat: result.lat, lng: result.lng })
     } catch (e) {
       setGeocodeErr(e instanceof Error ? e.message : String(e))
+      // 自動定位失敗(常見於純轉彎指示這類非地名文字,查無結果)不代表使用者
+      // 就此無法儲存座標——仍然通知父層(帶 null 座標),讓地圖
+      // (PaceRouteMap.tsx)開啟選點圖釘與「儲存座標」按鈕,使用者可以自己在
+      // 地圖上手動拖曳選位置存檔,不需要卡在「自動查不到就完全沒有入口」。
+      onCheckpointClick({ id: cp.id, lat: null, lng: null })
     } finally {
       setGeocodingID(null)
     }
