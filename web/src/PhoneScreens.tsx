@@ -1,128 +1,106 @@
-import { useEffect, useRef, useState } from 'react'
-import { ChevronLeft, Send, AlertCircle, Plus, LogIn } from 'lucide-react'
-import type { ClientConfig } from './api'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronLeft, Send, AlertCircle } from 'lucide-react'
+import type { ClientConfig, PublicLinkViewMode } from './api'
 import * as api from './api'
-import type { Channel, Entry, User } from './types'
+import type { Entry, User } from './types'
 import { MultiTrackTimeline } from './Timeline'
 import type { AssistLang } from './assistLang'
 import { ASSIST_LANG_KEY, getAssistLang } from './assistLang'
 import {
-  BASE_URL, useChannelsState,
-  Avatar, ErrorBanner, errMsg, isSubmitEnter, LoginForm,
+  BASE_URL,
+  Avatar, errMsg, isSubmitEnter, LoginForm,
 } from './AppCommon'
 import { LangSelect, TokenDisplay } from './DesktopShared'
+import paceStyles from './PublicPaceView.module.css'
 
-// PhoneScreens:手機版整頁畫面,從 App.tsx 拆出來——ChannelsScreen(頻道列表)
-// /PublicViewScreen(公開分享頁)/SettingsScreen(設定頁)彼此不太耦合,但都
-// 只在手機版 PhoneContent(見 App.tsx)裡被用到,合併成一個檔案。
+// PhoneScreens:手機版整頁畫面,從 App.tsx 拆出來——PublicViewScreen(公開
+// 分享頁)/SettingsScreen(設定頁)彼此不太耦合,但都只在手機版 PhoneContent
+// 裡被用到,合併成一個檔案。(原本的 ChannelsScreen 頻道列表已改為
+// PhoneNavDrawer.tsx 的行程列表分頁,不再是整頁元件。)
 
-// ---- 頻道列表頁(手機版:整頁卡片列表) ----
+// ---- 配速表模式的檢查站資料形狀 ----
+// 對應後端 Entry.detail 這個自訂 JSON 欄位裡,配速表專屬會用到的子集
+// (完整定義/寫入端說明見 PaceChart.tsx 的 PublicEntry/PaceSegment)。
+// Entry 型別本身(types.ts)沒有宣告 detail,是後端沒有固定 schema 的
+// 欄位,故這裡跟 PaceChart.tsx 一樣用局部型別 + 執行期做防呆判斷,不
+// 假設任何一筆地點一定有這個形狀。
+interface PaceDetail {
+  km: number | null
+  isStart?: boolean
+  isFinish?: boolean
+  dwellMin?: number | null
+  tag?: string
+  departTime: string | null
+  arriveTime: string | null
+  order: number
+  segment: string
+}
 
-export function ChannelsScreen({
-  cfg,
-  user,
-  isGuest,
-  onAuthed,
-  onOpen,
-  onOpenSettings,
-}: {
-  cfg: ClientConfig
-  user: User
-  isGuest: boolean
-  onAuthed: (token: string, user: User, email: string) => void
-  onOpen: (c: Channel) => void
-  onOpenSettings: () => void
-}) {
-  const {
-    channels, err, loading,
-    creating, setCreating,
-    newName, setNewName,
-    submitCreate,
-  } = useChannelsState(cfg, onOpen)
-  const [showLogin, setShowLogin] = useState(false)
+function entryPaceDetail(e: Entry): PaceDetail | null {
+  const d = (e as unknown as { detail?: unknown }).detail
+  if (!d || typeof d !== 'object') return null
+  const detail = d as Partial<PaceDetail>
+  if (typeof detail.segment !== 'string' || typeof detail.order !== 'number') return null
+  return detail as PaceDetail
+}
+
+// hasPaceData:分享彈窗選了「配速表」時,公開頁要判斷這個頻道的地點是否
+// 真的帶有配速表用的 detail 結構——這是額外用 CLI/entry-update 手動標註
+// 的資料,不是分享彈窗本身能自動產生的,沒有這類資料時要顯示提示訊息,
+// 而不是渲染一個空清單假裝正常。
+function hasPaceData(entries: Entry[]): boolean {
+  return entries.some((e) => entryPaceDetail(e) !== null)
+}
+
+// PublicPaceList:配速表模式下的檢查站清單——依 detail.segment 分組、組內
+// 依 detail.order 排序,呈現方式刻意精簡(不比照 PaceChart.tsx 那套固定
+// 路線分頁/摘要版面,那份版面綁定「花東193公路」demo 頻道寫死的路線標題
+// 與里程,不適合套用在任意頻道上),只列出各檢查站的名稱/里程/時刻。
+function PublicPaceList({ entries }: { entries: Entry[] }) {
+  const bySegment = useMemo(() => {
+    const groups = new Map<string, { entry: Entry; detail: PaceDetail }[]>()
+    for (const e of entries) {
+      const detail = entryPaceDetail(e)
+      if (!detail) continue
+      const list = groups.get(detail.segment) ?? []
+      list.push({ entry: e, detail })
+      groups.set(detail.segment, list)
+    }
+    for (const list of groups.values()) {
+      list.sort((a, b) => a.detail.order - b.detail.order)
+    }
+    return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))
+  }, [entries])
 
   return (
-    <>
-      <div className="navbar">
-        <button className="btn icon-btn" onClick={() => setCreating((v) => !v)}>
-          <Plus size={20} strokeWidth={1.8} />
-        </button>
-        <span className="title">行程</span>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          {isGuest ? (
-            <button className="btn icon-btn" onClick={() => setShowLogin(v => !v)} title="登入">
-              <LogIn size={18} strokeWidth={1.8} />
-            </button>
-          ) : (
-            <button className="btn icon-btn" style={{ padding: 0 }} onClick={onOpenSettings} title="設定">
-              <Avatar user={user} />
-            </button>
-          )}
-        </div>
-      </div>
-      {showLogin && isGuest && (
-        <div className="login-dropdown">
-          <LoginForm baseURL={cfg.baseURL} onAuthed={(tok, u, mail) => {
-            onAuthed(tok, u, mail)
-            setShowLogin(false)
-          }} />
-        </div>
-      )}
-      {creating && (
-        <div className="new-channel-composer">
-          <input
-            autoFocus
-            value={newName}
-            placeholder="新行程名稱…"
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (isSubmitEnter(e)) submitCreate()
-              if (e.key === 'Escape') {
-                setCreating(false)
-                setNewName('')
-              }
-            }}
-          />
-          <button className="btn-primary" onClick={submitCreate} disabled={!newName.trim()}>
-            建立
-          </button>
-        </div>
-      )}
-      <div className="screen-body">
-        <ErrorBanner msg={err} />
-        {channels.length === 0 && !err ? (
-          <div className="empty">
-            {loading ? '載入中…' : '沒有行程。按左上 ＋ 建立一個。'}
-          </div>
-        ) : (
-          <ul className="list">
-            {channels.map((c) => (
-              <li key={c.id} className="row" onClick={() => onOpen(c)}>
-                <Avatar user={{ name: c.name, avatarColor: 'var(--color-accent)' }} />
-                <div className="grow">
-                  <div className="name">
-                    {c.name}
-                    {c.ownerID === user.id && (
-                      <span className="cat" style={{ marginLeft: 6 }}>我的</span>
-                    )}
-                  </div>
-                  <div className="sub">
-                    {c.lastMessagePreview ?? '尚無訊息'} · {c.memberCount} 人
+    <div className={paceStyles.list}>
+      {bySegment.map(([segment, items]) => (
+        <div key={segment}>
+          {items.map(({ entry, detail }) => {
+            const time = detail.isFinish ? detail.arriveTime : (detail.departTime ?? detail.arriveTime)
+            return (
+              <div className={paceStyles.card} key={entry.id}>
+                <div className={paceStyles.cardLeft}>
+                  <div className={paceStyles.name}>{entry.title}</div>
+                  <div className={paceStyles.meta}>
+                    {detail.tag ? `${detail.tag} ・ ` : ''}
+                    {detail.km !== null ? `${detail.km.toFixed(1)} km` : '—'}
                   </div>
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </>
+                <div className={paceStyles.time}>{time ?? '—'}</div>
+              </div>
+            )
+          })}
+        </div>
+      ))}
+    </div>
   )
 }
 
 // ---- 公開分享頁（/public/{token}，無需登入） ----
 
 export function PublicViewScreen({ token }: { token: string }) {
-  const [data, setData] = useState<{ channelID: string; channelName: string; editable: boolean; entries: Entry[] } | null>(null)
+  const [data, setData] = useState<{ channelID: string; channelName: string; editable: boolean; viewMode: PublicLinkViewMode; entries: Entry[] } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [draft, setDraft] = useState('')
@@ -180,7 +158,18 @@ export function PublicViewScreen({ token }: { token: string }) {
         {data && (
           data.entries.length === 0
             ? <div className="empty">此行程尚無內容。</div>
-            : <MultiTrackTimeline entries={data.entries} todayRef={todayRef} />
+            : data.viewMode === 'pace'
+              ? (
+                hasPaceData(data.entries)
+                  ? <PublicPaceList entries={data.entries} />
+                  // 分享者選了「配速表」,但這個頻道的地點沒有配速表需要的
+                  // detail 結構(那是額外用 CLI/entry-update 手動標註的資料,
+                  // 分享彈窗本身不會自動產生)——顯示明確提示,不要求訪客
+                  // 自己猜「怎麼是空的」,也不要靜默退回時間軸掩蓋掉分享者
+                  // 原本的選擇。
+                  : <div className="empty">此行程尚無配速表資料。</div>
+              )
+              : <MultiTrackTimeline entries={data.entries} todayRef={todayRef} />
         )}
       </div>
       {data?.editable && (

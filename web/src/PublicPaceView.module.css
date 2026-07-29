@@ -1,0 +1,41 @@
+/* PublicPaceView:公開分享頁「配速表」模式的檢查站清單樣式(見
+   PhoneScreens.tsx 的 PublicViewScreen)。刻意不重用 PaceChart.module.css——
+   那份樣式綁定「花東193公路」demo 頻道固定的路線分頁/摘要版面,這裡是
+   任意頻道的通用檢查站清單,只需要簡單的卡片清單即可,不需要那一整套。 */
+
+.list {
+  padding: 8px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--ios-bg);
+  border-radius: 10px;
+  border: 1px solid var(--ios-sep);
+}
+.cardLeft {
+  min-width: 0;
+}
+.name {
+  font-size: 15px;
+  color: var(--ios-label);
+  font-weight: 500;
+}
+.meta {
+  font-size: 12px;
+  color: var(--ios-gray);
+  margin-top: 2px;
+}
+.time {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--color-accent);
+  text-align: right;
+}

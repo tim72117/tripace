@@ -94,3 +94,26 @@
 .toggle input:checked + .toggleSlider::before {
   transform: translateX(20px);
 }
+
+/* 公開頁顯示模式（時間軸／配速表）分段按鈕 */
+.viewModeGroup {
+  display: flex;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--ios-sep);
+}
+.viewModeBtn {
+  border: none;
+  background: var(--ios-bg);
+  color: var(--ios-label);
+  font-size: 13px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.viewModeBtn:not(:first-child) {
+  border-left: 1px solid var(--ios-sep);
+}
+.viewModeBtnActive {
+  background: var(--ios-blue);
+  color: #fff;
+}

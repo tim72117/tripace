@@ -6,9 +6,10 @@ import { PublicViewScreen } from './PhoneScreens'
 import { PublicPaceDemoPage } from './PublicPaceDemoPage'
 import { PhoneContent } from './PhoneContent'
 
-// App.tsx 只保留路由判斷(App() 本身)——PhoneContent/PhoneDemoDrawer 搬到
-// PhoneContent.tsx、PublicPaceDemoPage 搬到自己的檔案、useIsDesktop 搬到
-// AppCommon.tsx(供多處共用),讓這裡回到單純的「進入點依路徑分派」職責。
+// App.tsx 只保留路由判斷(App() 本身)——PhoneContent(含 PhoneNavDrawer 導覽
+// 抽屜)搬到 PhoneContent.tsx、PublicPaceDemoPage 搬到自己的檔案、
+// useIsDesktop 搬到 AppCommon.tsx(供多處共用),讓這裡回到單純的「進入點
+// 依路徑分派」職責。
 //
 // 改用 react-router-dom(v7)的 <BrowserRouter>/<Routes>/<Route> 取代原本
 // window.location.pathname 手寫字串比對——目的是讓 /app 底下的 panelMode
@@ -46,7 +47,7 @@ export function App({ isDemo = false }: { isDemo?: boolean } = {}) {
             </div>
           }
         />
-        {/* /demo/pace 路徑:配速表 demo 的公開分享頁(見 PaceChartDemo.tsx 的
+        {/* /demo/pace 路徑:配速表 demo 的公開分享頁(見 PaceChart.tsx 的
             「分享這個配速表」按鈕)。這是固定示範資料(花東193公路),不是真實
             使用者頻道,不需要登入、不涉及任何真實資料權限問題——跟 /public/{token}
             那套給真實頻道用的公開分享是分開的機制,不走後端建立/驗證 token 那套

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ChevronDown, Settings, LogOut, X,
-  List, Calendar, Sparkles, GalleryHorizontal, Map, Wrench, Radio, Activity, Route, Plus,
+  List, Timeline, Sparkles, GalleryHorizontal, Map, Wrench, Radio, Activity, Route, Plus,
 } from 'lucide-react'
 import type { ClientConfig, ApiCall, WsEvent } from './api'
 import * as api from './api'
@@ -13,7 +13,7 @@ import type { DesktopTimelineMirror } from './ChatScreen'
 import { MultiTrackTimeline, type TaskPlaceholder } from './Timeline'
 import type { AssistLang } from './assistLang'
 import { ASSIST_LANG_KEY, getAssistLang } from './assistLang'
-import { PaceChartDemo } from './PaceChartDemo'
+import { PaceChart } from './PaceChart'
 import { PaceRouteMap, type SelectedEntry } from './PaceRouteMap'
 import { DemoPanel } from './DemoPanel'
 import {
@@ -24,13 +24,12 @@ import {
   type PanelMode, isPanelMode, DemoPanelContent, LangSelect, TokenDisplay,
 } from './DesktopShared'
 
-// DesktopLayout:桌面版(寬度 >= 768px)專屬佈局元件,從 App.tsx 拆出來——
-// 左側邊欄(頻道列表 + 使用者選單)+ 右側 ChatScreen 主要區塊,類似
-// Slack/Discord 的頻道側欄模式。PanelMode/DemoPanelContent/LangSelect/
-// TokenDisplay/useChannelsState 這些「桌面/手機共用」的部分不在這裡,
-// 分別在 DesktopShared.tsx/AppCommon.tsx——避免這裡跟 App.tsx(留著手機版
-// PhoneContent/PhoneDemoDrawer/SettingsScreen)互相 import 對方造成循環
-// 依賴。
+// DesktopLayout:桌面版(寬度 >= 768px)專屬佈局元件——左側邊欄(頻道列表 +
+// 使用者選單)+ 右側 ChatScreen 主要區塊,類似 Slack/Discord 的頻道側欄
+// 模式。PanelMode/DemoPanelContent/LangSelect/TokenDisplay/useChannelsState
+// 這些「桌面/手機共用」的部分不在這裡,分別在 DesktopShared.tsx/
+// AppCommon.tsx——避免這裡跟手機版檔案(PhoneContent.tsx/PhoneNavDrawer.tsx/
+// PhoneScreens.tsx)互相 import 對方造成循環依賴。
 
 // PANEL_COLLAPSED_SEGMENT:/app/:panelMode 路徑參數裡代表「side panel 收合」
 // (原本的 panelMode === null)的專屬字串,不屬於 PanelMode 型別的合法值——
@@ -92,7 +91,7 @@ export function DesktopContent(props: ContentProps) {
     navigate(panelMode === mode ? `/app/${PANEL_COLLAPSED_SEGMENT}` : `/app/${mode}`)
   }, [navigate, panelMode])
   // selectedEntry:配速表「點卡片→地圖平移→手動微調→儲存座標」互動用,
-  // 跟 PublicPaceDemoPage.tsx(/demo/pace 公開頁)同一套設計——PaceChartDemo/
+  // 跟 PublicPaceDemoPage.tsx(/demo/pace 公開頁)同一套設計——PaceChart/
   // PaceRouteMap 這裡跟那裡各自獨立掛載,狀態不共用,故這裡需要自己的
   // selectedEntry state,不能指望公開頁那份。
   const [selectedEntry, setSelectedEntry] = useState<SelectedEntry | null>(null)
@@ -194,7 +193,7 @@ export function DesktopContent(props: ContentProps) {
             )}
             {panelMode === 'pace' && (
               <div className="desktop-sidepanel-pace">
-                <PaceChartDemo cfg={cfg} onCheckpointClick={setSelectedEntry} />
+                <PaceChart cfg={cfg} channelID={activeChannel?.id} onCheckpointClick={setSelectedEntry} />
               </div>
             )}
           </div>
@@ -308,7 +307,7 @@ function DesktopRail({
           disabled={timelineDisabled}
           title={timelineDisabled ? '請先選擇一個行程' : '時間軸'}
         >
-          <Calendar size={20} strokeWidth={1.8} />
+          <Timeline size={20} strokeWidth={1.8} />
         </button>
         <button
           className={`desktop-rail-btn${panelMode === 'pace' ? ' active' : ''}`}
@@ -379,8 +378,9 @@ function DesktopRail({
   )
 }
 
-// 桌面版側欄頻道列表:複用 useChannelsState(與手機版 ChannelsScreen 共用抓取/建立邏輯),
-// 只是呈現方式改成緊湊的側欄列表項目,選中的頻道有高亮(.desktop-channel-item.active)。
+// 桌面版側欄頻道列表:複用 useChannelsState(與手機版 PhoneNavDrawer 的
+// 行程列表分頁共用抓取/建立邏輯),只是呈現方式改成緊湊的側欄列表項目,
+// 選中的頻道有高亮(.desktop-channel-item.active)。
 function DesktopChannelList({
   cfg,
   activeChannelID,

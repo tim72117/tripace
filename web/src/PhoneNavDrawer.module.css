@@ -1,0 +1,188 @@
+/* PhoneNavDrawer.tsx 專屬樣式(CSS Modules)。左側滑入抽屜,疊在整個
+   PhoneContent 之上(相對於 .web-app 定位,見 styles.css 的 .web-app
+   position: relative)。backdrop/panel 的寫法仿照 ChatScreen.module.css
+   的 .backdrop/.timelinePanel(右側滑入)與 PacePhoneSwipe.module.css 的
+   .backdrop/.panel(左側滑入),這裡是後者的方向、疊在更外層的疊層。 */
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 31;
+  display: flex;
+  flex-direction: column;
+  background: var(--ios-bg);
+  box-shadow: 2px 0 16px rgba(0, 0, 0, 0.2);
+  /* 拖曳手勢只掛在這個面板本身,理由同 PacePhoneSwipe.module.css 的 .panel:
+     沒有這行,瀏覽器原生水平平移會跟自訂 JS transform 拖曳互相干擾。pan-y
+     保留垂直捲動(分頁內容本身要能上下捲)給瀏覽器原生處理。 */
+  touch-action: pan-y;
+}
+
+/* 上方功能列:對應桌面版 DesktopRail 的圖示列,只是這裡橫向排列。 */
+.tabs {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 10px calc(10px + env(safe-area-inset-top, 0px)) 10px;
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  background: var(--ios-card);
+  border-bottom: 1px solid var(--ios-sep);
+  overflow-x: auto;
+}
+.tab {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--ios-gray);
+  opacity: 0.75;
+  cursor: pointer;
+}
+.tabActive {
+  opacity: 1;
+  color: var(--color-accent);
+  background: var(--ios-bg);
+}
+.settingsBtn {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
+}
+
+/* 內容區:視選取的分頁顯示行程列表/時間軸/配速表/demo 面板,自己負責
+   捲動——捲動權明確收在這一層,不依賴子層(.pace-chart、.screen-body 等)
+   各自的巢狀 flex/overflow 傳遞鏈,避免行動瀏覽器上多層傳遞失效的既有
+   已知問題(見下方 .pace-chart 的具體案例)。 */
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  /* 隱藏原生捲軸,跟全站的 .screen-body(styles.css)同一種處理——配速表
+     分頁(PaceChart)沒有自己的 .screen-body 包裹,捲動權收在這一層(見上方
+     說明),故這裡也要補上同樣的隱藏規則,行程列表/時間軸分頁才不會跟配速表
+     分頁顯示不一致(前兩者各自的內容裡有 .screen-body 已經處理過)。 */
+  scrollbar-width: none;
+}
+.body::-webkit-scrollbar {
+  display: none;
+}
+/* 配速表分頁(PaceChart,只有檢查站清單,地圖搬到主顯示區,見
+   PhoneContent.tsx)::global(.pace-chart) 本身預設是 flex: 1 1 auto +
+   overflow-y: auto(見 PaceChart.module.css),自己就是一個捲動容器——疊在
+   同樣 overflow-y: auto 的 .body 裡會變成兩層捲動容器互相干擾。這裡把
+   .pace-chart 攤平成跟隨外層自然高度、不自己管捲動,改由 .body(維持
+   上方預設的 overflow-y: auto)當唯一的捲動擁有者,只特殊處理這一種情況,
+   其餘 demo 面板/時間軸/行程列表不受影響。 */
+.body > :global(.pace-chart) {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow-y: visible;
+}
+
+/* 底部使用者頭像列,對應桌面版 DesktopUserMenu 在 rail 底部的位置——頭像/
+   名稱純顯示目前登入身分,右側獨立的設定按鈕(.settingsBtn)才是進
+   SettingsScreen(整頁)的入口,不做桌面版那種 popover 選單,手機版本來
+   就有自己的設定整頁,不需要重造一份選單 UI。 */
+.userRow {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--ios-sep);
+  background: var(--ios-card);
+}
+.userName {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ios-blue);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 行程列表:比照桌面版 .desktop-channel-item(styles-desktop.css)的無邊框
+   列表項目,不用全站共用的 .row/.list(那組是卡片式、逐項 border-bottom
+   分隔線,SettingsScreen 等多處還在用,不能直接改全域樣式)——這裡的視覺
+   刻意跟桌面版側欄一致:透明背景、只在 hover/active 時出現底色、圓角。 */
+.channelList {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.channelItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: background 0.12s;
+}
+.channelItem:hover {
+  background: var(--ios-bg);
+}
+.channelItemActive {
+  background: var(--color-accent);
+}
+.channelItemActive .channelName,
+.channelItemActive .channelSub {
+  color: #fff;
+}
+.channelGrow {
+  flex: 1;
+  min-width: 0;
+}
+.channelName {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.channelSub {
+  font-size: 12px;
+  color: var(--ios-gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}

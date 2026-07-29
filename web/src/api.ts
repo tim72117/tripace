@@ -451,19 +451,23 @@ export function fetchTripEntries(
   ).then((r) => r.entries)
 }
 
-// 建立（或取得已有）頻道公開連結。
-export function createPublicLink(cfg: ClientConfig, channelID: string, editable: boolean) {
-  return request<{ linkToken: string; editable: boolean }>(
+// PublicLinkViewMode:公開分享頁要顯示「時間軸」還是「配速表」，對齊
+// server/internal/store 的 view_mode 欄位（"pace" 以外一律視為 "timeline"）。
+export type PublicLinkViewMode = 'timeline' | 'pace'
+
+// 建立（或取得已有）頻道公開連結。viewMode 不傳時後端預設為 'timeline'。
+export function createPublicLink(cfg: ClientConfig, channelID: string, editable: boolean, viewMode?: PublicLinkViewMode) {
+  return request<{ linkToken: string; editable: boolean; viewMode: PublicLinkViewMode }>(
     cfg,
     'POST',
     `/v1/channels/${encodeURIComponent(channelID)}/public-link`,
-    { editable },
+    { editable, viewMode },
   )
 }
 
 // 取得頻道公開連結資訊。
 export function getPublicLink(cfg: ClientConfig, channelID: string) {
-  return request<{ linkToken: string; editable: boolean }>(
+  return request<{ linkToken: string; editable: boolean; viewMode: PublicLinkViewMode }>(
     cfg,
     'GET',
     `/v1/channels/${encodeURIComponent(channelID)}/public-link`,
@@ -484,7 +488,7 @@ export function fetchPublicView(baseURL: string, token: string) {
   return fetch(`${baseURL}/v1/public/${encodeURIComponent(token)}`)
     .then(async (r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
-      return r.json() as Promise<{ channelID: string; channelName: string; editable: boolean; entries: Entry[] }>
+      return r.json() as Promise<{ channelID: string; channelName: string; editable: boolean; viewMode: PublicLinkViewMode; entries: Entry[] }>
     })
 }
 

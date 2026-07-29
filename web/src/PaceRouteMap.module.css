@@ -96,7 +96,7 @@
    偏移 8px,水平位置不變)做出「一疊卡片」的堆疊感,同時仍看得到後面
    卡片的邊緣。z-index 依序遞增,越後面(越下面)的卡片疊在越上層,
    符合視覺上「由遠到近」的直覺。卡片本身外觀(背景/邊框/陰影)沿用
-   PaceChartDemo.module.css 的 .paceStop(元件內直接 import 該 module、
+   PaceChart.module.css 的 .paceStop(元件內直接 import 該 module、
    把 class 一併套在 JSX 上,不是用 CSS 選擇器跨檔案指過去),這裡的
    .card* 系列只負責定位跟限制寬度。 */
 .card {
@@ -120,7 +120,7 @@
 /* 半透明玻璃感,讓底下的地圖隱約透出來——手法沿用 .chat-overlay 那組既有
    的 backdrop-filter 用法,不重新發明一套。只覆寫背景色(改成半透明),
    文字本身維持完全不透明、可讀性不受影響——不能直接對整張卡片設 opacity,
-   那樣連文字都會一起變淡。這個 class 要跟 PaceChartDemo.module.css 的
+   那樣連文字都會一起變淡。這個 class 要跟 PaceChart.module.css 的
    .paceStop 一起套在同一個元素上(組合 className,不是巢狀選擇器)。 */
 .cardStopOverride {
   background: rgba(253, 252, 250, 0.78);

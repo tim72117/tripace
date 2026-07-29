@@ -1,6 +1,6 @@
-/* PaceChartDemo.tsx 專屬樣式(CSS Modules)。命名省略掉原本的 pace- 前綴
+/* PaceChart.tsx 專屬樣式(CSS Modules)。命名省略掉原本的 pace- 前綴
    (例如 .stop 對應原本的 .pace-stop)——模組本身 import 時已經有明確的
-   命名空間(如 import styles from './PaceChartDemo.module.css'),裡面的
+   命名空間(如 import styles from './PaceChart.module.css'),裡面的
    class 不需要再重複加前綴。
 
    .stop 系列(stop/stopLeft/startBadge/locName/locMeta/kmVal/mono/
@@ -19,10 +19,10 @@
    原型的 .page 版面),不是一個只有 body 要捲動的簡單清單。
    顏色/字體全部沿用全站既有的 --ios-x / --color-x token(見 styles.css 開頭
    :root),專案沒有 prefers-color-scheme/data-theme 這套機制,故不新增
-   深色模式。這個 class 名稱刻意保留全域(:global),因為 styles.css 裡有
-   好幾條全域規則(.desktop-main:has(.pace-route-map-wrap) 的鄰居們、
-   .phone-demo-drawer-body .pace-chart 等)需要從外部用固定字串偵測到它,
-   雜湊過的名稱無法讓外部全域 CSS 選擇器可靠指到。 */
+   深色模式。這個 class 名稱刻意保留全域(:global),因為好幾處全域/其他
+   CSS Modules 規則(styles-desktop.css 的 .desktop-main:has(.pace-route-map-wrap)
+   的鄰居們、PhoneNavDrawer.module.css 的 .body > :global(.pace-chart) 等)
+   需要從外部用固定字串偵測到它,雜湊過的名稱無法讓外部選擇器可靠指到。 */
 :global(.pace-chart) {
   flex: 1 1 auto;
   min-height: 0;

@@ -9,9 +9,10 @@ import langSelectStyles from './LangSelect.module.css'
 
 // DesktopShared:桌面版與手機版都會用到的 UI 小塊,從 App.tsx 拆出來獨立成
 // 檔案——這些東西不屬於「純桌面版佈局」(見 DesktopLayout.tsx),因為手機版
-// 的 PhoneDemoDrawer/SettingsScreen(留在 App.tsx)也需要引用它們;若整批
-// 併入 DesktopLayout.tsx,會讓 App.tsx 跟 DesktopLayout.tsx 互相 import
-// 對方,形成循環依賴。獨立成第三份檔案,兩邊都單向 import 這裡,不互相依賴。
+// 的 PhoneNavDrawer/SettingsScreen(見 PhoneNavDrawer.tsx/PhoneScreens.tsx)
+// 也需要引用它們;若整批併入 DesktopLayout.tsx,會讓手機版檔案跟
+// DesktopLayout.tsx 互相 import 對方,形成循環依賴。獨立成第三份檔案,
+// 兩邊都單向 import 這裡,不互相依賴。
 
 // PanelMode:桌面版 side panel 目前顯示的內容;null 代表收合(主區全寬)。
 // 'demo-cards'/'demo-row'/'demo-map':試做用的推薦景點呈現方式(假資料,見
@@ -20,7 +21,7 @@ import langSelectStyles from './LangSelect.module.css'
 // ClientToolsBridge/clienttools_ws.go,後者走 onagent 平台,見
 // clienttools/ClientToolsDemo.tsx / OnagentBridgeDemo.tsx 的說明),原本只能
 // 從獨立的 ?debug 工作台(DebugApp.tsx)進入,現在併入這裡統一用 ?demo 存取。
-// 'pace':單車配速表(真實路線里程/時刻表,見 PaceChartDemo.tsx),已從
+// 'pace':單車配速表(真實路線里程/時刻表,見 PaceChart.tsx),已從
 // ?demo 限定的試做功能轉為正式導覽項目,所有使用者都能在 rail 上看到。
 export type PanelMode =
   | 'channels' | 'timeline' | 'pace'
@@ -45,16 +46,16 @@ export function isPanelMode(v: string | undefined): v is Exclude<PanelMode, null
 }
 
 // DemoPanelMode:PanelMode 扣掉 channels/timeline/pace/null 之後只剩的 5 種
-// demo 面板——這幾個是唯一「桌面/手機共用」的部分(channels/timeline/pace
-// 是桌面版 side panel 的正式功能,手機版本來就有自己的頻道列表/時間軸入口,
-// 不需要重複;pace 在手機版走 PacePhoneSwipe 獨立入口)。
+// demo 面板——channels/timeline/pace 在桌面版是 side panel 的正式功能,
+// 手機版則是 PhoneNavDrawer(見該檔案)裡對應的分頁,兩邊各自處理,不算在
+// 這組共用的 demo 面板裡。
 export type DemoPanelMode = Exclude<PanelMode, 'channels' | 'timeline' | 'pace' | null>
 
 // DemoPanelContent:5 個 demo 面板的內容渲染,供桌面版 DesktopContent 的
-// <main>(見 DesktopLayout.tsx)與手機版 PhoneDemoDrawer(見 App.tsx)共用,
+// <main>(見 DesktopLayout.tsx)與手機版 PhoneNavDrawer(見該檔案)共用,
 // 避免同一段 JSX 兩處各寫一份、之後改一邊忘了改另一邊。(配速表已轉為正式
-// 功能 'pace',不再屬於這組 demo 面板,渲染邏輯改為直接使用 PaceChartDemo/
-// PaceRouteMap,見 DesktopLayout.tsx / PhoneContent.tsx / PacePhoneSwipe.tsx。)
+// 功能 'pace',不再屬於這組 demo 面板,渲染邏輯改為直接使用 PaceChart/
+// PaceRouteMap,見 DesktopLayout.tsx / PhoneContent.tsx / PhoneNavDrawer.tsx。)
 export function DemoPanelContent({ mode }: { mode: DemoPanelMode }) {
   if (mode === 'demo-cards') {
     return (

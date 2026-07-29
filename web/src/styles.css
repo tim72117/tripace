@@ -27,21 +27,29 @@ body {
 }
 
 /* ---- 正式網頁版面 ---- */
-/* 手機版(< 768px):維持現狀,寬度上限 480px、單頁全螢幕切換(見 PhoneContent)。 */
+/* 手機版(< 768px):單頁全螢幕切換(見 PhoneContent),寬度撐滿視窗——不再
+   模擬一個居中的手機外框(原本 max-width: 480px + margin: 0 auto),改成
+   真正滿版視窗寬,跟桌面版(下方 media query)用同一種「撐滿視窗」邏輯,
+   只差高度用 100dvh(行動瀏覽器網址列高度變化時的可視高度)而非 100vh。 */
 .web-app {
   position: relative;
   display: flex;
   flex-direction: column;
   height: 100dvh;
-  max-width: 480px;
-  margin: 0 auto;
   background: var(--ios-bg);
+  /* 手機版導覽抽屜欄(PhoneNavDrawer)/設定面板(PhoneContent.tsx 的
+     .settingsPanel)都是用 position: absolute + transform 位移到畫面外
+     來做「收合」狀態,而不是條件卸載(理由見各自檔案的說明:唯有元件全程
+     留在 DOM 上,CSS transition 才能播放開關動畫)。沒有這行 overflow:
+     hidden,位移到畫面外的內容不會被裁掉,使用者滾動畫面(尤其垂直方向,
+     比水平方向更容易不小心觸發)時,原本該隱藏的面板會被捲動帶進可視
+     範圍——這是實際發生過的 bug,不是預防性寫法。 */
+  overflow: hidden;
 }
-/* 桌面版(>= 768px):側欄 + 主要區塊佈局,不再受手機版 480px 寬度限制,撐滿視窗。
-   斷點需與 App.tsx 的 DESKTOP_BREAKPOINT(useIsDesktop)一致。 */
+/* 桌面版(>= 768px):側欄 + 主要區塊佈局。斷點需與 App.tsx 的
+   DESKTOP_BREAKPOINT(useIsDesktop)一致。 */
 @media (min-width: 768px) {
   .web-app {
-    max-width: none;
     height: 100vh;
   }
 }
@@ -135,6 +143,22 @@ body {
   font-size: 15px;
 }
 
+/* 手機版行程列表(PhoneNavDrawer.tsx 的 ChannelsTabContent)瀏覽狀態下,
+   常駐在列表正上方的「新增行程」按鈕。跟 .new-channel-composer 一樣是
+   整條橫幅,寬度撐滿容器,不是一般行內按鈕的自然寬度,故需要額外覆寫
+   .btn-primary 預設的置中/自動寬度樣式。 */
+.new-channel-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px;
+  border-bottom: 0.5px solid var(--ios-sep);
+  border-radius: 0;
+  font-size: 15px;
+}
+
 /* 內容捲動區 */
 .screen-body {
   flex: 1 1 auto;
@@ -172,6 +196,15 @@ body {
 }
 .row:active {
   background: #f5f5f7;
+}
+/* .row.active:目前選取的項目(見 PhoneNavDrawer.tsx 行程列表分頁),對應
+   桌面版 .desktop-channel-item.active 同一種「目前選中」的強調色底 + 白字。 */
+.row.active {
+  background: var(--color-accent);
+}
+.row.active .name,
+.row.active .sub {
+  color: #fff;
 }
 .row .grow {
   flex: 1;

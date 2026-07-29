@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Share2 } from 'lucide-react'
-import styles from './PaceChartDemo.module.css'
+import styles from './PaceChart.module.css'
 import { BASE_URL } from './AppCommon'
 import { fetchEntries, type ClientConfig } from './api'
 
@@ -29,7 +29,7 @@ export interface Checkpoint {
   isLongRest?: boolean // 長休息站(如午餐):視覺上用警示色系區分
   // lat/lng:對應後端 Entry 的頂層座標欄位(不是 Detail 裡的東西),點擊這張
   // 卡片時要能通知地圖平移過去就得知道座標;沒有座標(entry 尚未 geocode)
-  // 時為 null,呼叫端(PaceChartDemo)遇到 null 就不觸發平移,不假裝有位置。
+  // 時為 null,呼叫端(PaceChart)遇到 null 就不觸發平移,不假裝有位置。
   lat: number | null
   lng: number | null
 }
@@ -86,8 +86,13 @@ function entryToCheckpoint(e: PublicEntry): Checkpoint {
     isStart: d?.isStart ?? false,
     isFinish: d?.isFinish ?? false,
     isLongRest: d?.isLongRest ?? false,
-    lat: e.lat,
-    lng: e.lng,
+    // e.lat/e.lng:後端沒有座標時整個欄位會直接省略(`json:"lat,omitempty"`,
+    // 見 server/internal/model/model.go),不是回傳 null——這裡型別雖然宣告
+    // 成 number | null,但解析 JSON 後缺欄位的實際執行期值是 undefined,
+    // 用 ?? null 收斂,讓下游(PaceRouteMap.tsx 的 selectedEntry.lat === null
+    // 判斷)可以用嚴格的 null 檢查,不必額外處理 undefined。
+    lat: e.lat ?? null,
+    lng: e.lng ?? null,
   }
 }
 
@@ -129,16 +134,12 @@ interface RouteMeta {
 // 里程數照紙條原始寫法保留,不強行從 0 起算(某幾段本來就是從路線中段
 // 開始記錄),故部分路段的進度條起點不是 0%。
 
-// PACE_CHANNEL_ID:配速表資料所在的固定頻道(花東193公路 pace note,
-// 同時涵蓋 leg1~leg4 全部 4 段、28 筆 checkpoint)。這是一份固定的展示
-// 內容,不隨登入使用者目前選取的頻道改變。
-const PACE_CHANNEL_ID = 'ch_a5632424'
-
 // PACE_PUBLIC_LINK_TOKEN:未登入的公開分享頁(/demo/pace,見
-// PublicPaceDemoPage.tsx)讀取上述固定頻道用的公開分享連結 token。由
+// PublicPaceDemoPage.tsx)讀取固定展示頻道用的公開分享連結 token。由
 // VITE_PACE_PUBLIC_LINK_TOKEN 決定(見 .env.development)。登入後的正式
-// 介面(DesktopLayout.tsx)不使用這個 token——已改用登入者自己的 cfg
-// 呼叫一般的 fetchEntries(見下方 useEffect),不需要經過公開連結機制。
+// 介面(DesktopLayout.tsx)不使用這個 token——跟時間軸(Timeline)同一套
+// 邏輯,改讀登入使用者目前選取的頻道(見下方 channelID prop 與
+// useEffect),不綁定固定頻道,也不需要經過公開連結機制。
 const PACE_PUBLIC_LINK_TOKEN = import.meta.env.VITE_PACE_PUBLIC_LINK_TOKEN as string | undefined
 
 // 四段路線的摘要資訊(RouteMeta)。這些是純展示用的文字/彙總數字,後端
@@ -239,7 +240,7 @@ function CheckpointCard({
   cp: Checkpoint
   isNow: boolean
   cardRef?: React.RefObject<HTMLDivElement>
-  // onClick:通知父層「使用者點了這個檢查站」,由 PaceChartDemo 的
+  // onClick:通知父層「使用者點了這個檢查站」,由 PaceChart 的
   // onCheckpointClick prop 往下傳——沒有座標(cp.lat/lng 為 null)的卡片
   // 完全不掛這個 handler,點擊沒有任何效果,不會呼叫一個沒有意義的
   // (null, null) 平移。
@@ -299,14 +300,20 @@ function todayStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export function PaceChartDemo({
+export function PaceChart({
   cfg,
+  channelID,
   onCheckpointClick,
 }: {
   // cfg:登入後正式介面(DesktopLayout.tsx)傳入自己的 ClientConfig,改走
   // 認證過的 fetchEntries 讀取資料。不傳(PublicPaceDemoPage.tsx 公開分享頁)
   // 則 fallback 走公開連結 token(見下方 useEffect)。
   cfg?: ClientConfig
+  // channelID:登入後正式介面要讀取的頻道 ID,跟時間軸(MultiTrackTimeline)
+  // 同一套邏輯——用使用者目前選取的 activeChannel?.id,不綁定固定頻道。
+  // 沒有選取頻道時(undefined/null)顯示提示訊息,不發任何請求(見下方
+  // useEffect)。cfg 為 undefined(公開分享頁)時這個 prop 不會被使用。
+  channelID?: string | null
   // onCheckpointClick:通知父層(DesktopLayout.tsx 登入後正式介面)使用者
   // 點了哪個檢查站,讓地圖(PaceRouteMap)能平移過去、進入手動微調座標模式。
   // 可選是因為 PublicPaceDemoPage.tsx(/demo/pace 公開分享頁)刻意不接這套
@@ -329,12 +336,20 @@ export function PaceChartDemo({
   const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
+    // 登入後正式介面(cfg 有值)但還沒選頻道:比照時間軸「選擇一個行程後
+    // 顯示時間軸。」的作法,不發任何請求,只顯示提示訊息,也不當成錯誤。
+    if (cfg && !channelID) {
+      setCheckpointsBySegment(null)
+      setLoadError(null)
+      return
+    }
     let cancelled = false
-    // 登入後正式介面(cfg 有值):走一般認證過的頻道 entries API,不再經過
-    // 公開連結 token。未登入的公開分享頁(cfg 為 undefined):維持走公開
-    // 連結 token(這是它本來就該有的合法用途,不是臨時接法)。
+    // 登入後正式介面(cfg 有值):走一般認證過的頻道 entries API,讀取
+    // 使用者目前選取的頻道(channelID),不再經過公開連結 token。未登入的
+    // 公開分享頁(cfg 為 undefined):維持走公開連結 token(這是它本來就
+    // 該有的合法用途,不是臨時接法)。
     const load = cfg
-      ? fetchEntries(cfg, PACE_CHANNEL_ID).then((entries) => entries as unknown as PublicEntry[])
+      ? fetchEntries(cfg, channelID!).then((entries) => entries as unknown as PublicEntry[])
       : (() => {
           if (!PACE_PUBLIC_LINK_TOKEN) {
             return Promise.reject(new Error('未設定 VITE_PACE_PUBLIC_LINK_TOKEN(見 web/.env.development)'))
@@ -359,7 +374,7 @@ export function PaceChartDemo({
     return () => {
       cancelled = true
     }
-  }, [cfg])
+  }, [cfg, channelID])
 
   const routes = buildRoutes(
     checkpointsBySegment ?? { leg1: [], leg2: [], leg3: [], leg4: [] },
@@ -388,6 +403,17 @@ export function PaceChartDemo({
       nowCardRef.current.scrollIntoView({ behavior: 'instant', block: 'center' })
     }
   }, [nowMark])
+
+  // 跟時間軸(desktop-timeline-panel 的「選擇一個行程後顯示時間軸。」)
+  // 同一套邏輯:登入後正式介面還沒選頻道時,只顯示提示,不當成錯誤、
+  // 也不用「載入中」那組畫面(根本沒有發出任何請求)。
+  if (cfg && !channelID) {
+    return (
+      <div className="pace-chart">
+        <div className="empty">選擇一個行程後顯示配速表。</div>
+      </div>
+    )
+  }
 
   // 四段 checkpoint 資料共用同一次 fetch,還在載入或已失敗時,四個分頁
   // 都顯示同一組載入中/錯誤畫面,不再有「只影響其中一段」的情況。

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { LocateFixed, Play, Square, Compass, MapPin, Check } from 'lucide-react'
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 import styles from './PaceRouteMap.module.css'
-import chartStyles from './PaceChartDemo.module.css'
+import chartStyles from './PaceChart.module.css'
 import { BASE_URL } from './AppCommon'
 
 // SelectedEntry:使用者點擊某張檢查站卡片後選取的 entry,驅動地圖平移+
@@ -353,10 +353,14 @@ export function PaceRouteMap({
   // 目前中心點在哪」,不論中心點是被 panTo 帶動還是使用者手動拖曳出來的。
   useEffect(() => {
     if (!mapReady || !mapRef.current || !selectedEntry) return
-    // lat/lng 其中之一是 null 代表這筆 entry 還沒有座標(尚未 geocode)——
-    // 維持地圖原本的中心不動即可,讓使用者自己從目前畫面找位置,不假裝
-    // 有一個座標可以跳過去。
-    if (selectedEntry.lat === null || selectedEntry.lng === null) return
+    // lat/lng 其中之一不是有限數字代表這筆 entry 還沒有座標(尚未
+    // geocode)——維持地圖原本的中心不動即可,讓使用者自己從目前畫面找
+    // 位置,不假裝有一個座標可以跳過去。用 typeof + isFinite 而非只判斷
+    // === null:後端沒有座標時整個欄位直接省略(omitempty),經 JSON 解析
+    // 後型別系統看不到的執行期值其實是 undefined,只檢查 null 會漏接,
+    // 曾經真的把 undefined 一路傳進 google.maps panTo() 讓地圖直接 crash。
+    if (typeof selectedEntry.lat !== 'number' || !Number.isFinite(selectedEntry.lat)) return
+    if (typeof selectedEntry.lng !== 'number' || !Number.isFinite(selectedEntry.lng)) return
     mapRef.current.panTo({ lat: selectedEntry.lat, lng: selectedEntry.lng })
   }, [mapReady, selectedEntry])
 
@@ -522,7 +526,7 @@ export function PaceRouteMap({
         <div ref={containerRef} className="rp-map" />
         {/* 效果試做:固定疊 3 張檢查點卡片在地圖左上角,垂直微錯開做出堆疊感
             (見 PaceRouteMap.module.css 的 .cardStack1/2/3),卡片外觀直接
-            沿用 PaceChartDemo.module.css 的 .stop 系列 class(import 該
+            沿用 PaceChart.module.css 的 .stop 系列 class(import 該
             module、組合 className,不是跨檔案 CSS 選擇器)——先看這個方向的
             視覺效果如何,還沒接點擊 marker 切換內容的互動,里程/時刻皆為
             示範用固定值,非即時資料。 */}

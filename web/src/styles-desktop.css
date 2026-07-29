@@ -169,8 +169,8 @@
 }
 /* 配速表改放側欄顯示(demo-pace,見 DesktopLayout.tsx DesktopContent)。捲動權明確
    收在這一層、不依賴 .pace-chart 自己的 flex/min-height:0/overflow-y:auto
-   ——同一種多層 flex 傳遞鏈在 .phone-demo-drawer-body 跟 .desktop-main 這
-   兩處都實測發現沒有正確生效過(見那兩處的說明),這裡不再假設理論上應該
+   ——同一種多層 flex 傳遞鏈實測發現在行動瀏覽器的疊層情境下沒有正確生效過
+   (見 PhoneNavDrawer.module.css .body 的說明),這裡不再假設理論上應該
    生效,直接沿用同一套已經證實可行的做法。 */
 .desktop-sidepanel-pace {
   flex: 1 1 auto;
@@ -385,8 +385,8 @@
 .desktop-main:has(.pace-route-map-wrap) {
   max-width: none;
   overflow-y: auto;
-  /* 同 .phone-demo-drawer-body 的理由:只設 overflow-y 會連帶讓水平軸也
-     變成可捲動,明確鎖死避免內容稍微超寬就變成可以左右拖曳。 */
+  /* 只設 overflow-y 會連帶讓水平軸也變成可捲動(規範預設行為),明確鎖死
+     避免內容稍微超寬就變成可以左右拖曳。 */
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;

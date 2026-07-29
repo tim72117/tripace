@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react'
 import type { TouchEvent as ReactTouchEvent } from 'react'
-import { PaceChartDemo } from './PaceChartDemo'
+import type { ClientConfig } from './api'
+import { PaceChart } from './PaceChart'
 import { PaceRouteMap } from './PaceRouteMap'
 import styles from './PacePhoneSwipe.module.css'
 
 // 手機版配速表:地圖(PaceRouteMap)是固定不動的底層,檢查站清單
-// (PaceChartDemo,已經不含地圖,見 PaceChartDemo.tsx 的拆分)是從左邊滑入
+// (PaceChart,已經不含地圖,見 PaceChart.tsx 的拆分)是從左邊滑入
 // 蓋在地圖上面的抽屜面板(off-canvas / drawer navigation,Material Design
 // 的正式元件名稱)。桌面版是側欄放清單、主區同時顯示地圖(見
 // DesktopLayout.tsx DesktopContent 的 pace 分支),手機螢幕窄放不下兩塊並排,用抽屜取代
@@ -20,7 +21,18 @@ import styles from './PacePhoneSwipe.module.css'
 // 原生手勢衝突。
 const DRAWER_WIDTH_PERCENT = 82
 
-export function PacePhoneSwipe() {
+export function PacePhoneSwipe({
+  cfg,
+  channelID,
+}: {
+  // cfg/channelID:登入後正式介面(見 PhoneContent.tsx 的 PhoneNavDrawer)傳入
+  // 目前選取的頻道,改走認證過的 fetchEntries——跟桌面版 DesktopLayout.tsx
+  // 的 <PaceChart cfg={cfg} channelID={activeChannel?.id} /> 同一套邏輯,不再
+  // 掛載時完全不傳而落到公開分享 token 的 fallback 路徑。/demo/pace 公開頁
+  // (PublicPaceDemoPage.tsx)不使用這個元件,不受影響。
+  cfg?: ClientConfig
+  channelID?: string | null
+}) {
   // 預設抽屜開啟(先看到清單),對應桌面版側欄預設就是展開顯示清單的慣例。
   const [open, setOpen] = useState(true)
   const [dragOffset, setDragOffset] = useState(0)
@@ -75,7 +87,7 @@ export function PacePhoneSwipe() {
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
-        <PaceChartDemo />
+        <PaceChart cfg={cfg} channelID={channelID} />
       </div>
 
       {!open && (

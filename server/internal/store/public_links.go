@@ -19,10 +19,21 @@ type PublicLinkInfo struct {
 	Token     string
 	ChannelID string
 	Editable  bool
+	// ViewMode:"timeline" 或 "pace"，見 publicLinkRow.ViewMode 的說明。
+	ViewMode string
+}
+
+// normalizeViewMode 收斂空字串／未知值一律視為 "timeline"，避免呼叫端
+// 各自重複判斷「這個值有效嗎」。
+func normalizeViewMode(v string) string {
+	if v == "pace" {
+		return "pace"
+	}
+	return "timeline"
 }
 
 // CreatePublicLink 為頻道建立公開分享連結（一個頻道只能有一條）。
-func (s *Store) CreatePublicLink(channelID, createdBy string, editable bool) (string, error) {
+func (s *Store) CreatePublicLink(channelID, createdBy string, editable bool, viewMode string) (string, error) {
 	token := newLinkToken()
 	row := publicLinkRow{
 		ID:        token,
@@ -30,6 +41,7 @@ func (s *Store) CreatePublicLink(channelID, createdBy string, editable bool) (st
 		LinkToken: token,
 		CreatedBy: createdBy,
 		Editable:  editable,
+		ViewMode:  normalizeViewMode(viewMode),
 		CreatedAt: now(),
 	}
 	if err := s.db.Create(&row).Error; err != nil {
@@ -45,7 +57,7 @@ func (s *Store) GetPublicLink(channelID string) (PublicLinkInfo, error) {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return PublicLinkInfo{}, ErrNotFound
 	}
-	return PublicLinkInfo{Token: row.LinkToken, ChannelID: channelID, Editable: row.Editable}, err
+	return PublicLinkInfo{Token: row.LinkToken, ChannelID: channelID, Editable: row.Editable, ViewMode: normalizeViewMode(row.ViewMode)}, err
 }
 
 // GetPublicLinkChannel 由 token 反查頻道資訊；查無資料回傳 ErrNotFound。
@@ -55,13 +67,19 @@ func (s *Store) GetPublicLinkChannel(token string) (PublicLinkInfo, error) {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return PublicLinkInfo{}, ErrNotFound
 	}
-	return PublicLinkInfo{Token: row.LinkToken, ChannelID: row.ChannelID, Editable: row.Editable}, err
+	return PublicLinkInfo{Token: row.LinkToken, ChannelID: row.ChannelID, Editable: row.Editable, ViewMode: normalizeViewMode(row.ViewMode)}, err
 }
 
 // SetPublicLinkEditable 更新公開連結的可編輯設定。
 func (s *Store) SetPublicLinkEditable(channelID string, editable bool) error {
 	return s.db.Model(&publicLinkRow{}).Where("channel_id = ?", channelID).
 		Update("editable", editable).Error
+}
+
+// SetPublicLinkViewMode 更新公開連結的呈現模式（時間軸／配速表）。
+func (s *Store) SetPublicLinkViewMode(channelID string, viewMode string) error {
+	return s.db.Model(&publicLinkRow{}).Where("channel_id = ?", channelID).
+		Update("view_mode", normalizeViewMode(viewMode)).Error
 }
 
 // DeletePublicLink 刪除頻道的公開連結；找不到不報錯。

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ChevronLeft, Copy, Check, Trash2 } from 'lucide-react'
-import type { ClientConfig } from '../api'
+import type { ClientConfig, PublicLinkViewMode } from '../api'
 import * as api from '../api'
 import type { Channel } from '../types'
 import { ErrorBanner, errMsg } from '../AppCommon'
@@ -21,6 +21,7 @@ export function ShareModal({
 }) {
   const [token, setToken] = useState<string | null>(null)
   const [editable, setEditable] = useState(false)
+  const [viewMode, setViewMode] = useState<PublicLinkViewMode>('timeline')
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -29,7 +30,7 @@ export function ShareModal({
 
   useEffect(() => {
     api.getPublicLink(cfg, channel.id)
-      .then((r) => { setToken(r.linkToken); setEditable(r.editable) })
+      .then((r) => { setToken(r.linkToken); setEditable(r.editable); setViewMode(r.viewMode) })
       .catch(() => setToken(null))
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -39,9 +40,10 @@ export function ShareModal({
     setLoading(true)
     setErr(null)
     try {
-      const r = await api.createPublicLink(cfg, channel.id, editable)
+      const r = await api.createPublicLink(cfg, channel.id, editable, viewMode)
       setToken(r.linkToken)
       setEditable(r.editable)
+      setViewMode(r.viewMode)
     } catch (e) {
       setErr(errMsg(e))
     } finally {
@@ -52,9 +54,24 @@ export function ShareModal({
   const toggleEditable = async (val: boolean) => {
     setEditable(val)
     try {
-      const r = await api.createPublicLink(cfg, channel.id, val)
+      const r = await api.createPublicLink(cfg, channel.id, val, viewMode)
       setToken(r.linkToken)
       setEditable(r.editable)
+      setViewMode(r.viewMode)
+    } catch (e) {
+      setErr(errMsg(e))
+    }
+  }
+
+  const changeViewMode = async (val: PublicLinkViewMode) => {
+    setViewMode(val)
+    // 尚未建立連結時只更新本地狀態，等使用者按「建立公開連結」再一起送出。
+    if (!token) return
+    try {
+      const r = await api.createPublicLink(cfg, channel.id, editable, val)
+      setToken(r.linkToken)
+      setEditable(r.editable)
+      setViewMode(r.viewMode)
     } catch (e) {
       setErr(errMsg(e))
     }
@@ -120,6 +137,7 @@ export function ShareModal({
                     <span className={styles.toggleSlider} />
                   </label>
                 </div>
+                <ViewModePicker value={viewMode} onChange={changeViewMode} />
                 <div style={{ padding: '12px 16px 0' }}>
                   <button className="btn-danger" onClick={revoke}>
                     <Trash2 size={14} strokeWidth={1.8} style={{ marginRight: 6 }} />
@@ -143,6 +161,7 @@ export function ShareModal({
                     <span className={styles.toggleSlider} />
                   </label>
                 </div>
+                <ViewModePicker value={viewMode} onChange={changeViewMode} />
                 <div style={{ padding: '8px 16px 0' }}>
                   <button className="btn-primary" onClick={generate}>
                     建立公開連結
@@ -154,5 +173,42 @@ export function ShareModal({
         )}
       </div>
     </>
+  )
+}
+
+// ViewModePicker:公開頁要用「時間軸」還是「配速表」呈現——只是切換公開頁
+// 的呈現方式，跟上面「允許訪客新增行程」是完全獨立的兩個設定，不是同一顆
+// 開關的兩個狀態，所以用兩個分段按鈕而非沿用 .toggle 那顆開關樣式。
+// 配速表模式只有在頻道內的地點本身帶有配速表專屬的 detail 結構（segment/
+// order 等）時才有內容可顯示——這是額外用 CLI／entry-update 手動標註的
+// 資料，不是分享彈窗這裡能自動產生的，選了配速表但頻道沒有這類資料時，
+// 公開頁會顯示提示訊息而非空白或錯誤（見 PhoneScreens.tsx PublicViewScreen）。
+function ViewModePicker({
+  value,
+  onChange,
+}: {
+  value: PublicLinkViewMode
+  onChange: (v: PublicLinkViewMode) => void
+}) {
+  return (
+    <div className={styles.toggleRow}>
+      <span className={styles.toggleLabel}>公開頁顯示</span>
+      <div className={styles.viewModeGroup}>
+        <button
+          type="button"
+          className={value === 'timeline' ? `${styles.viewModeBtn} ${styles.viewModeBtnActive}` : styles.viewModeBtn}
+          onClick={() => onChange('timeline')}
+        >
+          時間軸
+        </button>
+        <button
+          type="button"
+          className={value === 'pace' ? `${styles.viewModeBtn} ${styles.viewModeBtnActive}` : styles.viewModeBtn}
+          onClick={() => onChange('pace')}
+        >
+          配速表
+        </button>
+      </div>
+    </div>
   )
 }

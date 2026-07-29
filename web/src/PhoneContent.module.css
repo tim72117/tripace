@@ -1,0 +1,18 @@
+/* PhoneContent.tsx 專屬樣式(CSS Modules)。設定頁(SettingsScreen)從底部
+   滑入/滑出的疊層——寫法比照 PhoneNavDrawer.module.css 的 .panel(一律
+   掛載,只切換 transform,CSS transition 才能在開關切換時播放動畫),只是
+   方向改成上下。滿版疊層本身就會完全蓋住底下內容,不需要另外加 backdrop
+   遮罩(那是給部分寬度/高度的抽屜用,讓使用者看得到、點得到底下未被蓋住
+   的區域;這裡開啟時已經佔滿整個畫面,沒有這種需求)。z-index 高於
+   PhoneNavDrawer.module.css 的 backdrop/panel(31)——設定頁是從抽屜欄底部
+   帳號列點進來的更深一層,視覺上該蓋在抽屜欄上面。 */
+
+.settingsPanel {
+  position: absolute;
+  inset: 0;
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  background: var(--ios-bg);
+  transition: transform 0.28s ease;
+}

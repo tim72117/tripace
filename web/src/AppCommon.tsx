@@ -287,11 +287,11 @@ export function LoginForm({
 }
 
 // ---- 頻道列表:共用資料邏輯(抓取/建立/自動導向預設頻道) ----
-// 手機版 ChannelsScreen(整頁列表,見 App.tsx)與桌面版側欄列表
-// DesktopChannelList(見 DesktopLayout.tsx)共用同一份 state 管理與 API
-// 呼叫,只有呈現方式(渲染 JSX)不同,避免整套重寫一份。放在這裡(而非
-// DesktopLayout.tsx)是因為手機版也要用,放桌面檔案會讓 App.tsx 得回頭
-// import 桌面檔案,形成循環依賴。
+// 手機版 PhoneNavDrawer 的行程列表分頁(見 PhoneNavDrawer.tsx)與桌面版
+// 側欄列表 DesktopChannelList(見 DesktopLayout.tsx)共用同一份 state 管理與
+// API 呼叫,只有呈現方式(渲染 JSX)不同,避免整套重寫一份。放在這裡(而非
+// DesktopLayout.tsx)是因為手機版也要用,放桌面檔案會讓 PhoneContent.tsx
+// 得回頭 import 桌面檔案,形成循環依賴。
 export function useChannelsState(cfg: ClientConfig, onOpen: (c: Channel) => void) {
   const [channels, setChannels] = useState<Channel[]>([])
   const [err, setErr] = useState<string | null>(null)

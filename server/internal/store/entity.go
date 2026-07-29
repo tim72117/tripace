@@ -78,6 +78,11 @@ type publicLinkRow struct {
 	LinkToken string    `gorm:"uniqueIndex;column:link_token;not null"`
 	CreatedBy string    `gorm:"column:created_by;not null"`
 	Editable  bool      `gorm:"column:editable;not null;default:false"`
+	// ViewMode:公開頁要顯示「時間軸」還是「配速表」，值為 "timeline"／"pace"。
+	// 存字串而非 bool，是因為這是「選其中一種呈現方式」而非開關，未來若再
+	// 加第三種呈現方式不需要改型別。空字串（舊資料/尚未設定）由讀取端視為
+	// "timeline"，不特別遷移既有資料。
+	ViewMode  string    `gorm:"column:view_mode;not null;default:timeline"`
 	CreatedAt time.Time `gorm:"column:created_at;not null"`
 }
 

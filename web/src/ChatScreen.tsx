@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { TouchEvent as ReactTouchEvent } from 'react'
-import { ChevronLeft, Users, Send, Share2, Sparkles, CalendarDays } from 'lucide-react'
+import { ChevronLeft, Menu, Users, Send, Share2, Sparkles } from 'lucide-react'
 import type { ClientConfig } from './api'
 import * as api from './api'
 import type { Channel, Entry, User } from './types'
@@ -15,7 +14,7 @@ import {
   saveMessageTripListKeys,
 } from './deviceDB'
 import { ErrorBanner, errMsg, isSubmitEnter } from './AppCommon'
-import { MultiTrackTimeline, type TaskPlaceholder } from './Timeline'
+import type { TaskPlaceholder } from './Timeline'
 import { ClientToolsBridge } from './clienttools/bridge/ClientToolsBridge'
 import { defaultClientTools } from './clienttools/tools'
 import type { TripBatches, TripEntry } from './clienttools/tripEntryTools'
@@ -85,12 +84,28 @@ export function ChatScreen({
   channel,
   user,
   onBack,
+  onOpenDrawer,
+  onTimelineData,
   desktopChat,
 }: {
   cfg: ClientConfig
   channel: Channel
   user: User
   onBack: () => void
+  // onOpenDrawer:手機版專用,左上角按鈕改成開啟左側導覽抽屜(行程列表/配速表/
+  // 設定入口,見 PhoneContent.tsx 的 PhoneNavDrawer),不再直接呼叫 onBack
+  // 清空 activeChannel——抽屜裡本來就能選別的行程或關閉抽屜留在原地,不需要
+  // 一顆單純「回列表」的按鈕。只在 !desktopChat(手機版)時使用;桌面版
+  // ChatScreen 沒有這顆抽屜,維持原本點左上角呼叫 onBack 的行為不變。
+  onOpenDrawer?: () => void
+  // onTimelineData:手機版專用的時間軸資料鏡像——跟 desktopChat.onTimelineData
+  // 是同一份資料形狀(DesktopTimelineMirror),差別只在時間軸現在改成手機版
+  // 左側導覽抽屜(PhoneNavDrawer.tsx)的一個分頁,不是 ChatScreen 內部自己的
+  // 右側抽屜(那套機制已移除,對齊桌面版——時間軸只剩這一個入口)。獨立於
+  // desktopChat 之外是因為 desktopChat 同時也控制訊息列表的呈現方式(桌面
+  // 版走 .messages 文件流、手機版走 chatMessagesRef 獨立捲動容器),這裡
+  // 只想鏡像資料,不想連帶把手機版的訊息呈現也切成桌面版那套。
+  onTimelineData?: (data: DesktopTimelineMirror) => void
   desktopChat?: DesktopChatOptions
 }) {
   // owner 輸入=發訊息;成員輸入=語意查詢(回答顯示在訊息流,對齊 iOS App)。
@@ -213,48 +228,12 @@ export function ChatScreen({
   const bodyRef = useRef<HTMLDivElement>(null)
   const navbarRef = useRef<HTMLDivElement>(null)
   const lastScrollY = useRef(0)
-  const todayRef = useRef<HTMLDivElement>(null as unknown as HTMLDivElement)
   // chatMessagesRef:手機版訊息列表(現在是固定顯示的主要內容,不再是浮層)
   // 的捲動容器,供進入頻道時「捲到最底」使用(桌面版走 bodyRef,見下方
   // useEffect)。改版前這支 ref 叫 chatOverlayInnerRef、只在浮層條件渲染時
   // 才存在;現在訊息列表一律渲染,ref 永遠掛得到,行為不變只是命名對齊
   // 新的呈現方式。
   const chatMessagesRef = useRef<HTMLDivElement>(null)
-  // timelineOpen:手機版時間軸抽屜的開關狀態,仿照 PacePhoneSwipe.tsx 的
-  // open/dragOffset 寫法。改版前時間軸是底層固定內容、對話是浮層蓋在上面;
-  // 改版後對話變成固定顯示的主要畫面,時間軸改成從右側滑入蓋在對話上方的
-  // 抽屜面板,預設收合(false)——使用者一進頻道先看到的是對話,需要查看
-  // 時間軸時才主動點開,對齊「對話是主要內容」的新設計。
-  const [timelineOpen, setTimelineOpen] = useState(false)
-  // dragOffset/startXRef/draggingRef:抽屜的觸控拖曳手勢狀態,同
-  // PacePhoneSwipe.tsx 的用法——dragOffset 是目前拖曳的像素位移(state,
-  // 驅動 transform 即時跟手),startXRef/draggingRef 是拖曳過程中的暫態
-  // 追蹤值(不需要觸發 re-render,用 ref)。
-  const [dragOffset, setDragOffset] = useState(0)
-  const startXRef = useRef<number | null>(null)
-  const draggingRef = useRef(false)
-
-  // 抽屜從右側滑入(時間軸相對對話是輔助/詳細內容,滑入方向與 navbar 右側
-  // 的開啟按鈕群組呼應),故拖曳方向與 PacePhoneSwipe.tsx(左側抽屜)左右相反:
-  // 開啟狀態下只能往右拖(關閉方向,delta 為正),故 delta 用 Math.max(0, …)
-  // 鎖住不可為負,避免抽屜被拖出螢幕左側外的空白區域。
-  function onTimelineTouchStart(e: ReactTouchEvent) {
-    startXRef.current = e.touches[0].clientX
-    draggingRef.current = true
-  }
-  function onTimelineTouchMove(e: ReactTouchEvent) {
-    if (!draggingRef.current || startXRef.current === null) return
-    const delta = Math.max(0, e.touches[0].clientX - startXRef.current)
-    setDragOffset(delta)
-  }
-  function onTimelineTouchEnd() {
-    if (!draggingRef.current) return
-    draggingRef.current = false
-    const threshold = 60
-    if (dragOffset > threshold) setTimelineOpen(false)
-    setDragOffset(0)
-    startXRef.current = null
-  }
 
   // 捲動時自動收合/浮現 navbar:只在手機版生效。桌面版 navbar 要持續顯示、
   // 寬度對齊右側顯示區(.desktop-main),不隨捲動收合——桌面版沒有手機那種
@@ -367,22 +346,26 @@ export function ChatScreen({
     })
   }, [loaded, !!desktopChat])
 
-  // 桌面模式:把時間軸所需的 state(entries/updatingEntryIDs/taskPlaceholders)
-  // 鏡像給外層 DesktopContent 的 side panel,讓 panel 的 MultiTrackTimeline 與
-  // 主區共用同一份資料,不必自己另開 WS 或另外 fetch。refetchEntries 供 panel
-  // 手動編輯(onEntryUpdated)後觸發重抓——直接複用下面 fetchEntries 的邏輯。
-  // 用 useEffect(而非在 render 期間呼叫)是因為 render 期間呼叫外層 setState
+  // 把時間軸所需的 state(entries/updatingEntryIDs/taskPlaceholders)鏡像給
+  // 外層的時間軸 UI——桌面版是 DesktopContent 的 side panel(desktopChat.
+  // onTimelineData),手機版是 PhoneNavDrawer 的時間軸分頁(onTimelineData,
+  // 對齊桌面版,時間軸不再是 ChatScreen 自己的右側抽屜)。兩者資料形狀相同
+  // (DesktopTimelineMirror),讓外層的 MultiTrackTimeline 與這裡的主區共用
+  // 同一份資料,不必自己另開 WS 或另外 fetch。refetchEntries 供外層手動編輯
+  // (onEntryUpdated)後觸發重抓——直接複用下面 fetchEntries 的邏輯。用
+  // useEffect(而非在 render 期間呼叫)是因為 render 期間呼叫外層 setState
   // 會觸發 React 警告(cannot update a component while rendering a different component)。
   useEffect(() => {
-    if (!desktopChat) return
-    desktopChat.onTimelineData({
+    const mirror = desktopChat?.onTimelineData ?? onTimelineData
+    if (!mirror) return
+    mirror({
       entries,
       updatingEntryIDs,
       taskPlaceholders,
       refetchEntries: () => api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {}),
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [desktopChat, entries, updatingEntryIDs, taskPlaceholders, cfg.baseURL, cfg.token, channel.id])
+  }, [desktopChat, onTimelineData, entries, updatingEntryIDs, taskPlaceholders, cfg.baseURL, cfg.token, channel.id])
 
   // updatingSince:記每個更新中 entryID 的起始時間,用來保證「更新中」動畫最短顯示 800ms
   // (entry_update 後端很快完成,不設下限會一閃而過看不見)。
@@ -514,19 +497,6 @@ export function ChatScreen({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在頻道/owner 身分變動時重新連線,同第一條 WS 的依賴慣例。
   }, [cfg.baseURL, channel.id, isOwner])
-
-  // entries 一有資料就捲到「今天」——桌面版 bodyRef 是右欄主要捲動容器;
-  // 手機版 bodyRef 現在指向時間軸抽屜面板內部的捲動容器(見下方 JSX),
-  // 抽屜就算尚未開啟這個 DOM 節點依然存在(只是 CSS 位移蓋在畫面外),故
-  // scrollTo 呼叫本身不受開關狀態影響,使用者之後點開抽屜時已經是捲到今天
-  // 的狀態,不需要另外等開啟時機重算一次。
-  useEffect(() => {
-    if (entries.length > 0 && todayRef.current && bodyRef.current) {
-      const el = todayRef.current
-      const body = bodyRef.current
-      body.scrollTo({ top: el.offsetTop - 60, behavior: 'instant' })
-    }
-  }, [entries])
 
   // 本地訊息(不寫入後端,純前端顯示用):查詢的提問/回答泡泡。
   const mkLocalMsg = (
@@ -784,11 +754,6 @@ export function ChatScreen({
     }
   }
 
-  // timelineTranslate:時間軸抽屜面板目前的水平位移,同 PacePhoneSwipe.tsx
-  // 的 translate 計算方式,但左右相反——面板從右側滑入,收合狀態的起始位置
-  // 是 100%(完全推到容器右側外),開啟狀態是 0(完全貼齊)。
-  const timelineTranslate = timelineOpen ? `${dragOffset}px` : `calc(100% + ${dragOffset}px)`
-
   // 頻道內的成員管理(對齊 iOS App:聊天頁 → 成員)。
   if (showMembers) {
     return (
@@ -815,21 +780,18 @@ export function ChatScreen({
   return (
     <>
       <div className="navbar" ref={navbarRef}>
-        <button className="btn icon-btn" onClick={onBack}>
-          <ChevronLeft size={20} strokeWidth={1.8} />
-        </button>
+        {!desktopChat && onOpenDrawer ? (
+          <button className="btn icon-btn" onClick={onOpenDrawer} title="行程列表/配速表">
+            <Menu size={20} strokeWidth={1.8} />
+          </button>
+        ) : (
+          <button className="btn icon-btn" onClick={onBack}>
+            <ChevronLeft size={20} strokeWidth={1.8} />
+          </button>
+        )}
         <span className="title">{channel.name}</span>
         <ChannelMenu channelID={channel.id} />
         <div style={{ display: 'flex', gap: 2 }}>
-          {/* 時間軸抽屜開關:只在手機版(!desktopChat)顯示——桌面版時間軸
-              固定在左側 side panel,不需要另外開關。放進既有的圖示按鈕群組
-              (跟分享/成員同一列、同樣的 icon-btn 視覺),不另外新增一整塊
-              UI 區域,對齊這個 navbar 既有的慣例。 */}
-          {!desktopChat && (
-            <button className="btn icon-btn" onClick={() => setTimelineOpen(true)} title="行程時間軸">
-              <CalendarDays size={18} strokeWidth={1.8} />
-            </button>
-          )}
           {isOwner && (
             <button className="btn icon-btn" onClick={() => setShowShare(true)} title="分享">
               <Share2 size={18} strokeWidth={1.8} />
@@ -860,62 +822,22 @@ export function ChatScreen({
             )}
           </div>
         ) : (
-          <>
-            {/* 手機版:訊息列表是固定顯示的主要內容(取代改版前浮層蓋在時間軸
-                上方的設計),時間軸改成從右側滑入的抽屜,見下方 .timelinePanel。 */}
-            <div className={`screen-body ${styles.messages}`} ref={chatMessagesRef}>
-              <ErrorBanner msg={err} />
-              {messages.length === 0 && !sending ? (
-                <div className="empty">
-                  {isOwner ? '在下方輸入記事，會依時間排列在時間軸(右上角圖示)。' : '在下方查詢這趟行程的內容。'}
-                </div>
-              ) : (
-                messages.map((m) => (
-                  <MessageBubble key={m.id} msg={m} meID={user.id} tripBatches={clientToolsBatches} isLatest={m.id === latestAnswerID} onDeleteTripBatchEntries={deleteTripBatchEntries} />
-                ))
-              )}
-            </div>
-
-            {/* 抽屜開啟時的 backdrop:半透明遮罩,點擊可關閉抽屜(同
-                PacePhoneSwipe.tsx 的 backdrop 用法)。 */}
-            {timelineOpen && (
-              <div
-                className={styles.backdrop}
-                onClick={() => setTimelineOpen(false)}
-                aria-hidden="true"
-              />
-            )}
-
-            {/* 時間軸抽屜面板:從右側滑入蓋在訊息列表上方。拖曳手勢只掛在
-                面板本身(同 PacePhoneSwipe.tsx 的理由)——MultiTrackTimeline
-                內部的條目卡片有自己的點擊/編輯互動,掛在整個外層容器上會
-                互搶手勢。 */}
-            <div
-              className={styles.timelinePanel}
-              style={{
-                transform: `translateX(${timelineTranslate})`,
-                transition: draggingRef.current ? 'none' : 'transform 0.25s ease',
-              }}
-              onTouchStart={onTimelineTouchStart}
-              onTouchMove={onTimelineTouchMove}
-              onTouchEnd={onTimelineTouchEnd}
-            >
-              <div className="screen-body" ref={bodyRef}>
-                {entries.length > 0 ? (
-                  <MultiTrackTimeline
-                    entries={entries}
-                    todayRef={todayRef}
-                    updatingIDs={updatingEntryIDs}
-                    taskPlaceholders={taskPlaceholders}
-                    cfg={isOwner ? cfg : undefined}
-                    onEntryUpdated={() => api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {})}
-                  />
-                ) : (
-                  <div className="empty">尚未有任何記事。</div>
-                )}
+          // 手機版:訊息列表是固定顯示的主要內容。時間軸改成左側導覽抽屜
+          // (PhoneNavDrawer.tsx)的一個分頁,對齊桌面版——不再是這裡自己的
+          // 右側滑入抽屜(原本的 timelineOpen/backdrop/timelinePanel 整套
+          // 已移除,資料改透過上方 onTimelineData 鏡像給外層)。
+          <div className={`screen-body ${styles.messages}`} ref={chatMessagesRef}>
+            <ErrorBanner msg={err} />
+            {messages.length === 0 && !sending ? (
+              <div className="empty">
+                {isOwner ? '在下方輸入記事，會依時間排列在時間軸(左上角選單)。' : '在下方查詢這趟行程的內容。'}
               </div>
-            </div>
-          </>
+            ) : (
+              messages.map((m) => (
+                <MessageBubble key={m.id} msg={m} meID={user.id} tripBatches={clientToolsBatches} isLatest={m.id === latestAnswerID} onDeleteTripBatchEntries={deleteTripBatchEntries} />
+              ))
+            )}
+          </div>
         )}
 
         <div className={styles.composer}>

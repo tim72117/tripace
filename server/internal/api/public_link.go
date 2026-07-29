@@ -17,7 +17,8 @@ func (s *Server) handleCreatePublicLink(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var body struct {
-		Editable bool `json:"editable"`
+		Editable bool   `json:"editable"`
+		ViewMode string `json:"viewMode,omitempty"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
@@ -27,15 +28,15 @@ func (s *Server) handleCreatePublicLink(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if errors.Is(err, store.ErrNotFound) {
-		token, err := s.store.CreatePublicLink(id, user.ID, body.Editable)
+		token, err := s.store.CreatePublicLink(id, user.ID, body.Editable, body.ViewMode)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, "create_failed", err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"linkToken": token, "editable": body.Editable})
+		writeJSON(w, http.StatusOK, map[string]any{"linkToken": token, "editable": body.Editable, "viewMode": normalizeViewModeAPI(body.ViewMode)})
 		return
 	}
-	// 已存在：若 editable 有變更則更新
+	// 已存在：若 editable／viewMode 有變更則更新
 	if info.Editable != body.Editable {
 		if err := s.store.SetPublicLinkEditable(id, body.Editable); err != nil {
 			writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
@@ -43,7 +44,24 @@ func (s *Server) handleCreatePublicLink(w http.ResponseWriter, r *http.Request) 
 		}
 		info.Editable = body.Editable
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"linkToken": info.Token, "editable": info.Editable})
+	if wantMode := normalizeViewModeAPI(body.ViewMode); wantMode != info.ViewMode {
+		if err := s.store.SetPublicLinkViewMode(id, wantMode); err != nil {
+			writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
+			return
+		}
+		info.ViewMode = wantMode
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"linkToken": info.Token, "editable": info.Editable, "viewMode": info.ViewMode})
+}
+
+// normalizeViewModeAPI 收斂 request body 的 viewMode 欄位：只接受
+// "pace"，其餘（含空字串／未知值）一律當成預設的 "timeline"，跟
+// store.normalizeViewMode 對齊，避免前端傳錯值時把資料存成非法狀態。
+func normalizeViewModeAPI(v string) string {
+	if v == "pace" {
+		return "pace"
+	}
+	return "timeline"
 }
 
 // GET /v1/channels/{id}/public-link — 查詢頻道的公開連結。
@@ -61,7 +79,7 @@ func (s *Server) handleGetPublicLink(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"linkToken": info.Token, "editable": info.Editable})
+	writeJSON(w, http.StatusOK, map[string]any{"linkToken": info.Token, "editable": info.Editable, "viewMode": info.ViewMode})
 }
 
 // DELETE /v1/channels/{id}/public-link — 刪除公開連結（撤銷分享）。
@@ -104,6 +122,7 @@ func (s *Server) handlePublicView(w http.ResponseWriter, r *http.Request) {
 		"channelID":   info.ChannelID,
 		"channelName": channelName,
 		"editable":    info.Editable,
+		"viewMode":    info.ViewMode,
 		"entries":     entries,
 	})
 }

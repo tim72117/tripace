@@ -23,10 +23,9 @@
    等多處都有用),故用 :global(.screen-body) 保留原本「只在 .chat-area
    底下」的巢狀限定範圍,不把 .screen-body 本身納入雜湊。
 
-   手機版時間軸呈現方式(.backdrop/.timelinePanel):原本是「訊息浮層蓋在
-   時間軸上方」(.overlay/.overlayInner,已移除),改成仿照
-   PacePhoneSwipe.tsx 的抽屜模式——訊息列表變成固定顯示的主要內容,時間軸
-   改成從右側滑入的抽屜面板。桌面版(desktopChat 分支)完全不受影響。 */
+   時間軸(.backdrop/.timelinePanel,手機版右側滑入抽屜)已移除:時間軸
+   改成手機版左側導覽抽屜(PhoneNavDrawer.tsx)的一個分頁,對齊桌面版
+   (時間軸只剩這一個入口),不再是 ChatScreen 自己的右側抽屜。 */
 
 .area {
   flex: 1 1 auto;
@@ -51,50 +50,6 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-/* 時間軸抽屜(手機版專用,仿照 PacePhoneSwipe.tsx 的抽屜模式):backdrop 是
-   開啟時蓋在訊息列表上方的半透明遮罩,點擊可關閉抽屜。z-index 沿用原本
-   浮層/composer 的分層順序(composer 是 10,抽屜相關的兩層要蓋過訊息列表
-   但不需要蓋過 composer 之上——實際上抽屜面板本身會蓋過 composer,因為
-   時間軸需要用滿整個畫面高度,而不是只到 composer 上緣為止)。 */
-.backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 8;
-  background: rgba(0, 0, 0, 0.35);
-}
-
-/* .timelinePanel:時間軸抽屜面板本身,從右側滑入蓋在訊息列表(含 composer)
-   上方——時間軸內容本來就需要用滿整個畫面高度捲動,不像訊息列表下方要
-   讓出 composer 的空間,故面板蓋過 composer 之上(z-index 高於 .composer
-   的 10)。寬度用 92%(比 PacePhoneSwipe.tsx 的 82% 略寬)——時間軸卡片
-   本身內容較寬(含日期軌道+多欄卡片),留給 backdrop 的可點擊關閉區域
-   窄一點也足夠。 */
-.timelinePanel {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 92%;
-  z-index: 12;
-  display: flex;
-  flex-direction: column;
-  background: var(--ios-bg);
-  box-shadow: -2px 0 16px rgba(0, 0, 0, 0.2);
-  /* 拖曳手勢只掛在這個面板本身(見 ChatScreen.tsx onTimelineTouchStart 等
-     handler 的說明),沒有這行,瀏覽器原生的水平平移會跟自訂的 JS transform
-     拖曳同時反應,理由同 PacePhoneSwipe.module.css 的 .panel。pan-y 保留
-     垂直捲動(時間軸本身要能上下捲)給瀏覽器原生處理,只有水平方向交給 JS。 */
-  touch-action: pan-y;
-}
-.timelinePanel :global(.screen-body) {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  -webkit-overflow-scrolling: touch;
-  padding: 16px 12px calc(16px + env(safe-area-inset-bottom, 0px)) 12px;
 }
 
 /* 輸入列:浮空固定在對話區底部,整列包在一張卡片容器裡(白底/圓角/陰影

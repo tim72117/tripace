@@ -1,5 +1,5 @@
 import { useIsDesktop } from './AppCommon'
-import { PaceChartDemo } from './PaceChartDemo'
+import { PaceChart } from './PaceChart'
 import { PaceRouteMap } from './PaceRouteMap'
 import { PacePhoneSwipe } from './PacePhoneSwipe'
 
@@ -26,7 +26,7 @@ export function PublicPaceDemoPage() {
       <aside className="desktop-sidepanel wide">
         <div className="desktop-sidepanel-inner">
           <div className="desktop-sidepanel-pace">
-            <PaceChartDemo />
+            <PaceChart />
           </div>
         </div>
       </aside>
