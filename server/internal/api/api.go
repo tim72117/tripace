@@ -139,6 +139,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/public/{token}", s.handlePublicView)
 	mux.HandleFunc("POST /v1/public/{token}/assist", s.handlePublicAssist)
 
+	// PaceRouteMap(web/src/PaceRouteMap.tsx,UI 試做用)展示頁的固定路線資料,
+	// 不需要登入(展示頁本身不需要身分),見 pace_route.go 的說明。
+	mux.HandleFunc("GET /v1/demo/pace-route", s.handlePaceRoute)
+
 	// cli-auth — CLI(cmd/cli)瀏覽器登入流程(`tripace-cli login --web`),
 	// 換回一個能通過下面 internalAuth 的 JWT。start/exchange 不需登入:
 	// start 是整個流程最一開始的呼叫,此時 CLI 還沒有任何憑證;exchange 靠的

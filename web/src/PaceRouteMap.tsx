@@ -3,6 +3,7 @@ import { LocateFixed, Play, Square, Compass } from 'lucide-react'
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 import styles from './PaceRouteMap.module.css'
 import chartStyles from './PaceChartDemo.module.css'
+import { BASE_URL } from './AppCommon'
 
 // 配速表路線地圖(UI 試做用):用固定寫死的 5 個花蓮地點,呼叫新版 Routes
 // API(computeRoutes)算出一條真實路線(沿路網走,不是自己手動連 marker 畫
@@ -21,9 +22,12 @@ import chartStyles from './PaceChartDemo.module.css'
 // (3) 自己算 LatLngBounds 讓地圖自動縮放到看得到整條路線(舊版
 // DirectionsRenderer 這幾件事都是自動做的)。
 //
-// 這把 API key 直接在瀏覽器端呼叫 REST 端點(不經後端),沿用專案既有的
-// 「瀏覽器限制 HTTP referrer」安全模式——跟 RecommendedPlacesMap.tsx 呼叫
-// Places API (New) 的 places:searchText 是同一種既有模式,不是新的作法。
+// computeRoutes 改由後端代呼叫(GET /v1/demo/pace-route,見
+// server/internal/api/pace_route.go):前端的 VITE_GOOGLE_MAPS_API_KEY 只
+// 負責 Maps JavaScript API 的地圖渲染,計算類 REST API(Routes API)由後端
+// 用專用的 GOOGLE_PLACES_API_KEY 呼叫,不需要讓瀏覽器端的 key 承擔額外的
+// API 限制範圍——跟 RecommendedPlacesMap.tsx 仍直接呼叫 Places API (New) 的
+// places:searchText 不同,那是刻意保留的既有模式,這裡是特意搬到後端。
 //
 // 地點文字前綴「花蓮」是刻意的地址消歧義(避免解析到同名的其他縣市地點),
 // 照抄不要更動。
@@ -58,11 +62,8 @@ function ensureOptionsSet(apiKey: string) {
   setOptions({ key: apiKey, v: 'weekly' })
 }
 
-const ORIGIN = '花蓮 光復橋'
-const WAYPOINTS = ['花蓮 大農大富平地森林園區', '花蓮 七彩釣竿橋', '花蓮 大富火車站']
-const DESTINATION = '花蓮 富興客棧'
-
-// 沿路節點的顯示名稱,依序對應 ORIGIN -> WAYPOINTS[0..2] -> DESTINATION,
+// 沿路節點的顯示名稱,依序對應後端(server/internal/api/pace_route.go)寫死的
+// origin -> 3 個中繼點 -> destination,
 // 跟下方從 legs[].startLocation/endLocation 推導出的座標順序一一對應
 // (見路線 effect 內的說明)。
 const STOP_NAMES = ['光復橋', '大農大富平地森林園區', '七彩釣竿橋', '大富火車站', '富興客棧']
@@ -72,31 +73,21 @@ const STOP_NAMES = ['光復橋', '大農大富平地森林園區', '七彩釣竿
 const INITIAL_CENTER = { lat: 23.67, lng: 121.42 }
 const INITIAL_ZOOM = 13
 
-// computeRoutes 回應裡實際會用到的欄位(其餘一律不回傳,field mask 只列
-// 這裡用得到的,避免多要不必要的欄位徒增延遲/成本,見 Google 官方建議)。
-// legs[].startLocation/endLocation:每一段(origin->第1中繼點、中繼點之間、
-// 最後中繼點->destination)的起訖座標——用這個組出沿路 5 個節點各自的座標,
-// 不用另外呼叫 geocoding。
-interface ComputeRoutesResponse {
-  routes?: {
-    polyline?: { encodedPolyline?: string }
-    legs?: {
-      startLocation?: { latLng?: { latitude: number; longitude: number } }
-      endLocation?: { latLng?: { latitude: number; longitude: number } }
-    }[]
-  }[]
-}
-
-// RouteCache:存進 localStorage 的形狀,只留下畫路線真正需要的最小資料
-// (encodedPolyline 字串 + 每段 leg 的起訖座標),不是整包 API 回應——避免
-// 存了一堆用不到的欄位佔空間。ORIGIN/WAYPOINTS/DESTINATION 是寫死常數,
-// 不會在執行期變動,故用固定 key、不需要依賴這幾個值算 cache key;如果
-// 之後改了這幾個地點,记得同步把 ROUTE_CACHE_KEY 的版本號往上加一,否則
-// 使用者本機會繼續讀到舊地點的快取路線。
+// RouteCache:GET /v1/demo/pace-route 的回應形狀,也是存進 localStorage 的
+// 快取形狀(兩者刻意一致,拿到後直接原樣快取,不需要轉換)——只留下畫路線
+// 真正需要的最小資料(encodedPolyline 字串 + 每段 leg 的起訖座標)。後端的
+// 起訖點/中繼點是寫死常數,不會在執行期變動,故這裡用固定 key、不需要依賴
+// 這幾個值算 cache key;如果之後後端改了這幾個地點,記得同步把
+// ROUTE_CACHE_KEY 的版本號往上加一,否則使用者本機會繼續讀到舊地點的快取
+// 路線。
 const ROUTE_CACHE_KEY = 'tripace.paceRouteMap.route.v1'
+interface RouteLatLng {
+  latitude: number
+  longitude: number
+}
 interface RouteCache {
   encoded: string
-  legs: { startLocation?: { latLng?: { latitude: number; longitude: number } }; endLocation?: { latLng?: { latitude: number; longitude: number } } }[]
+  legs: { startLocation?: RouteLatLng; endLocation?: RouteLatLng }[]
 }
 
 // 兩點之間的方位角(bearing,0-360 度,0=正北、順時針),標準大圓航向公式。
@@ -205,32 +196,16 @@ export function PaceRouteMap() {
 
     const source: Promise<RouteCache> = cached
       ? Promise.resolve(cached)
-      : fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Goog-Api-Key': apiKey,
-            'X-Goog-FieldMask': 'routes.polyline.encodedPolyline,routes.legs.startLocation,routes.legs.endLocation',
-          },
-          body: JSON.stringify({
-            origin: { address: ORIGIN },
-            destination: { address: DESTINATION },
-            intermediates: WAYPOINTS.map((address) => ({ address })),
-            travelMode: 'DRIVE',
-          }),
-        })
+      : fetch(`${BASE_URL}/v1/demo/pace-route`)
           .then(async (res) => {
             if (!res.ok) {
               const text = await res.text().catch(() => '')
-              throw new Error(`computeRoutes ${res.status}: ${text.slice(0, 300)}`)
+              throw new Error(`pace-route ${res.status}: ${text.slice(0, 300)}`)
             }
-            return res.json() as Promise<ComputeRoutesResponse>
+            return res.json() as Promise<RouteCache>
           })
-          .then((data) => {
-            const route = data.routes?.[0]
-            const encoded = route?.polyline?.encodedPolyline
-            if (!encoded) throw new Error('computeRoutes 回應沒有可用的路線(routes 是空的)')
-            const result: RouteCache = { encoded, legs: route.legs ?? [] }
+          .then((result) => {
+            if (!result.encoded) throw new Error('pace-route 回應沒有可用的路線')
             try {
               localStorage.setItem(ROUTE_CACHE_KEY, JSON.stringify(result))
             } catch {
@@ -268,11 +243,10 @@ export function PaceRouteMap() {
           ? [decoded.legs[0].startLocation, ...decoded.legs.map((l) => l.endLocation)]
           : []
         stopMarkersRef.current = stopPositions.flatMap((loc, i) => {
-          const latLng = loc?.latLng
-          if (!latLng || !mapRef.current) return []
+          if (!loc || !mapRef.current) return []
           const name = STOP_NAMES[i] ?? `節點 ${i + 1}`
           const marker = new google.maps.Marker({
-            position: { lat: latLng.latitude, lng: latLng.longitude },
+            position: { lat: loc.latitude, lng: loc.longitude },
             map: mapRef.current,
             title: name,
           })
