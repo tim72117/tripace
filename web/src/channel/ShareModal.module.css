@@ -117,3 +117,20 @@
   background: var(--ios-blue);
   color: #fff;
 }
+
+/* 背景刻意寫死 #fff 而非 var(--ios-*)：QR code 需要穩定的黑白對比才能
+   維持可掃描性，不能隨 app 的淺色／深色主題變動。 */
+.qrBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 16px;
+  padding: 16px;
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid var(--ios-sep);
+}
+.qrImage {
+  width: 180px;
+  height: 180px;
+}

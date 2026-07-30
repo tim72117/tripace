@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ChevronLeft, Copy, Check, Trash2 } from 'lucide-react'
+import QRCode from 'qrcode'
 import type { ClientConfig, PublicLinkViewMode } from '../api'
 import * as api from '../api'
 import type { Channel } from '../types'
@@ -25,6 +26,7 @@ export function ShareModal({
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [qrDataURL, setQrDataURL] = useState<string | null>(null)
 
   const publicURL = token ? `${window.location.origin}/public/${token}` : null
 
@@ -35,6 +37,15 @@ export function ShareModal({
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg.baseURL, cfg.token, channel.id])
+
+  useEffect(() => {
+    if (!publicURL) { setQrDataURL(null); return }
+    let cancelled = false
+    QRCode.toDataURL(publicURL, { width: 240, margin: 1 })
+      .then((url) => { if (!cancelled) setQrDataURL(url) })
+      .catch(() => { if (!cancelled) setQrDataURL(null) })
+    return () => { cancelled = true }
+  }, [publicURL])
 
   const generate = async () => {
     setLoading(true)
@@ -128,6 +139,14 @@ export function ShareModal({
                 {copied ? '✅ 已複製' : '複製連結'}
               </button>
             </div>
+            {qrDataURL && (
+              <>
+                <div className="section-title">QR Code</div>
+                <div className={styles.qrBox}>
+                  <img src={qrDataURL} alt="分享連結 QR Code" className={styles.qrImage} />
+                </div>
+              </>
+            )}
             {isOwner && (
               <>
                 <div className={styles.toggleRow}>
