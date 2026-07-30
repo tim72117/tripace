@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Pencil, X } from 'lucide-react'
 import type { Entry } from './types'
 import type { ClientConfig } from './api'
@@ -442,7 +443,13 @@ function TaskPlaceholderCard({ placeholder }: { placeholder: TaskPlaceholder }) 
 // (handleUpdateEntry)。只傳使用者實際改過的欄位——server 端把空字串視為
 // 「不改該欄位」(見 store.UpdateEntry),故欄位留空不會意外清空原有值,
 // 但也代表**目前無法透過這個表單把某欄位清空**,只能改成別的值。
-// position:fixed 疊在整個視窗最上層,不依賴卡片容器的 position:relative。
+// 用 createPortal 投影到 document.body,不留在呼叫端(卡片元素)底下——
+// 卡片在 .updating 狀態會加 isolation: isolate(見 Timeline.module.css),
+// 建立獨立的 stacking context,若這個表單留在卡片子樹內,.backdrop 的
+// z-index:80 會被關在卡片自己的堆疊層級裡,蓋不過其他用明確 z-index 定位、
+// 但層級在 DOM 樹更外層的疊層(例如 PhoneContent.tsx 的帳號設定面板
+// .settingsPanel,z-index:41)——實際發生過編輯地點時帳號設定畫面從底下
+// 透出來的 bug,portal 出去才能確保這個表單永遠蓋在最上層。
 function EditEntrySheet({
   cfg, entry, onClose, onSaved,
 }: {
@@ -486,7 +493,7 @@ function EditEntrySheet({
     }
   }
 
-  return (
+  return createPortal(
     <div className={styles.backdrop} onClick={(e) => { e.stopPropagation(); onClose() }}>
       <div className={styles.sheet} onClick={(e) => e.stopPropagation()}>
         <div className={styles.head}>
@@ -537,6 +544,7 @@ function EditEntrySheet({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
