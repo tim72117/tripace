@@ -24,10 +24,10 @@
 //	notify       -channel ID
 //
 //	drop-legacy-columns  一次性維運指令,用於清除已改名的舊資料庫欄位(僅 -db 模式)
-//	purge-cli-auth-null-usercode
-//	                     一次性維運指令,清除 cli_auth_sessions 表裡 user_code
-//	                     為 NULL 的舊資料列,解除 AutoMigrate 加 NOT NULL 約束
-//	                     卡住的問題(僅 -db 模式)
+//	purge-cli-auth-sessions
+//	                     一次性維運指令,清空 cli_auth_sessions 表,解除
+//	                     AutoMigrate 幫 user_code 欄位加 NOT NULL 約束時、
+//	                     在非空表上失敗的問題(僅 -db 模式)
 //
 // 所有輸出為 JSON（方便 Claude Code 解析）。
 package main
@@ -133,8 +133,8 @@ func main() {
 		cmdNotify(args)
 	case "drop-legacy-columns":
 		cmdDropLegacyColumns(useDB, db)
-	case "purge-cli-auth-null-usercode":
-		cmdPurgeCliAuthSessionsMissingUserCode(useDB, db)
+	case "purge-cli-auth-sessions":
+		cmdPurgeCliAuthSessions(useDB, db)
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -274,19 +274,18 @@ func cmdDropLegacyColumns(useDB bool, db *dbClient) {
 	output(map[string]any{"dropped": dropped})
 }
 
-// cmdPurgeCliAuthSessionsMissingUserCode 是一次性維運指令:刪除
-// cli_auth_sessions 表裡 user_code 為 NULL 的舊資料列(見
-// store.PurgeCliAuthSessionsMissingUserCode 的完整說明)。
+// cmdPurgeCliAuthSessions 是一次性維運指令:清空 cli_auth_sessions 表(見
+// store.PurgeAllCliAuthSessions 的完整說明)。
 //
 // 同 cmdDropLegacyColumns,只在 -db 模式下有意義,沒加 -db 就直接 fatal，不嘗試
 // 走 HTTP client(HTTP 沒有也不該有對應端點)。
-func cmdPurgeCliAuthSessionsMissingUserCode(useDB bool, db *dbClient) {
+func cmdPurgeCliAuthSessions(useDB bool, db *dbClient) {
 	if !useDB {
-		fatal("purge-cli-auth-null-usercode 只能搭配 -db 使用（這是直接動資料庫 schema 的一次性維運操作，不走 HTTP）")
+		fatal("purge-cli-auth-sessions 只能搭配 -db 使用（這是直接動資料庫 schema 的一次性維運操作，不走 HTTP）")
 	}
-	deleted, err := db.purgeCliAuthSessionsMissingUserCode()
+	deleted, err := db.purgeCliAuthSessions()
 	if err != nil {
-		fatal("purge-cli-auth-null-usercode: %v", err)
+		fatal("purge-cli-auth-sessions: %v", err)
 	}
 	output(map[string]any{"deleted": deleted})
 }
@@ -359,11 +358,11 @@ func usage() {
   drop-legacy-columns  [僅限 -db] 一次性維運指令，清除已改名的舊資料庫欄位
                         (entries.item/entries.summary，已改名為 title/note)。
                         非常規操作，不加 -db 會直接報錯。
-  purge-cli-auth-null-usercode
-                        [僅限 -db] 一次性維運指令，清除 cli_auth_sessions 表裡
-                        user_code 為 NULL 的舊資料列（該欄位加上 NOT NULL 約束
-                        前留下的過期登入 session），解除 AutoMigrate 卡住的
-                        問題。非常規操作，不加 -db 會直接報錯。
+  purge-cli-auth-sessions
+                        [僅限 -db] 一次性維運指令，清空 cli_auth_sessions 表
+                        （表裡都是短命的 pending 登入 session，清空安全），
+                        解除 AutoMigrate 幫 user_code 欄位加 NOT NULL 約束時、
+                        在非空表上失敗的問題。非常規操作，不加 -db 會直接報錯。
 
 所有輸出為 JSON。
 `)

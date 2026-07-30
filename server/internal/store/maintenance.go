@@ -37,30 +37,39 @@ func (s *Store) DropLegacyEntryColumns() (dropped []string, err error) {
 	return dropped, nil
 }
 
-// PurgeCliAuthSessionsMissingUserCode 刪除 cli_auth_sessions 表裡 user_code
-// 為 NULL 的舊資料列。
+// PurgeAllCliAuthSessions 清空 cli_auth_sessions 表的所有資料列。
 //
-// 背景:cliAuthSessionRow.UserCode 加了 `not null` 標籤是後來（device code 流程
-// 上線時）才有的（見 cliauth.go）；AutoMigrate 幫既有的 user_code 欄位補上
-// NOT NULL 約束前，資料庫裡可能還留著這個欄位上線前建立的舊 session——那些
-// 列的 user_code 天生就是 NULL，讓 AutoMigrate 的 ALTER COLUMN ... SET NOT
-// NULL 直接失敗（SQLSTATE 23502），使整個 AutoMigrate 中斷、後面排隊的表都
-// 同步跟著沒套上（見 store.go Open() 對這個失敗模式的說明）。
+// 背景（實際在正式站觀察到、修正過一次認知的過程，見下方）:
+// cliAuthSessionRow.UserCode 加了 `not null` 標籤是後來（device code 流程
+// 上線時）才有的（見 cliauth.go）。AutoMigrate 幫既有資料表新增這個欄位時，
+// PostgreSQL 對「在非空的表上新增一個沒有 DEFAULT 的 NOT NULL 欄位」的行為
+// 是整個 ALTER TABLE ADD COLUMN 語句直接失敗、原子性回滾（錯誤訊息正是
+// `column "user_code" ... contains null values`，SQLSTATE 23502）——不是
+// 「先加成 nullable 欄位、裡面留了一些 NULL 值」，而是**欄位從頭到尾沒有被
+// 建立過**。這裡曾經誤判成前者，寫過一版「刪除 user_code IS NULL 的列」
+// 的實作，結果那個查詢本身就因為 user_code 欄位根本不存在而報
+// `column "user_code" does not exist`（SQLSTATE 42703）——這正是為什麼同一個
+// 根因會在正式站的錯誤訊息裡看起來像「先說欄位不存在，後來又說欄位有 NULL
+// 值，現在又說欄位不存在」在兩種錯誤間循環:AutoMigrate 每次啟動都重新嘗試
+// 同一個會失敗的 ADD COLUMN,失敗後欄位當然還是不存在。
 //
-// 安全性:目前程式碼裡，不管是 loopback 回呼流程（StartCliAuth）還是 device
-// code 流程（StartDeviceAuth），都一定會生成 user_code（見
-// startCliAuthSession），沒有任何路徑會建立 user_code 為 NULL 的合法 session
-// ——換句話說，NULL 的列只可能是這個欄位存在之前留下的舊資料。而
-// cli_auth_sessions 本來就是短命的 pending 登入 session（cliAuthTTL 只有 10
-// 分鐘，見本檔案上方常數），這些舊列必然早已過期、沒有任何使用中的登入流程
-// 會依賴它們，故直接整批刪除是安全的，不需要先個別檢查 expires_at。
+// 修正後的做法:既然問題是「表非空」，不是「某些列的某個欄位是 NULL」，
+// 就不能下任何引用 user_code 欄位的查詢條件（該欄位根本不存在，查詢會直接
+// 報 42703），必須清空整張表——之後 AutoMigrate 的 ADD COLUMN ... NOT NULL
+// 在空表上就能成功（PostgreSQL 允許在空表上新增沒有 DEFAULT 的 NOT NULL
+// 欄位，因為沒有既有列會違反這個約束）。
 //
-// 冪等:沒有 NULL 列時刪 0 筆，重複執行安全。
+// 安全性:cli_auth_sessions 本來就是短命的 pending 登入 session（cliAuthTTL
+// 只有 10 分鐘，見本檔案上方常數），清空整張表最多只會讓使用者剛好在這幾秒
+// 內、還沒完成核准的登入流程需要重新開始一次，不影響任何已登入的使用者或
+// 其他資料。
+//
+// 冪等:表已空時刪 0 筆，重複執行安全。
 //
 // 這是一次性維運指令，只能透過 cmd/cli 手動執行，不會出現在 Open()/AutoMigrate
 // 或任何伺服器啟動流程裡。
-func (s *Store) PurgeCliAuthSessionsMissingUserCode() (deleted int64, err error) {
-	res := s.db.Where("user_code IS NULL").Delete(&cliAuthSessionRow{})
+func (s *Store) PurgeAllCliAuthSessions() (deleted int64, err error) {
+	res := s.db.Exec("DELETE FROM cli_auth_sessions")
 	if res.Error != nil {
 		return 0, res.Error
 	}

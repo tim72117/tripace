@@ -101,10 +101,10 @@ func (c *dbClient) dropLegacyColumns() ([]string, error) {
 	return c.st.DropLegacyEntryColumns()
 }
 
-// purgeCliAuthSessionsMissingUserCode 是一次性維運操作:刪除 cli_auth_sessions
-// 表裡 user_code 為 NULL 的舊資料列,解除 AutoMigrate 幫該欄位補 NOT NULL 約束
-// 時卡住的問題(見 store.PurgeCliAuthSessionsMissingUserCode 的完整說明)。
-// 只在 -db 模式下有意義,故只掛在 dbClient 上,不進 client 介面。
-func (c *dbClient) purgeCliAuthSessionsMissingUserCode() (int64, error) {
-	return c.st.PurgeCliAuthSessionsMissingUserCode()
+// purgeCliAuthSessions 是一次性維運操作:清空 cli_auth_sessions 表,解除
+// AutoMigrate 幫 user_code 欄位新增 NOT NULL 約束時、在非空表上失敗的問題
+// (見 store.PurgeAllCliAuthSessions 的完整說明)。只在 -db 模式下有意義,
+// 故只掛在 dbClient 上,不進 client 介面。
+func (c *dbClient) purgeCliAuthSessions() (int64, error) {
+	return c.st.PurgeAllCliAuthSessions()
 }
