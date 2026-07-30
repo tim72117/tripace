@@ -156,6 +156,18 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /v1/cli-auth/{id}/approve", s.handleApproveCliAuth)
 	mux.HandleFunc("POST /v1/cli-auth/{id}/exchange", s.handleExchangeCliAuth)
 
+	// cli-auth/device — `tripace-cli login --device` 的 device code 流程
+	// (RFC 8628),給真正無頭、CLI 本機沒有可達網路位址的環境用(見
+	// internal/store/cliauth.go 開頭的說明,對照上面 loopback 回呼流程的
+	// 差異)。exchange 沿用上面同一支 /v1/cli-auth/{id}/exchange,CLI 輪詢
+	// 用的就是這支——device/start 回傳的 deviceCode 直接對應這裡的 {id}。
+	// "device" 是這幾條路由第一段的固定字串、"{id}"/"{userCode}" 都是各自
+	// pattern 唯一的變動段,Go 1.22+ ServeMux 對字面字串段的比對優先於萬用
+	// 字元段,不會跟上面 {id} 系列的路由互相蓋掉。
+	mux.HandleFunc("POST /v1/cli-auth/device/start", s.handleStartDeviceAuth)
+	mux.HandleFunc("GET /v1/cli-auth/device/{userCode}", s.handleGetDeviceAuth)
+	mux.HandleFunc("POST /v1/cli-auth/device/{userCode}/approve", s.handleApproveDeviceAuth)
+
 	// internal — 供 CLI(cmd/cli)/自動化腳本操作資料,不走 /v1/* 那套
 	// requireOwner/requireEditor 頻道層級的權限檢查,改由 internalAuth 要求
 	// 呼叫端帶有效的自家 JWT(與 /v1/* 一般使用者同一套 auth.Signer),避免任何

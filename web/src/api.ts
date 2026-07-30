@@ -236,6 +236,33 @@ export function approveCliAuth(cfg: ClientConfig, id: string) {
   )
 }
 
+// ---- CLI device code 登入(`tripace-cli login --device`,OAuth 2.0 Device
+// Authorization Grant / RFC 8628)。跟上面 loopback 回呼流程的差異見
+// server/internal/store/cliauth.go 開頭的說明——這裡對應的是 /device
+// 核准頁面(DeviceAuthPage.tsx)要用到的兩個端點,查詢鍵是使用者手動輸入的
+// userCode,不是 CLI 自己持有的長 deviceCode。----
+
+// 取得 userCode 對應的 CLI 顯示名稱,供核准頁面顯示「XXX 想要登入」。用法
+// 同 getCliAuthName,差別只在查詢鍵。
+export function getDeviceAuthName(cfg: ClientConfig, userCode: string) {
+  return request<{ name: string }>(
+    cfg,
+    'GET',
+    `/v1/cli-auth/device/${encodeURIComponent(userCode)}`,
+  )
+}
+
+// 核准 userCode 對應的登入請求——呼叫端須已登入,否則 401。沒有 redirectUri
+// 可回傳(device code 流程沒有瀏覽器導回這回事,CLI 自己輪詢 exchange 拿
+// token,見 DeviceAuthPage.tsx 的 approve())。
+export function approveDeviceAuth(cfg: ClientConfig, userCode: string) {
+  return request<{ status: string }>(
+    cfg,
+    'POST',
+    `/v1/cli-auth/device/${encodeURIComponent(userCode)}/approve`,
+  )
+}
+
 export function fetchChannels(cfg: ClientConfig) {
   return request<{ channels: Channel[] }>(cfg, 'GET', '/v1/channels').then(
     (r) => r.channels,

@@ -4,12 +4,14 @@
 // 加 -db 旗標改為直連 PostgreSQL（需要 DATABASE_URL）。
 //
 // /internal/ API 需要先登入:執行一次 `tripace-cli login --web`（走瀏覽器
-// 核准流程，見 login.go），換到的 JWT 會存在本機（見 token.go），之後的指令
-// 都會自動帶上，不需要每次都重新登入。
+// 核准流程，見 login.go）或 `tripace-cli login --device`（無頭環境用的
+// device code 流程，同樣見 login.go），換到的 JWT 會存在本機（見
+// token.go），之後的指令都會自動帶上，不需要每次都重新登入。
 //
 // 子命令:
 //
-//	login --web    透過瀏覽器核准登入，換取本機快取的 token（其餘指令的前置條件）
+//	login --web       透過瀏覽器核准登入，換取本機快取的 token（其餘指令的前置條件）
+//	login --device    無頭環境用:印出一組代碼，在任意裝置手動輸入核准
 //	create-channel -name 文字
 //	record       -channel ID -title 文字 [-start ... -end ... -location ...]
 //	add-to-trip  -entry ID [-trip ID] [-title 文字]
@@ -315,6 +317,11 @@ func usage() {
                -console URL 只影響開瀏覽器要導去的核准頁面 origin，API 呼叫仍打
                -api（預設等於 -api，正式環境不需要帶；本機另外跑 Vite dev server
                時可用 -console http://localhost:5173）
+  login --device [-console URL]
+               無頭環境用（沒有本機可達網路位址、無法起本機伺服器等 --web
+               依賴的前提）：印出一組短代碼與固定網址，在任意一台裝置打開
+               網址、手動輸入代碼核准，CLI 自行輪詢換取 token。-console 用法
+               同上。
   create-channel -name 文字
   record       -channel ID -title 文字 [-start 'YYYY-MM-DD[ HH:MM]'] [-end ...] [-location ...]
   add-to-trip  -entry ID [-trip ID] [-title 文字]

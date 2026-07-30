@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom'
 import { LandingPage } from './LandingPage'
 import { CliAuthPage } from './CliAuthPage'
+import { DeviceAuthPage } from './DeviceAuthPage'
 import { useAppState } from './AppCommon'
 import { PublicViewScreen } from './PhoneScreens'
 import { PublicPaceDemoPage } from './PublicPaceDemoPage'
@@ -44,6 +45,20 @@ export function App({ isDemo = false }: { isDemo?: boolean } = {}) {
           element={
             <div className="web-app">
               <CliAuthPage />
+            </div>
+          }
+        />
+        {/* /device 路徑:`tripace-cli login --device`(無頭環境用的 device
+            code 流程,見 DeviceAuthPage.tsx)落地的核准頁面——網址本身固定
+            不帶代碼(唯一例外是 CLI best-effort 開瀏覽器時附上的 ?code=
+            純粹圖方便預先帶入輸入框),使用者也可以手動打開這個網址、自己
+            輸入代碼,不需要點 CLI 印出的連結。跟 /cli-auth 一樣獨立於主要
+            App 狀態機之外。 */}
+        <Route
+          path="/device"
+          element={
+            <div className="web-app">
+              <DeviceAuthPage />
             </div>
           }
         />

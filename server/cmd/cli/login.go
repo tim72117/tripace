@@ -28,27 +28,43 @@ import (
 	"time"
 )
 
-// runLogin 是 `login` 子命令的入口。目前只支援 --web 這一種登入方式
-// (瀏覽器核准),沒有 onagent 那種「互動輸入帳密」的分支——tripace 這次
-// 只需要解決「CLI 怎麼安全地拿到一把 JWT」,不需要重新做一套終端機帳密登入。
+// runLogin 是 `login` 子命令的入口,支援兩種登入方式:
 //
-// -console <url> 是選填的本機開發用旗標:只影響「開瀏覽器要導去的核准頁面」
+//   - --web(runLoginWeb):CLI 起一個本機 loopback 伺服器,瀏覽器核准後被
+//     導回來——前提是核准的瀏覽器連得到 CLI 這台機器的 loopback,只適合
+//     CLI 跟瀏覽器在同一台機器/同一個網路命名空間的情況。
+//   - --device(runLoginDevice):OAuth 2.0 Device Authorization Grant
+//     (RFC 8628)。CLI 不需要任何本機網路可達性,印出一組短代碼讓使用者
+//     在任意一台裝置手動輸入核准,CLI 自己輪詢拿 token——這是給真正的
+//     無頭環境用的(例如遠端容器、沒有對外埠的機器),見
+//     server/internal/store/cliauth.go 開頭對兩種流程差異的說明。
+//
+// 沒有 onagent 那種「互動輸入帳密」的分支——tripace 這次只需要解決
+// 「CLI 怎麼安全地拿到一把 JWT」,不需要重新做一套終端機帳密登入。
+//
+// -console <url> 是選填的本機開發用旗標:只影響「要顯示給使用者的核准頁面」
 // 網址開頭,不影響任何 API 呼叫(client.start/exchange 一律打 apiBase)。
 // 正式環境前後端同源,不需要這個旗標;但本機開發常見「Vite dev server
 // (:5173)另外跑,跟 go:embed 進 server binary 的靜態檔(:8080)不是同一個
 // origin」的情況,這時候用 -console http://localhost:5173 就能讓核准頁面
 // 走有熱重載的 dev server,同時仍對 :8080 的真正 API 授權。這能行得通全靠
 // cors middleware(見 server/internal/api/middleware.go)本來就放行跨 origin
-// 呼叫,以及核准頁面(web/src/CliAuthPage.tsx)呼叫 API 時用的是 cfg.baseURL
-// (由 VITE_API_BASE 決定),不是用「頁面自己是從哪個 origin 載入的」。
+// 呼叫,以及核准頁面(web/src/CliAuthPage.tsx/DeviceAuthPage.tsx)呼叫 API
+// 時用的是 cfg.baseURL(由 VITE_API_BASE 決定),不是用「頁面自己是從哪個
+// origin 載入的」。
 func runLogin(apiBase string, args []string) error {
 	web := false
+	device := false
 	console := ""
 	rest := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "--web" {
 			web = true
+			continue
+		}
+		if a == "--device" {
+			device = true
 			continue
 		}
 		if len(a) > 10 && a[:10] == "-console=" {
@@ -62,14 +78,17 @@ func runLogin(apiBase string, args []string) error {
 		}
 		rest = append(rest, a)
 	}
-	if !web {
-		return fmt.Errorf("目前只支援 login --web(用法:tripace-cli -api <url> login --web [-console <url>])")
+	if web == device {
+		return fmt.Errorf("請擇一指定登入方式(用法:tripace-cli -api <url> login --web|--device [-console <url>])")
 	}
 	if len(rest) != 0 {
-		return fmt.Errorf("login --web 不需要額外參數")
+		return fmt.Errorf("login 不需要額外參數")
 	}
 	if console == "" {
 		console = apiBase
+	}
+	if device {
+		return runLoginDevice(apiBase, console)
 	}
 	return runLoginWeb(apiBase, console)
 }
@@ -131,6 +150,68 @@ func runLoginWeb(apiBase, console string) error {
 	case <-time.After(5 * time.Minute):
 		return fmt.Errorf("等待瀏覽器核准逾時")
 	}
+}
+
+// runLoginDevice 是 OAuth 2.0 Device Authorization Grant(RFC 8628)在這個
+// CLI 上的實作——跟 runLoginWeb 的關鍵差異是完全不需要本機可達的網路位址:
+// 不起本機伺服器,不需要瀏覽器導回這台機器,只印出一組短代碼讓使用者在
+// 任意一台裝置手動輸入核准,自己按固定間隔輪詢 exchange 端點拿 token。
+// 真正的無頭環境(遠端容器、沒有對外埠的機器)只能走這條路,見
+// server/internal/store/cliauth.go 開頭對兩種流程差異的完整說明。
+//
+// 逾時/輪詢間隔比照 server 端 cliAuthTTL(10 分鐘)——過了這個時間 server
+// 端的 session 本來就已經過期,繼續輪詢也不會有結果,故 CLI 自己也用同樣
+// 的 10 分鐘上限,不需要 server 額外回傳 expiresIn 讓兩邊各自維護一份可能
+// 兜不起來的逾時判斷。
+const (
+	deviceAuthPollInterval = 5 * time.Second
+	deviceAuthTimeout      = 10 * time.Minute
+)
+
+func runLoginDevice(apiBase, console string) error {
+	name, _ := os.Hostname()
+	if name == "" {
+		name = "cli"
+	}
+
+	client := &cliAuthClient{base: apiBase}
+	deviceCode, userCode, err := client.startDevice(name)
+	if err != nil {
+		return fmt.Errorf("啟動登入流程失敗: %w", err)
+	}
+
+	// verifyURL 只有固定路徑,不帶代碼本身在網址上——使用者手動輸入代碼
+	// 才是這個流程的核心(見本檔案上方 package doc 對 device code 流程的
+	// 說明)。額外帶 ?code= 只是方便一鍵開啟時自動帶入輸入框,不是憑證本身
+	// (真正的憑證是 deviceCode,只有這個 process 持有,從未出現在網址上)
+	// ——即使有人偷看到這個網址,拿到的也只是 userCode,最多只能核准這一次
+	// 登入,並不能反過來推出 deviceCode 或冒充別的登入請求。
+	verifyURL := strings.TrimSuffix(console, "/") + "/device"
+	verifyURLWithCode := verifyURL + "?" + url.Values{"code": {userCode}}.Encode()
+
+	fmt.Println("正在開啟瀏覽器進行登入...")
+	fmt.Println("若未自動開啟,請手動造訪:", verifyURL)
+	fmt.Println("並輸入代碼:", userCode)
+	fmt.Println("等待核准中...")
+	_ = openBrowser(verifyURLWithCode) // best-effort;失敗就靠上面印出的網址+代碼讓使用者手動輸入
+
+	deadline := time.Now().Add(deviceAuthTimeout)
+	for time.Now().Before(deadline) {
+		time.Sleep(deviceAuthPollInterval)
+		token, ok, err := client.pollExchange(deviceCode)
+		if err != nil {
+			return fmt.Errorf("換取 token 失敗: %w", err)
+		}
+		if !ok {
+			continue // 尚未核准,繼續輪詢
+		}
+		if err := saveToken(token); err != nil {
+			return fmt.Errorf("儲存 token 失敗: %w", err)
+		}
+		fmt.Printf("登入成功,token 已儲存(標記為 %q)——之後的指令不會再要求登入。\n", name)
+		return nil
+	}
+	return fmt.Errorf("等待核准逾時")
 }
 
 type loginCallbackResult struct {
@@ -231,6 +312,33 @@ func (c *cliAuthClient) start(redirectURI, name string) (id string, err error) {
 	return out.ID, nil
 }
 
+func (c *cliAuthClient) startDevice(name string) (deviceCode, userCode string, err error) {
+	body, _ := json.Marshal(map[string]string{"name": name})
+	req, err := http.NewRequest(http.MethodPost, c.base+"/v1/cli-auth/device/start", bytes.NewReader(body))
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("連不上 %s: %w", c.base, err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusCreated {
+		return "", "", loginStatusError(res)
+	}
+
+	var out struct {
+		DeviceCode string `json:"deviceCode"`
+		UserCode   string `json:"userCode"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return "", "", fmt.Errorf("解析回應失敗: %w", err)
+	}
+	return out.DeviceCode, out.UserCode, nil
+}
+
 func (c *cliAuthClient) exchange(id string) (token string, err error) {
 	req, err := http.NewRequest(http.MethodPost, c.base+"/v1/cli-auth/"+url.PathEscape(id)+"/exchange", nil)
 	if err != nil {
@@ -253,6 +361,40 @@ func (c *cliAuthClient) exchange(id string) (token string, err error) {
 		return "", fmt.Errorf("解析回應失敗: %w", err)
 	}
 	return out.Token, nil
+}
+
+// pollExchange 是 exchange 的輪詢版本(runLoginDevice 專用):同一支
+// /v1/cli-auth/{id}/exchange 端點,但語意不同——exchange 只在瀏覽器已經
+// 核准並導回的當下呼叫一次,任何非 200 都代表真的出錯;pollExchange 會被
+// 反覆呼叫,404(尚未核准/id 不存在/已過期,見 server 端
+// handleExchangeCliAuth 的說明)是輪詢期間的正常狀態,不能當成錯誤直接讓
+// 整個登入流程失敗,而是回傳 ok=false 讓呼叫端(runLoginDevice)知道「這次
+// 還沒有,繼續等下一輪」。
+func (c *cliAuthClient) pollExchange(id string) (token string, ok bool, err error) {
+	req, err := http.NewRequest(http.MethodPost, c.base+"/v1/cli-auth/"+url.PathEscape(id)+"/exchange", nil)
+	if err != nil {
+		return "", false, err
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", false, fmt.Errorf("連不上 %s: %w", c.base, err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode == http.StatusNotFound {
+		return "", false, nil
+	}
+	if res.StatusCode != http.StatusOK {
+		return "", false, loginStatusError(res)
+	}
+
+	var out struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return "", false, fmt.Errorf("解析回應失敗: %w", err)
+	}
+	return out.Token, true, nil
 }
 
 func loginStatusError(res *http.Response) error {
