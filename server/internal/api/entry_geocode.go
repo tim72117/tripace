@@ -140,18 +140,54 @@ func (s *Server) handleComputeRouteFromEntries(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// 這支端點掛在 internalAuth 之後(需登入 JWT),故不限制 entryIDs 要屬於
+	// 哪個頻道——scopeChannelID 傳空字串代表不做頻道範圍檢查。公開分享頁的
+	// 對應端點見 handlePublicComputeRoute(public_link.go),那支
+	// 免登入,必須用 scopeChannelID 限制在分享連結對應的頻道內,避免任何人
+	// 拿分享連結當免驗證跳板查詢/觸發別的頻道 entry 的路線計算。
+	resp, cerr := s.computeRouteForEntries(r.Context(), body.EntryIDs, "")
+	if cerr != nil {
+		writeErr(w, cerr.status, cerr.code, cerr.message)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// computeRouteAPIError 讓 computeRouteForEntries 可以把「該用哪個 HTTP 狀態碼
+// /錯誤代碼回應」的判斷留給呼叫端的 writeErr,自己專心做路線計算——
+// handleComputeRouteFromEntries(免頻道檢查)與
+// handlePublicComputeRoute(需頻道檢查)共用同一份核心邏輯,只是
+// 呼叫前各自做不同的授權/範圍檢查。
+type computeRouteAPIError struct {
+	status  int
+	code    string
+	message string
+}
+
+// computeRouteForEntries 是 handleComputeRouteFromEntries/
+// handlePublicComputeRoute 共用的核心:給一批 entryIDs,查出座標、
+// 組成 origin/intermediates/destination 呼叫 computeRoutes,回傳跟原本
+// handleComputeRouteFromEntries 一致的回應 body 形狀。
+//
+// scopeChannelID 非空時,額外要求每筆 entry 的 ChannelID 必須等於這個值,
+// 不符合就整批拒絕(回 403)——供公開分享頁呼叫端用分享連結對應的頻道限制
+// 範圍,避免免登入的呼叫被拿去查詢其他頻道的 entry。傳空字串跳過這項檢查
+// (供已登入呼叫端使用,呼叫身分已經過 internalAuth 驗證)。
+func (s *Server) computeRouteForEntries(ctx context.Context, entryIDs []string, scopeChannelID string) (map[string]any, *computeRouteAPIError) {
 	type entryPoint struct {
 		id       string
 		title    string
 		waypoint routeWaypoint
 		hasLoc   bool
 	}
-	points := make([]entryPoint, 0, len(body.EntryIDs))
-	for _, id := range body.EntryIDs {
+	points := make([]entryPoint, 0, len(entryIDs))
+	for _, id := range entryIDs {
 		entry, err := s.store.GetEntry(id)
 		if err != nil {
-			writeErr(w, http.StatusNotFound, "entry_not_found", "找不到此 entry: "+id)
-			return
+			return nil, &computeRouteAPIError{http.StatusNotFound, "entry_not_found", "找不到此 entry: " + id}
+		}
+		if scopeChannelID != "" && entry.ChannelID != scopeChannelID {
+			return nil, &computeRouteAPIError{http.StatusForbidden, "entry_not_in_channel", "此 entry 不屬於這個分享連結的頻道: " + id}
 		}
 		if entry.Lat != nil && entry.Lng != nil {
 			points = append(points, entryPoint{
@@ -172,8 +208,7 @@ func (s *Server) handleComputeRouteFromEntries(w http.ResponseWriter, r *http.Re
 			continue
 		}
 		if p.title == "" {
-			writeErr(w, http.StatusBadRequest, "invalid_input", "起點/終點 entry 沒有座標、title 也為空,無從定位: "+p.id)
-			return
+			return nil, &computeRouteAPIError{http.StatusBadRequest, "invalid_input", "起點/終點 entry 沒有座標、title 也為空,無從定位: " + p.id}
 		}
 		p.waypoint = routeWaypoint{Address: p.title}
 	}
@@ -192,8 +227,7 @@ func (s *Server) handleComputeRouteFromEntries(w http.ResponseWriter, r *http.Re
 
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	if apiKey == "" {
-		writeErr(w, http.StatusServiceUnavailable, "no_api_key", "未設定 GOOGLE_PLACES_API_KEY")
-		return
+		return nil, &computeRouteAPIError{http.StatusServiceUnavailable, "no_api_key", "未設定 GOOGLE_PLACES_API_KEY"}
 	}
 
 	titles := make([]string, 0, len(points))
@@ -201,16 +235,15 @@ func (s *Server) handleComputeRouteFromEntries(w http.ResponseWriter, r *http.Re
 		titles = append(titles, p.title)
 	}
 
-	result, err := computeRouteByWaypoints(r.Context(), apiKey, first.waypoint, intermediates, last.waypoint)
+	result, err := computeRouteByWaypoints(ctx, apiKey, first.waypoint, intermediates, last.waypoint)
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, "compute_route_failed", err.Error())
-		return
+		return nil, &computeRouteAPIError{http.StatusBadGateway, "compute_route_failed", err.Error()}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		"entryIDs": body.EntryIDs,
+	return map[string]any{
+		"entryIDs": entryIDs,
 		"titles":   titles,
 		"skipped":  skipped,
 		"result":   result,
-	})
+	}, nil
 }

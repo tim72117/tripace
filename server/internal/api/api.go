@@ -138,6 +138,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /v1/channels/{id}/public-link", s.handleDeletePublicLink)
 	mux.HandleFunc("GET /v1/public/{token}", s.handlePublicView)
 	mux.HandleFunc("POST /v1/public/{token}/assist", s.handlePublicAssist)
+	mux.HandleFunc("POST /v1/public/{token}/compute-route", s.handlePublicComputeRoute)
 
 	// PaceRouteMap(web/src/PaceRouteMap.tsx,UI 試做用)展示頁的固定路線資料,
 	// 不需要登入(展示頁本身不需要身分),見 pace_route.go 的說明。

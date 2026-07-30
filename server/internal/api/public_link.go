@@ -127,6 +127,47 @@ func (s *Server) handlePublicView(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// POST /v1/public/{token}/compute-route — 無需登入，替分享頁訪客算路線。
+//
+// 對應登入後正式介面用的 POST /internal/entries/compute-route
+// (handleComputeRouteFromEntries,entry_geocode.go)：那支端點掛在
+// internalAuth 之後，靠「必須帶有效 JWT」擋著，本身完全不檢查 entryIDs
+// 是否屬於同一個頻道。這支端點刻意不登入即可呼叫（公開分享頁的訪客沒有
+// JWT），因此改用 token 反查頻道、並要求所有 entryIDs 都屬於這個頻道
+// (見 computeRouteForEntries 的 scopeChannelID 參數)——避免任何人只要
+// 知道一個分享連結，就能拿它當免驗證跳板去查詢/觸發其他頻道 entry 的
+// 路線計算（entry 存不存在、座標為何都會透過錯誤訊息/成功結果洩漏）。
+func (s *Server) handlePublicComputeRoute(w http.ResponseWriter, r *http.Request) {
+	token := r.PathValue("token")
+	info, err := s.store.GetPublicLinkChannel(token)
+	if errors.Is(err, store.ErrNotFound) {
+		writeErr(w, http.StatusNotFound, "not_found", "找不到此分享連結")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
+		return
+	}
+
+	var body struct {
+		EntryIDs []string `json:"entryIDs"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if len(body.EntryIDs) < 2 {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "entryIDs 至少需要 2 筆(起點+終點)")
+		return
+	}
+
+	resp, cerr := s.computeRouteForEntries(r.Context(), body.EntryIDs, info.ChannelID)
+	if cerr != nil {
+		writeErr(w, cerr.status, cerr.code, cerr.message)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 // POST /v1/public/{token}/assist — 公開頁訪客送訊息（僅 editable 連結允許）。
 func (s *Server) handlePublicAssist(w http.ResponseWriter, r *http.Request) {
 	token := r.PathValue("token")

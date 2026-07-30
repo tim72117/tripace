@@ -78,7 +78,7 @@ export function PacePhoneSwipe({
   return (
     <div className="pace-drawer-wrap">
       <div className={styles.map}>
-        <PaceRouteMap checkpoints={checkpoints} />
+        <PaceRouteMap checkpoints={checkpoints} publicToken={publicToken} />
       </div>
 
       {open && (

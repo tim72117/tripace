@@ -40,12 +40,14 @@ export interface SelectedEntry {
 // 限制範圍——跟 RecommendedPlacesMap.tsx 仍直接呼叫 Places API (New) 的
 // places:searchText 不同,那是刻意保留的既有模式,這裡是特意搬到後端。
 //
-// 目前打的是 POST /internal/entries/compute-route(見
-// server/internal/api/entry_geocode.go 的 handleComputeRouteFromEntries),
 // entryIDs 改由 checkpoints prop 動態決定(見下方 props 說明)——不再寫死
-// 特定頻道的 entry。這支端點掛在 /internal/*,需要帶有效的自家 JWT(見
-// middleware.go 的 internalAuth),故底下改用帶 Authorization header 的
-// POST 呼叫,不再是原本 GET /v1/demo/pace-route 那種不需登入的公開呼叫。
+// 特定頻道的 entry。登入後的正式介面打 POST /internal/entries/compute-route
+// (見 server/internal/api/entry_geocode.go 的 handleComputeRouteFromEntries),
+// 掛在 /internal/*,需要帶有效的自家 JWT(見 middleware.go 的
+// internalAuth),故底下改用帶 Authorization header 的 POST 呼叫。公開分享頁
+// 的訪客沒有這把 JWT,改打免登入的 POST /v1/public/{token}/compute-route
+// (見 server/internal/api/public_link.go 的 handlePublicComputeRoute),由
+// publicToken prop 決定要打哪一支(見下方 props 說明)。
 //
 // MINIMAL_MAP_STYLE/ensureOptionsSet 是從 RecommendedPlacesMap.tsx 複製過來
 // 的獨立副本,刻意不 import 共用——那個檔案目前另有進行中的修改,這裡先不
@@ -125,6 +127,7 @@ function bearingBetween(a: google.maps.LatLng, b: google.maps.LatLng): number {
 
 export function PaceRouteMap({
   checkpoints,
+  publicToken,
   selectedEntry,
   onSelectedEntryDone,
   onEntrySaved,
@@ -138,6 +141,14 @@ export function PaceRouteMap({
   // 少於 2 筆(該段還沒有 checkpoint,或還在載入中)時不計算路線,地圖
   // 仍正常顯示,只是沒有 Polyline 可畫。
   checkpoints: Checkpoint[]
+  // publicToken:公開分享頁(PublicPaceDemoPage.tsx/PhoneScreens.tsx 的
+  // PublicViewScreen/PacePhoneSwipe)傳入,對應這個分享連結的 token——非
+  // undefined 時代表這個元件掛載在「訪客沒有登入身分」的情境,路線計算改
+  // 打免登入的 POST /v1/public/{token}/compute-route(見下方路線 effect
+  // 的說明),不再嘗試帶 JWT 打 /internal/entries/compute-route(訪客本來
+  // 就沒有 token,一定會被 401)。登入後的正式介面(DesktopLayout.tsx/
+  // PhoneContent.tsx)不傳這個 prop,維持原本走 /internal/* 的行為。
+  publicToken?: string
   // selectedEntry:使用者在側欄點擊的檢查站(見 DesktopLayout.tsx 登入後
   // 正式介面的 pace 面板),非 null 時才顯示中央選點圖釘與「儲存座標」
   // 按鈕。可選是因為 PublicPaceDemoPage.tsx(/demo/pace 公開分享頁)刻意
@@ -305,20 +316,28 @@ export function PaceRouteMap({
       cached = null
     }
 
-    // POST /internal/entries/compute-route 掛在 internalAuth 之後,需要帶
-    // 有效的自家 JWT——訪客(未登入)沒有這把 token,呼叫會被 401 拒絕。
-    // AUTH_TOKEN_KEY 是 AppCommon.tsx 內部常數,這裡直接讀同一把
+    // publicToken 有值:公開分享頁的訪客,沒有登入身分,改打免登入的
+    // POST /v1/public/{token}/compute-route(見 server/internal/api/
+    // public_link.go handlePublicComputeRoute)——那支端點會反查 token 對應
+    // 的頻道,並要求 entryIDs 都屬於這個頻道才放行,不是完全不設防。
+    //
+    // publicToken 未傳(登入後的正式介面):沿用原本行為,POST
+    // /internal/entries/compute-route 掛在 internalAuth 之後,需要帶有效的
+    // 自家 JWT。AUTH_TOKEN_KEY 是 AppCommon.tsx 內部常數,這裡直接讀同一把
     // localStorage key(見該檔案 login/register 成功後寫入的位置),避免
     // 為了這次驗證改動 AppCommon 的匯出介面。
     const authToken = localStorage.getItem('tripace.auth.token')
+    const endpoint = publicToken
+      ? `${BASE_URL}/v1/public/${publicToken}/compute-route`
+      : `${BASE_URL}/internal/entries/compute-route`
 
     const source: Promise<RouteCache> = cached
       ? Promise.resolve(cached)
-      : fetch(`${BASE_URL}/internal/entries/compute-route`, {
+      : fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+            ...(!publicToken && authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           },
           body: JSON.stringify({ entryIDs }),
         })
@@ -404,7 +423,7 @@ export function PaceRouteMap({
     // 衍生出來的另一份陣列(參照每次重渲染都變,但內容跟 entryIDsKey 同步
     // 變動),放進來只會造成重複觸發,不會多偵測到任何真正的變化。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, apiKey, entryIDsKey])
+  }, [mapReady, apiKey, entryIDsKey, publicToken])
 
   // selectedEntry 改變(使用者點了另一張檢查站卡片)時平移地圖過去——用
   // 'idle' 而非 'center_changed' 追蹤中心點(見下面那個 effect),兩者是

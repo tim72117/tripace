@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useIsDesktop } from './AppCommon'
-import { PaceChart, type Checkpoint } from './PaceChart'
+import { PaceChart, PACE_PUBLIC_LINK_TOKEN, type Checkpoint } from './PaceChart'
 import { PaceRouteMap } from './PaceRouteMap'
 import { PacePhoneSwipe } from './PacePhoneSwipe'
 
@@ -25,7 +25,13 @@ export function PublicPaceDemoPage() {
   // token 那條路徑抓資料,但鏡像機制本身是同一套,不需要另外處理。
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([])
   if (!isDesktop) {
-    return <PacePhoneSwipe checkpoints={checkpoints} onRouteChange={setCheckpoints} />
+    return (
+      <PacePhoneSwipe
+        publicToken={PACE_PUBLIC_LINK_TOKEN}
+        checkpoints={checkpoints}
+        onRouteChange={setCheckpoints}
+      />
+    )
   }
   return (
     <div className="desktop-layout">
@@ -38,7 +44,7 @@ export function PublicPaceDemoPage() {
       </aside>
       <main className="desktop-main">
         <div className="desktop-demo-panel">
-          <PaceRouteMap checkpoints={checkpoints} />
+          <PaceRouteMap checkpoints={checkpoints} publicToken={PACE_PUBLIC_LINK_TOKEN} />
         </div>
       </main>
     </div>

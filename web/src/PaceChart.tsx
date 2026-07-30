@@ -158,7 +158,10 @@ interface RouteMeta {
 // 介面(DesktopLayout.tsx)不使用這個 token——跟時間軸(Timeline)同一套
 // 邏輯,改讀登入使用者目前選取的頻道(見下方 channelID prop 與
 // useEffect),不綁定固定頻道,也不需要經過公開連結機制。
-const PACE_PUBLIC_LINK_TOKEN = import.meta.env.VITE_PACE_PUBLIC_LINK_TOKEN as string | undefined
+// export:PublicPaceDemoPage.tsx 掛載 PaceRouteMap 時也需要同一把 token(公開
+// 頁的 compute-route 改走 /v1/public/{token}/compute-route,見 PaceRouteMap.tsx
+// 的 publicToken prop 說明),不重複讀一次 import.meta.env,直接共用這份。
+export const PACE_PUBLIC_LINK_TOKEN = import.meta.env.VITE_PACE_PUBLIC_LINK_TOKEN as string | undefined
 
 // KNOWN_ROUTE_META:已知/手動維護的路線摘要,目前只有花東193公路 demo
 // 頻道的 leg1~leg4 四段——這些是純展示用的文字/彙總數字,後端 Entry/Detail

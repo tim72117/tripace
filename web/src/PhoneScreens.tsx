@@ -76,7 +76,7 @@ function PublicPaceDrawerMap({ token }: { token: string }) {
       </aside>
       <main className="desktop-main">
         <div className="desktop-demo-panel">
-          <PaceRouteMap checkpoints={checkpoints} />
+          <PaceRouteMap checkpoints={checkpoints} publicToken={token} />
         </div>
       </main>
     </div>
