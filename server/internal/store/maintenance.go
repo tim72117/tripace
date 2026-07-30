@@ -36,3 +36,33 @@ func (s *Store) DropLegacyEntryColumns() (dropped []string, err error) {
 	}
 	return dropped, nil
 }
+
+// PurgeCliAuthSessionsMissingUserCode 刪除 cli_auth_sessions 表裡 user_code
+// 為 NULL 的舊資料列。
+//
+// 背景:cliAuthSessionRow.UserCode 加了 `not null` 標籤是後來（device code 流程
+// 上線時）才有的（見 cliauth.go）；AutoMigrate 幫既有的 user_code 欄位補上
+// NOT NULL 約束前，資料庫裡可能還留著這個欄位上線前建立的舊 session——那些
+// 列的 user_code 天生就是 NULL，讓 AutoMigrate 的 ALTER COLUMN ... SET NOT
+// NULL 直接失敗（SQLSTATE 23502），使整個 AutoMigrate 中斷、後面排隊的表都
+// 同步跟著沒套上（見 store.go Open() 對這個失敗模式的說明）。
+//
+// 安全性:目前程式碼裡，不管是 loopback 回呼流程（StartCliAuth）還是 device
+// code 流程（StartDeviceAuth），都一定會生成 user_code（見
+// startCliAuthSession），沒有任何路徑會建立 user_code 為 NULL 的合法 session
+// ——換句話說，NULL 的列只可能是這個欄位存在之前留下的舊資料。而
+// cli_auth_sessions 本來就是短命的 pending 登入 session（cliAuthTTL 只有 10
+// 分鐘，見本檔案上方常數），這些舊列必然早已過期、沒有任何使用中的登入流程
+// 會依賴它們，故直接整批刪除是安全的，不需要先個別檢查 expires_at。
+//
+// 冪等:沒有 NULL 列時刪 0 筆，重複執行安全。
+//
+// 這是一次性維運指令，只能透過 cmd/cli 手動執行，不會出現在 Open()/AutoMigrate
+// 或任何伺服器啟動流程裡。
+func (s *Store) PurgeCliAuthSessionsMissingUserCode() (deleted int64, err error) {
+	res := s.db.Where("user_code IS NULL").Delete(&cliAuthSessionRow{})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return res.RowsAffected, nil
+}
