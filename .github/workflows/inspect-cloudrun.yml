@@ -1,0 +1,73 @@
+name: Inspect Cloud Run Config
+
+# 唯讀的一次性檢查工具：印出 tripace-server / tripace-adminserver
+# 這兩個 Cloud Run Service，以及 tripace-migrate 這個 Cloud Run Job 目前
+# 實際套用的設定（CPU/記憶體配額、min/max instances、concurrency、
+# timeout 等）。
+#
+# 動機：deploy-cloudrun.yml/deploy-admin.yml 的 `gcloud run deploy` 都沒有
+# 帶 --cpu/--memory/--min-instances/--max-instances/--concurrency/--timeout
+# 這些旗標，只從這些 workflow 檔案本身看不出正式站目前實際在跑的資源配置
+# 是 Cloud Run 平台預設值，還是曾經在別處（Console、這幾支 workflow 之外）
+# 手動調整過、後續部署未帶這些旗標時被沿用下來的值——只能實際查詢當下的
+# 服務設定才能確定。
+#
+# 只能手動觸發（workflow_dispatch），不做任何寫入操作，跑完不影響任何正式
+# 站的執行狀態。
+
+on:
+  workflow_dispatch: {}
+
+env:
+  GCP_PROJECT_ID: "shuttle-045094509"
+  CLOUD_RUN_REGION: "asia-east1"
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Describe tripace-server
+        continue-on-error: true
+        run: |
+          echo "===== tripace-server ====="
+          gcloud run services describe tripace-server \
+            --region=${{ env.CLOUD_RUN_REGION }} \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --format=yaml
+
+      - name: Describe tripace-adminserver
+        continue-on-error: true
+        run: |
+          echo "===== tripace-adminserver ====="
+          gcloud run services describe tripace-adminserver \
+            --region=${{ env.CLOUD_RUN_REGION }} \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --format=yaml
+
+      - name: Describe tripace-migrate job
+        continue-on-error: true
+        run: |
+          echo "===== tripace-migrate (Cloud Run Job) ====="
+          gcloud run jobs describe tripace-migrate \
+            --region=${{ env.CLOUD_RUN_REGION }} \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --format=yaml
+
+      - name: List active revisions and traffic split
+        continue-on-error: true
+        run: |
+          echo "===== tripace-server revisions ====="
+          gcloud run revisions list \
+            --service=tripace-server \
+            --region=${{ env.CLOUD_RUN_REGION }} \
+            --project=${{ env.GCP_PROJECT_ID }}
