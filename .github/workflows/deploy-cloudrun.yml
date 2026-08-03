@@ -1,14 +1,14 @@
 name: Deploy to Cloud Run
 
+# 曾經有 push 自動觸發(branches: [main], paths: server/**、web/** 等),
+# 已移除:2026-08 channel→trip 改名這批改動需要先執行資料庫遷移
+# (rename-channel-to-trip)才能讓新程式碼正常運作,若 push 到 main 就自動
+# build+deploy,會在資料庫還沒改名的狀態下把讀新 schema 的程式碼推上線,
+# 直接壞掉。之後若確定某類改動不涉及資料庫 schema、可以安全自動部署,
+# 再評估要不要恢復 push 觸發(且應排除有資料庫遷移依賴的那類 commit,
+# 但 workflow 层級無法可靠自動判斷這件事,見 deploy-with-migration.yml
+# 開頭的說明)。目前一律透過這支或 deploy-with-migration.yml 手動觸發。
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'server/**'
-      - 'web/**'
-      - 'Dockerfile'
-      - '.dockerignore'
-      - '.github/workflows/deploy-cloudrun.yml'
   workflow_dispatch:
     inputs:
       skip_build:
