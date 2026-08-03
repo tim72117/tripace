@@ -22,6 +22,10 @@ on:
         description: '建置/更新 Job 定義後是否立即執行一次'
         type: boolean
         default: true
+      backup_first:
+        description: '執行維運指令前,先用 gcloud sql export 備份一份到 GCS(強烈建議對有結構性變更的指令保持勾選)'
+        type: boolean
+        default: true
 
 env:
   GCP_PROJECT_ID: "shuttle-045094509"
@@ -29,6 +33,8 @@ env:
   JOB_NAME: "tripace-migrate"
   IMAGE: "asia-east1-docker.pkg.dev/shuttle-045094509/cloud-run-source-deploy/tripace-migrate"
   CLOUDSQL_INSTANCE: "onagent-prod:asia-east1:onagent-db"
+  CLOUDSQL_INSTANCE_ID: "onagent-db" # gcloud sql export/instances 系列指令只吃 instance 短名,不含 project:region 前綴
+  BACKUP_BUCKET: "tripace-db-backups"
 
 jobs:
   build-and-run:
@@ -46,6 +52,92 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      # 從 Secret Manager 讀出正式站的 DATABASE_URL,解析出資料庫名稱。
+      # 之所以不能直接硬編碼成 "tripace":本機開發環境的 database 叫
+      # tripace,但正式站是否同名並不保證,唯一可信的來源是既有的
+      # DATABASE_URL secret(Deploy/update Cloud Run Job 步驟本身也是
+      # 用這個 secret 掛進 Job 的)。DSN 常見兩種格式:
+      #   postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require
+      #   postgresql://USER:PASSWORD@/DBNAME?host=/cloudsql/xxx
+      # 兩種格式的資料庫名稱都位在「最後一個 /」之後、「?」之前,故用
+      # 這個規則解析即可涵蓋。解析失敗(空字串)時明確讓 job fail,避免
+      # 後續備份步驟拿著空字串繼續跑、產生更難懂的錯誤。
+      - name: Resolve database name from DATABASE_URL secret
+        if: ${{ inputs.backup_first }}
+        id: resolve-db
+        run: |
+          set -euo pipefail
+          DSN="$(gcloud secrets versions access latest --secret=DATABASE_URL --project=${{ env.GCP_PROJECT_ID }})"
+
+          # 去掉 querystring(? 之後的部分),再取最後一個 / 之後的內容
+          DSN_NO_QUERY="${DSN%%\?*}"
+          DB_NAME="${DSN_NO_QUERY##*/}"
+
+          if [ -z "$DB_NAME" ]; then
+            echo "::error::無法從 DATABASE_URL 解析出資料庫名稱,DSN 格式可能不符預期,請確認 Secret Manager 內的 DATABASE_URL 內容。"
+            exit 1
+          fi
+
+          echo "db_name=${DB_NAME}" >> "$GITHUB_OUTPUT"
+
+      # bucket 是否已存在的冪等檢查:優先用 describe 判斷存不存在,再決定
+      # 要不要 create。之所以不用 `gcloud storage buckets create
+      # --if-not-exists`,是因為不確定目前 gcloud CLI 版本是否支援這個
+      # flag、以及它的實際行為是否符合預期,改用「先檢查再建立」這種較
+      # 保守、肯定冪等的寫法。
+      - name: Ensure GCS bucket for DB backups exists
+        if: ${{ inputs.backup_first }}
+        run: |
+          set -euo pipefail
+          if gcloud storage buckets describe "gs://${{ env.BACKUP_BUCKET }}" --project=${{ env.GCP_PROJECT_ID }} >/dev/null 2>&1; then
+            echo "Bucket gs://${{ env.BACKUP_BUCKET }} 已存在,略過建立。"
+          else
+            echo "Bucket gs://${{ env.BACKUP_BUCKET }} 不存在,建立中..."
+            gcloud storage buckets create "gs://${{ env.BACKUP_BUCKET }}" \
+              --project=${{ env.GCP_PROJECT_ID }} \
+              --location=${{ env.CLOUD_RUN_REGION }}
+          fi
+
+      # gcloud sql export 是用 Cloud SQL 實例自己的服務帳號寫入 GCS,
+      # 不是用這支 workflow 的 WIF 服務帳號,因此需要額外把 bucket 的
+      # 寫入權限授予給它。IAM 綁定本身是冪等操作(重複 add 同一個
+      # binding 不會出錯),不需要額外判斷是否已存在。
+      - name: Grant Cloud SQL service account write access to backup bucket
+        if: ${{ inputs.backup_first }}
+        run: |
+          set -euo pipefail
+          SQL_SA="$(gcloud sql instances describe ${{ env.CLOUDSQL_INSTANCE_ID }} \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --format='value(serviceAccountEmailAddress)')"
+
+          if [ -z "$SQL_SA" ]; then
+            echo "::error::無法取得 Cloud SQL 實例 ${{ env.CLOUDSQL_INSTANCE_ID }} 的服務帳號 email。"
+            exit 1
+          fi
+
+          gcloud storage buckets add-iam-policy-binding "gs://${{ env.BACKUP_BUCKET }}" \
+            --member="serviceAccount:${SQL_SA}" \
+            --role="roles/storage.objectAdmin"
+
+      # 正式備份:gcloud sql export sql 預設是同步阻塞直到匯出完成才
+      # 返回(不像 run jobs execute 需要額外 --wait),因此不需要另外加
+      # 等待邏輯。也不特別縮短這個 step 的 timeout——沿用 job 預設值,
+      # 避免正式資料庫較大、匯出耗時較久時被誤判為逾時失敗。
+      - name: Backup Cloud SQL database before migration
+        if: ${{ inputs.backup_first }}
+        id: backup
+        run: |
+          set -euo pipefail
+          TIMESTAMP="$(date -u +%Y%m%d_%H%M%S)"
+          BACKUP_URI="gs://${{ env.BACKUP_BUCKET }}/tripace-backup-${TIMESTAMP}.sql"
+
+          gcloud sql export sql ${{ env.CLOUDSQL_INSTANCE_ID }} "${BACKUP_URI}" \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --database=${{ steps.resolve-db.outputs.db_name }}
+
+          echo "backup_uri=${BACKUP_URI}" >> "$GITHUB_OUTPUT"
+          echo "備份完成: ${BACKUP_URI}"
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker asia-east1-docker.pkg.dev --quiet
@@ -94,3 +186,8 @@ jobs:
           echo "參數: \`${{ inputs.cli_args }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "查看完整 log:" >> "$GITHUB_STEP_SUMMARY"
           echo "https://console.cloud.google.com/run/jobs/details/${{ env.CLOUD_RUN_REGION }}/${{ env.JOB_NAME }}/executions?project=${{ env.GCP_PROJECT_ID }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Show backup location in summary
+        if: ${{ inputs.backup_first }}
+        run: |
+          echo "備份檔案位置: \`${{ steps.backup.outputs.backup_uri }}\`" >> "$GITHUB_STEP_SUMMARY"
