@@ -15,7 +15,7 @@ import (
 // MockAnalyzer 是不接真實 LLM 的假分析器,供 web 介面實際操作、看完整資料流。
 // 與 want 引擎不同:它不解析使用者輸入——前端送出的文字只是「觸發」,
 // mock 自己從預設情境輪流產生 entry,走與真 LLM 完全相同的落庫路徑
-// (FindOrCreateTrip 歸組 + InsertEntry),故 Trip 聚合、查詢都真實運作。
+// (InsertEntry),故條目寫入、查詢都真實運作。
 //
 // 實作 Analyzer(Answer)與 Assistant(AssistForSession)兩個 interface,
 // 可直接取代 WantPool 注入。
@@ -26,16 +26,13 @@ type MockAnalyzer struct {
 	next int
 }
 
-// NewMock 建立 mock 分析器(需 store 以真實寫入 entry / 觸發 Trip 歸組)。
+// NewMock 建立 mock 分析器(需 store 以真實寫入 entry)。
 func NewMock(st *store.Store) *MockAnalyzer {
 	return &MockAnalyzer{store: st}
 }
 
 // scenario 是預設情境的一筆。日期用「相對今天的天數」表示,記事當下換算成絕對日期,
-// 讓 entries 永遠落在「未來」。刻意設計成可展示 Trip 歸組:
-//   - 東京旅遊:住宿(區間,框出行程)+ 機票、開會(落在範圍內 → 歸入同一 Trip)
-//   - 看牙醫(範圍外 → 自成一個 Trip)
-//   - 買牛奶(無時間 → 不歸組)
+// 讓 entries 永遠落在「未來」。涵蓋區間事件、單點事件與無時間事件三種形態。
 type scenario struct {
 	title    string
 	startDay int    // 距今天數;-1 表示無時間
@@ -45,10 +42,10 @@ type scenario struct {
 
 var mockScenarios = []scenario{
 	{title: "東京住宿(新宿飯店)", startDay: 7, endDay: 10, clock: ""},     // 區間:7~10 天後
-	{title: "東京來回機票", startDay: 7, endDay: -1, clock: "09:30"},    // 落在住宿首日
-	{title: "與客戶開會討論合約", startDay: 8, endDay: -1, clock: "14:00"}, // 落在住宿範圍內
-	{title: "看牙醫", startDay: 30, endDay: -1, clock: "10:00"},      // 範圍外 → 自成 Trip
-	{title: "買牛奶", startDay: -1, endDay: -1, clock: ""},           // 無時間 → 不歸組
+	{title: "東京來回機票", startDay: 7, endDay: -1, clock: "09:30"},    // 單點:住宿首日
+	{title: "與客戶開會討論合約", startDay: 8, endDay: -1, clock: "14:00"}, // 單點
+	{title: "看牙醫", startDay: 30, endDay: -1, clock: "10:00"},      // 單點
+	{title: "買牛奶", startDay: -1, endDay: -1, clock: ""},           // 無時間
 }
 
 func newEntryID() string {
@@ -65,13 +62,8 @@ func fmtDate(day int) string {
 	return time.Now().UTC().AddDate(0, 0, day).Format("2006-01-02")
 }
 
-// AssistForSession 模擬 owner 記事:取下一筆預設情境寫成 entry。不解析 text(僅作觸發)。
-//
-// 走與 want 真實 LLM 一致的新流程(不再用 FindOrCreateTrip 自動歸組):
-//  1. 寫 entry,tripID 留 nil(等同 record_entry)。
-//  2. 查時間相符的候選 trip(等同 record_entry 列候選)。
-//  3. 模擬「LLM 的決定」:有候選就歸入第一個;無候選但有時間則新建 trip。
-//     (等同 LLM 判斷後呼叫 add_to_trip。mock 的規則是「有候選就歸入」。)
+// AssistForSession 模擬 owner 記事:取下一筆預設情境寫成 entry(等同 record_entry)。
+// 不解析 text(僅作觸發)。
 //
 // lang 參數忽略:mock 本來就是寫死中文假資料,不需要真的支援雙語。
 func (m *MockAnalyzer) AssistForSession(_, channelID, _, _, _ string, _ func(entryIDs []string) error) AssistResult {
@@ -87,7 +79,6 @@ func (m *MockAnalyzer) AssistForSession(_, channelID, _, _, _ string, _ func(ent
 		endDate = fmtDate(sc.endDay)
 	}
 
-	// 1. 寫 entry(tripID 留 nil,不自動歸組)。
 	id := newEntryID()
 	if err := m.store.InsertEntry(model.Entry{
 		ID:        id,
@@ -99,22 +90,6 @@ func (m *MockAnalyzer) AssistForSession(_, channelID, _, _, _ string, _ func(ent
 		CreatedAt: time.Now().UTC(),
 	}); err != nil {
 		return AssistResult{Kind: "error", Text: "mock 寫入失敗: " + err.Error()}
-	}
-
-	// 2~3. 有時間才考慮歸組:查候選,模擬 LLM 決定(有候選歸入第一個,否則新建)。
-	if startDate != "" {
-		candidates, err := m.store.FindOverlappingTrips(channelID, startDate, endDate)
-		if err == nil {
-			var tripID string
-			if len(candidates) > 0 {
-				tripID = candidates[0].ID // 模擬 LLM 判斷「屬於這個行程」
-			} else {
-				tripID, _ = m.store.CreateTrip(channelID, sc.title, startDate, endDate) // 模擬 LLM 新建
-			}
-			if tripID != "" {
-				_ = m.store.SetEntryTrip(id, &tripID)
-			}
-		}
 	}
 
 	return AssistResult{

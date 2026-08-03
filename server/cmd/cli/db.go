@@ -39,6 +39,13 @@ func (c *dbClient) listChannels() (any, error) {
 	return map[string]any{"channels": channels}, err
 }
 
+// tripEntries 列出某個頻道的所有 entry(名稱沿用歷史,見 httpClient 的同名
+// 方法說明)。
+func (c *dbClient) tripEntries(channelID string) (any, error) {
+	entries, err := c.st.ListEntriesByChannel(channelID)
+	return map[string]any{"entries": entries}, err
+}
+
 // createChannel 在 -db 模式下沒有「已登入使用者」這個概念(整個 dbClient
 // 都是直連 DB、無 HTTP 請求、無 auth context),故 owner 固定用
 // api.Server 對未帶 token 請求的同一個訪客身分(usr_me/"我"，見
@@ -60,25 +67,6 @@ func (c *dbClient) record(channelID, title, start, startTime, end, endTime, loca
 	})
 }
 
-func (c *dbClient) addToTrip(entryID, tripID, title string) (string, string, error) {
-	return c.svc.AddToTrip(entryID, tripID, title)
-}
-
-func (c *dbClient) listTrips(channelID string) (any, error) {
-	trips, err := c.svc.ListTrips(channelID)
-	return map[string]any{"trips": trips}, err
-}
-
-func (c *dbClient) tripEntries(channelID, tripID string) (any, error) {
-	ents, err := c.svc.ListTripEntries(channelID, tripID)
-	return map[string]any{"entries": ents}, err
-}
-
-func (c *dbClient) candidates(channelID, start, end string) (any, error) {
-	trips, err := c.svc.FindCandidates(channelID, start, end)
-	return map[string]any{"candidates": trips}, err
-}
-
 func (c *dbClient) updateEntry(in tripsvc.UpdateEntryInput) error {
 	return c.svc.UpdateEntry(in)
 }
@@ -87,24 +75,13 @@ func (c *dbClient) deleteEntry(entryID string) error {
 	return c.st.DeleteEntry(entryID)
 }
 
-func (c *dbClient) deleteTrip(tripID string) error {
-	return c.svc.DeleteTrip(tripID)
-}
-
 func (c *dbClient) reset(channelID string) error {
 	return c.svc.Reset(channelID)
 }
 
-// dropLegacyColumns 是一次性維運操作:清掉 entries 表已改名淘汰的舊欄位
-// (item/summary)。只在 -db 模式下有意義,故只掛在 dbClient 上,不進 client 介面。
-func (c *dbClient) dropLegacyColumns() ([]string, error) {
-	return c.st.DropLegacyEntryColumns()
-}
-
-// purgeCliAuthSessions 是一次性維運操作:清空 cli_auth_sessions 表,解除
-// AutoMigrate 幫 user_code 欄位新增 NOT NULL 約束時、在非空表上失敗的問題
-// (見 store.PurgeAllCliAuthSessions 的完整說明)。只在 -db 模式下有意義,
-// 故只掛在 dbClient 上,不進 client 介面。
-func (c *dbClient) purgeCliAuthSessions() (int64, error) {
-	return c.st.PurgeAllCliAuthSessions()
+// dropTripGrouping 是一次性維運操作:清掉 trip 歸組機制留下的孤兒資料庫
+// 物件(entries.trip_id 欄位與 trips 表,見 store.DropTripGroupingObjects
+// 的完整說明)。只在 -db 模式下有意義,故只掛在 dbClient 上,不進 client 介面。
+func (c *dbClient) dropTripGrouping() ([]string, error) {
+	return c.st.DropTripGroupingObjects()
 }

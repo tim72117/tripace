@@ -130,8 +130,6 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /v1/channels/{id}/entries/{entryID}", s.handleUpdateTripEntry)
 	mux.HandleFunc("DELETE /v1/channels/{id}/entries/{entryID}", s.handleDeleteTripEntry)
 	mux.HandleFunc("PATCH /v1/entries/{id}", s.handleUpdateEntry)
-	mux.HandleFunc("GET /v1/channels/{id}/trips", s.handleListTrips)
-	mux.HandleFunc("GET /v1/channels/{id}/trips/{tripID}/entries", s.handleListTripEntries)
 	mux.HandleFunc("GET /v1/channels/{id}/ws", s.handleWS)
 	mux.HandleFunc("POST /v1/channels/{id}/public-link", s.handleCreatePublicLink)
 	mux.HandleFunc("GET /v1/channels/{id}/public-link", s.handleGetPublicLink)
@@ -178,15 +176,13 @@ func (s *Server) Routes() http.Handler {
 	internalMux := http.NewServeMux()
 	internalMux.HandleFunc("GET /internal/channels", s.handleInternalListChannels)
 	internalMux.HandleFunc("POST /internal/channels/{id}/notify", s.handleNotify)
+	internalMux.HandleFunc("GET /internal/channels/{id}/entries", s.handleInternalListEntries)
 	internalMux.HandleFunc("POST /internal/channels/{id}/entries", s.handleInternalRecord)
-	internalMux.HandleFunc("POST /internal/entries/{id}/trip", s.handleInternalAddToTrip)
 	internalMux.HandleFunc("PATCH /internal/entries/{id}", s.handleInternalUpdateEntry)
 	internalMux.HandleFunc("DELETE /internal/entries/{id}", s.handleInternalDeleteEntry)
 	internalMux.HandleFunc("PATCH /internal/entries/{id}/latlng", s.handleInternalSetLatLng)
 	internalMux.HandleFunc("POST /internal/entries/{id}/geocode", s.handleGeocodeEntry)
 	internalMux.HandleFunc("POST /internal/entries/compute-route", s.handleComputeRouteFromEntries)
-	internalMux.HandleFunc("GET /internal/channels/{id}/trips", s.handleInternalListTrips)
-	internalMux.HandleFunc("GET /internal/channels/{id}/trips/{tripID}/entries", s.handleInternalTripEntries)
 	internalMux.HandleFunc("DELETE /internal/channels/{id}/entries", s.handleInternalReset)
 
 	// clienttools — 「LLM 呼叫前端 tool」試做(POC)專用端點,見
@@ -607,8 +603,8 @@ func (s *Server) handleCreateTripEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// note 目前無獨立寫入欄位(RecordInput 沒有 Note),新增後若帶了 note 用
-	// UpdateEntry 補上——tripsvc.Record 專注在「新增 + 找候選行程」,note 是
-	// 手動編輯情境的欄位,沿用 UpdateEntry 的既有寫入路徑,不擴大 RecordInput
+	// UpdateEntry 補上——tripsvc.Record 專注在「新增條目」本身,note 是手動
+	// 編輯情境的欄位,沿用 UpdateEntry 的既有寫入路徑,不擴大 RecordInput
 	// 的職責。
 	if body.Note != "" {
 		if err := svc.UpdateEntry(tripsvc.UpdateEntryInput{ID: res.EntryID, Note: body.Note}); err != nil {
@@ -749,16 +745,6 @@ func (s *Server) handleUpdateEntry(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"updated": entryID})
 }
 
-// GET /v1/channels/{id}/trips — 頻道的行程分組(後端依時間自動歸組)。
-func (s *Server) handleListTrips(w http.ResponseWriter, r *http.Request) {
-	s.writeTrips(w, r.PathValue("id"))
-}
-
-// GET /v1/channels/{id}/trips/{tripID}/entries — 某行程下的條目。
-func (s *Server) handleListTripEntries(w http.ResponseWriter, r *http.Request) {
-	s.writeTripEntries(w, r.PathValue("id"), r.PathValue("tripID"))
-}
-
 // ----- shared query helpers -----
 
 func (s *Server) writeEntries(w http.ResponseWriter, channelID string) {
@@ -773,32 +759,8 @@ func (s *Server) writeEntries(w http.ResponseWriter, channelID string) {
 	writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
 }
 
-func (s *Server) writeTrips(w http.ResponseWriter, channelID string) {
-	trips, err := s.store.ListTripsByChannel(channelID)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
-		return
-	}
-	if trips == nil {
-		trips = []model.Trip{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"trips": trips})
-}
-
-func (s *Server) writeTripEntries(w http.ResponseWriter, channelID, tripID string) {
-	entries, err := s.store.ListEntriesByTrip(channelID, tripID)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
-		return
-	}
-	if entries == nil {
-		entries = []model.Entry{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
-}
-
 func (s *Server) resetChannel(w http.ResponseWriter, channelID string) {
-	if err := s.store.DeleteChannelEntriesAndTrips(channelID); err != nil {
+	if err := s.store.DeleteChannelEntries(channelID); err != nil {
 		writeErr(w, http.StatusInternalServerError, "reset_failed", err.Error())
 		return
 	}

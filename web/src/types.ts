@@ -66,23 +66,12 @@ export interface Entry {
   location?: string | null // 地點(可空);目前由人工/前端填,LLM 暫不自動抽取
   lat?: number | null
   lng?: number | null
-  tripID?: string | null // 所屬行程;後端依時間自動歸組,未歸組為 null
   // LLM 標注(原本在 Message 上,改放 Entry;目前後端先留空)。
   // 後端標注未填時 tags 會回 null(非 []),消費端需 ?? [] 收斂。
   category: string | null
   tags: string[] | null
   note: string | null
   createdAt: string // ISO8601
-}
-
-// Trip 是 entries 的行程分組(後端依時間自動歸組)。
-export interface Trip {
-  id: string
-  channelID: string
-  title: string
-  start?: string | null
-  end?: string | null
-  createdAt: string
 }
 
 // login / register / apple 的回應:Me + token。

@@ -1,4 +1,4 @@
-// Command cli 是 entry/trip 的操作工具，供 Claude Code / LLM 直接操作行程資料。
+// Command cli 是 entry 的操作工具，供 Claude Code / LLM 直接操作行程資料。
 //
 // 預設走 HTTP 存取本地或遠端 server（/internal/ API）。
 // 加 -db 旗標改為直連 PostgreSQL（需要 DATABASE_URL）。
@@ -12,22 +12,18 @@
 //
 //	login --web       透過瀏覽器核准登入，換取本機快取的 token（其餘指令的前置條件）
 //	login --device    無頭環境用:印出一組代碼，在任意裝置手動輸入核准
+//	list-channels
 //	create-channel -name 文字
-//	record       -channel ID -title 文字 [-start ... -end ... -location ...]
-//	add-to-trip  -entry ID [-trip ID] [-title 文字]
-//	list-trips   -channel ID
-//	trip-entries -channel ID -trip ID
-//	candidates   -channel ID -start ... [-end ...]
-//	update-entry -entry ID [-title ...] [-start ...] [-end ...] [-location ...] [-note ...] [-kind ...] [-detail JSON]
-//	delete-trip  -trip ID
+//	trip-entries -channel ID
+//	entry-add    -channel ID -title 文字 [-start ... -end ... -location ...]
+//	entry-update -entry ID [-title ...] [-start ...] [-end ...] [-location ...] [-note ...] [-kind ...] [-detail JSON]
+//	entry-delete -entry ID
 //	reset        -channel ID
+//	geocode      -place 文字 [-region 國碼] [-entry ID]
 //	notify       -channel ID
 //
-//	drop-legacy-columns  一次性維運指令,用於清除已改名的舊資料庫欄位(僅 -db 模式)
-//	purge-cli-auth-sessions
-//	                     一次性維運指令,清空 cli_auth_sessions 表,解除
-//	                     AutoMigrate 幫 user_code 欄位加 NOT NULL 約束時、
-//	                     在非空表上失敗的問題(僅 -db 模式)
+//	drop-trip-grouping   一次性維運指令,清除 trip 歸組機制留下的孤兒資料庫
+//	                     物件(entries.trip_id 欄位與 trips 表)(僅 -db 模式)
 //
 // 所有輸出為 JSON（方便 Claude Code 解析）。
 package main
@@ -47,14 +43,10 @@ import (
 type client interface {
 	listChannels() (any, error)
 	createChannel(name string) (any, error)
+	tripEntries(channelID string) (any, error)
 	record(channelID, title, start, startTime, end, endTime, location string) (any, error)
-	addToTrip(entryID, tripID, title string) (string, string, error)
-	listTrips(channelID string) (any, error)
-	tripEntries(channelID, tripID string) (any, error)
-	candidates(channelID, start, end string) (any, error)
 	updateEntry(in tripsvc.UpdateEntryInput) error
 	deleteEntry(entryID string) error
-	deleteTrip(tripID string) error
 	reset(channelID string) error
 }
 
@@ -115,26 +107,16 @@ func main() {
 		cmdEntryUpdate(c, args)
 	case "entry-delete":
 		cmdEntryDelete(c, args)
-	case "add-to-trip":
-		cmdAddToTrip(c, apiURL, args)
-	case "list-trips":
-		cmdListTrips(c, args)
 	case "trip-entries":
 		cmdTripEntries(c, args)
-	case "candidates":
-		cmdCandidates(c, args)
-	case "delete-trip":
-		cmdDeleteTrip(c, args)
 	case "reset":
 		cmdReset(c, args)
 	case "geocode":
 		cmdGeocode(args)
 	case "notify":
 		cmdNotify(args)
-	case "drop-legacy-columns":
-		cmdDropLegacyColumns(useDB, db)
-	case "purge-cli-auth-sessions":
-		cmdPurgeCliAuthSessions(useDB, db)
+	case "drop-trip-grouping":
+		cmdDropTripGrouping(useDB, db)
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -226,6 +208,24 @@ func cmdEntryDelete(c client, args []string) {
 	output(map[string]string{"deleted": *id})
 }
 
+// cmdTripEntries 列出某個頻道的所有 entry。名稱沿用歷史(舊版是列某個 trip
+// 底下的 entry,需要 -channel 與 -trip 兩個參數;trip 歸組移除後改成列整個
+// 頻道,只需要 -channel),等頻道本身改名為 trip 之後這個名稱剛好會對上實際
+// 語意,故不另外改名。
+func cmdTripEntries(c client, args []string) {
+	fs := flag.NewFlagSet("trip-entries", flag.ExitOnError)
+	channel := fs.String("channel", "", "頻道 ID（必填）")
+	_ = fs.Parse(args)
+	if *channel == "" {
+		fatal("trip-entries 需要 -channel")
+	}
+	res, err := c.tripEntries(*channel)
+	if err != nil {
+		fatal("trip-entries: %v", err)
+	}
+	output(res)
+}
+
 func cmdReset(c client, args []string) {
 	fs := flag.NewFlagSet("reset", flag.ExitOnError)
 	channel := fs.String("channel", "", "頻道 ID（必填）")
@@ -251,43 +251,27 @@ func cmdNotify(args []string) {
 	output(map[string]string{"notified": *channel})
 }
 
-// cmdDropLegacyColumns 是一次性維運指令:清掉 entries 表已改名淘汰的舊欄位
-// (item -> title, summary -> note 改名後留下的死欄位)。
+// cmdDropTripGrouping 是一次性維運指令:清掉 trip 歸組機制留下的孤兒資料庫
+// 物件(entries.trip_id 欄位與 trips 表,見 store.DropTripGroupingObjects)。
 //
 // 這不是常規的業務操作，而是直接動資料庫 schema，因此只在 -db 模式下有意義；
 // 沒加 -db 就直接 fatal，不嘗試走 HTTP client(HTTP 沒有也不該有對應端點)。
-func cmdDropLegacyColumns(useDB bool, db *dbClient) {
+func cmdDropTripGrouping(useDB bool, db *dbClient) {
 	if !useDB {
-		fatal("drop-legacy-columns 只能搭配 -db 使用（這是直接動資料庫 schema 的一次性維運操作，不走 HTTP）")
+		fatal("drop-trip-grouping 只能搭配 -db 使用（這是直接動資料庫 schema 的一次性維運操作，不走 HTTP）")
 	}
-	dropped, err := db.dropLegacyColumns()
+	dropped, err := db.dropTripGrouping()
 	if err != nil {
-		fatal("drop-legacy-columns: %v", err)
+		fatal("drop-trip-grouping: %v", err)
 	}
 	if len(dropped) == 0 {
 		output(map[string]any{
 			"dropped": []string{},
-			"message": "舊欄位（item/summary）已不存在，無需操作",
+			"message": "trip 歸組的資料庫物件（entries.trip_id、trips 表）已不存在，無需操作",
 		})
 		return
 	}
 	output(map[string]any{"dropped": dropped})
-}
-
-// cmdPurgeCliAuthSessions 是一次性維運指令:清空 cli_auth_sessions 表(見
-// store.PurgeAllCliAuthSessions 的完整說明)。
-//
-// 同 cmdDropLegacyColumns,只在 -db 模式下有意義,沒加 -db 就直接 fatal，不嘗試
-// 走 HTTP client(HTTP 沒有也不該有對應端點)。
-func cmdPurgeCliAuthSessions(useDB bool, db *dbClient) {
-	if !useDB {
-		fatal("purge-cli-auth-sessions 只能搭配 -db 使用（這是直接動資料庫 schema 的一次性維運操作，不走 HTTP）")
-	}
-	deleted, err := db.purgeCliAuthSessions()
-	if err != nil {
-		fatal("purge-cli-auth-sessions: %v", err)
-	}
-	output(map[string]any{"deleted": deleted})
 }
 
 // notifyChannel 直接用 http.Post(不經 httpClient.do),故 /internal/* 現在
@@ -344,25 +328,21 @@ func usage() {
                依賴的前提）：印出一組短代碼與固定網址，在任意一台裝置打開
                網址、手動輸入代碼核准，CLI 自行輪詢換取 token。-console 用法
                同上。
+  list-channels
   create-channel -name 文字
-  record       -channel ID -title 文字 [-start 'YYYY-MM-DD[ HH:MM]'] [-end ...] [-location ...]
-  add-to-trip  -entry ID [-trip ID] [-title 文字]
-  list-trips   -channel ID
-  trip-entries -channel ID -trip ID
-  candidates   -channel ID -start ... [-end ...]
-  update-entry -entry ID [-title ...] [-start ...] [-end ...] [-location ...] [-note ...] [-kind ...] [-detail JSON]
-  delete-trip  -trip ID
+  trip-entries -channel ID
+               列出該頻道的所有 entry。
+  entry-add    -channel ID -title 文字 [-start 'YYYY-MM-DD'] [-start-time 'HH:MM'] [-end ...] [-end-time ...] [-location ...]
+  entry-update -entry ID [-title ...] [-start ...] [-end ...] [-location ...] [-note ...] [-kind ...] [-detail JSON]
+  entry-delete -entry ID
   reset        -channel ID
+  geocode      -place 文字 [-region 國碼] [-n 筆數] [-entry ID]
+               查詢地點座標；帶 -entry 時直接寫回該筆 entry 的經緯度。
   notify       -channel ID [-api URL]
 
-  drop-legacy-columns  [僅限 -db] 一次性維運指令，清除已改名的舊資料庫欄位
-                        (entries.item/entries.summary，已改名為 title/note)。
+  drop-trip-grouping   [僅限 -db] 一次性維運指令，清除 trip 歸組機制留下的
+                        孤兒資料庫物件（entries.trip_id 欄位與 trips 表）。
                         非常規操作，不加 -db 會直接報錯。
-  purge-cli-auth-sessions
-                        [僅限 -db] 一次性維運指令，清空 cli_auth_sessions 表
-                        （表裡都是短命的 pending 登入 session，清空安全），
-                        解除 AutoMigrate 幫 user_code 欄位加 NOT NULL 約束時、
-                        在非空表上失敗的問題。非常規操作，不加 -db 會直接報錯。
 
 所有輸出為 JSON。
 `)

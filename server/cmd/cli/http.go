@@ -61,6 +61,13 @@ func (c *httpClient) listChannels() (any, error) {
 	return c.do("GET", "/internal/channels", nil)
 }
 
+// tripEntries 列出某個頻道的所有 entry。名稱沿用歷史(舊版是列某個 trip
+// 底下的 entry,trip 歸組移除後改成列整個頻道),等頻道本身改名為 trip 之後
+// 這個名稱剛好會對上實際語意,故不另外改名。
+func (c *httpClient) tripEntries(channelID string) (any, error) {
+	return c.do("GET", "/internal/channels/"+channelID+"/entries", nil)
+}
+
 // createChannel 走 /v1/channels(不是 /internal/):建立頻道天生就需要一個
 // 「以誰的身分當 owner」,/internal/ 底下的其餘端點都刻意不涉及這個問題
 // (直接對已存在的 channelID/entryID 操作),但 /v1/channels 本來就是設計成
@@ -77,31 +84,6 @@ func (c *httpClient) record(channelID, title, start, startTime, end, endTime, lo
 	})
 }
 
-func (c *httpClient) addToTrip(entryID, tripID, title string) (string, string, error) {
-	res, err := c.do("POST", "/internal/entries/"+entryID+"/trip", map[string]any{
-		"tripID": tripID, "title": title,
-	})
-	if err != nil {
-		return "", "", err
-	}
-	tid, _ := res["tripID"].(string)
-	// channelID 不從 HTTP 回傳（notify 已在 server 端處理）
-	return tid, "", nil
-}
-
-func (c *httpClient) listTrips(channelID string) (any, error) {
-	return c.do("GET", "/internal/channels/"+channelID+"/trips", nil)
-}
-
-func (c *httpClient) tripEntries(channelID, tripID string) (any, error) {
-	return c.do("GET", "/internal/channels/"+channelID+"/trips/"+tripID+"/entries", nil)
-}
-
-func (c *httpClient) candidates(channelID, start, end string) (any, error) {
-	// candidates 查詢目前只有 DB 直連支援，HTTP 版回傳空
-	return map[string]any{"candidates": []any{}}, nil
-}
-
 func (c *httpClient) updateEntry(in tripsvc.UpdateEntryInput) error {
 	_, err := c.do("PATCH", "/internal/entries/"+in.ID, map[string]any{
 		"title": in.Title, "start": in.Start, "end": in.End,
@@ -111,13 +93,18 @@ func (c *httpClient) updateEntry(in tripsvc.UpdateEntryInput) error {
 	return err
 }
 
-func (c *httpClient) deleteEntry(entryID string) error {
-	_, err := c.do("DELETE", "/internal/entries/"+entryID, nil)
+// setEntryLatLng 供 geocode -entry 把查到的座標寫回 entry。刻意走 do()
+// 而不是自己組 request:認證(Authorization: Bearer)只在 do() 裡設定一次,
+// 這樣 /internal/* 的認證機制再改版時不會又有呼叫端被漏改。
+func (c *httpClient) setEntryLatLng(entryID string, lat, lng float64) error {
+	_, err := c.do("PATCH", "/internal/entries/"+entryID+"/latlng", map[string]any{
+		"lat": lat, "lng": lng,
+	})
 	return err
 }
 
-func (c *httpClient) deleteTrip(tripID string) error {
-	_, err := c.do("DELETE", "/internal/trips/"+tripID, nil)
+func (c *httpClient) deleteEntry(entryID string) error {
+	_, err := c.do("DELETE", "/internal/entries/"+entryID, nil)
 	return err
 }
 

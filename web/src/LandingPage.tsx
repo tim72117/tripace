@@ -1,12 +1,12 @@
 // 產品介紹 landing page:依 Tripace 行程規劃的實際功能撰寫。
 // 路由:pathname = /(見 App.tsx)。全寬呈現,不套 iPhone 外框。
 import {
-  MessageSquareText, CalendarRange, Layers, Search,
+  MessageSquareText, CalendarRange, Route, Search,
   Users, Share2, Navigation,
 } from 'lucide-react'
 import './landing.css'
 
-// 產品核心功能,對齊 App 實作(assist 記事、時間軸、行程歸組、語意查詢、協作、分享、導航)。
+// 產品核心功能,對齊 App 實作(assist 記事、時間軸、路徑地圖、語意查詢、協作、分享、導航)。
 const FEATURES = [
   {
     icon: MessageSquareText,
@@ -19,9 +19,9 @@ const FEATURES = [
     desc: '行程依時間自動排列成時間軸,跨日行程以主線串連,點一下即可展開細節。',
   },
   {
-    icon: Layers,
-    title: '行程自動歸組',
-    desc: '零散的事項會依時間自動歸組成一趟趟行程,不必手動分類整理。',
+    icon: Route,
+    title: '路徑地圖',
+    desc: '把行程地點串成路線畫在地圖上,沿路檢查站一目了然,騎乘/駕駛時還能看自己現在到哪。',
   },
   {
     icon: Search,
@@ -44,7 +44,7 @@ const FEATURES = [
 const STEPS = [
   { n: '1', title: '說出來', desc: '「7/20 早上 10 點東京車站集合,晚上住新宿。」' },
   { n: '2', title: '自動整理', desc: 'AI 抽出事項、時間、地點,寫成結構化條目。' },
-  { n: '3', title: '成一趟行程', desc: '條目排上時間軸、歸成行程,分享給同行的人。' },
+  { n: '3', title: '成一趟行程', desc: '條目排上時間軸、標在地圖上,分享給同行的人。' },
 ]
 
 export function LandingPage() {

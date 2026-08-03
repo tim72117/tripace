@@ -9,9 +9,7 @@
 /* Begin PBXBuildFile section */
 		08377F1306E7DC732BF91FE7 /* HTTPBackendService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2DE7A48206C1FDAF2D80787 /* HTTPBackendService.swift */; };
 		13012DC707E2F29E7A54A7EA /* AvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42382E5685AE2CA8EA337F03 /* AvatarView.swift */; };
-		23AF4A505FCAFCB17A1FFE16 /* TripEntriesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F455CE189129CD5AA556038 /* TripEntriesView.swift */; };
 		4281F530578D01B975A8F8AF /* LocalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A4D29F250F1C99B5080E4E /* LocalStore.swift */; };
-		49D9E6B616F81683ED008BC7 /* Trip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7546DC1918D52CB6B7642487 /* Trip.swift */; };
 		52833D379E5F48C3BE8F098D /* MessageRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55AF53FB0F610BEDD392803E /* MessageRow.swift */; };
 		58B12BC0749A10CBF87AE9D1 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 429C595267281855E6A5519B /* ChatView.swift */; };
 		629092F64C24CBD815B3D0C7 /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A8BDCFDD142DD1BF9A9E7C1 /* TokenStore.swift */; };
@@ -44,7 +42,6 @@
 		53F55D801717D364873A53BD /* SearchAnswer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchAnswer.swift; sourceTree = "<group>"; };
 		55AF53FB0F610BEDD392803E /* MessageRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageRow.swift; sourceTree = "<group>"; };
 		6B10130B6927959EDD045D42 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
-		7546DC1918D52CB6B7642487 /* Trip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Trip.swift; sourceTree = "<group>"; };
 		7A8BDCFDD142DD1BF9A9E7C1 /* TokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStore.swift; sourceTree = "<group>"; };
 		7BA8BEBFD235193A4AA68D86 /* ChannelListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelListView.swift; sourceTree = "<group>"; };
 		7DA887B8A225D658E5A77E66 /* BackendService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendService.swift; sourceTree = "<group>"; };
@@ -52,7 +49,6 @@
 		8613437AFCB31AD95E61E0FF /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
 		96CFE7C3B0EF5F6D44867E11 /* TimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineView.swift; sourceTree = "<group>"; };
 		9D65298B61DF1AABF0FE6122 /* Message.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Message.swift; sourceTree = "<group>"; };
-		9F455CE189129CD5AA556038 /* TripEntriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripEntriesView.swift; sourceTree = "<group>"; };
 		A002D9103D9156E4022334A5 /* Entry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Entry.swift; sourceTree = "<group>"; };
 		AAF7146AF63313F1ED58267D /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		B8663029CEFD3181EC49F458 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -93,7 +89,6 @@
 				429C595267281855E6A5519B /* ChatView.swift */,
 				55AF53FB0F610BEDD392803E /* MessageRow.swift */,
 				96CFE7C3B0EF5F6D44867E11 /* TimelineView.swift */,
-				9F455CE189129CD5AA556038 /* TripEntriesView.swift */,
 			);
 			path = Chat;
 			sourceTree = "<group>";
@@ -185,7 +180,6 @@
 				A002D9103D9156E4022334A5 /* Entry.swift */,
 				9D65298B61DF1AABF0FE6122 /* Message.swift */,
 				53F55D801717D364873A53BD /* SearchAnswer.swift */,
-				7546DC1918D52CB6B7642487 /* Trip.swift */,
 				8613437AFCB31AD95E61E0FF /* User.swift */,
 			);
 			path = Models;
@@ -284,8 +278,6 @@
 				9AE2B32008B8264E721832C4 /* Shimmer.swift in Sources */,
 				C96C1A6A2188F199170735FD /* TimelineView.swift in Sources */,
 				629092F64C24CBD815B3D0C7 /* TokenStore.swift in Sources */,
-				49D9E6B616F81683ED008BC7 /* Trip.swift in Sources */,
-				23AF4A505FCAFCB17A1FFE16 /* TripEntriesView.swift in Sources */,
 				76815105E54230384859EAF2 /* TripaceApp.swift in Sources */,
 				FE424250E3FD5BBCDB7BBF6B /* User.swift in Sources */,
 			);

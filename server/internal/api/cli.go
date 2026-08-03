@@ -19,8 +19,17 @@ func (s *Server) handleInternalListChannels(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{"channels": channels})
 }
 
+// handleInternalListEntries GET /internal/channels/{id}/entries
+// 列出頻道的所有 entry。與 /v1 版本(handleListEntries)共用同一個
+// writeEntries,差別只在信任邊界:/v1 走 requireMember 檢查呼叫者是不是
+// 這個頻道的成員,/internal 靠的是 internalAuth 那把 JWT 本身(見
+// middleware.go),與同檔案其餘 handleInternal* 系列一致。
+func (s *Server) handleInternalListEntries(w http.ResponseWriter, r *http.Request) {
+	s.writeEntries(w, r.PathValue("id"))
+}
+
 // handleInternalRecord POST /internal/channels/{id}/entries
-// 寫入一筆 entry，回傳 entryID 與候選行程。
+// 寫入一筆 entry，回傳 entryID。
 func (s *Server) handleInternalRecord(w http.ResponseWriter, r *http.Request) {
 	channelID := r.PathValue("id")
 	var body struct {
@@ -50,26 +59,6 @@ func (s *Server) handleInternalRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, res)
-}
-
-// handleInternalAddToTrip POST /internal/entries/{id}/trip
-// 把 entry 歸入行程（留空 tripID 則新建）。
-func (s *Server) handleInternalAddToTrip(w http.ResponseWriter, r *http.Request) {
-	entryID := r.PathValue("id")
-	var body struct {
-		TripID string `json:"tripID"`
-		Title  string `json:"title"`
-	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
-
-	svc := tripsvc.New(s.store, nil)
-	tripID, channelID, err := svc.AddToTrip(entryID, body.TripID, body.Title)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "add_to_trip_failed", err.Error())
-		return
-	}
-	s.hub.Broadcast(channelID, map[string]any{"event": "entries_updated", "channelID": channelID})
-	writeJSON(w, http.StatusOK, map[string]string{"entryID": entryID, "tripID": tripID})
 }
 
 // handleInternalUpdateEntry PATCH /internal/entries/{id}
@@ -151,16 +140,6 @@ func (s *Server) handleInternalSetLatLng(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"updated": entryID})
-}
-
-// handleInternalListTrips GET /internal/channels/{id}/trips
-func (s *Server) handleInternalListTrips(w http.ResponseWriter, r *http.Request) {
-	s.writeTrips(w, r.PathValue("id"))
-}
-
-// handleInternalTripEntries GET /internal/channels/{id}/trips/{tripID}/entries
-func (s *Server) handleInternalTripEntries(w http.ResponseWriter, r *http.Request) {
-	s.writeTripEntries(w, r.PathValue("id"), r.PathValue("tripID"))
 }
 
 // handleInternalReset DELETE /internal/channels/{id}/entries

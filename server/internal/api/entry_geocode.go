@@ -104,7 +104,7 @@ func (s *Server) handleGeocodeEntry(w http.ResponseWriter, r *http.Request) {
 // paceRouteResult 一致(encoded polyline + 每段 leg 的起訖座標)。
 //
 // 每筆 entry 優先用它已經存在的 Lat/Lng(見 routeWaypoint 的說明);沒有
-//座標的中間點(不含 origin/destination)一律直接略過、不送進
+// 座標的中間點(不含 origin/destination)一律直接略過、不送進
 // computeRoutes,不會 fallback 用 Title 當地址查詢——實測過像「左轉
 // 民治街(花52)」「R轉193」這種夾雜轉彎描述/括號代碼、或純轉彎指示的
 // title,送給 Geocoding/Routes API 常常查無結果或查到不相關的路段,而且

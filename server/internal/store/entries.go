@@ -21,7 +21,6 @@ func toEntry(r entryRow) model.Entry {
 		Location:  r.Location,
 		Lat:       r.Lat,
 		Lng:       r.Lng,
-		TripID:    r.TripID,
 		Category:  r.Category,
 		Tags:      r.Tags,
 		Note:      r.Note,
@@ -45,7 +44,6 @@ func (s *Store) InsertEntry(e model.Entry) error {
 		Location:  e.Location,
 		Lat:       e.Lat,
 		Lng:       e.Lng,
-		TripID:    e.TripID,
 		Category:  e.Category,
 		Tags:      e.Tags,
 		Note:      e.Note,
@@ -120,7 +118,6 @@ func (s *Store) DeleteEntry(id string) error {
 }
 
 // GetEntry 依 ID 取單一條目;查無回 ErrNotFound。
-// add_to_trip 工具新建 trip 時用它取得 entry 的時間範圍當 trip 初值。
 func (s *Store) GetEntry(entryID string) (model.Entry, error) {
 	var r entryRow
 	err := s.db.Where("id = ?", entryID).First(&r).Error
@@ -169,4 +166,10 @@ func mapEntries(rows []entryRow) []model.Entry {
 		out = append(out, toEntry(r))
 	}
 	return out
+}
+
+// DeleteChannelEntries 清空某頻道的所有 entries(不動頻道/使用者本身)。
+// 開發/測試重置用。
+func (s *Store) DeleteChannelEntries(channelID string) error {
+	return s.db.Where("channel_id = ?", channelID).Delete(&entryRow{}).Error
 }

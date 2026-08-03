@@ -1,12 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"flag"
-	"fmt"
-	"net/http"
 	"os"
 	"time"
 
@@ -43,23 +39,14 @@ func cmdGeocode(args []string) {
 		fatal("geocode: %v", err)
 	}
 
-	// 有指定 entry ID 就把第一筆座標寫入
+	// 有指定 entry ID 就把第一筆座標寫入。走 httpClient 而不是自己組 request:
+	// /internal/* 需要有效的 JWT(見 server 的 internalAuth middleware),token
+	// 的讀取與 Authorization header 統一由 httpClient.do 處理,自己另外組 request
+	// 就會像先前那樣漏帶 token、一律吃 401。
 	if *entryID != "" {
 		first := places[0]
-		body, _ := json.Marshal(map[string]any{"lat": first.Lat, "lng": first.Lng})
-		url := fmt.Sprintf("%s/internal/entries/%s/latlng", *apiURLFlag, *entryID)
-		req, err := http.NewRequest("PATCH", url, bytes.NewReader(body))
-		if err != nil {
+		if err := newHTTPClient(*apiURLFlag).setEntryLatLng(*entryID, first.Lat, first.Lng); err != nil {
 			fatal("geocode set-latlng: %v", err)
-		}
-		req.Header.Set("Content-Type", "application/json")
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			fatal("geocode set-latlng: %v", err)
-		}
-		res.Body.Close()
-		if res.StatusCode != http.StatusOK {
-			fatal("geocode set-latlng: server 回傳 %d", res.StatusCode)
 		}
 	}
 

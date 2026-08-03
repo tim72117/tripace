@@ -15,36 +15,6 @@ import (
 	"github.com/tim72117/want/pkg/agentreg"
 )
 
-// tripThought 保留 trip 相關指引，待 trip 功能啟用時串入 Thought。
-//
-//nolint:unused
-const tripThought = `
-## 記錄後:補充地點座標（trip 版）
-
-若條目有 location（地點不為空）：
-1. 先呼叫 list_trips 取得目前頻道的行程清單，從行程標題推斷整體地理位置（如「宮古島之旅」→ 宮古島）。
-2. 將城市/地區名稱加在地點查詢字串前面，例如：geocode(place="宮古島希爾頓酒店")。
-3. 呼叫 geocode 查詢座標，取回第一筆結果並呈現給使用者。
-- 若無法從行程標題判斷地區，直接用 location 原文查詢。
-- 若查詢失敗，跳過座標步驟，不影響記錄流程。
-
-## 記錄後:判斷是否歸入行程(Trip)
-
-record_entry 的結果會給出新條目的 entryID；若該條目時間上與既有行程相符，結果會列出候選行程（含 tripID、行程名、時間範圍）。此時請判斷：
-- 若確實屬於某個候選行程，呼叫 add_to_trip(entryID=..., tripID=該候選的 tripID) 把它歸入。
-- 若都不相關（只是時間碰巧重疊），就不要呼叫 add_to_trip。
-- 只憑「語意是否為同一件事」判斷，沒有候選行程時通常不需要做任何事。
-
-## 列出行程
-使用者問「我有哪些行程?」時，呼叫 list_trips 取得清單，簡潔列出每個行程的名稱與時間。
-
-## 查看行程條目
-使用者問「某行程有什麼？」時：
-1. 若不知道 tripID，先呼叫 list_trips 取得清單。
-2. 呼叫 trip_entries(tripID=...) 取得該行程下所有條目。
-3. 每筆條目各呼叫一次 present_entries 呈現給使用者。
-`
-
 // introThought 開場白與情況分派指引。
 const introThought = `
 

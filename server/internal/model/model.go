@@ -97,8 +97,6 @@ type Entry struct {
 	Location  string   `json:"location"`          // 地點(可空)
 	Lat       *float64 `json:"lat,omitempty"`     // 緯度(由 Places API 自動補)
 	Lng       *float64 `json:"lng,omitempty"`     // 經度
-	// 所屬行程(Trip)。後端依時間自動歸組:未歸組為 null。
-	TripID *string `json:"tripID,omitempty"`
 	// LLM 標注(原本在 Message 上,改放 Entry;目前先留空,待後續接上 Classify)。
 	Category  *string        `json:"category"`
 	Tags      []string       `json:"tags"`
@@ -106,16 +104,4 @@ type Entry struct {
 	Kind      *string        `json:"kind,omitempty"`   // "stay"|"flight"|"activity"|"note"|"car"|"restaurant"|"ticket"
 	Detail    map[string]any `json:"detail,omitempty"` // kind 專屬結構化欄位
 	CreatedAt time.Time      `json:"createdAt"`
-}
-
-// Trip 是 entries 的命名分組(同一趟行程/連續安排)。
-// 由後端依時間自動歸組:有跨度的「區間性」事件(如住宿、出差)框出行程範圍,
-// 落在範圍內的單點事件(如機票、開會)歸入同一 Trip。
-type Trip struct {
-	ID        string    `json:"id"`
-	ChannelID string    `json:"channelID"`
-	Title     string    `json:"title"`         // 行程名(暫用首筆 entry.Title)
-	Start     string    `json:"start"`         // 行程起(ISO 字串,字典序=時間序);可空
-	End       string    `json:"end,omitempty"` // 行程訖;可空
-	CreatedAt time.Time `json:"createdAt"`
 }

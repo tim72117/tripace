@@ -46,8 +46,6 @@ type entryRow struct {
 	Location  string   `gorm:"column:location"`
 	Lat       *float64 `gorm:"column:lat"`
 	Lng       *float64 `gorm:"column:lng"`
-	// 所屬行程;NULL=未歸組。後端依時間自動歸組。
-	TripID *string `gorm:"column:trip_id;index"`
 	// LLM 標注(原本在 message 上,改存 entry)。
 	Category  *string        `gorm:"column:category"`
 	Tags      []string       `gorm:"column:tags;serializer:json"`
@@ -58,18 +56,6 @@ type entryRow struct {
 }
 
 func (entryRow) TableName() string { return "entries" }
-
-// tripRow 是 entries 的行程分組(對齊 entryRow 的字串時間慣例)。
-type tripRow struct {
-	ID        string    `gorm:"primaryKey;column:id"`
-	ChannelID string    `gorm:"column:channel_id;not null;index"`
-	Title     string    `gorm:"column:title"`
-	Start     string    `gorm:"column:start"`
-	End       string    `gorm:"column:end_at"` // end 是 SQL 保留字,對齊 entryRow 改名 end_at
-	CreatedAt time.Time `gorm:"column:created_at;not null"`
-}
-
-func (tripRow) TableName() string { return "trips" }
 
 // publicLinkRow 是頻道公開分享連結，一個頻道最多一條。
 type publicLinkRow struct {

@@ -10,7 +10,6 @@ import type {
   Me,
   Member,
   SearchAnswer,
-  Trip,
   APIErrorBody,
 } from './types'
 import { getAssistLang } from './assistLang'
@@ -470,28 +469,6 @@ export function deleteTripEntry(cfg: ClientConfig, channelID: string, entryID: s
     'DELETE',
     `/v1/channels/${encodeURIComponent(channelID)}/entries/${encodeURIComponent(entryID)}`,
   )
-}
-
-// 取頻道的行程分組(後端依時間自動歸組)。
-export function fetchTrips(cfg: ClientConfig, channelID: string) {
-  return request<{ trips: Trip[] }>(
-    cfg,
-    'GET',
-    `/v1/channels/${encodeURIComponent(channelID)}/trips`,
-  ).then((r) => r.trips)
-}
-
-// 取某行程下的所有條目。
-export function fetchTripEntries(
-  cfg: ClientConfig,
-  channelID: string,
-  tripID: string,
-) {
-  return request<{ entries: Entry[] }>(
-    cfg,
-    'GET',
-    `/v1/channels/${encodeURIComponent(channelID)}/trips/${encodeURIComponent(tripID)}/entries`,
-  ).then((r) => r.entries)
 }
 
 // PublicLinkViewMode:公開分享頁要顯示「時間軸」還是「配速表」，對齊
