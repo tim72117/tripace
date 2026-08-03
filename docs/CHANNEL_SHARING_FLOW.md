@@ -1,3 +1,23 @@
+> # ⛔ 未採用的設計提案 — 本文不是系統現況
+>
+> **這份文件描述的流程從未被實作。** 它是 `docs/CHANNEL_SHARING_DESIGN.md` 那份未採用設計的流程圖，保留作為當初的設計討論記錄，不要據此判斷系統目前的行為或安全邊界。
+>
+> **實際採用的是另一套方案**，見 `docs/PUBLIC_LINK_DESIGN.md` 與 `docs/PUBLIC_LINK_FLOW.md`：端點是 `/v1/channels/{id}/public-link` + `/v1/public/{token}`，不是本文的 `/share/*`。本文的 `/share` 端點在 `server/internal/api/api.go` 中一支都不存在。
+>
+> **⚠️ 特別警告：本文最容易誤導的是第 7 節「系統檢查流程」與第 6 節的狀態機**——它們被寫成逐步的系統行為規格，讀起來像實作說明，但其中的檢查**一道都沒有實作**：
+>
+> - 「檢查 `is_active`」→ **不存在**，`publicLinkRow` 沒有這個欄位
+> - 「檢查 `expires_at` 是否過期」→ **不存在**，沒有過期機制
+> - 「檢查 `require_auth`」→ **不存在**，公開端點不做任何身分檢查
+> - 「更新 `view_count` 訪問統計」→ **不存在**，沒有任何訪問紀錄或稽核日誌
+> - active / disabled / expired 三態狀態機 → **不存在**，只有「存在」與「已刪除」
+>
+> 實際的 `handlePublicView`（`server/internal/api/public_link.go`）只做兩件事：token 查不到回 404、查得到就回傳頻道名稱與 entries。**公開連結一旦建立就永久有效，唯一的撤銷方式是 `DELETE`（真的刪除該筆記錄）。**
+>
+> 同樣地，本文描述的「唯讀」在實作上也不是保證：實際的公開連結有 `editable` 開關，開啟後未登入訪客可透過 AI 對話寫入頻道（見 `PUBLIC_LINK_FLOW.md` 第 11 節）。
+
+---
+
 # 頻道分享 - 流程圖
 
 ## 1. 完整流程

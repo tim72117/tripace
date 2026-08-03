@@ -69,7 +69,9 @@ Owner/Editor
   │  ├─ 所有 Trip + Entry
   │  └─ 地圖 (如果有位置)
   │
-  └─ [只讀模式 - 無法編輯]
+  └─ [唯讀 or 可寫,取決於連結的 editable 旗標]
+     ├─ editable = false(預設) → 只能看,POST /v1/public/{token}/assist 回 403 read_only
+     └─ editable = true        → 訪客可透過 AI 對話寫入該頻道(見第 11 節)
 ```
 
 ## 3. 刪除公開連結
@@ -124,10 +126,14 @@ Step 7: 前端渲染
 ## 5. 簡單的狀態
 
 ```
-建立 → 有效 → 刪除
+建立 → 有效(永久) → 刪除
 
 無其他狀態，就這樣。
 ```
+
+沒有過期時間、沒有停用旗標、沒有訪問次數上限——**連結建立後永久有效**，唯一的撤銷方式是 `DELETE`（見第 3 節）。
+
+唯一的變化維度是 `editable`（可寫/唯讀）與 `viewMode`（timeline/pace），兩者都可在連結存續期間隨時切換。
 
 ## 6. 完整的 URL 流程
 
@@ -195,7 +201,9 @@ QR Code：
 │ │ ... 更多                     ││
 │ └──────────────────────────────┘│
 │                                 │
-│ 只讀模式 - 無法編輯            │
+│ 唯讀(editable=false 時)        │
+│ ※ editable=true 時此處另有     │
+│   AI 對話輸入框,訪客可寫入     │
 │                                 │
 └─────────────────────────────────┘
 ```
@@ -327,3 +335,31 @@ Response 404: 連結不存在或已刪除
 - [ ] Testing: 無登入訪問
 
 **完成！**
+
+## 11. ⚠️ editable 旗標與其安全意涵
+
+公開連結**預設唯讀**，但建立時（或事後）可以開啟 `editable`。開啟後的實際效果必須明確理解：
+
+```
+POST /v1/public/{token}/assist        (handlePublicAssist, public_link.go)
+
+  ├─ token 查不到                      → 404
+  ├─ info.Editable == false(預設)      → 403 read_only
+  └─ info.Editable == true
+       │
+       └─ assistant.AssistForSession("public:"+token, info.ChannelID, ...)
+            │
+            └─ LLM 可呼叫寫入類工具,對 info.ChannelID 這個頻道
+               新增/修改/刪除 entry
+```
+
+呼叫者**不需要 JWT、不需要登入、不需要是頻道成員**——`handlePublicAssist` 除了 `Editable` 之外沒有任何身分檢查。等於：
+
+- 開啟 editable = 把該頻道的寫入權限授予「所有知道這串 token 的人」
+- 沒有過期時間，權限持續到連結被刪除為止
+- 沒有訪問紀錄/稽核日誌，事後無法得知是誰改的
+- 無法針對個別對象撤銷，連結一旦外流只能整條刪掉
+
+相對地，另一支公開端點 `POST /v1/public/{token}/compute-route`（`handlePublicComputeRoute`）不受 `editable` 影響，它只做路線計算、不寫入資料，並且會限制 `entryIDs` 必須都屬於這個 token 對應的頻道，避免被當成免驗證的跳板去探測其他頻道的 entry。
+
+相關程式碼：`server/internal/api/public_link.go`、`server/internal/store/entity.go` 的 `publicLinkRow.Editable`、`web/src/channel/ShareModal.tsx`（UI 開關）。

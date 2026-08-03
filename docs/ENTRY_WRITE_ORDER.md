@@ -207,5 +207,3 @@ entry_add(
 
 - `server/internal/llm/assistant_agent.go` — `addThought` 常數，實際餵給 LLM 的固定順序與欄位規則
 - `docs/ENTRY_CLI_GUIDE.md` — entry_add / entry_query / geocode 的 CLI 指令對照與實作注意事項
-- `trip/LLM_RECORD_TRIP_GROUPING.md` — 條目與行程（Trip）的歸組邏輯（`add_to_trip`，trip 相關開發目前暫停）
-- `trip/LLM_TRIP_BUILD_ORDER.md` — 整趟行程的建立順序

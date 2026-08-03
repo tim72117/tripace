@@ -1,3 +1,28 @@
+> # ⛔ 未採用的設計提案 — 本文不是系統現況
+>
+> **這份文件描述的設計從未被實作。** 保留它是作為當初的設計討論記錄，不要據此判斷系統目前的行為或安全邊界。
+>
+> **實際採用的是另一套方案**，見 `docs/PUBLIC_LINK_DESIGN.md` 與 `docs/PUBLIC_LINK_FLOW.md`：端點是 `/v1/channels/{id}/public-link` + `/v1/public/{token}`，不是本文的 `/share/*`。本文設計的那 7 支 `/share` 端點在 `server/internal/api/api.go` 中**一支都不存在**。
+>
+> **⚠️ 特別警告：本文描述的訪問控制機制完全沒有實作。**
+>
+> | 本文宣稱的機制 | 實際狀況 |
+> |---|---|
+> | 過期時間 `expires_at` | **不存在**，實際的 `publicLinkRow` 沒有這個欄位 |
+> | 手動停用 `is_active` | **不存在** |
+> | 登入要求 `require_auth` | **不存在** |
+> | 角色限制 `accessible_roles` | **不存在** |
+> | 訪問統計 `view_count` / 稽核日誌 | **不存在**，沒有任何訪問紀錄 |
+> | active / disabled / expired 三態狀態機 | **不存在**，只有「存在」與「已刪除」 |
+>
+> 實際行為是：**公開連結一旦建立就永久有效，唯一的撤銷方式是 `DELETE`（真的刪除該筆記錄）。** `handlePublicView`（`server/internal/api/public_link.go`）只做兩件事——token 查不到回 404、查得到就回傳頻道名稱與 entries，中間沒有任何本文描述的檢查。
+>
+> 此外，本文第 12 行把「只讀模式（訪客無法編輯）」列為核心特點，這在實作上**也不成立**：實際的公開連結有 `editable` 開關，開啟後未登入訪客可透過 AI 對話寫入頻道（見 `PUBLIC_LINK_DESIGN.md` 的「權限」段落）。
+>
+> 對應的 `model.ChannelShare` 結構體雖然還留在 `server/internal/model/trip_sharing.go`，但原始碼註解已標明「（已棄用，保留以相容性）」，且 `store.Open()` 的 `AutoMigrate` 清單（`server/internal/store/store.go`）從未包含它——**這張表在真實資料庫裡根本沒有建立**。
+
+---
+
 # 頻道分享設計 - 唯一網址 + 無需登入
 
 ## 概述

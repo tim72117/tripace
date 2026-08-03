@@ -47,7 +47,7 @@ API 之處,逐一標註成本與風險。
 |---|---|---|---|
 | **時間軸** | 主體、唯一權威畫面 | `MultiTrackTimeline`:日期欄+軸線+卡片,跨日條目(住宿等)為沙棕主線 | 維持主體;新增「移動間隙標籤」與「日摘要」兩種地理內嵌元素 |
 | **對話** | 暫態指令通道 | 毛玻璃浮層(`chat-overlay`)+ 圓鈕 composer(推薦/對話) | 維持暫態浮層;新增「操作回執卡」承載確認與 undo |
-| **地圖** | 情境面板 | 僅 debug demo(`RecommendedPlacesMap`),正式畫面無地圖 | 升級為三檔可收合面板,與時間軸雙向聯動 |
+| **地圖** | 情境面板 | 已有正式入口:「路徑」分頁(`PaceRouteMap`,桌面 rail 與手機分頁皆常駐,不受 `?demo` 限制)為獨立全幅畫面;`RecommendedPlacesMap` 仍只在推薦彈窗/demo 使用。**時間軸旁尚無情境地圖** | 在時間軸內就地升級為三檔可收合面板,與時間軸雙向聯動(與現有「路徑」全幅畫面互補) |
 
 原則:時間軸永遠在,對話與地圖都是「需要時浮現、不需要時讓路」的第二層。
 兩者互斥展開(手機上同時開對話浮層與地圖會互相遮擋,規則見 6.4)。
@@ -160,10 +160,13 @@ API 之處,逐一標註成本與風險。
 **(a) 進行中——讓「新增」與「刪除」也可指認。**
 現況只有 update 有逐筆光影、只有走 task_plan 的新增有佔位卡。補齊:
 
-- 單獨 `entry_add`(沒帶 taskID)完成時,前端以「重抓前後 entries 的差集」
+- 單獨新增一筆(沒帶 taskID)完成時,前端以「重抓前後 entries 的差集」
   找出新卡,對它播放一次**進場動畫**(淡入 + 一輪光暈,約 1.2s),讓視線
   被帶到新增的位置;若新卡在視窗外,時間軸自動平滑捲動到它。零後端改動。
-- `entry_delete` 完成時,同樣以差集找出消失的卡,在原位塌陷(高度收合
+  (現況補充:AI 對話新增現在走 `trip_entry_add`,寫入的是裝置端旅程清單而非
+  Postgres entry,見 6.2;此處「差集找新卡」的動畫設計對「時間軸的 entry」
+  仍然適用,只是觸發來源已不是 `entry_add`。)
+- 刪除完成時,同樣以差集找出消失的卡,在原位塌陷(高度收合
   200ms)並暫留一條 5 秒的「已刪除『○○』 [復原]」細條。零後端改動。
 - 地圖已展開時,被操作條目的 marker 同步呼吸閃爍(同 `.updating` 的
   光影節奏),操作完成後 marker 定格——「AI 正在動哪個地點」在地圖上
@@ -193,8 +196,8 @@ API 之處,逐一標註成本與風險。
 | 原操作 | 反向操作 | 現有端點夠嗎 |
 |---|---|---|
 | entry_update | PATCH 回 before 值 | ✅ `PATCH /v1/entries/{id}` 已有 |
-| entry_add | 刪除該 entryID | ❌ 需新增 `DELETE /v1/entries/{id}`(小:復用 AI `entry_delete` 已在用的 `store.DeleteEntry`,外層包 requireEditor) |
-| entry_delete | 以快照重建 | ❌ 需新增 `POST /v1/channels/{id}/entries`(小:復用 `tripsvc.Record`;同時就是手動新增的入口,見第四章) |
+| 新增一筆 | 刪除該 entryID | ✅ `DELETE /v1/channels/{id}/entries/{entryID}` 已有(`handleDeleteTripEntry`;前端封裝 `api.ts` 的 `deleteTripEntry`)。路徑形狀是 channel-scoped 而非本文原先提議的 entry-scoped,呼叫時需一併帶 channelID。**現況補充**:這個端點操作的是 Postgres entry;AI 對話新增現在走 `trip_entry_add`,寫入裝置端旅程清單(見 6.2),undo 若要適用於 AI 新增的項目,需走裝置端清單自己的刪除(`trip_entry_delete`,目前不在 assistant 白名單內),而非這支 REST 端點 |
+| 刪除一筆 | 以快照重建 | ✅ `POST /v1/channels/{id}/entries` 已有(`handleCreateTripEntry`;前端封裝 `api.ts` 的 `createTripEntry`)。同時就是手動新增的入口,見第四章 |
 
 - 前端維護 per-channel 的 session undo stack(記憶體,重整即失,誠實標示
   「復原僅限本次瀏覽期間」);composer 上方浮一顆小小的「↩」膠囊,
@@ -266,11 +269,14 @@ API 之處,逐一標註成本與風險。
   (`handleUpdateEntry` 以 `tripsvc.New(s.store, nil)` 建 service,geo 為
   nil)。需後端小改:PATCH 帶 location 且值有變時,走與 `tripsvc.Record`
   相同的非同步 geocode 補 lat/lng。這是地圖正確性的必要條件,列 Phase 1。
-- **同步廣播**:誠實現況——`handleUpdateEntry` 完成後**沒有**廣播
-  `entries_updated`,其他成員(與自己的第二個分頁)不會即時看到手動修改。
-  後端補一行 `NotifyEntriesUpdated`,列 Phase 1。
-- **刪除鈕**:需 `DELETE /v1/entries/{id}`(同 3.2 undo 所需,一魚兩吃)。
-  按下後卡片走與 AI 刪除相同的塌陷動畫 + 5 秒復原條。
+- **同步廣播**:~~誠實現況——`handleUpdateEntry` 完成後沒有廣播
+  `entries_updated`~~——**已修復**:`server/internal/api/api.go` 的
+  `handleUpdateEntry` 最後已呼叫
+  `s.hub.Broadcast(entry.ChannelID, {"event": "entries_updated", ...})`,
+  其他成員(與自己的第二個分頁)會即時看到手動修改。此項不再是 Phase 1 阻塞。
+- **刪除鈕**:**端點已存在**——`DELETE /v1/channels/{id}/entries/{entryID}`
+  (`handleDeleteTripEntry`,前端 `api.ts` 的 `deleteTripEntry`;同 3.2 undo
+  所需,一魚兩吃)。按下後卡片走與 AI 刪除相同的塌陷動畫 + 5 秒復原條。
 - 欄位清空限制(空字串=不改)如實揭露在 UI:留空的欄位顯示 placeholder
   「留空表示不改」(現況已有),Phase 2 隨 API 語意修正後開放清空。
 
@@ -284,10 +290,10 @@ API 之處,逐一標註成本與風險。
   安排」變成入口而非死區。
 - **從推薦新增**:見第五章。
 
-寫入走 Phase 2 的 `POST /v1/channels/{id}/entries`;在端點存在之前
-(Phase 1),表單「儲存」改為組一句結構化訊息送 `assist`(「6/30 15:00
-新增『teamLab』,地點:豐洲」),由 AI 寫入——體驗一致,只是稍慢,
-表單按鈕顯示海浪 loading。這讓新增 UI 可以先行,不被後端排程卡住。
+寫入走 `POST /v1/channels/{id}/entries`(`handleCreateTripEntry`,前端封裝
+`api.ts` 的 `createTripEntry`)。~~在端點存在之前(Phase 1),表單「儲存」
+改為組一句結構化訊息送 `assist` 由 AI 寫入~~——**此折衷方案已無必要**:
+端點與前端封裝都已存在,新增表單可直接走 REST,Phase 1 即可直連。
 
 ### 4.3 調整時間與順序
 
@@ -375,9 +381,12 @@ API 之處,逐一標註成本與風險。
    不關閉,該卡片變成「加入中…」海浪態,WS `entries_updated` 後打勾,
    時間軸同步出現新卡進場動畫。可連續加入多個。
 3. **自己選時間**:開 4.2 的新增表單,標題/地點/座標預填。
-4. 誠實標註:Phase 1 靠 assist 寫入,座標能否落地取決於 6.2 的座標補齊
-   方案(`entry_add` 目前不收 location/座標,是必須先修的洞);修好後,
-   加入語句中的座標可由 agent 原樣寫入,不必重查 geocode。
+4. 誠實標註:走 assist 時,座標能否落地取決於 6.2 的座標補齊方案——現行
+   AI 對話寫入工具 `trip_entry_add` 連 location 都不是輸入欄位,座標更無從
+   談起,是必須先修的洞(見 6.2 現況說明)。
+   修好後,加入語句中的座標可由 agent 原樣寫入,不必重查 geocode。
+   若走「自己選時間」的表單路徑,則已可直接 `POST /v1/channels/{id}/entries`
+   帶齊 location(端點已存在,見 4.2),不受這個洞影響。
 
 ---
 
@@ -397,25 +406,40 @@ API 之處,逐一標註成本與風險。
 
 ### 6.2 資料基礎:座標覆蓋現況與補齊(一切的前提)
 
-誠實盤點三條寫入路徑的座標行為:
+誠實盤點三條寫入路徑的座標行為(**現況更新**:原本直寫 Postgres 的
+`entry_add`/`BindSink`/`RecordedEntry` 工具已刪除——見
+`server/internal/wanttools/entry_add.go` 等檔案的移除紀錄,assistant 現在
+的白名單裡也沒有 `entry_add`,見 `assistant_agent.go` 的 `init()`——下表已
+改用目前實際存在的三條路徑重新盤點):
 
 | 寫入路徑 | location 落地? | lat/lng 落地? |
 |---|---|---|
-| AI 對話(`entry_add` → `BindSink` → `InsertEntry`) | ❌ `RecordedEntry` 根本沒有 Location 欄位 | ❌ agent 雖被指示先 `geocode` 確認座標,但查到的座標**只呈現、不儲存** |
-| CLI/internal(`tripsvc.Record`) | ✅ | ✅ 非同步 geocode 補寫 |
-| 手動 PATCH(`handleUpdateEntry`) | ✅ | ❌ geo 注入為 nil,改地點不重新定位 |
+| AI 對話(`trip_entry_add`/`trip_entry_update`,經 clienttools 轉發到瀏覽器分頁,見 `web/src/clienttools/tools/tripEntryAdd.ts`) | ❌ `TripEntry` 型別只有 `id/title/date/time/note`,location 根本不是欄位,寫進的是裝置端旅程清單(`web/src/deviceDB.ts`),不是 Postgres entry | ❌ 同上,lat/lng 不存在於這條路徑的資料模型裡,agent 的 `geocode` 呼叫查到座標也只能寫進回覆文字給使用者看,無處可存 |
+| CLI/internal(`tripsvc.Record`,寫 Postgres `model.Entry`) | ✅ | ✅ 非同步 geocode 補寫 |
+| 手動 PATCH(`handleUpdateEntry`,寫 Postgres `model.Entry`) | ✅ | ❌ geo 注入為 nil,改地點不重新定位 |
 
-**結論:目前主力路徑(AI 對話)寫入的條目沒有座標,地圖什麼都畫不出來。**
-這不是 UI 問題,是 Phase 1 必須先修的資料洞:
+**結論:目前主力路徑(AI 對話)寫入的不是 Postgres entry,而是裝置端旅程
+清單,這份清單的資料模型裡根本沒有 location/lat/lng 欄位——比「座標沒
+落地」更根本,是「座標這個概念在這條路徑上還不存在」。** 地圖要能畫出
+AI 新增的項目,前提是先決定 `trip_entry_add`/裝置端旅程清單要不要納入
+location/座標,或是改讓 AI 新增的項目最終仍落地成 Postgres entry。
+這不是 UI 問題,是 Phase 1 必須先想清楚方向的資料洞,可能的路徑(擇一
+或並行,需先確認產品方向,不是單純的欄位補齊):
 
-1. `entry_add` 工具宣告增加 `location`、`lat`、`lng` 參數(agent 流程本來
-   就先跑 geocode,順手帶入即可,prompt 小改);`RecordedEntry` 與
-   `BindSink` 對應補欄位。
-2. `BindSink` 的寫入改走(或比照)`tripsvc.Record`:有 location 而無座標時
-   非同步 geocode 補寫,完成後廣播 `entries_updated` 讓前端刷新出 marker。
-3. `handleUpdateEntry` 注入 geo client,location 變更時重新定位(4.1 已述)。
-4. 存量條目:提供一次性補跑腳本(遍歷有 location 無 lat/lng 的 entry 呼叫
-   geocode);量小,一次付費在免費額度內。
+1. **擴充裝置端旅程清單**:`TripEntry`(`web/src/clienttools/tripEntryTools.ts`)
+   與 `trip_entry_add`/`trip_entry_update` 的 args 增列 `location`/`lat`/`lng`,
+   `web/src/deviceDB.ts` 對應存欄位;agent 流程本來就會先跑 `geocode`確認
+   地點,查到的座標可順手帶入(prompt 小改)。地圖若要畫出這批項目,還需要
+   前端另外把裝置端清單的座標資料接進地圖元件(目前地圖只讀 Postgres
+   entry)。
+2. **改讓 AI 新增最終落地 Postgres entry**:例如 `trip_entry_add` 完成後,
+   由前端或後端把該筆同步寫入 `tripsvc.Record`(等同手動新增表單走的路
+   徑),藉此重新掛上既有的 Postgres 座標補齊機制(見下方 CLI/internal 那列)。
+   工程量較大,但能讓 AI 新增與手動新增共用同一份地圖資料來源。
+3. `handleUpdateEntry` 注入 geo client,location 變更時重新定位(4.1 已述)
+   ——這一項與 AI 對話路徑無關,獨立成立,仍可先做。
+4. 存量條目:提供一次性補跑腳本(遍歷 Postgres 裡有 location 無 lat/lng 的
+   entry 呼叫 geocode);量小,一次付費在免費額度內。
 5. 前端對「無座標條目」的優雅降級:卡片照常,地圖面板該點缺席並在日摘要
    註記「1 個地點未定位 [補定位]」,點擊觸發 geocode(經後端代理)。
 
@@ -615,7 +639,7 @@ chips 選「下午 14:00」→ 卡片光影(與 AI 同款)→ 間隙標籤重算
 | **AI 推論中** | 海浪泡泡 + 佔位卡;recorded 靠 1s 輪詢(上限 20s) | 保留;改「WS `entries_updated` 為主、輪詢保底」縮短等待(3.4);逾時文案由沉默改為「AI 仍在處理,稍後條目會自動出現」+ 回執補送 |
 | **WS 斷線** | `onclose` 無重連,斷了就永久失聯(僅 cleanup close) | 指數退避重連(1s→2s→…→30s 上限);navbar 下細黃條「連線中斷,顯示最後同步內容(HH:MM)」;重連成功 → `fetchEntries` 補償 + 黃條退場。斷線期間 HTTP 仍可用:手動編輯照常,AI 操作可送出但進行中回饋缺失(佔位卡/光影不出現),回執卡照常由 HTTP 回覆產生——降級但不阻斷 |
 | **離線**(`navigator.onLine` = false) | 各請求各自報錯 | 唯讀模式:時間軸/地圖(已載入圖磚)可瀏覽,composer 與編輯入口禁用 + 「離線,僅供瀏覽」;恢復後自動重抓。不做離線寫入佇列(多人資料,離線排隊衝突風險 > 價值) |
-| **多人同時編輯** | last-write-wins;PATCH 只覆蓋有帶的欄位(天然縮小衝突面);手動 PATCH 甚至不廣播 | Phase 1:PATCH 補廣播後,他人變更即時反映;自己的編輯表單開啟期間收到該 entry 的變更 → 表單頂黃條「此條目剛被其他成員更新 [載入新值/繼續(將覆蓋)]」。Phase 3:entry 加 `updatedAt`(現只有 createdAt,需 migration),PATCH 帶 baseUpdatedAt → 不符回 409 → 前端逐欄對比對話框 |
+| **多人同時編輯** | last-write-wins;PATCH 只覆蓋有帶的欄位(天然縮小衝突面);PATCH 廣播 `entries_updated` **已補上**(`handleUpdateEntry` 末尾的 `s.hub.Broadcast`) | 他人變更已能即時反映;Phase 1 剩下:自己的編輯表單開啟期間收到該 entry 的變更 → 表單頂黃條「此條目剛被其他成員更新 [載入新值/繼續(將覆蓋)]」。Phase 3:entry 加 `updatedAt`(現只有 createdAt,需 migration),PATCH 帶 baseUpdatedAt → 不符回 409 → 前端逐欄對比對話框 |
 | **地圖不可用**(無 VITE_GOOGLE_MAPS_API_KEY / 載入失敗) | rp-map-error 文案 | 地理脈絡列與間隙標籤照常(Haversine 不依賴 Maps SDK);點開地圖位置顯示錯誤卡與重試;功能性退化不連坐 |
 | **條目無座標** | 地圖畫不出(見 6.2) | 該點缺席 + 日摘要「1 個地點未定位 [補定位]」;間隙標籤跳過無座標的相鄰對 |
 | **ask_user 被關閉** | 追問永久消失 | 待回覆 chip(3.3) |
@@ -629,15 +653,24 @@ chips 選「下午 14:00」→ 卡片光影(與 AI 同款)→ 間隙標籤重算
 
 前端:地理脈絡列 + 地圖面板(collapsed/half/full)+ 聚焦日聯動 + 編號
 marker/動線(直線)+ 間隙標籤(Haversine 粗估)+ 時間可行性警示 +
-推薦面板併入地圖與「加入(走 assist)」+ 回執卡與 update-undo +
+推薦面板併入地圖與「加入」+ 回執卡與 update-undo +
 新增/刪除的差集動畫 + WS 重連 + 待回覆 chip + 快速時間 chips。
 
 後端依賴(皆為小改,但缺一不可):
 
-1. `entry_add` 收 location/lat/lng 並落地;BindSink 路徑補非同步 geocode
-   (**座標覆蓋,一切地圖功能的前提**);
-2. `handleUpdateEntry` 補廣播 `entries_updated` + location 變更時重新 geocode;
-3. 存量條目座標補跑腳本。
+1. AI 對話新增(現行 `trip_entry_add`)的座標覆蓋問題(**一切地圖功能的
+   前提**)——依 6.2 判斷的方向落地:或是幫裝置端旅程清單/`trip_entry_add`
+   補上 location/lat/lng 欄位,或是改讓 AI 新增最終落地 Postgres entry
+   重用既有的 `tripsvc.Record` 座標補齊機制;此項工程量已不是單純的欄位
+   小改,需先確認產品方向(見 6.2 的兩種路徑說明);
+2. ~~`handleUpdateEntry` 補廣播 `entries_updated`~~(**已完成**,見第八章)
+   + location 變更時重新 geocode(仍待補);
+3. 存量條目座標補跑腳本(`POST /internal/entries/{id}/geocode` 已提供單筆
+   補座標的端點,見 `server/internal/api/entry_geocode.go`,腳本可直接套用)。
+
+註:新增/刪除的 REST 端點(`POST /v1/channels/{id}/entries`、
+`DELETE /v1/channels/{id}/entries/{entryID}`)**已存在**,原本排在 Phase 2
+的「新增/刪除表單直連 REST」不再受後端阻塞,可視資源提前到 Phase 1。
 
 風險:Maps JS API 動態載入量(約 $7/1000 次,月免 10k)——地圖 lazy
 mount(首次展開才載)+ 單例復用,一般使用量在免費額度內。
@@ -650,8 +683,12 @@ mount(首次展開才載)+ 單例復用,一般使用量在免費額度內。
 
 後端依賴:
 
-1. `POST /v1/channels/{id}/entries`、`DELETE /v1/entries/{id}`
-   (復用 tripsvc/store 既有函式,handler 級新增);
+1. ~~`POST /v1/channels/{id}/entries`、`DELETE /v1/entries/{id}`~~——
+   **已完成**:`POST /v1/channels/{id}/entries`(`handleCreateTripEntry`)、
+   `PUT /v1/channels/{id}/entries/{entryID}`(`handleUpdateTripEntry`)、
+   `DELETE /v1/channels/{id}/entries/{entryID}`(`handleDeleteTripEntry`),
+   前端 `api.ts` 也已有 `createTripEntry`/`updateTripEntry`/`deleteTripEntry`。
+   實際路徑是 channel-scoped 而非本文原先提議的 entry-scoped;
 2. PATCH 語意修正:缺鍵=不改、null=清空(undo 完整性所繫);
 3. `POST /v1/geo/route-summary` 代理 + DB 快取(**Routes API 計費與
    TOS 快取限制見 6.7,上線前過一次覆核**);
@@ -677,10 +714,10 @@ options 帶座標;(選配)重排建議的伺服器端計算。
 | 地理脈絡列(map context bar) | 2.2/6.3 | 座標補齊 |
 | 地圖面板三檔 + 聚焦日聯動 | 2.2/6.4/6.5 | 座標補齊 |
 | 移動間隙標籤 + 時間可行性警示 | 6.3 | 無(粗估)/route-summary(精確) |
-| 操作回執卡 + undo 膠囊 | 3.2 | DELETE/POST entries(完整版) |
+| 操作回執卡 + undo 膠囊 | 3.2 | DELETE/POST entries(✅ 已存在,channel-scoped) |
 | 待回覆 chip | 3.3 | 無 |
-| 推薦面板(地圖+加入) | 5.2/5.3 | 無(走 assist)/POST entries |
-| 編輯表單升級(kind/chips/小地圖/刪除) | 4.1 | DELETE entries、PATCH 重新 geocode |
-| 日期列新增入口 | 4.2 | POST entries(Phase 1 走 assist) |
+| 推薦面板(地圖+加入) | 5.2/5.3 | 無(走 assist)/POST entries(✅ 已存在) |
+| 編輯表單升級(kind/chips/小地圖/刪除) | 4.1 | DELETE entries(✅ 已存在)、PATCH 重新 geocode(仍待補) |
+| 日期列新增入口 | 4.2 | POST entries(✅ 已存在,可直連) |
 | 拖曳改期 | 4.3 | 無(走 PATCH) |
 | 繞路提示與 AI 重排 | 6.6 | 無(走 assist) |

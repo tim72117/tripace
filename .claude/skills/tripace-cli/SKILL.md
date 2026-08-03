@@ -51,18 +51,6 @@ go run ./cmd/cli entry-update -entry ent_xxx \
 # 刪除 entry
 go run ./cmd/cli entry-delete -entry ent_xxx
 
-# 把 entry 併進 trip（留空 -trip 會新建一個）
-go run ./cmd/cli add-to-trip -entry ent_xxx [-trip trip_xxx] [-title "行程名"]
-
-# 列出頻道底下的 trip
-go run ./cmd/cli list-trips -channel ch_xxx
-
-# 列出某個 trip 底下的 entries
-go run ./cmd/cli trip-entries -channel ch_xxx -trip trip_xxx
-
-# 刪除 trip
-go run ./cmd/cli delete-trip -trip trip_xxx
-
 # 清空頻道所有 entries（危險操作，會實際刪除資料，執行前務必跟使用者確認）
 go run ./cmd/cli reset -channel ch_xxx
 
@@ -75,6 +63,5 @@ go run ./cmd/cli geocode -place "地點名稱" [-region tw] [-n 3] [-entry ent_x
 
 ## 已知限制（HTTP 模式）
 
-- **`candidates -channel ... -start ...` 在 HTTP 模式下永遠回傳空陣列**（`{"candidates": []}`），不是真的查詢結果——這是 `server/cmd/cli/http.go` 裡刻意寫死的 stub，只有 `-db` 模式才有真正的實作。HTTP 模式下不要用這個子命令來判斷「某頻道是否有資料」，得到空陣列不代表頻道真的沒有 entries。
-- **沒有「列出頻道全部 entries」的子命令**。HTTP 模式只能透過 `trip-entries -channel -trip`（需要先知道 trip ID）看到已歸組進某個 trip 的 entries；還沒被 `add-to-trip` 歸組的 entries，這個 CLI 沒有對應的讀取子命令。若需要讀取頻道底下所有 entries（不論是否歸組），改用登入後的網頁介面，或請有權限的人透過該頻道的公開分享連結（`GET /v1/public/{token}`）讀取。
-- `reset`/`delete-trip`/`entry-delete` 都是真的會刪除資料的操作，執行前要跟使用者確認範圍（哪個頻道/哪個 entry/trip），不要在不確定的情況下對正式環境資料執行。
+- **沒有「列出頻道全部 entries」的子命令**。若需要讀取頻道底下所有 entries，改用登入後的網頁介面，或請有權限的人透過該頻道的公開分享連結（`GET /v1/public/{token}`）讀取。
+- `reset`/`entry-delete` 都是真的會刪除資料的操作，執行前要跟使用者確認範圍（哪個頻道/哪個 entry），不要在不確定的情況下對正式環境資料執行。

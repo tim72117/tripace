@@ -9,16 +9,16 @@
 
 | 能力 | 狀態 |
 |---|---|
-| LLM 對話操作時間軸(entry_add/update/delete、ask_user/ask_choice、query_entries) | ✅ 正式功能 |
+| LLM 對話操作旅程清單(`trip_entry_add`/`trip_entry_update`/`trip_entry_list`/`trip_list_batches`、ask_user/ask_choice、entry_query) | ✅ 正式功能——已改走 clienttools 機制(見下一列的說明) |
 | 附近景點推薦(recommend_nearby,Places Nearby/Text Search,含照片) | ✅ 正式功能 |
-| Entry 資料模型含 Location/Lat/Lng 欄位、Kind 分類、Detail 結構化欄位 | ⚠️ 欄位已有,但主力寫入路徑(AI 對話的 entry_add)不落地 location/座標——只有 CLI/internal 路徑會補 geocode。地圖與地理功能前必須先修這個資料洞,詳見 ITINERARY_UX_DESIGN.md 6.2 |
+| Entry 資料模型含 Location/Lat/Lng 欄位、Kind 分類、Detail 結構化欄位 | ⚠️ 欄位在 Postgres `model.Entry` 上都還在,但 AI 對話這條主力寫入路徑已不再經過它:`server/internal/wanttools/entry_add.go` 等直寫 Postgres 的工具已刪除,現行 LLM 寫入改呼叫 `trip_entry_add`(`server/tools/clienttools.yaml`、`web/src/clienttools/tools/tripEntryAdd.ts`),經 clienttools 機制轉發到瀏覽器分頁,寫進裝置端的旅程清單(`web/src/deviceDB.ts`),欄位只有 `title/date/time/note`,連 location 都不是輸入欄位,更談不上 lat/lng——資料洞不只「沒落地座標」,而是整條路徑已經沒有座標概念。座標欄位目前只服務另外兩條獨立路徑:(1) `tripsvc.Record`(`POST /internal/channels/{id}/entries`、`POST /v1/channels/{id}/entries` 等)寫入 Postgres entry 時可帶座標,(2) `POST /internal/entries/{id}/geocode`(`server/internal/api/entry_geocode.go`、`server/internal/geo/geocode.go`)可事後補座標,以及地圖上手動拖曳選點校正座標(`web/src/PaceRouteMap.tsx`)。詳見 ITINERARY_UX_DESIGN.md 6.2(該節已更新反映 clienttools 現況) |
 | WebSocket 即時推送(entries_updated、entry_updating、recommended_places…) | ✅ 正式功能 |
 | 行程公開分享(/public/{token}) | ✅ 正式功能 |
 | 多人成員與編輯者權限 | ✅ 正式功能 |
-| 手動編輯 | ⚠️ 後端 PATCH /v1/entries/{id} 已有,前端編輯 UI 未做(見 ITINERARY_UX_DESIGN.md) |
-| 地圖(Maps JS API 極簡風格) | ⚠️ 僅 debug 工作台試做,未進正式畫面 |
+| 手動編輯 | ✅ 正式功能——後端 `PATCH /v1/entries/{id}` 與前端編輯表單皆已完成(`web/src/Timeline.tsx` 的 `EditEntrySheet` 涵蓋 title/start/startTime/end/endTime/location/note,呼叫 `web/src/api.ts` 的 `updateEntry`);另有 channel-scoped 的新增/修改/刪除端點(見「共用基礎建設」說明) |
+| 地圖(Maps JS API 極簡風格) | ✅ 正式功能——「路徑」是常駐導覽項目,不受 `?demo` 限制:桌面版 rail(`web/src/DesktopLayout.tsx`,`panelMode === 'pace'` 那顆按鈕在 `isDemo &&` 條件之外)、手機版分頁(`web/src/PhoneNavDrawer.tsx`)皆常駐 |
 | Entry 的 place_id | ❌ 未儲存(營業時間查詢的前提) |
-| 點對點交通時間(Routes/Distance Matrix) | ❌ 未接 |
+| 點對點交通時間(Routes/Distance Matrix) | ✅ 已接 Routes API——`server/internal/api/pace_route.go` 直接呼叫 `routes.googleapis.com/directions/v2:computeRoutes`,`server/internal/api/entry_geocode.go` 的 `handleComputeRouteFromEntries`(`POST /internal/entries/compute-route`)以 entry 座標組 origin/intermediates/destination;前端 `web/src/PaceRouteMap.tsx` 有 localStorage 路線快取(cache key 含座標,座標一改自動失效) |
 | mock LLM e2e 測試框架 | ✅ 已建立(所有改動的安全網) |
 
 ## 優先序
@@ -41,7 +41,7 @@
 ### 第 4 位:接駁自動補齊(交通資料基礎建設)
 **為什麼第四**:Routes/Distance Matrix API 的接入是一次性基建,同時解鎖三件事——行程健檢第二階段(「趕不到」警示)、時間軸相鄰點的移動時間呈現(地理理解的核心,見 ITINERARY_UX_DESIGN.md)、後續今天模式的重排依據。放在健檢第一階段之後是因為它有 API 成本,需要先設計好快取策略(只算相鄰段、行程變動才重算)。
 **要補的缺口**:Routes API 接入與快取層;時間軸「兩點之間」的移動時間 UI;銜接不可能的警示併入健檢。
-**工程量**:中。**依賴**:Entry 座標(已有)。
+**工程量**:中→小~中(可下修)。核心前提「Routes API 接入」其實已經在線上——`server/internal/api/pace_route.go` 的 `computeRoutes` 呼叫、`POST /internal/entries/compute-route` 以 entry 座標算路線、`PaceRouteMap.tsx` 的 localStorage 路線快取(cache key 含座標,座標變動即失效)都已運作。剩下的是把既有能力**接到時間軸**:相鄰段的移動時間 UI、快取層從前端 localStorage 升級為後端共用快取(多人共用、跨裝置),以及銜接不可能的警示。**依賴**:Entry 座標(已有,但 AI 對話路徑仍需靠 geocode 端點或手動拖曳補齊)。
 
 ### 第 5 位:空檔雷達(時間感知推薦)
 **為什麼第五**:是現有 recommend_nearby 的直接升級——同樣的 Places API、同樣的推薦 UI,差別在查詢條件從「目前位置」變成「未來時刻的位置 + 當時營業 + 前後脈絡」。第 4 位的交通資料到位後,「順路」判斷才有依據。
@@ -82,7 +82,7 @@
 |---|---|---|
 | Entry 的 place_id 欄位 | 健檢、空檔雷達、接駁 | ❌ 需新增(座標已有) |
 | diff 預覽 + undo 管線 | 對話式重排、靈感收件匣、複製改編、今天模式 | ❌ 需新增 |
-| Routes API + 快取層 | 健檢二階段、接駁、空檔雷達、今天模式 | ❌ 需新增 |
+| Routes API + 快取層 | 健檢二階段、接駁、空檔雷達、今天模式 | ⚠️ 已部分存在:Routes API 呼叫已完成(`pace_route.go`、`entry_geocode.go` 的 `handleComputeRouteFromEntries`),快取目前只在前端 localStorage(`PaceRouteMap.tsx`)。待補的是後端共用快取層與時間軸的相鄰段查詢介面 |
 | 候選池(待排清單) | 靈感收件匣、旅伴共決、空檔雷達(建議去向) | ❌ 需新增 |
 | 項目鎖定標記(訂位不可動) | 對話式重排、今天模式 | ❌ 需新增(小) |
 

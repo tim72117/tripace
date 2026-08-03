@@ -54,9 +54,7 @@ handler、不共用 store 存取層以外的任何程式碼。
 | POST | /v1/channels/{id}/assist | handleAssist | **requireEditor** | ✅ | ✅ |
 | GET | /v1/channels/{id}/entries | handleListEntries | Bearer token | ✅ | ✅ |
 | DELETE | /v1/channels/{id}/entries | handleResetChannelData | **requireOwner** | ✅ | — |
-| PATCH | /v1/entries/{id} | handleUpdateEntry | 查 entry 取 channelID → **requireEditor** | ⚠️ 後端已完成,**前端尚未接上** | — |
-| GET | /v1/channels/{id}/trips | handleListTrips | Bearer token | ✅ | ✅ |
-| GET | /v1/channels/{id}/trips/{tripID}/entries | handleListTripEntries | Bearer token | ✅ | ✅ |
+| PATCH | /v1/entries/{id} | handleUpdateEntry | 查 entry 取 channelID → **requireEditor** | ✅(`api.ts` 的 `updateEntry`,`Timeline.tsx` 的 `EditEntrySheet`) | — |
 | GET | /v1/channels/{id}/ws | handleWS | **requireMember**(WS 訂閱) | ✅ | — |
 | POST | /v1/channels/{id}/public-link | handleCreatePublicLink | **requireEditor** | ✅ | — |
 | GET | /v1/channels/{id}/public-link | handleGetPublicLink | Bearer token | ✅ | — |
@@ -64,7 +62,8 @@ handler、不共用 store 存取層以外的任何程式碼。
 | GET | /v1/public/{token} | handlePublicView | 連結 token 存在即可(公開頁,無使用者身分) | ✅ | — |
 | POST | /v1/public/{token}/assist | handlePublicAssist | 連結 token + `info.Editable` 旗標 | ✅ | — |
 
-> `PATCH /v1/entries/{id}` 的前端表單尚未實作,見「待辦」一節。
+> `PATCH /v1/entries/{id}` 的前端表單已實作(`web/src/Timeline.tsx` 的
+> `EditEntrySheet`),見「待辦」一節。
 
 ## 三、`/internal/*` 完整路由表(只給 `cmd/cli` 用)
 
@@ -81,12 +80,11 @@ handler、不共用 store 存取層以外的任何程式碼。
 | GET | /internal/channels | handleInternalListChannels | listChannels() |
 | POST | /internal/channels/{id}/notify | handleNotify | notifyChannel()(main.go,未經 httpClient.do) |
 | POST | /internal/channels/{id}/entries | handleInternalRecord | record() |
-| POST | /internal/entries/{id}/trip | handleInternalAddToTrip | addToTrip() |
 | PATCH | /internal/entries/{id} | handleInternalUpdateEntry | updateEntry() |
 | DELETE | /internal/entries/{id} | handleInternalDeleteEntry | deleteEntry() |
 | PATCH | /internal/entries/{id}/latlng | handleInternalSetLatLng | (未包裝,CLI 未呼叫) |
-| GET | /internal/channels/{id}/trips | handleInternalListTrips | listTrips() |
-| GET | /internal/channels/{id}/trips/{tripID}/entries | handleInternalTripEntries | tripEntries() |
+| POST | /internal/entries/{id}/geocode | handleGeocodeEntry | (未包裝,CLI 未呼叫) |
+| POST | /internal/entries/compute-route | handleComputeRouteFromEntries | (未包裝,CLI 未呼叫) |
 | DELETE | /internal/channels/{id}/entries | handleInternalReset | reset() |
 
 `cmd/cli` 也有一條**不經過 HTTP、直連資料庫**的路徑(`-db` 旗標,見
@@ -116,8 +114,8 @@ Admin SPA 是跨網域呼叫並帶 cookie(`credentials: 'include'`),不能沿用
 
 ### 完全共用(同一段程式碼被多個入口呼叫)
 
-- **`tripsvc.Service`**(`internal/tripsvc/tripsvc.go`):`Record`/`UpdateEntry`/
-  `AddToTrip`/`DeleteTrip`/`Reset` 是唯一的業務邏輯層,`/v1/*`、`/internal/*`
+- **`tripsvc.Service`**(`internal/tripsvc/tripsvc.go`):`Record`(新增
+  entry)、`UpdateEntry`(更新 entry)是唯一的業務邏輯層,`/v1/*`、`/internal/*`
   兩組路由的對應 handler 都呼叫**同一個** `tripsvc.Service` 方法,只是外層包的
   權限檢查不同。這代表底層資料操作邏輯只寫一份,不會因為呼叫路徑不同而有
   兩套實作互相漂移。
@@ -132,9 +130,8 @@ Admin SPA 是跨網域呼叫並帶 cookie(`credentials: 'include'`),不能沿用
 | 操作 | /v1/* 版本 | /internal/* 版本 | 差異 |
 |---|---|---|---|
 | 更新條目 | `handleUpdateEntry` | `handleInternalUpdateEntry` | 前者查 entry 反查 channelID 做 requireEditor;後者無檢查。**底層都呼叫 `tripsvc.UpdateEntry`,是同一個函式**,只是外層 handler 各自獨立寫了一份,不是共用同一個 HTTP handler。 |
-| 清空頻道資料 | `handleResetChannelData`(requireOwner) | `handleInternalReset`(無檢查) | 底層都呼叫 `s.resetChannel` → `store.DeleteChannelEntriesAndTrips`,同函式、兩個 handler。 |
-| 新增條目 | `handleAssist`(requireEditor,經 LLM 判斷後呼叫 `record_entry` 工具寫入) | `handleInternalRecord`(無檢查,直接呼叫 `tripsvc.Record`) | 不是同一個 handler,但**效果等價**:兩者最終都會在指定 channel 新增一筆 entry。前者多了 LLM 判斷這一層,後者是直接寫入。 |
-| 歸入行程 | 無對應 `/v1/*` 端點 | `handleInternalAddToTrip` | 只存在於 `/internal/*`,沒有重複,但也代表這個操作目前**只有 CLI 能做,前端使用者無法手動把條目歸入行程**。 |
+| 清空頻道資料 | `handleResetChannelData`(requireOwner) | `handleInternalReset`(無檢查) | 底層都呼叫 `s.resetChannel` → `store.DeleteChannelEntries`,同函式、兩個 handler。 |
+| 新增條目 | `handleAssist`(requireEditor,經 LLM 判斷後呼叫 `trip_entry_add` 工具寫入) | `handleInternalRecord`(無檢查,直接呼叫 `tripsvc.Record`) | 不是同一個 handler,效果也不再等價:前者(AI 對話)寫入的是裝置端旅程清單(見 `docs/ENTRY_WRITE_ORDER.md`),後者才是直接寫入 Postgres 的 entry。 |
 
 **這份對照表就是「安全邊界」一節要解決的問題**:`/internal/*` 版本因為無
 檢查,任何知道 entryID/channelID 的呼叫者都能繞過 `/v1/*` 版本的權限檢查
@@ -176,17 +173,17 @@ Admin SPA 是跨網域呼叫並帶 cookie(`credentials: 'include'`),不能沿用
 
 ## 七、待辦 / 已知缺口
 
-1. **`PATCH /v1/entries/{id}` 前端表單尚未實作**。後端 handler、權限檢查、
-   `tripsvc` 呼叫都已完成並通過編譯與手動測試,但 `web/src/api.ts` 還沒有
-   對應的呼叫函式,`Timeline.tsx` 的卡片也還沒有「編輯」按鈕入口(規劃是
-   展開卡片細節後在底部加一顆編輯按鈕,彈出表單)。iOS 端目前也沒有實作。
-2. **`/internal/entries/{id}/trip`(歸入行程)沒有對應的 `/v1/*` 端點**,
-   使用者目前無法在前端手動把條目歸入某個行程,只能靠 AI 對話(`entry_add`
-   工具帶時間相符時系統會列候選行程)或 CLI。
-3. ~~`INTERNAL_API_TOKEN` 尚未在任何 `.env`(本機或正式環境)實際設定過~~
+1. ~~**`PATCH /v1/entries/{id}` 前端表單尚未實作**~~——**已完成**。
+   `web/src/api.ts` 有 `updateEntry(cfg, entryID, input)`,`Timeline.tsx`
+   的卡片展開後有編輯入口,彈出 `EditEntrySheet` 底部表單(涵蓋
+   title/start/startTime/end/endTime/location/note,以 portal 掛到最上層,
+   避免被其他底部面板疊層遮住)。**iOS 端目前仍未實作**,是這條剩下的缺口。
+2. ~~`INTERNAL_API_TOKEN` 尚未在任何 `.env`(本機或正式環境)實際設定過~~
    ——已隨共享密鑰機制整個移除而不再適用,`/internal/*` 現在強制要求有效
    JWT,不存在「忘記設定環境變數」這種失效模式(見上方「安全邊界」)。
-4. `main.go` 呼叫 `srv.Routes()` 三次(`/v1/`、`/internal/`、`/health` 各一次)
-   組出三個獨立但內容相同的 mux 實體,`internalAuth` 因此在啟動時會重複
-   建構、重複印警告訊息三次。不影響功能正確性(已用真實 HTTP 請求驗證
-   `internalAuth` 確實生效),純粹是啟動 log 稍微雜訊,未處理。
+3. `main.go` 呼叫 `srv.Routes()` 三次(`/v1/`、`/internal/`、`/health` 各一次)
+   組出三個獨立但內容相同的 mux 實體,`internalAuth` middleware 因此被重複
+   建構三次。不影響功能正確性(已用真實 HTTP 請求驗證 `internalAuth` 確實
+   生效),純粹是啟動時多做了兩份無用的 mux,未處理。
+   (註:現行 `internalAuth`(`middleware.go`)只在驗證失敗時回 401,
+   沒有任何啟動期 log 或警告輸出——那是舊共享密鑰版本的行為,已隨機制移除。)
