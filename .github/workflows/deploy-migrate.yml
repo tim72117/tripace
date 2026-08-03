@@ -15,15 +15,15 @@ on:
   workflow_dispatch:
     inputs:
       cli_args:
-        description: '要傳給 cmd/cli 的完整參數(例如: -db drop-legacy-columns)'
+        description: '要傳給 cmd/cli 的完整參數(例如: -db drop-legacy-columns)。留空則只執行備份、不建置/部署/執行 migrate job(搭配 backup_first 單獨測試或單獨備份用)'
         type: string
-        required: true
+        required: false
       run_now:
-        description: '建置/更新 Job 定義後是否立即執行一次'
+        description: '建置/更新 Job 定義後是否立即執行一次(cli_args 留空時這個選項不生效)'
         type: boolean
         default: true
       backup_first:
-        description: '執行維運指令前,先用 gcloud sql export 備份一份到 GCS(強烈建議對有結構性變更的指令保持勾選)'
+        description: '先用 gcloud sql export 備份一份到 GCS(強烈建議對有結構性變更的指令保持勾選)'
         type: boolean
         default: true
 
@@ -34,6 +34,16 @@ env:
   IMAGE: "asia-east1-docker.pkg.dev/shuttle-045094509/cloud-run-source-deploy/tripace-migrate"
   CLOUDSQL_INSTANCE: "onagent-prod:asia-east1:onagent-db"
   CLOUDSQL_INSTANCE_ID: "onagent-db" # gcloud sql export/instances 系列指令只吃 instance 短名,不含 project:region 前綴
+  # onagent-db 這個 Cloud SQL 實例本身是建在 onagent-prod 專案下(跟這支
+  # workflow 主要操作的 shuttle-045094509 是不同專案,只是共用同一個
+  # WIF 服務帳號有跨專案權限)——CLOUDSQL_INSTANCE 那個完整格式字串本身
+  # 已經內含 "onagent-prod:..." 前綴,gcloud run jobs deploy 的
+  # --set-cloudsql-instances 吃這種完整格式沒問題;但 gcloud sql
+  # instances describe / gcloud sql export 這兩支「直接對 Cloud SQL API
+  # 操作」的指令只吃 instance 短名,必須另外用 --project 明講去哪個專案
+  # 找,不能沿用 GCP_PROJECT_ID(那是 shuttle-045094509,實測會得到
+  # HTTPError 404 The Cloud SQL instance does not exist)。
+  CLOUDSQL_PROJECT_ID: "onagent-prod"
   BACKUP_BUCKET: "tripace-db-backups"
 
 jobs:
@@ -108,7 +118,7 @@ jobs:
         run: |
           set -euo pipefail
           SQL_SA="$(gcloud sql instances describe ${{ env.CLOUDSQL_INSTANCE_ID }} \
-            --project=${{ env.GCP_PROJECT_ID }} \
+            --project=${{ env.CLOUDSQL_PROJECT_ID }} \
             --format='value(serviceAccountEmailAddress)')"
 
           if [ -z "$SQL_SA" ]; then
@@ -133,16 +143,21 @@ jobs:
           BACKUP_URI="gs://${{ env.BACKUP_BUCKET }}/tripace-backup-${TIMESTAMP}.sql"
 
           gcloud sql export sql ${{ env.CLOUDSQL_INSTANCE_ID }} "${BACKUP_URI}" \
-            --project=${{ env.GCP_PROJECT_ID }} \
+            --project=${{ env.CLOUDSQL_PROJECT_ID }} \
             --database=${{ steps.resolve-db.outputs.db_name }}
 
           echo "backup_uri=${BACKUP_URI}" >> "$GITHUB_OUTPUT"
           echo "備份完成: ${BACKUP_URI}"
 
+      # 以下 4 個 step 只在有帶 cli_args 時才需要執行——留空代表這次只是
+      # 想單獨測試/執行備份,不需要為了「什麼都不做的 migrate job」跑一次
+      # 建置/部署,那既浪費時間也沒有意義。
       - name: Configure Docker for Artifact Registry
+        if: ${{ inputs.cli_args != '' }}
         run: gcloud auth configure-docker asia-east1-docker.pkg.dev --quiet
 
       - name: Build Docker image
+        if: ${{ inputs.cli_args != '' }}
         run: |
           docker build \
             -f Dockerfile.migrate \
@@ -152,6 +167,7 @@ jobs:
             .
 
       - name: Push image
+        if: ${{ inputs.cli_args != '' }}
         run: |
           docker push ${{ env.IMAGE }}:${{ github.sha }}
           docker push ${{ env.IMAGE }}:latest
@@ -160,6 +176,7 @@ jobs:
       # Job 的定義(映像檔版本、指令參數)——跟 run jobs create 不同,
       # deploy 是「建立或更新」的冪等操作,不需要另外判斷 Job 存不存在。
       - name: Deploy/update Cloud Run Job
+        if: ${{ inputs.cli_args != '' }}
         run: |
           gcloud run jobs deploy ${{ env.JOB_NAME }} \
             --image=${{ env.IMAGE }}:${{ github.sha }} \
@@ -172,7 +189,7 @@ jobs:
             --quiet
 
       - name: Execute Job now
-        if: ${{ inputs.run_now }}
+        if: ${{ inputs.cli_args != '' && inputs.run_now }}
         run: |
           gcloud run jobs execute ${{ env.JOB_NAME }} \
             --region=${{ env.CLOUD_RUN_REGION }} \
@@ -180,7 +197,7 @@ jobs:
             --quiet
 
       - name: Show execution logs link
-        if: ${{ inputs.run_now }}
+        if: ${{ inputs.cli_args != '' && inputs.run_now }}
         run: |
           echo "### Migrate Job 執行完成" >> "$GITHUB_STEP_SUMMARY"
           echo "參數: \`${{ inputs.cli_args }}\`" >> "$GITHUB_STEP_SUMMARY"
