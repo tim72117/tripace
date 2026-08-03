@@ -12,12 +12,11 @@ import (
 )
 
 // newTestServer 用記憶體 SQLite 建一個可測試的 Server,不需要外部 Postgres。
+// 每次呼叫都拿到一個獨立的空資料庫(見 store.OpenTest),測試之間不會互相
+// 看見資料。
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	st, err := store.Open("file::memory:?cache=shared")
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
+	st := store.OpenTest(t)
 	signer := auth.NewSigner("test-secret", time.Hour)
 	return New(st, llm.NewMock(st), signer, true)
 }

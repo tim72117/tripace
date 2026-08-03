@@ -12,16 +12,11 @@ import (
 	"github.com/tim72117/tripace/internal/store"
 )
 
-// newTestStore 用 SQLite 記憶體 DB 建一個乾淨的 store,對齊
-// internal/store 既有測試的慣例(store/trips_test.go 的 newTestStore)。
+// newTestStore 用 SQLite 記憶體 DB 建一個乾淨的 store。實作見
+// store.OpenTest——每次呼叫都是一個獨立的空資料庫,測試之間不會互相看見資料。
 func newTestStore(t *testing.T) *store.Store {
 	t.Helper()
-	s, err := store.Open("file::memory:?cache=shared")
-	if err != nil {
-		t.Fatalf("open test store: %v", err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
-	return s
+	return store.OpenTest(t)
 }
 
 // TestAdminAPIEndToEnd 是原 adminconsole_integration_test.go 的改寫版:

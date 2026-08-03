@@ -18,6 +18,9 @@ server/sessions/
 server/entries.jsonl
 server/tmp/
 
+# 本機資料庫備份(pg_dump 等,可能含真實使用者資料,不進版控)
+.backups/
+
 # ---- 編譯產物 ----
 *.exe
 server/server
