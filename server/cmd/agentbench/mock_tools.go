@@ -5,7 +5,7 @@
 //
 // 為什麼 mock 化(而非直接 import server/internal/wanttools 複用):
 // wanttools 裡的 entry_add/entry_query/entry_update/entry_delete 依賴
-// entryStore(BindStore 注入的真實 DB 連線),task_plan 依賴 per-channel 的
+// entryStore(BindStore 注入的真實 DB 連線),task_plan 依賴 per-trip 的
 // 記憶體任務清單,geocode/recommend_nearby 會打真正的 Google Places API——
 // 這些全是 agentbench 明確要避免牽扯進來的「tripace 正式業務邏輯」。
 // agentbench 的目的是測試「LLM 決策邏輯本身」(有沒有呼叫對工具、參數對不對),
@@ -125,7 +125,7 @@ var entryAddDeclaration = types.ToolDeclaration{
 // entryQueryDeclaration 複製自 wanttools.QueryEntriesDeclaration(entry_query.go)。
 var entryQueryDeclaration = types.ToolDeclaration{
 	Name: "entry_query",
-	Description: "查詢頻道中已記錄的條目(待辦、行程、會議等)。" +
+	Description: "查詢行程中已記錄的條目(待辦、行程、會議等)。" +
 		"當使用者在提問、想知道某段時間有什麼安排時呼叫。可用 from / to 限定時間範圍。" +
 		"回傳符合的條目清單,據此回答使用者。",
 	Type: "sync",
@@ -334,7 +334,7 @@ var askUserDeclaration = types.ToolDeclaration{
 // taskPlanDeclaration 複製自 wanttools.TaskPlanDeclaration(task_plan.go)。
 var taskPlanDeclaration = types.ToolDeclaration{
 	Name: "task_plan",
-	Description: "規劃並追蹤多步驟任務(待辦清單,存於本頻道記憶體)。處理需要多步驟的複雜請求時," +
+	Description: "規劃並追蹤多步驟任務(待辦清單,存於本行程記憶體)。處理需要多步驟的複雜請求時," +
 		"先用 create 列出計畫,完成一步就 complete 標記,全部完成後用 clear 清除。以 action 指定操作。",
 	Type: "sync",
 	Parameters: map[string]interface{}{

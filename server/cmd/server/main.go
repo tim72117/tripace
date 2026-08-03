@@ -1,4 +1,4 @@
-// Command server 啟動 Channel 後端 HTTP 服務(SQLite 原型)。
+// Command server 啟動 Trip 後端 HTTP 服務(SQLite 原型)。
 package main
 
 import (
@@ -92,7 +92,7 @@ func main() {
 		analyzer = pool
 		// 注入條目持久化:record_entry 工具解析出的條目同步寫進 DB(entry 為主體,
 		// 獨立寫入),回傳新 entry ID。
-		wanttools.BindSink(func(channelID string, e wanttools.RecordedEntry) (string, error) {
+		wanttools.BindSink(func(tripID string, e wanttools.RecordedEntry) (string, error) {
 			id := "ent_" + randHex()
 			// kind 空字串存 nil(model.Entry.Kind 為 *string),非空才帶指標。
 			var kind *string
@@ -101,7 +101,7 @@ func main() {
 			}
 			err := st.InsertEntry(model.Entry{
 				ID:        id,
-				ChannelID: channelID,
+				TripID:    tripID,
 				Title:     e.Title,
 				Start:     e.Start,
 				StartTime: e.StartTime,
@@ -229,12 +229,17 @@ func withLegacyDomainRedirect(next http.Handler) http.Handler {
 // seedUsers 確保可邀請的使用者目錄存在(冪等,每次啟動都套用)。
 // 同時為示範使用者設定可登入的 email 與預設密碼(開發測試用),
 // 帳號為 <name>@channel.dev,密碼一律 "password"。
+//
+// 這幾個 @channel.dev 的 email 值刻意不隨這次 channel→trip 改名更動:它們
+// 是既有帳號的登入憑證識別值(SetUserPassword 用 email 查找/建立使用者),
+// 改動會讓本機/正式站既有帳號的 email 對不上,造成無法登入;email 只是一個
+// 不透明的字串識別值,不需要跟目前的功能命名同步。
 func seedUsers(st *store.Store) error {
 	directory := []struct {
 		user  model.User
 		email string
 	}{
-		// usr_me 是示範頻道(seedIfEmpty)的建立者/owner,需先存在於 users 表,
+		// usr_me 是示範行程(seedIfEmpty)的建立者/owner,需先存在於 users 表,
 		// 否則寫入 members 中介表會違反外鍵約束(Postgres 會擋,SQLite 預設放行)。
 		{model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"}, "me@channel.dev"},
 		{model.User{ID: "usr_alice", Name: "Alice", AvatarColor: "#E07A5F"}, "alice@channel.dev"},
@@ -258,9 +263,9 @@ func seedUsers(st *store.Store) error {
 	return nil
 }
 
-// seedIfEmpty 在沒有任何頻道時建立一個示範頻道(對齊 App 端 Mock)。
+// seedIfEmpty 在沒有任何行程時建立一個示範行程(對齊 App 端 Mock)。
 func seedIfEmpty(st *store.Store) error {
-	n, err := st.CountChannels()
+	n, err := st.CountTrips()
 	if err != nil {
 		return err
 	}
@@ -268,7 +273,7 @@ func seedIfEmpty(st *store.Store) error {
 		return nil
 	}
 	me := model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"}
-	ch, err := st.CreateChannel("ch_001", "產品討論", me)
+	tr, err := st.CreateTrip("tr_001", "產品討論", me)
 	if err != nil {
 		return err
 	}
@@ -279,10 +284,10 @@ func seedIfEmpty(st *store.Store) error {
 		{Title: "修登入頁的 bug", Start: ""},
 	} {
 		e.ID = "ent_" + randHex()
-		e.ChannelID = ch.ID
+		e.TripID = tr.ID
 		e.CreatedAt = nowUTC()
 		_ = st.InsertEntry(e)
 	}
-	log.Printf("已寫入示範頻道 %s", ch.ID)
+	log.Printf("已寫入示範行程 %s", tr.ID)
 	return nil
 }

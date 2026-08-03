@@ -2,13 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { ApiCall, ClientConfig, WsEvent } from './api'
 import * as api from './api'
-import type { Channel, Entry } from './types'
+import type { Trip, Entry } from './types'
 import styles from './DemoPanel.module.css'
 
 // DemoPanel:只在網址帶 ?demo、且點開桌面版 rail 上的 API/WS 狀態面板圖示
 // 時才會出現(見 DesktopLayout.tsx 的 showDebugPanel),不是正式使用者看
 // 得到的功能——元件/檔案命名故意帶上 Demo 反映這件事。
-// 三個分頁 —— API 交易紀錄、WS 事件、目前頻道的 Entry 條目。
+// 三個分頁 —— API 交易紀錄、WS 事件、目前行程的 Entry 條目。
 // API:依時間倒序列出每筆交易,點開看原始 request/response JSON。
 // WS 事件:後端主動推送的介面更新事件(entries_updated/ask_user/task_created/
 //   entries_loaded 等,見 server/internal/api/ws.go 的各個 Notify* 方法)。
@@ -39,7 +39,7 @@ export function DemoPanel({
   wsEvents,
   onClearWsEvents,
   cfg,
-  channel,
+  trip,
   style,
 }: {
   calls: ApiCall[]
@@ -47,7 +47,7 @@ export function DemoPanel({
   wsEvents: WsEvent[]
   onClearWsEvents: () => void
   cfg: ClientConfig
-  channel: Channel | null
+  trip: Trip | null
   style?: CSSProperties
 }) {
   const [tab, setTab] = useState<DebugTab>('api')
@@ -100,51 +100,51 @@ export function DemoPanel({
           )}
         </div>
       ) : (
-        <EntriesView cfg={cfg} channel={channel} />
+        <EntriesView cfg={cfg} trip={trip} />
       )}
     </div>
   )
 }
 
-// EntriesView 顯示目前頻道的 Entry 條目(record_entry 工具寫進 DB 的結構化資料)。
+// EntriesView 顯示目前行程的 Entry 條目(record_entry 工具寫進 DB 的結構化資料)。
 function EntriesView({
   cfg,
-  channel,
+  trip,
 }: {
   cfg: ClientConfig
-  channel: Channel | null
+  trip: Trip | null
 }) {
   const [entries, setEntries] = useState<Entry[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   const load = useCallback(async () => {
-    if (!channel) return
+    if (!trip) return
     setLoading(true)
     setErr(null)
     try {
-      setEntries(await api.fetchEntries(cfg, channel.id))
+      setEntries(await api.fetchEntries(cfg, trip.id))
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg.baseURL, cfg.token, channel?.id])
+  }, [cfg.baseURL, cfg.token, trip?.id])
 
   useEffect(() => {
     load()
   }, [load])
 
-  // 重置:清空此頻道的 entry/trip(破壞性,限 owner)。完成後重新載入。
+  // 重置:清空此行程的 entry(破壞性,限 owner)。完成後重新載入。
   const reset = useCallback(async () => {
-    if (!channel) return
-    if (!window.confirm(`確定清空頻道「${channel.name}」的所有條目與行程?此操作無法復原。`))
+    if (!trip) return
+    if (!window.confirm(`確定清空行程「${trip.name}」的所有條目?此操作無法復原。`))
       return
     setLoading(true)
     setErr(null)
     try {
-      await api.resetChannelData(cfg, channel.id)
+      await api.resetTripData(cfg, trip.id)
       setEntries([])
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
@@ -152,13 +152,13 @@ function EntriesView({
       setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg.baseURL, cfg.token, channel?.id])
+  }, [cfg.baseURL, cfg.token, trip?.id])
 
-  if (!channel) {
+  if (!trip) {
     return (
       <div className={styles.list}>
         <div style={{ color: '#6e6e78', padding: 16, textAlign: 'center' }}>
-          先在左側進入一個頻道,這裡會顯示該頻道的 Entry 條目。
+          先在左側進入一個行程,這裡會顯示該行程的 Entry 條目。
         </div>
       </div>
     )
@@ -167,7 +167,7 @@ function EntriesView({
   return (
     <div className={styles.list}>
       <div className={styles.entriesHead}>
-        <span>頻道 {channel.name} · {entries.length} 筆</span>
+        <span>行程 {trip.name} · {entries.length} 筆</span>
         <span style={{ display: 'flex', gap: 6 }}>
           <button onClick={load} disabled={loading}>
             {loading ? '…' : '↻ 重整'}
@@ -180,7 +180,7 @@ function EntriesView({
       {err && <pre className={styles.jsonErr}>{err}</pre>}
       {!err && entries.length === 0 && !loading && (
         <div style={{ color: '#6e6e78', padding: 16, textAlign: 'center' }}>
-          這個頻道還沒有 Entry。owner 記事(需 -llm want)後會出現。
+          這個行程還沒有 Entry。owner 記事(需 -llm want)後會出現。
         </div>
       )}
       {entries.map((e) => (
@@ -206,7 +206,7 @@ function WsEventRow({ evt }: { evt: WsEvent }) {
     <div className={styles.call}>
       <div className={styles.callHead} onClick={() => setOpen((o) => !o)}>
         <span className={`${styles.method} ${styles.methodPost}`}>{evt.event}</span>
-        <span className={styles.callPath}>{evt.channelID ?? ''}</span>
+        <span className={styles.callPath}>{evt.tripID ?? ''}</span>
         <span className={styles.dur}>{time}</span>
       </div>
       {open && (

@@ -3,29 +3,29 @@ import type { TouchEvent as ReactTouchEvent } from 'react'
 import {
   List, Timeline, Sparkles, GalleryHorizontal, Map, Wrench, Radio, Route, Share2, Users,
 } from 'lucide-react'
-import type { Channel, User } from './types'
+import type { Trip, User } from './types'
 import { Avatar } from './AppCommon'
 import { type DemoPanelMode, DemoPanelContent } from './DesktopShared'
 import { PaceChart, type Checkpoint } from './PaceChart'
 import type { SelectedEntry } from './PaceRouteMap'
-import { ChannelMenu } from './channel/ChannelMenu'
-import { MembersScreen } from './channel/MembersScreen'
+import { TripMenu } from './trip/TripMenu'
+import { MembersScreen } from './trip/MembersScreen'
 import type { ClientConfig } from './api'
 import styles from './PhoneNavDrawer.module.css'
 
-// PhoneNavDrawer:手機版左側導覽抽屜欄,取代原本各自獨立的 ChannelsScreen
+// PhoneNavDrawer:手機版左側導覽抽屜欄,取代原本各自獨立的 TripsScreen
 // (整頁行程列表)、ChatScreen 自己的右側時間軸抽屜,與右下角漢堡按鈕開的
 // PhoneDemoDrawer(配速表/demo 面板),比照桌面版 DesktopLayout.tsx 的
 // DesktopRail(功能列)+ .desktop-sidepanel(側欄)結構:上方一排功能列
 // (時間軸/配速表/demo-*,對應桌面版 rail 的 timeline/pace/demo-* 項目),
 // 下方視選取的分頁顯示對應內容。
 //
-// 行程列表('channels')已經拆成獨立的另一個抽屜(PhoneChannelsDrawer.tsx),
+// 行程列表('trips')已經拆成獨立的另一個抽屜(PhoneTripsDrawer.tsx),
 // 疊在這個抽屜之上(更高的 z-index)——不再是這裡分頁列的其中一顆,見
-// PhoneContent.tsx 的 channelsDrawerOpen。
+// PhoneContent.tsx 的 tripsDrawerOpen。
 //
 // 分頁列右上角放三顆操作按鈕(分享/成員/使用者頭像),永遠顯示、不隨分頁
-// 切換而消失——分享/成員操作的對象是「目前選取的行程」(activeChannel),
+// 切換而消失——分享/成員操作的對象是「目前選取的行程」(activeTrip),
 // 跟抽屜正在顯示哪個分頁無關;使用者頭像點擊直接開設定。這三顆原本分散在
 // ChatScreen 自己的 navbar(桌面版仍保留在那裡)與主顯示區的
 // MainNavBar,手機版統一收攏到這裡,理由是分享/成員操作即使對話沒有顯示在
@@ -49,7 +49,7 @@ import styles from './PhoneNavDrawer.module.css'
 // 疊在整個 PhoneContent 之上(相對於 .web-app 定位),不像 PacePhoneSwipe
 // 只疊在配速表地圖上面。
 
-export type DrawerMode = DemoPanelMode | 'pace' | 'channels' | 'timeline'
+export type DrawerMode = DemoPanelMode | 'pace' | 'trips' | 'timeline'
 
 const DRAWER_WIDTH_PERCENT = 82
 
@@ -59,14 +59,14 @@ export function PhoneNavDrawer({
   mode,
   onSelectMode,
   isDemo,
-  activeChannel,
+  activeTrip,
   timelineSlotRef,
   lastContentMode,
   onSelectedEntry,
   onRouteChange,
   savedEntry,
-  channelsDrawerOpen,
-  onOpenChannels,
+  tripsDrawerOpen,
+  onOpenTrips,
   user,
   onOpenSettings,
   onOpenShare,
@@ -81,7 +81,7 @@ export function PhoneNavDrawer({
   mode: DrawerMode
   onSelectMode: (mode: DrawerMode) => void
   isDemo: boolean
-  activeChannel: Channel | null
+  activeTrip: Trip | null
   // timelineSlotRef:'timeline' 分頁時,抽屜欄這裡不再自己顯示時間軸內容
   // ——對齊使用者要求的「時間軸與對話顯示位置對調」,時間軸改到主顯示區
   // 滿版顯示,這裡改顯示對話(ChatScreen)本身。ChatScreen 實際上仍然只在
@@ -105,12 +105,12 @@ export function PhoneNavDrawer({
   // savedEntry:地圖手動拖曳選點儲存座標成功後回報的結果,轉傳給 PaceChart
   // 讓它就地更新自己的清單(見 PaceChart.tsx 的 savedEntry prop 說明)。
   savedEntry?: { id: string; lat: number; lng: number } | null
-  // channelsDrawerOpen:獨立行程抽屜(PhoneChannelsDrawer.tsx,疊在這個抽屜
+  // tripsDrawerOpen:獨立行程抽屜(PhoneTripsDrawer.tsx,疊在這個抽屜
   // 之上)目前是否開啟——驅動下方使用者頭像旁「行程」觸發鈕的 active 樣式。
-  channelsDrawerOpen: boolean
-  // onOpenChannels:點擊行程觸發鈕時,開啟獨立的行程抽屜(不是切換這個抽屜
+  tripsDrawerOpen: boolean
+  // onOpenTrips:點擊行程觸發鈕時,開啟獨立的行程抽屜(不是切換這個抽屜
   // 自己的 mode)。
-  onOpenChannels: () => void
+  onOpenTrips: () => void
   user: User
   // onOpenSettings:點擊右上角使用者頭像時直接開設定(不再先進選單),見
   // PhoneContent.tsx 的 SettingsScreen 疊層。
@@ -155,7 +155,7 @@ export function PhoneNavDrawer({
   const translate = open ? `${dragOffset}px` : `calc(-100% + ${dragOffset}px)`
 
   const items: { mode: DrawerMode; icon: typeof Timeline; title: string; disabled?: boolean }[] = [
-    { mode: 'timeline', icon: Timeline, title: '時間軸', disabled: !activeChannel },
+    { mode: 'timeline', icon: Timeline, title: '時間軸', disabled: !activeTrip },
     { mode: 'pace', icon: Route, title: '路徑' },
     ...(isDemo
       ? [
@@ -186,12 +186,12 @@ export function PhoneNavDrawer({
       >
         <div className={styles.tabs}>
           {/* 行程觸發鈕:放在功能列最左邊——點擊開啟獨立的行程抽屜
-              (PhoneChannelsDrawer.tsx,疊在這個抽屜之上),不是切換這個抽屜
+              (PhoneTripsDrawer.tsx,疊在這個抽屜之上),不是切換這個抽屜
               自己的 mode——行程列表已經拆成獨立抽屜,見檔案開頭的說明。 */}
           <button
             type="button"
-            className={`${styles.tab}${channelsDrawerOpen ? ` ${styles.tabActive}` : ''}`}
-            onClick={onOpenChannels}
+            className={`${styles.tab}${tripsDrawerOpen ? ` ${styles.tabActive}` : ''}`}
+            onClick={onOpenTrips}
             title="行程列表"
           >
             <List size={20} strokeWidth={1.8} />
@@ -200,7 +200,7 @@ export function PhoneNavDrawer({
             // isActive:一般情況就是「目前分頁就是這顆」;例外是使用者正在
             // 獨立行程抽屜瀏覽選新行程時,先前正在看的時間軸/配速表分頁
             // 圖示要一起顯示 active(見上方 lastContentMode 的說明)。
-            const isActive = mode === m || (channelsDrawerOpen && lastContentMode === m)
+            const isActive = mode === m || (tripsDrawerOpen && lastContentMode === m)
             return (
               <button
                 key={m}
@@ -218,10 +218,10 @@ export function PhoneNavDrawer({
               分頁切換影響)+ 使用者頭像(開設定)——見檔案開頭的說明。
               margin-left: auto 把這一群推到分頁列最右側。 */}
           <div className={styles.headerActions}>
-            {activeChannel && (
+            {activeTrip && (
               <>
-                <ChannelMenu channelID={activeChannel.id} />
-                {activeChannel.ownerID === user.id && (
+                <TripMenu tripID={activeTrip.id} />
+                {activeTrip.ownerID === user.id && (
                   <button type="button" className={styles.tab} onClick={onOpenShare} title="分享">
                     <Share2 size={18} strokeWidth={1.8} />
                   </button>
@@ -237,11 +237,11 @@ export function PhoneNavDrawer({
           </div>
         </div>
         <div className={styles.body}>
-          {showMembers && activeChannel ? (
+          {showMembers && activeTrip ? (
             <MembersScreen
               cfg={cfg}
-              channel={activeChannel}
-              isOwner={activeChannel.ownerID === user.id}
+              trip={activeTrip}
+              isOwner={activeTrip.ownerID === user.id}
               onBack={() => setShowMembers(false)}
             />
           ) : mode === 'timeline' ? (
@@ -252,12 +252,12 @@ export function PhoneNavDrawer({
           ) : mode === 'pace' ? (
             <PaceChart
               cfg={cfg}
-              channelID={activeChannel?.id}
+              tripID={activeTrip?.id}
               onCheckpointClick={onSelectedEntry}
               onRouteChange={onRouteChange}
               savedEntry={savedEntry}
             />
-          ) : mode === 'channels' ? null : (
+          ) : mode === 'trips' ? null : (
             <DemoPanelContent mode={mode} />
           )}
         </div>

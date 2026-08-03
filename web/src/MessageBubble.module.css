@@ -7,7 +7,7 @@
 
    .tag/.cat/.entry-loc 刻意不搬過來,留在 styles.css 當全域 class:
    .tag 同時被 Timeline.tsx(SubCard 的標籤)使用,.cat 同時被 Timeline.tsx
-   /PhoneScreens.tsx(頻道「我的」/分類標籤)使用,.entry-loc 是 Timeline.tsx
+   /PhoneScreens.tsx(行程「我的」/分類標籤)使用,.entry-loc 是 Timeline.tsx
    專屬(跟這裡的 .entry-* 系列同名前綴但不同元件,拆分前用 grep 個別確認
    過,不要混為一談)。
 

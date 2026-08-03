@@ -56,7 +56,7 @@ func (t *AskUserTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]t
 	prompt := args.GetString("prompt")
 
 	// 透過 WS 推送給前端開啟對應 UI(非同步:不等回答)。
-	NotifyAskUser(ChannelFrom(ctx), askType, prompt)
+	NotifyAskUser(TripFrom(ctx), askType, prompt)
 
 	msg := fmt.Sprintf("已請使用者透過 UI 提供「%s」。本輪結束,待使用者補上後會再次觸發。", prompt)
 	ctx.EmitToolResult(map[string]interface{}{

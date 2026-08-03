@@ -141,10 +141,10 @@ func (s *Server) handleComputeRouteFromEntries(w http.ResponseWriter, r *http.Re
 	}
 
 	// 這支端點掛在 internalAuth 之後(需登入 JWT),故不限制 entryIDs 要屬於
-	// 哪個頻道——scopeChannelID 傳空字串代表不做頻道範圍檢查。公開分享頁的
+	// 哪個行程——scopeTripID 傳空字串代表不做行程範圍檢查。公開分享頁的
 	// 對應端點見 handlePublicComputeRoute(public_link.go),那支
-	// 免登入,必須用 scopeChannelID 限制在分享連結對應的頻道內,避免任何人
-	// 拿分享連結當免驗證跳板查詢/觸發別的頻道 entry 的路線計算。
+	// 免登入,必須用 scopeTripID 限制在分享連結對應的行程內,避免任何人
+	// 拿分享連結當免驗證跳板查詢/觸發別的行程 entry 的路線計算。
 	resp, cerr := s.computeRouteForEntries(r.Context(), body.EntryIDs, "")
 	if cerr != nil {
 		writeErr(w, cerr.status, cerr.code, cerr.message)
@@ -155,8 +155,8 @@ func (s *Server) handleComputeRouteFromEntries(w http.ResponseWriter, r *http.Re
 
 // computeRouteAPIError 讓 computeRouteForEntries 可以把「該用哪個 HTTP 狀態碼
 // /錯誤代碼回應」的判斷留給呼叫端的 writeErr,自己專心做路線計算——
-// handleComputeRouteFromEntries(免頻道檢查)與
-// handlePublicComputeRoute(需頻道檢查)共用同一份核心邏輯,只是
+// handleComputeRouteFromEntries(免行程檢查)與
+// handlePublicComputeRoute(需行程檢查)共用同一份核心邏輯,只是
 // 呼叫前各自做不同的授權/範圍檢查。
 type computeRouteAPIError struct {
 	status  int
@@ -169,11 +169,11 @@ type computeRouteAPIError struct {
 // 組成 origin/intermediates/destination 呼叫 computeRoutes,回傳跟原本
 // handleComputeRouteFromEntries 一致的回應 body 形狀。
 //
-// scopeChannelID 非空時,額外要求每筆 entry 的 ChannelID 必須等於這個值,
-// 不符合就整批拒絕(回 403)——供公開分享頁呼叫端用分享連結對應的頻道限制
-// 範圍,避免免登入的呼叫被拿去查詢其他頻道的 entry。傳空字串跳過這項檢查
+// scopeTripID 非空時,額外要求每筆 entry 的 TripID 必須等於這個值,
+// 不符合就整批拒絕(回 403)——供公開分享頁呼叫端用分享連結對應的行程限制
+// 範圍,避免免登入的呼叫被拿去查詢其他行程的 entry。傳空字串跳過這項檢查
 // (供已登入呼叫端使用,呼叫身分已經過 internalAuth 驗證)。
-func (s *Server) computeRouteForEntries(ctx context.Context, entryIDs []string, scopeChannelID string) (map[string]any, *computeRouteAPIError) {
+func (s *Server) computeRouteForEntries(ctx context.Context, entryIDs []string, scopeTripID string) (map[string]any, *computeRouteAPIError) {
 	type entryPoint struct {
 		id       string
 		title    string
@@ -186,8 +186,8 @@ func (s *Server) computeRouteForEntries(ctx context.Context, entryIDs []string, 
 		if err != nil {
 			return nil, &computeRouteAPIError{http.StatusNotFound, "entry_not_found", "找不到此 entry: " + id}
 		}
-		if scopeChannelID != "" && entry.ChannelID != scopeChannelID {
-			return nil, &computeRouteAPIError{http.StatusForbidden, "entry_not_in_channel", "此 entry 不屬於這個分享連結的頻道: " + id}
+		if scopeTripID != "" && entry.TripID != scopeTripID {
+			return nil, &computeRouteAPIError{http.StatusForbidden, "entry_not_in_trip", "此 entry 不屬於這個分享連結的行程: " + id}
 		}
 		if entry.Lat != nil && entry.Lng != nil {
 			points = append(points, entryPoint{

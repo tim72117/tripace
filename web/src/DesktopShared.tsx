@@ -24,7 +24,7 @@ import langSelectStyles from './LangSelect.module.css'
 // 'pace':單車配速表(真實路線里程/時刻表,見 PaceChart.tsx),已從
 // ?demo 限定的試做功能轉為正式導覽項目,所有使用者都能在 rail 上看到。
 export type PanelMode =
-  | 'channels' | 'timeline' | 'pace'
+  | 'trips' | 'timeline' | 'pace'
   | 'demo-cards' | 'demo-row' | 'demo-map' | 'demo-clienttools' | 'demo-onagent'
   | null
 
@@ -32,7 +32,7 @@ export type PanelMode =
 // 在執行期驗證用(型別系統只在編譯期擋得住,URL 路徑參數是使用者可任意
 // 輸入的字串,需要執行期白名單檢查)。
 const PANEL_MODES = [
-  'channels', 'timeline', 'pace',
+  'trips', 'timeline', 'pace',
   'demo-cards', 'demo-row', 'demo-map', 'demo-clienttools', 'demo-onagent',
 ] as const
 
@@ -45,11 +45,11 @@ export function isPanelMode(v: string | undefined): v is Exclude<PanelMode, null
   return v != null && (PANEL_MODES as readonly string[]).includes(v)
 }
 
-// DemoPanelMode:PanelMode 扣掉 channels/timeline/pace/null 之後只剩的 5 種
-// demo 面板——channels/timeline/pace 在桌面版是 side panel 的正式功能,
+// DemoPanelMode:PanelMode 扣掉 trips/timeline/pace/null 之後只剩的 5 種
+// demo 面板——trips/timeline/pace 在桌面版是 side panel 的正式功能,
 // 手機版則是 PhoneNavDrawer(見該檔案)裡對應的分頁,兩邊各自處理,不算在
 // 這組共用的 demo 面板裡。
-export type DemoPanelMode = Exclude<PanelMode, 'channels' | 'timeline' | 'pace' | null>
+export type DemoPanelMode = Exclude<PanelMode, 'trips' | 'timeline' | 'pace' | null>
 
 // DemoPanelContent:5 個 demo 面板的內容渲染,供桌面版 DesktopContent 的
 // <main>(見 DesktopLayout.tsx)與手機版 PhoneNavDrawer(見該檔案)共用,

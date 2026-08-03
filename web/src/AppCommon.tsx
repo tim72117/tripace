@@ -4,7 +4,7 @@ import { AlertCircle, Navigation } from 'lucide-react'
 import type { ClientConfig } from './api'
 import * as api from './api'
 import { ApiError } from './api'
-import type { Channel, User } from './types'
+import type { Trip, User } from './types'
 
 // AppCommon:App.tsx 拆出來的共用工具/元件,供 App.tsx 本身、以及
 // ChatScreen.tsx/CliAuthPage.tsx 等其他檔案共同 import——這些原本寄生在
@@ -15,8 +15,8 @@ import type { Channel, User } from './types'
 // 未設時退回目前頁面 origin(production 前後端同源部署)。
 export const BASE_URL: string =
   import.meta.env.VITE_API_BASE || `${window.location.protocol}//${window.location.host}`
-// 默認頻道 ID (用戶設定的「開啟時自動進入」)
-export const LS_DEFAULT_CHANNEL = 'tripace.defaultChannelID'
+// 默認行程 ID (用戶設定的「開啟時自動進入」)
+export const LS_DEFAULT_TRIP = 'tripace.defaultTripID'
 // 登入身分存 localStorage:跨分頁共用同一身分(一般網站慣例)。
 const AUTH_TOKEN_KEY = 'tripace.auth.token'
 const AUTH_USER_KEY = 'tripace.auth.user'
@@ -31,7 +31,7 @@ const DESKTOP_BREAKPOINT = 768
 // useIsDesktop:用 matchMedia 判斷目前寬度是否達到桌面斷點。
 // 用 JS 判斷、只渲染其中一種佈局(而非兩份 DOM 都渲染、用 CSS 切換顯示),
 // 是因為 ChatScreen 掛載時會建立 WebSocket 連線並各自 fetch 資料——
-// 若手機版與桌面版兩棵 DOM 同時存在,選中頻道時會同時掛載兩個 ChatScreen,
+// 若手機版與桌面版兩棵 DOM 同時存在,選中行程時會同時掛載兩個 ChatScreen,
 // 造成重複連線與重複請求。供 App.tsx 的 PhoneContent/PublicPaceDemoPage
 // 共用,故放在這裡而非任一個消費端自己的檔案。
 export function useIsDesktop(): boolean {
@@ -49,8 +49,8 @@ export function useIsDesktop(): boolean {
 
 export interface ContentProps {
   cfg: ClientConfig
-  activeChannel: Channel | null
-  setActiveChannel: (c: Channel | null) => void
+  activeTrip: Trip | null
+  setActiveTrip: (t: Trip | null) => void
   token: string | null
   setToken: (t: string | null) => void
   user: User
@@ -95,13 +95,13 @@ export function useAppState() {
     setEmail('')
   }, [])
 
-  const [activeChannel, setActiveChannel] = useState<Channel | null>(null)
+  const [activeTrip, setActiveTrip] = useState<Trip | null>(null)
 
   const cfg: ClientConfig = { baseURL: BASE_URL, token }
   const effectiveUser = user ?? GUEST_USER
 
   return {
-    cfg, activeChannel, setActiveChannel,
+    cfg, activeTrip, setActiveTrip,
     token, setToken,
     user: effectiveUser, email, isGuest: user == null,
     onAuthed, onLogout,
@@ -286,14 +286,14 @@ export function LoginForm({
   )
 }
 
-// ---- 頻道列表:共用資料邏輯(抓取/建立/自動導向預設頻道) ----
+// ---- 行程列表:共用資料邏輯(抓取/建立/自動導向預設行程) ----
 // 手機版 PhoneNavDrawer 的行程列表分頁(見 PhoneNavDrawer.tsx)與桌面版
-// 側欄列表 DesktopChannelList(見 DesktopLayout.tsx)共用同一份 state 管理與
+// 側欄列表 DesktopTripList(見 DesktopLayout.tsx)共用同一份 state 管理與
 // API 呼叫,只有呈現方式(渲染 JSX)不同,避免整套重寫一份。放在這裡(而非
 // DesktopLayout.tsx)是因為手機版也要用,放桌面檔案會讓 PhoneContent.tsx
 // 得回頭 import 桌面檔案,形成循環依賴。
-export function useChannelsState(cfg: ClientConfig, onOpen: (c: Channel) => void) {
-  const [channels, setChannels] = useState<Channel[]>([])
+export function useTripsState(cfg: ClientConfig, onOpen: (t: Trip) => void) {
+  const [trips, setTrips] = useState<Trip[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -305,7 +305,7 @@ export function useChannelsState(cfg: ClientConfig, onOpen: (c: Channel) => void
     setErr(null)
     hasAutoNavigatedRef.current = false
     try {
-      setChannels(await api.fetchChannels(cfg))
+      setTrips(await api.fetchTrips(cfg))
     } catch (e) {
       setErr(errMsg(e))
     } finally {
@@ -319,23 +319,23 @@ export function useChannelsState(cfg: ClientConfig, onOpen: (c: Channel) => void
   }, [load])
 
   useEffect(() => {
-    if (channels.length > 0 && !hasAutoNavigatedRef.current) {
-      const defaultID = localStorage.getItem(LS_DEFAULT_CHANNEL)
+    if (trips.length > 0 && !hasAutoNavigatedRef.current) {
+      const defaultID = localStorage.getItem(LS_DEFAULT_TRIP)
       if (defaultID) {
-        const defaultChannel = channels.find((c) => c.id === defaultID)
-        if (defaultChannel) {
+        const defaultTrip = trips.find((t) => t.id === defaultID)
+        if (defaultTrip) {
           hasAutoNavigatedRef.current = true
-          onOpen(defaultChannel)
+          onOpen(defaultTrip)
         }
       }
     }
-  }, [channels, onOpen])
+  }, [trips, onOpen])
 
   const submitCreate = async () => {
     const name = newName.trim()
     if (!name) return
     try {
-      await api.createChannel(cfg, name)
+      await api.createTrip(cfg, name)
       setNewName('')
       setCreating(false)
       load()
@@ -345,7 +345,7 @@ export function useChannelsState(cfg: ClientConfig, onOpen: (c: Channel) => void
   }
 
   return {
-    channels, err, loading,
+    trips, err, loading,
     creating, setCreating,
     newName, setNewName,
     submitCreate,

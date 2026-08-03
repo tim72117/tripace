@@ -8,9 +8,9 @@ import (
 
 // Analyzer 是 LLM 能力的抽象。唯一實作為接 want 引擎的 WantPool。
 type Analyzer interface {
-	// Answer 對某頻道做自然語言查詢:agent 依 assistant.md 指引,自己用
+	// Answer 對某行程做自然語言查詢:agent 依 assistant.md 指引,自己用
 	// query_entries 查條目、再用 present_entries 呈現相關條目。
-	// channelID 供 query_entries 工具定位要查的頻道。
+	// tripID 供 query_entries 工具定位要查的行程。
 	// lang 是使用者設定的回答語言偏好("zh-TW"/"en"),空字串視為預設(繁體中文)。
-	Answer(channelID, question, lang string) model.SearchAnswer
+	Answer(tripID, question, lang string) model.SearchAnswer
 }

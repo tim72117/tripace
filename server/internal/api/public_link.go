@@ -9,7 +9,7 @@ import (
 	"github.com/tim72117/tripace/internal/store"
 )
 
-// POST /v1/channels/{id}/public-link — 建立（或取得已有）公開連結。
+// POST /v1/trips/{id}/public-link — 建立（或取得已有）公開連結。
 func (s *Server) handleCreatePublicLink(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	user := s.userFor(r)
@@ -64,7 +64,7 @@ func normalizeViewModeAPI(v string) string {
 	return "timeline"
 }
 
-// GET /v1/channels/{id}/public-link — 查詢頻道的公開連結。
+// GET /v1/trips/{id}/public-link — 查詢行程的公開連結。
 func (s *Server) handleGetPublicLink(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !s.requireMember(w, id, s.userFor(r).ID) {
@@ -72,7 +72,7 @@ func (s *Server) handleGetPublicLink(w http.ResponseWriter, r *http.Request) {
 	}
 	info, err := s.store.GetPublicLink(id)
 	if errors.Is(err, store.ErrNotFound) {
-		writeErr(w, http.StatusNotFound, "not_found", "此頻道尚未建立公開連結")
+		writeErr(w, http.StatusNotFound, "not_found", "此行程尚未建立公開連結")
 		return
 	}
 	if err != nil {
@@ -82,7 +82,7 @@ func (s *Server) handleGetPublicLink(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"linkToken": info.Token, "editable": info.Editable, "viewMode": info.ViewMode})
 }
 
-// DELETE /v1/channels/{id}/public-link — 刪除公開連結（撤銷分享）。
+// DELETE /v1/trips/{id}/public-link — 刪除公開連結（撤銷分享）。
 func (s *Server) handleDeletePublicLink(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !s.requireEditor(w, id, s.userFor(r).ID) {
@@ -95,10 +95,10 @@ func (s *Server) handleDeletePublicLink(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// GET /v1/public/{token} — 無需登入，讀取公開分享的頻道資料。
+// GET /v1/public/{token} — 無需登入，讀取公開分享的行程資料。
 func (s *Server) handlePublicView(w http.ResponseWriter, r *http.Request) {
 	token := r.PathValue("token")
-	info, err := s.store.GetPublicLinkChannel(token)
+	info, err := s.store.GetPublicLinkTrip(token)
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "not_found", "找不到此分享連結")
 		return
@@ -108,22 +108,22 @@ func (s *Server) handlePublicView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	channelName, err := s.store.GetChannelName(info.ChannelID)
+	tripName, err := s.store.GetTripName(info.TripID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "channel_failed", err.Error())
+		writeErr(w, http.StatusInternalServerError, "trip_failed", err.Error())
 		return
 	}
-	entries, err := s.store.ListEntriesByChannel(info.ChannelID)
+	entries, err := s.store.ListEntriesByTrip(info.TripID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "entries_failed", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"channelID":   info.ChannelID,
-		"channelName": channelName,
-		"editable":    info.Editable,
-		"viewMode":    info.ViewMode,
-		"entries":     entries,
+		"tripID":   info.TripID,
+		"tripName": tripName,
+		"editable": info.Editable,
+		"viewMode": info.ViewMode,
+		"entries":  entries,
 	})
 }
 
@@ -132,14 +132,14 @@ func (s *Server) handlePublicView(w http.ResponseWriter, r *http.Request) {
 // 對應登入後正式介面用的 POST /internal/entries/compute-route
 // (handleComputeRouteFromEntries,entry_geocode.go)：那支端點掛在
 // internalAuth 之後，靠「必須帶有效 JWT」擋著，本身完全不檢查 entryIDs
-// 是否屬於同一個頻道。這支端點刻意不登入即可呼叫（公開分享頁的訪客沒有
-// JWT），因此改用 token 反查頻道、並要求所有 entryIDs 都屬於這個頻道
-// (見 computeRouteForEntries 的 scopeChannelID 參數)——避免任何人只要
-// 知道一個分享連結，就能拿它當免驗證跳板去查詢/觸發其他頻道 entry 的
+// 是否屬於同一個行程。這支端點刻意不登入即可呼叫（公開分享頁的訪客沒有
+// JWT），因此改用 token 反查行程、並要求所有 entryIDs 都屬於這個行程
+// (見 computeRouteForEntries 的 scopeTripID 參數)——避免任何人只要
+// 知道一個分享連結，就能拿它當免驗證跳板去查詢/觸發其他行程 entry 的
 // 路線計算（entry 存不存在、座標為何都會透過錯誤訊息/成功結果洩漏）。
 func (s *Server) handlePublicComputeRoute(w http.ResponseWriter, r *http.Request) {
 	token := r.PathValue("token")
-	info, err := s.store.GetPublicLinkChannel(token)
+	info, err := s.store.GetPublicLinkTrip(token)
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "not_found", "找不到此分享連結")
 		return
@@ -160,7 +160,7 @@ func (s *Server) handlePublicComputeRoute(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	resp, cerr := s.computeRouteForEntries(r.Context(), body.EntryIDs, info.ChannelID)
+	resp, cerr := s.computeRouteForEntries(r.Context(), body.EntryIDs, info.TripID)
 	if cerr != nil {
 		writeErr(w, cerr.status, cerr.code, cerr.message)
 		return
@@ -171,7 +171,7 @@ func (s *Server) handlePublicComputeRoute(w http.ResponseWriter, r *http.Request
 // POST /v1/public/{token}/assist — 公開頁訪客送訊息（僅 editable 連結允許）。
 func (s *Server) handlePublicAssist(w http.ResponseWriter, r *http.Request) {
 	token := r.PathValue("token")
-	info, err := s.store.GetPublicLinkChannel(token)
+	info, err := s.store.GetPublicLinkTrip(token)
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "not_found", "找不到此分享連結")
 		return
@@ -205,6 +205,6 @@ func (s *Server) handlePublicAssist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Lang 為使用者設定的 LLM 回答語言偏好("zh-TW"/"en"),空字串由下游視為預設(繁體中文)。
-	res := assistant.AssistForSession("public:"+token, info.ChannelID, "", body.Text, body.Lang, body.ClientToolsSessionID, nil)
+	res := assistant.AssistForSession("public:"+token, info.TripID, "", body.Text, body.Lang, body.ClientToolsSessionID, nil)
 	writeJSON(w, http.StatusOK, res)
 }

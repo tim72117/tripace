@@ -57,28 +57,26 @@ func (c *httpClient) do(method, path string, body any) (map[string]any, error) {
 	return result, nil
 }
 
-func (c *httpClient) listChannels() (any, error) {
-	return c.do("GET", "/internal/channels", nil)
+func (c *httpClient) listTrips() (any, error) {
+	return c.do("GET", "/internal/trips", nil)
 }
 
-// tripEntries 列出某個頻道的所有 entry。名稱沿用歷史(舊版是列某個 trip
-// 底下的 entry,trip 歸組移除後改成列整個頻道),等頻道本身改名為 trip 之後
-// 這個名稱剛好會對上實際語意,故不另外改名。
-func (c *httpClient) tripEntries(channelID string) (any, error) {
-	return c.do("GET", "/internal/channels/"+channelID+"/entries", nil)
+// tripEntries 列出某個行程的所有 entry。
+func (c *httpClient) tripEntries(tripID string) (any, error) {
+	return c.do("GET", "/internal/trips/"+tripID+"/entries", nil)
 }
 
-// createChannel 走 /v1/channels(不是 /internal/):建立頻道天生就需要一個
+// createTrip 走 /v1/trips(不是 /internal/):建立行程天生就需要一個
 // 「以誰的身分當 owner」,/internal/ 底下的其餘端點都刻意不涉及這個問題
-// (直接對已存在的 channelID/entryID 操作),但 /v1/channels 本來就是設計成
+// (直接對已存在的 tripID/entryID 操作),但 /v1/trips 本來就是設計成
 // 用呼叫端的已驗證身分(userFor)當 owner,CLI 登入後拿到的就是這樣一把
 // token,直接打這條路徑即可,不需要另外在 /internal/ 底下重造一份。
-func (c *httpClient) createChannel(name string) (any, error) {
-	return c.do("POST", "/v1/channels", map[string]any{"name": name})
+func (c *httpClient) createTrip(name string) (any, error) {
+	return c.do("POST", "/v1/trips", map[string]any{"name": name})
 }
 
-func (c *httpClient) record(channelID, title, start, startTime, end, endTime, location string) (any, error) {
-	return c.do("POST", "/internal/channels/"+channelID+"/entries", map[string]any{
+func (c *httpClient) record(tripID, title, start, startTime, end, endTime, location string) (any, error) {
+	return c.do("POST", "/internal/trips/"+tripID+"/entries", map[string]any{
 		"title": title, "start": start, "startTime": startTime,
 		"end": end, "endTime": endTime, "location": location,
 	})
@@ -108,7 +106,7 @@ func (c *httpClient) deleteEntry(entryID string) error {
 	return err
 }
 
-func (c *httpClient) reset(channelID string) error {
-	_, err := c.do("DELETE", "/internal/channels/"+channelID+"/entries", nil)
+func (c *httpClient) reset(tripID string) error {
+	_, err := c.do("DELETE", "/internal/trips/"+tripID+"/entries", nil)
 	return err
 }

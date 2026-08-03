@@ -1,6 +1,6 @@
 /* 桌面版佈局相關全域樣式(分類拆分自 styles.css,非 CSS Modules——單純依
    功能歸類到獨立檔案,仍是全域 class,見 main.tsx 的 import 順序)。
-   涵蓋 .desktop-* 系列(側欄/頻道列表/使用者選單/主要區塊等),對應
+   涵蓋 .desktop-* 系列(側欄/行程列表/使用者選單/主要區塊等),對應
    DesktopLayout.tsx 的 DesktopContent。
    .desktop-rail-btn-demo* 這 3 條規則雖然語意上屬於 demo 分類,但結構上
    內嵌在 .desktop-rail 區塊中間(前後都是核心 rail 樣式),為了避免非連續
@@ -8,8 +8,8 @@
    styles-demo.css。 */
 
 /* ---- 桌面版佈局(寬度 >= 768px,見 DesktopLayout.tsx DesktopContent):
-   左側邊欄(頻道列表 + 使用者選單)+ 右側 ChatScreen 主要區塊,
-   類似 Slack/Discord 的頻道側欄模式。只在 useIsDesktop() 判定為桌面寬度時才會掛載,
+   左側邊欄(行程列表 + 使用者選單)+ 右側 ChatScreen 主要區塊,
+   類似 Slack/Discord 的行程側欄模式。只在 useIsDesktop() 判定為桌面寬度時才會掛載,
    手機版走 PhoneContent 既有的整頁切換邏輯,兩者互斥、不會同時掛載。 ---- */
 .desktop-layout {
   flex: 1 1 auto;
@@ -18,7 +18,7 @@
   overflow: hidden;
 }
 
-/* ---- icon rail(最左緣 48px 固定寬,VSCode activity bar / Slack 頻道列模式):
+/* ---- icon rail(最左緣 48px 固定寬,VSCode activity bar / Slack 行程列模式):
    上方兩顆圖示鈕切換 side panel 內容,底部是 DesktopUserMenu。---- */
 .desktop-rail {
   flex: 0 0 48px;
@@ -127,7 +127,7 @@
   width: 260px;
 }
 
-/* side panel:改造自原本的 desktop-sidebar,內容可切換(頻道列表/時間軸)、
+/* side panel:改造自原本的 desktop-sidebar,內容可切換(行程列表/時間軸)、
    可收合(主區跟著縮放的 push 模式,非 overlay);寬度切換與收合都走 CSS transition。 */
 .desktop-sidepanel {
   flex: 0 0 272px;
@@ -205,8 +205,8 @@
   padding: 4px 8px 12px;
 }
 
-/* 側欄上半：頻道列表 */
-.desktop-channel-list {
+/* 側欄上半：行程列表 */
+.desktop-trip-list {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -226,14 +226,14 @@
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
-.desktop-channel-scroll {
+.desktop-trip-scroll {
   flex: 1 1 auto;
   overflow-y: auto;
   padding: 4px 8px 12px;
 }
 
-/* 側欄頻道列表項目(緊湊列表,對應手機版 .row，但選中時有高亮) */
-.desktop-channel-item {
+/* 側欄行程列表項目(緊湊列表,對應手機版 .row，但選中時有高亮) */
+.desktop-trip-item {
   width: 100%;
   display: flex;
   align-items: center;
@@ -248,23 +248,23 @@
   color: inherit;
   transition: background 0.12s;
 }
-.desktop-channel-item:hover {
+.desktop-trip-item:hover {
   background: var(--ios-bg);
 }
-.desktop-channel-item:focus-visible {
+.desktop-trip-item:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: -2px;
 }
 /* 目前選取的行程:低調的灰底(--ios-sep),不用強調色實心底——對齊手機版
-   PhoneNavDrawer.module.css 的 .channelItemActive,理由同該處說明:
+   PhoneNavDrawer.module.css 的 .tripItemActive,理由同該處說明:
    「目前選中」只是狀態提示,不需要搶視覺份量。 */
-.desktop-channel-item.active {
+.desktop-trip-item.active {
   background: var(--ios-sep);
 }
 /* 行程項目的圖示徽章:取代原本的實心色塊大頭貼(Avatar),改用無色圖示
    (MapPin/Plus,見 DesktopLayout.tsx),跟手機版 PhoneNavDrawer.module.css
-   的 .channelItem/.newChannelIcon 同一種低調視覺調性。 */
-.desktop-channel-icon {
+   的 .tripItem/.newTripIcon 同一種低調視覺調性。 */
+.desktop-trip-icon {
   width: 38px;
   height: 38px;
   border-radius: 50%;
@@ -275,14 +275,14 @@
   background: var(--ios-sep);
   flex: 0 0 auto;
 }
-.desktop-channel-item .name {
+.desktop-trip-item .name {
   font-size: 14px;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.desktop-channel-item .sub {
+.desktop-trip-item .sub {
   font-size: 12px;
   color: var(--ios-gray);
   white-space: nowrap;

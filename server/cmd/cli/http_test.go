@@ -81,28 +81,28 @@ func withToken(t *testing.T, token string) {
 	}
 }
 
-func TestHTTPClientListChannels(t *testing.T) {
+func TestHTTPClientListTrips(t *testing.T) {
 	withToken(t, "tok_test")
 	srv, got := newFakeServer(t)
 
-	if _, err := newHTTPClient(srv.URL).listChannels(); err != nil {
-		t.Fatalf("listChannels: %v", err)
+	if _, err := newHTTPClient(srv.URL).listTrips(); err != nil {
+		t.Fatalf("listTrips: %v", err)
 	}
 
-	assertReq(t, got, "GET", "/internal/channels")
+	assertReq(t, got, "GET", "/internal/trips")
 }
 
-func TestHTTPClientCreateChannel(t *testing.T) {
+func TestHTTPClientCreateTrip(t *testing.T) {
 	withToken(t, "tok_test")
 	srv, got := newFakeServer(t)
 
-	if _, err := newHTTPClient(srv.URL).createChannel("花蓮三日"); err != nil {
-		t.Fatalf("createChannel: %v", err)
+	if _, err := newHTTPClient(srv.URL).createTrip("花蓮三日"); err != nil {
+		t.Fatalf("createTrip: %v", err)
 	}
 
-	// createChannel 是唯一走 /v1/ 而非 /internal/ 的方法(建頻道需要一個
+	// createTrip 是唯一走 /v1/ 而非 /internal/ 的方法(建行程需要一個
 	// 「以誰為 owner」的已驗證身分,見 http.go 上的說明)。
-	assertReq(t, got, "POST", "/v1/channels")
+	assertReq(t, got, "POST", "/v1/trips")
 	if got.body["name"] != "花蓮三日" {
 		t.Errorf("body name = %v，預期 花蓮三日", got.body["name"])
 	}
@@ -112,23 +112,23 @@ func TestHTTPClientTripEntries(t *testing.T) {
 	withToken(t, "tok_test")
 	srv, got := newFakeServer(t)
 
-	if _, err := newHTTPClient(srv.URL).tripEntries("ch_abc"); err != nil {
+	if _, err := newHTTPClient(srv.URL).tripEntries("tr_abc"); err != nil {
 		t.Fatalf("tripEntries: %v", err)
 	}
 
-	assertReq(t, got, "GET", "/internal/channels/ch_abc/entries")
+	assertReq(t, got, "GET", "/internal/trips/tr_abc/entries")
 }
 
 func TestHTTPClientRecord(t *testing.T) {
 	withToken(t, "tok_test")
 	srv, got := newFakeServer(t)
 
-	_, err := newHTTPClient(srv.URL).record("ch_abc", "光復糖廠", "2026-03-01", "09:00", "2026-03-01", "10:30", "花蓮縣光復鄉")
+	_, err := newHTTPClient(srv.URL).record("tr_abc", "光復糖廠", "2026-03-01", "09:00", "2026-03-01", "10:30", "花蓮縣光復鄉")
 	if err != nil {
 		t.Fatalf("record: %v", err)
 	}
 
-	assertReq(t, got, "POST", "/internal/channels/ch_abc/entries")
+	assertReq(t, got, "POST", "/internal/trips/tr_abc/entries")
 	for k, want := range map[string]string{
 		"title": "光復糖廠", "start": "2026-03-01", "startTime": "09:00",
 		"end": "2026-03-01", "endTime": "10:30", "location": "花蓮縣光復鄉",
@@ -196,11 +196,11 @@ func TestHTTPClientReset(t *testing.T) {
 	withToken(t, "tok_test")
 	srv, got := newFakeServer(t)
 
-	if err := newHTTPClient(srv.URL).reset("ch_abc"); err != nil {
+	if err := newHTTPClient(srv.URL).reset("tr_abc"); err != nil {
 		t.Fatalf("reset: %v", err)
 	}
 
-	assertReq(t, got, "DELETE", "/internal/channels/ch_abc/entries")
+	assertReq(t, got, "DELETE", "/internal/trips/tr_abc/entries")
 }
 
 // assertReq 斷言 method、path,以及一定要帶上 bearer token。

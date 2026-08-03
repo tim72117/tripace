@@ -26,7 +26,7 @@ const FEATURES = [
   {
     icon: Search,
     title: '自然語言查詢',
-    desc: '「退房是幾號?」直接問頻道就好,AI 讀懂行程後立刻回答。',
+    desc: '「退房是幾號?」直接問行程就好,AI 讀懂行程後立刻回答。',
   },
   {
     icon: Users,

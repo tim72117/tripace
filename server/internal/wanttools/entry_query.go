@@ -34,12 +34,12 @@ func init() {
 }
 
 // QueryEntriesDeclaration 是給 LLM 看的工具宣告。
-// 用於決定查詢範圍、把頻道中已記錄的條目(待辦/行程/會議等)載入到前端的
+// 用於決定查詢範圍、把行程中已記錄的條目(待辦/行程/會議等)載入到前端的
 // 旅程清單表格——查到的結果不會回傳給 LLM 閱讀,LLM 只會收到一句確認文字,
 // 實際內容由前端表格顯示,供使用者查看與編輯。
 var QueryEntriesDeclaration = types.ToolDeclaration{
 	Name: "entry_query",
-	Description: "依時間範圍查詢頻道中已記錄的條目(待辦、行程、會議等),把查到的結果載入到前端的旅程清單表格供使用者查看與編輯。" +
+	Description: "依時間範圍查詢行程中已記錄的條目(待辦、行程、會議等),把查到的結果載入到前端的旅程清單表格供使用者查看與編輯。" +
 		"當使用者在提問、想知道某段時間有什麼安排,或你在記錄新條目前需要確認是否已經記過同一件事時呼叫。可用 from / to 限定時間範圍。" +
 		"注意:這個工具不會把查到的條目內容回傳給你——回傳的只是一句確認文字(如「已載入 3 筆到前端表格」)與筆數,實際內容顯示在前端表格,不能拿來回答使用者或做任何判斷。",
 	Type: "sync",
@@ -90,15 +90,15 @@ func (t *QueryEntriesTool) Call(args types.ToolArguments, ctx types.ToolContext)
 	if entryStore == nil {
 		return nil, fmt.Errorf("store 未初始化")
 	}
-	// channelID 取自本次呼叫的 SessionEnvs(agent 不需自己帶)。
-	channelID := ChannelFrom(ctx)
-	entries, err := entryStore.ListEntriesByRange(channelID, from, to)
+	// tripID 取自本次呼叫的 SessionEnvs(agent 不需自己帶)。
+	tripID := TripFrom(ctx)
+	entries, err := entryStore.ListEntriesByRange(tripID, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("查詢條目失敗: %w", err)
 	}
 
 	payload := toTripEntryPayloads(entries)
-	NotifyEntriesLoaded(channelID, payload)
+	NotifyEntriesLoaded(tripID, payload)
 
 	var confirm string
 	if len(entries) == 0 {

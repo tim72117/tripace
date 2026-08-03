@@ -8,7 +8,7 @@ import (
 )
 
 // fakeToolCtx 是 types.ToolContext 的測試假物件:只實作 task_plan 會用到的
-// GetSessionEnvs(供 ChannelFrom 取 channelID)與 EmitToolResult(記下最後結果供斷言),
+// GetSessionEnvs(供 TripFrom 取 tripID)與 EmitToolResult(記下最後結果供斷言),
 // 其餘 interface 方法一律 no-op / 回傳零值。
 type fakeToolCtx struct {
 	envs       map[string]string
@@ -39,9 +39,9 @@ func (c *fakeToolCtx) RequestInteraction(map[string]interface{}) (interface{}, e
 	return nil, nil
 }
 
-// newTaskCtx 建立綁定指定 channelID 的假 context。
-func newTaskCtx(channelID string) *fakeToolCtx {
-	return &fakeToolCtx{envs: map[string]string{"channelID": channelID}}
+// newTaskCtx 建立綁定指定 tripID 的假 context。
+func newTaskCtx(tripID string) *fakeToolCtx {
+	return &fakeToolCtx{envs: map[string]string{"tripID": tripID}}
 }
 
 // callCreate 用 items 物件陣列呼叫 task_plan 的 create,回傳建立後該頻道的任務清單。
@@ -116,9 +116,9 @@ func TestTaskPlanCreateIDsContinueAcrossCalls(t *testing.T) {
 	}
 }
 
-// TestTaskPlanCreateIDsPerChannel 驗證 id 是「per-channel」獨立計數:
+// TestTaskPlanCreateIDsPerTrip 驗證 id 是「per-trip」獨立計數:
 // 不同頻道各自從 1 開始,互不影響。
-func TestTaskPlanCreateIDsPerChannel(t *testing.T) {
+func TestTaskPlanCreateIDsPerTrip(t *testing.T) {
 	chA, chB := "ch_a_ids", "ch_b_ids"
 	tasks.Clear(chA)
 	tasks.Clear(chB)
@@ -356,7 +356,7 @@ func TestTaskPlanCreateNotifiesWithKind(t *testing.T) {
 		date, text, kind string
 	}
 	var got []evt
-	BindTaskCreated(func(channelID string, taskID int, date, text, kind string) {
+	BindTaskCreated(func(tripID string, taskID int, date, text, kind string) {
 		got = append(got, evt{taskID, date, text, kind})
 	})
 

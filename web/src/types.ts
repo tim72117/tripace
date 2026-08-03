@@ -1,7 +1,7 @@
 // 與 Go server 的 model.go / docs/API.md 嚴格對齊的型別。
 // 任何欄位改動都應同步這裡與後端,前端才能忠實反映後端回應。
 
-export interface Channel {
+export interface Trip {
   id: string
   name: string
   ownerID: string
@@ -14,7 +14,7 @@ export interface Channel {
 // LLM 處理後的結構化資訊(分類/標籤/摘要/事件時間)改放在 Entry。
 export interface Message {
   id: string
-  channelID: string
+  tripID: string
   authorID: string
   authorName: string
   text: string
@@ -28,12 +28,12 @@ export interface User {
   avatarColor: string
 }
 
-// 頻道成員角色:editor 可記事/編輯,viewer 只能查詢。對應後端 model 的 role。
-export type ChannelRole = 'editor' | 'viewer'
+// 行程成員角色:editor 可記事/編輯,viewer 只能查詢。對應後端 model 的 role。
+export type TripRole = 'editor' | 'viewer'
 
-// Member 是頻道成員:公開身分 + 在該頻道的角色。對應後端 model.Member(扁平結構)。
+// Member 是行程成員:公開身分 + 在該行程的角色。對應後端 model.Member(扁平結構)。
 export interface Member extends User {
-  role: ChannelRole
+  role: TripRole
 }
 
 // Profile 是私密資料,只在「自己的帳號」端點回傳。
@@ -57,7 +57,7 @@ export interface SearchAnswer {
 // 可獨立存在,並可關聯多則來源訊息(多對多)。
 export interface Entry {
   id: string
-  channelID: string
+  tripID: string
   title: string // 事項描述
   start: string // 'YYYY-MM-DD';可空
   startTime: string // 'HH:MM';空=全日
@@ -71,6 +71,9 @@ export interface Entry {
   category: string | null
   tags: string[] | null
   note: string | null
+  // kind:條目類型,對應後端 model.Entry.Kind——"stay"|"flight"|"activity"|
+  // "note"|"car"|"restaurant"|"ticket",未分類時為 null。
+  kind?: string | null
   createdAt: string // ISO8601
 }
 

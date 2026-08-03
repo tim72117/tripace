@@ -144,15 +144,15 @@ body {
   color: var(--color-accent);
 }
 
-/* 登入下拉(內嵌於頻道列表 navbar) */
+/* 登入下拉(內嵌於行程列表 navbar) */
 .login-dropdown {
   border-bottom: 1px solid var(--ios-sep);
   background: var(--ios-card);
   padding: 8px 16px 16px;
 }
 
-/* 新增頻道輸入列(嵌在 navbar 下方的一般版面,非聊天室浮空輸入條) */
-.new-channel-composer {
+/* 新增行程輸入列(嵌在 navbar 下方的一般版面,非聊天室浮空輸入條) */
+.new-trip-composer {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -160,7 +160,7 @@ body {
   background: var(--ios-card);
   border-bottom: 0.5px solid var(--ios-sep);
 }
-.new-channel-composer input {
+.new-trip-composer input {
   flex: 1;
   border: 1.5px solid var(--ios-sep);
   border-radius: 10px;
@@ -170,21 +170,21 @@ body {
   background: var(--ios-bg);
   transition: border-color 0.15s;
 }
-.new-channel-composer input:focus {
+.new-trip-composer input:focus {
   border-color: var(--color-accent);
 }
-.new-channel-composer .btn-primary {
+.new-trip-composer .btn-primary {
   width: auto;
   flex: 0 0 auto;
   padding: 9px 16px;
   font-size: 15px;
 }
 
-/* 手機版行程列表(PhoneNavDrawer.tsx 的 ChannelsTabContent)瀏覽狀態下,
-   常駐在列表正上方的「新增行程」按鈕。跟 .new-channel-composer 一樣是
+/* 手機版行程列表(PhoneNavDrawer.tsx 的 TripsTabContent)瀏覽狀態下,
+   常駐在列表正上方的「新增行程」按鈕。跟 .new-trip-composer 一樣是
    整條橫幅,寬度撐滿容器,不是一般行內按鈕的自然寬度,故需要額外覆寫
    .btn-primary 預設的置中/自動寬度樣式。 */
-.new-channel-trigger {
+.new-trip-trigger {
   width: 100%;
   display: flex;
   align-items: center;
@@ -235,7 +235,7 @@ body {
   background: #f5f5f7;
 }
 /* .row.active:目前選取的項目(見 PhoneNavDrawer.tsx 行程列表分頁),對應
-   桌面版 .desktop-channel-item.active 同一種「目前選中」的強調色底 + 白字。 */
+   桌面版 .desktop-trip-item.active 同一種「目前選中」的強調色底 + 白字。 */
 .row.active {
   background: var(--color-accent);
 }
@@ -246,7 +246,7 @@ body {
 /* 不限定 .row 祖先——.grow 的用途(flex:1 撐滿剩餘空間 + min-width:0 讓
    子層的 text-overflow: ellipsis 能真的生效)是通用的,任何 flex row 裡
    放一塊「文字可能過長要截斷」的內容都用得到,不是 .row 專屬。曾經只限定
-   在 .row .grow,導致 .desktop-channel-item/.desktop-user-trigger(見
+   在 .row .grow,導致 .desktop-trip-item/.desktop-user-trigger(見
    styles-desktop.css)底下的同名 .grow 完全吃不到這條規則,文字過長時
    直接撐破容器邊界而非省略號截斷。 */
 .grow {

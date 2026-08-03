@@ -9,10 +9,10 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// ListChannelsForUser 回傳指定使用者參與(為成員)的頻道,依更新時間新到舊。
+// ListTripsForUser 回傳指定使用者參與(為成員)的行程,依更新時間新到舊。
 // memberCount 與 lastMessagePreview 以子查詢取得。
-func (s *Store) ListChannelsForUser(userID string) ([]model.Channel, error) {
-	type chanAgg struct {
+func (s *Store) ListTripsForUser(userID string) ([]model.Trip, error) {
+	type tripAgg struct {
 		ID                 string
 		Name               string
 		OwnerID            string
@@ -21,23 +21,23 @@ func (s *Store) ListChannelsForUser(userID string) ([]model.Channel, error) {
 		LastMessagePreview *string
 	}
 	// 原話已移至裝置端,後端不再有 messages;預覽改取最近一筆 entry 的事項。
-	var rows []chanAgg
+	var rows []tripAgg
 	err := s.db.
-		Table("channels c").
-		Select(`c.id, c.name, c.owner_id, c.updated_at,
-			(SELECT COUNT(*) FROM members m2 WHERE m2.channel_id = c.id) AS member_count,
-			(SELECT title FROM entries e WHERE e.channel_id = c.id
+		Table("trips t").
+		Select(`t.id, t.name, t.owner_id, t.updated_at,
+			(SELECT COUNT(*) FROM members m2 WHERE m2.trip_id = t.id) AS member_count,
+			(SELECT title FROM entries e WHERE e.trip_id = t.id
 			 ORDER BY e.created_at DESC LIMIT 1) AS last_message_preview`).
-		Joins("JOIN members m ON m.channel_id = c.id AND m.user_id = ?", userID).
-		Order("c.updated_at DESC").
+		Joins("JOIN members m ON m.trip_id = t.id AND m.user_id = ?", userID).
+		Order("t.updated_at DESC").
 		Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
 
-	out := make([]model.Channel, 0, len(rows))
+	out := make([]model.Trip, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, model.Channel{
+		out = append(out, model.Trip{
 			ID:                 r.ID,
 			Name:               r.Name,
 			OwnerID:            r.OwnerID,
@@ -49,82 +49,82 @@ func (s *Store) ListChannelsForUser(userID string) ([]model.Channel, error) {
 	return out, nil
 }
 
-// CreateChannel 建立頻道,建立者即為擁有者(owner),並自動成為成員。
-func (s *Store) CreateChannel(id, name string, creator model.User) (model.Channel, error) {
+// CreateTrip 建立行程,建立者即為擁有者(owner),並自動成為成員。
+func (s *Store) CreateTrip(id, name string, creator model.User) (model.Trip, error) {
 	t := now()
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		ch := channelRow{ID: id, Name: name, OwnerID: creator.ID, CreatedAt: t, UpdatedAt: t}
-		if err := tx.Create(&ch).Error; err != nil {
+		tr := tripRow{ID: id, Name: name, OwnerID: creator.ID, CreatedAt: t, UpdatedAt: t}
+		if err := tx.Create(&tr).Error; err != nil {
 			return err
 		}
 		// 建立者加入成員(中介表)。
 		// 建立者即 owner,預設給 editor 角色(可記事/編輯)。
-		return tx.Create(&memberLink{ChannelID: id, UserID: creator.ID, Role: model.RoleEditor}).Error
+		return tx.Create(&memberLink{TripID: id, UserID: creator.ID, Role: model.RoleEditor}).Error
 	})
 	if err != nil {
-		return model.Channel{}, err
+		return model.Trip{}, err
 	}
-	return model.Channel{ID: id, Name: name, OwnerID: creator.ID, MemberCount: 1, UpdatedAt: t}, nil
+	return model.Trip{ID: id, Name: name, OwnerID: creator.ID, MemberCount: 1, UpdatedAt: t}, nil
 }
 
-// GetChannelOwner 回傳頻道的 owner_id;頻道不存在回 ErrNotFound。
-func (s *Store) GetChannelOwner(channelID string) (string, error) {
-	var cr channelRow
-	err := s.db.Select("owner_id").Where("id = ?", channelID).First(&cr).Error
+// GetTripOwner 回傳行程的 owner_id;行程不存在回 ErrNotFound。
+func (s *Store) GetTripOwner(tripID string) (string, error) {
+	var tr tripRow
+	err := s.db.Select("owner_id").Where("id = ?", tripID).First(&tr).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", ErrNotFound
 	}
 	if err != nil {
 		return "", err
 	}
-	return cr.OwnerID, nil
+	return tr.OwnerID, nil
 }
 
-// GetChannelName 回傳頻道名稱；頻道不存在回 ErrNotFound。
-func (s *Store) GetChannelName(channelID string) (string, error) {
-	var cr channelRow
-	err := s.db.Select("name").Where("id = ?", channelID).First(&cr).Error
+// GetTripName 回傳行程名稱；行程不存在回 ErrNotFound。
+func (s *Store) GetTripName(tripID string) (string, error) {
+	var tr tripRow
+	err := s.db.Select("name").Where("id = ?", tripID).First(&tr).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", ErrNotFound
 	}
 	if err != nil {
 		return "", err
 	}
-	return cr.Name, nil
+	return tr.Name, nil
 }
 
-// ListAllChannels 回傳所有頻道(供 internal CLI 使用)。
-func (s *Store) ListAllChannels() ([]model.Channel, error) {
-	var rows []channelRow
+// ListAllTrips 回傳所有行程(供 internal CLI 使用)。
+func (s *Store) ListAllTrips() ([]model.Trip, error) {
+	var rows []tripRow
 	err := s.db.Order("updated_at DESC").Find(&rows).Error
 	if err != nil {
 		return nil, err
 	}
-	out := make([]model.Channel, 0, len(rows))
+	out := make([]model.Trip, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, model.Channel{ID: r.ID, Name: r.Name, OwnerID: r.OwnerID, UpdatedAt: r.UpdatedAt})
+		out = append(out, model.Trip{ID: r.ID, Name: r.Name, OwnerID: r.OwnerID, UpdatedAt: r.UpdatedAt})
 	}
 	return out, nil
 }
 
-// CountChannels 回傳頻道總數(seed 判斷資料庫是否為空用)。
-func (s *Store) CountChannels() (int, error) {
+// CountTrips 回傳行程總數(seed 判斷資料庫是否為空用)。
+func (s *Store) CountTrips() (int, error) {
 	var n int64
-	err := s.db.Model(&channelRow{}).Count(&n).Error
+	err := s.db.Model(&tripRow{}).Count(&n).Error
 	return int(n), err
 }
 
-// channelExists 確認頻道存在。
-func (s *Store) channelExists(id string) (bool, error) {
+// tripExists 確認行程存在。
+func (s *Store) tripExists(id string) (bool, error) {
 	var n int64
-	err := s.db.Model(&channelRow{}).Where("id = ?", id).Count(&n).Error
+	err := s.db.Model(&tripRow{}).Where("id = ?", id).Count(&n).Error
 	return n > 0, err
 }
 
 // ----- 成員 -----
 
-// ListMembers 回傳頻道成員(從 users 表撈,依名稱排序)。
-func (s *Store) ListMembers(channelID string) ([]model.Member, error) {
+// ListMembers 回傳行程成員(從 users 表撈,依名稱排序)。
+func (s *Store) ListMembers(tripID string) ([]model.Member, error) {
 	type memberAgg struct {
 		ID          string
 		Name        string
@@ -136,7 +136,7 @@ func (s *Store) ListMembers(channelID string) ([]model.Member, error) {
 		Table("users").
 		Select("users.id, users.name, users.avatar_color, m.role").
 		Joins("JOIN members m ON m.user_id = users.id").
-		Where("m.channel_id = ?", channelID).
+		Where("m.trip_id = ?", tripID).
 		Order("users.name").
 		Scan(&rows).Error
 	if err != nil {
@@ -154,8 +154,8 @@ func (s *Store) ListMembers(channelID string) ([]model.Member, error) {
 
 // AddMember 加入成員(冪等),以指定角色加入;role 留空則預設 viewer。
 // 回傳更新後的成員清單(含角色)。
-func (s *Store) AddMember(channelID string, u model.User, role string) ([]model.Member, error) {
-	ok, err := s.channelExists(channelID)
+func (s *Store) AddMember(tripID string, u model.User, role string) ([]model.Member, error) {
+	ok, err := s.tripExists(tripID)
 	if err != nil {
 		return nil, err
 	}
@@ -166,17 +166,17 @@ func (s *Store) AddMember(channelID string, u model.User, role string) ([]model.
 		role = model.RoleViewer
 	}
 	// 冪等:已是成員則忽略(不覆寫既有角色)。
-	link := memberLink{ChannelID: channelID, UserID: u.ID, Role: role}
+	link := memberLink{TripID: tripID, UserID: u.ID, Role: role}
 	if err := s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&link).Error; err != nil {
 		return nil, err
 	}
-	return s.ListMembers(channelID)
+	return s.ListMembers(tripID)
 }
 
-// SetMemberRole 變更成員在頻道內的角色(editor/viewer)。成員不存在則回 ErrNotFound。
-func (s *Store) SetMemberRole(channelID, userID, role string) error {
+// SetMemberRole 變更成員在行程內的角色(editor/viewer)。成員不存在則回 ErrNotFound。
+func (s *Store) SetMemberRole(tripID, userID, role string) error {
 	res := s.db.Model(&memberLink{}).
-		Where("channel_id = ? AND user_id = ?", channelID, userID).
+		Where("trip_id = ? AND user_id = ?", tripID, userID).
 		Update("role", role)
 	if res.Error != nil {
 		return res.Error
@@ -187,11 +187,11 @@ func (s *Store) SetMemberRole(channelID, userID, role string) error {
 	return nil
 }
 
-// GetMemberRole 回傳成員在頻道內的角色;非成員回 ErrNotFound。
-func (s *Store) GetMemberRole(channelID, userID string) (string, error) {
+// GetMemberRole 回傳成員在行程內的角色;非成員回 ErrNotFound。
+func (s *Store) GetMemberRole(tripID, userID string) (string, error) {
 	var link memberLink
 	err := s.db.Select("role").
-		Where("channel_id = ? AND user_id = ?", channelID, userID).
+		Where("trip_id = ? AND user_id = ?", tripID, userID).
 		First(&link).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", ErrNotFound
@@ -214,11 +214,11 @@ func (s *Store) UpsertUser(u model.User) error {
 }
 
 // memberLink 對應 many2many 的中介表 members(用於直接寫入/冪等)。
-// Role 決定成員在頻道內的權限(editor/viewer);預設 viewer。
+// Role 決定成員在行程內的權限(editor/viewer);預設 viewer。
 type memberLink struct {
-	ChannelID string `gorm:"primaryKey;column:channel_id"`
-	UserID    string `gorm:"primaryKey;column:user_id"`
-	Role      string `gorm:"column:role;not null;default:viewer"`
+	TripID string `gorm:"primaryKey;column:trip_id"`
+	UserID string `gorm:"primaryKey;column:user_id"`
+	Role   string `gorm:"column:role;not null;default:viewer"`
 }
 
 func (memberLink) TableName() string { return "members" }

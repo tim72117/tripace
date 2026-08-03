@@ -10,8 +10,8 @@
 
    ChatScreen.tsx 裡還有其他 className 仍留在全域 styles.css,這次刻意不搬,
    不是遺漏:
-   - .new-channel-composer* 是跟 PhoneScreens.tsx、DesktopLayout.tsx
-     共用的樣式(建立頻道用,跟這裡的訊息輸入列是完全不同的東西,只是
+   - .new-trip-composer* 是跟 PhoneScreens.tsx、DesktopLayout.tsx
+     共用的樣式(建立行程用,跟這裡的訊息輸入列是完全不同的東西,只是
      命名前綴相似),留在 styles.css。
    - .bubble* 已經在先前的 pass 搬進 MessageBubble.module.css,不屬於
      ChatScreen.tsx 這個檔案。

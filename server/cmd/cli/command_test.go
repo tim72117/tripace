@@ -20,42 +20,42 @@ import (
 
 // fakeClient 記錄下每個方法收到的參數,供測試斷言。
 type fakeClient struct {
-	listChannelsCalled bool
+	listTripsCalled bool
 
-	createChannelName string
+	createTripName string
 
-	tripEntriesChannel string
+	tripEntriesTrip string
 
-	recordArgs []string // channelID, title, start, startTime, end, endTime, location
+	recordArgs []string // tripID, title, start, startTime, end, endTime, location
 
 	updateInput tripsvc.UpdateEntryInput
 
 	deletedEntry string
 
-	resetChannel string
+	resetTrip string
 
 	// result 是所有「有回傳值」的方法共用的回傳內容,測試用來確認 cmd* 有把
 	// client 的結果原封不動輸出。
 	result any
 }
 
-func (f *fakeClient) listChannels() (any, error) {
-	f.listChannelsCalled = true
+func (f *fakeClient) listTrips() (any, error) {
+	f.listTripsCalled = true
 	return f.result, nil
 }
 
-func (f *fakeClient) createChannel(name string) (any, error) {
-	f.createChannelName = name
+func (f *fakeClient) createTrip(name string) (any, error) {
+	f.createTripName = name
 	return f.result, nil
 }
 
-func (f *fakeClient) tripEntries(channelID string) (any, error) {
-	f.tripEntriesChannel = channelID
+func (f *fakeClient) tripEntries(tripID string) (any, error) {
+	f.tripEntriesTrip = tripID
 	return f.result, nil
 }
 
-func (f *fakeClient) record(channelID, title, start, startTime, end, endTime, location string) (any, error) {
-	f.recordArgs = []string{channelID, title, start, startTime, end, endTime, location}
+func (f *fakeClient) record(tripID, title, start, startTime, end, endTime, location string) (any, error) {
+	f.recordArgs = []string{tripID, title, start, startTime, end, endTime, location}
 	return f.result, nil
 }
 
@@ -69,8 +69,8 @@ func (f *fakeClient) deleteEntry(entryID string) error {
 	return nil
 }
 
-func (f *fakeClient) reset(channelID string) error {
-	f.resetChannel = channelID
+func (f *fakeClient) reset(tripID string) error {
+	f.resetTrip = tripID
 	return nil
 }
 
@@ -105,29 +105,29 @@ func captureOutput(t *testing.T, fn func()) map[string]any {
 	return got
 }
 
-func TestCmdListChannels(t *testing.T) {
-	c := &fakeClient{result: map[string]any{"channels": []any{}}}
-	got := captureOutput(t, func() { cmdListChannels(c) })
+func TestCmdListTrips(t *testing.T) {
+	c := &fakeClient{result: map[string]any{"trips": []any{}}}
+	got := captureOutput(t, func() { cmdListTrips(c) })
 
-	if !c.listChannelsCalled {
-		t.Error("沒有呼叫 client.listChannels")
+	if !c.listTripsCalled {
+		t.Error("沒有呼叫 client.listTrips")
 	}
-	if _, ok := got["channels"]; !ok {
-		t.Errorf("輸出缺少 channels 欄位: %v", got)
+	if _, ok := got["trips"]; !ok {
+		t.Errorf("輸出缺少 trips 欄位: %v", got)
 	}
 }
 
-func TestCmdCreateChannel(t *testing.T) {
-	c := &fakeClient{result: map[string]any{"id": "ch_abc"}}
+func TestCmdCreateTrip(t *testing.T) {
+	c := &fakeClient{result: map[string]any{"id": "tr_abc"}}
 	got := captureOutput(t, func() {
-		cmdCreateChannel(c, []string{"-name", "花蓮三日"})
+		cmdCreateTrip(c, []string{"-name", "花蓮三日"})
 	})
 
-	if c.createChannelName != "花蓮三日" {
-		t.Errorf("createChannel 收到 %q，預期 %q", c.createChannelName, "花蓮三日")
+	if c.createTripName != "花蓮三日" {
+		t.Errorf("createTrip 收到 %q，預期 %q", c.createTripName, "花蓮三日")
 	}
-	if got["id"] != "ch_abc" {
-		t.Errorf("輸出 id = %v，預期 ch_abc", got["id"])
+	if got["id"] != "tr_abc" {
+		t.Errorf("輸出 id = %v，預期 tr_abc", got["id"])
 	}
 }
 
@@ -135,7 +135,7 @@ func TestCmdEntryAdd(t *testing.T) {
 	c := &fakeClient{result: map[string]any{"entryID": "ent_1"}}
 	got := captureOutput(t, func() {
 		cmdEntryAdd(c, []string{
-			"-channel", "ch_abc",
+			"-trip", "tr_abc",
 			"-title", "光復糖廠",
 			"-start", "2026-03-01",
 			"-start-time", "09:00",
@@ -145,7 +145,7 @@ func TestCmdEntryAdd(t *testing.T) {
 		})
 	})
 
-	want := []string{"ch_abc", "光復糖廠", "2026-03-01", "09:00", "2026-03-01", "10:30", "花蓮縣光復鄉"}
+	want := []string{"tr_abc", "光復糖廠", "2026-03-01", "09:00", "2026-03-01", "10:30", "花蓮縣光復鄉"}
 	if len(c.recordArgs) != len(want) {
 		t.Fatalf("record 收到 %d 個參數，預期 %d 個: %v", len(c.recordArgs), len(want), c.recordArgs)
 	}
@@ -207,11 +207,11 @@ func TestCmdEntryDelete(t *testing.T) {
 func TestCmdTripEntries(t *testing.T) {
 	c := &fakeClient{result: map[string]any{"entries": []any{}}}
 	got := captureOutput(t, func() {
-		cmdTripEntries(c, []string{"-channel", "ch_abc"})
+		cmdTripEntries(c, []string{"-trip", "tr_abc"})
 	})
 
-	if c.tripEntriesChannel != "ch_abc" {
-		t.Errorf("tripEntries 收到 %q，預期 ch_abc", c.tripEntriesChannel)
+	if c.tripEntriesTrip != "tr_abc" {
+		t.Errorf("tripEntries 收到 %q，預期 tr_abc", c.tripEntriesTrip)
 	}
 	if _, ok := got["entries"]; !ok {
 		t.Errorf("輸出缺少 entries 欄位: %v", got)
@@ -221,13 +221,13 @@ func TestCmdTripEntries(t *testing.T) {
 func TestCmdReset(t *testing.T) {
 	c := &fakeClient{}
 	got := captureOutput(t, func() {
-		cmdReset(c, []string{"-channel", "ch_abc"})
+		cmdReset(c, []string{"-trip", "tr_abc"})
 	})
 
-	if c.resetChannel != "ch_abc" {
-		t.Errorf("reset 收到 %q，預期 ch_abc", c.resetChannel)
+	if c.resetTrip != "tr_abc" {
+		t.Errorf("reset 收到 %q，預期 tr_abc", c.resetTrip)
 	}
-	if got["channel"] != "ch_abc" || got["status"] != "ok" {
-		t.Errorf("輸出 = %v，預期 status=ok channel=ch_abc", got)
+	if got["trip"] != "tr_abc" || got["status"] != "ok" {
+		t.Errorf("輸出 = %v，預期 status=ok trip=tr_abc", got)
 	}
 }

@@ -66,7 +66,7 @@ func fmtDate(day int) string {
 // 不解析 text(僅作觸發)。
 //
 // lang 參數忽略:mock 本來就是寫死中文假資料,不需要真的支援雙語。
-func (m *MockAnalyzer) AssistForSession(_, channelID, _, _, _ string, _ func(entryIDs []string) error) AssistResult {
+func (m *MockAnalyzer) AssistForSession(_, tripID, _, _, _ string, _ func(entryIDs []string) error) AssistResult {
 	m.mu.Lock()
 	sc := mockScenarios[m.next%len(mockScenarios)]
 	m.next++
@@ -82,7 +82,7 @@ func (m *MockAnalyzer) AssistForSession(_, channelID, _, _, _ string, _ func(ent
 	id := newEntryID()
 	if err := m.store.InsertEntry(model.Entry{
 		ID:        id,
-		ChannelID: channelID,
+		TripID:    tripID,
 		Title:     sc.title,
 		Start:     startDate,
 		StartTime: startTime,
@@ -100,19 +100,19 @@ func (m *MockAnalyzer) AssistForSession(_, channelID, _, _, _ string, _ func(ent
 	}
 }
 
-// Answer 模擬查詢:讀該頻道現有 entries,整理成回答 + 展示條目。
-// 不解析 question(僅作觸發);回真實的頻道條目。lang 參數忽略,理由同 AssistForSession。
-func (m *MockAnalyzer) Answer(channelID, _, _ string) model.SearchAnswer {
-	entries, err := m.store.ListEntriesByChannel(channelID)
+// Answer 模擬查詢:讀該行程現有 entries,整理成回答 + 展示條目。
+// 不解析 question(僅作觸發);回真實的行程條目。lang 參數忽略,理由同 AssistForSession。
+func (m *MockAnalyzer) Answer(tripID, _, _ string) model.SearchAnswer {
+	entries, err := m.store.ListEntriesByTrip(tripID)
 	if err != nil || len(entries) == 0 {
 		return model.SearchAnswer{
-			Answer:  "(mock)這個頻道目前沒有記錄的安排。",
+			Answer:  "(mock)這個行程目前沒有記錄的安排。",
 			Entries: []model.PresentedEntry{},
 		}
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("(mock)這個頻道目前有 %d 筆安排:\n", len(entries)))
+	sb.WriteString(fmt.Sprintf("(mock)這個行程目前有 %d 筆安排:\n", len(entries)))
 	presented := make([]model.PresentedEntry, 0, len(entries))
 	for _, e := range entries {
 		when := e.Start

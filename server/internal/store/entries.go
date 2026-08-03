@@ -12,7 +12,7 @@ import (
 func toEntry(r entryRow) model.Entry {
 	return model.Entry{
 		ID:        r.ID,
-		ChannelID: r.ChannelID,
+		TripID:    r.TripID,
 		Title:     r.Title,
 		Start:     r.Start,
 		StartTime: r.StartTime,
@@ -35,7 +35,7 @@ func toEntry(r entryRow) model.Entry {
 func (s *Store) InsertEntry(e model.Entry) error {
 	r := entryRow{
 		ID:        e.ID,
-		ChannelID: e.ChannelID,
+		TripID:    e.TripID,
 		Title:     e.Title,
 		Start:     e.Start,
 		StartTime: e.StartTime,
@@ -130,20 +130,20 @@ func (s *Store) GetEntry(entryID string) (model.Entry, error) {
 	return toEntry(r), nil
 }
 
-// ListEntriesByChannel 回傳頻道的所有條目,依開始時間排序。
-func (s *Store) ListEntriesByChannel(channelID string) ([]model.Entry, error) {
+// ListEntriesByTrip 回傳行程的所有條目,依開始時間排序。
+func (s *Store) ListEntriesByTrip(tripID string) ([]model.Entry, error) {
 	var rows []entryRow
-	err := s.db.Where("channel_id = ?", channelID).
+	err := s.db.Where("trip_id = ?", tripID).
 		Order("start ASC, created_at ASC").Find(&rows).Error
 	return mapEntries(rows), err
 }
 
-// ListEntriesByRange 回傳頻道中 start 落在 [from, to] 的條目,依開始時間排序。
+// ListEntriesByRange 回傳行程中 start 落在 [from, to] 的條目,依開始時間排序。
 // from / to 為 'YYYY-MM-DD' 或 'YYYY-MM-DD HH:MM';留空表示該端不設限。
 // start 以 ISO 格式字串儲存,字典序即時間序,故可用字串比較做範圍。
 // 註:start 為空字串(無時間)的條目不會落在任何範圍內,僅在 from、to 皆空時納入。
-func (s *Store) ListEntriesByRange(channelID, from, to string) ([]model.Entry, error) {
-	q := s.db.Where("channel_id = ?", channelID)
+func (s *Store) ListEntriesByRange(tripID, from, to string) ([]model.Entry, error) {
+	q := s.db.Where("trip_id = ?", tripID)
 	if from != "" {
 		q = q.Where("start >= ?", from)
 	}
@@ -168,8 +168,8 @@ func mapEntries(rows []entryRow) []model.Entry {
 	return out
 }
 
-// DeleteChannelEntries 清空某頻道的所有 entries(不動頻道/使用者本身)。
+// DeleteTripEntries 清空某行程的所有 entries(不動行程/使用者本身)。
 // 開發/測試重置用。
-func (s *Store) DeleteChannelEntries(channelID string) error {
-	return s.db.Where("channel_id = ?", channelID).Delete(&entryRow{}).Error
+func (s *Store) DeleteTripEntries(tripID string) error {
+	return s.db.Where("trip_id = ?", tripID).Delete(&entryRow{}).Error
 }

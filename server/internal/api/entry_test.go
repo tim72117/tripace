@@ -3,8 +3,8 @@ package api
 // entry_test.go 測 entry 的 CRUD 端點,/v1 與 /internal 兩套並行。
 //
 // 為什麼兩套都測:它們是刻意分開的兩條路徑,信任邊界不同——/v1 給前端(帶
-// 使用者身分,走 requireEditor 檢查是不是這個頻道的 editor),/internal 給
-// CLI 與 LLM 後端(只驗 internalAuth 那把 JWT 的簽章,不做頻道成員檢查)。
+// 使用者身分,走 requireEditor 檢查是不是這個行程的 editor),/internal 給
+// CLI 與 LLM 後端(只驗 internalAuth 那把 JWT 的簽章,不做行程成員檢查)。
 // 兩邊各有一組 handler,漏測任一邊都可能出現「一邊能用、另一邊壞掉」。
 //
 // 這裡刻意透過 s.Routes() 打完整的 mux,而不是直接呼叫 handler 函式:
@@ -23,15 +23,15 @@ import (
 	"testing"
 )
 
-// testFixture 是一組「已登入使用者 + 他擁有的頻道」,供各測試共用。
+// testFixture 是一組「已登入使用者 + 他擁有的行程」,供各測試共用。
 type testFixture struct {
-	srv     *Server
-	routes  http.Handler
-	token   string
-	channel string
+	srv    *Server
+	routes http.Handler
+	token  string
+	trip   string
 }
 
-// newEntryFixture 建立使用者、以他為 owner 開一個頻道,並簽一把可用的 token。
+// newEntryFixture 建立使用者、以他為 owner 開一個行程,並簽一把可用的 token。
 //
 // 使用者一定要真的寫進資料庫:userFromToken 會拿 claims.Sub 回查資料庫,查無
 // 此人一律回退成訪客(見 auth_test.go 的 TestUserFromToken_DeletedUser),
@@ -44,9 +44,9 @@ func newEntryFixture(t *testing.T) *testFixture {
 	if err != nil {
 		t.Fatalf("建立使用者: %v", err)
 	}
-	ch, err := s.store.CreateChannel("ch_test", "花蓮三日", user)
+	tr, err := s.store.CreateTrip("tr_test", "花蓮三日", user)
 	if err != nil {
-		t.Fatalf("建立頻道: %v", err)
+		t.Fatalf("建立行程: %v", err)
 	}
 	token, err := s.signer.Sign(user.ID, user.Name)
 	if err != nil {
@@ -54,7 +54,7 @@ func newEntryFixture(t *testing.T) *testFixture {
 	}
 	return &testFixture{
 		srv: s, routes: s.Routes(),
-		token: token, channel: ch.ID,
+		token: token, trip: tr.ID,
 	}
 }
 
@@ -96,7 +96,7 @@ func (f *testFixture) do(t *testing.T, method, path string, body any, wantStatus
 // 供需要「先有一筆資料」的更新/刪除測試當前置。
 func (f *testFixture) createEntry(t *testing.T, title string) string {
 	t.Helper()
-	got := f.do(t, "POST", "/internal/channels/"+f.channel+"/entries",
+	got := f.do(t, "POST", "/internal/trips/"+f.trip+"/entries",
 		map[string]any{"title": title, "start": "2026-03-01", "startTime": "09:00"},
 		http.StatusCreated)
 	id, _ := got["entryID"].(string)
@@ -111,7 +111,7 @@ func (f *testFixture) createEntry(t *testing.T, title string) string {
 func TestInternalCreateEntry(t *testing.T) {
 	f := newEntryFixture(t)
 
-	got := f.do(t, "POST", "/internal/channels/"+f.channel+"/entries",
+	got := f.do(t, "POST", "/internal/trips/"+f.trip+"/entries",
 		map[string]any{
 			"title": "光復糖廠", "start": "2026-03-01", "startTime": "09:00",
 			"end": "2026-03-01", "endTime": "10:30", "location": "花蓮縣光復鄉",
@@ -122,7 +122,7 @@ func TestInternalCreateEntry(t *testing.T) {
 	}
 
 	// 確認真的寫進資料庫,而不只是 handler 回了一個看起來對的 JSON。
-	entries, err := f.srv.store.ListEntriesByChannel(f.channel)
+	entries, err := f.srv.store.ListEntriesByTrip(f.trip)
 	if err != nil {
 		t.Fatalf("列出 entries: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestInternalListEntries(t *testing.T) {
 	f.createEntry(t, "光復糖廠")
 	f.createEntry(t, "大農大富平地森林園區停車場")
 
-	got := f.do(t, "GET", "/internal/channels/"+f.channel+"/entries", nil, http.StatusOK)
+	got := f.do(t, "GET", "/internal/trips/"+f.trip+"/entries", nil, http.StatusOK)
 
 	entries, ok := got["entries"].([]any)
 	if !ok {
@@ -210,7 +210,7 @@ func TestInternalDeleteEntry(t *testing.T) {
 
 	f.do(t, "DELETE", "/internal/entries/"+id, nil, http.StatusOK)
 
-	entries, err := f.srv.store.ListEntriesByChannel(f.channel)
+	entries, err := f.srv.store.ListEntriesByTrip(f.trip)
 	if err != nil {
 		t.Fatalf("列出 entries: %v", err)
 	}
@@ -224,9 +224,9 @@ func TestInternalReset(t *testing.T) {
 	f.createEntry(t, "光復糖廠")
 	f.createEntry(t, "大農大富平地森林園區停車場")
 
-	f.do(t, "DELETE", "/internal/channels/"+f.channel+"/entries", nil, http.StatusOK)
+	f.do(t, "DELETE", "/internal/trips/"+f.trip+"/entries", nil, http.StatusOK)
 
-	entries, err := f.srv.store.ListEntriesByChannel(f.channel)
+	entries, err := f.srv.store.ListEntriesByTrip(f.trip)
 	if err != nil {
 		t.Fatalf("列出 entries: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestInternalReset(t *testing.T) {
 func TestV1CreateEntry(t *testing.T) {
 	f := newEntryFixture(t)
 
-	got := f.do(t, "POST", "/v1/channels/"+f.channel+"/entries", map[string]any{
+	got := f.do(t, "POST", "/v1/trips/"+f.trip+"/entries", map[string]any{
 		"title": "光復糖廠", "date": "2026-03-01", "time": "09:00", "note": "集合點",
 	}, http.StatusCreated)
 
@@ -267,7 +267,7 @@ func TestV1ListEntries(t *testing.T) {
 	f := newEntryFixture(t)
 	f.createEntry(t, "光復糖廠")
 
-	got := f.do(t, "GET", "/v1/channels/"+f.channel+"/entries", nil, http.StatusOK)
+	got := f.do(t, "GET", "/v1/trips/"+f.trip+"/entries", nil, http.StatusOK)
 
 	entries, ok := got["entries"].([]any)
 	if !ok {
@@ -282,7 +282,7 @@ func TestV1UpdateTripEntry(t *testing.T) {
 	f := newEntryFixture(t)
 	id := f.createEntry(t, "光復糖廠")
 
-	f.do(t, "PUT", "/v1/channels/"+f.channel+"/entries/"+id, map[string]any{
+	f.do(t, "PUT", "/v1/trips/"+f.trip+"/entries/"+id, map[string]any{
 		"title": "光復糖廠（起點）", "date": "2026-03-02", "time": "08:30", "note": "改集合時間",
 	}, http.StatusOK)
 
@@ -298,8 +298,8 @@ func TestV1UpdateTripEntry(t *testing.T) {
 	}
 }
 
-// TestV1PatchEntry 測 PATCH /v1/entries/{id}——路徑上不帶 channelID,由
-// handler 自己回查 entry 所屬頻道再判斷權限,與上面那條 PUT 是不同的 handler。
+// TestV1PatchEntry 測 PATCH /v1/entries/{id}——路徑上不帶 tripID,由
+// handler 自己回查 entry 所屬行程再判斷權限,與上面那條 PUT 是不同的 handler。
 func TestV1PatchEntry(t *testing.T) {
 	f := newEntryFixture(t)
 	id := f.createEntry(t, "光復糖廠")
@@ -324,20 +324,20 @@ func TestV1DeleteTripEntry(t *testing.T) {
 	f := newEntryFixture(t)
 	id := f.createEntry(t, "光復糖廠")
 
-	f.do(t, "DELETE", "/v1/channels/"+f.channel+"/entries/"+id, nil, http.StatusOK)
+	f.do(t, "DELETE", "/v1/trips/"+f.trip+"/entries/"+id, nil, http.StatusOK)
 
 	if _, err := f.srv.store.GetEntry(id); err == nil {
 		t.Fatal("刪除後仍查得到這筆 entry")
 	}
 }
 
-func TestV1ResetChannelData(t *testing.T) {
+func TestV1ResetTripData(t *testing.T) {
 	f := newEntryFixture(t)
 	f.createEntry(t, "光復糖廠")
 
-	f.do(t, "DELETE", "/v1/channels/"+f.channel+"/entries", nil, http.StatusOK)
+	f.do(t, "DELETE", "/v1/trips/"+f.trip+"/entries", nil, http.StatusOK)
 
-	entries, err := f.srv.store.ListEntriesByChannel(f.channel)
+	entries, err := f.srv.store.ListEntriesByTrip(f.trip)
 	if err != nil {
 		t.Fatalf("列出 entries: %v", err)
 	}

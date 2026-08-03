@@ -136,7 +136,7 @@ func (t *RecommendNearbyTool) Call(args types.ToolArguments, ctx types.ToolConte
 	// 生命週期)。故比照 present_entries 的 addPresented,把候選景點累積進本次
 	// 流程的結果,由 Assist() 結束後一併轉成 AssistResult.RecommendedPlaces
 	// 回傳給前端,掛在觸發它的那則訊息底下顯示——不再用異步 WS 廣播
-	// (原本的 NotifyRecommendedPlaces 只帶 channelID,無法對應到是哪一則訊息
+	// (原本的 NotifyRecommendedPlaces 只帶 tripID,無法對應到是哪一則訊息
 	// 觸發的,同一輪對話連續呼叫兩次還會互相覆蓋)。
 	addRecommendedPlaces(places)
 	return []types.ResultContentBlock{types.TextBlock(summary)}, nil

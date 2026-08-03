@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronLeft, AlignLeft, Users, Send, Share2, Sparkles } from 'lucide-react'
 import type { ClientConfig } from './api'
 import * as api from './api'
-import type { Channel, Entry, User } from './types'
+import type { Trip, Entry, User } from './types'
 import {
   listAllTripBatches,
   listMessageRecommendedPlaces,
@@ -18,9 +18,9 @@ import type { TaskPlaceholder } from './Timeline'
 import { ClientToolsBridge } from './clienttools/bridge/ClientToolsBridge'
 import { defaultClientTools } from './clienttools/tools'
 import type { TripBatches, TripEntry } from './clienttools/tripEntryTools'
-import { MembersScreen } from './channel/MembersScreen'
-import { ShareModal } from './channel/ShareModal'
-import { ChannelMenu } from './channel/ChannelMenu'
+import { MembersScreen } from './trip/MembersScreen'
+import { ShareModal } from './trip/ShareModal'
+import { TripMenu } from './trip/TripMenu'
 import { ASSISTANT_ID, ENTRY_QUERY_BATCH_KEY, type ChatMessage } from './chatTypes'
 import { AskUserSheet, AskChoiceSheet, type AskChoiceOption } from './AskSheets'
 import { MessageBubble } from './MessageBubble'
@@ -81,7 +81,7 @@ export interface DesktopChatOptions {
 
 export function ChatScreen({
   cfg,
-  channel,
+  trip,
   user,
   onBack,
   onOpenDrawer,
@@ -90,12 +90,12 @@ export function ChatScreen({
   desktopChat,
 }: {
   cfg: ClientConfig
-  channel: Channel
+  trip: Trip
   user: User
   onBack: () => void
   // onOpenDrawer:手機版專用,左上角按鈕改成開啟左側導覽抽屜(行程列表/配速表/
   // 設定入口,見 PhoneContent.tsx 的 PhoneNavDrawer),不再直接呼叫 onBack
-  // 清空 activeChannel——抽屜裡本來就能選別的行程或關閉抽屜留在原地,不需要
+  // 清空 activeTrip——抽屜裡本來就能選別的行程或關閉抽屜留在原地,不需要
   // 一顆單純「回列表」的按鈕。只在 !desktopChat(手機版)時使用;桌面版
   // ChatScreen 沒有這顆抽屜,維持原本點左上角呼叫 onBack 的行為不變。
   onOpenDrawer?: () => void
@@ -117,7 +117,7 @@ export function ChatScreen({
   desktopChat?: DesktopChatOptions
 }) {
   // owner 輸入=發訊息;成員輸入=語意查詢(回答顯示在訊息流,對齊 iOS App)。
-  const isOwner = channel.ownerID === user.id
+  const isOwner = trip.ownerID === user.id
   const [messages, setMessages] = useState<ChatMessage[]>([])
   // latestAnswerID:這次「即時產生」(send() 內)的最新一則答案訊息 id,供
   // MessageBubble 判斷附加資料區塊(推薦景點/旅程清單)要不要預設展開——
@@ -133,7 +133,7 @@ export function ChatScreen({
   // WS 收到 entry_updating 加入(並保證最短顯示 800ms),entries_updated(更新完成刷新)時清空。
   const [updatingEntryIDs, setUpdatingEntryIDs] = useState<Set<string>>(new Set())
   const [draft, setDraft] = useState('')
-  // loaded:這個頻道的 load() 是否已完成過一次(見 load() 的 finally)。
+  // loaded:這個行程的 load() 是否已完成過一次(見 load() 的 finally)。
   const [loaded, setLoaded] = useState(false)
   // ask_user:agent 缺資訊(如住宿退房日)時,透過 WS 推來的請求;非 null 時前端開對應 UI。
   const [askUser, setAskUser] = useState<{ askType: string; prompt: string } | null>(null)
@@ -167,7 +167,7 @@ export function ChatScreen({
   //
   // 持久化:比照推薦景點(recommendedPlaces)的模式,web/src/deviceDB.ts 的
   // trip_batches 表(schema 有 key 欄位,見該處宣告的說明)能忠實表示多批次
-  // 資料——load() 用 listAllTripBatches(channel.id) 一次撈回整個頻道所有
+  // 資料——load() 用 listAllTripBatches(trip.id) 一次撈回整個行程所有
   // 批次當初始值(含 ENTRY_QUERY_BATCH_KEY),send() 偵測到某些 key 的內容
   // 有變化時逐一呼叫 replaceTripBatch 落地(見下方 send() 的 changedKeys
   // 處理)。重新整理頁面後,LLM 透過 trip_entry_add/update 建立的批次資料
@@ -229,7 +229,7 @@ export function ChatScreen({
   // 算出的 key 合併存進 tripListTriggered,合併後即可讓下一輪 send() 重新清空
   // ——不需要額外清空動作，因為下一輪 send() 開頭就會 clear()。
   const queriedBatchKeysRef = useRef<Set<string>>(new Set())
-  // 成員管理在頻道內開啟(對齊 iOS App 的聊天頁右上角入口)。
+  // 成員管理在行程內開啟(對齊 iOS App 的聊天頁右上角入口)。
   const [showMembers, setShowMembers] = useState(false)
   // 分享彈窗
   const [showShare, setShowShare] = useState(false)
@@ -237,7 +237,7 @@ export function ChatScreen({
   const navbarRef = useRef<HTMLDivElement>(null)
   const lastScrollY = useRef(0)
   // chatMessagesRef:手機版訊息列表(現在是固定顯示的主要內容,不再是浮層)
-  // 的捲動容器,供進入頻道時「捲到最底」使用(桌面版走 bodyRef,見下方
+  // 的捲動容器,供進入行程時「捲到最底」使用(桌面版走 bodyRef,見下方
   // useEffect)。改版前這支 ref 叫 chatOverlayInnerRef、只在浮層條件渲染時
   // 才存在;現在訊息列表一律渲染,ref 永遠掛得到,行為不變只是命名對齊
   // 新的呈現方式。
@@ -281,17 +281,17 @@ export function ChatScreen({
       // (記錄了就不留泡泡,見 send() 的 drop(true)),故這裡讀回的只會是曾經
       // 存過的「提問 + 回答」對話紀錄,不影響記事泡泡「記錄了就消失」的既有設計。
       // clientToolsBatches 比照推薦景點的模式持久化(見上方宣告處的說明):
-      // 用 listAllTripBatches 一次撈回整個頻道目前存的所有批次(含
+      // 用 listAllTripBatches 一次撈回整個行程目前存的所有批次(含
       // ENTRY_QUERY_BATCH_KEY 這個 entry_query 專用的固定保留 key,統一走同一套
       // schema/API,見該常數宣告處的說明)當初始值。
       const [msgs, ents, allBatches] = await Promise.all([
-        listMessages(channel.id),
-        isOwner ? api.fetchEntries(cfg, channel.id) : Promise.resolve([]),
-        listAllTripBatches(channel.id),
+        listMessages(trip.id),
+        isOwner ? api.fetchEntries(cfg, trip.id) : Promise.resolve([]),
+        listAllTripBatches(trip.id),
       ])
       // 推薦景點(recommend_nearby)與旅程清單觸發 key(tripListTriggered)都是
       // 掛在個別訊息底下的附加資料,不在 messages 表裡,故讀完訊息清單後再
-      // 各自一次批次撈回這個頻道裡所有訊息對應的資料(而非每則訊息各自查
+      // 各自一次批次撈回這個行程裡所有訊息對應的資料(而非每則訊息各自查
       // 一次),合併進對應訊息物件。
       const [placesByMsgID, tripListKeysByMsgID] = await Promise.all([
         listMessageRecommendedPlaces(msgs.map((m) => m.id)),
@@ -313,25 +313,25 @@ export function ChatScreen({
     } catch (e) {
       setErr(errMsg(e))
     } finally {
-      // loaded:標記這個頻道的初次載入已完成(不論成功或失敗),供下方
-      // 「進入頻道時捲到最底」的 effect 判斷時機——特意用獨立旗標而非直接
-      // 監聽 messages,因為 messages.length===0(頻道沒有歷史訊息)時無法用
+      // loaded:標記這個行程的初次載入已完成(不論成功或失敗),供下方
+      // 「進入行程時捲到最底」的 effect 判斷時機——特意用獨立旗標而非直接
+      // 監聽 messages,因為 messages.length===0(行程沒有歷史訊息)時無法用
       // 「有沒有內容」區分「初次進入」與「之後使用者送出第一則新訊息」。
       setLoaded(true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg.baseURL, cfg.token, channel.id, isOwner])
+  }, [cfg.baseURL, cfg.token, trip.id, isOwner])
 
   useEffect(() => {
     setLoaded(false)
     load()
   }, [load])
 
-  // 進入頻道(或切換頻道)時捲到最底,讓使用者一進來就看到最新對話,不用
+  // 進入行程(或切換行程)時捲到最底,讓使用者一進來就看到最新對話,不用
   // 自己往下滑。只監聽 loaded(而非 messages)是關鍵:loaded 從 false 變
-  // true 每個頻道週期只發生一次(channel.id 變化時於上方 effect 重置為
+  // true 每個行程週期只發生一次(trip.id 變化時於上方 effect 重置為
   // false、load() 完成時設回 true),天然具備「只觸發一次」的語意——若改
-  // 監聽 messages,頻道進來時若沒有歷史訊息(messages.length===0)會無法
+  // 監聽 messages,行程進來時若沒有歷史訊息(messages.length===0)會無法
   // 區分「初次進入」與「之後使用者送出第一則新訊息」,導致這個 effect 被
   // 誤觸發、跟 scrollMessageToTop(送出訊息時捲到頂端)搶控制權。用
   // requestAnimationFrame 等 loaded 變化觸發的渲染真正完成、DOM(手機版的
@@ -370,10 +370,10 @@ export function ChatScreen({
       entries,
       updatingEntryIDs,
       taskPlaceholders,
-      refetchEntries: () => api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {}),
+      refetchEntries: () => api.fetchEntries(cfg, trip.id).then(setEntries).catch(() => {}),
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [desktopChat, onTimelineData, entries, updatingEntryIDs, taskPlaceholders, cfg.baseURL, cfg.token, channel.id])
+  }, [desktopChat, onTimelineData, entries, updatingEntryIDs, taskPlaceholders, cfg.baseURL, cfg.token, trip.id])
 
   // updatingSince:記每個更新中 entryID 的起始時間,用來保證「更新中」動畫最短顯示 800ms
   // (entry_update 後端很快完成,不設下限會一閃而過看不見)。
@@ -383,9 +383,9 @@ export function ChatScreen({
   useEffect(() => {
     const base = cfg.baseURL.replace(/^http/, 'ws')
     // 瀏覽器原生 WebSocket API 不支援自訂 header,token 改用 query string 帶,
-    // 供後端驗證是否為此頻道成員(見 server/internal/api/ws.go handleWS)。
+    // 供後端驗證是否為此行程成員(見 server/internal/api/ws.go handleWS)。
     const tokenQS = cfg.token ? `?token=${encodeURIComponent(cfg.token)}` : ''
-    const ws = new WebSocket(`${base}/v1/channels/${channel.id}/ws${tokenQS}`)
+    const ws = new WebSocket(`${base}/v1/trips/${trip.id}/ws${tokenQS}`)
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data)
@@ -398,7 +398,7 @@ export function ChatScreen({
           setUpdatingEntryIDs((prev) => new Set(prev).add(msg.entryID))
         } else if (msg.event === 'entries_updated') {
           // 更新完成:重抓條目,並依最短顯示時間逐一解除「更新中」狀態。
-          api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {})
+          api.fetchEntries(cfg, trip.id).then(setEntries).catch(() => {})
           const now = Date.now()
           updatingSinceRef.current.forEach((since, id) => {
             const elapsed = now - since
@@ -431,7 +431,7 @@ export function ChatScreen({
         } else if (msg.event === 'task_entry_ready' && typeof msg.taskID === 'number') {
           // entry_add 已完成對應步驟:移除佔位卡,並重抓條目讓正式卡片出現。
           setTaskPlaceholders((prev) => prev.filter((p) => p.taskID !== msg.taskID))
-          api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {})
+          api.fetchEntries(cfg, trip.id).then(setEntries).catch(() => {})
         } else if (msg.event === 'entries_loaded' && Array.isArray(msg.entries)) {
           // entry_query 查詢完成(見 server/internal/wanttools/entry_query.go
           // 的 NotifyEntriesLoaded):查到的條目轉成 TripEntry,依 id 合併進
@@ -450,12 +450,12 @@ export function ChatScreen({
           }))
           const merged = mergeTripEntriesById(clientToolsBatchesRef.current[ENTRY_QUERY_BATCH_KEY] ?? [], loaded)
           setClientToolsBatchesBoth((prev) => ({ ...prev, [ENTRY_QUERY_BATCH_KEY]: merged }))
-          void replaceTripBatch(channel.id, ENTRY_QUERY_BATCH_KEY, merged).catch(() => {})
+          void replaceTripBatch(trip.id, ENTRY_QUERY_BATCH_KEY, merged).catch(() => {})
         }
       } catch {}
     }
     return () => ws.close()
-  }, [cfg.baseURL, cfg.token, channel.id])
+  }, [cfg.baseURL, cfg.token, trip.id])
 
   // clienttools 技術可行性驗證專用的第二條連線(見上方 clientToolsBatches 的
   // 說明)。只有 owner 會呼叫 send()/api.assist(見下方),故只在 isOwner 時
@@ -503,8 +503,8 @@ export function ChatScreen({
       bridge.disconnect()
       clientToolsSessionIdRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在頻道/owner 身分變動時重新連線,同第一條 WS 的依賴慣例。
-  }, [cfg.baseURL, channel.id, isOwner])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在行程/owner 身分變動時重新連線,同第一條 WS 的依賴慣例。
+  }, [cfg.baseURL, trip.id, isOwner])
 
   // 本地訊息(不寫入後端,純前端顯示用):查詢的提問/回答泡泡。
   const mkLocalMsg = (
@@ -513,7 +513,7 @@ export function ChatScreen({
     authorName: string,
     text: string,
   ): ChatMessage => ({
-    id, channelID: channel.id, authorID, authorName, text,
+    id, tripID: trip.id, authorID, authorName, text,
     createdAt: new Date().toISOString(),
   })
 
@@ -606,13 +606,13 @@ export function ChatScreen({
       // ack）的舊值——同 sending 等其餘欄位在此函式裡都直接讀 state 的既有
       // 寫法不同，是因為這裡要的是「送出當下的最新值」而非「render 當下」
       // 的值，两者在 WS 非同步 ack 到達的情境下可能不同。
-      const res = await api.assist(cfg, channel.id, text, clientToolsSessionIdRef.current ?? undefined)
+      const res = await api.assist(cfg, trip.id, text, clientToolsSessionIdRef.current ?? undefined)
       if (res.kind === 'recorded') {
         // 記錄了 → 把原話存進「裝置端 DB」(原話的權威來源,與 server 隔離)。
         // res.text 為原話;後端不存原話,僅回它供前端落地裝置 DB。
         await saveMessage({
           id: `msg_${Date.now()}`,
-          channelID: channel.id,
+          tripID: trip.id,
           authorID: user.id,
           authorName: user.name,
           text: res.text,
@@ -626,7 +626,7 @@ export function ChatScreen({
           await new Promise((r) => setTimeout(r, 1000))
           let next: Entry[]
           try {
-            next = await api.fetchEntries(cfg, channel.id)
+            next = await api.fetchEntries(cfg, trip.id)
           } catch {
             continue // 暫時抓失敗就再試
           }
@@ -638,7 +638,7 @@ export function ChatScreen({
         }
         if (!shown) {
           // 逾時沒等到新 entry:仍刷新一次列表(可能 agent 沒產生條目)。
-          await api.fetchEntries(cfg, channel.id).then(setEntries).catch(() => {})
+          await api.fetchEntries(cfg, trip.id).then(setEntries).catch(() => {})
         }
         // 記錄了 → 原話已歸入上方 entry 卡,訊息流不保留這則原話泡泡
         // (連同送出當下先插入的使用者泡泡一起移除)。
@@ -677,16 +677,16 @@ export function ChatScreen({
         // 「回答了」分支會產生 presented/recommendedPlaces/tripListTriggered,
         // record 分支(上方 drop(true))沒有附加資料可展開,不需要設定。
         setLatestAnswerID(ans.id)
-        // 提問 + 答案存裝置 DB(比照 ask() 的做法),重新整理/切回頻道後仍看得到。
+        // 提問 + 答案存裝置 DB(比照 ask() 的做法),重新整理/切回行程後仍看得到。
         void saveMessage(askMsg).catch(() => {})
         void saveMessage(ans).catch(() => {})
         // 推薦景點(若非空)一併存進裝置 DB,掛在這則答案訊息底下,讓重新整理
-        // /切回頻道後 load() 讀回時仍能還原(見下方 load() 的批次查詢)。
+        // /切回行程後 load() 讀回時仍能還原(見下方 load() 的批次查詢)。
         if (ans.recommendedPlaces && ans.recommendedPlaces.length > 0) {
           void saveMessageRecommendedPlaces(ans.id, ans.recommendedPlaces).catch(() => {})
         }
         // 旅程清單觸發 key(若非空)一併存進裝置 DB,掛在這則答案訊息底下,
-        // 讓重新整理/切回頻道後 load() 讀回時仍知道該掛哪些 key 的表格
+        // 讓重新整理/切回行程後 load() 讀回時仍知道該掛哪些 key 的表格
         // (見上方 tripListTriggered 型別欄位的說明、load() 的批次查詢)。
         if (ans.tripListTriggered && ans.tripListTriggered.length > 0) {
           void saveMessageTripListKeys(ans.id, ans.tripListTriggered).catch(() => {})
@@ -697,7 +697,7 @@ export function ChatScreen({
         // clientToolsBatchesRef.current[key](呼叫當下最新值,同本函式一貫
         // 用 ref 讀值的理由)而非 tripListBefore。
         for (const key of changedKeys) {
-          void replaceTripBatch(channel.id, key, clientToolsBatchesRef.current[key] ?? []).catch(() => {})
+          void replaceTripBatch(trip.id, key, clientToolsBatchesRef.current[key] ?? []).catch(() => {})
         }
       }
     } catch (e) {
@@ -723,12 +723,12 @@ export function ChatScreen({
     setClientToolsBatchesBoth((prev) => {
       const next = (prev[key] ?? []).filter((e) => !ids.has(e.id))
       const updated = { ...prev, [key]: next }
-      void replaceTripBatch(channel.id, key, next).catch(() => {})
+      void replaceTripBatch(trip.id, key, next).catch(() => {})
       return updated
     })
   }
 
-  // 成員用:自然語言查詢頻道。問答持久化進裝置端 DB(重開頻道仍在,後端不存)。
+  // 成員用:自然語言查詢行程。問答持久化進裝置端 DB(重開行程仍在,後端不存)。
   const ask = async (overrideText?: string) => {
     const q = (overrideText ?? draft).trim()
     if (!q) return
@@ -747,7 +747,7 @@ export function ChatScreen({
     // 記事還是回答分支)。
     if (desktopChat) scrollMessageToTop(askMsg.id)
     try {
-      const a = await api.semanticQuery(cfg, channel.id, q)
+      const a = await api.semanticQuery(cfg, trip.id, q)
       // 佔位泡泡就地換成答案,並把答案也存進裝置 DB。
       const ansMsg = mkLocalMsg(`ans_${Date.now()}`, ASSISTANT_ID, '助手', a.answer)
       void saveMessage(ansMsg).catch(() => {})
@@ -762,12 +762,12 @@ export function ChatScreen({
     }
   }
 
-  // 頻道內的成員管理(對齊 iOS App:聊天頁 → 成員)。
+  // 行程內的成員管理(對齊 iOS App:聊天頁 → 成員)。
   if (showMembers) {
     return (
       <MembersScreen
         cfg={cfg}
-        channel={channel}
+        trip={trip}
         isOwner={isOwner}
         onBack={() => setShowMembers(false)}
       />
@@ -778,7 +778,7 @@ export function ChatScreen({
     return (
       <ShareModal
         cfg={cfg}
-        channel={channel}
+        trip={trip}
         isOwner={isOwner}
         onClose={() => setShowShare(false)}
       />
@@ -798,8 +798,8 @@ export function ChatScreen({
               <ChevronLeft size={20} strokeWidth={1.8} />
             </button>
           )}
-          <span className="title">{channel.name}</span>
-          <ChannelMenu channelID={channel.id} />
+          <span className="title">{trip.name}</span>
+          <TripMenu tripID={trip.id} />
           <div style={{ display: 'flex', gap: 2 }}>
             {isOwner && (
               <button className="btn icon-btn" onClick={() => setShowShare(true)} title="分享">

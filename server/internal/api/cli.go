@@ -9,29 +9,29 @@ import (
 	"github.com/tim72117/tripace/internal/tripsvc"
 )
 
-// handleInternalListChannels GET /internal/channels
-func (s *Server) handleInternalListChannels(w http.ResponseWriter, r *http.Request) {
-	channels, err := s.store.ListAllChannels()
+// handleInternalListTrips GET /internal/trips
+func (s *Server) handleInternalListTrips(w http.ResponseWriter, r *http.Request) {
+	trips, err := s.store.ListAllTrips()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"channels": channels})
+	writeJSON(w, http.StatusOK, map[string]any{"trips": trips})
 }
 
-// handleInternalListEntries GET /internal/channels/{id}/entries
-// 列出頻道的所有 entry。與 /v1 版本(handleListEntries)共用同一個
+// handleInternalListEntries GET /internal/trips/{id}/entries
+// 列出行程的所有 entry。與 /v1 版本(handleListEntries)共用同一個
 // writeEntries,差別只在信任邊界:/v1 走 requireMember 檢查呼叫者是不是
-// 這個頻道的成員,/internal 靠的是 internalAuth 那把 JWT 本身(見
+// 這個行程的成員,/internal 靠的是 internalAuth 那把 JWT 本身(見
 // middleware.go),與同檔案其餘 handleInternal* 系列一致。
 func (s *Server) handleInternalListEntries(w http.ResponseWriter, r *http.Request) {
 	s.writeEntries(w, r.PathValue("id"))
 }
 
-// handleInternalRecord POST /internal/channels/{id}/entries
+// handleInternalRecord POST /internal/trips/{id}/entries
 // 寫入一筆 entry，回傳 entryID。
 func (s *Server) handleInternalRecord(w http.ResponseWriter, r *http.Request) {
-	channelID := r.PathValue("id")
+	tripID := r.PathValue("id")
 	var body struct {
 		Title     string `json:"title"`
 		Start     string `json:"start"`
@@ -46,7 +46,7 @@ func (s *Server) handleInternalRecord(w http.ResponseWriter, r *http.Request) {
 	}
 	svc := tripsvc.New(s.store, nil)
 	res, err := svc.Record(tripsvc.RecordInput{
-		ChannelID: channelID,
+		TripID:    tripID,
 		Title:     body.Title,
 		Start:     body.Start,
 		StartTime: body.StartTime,
@@ -100,11 +100,11 @@ func (s *Server) handleInternalUpdateEntry(w http.ResponseWriter, r *http.Reques
 }
 
 // handleInternalDeleteEntry DELETE /internal/entries/{id}
-// 刪除單一 entry。不像 /v1/channels/{id}/entries/{entryID} 版本
-// (handleDeleteTripEntry)需要路徑上的 channelID 來源比對——這裡的信任邊界
-// 是 internalAuth 這把 JWT 本身,不是「呼叫端剛好也知道正確的 channelID」,
+// 刪除單一 entry。不像 /v1/trips/{id}/entries/{entryID} 版本
+// (handleDeleteTripEntry)需要路徑上的 tripID 來源比對——這裡的信任邊界
+// 是 internalAuth 這把 JWT 本身,不是「呼叫端剛好也知道正確的 tripID」,
 // 與同檔案其餘 handleInternal* 系列(如 handleInternalUpdateEntry)的作法
-// 一致。先查一次 entry 只是為了拿 ChannelID 供下面 broadcast 使用。
+// 一致。先查一次 entry 只是為了拿 TripID 供下面 broadcast 使用。
 func (s *Server) handleInternalDeleteEntry(w http.ResponseWriter, r *http.Request) {
 	entryID := r.PathValue("id")
 	entry, err := s.store.GetEntry(entryID)
@@ -120,7 +120,7 @@ func (s *Server) handleInternalDeleteEntry(w http.ResponseWriter, r *http.Reques
 		writeErr(w, http.StatusInternalServerError, "delete_failed", err.Error())
 		return
 	}
-	s.hub.Broadcast(entry.ChannelID, map[string]any{"event": "entries_updated", "channelID": entry.ChannelID})
+	s.hub.Broadcast(entry.TripID, map[string]any{"event": "entries_updated", "tripID": entry.TripID})
 	writeJSON(w, http.StatusOK, map[string]string{"deleted": entryID})
 }
 
@@ -142,7 +142,7 @@ func (s *Server) handleInternalSetLatLng(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]string{"updated": entryID})
 }
 
-// handleInternalReset DELETE /internal/channels/{id}/entries
+// handleInternalReset DELETE /internal/trips/{id}/entries
 func (s *Server) handleInternalReset(w http.ResponseWriter, r *http.Request) {
-	s.resetChannel(w, r.PathValue("id"))
+	s.resetTrip(w, r.PathValue("id"))
 }

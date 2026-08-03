@@ -38,7 +38,7 @@ func newEntryID() string {
 
 // RecordInput 是記錄一筆條目的輸入。
 type RecordInput struct {
-	ChannelID string
+	TripID    string
 	Title     string
 	Start     string // 'YYYY-MM-DD';可空
 	StartTime string // 'HH:MM';空=全日
@@ -57,7 +57,7 @@ func (s *Service) Record(in RecordInput) (RecordResult, error) {
 	id := newEntryID()
 	e := model.Entry{
 		ID:        id,
-		ChannelID: in.ChannelID,
+		TripID:    in.TripID,
 		Title:     in.Title,
 		Start:     in.Start,
 		StartTime: in.StartTime,
@@ -110,7 +110,7 @@ func (s *Service) UpdateEntry(in UpdateEntryInput) error {
 	return s.st.UpdateEntry(in.ID, in.Title, in.Start, in.StartTime, in.End, in.EndTime, in.Location, in.Note, in.Kind, in.Detail)
 }
 
-// Reset 清空頻道的所有 entries(開發/測試用)。
-func (s *Service) Reset(channelID string) error {
-	return s.st.DeleteChannelEntries(channelID)
+// Reset 清空行程的所有 entries(開發/測試用)。
+func (s *Service) Reset(tripID string) error {
+	return s.st.DeleteTripEntries(tripID)
 }

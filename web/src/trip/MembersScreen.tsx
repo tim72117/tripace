@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ChevronLeft } from 'lucide-react'
 import type { ClientConfig } from '../api'
 import * as api from '../api'
-import type { Channel, ChannelRole, Member } from '../types'
+import type { Trip, TripRole, Member } from '../types'
 import { Avatar, ErrorBanner, errMsg, isSubmitEnter } from '../AppCommon'
 import styles from './MembersScreen.module.css'
 
@@ -10,12 +10,12 @@ import styles from './MembersScreen.module.css'
 
 export function MembersScreen({
   cfg,
-  channel,
+  trip,
   isOwner,
   onBack,
 }: {
   cfg: ClientConfig
-  channel: Channel
+  trip: Trip
   isOwner: boolean
   onBack: () => void
 }) {
@@ -27,12 +27,12 @@ export function MembersScreen({
   const load = useCallback(async () => {
     setErr(null)
     try {
-      setMembers(await api.fetchMembers(cfg, channel.id))
+      setMembers(await api.fetchMembers(cfg, trip.id))
     } catch (e) {
       setErr(errMsg(e))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg.baseURL, cfg.token, channel.id])
+  }, [cfg.baseURL, cfg.token, trip.id])
 
   useEffect(() => {
     load()
@@ -45,7 +45,7 @@ export function MembersScreen({
     setAdding(true)
     setErr(null)
     try {
-      setMembers(await api.addMember(cfg, channel.id, e, 'viewer'))
+      setMembers(await api.addMember(cfg, trip.id, e, 'viewer'))
       setEmail('')
     } catch (err) {
       setErr(errMsg(err))
@@ -56,11 +56,11 @@ export function MembersScreen({
 
   // owner 切換成員權限(editor ↔ viewer)。owner 自己不可改。
   const toggleRole = async (m: Member) => {
-    if (m.id === channel.ownerID) return
-    const next: ChannelRole = m.role === 'editor' ? 'viewer' : 'editor'
+    if (m.id === trip.ownerID) return
+    const next: TripRole = m.role === 'editor' ? 'viewer' : 'editor'
     setErr(null)
     try {
-      setMembers(await api.setMemberRole(cfg, channel.id, m.id, next))
+      setMembers(await api.setMemberRole(cfg, trip.id, m.id, next))
     } catch (err) {
       setErr(errMsg(err))
     }
@@ -77,11 +77,11 @@ export function MembersScreen({
       </div>
       <div className="screen-body">
         <ErrorBanner msg={err} />
-        <div className="section-title">行程成員 · {channel.name}</div>
+        <div className="section-title">行程成員 · {trip.name}</div>
         <ul className="list">
           {members.map((m) => {
-            const isChannelOwner = m.id === channel.ownerID
-            const roleLabel = isChannelOwner ? '擁有者' : m.role === 'editor' ? '可修改' : '查詢'
+            const isTripOwner = m.id === trip.ownerID
+            const roleLabel = isTripOwner ? '擁有者' : m.role === 'editor' ? '可修改' : '查詢'
             return (
               <li key={m.id} className="row">
                 <Avatar user={m} />
@@ -89,12 +89,12 @@ export function MembersScreen({
                   <div className="name">{m.name}</div>
                   <div className="sub">{m.id}</div>
                 </div>
-                {isOwner && !isChannelOwner ? (
+                {isOwner && !isTripOwner ? (
                   <button className={`${styles.chip} ${styles[m.role]}`} onClick={() => toggleRole(m)} title="點擊切換 修改/查詢 權限">
                     {roleLabel}
                   </button>
                 ) : (
-                  <span className={`${styles.chip} ${styles[isChannelOwner ? 'owner' : m.role]} ${styles.static}`}>
+                  <span className={`${styles.chip} ${styles[isTripOwner ? 'owner' : m.role]} ${styles.static}`}>
                     {roleLabel}
                   </span>
                 )}

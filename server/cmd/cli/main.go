@@ -12,18 +12,21 @@
 //
 //	login --web       透過瀏覽器核准登入，換取本機快取的 token（其餘指令的前置條件）
 //	login --device    無頭環境用:印出一組代碼，在任意裝置手動輸入核准
-//	list-channels
-//	create-channel -name 文字
-//	trip-entries -channel ID
-//	entry-add    -channel ID -title 文字 [-start ... -end ... -location ...]
+//	list-trips
+//	create-trip -name 文字
+//	trip-entries -trip ID
+//	entry-add    -trip ID -title 文字 [-start ... -end ... -location ...]
 //	entry-update -entry ID [-title ...] [-start ...] [-end ...] [-location ...] [-note ...] [-kind ...] [-detail JSON]
 //	entry-delete -entry ID
-//	reset        -channel ID
+//	reset        -trip ID
 //	geocode      -place 文字 [-region 國碼] [-entry ID]
-//	notify       -channel ID
+//	notify       -trip ID
 //
 //	drop-trip-grouping   一次性維運指令,清除 trip 歸組機制留下的孤兒資料庫
 //	                     物件(entries.trip_id 欄位與 trips 表)(僅 -db 模式)
+//	rename-channel-to-trip   一次性維運指令,把 channel→trip 改名的資料庫結構
+//	                     變更落實(channels 表改名 trips、channel_id 欄位改名
+//	                     trip_id)(僅 -db 模式)
 //
 // 所有輸出為 JSON（方便 Claude Code 解析）。
 package main
@@ -41,13 +44,13 @@ import (
 
 // client 定義統一的操作介面，由 httpClient 或 dbClient 實作。
 type client interface {
-	listChannels() (any, error)
-	createChannel(name string) (any, error)
-	tripEntries(channelID string) (any, error)
-	record(channelID, title, start, startTime, end, endTime, location string) (any, error)
+	listTrips() (any, error)
+	createTrip(name string) (any, error)
+	tripEntries(tripID string) (any, error)
+	record(tripID, title, start, startTime, end, endTime, location string) (any, error)
 	updateEntry(in tripsvc.UpdateEntryInput) error
 	deleteEntry(entryID string) error
-	reset(channelID string) error
+	reset(tripID string) error
 }
 
 func main() {
@@ -97,10 +100,10 @@ func main() {
 		if err := runLogin(apiURL, args); err != nil {
 			fatal("login: %v", err)
 		}
-	case "list-channels":
-		cmdListChannels(c)
-	case "create-channel":
-		cmdCreateChannel(c, args)
+	case "list-trips":
+		cmdListTrips(c)
+	case "create-trip":
+		cmdCreateTrip(c, args)
 	case "entry-add":
 		cmdEntryAdd(c, args)
 	case "entry-update":
@@ -117,6 +120,8 @@ func main() {
 		cmdNotify(args)
 	case "drop-trip-grouping":
 		cmdDropTripGrouping(useDB, db)
+	case "rename-channel-to-trip":
+		cmdRenameChannelToTrip(useDB, db)
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -124,31 +129,31 @@ func main() {
 	}
 }
 
-func cmdListChannels(c client) {
-	res, err := c.listChannels()
+func cmdListTrips(c client) {
+	res, err := c.listTrips()
 	if err != nil {
-		fatal("list-channels: %v", err)
+		fatal("list-trips: %v", err)
 	}
 	output(res)
 }
 
-func cmdCreateChannel(c client, args []string) {
-	fs := flag.NewFlagSet("create-channel", flag.ExitOnError)
-	name := fs.String("name", "", "頻道名稱（必填）")
+func cmdCreateTrip(c client, args []string) {
+	fs := flag.NewFlagSet("create-trip", flag.ExitOnError)
+	name := fs.String("name", "", "行程名稱（必填）")
 	_ = fs.Parse(args)
 	if *name == "" {
-		fatal("create-channel 需要 -name")
+		fatal("create-trip 需要 -name")
 	}
-	res, err := c.createChannel(*name)
+	res, err := c.createTrip(*name)
 	if err != nil {
-		fatal("create-channel: %v", err)
+		fatal("create-trip: %v", err)
 	}
 	output(res)
 }
 
 func cmdEntryAdd(c client, args []string) {
 	fs := flag.NewFlagSet("entry-add", flag.ExitOnError)
-	channel := fs.String("channel", "", "頻道 ID（必填）")
+	trip := fs.String("trip", "", "行程 ID（必填）")
 	title := fs.String("title", "", "事項描述（必填）")
 	start := fs.String("start", "", "開始日期 'YYYY-MM-DD'")
 	startTime := fs.String("start-time", "", "開始時刻 'HH:MM'")
@@ -156,10 +161,10 @@ func cmdEntryAdd(c client, args []string) {
 	endTime := fs.String("end-time", "", "結束時刻 'HH:MM'")
 	location := fs.String("location", "", "地點")
 	_ = fs.Parse(args)
-	if *channel == "" || *title == "" {
-		fatal("entry-add 需要 -channel 與 -title")
+	if *trip == "" || *title == "" {
+		fatal("entry-add 需要 -trip 與 -title")
 	}
-	res, err := c.record(*channel, *title, *start, *startTime, *end, *endTime, *location)
+	res, err := c.record(*trip, *title, *start, *startTime, *end, *endTime, *location)
 	if err != nil {
 		fatal("entry-add: %v", err)
 	}
@@ -208,18 +213,15 @@ func cmdEntryDelete(c client, args []string) {
 	output(map[string]string{"deleted": *id})
 }
 
-// cmdTripEntries 列出某個頻道的所有 entry。名稱沿用歷史(舊版是列某個 trip
-// 底下的 entry,需要 -channel 與 -trip 兩個參數;trip 歸組移除後改成列整個
-// 頻道,只需要 -channel),等頻道本身改名為 trip 之後這個名稱剛好會對上實際
-// 語意,故不另外改名。
+// cmdTripEntries 列出某個行程的所有 entry。
 func cmdTripEntries(c client, args []string) {
 	fs := flag.NewFlagSet("trip-entries", flag.ExitOnError)
-	channel := fs.String("channel", "", "頻道 ID（必填）")
+	trip := fs.String("trip", "", "行程 ID（必填）")
 	_ = fs.Parse(args)
-	if *channel == "" {
-		fatal("trip-entries 需要 -channel")
+	if *trip == "" {
+		fatal("trip-entries 需要 -trip")
 	}
-	res, err := c.tripEntries(*channel)
+	res, err := c.tripEntries(*trip)
 	if err != nil {
 		fatal("trip-entries: %v", err)
 	}
@@ -228,27 +230,27 @@ func cmdTripEntries(c client, args []string) {
 
 func cmdReset(c client, args []string) {
 	fs := flag.NewFlagSet("reset", flag.ExitOnError)
-	channel := fs.String("channel", "", "頻道 ID（必填）")
+	trip := fs.String("trip", "", "行程 ID（必填）")
 	_ = fs.Parse(args)
-	if *channel == "" {
-		fatal("reset 需要 -channel")
+	if *trip == "" {
+		fatal("reset 需要 -trip")
 	}
-	if err := c.reset(*channel); err != nil {
+	if err := c.reset(*trip); err != nil {
 		fatal("reset: %v", err)
 	}
-	output(map[string]string{"status": "ok", "channel": *channel})
+	output(map[string]string{"status": "ok", "trip": *trip})
 }
 
 func cmdNotify(args []string) {
 	fs := flag.NewFlagSet("notify", flag.ExitOnError)
-	channel := fs.String("channel", "", "頻道 ID（必填）")
+	trip := fs.String("trip", "", "行程 ID（必填）")
 	apiURL := fs.String("api", "http://localhost:8080", "server base URL")
 	_ = fs.Parse(args)
-	if *channel == "" {
-		fatal("notify 需要 -channel")
+	if *trip == "" {
+		fatal("notify 需要 -trip")
 	}
-	notifyChannel(*channel, *apiURL)
-	output(map[string]string{"notified": *channel})
+	notifyTrip(*trip, *apiURL)
+	output(map[string]string{"notified": *trip})
 }
 
 // cmdDropTripGrouping 是一次性維運指令:清掉 trip 歸組機制留下的孤兒資料庫
@@ -274,17 +276,40 @@ func cmdDropTripGrouping(useDB bool, db *dbClient) {
 	output(map[string]any{"dropped": dropped})
 }
 
-// notifyChannel 直接用 http.Post(不經 httpClient.do),故 /internal/* 現在
+// cmdRenameChannelToTrip 是一次性維運指令:把 channel→trip 改名這次程式碼
+// 重構對應的資料庫結構變更真正落到資料庫上(見 store.RenameChannelToTrip)。
+//
+// 這不是常規的業務操作，而是直接動資料庫 schema，因此只在 -db 模式下有意義；
+// 沒加 -db 就直接 fatal，不嘗試走 HTTP client(HTTP 沒有也不該有對應端點)。
+func cmdRenameChannelToTrip(useDB bool, db *dbClient) {
+	if !useDB {
+		fatal("rename-channel-to-trip 只能搭配 -db 使用（這是直接動資料庫 schema 的一次性維運操作，不走 HTTP）")
+	}
+	renamed, err := db.renameChannelToTrip()
+	if err != nil {
+		fatal("rename-channel-to-trip: %v", err)
+	}
+	if len(renamed) == 0 {
+		output(map[string]any{
+			"renamed": []string{},
+			"message": "channels/channel_id 已不存在（已改名過或本來就是新 schema），無需操作",
+		})
+		return
+	}
+	output(map[string]any{"renamed": renamed})
+}
+
+// notifyTrip 直接用 http.Post(不經 httpClient.do),故 /internal/* 現在
 // 要求的 Authorization: Bearer token 得在這裡自己補上;讀不到本機 token 或
 // 請求失敗都只是靜默放棄通知(維持原本的 best-effort 行為——這只是即時推播
 // 更新用的通知,不是資料寫入本身,失敗不影響資料正確性,不值得讓呼叫端也
 // 跟著失敗或印出錯誤)。
-func notifyChannel(channelID, apiURL string) {
+func notifyTrip(tripID, apiURL string) {
 	token, err := loadToken()
 	if err != nil {
 		return
 	}
-	req, err := http.NewRequest(http.MethodPost, apiURL+"/internal/channels/"+channelID+"/notify", nil)
+	req, err := http.NewRequest(http.MethodPost, apiURL+"/internal/trips/"+tripID+"/notify", nil)
 	if err != nil {
 		return
 	}
@@ -328,21 +353,26 @@ func usage() {
                依賴的前提）：印出一組短代碼與固定網址，在任意一台裝置打開
                網址、手動輸入代碼核准，CLI 自行輪詢換取 token。-console 用法
                同上。
-  list-channels
-  create-channel -name 文字
-  trip-entries -channel ID
-               列出該頻道的所有 entry。
-  entry-add    -channel ID -title 文字 [-start 'YYYY-MM-DD'] [-start-time 'HH:MM'] [-end ...] [-end-time ...] [-location ...]
+  list-trips
+  create-trip -name 文字
+  trip-entries -trip ID
+               列出該行程的所有 entry。
+  entry-add    -trip ID -title 文字 [-start 'YYYY-MM-DD'] [-start-time 'HH:MM'] [-end ...] [-end-time ...] [-location ...]
   entry-update -entry ID [-title ...] [-start ...] [-end ...] [-location ...] [-note ...] [-kind ...] [-detail JSON]
   entry-delete -entry ID
-  reset        -channel ID
+  reset        -trip ID
   geocode      -place 文字 [-region 國碼] [-n 筆數] [-entry ID]
                查詢地點座標；帶 -entry 時直接寫回該筆 entry 的經緯度。
-  notify       -channel ID [-api URL]
+  notify       -trip ID [-api URL]
 
   drop-trip-grouping   [僅限 -db] 一次性維運指令，清除 trip 歸組機制留下的
                         孤兒資料庫物件（entries.trip_id 欄位與 trips 表）。
                         非常規操作，不加 -db 會直接報錯。
+
+  rename-channel-to-trip   [僅限 -db] 一次性維運指令，把 channel→trip 改名
+                        對應的資料庫結構變更落實（channels 表改名 trips、
+                        entries/members/public_links 的 channel_id 欄位
+                        改名 trip_id）。非常規操作，不加 -db 會直接報錯。
 
 所有輸出為 JSON。
 `)

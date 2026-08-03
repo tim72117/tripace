@@ -4,7 +4,7 @@
 //   - 原話(message)只存這裡,後端不保存(local-first)。
 //   - sql.js 是記憶體 DB,故每次寫入後把整個 DB dump 成 bytes 存進 IndexedDB;
 //     啟動時從 IndexedDB 讀回,重建記憶體 DB。
-//   - schema 對齊 iOS LocalStore 的 messages 表(id/channel_id/author_id/author_name/text/created_at)。
+//   - schema 對齊 iOS LocalStore 的 messages 表(id/trip_id/author_id/author_name/text/created_at)。
 
 import initSqlJs from 'sql.js'
 import type { Database, SqlJsStatic } from 'sql.js'
@@ -13,26 +13,33 @@ import type { Message } from './types'
 import type { TripBatches, TripEntry } from './clienttools/tripEntryTools'
 import type { AssistPlace } from './api'
 
-const IDB_NAME = 'channel-device-db'
+const IDB_NAME = 'trip-device-db'
 const IDB_STORE = 'sqlite'
 const IDB_KEY = 'messages.sqlite'
 
 const SCHEMA = `
-CREATE TABLE IF NOT EXISTS messages (
+-- 表名特意取新名(messages_v2,而非沿用舊的 messages)而非做 ALTER TABLE
+-- migration:sql.js 是每次啟動從 IndexedDB 讀回 bytes 重建的記憶體 DB,
+-- CREATE TABLE IF NOT EXISTS 對已存在的舊 schema(channel_id 欄位,這次
+-- channel→trip 改名後改叫 trip_id)不會自動改欄位名;這是本地暫存性質的
+-- 裝置端 DB,改表名讓舊資料(舊 messages 表,若殘留在使用者瀏覽器裡)自然
+-- 作廢、新 schema 直接生效,不需要處理資料遷移(比照下面 trip_batches 表
+-- 改名時的既有作法)。
+CREATE TABLE IF NOT EXISTS messages_v2 (
   id          TEXT PRIMARY KEY,
-  channel_id  TEXT NOT NULL,
+  trip_id     TEXT NOT NULL,
   author_id   TEXT NOT NULL,
   author_name TEXT NOT NULL,
   text        TEXT NOT NULL,
   created_at  TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_messages_v2_trip ON messages_v2(trip_id, created_at);
 
 -- clienttools 多批次旅程清單(見 ChatScreen.tsx clientToolsBatches / TripBatches
 -- 型別)。純前端記憶體資料的持久化落地,與後端 entries 表無關、不同步——
 -- ClientToolsBridge 每次工具執行後回傳的是某個 key「整批最新清單」而非單筆
 -- 增量,故用 replaceTripBatch 整批覆寫而非逐筆 upsert,rowid 隱含順序即維持
--- 該次回傳的清單順序。key 欄位讓同一個 channel 能同時存多個獨立批次
+-- 該次回傳的清單順序。key 欄位讓同一個 trip 能同時存多個獨立批次
 -- (LLM 透過 trip_entry_add/update 自訂的語意化 key,或 ENTRY_QUERY_BATCH_KEY
 -- 這個 entry_query 專用的固定保留 key,見 ChatScreen.tsx 該常數宣告處的說明
 -- ——統一走這張表、這套 API,不另外維護一套平行邏輯)。
@@ -44,14 +51,14 @@ CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel_id, created_
 -- (舊 trip_entries 表,若殘留在使用者瀏覽器裡)自然作廢、新 schema 直接生效,
 -- 不需要處理資料遷移。
 CREATE TABLE IF NOT EXISTS trip_batches (
-  channel_id  TEXT NOT NULL,
+  trip_id     TEXT NOT NULL,
   key         TEXT NOT NULL,
   id          TEXT NOT NULL,
   title       TEXT NOT NULL,
   date        TEXT NOT NULL,
   time        TEXT NOT NULL,
   note        TEXT NOT NULL,
-  PRIMARY KEY (channel_id, key, id)
+  PRIMARY KEY (trip_id, key, id)
 );
 
 -- recommend_nearby 工具查到、掛在某則答案訊息底下顯示的候選景點清單
@@ -145,26 +152,26 @@ export async function saveMessage(m: Message): Promise<void> {
   await initDeviceDB()
   if (!db) return
   db.run(
-    `INSERT OR REPLACE INTO messages (id, channel_id, author_id, author_name, text, created_at)
+    `INSERT OR REPLACE INTO messages_v2 (id, trip_id, author_id, author_name, text, created_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [m.id, m.channelID, m.authorID, m.authorName, m.text, m.createdAt],
+    [m.id, m.tripID, m.authorID, m.authorName, m.text, m.createdAt],
   )
   await persist()
 }
 
-// listMessages 回傳某頻道的原話,依時間舊到新。
-export async function listMessages(channelID: string): Promise<Message[]> {
+// listMessages 回傳某行程的原話,依時間舊到新。
+export async function listMessages(tripID: string): Promise<Message[]> {
   await initDeviceDB()
   if (!db) return []
   const res = db.exec(
-    `SELECT id, channel_id, author_id, author_name, text, created_at
-     FROM messages WHERE channel_id = ? ORDER BY created_at ASC`,
-    [channelID],
+    `SELECT id, trip_id, author_id, author_name, text, created_at
+     FROM messages_v2 WHERE trip_id = ? ORDER BY created_at ASC`,
+    [tripID],
   )
   if (res.length === 0) return []
   return res[0].values.map((row) => ({
     id: row[0] as string,
-    channelID: row[1] as string,
+    tripID: row[1] as string,
     authorID: row[2] as string,
     authorName: row[3] as string,
     text: row[4] as string,
@@ -181,30 +188,30 @@ export async function listMessages(channelID: string): Promise<Message[]> {
 // 消失的那筆會在覆寫時一併被移除)。統一給所有批次(含 ENTRY_QUERY_BATCH_KEY
 // 這個 entry_query 專用的固定保留 key)共用同一套 API,不另外維護一套平行
 // 邏輯(見 ChatScreen.tsx 該常數宣告處的說明)。
-export async function replaceTripBatch(channelID: string, key: string, entries: TripEntry[]): Promise<void> {
+export async function replaceTripBatch(tripID: string, key: string, entries: TripEntry[]): Promise<void> {
   await initDeviceDB()
   if (!db) return
-  db.run('DELETE FROM trip_batches WHERE channel_id = ? AND key = ?', [channelID, key])
+  db.run('DELETE FROM trip_batches WHERE trip_id = ? AND key = ?', [tripID, key])
   for (const e of entries) {
     db.run(
-      `INSERT INTO trip_batches (channel_id, key, id, title, date, time, note)
+      `INSERT INTO trip_batches (trip_id, key, id, title, date, time, note)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [channelID, key, e.id, e.title, e.date, e.time, e.note],
+      [tripID, key, e.id, e.title, e.date, e.time, e.note],
     )
   }
   await persist()
 }
 
-// listAllTripBatches 撈回某頻道目前存的所有批次,回傳 key -> 清單(依寫入
+// listAllTripBatches 撈回某行程目前存的所有批次,回傳 key -> 清單(依寫入
 // 順序,rowid)的對照表,供 ChatScreen 的 load() 一次性還原 clientToolsBatches
 // 的初始值(取代先前只處理 ENTRY_QUERY_BATCH_KEY 單一批次的做法)。
-export async function listAllTripBatches(channelID: string): Promise<TripBatches> {
+export async function listAllTripBatches(tripID: string): Promise<TripBatches> {
   await initDeviceDB()
   const result: TripBatches = {}
   if (!db) return result
   const res = db.exec(
-    `SELECT key, id, title, date, time, note FROM trip_batches WHERE channel_id = ? ORDER BY key, rowid ASC`,
-    [channelID],
+    `SELECT key, id, title, date, time, note FROM trip_batches WHERE trip_id = ? ORDER BY key, rowid ASC`,
+    [tripID],
   )
   if (res.length === 0) return result
   for (const row of res[0].values) {

@@ -4,8 +4,8 @@
 
 import type {
   AuthResponse,
-  Channel,
-  ChannelRole,
+  Trip,
+  TripRole,
   Entry,
   Me,
   Member,
@@ -66,7 +66,7 @@ function emit(call: ApiCall) {
 export interface WsEvent {
   id: number
   event: string
-  channelID: string | null
+  tripID: string | null
   payload: unknown
   receivedAt: string // ISO8601
 }
@@ -86,7 +86,7 @@ export function emitWsEvent(raw: Record<string, unknown>) {
   const evt: WsEvent = {
     id: ++wsEventSeq,
     event: typeof raw.event === 'string' ? raw.event : '(unknown)',
-    channelID: typeof raw.channelID === 'string' ? raw.channelID : null,
+    tripID: typeof raw.tripID === 'string' ? raw.tripID : null,
     payload: raw,
     receivedAt: nowISO(),
   }
@@ -262,38 +262,38 @@ export function approveDeviceAuth(cfg: ClientConfig, userCode: string) {
   )
 }
 
-export function fetchChannels(cfg: ClientConfig) {
-  return request<{ channels: Channel[] }>(cfg, 'GET', '/v1/channels').then(
-    (r) => r.channels,
+export function fetchTrips(cfg: ClientConfig) {
+  return request<{ trips: Trip[] }>(cfg, 'GET', '/v1/trips').then(
+    (r) => r.trips,
   )
 }
 
-export function createChannel(cfg: ClientConfig, name: string) {
-  return request<Channel>(cfg, 'POST', '/v1/channels', { name })
+export function createTrip(cfg: ClientConfig, name: string) {
+  return request<Trip>(cfg, 'POST', '/v1/trips', { name })
 }
 
 // 原話(message)已移至裝置端 DB(IndexedDB/sql.js),後端不再提供 messages 端點。
 // owner 記事走 assist(),member 查詢走 semanticQuery()。
 
-export function fetchMembers(cfg: ClientConfig, channelID: string) {
+export function fetchMembers(cfg: ClientConfig, tripID: string) {
   return request<{ members: Member[] }>(
     cfg,
     'GET',
-    `/v1/channels/${encodeURIComponent(channelID)}/members`,
+    `/v1/trips/${encodeURIComponent(tripID)}/members`,
   ).then((r) => r.members)
 }
 
-// 以 email 邀請使用者加入頻道;role 預設 viewer(僅 owner 能加)。
+// 以 email 邀請使用者加入行程;role 預設 viewer(僅 owner 能加)。
 export function addMember(
   cfg: ClientConfig,
-  channelID: string,
+  tripID: string,
   email: string,
-  role: ChannelRole = 'viewer',
+  role: TripRole = 'viewer',
 ) {
   return request<{ members: Member[] }>(
     cfg,
     'POST',
-    `/v1/channels/${encodeURIComponent(channelID)}/members`,
+    `/v1/trips/${encodeURIComponent(tripID)}/members`,
     { email, role },
   ).then((r) => r.members)
 }
@@ -301,27 +301,27 @@ export function addMember(
 // 變更成員角色(editor/viewer);僅 owner 能改。
 export function setMemberRole(
   cfg: ClientConfig,
-  channelID: string,
+  tripID: string,
   userID: string,
-  role: ChannelRole,
+  role: TripRole,
 ) {
   return request<{ members: Member[] }>(
     cfg,
     'PATCH',
-    `/v1/channels/${encodeURIComponent(channelID)}/members/${encodeURIComponent(userID)}`,
+    `/v1/trips/${encodeURIComponent(tripID)}/members/${encodeURIComponent(userID)}`,
     { role },
   ).then((r) => r.members)
 }
 
 export function semanticQuery(
   cfg: ClientConfig,
-  channelID: string,
+  tripID: string,
   question: string,
 ) {
   return request<SearchAnswer>(
     cfg,
     'POST',
-    `/v1/channels/${encodeURIComponent(channelID)}/query`,
+    `/v1/trips/${encodeURIComponent(tripID)}/query`,
     { question, lang: getAssistLang() },
   )
 }
@@ -362,21 +362,21 @@ export type AssistResult =
 // 把工具呼叫轉發回這個分頁執行(見 server/internal/clienttools/interaction.go)。
 // undefined(第二條連線尚未連上)時後端仍會照常處理其餘工具,只有
 // trip_entry_* 這幾個會失敗。
-export function assist(cfg: ClientConfig, channelID: string, text: string, clientToolsSessionId?: string) {
+export function assist(cfg: ClientConfig, tripID: string, text: string, clientToolsSessionId?: string) {
   return request<AssistResult>(
     cfg,
     'POST',
-    `/v1/channels/${encodeURIComponent(channelID)}/assist`,
+    `/v1/trips/${encodeURIComponent(tripID)}/assist`,
     { text, lang: getAssistLang(), clientToolsSessionId },
   )
 }
 
-// 取頻道的 Entry 條目(LLM record_entry 工具處理後的結果)。
-export function fetchEntries(cfg: ClientConfig, channelID: string) {
+// 取行程的 Entry 條目(LLM record_entry 工具處理後的結果)。
+export function fetchEntries(cfg: ClientConfig, tripID: string) {
   return request<{ entries: Entry[] }>(
     cfg,
     'GET',
-    `/v1/channels/${encodeURIComponent(channelID)}/entries`,
+    `/v1/trips/${encodeURIComponent(tripID)}/entries`,
   ).then((r) => r.entries)
 }
 
@@ -418,12 +418,12 @@ export function updateEntry(cfg: ClientConfig, entryID: string, input: UpdateEnt
   )
 }
 
-// 重置:清空頻道的所有條目與行程(開發/測試用,限 owner)。
-export function resetChannelData(cfg: ClientConfig, channelID: string) {
+// 重置:清空行程的所有條目(開發/測試用,限 owner)。
+export function resetTripData(cfg: ClientConfig, tripID: string) {
   return request<{ status: string }>(
     cfg,
     'DELETE',
-    `/v1/channels/${encodeURIComponent(channelID)}/entries`,
+    `/v1/trips/${encodeURIComponent(tripID)}/entries`,
   )
 }
 
@@ -433,41 +433,41 @@ export function resetChannelData(cfg: ClientConfig, channelID: string) {
 // TripEntry 的欄位命名(title/date/time/note),不像 updateEntry() 那樣需要
 // start/startTime 這種對齊 model.Entry 的命名轉換。
 
-// 新增一筆旅程清單項目(不含 id,由後端產生)。對齊 POST /v1/channels/{id}/entries。
+// 新增一筆旅程清單項目(不含 id,由後端產生)。對齊 POST /v1/trips/{id}/entries。
 export function createTripEntry(
   cfg: ClientConfig,
-  channelID: string,
+  tripID: string,
   input: Omit<TripEntry, 'id'>,
 ) {
   return request<TripEntry>(
     cfg,
     'POST',
-    `/v1/channels/${encodeURIComponent(channelID)}/entries`,
+    `/v1/trips/${encodeURIComponent(tripID)}/entries`,
     input,
   )
 }
 
-// 修改既有一筆旅程清單項目。對齊 PUT /v1/channels/{id}/entries/{entryID}。
+// 修改既有一筆旅程清單項目。對齊 PUT /v1/trips/{id}/entries/{entryID}。
 export function updateTripEntry(
   cfg: ClientConfig,
-  channelID: string,
+  tripID: string,
   entryID: string,
   input: Omit<TripEntry, 'id'>,
 ) {
   return request<{ updated: string }>(
     cfg,
     'PUT',
-    `/v1/channels/${encodeURIComponent(channelID)}/entries/${encodeURIComponent(entryID)}`,
+    `/v1/trips/${encodeURIComponent(tripID)}/entries/${encodeURIComponent(entryID)}`,
     input,
   )
 }
 
-// 刪除既有一筆旅程清單項目。對齊 DELETE /v1/channels/{id}/entries/{entryID}。
-export function deleteTripEntry(cfg: ClientConfig, channelID: string, entryID: string) {
+// 刪除既有一筆旅程清單項目。對齊 DELETE /v1/trips/{id}/entries/{entryID}。
+export function deleteTripEntry(cfg: ClientConfig, tripID: string, entryID: string) {
   return request<{ deleted: string }>(
     cfg,
     'DELETE',
-    `/v1/channels/${encodeURIComponent(channelID)}/entries/${encodeURIComponent(entryID)}`,
+    `/v1/trips/${encodeURIComponent(tripID)}/entries/${encodeURIComponent(entryID)}`,
   )
 }
 
@@ -475,31 +475,31 @@ export function deleteTripEntry(cfg: ClientConfig, channelID: string, entryID: s
 // server/internal/store 的 view_mode 欄位（"pace" 以外一律視為 "timeline"）。
 export type PublicLinkViewMode = 'timeline' | 'pace'
 
-// 建立（或取得已有）頻道公開連結。viewMode 不傳時後端預設為 'timeline'。
-export function createPublicLink(cfg: ClientConfig, channelID: string, editable: boolean, viewMode?: PublicLinkViewMode) {
+// 建立（或取得已有）行程公開連結。viewMode 不傳時後端預設為 'timeline'。
+export function createPublicLink(cfg: ClientConfig, tripID: string, editable: boolean, viewMode?: PublicLinkViewMode) {
   return request<{ linkToken: string; editable: boolean; viewMode: PublicLinkViewMode }>(
     cfg,
     'POST',
-    `/v1/channels/${encodeURIComponent(channelID)}/public-link`,
+    `/v1/trips/${encodeURIComponent(tripID)}/public-link`,
     { editable, viewMode },
   )
 }
 
-// 取得頻道公開連結資訊。
-export function getPublicLink(cfg: ClientConfig, channelID: string) {
+// 取得行程公開連結資訊。
+export function getPublicLink(cfg: ClientConfig, tripID: string) {
   return request<{ linkToken: string; editable: boolean; viewMode: PublicLinkViewMode }>(
     cfg,
     'GET',
-    `/v1/channels/${encodeURIComponent(channelID)}/public-link`,
+    `/v1/trips/${encodeURIComponent(tripID)}/public-link`,
   )
 }
 
-// 刪除頻道公開連結。
-export function deletePublicLink(cfg: ClientConfig, channelID: string) {
+// 刪除行程公開連結。
+export function deletePublicLink(cfg: ClientConfig, tripID: string) {
   return request<{ status: string }>(
     cfg,
     'DELETE',
-    `/v1/channels/${encodeURIComponent(channelID)}/public-link`,
+    `/v1/trips/${encodeURIComponent(tripID)}/public-link`,
   )
 }
 
@@ -508,7 +508,7 @@ export function fetchPublicView(baseURL: string, token: string) {
   return fetch(`${baseURL}/v1/public/${encodeURIComponent(token)}`)
     .then(async (r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
-      return r.json() as Promise<{ channelID: string; channelName: string; editable: boolean; viewMode: PublicLinkViewMode; entries: Entry[] }>
+      return r.json() as Promise<{ tripID: string; tripName: string; editable: boolean; viewMode: PublicLinkViewMode; entries: Entry[] }>
     })
 }
 

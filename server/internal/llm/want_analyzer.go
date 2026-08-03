@@ -159,22 +159,22 @@ type AssistResult struct {
 // ctx.GetSessionEnvs()["sessionID"] 找到 clienttools.RegisterAsker 註冊的
 // 那個 WS session,才能把呼叫轉發回瀏覽器分頁(見 clienttools/interaction.go
 // 的 InteractionAsker 文件註解)。這裡把它一併塞進同一次 SetSessionEnvs 呼叫
-// ——同 channelID/messageID 一樣不進 LLM 的 prompt,只在 w.mu 已序列化呼叫
+// ——同 tripID/messageID 一樣不進 LLM 的 prompt,只在 w.mu 已序列化呼叫
 // 的前提下,於 Submit 前設定、Submit 後這輪工具呼叫都讀到同一份值,不會被
 // 下一次呼叫覆寫覆蓋(mu 序列化保證)。空字串(前端尚未連上第二條 WS)時,
 // trip_entry_* 呼叫會在 askPage 得到明確錯誤,不影響其餘工具。
 // linkMessage:agent 記錄了條目時,寫入來源 message 並把它與本次 emit 的
 // entry(參數 entryIDs)建立多對多關聯。只回答時不呼叫。由 api 層提供(持有 store)。
-func (w *WantAnalyzer) Assist(channelID, messageID, text, lang, clientToolsSessionID string, linkMessage func(entryIDs []string) error) AssistResult {
+func (w *WantAnalyzer) Assist(tripID, messageID, text, lang, clientToolsSessionID string, linkMessage func(entryIDs []string) error) AssistResult {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	wanttools.RecordLock()
 	defer wanttools.RecordUnlock()
-	// 輔助資訊(channelID/messageID/sessionID)透過 SessionEnvs 隨
+	// 輔助資訊(tripID/messageID/sessionID)透過 SessionEnvs 隨
 	// ToolUseContext 傳遞給工具,不進送給 LLM 的 prompt,也不經過任何
 	// 套件級全域變數。
-	w.orch.SetSessionEnvs(map[string]string{"channelID": channelID, "messageID": messageID, "sessionID": clientToolsSessionID})
+	w.orch.SetSessionEnvs(map[string]string{"tripID": tripID, "messageID": messageID, "sessionID": clientToolsSessionID})
 	// 本次呼叫要用的 system prompt(依語言動態組裝);w.mu 已序列化所有呼叫,
 	// 此處「設定 → Submit → 等待完成」不會與其他呼叫交錯覆寫彼此的 PromptBuilder。
 	w.orch.SetPromptBuilder(BuildPromptBuilder(lang))
@@ -258,10 +258,10 @@ func (w *WantAnalyzer) Assist(channelID, messageID, text, lang, clientToolsSessi
 // query_entries 查條目、再對每筆相關條目呼叫 present_entries 呈現
 // (不用 citeEntries 關鍵字比對,也不把 pool 塞進 prompt)。
 // 跑完用 Presented() 取 agent 呈現的結構化條目,確保卡片與文字來自同一判斷。
-// channelID 必填:query_entries 工具靠 SessionEnvs 得知要查哪個頻道。
+// tripID 必填:query_entries 工具靠 SessionEnvs 得知要查哪個行程。
 // lang 是使用者設定的回答語言偏好("zh-TW"/"en"),空字串視為預設(繁體中文);
 // 用法同 Assist,見該處註解與 assistant_agent.go BuildPromptBuilder 的技術說明。
-func (w *WantAnalyzer) Answer(channelID, question, lang string) model.SearchAnswer {
+func (w *WantAnalyzer) Answer(tripID, question, lang string) model.SearchAnswer {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -269,8 +269,8 @@ func (w *WantAnalyzer) Answer(channelID, question, lang string) model.SearchAnsw
 	// 跑完用 Presented() 取本次 agent 透過 present_entries 呈現的條目。
 	wanttools.RecordLock()
 	defer wanttools.RecordUnlock()
-	// 讓 query_entries 知道查哪個頻道(同 Assist 路徑;查詢不關聯 message,故不設 messageID)。
-	w.orch.SetSessionEnvs(map[string]string{"channelID": channelID})
+	// 讓 query_entries 知道查哪個行程(同 Assist 路徑;查詢不關聯 message,故不設 messageID)。
+	w.orch.SetSessionEnvs(map[string]string{"tripID": tripID})
 	// 本次呼叫要用的 system prompt(依語言動態組裝),同 Assist 的做法。
 	w.orch.SetPromptBuilder(BuildPromptBuilder(lang))
 

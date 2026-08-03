@@ -1,5 +1,7 @@
 package store
 
+import "fmt"
+
 // maintenance.go 存放「一次性」資料庫維運操作，不屬於任何常規業務流程，
 // 也不會被 Open()/AutoMigrate 呼叫。僅供 cmd/cli 的維運子命令手動觸發。
 //
@@ -49,4 +51,121 @@ func (s *Store) DropTripGroupingObjects() (dropped []string, err error) {
 		dropped = append(dropped, "trips")
 	}
 	return dropped, nil
+}
+
+// RenameChannelToTrip 把 channel→trip 改名這次程式碼重構對應的資料庫結構
+// 變更真正落到資料庫上:channels 表改名成 trips,entries/members/public_links
+// 三張表的 channel_id 欄位改名成 trip_id,並同步改掉相關索引名稱。
+//
+// 背景:這次改名(把「頻道」概念改叫「行程」,對齊介面文案早已使用的用語,
+// 見 docs/TERMINOLOGY.md)是程式碼層面先行——model.Channel/channelRow 等
+// Go 型別、tripsvc/api 的路由與 handler、CLI 都已經改成假設資料庫欄位叫
+// trips/trip_id。
+//
+// 陷阱(實測踩過、務必留意):呼叫這支函式前,store.Open()一定已經跑過
+// AutoMigrate(見 newDBClient()的呼叫順序),而 AutoMigrate 看到的是新的
+// tripRow/entryRow(欄位已改名),所以它會在還沒真正 RENAME 之前,就搶先在
+// 資料庫裡「另外建出」一張全新的空 trips 表、以及在 entries/members/
+// public_links 上各自補一個全新的空 trip_id 欄位——這些都是 AutoMigrate
+// 只增不減的正常行為,但會讓「trips 表已存在」「trip_id 欄位已存在」這種
+// 存在性檢查在改名之前就先變成真,使得原本設計成「目標不存在才動手」的
+// 判斷邏輯直接被跳過、實際的 RENAME 完全沒有執行,channels/channel_id 的
+// 舊資料就這樣被晾在一邊,程式碼卻已經全部指向新名稱、完全讀不到舊資料。
+//
+// 故這裡的判斷邏輯反過來:不是看「目標是否存在」,而是看「舊表/舊欄位是否
+// 還在」——只要 channels 表還在,就先把 AutoMigrate 搶建的那個空 trips 表
+// 刪掉(反正是空的,沒有真實資料),再把 channels RENAME 成 trips;
+// channel_id 欄位同理,先刪掉 AutoMigrate 補的空 trip_id 欄位,再把
+// channel_id RENAME 成 trip_id。
+//
+// 順序:表格本身改名放最前面;其餘三張表各自獨立改名,順序不影響正確性。
+//
+// 索引:entries 的 idx_entries_channel_id、public_links 的
+// idx_public_links_channel_id 這兩個索引名稱也一併改名,保持索引名稱與欄位
+// 名稱一致,避免留下名不符實的索引造成日後排查困惑。members 表的複合主鍵
+// members_pkey 不含欄位名稱本身,不需要改名。
+//
+// 冪等:每一步都先確認「舊物件是否還在」才動手,已經改名過的資料庫(舊表/
+// 舊欄位已經不存在)重複執行不會出錯、也不會重複改名。
+//
+// 這是一次性維運指令,只能透過 cmd/cli 手動執行,不會出現在 Open()/AutoMigrate
+// 或任何伺服器啟動流程裡。
+func (s *Store) RenameChannelToTrip() (renamed []string, err error) {
+	m := s.db.Migrator()
+
+	if m.HasTable("channels") {
+		// AutoMigrate 可能已經搶先建出一張空的 trips 表(見上方陷阱說明),
+		// 必須先清掉才能真正 RENAME channels -> trips。
+		if m.HasTable("trips") {
+			var n int64
+			if err := s.db.Table("trips").Count(&n).Error; err != nil {
+				return renamed, fmt.Errorf("count trips before drop: %w", err)
+			}
+			if n > 0 {
+				return renamed, fmt.Errorf("trips 表已存在且有 %d 筆資料,無法確認是 AutoMigrate 誤建的空表還是真實資料,為安全起見中止遷移", n)
+			}
+			if err := m.DropTable("trips"); err != nil {
+				return renamed, fmt.Errorf("drop empty trips (AutoMigrate 搶建): %w", err)
+			}
+		}
+		if err := m.RenameTable("channels", "trips"); err != nil {
+			return renamed, fmt.Errorf("rename channels -> trips: %w", err)
+		}
+		renamed = append(renamed, "channels -> trips")
+	}
+
+	type colRename struct {
+		table   string
+		fromCol string
+		toCol   string
+	}
+	for _, c := range []colRename{
+		{"entries", "channel_id", "trip_id"},
+		{"members", "channel_id", "trip_id"},
+		{"public_links", "channel_id", "trip_id"},
+	} {
+		if !m.HasColumn(c.table, c.fromCol) {
+			continue // 已經改名過(舊欄位不存在),冪等略過。
+		}
+		if m.HasColumn(c.table, c.toCol) {
+			// 同上陷阱:AutoMigrate 可能已經搶先補了一個全新的空 trip_id
+			// 欄位。這個欄位理論上全是 NULL(entries/members/public_links
+			// 的 trip_id 都設了 not null 或有實際資料才會寫入,AutoMigrate
+			// 新增欄位不會回填值),先確認真的是空的再刪除,不是真實資料
+			// 被誤判。
+			var n int64
+			if err := s.db.Table(c.table).Where(c.toCol + " IS NOT NULL").Count(&n).Error; err != nil {
+				return renamed, fmt.Errorf("count %s.%s before drop: %w", c.table, c.toCol, err)
+			}
+			if n > 0 {
+				return renamed, fmt.Errorf("%s.%s 已存在且有 %d 筆非 NULL 資料,無法確認是 AutoMigrate 誤建的空欄位還是真實資料,為安全起見中止遷移", c.table, c.toCol, n)
+			}
+			if err := m.DropColumn(c.table, c.toCol); err != nil {
+				return renamed, fmt.Errorf("drop empty %s.%s (AutoMigrate 搶建): %w", c.table, c.toCol, err)
+			}
+		}
+		if err := s.db.Exec(fmt.Sprintf("ALTER TABLE %s RENAME COLUMN %s TO %s", c.table, c.fromCol, c.toCol)).Error; err != nil {
+			return renamed, fmt.Errorf("rename %s.%s -> %s: %w", c.table, c.fromCol, c.toCol, err)
+		}
+		renamed = append(renamed, fmt.Sprintf("%s.%s -> %s.%s", c.table, c.fromCol, c.table, c.toCol))
+	}
+
+	type idxRename struct {
+		table    string
+		fromName string
+		toName   string
+	}
+	for _, ix := range []idxRename{
+		{"entries", "idx_entries_channel_id", "idx_entries_trip_id"},
+		{"public_links", "idx_public_links_channel_id", "idx_public_links_trip_id"},
+	} {
+		if m.HasIndex(ix.table, ix.fromName) && !m.HasIndex(ix.table, ix.toName) {
+			if err := m.RenameIndex(ix.table, ix.fromName, ix.toName); err != nil {
+				return renamed, fmt.Errorf("rename index %s -> %s: %w", ix.fromName, ix.toName, err)
+			}
+			renamed = append(renamed, fmt.Sprintf("index %s -> %s", ix.fromName, ix.toName))
+		}
+	}
+
+	return renamed, nil
 }

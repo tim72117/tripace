@@ -49,8 +49,8 @@ import (
 // when it starts, and deregisters when the connection closes. The calling
 // tool recovers the session id from ctx.GetSessionEnvs()["sessionID"] — set
 // once via orch.SetSessionEnvs before Submit, the same SessionEnvs plumbing
-// shuttle's existing wanttools package already uses for channelID (see
-// wanttools.ChannelFrom) — rather than ctx.GetAgentID(), because in this
+// shuttle's existing wanttools package already uses for tripID (see
+// wanttools.TripFrom) — rather than ctx.GetAgentID(), because in this
 // want version AgentID is fixed per *orchestrator.Orchestrator instance for
 // its whole lifetime (see orchestrator.NewOrchestrator: generated once, not
 // per-session), unlike the agent project's platform where AgentID is

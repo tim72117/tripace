@@ -7,7 +7,7 @@ import {
 import type { ClientConfig, ApiCall, WsEvent } from './api'
 import * as api from './api'
 import { onApiCall, onWsEvent } from './api'
-import type { Channel, User } from './types'
+import type { Trip, User } from './types'
 import { ChatScreen } from './ChatScreen'
 import type { DesktopTimelineMirror } from './ChatScreen'
 import { MultiTrackTimeline, type TaskPlaceholder } from './Timeline'
@@ -17,16 +17,16 @@ import { PaceChart, type Checkpoint } from './PaceChart'
 import { PaceRouteMap, type SelectedEntry } from './PaceRouteMap'
 import { DemoPanel } from './DemoPanel'
 import {
-  Avatar, ErrorBanner, errMsg, isSubmitEnter, LoginForm, useChannelsState,
+  Avatar, ErrorBanner, errMsg, isSubmitEnter, LoginForm, useTripsState,
   type ContentProps,
 } from './AppCommon'
 import {
   type PanelMode, isPanelMode, DemoPanelContent, LangSelect, TokenDisplay,
 } from './DesktopShared'
 
-// DesktopLayout:桌面版(寬度 >= 768px)專屬佈局元件——左側邊欄(頻道列表 +
-// 使用者選單)+ 右側 ChatScreen 主要區塊,類似 Slack/Discord 的頻道側欄
-// 模式。PanelMode/DemoPanelContent/LangSelect/TokenDisplay/useChannelsState
+// DesktopLayout:桌面版(寬度 >= 768px)專屬佈局元件——左側邊欄(行程列表 +
+// 使用者選單)+ 右側 ChatScreen 主要區塊,類似 Slack/Discord 的行程側欄
+// 模式。PanelMode/DemoPanelContent/LangSelect/TokenDisplay/useTripsState
 // 這些「桌面/手機共用」的部分不在這裡,分別在 DesktopShared.tsx/
 // AppCommon.tsx——避免這裡跟手機版檔案(PhoneContent.tsx/PhoneNavDrawer.tsx/
 // PhoneScreens.tsx)互相 import 對方造成循環依賴。
@@ -35,7 +35,7 @@ import {
 // (原本的 panelMode === null)的專屬字串,不屬於 PanelMode 型別的合法值——
 // 純粹是路由層級的一個記號,不是業務上的「面板模式」。用一個明確字串
 // (而非讓 null 對應到 /app 無參數)是因為 /app 無參數依規格要 fallback 成
-// 'channels'(見 DesktopContent 內的說明),兩者不能共用同一個網址。
+// 'trips'(見 DesktopContent 內的說明),兩者不能共用同一個網址。
 const PANEL_COLLAPSED_SEGMENT = 'none'
 
 // 時間軸鏡像資料的初始值(尚未收到 ChatScreen 鏡像前,或未選擇行程時使用)。
@@ -47,7 +47,7 @@ const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
 }
 
 export function DesktopContent(props: ContentProps) {
-  const { cfg, activeChannel, setActiveChannel } = props
+  const { cfg, activeTrip, setActiveTrip } = props
   // settingsOpen 獨立於 DesktopUserMenu 內部的 popover 開關狀態:選單裡點「設定」
   // 時會同時關閉 popover(DesktopUserMenu 內部 state)並開啟這裡的 dialog。
   // dialog 提升到這一層(而非渲染在 DesktopUserMenu/側欄內部)渲染,是因為
@@ -62,27 +62,27 @@ export function DesktopContent(props: ContentProps) {
   //
   // 「收合」(原本 panelMode === null)需要一個獨立於「沒有路徑參數」的網址
   // 表示法,不能直接讓 null 對應到 /app(無參數)——因為下面這條規則要求
-  // /app 本身要 fallback 成 'channels'(維持既有使用者習慣),若兩者共用
+  // /app 本身要 fallback 成 'trips'(維持既有使用者習慣),若兩者共用
   // 同一個網址,「再點一次啟用中的圖示收合 panel」會導致 navigate 到 /app、
-  // 又立刻被 fallback 規則解回 'channels',使用者永遠無法真正收合側欄。
+  // 又立刻被 fallback 規則解回 'trips',使用者永遠無法真正收合側欄。
   // 因此用 PANEL_COLLAPSED_SEGMENT('none')這個明確的路徑片段代表收合狀態,
   // 跟「沒帶參數」區分開來。
   //
   // 網址沒帶 panelMode(例如直接訪問 /app)時 useParams() 回傳 undefined,
-  // 這裡 fallback 成 'channels'——維持進入桌面版時 panel 開啟且顯示頻道列表的
+  // 這裡 fallback 成 'trips'——維持進入桌面版時 panel 開啟且顯示行程列表的
   // 既有使用者習慣(這行為原本就是這裡的預設值,只是現在由「沒有路徑參數」
   // 觸發而非 useState 初始值)。
   //
   // 網址帶了不合法的 panelMode 字串(不在 PanelMode 列表、也不是
-  // PANEL_COLLAPSED_SEGMENT 的字串)時,同樣 fallback 成 'channels' 而非收合
+  // PANEL_COLLAPSED_SEGMENT 的字串)時,同樣 fallback 成 'trips' 而非收合
   // ——理由:讓使用者從一個「看起來壞掉的網址」落地時,至少有個看得懂的畫面
-  // (頻道列表)可以操作,好過收合側欄後找不到任何導覽入口(rail 上也沒有
+  // (行程列表)可以操作,好過收合側欄後找不到任何導覽入口(rail 上也沒有
   // 任何按鈕會是 active 狀態,使用者會搞不清楚目前在哪)。
   const { panelMode: panelModeParam } = useParams<{ panelMode?: string }>()
   const panelMode: PanelMode =
     panelModeParam === PANEL_COLLAPSED_SEGMENT
       ? null
-      : isPanelMode(panelModeParam) ? panelModeParam : 'channels'
+      : isPanelMode(panelModeParam) ? panelModeParam : 'trips'
   const navigate = useNavigate()
   // setPanelMode:取代原本的 useState setter,改成 navigate 到對應路徑。
   // 沿用原本「再點一次啟用中的圖示會收合 panel」的行為——這裡收合改成導向
@@ -125,19 +125,19 @@ export function DesktopContent(props: ContentProps) {
   useEffect(() => onApiCall((c) => setDebugCalls((prev) => [c, ...prev].slice(0, 100))), [])
   useEffect(() => onWsEvent((e) => setDebugWsEvents((prev) => [e, ...prev].slice(0, 100))), [])
   // isSidepanelMode:panelMode 是不是「該展開 side panel」的模式——
-  // channels/timeline/pace 這三種正式功能(pace 配速表側欄顯示檢查站清單,
+  // trips/timeline/pace 這三種正式功能(pace 配速表側欄顯示檢查站清單,
   // 跟 timeline 用同一種「side panel 開、main 區顯示 ChatScreen/空狀態」
   // 版面)。其餘 demo-cards/demo-row/demo-map/demo-clienttools/demo-onagent
   // 這幾種試做模式維持顯示在右側 .desktop-main(取代 ChatScreen,見下方
   // 渲染邏輯),不佔用 side panel,故不能讓 side panel 因為 panelMode 有值
   // 就誤判成該展開,否則會出現一個空白的展開面板。
-  const isSidepanelMode = panelMode === 'channels' || panelMode === 'timeline' || panelMode === 'pace'
+  const isSidepanelMode = panelMode === 'trips' || panelMode === 'timeline' || panelMode === 'pace'
 
   // 切換行程時,先清空鏡像資料,避免新行程的 ChatScreen 還沒送出第一次鏡像前,
   // side panel 短暫顯示上一個行程的時間軸內容。
   useEffect(() => {
     setTimelineMirror(EMPTY_TIMELINE_MIRROR)
-  }, [activeChannel?.id])
+  }, [activeTrip?.id])
 
   const onTimelineData = useCallback((data: DesktopTimelineMirror) => {
     setTimelineMirror(data)
@@ -159,7 +159,7 @@ export function DesktopContent(props: ContentProps) {
         <DesktopRail
           panelMode={panelMode}
           onSelect={setPanelMode}
-          timelineDisabled={!activeChannel}
+          timelineDisabled={!activeTrip}
           user={props.user}
           isGuest={props.isGuest}
           cfg={cfg}
@@ -172,11 +172,11 @@ export function DesktopContent(props: ContentProps) {
         />
         <aside className={`desktop-sidepanel${isSidepanelMode ? '' : ' collapsed'}${panelMode === 'timeline' || panelMode === 'pace' ? ' wide' : ''}`}>
           <div className="desktop-sidepanel-inner">
-            {panelMode === 'channels' && (
-              <DesktopChannelList
+            {panelMode === 'trips' && (
+              <DesktopTripList
                 cfg={cfg}
-                activeChannelID={activeChannel?.id ?? null}
-                onOpen={(c) => setActiveChannel(c)}
+                activeTripID={activeTrip?.id ?? null}
+                onOpen={(t) => setActiveTrip(t)}
               />
             )}
             {panelMode === 'timeline' && (
@@ -185,7 +185,7 @@ export function DesktopContent(props: ContentProps) {
                   <span className="desktop-sidebar-title">時間軸</span>
                 </div>
                 <div className="desktop-timeline-scroll">
-                  {!activeChannel ? (
+                  {!activeTrip ? (
                     <div className="empty">選擇一個行程後顯示時間軸。</div>
                   ) : timelineMirror.entries.length === 0 ? (
                     <div className="empty">尚無行程內容。</div>
@@ -195,7 +195,7 @@ export function DesktopContent(props: ContentProps) {
                       todayRef={todayRef}
                       updatingIDs={timelineMirror.updatingEntryIDs}
                       taskPlaceholders={timelineMirror.taskPlaceholders}
-                      cfg={activeChannel.ownerID === props.user.id ? cfg : undefined}
+                      cfg={activeTrip.ownerID === props.user.id ? cfg : undefined}
                       onEntryUpdated={timelineMirror.refetchEntries}
                     />
                   )}
@@ -206,7 +206,7 @@ export function DesktopContent(props: ContentProps) {
               <div className="desktop-sidepanel-pace">
                 <PaceChart
                   cfg={cfg}
-                  channelID={activeChannel?.id}
+                  tripID={activeTrip?.id}
                   onCheckpointClick={setSelectedEntry}
                   onRouteChange={setPaceCheckpoints}
                   savedEntry={savedEntry}
@@ -234,12 +234,12 @@ export function DesktopContent(props: ContentProps) {
           ) : panelMode === 'demo-cards' || panelMode === 'demo-row' || panelMode === 'demo-map'
             || panelMode === 'demo-clienttools' || panelMode === 'demo-onagent' ? (
             <DemoPanelContent mode={panelMode} />
-          ) : activeChannel ? (
+          ) : activeTrip ? (
             <ChatScreen
               cfg={cfg}
-              channel={activeChannel}
+              trip={activeTrip}
               user={props.user}
-              onBack={() => setActiveChannel(null)}
+              onBack={() => setActiveTrip(null)}
               desktopChat={desktopChat}
             />
           ) : (
@@ -253,7 +253,7 @@ export function DesktopContent(props: ContentProps) {
             wsEvents={debugWsEvents}
             onClearWsEvents={() => setDebugWsEvents([])}
             cfg={cfg}
-            channel={activeChannel}
+            trip={activeTrip}
             // .debug 這組樣式(見 debug.css)原本假設父層是撐滿整頁的
             // .workbench,寫死 height: 100vh。這裡改成 .desktop-layout
             // 這個非全頁的 flex row 底下的一個子項,覆寫成吃滿容器高度
@@ -276,7 +276,7 @@ export function DesktopContent(props: ContentProps) {
 }
 
 // DesktopRail:最左緣 48px 固定寬的 icon rail(比照 VSCode activity bar / Slack
-// 頻道列)。上方兩顆圖示鈕切換 side panel 內容(再點一次啟用中的圖示會收合 panel),
+// 行程列)。上方兩顆圖示鈕切換 side panel 內容(再點一次啟用中的圖示會收合 panel),
 // 底部放 DesktopUserMenu。當前啟用的圖示用左緣 accent 豎條 + 底色標記(見 styles.css
 // .desktop-rail-btn.active)。
 function DesktopRail({
@@ -317,9 +317,9 @@ function DesktopRail({
     <nav className="desktop-rail">
       <div className="desktop-rail-buttons">
         <button
-          className={`desktop-rail-btn${panelMode === 'channels' ? ' active' : ''}`}
-          onClick={() => onSelect('channels')}
-          title="頻道列表"
+          className={`desktop-rail-btn${panelMode === 'trips' ? ' active' : ''}`}
+          onClick={() => onSelect('trips')}
+          title="行程列表"
         >
           <List size={20} strokeWidth={1.8} />
         </button>
@@ -400,44 +400,44 @@ function DesktopRail({
   )
 }
 
-// 桌面版側欄頻道列表:複用 useChannelsState(與手機版 PhoneNavDrawer 的
+// 桌面版側欄行程列表:複用 useTripsState(與手機版 PhoneNavDrawer 的
 // 行程列表分頁共用抓取/建立邏輯),只是呈現方式改成緊湊的側欄列表項目,
-// 選中的頻道有高亮(.desktop-channel-item.active)。
-function DesktopChannelList({
+// 選中的行程有高亮(.desktop-trip-item.active)。
+function DesktopTripList({
   cfg,
-  activeChannelID,
+  activeTripID,
   onOpen,
 }: {
   cfg: ClientConfig
-  activeChannelID: string | null
-  onOpen: (c: Channel) => void
+  activeTripID: string | null
+  onOpen: (t: Trip) => void
 }) {
   const {
-    channels, err, loading,
+    trips, err, loading,
     creating, setCreating,
     newName, setNewName,
     submitCreate,
-  } = useChannelsState(cfg, onOpen)
+  } = useTripsState(cfg, onOpen)
 
   return (
-    <div className="desktop-channel-list">
+    <div className="desktop-trip-list">
       <div className="desktop-sidebar-head">
         <span className="desktop-sidebar-title">行程</span>
       </div>
       <ErrorBanner msg={err} />
-      <div className="desktop-channel-scroll">
-        {channels.length === 0 && !err && (
+      <div className="desktop-trip-scroll">
+        {trips.length === 0 && !err && (
           <div className="empty">
             {loading ? '載入中…' : '沒有行程,按下方「新增行程」建立一個。'}
           </div>
         )}
-        {/* 新增行程:跟下面實際的行程項目共用同一套 .desktop-channel-item
-            樣式(對齊手機版 PhoneNavDrawer.tsx 的 ChannelsTabContent,同一組
+        {/* 新增行程:跟下面實際的行程項目共用同一套 .desktop-trip-item
+            樣式(對齊手機版 PhoneNavDrawer.tsx 的 TripsTabContent,同一組
             清單的一份子,不是另外一顆獨立的圖示按鈕),只把大頭貼換成「＋」
             圖示徽章區分。點擊後原地換成輸入框(composer),下面既有行程
             清單維持可見。 */}
         {creating ? (
-          <div className="new-channel-composer">
+          <div className="new-trip-composer">
             <input
               autoFocus
               value={newName}
@@ -456,8 +456,8 @@ function DesktopChannelList({
             </button>
           </div>
         ) : (
-          <button className="desktop-channel-item" onClick={() => setCreating(true)}>
-            <div className="desktop-channel-icon">
+          <button className="desktop-trip-item" onClick={() => setCreating(true)}>
+            <div className="desktop-trip-icon">
               <Plus size={18} strokeWidth={1.8} />
             </div>
             <div className="grow">
@@ -465,19 +465,19 @@ function DesktopChannelList({
             </div>
           </button>
         )}
-        {channels.map((c) => (
+        {trips.map((t) => (
           <button
-            key={c.id}
-            className={`desktop-channel-item${c.id === activeChannelID ? ' active' : ''}`}
-            onClick={() => onOpen(c)}
+            key={t.id}
+            className={`desktop-trip-item${t.id === activeTripID ? ' active' : ''}`}
+            onClick={() => onOpen(t)}
           >
-            <div className="desktop-channel-icon">
+            <div className="desktop-trip-icon">
               <MapPin size={18} strokeWidth={1.8} />
             </div>
             <div className="grow">
-              <div className="name">{c.name}</div>
+              <div className="name">{t.name}</div>
               <div className="sub">
-                {c.lastMessagePreview ?? '尚無訊息'} · {c.memberCount} 人
+                {t.lastMessagePreview ?? '尚無訊息'} · {t.memberCount} 人
               </div>
             </div>
           </button>

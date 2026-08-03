@@ -34,33 +34,33 @@ type dbClient struct {
 
 func (c *dbClient) close() { c.st.Close() }
 
-func (c *dbClient) listChannels() (any, error) {
-	channels, err := c.st.ListAllChannels()
-	return map[string]any{"channels": channels}, err
+func (c *dbClient) listTrips() (any, error) {
+	trips, err := c.st.ListAllTrips()
+	return map[string]any{"trips": trips}, err
 }
 
-// tripEntries 列出某個頻道的所有 entry(名稱沿用歷史,見 httpClient 的同名
+// tripEntries 列出某個行程的所有 entry(名稱沿用歷史,見 httpClient 的同名
 // 方法說明)。
-func (c *dbClient) tripEntries(channelID string) (any, error) {
-	entries, err := c.st.ListEntriesByChannel(channelID)
+func (c *dbClient) tripEntries(tripID string) (any, error) {
+	entries, err := c.st.ListEntriesByTrip(tripID)
 	return map[string]any{"entries": entries}, err
 }
 
-// createChannel 在 -db 模式下沒有「已登入使用者」這個概念(整個 dbClient
+// createTrip 在 -db 模式下沒有「已登入使用者」這個概念(整個 dbClient
 // 都是直連 DB、無 HTTP 請求、無 auth context),故 owner 固定用
 // api.Server 對未帶 token 請求的同一個訪客身分(usr_me/"我"，見
-// internal/api/api.go 的 guestUser)——這樣 -db 模式建出來的頻道，owner
-// 與「不登入直接打 /v1/channels」拿到的結果一致，不會另外多出一種身分。
-func (c *dbClient) createChannel(name string) (any, error) {
+// internal/api/api.go 的 guestUser)——這樣 -db 模式建出來的行程，owner
+// 與「不登入直接打 /v1/trips」拿到的結果一致，不會另外多出一種身分。
+func (c *dbClient) createTrip(name string) (any, error) {
 	id := make([]byte, 4)
 	_, _ = rand.Read(id)
 	creator := model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"}
-	return c.st.CreateChannel("ch_"+hex.EncodeToString(id), name, creator)
+	return c.st.CreateTrip("tr_"+hex.EncodeToString(id), name, creator)
 }
 
-func (c *dbClient) record(channelID, title, start, startTime, end, endTime, location string) (any, error) {
+func (c *dbClient) record(tripID, title, start, startTime, end, endTime, location string) (any, error) {
 	return c.svc.Record(tripsvc.RecordInput{
-		ChannelID: channelID, Title: title,
+		TripID: tripID, Title: title,
 		Start: start, StartTime: startTime,
 		End: end, EndTime: endTime,
 		Location: location,
@@ -75,13 +75,27 @@ func (c *dbClient) deleteEntry(entryID string) error {
 	return c.st.DeleteEntry(entryID)
 }
 
-func (c *dbClient) reset(channelID string) error {
-	return c.svc.Reset(channelID)
+func (c *dbClient) reset(tripID string) error {
+	return c.svc.Reset(tripID)
 }
 
 // dropTripGrouping 是一次性維運操作:清掉 trip 歸組機制留下的孤兒資料庫
 // 物件(entries.trip_id 欄位與 trips 表,見 store.DropTripGroupingObjects
 // 的完整說明)。只在 -db 模式下有意義,故只掛在 dbClient 上,不進 client 介面。
+//
+// 注意:這裡的 trips 表指的是已移除的「trip 歸組」機制(把 entries 依時間
+// 自動分組)留下的孤兒表,和這次 channel→trip 改名後的 trips 主表是恰好
+// 同名、但完全無關的兩件事——這支維運指令在 channel→trip 改名之前就已經
+// 針對本地/正式站執行過,執行當下 channels 表還叫 channels,不是這次改名
+// 建出來的 trips 表。
 func (c *dbClient) dropTripGrouping() ([]string, error) {
 	return c.st.DropTripGroupingObjects()
+}
+
+// renameChannelToTrip 是一次性維運操作:把 channel→trip 改名這次程式碼重構
+// 對應的資料庫結構變更真正落到資料庫上(channels 表改名 trips、三張表的
+// channel_id 欄位改名 trip_id,見 store.RenameChannelToTrip 的完整說明)。
+// 只在 -db 模式下有意義,故只掛在 dbClient 上,不進 client 介面。
+func (c *dbClient) renameChannelToTrip() ([]string, error) {
+	return c.st.RenameChannelToTrip()
 }

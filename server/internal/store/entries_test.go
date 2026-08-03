@@ -6,16 +6,16 @@ import (
 	"github.com/tim72117/tripace/internal/model"
 )
 
-// newTestEntry 建立一個測試用頻道 + 條目,回傳條目 ID 供後續 CRUD 操作使用。
+// newTestEntry 建立一個測試用行程 + 條目,回傳條目 ID 供後續 CRUD 操作使用。
 func newTestEntry(t *testing.T, s *Store, id string) string {
 	t.Helper()
-	ch, err := s.CreateChannel("ch_"+id, "test channel", model.User{ID: "usr_" + id, Name: "tester"})
+	tr, err := s.CreateTrip("tr_"+id, "test trip", model.User{ID: "usr_" + id, Name: "tester"})
 	if err != nil {
-		t.Fatalf("create channel: %v", err)
+		t.Fatalf("create trip: %v", err)
 	}
 	e := model.Entry{
 		ID:        "ent_" + id,
-		ChannelID: ch.ID,
+		TripID:    tr.ID,
 		Title:     "原始標題",
 		Start:     "2026-07-31",
 		StartTime: "09:00",

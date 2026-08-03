@@ -1,20 +1,20 @@
 import { useState } from 'react'
-import { LS_DEFAULT_CHANNEL } from '../AppCommon'
+import { LS_DEFAULT_TRIP } from '../AppCommon'
 
 // ---- 行程菜單(右上角設定) ----
 
-export function ChannelMenu({ channelID }: { channelID: string }) {
+export function TripMenu({ tripID }: { tripID: string }) {
   const [open, setOpen] = useState(false)
-  const defaultID = localStorage.getItem(LS_DEFAULT_CHANNEL)
-  const isDefault = defaultID === channelID
+  const defaultID = localStorage.getItem(LS_DEFAULT_TRIP)
+  const isDefault = defaultID === tripID
 
   const setAsDefault = () => {
-    localStorage.setItem(LS_DEFAULT_CHANNEL, channelID)
+    localStorage.setItem(LS_DEFAULT_TRIP, tripID)
     setOpen(false)
   }
 
   const clearDefault = () => {
-    localStorage.removeItem(LS_DEFAULT_CHANNEL)
+    localStorage.removeItem(LS_DEFAULT_TRIP)
     setOpen(false)
   }
 

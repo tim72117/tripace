@@ -35,7 +35,7 @@ import (
 )
 
 // handleClientToolsWS upgrades to a clientToolsSession. No channel/user
-// association at all (unlike handleWS's channelID + requireMember check) —
+// association at all (unlike handleWS's tripID + requireMember check) —
 // this POC's trip entry list isn't scoped to any shuttle channel; it's a
 // standalone in-memory list living entirely in the connected browser tab
 // (see web/src/DebugApp.tsx).

@@ -1,7 +1,7 @@
-/* PhoneChannelsDrawer.tsx 專屬樣式(CSS Modules)。左側滑入抽屜,疊在
+/* PhoneTripsDrawer.tsx 專屬樣式(CSS Modules)。左側滑入抽屜,疊在
    PhoneNavDrawer 之上(z-index 高於 PhoneNavDrawer.module.css 的 30/31)——
    backdrop/panel 的寫法直接複製 PhoneNavDrawer.module.css 的同名規則,只是
-   疊層更高;.channelList 系列規則也是原封不動從那裡搬過來(視覺不變,只是
+   疊層更高;.tripList 系列規則也是原封不動從那裡搬過來(視覺不變,只是
    現在裝在獨立抽屜裡)。 */
 
 .backdrop {
@@ -24,7 +24,7 @@
   touch-action: pan-y;
 }
 
-.channelList {
+.tripList {
   list-style: none;
   margin: 0;
   padding: 8px;
@@ -32,7 +32,7 @@
   flex-direction: column;
   gap: 2px;
 }
-.channelItem {
+.tripItem {
   width: 100%;
   display: flex;
   align-items: center;
@@ -47,13 +47,13 @@
   color: inherit;
   transition: background 0.12s;
 }
-.channelItem:hover {
+.tripItem:hover {
   background: var(--ios-bg);
 }
-.channelItemActive {
+.tripItemActive {
   background: var(--ios-sep);
 }
-.newChannelIcon {
+.newTripIcon {
   width: 38px;
   height: 38px;
   border-radius: 50%;
@@ -64,18 +64,18 @@
   background: var(--ios-sep);
   flex: 0 0 auto;
 }
-.channelGrow {
+.tripGrow {
   flex: 1;
   min-width: 0;
 }
-.channelName {
+.tripName {
   font-size: 14px;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.channelSub {
+.tripSub {
   font-size: 12px;
   color: var(--ios-gray);
   white-space: nowrap;

@@ -59,53 +59,53 @@ func (s *Server) EnableClientTools(registry *toolschema.Registry, analyzer *llm.
 	s.clientToolsSessions = newClientToolsSessions()
 }
 
-// NotifyEntriesUpdated 廣播 entries_updated 給指定頻道的訂閱者(供 wanttools 呼叫)。
-func (s *Server) NotifyEntriesUpdated(channelID string) {
-	s.hub.Broadcast(channelID, map[string]any{"event": "entries_updated", "channelID": channelID})
+// NotifyEntriesUpdated 廣播 entries_updated 給指定行程的訂閱者(供 wanttools 呼叫)。
+func (s *Server) NotifyEntriesUpdated(tripID string) {
+	s.hub.Broadcast(tripID, map[string]any{"event": "entries_updated", "tripID": tripID})
 }
 
-// NotifyEntryUpdating 廣播 entry_updating(帶 entryID)給指定頻道的訂閱者(供 wanttools 呼叫),
+// NotifyEntryUpdating 廣播 entry_updating(帶 entryID)給指定行程的訂閱者(供 wanttools 呼叫),
 // 讓前端在工具更新該條目期間顯示「更新中」動畫。
-func (s *Server) NotifyEntryUpdating(channelID, entryID string) {
-	s.hub.Broadcast(channelID, map[string]any{"event": "entry_updating", "channelID": channelID, "entryID": entryID})
+func (s *Server) NotifyEntryUpdating(tripID, entryID string) {
+	s.hub.Broadcast(tripID, map[string]any{"event": "entry_updating", "tripID": tripID, "entryID": entryID})
 }
 
-// NotifyAskUser 廣播 ask_user(帶 askType/prompt)給指定頻道的訂閱者(供 wanttools 呼叫),
+// NotifyAskUser 廣播 ask_user(帶 askType/prompt)給指定行程的訂閱者(供 wanttools 呼叫),
 // 讓前端開啟對應 UI(如日期選擇器)請使用者補上缺失資訊。
-func (s *Server) NotifyAskUser(channelID, askType, prompt string) {
-	s.hub.Broadcast(channelID, map[string]any{"event": "ask_user", "channelID": channelID, "askType": askType, "prompt": prompt})
+func (s *Server) NotifyAskUser(tripID, askType, prompt string) {
+	s.hub.Broadcast(tripID, map[string]any{"event": "ask_user", "tripID": tripID, "askType": askType, "prompt": prompt})
 }
 
-// NotifyAskChoice 廣播 ask_choice(帶 prompt/options)給指定頻道的訂閱者(供 wanttools 呼叫),
+// NotifyAskChoice 廣播 ask_choice(帶 prompt/options)給指定行程的訂閱者(供 wanttools 呼叫),
 // 讓前端開啟選單 UI 請使用者從 options 中選一個。
-func (s *Server) NotifyAskChoice(channelID, prompt string, options []map[string]any) {
-	s.hub.Broadcast(channelID, map[string]any{"event": "ask_choice", "channelID": channelID, "prompt": prompt, "options": options})
+func (s *Server) NotifyAskChoice(tripID, prompt string, options []map[string]any) {
+	s.hub.Broadcast(tripID, map[string]any{"event": "ask_choice", "tripID": tripID, "prompt": prompt, "options": options})
 }
 
-// NotifyTaskCreated 廣播 task_created(帶 taskID/date/text/kind)給指定頻道的訂閱者(供 wanttools 呼叫),
+// NotifyTaskCreated 廣播 task_created(帶 taskID/date/text/kind)給指定行程的訂閱者(供 wanttools 呼叫),
 // 讓前端在該日期下插入一張標示動作(新增/更新)的佔位卡。
-func (s *Server) NotifyTaskCreated(channelID string, taskID int, date, text, kind string) {
-	s.hub.Broadcast(channelID, map[string]any{
-		"event": "task_created", "channelID": channelID, "taskID": taskID, "date": date, "text": text, "kind": kind,
+func (s *Server) NotifyTaskCreated(tripID string, taskID int, date, text, kind string) {
+	s.hub.Broadcast(tripID, map[string]any{
+		"event": "task_created", "tripID": tripID, "taskID": taskID, "date": date, "text": text, "kind": kind,
 	})
 }
 
-// NotifyTaskEntryReady 廣播 task_entry_ready(帶 taskID/entryID)給指定頻道的訂閱者(供 wanttools 呼叫),
+// NotifyTaskEntryReady 廣播 task_entry_ready(帶 taskID/entryID)給指定行程的訂閱者(供 wanttools 呼叫),
 // 讓前端把對應的佔位卡直接替換成正式條目卡。
-func (s *Server) NotifyTaskEntryReady(channelID string, taskID int, entryID string) {
-	s.hub.Broadcast(channelID, map[string]any{
-		"event": "task_entry_ready", "channelID": channelID, "taskID": taskID, "entryID": entryID,
+func (s *Server) NotifyTaskEntryReady(tripID string, taskID int, entryID string) {
+	s.hub.Broadcast(tripID, map[string]any{
+		"event": "task_entry_ready", "tripID": tripID, "taskID": taskID, "entryID": entryID,
 	})
 }
 
 // NotifyEntriesLoaded 廣播 entries_loaded(帶 entry_query 查到、轉換成前端
-// TripEntry 格式的條目清單)給指定頻道的訂閱者(供 wanttools 的 entry_query
+// TripEntry 格式的條目清單)給指定行程的訂閱者(供 wanttools 的 entry_query
 // 工具呼叫),讓前端合併進旅程清單表格供使用者查看/編輯。entries 用
 // []map[string]any 而非具名型別,避免 api 套件為了此簽章反向依賴 wanttools
 // (見 wanttools.TripEntryPayload 的定義處)。
-func (s *Server) NotifyEntriesLoaded(channelID string, entries []map[string]any) {
-	s.hub.Broadcast(channelID, map[string]any{
-		"event": "entries_loaded", "channelID": channelID, "entries": entries,
+func (s *Server) NotifyEntriesLoaded(tripID string, entries []map[string]any) {
+	s.hub.Broadcast(tripID, map[string]any{
+		"event": "entries_loaded", "tripID": tripID, "entries": entries,
 	})
 }
 
@@ -117,23 +117,23 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /v1/auth/register", s.handleRegister)
 	mux.HandleFunc("POST /v1/auth/login", s.handleLogin)
 	mux.HandleFunc("GET /v1/me", s.handleMe)
-	mux.HandleFunc("GET /v1/channels", s.handleListChannels)
-	mux.HandleFunc("POST /v1/channels", s.handleCreateChannel)
-	mux.HandleFunc("GET /v1/channels/{id}/members", s.handleListMembers)
-	mux.HandleFunc("POST /v1/channels/{id}/members", s.handleAddMember)
-	mux.HandleFunc("PATCH /v1/channels/{id}/members/{userID}", s.handleSetMemberRole)
-	mux.HandleFunc("POST /v1/channels/{id}/query", s.handleQuery)
-	mux.HandleFunc("POST /v1/channels/{id}/assist", s.handleAssist)
-	mux.HandleFunc("GET /v1/channels/{id}/entries", s.handleListEntries)
-	mux.HandleFunc("POST /v1/channels/{id}/entries", s.handleCreateTripEntry)
-	mux.HandleFunc("DELETE /v1/channels/{id}/entries", s.handleResetChannelData)
-	mux.HandleFunc("PUT /v1/channels/{id}/entries/{entryID}", s.handleUpdateTripEntry)
-	mux.HandleFunc("DELETE /v1/channels/{id}/entries/{entryID}", s.handleDeleteTripEntry)
+	mux.HandleFunc("GET /v1/trips", s.handleListTrips)
+	mux.HandleFunc("POST /v1/trips", s.handleCreateTrip)
+	mux.HandleFunc("GET /v1/trips/{id}/members", s.handleListMembers)
+	mux.HandleFunc("POST /v1/trips/{id}/members", s.handleAddMember)
+	mux.HandleFunc("PATCH /v1/trips/{id}/members/{userID}", s.handleSetMemberRole)
+	mux.HandleFunc("POST /v1/trips/{id}/query", s.handleQuery)
+	mux.HandleFunc("POST /v1/trips/{id}/assist", s.handleAssist)
+	mux.HandleFunc("GET /v1/trips/{id}/entries", s.handleListEntries)
+	mux.HandleFunc("POST /v1/trips/{id}/entries", s.handleCreateTripEntry)
+	mux.HandleFunc("DELETE /v1/trips/{id}/entries", s.handleResetTripData)
+	mux.HandleFunc("PUT /v1/trips/{id}/entries/{entryID}", s.handleUpdateTripEntry)
+	mux.HandleFunc("DELETE /v1/trips/{id}/entries/{entryID}", s.handleDeleteTripEntry)
 	mux.HandleFunc("PATCH /v1/entries/{id}", s.handleUpdateEntry)
-	mux.HandleFunc("GET /v1/channels/{id}/ws", s.handleWS)
-	mux.HandleFunc("POST /v1/channels/{id}/public-link", s.handleCreatePublicLink)
-	mux.HandleFunc("GET /v1/channels/{id}/public-link", s.handleGetPublicLink)
-	mux.HandleFunc("DELETE /v1/channels/{id}/public-link", s.handleDeletePublicLink)
+	mux.HandleFunc("GET /v1/trips/{id}/ws", s.handleWS)
+	mux.HandleFunc("POST /v1/trips/{id}/public-link", s.handleCreatePublicLink)
+	mux.HandleFunc("GET /v1/trips/{id}/public-link", s.handleGetPublicLink)
+	mux.HandleFunc("DELETE /v1/trips/{id}/public-link", s.handleDeletePublicLink)
 	mux.HandleFunc("GET /v1/public/{token}", s.handlePublicView)
 	mux.HandleFunc("POST /v1/public/{token}/assist", s.handlePublicAssist)
 	mux.HandleFunc("POST /v1/public/{token}/compute-route", s.handlePublicComputeRoute)
@@ -167,23 +167,23 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /v1/cli-auth/device/{userCode}/approve", s.handleApproveDeviceAuth)
 
 	// internal — 供 CLI(cmd/cli)/自動化腳本操作資料,不走 /v1/* 那套
-	// requireOwner/requireEditor 頻道層級的權限檢查,改由 internalAuth 要求
+	// requireOwner/requireEditor 行程層級的權限檢查,改由 internalAuth 要求
 	// 呼叫端帶有效的自家 JWT(與 /v1/* 一般使用者同一套 auth.Signer),避免任何
-	// 知道 entryID/channelID 的外部呼叫者繞過上面 /v1/* 的權限檢查(這兩組路由
+	// 知道 entryID/tripID 的外部呼叫者繞過上面 /v1/* 的權限檢查(這兩組路由
 	// 掛在同一個對外 port,路徑命名本身不構成安全邊界,見 middleware.go
 	// internalAuth 的說明)。CLI 端透過 `tripace-cli login --web` 取得這把 JWT
 	// (見 /v1/cli-auth/* 路由與 cmd/cli/login.go)。
 	internalMux := http.NewServeMux()
-	internalMux.HandleFunc("GET /internal/channels", s.handleInternalListChannels)
-	internalMux.HandleFunc("POST /internal/channels/{id}/notify", s.handleNotify)
-	internalMux.HandleFunc("GET /internal/channels/{id}/entries", s.handleInternalListEntries)
-	internalMux.HandleFunc("POST /internal/channels/{id}/entries", s.handleInternalRecord)
+	internalMux.HandleFunc("GET /internal/trips", s.handleInternalListTrips)
+	internalMux.HandleFunc("POST /internal/trips/{id}/notify", s.handleNotify)
+	internalMux.HandleFunc("GET /internal/trips/{id}/entries", s.handleInternalListEntries)
+	internalMux.HandleFunc("POST /internal/trips/{id}/entries", s.handleInternalRecord)
 	internalMux.HandleFunc("PATCH /internal/entries/{id}", s.handleInternalUpdateEntry)
 	internalMux.HandleFunc("DELETE /internal/entries/{id}", s.handleInternalDeleteEntry)
 	internalMux.HandleFunc("PATCH /internal/entries/{id}/latlng", s.handleInternalSetLatLng)
 	internalMux.HandleFunc("POST /internal/entries/{id}/geocode", s.handleGeocodeEntry)
 	internalMux.HandleFunc("POST /internal/entries/compute-route", s.handleComputeRouteFromEntries)
-	internalMux.HandleFunc("DELETE /internal/channels/{id}/entries", s.handleInternalReset)
+	internalMux.HandleFunc("DELETE /internal/trips/{id}/entries", s.handleInternalReset)
 
 	// clienttools — 「LLM 呼叫前端 tool」試做(POC)專用端點,見
 	// clienttools_http.go/clienttools_ws.go。與上面既有 /internal/* 端點
@@ -204,22 +204,22 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// GET /v1/channels — 只回目前使用者參與的頻道。
-func (s *Server) handleListChannels(w http.ResponseWriter, r *http.Request) {
+// GET /v1/trips — 只回目前使用者參與的行程。
+func (s *Server) handleListTrips(w http.ResponseWriter, r *http.Request) {
 	user := s.userFor(r)
-	chs, err := s.store.ListChannelsForUser(user.ID)
+	chs, err := s.store.ListTripsForUser(user.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
 		return
 	}
 	if chs == nil {
-		chs = []model.Channel{}
+		chs = []model.Trip{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"channels": chs})
+	writeJSON(w, http.StatusOK, map[string]any{"trips": chs})
 }
 
-// POST /v1/channels  { "name": "..." }
-func (s *Server) handleCreateChannel(w http.ResponseWriter, r *http.Request) {
+// POST /v1/trips  { "name": "..." }
+func (s *Server) handleCreateTrip(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name string `json:"name"`
 	}
@@ -230,7 +230,7 @@ func (s *Server) handleCreateChannel(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid_name", "name 不可為空")
 		return
 	}
-	ch, err := s.store.CreateChannel("ch_"+newID(), body.Name, s.userFor(r))
+	ch, err := s.store.CreateTrip("ch_"+newID(), body.Name, s.userFor(r))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "create_failed", err.Error())
 		return
@@ -241,7 +241,7 @@ func (s *Server) handleCreateChannel(w http.ResponseWriter, r *http.Request) {
 // 原話(message)已移至各裝置端 DB,後端不再保存或提供 messages 端點。
 // owner 記事走 POST /assist(LLM 解析成 entry),member 查詢走 POST /query(查 entry)。
 
-// GET /v1/channels/{id}/members
+// GET /v1/trips/{id}/members
 func (s *Server) handleListMembers(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	members, err := s.store.ListMembers(id)
@@ -255,8 +255,8 @@ func (s *Server) handleListMembers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"members": members})
 }
 
-// POST /v1/channels/{id}/members  { "email": "...", "role": "editor"|"viewer" }
-// 以 email 查出使用者後加入頻道。role 留空預設 viewer。僅 owner 能加入成員。
+// POST /v1/trips/{id}/members  { "email": "...", "role": "editor"|"viewer" }
+// 以 email 查出使用者後加入行程。role 留空預設 viewer。僅 owner 能加入成員。
 func (s *Server) handleAddMember(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	user := s.userFor(r)
@@ -296,7 +296,7 @@ func (s *Server) handleAddMember(w http.ResponseWriter, r *http.Request) {
 	members, err := s.store.AddMember(id, u, role)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "channel_not_found", "頻道不存在")
+			writeErr(w, http.StatusNotFound, "trip_not_found", "行程不存在")
 			return
 		}
 		writeErr(w, http.StatusInternalServerError, "add_failed", err.Error())
@@ -305,7 +305,7 @@ func (s *Server) handleAddMember(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"members": members})
 }
 
-// PATCH /v1/channels/{id}/members/{userID}  { "role": "editor"|"viewer" }
+// PATCH /v1/trips/{id}/members/{userID}  { "role": "editor"|"viewer" }
 // 變更成員角色。僅 owner 能改;不能改 owner 自己的角色(owner 恆為 editor)。
 func (s *Server) handleSetMemberRole(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
@@ -316,7 +316,7 @@ func (s *Server) handleSetMemberRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if targetID == user.ID {
-		writeErr(w, http.StatusBadRequest, "cannot_change_owner", "不能變更頻道擁有者自己的角色")
+		writeErr(w, http.StatusBadRequest, "cannot_change_owner", "不能變更行程擁有者自己的角色")
 		return
 	}
 
@@ -333,7 +333,7 @@ func (s *Server) handleSetMemberRole(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.store.SetMemberRole(id, targetID, body.Role); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "member_not_found", "該成員不在此頻道")
+			writeErr(w, http.StatusNotFound, "member_not_found", "該成員不在此行程")
 			return
 		}
 		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
@@ -347,33 +347,33 @@ func (s *Server) handleSetMemberRole(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"members": members})
 }
 
-// requireOwner 檢查 userID 是否為頻道 owner;非 owner 時寫入錯誤回應並回 false。
-func (s *Server) requireOwner(w http.ResponseWriter, channelID, userID string) bool {
-	owner, err := s.store.GetChannelOwner(channelID)
+// requireOwner 檢查 userID 是否為行程 owner;非 owner 時寫入錯誤回應並回 false。
+func (s *Server) requireOwner(w http.ResponseWriter, tripID, userID string) bool {
+	owner, err := s.store.GetTripOwner(tripID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "channel_not_found", "頻道不存在")
+			writeErr(w, http.StatusNotFound, "trip_not_found", "行程不存在")
 			return false
 		}
 		writeErr(w, http.StatusInternalServerError, "owner_check_failed", err.Error())
 		return false
 	}
 	if userID != owner {
-		writeErr(w, http.StatusForbidden, "not_owner", "只有頻道擁有者能管理成員")
+		writeErr(w, http.StatusForbidden, "not_owner", "只有行程擁有者能管理成員")
 		return false
 	}
 	return true
 }
 
-// requireEditor 檢查 userID 在頻道內是否有 editor 角色(可修改/記事);
+// requireEditor 檢查 userID 在行程內是否有 editor 角色(可修改/記事);
 // 非成員或非 editor 時寫入錯誤回應並回 false。
 // owner 恆視為 editor:不論 members.role 為何(例如後補欄位時被預設成 viewer),
-// owner 一律放行,確保頻道擁有者永遠能記事。
-func (s *Server) requireEditor(w http.ResponseWriter, channelID, userID string) bool {
-	owner, err := s.store.GetChannelOwner(channelID)
+// owner 一律放行,確保行程擁有者永遠能記事。
+func (s *Server) requireEditor(w http.ResponseWriter, tripID, userID string) bool {
+	owner, err := s.store.GetTripOwner(tripID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "channel_not_found", "頻道不存在")
+			writeErr(w, http.StatusNotFound, "trip_not_found", "行程不存在")
 			return false
 		}
 		writeErr(w, http.StatusInternalServerError, "owner_check_failed", err.Error())
@@ -383,10 +383,10 @@ func (s *Server) requireEditor(w http.ResponseWriter, channelID, userID string) 
 		return true
 	}
 
-	role, err := s.store.GetMemberRole(channelID, userID)
+	role, err := s.store.GetMemberRole(tripID, userID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusForbidden, "not_member", "你不是此頻道的成員")
+			writeErr(w, http.StatusForbidden, "not_member", "你不是此行程的成員")
 			return false
 		}
 		writeErr(w, http.StatusInternalServerError, "role_check_failed", err.Error())
@@ -399,14 +399,14 @@ func (s *Server) requireEditor(w http.ResponseWriter, channelID, userID string) 
 	return true
 }
 
-// requireMember 檢查 userID 是否為頻道成員(owner 或任一角色皆可);
-// 非成員時寫入錯誤回應並回 false。用於「查詢」等任何成員都能做、但須屬於頻道的操作。
+// requireMember 檢查 userID 是否為行程成員(owner 或任一角色皆可);
+// 非成員時寫入錯誤回應並回 false。用於「查詢」等任何成員都能做、但須屬於行程的操作。
 // owner 恆視為成員(即使 members 表沒有對應列)。
-func (s *Server) requireMember(w http.ResponseWriter, channelID, userID string) bool {
-	owner, err := s.store.GetChannelOwner(channelID)
+func (s *Server) requireMember(w http.ResponseWriter, tripID, userID string) bool {
+	owner, err := s.store.GetTripOwner(tripID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "channel_not_found", "頻道不存在")
+			writeErr(w, http.StatusNotFound, "trip_not_found", "行程不存在")
 			return false
 		}
 		writeErr(w, http.StatusInternalServerError, "owner_check_failed", err.Error())
@@ -417,9 +417,9 @@ func (s *Server) requireMember(w http.ResponseWriter, channelID, userID string) 
 	}
 
 	// 非 owner:須在 members 表中(任一角色)才放行。
-	if _, err := s.store.GetMemberRole(channelID, userID); err != nil {
+	if _, err := s.store.GetMemberRole(tripID, userID); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusForbidden, "not_member", "你不是此頻道的成員")
+			writeErr(w, http.StatusForbidden, "not_member", "你不是此行程的成員")
 			return false
 		}
 		writeErr(w, http.StatusInternalServerError, "role_check_failed", err.Error())
@@ -428,11 +428,11 @@ func (s *Server) requireMember(w http.ResponseWriter, channelID, userID string) 
 	return true
 }
 
-// POST /v1/channels/{id}/query  { "question": "..." }
+// POST /v1/trips/{id}/query  { "question": "..." }
 func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	// 查詢會回傳頻道內的條目資料,須限頻道成員(owner 或任一角色),擋未登入訪客 / 非成員。
+	// 查詢會回傳行程內的條目資料,須限行程成員(owner 或任一角色),擋未登入訪客 / 非成員。
 	if !s.requireMember(w, id, s.userFor(r).ID) {
 		return
 	}
@@ -450,17 +450,17 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 不再由 api 撈 pool:agent 依 assistant.md 自己呼叫 query_entries 查條目
-	// (用 channelID 定位頻道),再以 present_entries 呈現相關條目。
+	// (用 tripID 定位行程),再以 present_entries 呈現相關條目。
 	// Lang 為使用者設定的 LLM 回答語言偏好("zh-TW"/"en"),空字串由下游視為預設(繁體中文)。
 	answer := s.analyzer.Answer(id, q, body.Lang)
 	writeJSON(w, http.StatusOK, answer)
 }
 
-// POST /v1/channels/{id}/assist  { "text": "..." }
+// POST /v1/trips/{id}/assist  { "text": "..." }
 // owner 統一輸入:LLM 自主判斷「記錄事項」或「回答提問」。
 // - 記錄(recorded):把輸入存成訊息,並由 record_entry 產生關聯的 Entry,回 { kind:"recorded", message }。
 // - 回答(answer):不存訊息,回 { kind:"answer", answer }。
-// 只有頻道 owner 能用;分析器須支援 Assist(want 引擎),否則回 501。
+// 只有行程 owner 能用;分析器須支援 Assist(want 引擎),否則回 501。
 func (s *Server) handleAssist(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	user := s.userFor(r)
@@ -516,7 +516,7 @@ func (s *Server) handleAssist(w http.ResponseWriter, r *http.Request) {
 	if res.Kind == "recorded" {
 		// 記錄了 → entry 已由 emit 同步寫入後端。回傳本次寫入的 entry 給前端,
 		// 前端據此更新顯示,並把對應原話存進自己的裝置端 DB。
-		s.hub.Broadcast(id, map[string]any{"event": "entries_updated", "channelID": id})
+		s.hub.Broadcast(id, map[string]any{"event": "entries_updated", "tripID": id})
 		writeJSON(w, http.StatusOK, map[string]any{
 			"kind":     "recorded",
 			"text":     text,
@@ -543,19 +543,19 @@ func (s *Server) handleAssist(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GET /v1/channels/{id}/entries — 頻道的日期/事件條目(LLM 從訊息解析,關聯訊息)。
+// GET /v1/trips/{id}/entries — 行程的日期/事件條目(LLM 從訊息解析,關聯訊息)。
 func (s *Server) handleListEntries(w http.ResponseWriter, r *http.Request) {
 	s.writeEntries(w, r.PathValue("id"))
 }
 
-// DELETE /v1/channels/{id}/entries — 清空頻道的所有條目與行程(開發/測試重置用)。
-// 屬破壞性操作,限頻道 owner。
-func (s *Server) handleResetChannelData(w http.ResponseWriter, r *http.Request) {
+// DELETE /v1/trips/{id}/entries — 清空行程的所有條目與行程(開發/測試重置用)。
+// 屬破壞性操作,限行程 owner。
+func (s *Server) handleResetTripData(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !s.requireOwner(w, id, s.userFor(r).ID) {
 		return
 	}
-	s.resetChannel(w, id)
+	s.resetTrip(w, id)
 }
 
 // tripEntryBody 是前端旅程清單「儲存」動作的請求/回應共用形狀,欄位對齊前端
@@ -573,12 +573,12 @@ type tripEntryBody struct {
 	Note  string `json:"note"`
 }
 
-// POST /v1/channels/{id}/entries — 前端旅程清單「儲存」新增一筆(不含 id,由後端產生)。
+// POST /v1/trips/{id}/entries — 前端旅程清單「儲存」新增一筆(不含 id,由後端產生)。
 // body 帶 TripEntry 格式(title/date/time/note);成功回傳含新產生 id 的完整 tripEntryBody。
 // 屬「修改」操作,需 editor 角色(owner 預設即 editor,同 handleAssist 的權限慣例)。
 func (s *Server) handleCreateTripEntry(w http.ResponseWriter, r *http.Request) {
-	channelID := r.PathValue("id")
-	if !s.requireEditor(w, channelID, s.userFor(r).ID) {
+	tripID := r.PathValue("id")
+	if !s.requireEditor(w, tripID, s.userFor(r).ID) {
 		return
 	}
 
@@ -593,7 +593,7 @@ func (s *Server) handleCreateTripEntry(w http.ResponseWriter, r *http.Request) {
 
 	svc := tripsvc.New(s.store, nil)
 	res, err := svc.Record(tripsvc.RecordInput{
-		ChannelID: channelID,
+		TripID:    tripID,
 		Title:     body.Title,
 		Start:     body.Date,
 		StartTime: body.Time,
@@ -612,17 +612,17 @@ func (s *Server) handleCreateTripEntry(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	s.hub.Broadcast(channelID, map[string]any{"event": "entries_updated", "channelID": channelID})
+	s.hub.Broadcast(tripID, map[string]any{"event": "entries_updated", "tripID": tripID})
 	writeJSON(w, http.StatusCreated, tripEntryBody{ID: res.EntryID, Title: body.Title, Date: body.Date, Time: body.Time, Note: body.Note})
 }
 
-// PUT /v1/channels/{id}/entries/{entryID} — 前端旅程清單「儲存」修改既有一筆。
-// body 帶要更新的欄位(TripEntry 格式);entryID 須屬於路徑上的 channelID,
-// 避免前端誤帶其他頻道的 id 時跨頻道修改到別人的資料。
+// PUT /v1/trips/{id}/entries/{entryID} — 前端旅程清單「儲存」修改既有一筆。
+// body 帶要更新的欄位(TripEntry 格式);entryID 須屬於路徑上的 tripID,
+// 避免前端誤帶其他行程的 id 時跨行程修改到別人的資料。
 func (s *Server) handleUpdateTripEntry(w http.ResponseWriter, r *http.Request) {
-	channelID := r.PathValue("id")
+	tripID := r.PathValue("id")
 	entryID := r.PathValue("entryID")
-	if !s.requireEditor(w, channelID, s.userFor(r).ID) {
+	if !s.requireEditor(w, tripID, s.userFor(r).ID) {
 		return
 	}
 
@@ -635,7 +635,7 @@ func (s *Server) handleUpdateTripEntry(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "lookup_failed", err.Error())
 		return
 	}
-	if entry.ChannelID != channelID {
+	if entry.TripID != tripID {
 		writeErr(w, http.StatusNotFound, "entry_not_found", "條目不存在")
 		return
 	}
@@ -656,17 +656,17 @@ func (s *Server) handleUpdateTripEntry(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
 		return
 	}
-	s.hub.Broadcast(channelID, map[string]any{"event": "entries_updated", "channelID": channelID})
+	s.hub.Broadcast(tripID, map[string]any{"event": "entries_updated", "tripID": tripID})
 	writeJSON(w, http.StatusOK, map[string]string{"updated": entryID})
 }
 
-// DELETE /v1/channels/{id}/entries/{entryID} — 前端旅程清單「儲存」刪除既有一筆
+// DELETE /v1/trips/{id}/entries/{entryID} — 前端旅程清單「儲存」刪除既有一筆
 // (使用者在前端表格移除該列後,儲存時觸發)。entryID 須屬於路徑上的
-// channelID,理由同 handleUpdateTripEntry。
+// tripID,理由同 handleUpdateTripEntry。
 func (s *Server) handleDeleteTripEntry(w http.ResponseWriter, r *http.Request) {
-	channelID := r.PathValue("id")
+	tripID := r.PathValue("id")
 	entryID := r.PathValue("entryID")
-	if !s.requireEditor(w, channelID, s.userFor(r).ID) {
+	if !s.requireEditor(w, tripID, s.userFor(r).ID) {
 		return
 	}
 
@@ -679,7 +679,7 @@ func (s *Server) handleDeleteTripEntry(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "lookup_failed", err.Error())
 		return
 	}
-	if entry.ChannelID != channelID {
+	if entry.TripID != tripID {
 		writeErr(w, http.StatusNotFound, "entry_not_found", "條目不存在")
 		return
 	}
@@ -688,12 +688,12 @@ func (s *Server) handleDeleteTripEntry(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "delete_failed", err.Error())
 		return
 	}
-	s.hub.Broadcast(channelID, map[string]any{"event": "entries_updated", "channelID": channelID})
+	s.hub.Broadcast(tripID, map[string]any{"event": "entries_updated", "tripID": tripID})
 	writeJSON(w, http.StatusOK, map[string]string{"deleted": entryID})
 }
 
 // PATCH /v1/entries/{id} — 手動編輯條目(不經 AI,前端表單直接送出要改的欄位)。
-// entryID 本身不帶 channelID,故先查出該條目所屬頻道,再依 editor 權限放行;
+// entryID 本身不帶 tripID,故先查出該條目所屬行程,再依 editor 權限放行;
 // 只更新請求帶了值的欄位(空字串視為不改,見 store.UpdateEntry),未帶到的欄位維持原值。
 func (s *Server) handleUpdateEntry(w http.ResponseWriter, r *http.Request) {
 	entryID := r.PathValue("id")
@@ -706,7 +706,7 @@ func (s *Server) handleUpdateEntry(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "lookup_failed", err.Error())
 		return
 	}
-	if !s.requireEditor(w, entry.ChannelID, s.userFor(r).ID) {
+	if !s.requireEditor(w, entry.TripID, s.userFor(r).ID) {
 		return
 	}
 
@@ -741,14 +741,14 @@ func (s *Server) handleUpdateEntry(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
 		return
 	}
-	s.hub.Broadcast(entry.ChannelID, map[string]any{"event": "entries_updated", "channelID": entry.ChannelID})
+	s.hub.Broadcast(entry.TripID, map[string]any{"event": "entries_updated", "tripID": entry.TripID})
 	writeJSON(w, http.StatusOK, map[string]string{"updated": entryID})
 }
 
 // ----- shared query helpers -----
 
-func (s *Server) writeEntries(w http.ResponseWriter, channelID string) {
-	entries, err := s.store.ListEntriesByChannel(channelID)
+func (s *Server) writeEntries(w http.ResponseWriter, tripID string) {
+	entries, err := s.store.ListEntriesByTrip(tripID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
 		return
@@ -759,12 +759,12 @@ func (s *Server) writeEntries(w http.ResponseWriter, channelID string) {
 	writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
 }
 
-func (s *Server) resetChannel(w http.ResponseWriter, channelID string) {
-	if err := s.store.DeleteChannelEntries(channelID); err != nil {
+func (s *Server) resetTrip(w http.ResponseWriter, tripID string) {
+	if err := s.store.DeleteTripEntries(tripID); err != nil {
 		writeErr(w, http.StatusInternalServerError, "reset_failed", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "reset", "channel": channelID})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "reset", "trip": tripID})
 }
 
 // ----- helpers -----

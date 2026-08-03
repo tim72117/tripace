@@ -23,17 +23,17 @@ const DRAWER_WIDTH_PERCENT = 82
 
 export function PacePhoneSwipe({
   cfg,
-  channelID,
+  tripID,
   publicToken,
   checkpoints,
   onRouteChange,
 }: {
-  // cfg/channelID:登入後正式介面(見 PhoneContent.tsx 的 PhoneNavDrawer)傳入
-  // 目前選取的頻道,改走認證過的 fetchEntries——跟桌面版 DesktopLayout.tsx
-  // 的 <PaceChart cfg={cfg} channelID={activeChannel?.id} /> 同一套邏輯,不再
+  // cfg/tripID:登入後正式介面(見 PhoneContent.tsx 的 PhoneNavDrawer)傳入
+  // 目前選取的行程,改走認證過的 fetchEntries——跟桌面版 DesktopLayout.tsx
+  // 的 <PaceChart cfg={cfg} tripID={activeTrip?.id} /> 同一套邏輯,不再
   // 掛載時完全不傳而落到公開分享 token 的 fallback 路徑。
   cfg?: ClientConfig
-  channelID?: string | null
+  tripID?: string | null
   // publicToken:未登入的公開分享頁要查詢的公開連結 token,直接轉傳給
   // PaceChart(見該檔案 publicToken prop 的說明)——真正的分享連結
   // /public/{token}(PublicViewScreen.tsx)傳這個 prop 指定實際的 token;
@@ -100,7 +100,7 @@ export function PacePhoneSwipe({
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
-        <PaceChart cfg={cfg} channelID={channelID} publicToken={publicToken} onRouteChange={onRouteChange} />
+        <PaceChart cfg={cfg} tripID={tripID} publicToken={publicToken} onRouteChange={onRouteChange} />
       </div>
 
       {!open && (

@@ -77,7 +77,7 @@ func (t *AskChoiceTool) Call(args types.ToolArguments, ctx types.ToolContext) ([
 	options := collectAskChoiceOptions(args)
 
 	// 透過 WS 推送給前端開啟選單 UI(非同步:不等回答)。
-	NotifyAskChoice(ChannelFrom(ctx), prompt, options)
+	NotifyAskChoice(TripFrom(ctx), prompt, options)
 
 	msg := fmt.Sprintf("已請使用者從 %d 個選項中選擇「%s」。本輪結束,待使用者選定後會再次觸發。", len(options), prompt)
 	ctx.EmitToolResult(map[string]interface{}{

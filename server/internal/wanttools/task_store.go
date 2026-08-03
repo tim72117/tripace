@@ -6,11 +6,11 @@ import (
 	"sync"
 )
 
-// Task 是 agent 規劃任務時的單一項目(存於記憶體,per-channel)。分兩層:
+// Task 是 agent 規劃任務時的單一項目(存於記憶體,per-trip)。分兩層:
 // 第一層(ParentID=0)是「確定要新增的條目」;第二層(ParentID=某第一層 id)是
 // 該條目底下的施作步驟(如查是否已存在、查 geo 座標)。
 type Task struct {
-	ID       int    `json:"id"`                 // 頻道內遞增序號,供 update/complete 指定
+	ID       int    `json:"id"`                 // 行程內遞增序號,供 update/complete 指定
 	Text     string `json:"text"`               // 項目描述
 	Done     bool   `json:"done"`               // 是否已完成
 	Date     string `json:"date,omitempty"`     // 絕對日期 'YYYY-MM-DD',留空表示不指定日期
@@ -27,51 +27,51 @@ type TaskInput struct {
 	ParentID int
 }
 
-// taskStore 是 per-channel 的記憶體任務清單。
+// taskStore 是 per-trip 的記憶體任務清單。
 // agent 規劃的步驟是「這次工作的計畫」,不需持久化到 DB,server 重啟即清空。
 // 並發安全:want agent 可能並行處理,以 mutex 保護。
 type taskStore struct {
 	mu     sync.Mutex
-	byChan map[string][]*Task // channelID → 任務清單
-	nextID map[string]int     // channelID → 下一個任務序號
+	byTrip map[string][]*Task // tripID → 任務清單
+	nextID map[string]int     // tripID → 下一個任務序號
 }
 
 var tasks = &taskStore{
-	byChan: map[string][]*Task{},
+	byTrip: map[string][]*Task{},
 	nextID: map[string]int{},
 }
 
 // Create 新增一筆任務,回傳新任務。
-func (s *taskStore) Create(channelID string, in TaskInput) *Task {
+func (s *taskStore) Create(tripID string, in TaskInput) *Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.createLocked(channelID, in)
+	return s.createLocked(tripID, in)
 }
 
 // CreateMany 一次新增多筆任務(整個計畫一次寫入),回傳新增的任務清單。
-func (s *taskStore) CreateMany(channelID string, inputs []TaskInput) []Task {
+func (s *taskStore) CreateMany(tripID string, inputs []TaskInput) []Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]Task, 0, len(inputs))
 	for _, in := range inputs {
-		out = append(out, *s.createLocked(channelID, in))
+		out = append(out, *s.createLocked(tripID, in))
 	}
 	return out
 }
 
 // createLocked 在已持鎖的情況下新增一筆(供 Create / CreateMany 共用)。
-func (s *taskStore) createLocked(channelID string, in TaskInput) *Task {
-	s.nextID[channelID]++
-	t := &Task{ID: s.nextID[channelID], Text: in.Text, Done: false, Date: in.Date, Kind: in.Kind, ParentID: in.ParentID}
-	s.byChan[channelID] = append(s.byChan[channelID], t)
+func (s *taskStore) createLocked(tripID string, in TaskInput) *Task {
+	s.nextID[tripID]++
+	t := &Task{ID: s.nextID[tripID], Text: in.Text, Done: false, Date: in.Date, Kind: in.Kind, ParentID: in.ParentID}
+	s.byTrip[tripID] = append(s.byTrip[tripID], t)
 	return t
 }
 
-// List 回傳該頻道的任務清單(依 ID 排序的複本,呼叫端不可改動內部狀態)。
-func (s *taskStore) List(channelID string) []Task {
+// List 回傳該行程的任務清單(依 ID 排序的複本,呼叫端不可改動內部狀態)。
+func (s *taskStore) List(tripID string) []Task {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	src := s.byChan[channelID]
+	src := s.byTrip[tripID]
 	out := make([]Task, 0, len(src))
 	for _, t := range src {
 		out = append(out, *t)
@@ -82,10 +82,10 @@ func (s *taskStore) List(channelID string) []Task {
 
 // Update 改任務欄位;只更新 in 裡非空的欄位(留空表示不修改,與 entry_update 慣例一致)。
 // 找不到該 ID 回 error。
-func (s *taskStore) Update(channelID string, id int, in TaskInput) error {
+func (s *taskStore) Update(tripID string, id int, in TaskInput) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, t := range s.byChan[channelID] {
+	for _, t := range s.byTrip[tripID] {
 		if t.ID == id {
 			if in.Text != "" {
 				t.Text = in.Text
@@ -103,10 +103,10 @@ func (s *taskStore) Update(channelID string, id int, in TaskInput) error {
 }
 
 // Complete 標記任務完成;找不到該 ID 回 error。
-func (s *taskStore) Complete(channelID string, id int) error {
+func (s *taskStore) Complete(tripID string, id int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, t := range s.byChan[channelID] {
+	for _, t := range s.byTrip[tripID] {
 		if t.ID == id {
 			t.Done = true
 			return nil
@@ -116,24 +116,24 @@ func (s *taskStore) Complete(channelID string, id int) error {
 }
 
 // Delete 刪除單一任務;找不到該 ID 回 error。
-func (s *taskStore) Delete(channelID string, id int) error {
+func (s *taskStore) Delete(tripID string, id int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	list := s.byChan[channelID]
+	list := s.byTrip[tripID]
 	for i, t := range list {
 		if t.ID == id {
-			s.byChan[channelID] = append(list[:i], list[i+1:]...)
+			s.byTrip[tripID] = append(list[:i], list[i+1:]...)
 			return nil
 		}
 	}
 	return fmt.Errorf("task %d not found", id)
 }
 
-// AllDone 回傳該頻道是否所有任務都已完成(空清單視為 false,避免誤判「已全完成」)。
-func (s *taskStore) AllDone(channelID string) bool {
+// AllDone 回傳該行程是否所有任務都已完成(空清單視為 false,避免誤判「已全完成」)。
+func (s *taskStore) AllDone(tripID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	list := s.byChan[channelID]
+	list := s.byTrip[tripID]
 	if len(list) == 0 {
 		return false
 	}
@@ -145,10 +145,10 @@ func (s *taskStore) AllDone(channelID string) bool {
 	return true
 }
 
-// Clear 清空該頻道的所有任務與序號。
-func (s *taskStore) Clear(channelID string) {
+// Clear 清空該行程的所有任務與序號。
+func (s *taskStore) Clear(tripID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.byChan, channelID)
-	delete(s.nextID, channelID)
+	delete(s.byTrip, tripID)
+	delete(s.nextID, tripID)
 }

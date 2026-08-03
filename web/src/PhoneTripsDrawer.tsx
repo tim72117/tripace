@@ -1,15 +1,15 @@
 import { useRef, useState } from 'react'
 import type { TouchEvent as ReactTouchEvent } from 'react'
 import { Plus, MapPin } from 'lucide-react'
-import type { Channel } from './types'
+import type { Trip } from './types'
 import { ErrorBanner, isSubmitEnter } from './AppCommon'
-import styles from './PhoneChannelsDrawer.module.css'
+import styles from './PhoneTripsDrawer.module.css'
 
-// PhoneChannelsDrawer:行程列表獨立抽屜——原本是 PhoneNavDrawer.tsx 分頁列
-// 其中一顆分頁(mode === 'channels'),現在拆成自己的左側滑入抽屜,疊在
-// PhoneNavDrawer(時間軸/配速表/demo)之上(見 PhoneChannelsDrawer.module.css
+// PhoneTripsDrawer:行程列表獨立抽屜——原本是 PhoneNavDrawer.tsx 分頁列
+// 其中一顆分頁(mode === 'trips'),現在拆成自己的左側滑入抽屜,疊在
+// PhoneNavDrawer(時間軸/配速表/demo)之上(見 PhoneTripsDrawer.module.css
 // 的 z-index,高於 PhoneNavDrawer.module.css 的 .backdrop/.panel)。由
-// PhoneNavDrawer 分頁列右側的「行程」觸發鈕開啟(見該檔案的 onOpenChannels),
+// PhoneNavDrawer 分頁列右側的「行程」觸發鈕開啟(見該檔案的 onOpenTrips),
 // 不再是那個抽屜自己 mode 切換的一部分。
 //
 // backdrop/panel 的滑入手勢/拖曳關閉寫法完全比照 PhoneNavDrawer.tsx(同一套
@@ -18,9 +18,9 @@ import styles from './PhoneChannelsDrawer.module.css'
 
 const DRAWER_WIDTH_PERCENT = 82
 
-export function PhoneChannelsDrawer({
+export function PhoneTripsDrawer({
   open,
-  channels,
+  trips,
   err,
   loading,
   creating,
@@ -28,12 +28,12 @@ export function PhoneChannelsDrawer({
   newName,
   setNewName,
   submitCreate,
-  activeChannelID,
-  onSelectChannel,
+  activeTripID,
+  onSelectTrip,
   onClose,
 }: {
   open: boolean
-  channels: Channel[]
+  trips: Trip[]
   err: string | null
   loading: boolean
   creating: boolean
@@ -41,8 +41,8 @@ export function PhoneChannelsDrawer({
   newName: string
   setNewName: (v: string) => void
   submitCreate: () => void
-  activeChannelID: string | null
-  onSelectChannel: (c: Channel) => void
+  activeTripID: string | null
+  onSelectTrip: (t: Trip) => void
   onClose: () => void
 }) {
   const [dragOffset, setDragOffset] = useState(0)
@@ -87,20 +87,20 @@ export function PhoneChannelsDrawer({
       >
         <div className="screen-body">
           <ErrorBanner msg={err} />
-          {channels.length === 0 && !err && (
+          {trips.length === 0 && !err && (
             <div className="empty">
               {loading ? '載入中…' : '沒有行程。按下方「新增行程」建立一個。'}
             </div>
           )}
-          <ul className={styles.channelList}>
-            {/* 新增行程:跟下面實際的行程項目共用同一套 .channelItem 樣式
+          <ul className={styles.tripList}>
+            {/* 新增行程:跟下面實際的行程項目共用同一套 .tripItem 樣式
                 (借來瀏覽/新增行程的是同一個工具畫面,視覺上該是同一組清單
                 的一份子,不是另一顆突兀的強調色橫幅按鈕),只把大頭貼換成
                 「＋」圖示徽章區分。點擊後這個項目原地換成輸入框(composer),
                 下面既有行程清單維持可見、可捲動,不會像原本整塊消失。 */}
             <li>
               {creating ? (
-                <div className="new-channel-composer">
+                <div className="new-trip-composer">
                   <input
                     autoFocus
                     value={newName}
@@ -119,30 +119,30 @@ export function PhoneChannelsDrawer({
                   </button>
                 </div>
               ) : (
-                <button type="button" className={styles.channelItem} onClick={() => setCreating(true)}>
-                  <div className={styles.newChannelIcon}>
+                <button type="button" className={styles.tripItem} onClick={() => setCreating(true)}>
+                  <div className={styles.newTripIcon}>
                     <Plus size={18} strokeWidth={1.8} />
                   </div>
-                  <div className={styles.channelGrow}>
-                    <div className={styles.channelName}>新增行程</div>
+                  <div className={styles.tripGrow}>
+                    <div className={styles.tripName}>新增行程</div>
                   </div>
                 </button>
               )}
             </li>
-            {channels.map((c) => (
-              <li key={c.id}>
+            {trips.map((t) => (
+              <li key={t.id}>
                 <button
                   type="button"
-                  className={`${styles.channelItem}${c.id === activeChannelID ? ` ${styles.channelItemActive}` : ''}`}
-                  onClick={() => onSelectChannel(c)}
+                  className={`${styles.tripItem}${t.id === activeTripID ? ` ${styles.tripItemActive}` : ''}`}
+                  onClick={() => onSelectTrip(t)}
                 >
-                  <div className={styles.newChannelIcon}>
+                  <div className={styles.newTripIcon}>
                     <MapPin size={18} strokeWidth={1.8} />
                   </div>
-                  <div className={styles.channelGrow}>
-                    <div className={styles.channelName}>{c.name}</div>
-                    <div className={styles.channelSub}>
-                      {c.lastMessagePreview ?? '尚無訊息'} · {c.memberCount} 人
+                  <div className={styles.tripGrow}>
+                    <div className={styles.tripName}>{t.name}</div>
+                    <div className={styles.tripSub}>
+                      {t.lastMessagePreview ?? '尚無訊息'} · {t.memberCount} 人
                     </div>
                   </div>
                 </button>

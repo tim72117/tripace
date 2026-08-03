@@ -16,7 +16,7 @@ import { PhoneContent } from './PhoneContent'
 // window.location.pathname 手寫字串比對——目的是讓 /app 底下的 panelMode
 // (見 DesktopLayout.tsx/PhoneContent.tsx)能反映到網址上,瀏覽器上一頁/
 // 下一頁、重新整理、分享連結都能還原到對應畫面。路由本身只負責「依路徑
-// 分派到哪個頁面元件」,不涉及登入狀態/頻道選擇(activeChannel 仍是
+// 分派到哪個頁面元件」,不涉及登入狀態/行程選擇(activeTrip 仍是
 // useAppState() 管理的獨立 state,不進 URL,維持原樣)。
 export function App({ isDemo = false }: { isDemo?: boolean } = {}) {
   const props = useAppState()
@@ -38,7 +38,7 @@ export function App({ isDemo = false }: { isDemo?: boolean } = {}) {
         />
         {/* /cli-auth 路徑:`tripace-cli login --web` 開瀏覽器落地的核准頁面
             (見 CliAuthPage.tsx)。與 /public/{token} 一樣是獨立於主要 App
-            狀態機之外的頁面,不套用 PhoneContent 那套登入/頻道/聊天畫面
+            狀態機之外的頁面,不套用 PhoneContent 那套登入/行程/聊天畫面
             切換邏輯。 */}
         <Route
           path="/cli-auth"
@@ -64,8 +64,8 @@ export function App({ isDemo = false }: { isDemo?: boolean } = {}) {
         />
         {/* /demo/pace 路徑:配速表 demo 的公開分享頁(見 PaceChart.tsx 的
             「分享這個配速表」按鈕)。這是固定示範資料(花東193公路),不是真實
-            使用者頻道,不需要登入、不涉及任何真實資料權限問題——跟 /public/{token}
-            那套給真實頻道用的公開分享是分開的機制,不走後端建立/驗證 token 那套
+            使用者行程,不需要登入、不涉及任何真實資料權限問題——跟 /public/{token}
+            那套給真實行程用的公開分享是分開的機制,不走後端建立/驗證 token 那套
             流程,單純是一個固定網址。 */}
         <Route
           path="/demo/pace"

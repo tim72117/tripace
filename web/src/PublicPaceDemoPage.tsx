@@ -7,7 +7,7 @@ import { PacePhoneSwipe } from './PacePhoneSwipe'
 // PublicPaceDemoPage:/demo/pace 的公開分享頁內容(見 App.tsx App() 的路由
 // 判斷)。版型直接比照登入後 pace 面板的樣子(側欄清單 + 主區地圖,見
 // DesktopLayout.tsx DesktopContent 的 pace 分支),只是不放最左側的
-// DesktopRail(頻道/時間軸/使用者選單那條圖示列,公開頁不需要、也沒有
+// DesktopRail(行程/時間軸/使用者選單那條圖示列,公開頁不需要、也沒有
 // 登入身分可以顯示)。沿用同一套 .desktop-sidepanel/.desktop-main class,
 // 不是重新設計一份版型;.desktop-layout 底下少了 DesktopRail 這個 flex
 // sibling 不影響 sidepanel/main 各自的排版,不需要額外 CSS。手機寬度沿用
@@ -21,7 +21,7 @@ export function PublicPaceDemoPage() {
   const isDesktop = useIsDesktop()
   // checkpoints:比照登入後正式介面(DesktopLayout.tsx/PhoneContent.tsx)的
   // 作法,PaceChart 目前選取的那一段透過 onRouteChange 鏡像上來,轉傳給
-  // PaceRouteMap 畫路線——公開頁沒有 cfg/channelID,PaceChart 走公開連結
+  // PaceRouteMap 畫路線——公開頁沒有 cfg/tripID,PaceChart 走公開連結
   // token 那條路徑抓資料,但鏡像機制本身是同一套,不需要另外處理。
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([])
   if (!isDesktop) {

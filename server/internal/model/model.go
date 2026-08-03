@@ -4,7 +4,7 @@ package model
 
 import "time"
 
-type Channel struct {
+type Trip struct {
 	ID                 string    `json:"id"`
 	Name               string    `json:"name"`
 	OwnerID            string    `json:"ownerID"`
@@ -17,7 +17,7 @@ type Channel struct {
 // LLM 處理後的結構化資訊(分類/標籤/摘要/事件時間)改放在 Entry。
 type Message struct {
 	ID         string    `json:"id"`
-	ChannelID  string    `json:"channelID"`
+	TripID     string    `json:"tripID"`
 	AuthorID   string    `json:"authorID"`
 	AuthorName string    `json:"authorName"`
 	Text       string    `json:"text"`
@@ -41,13 +41,13 @@ type AdminUserSummary struct {
 	AvatarColor string `json:"avatarColor"`
 }
 
-// 頻道成員角色:決定該成員在頻道內的權限。
+// 行程成員角色:決定該成員在行程內的權限。
 const (
 	RoleEditor = "editor" // 可修改(記事/編輯條目);owner 預設為此。
 	RoleViewer = "viewer" // 只能查詢(自然語言提問),不能記事。
 )
 
-// Member 是頻道成員:公開身分 + 在該頻道的角色。
+// Member 是行程成員:公開身分 + 在該行程的角色。
 type Member struct {
 	User
 	Role string `json:"role"` // "editor" | "viewer"
@@ -88,7 +88,7 @@ type SearchAnswer struct {
 // 可獨立存在,並可關聯多則來源訊息(多對多)。
 type Entry struct {
 	ID        string   `json:"id"`
-	ChannelID string   `json:"channelID"`
+	TripID    string   `json:"tripID"`
 	Title     string   `json:"title"`             // 事項描述
 	Start     string   `json:"start"`             // 'YYYY-MM-DD';可空
 	StartTime string   `json:"startTime"`         // 'HH:MM';空=全日

@@ -38,8 +38,8 @@ func cors(next http.Handler) http.Handler {
 // /v1/* 有 requireOwner/requireEditor/requireMember 檢查(見 api.go 各 handler),
 // 設計上只給 CLI(cmd/cli)/自動化腳本用,不該被前端使用者或外部呼叫者觸及。
 // 但 /internal/ 與 /v1/ 掛在同一個對外 port,路徑命名本身不構成安全邊界——
-// 沒有這層驗證,任何知道 entryID/channelID 的人都能直接打 /internal/* 繞過
-// /v1/* 的權限檢查(例如繞過 requireOwner 清空任意頻道)。
+// 沒有這層驗證,任何知道 entryID/tripID 的人都能直接打 /internal/* 繞過
+// /v1/* 的權限檢查(例如繞過 requireOwner 清空任意行程)。
 //
 // 驗證方式與 /v1/* 一般使用者相同:解析 Authorization: Bearer <token>,用
 // signer.Verify 驗證這是一把有效的自家 JWT(見 internal/auth.Signer)。CLI 端
@@ -48,7 +48,7 @@ func cors(next http.Handler) http.Handler {
 // 跳過驗證放行」的分支——舊版用共享密鑰 INTERNAL_API_TOKEN/X-Internal-Token
 // 的機制已完全移除:那個機制在正式環境未設定該環境變數時會直接不設防,已確認
 // 正式環境(Cloud Run tripace-server)實際上就處於這個狀態,任何人都能不登入
-// 直接讀寫刪除任意頻道資料;改用 JWT 後不存在「忘記設定就等於不設防」這種
+// 直接讀寫刪除任意行程資料;改用 JWT 後不存在「忘記設定就等於不設防」這種
 // 失效模式,驗證失敗一律回 401。
 func internalAuth(signer *auth.Signer, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

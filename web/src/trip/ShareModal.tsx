@@ -3,7 +3,7 @@ import { ChevronLeft, Copy, Check, Trash2 } from 'lucide-react'
 import QRCode from 'qrcode'
 import type { ClientConfig, PublicLinkViewMode } from '../api'
 import * as api from '../api'
-import type { Channel } from '../types'
+import type { Trip } from '../types'
 import { ErrorBanner, errMsg } from '../AppCommon'
 import styles from './ShareModal.module.css'
 
@@ -11,12 +11,12 @@ import styles from './ShareModal.module.css'
 
 export function ShareModal({
   cfg,
-  channel,
+  trip,
   isOwner,
   onClose,
 }: {
   cfg: ClientConfig
-  channel: Channel
+  trip: Trip
   isOwner: boolean
   onClose: () => void
 }) {
@@ -31,12 +31,12 @@ export function ShareModal({
   const publicURL = token ? `${window.location.origin}/public/${token}` : null
 
   useEffect(() => {
-    api.getPublicLink(cfg, channel.id)
+    api.getPublicLink(cfg, trip.id)
       .then((r) => { setToken(r.linkToken); setEditable(r.editable); setViewMode(r.viewMode) })
       .catch(() => setToken(null))
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg.baseURL, cfg.token, channel.id])
+  }, [cfg.baseURL, cfg.token, trip.id])
 
   useEffect(() => {
     if (!publicURL) { setQrDataURL(null); return }
@@ -51,7 +51,7 @@ export function ShareModal({
     setLoading(true)
     setErr(null)
     try {
-      const r = await api.createPublicLink(cfg, channel.id, editable, viewMode)
+      const r = await api.createPublicLink(cfg, trip.id, editable, viewMode)
       setToken(r.linkToken)
       setEditable(r.editable)
       setViewMode(r.viewMode)
@@ -65,7 +65,7 @@ export function ShareModal({
   const toggleEditable = async (val: boolean) => {
     setEditable(val)
     try {
-      const r = await api.createPublicLink(cfg, channel.id, val, viewMode)
+      const r = await api.createPublicLink(cfg, trip.id, val, viewMode)
       setToken(r.linkToken)
       setEditable(r.editable)
       setViewMode(r.viewMode)
@@ -79,7 +79,7 @@ export function ShareModal({
     // 尚未建立連結時只更新本地狀態，等使用者按「建立公開連結」再一起送出。
     if (!token) return
     try {
-      const r = await api.createPublicLink(cfg, channel.id, editable, val)
+      const r = await api.createPublicLink(cfg, trip.id, editable, val)
       setToken(r.linkToken)
       setEditable(r.editable)
       setViewMode(r.viewMode)
@@ -92,7 +92,7 @@ export function ShareModal({
     setLoading(true)
     setErr(null)
     try {
-      await api.deletePublicLink(cfg, channel.id)
+      await api.deletePublicLink(cfg, trip.id)
       setToken(null)
     } catch (e) {
       setErr(errMsg(e))
@@ -198,9 +198,9 @@ export function ShareModal({
 // ViewModePicker:公開頁要用「時間軸」還是「配速表」呈現——只是切換公開頁
 // 的呈現方式，跟上面「允許訪客新增行程」是完全獨立的兩個設定，不是同一顆
 // 開關的兩個狀態，所以用兩個分段按鈕而非沿用 .toggle 那顆開關樣式。
-// 配速表模式只有在頻道內的地點本身帶有配速表專屬的 detail 結構（segment/
+// 配速表模式只有在行程內的地點本身帶有配速表專屬的 detail 結構（segment/
 // order 等）時才有內容可顯示——這是額外用 CLI／entry-update 手動標註的
-// 資料，不是分享彈窗這裡能自動產生的，選了配速表但頻道沒有這類資料時，
+// 資料，不是分享彈窗這裡能自動產生的，選了配速表但行程沒有這類資料時，
 // 公開頁會顯示提示訊息而非空白或錯誤（見 PhoneScreens.tsx PublicViewScreen）。
 function ViewModePicker({
   value,

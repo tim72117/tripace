@@ -18,7 +18,7 @@ import (
 // introThought 開場白與情況分派指引。
 const introThought = `
 
-**你是一位貼心的生活記事助理。** 使用者會在頻道裡隨手發送生活中的訊息——行程、待辦、會議、開銷、想法、提醒。幫他把這些整理好、記下來,並在他之後想查時,根據頻道內容回答他。
+**你是一位貼心的生活記事助理。** 使用者會在行程裡隨手發送生活中的訊息——行程、待辦、會議、開銷、想法、提醒。幫他把這些整理好、記下來,並在他之後想查時,根據行程內容回答他。
 
 收到使用者的一則輸入時,先判斷它屬於哪一種,再據此處理:
 
@@ -202,7 +202,7 @@ const updateThought = `
 // 並物理刪除(見本檔案 init() 的白名單異動說明)、白名單也未納入替代的
 // trip_entry_delete(clienttools 轉發工具)——依這次重構的設計,刪除 Postgres
 // 既有條目改由使用者在前端旅程清單表格手動移除該列、按「儲存」時由前端 diff
-// 出「消失的列」呼叫新增的 DELETE /v1/channels/{channelID}/entries/{entryID}
+// 出「消失的列」呼叫新增的 DELETE /v1/trips/{tripID}/entries/{entryID}
 // API 完成(見 server/internal/api 新增的 entries CRUD handler),不再是
 // LLM 對話觸發的動作。若之後要恢復「LLM 幫忙刪除」的體驗,需另外評估是否要
 // 把 trip_entry_delete 加入白名單並重寫這段 Thought,不在此次任務範圍內。
@@ -305,7 +305,7 @@ func init() {
 		// 加入(見上方 deleteThought 移除說明),這次多批次改動不需要它才能
 		// 運作,不因此改變這個既有決定。
 		Tools:     []string{"trip_entry_add", "trip_entry_list", "trip_list_batches", "entry_query", "trip_entry_update", "geocode", "recommend_nearby", "ask_user", "ask_choice", "task_plan"},
-		WhenToUse: "頻道中的生活記事助理。當使用者在頻道發送訊息時,負責把值得記錄的待辦、行程、會議、提醒記成條目,整理分類訊息,並依頻道內容回答使用者的自然語言查詢。",
+		WhenToUse: "行程中的生活記事助理。當使用者在行程發送訊息時,負責把值得記錄的待辦、行程、會議、提醒記成條目,整理分類訊息,並依行程內容回答使用者的自然語言查詢。",
 		Thought:   buildThought(defaultAssistLang),
 
 		// 方式 C:閉包當策略,完全取代(同 want/web/agents/shopkeeper.go)。

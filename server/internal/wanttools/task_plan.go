@@ -8,11 +8,11 @@ import (
 )
 
 // TaskPlanDeclaration 是 task_plan 工具:讓 agent 規劃並追蹤多步驟任務。
-// 任務存於記憶體(per-channel),供 agent 在處理複雜請求時:先列計畫、逐步完成、
+// 任務存於記憶體(per-trip),供 agent 在處理複雜請求時:先列計畫、逐步完成、
 // 全部完成後清除。用 action 分派各種操作,避免工具清單膨脹。
 var TaskPlanDeclaration = types.ToolDeclaration{
 	Name: "task_plan",
-	Description: "規劃並追蹤多步驟任務(待辦清單,存於本頻道記憶體)。處理需要多步驟的複雜請求時," +
+	Description: "規劃並追蹤多步驟任務(待辦清單,存於本行程記憶體)。處理需要多步驟的複雜請求時," +
 		"先用 create 列出計畫,完成一步就 complete 標記,全部完成後用 clear 清除。以 action 指定操作。",
 	Type: "sync",
 	Parameters: map[string]interface{}{
@@ -93,7 +93,7 @@ func (t *TaskPlanTool) ValidateInput(args types.ToolArguments, ctx types.ToolCon
 		if len(inputs) == 0 {
 			return fmt.Errorf("action=create 需要 text 或 texts")
 		}
-		if err := validateParentIDs(ChannelFrom(ctx), inputs); err != nil {
+		if err := validateParentIDs(TripFrom(ctx), inputs); err != nil {
 			return err
 		}
 	case "update":
@@ -117,7 +117,7 @@ func (t *TaskPlanTool) ValidateInput(args types.ToolArguments, ctx types.ToolCon
 }
 
 func (t *TaskPlanTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]types.ResultContentBlock, error) {
-	ch := ChannelFrom(ctx)
+	ch := TripFrom(ctx)
 	action := args.GetString("action")
 
 	var msg string
@@ -180,23 +180,23 @@ func (t *TaskPlanTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]
 	return []types.ResultContentBlock{types.TextBlock(msg)}, nil
 }
 
-// validateParentIDs 檢查每筆 input 的 ParentID(若非 0)是否指向該頻道內一筆
+// validateParentIDs 檢查每筆 input 的 ParentID(若非 0)是否指向該行程內一筆
 // 已存在、且本身是第一層(ParentID==0)的任務。拒絕:
-//   - 指向不存在的 id(可能是 LLM 記錯/用了另一頻道的 id)
+//   - 指向不存在的 id(可能是 LLM 記錯/用了另一行程的 id)
 //   - 指向另一筆第二層任務(避免超過兩層的鏈式 parent,設計上只允許兩層)
 //
 // create 尚未寫入任何一筆前就驗證完畢,不合法時整批拒絕,避免部分寫入的
 // 不一致狀態(例如 3 筆裡 1 筆 parentID 有誤,不應該讓另外 2 筆先寫入)。
 // 同一批次(inputs 內)彼此之間不可能有合法的 parentID 引用,因為新 id
 // 要等寫入後才會產生;parentID 因此只能指向「已存在於 store 的舊資料」。
-func validateParentIDs(channelID string, inputs []TaskInput) error {
+func validateParentIDs(tripID string, inputs []TaskInput) error {
 	var existing []Task
 	for _, in := range inputs {
 		if in.ParentID == 0 {
 			continue
 		}
 		if existing == nil {
-			existing = tasks.List(channelID)
+			existing = tasks.List(tripID)
 		}
 		var parent *Task
 		for i := range existing {

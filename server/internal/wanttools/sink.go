@@ -19,7 +19,7 @@ type RecordedEntry struct {
 // EntrySink 同步把一筆條目寫入 store(entry 為主體,獨立寫入),
 // 回傳新建 entry 的 ID 供之後與來源 message 建立關聯。
 // server 啟動時用 BindSink 注入。
-type EntrySink func(channelID string, e RecordedEntry) (entryID string, err error)
+type EntrySink func(tripID string, e RecordedEntry) (entryID string, err error)
 
 // PresentedEntry 是 present_entries 工具輸出的一筆「要展示給使用者」的條目。
 type PresentedEntry struct {
@@ -44,15 +44,15 @@ type RecommendedPlace struct {
 }
 
 // NotifyFn 廣播 entries_updated 事件給前端(server 啟動時用 BindNotify 注入)。
-type NotifyFn func(channelID string)
+type NotifyFn func(tripID string)
 
 // EntryUpdatingFn 廣播 entry_updating 事件(帶 entryID)給前端,
 // 讓對應條目卡片在工具更新期間顯示「更新中」動畫(server 啟動時用 BindEntryUpdating 注入)。
-type EntryUpdatingFn func(channelID, entryID string)
+type EntryUpdatingFn func(tripID, entryID string)
 
 // AskUserFn 廣播 ask_user 事件給前端,讓前端開啟對應 UI(如日期選擇器)
 // 請使用者補上缺失資訊(server 啟動時用 BindAskUser 注入)。
-type AskUserFn func(channelID, askType, prompt string)
+type AskUserFn func(tripID, askType, prompt string)
 
 // AskChoiceOption 是 ask_choice 工具的一個選項:主標題 + 一行描述(可選)。
 type AskChoiceOption struct {
@@ -64,15 +64,15 @@ type AskChoiceOption struct {
 // options 中選一個(server 啟動時用 BindAskChoice 注入)。
 // options 用 []map[string]any 而非具名型別,避免 api 套件為了此簽章反向
 // 依賴 wanttools 的 AskChoiceOption。
-type AskChoiceFn func(channelID, prompt string, options []map[string]any)
+type AskChoiceFn func(tripID, prompt string, options []map[string]any)
 
 // TaskCreatedFn 廣播 task_created 事件(帶 taskID/date/text/kind)給前端,
 // 讓前端在該日期下插入一張標示動作(新增/更新)的佔位卡(server 啟動時用 BindTaskCreated 注入)。
-type TaskCreatedFn func(channelID string, taskID int, date, text, kind string)
+type TaskCreatedFn func(tripID string, taskID int, date, text, kind string)
 
 // TaskEntryReadyFn 廣播 task_entry_ready 事件(帶 taskID/entryID)給前端,
 // 讓前端把對應的佔位卡直接替換成正式條目卡(server 啟動時用 BindTaskEntryReady 注入)。
-type TaskEntryReadyFn func(channelID string, taskID int, entryID string)
+type TaskEntryReadyFn func(tripID string, taskID int, entryID string)
 
 // TripEntryPayload 是 entry_query 查到、要推播給前端旅程清單表格的一筆條目,
 // 欄位對齊前端 TripEntry(web/src/clienttools/tripEntryTools.ts)與
@@ -92,7 +92,7 @@ type TripEntryPayload struct {
 // BindEntriesLoaded 注入)。沿用 AskChoiceFn 的風格,用 []map[string]any 而非
 // TripEntryPayload,避免 api 套件為了此簽章反向依賴 wanttools;
 // NotifyEntriesLoaded 負責把 []TripEntryPayload 轉成這個形狀。
-type EntriesLoadedFn func(channelID string, entries []map[string]any)
+type EntriesLoadedFn func(tripID string, entries []map[string]any)
 
 var (
 	// recordMu 序列化整個「記錄一則訊息」的流程,確保 RecordLock 保護的計數/清單不交錯。
@@ -127,9 +127,9 @@ func BindSink(fn EntrySink) { sink = fn }
 func BindNotify(fn NotifyFn) { notifyFn = fn }
 
 // Notify 廣播 entries_updated,供工具呼叫。
-func Notify(channelID string) {
+func Notify(tripID string) {
 	if notifyFn != nil {
-		notifyFn(channelID)
+		notifyFn(tripID)
 	}
 }
 
@@ -138,9 +138,9 @@ func BindEntryUpdating(fn EntryUpdatingFn) { entryUpdating = fn }
 
 // NotifyEntryUpdating 廣播 entry_updating(帶 entryID),供工具在開始更新前呼叫,
 // 讓前端立即把對應條目卡片切成「更新中」狀態。
-func NotifyEntryUpdating(channelID, entryID string) {
+func NotifyEntryUpdating(tripID, entryID string) {
 	if entryUpdating != nil {
-		entryUpdating(channelID, entryID)
+		entryUpdating(tripID, entryID)
 	}
 }
 
@@ -149,9 +149,9 @@ func BindAskUser(fn AskUserFn) { askUser = fn }
 
 // NotifyAskUser 廣播 ask_user(帶 askType/prompt),供 ask_user 工具呼叫,
 // 讓前端開啟對應 UI 請使用者補上缺失資訊。
-func NotifyAskUser(channelID, askType, prompt string) {
+func NotifyAskUser(tripID, askType, prompt string) {
 	if askUser != nil {
-		askUser(channelID, askType, prompt)
+		askUser(tripID, askType, prompt)
 	}
 }
 
@@ -160,13 +160,13 @@ func BindAskChoice(fn AskChoiceFn) { askChoice = fn }
 
 // NotifyAskChoice 廣播 ask_choice(帶 prompt/options),供 ask_choice 工具呼叫,
 // 讓前端開啟選單 UI 請使用者從 options 中選一個。
-func NotifyAskChoice(channelID, prompt string, options []AskChoiceOption) {
+func NotifyAskChoice(tripID, prompt string, options []AskChoiceOption) {
 	if askChoice != nil {
 		out := make([]map[string]any, len(options))
 		for i, o := range options {
 			out[i] = map[string]any{"title": o.Title, "description": o.Description}
 		}
-		askChoice(channelID, prompt, out)
+		askChoice(tripID, prompt, out)
 	}
 }
 
@@ -175,9 +175,9 @@ func BindTaskCreated(fn TaskCreatedFn) { taskCreated = fn }
 
 // NotifyTaskCreated 廣播 task_created(帶 taskID/date/text/kind),供 task_plan 的
 // create 呼叫,讓前端在該日期下插入一張標示動作(新增/更新)的佔位卡。
-func NotifyTaskCreated(channelID string, taskID int, date, text, kind string) {
+func NotifyTaskCreated(tripID string, taskID int, date, text, kind string) {
 	if taskCreated != nil {
-		taskCreated(channelID, taskID, date, text, kind)
+		taskCreated(tripID, taskID, date, text, kind)
 	}
 }
 
@@ -186,9 +186,9 @@ func BindTaskEntryReady(fn TaskEntryReadyFn) { taskEntryReady = fn }
 
 // NotifyTaskEntryReady 廣播 task_entry_ready(帶 taskID/entryID),供 entry_add
 // 在完成且帶有 taskID 時呼叫,讓前端把對應的佔位卡直接替換成正式條目卡。
-func NotifyTaskEntryReady(channelID string, taskID int, entryID string) {
+func NotifyTaskEntryReady(tripID string, taskID int, entryID string) {
 	if taskEntryReady != nil {
-		taskEntryReady(channelID, taskID, entryID)
+		taskEntryReady(tripID, taskID, entryID)
 	}
 }
 
@@ -198,21 +198,21 @@ func BindEntriesLoaded(fn EntriesLoadedFn) { entriesLoaded = fn }
 // NotifyEntriesLoaded 廣播 entries_loaded(帶轉換成 TripEntryPayload 的條目清單),
 // 供 entry_query 工具呼叫,讓前端把查到的條目合併進旅程清單表格供使用者查看/編輯。
 // entries 為空陣列時仍會廣播(讓前端知道「這次查詢查無結果」),由前端決定如何呈現。
-func NotifyEntriesLoaded(channelID string, entries []TripEntryPayload) {
+func NotifyEntriesLoaded(tripID string, entries []TripEntryPayload) {
 	if entriesLoaded != nil {
 		out := make([]map[string]any, len(entries))
 		for i, e := range entries {
 			out[i] = map[string]any{"id": e.ID, "title": e.Title, "date": e.Date, "time": e.Time, "note": e.Note}
 		}
-		entriesLoaded(channelID, out)
+		entriesLoaded(tripID, out)
 	}
 }
 
-// ChannelFrom 從 ctx 的 SessionEnvs 讀 channelID:這份資料綁在本次呼叫的
+// TripFrom 從 ctx 的 SessionEnvs 讀 tripID:這份資料綁在本次呼叫的
 // ToolUseContext 上(由 want_analyzer.go 於 Submit 前透過 orch.SetSessionEnvs 寫入),
 // 不經過任何套件級全域變數,也不會被組進送給 LLM 的 prompt。
 // ctx 為 nil 或未設定時回空字串(呼叫端應自行判斷是否視為錯誤)。
-func ChannelFrom(ctx types.ToolContext) string {
+func TripFrom(ctx types.ToolContext) string {
 	if ctx == nil {
 		return ""
 	}
@@ -220,7 +220,7 @@ func ChannelFrom(ctx types.ToolContext) string {
 	if envs == nil {
 		return ""
 	}
-	return envs["channelID"]
+	return envs["tripID"]
 }
 
 // RecordLock / RecordUnlock 包住一次完整的記錄流程(設定 context → 跑 agent → 清除)。
@@ -254,15 +254,15 @@ func RecommendedPlaces() []RecommendedPlace { return recommendedPlaces }
 func addRecommendedPlaces(ps []RecommendedPlace) { recommendedPlaces = append(recommendedPlaces, ps...) }
 
 // emit 由工具呼叫,同步把條目寫入 store(entry 為主體,獨立寫入)。
-// channelID 由呼叫端透過 ChannelFrom(ctx) 取得後傳入,emit 本身不碰任何全域頻道狀態。
+// tripID 由呼叫端透過 TripFrom(ctx) 取得後傳入,emit 本身不碰任何全域行程狀態。
 // 成功後記下 entry ID,供呼叫端在來源 message 寫入後建立關聯。
 // 未注入 sink(例如測試)時不持久化,僅計數。
-func emit(channelID string, e RecordedEntry) (string, error) {
+func emit(tripID string, e RecordedEntry) (string, error) {
 	if sink == nil {
 		emitCount++ // 測試情境:仍計數,讓「是否記錄」判斷可運作。
 		return "", nil
 	}
-	id, err := sink(channelID, e)
+	id, err := sink(tripID, e)
 	if err != nil {
 		return "", err
 	}
