@@ -59,7 +59,7 @@ export default defineConfig({
       },
       workbox: {
         // 只 precache 靜態建置產物,不設定任何 runtimeCaching 規則。
-        // 動態端點(/v1/*、/internal/*、WebSocket /v1/channels/*/ws)
+        // 動態端點(/v1/*、/internal/*、WebSocket /v1/trips/*/ws)
         // 一律不經過 service worker 快取,永遠直接打網路。
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
       },
@@ -68,5 +68,16 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./vitest.setup.ts'],
+    // tests/ 底下是 Playwright 的 E2E 測試(test:e2e:mockllm 腳本專用),
+    // 跟 Vitest 是不同框架、test.describe 語法互相衝突,必須排除,不能讓
+    // Vitest 掃到那個目錄。admin/ 是獨立的另一個子專案(有自己的
+    // node_modules),預設的 node_modules/** exclude 不會遞迴排除到子目錄
+    // 裡的 node_modules,必須額外明講排除整個 admin/ 目錄。
+    exclude: ['tests/**', '**/node_modules/**', 'admin/**'],
   },
 })
