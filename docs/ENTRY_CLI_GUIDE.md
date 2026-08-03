@@ -9,15 +9,15 @@
 
 ```bash
 # 步驟 1：查鄰近條目推斷地區
-go run ./cmd/cli entry-query -channel ch_3eea1dd7 -from "2026-06-27" -to "2026-07-01"
+go run ./cmd/cli trip-entries -trip trip_3eea1dd7
 
 # 步驟 2：帶城市名查座標
 go run ./cmd/cli geocode -place "宮古島希爾頓嘉悅里酒店" -n 1
 
 # 步驟 3：寫入條目
 go run ./cmd/cli entry-add \
-  -channel ch_3eea1dd7 \
-  -item "宿希爾頓嘉悅里酒店" \
+  -trip trip_3eea1dd7 \
+  -title "宿希爾頓嘉悅里酒店" \
   -location "希爾頓嘉悅里酒店" \
   -start "2026-06-29" \
   -end "2026-06-30"

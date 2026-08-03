@@ -8,7 +8,7 @@
   - 注意:本節其餘項目與本文其他章節多數已隨開發進度解決或數字已更新,**不要因此推論 CORS 也一併修好了**——它沒有。
 - ~~**`INTERNAL_API_TOKEN` 未設定時預設放行**~~——**已解決**:`internalAuth`(`server/internal/api/middleware.go`)已改為與 `/v1/*` 一般使用者共用同一套 JWT 驗證(`auth.Signer`),不再有共享密鑰環境變數,也不存在「忘記設定就等於不設防」的分支,驗證失敗一律回 401。CLI 端透過 `tripace-cli login --web` 換發 JWT。
 - ~~`web/.env.development` 被 git 追蹤~~——**已確認非問題**:該檔案內容只有註解說明與非機密設定(`VITE_API_BASE`、`VITE_ONAGENT_URL` 位址,以及設計上本就可公開的 `VITE_PACE_PUBLIC_LINK_TOKEN`),不含任何金鑰值;真正的金鑰(`VITE_GOOGLE_MAPS_API_KEY`、`VITE_ONAGENT_APP_KEY`)放在 gitignore 排除的 `.env.development.local`。
-- (2026-08-03 補充,不在本文原始掃描範圍)公開分享連結的 `editable` 開關:開啟後未登入訪客可透過 AI 對話寫入該頻道,且連結永久有效、無訪問紀錄。這是刻意的設計權衡而非缺陷,但安全意涵需明確認知——詳見 `docs/PUBLIC_LINK_DESIGN.md` 的「權限」段落。
+- (2026-08-03 補充,不在本文原始掃描範圍)公開分享連結的 `editable` 開關:開啟後未登入訪客可透過 AI 對話寫入該行程,且連結永久有效、無訪問紀錄。這是刻意的設計權衡而非缺陷,但安全意涵需明確認知——詳見 `docs/PUBLIC_LINK_DESIGN.md` 的「權限」段落。
 
 ## 測試(目前是最大缺口)
 

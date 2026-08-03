@@ -23,9 +23,13 @@
 
 ## 資料模型
 
+後端（`server/`）已完成「頻道 → 行程」改名重構：`model.Channel` → `model.Trip`、`channelRow` → `tripRow`、資料表 `channels` → `trips`、欄位 `channel_id` → `trip_id`，程式碼識別符已與介面用語「行程」一致，故不再需要維護行程/channel 的對照關係。
+
+前端（`web/src/types.ts`）尚未跟進這次改名，仍使用 `Channel`／`ChannelRole` 型別名稱——這是已知的技術債，不影響介面顯示文字（畫面上一律顯示「行程」）。
+
 | 正式用語 | 介面用語（畫面顯示文字） | 介面/前端程式碼 | 後端變數 | 資料庫 |
 |---|---|---|---|---|
-| 行程 | 行程 | `Channel`（`web/src/types.ts`） | `channelRow`（`server/internal/store/entity.go`） | 表 `channels` |
+| 行程 | 行程 | `Channel`（`web/src/types.ts`，尚未改名） | `model.Trip` / `tripRow`（`server/internal/store/entity.go`） | 表 `trips` |
 | 地點 | 地點 | `Entry`（`web/src/types.ts`） | `entryRow`（`server/internal/store/entity.go`） | 表 `entries` |
 | 時間軸 | 時間軸 | `MultiTrackTimeline`（`web/src/Timeline.tsx`） | — | — |
 | 路徑（配速表介面） | 配速表 | `PaceRouteMap`（`web/src/PaceRouteMap.tsx`） | — | — |

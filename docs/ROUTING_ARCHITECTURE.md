@@ -29,7 +29,7 @@ Web(`web/src`)、Admin SPA(`web/admin`)四個前端各自呼叫哪些端點、
 
 **核心結論:iOS App 與 Web 共用同一組 `/v1/*` API**(同一批 handler、同一套
 `requireOwner`/`requireEditor`/`requireMember` 權限檢查)。`/internal/*` 是
-另一組獨立路由,只給 `cmd/cli` 用,不走 `/v1/*` 那套頻道層級的
+另一組獨立路由,只給 `cmd/cli` 用,不走 `/v1/*` 那套行程層級的
 `requireOwner`/`requireEditor`/`requireMember` 檢查,改用 `internalAuth`
 middleware 要求 `Authorization: Bearer` 帶一把有效的 JWT(見下方「安全邊界」)
 ——與 `/v1/*` 一般使用者同一套 `auth.Signer`,CLI 端透過
@@ -45,20 +45,20 @@ handler、不共用 store 存取層以外的任何程式碼。
 | POST | /v1/auth/register | handleRegister | 無(註冊端點本身) | ✅ | ✅ |
 | POST | /v1/auth/login | handleLogin | 無(登入端點本身) | ✅ | ✅ |
 | GET | /v1/me | handleMe | Bearer token | ✅ | ✅ |
-| GET | /v1/channels | handleListChannels | Bearer token | ✅ | ✅ |
-| POST | /v1/channels | handleCreateChannel | Bearer token(任何登入使用者皆可建) | ✅ | ✅ |
-| GET | /v1/channels/{id}/members | handleListMembers | Bearer token | ✅ | ✅ |
-| POST | /v1/channels/{id}/members | handleAddMember | **requireOwner** | ✅ | ✅ |
-| PATCH | /v1/channels/{id}/members/{userID} | handleSetMemberRole | **requireOwner** | ✅ | ✅ |
-| POST | /v1/channels/{id}/query | handleQuery | **requireMember** | ✅ | ✅ |
-| POST | /v1/channels/{id}/assist | handleAssist | **requireEditor** | ✅ | ✅ |
-| GET | /v1/channels/{id}/entries | handleListEntries | Bearer token | ✅ | ✅ |
-| DELETE | /v1/channels/{id}/entries | handleResetChannelData | **requireOwner** | ✅ | — |
-| PATCH | /v1/entries/{id} | handleUpdateEntry | 查 entry 取 channelID → **requireEditor** | ✅(`api.ts` 的 `updateEntry`,`Timeline.tsx` 的 `EditEntrySheet`) | — |
-| GET | /v1/channels/{id}/ws | handleWS | **requireMember**(WS 訂閱) | ✅ | — |
-| POST | /v1/channels/{id}/public-link | handleCreatePublicLink | **requireEditor** | ✅ | — |
-| GET | /v1/channels/{id}/public-link | handleGetPublicLink | Bearer token | ✅ | — |
-| DELETE | /v1/channels/{id}/public-link | handleDeletePublicLink | **requireEditor** | ✅ | — |
+| GET | /v1/trips | handleListTrips | Bearer token | ✅ | ✅ |
+| POST | /v1/trips | handleCreateTrip | Bearer token(任何登入使用者皆可建) | ✅ | ✅ |
+| GET | /v1/trips/{id}/members | handleListMembers | Bearer token | ✅ | ✅ |
+| POST | /v1/trips/{id}/members | handleAddMember | **requireOwner** | ✅ | ✅ |
+| PATCH | /v1/trips/{id}/members/{userID} | handleSetMemberRole | **requireOwner** | ✅ | ✅ |
+| POST | /v1/trips/{id}/query | handleQuery | **requireMember** | ✅ | ✅ |
+| POST | /v1/trips/{id}/assist | handleAssist | **requireEditor** | ✅ | ✅ |
+| GET | /v1/trips/{id}/entries | handleListEntries | Bearer token | ✅ | ✅ |
+| DELETE | /v1/trips/{id}/entries | handleResetTripData | **requireOwner** | ✅ | — |
+| PATCH | /v1/entries/{id} | handleUpdateEntry | 查 entry 取 tripID → **requireEditor** | ✅(`api.ts` 的 `updateEntry`,`Timeline.tsx` 的 `EditEntrySheet`) | — |
+| GET | /v1/trips/{id}/ws | handleWS | **requireMember**(WS 訂閱) | ✅ | — |
+| POST | /v1/trips/{id}/public-link | handleCreatePublicLink | **requireEditor** | ✅ | — |
+| GET | /v1/trips/{id}/public-link | handleGetPublicLink | Bearer token | ✅ | — |
+| DELETE | /v1/trips/{id}/public-link | handleDeletePublicLink | **requireEditor** | ✅ | — |
 | GET | /v1/public/{token} | handlePublicView | 連結 token 存在即可(公開頁,無使用者身分) | ✅ | — |
 | POST | /v1/public/{token}/assist | handlePublicAssist | 連結 token + `info.Editable` 旗標 | ✅ | — |
 
@@ -67,9 +67,9 @@ handler、不共用 store 存取層以外的任何程式碼。
 
 ## 三、`/internal/*` 完整路由表(只給 `cmd/cli` 用)
 
-這組路由不走 `/v1/*` 那套頻道層級的權限檢查(`requireOwner`/`requireEditor`/
+這組路由不走 `/v1/*` 那套行程層級的權限檢查(`requireOwner`/`requireEditor`/
 `requireMember`),直接操作 `store`/`tripsvc`,設計目的是讓 CLI 或自動化腳本
-能繞過「先登入拿頻道成員身分」的流程直接操作資料。**改用 JWT**:呼叫端須帶
+能繞過「先登入拿行程成員身分」的流程直接操作資料。**改用 JWT**:呼叫端須帶
 `Authorization: Bearer <token>`,由 `internalAuth`(見 `middleware.go`)以
 `auth.Signer.Verify` 驗證,與 `/v1/*` 一般使用者共用同一套 signer。CLI 端
 透過 `tripace-cli login --web` 走瀏覽器核准流程換發這把 JWT(見
@@ -77,15 +77,15 @@ handler、不共用 store 存取層以外的任何程式碼。
 
 | 方法 | 路徑 | Handler | CLI 呼叫方法(cmd/cli/http.go) |
 |---|---|---|---|
-| GET | /internal/channels | handleInternalListChannels | listChannels() |
-| POST | /internal/channels/{id}/notify | handleNotify | notifyChannel()(main.go,未經 httpClient.do) |
-| POST | /internal/channels/{id}/entries | handleInternalRecord | record() |
+| GET | /internal/trips | handleInternalListTrips | listTrips() |
+| POST | /internal/trips/{id}/notify | handleNotify | notifyTrip()(main.go,未經 httpClient.do) |
+| POST | /internal/trips/{id}/entries | handleInternalRecord | record() |
 | PATCH | /internal/entries/{id} | handleInternalUpdateEntry | updateEntry() |
 | DELETE | /internal/entries/{id} | handleInternalDeleteEntry | deleteEntry() |
 | PATCH | /internal/entries/{id}/latlng | handleInternalSetLatLng | (未包裝,CLI 未呼叫) |
 | POST | /internal/entries/{id}/geocode | handleGeocodeEntry | (未包裝,CLI 未呼叫) |
 | POST | /internal/entries/compute-route | handleComputeRouteFromEntries | (未包裝,CLI 未呼叫) |
-| DELETE | /internal/channels/{id}/entries | handleInternalReset | reset() |
+| DELETE | /internal/trips/{id}/entries | handleInternalReset | reset() |
 
 `cmd/cli` 也有一條**不經過 HTTP、直連資料庫**的路徑(`-db` 旗標,見
 `cmd/cli/db.go` 的 `dbClient`),兩條路徑實作同一組 `client` 介面
@@ -129,12 +129,12 @@ Admin SPA 是跨網域呼叫並帶 cookie(`credentials: 'include'`),不能沿用
 
 | 操作 | /v1/* 版本 | /internal/* 版本 | 差異 |
 |---|---|---|---|
-| 更新條目 | `handleUpdateEntry` | `handleInternalUpdateEntry` | 前者查 entry 反查 channelID 做 requireEditor;後者無檢查。**底層都呼叫 `tripsvc.UpdateEntry`,是同一個函式**,只是外層 handler 各自獨立寫了一份,不是共用同一個 HTTP handler。 |
-| 清空頻道資料 | `handleResetChannelData`(requireOwner) | `handleInternalReset`(無檢查) | 底層都呼叫 `s.resetChannel` → `store.DeleteChannelEntries`,同函式、兩個 handler。 |
+| 更新條目 | `handleUpdateEntry` | `handleInternalUpdateEntry` | 前者查 entry 反查 tripID 做 requireEditor;後者無檢查。**底層都呼叫 `tripsvc.UpdateEntry`,是同一個函式**,只是外層 handler 各自獨立寫了一份,不是共用同一個 HTTP handler。 |
+| 清空行程資料 | `handleResetTripData`(requireOwner) | `handleInternalReset`(無檢查) | 底層都呼叫 `s.resetTrip` → `store.DeleteTripEntries`,同函式、兩個 handler。 |
 | 新增條目 | `handleAssist`(requireEditor,經 LLM 判斷後呼叫 `trip_entry_add` 工具寫入) | `handleInternalRecord`(無檢查,直接呼叫 `tripsvc.Record`) | 不是同一個 handler,效果也不再等價:前者(AI 對話)寫入的是裝置端旅程清單(見 `docs/ENTRY_WRITE_ORDER.md`),後者才是直接寫入 Postgres 的 entry。 |
 
 **這份對照表就是「安全邊界」一節要解決的問題**:`/internal/*` 版本因為無
-檢查,任何知道 entryID/channelID 的呼叫者都能繞過 `/v1/*` 版本的權限檢查
+檢查,任何知道 entryID/tripID 的呼叫者都能繞過 `/v1/*` 版本的權限檢查
 直接達到同樣效果。
 
 ### 完全獨立、不共用(Admin 那組)
@@ -168,7 +168,7 @@ Admin SPA 是跨網域呼叫並帶 cookie(`credentials: 'include'`),不能沿用
 - 舊版共享密鑰機制(`X-Internal-Token` header 比對環境變數
   `INTERNAL_API_TOKEN`,未設定時本機放行)已完全移除——已確認正式環境
   (Cloud Run `tripace-server`)先前實際上就處於「未設定、完全不設防」的
-  狀態,任何人都能不登入直接讀寫刪除任意頻道資料,是這次改走 JWT 要修復的
+  狀態,任何人都能不登入直接讀寫刪除任意行程資料,是這次改走 JWT 要修復的
   真實風險,不只是理論疑慮。
 
 ## 七、待辦 / 已知缺口

@@ -196,10 +196,10 @@ API 之處,逐一標註成本與風險。
 | 原操作 | 反向操作 | 現有端點夠嗎 |
 |---|---|---|
 | entry_update | PATCH 回 before 值 | ✅ `PATCH /v1/entries/{id}` 已有 |
-| 新增一筆 | 刪除該 entryID | ✅ `DELETE /v1/channels/{id}/entries/{entryID}` 已有(`handleDeleteTripEntry`;前端封裝 `api.ts` 的 `deleteTripEntry`)。路徑形狀是 channel-scoped 而非本文原先提議的 entry-scoped,呼叫時需一併帶 channelID。**現況補充**:這個端點操作的是 Postgres entry;AI 對話新增現在走 `trip_entry_add`,寫入裝置端旅程清單(見 6.2),undo 若要適用於 AI 新增的項目,需走裝置端清單自己的刪除(`trip_entry_delete`,目前不在 assistant 白名單內),而非這支 REST 端點 |
-| 刪除一筆 | 以快照重建 | ✅ `POST /v1/channels/{id}/entries` 已有(`handleCreateTripEntry`;前端封裝 `api.ts` 的 `createTripEntry`)。同時就是手動新增的入口,見第四章 |
+| 新增一筆 | 刪除該 entryID | ✅ `DELETE /v1/trips/{id}/entries/{entryID}` 已有(`handleDeleteTripEntry`;前端封裝 `api.ts` 的 `deleteTripEntry`)。路徑形狀是 trip-scoped 而非本文原先提議的 entry-scoped,呼叫時需一併帶 tripID。**現況補充**:這個端點操作的是 Postgres entry;AI 對話新增現在走 `trip_entry_add`,寫入裝置端旅程清單(見 6.2),undo 若要適用於 AI 新增的項目,需走裝置端清單自己的刪除(`trip_entry_delete`,目前不在 assistant 白名單內),而非這支 REST 端點 |
+| 刪除一筆 | 以快照重建 | ✅ `POST /v1/trips/{id}/entries` 已有(`handleCreateTripEntry`;前端封裝 `api.ts` 的 `createTripEntry`)。同時就是手動新增的入口,見第四章 |
 
-- 前端維護 per-channel 的 session undo stack(記憶體,重整即失,誠實標示
+- 前端維護 per-trip 的 session undo stack(記憶體,重整即失,誠實標示
   「復原僅限本次瀏覽期間」);composer 上方浮一顆小小的「↩」膠囊,
   存在可復原操作時才顯示。
 - 已知限制:`PATCH` 目前「空字串 = 不改」,若 before 值本來是空(例如
@@ -272,9 +272,9 @@ API 之處,逐一標註成本與風險。
 - **同步廣播**:~~誠實現況——`handleUpdateEntry` 完成後沒有廣播
   `entries_updated`~~——**已修復**:`server/internal/api/api.go` 的
   `handleUpdateEntry` 最後已呼叫
-  `s.hub.Broadcast(entry.ChannelID, {"event": "entries_updated", ...})`,
+  `s.hub.Broadcast(entry.TripID, {"event": "entries_updated", ...})`,
   其他成員(與自己的第二個分頁)會即時看到手動修改。此項不再是 Phase 1 阻塞。
-- **刪除鈕**:**端點已存在**——`DELETE /v1/channels/{id}/entries/{entryID}`
+- **刪除鈕**:**端點已存在**——`DELETE /v1/trips/{id}/entries/{entryID}`
   (`handleDeleteTripEntry`,前端 `api.ts` 的 `deleteTripEntry`;同 3.2 undo
   所需,一魚兩吃)。按下後卡片走與 AI 刪除相同的塌陷動畫 + 5 秒復原條。
 - 欄位清空限制(空字串=不改)如實揭露在 UI:留空的欄位顯示 placeholder
@@ -290,7 +290,7 @@ API 之處,逐一標註成本與風險。
   安排」變成入口而非死區。
 - **從推薦新增**:見第五章。
 
-寫入走 `POST /v1/channels/{id}/entries`(`handleCreateTripEntry`,前端封裝
+寫入走 `POST /v1/trips/{id}/entries`(`handleCreateTripEntry`,前端封裝
 `api.ts` 的 `createTripEntry`)。~~在端點存在之前(Phase 1),表單「儲存」
 改為組一句結構化訊息送 `assist` 由 AI 寫入~~——**此折衷方案已無必要**:
 端點與前端封裝都已存在,新增表單可直接走 REST,Phase 1 即可直連。
@@ -385,7 +385,7 @@ API 之處,逐一標註成本與風險。
    AI 對話寫入工具 `trip_entry_add` 連 location 都不是輸入欄位,座標更無從
    談起,是必須先修的洞(見 6.2 現況說明)。
    修好後,加入語句中的座標可由 agent 原樣寫入,不必重查 geocode。
-   若走「自己選時間」的表單路徑,則已可直接 `POST /v1/channels/{id}/entries`
+   若走「自己選時間」的表單路徑,則已可直接 `POST /v1/trips/{id}/entries`
    帶齊 location(端點已存在,見 4.2),不受這個洞影響。
 
 ---
@@ -493,7 +493,7 @@ location/座標,或是改讓 AI 新增的項目最終仍落地成 Postgres entry
 可能正在「邊滾邊看每天動線」,這是核心瀏覽模式);AI 操作進行中(要看
 marker 回饋)。
 
-記憶:檔位不持久化(每次進頻道從 collapsed 開始),桌面 ≥1120 的地圖欄
+記憶:檔位不持久化(每次進行程從 collapsed 開始),桌面 ≥1120 的地圖欄
 開關才記 `localStorage`——手機上「上次開著就一直開著」容易變成永久佔屏,
 違背原則。
 
@@ -668,8 +668,8 @@ marker/動線(直線)+ 間隙標籤(Haversine 粗估)+ 時間可行性警示 +
 3. 存量條目座標補跑腳本(`POST /internal/entries/{id}/geocode` 已提供單筆
    補座標的端點,見 `server/internal/api/entry_geocode.go`,腳本可直接套用)。
 
-註:新增/刪除的 REST 端點(`POST /v1/channels/{id}/entries`、
-`DELETE /v1/channels/{id}/entries/{entryID}`)**已存在**,原本排在 Phase 2
+註:新增/刪除的 REST 端點(`POST /v1/trips/{id}/entries`、
+`DELETE /v1/trips/{id}/entries/{entryID}`)**已存在**,原本排在 Phase 2
 的「新增/刪除表單直連 REST」不再受後端阻塞,可視資源提前到 Phase 1。
 
 風險:Maps JS API 動態載入量(約 $7/1000 次,月免 10k)——地圖 lazy
@@ -683,12 +683,12 @@ mount(首次展開才載)+ 單例復用,一般使用量在免費額度內。
 
 後端依賴:
 
-1. ~~`POST /v1/channels/{id}/entries`、`DELETE /v1/entries/{id}`~~——
-   **已完成**:`POST /v1/channels/{id}/entries`(`handleCreateTripEntry`)、
-   `PUT /v1/channels/{id}/entries/{entryID}`(`handleUpdateTripEntry`)、
-   `DELETE /v1/channels/{id}/entries/{entryID}`(`handleDeleteTripEntry`),
+1. ~~`POST /v1/trips/{id}/entries`、`DELETE /v1/entries/{id}`~~——
+   **已完成**:`POST /v1/trips/{id}/entries`(`handleCreateTripEntry`)、
+   `PUT /v1/trips/{id}/entries/{entryID}`(`handleUpdateTripEntry`)、
+   `DELETE /v1/trips/{id}/entries/{entryID}`(`handleDeleteTripEntry`),
    前端 `api.ts` 也已有 `createTripEntry`/`updateTripEntry`/`deleteTripEntry`。
-   實際路徑是 channel-scoped 而非本文原先提議的 entry-scoped;
+   實際路徑是 trip-scoped 而非本文原先提議的 entry-scoped;
 2. PATCH 語意修正:缺鍵=不改、null=清空(undo 完整性所繫);
 3. `POST /v1/geo/route-summary` 代理 + DB 快取(**Routes API 計費與
    TOS 快取限制見 6.7,上線前過一次覆核**);
@@ -714,7 +714,7 @@ options 帶座標;(選配)重排建議的伺服器端計算。
 | 地理脈絡列(map context bar) | 2.2/6.3 | 座標補齊 |
 | 地圖面板三檔 + 聚焦日聯動 | 2.2/6.4/6.5 | 座標補齊 |
 | 移動間隙標籤 + 時間可行性警示 | 6.3 | 無(粗估)/route-summary(精確) |
-| 操作回執卡 + undo 膠囊 | 3.2 | DELETE/POST entries(✅ 已存在,channel-scoped) |
+| 操作回執卡 + undo 膠囊 | 3.2 | DELETE/POST entries(✅ 已存在,trip-scoped) |
 | 待回覆 chip | 3.3 | 無 |
 | 推薦面板(地圖+加入) | 5.2/5.3 | 無(走 assist)/POST entries(✅ 已存在) |
 | 編輯表單升級(kind/chips/小地圖/刪除) | 4.1 | DELETE entries(✅ 已存在)、PATCH 重新 geocode(仍待補) |

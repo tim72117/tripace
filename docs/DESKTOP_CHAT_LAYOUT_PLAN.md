@@ -17,7 +17,7 @@
 │ desktop-     │ desktop-main                 │
 │ sidebar      │  └ ChatScreen(手機桌面共用)   │
 │ (272px)      │     ├ navbar(行程名/分享/成員)│
-│ ├ 頻道列表    │     ├ screen-body            │
+│ ├ 行程列表    │     ├ screen-body            │
 │ │(Desktop-   │     │  └ MultiTrackTimeline   │ ← 時間軸是主體
 │ │ ChannelList)│    ├ chat-overlay(毛玻璃浮層) │ ← 有訊息才短暫出現
 │ └ 使用者選單  │     └ composer(✨/💬圓鈕)     │
@@ -41,7 +41,7 @@
 │📅│ panel    │──────────────────────────────────│
 │  │          │                                  │
 │  │ 內容二選一│        對話訊息串(主體,常駐)      │
-│  │ ・頻道列表│                                  │
+│  │ ・行程列表│                                  │
 │  │ ・時間軸  │   ┌────────────────────────┐     │
 │  │          │   │ 📋 正在編排行程…         │     │
 │  │ (可整個  │   │ ┌────────────────────┐  │     │
@@ -52,7 +52,7 @@
 │👤│          │  [✨] [輸入框____________] [送出]  │
 └──┴─────────┴──────────────────────────────────┘
 rail  side panel         main(對話)
-48px  272px(頻道)/380px(時間軸)
+48px  272px(行程)/380px(時間軸)
 ```
 
 ### 3.1 icon rail(新元件,48px 固定)
@@ -61,7 +61,7 @@ rail  side panel         main(對話)
 
 | 圖示 | 行為 |
 |---|---|
-| 🗂(頻道/行程清單) | side panel 顯示頻道列表;再點一次收合 panel |
+| 🗂(行程清單) | side panel 顯示行程列表;再點一次收合 panel |
 | 📅(時間軸) | side panel 顯示目前行程的時間軸;再點一次收合 panel |
 | (第一版就這兩顆,✨推薦維持在 composer 不搬) | |
 | 👤(底部,使用者選單) | 現有 `DesktopUserMenu` 移到 rail 底部 |
@@ -71,10 +71,10 @@ rail  side panel         main(對話)
 
 ### 3.2 side panel(改造自現有 desktop-sidebar)
 
-- **頻道列表模式**:寬 272px,內容就是現有 `DesktopChannelList`(不重寫)
+- **行程列表模式**:寬 272px,內容就是現有 `DesktopChannelList`(不重寫)
 - **時間軸模式**:寬 380px(時間軸多欄呈現 272px 不夠;380px 是初值,實作時以 `MultiTrackTimeline` 實際呈現微調),內容是現有 `MultiTrackTimeline`,資料與主區共用同一份 `entries` state
 - 收合/展開與寬度切換都要有 CSS transition(約 200ms,push 模式——主區跟著縮放,不是 overlay 蓋在對話上;桌面寬度足夠,push 比 overlay 穩定)
-- 預設狀態:**進入桌面版時 panel 開啟且顯示頻道列表**(維持現有使用者習慣:一進來先選行程);選定行程後使用者可自行收合
+- 預設狀態:**進入桌面版時 panel 開啟且顯示行程列表**(維持現有使用者習慣:一進來先選行程);選定行程後使用者可自行收合
 - 面板寬度拖曳調整(比照 DebugApp 的 resizer)列為次階段,第一版固定寬
 
 ### 3.3 主區:對話串常駐
@@ -112,7 +112,7 @@ rail  side panel         main(對話)
 ### 階段 1:桌面版骨架改造
 
 - 新增 icon rail 元件與樣式(styles.css)
-- `desktop-sidebar` 改造為可切換內容(頻道列表/時間軸)、可收合的 side panel
+- `desktop-sidebar` 改造為可切換內容(行程列表/時間軸)、可收合的 side panel
 - `ChatScreen` 加 `desktopChat` prop:桌面模式下對話串常駐主區、時間軸不渲染在主區、overlay 條件渲染邏輯改為常駐訊息串
 - 實作前先查證 deviceDB 是否存 owner 訊息,決定「顯示歷史」還是「僅本次 session」
 - 驗收:桌面版三欄佈局如 mockup 運作、rail 切換/收合順暢、手機版完全不變、`tsc` 通過
