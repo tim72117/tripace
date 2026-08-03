@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 頻道條目的垂直時間軸:依「日期」分組,每個日期一個軸點(左側軸線串圓點),
+/// 行程條目的垂直時間軸:依「日期」分組,每個日期一個軸點(左側軸線串圓點),
 /// 日期標題對齊圓點,當天多筆事項以小卡列在下方。對齊 web TimelineScreen 設計。
 /// entries 沿用後端/上層的排序(已依 start 排)。
 struct TimelineView: View {
@@ -32,7 +32,7 @@ struct TimelineView: View {
         Group {
             if entries.isEmpty {
                 ContentUnavailableView("還沒有條目", systemImage: "clock",
-                                       description: Text("在頻道裡記事後,會在這裡依時間排列。"))
+                                       description: Text("在行程裡記事後,會在這裡依時間排列。"))
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {

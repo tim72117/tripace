@@ -45,48 +45,48 @@ final class MockBackendService: BackendService {
     ]
 
     // 記憶體狀態
-    private var channels: [Channel]
-    private var messagesByChannel: [String: [Message]]
-    private var entriesByChannel: [String: [Entry]]
-    private var membersByChannel: [String: [Member]]
+    private var trips: [Trip]
+    private var messagesByTrip: [String: [Message]]
+    private var entriesByTrip: [String: [Entry]]
+    private var membersByTrip: [String: [Member]]
 
     init() {
         let now = Date()
-        // ch_001:我是 owner(可發訊息);ch_002:他人 owner(我是成員,只能查詢)。
-        let ch1 = Channel(id: "ch_001", name: "產品討論", ownerID: "usr_me", memberCount: 3,
+        // trip_001:我是 owner(可發訊息);trip_002:他人 owner(我是成員,只能查詢)。
+        let trip1 = Trip(id: "trip_001", name: "產品討論", ownerID: "usr_me", memberCount: 3,
                           lastMessagePreview: "下週一開會敲定 Q3 規格",
                           updatedAt: now.addingTimeInterval(-300))
-        let ch2 = Channel(id: "ch_002", name: "旅遊計畫", ownerID: "usr_carol", memberCount: 2,
+        let trip2 = Trip(id: "trip_002", name: "旅遊計畫", ownerID: "usr_carol", memberCount: 2,
                           lastMessagePreview: "機票買好了嗎?",
                           updatedAt: now.addingTimeInterval(-7200))
-        channels = [ch1, ch2]
+        trips = [trip1, trip2]
 
         // Message 只存原話(標注/事件時間已移至 Entry)。
-        messagesByChannel = [
-            "ch_001": [
-                Message(id: "msg_001", channelID: "ch_001", authorID: "usr_alice", authorName: "Alice",
+        messagesByTrip = [
+            "trip_001": [
+                Message(id: "msg_001", tripID: "trip_001", authorID: "usr_alice", authorName: "Alice",
                         text: "我們下週一下午三點開會,敲定 Q3 產品規格",
                         createdAt: now.addingTimeInterval(-3600)),
-                Message(id: "msg_002", channelID: "ch_001", authorID: "usr_bob", authorName: "Bob",
+                Message(id: "msg_002", tripID: "trip_001", authorID: "usr_bob", authorName: "Bob",
                         text: "記得把預算上調的提案準備好,大概要 +15%",
                         createdAt: now.addingTimeInterval(-1800)),
-                Message(id: "msg_003", channelID: "ch_001", authorID: "usr_me", authorName: "我",
+                Message(id: "msg_003", tripID: "trip_001", authorID: "usr_me", authorName: "我",
                         text: "登入頁的 bug 修好了嗎?",
                         createdAt: now.addingTimeInterval(-600)),
             ],
-            "ch_002": [
-                Message(id: "msg_101", channelID: "ch_002", authorID: "usr_carol", authorName: "Carol",
+            "trip_002": [
+                Message(id: "msg_101", tripID: "trip_002", authorID: "usr_carol", authorName: "Carol",
                         text: "機票買好了嗎?七月初的那班",
                         createdAt: now.addingTimeInterval(-7200)),
             ],
         ]
 
-        // Entry 是主體:結構化結果(事項 + 時間 + 標注)。owner 頻道(ch_001)才有。
+        // Entry 是主體:結構化結果(事項 + 時間 + 標注)。owner 行程(trip_001)才有。
         let cal = Calendar.current
         let nextMon = cal.date(byAdding: .day, value: 5, to: now) ?? now
-        entriesByChannel = [
-            "ch_001": [
-                Entry(id: "ent_001", channelID: "ch_001",
+        entriesByTrip = [
+            "trip_001": [
+                Entry(id: "ent_001", tripID: "trip_001",
                       item: "開會敲定 Q3 產品規格",
                       start: Self.dateTimeStr(nextMon, hour: 15, minute: 0),
                       allDay: false,
@@ -94,7 +94,7 @@ final class MockBackendService: BackendService {
                       category: "會議", tags: ["排程", "Q3", "規格"],
                       summary: "下週一 15:00 開會敲定 Q3 規格",
                       createdAt: now.addingTimeInterval(-3600)),
-                Entry(id: "ent_002", channelID: "ch_001",
+                Entry(id: "ent_002", tripID: "trip_001",
                       item: "準備預算上調提案(約 +15%)",
                       start: "", allDay: false,
                       category: "任務", tags: ["預算", "提案"],
@@ -102,61 +102,61 @@ final class MockBackendService: BackendService {
             ],
         ]
 
-        // ch_001:我是 owner(editor);其他成員預設 viewer。
-        // ch_002:他人 owner,我是 viewer 成員。
-        membersByChannel = [
-            "ch_001": [
+        // trip_001:我是 owner(editor);其他成員預設 viewer。
+        // trip_002:他人 owner,我是 viewer 成員。
+        membersByTrip = [
+            "trip_001": [
                 Self.member(currentUser, .editor),
                 Self.member(directory[0], .viewer),
                 Self.member(directory[1], .viewer),
             ],
-            "ch_002": [
+            "trip_002": [
                 Self.member(currentUser, .viewer),
                 Self.member(directory[2], .editor),
             ],
         ]
     }
 
-    // MARK: 頻道
+    // MARK: 行程
 
-    func fetchChannels() async throws -> [Channel] {
+    func fetchTrips() async throws -> [Trip] {
         try await fakeDelay(0.2)
-        return channels.sorted { $0.updatedAt > $1.updatedAt }
+        return trips.sorted { $0.updatedAt > $1.updatedAt }
     }
 
-    func createChannel(name: String) async throws -> Channel {
+    func createTrip(name: String) async throws -> Trip {
         try await fakeDelay(0.3)
-        let ch = Channel(id: "ch_\(UUID().uuidString.prefix(6))", name: name,
+        let trip = Trip(id: "trip_\(UUID().uuidString.prefix(6))", name: name,
                          ownerID: currentUser.id, memberCount: 1,
                          lastMessagePreview: nil, updatedAt: .now)
-        channels.append(ch)
-        messagesByChannel[ch.id] = []
+        trips.append(trip)
+        messagesByTrip[trip.id] = []
         // 建立者即 owner,給 editor 角色。
-        membersByChannel[ch.id] = [Self.member(currentUser, .editor)]
-        return ch
+        membersByTrip[trip.id] = [Self.member(currentUser, .editor)]
+        return trip
     }
 
     // 原話(message)已移至裝置端 DB,Mock 不再提供 fetchMessages。
 
     // MARK: 條目(Entry)
 
-    func fetchEntries(channelID: String) async throws -> [Entry] {
+    func fetchEntries(tripID: String) async throws -> [Entry] {
         try await fakeDelay(0.2)
-        return entriesByChannel[channelID] ?? []
+        return entriesByTrip[tripID] ?? []
     }
 
     // MARK: owner 統一輸入(assist)
 
     /// 模擬後端 LLM 自主判斷:提問 → 回答(answer,不存訊息);否則 → 記錄(recorded)。
     /// 記錄時把原話存成訊息,並產生承載標注/事件時間的 Entry。
-    func assist(channelID: String, text: String) async throws -> AssistResult {
+    func assist(tripID: String, text: String) async throws -> AssistResult {
         try await fakeDelay(0.8)
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // 提問:不存訊息,語意查詢後回答,並附上相關條目供前端展示。
         if Self.looksLikeQuestion(trimmed) {
-            let answer = try await semanticQuery(channelID: channelID, question: trimmed)
-            let presented = (entriesByChannel[channelID] ?? [])
+            let answer = try await semanticQuery(tripID: tripID, question: trimmed)
+            let presented = (entriesByTrip[tripID] ?? [])
                 .filter { Self.entryMatches($0, question: trimmed) }
                 .prefix(3)
                 .map { PresentedEntry(item: $0.item, start: $0.start, end: $0.end, allDay: $0.allDay) }
@@ -168,64 +168,64 @@ final class MockBackendService: BackendService {
         let entryID = "ent_\(UUID().uuidString.prefix(6))"
         let entry = Entry(
             id: entryID,
-            channelID: channelID,
+            tripID: tripID,
             item: trimmed,
             start: "", allDay: false,
             category: category, tags: tags, summary: summary,
             createdAt: .now
         )
-        entriesByChannel[channelID, default: []].append(entry)
+        entriesByTrip[tripID, default: []].append(entry)
 
-        if let idx = channels.firstIndex(where: { $0.id == channelID }) {
-            channels[idx].lastMessagePreview = trimmed
-            channels[idx].updatedAt = .now
+        if let idx = trips.firstIndex(where: { $0.id == tripID }) {
+            trips[idx].lastMessagePreview = trimmed
+            trips[idx].updatedAt = .now
         }
         return .recorded(text: trimmed, entryIDs: [entryID])
     }
 
     // MARK: 成員
 
-    func fetchMembers(channelID: String) async throws -> [Member] {
+    func fetchMembers(tripID: String) async throws -> [Member] {
         try await fakeDelay(0.2)
-        return membersByChannel[channelID] ?? []
+        return membersByTrip[tripID] ?? []
     }
 
-    func addMember(channelID: String, email: String, role: ChannelRole) async throws -> [Member] {
+    func addMember(tripID: String, email: String, role: TripRole) async throws -> [Member] {
         try await fakeDelay(0.3)
         // 以 email 前綴比對內建使用者(例如 alice@... → Alice);否則用 email 當名稱建立。
         let prefix = email.split(separator: "@").first.map(String.init) ?? email
         let user = directory.first { $0.name.localizedCaseInsensitiveContains(prefix) }
             ?? User(id: "usr_\(abs(email.hashValue))", name: email, avatarColor: "#888888")
 
-        var members = membersByChannel[channelID] ?? []
+        var members = membersByTrip[tripID] ?? []
         if !members.contains(where: { $0.id == user.id }) {
             members.append(Self.member(user, role))
-            membersByChannel[channelID] = members
-            if let idx = channels.firstIndex(where: { $0.id == channelID }) {
-                channels[idx].memberCount = members.count
+            membersByTrip[tripID] = members
+            if let idx = trips.firstIndex(where: { $0.id == tripID }) {
+                trips[idx].memberCount = members.count
             }
         }
         return members
     }
 
-    func setMemberRole(channelID: String, userID: String, role: ChannelRole) async throws -> [Member] {
+    func setMemberRole(tripID: String, userID: String, role: TripRole) async throws -> [Member] {
         try await fakeDelay(0.2)
-        var members = membersByChannel[channelID] ?? []
+        var members = membersByTrip[tripID] ?? []
         if let idx = members.firstIndex(where: { $0.id == userID }) {
             members[idx].role = role
-            membersByChannel[channelID] = members
+            membersByTrip[tripID] = members
         }
         return members
     }
 
     // MARK: 語意查詢(RAG 模擬)
 
-    /// 模擬後端 RAG:對頻道訊息做相關性檢索 → 組成回答 → 回傳引用來源。
-    func semanticQuery(channelID: String, question: String) async throws -> SearchAnswer {
+    /// 模擬後端 RAG:對行程訊息做相關性檢索 → 組成回答 → 回傳引用來源。
+    func semanticQuery(tripID: String, question: String) async throws -> SearchAnswer {
         try await fakeDelay(1.0)
-        let pool = messagesByChannel[channelID] ?? []
-        let entries = entriesByChannel[channelID] ?? []
-        // 標注/事件時間已移至 Entry:依訊息文字 + 同頻道 Entry 的標籤/分類/事項組成檢索文字。
+        let pool = messagesByTrip[tripID] ?? []
+        let entries = entriesByTrip[tripID] ?? []
+        // 標注/事件時間已移至 Entry:依訊息文字 + 同行程 Entry 的標籤/分類/事項組成檢索文字。
         let entryText = entries
             .map { $0.item + " " + $0.tags.joined(separator: " ") + " " + ($0.category ?? "") }
             .joined(separator: " ")
@@ -243,11 +243,11 @@ final class MockBackendService: BackendService {
         let answer: String
         let confidence: Double?
         if top.isEmpty {
-            answer = "我在這個頻道找不到與「\(question)」相關的訊息。換個問法或確認相關內容是否已被討論過。"
+            answer = "我在這個行程找不到與「\(question)」相關的訊息。換個問法或確認相關內容是否已被討論過。"
             confidence = 0.2
         } else {
             let snippets = top.map { "・\($0.authorName):\($0.text)" }.joined(separator: "\n")
-            answer = "根據頻道中相關的訊息,我整理如下:\n\n\(snippets)"
+            answer = "根據行程中相關的訊息,我整理如下:\n\n\(snippets)"
             confidence = min(0.95, 0.5 + Double(top.count) * 0.15)
         }
 
@@ -262,7 +262,7 @@ final class MockBackendService: BackendService {
     // MARK: - 模擬 LLM 分類規則
 
     /// 把 User 包成帶角色的 Member。
-    private static func member(_ u: User, _ role: ChannelRole) -> Member {
+    private static func member(_ u: User, _ role: TripRole) -> Member {
         Member(id: u.id, name: u.name, avatarColor: u.avatarColor, role: role)
     }
 

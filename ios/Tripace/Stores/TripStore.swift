@@ -1,13 +1,13 @@
 import SwiftUI
 import Observation
 
-/// 頻道列表的狀態容器。
+/// 行程列表的狀態容器。
 @MainActor
 @Observable
-final class ChannelStore {
+final class TripStore {
     private let backend: BackendService
 
-    var channels: [Channel] = []
+    var trips: [Trip] = []
     var isLoading = false
     var errorMessage: String?
 
@@ -19,29 +19,29 @@ final class ChannelStore {
         isLoading = true
         errorMessage = nil
         do {
-            channels = try await backend.fetchChannels()
+            trips = try await backend.fetchTrips()
         } catch {
             errorMessage = error.localizedDescription
         }
         isLoading = false
     }
 
-    func createChannel(name: String) async {
+    func createTrip(name: String) async {
         do {
-            let ch = try await backend.createChannel(name: name)
-            channels.insert(ch, at: 0)
+            let ch = try await backend.createTrip(name: name)
+            trips.insert(ch, at: 0)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 }
 
-/// 單一頻道內的聊天狀態容器:訊息流、Entry 條目、owner 統一輸入(assist)。
+/// 單一行程內的聊天狀態容器:訊息流、Entry 條目、owner 統一輸入(assist)。
 @MainActor
 @Observable
 final class ChatStore {
     private let backend: BackendService
-    let channel: Channel
+    let trip: Trip
 
     var messages: [Message] = []
     /// LLM 解析出的事件/條目(承載結構化結果),顯示在訊息流上方。owner 才有。
@@ -51,15 +51,15 @@ final class ChatStore {
     var isLoading = false
     var errorMessage: String?
 
-    init(backend: BackendService, channel: Channel) {
+    init(backend: BackendService, trip: Trip) {
         self.backend = backend
-        self.channel = channel
+        self.trip = trip
     }
 
     var currentUserID: String { backend.currentUser.id }
 
-    /// 目前使用者是否為頻道擁有者。
-    private var isOwner: Bool { channel.ownerID == backend.currentUser.id }
+    /// 目前使用者是否為行程擁有者。
+    private var isOwner: Bool { trip.ownerID == backend.currentUser.id }
 
     /// 本地快取(可為 nil,初始化失敗時降級為純線上)。
     private let local = LocalStore.shared
@@ -71,10 +71,10 @@ final class ChatStore {
     func load() async {
         // 1) 原話一律從裝置端讀(owner 不灌進訊息流,member 才顯示)。
         if let local, !isOwner {
-            messages = local.messages(channelID: channel.id)
+            messages = local.messages(tripID: trip.id)
         }
         if let local, isOwner {
-            let cachedEnts = local.entries(channelID: channel.id)
+            let cachedEnts = local.entries(tripID: trip.id)
             if !cachedEnts.isEmpty { entries = cachedEnts }
         }
 
@@ -82,10 +82,10 @@ final class ChatStore {
         isLoading = true
         do {
             let freshEnts: [Entry] = isOwner
-                ? try await backend.fetchEntries(channelID: channel.id)
+                ? try await backend.fetchEntries(tripID: trip.id)
                 : []
             entries = freshEnts
-            if isOwner { local?.replaceEntries(freshEnts, channelID: channel.id) }
+            if isOwner { local?.replaceEntries(freshEnts, tripID: trip.id) }
         } catch {
             // 線上失敗:若本地有東西就靜默(離線可讀);完全沒快取才顯示錯誤。
             if messages.isEmpty && entries.isEmpty {
@@ -97,7 +97,7 @@ final class ChatStore {
 
     /// owner 統一輸入:送進 assist,LLM 自主判斷記錄事項或回答提問。
     /// - 記錄(recorded):原話歸入上方 entry 卡,訊息流不留泡泡;重拉 entries。
-    /// - 回答(answer):提問 + 答案兩個本地泡泡(不寫入頻道),答案掛上展示條目。
+    /// - 回答(answer):提問 + 答案兩個本地泡泡(不寫入行程),答案掛上展示條目。
     func send(_ text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -105,7 +105,7 @@ final class ChatStore {
         let tempID = "temp_\(UUID().uuidString.prefix(6))"
         let optimistic = Message(
             id: tempID,
-            channelID: channel.id,
+            tripID: trip.id,
             authorID: backend.currentUser.id,
             authorName: backend.currentUser.name,
             text: trimmed,
@@ -114,7 +114,7 @@ final class ChatStore {
         messages.append(optimistic)
 
         do {
-            let result = try await backend.assist(channelID: channel.id, text: trimmed)
+            let result = try await backend.assist(tripID: trip.id, text: trimmed)
             switch result {
             case .recorded(let recordedText, _):
                 // 記錄了 → 原話存進裝置端 LocalStore(原話的唯一真實來源,後端不存);
@@ -122,28 +122,28 @@ final class ChatStore {
                 messages.removeAll { $0.id == tempID }
                 local?.upsertMessage(Message(
                     id: "msg_\(UUID().uuidString.prefix(6))",
-                    channelID: channel.id,
+                    tripID: trip.id,
                     authorID: backend.currentUser.id,
                     authorName: backend.currentUser.name,
                     text: recordedText,
                     createdAt: .now))
-                if let fresh = try? await backend.fetchEntries(channelID: channel.id) {
+                if let fresh = try? await backend.fetchEntries(tripID: trip.id) {
                     entries = fresh
-                    local?.replaceEntries(fresh, channelID: channel.id)
+                    local?.replaceEntries(fresh, tripID: trip.id)
                 }
             case .answer(let answer, let presented):
                 // 回答了 → 移除樂觀「處理中」泡泡,改放提問 + 答案兩個本地泡泡。
                 messages.removeAll { $0.id == tempID }
                 messages.append(Message(
                     id: "ask_\(UUID().uuidString.prefix(6))",
-                    channelID: channel.id,
+                    tripID: trip.id,
                     authorID: backend.currentUser.id,
                     authorName: backend.currentUser.name,
                     text: trimmed))
                 let ansID = "ans_\(UUID().uuidString.prefix(6))"
                 messages.append(Message(
                     id: ansID,
-                    channelID: channel.id,
+                    tripID: trip.id,
                     authorID: ChatStore.assistantID,
                     authorName: "",
                     text: answer))
@@ -162,8 +162,8 @@ final class ChatStore {
     /// 助手回答用的固定作者 ID(本地顯示,不存後端)。
     static let assistantID = "usr_assistant"
 
-    /// 成員用:把問題以自然語言查詢頻道。問答持久化進裝置端 LocalStore
-    /// (重開頻道仍在,後端不存)。
+    /// 成員用:把問題以自然語言查詢行程。問答持久化進裝置端 LocalStore
+    /// (重開行程仍在,後端不存)。
     func ask(_ question: String) async {
         let trimmed = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -171,7 +171,7 @@ final class ChatStore {
         // 我的提問氣泡(持久化)。
         let askMsg = Message(
             id: "ask_\(UUID().uuidString.prefix(6))",
-            channelID: channel.id,
+            tripID: trip.id,
             authorID: backend.currentUser.id,
             authorName: backend.currentUser.name,
             text: trimmed)
@@ -182,14 +182,14 @@ final class ChatStore {
         let pendingID = "ans_\(UUID().uuidString.prefix(6))"
         messages.append(Message(
             id: pendingID,
-            channelID: channel.id,
+            tripID: trip.id,
             authorID: ChatStore.assistantID,
             authorName: "助手",
             text: "",
             isProcessing: true))
 
         do {
-            let answer = try await backend.semanticQuery(channelID: channel.id, question: trimmed)
+            let answer = try await backend.semanticQuery(tripID: trip.id, question: trimmed)
             if let idx = messages.firstIndex(where: { $0.id == pendingID }) {
                 messages[idx].text = answer.answer
                 messages[idx].isProcessing = false
@@ -197,7 +197,7 @@ final class ChatStore {
             // 答案氣泡持久化(用同一 id,確保重載順序一致)。
             local?.upsertMessage(Message(
                 id: pendingID,
-                channelID: channel.id,
+                tripID: trip.id,
                 authorID: ChatStore.assistantID,
                 authorName: "助手",
                 text: answer.answer))

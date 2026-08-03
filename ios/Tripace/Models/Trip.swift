@@ -1,10 +1,10 @@
 import Foundation
 
-/// 一個頻道。成員可在其中發訊息、查詢。
-struct Channel: Identifiable, Codable, Hashable {
+/// 一個行程。成員可在其中發訊息、查詢。
+struct Trip: Identifiable, Codable, Hashable {
     let id: String
     var name: String
-    /// 頻道擁有者的使用者 ID。只有 owner 能發訊息,成員只能查詢。
+    /// 行程擁有者的使用者 ID。只有 owner 能發訊息,成員只能查詢。
     var ownerID: String
     var memberCount: Int
     var lastMessagePreview: String?

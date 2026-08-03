@@ -10,7 +10,7 @@ struct RootView: View {
                 ProgressView()
             } else if app.auth.isSignedIn {
                 NavigationStack {
-                    ChannelListView()
+                    TripListView()
                 }
             } else {
                 // 強制登入:未登入一律進登入畫面,不提供訪客瀏覽。

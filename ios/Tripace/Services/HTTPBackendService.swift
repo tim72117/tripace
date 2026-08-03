@@ -28,28 +28,28 @@ final class HTTPBackendService: BackendService {
         self.session = session
     }
 
-    // MARK: 頻道
+    // MARK: 行程
 
-    func fetchChannels() async throws -> [Channel] {
-        let res: ChannelsResponse = try await get("channels")
-        return res.channels
+    func fetchTrips() async throws -> [Trip] {
+        let res: TripsResponse = try await get("trips")
+        return res.trips
     }
 
-    func createChannel(name: String) async throws -> Channel {
-        try await post("channels", body: ["name": name])
+    func createTrip(name: String) async throws -> Trip {
+        try await post("trips", body: ["name": name])
     }
 
     // MARK: 訊息
 
     // 原話(message)已移至裝置端 DB,後端不再提供 messages 端點;故無 fetchMessages。
 
-    func fetchEntries(channelID: String) async throws -> [Entry] {
-        let res: EntriesResponse = try await get("channels/\(channelID)/entries")
+    func fetchEntries(tripID: String) async throws -> [Entry] {
+        let res: EntriesResponse = try await get("trips/\(tripID)/entries")
         return res.entries
     }
 
-    func assist(channelID: String, text: String) async throws -> AssistResult {
-        let res: AssistEnvelope = try await post("channels/\(channelID)/assist",
+    func assist(tripID: String, text: String) async throws -> AssistResult {
+        let res: AssistEnvelope = try await post("trips/\(tripID)/assist",
                                                  body: ["text": text])
         switch res.kind {
         case "recorded":
@@ -64,21 +64,21 @@ final class HTTPBackendService: BackendService {
 
     // MARK: 成員
 
-    func fetchMembers(channelID: String) async throws -> [Member] {
-        let res: MembersResponse = try await get("channels/\(channelID)/members")
+    func fetchMembers(tripID: String) async throws -> [Member] {
+        let res: MembersResponse = try await get("trips/\(tripID)/members")
         return res.members
     }
 
-    func addMember(channelID: String, email: String, role: ChannelRole) async throws -> [Member] {
+    func addMember(tripID: String, email: String, role: TripRole) async throws -> [Member] {
         // 後端以 email 查出使用者後加入;role 預設 viewer。
-        let res: MembersResponse = try await post("channels/\(channelID)/members",
+        let res: MembersResponse = try await post("trips/\(tripID)/members",
                                                   body: ["email": email, "role": role.rawValue])
         return res.members
     }
 
-    func setMemberRole(channelID: String, userID: String, role: ChannelRole) async throws -> [Member] {
+    func setMemberRole(tripID: String, userID: String, role: TripRole) async throws -> [Member] {
         let res: MembersResponse = try await send(
-            "channels/\(channelID)/members/\(userID)",
+            "trips/\(tripID)/members/\(userID)",
             method: "PATCH",
             body: ["role": role.rawValue])
         return res.members
@@ -86,9 +86,9 @@ final class HTTPBackendService: BackendService {
 
     // MARK: 語意查詢
 
-    func semanticQuery(channelID: String, question: String) async throws -> SearchAnswer {
+    func semanticQuery(tripID: String, question: String) async throws -> SearchAnswer {
         // 後端回應不含 question,解碼後手動補上。
-        let raw: QueryResponse = try await post("channels/\(channelID)/query",
+        let raw: QueryResponse = try await post("trips/\(tripID)/query",
                                                 body: ["question": question])
         return SearchAnswer(
             question: question,
@@ -205,7 +205,7 @@ final class HTTPBackendService: BackendService {
 
 // MARK: - 回應外殼
 
-private struct ChannelsResponse: Decodable { let channels: [Channel] }
+private struct TripsResponse: Decodable { let trips: [Trip] }
 private struct EntriesResponse: Decodable { let entries: [Entry] }
 private struct MembersResponse: Decodable { let members: [Member] }
 

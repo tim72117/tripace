@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct ChannelApp: App {
+struct TripaceApp: App {
     /// 後端 base URL,依 build 組態與執行環境自動切換:
     /// - Debug + 模擬器:localhost,直連這台 Mac 上的 dev server(模擬器與 Mac 共用網路)。
     /// - Debug + 實機:Tailscale IP,實機不在 Mac 上,經 Tailscale 連 Mac 的 dev server。
@@ -15,7 +15,7 @@ struct ChannelApp: App {
         return URL(string: "http://100.65.2.62:8080/v1")!
         #endif
         #else
-        return URL(string: "https://channel-server-340121279179.asia-east1.run.app/v1")!
+        return URL(string: "https://trip-server-340121279179.asia-east1.run.app/v1")!
         #endif
     }
 

@@ -4,7 +4,7 @@ import Foundation
 /// 可獨立存在,並可關聯多則來源訊息(多對多)。對應後端 model.Entry。
 struct Entry: Identifiable, Codable, Hashable {
     let id: String
-    let channelID: String
+    let tripID: String
     /// 事項描述。
     var item: String
     /// 'YYYY-MM-DD HH:MM' 或全日 'YYYY-MM-DD';可空。
@@ -35,12 +35,12 @@ struct Entry: Identifiable, Codable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, channelID, item, start, end, allDay, location, category, tags, summary, createdAt
+        case id, tripID, item, start, end, allDay, location, category, tags, summary, createdAt
     }
 
     init(
         id: String,
-        channelID: String,
+        tripID: String,
         item: String,
         start: String,
         end: String? = nil,
@@ -52,7 +52,7 @@ struct Entry: Identifiable, Codable, Hashable {
         createdAt: Date = .now
     ) {
         self.id = id
-        self.channelID = channelID
+        self.tripID = tripID
         self.item = item
         self.start = start
         self.end = end
@@ -67,7 +67,7 @@ struct Entry: Identifiable, Codable, Hashable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
-        channelID = try c.decode(String.self, forKey: .channelID)
+        tripID = try c.decode(String.self, forKey: .tripID)
         item = try c.decode(String.self, forKey: .item)
         start = try c.decodeIfPresent(String.self, forKey: .start) ?? ""
         end = try c.decodeIfPresent(String.self, forKey: .end)

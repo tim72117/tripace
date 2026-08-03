@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// 頻道聊天畫面:Entry 條目 + 訊息流 + 底部輸入列。
+/// 行程聊天畫面:Entry 條目 + 訊息流 + 底部輸入列。
 /// owner 輸入=統一輸入(assist,LLM 自主記事或回答);成員輸入=語意查詢(RAG 回答)。
 struct ChatView: View {
-    let channel: Channel
+    let trip: Trip
     @Environment(AppState.self) private var app
     @State private var store: ChatStore?
     @State private var draft = ""
@@ -11,8 +11,8 @@ struct ChatView: View {
     @State private var showingTimeline = false
     @FocusState private var inputFocused: Bool
 
-    /// 目前使用者是否為頻道擁有者。
-    private var isOwner: Bool { channel.ownerID == app.currentUser.id }
+    /// 目前使用者是否為行程擁有者。
+    private var isOwner: Bool { trip.ownerID == app.currentUser.id }
 
     var body: some View {
         Group {
@@ -23,13 +23,13 @@ struct ChatView: View {
             }
         }
         .task { await setup() }
-        .navigationTitle(channel.name)
+        .navigationTitle(trip.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { showingMembers = true } label: { Image(systemName: "person.2") }
             }
-            // 時間軸:依時間排列頻道條目。
+            // 時間軸:依時間排列行程條目。
             ToolbarItem(placement: .primaryAction) {
                 Button { showingTimeline = true } label: {
                     Image(systemName: "clock")
@@ -37,7 +37,7 @@ struct ChatView: View {
             }
         }
         .sheet(isPresented: $showingMembers) {
-            NavigationStack { MembersView(channel: channel) }
+            NavigationStack { MembersView(trip: trip) }
         }
         .sheet(isPresented: $showingTimeline) {
             NavigationStack {
@@ -57,7 +57,7 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 12) {
-                        // 以 entry 為主體:頻道的事件/條目列在最上方。
+                        // 以 entry 為主體:行程的事件/條目列在最上方。
                         if !store.entries.isEmpty {
                             EntryListView(entries: store.entries)
                         }
@@ -82,7 +82,7 @@ struct ChatView: View {
 
     private func inputBar(_ store: ChatStore) -> some View {
         HStack(spacing: 10) {
-            TextField(isOwner ? "記事或提問…" : "用自然語言查詢這個頻道…",
+            TextField(isOwner ? "記事或提問…" : "用自然語言查詢這個行程…",
                       text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 14).padding(.vertical, 8)
@@ -114,9 +114,8 @@ struct ChatView: View {
 
     private func setup() async {
         guard store == nil else { return }
-        let s = ChatStore(backend: app.backend, channel: channel)
+        let s = ChatStore(backend: app.backend, trip: trip)
         store = s
         await s.load()
     }
 }
-

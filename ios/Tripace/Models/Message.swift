@@ -1,10 +1,10 @@
 import Foundation
 
-/// 頻道中的一則訊息:使用者說的「原話」。
+/// 行程中的一則訊息:使用者說的「原話」。
 /// LLM 處理後的結構化資訊(分類/標籤/摘要/事件時間)改放在 `Entry`。
 struct Message: Identifiable, Codable, Hashable {
     let id: String
-    let channelID: String
+    let tripID: String
     let authorID: String
     var authorName: String
     var text: String
@@ -16,7 +16,7 @@ struct Message: Identifiable, Codable, Hashable {
 
     init(
         id: String,
-        channelID: String,
+        tripID: String,
         authorID: String,
         authorName: String,
         text: String,
@@ -24,7 +24,7 @@ struct Message: Identifiable, Codable, Hashable {
         isProcessing: Bool = false
     ) {
         self.id = id
-        self.channelID = channelID
+        self.tripID = tripID
         self.authorID = authorID
         self.authorName = authorName
         self.text = text
@@ -35,13 +35,13 @@ struct Message: Identifiable, Codable, Hashable {
     // isProcessing 是純 UI 狀態,不參與後端編解碼。
     // 後端回應沒有此欄位,解碼時預設為 false。
     private enum CodingKeys: String, CodingKey {
-        case id, channelID, authorID, authorName, text, createdAt
+        case id, tripID, authorID, authorName, text, createdAt
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
-        channelID = try c.decode(String.self, forKey: .channelID)
+        tripID = try c.decode(String.self, forKey: .tripID)
         authorID = try c.decode(String.self, forKey: .authorID)
         authorName = try c.decode(String.self, forKey: .authorName)
         text = try c.decode(String.self, forKey: .text)

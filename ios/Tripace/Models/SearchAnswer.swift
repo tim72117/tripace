@@ -1,6 +1,6 @@
 import Foundation
 
-/// 語意查詢的回應:後端對頻道訊息做 RAG 檢索 + LLM 生成的回答。
+/// 語意查詢的回應:後端對行程訊息做 RAG 檢索 + LLM 生成的回答。
 struct SearchAnswer: Identifiable, Codable, Hashable {
     var id = UUID()
     /// 使用者的自然語言問句。

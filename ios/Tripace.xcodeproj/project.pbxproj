@@ -17,14 +17,14 @@
 		6F5F1B28ED9988D10A778C8D /* SQLite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0323E9F60B749C8ACABDDC6D /* SQLite.swift */; };
 		76815105E54230384859EAF2 /* TripaceApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C60CCCF6C39091671AF1E1D7 /* TripaceApp.swift */; };
 		7926CCC0C2D4B625C0B9B1F9 /* MembersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45ED38CC77F3A5D2413F3DAC /* MembersView.swift */; };
-		7F91E053A7B329F0A4E41A92 /* ChannelListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BA8BEBFD235193A4AA68D86 /* ChannelListView.swift */; };
+		7F91E053A7B329F0A4E41A92 /* TripListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BA8BEBFD235193A4AA68D86 /* TripListView.swift */; };
 		8652DA94F0AC55BB9E90078D /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAF7146AF63313F1ED58267D /* AppState.swift */; };
 		9AE2B32008B8264E721832C4 /* Shimmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A3BEC7C9CD2EB7F4DAB1BCB /* Shimmer.swift */; };
 		A35C5191EFF0A9BFDBA96B5D /* SearchAnswer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53F55D801717D364873A53BD /* SearchAnswer.swift */; };
-		A51B949B2D89177DA2F7DECA /* ChannelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF14A732A602DAD552E4F8AF /* ChannelStore.swift */; };
+		A51B949B2D89177DA2F7DECA /* TripStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF14A732A602DAD552E4F8AF /* TripStore.swift */; };
 		AD8E2DED8C2A6BF93F36B442 /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D578C6060DA6BB9AF4B502CF /* AuthStore.swift */; };
 		B5E269BF07DDA454A94A4C9E /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D65298B61DF1AABF0FE6122 /* Message.swift */; };
-		BEC4B14959CFE08AF9BA55D6 /* Channel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C170B663529AFBF39C8E2894 /* Channel.swift */; };
+		BEC4B14959CFE08AF9BA55D6 /* Trip.swift in Sources */ = {isa = PBXBuildFile; fileRef = C170B663529AFBF39C8E2894 /* Trip.swift */; };
 		C96C1A6A2188F199170735FD /* TimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96CFE7C3B0EF5F6D44867E11 /* TimelineView.swift */; };
 		D883D150A66CECFF2DF6DD18 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8663029CEFD3181EC49F458 /* SettingsView.swift */; };
 		E46840144943D7024DE8E07A /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B10130B6927959EDD045D42 /* RootView.swift */; };
@@ -43,7 +43,7 @@
 		55AF53FB0F610BEDD392803E /* MessageRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageRow.swift; sourceTree = "<group>"; };
 		6B10130B6927959EDD045D42 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		7A8BDCFDD142DD1BF9A9E7C1 /* TokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStore.swift; sourceTree = "<group>"; };
-		7BA8BEBFD235193A4AA68D86 /* ChannelListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelListView.swift; sourceTree = "<group>"; };
+		7BA8BEBFD235193A4AA68D86 /* TripListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripListView.swift; sourceTree = "<group>"; };
 		7DA887B8A225D658E5A77E66 /* BackendService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendService.swift; sourceTree = "<group>"; };
 		847451844BCF3B108D237C7E /* Tripace.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Tripace.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8613437AFCB31AD95E61E0FF /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
@@ -52,10 +52,10 @@
 		A002D9103D9156E4022334A5 /* Entry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Entry.swift; sourceTree = "<group>"; };
 		AAF7146AF63313F1ED58267D /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		B8663029CEFD3181EC49F458 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		C170B663529AFBF39C8E2894 /* Channel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Channel.swift; sourceTree = "<group>"; };
+		C170B663529AFBF39C8E2894 /* Trip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Trip.swift; sourceTree = "<group>"; };
 		C60CCCF6C39091671AF1E1D7 /* TripaceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripaceApp.swift; sourceTree = "<group>"; };
 		CEE247F8AEF1D17A6BBA9405 /* MockBackendService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockBackendService.swift; sourceTree = "<group>"; };
-		CF14A732A602DAD552E4F8AF /* ChannelStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelStore.swift; sourceTree = "<group>"; };
+		CF14A732A602DAD552E4F8AF /* TripStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripStore.swift; sourceTree = "<group>"; };
 		D578C6060DA6BB9AF4B502CF /* AuthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthStore.swift; sourceTree = "<group>"; };
 		E2DE7A48206C1FDAF2D80787 /* HTTPBackendService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPBackendService.swift; sourceTree = "<group>"; };
 		F2A4D29F250F1C99B5080E4E /* LocalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalStore.swift; sourceTree = "<group>"; };
@@ -65,7 +65,7 @@
 		06E379587E739A1D7048233E /* Features */ = {
 			isa = PBXGroup;
 			children = (
-				4EBA6AB1358473C77DDD250A /* Channels */,
+				4EBA6AB1358473C77DDD250A /* Trips */,
 				4B18DC1811BF0D051CAA29B3 /* Chat */,
 				A91773737C65CA2ABE589C13 /* Members */,
 				70F53FF08CB2743726D6A368 /* Settings */,
@@ -93,12 +93,12 @@
 			path = Chat;
 			sourceTree = "<group>";
 		};
-		4EBA6AB1358473C77DDD250A /* Channels */ = {
+		4EBA6AB1358473C77DDD250A /* Trips */ = {
 			isa = PBXGroup;
 			children = (
-				7BA8BEBFD235193A4AA68D86 /* ChannelListView.swift */,
+				7BA8BEBFD235193A4AA68D86 /* TripListView.swift */,
 			);
-			path = Channels;
+			path = Trips;
 			sourceTree = "<group>";
 		};
 		70F53FF08CB2743726D6A368 /* Settings */ = {
@@ -151,7 +151,7 @@
 			children = (
 				AAF7146AF63313F1ED58267D /* AppState.swift */,
 				D578C6060DA6BB9AF4B502CF /* AuthStore.swift */,
-				CF14A732A602DAD552E4F8AF /* ChannelStore.swift */,
+				CF14A732A602DAD552E4F8AF /* TripStore.swift */,
 			);
 			path = Stores;
 			sourceTree = "<group>";
@@ -176,7 +176,7 @@
 		ECE7659151628BBC0FF5E952 /* Models */ = {
 			isa = PBXGroup;
 			children = (
-				C170B663529AFBF39C8E2894 /* Channel.swift */,
+				C170B663529AFBF39C8E2894 /* Trip.swift */,
 				A002D9103D9156E4022334A5 /* Entry.swift */,
 				9D65298B61DF1AABF0FE6122 /* Message.swift */,
 				53F55D801717D364873A53BD /* SearchAnswer.swift */,
@@ -260,9 +260,9 @@
 				AD8E2DED8C2A6BF93F36B442 /* AuthStore.swift in Sources */,
 				13012DC707E2F29E7A54A7EA /* AvatarView.swift in Sources */,
 				E921525FC342BA063131EA13 /* BackendService.swift in Sources */,
-				BEC4B14959CFE08AF9BA55D6 /* Channel.swift in Sources */,
-				7F91E053A7B329F0A4E41A92 /* ChannelListView.swift in Sources */,
-				A51B949B2D89177DA2F7DECA /* ChannelStore.swift in Sources */,
+				BEC4B14959CFE08AF9BA55D6 /* Trip.swift in Sources */,
+				7F91E053A7B329F0A4E41A92 /* TripListView.swift in Sources */,
+				A51B949B2D89177DA2F7DECA /* TripStore.swift in Sources */,
 				58B12BC0749A10CBF87AE9D1 /* ChatView.swift in Sources */,
 				EF490EBBB3FDC4ECAD500BD3 /* Entry.swift in Sources */,
 				08377F1306E7DC732BF91FE7 /* HTTPBackendService.swift in Sources */,

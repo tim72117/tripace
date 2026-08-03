@@ -30,7 +30,7 @@ final class AuthStore {
     }
 
     /// App 啟動時還原既有 session。完成(無論成功與否)後 isRestoring 轉 false,
-    /// RootView 才據 isSignedIn 決定顯示頻道或登入畫面。
+    /// RootView 才據 isSignedIn 決定顯示行程或登入畫面。
     func restore() async {
         defer { isRestoring = false }
         guard let token = TokenStore.load() else { return }

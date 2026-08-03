@@ -55,7 +55,7 @@ struct WaveLoadingView: View {
     }
 }
 
-/// Entry 列表:頻道的事件/條目(承載結構化結果),顯示在訊息流上方。
+/// Entry 列表:行程的事件/條目(承載結構化結果),顯示在訊息流上方。
 struct EntryListView: View {
     let entries: [Entry]
 

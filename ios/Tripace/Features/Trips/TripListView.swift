@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// 頻道列表:顯示使用者所屬頻道,可建立新頻道,點擊進入聊天。
-struct ChannelListView: View {
+/// 行程列表:顯示使用者所屬行程,可建立新行程,點擊進入聊天。
+struct TripListView: View {
     @Environment(AppState.self) private var app
-    @State private var store: ChannelStore?
-    @State private var showingNewChannel = false
-    @State private var newChannelName = ""
+    @State private var store: TripStore?
+    @State private var showingNewTrip = false
+    @State private var newTripName = ""
     @State private var showingSettings = false
 
     var body: some View {
@@ -14,11 +14,11 @@ struct ChannelListView: View {
                 content(store)
             } else {
                 // 首次載入(store 尚未建立):顯示骨架屏而非單純轉圈。
-                ChannelListSkeleton()
+                TripListSkeleton()
             }
         }
         .task { await setup() }
-        .navigationTitle("頻道")
+        .navigationTitle("行程")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { showingSettings = true } label: {
@@ -27,66 +27,66 @@ struct ChannelListView: View {
                 }
             }
             ToolbarItem(placement: .primaryAction) {
-                Button { showingNewChannel = true } label: { Image(systemName: "plus") }
+                Button { showingNewTrip = true } label: { Image(systemName: "plus") }
             }
         }
         .sheet(isPresented: $showingSettings) { SettingsView() }
-        .alert("建立頻道", isPresented: $showingNewChannel) {
-            TextField("頻道名稱", text: $newChannelName)
-            Button("取消", role: .cancel) { newChannelName = "" }
+        .alert("建立行程", isPresented: $showingNewTrip) {
+            TextField("行程名稱", text: $newTripName)
+            Button("取消", role: .cancel) { newTripName = "" }
             Button("建立") {
-                let name = newChannelName.trimmingCharacters(in: .whitespaces)
-                newChannelName = ""
+                let name = newTripName.trimmingCharacters(in: .whitespaces)
+                newTripName = ""
                 guard !name.isEmpty else { return }
-                Task { await store?.createChannel(name: name) }
+                Task { await store?.createTrip(name: name) }
             }
         }
     }
 
     @ViewBuilder
-    private func content(_ store: ChannelStore) -> some View {
+    private func content(_ store: TripStore) -> some View {
         Group {
             // 尚無資料且仍在載入 → 骨架屏;否則顯示真實列表。
-            if store.channels.isEmpty && store.isLoading {
-                ChannelListSkeleton()
+            if store.trips.isEmpty && store.isLoading {
+                TripListSkeleton()
             } else {
                 List {
-                    ForEach(store.channels) { channel in
-                        NavigationLink(value: channel) {
-                            ChannelRow(channel: channel)
+                    ForEach(store.trips) { trip in
+                        NavigationLink(value: trip) {
+                            TripRow(trip: trip)
                         }
                         .listRowSeparator(.hidden)
                     }
                 }
                 .listStyle(.plain)
                 .overlay {
-                    if store.channels.isEmpty && !store.isLoading {
-                        ContentUnavailableView("還沒有頻道", systemImage: "bubble.left.and.bubble.right",
-                                               description: Text("點右上角 + 建立第一個頻道"))
+                    if store.trips.isEmpty && !store.isLoading {
+                        ContentUnavailableView("還沒有行程", systemImage: "bubble.left.and.bubble.right",
+                                               description: Text("點右上角 + 建立第一個行程"))
                     }
                 }
                 .refreshable { await store.load() }
             }
         }
-        .navigationDestination(for: Channel.self) { channel in
-            ChatView(channel: channel)
+        .navigationDestination(for: Trip.self) { trip in
+            ChatView(trip: trip)
         }
     }
 
     private func setup() async {
         guard store == nil else { return }
-        let s = ChannelStore(backend: app.backend)
+        let s = TripStore(backend: app.backend)
         store = s
         await s.load()
     }
 }
 
-/// 頻道列表的骨架屏:一疊灰色佔位列 + 流光,版面比照 ChannelRow。
-private struct ChannelListSkeleton: View {
+/// 行程列表的骨架屏:一疊灰色佔位列 + 流光,版面比照 TripRow。
+private struct TripListSkeleton: View {
     var body: some View {
         VStack(spacing: 0) {
             ForEach(0..<8, id: \.self) { _ in
-                ChannelRowSkeleton()
+                TripRowSkeleton()
             }
             Spacer()
         }
@@ -95,8 +95,8 @@ private struct ChannelListSkeleton: View {
     }
 }
 
-/// 單列骨架:左方頭像方塊 + 兩行文字佔位 + 右側時間佔位(對齊 ChannelRow)。
-private struct ChannelRowSkeleton: View {
+/// 單列骨架:左方頭像方塊 + 兩行文字佔位 + 右側時間佔位(對齊 TripRow)。
+private struct TripRowSkeleton: View {
     var body: some View {
         HStack(spacing: 12) {
             SkeletonBlock(height: 44, cornerRadius: 22) // 圓形頭像佔位(半徑=寬高一半)
@@ -116,8 +116,8 @@ private struct ChannelRowSkeleton: View {
     }
 }
 
-private struct ChannelRow: View {
-    let channel: Channel
+private struct TripRow: View {
+    let trip: Trip
 
     var body: some View {
         HStack(spacing: 12) {
@@ -125,19 +125,19 @@ private struct ChannelRow: View {
                 .fill(Color.accentColor.gradient)
                 .frame(width: 44, height: 44)
                 .overlay {
-                    Text(String(channel.name.prefix(1)))
+                    Text(String(trip.name.prefix(1)))
                         .font(.headline).foregroundStyle(.white)
                 }
             VStack(alignment: .leading, spacing: 3) {
-                Text(channel.name).font(.body.weight(.medium))
-                if let preview = channel.lastMessagePreview {
+                Text(trip.name).font(.body.weight(.medium))
+                if let preview = trip.lastMessagePreview {
                     Text(preview).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 4) {
-                Text(channel.updatedAt, style: .time).font(.caption2).foregroundStyle(.secondary)
-                Label("\(channel.memberCount)", systemImage: "person.2")
+                Text(trip.updatedAt, style: .time).font(.caption2).foregroundStyle(.secondary)
+                Label("\(trip.memberCount)", systemImage: "person.2")
                     .font(.caption2).foregroundStyle(.secondary).labelStyle(.titleAndIcon)
             }
         }

@@ -3,7 +3,7 @@ import Security
 
 /// 用 Keychain 安全儲存登入後的 JWT。
 enum TokenStore {
-    private static let service = "com.channel.app.auth"
+    private static let service = "com.trip.app.auth"
     private static let account = "jwt"
 
     static func save(_ token: String) {
