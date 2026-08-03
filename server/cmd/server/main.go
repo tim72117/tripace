@@ -80,7 +80,7 @@ func main() {
 	var analyzer llm.Analyzer
 	if *llmKind == "mock" {
 		// mock 不接真 LLM:送出觸發預設情境,直接用 store 寫 entry(走相同的
-		// FindOrCreateTrip 歸組路徑)。不需 BindSink/BindStore(那是 want 工具用的)。
+		// InsertEntry 落庫路徑)。不需 BindSink/BindStore(那是 want 工具用的)。
 		analyzer = llm.NewMock(st)
 		log.Printf("LLM 分析器: mock(假 LLM,送出觸發預設情境)")
 	} else {
@@ -99,8 +99,6 @@ func main() {
 			if e.Kind != "" {
 				kind = &e.Kind
 			}
-			// 寫入時不自動歸組(TripID 留 nil):record_entry 會列出時間相符的候選行程,
-			// 由 LLM 判斷後呼叫 add_to_trip 工具歸入(或新建)。
 			err := st.InsertEntry(model.Entry{
 				ID:        id,
 				ChannelID: channelID,
