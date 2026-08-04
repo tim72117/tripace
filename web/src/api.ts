@@ -396,6 +396,61 @@ export function geocodeEntry(cfg: ClientConfig, entryID: string) {
   )
 }
 
+// 地理輪廓底圖(構想 6,見 docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)用:
+// 對齊 server 的 GET /internal/geo/districts(handleGeoDistricts)。
+// landmarkPhotoUrl 若有值,是後端已編碼好的 data: URI(base64,含 MIME
+// type),圖片資料直接內嵌在回應裡,可以直接當 <img src> 用,不需要
+// 額外拼接網址或發第二次請求。
+export interface GeoDistrict {
+  name: string
+  lat: number
+  lng: number
+  // placeCount:只有走即時查 Google Places 的路徑(SearchDistricts/
+  // SearchKnownDistricts)才會有值——後端該欄位帶 json 的 omitempty,
+  // 走資料庫路徑(人工建檔的 model.Landmark)組回應時完全不設這個
+  // 欄位,JSON 回應裡不會出現這個 key,故這裡不能宣告成必定存在的
+  // number,否則型別與實際執行期契約不符。
+  placeCount?: number
+  landmarkPhotoUrl?: string
+  landmarkName?: string
+  // radiusMeters:只有走後端手動整理的觀光慣稱分區資料(如清邁的
+  // 古城區/尼曼區,見 server/internal/geo/district_aliases.go)才會有
+  // 值,泛用的 addressComponents 分組沒有實際邊界資料,固定不帶這個
+  // 欄位——前端據此判斷要不要在地圖上畫範圍圓圈。
+  radiusMeters?: number
+  // summary:該區代表性地標的 Google editorialSummary,當這區的白話
+  // 簡介用(不是 LLM 生成)。地標沒有這欄位資料時為 undefined。
+  summary?: string
+  // level:知名度分級,1(國際)~5(在地),只有走後端資料庫路徑
+  // (server/internal/api/geo_outline.go 的 store.ListLandmarksByCity)
+  // 才會有值——即時查 Google Places 的結果沒有分級資訊,固定不帶這個
+  // 欄位。前端依此決定隨縮放層級顯示哪些粒度,見 GeoOutlineMap.tsx。
+  level?: number
+}
+
+// GeoHotel:地理輪廓底圖上疊加的飯店圖層單筆結果,對齊後端
+// geo.NearbyPlace(server/internal/geo/places.go)——固定用泛用的
+// lodging 類型查詢(不細分 hotel/hostel/inn 等子類),見
+// handleGeoDistricts 的說明。
+export interface GeoHotel {
+  name: string
+  address: string
+  lat: number
+  lng: number
+  primaryType: string
+  // photoUrl:後端已編碼好的 data: URI,理由同 GeoDistrict.landmarkPhotoUrl。
+  // 部分飯店在 Google 端沒有照片、或下載失敗時為 undefined。
+  photoUrl?: string
+}
+
+export function fetchGeoDistricts(cfg: ClientConfig, city: string) {
+  return request<{ city: string; districts: GeoDistrict[]; hotels: GeoHotel[] }>(
+    cfg,
+    'GET',
+    `/internal/geo/districts?city=${encodeURIComponent(city)}`,
+  )
+}
+
 // 手動編輯條目(不經 AI),對齊 server 的 PATCH /v1/entries/{id}(handleUpdateEntry)。
 // 只傳有要改的欄位:空字串/undefined 視為不改該欄位(見 store.UpdateEntry),
 // 呼叫端不需帶齊 Entry 全部欄位,只需帶使用者在表單裡實際改過的值。

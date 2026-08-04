@@ -21,10 +21,15 @@ import langSelectStyles from './LangSelect.module.css'
 // ClientToolsBridge/clienttools_ws.go,後者走 onagent 平台,見
 // clienttools/ClientToolsDemo.tsx / OnagentBridgeDemo.tsx 的說明),原本只能
 // 從獨立的 ?debug 工作台(DebugApp.tsx)進入,現在併入這裡統一用 ?demo 存取。
-// 'pace':單車配速表(真實路線里程/時刻表,見 PaceChart.tsx),已從
-// ?demo 限定的試做功能轉為正式導覽項目,所有使用者都能在 rail 上看到。
+// 'pace':單車配速表(真實路線里程/時刻表,見 PaceChart.tsx)、
+// 'geo-outline':地理輪廓底圖(構想 6,見
+// docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)——兩者皆已從 ?demo 限定的
+// 試做功能轉為正式導覽項目,所有使用者都能在 rail 上看到,渲染邏輯改為
+// 直接使用 PaceChart/PaceRouteMap、GeoCandidateSidebar/GeoOutlineDemo,
+// 見 DesktopLayout.tsx / PhoneContent.tsx / PhoneNavDrawer.tsx,不再屬於
+// 這組共用的 demo 面板(DemoPanelContent)。
 export type PanelMode =
-  | 'trips' | 'timeline' | 'pace'
+  | 'trips' | 'timeline' | 'pace' | 'geo-outline'
   | 'demo-cards' | 'demo-row' | 'demo-map' | 'demo-clienttools' | 'demo-onagent'
   | null
 
@@ -32,7 +37,7 @@ export type PanelMode =
 // 在執行期驗證用(型別系統只在編譯期擋得住,URL 路徑參數是使用者可任意
 // 輸入的字串,需要執行期白名單檢查)。
 const PANEL_MODES = [
-  'trips', 'timeline', 'pace',
+  'trips', 'timeline', 'pace', 'geo-outline',
   'demo-cards', 'demo-row', 'demo-map', 'demo-clienttools', 'demo-onagent',
 ] as const
 
@@ -45,18 +50,24 @@ export function isPanelMode(v: string | undefined): v is Exclude<PanelMode, null
   return v != null && (PANEL_MODES as readonly string[]).includes(v)
 }
 
-// DemoPanelMode:PanelMode 扣掉 trips/timeline/pace/null 之後只剩的 5 種
-// demo 面板——trips/timeline/pace 在桌面版是 side panel 的正式功能,
-// 手機版則是 PhoneNavDrawer(見該檔案)裡對應的分頁,兩邊各自處理,不算在
-// 這組共用的 demo 面板裡。
-export type DemoPanelMode = Exclude<PanelMode, 'trips' | 'timeline' | 'pace' | null>
+// DemoPanelMode:PanelMode 扣掉 trips/timeline/pace/geo-outline/null 之後
+// 只剩的 4 種 demo 面板——正式功能(trips/timeline/pace/geo-outline)在
+// 桌面版是 side panel 的正式功能,手機版則是 PhoneNavDrawer(見該檔案)
+// 裡對應的分頁,兩邊各自處理,不算在這組共用的 demo 面板裡。
+export type DemoPanelMode = Exclude<PanelMode, 'trips' | 'timeline' | 'pace' | 'geo-outline' | null>
 
-// DemoPanelContent:5 個 demo 面板的內容渲染,供桌面版 DesktopContent 的
+// DemoPanelContent:4 個 demo 面板的內容渲染,供桌面版 DesktopContent 的
 // <main>(見 DesktopLayout.tsx)與手機版 PhoneNavDrawer(見該檔案)共用,
-// 避免同一段 JSX 兩處各寫一份、之後改一邊忘了改另一邊。(配速表已轉為正式
-// 功能 'pace',不再屬於這組 demo 面板,渲染邏輯改為直接使用 PaceChart/
-// PaceRouteMap,見 DesktopLayout.tsx / PhoneContent.tsx / PhoneNavDrawer.tsx。)
-export function DemoPanelContent({ mode }: { mode: DemoPanelMode }) {
+// 避免同一段 JSX 兩處各寫一份、之後改一邊忘了改另一邊。(配速表/地理輪廓
+// 底圖已轉為正式功能'pace'/'geo-outline',不再屬於這組 demo 面板,渲染
+// 邏輯改為直接使用 PaceChart/PaceRouteMap、GeoCandidateSidebar/
+// GeoOutlineDemo,見 DesktopLayout.tsx / PhoneContent.tsx /
+// PhoneNavDrawer.tsx。這 4 種 demo 模式都不需要 cfg,故不接這個 prop。)
+export function DemoPanelContent({
+  mode,
+}: {
+  mode: DemoPanelMode
+}) {
   if (mode === 'demo-cards') {
     return (
       <div className="desktop-demo-panel">

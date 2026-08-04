@@ -30,7 +30,10 @@ let optionsSet = false
 function ensureOptionsSet(apiKey: string) {
   if (optionsSet) return
   optionsSet = true
-  setOptions({ key: apiKey, v: 'weekly' })
+  // language 未指定時 Google Maps SDK 依 IP 位置等隱含訊號自動判斷
+  // 底圖語言(實測過查詢泰國地區時整個底圖變成泰文),明確鎖定繁中,
+  // 理由同後端 Places API 呼叫固定 languageCode: zh-TW。
+  setOptions({ key: apiKey, v: 'weekly', language: 'zh-TW' })
 }
 
 export function RecommendedPlacesMap({ places }: { places: RecommendedPlace[] }) {

@@ -1,0 +1,141 @@
+package store
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+
+	"github.com/tim72117/tripace/internal/model"
+)
+
+// newLandmarkID 產生地標 ID(對齊既有 ent_/tr_/usr_ 風格)。
+func newLandmarkID() string {
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	return "lmk_" + hex.EncodeToString(b)
+}
+
+func toLandmark(r landmarkRow) model.Landmark {
+	return model.Landmark{
+		ID:           r.ID,
+		Name:         r.Name,
+		CityName:     r.CityName,
+		Lat:          r.Lat,
+		Lng:          r.Lng,
+		Level:        r.Level,
+		RadiusMeters: r.RadiusMeters,
+		Summary:      r.Summary,
+		PhotoURL:     r.PhotoURL,
+		UpdatedAt:    r.UpdatedAt,
+	}
+}
+
+// CreateLandmark 建立一筆地標/區域資料(見 model.Landmark 的完整說明)。
+// ID 由這裡產生、不由呼叫端指定——地標管理是人工透過 CLI 逐筆輸入,
+// 不像 entry 需要跟 LLM 產生的 ID 對齊。
+func (s *Store) CreateLandmark(in model.Landmark) (model.Landmark, error) {
+	r := landmarkRow{
+		ID:           newLandmarkID(),
+		Name:         in.Name,
+		CityName:     in.CityName,
+		Lat:          in.Lat,
+		Lng:          in.Lng,
+		Level:        in.Level,
+		RadiusMeters: in.RadiusMeters,
+		Summary:      in.Summary,
+		PhotoURL:     in.PhotoURL,
+		CreatedAt:    now(),
+		UpdatedAt:    now(),
+	}
+	if err := s.db.Create(&r).Error; err != nil {
+		return model.Landmark{}, err
+	}
+	return toLandmark(r), nil
+}
+
+// ListLandmarksByCity 回傳指定城市的所有地標/區域資料,依 Level 由小到大
+// (國際→在地)、同 Level 內依建立時間排序——這個順序讓 CLI 列表輸出
+// 時,知名度越高的地標排越前面,方便人工核對資料是否齊全。
+func (s *Store) ListLandmarksByCity(cityName string) ([]model.Landmark, error) {
+	var rows []landmarkRow
+	if err := s.db.Where("city_name = ?", cityName).
+		Order("level ASC, created_at ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]model.Landmark, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, toLandmark(r))
+	}
+	return out, nil
+}
+
+// ListLandmarksNearby 回傳落在指定座標周圍矩形範圍內的所有地標/區域
+// 資料,依 Level 由小到大排序——供地圖移動時「不用等按查看,直接依
+// 目前地圖範圍檢索」使用(見 server/internal/api/geo_outline.go 的
+// handleGeoDistrictsNearby),取代原本只能靠 ListLandmarksByCity(city
+// 名稱)才能查到的限制,讓使用者拖曳/縮放地圖到任何已建檔的城市範圍
+// 內都能自動冒出資料,不需要先知道城市名稱。
+//
+// 用經緯度差值算矩形範圍(bounding box)做初步篩選,而非精確的球面
+// 距離公式(如 Haversine)——SQLite/一般 Postgres(未裝 PostGIS 擴充)
+// 都沒有內建地理函式可以在 SQL 層算球面距離,矩形近似在這裡的使用情境
+// (前端拿地圖可視範圍的經緯度差當半徑)已經足夠準確,不需要為此另外
+// 引入地理擴充套件或在應用層逐筆算距離。緯度 1 度約 111km,經度 1 度
+// 隨緯度不同而變化(赤道約 111km,越高緯度越短),這裡不做緯度校正
+// (簡化計算,對城市尺度的查詢範圍誤差可接受)。
+func (s *Store) ListLandmarksNearby(lat, lng, radiusMeters float64) ([]model.Landmark, error) {
+	degRadius := radiusMeters / 111000.0
+	var rows []landmarkRow
+	if err := s.db.
+		Where("lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?",
+			lat-degRadius, lat+degRadius, lng-degRadius, lng+degRadius).
+		Order("level ASC, created_at ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]model.Landmark, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, toLandmark(r))
+	}
+	return out, nil
+}
+
+// ListLandmarkCities 回傳目前資料庫裡已經有地標資料的城市名稱清單
+// (去重、依名稱排序)——供 CLI 的 landmark-cities 子命令列出「已建檔
+// 哪些城市」,不需要另外用其他方式查詢有沒有資料。
+func (s *Store) ListLandmarkCities() ([]string, error) {
+	var cities []string
+	if err := s.db.Model(&landmarkRow{}).
+		Distinct("city_name").
+		Order("city_name ASC").
+		Pluck("city_name", &cities).Error; err != nil {
+		return nil, err
+	}
+	return cities, nil
+}
+
+// DeleteLandmark 刪除一筆地標資料。
+func (s *Store) DeleteLandmark(id string) error {
+	return s.db.Where("id = ?", id).Delete(&landmarkRow{}).Error
+}
+
+// GetLandmark 依 ID 查單筆地標資料——供 CLI 的 landmark-update-photo
+// 指令(見 cmd/cli/db.go)先取得該筆的 Name/CityName,當作重新查詢
+// Google Places 圖片時的預設搜尋字串(未另外指定 -query 時)。
+func (s *Store) GetLandmark(id string) (model.Landmark, error) {
+	var r landmarkRow
+	if err := s.db.Where("id = ?", id).First(&r).Error; err != nil {
+		return model.Landmark{}, err
+	}
+	return toLandmark(r), nil
+}
+
+// UpdateLandmarkPhoto 更新一筆地標的照片(data: URI,見
+// geo.Client.PhotoDataURI)。只更新 photo_url 與 updated_at 兩欄,不動
+// 其餘欄位——這支方法專門服務 CLI 的 landmark-update-photo(重新透過
+// Google Places 抓圖後回寫),不是通用的地標編輯入口。
+func (s *Store) UpdateLandmarkPhoto(id, photoURL string) error {
+	return s.db.Model(&landmarkRow{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"photo_url": photoURL, "updated_at": now()}).Error
+}

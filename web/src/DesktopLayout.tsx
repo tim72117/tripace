@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ChevronDown, Settings, LogOut, X,
-  List, Timeline, Sparkles, GalleryHorizontal, Map, Wrench, Radio, Activity, Route, Plus, MapPin,
+  List, Timeline, Sparkles, GalleryHorizontal, Map, Layers, Wrench, Radio, Activity, Route, Plus, MapPin,
 } from 'lucide-react'
 import type { ClientConfig, ApiCall, WsEvent } from './api'
 import * as api from './api'
@@ -16,6 +16,10 @@ import { ASSIST_LANG_KEY, getAssistLang } from './assistLang'
 import { PaceChart, type Checkpoint } from './PaceChart'
 import { PaceRouteMap, type SelectedEntry } from './PaceRouteMap'
 import { DemoPanel } from './DemoPanel'
+import { GeoHotelSidebar } from './GeoHotelSidebar'
+import { GeoCandidateSidebar, type GeoCandidate } from './GeoCandidateSidebar'
+import { GeoOutlineDemo } from './GeoOutlineDemo'
+import type { GeoDistrict, GeoHotel } from './api'
 import {
   Avatar, ErrorBanner, errMsg, isSubmitEnter, LoginForm, useTripsState,
   type ContentProps,
@@ -95,6 +99,32 @@ export function DesktopContent(props: ContentProps) {
   // PaceRouteMap 這裡跟那裡各自獨立掛載,狀態不共用,故這裡需要自己的
   // selectedEntry state,不能指望公開頁那份。
   const [selectedEntry, setSelectedEntry] = useState<SelectedEntry | null>(null)
+  // geoHotels:地理輪廓底圖(構想 6 試做,demo-geo-outline)查詢到的飯店
+  // 清單,由 GeoOutlineDemo(main 區塊內部)透過 onHotelsChange 回報,
+  // 這裡的 state 供下方渲染的 GeoHotelSidebar(整個桌面版介面最外側,
+  // 跟 .desktop-main 平行)使用——理由同 paceCheckpoints/savedEntry,
+  // 兩個分開掛載的 sibling 需要這層 state 中介資料。
+  const [geoHotels, setGeoHotels] = useState<GeoHotel[]>([])
+  // geoDistricts:同 geoHotels,但存分區/地標清單(見 model.Landmark),
+  // 供 GeoHotelSidebar 的「地點」分頁顯示——理由同 geoHotels,飯店/
+  // 地點資料都是查詢完整結果,不像 geoHotels 已經被 GeoOutlineMap
+  // 依地圖可視範圍(bounds)篩選過,這裡先用完整清單,之後若地點清單
+  // 也要跟著地圖範圍同步,可以比照 hotels 的 onVisibleHotelsChange
+  // 模式另外接一個 callback。
+  const [geoDistricts, setGeoDistricts] = useState<GeoDistrict[]>([])
+  // geoPanTarget:使用者在 GeoHotelSidebar 點擊某間飯店時要移動地圖到
+  // 的座標——側欄與地圖(GeoOutlineMap,在 main 內部的 GeoOutlineDemo
+  // 裡)是分開掛載的 sibling,「移動地圖」的意圖同樣得靠這層 state
+  // 中介往下傳,理由同 geoHotels。每次點擊都建立新物件參照(見下方
+  // onSelectHotel),讓 GeoOutlineMap 那邊即使連續點同一間飯店也能
+  // 偵測到「這是一次新的移動請求」而重新 panTo。
+  const [geoPanTarget, setGeoPanTarget] = useState<{ lat: number; lng: number; level?: number } | null>(null)
+  // geoCandidates:候選籃(構想 1,見
+  // docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)目前收集的候選清單——純
+  // 前端試做,只存在這份記憶體 state,重新整理頁面會消失,尚未接上任何
+  // 持久化(見 GeoCandidateSidebar.tsx 的說明)。加入來源是
+  // GeoHotelSidebar 每張卡片的「+」按鈕。
+  const [geoCandidates, setGeoCandidates] = useState<GeoCandidate[]>([])
   // paceCheckpoints:PaceChart(左側 side panel)目前選取的那一段 checkpoint
   // 清單,透過 onRouteChange 鏡像過來,再往下傳給 PaceRouteMap(右側主區的
   // 地圖)——地圖畫路線需要知道「目前是哪一段」,但兩者是分開掛載的
@@ -125,13 +155,14 @@ export function DesktopContent(props: ContentProps) {
   useEffect(() => onApiCall((c) => setDebugCalls((prev) => [c, ...prev].slice(0, 100))), [])
   useEffect(() => onWsEvent((e) => setDebugWsEvents((prev) => [e, ...prev].slice(0, 100))), [])
   // isSidepanelMode:panelMode 是不是「該展開 side panel」的模式——
-  // trips/timeline/pace 這三種正式功能(pace 配速表側欄顯示檢查站清單,
-  // 跟 timeline 用同一種「side panel 開、main 區顯示 ChatScreen/空狀態」
-  // 版面)。其餘 demo-cards/demo-row/demo-map/demo-clienttools/demo-onagent
+  // trips/timeline/pace/geo-outline 這四種正式功能(pace 配速表側欄
+  // 顯示檢查站清單、geo-outline 地理輪廓底圖側欄顯示候選籃,跟 timeline
+  // 用同一種「side panel 開、main 區顯示 ChatScreen/地圖/空狀態」版面)。
+  // 其餘 demo-cards/demo-row/demo-map/demo-clienttools/demo-onagent
   // 這幾種試做模式維持顯示在右側 .desktop-main(取代 ChatScreen,見下方
   // 渲染邏輯),不佔用 side panel,故不能讓 side panel 因為 panelMode 有值
   // 就誤判成該展開,否則會出現一個空白的展開面板。
-  const isSidepanelMode = panelMode === 'trips' || panelMode === 'timeline' || panelMode === 'pace'
+  const isSidepanelMode = panelMode === 'trips' || panelMode === 'timeline' || panelMode === 'pace' || panelMode === 'geo-outline'
 
   // 切換行程時,先清空鏡像資料,避免新行程的 ChatScreen 還沒送出第一次鏡像前,
   // side panel 短暫顯示上一個行程的時間軸內容。
@@ -170,7 +201,7 @@ export function DesktopContent(props: ContentProps) {
           showDebugPanel={showDebugPanel}
           onToggleDebugPanel={() => setShowDebugPanel((v) => !v)}
         />
-        <aside className={`desktop-sidepanel${isSidepanelMode ? '' : ' collapsed'}${panelMode === 'timeline' || panelMode === 'pace' ? ' wide' : ''}`}>
+        <aside className={`desktop-sidepanel${isSidepanelMode ? '' : ' collapsed'}${panelMode === 'timeline' || panelMode === 'pace' || panelMode === 'geo-outline' ? ' wide' : ''}`}>
           <div className="desktop-sidepanel-inner">
             {panelMode === 'trips' && (
               <DesktopTripList
@@ -213,6 +244,16 @@ export function DesktopContent(props: ContentProps) {
                 />
               </div>
             )}
+            {panelMode === 'geo-outline' && (
+              <GeoCandidateSidebar
+                candidates={geoCandidates}
+                onRemove={(c) =>
+                  setGeoCandidates((prev) =>
+                    prev.filter((p) => !(p.kind === c.kind && p.name === c.name && p.lat === c.lat && p.lng === c.lng)),
+                  )
+                }
+              />
+            )}
           </div>
         </aside>
         <main className="desktop-main">
@@ -231,6 +272,17 @@ export function DesktopContent(props: ContentProps) {
                 onEntrySaved={setSavedEntry}
               />
             </div>
+          ) : panelMode === 'geo-outline' ? (
+            // 地理輪廓底圖拆成兩塊:候選籃留在左側 side panel(見上方
+            // GeoCandidateSidebar),地圖需要較寬的空間,改在右側主區
+            // 顯示——跟 pace/timeline 模式「側欄放清單、主區放詳細內容」
+            // 是同一種版面邏輯。
+            <GeoOutlineDemo
+              cfg={cfg}
+              onHotelsChange={setGeoHotels}
+              onDistrictsChange={setGeoDistricts}
+              panTarget={geoPanTarget}
+            />
           ) : panelMode === 'demo-cards' || panelMode === 'demo-row' || panelMode === 'demo-map'
             || panelMode === 'demo-clienttools' || panelMode === 'demo-onagent' ? (
             <DemoPanelContent mode={panelMode} />
@@ -246,6 +298,21 @@ export function DesktopContent(props: ContentProps) {
             <div className="desktop-empty-state">選擇一個行程開始</div>
           )}
         </main>
+        {panelMode === 'geo-outline' && (
+          <GeoHotelSidebar
+            hotels={geoHotels}
+            districts={geoDistricts}
+            onSelectHotel={(h) => setGeoPanTarget({ lat: h.lat, lng: h.lng })}
+            onSelectDistrict={(d) => setGeoPanTarget({ lat: d.lat, lng: d.lng, level: d.level })}
+            onAddCandidate={(c) =>
+              setGeoCandidates((prev) =>
+                prev.some((p) => p.kind === c.kind && p.name === c.name && p.lat === c.lat && p.lng === c.lng)
+                  ? prev
+                  : [...prev, c],
+              )
+            }
+          />
+        )}
         {props.isDemo && showDebugPanel && (
           <DemoPanel
             calls={debugCalls}
@@ -337,6 +404,13 @@ function DesktopRail({
           title="路徑"
         >
           <Route size={20} strokeWidth={1.8} />
+        </button>
+        <button
+          className={`desktop-rail-btn${panelMode === 'geo-outline' ? ' active' : ''}`}
+          onClick={() => onSelect('geo-outline')}
+          title="規劃"
+        >
+          <Layers size={20} strokeWidth={1.8} />
         </button>
         {isDemo && (
           <>

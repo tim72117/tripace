@@ -57,6 +57,26 @@ type entryRow struct {
 
 func (entryRow) TableName() string { return "entries" }
 
+// landmarkRow 是地理輪廓底圖(構想 6)用的地標/區域資料,對應
+// model.Landmark 的完整說明。cityName 加索引——查詢入口固定是
+// 「這個城市底下所有 Landmark」(見 store 層 ListLandmarksByCity)。
+type landmarkRow struct {
+	ID           string  `gorm:"primaryKey;column:id"`
+	Name         string  `gorm:"column:name;not null"`
+	CityName     string  `gorm:"column:city_name;not null;index"`
+	Lat          float64 `gorm:"column:lat;not null"`
+	Lng          float64 `gorm:"column:lng;not null"`
+	Level        int     `gorm:"column:level;not null"`
+	RadiusMeters int     `gorm:"column:radius_meters;not null;default:0"`
+	Summary      *string `gorm:"column:summary"`
+	PhotoURL     *string `gorm:"column:photo_url"`
+
+	CreatedAt time.Time `gorm:"column:created_at;not null"`
+	UpdatedAt time.Time `gorm:"column:updated_at;not null"`
+}
+
+func (landmarkRow) TableName() string { return "landmarks" }
+
 // publicLinkRow 是行程公開分享連結，一個行程最多一條。
 type publicLinkRow struct {
 	ID        string `gorm:"primaryKey;column:id"`

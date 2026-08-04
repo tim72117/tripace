@@ -4,11 +4,15 @@ package main
 // 透過 -db 旗標啟用。
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/tim72117/tripace/internal/geo"
 	"github.com/tim72117/tripace/internal/model"
 	"github.com/tim72117/tripace/internal/store"
 	"github.com/tim72117/tripace/internal/tripsvc"
@@ -98,4 +102,75 @@ func (c *dbClient) dropTripGrouping() ([]string, error) {
 // 只在 -db 模式下有意義,故只掛在 dbClient 上,不進 client 介面。
 func (c *dbClient) renameChannelToTrip() ([]string, error) {
 	return c.st.RenameChannelToTrip()
+}
+
+// landmarkAdd/landmarkList/landmarkDelete/landmarkCities:地標/區域資料
+// (見 model.Landmark、docs/TRIP_PLANNING_DESIGN_DISCUSSION.md 構想 6)
+// 的人工建檔操作,只在 -db 模式下有意義(這是直接寫資料庫的維運/建檔
+// 操作,不是給一般使用者用的業務功能,故不進 client 介面、不開 HTTP 端點)。
+func (c *dbClient) landmarkAdd(in model.Landmark) (any, error) {
+	return c.st.CreateLandmark(in)
+}
+
+func (c *dbClient) landmarkList(city string) (any, error) {
+	landmarks, err := c.st.ListLandmarksByCity(city)
+	return map[string]any{"city": city, "landmarks": landmarks}, err
+}
+
+func (c *dbClient) landmarkCities() (any, error) {
+	cities, err := c.st.ListLandmarkCities()
+	return map[string]any{"cities": cities}, err
+}
+
+func (c *dbClient) landmarkDelete(id string) error {
+	return c.st.DeleteLandmark(id)
+}
+
+// landmarkUpdatePhoto 重新透過 Google Places 查詢一次地標圖片並回寫到
+// 資料庫。query 為空字串時,用該筆地標既有的 Name+CityName 組成預設
+// 查詢字串(對齊 SearchKnownDistricts 用「地標名稱」當查詢字串的慣例)。
+// 查無圖片時回傳明確錯誤,不靜默略過——這是使用者主動觸發的單筆操作,
+// 跟 SearchDistricts 內「找不到就跳過這區」的批次容錯邏輯不同,呼叫端
+// 需要知道這次操作到底有沒有真的取到圖。
+func (c *dbClient) landmarkUpdatePhoto(id, query string) (any, error) {
+	lm, err := c.st.GetLandmark(id)
+	if err != nil {
+		return nil, fmt.Errorf("找不到地標 %s: %w", id, err)
+	}
+	if query == "" {
+		query = lm.CityName + " " + lm.Name
+	}
+
+	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+	client := geo.New(apiKey)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	_, photoRef, _, _, err := client.SearchLandmarkWithPhoto(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("查詢「%s」失敗: %w", query, err)
+	}
+	if photoRef == "" {
+		return nil, fmt.Errorf("「%s」查無可用照片", query)
+	}
+
+	photoURL, err := client.PhotoDataURI(ctx, photoRef, 400)
+	if err != nil {
+		return nil, fmt.Errorf("下載照片失敗: %w", err)
+	}
+
+	if err := c.st.UpdateLandmarkPhoto(id, photoURL); err != nil {
+		return nil, fmt.Errorf("寫入資料庫失敗: %w", err)
+	}
+
+	return map[string]any{
+		"id":    id,
+		"query": query,
+		// 只回報是否成功與圖片長度,不把完整 data URI(可能數十 KB 的
+		// base64 字串)印進終端機輸出——CLI 輸出是給人看的,不需要看到
+		// 原始 base64 資料。
+		"photoLength": len(photoURL),
+		"status":      "updated",
+	}, nil
 }
