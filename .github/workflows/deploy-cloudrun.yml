@@ -7,8 +7,22 @@ name: Deploy to Cloud Run
 # 直接壞掉。之後若確定某類改動不涉及資料庫 schema、可以安全自動部署,
 # 再評估要不要恢復 push 觸發(且應排除有資料庫遷移依賴的那類 commit,
 # 但 workflow 层級無法可靠自動判斷這件事,見 deploy-with-migration.yml
-# 開頭的說明)。目前一律透過這支或 deploy-with-migration.yml 手動觸發。
+# 開頭的說明)。
+#
+# 改為打 v* 格式的 git tag(如 v1.0.2)時自動觸發部署——對齊
+# .claude/skills/version-tagging 的打版號流程:CHANGELOG 寫好、版號
+# 決定後才打 tag,這裡直接把「打 tag」當成「這個版本已經確認要上線」的
+# 訊號,不需要再額外手動觸發一次部署。tag 部署一律用完整流程(build +
+# deploy),沒有 skip_build 選項——那是給手動觸發時「只想重新指向某個
+# 已存在 image」的特殊情境用,tag 觸發的語意就是「這個版本要重新
+# build 上線」,不該省略 build。
+#
+# workflow_dispatch 仍保留,供不方便打 tag、或需要 skip_build 這種
+# 特殊情境時手動觸發,兩種觸發方式並存。
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       skip_build:
