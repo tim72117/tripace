@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/tim72117/tripace/internal/auth"
+	"github.com/tim72117/tripace/internal/geo"
 	"github.com/tim72117/tripace/internal/llm"
 	"github.com/tim72117/tripace/internal/model"
 	"github.com/tim72117/tripace/internal/store"
@@ -34,17 +35,46 @@ type Server struct {
 	clientToolsRegistry *toolschema.Registry
 	clientToolsAnalyzer *llm.ClientToolsAnalyzer
 	clientToolsSessions *clientToolsSessions
+
+	// photoCache 實作 geo.PhotoCache,由 s.store 提供的圖片快取表(見
+	// store.GetCachedPhoto/SetCachedPhoto)支撐——geo_outline.go 裡建立
+	// geo.Client 的地方會呼叫 client.SetCache(s.photoCache) 接上這層快取,
+	// 避免同一批飯店/地點照片隨地圖移動被重複下載(見該檔案的說明)。
+	photoCache geo.PhotoCache
 }
 
 func New(st *store.Store, an llm.Analyzer, signer *auth.Signer, devMode bool) *Server {
 	return &Server{
-		store:     st,
-		analyzer:  an,
-		signer:    signer,
-		hub:       newHub(),
-		devMode:   devMode,
-		guestUser: model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
+		store:      st,
+		analyzer:   an,
+		signer:     signer,
+		hub:        newHub(),
+		devMode:    devMode,
+		guestUser:  model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
+		photoCache: storePhotoCache{store: st},
 	}
+}
+
+// storePhotoCache 是 geo.PhotoCache 的實作,把讀寫轉發給 *store.Store 的
+// photo_cache 資料表——geo 套件本身不依賴 store(見 geo.PhotoCache 的
+// 說明),這層轉接留在 api 套件,是唯一同時持有 geo.Client 與 *store.Store
+// 的地方。Get/Set 內部的 store 呼叫失敗(如底層資料庫暫時不可用)不視為
+// 致命錯誤,直接視為快取未命中/寫入失敗即可——快取只是效能優化,不該讓
+// 圖片查詢因為快取層本身的問題而整體失敗。
+type storePhotoCache struct {
+	store *store.Store
+}
+
+func (c storePhotoCache) Get(photoRef string, maxWidthPx int) (string, bool) {
+	dataURI, ok, err := c.store.GetCachedPhoto(photoRef, maxWidthPx)
+	if err != nil {
+		return "", false
+	}
+	return dataURI, ok
+}
+
+func (c storePhotoCache) Set(photoRef string, maxWidthPx int, dataURI string) {
+	_ = c.store.SetCachedPhoto(photoRef, maxWidthPx, dataURI)
 }
 
 // EnableClientTools wires the "LLM calls a frontend tool" POC's
@@ -188,6 +218,15 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("GET /internal/geo/districts/nearby", s.handleGeoDistrictsNearby)
 	internalMux.HandleFunc("GET /internal/geo/geocode", s.handleGeoGeocode)
 	internalMux.HandleFunc("GET /internal/geo/places/nearby", s.handleGeoPlacesNearby)
+	internalMux.HandleFunc("GET /internal/geo/place-details", s.handleGeoPlaceDetails)
+
+	// maintenance — 只給 tripace-cli 這類維運工具用的端點,不是產品前端
+	// 會呼叫的路徑(見 maintenance.go 開頭對「核心」與「維運」端點分開的
+	// 完整說明)。刻意獨立命名空間 /internal/maintenance/*,不混進上面
+	// /internal/geo/* 那批核心端點,方便日後從請求統計(見 adminconsole
+	// 的 request-stats)一眼分辨流量來源。
+	internalMux.HandleFunc("GET /internal/maintenance/geocode", s.handleMaintenanceGeocode)
+	internalMux.HandleFunc("POST /internal/maintenance/landmarks/{id}/update-photo", s.handleMaintenanceLandmarkUpdatePhoto)
 
 	// clienttools — 「LLM 呼叫前端 tool」試做(POC)專用端點,見
 	// clienttools_http.go/clienttools_ws.go。與上面既有 /internal/* 端點
@@ -201,7 +240,7 @@ func (s *Server) Routes() http.Handler {
 
 	mux.Handle("/internal/", internalAuth(s.signer, internalMux))
 
-	return logging(cors(mux))
+	return s.requestLogging(cors(mux))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {

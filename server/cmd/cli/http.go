@@ -110,3 +110,15 @@ func (c *httpClient) reset(tripID string) error {
 	_, err := c.do("DELETE", "/internal/trips/"+tripID+"/entries", nil)
 	return err
 }
+
+// landmarkUpdatePhoto 對齊 POST /internal/maintenance/landmarks/{id}/
+// update-photo(見 server/internal/api/maintenance.go)——原本只能在 -db
+// 直連模式下使用(見 dbClient 移除前的同名方法),現已搬進後端統一處理,
+// 理由同 geocode.go 開頭的說明。
+func (c *httpClient) landmarkUpdatePhoto(id, query string) (any, error) {
+	body := map[string]any{}
+	if query != "" {
+		body["query"] = query
+	}
+	return c.do("POST", "/internal/maintenance/landmarks/"+id+"/update-photo", body)
+}

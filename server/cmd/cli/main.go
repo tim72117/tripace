@@ -132,7 +132,7 @@ func main() {
 	case "landmark-delete":
 		cmdLandmarkDelete(useDB, db, args)
 	case "landmark-update-photo":
-		cmdLandmarkUpdatePhoto(useDB, db, args)
+		cmdLandmarkUpdatePhoto(apiURL, args)
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -398,12 +398,11 @@ func cmdLandmarkDelete(useDB bool, db *dbClient, args []string) {
 }
 
 // cmdLandmarkUpdatePhoto 重新透過 Google Places 查詢一次地標圖片並回寫
-// 到資料庫(見 dbClient.landmarkUpdatePhoto 的完整說明)。-query 未指定
-// 時用該筆地標既有的城市+名稱組成預設查詢字串。
-func cmdLandmarkUpdatePhoto(useDB bool, db *dbClient, args []string) {
-	if !useDB {
-		fatal("landmark-update-photo 只能搭配 -db 使用")
-	}
+// 到資料庫——走 POST /internal/maintenance/landmarks/{id}/update-photo
+// (見 server/internal/api/maintenance.go 與 httpClient.landmarkUpdatePhoto
+// 的完整說明),不再限定 -db 模式。-query 未指定時用該筆地標既有的
+// 城市+名稱組成預設查詢字串(後端決定,不在 CLI 端組)。
+func cmdLandmarkUpdatePhoto(apiURL string, args []string) {
 	fs := flag.NewFlagSet("landmark-update-photo", flag.ExitOnError)
 	id := fs.String("id", "", "地標 ID（必填）")
 	query := fs.String("query", "", "查詢字串（選填，預設用該地標的城市+名稱）")
@@ -411,7 +410,7 @@ func cmdLandmarkUpdatePhoto(useDB bool, db *dbClient, args []string) {
 	if *id == "" {
 		fatal("landmark-update-photo 需要 -id")
 	}
-	res, err := db.landmarkUpdatePhoto(*id, *query)
+	res, err := newHTTPClient(apiURL).landmarkUpdatePhoto(*id, *query)
 	if err != nil {
 		fatal("landmark-update-photo: %v", err)
 	}
@@ -481,7 +480,8 @@ func usage() {
   entry-delete -entry ID
   reset        -trip ID
   geocode      -place 文字 [-region 國碼] [-n 筆數] [-entry ID]
-               查詢地點座標；帶 -entry 時直接寫回該筆 entry 的經緯度。
+               查詢地點座標（走 /internal/maintenance/geocode，需要先登入）；
+               帶 -entry 時直接寫回該筆 entry 的經緯度。
   notify       -trip ID [-api URL]
 
   drop-trip-grouping   [僅限 -db] 一次性維運指令，清除 trip 歸組機制留下的
@@ -506,9 +506,11 @@ func usage() {
                         列出目前已有地標資料的城市清單。
   landmark-delete [僅限 -db] -id 地標ID
                         刪除一筆地標資料。
-  landmark-update-photo [僅限 -db] -id 地標ID [-query 文字]
-                        重新透過 Google Places 查詢一次圖片並回寫到資料庫。
-                        -query 未指定時，用該地標既有的城市+名稱當查詢字串。
+  landmark-update-photo -id 地標ID [-query 文字]
+                        重新透過 Google Places 查詢一次圖片並回寫到資料庫
+                        （走 /internal/maintenance/landmarks/{id}/update-photo，
+                        需要先登入）。-query 未指定時，用該地標既有的城市+名稱
+                        當查詢字串。
 
 所有輸出為 JSON。
 `)

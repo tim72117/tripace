@@ -78,6 +78,7 @@ func (t *RecommendNearbyTool) Call(args types.ToolArguments, ctx types.ToolConte
 
 	gctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
+	gctx = geo.WithCaller(gctx, "wanttools.recommendNearby")
 
 	// 先把地點名稱解析成座標,再以座標查附近景點(Nearby Search 需要座標中心點)。
 	center, err := client.Search(gctx, place, &geo.SearchOptions{MaxResults: 1})

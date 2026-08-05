@@ -33,11 +33,22 @@ export type PanelMode =
   | 'demo-cards' | 'demo-row' | 'demo-map' | 'demo-clienttools' | 'demo-onagent'
   | null
 
+// GEO_OUTLINE_ENABLED:地理輪廓底圖(規劃分頁)功能開關——這次部署刻意
+// 不開啟(見 web/.env.production 或部署環境變數 VITE_FEATURE_GEO_OUTLINE),
+// 只在明確設為字串 "true" 時才啟用,預設(未設定/任何其他值)一律視為
+// 關閉。關閉時 DesktopRail 不渲染「規劃」按鈕(見該元件),isPanelMode
+// 也不再承認 'geo-outline' 是合法值,即使有人手動打
+// /app/geo-outline 這個網址,也會 fallback 回 'trips'(對齊
+// DesktopContent 對不合法 panelMode 字串的既有 fallback 行為,見該處
+// 說明)——整套關閉是「進不去這個功能」而不只是「rail 上看不到按鈕」。
+export const GEO_OUTLINE_ENABLED = import.meta.env.VITE_FEATURE_GEO_OUTLINE === 'true'
+
 // PANEL_MODES:PanelMode 扣掉 null 之後的合法字串值列表——給 isPanelMode()
 // 在執行期驗證用(型別系統只在編譯期擋得住,URL 路徑參數是使用者可任意
-// 輸入的字串,需要執行期白名單檢查)。
+// 輸入的字串,需要執行期白名單檢查)。'geo-outline' 依 GEO_OUTLINE_ENABLED
+// 動態決定要不要列入合法值,理由見該常數的說明。
 const PANEL_MODES = [
-  'trips', 'timeline', 'pace', 'geo-outline',
+  'trips', 'timeline', 'pace', ...(GEO_OUTLINE_ENABLED ? (['geo-outline'] as const) : []),
   'demo-cards', 'demo-row', 'demo-map', 'demo-clienttools', 'demo-onagent',
 ] as const
 

@@ -516,13 +516,22 @@ export function PaceChart({
   // 定),理論上也可能是空陣列(行程所有 entries 都沒有 detail.segment)。
   // fallback 一個空段落,避免下方邏輯對 undefined 取屬性而炸掉——渲染端
   // 對 checkpoints.length === 0 本身就有既有的空清單呈現方式,不需要額外
-  // 處理。
-  const route = routes[routeIdx] ?? {
-    key: '',
-    label: '',
-    checkpoints: [] as Checkpoint[],
-    meta: { totalKm: null, startTime: '—', finishTime: '—', avgSpeedKmh: null } as RouteMeta,
-  }
+  // 處理。用 useMemo 包住 fallback 物件本身:routes 為空陣列時(例如這個
+  // 行程完全沒有 detail.segment 資料)每次 render 若直接 new 一個 fallback
+  // 物件字面量,route.checkpoints 參照每次都不同,會讓下方依賴
+  // route.checkpoints 的 onRouteChange effect 誤判「變了」而每次渲染都重新
+  // 觸發、setPaceCheckpoints(在父層)→ 父層重渲染 → 這裡再重渲染,形成無窮
+  // 迴圈(實測會跳出 React 的 "Maximum update depth exceeded")。
+  const route = useMemo(
+    () =>
+      routes[routeIdx] ?? {
+        key: '',
+        label: '',
+        checkpoints: [] as Checkpoint[],
+        meta: { totalKm: null, startTime: '—', finishTime: '—', avgSpeedKmh: null } as RouteMeta,
+      },
+    [routes, routeIdx],
+  )
   // 沿用 App.tsx todayRef 的既有寫法:型別維持非 nullable 的 RefObject<HTMLDivElement>
   // (跟 React 18 的 RefObject<T> 定義一致,才能直接傳給 <div ref>),掛載前用
   // as unknown as HTMLDivElement 頂住初始值,實際使用前一律先檢查 .current 是否存在。

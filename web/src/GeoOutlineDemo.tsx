@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { ClientConfig, GeoDistrict, GeoHotel, GeoPlace, GeoTripEntry } from './api'
+import type { ClientConfig, GeoDistrict, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from './api'
 import { fetchEntries, fetchGeoGeocode } from './api'
 import { GeoOutlineMap } from './GeoOutlineMap'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
@@ -45,6 +45,10 @@ export function GeoOutlineDemo({
   onDistrictsChange,
   onPlacesNearby,
   onTripEntriesChange,
+  onDistrictSelect,
+  onHotelSelect,
+  onPlaceSelect,
+  onPoiSelect,
   panTarget: externalPanTarget,
   selectedKey,
 }: {
@@ -54,6 +58,13 @@ export function GeoOutlineDemo({
   onDistrictsChange?: (districts: GeoDistrict[]) => void
   onPlacesNearby?: (places: GeoPlace[]) => void
   onTripEntriesChange?: (entries: GeoTripEntry[]) => void
+  // onDistrictSelect/onHotelSelect/onPlaceSelect/onPoiSelect:原封不動
+  // 轉傳給 GeoOutlineMap——理由同 onHotelsChange 等既有 callback,見
+  // GeoOutlineMap.tsx 對這幾個 prop 的說明。
+  onDistrictSelect?: (district: GeoDistrict) => void
+  onHotelSelect?: (hotel: GeoHotel) => void
+  onPlaceSelect?: (place: GeoPlace) => void
+  onPoiSelect?: (details: GeoPlaceDetails) => void
   panTarget?: { lat: number; lng: number; level?: number } | null
   selectedKey?: GeoSelectedKey
 }) {
@@ -204,6 +215,10 @@ export function GeoOutlineDemo({
           onDistrictsChange={onDistrictsChange}
           onVisibleHotelsChange={onHotelsChange}
           onPlacesNearby={onPlacesNearby}
+          onDistrictSelect={onDistrictSelect}
+          onHotelSelect={onHotelSelect}
+          onPlaceSelect={onPlaceSelect}
+          onPoiSelect={onPoiSelect}
           panTarget={effectivePanTarget}
           selectedKey={selectedKey}
         />

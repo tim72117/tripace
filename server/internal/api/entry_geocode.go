@@ -70,6 +70,10 @@ func (s *Server) handleGeocodeEntry(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
+	ctx = geo.WithCaller(ctx, "handleGeocodeEntry")
+	// 用註冊時的 pattern(而非 r.URL.Path 字面路徑)——這條路由含 {id}
+	// 路徑變數,理由同 maintenance.go 的 handleMaintenanceLandmarkUpdatePhoto。
+	ctx = geo.WithPath(ctx, "/internal/entries/{id}/geocode")
 
 	result, err := client.Geocode(ctx, query)
 	if err != nil {

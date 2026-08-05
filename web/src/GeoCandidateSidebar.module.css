@@ -21,6 +21,20 @@
   line-height: 1.5;
 }
 
+.group + .group {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ios-sep);
+}
+
+.groupTitle {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ios-gray);
+  letter-spacing: 0.02em;
+}
+
 .item {
   display: flex;
   align-items: center;

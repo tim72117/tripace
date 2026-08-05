@@ -1,15 +1,19 @@
 package main
 
 import (
-	"context"
 	"flag"
-	"os"
-	"time"
-
-	"github.com/joho/godotenv"
-	"github.com/tim72117/tripace/internal/geo"
+	"net/url"
+	"strconv"
 )
 
+// cmdGeocode 走 GET /internal/maintenance/geocode(見 server/internal/api/
+// maintenance.go 的說明)——原本在這個 CLI process 內直接建立 geo.Client、
+// 繞過後端打 Google Places API,現已搬進後端統一處理:好處是這次呼叫
+// 會被 apigateway.Gateway 的節流與 geo_api_call_logs 記錄涵蓋到(見
+// internal/apigateway 的說明),不再是「CLI 自己打、後端完全不知道」的
+// 一條漏網之魚。副作用是現在需要先登入(`tripace-cli login --web`)才能
+// 使用這個子命令——之前只要本機 server/.env 有 GOOGLE_PLACES_API_KEY
+// 就能跑,現在跟其餘子命令一致改走 JWT 驗證的 /internal/* 路由。
 func cmdGeocode(args []string) {
 	fs := flag.NewFlagSet("geocode", flag.ExitOnError)
 	place := fs.String("place", "", "地點名稱（必填）")
@@ -26,40 +30,37 @@ func cmdGeocode(args []string) {
 		fatal("geocode 需要 -place 地點名稱")
 	}
 
-	// geocode 直接在本地建立 geo.Client(不像其餘子命令走 HTTP 打伺服器),
-	// 需要自己讀 GOOGLE_PLACES_API_KEY——理由同 db.go 的 newDBClient():
-	// 載入 server/.env 讓使用者不需要手動 export,找不到 .env 不視為錯誤
-	// (維持原本「未設定 key 時由 client.Search 報錯」的既有行為)。
-	_ = godotenv.Load()
-	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
-	client := geo.New(apiKey)
+	c := newHTTPClient(*apiURLFlag)
+	q := url.Values{}
+	q.Set("place", *place)
+	if *region != "" {
+		q.Set("region", *region)
+	}
+	if *maxN > 0 {
+		q.Set("n", strconv.Itoa(*maxN))
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	places, err := client.Search(ctx, *place, &geo.SearchOptions{
-		Region:     *region,
-		MaxResults: *maxN,
-	})
+	res, err := c.do("GET", "/internal/maintenance/geocode?"+q.Encode(), nil)
 	if err != nil {
 		fatal("geocode: %v", err)
 	}
 
-	// 有指定 entry ID 就把第一筆座標寫入。走 httpClient 而不是自己組 request:
-	// /internal/* 需要有效的 JWT(見 server 的 internalAuth middleware),token
-	// 的讀取與 Authorization header 統一由 httpClient.do 處理,自己另外組 request
-	// 就會像先前那樣漏帶 token、一律吃 401。
+	// 有指定 entry ID 就把第一筆候選座標寫入。走 setEntryLatLng(而不是
+	// 自己組 request):認證(Authorization: Bearer)只在 httpClient.do
+	// 裡設定一次,理由同該方法的說明。
 	if *entryID != "" {
-		first := places[0]
-		if err := newHTTPClient(*apiURLFlag).setEntryLatLng(*entryID, first.Lat, first.Lng); err != nil {
+		places, _ := res["places"].([]any)
+		if len(places) == 0 {
+			fatal("geocode: 查無候選地點,無法寫入 -entry")
+		}
+		first, _ := places[0].(map[string]any)
+		lat, _ := first["lat"].(float64)
+		lng, _ := first["lng"].(float64)
+		if err := c.setEntryLatLng(*entryID, lat, lng); err != nil {
 			fatal("geocode set-latlng: %v", err)
 		}
 	}
 
-	output(map[string]any{
-		"query":      *place,
-		"region":     *region,
-		"entryID":    *entryID,
-		"candidates": places,
-	})
+	res["entryID"] = *entryID
+	output(res)
 }

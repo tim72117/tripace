@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
-import type { ClientConfig, GeoDistrict, GeoHotel, GeoPlace, GeoTripEntry } from './api'
-import { fetchGeoDistrictsNearby, fetchGeoPlacesNearby } from './api'
+import type { ClientConfig, GeoDistrict, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from './api'
+import { fetchGeoDistrictsNearby, fetchGeoPlaceDetails, fetchGeoPlacesNearby } from './api'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
 import styles from './GeoOutlineMap.module.css'
 
@@ -23,7 +23,12 @@ import styles from './GeoOutlineMap.module.css'
 // 自動重新定位。
 
 const MINIMAL_MAP_STYLE: google.maps.MapTypeStyle[] = [
-  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  // 除錯用:暫時全開 poi,排查 poi.attraction 這條較具體的規則沒生效
+  // 是規則寫法問題、還是這個地圖實例本來就不會畫任何 POI 圖標(例如
+  // 誤用了 vector map/mapId,inline styles 陣列在 vector map 模式下會被
+  // 忽略——若全開後仍然什麼都沒有,問題就出在後者,不是 poi.attraction
+  // 這條規則本身)。排查完成後要改回只開 poi.attraction。
+  { featureType: 'poi', stylers: [{ visibility: 'on' }] },
   // transit(大眾運輸線路+站點)恢復 Google 預設完全開啟,不下任何
   // visibility/顏色規則——鐵路/地鐵路網本身是「這城市怎麼串起來」的
   // 重要地景資訊,呼應構想 6「這城市長什麼樣」,跟純裝飾性的 poi(商家/
@@ -354,6 +359,10 @@ export function GeoOutlineMap({
   onDistrictsChange,
   onVisibleHotelsChange,
   onPlacesNearby,
+  onDistrictSelect,
+  onHotelSelect,
+  onPlaceSelect,
+  onPoiSelect,
   panTarget,
   selectedKey,
 }: {
@@ -391,6 +400,27 @@ export function GeoOutlineMap({
   // ——理由同 onDistrictsChange/onVisibleHotelsChange,側欄
   // (GeoHotelSidebar 的「附近推薦」分頁)是分開掛載的 sibling。
   onPlacesNearby?: (places: GeoPlace[]) => void
+  // onDistrictSelect/onHotelSelect/onPlaceSelect:使用者直接點擊地圖上的
+  // 地標圖示/飯店 marker/推薦地點 marker 時觸發(而非透過側欄清單),把
+  // 該項目往上回報——側欄(GeoHotelSidebar)要能同步標記選取狀態、切換
+  // 到對應分頁並顯示該項目的介紹(見 DesktopLayout.tsx 的串接),但側欄
+  // 跟這個地圖元件是分開掛載的 sibling,只能靠這三個 callback 往上回報,
+  // 跟 onPlacesNearby 同一套「地圖是唯一知道使用者點了哪個 marker 的
+  // 一方」的理由。district 的情形跟既有的 handleDistrictClick 共用同一個
+  // 點擊入口(放大地圖+查附近推薦),故額外從那裡呼叫這個 callback,不是
+  // 另外新增一個獨立的點擊處理路徑。
+  onDistrictSelect?: (district: GeoDistrict) => void
+  onHotelSelect?: (hotel: GeoHotel) => void
+  onPlaceSelect?: (place: GeoPlace) => void
+  // onPoiSelect:使用者點擊底圖上 Google 原生繪製的 POI 圖標(不是上面
+  // 三個 callback 對應的自訂 marker/overlay)時觸發——地圖 click 事件
+  // 本身只給得出一個 placeId,沒有名稱/地址/介紹等資料(見
+  // IconMouseEvent 的說明),故沿用 handleDistrictClick 查附近推薦地點
+  // 的既有慣例:在這個元件內部直接用 cfg 呼叫 fetchGeoPlaceDetails 查完
+  // 整詳細資訊,才把查好的結果往上回報,而不是只傳一個 ID 讓外層自己
+  // 決定何時查詢——這個元件本來就持有 cfg,沒有理由把查詢責任推給不見得
+  // 拿得到 cfg 時機的呼叫端。
+  onPoiSelect?: (details: GeoPlaceDetails) => void
   // panTarget:使用者在搜尋框查到城市座標、或在 GeoHotelSidebar 點擊某個
   // 飯店/地點項目時要移動地圖到的座標——每次(即使連續觸發同一個目標)
   // DesktopLayout/GeoOutlineDemo 都會建立新的物件參照,故這裡直接把整個
@@ -425,6 +455,14 @@ export function GeoOutlineMap({
   const radiusCirclesRef = useRef<google.maps.Circle[]>([])
   const linesRef = useRef<google.maps.Polyline[]>([])
   const lineLabelsRef = useRef<google.maps.OverlayView[]>([])
+  // onPoiSelectRef:建立地圖的 effect 只在掛載時執行一次(依賴陣列見
+  // 下方 [apiKey, initialCenter]),裡面註冊的 click listener 若直接閉包
+  // 捕捉 onPoiSelect,呼叫端(DesktopLayout.tsx)每次重渲染傳入新的內聯
+  // 函式參照時不會被那個 effect 感知到、永遠呼叫到掛載當下那一份舊值。
+  // 用 ref 存最新版本,click listener 內透過 .current 讀取,不需要把
+  // onPoiSelect 加進建圖 effect 的依賴陣列(那樣反而會導致地圖重建)。
+  const onPoiSelectRef = useRef(onPoiSelect)
+  onPoiSelectRef.current = onPoiSelect
   const [err, setErr] = useState<string | null>(null)
   const [mapReady, setMapReady] = useState(false)
   // linesVisible:區塊間連線延遲淡入的開關,對齊構想 6「使用者明顯停留
@@ -529,6 +567,24 @@ export function GeoOutlineMap({
           }
           setQueryTrigger((n) => n + 1)
         })
+        // click 監聽器:攔截點擊底圖上 Google 原生繪製的 POI 圖標(如
+        // 餐廳、景點,見上方 MINIMAL_MAP_STYLE 開啟的 poi.attraction)。
+        // 只有點到 POI 圖標時,event 才會多出 placeId 欄位(型別是
+        // google.maps.IconMouseEvent,MapMouseEvent 的擴充)——點地圖空白
+        // 處的一般點擊沒有這個欄位,用它來分辨這次點擊是不是點到 POI。
+        // event.stop() 阻止 Google 預設彈出的小資訊卡(InfoWindow 樣式),
+        // 讓使用者改看我們自己的 GeoInfoPanel(理由見 onPoiSelect 的
+        // 說明)。查詢失敗(找不到該地點、額度用盡等)不特別處理錯誤
+        // 提示,直接不觸發 onPoiSelect——維持地圖仍可正常瀏覽,不彈錯誤
+        // 訊息打斷使用者,理由同 handleDistrictClick 查附近推薦失敗時的
+        // 處理方式。
+        mapRef.current.addListener('click', (event: google.maps.IconMouseEvent) => {
+          if (!event.placeId) return
+          event.stop()
+          fetchGeoPlaceDetails(cfg, event.placeId)
+            .then((details) => onPoiSelectRef.current?.(details))
+            .catch(() => {})
+        })
         setMapReady(true)
       })
       .catch((e) => setErr(e instanceof Error ? e.message : String(e)))
@@ -620,6 +676,7 @@ export function GeoOutlineMap({
   // 地圖移動/放大動畫影響(兩者是獨立動作,不需要等 idle 才觸發)。
   const handleDistrictClick = useCallback((d: GeoDistrict) => {
     if (!mapRef.current) return
+    onDistrictSelect?.(d)
     suppressNextIdleQueryRef.current = true
     const radiusForPlaces = d.radiusMeters && d.radiusMeters > 0 ? d.radiusMeters : 1500
     fetchGeoPlacesNearby(cfg, d.lat, d.lng, radiusForPlaces)
@@ -653,7 +710,7 @@ export function GeoOutlineMap({
       mapRef.current.setZoom(16)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg])
+  }, [cfg, onDistrictSelect])
 
   // 畫分區光暈疊層:地圖就緒或 filteredDistricts 變動時重畫,先清掉舊的。
   // selected 初始值直接讀當下的 selectedKey(重畫當下若剛好是選中項目,
@@ -766,21 +823,26 @@ export function GeoOutlineMap({
   useEffect(() => {
     if (!mapReady || !mapRef.current) return
     hotelMarkersRef.current.forEach((m) => m.setMap(null))
-    hotelMarkersRef.current = visibleHotels.map(
-      (h) =>
-        new google.maps.Marker({
-          position: { lat: h.lat, lng: h.lng },
-          map: mapRef.current!,
-          title: h.name,
-          icon: hotelMarkerIcon(false),
-        }),
-    )
+    hotelMarkersRef.current = visibleHotels.map((h) => {
+      const marker = new google.maps.Marker({
+        position: { lat: h.lat, lng: h.lng },
+        map: mapRef.current!,
+        title: h.name,
+        icon: hotelMarkerIcon(false),
+      })
+      // 點擊飯店 marker 往上回報選取(見 onHotelSelect 的說明),讓側欄
+      // 能同步標記選取狀態並切到「飯店」分頁顯示介紹——跟地標圖示不同,
+      // 飯店 marker 本身沒有需要額外放大範圍/查附近推薦的行為,單純
+      // 回報選取即可。
+      marker.addListener('click', () => onHotelSelect?.(h))
+      return marker
+    })
     return () => {
       hotelMarkersRef.current.forEach((m) => m.setMap(null))
       hotelMarkersRef.current = []
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, visibleHotelsKey])
+  }, [mapReady, visibleHotelsKey, onHotelSelect])
 
   // 同步飯店 marker 的選取樣式:只對「選取狀態真的改變」的那顆(至多
   // 兩顆——舊選中的那顆要退回未選中、新選中的那顆要套上選中樣式)呼叫
@@ -812,21 +874,24 @@ export function GeoOutlineMap({
   useEffect(() => {
     if (!mapReady || !mapRef.current) return
     placeMarkersRef.current.forEach((m) => m.setMap(null))
-    placeMarkersRef.current = places.map(
-      (p) =>
-        new google.maps.Marker({
-          position: { lat: p.lat, lng: p.lng },
-          map: mapRef.current!,
-          title: p.name,
-          icon: placeMarkerIcon(false),
-        }),
-    )
+    placeMarkersRef.current = places.map((p) => {
+      const marker = new google.maps.Marker({
+        position: { lat: p.lat, lng: p.lng },
+        map: mapRef.current!,
+        title: p.name,
+        icon: placeMarkerIcon(false),
+      })
+      // 點擊推薦地點 marker 往上回報選取,理由同飯店 marker 的 click
+      // listener——單純回報選取,不觸發額外的地圖放大/查詢行為。
+      marker.addListener('click', () => onPlaceSelect?.(p))
+      return marker
+    })
     return () => {
       placeMarkersRef.current.forEach((m) => m.setMap(null))
       placeMarkersRef.current = []
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, placesKey])
+  }, [mapReady, placesKey, onPlaceSelect])
 
   // 同步附近推薦地點 marker 的選取樣式,理由與做法同上方飯店那個
   // 獨立的 setIcon effect。

@@ -47,7 +47,7 @@ func (c *Client) Geocode(ctx context.Context, address string) (GeocodeResult, er
 		return GeocodeResult{}, err
 	}
 
-	resp, err := c.http.Do(req)
+	resp, err := c.gateway.Do(ctx, req, "geocode", callerFromContext(ctx), pathFromContext(ctx))
 	if err != nil {
 		return GeocodeResult{}, fmt.Errorf("geo: geocode request failed: %w", err)
 	}

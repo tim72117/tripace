@@ -48,7 +48,7 @@ export function geoItemKey(
   return `${kind}:${item.name}:${item.lat}:${item.lng}`
 }
 
-type Tab = 'hotels' | 'districts' | 'places'
+export type Tab = 'hotels' | 'districts' | 'places'
 
 // places:點擊地圖上的地標(見 GeoOutlineMap.tsx 的 handleDistrictClick)
 // 時,即時查詢該地標附近的推薦地點(景點/餐廳/商店等,不限類型,對齊
@@ -58,11 +58,23 @@ type Tab = 'hotels' | 'districts' | 'places'
 // 對應的空狀態提示。
 // onSelectPlace:同 onSelectHotel/onSelectDistrict,點擊項目本體時把
 // 座標往上回報以移動地圖。
+//
+// activeTab:目前要顯示哪個分頁,由 DesktopLayout.tsx 中介——原本是這個
+// 元件的內部 state,但地圖上點擊地標/飯店/推薦地點(見
+// GeoOutlineMap.tsx 的 onDistrictSelect/onHotelSelect/onPlaceSelect)
+// 也需要能「開啟右側對應項目的介紹」,而地圖跟這個側欄是分開掛載的
+// sibling,只能靠父層中介的 state 驅動分頁切換,不能再讓分頁停留在
+// 使用者上次手動點的那一頁——例如目前在「飯店」分頁,點了地圖上的
+// 地標,若分頁不跟著切到「地點」,使用者根本看不到剛點的地標介紹跑
+// 去了哪裡。不傳時 fallback 一份未受控的內部 state(維持 demo/獨立
+// 使用情境下的既有行為)。
 export function GeoHotelSidebar({
   hotels,
   districts,
   places = [],
   selectedKey,
+  activeTab,
+  onTabChange,
   onSelectHotel,
   onSelectDistrict,
   onSelectPlace,
@@ -72,12 +84,18 @@ export function GeoHotelSidebar({
   districts: GeoDistrict[]
   places?: GeoPlace[]
   selectedKey?: GeoSelectedKey
+  activeTab?: Tab
+  onTabChange?: (tab: Tab) => void
   onSelectHotel?: (hotel: GeoHotel) => void
   onSelectDistrict?: (district: GeoDistrict) => void
   onSelectPlace?: (place: GeoPlace) => void
   onAddCandidate?: (candidate: GeoCandidate) => void
 }) {
-  const [tab, setTab] = useState<Tab>('hotels')
+  const [internalTab, setInternalTab] = useState<Tab>('hotels')
+  // activeTab 有傳時視為受控元件,忽略內部 state;沒傳時退回內部 state,
+  // 維持既有(尚未接上父層中介邏輯的情境)行為不變。
+  const tab = activeTab ?? internalTab
+  const setTab = onTabChange ?? setInternalTab
 
   return (
     <aside className={styles.sidebar}>

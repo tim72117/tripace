@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from './api'
-import type { ExternalServiceStatus, UserSummary } from './api'
+import type { ExternalServiceStatus, PathRequestStats, UserSummary } from './api'
 
 export default function App() {
   const [me, setMe] = useState<string | null>(null)
@@ -63,7 +63,7 @@ function Login({ onLoggedIn }: { onLoggedIn: (email: string) => void }) {
   )
 }
 
-type Tab = 'users' | 'external'
+type Tab = 'users' | 'external' | 'requests'
 
 function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOut: () => void }) {
   const [tab, setTab] = useState<Tab>('users')
@@ -95,10 +95,14 @@ function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOu
         <button className={tab === 'external' ? 'tab active' : 'tab'} onClick={() => setTab('external')}>
           External services
         </button>
+        <button className={tab === 'requests' ? 'tab active' : 'tab'} onClick={() => setTab('requests')}>
+          Request stats
+        </button>
       </nav>
 
       {tab === 'users' && <UsersTab onLoggedOut={onLoggedOut} />}
       {tab === 'external' && <ExternalServicesTab onLoggedOut={onLoggedOut} />}
+      {tab === 'requests' && <RequestStatsTab onLoggedOut={onLoggedOut} />}
     </div>
   )
 }
@@ -267,6 +271,112 @@ function ExternalServicesTab({ onLoggedOut }: { onLoggedOut: () => void }) {
                 <tr>
                   <td colSpan={4} className="muted center-cell">
                     Checking…
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  )
+}
+
+// Fixed set of lookback windows — matches the backend's clamp (max 168h /
+// 7 days, see server/internal/adminconsole/request_stats.go) so every
+// option here is guaranteed to be valid, no need to validate client-side.
+const HOURS_OPTIONS = [1, 24, 168] as const
+
+function RequestStatsTab({ onLoggedOut }: { onLoggedOut: () => void }) {
+  const [hours, setHours] = useState<number>(24)
+  const [stats, setStats] = useState<{ total: number; errorCount: number; paths: PathRequestStats[] } | null>(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await api.requestStats(hours)
+      setStats({ total: res.total, errorCount: res.errorCount, paths: res.paths })
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onLoggedOut()
+        return
+      }
+      setError(err instanceof ApiError ? err.message : 'Failed to load')
+    } finally {
+      setLoading(false)
+    }
+  }, [hours, onLoggedOut])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  return (
+    <>
+      <section className="stats">
+        <div className="stat card">
+          <div className="stat-num">{stats?.total ?? '—'}</div>
+          <div className="stat-label">Total requests</div>
+        </div>
+        <div className="stat card">
+          <div className="stat-num">{stats?.errorCount ?? '—'}</div>
+          <div className="stat-label">Errors (4xx/5xx)</div>
+        </div>
+      </section>
+
+      {error && <div className="error banner">{error}</div>}
+
+      <section className="card">
+        <div className="section-head">
+          <h2>Requests by endpoint</h2>
+          <div className="row-actions">
+            <select value={hours} onChange={(e) => setHours(Number(e.target.value))}>
+              {HOURS_OPTIONS.map((h) => (
+                <option key={h} value={h}>
+                  Last {h < 24 ? `${h}h` : `${h / 24}d`}
+                </option>
+              ))}
+            </select>
+            <button className="ghost" onClick={() => void load()} disabled={loading}>
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+        </div>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Method</th>
+                <th>Path</th>
+                <th>Count</th>
+                <th>Avg duration</th>
+                <th>Errors</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(stats?.paths ?? []).map((p) => (
+                <tr key={`${p.method} ${p.path}`}>
+                  <td className="muted">{p.method}</td>
+                  <td>{p.path}</td>
+                  <td>{p.count}</td>
+                  <td className="muted">{p.avgDurationMs.toFixed(0)} ms</td>
+                  <td className={p.errorCount > 0 ? 'error-cell' : 'muted'}>{p.errorCount}</td>
+                </tr>
+              ))}
+              {(stats === null || stats.paths.length === 0) && !loading && (
+                <tr>
+                  <td colSpan={5} className="muted center-cell">
+                    No requests recorded in this window.
+                  </td>
+                </tr>
+              )}
+              {loading && stats === null && (
+                <tr>
+                  <td colSpan={5} className="muted center-cell">
+                    Loading…
                   </td>
                 </tr>
               )}

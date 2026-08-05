@@ -135,12 +135,15 @@ func (s *Server) handleGeoDistricts(w http.ResponseWriter, r *http.Request) {
 
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	client := geo.New(apiKey)
+	client.SetCache(s.photoCache)
 
 	// 這支端點會同步下載每個分區的地標圖片(見 SearchDistricts 內部
 	// fetchPhotoAsDataURI 的呼叫),逐張圖片各自一次 HTTP 請求,故逾時
 	// 設寬鬆一些(原本純文字查詢只需要 8 秒)。
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
+	ctx = geo.WithCaller(ctx, "handleGeoDistricts")
+	ctx = geo.WithPath(ctx, r.URL.Path)
 
 	if len(districts) == 0 {
 		if geoDistricts, ok := client.SearchKnownDistricts(ctx, city); ok {
@@ -227,6 +230,8 @@ func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
+	ctx = geo.WithCaller(ctx, "handleGeoGeocode")
+	ctx = geo.WithPath(ctx, r.URL.Path)
 
 	result, err := client.Geocode(ctx, query)
 	if err != nil {
@@ -317,14 +322,128 @@ func (s *Server) handleGeoDistrictsNearby(w http.ResponseWriter, r *http.Request
 
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	client := geo.New(apiKey)
+	// 這支端點每次地圖移動(idle)都會觸發,是 Photo Media 重複呼叫問題
+	// 最大的來源(見 SetCache/PhotoCache 的說明)——同一批飯店隨地圖小幅
+	// 拖曳反覆落在查詢範圍內時,直接吃快取,不重新下載同一張照片。
+	client.SetCache(s.photoCache)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
+	ctx = geo.WithCaller(ctx, "handleGeoDistrictsNearby")
+	ctx = geo.WithPath(ctx, r.URL.Path)
 	hotels := fetchNearbyHotels(ctx, client, lat, lng, radiusMeters)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"districts": districts,
 		"hotels":    hotels,
 	})
+}
+
+// placeDetailsResponse 是 GET /internal/geo/place-details 回應的單一地點
+// 詳細資訊格式,對齊 geo.PlaceDetails(見該型別的完整說明)。
+type placeDetailsResponse struct {
+	Name     string  `json:"name"`
+	Address  string  `json:"address"`
+	Lat      float64 `json:"lat"`
+	Lng      float64 `json:"lng"`
+	Rating   float64 `json:"rating,omitempty"`
+	Summary  string  `json:"summary,omitempty"`
+	PhotoURL string  `json:"photoUrl,omitempty"`
+}
+
+// GET /internal/geo/place-details?placeId={Google Place ID}
+//
+// 供「使用者點擊地圖上 Google 原生 POI 圖標」情境使用(見
+// web/src/GeoOutlineMap.tsx 攔截 map click 事件、停用預設 InfoWindow 後
+// 改用這支端點查詳細資料填進自訂的 GeoInfoPanel)。原生 POI 點擊只會
+// 拿到一個 placeId,沒有附帶任何名稱/地址/介紹等資料,必須再打這支端點
+// 才查得到內容——理由見 geo.GetPlaceDetails 的說明。
+//
+// 這是「使用者明確點擊、低頻觸發」的動作,跟 handleGeoPlacesNearby 同一種
+// 節流考量,不像 handleGeoDistrictsNearby 那樣要顧慮地圖高頻移動觸發大量
+// Google API 呼叫成本,故直接即時查 Places API,不查自建資料庫。
+// placeDetailsCacheMaxAge 是 handleGeoPlaceDetails 快取結果視為新鮮的
+// 上限——原生 POI 點擊是使用者互動觸發、同一個地點短期內可能被反覆點擊
+// (例如來回切換比較),但地點的名稱/地址/評分/簡介不會頻繁變動,一天內
+// 直接吃快取沒有正確性疑慮,同時能大幅減少 Place Details/Photo Media 的
+// 重複呼叫與計費。
+const placeDetailsCacheMaxAge = 24 * time.Hour
+
+func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
+	placeID := r.URL.Query().Get("placeId")
+	if placeID == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 placeId 查詢參數")
+		return
+	}
+
+	// 快取命中(且未過期)直接回傳,不打 Google——place_id 是 Places API
+	// 對同一地點的穩定識別碼(見 store.GetCachedPlaceDetails 的說明),
+	// 這裡把整筆詳細資訊(含已轉換好的照片 data URI)一起存,快取命中時
+	// 完全不需要任何額外的 Google API 呼叫。
+	if cached, ok, err := s.store.GetCachedPlaceDetails(placeID, placeDetailsCacheMaxAge); err == nil && ok {
+		resp := placeDetailsResponse{
+			Name:    cached.Name,
+			Address: cached.Address,
+			Lat:     cached.Lat,
+			Lng:     cached.Lng,
+			Rating:  cached.Rating,
+		}
+		if cached.Summary != nil {
+			resp.Summary = *cached.Summary
+		}
+		if cached.PhotoURL != nil {
+			resp.PhotoURL = *cached.PhotoURL
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
+	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+	client := geo.New(apiKey)
+	client.SetCache(s.photoCache)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	ctx = geo.WithCaller(ctx, "handleGeoPlaceDetails")
+	ctx = geo.WithPath(ctx, r.URL.Path)
+
+	details, err := client.GetPlaceDetails(ctx, placeID)
+	if err != nil {
+		if err == geo.ErrNotFound {
+			writeErr(w, http.StatusNotFound, "no_match", "查無這個地點的詳細資訊")
+			return
+		}
+		writeErr(w, http.StatusBadGateway, "place_details_failed", err.Error())
+		return
+	}
+
+	resp := placeDetailsResponse{
+		Name:    details.Name,
+		Address: details.Address,
+		Lat:     details.Lat,
+		Lng:     details.Lng,
+		Rating:  details.Rating,
+		Summary: details.Summary,
+	}
+	if details.PhotoRef != "" {
+		// 圖片下載失敗不影響整體查詢結果——只是沒有照片可顯示,理由同
+		// fetchNearbyHotels 等既有端點的處理方式。
+		if photoURL, pErr := client.PhotoDataURI(ctx, details.PhotoRef, 400); pErr == nil {
+			resp.PhotoURL = photoURL
+		}
+	}
+
+	// 查詢成功才寫入快取(不論照片是否成功下載都值得快取名稱/地址等
+	// 資料)——快取寫入失敗不影響這次回應,只是下次查詢會再打一次
+	// Google,不視為這支端點的錯誤。
+	var summaryPtr, photoURLPtr *string
+	if resp.Summary != "" {
+		summaryPtr = &resp.Summary
+	}
+	if resp.PhotoURL != "" {
+		photoURLPtr = &resp.PhotoURL
+	}
+	_ = s.store.SetCachedPlaceDetails(placeID, resp.Name, resp.Address, resp.Lat, resp.Lng, resp.Rating, summaryPtr, photoURLPtr)
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // placeResponse 是 GET /internal/geo/places/nearby 回應裡單筆推薦地點的
@@ -381,8 +500,11 @@ func (s *Server) handleGeoPlacesNearby(w http.ResponseWriter, r *http.Request) {
 
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	client := geo.New(apiKey)
+	client.SetCache(s.photoCache)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
+	ctx = geo.WithCaller(ctx, "handleGeoPlacesNearby")
+	ctx = geo.WithPath(ctx, r.URL.Path)
 
 	places := make([]placeResponse, 0)
 	found, err := client.SearchNearby(ctx, lat, lng, &geo.NearbyOptions{

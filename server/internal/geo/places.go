@@ -10,8 +10,98 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
+
+	"github.com/tim72117/tripace/internal/apigateway"
 )
+
+// defaultGateway 是這個 process 內所有 geo.Client(除非透過 NewWithGateway
+// 明確指定其他 Gateway)共用的一份請求派送器——所有對 Google Places/
+// Geocoding API 的呼叫,不論來自 HTTP handler、CLI 子命令、或 LLM 工具,
+// 最終都會經過同一份併發數/間隔限制,達到「整個後端對 Google 的呼叫總量
+// 被夾住」的效果。這必須是單例、而非每次 geo.New() 各自建立一份——見
+// apigateway 套件開頭的說明第 3 點,若每個 HTTP request 各自擁有獨立的
+// 節流狀態,多個並發使用者請求之間完全不會互相排隊,達不到節流目的。
+//
+// 用 sync.Once 延遲建立(而非套件初始化時的全域變數),讓
+// ConfigureDefaultGateway 有機會在第一次真正使用前,把讀到的環境變數設定
+// 套進去——若用一般全域變數,呼叫端必須保證 ConfigureDefaultGateway 在
+// 任何 geo.New() 呼叫之前執行,順序脆弱且容易在未來新增呼叫點時不小心
+// 弄錯順序。
+var (
+	defaultGatewayOnce   sync.Once
+	defaultGatewayConfig = apigateway.DefaultConfig()
+	defaultGatewayLogger apigateway.CallLogger
+	defaultGatewayValue  *apigateway.Gateway
+)
+
+// ConfigureDefaultGateway 設定預設 Gateway 的節流參數與記錄器——必須在
+// process 內第一次呼叫 geo.New() 之前呼叫才會生效(典型用法是在
+// cmd/server/main.go 開頭呼叫一次)。重複呼叫、或在 defaultGateway 已經
+// 被建立之後才呼叫,不會有任何效果(sync.Once 只執行一次真正的建立動作)
+// ——這是刻意的簡化,這個設定值預期是啟動時讀一次環境變數就固定下來,
+// 不需要支援執行期動態調整。
+func ConfigureDefaultGateway(cfg apigateway.Config, logger apigateway.CallLogger) {
+	defaultGatewayConfig = cfg
+	defaultGatewayLogger = logger
+}
+
+func defaultGateway() *apigateway.Gateway {
+	defaultGatewayOnce.Do(func() {
+		defaultGatewayValue = apigateway.New(&http.Client{Timeout: 5 * time.Second}, defaultGatewayConfig, defaultGatewayLogger)
+	})
+	return defaultGatewayValue
+}
+
+// callerCtxKey 是 context.WithValue 用的私有 key 型別——避免與其他套件
+// 的 context key 衝突(Go 慣例:context key 用未匯出的具名型別,不要用
+// string/int 這種容易撞名的裸型別)。
+type callerCtxKey struct{}
+
+// WithCaller 把「是誰觸發這次 Google API 呼叫」的識別字串放進 context,
+// 供 Gateway 記錄呼叫來源用(見 apigateway.CallLogger)。呼叫端(HTTP
+// handler/CLI 子命令/wanttools 工具)應該在呼叫任何 geo.Client 方法之前
+// 呼叫這個函式包一次 ctx,例如
+// WithCaller(ctx, "handleGeoDistrictsNearby")——建議直接用 handler/
+// 子命令/工具的函式名稱當識別字串,方便日後對照程式碼找到呼叫點。
+// 未呼叫過這個函式的 ctx,記錄時 caller 欄位會是 "unknown"(見
+// callerFromContext),不是必填、不會因為忘記設定而導致呼叫失敗。
+func WithCaller(ctx context.Context, caller string) context.Context {
+	return context.WithValue(ctx, callerCtxKey{}, caller)
+}
+
+func callerFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(callerCtxKey{}).(string); ok && v != "" {
+		return v
+	}
+	return "unknown"
+}
+
+// pathCtxKey 是 context.WithValue 用的私有 key 型別,理由同 callerCtxKey。
+type pathCtxKey struct{}
+
+// WithPath 把「觸發這次 Google API 呼叫的我方 API 路徑」放進 context,
+// 供 Gateway 記錄用(見 apigateway.CallLogger 對 path 欄位的說明)——跟
+// WithCaller 是兩個獨立維度:caller 是程式碼裡的識別字串(如
+// "handleGeoDistrictsNearby"),path 是對外曝露的路由(如
+// "/internal/geo/districts/nearby")。HTTP handler 通常直接傳
+// r.URL.Path;若該路由含路徑變數(如 {id}),應傳註冊時的 pattern 字串而
+// 非字面路徑,避免同一條路由因為不同 ID 被統計成一堆各自獨立的資料列
+// (見 entry_geocode.go/maintenance.go 呼叫端的說明)。未呼叫過這個函式
+// 的 ctx,記錄時 path 欄位為空字串(例如 LLM 工具呼叫沒有對應的單一
+// REST path,見 wanttools 呼叫端的說明)——這是刻意的,不強行湊一個
+// 不準確的值。
+func WithPath(ctx context.Context, path string) context.Context {
+	return context.WithValue(ctx, pathCtxKey{}, path)
+}
+
+func pathFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(pathCtxKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
 
 // 新版 Places API (New) 的 Text Search 端點(POST)。
 // 舊版為 maps.googleapis.com/maps/api/place/textsearch/json(GET),已於 2026 遷移至此。
@@ -23,6 +113,14 @@ const fieldMask = "places.displayName,places.formattedAddress,places.location"
 
 // nearbyURL 是 Places API (New) 的 Nearby Search 端點(POST),依座標+半徑找附近地點。
 const nearbyURL = "https://places.googleapis.com/v1/places:searchNearby"
+
+// placeDetailsFieldMask 供 GetPlaceDetails 用——跟 districtFieldMask 取同一組
+// Pro 級欄位(rating/photos/editorialSummary),供「點擊 Google 原生 POI 圖標」
+// 這個情境即時查單一地點的詳細資訊、填進自訂資訊欄用(見
+// server/internal/api/geo_outline.go 的 handleGeoPlaceDetails)。不像
+// districtFieldMask 額外取 addressComponents——這裡只查單一已知地點,不需要
+// 反推它屬於哪個行政區。
+const placeDetailsFieldMask = "displayName,formattedAddress,location,rating,photos,editorialSummary"
 
 // nearbyFieldMask 只取 Essentials 級欄位(displayName/formattedAddress/location/
 // primaryType),API 呼叫成本最低。rating/userRatingCount 屬 Pro 級(較貴),
@@ -38,18 +136,60 @@ const nearbyFieldMask = "places.displayName,places.formattedAddress,places.locat
 // Pro 級,呼叫成本高於 Search/SearchNearby 用的 Essentials 級。
 const districtFieldMask = "places.displayName,places.formattedAddress,places.location,places.addressComponents,places.rating,places.photos,places.editorialSummary"
 
-// Client 持有 API key，提供地點查詢。
-type Client struct {
-	apiKey string
-	http   *http.Client
+// PhotoCache 是圖片快取的抽象介面——geo 套件本身不依賴 store(避免套件
+// 邊界耦合),由呼叫端(api 層,持有 *store.Store)實作並透過 SetCache
+// 注入。未注入(nil)時 fetchPhotoAsDataURI 照舊每次都直接向 Google 查詢,
+// 行為與加這層快取之前完全相同——這是刻意的漸進式設計,不是每個
+// geo.New() 呼叫端都需要接上快取(例如 cmd/cli 的一次性查詢、
+// wanttools 的 LLM 工具呼叫,重複查詢機率低,接上快取的效益不大)。
+type PhotoCache interface {
+	Get(photoRef string, maxWidthPx int) (dataURI string, ok bool)
+	Set(photoRef string, maxWidthPx int, dataURI string)
 }
 
-// New 建立 Client；apiKey 為空時 Search 永遠回傳 ErrNoKey。
+// requestDoer 是 Client 內部實際用來派送請求的介面——生產環境用
+// defaultGateway()(見上方說明),測試/NewWithGateway 呼叫端可以換成任意
+// 滿足這個介面的假實作,不需要真的發出 HTTP 請求、也不需要真的等待節流
+// 間隔。apigateway.Gateway 本身就滿足這個介面,不需要額外的轉接層。
+type requestDoer interface {
+	Do(ctx context.Context, req *http.Request, endpoint, caller, path string) (*http.Response, error)
+}
+
+// Client 持有 API key，提供地點查詢。所有實際對 Google 發出的 HTTP 請求
+// 都透過 gateway 派送(見 requestDoer 的說明),不再直接持有/使用
+// *http.Client——這是「連線 API 的部分」被抽成獨立 apigateway 元件後的
+// 直接結果:併發數限制、請求間隔節流、呼叫記錄,全部收在 gateway 這一層,
+// Client 本身只負責組請求內容與解析回應。
+type Client struct {
+	apiKey  string
+	gateway requestDoer
+	cache   PhotoCache
+}
+
+// New 建立 Client,使用整個 process 共用的預設 Gateway(見 defaultGateway
+// 的說明,節流參數由 ConfigureDefaultGateway 設定)；apiKey 為空時 Search
+// 永遠回傳 ErrNoKey。
 func New(apiKey string) *Client {
 	return &Client{
-		apiKey: apiKey,
-		http:   &http.Client{Timeout: 5 * time.Second},
+		apiKey:  apiKey,
+		gateway: defaultGateway(),
 	}
+}
+
+// NewWithGateway 建立 Client 時明確指定 Gateway,不使用 process 共用的
+// 預設單例——供測試注入 mock Gateway(不需要真的等待節流間隔、不需要真的
+// 發送 HTTP 請求),也供極少數需要獨立節流額度的情境使用(目前沒有這種
+// 呼叫端,預留這個建構子純粹是為了可測試性)。
+func NewWithGateway(apiKey string, gateway requestDoer) *Client {
+	return &Client{apiKey: apiKey, gateway: gateway}
+}
+
+// SetCache 注入圖片快取實作(見 PhotoCache 的說明)。供呼叫端(api 層)在
+// geo.New() 之後、實際查詢之前呼叫,只有真正會大量重複查同一批照片的
+// 端點(飯店/地點/附近推薦/POI 詳情,見 server/internal/api/geo_outline.go)
+// 需要接上,不是每個 Client 都必須呼叫這個方法。
+func (c *Client) SetCache(cache PhotoCache) {
+	c.cache = cache
 }
 
 var ErrNoKey = fmt.Errorf("geo: Google Places API key 未設定")
@@ -153,7 +293,7 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 	req.Header.Set("X-Goog-Api-Key", c.apiKey)
 	req.Header.Set("X-Goog-FieldMask", fieldMask)
 
-	resp, err := c.http.Do(req)
+	resp, err := c.gateway.Do(ctx, req, "places.searchText", callerFromContext(ctx), pathFromContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("geo: request failed: %w", err)
 	}
@@ -319,7 +459,7 @@ func (c *Client) SearchDistricts(ctx context.Context, query string, maxResults i
 	req.Header.Set("X-Goog-Api-Key", c.apiKey)
 	req.Header.Set("X-Goog-FieldMask", districtFieldMask)
 
-	resp, err := c.http.Do(req)
+	resp, err := c.gateway.Do(ctx, req, "places.searchText", callerFromContext(ctx), pathFromContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("geo: request failed: %w", err)
 	}
@@ -514,7 +654,7 @@ func (c *Client) SearchLandmarkWithPhoto(ctx context.Context, query string) (pla
 	req.Header.Set("X-Goog-Api-Key", c.apiKey)
 	req.Header.Set("X-Goog-FieldMask", districtFieldMask)
 
-	resp, err := c.http.Do(req)
+	resp, err := c.gateway.Do(ctx, req, "places.searchText", callerFromContext(ctx), pathFromContext(ctx))
 	if err != nil {
 		return Place{}, "", 0, "", fmt.Errorf("geo: request failed: %w", err)
 	}
@@ -563,6 +703,99 @@ func (c *Client) SearchLandmarkWithPhoto(ctx context.Context, query string) (pla
 	return place, photoRef, p.Rating, p.EditorialSummary.Text, nil
 }
 
+// PlaceDetails 是單一地點的詳細資訊,供 GetPlaceDetails 用——供「點擊
+// Google 原生 POI 圖標」情境即時查該地點的完整介紹,不是分區/飯店/
+// 附近推薦那幾種批次查詢的結果形狀。
+type PlaceDetails struct {
+	Name     string  `json:"name"`
+	Address  string  `json:"address"`
+	Lat      float64 `json:"lat"`
+	Lng      float64 `json:"lng"`
+	Rating   float64 `json:"rating,omitempty"`
+	Summary  string  `json:"summary,omitempty"`
+	PhotoRef string  `json:"-"` // 同 NearbyPlace.PhotoRef,呼叫端需另外呼叫 PhotoDataURI 轉成 data URI
+}
+
+// GetPlaceDetails 用 Place ID 查詢單一地點的詳細資訊(Places API (New) 的
+// Place Details 端點,GET /v1/places/{placeID})。供「使用者點擊地圖上
+// Google 原生 POI 圖標」這個情境使用——原生 POI 點擊只會拿到一個
+// placeId(見 web/src/GeoOutlineMap.tsx 的 IconMouseEvent 處理),沒有
+// 附帶任何名稱/地址等資料,必須再打這支端點才查得到內容,沒有更省的
+// 做法(Google 官方 Maps 網站本身點 POI 背後也是即時查一次 Place
+// Details)。
+func (c *Client) GetPlaceDetails(ctx context.Context, placeID string) (PlaceDetails, error) {
+	if c.apiKey == "" {
+		return PlaceDetails{}, ErrNoKey
+	}
+	if placeID == "" {
+		return PlaceDetails{}, ErrNotFound
+	}
+
+	url := fmt.Sprintf("https://places.googleapis.com/v1/places/%s", placeID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return PlaceDetails{}, err
+	}
+	req.Header.Set("X-Goog-Api-Key", c.apiKey)
+	req.Header.Set("X-Goog-FieldMask", placeDetailsFieldMask)
+
+	resp, err := c.gateway.Do(ctx, req, "places.get", callerFromContext(ctx), pathFromContext(ctx))
+	if err != nil {
+		return PlaceDetails{}, fmt.Errorf("geo: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return PlaceDetails{}, ErrNotFound
+	}
+	if resp.StatusCode != http.StatusOK {
+		var errBody struct {
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&errBody)
+		if errBody.Error.Message != "" {
+			return PlaceDetails{}, fmt.Errorf("geo: request failed (HTTP %d): %s", resp.StatusCode, errBody.Error.Message)
+		}
+		return PlaceDetails{}, fmt.Errorf("geo: request failed (HTTP %d)", resp.StatusCode)
+	}
+
+	var body struct {
+		DisplayName struct {
+			Text string `json:"text"`
+		} `json:"displayName"`
+		FormattedAddress string `json:"formattedAddress"`
+		Location         struct {
+			Latitude  float64 `json:"latitude"`
+			Longitude float64 `json:"longitude"`
+		} `json:"location"`
+		Rating float64 `json:"rating"`
+		Photos []struct {
+			Name string `json:"name"`
+		} `json:"photos"`
+		EditorialSummary struct {
+			Text string `json:"text"`
+		} `json:"editorialSummary"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return PlaceDetails{}, fmt.Errorf("geo: decode failed: %w", err)
+	}
+
+	details := PlaceDetails{
+		Name:    body.DisplayName.Text,
+		Address: body.FormattedAddress,
+		Lat:     body.Location.Latitude,
+		Lng:     body.Location.Longitude,
+		Rating:  body.Rating,
+		Summary: body.EditorialSummary.Text,
+	}
+	if len(body.Photos) > 0 {
+		details.PhotoRef = body.Photos[0].Name
+	}
+	return details, nil
+}
+
 // fetchPhotoAsDataURI 下載 Places API (New) 的 photo resource name(如
 // "places/xxx/photos/yyy")對應的圖片位元組,編碼成 data: URI(base64,
 // 含 MIME type)回傳,可直接當 <img src> 使用。maxWidthPx 建議與實際
@@ -582,6 +815,17 @@ func (c *Client) fetchPhotoAsDataURI(ctx context.Context, photoResourceName stri
 	if maxWidthPx <= 0 {
 		maxWidthPx = 400
 	}
+
+	// 快取命中則直接回傳,不打 Google——這是解決「同一批飯店/地點隨地圖
+	// 移動被重複查詢、每次都重新下載同一張照片」問題的關鍵(見
+	// server/internal/api/geo_outline.go 的 handleGeoDistrictsNearby)。
+	// c.cache 未注入(nil)時這裡是 no-op,行為與加這層快取之前完全相同。
+	if c.cache != nil {
+		if dataURI, ok := c.cache.Get(photoResourceName, maxWidthPx); ok {
+			return dataURI, nil
+		}
+	}
+
 	mediaURL := fmt.Sprintf("https://places.googleapis.com/v1/%s/media?maxWidthPx=%d&key=%s",
 		photoResourceName, maxWidthPx, c.apiKey)
 
@@ -590,8 +834,9 @@ func (c *Client) fetchPhotoAsDataURI(ctx context.Context, photoResourceName stri
 		return "", err
 	}
 	// Photo Media API 預設會對原始請求做 302 導向到實際圖片 CDN 網址;
-	// http.Client 預設會自動跟隨 redirect,這裡不需要額外處理。
-	resp, err := c.http.Do(req)
+	// gateway 底層的 *http.Client 預設會自動跟隨 redirect,這裡不需要
+	// 額外處理。
+	resp, err := c.gateway.Do(ctx, req, "places.photoMedia", callerFromContext(ctx), pathFromContext(ctx))
 	if err != nil {
 		return "", fmt.Errorf("geo: photo fetch failed: %w", err)
 	}
@@ -613,7 +858,12 @@ func (c *Client) fetchPhotoAsDataURI(ctx context.Context, photoResourceName stri
 	if contentType == "" {
 		contentType = "image/jpeg"
 	}
-	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
+	dataURI := "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data)
+
+	if c.cache != nil {
+		c.cache.Set(photoResourceName, maxWidthPx, dataURI)
+	}
+	return dataURI, nil
 }
 
 // Lookup 查詢地點名稱，回傳第一筆結果的經緯度（向下相容用）。
@@ -688,7 +938,7 @@ func (c *Client) SearchNearby(ctx context.Context, lat, lng float64, opts *Nearb
 		req.Header.Set("X-Goog-FieldMask", nearbyFieldMask)
 	}
 
-	resp, err := c.http.Do(req)
+	resp, err := c.gateway.Do(ctx, req, "places.searchNearby", callerFromContext(ctx), pathFromContext(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("geo: request failed: %w", err)
 	}

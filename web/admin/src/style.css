@@ -204,6 +204,24 @@ td.over {
   text-align: center;
   padding: 1.5rem;
 }
+.error-cell {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.row-actions select {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+}
 
 .status-dot {
   display: inline-block;

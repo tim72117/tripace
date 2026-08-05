@@ -519,6 +519,25 @@ export function fetchGeoPlacesNearby(cfg: ClientConfig, lat: number, lng: number
   return request<{ places: GeoPlace[] }>(cfg, 'GET', `/internal/geo/places/nearby?${params.toString()}`)
 }
 
+// GeoPlaceDetails:對齊 server 的 GET /internal/geo/place-details
+// (handleGeoPlaceDetails)——單一地點的詳細資訊,供「使用者點擊地圖上
+// Google 原生 POI 圖標」情境使用。原生 POI 點擊只會拿到一個 placeId,
+// 沒有附帶任何名稱/地址/介紹等資料(見 GeoOutlineMap.tsx 攔截
+// IconMouseEvent 的說明),必須再打這支端點查詳細內容。
+export interface GeoPlaceDetails {
+  name: string
+  address: string
+  lat: number
+  lng: number
+  rating?: number
+  summary?: string
+  photoUrl?: string
+}
+
+export function fetchGeoPlaceDetails(cfg: ClientConfig, placeId: string) {
+  return request<GeoPlaceDetails>(cfg, 'GET', `/internal/geo/place-details?placeId=${encodeURIComponent(placeId)}`)
+}
+
 // 手動編輯條目(不經 AI),對齊 server 的 PATCH /v1/entries/{id}(handleUpdateEntry)。
 // 只傳有要改的欄位:空字串/undefined 視為不改該欄位(見 store.UpdateEntry),
 // 呼叫端不需帶齊 Entry 全部欄位,只需帶使用者在表單裡實際改過的值。

@@ -38,6 +38,23 @@ export interface ExternalServiceStatus {
   detail: string
 }
 
+// One row of the per-endpoint request stats table. Mirrors
+// store.PathRequestStats on the backend (server/internal/store/geocache.go).
+export interface PathRequestStats {
+  method: string
+  path: string
+  count: number
+  avgDurationMs: number
+  errorCount: number
+}
+
+export interface RequestStatsResponse {
+  sinceHours: number
+  total: number
+  errorCount: number
+  paths: PathRequestStats[]
+}
+
 // Same resolution strategy as the main web app's api.ts BASE: an explicit
 // VITE_ADMIN_API_URL for local dev against a separately-running backend,
 // falling back to the serving origin (correct in production, where the
@@ -86,4 +103,10 @@ export const api = {
   // never on a timer: some checks (Places API) incur a small real cost.
   checkExternalHealth: (): Promise<ExternalServiceStatus[]> =>
     request('GET', '/admin/api/health/external').then((r) => r.json()),
+
+  // Reads from api_request_logs (server/internal/api/middleware.go's
+  // requestLogging writes one row per request, no external calls here) —
+  // safe to call on page load / manual refresh, no real-world cost.
+  requestStats: (hours: number): Promise<RequestStatsResponse> =>
+    request('GET', `/admin/api/request-stats?hours=${hours}`).then((r) => r.json()),
 }

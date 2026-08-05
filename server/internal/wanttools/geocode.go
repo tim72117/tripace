@@ -44,6 +44,7 @@ func (t *GeocodeTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]t
 
 	gctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	gctx = geo.WithCaller(gctx, "wanttools.geocode")
 
 	places, err := client.Search(gctx, place, &geo.SearchOptions{MaxResults: 1})
 	if err != nil {

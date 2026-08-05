@@ -77,6 +77,87 @@ type landmarkRow struct {
 
 func (landmarkRow) TableName() string { return "landmarks" }
 
+// photoCacheRow 快取 Google Places Photo Media API 已下載過的圖片(見
+// server/internal/geo/places.go 的 fetchPhotoAsDataURI)——同一張照片
+// (photo resource name + 寬度組合)重複被查詢時直接吃快取,不重新打
+// Photo Media API。同一個 photo resource name 在不同呼叫端可能要求不同
+// maxWidthPx(如飯店/推薦地點縮圖用 200px、地標圖/POI 詳情用 400px),
+// 不同寬度的圖片資料不同,故複合主鍵含寬度,不能只用 photo_ref 當鍵。
+type photoCacheRow struct {
+	PhotoRef   string    `gorm:"primaryKey;column:photo_ref"`
+	MaxWidthPx int       `gorm:"primaryKey;column:max_width_px"`
+	DataURI    string    `gorm:"column:data_uri;not null"`
+	FetchedAt  time.Time `gorm:"column:fetched_at;not null"`
+}
+
+func (photoCacheRow) TableName() string { return "photo_cache" }
+
+// placeDetailsCacheRow 快取 Google Places Place Details 查詢結果(見
+// server/internal/geo/places.go 的 GetPlaceDetails)——供「使用者點擊
+// 地圖上 Google 原生 POI 圖標」情境使用,同一個地點短期內重複被點擊時
+// 直接吃快取,不重新打 Place Details API。PhotoURL 存的是已經轉換好的
+// data: URI(圖片本身也走 photoCacheRow 快取,這裡直接存最終結果,快取
+// 命中時不需要再組一次轉換邏輯)。
+type placeDetailsCacheRow struct {
+	PlaceID   string    `gorm:"primaryKey;column:place_id"`
+	Name      string    `gorm:"column:name;not null"`
+	Address   string    `gorm:"column:address"`
+	Lat       float64   `gorm:"column:lat;not null"`
+	Lng       float64   `gorm:"column:lng;not null"`
+	Rating    float64   `gorm:"column:rating"`
+	Summary   *string   `gorm:"column:summary"`
+	PhotoURL  *string   `gorm:"column:photo_url"`
+	FetchedAt time.Time `gorm:"column:fetched_at;not null"`
+}
+
+func (placeDetailsCacheRow) TableName() string { return "place_details_cache" }
+
+// apiRequestLogRow 記錄後端每一個 HTTP 請求(見 middleware.go 的
+// requestLogging)——method/path/狀態碼/耗時/呼叫者,供之後排查異常流量
+// (如本次要解決的 Photo Media 重複呼叫問題)、或觀察哪些端點被呼叫
+// 頻率最高。UserID 可能是 guestUser 的固定 ID(未登入/token 無效時,見
+// Server.userFor),不代表每筆記錄都對應到一個真實已註冊帳號。
+type apiRequestLogRow struct {
+	ID         uint      `gorm:"primaryKey;autoIncrement;column:id"`
+	Method     string    `gorm:"column:method;not null"`
+	Path       string    `gorm:"column:path;not null;index"`
+	StatusCode int       `gorm:"column:status_code;not null"`
+	DurationMs int64     `gorm:"column:duration_ms;not null"`
+	UserID     string    `gorm:"column:user_id;index"`
+	CreatedAt  time.Time `gorm:"column:created_at;not null;index"`
+}
+
+func (apiRequestLogRow) TableName() string { return "api_request_logs" }
+
+// geoAPICallLogRow 記錄每一次對 Google Places/Geocoding API 發出的請求
+// (見 server/internal/apigateway 的 CallLogger、server/internal/geo 的
+// Gateway 派送邏輯)——跟 apiRequestLogRow 是兩張不同語意的表:
+// apiRequestLogRow 記的是「別人打進我們的 server」(inbound),這張表記的
+// 是「我們的 server 打出去給 Google」(outbound)。同一次使用者操作
+// (例如地圖拖曳觸發 handleGeoDistrictsNearby)可能對應到這裡的多筆記錄
+// (一次 Nearby Search + 多次 Photo Media),兩張表不是一對一關係。
+//
+// Endpoint 是 geo 套件內部固定的邏輯端點名稱(如 "places.searchNearby"、
+// "places.photoMedia"、"geocode"),不是完整網址——完整網址含 API key 等
+// 敏感資訊,不該存進資料庫。Caller 是呼叫端透過 geo.WithCaller(ctx, ...)
+// 標記的識別字串(如 "handleGeoDistrictsNearby"),未標記時為 "unknown"。
+// Path 是觸發這次呼叫的我方 API 路徑(如 "/internal/geo/districts/
+// nearby",見 geo.WithPath 的說明)——跟 Caller 是兩個獨立維度:Caller
+// 指向程式碼位置,Path 指向對外曝露的路由。LLM 工具呼叫沒有對應的單一
+// REST path 時為空字串,不強行湊一個不準確的值。
+type geoAPICallLogRow struct {
+	ID         uint      `gorm:"primaryKey;autoIncrement;column:id"`
+	Endpoint   string    `gorm:"column:endpoint;not null;index"`
+	Caller     string    `gorm:"column:caller;not null;index"`
+	Path       string    `gorm:"column:path;index"`
+	StatusCode int       `gorm:"column:status_code;not null"`
+	DurationMs int64     `gorm:"column:duration_ms;not null"`
+	Errored    bool      `gorm:"column:errored;not null"` // true 代表連線層失敗(逾時等),連 HTTP 回應都沒收到
+	CreatedAt  time.Time `gorm:"column:created_at;not null;index"`
+}
+
+func (geoAPICallLogRow) TableName() string { return "geo_api_call_logs" }
+
 // publicLinkRow 是行程公開分享連結，一個行程最多一條。
 type publicLinkRow struct {
 	ID        string `gorm:"primaryKey;column:id"`

@@ -16,7 +16,8 @@ import { ASSIST_LANG_KEY, getAssistLang } from './assistLang'
 import { PaceChart, type Checkpoint } from './PaceChart'
 import { PaceRouteMap, type SelectedEntry } from './PaceRouteMap'
 import { DemoPanel } from './DemoPanel'
-import { GeoHotelSidebar, geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
+import { GeoHotelSidebar, geoItemKey, type GeoSelectedKey, type Tab as GeoTab } from './GeoHotelSidebar'
+import { GeoInfoPanel, type GeoInfoContent } from './GeoInfoPanel'
 import { GeoCandidateSidebar, type GeoCandidate } from './GeoCandidateSidebar'
 import { GeoOutlineDemo } from './GeoOutlineDemo'
 import type { GeoDistrict, GeoHotel, GeoPlace } from './api'
@@ -25,7 +26,7 @@ import {
   type ContentProps,
 } from './AppCommon'
 import {
-  type PanelMode, isPanelMode, DemoPanelContent, LangSelect, TokenDisplay,
+  type PanelMode, isPanelMode, DemoPanelContent, LangSelect, TokenDisplay, GEO_OUTLINE_ENABLED,
 } from './DesktopShared'
 
 // DesktopLayout:桌面版(寬度 >= 768px)專屬佈局元件——左側邊欄(行程列表 +
@@ -134,6 +135,19 @@ export function DesktopContent(props: ContentProps) {
   // 物件參照(即使連續點同一項)才能觸發地圖平移,selectedKey 則是單純
   // 的字串比對,合併會讓其中一邊的用途打折。
   const [geoSelectedKey, setGeoSelectedKey] = useState<GeoSelectedKey>(null)
+  // geoActiveTab:GeoHotelSidebar 目前顯示哪個分頁(飯店/地點/附近推薦)——
+  // 原本是該元件的內部 state,提到這裡中介的理由是地圖上直接點擊
+  // 地標/飯店/推薦地點的 marker(見下方 onDistrictSelect 等)時,要能
+  // 自動切到對應分頁,使用者才看得到剛點的項目介紹,不會停留在原本
+  // 選取的分頁而看起來像沒反應。
+  const [geoActiveTab, setGeoActiveTab] = useState<GeoTab>('hotels')
+  // geoInfoContent:目前要在浮動資訊卡(GeoInfoPanel)顯示的內容,有兩個
+  // 觸發來源(見 GeoInfoPanel.tsx 的說明):地點清單點擊項目本體(轉自
+  // GeoDistrict),或點擊地圖上 Google 原生 POI 圖標(轉自
+  // GeoOutlineMap.tsx onPoiSelect 回報的 GeoPlaceDetails)——兩種來源
+  // 欄位形狀不同,統一轉成 GeoInfoContent 後才存進這個 state,
+  // GeoInfoPanel 本身不需要分辨來源。
+  const [geoInfoContent, setGeoInfoContent] = useState<GeoInfoContent | null>(null)
   // geoCandidates:候選籃(構想 1,見
   // docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)目前收集的候選清單——純
   // 前端試做,只存在這份記憶體 state,重新整理頁面會消失,尚未接上任何
@@ -291,7 +305,11 @@ export function DesktopContent(props: ContentProps) {
             // 地理輪廓底圖拆成兩塊:候選籃留在左側 side panel(見上方
             // GeoCandidateSidebar),地圖需要較寬的空間,改在右側主區
             // 顯示——跟 pace/timeline 模式「側欄放清單、主區放詳細內容」
-            // 是同一種版面邏輯。
+            // 是同一種版面邏輯。GeoInfoPanel 是浮動卡片(見該元件說明),
+            // 疊在地圖上方,故跟 GeoOutlineDemo 一起放在 .desktop-main
+            // 底下(該容器已有 position: relative,見 styles-desktop.css),
+            // 而不是跟 GeoHotelSidebar 一樣佔用一份平行的 flex 版面空間。
+            <>
             <GeoOutlineDemo
               cfg={cfg}
               tripID={activeTrip?.id ?? null}
@@ -322,9 +340,35 @@ export function DesktopContent(props: ContentProps) {
                   return [...withoutStaleEntries, ...newOnes]
                 })
               }}
+              onDistrictSelect={(d) => {
+                setGeoSelectedKey(geoItemKey('district', d))
+                setGeoActiveTab('districts')
+              }}
+              onHotelSelect={(h) => {
+                setGeoSelectedKey(geoItemKey('hotel', h))
+                setGeoActiveTab('hotels')
+              }}
+              onPlaceSelect={(p) => {
+                setGeoSelectedKey(geoItemKey('place', p))
+                setGeoActiveTab('places')
+              }}
+              onPoiSelect={(details) => {
+                // 點擊 Google 原生 POI 圖標查回的詳細資訊——沒有知名度
+                // 分級/景點數量/範圍半徑這些只有自建 district 資料才有的
+                // 欄位,改顯示 Google 評分當 badge。
+                setGeoInfoContent({
+                  name: details.name,
+                  photoUrl: details.photoUrl,
+                  subtitle: details.address,
+                  summary: details.summary,
+                  badges: details.rating != null ? [`評分 ${details.rating.toFixed(1)}`] : [],
+                })
+              }}
               panTarget={geoPanTarget}
               selectedKey={geoSelectedKey}
             />
+            <GeoInfoPanel content={geoInfoContent} onClose={() => setGeoInfoContent(null)} />
+            </>
           ) : panelMode === 'demo-cards' || panelMode === 'demo-row' || panelMode === 'demo-map'
             || panelMode === 'demo-clienttools' || panelMode === 'demo-onagent' ? (
             <DemoPanelContent mode={panelMode} />
@@ -346,13 +390,25 @@ export function DesktopContent(props: ContentProps) {
             districts={geoDistricts}
             places={geoPlaces}
             selectedKey={geoSelectedKey}
+            activeTab={geoActiveTab}
+            onTabChange={setGeoActiveTab}
             onSelectHotel={(h) => {
               setGeoPanTarget({ lat: h.lat, lng: h.lng })
               setGeoSelectedKey(geoItemKey('hotel', h))
             }}
             onSelectDistrict={(d) => {
-              setGeoPanTarget({ lat: d.lat, lng: d.lng, level: d.level })
               setGeoSelectedKey(geoItemKey('district', d))
+              setGeoInfoContent({
+                name: d.name,
+                photoUrl: d.landmarkPhotoUrl,
+                subtitle: d.landmarkName && d.landmarkName !== d.name ? d.landmarkName : undefined,
+                summary: d.summary,
+                badges: [
+                  ...(d.level != null ? [`知名度 L${d.level}`] : []),
+                  ...(d.placeCount != null ? [`${d.placeCount} 筆景點`] : []),
+                  ...(d.radiusMeters != null ? [`範圍約 ${Math.round(d.radiusMeters)} 公尺`] : []),
+                ],
+              })
             }}
             onSelectPlace={(p) => {
               setGeoPanTarget({ lat: p.lat, lng: p.lng })
@@ -459,13 +515,19 @@ function DesktopRail({
         >
           <Route size={20} strokeWidth={1.8} />
         </button>
-        <button
-          className={`desktop-rail-btn${panelMode === 'geo-outline' ? ' active' : ''}`}
-          onClick={() => onSelect('geo-outline')}
-          title="規劃"
-        >
-          <Layers size={20} strokeWidth={1.8} />
-        </button>
+        {/* GEO_OUTLINE_ENABLED:這次部署刻意不開啟(見 DesktopShared.tsx
+            對這個常數的說明),按鈕本身不渲染——不是只隱藏視覺,isPanelMode
+            也不再承認 'geo-outline',兩者搭配才是「整個功能真的進不去」,
+            不只是找不到入口。 */}
+        {GEO_OUTLINE_ENABLED && (
+          <button
+            className={`desktop-rail-btn${panelMode === 'geo-outline' ? ' active' : ''}`}
+            onClick={() => onSelect('geo-outline')}
+            title="規劃"
+          >
+            <Layers size={20} strokeWidth={1.8} />
+          </button>
+        )}
         {isDemo && (
           <>
             {/* 試做用導覽項目與正式功能之間的視覺分隔線,只在 ?demo 時出現,
