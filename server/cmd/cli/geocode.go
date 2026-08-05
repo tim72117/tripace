@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/tim72117/tripace/internal/geo"
 )
 
@@ -25,6 +26,11 @@ func cmdGeocode(args []string) {
 		fatal("geocode 需要 -place 地點名稱")
 	}
 
+	// geocode 直接在本地建立 geo.Client(不像其餘子命令走 HTTP 打伺服器),
+	// 需要自己讀 GOOGLE_PLACES_API_KEY——理由同 db.go 的 newDBClient():
+	// 載入 server/.env 讓使用者不需要手動 export,找不到 .env 不視為錯誤
+	// (維持原本「未設定 key 時由 client.Search 報錯」的既有行為)。
+	_ = godotenv.Load()
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	client := geo.New(apiKey)
 

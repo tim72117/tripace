@@ -203,6 +203,49 @@ func toDistrictResponses(in []geo.District) []districtResponse {
 	return out
 }
 
+// GET /internal/geo/geocode?query={地名/城市名}
+//
+// 供地理輪廓底圖的城市搜尋框使用:只把輸入字串解析成一組座標,不查詢
+// 景點/分區/飯店資料——「搜尋只負責定位,把地圖移過去」,之後畫面上
+// 該顯示什麼資料,一律交給 handleGeoDistrictsNearby 依地圖當時的可視
+// 範圍(bounds)另外查詢,兩個關注點刻意分開,不像 handleGeoDistricts
+// 那樣把「找座標」與「查資料」耦合在同一支端點裡。
+//
+// 用 geo.Client.Geocode(傳統 Geocoding API)而非 Places API 文字搜尋:
+// 只需要「這個地名大概在哪」這組座標,不需要 Places 額外回傳的分類/
+// 評分/照片等資料,Geocoding API 對純地名/城市名查詢既快又不計入
+// Places 配額,理由同 entry_geocode.go 的 handleGeocodeEntry。
+func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("query")
+	if query == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 query 查詢參數")
+		return
+	}
+
+	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+	client := geo.New(apiKey)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	result, err := client.Geocode(ctx, query)
+	if err != nil {
+		if err == geo.ErrNotFound {
+			writeErr(w, http.StatusNotFound, "no_match", "查無「"+query+"」相關地點")
+			return
+		}
+		writeErr(w, http.StatusBadGateway, "geocode_failed", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"query":   query,
+		"address": result.FormattedAddress,
+		"lat":     result.Lat,
+		"lng":     result.Lng,
+	})
+}
+
 // GET /internal/geo/districts/nearby?lat={緯度}&lng={經度}&radius={公尺,選填}
 //
 // 供地理輪廓底圖「地圖移動到哪就查哪」使用:前端在地圖平移/縮放停止後
@@ -281,5 +324,94 @@ func (s *Server) handleGeoDistrictsNearby(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]any{
 		"districts": districts,
 		"hotels":    hotels,
+	})
+}
+
+// placeResponse 是 GET /internal/geo/places/nearby 回應裡單筆推薦地點的
+// 格式——形狀與 hotelResponse 相同(名稱/地址/座標/類型/照片),但語意上
+// 是「不限類型的附近推薦地點」而非「飯店」,故另外命名,不直接借用
+// hotelResponse 造成語意混淆(即使目前欄位一致)。
+type placeResponse struct {
+	Name        string  `json:"name"`
+	Address     string  `json:"address"`
+	Lat         float64 `json:"lat"`
+	Lng         float64 `json:"lng"`
+	PrimaryType string  `json:"primaryType"`
+	PhotoURL    string  `json:"photoUrl,omitempty"`
+}
+
+// GET /internal/geo/places/nearby?lat={緯度}&lng={經度}&radius={公尺,選填}
+//
+// 供地圖上點擊地標(構想 6 地理輪廓底圖,見 GeoOutlineMap.tsx 點擊地標
+// 放大範圍後的說明)時使用:以該地標座標為中心,即時查詢 Google Places
+// Nearby Search 找附近的推薦景點/餐廳/商店等,不限類型(泛用推薦,同
+// internal/wanttools/recommend_nearby.go 的 LLM 工具留空 category 時的
+// 行為)。
+//
+// 這是「使用者明確點擊、低頻觸發」的動作,不像 handleGeoDistrictsNearby
+// 那樣要顧慮地圖高頻移動觸發大量 Google API 呼叫成本,故這裡直接即時查
+// Places API,不像那支端點只查自建資料庫——兩支端點的節流考量不同,
+// 不適合合併成同一支。
+//
+// 找不到任何地點時不視為錯誤,直接回傳空陣列(HTTP 200)——理由同
+// handleGeoDistrictsNearby。
+func (s *Server) handleGeoPlacesNearby(w http.ResponseWriter, r *http.Request) {
+	lat, err := strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "lat 查詢參數缺失或格式錯誤")
+		return
+	}
+	lng, err := strconv.ParseFloat(r.URL.Query().Get("lng"), 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "lng 查詢參數缺失或格式錯誤")
+		return
+	}
+	// radiusMeters 上限同 handleGeoDistrictsNearby,理由一致(避免任何
+	// 登入使用者反覆帶超大 radius 觸發大範圍、直接計費的 Google API 呼叫)。
+	const maxRadiusMeters = 50000.0
+	radiusMeters := 1500.0
+	if raw := r.URL.Query().Get("radius"); raw != "" {
+		if parsed, err := strconv.ParseFloat(raw, 64); err == nil && parsed > 0 {
+			radiusMeters = parsed
+			if radiusMeters > maxRadiusMeters {
+				radiusMeters = maxRadiusMeters
+			}
+		}
+	}
+
+	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+	client := geo.New(apiKey)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	places := make([]placeResponse, 0)
+	found, err := client.SearchNearby(ctx, lat, lng, &geo.NearbyOptions{
+		RadiusMeters:  radiusMeters,
+		MaxResults:    20,
+		IncludePhotos: true,
+	})
+	if err == nil {
+		for _, p := range found {
+			pr := placeResponse{
+				Name:        p.Name,
+				Address:     p.Address,
+				Lat:         p.Lat,
+				Lng:         p.Lng,
+				PrimaryType: p.PrimaryType,
+			}
+			if p.PhotoRef != "" {
+				if photoURL, pErr := client.PhotoDataURI(ctx, p.PhotoRef, 200); pErr == nil {
+					pr.PhotoURL = photoURL
+				}
+			}
+			places = append(places, pr)
+		}
+	}
+	// 查詢失敗不視為整支端點失敗,直接回傳查到的部分(這裡是空陣列)——
+	// 理由同 fetchNearbyHotels 的說明,避免因為附加圖層查詢失敗讓使用者
+	// 看到紅色錯誤訊息。
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"places": places,
 	})
 }

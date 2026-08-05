@@ -16,10 +16,10 @@ import { ASSIST_LANG_KEY, getAssistLang } from './assistLang'
 import { PaceChart, type Checkpoint } from './PaceChart'
 import { PaceRouteMap, type SelectedEntry } from './PaceRouteMap'
 import { DemoPanel } from './DemoPanel'
-import { GeoHotelSidebar } from './GeoHotelSidebar'
+import { GeoHotelSidebar, geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
 import { GeoCandidateSidebar, type GeoCandidate } from './GeoCandidateSidebar'
 import { GeoOutlineDemo } from './GeoOutlineDemo'
-import type { GeoDistrict, GeoHotel } from './api'
+import type { GeoDistrict, GeoHotel, GeoPlace } from './api'
 import {
   Avatar, ErrorBanner, errMsg, isSubmitEnter, LoginForm, useTripsState,
   type ContentProps,
@@ -106,12 +106,18 @@ export function DesktopContent(props: ContentProps) {
   // 兩個分開掛載的 sibling 需要這層 state 中介資料。
   const [geoHotels, setGeoHotels] = useState<GeoHotel[]>([])
   // geoDistricts:同 geoHotels,但存分區/地標清單(見 model.Landmark),
-  // 供 GeoHotelSidebar 的「地點」分頁顯示——理由同 geoHotels,飯店/
-  // 地點資料都是查詢完整結果,不像 geoHotels 已經被 GeoOutlineMap
-  // 依地圖可視範圍(bounds)篩選過,這裡先用完整清單,之後若地點清單
-  // 也要跟著地圖範圍同步,可以比照 hotels 的 onVisibleHotelsChange
-  // 模式另外接一個 callback。
+  // 供 GeoHotelSidebar 的「地點」分頁顯示——理由同 geoHotels。景點與
+  // 飯店現在都是 GeoOutlineMap 依地圖可視範圍(bounds)向後端查詢的
+  // 結果(見該元件的說明),這裡收到的已經是「目前地圖範圍內」的清單,
+  // 不是查詢當下的完整結果,會隨地圖拖曳/縮放持續更新。
   const [geoDistricts, setGeoDistricts] = useState<GeoDistrict[]>([])
+  // geoPlaces:點擊地圖上的地標圖示時即時查詢到的附近推薦地點(見
+  // GeoOutlineMap.tsx 的 handleDistrictClick、GeoHotelSidebar 的「附近
+  // 推薦」分頁),由 GeoOutlineDemo 透過 onPlacesNearby 回報——理由同
+  // geoHotels/geoDistricts。跟那兩者不同的是這不是常駐跟著地圖範圍
+  // 更新的圖層,是「點了某個地標才會有內容」的一次性查詢結果,換行程/
+  // 切換分頁時不特別清空(下一次點擊地標會自然覆蓋掉舊結果)。
+  const [geoPlaces, setGeoPlaces] = useState<GeoPlace[]>([])
   // geoPanTarget:使用者在 GeoHotelSidebar 點擊某間飯店時要移動地圖到
   // 的座標——側欄與地圖(GeoOutlineMap,在 main 內部的 GeoOutlineDemo
   // 裡)是分開掛載的 sibling,「移動地圖」的意圖同樣得靠這層 state
@@ -119,6 +125,15 @@ export function DesktopContent(props: ContentProps) {
   // onSelectHotel),讓 GeoOutlineMap 那邊即使連續點同一間飯店也能
   // 偵測到「這是一次新的移動請求」而重新 panTo。
   const [geoPanTarget, setGeoPanTarget] = useState<{ lat: number; lng: number; level?: number } | null>(null)
+  // geoSelectedKey:目前被選中的飯店/地點識別鍵(見 GeoHotelSidebar.tsx
+  // 的 geoItemKey)——理由同 geoPanTarget,側欄(GeoHotelSidebar)與地圖
+  // (GeoOutlineMap)是分開掛載的 sibling,「哪一項被選中」的狀態只能靠
+  // 這層 state 中介,才能讓側欄的選取標記與地圖上的選取樣式同步。跟
+  // geoPanTarget 一起在同一個點擊事件裡設定(見下方 onSelectHotel/
+  // onSelectDistrict),兩者語意不同不合併:panTarget 每次點擊都要是新
+  // 物件參照(即使連續點同一項)才能觸發地圖平移,selectedKey 則是單純
+  // 的字串比對,合併會讓其中一邊的用途打折。
+  const [geoSelectedKey, setGeoSelectedKey] = useState<GeoSelectedKey>(null)
   // geoCandidates:候選籃(構想 1,見
   // docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)目前收集的候選清單——純
   // 前端試做,只存在這份記憶體 state,重新整理頁面會消失,尚未接上任何
@@ -279,9 +294,36 @@ export function DesktopContent(props: ContentProps) {
             // 是同一種版面邏輯。
             <GeoOutlineDemo
               cfg={cfg}
+              tripID={activeTrip?.id ?? null}
               onHotelsChange={setGeoHotels}
               onDistrictsChange={setGeoDistricts}
+              onPlacesNearby={setGeoPlaces}
+              onTripEntriesChange={(entries) => {
+                // 行程本身已有座標的 entry 自動併入候選籃——跟手動用
+                // 「+」加入的來源(飯店/地點/推薦地點)共用同一份
+                // geoCandidates,用 kind+name+lat+lng 比對避免換行程/
+                // 重新查詢時重複加入(理由同下方 onAddCandidate 的比對
+                // 邏輯)。舊行程遺留的 entry 候選(kind==='entry' 但不在
+                // 這次新清單裡)一併移除,避免換行程後候選籃留著上一趟
+                // 的行程內容;使用者手動加入的其他三種候選不受影響。
+                setGeoCandidates((prev) => {
+                  const withoutStaleEntries = prev.filter(
+                    (p) => p.kind !== 'entry' || entries.some((e) => e.id === p.id),
+                  )
+                  const newOnes = entries
+                    .filter((e) => !withoutStaleEntries.some((p) => p.kind === 'entry' && p.id === e.id))
+                    // 展開順序刻意把 kind: 'entry' 放在 ...e 之後——
+                    // GeoTripEntry 自己也有一個同名的 kind 欄位(entry
+                    // 的類型,如 "stay"/"activity",見 api.ts 的說明),
+                    // 若寫成 { kind: 'entry', ...e } 會被 e.kind 蓋掉,
+                    // 這裡的 kind 必須是候選籃用來分辨四種來源的字面值
+                    // 'entry',跟 entry 本身的類型是兩件不相關的事。
+                    .map((e): GeoCandidate => ({ ...e, kind: 'entry' }))
+                  return [...withoutStaleEntries, ...newOnes]
+                })
+              }}
               panTarget={geoPanTarget}
+              selectedKey={geoSelectedKey}
             />
           ) : panelMode === 'demo-cards' || panelMode === 'demo-row' || panelMode === 'demo-map'
             || panelMode === 'demo-clienttools' || panelMode === 'demo-onagent' ? (
@@ -302,8 +344,20 @@ export function DesktopContent(props: ContentProps) {
           <GeoHotelSidebar
             hotels={geoHotels}
             districts={geoDistricts}
-            onSelectHotel={(h) => setGeoPanTarget({ lat: h.lat, lng: h.lng })}
-            onSelectDistrict={(d) => setGeoPanTarget({ lat: d.lat, lng: d.lng, level: d.level })}
+            places={geoPlaces}
+            selectedKey={geoSelectedKey}
+            onSelectHotel={(h) => {
+              setGeoPanTarget({ lat: h.lat, lng: h.lng })
+              setGeoSelectedKey(geoItemKey('hotel', h))
+            }}
+            onSelectDistrict={(d) => {
+              setGeoPanTarget({ lat: d.lat, lng: d.lng, level: d.level })
+              setGeoSelectedKey(geoItemKey('district', d))
+            }}
+            onSelectPlace={(p) => {
+              setGeoPanTarget({ lat: p.lat, lng: p.lng })
+              setGeoSelectedKey(geoItemKey('place', p))
+            }}
             onAddCandidate={(c) =>
               setGeoCandidates((prev) =>
                 prev.some((p) => p.kind === c.kind && p.name === c.name && p.lat === c.lat && p.lng === c.lng)

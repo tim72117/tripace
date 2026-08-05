@@ -404,6 +404,15 @@
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
 }
+/* 地理輪廓底圖(構想 6,規劃分頁)同理拿掉 860px 寬度上限——地圖是滿版
+   鋪底的視覺主體,理由與配速表地圖完全相同(見上方 pace-route-map-wrap
+   規則的說明),寬螢幕時應該跟著 .desktop-main 一路放大,不該被限制在
+   聊天/時間軸內容取向的閱讀寬度上限內。地圖本身用 position: absolute;
+   inset: 0(見 GeoOutlineDemo.module.css 的 .wrap/.mapArea)撐滿容器,
+   不需要额外的 overflow 處理(不像配速表那樣需要接手捲動權)。 */
+.desktop-main:has(.geo-outline-demo-wrap) {
+  max-width: none;
+}
 .desktop-empty-state {
   flex: 1 1 auto;
   display: flex;

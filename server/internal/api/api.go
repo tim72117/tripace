@@ -186,6 +186,8 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("DELETE /internal/trips/{id}/entries", s.handleInternalReset)
 	internalMux.HandleFunc("GET /internal/geo/districts", s.handleGeoDistricts)
 	internalMux.HandleFunc("GET /internal/geo/districts/nearby", s.handleGeoDistrictsNearby)
+	internalMux.HandleFunc("GET /internal/geo/geocode", s.handleGeoGeocode)
+	internalMux.HandleFunc("GET /internal/geo/places/nearby", s.handleGeoPlacesNearby)
 
 	// clienttools — 「LLM 呼叫前端 tool」試做(POC)專用端點,見
 	// clienttools_http.go/clienttools_ws.go。與上面既有 /internal/* 端點

@@ -1,4 +1,4 @@
-import type { GeoDistrict, GeoHotel } from './api'
+import type { GeoDistrict, GeoHotel, GeoPlace, GeoTripEntry } from './api'
 import styles from './GeoCandidateSidebar.module.css'
 
 // GeoCandidateSidebar:候選籃(構想 1,見
@@ -14,9 +14,16 @@ import styles from './GeoCandidateSidebar.module.css'
 //
 // 加入候選的入口是右側 GeoHotelSidebar(飯店/地點清單)每一項卡片上的
 // 「+」按鈕(見該元件),這裡只負責顯示已加入的候選與移除。
+// entry 種類:行程本身已有座標的 entry(見 GeoOutlineMap.tsx 的
+// tripEntries 說明)——這批點不是使用者手動用「+」加入的,是進入規劃
+// 分頁時自動帶入的行程既有內容(見 DesktopLayout.tsx 的
+// onTripEntriesChange),但仍走同一份候選籃資料結構與顯示邏輯,不另開
+// 一份平行清單。
 export type GeoCandidate =
   | ({ kind: 'hotel' } & GeoHotel)
   | ({ kind: 'district' } & GeoDistrict)
+  | ({ kind: 'place' } & GeoPlace)
+  | ({ kind: 'entry' } & GeoTripEntry)
 
 export function GeoCandidateSidebar({
   candidates,
@@ -37,9 +44,9 @@ export function GeoCandidateSidebar({
           </div>
         ) : (
           candidates.map((c) => {
-            const photoUrl = c.kind === 'hotel' ? c.photoUrl : c.landmarkPhotoUrl
-            const name = c.kind === 'hotel' ? c.name : c.name
-            const meta = c.kind === 'hotel' ? c.address : (c.landmarkName ?? '')
+            const photoUrl = c.kind === 'district' ? c.landmarkPhotoUrl : c.kind === 'entry' ? undefined : c.photoUrl
+            const name = c.name
+            const meta = c.kind === 'district' ? (c.landmarkName ?? '') : c.kind === 'entry' ? (c.location ?? '') : c.address
             return (
               <div key={`${c.kind}-${name}-${c.lat}-${c.lng}`} className={styles.item}>
                 {photoUrl ? (

@@ -70,6 +70,7 @@
 }
 
 .item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -79,6 +80,24 @@
 
 .item:hover {
   background: var(--ios-bg);
+}
+
+/* itemSelected:目前被選中(點擊過、地圖已平移過去)的項目——視覺語言
+   比照 DesktopRail 的 .desktop-rail-btn.active(左緣 accent 豎條 +
+   淡底色),讓使用者一眼認出這是同一套「目前選中」的介面慣例。 */
+.itemSelected {
+  background: var(--ios-bg);
+}
+
+.itemSelected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--color-accent);
 }
 
 .itemBody {
