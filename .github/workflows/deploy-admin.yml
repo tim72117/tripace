@@ -1,20 +1,23 @@
 name: Deploy Admin to Cloud Run
 
+# 曾經是 push to main 時依 paths 過濾自動觸發,已改為跟 deploy-cloudrun.yml
+# (主 server)一致的 tag 觸發模式,理由相同:這裡監看的 paths 包含
+# server/internal/model、server/internal/store,這兩個套件與主 server
+# 共用同一份資料庫 schema,若 push 到 main 就自動 build+deploy,可能在
+# 資料庫還沒完成對應遷移的狀態下把讀新 schema 的程式碼推上線。
+#
+# 改為打 v* 格式的 git tag(如 v1.0.2)時自動觸發部署,且刻意跟主 server
+# 共用同一個 tag 前綴(不另外用 admin-v* 分開)——這兩個服務目前共用同一份
+# model/store,分開的 tag 容易讓兩邊版本不同步、各自對不上目前資料庫
+# 實際的 schema 狀態。打一次 v* tag 視為「這個版本已確認要上線」,主
+# server 與 admin 一起部署,對齊 .claude/skills/version-tagging 的流程。
+#
+# workflow_dispatch 仍保留,供不方便打 tag、或需要 skip_build 這種
+# 特殊情境時手動觸發,兩種觸發方式並存。
 on:
   push:
-    branches: [main]
-    paths:
-      - 'server/cmd/adminserver/**'
-      - 'server/internal/adminauth/**'
-      - 'server/internal/adminconsole/**'
-      - 'server/internal/model/**'
-      - 'server/internal/store/**'
-      - 'server/go.mod'
-      - 'server/go.sum'
-      - 'web/admin/**'
-      - 'Dockerfile.admin'
-      - '.dockerignore'
-      - '.github/workflows/deploy-admin.yml'
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       skip_build:
