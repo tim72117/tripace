@@ -310,7 +310,7 @@ func cmdRenameChannelToTrip(useDB bool, db *dbClient) {
 	output(map[string]any{"renamed": renamed})
 }
 
-// cmdLandmarkAdd 新增一筆地標/區域資料(見 model.Landmark 的完整說明)。
+// cmdLandmarkAdd 新增一筆景點區域資料(見 model.Attraction 的完整說明)。
 // 只在 -db 模式下有意義——這是人工建檔操作,不透過 HTTP(不開放給
 // 一般使用者寫入,避免資料被任意竄改)。
 func cmdLandmarkAdd(useDB bool, db *dbClient, args []string) {
@@ -319,7 +319,7 @@ func cmdLandmarkAdd(useDB bool, db *dbClient, args []string) {
 	}
 	fs := flag.NewFlagSet("landmark-add", flag.ExitOnError)
 	name := fs.String("name", "", "地標/區域白話名稱（必填），如「古城區」「101」")
-	city := fs.String("city", "", "所屬城市名稱（必填），對齊 GET /internal/geo/districts?city= 的查詢字串")
+	city := fs.String("city", "", "所屬城市名稱（必填），對齊 GET /internal/geo/attractions?city= 的查詢字串")
 	lat := fs.Float64("lat", 0, "緯度（必填）")
 	lng := fs.Float64("lng", 0, "經度（必填）")
 	level := fs.Int("level", 0, "知名度分級（必填），1=國際 2=國家 3=區域 4=城市 5=在地")
@@ -333,7 +333,7 @@ func cmdLandmarkAdd(useDB bool, db *dbClient, args []string) {
 	if *level < 1 || *level > 5 {
 		fatal("landmark-add 的 -level 必須介於 1~5")
 	}
-	in := model.Landmark{
+	in := model.Attraction{
 		Name: *name, CityName: *city, Lat: *lat, Lng: *lng,
 		Level: *level, RadiusMeters: *radius,
 	}

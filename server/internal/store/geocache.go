@@ -2,17 +2,18 @@ package store
 
 import (
 	"errors"
+	"sort"
 	"time"
 
 	"gorm.io/gorm"
 )
 
 // GetCachedPhoto 查詢已快取的 Google Places 圖片(見 photoCacheRow 的
-// 完整說明)。ok 為 false 代表快取未命中(從未查過這個 photoRef+寬度
+// 完整說明)。ok 為 false 代表快取未命中(從未查過這個 placeID+寬度
 // 組合),呼叫端應照原本流程向 Google Photo Media API 查詢。
-func (s *Store) GetCachedPhoto(photoRef string, maxWidthPx int) (dataURI string, ok bool, err error) {
+func (s *Store) GetCachedPhoto(placeID string, maxWidthPx int) (dataURI string, ok bool, err error) {
 	var row photoCacheRow
-	err = s.db.Where("photo_ref = ? AND max_width_px = ?", photoRef, maxWidthPx).First(&row).Error
+	err = s.db.Where("place_id = ? AND max_width_px = ?", placeID, maxWidthPx).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", false, nil
 	}
@@ -22,11 +23,11 @@ func (s *Store) GetCachedPhoto(photoRef string, maxWidthPx int) (dataURI string,
 	return row.DataURI, true, nil
 }
 
-// SetCachedPhoto 寫入(或覆蓋既有)一筆圖片快取。用 photo_ref+寬度組合
+// SetCachedPhoto 寫入(或覆蓋既有)一筆圖片快取。用 place_id+寬度組合
 // upsert,避免同一張圖片重複查詢時因為唯一鍵衝突而寫入失敗。
-func (s *Store) SetCachedPhoto(photoRef string, maxWidthPx int, dataURI string) error {
+func (s *Store) SetCachedPhoto(placeID string, maxWidthPx int, dataURI string) error {
 	row := photoCacheRow{
-		PhotoRef:   photoRef,
+		PlaceID:    placeID,
 		MaxWidthPx: maxWidthPx,
 		DataURI:    dataURI,
 		FetchedAt:  now(),
@@ -175,4 +176,94 @@ func (s *Store) RequestStatsTotal(since time.Time) (total int64, errorCount int6
 		return 0, 0, err
 	}
 	return row.Total, row.ErrorCount, nil
+}
+
+// TimelineBucket 是時間序列圖表用的單一資料點,粒度由呼叫端決定(見
+// requestTimelineSince 的 granularity 參數——inbound 的
+// RequestStatsTimeline 用小時、outbound 的 GeoAPICallStatsTimeline 用
+// 分鐘,兩者不共用同一種粒度)。BucketStart 是該桶的起始時間(UTC,依
+// granularity 整點/整分對齊)。
+type TimelineBucket struct {
+	BucketStart time.Time `json:"bucketStart"`
+	Count       int64     `json:"count"`
+	ErrorCount  int64     `json:"errorCount"`
+}
+
+// requestTimelineSince 是 RequestStatsTimeline/GeoAPICallStatsTimeline
+// 共用的分桶邏輯——只抓 created_at/status_code(errored) 兩欄,在應用層
+// (Go)依 granularity(time.Hour 或 time.Minute)分桶聚合,而非在 SQL 裡
+// 用資料庫函式(如 Postgres 的 date_trunc)分桶:store 同時支援 Postgres
+// 與 SQLite(見 store.go 的 dialector),兩者的日期截斷語法不相容,應用層
+// 分桶是唯一在兩種資料庫上都正確的做法。SQL 查詢本身不做聚合(直接撈
+// since 範圍內每一筆原始 row 的 created_at/errored),掃描成本與分桶
+// 粒度無關,只有 Go 這層的 map 大小、以及回應 JSON 大小/前端要畫的點數
+// 會隨粒度變細而增加——查詢範圍上限沿用 adminconsole 既有的 168 小時/
+// 7 天(listRequestStats/listGeoAPIStats 的 maxHours),沒有另外收窄。
+//
+// 回傳的桶依時間由舊到新排序,涵蓋 since 到現在之間「有資料的」桶(沒有
+// 請求的桶不會出現在結果裡,由呼叫端/前端決定要不要補零值)。
+func requestTimelineSince(rows []struct {
+	CreatedAt time.Time
+	Errored   bool
+}, granularity time.Duration) []TimelineBucket {
+	buckets := make(map[time.Time]*TimelineBucket)
+	order := make([]time.Time, 0)
+	for _, r := range rows {
+		bucketStart := r.CreatedAt.UTC().Truncate(granularity)
+		b, ok := buckets[bucketStart]
+		if !ok {
+			b = &TimelineBucket{BucketStart: bucketStart}
+			buckets[bucketStart] = b
+			order = append(order, bucketStart)
+		}
+		b.Count++
+		if r.Errored {
+			b.ErrorCount++
+		}
+	}
+	sort.Slice(order, func(i, j int) bool { return order[i].Before(order[j]) })
+	out := make([]TimelineBucket, 0, len(order))
+	for _, t := range order {
+		out = append(out, *buckets[t])
+	}
+	return out
+}
+
+// RequestStatsTimeline 回傳自 since 以來,按小時分桶的請求量時間序列
+// (供管理後台請求數量頁面的趨勢圖使用,見 requestTimelineSince 的分桶
+// 說明)——inbound 維持小時粒度不變。
+func (s *Store) RequestStatsTimeline(since time.Time) ([]TimelineBucket, error) {
+	var rows []struct {
+		CreatedAt time.Time
+		Errored   bool
+	}
+	err := s.db.Model(&apiRequestLogRow{}).
+		Select("created_at, status_code >= 400 as errored").
+		Where("created_at >= ?", since).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return requestTimelineSince(rows, time.Hour), nil
+}
+
+// GeoAPICallStatsTimeline 是 RequestStatsTimeline 的 outbound 對應版本
+// (見該函式與 requestTimelineSince 的說明)——errored 這裡是「連線層
+// 失敗或狀態碼 >= 400」的合併判斷,對齊 GeoAPICallStatsSince 的
+// error_count 定義,不是只看狀態碼。改用分鐘粒度(inbound 維持小時不變)
+// ——Google API 呼叫量通常遠低於一般請求量,分鐘粒度能看出較細的波動,
+// 不會像小時粒度那樣把短暫的呼叫尖峰拉平。
+func (s *Store) GeoAPICallStatsTimeline(since time.Time) ([]TimelineBucket, error) {
+	var rows []struct {
+		CreatedAt time.Time
+		Errored   bool
+	}
+	err := s.db.Model(&geoAPICallLogRow{}).
+		Select("created_at, (errored OR status_code >= 400) as errored").
+		Where("created_at >= ?", since).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return requestTimelineSince(rows, time.Minute), nil
 }

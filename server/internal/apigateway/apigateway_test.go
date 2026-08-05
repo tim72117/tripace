@@ -120,7 +120,7 @@ func TestGateway_LogsEndpointCallerAndPath(t *testing.T) {
 	logger := &mockLogger{}
 	gw := New(doer, Config{MaxConcurrency: 1, MinInterval: 0}, logger)
 
-	if _, err := gw.Do(context.Background(), newTestRequest(t), "places.searchNearby", "handleGeoDistrictsNearby", "/internal/geo/districts/nearby"); err != nil {
+	if _, err := gw.Do(context.Background(), newTestRequest(t), "places.searchNearby", "handleGeoAttractionsNearby", "/internal/geo/attractions/nearby"); err != nil {
 		t.Fatalf("Do: %v", err)
 	}
 
@@ -143,8 +143,8 @@ func TestGateway_LogsEndpointCallerAndPath(t *testing.T) {
 		t.Fatalf("expected 1 logged call, got %d", len(logger.calls))
 	}
 	got := logger.calls[0]
-	if got.endpoint != "places.searchNearby" || got.caller != "handleGeoDistrictsNearby" ||
-		got.path != "/internal/geo/districts/nearby" || got.statusCode != http.StatusOK {
+	if got.endpoint != "places.searchNearby" || got.caller != "handleGeoAttractionsNearby" ||
+		got.path != "/internal/geo/attractions/nearby" || got.statusCode != http.StatusOK {
 		t.Errorf("unexpected logged call: %+v", got)
 	}
 }

@@ -1,67 +1,71 @@
 import { useState } from 'react'
 import { Compass, Hotel, MapPin, Plus } from 'lucide-react'
-import type { GeoDistrict, GeoHotel, GeoPlace } from './api'
+import type { GeoAttraction, GeoHotel, GeoPlace } from './api'
 import type { GeoCandidate } from './GeoCandidateSidebar'
 import styles from './GeoHotelSidebar.module.css'
 
-// GeoHotelSidebar:地理輪廓底圖(構想 6)查詢到的飯店/地點清單,顯示在
+// GeoHotelSidebar:地理輪廓底圖(構想 6)查詢到的飯店/景點區域清單,顯示在
 // 整個桌面版介面(rail+side panel+main)最外側——比照 DesktopLayout.tsx
 // 既有的 DemoPanel(debug 面板)固定寬度側欄模式,跟 .desktop-main
 // 平行,而非塞在 main 內部的某一欄。只在使用者實際查看地理輪廓底圖
 // (panelMode === 'geo-outline')時才顯示,見 DesktopLayout.tsx
 // 的掛載條件。
 //
-// 頂部分頁標籤(飯店/地點)切換要顯示哪一份清單,視覺語言比照左側
-// DesktopRail 的 active 態(左緣 accent 豎條 + 淡底色),讓使用者一眼
-// 認出這是同一套導覽介面慣例,不是另一套新樣式。
+// 頂部分頁標籤(地點/飯店/附近推薦)切換要顯示哪一份清單,視覺語言比照
+// 左側 DesktopRail 的 active 態(左緣 accent 豎條 + 淡底色),讓使用者
+// 一眼認出這是同一套導覽介面慣例,不是另一套新樣式。分頁順序刻意把
+// 「地點」(人工建檔的景點區域,見 model.Attraction)放最前面——這批
+// 資料是地理輪廓底圖最先給出的內容(見 GeoOutlineMap.tsx 掛載時只查
+// attractions、不查 hotels 的說明),分頁順序對齊「使用者最先看到什麼」
+// 的順序。
 //
-// onSelectHotel/onSelectDistrict:點擊清單項目本體時觸發,把該項目座標
+// onSelectHotel/onSelectAttraction:點擊清單項目本體時觸發,把該項目座標
 // 往上回報——這個側欄跟實際的地圖(GeoOutlineMap)是分開掛載的
 // sibling(側欄在 DesktopLayout 最外側,地圖在 main 內部的
-// GeoOutlineDemo 裡),點擊「移動地圖到這個座標」的意圖只能靠
-// DesktopLayout 中介,往下傳給 GeoOutlineDemo 再傳給 GeoOutlineMap
+// GeoOutlinePanel 裡),點擊「移動地圖到這個座標」的意圖只能靠
+// DesktopLayout 中介,往下傳給 GeoOutlinePanel 再傳給 GeoOutlineMap
 // 執行實際的 panTo。
 //
 // onAddCandidate:卡片右側的「+」按鈕觸發,把該項目加入候選籃
 // (GeoCandidateSidebar,見該元件的說明)——跟 onSelectHotel/
-// onSelectDistrict(移動地圖)是兩個獨立的動作,故卡片本體不能整張都是
+// onSelectAttraction(移動地圖)是兩個獨立的動作,故卡片本體不能整張都是
 // <button>(HTML 不允許 button 巢狀 button),改成卡片本體是可點擊的
 // <div role="button">,「+」是卡片內獨立的 <button>。
 //
-// selectedKey:目前被選中的項目識別鍵(見下方 itemKey),由 DesktopLayout
+// selectedKey:目前被選中的項目識別鍵(見下方 geoItemKey),由 DesktopLayout
 // 中介(理由同 geoPanTarget——側欄與地圖是分開掛載的 sibling)。點擊項目
 // 本體時「移動地圖」與「標記選取」是同一個使用者意圖,故沿用
-// onSelectHotel/onSelectDistrict 這兩個既有 callback 觸發,不另外新增
+// onSelectHotel/onSelectAttraction 這兩個既有 callback 觸發,不另外新增
 // onSelect 系列 prop。
 export type GeoSelectedKey = string | null
 
-// itemKey:飯店/地點/推薦地點都沒有穩定的 id(飯店/推薦地點是即時查詢
-// 結果,地點可能來自三種不同來源,見 api.ts 的 GeoDistrict 說明),用
-// 「名稱+座標」組合當識別鍵——同一份查詢結果內足以識別惟一項目,不需要
-// 额外引入 id 欄位。entry(行程本身已有座標的 entry,見 GeoTripEntry)
-// 雖然有穩定 id,仍沿用同一套「名稱+座標」規則,跟其他三種來源保持
-// 一致,不需要為它另外分岔一套識別邏輯。
+// geoItemKey:飯店/景點區域/推薦地點都沒有穩定的 id(飯店/推薦地點是
+// 即時查詢結果,景點區域可能來自三種不同來源,見 api.ts 的 GeoAttraction
+// 說明),用「名稱+座標」組合當識別鍵——同一份查詢結果內足以識別惟一
+// 項目,不需要额外引入 id 欄位。entry(行程本身已有座標的 entry,見
+// GeoTripEntry)雖然有穩定 id,仍沿用同一套「名稱+座標」規則,跟其他
+// 三種來源保持一致,不需要為它另外分岔一套識別邏輯。
 export function geoItemKey(
-  kind: 'hotel' | 'district' | 'place' | 'entry',
+  kind: 'hotel' | 'attraction' | 'place' | 'entry',
   item: { name: string; lat: number; lng: number },
 ) {
   return `${kind}:${item.name}:${item.lat}:${item.lng}`
 }
 
-export type Tab = 'hotels' | 'districts' | 'places'
+export type Tab = 'attractions' | 'hotels' | 'places'
 
-// places:點擊地圖上的地標(見 GeoOutlineMap.tsx 的 handleDistrictClick)
+// places:點擊地圖上的地標(見 GeoOutlineMap.tsx 的 handleAttractionClick)
 // 時,即時查詢該地標附近的推薦地點(景點/餐廳/商店等,不限類型,對齊
-// server 的 GET /internal/geo/places/nearby)——跟飯店/地點兩個分頁是
+// server 的 GET /internal/geo/places/nearby)——跟地點/飯店兩個分頁是
 // 常駐、跟著地圖範圍持續更新的圖層不同,這個分頁是「使用者點了某個
 // 地標才會有內容」的一次性查詢結果,查無資料或還沒點過任何地標時顯示
 // 對應的空狀態提示。
-// onSelectPlace:同 onSelectHotel/onSelectDistrict,點擊項目本體時把
+// onSelectPlace:同 onSelectHotel/onSelectAttraction,點擊項目本體時把
 // 座標往上回報以移動地圖。
 //
 // activeTab:目前要顯示哪個分頁,由 DesktopLayout.tsx 中介——原本是這個
 // 元件的內部 state,但地圖上點擊地標/飯店/推薦地點(見
-// GeoOutlineMap.tsx 的 onDistrictSelect/onHotelSelect/onPlaceSelect)
+// GeoOutlineMap.tsx 的 onAttractionSelect/onHotelSelect/onPlaceSelect)
 // 也需要能「開啟右側對應項目的介紹」,而地圖跟這個側欄是分開掛載的
 // sibling,只能靠父層中介的 state 驅動分頁切換,不能再讓分頁停留在
 // 使用者上次手動點的那一頁——例如目前在「飯店」分頁,點了地圖上的
@@ -70,28 +74,28 @@ export type Tab = 'hotels' | 'districts' | 'places'
 // 使用情境下的既有行為)。
 export function GeoHotelSidebar({
   hotels,
-  districts,
+  attractions,
   places = [],
   selectedKey,
   activeTab,
   onTabChange,
   onSelectHotel,
-  onSelectDistrict,
+  onSelectAttraction,
   onSelectPlace,
   onAddCandidate,
 }: {
   hotels: GeoHotel[]
-  districts: GeoDistrict[]
+  attractions: GeoAttraction[]
   places?: GeoPlace[]
   selectedKey?: GeoSelectedKey
   activeTab?: Tab
   onTabChange?: (tab: Tab) => void
   onSelectHotel?: (hotel: GeoHotel) => void
-  onSelectDistrict?: (district: GeoDistrict) => void
+  onSelectAttraction?: (attraction: GeoAttraction) => void
   onSelectPlace?: (place: GeoPlace) => void
   onAddCandidate?: (candidate: GeoCandidate) => void
 }) {
-  const [internalTab, setInternalTab] = useState<Tab>('hotels')
+  const [internalTab, setInternalTab] = useState<Tab>('attractions')
   // activeTab 有傳時視為受控元件,忽略內部 state;沒傳時退回內部 state,
   // 維持既有(尚未接上父層中介邏輯的情境)行為不變。
   const tab = activeTab ?? internalTab
@@ -102,19 +106,19 @@ export function GeoHotelSidebar({
       <div className={styles.tabs}>
         <button
           type="button"
+          className={`${styles.tab}${tab === 'attractions' ? ` ${styles.tabActive}` : ''}`}
+          onClick={() => setTab('attractions')}
+          title="地點"
+        >
+          <MapPin size={18} strokeWidth={1.8} />
+        </button>
+        <button
+          type="button"
           className={`${styles.tab}${tab === 'hotels' ? ` ${styles.tabActive}` : ''}`}
           onClick={() => setTab('hotels')}
           title="飯店"
         >
           <Hotel size={18} strokeWidth={1.8} />
-        </button>
-        <button
-          type="button"
-          className={`${styles.tab}${tab === 'districts' ? ` ${styles.tabActive}` : ''}`}
-          onClick={() => setTab('districts')}
-          title="地點"
-        >
-          <MapPin size={18} strokeWidth={1.8} />
         </button>
         <button
           type="button"
@@ -126,9 +130,49 @@ export function GeoHotelSidebar({
         </button>
       </div>
       <div className={styles.list}>
-        {tab === 'hotels' ? (
+        {tab === 'attractions' ? (
+          attractions.length === 0 ? (
+            <div className={styles.empty}>還沒有地點資料——查詢一個城市後,分區/地標會列在這裡。</div>
+          ) : (
+            attractions.map((d) => (
+              <div
+                key={d.name}
+                className={`${styles.item}${selectedKey === geoItemKey('attraction', d) ? ` ${styles.itemSelected}` : ''}`}
+              >
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className={styles.itemBody}
+                  onClick={() => onSelectAttraction?.(d)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') onSelectAttraction?.(d) }}
+                >
+                  {d.landmarkPhotoUrl ? (
+                    <img className={styles.itemPhoto} src={d.landmarkPhotoUrl} alt={d.landmarkName ?? d.name} loading="lazy" />
+                  ) : (
+                    <div className={styles.itemPhotoPlaceholder} />
+                  )}
+                  <div className={styles.itemInfo}>
+                    <span className={styles.itemName}>{d.name}</span>
+                    <span className={styles.itemAddress}>
+                      {d.placeCount ? `${d.placeCount} 筆景點` : d.landmarkName ?? ''}
+                    </span>
+                    {d.summary && <p className={styles.itemSummary}>{d.summary}</p>}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={styles.addBtn}
+                  title="加入候選"
+                  onClick={() => onAddCandidate?.({ kind: 'attraction', ...d })}
+                >
+                  <Plus size={16} strokeWidth={2} />
+                </button>
+              </div>
+            ))
+          )
+        ) : tab === 'hotels' ? (
           hotels.length === 0 ? (
-            <div className={styles.empty}>還沒有飯店資料——查詢一個城市後,附近的住宿會列在這裡。</div>
+            <div className={styles.empty}>還沒有飯店資料——按下地圖上的「搜尋這個區域」,附近的住宿會列在這裡。</div>
           ) : (
             hotels.map((h) => (
               <div
@@ -157,46 +201,6 @@ export function GeoHotelSidebar({
                   className={styles.addBtn}
                   title="加入候選"
                   onClick={() => onAddCandidate?.({ kind: 'hotel', ...h })}
-                >
-                  <Plus size={16} strokeWidth={2} />
-                </button>
-              </div>
-            ))
-          )
-        ) : tab === 'districts' ? (
-          districts.length === 0 ? (
-            <div className={styles.empty}>還沒有地點資料——查詢一個城市後,分區/地標會列在這裡。</div>
-          ) : (
-            districts.map((d) => (
-              <div
-                key={d.name}
-                className={`${styles.item}${selectedKey === geoItemKey('district', d) ? ` ${styles.itemSelected}` : ''}`}
-              >
-                <div
-                  role="button"
-                  tabIndex={0}
-                  className={styles.itemBody}
-                  onClick={() => onSelectDistrict?.(d)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') onSelectDistrict?.(d) }}
-                >
-                  {d.landmarkPhotoUrl ? (
-                    <img className={styles.itemPhoto} src={d.landmarkPhotoUrl} alt={d.landmarkName ?? d.name} loading="lazy" />
-                  ) : (
-                    <div className={styles.itemPhotoPlaceholder} />
-                  )}
-                  <div className={styles.itemInfo}>
-                    <span className={styles.itemName}>{d.name}</span>
-                    <span className={styles.itemAddress}>
-                      {d.placeCount ? `${d.placeCount} 筆景點` : d.landmarkName ?? ''}
-                    </span>
-                    {d.summary && <p className={styles.itemSummary}>{d.summary}</p>}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className={styles.addBtn}
-                  title="加入候選"
-                  onClick={() => onAddCandidate?.({ kind: 'district', ...d })}
                 >
                   <Plus size={16} strokeWidth={2} />
                 </button>

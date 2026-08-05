@@ -10,8 +10,8 @@ import (
 	"github.com/tim72117/tripace/internal/geo"
 )
 
-// hotelResponse 是 GET /internal/geo/districts 與
-// GET /internal/geo/districts/nearby 回應裡單筆飯店的格式,對齊
+// hotelResponse 是 GET /internal/geo/attractions 與
+// GET /internal/geo/attractions/nearby 回應裡單筆飯店的格式,對齊
 // geo.NearbyPlace(見該型別的完整說明),PhotoURL 是已編碼的 data: URI。
 // 兩支端點共用同一份飯店查詢邏輯(fetchNearbyHotels),故格式抽到套件
 // 層級共用,不各自重複定義。
@@ -24,11 +24,21 @@ type hotelResponse struct {
 	PhotoURL    string  `json:"photoUrl,omitempty"`
 }
 
+// maxPhotoResults 是「查完清單後,只顯示/查圖片的前幾筆」的上限——
+// Nearby Search 本身仍一次查足 MaxResults 筆(涵蓋範圍/相關性排序不受
+// 影響),但逐筆下載照片是這支端點耗時的主要來源(見
+// server/internal/geo/places.go 的 fetchPhotoAsDataURI,每筆是一次獨立
+// 的 HTTP 請求,序列執行、無平行處理),故在圖片查詢前就把清單截斷,
+// 同時限制了「要下載幾張圖」與「回傳給前端幾筆資料」,不是只縮減圖片
+// 數量、清單本身筆數不變。fetchNearbyHotels 與 handleGeoPlacesNearby
+// 共用這個常數,兩處是同一種取捨。
+const maxPhotoResults = 3
+
 // fetchNearbyHotels 以指定中心座標做一次 Nearby Search 限定 lodging
 // 類型(不細分 hotel/hostel/inn 等子類,泛用即可涵蓋大部分住宿選項),
-// 逐筆把 photo resource name 轉成 data URI。查詢失敗時回傳空陣列而非
-// error——飯店只是附加圖層,不應該讓呼叫端的整支 API 因此失敗,見兩個
-// handler 呼叫端的說明。
+// 只取前 maxPhotoResults 筆逐一把 photo resource name 轉成 data URI
+// (見該常數的說明)。查詢失敗時回傳空陣列而非 error——飯店只是附加
+// 圖層,不應該讓呼叫端的整支 API 因此失敗,見兩個 handler 呼叫端的說明。
 func fetchNearbyHotels(ctx context.Context, client *geo.Client, lat, lng, radiusMeters float64) []hotelResponse {
 	hotels := make([]hotelResponse, 0)
 	found, err := client.SearchNearby(ctx, lat, lng, &geo.NearbyOptions{
@@ -39,6 +49,9 @@ func fetchNearbyHotels(ctx context.Context, client *geo.Client, lat, lng, radius
 	})
 	if err != nil {
 		return hotels
+	}
+	if len(found) > maxPhotoResults {
+		found = found[:maxPhotoResults]
 	}
 	for _, h := range found {
 		hr := hotelResponse{
@@ -51,7 +64,7 @@ func fetchNearbyHotels(ctx context.Context, client *geo.Client, lat, lng, radius
 		if h.PhotoRef != "" {
 			// 單張圖片下載失敗不影響這筆飯店資料本身——只是沒有照片
 			// 可顯示,理由同分區地標圖的處理方式。
-			if photoURL, pErr := client.PhotoDataURI(ctx, h.PhotoRef, 200); pErr == nil {
+			if photoURL, pErr := client.PhotoDataURI(ctx, h.PlaceID, h.PhotoRef, 200); pErr == nil {
 				hr.PhotoURL = photoURL
 			}
 		}
@@ -60,14 +73,14 @@ func fetchNearbyHotels(ctx context.Context, client *geo.Client, lat, lng, radius
 	return hotels
 }
 
-// districtResponse 是 GET /internal/geo/districts 回應裡單筆分區/地標的
-// 統一格式——不論資料來自 store.ListLandmarksByCity(人工建檔,見
-// model.Landmark)或 geo.SearchKnownDistricts/SearchDistricts(即時查
-// Google Places),前端拿到的形狀一致,不需要依來源分別處理。
-// Level 只有走資料庫路徑才會有值(1~5,見 model.Landmark 的完整說明);
-// 走 Google Places 路徑的結果一律不帶 level(前端據此判斷全部顯示,
-// 不受縮放層級篩選——這批資料目前沒有分級資訊可用)。
-type districtResponse struct {
+// attractionResponse 是 GET /internal/geo/attractions 回應裡單筆景點區域
+// 的統一格式——不論資料來自 store.ListAttractionsByCity(人工建檔,見
+// model.Attraction)或 geo.SearchKnownDistricts/SearchDistricts(即時查
+// Google Places 的過渡/後備資料),前端拿到的形狀一致,不需要依來源
+// 分別處理。Level 只有走資料庫路徑才會有值(1~5,見 model.Attraction 的
+// 完整說明);走 Google Places 路徑的結果一律不帶 level(前端據此判斷
+// 全部顯示,不受縮放層級篩選——這批資料目前沒有分級資訊可用)。
+type attractionResponse struct {
 	Name             string  `json:"name"`
 	Lat              float64 `json:"lat"`
 	Lng              float64 `json:"lng"`
@@ -79,7 +92,7 @@ type districtResponse struct {
 	Level            int     `json:"level,omitempty"`
 }
 
-// GET /internal/geo/districts?city={城市名稱}
+// GET /internal/geo/attractions?city={城市名稱}
 //
 // 供地理輪廓底圖(構想 6,見 docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)使用:
 // 用 Places API 對「{city} 觀光景點」做一次廣泛文字搜尋,依每筆結果所屬的
@@ -89,14 +102,14 @@ type districtResponse struct {
 // types.ts 的 Trip),暫由前端提供 city 查詢參數輸入,待之後 Trip 補上
 // 目的地城市欄位時再改由後端從 Trip 帶出、前端不需再手動輸入。
 //
-// 回傳的每個 District 的 landmarkPhotoUrl 已經是編碼好的 data: URI
+// 回傳的每個景點區域的 landmarkPhotoUrl 已經是編碼好的 data: URI
 // (見 geo.SearchDistricts/fetchPhotoAsDataURI 的說明),圖片資料直接
 // 內嵌在這支端點的 JSON 回應裡——不再另外開一支圖片代理端點:圖片是
 // 隨這支已驗證(internalAuth)的 JSON 回應一起送出,前端透過既有的
 // fetch()+Authorization header 拿到即可直接當 <img src> 用,不受
 // 瀏覽器 <img> 標籤無法附加自訂驗證 header 的限制,也不需要額外開一支
 // 不驗證的公開端點。
-func (s *Server) handleGeoDistricts(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGeoAttractions(w http.ResponseWriter, r *http.Request) {
 	city := r.URL.Query().Get("city")
 	if city == "" {
 		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 city 查詢參數")
@@ -104,19 +117,20 @@ func (s *Server) handleGeoDistricts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 三層 fallback,依優先順序:
-	//  1. store.ListLandmarksByCity——人工建檔的正式資料(見 model.Landmark、
-	//     cmd/cli 的 landmark-add 等指令),含知名度分級(level),讓前端能
-	//     依縮放層級篩選顯示粒度。這是最新、最準確的資料來源。
+	//  1. store.ListAttractionsByCity——人工建檔的正式資料(見
+	//     model.Attraction、cmd/cli 的 landmark-add 等指令),含知名度
+	//     分級(level),讓前端能依縮放層級篩選顯示粒度。這是最新、最
+	//     準確的資料來源。
 	//  2. geo.SearchKnownDistricts——手動整理但寫死在程式碼的少量城市資料
 	//     (見 district_aliases.go),沒有分級,是資料庫方案上線前的過渡
 	//     資料,之後應逐步把這裡的城市搬進資料庫、汰除這條路徑。
 	//  3. geo.SearchDistricts——即時查 Google Places、依 addressComponents
 	//     反推分組,涵蓋任何城市但只有官方行政區劃名稱,無法呈現「古城區」
 	//     這類觀光慣稱,是完全沒有人工資料時的最終後備。
-	var districts []districtResponse
-	if landmarks, err := s.store.ListLandmarksByCity(city); err == nil && len(landmarks) > 0 {
+	var attractions []attractionResponse
+	if landmarks, err := s.store.ListAttractionsByCity(city); err == nil && len(landmarks) > 0 {
 		for _, l := range landmarks {
-			dr := districtResponse{
+			ar := attractionResponse{
 				Name:         l.Name,
 				Lat:          l.Lat,
 				Lng:          l.Lng,
@@ -124,12 +138,12 @@ func (s *Server) handleGeoDistricts(w http.ResponseWriter, r *http.Request) {
 				Level:        l.Level,
 			}
 			if l.Summary != nil {
-				dr.Summary = *l.Summary
+				ar.Summary = *l.Summary
 			}
 			if l.PhotoURL != nil {
-				dr.LandmarkPhotoURL = *l.PhotoURL
+				ar.LandmarkPhotoURL = *l.PhotoURL
 			}
-			districts = append(districts, dr)
+			attractions = append(attractions, ar)
 		}
 	}
 
@@ -137,17 +151,17 @@ func (s *Server) handleGeoDistricts(w http.ResponseWriter, r *http.Request) {
 	client := geo.New(apiKey)
 	client.SetCache(s.photoCache)
 
-	// 這支端點會同步下載每個分區的地標圖片(見 SearchDistricts 內部
+	// 這支端點會同步下載每個景點區域的地標圖片(見 SearchDistricts 內部
 	// fetchPhotoAsDataURI 的呼叫),逐張圖片各自一次 HTTP 請求,故逾時
 	// 設寬鬆一些(原本純文字查詢只需要 8 秒)。
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
-	ctx = geo.WithCaller(ctx, "handleGeoDistricts")
+	ctx = geo.WithCaller(ctx, "handleGeoAttractions")
 	ctx = geo.WithPath(ctx, r.URL.Path)
 
-	if len(districts) == 0 {
+	if len(attractions) == 0 {
 		if geoDistricts, ok := client.SearchKnownDistricts(ctx, city); ok {
-			districts = toDistrictResponses(geoDistricts)
+			attractions = toAttractionResponses(geoDistricts)
 		} else {
 			geoDistricts, err := client.SearchDistricts(ctx, city+" 觀光景點", 20)
 			if err != nil {
@@ -155,44 +169,44 @@ func (s *Server) handleGeoDistricts(w http.ResponseWriter, r *http.Request) {
 					writeErr(w, http.StatusNotFound, "no_match", "查無「"+city+"」相關景點,無法產生地理輪廓")
 					return
 				}
-				writeErr(w, http.StatusBadGateway, "geo_districts_failed", err.Error())
+				writeErr(w, http.StatusBadGateway, "geo_attractions_failed", err.Error())
 				return
 			}
-			districts = toDistrictResponses(geoDistricts)
+			attractions = toAttractionResponses(geoDistricts)
 		}
 	}
 
-	// 飯店圖層:以「所有分區重心的平均值」當整座城市的概略中心,查詢
-	// 半徑刻意比一般地點推薦(recommend_nearby 預設 1500m)大得多,
+	// 飯店圖層:以「所有景點區域重心的平均值」當整座城市的概略中心,
+	// 查詢半徑刻意比一般地點推薦(recommend_nearby 預設 1500m)大得多,
 	// 因為這裡要涵蓋的是整座城市,不是單一景點周邊。找不到飯店、或
 	// 這一步查詢失敗都不視為整體端點失敗(見 fetchNearbyHotels 的說明)。
 	hotels := make([]hotelResponse, 0)
-	if len(districts) > 0 {
+	if len(attractions) > 0 {
 		var latSum, lngSum float64
-		for _, d := range districts {
-			latSum += d.Lat
-			lngSum += d.Lng
+		for _, a := range attractions {
+			latSum += a.Lat
+			lngSum += a.Lng
 		}
-		centerLat := latSum / float64(len(districts))
-		centerLng := lngSum / float64(len(districts))
+		centerLat := latSum / float64(len(attractions))
+		centerLng := lngSum / float64(len(attractions))
 		hotels = fetchNearbyHotels(ctx, client, centerLat, centerLng, 15000)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"city":      city,
-		"districts": districts,
-		"hotels":    hotels,
+		"city":        city,
+		"attractions": attractions,
+		"hotels":      hotels,
 	})
 }
 
-// toDistrictResponses 把 geo.District(即時查 Google Places 得到的結果,
+// toAttractionResponses 把 geo.District(即時查 Google Places 得到的結果,
 // 見 geo.SearchDistricts/SearchKnownDistricts)轉成統一的
-// districtResponse 格式。這條路徑的資料沒有知名度分級,Level 固定為 0
+// attractionResponse 格式。這條路徑的資料沒有知名度分級,Level 固定為 0
 // (json 的 omitempty 讓它不出現在回應裡)。
-func toDistrictResponses(in []geo.District) []districtResponse {
-	out := make([]districtResponse, 0, len(in))
+func toAttractionResponses(in []geo.District) []attractionResponse {
+	out := make([]attractionResponse, 0, len(in))
 	for _, d := range in {
-		out = append(out, districtResponse{
+		out = append(out, attractionResponse{
 			Name:             d.Name,
 			Lat:              d.Lat,
 			Lng:              d.Lng,
@@ -209,9 +223,9 @@ func toDistrictResponses(in []geo.District) []districtResponse {
 // GET /internal/geo/geocode?query={地名/城市名}
 //
 // 供地理輪廓底圖的城市搜尋框使用:只把輸入字串解析成一組座標,不查詢
-// 景點/分區/飯店資料——「搜尋只負責定位,把地圖移過去」,之後畫面上
-// 該顯示什麼資料,一律交給 handleGeoDistrictsNearby 依地圖當時的可視
-// 範圍(bounds)另外查詢,兩個關注點刻意分開,不像 handleGeoDistricts
+// 景點區域/飯店資料——「搜尋只負責定位,把地圖移過去」,之後畫面上
+// 該顯示什麼資料,一律交給 handleGeoAttractionsNearby 依地圖當時的可視
+// 範圍(bounds)另外查詢,兩個關注點刻意分開,不像 handleGeoAttractions
 // 那樣把「找座標」與「查資料」耦合在同一支端點裡。
 //
 // 用 geo.Client.Geocode(傳統 Geocoding API)而非 Places API 文字搜尋:
@@ -251,15 +265,15 @@ func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GET /internal/geo/districts/nearby?lat={緯度}&lng={經度}&radius={公尺,選填}
+// GET /internal/geo/attractions/nearby?lat={緯度}&lng={經度}&radius={公尺,選填}
 //
 // 供地理輪廓底圖「地圖移動到哪就查哪」使用:前端在地圖平移/縮放停止後
 // (idle 事件),以目前地圖中心座標呼叫這支端點,不需要使用者先輸入
 // 城市名稱、按查看鈕才能看到資料。
 //
-// 只查 store.ListLandmarksNearby(人工建檔的正式資料,見
-// model.Landmark),刻意不 fallback 到即時查 Google Places(不像
-// handleGeoDistricts 那樣有三層 fallback)——地圖移動是高頻互動,若
+// 只查 store.ListAttractionsNearby(人工建檔的正式資料,見
+// model.Attraction),刻意不 fallback 到即時查 Google Places(不像
+// handleGeoAttractions 那樣有三層 fallback)——地圖移動是高頻互動,若
 // 每次移動都即時打 Google Places API,會產生大量非預期的 API 呼叫
 // 成本與延遲;只查自建資料庫既快又免費,代價是只能顯示已經人工建檔過
 // 的城市(目前為台北、清邁),之後隨資料庫內容擴充,能自動涵蓋的範圍
@@ -267,7 +281,7 @@ func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
 //
 // 找不到任何地標時不視為錯誤,直接回傳空陣列(HTTP 200)——地圖移動到
 // 還沒建檔的區域是正常情況,不該回錯誤讓前端顯示紅色錯誤訊息。
-func (s *Server) handleGeoDistrictsNearby(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleGeoAttractionsNearby(w http.ResponseWriter, r *http.Request) {
 	lat, err := strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid_input", "lat 查詢參數缺失或格式錯誤")
@@ -296,15 +310,15 @@ func (s *Server) handleGeoDistrictsNearby(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	landmarks, err := s.store.ListLandmarksNearby(lat, lng, radiusMeters)
+	landmarks, err := s.store.ListAttractionsNearby(lat, lng, radiusMeters)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
 
-	districts := make([]districtResponse, 0, len(landmarks))
+	attractions := make([]attractionResponse, 0, len(landmarks))
 	for _, l := range landmarks {
-		dr := districtResponse{
+		ar := attractionResponse{
 			Name:         l.Name,
 			Lat:          l.Lat,
 			Lng:          l.Lng,
@@ -312,12 +326,12 @@ func (s *Server) handleGeoDistrictsNearby(w http.ResponseWriter, r *http.Request
 			Level:        l.Level,
 		}
 		if l.Summary != nil {
-			dr.Summary = *l.Summary
+			ar.Summary = *l.Summary
 		}
 		if l.PhotoURL != nil {
-			dr.LandmarkPhotoURL = *l.PhotoURL
+			ar.LandmarkPhotoURL = *l.PhotoURL
 		}
-		districts = append(districts, dr)
+		attractions = append(attractions, ar)
 	}
 
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
@@ -328,13 +342,13 @@ func (s *Server) handleGeoDistrictsNearby(w http.ResponseWriter, r *http.Request
 	client.SetCache(s.photoCache)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	ctx = geo.WithCaller(ctx, "handleGeoDistrictsNearby")
+	ctx = geo.WithCaller(ctx, "handleGeoAttractionsNearby")
 	ctx = geo.WithPath(ctx, r.URL.Path)
 	hotels := fetchNearbyHotels(ctx, client, lat, lng, radiusMeters)
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"districts": districts,
-		"hotels":    hotels,
+		"attractions": attractions,
+		"hotels":      hotels,
 	})
 }
 
@@ -426,7 +440,7 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 	if details.PhotoRef != "" {
 		// 圖片下載失敗不影響整體查詢結果——只是沒有照片可顯示,理由同
 		// fetchNearbyHotels 等既有端點的處理方式。
-		if photoURL, pErr := client.PhotoDataURI(ctx, details.PhotoRef, 400); pErr == nil {
+		if photoURL, pErr := client.PhotoDataURI(ctx, placeID, details.PhotoRef, 400); pErr == nil {
 			resp.PhotoURL = photoURL
 		}
 	}
@@ -513,6 +527,10 @@ func (s *Server) handleGeoPlacesNearby(w http.ResponseWriter, r *http.Request) {
 		IncludePhotos: true,
 	})
 	if err == nil {
+		// 只取前 maxPhotoResults 筆顯示/查圖片,理由見該常數的說明。
+		if len(found) > maxPhotoResults {
+			found = found[:maxPhotoResults]
+		}
 		for _, p := range found {
 			pr := placeResponse{
 				Name:        p.Name,
@@ -522,7 +540,7 @@ func (s *Server) handleGeoPlacesNearby(w http.ResponseWriter, r *http.Request) {
 				PrimaryType: p.PrimaryType,
 			}
 			if p.PhotoRef != "" {
-				if photoURL, pErr := client.PhotoDataURI(ctx, p.PhotoRef, 200); pErr == nil {
+				if photoURL, pErr := client.PhotoDataURI(ctx, p.PlaceID, p.PhotoRef, 200); pErr == nil {
 					pr.PhotoURL = photoURL
 				}
 			}

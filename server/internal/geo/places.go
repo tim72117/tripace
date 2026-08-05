@@ -125,7 +125,7 @@ const placeDetailsFieldMask = "displayName,formattedAddress,location,rating,phot
 // nearbyFieldMask 只取 Essentials 級欄位(displayName/formattedAddress/location/
 // primaryType),API 呼叫成本最低。rating/userRatingCount 屬 Pro 級(較貴),
 // 目前不取;若之後需要依評分排序,再評估是否值得多付費升級 field mask。
-const nearbyFieldMask = "places.displayName,places.formattedAddress,places.location,places.primaryType"
+const nearbyFieldMask = "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType"
 
 // districtFieldMask 供 SearchDistricts 用:額外取 addressComponents,才能從
 // 每筆景點結果反推它屬於哪個行政區/次分區(sublocality),藉此把一批景點
@@ -134,7 +134,7 @@ const nearbyFieldMask = "places.displayName,places.formattedAddress,places.locat
 // Photo Media API 網址用;editorialSummary 是 Google 編輯過的地點介紹,
 // 拿代表性地標的簡介當該區的白話簡介(不用 LLM 生成)。這幾個欄位皆屬
 // Pro 級,呼叫成本高於 Search/SearchNearby 用的 Essentials 級。
-const districtFieldMask = "places.displayName,places.formattedAddress,places.location,places.addressComponents,places.rating,places.photos,places.editorialSummary"
+const districtFieldMask = "places.id,places.displayName,places.formattedAddress,places.location,places.addressComponents,places.rating,places.photos,places.editorialSummary"
 
 // PhotoCache 是圖片快取的抽象介面——geo 套件本身不依賴 store(避免套件
 // 邊界耦合),由呼叫端(api 層,持有 *store.Store)實作並透過 SetCache
@@ -142,9 +142,19 @@ const districtFieldMask = "places.displayName,places.formattedAddress,places.loc
 // 行為與加這層快取之前完全相同——這是刻意的漸進式設計,不是每個
 // geo.New() 呼叫端都需要接上快取(例如 cmd/cli 的一次性查詢、
 // wanttools 的 LLM 工具呼叫,重複查詢機率低,接上快取的效益不大)。
+//
+// 鍵是 placeID(穩定、不會過期的地點識別碼),不是 photo resource name
+// (Google Maps Platform Terms of Service 3.2.3(b)「No Caching」明確禁止
+// 長期保存 photo name——它可能過期,且條款要求每次都該從新鮮的
+// Details/Nearby Search/Text Search 回應取得,不能存起來跨請求重用)。
+// 圖片內容本身(data URI)存放不受這條限制,故只把「拿來換圖片的識別字」
+// 從快取鍵徹底移除,改用 placeID 這個穩定識別碼定位快取項目——
+// fetchPhotoAsDataURI 內部依然需要 photoRef 去跟 Google 換圖(快取未
+// 命中時),但 photoRef 只在單次請求的記憶體內短暫存在,從不寫入
+// PhotoCache/資料庫。
 type PhotoCache interface {
-	Get(photoRef string, maxWidthPx int) (dataURI string, ok bool)
-	Set(photoRef string, maxWidthPx int, dataURI string)
+	Get(placeID string, maxWidthPx int) (dataURI string, ok bool)
+	Set(placeID string, maxWidthPx int, dataURI string)
 }
 
 // requestDoer 是 Client 內部實際用來派送請求的介面——生產環境用
@@ -201,17 +211,24 @@ type Place struct {
 	Address string  `json:"address"`
 	Lat     float64 `json:"lat"`
 	Lng     float64 `json:"lng"`
+	// PlaceID 是 Google 的穩定地點識別碼(不會過期,對照 PhotoRef 那種
+	// 有時效性的照片資源名稱)——供 fetchPhotoAsDataURI 當快取鍵用,
+	// 見 PhotoCache 介面的完整說明。查詢結果沒有解析出來時為空字串。
+	PlaceID string `json:"-"`
 }
 
 // NearbyPlace 是 Nearby Search 的候選景點。
 // 目前 fieldMask 只取 Essentials 級欄位(呼叫成本最低),不含 rating/評論數
-// (屬 Pro 級,較貴);候選順序即 Places API 回傳的相關性排序。
+// (屬 Pro 級,較貴);候選順序即 Places API 回傳的相關性排序。id 屬於
+// Essentials 級(免費),額外請求不增加呼叫成本。
 type NearbyPlace struct {
 	Name        string  `json:"name"`
 	Address     string  `json:"address"`
 	Lat         float64 `json:"lat"`
 	Lng         float64 `json:"lng"`
 	PrimaryType string  `json:"primaryType"` // 如 tourist_attraction、restaurant、museum
+	// PlaceID 見 Place.PlaceID 的說明——供 fetchPhotoAsDataURI 當快取鍵。
+	PlaceID string `json:"-"`
 	// PhotoRef 是這個地點第一張照片的 Places API photo resource name
 	// (如 "places/xxx/photos/yyy"),只有 NearbyOptions.IncludePhotos
 	// 為 true 時才會有值——內部欄位,不外洩給前端(見 json:"-"),
@@ -480,6 +497,7 @@ func (c *Client) SearchDistricts(ctx context.Context, query string, maxResults i
 
 	var body struct {
 		Places []struct {
+			Id          string `json:"id"`
 			DisplayName struct {
 				Text string `json:"text"`
 			} `json:"displayName"`
@@ -524,6 +542,7 @@ func (c *Client) SearchDistricts(ctx context.Context, query string, maxResults i
 		placeCount      int
 		landmarkRating  float64
 		landmarkPhoto   string // photo resource name,尚未組成完整 URL
+		landmarkPlaceID string // 該地標的 place id,當 PhotoCache 的快取鍵用
 		landmarkName    string
 		landmarkSummary string
 	}
@@ -547,6 +566,7 @@ func (c *Client) SearchDistricts(ctx context.Context, query string, maxResults i
 		if len(p.Photos) > 0 && p.Rating > g.landmarkRating {
 			g.landmarkRating = p.Rating
 			g.landmarkPhoto = p.Photos[0].Name
+			g.landmarkPlaceID = p.Id
 			g.landmarkName = p.DisplayName.Text
 			g.landmarkSummary = p.EditorialSummary.Text
 		}
@@ -567,7 +587,7 @@ func (c *Client) SearchDistricts(ctx context.Context, query string, maxResults i
 			// 這一區只是沒有地標圖可顯示,不影響其餘分區資料,故忽略
 			// 錯誤、留空字串即可,呼叫端(前端)已經預期這個欄位可能
 			// 不存在(見 District.LandmarkPhotoURL 的 omitempty)。
-			if photoURL, err := c.fetchPhotoAsDataURI(ctx, g.landmarkPhoto, 400); err == nil {
+			if photoURL, err := c.fetchPhotoAsDataURI(ctx, g.landmarkPlaceID, g.landmarkPhoto, 400); err == nil {
 				d.LandmarkPhotoURL = photoURL
 				d.LandmarkName = g.landmarkName
 			}
@@ -609,7 +629,7 @@ func (c *Client) SearchKnownDistricts(ctx context.Context, city string) ([]Distr
 			Summary:      summary,
 		}
 		if photoRef != "" {
-			if photoURL, err := c.fetchPhotoAsDataURI(ctx, photoRef, 400); err == nil {
+			if photoURL, err := c.fetchPhotoAsDataURI(ctx, place.PlaceID, photoRef, 400); err == nil {
 				d.LandmarkPhotoURL = photoURL
 				d.LandmarkName = place.Name
 			}
@@ -666,6 +686,7 @@ func (c *Client) SearchLandmarkWithPhoto(ctx context.Context, query string) (pla
 
 	var body struct {
 		Places []struct {
+			Id          string `json:"id"`
 			DisplayName struct {
 				Text string `json:"text"`
 			} `json:"displayName"`
@@ -696,6 +717,7 @@ func (c *Client) SearchLandmarkWithPhoto(ctx context.Context, query string) (pla
 		Address: p.FormattedAddress,
 		Lat:     p.Location.Latitude,
 		Lng:     p.Location.Longitude,
+		PlaceID: p.Id,
 	}
 	if len(p.Photos) > 0 {
 		photoRef = p.Photos[0].Name
@@ -802,13 +824,23 @@ func (c *Client) GetPlaceDetails(ctx context.Context, placeID string) (PlaceDeta
 // 顯示尺寸相近即可(圓形地標圖預期顯示範圍小,不需要原始解析度),
 // 避免浪費頻寬與 Google 端計費用量。
 //
+// placeID 只用來當 PhotoCache 的查詢/寫入鍵,不參與組 Google Photo
+// Media 網址(那個網址只需要 photoResourceName)——理由見 PhotoCache
+// 介面的說明:photoResourceName 依 Google Maps Platform Terms of
+// Service 3.2.3(b) 不能長期快取,只能在單次請求週期內使用,故這裡只把
+// 它當「這一次要跟 Google 換圖片」的憑證用完即丟,從不寫進快取層;
+// placeID 才是允許持久保存、拿來定位「這是哪個地點的圖」的穩定識別碼。
+// placeID 為空字串時(呼叫端沒能解析出 place id)整段快取讀寫直接跳過,
+// 退化成「每次都真的向 Google 查詢」,功能仍正確、只是這一筆沒有快取
+// 效益——理由同 c.cache 為 nil 時的既有降級行為。
+//
 // 這裡直接把圖片位元組編碼進回應,而非回傳一個「前端需要另外發請求」
 // 的網址——理由見呼叫端(SearchDistricts)的說明:圖片資料要跟著這支
 // 端點本身的 JSON 回應一起送出,才能沿用前端既有的已驗證 fetch()
 // 路徑,不受瀏覽器 <img> 標籤無法附加自訂 Authorization header 的限制。
 // GOOGLE_PLACES_API_KEY 只在這支函式内部、伺服器對伺服器的請求裡出現,
 // 不會出現在回傳給前端的任何資料裡。
-func (c *Client) fetchPhotoAsDataURI(ctx context.Context, photoResourceName string, maxWidthPx int) (string, error) {
+func (c *Client) fetchPhotoAsDataURI(ctx context.Context, placeID, photoResourceName string, maxWidthPx int) (string, error) {
 	if photoResourceName == "" || c.apiKey == "" {
 		return "", ErrNoKey
 	}
@@ -819,9 +851,10 @@ func (c *Client) fetchPhotoAsDataURI(ctx context.Context, photoResourceName stri
 	// 快取命中則直接回傳,不打 Google——這是解決「同一批飯店/地點隨地圖
 	// 移動被重複查詢、每次都重新下載同一張照片」問題的關鍵(見
 	// server/internal/api/geo_outline.go 的 handleGeoDistrictsNearby)。
-	// c.cache 未注入(nil)時這裡是 no-op,行為與加這層快取之前完全相同。
-	if c.cache != nil {
-		if dataURI, ok := c.cache.Get(photoResourceName, maxWidthPx); ok {
+	// c.cache 為 nil、或 placeID 為空字串時都視為快取不可用(見上方
+	// 函式說明),兩者都是 no-op,直接往下真的向 Google 查詢。
+	if c.cache != nil && placeID != "" {
+		if dataURI, ok := c.cache.Get(placeID, maxWidthPx); ok {
 			return dataURI, nil
 		}
 	}
@@ -860,8 +893,8 @@ func (c *Client) fetchPhotoAsDataURI(ctx context.Context, photoResourceName stri
 	}
 	dataURI := "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data)
 
-	if c.cache != nil {
-		c.cache.Set(photoResourceName, maxWidthPx, dataURI)
+	if c.cache != nil && placeID != "" {
+		c.cache.Set(placeID, maxWidthPx, dataURI)
 	}
 	return dataURI, nil
 }
@@ -959,6 +992,7 @@ func (c *Client) SearchNearby(ctx context.Context, lat, lng float64, opts *Nearb
 
 	var body struct {
 		Places []struct {
+			Id          string `json:"id"`
 			DisplayName struct {
 				Text string `json:"text"`
 			} `json:"displayName"`
@@ -988,6 +1022,7 @@ func (c *Client) SearchNearby(ctx context.Context, lat, lng float64, opts *Nearb
 			Lat:         p.Location.Latitude,
 			Lng:         p.Location.Longitude,
 			PrimaryType: p.PrimaryType,
+			PlaceID:     p.Id,
 		}
 		if len(p.Photos) > 0 {
 			np.PhotoRef = p.Photos[0].Name
@@ -1003,6 +1038,6 @@ func (c *Client) SearchNearby(ctx context.Context, lat, lng float64, opts *Nearb
 // SearchDistricts/SearchKnownDistricts;飯店圖層(handleGeoDistricts)
 // 需要在套件外對 NearbyPlace 結果做同樣的轉換,故加這層薄包裝,
 // 不重複實作下載邏輯。
-func (c *Client) PhotoDataURI(ctx context.Context, photoRef string, maxWidthPx int) (string, error) {
-	return c.fetchPhotoAsDataURI(ctx, photoRef, maxWidthPx)
+func (c *Client) PhotoDataURI(ctx context.Context, placeID, photoRef string, maxWidthPx int) (string, error) {
+	return c.fetchPhotoAsDataURI(ctx, placeID, photoRef, maxWidthPx)
 }

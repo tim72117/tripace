@@ -1,4 +1,4 @@
-/* panel:浮動卡片,絕對定位疊在地圖上方(見 GeoOutlineDemo.tsx 的
+/* panel:浮動卡片,絕對定位疊在地圖上方(見 GeoOutlinePanel.tsx 的
    .mapArea 同一種疊層手法)——不是佔用 flex 版面空間的側欄,四周
    (上/右/下)都留出間距,右緣貼齊 .desktop-main 的右邊界(即
    GeoHotelSidebar 左側),與主顯示區同高(top/bottom 都設 16px,

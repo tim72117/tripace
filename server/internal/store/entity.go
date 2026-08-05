@@ -57,10 +57,10 @@ type entryRow struct {
 
 func (entryRow) TableName() string { return "entries" }
 
-// landmarkRow 是地理輪廓底圖(構想 6)用的地標/區域資料,對應
-// model.Landmark 的完整說明。cityName 加索引——查詢入口固定是
-// 「這個城市底下所有 Landmark」(見 store 層 ListLandmarksByCity)。
-type landmarkRow struct {
+// attractionRow 是地理輪廓底圖(構想 6)用的景點區域資料,對應
+// model.Attraction 的完整說明。cityName 加索引——查詢入口固定是
+// 「這個城市底下所有 Attraction」(見 store 層 ListAttractionsByCity)。
+type attractionRow struct {
 	ID           string  `gorm:"primaryKey;column:id"`
 	Name         string  `gorm:"column:name;not null"`
 	CityName     string  `gorm:"column:city_name;not null;index"`
@@ -75,16 +75,21 @@ type landmarkRow struct {
 	UpdatedAt time.Time `gorm:"column:updated_at;not null"`
 }
 
-func (landmarkRow) TableName() string { return "landmarks" }
+func (attractionRow) TableName() string { return "attractions" }
 
 // photoCacheRow 快取 Google Places Photo Media API 已下載過的圖片(見
-// server/internal/geo/places.go 的 fetchPhotoAsDataURI)——同一張照片
-// (photo resource name + 寬度組合)重複被查詢時直接吃快取,不重新打
-// Photo Media API。同一個 photo resource name 在不同呼叫端可能要求不同
-// maxWidthPx(如飯店/推薦地點縮圖用 200px、地標圖/POI 詳情用 400px),
-// 不同寬度的圖片資料不同,故複合主鍵含寬度,不能只用 photo_ref 當鍵。
+// server/internal/geo/places.go 的 fetchPhotoAsDataURI)——同一個地點
+// (place id + 寬度組合)重複被查詢時直接吃快取,不重新打 Photo Media
+// API。同一個 place id 在不同呼叫端可能要求不同 maxWidthPx(如飯店/
+// 推薦地點縮圖用 200px、地標圖/POI 詳情用 400px),不同寬度的圖片資料
+// 不同,故複合主鍵含寬度。
+//
+// 主鍵刻意用 place_id(穩定、不過期)而非 photo resource name(俗稱
+// "photo name")——Google Maps Platform Terms of Service 3.2.3(b) 明文
+// 禁止長期快取 photo name,且該值本身會過期,不適合當持久化的主鍵。
+// place_id 才是允許持久保存、拿來定位「這是哪個地點的圖」的識別碼。
 type photoCacheRow struct {
-	PhotoRef   string    `gorm:"primaryKey;column:photo_ref"`
+	PlaceID    string    `gorm:"primaryKey;column:place_id"`
 	MaxWidthPx int       `gorm:"primaryKey;column:max_width_px"`
 	DataURI    string    `gorm:"column:data_uri;not null"`
 	FetchedAt  time.Time `gorm:"column:fetched_at;not null"`

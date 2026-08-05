@@ -5,7 +5,7 @@ import styles from './GeoInfoPanel.module.css'
 // (即 GeoHotelSidebar 左側),與主顯示區同高、四周留出間距,不像
 // GeoHotelSidebar/GeoCandidateSidebar 那樣佔用一份平行的 flex 版面
 // 空間。故渲染位置放在 .desktop-main(見 DesktopLayout.tsx,該容器已有
-// position: relative)底下、跟 GeoOutlineDemo 同層,而非跟
+// position: relative)底下、跟 GeoOutlinePanel 同層,而非跟
 // GeoHotelSidebar 同層。
 //
 // 有兩個觸發來源,呼叫端(DesktopLayout.tsx)統一轉成 GeoInfoContent 後

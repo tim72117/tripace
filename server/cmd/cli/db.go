@@ -100,26 +100,27 @@ func (c *dbClient) renameChannelToTrip() ([]string, error) {
 	return c.st.RenameChannelToTrip()
 }
 
-// landmarkAdd/landmarkList/landmarkDelete/landmarkCities:地標/區域資料
-// (見 model.Landmark、docs/TRIP_PLANNING_DESIGN_DISCUSSION.md 構想 6)
+// landmarkAdd/landmarkList/landmarkDelete/landmarkCities:景點區域資料
+// (見 model.Attraction、docs/TRIP_PLANNING_DESIGN_DISCUSSION.md 構想 6)
 // 的人工建檔操作,只在 -db 模式下有意義(這是直接寫資料庫的維運/建檔
 // 操作,不是給一般使用者用的業務功能,故不進 client 介面、不開 HTTP 端點)。
-func (c *dbClient) landmarkAdd(in model.Landmark) (any, error) {
-	return c.st.CreateLandmark(in)
+// 函式名/CLI 子命令名沿用既有的 landmark 字樣,不在這次改名範圍內。
+func (c *dbClient) landmarkAdd(in model.Attraction) (any, error) {
+	return c.st.CreateAttraction(in)
 }
 
 func (c *dbClient) landmarkList(city string) (any, error) {
-	landmarks, err := c.st.ListLandmarksByCity(city)
+	landmarks, err := c.st.ListAttractionsByCity(city)
 	return map[string]any{"city": city, "landmarks": landmarks}, err
 }
 
 func (c *dbClient) landmarkCities() (any, error) {
-	cities, err := c.st.ListLandmarkCities()
+	cities, err := c.st.ListAttractionCities()
 	return map[string]any{"cities": cities}, err
 }
 
 func (c *dbClient) landmarkDelete(id string) error {
-	return c.st.DeleteLandmark(id)
+	return c.st.DeleteAttraction(id)
 }
 
 // landmarkUpdatePhoto 已搬到 httpClient(見 http.go 的同名方法),改走

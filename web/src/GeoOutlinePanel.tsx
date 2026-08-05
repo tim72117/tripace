@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { ClientConfig, GeoDistrict, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from './api'
+import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from './api'
 import { fetchEntries, fetchGeoGeocode } from './api'
 import { GeoOutlineMap } from './GeoOutlineMap'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
 import { isSubmitEnter } from './AppCommon'
-import styles from './GeoOutlineDemo.module.css'
+import styles from './GeoOutlinePanel.module.css'
 
-// GeoOutlineDemo:地理輪廓底圖(構想 6)的桌面版試做承載元件——目前 Trip
+// GeoOutlinePanel:地理輪廓底圖(構想 6)的桌面版試做承載元件——目前 Trip
 // 型別沒有目的地城市欄位(見 types.ts),故用一個暫時的城市輸入框讓使用者
 // 手動觸發查詢,驗證視覺與互動是否對齊設計討論的定案,之後 Trip 補上目的地
 // 城市欄位時,這裡的輸入框可以直接換成從 Trip 帶出、不需要使用者手動輸入。
@@ -14,11 +14,11 @@ import styles from './GeoOutlineDemo.module.css'
 // 這個元件本身不再查詢景點/飯店資料——「搜尋只負責定位」:輸入城市名
 // 後只呼叫 fetchGeoGeocode(GET /internal/geo/geocode)拿到一組座標,轉成
 // panTarget 讓 GeoOutlineMap 把地圖平移過去;地圖到了新位置後,會依它
-// 當時的可視範圍自己向 GET /internal/geo/districts/nearby 查詢該顯示
+// 當時的可視範圍自己向 GET /internal/geo/attractions/nearby 查詢該顯示
 // 什麼景點/飯店(見 GeoOutlineMap.tsx 的說明),查詢責任完全收在地圖
-// 元件內部,這裡不再重複維護一份 districts/hotels state。
+// 元件內部,這裡不再重複維護一份 attractions/hotels state。
 //
-// onHotelsChange/onDistrictsChange 原封不動轉傳給 GeoOutlineMap——飯店/
+// onHotelsChange/onAttractionsChange 原封不動轉傳給 GeoOutlineMap——飯店/
 // 地點清單改由 DesktopLayout.tsx 在「整個桌面版介面最外側」渲染(比照
 // DemoPanel debug 面板的固定寬度側欄模式,跟 .desktop-main 平行,而非
 // 塞在 main 內部),兩者是分開掛載的 sibling,只能靠這兩個 callback 往上
@@ -37,15 +37,15 @@ import styles from './GeoOutlineDemo.module.css'
 // (見下方查詢 tripCenter 的同一個 useEffect,順便保留完整清單而不只是
 // 平均座標)往上回報,供 DesktopLayout.tsx 在整個桌面版介面最外側渲染
 // (地圖上畫 marker、候選籃自動帶入)——理由同 onHotelsChange/
-// onDistrictsChange。
-export function GeoOutlineDemo({
+// onAttractionsChange。
+export function GeoOutlinePanel({
   cfg,
   tripID,
   onHotelsChange,
-  onDistrictsChange,
+  onAttractionsChange,
   onPlacesNearby,
   onTripEntriesChange,
-  onDistrictSelect,
+  onAttractionSelect,
   onHotelSelect,
   onPlaceSelect,
   onPoiSelect,
@@ -55,13 +55,13 @@ export function GeoOutlineDemo({
   cfg: ClientConfig
   tripID?: string | null
   onHotelsChange?: (hotels: GeoHotel[]) => void
-  onDistrictsChange?: (districts: GeoDistrict[]) => void
+  onAttractionsChange?: (attractions: GeoAttraction[]) => void
   onPlacesNearby?: (places: GeoPlace[]) => void
   onTripEntriesChange?: (entries: GeoTripEntry[]) => void
-  // onDistrictSelect/onHotelSelect/onPlaceSelect/onPoiSelect:原封不動
+  // onAttractionSelect/onHotelSelect/onPlaceSelect/onPoiSelect:原封不動
   // 轉傳給 GeoOutlineMap——理由同 onHotelsChange 等既有 callback,見
   // GeoOutlineMap.tsx 對這幾個 prop 的說明。
-  onDistrictSelect?: (district: GeoDistrict) => void
+  onAttractionSelect?: (attraction: GeoAttraction) => void
   onHotelSelect?: (hotel: GeoHotel) => void
   onPlaceSelect?: (place: GeoPlace) => void
   onPoiSelect?: (details: GeoPlaceDetails) => void
@@ -179,8 +179,8 @@ export function GeoOutlineDemo({
   // 這種 spread 若每次 render 都重新求值,會產生新物件參照,即使座標
   // 完全沒變,GeoOutlineMap 的 panTarget useEffect(依參照判斷「是否為
   // 新的移動請求」,見該檔案的說明)也會被誤判成「有新的移動要執行」而
-  // 重新呼叫 panTo。而 onDistrictsChange/onHotelsChange 查詢完成後會
-  // 觸發 DesktopLayout 的 setGeoDistricts/setGeoHotels、連鎖讓這個元件
+  // 重新呼叫 panTo。而 onAttractionsChange/onHotelsChange 查詢完成後會
+  // 觸發 DesktopLayout 的 setGeoAttractions/setGeoHotels、連鎖讓這個元件
   // 重新渲染——若沒有 useMemo,「渲染產生新物件→panTo→idle→查詢→
   // 觸發渲染」會形成真正的無限迴圈(即使地圖靜止不動、使用者沒有任何
   // 互動,也會持續發送查詢請求)。
@@ -201,21 +201,21 @@ export function GeoOutlineDemo({
   }, [searchLat, searchLng, externalLat, externalLng, externalLevel])
 
   return (
-    // geo-outline-demo-wrap:固定字串 class(與 CSS Modules 的 styles.wrap
+    // geo-outline-panel-wrap:固定字串 class(與 CSS Modules 的 styles.wrap
     // 並存),供 styles-desktop.css 的 .desktop-main:has(...) 全域選擇器
     // 偵測——理由同 PaceRouteMap.tsx 的 pace-route-map-wrap(見該檔案
     // module.css 的說明):CSS Modules 雜湊過的名稱編譯時不固定,外部
     // 全域 CSS 選擇器無法可靠指到它,故需要一個不受雜湊影響的固定名稱。
-    <div className={`${styles.wrap} geo-outline-demo-wrap`}>
+    <div className={`${styles.wrap} geo-outline-panel-wrap`}>
       <div className={styles.mapArea}>
         <GeoOutlineMap
           cfg={cfg}
           initialCenter={tripCenter}
           tripEntries={tripEntries}
-          onDistrictsChange={onDistrictsChange}
+          onAttractionsChange={onAttractionsChange}
           onVisibleHotelsChange={onHotelsChange}
           onPlacesNearby={onPlacesNearby}
-          onDistrictSelect={onDistrictSelect}
+          onAttractionSelect={onAttractionSelect}
           onHotelSelect={onHotelSelect}
           onPlaceSelect={onPlaceSelect}
           onPoiSelect={onPoiSelect}

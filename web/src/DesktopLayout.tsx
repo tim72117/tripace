@@ -19,8 +19,8 @@ import { DemoPanel } from './DemoPanel'
 import { GeoHotelSidebar, geoItemKey, type GeoSelectedKey, type Tab as GeoTab } from './GeoHotelSidebar'
 import { GeoInfoPanel, type GeoInfoContent } from './GeoInfoPanel'
 import { GeoCandidateSidebar, type GeoCandidate } from './GeoCandidateSidebar'
-import { GeoOutlineDemo } from './GeoOutlineDemo'
-import type { GeoDistrict, GeoHotel, GeoPlace } from './api'
+import { GeoOutlinePanel } from './GeoOutlinePanel'
+import type { GeoAttraction, GeoHotel, GeoPlace } from './api'
 import {
   Avatar, ErrorBanner, errMsg, isSubmitEnter, LoginForm, useTripsState,
   type ContentProps,
@@ -101,26 +101,28 @@ export function DesktopContent(props: ContentProps) {
   // selectedEntry state,不能指望公開頁那份。
   const [selectedEntry, setSelectedEntry] = useState<SelectedEntry | null>(null)
   // geoHotels:地理輪廓底圖(構想 6 試做,demo-geo-outline)查詢到的飯店
-  // 清單,由 GeoOutlineDemo(main 區塊內部)透過 onHotelsChange 回報,
+  // 清單,由 GeoOutlinePanel(main 區塊內部)透過 onHotelsChange 回報,
   // 這裡的 state 供下方渲染的 GeoHotelSidebar(整個桌面版介面最外側,
   // 跟 .desktop-main 平行)使用——理由同 paceCheckpoints/savedEntry,
   // 兩個分開掛載的 sibling 需要這層 state 中介資料。
   const [geoHotels, setGeoHotels] = useState<GeoHotel[]>([])
-  // geoDistricts:同 geoHotels,但存分區/地標清單(見 model.Landmark),
-  // 供 GeoHotelSidebar 的「地點」分頁顯示——理由同 geoHotels。景點與
-  // 飯店現在都是 GeoOutlineMap 依地圖可視範圍(bounds)向後端查詢的
-  // 結果(見該元件的說明),這裡收到的已經是「目前地圖範圍內」的清單,
-  // 不是查詢當下的完整結果,會隨地圖拖曳/縮放持續更新。
-  const [geoDistricts, setGeoDistricts] = useState<GeoDistrict[]>([])
+  // geoAttractions:同 geoHotels,但存景點區域清單(見 model.Attraction),
+  // 供 GeoHotelSidebar 的「地點」分頁顯示——理由同 geoHotels。景點區域
+  // 資料掛載時就會自動查一次(不需使用者拖曳),飯店則要等使用者按下
+  // 「搜尋這個區域」才會查詢(見 GeoOutlineMap.tsx 的說明),兩者更新
+  // 時機不同,但都是 GeoOutlineMap 依地圖可視範圍(bounds)向後端查詢的
+  // 結果,這裡收到的已經是「目前地圖範圍內」的清單,不是查詢當下的
+  // 完整結果,會隨地圖拖曳/縮放持續更新。
+  const [geoAttractions, setGeoAttractions] = useState<GeoAttraction[]>([])
   // geoPlaces:點擊地圖上的地標圖示時即時查詢到的附近推薦地點(見
-  // GeoOutlineMap.tsx 的 handleDistrictClick、GeoHotelSidebar 的「附近
-  // 推薦」分頁),由 GeoOutlineDemo 透過 onPlacesNearby 回報——理由同
-  // geoHotels/geoDistricts。跟那兩者不同的是這不是常駐跟著地圖範圍
+  // GeoOutlineMap.tsx 的 handleAttractionClick、GeoHotelSidebar 的「附近
+  // 推薦」分頁),由 GeoOutlinePanel 透過 onPlacesNearby 回報——理由同
+  // geoHotels/geoAttractions。跟那兩者不同的是這不是常駐跟著地圖範圍
   // 更新的圖層,是「點了某個地標才會有內容」的一次性查詢結果,換行程/
   // 切換分頁時不特別清空(下一次點擊地標會自然覆蓋掉舊結果)。
   const [geoPlaces, setGeoPlaces] = useState<GeoPlace[]>([])
   // geoPanTarget:使用者在 GeoHotelSidebar 點擊某間飯店時要移動地圖到
-  // 的座標——側欄與地圖(GeoOutlineMap,在 main 內部的 GeoOutlineDemo
+  // 的座標——側欄與地圖(GeoOutlineMap,在 main 內部的 GeoOutlinePanel
   // 裡)是分開掛載的 sibling,「移動地圖」的意圖同樣得靠這層 state
   // 中介往下傳,理由同 geoHotels。每次點擊都建立新物件參照(見下方
   // onSelectHotel),讓 GeoOutlineMap 那邊即使連續點同一間飯店也能
@@ -131,19 +133,19 @@ export function DesktopContent(props: ContentProps) {
   // (GeoOutlineMap)是分開掛載的 sibling,「哪一項被選中」的狀態只能靠
   // 這層 state 中介,才能讓側欄的選取標記與地圖上的選取樣式同步。跟
   // geoPanTarget 一起在同一個點擊事件裡設定(見下方 onSelectHotel/
-  // onSelectDistrict),兩者語意不同不合併:panTarget 每次點擊都要是新
+  // onSelectAttraction),兩者語意不同不合併:panTarget 每次點擊都要是新
   // 物件參照(即使連續點同一項)才能觸發地圖平移,selectedKey 則是單純
   // 的字串比對,合併會讓其中一邊的用途打折。
   const [geoSelectedKey, setGeoSelectedKey] = useState<GeoSelectedKey>(null)
-  // geoActiveTab:GeoHotelSidebar 目前顯示哪個分頁(飯店/地點/附近推薦)——
+  // geoActiveTab:GeoHotelSidebar 目前顯示哪個分頁(地點/飯店/附近推薦)——
   // 原本是該元件的內部 state,提到這裡中介的理由是地圖上直接點擊
-  // 地標/飯店/推薦地點的 marker(見下方 onDistrictSelect 等)時,要能
+  // 地標/飯店/推薦地點的 marker(見下方 onAttractionSelect 等)時,要能
   // 自動切到對應分頁,使用者才看得到剛點的項目介紹,不會停留在原本
   // 選取的分頁而看起來像沒反應。
-  const [geoActiveTab, setGeoActiveTab] = useState<GeoTab>('hotels')
+  const [geoActiveTab, setGeoActiveTab] = useState<GeoTab>('attractions')
   // geoInfoContent:目前要在浮動資訊卡(GeoInfoPanel)顯示的內容,有兩個
   // 觸發來源(見 GeoInfoPanel.tsx 的說明):地點清單點擊項目本體(轉自
-  // GeoDistrict),或點擊地圖上 Google 原生 POI 圖標(轉自
+  // GeoAttraction),或點擊地圖上 Google 原生 POI 圖標(轉自
   // GeoOutlineMap.tsx onPoiSelect 回報的 GeoPlaceDetails)——兩種來源
   // 欄位形狀不同,統一轉成 GeoInfoContent 後才存進這個 state,
   // GeoInfoPanel 本身不需要分辨來源。
@@ -306,15 +308,15 @@ export function DesktopContent(props: ContentProps) {
             // GeoCandidateSidebar),地圖需要較寬的空間,改在右側主區
             // 顯示——跟 pace/timeline 模式「側欄放清單、主區放詳細內容」
             // 是同一種版面邏輯。GeoInfoPanel 是浮動卡片(見該元件說明),
-            // 疊在地圖上方,故跟 GeoOutlineDemo 一起放在 .desktop-main
+            // 疊在地圖上方,故跟 GeoOutlinePanel 一起放在 .desktop-main
             // 底下(該容器已有 position: relative,見 styles-desktop.css),
             // 而不是跟 GeoHotelSidebar 一樣佔用一份平行的 flex 版面空間。
             <>
-            <GeoOutlineDemo
+            <GeoOutlinePanel
               cfg={cfg}
               tripID={activeTrip?.id ?? null}
               onHotelsChange={setGeoHotels}
-              onDistrictsChange={setGeoDistricts}
+              onAttractionsChange={setGeoAttractions}
               onPlacesNearby={setGeoPlaces}
               onTripEntriesChange={(entries) => {
                 // 行程本身已有座標的 entry 自動併入候選籃——跟手動用
@@ -340,9 +342,9 @@ export function DesktopContent(props: ContentProps) {
                   return [...withoutStaleEntries, ...newOnes]
                 })
               }}
-              onDistrictSelect={(d) => {
-                setGeoSelectedKey(geoItemKey('district', d))
-                setGeoActiveTab('districts')
+              onAttractionSelect={(d) => {
+                setGeoSelectedKey(geoItemKey('attraction', d))
+                setGeoActiveTab('attractions')
               }}
               onHotelSelect={(h) => {
                 setGeoSelectedKey(geoItemKey('hotel', h))
@@ -354,7 +356,7 @@ export function DesktopContent(props: ContentProps) {
               }}
               onPoiSelect={(details) => {
                 // 點擊 Google 原生 POI 圖標查回的詳細資訊——沒有知名度
-                // 分級/景點數量/範圍半徑這些只有自建 district 資料才有的
+                // 分級/景點數量/範圍半徑這些只有自建 attraction 資料才有的
                 // 欄位,改顯示 Google 評分當 badge。
                 setGeoInfoContent({
                   name: details.name,
@@ -387,7 +389,7 @@ export function DesktopContent(props: ContentProps) {
         {panelMode === 'geo-outline' && (
           <GeoHotelSidebar
             hotels={geoHotels}
-            districts={geoDistricts}
+            attractions={geoAttractions}
             places={geoPlaces}
             selectedKey={geoSelectedKey}
             activeTab={geoActiveTab}
@@ -396,8 +398,8 @@ export function DesktopContent(props: ContentProps) {
               setGeoPanTarget({ lat: h.lat, lng: h.lng })
               setGeoSelectedKey(geoItemKey('hotel', h))
             }}
-            onSelectDistrict={(d) => {
-              setGeoSelectedKey(geoItemKey('district', d))
+            onSelectAttraction={(d) => {
+              setGeoSelectedKey(geoItemKey('attraction', d))
               setGeoInfoContent({
                 name: d.name,
                 photoUrl: d.landmarkPhotoUrl,

@@ -105,7 +105,7 @@ func (s *Server) handleMaintenanceLandmarkUpdatePhoto(w http.ResponseWriter, r *
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
-	lm, err := s.store.GetLandmark(id)
+	lm, err := s.store.GetAttraction(id)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "no_match", "找不到地標 "+id)
 		return
@@ -126,7 +126,7 @@ func (s *Server) handleMaintenanceLandmarkUpdatePhoto(w http.ResponseWriter, r *
 	// 各自獨立的資料列,見 geo.WithPath 的說明。
 	ctx = geo.WithPath(ctx, "/internal/maintenance/landmarks/{id}/update-photo")
 
-	_, photoRef, _, _, err := client.SearchLandmarkWithPhoto(ctx, query)
+	place, photoRef, _, _, err := client.SearchLandmarkWithPhoto(ctx, query)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, "search_failed", "查詢「"+query+"」失敗: "+err.Error())
 		return
@@ -136,13 +136,13 @@ func (s *Server) handleMaintenanceLandmarkUpdatePhoto(w http.ResponseWriter, r *
 		return
 	}
 
-	photoURL, err := client.PhotoDataURI(ctx, photoRef, 400)
+	photoURL, err := client.PhotoDataURI(ctx, place.PlaceID, photoRef, 400)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, "photo_fetch_failed", "下載照片失敗: "+err.Error())
 		return
 	}
 
-	if err := s.store.UpdateLandmarkPhoto(id, photoURL); err != nil {
+	if err := s.store.UpdateAttractionPhoto(id, photoURL); err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal_error", "寫入資料庫失敗: "+err.Error())
 		return
 	}

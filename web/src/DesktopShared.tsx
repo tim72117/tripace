@@ -25,7 +25,7 @@ import langSelectStyles from './LangSelect.module.css'
 // 'geo-outline':地理輪廓底圖(構想 6,見
 // docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)——兩者皆已從 ?demo 限定的
 // 試做功能轉為正式導覽項目,所有使用者都能在 rail 上看到,渲染邏輯改為
-// 直接使用 PaceChart/PaceRouteMap、GeoCandidateSidebar/GeoOutlineDemo,
+// 直接使用 PaceChart/PaceRouteMap、GeoCandidateSidebar/GeoOutlinePanel,
 // 見 DesktopLayout.tsx / PhoneContent.tsx / PhoneNavDrawer.tsx,不再屬於
 // 這組共用的 demo 面板(DemoPanelContent)。
 export type PanelMode =
@@ -72,7 +72,7 @@ export type DemoPanelMode = Exclude<PanelMode, 'trips' | 'timeline' | 'pace' | '
 // 避免同一段 JSX 兩處各寫一份、之後改一邊忘了改另一邊。(配速表/地理輪廓
 // 底圖已轉為正式功能'pace'/'geo-outline',不再屬於這組 demo 面板,渲染
 // 邏輯改為直接使用 PaceChart/PaceRouteMap、GeoCandidateSidebar/
-// GeoOutlineDemo,見 DesktopLayout.tsx / PhoneContent.tsx /
+// GeoOutlinePanel,見 DesktopLayout.tsx / PhoneContent.tsx /
 // PhoneNavDrawer.tsx。這 4 種 demo 模式都不需要 cfg,故不接這個 prop。)
 export function DemoPanelContent({
   mode,

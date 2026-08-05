@@ -23,15 +23,25 @@
 
 ## 資料模型
 
-後端（`server/`）已完成「頻道 → 行程」改名重構：`model.Channel` → `model.Trip`、`channelRow` → `tripRow`、資料表 `channels` → `trips`、欄位 `channel_id` → `trip_id`，程式碼識別符已與介面用語「行程」一致，故不再需要維護行程/channel 的對照關係。
-
-前端（`web/src/types.ts`）尚未跟進這次改名，仍使用 `Channel`／`ChannelRole` 型別名稱——這是已知的技術債，不影響介面顯示文字（畫面上一律顯示「行程」）。
-
 | 正式用語 | 介面用語（畫面顯示文字） | 介面/前端程式碼 | 後端變數 | 資料庫 |
 |---|---|---|---|---|
-| 行程 | 行程 | `Channel`（`web/src/types.ts`，尚未改名） | `model.Trip` / `tripRow`（`server/internal/store/entity.go`） | 表 `trips` |
+| 行程 | 行程 | `Trip` / `TripRole`（`web/src/types.ts`） | `model.Trip` / `tripRow`（`server/internal/store/entity.go`） | 表 `trips` |
 | 地點 | 地點 | `Entry`（`web/src/types.ts`） | `entryRow`（`server/internal/store/entity.go`） | 表 `entries` |
 | 時間軸 | 時間軸 | `MultiTrackTimeline`（`web/src/Timeline.tsx`） | — | — |
 | 路徑（配速表介面） | 配速表 | `PaceRouteMap`（`web/src/PaceRouteMap.tsx`） | — | — |
+
+## 地理輪廓底圖（構想 6）
+
+**景點區域**：具觀光吸引力的地點或區域，人工建檔、依知名程度分 1～5 級（1 級如國際知名地標「101」，5 級如在地商圈「永康商圈」）。可以是單點地標（`radiusMeters` 為 0）也可以是有範圍的區域（如「古城區」），不拆成兩個型別，用同一個符號涵蓋兩種情況。正式用語定為「景點區域」，程式碼命名統一用 `Attraction`。
+
+**即時查詢資料**：地圖拖曳/縮放時，即時打 Google Places API 查回來的資料（如飯店 `GeoHotel`/`hotels`、附近推薦 `GeoPlace`/`places`），非人工建檔、無知名度分級，僅在被查詢的當下存在，隨查詢範圍變動而變動。跟「景點區域」是完全不同的兩種資料來源，不應共用命名。
+
+| 正式用語 | 介面用語（畫面顯示文字） | 介面/前端程式碼 | 後端變數 | 資料庫 |
+|---|---|---|---|---|
+| 景點區域 | （依分頁脈絡顯示，如「地點」分頁） | `GeoDistrict` / `districts` / `setDistricts`（`web/src/GeoOutlineMap.tsx`，**尚未改名，仍用舊名稱**） | `model.Attraction` / `attractionRow`（`server/internal/store/entity.go`） | 表 `attractions` |
+| 飯店（即時查詢） | 飯店 | `GeoHotel` / `hotels`（`web/src/api.ts`） | `geo.NearbyPlace`（`server/internal/geo/places.go`） | — |
+| 附近推薦（即時查詢） | 附近推薦 | `GeoPlace` / `places`（`web/src/api.ts`） | `placeResponse`（`server/internal/api/geo_outline.go`） | — |
+
+**已知待對齊**：後端（`model`/`store`/資料表）已完成改名，前端（`web/src/GeoOutlineMap.tsx` 等）與後端呼叫端（`api/geo_outline.go`、`api/maintenance.go`、`cmd/cli/*.go`）尚未跟進，仍引用舊符號（`model.Landmark`、`store.ListLandmarksByCity` 等），目前無法編譯，待後續一併修正。
 
 （待續——後續用語持續補充於此。）

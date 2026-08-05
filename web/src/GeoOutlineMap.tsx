@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
-import type { ClientConfig, GeoDistrict, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from './api'
-import { fetchGeoDistrictsNearby, fetchGeoPlaceDetails, fetchGeoPlacesNearby } from './api'
+import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from './api'
+import { fetchGeoAttractionsNearby, fetchGeoPlaceDetails, fetchGeoPlacesNearby } from './api'
+import { Loader2, Search } from 'lucide-react'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
+import { initialAreaSearchState, reduceAreaSearchState } from './geoAreaSearchState'
+import { planAttractionClick, placesQueryRadiusMeters, FALLBACK_ZOOM_NO_LEVEL } from './geoAttractionClick'
+import {
+  getAttractionOverlayClass,
+  maxLevelForZoom,
+  minZoomForLevel,
+  type AttractionOverlayInstance,
+} from './geoAttractionOverlay'
 import styles from './GeoOutlineMap.module.css'
 
 // 地理輪廓底圖(構想 6,見 docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)——桌面版。
@@ -100,151 +109,6 @@ function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: numb
   return 2 * R * Math.asin(Math.sqrt(h))
 }
 
-// DistrictOverlay:單一分區的複合 DOM 疊層(光暈 + 圓形地標圖 + 白話標籤),
-// 用 google.maps.OverlayView 子類別實作,讓它跟著地圖投影自動換算像素位置。
-//
-// 這個 class 不能在模組頂層直接 `extends google.maps.OverlayView`——
-// extends 子句在 class 宣告當下就會被求值,而 google.maps SDK 是透過
-// importLibrary('maps')異步載入的(見下方 GeoOutlineMap 的 useEffect),
-// 模組載入的當下 google 這個全域變數還不存在,會直接拋出
-// ReferenceError: google is not defined。改用 getDistrictOverlayClass()
-// 延後到 SDK 確定載入完成後才定義並快取這個 class(單例,只建一次)。
-type DistrictOverlayInstance = google.maps.OverlayView & { setSelected: (selected: boolean) => void }
-let DistrictOverlayClass:
-  | (new (
-      district: GeoDistrict,
-      position: google.maps.LatLng,
-      selected: boolean,
-      onClick: (district: GeoDistrict) => void,
-    ) => DistrictOverlayInstance)
-  | null = null
-
-function getDistrictOverlayClass() {
-  if (DistrictOverlayClass) return DistrictOverlayClass
-
-  class DistrictOverlay extends google.maps.OverlayView {
-    private div: HTMLDivElement | null = null
-    private position: google.maps.LatLng
-    private selected: boolean
-
-    constructor(
-      private district: GeoDistrict,
-      position: google.maps.LatLng,
-      selected: boolean,
-      private onClick: (district: GeoDistrict) => void,
-    ) {
-      super()
-      this.position = position
-      this.selected = selected
-    }
-
-    onAdd() {
-      const div = document.createElement('div')
-      // 這裡刻意用固定字串(而非 styles.xxx)當 class 名稱:這些 class 是
-      // 透過 innerHTML 字串動態組裝出來的 DOM,不是 JSX 裡直接寫
-      // className={styles.xxx} 的元素,CSS Modules 只會把「有被 JS 實際
-      // 引用到的 local class」雜湊改名並匯出成 styles 物件屬性——但
-      // :global()包裹的規則本來就不會被匯出(這正是 :global 的用途:定義
-      // 不受雜湊影響的固定 class 名),若誤用 styles.xxx 取值會拿到
-      // undefined,等於完全沒套用到任何 class、CSS 規則(尤其是關鍵的
-      // position: absolute)整個失效。故這裡與 GeoOutlineMap.module.css
-      // 的 :global(.xxx) 選擇器一致,直接寫死字串。
-      div.className = `geo-district-overlay${this.selected ? ' geo-district-overlay-selected' : ''}`
-      div.innerHTML = `
-        <div class="geo-district-glow"></div>
-        ${
-          this.district.landmarkPhotoUrl
-            ? `<img class="geo-district-landmark-photo" src="${this.district.landmarkPhotoUrl}" alt="${escapeHtml(this.district.landmarkName ?? this.district.name)}" loading="lazy" />`
-            : `<div class="geo-district-landmark-placeholder"></div>`
-        }
-        <span class="geo-district-label">${escapeHtml(this.district.name)}</span>
-      `
-      this.div = div
-      const panes = this.getPanes()
-      panes?.overlayMouseTarget.appendChild(div)
-
-      // 只在圓形地標圖/佔位圓本身綁點擊(見 module.css 的
-      // pointer-events: auto 覆寫),不是整個 overlay 容器——光暈與標籤
-      // 文字仍不可點擊,維持「只召喚不強加」,只有具體可辨識的地標本身
-      // 才是可互動元素。點下去回報這個分區資料,由外層決定怎麼放大
-      // (見 GeoOutlineMap.tsx 的 onDistrictClick)。
-      const clickTarget = div.querySelector('.geo-district-landmark-photo, .geo-district-landmark-placeholder')
-      if (clickTarget) {
-        clickTarget.addEventListener('click', () => this.onClick(this.district))
-        // preventMapHitsAndGesturesFrom:讓地圖的拖曳/縮放手勢判斷邏輯
-        // 知道「這個元素上的事件是給它自己的,不是給地圖拖曳用的」——
-        // overlayMouseTarget pane 本身雖然會把原生 DOM 事件傳給子元素,
-        // 但沒有這行的話,Maps 內部的拖曳偵測仍可能在滑鼠按下/放開之間
-        // 判斷成一次(即使是原地不動的)拖曳手勢而吃掉 click,導致單純
-        // 用 addEventListener('click', ...) 註冊的監聽器不會被觸發。
-        // 這是 Google 官方文件建議讓自訂 OverlayView 內元素能可靠接收
-        // 點擊的做法,addEventListener 本身要保留(不是被取代)。
-        google.maps.OverlayView.preventMapHitsAndGesturesFrom(clickTarget as HTMLElement)
-      }
-    }
-
-    draw() {
-      if (!this.div) return
-      const projection = this.getProjection()
-      if (!projection) return
-      const point = projection.fromLatLngToDivPixel(this.position)
-      if (!point) return
-      this.div.style.left = `${point.x}px`
-      this.div.style.top = `${point.y}px`
-    }
-
-    onRemove() {
-      this.div?.remove()
-      this.div = null
-    }
-
-    // setSelected:選取狀態變動時只切換 class,不整個重建 overlay(避免
-    // DOM 節點重新掛載造成光暈/照片的 fadeIn 動畫重播、閃爍)。
-    setSelected(selected: boolean) {
-      this.selected = selected
-      if (!this.div) return
-      this.div.classList.toggle('geo-district-overlay-selected', selected)
-    }
-  }
-
-  DistrictOverlayClass = DistrictOverlay
-  return DistrictOverlayClass
-}
-
-function escapeHtml(s: string): string {
-  const div = document.createElement('div')
-  div.textContent = s
-  return div.innerHTML
-}
-
-// maxLevelForZoom:Google Maps zoom 值(數字越大越接近地面)累加式對應到
-// 知名度分級(model.Landmark.Level,1=國際~5=在地,見後端型別說明)的
-// 顯示上限——縮得越小只顯示越知名的地標,拉近才逐步冒出更細粒度的
-// 在地資訊,不會一次全部消失/出現。level 未設定的地標(即時查 Google
-// Places、非人工建檔的結果)不受這個篩選影響,見呼叫端的判斷。
-function maxLevelForZoom(zoom: number): number {
-  if (zoom <= 10) return 1
-  if (zoom <= 11) return 2
-  if (zoom <= 13) return 3
-  if (zoom <= 14) return 4
-  return 5
-}
-
-// minZoomForLevel:maxLevelForZoom 的反函式——給定一個知名度分級,回傳
-// 「至少要縮放到多少 zoom 才看得到它」的最小 zoom 值。供側欄點擊地點
-// 時使用:點一個 5 級(在地級,如「永康商圈」)的地點,若目前 zoom 只有
-// 12(對應 maxLevel=3),該點根本不會被畫出來(見 filteredDistricts 的
-// 篩選),必須先把 zoom 拉到 15 以上才看得到,單純 panTo 平移過去只會
-// 移到一個空地圖。數字取自 maxLevelForZoom 每個門檻的下一格,兩者需要
-// 保持同步——調整 maxLevelForZoom 的門檻時記得一併更新這裡。
-function minZoomForLevel(level: number): number {
-  if (level <= 1) return 0
-  if (level === 2) return 11
-  if (level === 3) return 12
-  if (level === 4) return 14
-  return 15
-}
-
 // hotelMarkerIcon:飯店 marker 的圖示,依選取狀態回傳不同樣式——拆成
 // 模組層級的純函式(而非寫在 render 裡的閉包),讓建立飯店 marker(全量
 // 重畫)與切換選取樣式(setIcon)兩個 effect 共用同一份定義,不重複維護
@@ -282,11 +146,11 @@ function hotelMarkerIcon(selected: boolean): google.maps.Icon | google.maps.Symb
   }
 }
 
-// placeMarkerIcon:附近推薦地點(見 handleDistrictClick 觸發的
+// placeMarkerIcon:附近推薦地點(見 handleAttractionClick 觸發的
 // fetchGeoPlacesNearby)的 marker 圖示——用一顆小小的相機圖示(而非
 // hotelMarkerIcon 那種純色圓點),讓使用者一眼認出這是「拍照打卡的
-// 推薦景點」語意,跟分區光暈、飯店圓點的抽象色塊區隔開來。底色維持
-// 靛藍(區分於分區的暖沙棕、飯店的森綠),相機圖案本身用白色線條,
+// 推薦景點」語意,跟景點區域光暈、飯店圓點的抽象色塊區隔開來。底色維持
+// 靛藍(區分於景點區域的暖沙棕、飯店的森綠),相機圖案本身用白色線條,
 // 尺寸刻意壓小(未選中 22px、選中 28px)——這是輔助辨識用的小圖標,
 // 不搶過分區光暈與地標照片的視覺份量。選中態只放大 + 加一圈白色描邊
 // 光暈(而非飯店那種三層同心圓靶心)——相機圖形本身已經有清楚的形狀
@@ -337,13 +201,13 @@ function tripEntryMarkerIcon(selected: boolean): google.maps.Icon {
   }
 }
 
-// sameDistrictsContent/sameHotelsContent:比對兩批查詢結果的內容是否
+// sameAttractionsContent/sameHotelsContent:比對兩批查詢結果的內容是否
 // 完全相同(依名稱+座標組成的字串逐筆比對,足以判斷「這就是同一批
 // 資料」),供依可視範圍查詢完成時判斷要不要真的替換 state——見該處
 // useEffect 的說明,避免地圖移動一下又移回來、或新舊查詢半徑重疊涵蓋
-// 同一批資料時,內容明明相同卻無條件換新陣列參照,讓分區光暈/飯店
+// 同一批資料時,內容明明相同卻無條件換新陣列參照,讓景點區域光暈/飯店
 // marker 不必要地整批重建、閃爍。
-function sameDistrictsContent(a: GeoDistrict[], b: GeoDistrict[]): boolean {
+function sameAttractionsContent(a: GeoAttraction[], b: GeoAttraction[]): boolean {
   if (a.length !== b.length) return false
   return a.every((d, i) => d.name === b[i].name && d.lat === b[i].lat && d.lng === b[i].lng)
 }
@@ -356,10 +220,10 @@ export function GeoOutlineMap({
   cfg,
   initialCenter,
   tripEntries = [],
-  onDistrictsChange,
+  onAttractionsChange,
   onVisibleHotelsChange,
   onPlacesNearby,
-  onDistrictSelect,
+  onAttractionSelect,
   onHotelSelect,
   onPlaceSelect,
   onPoiSelect,
@@ -369,7 +233,7 @@ export function GeoOutlineMap({
   cfg: ClientConfig
   // initialCenter:地圖第一次建立時該用的中心點——undefined 代表呼叫端
   // 還在查詢「這個行程有沒有既有地點可以當初始中心」(見
-  // GeoOutlineDemo.tsx 的 tripCenterPanTarget),此時地圖建立要等待,
+  // GeoOutlinePanel.tsx 的 tripCenterPanTarget),此時地圖建立要等待,
   // 不能先用預設值建起來、查完才用 panTarget 再移動一次過去:那樣會
   // 白白查一次「移動前那個位置」的資料(見下方查詢 effect 的說明),
   // 移動後那次查詢又可能因為 panTarget 的 suppressQuery 被抑制,導致
@@ -378,44 +242,44 @@ export function GeoOutlineMap({
   // 座標的既有地點),這時退回寫死的預設值。物件代表確定要用這組座標
   // 當初始中心,直接建圖在那裡,一步到位、只查一次正確範圍的資料。
   initialCenter?: { lat: number; lng: number } | null
-  // tripEntries:目前行程本身已有座標的 entry(見 GeoOutlineDemo.tsx 查詢
+  // tripEntries:目前行程本身已有座標的 entry(見 GeoOutlinePanel.tsx 查詢
   // tripCenter 時一併保留的完整清單)——這批點要顯示在地圖上(見下方
   // 畫 marker 的 effect),讓使用者看得到「這趟行程已經排進候選籃/日
   // 層架的地點跟這座城市其他景點的相對位置關係」,不只是拿來算初始
   // 定位而已。跟 hotels/places 不同,這批資料不是「以地圖範圍為準」
   // 查詢的結果,是行程本身固定的內容,換行程才會變。
   tripEntries?: GeoTripEntry[]
-  // onDistrictsChange/onVisibleHotelsChange:每當地圖可視範圍(bounds)
-  // 查詢有新結果時,回報目前地圖上實際顯示的分區/飯店清單——側欄
+  // onAttractionsChange/onVisibleHotelsChange:每當地圖可視範圍(bounds)
+  // 查詢有新結果時,回報目前地圖上實際顯示的景點區域/飯店清單——側欄
   // (GeoHotelSidebar,見 DesktopLayout.tsx)渲染在整個桌面版介面最
   // 外側、不是這個地圖元件的子節點,清單要跟著地圖範圍同步,只能靠
   // 這兩個 callback 往上回報,而不是側欄自己重新查一次(bounds 只有
   // 地圖實例本身知道)。景點與飯店都改成「以地圖可視範圍為準」查詢
   // (見下方 fetchNearby),不再依賴外部傳入完整清單後再篩選可視範圍。
-  onDistrictsChange?: (districts: GeoDistrict[]) => void
+  onAttractionsChange?: (attractions: GeoAttraction[]) => void
   onVisibleHotelsChange?: (hotels: GeoHotel[]) => void
-  // onPlacesNearby:點擊地圖上的地標圖示(見下方 handleDistrictClick)時,
+  // onPlacesNearby:點擊地圖上的地標圖示(見下方 handleAttractionClick)時,
   // 即時查詢該地標附近的推薦地點(不限類型,對齊 GET
   // /internal/geo/places/nearby),查詢完成後透過這個 callback 往上回報
-  // ——理由同 onDistrictsChange/onVisibleHotelsChange,側欄
+  // ——理由同 onAttractionsChange/onVisibleHotelsChange,側欄
   // (GeoHotelSidebar 的「附近推薦」分頁)是分開掛載的 sibling。
   onPlacesNearby?: (places: GeoPlace[]) => void
-  // onDistrictSelect/onHotelSelect/onPlaceSelect:使用者直接點擊地圖上的
+  // onAttractionSelect/onHotelSelect/onPlaceSelect:使用者直接點擊地圖上的
   // 地標圖示/飯店 marker/推薦地點 marker 時觸發(而非透過側欄清單),把
   // 該項目往上回報——側欄(GeoHotelSidebar)要能同步標記選取狀態、切換
   // 到對應分頁並顯示該項目的介紹(見 DesktopLayout.tsx 的串接),但側欄
   // 跟這個地圖元件是分開掛載的 sibling,只能靠這三個 callback 往上回報,
   // 跟 onPlacesNearby 同一套「地圖是唯一知道使用者點了哪個 marker 的
-  // 一方」的理由。district 的情形跟既有的 handleDistrictClick 共用同一個
-  // 點擊入口(放大地圖+查附近推薦),故額外從那裡呼叫這個 callback,不是
-  // 另外新增一個獨立的點擊處理路徑。
-  onDistrictSelect?: (district: GeoDistrict) => void
+  // 一方」的理由。attraction 的情形跟既有的 handleAttractionClick 共用
+  // 同一個點擊入口(放大地圖+查附近推薦),故額外從那裡呼叫這個
+  // callback,不是另外新增一個獨立的點擊處理路徑。
+  onAttractionSelect?: (attraction: GeoAttraction) => void
   onHotelSelect?: (hotel: GeoHotel) => void
   onPlaceSelect?: (place: GeoPlace) => void
   // onPoiSelect:使用者點擊底圖上 Google 原生繪製的 POI 圖標(不是上面
   // 三個 callback 對應的自訂 marker/overlay)時觸發——地圖 click 事件
   // 本身只給得出一個 placeId,沒有名稱/地址/介紹等資料(見
-  // IconMouseEvent 的說明),故沿用 handleDistrictClick 查附近推薦地點
+  // IconMouseEvent 的說明),故沿用 handleAttractionClick 查附近推薦地點
   // 的既有慣例:在這個元件內部直接用 cfg 呼叫 fetchGeoPlaceDetails 查完
   // 整詳細資訊,才把查好的結果往上回報,而不是只傳一個 ID 讓外層自己
   // 決定何時查詢——這個元件本來就持有 cfg,沒有理由把查詢責任推給不見得
@@ -423,23 +287,24 @@ export function GeoOutlineMap({
   onPoiSelect?: (details: GeoPlaceDetails) => void
   // panTarget:使用者在搜尋框查到城市座標、或在 GeoHotelSidebar 點擊某個
   // 飯店/地點項目時要移動地圖到的座標——每次(即使連續觸發同一個目標)
-  // DesktopLayout/GeoOutlineDemo 都會建立新的物件參照,故這裡直接把整個
+  // DesktopLayout/GeoOutlinePanel 都會建立新的物件參照,故這裡直接把整個
   // 物件放進 useEffect 依賴陣列即可正確偵測到「這是一次新的移動請求」,
-  // 不需要額外的序號/時間戳欄位。level 只有點擊「地點」(GeoDistrict)
+  // 不需要額外的序號/時間戳欄位。level 只有點擊「地點」(GeoAttraction)
   // 才會帶,飯店(GeoHotel)與城市搜尋定位都沒有 level 概念,固定不帶——
   // 見下方 useEffect,只有帶 level 時才會額外呼叫 setZoom 把縮放層級拉到
   // 能顯示該地點的最小尺度(minZoomForLevel),純平移(panTo)本身不會
-  // 改變 zoom,若目前 zoom 太小、該地點根本沒被畫出來(見 filteredDistricts
-  // 的篩選),不強制調整 zoom 只會移動到一個看起來空空如也的地圖。
+  // 改變 zoom,若目前 zoom 太小、該地點根本沒被畫出來(見
+  // filteredAttractions 的篩選),不強制調整 zoom 只會移動到一個看起來
+  // 空空如也的地圖。
   //
   // suppressQuery:這次移動完成後,平移動畫結束觸發的 idle 事件要不要
-  // 跳過「依可視範圍查詢景點/飯店」——true 用於「使用者只是想對齊看清楚
-  // /選中一個已知項目」的移動(側欄點擊、行程初始定位),資料範圍通常
-  // 沒有實質改變,不該清空重畫所有點;false(或不帶,預設當 false)用於
-  // 「使用者明確想換一個地方看」的移動(搜尋城市),必須查詢新範圍的
-  // 資料,否則會出現「移動地圖後沒有取得資料,要再手動縮放才觸發查詢」
-  // 的問題——這正是由呼叫端決定該不該抑制查詢,而不是這裡憑空猜測,
-  // 因為只有呼叫端知道這次移動背後的使用者意圖是什麼。
+  // 跳過「冒出搜尋這個區域按鈕」(見 areaSearch/geoAreaSearchState.ts 的
+  // 說明)——true 用於「使用者只是想對齊看清楚/選中一個已知項目」的
+  // 移動(側欄點擊、行程初始定位),資料範圍通常沒有實質改變,不該冒出
+  // 按鈕暗示「這裡有新範圍待查詢」;false(或不帶,預設當 false)用於
+  // 「使用者明確想換一個地方看」的移動(搜尋城市),該讓按鈕冒出來提示
+  // 使用者可以查詢這個新範圍——這正是由呼叫端決定該不該抑制,而不是
+  // 這裡憑空猜測,因為只有呼叫端知道這次移動背後的使用者意圖是什麼。
   panTarget?: { lat: number; lng: number; level?: number; suppressQuery?: boolean } | null
   // selectedKey:目前被選中的飯店/地點識別鍵(見 GeoHotelSidebar.tsx 的
   // geoItemKey)——由 DesktopLayout.tsx 中介,驅動下方地標/飯店圖示畫出
@@ -448,7 +313,7 @@ export function GeoOutlineMap({
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
-  const overlaysRef = useRef<DistrictOverlayInstance[]>([])
+  const overlaysRef = useRef<AttractionOverlayInstance[]>([])
   const hotelMarkersRef = useRef<google.maps.Marker[]>([])
   const placeMarkersRef = useRef<google.maps.Marker[]>([])
   const tripEntryMarkersRef = useRef<google.maps.Marker[]>([])
@@ -468,7 +333,7 @@ export function GeoOutlineMap({
   // linesVisible:區塊間連線延遲淡入的開關,對齊構想 6「使用者明顯停留
   // 1-2 秒才出現」的節奏——手比眼快的人根本等不到這條線畫上去。
   const [linesVisible, setLinesVisible] = useState(false)
-  // zoom:即時反映地圖目前縮放層級,驅動下方 filteredDistricts 依
+  // zoom:即時反映地圖目前縮放層級,驅動下方 filteredAttractions 依
   // maxLevelForZoom 篩選要顯示哪些知名度分級的地標。初始值對齊
   // Map 建構時的 zoom: 12(見下方 useEffect)。
   const [zoom, setZoom] = useState(12)
@@ -478,29 +343,44 @@ export function GeoOutlineMap({
   // bounds_changed 前,visibleHotels 直接顯示全部(見下方判斷),避免
   // 開頭一瞬間清單/地圖是空的。
   const [bounds, setBounds] = useState<google.maps.LatLngBounds | null>(null)
-  // districts/hotels:改成這個元件內部管理(不再是外部傳入的完整清單再
-  // 篩選),由下方「依可視範圍查詢」的 effect 寫入——景點與飯店都是
+  // attractions/hotels:改成這個元件內部管理(不再是外部傳入的完整清單再
+  // 篩選),由下方「依可視範圍查詢」的 effect 寫入——景點區域與飯店都是
   // 「以地圖可視範圍為準」查詢的結果,查詢責任收在地圖元件自己身上
-  // (只有它知道當下的 bounds),搜尋框(GeoOutlineDemo.tsx)只負責把
+  // (只有它知道當下的 bounds),搜尋框(GeoOutlinePanel.tsx)只負責把
   // 座標查出來、透過 panTarget 移動地圖,不再自己查一份完整清單。
-  const [districts, setDistricts] = useState<GeoDistrict[]>([])
+  //
+  // hotels 這批「即時查 Google Places」的資料刻意不跟著 attractions 一起
+  // 自動查——見下方 handleSearchThisArea 的說明,只有掛載時的第一次
+  // 查詢與使用者明確按下「搜尋這個區域」時才會更新,拖曳/縮放本身不再
+  // 觸發它,理由同該函式的說明。
+  const [attractions, setAttractions] = useState<GeoAttraction[]>([])
   const [hotels, setHotels] = useState<GeoHotel[]>([])
-  // places:點擊地標(handleDistrictClick)時查到的附近推薦地點,跟
-  // districts/hotels 不同的是這不是「依可視範圍持續查詢」的常駐圖層,
+  // places:點擊地標(handleAttractionClick)時查到的附近推薦地點,跟
+  // attractions/hotels 不同的是這不是「依可視範圍持續查詢」的常駐圖層,
   // 是「點了某個地標才會有內容」的一次性查詢結果——換一個地標點擊會
   // 直接覆蓋掉整批(不累加),理由同 onPlacesNearby 回報邏輯本身。
   const [places, setPlaces] = useState<GeoPlace[]>([])
-  // queryTrigger:每次 idle 事件遞增一次,驅動下方「依可視範圍查詢」的
-  // effect 重新執行——用遞增計數器而非直接把查詢邏輯寫進 idle callback
-  // 內,是為了讓查詢邏輯留在 useEffect 裡統一處理 cancelled/競態問題
-  // (見下方該 effect 的說明),不在事件callback 裡直接發請求。
+  // queryTrigger:每次「該重新查詢景點區域」時遞增一次,驅動下方「依可視
+  // 範圍查詢」的 effect 重新執行——用遞增計數器而非直接把查詢邏輯寫進
+  // 觸發來源的 callback 內,是為了讓查詢邏輯留在 useEffect 裡統一處理
+  // cancelled/競態問題(見下方該 effect 的說明)。掛載後第一次(這個值
+  // 還是初始值 0)會執行一次,查詢初始中心點周邊的景點區域,讓使用者
+  // 不用任何互動就能看到內容;之後只有使用者明確按下「搜尋這個區域」
+  // (見 handleSearchThisArea)才會再次遞增——地圖拖曳本身不再直接驅動
+  // 這個 effect,理由見 idle 監聽器與 areaSearch 的說明。
   const [queryTrigger, setQueryTrigger] = useState(0)
+  // areaSearch:「搜尋這個區域」按鈕的顯示/查詢中狀態,轉換邏輯抽成純
+  // reducer(見 geoAreaSearchState.ts,可獨立於 Google Maps SDK 單元測試)
+  // ——areaDirty 為 true 時在地圖上方顯示該按鈕(見下方 render 區),
+  // searching 為 true 時按鈕的放大鏡圖示換成載入圈圈。初始值兩者皆
+  // false:掛載當下地圖還沒被使用者移動過,不該一開始就顯示「搜尋這個
+  // 區域」(那時候還沒有「新範圍待查詢」這件事)。
+  const [areaSearch, setAreaSearch] = useState(initialAreaSearchState)
   // suppressNextIdleQueryRef:panTarget 觸發的 panTo(側欄點擊、搜尋框
-  // geocode)不該讓接下來那次 idle 觸發重新查詢——使用者只是想對齊看清楚
-  // /選中一個已知項目,不是主動探索新範圍,查回來的資料通常跟現有的一樣,
-  // 卻會讓所有分區光暈與飯店 marker 清空重畫,造成「點一下所有點都閃一下」
-  // 的視覺問題(見下方處理 panTarget 的 useEffect 如何設這個旗標)。用
-  // ref 而非 state,因為它只是單次事件間的旗標,不需要驅動任何渲染。
+  // geocode)不該讓接下來那次 idle 把 areaDirty 設成 true、冒出「搜尋這個
+  // 區域」按鈕——使用者只是想對齊看清楚/選中一個已知項目,不是主動探索
+  // 新範圍(見下方處理 panTarget 的 useEffect 如何設這個旗標)。用 ref 而
+  // 非 state,因為它只是單次事件間的旗標,不需要驅動任何渲染。
   const suppressNextIdleQueryRef = useRef(false)
 
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined
@@ -539,7 +419,7 @@ export function GeoOutlineMap({
           zoomControl: true,
         })
         // zoom_changed 監聽器:即時反映使用者拖曳滾輪/點擊縮放控制項
-        // 造成的縮放層級變化,驅動下方 filteredDistricts 重新計算。
+        // 造成的縮放層級變化,驅動下方 filteredAttractions 重新計算。
         mapRef.current.addListener('zoom_changed', () => {
           setZoom(mapRef.current?.getZoom() ?? 12)
         })
@@ -552,20 +432,25 @@ export function GeoOutlineMap({
           setBounds(mapRef.current?.getBounds() ?? null)
         })
         // idle 監聽器:拖曳/縮放動畫「結束」時才觸發一次(不像
-        // bounds_changed 拖曳過程中會連續觸發),驅動下方「依可視範圍
-        // 查詢景點/飯店」的 effect——用獨立的 queryTrigger state(而非
-        // 沿用 bounds state)避免拖曳過程中 bounds_changed 的高頻更新
-        // 誤觸發查詢,查詢只該在使用者放開滑鼠、動畫結束後發生一次。
+        // bounds_changed 拖曳過程中會連續觸發)。不再像先前那樣直接觸發
+        // 重新查詢——地圖移動本身只標記「這個範圍還沒查過」(dispatch
+        // 'map-idle',見 geoAreaSearchState.ts 的說明),在地圖上方冒出
+        // 「搜尋這個區域」按鈕,等使用者明確按下(handleSearchThisArea)
+        // 才真的發請求。這是刻意的取捨:景點區域(attractions)查詢本身
+        // 免費、無外部 API 成本,但同一支端點回傳的 hotels 是即時查
+        // Google Places、直接計費,若沿用「拖曳就查」會讓每次小幅拖曳
+        // 都觸發一次計費查詢;改成「按下才查」讓使用者對何時會產生查詢
+        // 有明確控制,也讓查詢時機可預期。
         //
         // suppressNextIdleQueryRef 為 true 時跳過這次觸發並消耗掉旗標:
         // 這代表這次 idle 是 panTarget 的 panTo 造成的(側欄點擊/搜尋),
-        // 不是使用者主動拖曳探索新範圍,不該重新查詢、清空重畫所有點。
+        // 不是使用者主動拖曳探索新範圍,不該冒出搜尋按鈕。
         mapRef.current.addListener('idle', () => {
           if (suppressNextIdleQueryRef.current) {
             suppressNextIdleQueryRef.current = false
             return
           }
-          setQueryTrigger((n) => n + 1)
+          setAreaSearch((s) => reduceAreaSearchState(s, { type: 'map-idle' }))
         })
         // click 監聽器:攔截點擊底圖上 Google 原生繪製的 POI 圖標(如
         // 餐廳、景點,見上方 MINIMAL_MAP_STYLE 開啟的 poi.attraction)。
@@ -576,7 +461,7 @@ export function GeoOutlineMap({
         // 讓使用者改看我們自己的 GeoInfoPanel(理由見 onPoiSelect 的
         // 說明)。查詢失敗(找不到該地點、額度用盡等)不特別處理錯誤
         // 提示,直接不觸發 onPoiSelect——維持地圖仍可正常瀏覽,不彈錯誤
-        // 訊息打斷使用者,理由同 handleDistrictClick 查附近推薦失敗時的
+        // 訊息打斷使用者,理由同 handleAttractionClick 查附近推薦失敗時的
         // 處理方式。
         mapRef.current.addListener('click', (event: google.maps.IconMouseEvent) => {
           if (!event.placeId) return
@@ -595,44 +480,59 @@ export function GeoOutlineMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey, initialCenter])
 
-  // 依地圖可視範圍查詢景點/飯店:每次 idle(拖曳/縮放動畫結束)觸發
-  // queryTrigger 遞增時,以地圖目前中心座標+半徑呼叫
-  // fetchGeoDistrictsNearby(GET /internal/geo/districts/nearby),取代
-  // 先前「先查城市名拿一整批資料、之後都不再變動」的模式——景點與飯店
-  // 都變成跟著地圖移動即時更新。掛載後第一次(mapReady 剛變 true、
-  // queryTrigger 還是 0)也會執行一次,查詢初始中心點(東京)周邊的資料,
-  // 讓使用者不用任何互動就能看到內容,呼應構想 6「不待召喚即先給出
-  // 地理輪廓」的精神。
+  // 依地圖可視範圍查詢景點區域/飯店:queryTrigger 遞增時,以地圖目前
+  // 中心座標+半徑呼叫 fetchGeoAttractionsNearby(GET
+  // /internal/geo/attractions/nearby)。掛載後第一次(mapReady 剛變
+  // true、queryTrigger 還是 0)會執行一次,查詢初始中心點周邊的景點
+  // 區域,讓使用者不用任何互動就能看到內容,呼應構想 6「不待召喚即先
+  // 給出地理輪廓」的精神——但這第一次刻意只採用 result.attractions,
+  // 不採用 result.hotels(hotels 留在原本的空陣列):attractions 這批
+  // 人工建檔資料查資料庫、無外部 API 成本,可以放心自動查;hotels 是
+  // 即時查 Google Places、直接計費,不該在使用者還沒表達「我想看這個
+  // 範圍」之前就先查一次。掛載後續的每次觸發(queryTrigger > 0)都只
+  // 來自使用者明確按下「搜尋這個區域」(見 handleSearchThisArea),這時
+  // 才會一併採用 attractions 與 hotels 兩者。
   //
   // 半徑依 zoom 反推(zoom 越小代表可視範圍越大,需要的查詢半徑也越大)
   // ——沒有查詢 Google Maps 官方公式反推可視範圍公里數的必要,這裡只是
   // 抓一個「大致夠涵蓋畫面」的粗略估計,查詢範圍比實際可視範圍稍大一些
-  // 沒有壞處(下方 filteredDistricts/visibleHotels 還會再依實際 bounds
+  // 沒有壞處(下方 filteredAttractions/visibleHotels 還會再依實際 bounds
   // 精確篩選一次,詳見對應的說明)。
   useEffect(() => {
     if (!mapReady || !mapRef.current) return
     const center = mapRef.current.getCenter()
     if (!center) return
     let cancelled = false
+    const isInitialLoad = queryTrigger === 0
     const radiusMeters = Math.min(50000, 20000 * Math.pow(2, 12 - zoom))
-    fetchGeoDistrictsNearby(cfg, center.lat(), center.lng(), radiusMeters)
+    fetchGeoAttractionsNearby(cfg, center.lat(), center.lng(), radiusMeters)
       .then((result) => {
         if (cancelled) return
         // 用函式式更新比對內容摘要(名稱+座標組成的字串),完全相同就回傳
         // 舊陣列參照、不觸發 re-render——地圖移動一下又移回來、或新舊
         // 查詢半徑重疊涵蓋同一批資料時很常見,若每次查詢完成都無條件
-        // 換新陣列參照,即使內容一模一樣,依賴 districts/hotels 的
-        // filteredDistricts/visibleHotels(見下方兩處 useMemo)也會被
-        // 判定成「變了」,讓分區光暈與飯店 marker 整批不必要地重建、
+        // 換新陣列參照,即使內容一模一樣,依賴 attractions/hotels 的
+        // filteredAttractions/visibleHotels(見下方兩處 useMemo)也會被
+        // 判定成「變了」,讓景點區域光暈/飯店 marker 整批不必要地重建、
         // 閃爍(理由同這兩處 useMemo 已有的說明)。
-        setDistricts((prev) => (sameDistrictsContent(prev, result.districts) ? prev : result.districts))
-        setHotels((prev) => (sameHotelsContent(prev, result.hotels) ? prev : result.hotels))
-        onDistrictsChange?.(result.districts)
+        setAttractions((prev) => (sameAttractionsContent(prev, result.attractions) ? prev : result.attractions))
+        onAttractionsChange?.(result.attractions)
+        if (!isInitialLoad) {
+          setHotels((prev) => (sameHotelsContent(prev, result.hotels) ? prev : result.hotels))
+        }
+        if (!isInitialLoad) {
+          setAreaSearch((s) => reduceAreaSearchState(s, { type: 'query-succeeded' }))
+        }
       })
       .catch(() => {
         // 查詢失敗(網路錯誤/伺服器錯誤)不視為致命錯誤——地圖本身仍可
         // 正常瀏覽,只是這次移動沒能刷新資料,維持上一次查到的內容即可,
-        // 不清空、不彈錯誤訊息打斷瀏覽。
+        // 不清空、不彈錯誤訊息打斷瀏覽。掛載時的初始查詢失敗不影響
+        // areaSearch(那時候根本還沒有搜尋按鈕);使用者按下搜尋按鈕
+        // 觸發的查詢失敗則讓按鈕重新出現,提供重試入口。
+        if (!isInitialLoad) {
+          setAreaSearch((s) => reduceAreaSearchState(s, { type: 'query-failed' }))
+        }
       })
     return () => {
       cancelled = true
@@ -640,46 +540,51 @@ export function GeoOutlineMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, queryTrigger])
 
-  // filteredDistricts:依目前 zoom 對應的知名度分級上限篩選——只篩選
-  // 「有 level 資訊」的分區(人工建檔的資料,見 model.Landmark);沒有
-  // level 的分區(即時查 Google Places 的結果)一律顯示,不受縮放層級
-  // 篩選影響(這批資料沒有分級可言,無從篩起)。用 useMemo 快取,理由
-  // 同 visibleHotels(見下方):.filter() 若每次 render 都重算,會產生
-  // 新陣列參照,讓依賴它的 useEffect(畫分區光暈/範圍圓圈/farPairs)
-  // 誤判成「內容變了」而重複清除重畫——即使這裡本身不會形成無限迴圈
-  // (filteredDistricts 沒有驅動任何 setState),但仍會在 sibling
-  // state(如 visibleHotels 變動連鎖傳回的新 hotels/districts prop)
-  // 造成這個元件重渲染時,讓光暈/圓圈/連線動畫不必要地重播、閃爍。
+  // handleSearchThisArea:「搜尋這個區域」按鈕的點擊處理——進入查詢中
+  // 狀態、收起按鈕(見 geoAreaSearchState.ts 的 search-pressed 轉換),
+  // 再遞增 queryTrigger 觸發上面的查詢 effect 以目前地圖中心重新查詢。
+  // 這次查詢(queryTrigger > 0)會一併更新 attractions 與 hotels——跟
+  // 掛載時的初始查詢不同,見上方 effect 的說明。
+  const handleSearchThisArea = useCallback(() => {
+    setAreaSearch((s) => reduceAreaSearchState(s, { type: 'search-pressed' }))
+    setQueryTrigger((n) => n + 1)
+  }, [])
+
+  // filteredAttractions:依目前 zoom 對應的知名度分級上限篩選——只篩選
+  // 「有 level 資訊」的景點區域(人工建檔的資料,見 model.Attraction);
+  // 沒有 level 的景點區域(即時查 Google Places 的結果)一律顯示,不受
+  // 縮放層級篩選影響(這批資料沒有分級可言,無從篩起)。用 useMemo 快取,
+  // 理由同 visibleHotels(見下方):.filter() 若每次 render 都重算,會
+  // 產生新陣列參照,讓依賴它的 useEffect(畫景點區域光暈/範圍圓圈/
+  // farPairs)誤判成「內容變了」而重複清除重畫——即使這裡本身不會形成
+  // 無限迴圈(filteredAttractions 沒有驅動任何 setState),但仍會在
+  // sibling state(如 visibleHotels 變動連鎖傳回的新 hotels/attractions
+  // prop)造成這個元件重渲染時,讓光暈/圓圈/連線動畫不必要地重播、閃爍。
   const maxLevel = maxLevelForZoom(zoom)
-  const filteredDistricts = useMemo(
-    () => districts.filter((d) => d.level == null || d.level <= maxLevel),
-    [districts, maxLevel],
+  const filteredAttractions = useMemo(
+    () => attractions.filter((d) => d.level == null || d.level <= maxLevel),
+    [attractions, maxLevel],
   )
 
-  // 點擊地標圖示(圓形照片/佔位圓,見 DistrictOverlay.onAdd 綁定的
-  // click)時,把地圖放大到該分區對應的範圍——優先用 radiusMeters(手動
-  // 整理的觀光慣稱分區才有,見 GeoDistrict.radiusMeters 的說明)算出剛好
-  // 包住該範圍的 bounds 後 fitBounds;沒有 radiusMeters 的單點地標(如
-  // 純座標地標,無實際範圍可言)則退回既有的 minZoomForLevel 邏輯,跟
-  // 側欄點擊「地點」時(見下方處理 panTarget 的 useEffect)的放大幅度
-  // 一致——這裡跟那裡是同一件事的兩種觸發入口,合理共用同一套判斷。
-  // 這次移動也視為「對齊看清楚一個已知項目」,故一併設
-  // suppressNextIdleQueryRef,不觸發不必要的重新查詢。
+  // 點擊地標圖示(圓形照片/佔位圓,見 AttractionOverlay.onAdd 綁定的
+  // click)時,把地圖放大到該景點區域對應的範圍——實際該 fitBounds 還是
+  // panTo+setZoom、以及查附近推薦地點該用多大半徑,決策邏輯抽成純函式
+  // planAttractionClick/placesQueryRadiusMeters(見 geoAttractionClick.ts,
+  // 可獨立於 Google Maps SDK 單元測試),這裡只負責依決策結果實際呼叫
+  // Google Maps API。這次移動也視為「對齊看清楚一個已知項目」,故一併設
+  // suppressNextIdleQueryRef,不冒出不必要的「搜尋這個區域」按鈕。
   //
   // 同時即時查詢該地標附近的推薦地點(GET /internal/geo/places/nearby,
   // 不限類型,對齊 internal/wanttools/recommend_nearby.go 那個 LLM 工具
-  // 的行為)——這是使用者明確點擊觸發的動作,查詢半徑優先用該分區的
-  // radiusMeters(範圍剛好對應查詢半徑),單點地標沒有範圍可言,退回
-  // 1500m(同 recommend_nearby 工具的預設半徑)。查詢結果寫進 places
+  // 的行為)——這是使用者明確點擊觸發的動作。查詢結果寫進 places
   // state(驅動下方畫 marker 的 effect,讓這批推薦地點也顯示在地圖上,
   // 不只是列在側欄),同時透過 onPlacesNearby 往上回報給側欄——不受
   // 地圖移動/放大動畫影響(兩者是獨立動作,不需要等 idle 才觸發)。
-  const handleDistrictClick = useCallback((d: GeoDistrict) => {
+  const handleAttractionClick = useCallback((d: GeoAttraction) => {
     if (!mapRef.current) return
-    onDistrictSelect?.(d)
+    onAttractionSelect?.(d)
     suppressNextIdleQueryRef.current = true
-    const radiusForPlaces = d.radiusMeters && d.radiusMeters > 0 ? d.radiusMeters : 1500
-    fetchGeoPlacesNearby(cfg, d.lat, d.lng, radiusForPlaces)
+    fetchGeoPlacesNearby(cfg, d.lat, d.lng, placesQueryRadiusMeters(d))
       .then((result) => {
         setPlaces(result.places)
         onPlacesNearby?.(result.places)
@@ -688,9 +593,10 @@ export function GeoOutlineMap({
         // 查詢失敗不視為致命錯誤——地圖仍正常放大,只是這次沒能刷新
         // 附近推薦清單,維持上一次查到的內容即可,不彈錯誤訊息打斷瀏覽。
       })
-    if (d.radiusMeters && d.radiusMeters > 0) {
+    const plan = planAttractionClick(d)
+    if (plan.kind === 'fit-bounds') {
       const center = { lat: d.lat, lng: d.lng }
-      const circle = new google.maps.Circle({ center, radius: d.radiusMeters })
+      const circle = new google.maps.Circle({ center, radius: plan.radiusMeters })
       const bounds = circle.getBounds()
       if (bounds) {
         mapRef.current.fitBounds(bounds, 48)
@@ -698,33 +604,31 @@ export function GeoOutlineMap({
       }
     }
     mapRef.current.panTo({ lat: d.lat, lng: d.lng })
-    if (d.level != null) {
-      const needed = minZoomForLevel(d.level)
-      if (mapRef.current.getZoom() != null && mapRef.current.getZoom()! < needed) {
-        mapRef.current.setZoom(needed)
+    if (plan.kind === 'pan-and-zoom') {
+      if (plan.minZoom != null) {
+        if (mapRef.current.getZoom() != null && mapRef.current.getZoom()! < plan.minZoom) {
+          mapRef.current.setZoom(plan.minZoom)
+        }
+      } else {
+        mapRef.current.setZoom(FALLBACK_ZOOM_NO_LEVEL)
       }
-    } else {
-      // 沒有分級資訊的即時查詢結果(見 GeoDistrict.level 的說明),沒有
-      // minZoomForLevel 可用,退回一個明顯比一般瀏覽尺度更近的固定
-      // zoom,確保點下去有感、看得出範圍被放大了。
-      mapRef.current.setZoom(16)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg, onDistrictSelect])
+  }, [cfg, onAttractionSelect])
 
-  // 畫分區光暈疊層:地圖就緒或 filteredDistricts 變動時重畫,先清掉舊的。
+  // 畫景點區域光暈疊層:地圖就緒或 filteredAttractions 變動時重畫,先清掉舊的。
   // selected 初始值直接讀當下的 selectedKey(重畫當下若剛好是選中項目,
   // 一開始就該是選中樣式,不必等下面那個獨立的 setSelected effect 補上)。
   useEffect(() => {
     if (!mapReady || !mapRef.current) return
     overlaysRef.current.forEach((o) => o.setMap(null))
-    const OverlayClass = getDistrictOverlayClass()
-    overlaysRef.current = filteredDistricts.map((d) => {
+    const OverlayClass = getAttractionOverlayClass()
+    overlaysRef.current = filteredAttractions.map((d) => {
       const overlay = new OverlayClass(
         d,
         new google.maps.LatLng(d.lat, d.lng),
-        selectedKey === geoItemKey('district', d),
-        handleDistrictClick,
+        selectedKey === geoItemKey('attraction', d),
+        handleAttractionClick,
       )
       overlay.setMap(mapRef.current!)
       return overlay
@@ -734,25 +638,25 @@ export function GeoOutlineMap({
       overlaysRef.current = []
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, filteredDistricts])
+  }, [mapReady, filteredAttractions])
 
   // 同步選取狀態:只切換既有 overlay 的 class,不重建 DOM(重建會讓光暈/
   // 照片的 fadeIn 動畫重播,側欄點擊選取時地圖上的地標會不必要地閃一下)。
   useEffect(() => {
     overlaysRef.current.forEach((o, i) => {
-      const d = filteredDistricts[i]
-      if (d) o.setSelected(selectedKey === geoItemKey('district', d))
+      const d = filteredAttractions[i]
+      if (d) o.setSelected(selectedKey === geoItemKey('attraction', d))
     })
-  }, [selectedKey, filteredDistricts])
+  }, [selectedKey, filteredAttractions])
 
-  // 範圍圓圈:只有帶 radiusMeters 的分區(手動整理的觀光慣稱分區,如
+  // 範圍圓圈:只有帶 radiusMeters 的景點區域(手動整理的觀光慣稱分區,如
   // 清邁的古城區/尼曼區,見 server/internal/geo/district_aliases.go)
-  // 才畫——這類分區沒有官方邊界資料,圓圈只是「大概這一帶」的粗略
+  // 才畫——這類區域沒有官方邊界資料,圓圈只是「大概這一帶」的粗略
   // 示意,故用低透明度填色+淡邊框,刻意不搶過光暈與標籤的視覺焦點。
   useEffect(() => {
     if (!mapReady || !mapRef.current) return
     radiusCirclesRef.current.forEach((c) => c.setMap(null))
-    radiusCirclesRef.current = filteredDistricts
+    radiusCirclesRef.current = filteredAttractions
       .filter((d) => d.radiusMeters && d.radiusMeters > 0)
       .map(
         (d) =>
@@ -773,7 +677,7 @@ export function GeoOutlineMap({
       radiusCirclesRef.current = []
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, filteredDistricts])
+  }, [mapReady, filteredAttractions])
 
   // visibleHotels:只保留落在目前地圖可視範圍(bounds)內的飯店——
   // bounds 為 null(地圖剛掛載、還沒收到第一次 bounds_changed)時顯示
@@ -865,12 +769,12 @@ export function GeoOutlineMap({
   const placesKey = places.map((p) => `${p.name}|${p.lat}|${p.lng}`).join(',')
 
   // 附近推薦地點圖層:points 變動時重畫,先清掉舊的。這批地點不像
-  // districts/hotels 依可視範圍(bounds)篩選——它們是點擊某個地標才
+  // attractions/hotels 依可視範圍(bounds)篩選——它們是點擊某個地標才
   // 觸發的一次性查詢結果,查詢半徑本來就對應該地標的範圍,使用者點擊後
-  // 地圖也會同步 fitBounds/放大到那個範圍(見 handleDistrictClick),
+  // 地圖也會同步 fitBounds/放大到那個範圍(見 handleAttractionClick),
   // 這批地點理應都落在可視範圍內,不需要再疊一層篩選判斷增加複雜度。
   // 圖示用 placeMarkerIcon(靛藍色系,見該函式的說明),讓使用者一眼
-  // 分得出這是「點擊地標查出來的推薦」而非常駐的分區/飯店資料。
+  // 分得出這是「點擊地標查出來的推薦」而非常駐的景點區域/飯店資料。
   useEffect(() => {
     if (!mapReady || !mapRef.current) return
     placeMarkersRef.current.forEach((m) => m.setMap(null))
@@ -963,10 +867,10 @@ export function GeoOutlineMap({
   // 那端猜測「這次移動是不是由 panTarget 造成的」。
   //
   // 依賴陣列用整個 panTarget 物件參照(而非拆開比較 lat/lng)判斷「是否
-  // 為新的移動請求」,前提是呼叫端(GeoOutlineDemo.tsx 的
+  // 為新的移動請求」,前提是呼叫端(GeoOutlinePanel.tsx 的
   // effectivePanTarget)已用 useMemo 依實際座標值快取、確保座標沒變時
   // 不會產生新物件參照——否則任何造成這個元件重渲染的動作(例如查詢
-  // 完成觸發 onDistrictsChange 連鎖讓上層重渲染)都會被誤判成新的移動
+  // 完成觸發 onAttractionsChange 連鎖讓上層重渲染)都會被誤判成新的移動
   // 請求,重新 panTo,曾經因此形成「渲染→panTo→idle→查詢→觸發渲染」的
   // 無限迴圈,即使地圖靜止不動也會持續發送查詢請求。
   useEffect(() => {
@@ -986,30 +890,30 @@ export function GeoOutlineMap({
 
   // farPairs:「距離較遠的項目間」連線示意——只在大範圍區域級尺度
   // (maxLevel<=2,對應 zoom<=12,見 maxLevelForZoom)才有意義,拉近到
-  // 城市/在地級尺度後,分區彼此距離通常只有幾百公尺到幾公里,連線
-  // 示意的「這幾塊大致隔多遠」已經沒有資訊量,故用 filteredDistricts
-  // (而非全部 districts)當母體,兩層篩選都通過才畫:
+  // 城市/在地級尺度後,景點區域彼此距離通常只有幾百公尺到幾公里,連線
+  // 示意的「這幾塊大致隔多遠」已經沒有資訊量,故用 filteredAttractions
+  // (而非全部 attractions)當母體,兩層篩選都通過才畫:
   //  1. 目前縮放層級允許畫連線(maxLevel<=2)
   //  2. 該配對距離超過所有配對的平均值(只挑「較遠的」,不畫全部
-  //     兩兩配對——分區一多,全連線會變成蜘蛛網,失去示意的意義)
+  //     兩兩配對——景點區域一多,全連線會變成蜘蛛網,失去示意的意義)
   const showLines = maxLevel <= 2
-  // farPairs 同樣用 useMemo 快取,理由同 filteredDistricts——避免每次
+  // farPairs 同樣用 useMemo 快取,理由同 filteredAttractions——避免每次
   // render 都建立新陣列參照,讓下方依賴它的 useEffect(延遲淡入計時器、
   // 畫連線)誤判成內容變了而重新觸發,造成已淡入的連線在地圖拖曳時
   // 反覆消失、重新等待、再淡入。
   const farPairs = useMemo(() => {
-    if (!showLines || filteredDistricts.length < 2) return []
-    const pairs: { a: GeoDistrict; b: GeoDistrict; km: number }[] = []
-    for (let i = 0; i < filteredDistricts.length; i++) {
-      for (let j = i + 1; j < filteredDistricts.length; j++) {
-        const a = filteredDistricts[i]
-        const b = filteredDistricts[j]
+    if (!showLines || filteredAttractions.length < 2) return []
+    const pairs: { a: GeoAttraction; b: GeoAttraction; km: number }[] = []
+    for (let i = 0; i < filteredAttractions.length; i++) {
+      for (let j = i + 1; j < filteredAttractions.length; j++) {
+        const a = filteredAttractions[i]
+        const b = filteredAttractions[j]
         pairs.push({ a, b, km: distanceKm(a, b) })
       }
     }
     const avgKm = pairs.reduce((sum, p) => sum + p.km, 0) / pairs.length
     return pairs.filter((p) => p.km > avgKm)
-  }, [showLines, filteredDistricts])
+  }, [showLines, filteredAttractions])
 
   // 延遲淡入計時器:每次 farPairs 變動(換城市/縮放層級跨越 showLines
   // 門檻)重新起算停留時間。
@@ -1048,9 +952,9 @@ export function GeoOutlineMap({
   }, [linesVisible, mapReady, farPairs])
 
   // 地圖容器(<div ref={containerRef}>)必須無條件渲染,不能像先前那樣
-  // 依 err/districts 狀態切換成完全不同的 JSX 分支——地圖初始化的
+  // 依 err/attractions 狀態切換成完全不同的 JSX 分支——地圖初始化的
   // useEffect 依賴是 [apiKey](地圖只需要建立一次),若元件第一次掛載時
-  // districts 還是空陣列、走的是「空狀態」分支(不含這個 div),
+  // attractions 還是空陣列、走的是「空狀態」分支(不含這個 div),
   // containerRef.current 當下會是 null,初始化直接被跳過且不會重試
   // (因為 apiKey 沒變、effect 不會重新執行)。改成地圖容器永遠在,
   // 只在它上面疊加錯誤/空狀態提示,才能確保 containerRef 在 effect
@@ -1058,12 +962,37 @@ export function GeoOutlineMap({
   return (
     <div className={styles.wrap}>
       <div ref={containerRef} className={styles.map} />
-      {/* districts.length === 0(目前地圖範圍內查無任何地標)刻意不顯示
-          任何遮罩提示——在「依可視範圍查詢」的架構下(見上方查詢
+      {/* attractions.length === 0(目前地圖範圍內查無任何地標)刻意不
+          顯示任何遮罩提示——在「依可視範圍查詢」的架構下(見上方查詢
           useEffect 的說明),查無資料是地圖拖曳/縮放到還沒建檔區域時的
           正常情況,不是搜尋失敗,不該用一片實色背景蓋住整個地圖。地圖
           本身(含飯店 marker,若該範圍剛好有查到)照常顯示,使用者只是
-          單純看不到任何分區光暈而已,不需要額外文字說明。 */}
+          單純看不到任何景點區域光暈而已,不需要額外文字說明。 */}
+      {/* 「搜尋這個區域」按鈕:areaDirty 為 true(使用者拖曳/縮放過地圖
+          但還沒查詢這個新範圍,見 areaSearch/geoAreaSearchState.ts 的
+          說明)時顯示,疊在地圖左上角(對齊 GeoOutlinePanel.tsx 的
+          .floatingSearch 靠左浮動卡片習慣,不是置中——置中容易被誤認成
+          地圖本身的置中提示/警告,靠左跟既有的浮動搜尋列同一個角落,
+          讀起來更像「這裡有一個操作」)。按下後呼叫 handleSearchThisArea,
+          查詢中(searching)把 lucide 的 Search 圖示換成 Loader2(疊加
+          CSS 自轉動畫,lucide 本身不含動畫),不改按鈕文字或停用互動
+          ——查詢通常很快,不需要額外 disable 按鈕製造等待感。err 存在時
+          不顯示(地圖本身都載入失敗了,顯示這顆按鈕沒有意義)。 */}
+      {!err && areaSearch.areaDirty && (
+        <button
+          type="button"
+          className={styles.searchThisAreaButton}
+          onClick={handleSearchThisArea}
+          aria-busy={areaSearch.searching}
+        >
+          {areaSearch.searching ? (
+            <Loader2 size={14} className={styles.searchThisAreaIconLoading} aria-hidden="true" />
+          ) : (
+            <Search size={14} aria-hidden="true" />
+          )}
+          搜尋這個區域
+        </button>
+      )}
       {err && (
         <div className={styles.mapError}>
           <span>地圖載入失敗</span>

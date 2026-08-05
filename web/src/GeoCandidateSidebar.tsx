@@ -1,4 +1,4 @@
-import type { GeoDistrict, GeoHotel, GeoPlace, GeoTripEntry } from './api'
+import type { GeoAttraction, GeoHotel, GeoPlace, GeoTripEntry } from './api'
 import styles from './GeoCandidateSidebar.module.css'
 
 // GeoCandidateSidebar:候選籃(構想 1,見
@@ -21,16 +21,16 @@ import styles from './GeoCandidateSidebar.module.css'
 // 一份平行清單。
 export type GeoCandidate =
   | ({ kind: 'hotel' } & GeoHotel)
-  | ({ kind: 'district' } & GeoDistrict)
+  | ({ kind: 'attraction' } & GeoAttraction)
   | ({ kind: 'place' } & GeoPlace)
   | ({ kind: 'entry' } & GeoTripEntry)
 
 // CandidateRow:單一候選項目的卡片,已排入行程組與純候選組共用同一份
 // 渲染邏輯,只有外層分組容器不同。
 function CandidateRow({ c, onRemove }: { c: GeoCandidate; onRemove?: (candidate: GeoCandidate) => void }) {
-  const photoUrl = c.kind === 'district' ? c.landmarkPhotoUrl : c.kind === 'entry' ? undefined : c.photoUrl
+  const photoUrl = c.kind === 'attraction' ? c.landmarkPhotoUrl : c.kind === 'entry' ? undefined : c.photoUrl
   const name = c.name
-  const meta = c.kind === 'district' ? (c.landmarkName ?? '') : c.kind === 'entry' ? (c.location ?? '') : c.address
+  const meta = c.kind === 'attraction' ? (c.landmarkName ?? '') : c.kind === 'entry' ? (c.location ?? '') : c.address
   return (
     <div className={styles.item}>
       {photoUrl ? (
@@ -63,7 +63,7 @@ export function GeoCandidateSidebar({
 }) {
   // 已排入行程 vs 純候選:kind === 'entry' 是行程本身已有座標的既有內容
   // (進入規劃分頁時自動帶入,見上方型別註解),不是使用者用「+」手動加入
-  // 的——這批天然就等於「已排入行程」,其餘 kind(hotel/district/place)
+  // 的——這批天然就等於「已排入行程」,其餘 kind(hotel/attraction/place)
   // 是使用者主動丟進候選籃、但尚未真正寫回行程的項目,故以 kind 分組,不
   // 需要另外比對是否重複。
   const inTrip = candidates.filter((c) => c.kind === 'entry')

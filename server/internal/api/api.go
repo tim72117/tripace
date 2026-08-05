@@ -65,16 +65,16 @@ type storePhotoCache struct {
 	store *store.Store
 }
 
-func (c storePhotoCache) Get(photoRef string, maxWidthPx int) (string, bool) {
-	dataURI, ok, err := c.store.GetCachedPhoto(photoRef, maxWidthPx)
+func (c storePhotoCache) Get(placeID string, maxWidthPx int) (string, bool) {
+	dataURI, ok, err := c.store.GetCachedPhoto(placeID, maxWidthPx)
 	if err != nil {
 		return "", false
 	}
 	return dataURI, ok
 }
 
-func (c storePhotoCache) Set(photoRef string, maxWidthPx int, dataURI string) {
-	_ = c.store.SetCachedPhoto(photoRef, maxWidthPx, dataURI)
+func (c storePhotoCache) Set(placeID string, maxWidthPx int, dataURI string) {
+	_ = c.store.SetCachedPhoto(placeID, maxWidthPx, dataURI)
 }
 
 // EnableClientTools wires the "LLM calls a frontend tool" POC's
@@ -214,8 +214,8 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("POST /internal/entries/{id}/geocode", s.handleGeocodeEntry)
 	internalMux.HandleFunc("POST /internal/entries/compute-route", s.handleComputeRouteFromEntries)
 	internalMux.HandleFunc("DELETE /internal/trips/{id}/entries", s.handleInternalReset)
-	internalMux.HandleFunc("GET /internal/geo/districts", s.handleGeoDistricts)
-	internalMux.HandleFunc("GET /internal/geo/districts/nearby", s.handleGeoDistrictsNearby)
+	internalMux.HandleFunc("GET /internal/geo/attractions", s.handleGeoAttractions)
+	internalMux.HandleFunc("GET /internal/geo/attractions/nearby", s.handleGeoAttractionsNearby)
 	internalMux.HandleFunc("GET /internal/geo/geocode", s.handleGeoGeocode)
 	internalMux.HandleFunc("GET /internal/geo/places/nearby", s.handleGeoPlacesNearby)
 	internalMux.HandleFunc("GET /internal/geo/place-details", s.handleGeoPlaceDetails)

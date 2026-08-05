@@ -84,8 +84,8 @@ type SearchAnswer struct {
 	Entries         []PresentedEntry `json:"entries"`
 }
 
-// Landmark 是地理輪廓底圖(構想 6,見
-// docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)用的地標/區域資料,人工建檔,
+// Attraction 是地理輪廓底圖(構想 6,見
+// docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)用的景點區域資料,人工建檔,
 // 依知名程度分成 5 級,供地圖依縮放層級決定顯示哪些粒度的地名——
 // Level 數字越小代表越知名、範圍越廣(1 級如整座城市地標「101」,
 // 5 級如在地商圈「永康商圈」),對齊使用者提出的分級範例:
@@ -96,22 +96,26 @@ type SearchAnswer struct {
 //	4 城市級(如象山)
 //	5 在地級(如博愛特區、永康商圈、公館商圈)
 //
+// 正式用語定為「景點區域」(見 docs/TERMINOLOGY.md「地理輪廓底圖」一節)
+// ——可以是單點地標(如「101」)也可以是有範圍的區域(如「古城區」),
+// 不拆成兩個型別,用同一個符號涵蓋兩種情況,見下方 RadiusMeters 的說明。
+//
 // 這是取代/擴充 server/internal/geo/district_aliases.go(手動整理的
 // 少量城市觀光慣稱分區,寫死在 Go 程式碼)的正式資料庫版本——後者
 // 只能靠改程式碼+重新部署才能新增資料,這個模型讓資料能透過 CLI
 // (tripace-cli landmark-add 等,見 cmd/cli)直接寫入資料庫,不需要
 // 改程式碼。
-type Landmark struct {
+type Attraction struct {
 	ID   string `json:"id"`
 	Name string `json:"name"` // 白話名稱,如「古城區」「101」
 	// CityName 用來查詢範圍(對齊 GET /internal/geo/districts?city= 的
-	// city 參數),同一個城市底下可以有任意數量、任意 Level 的 Landmark。
+	// city 參數),同一個城市底下可以有任意數量、任意 Level 的 Attraction。
 	CityName string  `json:"cityName"`
 	Lat      float64 `json:"lat"`
 	Lng      float64 `json:"lng"`
 	// Level 是知名度分級,1(國際)~5(在地),見上方型別註解的完整說明。
 	Level int `json:"level"`
-	// RadiusMeters 是這個地標/區域的大致範圍半徑(公尺),0 代表這是單點
+	// RadiusMeters 是這個景點區域的大致範圍半徑(公尺),0 代表這是單點
 	// 地標(如「101」)而非有範圍的區域(如「古城區」)——前端據此判斷
 	// 要不要在地圖上疊加範圍圓圈。
 	RadiusMeters int     `json:"radiusMeters,omitempty"`

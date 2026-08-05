@@ -397,17 +397,17 @@ export function geocodeEntry(cfg: ClientConfig, entryID: string) {
 }
 
 // 地理輪廓底圖(構想 6,見 docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)用:
-// 對齊 server 的 GET /internal/geo/districts(handleGeoDistricts)。
+// 對齊 server 的 GET /internal/geo/attractions(handleGeoAttractions)。
 // landmarkPhotoUrl 若有值,是後端已編碼好的 data: URI(base64,含 MIME
 // type),圖片資料直接內嵌在回應裡,可以直接當 <img src> 用,不需要
 // 額外拼接網址或發第二次請求。
-export interface GeoDistrict {
+export interface GeoAttraction {
   name: string
   lat: number
   lng: number
   // placeCount:只有走即時查 Google Places 的路徑(SearchDistricts/
   // SearchKnownDistricts)才會有值——後端該欄位帶 json 的 omitempty,
-  // 走資料庫路徑(人工建檔的 model.Landmark)組回應時完全不設這個
+  // 走資料庫路徑(人工建檔的 model.Attraction)組回應時完全不設這個
   // 欄位,JSON 回應裡不會出現這個 key,故這裡不能宣告成必定存在的
   // number,否則型別與實際執行期契約不符。
   placeCount?: number
@@ -422,7 +422,7 @@ export interface GeoDistrict {
   // 簡介用(不是 LLM 生成)。地標沒有這欄位資料時為 undefined。
   summary?: string
   // level:知名度分級,1(國際)~5(在地),只有走後端資料庫路徑
-  // (server/internal/api/geo_outline.go 的 store.ListLandmarksByCity)
+  // (server/internal/api/geo_outline.go 的 store.ListAttractionsByCity)
   // 才會有值——即時查 Google Places 的結果沒有分級資訊,固定不帶這個
   // 欄位。前端依此決定隨縮放層級顯示哪些粒度,見 GeoOutlineMap.tsx。
   level?: number
@@ -431,30 +431,30 @@ export interface GeoDistrict {
 // GeoHotel:地理輪廓底圖上疊加的飯店圖層單筆結果,對齊後端
 // geo.NearbyPlace(server/internal/geo/places.go)——固定用泛用的
 // lodging 類型查詢(不細分 hotel/hostel/inn 等子類),見
-// handleGeoDistricts 的說明。
+// handleGeoAttractions 的說明。
 export interface GeoHotel {
   name: string
   address: string
   lat: number
   lng: number
   primaryType: string
-  // photoUrl:後端已編碼好的 data: URI,理由同 GeoDistrict.landmarkPhotoUrl。
+  // photoUrl:後端已編碼好的 data: URI,理由同 GeoAttraction.landmarkPhotoUrl。
   // 部分飯店在 Google 端沒有照片、或下載失敗時為 undefined。
   photoUrl?: string
 }
 
-export function fetchGeoDistricts(cfg: ClientConfig, city: string) {
-  return request<{ city: string; districts: GeoDistrict[]; hotels: GeoHotel[] }>(
+export function fetchGeoAttractions(cfg: ClientConfig, city: string) {
+  return request<{ city: string; attractions: GeoAttraction[]; hotels: GeoHotel[] }>(
     cfg,
     'GET',
-    `/internal/geo/districts?city=${encodeURIComponent(city)}`,
+    `/internal/geo/attractions?city=${encodeURIComponent(city)}`,
   )
 }
 
 // 對齊 server 的 GET /internal/geo/geocode(handleGeoGeocode)——只把輸入
-// 字串解析成一組座標,不查詢景點/分區/飯店資料。地理輪廓底圖的城市搜尋框
+// 字串解析成一組座標,不查詢景點區域/飯店資料。地理輪廓底圖的城市搜尋框
 // 用這支端點「只負責定位」,查完把地圖 panTo 過去,畫面上該顯示什麼資料
-// 交給 fetchGeoDistrictsNearby 依地圖當時的可視範圍另外查詢。
+// 交給 fetchGeoAttractionsNearby 依地圖當時的可視範圍另外查詢。
 export function fetchGeoGeocode(cfg: ClientConfig, query: string) {
   return request<{ query: string; address: string; lat: number; lng: number }>(
     cfg,
@@ -463,20 +463,20 @@ export function fetchGeoGeocode(cfg: ClientConfig, query: string) {
   )
 }
 
-// 對齊 server 的 GET /internal/geo/districts/nearby
-// (handleGeoDistrictsNearby)——依座標 bounding box 查詢,不依賴城市名稱
+// 對齊 server 的 GET /internal/geo/attractions/nearby
+// (handleGeoAttractionsNearby)——依座標 bounding box 查詢,不依賴城市名稱
 // 字串比對。供地圖平移/縮放時「地圖移動到哪就查哪」使用,不需要使用者
-// 先輸入城市名稱、按查看鈕才看得到資料。只查自建資料庫(model.Landmark),
-// 不像 fetchGeoDistricts 那樣有即時查 Google Places 的 fallback——理由
+// 先輸入城市名稱、按查看鈕才看得到資料。只查自建資料庫(model.Attraction),
+// 不像 fetchGeoAttractions 那樣有即時查 Google Places 的 fallback——理由
 // 見後端該支 handler 的說明(避免地圖高頻移動時產生大量非預期的第三方
 // API 呼叫成本)。
-export function fetchGeoDistrictsNearby(cfg: ClientConfig, lat: number, lng: number, radiusMeters?: number) {
+export function fetchGeoAttractionsNearby(cfg: ClientConfig, lat: number, lng: number, radiusMeters?: number) {
   const params = new URLSearchParams({ lat: String(lat), lng: String(lng) })
   if (radiusMeters != null) params.set('radius', String(radiusMeters))
-  return request<{ districts: GeoDistrict[]; hotels: GeoHotel[] }>(
+  return request<{ attractions: GeoAttraction[]; hotels: GeoHotel[] }>(
     cfg,
     'GET',
-    `/internal/geo/districts/nearby?${params.toString()}`,
+    `/internal/geo/attractions/nearby?${params.toString()}`,
   )
 }
 
@@ -511,7 +511,7 @@ export interface GeoTripEntry {
 // 對齊 server 的 GET /internal/geo/places/nearby(handleGeoPlacesNearby)——
 // 即時查 Google Places Nearby Search,不限類型,供地圖上點擊地標時查詢
 // 該地標附近的推薦地點使用(見 GeoOutlineMap.tsx 點擊地標的說明)。這是
-// 使用者明確點擊觸發的低頻動作,不像 fetchGeoDistrictsNearby 那樣顧慮
+// 使用者明確點擊觸發的低頻動作,不像 fetchGeoAttractionsNearby 那樣顧慮
 // 地圖高頻移動的 API 呼叫成本,故直接即時查 Places API。
 export function fetchGeoPlacesNearby(cfg: ClientConfig, lat: number, lng: number, radiusMeters?: number) {
   const params = new URLSearchParams({ lat: String(lat), lng: String(lng) })
