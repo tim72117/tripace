@@ -48,11 +48,48 @@ export interface PathRequestStats {
   errorCount: number
 }
 
+// One point of a request-volume-over-time chart. Mirrors
+// store.TimelineBucket on the backend — bucketStart is the hour this
+// point covers (ISO 8601 string, hour-truncated UTC), count/errorCount
+// are how many requests/errors fell in that hour. Hours with zero
+// requests are simply absent from the array (the backend only emits
+// buckets that have data).
+export interface TimelineBucket {
+  bucketStart: string
+  count: number
+  errorCount: number
+}
+
 export interface RequestStatsResponse {
   sinceHours: number
   total: number
   errorCount: number
   paths: PathRequestStats[]
+  timeline: TimelineBucket[]
+}
+
+// One row of the outbound Google Places/Geocoding API call stats table.
+// Mirrors store.GeoAPICallStats on the backend (server/internal/store/
+// geocache.go) — the counterpart to PathRequestStats above: that one is
+// inbound (someone calling into our server), this one is outbound (our
+// server calling Google). endpoint is a fixed logical name inside the geo
+// package (e.g. "places.searchNearby", "geocode"), caller is the code
+// location that triggered it (e.g. "handleGeoDistrictsNearby"), and path
+// is the REST route that triggered it (empty for LLM tool calls with no
+// single corresponding route).
+export interface GeoAPICallStats {
+  endpoint: string
+  caller: string
+  path: string
+  count: number
+  avgDurationMs: number
+  errorCount: number
+}
+
+export interface GeoAPIStatsResponse {
+  sinceHours: number
+  calls: GeoAPICallStats[]
+  timeline: TimelineBucket[]
 }
 
 // Same resolution strategy as the main web app's api.ts BASE: an explicit
@@ -109,4 +146,11 @@ export const api = {
   // safe to call on page load / manual refresh, no real-world cost.
   requestStats: (hours: number): Promise<RequestStatsResponse> =>
     request('GET', `/admin/api/request-stats?hours=${hours}`).then((r) => r.json()),
+
+  // Reads from geo_api_call_logs (server/internal/apigateway's CallLogger
+  // writes one row per outbound Google Places/Geocoding call) — like
+  // requestStats, this is a pure read of already-logged data, no new
+  // outbound call is triggered by viewing this page.
+  geoAPIStats: (hours: number): Promise<GeoAPIStatsResponse> =>
+    request('GET', `/admin/api/geo-api-stats?hours=${hours}`).then((r) => r.json()),
 }

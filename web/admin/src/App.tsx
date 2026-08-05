@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from './api'
-import type { ExternalServiceStatus, PathRequestStats, UserSummary } from './api'
+import type { ExternalServiceStatus, GeoAPICallStats, PathRequestStats, TimelineBucket, UserSummary } from './api'
+import { TimelineChart } from './TimelineChart'
 
 export default function App() {
   const [me, setMe] = useState<string | null>(null)
@@ -63,7 +64,7 @@ function Login({ onLoggedIn }: { onLoggedIn: (email: string) => void }) {
   )
 }
 
-type Tab = 'users' | 'external' | 'requests'
+type Tab = 'users' | 'external' | 'requests' | 'geo-api'
 
 function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOut: () => void }) {
   const [tab, setTab] = useState<Tab>('users')
@@ -98,11 +99,15 @@ function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOu
         <button className={tab === 'requests' ? 'tab active' : 'tab'} onClick={() => setTab('requests')}>
           Request stats
         </button>
+        <button className={tab === 'geo-api' ? 'tab active' : 'tab'} onClick={() => setTab('geo-api')}>
+          Google API calls
+        </button>
       </nav>
 
       {tab === 'users' && <UsersTab onLoggedOut={onLoggedOut} />}
       {tab === 'external' && <ExternalServicesTab onLoggedOut={onLoggedOut} />}
       {tab === 'requests' && <RequestStatsTab onLoggedOut={onLoggedOut} />}
+      {tab === 'geo-api' && <GeoAPIStatsTab onLoggedOut={onLoggedOut} />}
     </div>
   )
 }
@@ -289,7 +294,12 @@ const HOURS_OPTIONS = [1, 24, 168] as const
 
 function RequestStatsTab({ onLoggedOut }: { onLoggedOut: () => void }) {
   const [hours, setHours] = useState<number>(24)
-  const [stats, setStats] = useState<{ total: number; errorCount: number; paths: PathRequestStats[] } | null>(null)
+  const [stats, setStats] = useState<{
+    total: number
+    errorCount: number
+    paths: PathRequestStats[]
+    timeline: TimelineBucket[]
+  } | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -298,7 +308,7 @@ function RequestStatsTab({ onLoggedOut }: { onLoggedOut: () => void }) {
     setError('')
     try {
       const res = await api.requestStats(hours)
-      setStats({ total: res.total, errorCount: res.errorCount, paths: res.paths })
+      setStats({ total: res.total, errorCount: res.errorCount, paths: res.paths, timeline: res.timeline })
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         onLoggedOut()
@@ -328,6 +338,13 @@ function RequestStatsTab({ onLoggedOut }: { onLoggedOut: () => void }) {
       </section>
 
       {error && <div className="error banner">{error}</div>}
+
+      <section className="card">
+        <div className="section-head">
+          <h2>Requests over time</h2>
+        </div>
+        <TimelineChart buckets={stats?.timeline ?? []} granularity="hour" />
+      </section>
 
       <section className="card">
         <div className="section-head">
@@ -376,6 +393,126 @@ function RequestStatsTab({ onLoggedOut }: { onLoggedOut: () => void }) {
               {loading && stats === null && (
                 <tr>
                   <td colSpan={5} className="muted center-cell">
+                    Loading…
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  )
+}
+
+// Outbound Google Places/Geocoding API call stats — counterpart to
+// RequestStatsTab above (that one is inbound: someone calling into our
+// server; this one is outbound: our server calling Google). Reads from
+// already-logged data (geo_api_call_logs), so loading/refreshing this tab
+// never triggers a real Google API call itself.
+function GeoAPIStatsTab({ onLoggedOut }: { onLoggedOut: () => void }) {
+  const [hours, setHours] = useState<number>(24)
+  const [calls, setCalls] = useState<GeoAPICallStats[] | null>(null)
+  const [timeline, setTimeline] = useState<TimelineBucket[]>([])
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await api.geoAPIStats(hours)
+      setCalls(res.calls)
+      setTimeline(res.timeline)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onLoggedOut()
+        return
+      }
+      setError(err instanceof ApiError ? err.message : 'Failed to load')
+    } finally {
+      setLoading(false)
+    }
+  }, [hours, onLoggedOut])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const total = calls?.reduce((sum, c) => sum + c.count, 0) ?? null
+  const errorCount = calls?.reduce((sum, c) => sum + c.errorCount, 0) ?? null
+
+  return (
+    <>
+      <section className="stats">
+        <div className="stat card">
+          <div className="stat-num">{total ?? '—'}</div>
+          <div className="stat-label">Total Google API calls</div>
+        </div>
+        <div className="stat card">
+          <div className="stat-num">{errorCount ?? '—'}</div>
+          <div className="stat-label">Errors</div>
+        </div>
+      </section>
+
+      {error && <div className="error banner">{error}</div>}
+
+      <section className="card">
+        <div className="section-head">
+          <h2>Calls over time</h2>
+        </div>
+        <TimelineChart buckets={timeline} granularity="minute" />
+      </section>
+
+      <section className="card">
+        <div className="section-head">
+          <h2>Calls by endpoint</h2>
+          <div className="row-actions">
+            <select value={hours} onChange={(e) => setHours(Number(e.target.value))}>
+              {HOURS_OPTIONS.map((h) => (
+                <option key={h} value={h}>
+                  Last {h < 24 ? `${h}h` : `${h / 24}d`}
+                </option>
+              ))}
+            </select>
+            <button className="ghost" onClick={() => void load()} disabled={loading}>
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+        </div>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Endpoint</th>
+                <th>Caller</th>
+                <th>Path</th>
+                <th>Count</th>
+                <th>Avg duration</th>
+                <th>Errors</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(calls ?? []).map((c) => (
+                <tr key={`${c.endpoint} ${c.caller} ${c.path}`}>
+                  <td>{c.endpoint}</td>
+                  <td className="muted">{c.caller}</td>
+                  <td className="muted">{c.path || '—'}</td>
+                  <td>{c.count}</td>
+                  <td className="muted">{c.avgDurationMs.toFixed(0)} ms</td>
+                  <td className={c.errorCount > 0 ? 'error-cell' : 'muted'}>{c.errorCount}</td>
+                </tr>
+              ))}
+              {(calls === null || calls.length === 0) && !loading && (
+                <tr>
+                  <td colSpan={6} className="muted center-cell">
+                    No Google API calls recorded in this window.
+                  </td>
+                </tr>
+              )}
+              {loading && calls === null && (
+                <tr>
+                  <td colSpan={6} className="muted center-cell">
                     Loading…
                   </td>
                 </tr>

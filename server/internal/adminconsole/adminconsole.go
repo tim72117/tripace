@@ -35,6 +35,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin/api/users", h.withAdmin(h.listUsers))
 	mux.HandleFunc("GET /admin/api/health/external", h.withAdmin(h.listExternalHealth))
 	mux.HandleFunc("GET /admin/api/request-stats", h.withAdmin(h.listRequestStats))
+	mux.HandleFunc("GET /admin/api/geo-api-stats", h.withAdmin(h.listGeoAPIStats))
 }
 
 // withAdmin 是每一條特權管理路由共用的關卡:解析管理員 session cookie,

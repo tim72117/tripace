@@ -16,11 +16,16 @@ import (
 )
 
 // requestStatsResponse 是 GET /admin/api/request-stats 的回應格式。
+// Timeline 是按小時分桶的請求量時間序列(見 store.RequestStatsTimeline
+// 的分桶說明),供前端畫趨勢折線圖用——跟 Paths(依 method+path 分組
+// 的總量)是兩種不同維度的統計,同一次呼叫一併回傳,避免前端多打一支
+// API。
 type requestStatsResponse struct {
 	SinceHours int                      `json:"sinceHours"`
 	Total      int64                    `json:"total"`
 	ErrorCount int64                    `json:"errorCount"`
 	Paths      []store.PathRequestStats `json:"paths"`
+	Timeline   []store.TimelineBucket   `json:"timeline"`
 }
 
 // listRequestStats 讀 ?hours= 查詢參數決定統計範圍(預設 24 小時,最大
@@ -57,10 +62,20 @@ func (h *Handler) listRequestStats(w http.ResponseWriter, r *http.Request, _ *ad
 		return
 	}
 
+	timeline, err := h.Store.RequestStatsTimeline(since)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if timeline == nil {
+		timeline = []store.TimelineBucket{}
+	}
+
 	writeJSON(w, http.StatusOK, requestStatsResponse{
 		SinceHours: hours,
 		Total:      total,
 		ErrorCount: errorCount,
 		Paths:      paths,
+		Timeline:   timeline,
 	})
 }
