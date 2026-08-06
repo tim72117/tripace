@@ -109,27 +109,51 @@ function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: numb
   return 2 * R * Math.asin(Math.sqrt(h))
 }
 
-// hotelMarkerIcon:飯店 marker 的圖示,依選取狀態回傳不同樣式——拆成
-// 模組層級的純函式(而非寫在 render 裡的閉包),讓建立飯店 marker(全量
-// 重畫)與切換選取樣式(setIcon)兩個 effect 共用同一份定義,不重複維護
-// 兩份圖示邏輯。
+// candidateBadgeSvg:「已加入候選籃」的小勾選徽章 fragment,綠底 + 白色
+// 勾勾,疊在 marker 右上角——跟 GeoOutlineMap.module.css 的
+// .geo-attraction-overlay-candidate 是同一套視覺語言(景點區域光暈用
+// CSS ::after 疊加,這裡的飯店/推薦地點是 google.maps.Marker 的 SVG data
+// URI 圖示,沒有 DOM 可以疊 CSS 偽元素,故直接把徽章畫進 SVG 字串裡)。
+// cx/cy 是徽章圓心座標,由呼叫端依自己的 viewBox 尺寸決定要疊在哪個
+// 角落——兩邊呼叫端(飯店/推薦地點)的圖示尺寸不同,由呼叫端決定位置
+// 比在這裡寫死一組座標更不容易疊錯。
+function candidateBadgeSvg(cx: number, cy: number): string {
+  const r = 4.5
+  return (
+    `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#5A8A6A" stroke="#FDFCFA" stroke-width="1"/>` +
+    `<path d="M${cx - 2} ${cy}l1.3 1.3L${cx + 2} ${cy - 2.3}" fill="none" stroke="#FDFCFA" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>`
+  )
+}
+
+// hotelMarkerIcon:飯店 marker 的圖示,依選取/候選籃狀態回傳不同樣式——
+// 拆成模組層級的純函式(而非寫在 render 裡的閉包),讓建立飯店 marker
+// (全量重畫)與切換選取樣式(setIcon)兩個 effect 共用同一份定義,不
+// 重複維護兩份圖示邏輯。candidate 為 true 時,不論是否選中都疊加右上角
+// 勾選徽章(見 candidateBadgeSvg 的說明)——候選籃狀態跟選取狀態是
+// 兩件獨立的事,可以同時成立。
 //
 // 選中態用完整 SVG data URI 圖示,畫「同色實心圓 + 白色間隙環 + 同色
 // 外環」三層同心圓——google.maps.Marker 內建的 Symbol path API
 // (SymbolPath.CIRCLE 那組)整個 icon 只能設一種 fillColor,疊多層 path
 // 只能做出「透空環」(透出底下地圖),做不出中間隔一圈實心白色的靶心
 // 效果;改用完整 SVG 字串當 icon.url,才能讓三層圓各自指定自己的填色。
-// 未選中維持內建的 CIRCLE symbol(單色圓點已足夠,沒必要也走 SVG data URI)。
-function hotelMarkerIcon(selected: boolean): google.maps.Icon | google.maps.Symbol {
-  if (selected) {
+// 未選中且非候選籃時維持內建的 CIRCLE symbol(單色圓點已足夠,沒必要
+// 也走 SVG data URI)——candidate 為 true 時即使未選中也得改用 SVG 字串
+// (內建 Symbol 無法疊加額外圖案),故 candidate 會讓函式一律落到 SVG
+// 分支,不只是 selected 分支。
+function hotelMarkerIcon(selected: boolean, candidate: boolean): google.maps.Icon | google.maps.Symbol {
+  if (selected || candidate) {
     return {
       url:
         'data:image/svg+xml;charset=UTF-8,' +
         encodeURIComponent(
           '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">' +
-            '<circle cx="10" cy="10" r="9" fill="#5A8A6A"/>' +
-            '<circle cx="10" cy="10" r="6.5" fill="#FDFCFA"/>' +
-            '<circle cx="10" cy="10" r="4" fill="#5A8A6A"/>' +
+            (selected
+              ? '<circle cx="10" cy="10" r="9" fill="#5A8A6A"/>' +
+                '<circle cx="10" cy="10" r="6.5" fill="#FDFCFA"/>' +
+                '<circle cx="10" cy="10" r="4" fill="#5A8A6A"/>'
+              : '<circle cx="10" cy="10" r="5" fill="#5A8A6A" stroke="#FDFCFA" stroke-width="1.5"/>') +
+            (candidate ? candidateBadgeSvg(16.5, 3.5) : '') +
             '</svg>',
         ),
       scaledSize: new google.maps.Size(20, 20),
@@ -155,7 +179,8 @@ function hotelMarkerIcon(selected: boolean): google.maps.Icon | google.maps.Symb
 // 不搶過分區光暈與地標照片的視覺份量。選中態只放大 + 加一圈白色描邊
 // 光暈(而非飯店那種三層同心圓靶心)——相機圖形本身已經有清楚的形狀
 // 語意,不需要再疊靶心結構,加大加亮已足夠表達「這是選中的那個」。
-function placeMarkerIcon(selected: boolean): google.maps.Icon {
+// candidate 為 true 時疊加右上角勾選徽章,理由同 hotelMarkerIcon。
+function placeMarkerIcon(selected: boolean, candidate: boolean): google.maps.Icon {
   const size = selected ? 28 : 22
   const cameraSvg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 24 24">' +
@@ -167,6 +192,7 @@ function placeMarkerIcon(selected: boolean): google.maps.Icon {
     // 仍清楚辨識出「這是一台相機」的輪廓。
     '<path d="M8.5 8.2h1.1l.7-1.1a.8.8 0 01.7-.4h2a.8.8 0 01.7.4l.7 1.1h1.1a1.6 1.6 0 011.6 1.6v5.4a1.6 1.6 0 01-1.6 1.6H8.5a1.6 1.6 0 01-1.6-1.6V9.8a1.6 1.6 0 011.6-1.6z" fill="none" stroke="#FDFCFA" stroke-width="1.3" stroke-linejoin="round"/>' +
     '<circle cx="12" cy="12.6" r="2.1" fill="none" stroke="#FDFCFA" stroke-width="1.3"/>' +
+    (candidate ? candidateBadgeSvg(19.5, 4.5) : '') +
     '</svg>'
   return {
     url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(cameraSvg),
@@ -229,6 +255,8 @@ export function GeoOutlineMap({
   onPoiSelect,
   panTarget,
   selectedKey,
+  candidateKeys,
+  hoverKey,
 }: {
   cfg: ClientConfig
   // initialCenter:地圖第一次建立時該用的中心點——undefined 代表呼叫端
@@ -310,6 +338,26 @@ export function GeoOutlineMap({
   // geoItemKey)——由 DesktopLayout.tsx 中介,驅動下方地標/飯店圖示畫出
   // 對應的選取樣式(外圈 accent 描邊 + 放大),與側欄的選取標記同步。
   selectedKey?: GeoSelectedKey
+  // candidateKeys:目前候選籃裡有哪些項目的識別鍵集合(同樣用
+  // GeoHotelSidebar.tsx 的 geoItemKey 產生,由 DesktopLayout.tsx 中介)
+  // ——只涵蓋使用者手動用「+」加入候選籃的三種來源(飯店/景點區域/
+  // 附近推薦),行程本身已有座標的 entry(tripEntries)雖然也會自動併入
+  // 候選籃資料結構,但那批本來就有自己的旗子圖示語意(見
+  // tripEntryMarkerIcon 的說明——「已排進行程」跟「候選中」是不同概念),
+  // 不需要再疊加候選籃徽章,故這裡刻意只給前三種圖層用,不比對
+  // tripEntries。用 Set 而非陣列,是因為下方每個 marker/overlay 建立時
+  // 都要做一次成員檢查,Set.has() 是 O(1),陣列 includes 在候選籃項目
+  // 一多時會是重複的 O(n) 掃描。
+  candidateKeys?: Set<string>
+  // hoverKey:滑鼠移到側欄(GeoHotelSidebar/GeoCandidateSidebar)項目上時
+  // 的臨時識別鍵,由 DesktopLayout.tsx 中介——跟 selectedKey 是兩個獨立
+  // 狀態(見下方各處 selected 判斷式,兩者用 || 合併):selectedKey 是
+  // 「使用者點擊確定要看哪一項」的持續狀態,hoverKey 是「滑鼠移過去暫時
+  // 預覽」的臨時狀態,滑鼠移開後 hoverKey 應該回到 null、但不能連帶清掉
+  // selectedKey(否則使用者原本點選的項目會在滑過其他項目後意外失去
+  // 選取樣式)。命名/型別沿用 selectedKey 同一套 GeoSelectedKey(單一
+  // 字串或 null),不需要另外定義型別。
+  hoverKey?: GeoSelectedKey
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
@@ -617,17 +665,20 @@ export function GeoOutlineMap({
   }, [cfg, onAttractionSelect])
 
   // 畫景點區域光暈疊層:地圖就緒或 filteredAttractions 變動時重畫,先清掉舊的。
-  // selected 初始值直接讀當下的 selectedKey(重畫當下若剛好是選中項目,
-  // 一開始就該是選中樣式,不必等下面那個獨立的 setSelected effect 補上)。
+  // selected 初始值直接讀當下的 selectedKey/hoverKey(重畫當下若剛好是
+  // 選中/hover 項目,一開始就該是選中樣式,不必等下面那個獨立的
+  // setSelected effect 補上)。
   useEffect(() => {
     if (!mapReady || !mapRef.current) return
     overlaysRef.current.forEach((o) => o.setMap(null))
     const OverlayClass = getAttractionOverlayClass()
     overlaysRef.current = filteredAttractions.map((d) => {
+      const key = geoItemKey('attraction', d)
       const overlay = new OverlayClass(
         d,
         new google.maps.LatLng(d.lat, d.lng),
-        selectedKey === geoItemKey('attraction', d),
+        selectedKey === key || hoverKey === key,
+        candidateKeys?.has(key) ?? false,
         handleAttractionClick,
       )
       overlay.setMap(mapRef.current!)
@@ -642,12 +693,33 @@ export function GeoOutlineMap({
 
   // 同步選取狀態:只切換既有 overlay 的 class,不重建 DOM(重建會讓光暈/
   // 照片的 fadeIn 動畫重播,側欄點擊選取時地圖上的地標會不必要地閃一下)。
+  // selectedKey/hoverKey 用 || 合併(見 hoverKey prop 的說明)。
   useEffect(() => {
     overlaysRef.current.forEach((o, i) => {
       const d = filteredAttractions[i]
-      if (d) o.setSelected(selectedKey === geoItemKey('attraction', d))
+      if (d) {
+        const key = geoItemKey('attraction', d)
+        o.setSelected(selectedKey === key || hoverKey === key)
+      }
     })
-  }, [selectedKey, filteredAttractions])
+  }, [selectedKey, hoverKey, filteredAttractions])
+
+  // candidateKeysToken:candidateKeys 的內容摘要(排序後 join),供下方
+  // 同步候選籃狀態的 effect 依賴——candidateKeys 是 DesktopLayout.tsx
+  // 用 useMemo 從 geoCandidates 陣列算出的 Set,理論上內容沒變時參照
+  // 應該穩定,但用內容摘要當依賴陣列項目更保險(理由同 visibleHotelsKey
+  // 等既有的內容摘要 pattern),不依賴上游一定記得做好參照穩定化。
+  const candidateKeysToken = candidateKeys ? Array.from(candidateKeys).sort().join(',') : ''
+
+  // 同步候選籃狀態:只切換既有 overlay 的 class,理由同上方同步選取狀態
+  // 的 effect——加入/移出候選籃不該讓其他沒被動到的景點區域跟著重畫。
+  useEffect(() => {
+    overlaysRef.current.forEach((o, i) => {
+      const d = filteredAttractions[i]
+      if (d) o.setCandidate(candidateKeys?.has(geoItemKey('attraction', d)) ?? false)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidateKeysToken, filteredAttractions])
 
   // 範圍圓圈:只有帶 radiusMeters 的景點區域(手動整理的觀光慣稱分區,如
   // 清邁的古城區/尼曼區,見 server/internal/geo/district_aliases.go)
@@ -732,7 +804,7 @@ export function GeoOutlineMap({
         position: { lat: h.lat, lng: h.lng },
         map: mapRef.current!,
         title: h.name,
-        icon: hotelMarkerIcon(false),
+        icon: hotelMarkerIcon(false, candidateKeys?.has(geoItemKey('hotel', h)) ?? false),
       })
       // 點擊飯店 marker 往上回報選取(見 onHotelSelect 的說明),讓側欄
       // 能同步標記選取狀態並切到「飯店」分頁顯示介紹——跟地標圖示不同,
@@ -748,21 +820,23 @@ export function GeoOutlineMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, visibleHotelsKey, onHotelSelect])
 
-  // 同步飯店 marker 的選取樣式:只對「選取狀態真的改變」的那顆(至多
-  // 兩顆——舊選中的那顆要退回未選中、新選中的那顆要套上選中樣式)呼叫
+  // 同步飯店 marker 的選取/候選籃樣式:只對「狀態真的改變」的那幾顆呼叫
   // setIcon(),其餘 marker 完全不動,不重建、不閃爍。visibleHotels 與
   // hotelMarkersRef.current 依 map() 建立時保證同順序,故直接用陣列
-  // 索引配對,不需要另外存一份 marker↔hotel 的對照表。
+  // 索引配對,不需要另外存一份 marker↔hotel 的對照表。candidateKeysToken
+  // 見上方景點區域同步候選籃狀態 effect 的說明。
   useEffect(() => {
     visibleHotels.forEach((h, i) => {
       const marker = hotelMarkersRef.current[i]
       if (!marker) return
-      const selected = selectedKey === geoItemKey('hotel', h)
-      marker.setIcon(hotelMarkerIcon(selected))
+      const key = geoItemKey('hotel', h)
+      const selected = selectedKey === key || hoverKey === key
+      const candidate = candidateKeys?.has(key) ?? false
+      marker.setIcon(hotelMarkerIcon(selected, candidate))
       marker.setZIndex(selected ? 999 : undefined)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKey, visibleHotelsKey])
+  }, [selectedKey, hoverKey, visibleHotelsKey, candidateKeysToken])
 
   // placesKey:places 的內容摘要,供下面兩個 effect 依賴——理由同
   // visibleHotelsKey。
@@ -783,7 +857,7 @@ export function GeoOutlineMap({
         position: { lat: p.lat, lng: p.lng },
         map: mapRef.current!,
         title: p.name,
-        icon: placeMarkerIcon(false),
+        icon: placeMarkerIcon(false, candidateKeys?.has(geoItemKey('place', p)) ?? false),
       })
       // 點擊推薦地點 marker 往上回報選取,理由同飯店 marker 的 click
       // listener——單純回報選取,不觸發額外的地圖放大/查詢行為。
@@ -797,18 +871,20 @@ export function GeoOutlineMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, placesKey, onPlaceSelect])
 
-  // 同步附近推薦地點 marker 的選取樣式,理由與做法同上方飯店那個
+  // 同步附近推薦地點 marker 的選取/候選籃樣式,理由與做法同上方飯店那個
   // 獨立的 setIcon effect。
   useEffect(() => {
     places.forEach((p, i) => {
       const marker = placeMarkersRef.current[i]
       if (!marker) return
-      const selected = selectedKey === geoItemKey('place', p)
-      marker.setIcon(placeMarkerIcon(selected))
+      const key = geoItemKey('place', p)
+      const selected = selectedKey === key || hoverKey === key
+      const candidate = candidateKeys?.has(key) ?? false
+      marker.setIcon(placeMarkerIcon(selected, candidate))
       marker.setZIndex(selected ? 999 : undefined)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKey, placesKey])
+  }, [selectedKey, hoverKey, placesKey, candidateKeysToken])
 
   // tripEntriesKey:tripEntries 的內容摘要,供下面兩個 effect 依賴——
   // 理由同 visibleHotelsKey/placesKey。
@@ -844,12 +920,13 @@ export function GeoOutlineMap({
     tripEntries.forEach((e, i) => {
       const marker = tripEntryMarkersRef.current[i]
       if (!marker) return
-      const selected = selectedKey === geoItemKey('entry', e)
+      const key = geoItemKey('entry', e)
+      const selected = selectedKey === key || hoverKey === key
       marker.setIcon(tripEntryMarkerIcon(selected))
       marker.setZIndex(selected ? 999 : undefined)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKey, tripEntriesKey])
+  }, [selectedKey, hoverKey, tripEntriesKey])
 
   // 點擊飯店/地點側欄(GeoHotelSidebar,渲染在整個介面最外側)的項目時,
   // 把地圖移動到該座標。panTo 一律執行(平移);只有點擊「地點」帶了
@@ -970,14 +1047,13 @@ export function GeoOutlineMap({
           單純看不到任何景點區域光暈而已,不需要額外文字說明。 */}
       {/* 「搜尋這個區域」按鈕:areaDirty 為 true(使用者拖曳/縮放過地圖
           但還沒查詢這個新範圍,見 areaSearch/geoAreaSearchState.ts 的
-          說明)時顯示,疊在地圖左上角(對齊 GeoOutlinePanel.tsx 的
-          .floatingSearch 靠左浮動卡片習慣,不是置中——置中容易被誤認成
-          地圖本身的置中提示/警告,靠左跟既有的浮動搜尋列同一個角落,
-          讀起來更像「這裡有一個操作」)。按下後呼叫 handleSearchThisArea,
-          查詢中(searching)把 lucide 的 Search 圖示換成 Loader2(疊加
-          CSS 自轉動畫,lucide 本身不含動畫),不改按鈕文字或停用互動
-          ——查詢通常很快,不需要額外 disable 按鈕製造等待感。err 存在時
-          不顯示(地圖本身都載入失敗了,顯示這顆按鈕沒有意義)。 */}
+          說明)時顯示,疊在地圖上方置中,毛玻璃卡片視覺語言(對齊構想 1
+          定案的 iOS header 風格)。按下後呼叫
+          handleSearchThisArea,查詢中(searching)把 lucide 的 Search
+          圖示換成 Loader2(疊加 CSS 自轉動畫,lucide 本身不含動畫),
+          不改按鈕文字或停用互動——查詢通常很快,不需要額外 disable 按鈕
+          製造等待感。err 存在時不顯示(地圖本身都載入失敗了,顯示這顆
+          按鈕沒有意義)。 */}
       {!err && areaSearch.areaDirty && (
         <button
           type="button"

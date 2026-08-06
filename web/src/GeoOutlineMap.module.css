@@ -41,13 +41,15 @@
   color: var(--ios-red);
 }
 
-/* 「搜尋這個區域」按鈕:疊在地圖左上角,對齊 GeoOutlinePanel.module.css
+/* 「搜尋這個區域」按鈕:疊在地圖上方置中,對齊 GeoOutlinePanel.module.css
    的 .floatingSearch/.searchBtn 視覺語言(毛玻璃卡片 + accent 實心按鈕)
-   與同一個靠左角落的浮動卡片習慣。 */
+   ——但這裡是單顆獨立浮動按鈕,不是搜尋列的一部分,故置中而非靠左對齊,
+   讓它讀起來像「針對目前畫面的一次性操作」而非常駐工具列。 */
 .searchThisAreaButton {
   position: absolute;
   top: 16px;
-  left: 16px;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -152,6 +154,7 @@
    點擊,維持「只召喚不強加」——不會因為一團裝飾性的光暈範圍太大而誤擋
    到底下地圖的拖曳/縮放操作。 */
 :global(.geo-attraction-landmark-photo) {
+  position: relative;
   width: 56px;
   height: 56px;
   border-radius: 50%;
@@ -166,6 +169,7 @@
 /* 無照片時的佔位圓:同尺寸的柔和漸層色塊,維持版面一致,不留空洞。
    同樣開放點擊,理由同上方 .geo-attraction-landmark-photo。 */
 :global(.geo-attraction-landmark-placeholder) {
+  position: relative;
   width: 56px;
   height: 56px;
   border-radius: 50%;
@@ -211,6 +215,27 @@
   background: var(--color-accent);
   color: var(--ios-card);
   font-weight: 700;
+}
+
+/* geo-attraction-overlay-candidate:這個景點區域已經被加入候選籃(見
+   GeoOutlineMap.tsx 的 candidateKeys prop)——跟上面的 -selected 是兩件
+   獨立的事(可以同時成立),故不共用同一組視覺語言(靶心描邊),改用
+   右上角一枚小勾選徽章疊在照片/佔位圓上,讀起來像「這個已經確定收進
+   籃子了」的貼紙,不會跟「目前正被瀏覽介紹」的選取靶心混淆。用 ::after
+   偽元素疊加(照片/佔位圓已加上 position: relative 供這裡定位),不需要
+   額外的 DOM 節點。 */
+:global(.geo-attraction-overlay-candidate) :global(.geo-attraction-landmark-photo)::after,
+:global(.geo-attraction-overlay-candidate) :global(.geo-attraction-landmark-placeholder)::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #5A8A6A url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7' fill='none' stroke='%23FDFCFA' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 11px no-repeat;
+  border: 2px solid var(--ios-card);
+  box-shadow: 0 1px 3px rgba(61, 53, 48, 0.3);
 }
 
 /* 白話地名標籤:即現無延遲(構想 6 定案——標籤只是把既有地名貼回它

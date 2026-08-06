@@ -1,4 +1,5 @@
-import { X } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
+import type { GeoCandidate } from './GeoCandidateSidebar'
 import styles from './GeoInfoPanel.module.css'
 
 // GeoInfoPanel:一張浮動卡片,絕對定位疊在地圖上方,貼齊主顯示區右緣
@@ -28,14 +29,29 @@ export interface GeoInfoContent {
   subtitle?: string
   summary?: string
   badges: string[]
+  // candidate:這張卡片對應的候選籃項目——由呼叫端(DesktopLayout.tsx)
+  // 在兩個觸發來源(側欄「地點」清單點擊/點擊地圖上 Google 原生 POI
+  // 圖標)各自組好傳入,這個元件不需要知道資料原始形狀差異,只負責在
+  // 有值時顯示「加入候選」按鈕、按下時原封不動往上回報。undefined 代表
+  // 這個來源目前組不出候選籃需要的形狀(理論上不該發生,兩個觸發來源
+  // 都有對應資料可組),但保留 optional 避免未來新增第三種觸發來源時
+  // 忘記處理就直接編譯錯誤擋下來。
+  candidate?: GeoCandidate
 }
 
 export function GeoInfoPanel({
   content,
   onClose,
+  onAddCandidate,
 }: {
   content: GeoInfoContent | null
   onClose: () => void
+  // onAddCandidate:「加入候選」按鈕觸發,理由同 GeoHotelSidebar 卡片上
+  // 既有的同名 callback——這裡刻意不做「已在候選籃裡就不顯示按鈕」的
+  // 判斷,重複加入由呼叫端的候選籃 state 用內容比對去重(見
+  // DesktopLayout.tsx 的 onAddCandidate 說明),這個元件不需要知道候選籃
+  // 目前的完整內容。
+  onAddCandidate?: (candidate: GeoCandidate) => void
 }) {
   if (!content) return null
 
@@ -67,6 +83,16 @@ export function GeoInfoPanel({
             <p className={styles.summary}>{content.summary}</p>
           ) : (
             <p className={styles.summaryEmpty}>這個地點還沒有簡介資料。</p>
+          )}
+          {content.candidate && (
+            <button
+              type="button"
+              className={styles.addCandidateBtn}
+              onClick={() => onAddCandidate?.(content.candidate!)}
+            >
+              <Plus size={14} strokeWidth={2} />
+              加入候選
+            </button>
           )}
         </div>
       </div>

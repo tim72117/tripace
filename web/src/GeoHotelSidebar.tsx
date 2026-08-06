@@ -83,6 +83,7 @@ export function GeoHotelSidebar({
   onSelectAttraction,
   onSelectPlace,
   onAddCandidate,
+  onHover,
 }: {
   hotels: GeoHotel[]
   attractions: GeoAttraction[]
@@ -94,6 +95,14 @@ export function GeoHotelSidebar({
   onSelectAttraction?: (attraction: GeoAttraction) => void
   onSelectPlace?: (place: GeoPlace) => void
   onAddCandidate?: (candidate: GeoCandidate) => void
+  // onHover:滑鼠移到/移出項目本體時觸發,傳入該項目的 geoItemKey(移出時
+  // 傳 null)——由 DesktopLayout.tsx 中介,驅動地圖上對應 marker 暫時顯示
+  // 選取樣式(見 GeoOutlineMap.tsx 的 hoverKey prop 說明)。跟 onSelectXxx
+  // 是兩個獨立的互動:hover 是滑鼠移過去的臨時預覽,不需要區分是哪種
+  // 來源(hotel/attraction/place),呼叫端只需要知道「現在滑鼠在哪個
+  // key 上」,故這裡統一傳字串,不比照 onSelectXxx 拆成三個各自帶完整
+  // 物件的 callback。
+  onHover?: (key: GeoSelectedKey) => void
 }) {
   const [internalTab, setInternalTab] = useState<Tab>('attractions')
   // activeTab 有傳時視為受控元件,忽略內部 state;沒傳時退回內部 state,
@@ -145,6 +154,8 @@ export function GeoHotelSidebar({
                   className={styles.itemBody}
                   onClick={() => onSelectAttraction?.(d)}
                   onKeyDown={(e) => { if (e.key === 'Enter') onSelectAttraction?.(d) }}
+                  onMouseEnter={() => onHover?.(geoItemKey('attraction', d))}
+                  onMouseLeave={() => onHover?.(null)}
                 >
                   {d.landmarkPhotoUrl ? (
                     <img className={styles.itemPhoto} src={d.landmarkPhotoUrl} alt={d.landmarkName ?? d.name} loading="lazy" />
@@ -185,6 +196,8 @@ export function GeoHotelSidebar({
                   className={styles.itemBody}
                   onClick={() => onSelectHotel?.(h)}
                   onKeyDown={(e) => { if (e.key === 'Enter') onSelectHotel?.(h) }}
+                  onMouseEnter={() => onHover?.(geoItemKey('hotel', h))}
+                  onMouseLeave={() => onHover?.(null)}
                 >
                   {h.photoUrl ? (
                     <img className={styles.itemPhoto} src={h.photoUrl} alt={h.name} loading="lazy" />
@@ -221,6 +234,8 @@ export function GeoHotelSidebar({
                 className={styles.itemBody}
                 onClick={() => onSelectPlace?.(p)}
                 onKeyDown={(e) => { if (e.key === 'Enter') onSelectPlace?.(p) }}
+                onMouseEnter={() => onHover?.(geoItemKey('place', p))}
+                onMouseLeave={() => onHover?.(null)}
               >
                 {p.photoUrl ? (
                   <img className={styles.itemPhoto} src={p.photoUrl} alt={p.name} loading="lazy" />

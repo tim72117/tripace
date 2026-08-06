@@ -3,13 +3,20 @@ import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace, GeoPlaceDetails, 
 import { fetchEntries, fetchGeoGeocode } from './api'
 import { GeoOutlineMap } from './GeoOutlineMap'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
-import { isSubmitEnter } from './AppCommon'
 import styles from './GeoOutlinePanel.module.css'
 
 // GeoOutlinePanel:地理輪廓底圖(構想 6)的桌面版試做承載元件——目前 Trip
-// 型別沒有目的地城市欄位(見 types.ts),故用一個暫時的城市輸入框讓使用者
+// 型別沒有目的地城市欄位(見 types.ts),故用一個暫時的城市搜尋讓使用者
 // 手動觸發查詢,驗證視覺與互動是否對齊設計討論的定案,之後 Trip 補上目的地
-// 城市欄位時,這裡的輸入框可以直接換成從 Trip 帶出、不需要使用者手動輸入。
+// 城市欄位時,這裡可以直接換成從 Trip 帶出、不需要使用者手動輸入。
+//
+// 城市搜尋的輸入框/按鈕 UI 本身渲染在 GeoCandidateSidebar(左側候選籃
+// 側欄最上方,見 DesktopLayout.tsx 的接線),不是這個元件的 JSX——但
+// 查詢邏輯(呼叫 fetchGeoGeocode、算 panTarget)留在這裡,透過
+// onCitySearched 這個 callback 讓外部(DesktopLayout.tsx)觸發查詢、
+// 這裡才是唯一持有 cfg、知道怎麼呼叫 API 的地方。這個切分理由同
+// onHotelsChange 等既有 callback 模式:UI 呈現與資料查詢分別交給
+// 「離使用者比較近」與「離 API 比較近」的元件負責。
 //
 // 這個元件本身不再查詢景點/飯店資料——「搜尋只負責定位」:輸入城市名
 // 後只呼叫 fetchGeoGeocode(GET /internal/geo/geocode)拿到一組座標,轉成
@@ -25,7 +32,7 @@ import styles from './GeoOutlinePanel.module.css'
 // 回報。
 //
 // externalPanTarget:使用者在 GeoHotelSidebar 點擊某個飯店/地點項目時要
-// 移動地圖到的座標,由 DesktopLayout.tsx 往下傳——跟這裡搜尋框查到的
+// 移動地圖到的座標,由 DesktopLayout.tsx 往下傳——跟這裡搜尋查到的
 // panTarget 是兩個獨立來源,合併邏輯見下方 effectivePanTarget。
 // selectedKey:由 DesktopLayout.tsx 往下傳,原封不動轉傳給 GeoOutlineMap,
 // 讓地圖上的地標/飯店圖示能標記出目前選中的是哪一個。
@@ -41,6 +48,8 @@ import styles from './GeoOutlinePanel.module.css'
 export function GeoOutlinePanel({
   cfg,
   tripID,
+  city,
+  onSearchStateChange,
   onHotelsChange,
   onAttractionsChange,
   onPlacesNearby,
@@ -51,9 +60,22 @@ export function GeoOutlinePanel({
   onPoiSelect,
   panTarget: externalPanTarget,
   selectedKey,
+  candidateKeys,
+  hoverKey,
+  searchTrigger,
 }: {
   cfg: ClientConfig
   tripID?: string | null
+  // city:目前城市搜尋框的輸入值,由 DesktopLayout.tsx 中介(UI 渲染在
+  // GeoCandidateSidebar,見上方元件註解)——這個元件用它觸發
+  // fetchGeoGeocode 查詢,查詢時機由 searchTrigger 遞增驅動(見下方
+  // useEffect),不是每次 city 變動就查(那樣會在使用者打字打到一半時
+  // 就發送請求)。
+  city: string
+  // onSearchStateChange:查詢中/錯誤狀態往上回報給 GeoCandidateSidebar
+  // 顯示(loading 文字、錯誤訊息),搜尋按鈕本身觸發查詢的方式是遞增
+  // searchTrigger prop(見下方)。
+  onSearchStateChange?: (state: { searching: boolean; error: string | null }) => void
   onHotelsChange?: (hotels: GeoHotel[]) => void
   onAttractionsChange?: (attractions: GeoAttraction[]) => void
   onPlacesNearby?: (places: GeoPlace[]) => void
@@ -67,11 +89,21 @@ export function GeoOutlinePanel({
   onPoiSelect?: (details: GeoPlaceDetails) => void
   panTarget?: { lat: number; lng: number; level?: number } | null
   selectedKey?: GeoSelectedKey
+  // candidateKeys/hoverKey:原封不動轉傳給 GeoOutlineMap——理由同
+  // selectedKey,見 GeoOutlineMap.tsx 對這兩個 prop 的完整說明。
+  candidateKeys?: Set<string>
+  hoverKey?: GeoSelectedKey
+  // searchTrigger:每次遞增時觸發一次城市搜尋(用目前的 city prop 值)
+  // ——用遞增計數器而非直接暴露一個「查詢」函式給外部呼叫,是因為這個
+  // 元件本身沒有 ref,外部(GeoCandidateSidebar 的搜尋按鈕)無法直接呼叫
+  // 內部方法,改用「外部改變一個 prop 值 → 這裡的 useEffect 偵測到變化
+  // 才查詢」的單向資料流,對齊這個檔案其餘 panTarget/tripID 等 prop 的
+  // 既有慣例(見下方 useEffect 的依賴陣列)。
+  searchTrigger?: number
 }) {
-  const [city, setCity] = useState('')
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  // searchPanTarget:搜尋框查到城市座標後要移動地圖到的目標——跟
+  // searchPanTarget:搜尋查到城市座標後要移動地圖到的目標——跟
   // externalPanTarget(側欄點擊)是兩個獨立來源,見下方 effectivePanTarget
   // 的合併方式。每次查詢成功都建立新物件參照,即使連續搜尋同一個城市
   // 也能讓 GeoOutlineMap 偵測到「這是一次新的移動請求」(理由同
@@ -91,20 +123,42 @@ export function GeoOutlinePanel({
   // GeoOutlineMap 畫 marker(見下方 <GeoOutlineMap tripEntries={...}>)。
   const [tripEntries, setTripEntries] = useState<GeoTripEntry[]>([])
 
-  const search = async () => {
+  // 每次 searchTrigger 遞增(GeoCandidateSidebar 的搜尋按鈕/Enter 觸發,
+  // 見 DesktopLayout.tsx 的接線)就查一次目前的 city 值——用 effect 而非
+  // 直接在按鈕 onClick 裡呼叫這個元件的方法,因為 UI 在另一個元件裡(見
+  // 上方元件註解),這是唯一能讓外部觸發這裡查詢邏輯的方式。0(初始值)
+  // 不觸發查詢,只有真的遞增過至少一次才查。
+  useEffect(() => {
+    if (!searchTrigger) return
     const trimmed = city.trim()
     if (!trimmed) return
+    let cancelled = false
     setLoading(true)
     setErr(null)
-    try {
-      const result = await fetchGeoGeocode(cfg, trimmed)
-      setSearchPanTarget({ lat: result.lat, lng: result.lng })
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoading(false)
+    fetchGeoGeocode(cfg, trimmed)
+      .then((result) => {
+        if (cancelled) return
+        setSearchPanTarget({ lat: result.lat, lng: result.lng })
+      })
+      .catch((e) => {
+        if (!cancelled) setErr(e instanceof Error ? e.message : String(e))
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTrigger])
+
+  // 查詢中/錯誤狀態往上回報給 GeoCandidateSidebar 顯示——這個元件自己
+  // 不畫任何搜尋 UI(見上方元件註解),loading/err 這兩個 state 純粹是
+  // 內部查詢邏輯的副產品,真正要顯示什麼交給接住這個 callback 的一方。
+  useEffect(() => {
+    onSearchStateChange?.({ searching: loading, error: err })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, err])
 
   // 切到這個分頁或換行程時,若行程底下已有帶座標的 entry,算出這些點的
   // 平均座標當地圖初始中心——只在 tripID 變動時查一次,不是每次都重查:
@@ -221,26 +275,10 @@ export function GeoOutlinePanel({
           onPoiSelect={onPoiSelect}
           panTarget={effectivePanTarget}
           selectedKey={selectedKey}
+          candidateKeys={candidateKeys}
+          hoverKey={hoverKey}
         />
       </div>
-      {/* 浮動搜尋列:毛玻璃 sticky 疊在地圖上方,對齊構想 1「資深設計師
-          視角」定案的既有 iOS header 視覺語言(--ios-bg 毛玻璃)——地圖
-          滿版鋪底當第一層,搜尋是疊在上面的操作層,不是跟地圖平分版面
-          的獨立區塊。 */}
-      <div className={styles.floatingSearch}>
-        <input
-          className={styles.input}
-          type="text"
-          placeholder="輸入目的地城市,如「東京」"
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
-          onKeyDown={(e) => { if (isSubmitEnter(e)) search() }}
-        />
-        <button className={styles.searchBtn} onClick={search} disabled={loading || !city.trim()}>
-          {loading ? '查詢中...' : '查看'}
-        </button>
-      </div>
-      {err && <div className={styles.errBanner}>{err}</div>}
     </div>
   )
 }

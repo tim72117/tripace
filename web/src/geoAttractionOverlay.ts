@@ -17,13 +17,17 @@ import type { GeoAttraction } from './api'
 // useEffect),模組載入的當下 google 這個全域變數還不存在,會直接拋出
 // ReferenceError: google is not defined。改用 getAttractionOverlayClass()
 // 延後到 SDK 確定載入完成後才定義並快取這個 class(單例,只建一次)。
-export type AttractionOverlayInstance = google.maps.OverlayView & { setSelected: (selected: boolean) => void }
+export type AttractionOverlayInstance = google.maps.OverlayView & {
+  setSelected: (selected: boolean) => void
+  setCandidate: (candidate: boolean) => void
+}
 
 let AttractionOverlayClass:
   | (new (
       attraction: GeoAttraction,
       position: google.maps.LatLng,
       selected: boolean,
+      candidate: boolean,
       onClick: (attraction: GeoAttraction) => void,
     ) => AttractionOverlayInstance)
   | null = null
@@ -35,16 +39,24 @@ export function getAttractionOverlayClass() {
     private div: HTMLDivElement | null = null
     private position: google.maps.LatLng
     private selected: boolean
+    // candidate:這個景點區域目前是否已經在候選籃裡(見
+    // GeoOutlineMap.tsx 的 candidateKeys prop 說明)——跟 selected 是
+    // 兩個獨立、可以同時成立的狀態:selected 是「側欄目前點開哪一項的
+    // 介紹」,candidate 是「使用者已經把這個景點丟進候選籃」,一個是
+    // 暫時的瀏覽焦點、一個是持續累積的規劃結果,不能合併成同一個布林值。
+    private candidate: boolean
 
     constructor(
       private attraction: GeoAttraction,
       position: google.maps.LatLng,
       selected: boolean,
+      candidate: boolean,
       private onClick: (attraction: GeoAttraction) => void,
     ) {
       super()
       this.position = position
       this.selected = selected
+      this.candidate = candidate
     }
 
     onAdd() {
@@ -58,7 +70,11 @@ export function getAttractionOverlayClass() {
       // undefined,等於完全沒套用到任何 class、CSS 規則(尤其是關鍵的
       // position: absolute)整個失效。故這裡與 GeoOutlineMap.module.css
       // 的 :global(.xxx) 選擇器一致,直接寫死字串。
-      div.className = `geo-attraction-overlay${this.selected ? ' geo-attraction-overlay-selected' : ''}`
+      div.className = [
+        'geo-attraction-overlay',
+        this.selected && 'geo-attraction-overlay-selected',
+        this.candidate && 'geo-attraction-overlay-candidate',
+      ].filter(Boolean).join(' ')
       div.innerHTML = `
         <div class="geo-attraction-glow"></div>
         ${
@@ -113,6 +129,15 @@ export function getAttractionOverlayClass() {
       this.selected = selected
       if (!this.div) return
       this.div.classList.toggle('geo-attraction-overlay-selected', selected)
+    }
+
+    // setCandidate:候選籃狀態變動時只切換 class,理由同 setSelected——
+    // 加入/移出候選籃是使用者在側欄操作觸發的,不該讓地圖上其他沒被
+    // 動到的景點區域跟著重畫閃爍。
+    setCandidate(candidate: boolean) {
+      this.candidate = candidate
+      if (!this.div) return
+      this.div.classList.toggle('geo-attraction-overlay-candidate', candidate)
     }
   }
 
