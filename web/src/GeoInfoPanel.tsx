@@ -1,4 +1,4 @@
-import { Plus, X } from 'lucide-react'
+import { FolderPlus, Plus, X } from 'lucide-react'
 import type { GeoCandidate } from './GeoCandidateSidebar'
 import styles from './GeoInfoPanel.module.css'
 
@@ -43,6 +43,8 @@ export function GeoInfoPanel({
   content,
   onClose,
   onAddCandidate,
+  onAddToNewTrip,
+  tripName,
 }: {
   content: GeoInfoContent | null
   onClose: () => void
@@ -52,6 +54,15 @@ export function GeoInfoPanel({
   // DesktopLayout.tsx 的 onAddCandidate 說明),這個元件不需要知道候選籃
   // 目前的完整內容。
   onAddCandidate?: (candidate: GeoCandidate) => void
+  // onAddToNewTrip:複合按鈕右半邊(只有 FolderPlus icon)觸發,「加入
+  // 候選」的變化版——把這個地點直接加到一個新行程,而不是目前選取的
+  // activeTrip。實際「建立新行程」的邏輯留在呼叫端(DesktopLayout.tsx)
+  // 之後再接,這個元件只負責原封不動往上回報使用者按了這顆按鈕。
+  onAddToNewTrip?: (candidate: GeoCandidate) => void
+  // tripName:左半邊按鈕文字「加入 {tripName}」要顯示的行程名稱,由呼叫端
+  // (DesktopLayout.tsx)傳入 activeTrip?.name——這個元件不猜行程名稱從
+  // 哪來,呼叫端已經有 activeTrip 可用,由它決定 fallback 文字。
+  tripName: string
 }) {
   if (!content) return null
 
@@ -85,14 +96,25 @@ export function GeoInfoPanel({
             <p className={styles.summaryEmpty}>這個地點還沒有簡介資料。</p>
           )}
           {content.candidate && (
-            <button
-              type="button"
-              className={styles.addCandidateBtn}
-              onClick={() => onAddCandidate?.(content.candidate!)}
-            >
-              <Plus size={14} strokeWidth={2} />
-              加入候選
-            </button>
+            <div className={styles.addCandidateGroup}>
+              <button
+                type="button"
+                className={styles.addCandidateBtn}
+                onClick={() => onAddCandidate?.(content.candidate!)}
+              >
+                <Plus size={14} strokeWidth={2} />
+                加入 {tripName}
+              </button>
+              <button
+                type="button"
+                className={styles.addToNewTripBtn}
+                onClick={() => onAddToNewTrip?.(content.candidate!)}
+                title="加入到新行程"
+                aria-label="加入到新行程"
+              >
+                <FolderPlus size={14} strokeWidth={2} />
+              </button>
+            </div>
           )}
         </div>
       </div>

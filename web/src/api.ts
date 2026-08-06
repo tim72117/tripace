@@ -480,6 +480,22 @@ export function fetchGeoAttractionsNearby(cfg: ClientConfig, lat: number, lng: n
   )
 }
 
+// 對齊 server 的 GET /internal/geo/attractions/nearby-only
+// (handleGeoAttractionsOnlyNearby)——跟 fetchGeoAttractionsNearby 查同一份
+// 景點區域資料,但不附帶 hotels(即時查 Google Places、直接計費)。這支
+// 端點查詢本身免費,故 GeoOutlineMap.tsx 用它做地圖 idle(拖曳/縮放停止)
+// 時的自動查詢,不需要像飯店那樣收在使用者明確按下「搜尋這個區域」
+// 按鈕之後才觸發。
+export function fetchGeoAttractionsOnlyNearby(cfg: ClientConfig, lat: number, lng: number, radiusMeters?: number) {
+  const params = new URLSearchParams({ lat: String(lat), lng: String(lng) })
+  if (radiusMeters != null) params.set('radius', String(radiusMeters))
+  return request<{ attractions: GeoAttraction[] }>(
+    cfg,
+    'GET',
+    `/internal/geo/attractions/nearby-only?${params.toString()}`,
+  )
+}
+
 // GeoPlace:不限類型的附近推薦地點(景點/餐廳/商店等),對齊後端
 // placeResponse(server/internal/api/geo_outline.go 的 handleGeoPlacesNearby)。
 // 形狀與 GeoHotel 相同,但語意上是「點擊地標查詢附近推薦」而非「地圖
@@ -506,16 +522,34 @@ export interface GeoTripEntry {
   lng: number
   location?: string | null
   kind?: string | null
+  // start/startTime:對齊 Entry 的同名欄位,供 GeoCandidateSidebar 的
+  // 「已排入行程」分組依日期歸類、仿構想 5 原型日層架的呈現方式(見該
+  // 元件說明)——沒有 start 的 entry(尚未排定日期)歸進「未排定日期」
+  // 分組,理由同 Timeline.tsx 對無日期 entry 的處理。
+  start?: string | null
+  startTime?: string | null
 }
 
 // 對齊 server 的 GET /internal/geo/places/nearby(handleGeoPlacesNearby)——
-// 即時查 Google Places Nearby Search,不限類型,供地圖上點擊地標時查詢
-// 該地標附近的推薦地點使用(見 GeoOutlineMap.tsx 點擊地標的說明)。這是
-// 使用者明確點擊觸發的低頻動作,不像 fetchGeoAttractionsNearby 那樣顧慮
-// 地圖高頻移動的 API 呼叫成本,故直接即時查 Places API。
-export function fetchGeoPlacesNearby(cfg: ClientConfig, lat: number, lng: number, radiusMeters?: number) {
+// 即時查 Google Places Nearby Search,供兩種情境使用:地圖上點擊地標
+// (不帶 type,不限類型,見 GeoOutlineMap.tsx 點擊地標的說明)、或地圖
+// 上方的類別標籤列(帶 type,限定單一類別,見該檔案的說明)。這是使用者
+// 明確點擊觸發的低頻動作,不像 fetchGeoAttractionsNearby 那樣顧慮地圖
+// 高頻移動的 API 呼叫成本,故直接即時查 Places API。
+//
+// type 只接受後端白名單認可的值(見 geo_outline.go 的
+// allowedPlaceTypes):'lodging'(飯店)/'tourist_attraction'(景點)/
+// 'restaurant'(餐廳),帶不支援的值會被後端拒絕(400)。
+export function fetchGeoPlacesNearby(
+  cfg: ClientConfig,
+  lat: number,
+  lng: number,
+  radiusMeters?: number,
+  type?: string,
+) {
   const params = new URLSearchParams({ lat: String(lat), lng: String(lng) })
   if (radiusMeters != null) params.set('radius', String(radiusMeters))
+  if (type) params.set('type', type)
   return request<{ places: GeoPlace[] }>(cfg, 'GET', `/internal/geo/places/nearby?${params.toString()}`)
 }
 
@@ -557,6 +591,45 @@ export function updateEntry(cfg: ClientConfig, entryID: string, input: UpdateEnt
     'PATCH',
     `/v1/entries/${encodeURIComponent(entryID)}`,
     input,
+  )
+}
+
+// recordEntryInput/recordEntry:對齊後端 POST /internal/trips/{id}/entries
+// (handleInternalRecord)——新增一筆帶 title/start/location 的 entry,回傳
+// 新條目的 id。跟上面 createTripEntry(POST /v1/trips/{id}/entries)是完全
+// 不同的兩支端點:createTripEntry 對齊「旅程清單」表格功能(TripEntry 形狀,
+// title/date/time/note,無座標概念);這支對齊 model.Entry(跟
+// updateEntry/fetchEntries 同一份資料),供 GeoCandidateSidebar 把候選籃
+// 項目(飯店/景點/推薦地點)拖進日層架、真正寫成一筆行程 entry 時使用——
+// 這支端點本身不接受 lat/lng,寫完後要另外呼叫 setEntryLatLng 補上座標。
+export interface RecordEntryInput {
+  title: string
+  start?: string
+  startTime?: string
+  end?: string
+  endTime?: string
+  location?: string
+}
+
+export function recordEntry(cfg: ClientConfig, tripID: string, input: RecordEntryInput) {
+  return request<{ entryID: string }>(
+    cfg,
+    'POST',
+    `/internal/trips/${encodeURIComponent(tripID)}/entries`,
+    input,
+  )
+}
+
+// 對齊後端 PATCH /internal/entries/{id}/latlng(handleInternalSetLatLng)
+// ——recordEntry 建立的 entry 預設沒有座標,候選籃項目(飯店/景點/推薦
+// 地點)本身已經有查詢到的 lat/lng,建立後這裡補一次座標,讓新條目跟其餘
+// 「已排入行程」的項目一樣能畫在地理輪廓底圖上。
+export function setEntryLatLng(cfg: ClientConfig, entryID: string, lat: number, lng: number) {
+  return request<{ updated: string }>(
+    cfg,
+    'PATCH',
+    `/internal/entries/${encodeURIComponent(entryID)}/latlng`,
+    { lat, lng },
   )
 }
 

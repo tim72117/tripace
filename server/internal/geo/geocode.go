@@ -25,6 +25,11 @@ type GeocodeResult struct {
 	FormattedAddress string  `json:"formattedAddress"`
 	Lat              float64 `json:"lat"`
 	Lng              float64 `json:"lng"`
+	// PlaceID 是這筆結果對應的 Google Place ID(Geocoding API 回應本身就
+	// 附帶這個欄位,不需要另外查詢)——供呼叫端(handleGeocodeEntry)把
+	// entry 的座標來源跟穩定的地點識別碼關聯起來,供之後跟 Places API
+	// 其他已快取資料比對用。
+	PlaceID string `json:"placeID,omitempty"`
 }
 
 // Geocode 查詢一個地址/地名字串,回傳第一筆最相符的結果。
@@ -58,6 +63,7 @@ func (c *Client) Geocode(ctx context.Context, address string) (GeocodeResult, er
 		ErrorMessage string `json:"error_message"`
 		Results      []struct {
 			FormattedAddress string `json:"formatted_address"`
+			PlaceID          string `json:"place_id"`
 			Geometry         struct {
 				Location struct {
 					Lat float64 `json:"lat"`
@@ -91,5 +97,6 @@ func (c *Client) Geocode(ctx context.Context, address string) (GeocodeResult, er
 		FormattedAddress: r.FormattedAddress,
 		Lat:              r.Geometry.Location.Lat,
 		Lng:              r.Geometry.Location.Lng,
+		PlaceID:          r.PlaceID,
 	}, nil
 }

@@ -41,13 +41,62 @@
   color: var(--ios-red);
 }
 
+/* 類別標籤列(飯店/景點/餐廳):固定疊在地圖左上角,視覺語言對齊
+   .searchThisAreaButton(毛玻璃卡片),但排成一列橫向膠囊按鈕、靠左對齊
+   ——跟置中的「搜尋這個區域」按鈕分開排版,避免兩者同時出現時互相
+   重疊或搶版面。 */
+.categoryTags {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  gap: 8px;
+  z-index: 2;
+}
+
+.categoryTag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  background: rgba(245, 242, 237, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px rgba(61, 53, 48, 0.16);
+  color: var(--color-dark);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.12s, background-color 0.12s, color 0.12s;
+}
+
+.categoryTag:hover {
+  opacity: 0.9;
+}
+
+/* aria-pressed 反映選取態(見 GeoOutlineMap.tsx 的 handleCategoryClick)
+   ——選中時改用 accent 實心底色,跟未選中的毛玻璃卡片明確區分開來,
+   一眼看出目前查詢的是哪個類別。 */
+.categoryTag[aria-pressed='true'] {
+  background: var(--color-accent);
+  color: var(--ios-card);
+  border-color: transparent;
+}
+
 /* 「搜尋這個區域」按鈕:疊在地圖上方置中,對齊 GeoOutlinePanel.module.css
    的 .floatingSearch/.searchBtn 視覺語言(毛玻璃卡片 + accent 實心按鈕)
    ——但這裡是單顆獨立浮動按鈕,不是搜尋列的一部分,故置中而非靠左對齊,
    讓它讀起來像「針對目前畫面的一次性操作」而非常駐工具列。 */
 .searchThisAreaButton {
   position: absolute;
-  top: 16px;
+  /* top 往下讓出 .categoryTags(top: 16px + 約 32px 高)的空間,兩者才不會
+     在小螢幕/標籤列換行時互相重疊——置中的搜尋按鈕與靠左的類別標籤列
+     水平上通常不會相撞,但把兩者錯開高度更保險,理由同 .categoryTags 的
+     說明。 */
+  top: 64px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;

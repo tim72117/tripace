@@ -66,6 +66,11 @@ export interface Entry {
   location?: string | null // 地點(可空);目前由人工/前端填,LLM 暫不自動抽取
   lat?: number | null
   lng?: number | null
+  // placeID:對應座標的 Google Place ID,只有座標來自後端 Geocoding API
+  // 查詢時才會有值(見 handleGeocodeEntry);手動拖曳選點存座標時為
+  // null/undefined。目前前端沒有 UI 使用這個欄位,先曝露出來供之後
+  // 需要跟 Places API 其他資料關聯比對時使用。
+  placeID?: string | null
   // LLM 標注(原本在 Message 上,改放 Entry;目前後端先留空)。
   // 後端標注未填時 tags 會回 null(非 []),消費端需 ?? [] 收斂。
   category: string | null

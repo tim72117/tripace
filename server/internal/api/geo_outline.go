@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
@@ -281,26 +282,29 @@ func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
 //
 // 找不到任何地標時不視為錯誤,直接回傳空陣列(HTTP 200)——地圖移動到
 // 還沒建檔的區域是正常情況,不該回錯誤讓前端顯示紅色錯誤訊息。
-func (s *Server) handleGeoAttractionsNearby(w http.ResponseWriter, r *http.Request) {
-	lat, err := strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
+// parseNearbyLatLngRadius 解析 lat/lng/radius 這三個查詢參數,供
+// handleGeoAttractionsNearby 與 handleGeoAttractionsOnlyNearby 共用——兩支
+// 端點都是「以座標為中心、依半徑查附近資料」的形狀,只是後面接的資料源
+// 不同(前者額外查即時 Google Places 飯店,後者純查自家資料庫),不需要
+// 各自重複一份參數解析與夾限邏輯。
+func parseNearbyLatLngRadius(r *http.Request) (lat, lng, radiusMeters float64, err error) {
+	lat, err = strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid_input", "lat 查詢參數缺失或格式錯誤")
-		return
+		return 0, 0, 0, errInvalidLat
 	}
-	lng, err := strconv.ParseFloat(r.URL.Query().Get("lng"), 64)
+	lng, err = strconv.ParseFloat(r.URL.Query().Get("lng"), 64)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid_input", "lng 查詢參數缺失或格式錯誤")
-		return
+		return 0, 0, 0, errInvalidLng
 	}
 	// radiusMeters 上限 50000(50km,同 geo.NearbyOptions.RadiusMeters 的
-	// 上限,見 places.go 的說明)——這支端點只需要合法 JWT 就能呼叫(見
+	// 上限,見 places.go 的說明)——這兩支端點只需要合法 JWT 就能呼叫(見
 	// api.go 掛在 internalMux/internalAuth 之後),若不設上限,任何登入
 	// 使用者(或洩漏的 token)都能反覆帶超大 radius 觸發大範圍資料庫
 	// bounding box 查詢與 Google Places Nearby Search 呼叫(後者直接
 	// 計費),故在送出前就夾住,不把「這個查詢半徑是否合理」完全交給
 	// 下游(資料庫/第三方 API)判斷。
 	const maxRadiusMeters = 50000.0
-	radiusMeters := 15000.0
+	radiusMeters = 15000.0
 	if raw := r.URL.Query().Get("radius"); raw != "" {
 		if parsed, err := strconv.ParseFloat(raw, 64); err == nil && parsed > 0 {
 			radiusMeters = parsed
@@ -309,13 +313,21 @@ func (s *Server) handleGeoAttractionsNearby(w http.ResponseWriter, r *http.Reque
 			}
 		}
 	}
+	return lat, lng, radiusMeters, nil
+}
 
+var (
+	errInvalidLat = fmt.Errorf("lat 查詢參數缺失或格式錯誤")
+	errInvalidLng = fmt.Errorf("lng 查詢參數缺失或格式錯誤")
+)
+
+// listAttractionResponses 查 store.ListAttractionsNearby 並轉成回應格式,
+// 供 handleGeoAttractionsNearby 與 handleGeoAttractionsOnlyNearby 共用。
+func (s *Server) listAttractionResponses(lat, lng, radiusMeters float64) ([]attractionResponse, error) {
 	landmarks, err := s.store.ListAttractionsNearby(lat, lng, radiusMeters)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "internal_error", err.Error())
-		return
+		return nil, err
 	}
-
 	attractions := make([]attractionResponse, 0, len(landmarks))
 	for _, l := range landmarks {
 		ar := attractionResponse{
@@ -333,12 +345,27 @@ func (s *Server) handleGeoAttractionsNearby(w http.ResponseWriter, r *http.Reque
 		}
 		attractions = append(attractions, ar)
 	}
+	return attractions, nil
+}
+
+func (s *Server) handleGeoAttractionsNearby(w http.ResponseWriter, r *http.Request) {
+	lat, lng, radiusMeters, err := parseNearbyLatLngRadius(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_input", err.Error())
+		return
+	}
+
+	attractions, err := s.listAttractionResponses(lat, lng, radiusMeters)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
 
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	client := geo.New(apiKey)
-	// 這支端點每次地圖移動(idle)都會觸發,是 Photo Media 重複呼叫問題
-	// 最大的來源(見 SetCache/PhotoCache 的說明)——同一批飯店隨地圖小幅
-	// 拖曳反覆落在查詢範圍內時,直接吃快取,不重新下載同一張照片。
+	// 這支端點每次使用者按下「搜尋這個區域」都會觸發,是 Photo Media 重複
+	// 呼叫問題最大的來源(見 SetCache/PhotoCache 的說明)——同一批飯店隨
+	// 地圖小幅拖曳反覆落在查詢範圍內時,直接吃快取,不重新下載同一張照片。
 	client.SetCache(s.photoCache)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -349,6 +376,33 @@ func (s *Server) handleGeoAttractionsNearby(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{
 		"attractions": attractions,
 		"hotels":      hotels,
+	})
+}
+
+// GET /internal/geo/attractions/nearby-only?lat={緯度}&lng={經度}&radius={公尺,選填}
+//
+// 跟 handleGeoAttractionsNearby 查詢同一份景點區域資料(store.
+// ListAttractionsNearby,人工建檔、免費),但刻意不附帶 hotels——後者是
+// 即時查 Google Places、直接計費,故 handleGeoAttractionsNearby 才需要
+// 收在使用者明確按下「搜尋這個區域」按鈕之後才觸發。這支端點的存在
+// 目的正是要繞開那個限制:景點區域本身查詢免費,前端可以單純依地圖
+// 可視範圍/縮放自動觸發(idle 事件),不需要等使用者按鈕,只要不會連帶
+// 觸發付費的飯店查詢即可——見 web/src/GeoOutlineMap.tsx 的說明。
+func (s *Server) handleGeoAttractionsOnlyNearby(w http.ResponseWriter, r *http.Request) {
+	lat, lng, radiusMeters, err := parseNearbyLatLngRadius(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_input", err.Error())
+		return
+	}
+
+	attractions, err := s.listAttractionResponses(lat, lng, radiusMeters)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"attractions": attractions,
 	})
 }
 
@@ -473,13 +527,29 @@ type placeResponse struct {
 	PhotoURL    string  `json:"photoUrl,omitempty"`
 }
 
-// GET /internal/geo/places/nearby?lat={緯度}&lng={經度}&radius={公尺,選填}
+// allowedPlaceTypes 是 handleGeoPlacesNearby 的 type 查詢參數白名單——
+// 對齊地圖上方的類別標籤列(飯店/景點/餐廳,見 web/src/GeoOutlineMap.tsx
+// 的類別標籤說明),只接受這幾個已知類別,不接受任意字串直接透傳給
+// Google——這是目前 UI 唯一會用到的類別集合,收斂輸入範圍比開放任意
+// Places API type 字串更安全(雖然無效值頂多讓 Google 回錯誤,不構成
+// 注入風險,但沒必要開放超出實際使用情境的輸入),之後 UI 真的需要新
+// 類別時再擴充這個白名單即可。
+var allowedPlaceTypes = map[string]bool{
+	"lodging":            true, // 飯店
+	"tourist_attraction": true, // 景點
+	"restaurant":         true, // 餐廳
+}
+
+// GET /internal/geo/places/nearby?lat={緯度}&lng={經度}&radius={公尺,選填}&type={類別,選填}
 //
-// 供地圖上點擊地標(構想 6 地理輪廓底圖,見 GeoOutlineMap.tsx 點擊地標
-// 放大範圍後的說明)時使用:以該地標座標為中心,即時查詢 Google Places
-// Nearby Search 找附近的推薦景點/餐廳/商店等,不限類型(泛用推薦,同
-// internal/wanttools/recommend_nearby.go 的 LLM 工具留空 category 時的
-// 行為)。
+// 供兩種情境使用:
+//  1. 地圖上點擊地標(構想 6 地理輪廓底圖,見 GeoOutlineMap.tsx 點擊地標
+//     放大範圍後的說明)——不帶 type,即時查詢 Google Places Nearby
+//     Search 找附近的推薦景點/餐廳/商店等,不限類型(泛用推薦,同
+//     internal/wanttools/recommend_nearby.go 的 LLM 工具留空 category
+//     時的行為)。
+//  2. 地圖上方的類別標籤列(飯店/景點/餐廳)——帶 type,限定只查詢該
+//     類別,對齊 geo.NearbyOptions.IncludedTypes(見該欄位的說明)。
 //
 // 這是「使用者明確點擊、低頻觸發」的動作,不像 handleGeoAttractionsNearby
 // 那樣要顧慮地圖高頻移動觸發大量 Google API 呼叫成本,故這裡直接即時查
@@ -512,6 +582,15 @@ func (s *Server) handleGeoPlacesNearby(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var includedTypes []string
+	if placeType := r.URL.Query().Get("type"); placeType != "" {
+		if !allowedPlaceTypes[placeType] {
+			writeErr(w, http.StatusBadRequest, "invalid_input", "type 參數不支援: "+placeType)
+			return
+		}
+		includedTypes = []string{placeType}
+	}
+
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	client := geo.New(apiKey)
 	client.SetCache(s.photoCache)
@@ -525,6 +604,7 @@ func (s *Server) handleGeoPlacesNearby(w http.ResponseWriter, r *http.Request) {
 		RadiusMeters:  radiusMeters,
 		MaxResults:    20,
 		IncludePhotos: true,
+		IncludedTypes: includedTypes,
 	})
 	if err == nil {
 		// 只取前 maxPhotoResults 筆顯示/查圖片,理由見該常數的說明。

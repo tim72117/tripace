@@ -270,6 +270,15 @@ export function DesktopContent(props: ContentProps) {
         : [...prev, c],
     )
   }, [])
+  // addGeoCandidateToNewTrip:GeoInfoPanel 複合按鈕右半邊(FolderPlus icon)
+  // 的 placeholder 實作——「加入到新行程」目前還沒有對應的建立新行程
+  // API,先用 console.log 佔位,避免使用者點了按鈕完全沒反應。
+  // TODO: 之後要接「建立新行程」API——建立成功後把 candidate 加進那個
+  // 新行程(而不是目前的 activeTrip),再考慮是否要順便切換 activeTrip
+  // 到新建立的行程。
+  const addGeoCandidateToNewTrip = useCallback((c: GeoCandidate) => {
+    console.log('[TODO] 加入到新行程尚未實作,candidate:', c)
+  }, [])
   // geoSearchCity/geoSearchTrigger/geoSearchState:城市搜尋欄的狀態,UI
   // 渲染在 GeoCandidateSidebar(左側候選籃側欄最上方),查詢邏輯留在
   // GeoOutlinePanel.tsx(見該檔案的說明)——兩者是分開掛載的 sibling,
@@ -282,6 +291,13 @@ export function DesktopContent(props: ContentProps) {
     searching: false,
     error: null,
   })
+  // geoRefetchTripEntriesTrigger:同 geoSearchTrigger 的中介模式,但驅動的
+  // 是 GeoOutlinePanel 的 refetchTripEntriesTrigger prop——GeoCandidateSidebar
+  // 幫「未排定日期」的候選補上日期(PATCH 成功)後透過 onDatesAssigned
+  // 遞增這個值,通知 GeoOutlinePanel 重新查一次 tripEntries,讓補了日期的
+  // 項目在下一次渲染自然移到正確的日期分組(見 GeoOutlinePanel.tsx 該
+  // prop 的完整說明)。
+  const [geoRefetchTripEntriesTrigger, setGeoRefetchTripEntriesTrigger] = useState(0)
   // paceCheckpoints:PaceChart(左側 side panel)目前選取的那一段 checkpoint
   // 清單,透過 onRouteChange 鏡像過來,再往下傳給 PaceRouteMap(右側主區的
   // 地圖)——地圖畫路線需要知道「目前是哪一段」,但兩者是分開掛載的
@@ -445,6 +461,8 @@ export function DesktopContent(props: ContentProps) {
             )}
             {!tripListOpen && panelMode === 'geo-outline' && (
               <GeoCandidateSidebar
+                cfg={cfg}
+                tripID={activeTrip?.id}
                 candidates={geoCandidates}
                 onRemove={(c) =>
                   setGeoCandidates((prev) =>
@@ -461,6 +479,7 @@ export function DesktopContent(props: ContentProps) {
                 onSearch={() => setGeoSearchTrigger((n) => n + 1)}
                 searching={geoSearchState.searching}
                 searchError={geoSearchState.error}
+                onDatesAssigned={() => setGeoRefetchTripEntriesTrigger((n) => n + 1)}
               />
             )}
           </div>
@@ -495,32 +514,47 @@ export function DesktopContent(props: ContentProps) {
               tripID={activeTrip?.id ?? null}
               city={geoSearchCity}
               searchTrigger={geoSearchTrigger}
+              refetchTripEntriesTrigger={geoRefetchTripEntriesTrigger}
               onSearchStateChange={setGeoSearchState}
               onHotelsChange={setGeoHotels}
               onAttractionsChange={setGeoAttractions}
-              onPlacesNearby={setGeoPlaces}
+              onPlacesNearby={(places) => {
+                // places 分頁的結果不只來自逐一點擊 marker(onPlaceSelect,
+                // 已有切分頁邏輯),也來自地圖上方類別標籤(飯店/景點/餐廳,
+                // 見 GeoOutlineMap.tsx 的 handleCategoryClick)與點擊地標
+                // 查附近推薦(handleAttractionClick)——這三種來源查完都
+                // 該讓側欄自動切到「附近推薦」分頁,使用者才看得到剛查到
+                // 的結果,不會停留在原本的分頁而看起來像沒反應(理由同
+                // onAttractionSelect/onHotelSelect/onPlaceSelect 的說明)。
+                setGeoPlaces(places)
+                setGeoActiveTab('places')
+              }}
               onTripEntriesChange={(entries) => {
                 // 行程本身已有座標的 entry 自動併入候選籃——跟手動用
                 // 「+」加入的來源(飯店/地點/推薦地點)共用同一份
-                // geoCandidates,用 kind+name+lat+lng 比對避免換行程/
-                // 重新查詢時重複加入(理由同下方 onAddCandidate 的比對
-                // 邏輯)。舊行程遺留的 entry 候選(kind==='entry' 但不在
-                // 這次新清單裡)一併移除,避免換行程後候選籃留著上一趟
-                // 的行程內容;使用者手動加入的其他三種候選不受影響。
+                // geoCandidates,用 id 比對避免換行程/重新查詢時重複加入。
+                // 舊行程遺留的 entry 候選(kind==='entry' 但不在這次新
+                // 清單裡)一併移除,避免換行程後候選籃留著上一趟的行程
+                // 內容;使用者手動加入的其他三種候選不受影響。
+                //
+                // 這批新的 entries 一律直接覆蓋掉同 id 的舊候選(而非只在
+                // id 不存在時才新增)——GeoCandidateSidebar 補上「未排定
+                // 日期」項目的日期後(見 handleAssignDate),會透過
+                // onDatesAssigned 觸發這裡重新查詢,拿到的是帶新 start 的
+                // 新資料;若沿用舊寫法(id 存在就跳過、只保留 prev 裡的
+                // 舊物件),畫面會繼續顯示舊的 start,補日期後看起來像
+                // 沒生效,直到下次整個換行程才會被覆蓋——這正是實際發生
+                // 過的 bug,不是預防性寫法。
                 setGeoCandidates((prev) => {
-                  const withoutStaleEntries = prev.filter(
-                    (p) => p.kind !== 'entry' || entries.some((e) => e.id === p.id),
-                  )
-                  const newOnes = entries
-                    .filter((e) => !withoutStaleEntries.some((p) => p.kind === 'entry' && p.id === e.id))
-                    // 展開順序刻意把 kind: 'entry' 放在 ...e 之後——
-                    // GeoTripEntry 自己也有一個同名的 kind 欄位(entry
-                    // 的類型,如 "stay"/"activity",見 api.ts 的說明),
-                    // 若寫成 { kind: 'entry', ...e } 會被 e.kind 蓋掉,
-                    // 這裡的 kind 必須是候選籃用來分辨四種來源的字面值
-                    // 'entry',跟 entry 本身的類型是兩件不相關的事。
-                    .map((e): GeoCandidate => ({ ...e, kind: 'entry' }))
-                  return [...withoutStaleEntries, ...newOnes]
+                  const nonEntryCandidates = prev.filter((p) => p.kind !== 'entry')
+                  // 展開順序刻意把 kind: 'entry' 放在 ...e 之後——
+                  // GeoTripEntry 自己也有一個同名的 kind 欄位(entry
+                  // 的類型,如 "stay"/"activity",見 api.ts 的說明),
+                  // 若寫成 { kind: 'entry', ...e } 會被 e.kind 蓋掉,
+                  // 這裡的 kind 必須是候選籃用來分辨四種來源的字面值
+                  // 'entry',跟 entry 本身的類型是兩件不相關的事。
+                  const freshEntries = entries.map((e): GeoCandidate => ({ ...e, kind: 'entry' }))
+                  return [...nonEntryCandidates, ...freshEntries]
                 })
               }}
               onAttractionSelect={(d) => {
@@ -548,7 +582,13 @@ export function DesktopContent(props: ContentProps) {
               candidateKeys={geoCandidateKeys}
               hoverKey={geoHoverKey}
             />
-            <GeoInfoPanel content={geoInfoContent} onClose={() => setGeoInfoContent(null)} onAddCandidate={addGeoCandidate} />
+            <GeoInfoPanel
+              content={geoInfoContent}
+              onClose={() => setGeoInfoContent(null)}
+              onAddCandidate={addGeoCandidate}
+              onAddToNewTrip={addGeoCandidateToNewTrip}
+              tripName={activeTrip?.name ?? '行程'}
+            />
             </>
           ) : panelMode === 'demo-cards' || panelMode === 'demo-row' || panelMode === 'demo-map'
             || panelMode === 'demo-clienttools' || panelMode === 'demo-onagent' ? (

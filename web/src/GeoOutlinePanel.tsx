@@ -5,6 +5,25 @@ import { GeoOutlineMap } from './GeoOutlineMap'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
 import styles from './GeoOutlinePanel.module.css'
 
+// mapLocatedTripEntries:把 fetchEntries 查回的完整 Entry 清單篩出有座標的
+// 那批、轉成 GeoTripEntry 形狀——供下方「換行程」與「補上日期後刷新」
+// 兩個 effect 共用同一份映射邏輯,避免其中一處修改欄位後忘記同步另一處。
+function mapLocatedTripEntries(entries: Awaited<ReturnType<typeof fetchEntries>>): GeoTripEntry[] {
+  const located = entries.filter(
+    (e): e is typeof e & { lat: number; lng: number } => e.lat != null && e.lng != null,
+  )
+  return located.map((e) => ({
+    id: e.id,
+    name: e.title,
+    lat: e.lat,
+    lng: e.lng,
+    location: e.location,
+    kind: e.kind,
+    start: e.start,
+    startTime: e.startTime,
+  }))
+}
+
 // GeoOutlinePanel:地理輪廓底圖(構想 6)的桌面版試做承載元件——目前 Trip
 // 型別沒有目的地城市欄位(見 types.ts),故用一個暫時的城市搜尋讓使用者
 // 手動觸發查詢,驗證視覺與互動是否對齊設計討論的定案,之後 Trip 補上目的地
@@ -63,6 +82,7 @@ export function GeoOutlinePanel({
   candidateKeys,
   hoverKey,
   searchTrigger,
+  refetchTripEntriesTrigger,
 }: {
   cfg: ClientConfig
   tripID?: string | null
@@ -100,6 +120,15 @@ export function GeoOutlinePanel({
   // 才查詢」的單向資料流,對齊這個檔案其餘 panTarget/tripID 等 prop 的
   // 既有慣例(見下方 useEffect 的依賴陣列)。
   searchTrigger?: number
+  // refetchTripEntriesTrigger:每次遞增時重新查一次目前行程的 entries、
+  // 更新 tripEntries/onTripEntriesChange,但不動 tripCenter(不重新判斷
+  // 地圖初始中心、也不讓 GeoOutlineMap 重新等待)——供
+  // GeoCandidateSidebar 幫「未排定日期」的候選補上日期後,通知這裡刷新
+  // 一份新的 tripEntries,好讓該候選從「未排定日期」分組移到正確的日期
+  // 分組。跟 searchTrigger 是同一種「外部改變一個 prop 值 → 這裡的
+  // useEffect 偵測到變化才動作」模式,理由同該 prop 的說明。0(初始值)
+  // 不觸發。
+  refetchTripEntriesTrigger?: number
 }) {
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -179,30 +208,20 @@ export function GeoOutlinePanel({
     fetchEntries(cfg, tripID)
       .then((entries) => {
         if (cancelled) return
-        const located = entries.filter(
-          (e): e is typeof e & { lat: number; lng: number } => e.lat != null && e.lng != null,
-        )
         // 順便把完整的帶座標 entry 清單(不只是算完就丟的平均座標)存下來
         // 並往上回報——這批點要畫在地圖上(見下方 <GeoOutlineMap
         // tripEntries={...}>)、也要自動帶進候選籃(見 DesktopLayout.tsx),
         // 不是只用來算初始定位。
-        const mapped = located.map((e) => ({
-          id: e.id,
-          name: e.title,
-          lat: e.lat,
-          lng: e.lng,
-          location: e.location,
-          kind: e.kind,
-        }))
+        const mapped = mapLocatedTripEntries(entries)
         setTripEntries(mapped)
         onTripEntriesChange?.(mapped)
-        if (located.length === 0) {
+        if (mapped.length === 0) {
           setTripCenter(null)
           return
         }
-        const latSum = located.reduce((sum, e) => sum + e.lat, 0)
-        const lngSum = located.reduce((sum, e) => sum + e.lng, 0)
-        setTripCenter({ lat: latSum / located.length, lng: lngSum / located.length })
+        const latSum = mapped.reduce((sum, e) => sum + e.lat, 0)
+        const lngSum = mapped.reduce((sum, e) => sum + e.lng, 0)
+        setTripCenter({ lat: latSum / mapped.length, lng: lngSum / mapped.length })
       })
       .catch(() => {
         // 查詢失敗不視為致命錯誤,但仍要轉成確定的 null——讓地圖不再
@@ -214,6 +233,30 @@ export function GeoOutlinePanel({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripID])
+
+  // 補上日期後刷新 tripEntries:refetchTripEntriesTrigger 遞增時重新查一次
+  // entries、更新 tripEntries/onTripEntriesChange,但不動 tripCenter——見
+  // 該 prop 的說明。0(初始值)不觸發,避免掛載當下跟上面那個 effect
+  // 重複查一次。
+  useEffect(() => {
+    if (!refetchTripEntriesTrigger || !tripID) return
+    let cancelled = false
+    fetchEntries(cfg, tripID)
+      .then((entries) => {
+        if (cancelled) return
+        const mapped = mapLocatedTripEntries(entries)
+        setTripEntries(mapped)
+        onTripEntriesChange?.(mapped)
+      })
+      .catch(() => {
+        // 查詢失敗不視為致命錯誤——維持上一次查到的內容即可,不彈錯誤
+        // 訊息打斷瀏覽,理由同其餘查詢失敗處理方式。
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refetchTripEntriesTrigger])
 
   // effectivePanTarget:地圖已經建立之後,後續移動的優先序——搜尋框查到
   // 的座標 > 側欄點擊。使用者主動搜尋或點側欄項目,代表當下明確想看

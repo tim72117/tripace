@@ -21,6 +21,7 @@ func toEntry(r entryRow) model.Entry {
 		Location:  r.Location,
 		Lat:       r.Lat,
 		Lng:       r.Lng,
+		PlaceID:   r.PlaceID,
 		Category:  r.Category,
 		Tags:      r.Tags,
 		Note:      r.Note,
@@ -44,6 +45,7 @@ func (s *Store) InsertEntry(e model.Entry) error {
 		Location:  e.Location,
 		Lat:       e.Lat,
 		Lng:       e.Lng,
+		PlaceID:   e.PlaceID,
 		Category:  e.Category,
 		Tags:      e.Tags,
 		Note:      e.Note,
@@ -54,10 +56,30 @@ func (s *Store) InsertEntry(e model.Entry) error {
 	return s.db.Create(&r).Error
 }
 
-// SetEntryLatLng 更新 entry 的經緯度（由 geo goroutine 非同步呼叫）。
+// SetEntryLatLng 更新 entry 的經緯度（由 geo goroutine 非同步呼叫），同時
+// 清空 place_id——這支方法給「手動在地圖上拖曳選點存座標」這種情境用
+// (見 handleInternalSetLatLng),呼叫端只知道座標,不知道(也無從得知)
+// 這組座標對應 Google 的哪個 place_id,若保留舊值不動,會變成座標已經
+// 改到別處、place_id 卻還指著原本那個地點的不一致狀態,故明確清空,不
+// 留下錯誤關聯的風險。真的知道 place_id 時(例如後端呼叫 Geocoding API
+// 查到)請改用 SetEntryLatLngWithPlaceID。
 func (s *Store) SetEntryLatLng(id string, lat, lng float64) error {
 	return s.db.Model(&entryRow{}).Where("id = ?", id).
-		Updates(map[string]any{"lat": lat, "lng": lng}).Error
+		Updates(map[string]any{"lat": lat, "lng": lng, "place_id": nil}).Error
+}
+
+// SetEntryLatLngWithPlaceID 同 SetEntryLatLng,但額外寫入這組座標對應的
+// Google place_id——供「後端呼叫 Geocoding API 查到座標」這種情境用
+// (見 handleGeocodeEntry),查詢結果本身就帶著明確的 place_id,記錄下來
+// 供之後跟 Places API 其他已快取資料(如 photo_cache/
+// place_details_cache)關聯比對用。placeID 為空字串時視同呼叫
+// SetEntryLatLng(仍然明確清空,不留舊值)。
+func (s *Store) SetEntryLatLngWithPlaceID(id string, lat, lng float64, placeID string) error {
+	if placeID == "" {
+		return s.SetEntryLatLng(id, lat, lng)
+	}
+	return s.db.Model(&entryRow{}).Where("id = ?", id).
+		Updates(map[string]any{"lat": lat, "lng": lng, "place_id": placeID}).Error
 }
 
 // UpdateEntry 更新一筆 entry 的可編輯欄位；留空字串的欄位不更新。

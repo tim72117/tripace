@@ -122,19 +122,29 @@
   color: var(--ios-gray);
 }
 
-/* addCandidateBtn:對齊 GeoHotelSidebar 卡片「+」按鈕的加入候選籃動作,
-   但這裡是獨立卡片底部的完整按鈕(文字+圖示),不是側欄清單裡那種
-   縮成一顆圓形圖示鈕的密集排版——這張卡片本身版面較寬鬆,用完整按鈕
-   更符合「這是這張卡片的主要操作」的份量。 */
-.addCandidateBtn {
+/* addCandidateGroup:複合按鈕(split button)的外層 wrapper——對齊
+   GeoHotelSidebar 卡片「+」按鈕的加入候選籃動作,但這裡是獨立卡片底部的
+   完整按鈕(文字+圖示),不是側欄清單裡那種縮成一顆圓形圖示鈕的密集
+   排版——這張卡片本身版面較寬鬆,用完整按鈕更符合「這是這張卡片的主要
+   操作」的份量。左半邊(addCandidateBtn,加入目前行程)/右半邊
+   (addToNewTripBtn,加入到新行程)視覺上共用外框、只在中間留一條細
+   分隔線,讓使用者感覺是同一顆按鈕的兩個區塊,而不是兩顆獨立按鈕。 */
+.addCandidateGroup {
   align-self: flex-start;
+  display: flex;
+  align-items: stretch;
+  margin-top: 10px;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.addCandidateBtn {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 10px;
   padding: 7px 14px;
   border: none;
-  border-radius: 10px;
+  border-radius: 10px 0 0 10px;
   background: var(--color-accent);
   color: var(--ios-card);
   font-size: 13px;
@@ -144,5 +154,26 @@
 }
 
 .addCandidateBtn:hover {
+  opacity: 0.88;
+}
+
+/* 中間分隔線:用左邊框模擬,顏色跟卡片背景色系一致(半透明白),避免
+   在 accent 底色上另外發明新色票。 */
+.addToNewTripBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  padding: 7px 0;
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 0 10px 10px 0;
+  background: var(--color-accent);
+  color: var(--ios-card);
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.addToNewTripBtn:hover {
   opacity: 0.88;
 }

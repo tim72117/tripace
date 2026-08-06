@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/tim72117/tripace/internal/auth"
 	"github.com/tim72117/tripace/internal/geo"
@@ -55,6 +56,10 @@ func New(st *store.Store, an llm.Analyzer, signer *auth.Signer, devMode bool) *S
 	}
 }
 
+// photoCacheMaxAge 是圖片快取視為新鮮的上限——超過這個天數,即使資料庫
+// 裡有值也視為未命中,強制重新向 Google 查詢。使用者確認過的預設值:7 天。
+const photoCacheMaxAge = 7 * 24 * time.Hour
+
 // storePhotoCache 是 geo.PhotoCache 的實作,把讀寫轉發給 *store.Store 的
 // photo_cache 資料表——geo 套件本身不依賴 store(見 geo.PhotoCache 的
 // 說明),這層轉接留在 api 套件,是唯一同時持有 geo.Client 與 *store.Store
@@ -65,16 +70,32 @@ type storePhotoCache struct {
 	store *store.Store
 }
 
-func (c storePhotoCache) Get(placeID string, maxWidthPx int) (string, bool) {
-	dataURI, ok, err := c.store.GetCachedPhoto(placeID, maxWidthPx)
+func (c storePhotoCache) Get(placeID string, photoIndex, maxWidthPx int) (string, bool) {
+	dataURI, ok, err := c.store.GetCachedPhoto(placeID, photoIndex, maxWidthPx, photoCacheMaxAge)
 	if err != nil {
 		return "", false
 	}
 	return dataURI, ok
 }
 
-func (c storePhotoCache) Set(placeID string, maxWidthPx int, dataURI string) {
-	_ = c.store.SetCachedPhoto(placeID, maxWidthPx, dataURI)
+func (c storePhotoCache) Set(placeID string, photoIndex, maxWidthPx int, dataURI string) {
+	_ = c.store.SetCachedPhoto(placeID, photoIndex, maxWidthPx, dataURI)
+}
+
+func (c storePhotoCache) List(placeID string, maxWidthPx int) (map[int]time.Time, error) {
+	rows, err := c.store.ListCachedPhotos(placeID, maxWidthPx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int]time.Time, len(rows))
+	for _, r := range rows {
+		out[r.PhotoIndex] = r.FetchedAt
+	}
+	return out, nil
+}
+
+func (c storePhotoCache) Trim(placeID string, maxWidthPx, fromIndex int) error {
+	return c.store.TrimCachedPhotos(placeID, maxWidthPx, fromIndex)
 }
 
 // EnableClientTools wires the "LLM calls a frontend tool" POC's
@@ -216,6 +237,7 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("DELETE /internal/trips/{id}/entries", s.handleInternalReset)
 	internalMux.HandleFunc("GET /internal/geo/attractions", s.handleGeoAttractions)
 	internalMux.HandleFunc("GET /internal/geo/attractions/nearby", s.handleGeoAttractionsNearby)
+	internalMux.HandleFunc("GET /internal/geo/attractions/nearby-only", s.handleGeoAttractionsOnlyNearby)
 	internalMux.HandleFunc("GET /internal/geo/geocode", s.handleGeoGeocode)
 	internalMux.HandleFunc("GET /internal/geo/places/nearby", s.handleGeoPlacesNearby)
 	internalMux.HandleFunc("GET /internal/geo/place-details", s.handleGeoPlaceDetails)

@@ -140,6 +140,14 @@ type Entry struct {
 	Location  string   `json:"location"`          // 地點(可空)
 	Lat       *float64 `json:"lat,omitempty"`     // 緯度(由 Places API 自動補)
 	Lng       *float64 `json:"lng,omitempty"`     // 經度
+	// PlaceID 是這組座標對應的 Google Place ID,供之後跟 Places API 其他
+	// 已快取的資料(如 photo_cache/place_details_cache)關聯比對用——只有
+	// 座標來自後端呼叫 Geocoding API 查詢時才會有值(見
+	// handleGeocodeEntry);手動在地圖上拖曳選點存座標(見
+	// handleInternalSetLatLng)沒有對應的 place_id 可知,此時為 nil,且會
+	// 明確清空先前可能存在的舊值——座標已經改到別處,保留舊 place_id
+	// 只會造成錯誤的關聯,不留下不一致的殘留資料。
+	PlaceID *string `json:"placeID,omitempty"`
 	// LLM 標注(原本在 Message 上,改放 Entry;目前先留空,待後續接上 Classify)。
 	Category  *string        `json:"category"`
 	Tags      []string       `json:"tags"`

@@ -8,31 +8,61 @@ import (
 	"gorm.io/gorm"
 )
 
-// GetCachedPhoto 查詢已快取的 Google Places 圖片(見 photoCacheRow 的
-// 完整說明)。ok 為 false 代表快取未命中(從未查過這個 placeID+寬度
-// 組合),呼叫端應照原本流程向 Google Photo Media API 查詢。
-func (s *Store) GetCachedPhoto(placeID string, maxWidthPx int) (dataURI string, ok bool, err error) {
+// GetCachedPhoto 查詢已快取的單張圖片(見 photoCacheRow 的完整說明)。
+// maxAge 是這筆快取視為新鮮的上限,超過視為未命中——呼叫端應重新查詢
+// (理由同 GetCachedPlaceDetails 的 maxAge 參數)。ok 為 false 代表
+// 未命中或已過期,呼叫端應照原本流程向 Google Photo Media API 查詢。
+func (s *Store) GetCachedPhoto(placeID string, photoIndex, maxWidthPx int, maxAge time.Duration) (dataURI string, ok bool, err error) {
 	var row photoCacheRow
-	err = s.db.Where("place_id = ? AND max_width_px = ?", placeID, maxWidthPx).First(&row).Error
+	err = s.db.Where("place_id = ? AND photo_index = ? AND max_width_px = ?", placeID, photoIndex, maxWidthPx).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", false, nil
 	}
 	if err != nil {
 		return "", false, err
 	}
+	if now().Sub(row.FetchedAt) > maxAge {
+		return "", false, nil
+	}
 	return row.DataURI, true, nil
 }
 
-// SetCachedPhoto 寫入(或覆蓋既有)一筆圖片快取。用 place_id+寬度組合
-// upsert,避免同一張圖片重複查詢時因為唯一鍵衝突而寫入失敗。
-func (s *Store) SetCachedPhoto(placeID string, maxWidthPx int, dataURI string) error {
+// SetCachedPhoto 寫入(或覆蓋既有)一筆圖片快取。用 place_id+photo_index+
+// 寬度組合 upsert,避免同一張圖片重複寫入時因為唯一鍵衝突而失敗。
+func (s *Store) SetCachedPhoto(placeID string, photoIndex, maxWidthPx int, dataURI string) error {
 	row := photoCacheRow{
 		PlaceID:    placeID,
+		PhotoIndex: photoIndex,
 		MaxWidthPx: maxWidthPx,
 		DataURI:    dataURI,
 		FetchedAt:  now(),
 	}
 	return s.db.Save(&row).Error
+}
+
+// ListCachedPhotos 回傳該地點目前快取的完整照片清單,依 photo_index 由
+// 小到大排序——供差異比對同步邏輯使用(新增/移除/過期檢查各自的判斷,
+// 見呼叫端的說明),每筆各自帶 FetchedAt,這裡不做任何過期篩選,由
+// 呼叫端逐筆判斷。查無資料回傳空 slice(非 nil、非 error)。
+func (s *Store) ListCachedPhotos(placeID string, maxWidthPx int) ([]photoCacheRow, error) {
+	rows := make([]photoCacheRow, 0)
+	err := s.db.Where("place_id = ? AND max_width_px = ?", placeID, maxWidthPx).
+		Order("photo_index ASC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// TrimCachedPhotos 刪除該地點快取裡「序號超出目前 Google 清單長度」的
+// 多餘列——供差異比對同步邏輯使用:這次查到的照片數量比快取裡的少,
+// 代表 Google 目前的清單變短了,超出範圍的舊快取列不再對應任何實際
+// 存在的照片,需要清掉,不留殘影(見呼叫端的差異比對邏輯)。keepBelow
+// 是這次查到的照片總數,photo_index >= keepBelow 的列會被刪除。
+func (s *Store) TrimCachedPhotos(placeID string, maxWidthPx, keepBelow int) error {
+	return s.db.Where("place_id = ? AND max_width_px = ? AND photo_index >= ?", placeID, maxWidthPx, keepBelow).
+		Delete(&photoCacheRow{}).Error
 }
 
 // GetCachedPlaceDetails 查詢已快取的 Place Details 結果(見

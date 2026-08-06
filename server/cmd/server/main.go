@@ -58,6 +58,12 @@ func main() {
 	// 這個節流元件存在的理由。
 	geoMaxConcurrency := flag.Int("geo-max-concurrency", apigateway.DefaultConfig().MaxConcurrency, "對 Google Places/Geocoding API 同時可以在飛行中的最大請求數")
 	geoMinIntervalMs := flag.Int64("geo-min-interval-ms", apigateway.DefaultConfig().MinInterval.Milliseconds(), "對 Google Places/Geocoding API 連續請求之間至少間隔多少毫秒")
+	// geoFetchPhotos:要不要真的向 Google Photo Media API 下載照片(見
+	// geo.SetPhotosEnabled 的完整說明)。預設關閉——Photo Media 依張數
+	// 計費,這是刻意保守的預設值,需要明確透過這個 flag 或下方的
+	// GOOGLE_PLACES_FETCH_PHOTOS 環境變數開啟。關閉時飯店/景點/POI 查詢
+	// 仍正常運作,只是拿不到照片(降級,不是整體失敗)。
+	geoFetchPhotos := flag.Bool("geo-fetch-photos", false, "是否向 Google Photo Media API 下載照片(依張數計費,預設關閉)")
 	flag.Parse()
 
 	// Cloud Run 等托管環境只方便傳環境變數(不方便改 ENTRYPOINT 傳 flag),
@@ -88,6 +94,9 @@ func main() {
 			*geoMinIntervalMs = parsed
 		}
 	}
+	if v := os.Getenv("GOOGLE_PLACES_FETCH_PHOTOS"); v != "" {
+		*geoFetchPhotos = v == "1" || strings.EqualFold(v, "true")
+	}
 
 	// DATABASE_URL(postgres://…,正式環境為 Cloud SQL)優先;未設時退回 -db 的 SQLite。
 	dsn := *dbPath
@@ -109,6 +118,12 @@ func main() {
 		apigateway.Config{MaxConcurrency: *geoMaxConcurrency, MinInterval: time.Duration(*geoMinIntervalMs) * time.Millisecond},
 		storeGeoCallLogger{store: st},
 	)
+	geo.SetPhotosEnabled(*geoFetchPhotos)
+	if *geoFetchPhotos {
+		log.Printf("Google Photo Media 下載已啟用(依張數計費)")
+	} else {
+		log.Printf("Google Photo Media 下載已關閉(預設值,飯店/景點/POI 查詢仍正常運作,只是拿不到照片)")
+	}
 
 	if *seed {
 		if err := seedUsers(st); err != nil {

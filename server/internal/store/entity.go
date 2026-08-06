@@ -46,6 +46,9 @@ type entryRow struct {
 	Location  string   `gorm:"column:location"`
 	Lat       *float64 `gorm:"column:lat"`
 	Lng       *float64 `gorm:"column:lng"`
+	// PlaceID:對應座標的 Google Place ID,見 model.Entry.PlaceID 的完整
+	// 說明——只有座標來自後端 Geocoding API 查詢時才會有值。
+	PlaceID *string `gorm:"column:place_id"`
 	// LLM 標注(原本在 message 上,改存 entry)。
 	Category  *string        `gorm:"column:category"`
 	Tags      []string       `gorm:"column:tags;serializer:json"`
@@ -61,11 +64,17 @@ func (entryRow) TableName() string { return "entries" }
 // model.Attraction 的完整說明。cityName 加索引——查詢入口固定是
 // 「這個城市底下所有 Attraction」(見 store 層 ListAttractionsByCity)。
 type attractionRow struct {
-	ID           string  `gorm:"primaryKey;column:id"`
-	Name         string  `gorm:"column:name;not null"`
-	CityName     string  `gorm:"column:city_name;not null;index"`
-	Lat          float64 `gorm:"column:lat;not null"`
-	Lng          float64 `gorm:"column:lng;not null"`
+	ID       string `gorm:"primaryKey;column:id"`
+	Name     string `gorm:"column:name;not null"`
+	CityName string `gorm:"column:city_name;not null;index"`
+	// Lat/Lng 複合索引(idx_attractions_lat_lng)供 ListAttractionsNearby 的
+	// bounding box 查詢(WHERE lat BETWEEN ... AND lng BETWEEN ...)使用——
+	// 沒有索引時是全表掃描,資料量成長後會越來越慢。這裡仍是一般 B-tree
+	// 複合索引,不是地理空間索引(如 PostGIS 的 GiST),只能加速「先用 lat
+	// 範圍篩、再用 lng 範圍篩」這種寫法,篩出來的仍是方形 bounding box、
+	// 不是精確的圓形範圍(精度問題見 ListAttractionsNearby 的說明)。
+	Lat          float64 `gorm:"column:lat;not null;index:idx_attractions_lat_lng,priority:1"`
+	Lng          float64 `gorm:"column:lng;not null;index:idx_attractions_lat_lng,priority:2"`
 	Level        int     `gorm:"column:level;not null"`
 	RadiusMeters int     `gorm:"column:radius_meters;not null;default:0"`
 	Summary      *string `gorm:"column:summary"`
@@ -88,8 +97,17 @@ func (attractionRow) TableName() string { return "attractions" }
 // "photo name")——Google Maps Platform Terms of Service 3.2.3(b) 明文
 // 禁止長期快取 photo name,且該值本身會過期,不適合當持久化的主鍵。
 // place_id 才是允許持久保存、拿來定位「這是哪個地點的圖」的識別碼。
+//
+// PhotoIndex:同一個地點可能存多張照片(Google 依 photos[] 陣列順序
+// 回傳),0-based,對應該次查詢當下的順序位置——刻意不是 Google 的照片
+// 識別碼本身(那正是不能持久保存的 photo resource name),而是我方
+// 自訂的序數,用來在讀取時保證顯示順序(ORDER BY photo_index)、以及
+// 判斷「這個位置的照片還在不在 Google 目前的清單裡」。目前實際只取
+// Google 清單的第一張(PhotoIndex 固定為 0),機制上支援多張,之後要
+// 擴充只需調整查詢端取幾筆,這個 schema 不需要再改。
 type photoCacheRow struct {
 	PlaceID    string    `gorm:"primaryKey;column:place_id"`
+	PhotoIndex int       `gorm:"primaryKey;column:photo_index"`
 	MaxWidthPx int       `gorm:"primaryKey;column:max_width_px"`
 	DataURI    string    `gorm:"column:data_uri;not null"`
 	FetchedAt  time.Time `gorm:"column:fetched_at;not null"`

@@ -85,7 +85,7 @@ func (s *Server) handleGeocodeEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.SetEntryLatLng(entryID, result.Lat, result.Lng); err != nil {
+	if err := s.store.SetEntryLatLngWithPlaceID(entryID, result.Lat, result.Lng, result.PlaceID); err != nil {
 		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
 		return
 	}
@@ -96,6 +96,7 @@ func (s *Server) handleGeocodeEntry(w http.ResponseWriter, r *http.Request) {
 		"address": result.FormattedAddress,
 		"lat":     result.Lat,
 		"lng":     result.Lng,
+		"placeID": result.PlaceID,
 	})
 }
 

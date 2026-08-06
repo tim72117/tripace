@@ -206,6 +206,26 @@ function buildTLRows(entries: Entry[], taskPlaceholders: TaskPlaceholder[] = [])
     rows.push(row)
   }
 
+  // 7. 沒有 start 的條目排在最後，獨立分組顯示(不畫主線、不歸屬任何年月)。
+  const noDateEntries = sorted.filter(e => !e.start)
+  if (noDateEntries.length > 0) {
+    rows.push({ kind: 'month', key: 'nodate-header', label: '未排定日期', accent: false })
+    noDateEntries.forEach((e, i) => {
+      rows.push({
+        kind: 'entry',
+        key: `nodate-${e.id}`,
+        day: '',
+        dayLabel: null,
+        dot: 'sub',
+        isBlank: false,
+        isPad: false,
+        lineTop: i === 0 ? 'none' : 'normal',
+        lineBot: i === noDateEntries.length - 1 ? 'none' : 'normal',
+        card: { kind: 'sub', entry: e },
+      })
+    })
+  }
+
   return rows
 }
 

@@ -102,6 +102,11 @@
   gap: 4px;
   padding: 8px;
   border-radius: 10px;
+  cursor: grab;
+}
+
+.item:active {
+  cursor: grabbing;
 }
 
 /* itemBody:卡片本體的可點擊區(觸發 onSelect 開資訊欄),與外層 .item
@@ -116,6 +121,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  cursor: pointer;
 }
 
 .item:hover {
@@ -176,4 +182,186 @@
 .removeBtn:hover {
   background: var(--ios-sep);
   color: var(--ios-red);
+}
+
+/* day/dayHead/dayBody/dayCard*:「已排入行程」分組底下的日層架呈現,對齊
+   構想 5 桌面同屏並置原型(docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)右欄
+   「日層架」的視覺語言——虛線容器暗示「這是骨架式的日程視野,不是強制
+   投放區」,標題列左邊日期、右邊該天安排數量,卡片用小圓形姓名首字
+   pin + 名稱 + 靠右時刻的緊湊橫列,跟 .item/.itemPhoto 那種帶縮圖的候選
+   卡片視覺區分開來。 */
+.day + .day {
+  margin-top: 10px;
+}
+
+.dayHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 4px 6px;
+  border-radius: 6px;
+}
+
+/* 「未排定日期」標題可點擊(見 GeoCandidateSidebar.tsx 的 NoDateDayHead)
+   ——一般日期分組的 .dayHead 不是按鈕、不套這個規則,只有用 role="button"
+   包過的那個實例才會吃到 cursor/hover,理由是 CSS Modules 這裡沒有另外
+   拆一個 class,靠 role="button" 天然只出現在可點的那個實例上,不需要
+   額外命名一個 .dayHeadClickable 才能分開套用。 */
+.dayHead[role='button'] {
+  cursor: pointer;
+}
+
+.dayHead[role='button']:hover {
+  background: var(--ios-bg);
+}
+
+/* dayDateEdit/dayDateInput/dayDateConfirmBtn/dayDateErr:「未排定日期」
+   標題按下後在原地展開的極簡日期輸入列——只有一個原生 date input +
+   一顆確定按鈕,不用彈跳窗、不加額外裝飾圖示,維持跟其餘分組標題同一種
+   視覺重量。 */
+.dayDateEdit {
+  display: flex;
+  gap: 6px;
+  padding: 0 4px 8px;
+}
+
+.dayDateInput {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 8px;
+  background: var(--ios-card);
+  color: var(--color-dark);
+  font-size: 12px;
+}
+
+.dayDateInput:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.dayDateConfirmBtn {
+  flex: 0 0 auto;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-accent);
+  color: var(--ios-card);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.12s;
+}
+
+.dayDateConfirmBtn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.dayDateConfirmBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dayDateErr {
+  padding: 0 4px 8px;
+  font-size: 11px;
+  color: var(--ios-red);
+}
+
+.dayDate {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--color-dark);
+}
+
+.dayStatus {
+  font-size: 10.5px;
+  color: var(--ios-gray);
+}
+
+.dayBody {
+  border: 1px dashed var(--ios-sep);
+  border-radius: 12px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color 0.12s, background-color 0.12s;
+}
+
+/* dayBodyEmpty:「隔天」拖放區的空白佔位(見 GeoCandidateSidebar.tsx 的
+   nextDayKey)——沒有任何卡片子元素,靠 min-height 撐出一個看得見的
+   虛線區塊,不然空的 flex 容器高度會直接塌陷成一條線,拖不進去。 */
+.dayBodyEmpty {
+  min-height: 32px;
+}
+
+/* dayBodyDragOver:拖曳「已排入行程」卡片(見 GeoCandidateSidebar.tsx 的
+   draggingEntry/dragOverDay)懸停在別天的日期分組上時的樣式——虛線變
+   accent 實線 + 極淡的底色,提示「放開就會把這張卡片改成這天的日期」,
+   對齊構想 5 原型 .day-body.dragover 的視覺語言。「未排定日期」分組
+   不接這個 class(見 handleDropOnDay 的說明,清空日期目前不支援)。 */
+.dayBodyDragOver {
+  border-color: var(--color-accent);
+  border-style: solid;
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.dayCard {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 6px 6px 8px;
+  border-radius: 8px;
+  cursor: grab;
+}
+
+.dayCard:active {
+  cursor: grabbing;
+}
+
+.dayCard:hover {
+  background: var(--ios-bg);
+}
+
+.dayCardBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+/* dayCardPin:類別圖示本身已經足夠表達地點類型(見 ENTRY_KIND_ICONS),
+   不再疊一層實色圓底填色——避免使用者誤讀成「這個顏色代表某種選取/
+   狀態」,單純圖示 + accent 描邊色即可。 */
+.dayCardPin {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  color: var(--color-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dayCardName {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dayCardTime {
+  flex: 0 0 auto;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--ios-gray);
 }

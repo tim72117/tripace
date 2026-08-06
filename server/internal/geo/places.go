@@ -47,6 +47,27 @@ func ConfigureDefaultGateway(cfg apigateway.Config, logger apigateway.CallLogger
 	defaultGatewayLogger = logger
 }
 
+// photosEnabled 是全域開關,控制要不要真的向 Google Photo Media API
+// 下載照片(見 downloadPhotoBytes 的說明)——預設關閉(false),必須由
+// 呼叫端明確呼叫 SetPhotosEnabled(true) 才會真的開始抓照片。這是刻意
+// 保守的預設值:Photo Media 是計費項目,依張數計費,關閉時所有呼叫端
+// (SearchAttractions/SearchNearby/SearchAttractionWithPhoto/
+// GetPlaceDetails/SyncPlacePhotos)仍會正常運作、正常回傳其餘欄位,只是
+// 拿不到照片,不是整個查詢失敗——理由同 c.cache 為 nil 時的既有降級
+// 行為模式。已經快取過的照片不受這個開關影響,仍會照常從 photo_cache
+// 讀出(見 fetchPhotoAsDataURI 的快取檢查在下載動作之前),只有「快取
+// 未命中、需要真的向 Google 下載新照片」這個動作會被擋下。
+var photosEnabled = false
+
+// SetPhotosEnabled 設定 photosEnabled(見該變數的完整說明)。典型用法是
+// process 啟動時讀一次環境變數(如 cmd/server/main.go 的
+// GOOGLE_PLACES_FETCH_PHOTOS)呼叫一次,之後整個 process 生命週期共用
+// 這個設定——跟 ConfigureDefaultGateway 是同一種「啟動時設定一次,不
+// 支援執行期動態調整」的設計,理由一致。
+func SetPhotosEnabled(enabled bool) {
+	photosEnabled = enabled
+}
+
 func defaultGateway() *apigateway.Gateway {
 	defaultGatewayOnce.Do(func() {
 		defaultGatewayValue = apigateway.New(&http.Client{Timeout: 5 * time.Second}, defaultGatewayConfig, defaultGatewayLogger)
@@ -143,18 +164,31 @@ const districtFieldMask = "places.id,places.displayName,places.formattedAddress,
 // geo.New() 呼叫端都需要接上快取(例如 cmd/cli 的一次性查詢、
 // wanttools 的 LLM 工具呼叫,重複查詢機率低,接上快取的效益不大)。
 //
-// 鍵是 placeID(穩定、不會過期的地點識別碼),不是 photo resource name
-// (Google Maps Platform Terms of Service 3.2.3(b)「No Caching」明確禁止
-// 長期保存 photo name——它可能過期,且條款要求每次都該從新鮮的
-// Details/Nearby Search/Text Search 回應取得,不能存起來跨請求重用)。
-// 圖片內容本身(data URI)存放不受這條限制,故只把「拿來換圖片的識別字」
-// 從快取鍵徹底移除,改用 placeID 這個穩定識別碼定位快取項目——
-// fetchPhotoAsDataURI 內部依然需要 photoRef 去跟 Google 換圖(快取未
-// 命中時),但 photoRef 只在單次請求的記憶體內短暫存在,從不寫入
-// PhotoCache/資料庫。
+// 鍵是 placeID(穩定、不會過期的地點識別碼)+ photoIndex(該地點第幾張
+// 照片,0-based),不是 photo resource name(Google Maps Platform Terms
+// of Service 3.2.3(b)「No Caching」明確禁止長期保存 photo name——它可能
+// 過期,且條款要求每次都該從新鮮的 Details/Nearby Search/Text Search
+// 回應取得,不能存起來跨請求重用)。圖片內容本身(data URI)存放不受這條
+// 限制,故只把「拿來換圖片的識別字」從快取鍵徹底移除,改用 placeID 這個
+// 穩定識別碼 + 自訂序數定位快取項目——fetchPhotoAsDataURI 內部依然需要
+// photoRef 去跟 Google 換圖(快取未命中時),但 photoRef 只在單次請求的
+// 記憶體內短暫存在,從不寫入 PhotoCache/資料庫。
+//
+// photoIndex 目前所有呼叫端固定傳 0(一次只取每個地點的第一張照片)——
+// 機制上已經支援多張(見 server/internal/store/entity.go 的
+// photoCacheRow 說明),之後要擴充成每個地點存多張,只需要呼叫端改成
+// 迭代 0..N-1 呼叫,這個介面不需要再改。
+//
+// List/Trim 供 SyncPlacePhotos 差異比對同步邏輯使用(見該函式與
+// planPhotoSync 的說明)——List 只回傳「目前快取了哪些 index、各自何時
+// 抓的」,不含圖片內容本身(data URI 可能很大,同步決策階段不需要讀出
+// 來);Trim 刪除超出目前 Google 清單長度的多餘 index,讓快取跟著
+// Google 目前實際回傳的照片數量收斂,不留殘影。
 type PhotoCache interface {
-	Get(placeID string, maxWidthPx int) (dataURI string, ok bool)
-	Set(placeID string, maxWidthPx int, dataURI string)
+	Get(placeID string, photoIndex, maxWidthPx int) (dataURI string, ok bool)
+	Set(placeID string, photoIndex, maxWidthPx int, dataURI string)
+	List(placeID string, maxWidthPx int) (fetchedAt map[int]time.Time, err error)
+	Trim(placeID string, maxWidthPx, fromIndex int) error
 }
 
 // requestDoer 是 Client 內部實際用來派送請求的介面——生產環境用
@@ -818,6 +852,62 @@ func (c *Client) GetPlaceDetails(ctx context.Context, placeID string) (PlaceDeta
 	return details, nil
 }
 
+// photoRefsFieldMask 只取 photos 這一個欄位——供 ListPlacePhotoRefs 用,
+// 只是要拿到目前的 photos[] 清單(用來跟快取做差異比對),不需要名稱/
+// 地址/評分等其餘欄位,遮罩越窄呼叫成本越低。
+const photoRefsFieldMask = "photos"
+
+// ListPlacePhotoRefs 查詢一個地點目前完整的 photos[] 參照清單(依 Google
+// 回傳順序,即 photo resource name 陣列)——供 SyncPlacePhotos 差異比對
+// 同步邏輯使用,判斷「Google 現在說這個地點有幾張照片、依序是哪幾張」。
+// 這裡回傳的 photoRef 字串只在呼叫端當次同步流程的記憶體內短暫使用,
+// 從不寫入快取/資料庫,理由同 fetchPhotoAsDataURI 對 photoResourceName
+// 的說明(Google Maps Platform Terms of Service 3.2.3(b) 禁止長期保存)。
+func (c *Client) ListPlacePhotoRefs(ctx context.Context, placeID string) ([]string, error) {
+	if c.apiKey == "" {
+		return nil, ErrNoKey
+	}
+	if placeID == "" {
+		return nil, ErrNotFound
+	}
+
+	url := fmt.Sprintf("https://places.googleapis.com/v1/places/%s", placeID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Goog-Api-Key", c.apiKey)
+	req.Header.Set("X-Goog-FieldMask", photoRefsFieldMask)
+
+	resp, err := c.gateway.Do(ctx, req, "places.get", callerFromContext(ctx), pathFromContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("geo: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, ErrNotFound
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("geo: request failed (HTTP %d)", resp.StatusCode)
+	}
+
+	var body struct {
+		Photos []struct {
+			Name string `json:"name"`
+		} `json:"photos"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("geo: decode failed: %w", err)
+	}
+
+	refs := make([]string, 0, len(body.Photos))
+	for _, p := range body.Photos {
+		refs = append(refs, p.Name)
+	}
+	return refs, nil
+}
+
 // fetchPhotoAsDataURI 下載 Places API (New) 的 photo resource name(如
 // "places/xxx/photos/yyy")對應的圖片位元組,編碼成 data: URI(base64,
 // 含 MIME type)回傳,可直接當 <img src> 使用。maxWidthPx 建議與實際
@@ -847,6 +937,10 @@ func (c *Client) fetchPhotoAsDataURI(ctx context.Context, placeID, photoResource
 	if maxWidthPx <= 0 {
 		maxWidthPx = 400
 	}
+	// photoIndex 固定 0——目前每個地點只取第一張照片(見 PhotoCache 介面
+	// 的說明,機制上已支援多張,之後要擴充成每個地點存多張照片時,這裡
+	// 才需要接受呼叫端傳入的實際序數,不是這支函式內部自己決定的)。
+	const photoIndex = 0
 
 	// 快取命中則直接回傳,不打 Google——這是解決「同一批飯店/地點隨地圖
 	// 移動被重複查詢、每次都重新下載同一張照片」問題的關鍵(見
@@ -854,9 +948,43 @@ func (c *Client) fetchPhotoAsDataURI(ctx context.Context, placeID, photoResource
 	// c.cache 為 nil、或 placeID 為空字串時都視為快取不可用(見上方
 	// 函式說明),兩者都是 no-op,直接往下真的向 Google 查詢。
 	if c.cache != nil && placeID != "" {
-		if dataURI, ok := c.cache.Get(placeID, maxWidthPx); ok {
+		if dataURI, ok := c.cache.Get(placeID, photoIndex, maxWidthPx); ok {
 			return dataURI, nil
 		}
+	}
+
+	dataURI, err := c.downloadPhotoBytes(ctx, photoResourceName, maxWidthPx)
+	if err != nil {
+		return "", err
+	}
+
+	if c.cache != nil && placeID != "" {
+		c.cache.Set(placeID, photoIndex, maxWidthPx, dataURI)
+	}
+	return dataURI, nil
+}
+
+// ErrPhotosDisabled 是 photosEnabled 為 false 時,downloadPhotoBytes 拒絕
+// 下載回傳的錯誤——所有呼叫端(fetchPhotoAsDataURI/SyncPlacePhotos)已經
+// 把「單張照片下載失敗」當成非致命錯誤處理(略過、不影響其餘查詢結果),
+// 故這裡不需要另外為這個情況新增特殊分支,直接沿用既有的錯誤處理路徑
+// 即可正確降級成「沒有照片可顯示」。
+var ErrPhotosDisabled = fmt.Errorf("geo: 已透過 SetPhotosEnabled(false) 關閉照片下載")
+
+// downloadPhotoBytes 是 fetchPhotoAsDataURI 拆出來的純下載邏輯(不含
+// 快取讀寫)——供 SyncPlacePhotos 差異比對同步流程使用:同步邏輯已經
+// 透過 planPhotoSync 決定「這個 index 確實需要重新下載」,不需要
+// downloadPhotoBytes 內部再檢查一次快取(那樣既多餘、也對不上正確的
+// photoIndex,因為這支函式本身不知道呼叫端要把結果存在哪個 index)。
+// 呼叫端(fetchPhotoAsDataURI/SyncPlacePhotos)各自負責在下載前後接上
+// 對應的快取讀寫。
+//
+// photosEnabled 開關(見該變數的完整說明)在這裡檢查——這是唯一真的會
+// 對 Google Photo Media API 發出請求的地方,把開關收在這一個進入點,
+// 而不是分散到每個呼叫端各自判斷,確保沒有漏網之魚。
+func (c *Client) downloadPhotoBytes(ctx context.Context, photoResourceName string, maxWidthPx int) (string, error) {
+	if !photosEnabled {
+		return "", ErrPhotosDisabled
 	}
 
 	mediaURL := fmt.Sprintf("https://places.googleapis.com/v1/%s/media?maxWidthPx=%d&key=%s",
@@ -891,12 +1019,7 @@ func (c *Client) fetchPhotoAsDataURI(ctx context.Context, placeID, photoResource
 	if contentType == "" {
 		contentType = "image/jpeg"
 	}
-	dataURI := "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data)
-
-	if c.cache != nil && placeID != "" {
-		c.cache.Set(placeID, maxWidthPx, dataURI)
-	}
-	return dataURI, nil
+	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
 }
 
 // Lookup 查詢地點名稱，回傳第一筆結果的經緯度（向下相容用）。
