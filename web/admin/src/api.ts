@@ -92,6 +92,26 @@ export interface GeoAPIStatsResponse {
   timeline: TimelineBucket[]
 }
 
+// One table's struct-vs-database comparison. Mirrors store.SchemaCheck on
+// the backend (server/internal/store/schema_check.go). GORM's AutoMigrate
+// only ever adds missing columns — it never renames or drops a column, and
+// never changes an existing table's primary key. So a field rename in a Go
+// struct (e.g. photoRef -> placeID) leaves the database with BOTH the old
+// and new column, and the primary key still pointing at the old one. This
+// check surfaces that drift instead of leaving it to be found by accident.
+export interface SchemaCheck {
+  table: string
+  missingColumns?: string[]
+  extraColumns?: string[]
+  primaryKeyMismatch?: { expected: string[]; actual: string[] }
+  ok: boolean
+}
+
+export interface SchemaCheckResponse {
+  ok: boolean
+  tables: SchemaCheck[]
+}
+
 // Same resolution strategy as the main web app's api.ts BASE: an explicit
 // VITE_ADMIN_API_URL for local dev against a separately-running backend,
 // falling back to the serving origin (correct in production, where the
@@ -153,4 +173,10 @@ export const api = {
   // outbound call is triggered by viewing this page.
   geoAPIStats: (hours: number): Promise<GeoAPIStatsResponse> =>
     request('GET', `/admin/api/geo-api-stats?hours=${hours}`).then((r) => r.json()),
+
+  // Read-only comparison query (information_schema / pragma table_info under
+  // the hood via GORM's Migrator) — no schema is modified by calling this,
+  // safe to call on page load / manual refresh.
+  checkSchema: (): Promise<SchemaCheckResponse> =>
+    request('GET', '/admin/api/schema-check').then((r) => r.json()),
 }

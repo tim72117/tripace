@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from './api'
-import type { ExternalServiceStatus, GeoAPICallStats, PathRequestStats, TimelineBucket, UserSummary } from './api'
+import type { ExternalServiceStatus, GeoAPICallStats, PathRequestStats, SchemaCheck, TimelineBucket, UserSummary } from './api'
 import { TimelineChart } from './TimelineChart'
 
 export default function App() {
@@ -64,7 +64,7 @@ function Login({ onLoggedIn }: { onLoggedIn: (email: string) => void }) {
   )
 }
 
-type Tab = 'users' | 'external' | 'requests' | 'geo-api'
+type Tab = 'users' | 'external' | 'requests' | 'geo-api' | 'schema'
 
 function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOut: () => void }) {
   const [tab, setTab] = useState<Tab>('users')
@@ -102,12 +102,16 @@ function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOu
         <button className={tab === 'geo-api' ? 'tab active' : 'tab'} onClick={() => setTab('geo-api')}>
           Google API calls
         </button>
+        <button className={tab === 'schema' ? 'tab active' : 'tab'} onClick={() => setTab('schema')}>
+          Schema check
+        </button>
       </nav>
 
       {tab === 'users' && <UsersTab onLoggedOut={onLoggedOut} />}
       {tab === 'external' && <ExternalServicesTab onLoggedOut={onLoggedOut} />}
       {tab === 'requests' && <RequestStatsTab onLoggedOut={onLoggedOut} />}
       {tab === 'geo-api' && <GeoAPIStatsTab onLoggedOut={onLoggedOut} />}
+      {tab === 'schema' && <SchemaCheckTab onLoggedOut={onLoggedOut} />}
     </div>
   )
 }
@@ -275,6 +279,114 @@ function ExternalServicesTab({ onLoggedOut }: { onLoggedOut: () => void }) {
               {loading && services === null && (
                 <tr>
                   <td colSpan={4} className="muted center-cell">
+                    Checking…
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  )
+}
+
+// SchemaCheckTab: compares every GORM entity struct's expected columns/
+// primary key against what's actually in the database. This exists because
+// AutoMigrate only ever ADDs missing columns — it never renames or drops a
+// column, and never changes an existing table's primary key. A Go-side
+// field rename (photoRef -> placeID) silently leaves the old column AND
+// the old primary key in place; AutoMigrate itself reports success the
+// whole time. This is the only way to catch that kind of drift without
+// manually inspecting information_schema per table.
+function SchemaCheckTab({ onLoggedOut }: { onLoggedOut: () => void }) {
+  const [tables, setTables] = useState<SchemaCheck[] | null>(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await api.checkSchema()
+      setTables(res.tables)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onLoggedOut()
+        return
+      }
+      setError(err instanceof ApiError ? err.message : 'Failed to load')
+    } finally {
+      setLoading(false)
+    }
+  }, [onLoggedOut])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const problemCount = (tables ?? []).filter((t) => !t.ok).length
+
+  return (
+    <>
+      {error && <div className="error banner">{error}</div>}
+
+      <section className="card">
+        <div className="section-head">
+          <h2>Schema check</h2>
+          <button className="ghost" onClick={() => void load()} disabled={loading}>
+            {loading ? 'Checking…' : 'Recheck'}
+          </button>
+        </div>
+        {tables !== null && (
+          <p className="muted">
+            {problemCount === 0
+              ? `All ${tables.length} tables match their struct definitions.`
+              : `${problemCount} of ${tables.length} tables have drifted from their struct definitions.`}
+          </p>
+        )}
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Table</th>
+                <th>Status</th>
+                <th>Missing columns</th>
+                <th>Extra columns</th>
+                <th>Primary key</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(tables ?? []).map((t) => (
+                <tr key={t.table}>
+                  <td>{t.table}</td>
+                  <td>
+                    <span className={`status-dot ${t.ok ? 'status-ok' : 'status-error'}`} />
+                    {t.ok ? 'OK' : 'Drifted'}
+                  </td>
+                  <td className={t.missingColumns?.length ? 'error-cell' : 'muted'}>
+                    {t.missingColumns?.length ? t.missingColumns.join(', ') : '—'}
+                  </td>
+                  <td className={t.extraColumns?.length ? 'error-cell' : 'muted'}>
+                    {t.extraColumns?.length ? t.extraColumns.join(', ') : '—'}
+                  </td>
+                  <td className={t.primaryKeyMismatch ? 'error-cell' : 'muted'}>
+                    {t.primaryKeyMismatch
+                      ? `expected (${t.primaryKeyMismatch.expected.join(', ')}), actual (${t.primaryKeyMismatch.actual.join(', ')})`
+                      : '—'}
+                  </td>
+                </tr>
+              ))}
+              {(tables === null || tables.length === 0) && !loading && (
+                <tr>
+                  <td colSpan={5} className="muted center-cell">
+                    No data yet.
+                  </td>
+                </tr>
+              )}
+              {loading && tables === null && (
+                <tr>
+                  <td colSpan={5} className="muted center-cell">
                     Checking…
                   </td>
                 </tr>
