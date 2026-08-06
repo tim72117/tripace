@@ -16,7 +16,7 @@
 //
 // 這兩支端點取代原本 tripace-cli 裡「直接在 CLI process 本地建立
 // geo.Client、繞過後端」的做法(geocode 子命令)、與「只能在 -db 直連模式
-// 下才能用」的做法(landmark-update-photo 子命令)——搬進後端後,兩者都
+// 下才能用」的做法(attraction-update-photo 子命令)——搬進後端後,兩者都
 // 走跟其餘子命令一致的 HTTP + JWT 登入路徑,也因此能被
 // apigateway.Gateway 的節流與 geo_api_call_logs 記錄涵蓋到(CLI 直接呼叫
 // Google 時,節流雖然仍套用預設值,但因為 CLI 是短命的獨立 process、

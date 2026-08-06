@@ -41,8 +41,8 @@ type DistrictAlias struct {
 // 分區清單。
 //
 // 清邁原本在這裡的資料已於 2026-08 搬進正式的資料庫模型(見
-// model.Landmark、cmd/cli 的 landmark-add 等指令),不再需要這條
-// 過渡路徑——handleGeoDistricts 的查詢優先序是「資料庫→這裡→即時查
+// model.Attraction、cmd/cli 的 attraction-add 等指令),不再需要這條
+// 過渡路徑——handleGeoAttractions 的查詢優先序是「資料庫→這裡→即時查
 // Google Places」,資料庫有資料時這裡的 entry 根本不會被用到。搬遷
 // 原因之一:這裡原本「河濱區」用 LandmarkQuery(文字搜尋)定位,實際
 // 查詢結果曾經誤配到曼谷的湄南河區域而非清邁的賓河——資料庫模型直接

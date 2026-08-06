@@ -71,6 +71,6 @@ GOWORK=off go run ./cmd/cli geocode -place "地點名稱" [-region tw] [-n 3] [-
 ## 已知限制（HTTP 模式）
 
 - `reset`/`entry-delete` 都是真的會刪除資料的操作，執行前要跟使用者確認範圍（哪個行程/哪個 entry），不要在不確定的情況下對正式環境資料執行。
-- `landmark-add`/`landmark-list`/`landmark-cities`/`landmark-delete` 僅限 `-db` 直連模式（地理輪廓底圖用的地標/區域資料維護工具），不走 HTTP，使用前需要 `DATABASE_URL`。
-- `landmark-update-photo` 是例外——已改走 HTTP（`POST /internal/maintenance/landmarks/{id}/update-photo`），跟其餘子命令一樣只需要先登入，不需要 `-db`/`DATABASE_URL`。
-- `/internal/maintenance/*`（`geocode`、`landmark-update-photo` 的底層端點）是刻意跟 `/internal/geo/*` 分開命名空間的維運專用端點，前端產品本身不會呼叫這批路徑，只有 CLI 會用到。
+- `attraction-add`/`attraction-list`/`attraction-cities`/`attraction-delete` 僅限 `-db` 直連模式（地理輪廓底圖用的景點區域資料維護工具），不走 HTTP，使用前需要 `DATABASE_URL`。
+- `attraction-update-photo` 是例外——已改走 HTTP（`POST /internal/maintenance/landmarks/{id}/update-photo`），跟其餘子命令一樣只需要先登入，不需要 `-db`/`DATABASE_URL`。
+- `/internal/maintenance/*`（`geocode`、`attraction-update-photo` 的底層端點）是刻意跟 `/internal/geo/*` 分開命名空間的維運專用端點，前端產品本身不會呼叫這批路徑，只有 CLI 會用到。

@@ -144,7 +144,7 @@ type PathRequestStats struct {
 // RequestStatsSince 回傳自 since 以來,依 method+path 分組的請求統計,
 // 依呼叫次數由多到少排序——讓管理員一眼看出目前哪個端點被打得最兇
 // (例如本次要排查的 Photo Media 重複呼叫問題,根因就是
-// /internal/geo/districts/nearby 呼叫次數異常偏高)。
+// /internal/geo/attractions/nearby 呼叫次數異常偏高)。
 func (s *Store) RequestStatsSince(since time.Time) ([]PathRequestStats, error) {
 	var out []PathRequestStats
 	err := s.db.Model(&apiRequestLogRow{}).

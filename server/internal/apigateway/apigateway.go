@@ -35,10 +35,10 @@ type HTTPDoer interface {
 type CallLogger interface {
 	// LogCall 在請求完成(不論成功或失敗)後呼叫一次。err 不為 nil 時
 	// statusCode 為 0(連線失敗、逾時等,根本沒有收到 HTTP 回應)。path 是
-	// 觸發這次外部呼叫的「我方」API 路徑(如 "/internal/geo/districts/
+	// 觸發這次外部呼叫的「我方」API 路徑(如 "/internal/geo/attractions/
 	// nearby"),供事後查記錄時能對到「是使用者/CLI 打了我方哪一條路徑,
 	// 才連帶觸發這次對 Google 的呼叫」——跟 caller(呼叫端在程式碼裡的
-	// 識別字串,如 "handleGeoDistrictsNearby")是兩個獨立維度:caller
+	// 識別字串,如 "handleGeoAttractionsNearby")是兩個獨立維度:caller
 	// 指向程式碼位置,path 指向對外曝露的路由,兩者通常一一對應但不保證
 	// (例如 LLM 工具呼叫沒有對應的單一 REST path,這時 path 傳空字串)。
 	LogCall(endpoint, caller, path string, statusCode int, durationMs int64, err error)

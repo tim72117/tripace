@@ -123,16 +123,16 @@ func main() {
 		cmdDropTripGrouping(useDB, db)
 	case "rename-channel-to-trip":
 		cmdRenameChannelToTrip(useDB, db)
-	case "landmark-add":
-		cmdLandmarkAdd(useDB, db, args)
-	case "landmark-list":
-		cmdLandmarkList(useDB, db, args)
-	case "landmark-cities":
-		cmdLandmarkCities(useDB, db)
-	case "landmark-delete":
-		cmdLandmarkDelete(useDB, db, args)
-	case "landmark-update-photo":
-		cmdLandmarkUpdatePhoto(apiURL, args)
+	case "attraction-add":
+		cmdAttractionAdd(useDB, db, args)
+	case "attraction-list":
+		cmdAttractionList(useDB, db, args)
+	case "attraction-cities":
+		cmdAttractionCities(useDB, db)
+	case "attraction-delete":
+		cmdAttractionDelete(useDB, db, args)
+	case "attraction-update-photo":
+		cmdAttractionUpdatePhoto(apiURL, args)
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -310,14 +310,14 @@ func cmdRenameChannelToTrip(useDB bool, db *dbClient) {
 	output(map[string]any{"renamed": renamed})
 }
 
-// cmdLandmarkAdd 新增一筆景點區域資料(見 model.Attraction 的完整說明)。
+// cmdAttractionAdd 新增一筆景點區域資料(見 model.Attraction 的完整說明)。
 // 只在 -db 模式下有意義——這是人工建檔操作,不透過 HTTP(不開放給
 // 一般使用者寫入,避免資料被任意竄改)。
-func cmdLandmarkAdd(useDB bool, db *dbClient, args []string) {
+func cmdAttractionAdd(useDB bool, db *dbClient, args []string) {
 	if !useDB {
-		fatal("landmark-add 只能搭配 -db 使用（這是直接寫資料庫的人工建檔操作，不走 HTTP）")
+		fatal("attraction-add 只能搭配 -db 使用（這是直接寫資料庫的人工建檔操作，不走 HTTP）")
 	}
-	fs := flag.NewFlagSet("landmark-add", flag.ExitOnError)
+	fs := flag.NewFlagSet("attraction-add", flag.ExitOnError)
 	name := fs.String("name", "", "地標/區域白話名稱（必填），如「古城區」「101」")
 	city := fs.String("city", "", "所屬城市名稱（必填），對齊 GET /internal/geo/attractions?city= 的查詢字串")
 	lat := fs.Float64("lat", 0, "緯度（必填）")
@@ -328,10 +328,10 @@ func cmdLandmarkAdd(useDB bool, db *dbClient, args []string) {
 	photoURL := fs.String("photo-url", "", "代表性照片網址（選填）")
 	_ = fs.Parse(args)
 	if *name == "" || *city == "" || *level == 0 {
-		fatal("landmark-add 需要 -name、-city、-level（1~5）")
+		fatal("attraction-add 需要 -name、-city、-level（1~5）")
 	}
 	if *level < 1 || *level > 5 {
-		fatal("landmark-add 的 -level 必須介於 1~5")
+		fatal("attraction-add 的 -level 必須介於 1~5")
 	}
 	in := model.Attraction{
 		Name: *name, CityName: *city, Lat: *lat, Lng: *lng,
@@ -343,76 +343,76 @@ func cmdLandmarkAdd(useDB bool, db *dbClient, args []string) {
 	if *photoURL != "" {
 		in.PhotoURL = photoURL
 	}
-	res, err := db.landmarkAdd(in)
+	res, err := db.attractionAdd(in)
 	if err != nil {
-		fatal("landmark-add: %v", err)
+		fatal("attraction-add: %v", err)
 	}
 	output(res)
 }
 
-// cmdLandmarkList 列出指定城市的所有地標/區域資料。
-func cmdLandmarkList(useDB bool, db *dbClient, args []string) {
+// cmdAttractionList 列出指定城市的所有景點區域資料。
+func cmdAttractionList(useDB bool, db *dbClient, args []string) {
 	if !useDB {
-		fatal("landmark-list 只能搭配 -db 使用")
+		fatal("attraction-list 只能搭配 -db 使用")
 	}
-	fs := flag.NewFlagSet("landmark-list", flag.ExitOnError)
+	fs := flag.NewFlagSet("attraction-list", flag.ExitOnError)
 	city := fs.String("city", "", "城市名稱（必填）")
 	_ = fs.Parse(args)
 	if *city == "" {
-		fatal("landmark-list 需要 -city")
+		fatal("attraction-list 需要 -city")
 	}
-	res, err := db.landmarkList(*city)
+	res, err := db.attractionList(*city)
 	if err != nil {
-		fatal("landmark-list: %v", err)
+		fatal("attraction-list: %v", err)
 	}
 	output(res)
 }
 
-// cmdLandmarkCities 列出目前已有地標資料的城市清單。
-func cmdLandmarkCities(useDB bool, db *dbClient) {
+// cmdAttractionCities 列出目前已有景點區域資料的城市清單。
+func cmdAttractionCities(useDB bool, db *dbClient) {
 	if !useDB {
-		fatal("landmark-cities 只能搭配 -db 使用")
+		fatal("attraction-cities 只能搭配 -db 使用")
 	}
-	res, err := db.landmarkCities()
+	res, err := db.attractionCities()
 	if err != nil {
-		fatal("landmark-cities: %v", err)
+		fatal("attraction-cities: %v", err)
 	}
 	output(res)
 }
 
-// cmdLandmarkDelete 刪除一筆地標資料。
-func cmdLandmarkDelete(useDB bool, db *dbClient, args []string) {
+// cmdAttractionDelete 刪除一筆景點區域資料。
+func cmdAttractionDelete(useDB bool, db *dbClient, args []string) {
 	if !useDB {
-		fatal("landmark-delete 只能搭配 -db 使用")
+		fatal("attraction-delete 只能搭配 -db 使用")
 	}
-	fs := flag.NewFlagSet("landmark-delete", flag.ExitOnError)
+	fs := flag.NewFlagSet("attraction-delete", flag.ExitOnError)
 	id := fs.String("id", "", "地標 ID（必填）")
 	_ = fs.Parse(args)
 	if *id == "" {
-		fatal("landmark-delete 需要 -id")
+		fatal("attraction-delete 需要 -id")
 	}
-	if err := db.landmarkDelete(*id); err != nil {
-		fatal("landmark-delete: %v", err)
+	if err := db.attractionDelete(*id); err != nil {
+		fatal("attraction-delete: %v", err)
 	}
 	output(map[string]string{"deleted": *id})
 }
 
-// cmdLandmarkUpdatePhoto 重新透過 Google Places 查詢一次地標圖片並回寫
+// cmdAttractionUpdatePhoto 重新透過 Google Places 查詢一次地標圖片並回寫
 // 到資料庫——走 POST /internal/maintenance/landmarks/{id}/update-photo
-// (見 server/internal/api/maintenance.go 與 httpClient.landmarkUpdatePhoto
+// (見 server/internal/api/maintenance.go 與 httpClient.attractionUpdatePhoto
 // 的完整說明),不再限定 -db 模式。-query 未指定時用該筆地標既有的
 // 城市+名稱組成預設查詢字串(後端決定,不在 CLI 端組)。
-func cmdLandmarkUpdatePhoto(apiURL string, args []string) {
-	fs := flag.NewFlagSet("landmark-update-photo", flag.ExitOnError)
+func cmdAttractionUpdatePhoto(apiURL string, args []string) {
+	fs := flag.NewFlagSet("attraction-update-photo", flag.ExitOnError)
 	id := fs.String("id", "", "地標 ID（必填）")
 	query := fs.String("query", "", "查詢字串（選填，預設用該地標的城市+名稱）")
 	_ = fs.Parse(args)
 	if *id == "" {
-		fatal("landmark-update-photo 需要 -id")
+		fatal("attraction-update-photo 需要 -id")
 	}
-	res, err := newHTTPClient(apiURL).landmarkUpdatePhoto(*id, *query)
+	res, err := newHTTPClient(apiURL).attractionUpdatePhoto(*id, *query)
 	if err != nil {
-		fatal("landmark-update-photo: %v", err)
+		fatal("attraction-update-photo: %v", err)
 	}
 	output(res)
 }
@@ -493,20 +493,20 @@ func usage() {
                         entries/members/public_links 的 channel_id 欄位
                         改名 trip_id）。非常規操作，不加 -db 會直接報錯。
 
-  landmark-add    [僅限 -db] -name 文字 -city 文字 -lat 緯度 -lng 經度
+  attraction-add    [僅限 -db] -name 文字 -city 文字 -lat 緯度 -lng 經度
                         -level 1~5 [-radius 公尺] [-summary 文字] [-photo-url 網址]
-                        新增地標/區域資料（地理輪廓底圖用，構想 6，見
+                        新增景點區域資料（地理輪廓底圖用，構想 6，見
                         docs/TRIP_PLANNING_DESIGN_DISCUSSION.md）。分級對照：
                         1=國際（如 101） 2=國家（如中正紀念堂）
                         3=區域（如淡水、陽明山） 4=城市（如象山）
                         5=在地（如博愛特區、永康商圈、公館商圈）
-  landmark-list   [僅限 -db] -city 文字
-                        列出指定城市的所有地標/區域資料。
-  landmark-cities [僅限 -db]
-                        列出目前已有地標資料的城市清單。
-  landmark-delete [僅限 -db] -id 地標ID
-                        刪除一筆地標資料。
-  landmark-update-photo -id 地標ID [-query 文字]
+  attraction-list   [僅限 -db] -city 文字
+                        列出指定城市的所有景點區域資料。
+  attraction-cities [僅限 -db]
+                        列出目前已有景點區域資料的城市清單。
+  attraction-delete [僅限 -db] -id 地標ID
+                        刪除一筆景點區域資料。
+  attraction-update-photo -id 地標ID [-query 文字]
                         重新透過 Google Places 查詢一次圖片並回寫到資料庫
                         （走 /internal/maintenance/landmarks/{id}/update-photo，
                         需要先登入）。-query 未指定時，用該地標既有的城市+名稱

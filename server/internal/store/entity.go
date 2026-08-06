@@ -139,14 +139,14 @@ func (apiRequestLogRow) TableName() string { return "api_request_logs" }
 // Gateway 派送邏輯)——跟 apiRequestLogRow 是兩張不同語意的表:
 // apiRequestLogRow 記的是「別人打進我們的 server」(inbound),這張表記的
 // 是「我們的 server 打出去給 Google」(outbound)。同一次使用者操作
-// (例如地圖拖曳觸發 handleGeoDistrictsNearby)可能對應到這裡的多筆記錄
+// (例如地圖拖曳觸發 handleGeoAttractionsNearby)可能對應到這裡的多筆記錄
 // (一次 Nearby Search + 多次 Photo Media),兩張表不是一對一關係。
 //
 // Endpoint 是 geo 套件內部固定的邏輯端點名稱(如 "places.searchNearby"、
 // "places.photoMedia"、"geocode"),不是完整網址——完整網址含 API key 等
 // 敏感資訊,不該存進資料庫。Caller 是呼叫端透過 geo.WithCaller(ctx, ...)
-// 標記的識別字串(如 "handleGeoDistrictsNearby"),未標記時為 "unknown"。
-// Path 是觸發這次呼叫的我方 API 路徑(如 "/internal/geo/districts/
+// 標記的識別字串(如 "handleGeoAttractionsNearby"),未標記時為 "unknown"。
+// Path 是觸發這次呼叫的我方 API 路徑(如 "/internal/geo/attractions/
 // nearby",見 geo.WithPath 的說明)——跟 Caller 是兩個獨立維度:Caller
 // 指向程式碼位置,Path 指向對外曝露的路由。LLM 工具呼叫沒有對應的單一
 // REST path 時為空字串,不強行湊一個不準確的值。

@@ -103,12 +103,12 @@ type SearchAnswer struct {
 // 這是取代/擴充 server/internal/geo/district_aliases.go(手動整理的
 // 少量城市觀光慣稱分區,寫死在 Go 程式碼)的正式資料庫版本——後者
 // 只能靠改程式碼+重新部署才能新增資料,這個模型讓資料能透過 CLI
-// (tripace-cli landmark-add 等,見 cmd/cli)直接寫入資料庫,不需要
+// (tripace-cli attraction-add 等,見 cmd/cli)直接寫入資料庫,不需要
 // 改程式碼。
 type Attraction struct {
 	ID   string `json:"id"`
 	Name string `json:"name"` // 白話名稱,如「古城區」「101」
-	// CityName 用來查詢範圍(對齊 GET /internal/geo/districts?city= 的
+	// CityName 用來查詢範圍(對齊 GET /internal/geo/attractions?city= 的
 	// city 參數),同一個城市底下可以有任意數量、任意 Level 的 Attraction。
 	CityName string  `json:"cityName"`
 	Lat      float64 `json:"lat"`
@@ -122,7 +122,7 @@ type Attraction struct {
 	Summary      *string `json:"summary,omitempty"`
 	PhotoURL     *string `json:"photoUrl,omitempty"`
 	// UpdatedAt 是這筆資料最後一次寫入的時間(建立或透過
-	// UpdateLandmarkPhoto 等方式更新)——目前只單純曝露出來供人工核對
+	// UpdateAttractionPhoto 等方式更新)——目前只單純曝露出來供人工核對
 	// 哪些資料較舊,尚未實作自動過期判斷/自動重新整理。
 	UpdatedAt time.Time `json:"updatedAt"`
 }

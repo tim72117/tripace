@@ -70,11 +70,11 @@ func (s *Store) ListAttractionsByCity(cityName string) ([]model.Attraction, erro
 }
 
 // ListAttractionsNearby 回傳落在指定座標周圍矩形範圍內的所有景點區域
-// 資料,依 Level 由小到大排序——供地圖移動時「不用等按查看,直接依
-// 目前地圖範圍檢索」使用(見 server/internal/api/geo_outline.go 的
-// handleGeoDistrictsNearby),取代原本只能靠 ListAttractionsByCity(city
-// 名稱)才能查到的限制,讓使用者拖曳/縮放地圖到任何已建檔的城市範圍
-// 內都能自動冒出資料,不需要先知道城市名稱。
+// 資料,依 Level 由小到大排序——供地圖依目前可視範圍檢索使用(見
+// server/internal/api/geo_outline.go 的 handleGeoAttractionsNearby),
+// 取代原本只能靠 ListAttractionsByCity(city 名稱)才能查到的限制,讓
+// 使用者拖曳/縮放地圖到任何已建檔的城市範圍內都能查到資料,不需要先
+// 知道城市名稱。
 //
 // 用經緯度差值算矩形範圍(bounding box)做初步篩選,而非精確的球面
 // 距離公式(如 Haversine)——SQLite/一般 Postgres(未裝 PostGIS 擴充)
@@ -101,7 +101,7 @@ func (s *Store) ListAttractionsNearby(lat, lng, radiusMeters float64) ([]model.A
 }
 
 // ListAttractionCities 回傳目前資料庫裡已經有景點區域資料的城市名稱清單
-// (去重、依名稱排序)——供 CLI 的 landmark-cities 子命令列出「已建檔
+// (去重、依名稱排序)——供 CLI 的 attraction-cities 子命令列出「已建檔
 // 哪些城市」,不需要另外用其他方式查詢有沒有資料。
 func (s *Store) ListAttractionCities() ([]string, error) {
 	var cities []string
@@ -119,8 +119,8 @@ func (s *Store) DeleteAttraction(id string) error {
 	return s.db.Where("id = ?", id).Delete(&attractionRow{}).Error
 }
 
-// GetAttraction 依 ID 查單筆景點區域資料——供 CLI 的 landmark-update-photo
-// 指令(見 cmd/cli/db.go)先取得該筆的 Name/CityName,當作重新查詢
+// GetAttraction 依 ID 查單筆景點區域資料——供 CLI 的 attraction-update-photo
+// 指令(見 cmd/cli/http.go)先取得該筆的 Name/CityName,當作重新查詢
 // Google Places 圖片時的預設搜尋字串(未另外指定 -query 時)。
 func (s *Store) GetAttraction(id string) (model.Attraction, error) {
 	var r attractionRow
@@ -132,7 +132,7 @@ func (s *Store) GetAttraction(id string) (model.Attraction, error) {
 
 // UpdateAttractionPhoto 更新一筆景點區域的照片(data: URI,見
 // geo.Client.PhotoDataURI)。只更新 photo_url 與 updated_at 兩欄,不動
-// 其餘欄位——這支方法專門服務 CLI 的 landmark-update-photo(重新透過
+// 其餘欄位——這支方法專門服務 CLI 的 attraction-update-photo(重新透過
 // Google Places 抓圖後回寫),不是通用的景點區域編輯入口。
 func (s *Store) UpdateAttractionPhoto(id, photoURL string) error {
 	return s.db.Model(&attractionRow{}).

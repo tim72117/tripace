@@ -118,7 +118,7 @@ func (s *Server) handleGeoAttractions(w http.ResponseWriter, r *http.Request) {
 
 	// 三層 fallback,依優先順序:
 	//  1. store.ListAttractionsByCity——人工建檔的正式資料(見
-	//     model.Attraction、cmd/cli 的 landmark-add 等指令),含知名度
+	//     model.Attraction、cmd/cli 的 attraction-add 等指令),含知名度
 	//     分級(level),讓前端能依縮放層級篩選顯示粒度。這是最新、最
 	//     準確的資料來源。
 	//  2. geo.SearchKnownDistricts——手動整理但寫死在程式碼的少量城市資料
@@ -373,7 +373,7 @@ type placeDetailsResponse struct {
 // 才查得到內容——理由見 geo.GetPlaceDetails 的說明。
 //
 // 這是「使用者明確點擊、低頻觸發」的動作,跟 handleGeoPlacesNearby 同一種
-// 節流考量,不像 handleGeoDistrictsNearby 那樣要顧慮地圖高頻移動觸發大量
+// 節流考量,不像 handleGeoAttractionsNearby 那樣要顧慮地圖高頻移動觸發大量
 // Google API 呼叫成本,故直接即時查 Places API,不查自建資料庫。
 // placeDetailsCacheMaxAge 是 handleGeoPlaceDetails 快取結果視為新鮮的
 // 上限——原生 POI 點擊是使用者互動觸發、同一個地點短期內可能被反覆點擊
@@ -481,13 +481,13 @@ type placeResponse struct {
 // internal/wanttools/recommend_nearby.go 的 LLM 工具留空 category 時的
 // 行為)。
 //
-// 這是「使用者明確點擊、低頻觸發」的動作,不像 handleGeoDistrictsNearby
+// 這是「使用者明確點擊、低頻觸發」的動作,不像 handleGeoAttractionsNearby
 // 那樣要顧慮地圖高頻移動觸發大量 Google API 呼叫成本,故這裡直接即時查
 // Places API,不像那支端點只查自建資料庫——兩支端點的節流考量不同,
 // 不適合合併成同一支。
 //
 // 找不到任何地點時不視為錯誤,直接回傳空陣列(HTTP 200)——理由同
-// handleGeoDistrictsNearby。
+// handleGeoAttractionsNearby。
 func (s *Server) handleGeoPlacesNearby(w http.ResponseWriter, r *http.Request) {
 	lat, err := strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
 	if err != nil {
@@ -499,7 +499,7 @@ func (s *Server) handleGeoPlacesNearby(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid_input", "lng 查詢參數缺失或格式錯誤")
 		return
 	}
-	// radiusMeters 上限同 handleGeoDistrictsNearby,理由一致(避免任何
+	// radiusMeters 上限同 handleGeoAttractionsNearby,理由一致(避免任何
 	// 登入使用者反覆帶超大 radius 觸發大範圍、直接計費的 Google API 呼叫)。
 	const maxRadiusMeters = 50000.0
 	radiusMeters := 1500.0

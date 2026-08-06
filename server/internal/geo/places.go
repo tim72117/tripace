@@ -63,7 +63,7 @@ type callerCtxKey struct{}
 // 供 Gateway 記錄呼叫來源用(見 apigateway.CallLogger)。呼叫端(HTTP
 // handler/CLI 子命令/wanttools 工具)應該在呼叫任何 geo.Client 方法之前
 // 呼叫這個函式包一次 ctx,例如
-// WithCaller(ctx, "handleGeoDistrictsNearby")——建議直接用 handler/
+// WithCaller(ctx, "handleGeoAttractionsNearby")——建議直接用 handler/
 // 子命令/工具的函式名稱當識別字串,方便日後對照程式碼找到呼叫點。
 // 未呼叫過這個函式的 ctx,記錄時 caller 欄位會是 "unknown"(見
 // callerFromContext),不是必填、不會因為忘記設定而導致呼叫失敗。
@@ -84,8 +84,8 @@ type pathCtxKey struct{}
 // WithPath 把「觸發這次 Google API 呼叫的我方 API 路徑」放進 context,
 // 供 Gateway 記錄用(見 apigateway.CallLogger 對 path 欄位的說明)——跟
 // WithCaller 是兩個獨立維度:caller 是程式碼裡的識別字串(如
-// "handleGeoDistrictsNearby"),path 是對外曝露的路由(如
-// "/internal/geo/districts/nearby")。HTTP handler 通常直接傳
+// "handleGeoAttractionsNearby"),path 是對外曝露的路由(如
+// "/internal/geo/attractions/nearby")。HTTP handler 通常直接傳
 // r.URL.Path;若該路由含路徑變數(如 {id}),應傳註冊時的 pattern 字串而
 // 非字面路徑,避免同一條路由因為不同 ID 被統計成一堆各自獨立的資料列
 // (見 entry_geocode.go/maintenance.go 呼叫端的說明)。未呼叫過這個函式
@@ -603,7 +603,7 @@ func (c *Client) SearchDistricts(ctx context.Context, query string, maxResults i
 // 「古城區」「尼曼區」這類非官方行政區劃的觀光慣稱完全無效(Google
 // 的行政區劃資料庫沒有這種命名體系)。
 //
-// city 沒有命中已知城市時,回傳 (nil, false),呼叫端(handleGeoDistricts)
+// city 沒有命中已知城市時,回傳 (nil, false),呼叫端(handleGeoAttractions)
 // 應 fallback 呼叫 SearchDistricts。
 func (c *Client) SearchKnownDistricts(ctx context.Context, city string) ([]District, bool) {
 	aliases, ok := lookupKnownDistricts(city)
@@ -645,8 +645,8 @@ func (c *Client) SearchKnownDistricts(ctx context.Context, city string) ([]Distr
 // editorialSummary(皆屬 Pro 級欄位),故不直接複用 Search。
 //
 // 供 SearchKnownDistricts(構想 6 過渡資料,見 district_aliases.go)當
-// 該區白話簡介用,也供 cmd/cli 的 landmark-update-photo 指令(見
-// cmd/cli/db.go 的 landmarkUpdatePhoto)重新查詢地標圖片時使用——
+// 該區白話簡介用,也供 cmd/cli 的 attraction-update-photo 指令(見
+// cmd/cli/http.go 的 attractionUpdatePhoto)重新查詢地標圖片時使用——
 // 這是套件對外的正式入口,故大寫匯出而非只服務套件內部。
 func (c *Client) SearchLandmarkWithPhoto(ctx context.Context, query string) (place Place, photoRef string, rating float64, summary string, err error) {
 	if c.apiKey == "" {
@@ -850,7 +850,7 @@ func (c *Client) fetchPhotoAsDataURI(ctx context.Context, placeID, photoResource
 
 	// 快取命中則直接回傳,不打 Google——這是解決「同一批飯店/地點隨地圖
 	// 移動被重複查詢、每次都重新下載同一張照片」問題的關鍵(見
-	// server/internal/api/geo_outline.go 的 handleGeoDistrictsNearby)。
+	// server/internal/api/geo_outline.go 的 handleGeoAttractionsNearby)。
 	// c.cache 為 nil、或 placeID 為空字串時都視為快取不可用(見上方
 	// 函式說明),兩者都是 no-op,直接往下真的向 Google 查詢。
 	if c.cache != nil && placeID != "" {
@@ -1035,7 +1035,7 @@ func (c *Client) SearchNearby(ctx context.Context, lat, lng float64, opts *Nearb
 // PhotoDataURI 是 fetchPhotoAsDataURI 的匯出包裝,供套件外(api 層)
 // 把 NearbyPlace.PhotoRef 轉成可直接當 <img src> 用的 data: URI。
 // fetchPhotoAsDataURI 本身未匯出,是因為它原本只服務套件內部的
-// SearchDistricts/SearchKnownDistricts;飯店圖層(handleGeoDistricts)
+// SearchDistricts/SearchKnownDistricts;飯店圖層(handleGeoAttractions)
 // 需要在套件外對 NearbyPlace 結果做同樣的轉換,故加這層薄包裝,
 // 不重複實作下載邏輯。
 func (c *Client) PhotoDataURI(ctx context.Context, placeID, photoRef string, maxWidthPx int) (string, error) {
