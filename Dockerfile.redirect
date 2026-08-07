@@ -1,0 +1,38 @@
+# redirectserver 容器映像——把 app.shuttle.tools 的所有請求 301 導到
+# https://tripace.shuttle.tools(見 server/cmd/redirectserver/main.go 的
+# 完整說明)。build context 為「專案根目錄」,COPY 路徑相對根目錄寫,
+# 與其餘 Dockerfile 共用同一份 server/ 原始碼與 go.mod,只是編譯目標換成
+# ./cmd/redirectserver。
+#
+# 這支服務不依賴任何 internal 套件、不連資料庫、沒有前端——不需要
+# web-build 階段,是這幾支 Dockerfile 裡最精簡的一份,但仍需要 GH_PAT
+# (go.mod 列出整個 server 模組的相依,含私有的 github.com/tim72117/want,
+# go mod download 會嘗試解析每一項,即使 redirectserver 沒有實際 import)。
+#
+# 建置(從專案根目錄):
+#   docker build -f Dockerfile.redirect --build-arg GH_PAT=<token> -t tripace-redirect .
+# 本機跑:
+#   docker run --rm -p 8080:8080 tripace-redirect
+
+FROM golang:1.26 AS build
+
+# go.mod 列出整個 server 模組的相依(含私有的 github.com/tim72117/want),
+# 即使 redirectserver 本身不 import 它,go mod download 仍會嘗試解析
+# go.mod 裡的每一項,需要這個 credential 才能讀到私有 repo。
+ARG GH_PAT
+RUN git config --global url."https://${GH_PAT}@github.com/".insteadOf "https://github.com/"
+
+COPY server/go.mod server/go.sum /src/server/
+RUN cd /src/server && go mod download
+
+COPY server/ /src/server/
+
+RUN cd /src/server && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+    -o /out/redirectserver ./cmd/redirectserver
+
+FROM gcr.io/distroless/static-debian12:nonroot
+WORKDIR /app
+COPY --from=build /out/redirectserver /app/redirectserver
+
+EXPOSE 8080
+ENTRYPOINT ["/app/redirectserver"]

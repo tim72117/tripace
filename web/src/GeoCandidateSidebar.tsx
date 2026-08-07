@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Car, Hotel, ListPlus, MapPin, Plane, StickyNote, Ticket, Undo2, UtensilsCrossed } from 'lucide-react'
 import { isSubmitEnter } from './AppCommon'
 import * as api from './api'
@@ -358,6 +358,7 @@ export function GeoCandidateSidebar({
   onPickFromCandidate,
   draggingCandidate,
   onDraggingCandidateChange,
+  flashTrigger,
 }: {
   cfg: ClientConfig
   // tripID:拖曳純候選(飯店/景點/推薦地點)進日層架某一天時,要把它寫成
@@ -405,6 +406,16 @@ export function GeoCandidateSidebar({
   // 知道。
   draggingCandidate: GeoCandidate | null
   onDraggingCandidateChange: (c: GeoCandidate | null) => void
+  // flashTrigger:GeoInfoPanel 複合按鈕右半邊(見該元件 onAddAndReveal 的
+  // 說明)按下、候選加入成功後遞增——這個側欄在那顆按鈕能被按到的情境下
+  // 本來就已經展開顯示(沒有獨立的收合/展開開關可以觸發),故改用這個計數
+  // 器觸發一次短暫的 highlight 動畫(見下方 useEffect 與
+  // GeoCandidateSidebar.module.css 的 .panelFlash),提示使用者「東西加進
+  // 候選籃了、看這裡」。用遞增計數器而非 boolean,是因為使用者可能連續
+  // 按好幾次,即使動畫還沒播完,遞增值仍保證每次都是新的 effect 依賴值、
+  // 能重新觸發一次動畫。undefined/初始值 0 時不觸發(見下方 useEffect 的
+  // 判斷),避免元件剛掛載就無端播一次動畫。
+  flashTrigger?: number
 }) {
   // 已排入行程:kind === 'entry' && inTrip === true 是行程本身已有座標的
   // 既有內容(進入規劃分頁時自動帶入,見上方型別註解),不是使用者用「+」
@@ -562,6 +573,20 @@ export function GeoCandidateSidebar({
   // recordEntry,兩種來源都沒有合理行為,故一併排除。
   const [dragOverDay, setDragOverDay] = useState<string | null>(null)
 
+  // flashing:flashTrigger 遞增時短暫設成 true、套上 .panelFlash 動畫
+  // class,動畫播完(見 CSS 的 animation-duration)後自動歸回 false——
+  // 用 setTimeout 而非 CSS animationend 事件監聽,是因為這個動畫只是
+  // 單純的一次性提示,不需要處理動畫被中途打斷等複雜情境,setTimeout
+  // 已經足夠。flashTrigger 為 0(初始值,見上方 prop 說明)或 undefined
+  // 時不觸發,只在真的遞增過至少一次後才會進到這個 effect 的 true 分支。
+  const [flashing, setFlashing] = useState(false)
+  useEffect(() => {
+    if (!flashTrigger) return
+    setFlashing(true)
+    const t = setTimeout(() => setFlashing(false), 900)
+    return () => clearTimeout(t)
+  }, [flashTrigger])
+
   const handleDropOnDay = async (dayKey: string) => {
     setDragOverDay(null)
     const c = draggingCandidate
@@ -596,7 +621,7 @@ export function GeoCandidateSidebar({
   }
 
   return (
-    <div className={styles.panel}>
+    <div className={`${styles.panel}${flashing ? ` ${styles.panelFlash}` : ''}`}>
       <div className={styles.searchRow}>
         <input
           className={styles.searchInput}
@@ -611,9 +636,6 @@ export function GeoCandidateSidebar({
         </button>
       </div>
       {searchError && <div className={styles.searchError}>{searchError}</div>}
-      <div className="desktop-sidebar-head">
-        <span className="desktop-sidebar-title">候選籃 · {candidates.length}</span>
-      </div>
       <div className={styles.list}>
         {candidates.length === 0 ? (
           <div className={styles.empty}>

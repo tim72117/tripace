@@ -1,0 +1,89 @@
+name: Deploy Redirect Service to Cloud Run
+
+# redirectserver(見 server/cmd/redirectserver/main.go)是一支極簡的獨立
+# 服務,唯一職責是把 app.shuttle.tools 的請求 301 導到
+# https://tripace.shuttle.tools——這個網域早期是本產品用過的網址,DNS
+# 記錄還在,這支服務讓還連到舊網址的連結/書籤自動落地到現在的正式網域。
+#
+# 跟其餘服務(deploy-cloudrun.yml/deploy-admin.yml)一樣改為打 v* 格式的
+# git tag 觸發部署,對齊 .claude/skills/version-tagging 的流程——雖然
+# 這支服務完全不觸及資料庫 schema,理論上可以用更寬鬆的觸發條件,但沿用
+# 同一套「tag = 這個版本確認要上線」的觸發語意,讓所有服務的部署時機
+# 保持一致、好理解,不需要為這一支額外記一套不同的規則。
+#
+# workflow_dispatch 仍保留,供不方便打 tag、或需要 skip_build 這種
+# 特殊情境時手動觸發。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      skip_build:
+        description: '只部署不重新 build（使用現有 latest image）'
+        type: boolean
+        default: false
+
+env:
+  GCP_PROJECT_ID: "shuttle-045094509"
+  CLOUD_RUN_SERVICE: "tripace-redirect"
+  CLOUD_RUN_REGION: "asia-east1"
+  IMAGE: "asia-east1-docker.pkg.dev/shuttle-045094509/cloud-run-source-deploy/tripace-redirect"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker asia-east1-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        if: ${{ !inputs.skip_build }}
+        run: |
+          docker build \
+            -f Dockerfile.redirect \
+            --build-arg GH_PAT=${{ secrets.GH_PAT }} \
+            -t ${{ env.IMAGE }}:${{ github.sha }} \
+            -t ${{ env.IMAGE }}:latest \
+            .
+
+      - name: Push image
+        if: ${{ !inputs.skip_build }}
+        run: |
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+          docker push ${{ env.IMAGE }}:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.CLOUD_RUN_SERVICE }} \
+            --image=${{ env.IMAGE }}:${{ inputs.skip_build && 'latest' || github.sha }} \
+            --region=${{ env.CLOUD_RUN_REGION }} \
+            --allow-unauthenticated \
+            --quiet
+
+      # app.shuttle.tools 的 domain mapping 只需要建立一次(見部署後的手動
+      # 步驟說明,不在這支 workflow 裡自動建立)——beta 指令、且網域驗證/
+      # DNS 記錄本身不會因為重新部署而改變,每次部署都嘗試建立既無必要、
+      # 遇到「已存在」還會讓這個 step 失敗,徒增噪音。
+      - name: Show Cloud Run URL
+        run: |
+          URL=$(gcloud run services describe ${{ env.CLOUD_RUN_SERVICE }} \
+            --region ${{ env.CLOUD_RUN_REGION }} \
+            --format 'value(status.url)')
+          echo "### 重導向服務部署完成" >> "$GITHUB_STEP_SUMMARY"
+          echo "URL: $URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "網域對應(app.shuttle.tools → ${{ env.CLOUD_RUN_SERVICE }})只需建立一次,見 server/cmd/redirectserver 的說明。" >> "$GITHUB_STEP_SUMMARY"
+          echo "$URL"

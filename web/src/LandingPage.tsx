@@ -1,22 +1,22 @@
 // 產品介紹 landing page:依 Tripace 行程規劃的實際功能撰寫。
 // 路由:pathname = /(見 App.tsx)。全寬呈現,不套 iPhone 外框。
 import {
-  MessageSquareText, CalendarRange, Route, Search,
+  Map, CalendarRange, Route, Search,
   Users, Share2, Navigation,
 } from 'lucide-react'
 import './landing.css'
 
-// 產品核心功能,對齊 App 實作(assist 記事、時間軸、路徑地圖、語意查詢、協作、分享、導航)。
+// 產品核心功能,對齊 App 實作(地圖探索候選籃、拖曳排程、時間軸、路徑地圖、語意查詢、協作、分享)。
 const FEATURES = [
   {
-    icon: MessageSquareText,
-    title: '一句話記事',
-    desc: '用自然口語說出行程,AI 自動判斷該記錄還是回答,並把口語整理成事項、時間與地點。',
+    icon: Map,
+    title: '地圖探索候選籃',
+    desc: '在地圖上瀏覽附近的飯店、景點、餐廳,喜歡的先丟進候選籃,不用馬上決定排哪一天。',
   },
   {
     icon: CalendarRange,
-    title: '多軌時間軸',
-    desc: '行程依時間自動排列成時間軸,跨日行程以主線串連,點一下即可展開細節。',
+    title: '拖曳排入日程',
+    desc: '把候選拖進日層架的某一天,立刻變成正式的行程項目;還沒想好的維持候選狀態,不佔行程版面。',
   },
   {
     icon: Route,
@@ -40,11 +40,11 @@ const FEATURES = [
   },
 ]
 
-// 三步驟流程:說 → 整理 → 成行。
+// 三步驟流程:探索 → 拖曳排入 → 成行。
 const STEPS = [
-  { n: '1', title: '說出來', desc: '「7/20 早上 10 點東京車站集合,晚上住新宿。」' },
-  { n: '2', title: '自動整理', desc: 'AI 抽出事項、時間、地點,寫成結構化條目。' },
-  { n: '3', title: '成一趟行程', desc: '條目排上時間軸、標在地圖上,分享給同行的人。' },
+  { n: '1', title: '探索', desc: '在地圖上瀏覽附近的飯店、景點、餐廳,點喜歡的地方丟進候選籃。' },
+  { n: '2', title: '拖曳排入', desc: '把候選拖進日層架的某一天,馬上變成正式的行程項目。' },
+  { n: '3', title: '成一趟行程', desc: '項目排上時間軸、標在地圖上,分享給同行的人。' },
 ]
 
 export function LandingPage() {
@@ -61,17 +61,17 @@ export function LandingPage() {
       {/* 主視覺 */}
       <section className="landing-hero">
         <span className="landing-eyebrow">
-          <Navigation size={14} strokeWidth={2} /> 行程規劃,說一句話就好
+          <Navigation size={14} strokeWidth={2} /> 行程規劃,從地圖開始
         </span>
         <h1 className="landing-title">
-          用口語把行程<br />變成<span className="lp-accent">一目了然的時間軸</span>
+          在地圖上探索,<br />拖曳就<span className="lp-accent">排進行程</span>
         </h1>
         <p className="landing-subtitle">
-          Tripace 讓你用自然語言記錄行程,AI 自動整理成事項、時間與地點,
-          排上時間軸、歸成一趟行程,還能和同行的人一起編輯、分享。
+          Tripace 讓你在地圖上瀏覽飯店、景點與餐廳,喜歡的先丟進候選籃,
+          想好哪天要去,直接拖進日層架就成一趟行程,還能和同行的人一起編輯、分享。
         </p>
         <div className="landing-cta-row">
-          <a className="landing-btn-primary" href="/app">免費開始</a>
+          <a className="landing-btn-primary" href="/app">開始規劃</a>
         </div>
       </section>
 
@@ -107,12 +107,22 @@ export function LandingPage() {
 
       {/* 結尾行動呼籲 */}
       <section className="landing-final">
-        <h2 className="landing-final-title">下一趟旅程,從一句話開始</h2>
+        <h2 className="landing-final-title">下一趟旅程,從地圖開始探索</h2>
         <a className="landing-btn-primary" href="/app">立即開始規劃</a>
       </section>
 
       <footer className="landing-footer">
         <span className="landing-footer-brand">Tripace · 行程規劃</span>
+        {/* 法律資訊列(隱私權政策/條款等)——目前這幾個連結還沒有對應頁面,
+            先建立版面結構,連結指向的頁面之後補上時直接換 href 即可。 */}
+        <div className="landing-footer-bar">
+          <span className="landing-footer-copyright">Copyright © 2026 Tripace</span>
+          <nav className="landing-footer-links">
+            <a href="/privacy">隱私權政策</a>
+            <a href="/terms">服務條款</a>
+            <a href="#">聯絡我們</a>
+          </nav>
+        </div>
       </footer>
     </div>
   )

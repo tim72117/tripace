@@ -292,6 +292,87 @@
   font-weight: 600;
 }
 
+/* landing-footer-bar:法律資訊列(隱私權政策/條款等),對齊常見的公司
+   footer 版面——左邊版權宣告、右邊連結列,窄螢幕下換行堆疊。撐滿
+   .landing-footer 的寬度,故用 align-self 覆蓋掉外層 .landing-footer 的
+   align-items: center。 */
+.landing-footer-bar {
+  align-self: stretch;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--lp-sep);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  font-size: 13px;
+}
+.landing-footer-copyright {
+  color: var(--lp-gray);
+}
+.landing-footer-links {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.landing-footer-links a {
+  color: var(--lp-gray);
+  text-decoration: none;
+}
+.landing-footer-links a:hover {
+  color: var(--lp-ocean-deep);
+  text-decoration: underline;
+}
+
+/* legal-main:隱私權政策/服務條款頁面的內文區(見 LegalPage.tsx)——窄版
+   單欄閱讀寬度,跟 .landing-hero 的置中大字排版不同,這裡是長篇段落,
+   靠左對齊、行高放寬方便閱讀。 */
+.legal-main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 56px 24px 72px;
+}
+.legal-title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--lp-ink);
+}
+.legal-updated {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--lp-gray);
+}
+.legal-body {
+  margin-top: 32px;
+  line-height: 1.75;
+  color: var(--lp-ink);
+}
+.legal-body h2 {
+  margin: 32px 0 12px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--lp-ocean-deep);
+}
+.legal-body h2:first-child {
+  margin-top: 0;
+}
+.legal-body p {
+  margin: 0 0 12px;
+}
+.legal-body ul {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+.legal-body li {
+  margin-bottom: 6px;
+}
+.legal-body a {
+  color: var(--lp-ocean-deep);
+}
+
 /* 窄螢幕 */
 @media (max-width: 720px) {
   .landing-title { font-size: 38px; }

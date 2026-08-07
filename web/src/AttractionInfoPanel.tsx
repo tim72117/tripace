@@ -23,6 +23,7 @@ export function AttractionInfoPanel({
   attraction,
   onClose,
   onExplore,
+  shiftLeft,
 }: {
   attraction: GeoAttraction | null
   onClose: () => void
@@ -31,6 +32,10 @@ export function AttractionInfoPanel({
   // GeoOutlineMap.tsx handleAttractionClick 已有的 planAttractionClick
   // 決策邏輯,只是這次由按鈕觸發而非直接點地圖上的地標)。
   onExplore: (attraction: GeoAttraction) => void
+  // shiftLeft:理由同 GeoInfoPanel.tsx 的同名 prop——GeoHotelSidebar
+  // 有內容顯示時會漂浮在 .desktop-main 右緣之上,跟這張卡片預設定位
+  // 重疊,由呼叫端判斷後傳入,把卡片推到它左側。
+  shiftLeft?: boolean
 }) {
   if (!attraction) return null
 
@@ -41,7 +46,7 @@ export function AttractionInfoPanel({
   ]
 
   return (
-    <div className={styles.panel}>
+    <div className={`${styles.panel}${shiftLeft ? ` ${styles.shifted}` : ''}`}>
       <div className={styles.head}>
         <span className={styles.title}>地點介紹</span>
         <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">

@@ -4,6 +4,30 @@
   height: 100%;
 }
 
+/* panelFlash:GeoInfoPanel 複合按鈕右半邊(見該元件 onAddAndReveal 的
+   說明)按下、候選加入候選籃後,這個側欄短暫套上的 highlight 動畫——
+   這個側欄在那顆按鈕能被按到的情境下本來就已經展開顯示,沒有獨立的
+   「收合/展開」動作可以做,改用 accent 色的邊框脈動提示使用者「東西
+   加進候選籃了、看這裡」。視覺語彙借鏡 styles-desktop.css 的
+   add-from-candidate-sidebar-in(同樣用 accent 色系傳達「這裡剛發生了
+   跟候選籃相關的變化」),但那個是「掛載時滑入」的一次性效果,這裡是
+   「已掛載元件被重新提示」,故用 outline 脈動而非位移,兩種情境不適合
+   共用同一個 keyframe。 */
+.panelFlash {
+  animation: panelFlashPulse 0.9s ease-out;
+}
+
+@keyframes panelFlashPulse {
+  0% {
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-accent) 70%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  }
+  100% {
+    box-shadow: inset 0 0 0 2px transparent;
+    background: transparent;
+  }
+}
+
 /* searchRow:城市搜尋欄,從 GeoOutlinePanel.tsx 疊在地圖上方的浮動毛玻璃
    搜尋列搬過來——側欄本身是不透明底色的靜態表單區,不需要 backdrop-filter
    毛玻璃處理(那是為了讓地圖內容從底下透出來才需要的效果,搬進側欄後

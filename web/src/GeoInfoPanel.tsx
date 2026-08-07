@@ -1,4 +1,4 @@
-import { FolderPlus, Plus, X } from 'lucide-react'
+import { PanelLeft, Plus, X } from 'lucide-react'
 import type { GeoCandidate } from './GeoCandidateSidebar'
 import styles from './GeoInfoPanel.module.css'
 
@@ -43,11 +43,18 @@ export function GeoInfoPanel({
   content,
   onClose,
   onAddCandidate,
-  onAddToNewTrip,
+  onAddAndReveal,
   tripName,
+  shiftLeft,
 }: {
   content: GeoInfoContent | null
   onClose: () => void
+  // shiftLeft:GeoHotelSidebar(飯店/附近推薦清單)有內容顯示時,那個
+  // 側欄會漂浮在 .desktop-main 右緣之上(見 styles-desktop.css 的
+  // .geo-hotel-sidebar-wrap),跟這張卡片預設的定位重疊——由呼叫端
+  // (DesktopLayout.tsx)判斷 GeoHotelSidebar 目前是否顯示、傳入這個
+  // flag,把卡片推到它左側,詳見 GeoInfoPanel.module.css 的 .shifted。
+  shiftLeft?: boolean
   // onAddCandidate:「加入候選」按鈕觸發,理由同 GeoHotelSidebar 卡片上
   // 既有的同名 callback——這裡刻意不做「已在候選籃裡就不顯示按鈕」的
   // 判斷,重複加入由呼叫端的候選籃 state 用內容比對去重(見
@@ -57,11 +64,16 @@ export function GeoInfoPanel({
   // 明確要求「地點介紹」的加入候選維持單純的一鍵加入,日期改到已排入
   // 行程分組的「從候選加入」入口(見 GeoCandidateSidebar.tsx)再指定。
   onAddCandidate?: (candidate: GeoCandidate) => void
-  // onAddToNewTrip:複合按鈕右半邊(只有 FolderPlus icon)觸發,「加入
-  // 候選」的變化版——把這個地點直接加到一個新行程,而不是目前選取的
-  // activeTrip。實際「建立新行程」的邏輯留在呼叫端(DesktopLayout.tsx)
-  // 之後再接,這個元件只負責原封不動往上回報使用者按了這顆按鈕。
-  onAddToNewTrip?: (candidate: GeoCandidate) => void
+  // onAddAndReveal:複合按鈕右半邊(只有 PanelLeft icon)觸發——跟左半邊
+  // onAddCandidate 一樣是單純加入候選籃(同一個動作、不涉及日期選擇),
+  // 差別只在於這顆按鈕額外承諾「加入後讓使用者看得到剛加的項目」:候選籃
+  // 側欄(GeoCandidateSidebar)在這個複合按鈕能被按到的情境下(panelMode
+  // === 'geo-outline')本來就已經展開顯示,沒有獨立的「收合/展開」開關
+  // 可以在這個情境下額外觸發,故這裡改成呼叫端在側欄上打一個短暫的
+  // highlight 動畫(見 DesktopLayout.tsx 的 geoCandidateFlashTrigger),
+  // 讓使用者感覺到「東西加進候選籃了、去左邊看」。這個元件不知道呼叫端
+  // 具體怎麼做視覺提示,只負責原封不動往上回報使用者按了這顆按鈕。
+  onAddAndReveal?: (candidate: GeoCandidate) => void
   // tripName:左半邊按鈕文字「加入 {tripName}」要顯示的行程名稱,由呼叫端
   // (DesktopLayout.tsx)傳入 activeTrip?.name——這個元件不猜行程名稱從
   // 哪來,呼叫端已經有 activeTrip 可用,由它決定 fallback 文字。
@@ -72,7 +84,7 @@ export function GeoInfoPanel({
   const candidate = content.candidate
 
   return (
-    <div className={styles.panel}>
+    <div className={`${styles.panel}${shiftLeft ? ` ${styles.shifted}` : ''}`}>
       <div className={styles.head}>
         <span className={styles.title}>地點介紹</span>
         <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
@@ -113,11 +125,11 @@ export function GeoInfoPanel({
               <button
                 type="button"
                 className={styles.addToNewTripBtn}
-                onClick={() => onAddToNewTrip?.(candidate)}
-                title="加入到新行程"
-                aria-label="加入到新行程"
+                onClick={() => onAddAndReveal?.(candidate)}
+                title="加入候選並顯示候選籃"
+                aria-label="加入候選並顯示候選籃"
               >
-                <FolderPlus size={14} strokeWidth={2} />
+                <PanelLeft size={14} strokeWidth={2} />
               </button>
             </div>
           )}

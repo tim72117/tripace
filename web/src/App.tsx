@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom'
 import { LandingPage } from './LandingPage'
+import { PrivacyPage } from './PrivacyPage'
+import { TermsPage } from './TermsPage'
 import { CliAuthPage } from './CliAuthPage'
 import { DeviceAuthPage } from './DeviceAuthPage'
 import { useAppState } from './AppCommon'
@@ -25,6 +27,9 @@ export function App() {
       <Routes>
         {/* 根路徑渲染產品介紹 landing page(全寬,不套 phone 外框)。 */}
         <Route path="/" element={<LandingPage />} />
+        {/* 隱私權政策/服務條款——沿用 LandingPage 的視覺語言,見 LegalPage.tsx。 */}
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
         {/* /public/{token} 路徑:直接渲染公開分享頁。原本用正則
             /^\/public\/([^/]+)$/ 手動解析 token,改用 Route 的 :token
             路徑參數 + useParams() 取代。 */}

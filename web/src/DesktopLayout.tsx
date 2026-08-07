@@ -293,15 +293,26 @@ export function DesktopContent(props: ContentProps) {
         : [...prev, c],
     )
   }, [])
-  // addGeoCandidateToNewTrip:GeoInfoPanel 複合按鈕右半邊(FolderPlus icon)
-  // 的 placeholder 實作——「加入到新行程」目前還沒有對應的建立新行程
-  // API,先用 console.log 佔位,避免使用者點了按鈕完全沒反應。
-  // TODO: 之後要接「建立新行程」API——建立成功後把 candidate 加進那個
-  // 新行程(而不是目前的 activeTrip),再考慮是否要順便切換 activeTrip
-  // 到新建立的行程。
-  const addGeoCandidateToNewTrip = useCallback((c: GeoCandidate) => {
-    console.log('[TODO] 加入到新行程尚未實作,candidate:', c)
-  }, [])
+  // geoCandidateFlashTrigger:候選籃側欄(GeoCandidateSidebar)「剛加入
+  // 東西了」的視覺提示觸發器——每次遞增觸發一次短暫的 highlight 動畫(見
+  // GeoCandidateSidebar.module.css 的 .panelFlash)。之所以需要這個,而不是
+  // 直接「展開/收合」側欄:GeoInfoPanel 複合按鈕只在 panelMode ===
+  // 'geo-outline' 底下能被按到,而 GeoCandidateSidebar 在
+  // isSidepanelMode(見該變數說明)同一個條件下已經展開顯示,沒有獨立的
+  // 「收合/展開」開關能在這個情境下額外觸發——用遞增計數器(而非
+  // boolean)是因為使用者可能連續加入好幾個候選,即使側欄的 flash 動畫
+  // 還沒播完,遞增值仍能保證每次都是新的 useEffect 依賴值、重新觸發一次
+  // 動畫(boolean 在連續兩次都設成 true 時不會變動,不會重新觸發)。
+  const [geoCandidateFlashTrigger, setGeoCandidateFlashTrigger] = useState(0)
+  // addGeoCandidateAndReveal:GeoInfoPanel 複合按鈕右半邊(PanelLeft icon)
+  // 觸發——跟左半邊 addGeoCandidate 一樣單純加入候選籃(同一份去重邏輯,
+  // 不涉及日期選擇),額外多做的事只有讓候選籃側欄短暫 highlight 一下,
+  // 提示使用者「加進去了,去左邊看」(側欄本身在這個情境下必然已經展開,
+  // 詳見 geoCandidateFlashTrigger 的說明)。
+  const addGeoCandidateAndReveal = useCallback((c: GeoCandidate) => {
+    addGeoCandidate(c)
+    setGeoCandidateFlashTrigger((n) => n + 1)
+  }, [addGeoCandidate])
   // geoSearchCity/geoSearchTrigger/geoSearchState:城市搜尋欄的狀態,UI
   // 渲染在 GeoCandidateSidebar(左側候選籃側欄最上方),查詢邏輯留在
   // GeoOutlinePanel.tsx(見該檔案的說明)——兩者是分開掛載的 sibling,
@@ -467,6 +478,15 @@ export function DesktopContent(props: ContentProps) {
   // onTimelineData 真的變動時才換參照,打斷這個迴圈。
   const desktopChat = useMemo(() => ({ onTimelineData }), [onTimelineData])
 
+  // geoHotelSidebarVisible:跟下方 GeoHotelSidebar 實際渲染的條件完全
+  // 一致——GeoInfoPanel/AttractionInfoPanel 都定位在 .desktop-main 右緣
+  // (見 GeoInfoPanel.module.css/AttractionInfoPanel.module.css 的
+  // .panel),GeoHotelSidebar 有內容時會漂浮在同一個位置(見
+  // styles-desktop.css 的 .geo-hotel-sidebar-wrap),兩張卡片需要知道
+  // 要不要往左避讓(見兩者的 shiftLeft prop 說明)。抽成一個變數,避免
+  // 下方兩處 JSX 各自重複同一段條件判斷式、之後改其中一處忘了同步另一處。
+  const geoHotelSidebarVisible = panelMode === 'geo-outline' && (geoHotels.length > 0 || geoPlaces.length > 0)
+
   return (
     <>
       <div className="desktop-layout">
@@ -573,6 +593,7 @@ export function DesktopContent(props: ContentProps) {
                 draggingCandidate={draggingCandidate}
                 onDraggingCandidateChange={setDraggingCandidate}
                 onPickFromCandidate={setPickingDayKey}
+                flashTrigger={geoCandidateFlashTrigger}
               />
             )}
           </div>
@@ -706,13 +727,15 @@ export function DesktopContent(props: ContentProps) {
               content={geoInfoContent}
               onClose={() => setGeoInfoContent(null)}
               onAddCandidate={addGeoCandidate}
-              onAddToNewTrip={addGeoCandidateToNewTrip}
+              onAddAndReveal={addGeoCandidateAndReveal}
               tripName={activeTrip?.name ?? '行程'}
+              shiftLeft={geoHotelSidebarVisible}
             />
             <AttractionInfoPanel
               attraction={geoAttractionContent}
               onClose={() => setGeoAttractionContent(null)}
               onExplore={handleExploreAttraction}
+              shiftLeft={geoHotelSidebarVisible}
             />
             </>
           ) : panelMode === 'demo-cards' || panelMode === 'demo-row'
