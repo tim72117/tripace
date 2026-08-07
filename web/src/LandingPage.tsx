@@ -123,6 +123,18 @@ export function LandingPage() {
             <a href="#">聯絡我們</a>
           </nav>
         </div>
+        {/* powered-by:單純的信用背書/合作標註,連到 onagent 平台官網——
+            不代表 onagent 目前是正式功能的必要依賴(見 clienttools/
+            OnagentBridgeDemo.tsx,那是預設關閉的試做面板),純粹是想在
+            首頁掛上這個連結。 */}
+        <a
+          className="landing-footer-poweredby"
+          href="https://onagent.shuttle.tools"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Powered by onagent
+        </a>
       </footer>
     </div>
   )

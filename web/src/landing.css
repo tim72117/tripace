@@ -325,6 +325,21 @@
   text-decoration: underline;
 }
 
+/* landing-footer-poweredby:單純的信用背書連結(見 LandingPage.tsx 的
+   說明),字級比其餘 footer 文字更小、更淡,不搶主要法律資訊列的視覺
+   份量。 */
+.landing-footer-poweredby {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--lp-gray);
+  text-decoration: none;
+  opacity: 0.75;
+}
+.landing-footer-poweredby:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
 /* legal-main:隱私權政策/服務條款頁面的內文區(見 LegalPage.tsx)——窄版
    單欄閱讀寬度,跟 .landing-hero 的置中大字排版不同,這裡是長篇段落,
    靠左對齊、行高放寬方便閱讀。 */
