@@ -27,6 +27,10 @@
 //	rename-channel-to-trip   一次性維運指令,把 channel→trip 改名的資料庫結構
 //	                     變更落實(channels 表改名 trips、channel_id 欄位改名
 //	                     trip_id)(僅 -db 模式)
+//	fix-photo-cache-schema   一次性維運指令,修復 photo_cache 表仍停留在
+//	                     更早期 schema(photo_ref 為主鍵一部分)的問題,清空
+//	                     重建成 (place_id, photo_index, max_width_px) 主鍵
+//	                     (僅 -db 模式)
 //
 // 所有輸出為 JSON（方便 Claude Code 解析）。
 package main
@@ -123,6 +127,8 @@ func main() {
 		cmdDropTripGrouping(useDB, db)
 	case "rename-channel-to-trip":
 		cmdRenameChannelToTrip(useDB, db)
+	case "fix-photo-cache-schema":
+		cmdFixPhotoCacheSchema(useDB, db)
 	case "attraction-add":
 		cmdAttractionAdd(useDB, db, args)
 	case "attraction-list":
@@ -308,6 +314,34 @@ func cmdRenameChannelToTrip(useDB bool, db *dbClient) {
 		return
 	}
 	output(map[string]any{"renamed": renamed})
+}
+
+// cmdFixPhotoCacheSchema 是一次性維運指令:修復正式站 photo_cache 表仍
+// 停留在更早期 schema(以 photo_ref 為主鍵一部分)的問題,清空重建成目前
+// 程式碼期待的 (place_id, photo_index, max_width_px) 主鍵(見
+// store.FixPhotoCacheSchema)。
+//
+// 這不是常規的業務操作，而是直接動資料庫 schema，因此只在 -db 模式下有意義；
+// 沒加 -db 就直接 fatal，不嘗試走 HTTP client(HTTP 沒有也不該有對應端點)。
+func cmdFixPhotoCacheSchema(useDB bool, db *dbClient) {
+	if !useDB {
+		fatal("fix-photo-cache-schema 只能搭配 -db 使用（這是直接動資料庫 schema 的一次性維運操作，不走 HTTP）")
+	}
+	fixed, err := db.fixPhotoCacheSchema()
+	if err != nil {
+		fatal("fix-photo-cache-schema: %v", err)
+	}
+	if !fixed {
+		output(map[string]any{
+			"fixed":   false,
+			"message": "photo_cache.photo_ref 已不存在（已修復過或本來就是新 schema），無需操作",
+		})
+		return
+	}
+	output(map[string]any{
+		"fixed":   true,
+		"message": "photo_cache 已清空並重建為 (place_id, photo_index, max_width_px) 主鍵",
+	})
 }
 
 // cmdAttractionAdd 新增一筆景點區域資料(見 model.Attraction 的完整說明)。

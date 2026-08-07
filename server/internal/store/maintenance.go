@@ -169,3 +169,85 @@ func (s *Store) RenameChannelToTrip() (renamed []string, err error) {
 
 	return renamed, nil
 }
+
+// FixPhotoCacheSchema 修復正式站 photo_cache 表仍停留在更早期 schema
+// (以 photo_ref 為主鍵的一部分)的問題,對齊目前程式碼期待的 schema(見
+// entity.go 的 photoCacheRow):期待
+// (place_id, photo_index, max_width_px) 主鍵 + data_uri/fetched_at,
+// 實際卻是 (photo_ref, max_width_px) 主鍵,缺 place_id、photo_index 兩欄。
+//
+// 背景:photo_ref 存的是 Google Places API 的 photo resource name——這個
+// 值會過期,且 Google Maps Platform Terms of Service 3.2.3(b) 明文禁止
+// 長期快取(理由同 photoCacheRow 對 PlaceID 當主鍵的說明)。photo_ref 與
+// 現代 schema 需要的 place_id 之間沒有任何可反查的對應關係,無法把舊
+// 資料搬移過去——這張表本質上只是快取,查不到時會自動重新向 Google
+// Places API 查詢補回來,不是必須保留的資料來源。故採清空重建,不嘗試
+// 搬移既有資料列(呼叫端在執行這支維運指令前應自行先備份,見
+// deploy-migrate.yml 的 backup_first 選項)。
+//
+// 冪等:先確認 photo_ref 欄位是否還在,不在就代表已經修過(或本來就是
+// 新 schema),直接回報 false、不動任何東西。
+//
+// 這是一次性維運指令,只能透過 cmd/cli 手動執行,不會出現在 Open()/
+// AutoMigrate 或任何伺服器啟動流程裡。
+func (s *Store) FixPhotoCacheSchema() (fixed bool, err error) {
+	m := s.db.Migrator()
+
+	if !m.HasColumn(&photoCacheRow{}, "photo_ref") {
+		return false, nil
+	}
+
+	if err := s.db.Exec("TRUNCATE TABLE photo_cache").Error; err != nil {
+		return false, fmt.Errorf("truncate photo_cache: %w", err)
+	}
+
+	if err := m.DropColumn(&photoCacheRow{}, "photo_ref"); err != nil {
+		return false, fmt.Errorf("drop photo_cache.photo_ref: %w", err)
+	}
+
+	// AddColumn 依 photoCacheRow 目前的 struct tag 補上 place_id/
+	// photo_index 兩個欄位(含 primaryKey 標籤帶的 NOT NULL 語意),
+	// 若已存在(理論上不該發生,前面已經確認過 photo_ref 還在、代表這是
+	// 尚未動過的舊 schema)則直接跳過,不視為錯誤。
+	for _, col := range []string{"PlaceID", "PhotoIndex"} {
+		if m.HasColumn(&photoCacheRow{}, col) {
+			continue
+		}
+		if err := m.AddColumn(&photoCacheRow{}, col); err != nil {
+			return false, fmt.Errorf("add photo_cache.%s: %w", col, err)
+		}
+	}
+
+	// 表已清空,兩個新欄位此時仍可能是 nullable(AddColumn 不保證套用
+	// primaryKey 標籤隱含的 NOT NULL),沒有資料需要回填,直接補上約束。
+	if err := s.db.Exec("ALTER TABLE photo_cache ALTER COLUMN place_id SET NOT NULL").Error; err != nil {
+		return false, fmt.Errorf("set photo_cache.place_id not null: %w", err)
+	}
+	if err := s.db.Exec("ALTER TABLE photo_cache ALTER COLUMN photo_index SET NOT NULL").Error; err != nil {
+		return false, fmt.Errorf("set photo_cache.photo_index not null: %w", err)
+	}
+
+	// 重建主鍵:先移除舊的 (photo_ref, max_width_px) 組合(欄位已經連同
+	// 一起被 DropColumn 拿掉,約束不會自動消失,需要另外處理),再建立
+	// 現代 schema 要求的 (place_id, photo_index, max_width_px)。用
+	// information_schema 動態找出目前主鍵約束名稱,不寫死("photo_cache_pkey"
+	// 這種預設命名不保證每個環境都一致)。
+	var pkName string
+	if err := s.db.Raw(`
+		SELECT tc.constraint_name
+		FROM information_schema.table_constraints tc
+		WHERE tc.table_name = 'photo_cache' AND tc.constraint_type = 'PRIMARY KEY'
+	`).Scan(&pkName).Error; err != nil {
+		return false, fmt.Errorf("query photo_cache primary key name: %w", err)
+	}
+	if pkName != "" {
+		if err := s.db.Exec(fmt.Sprintf("ALTER TABLE photo_cache DROP CONSTRAINT %s", pkName)).Error; err != nil {
+			return false, fmt.Errorf("drop photo_cache primary key %s: %w", pkName, err)
+		}
+	}
+	if err := s.db.Exec("ALTER TABLE photo_cache ADD PRIMARY KEY (place_id, photo_index, max_width_px)").Error; err != nil {
+		return false, fmt.Errorf("add photo_cache primary key: %w", err)
+	}
+
+	return true, nil
+}

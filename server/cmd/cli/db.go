@@ -100,6 +100,15 @@ func (c *dbClient) renameChannelToTrip() ([]string, error) {
 	return c.st.RenameChannelToTrip()
 }
 
+// fixPhotoCacheSchema 是一次性維運操作:修復正式站 photo_cache 表仍停留
+// 在更早期 schema(以 photo_ref 為主鍵一部分)的問題,清空重建成目前
+// 程式碼期待的 (place_id, photo_index, max_width_px) 主鍵(見
+// store.FixPhotoCacheSchema 的完整說明)。只在 -db 模式下有意義,故只
+// 掛在 dbClient 上,不進 client 介面。
+func (c *dbClient) fixPhotoCacheSchema() (bool, error) {
+	return c.st.FixPhotoCacheSchema()
+}
+
 // attractionAdd/attractionList/attractionDelete/attractionCities:景點區域
 // 資料(見 model.Attraction、docs/TRIP_PLANNING_DESIGN_DISCUSSION.md 構想 6)
 // 的人工建檔操作,只在 -db 模式下有意義(這是直接寫資料庫的維運/建檔
