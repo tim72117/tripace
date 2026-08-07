@@ -125,6 +125,20 @@ function dayGroupKey(c: GeoCandidate): string {
   if (c.kind !== 'entry') return NO_DATE_GROUP
   return c.start || NO_DATE_GROUP
 }
+
+// candidateListKey:候選籃清單渲染用的 React key——entry 形狀的候選(見
+// GeoTripEntry.id 的說明)有穩定、保證唯一的 id,優先使用;其餘三種
+// (hotel/attraction/place)沒有穩定 id(即時查詢結果),退回原本的
+// 「名稱+座標」組合。過去三處渲染(datedDays.map/noDateGroup.map/
+// onlyCandidate.map)一律都用「名稱+座標」當 key,即使是 entry 形狀也
+// 一樣——如果使用者把同一個候選拖進行程兩次,會產生兩筆不同 id、但
+// 名稱/座標完全相同的 entry,key 就會撞在一起,觸發 React 的 duplicate
+// key 警告(實際發生過的 bug)。改用這個函式統一產生 key,entry 形狀
+// 一律用它自己的 id,徹底避開這個碰撞。
+function candidateListKey(c: GeoCandidate): string {
+  if (c.kind === 'entry') return `entry-${c.id}`
+  return `${c.kind}-${c.name}-${c.lat}-${c.lng}`
+}
 function dayGroupLabel(key: string): string {
   if (key === NO_DATE_GROUP) return '未排定日期'
   const [, month, day] = key.split('-')
@@ -675,7 +689,7 @@ export function GeoCandidateSidebar({
                     >
                       {dayEntries.map((c) => (
                         <DayEntryCard
-                          key={`${c.kind}-${c.name}-${c.lat}-${c.lng}`}
+                          key={candidateListKey(c)}
                           c={c}
                           onRemove={onRemove}
                           onSelect={onSelect}
@@ -723,7 +737,7 @@ export function GeoCandidateSidebar({
                     <div className={styles.dayBody}>
                       {noDateGroup[1].map((c) => (
                         <DayEntryCard
-                          key={`${c.kind}-${c.name}-${c.lat}-${c.lng}`}
+                          key={candidateListKey(c)}
                           c={c}
                           onRemove={onRemove}
                           onSelect={onSelect}
@@ -743,7 +757,7 @@ export function GeoCandidateSidebar({
                 <div className={styles.groupTitle}>候選中 · {onlyCandidate.length}</div>
                 {onlyCandidate.map((c) => (
                   <CandidateRow
-                    key={`${c.kind}-${c.name}-${c.lat}-${c.lng}`}
+                    key={candidateListKey(c)}
                     c={c}
                     onRemove={onRemove}
                     onSelect={onSelect}
