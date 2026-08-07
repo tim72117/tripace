@@ -72,10 +72,22 @@ export type Tab = 'attractions' | 'hotels' | 'places'
 // 地標,若分頁不跟著切到「地點」,使用者根本看不到剛點的地標介紹跑
 // 去了哪裡。不傳時 fallback 一份未受控的內部 state(維持 demo/獨立
 // 使用情境下的既有行為)。
+// PLACES_CATEGORY_LABELS:「附近推薦」分頁標題/空狀態文字要顯示的類別
+// 名稱,key 必須跟 GeoOutlineMap.tsx 的 CATEGORY_TAGS/後端 allowedPlaceTypes
+// 一致——這裡不 import 那份定義(避免地圖元件被非地圖用途的側欄引入),
+// 純粹是同一組值域各自維護一份對照表,理由同 CATEGORY_TAGS 本身跟後端
+// allowedPlaceTypes 的既有慣例。
+const PLACES_CATEGORY_LABELS: Record<string, string> = {
+  tourist_attraction: '景點',
+  lodging: '飯店',
+  restaurant: '餐廳',
+}
+
 export function GeoHotelSidebar({
   hotels,
   attractions,
   places = [],
+  placesCategory,
   selectedKey,
   activeTab,
   onTabChange,
@@ -88,6 +100,14 @@ export function GeoHotelSidebar({
   hotels: GeoHotel[]
   attractions: GeoAttraction[]
   places?: GeoPlace[]
+  // placesCategory:目前 places 內容屬於地圖上方哪個類別標籤(飯店/景點/
+  // 餐廳,見 GeoOutlineMap.tsx 的 onActiveCategoryChange),null 代表不屬於
+  // 任何特定類別(來自點擊地標查附近推薦)——用來讓「附近推薦」分頁的
+  // 標題/空狀態文字反映目前實際查的是哪個類別,而不是籠統的「附近推薦」
+  // 四個字,使用者才看得出來點餐廳標籤查到的清單「就是」這個分頁,不是
+  // 沒反應或查到別的東西。刻意不新增第四顆分頁按鈕(用戶明確要求不要),
+  // 沿用既有的「附近推薦」分頁位置,只是內容標題動態換字。
+  placesCategory?: string | null
   selectedKey?: GeoSelectedKey
   activeTab?: Tab
   onTabChange?: (tab: Tab) => void
@@ -109,6 +129,7 @@ export function GeoHotelSidebar({
   // 維持既有(尚未接上父層中介邏輯的情境)行為不變。
   const tab = activeTab ?? internalTab
   const setTab = onTabChange ?? setInternalTab
+  const placesLabel = (placesCategory && PLACES_CATEGORY_LABELS[placesCategory]) || '附近推薦'
 
   return (
     <aside className={styles.sidebar}>
@@ -133,7 +154,7 @@ export function GeoHotelSidebar({
           type="button"
           className={`${styles.tab}${tab === 'places' ? ` ${styles.tabActive}` : ''}`}
           onClick={() => setTab('places')}
-          title="附近推薦"
+          title={placesLabel}
         >
           <Compass size={18} strokeWidth={1.8} />
         </button>
@@ -221,42 +242,54 @@ export function GeoHotelSidebar({
             ))
           )
         ) : places.length === 0 ? (
-          <div className={styles.empty}>還沒有附近推薦——點地圖上的地標圖示,附近的推薦地點會列在這裡。</div>
+          <div className={styles.empty}>
+            {placesCategory
+              ? `還沒有${placesLabel}資料——這個範圍內查不到${placesLabel},試試移動地圖再查一次。`
+              : '還沒有附近推薦——點地圖上的地標圖示,或按上方類別標籤(飯店/景點/餐廳),附近的地點會列在這裡。'}
+          </div>
         ) : (
-          places.map((p) => (
-            <div
-              key={`${p.name}-${p.lat}-${p.lng}`}
-              className={`${styles.item}${selectedKey === geoItemKey('place', p) ? ` ${styles.itemSelected}` : ''}`}
-            >
+          <>
+            {/* placesCategory 有值時額外顯示一行小標題,標明目前清單是哪個
+                類別標籤查出來的結果——分頁按鈕本身只有圖示+hover
+                title,不夠顯眼,使用者點了「餐廳」標籤後很容易誤以為清單
+                沒反應,加這行文字讓對應關係一眼可見。沒有 placesCategory
+                時(來自點地標的泛用推薦)不顯示,維持原本簡潔。 */}
+            {placesCategory && <div className={styles.placesCategoryHead}>{placesLabel}</div>}
+            {places.map((p) => (
               <div
-                role="button"
-                tabIndex={0}
-                className={styles.itemBody}
-                onClick={() => onSelectPlace?.(p)}
-                onKeyDown={(e) => { if (e.key === 'Enter') onSelectPlace?.(p) }}
-                onMouseEnter={() => onHover?.(geoItemKey('place', p))}
-                onMouseLeave={() => onHover?.(null)}
+                key={`${p.name}-${p.lat}-${p.lng}`}
+                className={`${styles.item}${selectedKey === geoItemKey('place', p) ? ` ${styles.itemSelected}` : ''}`}
               >
-                {p.photoUrl ? (
-                  <img className={styles.itemPhoto} src={p.photoUrl} alt={p.name} loading="lazy" />
-                ) : (
-                  <div className={styles.itemPhotoPlaceholder} />
-                )}
-                <div className={styles.itemInfo}>
-                  <span className={styles.itemName}>{p.name}</span>
-                  <span className={styles.itemAddress}>{p.address}</span>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className={styles.itemBody}
+                  onClick={() => onSelectPlace?.(p)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') onSelectPlace?.(p) }}
+                  onMouseEnter={() => onHover?.(geoItemKey('place', p))}
+                  onMouseLeave={() => onHover?.(null)}
+                >
+                  {p.photoUrl ? (
+                    <img className={styles.itemPhoto} src={p.photoUrl} alt={p.name} loading="lazy" />
+                  ) : (
+                    <div className={styles.itemPhotoPlaceholder} />
+                  )}
+                  <div className={styles.itemInfo}>
+                    <span className={styles.itemName}>{p.name}</span>
+                    <span className={styles.itemAddress}>{p.address}</span>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  className={styles.addBtn}
+                  title="加入候選"
+                  onClick={() => onAddCandidate?.({ kind: 'place', ...p })}
+                >
+                  <Plus size={16} strokeWidth={2} />
+                </button>
               </div>
-              <button
-                type="button"
-                className={styles.addBtn}
-                title="加入候選"
-                onClick={() => onAddCandidate?.({ kind: 'place', ...p })}
-              >
-                <Plus size={16} strokeWidth={2} />
-              </button>
-            </div>
-          ))
+            ))}
+          </>
         )}
       </div>
     </aside>

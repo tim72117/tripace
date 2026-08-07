@@ -69,6 +69,18 @@
   font-size: 13px;
 }
 
+/* placesCategoryHead:「附近推薦」分頁在 placesCategory 有值時(地圖上方
+   類別標籤查詢的結果)顯示的小標題,標明目前清單對應哪個類別——理由見
+   GeoHotelSidebar.tsx 該處的說明。跟 .empty 共用同一種次要文字色/字級
+   語氣,只是靠左對齊、當作清單上方的區塊標籤,不是置中的空狀態提示。 */
+.placesCategoryHead {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ios-gray);
+  letter-spacing: 0.02em;
+}
+
 .item {
   position: relative;
   display: flex;

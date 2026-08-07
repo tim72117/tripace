@@ -72,6 +72,7 @@ export function GeoOutlinePanel({
   onHotelsChange,
   onAttractionsChange,
   onPlacesNearby,
+  onActiveCategoryChange,
   onTripEntriesChange,
   onAttractionSelect,
   onHotelSelect,
@@ -99,6 +100,9 @@ export function GeoOutlinePanel({
   onHotelsChange?: (hotels: GeoHotel[]) => void
   onAttractionsChange?: (attractions: GeoAttraction[]) => void
   onPlacesNearby?: (places: GeoPlace[]) => void
+  // onActiveCategoryChange:原封不動轉傳給 GeoOutlineMap——理由同
+  // onPlacesNearby,見 GeoOutlineMap.tsx 對這個 prop 的完整說明。
+  onActiveCategoryChange?: (category: string | null) => void
   onTripEntriesChange?: (entries: GeoTripEntry[]) => void
   // onAttractionSelect/onHotelSelect/onPlaceSelect/onPoiSelect:原封不動
   // 轉傳給 GeoOutlineMap——理由同 onHotelsChange 等既有 callback,見
@@ -312,6 +316,7 @@ export function GeoOutlinePanel({
           onAttractionsChange={onAttractionsChange}
           onVisibleHotelsChange={onHotelsChange}
           onPlacesNearby={onPlacesNearby}
+          onActiveCategoryChange={onActiveCategoryChange}
           onAttractionSelect={onAttractionSelect}
           onHotelSelect={onHotelSelect}
           onPlaceSelect={onPlaceSelect}

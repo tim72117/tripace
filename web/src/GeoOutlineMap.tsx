@@ -288,6 +288,7 @@ export function GeoOutlineMap({
   onAttractionsChange,
   onVisibleHotelsChange,
   onPlacesNearby,
+  onActiveCategoryChange,
   onAttractionSelect,
   onHotelSelect,
   onPlaceSelect,
@@ -331,6 +332,14 @@ export function GeoOutlineMap({
   // ——理由同 onAttractionsChange/onVisibleHotelsChange,側欄
   // (GeoHotelSidebar 的「附近推薦」分頁)是分開掛載的 sibling。
   onPlacesNearby?: (places: GeoPlace[]) => void
+  // onActiveCategoryChange:上方類別標籤列(飯店/景點/餐廳,見
+  // handleCategoryClick)目前選中的類別往上回報,null 代表沒有任何類別
+  // 標籤被選取(此時 places 若有內容,是來自點擊地標查附近推薦
+  // (handleAttractionClick)或逐一點擊 marker,不屬於任何特定類別)。
+  // 側欄「附近推薦」分頁標題/空狀態文字要能反映「目前顯示的是哪個類別
+  // 的結果」(例如選了餐廳標籤時顯示「餐廳」而非籠統的「附近推薦」),
+  // 這個回報讓側欄不必自己猜測 places 陣列內容屬於哪個類別。
+  onActiveCategoryChange?: (category: string | null) => void
   // onAttractionSelect/onHotelSelect/onPlaceSelect:使用者直接點擊地圖上的
   // 地標圖示/飯店 marker/推薦地點 marker 時觸發(而非透過側欄清單),把
   // 該項目往上回報——側欄(GeoHotelSidebar)要能同步標記選取狀態、切換
@@ -478,6 +487,15 @@ export function GeoOutlineMap({
   // 新範圍(見下方處理 panTarget 的 useEffect 如何設這個旗標)。用 ref 而
   // 非 state,因為它只是單次事件間的旗標,不需要驅動任何渲染。
   const suppressNextIdleQueryRef = useRef(false)
+  // buildingRef:見下方地圖建立 effect 裡的完整說明——擋住
+  // importLibrary('maps') resolve 之前,effect 因 initialCenter 從
+  // undefined 解析成確定值而重新執行時,誤判成「還沒建過圖」而重複
+  // 建圖、重複掛監聽器的非同步競態。
+  const buildingRef = useRef(false)
+  // lastAttractionsQueryKeyRef:見下方景點區域查詢 effect 裡的完整說明——
+  // 記住上一次真正送出查詢的座標+半徑,idle 事件在初始載入階段連續
+  // 觸發但位置沒變時用來去重,不再重複發送請求。
+  const lastAttractionsQueryKeyRef = useRef<string | null>(null)
 
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined
 
@@ -491,10 +509,27 @@ export function GeoOutlineMap({
     // 包含 initialCenter(見下方),當它從 undefined 解析成確定的值(或
     // null)時會重新執行一次,這裡要擋掉重複建圖,只在第一次(尚未建立
     // 過)真正呼叫 new Map()。
-    if (mapRef.current) return
+    //
+    // 這個判斷本身無法擋住非同步競態:mapRef.current 要等
+    // importLibrary('maps').then() 真正 resolve 才會被賦值,若 effect 在
+    // 那之前又因為 initialCenter 從 undefined 解析成 null/物件而重新
+    // 執行(常發生在沒有行程既有地點、tripCenter 幾乎同步就決議成 null
+    // 的情況),第二次執行當下 mapRef.current 仍是 null,一樣會通過這個
+    // 判斷、再呼叫一次 importLibrary('maps').then(),建出第二個地圖
+    // 實例、掛上第二組 idle/bounds_changed/zoom_changed 監聽器——兩個
+    // 實例都停在同一個預設中心,使用者完全感覺不出來地圖被建了兩次,但
+    // 之後只要觸發一次 idle,兩組監聽器就會各自遞增
+    // attractionsQueryTrigger、各打一次 fetchGeoAttractionsOnlyNearby,
+    // 且每多重執行一次這個 effect(例如初始資料陸續回來、上層連鎖重渲染)
+    // 就再疊一組監聽器,才會出現「進頁面後短時間內連發幾十筆」的爆量
+    // 現象。用 buildingRef 在呼叫 importLibrary 之前就同步標記「這次
+    // effect 執行已經在建圖了」,擋住後續執行在 mapRef.current 賦值前
+    // 搶著再建一次。
+    if (mapRef.current || buildingRef.current) return
     // initialCenter 為 undefined 代表呼叫端還在查「這個行程有沒有既有
     // 地點可以當初始中心」,地圖建立要等待——見這個 prop 的完整說明。
     if (initialCenter === undefined) return
+    buildingRef.current = true
     let cancelled = false
 
     ensureOptionsSet(apiKey)
@@ -575,7 +610,15 @@ export function GeoOutlineMap({
         })
         setMapReady(true)
       })
-      .catch((e) => setErr(e instanceof Error ? e.message : String(e)))
+      .catch((e) => {
+        // 建圖失敗(模組載入失敗等)才解除 buildingRef——讓之後真的有
+        // 機會重新整理/重新掛載時能再試一次,不會被卡死在「永遠不可能
+        // 再建成功」的狀態。成功路徑(見上方 setMapReady(true) 之前)
+        // 刻意不解除:mapRef.current 已經確定賦值,guard 本來就該一直
+        // 擋住後續執行,不需要靠 buildingRef 額外把關。
+        buildingRef.current = false
+        setErr(e instanceof Error ? e.message : String(e))
+      })
 
     return () => {
       cancelled = true
@@ -600,8 +643,20 @@ export function GeoOutlineMap({
     if (!mapReady || !mapRef.current) return
     const center = mapRef.current.getCenter()
     if (!center) return
-    let cancelled = false
     const radiusMeters = Math.min(50000, 20000 * Math.pow(2, 12 - zoom))
+    // Google Maps 在初始載入階段(tiles 陸續載入完成、zoom/bounds/center
+    // 各自 settle)常常會連續觸發不只一次 idle 事件,即使地圖實際上完全
+    // 沒有移動——每次 idle 都會讓 attractionsQueryTrigger 遞增、驅動這個
+    // effect 重新執行一次,若不去重,同一個座標+半徑會在極短時間內被
+    // 重複查詢好幾次,浪費請求(即使回應內容相同、不會觸發多餘渲染,
+    // 見下方 sameAttractionsContent 的比對,但請求本身已經送出去了)。
+    // 用座標(取到小數點後 4 位,約 11 公尺誤差,足夠判斷「這是同一個
+    // 位置」)+半徑組字串跟上一次真正查詢的參數比對,完全相同就跳過,
+    // 不再送出重複請求。
+    const queryKey = `${center.lat().toFixed(4)},${center.lng().toFixed(4)},${radiusMeters}`
+    if (lastAttractionsQueryKeyRef.current === queryKey) return
+    lastAttractionsQueryKeyRef.current = queryKey
+    let cancelled = false
     fetchGeoAttractionsOnlyNearby(cfg, center.lat(), center.lng(), radiusMeters)
       .then((result) => {
         if (cancelled) return
@@ -622,6 +677,17 @@ export function GeoOutlineMap({
       })
     return () => {
       cancelled = true
+      // 這次執行在請求完成前就被取消(常見於 React StrictMode 開發模式
+      // 的「執行→cleanup→再執行一次」雙重呼叫,或 attractionsQueryTrigger
+      // 在請求完成前又變動)——若不釋放 lastAttractionsQueryKeyRef,留下來
+      // 那次真正該生效的執行會看到 ref 已經被這次「注定作廢」的執行佔走
+      // 同一個 queryKey,誤判成「已經查過」而直接跳過,導致這個位置永遠
+      // 查不到任何結果(實際發生過的 bug:地圖上完全沒有景點區域出現)。
+      // 只有在 ref 仍然是「這次執行設定的值」時才清空,避免不小心清掉
+      // 後來另一次執行(不同 queryKey)已經合法設定的值。
+      if (lastAttractionsQueryKeyRef.current === queryKey) {
+        lastAttractionsQueryKeyRef.current = null
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, attractionsQueryTrigger])
@@ -691,6 +757,12 @@ export function GeoOutlineMap({
     if (!mapRef.current) return
     onAttractionSelect?.(d)
     suppressNextIdleQueryRef.current = true
+    // 點擊地標查出來的是不限類型的泛用推薦,不屬於任何類別標籤——若先前
+    // 選中了某個類別標籤(見 handleCategoryClick),這裡要一併清掉,否則
+    // 側欄「附近推薦」分頁會沿用舊類別的標題,跟新結果的實際內容(不限
+    // 類型)對不上。
+    setActiveCategory(null)
+    onActiveCategoryChange?.(null)
     fetchGeoPlacesNearby(cfg, d.lat, d.lng, placesQueryRadiusMeters(d))
       .then((result) => {
         setPlaces(result.places)
@@ -767,13 +839,15 @@ export function GeoOutlineMap({
     if (!mapRef.current) return
     if (activeCategory === type) {
       setActiveCategory(null)
+      onActiveCategoryChange?.(null)
       setPlaces([])
       onPlacesNearby?.([])
       return
     }
     setActiveCategory(type)
+    onActiveCategoryChange?.(type)
     runCategoryQuery(type)
-  }, [activeCategory, onPlacesNearby, runCategoryQuery])
+  }, [activeCategory, onActiveCategoryChange, onPlacesNearby, runCategoryQuery])
 
   // handleSearchThisArea:「搜尋這個區域」按鈕的點擊處理——進入查詢中
   // 狀態、收起按鈕(見 geoAreaSearchState.ts 的 search-pressed 轉換),
