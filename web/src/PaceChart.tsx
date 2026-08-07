@@ -34,11 +34,6 @@ export interface Checkpoint {
   lng: number | null
 }
 
-// PublicEntry:GET /v1/public/{token} 回傳的 entries 陣列元素形狀(對應後端
-// model.Entry,只列出轉換成 Checkpoint 會用到的欄位)。detail 是我們自訂塞進
-// 去的配速表專屬資料(見 server/internal/store 的 Detail 欄位機制),後端對
-// 這個欄位沒有固定 schema 驗證,故這裡的型別只是前端這端的假設,不是後端
-// 強制保證的格式。
 // PaceSegment:對應後端 Detail.segment 的值——任意行程可以自訂任何段名,
 // 不再假設固定是 leg1~leg4 這四個(那是原本花東193公路 demo 行程自己選用
 // 的 key,不是後端強制的合法值集合)。型別因此收斂成單純的 string;
@@ -46,32 +41,45 @@ export interface Checkpoint {
 // KNOWN_ROUTE_META。
 type PaceSegment = string
 
+// PaceCheckpointDetail:Entry.detail 這個自訂 JSON 欄位裡,配速表專屬會
+// 用到的形狀——對齊後端
+// server/internal/model/entry_detail_pace.go 的 PaceCheckpointDetail
+// struct(權威定義,兩邊欄位需保持一致)。這是目前唯一有實際資料寫進
+// Entry.Detail 的用法(用 CLI/entry-update 手動標註),Entry.Detail
+// 本身對後端沒有固定 schema 強制驗證,前端這份型別只是配合後端結構的
+// 假設。匯出讓 PhoneScreens.tsx 直接引用這一份,不再各自維護一份容易
+// 悄悄不同步的複本(過去發生過的實際案例:PhoneScreens.tsx 那份漏了
+// isLongRest 欄位)。
+export interface PaceCheckpointDetail {
+  km: number | null
+  isStart: boolean
+  isFinish: boolean
+  dwellMin: number | null
+  isLongRest: boolean
+  tag?: string
+  departTime: string | null
+  arriveTime: string | null
+  // order:顯示順序,寫入時明確指定(見 server 端資料),不依賴
+  // ListEntriesByTrip 的 "start ASC, created_at ASC" 排序——同一天的
+  // checkpoint 全部同一個 start 日期,實際順序完全靠 created_at,一旦事後
+  // 用 entry-update 補資料(而非重新 entry-add),created_at 不會跟著變,
+  // 但也可能因為批次寫入時機不同而跟原始紙條順序對不上,故改成由這個
+  // 明確欄位決定顯示順序,不依賴任何隱含的資料庫寫入順序。
+  order: number
+  // segment:標記這筆屬於哪一段路線(leg1~leg4)。D1(2026-07-31)實際涵蓋
+  // leg1+leg2 兩段,單靠 start 日期無法區分同一天的兩個路段,故需要這個
+  // 明確欄位,不能只靠 start/order 反推。
+  segment: PaceSegment
+}
+
+// PublicEntry:GET /v1/public/{token} 回傳的 entries 陣列元素形狀(對應後端
+// model.Entry,只列出轉換成 Checkpoint 會用到的欄位)。
 interface PublicEntry {
   id: string
   title: string
   lat: number | null
   lng: number | null
-  detail: {
-    km: number | null
-    isStart: boolean
-    isFinish: boolean
-    dwellMin: number | null
-    isLongRest: boolean
-    tag?: string
-    departTime: string | null
-    arriveTime: string | null
-    // order:顯示順序,寫入時明確指定(見 server 端資料),不依賴
-    // ListEntriesByTrip 的 "start ASC, created_at ASC" 排序——同一天的
-    // checkpoint 全部同一個 start 日期,實際順序完全靠 created_at,一旦事後
-    // 用 entry-update 補資料(而非重新 entry-add),created_at 不會跟著變,
-    // 但也可能因為批次寫入時機不同而跟原始紙條順序對不上,故改成由這個
-    // 明確欄位決定顯示順序,不依賴任何隱含的資料庫寫入順序。
-    order: number
-    // segment:標記這筆屬於哪一段路線(leg1~leg4)。D1(2026-07-31)實際涵蓋
-    // leg1+leg2 兩段,單靠 start 日期無法區分同一天的兩個路段,故需要這個
-    // 明確欄位,不能只靠 start/order 反推。
-    segment: PaceSegment
-  } | null
+  detail: PaceCheckpointDetail | null
 }
 
 // entryToCheckpoint:把後端 Entry 轉成這個元件既有的 Checkpoint 形狀,讓

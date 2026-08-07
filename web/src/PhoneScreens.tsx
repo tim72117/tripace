@@ -5,7 +5,7 @@ import * as api from './api'
 import type { Entry } from './types'
 import { MultiTrackTimeline } from './Timeline'
 import { BASE_URL, errMsg, isSubmitEnter, useIsDesktop } from './AppCommon'
-import { PaceChart, type Checkpoint } from './PaceChart'
+import { PaceChart, type Checkpoint, type PaceCheckpointDetail } from './PaceChart'
 import { PaceRouteMap } from './PaceRouteMap'
 import { PacePhoneSwipe } from './PacePhoneSwipe'
 
@@ -15,29 +15,18 @@ import { PacePhoneSwipe } from './PacePhoneSwipe'
 // 分頁,不再是整頁元件)。
 
 // ---- 配速表模式的檢查站資料形狀 ----
-// 對應後端 Entry.detail 這個自訂 JSON 欄位裡,配速表專屬會用到的子集
-// (完整定義/寫入端說明見 PaceChart.tsx 的 PublicEntry/PaceSegment)。
-// Entry 型別本身(types.ts)沒有宣告 detail,是後端沒有固定 schema 的
-// 欄位,故這裡跟 PaceChart.tsx 一樣用局部型別 + 執行期做防呆判斷,不
-// 假設任何一筆地點一定有這個形狀。
-interface PaceDetail {
-  km: number | null
-  isStart?: boolean
-  isFinish?: boolean
-  dwellMin?: number | null
-  tag?: string
-  departTime: string | null
-  arriveTime: string | null
-  order: number
-  segment: string
-}
-
-function entryPaceDetail(e: Entry): PaceDetail | null {
+// 對應後端 Entry.detail 這個自訂 JSON 欄位裡,配速表專屬會用到的子集——
+// 權威定義是 PaceChart.tsx 匯出的 PaceCheckpointDetail(對齊後端
+// server/internal/model/entry_detail_pace.go),這裡直接引用,不再自己
+// 維護一份容易不同步的複本。Entry 型別本身(types.ts)沒有宣告 detail,
+// 是後端這個欄位對其他 kind 沒有固定 schema,故仍需要執行期防呆判斷,
+// 不假設任何一筆地點一定有這個形狀。
+function entryPaceDetail(e: Entry): PaceCheckpointDetail | null {
   const d = (e as unknown as { detail?: unknown }).detail
   if (!d || typeof d !== 'object') return null
-  const detail = d as Partial<PaceDetail>
+  const detail = d as Partial<PaceCheckpointDetail>
   if (typeof detail.segment !== 'string' || typeof detail.order !== 'number') return null
-  return detail as PaceDetail
+  return detail as PaceCheckpointDetail
 }
 
 // hasPaceData:分享彈窗選了「路徑」時,公開頁要判斷這個行程的地點是否
