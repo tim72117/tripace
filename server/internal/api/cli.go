@@ -39,6 +39,7 @@ func (s *Server) handleInternalRecord(w http.ResponseWriter, r *http.Request) {
 		End       string `json:"end"`
 		EndTime   string `json:"endTime"`
 		Location  string `json:"location"`
+		Kind      string `json:"kind"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Title == "" {
 		writeErr(w, http.StatusBadRequest, "invalid_body", "title 必填")
@@ -53,6 +54,7 @@ func (s *Server) handleInternalRecord(w http.ResponseWriter, r *http.Request) {
 		End:       body.End,
 		EndTime:   body.EndTime,
 		Location:  body.Location,
+		Kind:      body.Kind,
 	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "record_failed", err.Error())

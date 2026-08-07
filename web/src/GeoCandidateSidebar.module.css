@@ -184,6 +184,31 @@
   color: var(--ios-red);
 }
 
+/* returnToCandidateBtn:「返回候選」按鈕(見 GeoCandidateSidebar.tsx 的
+   DayEntryCard/handleReturnToCandidate 說明)——只在已排入行程
+   (inTrip===true)的卡片上出現,跟既有的 .removeBtn(×,純前端移除)
+   並排,視覺上刻意保持同樣尺寸/圓形按鈕語言,只是圖示與 hover 色不同
+   (用 accent 色而非警示紅,語意上這是「調整」而非「刪除」的操作,即使
+   底層其實會真的呼叫 deleteEntry)。 */
+.returnToCandidateBtn {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
+}
+
+.returnToCandidateBtn:hover {
+  background: var(--ios-sep);
+  color: var(--color-accent);
+}
+
 /* day/dayHead/dayBody/dayCard*:「已排入行程」分組底下的日層架呈現,對齊
    構想 5 桌面同屏並置原型(docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)右欄
    「日層架」的視覺語言——虛線容器暗示「這是骨架式的日程視野,不是強制

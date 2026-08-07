@@ -212,13 +212,31 @@ export function DesktopContent(props: ContentProps) {
   // 更新的圖層,是「點了某個地標才會有內容」的一次性查詢結果,換行程/
   // 切換分頁時不特別清空(下一次點擊地標會自然覆蓋掉舊結果)。
   const [geoPlaces, setGeoPlaces] = useState<GeoPlace[]>([])
+  // geoActiveCategory:地圖上方類別標籤列(飯店/景點/餐廳)目前選中的類別
+  // (見 GeoOutlineMap.tsx 的 onActiveCategoryChange 說明),null 代表
+  // geoPlaces 目前的內容不屬於任何特定類別(來自點擊地標查附近推薦,或
+  // 沒有查詢過)。供 GeoHotelSidebar「附近推薦」分頁的標題/空狀態文字
+  // 顯示目前實際查的是哪個類別,理由同 geoPlaces 本身。
+  const [geoActiveCategory, setGeoActiveCategory] = useState<string | null>(null)
   // geoSelectedKey:目前被選中的飯店/地點識別鍵(見 GeoHotelSidebar.tsx
   // 的 geoItemKey)——側欄(GeoHotelSidebar)與地圖(GeoOutlineMap)是分開
   // 掛載的 sibling,「哪一項被選中」的狀態只能靠這層 state 中介,才能讓
-  // 側欄的選取標記與地圖上的選取樣式同步。點擊項目不再連帶移動地圖(見
-  // 下方 onSelectHotel 等,改為開啟 GeoInfoPanel 資訊卡,不觸發
-  // panTo)——舊有的 geoPanTarget state 因此已無設值來源而移除。
+  // 側欄的選取標記與地圖上的選取樣式同步。點擊項目大多不再連帶移動地圖
+  // (見下方 onSelectHotel 等,改為開啟 GeoInfoPanel 資訊卡,不觸發
+  // panTo)——唯一例外是候選籃「已排入行程」項目(kind==='entry' &&
+  // inTrip),點擊時仍要移動地圖到該點為中心(見下方 geoPanTarget 的
+  // 說明),這是使用者明確要求的例外,不適用「點擊只開資訊欄」的一般
+  // 規則。
   const [geoSelectedKey, setGeoSelectedKey] = useState<GeoSelectedKey>(null)
+  // geoPanTarget:候選籃裡「已排入行程」項目(kind==='entry' &&
+  // inTrip===true)被點擊時,要移動地圖到的座標——候選籃(在
+  // DesktopLayout 最外側)跟地圖(在 main 內部的 GeoOutlinePanel 裡)是
+  // 分開掛載的 sibling,只能靠這層 state 中介。其餘來源(候選中清單/
+  // GeoHotelSidebar 清單/地圖上點擊)點擊都只開資訊欄、不移動地圖,故
+  // 只有這個特定操作會設值——每次點擊都建立新物件參照(即使連續點同一
+  // 項),讓 GeoOutlineMap 能偵測到「這是一次新的移動請求」而重新
+  // panTo(理由同 GeoOutlinePanel.tsx 對這個 prop 的既有說明)。
+  const [geoPanTarget, setGeoPanTarget] = useState<{ lat: number; lng: number } | null>(null)
   // geoHoverKey:滑鼠移到側欄(GeoHotelSidebar/GeoCandidateSidebar)項目上時
   // 的臨時識別鍵,獨立於 geoSelectedKey 之外(見 GeoOutlineMap.tsx 的
   // hoverKey prop 說明,兩者在地圖端用 || 合併判斷選取樣式)——滑鼠移開時
@@ -472,6 +490,14 @@ export function DesktopContent(props: ContentProps) {
                 onSelect={(c) => {
                   setGeoSelectedKey(c.kind === 'entry' ? null : geoItemKey(c.kind, c))
                   setGeoInfoContent(candidateInfoContent(c))
+                  // 「已排入行程」項目(kind==='entry' && inTrip===true)
+                  // 點擊時額外移動地圖到該點為中心——使用者明確要求的
+                  // 例外,其餘來源(候選中清單/GeoHotelSidebar 清單/地圖
+                  // 上點擊)點擊只開資訊欄、不移動地圖(見 geoPanTarget
+                  // 的說明)。
+                  if (c.kind === 'entry' && c.inTrip) {
+                    setGeoPanTarget({ lat: c.lat, lng: c.lng })
+                  }
                 }}
                 onHover={setGeoHoverKey}
                 city={geoSearchCity}
@@ -480,6 +506,11 @@ export function DesktopContent(props: ContentProps) {
                 searching={geoSearchState.searching}
                 searchError={geoSearchState.error}
                 onDatesAssigned={() => setGeoRefetchTripEntriesTrigger((n) => n + 1)}
+                onReturnToCandidate={(c) =>
+                  setGeoCandidates((prev) =>
+                    prev.map((p) => (p.kind === 'entry' && p.id === c.id ? { ...p, inTrip: false } : p)),
+                  )
+                }
               />
             )}
           </div>
@@ -529,13 +560,18 @@ export function DesktopContent(props: ContentProps) {
                 setGeoPlaces(places)
                 setGeoActiveTab('places')
               }}
+              onActiveCategoryChange={setGeoActiveCategory}
               onTripEntriesChange={(entries) => {
                 // 行程本身已有座標的 entry 自動併入候選籃——跟手動用
                 // 「+」加入的來源(飯店/地點/推薦地點)共用同一份
                 // geoCandidates,用 id 比對避免換行程/重新查詢時重複加入。
-                // 舊行程遺留的 entry 候選(kind==='entry' 但不在這次新
-                // 清單裡)一併移除,避免換行程後候選籃留著上一趟的行程
-                // 內容;使用者手動加入的其他三種候選不受影響。
+                // 舊行程遺留的「真的已排入行程」候選(kind==='entry' 且
+                // inTrip===true,但不在這次新清單裡)一併移除,避免換行程
+                // 後候選籃留著上一趟的行程內容;使用者手動加入的其他三種
+                // 候選、以及按過「返回候選」的項目(kind==='entry' 但
+                // inTrip===false,見 DayEntryCard 的說明)不受影響——後者
+                // 本來就不在後端 entries 查詢結果裡,不該被這次查詢結果
+                // 清掉。
                 //
                 // 這批新的 entries 一律直接覆蓋掉同 id 的舊候選(而非只在
                 // id 不存在時才新增)——GeoCandidateSidebar 補上「未排定
@@ -546,15 +582,20 @@ export function DesktopContent(props: ContentProps) {
                 // 沒生效,直到下次整個換行程才會被覆蓋——這正是實際發生
                 // 過的 bug,不是預防性寫法。
                 setGeoCandidates((prev) => {
-                  const nonEntryCandidates = prev.filter((p) => p.kind !== 'entry')
-                  // 展開順序刻意把 kind: 'entry' 放在 ...e 之後——
-                  // GeoTripEntry 自己也有一個同名的 kind 欄位(entry
-                  // 的類型,如 "stay"/"activity",見 api.ts 的說明),
-                  // 若寫成 { kind: 'entry', ...e } 會被 e.kind 蓋掉,
-                  // 這裡的 kind 必須是候選籃用來分辨四種來源的字面值
-                  // 'entry',跟 entry 本身的類型是兩件不相關的事。
-                  const freshEntries = entries.map((e): GeoCandidate => ({ ...e, kind: 'entry' }))
-                  return [...nonEntryCandidates, ...freshEntries]
+                  const keptCandidates = prev.filter((p) => !(p.kind === 'entry' && p.inTrip))
+                  // entryKind(entry 本身的分類,如 "stay"/"activity")跟
+                  // GeoCandidate 判別欄位 kind('entry' 字面值)分開存放,
+                  // 理由見 GeoCandidate 型別定義處的完整說明——e.kind 是
+                  // GeoTripEntry 原本的分類欄位,必須先讀出來存進
+                  // entryKind,才展開 ...e(此時 e 物件上已經不含 kind,
+                  // 見 GeoTripEntry 的型別,不會有覆蓋問題)。
+                  const freshEntries = entries.map((e): GeoCandidate => ({
+                    ...e,
+                    kind: 'entry',
+                    inTrip: true,
+                    entryKind: e.kind,
+                  }))
+                  return [...keptCandidates, ...freshEntries]
                 })
               }}
               onAttractionSelect={(d) => {
@@ -581,6 +622,7 @@ export function DesktopContent(props: ContentProps) {
               selectedKey={geoSelectedKey}
               candidateKeys={geoCandidateKeys}
               hoverKey={geoHoverKey}
+              panTarget={geoPanTarget}
             />
             <GeoInfoPanel
               content={geoInfoContent}
@@ -610,6 +652,7 @@ export function DesktopContent(props: ContentProps) {
             hotels={geoHotels}
             attractions={geoAttractions}
             places={geoPlaces}
+            placesCategory={geoActiveCategory}
             selectedKey={geoSelectedKey}
             onHover={setGeoHoverKey}
             activeTab={geoActiveTab}

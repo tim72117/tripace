@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Car, Hotel, MapPin, Plane, StickyNote, Ticket, UtensilsCrossed } from 'lucide-react'
+import { Car, Hotel, MapPin, Plane, StickyNote, Ticket, Undo2, UtensilsCrossed } from 'lucide-react'
 import { isSubmitEnter } from './AppCommon'
 import * as api from './api'
 import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace, GeoTripEntry } from './api'
@@ -30,6 +30,42 @@ function entryKindIcon(kind?: string | null): typeof MapPin {
   return (kind && ENTRY_KIND_ICONS[kind]) || MapPin
 }
 
+// PLACE_PRIMARY_TYPE_TO_ENTRY_KIND:GeoPlace.primaryType(Google Places 的
+// place type,如 "tourist_attraction"/"lodging"/"restaurant",見
+// GeoOutlineMap.tsx 的 PLACE_CATEGORY_GLYPHS/CATEGORY_TAGS)對應到
+// model.Entry.Kind 的值域——兩套字串剛好在這三個類別上重疊(對齊既有
+// 慣例,見 CATEGORY_TAGS 的完整說明),故直接沿用同樣的字串,不需要另外
+//維護一份對照表跳轉。
+const PLACE_PRIMARY_TYPE_TO_ENTRY_KIND: Record<string, string> = {
+  lodging: 'stay',
+  restaurant: 'restaurant',
+  tourist_attraction: 'activity',
+}
+
+// candidateEntryKind:候選籃項目(飯店/景點/推薦地點/返回候選的 entry)
+// 拖進日層架、寫成一筆新 entry 時,推導該用哪個 model.Entry.Kind 值——
+// 讓分類資訊在候選 → entry 的轉換過程中保留下來(拖回候選籃、再拖回
+// 行程,分類都不會遺失),而不是每次建立新 entry 都固定不分類。
+//  - hotel:候選籃裡的飯店類別本身就等同「住宿」,直接對應 'stay'。
+//  - place:依 primaryType 查表,查不到(不在 CATEGORY_TAGS 涵蓋的三種
+//    類型內)一律退回 'activity'——理由同 PLACE_CATEGORY_GLYPHS 的
+//    CAMERA_GLYPH fallback,泛用推薦地點沒有更精確分類時,「這是個值得
+//    去的活動地點」是最保守合理的預設。
+//  - attraction:人工建檔的景點區域,沒有 Google Places 分類可查,固定
+//    對應 'activity'。
+//  - entry(返回候選後、尚未真正排入行程的候選,inTrip===false):直接
+//    沿用它自己保留的 entryKind(見 GeoCandidate 型別定義處的說明),
+//    沒有值時退回 'activity'——理論上不該發生(entryKind 在
+//    onTripEntriesChange 建立候選時一律會帶入,即使後端該筆 entry 本身
+//    沒有設 kind,值也會是 null/undefined,一樣落到這個 fallback),
+//    保守起見仍處理。
+function candidateEntryKind(c: GeoCandidate): string {
+  if (c.kind === 'hotel') return 'stay'
+  if (c.kind === 'place') return PLACE_PRIMARY_TYPE_TO_ENTRY_KIND[c.primaryType] ?? 'activity'
+  if (c.kind === 'entry') return c.entryKind ?? 'activity'
+  return 'activity'
+}
+
 // GeoCandidateSidebar:候選籃(構想 1,見
 // docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)——地理輪廓底圖(構想 6)的
 // 桌面版試做承載元件,渲染在 rail 與主顯示區之間的 side panel(跟
@@ -48,11 +84,35 @@ function entryKindIcon(kind?: string | null): typeof MapPin {
 // 分頁時自動帶入的行程既有內容(見 DesktopLayout.tsx 的
 // onTripEntriesChange),但仍走同一份候選籃資料結構與顯示邏輯,不另開
 // 一份平行清單。
+//
+// inTrip(僅 kind:'entry' 才有):區分「這筆 entry 形狀的項目是否真的已經
+// 排入行程」——true 代表後端真的有這筆 entry 資料(來自
+// onTripEntriesChange 查詢結果),顯示在「已排入行程」分組;false 代表
+// 使用者按過「返回候選」(見 DayEntryCard 的說明),後端那筆 entry 已經
+// 被真的刪除(api.deleteEntry),但本地保留這個物件的完整內容(名稱/
+// 座標/地址/原本的分類 entryKind)讓它繼續顯示在「候選中」分組,不需要
+// 因為沒有原始 hotel/attraction/place 資料就被迫遺失照片以外的所有
+// 資訊。之所以沒有拿掉 entry 形狀改成硬塞回 hotel/attraction/place 其中
+// 一種:那三種形狀的專屬欄位(landmarkPhotoUrl/primaryType 等)在 entry
+// 資料裡從一開始就不存在(entries 資料表沒有存這些),假造一個不存在的
+// 來源分類反而失真——entry 形狀本身(名稱+地址+座標+entryKind)已經是
+// 這筆資料唯一誠實、可還原的樣貌。
+//
+// entryKind:entry 本身的類型(對齊 model.Entry.Kind,如
+// "stay"/"activity"/"restaurant",見 GeoTripEntry.kind 的完整說明)——
+// 刻意改名、不直接沿用 GeoTripEntry 原本的 kind 欄位,是因為 GeoCandidate
+// 本身也有一個叫 kind 的判別欄位(用來分辨 hotel/attraction/place/entry
+// 四種來源,即這裡的 'entry' 字面值),兩個 kind 同名會在交集型別合併時
+// 互相覆蓋——過去的寫法(見已修正前的版本)讓判別欄位的字面值 'entry'
+// 蓋掉了 entry 本身的分類值,導致 DayEntryCard 的圖示永遠退回預設的
+// MapPin,從未正確顯示過飯店/餐廳專屬圖示(實際存在的既有 bug,這次
+// 一併修正)。用 Omit<GeoTripEntry, 'kind'> 明確排除原本的 kind 欄位,
+// 改用 entryKind 承接同一份資料,兩個欄位的語意才不會互相打架。
 export type GeoCandidate =
   | ({ kind: 'hotel' } & GeoHotel)
   | ({ kind: 'attraction' } & GeoAttraction)
   | ({ kind: 'place' } & GeoPlace)
-  | ({ kind: 'entry' } & GeoTripEntry)
+  | ({ kind: 'entry'; inTrip: boolean; entryKind?: string | null } & Omit<GeoTripEntry, 'kind'>)
 
 // dayGroupLabel/dayGroupKey:把「已排入行程」的 entry 依 start 日期分組——
 // 對齊構想 5 桌面同屏並置原型(見
@@ -69,6 +129,19 @@ function dayGroupLabel(key: string): string {
   if (key === NO_DATE_GROUP) return '未排定日期'
   const [, month, day] = key.split('-')
   return month && day ? `${Number(month)}/${Number(day)}` : key
+}
+
+// localDateKey:把一個 Date 物件轉成 YYYY-MM-DD 字串,全程用本地時間的
+// 年/月/日欄位組字串,不經過任何 UTC 轉換——不能用 d.toISOString().
+// slice(0, 10) 這種常見寫法,那會先把時間轉成 UTC 再取字串,在 UTC 之後
+// 的時區(例如 UTC+7/+8)最明顯的症狀是:本地深夜到隔天日出前這段
+// 時間,算出來的日期會倒退回前一天(實際發生過的 bug——見下方 todayKey/
+// nextDayKey 的呼叫處)。
+function localDateKey(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 // CandidateRow:單一候選項目的卡片,純候選組與日層架卡片共用同一份
@@ -104,7 +177,16 @@ function CandidateRow({
     <div
       className={styles.item}
       draggable
-      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; onDragStart?.(c) }}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move'
+        // 部分瀏覽器(尤其某些 Chrome 版本)在 dragstart 完全沒有呼叫
+        // dataTransfer.setData(...) 時,會判定這次拖曳無效而立即中止——
+        // 這裡不需要真的傳遞資料出去(接收端是同一個 React tree,用
+        // draggingCandidate state 就能取得完整物件),純粹是為了讓瀏覽器
+        // 認定這是一次合法的拖曳操作而補上最小可行的 setData 呼叫。
+        e.dataTransfer.setData('text/plain', c.name)
+        onDragStart?.(c)
+      }}
       onDragEnd={() => onDragEnd?.()}
     >
       <div
@@ -117,7 +199,7 @@ function CandidateRow({
         onMouseLeave={() => onHover?.(null)}
       >
         {photoUrl ? (
-          <img className={styles.itemPhoto} src={photoUrl} alt={name} loading="lazy" />
+          <img className={styles.itemPhoto} src={photoUrl} alt={name} loading="lazy" draggable={false} />
         ) : (
           <div className={styles.itemPhotoPlaceholder} />
         )}
@@ -151,6 +233,7 @@ function DayEntryCard({
   onHover,
   onDragStart,
   onDragEnd,
+  onReturnToCandidate,
 }: {
   c: GeoCandidate & { kind: 'entry' }
   onRemove?: (candidate: GeoCandidate) => void
@@ -163,12 +246,20 @@ function DayEntryCard({
   // 資訊。
   onDragStart?: (c: GeoCandidate & { kind: 'entry' }) => void
   onDragEnd?: () => void
+  // onReturnToCandidate:「返回候選」按鈕觸發(只在 inTrip===true 時
+  // 顯示,見下方 render 條件)——把這筆真正已排入行程的 entry 退回候選籃
+  // (見呼叫端 handleReturnToCandidate 的完整說明:真的刪除後端那筆
+  // entry,本地保留內容並標記 inTrip:false)。跟既有的「×」(onRemove)
+  // 語意不同,不互相取代:onRemove 只從前端候選籃清單移除、不動後端
+  // 資料(換行程/重新查詢時舊行為仍會讓它重新出現);這顆新按鈕才是
+  // 「真的讓這筆項目不再算入行程」的操作。
+  onReturnToCandidate?: (candidate: GeoCandidate & { kind: 'entry'; inTrip: true }) => void
 }) {
   return (
     <div
       className={styles.dayCard}
       draggable
-      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; onDragStart?.(c) }}
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', c.name); onDragStart?.(c) }}
       onDragEnd={() => onDragEnd?.()}
     >
       <div
@@ -182,13 +273,23 @@ function DayEntryCard({
       >
         <span className={styles.dayCardPin}>
           {(() => {
-            const Icon = entryKindIcon(c.kind)
+            const Icon = entryKindIcon(c.entryKind)
             return <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
           })()}
         </span>
         <span className={styles.dayCardName}>{c.name}</span>
         {c.startTime && <span className={styles.dayCardTime}>{c.startTime}</span>}
       </div>
+      {c.inTrip && (
+        <button
+          type="button"
+          className={styles.returnToCandidateBtn}
+          onClick={() => onReturnToCandidate?.(c as GeoCandidate & { kind: 'entry'; inTrip: true })}
+          title="返回候選"
+        >
+          <Undo2 size={13} strokeWidth={2} />
+        </button>
+      )}
       <button
         type="button"
         className={styles.removeBtn}
@@ -287,6 +388,7 @@ export function GeoCandidateSidebar({
   searching,
   searchError,
   onDatesAssigned,
+  onReturnToCandidate,
 }: {
   cfg: ClientConfig
   // tripID:拖曳純候選(飯店/景點/推薦地點)進日層架某一天時,要把它寫成
@@ -310,14 +412,23 @@ export function GeoCandidateSidebar({
   // 只能請呼叫端重新查詢真正的資料來源,讓補了日期的項目在下一次渲染
   // 自然移到正確的日期分組。
   onDatesAssigned?: () => void
+  // onReturnToCandidate:「返回候選」按鈕(見 DayEntryCard 的說明)成功
+  // 刪除後端 entry 後觸發,通知呼叫端(DesktopLayout.tsx)把這個物件的
+  // inTrip 改成 false、留在 geoCandidates 裡——這個元件不持有
+  // geoCandidates state,無法自己改,只能請上游代為更新(同
+  // onDatesAssigned 既有的模式)。
+  onReturnToCandidate?: (candidate: GeoCandidate & { kind: 'entry'; inTrip: true }) => void
 }) {
-  // 已排入行程 vs 純候選:kind === 'entry' 是行程本身已有座標的既有內容
-  // (進入規劃分頁時自動帶入,見上方型別註解),不是使用者用「+」手動加入
-  // 的——這批天然就等於「已排入行程」,其餘 kind(hotel/attraction/place)
-  // 是使用者主動丟進候選籃、但尚未真正寫回行程的項目,故以 kind 分組,不
-  // 需要另外比對是否重複。
-  const inTrip = candidates.filter((c): c is GeoCandidate & { kind: 'entry' } => c.kind === 'entry')
-  const onlyCandidate = candidates.filter((c) => c.kind !== 'entry')
+  // 已排入行程 vs 純候選:kind === 'entry' && inTrip === true 是行程本身
+  // 已有座標的既有內容(進入規劃分頁時自動帶入,見上方型別註解),不是
+  // 使用者用「+」手動加入的——這批天然就等於「已排入行程」。其餘情況
+  // (hotel/attraction/place,或按過「返回候選」、kind==='entry' 但
+  // inTrip===false 的項目)都歸進候選中——後者雖然形狀跟「已排入行程」
+  // 一樣是 entry 形狀,但後端那筆 entry 已經被刪除,不該再顯示在「已排入
+  // 行程」分組(見 GeoCandidate 型別定義處與 DayEntryCard「返回候選」的
+  // 完整說明)。
+  const inTrip = candidates.filter((c): c is GeoCandidate & { kind: 'entry'; inTrip: true } => c.kind === 'entry' && c.inTrip)
+  const onlyCandidate = candidates.filter((c) => !(c.kind === 'entry' && c.inTrip))
 
   // inTripByDay:「已排入行程」依 start 日期分組、日期升冪排序,未排定
   // 日期的分組固定排最後——對齊構想 5 原型日層架「一天一個區塊」的結構
@@ -356,10 +467,27 @@ export function GeoCandidateSidebar({
   const lastDatedDayKey = datedDays.length > 0 ? datedDays[datedDays.length - 1][0] : null
   const nextDayKey = useMemo(() => {
     if (!lastDatedDayKey) return null
+    // new Date(lastDatedDayKey + 'T00:00:00') 這個「有時間但沒帶時區」的
+    // 字串會被解析成本地時間午夜,setDate()/getDate() 也是本地時間運算,
+    // 這兩步都正確——關鍵是轉回字串時要用 localDateKey(見該函式說明),
+    // 不能用 toISOString(),否則算出的「隔天」在某些時區會倒退回原本
+    // 那天(實際發生過的 bug)。
     const d = new Date(lastDatedDayKey + 'T00:00:00')
     d.setDate(d.getDate() + 1)
-    return d.toISOString().slice(0, 10)
+    return localDateKey(d)
   }, [lastDatedDayKey])
+
+  // todayKey:全新行程(inTrip 完全是空的,連「未排定日期」分組都沒有——
+  // 一筆 entry 都還沒有)時,拖曳純候選卡片沒有任何現成的日期分組可以
+  // 拖進去,因為下方 datedDays.map/noDateGroup 兩條路徑都要求「已經有
+  // 至少一筆 entry」才有東西可渲染,nextDayKey 也因為 lastDatedDayKey 是
+  // null 而算不出來——形成候選籃永遠無法幫全新行程排出第一天的死角
+  // (實際發生過的 bug,不是預防性寫法)。用今天當第一天的預設值,只在
+  // inTrip.length === 0 且拖曳中時顯示這個佔位拖放區,建立成功後
+  // (onDatesAssigned 觸發重新查詢)inTrip 就不再是空的,這個特例分支
+  // 自然被下方 inTrip.length > 0 的正常渲染路徑取代,不需要額外狀態
+  // 收尾。
+  const todayKey = useMemo(() => localDateKey(new Date()), [])
 
   // handleAssignDate:「未排定日期」分組標題按下後,選好日期按確定時觸發
   // ——把選到的 date 一次寫回這個分組底下所有 entry(PATCH /v1/entries/
@@ -374,19 +502,48 @@ export function GeoCandidateSidebar({
     onDatesAssigned?.()
   }
 
-  // handleCreateEntryFromCandidate:拖曳純候選(飯店/景點/推薦地點)放進
-  // 某一天時觸發——這批候選還不是真正的行程 entry(見上方型別註解),
-  // 要先用 api.recordEntry 寫成一筆新 entry(title 用候選名稱、start 用
-  // 放置的日期、location 用地址/地標名稱),拿到新 entryID 後再呼叫
+  // handleReturnToCandidate:「返回候選」按鈕觸發(見 DayEntryCard 的
+  // 說明)——先呼叫 api.deleteEntry 真的把後端那筆 entry 刪除(不像
+  // onRemove 只從前端候選籃清單移除、後端資料仍在),成功後呼叫
+  // onReturnToCandidate 讓上游(DesktopLayout.tsx)把這個物件的 inTrip
+  // 改成 false、繼續留在 geoCandidates 裡——這個元件本身不持有
+  // geoCandidates state(見上方元件註解「維持這個元件單純是受控呈現
+  // 層」),不能自己改,只能呼叫回呼委託上游處理。刪除失敗不彈錯誤訊息
+  // 打斷瀏覽,理由同其餘拖放/日期寫入失敗的既有處理方式,印 console 供
+  // 除錯即可,使用者可以再按一次重試。
+  const handleReturnToCandidate = async (c: GeoCandidate & { kind: 'entry'; inTrip: true }) => {
+    try {
+      await api.deleteEntry(cfg, c.id)
+      onReturnToCandidate?.(c)
+    } catch (err) {
+      console.error('[GeoCandidateSidebar] 返回候選失敗:', err)
+    }
+  }
+
+  // handleCreateEntryFromCandidate:拖曳純候選(飯店/景點/推薦地點,或
+  // 按過「返回候選」、inTrip===false 的 entry 形狀候選)放進某一天時
+  // 觸發——這批候選目前都不是真正的行程 entry(entry 形狀但
+  // inTrip===false 的那批,後端那筆 entry 先前已被 deleteEntry 真的刪除,
+  // 見 DayEntryCard「返回候選」的說明),要先用 api.recordEntry 寫成一筆
+  // 新 entry(title 用候選名稱、start 用放置的日期、location 用地址/
+  // 地標名稱、kind 用 candidateEntryKind 推導出的分類,讓分類資訊不會
+  // 因為候選 ↔ entry 來回轉換而遺失),拿到新 entryID 後再呼叫
   // api.setEntryLatLng 補上候選已經有的座標——recordEntry 那支端點本身
   // 不接受 lat/lng(見該函式的說明),必須分兩步。成功後呼叫 onRemove
   // 把這個候選從「候選中」清單移除(它已經變成真正的行程 entry,不該
   // 再留在候選籃裡跟自己重複),再呼叫 onDatesAssigned 讓上游重新查詢
   // tripEntries,新條目會在下一次渲染出現在正確的日期分組。
   const handleCreateEntryFromCandidate = async (c: GeoCandidate, date: string) => {
-    if (!tripID || c.kind === 'entry') return
-    const location = c.kind === 'attraction' ? (c.landmarkName ?? c.name) : c.address
-    const { entryID } = await api.recordEntry(cfg, tripID, { title: c.name, start: date, location })
+    if (!tripID) return
+    const location = c.kind === 'attraction' ? (c.landmarkName ?? c.name)
+      : c.kind === 'entry' ? (c.location ?? '')
+      : c.address
+    const { entryID } = await api.recordEntry(cfg, tripID, {
+      title: c.name,
+      start: date,
+      location,
+      kind: candidateEntryKind(c),
+    })
     await api.setEntryLatLng(cfg, entryID, c.lat, c.lng)
     onRemove?.(c)
     onDatesAssigned?.()
@@ -413,21 +570,31 @@ export function GeoCandidateSidebar({
     const c = draggingCandidate
     setDraggingCandidate(null)
     if (!c || dayKey === NO_DATE_GROUP) return
-    if (c.kind === 'entry') {
+    // 只有「真的已排入行程」的 entry(inTrip===true)才走改期路徑——
+    // inTrip===false 的 entry 形狀候選(按過「返回候選」,見
+    // DayEntryCard 的說明)後端那筆 entry 已經被刪除,沒有 id 可以
+    // PATCH,必須走下面 handleCreateEntryFromCandidate 重新建立一筆
+    // 新 entry(kind 用 candidateEntryKind 讀回它保留的 entryKind,分類
+    // 不會遺失)。
+    if (c.kind === 'entry' && c.inTrip) {
       if (dayKey === dayGroupKey(c)) return
       try {
         await handleAssignDate([c], dayKey)
-      } catch {
+      } catch (err) {
         // 拖曳放開後失敗不彈錯誤訊息打斷瀏覽——理由同其餘查詢/寫入失敗的
-        // 既有處理方式,使用者可以再拖一次重試。
+        // 既有處理方式,使用者可以再拖一次重試。仍印到 console 供除錯,
+        // 避免完全沒有線索可查(這支 API 失敗原因可能是權限/網路等,不
+        // 應該對使用者完全不可見)。
+        console.error('[GeoCandidateSidebar] 拖曳改期失敗:', err)
       }
       return
     }
     try {
       await handleCreateEntryFromCandidate(c, dayKey)
-    } catch {
+    } catch (err) {
       // 理由同上——建立失敗不彈錯誤訊息,候選卡片維持在「候選中」清單裡
       // (onRemove 只有成功才會呼叫),使用者可以再拖一次重試。
+      console.error('[GeoCandidateSidebar] 拖曳建立行程失敗:', err)
     }
   }
 
@@ -457,6 +624,41 @@ export function GeoCandidateSidebar({
           </div>
         ) : (
           <>
+            {/* 全新行程(inTrip 完全是空的)拖曳純候選卡片時的佔位拖放區——
+                見上方 todayKey 的說明,解決「一筆 entry 都沒有時,候選籃
+                永遠沒有任何地方可以拖放」的死角。放在 inTrip.length > 0
+                分支之外、之前,是因為兩者互斥(有 entry 就不會是全新
+                行程,不需要同時渲染)。放開後走跟其餘日期分組一樣的
+                handleDropOnDay,建立成功後 inTrip 不再是空的,下一次
+                渲染會改用下方正常的 datedDays 分組路徑,這裡不需要自己
+                收尾。
+                平時就常駐顯示(不再靠 draggingCandidate 切換
+                display:none/顯示)——之前用 display:none 隱藏、只在拖曳
+                中才顯示的做法,雖然沒有插入/移除 DOM 節點,但顯示/隱藏
+                切換本身仍然會改變這個區塊的版面高度,一樣會把下面的
+                「候選中」清單(以及正在被拖曳的那張卡片本身,若它排在
+                這個區塊下面)往下推——瀏覽器判定拖曳來源元素在
+                dragstart 後的極短時間內位置被改變,直接中止這次拖曳
+                (實際發生過的 bug:候選卡片按下拖曳後完全沒有跟著游標
+                移動的視覺回饋,交叉測試證實只要把候選卡片挪到不受這個
+                佔位區高度變化影響的位置就能正常拖曳)。改成平時就顯示,
+                版面高度從頭到尾都穩定,才是真正避開這個陷阱的做法。 */}
+            {inTrip.length === 0 && (
+              <div className={styles.group}>
+                <div className={styles.day}>
+                  <div className={styles.dayHead}>
+                    <span className={styles.dayDate}>{dayGroupLabel(todayKey)}</span>
+                    <span className={styles.dayStatus}>拖曳到這裡開始排行程</span>
+                  </div>
+                  <div
+                    className={`${styles.dayBody} ${styles.dayBodyEmpty}${dragOverDay === todayKey ? ` ${styles.dayBodyDragOver}` : ''}`}
+                    onDragOver={(e) => { e.preventDefault(); setDragOverDay(todayKey) }}
+                    onDragLeave={() => setDragOverDay((d) => (d === todayKey ? null : d))}
+                    onDrop={(e) => { e.preventDefault(); handleDropOnDay(todayKey) }}
+                  />
+                </div>
+              </div>
+            )}
             {inTrip.length > 0 && (
               <div className={styles.group}>
                 <div className={styles.groupTitle}>已排入行程 · {inTrip.length}</div>
@@ -481,20 +683,25 @@ export function GeoCandidateSidebar({
                           onHover={onHover}
                           onDragStart={setDraggingCandidate}
                           onDragEnd={() => { setDraggingCandidate(null); setDragOverDay(null) }}
+                          onReturnToCandidate={handleReturnToCandidate}
                         />
                       ))}
                     </div>
                   </div>
                 ))}
-                {/* 「隔天」拖放區:只有拖曳進行中(draggingCandidate 有值)且
-                    算得出最後一天(nextDayKey)才顯示,平時不佔版面——拖到
+                {/* 「隔天」拖放區:算得出最後一天(nextDayKey)時才有意義
+                    渲染(沒有任何已有日期的分組就沒有「隔天」可言),拖到
                     最後一天最後一張卡片下方,讓使用者能把卡片放進一個目前
                     還沒有任何項目的新日期,不需要先手動選好日期。放開後走
                     跟其餘日期分組一樣的 handleDropOnDay,新條目建立/改期
                     成功後,這個分組會在下一次渲染(onDatesAssigned 觸發
                     重新查詢)變成 datedDays 裡真正的一個分組,這裡只是
-                    拖曳當下的臨時佔位,不需要自己維護額外的顯示狀態。 */}
-                {draggingCandidate && nextDayKey && (
+                    拖曳當下的臨時佔位,不需要自己維護額外的顯示狀態。
+                    平時就常駐顯示(理由同上方「全新行程」佔位拖放區的
+                    說明)——若只在拖曳中才顯示,顯示/隱藏切換造成的版面
+                    高度變化會把拖曳來源元素往下推,導致瀏覽器判定拖曳
+                    無效而中止。 */}
+                {nextDayKey && (
                   <div className={styles.day}>
                     <div className={styles.dayHead}>
                       <span className={styles.dayDate}>{dayGroupLabel(nextDayKey)}</span>
@@ -524,6 +731,7 @@ export function GeoCandidateSidebar({
                           onHover={onHover}
                           onDragStart={setDraggingCandidate}
                           onDragEnd={() => { setDraggingCandidate(null); setDragOverDay(null) }}
+                          onReturnToCandidate={handleReturnToCandidate}
                         />
                       ))}
                     </div>

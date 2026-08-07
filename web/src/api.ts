@@ -609,6 +609,11 @@ export interface RecordEntryInput {
   end?: string
   endTime?: string
   location?: string
+  // kind:條目類型("stay"|"flight"|"activity"|"note"|"car"|"restaurant"|
+  // "ticket",對齊 model.Entry.Kind)——GeoCandidateSidebar.tsx 把候選籃
+  // 項目(飯店/景點/推薦地點)拖進日層架時,帶入該候選原本的分類,讓新
+  // entry 保留分類資訊(不帶則後端建立時不分類,沿用既有行為)。
+  kind?: string
 }
 
 export function recordEntry(cfg: ClientConfig, tripID: string, input: RecordEntryInput) {
@@ -630,6 +635,21 @@ export function setEntryLatLng(cfg: ClientConfig, entryID: string, lat: number, 
     'PATCH',
     `/internal/entries/${encodeURIComponent(entryID)}/latlng`,
     { lat, lng },
+  )
+}
+
+// 對齊後端 DELETE /internal/entries/{id}(handleInternalDeleteEntry)——刪除
+// 單一 model.Entry(跟 recordEntry/setEntryLatLng/updateEntry 同一份資料,
+// 不是 TripEntry「旅程清單」表格的 deleteTripEntry)。供 GeoCandidateSidebar
+// 「返回候選」按鈕使用:已排入行程的項目(kind==='entry')退回候選籃時,
+// 該筆 entry 已經是真正的資料庫記錄,只從前端候選籃 state 移除不夠(見
+// onRemove 既有行為,重新整理頁面/onTripEntriesChange 重新查詢時又會出現)
+// ——必須真的呼叫刪除,才能讓它不再是「已排入行程」。
+export function deleteEntry(cfg: ClientConfig, entryID: string) {
+  return request<{ deleted: string }>(
+    cfg,
+    'DELETE',
+    `/internal/entries/${encodeURIComponent(entryID)}`,
   )
 }
 

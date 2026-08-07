@@ -45,6 +45,13 @@ type RecordInput struct {
 	End       string // 'YYYY-MM-DD';可空
 	EndTime   string // 'HH:MM';可空
 	Location  string // 可空
+	// Kind:條目類型("stay"|"flight"|"activity"|"note"|"car"|"restaurant"|
+	// "ticket",見 model.Entry.Kind)。可空——目前唯一的呼叫來源是
+	// GeoCandidateSidebar.tsx 把候選籃項目(飯店/景點/推薦地點)拖進日層架
+	// 時,帶入該候選原本的分類(飯店→"stay"等),讓這筆新 entry 保留分類
+	// 資訊;其餘既有呼叫端(want 工具、CLI)留空,沿用建立時不分類的既有
+	// 行為。
+	Kind string
 }
 
 // RecordResult 是記錄結果:新 entry 的 ID。
@@ -65,6 +72,9 @@ func (s *Service) Record(in RecordInput) (RecordResult, error) {
 		EndTime:   in.EndTime,
 		Location:  in.Location,
 		CreatedAt: nowUTC(),
+	}
+	if in.Kind != "" {
+		e.Kind = &in.Kind
 	}
 	if err := s.st.InsertEntry(e); err != nil {
 		return RecordResult{}, err
