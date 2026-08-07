@@ -506,6 +506,16 @@ export interface GeoPlace {
   lat: number
   lng: number
   primaryType: string
+  // category:後端把 primaryType(Google 原始細分類型,如 "hotel"/
+  // "japanese_restaurant")封裝過的自訂分類,值域固定是
+  // 'lodging'/'tourist_attraction'/'restaurant' 其中之一(對齊地圖上方
+  // 類別標籤,見 GeoOutlineMap.tsx 的 CATEGORY_TAGS),查無對應分類時為
+  // 空字串/undefined。前端分類判斷(圖示、entry kind 推導等)一律讀這個
+  // 欄位,不要自己再解讀 primaryType——直接拿 primaryType 跟這三個查詢用
+  // 的類型字面值比對幾乎必定失敗(Google 回傳的是更精確的細分類型,不是
+  // 查詢用的類型本身),這是實際發生過的 bug。primaryType 保留純供
+  // 除錯/未來需要更細分類時使用。
+  category?: string
   photoUrl?: string
 }
 

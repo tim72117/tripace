@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tim72117/tripace/internal/geo"
@@ -524,7 +525,52 @@ type placeResponse struct {
 	Lat         float64 `json:"lat"`
 	Lng         float64 `json:"lng"`
 	PrimaryType string  `json:"primaryType"`
-	PhotoURL    string  `json:"photoUrl,omitempty"`
+	// Category:後端封裝過的自訂分類,值域固定是 allowedPlaceTypes 的三個
+	// 字串之一(lodging/tourist_attraction/restaurant),查無對應分類時為
+	// 空字串(前端據此退回泛用呈現,例如相機圖示)——見 classifyPlaceCategory
+	// 的完整說明。前端應該一律讀這個欄位做分類判斷,不要自己再解讀
+	// PrimaryType(Google 原始分類,值域是上百種細分類型,如
+	// "hotel"/"japanese_restaurant",直接拿來跟 lodging/restaurant 這類
+	// 查詢用的類型字面值比對幾乎必定比對失敗,這是實際發生過的 bug)。
+	// PrimaryType 保留在回應裡純供除錯/未來需要更細分類時使用,不移除。
+	Category string `json:"category,omitempty"`
+	PhotoURL string `json:"photoUrl,omitempty"`
+}
+
+// classifyPlaceCategory 把 Google Places 回傳的 primaryType(細分類型,如
+// "hotel"/"japanese_restaurant"/"museum")歸類成 allowedPlaceTypes 的三個
+// 值之一——Google 用 includedTypes: ["lodging"] 查詢時,實際回傳的
+// primaryType 幾乎不會直接等於 "lodging" 本身,而是更精確的細分類型,故
+// 這裡列舉 Google Places API 底下常見的住宿/餐飲細分類型(參考 Places API
+// Table A 的 Lodging/Food and Drink 分類),餐廳額外用 "_restaurant" 結尾
+// 的通用規則涵蓋各種料理系(如 japanese_restaurant、italian_restaurant,
+// Google 這類細分類型數量很多,窮舉字面值不切實際)。查無對應分類回傳
+// 空字串,不強塞一個不精確的分類。
+var (
+	lodgingPrimaryTypes = map[string]bool{
+		"lodging": true, "hotel": true, "motel": true, "resort_hotel": true,
+		"extended_stay_hotel": true, "guest_house": true, "bed_and_breakfast": true,
+		"hostel": true, "inn": true, "cottage": true, "farmstay": true,
+		"campground": true, "rv_park": true, "private_guest_room": true,
+	}
+	restaurantPrimaryTypes = map[string]bool{
+		"restaurant": true, "cafe": true, "bar": true, "bakery": true,
+		"meal_takeaway": true, "meal_delivery": true, "fast_food_restaurant": true,
+		"food_court": true, "coffee_shop": true,
+	}
+)
+
+func classifyPlaceCategory(primaryType string) string {
+	switch {
+	case primaryType == "tourist_attraction":
+		return "tourist_attraction"
+	case lodgingPrimaryTypes[primaryType]:
+		return "lodging"
+	case restaurantPrimaryTypes[primaryType] || strings.HasSuffix(primaryType, "_restaurant"):
+		return "restaurant"
+	default:
+		return ""
+	}
 }
 
 // allowedPlaceTypes 是 handleGeoPlacesNearby 的 type 查詢參數白名單——
@@ -618,6 +664,7 @@ func (s *Server) handleGeoPlacesNearby(w http.ResponseWriter, r *http.Request) {
 				Lat:         p.Lat,
 				Lng:         p.Lng,
 				PrimaryType: p.PrimaryType,
+				Category:    classifyPlaceCategory(p.PrimaryType),
 			}
 			if p.PhotoRef != "" {
 				if photoURL, pErr := client.PhotoDataURI(ctx, p.PlaceID, p.PhotoRef, 200); pErr == nil {

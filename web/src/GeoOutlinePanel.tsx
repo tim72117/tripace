@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from './api'
 import { fetchEntries, fetchGeoGeocode } from './api'
 import { GeoOutlineMap } from './GeoOutlineMap'
@@ -50,15 +50,16 @@ function mapLocatedTripEntries(entries: Awaited<ReturnType<typeof fetchEntries>>
 // 塞在 main 內部),兩者是分開掛載的 sibling,只能靠這兩個 callback 往上
 // 回報。
 //
-// externalPanTarget:使用者在 GeoHotelSidebar 點擊某個飯店/地點項目時要
-// 移動地圖到的座標,由 DesktopLayout.tsx 往下傳——跟這裡搜尋查到的
-// panTarget 是兩個獨立來源,合併邏輯見下方 effectivePanTarget。
+// externalPanTarget:使用者在 GeoHotelSidebar/GeoCandidateSidebar 點擊某個
+// 飯店/地點/已排入行程項目時要移動地圖到的座標,由 DesktopLayout.tsx
+// 往下傳——跟這裡搜尋查到的座標共用同一個 panRequest state,「誰最後
+// 觸發就用誰」,見下方 panRequest 的完整說明。
 // selectedKey:由 DesktopLayout.tsx 往下傳,原封不動轉傳給 GeoOutlineMap,
 // 讓地圖上的地標/飯店圖示能標記出目前選中的是哪一個。
 // tripID:目前選中的行程 ID——切到規劃分頁、或切換行程時,若這個行程底下
 // 已經有帶座標的 entry(如老手回來繼續規劃、或搬過去用等機制搬進來的
 // 候選點),應該優先以這些點的中心當地圖初始位置,而不是固定顯示東京。
-// 見下方 tripCenterPanTarget 的查詢與 effectivePanTarget 的優先序。
+// 見下方 tripCenter 的查詢。
 // onTripEntriesChange:同 onHotelsChange 等,把行程本身已有座標的 entry
 // (見下方查詢 tripCenter 的同一個 useEffect,順便保留完整清單而不只是
 // 平均座標)往上回報,供 DesktopLayout.tsx 在整個桌面版介面最外側渲染
@@ -136,12 +137,18 @@ export function GeoOutlinePanel({
 }) {
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  // searchPanTarget:搜尋查到城市座標後要移動地圖到的目標——跟
-  // externalPanTarget(側欄點擊)是兩個獨立來源,見下方 effectivePanTarget
-  // 的合併方式。每次查詢成功都建立新物件參照,即使連續搜尋同一個城市
-  // 也能讓 GeoOutlineMap 偵測到「這是一次新的移動請求」(理由同
-  // GeoOutlineMap.tsx 對 panTarget 的說明)。
-  const [searchPanTarget, setSearchPanTarget] = useState<{ lat: number; lng: number } | null>(null)
+  // panRequest:目前要移動地圖到的目標,兩個獨立來源(搜尋框查到的座標/
+  // externalPanTarget 側欄點擊)共用同一個 state,誰最後觸發就用誰——
+  // 取代原本「搜尋 > 側欄點擊」寫死優先序的舊寫法(見下方 effectivePanTarget
+  // 的說明,那個寫法有實際發生過的 bug:searchPanTarget 只有查詢成功時
+  // 會設值,從來不會被清空,一旦使用者用過一次城市搜尋,之後所有側欄
+  // 點擊——包含候選籃「已排入行程」項目點擊要移動地圖到該點——都會被
+  // 這個過時的搜尋座標永久蓋掉,地圖只會不斷被拉回最後一次搜尋的地方,
+  // 使用者會觀察到「資訊欄有正確顯示點擊的項目,但地圖完全不會動」)。
+  // 每次設值都建立新物件參照,即使連續觸發同一個座標也能讓 GeoOutlineMap
+  // 偵測到「這是一次新的移動請求」(理由同 GeoOutlineMap.tsx 對 panTarget
+  // 的說明)。
+  const [panRequest, setPanRequest] = useState<{ lat: number; lng: number; level?: number; suppressQuery: boolean } | null>(null)
   // tripCenter:目前行程底下已有座標的 entry 算出來的中心點,見下方
   // useEffect,傳給 GeoOutlineMap 當地圖第一次建立時的初始中心(見該
   // 元件 initialCenter prop 的完整說明)——三態:undefined 代表「還在
@@ -171,7 +178,7 @@ export function GeoOutlinePanel({
     fetchGeoGeocode(cfg, trimmed)
       .then((result) => {
         if (cancelled) return
-        setSearchPanTarget({ lat: result.lat, lng: result.lng })
+        setPanRequest({ lat: result.lat, lng: result.lng, suppressQuery: false })
       })
       .catch((e) => {
         if (!cancelled) setErr(e instanceof Error ? e.message : String(e))
@@ -262,44 +269,22 @@ export function GeoOutlinePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refetchTripEntriesTrigger])
 
-  // effectivePanTarget:地圖已經建立之後,後續移動的優先序——搜尋框查到
-  // 的座標 > 側欄點擊。使用者主動搜尋或點側欄項目,代表當下明確想看
-  // 哪裡。行程中心點(tripCenter)不在這條鏈裡——它只負責地圖「第一次
-  // 建立時」該長在哪裡,透過下方獨立的 initialCenter prop 傳給
-  // GeoOutlineMap,一步到位建圖在正確位置,不需要「先建圖、再 panTo
-  // 移動過去」這道多餘手續(那樣還會查一次移動前那個位置的資料)。
-  //
-  // suppressQuery 依來源分開設定(見 GeoOutlineMap.tsx 對這個欄位的完整
-  // 說明):searchPanTarget 是使用者明確按下「查看」要換一個地方看,
-  // 移動後必須查詢新範圍的資料,不能抑制,否則會出現「移動地圖後沒有
-  // 取得資料、要再手動縮放才觸發查詢」的問題;externalPanTarget(側欄
-  // 點擊)只是想對齊看清楚一個已知項目,範圍通常沒有實質改變,該抑制
-  // 以避免所有點清空重畫。
-  //
-  // 用 useMemo 快取,依實際座標值(而非物件參照)當依賴——{...x, suppressQuery}
-  // 這種 spread 若每次 render 都重新求值,會產生新物件參照,即使座標
-  // 完全沒變,GeoOutlineMap 的 panTarget useEffect(依參照判斷「是否為
-  // 新的移動請求」,見該檔案的說明)也會被誤判成「有新的移動要執行」而
-  // 重新呼叫 panTo。而 onAttractionsChange/onHotelsChange 查詢完成後會
-  // 觸發 DesktopLayout 的 setGeoAttractions/setGeoHotels、連鎖讓這個元件
-  // 重新渲染——若沒有 useMemo,「渲染產生新物件→panTo→idle→查詢→
-  // 觸發渲染」會形成真正的無限迴圈(即使地圖靜止不動、使用者沒有任何
-  // 互動,也會持續發送查詢請求)。
-  const searchLat = searchPanTarget?.lat
-  const searchLng = searchPanTarget?.lng
+  // externalPanTarget(側欄點擊,含候選籃「已排入行程」項目)變動時,
+  // 更新成新的 panRequest——跟上面 searchTrigger 成功時直接 setPanRequest
+  // 是同一份 state,「誰最後觸發就用誰」,不再有寫死的來源優先序(理由見
+  // panRequest 宣告處的說明)。suppressQuery 固定為 true:側欄點擊只是想
+  // 對齊看清楚一個已知項目,範圍通常沒有實質改變,該抑制以避免所有點
+  // 清空重畫(對比搜尋框查到的座標,使用者明確按下「查看」要換一個地方
+  // 看,移動後必須查詢新範圍的資料,不能抑制,見 setPanRequest 呼叫處)。
+  // 依實際座標值(而非物件參照)當依賴,避免呼叫端每次重渲染都產生新的
+  // externalPanTarget 物件參照時,這裡跟著誤判成「有新的移動要執行」。
   const externalLat = externalPanTarget?.lat
   const externalLng = externalPanTarget?.lng
   const externalLevel = externalPanTarget?.level
-  const effectivePanTarget = useMemo(() => {
-    if (searchLat != null && searchLng != null) {
-      return { lat: searchLat, lng: searchLng, suppressQuery: false }
-    }
-    if (externalLat != null && externalLng != null) {
-      return { lat: externalLat, lng: externalLng, level: externalLevel, suppressQuery: true }
-    }
-    return null
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchLat, searchLng, externalLat, externalLng, externalLevel])
+  useEffect(() => {
+    if (externalLat == null || externalLng == null) return
+    setPanRequest({ lat: externalLat, lng: externalLng, level: externalLevel, suppressQuery: true })
+  }, [externalLat, externalLng, externalLevel])
 
   return (
     // geo-outline-panel-wrap:固定字串 class(與 CSS Modules 的 styles.wrap
@@ -321,7 +306,7 @@ export function GeoOutlinePanel({
           onHotelSelect={onHotelSelect}
           onPlaceSelect={onPlaceSelect}
           onPoiSelect={onPoiSelect}
-          panTarget={effectivePanTarget}
+          panTarget={panRequest}
           selectedKey={selectedKey}
           candidateKeys={candidateKeys}
           hoverKey={hoverKey}

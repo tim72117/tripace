@@ -30,13 +30,13 @@ function entryKindIcon(kind?: string | null): typeof MapPin {
   return (kind && ENTRY_KIND_ICONS[kind]) || MapPin
 }
 
-// PLACE_PRIMARY_TYPE_TO_ENTRY_KIND:GeoPlace.primaryType(Google Places 的
-// place type,如 "tourist_attraction"/"lodging"/"restaurant",見
-// GeoOutlineMap.tsx 的 PLACE_CATEGORY_GLYPHS/CATEGORY_TAGS)對應到
-// model.Entry.Kind 的值域——兩套字串剛好在這三個類別上重疊(對齊既有
-// 慣例,見 CATEGORY_TAGS 的完整說明),故直接沿用同樣的字串,不需要另外
-//維護一份對照表跳轉。
-const PLACE_PRIMARY_TYPE_TO_ENTRY_KIND: Record<string, string> = {
+// PLACE_CATEGORY_TO_ENTRY_KIND:GeoPlace.category(後端封裝過的自訂分類,
+// 值域固定是 lodging/tourist_attraction/restaurant,見該欄位的完整說明)
+// 對應到 model.Entry.Kind 的值域——兩套字串剛好在這三個類別上重疊,故
+// 直接沿用同樣的字串。不要用 GeoPlace.primaryType(Google 原始細分類型,
+// 如 "hotel"/"japanese_restaurant")做這個判斷,那是後端已經處理過、
+// 前端不該重複解讀的原始資料。
+const PLACE_CATEGORY_TO_ENTRY_KIND: Record<string, string> = {
   lodging: 'stay',
   restaurant: 'restaurant',
   tourist_attraction: 'activity',
@@ -61,7 +61,7 @@ const PLACE_PRIMARY_TYPE_TO_ENTRY_KIND: Record<string, string> = {
 //    保守起見仍處理。
 function candidateEntryKind(c: GeoCandidate): string {
   if (c.kind === 'hotel') return 'stay'
-  if (c.kind === 'place') return PLACE_PRIMARY_TYPE_TO_ENTRY_KIND[c.primaryType] ?? 'activity'
+  if (c.kind === 'place') return (c.category && PLACE_CATEGORY_TO_ENTRY_KIND[c.category]) ?? 'activity'
   if (c.kind === 'entry') return c.entryKind ?? 'activity'
   return 'activity'
 }
@@ -144,9 +144,13 @@ function localDateKey(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-// CandidateRow:單一候選項目的卡片,純候選組與日層架卡片共用同一份
-// 渲染邏輯,只有外層分組容器不同。onSelect:點擊卡片本體(而非「×」)時
-// 觸發,打開地點介紹面板(見 DesktopLayout.tsx 的接線)——理由同
+// CandidateRow:單一候選項目的卡片——樣式對齊 DayEntryCard(已排入行程
+// 分組底下的日層架卡片,見該元件說明),用 candidateEntryKind 推導出的
+// 圖示 + 名稱的緊湊橫列,不再用縮圖卡片(理由同 candidateEntryKind 的
+// 說明:分類資訊在候選 ↔ entry 互相轉換時本來就要保留,乾脆讓兩種分組
+// 共用同一套視覺語言,使用者在「候選中」跟「已排入行程」之間拖曳/切換
+// 時不會感覺是兩套完全不同的卡片)。onSelect:點擊卡片本體(而非「×」)
+// 時觸發,打開地點介紹面板(見 DesktopLayout.tsx 的接線)——理由同
 // GeoHotelSidebar 卡片點擊的既有慣例,卡片本體不能整張都是
 // <button>(HTML 不允許 button 巢狀 button),故沿用「本體是可點擊的
 // <div role="button">,移除是卡片內獨立的 <button>」這個既有模式。
@@ -170,12 +174,9 @@ function CandidateRow({
   onDragStart?: (c: GeoCandidate) => void
   onDragEnd?: () => void
 }) {
-  const photoUrl = c.kind === 'attraction' ? c.landmarkPhotoUrl : c.kind === 'entry' ? undefined : c.photoUrl
-  const name = c.name
-  const meta = c.kind === 'attraction' ? (c.landmarkName ?? '') : c.kind === 'entry' ? (c.location ?? '') : c.address
   return (
     <div
-      className={styles.item}
+      className={styles.dayCard}
       draggable
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = 'move'
@@ -192,21 +193,19 @@ function CandidateRow({
       <div
         role="button"
         tabIndex={0}
-        className={styles.itemBody}
+        className={styles.dayCardBody}
         onClick={() => onSelect?.(c)}
         onKeyDown={(e) => { if (e.key === 'Enter') onSelect?.(c) }}
         onMouseEnter={() => onHover?.(geoItemKey(c.kind, c))}
         onMouseLeave={() => onHover?.(null)}
       >
-        {photoUrl ? (
-          <img className={styles.itemPhoto} src={photoUrl} alt={name} loading="lazy" draggable={false} />
-        ) : (
-          <div className={styles.itemPhotoPlaceholder} />
-        )}
-        <div className={styles.itemInfo}>
-          <span className={styles.itemName}>{name}</span>
-          {meta && <span className={styles.itemMeta}>{meta}</span>}
-        </div>
+        <span className={styles.dayCardPin}>
+          {(() => {
+            const Icon = entryKindIcon(candidateEntryKind(c))
+            return <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
+          })()}
+        </span>
+        <span className={styles.dayCardName}>{c.name}</span>
       </div>
       <button
         type="button"

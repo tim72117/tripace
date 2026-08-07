@@ -185,11 +185,7 @@ function hotelMarkerIcon(selected: boolean, candidate: boolean): google.maps.Ico
 // 分類要畫的圖案內容(白色線條,座標為 lucide-react 對應圖示的原生 24x24
 // path 資料,直接取自 hotel/map-pin/utensils-crossed 三顆 icon)——讓地圖
 // 上方類別標籤(飯店/景點/餐廳,見 CATEGORY_TAGS)查出來的三種地點,各自
-// 用跟標籤一致的圖示語意,而非全部套同一顆相機圖示。primaryType 是
-// Google Places 的完整分類(可能是 restaurant 以外上百種細分類型,例如
-// handleAttractionClick 不限類型查出來的結果),故只精確比對這三個
-// CATEGORY_TAGS 用到的類型,其餘一律退回相機圖示(fallback,語意是「這是
-// 一個值得拍照的推薦地點」,適用任何沒有更精確分類的情況)。
+// 用跟標籤一致的圖示語意,而非全部套同一顆相機圖示。
 const CAMERA_GLYPH =
   '<path d="M8.5 8.2h1.1l.7-1.1a.8.8 0 01.7-.4h2a.8.8 0 01.7.4l.7 1.1h1.1a1.6 1.6 0 011.6 1.6v5.4a1.6 1.6 0 01-1.6 1.6H8.5a1.6 1.6 0 01-1.6-1.6V9.8a1.6 1.6 0 011.6-1.6z" fill="none" stroke="#FDFCFA" stroke-width="1.3" stroke-linejoin="round"/>' +
   '<circle cx="12" cy="12.6" r="2.1" fill="none" stroke="#FDFCFA" stroke-width="1.3"/>'
@@ -222,9 +218,9 @@ const PLACE_CATEGORY_GLYPHS: Record<string, string> = {
 // 三層同心圓靶心)——圖案本身已經有清楚的形狀語意,不需要再疊靶心結構,
 // 加大加亮已足夠表達「這是選中的那個」。candidate 為 true 時疊加右上角
 // 勾選徽章,理由同 hotelMarkerIcon。
-function placeMarkerIcon(selected: boolean, candidate: boolean, primaryType?: string): google.maps.Icon {
+function placeMarkerIcon(selected: boolean, candidate: boolean, category?: string): google.maps.Icon {
   const size = selected ? 28 : 22
-  const glyph = (primaryType && PLACE_CATEGORY_GLYPHS[primaryType]) || CAMERA_GLYPH
+  const glyph = (category && PLACE_CATEGORY_GLYPHS[category]) || CAMERA_GLYPH
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 24 24">' +
     (selected
@@ -1057,7 +1053,7 @@ export function GeoOutlineMap({
         position: { lat: p.lat, lng: p.lng },
         map: mapRef.current!,
         title: p.name,
-        icon: placeMarkerIcon(false, candidateKeys?.has(geoItemKey('place', p)) ?? false, p.primaryType),
+        icon: placeMarkerIcon(false, candidateKeys?.has(geoItemKey('place', p)) ?? false, p.category),
       })
       // 點擊推薦地點 marker 往上回報選取,理由同飯店 marker 的 click
       // listener——單純回報選取,不觸發額外的地圖放大/查詢行為。
@@ -1080,7 +1076,7 @@ export function GeoOutlineMap({
       const key = geoItemKey('place', p)
       const selected = selectedKey === key || hoverKey === key
       const candidate = candidateKeys?.has(key) ?? false
-      marker.setIcon(placeMarkerIcon(selected, candidate, p.primaryType))
+      marker.setIcon(placeMarkerIcon(selected, candidate, p.category))
       marker.setZIndex(selected ? 999 : undefined)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
