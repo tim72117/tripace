@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e:mockllm": "playwright test tests/e2e-mock-llm.spec.ts"
+    "test:e2e:mockllm": "playwright test tests/e2e-mock-llm.spec.ts",
+    "test:e2e:geo-outline": "playwright test tests/e2e-geo-outline.spec.ts"
   },
   "dependencies": {
     "@googlemaps/js-api-loader": "^2.1.1",
