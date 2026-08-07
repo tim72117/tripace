@@ -5,18 +5,11 @@ name: Deploy Redirect Service to Cloud Run
 # https://tripace.shuttle.tools——這個網域早期是本產品用過的網址,DNS
 # 記錄還在,這支服務讓還連到舊網址的連結/書籤自動落地到現在的正式網域。
 #
-# 跟其餘服務(deploy-cloudrun.yml/deploy-admin.yml)一樣改為打 v* 格式的
-# git tag 觸發部署,對齊 .claude/skills/version-tagging 的流程——雖然
-# 這支服務完全不觸及資料庫 schema,理論上可以用更寬鬆的觸發條件,但沿用
-# 同一套「tag = 這個版本確認要上線」的觸發語意,讓所有服務的部署時機
-# 保持一致、好理解,不需要為這一支額外記一套不同的規則。
-#
-# workflow_dispatch 仍保留,供不方便打 tag、或需要 skip_build 這種
-# 特殊情境時手動觸發。
+# 這支服務刻意只能手動觸發,不隨 tag 自動部署:redirectserver 是低頻的
+# 極簡服務,部署動作很少發生,不該每次打版號 tag(即使是其他服務的發版)
+# 就跟著自動重新部署一次。只能手動觸發(workflow_dispatch),需要明確
+# 操作才會執行,避免非預期的部署。
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       skip_build:
