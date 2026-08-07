@@ -52,7 +52,10 @@ export function GeoInfoPanel({
   // 既有的同名 callback——這裡刻意不做「已在候選籃裡就不顯示按鈕」的
   // 判斷,重複加入由呼叫端的候選籃 state 用內容比對去重(見
   // DesktopLayout.tsx 的 onAddCandidate 說明),這個元件不需要知道候選籃
-  // 目前的完整內容。
+  // 目前的完整內容。按下直接加入候選籃(純前端,不寫入後端)——刻意不像
+  // GeoHotelSidebar.tsx 的 AddCandidateButton 那樣展開日期選擇,使用者
+  // 明確要求「地點介紹」的加入候選維持單純的一鍵加入,日期改到已排入
+  // 行程分組的「從候選加入」入口(見 GeoCandidateSidebar.tsx)再指定。
   onAddCandidate?: (candidate: GeoCandidate) => void
   // onAddToNewTrip:複合按鈕右半邊(只有 FolderPlus icon)觸發,「加入
   // 候選」的變化版——把這個地點直接加到一個新行程,而不是目前選取的
@@ -65,6 +68,8 @@ export function GeoInfoPanel({
   tripName: string
 }) {
   if (!content) return null
+
+  const candidate = content.candidate
 
   return (
     <div className={styles.panel}>
@@ -95,12 +100,12 @@ export function GeoInfoPanel({
           ) : (
             <p className={styles.summaryEmpty}>這個地點還沒有簡介資料。</p>
           )}
-          {content.candidate && (
+          {candidate && (
             <div className={styles.addCandidateGroup}>
               <button
                 type="button"
                 className={styles.addCandidateBtn}
-                onClick={() => onAddCandidate?.(content.candidate!)}
+                onClick={() => onAddCandidate?.(candidate)}
               >
                 <Plus size={14} strokeWidth={2} />
                 加入 {tripName}
@@ -108,7 +113,7 @@ export function GeoInfoPanel({
               <button
                 type="button"
                 className={styles.addToNewTripBtn}
-                onClick={() => onAddToNewTrip?.(content.candidate!)}
+                onClick={() => onAddToNewTrip?.(candidate)}
                 title="加入到新行程"
                 aria-label="加入到新行程"
               >

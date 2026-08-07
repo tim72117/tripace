@@ -18,7 +18,7 @@ import { PhoneContent } from './PhoneContent'
 // 下一頁、重新整理、分享連結都能還原到對應畫面。路由本身只負責「依路徑
 // 分派到哪個頁面元件」,不涉及登入狀態/行程選擇(activeTrip 仍是
 // useAppState() 管理的獨立 state,不進 URL,維持原樣)。
-export function App({ isDemo = false }: { isDemo?: boolean } = {}) {
+export function App() {
   const props = useAppState()
   return (
     <BrowserRouter>
@@ -83,7 +83,7 @@ export function App({ isDemo = false }: { isDemo?: boolean } = {}) {
           path="/app/:panelMode?"
           element={
             <div className="web-app">
-              <PhoneContent {...props} isDemo={isDemo} />
+              <PhoneContent {...props} />
             </div>
           }
         />
@@ -94,7 +94,7 @@ export function App({ isDemo = false }: { isDemo?: boolean } = {}) {
           path="*"
           element={
             <div className="web-app">
-              <PhoneContent {...props} isDemo={isDemo} />
+              <PhoneContent {...props} />
             </div>
           }
         />

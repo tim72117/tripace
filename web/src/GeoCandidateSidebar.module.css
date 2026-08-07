@@ -236,6 +236,32 @@
   color: var(--ios-gray);
 }
 
+/* addFromCandidateBtn:「從候選加入」——每個已排入行程日期分組標題列
+   最右側,推到 .dayHead(flex row)的最右邊(margin-left: auto),按下
+   開啟第二側欄(AddFromCandidateSidebar.tsx,獨立元件/獨立 CSS,見該
+   檔案的說明)。視覺上比 .dayStatus 重一點(有底色的小型按鈕),讓使用者
+   一眼認出這是可以按的操作,不是純文字狀態。 */
+.addFromCandidateBtn {
+  margin-left: auto;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 8px;
+  background: var(--ios-bg);
+  color: var(--color-accent);
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.addFromCandidateBtn:hover {
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--ios-bg));
+}
+
 .dayBody {
   border: 1px dashed var(--ios-sep);
   border-radius: 12px;

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, Check } from 'lucide-react'
 import type { AssistLang } from './assistLang'
 import { RecommendedPlacesList, RecommendedPlacesRow, FAKE_RECOMMENDED_PLACES } from './RecommendedPlaces'
-import { RecommendedPlacesMap } from './RecommendedPlacesMap'
 import { ClientToolsDemo } from './clienttools/bridge/ClientToolsDemo'
 import { OnagentBridgeDemo } from './clienttools/OnagentBridgeDemo'
 import langSelectStyles from './LangSelect.module.css'
@@ -15,41 +14,72 @@ import langSelectStyles from './LangSelect.module.css'
 // 兩邊都單向 import 這裡,不互相依賴。
 
 // PanelMode:桌面版 side panel 目前顯示的內容;null 代表收合(主區全寬)。
-// 'demo-cards'/'demo-row'/'demo-map':試做用的推薦景點呈現方式(假資料,見
-// RecommendedPlaces.tsx/RecommendedPlacesMap.tsx)。'demo-clienttools'/
-// 'demo-onagent':「LLM 呼叫前端 tool」試做的兩條資料流(前者走 tripace 自己的
+// 'demo-cards'/'demo-row':試做用的推薦景點呈現方式(假資料,見
+// RecommendedPlaces.tsx)。'demo-clienttools'/'demo-onagent':「LLM 呼叫
+// 前端 tool」試做的兩條資料流(前者走 tripace 自己的
 // ClientToolsBridge/clienttools_ws.go,後者走 onagent 平台,見
-// clienttools/ClientToolsDemo.tsx / OnagentBridgeDemo.tsx 的說明),原本只能
-// 從獨立的 ?debug 工作台(DebugApp.tsx)進入,現在併入這裡統一用 ?demo 存取。
-// 'pace':單車配速表(真實路線里程/時刻表,見 PaceChart.tsx)、
-// 'geo-outline':地理輪廓底圖(構想 6,見
-// docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)——兩者皆已從 ?demo 限定的
-// 試做功能轉為正式導覽項目,所有使用者都能在 rail 上看到,渲染邏輯改為
-// 直接使用 PaceChart/PaceRouteMap、GeoCandidateSidebar/GeoOutlinePanel,
-// 見 DesktopLayout.tsx / PhoneContent.tsx / PhoneNavDrawer.tsx,不再屬於
-// 這組共用的 demo 面板(DemoPanelContent)。
+// clienttools/ClientToolsDemo.tsx / OnagentBridgeDemo.tsx 的說明)。這 4 個
+// 模式各自由獨立的 DEMO_*_ENABLED 編譯時 feature flag 控制是否出現(見
+// 下方說明),不是綁在同一個開關底下。(原本還有 'demo-map'——推薦景點
+// 地圖試做,見 RecommendedPlacesMap.tsx——已整個移除,含入口與實作。)
+// 'trips'/'timeline'/'pace'/'geo-outline':正式導覽項目,所有使用者都能在
+// rail 上看到(依各自的 *_ENABLED flag),渲染邏輯直接使用 DesktopTripList/
+// MultiTrackTimeline/PaceChart+PaceRouteMap、GeoCandidateSidebar/
+// GeoOutlinePanel,見 DesktopLayout.tsx / PhoneContent.tsx /
+// PhoneNavDrawer.tsx,不屬於這組共用的 demo 面板(DemoPanelContent)。
 export type PanelMode =
   | 'trips' | 'timeline' | 'pace' | 'geo-outline'
-  | 'demo-cards' | 'demo-row' | 'demo-map' | 'demo-clienttools' | 'demo-onagent'
+  | 'demo-cards' | 'demo-row' | 'demo-clienttools' | 'demo-onagent'
   | null
 
-// GEO_OUTLINE_ENABLED:地理輪廓底圖(規劃分頁)功能開關——這次部署刻意
-// 不開啟(見 web/.env.production 或部署環境變數 VITE_FEATURE_GEO_OUTLINE),
-// 只在明確設為字串 "true" 時才啟用,預設(未設定/任何其他值)一律視為
-// 關閉。關閉時 DesktopRail 不渲染「規劃」按鈕(見該元件),isPanelMode
-// 也不再承認 'geo-outline' 是合法值,即使有人手動打
-// /app/geo-outline 這個網址,也會 fallback 回 'trips'(對齊
-// DesktopContent 對不合法 panelMode 字串的既有 fallback 行為,見該處
-// 說明)——整套關閉是「進不去這個功能」而不只是「rail 上看不到按鈕」。
-export const GEO_OUTLINE_ENABLED = import.meta.env.VITE_FEATURE_GEO_OUTLINE === 'true'
+// GEO_OUTLINE_ENABLED:地理輪廓底圖(規劃分頁)功能開關——目前是唯一
+// 預設開啟的正式功能(未設定部署環境變數 VITE_FEATURE_GEO_OUTLINE 時,
+// 一律視為開啟),只有明確設為字串 "false" 才關閉。開啟時 DesktopRail
+// 渲染「規劃」按鈕(見該元件),isPanelMode 承認 'geo-outline' 是合法值;
+// 關閉時兩者都會擋下,即使手動打 /app/geo-outline 網址也會 fallback 回
+// 'trips'(對齊 DesktopContent 對不合法 panelMode 字串的既有 fallback
+// 行為,見該處說明)——整套關閉是「進不去這個功能」而不只是「rail 上看
+// 不到按鈕」。
+export const GEO_OUTLINE_ENABLED = import.meta.env.VITE_FEATURE_GEO_OUTLINE !== 'false'
+
+// TIMELINE_ENABLED/PACE_ENABLED:「時間軸」/「路徑」(配速表)rail 按鈕各自
+// 獨立的開關,同 GEO_OUTLINE_ENABLED 的擋法(見上方說明),但預設值相反
+// ——兩者預設關閉,只在明確設為字串 "true" 時才啟用。關閉時 rail 不渲染
+// 對應按鈕,isPanelMode 也不再承認該字串是合法值,即使手動打 /app/timeline
+// 或 /app/pace 網址也會 fallback 回 'trips',不只是找不到入口。兩者分開
+// 成獨立旗標(而非合併成一個),是因為兩個功能彼此獨立,部署時可能只想開
+// 其中一個。
+export const TIMELINE_ENABLED = import.meta.env.VITE_FEATURE_TIMELINE === 'true'
+export const PACE_ENABLED = import.meta.env.VITE_FEATURE_PACE === 'true'
+
+// DEMO_CARDS_ENABLED/DEMO_ROW_ENABLED/DEMO_CLIENTTOOLS_ENABLED/
+// DEMO_ONAGENT_ENABLED/DEBUG_PANEL_ENABLED:原本綁在網址參數 ?demo(見
+// main.tsx 的 isDemo)底下的試做用導覽項目(推薦景點卡片/橫滑兩種呈現
+// 方式、ClientToolsBridge/onagent 兩條 LLM 呼叫前端 tool 資料流試做、
+// API/WS 狀態除錯面板),改成跟 TIMELINE_ENABLED/PACE_ENABLED 同一種編譯
+// 時 feature flag 機制——各自獨立開關而非沿用單一 isDemo 布林值,是因為
+// 部署時可能只想開放其中幾項給特定環境驗證,不是全開或全關兩種選擇。同
+// TIMELINE_ENABLED/PACE_ENABLED,預設關閉,只在明確設為字串 "true" 時
+// 才啟用。
+export const DEMO_CARDS_ENABLED = import.meta.env.VITE_FEATURE_DEMO_CARDS === 'true'
+export const DEMO_ROW_ENABLED = import.meta.env.VITE_FEATURE_DEMO_ROW === 'true'
+export const DEMO_CLIENTTOOLS_ENABLED = import.meta.env.VITE_FEATURE_DEMO_CLIENTTOOLS === 'true'
+export const DEMO_ONAGENT_ENABLED = import.meta.env.VITE_FEATURE_DEMO_ONAGENT === 'true'
+export const DEBUG_PANEL_ENABLED = import.meta.env.VITE_FEATURE_DEBUG_PANEL === 'true'
 
 // PANEL_MODES:PanelMode 扣掉 null 之後的合法字串值列表——給 isPanelMode()
 // 在執行期驗證用(型別系統只在編譯期擋得住,URL 路徑參數是使用者可任意
 // 輸入的字串,需要執行期白名單檢查)。'geo-outline' 依 GEO_OUTLINE_ENABLED
 // 動態決定要不要列入合法值,理由見該常數的說明。
 const PANEL_MODES = [
-  'trips', 'timeline', 'pace', ...(GEO_OUTLINE_ENABLED ? (['geo-outline'] as const) : []),
-  'demo-cards', 'demo-row', 'demo-map', 'demo-clienttools', 'demo-onagent',
+  'trips',
+  ...(TIMELINE_ENABLED ? (['timeline'] as const) : []),
+  ...(PACE_ENABLED ? (['pace'] as const) : []),
+  ...(GEO_OUTLINE_ENABLED ? (['geo-outline'] as const) : []),
+  ...(DEMO_CARDS_ENABLED ? (['demo-cards'] as const) : []),
+  ...(DEMO_ROW_ENABLED ? (['demo-row'] as const) : []),
+  ...(DEMO_CLIENTTOOLS_ENABLED ? (['demo-clienttools'] as const) : []),
+  ...(DEMO_ONAGENT_ENABLED ? (['demo-onagent'] as const) : []),
 ] as const
 
 // isPanelMode:驗證 URL 路徑參數(/app/:panelMode,見 App.tsx)是不是合法的
@@ -99,18 +129,6 @@ export function DemoPanelContent({
         </div>
         <div className="desktop-timeline-scroll">
           <RecommendedPlacesRow places={FAKE_RECOMMENDED_PLACES} />
-        </div>
-      </div>
-    )
-  }
-  if (mode === 'demo-map') {
-    return (
-      <div className="desktop-demo-panel">
-        <div className="desktop-sidebar-head">
-          <span className="desktop-sidebar-title">推薦景點地圖(試做)</span>
-        </div>
-        <div className="desktop-timeline-scroll" style={{ padding: 0 }}>
-          <RecommendedPlacesMap places={FAKE_RECOMMENDED_PLACES} />
         </div>
       </div>
     )

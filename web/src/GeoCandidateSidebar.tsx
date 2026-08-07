@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Car, Hotel, MapPin, Plane, StickyNote, Ticket, Undo2, UtensilsCrossed } from 'lucide-react'
+import { Car, Hotel, ListPlus, MapPin, Plane, StickyNote, Ticket, Undo2, UtensilsCrossed } from 'lucide-react'
 import { isSubmitEnter } from './AppCommon'
 import * as api from './api'
 import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace, GeoTripEntry } from './api'
@@ -26,7 +26,7 @@ const ENTRY_KIND_ICONS: Record<string, typeof MapPin> = {
   restaurant: UtensilsCrossed,
   ticket: Ticket,
 }
-function entryKindIcon(kind?: string | null): typeof MapPin {
+export function entryKindIcon(kind?: string | null): typeof MapPin {
   return (kind && ENTRY_KIND_ICONS[kind]) || MapPin
 }
 
@@ -59,11 +59,39 @@ const PLACE_CATEGORY_TO_ENTRY_KIND: Record<string, string> = {
 //    onTripEntriesChange 建立候選時一律會帶入,即使後端該筆 entry 本身
 //    沒有設 kind,值也會是 null/undefined,一樣落到這個 fallback),
 //    保守起見仍處理。
-function candidateEntryKind(c: GeoCandidate): string {
+export function candidateEntryKind(c: GeoCandidate): string {
   if (c.kind === 'hotel') return 'stay'
   if (c.kind === 'place') return (c.category && PLACE_CATEGORY_TO_ENTRY_KIND[c.category]) ?? 'activity'
   if (c.kind === 'entry') return c.entryKind ?? 'activity'
   return 'activity'
+}
+
+// createEntryFromCandidate:把一個純候選(飯店/景點/推薦地點,或按過
+// 「返回候選」、inTrip===false 的 entry 形狀候選)寫成一筆真正的行程
+// entry——抽成獨立函式供兩處呼叫端共用(GeoCandidateSidebar 的拖曳放進
+// 日層架、GeoHotelSidebar/GeoInfoPanel 的「+」按鈕展開日期選擇後直接
+// 建立),避免同一段「recordEntry 再 setEntryLatLng 補座標」的兩步驟邏輯
+// 兩處各寫一份、之後改一邊忘了改另一邊。title 用候選名稱、start 用選定
+// 的日期、location 用地址/地標名稱、kind 用 candidateEntryKind 推導出的
+// 分類。recordEntry 端點本身不接受 lat/lng(見 api.ts 的 RecordEntryInput
+// 說明),必須分兩步呼叫。
+export async function createEntryFromCandidate(
+  cfg: ClientConfig,
+  tripID: string,
+  c: GeoCandidate,
+  date: string,
+): Promise<string> {
+  const location = c.kind === 'attraction' ? (c.landmarkName ?? c.name)
+    : c.kind === 'entry' ? (c.location ?? '')
+    : c.address
+  const { entryID } = await api.recordEntry(cfg, tripID, {
+    title: c.name,
+    start: date,
+    location,
+    kind: candidateEntryKind(c),
+  })
+  await api.setEntryLatLng(cfg, entryID, c.lat, c.lng)
+  return entryID
 }
 
 // GeoCandidateSidebar:候選籃(構想 1,見
@@ -135,11 +163,11 @@ function dayGroupKey(c: GeoCandidate): string {
 // 名稱/座標完全相同的 entry,key 就會撞在一起,觸發 React 的 duplicate
 // key 警告(實際發生過的 bug)。改用這個函式統一產生 key,entry 形狀
 // 一律用它自己的 id,徹底避開這個碰撞。
-function candidateListKey(c: GeoCandidate): string {
+export function candidateListKey(c: GeoCandidate): string {
   if (c.kind === 'entry') return `entry-${c.id}`
   return `${c.kind}-${c.name}-${c.lat}-${c.lng}`
 }
-function dayGroupLabel(key: string): string {
+export function dayGroupLabel(key: string): string {
   if (key === NO_DATE_GROUP) return '未排定日期'
   const [, month, day] = key.split('-')
   return month && day ? `${Number(month)}/${Number(day)}` : key
@@ -156,81 +184,6 @@ function localDateKey(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
-}
-
-// CandidateRow:單一候選項目的卡片——樣式對齊 DayEntryCard(已排入行程
-// 分組底下的日層架卡片,見該元件說明),用 candidateEntryKind 推導出的
-// 圖示 + 名稱的緊湊橫列,不再用縮圖卡片(理由同 candidateEntryKind 的
-// 說明:分類資訊在候選 ↔ entry 互相轉換時本來就要保留,乾脆讓兩種分組
-// 共用同一套視覺語言,使用者在「候選中」跟「已排入行程」之間拖曳/切換
-// 時不會感覺是兩套完全不同的卡片)。onSelect:點擊卡片本體(而非「×」)
-// 時觸發,打開地點介紹面板(見 DesktopLayout.tsx 的接線)——理由同
-// GeoHotelSidebar 卡片點擊的既有慣例,卡片本體不能整張都是
-// <button>(HTML 不允許 button 巢狀 button),故沿用「本體是可點擊的
-// <div role="button">,移除是卡片內獨立的 <button>」這個既有模式。
-function CandidateRow({
-  c,
-  onRemove,
-  onSelect,
-  onHover,
-  onDragStart,
-  onDragEnd,
-}: {
-  c: GeoCandidate
-  onRemove?: (candidate: GeoCandidate) => void
-  onSelect?: (candidate: GeoCandidate) => void
-  onHover?: (key: GeoSelectedKey) => void
-  // onDragStart/onDragEnd:拖曳把這張候選卡片放進日層架某一天(見呼叫端
-  // handleDropOnDay 的說明)——只有純候選(hotel/attraction/place)拖進
-  // 日期分組才有意義(把候選寫成一筆真正的行程 entry),故這裡的型別跟
-  // DayEntryCard 的 onDragStart 不同,收的是完整 GeoCandidate 而非限定
-  // kind: 'entry'。
-  onDragStart?: (c: GeoCandidate) => void
-  onDragEnd?: () => void
-}) {
-  return (
-    <div
-      className={styles.dayCard}
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = 'move'
-        // 部分瀏覽器(尤其某些 Chrome 版本)在 dragstart 完全沒有呼叫
-        // dataTransfer.setData(...) 時,會判定這次拖曳無效而立即中止——
-        // 這裡不需要真的傳遞資料出去(接收端是同一個 React tree,用
-        // draggingCandidate state 就能取得完整物件),純粹是為了讓瀏覽器
-        // 認定這是一次合法的拖曳操作而補上最小可行的 setData 呼叫。
-        e.dataTransfer.setData('text/plain', c.name)
-        onDragStart?.(c)
-      }}
-      onDragEnd={() => onDragEnd?.()}
-    >
-      <div
-        role="button"
-        tabIndex={0}
-        className={styles.dayCardBody}
-        onClick={() => onSelect?.(c)}
-        onKeyDown={(e) => { if (e.key === 'Enter') onSelect?.(c) }}
-        onMouseEnter={() => onHover?.(geoItemKey(c.kind, c))}
-        onMouseLeave={() => onHover?.(null)}
-      >
-        <span className={styles.dayCardPin}>
-          {(() => {
-            const Icon = entryKindIcon(candidateEntryKind(c))
-            return <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
-          })()}
-        </span>
-        <span className={styles.dayCardName}>{c.name}</span>
-      </div>
-      <button
-        type="button"
-        className={styles.removeBtn}
-        onClick={() => onRemove?.(c)}
-        title="移除候選"
-      >
-        ×
-      </button>
-    </div>
-  )
 }
 
 // DayEntryCard:「已排入行程」日層架分組底下的單一卡片,對齊構想 5 原型
@@ -402,6 +355,9 @@ export function GeoCandidateSidebar({
   searchError,
   onDatesAssigned,
   onReturnToCandidate,
+  onPickFromCandidate,
+  draggingCandidate,
+  onDraggingCandidateChange,
 }: {
   cfg: ClientConfig
   // tripID:拖曳純候選(飯店/景點/推薦地點)進日層架某一天時,要把它寫成
@@ -431,17 +387,33 @@ export function GeoCandidateSidebar({
   // geoCandidates state,無法自己改,只能請上游代為更新(同
   // onDatesAssigned 既有的模式)。
   onReturnToCandidate?: (candidate: GeoCandidate & { kind: 'entry'; inTrip: true }) => void
+  // onPickFromCandidate:某一天 dayHead 的「從候選加入」按鈕按下時觸發,
+  // 帶上該天的 dayKey——這個元件不再自己持有「目前是為哪一天開啟第二
+  // 側欄」的狀態(pickingDayKey 已提升到 DesktopLayout.tsx,因為第二側欄
+  // 是絕對定位疊在 main 之上的獨立元件(AddFromCandidateSidebar,見該
+  // 檔案的說明),只能由共同的父層中介才能同時控制兩者),這裡只負責回報
+  // 使用者按了哪一天的按鈕。
+  onPickFromCandidate?: (dayKey: string) => void
+  // draggingCandidate/onDraggingCandidateChange:目前正在拖曳的候選卡片
+  // ——原本是這個元件內部的 state,提升到 DesktopLayout.tsx 是因為「候選
+  // 中」清單已經搬進第二側欄(AddFromCandidateSidebar,使用者明確要求),
+  // 拖曳現在會跨元件:起點在第二側欄的候選卡片,放開目標是這個元件底下
+  // 的日期分組 .dayBody。兩個分開掛載的 sibling 只能靠共同的父層持有
+  // 這份 state 才能互相溝通「現在正在拖哪一張」。dragOverDay(滑鼠懸停在
+  // 哪個日期分組上)不需要跨元件,仍是這個元件自己的內部 state(見下方)
+  // ——那份狀態只影響這個元件自己畫出的 .dayBody 樣式,不需要讓第二側欄
+  // 知道。
+  draggingCandidate: GeoCandidate | null
+  onDraggingCandidateChange: (c: GeoCandidate | null) => void
 }) {
-  // 已排入行程 vs 純候選:kind === 'entry' && inTrip === true 是行程本身
-  // 已有座標的既有內容(進入規劃分頁時自動帶入,見上方型別註解),不是
-  // 使用者用「+」手動加入的——這批天然就等於「已排入行程」。其餘情況
-  // (hotel/attraction/place,或按過「返回候選」、kind==='entry' 但
-  // inTrip===false 的項目)都歸進候選中——後者雖然形狀跟「已排入行程」
-  // 一樣是 entry 形狀,但後端那筆 entry 已經被刪除,不該再顯示在「已排入
-  // 行程」分組(見 GeoCandidate 型別定義處與 DayEntryCard「返回候選」的
-  // 完整說明)。
+  // 已排入行程:kind === 'entry' && inTrip === true 是行程本身已有座標的
+  // 既有內容(進入規劃分頁時自動帶入,見上方型別註解),不是使用者用「+」
+  // 手動加入的——這批天然就等於「已排入行程」。其餘情況(hotel/
+  // attraction/place,或按過「返回候選」、kind==='entry' 但
+  // inTrip===false 的項目)是候選中,已搬到第二側欄
+  // (AddFromCandidateSidebar,使用者明確要求),這個元件不再顯示,故不
+  // 需要在這裡算出對應的篩選結果。
   const inTrip = candidates.filter((c): c is GeoCandidate & { kind: 'entry'; inTrip: true } => c.kind === 'entry' && c.inTrip)
-  const onlyCandidate = candidates.filter((c) => !(c.kind === 'entry' && c.inTrip))
 
   // inTripByDay:「已排入行程」依 start 日期分組、日期升冪排序,未排定
   // 日期的分組固定排最後——對齊構想 5 原型日層架「一天一個區塊」的結構
@@ -533,6 +505,30 @@ export function GeoCandidateSidebar({
     }
   }
 
+  // handleRemove:「×」按鈕觸發——真正已排入行程的項目
+  // (kind==='entry' && inTrip===true)點「×」時,要先呼叫
+  // api.deleteEntry 把後端那筆 entry 真的刪除,成功才呼叫 onRemove 讓
+  // 上游把它從前端 geoCandidates 移除;過去「×」對這種項目只從前端
+  // 畫面移除、完全沒動後端資料,重新整理頁面或任何情境觸發
+  // onTripEntriesChange 重新查詢時,這筆資料會重新出現在候選籃,使用者
+  // 會誤以為「刪除」沒有生效(實際發生過的 bug)。其餘情況(候選中的
+  // hotel/attraction/place,或 inTrip===false 的 entry——後端那筆已經
+  // 在先前「返回候選」時被刪除,這裡沒有東西可刪)本來就沒有對應的後端
+  // 資料,維持原本「只從前端移除」的行為,不需要呼叫任何 API。刪除失敗
+  // 時不從前端移除(避免畫面顯示跟後端狀態不一致),只印 console 供
+  // 除錯,使用者可以再按一次重試。
+  const handleRemove = async (c: GeoCandidate) => {
+    if (c.kind === 'entry' && c.inTrip) {
+      try {
+        await api.deleteEntry(cfg, c.id)
+      } catch (err) {
+        console.error('[GeoCandidateSidebar] 刪除已排入行程項目失敗:', err)
+        return
+      }
+    }
+    onRemove?.(c)
+  }
+
   // handleCreateEntryFromCandidate:拖曳純候選(飯店/景點/推薦地點,或
   // 按過「返回候選」、inTrip===false 的 entry 形狀候選)放進某一天時
   // 觸發——這批候選目前都不是真正的行程 entry(entry 形狀但
@@ -548,26 +544,15 @@ export function GeoCandidateSidebar({
   // tripEntries,新條目會在下一次渲染出現在正確的日期分組。
   const handleCreateEntryFromCandidate = async (c: GeoCandidate, date: string) => {
     if (!tripID) return
-    const location = c.kind === 'attraction' ? (c.landmarkName ?? c.name)
-      : c.kind === 'entry' ? (c.location ?? '')
-      : c.address
-    const { entryID } = await api.recordEntry(cfg, tripID, {
-      title: c.name,
-      start: date,
-      location,
-      kind: candidateEntryKind(c),
-    })
-    await api.setEntryLatLng(cfg, entryID, c.lat, c.lng)
+    await createEntryFromCandidate(cfg, tripID, c, date)
     onRemove?.(c)
     onDatesAssigned?.()
   }
 
-  // draggingCandidate/dragOverDay:拖曳卡片放進日層架某一天的極簡實作——
-  // 不用額外的拖放函式庫,直接用瀏覽器原生 HTML5 drag events。
-  // draggingCandidate 記住目前正在拖的是哪一張卡片(DayEntryCard/
-  // CandidateRow 的 onDragStart 回報,兩種來源共用同一個 state——已排入
-  // 行程的卡片放開後改日期,純候選卡片放開後建立新 entry,見下方分派
-  // 邏輯),dragOverDay 記住滑鼠目前懸停在哪個日期分組上,用來讓該分組的
+  // dragOverDay:拖曳卡片放進日層架某一天的極簡實作——不用額外的拖放
+  // 函式庫,直接用瀏覽器原生 HTML5 drag events。draggingCandidate(目前
+  // 正在拖的是哪一張卡片)已提升為受控 props(見上方型別註解的說明),
+  // 這裡的 dragOverDay 記住滑鼠目前懸停在哪個日期分組上,用來讓該分組的
   // .dayBody 換成 accent 實線的「可放下」樣式(見下方 dayBody className
   // 的條件式與 .module.css 的 .dayBodyDragOver)。只有「已有日期的分組」
   // 才是合法放置目標——「未排定日期」分組故意不接 onDrop:已排入行程的
@@ -575,13 +560,12 @@ export function GeoCandidateSidebar({
   // 視為「不改該欄位」(見 store.UpdateEntry 的既有行為),沒辦法透過這支
   // API 清空日期;純候選卡片拖過去同樣沒有明確的日期可用於
   // recordEntry,兩種來源都沒有合理行為,故一併排除。
-  const [draggingCandidate, setDraggingCandidate] = useState<GeoCandidate | null>(null)
   const [dragOverDay, setDragOverDay] = useState<string | null>(null)
 
   const handleDropOnDay = async (dayKey: string) => {
     setDragOverDay(null)
     const c = draggingCandidate
-    setDraggingCandidate(null)
+    onDraggingCandidateChange(null)
     if (!c || dayKey === NO_DATE_GROUP) return
     // 只有「真的已排入行程」的 entry(inTrip===true)才走改期路徑——
     // inTrip===false 的 entry 形狀候選(按過「返回候選」,見
@@ -680,6 +664,15 @@ export function GeoCandidateSidebar({
                     <div className={styles.dayHead}>
                       <span className={styles.dayDate}>{dayGroupLabel(dayKey)}</span>
                       <span className={styles.dayStatus}>{dayEntries.length} 個安排</span>
+                      <button
+                        type="button"
+                        className={styles.addFromCandidateBtn}
+                        onClick={() => onPickFromCandidate?.(dayKey)}
+                        title="從候選加入"
+                      >
+                        <ListPlus size={13} strokeWidth={2} />
+                        從候選加入
+                      </button>
                     </div>
                     <div
                       className={`${styles.dayBody}${dragOverDay === dayKey ? ` ${styles.dayBodyDragOver}` : ''}`}
@@ -691,11 +684,11 @@ export function GeoCandidateSidebar({
                         <DayEntryCard
                           key={candidateListKey(c)}
                           c={c}
-                          onRemove={onRemove}
+                          onRemove={handleRemove}
                           onSelect={onSelect}
                           onHover={onHover}
-                          onDragStart={setDraggingCandidate}
-                          onDragEnd={() => { setDraggingCandidate(null); setDragOverDay(null) }}
+                          onDragStart={onDraggingCandidateChange}
+                          onDragEnd={() => { onDraggingCandidateChange(null); setDragOverDay(null) }}
                           onReturnToCandidate={handleReturnToCandidate}
                         />
                       ))}
@@ -739,33 +732,17 @@ export function GeoCandidateSidebar({
                         <DayEntryCard
                           key={candidateListKey(c)}
                           c={c}
-                          onRemove={onRemove}
+                          onRemove={handleRemove}
                           onSelect={onSelect}
                           onHover={onHover}
-                          onDragStart={setDraggingCandidate}
-                          onDragEnd={() => { setDraggingCandidate(null); setDragOverDay(null) }}
+                          onDragStart={onDraggingCandidateChange}
+                          onDragEnd={() => { onDraggingCandidateChange(null); setDragOverDay(null) }}
                           onReturnToCandidate={handleReturnToCandidate}
                         />
                       ))}
                     </div>
                   </div>
                 )}
-              </div>
-            )}
-            {onlyCandidate.length > 0 && (
-              <div className={styles.group}>
-                <div className={styles.groupTitle}>候選中 · {onlyCandidate.length}</div>
-                {onlyCandidate.map((c) => (
-                  <CandidateRow
-                    key={candidateListKey(c)}
-                    c={c}
-                    onRemove={onRemove}
-                    onSelect={onSelect}
-                    onHover={onHover}
-                    onDragStart={setDraggingCandidate}
-                    onDragEnd={() => { setDraggingCandidate(null); setDragOverDay(null) }}
-                  />
-                ))}
               </div>
             )}
           </>

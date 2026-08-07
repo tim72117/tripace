@@ -112,7 +112,7 @@ export function GeoOutlinePanel({
   onHotelSelect?: (hotel: GeoHotel) => void
   onPlaceSelect?: (place: GeoPlace) => void
   onPoiSelect?: (details: GeoPlaceDetails) => void
-  panTarget?: { lat: number; lng: number; level?: number } | null
+  panTarget?: { lat: number; lng: number; level?: number; radiusMeters?: number } | null
   selectedKey?: GeoSelectedKey
   // candidateKeys/hoverKey:原封不動轉傳給 GeoOutlineMap——理由同
   // selectedKey,見 GeoOutlineMap.tsx 對這兩個 prop 的完整說明。
@@ -148,7 +148,7 @@ export function GeoOutlinePanel({
   // 每次設值都建立新物件參照,即使連續觸發同一個座標也能讓 GeoOutlineMap
   // 偵測到「這是一次新的移動請求」(理由同 GeoOutlineMap.tsx 對 panTarget
   // 的說明)。
-  const [panRequest, setPanRequest] = useState<{ lat: number; lng: number; level?: number; suppressQuery: boolean } | null>(null)
+  const [panRequest, setPanRequest] = useState<{ lat: number; lng: number; level?: number; radiusMeters?: number; suppressQuery: boolean } | null>(null)
   // tripCenter:目前行程底下已有座標的 entry 算出來的中心點,見下方
   // useEffect,傳給 GeoOutlineMap 當地圖第一次建立時的初始中心(見該
   // 元件 initialCenter prop 的完整說明)——三態:undefined 代表「還在
@@ -281,10 +281,17 @@ export function GeoOutlinePanel({
   const externalLat = externalPanTarget?.lat
   const externalLng = externalPanTarget?.lng
   const externalLevel = externalPanTarget?.level
+  const externalRadiusMeters = externalPanTarget?.radiusMeters
   useEffect(() => {
     if (externalLat == null || externalLng == null) return
-    setPanRequest({ lat: externalLat, lng: externalLng, level: externalLevel, suppressQuery: true })
-  }, [externalLat, externalLng, externalLevel])
+    setPanRequest({
+      lat: externalLat,
+      lng: externalLng,
+      level: externalLevel,
+      radiusMeters: externalRadiusMeters,
+      suppressQuery: true,
+    })
+  }, [externalLat, externalLng, externalLevel, externalRadiusMeters])
 
   return (
     // geo-outline-panel-wrap:固定字串 class(與 CSS Modules 的 styles.wrap

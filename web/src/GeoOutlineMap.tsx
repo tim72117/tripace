@@ -377,7 +377,18 @@ export function GeoOutlineMap({
   // 「使用者明確想換一個地方看」的移動(搜尋城市),該讓按鈕冒出來提示
   // 使用者可以查詢這個新範圍——這正是由呼叫端決定該不該抑制,而不是
   // 這裡憑空猜測,因為只有呼叫端知道這次移動背後的使用者意圖是什麼。
-  panTarget?: { lat: number; lng: number; level?: number; suppressQuery?: boolean } | null
+  //
+  // radiusMeters:GeoInfoPanel「探索周邊」按鈕觸發時帶入(見
+  // DesktopLayout.tsx 的 handleExploreAttraction)——跟
+  // handleAttractionClick 直接點地圖上地標時共用同一套決策邏輯
+  // (planAttractionClick),只是這裡的呼叫端已經先幫忙決策好,直接帶
+  // 最終半徑過來,不在這個元件內部重新呼叫 planAttractionClick(避免
+  // 兩處各自 import geoAttractionClick.ts、決策邏輯卻要靠兩份呼叫端各自
+  // 正確傳參數才會一致)。有值時用 fitBounds 縮放到剛好framing 這個半徑
+  // 的範圍(理由同 handleAttractionClick 的 fit-bounds 分支),取代原本
+  // 的 panTo+setZoom(level)行為;level 若同時存在會被忽略,因為
+  // fitBounds 本身就是更精確的縮放依據。
+  panTarget?: { lat: number; lng: number; level?: number; radiusMeters?: number; suppressQuery?: boolean } | null
   // selectedKey:目前被選中的飯店/地點識別鍵(見 GeoHotelSidebar.tsx 的
   // geoItemKey)——由 DesktopLayout.tsx 中介,驅動下方地標/飯店圖示畫出
   // 對應的選取樣式(外圈 accent 描邊 + 放大),與側欄的選取標記同步。
@@ -1150,6 +1161,17 @@ export function GeoOutlineMap({
     if (!mapReady || !mapRef.current || !panTarget) return
     if (panTarget.suppressQuery) {
       suppressNextIdleQueryRef.current = true
+    }
+    if (panTarget.radiusMeters != null && panTarget.radiusMeters > 0) {
+      const circle = new google.maps.Circle({
+        center: { lat: panTarget.lat, lng: panTarget.lng },
+        radius: panTarget.radiusMeters,
+      })
+      const bounds = circle.getBounds()
+      if (bounds) {
+        mapRef.current.fitBounds(bounds, 48)
+        return
+      }
     }
     mapRef.current.panTo(panTarget)
     if (panTarget.level != null) {

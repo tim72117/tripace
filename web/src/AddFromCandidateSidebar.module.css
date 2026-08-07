@@ -1,0 +1,133 @@
+/* sidebar:第二側欄本體——由 DesktopLayout.tsx 用 add-from-candidate-sidebar
+   固定 class 名(見 styles-desktop.css)控制絕對定位/寬度/陰影,這裡只
+   負責內部排版與視覺,不決定自己的定位方式。視覺語言比照候選籃
+   (GeoCandidateSidebar)——同樣的卡片背景色,讓使用者感覺是同一組側欄
+   家族的延伸,而不是跳出去的另一種介面。不設 border-left(理由同外層
+   class 的說明,已改用陰影暗示「漂浮在主顯示上方」,不是版面裡緊鄰的
+   一欄,不需要邊框分隔線)。 */
+.sidebar {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--ios-card);
+}
+
+.head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 8px 10px 12px;
+  border-bottom: 1px solid var(--ios-sep);
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-dark);
+}
+
+.closeBtn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
+}
+
+.closeBtn:hover {
+  background: var(--ios-bg);
+  color: var(--color-dark);
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--ios-gray);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* candidateCard/candidateCardBody/removeBtn:候選卡片本體——對齊候選籃
+   (GeoCandidateSidebar.module.css)的 .dayCard/.dayCardBody/.removeBtn
+   視覺語言(這批候選原本就是從那裡搬過來的,見 AddFromCandidateSidebar.tsx
+   的 CandidateRow 說明),支援拖曳(cursor: grab)+ 卡片本體點擊 + 獨立的
+   「×」移除按鈕,不是單純的可點擊清單項目。 */
+.candidateCard {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 6px 6px 8px;
+  border-radius: 8px;
+  cursor: grab;
+}
+
+.candidateCard:active {
+  cursor: grabbing;
+}
+
+.candidateCard:hover {
+  background: var(--ios-bg);
+}
+
+.candidateCardBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.removeBtn {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--ios-gray);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.removeBtn:hover {
+  background: var(--ios-sep);
+  color: var(--ios-red);
+}
+
+.itemPin {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  color: var(--color-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.itemName {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

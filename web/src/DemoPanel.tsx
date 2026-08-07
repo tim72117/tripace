@@ -5,9 +5,10 @@ import * as api from './api'
 import type { Trip, Entry } from './types'
 import styles from './DemoPanel.module.css'
 
-// DemoPanel:只在網址帶 ?demo、且點開桌面版 rail 上的 API/WS 狀態面板圖示
-// 時才會出現(見 DesktopLayout.tsx 的 showDebugPanel),不是正式使用者看
-// 得到的功能——元件/檔案命名故意帶上 Demo 反映這件事。
+// DemoPanel:只在 DEBUG_PANEL_ENABLED 開啟(見 DesktopShared.tsx)、且點開
+// 桌面版 rail 上的 API/WS 狀態面板圖示時才會出現(見 DesktopLayout.tsx 的
+// showDebugPanel),不是正式使用者預設看得到的功能——元件/檔案命名故意
+// 帶上 Demo 反映這件事。
 // 三個分頁 —— API 交易紀錄、WS 事件、目前行程的 Entry 條目。
 // API:依時間倒序列出每筆交易,點開看原始 request/response JSON。
 // WS 事件:後端主動推送的介面更新事件(entries_updated/ask_user/task_created/

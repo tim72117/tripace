@@ -1,11 +1,14 @@
 import { useRef, useState } from 'react'
 import type { TouchEvent as ReactTouchEvent } from 'react'
 import {
-  List, Timeline, Sparkles, GalleryHorizontal, Map, Wrench, Radio, Route, Share2, Users,
+  List, Timeline, Sparkles, GalleryHorizontal, Wrench, Radio, Route, Share2, Users,
 } from 'lucide-react'
 import type { Trip, User } from './types'
 import { Avatar } from './AppCommon'
-import { type DemoPanelMode, DemoPanelContent } from './DesktopShared'
+import {
+  type DemoPanelMode, DemoPanelContent, TIMELINE_ENABLED, PACE_ENABLED,
+  DEMO_CARDS_ENABLED, DEMO_ROW_ENABLED, DEMO_CLIENTTOOLS_ENABLED, DEMO_ONAGENT_ENABLED,
+} from './DesktopShared'
 import { PaceChart, type Checkpoint } from './PaceChart'
 import type { SelectedEntry } from './PaceRouteMap'
 import { TripMenu } from './trip/TripMenu'
@@ -58,7 +61,6 @@ export function PhoneNavDrawer({
   cfg,
   mode,
   onSelectMode,
-  isDemo,
   activeTrip,
   timelineSlotRef,
   lastContentMode,
@@ -80,7 +82,6 @@ export function PhoneNavDrawer({
   cfg: ClientConfig
   mode: DrawerMode
   onSelectMode: (mode: DrawerMode) => void
-  isDemo: boolean
   activeTrip: Trip | null
   // timelineSlotRef:'timeline' 分頁時,抽屜欄這裡不再自己顯示時間軸內容
   // ——對齊使用者要求的「時間軸與對話顯示位置對調」,時間軸改到主顯示區
@@ -155,17 +156,16 @@ export function PhoneNavDrawer({
   const translate = open ? `${dragOffset}px` : `calc(-100% + ${dragOffset}px)`
 
   const items: { mode: DrawerMode; icon: typeof Timeline; title: string; disabled?: boolean }[] = [
-    { mode: 'timeline', icon: Timeline, title: '時間軸', disabled: !activeTrip },
-    { mode: 'pace', icon: Route, title: '路徑' },
-    ...(isDemo
-      ? [
-        { mode: 'demo-cards' as DrawerMode, icon: Sparkles, title: '推薦景點卡片' },
-        { mode: 'demo-row' as DrawerMode, icon: GalleryHorizontal, title: '推薦景點橫滑' },
-        { mode: 'demo-map' as DrawerMode, icon: Map, title: '推薦景點地圖' },
-        { mode: 'demo-clienttools' as DrawerMode, icon: Wrench, title: 'ClientToolsBridge' },
-        { mode: 'demo-onagent' as DrawerMode, icon: Radio, title: 'onagent 串接' },
-      ]
-      : []),
+    // TIMELINE_ENABLED/PACE_ENABLED:編譯時 feature flag,同桌面版 DesktopRail
+    // 的機制(見 DesktopShared.tsx 對這兩個常數的說明)。
+    ...(TIMELINE_ENABLED ? [{ mode: 'timeline' as DrawerMode, icon: Timeline, title: '時間軸', disabled: !activeTrip }] : []),
+    ...(PACE_ENABLED ? [{ mode: 'pace' as DrawerMode, icon: Route, title: '路徑' }] : []),
+    // DEMO_*_ENABLED:同上,各自獨立的編譯時 feature flag(見 DesktopShared.tsx
+    // 對這幾個常數的說明),取代原本綁在網址參數 ?demo 底下的單一 isDemo 開關。
+    ...(DEMO_CARDS_ENABLED ? [{ mode: 'demo-cards' as DrawerMode, icon: Sparkles, title: '推薦景點卡片' }] : []),
+    ...(DEMO_ROW_ENABLED ? [{ mode: 'demo-row' as DrawerMode, icon: GalleryHorizontal, title: '推薦景點橫滑' }] : []),
+    ...(DEMO_CLIENTTOOLS_ENABLED ? [{ mode: 'demo-clienttools' as DrawerMode, icon: Wrench, title: 'ClientToolsBridge' }] : []),
+    ...(DEMO_ONAGENT_ENABLED ? [{ mode: 'demo-onagent' as DrawerMode, icon: Radio, title: 'onagent 串接' }] : []),
   ]
 
   return (

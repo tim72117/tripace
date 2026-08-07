@@ -12,6 +12,15 @@
 | 側欄 | （無獨立標題，依分頁各自顯示標題） | class `.desktop-sidepanel`（`DesktopLayout.tsx`） | — | — |
 | 主顯示 | （無獨立標題） | class `.desktop-main`（`DesktopLayout.tsx`） | — | — |
 
+規劃分頁（`panelMode === 'geo-outline'`）額外會在主顯示（地圖）左右兩側各漂浮一塊獨立卡片，不算在上面三段式的任何一段裡，也不佔用 flex 版面空間、不壓縮主顯示的可用寬度：
+
+| 正式用語 | 介面用語（畫面顯示文字） | 介面/前端程式碼 | 後端變數 | 資料庫 |
+|---|---|---|---|---|
+| 第二側欄 | 從候選加入 · {日期} | `AddFromCandidateSidebar`（`web/src/AddFromCandidateSidebar.tsx`）／class `.add-from-candidate-sidebar`（`web/src/styles-desktop.css`） | — | — |
+| 飯店/附近推薦清單 | （依分頁顯示「飯店」／附近推薦類別名，如「餐廳」） | `GeoHotelSidebar`（`web/src/GeoHotelSidebar.tsx`）／class `.geo-hotel-sidebar-wrap`（`web/src/styles-desktop.css`） | — | — |
+
+兩者都是絕對定位疊在主顯示（`.desktop-main`）之上的漂浮卡片（四周留間距、圓角＋陰影），不是版面裡緊鄰的一欄——第二側欄疊在主顯示左緣，飯店/附近推薦清單疊在主顯示右緣。第二側欄由側欄（候選籃，`GeoCandidateSidebar`）內「已排入行程」每個日期分組標題列的「從候選加入」按鈕觸發；候選中清單（hotel/place/退回候選的 entry）已整個搬進第二側欄顯示，候選籃側欄本身只顯示「已排入行程」。飯店/附近推薦清單只在使用者觸發過查詢（點類別標籤／地標／「搜尋這個區域」）後才出現。
+
 ## 手機版
 
 | 正式用語 | 介面用語（畫面顯示文字） | 介面/前端程式碼 | 後端變數 | 資料庫 |
@@ -38,10 +47,12 @@
 
 | 正式用語 | 介面用語（畫面顯示文字） | 介面/前端程式碼 | 後端變數 | 資料庫 |
 |---|---|---|---|---|
-| 景點區域 | （依分頁脈絡顯示，如「地點」分頁） | `GeoDistrict` / `districts` / `setDistricts`（`web/src/GeoOutlineMap.tsx`，**尚未改名，仍用舊名稱**） | `model.Attraction` / `attractionRow`（`server/internal/store/entity.go`） | 表 `attractions` |
+| 景點區域 | （地圖上以光暈＋標籤呈現，無獨立分頁；點擊開啟地點介紹卡片） | `GeoAttraction` / `attractions` / `setAttractions`（`web/src/GeoOutlineMap.tsx`）／地點介紹卡片 `AttractionInfoPanel`（`web/src/AttractionInfoPanel.tsx`） | `model.Attraction` / `attractionRow`（`server/internal/store/entity.go`） | 表 `attractions` |
 | 飯店（即時查詢） | 飯店 | `GeoHotel` / `hotels`（`web/src/api.ts`） | `geo.NearbyPlace`（`server/internal/geo/places.go`） | — |
 | 附近推薦（即時查詢） | 附近推薦 | `GeoPlace` / `places`（`web/src/api.ts`） | `placeResponse`（`server/internal/api/geo_outline.go`） | — |
 
-**已知待對齊**：後端（`model`/`store`/資料表）已完成改名，前端（`web/src/GeoOutlineMap.tsx` 等）與後端呼叫端（`api/geo_outline.go`、`api/maintenance.go`、`cmd/cli/*.go`）尚未跟進，仍引用舊符號（`model.Landmark`、`store.ListLandmarksByCity` 等），目前無法編譯，待後續一併修正。
+前端命名的改名已完成對齊（`GeoDistrict`/`districts` 等舊名稱已不存在）。景點區域原本在 `GeoHotelSidebar`（飯店/附近推薦清單）有一個「地點」分頁可瀏覽清單，已依需求整個移除；景點區域現在只能透過地圖上本來就會畫出的光暈／標籤瀏覽與點擊，不再提供獨立的文字清單入口。
+
+**待辦**：`server/internal/geo/places.go` 內部仍沿用 `District`/`Landmark` 命名（尚未改名跟進 `Attraction`），屬於獨立待辦事項，尚未執行。
 
 （待續——後續用語持續補充於此。）

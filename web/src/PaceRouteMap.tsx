@@ -37,8 +37,7 @@ export interface SelectedEntry {
 // computeRoutes 改由後端代呼叫,前端的 VITE_GOOGLE_MAPS_API_KEY 只負責
 // Maps JavaScript API 的地圖渲染,計算類 REST API(Routes API)由後端用
 // 專用的 GOOGLE_PLACES_API_KEY 呼叫,不需要讓瀏覽器端的 key 承擔額外的 API
-// 限制範圍——跟 RecommendedPlacesMap.tsx 仍直接呼叫 Places API (New) 的
-// places:searchText 不同,那是刻意保留的既有模式,這裡是特意搬到後端。
+// 限制範圍。
 //
 // entryIDs 改由 checkpoints prop 動態決定(見下方 props 說明)——不再寫死
 // 特定行程的 entry。登入後的正式介面打 POST /internal/entries/compute-route
@@ -49,10 +48,9 @@ export interface SelectedEntry {
 // (見 server/internal/api/public_link.go 的 handlePublicComputeRoute),由
 // publicToken prop 決定要打哪一支(見下方 props 說明)。
 //
-// MINIMAL_MAP_STYLE/ensureOptionsSet 是從 RecommendedPlacesMap.tsx 複製過來
-// 的獨立副本,刻意不 import 共用——那個檔案目前另有進行中的修改,這裡先不
-// 建立跨檔案依賴,避免這個元件被牽動對方尚未定案的變更。等對方穩定下來、
-// 真的要 export 共用時,再回頭消掉這處重複。
+// MINIMAL_MAP_STYLE/ensureOptionsSet 是這個檔案自己的獨立副本,不與其他
+// Google Maps 元件(GeoOutlineMap.tsx 等)共用——各自維護一份極簡地圖樣式,
+// 避免跨檔案依賴讓這個元件被無關變更牽動。
 const MINIMAL_MAP_STYLE: google.maps.MapTypeStyle[] = [
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
@@ -70,8 +68,8 @@ const MINIMAL_MAP_STYLE: google.maps.MapTypeStyle[] = [
 // <script src> 不會有 google.maps.importLibrary,那是官方 bootstrap loader
 // 自己掛上去的)。setOptions 只需呼叫一次,重複呼叫 importLibrary 會共用同一份
 // 載入結果,不會重複載入 SDK。這個模組層級的 optionsSet flag 只在這個檔案內
-// 生效,跟 RecommendedPlacesMap.tsx 各自獨立的那份互不影響——兩邊各自呼叫
-// 一次 setOptions({ key, v: 'weekly' }) 是安全的,SDK 本身會處理重複初始化。
+// 生效,跟其他 Google Maps 元件各自獨立的那份互不影響——各自呼叫一次
+// setOptions({ key, v: 'weekly' }) 是安全的,SDK 本身會處理重複初始化。
 let optionsSet = false
 function ensureOptionsSet(apiKey: string) {
   if (optionsSet) return

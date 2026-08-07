@@ -339,7 +339,6 @@ export function PhoneContent(props: ContentProps) {
         cfg={cfg}
         mode={drawerMode}
         onSelectMode={setDrawerMode}
-        isDemo={!!props.isDemo}
         activeTrip={activeTrip}
         timelineSlotRef={setTimelineSlotNode}
         lastContentMode={lastContentMode}

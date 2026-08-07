@@ -1,8 +1,11 @@
+/* sidebar:寬度/絕對定位由外層 .geo-hotel-sidebar-wrap(見
+   DesktopLayout.tsx/styles-desktop.css)控制,漂浮在主顯示右緣之上——這裡
+   只負責填滿外層容器與內部排版,不再自己決定寬度/定位方式,也不設
+   border-left(理由同 AddFromCandidateSidebar.module.css 的 .sidebar:
+   已改用圓角+陰影暗示「漂浮在主顯示上方」,不需要邊框分隔線)。 */
 .sidebar {
-  flex: 0 0 280px;
   height: 100%;
   overflow-y: auto;
-  border-left: 1px solid var(--ios-sep);
   background: var(--ios-card);
   display: flex;
   flex-direction: column;
@@ -146,6 +149,91 @@
   color: var(--ios-card);
 }
 
+/* addCandidateWrap/addCandidatePopover/addCandidateDateInput/
+   addCandidateConfirmBtn/addCandidateSkipBtn/addCandidateErr:
+   AddCandidateButton 的日期選擇彈出層(見 GeoHotelSidebar.tsx 該元件的
+   說明)——「+」按鈕本身維持原本的 .addBtn 樣式,展開的彈出層絕對定位
+   疊在卡片右上方(不佔用清單版面、不推擠其他項目),寫法比照
+   GeoCandidateSidebar.module.css 的 .dayDateEdit,只是改成浮動卡片而非
+   原地展開(這裡的清單項目較窄,原地展開容易把日期輸入擠到換行)。 */
+.addCandidateWrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.addCandidatePopover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 5;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  width: 168px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 10px;
+  background: var(--ios-card);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.addCandidateDateInput {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 8px;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  font-size: 12px;
+}
+
+.addCandidateDateInput:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.addCandidateConfirmBtn {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-accent);
+  color: var(--ios-card);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.addCandidateConfirmBtn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.addCandidateConfirmBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.addCandidateSkipBtn {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--ios-gray);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.addCandidateSkipBtn:hover {
+  background: var(--ios-bg);
+  color: var(--color-dark);
+}
+
+.addCandidateErr {
+  font-size: 11px;
+  color: var(--ios-red);
+}
+
 .itemPhoto,
 .itemPhotoPlaceholder {
   flex: 0 0 44px;
@@ -183,15 +271,3 @@
   white-space: nowrap;
 }
 
-.itemSummary {
-  margin: 4px 0 0;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--color-dark);
-  /* 最多顯示 3 行,超出用刪節號截斷——editorialSummary 長度不一,
-     避免單一地點卡片因簡介過長把整個清單版面撐得很不平均。 */
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}

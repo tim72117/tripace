@@ -58,11 +58,6 @@ export interface ContentProps {
   isGuest: boolean
   onAuthed: (token: string, user: User, email: string) => void
   onLogout: () => void
-  // isDemo:網址帶 ?demo 時為 true,只影響桌面版 DesktopRail 是否多顯示試做用
-  // 導覽項目(見 DesktopRail)。手機版完全不讀這個值,行為不受影響。可選是因為
-  // DebugApp.tsx 的 PhoneContent 用法（demoMode==='app' 分支）不涉及 ?demo 邏輯，
-  // 不需要跟著補這個 prop。
-  isDemo?: boolean
 }
 
 export function useAppState() {
