@@ -62,6 +62,12 @@ export default defineConfig({
         // 動態端點(/v1/*、/internal/*、WebSocket /v1/trips/*/ws)
         // 一律不經過 service worker 快取,永遠直接打網路。
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // navigateFallback 預設會把所有瀏覽器導航請求(網址列輸入、
+        // reload,即 mode=navigate)一律導回快取的 index.html,不分
+        // 副檔名——這會導致直接開 /robots.txt、/sitemap.xml 這種
+        // 非 HTML 靜態檔也被攔截成 SPA 外殼,而不是真正的檔案內容。
+        // 明確排除這兩個路徑,讓它們照常打到伺服器拿實際檔案。
+        navigateFallbackDenylist: [/^\/robots\.txt$/, /^\/sitemap\.xml$/],
       },
     }),
   ],

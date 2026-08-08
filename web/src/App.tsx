@@ -8,6 +8,7 @@ import { useAppState } from './AppCommon'
 import { PublicViewScreen } from './PhoneScreens'
 import { PublicPaceDemoPage } from './PublicPaceDemoPage'
 import { PhoneContent } from './PhoneContent'
+import { NotFoundPage } from './NotFoundPage'
 
 // App.tsx 只保留路由判斷(App() 本身)——PhoneContent(含 PhoneNavDrawer 導覽
 // 抽屜)搬到 PhoneContent.tsx、PublicPaceDemoPage 搬到自己的檔案、
@@ -92,17 +93,15 @@ export function App() {
             </div>
           }
         />
-        {/* catch-all:原本的邏輯是「除了上面幾條路徑,其他都走 PhoneContent」,
-            這裡明確用 path="*" 保留這個 fallback 行為,避免路由外的路徑
-            (例如使用者手動輸入的其他網址)變成空白頁。 */}
-        <Route
-          path="*"
-          element={
-            <div className="web-app">
-              <PhoneContent {...props} />
-            </div>
-          }
-        />
+        {/* catch-all:真正找不到對應路由的路徑,渲染 404 頁面(NotFoundPage)。
+            原本這裡是「除了上面幾條路徑,其他都走 PhoneContent」,讓任何
+            打錯字/失效連結的網址都顯得像正常畫面——這對 SEO 是個陷阱:
+            後端 static.go 對這類路徑一律回 200(見該檔案的判斷邏輯),等於
+            Google 會把找不到的頁面當成有效內容索引。現在前後端同步改為
+            真正的 404 語意:後端只對已知路由 pattern 回 200+index.html,
+            其餘回 404 狀態碼;前端這裡對應渲染 NotFoundPage,讓人類使用者
+            看到的是有品牌感、附導引動作的頁面,不是瀏覽器原生錯誤畫面。 */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
   )
