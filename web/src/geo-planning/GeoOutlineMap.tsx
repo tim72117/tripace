@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
-import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from './api'
-import { fetchGeoAttractionsNearby, fetchGeoAttractionsOnlyNearby, fetchGeoPlaceDetails, fetchGeoPlacesNearby } from './api'
+import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from '../api'
+import { fetchGeoAttractionsNearby, fetchGeoAttractionsOnlyNearby, fetchGeoPlaceDetails, fetchGeoPlacesNearby } from '../api'
 import { Hotel, Loader2, MapPin, Search, UtensilsCrossed } from 'lucide-react'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
 import { initialAreaSearchState, reduceAreaSearchState } from './geoAreaSearchState'
-import { planAttractionClick, placesQueryRadiusMeters, FALLBACK_ZOOM_NO_LEVEL } from './geoAttractionClick'
+import { planAttractionClick, FALLBACK_ZOOM_NO_LEVEL } from './geoAttractionClick'
 import {
   getAttractionOverlayClass,
   maxLevelForZoom,
@@ -748,37 +748,25 @@ export function GeoOutlineMap({
 
   // 點擊地標圖示(圓形照片/佔位圓,見 AttractionOverlay.onAdd 綁定的
   // click)時,把地圖放大到該景點區域對應的範圍——實際該 fitBounds 還是
-  // panTo+setZoom、以及查附近推薦地點該用多大半徑,決策邏輯抽成純函式
-  // planAttractionClick/placesQueryRadiusMeters(見 geoAttractionClick.ts,
-  // 可獨立於 Google Maps SDK 單元測試),這裡只負責依決策結果實際呼叫
-  // Google Maps API。這次移動也視為「對齊看清楚一個已知項目」,故一併設
-  // suppressNextIdleQueryRef,不冒出不必要的「搜尋這個區域」按鈕。
+  // panTo+setZoom,決策邏輯抽成純函式 planAttractionClick(見
+  // geoAttractionClick.ts,可獨立於 Google Maps SDK 單元測試),這裡只
+  // 負責依決策結果實際呼叫 Google Maps API。這次移動也視為「對齊看清楚
+  // 一個已知項目」,故一併設 suppressNextIdleQueryRef,不冒出不必要的
+  // 「搜尋這個區域」按鈕。
   //
-  // 同時即時查詢該地標附近的推薦地點(GET /internal/geo/places/nearby,
-  // 不限類型,對齊 internal/wanttools/recommend_nearby.go 那個 LLM 工具
-  // 的行為)——這是使用者明確點擊觸發的動作。查詢結果寫進 places
-  // state(驅動下方畫 marker 的 effect,讓這批推薦地點也顯示在地圖上,
-  // 不只是列在側欄),同時透過 onPlacesNearby 往上回報給側欄——不受
-  // 地圖移動/放大動畫影響(兩者是獨立動作,不需要等 idle 才觸發)。
+  // 刻意不像先前那樣順便查附近推薦地點(fetchGeoPlacesNearby)——那個
+  // 查詢的唯一可見效果是讓 GeoHotelSidebar(右側浮動側欄)跳出來顯示
+  // 「附近推薦」分頁,但點擊景點區域圖示的使用者意圖是「看這個景點區域
+  // 的介紹」(見 onAttractionSelect 開啟 AttractionInfoPanel),不是「查
+  // 附近還有什麼」,使用者明確要求點擊景點區域時不該連帶跳出右側欄。
+  // 附近推薦查詢仍保留給另外兩個明確以「查附近」為意圖的入口:地圖上方
+  // 類別標籤(handleCategoryClick)、AttractionInfoPanel「探索周邊」按鈕
+  // (該按鈕目前只平移/縮放地圖,不查附近推薦,若之後要加也該走同一套
+  // 明確觸發的入口,不是點擊圖示本身)。
   const handleAttractionClick = useCallback((d: GeoAttraction) => {
     if (!mapRef.current) return
     onAttractionSelect?.(d)
     suppressNextIdleQueryRef.current = true
-    // 點擊地標查出來的是不限類型的泛用推薦,不屬於任何類別標籤——若先前
-    // 選中了某個類別標籤(見 handleCategoryClick),這裡要一併清掉,否則
-    // 側欄「附近推薦」分頁會沿用舊類別的標題,跟新結果的實際內容(不限
-    // 類型)對不上。
-    setActiveCategory(null)
-    onActiveCategoryChange?.(null)
-    fetchGeoPlacesNearby(cfg, d.lat, d.lng, placesQueryRadiusMeters(d))
-      .then((result) => {
-        setPlaces(result.places)
-        onPlacesNearby?.(result.places)
-      })
-      .catch(() => {
-        // 查詢失敗不視為致命錯誤——地圖仍正常放大,只是這次沒能刷新
-        // 附近推薦清單,維持上一次查到的內容即可,不彈錯誤訊息打斷瀏覽。
-      })
     const plan = planAttractionClick(d)
     if (plan.kind === 'fit-bounds') {
       const center = { lat: d.lat, lng: d.lng }

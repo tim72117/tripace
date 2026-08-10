@@ -141,11 +141,20 @@
    操作」的份量。左半邊(addCandidateBtn,加入目前行程)/右半邊
    (addToNewTripBtn,加入到新行程)視覺上共用外框、只在中間留一條細
    分隔線,讓使用者感覺是同一顆按鈕的兩個區塊,而不是兩顆獨立按鈕。 */
-.addCandidateGroup {
+/* addCandidateWrap:position: relative 錨點,讓 .dateMenu 懸浮選單
+   (position: absolute)貼齊這個按鈕組正下方——選單展開/收合純疊在上層,
+   不推擠卡片其餘內容版面(理由同上方 addCandidateGroup 說明區塊)。
+   margin-top 從 addCandidateGroup 移過來,因為現在是這個 wrapper(而非
+   按鈕組本身)要跟上面的 summary 段落保持間距。 */
+.addCandidateWrap {
+  position: relative;
   align-self: flex-start;
+  margin-top: 10px;
+}
+
+.addCandidateGroup {
   display: flex;
   align-items: stretch;
-  margin-top: 10px;
   border-radius: 10px;
   overflow: hidden;
 }
@@ -188,4 +197,106 @@
 
 .addToNewTripBtn:hover {
   opacity: 0.88;
+}
+
+/* dateEdit/dateInput/dateConfirmBtn:候選沒有排定日期時,按下「加入
+   {tripName}」原地展開的日期選擇 UI——樣式比照
+   GeoCandidateSidebar.module.css 的 .dayDateEdit/.dayDateInput/
+   .dayDateConfirmBtn(NoDateDayHead 用),讓兩處「補日期」的視覺語言
+   一致,各自獨立維護一份(理由同 AttractionInfoPanel.module.css 開頭
+   對重複視覺語言的既有說明)。 */
+.dateEdit {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.dateInput {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 8px;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  font-size: 12px;
+}
+
+.dateInput:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.dateConfirmBtn {
+  flex: 0 0 auto;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-accent);
+  color: var(--ios-card);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.12s;
+}
+
+.dateConfirmBtn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.dateConfirmBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* dateMenu/dateMenuItem:候選沒有排定日期、但行程本身已有排定日期時,
+   按下「加入 {tripName}」先展開的懸浮下拉選單——每一項是既有日期(格式同
+   GeoCandidateSidebar.tsx 的 dayGroupLabel)或最下面的「其他日期」。
+   position: absolute 貼齊 .addCandidateWrap(見上方)正下方,疊在卡片其餘
+   內容之上,不推擠版面——跟原生 <select> 下拉選單的疊層行為一致。
+   z-index 只需高於同一張卡片內其餘內容(卡片本身在 .panel 已有 z-index:2
+   跟地圖分層,這裡不需要更高)。 */
+.dateMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 100%;
+  padding: 4px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 10px;
+  background: var(--ios-card);
+  box-shadow: 0 6px 20px rgba(61, 53, 48, 0.18);
+}
+
+/* dateMenuOpenUp:.addCandidateWrap 下方視窗剩餘空間不足以容納選單估計
+   高度時套用(見 GeoInfoPanel.tsx 的 dateMenuOpenUp state)——改用
+   bottom 取代 top,讓選單往上長、貼齊按鈕組正上方,避免固定往下展開
+   時被視窗底部邊界截斷或推出可視範圍外。left/z-index/其餘視覺樣式
+   與預設方向共用不重複定義。 */
+.dateMenuOpenUp {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.dateMenuItem {
+  padding: 7px 10px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--color-dark);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.dateMenuItem:hover {
+  background: var(--ios-bg);
+  color: var(--color-accent);
 }

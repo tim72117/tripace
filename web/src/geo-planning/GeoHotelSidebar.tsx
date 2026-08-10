@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Compass, Hotel, Plus } from 'lucide-react'
-import type { ClientConfig, GeoHotel, GeoPlace } from './api'
+import type { ClientConfig, GeoHotel, GeoPlace } from '../api'
 import { type GeoCandidate, createEntryFromCandidate } from './GeoCandidateSidebar'
 import styles from './GeoHotelSidebar.module.css'
 

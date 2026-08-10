@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from './api'
-import { fetchEntries, fetchGeoGeocode } from './api'
+import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from '../api'
+import { fetchEntries, fetchGeoGeocode } from '../api'
 import { GeoOutlineMap } from './GeoOutlineMap'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
 import styles from './GeoOutlinePanel.module.css'

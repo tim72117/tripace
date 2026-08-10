@@ -1,98 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Car, Hotel, ListPlus, MapPin, Plane, StickyNote, Ticket, Undo2, UtensilsCrossed } from 'lucide-react'
-import { isSubmitEnter } from './AppCommon'
-import * as api from './api'
-import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace, GeoTripEntry } from './api'
+import { ListPlus, Undo2 } from 'lucide-react'
+import { isSubmitEnter } from '../AppCommon'
+import * as api from '../api'
+import type { ClientConfig } from '../api'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
 import { geoItemKey } from './GeoHotelSidebar'
 import styles from './GeoCandidateSidebar.module.css'
+import {
+  type GeoCandidate,
+  NO_DATE_GROUP,
+  candidateListKey,
+  createEntryFromCandidate,
+  dayGroupKey,
+  dayGroupLabel,
+  entryKindIcon,
+  localDateKey,
+} from './geoCandidateHelpers'
 
-// ENTRY_KIND_ICONS:「已排入行程」日層架卡片的類別圖示,對應後端
-// model.Entry.Kind(見 types.ts 的 Entry.kind 註解——
-// stay/flight/activity/note/car/restaurant/ticket,未分類或不認得的值
-// 一律退回 MapPin)。stay/restaurant/activity 刻意對齊 GeoOutlineMap.tsx
-// CATEGORY_TAGS 用的 Hotel/UtensilsCrossed/MapPin(飯店就是飯店 icon),
-// 讓使用者在地圖類別標籤與這裡的日層架卡片看到同一種類型時,圖示語意
-// 一致;其餘沒有對應類別標籤的 kind(flight/note/car/ticket)沿用各自
-// 最貼切的圖示,兩套是不同的值域(CATEGORY_TAGS 對應 Google Places 的
-// place type,這裡對應行程本身的 entry 類型),沒有共用機制,只是刻意讓
-// 重疊的部分保持一致。
-const ENTRY_KIND_ICONS: Record<string, typeof MapPin> = {
-  stay: Hotel,
-  flight: Plane,
-  activity: MapPin,
-  note: StickyNote,
-  car: Car,
-  restaurant: UtensilsCrossed,
-  ticket: Ticket,
-}
-export function entryKindIcon(kind?: string | null): typeof MapPin {
-  return (kind && ENTRY_KIND_ICONS[kind]) || MapPin
-}
-
-// PLACE_CATEGORY_TO_ENTRY_KIND:GeoPlace.category(後端封裝過的自訂分類,
-// 值域固定是 lodging/tourist_attraction/restaurant,見該欄位的完整說明)
-// 對應到 model.Entry.Kind 的值域——兩套字串剛好在這三個類別上重疊,故
-// 直接沿用同樣的字串。不要用 GeoPlace.primaryType(Google 原始細分類型,
-// 如 "hotel"/"japanese_restaurant")做這個判斷,那是後端已經處理過、
-// 前端不該重複解讀的原始資料。
-const PLACE_CATEGORY_TO_ENTRY_KIND: Record<string, string> = {
-  lodging: 'stay',
-  restaurant: 'restaurant',
-  tourist_attraction: 'activity',
-}
-
-// candidateEntryKind:候選籃項目(飯店/景點/推薦地點/返回候選的 entry)
-// 拖進日層架、寫成一筆新 entry 時,推導該用哪個 model.Entry.Kind 值——
-// 讓分類資訊在候選 → entry 的轉換過程中保留下來(拖回候選籃、再拖回
-// 行程,分類都不會遺失),而不是每次建立新 entry 都固定不分類。
-//  - hotel:候選籃裡的飯店類別本身就等同「住宿」,直接對應 'stay'。
-//  - place:依 primaryType 查表,查不到(不在 CATEGORY_TAGS 涵蓋的三種
-//    類型內)一律退回 'activity'——理由同 PLACE_CATEGORY_GLYPHS 的
-//    CAMERA_GLYPH fallback,泛用推薦地點沒有更精確分類時,「這是個值得
-//    去的活動地點」是最保守合理的預設。
-//  - attraction:人工建檔的景點區域,沒有 Google Places 分類可查,固定
-//    對應 'activity'。
-//  - entry(返回候選後、尚未真正排入行程的候選,inTrip===false):直接
-//    沿用它自己保留的 entryKind(見 GeoCandidate 型別定義處的說明),
-//    沒有值時退回 'activity'——理論上不該發生(entryKind 在
-//    onTripEntriesChange 建立候選時一律會帶入,即使後端該筆 entry 本身
-//    沒有設 kind,值也會是 null/undefined,一樣落到這個 fallback),
-//    保守起見仍處理。
-export function candidateEntryKind(c: GeoCandidate): string {
-  if (c.kind === 'hotel') return 'stay'
-  if (c.kind === 'place') return (c.category && PLACE_CATEGORY_TO_ENTRY_KIND[c.category]) ?? 'activity'
-  if (c.kind === 'entry') return c.entryKind ?? 'activity'
-  return 'activity'
-}
-
-// createEntryFromCandidate:把一個純候選(飯店/景點/推薦地點,或按過
-// 「返回候選」、inTrip===false 的 entry 形狀候選)寫成一筆真正的行程
-// entry——抽成獨立函式供兩處呼叫端共用(GeoCandidateSidebar 的拖曳放進
-// 日層架、GeoHotelSidebar/GeoInfoPanel 的「+」按鈕展開日期選擇後直接
-// 建立),避免同一段「recordEntry 再 setEntryLatLng 補座標」的兩步驟邏輯
-// 兩處各寫一份、之後改一邊忘了改另一邊。title 用候選名稱、start 用選定
-// 的日期、location 用地址/地標名稱、kind 用 candidateEntryKind 推導出的
-// 分類。recordEntry 端點本身不接受 lat/lng(見 api.ts 的 RecordEntryInput
-// 說明),必須分兩步呼叫。
-export async function createEntryFromCandidate(
-  cfg: ClientConfig,
-  tripID: string,
-  c: GeoCandidate,
-  date: string,
-): Promise<string> {
-  const location = c.kind === 'attraction' ? (c.landmarkName ?? c.name)
-    : c.kind === 'entry' ? (c.location ?? '')
-    : c.address
-  const { entryID } = await api.recordEntry(cfg, tripID, {
-    title: c.name,
-    start: date,
-    location,
-    kind: candidateEntryKind(c),
-  })
-  await api.setEntryLatLng(cfg, entryID, c.lat, c.lng)
-  return entryID
-}
+export type { GeoCandidate } from './geoCandidateHelpers'
+export { candidateEntryKind, candidateListKey, createEntryFromCandidate, dayGroupLabel, entryKindIcon } from './geoCandidateHelpers'
 
 // GeoCandidateSidebar:候選籃(構想 1,見
 // docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)——地理輪廓底圖(構想 6)的
@@ -124,68 +50,9 @@ export async function createEntryFromCandidate(
 // 一種:那三種形狀的專屬欄位(landmarkPhotoUrl/primaryType 等)在 entry
 // 資料裡從一開始就不存在(entries 資料表沒有存這些),假造一個不存在的
 // 來源分類反而失真——entry 形狀本身(名稱+地址+座標+entryKind)已經是
-// 這筆資料唯一誠實、可還原的樣貌。
+// 這筆資料唯一誠實、可還原的樣貌。GeoCandidate 型別本身與 entryKind 欄位
+// 的完整說明見 geoCandidateHelpers.ts。
 //
-// entryKind:entry 本身的類型(對齊 model.Entry.Kind,如
-// "stay"/"activity"/"restaurant",見 GeoTripEntry.kind 的完整說明)——
-// 刻意改名、不直接沿用 GeoTripEntry 原本的 kind 欄位,是因為 GeoCandidate
-// 本身也有一個叫 kind 的判別欄位(用來分辨 hotel/attraction/place/entry
-// 四種來源,即這裡的 'entry' 字面值),兩個 kind 同名會在交集型別合併時
-// 互相覆蓋——過去的寫法(見已修正前的版本)讓判別欄位的字面值 'entry'
-// 蓋掉了 entry 本身的分類值,導致 DayEntryCard 的圖示永遠退回預設的
-// MapPin,從未正確顯示過飯店/餐廳專屬圖示(實際存在的既有 bug,這次
-// 一併修正)。用 Omit<GeoTripEntry, 'kind'> 明確排除原本的 kind 欄位,
-// 改用 entryKind 承接同一份資料,兩個欄位的語意才不會互相打架。
-export type GeoCandidate =
-  | ({ kind: 'hotel' } & GeoHotel)
-  | ({ kind: 'attraction' } & GeoAttraction)
-  | ({ kind: 'place' } & GeoPlace)
-  | ({ kind: 'entry'; inTrip: boolean; entryKind?: string | null } & Omit<GeoTripEntry, 'kind'>)
-
-// dayGroupLabel/dayGroupKey:把「已排入行程」的 entry 依 start 日期分組——
-// 對齊構想 5 桌面同屏並置原型(見
-// docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)右欄「日層架」的呈現方式:
-// 每天一個區塊,標題顯示日期與該天已有幾個安排,底下才是卡片清單。沒有
-// start 的 entry(尚未排定日期,理由同 Timeline.tsx 對無日期 entry 的
-// 處理)另外歸進「未排定日期」分組,排在最後。
-const NO_DATE_GROUP = '__no_date__'
-function dayGroupKey(c: GeoCandidate): string {
-  if (c.kind !== 'entry') return NO_DATE_GROUP
-  return c.start || NO_DATE_GROUP
-}
-
-// candidateListKey:候選籃清單渲染用的 React key——entry 形狀的候選(見
-// GeoTripEntry.id 的說明)有穩定、保證唯一的 id,優先使用;其餘三種
-// (hotel/attraction/place)沒有穩定 id(即時查詢結果),退回原本的
-// 「名稱+座標」組合。過去三處渲染(datedDays.map/noDateGroup.map/
-// onlyCandidate.map)一律都用「名稱+座標」當 key,即使是 entry 形狀也
-// 一樣——如果使用者把同一個候選拖進行程兩次,會產生兩筆不同 id、但
-// 名稱/座標完全相同的 entry,key 就會撞在一起,觸發 React 的 duplicate
-// key 警告(實際發生過的 bug)。改用這個函式統一產生 key,entry 形狀
-// 一律用它自己的 id,徹底避開這個碰撞。
-export function candidateListKey(c: GeoCandidate): string {
-  if (c.kind === 'entry') return `entry-${c.id}`
-  return `${c.kind}-${c.name}-${c.lat}-${c.lng}`
-}
-export function dayGroupLabel(key: string): string {
-  if (key === NO_DATE_GROUP) return '未排定日期'
-  const [, month, day] = key.split('-')
-  return month && day ? `${Number(month)}/${Number(day)}` : key
-}
-
-// localDateKey:把一個 Date 物件轉成 YYYY-MM-DD 字串,全程用本地時間的
-// 年/月/日欄位組字串,不經過任何 UTC 轉換——不能用 d.toISOString().
-// slice(0, 10) 這種常見寫法,那會先把時間轉成 UTC 再取字串,在 UTC 之後
-// 的時區(例如 UTC+7/+8)最明顯的症狀是:本地深夜到隔天日出前這段
-// 時間,算出來的日期會倒退回前一天(實際發生過的 bug——見下方 todayKey/
-// nextDayKey 的呼叫處)。
-function localDateKey(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
 // DayEntryCard:「已排入行程」日層架分組底下的單一卡片,對齊構想 5 原型
 // .placed-card 的緊湊橫列樣式(圓形姓名首字 pin + 名稱 + 靠右時刻),跟
 // CandidateRow 那種帶大張縮圖的卡片視覺區分開來——日層架強調的是「這天
@@ -446,21 +313,58 @@ export function GeoCandidateSidebar({
     })
   }, [inTrip])
 
-  // datedDays/noDateGroup:把 inTripByDay 拆成「有日期的分組」跟「未排定
-  // 日期的分組」兩份——渲染時要在有日期分組的最後面(未排定日期分組
-  // 之前)插入下方的「隔天」拖放區,用單一 .map 沒辦法在特定位置插入
+  // datedDaysRaw/noDateGroup:把 inTripByDay 拆成「有日期的分組」跟「未
+  // 排定日期的分組」兩份——渲染時要在有日期分組的最後面(未排定日期
+  // 分組之前)插入「新增隔天」按鈕,用單一 .map 沒辦法在特定位置插入
   // 額外的區塊,故拆開分別渲染。
-  const datedDays = inTripByDay.filter(([k]) => k !== NO_DATE_GROUP)
+  const datedDaysRaw = inTripByDay.filter(([k]) => k !== NO_DATE_GROUP)
   const noDateGroup = inTripByDay.find(([k]) => k === NO_DATE_GROUP)
 
-  // nextDayKey:目前「已排入行程」最後一天的隔天日期(YYYY-MM-DD)——拖曳
-  // 卡片到最後一天最後一張卡片下方時,顯示一個空白的「隔天」拖放區塊,
-  // 讓使用者能把候選/已排入行程的卡片放進一個目前還沒有任何項目的新
-  // 日期,不需要先手動選好日期(理由同構想 5 原型「一直在場的日層架」
-  // 精神)。沒有任何已有日期的分組時(datedDays 為空)不算得出「最後
-  // 一天」,不顯示這個區塊——這種情況下「未排定日期」分組本身的日期
-  // 輸入已經能達到同樣的目的。
-  const lastDatedDayKey = datedDays.length > 0 ? datedDays[datedDays.length - 1][0] : null
+  // manualBlankDayKeys:使用者按下「新增前一天」/「新增隔天」按鈕手動
+  // 加入的空白日期——這個元件不持有 candidates 的真正資料來源(props
+  // 傳下來的唯讀資料,見上方元件註解「維持這個元件單純是受控呈現層」),
+  // 空白分組在還沒有任何 entry 排進去之前,沒有對應的後端資料可以查
+  // 詢回來,只能用這個本地 state 記住「使用者手動加過哪些空白天」,
+  // 讓它們在 datedDays 裡常駐顯示、可以接住候選卡片的放置。一旦某個
+  // 空白天被排入至少一筆 entry,它會自然變成 inTripByDay 算出來的
+  // 真正分組,這個 state 裡的記錄變成多餘但無害(該天的顯示改由
+  // datedDaysRaw 提供,不會顯示兩次,見下方 datedDays 的合併邏輯)。
+  // 重新整理頁面或切換行程後這份記錄會重置——空白天本來就沒有任何
+  // 資料,不需要跨 session 保留。
+  const [manualBlankDayKeys, setManualBlankDayKeys] = useState<Set<string>>(new Set())
+
+  // datedDays:datedDaysRaw 基礎上,補上兩種空白天,依日期排序合併成
+  // 連續的日層架——(1) 已排日期之間所有完全空白的中間天(例如已排
+  // 1/1、1/3,中間的 1/2 這裡補上),不需要使用者手動觸發,只要頭尾
+  // 日期之間有缺口就自動常駐顯示;(2) manualBlankDayKeys 記錄的手動
+  // 新增天(前一天/隔天按鈕加的)。兩者都是「目前沒有任何 entry」的
+  // 空分組,合併後統一交給下方 .map 一起渲染,不需要分開處理常駐/
+  // 手動兩種來源的顯示邏輯。
+  const datedDays = useMemo(() => {
+    const byKey = new Map(datedDaysRaw)
+    const allKeys = new Set(byKey.keys())
+
+    if (datedDaysRaw.length > 1) {
+      const first = datedDaysRaw[0][0]
+      const last = datedDaysRaw[datedDaysRaw.length - 1][0]
+      const d = new Date(first + 'T00:00:00')
+      const lastD = new Date(last + 'T00:00:00')
+      while (d < lastD) {
+        d.setDate(d.getDate() + 1)
+        allKeys.add(localDateKey(d))
+      }
+    }
+    for (const k of manualBlankDayKeys) allKeys.add(k)
+
+    return [...allKeys].sort().map((k) => [k, byKey.get(k) ?? []] as [string, (GeoCandidate & { kind: 'entry' })[]])
+  }, [datedDaysRaw, manualBlankDayKeys])
+
+  // nextDayKey/prevDayKey:目前「已排入行程」最後一天的隔天、第一天的
+  // 前一天(YYYY-MM-DD)——分別是「新增隔天」「新增前一天」按鈕按下時
+  // 要加進 manualBlankDayKeys 的日期。沒有任何已有日期的分組時
+  // (datedDaysRaw 為空)不算得出頭尾,不顯示這兩顆按鈕——這種情況下
+  // 「未排定日期」分組本身的日期輸入已經能達到同樣的目的。
+  const lastDatedDayKey = datedDaysRaw.length > 0 ? datedDaysRaw[datedDaysRaw.length - 1][0] : null
   const nextDayKey = useMemo(() => {
     if (!lastDatedDayKey) return null
     // new Date(lastDatedDayKey + 'T00:00:00') 這個「有時間但沒帶時區」的
@@ -472,6 +376,14 @@ export function GeoCandidateSidebar({
     d.setDate(d.getDate() + 1)
     return localDateKey(d)
   }, [lastDatedDayKey])
+
+  const firstDatedDayKey = datedDaysRaw.length > 0 ? datedDaysRaw[0][0] : null
+  const prevDayKey = useMemo(() => {
+    if (!firstDatedDayKey) return null
+    const d = new Date(firstDatedDayKey + 'T00:00:00')
+    d.setDate(d.getDate() - 1)
+    return localDateKey(d)
+  }, [firstDatedDayKey])
 
   // todayKey:全新行程(inTrip 完全是空的,連「未排定日期」分組都沒有——
   // 一筆 entry 都還沒有)時,拖曳純候選卡片沒有任何現成的日期分組可以
@@ -680,7 +592,25 @@ export function GeoCandidateSidebar({
             )}
             {inTrip.length > 0 && (
               <div className={styles.group}>
-                <div className={styles.groupTitle}>已排入行程 · {inTrip.length}</div>
+                {/* 「新增前一天」按鈕:算得出第一天(prevDayKey)時才有
+                    意義顯示。取代原本「拖曳時才浮現的前一天拖放區」
+                    ——那個做法無論怎麼縮小新增區塊的高度,只要是「拖曳
+                    開始後才 mount/unmount」,理論上都有機率讓下方
+                    datedDays 列表位移、被瀏覽器判定拖曳來源移動而中止
+                    拖曳(見「全新行程」佔位拖放區記錄的實際 bug)。改成
+                    常駐的按鈕,按下才把 prevDayKey 加進
+                    manualBlankDayKeys、變成 datedDays 裡一個真正常駐
+                    顯示的空白分組——這個分組本身平常就存在,不會在拖曳
+                    過程中才出現,不會踩到同一個坑。 */}
+                {prevDayKey && (
+                  <button
+                    type="button"
+                    className={styles.addDayBtn}
+                    onClick={() => setManualBlankDayKeys((prev) => new Set(prev).add(prevDayKey))}
+                  >
+                    + 新增 {dayGroupLabel(prevDayKey)}(前一天)
+                  </button>
+                )}
                 {datedDays.map(([dayKey, dayEntries]) => (
                   <div key={dayKey} className={styles.day}>
                     <div className={styles.dayHead}>
@@ -717,31 +647,18 @@ export function GeoCandidateSidebar({
                     </div>
                   </div>
                 ))}
-                {/* 「隔天」拖放區:算得出最後一天(nextDayKey)時才有意義
-                    渲染(沒有任何已有日期的分組就沒有「隔天」可言),拖到
-                    最後一天最後一張卡片下方,讓使用者能把卡片放進一個目前
-                    還沒有任何項目的新日期,不需要先手動選好日期。放開後走
-                    跟其餘日期分組一樣的 handleDropOnDay,新條目建立/改期
-                    成功後,這個分組會在下一次渲染(onDatesAssigned 觸發
-                    重新查詢)變成 datedDays 裡真正的一個分組,這裡只是
-                    拖曳當下的臨時佔位,不需要自己維護額外的顯示狀態。
-                    平時就常駐顯示(理由同上方「全新行程」佔位拖放區的
-                    說明)——若只在拖曳中才顯示,顯示/隱藏切換造成的版面
-                    高度變化會把拖曳來源元素往下推,導致瀏覽器判定拖曳
-                    無效而中止。 */}
+                {/* 「新增隔天」按鈕:算得出最後一天(nextDayKey)時才有
+                    意義顯示,理由與上方「新增前一天」按鈕完全對稱,見該
+                    處的完整說明——同樣改成常駐按鈕,取代原本拖曳觸發的
+                    臨時佔位區。 */}
                 {nextDayKey && (
-                  <div className={styles.day}>
-                    <div className={styles.dayHead}>
-                      <span className={styles.dayDate}>{dayGroupLabel(nextDayKey)}</span>
-                      <span className={styles.dayStatus}>隔天 · 拖曳到這裡新增</span>
-                    </div>
-                    <div
-                      className={`${styles.dayBody} ${styles.dayBodyEmpty}${dragOverDay === nextDayKey ? ` ${styles.dayBodyDragOver}` : ''}`}
-                      onDragOver={(e) => { e.preventDefault(); setDragOverDay(nextDayKey) }}
-                      onDragLeave={() => setDragOverDay((d) => (d === nextDayKey ? null : d))}
-                      onDrop={(e) => { e.preventDefault(); handleDropOnDay(nextDayKey) }}
-                    />
-                  </div>
+                  <button
+                    type="button"
+                    className={styles.addDayBtn}
+                    onClick={() => setManualBlankDayKeys((prev) => new Set(prev).add(nextDayKey))}
+                  >
+                    + 新增 {dayGroupLabel(nextDayKey)}(隔天)
+                  </button>
                 )}
                 {noDateGroup && (
                   <div className={styles.day}>

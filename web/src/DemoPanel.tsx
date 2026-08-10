@@ -82,7 +82,7 @@ export function DemoPanel({
       {tab === 'api' ? (
         <div className={styles.list}>
           {calls.length === 0 ? (
-            <div style={{ color: '#6e6e78', padding: 16, textAlign: 'center' }}>
+            <div className={styles.emptyState}>
               尚無請求。在左側操作 app,這裡會即時記錄每次 API 交易。
             </div>
           ) : (
@@ -92,7 +92,7 @@ export function DemoPanel({
       ) : tab === 'ws' ? (
         <div className={styles.list}>
           {wsEvents.length === 0 ? (
-            <div style={{ color: '#6e6e78', padding: 16, textAlign: 'center' }}>
+            <div className={styles.emptyState}>
               尚無事件。後端透過 WebSocket 主動推送的介面更新事件(entries_updated、
               entries_loaded 等)會即時顯示在這裡。
             </div>
@@ -158,7 +158,7 @@ function EntriesView({
   if (!trip) {
     return (
       <div className={styles.list}>
-        <div style={{ color: '#6e6e78', padding: 16, textAlign: 'center' }}>
+        <div className={styles.emptyState}>
           先在左側進入一個行程,這裡會顯示該行程的 Entry 條目。
         </div>
       </div>
@@ -180,7 +180,7 @@ function EntriesView({
       </div>
       {err && <pre className={styles.jsonErr}>{err}</pre>}
       {!err && entries.length === 0 && !loading && (
-        <div style={{ color: '#6e6e78', padding: 16, textAlign: 'center' }}>
+        <div className={styles.emptyState}>
           這個行程還沒有 Entry。owner 記事(需 -llm want)後會出現。
         </div>
       )}

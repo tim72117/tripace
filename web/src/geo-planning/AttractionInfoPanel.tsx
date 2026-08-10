@@ -1,5 +1,5 @@
 import { Compass, X } from 'lucide-react'
-import type { GeoAttraction } from './api'
+import type { GeoAttraction } from '../api'
 import styles from './AttractionInfoPanel.module.css'
 
 // AttractionInfoPanel:attraction(人工建檔的景點區域,見 model.Attraction)

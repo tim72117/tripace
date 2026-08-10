@@ -1,38 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import {
-  ChevronDown, Settings, LogOut, X,
-  List, Timeline, Sparkles, GalleryHorizontal, Layers, Wrench, Radio, Activity, Route, Plus, MapPin,
-} from 'lucide-react'
-import type { ClientConfig, ApiCall, WsEvent } from './api'
-import * as api from './api'
+import type { ApiCall, WsEvent } from './api'
 import { onApiCall, onWsEvent } from './api'
-import type { Trip, User } from './types'
 import { ChatScreen } from './ChatScreen'
 import type { DesktopTimelineMirror } from './ChatScreen'
 import { MultiTrackTimeline, type TaskPlaceholder } from './Timeline'
-import type { AssistLang } from './assistLang'
-import { ASSIST_LANG_KEY, getAssistLang } from './assistLang'
 import { PaceChart, type Checkpoint } from './PaceChart'
 import { PaceRouteMap, type SelectedEntry } from './PaceRouteMap'
 import { DemoPanel } from './DemoPanel'
-import { GeoHotelSidebar, geoItemKey, type GeoSelectedKey, type Tab as GeoTab } from './GeoHotelSidebar'
-import { GeoInfoPanel, type GeoInfoContent } from './GeoInfoPanel'
-import { AttractionInfoPanel } from './AttractionInfoPanel'
-import { GeoCandidateSidebar, type GeoCandidate, createEntryFromCandidate } from './GeoCandidateSidebar'
-import { AddFromCandidateSidebar, dayGroupLabel } from './AddFromCandidateSidebar'
-import { GeoOutlinePanel } from './GeoOutlinePanel'
-import { placesQueryRadiusMeters } from './geoAttractionClick'
+import { GeoHotelSidebar, geoItemKey, type GeoSelectedKey, type Tab as GeoTab } from './geo-planning/GeoHotelSidebar'
+import { GeoInfoPanel, type GeoInfoContent } from './geo-planning/GeoInfoPanel'
+import { AttractionInfoPanel } from './geo-planning/AttractionInfoPanel'
+import { GeoCandidateSidebar, type GeoCandidate, createEntryFromCandidate } from './geo-planning/GeoCandidateSidebar'
+import { AddFromCandidateSidebar, dayGroupLabel } from './geo-planning/AddFromCandidateSidebar'
+import { GeoOutlinePanel } from './geo-planning/GeoOutlinePanel'
+import { placesQueryRadiusMeters } from './geo-planning/geoAttractionClick'
 import type { GeoAttraction, GeoHotel, GeoPlace, GeoPlaceDetails } from './api'
-import {
-  Avatar, ErrorBanner, errMsg, isSubmitEnter, LoginForm, useTripsState,
-  type ContentProps,
-} from './AppCommon'
-import {
-  type PanelMode, isPanelMode, DemoPanelContent, LangSelect, TokenDisplay, GEO_OUTLINE_ENABLED,
-  TIMELINE_ENABLED, PACE_ENABLED,
-  DEMO_CARDS_ENABLED, DEMO_ROW_ENABLED, DEMO_CLIENTTOOLS_ENABLED, DEMO_ONAGENT_ENABLED, DEBUG_PANEL_ENABLED,
-} from './DesktopShared'
+import { type ContentProps } from './AppCommon'
+import { type PanelMode, isPanelMode, DemoPanelContent, DEBUG_PANEL_ENABLED } from './DesktopShared'
+import { DesktopRail } from './DesktopRail'
+import { DesktopTripList } from './DesktopTripList'
+import { SettingsDialog } from './SettingsDialog'
 
 // DesktopLayout:桌面版(寬度 >= 768px)專屬佈局元件——左側邊欄(行程列表 +
 // 使用者選單)+ 右側 ChatScreen 主要區塊,類似 Slack/Discord 的行程側欄
@@ -348,6 +336,24 @@ export function DesktopContent(props: ContentProps) {
     () => geoCandidates.filter((c) => !(c.kind === 'entry' && c.inTrip)),
     [geoCandidates],
   )
+  // geoScheduledDates:行程本身目前已排定的日期清單(去重、升冪排序)——
+  // 從 geoCandidates 裡 kind === 'entry' && inTrip 且 start 非空的項目
+  // 取出,分組規則跟 GeoCandidateSidebar.tsx 的「已排入行程」dayGroupKey/
+  // NO_DATE_GROUP 邏輯一致(未排定日期的 entry 不算數)。傳給
+  // GeoInfoPanel 的 scheduledDates,見該元件的 prop 說明——按下「加入
+  // {tripName}」時,候選沒有自己的日期但行程已有這些既有日期可選,先跳
+  // 下拉選單而不是直接展開日曆。
+  const geoScheduledDates = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          geoCandidates
+            .filter((c): c is GeoCandidate & { kind: 'entry'; inTrip: true } => c.kind === 'entry' && c.inTrip && !!c.start)
+            .map((c) => c.start as string),
+        ),
+      ).sort(),
+    [geoCandidates],
+  )
   // handlePickFromCandidate:第二側欄點選一項候選——直接呼叫
   // createEntryFromCandidate 建立成 pickingDayKey 這天的 entry,成功後
   // 側欄保持開啟(使用者明確要求可以連續加入多項),並觸發
@@ -366,6 +372,23 @@ export function DesktopContent(props: ContentProps) {
       console.error('[DesktopLayout] 從候選加入失敗:', err)
     }
   }, [pickingDayKey, activeTrip?.id, cfg])
+  // handleScheduleCandidate:GeoInfoPanel「加入 {tripName}」按鈕在候選
+  // 沒有排定日期時,展開日期選擇 UI、選好日期按確定觸發(見
+  // GeoInfoPanel.tsx 的 onSchedule 說明)——跟 handlePickFromCandidate
+  // 是同一種「候選 + 日期 → 真正的行程 entry」的動作,共用同一支
+  // createEntryFromCandidate,只是觸發來源(第二側欄點選 vs. 地點介紹卡
+  // 按鈕)跟已經知道的日期來源(pickingDayKey 這個外部 state vs. 這裡直接
+  // 收到的 date 參數)不同,故不合併成同一個 callback。失敗只印 console、
+  // 不特別處理,理由同 handlePickFromCandidate。
+  const handleScheduleCandidate = useCallback(async (c: GeoCandidate, date: string) => {
+    if (!activeTrip?.id) return
+    try {
+      await createEntryFromCandidate(cfg, activeTrip.id, c, date)
+      setGeoRefetchTripEntriesTrigger((n) => n + 1)
+    } catch (err) {
+      console.error('[DesktopLayout] 加入行程(選定日期)失敗:', err)
+    }
+  }, [activeTrip?.id, cfg])
   // removeGeoCandidate/selectGeoCandidate:候選籃(GeoCandidateSidebar)與
   // 第二側欄(AddFromCandidateSidebar)共用同一份「移除候選」/「點選候選」
   // 行為——候選中清單原本只在候選籃側欄渲染,搬到第二側欄後,兩個分開
@@ -728,7 +751,9 @@ export function DesktopContent(props: ContentProps) {
               onClose={() => setGeoInfoContent(null)}
               onAddCandidate={addGeoCandidate}
               onAddAndReveal={addGeoCandidateAndReveal}
+              onSchedule={handleScheduleCandidate}
               tripName={activeTrip?.name ?? '行程'}
+              scheduledDates={geoScheduledDates}
               shiftLeft={geoHotelSidebarVisible}
             />
             <AttractionInfoPanel
@@ -816,418 +841,5 @@ export function DesktopContent(props: ContentProps) {
         />
       )}
     </>
-  )
-}
-
-// DesktopRail:最左緣 48px 固定寬的 icon rail(比照 VSCode activity bar / Slack
-// 行程列)。上方兩顆圖示鈕切換 side panel 內容(再點一次啟用中的圖示會收合 panel),
-// 底部放 DesktopUserMenu。當前啟用的圖示用左緣 accent 豎條 + 底色標記(見 styles.css
-// .desktop-rail-btn.active)。
-function DesktopRail({
-  panelMode,
-  onSelect,
-  tripListOpen,
-  onToggleTripList,
-  timelineDisabled,
-  user,
-  isGuest,
-  cfg,
-  onAuthed,
-  onLogout,
-  onOpenSettings,
-  showDebugPanel,
-  onToggleDebugPanel,
-}: {
-  panelMode: PanelMode
-  onSelect: (mode: Exclude<PanelMode, null>) => void
-  // tripListOpen/onToggleTripList:「行程列表」按鈕改成獨立疊加面板後,不再
-  // 走 onSelect('trips')/panelMode 這套機制(理由見 DesktopContent 內
-  // tripListOpen state 宣告處的說明),故 active 樣式與點擊行為都改吃這組
-  // 獨立傳入的 boolean/toggle,不再從 panelMode 判斷。
-  tripListOpen: boolean
-  onToggleTripList: () => void
-  timelineDisabled: boolean
-  user: User
-  isGuest: boolean
-  cfg: ClientConfig
-  onAuthed: (token: string, user: User, email: string) => void
-  onLogout: () => void
-  onOpenSettings: () => void
-  // showDebugPanel/onToggleDebugPanel:API/WS 狀態面板(原 DebugApp.tsx 的
-  // DebugPanel)的開關狀態——獨立於 panelMode 之外的一個 boolean,不是三態
-  // 切換的一員,因為這個面板是疊加顯示、不取代 side panel 或 .desktop-main
-  // 的內容(見 DesktopContent 渲染邏輯裡 showDebugPanel 的用法)。
-  showDebugPanel: boolean
-  onToggleDebugPanel: () => void
-}) {
-  return (
-    <nav className="desktop-rail">
-      <div className="desktop-rail-buttons">
-        <button
-          className={`desktop-rail-btn${tripListOpen ? ' active' : ''}`}
-          onClick={onToggleTripList}
-          title="行程列表"
-        >
-          <List size={20} strokeWidth={1.8} />
-        </button>
-        {/* GEO_OUTLINE_ENABLED:這次部署刻意不開啟(見 DesktopShared.tsx
-            對這個常數的說明),按鈕本身不渲染——不是只隱藏視覺,isPanelMode
-            也不再承認 'geo-outline',兩者搭配才是「整個功能真的進不去」,
-            不只是找不到入口。 */}
-        {GEO_OUTLINE_ENABLED && (
-          <button
-            className={`desktop-rail-btn${panelMode === 'geo-outline' ? ' active' : ''}`}
-            onClick={() => onSelect('geo-outline')}
-            title="規劃"
-          >
-            <Layers size={20} strokeWidth={1.8} />
-          </button>
-        )}
-        {/* TIMELINE_ENABLED/PACE_ENABLED:編譯時 feature flag(見
-            DesktopShared.tsx 對這兩個常數的說明),關閉時按鈕不渲染,
-            isPanelMode 也不再承認對應字串,同 GEO_OUTLINE_ENABLED 的機制。 */}
-        {TIMELINE_ENABLED && (
-          <button
-            className={`desktop-rail-btn${panelMode === 'timeline' ? ' active' : ''}`}
-            onClick={() => !timelineDisabled && onSelect('timeline')}
-            disabled={timelineDisabled}
-            title={timelineDisabled ? '請先選擇一個行程' : '時間軸'}
-          >
-            <Timeline size={20} strokeWidth={1.8} />
-          </button>
-        )}
-        {PACE_ENABLED && (
-          <button
-            className={`desktop-rail-btn${panelMode === 'pace' ? ' active' : ''}`}
-            onClick={() => onSelect('pace')}
-            title="路徑"
-          >
-            <Route size={20} strokeWidth={1.8} />
-          </button>
-        )}
-        {/* DEMO_*_ENABLED/DEBUG_PANEL_ENABLED:各自獨立的編譯時 feature flag
-            (見 DesktopShared.tsx 對這幾個常數的說明),取代原本綁在網址參數
-            ?demo 底下的單一 isDemo 開關——分隔線只在至少一項開啟時出現,
-            避免試做項目跟正式功能混在一起難以分辨。 */}
-        {(DEMO_CARDS_ENABLED || DEMO_ROW_ENABLED || DEMO_CLIENTTOOLS_ENABLED || DEMO_ONAGENT_ENABLED || DEBUG_PANEL_ENABLED) && (
-          <div className="desktop-rail-divider" />
-        )}
-        {DEMO_CARDS_ENABLED && (
-          <button
-            className={`desktop-rail-btn desktop-rail-btn-demo${panelMode === 'demo-cards' ? ' active' : ''}`}
-            onClick={() => onSelect('demo-cards')}
-            title="推薦景點卡片(試做)"
-          >
-            <Sparkles size={20} strokeWidth={1.8} />
-          </button>
-        )}
-        {DEMO_ROW_ENABLED && (
-          <button
-            className={`desktop-rail-btn desktop-rail-btn-demo${panelMode === 'demo-row' ? ' active' : ''}`}
-            onClick={() => onSelect('demo-row')}
-            title="推薦景點橫滑(試做)"
-          >
-            <GalleryHorizontal size={20} strokeWidth={1.8} />
-          </button>
-        )}
-        {DEMO_CLIENTTOOLS_ENABLED && (
-          <button
-            className={`desktop-rail-btn desktop-rail-btn-demo${panelMode === 'demo-clienttools' ? ' active' : ''}`}
-            onClick={() => onSelect('demo-clienttools')}
-            title="LLM 呼叫前端 tool 試做(ClientToolsBridge)"
-          >
-            <Wrench size={20} strokeWidth={1.8} />
-          </button>
-        )}
-        {DEMO_ONAGENT_ENABLED && (
-          <button
-            className={`desktop-rail-btn desktop-rail-btn-demo${panelMode === 'demo-onagent' ? ' active' : ''}`}
-            onClick={() => onSelect('demo-onagent')}
-            title="onagent 平台串接試做"
-          >
-            <Radio size={20} strokeWidth={1.8} />
-          </button>
-        )}
-        {DEBUG_PANEL_ENABLED && (
-          <button
-            className={`desktop-rail-btn desktop-rail-btn-demo${showDebugPanel ? ' active' : ''}`}
-            onClick={onToggleDebugPanel}
-            title="API / WS 狀態面板"
-          >
-            <Activity size={20} strokeWidth={1.8} />
-          </button>
-        )}
-      </div>
-      <DesktopUserMenu
-        cfg={cfg}
-        user={user}
-        isGuest={isGuest}
-        onAuthed={onAuthed}
-        onLogout={onLogout}
-        onOpenSettings={onOpenSettings}
-      />
-    </nav>
-  )
-}
-
-// 桌面版側欄行程列表:複用 useTripsState(與手機版 PhoneNavDrawer 的
-// 行程列表分頁共用抓取/建立邏輯),只是呈現方式改成緊湊的側欄列表項目,
-// 選中的行程有高亮(.desktop-trip-item.active)。
-function DesktopTripList({
-  cfg,
-  activeTripID,
-  onOpen,
-}: {
-  cfg: ClientConfig
-  activeTripID: string | null
-  onOpen: (t: Trip) => void
-}) {
-  const {
-    trips, err, loading,
-    creating, setCreating,
-    newName, setNewName,
-    submitCreate,
-  } = useTripsState(cfg, onOpen)
-
-  return (
-    <div className="desktop-trip-list">
-      <div className="desktop-sidebar-head">
-        <span className="desktop-sidebar-title">行程</span>
-      </div>
-      <ErrorBanner msg={err} />
-      <div className="desktop-trip-scroll">
-        {trips.length === 0 && !err && (
-          <div className="empty">
-            {loading ? '載入中…' : '沒有行程,按下方「新增行程」建立一個。'}
-          </div>
-        )}
-        {/* 新增行程:跟下面實際的行程項目共用同一套 .desktop-trip-item
-            樣式(對齊手機版 PhoneNavDrawer.tsx 的 TripsTabContent,同一組
-            清單的一份子,不是另外一顆獨立的圖示按鈕),只把大頭貼換成「＋」
-            圖示徽章區分。點擊後原地換成輸入框(composer),下面既有行程
-            清單維持可見。 */}
-        {creating ? (
-          <div className="new-trip-composer">
-            <input
-              autoFocus
-              value={newName}
-              placeholder="新行程名稱…"
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (isSubmitEnter(e)) submitCreate()
-                if (e.key === 'Escape') {
-                  setCreating(false)
-                  setNewName('')
-                }
-              }}
-            />
-            <button className="btn-primary" onClick={submitCreate} disabled={!newName.trim()}>
-              建立
-            </button>
-          </div>
-        ) : (
-          <button className="desktop-trip-item" onClick={() => setCreating(true)}>
-            <div className="desktop-trip-icon">
-              <Plus size={18} strokeWidth={1.8} />
-            </div>
-            <div className="grow">
-              <div className="name">新增行程</div>
-            </div>
-          </button>
-        )}
-        {trips.map((t) => (
-          <button
-            key={t.id}
-            className={`desktop-trip-item${t.id === activeTripID ? ' active' : ''}`}
-            onClick={() => onOpen(t)}
-          >
-            <div className="desktop-trip-icon">
-              <MapPin size={18} strokeWidth={1.8} />
-            </div>
-            <div className="grow">
-              <div className="name">{t.name}</div>
-              <div className="sub">
-                {t.lastMessagePreview ?? '尚無訊息'} · {t.memberCount} 人
-              </div>
-            </div>
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// 桌面版左下方使用者設定入口:頭像 + 名稱一列,點擊展開 popover 選單。
-// 已登入時選單只有「設定」(開啟 SettingsDialog)、「登出」兩項精簡項目;
-// 訪客狀態維持原邏輯不變,popover 顯示登入表單(LoginForm)。
-function DesktopUserMenu({
-  cfg,
-  user,
-  isGuest,
-  onAuthed,
-  onLogout,
-  onOpenSettings,
-}: {
-  cfg: ClientConfig
-  user: User
-  isGuest: boolean
-  onAuthed: (token: string, user: User, email: string) => void
-  onLogout: () => void
-  onOpenSettings: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [open])
-
-  return (
-    <div className="desktop-user-menu" ref={menuRef}>
-      {open && (
-        <div className="desktop-user-popover">
-          {isGuest ? (
-            <>
-              <div className="section-title">目前身分</div>
-              <div className="row">
-                <Avatar user={user} />
-                <div className="grow">
-                  <div className="name">訪客</div>
-                  <div className="sub">登入後發送的訊息會以你的身分顯示</div>
-                </div>
-              </div>
-              <LoginForm baseURL={cfg.baseURL} onAuthed={(tok, u, mail) => {
-                onAuthed(tok, u, mail)
-                setOpen(false)
-              }} />
-            </>
-          ) : (
-            <>
-              <button
-                className="desktop-user-menu-item"
-                onClick={() => { setOpen(false); onOpenSettings() }}
-              >
-                <Settings size={16} strokeWidth={1.8} />
-                <span>設定</span>
-              </button>
-              <button
-                className="desktop-user-menu-item"
-                onClick={() => { onLogout(); setOpen(false) }}
-              >
-                <LogOut size={16} strokeWidth={1.8} color="var(--ios-red)" />
-                <span style={{ color: 'var(--ios-red)' }}>登出</span>
-              </button>
-            </>
-          )}
-        </div>
-      )}
-      <button className="desktop-user-trigger" onClick={() => setOpen((v) => !v)}>
-        <Avatar user={user} />
-        <div className="grow">
-          <div className="name">{isGuest ? '訪客' : user.name}</div>
-          {isGuest && <div className="sub">點擊登入</div>}
-        </div>
-      </button>
-    </div>
-  )
-}
-
-// 桌面版「設定」dialog:點選 DesktopUserMenu 的「設定」項目後開啟,置中卡片彈窗,
-// 視覺沿用原 RecommendedPlacesModal(已移除)留下的 .rp-modal-backdrop/.rp-modal
-// 樣式骨架(見 styles.css),內容則對應手機版 SettingsScreen 扣除「登出」
-// (登出已是選單裡的獨立項目)。疊加 .settings-dialog-backdrop 只覆寫 position
-// 從 absolute 改為 fixed:.rp-modal-backdrop 原本用 absolute+inset:0 是相對
-// 最近的 relative 祖先(.desktop-main)定位,只蓋住右側聊天區;這裡是從
-// DesktopContent 頂層渲染,需要蓋住整個桌面版佈局(含左側側欄),且不能被
-// .desktop-layout 的 overflow: hidden 裁切,故改用 fixed。
-function SettingsDialog({
-  cfg,
-  user,
-  email,
-  onClose,
-}: {
-  cfg: ClientConfig
-  user: User
-  email: string
-  onClose: () => void
-}) {
-  const [health, setHealth] = useState<string>('未測試')
-  const [assistLang, setAssistLang] = useState<AssistLang>(() => getAssistLang())
-  const [devOpen, setDevOpen] = useState(false)
-
-  const ping = async () => {
-    setHealth('測試中…')
-    try {
-      const r = await api.health(cfg)
-      setHealth(`✅ ${r.status}`)
-    } catch (e) {
-      setHealth(`❌ ${errMsg(e)}`)
-    }
-  }
-
-  return (
-    <div className="rp-modal-backdrop settings-dialog-backdrop" onClick={onClose}>
-      <div className="rp-modal settings-dialog" onClick={(e) => e.stopPropagation()}>
-        <div className="rp-modal-head">
-          <span className="rp-modal-title">設定</span>
-          <button className="btn icon-btn" onClick={onClose} title="關閉">
-            <X size={18} strokeWidth={1.8} />
-          </button>
-        </div>
-        <div className="rp-modal-body">
-          <div className="section-title">目前登入</div>
-          <div className="row">
-            <Avatar user={user} />
-            <div className="grow">
-              <div className="name">{user.name}</div>
-              <div className="sub">{email || user.id}</div>
-            </div>
-          </div>
-          <div className="section-title">LLM 回答語言</div>
-          <div className="field">
-            <label>助理回答(assist/語意查詢)使用的語言,不影響介面文字</label>
-            <LangSelect
-              value={assistLang}
-              onChange={(v) => {
-                setAssistLang(v)
-                localStorage.setItem(ASSIST_LANG_KEY, v)
-              }}
-            />
-          </div>
-          <div className="dev-section-toggle" onClick={() => setDevOpen((o) => !o)}>
-            <span>開發</span>
-            <ChevronDown
-              size={16}
-              strokeWidth={1.8}
-              color="var(--ios-gray)"
-              className={devOpen ? 'dev-section-chevron open' : 'dev-section-chevron'}
-            />
-          </div>
-          {devOpen && (
-            <>
-              <div className="section-title">API Token (CLI 用)</div>
-              <TokenDisplay token={cfg.token} />
-              <div className="section-title">後端連線</div>
-              <div className="field">
-                <label>Base URL(由 VITE_API_BASE 設定,不可於此修改)</label>
-                <input value={cfg.baseURL} readOnly disabled />
-              </div>
-              <div className="section-title">健康檢查</div>
-              <div className="row" onClick={ping}>
-                <div className="grow">
-                  <div className="name">GET /health</div>
-                  <div className="sub">{health}</div>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
   )
 }

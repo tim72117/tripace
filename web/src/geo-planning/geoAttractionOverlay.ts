@@ -1,4 +1,4 @@
-import type { GeoAttraction } from './api'
+import type { GeoAttraction } from '../api'
 
 // AttractionOverlay:單一景點區域的複合 DOM 疊層(光暈 + 圓形地標圖 + 白話標籤),
 // 用 google.maps.OverlayView 子類別實作,讓它跟著地圖投影自動換算像素位置。
