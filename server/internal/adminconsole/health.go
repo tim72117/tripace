@@ -5,14 +5,15 @@
 // 目前盤點到的外部依賴(來源皆已在程式碼中確認):
 //   - PostgreSQL/SQLite 資料庫:internal/store,DATABASE_URL 未設時退回本機
 //     SQLite 檔案。兩者都用同一個 store.Ping 檢查連線是否存活。
-//   - LLM provider:依 AI_PROVIDER 環境變數決定用 vllm(VLLM_BASE_URL,
-//     自架服務)還是 googleapis(GOOGLE_API_KEY,Gemini)。依實際設定的
-//     provider 只檢查對應那一個,不會兩個都打。(tripace 自家 want 對話
-//     系統已移除,這個環境變數目前無 tripace 側的實際讀取方;此項健檢
-//     維持原樣,純粹探測 AI_PROVIDER 所指服務本身是否可連通。)
-//   - Google Places API:internal/geo/places.go 與 internal/wanttools 的
-//     geocode.go/recommend_nearby.go,金鑰來自 GOOGLE_PLACES_API_KEY(與
-//     GOOGLE_API_KEY 是不同把 key,分別對應 Places 與 Gemini 兩個服務)。
+//   - Google Places API:internal/geo/places.go 與 internal/onagenttools 的
+//     geocode.go/recommend_nearby.go,金鑰來自 GOOGLE_PLACES_API_KEY。
+//
+// LLM provider(AI_PROVIDER/VLLM_BASE_URL/GOOGLE_API_KEY)健檢已隨 tripace
+// 自家 want 對話系統整套移除而一併移除(2026-08-11)——那組環境變數原本是
+// want_analyzer.go NewWant() 讀的,want 移除後已無任何 tripace 側程式碼路徑
+// 讀取,繼續探測「這個環境變數所指的服務是否可連通」已經沒有對應的實際功能
+// 意義,不是「順手保留一個健檢項目」值得的成本(vllm/googleapis 兩個 case
+// 分支、probeGET 呼叫)。
 package adminconsole
 
 import (
@@ -55,7 +56,6 @@ type healthCheck struct {
 func (h *Handler) listExternalHealth(w http.ResponseWriter, r *http.Request, _ *adminauth.Admin) {
 	checks := []healthCheck{
 		{name: "PostgreSQL / SQLite 資料庫", kind: "db", run: h.checkDatabase},
-		{name: llmCheckName(), kind: "llm", run: checkLLM},
 		{name: "Google Places API", kind: "places", run: checkPlaces},
 	}
 
@@ -115,54 +115,6 @@ func (h *Handler) checkDatabase(ctx context.Context) (status, detail string) {
 	return "ok", ""
 }
 
-// --- LLM provider --------------------------------------------------------
-//
-// 依 AI_PROVIDER 決定檢查哪一個(tripace 自家 want 對話系統移除前,曾與
-// want_analyzer.go NewWant() 讀同一組環境變數;目前純粹探測 AI_PROVIDER
-// 所指服務本身是否可連通,不對應任何 tripace 側程式碼路徑)。
-//
-//   - vllm:GET {VLLM_BASE_URL}/v1/models——OpenAI 相容的 models 列表端點,
-//     純 metadata 查詢,不觸發任何推論,免費。
-//   - googleapis(Gemini):GET https://generativelanguage.googleapis.com/
-//     v1beta/models?key=...——Gemini API 的 ListModels 端點,同樣是純
-//     metadata 查詢(列出可用模型),不消耗任何生成 token,Google 官方文件
-//     未將其列入計費項目,故本檢查方式免費。刻意不呼叫任何 generateContent
-//     端點(那才會計費/耗用 token)。
-//   - 其他/未知 AI_PROVIDER 值:視為未設定,回 skipped。
-func llmCheckName() string {
-	switch os.Getenv("AI_PROVIDER") {
-	case "vllm":
-		return "LLM Provider (vLLM)"
-	case "googleapis":
-		return "LLM Provider (Gemini / googleapis)"
-	default:
-		return "LLM Provider"
-	}
-}
-
-func checkLLM(ctx context.Context) (status, detail string) {
-	provider := os.Getenv("AI_PROVIDER")
-	switch provider {
-	case "vllm":
-		base := os.Getenv("VLLM_BASE_URL")
-		if base == "" {
-			return "skipped", "未設定 VLLM_BASE_URL,略過"
-		}
-		return probeGET(ctx, base+"/v1/models", nil)
-	case "googleapis":
-		key := os.Getenv("GOOGLE_API_KEY")
-		if key == "" {
-			return "skipped", "未設定 GOOGLE_API_KEY,略過"
-		}
-		url := "https://generativelanguage.googleapis.com/v1beta/models?key=" + key
-		return probeGET(ctx, url, nil)
-	case "":
-		return "skipped", "未設定 AI_PROVIDER,略過"
-	default:
-		return "skipped", fmt.Sprintf("未知的 AI_PROVIDER=%q,略過", provider)
-	}
-}
-
 // --- Google Places API -----------------------------------------------------
 //
 // 檢查方式:呼叫 Places API (New) 的 Text Search(POST
@@ -207,28 +159,4 @@ func checkPlaces(ctx context.Context) (status, detail string) {
 		return "error", fmt.Sprintf("HTTP %d", resp.StatusCode)
 	}
 	return "ok", "已呼叫 Places Text Search(Essentials 等級,產生微量費用)"
-}
-
-// --- 共用小工具 --------------------------------------------------------
-
-// probeGET 對 url 發一個輕量 GET,只看是否連得上、回應碼是否為 2xx,不解析
-// body(健康檢查不需要內容,只需要「服務有沒有回應」)。
-func probeGET(ctx context.Context, url string, headers map[string]string) (status, detail string) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return "error", err.Error()
-	}
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-	client := &http.Client{Timeout: perCheckTimeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "error", err.Error()
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "error", fmt.Sprintf("HTTP %d", resp.StatusCode)
-	}
-	return "ok", ""
 }

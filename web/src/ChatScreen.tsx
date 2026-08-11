@@ -607,7 +607,7 @@ export function ChatScreen({
             <input
               autoFocus
               value={draft}
-              placeholder="onagent 推論路徑(本機測試)…"
+              placeholder="輸入記事，例如「6/29 宿希爾頓」…"
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (!isSubmitEnter(e)) return

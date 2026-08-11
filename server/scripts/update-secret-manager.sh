@@ -1,74 +1,120 @@
 #!/usr/bin/env bash
 # =============================================================================
-# tripace — 互動式設定 AI_PROVIDER 與 Google Places 相關的 Secret Manager secret
+# tripace — 互動式設定 Google Places/Maps/onagent 相關的 Secret Manager secret
 #
-# 這支腳本會問你要用哪個 provider、要用哪個 model、要不要換金鑰，
-# 直接在這支腳本裡完成 Secret Manager 的寫入 —— 不會印出金鑰本身、
-# 不會把金鑰寫進任何檔案，金鑰只在這次執行的記憶體中短暫存在。
+# 這支腳本會問你要不要換金鑰，直接在這支腳本裡完成 Secret Manager 的寫入
+# —— 不會印出金鑰本身、不會把金鑰寫進任何檔案，金鑰只在這次執行的記憶體中
+# 短暫存在。
 #
-# 支援部分更新：model 那一步直接按 Enter 就完全略過 —— 不印出任何 AI_MODEL
-# 建議值，deploy-cloudrun.yml 裡現有的設定維持不變；金鑰那一步會先問要不要
-# 更新，選否就完全跳過輸入，不會動到 Secret Manager 裡現有的版本。
+# GOOGLE_PLACES_API_KEY(後端 geocode/recommend_nearby 工具用)、
+# GOOGLE_MAPS_API_KEY(前端 Maps JavaScript API 用)、VITE_ONAGENT_APP_KEY
+# (前端 onagent 平台 tripace app 的 apiKey)是三組獨立的金鑰,不同用途、
+# 不同申請/輪替方式,互不影響。這支腳本目前是 Cloud Run
+# (shuttle-045094509 專案)唯一設定它們的地方,故一併整合進來,不另外開
+# 一支腳本。
 #
-# GOOGLE_PLACES_API_KEY(後端 geocode/recommend_nearby 工具用)與
-# GOOGLE_MAPS_API_KEY(前端 Maps JavaScript API 用)是獨立於 AI_PROVIDER 之外
-# 的兩組金鑰,與 LLM provider 選的是 claude 還是 googleapis 無關。這兩把 key
-# 刻意保持獨立(不同用途、不同 API 限制範圍、輪替互不影響),不是同一把 key
-# 改名共用——這支腳本目前是 Cloud Run(shuttle-045094509 專案)唯一設定它們
-# 的地方,故一併整合進來,不另外開一支腳本。
+# VITE_ONAGENT_APP_KEY 跟前兩把 Google key 的關鍵差異:Google key 可以用
+# gcloud 現場申請新的(見 upsert_google_api_key);onagent 平台的 apiKey
+# 只能用 onagent CLI(`onagent issue-key <appId>`)另外核發,這支腳本沒有
+# 呼叫 onagent CLI 的能力,也不該代管——故 -onagent 只支援「貼上既有值」
+# 一種模式(走 upsert_secret,同 upsert_google_api_key 選項 2 的邏輯),
+# 不提供現場申請選項。這把 key 只顯示一次、重發會讓舊 key 立刻失效,見
+# .claude/skills/onagent-cli-setup 的說明。
+#
+# 原本這支腳本還包含 LLM provider(AI_PROVIDER/AI_MODEL/ANTHROPIC_API_KEY/
+# GOOGLE_API_KEY)的互動設定流程,隨 tripace 自家 want 對話系統整套移除
+# (2026-08-11,見 deploy-cloudrun.yml 對應的環境變數同批移除)一併刪除
+# ——那組設定原本就是配合 want_analyzer.go NewWant() 選 LLM provider 用的,
+# want 移除後已無任何程式碼路徑會讀,繼續保留這段互動流程只會誤導使用者
+# 以為改了還有效果。
 #
 # 用法(擇一):
-#   bash server/scripts/update-secret-manager.sh              # 全部類型都問一輪(預設)
-#   bash server/scripts/update-secret-manager.sh -provider     # 只處理 LLM provider/model/金鑰
-#   bash server/scripts/update-secret-manager.sh -places       # 只處理 GOOGLE_PLACES_API_KEY
-#   bash server/scripts/update-secret-manager.sh -maps         # 只處理 GOOGLE_MAPS_API_KEY
+#   bash server/scripts/update-secret-manager.sh                     # 全部類型都問一輪(預設)
+#   bash server/scripts/update-secret-manager.sh -places              # 只處理 GOOGLE_PLACES_API_KEY
+#   bash server/scripts/update-secret-manager.sh -maps                # 只處理 GOOGLE_MAPS_API_KEY
+#   bash server/scripts/update-secret-manager.sh -onagent             # 只處理 VITE_ONAGENT_APP_KEY
+#   bash server/scripts/update-secret-manager.sh -cleanup-legacy-provider
+#       # 刪除已隨 want 移除而不再使用的 ANTHROPIC_API_KEY/GOOGLE_API_KEY
+#       # secret 容器(互動逐一確認,不影響上面四種一般用法)——刻意獨立成
+#       # 專屬旗標、不併入 -all 預設流程,避免一般使用者在沒注意到的情況下
+#       # 誤刪 secret(刪除是不可逆操作,見下方 cleanup_legacy_provider_secret)。
 # =============================================================================
 
 set -euo pipefail
 
 PROJECT_ID="shuttle-045094509"
 
-DO_PROVIDER=1
+# print_usage:跟檔案開頭「用法」註解區塊內容一致，供 -h/--help 印出，
+# 也在收到未知參數時附帶印出，避免使用者只看到一行錯誤訊息、還要另外翻
+# 原始碼開頭註解才知道有哪些參數可用。
+print_usage() {
+  cat <<'EOF'
+用法(擇一):
+  (不帶參數)              全部類型都問一輪(預設)
+  -places                  只處理 GOOGLE_PLACES_API_KEY
+  -maps                    只處理 GOOGLE_MAPS_API_KEY
+  -onagent                 只處理 VITE_ONAGENT_APP_KEY
+  -cleanup-legacy-provider 刪除已隨 want 移除而不再使用的
+                           ANTHROPIC_API_KEY/GOOGLE_API_KEY secret 容器
+                           (互動逐一確認,不影響上面四種一般用法)
+  -h, --help               顯示這份說明
+EOF
+}
+
 DO_PLACES=1
 DO_MAPS=1
+DO_ONAGENT=1
+DO_CLEANUP_LEGACY_PROVIDER=0
 case "${1:-}" in
-  -provider)
-    DO_PLACES=0
-    DO_MAPS=0
-    ;;
   -places)
-    DO_PROVIDER=0
     DO_MAPS=0
+    DO_ONAGENT=0
     ;;
   -maps)
-    DO_PROVIDER=0
     DO_PLACES=0
+    DO_ONAGENT=0
+    ;;
+  -onagent)
+    DO_PLACES=0
+    DO_MAPS=0
+    ;;
+  -cleanup-legacy-provider)
+    DO_PLACES=0
+    DO_MAPS=0
+    DO_ONAGENT=0
+    DO_CLEANUP_LEGACY_PROVIDER=1
+    ;;
+  -h|--help)
+    print_usage
+    exit 0
     ;;
   ""|-all)
     ;;
   *)
-    echo "未知參數：$1（可用 -provider / -places / -maps，不帶參數則全部處理）" >&2
+    echo "未知參數：$1" >&2
+    echo >&2
+    print_usage >&2
     exit 1
     ;;
 esac
 
 echo "=============================================="
-echo " tripace AI_PROVIDER / Google Places 設定"
+echo " tripace Google Places / Maps 金鑰設定"
 echo " PROJECT_ID = ${PROJECT_ID}"
 echo "=============================================="
 echo
 
 # -----------------------------------------------------------------------------
 # upsert_secret <secret 名稱>:互動詢問是否更新、要更新就建立容器(已存在則
-# 略過)+ 隱藏輸入寫入新版本。抽成函式,因為 LLM provider 金鑰要走這套
-# 「先問要不要換、換就整段互動輸入」流程 —— GOOGLE_PLACES_API_KEY 則走下面
-# 專屬的 upsert_places_key(自動建立金鑰,不需手動貼值)。
+# 略過)+ 隱藏輸入寫入新版本。抽成函式,供 upsert_google_api_key 選項 2
+# 「貼上既有金鑰值」呼叫(自動建立金鑰、不需手動貼值的路徑則走
+# upsert_google_api_key 自己的邏輯,不經過這裡)。
 # -----------------------------------------------------------------------------
 upsert_secret() {
   local name="$1"
   local prompt_label="$2"
 
-  read -r -p "要更新 ${name} 的金鑰值嗎？(y/N，只是換 provider/model 不換金鑰請輸入 N): " update_choice
+  read -r -p "要更新 ${name} 的金鑰值嗎？(y/N，不更新請直接按 Enter 或輸入 N): " update_choice
   if [[ ! "${update_choice}" =~ ^[Yy]$ ]]; then
     echo "略過 ${name} 更新 —— 沿用 Secret Manager 裡現有的版本。"
     return 0
@@ -210,56 +256,46 @@ upsert_google_api_key() {
 }
 
 # -----------------------------------------------------------------------------
-# 3. LLM provider：選 provider/model + 是否要更新金鑰值。只在 -provider 或
-#    不帶參數(兩者都跑)時執行；只想處理 Places 金鑰時(-places)完全略過，
-#    不會被迫選 provider。
+# cleanup_legacy_provider_secret <secret 名稱>:互動確認後刪除一個 Secret
+# Manager 容器(gcloud secrets delete),供下面清理 ANTHROPIC_API_KEY/
+# GOOGLE_API_KEY 用——這兩把 key 隨 tripace 自家 want 對話系統整套移除
+# (2026-08-11)已無任何程式碼路徑會讀,繼續留在 Secret Manager 裡只是
+# 佔用、容易被誤以為還在生效。每把 key 各自問一次(y/N),預設不刪除
+# (直接按 Enter 等同輸入 N),避免不小心誤刪;secret 不存在時
+# gcloud secrets delete 本身就會回報「找不到」,這裡不特別預先檢查存在性。
 # -----------------------------------------------------------------------------
-if [[ "${DO_PROVIDER}" == "1" ]]; then
-  echo "要用哪個 provider？"
-  echo "  1) claude（Anthropic Claude，需要 ANTHROPIC_API_KEY）"
-  echo "  2) googleapis（Google Gemini，需要 GOOGLE_API_KEY）"
-  read -r -p "輸入 1 或 2: " PROVIDER_CHOICE
+cleanup_legacy_provider_secret() {
+  local name="$1"
 
-  # 這兩個字串必須跟 want/orchestrator/init.go 的 InitializeWithConfig switch
-  # case 完全一致（"claude" / "googleapis"，不是更直覺的 "anthropic" / "google"）
-  # —— 打錯字不會在這支腳本被發現，是部署後的 Cloud Run 容器啟動時才會炸：
-  # "不支援的提供者: xxx"，所以這裡故意寫死成 want 認得的值，不留使用者自訂空間。
-  case "${PROVIDER_CHOICE}" in
-    1)
-      AI_PROVIDER="claude"
-      SECRET_NAME="ANTHROPIC_API_KEY"
-      DEFAULT_MODEL="claude-sonnet-5"
-      ;;
-    2)
-      AI_PROVIDER="googleapis"
-      SECRET_NAME="GOOGLE_API_KEY"
-      DEFAULT_MODEL="gemini-2.5-pro"
-      ;;
-    *)
-      echo "沒有這個選項，離開。"
-      exit 1
-      ;;
-  esac
-
-  # model 留空真正代表「不變」：這支腳本不知道 deploy-cloudrun.yml 裡現在
-  # 實際設定的是哪個 model，所以留空時不套用任何值（包括上面的
-  # DEFAULT_MODEL），只在你真的想指定新 model 時才印出來，讓摘要不會意外
-  # 覆蓋你已經在用、腳本並不知情的設定。
-  read -r -p "要用哪個 model？(直接按 Enter 表示不變，或輸入新值，例如 ${DEFAULT_MODEL}): " AI_MODEL
-  if [[ -z "${AI_MODEL}" ]]; then
-    echo "略過 model 設定 —— deploy-cloudrun.yml 裡現有的 AI_MODEL 沿用不變。"
+  read -r -p "要刪除 Secret Manager 裡的 ${name} 嗎？此操作不可逆(y/N): " delete_choice
+  if [[ ! "${delete_choice}" =~ ^[Yy]$ ]]; then
+    echo "略過 ${name}，未刪除。"
+    return 0
   fi
 
+  gcloud secrets delete "${name}" \
+    --project="${PROJECT_ID}" \
+    --quiet \
+    && echo "已刪除 ${name}。" \
+    || echo "刪除 ${name} 失敗（可能本來就不存在，見上方 gcloud 錯誤訊息）。"
+}
+
+if [[ "${DO_CLEANUP_LEGACY_PROVIDER}" == "1" ]]; then
+  echo "即將逐一確認是否刪除已隨 want 對話系統移除、目前無程式碼讀取的 secret："
   echo
-  upsert_secret "${SECRET_NAME}" "${SECRET_NAME}"
+  cleanup_legacy_provider_secret "ANTHROPIC_API_KEY"
+  cleanup_legacy_provider_secret "GOOGLE_API_KEY"
   echo
+  echo "=============================================="
+  echo " 清理完成。"
+  echo "=============================================="
+  exit 0
 fi
 
 # -----------------------------------------------------------------------------
-# 4. GOOGLE_PLACES_API_KEY —— 獨立於上面的 provider 選擇,供
-#    geocode/recommend_nearby 兩個工具查詢 Google Places API(見
-#    internal/wanttools/geocode.go、recommend_nearby.go)。只在 -places 或
-#    不帶參數(兩者都跑)時執行；只想處理 provider 時(-provider)完全略過。
+# 3. GOOGLE_PLACES_API_KEY —— 供 geocode/recommend_nearby 兩個工具查詢
+#    Google Places API(見 internal/onagenttools/geocode.go、
+#    recommend_nearby.go)。只在 -places 或不帶參數(兩者都跑)時執行。
 # -----------------------------------------------------------------------------
 if [[ "${DO_PLACES}" == "1" ]]; then
   upsert_google_api_key "GOOGLE_PLACES_API_KEY" "channel-places" \
@@ -268,13 +304,13 @@ if [[ "${DO_PLACES}" == "1" ]]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 4b. GOOGLE_MAPS_API_KEY —— 前端 Maps JavaScript API 用(見
-#     web/src/PaceRouteMap.tsx、RecommendedPlacesMap.tsx 的 apiKey),透過
-#     Dockerfile 的 web-build 階段以 --build-arg 編入前端 bundle,故 build
-#     時 CI 需要能讀到這把 key(見 deploy-cloudrun.yml 的
-#     "Read Google Maps API key from Secret Manager" step)。刻意跟
-#     GOOGLE_PLACES_API_KEY 分開成兩把 key(用途、API 限制範圍都不同,見
-#     檔案開頭說明),只在 -maps 或不帶參數(全部處理)時執行。
+# 4. GOOGLE_MAPS_API_KEY —— 前端 Maps JavaScript API 用(見
+#    web/src/PaceRouteMap.tsx、RecommendedPlacesMap.tsx 的 apiKey),透過
+#    Dockerfile 的 web-build 階段以 --build-arg 編入前端 bundle,故 build
+#    時 CI 需要能讀到這把 key(見 deploy-cloudrun.yml 的
+#    "Read Google Maps API key from Secret Manager" step)。刻意跟
+#    GOOGLE_PLACES_API_KEY 分開成兩把 key(用途、API 限制範圍都不同,見
+#    檔案開頭說明),只在 -maps 或不帶參數(全部處理)時執行。
 # -----------------------------------------------------------------------------
 if [[ "${DO_MAPS}" == "1" ]]; then
   upsert_google_api_key "GOOGLE_MAPS_API_KEY" "tripace-maps" \
@@ -283,30 +319,28 @@ if [[ "${DO_MAPS}" == "1" ]]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 5. 摘要 —— AI_PROVIDER/AI_MODEL 不是機密，不進 Secret Manager，
-#    印出來給你貼回去給我，我會據此更新 deploy-cloudrun.yml。AI_MODEL 只在
-#    你真的有輸入時才印出來；留空代表「不變」，這裡就不印，避免你誤把它
-#    當成「要改成某個值」貼給我，結果覆蓋掉現有設定。只印出這次實際有跑
-#    過的類型，避免 -provider/-places/-maps 單獨執行時印出沒處理過的項目。
+# 5. VITE_ONAGENT_APP_KEY —— onagent 平台 tripace app 的 apiKey,前端
+#    OnagentBridgeDemo.tsx/useOnagentChatBridge.ts 讀取,透過 Dockerfile 的
+#    web-build 階段以 --build-arg 編入前端 bundle(見 deploy-cloudrun.yml
+#    的 "Read onagent app key from Secret Manager" step)。只支援貼上既有
+#    值(見檔案開頭「VITE_ONAGENT_APP_KEY 跟前兩把 Google key 的關鍵差異」
+#    說明,這裡沒有現場申請新 key 的能力)——要換 key 時,先自己手動跑
+#    `onagent issue-key tripace`(或到 onagent console 按 Issue key)拿到
+#    明文,再回來這裡貼上。只在 -onagent 或不帶參數(全部處理)時執行。
+# -----------------------------------------------------------------------------
+if [[ "${DO_ONAGENT}" == "1" ]]; then
+  upsert_secret "VITE_ONAGENT_APP_KEY" "VITE_ONAGENT_APP_KEY(onagent tripace app 的 apiKey,先跑 onagent issue-key tripace 取得)"
+  echo
+fi
+
+# -----------------------------------------------------------------------------
+# 6. 摘要 —— 只印出這次實際有跑過的類型，避免 -places/-maps/-onagent 單獨
+#    執行時印出沒處理過的項目。
 # -----------------------------------------------------------------------------
 echo "=============================================="
 echo " 完成。"
-if [[ "${DO_PROVIDER}" == "1" || "${DO_PLACES}" == "1" || "${DO_MAPS}" == "1" ]]; then
-  echo " 請把下面這幾行貼給我，我會更新"
-  echo " .github/workflows/deploy-cloudrun.yml："
-fi
 echo "=============================================="
 echo
-
-if [[ "${DO_PROVIDER}" == "1" ]]; then
-  echo "   AI_PROVIDER=${AI_PROVIDER}"
-  if [[ -n "${AI_MODEL}" ]]; then
-    echo "   AI_MODEL=${AI_MODEL}"
-  else
-    echo "   AI_MODEL=（不變，沿用 workflow 裡現有的值）"
-  fi
-  echo "   (secret: ${SECRET_NAME}=${SECRET_NAME}:latest)"
-fi
 
 if [[ "${DO_PLACES}" == "1" ]]; then
   echo "   (secret: GOOGLE_PLACES_API_KEY=GOOGLE_PLACES_API_KEY:latest)"
@@ -314,6 +348,10 @@ fi
 
 if [[ "${DO_MAPS}" == "1" ]]; then
   echo "   (secret: GOOGLE_MAPS_API_KEY，deploy-cloudrun.yml build 階段讀取)"
+fi
+
+if [[ "${DO_ONAGENT}" == "1" ]]; then
+  echo "   (secret: VITE_ONAGENT_APP_KEY，deploy-cloudrun.yml build 階段讀取)"
 fi
 
 echo

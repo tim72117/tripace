@@ -366,10 +366,11 @@ tools:
     # backendDispatch:這個工具不是前端 ClientTool,執行邏輯跑在
     # tripace-server 自己的後端(internal/onagenttools/recommend_nearby.go),
     # onagent 收到 LLM 呼叫後直接 POST 到下面 endpoint,不經過瀏覽器分頁
-    # ——見本檔案開頭「recommend_nearby 是例外」的完整說明。本機開發預設
-    # 指向本機 tripace-server(:8080);部署到正式環境後需改成正式 API 網域。
+    # ——見本檔案開頭「recommend_nearby 是例外」的完整說明。指向正式環境
+    # tripace-server(tripace.shuttle.tools);本機開發改回
+    # http://localhost:8080/onagent/recommend_nearby 再推一次即可切換。
     backendDispatch:
-      endpoint: http://localhost:8080/onagent/recommend_nearby
+      endpoint: https://tripace.shuttle.tools/onagent/recommend_nearby
       timeoutMs: 10000
     parameters:
       type: object
@@ -418,9 +419,10 @@ tools:
       希爾頓酒店」而非僅「希爾頓酒店」)。回傳第一筆最相符的結果。
     kind: query
     # backendDispatch:同 recommend_nearby——執行邏輯跑在 tripace-server 自己
-    # 的後端(internal/onagenttools/geocode.go),不經過瀏覽器分頁。
+    # 的後端(internal/onagenttools/geocode.go),不經過瀏覽器分頁。指向正式
+    # 環境;本機開發改回 http://localhost:8080/onagent/geocode 再推一次。
     backendDispatch:
-      endpoint: http://localhost:8080/onagent/geocode
+      endpoint: https://tripace.shuttle.tools/onagent/geocode
       timeoutMs: 8000
     parameters:
       type: object
