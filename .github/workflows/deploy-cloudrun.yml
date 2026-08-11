@@ -12,13 +12,15 @@ name: Deploy to Cloud Run
 # 改為打 v* 格式的 git tag(如 v1.0.2)時自動觸發部署——對齊
 # .claude/skills/version-tagging 的打版號流程:CHANGELOG 寫好、版號
 # 決定後才打 tag,這裡直接把「打 tag」當成「這個版本已經確認要上線」的
-# 訊號,不需要再額外手動觸發一次部署。tag 部署一律用完整流程(build +
-# deploy),沒有 skip_build 選項——那是給手動觸發時「只想重新指向某個
-# 已存在 image」的特殊情境用,tag 觸發的語意就是「這個版本要重新
-# build 上線」,不該省略 build。
+# 訊號,不需要再額外手動觸發一次部署。tag push 觸發時 github.event_name
+# 是 "push",不是 "workflow_dispatch",故下方 skip_build 的 if 判斷天生
+# 只會在手動觸發時生效,tag 部署一律走完整 build+deploy,不需要另外排除。
 #
-# workflow_dispatch 仍保留,供不方便打 tag、或需要 skip_build 這種
-# 特殊情境時手動觸發,兩種觸發方式並存。
+# workflow_dispatch 仍保留,供不方便打 tag、或只是想重新指向現有 image
+# (skip_build=true)時手動觸發,兩種觸發方式並存。skip_build=true 時
+# 會跳過 Configure Docker/讀 key/Build/Push 四個步驟,Deploy 改用
+# Artifact Registry 裡現有的 :latest image(而非 :${{ github.sha }}——
+# 沒有 build 過,這次 sha 對應的 image 根本不存在)。
 on:
   push:
     tags:
@@ -54,7 +56,11 @@ jobs:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
+      # skip_build 只在 workflow_dispatch 觸發時才可能是 true(tag push 觸發
+      # 沒有這個 input,github.event.inputs.skip_build 會是空字串,
+      # != 'true' 成立,以下四個步驟正常執行)。
       - name: Configure Docker for Artifact Registry
+        if: github.event.inputs.skip_build != 'true'
         run: gcloud auth configure-docker asia-east1-docker.pkg.dev --quiet
 
       # 前端 build 期間需要讀到 VITE_GOOGLE_MAPS_API_KEY(見 Dockerfile 的
@@ -63,6 +69,7 @@ jobs:
       # Secret Manager 版本,不需要另外同步 GitHub Secrets)。這裡讀出來後
       # 立刻 ::add-mask:: 遮罩,避免明文出現在 job log 裡。
       - name: Read Google Maps API key from Secret Manager
+        if: github.event.inputs.skip_build != 'true'
         id: maps_key
         run: |
           KEY=$(gcloud secrets versions access latest --secret=GOOGLE_MAPS_API_KEY --project=${{ env.GCP_PROJECT_ID }})
@@ -74,6 +81,7 @@ jobs:
       # -cleanup-legacy-provider 附近的說明——這把 key 只顯示一次、重發會讓
       # 舊 key 立刻失效,不支援現場申請,只能貼上既有值寫入 Secret Manager)。
       - name: Read onagent app key from Secret Manager
+        if: github.event.inputs.skip_build != 'true'
         id: onagent_key
         run: |
           KEY=$(gcloud secrets versions access latest --secret=VITE_ONAGENT_APP_KEY --project=${{ env.GCP_PROJECT_ID }})
@@ -81,6 +89,7 @@ jobs:
           echo "key=$KEY" >> "$GITHUB_OUTPUT"
 
       - name: Build Docker image
+        if: github.event.inputs.skip_build != 'true'
         run: |
           docker build \
             --build-arg GH_PAT=${{ secrets.GH_PAT }} \
@@ -92,14 +101,18 @@ jobs:
             .
 
       - name: Push image
+        if: github.event.inputs.skip_build != 'true'
         run: |
           docker push ${{ env.IMAGE }}:${{ github.sha }}
           docker push ${{ env.IMAGE }}:latest
 
+      # skip_build=true 時本次沒有 build 過,${{ github.sha }} 這個 tag 根本
+      # 不存在於 Artifact Registry,故改用 :latest(見上方 Push image 步驟,
+      # 只要之前任何一次完整 build+deploy 跑過,:latest 就會是那次的內容)。
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy ${{ env.CLOUD_RUN_SERVICE }} \
-            --image=${{ env.IMAGE }}:${{ github.sha }} \
+            --image=${{ env.IMAGE }}:${{ github.event.inputs.skip_build == 'true' && 'latest' || github.sha }} \
             --region=${{ env.CLOUD_RUN_REGION }} \
             --allow-unauthenticated \
             --add-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \

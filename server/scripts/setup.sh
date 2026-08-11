@@ -14,11 +14,11 @@
 # 用法(從專案根目錄或任意位置皆可):
 #   PROJECT_ID=tripace-xxxxx BILLING_ACCOUNT=01AA0C-56650D-E69542 \
 #   GITHUB_REPO=owner/repo \
-#     server/deploy/setup.sh
+#     server/scripts/setup.sh
 #
-# DATABASE_URL / GOOGLE_API_KEY 取得方式(兩擇一):
+# DATABASE_URL 取得方式(兩擇一):
 #   - 自動:腳本會讀 server/.env 的對應變數(預設行為)
-#   - 手動:export DATABASE_URL='postgresql://...?sslmode=require' 等後再跑
+#   - 手動:export DATABASE_URL='postgresql://...?sslmode=require' 後再跑
 #
 # ⚠️  警告:CLOUDSQL_INSTANCE 目前在 .github/workflows/deploy-cloudrun.yml 裡
 #     是寫死的 "onagent-prod:asia-east1:onagent-db",指向 onagent-prod 這個
@@ -46,7 +46,7 @@ GITHUB_REPO="${GITHUB_REPO:?請設定 GITHUB_REPO,格式 owner/repo,例: GITHUB_
 # 定位專案根目錄(本腳本在 server/deploy/ 下,往上兩層)。
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-echo "==> 1/10 建立專案 $PROJECT_ID (名稱: $PROJECT_NAME)"
+echo "==> 1/9 建立專案 $PROJECT_ID (名稱: $PROJECT_NAME)"
 # 已存在則略過,不中斷。
 if gcloud projects describe "$PROJECT_ID" >/dev/null 2>&1; then
   echo "    專案已存在,略過建立。"
@@ -55,10 +55,10 @@ else
 fi
 gcloud config set project "$PROJECT_ID"
 
-echo "==> 2/10 綁定帳單帳戶 $BILLING_ACCOUNT"
+echo "==> 2/9 綁定帳單帳戶 $BILLING_ACCOUNT"
 gcloud billing projects link "$PROJECT_ID" --billing-account="$BILLING_ACCOUNT"
 
-echo "==> 3/10 啟用必要 API(Cloud Run / Build / Artifact Registry / Secret Manager / IAM)"
+echo "==> 3/9 啟用必要 API(Cloud Run / Build / Artifact Registry / Secret Manager / IAM)"
 gcloud services enable \
   run.googleapis.com \
   cloudbuild.googleapis.com \
@@ -67,7 +67,7 @@ gcloud services enable \
   iamcredentials.googleapis.com \
   iam.googleapis.com
 
-echo "==> 4/10 建立 Artifact Registry repository(deploy-cloudrun.yml 的 IMAGE push 目標)"
+echo "==> 4/9 建立 Artifact Registry repository(deploy-cloudrun.yml 的 IMAGE push 目標)"
 # deploy-cloudrun.yml 的 IMAGE 變數指向
 # asia-east1-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/tripace-server,
 # 代表這個名為 cloud-run-source-deploy、格式 DOCKER、位於 $REGION 的 repo
@@ -82,7 +82,7 @@ else
     --description="Cloud Run 部署用的 container image repo(由 setup.sh 建立)"
 fi
 
-echo "==> 5/10 取得 DATABASE_URL 並建立 secret"
+echo "==> 5/9 取得 DATABASE_URL 並建立 secret"
 # 優先用環境變數;否則從 server/.env 解析(去引號)。
 if [ -z "${DATABASE_URL:-}" ]; then
   ENV_FILE="$ROOT/server/.env"
@@ -105,7 +105,7 @@ else
   printf '%s' "$DATABASE_URL" | gcloud secrets create DATABASE_URL --data-file=-
 fi
 
-echo "==> 6/10 產生並建立 JWT_SECRET secret"
+echo "==> 6/9 產生並建立 JWT_SECRET secret"
 # 已存在就不覆蓋(避免讓既有已簽發的 token 全部失效)。
 if gcloud secrets describe JWT_SECRET >/dev/null 2>&1; then
   echo "    JWT_SECRET 已存在,保留現有值。"
@@ -113,37 +113,26 @@ else
   openssl rand -hex 32 | tr -d '\n' | gcloud secrets create JWT_SECRET --data-file=-
 fi
 
-echo "==> 7/10 取得 GOOGLE_API_KEY 並建立 secret(deploy-cloudrun.yml 的 AI_PROVIDER=googleapis 需要)"
-if [ -z "${GOOGLE_API_KEY:-}" ]; then
-  ENV_FILE="$ROOT/server/.env"
-  if [ -f "$ENV_FILE" ]; then
-    GOOGLE_API_KEY="$(grep -E '^[[:space:]]*GOOGLE_API_KEY[[:space:]]*=' "$ENV_FILE" \
-      | head -1 \
-      | sed -E 's/^[[:space:]]*GOOGLE_API_KEY[[:space:]]*=[[:space:]]*//; s/^["'\'']//; s/["'\'']$//')"
-  fi
-fi
-if [ -z "${GOOGLE_API_KEY:-}" ]; then
-  echo "    ✗ 未設 GOOGLE_API_KEY 環境變數,且 server/.env 找不到對應值。" >&2
-  echo "      請至 https://aistudio.google.com/apikey 取得後,export GOOGLE_API_KEY=... 再重跑。" >&2
-  exit 1
-fi
-if gcloud secrets describe GOOGLE_API_KEY >/dev/null 2>&1; then
-  printf '%s' "$GOOGLE_API_KEY" | gcloud secrets versions add GOOGLE_API_KEY --data-file=-
-else
-  printf '%s' "$GOOGLE_API_KEY" | gcloud secrets create GOOGLE_API_KEY --data-file=-
-fi
-
-echo "==> 8/10 授權 Cloud Run 服務帳號讀取 secret"
+echo "==> 7/9 授權 Cloud Run 服務帳號讀取 secret"
+# GOOGLE_API_KEY 原本是給 tripace 自家 want LLM 對話系統(AI_PROVIDER=
+# googleapis)用的,該系統已於 2026-08-11 整套移除,deploy-cloudrun.yml
+# 不再讀取這把 key,此腳本也一併移除對應的建立/授權步驟——若日後真的
+# 要在新專案重跑此腳本,不需要再準備這把 key。GOOGLE_PLACES_API_KEY(
+# geocode/recommend_nearby 工具用)、GOOGLE_MAPS_API_KEY(前端 Maps
+# JavaScript API 用)、VITE_ONAGENT_APP_KEY(onagent 平台 apiKey)三把
+# key 目前透過 server/scripts/update-secret-manager.sh 個別管理,不在
+# 本腳本的「一次性環境設定」範圍內(它們可以隨時輪替,不像這裡的
+# DATABASE_URL/JWT_SECRET 是新環境必須有的基礎設定)。
 PNUM="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
 RUNTIME_SA="${PNUM}-compute@developer.gserviceaccount.com"
-for S in DATABASE_URL JWT_SECRET GOOGLE_API_KEY; do
+for S in DATABASE_URL JWT_SECRET; do
   gcloud secrets add-iam-policy-binding "$S" \
     --member="serviceAccount:$RUNTIME_SA" \
     --role="roles/secretmanager.secretAccessor" >/dev/null
   echo "    已授權 $RUNTIME_SA 讀取 $S"
 done
 
-echo "==> 9/10 建立 GitHub Actions 部署用的 service account"
+echo "==> 8/9 建立 GitHub Actions 部署用的 service account"
 DEPLOY_SA_ID="github-actions-deploy"
 DEPLOY_SA="${DEPLOY_SA_ID}@${PROJECT_ID}.iam.gserviceaccount.com"
 if gcloud iam service-accounts describe "$DEPLOY_SA" >/dev/null 2>&1; then
@@ -161,7 +150,7 @@ for ROLE in roles/run.admin roles/artifactregistry.admin roles/storage.admin \
 done
 echo "    已授權 $DEPLOY_SA 部署所需角色"
 
-echo "==> 10/10 設定 Workload Identity Federation(讓 GitHub Actions 免金鑰登入)"
+echo "==> 9/9 設定 Workload Identity Federation(讓 GitHub Actions 免金鑰登入)"
 POOL_ID="github-pool"
 PROVIDER_ID="github-provider"
 if gcloud iam workload-identity-pools describe "$POOL_ID" --location=global >/dev/null 2>&1; then
