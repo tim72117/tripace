@@ -1,4 +1,17 @@
-# 條目寫入流程
+# 條目寫入流程(已過時——描述的是已移除的 want 框架流程)
+
+> **這份文件已過時，僅供歷史參考，不代表目前系統行為。**
+> 本文件描述的 `entry_query`/`geocode`/`entry_add`（帶 `item`/`start`/`end`/
+> `location` 等欄位）三步驟工具鏈，屬於 tripace 自家 want LLM 對話系統，
+> 已於 2026-08-11 隨該系統整套移除（前端對話改走 onagent 平台，見
+> `docs/ROUTING_ARCHITECTURE.md`「三之一、`/onagent/*`」一節、
+> `web/src/useOnagentChatBridge.ts`）。目前寫入條目改用 onagent 的
+> `trip_entry_add` clienttools 工具（欄位是 `title`/`date`/`time`/`note`，
+> 見 `server/tools/onagent-tools.yaml`），沒有本文件描述的
+> `entry_query` 推斷地區步驟，也沒有獨立的 `location` 欄位。
+> 本文件引用的 `server/internal/llm/assistant_agent.go` 已刪除，備份於
+> `docs/archive/assistant_agent-go-backup-2026-08-11.md`。移到 archive
+> 保留原文，不逐段修正內容以維持歷史準確性。
 
 ## 概述
 

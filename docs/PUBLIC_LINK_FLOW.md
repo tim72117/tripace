@@ -71,9 +71,7 @@ Owner/Editor
   │  ├─ 所有 Entry
   │  └─ 地圖 (如果有位置)
   │
-  └─ [唯讀 or 可寫,取決於連結的 editable 旗標]
-     ├─ editable = false(預設) → 只能看,POST /v1/public/{token}/assist 回 403 read_only
-     └─ editable = true        → 訪客可透過 AI 對話寫入該行程(見第 11 節)
+  └─ [唯讀——editable 旗標目前已失效,不論開關狀態皆恆為唯讀,見第 11 節]
 ```
 
 ## 3. 刪除公開連結
@@ -327,30 +325,16 @@ Response 404: 連結不存在或已刪除
 
 **完成！**
 
-## 11. ⚠️ editable 旗標與其安全意涵
+## 11. editable 旗標：目前恆為唯讀
 
-公開連結**預設唯讀**，但建立時（或事後）可以開啟 `editable`。開啟後的實際效果必須明確理解：
+公開連結目前**不論 `editable` 開關切成什麼，一律唯讀**。
 
-```
-POST /v1/public/{token}/assist        (handlePublicAssist, public_link.go)
+`editable` 欄位、DB 欄位、`POST`/`GET /v1/trips/{id}/public-link` 的讀寫 API、`web/src/channel/ShareModal.tsx` 的 UI 開關都還在，切換後也會被存下來，但沒有任何後端路徑會讀這個旗標做權限判斷——公開連結頁面（`GET /v1/public/{token}`）只回傳資料供閱讀，訪客端沒有對話/寫入介面。
 
-  ├─ token 查不到                      → 404
-  ├─ info.Editable == false(預設)      → 403 read_only
-  └─ info.Editable == true
-       │
-       └─ assistant.AssistForSession("public:"+token, info.TripID, ...)
-            │
-            └─ LLM 可呼叫寫入類工具,對 info.TripID 這個行程
-               新增/修改/刪除 entry
-```
+前端對話（`ChatScreen.tsx`）走 onagent 平台（`web/src/useOnagentChatBridge.ts`），採全域單一連線（`APP_ID = 'tripace'`），不區分「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」，因此公開連結目前沒有任何授權寫入的路徑。
 
-呼叫者**不需要 JWT、不需要登入、不需要是行程成員**——`handlePublicAssist` 除了 `Editable` 之外沒有任何身分檢查。等於：
+`POST /v1/public/{token}/compute-route`（`handlePublicComputeRoute`）不受此影響，仍然存在、只做路線計算、不寫入資料，並限制 `entryIDs` 必須屬於該 token 對應的行程。
 
-- 開啟 editable = 把該行程的寫入權限授予「所有知道這串 token 的人」
-- 沒有過期時間，權限持續到連結被刪除為止
-- 沒有訪問紀錄/稽核日誌，事後無法得知是誰改的
-- 無法針對個別對象撤銷，連結一旦外流只能整條刪掉
+**待辦**：若要讓公開連結支援匿名寫入協作，需要在 `useOnagentChatBridge`／onagent 的 dispatch 協定裡補上「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」這組上下文，並在 `internal/onagenttools` 對應的寫入類工具裡加入授權檢查——目前完全沒有這層機制。
 
-相對地，另一支公開端點 `POST /v1/public/{token}/compute-route`（`handlePublicComputeRoute`）不受 `editable` 影響，它只做路線計算、不寫入資料，並且會限制 `entryIDs` 必須都屬於這個 token 對應的行程，避免被當成免驗證的跳板去探測其他行程的 entry。
-
-相關程式碼：`server/internal/api/public_link.go`、`server/internal/store/entity.go` 的 `publicLinkRow.Editable`、`web/src/channel/ShareModal.tsx`（UI 開關）。
+相關程式碼：`server/internal/api/public_link.go`、`server/internal/store/entity.go` 的 `publicLinkRow.Editable`、`web/src/channel/ShareModal.tsx`（UI 開關）、`web/src/useOnagentChatBridge.ts`。

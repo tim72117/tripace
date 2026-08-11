@@ -174,27 +174,24 @@ Response:
 ├─ 無需登入     ✅
 ```
 
-### ⚠️ `editable` 開關：這不是純唯讀的分享機制
+### ⚠️ `editable` 開關：欄位仍在，但目前是死功能（不再有任何寫入效果）
 
 `public_links` 有一個 `editable` 欄位（`server/internal/store/entity.go` 的 `publicLinkRow`），建立連結時由 request body 的 `editable` 決定（`server/internal/api/public_link.go` 的 `handleCreatePublicLink`），前端對應的 UI 開關在 `web/src/channel/ShareModal.tsx`。已建立的連結也可以事後改這個開關。
 
-- **`editable = false`（預設）**：訪客只能讀。`POST /v1/public/{token}/assist` 會直接回 403 `read_only`。
-- **`editable = true`**：**任何拿到這個連結的人，完全不需要登入、不需要是行程成員，就能透過 `POST /v1/public/{token}/assist` 送 prompt 給 LLM assistant，並對該行程執行寫入操作**（`handlePublicAssist` 把 `info.TripID` 帶進 `AssistForSession`，assistant 可呼叫 `trip_entry_add`/`update`/`delete` 等寫入類工具）。
-
-這是一個實質的安全權衡，必須明確理解：
+- `editable` 欄位、DB 欄位、`POST`/`GET /v1/trips/{id}/public-link` 的讀寫 API 都還在，UI 開關也還能切換、還會被存下來。
+- 但**沒有任何後端路徑會讀這個旗標去做權限判斷**——切成 `editable = true` 不會讓任何人透過公開連結寫入行程，這個開關目前形同虛設。
+- 前端對話（`ChatScreen.tsx`）走 onagent 平台（`web/src/useOnagentChatBridge.ts`），採全域單一連線（`APP_ID = 'tripace'`），不區分「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」——現在**沒有任何機制**能讓匿名訪客透過公開連結寫入行程，不論 `editable` 開關切成什麼。
 
 | | 唯讀連結 | editable 連結 |
 |---|---|---|
-| 需要登入 | 否 | **否** |
-| 需要是行程成員 | 否 | **否** |
+| 需要登入 | 否 | 否 |
+| 需要是行程成員 | 否 | 否 |
 | 可讀取全部 entries | 是 | 是 |
-| 可修改/刪除行程資料 | 否 | **是（透過 AI 對話）** |
+| 可修改/刪除行程資料 | 否 | 否(目前恆為否) |
 | 有效期限 | 永久（除非刪除連結） | 永久（除非刪除連結） |
-| 有訪問紀錄可稽核 | 無 | **無** |
+| 有訪問紀錄可稽核 | 無 | 無 |
 
-換句話說，開啟 `editable` 等於把該行程的寫入權限授予「所有知道這串 token 的人」，且沒有過期時間、沒有訪問紀錄、無法辨識是誰改的。連結一旦外流（轉貼、截圖、瀏覽器歷史、聊天記錄），權限就無法針對個別對象撤銷，只能整條連結刪掉。
-
-因此 `editable` 只適合用在**明確、短期、對象可信**的協作情境（例如當面請同行者一起補行程），用完應盡快刪除連結。不要把 editable 連結貼在公開場合。
+**待辦**：若要讓公開連結支援匿名寫入協作，需要在 `useOnagentChatBridge`／onagent 的 dispatch 協定裡補上「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」這組上下文，並在 `internal/onagenttools` 對應的寫入類工具裡加入授權檢查——目前完全沒有這層機制。在此之前，`editable` 欄位與其讀寫 API/UI 開關維持保留、不移除。
 
 ---
 

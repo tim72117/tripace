@@ -50,8 +50,6 @@ handler、不共用 store 存取層以外的任何程式碼。
 | GET | /v1/trips/{id}/members | handleListMembers | Bearer token | ✅ | ✅ |
 | POST | /v1/trips/{id}/members | handleAddMember | **requireOwner** | ✅ | ✅ |
 | PATCH | /v1/trips/{id}/members/{userID} | handleSetMemberRole | **requireOwner** | ✅ | ✅ |
-| POST | /v1/trips/{id}/query | handleQuery | **requireMember** | ✅ | ✅ |
-| POST | /v1/trips/{id}/assist | handleAssist | **requireEditor** | ✅ | ✅ |
 | GET | /v1/trips/{id}/entries | handleListEntries | Bearer token | ✅ | ✅ |
 | DELETE | /v1/trips/{id}/entries | handleResetTripData | **requireOwner** | ✅ | — |
 | PATCH | /v1/entries/{id} | handleUpdateEntry | 查 entry 取 tripID → **requireEditor** | ✅(`api.ts` 的 `updateEntry`,`Timeline.tsx` 的 `EditEntrySheet`) | — |
@@ -60,10 +58,17 @@ handler、不共用 store 存取層以外的任何程式碼。
 | GET | /v1/trips/{id}/public-link | handleGetPublicLink | Bearer token | ✅ | — |
 | DELETE | /v1/trips/{id}/public-link | handleDeletePublicLink | **requireEditor** | ✅ | — |
 | GET | /v1/public/{token} | handlePublicView | 連結 token 存在即可(公開頁,無使用者身分) | ✅ | — |
-| POST | /v1/public/{token}/assist | handlePublicAssist | 連結 token + `info.Editable` 旗標 | ✅ | — |
 
 > `PATCH /v1/entries/{id}` 的前端表單已實作(`web/src/Timeline.tsx` 的
 > `EditEntrySheet`),見「待辦」一節。
+>
+> `POST /v1/trips/{id}/query`、`POST /v1/trips/{id}/assist`、
+> `POST /v1/public/{token}/assist` 三條路由已於
+> tripace 自家 want LLM 對話系統整套移除時一併刪除(前端對話改走 onagent
+> 平台,見 `web/src/useOnagentChatBridge.ts`)——三者的權限檢查邏輯
+> (`requireMember`/`requireEditor`/`info.Editable` 旗標)也隨之消失,不再是
+> 這份文件要描述的對象。onagent 平台自己觸發推論的路徑不經過 tripace 的
+> `/v1/*`,見下方新增的「三之一、`/onagent/*`」一節。
 
 ## 三、`/internal/*` 完整路由表(只給 `cmd/cli` 用)
 
@@ -90,6 +95,21 @@ handler、不共用 store 存取層以外的任何程式碼。
 `cmd/cli` 也有一條**不經過 HTTP、直連資料庫**的路徑(`-db` 旗標,見
 `cmd/cli/db.go` 的 `dbClient`),兩條路徑實作同一組 `client` 介面
 (`cmd/cli/main.go`),使用者可以選擇要不要透過網路呼叫 server。
+
+## 三之一、`/onagent/*` 完整路由表(只給 onagent 平台呼叫)
+
+onagent LLM 決定呼叫 BackendDispatch 型工具時,onagent 伺服器直接 POST 到
+下面這兩個端點——不經過任何瀏覽器分頁,回應在同一次 HTTP 往返內帶回結果
+(詳見 onagent 專案 `docs/backend-tool-dispatch-design-2026-08-08.md`)。
+與 `/v1/*`/`/internal/*` 不同,呼叫端是 onagent 伺服器本身,不是使用者的
+瀏覽器/CLI,故**不帶 tripace 自己的 JWT**,目前也**刻意不做簽章驗證**
+(對齊 onagent 平台目前實際實作進度,見 `internal/onagenttools/dispatch.go`
+開頭說明)——PoC 階段的已知風險,非本文件解決範圍。
+
+| 方法 | 路徑 | Handler |
+|---|---|---|
+| POST | /onagent/recommend_nearby | onagenttools.HandleRecommendNearby |
+| POST | /onagent/geocode | onagenttools.HandleGeocode |
 
 ## 四、`/admin/api/*` 完整路由表(只給 Admin SPA 用)
 
@@ -131,7 +151,6 @@ Admin SPA 是跨網域呼叫並帶 cookie(`credentials: 'include'`),不能沿用
 |---|---|---|---|
 | 更新條目 | `handleUpdateEntry` | `handleInternalUpdateEntry` | 前者查 entry 反查 tripID 做 requireEditor;後者無檢查。**底層都呼叫 `tripsvc.UpdateEntry`,是同一個函式**,只是外層 handler 各自獨立寫了一份,不是共用同一個 HTTP handler。 |
 | 清空行程資料 | `handleResetTripData`(requireOwner) | `handleInternalReset`(無檢查) | 底層都呼叫 `s.resetTrip` → `store.DeleteTripEntries`,同函式、兩個 handler。 |
-| 新增條目 | `handleAssist`(requireEditor,經 LLM 判斷後呼叫 `trip_entry_add` 工具寫入) | `handleInternalRecord`(無檢查,直接呼叫 `tripsvc.Record`) | 不是同一個 handler,效果也不再等價:前者(AI 對話)寫入的是裝置端旅程清單(見 `docs/ENTRY_WRITE_ORDER.md`),後者才是直接寫入 Postgres 的 entry。 |
 
 **這份對照表就是「安全邊界」一節要解決的問題**:`/internal/*` 版本因為無
 檢查,任何知道 entryID/tripID 的呼叫者都能繞過 `/v1/*` 版本的權限檢查
@@ -181,9 +200,9 @@ Admin SPA 是跨網域呼叫並帶 cookie(`credentials: 'include'`),不能沿用
 2. ~~`INTERNAL_API_TOKEN` 尚未在任何 `.env`(本機或正式環境)實際設定過~~
    ——已隨共享密鑰機制整個移除而不再適用,`/internal/*` 現在強制要求有效
    JWT,不存在「忘記設定環境變數」這種失效模式(見上方「安全邊界」)。
-3. `main.go` 呼叫 `srv.Routes()` 三次(`/v1/`、`/internal/`、`/health` 各一次)
-   組出三個獨立但內容相同的 mux 實體,`internalAuth` middleware 因此被重複
-   建構三次。不影響功能正確性(已用真實 HTTP 請求驗證 `internalAuth` 確實
-   生效),純粹是啟動時多做了兩份無用的 mux,未處理。
+3. `main.go` 呼叫 `srv.Routes()` 四次(`/v1/`、`/internal/`、`/health`、
+   `/onagent/` 各一次)組出四個獨立但內容相同的 mux 實體,`internalAuth`
+   middleware 因此被重複建構四次。不影響功能正確性(已用真實 HTTP 請求
+   驗證 `internalAuth` 確實生效),純粹是啟動時多做了三份無用的 mux,未處理。
    (註:現行 `internalAuth`(`middleware.go`)只在驗證失敗時回 401,
    沒有任何啟動期 log 或警告輸出——那是舊共享密鑰版本的行為,已隨機制移除。)

@@ -38,13 +38,17 @@ npm run dev      # → http://localhost:5173
 | 自己的身分 | `GET /v1/me` |
 | 頻道列表 / 建立 | `GET/POST /v1/channels` |
 | 成員列表 / 邀請 / 改權限 | `GET/POST /v1/channels/{id}/members`、`PATCH .../members/{userID}` |
-| 記事或提問(LLM 判斷記錄/回答) | `POST /v1/channels/{id}/assist` |
-| 語意查詢(RAG) | `POST /v1/channels/{id}/query` |
 | 條目列表 / 清空頻道資料 | `GET /v1/channels/{id}/entries`、`DELETE /v1/channels/{id}` |
 | 行程列表 / 行程內條目 | `GET /v1/channels/{id}/trips`、`.../trips/{tripID}/entries` |
 | 即時更新(entry 更新中/完成、ask_user、task_plan 進度) | `WS /v1/channels/{id}/ws` |
 | 公開分享連結:建立 / 查詢 / 撤銷 | `POST/GET/DELETE /v1/channels/{id}/public-link` |
-| 公開分享頁(免登入):讀取 / 新增行程 | `GET /v1/public/{token}`、`POST /v1/public/{token}/assist` |
+| 公開分享頁(免登入):讀取 | `GET /v1/public/{token}` |
+
+> 注:此表其餘「channels」路徑命名与 `docs/ROUTING_ARCHITECTURE.md` 現行的
+> 「trips」命名不一致,屬於這份 README 較舊、獨立於本次變更的既有落差,
+> 不在本次修正範圍——這裡只移除了已隨 want LLM 對話系統整套刪除的
+> `assist`/`query`/`public/{token}/assist` 三個端點(2026-08-11,見
+> `docs/ROUTING_ARCHITECTURE.md`「三之一、`/onagent/*`」一節)。
 
 ## 注意
 
