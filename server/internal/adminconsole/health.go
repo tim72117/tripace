@@ -5,9 +5,11 @@
 // 目前盤點到的外部依賴(來源皆已在程式碼中確認):
 //   - PostgreSQL/SQLite 資料庫:internal/store,DATABASE_URL 未設時退回本機
 //     SQLite 檔案。兩者都用同一個 store.Ping 檢查連線是否存活。
-//   - LLM provider:internal/llm/want_analyzer.go 依 AI_PROVIDER 決定用
-//     vllm(VLLM_BASE_URL,自架服務)還是 googleapis(GOOGLE_API_KEY,Gemini)。
-//     依實際設定的 provider 只檢查對應那一個,不會兩個都打。
+//   - LLM provider:依 AI_PROVIDER 環境變數決定用 vllm(VLLM_BASE_URL,
+//     自架服務)還是 googleapis(GOOGLE_API_KEY,Gemini)。依實際設定的
+//     provider 只檢查對應那一個,不會兩個都打。(tripace 自家 want 對話
+//     系統已移除,這個環境變數目前無 tripace 側的實際讀取方;此項健檢
+//     維持原樣,純粹探測 AI_PROVIDER 所指服務本身是否可連通。)
 //   - Google Places API:internal/geo/places.go 與 internal/wanttools 的
 //     geocode.go/recommend_nearby.go,金鑰來自 GOOGLE_PLACES_API_KEY(與
 //     GOOGLE_API_KEY 是不同把 key,分別對應 Places 與 Gemini 兩個服務)。
@@ -115,8 +117,9 @@ func (h *Handler) checkDatabase(ctx context.Context) (status, detail string) {
 
 // --- LLM provider --------------------------------------------------------
 //
-// 依 AI_PROVIDER 決定檢查哪一個(與 want_analyzer.go NewWant() 讀的是同一組
-// 環境變數,確保「健康檢查打的服務」與「實際服務請求會用到的服務」一致)。
+// 依 AI_PROVIDER 決定檢查哪一個(tripace 自家 want 對話系統移除前,曾與
+// want_analyzer.go NewWant() 讀同一組環境變數;目前純粹探測 AI_PROVIDER
+// 所指服務本身是否可連通,不對應任何 tripace 側程式碼路徑)。
 //
 //   - vllm:GET {VLLM_BASE_URL}/v1/models——OpenAI 相容的 models 列表端點,
 //     純 metadata 查詢,不觸發任何推論,免費。

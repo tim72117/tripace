@@ -764,7 +764,7 @@ export function DesktopContent(props: ContentProps) {
             />
             </>
           ) : panelMode === 'demo-cards' || panelMode === 'demo-row'
-            || panelMode === 'demo-clienttools' || panelMode === 'demo-onagent' ? (
+            || panelMode === 'demo-onagent' ? (
             <DemoPanelContent mode={panelMode} />
           ) : activeTrip ? (
             <ChatScreen

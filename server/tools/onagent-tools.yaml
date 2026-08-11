@@ -1,17 +1,31 @@
 # onagent 平台(https://github.com/tim72117/onagent)上 tripace app 的工具
-# 定義來源檔——跟 clienttools.yaml(tripace 自家 clienttools WS 機制用)是
-# 兩套完全獨立的系統,分開維護,格式也不完全相同:
-#   - onagent 沒有 clienttools.yaml 的 appId 概念(appId 由 CLI 指令參數決定,
-#     見下方用法),也不支援 clienttools.yaml 部分擴充欄位。
+# 定義來源檔。tripace 自家 want 框架(原本平行存在的 clienttools.yaml/
+# ClientToolsBridge/assistant_agent.go 等)已整套移除,onagent 是目前唯一的
+# LLM 對話路徑,這份檔案是它的權威工具定義來源。
+#   - onagent appId 由 CLI 指令參數決定(見下方用法)。
 #   - kind: query 是 onagent 這邊必填的行為決定欄位(未設定時預設是 action
-#     型,fire-and-forget,前端回傳的內容永遠不會餵回 LLM——這三個工具都是
-#     讓 LLM 需要看到執行結果的查詢/確認類工具,漏加 kind: query 會導致
-#     LLM 完全看不到查詢/新增結果卻不會有任何錯誤訊息,難以察覺)。
+#     型,fire-and-forget,前端回傳的內容永遠不會餵回 LLM——本檔案的工具
+#     都是讓 LLM 需要看到執行結果的查詢/確認類工具,漏加 kind: query 會
+#     導致 LLM 完全看不到查詢/新增結果卻不會有任何錯誤訊息,難以察覺)。
 #
-# 這份檔案本身不會被 server(cmd/server)讀取或用到——onagent 是外部平台,
-# 前端串接程式碼在 web/src/clienttools/OnagentBridgeDemo.tsx(測試用),透過
-# web/src/sdk-proposals/toAgentBridgeTools.ts 把這裡列的五個工具對應的
-# ClientTool(web/src/clienttools/tools/ 底下)接上 AgentBridge。
+# 這份檔案裡的 trip_entry_*/trip_list_batches 五個工具本身不會被
+# server(cmd/server)讀取或用到——onagent 是外部平台,前端串接程式碼在
+# web/src/clienttools/OnagentBridgeDemo.tsx(測試用)與正式 ChatScreen.tsx
+# (透過 useOnagentChatBridge.ts),經 web/src/sdk-proposals/
+# toAgentBridgeTools.ts 把這五個工具對應的 ClientTool(web/src/clienttools/
+# tools/ 底下)接上 AgentBridge。
+#
+# recommend_nearby/geocode 是例外——兩者都不是前端 ClientTool,而是
+# BackendDispatch 型工具(見 onagent 專案
+# docs/backend-tool-dispatch-design-2026-08-08.md,c:\www\my\agent):
+# onagent LLM 決定呼叫這兩個工具時,onagent 伺服器直接 POST 到下方
+# backendDispatch.endpoint(server(cmd/server)這邊的
+# internal/onagenttools/recommend_nearby.go、geocode.go),不經過任何瀏覽器
+# 分頁,回應在同一次 HTTP 往返內帶回結果。這是設計文件第 8 節指定的 PoC
+# 範圍(查詢型、無副作用),驗證「後端 tool 繞過瀏覽器分頁、直接在 onagent
+# server 端 dispatch」這條路徑本身。目前刻意不做 HMAC 簽章驗證(見
+# internal/onagenttools/dispatch.go 開頭說明,對齊 onagent 平台這邊的實際
+# 實作進度)。
 #
 # 用法(需要 onagent CLI,見 .claude/skills/onagent-cli-setup):
 #   onagent save-tools -api <onagent 後端 URL> tripace server/tools/onagent-tools.yaml
@@ -25,19 +39,24 @@
 # `curl -s <url>/console/apps` 回傳的是 JSON(401 未登入或實際資料都算對),
 # 不是 <!doctype html> 開頭的內容。
 #
-# thought 內容是改寫自 server/internal/llm/assistant_agent.go 既有的
+# thought 內容原本改寫自 tripace 自家 want 框架(已整套移除)的
 # introThought/addThought/queryThought/updateThought 等段落,但刻意大幅
-# 精簡:那份原始 thought 假設 LLM 手上有 entry_query、geocode、
-# recommend_nearby、ask_user、ask_choice、task_plan 共十個工具,onagent
-# 這邊只推送了下面五個 trip_entry_*/trip_list_batches,故完全拿掉了地點
-# 查詢、附近景點推薦、非同步彈窗詢問、多步驟規劃這些依賴不存在工具的段落,
-# 只保留新增/查詢/修改/刪除四種情況的核心流程,並新增 trip_entry_delete
-# 的使用指引(tripace 自己的 want agent 白名單刻意不含這個工具,onagent
-# 這邊則有)。另外,原始 todayThought 靠 buildThought() 在執行期用
-# time.Now() 代入今天日期(%s 佔位符),onagent set-thought 是純靜態文字、
-# 沒有這種執行期代入機制,也沒有查詢當下日期的工具,故日期基準點改成
-# 「使用者說相對日期時,一律反問確認絕對日期,不猜測換算」,而非原本的
-# 自動換算。
+# 精簡:原始版本假設 LLM 手上有 entry_query、geocode、recommend_nearby、
+# ask_user、ask_choice、task_plan 共十個工具,onagent 這邊起初只推送了
+# trip_entry_*/trip_list_batches/recommend_nearby 六個(見情況 A-E),故拿掉
+# 了地點查詢、非同步彈窗詢問、多步驟規劃這些依賴不存在工具的段落,只保留
+# 新增/查詢/修改/刪除/推薦附近景點,並新增 trip_entry_delete 的使用指引
+# (tripace 自家 want agent 白名單刻意不含這個工具,onagent 這邊則有)。
+# geocode(情況 F)後續補上,是唯二的 BackendDispatch 工具之一(見上方
+# recommend_nearby/geocode 的說明)。ask_user/ask_choice/task_plan/
+# entry_query 這四個原始工具目前仍沒有 onagent 對應版本(entry_query
+# 依賴的是另一套 entries 時間軸資料模型、ask_user/ask_choice 需要非同步
+# 詢問使用者再等回覆的協定、task_plan 是純狀態管理,三者性質都跟現有
+# trip_entry_*/recommend_nearby/geocode 這幾種模式不同,尚未決定落地方式)。
+# 另外,原始 todayThought 用 time.Now() 在執行期代入今天日期,onagent
+# set-thought 是純靜態文字、沒有這種執行期代入機制,也沒有查詢當下日期的
+# 工具,故日期基準點改成「使用者說相對日期時,一律反問確認絕對日期,不猜測
+# 換算」,而非原本的自動換算。
 
 appId: tripace
 thought: |
@@ -106,11 +125,28 @@ thought: |
   4. 找不到 → 告訴使用者「找不到符合的條目」,請求補充更多資訊。
   5. 多於 1 筆 → 列出找到的條目,讓使用者明確選擇要刪除哪一筆,選定並確認後才刪除。
 
+  # 情況 E:推薦附近景點/餐廳
+
+  使用者想找某個地點附近的景點、餐廳、住宿等推薦時,呼叫 recommend_nearby:
+
+  - place 帶查詢中心點,盡量包含城市名以提高定位準確度(如使用者提到某個既有條目的地點,可用該地點當中心)。
+  - category 依使用者需求填「景點」「餐廳」「咖啡廳」等,沒特別要求就留空查綜合推薦。
+  - 工具會回傳一份候選清單(名稱、地址、座標、類型),用文字簡潔列出幾個推薦即可,不必逐筆複述所有欄位。
+  - 若使用者接著想把某個候選寫入行程,依情況 A 的流程呼叫 trip_entry_add(地點名稱或地址寫進 title/note)。
+
+  # 情況 F:查詢地點座標
+
+  使用者問某個地點的經緯度、或你需要先確認一個地點是否真實存在/定位是否正確時,呼叫 geocode:
+
+  - place 帶查詢字串,應包含城市或地區名稱以提高準確度(如「宮古島東急飯店」而非僅「東急飯店」)。
+  - 回傳第一筆最相符的結果(名稱、地址、座標)。找不到時直接告訴使用者查無此地點,不要編造座標。
+  - 這是單純的地點解析工具,不像 recommend_nearby 會回傳一份候選清單——只用在你已經知道確切地點名稱、只是要確認/取得座標的情境。
+
   # 風格
 
   - 貼心、簡潔,可靠的私人助理。
   - 不編造、不誇大,忠於使用者實際發送的內容。
-  - 你只有 trip_entry_add、trip_entry_list、trip_list_batches、trip_entry_update、trip_entry_delete 這五個工具可用,沒有查詢地點座標、推薦附近景點、或向使用者彈出選單詢問的能力——需要更多資訊時,直接用文字回覆詢問使用者,不要嘗試呼叫不存在的工具。
+  - 你有 trip_entry_add、trip_entry_list、trip_list_batches、trip_entry_update、trip_entry_delete、recommend_nearby、geocode 這七個工具可用,沒有向使用者彈出選單詢問的能力——需要更多資訊時,直接用文字回覆詢問使用者,不要嘗試呼叫不存在的工具。
 tools:
   - name: trip_entry_add
     description: >-
@@ -318,3 +354,90 @@ tools:
       required:
         - key
         - id
+
+  - name: recommend_nearby
+    description: >-
+      依地點名稱查詢附近的推薦景點/餐廳/住宿等,依 Google Places API 的
+      相關性排序。規劃行程需要湊景點、或使用者直接問「附近有什麼」時呼叫。
+      place 應包含城市名以提高定位準確度(如「京都清水寺」而非僅「清水寺」)。
+      回傳候選清單(名稱、地址、座標、類型),由你判斷哪些適合推薦給使用者、
+      要不要寫入行程。
+    kind: query
+    # backendDispatch:這個工具不是前端 ClientTool,執行邏輯跑在
+    # tripace-server 自己的後端(internal/onagenttools/recommend_nearby.go),
+    # onagent 收到 LLM 呼叫後直接 POST 到下面 endpoint,不經過瀏覽器分頁
+    # ——見本檔案開頭「recommend_nearby 是例外」的完整說明。本機開發預設
+    # 指向本機 tripace-server(:8080);部署到正式環境後需改成正式 API 網域。
+    backendDispatch:
+      endpoint: http://localhost:8080/onagent/recommend_nearby
+      timeoutMs: 10000
+    parameters:
+      type: object
+      description: 依地點名稱查詢附近推薦景點所需的欄位。
+      properties:
+        place:
+          type: string
+          description: 查詢中心點的地點名稱,應包含城市或地區名稱,例如「京都車站」、「宮古島市」。
+        category:
+          type: string
+          description: >-
+            想找的類型,填 Google Places API 官方類別 key(英文,小寫底線,
+            如 ramen_restaurant、tourist_attraction、hotel)。留空表示不限
+            類型,回傳綜合推薦。
+        radius_meters:
+          type: number
+          description: 搜尋半徑(公尺),預設 1500,最大 50000。步行範圍建議 1000~2000,市區範圍可用 5000~10000。
+      required:
+        - place
+    returns:
+      type: object
+      description: 附近推薦景點的查詢結果。
+      properties:
+        origin:
+          type: object
+          description: 實際定位到的查詢中心點。
+          properties:
+            name: { type: string }
+            lat: { type: number }
+            lng: { type: number }
+        results:
+          type: array
+          description: 附近推薦候選清單。
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              address: { type: string }
+              lat: { type: number }
+              lng: { type: number }
+              primaryType: { type: string }
+
+  - name: geocode
+    description: >-
+      查詢地點名稱的經緯度座標。查詢字串應包含城市名以提高準確度(如「宮古島
+      希爾頓酒店」而非僅「希爾頓酒店」)。回傳第一筆最相符的結果。
+    kind: query
+    # backendDispatch:同 recommend_nearby——執行邏輯跑在 tripace-server 自己
+    # 的後端(internal/onagenttools/geocode.go),不經過瀏覽器分頁。
+    backendDispatch:
+      endpoint: http://localhost:8080/onagent/geocode
+      timeoutMs: 8000
+    parameters:
+      type: object
+      description: 地點座標查詢所需的欄位。
+      properties:
+        place:
+          type: string
+          description: >-
+            地點查詢字串,應包含城市或地區名稱以限制搜尋範圍,例如
+            「宮古島東急飯店」、「東京新宿希爾頓」。
+      required:
+        - place
+    returns:
+      type: object
+      description: 查詢到的地點座標。
+      properties:
+        name: { type: string }
+        address: { type: string }
+        lat: { type: number }
+        lng: { type: number }

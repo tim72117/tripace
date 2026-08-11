@@ -12,30 +12,20 @@ import (
 
 	"github.com/tim72117/tripace/internal/auth"
 	"github.com/tim72117/tripace/internal/geo"
-	"github.com/tim72117/tripace/internal/llm"
 	"github.com/tim72117/tripace/internal/model"
+	"github.com/tim72117/tripace/internal/onagenttools"
 	"github.com/tim72117/tripace/internal/store"
-	"github.com/tim72117/tripace/internal/toolschema"
 	"github.com/tim72117/tripace/internal/tripsvc"
 )
 
 type Server struct {
-	store    *store.Store
-	analyzer llm.Analyzer
-	signer   *auth.Signer
-	hub      *Hub
+	store  *store.Store
+	signer *auth.Signer
+	hub    *Hub
 	// devMode:Apple token 不驗簽章(原型用)。
 	devMode bool
 	// 未登入時的預設使用者(維持可跳過登入的體驗)。
 	guestUser model.User
-
-	// clientTools* 是「LLM 呼叫前端 tool」試做(POC)專用的狀態,與上面 store/
-	// analyzer/hub 等正式對話流程完全分離——見 clienttools_http.go/
-	// clienttools_ws.go。nil(未呼叫 EnableClientTools)時,對應的
-	// /internal/clienttools/* 端點回 503,不影響其餘路由。
-	clientToolsRegistry *toolschema.Registry
-	clientToolsAnalyzer *llm.ClientToolsAnalyzer
-	clientToolsSessions *clientToolsSessions
 
 	// photoCache 實作 geo.PhotoCache,由 s.store 提供的圖片快取表(見
 	// store.GetCachedPhoto/SetCachedPhoto)支撐——geo_outline.go 裡建立
@@ -44,10 +34,9 @@ type Server struct {
 	photoCache geo.PhotoCache
 }
 
-func New(st *store.Store, an llm.Analyzer, signer *auth.Signer, devMode bool) *Server {
+func New(st *store.Store, signer *auth.Signer, devMode bool) *Server {
 	return &Server{
 		store:      st,
-		analyzer:   an,
 		signer:     signer,
 		hub:        newHub(),
 		devMode:    devMode,
@@ -96,18 +85,6 @@ func (c storePhotoCache) List(placeID string, maxWidthPx int) (map[int]time.Time
 
 func (c storePhotoCache) Trim(placeID string, maxWidthPx, fromIndex int) error {
 	return c.store.TrimCachedPhotos(placeID, maxWidthPx, fromIndex)
-}
-
-// EnableClientTools wires the "LLM calls a frontend tool" POC's
-// /internal/clienttools/* endpoints (see clienttools_http.go/
-// clienttools_ws.go). Optional and separate from New() (rather than a
-// constructor parameter) so main.go can call it only when a real want
-// analyzer is available — this POC has no meaning under -llm mock, and
-// New() itself has no such precondition for its other args.
-func (s *Server) EnableClientTools(registry *toolschema.Registry, analyzer *llm.ClientToolsAnalyzer) {
-	s.clientToolsRegistry = registry
-	s.clientToolsAnalyzer = analyzer
-	s.clientToolsSessions = newClientToolsSessions()
 }
 
 // NotifyEntriesUpdated 廣播 entries_updated 給指定行程的訂閱者(供 wanttools 呼叫)。
@@ -164,6 +141,16 @@ func (s *Server) NotifyEntriesLoaded(tripID string, entries []map[string]any) {
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
+
+	// onagent/* — onagent 平台 BackendDispatch 主動打過來的端點(server 端,
+	// 非前端 clienttools),見 onagent_dispatch.go 開頭的完整說明。刻意不掛在
+	// /internal/*(internalAuth 要求的 JWT 是 tripace 使用者登入憑證,onagent
+	// 伺服器對伺服器呼叫沒有這種憑證可帶),獨立命名空間 /onagent/* 只是路徑
+	// 慣例上跟其餘端點分開,不構成安全邊界(PoC 階段刻意先不驗證,見該檔案
+	// 開頭說明的已知範圍)。
+	mux.HandleFunc("POST /onagent/recommend_nearby", onagenttools.HandleRecommendNearby)
+	mux.HandleFunc("POST /onagent/geocode", onagenttools.HandleGeocode)
+
 	mux.HandleFunc("POST /v1/auth/apple", s.handleAppleAuth)
 	mux.HandleFunc("POST /v1/auth/register", s.handleRegister)
 	mux.HandleFunc("POST /v1/auth/login", s.handleLogin)
@@ -173,8 +160,6 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/trips/{id}/members", s.handleListMembers)
 	mux.HandleFunc("POST /v1/trips/{id}/members", s.handleAddMember)
 	mux.HandleFunc("PATCH /v1/trips/{id}/members/{userID}", s.handleSetMemberRole)
-	mux.HandleFunc("POST /v1/trips/{id}/query", s.handleQuery)
-	mux.HandleFunc("POST /v1/trips/{id}/assist", s.handleAssist)
 	mux.HandleFunc("GET /v1/trips/{id}/entries", s.handleListEntries)
 	mux.HandleFunc("POST /v1/trips/{id}/entries", s.handleCreateTripEntry)
 	mux.HandleFunc("DELETE /v1/trips/{id}/entries", s.handleResetTripData)
@@ -186,7 +171,6 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/trips/{id}/public-link", s.handleGetPublicLink)
 	mux.HandleFunc("DELETE /v1/trips/{id}/public-link", s.handleDeletePublicLink)
 	mux.HandleFunc("GET /v1/public/{token}", s.handlePublicView)
-	mux.HandleFunc("POST /v1/public/{token}/assist", s.handlePublicAssist)
 	mux.HandleFunc("POST /v1/public/{token}/compute-route", s.handlePublicComputeRoute)
 
 	// PaceRouteMap(web/src/PaceRouteMap.tsx,UI 試做用)展示頁的固定路線資料,
@@ -249,16 +233,6 @@ func (s *Server) Routes() http.Handler {
 	// 的 request-stats)一眼分辨流量來源。
 	internalMux.HandleFunc("GET /internal/maintenance/geocode", s.handleMaintenanceGeocode)
 	internalMux.HandleFunc("POST /internal/maintenance/landmarks/{id}/update-photo", s.handleMaintenanceLandmarkUpdatePhoto)
-
-	// clienttools — 「LLM 呼叫前端 tool」試做(POC)專用端點,見
-	// clienttools_http.go/clienttools_ws.go。與上面既有 /internal/* 端點
-	// 一樣掛在 internalAuth 之後,故同樣需要有效的 JWT 才能呼叫(這是
-	// internalAuth 改寫後的直接結果,並非這個 POC 專屬的額外限制——
-	// EnableClientTools 未呼叫時(main.go 未啟用或 want 分析器初始化失敗)
-	// 這幾個 handler 內部會各自回 503,不需要在路由層額外判斷)。
-	internalMux.HandleFunc("GET /internal/clienttools/ws", s.handleClientToolsWS)
-	internalMux.HandleFunc("POST /internal/clienttools/test-prompt", s.handleClientToolsTestPrompt)
-	internalMux.HandleFunc("GET /internal/clienttools/info", s.handleClientToolsInfo)
 
 	mux.Handle("/internal/", internalAuth(s.signer, internalMux))
 
@@ -493,121 +467,6 @@ func (s *Server) requireMember(w http.ResponseWriter, tripID, userID string) boo
 	return true
 }
 
-// POST /v1/trips/{id}/query  { "question": "..." }
-func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-
-	// 查詢會回傳行程內的條目資料,須限行程成員(owner 或任一角色),擋未登入訪客 / 非成員。
-	if !s.requireMember(w, id, s.userFor(r).ID) {
-		return
-	}
-
-	var body struct {
-		Question string `json:"question"`
-		Lang     string `json:"lang,omitempty"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
-	q := strings.TrimSpace(body.Question)
-	if q == "" {
-		writeErr(w, http.StatusBadRequest, "empty_question", "question 不可為空")
-		return
-	}
-	// 不再由 api 撈 pool:agent 依 assistant.md 自己呼叫 query_entries 查條目
-	// (用 tripID 定位行程),再以 present_entries 呈現相關條目。
-	// Lang 為使用者設定的 LLM 回答語言偏好("zh-TW"/"en"),空字串由下游視為預設(繁體中文)。
-	answer := s.analyzer.Answer(id, q, body.Lang)
-	writeJSON(w, http.StatusOK, answer)
-}
-
-// POST /v1/trips/{id}/assist  { "text": "..." }
-// owner 統一輸入:LLM 自主判斷「記錄事項」或「回答提問」。
-// - 記錄(recorded):把輸入存成訊息,並由 record_entry 產生關聯的 Entry,回 { kind:"recorded", message }。
-// - 回答(answer):不存訊息,回 { kind:"answer", answer }。
-// 只有行程 owner 能用;分析器須支援 Assist(want 引擎),否則回 501。
-func (s *Server) handleAssist(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	user := s.userFor(r)
-
-	// 記事(統一輸入)屬「修改」操作,需 editor 角色(owner 預設即 editor)。
-	if !s.requireEditor(w, id, user.ID) {
-		return
-	}
-
-	assistant, ok := s.analyzer.(llm.Assistant)
-	if !ok {
-		writeErr(w, http.StatusNotImplemented, "assist_unsupported", "目前分析器不支援統一輸入(需 -llm want)")
-		return
-	}
-
-	var body struct {
-		Text string `json:"text"`
-		Lang string `json:"lang,omitempty"`
-		// ClientToolsSessionID:前端 ChatScreen.tsx 另開的第二條 WS 連線
-		// (/internal/clienttools/ws)收到 ack 後拿到的 sessionId(見
-		// clienttools_ws.go handleHello)。帶上這個欄位,want_analyzer.go 的
-		// Assist 才能透過 orch.SetSessionEnvs 把它交給 trip_entry_* 工具,
-		// 讓工具執行時經 ctx.GetSessionEnvs() 找到同一個 WS session、把呼叫
-		// 轉發回瀏覽器分頁(見 clienttools/interaction.go 的 askPage)。
-		// 空字串(前端尚未連上第二條 WS,或這次改動前的舊前端)時,
-		// trip_entry_* 工具呼叫會直接失敗回「no session id on this call」
-		// ——不影響其餘工具(entry_query/entry_delete/geocode 等)照常運作。
-		ClientToolsSessionID string `json:"clientToolsSessionId,omitempty"`
-	}
-	if !decode(w, r, &body) {
-		return
-	}
-	text := strings.TrimSpace(body.Text)
-	if text == "" {
-		writeErr(w, http.StatusBadRequest, "empty_text", "text 不可為空")
-		return
-	}
-
-	// 產生 messageID 供 agent 記錄 context 用。原話(message)不存後端:
-	// 後端只收原話當 LLM 輸入,解析出的 entry 才落庫(emit 同步寫入)。
-	// 原話由前端存進「裝置端 DB」(與 server 隔離,local-first)。
-	msgID := "msg_" + newID()
-
-	// linkMessage 傳 nil:不再於後端寫入 message / 建立 entry↔message 關聯。
-	// 原話與其關聯改由各裝置端自行保存。
-	// Lang 為使用者設定的 LLM 回答語言偏好("zh-TW"/"en"),空字串由下游視為預設(繁體中文)。
-	res := assistant.AssistForSession(user.ID, id, msgID, text, body.Lang, body.ClientToolsSessionID, nil)
-
-	if res.Kind == "error" {
-		writeErr(w, http.StatusInternalServerError, "assist_failed", res.Text)
-		return
-	}
-	if res.Kind == "recorded" {
-		// 記錄了 → entry 已由 emit 同步寫入後端。回傳本次寫入的 entry 給前端,
-		// 前端據此更新顯示,並把對應原話存進自己的裝置端 DB。
-		s.hub.Broadcast(id, map[string]any{"event": "entries_updated", "tripID": id})
-		writeJSON(w, http.StatusOK, map[string]any{
-			"kind":     "recorded",
-			"text":     text,
-			"entryIDs": res.EntryIDs,
-		})
-		return
-	}
-
-	// 回答了 → 不存訊息,只回答案;若 agent 用 present_entries 輸出了條目、
-	// 或用 recommend_nearby 查到了候選景點,一併回給前端掛在該則訊息下方顯示。
-	entries := res.Entries
-	if entries == nil {
-		entries = []llm.AssistEntry{}
-	}
-	places := res.RecommendedPlaces
-	if places == nil {
-		places = []llm.AssistPlace{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"kind":              "answer",
-		"answer":            res.Text,
-		"entries":           entries,
-		"recommendedPlaces": places,
-	})
-}
-
 // GET /v1/trips/{id}/entries — 行程的日期/事件條目(LLM 從訊息解析,關聯訊息)。
 func (s *Server) handleListEntries(w http.ResponseWriter, r *http.Request) {
 	s.writeEntries(w, r.PathValue("id"))
@@ -640,7 +499,7 @@ type tripEntryBody struct {
 
 // POST /v1/trips/{id}/entries — 前端旅程清單「儲存」新增一筆(不含 id,由後端產生)。
 // body 帶 TripEntry 格式(title/date/time/note);成功回傳含新產生 id 的完整 tripEntryBody。
-// 屬「修改」操作,需 editor 角色(owner 預設即 editor,同 handleAssist 的權限慣例)。
+// 屬「修改」操作,需 editor 角色(owner 預設即 editor,同其餘寫入端點的權限慣例)。
 func (s *Server) handleCreateTripEntry(w http.ResponseWriter, r *http.Request) {
 	tripID := r.PathValue("id")
 	if !s.requireEditor(w, tripID, s.userFor(r).ID) {

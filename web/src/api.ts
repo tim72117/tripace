@@ -9,10 +9,8 @@ import type {
   Entry,
   Me,
   Member,
-  SearchAnswer,
   APIErrorBody,
 } from './types'
-import { getAssistLang } from './assistLang'
 import type { TripEntry } from './clienttools/tripEntryTools'
 
 // 一筆 API 交易的完整紀錄,debug panel 與 console log 都靠它。
@@ -313,19 +311,6 @@ export function setMemberRole(
   ).then((r) => r.members)
 }
 
-export function semanticQuery(
-  cfg: ClientConfig,
-  tripID: string,
-  question: string,
-) {
-  return request<SearchAnswer>(
-    cfg,
-    'POST',
-    `/v1/trips/${encodeURIComponent(tripID)}/query`,
-    { question, lang: getAssistLang() },
-  )
-}
-
 // present_entries 工具輸出、要展示給使用者的條目(不含 id/messageID)。
 export interface PresentedEntry {
   title: string
@@ -343,32 +328,6 @@ export interface AssistPlace {
   lat: number
   lng: number
   primaryType: string
-}
-
-// owner 統一輸入:LLM 自主判斷記錄事項或回答提問。
-// recorded:原話不存後端,回 text(原話,前端存進裝置端 DB)+ entryIDs(新寫入條目);
-//   前端據此重拉 entries 顯示,並把原話存入裝置 DB。
-// answer:回 answer + entries(present_entries 輸出,可空)+ recommendedPlaces
-//   (recommend_nearby 輸出,可空)——兩者都掛在觸發它們的那則答案訊息底下顯示,
-//   而非全域彈出浮層(取代先前透過 WS recommended_places 事件的做法)。
-export type AssistResult =
-  | { kind: 'recorded'; text: string; entryIDs: string[] }
-  | { kind: 'answer'; answer: string; entries: PresentedEntry[]; recommendedPlaces: AssistPlace[] }
-
-// clientToolsSessionId:ChatScreen.tsx 另開的第二條 clienttools WS 連線
-// (/internal/clienttools/ws)收到 ack 後拿到的 sessionId,讓後端的
-// trip_entry_add/trip_entry_update 工具(取代 entry_add/entry_update,見
-// server/internal/llm/assistant_agent.go)能透過這個 id 找到同一條 WS 連線、
-// 把工具呼叫轉發回這個分頁執行(見 server/internal/clienttools/interaction.go)。
-// undefined(第二條連線尚未連上)時後端仍會照常處理其餘工具,只有
-// trip_entry_* 這幾個會失敗。
-export function assist(cfg: ClientConfig, tripID: string, text: string, clientToolsSessionId?: string) {
-  return request<AssistResult>(
-    cfg,
-    'POST',
-    `/v1/trips/${encodeURIComponent(tripID)}/assist`,
-    { text, lang: getAssistLang(), clientToolsSessionId },
-  )
 }
 
 // 取行程的 Entry 條目(LLM record_entry 工具處理後的結果)。
@@ -757,14 +716,3 @@ export function fetchPublicView(baseURL: string, token: string) {
     })
 }
 
-// 公開頁訪客送訊息（editable 連結專用）。
-export function publicAssist(baseURL: string, token: string, text: string) {
-  return fetch(`${baseURL}/v1/public/${encodeURIComponent(token)}/assist`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, lang: getAssistLang() }),
-  }).then(async (r) => {
-    if (!r.ok) throw new Error(`HTTP ${r.status}`)
-    return r.json()
-  })
-}

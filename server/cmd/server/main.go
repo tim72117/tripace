@@ -16,11 +16,8 @@ import (
 	"github.com/tim72117/tripace/internal/apigateway"
 	"github.com/tim72117/tripace/internal/auth"
 	"github.com/tim72117/tripace/internal/geo"
-	"github.com/tim72117/tripace/internal/llm"
 	"github.com/tim72117/tripace/internal/model"
 	"github.com/tim72117/tripace/internal/store"
-	"github.com/tim72117/tripace/internal/toolschema"
-	"github.com/tim72117/tripace/internal/wanttools"
 
 	"github.com/joho/godotenv"
 )
@@ -39,9 +36,6 @@ func main() {
 	seed := flag.Bool("seed", true, "資料庫為空時寫入示範資料")
 	jwtSecret := flag.String("jwt-secret", "dev-secret-change-me", "JWT 簽章金鑰")
 	devMode := flag.Bool("dev", true, "開發模式:Apple token 不驗簽章")
-	llmKind := flag.String("llm", "want", "分析器:want(真實 LLM)| mock(假 LLM,送出觸發預設情境,供 web 操作)")
-	clientToolsPOC := flag.Bool("clienttools-poc", false, "是否啟用「LLM 呼叫前端 tool」試做(POC,/internal/clienttools/*);預設不啟用,端點維持回 503。僅在 -llm=want 下有意義(需要 want provider 已初始化)")
-	clientToolsDir := flag.String("clienttools-dir", "tools", "clienttools POC 的工具定義目錄(*.yaml),相對路徑同 -db 慣例,相對於執行時的工作目錄")
 	// admin:是否在這支 binary 裡一併掛載管理後台路由(/admin/*)——低耦合
 	// 的「可選合併」開關,見 static_admin.go 開頭的說明。預設關閉,維持
 	// 這支主服務 binary 原本不含 adminauth/adminconsole 依賴的既有行為;
@@ -134,108 +128,8 @@ func main() {
 		}
 	}
 
-	// 分析器:預設 want LLM 引擎;-llm mock 改用假分析器(供 web 實際操作,免連 LLM)。
-	var analyzer llm.Analyzer
-	if *llmKind == "mock" {
-		// mock 不接真 LLM:送出觸發預設情境,直接用 store 寫 entry(走相同的
-		// InsertEntry 落庫路徑)。不需 BindSink/BindStore(那是 want 工具用的)。
-		analyzer = llm.NewMock(st)
-		log.Printf("LLM 分析器: mock(假 LLM,送出觸發預設情境)")
-	} else {
-		// want LLM 引擎(WantPool,per-session orchestrator 外殼)。初始化失敗直接 fatal。
-		pool, err := llm.NewWantPool()
-		if err != nil {
-			log.Fatalf("初始化 want 分析器失敗: %v", err)
-		}
-		analyzer = pool
-		// 注入條目持久化:record_entry 工具解析出的條目同步寫進 DB(entry 為主體,
-		// 獨立寫入),回傳新 entry ID。
-		wanttools.BindSink(func(tripID string, e wanttools.RecordedEntry) (string, error) {
-			id := "ent_" + randHex()
-			// kind 空字串存 nil(model.Entry.Kind 為 *string),非空才帶指標。
-			var kind *string
-			if e.Kind != "" {
-				kind = &e.Kind
-			}
-			err := st.InsertEntry(model.Entry{
-				ID:        id,
-				TripID:    tripID,
-				Title:     e.Title,
-				Start:     e.Start,
-				StartTime: e.StartTime,
-				End:       e.End,
-				EndTime:   e.EndTime,
-				Kind:      kind,
-				CreatedAt: nowUTC(),
-			})
-			return id, err
-		})
-		// 提供 query_entries 工具查詢用的 store:agent 提問時自己按時間範圍查條目。
-		wanttools.BindStore(st)
-		log.Printf("LLM 分析器: want 引擎(WantPool)")
-	}
-
 	signer := auth.NewSigner(*jwtSecret, 30*24*time.Hour)
-	srv := api.New(st, analyzer, signer, *devMode)
-
-	// trip_entry_* 工具註冊(clienttools.RegisterApp,經由 llm.NewClientToolsAnalyzer)
-	// 過去只在 -clienttools-poc 這個試做開關底下才會執行;但現在正式 assistant
-	// role(assistant_agent.go)的 Tools 白名單已經改用 trip_entry_add/
-	// trip_entry_update 取代 entry_add/entry_update,是正式對話會用到的東西了,
-	// 不能再綁死在一個語意上是「試做開關」的 flag 底下——若使用者只帶 -llm=want
-	// 沒帶 -clienttools-poc,assistant role 白名單裡列的 trip_entry_* 工具會
-	// 在 want 的全域 registry 裡完全不存在,LLM 一旦嘗試呼叫就會失敗。
-	// 故這裡改成:只要 -llm=want(不論 -clienttools-poc 是否開啟),就一定
-	// 執行這段註冊 + EnableClientTools(掛 /internal/clienttools/* 端點,見
-	// clienttools_ws.go)——ChatScreen.tsx 的第二條 WS 連線需要這個端點存在,
-	// 才能把 assistant 對話的 sessionID 註冊進 clienttools.RegisterAsker
-	// (見 want_analyzer.go Assist/Answer 的 SetSessionEnvs 說明)。
-	// -clienttools-poc 本身保留(不拿掉、不改名),但不再是「工具有沒有被註冊」
-	// 的唯一開關;它目前只影響是否印出下面這行試做專屬的啟動 log。
-	// 任何一步失敗都直接 log.Fatalf,不靜默略過——否則伺服器會「看起來啟動
-	// 成功」但 /internal/clienttools/* 端點其實還是回 503(EnableClientTools
-	// 沒被呼叫時的行為),或 assistant 對話呼叫 trip_entry_add 時才第一次
-	// 發現工具不存在,造成誤判。
-	if *llmKind == "want" {
-		// NewClientToolsAnalyzer 內部假設 want provider 已經初始化過一次(見
-		// clienttools_agent.go 的文件註解:它不會自己呼叫 wantorch.SetupWith,
-		// 第一次 Submit 時若 GlobalEngine 還是 nil 會 panic)。此處已在
-		// -llm=want 分支內(NewWantPool 已完成 provider 初始化),條件成立。
-		registry, err := toolschema.NewRegistry(*clientToolsDir)
-		if err != nil {
-			log.Fatalf("載入 clienttools 工具定義目錄 %s 失敗: %v", *clientToolsDir, err)
-		}
-		app, ok := registry.Get("clienttools")
-		if !ok {
-			log.Fatalf("clienttools 工具定義目錄 %s 底下找不到 appId=clienttools 的 App", *clientToolsDir)
-		}
-		// 註冊 trip_entry_add/trip_entry_delete/trip_entry_update/trip_entry_list
-		// 進 want 的全域 tool registry(clienttools.RegisterApp,在
-		// NewClientToolsAnalyzer 內部呼叫),讓 assistant role 的白名單真的能
-		// 呼叫到這些工具,同時保留 clienttoolsRole 這條獨立 orchestrator
-		// 供 DebugApp.tsx 的既有試做頁面沿用(不受這次改動影響)。
-		clientToolsAnalyzer := llm.NewClientToolsAnalyzer(app)
-		srv.EnableClientTools(registry, clientToolsAnalyzer)
-		if *clientToolsPOC {
-			log.Printf("clienttools POC 試做頁面已啟用(/internal/clienttools/*,工具目錄=%s)", *clientToolsDir)
-		} else {
-			log.Printf("trip_entry_* 工具已註冊(供正式 assistant 對話使用;/internal/clienttools/* 端點同時可用,工具目錄=%s)", *clientToolsDir)
-		}
-	} else if *clientToolsPOC {
-		// -clienttools-poc 帶了但 -llm 不是 want:過去這裡會 log.Fatalf
-		// (clienttools POC 需要已初始化的 want provider)。這個檢查繼續保留
-		// ——mock 分析器不會建立任何 want provider,靜默忽略這個 flag 只會讓
-		// 使用者以為試做已啟用,實際上呼叫時才 panic。
-		log.Fatalf("clienttools POC 需要 -llm=want(已初始化的 want provider);目前 -llm=%s", *llmKind)
-	}
-
-	wanttools.BindNotify(srv.NotifyEntriesUpdated)
-	wanttools.BindEntryUpdating(srv.NotifyEntryUpdating)
-	wanttools.BindAskUser(srv.NotifyAskUser)
-	wanttools.BindAskChoice(srv.NotifyAskChoice)
-	wanttools.BindTaskCreated(srv.NotifyTaskCreated)
-	wanttools.BindTaskEntryReady(srv.NotifyTaskEntryReady)
-	wanttools.BindEntriesLoaded(srv.NotifyEntriesLoaded)
+	srv := api.New(st, signer, *devMode)
 
 	dbKind := "sqlite:" + dsn
 	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
@@ -247,6 +141,13 @@ func main() {
 	mux.Handle("/v1/", srv.Routes())
 	mux.Handle("/internal/", srv.Routes())
 	mux.Handle("/health", srv.Routes())
+	// /onagent/ — onagent 平台 BackendDispatch 主動打過來的端點,見
+	// internal/api/onagent_dispatch.go 開頭說明。跟上面三個前綴一樣要明確
+	//轉給 srv.Routes(),否則會落到下方 staticHandler()的 SPA fallback
+	// (對任何未知路徑都回 200 + index.html,表面上「有回應」但完全沒有
+	// 真正處理請求——這正是 server/tools/onagent-tools.yaml 開頭警告過的
+	// 那個陷阱,這次在新增這個路由時實際踩到)。
+	mux.Handle("/onagent/", srv.Routes())
 
 	// 管理後台(/admin/api/*)預設拆分成獨立的 cmd/adminserver binary/
 	// Cloud Run 服務(見 server/cmd/adminserver/main.go),那條部署路徑

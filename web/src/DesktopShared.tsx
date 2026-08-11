@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, Check } from 'lucide-react'
 import type { AssistLang } from './assistLang'
 import { RecommendedPlacesList, RecommendedPlacesRow, FAKE_RECOMMENDED_PLACES } from './RecommendedPlaces'
-import { ClientToolsDemo } from './clienttools/bridge/ClientToolsDemo'
 import { OnagentBridgeDemo } from './clienttools/OnagentBridgeDemo'
 import langSelectStyles from './LangSelect.module.css'
 
@@ -15,13 +14,13 @@ import langSelectStyles from './LangSelect.module.css'
 
 // PanelMode:桌面版 side panel 目前顯示的內容;null 代表收合(主區全寬)。
 // 'demo-cards'/'demo-row':試做用的推薦景點呈現方式(假資料,見
-// RecommendedPlaces.tsx)。'demo-clienttools'/'demo-onagent':「LLM 呼叫
-// 前端 tool」試做的兩條資料流(前者走 tripace 自己的
-// ClientToolsBridge/clienttools_ws.go,後者走 onagent 平台,見
-// clienttools/ClientToolsDemo.tsx / OnagentBridgeDemo.tsx 的說明)。這 4 個
-// 模式各自由獨立的 DEMO_*_ENABLED 編譯時 feature flag 控制是否出現(見
-// 下方說明),不是綁在同一個開關底下。(原本還有 'demo-map'——推薦景點
-// 地圖試做,見 RecommendedPlacesMap.tsx——已整個移除,含入口與實作。)
+// RecommendedPlaces.tsx)。'demo-onagent':「LLM 呼叫前端 tool」走 onagent
+// 平台的試做(見 clienttools/OnagentBridgeDemo.tsx 的說明;原本另有一條走
+// tripace 自家 want 框架的 ClientToolsBridge/clienttools_ws.go 路徑,隨
+// want 對話系統整套移除已一併刪除)。這幾個模式各自由獨立的 DEMO_*_ENABLED
+// 編譯時 feature flag 控制是否出現(見下方說明),不是綁在同一個開關底下。
+// (原本還有 'demo-map'——推薦景點地圖試做,見 RecommendedPlacesMap.tsx——
+// 已整個移除,含入口與實作。)
 // 'trips'/'timeline'/'pace'/'geo-outline':正式導覽項目,所有使用者都能在
 // rail 上看到(依各自的 *_ENABLED flag),渲染邏輯直接使用 DesktopTripList/
 // MultiTrackTimeline/PaceChart+PaceRouteMap、GeoCandidateSidebar/
@@ -29,7 +28,7 @@ import langSelectStyles from './LangSelect.module.css'
 // PhoneNavDrawer.tsx,不屬於這組共用的 demo 面板(DemoPanelContent)。
 export type PanelMode =
   | 'trips' | 'timeline' | 'pace' | 'geo-outline'
-  | 'demo-cards' | 'demo-row' | 'demo-clienttools' | 'demo-onagent'
+  | 'demo-cards' | 'demo-row' | 'demo-onagent'
   | null
 
 // GEO_OUTLINE_ENABLED:地理輪廓底圖(規劃分頁)功能開關——目前是唯一
@@ -52,18 +51,18 @@ export const GEO_OUTLINE_ENABLED = import.meta.env.VITE_FEATURE_GEO_OUTLINE !== 
 export const TIMELINE_ENABLED = import.meta.env.VITE_FEATURE_TIMELINE === 'true'
 export const PACE_ENABLED = import.meta.env.VITE_FEATURE_PACE === 'true'
 
-// DEMO_CARDS_ENABLED/DEMO_ROW_ENABLED/DEMO_CLIENTTOOLS_ENABLED/
-// DEMO_ONAGENT_ENABLED/DEBUG_PANEL_ENABLED:原本綁在網址參數 ?demo(見
-// main.tsx 的 isDemo)底下的試做用導覽項目(推薦景點卡片/橫滑兩種呈現
-// 方式、ClientToolsBridge/onagent 兩條 LLM 呼叫前端 tool 資料流試做、
-// API/WS 狀態除錯面板),改成跟 TIMELINE_ENABLED/PACE_ENABLED 同一種編譯
-// 時 feature flag 機制——各自獨立開關而非沿用單一 isDemo 布林值,是因為
-// 部署時可能只想開放其中幾項給特定環境驗證,不是全開或全關兩種選擇。同
-// TIMELINE_ENABLED/PACE_ENABLED,預設關閉,只在明確設為字串 "true" 時
-// 才啟用。
+// DEMO_CARDS_ENABLED/DEMO_ROW_ENABLED/DEMO_ONAGENT_ENABLED/
+// DEBUG_PANEL_ENABLED:原本綁在網址參數 ?demo(見 main.tsx 的 isDemo)底下
+// 的試做用導覽項目(推薦景點卡片/橫滑兩種呈現方式、onagent 平台的 LLM
+// 呼叫前端 tool 資料流試做、API/WS 狀態除錯面板),改成跟
+// TIMELINE_ENABLED/PACE_ENABLED 同一種編譯時 feature flag 機制——各自獨立
+// 開關而非沿用單一 isDemo 布林值,是因為部署時可能只想開放其中幾項給特定
+// 環境驗證,不是全開或全關兩種選擇。同 TIMELINE_ENABLED/PACE_ENABLED,
+// 預設關閉,只在明確設為字串 "true" 時才啟用。(原本還有
+// DEMO_CLIENTTOOLS_ENABLED——tripace 自家 want 框架 ClientToolsBridge 的
+// 試做入口——隨 want 對話系統整套移除已一併刪除。)
 export const DEMO_CARDS_ENABLED = import.meta.env.VITE_FEATURE_DEMO_CARDS === 'true'
 export const DEMO_ROW_ENABLED = import.meta.env.VITE_FEATURE_DEMO_ROW === 'true'
-export const DEMO_CLIENTTOOLS_ENABLED = import.meta.env.VITE_FEATURE_DEMO_CLIENTTOOLS === 'true'
 export const DEMO_ONAGENT_ENABLED = import.meta.env.VITE_FEATURE_DEMO_ONAGENT === 'true'
 export const DEBUG_PANEL_ENABLED = import.meta.env.VITE_FEATURE_DEBUG_PANEL === 'true'
 
@@ -78,7 +77,6 @@ const PANEL_MODES = [
   ...(GEO_OUTLINE_ENABLED ? (['geo-outline'] as const) : []),
   ...(DEMO_CARDS_ENABLED ? (['demo-cards'] as const) : []),
   ...(DEMO_ROW_ENABLED ? (['demo-row'] as const) : []),
-  ...(DEMO_CLIENTTOOLS_ENABLED ? (['demo-clienttools'] as const) : []),
   ...(DEMO_ONAGENT_ENABLED ? (['demo-onagent'] as const) : []),
 ] as const
 
@@ -133,7 +131,6 @@ export function DemoPanelContent({
       </div>
     )
   }
-  if (mode === 'demo-clienttools') return <ClientToolsDemo />
   return <OnagentBridgeDemo />
 }
 

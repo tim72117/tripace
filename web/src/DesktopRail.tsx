@@ -1,5 +1,5 @@
 import {
-  List, Sparkles, GalleryHorizontal, Layers, Wrench, Radio, Activity, Route,
+  List, Sparkles, GalleryHorizontal, Layers, Radio, Activity, Route,
 } from 'lucide-react'
 import { Timeline } from 'lucide-react'
 import type { ClientConfig } from './api'
@@ -7,7 +7,7 @@ import type { User } from './types'
 import { DesktopUserMenu } from './DesktopUserMenu'
 import {
   type PanelMode, GEO_OUTLINE_ENABLED, TIMELINE_ENABLED, PACE_ENABLED,
-  DEMO_CARDS_ENABLED, DEMO_ROW_ENABLED, DEMO_CLIENTTOOLS_ENABLED, DEMO_ONAGENT_ENABLED, DEBUG_PANEL_ENABLED,
+  DEMO_CARDS_ENABLED, DEMO_ROW_ENABLED, DEMO_ONAGENT_ENABLED, DEBUG_PANEL_ENABLED,
 } from './DesktopShared'
 
 // DesktopRail:桌面版最左側的導覽圖示列——從 DesktopLayout.tsx 抽出獨立
@@ -100,7 +100,7 @@ export function DesktopRail({
             (見 DesktopShared.tsx 對這幾個常數的說明),取代原本綁在網址參數
             ?demo 底下的單一 isDemo 開關——分隔線只在至少一項開啟時出現,
             避免試做項目跟正式功能混在一起難以分辨。 */}
-        {(DEMO_CARDS_ENABLED || DEMO_ROW_ENABLED || DEMO_CLIENTTOOLS_ENABLED || DEMO_ONAGENT_ENABLED || DEBUG_PANEL_ENABLED) && (
+        {(DEMO_CARDS_ENABLED || DEMO_ROW_ENABLED || DEMO_ONAGENT_ENABLED || DEBUG_PANEL_ENABLED) && (
           <div className="desktop-rail-divider" />
         )}
         {DEMO_CARDS_ENABLED && (
@@ -119,15 +119,6 @@ export function DesktopRail({
             title="推薦景點橫滑(試做)"
           >
             <GalleryHorizontal size={20} strokeWidth={1.8} />
-          </button>
-        )}
-        {DEMO_CLIENTTOOLS_ENABLED && (
-          <button
-            className={`desktop-rail-btn desktop-rail-btn-demo${panelMode === 'demo-clienttools' ? ' active' : ''}`}
-            onClick={() => onSelect('demo-clienttools')}
-            title="LLM 呼叫前端 tool 試做(ClientToolsBridge)"
-          >
-            <Wrench size={20} strokeWidth={1.8} />
           </button>
         )}
         {DEMO_ONAGENT_ENABLED && (

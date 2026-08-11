@@ -9,14 +9,9 @@ import {
   listMessages,
   listMessageTripListKeys,
   replaceTripBatch,
-  saveMessage,
-  saveMessageRecommendedPlaces,
-  saveMessageTripListKeys,
 } from './deviceDB'
 import { ErrorBanner, errMsg, isSubmitEnter } from './AppCommon'
 import type { TaskPlaceholder } from './Timeline'
-import { ClientToolsBridge } from './clienttools/bridge/ClientToolsBridge'
-import { defaultClientTools } from './clienttools/tools'
 import type { TripBatches, TripEntry } from './clienttools/tripEntryTools'
 import { MembersScreen } from './trip/MembersScreen'
 import { ShareModal } from './trip/ShareModal'
@@ -24,6 +19,7 @@ import { TripMenu } from './trip/TripMenu'
 import { ASSISTANT_ID, ENTRY_QUERY_BATCH_KEY, type ChatMessage } from './chatTypes'
 import { AskUserSheet, AskChoiceSheet, type AskChoiceOption } from './AskSheets'
 import { MessageBubble } from './MessageBubble'
+import { useOnagentChatBridge } from './useOnagentChatBridge'
 import styles from './ChatScreen.module.css'
 
 // mergeTripEntriesById 把 incoming 依 id 合併進 base:id 已存在於 base 就用
@@ -39,26 +35,6 @@ function mergeTripEntriesById(base: TripEntry[], incoming: TripEntry[]): TripEnt
   const baseIds = new Set(base.map((e) => e.id))
   const additions = incoming.filter((i) => !baseIds.has(i.id))
   return [...next, ...additions]
-}
-
-// changedBatchKeys 比較 before/after 兩份 TripBatches 快照,回傳「內容真的
-// 不同」的 key 清單(不只是物件參照不同——同一個 key 若剛好被覆寫成內容相同
-// 的新陣列,不需要視為變化)。用於 send() 判斷這一輪工具呼叫具體動到了哪些
-// 批次(見下方 send() 的 tripListBefore 比對邏輯),取代先前「只知道有沒有
-// 變化」的單一參照比對。用 JSON.stringify 比較內容而非逐欄位比對——
-// TripEntry 欄位單純(全字串),序列化後直接比字串足夠準確,也不需要為此
-// 另外寫一個逐筆 deep-equal helper。
-function changedBatchKeys(before: TripBatches, after: TripBatches): string[] {
-  const keys = new Set([...Object.keys(before), ...Object.keys(after)])
-  const changed: string[] = []
-  for (const key of keys) {
-    const b = before[key]
-    const a = after[key]
-    if (b !== a && JSON.stringify(b ?? []) !== JSON.stringify(a ?? [])) {
-      changed.push(key)
-    }
-  }
-  return changed
 }
 
 // DesktopTimelineMirror:桌面版時間軸所需的資料快照,由 ChatScreen 透過
@@ -144,22 +120,22 @@ export function ChatScreen({
   // 對應 entry_add(帶 taskID)完成後由 task_entry_ready 移除。
   const [taskPlaceholders, setTaskPlaceholders] = useState<TaskPlaceholder[]>([])
   const [err, setErr] = useState<string | null>(null)
-  const [sending, setSending] = useState(false)
-  // clienttools 技術可行性驗證:第二條獨立連線(/internal/clienttools/ws),
-  // 讓正式對話的 assistant LLM 改呼叫 trip_entry_add/trip_entry_update
-  // (取代原本直接寫 Postgres 的 entry_add/entry_update,見
-  // server/internal/llm/assistant_agent.go)時,有個瀏覽器分頁能實際執行、
-  // 看到結果。這份清單(clientToolsBatches)是全新、獨立的一份前端記憶體
-  // 資料——完全不是上面的 entries state,依 ClientToolsBridge 既有的
-  // ToolContext 設計(同 ClientToolsDemo.tsx 的既有試做頁面)。這次刻意不要求
-  // 把它渲染進時間軸(MultiTrackTimeline)——時間軸的渲染邏輯與資料來源
-  // (entries state)完全不受這條連線影響,見下方 clientToolsSessionId 傳給
-  // api.assist 之外,沒有任何程式碼路徑讓這條連線碰到
-  // entries/updatingEntryIDs/taskPlaceholders。
+  // onagentMode:固定為 true——ChatScreen 的唯一推論路徑是 onagent
+  // WebSocket(useOnagentChatBridge)。tripace 自家 want 框架(send()/
+  // api.assist()/assistant_agent.go/ClientToolsBridge 等)已隨這次改動整套
+  // 移除,不再存在於專案裡(見 docs/chatscreen-onagent-migration-gap-
+  // 2026-08-11.md 的範圍決定與後續遷移紀錄)。保留常數命名而非直接把下面
+  // 所有分支寫死,是讓依賴 onagentMode 的條件判斷維持原樣、可讀性不變。
+  const onagentMode = true
+  // clientToolsBatches:onagent 平台透過 trip_entry_add/trip_entry_update 等
+  // client tool(見 web/src/clienttools/tools/、useOnagentChatBridge.ts)寫入
+  // 的旅程清單資料——完全不是上面的 entries state。這次刻意不要求把它渲染
+  // 進時間軸(MultiTrackTimeline)——時間軸的渲染邏輯與資料來源(entries
+  // state)完全不受這份資料影響。
   //
   // 多批次(key)支援:旅程清單不再是單一一份,而是可能同時存在多批獨立清單
   // (見 web/src/clienttools/tripEntryTools.ts 的 TripBatches 型別、
-  // server/tools/clienttools.yaml「多批次(key)支援」)。clientToolsBatches
+  // server/tools/onagent-tools.yaml「多批次(key)支援」)。clientToolsBatches
   // 用一般物件(Record<key, TripEntry[]>)而非 Map:React state 用 Map 時每次
   // 更新都要手動 new Map(prev) 再逐一搬值處理 immutability,一般物件配合展開
   // 運算子({ ...prev, [key]: next })寫法更直接,且這裡不需要 Map 的鍵排序
@@ -168,44 +144,29 @@ export function ChatScreen({
   // 持久化:比照推薦景點(recommendedPlaces)的模式,web/src/deviceDB.ts 的
   // trip_batches 表(schema 有 key 欄位,見該處宣告的說明)能忠實表示多批次
   // 資料——load() 用 listAllTripBatches(trip.id) 一次撈回整個行程所有
-  // 批次當初始值(含 ENTRY_QUERY_BATCH_KEY),send() 偵測到某些 key 的內容
-  // 有變化時逐一呼叫 replaceTripBatch 落地(見下方 send() 的 changedKeys
-  // 處理)。重新整理頁面後,LLM 透過 trip_entry_add/update 建立的批次資料
-  // 現在能正確還原,不再只靠 WS 重連後 ClientToolsBridge 補資料。
+  // 批次當初始值(含 ENTRY_QUERY_BATCH_KEY)。重新整理頁面後,onagent 透過
+  // trip_entry_add/update 建立的批次資料能正確還原。
   //
-  // clientToolsSessionId:連線 ack 後拿到的 sessionId,send() 呼叫 api.assist
-  // 時一併帶上,讓後端 trip_entry_* 工具能找到這條連線並轉發呼叫執行(見
-  // server/internal/llm/want_analyzer.go Assist 的 SetSessionEnvs 說明)。
-  // 只用 ref(不用 state):真正驅動行為的只有 send() 讀的
-  // clientToolsSessionIdRef.current(需要「呼叫當下最新值」,見下方 send()
-  // 裡的說明);連線狀態(status)/sessionId 曾經給一個常駐面板顯示用,該面板
-  // 已移除(旅程清單改掛訊息下方,見 MessageBubble 的 TripListTable),兩個
-  // state 因此完全沒有讀取點——不要用 data-* 屬性等方式硬留著只為了消除
-  // noUnusedLocals,沒有用途就直接刪,需要時再加回來。
   const [clientToolsBatches, setClientToolsBatches] = useState<TripBatches>({})
-  const clientToolsSessionIdRef = useRef<string | null>(null)
   // clientToolsBatchesRef:clientToolsBatches 的唯一真相來源(單一資料,不是
-  // state 的鏡射快取)。ClientToolsBridge 建構子現在直接收 getAllBatches/
-  // setAllBatches 兩個函式(見下方建立 bridge 處),讀寫都指向這個 ref——
-  // bridge 內部不再自己持有 allBatches 副本(先前的設計是 bridge 自存一份、
-  // 透過 onEntriesChange 回呼通知外部,但 load() 讀裝置端 DB 還原、
-  // entries_loaded WS 事件、TripListTable 刪除按鈕這幾條路徑都是直接改
-  // ChatScreen 這裡的 state,不會同步進 bridge 那份獨立副本,曾造成
-  // trip_entry_list 查到過期資料的 bug)。
+  // state 的鏡射快取)。useOnagentChatBridge 直接收 getAllBatches/
+  // setAllBatches 兩個函式(見下方 onagentBridge 建立處),讀寫都指向這個
+  // ref——onagent bridge 不自己持有 allBatches 副本,避免 load() 讀裝置端
+  // DB 還原、entries_loaded WS 事件、TripListTable 刪除按鈕這幾條路徑
+  // 各自改 state 卻沒同步進獨立副本,曾造成查到過期資料的 bug。
   //
   // 用 setClientToolsBatchesBoth(見下方)這個唯一寫入口統一同步 ref 與
   // state,而非用 useEffect 鏡射 state 到 ref——useEffect 要等 render 完成
-  // 才跑,若同一輪(如 api.assist 一次推論中連續呼叫 trip_entry_add 兩次)
-  // bridge 連續呼叫 setAllBatches,第二次呼叫時 ref 可能還沒被前一次的
-  // useEffect 同步到,读到舊值。ref 由 setClientToolsBatchesBoth 同步且立即
-  // 更新,不依賴 React 渲染週期。
+  // 才跑,若同一輪內連續呼叫兩次 trip_entry_add,第二次呼叫時 ref 可能還沒被
+  // 前一次的 useEffect 同步到,讀到舊值。ref 由 setClientToolsBatchesBoth
+  // 同步且立即更新,不依賴 React 渲染週期。
   const clientToolsBatchesRef = useRef<TripBatches>({})
   // setClientToolsBatchesBoth:更新 clientToolsBatches 唯一的寫入口,參數
   // 語意比照 React setState(可傳值或 updater 函式),內部同時同步 ref(立即)
   // 與觸發 setClientToolsBatches(讓畫面 re-render)。load()、entries_loaded
-  // 事件處理、deleteTripBatchEntries、bridge 的 setAllBatches 全部改用這個
-  // 函式,不再直接呼叫 setClientToolsBatches——確保 ref 永遠跟 state 同步,
-  // 不會有任何寫入點漏掉更新 ref。
+  // 事件處理、deleteTripBatchEntries、onagentBridge 的 setAllBatches 全部
+  // 改用這個函式,不再直接呼叫 setClientToolsBatches——確保 ref 永遠跟
+  // state 同步,不會有任何寫入點漏掉更新 ref。
   const setClientToolsBatchesBoth = useCallback(
     (updater: TripBatches | ((prev: TripBatches) => TripBatches)) => {
       const next = typeof updater === 'function' ? updater(clientToolsBatchesRef.current) : updater
@@ -214,21 +175,6 @@ export function ChatScreen({
     },
     [],
   )
-  // queriedBatchKeysRef：這一輪 send()/api.assist() 期間被 trip_entry_list
-  // 查詢過的 key 集合(見 ClientToolsBridge.ts 的 onBatchQueried callback)。
-  // trip_entry_list 是純讀取工具,不會改動 clientToolsBatches 的內容,
-  // changedBatchKeys 的「內容比對」機制對它完全偵測不到——故用這個獨立的 ref
-  // 直接記錄「被查過的 key」,不透過內容比對。用 Set 而非陣列:同一輪可能對
-  // 同一個 key 查詢多次(例如分頁查詢同一批),不需要重複記錄。用 ref 而非
-  // state:純粹是 send() 這個 async 函式呼叫期間暫存的中介資料,不需要觸發
-  // render,同 clientToolsSessionIdRef/clientToolsBatchesRef 的用 ref 慣例。
-  // 生命週期:send() 呼叫 api.assist() 前清空,呼叫期間由 ClientToolsBridge
-  // 的 onBatchQueried callback 持續累積(trip_entry_list 在 WS session 裡是
-  // 阻塞式執行,保證在 api.assist() 的 HTTP 回應返回之前完成,同 tripListBefore
-  // 註解處引用的既有時序保證),api.assist() 返回後讀取、跟 changedBatchKeys
-  // 算出的 key 合併存進 tripListTriggered,合併後即可讓下一輪 send() 重新清空
-  // ——不需要額外清空動作，因為下一輪 send() 開頭就會 clear()。
-  const queriedBatchKeysRef = useRef<Set<string>>(new Set())
   // 成員管理在行程內開啟(對齊 iOS App 的聊天頁右上角入口)。
   const [showMembers, setShowMembers] = useState(false)
   // 分享彈窗
@@ -457,55 +403,6 @@ export function ChatScreen({
     return () => ws.close()
   }, [cfg.baseURL, cfg.token, trip.id])
 
-  // clienttools 技術可行性驗證專用的第二條連線(見上方 clientToolsBatches 的
-  // 說明)。只有 owner 會呼叫 send()/api.assist(見下方),故只在 isOwner 時
-  // 建立這條連線,對齊既有第一條 WS 也只在 owner 情境下才有實質作用的前提
-  // ——member 走 ask()/semanticQuery,不會用到 sessionId。
-  // 這條連線目前沿用 /internal/clienttools/ws(掛在 internalAuth 底下,未帶
-  // 使用者身分驗證),是本次任務明確接受的已知安全缺口,留待後續處理。
-  useEffect(() => {
-    if (!isOwner) return
-    const bridge = new ClientToolsBridge(
-      defaultClientTools,
-      {
-        // 連線狀態目前沒有任何 UI 讀取(見上方宣告處的說明),不需要接住。
-        onStatusChange: () => {},
-        onToolNamesChange: () => {},
-        // trip_entry_list(純讀取,不改動 allBatches)透過這個平行、獨立的
-        // 通知口子回報「剛查詢了這個 key」（見 ClientToolsBridge.ts
-        // onBatchQueried 型別定義處的說明）——累積進 queriedBatchKeysRef，
-        // 供 send() 在 api.assist() 返回後跟 changedBatchKeys 算出的 key
-        // 合併進 tripListTriggered（見上方 queriedBatchKeysRef 宣告處）。
-        onBatchQueried: (key) => {
-          queriedBatchKeysRef.current.add(key)
-        },
-        // assistant_message 是 clienttoolsRole 專屬對話(ClientToolsDemo.tsx
-        // 那條路徑)的回覆,這條連線在 ChatScreen 裡只用來讓 trip_entry_*
-        // 工具找到執行對象,不會透過這條連線送 prompt,故不需要顯示文字回覆。
-        onAssistantText: () => {},
-        onLog: () => {},
-        onBusyChange: () => {},
-        onSessionId: (id) => {
-          clientToolsSessionIdRef.current = id
-        },
-      },
-      // getAllBatches/setAllBatches:讀寫都直接指向 clientToolsBatchesRef
-      // (透過 setClientToolsBatchesBoth 統一寫入口,見該處宣告的說明)——
-      // clientToolsBatchesRef 是唯一真相來源,bridge 不再自己持有副本。
-      // trip_entry_* 工具執行時即時讀到的是「呼叫當下最新值」,不論這份資料
-      // 是被 load() 從裝置端 DB 還原、entries_loaded WS 事件更新、還是
-      // TripListTable 刪除按鈕改的,bridge 都能立刻看到,不會有分歧。
-      () => clientToolsBatchesRef.current,
-      (next) => setClientToolsBatchesBoth(next),
-    )
-    bridge.connect()
-    return () => {
-      bridge.disconnect()
-      clientToolsSessionIdRef.current = null
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在行程/owner 身分變動時重新連線,同第一條 WS 的依賴慣例。
-  }, [cfg.baseURL, trip.id, isOwner])
-
   // 本地訊息(不寫入後端,純前端顯示用):查詢的提問/回答泡泡。
   const mkLocalMsg = (
     id: string,
@@ -547,167 +444,49 @@ export function ChatScreen({
     })
   }
 
-  // owner 用:統一輸入送進 assist,LLM 自主判斷記錄事項或回答提問。
-  // overrideText:由 ask_user 回填等場景直接指定送出內容(不從 draft 取)。
-  const send = async (overrideText?: string) => {
+  // onOnagentAssistantMessage:onagent WS 收到 assistant 文字回覆時的回呼——
+  // 組成正式的 ChatMessage、直接塞進 messages state,沿用既有的
+  // MessageBubble 渲染(泡泡樣式、Markdown 等),不是獨立的除錯用文字
+  // 列表(明確需求:「接到原本的樣式跟元件」)。跟 send() 的「回答」分支
+  // 不同的是:這裡不走「先插入 pending 佔位泡泡、完成後 setMessages 就地
+  // 替換」的兩段式流程——onagent 的 onAssistantMessage 本身就是「這輪
+  // 推論完成」的訊號(見 useOnagentChatBridge.ts 的協定說明,非逐字元
+  // 串流),故直接 append 一則完整訊息即可,不需要佔位動畫。
+  const onOnagentAssistantMessage = useCallback((text: string) => {
+    const ans = mkLocalMsg(`onagent_ans_${Date.now()}`, ASSISTANT_ID, '', text)
+    setMessages((prev) => [...prev, ans])
+    setLatestAnswerID(ans.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mkLocalMsg 只讀 trip.id,不需要列進依賴。
+  }, [])
+  // onagentBridge:接上既有的 clientToolsBatchesRef/setClientToolsBatchesBoth
+  // (而非另開一份獨立記憶體)——onagent 路徑的 trip_entry_* 工具寫入結果
+  // 直接沿用正式路徑既有的 MessageBubble/TripListTable 渲染管線顯示,
+  // 使用者看到的是同一套樣式與元件,只是底層資料來源換成 onagent。
+  const onagentBridge = useOnagentChatBridge(
+    onagentMode,
+    () => clientToolsBatchesRef.current,
+    setClientToolsBatchesBoth,
+    onOnagentAssistantMessage,
+  )
+  // sendOnagent:插入使用者泡泡(立即顯示、送出當下就捲動),再交給
+  // onagentBridge 送出 prompt。onagent 的 trip_entry_add/update 直接透過
+  // setClientToolsBatchesBoth 寫入,已經是「當下最新」,不需要事後跟舊快照
+  // 比對才知道哪個 key 變了。這裡刻意不補 tripListTriggered 標記(不在
+  // assistant 泡泡下方自動展開旅程清單表格)——本輪範圍不含這塊,可接受的
+  // 已知簡化,使用者仍能透過 MessageBubble 既有的手動展開入口看到最新
+  // clientToolsBatches 內容。
+  // overrideText:比照 send() 的既有模式(見「推薦附近景點」快捷按鈕的
+  // 呼叫處)——不能先 setDraft(固定語句) 再呼叫 sendOnagent() 讀 draft,
+  // setDraft 是非同步排程,緊接著讀 draft 拿到的還是舊值。
+  const sendOnagent = (overrideText?: string) => {
     const text = (overrideText ?? draft).trim()
     if (!text) return
-    setSending(true)
-    setErr(null)
-    if (overrideText === undefined) setDraft('') // 只清使用者手打的草稿;ask_user 回填不動 draft
-    // 立刻插入使用者這則泡泡 + 處理中佔位泡泡(海浪動畫):兩者同時 append,
-    // 避免使用者的話晚於佔位泡泡才出現、事後插隊到前面的順序問題。
-    // record 情境下原話最終不保留(見下方 drop 的呼叫處),但送出當下仍先顯示,
-    // 讓使用者能立刻看到自己剛打的內容。
-    const askID = `ask_${Date.now()}`
+    if (overrideText === undefined) setDraft('')
+    const askID = `onagent_ask_${Date.now()}`
     const askMsg = mkLocalMsg(askID, user.id, user.name, text)
-    const pendingID = `pending_${Date.now()}`
-    const pending = mkLocalMsg(pendingID, ASSISTANT_ID, '', '')
-    pending.pending = true
-    setMessages((prev) => [...prev, askMsg, pending])
-    // 送出當下就捲(跟 ask() 一致,不等 api.assist 回應)。若最終走記事分支,
-    // 泡泡稍後會被 drop(true) 整個移除,使用者會經歷「先捲上去、內容隨即
-    // 消失」的短暫跳動——這是已知取捨,換取「送出當下立即有回饋」的一致性。
+    setMessages((prev) => [...prev, askMsg])
     if (desktopChat) scrollMessageToTop(askID)
-    // drop:移除佔位泡泡。record 情境額外連同使用者原話泡泡一起移除
-    // (原話已歸入 entry 卡,訊息流不重複保留);回答情境只移除佔位泡泡,
-    // 使用者泡泡保留在原位。
-    const drop = (alsoDropAsk = false) =>
-      setMessages((prev) => prev.filter((m) => m.id !== pendingID && (!alsoDropAsk || m.id !== askID)))
-    // record 時 agent 非同步寫 entry,記下送出前的數量當基準,輪詢到變多才算寫完。
-    const baseCount = entries.length
-    // tripListBefore:送出前先存一份 clientToolsBatches 的參照(entry_query/
-    // trip_entry_add/trip_entry_update 都是在 api.assist() 這輪 LLM 推論「過程中」
-    // 透過 sessionID 路由回瀏覽器阻塞式執行——entry_query 的 entries_loaded WS
-    // 事件與 trip_entry_* 觸發 ClientToolsBridge 呼叫 setAllBatches 都是在
-    // 對應工具的 Call() 回傳給 LLM 之前就已經觸發,而 want orchestrator 對整輪
-    // Submit 的等待(w.orch.Submit → <-done)必須等這輪所有工具呼叫完成才會
-    // idle,故這些 state 更新保證發生在 api.assist() 的 HTTP 回應返回之前;
-    // 詳見 server/internal/llm/want_analyzer.go Assist() 與
-    // server/internal/clienttools/interaction.go askPage 的阻塞呼叫鏈)。
-    // 沒有後端欄位能直接告知「這輪具體動到了哪些批次(key)」,故用「呼叫前後
-    // clientToolsBatches 各 key 的內容是否不同」這個最小成本的前端判斷方式
-    // (見上方 changedBatchKeys):用 ref 讀「呼叫當下最新值」（同
-    // clientToolsBatchesRef 一貫的用 ref 而非 state 閉包的理由),呼叫完後跟
-    // 屆時最新的 clientToolsBatchesRef.current 逐 key 比較,取得具體變化的
-    // key 清單而不只是「有沒有變化」的布林值。
-    const tripListBefore = clientToolsBatchesRef.current
-    // queriedBatchKeysRef 清空供這一輪重新累積——trip_entry_list 若在這輪
-    // api.assist() 期間被呼叫,ClientToolsBridge 的 onBatchQueried callback
-    // 會把查到的 key 加進來(見上方宣告處與 onBatchQueried 接線處的說明)。
-    // 必須在這裡（api.assist() 呼叫之前）清空，不能提前到函式更早處或延後到
-    // 呼叫之後——提前會导致上一輪殘留的 key 被這裡清掉前就已經讀走（此處不適用，
-    // 因為上一輪早已讀完並存進對應訊息），延後則會把這一輪剛累積到一半的 key
-    // 清空、遺漏。
-    queriedBatchKeysRef.current.clear()
-    try {
-      // clientToolsSessionIdRef(而非 state)：send 是個 async 函式，用 ref
-      // 讀「呼叫當下最新的連線狀態」，避免閉包捕捉到建立當下（可能連線還沒
-      // ack）的舊值——同 sending 等其餘欄位在此函式裡都直接讀 state 的既有
-      // 寫法不同，是因為這裡要的是「送出當下的最新值」而非「render 當下」
-      // 的值，两者在 WS 非同步 ack 到達的情境下可能不同。
-      const res = await api.assist(cfg, trip.id, text, clientToolsSessionIdRef.current ?? undefined)
-      if (res.kind === 'recorded') {
-        // 記錄了 → 把原話存進「裝置端 DB」(原話的權威來源,與 server 隔離)。
-        // res.text 為原話;後端不存原話,僅回它供前端落地裝置 DB。
-        await saveMessage({
-          id: `msg_${Date.now()}`,
-          tripID: trip.id,
-          authorID: user.id,
-          authorName: user.name,
-          text: res.text,
-          createdAt: new Date().toISOString(),
-        }).catch(() => {})
-        // 波浪持續到 entry 真的寫入並顯示後才停。
-        // 輪詢 fetchEntries 直到筆數比送出前多(agent 寫好);逾時則放棄等待先停。
-        const deadline = Date.now() + 20000 // 上限 20s,避免 agent 卡住時無限轉
-        let shown = false
-        while (Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, 1000))
-          let next: Entry[]
-          try {
-            next = await api.fetchEntries(cfg, trip.id)
-          } catch {
-            continue // 暫時抓失敗就再試
-          }
-          if (next.length > baseCount) {
-            setEntries(next) // entry 已顯示在最上方列表
-            shown = true
-            break
-          }
-        }
-        if (!shown) {
-          // 逾時沒等到新 entry:仍刷新一次列表(可能 agent 沒產生條目)。
-          await api.fetchEntries(cfg, trip.id).then(setEntries).catch(() => {})
-        }
-        // 記錄了 → 原話已歸入上方 entry 卡,訊息流不保留這則原話泡泡
-        // (連同送出當下先插入的使用者泡泡一起移除)。
-        // 對齊 iOS:記事原話存而不顯,內容由 entry 承載。
-        drop(true)
-      } else {
-        // 回答了 → 佔位泡泡就地換成答案(使用者泡泡已在送出當下插入,原位不動)。
-        // 答案泡泡掛上 agent 用 present_entries 輸出的條目、recommend_nearby 查到
-        // 的候選景點,前端分別用列表元件顯示在該則訊息底下(而非全域彈窗)。
-        const ans = mkLocalMsg(`ans_${Date.now()}`, ASSISTANT_ID, '', res.answer)
-        ans.presented = res.entries
-        ans.recommendedPlaces = res.recommendedPlaces
-        // 這輪 clientToolsBatches 若有變化,代表觸發了 entry_query 或
-        // trip_entry_add/trip_entry_update(見上方 tripListBefore 的說明)。
-        // 記下具體變化的 key 清單(可能不只一個——同一輪若先後對兩個不同批次
-        // 操作,如新增到 tokyo_trip 後又更新 osaka_trip 裡的一筆),不只是
-        // 布林值。只存 key 清單,不存清單內容快照——MessageBubble 渲染時讀
-        // 當下最新的 clientToolsBatches state(props 傳入),不是這裡比對
-        // 用的舊值。
-        const changedKeys = changedBatchKeys(tripListBefore, clientToolsBatchesRef.current)
-        // 跟這一輪被 trip_entry_list 查詢過的 key(queriedBatchKeysRef,見該處
-        // 宣告的說明)合併——查詢類工具不改動內容,changedBatchKeys 偵測不到,
-        // 需要這條獨立路徑補上。用 Set 去重:同一個 key 若既被查詢過、又被
-        // 寫入類工具改過,tripListTriggered 裡只需要出現一次(MessageBubble
-        // 依 key 陣列各自 render 一個 TripListTable,重複的 key 會渲染出重複
-        // 的表格)。讀完立刻視為這一輪的終態——下一輪 send() 開頭會重新
-        // clear() queriedBatchKeysRef,這裡不需要額外清空。
-        const triggeredKeys = new Set([...changedKeys, ...queriedBatchKeysRef.current])
-        if (triggeredKeys.size > 0) {
-          ans.tripListTriggered = [...triggeredKeys]
-        }
-        setMessages((prev) => prev.map((m) => (m.id === pendingID ? ans : m)))
-        // latestAnswerID:標記這則答案是「這次即時產生」的最新一則,供
-        // MessageBubble 判斷附加資料區塊(推薦景點/旅程清單)預設展開(見
-        // AttachmentsPanel 與上方 latestAnswerID 宣告處的說明)。只有這條
-        // 「回答了」分支會產生 presented/recommendedPlaces/tripListTriggered,
-        // record 分支(上方 drop(true))沒有附加資料可展開,不需要設定。
-        setLatestAnswerID(ans.id)
-        // 提問 + 答案存裝置 DB(比照 ask() 的做法),重新整理/切回行程後仍看得到。
-        void saveMessage(askMsg).catch(() => {})
-        void saveMessage(ans).catch(() => {})
-        // 推薦景點(若非空)一併存進裝置 DB,掛在這則答案訊息底下,讓重新整理
-        // /切回行程後 load() 讀回時仍能還原(見下方 load() 的批次查詢)。
-        if (ans.recommendedPlaces && ans.recommendedPlaces.length > 0) {
-          void saveMessageRecommendedPlaces(ans.id, ans.recommendedPlaces).catch(() => {})
-        }
-        // 旅程清單觸發 key(若非空)一併存進裝置 DB,掛在這則答案訊息底下,
-        // 讓重新整理/切回行程後 load() 讀回時仍知道該掛哪些 key 的表格
-        // (見上方 tripListTriggered 型別欄位的說明、load() 的批次查詢)。
-        if (ans.tripListTriggered && ans.tripListTriggered.length > 0) {
-          void saveMessageTripListKeys(ans.id, ans.tripListTriggered).catch(() => {})
-        }
-        // 這輪真的有變化的批次(key)內容存進裝置 DB(比照推薦景點的持久化
-        // 模式)——只存 changedKeys(內容真的不同),不含 queriedBatchKeysRef
-        // 裡「只是被查詢過、內容沒變」的 key,避免無意義的整批覆寫。用
-        // clientToolsBatchesRef.current[key](呼叫當下最新值,同本函式一貫
-        // 用 ref 讀值的理由)而非 tripListBefore。
-        for (const key of changedKeys) {
-          void replaceTripBatch(trip.id, key, clientToolsBatchesRef.current[key] ?? []).catch(() => {})
-        }
-      }
-    } catch (e) {
-      // 失敗:只移除佔位泡泡,使用者泡泡保留(讓使用者仍看得到剛才送出的內容)。
-      drop()
-      setErr(errMsg(e))
-      setDraft(text) // 失敗時還回草稿
-    } finally {
-      setSending(false)
-    }
+    onagentBridge.sendPrompt(text)
   }
 
   // deleteTripBatchEntries:TripListTable 勾選項目後按刪除,把選中的 id 從
@@ -726,40 +505,6 @@ export function ChatScreen({
       void replaceTripBatch(trip.id, key, next).catch(() => {})
       return updated
     })
-  }
-
-  // 成員用:自然語言查詢行程。問答持久化進裝置端 DB(重開行程仍在,後端不存)。
-  const ask = async (overrideText?: string) => {
-    const q = (overrideText ?? draft).trim()
-    if (!q) return
-    setSending(true)
-    setErr(null)
-    if (overrideText === undefined) setDraft('')
-    // 提問泡泡(持久化)+ 處理中佔位泡泡(海浪動畫,暫態)。
-    const askMsg = mkLocalMsg(`ask_${Date.now()}`, user.id, user.name, q)
-    const pendingID = `pending_${Date.now()}`
-    const pending = mkLocalMsg(pendingID, ASSISTANT_ID, '', '')
-    pending.pending = true
-    setMessages((prev) => [...prev, askMsg, pending])
-    // 提問存裝置 DB。
-    void saveMessage(askMsg).catch(() => {})
-    // 一定是查詢情境,送出當下就確定要捲(不像 send() 要等回應才知道是
-    // 記事還是回答分支)。
-    if (desktopChat) scrollMessageToTop(askMsg.id)
-    try {
-      const a = await api.semanticQuery(cfg, trip.id, q)
-      // 佔位泡泡就地換成答案,並把答案也存進裝置 DB。
-      const ansMsg = mkLocalMsg(`ans_${Date.now()}`, ASSISTANT_ID, '助手', a.answer)
-      void saveMessage(ansMsg).catch(() => {})
-      setMessages((prev) =>
-        prev.map((m) => (m.id === pendingID ? ansMsg : m)),
-      )
-    } catch (e) {
-      setMessages((prev) => prev.filter((m) => m.id !== pendingID))
-      setErr(errMsg(e))
-    } finally {
-      setSending(false)
-    }
   }
 
   // 行程內的成員管理(對齊 iOS App:聊天頁 → 成員)。
@@ -838,7 +583,7 @@ export function ChatScreen({
           // 已移除,資料改透過上方 onTimelineData 鏡像給外層)。
           <div className={`screen-body ${styles.messages}`} ref={chatMessagesRef}>
             <ErrorBanner msg={err} />
-            {messages.length === 0 && !sending ? (
+            {messages.length === 0 ? (
               <div className="empty">
                 {isOwner ? '在下方輸入記事，會依時間排列在時間軸(左上角選單)。' : '在下方查詢這趟行程的內容。'}
               </div>
@@ -854,14 +599,7 @@ export function ChatScreen({
           <div className={styles.row}>
             <button
               className={styles.fnBtn}
-              onClick={() => {
-                // 直接送出固定語句,不動 draft:isOwner 記事流程會被情況 D
-                // 判定為推薦意圖並呼叫 recommend_nearby;非 owner 走查詢流程,
-                // 一樣是問一句話交給 AI 回答(見 assistant_agent.go recommendThought)。
-                const q = '推薦附近的景點'
-                isOwner ? send(q) : ask(q)
-              }}
-              disabled={sending}
+              onClick={() => sendOnagent('推薦附近的景點')}
               title="推薦附近景點"
             >
               <Sparkles size={20} strokeWidth={1.8} />
@@ -869,13 +607,36 @@ export function ChatScreen({
             <input
               autoFocus
               value={draft}
-              placeholder={isOwner ? '記事或提問…' : '用自然語言查詢這趟行程…'}
+              placeholder="onagent 推論路徑(本機測試)…"
               onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => isSubmitEnter(e) && (isOwner ? send() : ask())}
+              onKeyDown={(e) => {
+                if (!isSubmitEnter(e)) return
+                sendOnagent()
+              }}
+            />
+            {/* onagent 連線燈號:直接放進輸入框這一列,不佔用額外的一整行
+                (使用者明確要求「放在輸入匡上」)。顏色燈號取代文字狀態
+                (ready 綠/connecting 黃/closed 或未設定 apiKey 灰),完整
+                狀態字串放進 title,hover 才需要細看。 */}
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: '50%',
+                flex: '0 0 auto',
+                background: onagentBridge.apiKeyMissing
+                  ? 'var(--ios-gray)'
+                  : onagentBridge.status === 'ready'
+                    ? '#34c759'
+                    : onagentBridge.status === 'connecting'
+                      ? '#ffcc00'
+                      : 'var(--ios-red)',
+              }}
+              title={onagentBridge.apiKeyMissing ? '未設定 VITE_ONAGENT_APP_KEY' : `onagent: ${onagentBridge.status}`}
             />
             <button
-              onClick={() => (isOwner ? send() : ask())}
-              disabled={sending || !draft.trim()}
+              onClick={() => sendOnagent()}
+              disabled={!draft.trim() || onagentBridge.status !== 'ready'}
             >
               <Send size={18} strokeWidth={2} />
             </button>
@@ -889,8 +650,8 @@ export function ChatScreen({
           onCancel={() => setAskUser(null)}
           onSubmit={(value) => {
             setAskUser(null)
-            // 把使用者選的值當成一則新訊息送回,agent 靠對話歷史接上前文(缺哪筆住宿的退房日)。
-            send(value)
+            // 把使用者選的值當成一則新訊息送回。
+            sendOnagent(value)
           }}
         />
       )}
@@ -901,8 +662,8 @@ export function ChatScreen({
           onCancel={() => setAskChoice(null)}
           onSubmit={(title) => {
             setAskChoice(null)
-            // 把選中選項的主標題當成一則新訊息送回,agent 靠對話歷史接上前文(比照 ask_user)。
-            send(title)
+            // 把選中選項的主標題當成一則新訊息送回(比照 ask_user)。
+            sendOnagent(title)
           }}
         />
       )}

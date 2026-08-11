@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Send, AlertCircle } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import type { PublicLinkViewMode } from './api'
 import * as api from './api'
 import type { Entry } from './types'
 import { MultiTrackTimeline } from './Timeline'
-import { BASE_URL, errMsg, isSubmitEnter, useIsDesktop } from './AppCommon'
+import { BASE_URL, errMsg, useIsDesktop } from './AppCommon'
 import { PaceChart, type Checkpoint, type PaceCheckpointDetail } from './PaceChart'
 import { PaceRouteMap } from './PaceRouteMap'
 import { PacePhoneSwipe } from './PacePhoneSwipe'
@@ -78,15 +78,10 @@ export function PublicViewScreen({ token }: { token: string }) {
   const [data, setData] = useState<{ tripID: string; tripName: string; editable: boolean; viewMode: PublicLinkViewMode; entries: Entry[] } | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [draft, setDraft] = useState('')
-  const [sending, setSending] = useState(false)
   const todayRef = useRef<HTMLDivElement>(null as unknown as HTMLDivElement)
   const bodyRef = useRef<HTMLDivElement>(null)
 
   const resolvedBase = BASE_URL
-
-  const reload = () =>
-    api.fetchPublicView(resolvedBase, token).then(setData).catch((e) => setErr(errMsg(e)))
 
   useEffect(() => {
     api.fetchPublicView(resolvedBase, token)
@@ -105,20 +100,6 @@ export function PublicViewScreen({ token }: { token: string }) {
       bodyRef.current.scrollTo({ top: todayRef.current.offsetTop - 60, behavior: 'instant' })
     }
   }, [data])
-
-  const send = async () => {
-    if (!draft.trim() || sending) return
-    setSending(true)
-    try {
-      await api.publicAssist(resolvedBase, token, draft.trim())
-      setDraft('')
-      await reload()
-    } catch (e) {
-      setErr(errMsg(e))
-    } finally {
-      setSending(false)
-    }
-  }
 
   // 路徑模式且真的有路徑資料時,改用抽屜欄+地圖的滿版結構(見
   // PublicPaceDrawerMap 的說明)——那套結構自己已經佔滿整個畫面(比照
@@ -151,22 +132,6 @@ export function PublicViewScreen({ token }: { token: string }) {
               : <MultiTrackTimeline entries={data.entries} todayRef={todayRef} />
         )}
       </div>
-      {data?.editable && (
-        <div className="public-composer">
-          <div className="public-composer-row">
-          <input
-            placeholder="新增行程…"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => isSubmitEnter(e) && !e.shiftKey && send()}
-            disabled={sending}
-          />
-          <button onClick={send} disabled={sending || !draft.trim()}>
-            <Send size={16} strokeWidth={2} />
-          </button>
-          </div>
-        </div>
-      )}
     </>
   )
 }

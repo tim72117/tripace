@@ -9,10 +9,11 @@
 #     進 adminserver 這支 binary(見 server/cmd/adminserver/static.go 的
 #     //go:embed web/dist),同源掛在 /admin/ 底下,不再需要獨立部署前端
 #     或跨源 CORS 設定。
-#   - 不需要複製 server/tools 目錄:那是給 -llm=want 的 clienttools 工具
-#     定義用,adminserver 完全不含 LLM/want 相關邏輯(見 server/cmd/
-#     adminserver/main.go 開頭註解:只依賴 internal/model、internal/store、
-#     internal/adminauth、internal/adminconsole)。
+#   - 不需要複製 server/tools 目錄:裡面是 onagent-tools.yaml,只給 onagent
+#     CLI 手動 save-tools 時讀取,server 執行期不會讀取這個目錄,adminserver
+#     完全不含 LLM/onagent 相關邏輯(見 server/cmd/adminserver/main.go
+#     開頭註解:只依賴 internal/model、internal/store、internal/adminauth、
+#     internal/adminconsole)。
 #
 # 建置(從專案根目錄):
 #   docker build -f Dockerfile.admin -t tripace-adminserver .

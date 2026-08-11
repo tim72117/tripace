@@ -1,13 +1,13 @@
 import { useRef, useState } from 'react'
 import type { TouchEvent as ReactTouchEvent } from 'react'
 import {
-  List, Timeline, Sparkles, GalleryHorizontal, Wrench, Radio, Route, Share2, Users,
+  List, Timeline, Sparkles, GalleryHorizontal, Radio, Route, Share2, Users,
 } from 'lucide-react'
 import type { Trip, User } from './types'
 import { Avatar } from './AppCommon'
 import {
   type DemoPanelMode, DemoPanelContent, TIMELINE_ENABLED, PACE_ENABLED,
-  DEMO_CARDS_ENABLED, DEMO_ROW_ENABLED, DEMO_CLIENTTOOLS_ENABLED, DEMO_ONAGENT_ENABLED,
+  DEMO_CARDS_ENABLED, DEMO_ROW_ENABLED, DEMO_ONAGENT_ENABLED,
 } from './DesktopShared'
 import { PaceChart, type Checkpoint } from './PaceChart'
 import type { SelectedEntry } from './PaceRouteMap'
@@ -164,7 +164,6 @@ export function PhoneNavDrawer({
     // 對這幾個常數的說明),取代原本綁在網址參數 ?demo 底下的單一 isDemo 開關。
     ...(DEMO_CARDS_ENABLED ? [{ mode: 'demo-cards' as DrawerMode, icon: Sparkles, title: '推薦景點卡片' }] : []),
     ...(DEMO_ROW_ENABLED ? [{ mode: 'demo-row' as DrawerMode, icon: GalleryHorizontal, title: '推薦景點橫滑' }] : []),
-    ...(DEMO_CLIENTTOOLS_ENABLED ? [{ mode: 'demo-clienttools' as DrawerMode, icon: Wrench, title: 'ClientToolsBridge' }] : []),
     ...(DEMO_ONAGENT_ENABLED ? [{ mode: 'demo-onagent' as DrawerMode, icon: Radio, title: 'onagent 串接' }] : []),
   ]
 
