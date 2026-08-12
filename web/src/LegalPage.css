@@ -1,0 +1,221 @@
+/* LegalPage 視覺——對齊 KyotoExploreBloom.css 的紙感和風配色/字體(見該檔案
+   開頭的 --paper/--ink/--vermilion 等 token 說明),取代原本沿用 landing.css
+   的 .legal-*(藍綠度假風,見 landing.css 開頭 --lp-ocean 等變數)。這裡的
+   token 數值直接照抄 KyotoExploreBloom.css,不是重新發明一套色票——只是
+   scope 換成 .legal-bloom,避免跟 .kyoto-bloom/.landing 互相污染(三者都是
+   各自獨立、不共用彼此 CSS 檔案的頁面)。
+   顏色對應(從舊 .legal-* 使用的 --lp-* token 對照過來):
+     --lp-bg/--lp-card(頁面底色/卡片)  → --paper/--paper-dim
+     --lp-ink(標題/內文深色文字)        → --ink
+     --lp-gray(次要文字、版權宣告)      → --ink-soft
+     --lp-ocean/--lp-ocean-deep(強調色、連結、CTA、h2) → --vermilion
+     --lp-sep(分隔線)                   → --line
+   字體:中文內文字型堆疊、ShipporiSerif 標題字,跟 KyotoExploreBloom 完全
+   一致(見下方 @font-face,同一份宣告,只是各自 scope 各自檔案,CSS
+   @font-face 沒有 scope 概念但重複宣告同一個 local() 來源是無害的)。 */
+
+@font-face {
+  font-family: 'ShipporiSerif';
+  src: local('Hiragino Mincho ProN'), local('Yu Mincho'), local('Noto Serif JP');
+}
+
+.legal-bloom {
+  --paper: #F7F3EC;
+  --paper-dim: #EFE9DC;
+  --ink: #2B2420;
+  --ink-soft: #5A5148;
+  --vermilion: #8B3A2F;
+  --vermilion-soft: #B85C4A;
+  --moss: #5C6B57;
+  --line: #C9BFA8;
+  --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+}
+
+@media (prefers-color-scheme: dark) {
+  .legal-bloom {
+    --paper: #1C1815; --paper-dim: #14110F; --ink: #EDE6D8; --ink-soft: #B8AD9C;
+    --vermilion: #D97A63; --vermilion-soft: #E89A85; --moss: #8FA089; --line: #443C34;
+    --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+  }
+}
+.legal-bloom[data-theme="dark"] {
+  --paper: #1C1815; --paper-dim: #14110F; --ink: #EDE6D8; --ink-soft: #B8AD9C;
+  --vermilion: #D97A63; --vermilion-soft: #E89A85; --moss: #8FA089; --line: #443C34;
+  --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+}
+.legal-bloom[data-theme="light"] {
+  --paper: #F7F3EC; --paper-dim: #EFE9DC; --ink: #2B2420; --ink-soft: #5A5148;
+  --vermilion: #8B3A2F; --vermilion-soft: #B85C4A; --moss: #5C6B57; --line: #C9BFA8;
+  --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+}
+
+.legal-bloom { box-sizing: border-box; }
+.legal-bloom *, .legal-bloom *::before, .legal-bloom *::after { box-sizing: border-box; }
+
+.legal-bloom {
+  min-height: 100dvh;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- 導覽列(對齊 KyotoExploreBloom 固定左上品牌標記的慣例,但這裡
+   內容是靜態長文閱讀頁,不需要捲動視差,故用一般 sticky nav 而非 fixed
+   浮動標記——維持跟 LandingPage 一致的「進站看得到品牌、能回首頁」動線,
+   只是配色/字體換成紙感和風。) ---------- */
+.legal-bloom .legal-nav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--paper) 82%, transparent);
+  backdrop-filter: saturate(180%) blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+.legal-bloom .legal-nav-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.legal-bloom .legal-logo {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  text-decoration: none;
+}
+.legal-bloom .legal-nav-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.legal-bloom .legal-nav-cta {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--paper);
+  background: var(--ink);
+  padding: 8px 16px;
+  border-radius: 999px;
+  text-decoration: none;
+  box-shadow: var(--card-shadow);
+  transition: transform 0.2s ease;
+}
+.legal-bloom .legal-nav-cta:hover { transform: translateY(-1px); }
+
+/* 日夜間切換——跟 KyotoExploreBloom 的 .theme-toggle 視覺一致,但這裡
+   排進導覽列裡(inline),不是 fixed 定位——沒有捲動視差需要避開的浮動
+   圖層,放進 nav 更符合這頁本來就是一般文件頁的定位。 */
+.legal-bloom .legal-theme-toggle {
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; border: 1px solid var(--line);
+  background: var(--paper); color: var(--ink);
+  cursor: pointer;
+  transition: background 0.2s ease;
+  flex: none;
+}
+.legal-bloom .legal-theme-toggle:hover { background: var(--paper-dim); }
+
+/* ---------- 內文區:窄版單欄閱讀寬度,行高放寬方便長篇段落閱讀
+   (延續原本 .legal-main 的排版邏輯,只換配色/字體) ---------- */
+.legal-bloom .legal-main {
+  flex: 1;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 64px 24px 96px;
+  width: 100%;
+}
+.legal-bloom .legal-title {
+  margin: 0;
+  font-family: 'ShipporiSerif', "Noto Serif TC", serif;
+  font-size: clamp(28px, 4vw, 36px);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+.legal-bloom .legal-updated {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+  letter-spacing: 0.02em;
+}
+.legal-bloom .legal-body {
+  margin-top: 36px;
+  line-height: 1.9;
+  color: var(--ink);
+  font-size: 15px;
+}
+.legal-bloom .legal-body h2 {
+  margin: 36px 0 14px;
+  font-family: 'ShipporiSerif', "Noto Serif TC", serif;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--vermilion);
+}
+.legal-bloom .legal-body h2:first-child {
+  margin-top: 0;
+}
+.legal-bloom .legal-body p {
+  margin: 0 0 14px;
+  color: var(--ink-soft);
+}
+.legal-bloom .legal-body ul {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  color: var(--ink-soft);
+}
+.legal-bloom .legal-body li {
+  margin-bottom: 8px;
+}
+.legal-bloom .legal-body strong {
+  color: var(--ink);
+}
+.legal-bloom .legal-body a {
+  color: var(--vermilion);
+}
+.legal-bloom .legal-body a:hover {
+  color: var(--vermilion-soft);
+}
+
+/* ---------- footer(直接對齊 KyotoExploreBloom.css 的 .kyoto-footer,見該
+   檔案「footer」一節說明——品牌名、版權、法律連結、onagent 背書皆同一套
+   結構,只是 class 前綴換成 legal-footer 避免跟 .kyoto-footer/.landing-footer
+   撞名。) ---------- */
+.legal-bloom .legal-footer {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  border-top: 1px solid var(--line); padding: 28px 24px;
+  text-align: center; font-size: 14px; color: var(--ink-soft);
+}
+.legal-bloom .legal-footer-brand { font-size: 15px; font-weight: 600; color: var(--ink); }
+
+.legal-bloom .legal-footer-bar {
+  align-self: stretch; margin-top: 14px; padding-top: 14px;
+  border-top: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px 24px; font-size: 13px;
+}
+.legal-bloom .legal-footer-copyright { color: var(--ink-soft); }
+.legal-bloom .legal-footer-links { display: flex; align-items: center; gap: 20px; }
+.legal-bloom .legal-footer-links a { color: var(--ink-soft); text-decoration: none; }
+.legal-bloom .legal-footer-links a:hover { color: var(--vermilion); text-decoration: underline; }
+
+.legal-bloom .legal-footer-poweredby {
+  margin-top: 10px; font-size: 12px; color: var(--ink-soft);
+  text-decoration: none; opacity: 0.75;
+}
+.legal-bloom .legal-footer-poweredby:hover { opacity: 1; text-decoration: underline; }
+
+@media (max-width: 720px) {
+  .legal-bloom .legal-title { font-size: 26px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .legal-bloom * { transition-duration: 0.01ms !important; }
+}

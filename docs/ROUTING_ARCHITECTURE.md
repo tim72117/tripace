@@ -92,9 +92,24 @@ handler、不共用 store 存取層以外的任何程式碼。
 | POST | /internal/entries/compute-route | handleComputeRouteFromEntries | (未包裝,CLI 未呼叫) |
 | DELETE | /internal/trips/{id}/entries | handleInternalReset | reset() |
 
-`cmd/cli` 也有一條**不經過 HTTP、直連資料庫**的路徑(`-db` 旗標,見
-`cmd/cli/db.go` 的 `dbClient`),兩條路徑實作同一組 `client` 介面
-(`cmd/cli/main.go`),使用者可以選擇要不要透過網路呼叫 server。
+`cmd/cli` 曾經有一條**不經過 HTTP、直連資料庫**的路徑(`-db` 旗標,
+`cmd/cli/db.go` 的 `dbClient`),現已完全移除——所有操作一律經過
+server 的 HTTP API(見 `cmd/cli/main.go` 開頭的架構說明),不再有任何
+一條路徑繞過認證/節流/請求記錄。
+
+維運性質的操作(景點區域人工建檔、Google Photo 更新等)另外歸在
+`/internal/maintenance/*` 命名空間,跟一般使用者會呼叫的上表 `/internal/*`
+端點分開,方便從請求統計一眼分辨流量來源(見
+`server/internal/api/maintenance.go` 開頭的完整說明):
+
+| 方法 | 路徑 | Handler | CLI 呼叫方法(cmd/cli/http.go) |
+|---|---|---|---|
+| GET | /internal/maintenance/geocode | handleMaintenanceGeocode | geocode() |
+| POST | /internal/maintenance/landmarks/{id}/update-photo | handleMaintenanceLandmarkUpdatePhoto | attractionUpdatePhoto() |
+| POST | /internal/maintenance/attractions | handleMaintenanceAttractionAdd | attractionAdd() |
+| GET | /internal/maintenance/attractions | handleMaintenanceAttractionList | attractionList() |
+| GET | /internal/maintenance/attractions/cities | handleMaintenanceAttractionCities | attractionCities() |
+| DELETE | /internal/maintenance/attractions/{id} | handleMaintenanceAttractionDelete | attractionDelete() |
 
 ## 三之一、`/onagent/*` 完整路由表(只給 onagent 平台呼叫)
 

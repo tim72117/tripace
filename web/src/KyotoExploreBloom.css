@@ -1,0 +1,511 @@
+@font-face {
+  font-family: 'ShipporiSerif';
+  src: local('Hiragino Mincho ProN'), local('Yu Mincho'), local('Noto Serif JP');
+}
+
+.kyoto-bloom {
+  --paper: #F7F3EC;
+  --paper-dim: #EFE9DC;
+  --ink: #2B2420;
+  --ink-soft: #5A5148;
+  --vermilion: #8B3A2F;
+  --vermilion-soft: #B85C4A;
+  --moss: #5C6B57;
+  --line: #C9BFA8;
+  --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+  /* --edge-pad:全頁面統一的水平留白節奏,取代原本直接寫死的 6vw——
+     .hero/.explore-intro/.journey/.stop(手機版)/.closing 五處都用它,
+     維持窄螢幕時跟著視窗等比例縮放的手感,同時在寬螢幕鎖住上限(40px)。
+     這個上限值原本只加在 .explore-intro 一處(因為它疊加了 max-width:
+     60ch,border-box 下 padding 持續變大會侵蝕已經被鎖死的內容寬度,
+     視窗越寬、可用文字空間反而越窄),但其餘四處雖然沒有這個 bug,水平
+     留白仍是同一條 6vw 規則——若只單獨鎖住 .explore-intro,寬螢幕下
+     它的左右邊界會漸漸跟其他區塊對不齊,破壞原本刻意統一的頁面邊界
+     節奏。故五處一起改用同一個上限,寬螢幕下整頁邊界仍保持一致。 */
+  --edge-pad: clamp(16px, 6vw, 40px);
+}
+
+@media (prefers-color-scheme: dark) {
+  .kyoto-bloom {
+    --paper: #1C1815; --paper-dim: #14110F; --ink: #EDE6D8; --ink-soft: #B8AD9C;
+    --vermilion: #D97A63; --vermilion-soft: #E89A85; --moss: #8FA089; --line: #443C34;
+    --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+  }
+}
+.kyoto-bloom[data-theme="dark"] {
+  --paper: #1C1815; --paper-dim: #14110F; --ink: #EDE6D8; --ink-soft: #B8AD9C;
+  --vermilion: #D97A63; --vermilion-soft: #E89A85; --moss: #8FA089; --line: #443C34;
+  --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+}
+.kyoto-bloom[data-theme="light"] {
+  --paper: #F7F3EC; --paper-dim: #EFE9DC; --ink: #2B2420; --ink-soft: #5A5148;
+  --vermilion: #8B3A2F; --vermilion-soft: #B85C4A; --moss: #5C6B57; --line: #C9BFA8;
+  --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+}
+
+.kyoto-bloom { box-sizing: border-box; }
+.kyoto-bloom *, .kyoto-bloom *::before, .kyoto-bloom *::after { box-sizing: border-box; }
+.kyoto-bloom { scroll-behavior: smooth; }
+
+.kyoto-bloom {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  /* 原始獨立 HTML 版本這條規則寫在 body 上——瀏覽器對 <body>/<html> 的
+     overflow 是特殊處理(root scroller),不會讓它變成新的滾動/裁切邊界。
+     這個元件的根節點只是一個普通 <div>,同一條 overflow-x: hidden 套在
+     普通元素上,任何非 visible 的 overflow 值都會讓它變成新的 containing
+     block for position: sticky 子孫元素——實際造成 .map-window 的
+     position: sticky 完全失效(退化成隨頁面內容一起捲走,不再固定在
+     視窗中央),這正是「地圖被往上拉走、bloom 照片不出現」的根因。故不在
+     元件層級設定這個屬性,若頁面整體需要防止水平溢出,交給頁面自己的
+     <body> 處理。 */
+}
+
+/* ---------- 品牌標記 ---------- */
+
+.kyoto-bloom .brand-mark {
+  position: fixed; left: 16px; top: 16px; z-index: 200;
+  padding: 8px 4px;
+  font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+  color: var(--ink); text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+.kyoto-bloom .brand-mark:hover { opacity: 0.75; }
+
+/* ---------- 日夜間切換 ---------- */
+
+.kyoto-bloom .theme-toggle {
+  position: fixed; right: 16px; top: 16px; z-index: 200;
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; border: 1px solid var(--line);
+  background: var(--paper); color: var(--ink);
+  cursor: pointer; box-shadow: var(--card-shadow);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.kyoto-bloom .theme-toggle:hover { background: var(--paper-dim); }
+@media (max-width: 900px) {
+  /* 手機版固定地圖標頭橫幅(見 .map-col 的 @media 規則)z-index: 5,這兩顆
+     固定元素維持 200 蓋在上面沒問題,但橫幅本身佔滿 top: 0 左右整條,
+     疊在橫幅正上方視覺上會很擠——手機版都改貼底部,避開橫幅,左右各自
+     保持原本的左右分佈(brand-mark 左下、theme-toggle 右下)。 */
+  .kyoto-bloom .brand-mark { top: auto; bottom: 16px; }
+  .kyoto-bloom .theme-toggle { top: auto; bottom: 16px; }
+}
+
+/* ---------- HERO ---------- */
+
+.kyoto-bloom .hero {
+  position: relative;
+  min-height: 94vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 6vh var(--edge-pad) 8vh;
+  overflow: hidden;
+  background: radial-gradient(ellipse 120% 60% at 50% 0%, var(--paper-dim), transparent 70%), var(--paper);
+}
+
+.kyoto-bloom .hero-eyebrow {
+  font-size: 13px; letter-spacing: 0.28em; text-transform: uppercase;
+  color: var(--vermilion); margin-bottom: 28px;
+}
+
+.kyoto-bloom .hero-title {
+  font-family: 'ShipporiSerif', "Noto Serif TC", serif;
+  font-weight: 600; font-size: clamp(34px, 6vw, 68px); line-height: 1.25;
+  text-wrap: balance; margin: 0 0 22px; letter-spacing: 0.02em;
+}
+.kyoto-bloom .hero-title em { font-style: normal; color: var(--vermilion); }
+
+.kyoto-bloom .hero-sub {
+  font-size: clamp(15px, 1.6vw, 18px); color: var(--ink-soft);
+  max-width: 46ch; line-height: 1.85; margin: 0 0 40px;
+}
+
+.kyoto-bloom .hero-cta {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 15px 34px; background: var(--ink); color: var(--paper);
+  border: none; border-radius: 999px; font-size: 15px; letter-spacing: 0.06em;
+  text-decoration: none; cursor: pointer;
+  box-shadow: var(--card-shadow); transition: transform 0.25s ease;
+  font-family: inherit;
+}
+.kyoto-bloom .hero-cta:hover { transform: translateY(-2px); }
+.kyoto-bloom .hero-cta svg { width: 16px; height: 16px; }
+
+.kyoto-bloom .hero-scroll-hint {
+  position: absolute; bottom: 36px; left: 50%; transform: translateX(-50%);
+  font-size: 12px; letter-spacing: 0.2em; color: var(--ink-soft);
+  display: flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0.75;
+}
+.kyoto-bloom .hero-scroll-hint .bar {
+  width: 1px; height: 42px;
+  background: linear-gradient(var(--ink-soft), transparent);
+  animation: kyoto-bloom-pulse-bar 2.2s ease-in-out infinite;
+}
+@keyframes kyoto-bloom-pulse-bar { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+.kyoto-bloom .hero-ridge { position: absolute; bottom: 0; left: 0; width: 100%; height: 40%; opacity: 0.5; pointer-events: none; }
+
+/* ---------- intro ---------- */
+
+/* generous bottom padding — this is the transition from "reading the
+   causal-chain explanation" to "the journey visually begins" (地圖會留在
+   左邊，跟著你往下走...), so a large blank gap before .journey/起點 reads
+   as a deliberate pause/breath rather than the map just abruptly
+   appearing right under the last line of text. */
+.kyoto-bloom .explore-intro { max-width: 60ch; margin: 0 auto; padding: 14vh var(--edge-pad) 4vh; text-align: center; }
+.kyoto-bloom .explore-eyebrow {
+  font-size: 12px; letter-spacing: 0.24em; text-transform: uppercase;
+  color: var(--moss); margin-bottom: 14px;
+}
+.kyoto-bloom .explore-title {
+  font-family: 'ShipporiSerif', "Noto Serif TC", serif;
+  font-size: clamp(24px, 3.4vw, 34px); font-weight: 600; line-height: 1.5;
+  margin: 0 0 16px; text-wrap: balance;
+}
+.kyoto-bloom .explore-desc { color: var(--ink-soft); font-size: 15px; line-height: 1.9; }
+
+/* ---------- journey: sticky map left, flowing content right ---------- */
+
+.kyoto-bloom .journey {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 5vw;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 var(--edge-pad);
+}
+
+.kyoto-bloom .map-col {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+}
+
+.kyoto-bloom .map-stage { position: relative; width: 100%; max-width: 360px; }
+
+/* map-window: the fixed "porthole" the path pans inside — its own height
+   stays constant while the svg (path + nodes + cursor) translates
+   vertically each frame so the traveling cursor is always centered. */
+.kyoto-bloom .map-window {
+  position: relative;
+  width: 100%;
+  height: 58vh;
+  max-height: 600px;
+  min-height: 380px;
+  overflow: hidden;
+}
+.kyoto-bloom .map-window svg {
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: auto;
+  overflow: visible;
+  display: block;
+  will-change: transform;
+}
+
+.kyoto-bloom .map-path-ghost { fill: none; stroke: var(--line); stroke-width: 2; stroke-linecap: round; }
+.kyoto-bloom .map-path-fill {
+  fill: none; stroke: var(--moss); stroke-width: 2.5; stroke-linecap: round;
+}
+
+.kyoto-bloom .map-node .dot { fill: var(--line); transition: fill 0.35s ease; }
+.kyoto-bloom .map-node.passed .dot { fill: var(--moss); }
+.kyoto-bloom .map-node.here .dot { fill: var(--vermilion); }
+
+.kyoto-bloom .map-node .ring {
+  fill: none; stroke: var(--vermilion); stroke-width: 1.4; opacity: 0;
+  transform-origin: center; transform-box: fill-box;
+  transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.34, 1.6, 0.64, 1);
+  transform: scale(0.8);
+}
+.kyoto-bloom .map-node.here .ring { opacity: 1; transform: scale(1); }
+
+.kyoto-bloom .map-node .thumb {
+  opacity: 0; transform: scale(0.5); transform-origin: center; transform-box: fill-box;
+  transition: opacity 0.45s ease, transform 0.45s cubic-bezier(0.34, 1.5, 0.64, 1);
+}
+.kyoto-bloom .map-node.here .thumb { opacity: 1; transform: scale(1); }
+.kyoto-bloom .map-node .thumb-ring {
+  fill: none; stroke: var(--paper); stroke-width: 3; opacity: 0; transition: opacity 0.4s ease;
+}
+.kyoto-bloom .map-node.here .thumb-ring { opacity: 1; }
+
+.kyoto-bloom .map-node .label {
+  font-size: 12px; fill: var(--ink-soft); letter-spacing: 0.03em;
+  opacity: 0; transform: translateX(-4px); transition: opacity 0.35s ease, transform 0.35s ease, fill 0.3s ease;
+}
+.kyoto-bloom .map-node.here .label { opacity: 1; transform: translateX(0); fill: var(--ink); font-weight: 600; }
+.kyoto-bloom .map-node.passed .label { opacity: 0.55; }
+
+/* the traveling cursor: a small marker sliding continuously along the path */
+.kyoto-bloom .map-cursor {
+  fill: var(--vermilion-soft);
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--vermilion) 55%, transparent));
+  /* no opacity transition: the red cursor dot must be fully visible from
+     the very first frame the lead-in path starts drawing, not ease in a
+     beat behind it — a fade here reads as "the dot arrives late". */
+}
+
+.kyoto-bloom .map-caption {
+  margin-top: 18px; font-size: 11px;
+  color: var(--ink-soft); letter-spacing: 0.05em;
+}
+
+/* right column: flowing stops */
+.kyoto-bloom .stops-col { padding-top: 6vh; }
+
+.kyoto-bloom .stop {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 6vh 0;
+}
+
+.kyoto-bloom .stop-text {
+  /* centering comes from .stop's own flex justify-content.
+     No transform here (deliberately — was translateY(30px)→0 before).
+     stopProgress() reads this element's own getBoundingClientRect().top
+     as its ONLY source of truth for "how far has the reader scrolled
+     toward this stop" — a transform-based entry animation moves that
+     same rect.top by up to 30px over its own independent 0.7s timeline
+     (triggered async by IntersectionObserver, unrelated to scroll), so
+     for that whole window rect.top would reflect "scroll position PLUS
+     wherever the animation currently is" instead of scroll position
+     alone, making downstream progress calculations unreliable. Opacity
+     alone doesn't affect layout/rect.top, so it's kept as a pure fade
+     with no positional side effect. */
+  max-width: 50ch;
+  opacity: 0.15;
+  transition: opacity 0.7s ease;
+}
+.kyoto-bloom .stop.text-in .stop-text { opacity: 1; }
+
+.kyoto-bloom .stop-kicker { display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; }
+.kyoto-bloom .stop-index { font-family: 'ShipporiSerif', serif; font-size: 13px; color: var(--vermilion); letter-spacing: 0.1em; }
+.kyoto-bloom .stop-kind { font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-soft); }
+.kyoto-bloom .stop-kind::before { content: ""; display: inline-block; width: 22px; height: 1px; background: var(--line); margin-right: 10px; vertical-align: middle; }
+
+.kyoto-bloom .stop-name {
+  font-family: 'ShipporiSerif', "Noto Serif TC", serif;
+  font-size: clamp(24px, 2.8vw, 32px); font-weight: 600; margin: 0 0 16px; text-wrap: balance;
+  color: var(--ink);
+  transition: color 0.4s ease;
+}
+/* the title picks up the accent color for the single frame where the
+   bloom photo is fully open and recede hasn't started yet — toggled
+   per-frame from update() rather than a one-shot IntersectionObserver
+   reveal, since it needs to track the same scroll-linked timing as the
+   photo itself. */
+.kyoto-bloom .stop.in-hold .stop-name { color: var(--vermilion); }
+.kyoto-bloom .stop-desc { font-size: 15px; line-height: 1.9; color: var(--ink-soft); }
+
+.kyoto-bloom .stop-hint {
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 28px;
+  font-size: 12px; color: var(--moss); letter-spacing: 0.06em;
+  opacity: 0; transition: opacity 0.4s ease 0.2s;
+}
+.kyoto-bloom .stop.text-in .stop-hint { opacity: 0.85; }
+.kyoto-bloom .stop-hint svg { width: 13px; height: 13px; animation: kyoto-bloom-bob 1.8s ease-in-out infinite; }
+@keyframes kyoto-bloom-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(4px); } }
+
+/* ---------- bloom photo: a single floating layer, not per-stop ----------
+   Instead of each stop owning its own photo frame in the right column,
+   there's ONE shared overlay element, fixed to the viewport, that:
+     1. starts as a small dot pinned to the arriving node's on-screen
+        position (matching the map cursor's own coordinates)
+     2. grows from that anchor point into a large frame reaching toward
+        (but not past) the text column
+     3. shrinks back down to the same anchor point as scrolling continues
+   Text in the right column reveals once (fade/translate in, unchanged)
+   and then just sits still while this bloom-and-recede happens. */
+.kyoto-bloom .bloom-photo {
+  position: fixed;
+  z-index: 15;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+  pointer-events: none;
+  /* left/top/width/height/opacity/transform/transition are all set
+     inline by JS every frame — see update()'s bloom section. */
+}
+.kyoto-bloom .bloom-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* 手機版跟桌面版共用同一個浮動 bloom 圖層(不再是 display: none + 各站
+   自己的靜態 .stop-mobile-photo)——JS 的定位計算(見 update() 的 bloom
+   段落)已改成依 mobileMQ 判斷,在手機版改用 mapWindow 的垂直位置當錨點,
+   而非桌面版的水平錨點,故這裡不需要任何手機版覆寫規則。 */
+
+.kyoto-bloom .progress-rail {
+  position: fixed; right: 22px; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 10px; z-index: 20;
+}
+.kyoto-bloom .progress-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line); transition: background 0.3s ease, transform 0.3s ease; }
+.kyoto-bloom .progress-dot.active { background: var(--vermilion); transform: scale(1.6); }
+@media (max-width: 900px) { .kyoto-bloom .progress-rail { display: none; } }
+
+@media (max-width: 900px) {
+  /* 手機版改成跟桌面版同一套機制(sticky 地圖 + 浮動 bloom 照片跟著地圖
+     cursor 位置展開/收合),只是版面方向從「左右並排」改成「上下堆疊」
+     ——地圖區塊在上、文字+bloom 照片捲動區在下,而非原本手機版專屬的
+     fixed 橫幅(蓋在內容上層、靠 opacity 淡入淡出)+ 各站各自一張靜態
+     .stop-mobile-photo(無任何進退場動畫)。grid-template-rows 取代
+     grid-template-columns,.map-col 從 fixed 改成 sticky,道理與桌面版
+     完全一致,只是 top: 0 對齊的是「畫面上緣」而非「畫面左緣」。 */
+  .kyoto-bloom .journey {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    gap: 0;
+  }
+  .kyoto-bloom .map-col {
+    position: sticky;
+    top: 0;
+    height: var(--mobile-map-h, 45vh);
+    align-items: center;
+    /* z-index 蓋過下方文字捲動內容(理由同桌面版 .bloom-photo 需要蓋在
+       .stop-text 之上),但仍低於 .theme-toggle/.brand-mark 的 200,
+       避免蓋住那兩顆固定按鈕。 */
+    z-index: 10;
+    background: var(--paper);
+  }
+  .kyoto-bloom .map-stage { max-width: 220px; margin: 0 auto; }
+  /* sticky 區塊比桌面版矮(45vh vs 100vh),.map-window 的桌面版尺寸
+     (58vh、min-height 380px)會撐爆這個區塊,故比照原本 fixed 橫幅的
+     做法,依 --mobile-map-h 覆寫兩者。 */
+  .kyoto-bloom .map-window {
+    height: calc(var(--mobile-map-h, 45vh) - 6vh);
+    min-height: 0;
+    max-height: none;
+  }
+  .kyoto-bloom .stops-col { padding-top: 4vh; }
+  .kyoto-bloom .stop { min-height: auto; padding: 8vh var(--edge-pad); }
+}
+
+/* ---------- closing ---------- */
+
+.kyoto-bloom .closing {
+  text-align: center; padding: 12vh var(--edge-pad) 16vh; border-top: 1px solid var(--line);
+  max-width: 640px; margin: 0 auto; position: relative; z-index: 1; background: var(--paper);
+}
+.kyoto-bloom .closing-title { font-family: 'ShipporiSerif', "Noto Serif TC", serif; font-size: clamp(20px, 2.6vw, 26px); margin: 0 0 14px; }
+.kyoto-bloom .closing-desc { color: var(--ink-soft); font-size: 14.5px; line-height: 1.85; margin-bottom: 32px; }
+
+/* ---------- footer(參照 LandingPage.tsx 的 .landing-footer,見 JSX 開頭
+   說明) ---------- */
+
+.kyoto-bloom .kyoto-footer {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  border-top: 1px solid var(--line); padding: 28px var(--edge-pad);
+  text-align: center; font-size: 14px; color: var(--ink-soft);
+  position: relative; z-index: 1; background: var(--paper);
+}
+.kyoto-bloom .kyoto-footer-brand { font-size: 15px; font-weight: 600; color: var(--ink); }
+
+/* kyoto-footer-bar:左邊版權宣告、右邊連結列,窄螢幕下換行堆疊——撐滿
+   .kyoto-footer 的寬度,故用 align-self 覆蓋外層 .kyoto-footer 的
+   align-items: center(同 landing.css 的 .landing-footer-bar)。 */
+.kyoto-bloom .kyoto-footer-bar {
+  align-self: stretch; margin-top: 14px; padding-top: 14px;
+  border-top: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px 24px; font-size: 13px;
+}
+.kyoto-bloom .kyoto-footer-copyright { color: var(--ink-soft); }
+.kyoto-bloom .kyoto-footer-links { display: flex; align-items: center; gap: 20px; }
+.kyoto-bloom .kyoto-footer-links a { color: var(--ink-soft); text-decoration: none; }
+.kyoto-bloom .kyoto-footer-links a:hover { color: var(--vermilion); text-decoration: underline; }
+
+.kyoto-bloom .kyoto-footer-poweredby {
+  margin-top: 10px; font-size: 12px; color: var(--ink-soft);
+  text-decoration: none; opacity: 0.75;
+}
+.kyoto-bloom .kyoto-footer-poweredby:hover { opacity: 1; text-decoration: underline; }
+
+@media (prefers-reduced-motion: reduce) {
+  .kyoto-bloom * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+  .kyoto-bloom { scroll-behavior: auto; }
+  .kyoto-bloom .stop-text { opacity: 1 !important; transform: none !important; }
+}
+
+/* ---------- calibration panel (dev tool, not part of the page itself) ---------- */
+
+.kyoto-bloom .calib-toggle {
+  position: fixed; left: 16px; bottom: 16px; z-index: 200;
+  padding: 10px 16px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--paper); color: var(--ink); font-size: 12px; letter-spacing: 0.04em;
+  cursor: pointer; box-shadow: var(--card-shadow); font-family: inherit;
+}
+@media (max-width: 900px) {
+  /* .brand-mark 手機版也移到 left: 16px; bottom: 16px(見上方品牌標記
+     一節),跟這顆開發用的校準按鈕在同一個角落——校準面板只在
+     import.meta.env.DEV 時渲染,不影響正式環境,但開發時兩者會重疊,
+     故把校準鈕再往上挪一段距離錯開,不擋住品牌標記。 */
+  .kyoto-bloom .calib-toggle { bottom: 64px; }
+}
+.kyoto-bloom .calib-toggle.active { background: var(--vermilion); color: #fff; border-color: var(--vermilion); }
+
+.kyoto-bloom .calib-panel {
+  position: fixed; left: 16px; bottom: 62px; z-index: 200;
+  width: 300px; max-height: 70vh; overflow-y: auto;
+  background: var(--paper); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: var(--card-shadow); padding: 16px;
+  font-size: 12px; color: var(--ink-soft); line-height: 1.6;
+  display: none;
+}
+.kyoto-bloom .calib-panel.open { display: block; }
+.kyoto-bloom .calib-panel h4 {
+  margin: 0 0 8px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink); font-weight: 600;
+}
+.kyoto-bloom .calib-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.kyoto-bloom .calib-row label { width: 70px; flex: none; color: var(--ink); font-weight: 600; }
+.kyoto-bloom .calib-row input[type="range"] { flex: 1; }
+.kyoto-bloom .calib-row input[type="number"] {
+  width: 52px; font-size: 11px; padding: 2px 4px; border: 1px solid var(--line);
+  border-radius: 4px; background: var(--paper); color: var(--ink); font-family: inherit;
+}
+.kyoto-bloom .calib-hint {
+  margin: 10px 0; padding: 8px 10px; background: var(--paper-dim); border-radius: 6px;
+  font-size: 11px;
+}
+.kyoto-bloom .calib-samples { margin: 10px 0; padding: 0; list-style: none; }
+.kyoto-bloom .calib-samples li {
+  display: flex; justify-content: space-between; padding: 4px 0;
+  border-bottom: 1px dashed var(--line); font-variant-numeric: tabular-nums;
+}
+.kyoto-bloom .calib-samples li button {
+  background: none; border: none; color: var(--vermilion); cursor: pointer; font-size: 11px;
+  font-family: inherit; padding: 0 0 0 8px;
+}
+.kyoto-bloom .calib-suggest {
+  margin-top: 10px; padding: 10px; background: color-mix(in srgb, var(--moss) 12%, var(--paper));
+  border-radius: 6px; font-size: 11.5px;
+}
+.kyoto-bloom .calib-suggest strong { color: var(--ink); }
+.kyoto-bloom .calib-output {
+  margin-top: 8px; width: 100%; font-family: ui-monospace, monospace; font-size: 11px;
+  padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper-dim);
+  color: var(--ink); resize: vertical; box-sizing: border-box;
+}
+.kyoto-bloom .calib-copy {
+  margin-top: 6px; width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--vermilion);
+  background: var(--vermilion); color: #fff; font-size: 12px; cursor: pointer; font-family: inherit;
+}
+.kyoto-bloom .calib-clear {
+  margin-top: 6px; width: 100%; padding: 6px; border-radius: 6px; border: 1px solid var(--line);
+  background: transparent; color: var(--ink-soft); font-size: 11px; cursor: pointer; font-family: inherit;
+}
+
+/* while calibration mode is on, map nodes become clickable targets —
+   give them an obvious affordance so it reads as "click here" */
+.kyoto-bloom.calib-mode .map-node { cursor: pointer; }
+.kyoto-bloom.calib-mode .map-node:hover circle.dot { fill: var(--vermilion-soft); }
