@@ -9,7 +9,7 @@ description: 用 tripace 自己的 CLI 工具(server/cmd/cli)透過 HTTP 存取 
 
 **注意：本機執行需要 `GOWORK=off`**（`server` 目前未列在根目錄 `go.work` 的 workspace 模組清單裡，直接 `go run ./cmd/cli` 會報 `directory cmd\cli is contained in a module that is not one of the workspace modules`；不要執行 `go work use .` 加回去，這是刻意保持獨立模組的設定），例如 `GOWORK=off go run ./cmd/cli list-trips`。
 
-**這份 skill 只涵蓋 HTTP 模式（預設行為）。不使用、也不建議使用 `-db` 直連 PostgreSQL 模式**——直連模式需要拿到 `DATABASE_URL`，繞過了 server 的認證與業務邏輯層，不是這個 CLI 工具原本設計給日常查詢/操作用的路徑。
+**CLI 現在一律走 HTTP。原本的 `-db` 直連 PostgreSQL 模式（繞過 server 的認證與業務邏輯層）已整個移除**——所有操作都經過 server 的 HTTP API，維運性質的操作（景點區域人工建檔等）歸在 `/internal/maintenance/*` 命名空間，跟一般使用者流量、產品核心端點分開，方便從請求統計分辨流量來源。
 
 ## 前置：登入
 
@@ -59,18 +59,32 @@ GOWORK=off go run ./cmd/cli entry-delete -entry ent_xxx
 # 清空行程所有 entries（危險操作，會實際刪除資料，執行前務必跟使用者確認）
 GOWORK=off go run ./cmd/cli reset -trip trip_xxx
 
-# 手動觸發即時推播通知（DB 直連模式才需要，HTTP 模式 server 端已自動廣播,一般不需要主動呼叫）
+# 手動觸發即時推播通知（一般不需要主動呼叫，server 端已自動廣播）
 GOWORK=off go run ./cmd/cli notify -trip trip_xxx
 
 # 地點搜尋(可選擇順便把第一筆候選座標寫回某個 entry)
 GOWORK=off go run ./cmd/cli geocode -place "地點名稱" [-region tw] [-n 3] [-entry ent_xxx]
+
+# 新增景點區域資料（地理輪廓底圖用）；-photo-url 未帶時後端會自動查 Pexels 補一張示意圖
+GOWORK=off go run ./cmd/cli attraction-add -name "古城區" -city "台南" -lat 22.99 -lng 120.20 -level 3
+
+# 列出指定城市的所有景點區域資料
+GOWORK=off go run ./cmd/cli attraction-list -city "台南"
+
+# 列出目前已有景點區域資料的城市清單
+GOWORK=off go run ./cmd/cli attraction-cities
+
+# 刪除一筆景點區域資料
+GOWORK=off go run ./cmd/cli attraction-delete -id lmk_xxx
+
+# 重新透過 Google Places 查詢一次地標圖片並回寫
+GOWORK=off go run ./cmd/cli attraction-update-photo -id lmk_xxx
 ```
 
 `entry-add`/`entry-update` 的 `-kind` 若填 `stay`，代表這筆是住宿（飯店）項目；`-location` 填地址或飯店名稱、`-detail` 可帶額外 JSON（例如飯店資訊）。飯店本身沒有獨立的「加入行程」子命令——飯店資料是即時透過 Google Places 查詢（見 `server/internal/geo/places.go`），流程是先用 `geocode` 或前端地圖找到飯店名稱/座標，再用 `entry-add -kind stay` 把它記成一筆行程項目。
 
-## 已知限制（HTTP 模式）
+## 已知限制
 
-- `reset`/`entry-delete` 都是真的會刪除資料的操作，執行前要跟使用者確認範圍（哪個行程/哪個 entry），不要在不確定的情況下對正式環境資料執行。
-- `attraction-add`/`attraction-list`/`attraction-cities`/`attraction-delete` 僅限 `-db` 直連模式（地理輪廓底圖用的景點區域資料維護工具），不走 HTTP，使用前需要 `DATABASE_URL`。
-- `attraction-update-photo` 是例外——已改走 HTTP（`POST /internal/maintenance/landmarks/{id}/update-photo`），跟其餘子命令一樣只需要先登入，不需要 `-db`/`DATABASE_URL`。
-- `/internal/maintenance/*`（`geocode`、`attraction-update-photo` 的底層端點）是刻意跟 `/internal/geo/*` 分開命名空間的維運專用端點，前端產品本身不會呼叫這批路徑，只有 CLI 會用到。
+- `reset`/`entry-delete`/`attraction-delete` 都是真的會刪除資料的操作，執行前要跟使用者確認範圍（哪個行程/哪個 entry/哪個地標），不要在不確定的情況下對正式環境資料執行。
+- `/internal/maintenance/*`（`geocode`、`attraction-*`、`landmarks/{id}/update-photo` 的底層端點）是刻意跟 `/internal/geo/*` 分開命名空間的維運專用端點，前端產品本身不會呼叫這批路徑，只有 CLI 會用到。
+- `attraction-add` 未帶 `-photo-url` 時會自動打 Pexels Search API 查一張示意圖補上（見 `server/internal/pexels`）——這不是該地點的真實照片，只是關鍵字比對到的示意圖；需要 `PEXELS_API_KEY` 環境變數，未設定時靜默略過照片查詢，不影響其餘欄位建檔。

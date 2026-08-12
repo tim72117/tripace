@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 
+	"github.com/tim72117/tripace/internal/model"
 	"github.com/tim72117/tripace/internal/tripsvc"
 )
 
@@ -114,11 +116,37 @@ func (c *httpClient) reset(tripID string) error {
 // attractionUpdatePhoto 對齊 POST /internal/maintenance/landmarks/{id}/
 // update-photo(見 server/internal/api/maintenance.go)——原本只能在 -db
 // 直連模式下使用(見 dbClient 移除前的同名方法),現已搬進後端統一處理,
-// 理由同 geocode.go 開頭的說明。
-func (c *httpClient) attractionUpdatePhoto(id, query string) (any, error) {
+// 理由同 geocode.go 開頭的說明。source 未帶時後端預設用 "google"。
+func (c *httpClient) attractionUpdatePhoto(id, query, source string) (any, error) {
 	body := map[string]any{}
 	if query != "" {
 		body["query"] = query
 	}
+	if source != "" {
+		body["source"] = source
+	}
 	return c.do("POST", "/internal/maintenance/landmarks/"+id+"/update-photo", body)
+}
+
+// attractionAdd/attractionList/attractionCities/attractionDelete 對齊
+// POST/GET/DELETE /internal/maintenance/attractions(見
+// server/internal/api/maintenance.go)——原本只能在 -db 直連模式下使用
+// (見 dbClient 移除前的同名方法),現已搬進後端統一處理,理由同
+// attractionUpdatePhoto 的說明:CLI 不再需要直連資料庫,PhotoURL 未帶時
+// 由後端自動查 Pexels 補上(見 handleMaintenanceAttractionAdd)。
+func (c *httpClient) attractionAdd(in model.Attraction) (any, error) {
+	return c.do("POST", "/internal/maintenance/attractions", in)
+}
+
+func (c *httpClient) attractionList(city string) (any, error) {
+	return c.do("GET", "/internal/maintenance/attractions?city="+url.QueryEscape(city), nil)
+}
+
+func (c *httpClient) attractionCities() (any, error) {
+	return c.do("GET", "/internal/maintenance/attractions/cities", nil)
+}
+
+func (c *httpClient) attractionDelete(id string) error {
+	_, err := c.do("DELETE", "/internal/maintenance/attractions/"+id, nil)
+	return err
 }

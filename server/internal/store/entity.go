@@ -115,6 +115,28 @@ type photoCacheRow struct {
 
 func (photoCacheRow) TableName() string { return "photo_cache" }
 
+// pexelsPhotoCacheRow 快取 Pexels Search API 查到的示意圖(見
+// server/internal/pexels 的完整說明)——同一個查詢字串重複被查詢時直接
+// 吃快取,不重新打 Pexels API。
+//
+// 主鍵刻意是 search_query(搜尋時用的原始字串,如 attraction-add 用
+// CityName+Name 組成的查詢字串),而非任何 Google place_id——Pexels 是
+// 純關鍵字比對的圖庫服務,搜尋結果不綁定任何地點識別碼,search_query
+// 才是這裡唯一有意義、可重現的快取鍵(同 photoCacheRow 用 place_id 當
+// 主鍵是同一種思路:用「查詢當下唯一能重現這次結果的識別值」當鍵)。
+//
+// PageURL 是這張照片在 pexels.com 的原始頁面網址(非下載連結)——依
+// Pexels License 的建議保留可追溯到來源的連結,供日後需要核對/移除
+// 特定照片時使用,不是要在畫面上顯示署名(目前產品未實作署名 UI)。
+type pexelsPhotoCacheRow struct {
+	SearchQuery string    `gorm:"primaryKey;column:search_query"`
+	ImageURL    string    `gorm:"column:image_url;not null"`
+	PageURL     string    `gorm:"column:page_url;not null"`
+	FetchedAt   time.Time `gorm:"column:fetched_at;not null"`
+}
+
+func (pexelsPhotoCacheRow) TableName() string { return "pexels_photo_cache" }
+
 // placeDetailsCacheRow 快取 Google Places Place Details 查詢結果(見
 // server/internal/geo/places.go 的 GetPlaceDetails)——供「使用者點擊
 // 地圖上 Google 原生 POI 圖標」情境使用,同一個地點短期內重複被點擊時

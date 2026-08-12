@@ -27,12 +27,16 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tim72117/tripace/internal/geo"
+	"github.com/tim72117/tripace/internal/model"
+	"github.com/tim72117/tripace/internal/pexels"
 )
 
 // GET /internal/maintenance/geocode?place={地名}&region={國碼,選填}&n={候選筆數,選填}
@@ -82,14 +86,21 @@ func (s *Server) handleMaintenanceGeocode(w http.ResponseWriter, r *http.Request
 }
 
 // POST /internal/maintenance/landmarks/{id}/update-photo
-// Body(選填): { "query": "自訂查詢字串" }
+// Body(選填): { "query": "自訂查詢字串", "source": "google"|"pexels" }
 //
 // 對齊 tripace-cli 原本 landmark-update-photo 子命令(-db 模式)的行為
-// (見 cmd/cli/db.go 移除前的 dbClient.landmarkUpdatePhoto):重新透過
-// Google Places 查詢一次該地標的圖片並回寫到資料庫。query 未帶時,用該
-// 地標既有的 CityName+Name 組成預設查詢字串。查無圖片時回傳明確錯誤,
-// 不靜默略過——這是使用者主動觸發的單筆操作,呼叫端需要知道這次操作
-// 到底有沒有真的取到圖(理由同原本 dbClient 版本的說明)。
+// (見 cmd/cli/db.go 移除前的 dbClient.landmarkUpdatePhoto):重新查詢一次
+// 該地標的圖片並回寫到資料庫。query 未帶時,用該地標既有的
+// CityName+Name 組成預設查詢字串。查無圖片時回傳明確錯誤,不靜默略過
+// ——這是使用者主動觸發的單筆操作,呼叫端需要知道這次操作到底有沒有
+// 真的取到圖(理由同原本 dbClient 版本的說明)。
+//
+// source 未帶時預設 "google"(對齊改動前的既有行為,不影響任何既有呼叫
+// 端);"pexels" 改走 internal/pexels 查詢示意圖(不是該地點的真實照片,
+// 見該套件開頭的定位說明)。兩種來源的底層資料形狀不同(Google Photo
+// 是 data: URI、Pexels 是一般圖片網址),但都透過同一個
+// UpdateAttractionPhoto 寫回 attractions.photo_url——那個欄位本身就是
+// 不透明字串,前端 <img src> 直接用,不需要额外分辨來源。
 func (s *Server) handleMaintenanceLandmarkUpdatePhoto(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -97,11 +108,12 @@ func (s *Server) handleMaintenanceLandmarkUpdatePhoto(w http.ResponseWriter, r *
 		return
 	}
 
-	// body 整段可省略(query 是選填欄位),故不用 decode() helper——那個
+	// body 整段可省略(query/source 皆選填),故不用 decode() helper——那個
 	// helper 對完全空的 request body 會直接判定失敗,這裡改成盡力解析、
-	// 解析不出來就當作沒帶 query,交給下面的預設值邏輯處理。
+	// 解析不出來就當作沒帶,交給下面的預設值邏輯處理。
 	var body struct {
-		Query string `json:"query"`
+		Query  string `json:"query"`
+		Source string `json:"source"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
@@ -115,30 +127,27 @@ func (s *Server) handleMaintenanceLandmarkUpdatePhoto(w http.ResponseWriter, r *
 		query = lm.CityName + " " + lm.Name
 	}
 
-	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
-	client := geo.New(apiKey)
-	client.SetCache(s.photoCache)
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-	defer cancel()
-	ctx = geo.WithCaller(ctx, "handleMaintenanceLandmarkUpdatePhoto")
-	// 用註冊時的 pattern(而非 r.URL.Path 字面路徑)——這條路由含 {id}
-	// 路徑變數,若用字面路徑,同一條路由會因為不同地標 ID 被統計成一堆
-	// 各自獨立的資料列,見 geo.WithPath 的說明。
-	ctx = geo.WithPath(ctx, "/internal/maintenance/landmarks/{id}/update-photo")
+	source := body.Source
+	if source == "" {
+		source = "google"
+	}
 
-	place, photoRef, _, _, err := client.SearchLandmarkWithPhoto(ctx, query)
-	if err != nil {
-		writeErr(w, http.StatusBadGateway, "search_failed", "查詢「"+query+"」失敗: "+err.Error())
+	var photoURL string
+	switch source {
+	case "google":
+		photoURL, err = s.updateAttractionPhotoFromGoogle(r.Context(), query)
+	case "pexels":
+		photoURL, err = s.updateAttractionPhotoFromPexels(r.Context(), query)
+	default:
+		writeErr(w, http.StatusBadRequest, "invalid_input", "source 須為 google 或 pexels")
 		return
 	}
-	if photoRef == "" {
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "search_failed", err.Error())
+		return
+	}
+	if photoURL == "" {
 		writeErr(w, http.StatusNotFound, "no_photo", "「"+query+"」查無可用照片")
-		return
-	}
-
-	photoURL, err := client.PhotoDataURI(ctx, place.PlaceID, photoRef, 400)
-	if err != nil {
-		writeErr(w, http.StatusBadGateway, "photo_fetch_failed", "下載照片失敗: "+err.Error())
 		return
 	}
 
@@ -148,12 +157,174 @@ func (s *Server) handleMaintenanceLandmarkUpdatePhoto(w http.ResponseWriter, r *
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"id":    id,
-		"query": query,
-		// 只回報是否成功與圖片長度,不把完整 data URI(可能數十 KB 的
-		// base64 字串)塞進回應——CLI 輸出是給人看的,理由同原本
-		// dbClient 版本的說明。
+		"id":     id,
+		"query":  query,
+		"source": source,
+		// 只回報是否成功與圖片長度,不把完整 data URI(Google 來源可能數十
+		// KB 的 base64 字串)塞進回應——CLI 輸出是給人看的,理由同原本
+		// dbClient 版本的說明。Pexels 來源是一般網址,長度不具參考意義,
+		// 但沿用同一個欄位維持回應形狀一致,不需要呼叫端依 source 分岔
+		// 解析邏輯。
 		"photoLength": len(photoURL),
 		"status":      "updated",
 	})
+}
+
+// updateAttractionPhotoFromGoogle 是 handleMaintenanceLandmarkUpdatePhoto
+// 原本(改動前)的 Google Places 查詢邏輯,原封不動搬進獨立函式——回傳
+// data: URI,查無圖片時回傳空字串(非 error),呼叫端據此判斷。
+func (s *Server) updateAttractionPhotoFromGoogle(ctx context.Context, query string) (string, error) {
+	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+	client := geo.New(apiKey)
+	client.SetCache(s.photoCache)
+	gctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	gctx = geo.WithCaller(gctx, "handleMaintenanceLandmarkUpdatePhoto")
+	// 用註冊時的 pattern(而非 r.URL.Path 字面路徑)——這條路由含 {id}
+	// 路徑變數,若用字面路徑,同一條路由會因為不同地標 ID 被統計成一堆
+	// 各自獨立的資料列,見 geo.WithPath 的說明。
+	gctx = geo.WithPath(gctx, "/internal/maintenance/landmarks/{id}/update-photo")
+
+	place, photoRef, _, _, err := client.SearchLandmarkWithPhoto(gctx, query)
+	if err != nil {
+		return "", fmt.Errorf("查詢「%s」失敗: %w", query, err)
+	}
+	if photoRef == "" {
+		return "", nil
+	}
+
+	photoURL, err := client.PhotoDataURI(gctx, place.PlaceID, photoRef, 400)
+	if err != nil {
+		return "", fmt.Errorf("下載照片失敗: %w", err)
+	}
+	return photoURL, nil
+}
+
+// updateAttractionPhotoFromPexels 走 internal/pexels 查詢一張示意圖(見
+// fetchPexelsPhotoURL 的既有邏輯,這裡改成回傳 error 而非靜默降級——
+// 這支端點是使用者主動觸發的單筆操作,查詢失敗需要明確回報,跟
+// handleMaintenanceAttractionAdd 建檔時「照片是輔助欄位,失敗不擋整個
+// 操作」的降級語意不同)。
+func (s *Server) updateAttractionPhotoFromPexels(ctx context.Context, query string) (string, error) {
+	apiKey := os.Getenv("PEXELS_API_KEY")
+	client := pexels.New(apiKey)
+	pctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+
+	photo, ok, err := client.Search(pctx, query)
+	if err != nil {
+		return "", fmt.Errorf("查詢「%s」失敗: %w", query, err)
+	}
+	if !ok {
+		return "", nil
+	}
+	return photo.ImageURL, nil
+}
+
+// POST /internal/maintenance/attractions
+// Body: model.Attraction 的 JSON 形狀(name/cityName/lat/lng/level 必填,
+// radiusMeters/summary/photoUrl 選填)。
+//
+// 對齊 tripace-cli 原本 attraction-add 子命令(-db 模式)的行為(見
+// cmd/cli/db.go 移除前的 dbClient.attractionAdd):人工建檔一筆景點區域
+// 資料。搬進後端後,不再直連資料庫,理由同本檔案開頭的說明。
+//
+// PhotoURL 未帶時,自動打 Pexels Search API 查一張示意圖補上(用
+// cityName+name 組成查詢字串)——這不是「該地點的真實照片」,只是關鍵字
+// 比對到的示意圖(見 internal/pexels 開頭的定位說明),查無結果或未設定
+// PEXELS_API_KEY 時不視為錯誤,直接建檔成 PhotoURL 為空,不阻擋整個
+// 新增操作——照片只是輔助顯示用途,不是這筆資料的必要欄位。
+func (s *Server) handleMaintenanceAttractionAdd(w http.ResponseWriter, r *http.Request) {
+	var in model.Attraction
+	if !decode(w, r, &in) {
+		return
+	}
+	if strings.TrimSpace(in.Name) == "" || strings.TrimSpace(in.CityName) == "" || in.Level < 1 || in.Level > 5 {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "name、cityName 必填,level 須介於 1~5")
+		return
+	}
+
+	if in.PhotoURL == nil || strings.TrimSpace(*in.PhotoURL) == "" {
+		query := in.CityName + " " + in.Name
+		if photoURL := s.fetchPexelsPhotoURL(r.Context(), query); photoURL != "" {
+			in.PhotoURL = &photoURL
+		}
+	}
+
+	res, err := s.store.CreateAttraction(in)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "create_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, res)
+}
+
+// fetchPexelsPhotoURL 查詢一張 Pexels 示意圖的圖片網址,查無結果、未設定
+// PEXELS_API_KEY、或呼叫失敗時一律回傳空字串——這是刻意的靜默降級(同
+// handleMaintenanceAttractionAdd 的說明:照片是輔助欄位,不該讓 Pexels
+// 查詢失敗擋下整個建檔操作),呼叫端不需要另外處理 error。
+//
+// 這裡是一次性建檔操作,不接 internal/store 的 GetCachedPexelsPhoto/
+// SetCachedPexelsPhoto 快取(那套快取元件與底層儲存留給另一個尚未實作的
+// 功能——使用者瀏覽景點時系統即時查詢示意圖——共用,兩者存放的圖片來源
+// 與存取元件相同,但這裡的呼叫時機、頻率都不需要透過快取層。
+func (s *Server) fetchPexelsPhotoURL(ctx context.Context, query string) string {
+	apiKey := os.Getenv("PEXELS_API_KEY")
+	client := pexels.New(apiKey)
+	pctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+
+	photo, ok, err := client.Search(pctx, query)
+	if err != nil || !ok {
+		return ""
+	}
+	return photo.ImageURL
+}
+
+// GET /internal/maintenance/attractions?city={城市名}
+//
+// 對齊 tripace-cli 原本 attraction-list 子命令(-db 模式)的行為(見
+// cmd/cli/db.go 移除前的 dbClient.attractionList)。
+func (s *Server) handleMaintenanceAttractionList(w http.ResponseWriter, r *http.Request) {
+	city := r.URL.Query().Get("city")
+	if city == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 city 查詢參數")
+		return
+	}
+	attractions, err := s.store.ListAttractionsByCity(city)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"city": city, "attractions": attractions})
+}
+
+// GET /internal/maintenance/attractions/cities
+//
+// 對齊 tripace-cli 原本 attraction-cities 子命令(-db 模式)的行為(見
+// cmd/cli/db.go 移除前的 dbClient.attractionCities)。
+func (s *Server) handleMaintenanceAttractionCities(w http.ResponseWriter, r *http.Request) {
+	cities, err := s.store.ListAttractionCities()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"cities": cities})
+}
+
+// DELETE /internal/maintenance/attractions/{id}
+//
+// 對齊 tripace-cli 原本 attraction-delete 子命令(-db 模式)的行為(見
+// cmd/cli/db.go 移除前的 dbClient.attractionDelete)。
+func (s *Server) handleMaintenanceAttractionDelete(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少地標 ID")
+		return
+	}
+	if err := s.store.DeleteAttraction(id); err != nil {
+		writeErr(w, http.StatusInternalServerError, "delete_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"deleted": id})
 }

@@ -1,12 +1,21 @@
 // Command cli 是 entry 的操作工具，供 Claude Code / LLM 直接操作行程資料。
 //
-// 預設走 HTTP 存取本地或遠端 server（/internal/ API）。
-// 加 -db 旗標改為直連 PostgreSQL（需要 DATABASE_URL）。
+// 一律走 HTTP 存取本地或遠端 server（/internal/、/v1/ API）——不再支援直連
+// 資料庫（見下方「架構說明」）。
 //
 // /internal/ API 需要先登入:執行一次 `tripace-cli login --web`（走瀏覽器
 // 核准流程，見 login.go）或 `tripace-cli login --device`（無頭環境用的
 // device code 流程，同樣見 login.go），換到的 JWT 會存在本機（見
 // token.go），之後的指令都會自動帶上，不需要每次都重新登入。
+//
+// # 架構說明:全部改走 API，維護用/一般使用者用端點分離
+//
+// CLI 曾經支援 -db 旗標直連 PostgreSQL（繞過 server 的認證與業務邏輯層）,
+// 現已完全移除:所有操作一律經過 server 的 HTTP API,不再有任何一條路徑
+// 繞過認證/節流/請求記錄。維運性質的操作(景點區域人工建檔等)歸在
+// /internal/maintenance/* 命名空間,跟一般使用者會呼叫的 /v1/*、產品核心
+// 功能用的 /internal/geo/* 等端點分開,方便從請求統計一眼分辨流量來源
+// (見 server/internal/api/maintenance.go 開頭的完整說明)。
 //
 // 子命令:
 //
@@ -21,16 +30,6 @@
 //	reset        -trip ID
 //	geocode      -place 文字 [-region 國碼] [-entry ID]
 //	notify       -trip ID
-//
-//	drop-trip-grouping   一次性維運指令,清除 trip 歸組機制留下的孤兒資料庫
-//	                     物件(entries.trip_id 欄位與 trips 表)(僅 -db 模式)
-//	rename-channel-to-trip   一次性維運指令,把 channel→trip 改名的資料庫結構
-//	                     變更落實(channels 表改名 trips、channel_id 欄位改名
-//	                     trip_id)(僅 -db 模式)
-//	fix-photo-cache-schema   一次性維運指令,修復 photo_cache 表仍停留在
-//	                     更早期 schema(photo_ref 為主鍵一部分)的問題,清空
-//	                     重建成 (place_id, photo_index, max_width_px) 主鍵
-//	                     (僅 -db 模式)
 //
 // 所有輸出為 JSON（方便 Claude Code 解析）。
 package main
@@ -47,7 +46,7 @@ import (
 	"github.com/tim72117/tripace/internal/tripsvc"
 )
 
-// client 定義統一的操作介面，由 httpClient 或 dbClient 實作。
+// client 定義統一的操作介面，由 httpClient 實作。
 type client interface {
 	listTrips() (any, error)
 	createTrip(name string) (any, error)
@@ -64,16 +63,11 @@ func main() {
 	}
 
 	// 全域旗標（在子命令前解析）
-	useDB := false
 	apiURL := "http://localhost:8080"
 	args1 := os.Args[1:]
 	filtered := args1[:0:len(args1)]
 	for i := 0; i < len(args1); i++ {
 		a := args1[i]
-		if a == "-db" {
-			useDB = true
-			continue
-		}
 		if len(a) > 5 && a[:5] == "-api=" {
 			apiURL = a[5:]
 			continue
@@ -90,15 +84,7 @@ func main() {
 	cmd := os.Args[1]
 	args := os.Args[2:]
 
-	var c client
-	var db *dbClient
-	if useDB {
-		db = newDBClient()
-		defer db.close()
-		c = db
-	} else {
-		c = newHTTPClient(apiURL)
-	}
+	c := newHTTPClient(apiURL)
 
 	switch cmd {
 	case "login":
@@ -123,20 +109,14 @@ func main() {
 		cmdGeocode(args)
 	case "notify":
 		cmdNotify(args)
-	case "drop-trip-grouping":
-		cmdDropTripGrouping(useDB, db)
-	case "rename-channel-to-trip":
-		cmdRenameChannelToTrip(useDB, db)
-	case "fix-photo-cache-schema":
-		cmdFixPhotoCacheSchema(useDB, db)
 	case "attraction-add":
-		cmdAttractionAdd(useDB, db, args)
+		cmdAttractionAdd(c, args)
 	case "attraction-list":
-		cmdAttractionList(useDB, db, args)
+		cmdAttractionList(c, args)
 	case "attraction-cities":
-		cmdAttractionCities(useDB, db)
+		cmdAttractionCities(c)
 	case "attraction-delete":
-		cmdAttractionDelete(useDB, db, args)
+		cmdAttractionDelete(c, args)
 	case "attraction-update-photo":
 		cmdAttractionUpdatePhoto(apiURL, args)
 	case "-h", "--help", "help":
@@ -270,87 +250,13 @@ func cmdNotify(args []string) {
 	output(map[string]string{"notified": *trip})
 }
 
-// cmdDropTripGrouping 是一次性維運指令:清掉 trip 歸組機制留下的孤兒資料庫
-// 物件(entries.trip_id 欄位與 trips 表,見 store.DropTripGroupingObjects)。
-//
-// 這不是常規的業務操作，而是直接動資料庫 schema，因此只在 -db 模式下有意義；
-// 沒加 -db 就直接 fatal，不嘗試走 HTTP client(HTTP 沒有也不該有對應端點)。
-func cmdDropTripGrouping(useDB bool, db *dbClient) {
-	if !useDB {
-		fatal("drop-trip-grouping 只能搭配 -db 使用（這是直接動資料庫 schema 的一次性維運操作，不走 HTTP）")
-	}
-	dropped, err := db.dropTripGrouping()
-	if err != nil {
-		fatal("drop-trip-grouping: %v", err)
-	}
-	if len(dropped) == 0 {
-		output(map[string]any{
-			"dropped": []string{},
-			"message": "trip 歸組的資料庫物件（entries.trip_id、trips 表）已不存在，無需操作",
-		})
-		return
-	}
-	output(map[string]any{"dropped": dropped})
-}
-
-// cmdRenameChannelToTrip 是一次性維運指令:把 channel→trip 改名這次程式碼
-// 重構對應的資料庫結構變更真正落到資料庫上(見 store.RenameChannelToTrip)。
-//
-// 這不是常規的業務操作，而是直接動資料庫 schema，因此只在 -db 模式下有意義；
-// 沒加 -db 就直接 fatal，不嘗試走 HTTP client(HTTP 沒有也不該有對應端點)。
-func cmdRenameChannelToTrip(useDB bool, db *dbClient) {
-	if !useDB {
-		fatal("rename-channel-to-trip 只能搭配 -db 使用（這是直接動資料庫 schema 的一次性維運操作，不走 HTTP）")
-	}
-	renamed, err := db.renameChannelToTrip()
-	if err != nil {
-		fatal("rename-channel-to-trip: %v", err)
-	}
-	if len(renamed) == 0 {
-		output(map[string]any{
-			"renamed": []string{},
-			"message": "channels/channel_id 已不存在（已改名過或本來就是新 schema），無需操作",
-		})
-		return
-	}
-	output(map[string]any{"renamed": renamed})
-}
-
-// cmdFixPhotoCacheSchema 是一次性維運指令:修復正式站 photo_cache 表仍
-// 停留在更早期 schema(以 photo_ref 為主鍵一部分)的問題,清空重建成目前
-// 程式碼期待的 (place_id, photo_index, max_width_px) 主鍵(見
-// store.FixPhotoCacheSchema)。
-//
-// 這不是常規的業務操作，而是直接動資料庫 schema，因此只在 -db 模式下有意義；
-// 沒加 -db 就直接 fatal，不嘗試走 HTTP client(HTTP 沒有也不該有對應端點)。
-func cmdFixPhotoCacheSchema(useDB bool, db *dbClient) {
-	if !useDB {
-		fatal("fix-photo-cache-schema 只能搭配 -db 使用（這是直接動資料庫 schema 的一次性維運操作，不走 HTTP）")
-	}
-	fixed, err := db.fixPhotoCacheSchema()
-	if err != nil {
-		fatal("fix-photo-cache-schema: %v", err)
-	}
-	if !fixed {
-		output(map[string]any{
-			"fixed":   false,
-			"message": "photo_cache.photo_ref 已不存在（已修復過或本來就是新 schema），無需操作",
-		})
-		return
-	}
-	output(map[string]any{
-		"fixed":   true,
-		"message": "photo_cache 已清空並重建為 (place_id, photo_index, max_width_px) 主鍵",
-	})
-}
-
 // cmdAttractionAdd 新增一筆景點區域資料(見 model.Attraction 的完整說明)。
-// 只在 -db 模式下有意義——這是人工建檔操作,不透過 HTTP(不開放給
-// 一般使用者寫入,避免資料被任意竄改)。
-func cmdAttractionAdd(useDB bool, db *dbClient, args []string) {
-	if !useDB {
-		fatal("attraction-add 只能搭配 -db 使用（這是直接寫資料庫的人工建檔操作，不走 HTTP）")
-	}
+// 走 POST /internal/maintenance/attractions(見
+// server/internal/api/maintenance.go)——這是人工建檔操作,不開放給一般
+// 使用者的 /v1/* 寫入,但跟其餘 CLI 指令一樣走 HTTP + JWT 登入路徑,不再
+// 直連資料庫(見本檔案開頭「架構說明」)。-photo-url 未帶時,後端會自動
+// 查 Pexels 補一張示意圖(見該端點的完整說明)。
+func cmdAttractionAdd(c *httpClient, args []string) {
 	fs := flag.NewFlagSet("attraction-add", flag.ExitOnError)
 	name := fs.String("name", "", "地標/區域白話名稱（必填），如「古城區」「101」")
 	city := fs.String("city", "", "所屬城市名稱（必填），對齊 GET /internal/geo/attractions?city= 的查詢字串")
@@ -377,74 +283,75 @@ func cmdAttractionAdd(useDB bool, db *dbClient, args []string) {
 	if *photoURL != "" {
 		in.PhotoURL = photoURL
 	}
-	res, err := db.attractionAdd(in)
+	res, err := c.attractionAdd(in)
 	if err != nil {
 		fatal("attraction-add: %v", err)
 	}
 	output(res)
 }
 
-// cmdAttractionList 列出指定城市的所有景點區域資料。
-func cmdAttractionList(useDB bool, db *dbClient, args []string) {
-	if !useDB {
-		fatal("attraction-list 只能搭配 -db 使用")
-	}
+// cmdAttractionList 列出指定城市的所有景點區域資料。走
+// GET /internal/maintenance/attractions?city=(見 http.go 的
+// httpClient.attractionList)。
+func cmdAttractionList(c *httpClient, args []string) {
 	fs := flag.NewFlagSet("attraction-list", flag.ExitOnError)
 	city := fs.String("city", "", "城市名稱（必填）")
 	_ = fs.Parse(args)
 	if *city == "" {
 		fatal("attraction-list 需要 -city")
 	}
-	res, err := db.attractionList(*city)
+	res, err := c.attractionList(*city)
 	if err != nil {
 		fatal("attraction-list: %v", err)
 	}
 	output(res)
 }
 
-// cmdAttractionCities 列出目前已有景點區域資料的城市清單。
-func cmdAttractionCities(useDB bool, db *dbClient) {
-	if !useDB {
-		fatal("attraction-cities 只能搭配 -db 使用")
-	}
-	res, err := db.attractionCities()
+// cmdAttractionCities 列出目前已有景點區域資料的城市清單。走
+// GET /internal/maintenance/attractions/cities。
+func cmdAttractionCities(c *httpClient) {
+	res, err := c.attractionCities()
 	if err != nil {
 		fatal("attraction-cities: %v", err)
 	}
 	output(res)
 }
 
-// cmdAttractionDelete 刪除一筆景點區域資料。
-func cmdAttractionDelete(useDB bool, db *dbClient, args []string) {
-	if !useDB {
-		fatal("attraction-delete 只能搭配 -db 使用")
-	}
+// cmdAttractionDelete 刪除一筆景點區域資料。走
+// DELETE /internal/maintenance/attractions/{id}。
+func cmdAttractionDelete(c *httpClient, args []string) {
 	fs := flag.NewFlagSet("attraction-delete", flag.ExitOnError)
 	id := fs.String("id", "", "地標 ID（必填）")
 	_ = fs.Parse(args)
 	if *id == "" {
 		fatal("attraction-delete 需要 -id")
 	}
-	if err := db.attractionDelete(*id); err != nil {
+	if err := c.attractionDelete(*id); err != nil {
 		fatal("attraction-delete: %v", err)
 	}
 	output(map[string]string{"deleted": *id})
 }
 
-// cmdAttractionUpdatePhoto 重新透過 Google Places 查詢一次地標圖片並回寫
-// 到資料庫——走 POST /internal/maintenance/landmarks/{id}/update-photo
-// (見 server/internal/api/maintenance.go 與 httpClient.attractionUpdatePhoto
-// 的完整說明),不再限定 -db 模式。-query 未指定時用該筆地標既有的
-// 城市+名稱組成預設查詢字串(後端決定,不在 CLI 端組)。
+// cmdAttractionUpdatePhoto 重新查詢一次地標圖片並回寫到資料庫——走
+// POST /internal/maintenance/landmarks/{id}/update-photo(見
+// server/internal/api/maintenance.go 與 httpClient.attractionUpdatePhoto
+// 的完整說明)。-query 未指定時用該筆地標既有的城市+名稱組成預設查詢
+// 字串(後端決定,不在 CLI 端組)。-source 選 google(預設,真實照片,需要
+// GOOGLE_PLACES_API_KEY)或 pexels(關鍵字比對到的示意圖,非真實照片,
+// 需要 PEXELS_API_KEY)。
 func cmdAttractionUpdatePhoto(apiURL string, args []string) {
 	fs := flag.NewFlagSet("attraction-update-photo", flag.ExitOnError)
 	id := fs.String("id", "", "地標 ID（必填）")
 	query := fs.String("query", "", "查詢字串（選填，預設用該地標的城市+名稱）")
+	source := fs.String("source", "google", "圖片來源：google（真實照片）或 pexels（示意圖，非真實照片）")
 	_ = fs.Parse(args)
 	if *id == "" {
 		fatal("attraction-update-photo 需要 -id")
 	}
-	res, err := newHTTPClient(apiURL).attractionUpdatePhoto(*id, *query)
+	if *source != "google" && *source != "pexels" {
+		fatal("attraction-update-photo 的 -source 須為 google 或 pexels")
+	}
+	res, err := newHTTPClient(apiURL).attractionUpdatePhoto(*id, *query, *source)
 	if err != nil {
 		fatal("attraction-update-photo: %v", err)
 	}
@@ -488,11 +395,10 @@ func fatal(format string, a ...any) {
 func usage() {
 	fmt.Print(`cli — entry/trip 操作工具
 
-用法: cli [-api URL] [-db] <子命令> [旗標]
+用法: cli [-api URL] <子命令> [旗標]
 
 全域旗標:
   -api URL  server 位址（預設 http://localhost:8080）
-  -db       直連 PostgreSQL（需要 DATABASE_URL，不走 HTTP）
 
 子命令:
   login --web [-console URL]
@@ -518,33 +424,29 @@ func usage() {
                帶 -entry 時直接寫回該筆 entry 的經緯度。
   notify       -trip ID [-api URL]
 
-  drop-trip-grouping   [僅限 -db] 一次性維運指令，清除 trip 歸組機制留下的
-                        孤兒資料庫物件（entries.trip_id 欄位與 trips 表）。
-                        非常規操作，不加 -db 會直接報錯。
-
-  rename-channel-to-trip   [僅限 -db] 一次性維運指令，把 channel→trip 改名
-                        對應的資料庫結構變更落實（channels 表改名 trips、
-                        entries/members/public_links 的 channel_id 欄位
-                        改名 trip_id）。非常規操作，不加 -db 會直接報錯。
-
-  attraction-add    [僅限 -db] -name 文字 -city 文字 -lat 緯度 -lng 經度
+  attraction-add    -name 文字 -city 文字 -lat 緯度 -lng 經度
                         -level 1~5 [-radius 公尺] [-summary 文字] [-photo-url 網址]
                         新增景點區域資料（地理輪廓底圖用，構想 6，見
                         docs/TRIP_PLANNING_DESIGN_DISCUSSION.md）。分級對照：
                         1=國際（如 101） 2=國家（如中正紀念堂）
                         3=區域（如淡水、陽明山） 4=城市（如象山）
-                        5=在地（如博愛特區、永康商圈、公館商圈）
-  attraction-list   [僅限 -db] -city 文字
+                        5=在地（如博愛特區、永康商圈、公館商圈）。走
+                        POST /internal/maintenance/attractions，需要先登入；
+                        -photo-url 未帶時，後端會自動查 Pexels 補一張示意圖
+                        （查無結果不影響建檔）。
+  attraction-list   -city 文字
                         列出指定城市的所有景點區域資料。
-  attraction-cities [僅限 -db]
+  attraction-cities
                         列出目前已有景點區域資料的城市清單。
-  attraction-delete [僅限 -db] -id 地標ID
+  attraction-delete -id 地標ID
                         刪除一筆景點區域資料。
-  attraction-update-photo -id 地標ID [-query 文字]
-                        重新透過 Google Places 查詢一次圖片並回寫到資料庫
-                        （走 /internal/maintenance/landmarks/{id}/update-photo，
+  attraction-update-photo -id 地標ID [-query 文字] [-source google|pexels]
+                        重新查詢一次圖片並回寫到資料庫（走
+                        /internal/maintenance/landmarks/{id}/update-photo，
                         需要先登入）。-query 未指定時，用該地標既有的城市+名稱
-                        當查詢字串。
+                        當查詢字串。-source 預設 google（真實照片，需要
+                        GOOGLE_PLACES_API_KEY）；pexels 是關鍵字比對到的示意圖
+                        （非該地點真實照片，需要 PEXELS_API_KEY）。
 
 所有輸出為 JSON。
 `)

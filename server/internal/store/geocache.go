@@ -65,6 +65,35 @@ func (s *Store) TrimCachedPhotos(placeID string, maxWidthPx, keepBelow int) erro
 		Delete(&photoCacheRow{}).Error
 }
 
+// GetCachedPexelsPhoto 查詢已快取的 Pexels 搜尋結果(見 pexelsPhotoCacheRow
+// 的完整說明)。maxAge 是這筆快取視為新鮮的上限,超過視為未命中,呼叫端
+// 應重新查詢 Pexels——理由同 GetCachedPhoto/GetCachedPlaceDetails 的
+// maxAge 參數。
+func (s *Store) GetCachedPexelsPhoto(searchQuery string, maxAge time.Duration) (row pexelsPhotoCacheRow, ok bool, err error) {
+	err = s.db.Where("search_query = ?", searchQuery).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return pexelsPhotoCacheRow{}, false, nil
+	}
+	if err != nil {
+		return pexelsPhotoCacheRow{}, false, err
+	}
+	if now().Sub(row.FetchedAt) > maxAge {
+		return pexelsPhotoCacheRow{}, false, nil
+	}
+	return row, true, nil
+}
+
+// SetCachedPexelsPhoto 寫入(或覆蓋既有)一筆 Pexels 搜尋結果快取。
+func (s *Store) SetCachedPexelsPhoto(searchQuery, imageURL, pageURL string) error {
+	row := pexelsPhotoCacheRow{
+		SearchQuery: searchQuery,
+		ImageURL:    imageURL,
+		PageURL:     pageURL,
+		FetchedAt:   now(),
+	}
+	return s.db.Save(&row).Error
+}
+
 // GetCachedPlaceDetails 查詢已快取的 Place Details 結果(見
 // placeDetailsCacheRow 的完整說明)。maxAge 是這筆快取視為新鮮的上限
 // (超過視為過期、當作未命中,呼叫端應重新查詢)——地點的名稱/地址/

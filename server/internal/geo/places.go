@@ -68,6 +68,13 @@ func SetPhotosEnabled(enabled bool) {
 	photosEnabled = enabled
 }
 
+// PhotosEnabled 回報目前是否已透過 SetPhotosEnabled(true) 開啟 Google
+// Photo Media 下載——供其他套件(如 onagenttools 的 Pexels fallback 判斷)
+// 讀取這個開關,不需要各自重複讀一次 GOOGLE_PLACES_FETCH_PHOTOS 環境變數。
+func PhotosEnabled() bool {
+	return photosEnabled
+}
+
 func defaultGateway() *apigateway.Gateway {
 	defaultGatewayOnce.Do(func() {
 		defaultGatewayValue = apigateway.New(&http.Client{Timeout: 5 * time.Second}, defaultGatewayConfig, defaultGatewayLogger)

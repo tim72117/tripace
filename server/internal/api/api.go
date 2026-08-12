@@ -233,6 +233,10 @@ func (s *Server) Routes() http.Handler {
 	// 的 request-stats)一眼分辨流量來源。
 	internalMux.HandleFunc("GET /internal/maintenance/geocode", s.handleMaintenanceGeocode)
 	internalMux.HandleFunc("POST /internal/maintenance/landmarks/{id}/update-photo", s.handleMaintenanceLandmarkUpdatePhoto)
+	internalMux.HandleFunc("POST /internal/maintenance/attractions", s.handleMaintenanceAttractionAdd)
+	internalMux.HandleFunc("GET /internal/maintenance/attractions", s.handleMaintenanceAttractionList)
+	internalMux.HandleFunc("GET /internal/maintenance/attractions/cities", s.handleMaintenanceAttractionCities)
+	internalMux.HandleFunc("DELETE /internal/maintenance/attractions/{id}", s.handleMaintenanceAttractionDelete)
 
 	mux.Handle("/internal/", internalAuth(s.signer, internalMux))
 
