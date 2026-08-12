@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Moon, Sun } from 'lucide-react'
-import './KyotoExploreBloom.css'
+import './HomePage.css'
 
-// KyotoExploreBloom — 京都東山探索路線的捲動視差 demo,原本是獨立的純
-// HTML/CSS/JS 靜態頁面(web/public/kyoto-demo-pages/kyoto-explore-bloom.html),
-// 搬進 src/ 讓它能走 Vite dev server 的 HMR、日後可能取代 LandingPage.tsx。
+// HomePage — 網站首頁("/" 路由),以京都東山探索路線的捲動視差敘事
+// (原本是獨立的純 HTML/CSS/JS 靜態頁面,搬進 src/ 讓它能走 Vite dev
+// server 的 HMR,原始靜態檔案已於搬遷後刪除)展示 Tripace 的探索體驗。
+// 功能介紹頁另外搬到 ProductPage.tsx("/product" 路由),不在這個元件
+// 的範圍內。
 //
 // 這裡刻意不把互動邏輯重寫成宣告式的 React state/JSX——原本的邏輯是一組
 // 已經仔細校準過的捲動數學(stopProgress 的分段公式、bloom 開合的三段式
@@ -14,17 +16,18 @@ import './KyotoExploreBloom.css'
 // 管理的頻繁互動狀態,一次性掛載後靠 rAF 逐幀更新的命令式邏輯反而更貼近
 // 它實際的運作方式。故整段邏輯原封不動包進 useEffect,只做兩個必要調整:
 //   1. document.body.classList → rootRef 對應的元件根節點(不能繼續污染
-//      全域 <body>,這個元件將來要能跟其他頁面共存,見 KyotoExploreBloom.css
-//      開頭的 .kyoto-bloom scope 說明)。
+//      全域 <body>,這個元件將來要能跟其他頁面共存,見 HomePage.css
+//      開頭的 .kyoto-bloom scope 說明——CSS 的 scope class 名稱本身沒有
+//      隨這次檔案改名一起改,純粹是命名慣用詞彙,不影響任何行為)。
 //   2. 所有 querySelector/getElementById 改成從 rootRef.current 底下找,
 //      避免撞到頁面上其他元件同樣 id 的元素(原始 HTML 是整頁獨佔,id
 //      沒有這個顧慮;搬進元件後不能再假設 document 裡只有這一份)。
-export function KyotoExploreBloom() {
+export function HomePage() {
   const rootRef = useRef<HTMLDivElement>(null)
   // theme:手動日夜間切換,寫進根元素的 data-theme 屬性——CSS 已支援
-  // .kyoto-bloom[data-theme="dark"]/[data-theme="light"](原本只用來讓
-  // 校準面板等未來情境可以強制指定主題,見 KyotoExploreBloom.css),沒有
-  // data-theme 時預設跟隨系統的 prefers-color-scheme。初始值給 null
+  // .kyoto-bloom[data-theme="dark"]/[data-theme="light"](見
+  // HomePage.css),沒有 data-theme 時預設跟隨系統的
+  // prefers-color-scheme。初始值給 null
   // (跟隨系統),使用者按下切換鈕後才會有明確值,且只在按下當下才決定
   // 「跟現在系統顯示的相反」,不用一開始就去讀 matchMedia。
   const [theme, setTheme] = useState<'dark' | 'light' | null>(null)
@@ -77,10 +80,11 @@ export function KyotoExploreBloom() {
       [110, -210], [104.33, -43.52], [122.68, 120.29], [111.7, 266.78],
       [116.8, 406], [87.39, 560.25], [142.35, 714.38], [110, 880],
     ]
-    // viewBox="0 -230 220 1130" — node 0 之前的引導曲線需要 y=0 以上的空間,
-    // 故 viewBox 的 y 原點往上位移;任何要把 svg 座標系的 y 轉成螢幕像素的
-    // 地方都要先減去這個值。
-    const VIEWBOX_MIN_Y = -230
+    // 地圖節點縮圖的半徑(svg 座標系單位)——同時決定 mapNodes 樣板字串裡
+    // 縮圖 clipPath/image/thumb-ring 的實際大小,以及 update() 裡 bloom
+    // 展開/收合動畫的起始遮罩半徑(thumbRadiusPx)。兩處共用同一個常數,
+    // 避免各自寫死同一個數字卻忘記同步改——見該處使用位置的說明。
+    const NODE_THUMB_RADIUS = 18
 
     const STOPS: { id: string | null; index: string; kind: string; name: string; desc: string }[] = [
       { id: null, index: '', kind: '起點', name: '東山山麓',
@@ -115,10 +119,10 @@ export function KyotoExploreBloom() {
       // 沒有縮圖/光環那些裝飾。
       g.innerHTML = s.id
         ? `
-        <defs><clipPath id="${clipId}"><circle cx="${x}" cy="${y}" r="18"/></clipPath></defs>
+        <defs><clipPath id="${clipId}"><circle cx="${x}" cy="${y}" r="${NODE_THUMB_RADIUS}"/></clipPath></defs>
         <circle class="ring" cx="${x}" cy="${y}" r="14"/>
-        <image class="thumb" x="${x - 18}" y="${y - 18}" width="36" height="36" clip-path="url(#${clipId})" preserveAspectRatio="xMidYMid slice" href="${PHOTO_DATA[s.id].thumb}"/>
-        <circle class="thumb-ring" cx="${x}" cy="${y}" r="18"/>
+        <image class="thumb" x="${x - NODE_THUMB_RADIUS}" y="${y - NODE_THUMB_RADIUS}" width="${NODE_THUMB_RADIUS * 2}" height="${NODE_THUMB_RADIUS * 2}" clip-path="url(#${clipId})" preserveAspectRatio="xMidYMid slice" href="${PHOTO_DATA[s.id].thumb}"/>
+        <circle class="thumb-ring" cx="${x}" cy="${y}" r="${NODE_THUMB_RADIUS}"/>
         <circle class="dot" cx="${x}" cy="${y}" r="4"/>
         <text class="label" x="${x + 26}" y="${y + 4}">${s.name}</text>
       `
@@ -133,6 +137,14 @@ export function KyotoExploreBloom() {
     const mapCaption = root.querySelector<HTMLElement>('#mapCaption')!
     const mapWindow = root.querySelector<HTMLElement>('.map-window')!
     const mapSvg = root.querySelector<SVGSVGElement>('#mapSvg')!
+    // viewBox 的 y 原點/高度直接從 SVG 元素自己的 viewBox 讀,不再另外
+    // 寫死 -230/1130 這兩個數字——JSX 上的 viewBox="0 -230 220 1130"
+    // (見下方 <svg id="mapSvg">)因此變成唯一來源,改 viewBox 屬性時這裡
+    // 自動跟著變,不需要手動同步兩處常數。node 0 之前的引導曲線需要
+    // y=0 以上的空間,故 viewBox 的 y 原點往上位移;任何要把 svg 座標系
+    // 的 y 轉成螢幕像素的地方都要先減去 viewBoxMinY。
+    const viewBoxMinY = mapSvg.viewBox.baseVal.y
+    const viewBoxHeight = mapSvg.viewBox.baseVal.height
     const fillPath = root.querySelector<SVGPathElement>('#mapFill')!
     const totalLen = fillPath.getTotalLength()
     fillPath.style.strokeDasharray = String(totalLen)
@@ -154,7 +166,7 @@ export function KyotoExploreBloom() {
     // 共用同一套機制——單一浮動 .bloom-photo 圖層跟著地圖 cursor 位置
     // 展開/收合(見下方),不再是手機版各自一張內嵌在文字下方的靜態照片。
     // 版面方向從「地圖在左、文字在右」改成「地圖在上、文字在下」(見
-    // KyotoExploreBloom.css 的 @media (max-width: 900px) 區塊),但兩種
+    // HomePage.css 的 @media (max-width: 900px) 區塊),但兩種
     // 螢幕尺寸的 DOM 結構、進退場動畫邏輯完全一致,只有 bloom 圖層的錨點
     // 計算依螢幕寬度分支(見 update() 的 bloom 段落)。
     const stopsCol = root.querySelector<HTMLElement>('#stopsCol')!
@@ -188,9 +200,61 @@ export function KyotoExploreBloom() {
     const railDots = rail.querySelectorAll<HTMLElement>('.progress-dot')
 
     // mobileMQ:桌面/手機版行為分支共用的判斷(見下方 text reveal、
-    // updateIntroFade),往前提到這裡是因為 textIO/updateTextFade 兩處
+    // bloom 定位邏輯),往前提到這裡是因為 textIO/updateTextFade 兩處
     // 都需要在定義當下就查得到目前是否為手機版寬度。
+    //
+    // 這裡的 900px 跟 HomePage.css 的兩個
+    // @media (max-width: 900px) 必須保持完全一致——三處各自寫死同一個
+    // 數字,沒有共用來源,只能靠人工同步(見 CSS 那兩處旁的對應說明)。
     const mobileMQ = window.matchMedia('(max-width: 900px)')
+
+    // 桌面/手機兩種佈局各自的行為差異,集中查這張表,取代原本分散在
+    // textIO callback、updateTextFade、bloom 定位邏輯三處各自獨立的
+    // if (mobileMQ.matches) 分支——日後加第三種斷點,只需要在這張表裡
+    // 加一筆對應的 LayoutMode 與行為,不用回頭找三個分散的判斷式各自
+    // 補一次分支,也不會有「改了兩處、漏改第三處」的風險。
+    type LayoutMode = 'mobile' | 'desktop'
+    function currentLayoutMode(): LayoutMode {
+      return mobileMQ.matches ? 'mobile' : 'desktop'
+    }
+    const LAYOUT_BEHAVIOR: Record<LayoutMode, {
+      // 手機版有「文字區塊捲到視窗上半部就淡出」的退場邏輯(見
+      // updateTextFade),桌面版沒有,退場完全交給 textIO 的
+      // IntersectionObserver(見下方兩處用法)。
+      textFadesOutOnScroll: boolean
+      // bloom 照片展開時的最大寬高計算方式——桌面版朝螢幕中心延伸但不
+      // 越過文字欄,手機版以 map-window 自身可視範圍為界(見 update()
+      // 呼叫處的說明)。
+      computeBloomMax: (ctx: { anchorX: number; mapRect: DOMRect }) => { maxW: number; maxH: number }
+    }> = {
+      desktop: {
+        textFadesOutOnScroll: false,
+        computeBloomMax: ({ anchorX }) => {
+          // 限制展開幅度，讓它朝螢幕中心延伸但絕不越過文字欄——每一幀都
+          // 量測文字欄實際的左邊界，而非寫死 grid 自己的 380px+5vw 間距，
+          // 這樣在斷點/縮放時仍然正確。
+          const stopsColRect = stopsCol.getBoundingClientRect()
+          const maxByText = 2 * (stopsColRect.left - 28 - anchorX)
+          const maxByLeftEdge = 2 * (anchorX - 12)
+          const maxW = Math.max(40, Math.min(560, maxByText, maxByLeftEdge))
+          return { maxW, maxH: maxW * 1.25 }
+        },
+      },
+      mobile: {
+        textFadesOutOnScroll: true,
+        computeBloomMax: ({ mapRect }) => {
+          // 手機板是上下配置(地圖 sticky 釘在上方，文字欄在下方隨頁面
+          // 捲動)，沒有桌面板那種「絕不能越過旁邊文字欄」的左右邊界問題
+          // ——bloom 照片改為以 map-window 自己的可視範圍為界，展開時
+          // 撐滿這個 sticky 區塊的寬高，讀起來像「地圖本身在這一刻放大
+          // 成一張照片」，而非desktop 那種「從地圖往螢幕中心長出來」。
+          const maxByWidth = mapRect.width - 16
+          const maxByHeight = (mapRect.height - 16) * 0.8
+          const maxW = Math.max(40, Math.min(maxByWidth, maxByHeight / 1.25))
+          return { maxW, maxH: maxW * 1.25 }
+        },
+      },
+    }
 
     // ---- text reveal (per stop) ----
     // 進場:一進視窗(交集比例達 35%)就淡入,交給 IntersectionObserver 做,
@@ -212,7 +276,7 @@ export function KyotoExploreBloom() {
     // text-in、不負責移除。
     const textIO = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
-        if (mobileMQ.matches) {
+        if (LAYOUT_BEHAVIOR[currentLayoutMode()].textFadesOutOnScroll) {
           if (entry.isIntersecting) entry.target.classList.add('text-in')
         } else {
           entry.target.classList.toggle('text-in', entry.isIntersecting)
@@ -228,7 +292,7 @@ export function KyotoExploreBloom() {
     // 離開視窗、再重新進場一次(符合「進場只在真正重新進入視窗時觸發」的
     // 原意)。桌面版直接 no-op,退場完全交回 IntersectionObserver 處理。
     function updateTextFade() {
-      if (!mobileMQ.matches) return
+      if (!LAYOUT_BEHAVIOR[currentLayoutMode()].textFadesOutOnScroll) return
       const vh = window.innerHeight
       stopEls.forEach((el) => {
         const rect = el.getBoundingClientRect()
@@ -259,10 +323,9 @@ export function KyotoExploreBloom() {
 
     // progress 0 = 文字區塊還在視窗下方(什麼都還沒顯示)；
     // progress 1 = 已經捲到照片(在同一個文字區塊更下方)抵達完全展開的位置。
-    // START_FRAC/END_FRAC 暴露成可即時調整的全域變數(不是寫死常數)，讓下面
-    // 的校準面板可以調整並立即看到效果，再回填這兩個數字。
-    let startFrac = 0.95
-    let endFrac = 0.1
+    // START_FRAC/END_FRAC 是先前用校準面板(已移除)試調出來的固定值。
+    const startFrac = 0.95
+    const endFrac = 0.1
 
     // 這個 stop 自己 0→1 progress 所跨的捲動「距離」，是從它自己算出的
     // 高度(stopEls[i].offsetHeight)推導出來，而非固定的 vh 倍數——一個
@@ -284,17 +347,39 @@ export function KyotoExploreBloom() {
 
     let svgScale = 1
     function measureScale() {
-      // 渲染出來的像素高度 ÷ viewBox 高度(1130)——把 cursor 的 svg 座標系
+      // 渲染出來的像素高度 ÷ viewBox 高度——把 cursor 的 svg 座標系
       // y 轉成螢幕像素，讓平移變換能把它置中。
-      svgScale = mapSvg.getBoundingClientRect().height / 1130
+      svgScale = mapSvg.getBoundingClientRect().height / viewBoxHeight
     }
 
     let ticking = false
+    // rafId 記住目前排入佇列、還沒執行的那一幀,讓 cleanup 能在 unmount
+    // 時把它取消——若不追蹤,unmount 前一刻剛好有 scroll 事件排入的一幀
+    // 會在 cleanup 執行完之後才跑,對著已經被清空 innerHTML 的 DOM 操作。
+    let rafId: number | null = null
 
-    function update() {
-      ticking = false
-      updateTextFade()
+    // update() 原本身兼「算出這一幀的狀態」跟「把狀態套到 DOM」兩件事,
+    // 全部擠在同一支函式裡靠依序賦值的區域變數(currentIdx/travelP/pt/
+    // anchorX/anchorY…)串接彼此的執行順序依賴,只能靠讀註解確認「這一行
+    // 用得到的值,前面是不是已經算過了」。拆成兩層之後,這個依賴關係從
+    // 隱性的執行順序變成 FrameState 型別上顯性的欄位——computeFrameState()
+    // 只讀 DOM(不寫)、回傳一個純資料物件;下面三個 applyXxx() 各自接收
+    // 這個物件當參數,只寫 DOM、不重新計算。新增邏輯時,先問「這是要新算
+    // 一個值,還是要把已有的值套到 DOM 上」,答案決定要改哪一層。
+    type FrameState = {
+      currentIdx: number
+      travelP: number
+      hasStarted: boolean
+      pt: DOMPoint
+      cursorFrac: number
+      translateY: number
+      dotShown: boolean
+      recedeEase: number
+      inHold: boolean
+      bloom: { anchorX: number; anchorY: number; maxW: number; maxH: number; clipRadiusPx: number } | null
+    }
 
+    function computeFrameState(): FrameState {
       const progresses = STOPS.map((_, i) => stopProgress(i))
 
       // 「目前」的 stop 是第一個還沒完全展開的
@@ -317,39 +402,23 @@ export function KyotoExploreBloom() {
       const segEnd = nodeLenFractions[currentIdx]
       const cursorFrac = segStart + (segEnd - segStart) * travelP
 
-      // node 狀態:passed(已抵達且被取代)、here(已抵達——bloom 已經有意義地
-      // 長大，而非還在「途中」)
-      mapNodes.forEach((n) => {
-        const ni = Number(n.dataset.node)
-        if (ni < currentIdx) {
-          n.classList.add('passed'); n.classList.remove('here')
-        } else if (ni === currentIdx) {
-          n.classList.remove('passed')
-          n.classList.toggle('here', travelP >= 0.7)
-        } else {
-          n.classList.remove('passed', 'here')
-        }
-      })
-
-      // cursor 位置 + 已繪製的路徑筆畫——從這個 stop 自己的 progress 一開始
-      // (currentP > 0)就啟動，每個 stop(含索引 0 的佔位起點標記)規則相同。
+      // cursor 位置——從這個 stop 自己的 progress 一開始(currentP > 0)
+      // 就啟動，每個 stop(含索引 0 的佔位起點標記)規則相同。
       const hasStarted = currentIdx > 0 || currentP > 0.001
       const pt = fillPath.getPointAtLength(totalLen * cursorFrac)
-      mapCursor.setAttribute('cx', String(pt.x))
-      mapCursor.setAttribute('cy', String(pt.y))
-      mapCursor.style.opacity = hasStarted ? '1' : '0'
-      fillPath.style.strokeDashoffset = String(hasStarted ? totalLen * (1 - cursorFrac) : totalLen)
 
       // 平移 svg 讓 cursor 停在視窗自己的垂直中心——這就是路徑能捲過一個
       // 固定視窗的效果。viewBox 從 y=-230 開始，故平移前要先減去這個偏移，
       // 否則平移量會整整偏差這個值。
-      const windowH = mapWindow.clientHeight
-      const cursorPxY = (pt.y - VIEWBOX_MIN_Y) * svgScale
+      // mapRect 在這裡量一次、下面 bloom 段落重複使用同一份讀值(不再
+      // 另外呼叫 clientHeight)——clientHeight 只有在元素沒有 border 時
+      // 才會跟 getBoundingClientRect().height 相等,兩個 API 各自量一次
+      // 除了多一次版面量測,日後 .map-window 若加上 border,兩處讀到的
+      // 高度也會悄悄產生落差。
+      const mapRect = mapWindow.getBoundingClientRect()
+      const windowH = mapRect.height
+      const cursorPxY = (pt.y - viewBoxMinY) * svgScale
       const translateY = windowH / 2 - cursorPxY
-      mapSvg.style.transform = `translateY(${translateY}px)`
-
-      railDots.forEach((d) => d.classList.toggle('active', Number(d.dataset.node) === currentIdx))
-      mapCaption.textContent = `${STOPS[currentIdx].kind} · ${STOPS[currentIdx].name}`
 
       // ---- bloom 照片，每個 stop 三拍——這裡的一切都是 currentP 的純函式，
       // 每一幀都重新算，沒有已提交的非同步狀態(沒有 CSS transition、沒有
@@ -386,80 +455,114 @@ export function KyotoExploreBloom() {
       // 標題在「剛好釘在 BLOOM_AT 的停留窗口」(bloomT 完全展開、回落還沒
       // 開始)取用強調色——是文字自己對照片同一段停頓的視覺回應。
       const inHold = dotShown && bloomT >= 1 && recedeT === 0
-      stopEls.forEach((el, i) => el.classList.toggle('in-hold', i === currentIdx && inHold))
 
+      let bloom: FrameState['bloom'] = null
       if (dotShown) {
-        if (bloomStopIdx !== currentIdx) {
-          bloomStopIdx = currentIdx
-          const photo = PHOTO_DATA[STOPS[currentIdx].id!]
-          bloomImg.src = photo.full
-          bloomImg.alt = STOPS[currentIdx].name
-        }
         // cursor 在螢幕上的位置:svg 被平移讓它的 y 永遠落在視窗自己的垂直
         // 中心(見上面的 translateY)；x 沒有被平移，故只是 svg 座標系 x
-        // 乘上 svgScale。
-        const mapRect = mapWindow.getBoundingClientRect()
+        // 乘上 svgScale。mapRect 沿用上面已經量過的同一份讀值,不重複呼叫
+        // getBoundingClientRect()。
         const anchorX = mapRect.left + pt.x * svgScale
         const anchorY = mapRect.top + windowH / 2
 
-        let maxW: number
-        let maxH: number
-        if (mobileMQ.matches) {
-          // 手機板是上下配置(地圖 sticky 釘在上方，文字欄在下方隨頁面
-          // 捲動)，沒有桌面板那種「絕不能越過旁邊文字欄」的左右邊界問題
-          // ——bloom 照片改為以 map-window 自己的可視範圍為界，展開時
-          // 撐滿這個 sticky 區塊的寬高，讀起來像「地圖本身在這一刻放大
-          // 成一張照片」，而非desktop 那種「從地圖往螢幕中心長出來」。
-          const maxByWidth = mapRect.width - 16
-          const maxByHeight = (mapRect.height - 16) * 0.8
-          maxW = Math.max(40, Math.min(maxByWidth, maxByHeight / 1.25))
-          maxH = maxW * 1.25
-        } else {
-          // 限制展開幅度，讓它朝螢幕中心延伸但絕不越過文字欄——每一幀都
-          // 量測文字欄實際的左邊界，而非寫死 grid 自己的 380px+5vw 間距，
-          // 這樣在斷點/縮放時仍然正確。
-          const stopsColRect = stopsCol.getBoundingClientRect()
-          const maxByText = 2 * (stopsColRect.left - 28 - anchorX)
-          const maxByLeftEdge = 2 * (anchorX - 12)
-          maxW = Math.max(40, Math.min(560, maxByText, maxByLeftEdge))
-          maxH = maxW * 1.25
-        }
+        const { maxW, maxH } = LAYOUT_BEHAVIOR[currentLayoutMode()].computeBloomMax({ anchorX, mapRect })
 
-        // 元素本身從 dotShown 為 true 的那一刻就停在它最終的大小與位置——
-        // 它自己的方框不再變大變小。讀起來是「小點→大照片→縮回小點同時
-        // 淡出」的效果:展開階段(bloomT)clip-path 光圈從中心向外打開,
-        // 罩住一張已經全尺寸的照片,不透明度全程 1;回落階段(recedeEase)
-        // 光圈反向收回去(跟展開動作互為鏡像),同時不透明度跟著同一個
-        // recedeEase 從 1 降到 0——遮罩收合與淡出並列發生,不是取代關係,
-        // 純遮罩收合到最小(縮圖大小)時仍是一個實心小圓,若不搭配淡出,
-        // 回落結束的瞬間會有一個仍然不透明的小圓片突然消失，不夠柔和。
-        bloomEl.style.left = `${anchorX - maxW / 2}px`
-        bloomEl.style.top = `${anchorY - maxH / 2}px`
-        bloomEl.style.width = `${maxW}px`
-        bloomEl.style.height = `${maxH}px`
-        bloomEl.style.borderRadius = '8px'
-        bloomEl.style.opacity = String(1 - recedeEase)
         // 半徑用絕對 px(不是 %)，讓遮罩一開始/最終收回的大小明確等於地圖
-        // node 自己縮圖圓的大小(svg 單位 r=18，經 svgScale 轉成螢幕 px)
-        // ——bloom 真正讀起來像「就是那個點長大、最後縮回同一個點」。
-        // 百分比 clip-path 半徑依規範是相對 sqrt(w²+h²)/√2 解析，不是
-        // width/2，故在 maxH > maxW(1.25 比例)時，百分比起點會明顯大於它
-        // 該匹配的縮圖，px 完全避開這個問題。展開/回落共用同一個
-        // thumbRadiusPx↔fullRadiusPx 區間:bloomT 從 0→1 走一趟展開，
-        // recedeEase 從 0→1 再走一趟回程(1 - recedeEase 從 1 縮回 0)，
-        // 兩段各自獨立驅動、不互相影響彼此的緩動曲線。
-        const thumbRadiusPx = 18 * svgScale
+        // node 自己縮圖圓的大小(svg 單位 r=NODE_THUMB_RADIUS，經 svgScale
+        // 轉成螢幕 px)——bloom 真正讀起來像「就是那個點長大、最後縮回
+        // 同一個點」。百分比 clip-path 半徑依規範是相對 sqrt(w²+h²)/√2
+        // 解析，不是 width/2，故在 maxH > maxW(1.25 比例)時，百分比起點
+        // 會明顯大於它該匹配的縮圖，px 完全避開這個問題。展開/回落共用
+        // 同一個 thumbRadiusPx↔fullRadiusPx 區間:bloomT 從 0→1 走一趟
+        // 展開，recedeEase 從 0→1 再走一趟回程(1 - recedeEase 從 1 縮回
+        // 0)，兩段各自獨立驅動、不互相影響彼此的緩動曲線。
+        const thumbRadiusPx = NODE_THUMB_RADIUS * svgScale
         const fullRadiusPx = Math.sqrt(maxW * maxW + maxH * maxH) / 2
         const openT = recedeT > 0 ? 1 - recedeEase : bloomT
         const clipRadiusPx = thumbRadiusPx + openT * (fullRadiusPx - thumbRadiusPx)
-        bloomEl.style.clipPath = `circle(${clipRadiusPx}px at 50% 50%)`
-      } else {
-        bloomEl.style.opacity = '0'
+
+        bloom = { anchorX, anchorY, maxW, maxH, clipRadiusPx }
       }
+
+      return { currentIdx, travelP, hasStarted, pt, cursorFrac, translateY, dotShown, recedeEase, inHold, bloom }
+    }
+
+    // node 狀態:passed(已抵達且被取代)、here(已抵達——bloom 已經有意義地
+    // 長大，而非還在「途中」)。cursor 位置 + 已繪製的路徑筆畫、svg 平移、
+    // progress rail、地圖說明文字——這幾件事都只讀 FrameState、只寫地圖
+    // 相關的 DOM,不重新計算任何值。
+    function applyMapVisuals(state: FrameState) {
+      mapNodes.forEach((n) => {
+        const ni = Number(n.dataset.node)
+        if (ni < state.currentIdx) {
+          n.classList.add('passed'); n.classList.remove('here')
+        } else if (ni === state.currentIdx) {
+          n.classList.remove('passed')
+          n.classList.toggle('here', state.travelP >= 0.7)
+        } else {
+          n.classList.remove('passed', 'here')
+        }
+      })
+
+      mapCursor.setAttribute('cx', String(state.pt.x))
+      mapCursor.setAttribute('cy', String(state.pt.y))
+      mapCursor.style.opacity = state.hasStarted ? '1' : '0'
+      fillPath.style.strokeDashoffset = String(state.hasStarted ? totalLen * (1 - state.cursorFrac) : totalLen)
+
+      mapSvg.style.transform = `translateY(${state.translateY}px)`
+
+      railDots.forEach((d) => d.classList.toggle('active', Number(d.dataset.node) === state.currentIdx))
+      mapCaption.textContent = `${STOPS[state.currentIdx].kind} · ${STOPS[state.currentIdx].name}`
+    }
+
+    function applyTextEmphasis(state: FrameState) {
+      stopEls.forEach((el, i) => el.classList.toggle('in-hold', i === state.currentIdx && state.inHold))
+    }
+
+    // 元素本身從 dotShown 為 true 的那一刻就停在它最終的大小與位置——
+    // 它自己的方框不再變大變小。讀起來是「小點→大照片→縮回小點同時
+    // 淡出」的效果:展開階段(bloomT)clip-path 光圈從中心向外打開,
+    // 罩住一張已經全尺寸的照片,不透明度全程 1;回落階段(recedeEase)
+    // 光圈反向收回去(跟展開動作互為鏡像),同時不透明度跟著同一個
+    // recedeEase 從 1 降到 0——遮罩收合與淡出並列發生,不是取代關係,
+    // 純遮罩收合到最小(縮圖大小)時仍是一個實心小圓,若不搭配淡出,
+    // 回落結束的瞬間會有一個仍然不透明的小圓片突然消失，不夠柔和。
+    function applyBloomPhoto(state: FrameState) {
+      if (!state.dotShown || !state.bloom) {
+        bloomEl.style.opacity = '0'
+        return
+      }
+      if (bloomStopIdx !== state.currentIdx) {
+        bloomStopIdx = state.currentIdx
+        const photo = PHOTO_DATA[STOPS[state.currentIdx].id!]
+        bloomImg.src = photo.full
+        bloomImg.alt = STOPS[state.currentIdx].name
+      }
+      const { anchorX, anchorY, maxW, maxH, clipRadiusPx } = state.bloom
+      bloomEl.style.left = `${anchorX - maxW / 2}px`
+      bloomEl.style.top = `${anchorY - maxH / 2}px`
+      bloomEl.style.width = `${maxW}px`
+      bloomEl.style.height = `${maxH}px`
+      // border-radius 不在這裡逐幀寫入——CSS 的 .bloom-photo 已經靜態
+      // 宣告 border-radius: 8px,兩邊分工見該規則旁的註解。
+      bloomEl.style.opacity = String(1 - state.recedeEase)
+      bloomEl.style.clipPath = `circle(${clipRadiusPx}px at 50% 50%)`
+    }
+
+    function update() {
+      ticking = false
+      updateTextFade()
+      const state = computeFrameState()
+      applyMapVisuals(state)
+      applyTextEmphasis(state)
+      applyBloomPhoto(state)
     }
 
     function onScroll() {
-      if (!ticking) { ticking = true; requestAnimationFrame(update) }
+      if (!ticking) {
+        ticking = true
+        rafId = requestAnimationFrame(update)
+      }
     }
     measureScale()
     window.addEventListener('scroll', onScroll, { passive: true })
@@ -473,141 +576,12 @@ export function KyotoExploreBloom() {
     }
     startBtn.addEventListener('click', onStartClick)
 
-    // ---- calibration panel (dev tool) ----
-    // 校準模式是開發時用來調 START_FRAC/END_FRAC 的工具，見下方 JSX 裡
-    // {import.meta.env.DEV && (...)} 包起來的面板——正式環境完全不渲染
-    // 這個 UI，故這裡的事件綁定只在對應 DOM 元素真的存在時才執行。
-    let cleanupCalib: (() => void) | undefined
-    const toggle = root.querySelector<HTMLButtonElement>('#calibToggle')
-    if (toggle) {
-      const panel = root.querySelector<HTMLElement>('#calibPanel')!
-      const startRange = root.querySelector<HTMLInputElement>('#startRange')!
-      const startNum = root.querySelector<HTMLInputElement>('#startNum')!
-      const endRange = root.querySelector<HTMLInputElement>('#endRange')!
-      const endNum = root.querySelector<HTMLInputElement>('#endNum')!
-      const samplesEl = root.querySelector<HTMLElement>('#calibSamples')!
-      const suggestEl = root.querySelector<HTMLElement>('#calibSuggest')!
-      const outputEl = root.querySelector<HTMLTextAreaElement>('#calibOutput')!
-      const copyBtn = root.querySelector<HTMLButtonElement>('#calibCopy')!
-      const clearBtn = root.querySelector<HTMLButtonElement>('#calibClear')!
-      const mapNodesEl = root.querySelector<HTMLElement>('#mapNodes')!
-
-      let calibOn = false
-      let samples: { nodeIndex: number; name: string; top: number }[] = []
-
-      function syncFracInputs(which: 'start' | 'end') {
-        if (which === 'start') { startNum.value = startRange.value; startFrac = parseFloat(startRange.value) }
-        else { endNum.value = endRange.value; endFrac = parseFloat(endRange.value) }
-        onScroll()
-      }
-      const onStartRangeInput = () => syncFracInputs('start')
-      const onEndRangeInput = () => syncFracInputs('end')
-      const onStartNumChange = () => { startRange.value = startNum.value; syncFracInputs('start') }
-      const onEndNumChange = () => { endRange.value = endNum.value; syncFracInputs('end') }
-      startRange.addEventListener('input', onStartRangeInput)
-      endRange.addEventListener('input', onEndRangeInput)
-      startNum.addEventListener('change', onStartNumChange)
-      endNum.addEventListener('change', onEndNumChange)
-
-      const onToggleClick = () => {
-        calibOn = !calibOn
-        toggle.classList.toggle('active', calibOn)
-        panel.classList.toggle('open', calibOn)
-        root.classList.toggle('calib-mode', calibOn)
-      }
-      toggle.addEventListener('click', onToggleClick)
-
-      // 校準時點一個 node，記錄該 stop 文字區塊「目前」的 bounding-rect
-      // top——也就是「這個捲動位置，這個 stop 的 progress 應該讀作 1.0」
-      // (對應 stopProgress 定義「完全展開」的方式)。
-      const onNodesClick = (e: Event) => {
-        if (!calibOn) return
-        const g = (e.target as HTMLElement).closest<HTMLElement>('.map-node')
-        if (!g) return
-        const i = Number(g.dataset.node)
-        const top = textBlocks[i].getBoundingClientRect().top
-        samples.push({ nodeIndex: i, name: STOPS[i]?.name ?? `#${i}`, top })
-        render()
-      }
-      mapNodesEl.addEventListener('click', onNodesClick)
-
-      function linearFit() {
-        // stopProgress: p = (start - top) / (start - end)，每筆樣本都是
-        // 使用者判斷該 stop p≈1 的那一刻記錄的——故每筆樣本給出一個方程式:
-        // start - top ≈ start - end，也就是 top ≈ end。換句話說，每筆記錄
-        // 的 top 本身就是 END_FRAC*vh 的直接估計值。START_FRAC 無法單靠
-        // 「抵達」點反推(它只影響動作開始得多早，不影響結束在哪)——故保留
-        // 滑桿目前設定的 START_FRAC，只從樣本建議 END_FRAC。
-        if (samples.length === 0) return null
-        const vh = window.innerHeight
-        const avgTop = samples.reduce((sum, s) => sum + s.top, 0) / samples.length
-        const suggestedEnd = avgTop / vh
-        return { end: suggestedEnd, count: samples.length, avgTop }
-      }
-
-      function render() {
-        samplesEl.innerHTML = ''
-        samples.forEach((s, idx) => {
-          const li = document.createElement('li')
-          li.innerHTML = `<span>${s.name} · top=${s.top.toFixed(0)}px</span><button data-idx="${idx}">移除</button>`
-          samplesEl.appendChild(li)
-        })
-        samplesEl.querySelectorAll<HTMLButtonElement>('button').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            samples.splice(Number(btn.dataset.idx), 1)
-            render()
-          })
-        })
-
-        const fit = linearFit()
-        if (!fit) {
-          suggestEl.textContent = '尚無樣本——點地圖節點開始記錄。'
-          outputEl.value = ''
-          return
-        }
-        suggestEl.innerHTML = `依 ${fit.count} 筆樣本，建議 <strong>END_FRAC ≈ ${fit.end.toFixed(3)}</strong>（平均 top ${fit.avgTop.toFixed(0)}px ÷ 目前視窗高 ${window.innerHeight}px）。START_FRAC 目前為 <strong>${startFrac.toFixed(2)}</strong>（沿用滑桿上的值，抵達點無法反推它，只影響動作開始得多早）。`
-        outputEl.value =
-          `START_FRAC = ${startFrac.toFixed(2)}
-END_FRAC   = ${fit.end.toFixed(3)}
-
-// 對應 stopProgress() 裡：
-const start = vh * ${startFrac.toFixed(2)};
-const end   = vh * ${fit.end.toFixed(3)};
-
-// 樣本明細：
-${samples.map((s) => `${s.name}: top=${s.top.toFixed(0)}px`).join('\n')}`
-      }
-
-      const onCopyClick = () => {
-        outputEl.select()
-        document.execCommand('copy')
-        const orig = copyBtn.textContent
-        copyBtn.textContent = '已複製 ✓'
-        setTimeout(() => { copyBtn.textContent = orig }, 1200)
-      }
-      copyBtn.addEventListener('click', onCopyClick)
-
-      const onClearClick = () => { samples = []; render() }
-      clearBtn.addEventListener('click', onClearClick)
-
-      cleanupCalib = () => {
-        startRange.removeEventListener('input', onStartRangeInput)
-        endRange.removeEventListener('input', onEndRangeInput)
-        startNum.removeEventListener('change', onStartNumChange)
-        endNum.removeEventListener('change', onEndNumChange)
-        toggle.removeEventListener('click', onToggleClick)
-        mapNodesEl.removeEventListener('click', onNodesClick)
-        copyBtn.removeEventListener('click', onCopyClick)
-        clearBtn.removeEventListener('click', onClearClick)
-      }
-    }
-
     return () => {
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onResize)
       startBtn.removeEventListener('click', onStartClick)
       textIO.disconnect()
-      cleanupCalib?.()
+      if (rafId !== null) cancelAnimationFrame(rafId)
       // React StrictMode/HMR 重新掛載時，清掉這次 effect 動態產生的 DOM
       // (map nodes、stop 卡片、progress dots)，避免下次掛載時重複 append。
       nodesGroup.innerHTML = ''
@@ -620,11 +594,11 @@ ${samples.map((s) => `${s.name}: top=${s.top.toFixed(0)}px`).join('\n')}`
     <div className="kyoto-bloom" ref={rootRef} data-theme={theme ?? undefined}>
       {/* 品牌標記——固定在左上角,不隨頁面捲動,跟日夜間切換鈕對稱(見下方
           .theme-toggle)。用純文字「Tripace」而非圖示,對齊全站既有慣例
-          (LandingPage.tsx/LegalPage.tsx/NotFoundPage.tsx 的 .landing-logo
-          都是純文字標記,不是 favicon.svg 那個圖示)——這個元件是獨立
-          scope 的 .kyoto-bloom,不共用 landing.css,故在 KyotoExploreBloom.css
-          裡另外定義一份視覺上一致的樣式。點擊回首頁("/"),讓這個 demo
-          頁面有明確的品牌歸屬/離開入口。 */}
+          (ProductPage.tsx/LegalPage.tsx/NotFoundPage.tsx 的品牌標記都是
+          純文字標記,不是 favicon.svg 那個圖示)——這個元件是獨立 scope
+          的 .kyoto-bloom,不共用 landing.css,故在 HomePage.css 裡另外
+          定義一份視覺上一致的樣式。這個元件本身就是首頁("/"),連結指向
+          "/" 是回到最上方而非離開頁面。 */}
       <a className="brand-mark" href="/">Tripace</a>
       {/* 日夜間切換——固定在右上角,不隨頁面捲動。theme 為 null(預設)時
           跟隨系統的 prefers-color-scheme,按下後切成明確的 dark/light,
@@ -641,6 +615,10 @@ ${samples.map((s) => `${s.name}: top=${s.top.toFixed(0)}px`).join('\n')}`
       >
         {isCurrentlyDark(theme) ? <Sun size={16} strokeWidth={1.8} /> : <Moon size={16} strokeWidth={1.8} />}
       </button>
+      {/* 右上角直接進入 App 的捷徑——跟 .theme-toggle 同一組固定右上角,
+          排在它左邊(theme-toggle 本身 right: 16px,這裡再往左讓開它的
+          寬度+間距)。不用等使用者捲到結尾 CTA 或頁尾連結才找得到入口。 */}
+      <a className="app-cta" href="/app">登入</a>
       <section className="hero">
         <svg className="hero-ridge" viewBox="0 0 1200 300" preserveAspectRatio="none">
           <path
@@ -654,7 +632,7 @@ ${samples.map((s) => `${s.name}: top=${s.top.toFixed(0)}px`).join('\n')}`
         </svg>
 
         <div className="hero-eyebrow">Kyoto · Higashiyama</div>
-        <h1 className="hero-title">走進一個地方，<br /><em>而不只是到過。</em></h1>
+        <h1 className="hero-title">走進一個地方<br /><em>而不只是到過</em></h1>
         <p className="hero-sub">從地景、歷史、人文到日常生活，探索城市與自然之間那些容易錯過的故事。</p>
         <button className="hero-cta" id="startBtn" type="button">
           開始探索
@@ -699,22 +677,22 @@ ${samples.map((s) => `${s.name}: top=${s.top.toFixed(0)}px`).join('\n')}`
       <section className="closing">
         <h2 className="closing-title">這條路線，只是一個開始</h2>
         <p className="closing-desc">每一個地方都有自己的地景、歷史與生活脈絡。探索，就是把這些點連成一條屬於你的路。</p>
-        <a className="hero-cta" href="#">規劃我的探索路線</a>
+        <a className="hero-cta" href="/app">規劃我的探索路線</a>
       </section>
 
-      {/* footer——參照 LandingPage.tsx 的 .landing-footer 結構,對齊全站
-          既有的頁尾慣例(品牌名、法律資訊列、信用背書連結)。這個元件是
-          獨立 scope 的 .kyoto-bloom,不共用 landing.css,故在
-          KyotoExploreBloom.css 裡另外定義一份視覺上一致的樣式
-          (kyoto-footer 開頭的 class 前綴,避免跟既有的 explore、stop 開頭
-          的 class 撞名)。隱私權政策/服務條款連結沿用同一組既有頁面
-          (/privacy、/terms),「聯絡我們」跟 LandingPage.tsx 一樣先用
-          佔位連結。 */}
+      {/* footer——結構對齊全站既有的頁尾慣例(品牌名、法律資訊列、信用
+          背書連結,見 ProductPage.tsx/LegalPage.tsx 各自的 footer)。這個
+          元件是獨立 scope 的 .kyoto-bloom,不共用 landing.css,故在
+          HomePage.css 裡另外定義一份視覺上一致的樣式(kyoto-footer 開頭
+          的 class 前綴,避免跟既有的 explore、stop 開頭的 class 撞名)。
+          隱私權政策/服務條款連結沿用同一組既有頁面(/privacy、/terms),
+          「聯絡我們」跟其他頁面一樣先用佔位連結。 */}
       <footer className="kyoto-footer">
         <span className="kyoto-footer-brand">Tripace · 行程規劃</span>
         <div className="kyoto-footer-bar">
           <span className="kyoto-footer-copyright">Copyright © 2026 Tripace</span>
           <nav className="kyoto-footer-links">
+            <a href="/product">產品功能</a>
             <a href="/privacy">隱私權政策</a>
             <a href="/terms">服務條款</a>
             <a href="#">聯絡我們</a>
@@ -729,41 +707,6 @@ ${samples.map((s) => `${s.name}: top=${s.top.toFixed(0)}px`).join('\n')}`
           Powered by onagent
         </a>
       </footer>
-
-      {/* ============================================================
-          校準面板——開發用工具，非正式頁面內容。只在 dev build 渲染，
-          正式環境完全不會出現在 DOM 裡。開啟後捲到某個 node「感覺剛好
-          抵達」的位置，點地圖上對應的節點，記錄目前捲動位置為一筆樣本。
-          累積幾筆不同 stop 的樣本後，會用 stopProgress() 自己的公式
-          (progress = (start - top) / (start - end))反推出能讓
-          progress=1 剛好落在每筆記錄點的 START_FRAC/END_FRAC 建議值。
-          ============================================================ */}
-      {import.meta.env.DEV && (
-        <>
-          <button className="calib-toggle" id="calibToggle" type="button">⚙ 校準模式</button>
-          <div className="calib-panel" id="calibPanel">
-            <h4>路徑節奏校準</h4>
-            <div className="calib-row">
-              <label>start</label>
-              <input type="range" id="startRange" min="0.3" max="1.2" step="0.01" defaultValue="0.95" />
-              <input type="number" id="startNum" min="0.3" max="1.2" step="0.01" defaultValue="0.95" />
-            </div>
-            <div className="calib-row">
-              <label>end</label>
-              <input type="range" id="endRange" min="-0.3" max="0.6" step="0.01" defaultValue="0.10" />
-              <input type="number" id="endNum" min="-0.3" max="0.6" step="0.01" defaultValue="0.10" />
-            </div>
-            <div className="calib-hint">
-              校準模式開啟時，滑到你覺得「這個點應該剛好抵達」的位置，直接點地圖上對應的節點——每點一次記一筆樣本。上面兩條滑桿可以即時試調，頁面會馬上用新數字重算。
-            </div>
-            <ul className="calib-samples" id="calibSamples" />
-            <div className="calib-suggest" id="calibSuggest">尚無樣本——點地圖節點開始記錄。</div>
-            <textarea className="calib-output" id="calibOutput" rows={4} readOnly />
-            <button className="calib-copy" id="calibCopy" type="button">複製輸出</button>
-            <button className="calib-clear" id="calibClear" type="button">清空樣本</button>
-          </div>
-        </>
-      )}
     </div>
   )
 }

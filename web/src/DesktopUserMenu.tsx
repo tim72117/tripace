@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Settings, LogOut } from 'lucide-react'
 import type { ClientConfig } from './api'
 import type { User } from './types'
-import { Avatar, LoginForm } from './AppCommon'
+import { Avatar } from './AppCommon'
+import { LoginForm } from './LoginForm'
 
 // 桌面版左下方使用者設定入口:頭像 + 名稱一列,點擊展開 popover 選單。
 // 已登入時選單只有「設定」(開啟 SettingsDialog)、「登出」兩項精簡項目;

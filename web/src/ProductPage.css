@@ -1,0 +1,367 @@
+/* ProductPage — 對齊 HomePage(原 KyotoExploreBloom)的「紙感和風」視覺語言 */
+
+@font-face {
+  font-family: 'ShipporiSerif';
+  src: local('Hiragino Mincho ProN'), local('Yu Mincho'), local('Noto Serif JP');
+  font-weight: 400 700;
+}
+
+.product-page {
+  /* 色票數值直接照抄 HomePage.css 的 .kyoto-bloom token(不是
+     重新配色)——此前這裡各自寫了一組色相方向接近、但數值不同的顏色
+     (--vermilion 尤其明顯:飽和橙紅 vs 對照組偏暗磚紅),兩個頁面放在
+     一起會不是同一套識別。這裡改成逐一比對後的正確值。 */
+  --paper: #F7F3EC;
+  --paper-dim: #EFE9DC;
+  --ink: #2B2420;
+  --ink-soft: #5A5148;
+  --vermilion: #8B3A2F;
+  --vermilion-soft: #B85C4A;
+  --moss: #5C6B57;
+  --line: #C9BFA8;
+  --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
+  line-height: 1.7;
+}
+
+@media (prefers-color-scheme: dark) {
+  .product-page:not([data-theme="light"]) {
+    --paper: #1C1815;
+    --paper-dim: #14110F;
+    --ink: #EDE6D8;
+    --ink-soft: #B8AD9C;
+    --vermilion: #D97A63;
+    --vermilion-soft: #E89A85;
+    --moss: #8FA089;
+    --line: #443C34;
+    --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+  }
+}
+
+.product-page[data-theme="dark"] {
+  --paper: #1C1815;
+  --paper-dim: #14110F;
+  --ink: #EDE6D8;
+  --ink-soft: #B8AD9C;
+  --vermilion: #D97A63;
+  --vermilion-soft: #E89A85;
+  --moss: #8FA089;
+  --line: #443C34;
+  --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+}
+
+.product-page[data-theme="light"] {
+  --paper: #F7F3EC;
+  --paper-dim: #EFE9DC;
+  --ink: #2B2420;
+  --ink-soft: #5A5148;
+  --vermilion: #8B3A2F;
+  --vermilion-soft: #B85C4A;
+  --moss: #5C6B57;
+  --line: #C9BFA8;
+  --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+}
+
+.product-page * {
+  box-sizing: border-box;
+}
+
+.product-page h1,
+.product-page h2,
+.product-page h3 {
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* 這條 reset 規則的 specificity(class+type = 0,1,1)比下面單一 class 的
+   按鈕/連結顏色規則(0,1,0)更高——即使按鈕規則寫在後面,實際渲染仍會被
+   這裡的 color: inherit 蓋掉(CSS 的 specificity 優先於原始碼順序)。故
+   凡是需要跟這條規則不同顏色的按鈕/連結,選擇器前面都要加 .product-page
+   把 specificity 拉高到至少 (0,2,0),不能只靠寫在後面。 */
+.product-page a {
+  color: inherit;
+}
+
+/* Nav */
+.product-nav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+
+.product-page .product-nav-brand {
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+
+.product-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* 按鈕底色對齊 HomePage 的 .hero-cta:主要 CTA 是 var(--ink)(近黑)實心
+   底、var(--paper) 文字,不是 vermilion 實心底——vermilion 在首頁的用法
+   是強調色/連結/hover(見 .kyoto-footer-links a:hover 等),不是按鈕底色。 */
+.product-page .product-nav-cta {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--paper);
+  background: var(--ink);
+  text-decoration: none;
+  padding: 0.55rem 1.1rem;
+  border-radius: 999px;
+  transition: transform 0.2s ease;
+}
+
+.product-page .product-nav-cta:hover {
+  transform: translateY(-1px);
+}
+
+.product-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  /* 對齊 HomePage 的 .theme-toggle:background var(--paper)、
+     color var(--ink)(接近黑色,非灰色的 --ink-soft),日間模式下按鈕
+     圖示要清楚讀成黑色,不是淡灰色。 */
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.product-theme-toggle:hover {
+  background: var(--paper-dim);
+}
+
+/* Hero */
+.product-hero {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 5rem 1.5rem 4rem;
+  text-align: center;
+}
+
+.product-hero-eyebrow {
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--vermilion);
+  letter-spacing: 0.08em;
+  margin-bottom: 1rem;
+}
+
+.product-hero h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 1.35;
+  margin: 0 0 1.25rem;
+}
+
+.product-hero p {
+  font-size: 1.05rem;
+  color: var(--ink-soft);
+  max-width: 640px;
+  margin: 0 auto 2rem;
+}
+
+.product-hero-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* 同 .product-nav-cta:對齊 HomePage 的 .hero-cta,實心底用 var(--ink)
+   (近黑)、文字用 var(--paper),不是 vermilion 實心底。 */
+.product-page .product-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--paper);
+  background: var(--ink);
+  text-decoration: none;
+  padding: 0.85rem 1.75rem;
+  border-radius: 999px;
+  box-shadow: var(--card-shadow);
+  transition: transform 0.2s ease;
+}
+
+.product-page .product-btn-primary:hover {
+  transform: translateY(-2px);
+}
+
+/* Features */
+.product-features {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 5rem;
+}
+
+.product-section-title {
+  text-align: center;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  margin: 0 0 0.75rem;
+}
+
+.product-section-subtitle {
+  text-align: center;
+  color: var(--ink-soft);
+  max-width: 560px;
+  margin: 0 auto 3rem;
+}
+
+.product-features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.product-feature-card {
+  background: var(--paper-dim);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1.75rem;
+  box-shadow: var(--card-shadow);
+}
+
+.product-feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--vermilion);
+  margin-bottom: 1rem;
+}
+
+.product-feature-card h3 {
+  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+}
+
+.product-feature-card p {
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+/* Steps */
+.product-steps {
+  background: var(--paper-dim);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 4rem 1.5rem;
+}
+
+.product-steps-inner {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.product-steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 2rem;
+  margin-top: 2.5rem;
+}
+
+.product-step {
+  text-align: center;
+}
+
+.product-step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  background: var(--vermilion);
+  color: #fff;
+  font-family: 'ShipporiSerif', serif;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.product-step h3 {
+  font-size: 1.05rem;
+  margin: 0 0 0.5rem;
+}
+
+.product-step p {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+/* Final CTA */
+.product-final-cta {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 5rem 1.5rem;
+  text-align: center;
+}
+
+.product-final-cta h2 {
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  margin: 0 0 1rem;
+}
+
+.product-final-cta p {
+  color: var(--ink-soft);
+  margin: 0 0 2rem;
+}
+
+/* Footer — 結構、文案、視覺全部對齊 HomePage.css 的 .kyoto-footer,以
+   首頁為準(以下規則除了 class 前綴換成 product-footer-*,其餘照抄)。 */
+.product-footer {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  border-top: 1px solid var(--line); padding: 28px 1.5rem;
+  text-align: center; font-size: 14px; color: var(--ink-soft);
+}
+.product-footer-brand { font-size: 15px; font-weight: 600; color: var(--ink); }
+
+/* product-footer-bar:左邊版權宣告、右邊連結列,窄螢幕下換行堆疊——撐滿
+   .product-footer 的寬度,故用 align-self 覆蓋外層 .product-footer 的
+   align-items: center。 */
+.product-footer-bar {
+  align-self: stretch; margin-top: 14px; padding-top: 14px;
+  border-top: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px 24px; font-size: 13px;
+}
+.product-footer-copyright { color: var(--ink-soft); }
+.product-footer-links { display: flex; align-items: center; gap: 20px; }
+.product-footer-links a { color: var(--ink-soft); text-decoration: none; }
+.product-footer-links a:hover { color: var(--vermilion); text-decoration: underline; }
+
+.product-page .product-footer-onagent {
+  margin-top: 10px; font-size: 12px; color: var(--ink-soft);
+  text-decoration: none; opacity: 0.75;
+}
+.product-page .product-footer-onagent:hover { opacity: 1; text-decoration: underline; }

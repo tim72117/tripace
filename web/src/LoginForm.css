@@ -1,0 +1,232 @@
+/* LoginForm.tsx/LoginCard 專用樣式——原本是全域的 styles-login.css,
+   main.tsx 不再 import 它(已刪除該檔案),改成 LoginForm.tsx 元件自己
+   import 這份、不依賴 main.tsx 的全域載入順序。涵蓋 .login-screen、
+   .login-card 系列、.login-form 系列。 */
+
+/* 登入頁(訪客 gate,取代整個畫面):卡片上下左右置中。
+   背景色票對齊 HomePage.css 的 .kyoto-bloom 紙感和風 token(--paper/
+   --ink/--vermilion),取代原本沿用舊版 LandingPage 度假配色(海青→暖沙)
+   的做法——舊版 LandingPage 已經整個被 HomePage 取代並改名為
+   ProductPage,原本「無縫銜接 landing page」的視覺理由已不成立。這裡
+   直接寫入色值(不是 var(--paper) 這種引用),因為 HomePage.css 的
+   --paper/--ink/--vermilion 等變數是 scoped 在 .kyoto-bloom 底下,這裡
+   不在那個 scope 內,同 LegalPage.css 對同一個限制的處理方式。進入 App
+   主體(登入後)後才切回 --ios-bg 的暖棕主題,兩者仍刻意分開。 */
+.login-screen {
+  flex: 1 1 auto;
+  display: flex;
+  /* flex-direction: column——.login-welcome(歡迎區塊)跟 .login-card
+     現在是兩個各自獨立的直接子元素(見 LoginForm.tsx 的 LoginCard),
+     flex 預設 row 會讓兩者變成左右並排,漏加這個屬性會在所有螢幕尺寸
+     (不只手機板)都跑掉,不是手機板才需要的斷點覆寫。 */
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 20px;
+  overflow-y: auto;
+  background: #F7F3EC; /* HomePage.css 的 --paper */
+}
+/* 歡迎區塊——卡片外面的一段小型 hero,對齊 HomePage.css 的
+   .hero-eyebrow/.hero-title 排版邏輯(先讀文字、再進入操作),但字級/
+   間距縮小到適合這種置中小螢幕情境,不是整頁等級的 hero。 */
+.login-welcome {
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+  margin-bottom: 24px;
+}
+.login-welcome-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #2B2420; /* HomePage.css 的 --ink */
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+.login-welcome-logo:hover {
+  opacity: 0.75;
+}
+.login-welcome-logo svg {
+  color: #8B3A2F; /* HomePage.css 的 --vermilion */
+}
+/* 標題用 ShipporiSerif(HomePage.css 的 @font-face,同一份宣告,CSS
+   @font-face 沒有 scope 概念,重複宣告同一個 local() 來源是無害的,
+   對齊 LegalPage.css 對這個限制的既有處理方式)——襯線標題是這套紙感
+   和風視覺語言的識別特徵之一,歡迎詞用它才會讀起來跟首頁是同一個品牌,
+   而不是隨便一個表單頁的制式問候語。 */
+.login-welcome-title {
+  position: relative;
+  margin: 0 0 8px;
+  padding-top: 14px;
+  font-family: 'ShipporiSerif', "Noto Serif TC", serif;
+  font-size: clamp(22px, 5vw, 26px);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #2B2420; /* HomePage.css 的 --ink */
+}
+/* 一條短短的磚紅色細線,對齊 HomePage 的 .stop-kind::before(用一小段
+   line 當作段落/區塊起手的視覺標記)——這裡改用 --vermilion 而非
+   --line,是整段畫面唯一一處不靠 hover/focus 才出現的磚紅色,讓迎賓區
+   在靜態畫面上也帶一點首頁的品牌識別,不是全靠灰階線條跟純黑文字。 */
+.login-welcome-title::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 28px; height: 2px;
+  background: #8B3A2F; /* HomePage.css 的 --vermilion */
+}
+.login-welcome-subtitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #5A5148; /* HomePage.css 的 --ink-soft */
+}
+@font-face {
+  font-family: 'ShipporiSerif';
+  src: local('Hiragino Mincho ProN'), local('Yu Mincho'), local('Noto Serif JP');
+}
+
+/* 卡片不再用 --paper-dim 實心底(拿掉輸入框底色後,底下露出來的
+   --paper-dim 暖褐色塊反而更明顯、更重),改成跟 .login-screen 同一個
+   --paper,只靠一條 --line 邊框劃出卡片範圍+極淺陰影帶一點層次——整個
+   登入畫面讀起來是同一片紙,卡片只是這片紙上用細線框出的一個區域,
+   不是疊在上面的另一塊實色色塊。 */
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  background: #F7F3EC; /* HomePage.css 的 --paper */
+  /* --line/--vermilion 85/15 混色,取代純 --line——卡片外框靜態時就帶
+     一點暖色調,呼應歡迎標題上方的磚紅短線,不需要額外的裝飾元素。 */
+  border: 1px solid #C3A594;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(43, 36, 32, 0.06), 0 8px 24px -12px rgba(43, 36, 32, 0.12);
+  padding: 28px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+/* LoginForm 自己的外層包裹:預設是純區塊流(對齊 .login-dropdown/
+   SettingsScreen 訪客區塊/DesktopUserMenu popover 這幾處「無 pill」
+   情境原本就沒有 flex/gap,.field 之間只靠自己的 0.5px border-bottom
+   當分隔線)。pill 修飾類別由 LoginForm 自己的 pill prop 決定要不要
+   套用,不再依賴外層容器(.login-card)用複合選擇器從外面蓋樣式——
+   LoginForm 掛在哪個頁面都自己決定長相,呼叫端只需要傳 pill={true}
+   (App.tsx/CliAuthPage.tsx 的 LoginCard 情境)或不傳。 */
+.login-form.pill {
+  display: flex;
+  flex-direction: column;
+  /* 複製原本 .login-card 當 flex 容器時,子元素之間的 gap:4px——現在
+     LoginForm 自己包一層,不再是 .login-card 的直接子元素,gap 改由
+     這裡自己提供,視覺上不變。 */
+  gap: 4px;
+}
+/* pill 樣式:沿用 .field,改為無 label、大圓角膠囊狀輸入框(參考極簡登入頁
+   慣例:無外框標籤、靠 placeholder 提示,輸入框本身是明顯的圓角膠囊)。
+   .field/.btn-primary 兩者的顏色都改成紙感和風色票(不再是 --ios-sep/
+   --color-accent 這組 App 自己的 iOS 藍色系)——這組 pill 修飾類別只在
+   LoginCard 的全螢幕迎賓情境使用(見上方註解:掛在 .login-dropdown/
+   SettingsScreen/DesktopUserMenu popover 這幾處共用同一顆 LoginForm 元件
+   時不傳 pill、走完全不同的一般樣式),故在這裡改色不會影響那幾處
+   App 內部彈出的登入表單,兩者的視覺語言可以分開演化。純白/純色底的
+   膠囊在 HomePage 配色的暖紙底卡片上顯得突兀又厚重,改成純框線(背景
+   完全透明,不帶任何底色),讓輸入框融入卡片底色,只靠邊框劃出範圍。 */
+.login-form.pill .field {
+  padding: 14px 20px;
+  background: transparent;
+  border-bottom: none;
+  border: 1px solid #C9BFA8; /* HomePage.css 的 --line */
+  border-radius: 24px;
+  margin-bottom: 10px;
+}
+/* input 元素本身瀏覽器預設會帶不透明白色背景(不會跟著外層圓角走),
+   若不覆寫,會在圓角膠囊邊界露出直角的色塊邊緣。明確設透明,讓整個
+   膠囊視覺統一由外層 .field 的底色決定,不要在 input 這層重複疊色。 */
+.login-form.pill .field input {
+  background: transparent;
+  color: #2B2420; /* HomePage.css 的 --ink */
+}
+.login-form.pill .field:focus-within {
+  border-color: #8B3A2F; /* HomePage.css 的 --vermilion */
+}
+.login-form.pill .banner {
+  margin: 0 0 12px;
+}
+/* 送出按鈕:滿版寬度、大圓角膠囊、加大垂直 padding,呼應同一套極簡風格。
+   底色改用 --ink(近黑)+ --paper 文字,對齊 HomePage/ProductPage 的
+   .hero-cta/.product-btn-primary 按鈕慣例(實心黑底,不是 App 自己的
+   --color-accent 藍色),讓「送出」這個主要動作跟整頁品牌識別一致。 */
+.login-form.pill .btn-primary {
+  width: 100%;
+  margin-top: 4px;
+  padding: 14px 20px;
+  border-radius: 24px;
+  font-size: 16px;
+  background: #2B2420; /* HomePage.css 的 --ink */
+  color: #F7F3EC; /* HomePage.css 的 --paper */
+}
+.login-form.pill .btn-primary:disabled {
+  background: #C9BFA8; /* HomePage.css 的 --line */
+  color: #5A5148; /* HomePage.css 的 --ink-soft */
+}
+
+/* 登入表單按鈕區(送出按鈕 + 切換登入/註冊連結),供卡片與 dropdown 共用 */
+.login-form-actions {
+  padding: 0 16px 8px;
+}
+.login-form-switch {
+  text-align: center;
+  margin-top: 14px;
+  font-size: 14px;
+}
+/* 預設(非 pill,.login-dropdown/SettingsScreen/DesktopUserMenu popover
+   共用這個情境)沿用 App 自己的 iOS 色系——這兩個 class 原本是 JSX 內的
+   inline style,inline style 的優先權高於任何 CSS 選擇器,無法只靠加
+   .pill 覆寫規則蓋掉它,故先改成 class,才能讓下面的 pill 版本正確覆寫。 */
+.login-form-switch-hint {
+  color: var(--ios-gray);
+}
+.login-form-switch-action {
+  color: var(--color-accent);
+  cursor: pointer;
+}
+.login-form.pill .login-form-actions {
+  padding: 0;
+}
+/* pill 版本(LoginCard 全螢幕迎賓情境)改用紙感和風色票,同上面 .field/
+   .btn-primary 的理由。 */
+.login-form.pill .login-form-switch-hint {
+  color: #5A5148; /* HomePage.css 的 --ink-soft */
+}
+.login-form.pill .login-form-switch-action {
+  color: #8B3A2F; /* HomePage.css 的 --vermilion */
+}
+
+/* 表單底部同意條款——改成一行短文字+連到 /terms 的連結,取代原本一整段
+   逐條列出的免責聲明(內容跟 /terms 頁面重複,又在乾淨的表單裡顯得雜亂),
+   不再需要套用 .field 的膠囊底色/邊框,單純一行置中小字。 */
+.login-form-consent {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ios-gray);
+}
+.login-form-consent a {
+  color: var(--ios-gray);
+  text-decoration: underline;
+}
+.login-form.pill .login-form-consent {
+  color: #5A5148; /* HomePage.css 的 --ink-soft */
+}
+.login-form.pill .login-form-consent a {
+  color: #8B3A2F; /* HomePage.css 的 --vermilion */
+  text-decoration: none;
+}
+.login-form.pill .login-form-consent a:hover {
+  text-decoration: underline;
+}

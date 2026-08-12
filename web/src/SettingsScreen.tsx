@@ -5,7 +5,8 @@ import * as api from './api'
 import type { User } from './types'
 import type { AssistLang } from './assistLang'
 import { ASSIST_LANG_KEY, getAssistLang } from './assistLang'
-import { Avatar, errMsg, LoginForm } from './AppCommon'
+import { Avatar, errMsg } from './AppCommon'
+import { LoginForm } from './LoginForm'
 import { LangSelect, TokenDisplay } from './DesktopShared'
 
 // SettingsScreen:手機版設定整頁(連線設定 + 測試 health)——從

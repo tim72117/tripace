@@ -1,16 +1,16 @@
-/* LegalPage 視覺——對齊 KyotoExploreBloom.css 的紙感和風配色/字體(見該檔案
-   開頭的 --paper/--ink/--vermilion 等 token 說明),取代原本沿用 landing.css
-   的 .legal-*(藍綠度假風,見 landing.css 開頭 --lp-ocean 等變數)。這裡的
-   token 數值直接照抄 KyotoExploreBloom.css,不是重新發明一套色票——只是
-   scope 換成 .legal-bloom,避免跟 .kyoto-bloom/.landing 互相污染(三者都是
-   各自獨立、不共用彼此 CSS 檔案的頁面)。
+/* LegalPage 視覺——對齊 HomePage.css(原 KyotoExploreBloom.css)的紙感和風
+   配色/字體(見該檔案開頭的 --paper/--ink/--vermilion 等 token 說明),
+   取代原本沿用 landing.css 的 .legal-*(藍綠度假風,見 landing.css 開頭
+   --lp-ocean 等變數)。這裡的 token 數值直接照抄 HomePage.css,不是重新
+   發明一套色票——只是 scope 換成 .legal-bloom,避免跟 .kyoto-bloom/
+   .landing 互相污染(三者都是各自獨立、不共用彼此 CSS 檔案的頁面)。
    顏色對應(從舊 .legal-* 使用的 --lp-* token 對照過來):
      --lp-bg/--lp-card(頁面底色/卡片)  → --paper/--paper-dim
      --lp-ink(標題/內文深色文字)        → --ink
      --lp-gray(次要文字、版權宣告)      → --ink-soft
      --lp-ocean/--lp-ocean-deep(強調色、連結、CTA、h2) → --vermilion
      --lp-sep(分隔線)                   → --line
-   字體:中文內文字型堆疊、ShipporiSerif 標題字,跟 KyotoExploreBloom 完全
+   字體:中文內文字型堆疊、ShipporiSerif 標題字,跟 HomePage 完全
    一致(見下方 @font-face,同一份宣告,只是各自 scope 各自檔案,CSS
    @font-face 沒有 scope 概念但重複宣告同一個 local() 來源是無害的)。 */
 
@@ -63,10 +63,10 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* ---------- 導覽列(對齊 KyotoExploreBloom 固定左上品牌標記的慣例,但這裡
+/* ---------- 導覽列(對齊 HomePage 固定左上品牌標記的慣例,但這裡
    內容是靜態長文閱讀頁,不需要捲動視差,故用一般 sticky nav 而非 fixed
-   浮動標記——維持跟 LandingPage 一致的「進站看得到品牌、能回首頁」動線,
-   只是配色/字體換成紙感和風。) ---------- */
+   浮動標記——維持全站一致的「進站看得到品牌、能回首頁」動線,只是配色/
+   字體換成紙感和風。) ---------- */
 .legal-bloom .legal-nav {
   position: sticky;
   top: 0;
@@ -109,7 +109,7 @@
 }
 .legal-bloom .legal-nav-cta:hover { transform: translateY(-1px); }
 
-/* 日夜間切換——跟 KyotoExploreBloom 的 .theme-toggle 視覺一致,但這裡
+/* 日夜間切換——跟 HomePage 的 .theme-toggle 視覺一致,但這裡
    排進導覽列裡(inline),不是 fixed 定位——沒有捲動視差需要避開的浮動
    圖層,放進 nav 更符合這頁本來就是一般文件頁的定位。 */
 .legal-bloom .legal-theme-toggle {
@@ -184,7 +184,7 @@
   color: var(--vermilion-soft);
 }
 
-/* ---------- footer(直接對齊 KyotoExploreBloom.css 的 .kyoto-footer,見該
+/* ---------- footer(直接對齊 HomePage.css 的 .kyoto-footer,見該
    檔案「footer」一節說明——品牌名、版權、法律連結、onagent 背書皆同一套
    結構,只是 class 前綴換成 legal-footer 避免跟 .kyoto-footer/.landing-footer
    撞名。) ---------- */

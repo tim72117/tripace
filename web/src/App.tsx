@@ -4,14 +4,15 @@ import { useAppState } from './AppCommon'
 
 // 每條路由的頁面元件改用 React.lazy() 動態載入,取代原本的靜態 import——
 // 靜態 import 會讓 Vite 把所有路由元件塞進同一個模組圖,不管使用者當下
-// 訪問哪一條路徑,瀏覽器都會抓到全部 11 個頁面元件各自的程式碼(在
-// KyotoExploreBloom.tsx 這類獨立頁面上尤其明顯,使用者只是想看這一個
-// demo 頁面,卻連帶載入了 PhoneContent/CliAuthPage 等完全不相關的元件)。
-// lazy() 讓 Vite/Rollup 把每個元件拆成獨立 chunk,只在真正導航到對應路由
-// 時才動態 import,首次載入的 JS 體積只包含這條路由實際需要的程式碼。
-// Suspense fallback 給 null(空白瞬間),因為這些都是整頁級的路由切換,
-// chunk 載入通常在使用者感知延遲之前就完成,不需要額外的載入動畫。
-const LandingPage = lazy(() => import('./LandingPage').then((m) => ({ default: m.LandingPage })))
+// 訪問哪一條路徑,瀏覽器都會抓到全部頁面元件各自的程式碼(在 HomePage.tsx
+// 這類獨立頁面上尤其明顯,使用者只是想看首頁,卻連帶載入了
+// PhoneContent/CliAuthPage 等完全不相關的元件)。lazy() 讓 Vite/Rollup
+// 把每個元件拆成獨立 chunk,只在真正導航到對應路由時才動態 import,首次
+// 載入的 JS 體積只包含這條路由實際需要的程式碼。Suspense fallback 給
+// null(空白瞬間),因為這些都是整頁級的路由切換,chunk 載入通常在使用者
+// 感知延遲之前就完成,不需要額外的載入動畫。
+const HomePage = lazy(() => import('./HomePage').then((m) => ({ default: m.HomePage })))
+const ProductPage = lazy(() => import('./ProductPage').then((m) => ({ default: m.ProductPage })))
 const PrivacyPage = lazy(() => import('./PrivacyPage').then((m) => ({ default: m.PrivacyPage })))
 const TermsPage = lazy(() => import('./TermsPage').then((m) => ({ default: m.TermsPage })))
 const CliAuthPage = lazy(() => import('./CliAuthPage').then((m) => ({ default: m.CliAuthPage })))
@@ -20,7 +21,6 @@ const PublicViewScreen = lazy(() => import('./PhoneScreens').then((m) => ({ defa
 const PublicPaceDemoPage = lazy(() => import('./PublicPaceDemoPage').then((m) => ({ default: m.PublicPaceDemoPage })))
 const PhoneContent = lazy(() => import('./PhoneContent').then((m) => ({ default: m.PhoneContent })))
 const NotFoundPage = lazy(() => import('./NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
-const KyotoExploreBloom = lazy(() => import('./KyotoExploreBloom').then((m) => ({ default: m.KyotoExploreBloom })))
 
 // App.tsx 只保留路由判斷(App() 本身)——PhoneContent(含 PhoneNavDrawer 導覽
 // 抽屜)搬到 PhoneContent.tsx、PublicPaceDemoPage 搬到自己的檔案、
@@ -43,13 +43,16 @@ export function App() {
           局部懶載入),chunk 抓取通常很快,不需要額外的載入態畫面。 */}
       <Suspense fallback={null}>
         <Routes>
-          {/* 根路徑渲染產品介紹 landing page(全寬,不套 phone 外框)。 */}
-          <Route path="/" element={<LandingPage />} />
-          {/* 暫時性預覽路由,供 dev server 直接查看 KyotoExploreBloom(日後可能
-              取代 LandingPage 的京都探索路線 demo)——確認要正式上線時再決定
-              要接到 "/" 還是拆掉這條路由,不影響上面既有的 "/" 路由。 */}
-          <Route path="/kyoto-bloom-preview" element={<KyotoExploreBloom />} />
-          {/* 隱私權政策/服務條款——沿用 LandingPage 的視覺語言,見 LegalPage.tsx。 */}
+          {/* 根路徑渲染首頁(全寬,不套 phone 外框)——京都東山探索路線的捲動
+              視差敘事,見 HomePage.tsx。原本掛在這裡的功能介紹頁面(表格式
+              列出產品功能/操作流程)搬到 /product,從首頁的導覽/CTA 連過去。 */}
+          <Route path="/" element={<HomePage />} />
+          {/* /product:功能介紹頁,見 ProductPage.tsx——列出產品核心功能與
+              三步驟操作流程,原本掛在 "/",首頁改成 HomePage.tsx 之後搬到
+              這裡,供首頁導覽連結指向。 */}
+          <Route path="/product" element={<ProductPage />} />
+          {/* 隱私權政策/服務條款——視覺語言對齊首頁(HomePage.tsx)的紙感和風
+              風格,見 LegalPage.tsx。 */}
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
           {/* /public/{token} 路徑:直接渲染公開分享頁。原本用正則

@@ -67,7 +67,8 @@ src/
 │                     # + 頻道列表/設定/登入頁 + 共用工具(Avatar/ErrorBanner/errMsg 等)
 ├── ChatScreen.tsx    # 聊天頁(owner 發訊息、成員以自然語言查詢)+ 成員管理 + 分享彈窗
 ├── Timeline.tsx      # 多軌時間軸渲染,ChatScreen 與公開分享頁共用
-├── LandingPage.tsx   # 產品介紹頁(根路徑 /)
+├── HomePage.tsx      # 首頁(根路徑 /,京都東山探索路線捲動視差敘事)
+├── ProductPage.tsx   # 產品功能介紹頁(/product)
 ├── DebugApp.tsx      # ?debug 模式的替代進入點
 ├── DebugPanel.tsx    # 右側 debug panel,即時顯示每次 API 的原始 request/response
 ├── api.ts            # API client(攔截每次交易,計時、擷取原始 JSON)

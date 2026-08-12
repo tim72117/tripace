@@ -2,6 +2,31 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.4.0 — 2026-08-12
+
+### 破壞性變更
+
+- **首頁改版**：`"/"` 路由改渲染 `HomePage.tsx`（原 `KyotoExploreBloom.tsx`，京都東山探索路線捲動視差敘事），取代原本掛在該路徑的功能介紹頁；原功能介紹頁重新命名為 `ProductPage.tsx`（原 `LandingPage.tsx`），改掛到新路由 `/product`。暫時性的 `/kyoto-bloom-preview` 預覽路由已移除（首頁本身即是該內容，不再需要獨立預覽路徑）。曾經連到 `/kyoto-bloom-preview` 的書籤/分享連結會變成 404。
+- **`LoginCard`/`LoginForm` 從 `AppCommon.tsx` 搬到新檔案 `LoginForm.tsx`**：兩者是 React 元件的具名匯出，原本跟 `useIsDesktop`/`useTripsState` 等不相關工具擠在同一個檔案，現已獨立。任何 `import { LoginCard, LoginForm } from './AppCommon'` 的呼叫端需改成 `from './LoginForm'`（本次一併更新了全部既有呼叫端：`CliAuthPage.tsx`、`DesktopUserMenu.tsx`、`PhoneContent.tsx`、`DeviceAuthPage.tsx`、`SettingsScreen.tsx`）。
+- **移除全域樣式檔 `styles-login.css`/`styles-demo.css`**：`main.tsx` 不再 import 這兩個檔案。`styles-login.css` 的內容改為 `LoginForm.tsx` 自己 import 的 `LoginForm.css`（元件自帶樣式，不再依賴 `main.tsx` 的全域載入順序）；`styles-demo.css` 本身早已無實際規則（只剩解釋性註解），一併移除，不影響任何畫面。
+
+### 新增
+
+- **登入頁視覺改版**：`LoginCard` 的品牌 logo/標題/副標從卡片內部移到卡片外的獨立歡迎區塊（`.login-welcome`），卡片本身只保留表單——避免迎賓文字與操作型表單擠在同一個帶陰影方框裡。配色/字體對齊 `HomePage.css` 的紙感和風 token（`--paper`/`--ink`/`--vermilion`、`ShipporiSerif` 標題字），取代原本沿用舊版 `LandingPage` 度假配色（海青→暖沙漸層文字）的做法。卡片與輸入框改用純框線（背景透明，不帶實色底），陰影從戲劇化的大範圍柔焦陰影改成克制的雙層淺陰影；歡迎標題上方、卡片外框都加入低調的磚紅色點綴（`--line`/`--vermilion` 混色或純磚紅細線）。表單底部冗長的服務條款免責聲明改成一行短文字＋連到 `/terms` 的連結。以上改動僅套用在 `LoginCard` 的全螢幕迎賓情境（`.login-form.pill`），不影響 `login-dropdown`/`SettingsScreen`/`DesktopUserMenu` popover 共用同一顆 `LoginForm` 元件、走 App 自身 iOS 設計系統的情境。
+- `HomePage.tsx` 右上角新增「登入」按鈕（`.app-cta`，透明底框線款），直接連到 `/app`，不需捲到頁尾或結尾 CTA 才找得到入口；首頁結尾 CTA「規劃我的探索路線」與頁尾新增的「產品功能」連結也一併補上（原本分別是佔位 `href="#"` 與缺漏）。
+- `web/scripts/kyoto-bloom-generate-path.mjs`：路徑生成腳本正式收進 repo（原本是暫存目錄裡的一次性腳本），一次執行同時算出 `COORDS`/路徑 `d` 屬性/`nodeLenFractions` 三份資料，取代先前「跑兩支分開的腳本、中間手動複製貼上」的流程，避免手動搬運造成兩者不一致。
+
+### 修正/清理
+
+- 移除 `HomePage.tsx`（原 `KyotoExploreBloom.tsx`）的開發用「校準模式」面板（`⚙ 校準模式` 按鈕與對應調參邏輯）——`START_FRAC`/`END_FRAC` 校準已完成，不再需要即時調參工具。
+- `HomePage.tsx`/`.css` 一系列耦合/結構修正：`viewBox` 的 y 偏移與高度改由 SVG 元素自身的 `viewBox` 屬性讀取（不再三處各自寫死同一組數字）；地圖節點縮圖半徑收成具名常數 `NODE_THUMB_RADIUS`；手機/桌面版行為分支（文字淡出時機、bloom 照片定位公式）收斂成 `LAYOUT_BEHAVIOR` 查表；z-index 裸數字收成 `--z-fixed-ui`/`--z-progress`/`--z-bloom`/`--z-mobile-map`/`--z-base` 五個具名 token；`update()` 拆成 `computeFrameState()`（純計算）+ `applyMapVisuals`/`applyTextEmphasis`/`applyBloomPhoto`（純 DOM 寫入）；補上 `cancelAnimationFrame`，避免 unmount 後仍有排程中的動畫幀執行；`.map-col` 手機版媒體查詢移除與桌面版重複的宣告。
+- 修正 `ProductPage.css` 的一處 CSS specificity 陷阱：`.product-page a { color: inherit }` 的 specificity 高於多個單一 class 的按鈕/連結顏色規則，導致這些規則即使寫在檔案後面也會被蓋掉（按鈕文字顏色因此顯示錯誤）——受影響的選擇器補上 `.product-page` 前綴拉高權重。
+- 修正 `LoginForm.css` 的 `.login-screen` 缺少 `flex-direction: column`，導致歡迎區塊與登入卡片在所有螢幕尺寸下都變成左右並排而非垂直堆疊。
+- 修正 `ProductPage.tsx` 四處連到不存在路由 `/register`/`/login` 的連結（本專案沒有獨立的登入/註冊頁面，`/app` 本身已內建 `LoginForm`）；移除因此變得多餘的 `.product-btn-secondary`/`.product-nav-link` 死 CSS 規則。
+- 校正 `ProductPage.css` 的配色 token 數值——原本與 `HomePage.css` 同名 token（`--paper`/`--vermilion` 等）數值不同（尤其 `--vermilion` 是明顯不同的飽和橙紅 vs 對照組偏暗磚紅），改成逐位元相符；深色模式下 `--vermilion`/`--vermilion-soft` 語意互換的錯誤一併修正。
+- 修正 `ProductPage.tsx` footer 的 `onagent` 連結誤植為不存在的 `onagent.ai`（應為全站實際使用的 `https://onagent.shuttle.tools`），並將整個 footer 結構/文案對齊 `HomePage.tsx`。
+- 修正並更新多處指向已改名/已刪除檔案（`LandingPage.tsx`、`KyotoExploreBloom.tsx`/`.css`、`web/public/kyoto-demo-pages/kyoto-explore-bloom.html`）的過時註解與文件（`web/README.md`、`docs/FRONTEND_CLICK_ACTIONS.md`）。
+
 ## v0.3.0 — 2026-08-12
 
 ### 破壞性變更

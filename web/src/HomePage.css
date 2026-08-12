@@ -23,6 +23,25 @@
      它的左右邊界會漸漸跟其他區塊對不齊,破壞原本刻意統一的頁面邊界
      節奏。故五處一起改用同一個上限,寬螢幕下整頁邊界仍保持一致。 */
   --edge-pad: clamp(16px, 6vw, 40px);
+
+  /* z-index 疊放順序(由上到下,數字大的蓋在數字小的上面)——集中列在
+     這裡是唯一的完整疊放關係說明,而非分散在各條規則裡各自寫一小段。
+     新增浮動/固定定位元素時,先看這份清單決定該落在哪一層,不要另外
+     猜一個沒被涵蓋的裸數字。
+       --z-fixed-ui    (200) .brand-mark / .theme-toggle ——常駐畫面角落
+                              的固定按鈕,必須蓋過其餘所有內容。
+       --z-progress    (20)  .progress-rail ——桌面版右側捲動進度點。
+       --z-bloom       (15)  .bloom-photo ——展開時要蓋在 .stop-text 之上。
+       --z-mobile-map  (10)  .map-col(手機版)——sticky 地圖蓋過下方文字
+                              捲動內容,但仍低於 --z-fixed-ui,避免蓋住
+                              .brand-mark/.theme-toggle。
+       --z-base        (1)   .closing / .kyoto-footer ——僅需高於預設的
+                              static 疊放順序,無特殊蓋放需求。 */
+  --z-fixed-ui: 200;
+  --z-progress: 20;
+  --z-bloom: 15;
+  --z-mobile-map: 10;
+  --z-base: 1;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -67,7 +86,7 @@
 /* ---------- 品牌標記 ---------- */
 
 .kyoto-bloom .brand-mark {
-  position: fixed; left: 16px; top: 16px; z-index: 200;
+  position: fixed; left: 16px; top: 16px; z-index: var(--z-fixed-ui);
   padding: 8px 4px;
   font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
   color: var(--ink); text-decoration: none;
@@ -78,7 +97,7 @@
 /* ---------- 日夜間切換 ---------- */
 
 .kyoto-bloom .theme-toggle {
-  position: fixed; right: 16px; top: 16px; z-index: 200;
+  position: fixed; right: 16px; top: 16px; z-index: var(--z-fixed-ui);
   width: 36px; height: 36px;
   display: flex; align-items: center; justify-content: center;
   border-radius: 50%; border: 1px solid var(--line);
@@ -87,14 +106,29 @@
   transition: background 0.2s ease, color 0.2s ease;
 }
 .kyoto-bloom .theme-toggle:hover { background: var(--paper-dim); }
-@media (max-width: 900px) {
-  /* 手機版固定地圖標頭橫幅(見 .map-col 的 @media 規則)z-index: 5,這兩顆
-     固定元素維持 200 蓋在上面沒問題,但橫幅本身佔滿 top: 0 左右整條,
-     疊在橫幅正上方視覺上會很擠——手機版都改貼底部,避開橫幅,左右各自
-     保持原本的左右分佈(brand-mark 左下、theme-toggle 右下)。 */
-  .kyoto-bloom .brand-mark { top: auto; bottom: 16px; }
-  .kyoto-bloom .theme-toggle { top: auto; bottom: 16px; }
+
+/* 登入捷徑——固定右上角,排在 .theme-toggle(36px 寬,right: 16px)左邊:
+   16(theme-toggle 右邊界) + 36(自身寬) + 10(間距) = 62px。純框線款,
+   background 完全透明(不是 var(--paper)那種「跟底色一樣」的假透明),
+   讓按鈕直接融入背後的內容,只靠邊框存在——比帶底色的版本更輕。 */
+.kyoto-bloom .app-cta {
+  position: fixed; right: 62px; top: 16px; z-index: var(--z-fixed-ui);
+  display: flex; align-items: center;
+  height: 36px; padding: 0 18px;
+  border-radius: 999px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+  background: transparent; color: var(--ink); border: 1px solid var(--line);
+  text-decoration: none;
+  transition: border-color 0.2s ease, color 0.2s ease;
 }
+.kyoto-bloom .app-cta:hover { border-color: var(--vermilion-soft); color: var(--vermilion); }
+@media (max-width: 900px) {
+  .kyoto-bloom .app-cta { right: 62px; padding: 0 14px; font-size: 12px; }
+}
+/* 手機版沿用桌面版同一組固定左上/右上定位(不再另外覆寫)——原本這裡
+   把兩顆按鈕移到畫面下方,是因為手機版地圖曾經是覆蓋在畫面最上方、
+   佔滿 top: 0 左右整條的 fixed 橫幅,貼在同一個角落視覺上會很擠;
+   地圖改成 sticky(隨文件流排版,不再是覆蓋畫面的橫幅)後這個理由已
+   不成立,故移除這條覆寫,讓手機板跟桌面板一樣固定在左上/右上。 */
 
 /* ---------- HERO ---------- */
 
@@ -210,6 +244,10 @@
   width: 100%; height: auto;
   overflow: visible;
   display: block;
+  /* will-change: transform 是配合 update() 裡每幀寫入的
+     mapSvg.style.transform = `translateY(...)`(見該檔案的平移相機
+     那段)保留的效能優化提示——不是沒用到的樣式,移除前先確認那段
+     inline transform 邏輯是否還在。 */
   will-change: transform;
 }
 
@@ -331,13 +369,18 @@
    and then just sits still while this bloom-and-recede happens. */
 .kyoto-bloom .bloom-photo {
   position: fixed;
-  z-index: 15;
+  z-index: var(--z-bloom);
   border-radius: 8px;
   overflow: hidden;
   box-shadow: var(--card-shadow);
   pointer-events: none;
-  /* left/top/width/height/opacity/transform/transition are all set
-     inline by JS every frame — see update()'s bloom section. */
+  /* left/top/width/height/opacity/clip-path 由 JS 在 update() 的 bloom
+     段落每一幀逐一寫入 inline style(border-radius 維持這裡的靜態值,
+     不在 JS 那份逐幀覆寫清單裡)——這條規則本身建立的是「未被逐幀覆寫
+     的靜態基準」(position/z-index/border-radius/overflow/box-shadow/
+     pointer-events),日後若要在這兩邊之間搬動某個屬性的管轄權(例如把
+     opacity 改回純 CSS transition 驅動),記得同步更新這份清單跟
+     update() 那端,兩邊目前是刻意分工、不是各自巧合寫到同一個屬性。 */
 }
 .kyoto-bloom .bloom-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 /* 手機版跟桌面版共用同一個浮動 bloom 圖層(不再是 display: none + 各站
@@ -347,12 +390,18 @@
 
 .kyoto-bloom .progress-rail {
   position: fixed; right: 22px; top: 50%; transform: translateY(-50%);
-  display: flex; flex-direction: column; gap: 10px; z-index: 20;
+  display: flex; flex-direction: column; gap: 10px; z-index: var(--z-progress);
 }
 .kyoto-bloom .progress-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line); transition: background 0.3s ease, transform 0.3s ease; }
 .kyoto-bloom .progress-dot.active { background: var(--vermilion); transform: scale(1.6); }
 @media (max-width: 900px) { .kyoto-bloom .progress-rail { display: none; } }
 
+/* 這裡跟下一個 @media 的斷點寬度(900px)必須跟 HomePage.tsx 的
+   mobileMQ = window.matchMedia('(max-width: 900px)') 保持完全一致——兩邊
+   各自寫死同一個數字,沒有共用來源,只能靠人工同步。CSS 這裡決定的是
+   版面何時從左右並排切成上下堆疊,JS 的 mobileMQ 決定的是 bloom 照片
+   錨點公式、文字淡出時機等一整組行為要在哪個寬度切換,只改其中一邊會
+   讓「版面已經是手機板,但行為分支還是桌面板」(或反過來)。 */
 @media (max-width: 900px) {
   /* 手機版改成跟桌面版同一套機制(sticky 地圖 + 浮動 bloom 照片跟著地圖
      cursor 位置展開/收合),只是版面方向從「左右並排」改成「上下堆疊」
@@ -367,22 +416,17 @@
     gap: 0;
   }
   .kyoto-bloom .map-col {
-    position: sticky;
-    top: 0;
-    height: var(--mobile-map-h, 45vh);
-    align-items: center;
-    /* z-index 蓋過下方文字捲動內容(理由同桌面版 .bloom-photo 需要蓋在
-       .stop-text 之上),但仍低於 .theme-toggle/.brand-mark 的 200,
-       避免蓋住那兩顆固定按鈕。 */
-    z-index: 10;
+    /* position/top/align-items 跟桌面版(見上方 .map-col)完全相同,
+       不重複宣告,自然繼承——這裡只覆寫手機板真正的差異值。 */
+    height: 45vh;
+    z-index: var(--z-mobile-map);
     background: var(--paper);
   }
   .kyoto-bloom .map-stage { max-width: 220px; margin: 0 auto; }
   /* sticky 區塊比桌面版矮(45vh vs 100vh),.map-window 的桌面版尺寸
-     (58vh、min-height 380px)會撐爆這個區塊,故比照原本 fixed 橫幅的
-     做法,依 --mobile-map-h 覆寫兩者。 */
+     (58vh、min-height 380px)會撐爆這個區塊,故覆寫成扣掉留白後的高度。 */
   .kyoto-bloom .map-window {
-    height: calc(var(--mobile-map-h, 45vh) - 6vh);
+    height: calc(45vh - 6vh);
     min-height: 0;
     max-height: none;
   }
@@ -394,19 +438,18 @@
 
 .kyoto-bloom .closing {
   text-align: center; padding: 12vh var(--edge-pad) 16vh; border-top: 1px solid var(--line);
-  max-width: 640px; margin: 0 auto; position: relative; z-index: 1; background: var(--paper);
+  max-width: 640px; margin: 0 auto; position: relative; z-index: var(--z-base); background: var(--paper);
 }
 .kyoto-bloom .closing-title { font-family: 'ShipporiSerif', "Noto Serif TC", serif; font-size: clamp(20px, 2.6vw, 26px); margin: 0 0 14px; }
 .kyoto-bloom .closing-desc { color: var(--ink-soft); font-size: 14.5px; line-height: 1.85; margin-bottom: 32px; }
 
-/* ---------- footer(參照 LandingPage.tsx 的 .landing-footer,見 JSX 開頭
-   說明) ---------- */
+/* ---------- footer(結構對齊全站既有的頁尾慣例,見 JSX 開頭說明) ---------- */
 
 .kyoto-bloom .kyoto-footer {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   border-top: 1px solid var(--line); padding: 28px var(--edge-pad);
   text-align: center; font-size: 14px; color: var(--ink-soft);
-  position: relative; z-index: 1; background: var(--paper);
+  position: relative; z-index: var(--z-base); background: var(--paper);
 }
 .kyoto-bloom .kyoto-footer-brand { font-size: 15px; font-weight: 600; color: var(--ink); }
 
@@ -435,77 +478,3 @@
   .kyoto-bloom { scroll-behavior: auto; }
   .kyoto-bloom .stop-text { opacity: 1 !important; transform: none !important; }
 }
-
-/* ---------- calibration panel (dev tool, not part of the page itself) ---------- */
-
-.kyoto-bloom .calib-toggle {
-  position: fixed; left: 16px; bottom: 16px; z-index: 200;
-  padding: 10px 16px; border-radius: 999px; border: 1px solid var(--line);
-  background: var(--paper); color: var(--ink); font-size: 12px; letter-spacing: 0.04em;
-  cursor: pointer; box-shadow: var(--card-shadow); font-family: inherit;
-}
-@media (max-width: 900px) {
-  /* .brand-mark 手機版也移到 left: 16px; bottom: 16px(見上方品牌標記
-     一節),跟這顆開發用的校準按鈕在同一個角落——校準面板只在
-     import.meta.env.DEV 時渲染,不影響正式環境,但開發時兩者會重疊,
-     故把校準鈕再往上挪一段距離錯開,不擋住品牌標記。 */
-  .kyoto-bloom .calib-toggle { bottom: 64px; }
-}
-.kyoto-bloom .calib-toggle.active { background: var(--vermilion); color: #fff; border-color: var(--vermilion); }
-
-.kyoto-bloom .calib-panel {
-  position: fixed; left: 16px; bottom: 62px; z-index: 200;
-  width: 300px; max-height: 70vh; overflow-y: auto;
-  background: var(--paper); border: 1px solid var(--line); border-radius: 10px;
-  box-shadow: var(--card-shadow); padding: 16px;
-  font-size: 12px; color: var(--ink-soft); line-height: 1.6;
-  display: none;
-}
-.kyoto-bloom .calib-panel.open { display: block; }
-.kyoto-bloom .calib-panel h4 {
-  margin: 0 0 8px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
-  color: var(--ink); font-weight: 600;
-}
-.kyoto-bloom .calib-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.kyoto-bloom .calib-row label { width: 70px; flex: none; color: var(--ink); font-weight: 600; }
-.kyoto-bloom .calib-row input[type="range"] { flex: 1; }
-.kyoto-bloom .calib-row input[type="number"] {
-  width: 52px; font-size: 11px; padding: 2px 4px; border: 1px solid var(--line);
-  border-radius: 4px; background: var(--paper); color: var(--ink); font-family: inherit;
-}
-.kyoto-bloom .calib-hint {
-  margin: 10px 0; padding: 8px 10px; background: var(--paper-dim); border-radius: 6px;
-  font-size: 11px;
-}
-.kyoto-bloom .calib-samples { margin: 10px 0; padding: 0; list-style: none; }
-.kyoto-bloom .calib-samples li {
-  display: flex; justify-content: space-between; padding: 4px 0;
-  border-bottom: 1px dashed var(--line); font-variant-numeric: tabular-nums;
-}
-.kyoto-bloom .calib-samples li button {
-  background: none; border: none; color: var(--vermilion); cursor: pointer; font-size: 11px;
-  font-family: inherit; padding: 0 0 0 8px;
-}
-.kyoto-bloom .calib-suggest {
-  margin-top: 10px; padding: 10px; background: color-mix(in srgb, var(--moss) 12%, var(--paper));
-  border-radius: 6px; font-size: 11.5px;
-}
-.kyoto-bloom .calib-suggest strong { color: var(--ink); }
-.kyoto-bloom .calib-output {
-  margin-top: 8px; width: 100%; font-family: ui-monospace, monospace; font-size: 11px;
-  padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper-dim);
-  color: var(--ink); resize: vertical; box-sizing: border-box;
-}
-.kyoto-bloom .calib-copy {
-  margin-top: 6px; width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--vermilion);
-  background: var(--vermilion); color: #fff; font-size: 12px; cursor: pointer; font-family: inherit;
-}
-.kyoto-bloom .calib-clear {
-  margin-top: 6px; width: 100%; padding: 6px; border-radius: 6px; border: 1px solid var(--line);
-  background: transparent; color: var(--ink-soft); font-size: 11px; cursor: pointer; font-family: inherit;
-}
-
-/* while calibration mode is on, map nodes become clickable targets —
-   give them an obvious affordance so it reads as "click here" */
-.kyoto-bloom.calib-mode .map-node { cursor: pointer; }
-.kyoto-bloom.calib-mode .map-node:hover circle.dot { fill: var(--vermilion-soft); }

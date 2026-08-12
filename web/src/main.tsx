@@ -3,9 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import { App } from './App'
 import './styles.css'
-import './styles-login.css'
 import './styles-desktop.css'
-import './styles-demo.css'
 
 // registerSW:vite-plugin-pwa 只在 build 時產生 service worker(dist/sw.js)
 // 與 registerType: 'autoUpdate' 設定(見 vite.config.ts),並不會自動幫

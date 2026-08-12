@@ -6,9 +6,10 @@ import { AlignLeft, Timeline, Route } from 'lucide-react'
 import { ChatScreen, type DesktopTimelineMirror } from './ChatScreen'
 import { MultiTrackTimeline } from './Timeline'
 import {
-  useIsDesktop, useTripsState, LoginForm, LoginCard,
+  useIsDesktop, useTripsState,
   type ContentProps,
 } from './AppCommon'
+import { LoginForm, LoginCard } from './LoginForm'
 import { isPanelMode } from './DesktopShared'
 import { DesktopContent } from './DesktopLayout'
 import { SettingsScreen } from './SettingsScreen'
