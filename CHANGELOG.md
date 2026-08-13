@@ -2,6 +2,24 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.4.1 — 2026-08-13
+
+### 修正
+
+- **首頁 Googlebot 渲染空白問題**：`HomePage.tsx` 組出地圖/敘事內容的 `useEffect` 內，`new IntersectionObserver(...)` 原本沒有任何存在性檢查——若渲染環境不支援此 API（例如部分受限的無頭渲染器）會直接拋出 `ReferenceError`，中斷整個 effect，導致 hero 以下所有內容（地圖、敘事文字、bloom 圖層）永遠不會掛載出來，且因專案先前完全沒有 React Error Boundary，React 會把失敗點之後的畫面整個留白，只剩下 mount 時已 commit 的頁首。實際症狀：Google Search Console 的 URL 檢查截圖只顯示頁首，下方全為空白。修正為偵測不到 `IntersectionObserver` 時直接將所有敘事文字設為可見（降級而非空白）。
+- **地圖節點縮圖缺少替代文字**：`HomePage.tsx` 動態產生的 SVG `<image>` 縮圖（7 個景點節點）補上 `role="img" aria-label`，先前對輔助工具/爬蟲形同空白圖片。
+
+### 新增
+
+- **全站 React Error Boundary**（`web/src/ErrorBoundary.tsx`）：包在 `App.tsx` 的路由樹最外層。此前任何路由元件在 render/effect 階段拋出未捕捉例外，都會讓 React 把畫面整個留白且無法恢復；現在會落地成一個可重新整理的畫面。這是最後一道安全網，不是特定錯誤的修法（`IntersectionObserver` 那個已在 `HomePage.tsx` 個別處理）。
+- `sitemap.xml` 補上所有既有條目的 `<lastmod>`，並新增先前遺漏的 `/product` 頁面條目（該頁面在 v0.4.0 從 `"/"` 遷出後，`sitemap.xml` 一直沒有同步更新）。
+
+### 其他
+
+- 首頁 `<title>`/`<meta description>`/Open Graph/Twitter Card 文案調整：內容改為聚焦「協助使用者深入體驗一個想去的地方」的產品定位，不描述京都東山這類具體示範內容的細節（避免文案與首頁實際展示的範例路線強耦合，日後更換展示城市不需要連動改文案）；Twitter Card 型別由 `summary` 改為 `summary_large_image`。
+
+  **⚠️ 待補**：新增的 `og:image`/`twitter:image` 目前指向 `https://tripace.shuttle.tools/og-image.png`，此檔案尚未建立（`web/public/` 底下沒有對應圖檔）——社群分享預覽圖目前會是失效連結，需另外提供一張 1200×630px 的分享預覽圖並放到 `web/public/og-image.png`。
+
 ## v0.4.0 — 2026-08-12
 
 ### 破壞性變更
