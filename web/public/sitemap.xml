@@ -2,16 +2,27 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://tripace.shuttle.tools/</loc>
+    <lastmod>2026-08-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
+  <!-- /product：功能介紹頁，原本掛在 "/"，首頁改版為京都探索敘事後搬到這裡
+       （見 App.tsx 的路由註解），但 sitemap 一直沒有補上這條路徑。 -->
+  <url>
+    <loc>https://tripace.shuttle.tools/product</loc>
+    <lastmod>2026-08-12</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
   <url>
     <loc>https://tripace.shuttle.tools/privacy</loc>
+    <lastmod>2026-08-12</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://tripace.shuttle.tools/terms</loc>
+    <lastmod>2026-08-12</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.3</priority>
   </url>

@@ -121,7 +121,7 @@ export function HomePage() {
         ? `
         <defs><clipPath id="${clipId}"><circle cx="${x}" cy="${y}" r="${NODE_THUMB_RADIUS}"/></clipPath></defs>
         <circle class="ring" cx="${x}" cy="${y}" r="14"/>
-        <image class="thumb" x="${x - NODE_THUMB_RADIUS}" y="${y - NODE_THUMB_RADIUS}" width="${NODE_THUMB_RADIUS * 2}" height="${NODE_THUMB_RADIUS * 2}" clip-path="url(#${clipId})" preserveAspectRatio="xMidYMid slice" href="${PHOTO_DATA[s.id].thumb}"/>
+        <image class="thumb" x="${x - NODE_THUMB_RADIUS}" y="${y - NODE_THUMB_RADIUS}" width="${NODE_THUMB_RADIUS * 2}" height="${NODE_THUMB_RADIUS * 2}" clip-path="url(#${clipId})" preserveAspectRatio="xMidYMid slice" href="${PHOTO_DATA[s.id].thumb}" role="img" aria-label="${s.name}"/>
         <circle class="thumb-ring" cx="${x}" cy="${y}" r="${NODE_THUMB_RADIUS}"/>
         <circle class="dot" cx="${x}" cy="${y}" r="4"/>
         <text class="label" x="${x + 26}" y="${y + 4}">${s.name}</text>
@@ -274,16 +274,29 @@ export function HomePage() {
     // 無法連續追蹤元素目前在視窗的哪個位置,故手機版的退場判斷移到
     // update() 這個逐幀執行的既有迴圈裡處理,textIO 在手機版只負責加上
     // text-in、不負責移除。
-    const textIO = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (LAYOUT_BEHAVIOR[currentLayoutMode()].textFadesOutOnScroll) {
-          if (entry.isIntersecting) entry.target.classList.add('text-in')
-        } else {
-          entry.target.classList.toggle('text-in', entry.isIntersecting)
-        }
-      })
-    }, { threshold: 0.35 })
-    stopEls.forEach((s) => textIO.observe(s))
+    // 有些無頭渲染環境(例如部分爬蟲用的 headless renderer)不提供
+    // IntersectionObserver,直接 new 會拋出 ReferenceError——這個 effect
+    // 底下還有其他 DOM 佈線(地圖、bloom 層等),一旦這裡拋錯、又沒有
+    // Error Boundary 接住,會讓 hero 以下的整段內容永遠不會掛載出來,對
+    // SEO 是嚴重問題(Googlebot 截圖只剩 header)。降級策略:偵測不到就
+    // 直接把所有文字設為可見,不做進場動畫,而不是保持隱藏。
+    const hasIO = typeof IntersectionObserver !== 'undefined'
+    const textIO = hasIO
+      ? new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (LAYOUT_BEHAVIOR[currentLayoutMode()].textFadesOutOnScroll) {
+              if (entry.isIntersecting) entry.target.classList.add('text-in')
+            } else {
+              entry.target.classList.toggle('text-in', entry.isIntersecting)
+            }
+          })
+        }, { threshold: 0.35 })
+      : null
+    if (textIO) {
+      stopEls.forEach((s) => textIO.observe(s))
+    } else {
+      stopEls.forEach((s) => s.classList.add('text-in'))
+    }
     // updateTextFade:手機版專屬的退場判斷——文字區塊中心點一旦捲過視窗
     // 垂直中心線(即將進入上半部)就移除 text-in、開始淡出,不必等到完全
     // 離開視窗上緣。只處理「移除」,不處理「加上」(那是上面
@@ -580,7 +593,7 @@ export function HomePage() {
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onResize)
       startBtn.removeEventListener('click', onStartClick)
-      textIO.disconnect()
+      textIO?.disconnect()
       if (rafId !== null) cancelAnimationFrame(rafId)
       // React StrictMode/HMR 重新掛載時，清掉這次 effect 動態產生的 DOM
       // (map nodes、stop 卡片、progress dots)，避免下次掛載時重複 append。

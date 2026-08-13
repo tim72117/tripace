@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom'
 import { useAppState } from './AppCommon'
+import { ErrorBoundary } from './ErrorBoundary'
 
 // 每條路由的頁面元件改用 React.lazy() 動態載入,取代原本的靜態 import——
 // 靜態 import 會讓 Vite 把所有路由元件塞進同一個模組圖,不管使用者當下
@@ -37,12 +38,16 @@ export function App() {
   const props = useAppState()
   return (
     <BrowserRouter>
-      {/* Suspense 包住整個 <Routes>,而非各自包每個 <Route>——同一時間只會
-          有一條路由在渲染,不需要每條路由各自一份 fallback 邏輯,包外層
-          最單純。fallback 給 null:這些都是整頁級路由切換(不是頁面內的
-          局部懶載入),chunk 抓取通常很快,不需要額外的載入態畫面。 */}
-      <Suspense fallback={null}>
-        <Routes>
+      {/* ErrorBoundary 包在最外層——任何路由元件 render/effect 拋出未捕捉的
+          例外,都會落地成一個可重新整理的畫面,而不是讓 React 把整棵樹
+          unmount 到空白(對 SEO 是嚴重問題,見 ErrorBoundary.tsx 開頭說明)。 */}
+      <ErrorBoundary>
+        {/* Suspense 包住整個 <Routes>,而非各自包每個 <Route>——同一時間只會
+            有一條路由在渲染,不需要每條路由各自一份 fallback 邏輯,包外層
+            最單純。fallback 給 null:這些都是整頁級路由切換(不是頁面內的
+            局部懶載入),chunk 抓取通常很快,不需要額外的載入態畫面。 */}
+        <Suspense fallback={null}>
+          <Routes>
           {/* 根路徑渲染首頁(全寬,不套 phone 外框)——京都東山探索路線的捲動
               視差敘事,見 HomePage.tsx。原本掛在這裡的功能介紹頁面(表格式
               列出產品功能/操作流程)搬到 /product,從首頁的導覽/CTA 連過去。 */}
@@ -126,8 +131,9 @@ export function App() {
               其餘回 404 狀態碼;前端這裡對應渲染 NotFoundPage,讓人類使用者
               看到的是有品牌感、附導引動作的頁面,不是瀏覽器原生錯誤畫面。 */}
           <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-      </Suspense>
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
     </BrowserRouter>
   )
 }
