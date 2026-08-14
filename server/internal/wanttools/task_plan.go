@@ -3,14 +3,12 @@ package wanttools
 import (
 	"fmt"
 	"strings"
-
-	"github.com/tim72117/want/types"
 )
 
 // TaskPlanDeclaration 是 task_plan 工具:讓 agent 規劃並追蹤多步驟任務。
 // 任務存於記憶體(per-trip),供 agent 在處理複雜請求時:先列計畫、逐步完成、
 // 全部完成後清除。用 action 分派各種操作,避免工具清單膨脹。
-var TaskPlanDeclaration = types.ToolDeclaration{
+var TaskPlanDeclaration = ToolDeclaration{
 	Name: "task_plan",
 	Description: "規劃並追蹤多步驟任務(待辦清單,存於本行程記憶體)。處理需要多步驟的複雜請求時," +
 		"先用 create 列出計畫,完成一步就 complete 標記,全部完成後用 clear 清除。以 action 指定操作。",
@@ -82,10 +80,10 @@ var TaskPlanDeclaration = types.ToolDeclaration{
 }
 
 type TaskPlanTool struct {
-	types.BaseToolConfig
+	BaseToolConfig
 }
 
-func (t *TaskPlanTool) ValidateInput(args types.ToolArguments, ctx types.ToolContext) error {
+func (t *TaskPlanTool) ValidateInput(args ToolArguments, ctx ToolContext) error {
 	action := args.GetString("action")
 	switch action {
 	case "create":
@@ -116,7 +114,7 @@ func (t *TaskPlanTool) ValidateInput(args types.ToolArguments, ctx types.ToolCon
 	return nil
 }
 
-func (t *TaskPlanTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]types.ResultContentBlock, error) {
+func (t *TaskPlanTool) Call(args ToolArguments, ctx ToolContext) ([]ResultContentBlock, error) {
 	ch := TripFrom(ctx)
 	action := args.GetString("action")
 
@@ -177,7 +175,7 @@ func (t *TaskPlanTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]
 	}
 
 	ctx.EmitToolResult(map[string]interface{}{"message": msg})
-	return []types.ResultContentBlock{types.TextBlock(msg)}, nil
+	return []ResultContentBlock{TextBlock(msg)}, nil
 }
 
 // validateParentIDs 檢查每筆 input 的 ParentID(若非 0)是否指向該行程內一筆
@@ -217,7 +215,7 @@ func validateParentIDs(tripID string, inputs []TaskInput) error {
 
 // collectTaskInputs 蒐集 create 要新增的任務:優先取 items[](批次,每筆是 {text,date,kind}
 // 物件),否則退回 text/date/kind(單筆)。跳過文字為空白的項目。
-func collectTaskInputs(args types.ToolArguments) []TaskInput {
+func collectTaskInputs(args ToolArguments) []TaskInput {
 	raw, _ := args["items"].([]interface{})
 	if len(raw) == 0 {
 		if single := args.GetString("text"); single != "" {
@@ -232,7 +230,7 @@ func collectTaskInputs(args types.ToolArguments) []TaskInput {
 		if !ok {
 			continue
 		}
-		in := singleTaskInput(types.ToolArguments(obj))
+		in := singleTaskInput(ToolArguments(obj))
 		if strings.TrimSpace(in.Text) == "" {
 			continue
 		}
@@ -242,7 +240,7 @@ func collectTaskInputs(args types.ToolArguments) []TaskInput {
 }
 
 // singleTaskInput 取單筆操作(create 單筆 / update)用的 text/date/kind/parentID 欄位。
-func singleTaskInput(args types.ToolArguments) TaskInput {
+func singleTaskInput(args ToolArguments) TaskInput {
 	return TaskInput{
 		Text:     args.GetString("text"),
 		Date:     args.GetString("date"),
@@ -303,7 +301,7 @@ func renderTaskList(list []Task) string {
 	return sb.String()
 }
 
-func (t *TaskPlanTool) RenderToolUse(args types.ToolArguments) string {
+func (t *TaskPlanTool) RenderToolUse(args ToolArguments) string {
 	return fmt.Sprintf("task_plan: %s", args.GetString("action"))
 }
 
@@ -319,7 +317,7 @@ func (t *TaskPlanTool) RenderToolResult(data map[string]interface{}) string {
 }
 
 func init() {
-	types.RegisterTool(TaskPlanDeclaration, func() types.ToolInterface {
+	RegisterTool(TaskPlanDeclaration, func() ToolInterface {
 		return &TaskPlanTool{}
 	})
 }

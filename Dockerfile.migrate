@@ -10,18 +10,15 @@
 #
 # 跟 Dockerfile.admin 的差異:
 #   - 不需要 web-build 階段:cmd/cli 是純命令列工具,不 embed 任何前端。
-#   - 仍然需要 GH_PAT:雖然 go list -deps ./cmd/cli/... 確認實際編譯只用到
-#     internal/geo、internal/model、internal/store、internal/tripsvc,不
-#     連結 want/llm,但 go mod download 是依 go.mod 完整依賴清單下載(不是
-#     只抓某個 build target 實際用到的部分),go.mod 裡宣告了
-#     github.com/tim72117/want(給 cmd/server 用),故 go mod download 仍會
-#     嘗試抓取這個私有 repo,一樣需要 GH_PAT(實測驗證過:沒帶會在這一步
-#     卡住,錯誤是 "could not read Username for 'https://github.com'")。
+#   - go.mod 已無私有依賴(internal/wanttools 對 github.com/tim72117/want
+#     的依賴已移除,型別改為本地定義),go mod download 不再需要 GH_PAT。
 #
-# 用法(範例:清除 entries 表的 item/summary 舊欄位):
-#   docker build -f Dockerfile.migrate --build-arg GH_PAT=<token> -t tripace-migrate .
-#   docker run --rm -e DATABASE_URL="postgres://..." tripace-migrate \
-#     -db drop-legacy-columns
+# 用法:
+#   docker build -f Dockerfile.migrate -t tripace-migrate .
+#   docker run --rm -e DATABASE_URL="postgres://..." tripace-migrate <子命令與參數>
+#   (cmd/cli 目前一律走 HTTP 存取 server 的 /internal/ API,已無直連資料庫的
+#   -db 模式,見 server/cmd/cli/main.go 開頭說明——上面的 docker run 範例僅
+#   示意呼叫形式,實際子命令請查 cmd/cli 目前支援的清單)
 #
 # 這支映像檔的 ENTRYPOINT 是 cli 本身(不含子命令),跑什麼維運操作由
 # `docker run`/Cloud Run Jobs 的 command/args 決定,同一支映像檔可以
@@ -30,11 +27,8 @@
 # ---- 階段 1:編譯 Go ----
 FROM golang:1.26 AS build
 
-ARG GH_PAT
-RUN git config --global url."https://${GH_PAT}@github.com/".insteadOf "https://github.com/"
-
 COPY server/go.mod server/go.sum /src/server/
-RUN cd /src/server && GOPRIVATE=github.com/tim72117/want go mod download
+RUN cd /src/server && go mod download
 
 COPY server/ /src/server/
 

@@ -7,10 +7,9 @@ import (
 	"time"
 
 	"github.com/tim72117/tripace/internal/geo"
-	"github.com/tim72117/want/types"
 )
 
-var GeocodeDeclaration = types.ToolDeclaration{
+var GeocodeDeclaration = ToolDeclaration{
 	Name:        "geocode",
 	Description: "查詢地點名稱的經緯度座標。查詢字串應包含城市名以提高準確度（如「宮古島希爾頓酒店」而非僅「希爾頓酒店」）。回傳第一筆最相符的結果。",
 	Type:        "sync",
@@ -27,17 +26,17 @@ var GeocodeDeclaration = types.ToolDeclaration{
 }
 
 type GeocodeTool struct {
-	types.BaseToolConfig
+	BaseToolConfig
 }
 
-func (t *GeocodeTool) ValidateInput(args types.ToolArguments, _ types.ToolContext) error {
+func (t *GeocodeTool) ValidateInput(args ToolArguments, _ ToolContext) error {
 	if args.GetString("place") == "" {
 		return fmt.Errorf("place is required")
 	}
 	return nil
 }
 
-func (t *GeocodeTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]types.ResultContentBlock, error) {
+func (t *GeocodeTool) Call(args ToolArguments, ctx ToolContext) ([]ResultContentBlock, error) {
 	place := args.GetString("place")
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	client := geo.New(apiKey)
@@ -59,10 +58,10 @@ func (t *GeocodeTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]t
 		"lat":     p.Lat,
 		"lng":     p.Lng,
 	})
-	return []types.ResultContentBlock{types.TextBlock(msg)}, nil
+	return []ResultContentBlock{TextBlock(msg)}, nil
 }
 
-func (t *GeocodeTool) RenderToolUse(args types.ToolArguments) string {
+func (t *GeocodeTool) RenderToolUse(args ToolArguments) string {
 	return fmt.Sprintf("Looking up coordinates for %q...", args.GetString("place"))
 }
 
@@ -79,7 +78,7 @@ func (t *GeocodeTool) RenderToolResult(data map[string]interface{}) string {
 }
 
 func init() {
-	types.RegisterTool(GeocodeDeclaration, func() types.ToolInterface {
+	RegisterTool(GeocodeDeclaration, func() ToolInterface {
 		return &GeocodeTool{}
 	})
 }

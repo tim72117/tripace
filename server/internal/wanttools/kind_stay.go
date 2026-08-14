@@ -2,8 +2,6 @@ package wanttools
 
 import (
 	"fmt"
-
-	"github.com/tim72117/want/types"
 )
 
 // staySpec 是住宿類型(kind=stay)的欄位規範。
@@ -17,7 +15,7 @@ type staySpec struct{}
 
 func (staySpec) Kind() string { return "stay" }
 
-func (staySpec) Validate(args types.ToolArguments) error {
+func (staySpec) Validate(args ToolArguments) error {
 	if args.GetString("start") == "" {
 		return fmt.Errorf("kind=stay 需要 start(入住日):住宿是一段區間,請補上入住日期")
 	}
@@ -27,7 +25,7 @@ func (staySpec) Validate(args types.ToolArguments) error {
 	return nil
 }
 
-func (staySpec) ApplyDefaults(args types.ToolArguments) {
+func (staySpec) ApplyDefaults(args ToolArguments) {
 	// 時刻未給時補住宿常規時刻,對應 check-in / check-out。
 	if args.GetString("startTime") == "" {
 		args["startTime"] = "15:00"

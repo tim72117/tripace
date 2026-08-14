@@ -3,8 +3,6 @@ package wanttools
 import (
 	"fmt"
 	"strings"
-
-	"github.com/tim72117/want/types"
 )
 
 // AskChoiceDeclaration 是 ask_choice 工具:當 agent 缺乏明確資訊、需要使用者從
@@ -15,7 +13,7 @@ import (
 // ask_choice 事件給前端開啟選單 UI,並回傳「已請使用者選擇」讓 agent 結束本輪。
 // 使用者在 UI 選定某個選項後,前端把該選項的 title 當成一則新訊息送回聊天記錄,
 // agent 重新推論(此時資訊已齊全,靠對話歷史接上前文)。
-var AskChoiceDeclaration = types.ToolDeclaration{
+var AskChoiceDeclaration = ToolDeclaration{
 	Name: "ask_choice",
 	Description: "當缺乏明確資訊、需要使用者從幾個選項中選一個時(如多個房型、多個候選行程擇一)," +
 		"呼叫此工具請使用者透過 UI 選單挑選一個。不要用文字列點的方式詢問,也不要憑猜測選一個。" +
@@ -53,10 +51,10 @@ var AskChoiceDeclaration = types.ToolDeclaration{
 }
 
 type AskChoiceTool struct {
-	types.BaseToolConfig
+	BaseToolConfig
 }
 
-func (t *AskChoiceTool) ValidateInput(args types.ToolArguments, _ types.ToolContext) error {
+func (t *AskChoiceTool) ValidateInput(args ToolArguments, _ ToolContext) error {
 	if strings.TrimSpace(args.GetString("prompt")) == "" {
 		return fmt.Errorf("prompt is required")
 	}
@@ -72,7 +70,7 @@ func (t *AskChoiceTool) ValidateInput(args types.ToolArguments, _ types.ToolCont
 	return nil
 }
 
-func (t *AskChoiceTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]types.ResultContentBlock, error) {
+func (t *AskChoiceTool) Call(args ToolArguments, ctx ToolContext) ([]ResultContentBlock, error) {
 	prompt := args.GetString("prompt")
 	options := collectAskChoiceOptions(args)
 
@@ -85,13 +83,13 @@ func (t *AskChoiceTool) Call(args types.ToolArguments, ctx types.ToolContext) ([
 		"prompt":  prompt,
 		"options": options,
 	})
-	return []types.ResultContentBlock{types.TextBlock(msg)}, nil
+	return []ResultContentBlock{TextBlock(msg)}, nil
 }
 
 // collectAskChoiceOptions 從 args["options"](陣列,每筆是 {title, description} 物件)
 // 解析成 AskChoiceOption 清單;非物件或缺 title 的項目會被跳過(交由 ValidateInput
 // 統一擋下不合法輸入,這裡只單純轉型)。
-func collectAskChoiceOptions(args types.ToolArguments) []AskChoiceOption {
+func collectAskChoiceOptions(args ToolArguments) []AskChoiceOption {
 	raw, _ := args["options"].([]interface{})
 	if len(raw) == 0 {
 		return nil
@@ -103,14 +101,14 @@ func collectAskChoiceOptions(args types.ToolArguments) []AskChoiceOption {
 			continue
 		}
 		out = append(out, AskChoiceOption{
-			Title:       types.ToolArguments(obj).GetString("title"),
-			Description: types.ToolArguments(obj).GetString("description"),
+			Title:       ToolArguments(obj).GetString("title"),
+			Description: ToolArguments(obj).GetString("description"),
 		})
 	}
 	return out
 }
 
-func (t *AskChoiceTool) RenderToolUse(args types.ToolArguments) string {
+func (t *AskChoiceTool) RenderToolUse(args ToolArguments) string {
 	return fmt.Sprintf("Asking user to choose: %s", args.GetString("prompt"))
 }
 
@@ -126,7 +124,7 @@ func (t *AskChoiceTool) RenderToolResult(data map[string]interface{}) string {
 }
 
 func init() {
-	types.RegisterTool(AskChoiceDeclaration, func() types.ToolInterface {
+	RegisterTool(AskChoiceDeclaration, func() ToolInterface {
 		return &AskChoiceTool{}
 	})
 }

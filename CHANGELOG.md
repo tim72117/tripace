@@ -2,6 +2,16 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.4.2 — 2026-08-14
+
+### 清理
+
+- **移除私有依賴 `github.com/tim72117/want`**：`server/internal/wanttools/`（9 個檔案）對 `want/types` 的引用改為本地定義（新增 `wanttypes.go`，型別/函式簽章照抄 `want@v0.0.2/types` 原始碼，非重新設計），`want` 已從 `server/go.mod`/`go.sum` 完全移除。`internal/wanttools/` 套件本身未被刪除、內容不變——它是保留下來的舊 want 對話系統工具實作，經 `go list -deps` 驗證未被 `cmd/server`/`cmd/adminserver`/`cmd/cli` 任一 binary import，純粹是先前依賴仍列在 `go.mod` 裡、拖著 `go mod download` 需要私有模組認證的技術債。
+- **4 支 Dockerfile 移除 `GH_PAT`/`GOPRIVATE`**（`Dockerfile`、`Dockerfile.admin`、`Dockerfile.migrate`、`Dockerfile.redirect`）：`go mod download` 不再需要私有模組認證，本機 `docker build` 不用再另外提供 GitHub PAT。`Dockerfile.migrate` 順便修正一段描述已移除的 `cmd/cli -db` 模式的過時說明。
+- **5 個 GitHub Actions workflow 移除 `--build-arg GH_PAT`**（`deploy-admin.yml`、`deploy-cloudrun.yml`、`deploy-migrate.yml`、`deploy-redirect.yml`、`deploy-with-migration.yml`，`deploy-with-migration.yml` 有 2 處）。
+- `server/scripts/setup.sh` 移除「簽發 GH_PAT 設成 GitHub repo secret」的部署後續步驟指示（原本兩步，現在一步）。
+- 修正 `docs/PROJECT_HEALTH_REVIEW.md` 對 `want` 依賴風險的過時描述（原文稱其「被 26 個檔案 import」，現已完全移除）。
+
 ## v0.4.1 — 2026-08-13
 
 ### 修正

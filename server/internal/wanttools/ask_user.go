@@ -2,8 +2,6 @@ package wanttools
 
 import (
 	"fmt"
-
-	"github.com/tim72117/want/types"
 )
 
 // AskUserDeclaration 是 ask_user 工具:當 agent 缺少必要資訊(如住宿的退房日)時,
@@ -12,7 +10,7 @@ import (
 // 非同步設計:本工具不等待使用者回答——呼叫後立即透過 WS 推送 ask_user 事件給前端
 // 開啟對應 UI,並回傳「已請使用者提供」讓 agent 結束本輪。使用者在 UI 選好後,
 // 前端把選到的值當成一則新訊息送回,agent 重新推論(此時資訊已齊全,靠對話歷史接上前文)。
-var AskUserDeclaration = types.ToolDeclaration{
+var AskUserDeclaration = ToolDeclaration{
 	Name: "ask_user",
 	Description: "當缺少記錄所需的必要資訊(如住宿的退房日期)時,呼叫此工具請使用者透過 UI 補上。" +
 		"不要憑猜測填缺失的值。呼叫後本輪對話結束,使用者補上資訊後會再次觸發你,屆時再完成記錄。",
@@ -34,10 +32,10 @@ var AskUserDeclaration = types.ToolDeclaration{
 }
 
 type AskUserTool struct {
-	types.BaseToolConfig
+	BaseToolConfig
 }
 
-func (t *AskUserTool) ValidateInput(args types.ToolArguments, _ types.ToolContext) error {
+func (t *AskUserTool) ValidateInput(args ToolArguments, _ ToolContext) error {
 	if args.GetString("askType") == "" {
 		return fmt.Errorf("askType is required")
 	}
@@ -51,7 +49,7 @@ func (t *AskUserTool) ValidateInput(args types.ToolArguments, _ types.ToolContex
 	return nil
 }
 
-func (t *AskUserTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]types.ResultContentBlock, error) {
+func (t *AskUserTool) Call(args ToolArguments, ctx ToolContext) ([]ResultContentBlock, error) {
 	askType := args.GetString("askType")
 	prompt := args.GetString("prompt")
 
@@ -64,10 +62,10 @@ func (t *AskUserTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]t
 		"askType": askType,
 		"prompt":  prompt,
 	})
-	return []types.ResultContentBlock{types.TextBlock(msg)}, nil
+	return []ResultContentBlock{TextBlock(msg)}, nil
 }
 
-func (t *AskUserTool) RenderToolUse(args types.ToolArguments) string {
+func (t *AskUserTool) RenderToolUse(args ToolArguments) string {
 	return fmt.Sprintf("Asking user for %s: %s", args.GetString("askType"), args.GetString("prompt"))
 }
 
@@ -83,7 +81,7 @@ func (t *AskUserTool) RenderToolResult(data map[string]interface{}) string {
 }
 
 func init() {
-	types.RegisterTool(AskUserDeclaration, func() types.ToolInterface {
+	RegisterTool(AskUserDeclaration, func() ToolInterface {
 		return &AskUserTool{}
 	})
 }

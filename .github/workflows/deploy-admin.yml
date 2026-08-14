@@ -52,7 +52,6 @@ jobs:
         run: |
           docker build \
             -f Dockerfile.admin \
-            --build-arg GH_PAT=${{ secrets.GH_PAT }} \
             -t ${{ env.IMAGE }}:${{ github.sha }} \
             -t ${{ env.IMAGE }}:latest \
             .

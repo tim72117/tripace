@@ -31,15 +31,14 @@ RUN npm run build
 # ---- 階段 2:編譯 Go ----
 FROM golang:1.26 AS build
 
-ARG GH_PAT
-RUN git config --global url."https://${GH_PAT}@github.com/".insteadOf "https://github.com/"
-
 # 先單獨複製 go.mod / go.sum 以利 layer 快取(相依沒變時不重抓)。
+# go.mod 已無私有依賴(internal/wanttools 對 github.com/tim72117/want 的
+# 依賴已移除,型別改為本地定義),故不再需要 GH_PAT/GOPRIVATE。
 COPY server/go.mod server/go.sum /src/server/
-RUN cd /src/server && GOPRIVATE=github.com/tim72117/want go mod download
+RUN cd /src/server && go mod download
 
 # 再複製完整源碼(跟主服務共用同一份 server/,go build 只編譯用到的部分,
-# adminserver 不會連結 want/llm/api 等 internal 套件,見上方說明)。
+# adminserver 不會連結 llm/api 等 internal 套件,見上方說明)。
 COPY server/ /src/server/
 
 # 把 admin SPA 的 build 產物放到 adminserver embed 路徑。

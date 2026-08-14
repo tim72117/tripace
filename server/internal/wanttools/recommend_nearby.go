@@ -8,13 +8,12 @@ import (
 	"time"
 
 	"github.com/tim72117/tripace/internal/geo"
-	"github.com/tim72117/want/types"
 )
 
 // RecommendNearbyDeclaration 是給 LLM 看的工具宣告。
 // 依地點(城市/地標名稱)找附近高評分景點,供規劃行程時參考、寫入條目。
 // 只負責回傳候選清單,不決定怎麼排進行程——排程判斷交給 agent。
-var RecommendNearbyDeclaration = types.ToolDeclaration{
+var RecommendNearbyDeclaration = ToolDeclaration{
 	Name: "recommend_nearby",
 	Description: "依地點名稱查詢附近的推薦景點/餐廳/住宿等,依評分與評論數排序。" +
 		"規劃行程需要湊景點時呼叫。" +
@@ -58,17 +57,17 @@ const placeCategoryList = `景點/文化: tourist_attraction, museum, art_galler
 交通地標: train_station, subway_station, bus_station, airport, ferry_terminal`
 
 type RecommendNearbyTool struct {
-	types.BaseToolConfig
+	BaseToolConfig
 }
 
-func (t *RecommendNearbyTool) ValidateInput(args types.ToolArguments, _ types.ToolContext) error {
+func (t *RecommendNearbyTool) ValidateInput(args ToolArguments, _ ToolContext) error {
 	if args.GetString("place") == "" {
 		return fmt.Errorf("place is required")
 	}
 	return nil
 }
 
-func (t *RecommendNearbyTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]types.ResultContentBlock, error) {
+func (t *RecommendNearbyTool) Call(args ToolArguments, ctx ToolContext) ([]ResultContentBlock, error) {
 	place := args.GetString("place")
 	category := strings.TrimSpace(args.GetString("category"))
 	radius := float64(args.GetInt("radius_meters"))
@@ -140,7 +139,7 @@ func (t *RecommendNearbyTool) Call(args types.ToolArguments, ctx types.ToolConte
 	// (原本的 NotifyRecommendedPlaces 只帶 tripID,無法對應到是哪一則訊息
 	// 觸發的,同一輪對話連續呼叫兩次還會互相覆蓋)。
 	addRecommendedPlaces(places)
-	return []types.ResultContentBlock{types.TextBlock(summary)}, nil
+	return []ResultContentBlock{TextBlock(summary)}, nil
 }
 
 func formatType(primaryType string) string {
@@ -150,7 +149,7 @@ func formatType(primaryType string) string {
 	return " [" + primaryType + "]"
 }
 
-func (t *RecommendNearbyTool) RenderToolUse(args types.ToolArguments) string {
+func (t *RecommendNearbyTool) RenderToolUse(args ToolArguments) string {
 	place := args.GetString("place")
 	// category 現在是 Places API 官方英文 key(如 ramen_restaurant),不適合直接
 	// 拼進中文句子顯示,提示文字統一用「推薦景點」帶過即可。
@@ -166,7 +165,7 @@ func (t *RecommendNearbyTool) RenderToolResult(data map[string]interface{}) stri
 }
 
 func init() {
-	types.RegisterTool(RecommendNearbyDeclaration, func() types.ToolInterface {
+	RegisterTool(RecommendNearbyDeclaration, func() ToolInterface {
 		return &RecommendNearbyTool{}
 	})
 }

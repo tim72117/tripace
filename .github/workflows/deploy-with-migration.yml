@@ -143,7 +143,6 @@ jobs:
       - name: Build new tripace-server image (staged, not deployed yet)
         run: |
           docker build \
-            --build-arg GH_PAT=${{ secrets.GH_PAT }} \
             --build-arg VITE_GOOGLE_MAPS_API_KEY=${{ steps.maps_key.outputs.key }} \
             -t ${{ env.SERVER_IMAGE }}:${{ github.sha }} \
             -t ${{ env.SERVER_IMAGE }}:latest \
@@ -156,7 +155,6 @@ jobs:
         run: |
           docker build \
             -f Dockerfile.migrate \
-            --build-arg GH_PAT=${{ secrets.GH_PAT }} \
             -t ${{ env.MIGRATE_IMAGE }}:${{ github.sha }} \
             -t ${{ env.MIGRATE_IMAGE }}:latest \
             .

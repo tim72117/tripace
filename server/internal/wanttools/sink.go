@@ -2,8 +2,6 @@ package wanttools
 
 import (
 	"sync"
-
-	"github.com/tim72117/want/types"
 )
 
 // RecordedEntry 是 record_entry 工具解析出的一筆條目。
@@ -212,7 +210,7 @@ func NotifyEntriesLoaded(tripID string, entries []TripEntryPayload) {
 // ToolUseContext 上(由 want_analyzer.go 於 Submit 前透過 orch.SetSessionEnvs 寫入),
 // 不經過任何套件級全域變數,也不會被組進送給 LLM 的 prompt。
 // ctx 為 nil 或未設定時回空字串(呼叫端應自行判斷是否視為錯誤)。
-func TripFrom(ctx types.ToolContext) string {
+func TripFrom(ctx ToolContext) string {
 	if ctx == nil {
 		return ""
 	}
@@ -251,7 +249,9 @@ func addPresented(es []PresentedEntry) { presented = append(presented, es...) }
 func RecommendedPlaces() []RecommendedPlace { return recommendedPlaces }
 
 // addRecommendedPlaces 由 recommend_nearby 工具呼叫,累積本次查到的候選景點。
-func addRecommendedPlaces(ps []RecommendedPlace) { recommendedPlaces = append(recommendedPlaces, ps...) }
+func addRecommendedPlaces(ps []RecommendedPlace) {
+	recommendedPlaces = append(recommendedPlaces, ps...)
+}
 
 // emit 由工具呼叫,同步把條目寫入 store(entry 為主體,獨立寫入)。
 // tripID 由呼叫端透過 TripFrom(ctx) 取得後傳入,emit 本身不碰任何全域行程狀態。

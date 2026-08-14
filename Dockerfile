@@ -1,7 +1,5 @@
 # Tripace server 容器映像。
 # build context 為「專案根目錄」,COPY 路徑相對根目錄寫(server/...)。
-# server/go.mod 的 github.com/tim72117/want 透過 GOPRIVATE + GH_PAT
-# 從 GitHub 下載(見下方 build 階段),不依賴本地 want/ 源碼。
 #
 # 有兩個獨立 Vite 專案(web、web/admin),各自 build 後複製進
 # server/cmd/server/{web,webadmin}/dist/,對應 cmd/server/static.go 的
@@ -53,12 +51,12 @@ RUN npm run build
 # ---- 階段 2:編譯 Go ----
 FROM golang:1.26 AS build
 
-ARG GH_PAT
-RUN git config --global url."https://${GH_PAT}@github.com/".insteadOf "https://github.com/"
-
 # 先單獨複製 go.mod / go.sum 以利 layer 快取(相依沒變時不重抓)。
+# go.mod 已無私有依賴(internal/wanttools 對 github.com/tim72117/want 的
+# 依賴已移除,型別改為本地定義,見 server/internal/wanttools/wanttypes.go),
+# 故不再需要 GH_PAT/GOPRIVATE 這組私有模組認證設定。
 COPY server/go.mod server/go.sum /src/server/
-RUN cd /src/server && GOPRIVATE=github.com/tim72117/want go mod download
+RUN cd /src/server && go mod download
 
 # 再複製完整源碼。
 COPY server/ /src/server/

@@ -92,7 +92,6 @@ jobs:
         if: github.event.inputs.skip_build != 'true'
         run: |
           docker build \
-            --build-arg GH_PAT=${{ secrets.GH_PAT }} \
             --build-arg VITE_GOOGLE_MAPS_API_KEY=${{ steps.maps_key.outputs.key }} \
             --build-arg VITE_ONAGENT_APP_KEY=${{ steps.onagent_key.outputs.key }} \
             --build-arg VITE_ONAGENT_URL=https://onagent.shuttle.tools \

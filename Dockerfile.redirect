@@ -5,22 +5,16 @@
 # ./cmd/redirectserver。
 #
 # 這支服務不依賴任何 internal 套件、不連資料庫、沒有前端——不需要
-# web-build 階段,是這幾支 Dockerfile 裡最精簡的一份,但仍需要 GH_PAT
-# (go.mod 列出整個 server 模組的相依,含私有的 github.com/tim72117/want,
-# go mod download 會嘗試解析每一項,即使 redirectserver 沒有實際 import)。
+# web-build 階段,是這幾支 Dockerfile 裡最精簡的一份。go.mod 已無私有依賴
+# (internal/wanttools 對 github.com/tim72117/want 的依賴已移除,型別改為
+# 本地定義),go mod download 不再需要 GH_PAT。
 #
 # 建置(從專案根目錄):
-#   docker build -f Dockerfile.redirect --build-arg GH_PAT=<token> -t tripace-redirect .
+#   docker build -f Dockerfile.redirect -t tripace-redirect .
 # 本機跑:
 #   docker run --rm -p 8080:8080 tripace-redirect
 
 FROM golang:1.26 AS build
-
-# go.mod 列出整個 server 模組的相依(含私有的 github.com/tim72117/want),
-# 即使 redirectserver 本身不 import 它,go mod download 仍會嘗試解析
-# go.mod 裡的每一項,需要這個 credential 才能讀到私有 repo。
-ARG GH_PAT
-RUN git config --global url."https://${GH_PAT}@github.com/".insteadOf "https://github.com/"
 
 COPY server/go.mod server/go.sum /src/server/
 RUN cd /src/server && go mod download

@@ -4,12 +4,14 @@
 # 設定 GitHub Actions 的 Workload Identity Federation(讓 .github/workflows/
 # deploy-cloudrun.yml 能免金鑰認證存取這個專案)。
 #
-# 跑完這支腳本後,還有兩件事無法用 gcloud 自動完成,腳本結尾會印出來:
-#   1. 把印出的 WIF_PROVIDER / WIF_SERVICE_ACCOUNT 貼進 GitHub repo 的
-#      Settings → Secrets and variables → Actions(或用 gh secret set)。
-#   2. GH_PAT(私有依賴用的 GitHub PAT)本身不是這個腳本管的範圍,需另外簽發。
-# 這兩步做完,deploy-cloudrun.yml 才能真正跑通(google-github-actions/auth
+# 跑完這支腳本後,還有一件事無法用 gcloud 自動完成,腳本結尾會印出來:
+#   把印出的 WIF_PROVIDER / WIF_SERVICE_ACCOUNT 貼進 GitHub repo 的
+#   Settings → Secrets and variables → Actions(或用 gh secret set)。
+# 這步做完,deploy-cloudrun.yml 才能真正跑通(google-github-actions/auth
 # 那一步之前完全失敗,不會進到 build/push/deploy)。
+# (原本這裡還有 GH_PAT——私有依賴 github.com/tim72117/want 用的 GitHub
+# PAT——已隨 go.mod 移除該依賴一併不需要,見 internal/wanttools/wanttypes.go
+# 開頭說明。)
 #
 # 用法(從專案根目錄或任意位置皆可):
 #   PROJECT_ID=tripace-xxxxx BILLING_ACCOUNT=01AA0C-56650D-E69542 \
@@ -189,21 +191,18 @@ WIF_PROVIDER="projects/${PNUM}/locations/global/workloadIdentityPools/${POOL_ID}
 echo ""
 echo "✅ GCP 端一次性設定完成。"
 echo ""
-echo "還差最後兩步,無法用 gcloud 自動完成:"
+echo "還差最後一步,無法用 gcloud 自動完成:"
 echo ""
-echo "1. 把下面兩個值設進 GitHub repo secrets(Settings → Secrets and variables"
-echo "   → Actions,或用 gh secret set 指令):"
+echo "把下面兩個值設進 GitHub repo secrets(Settings → Secrets and variables"
+echo "→ Actions,或用 gh secret set 指令):"
 echo ""
 echo "   WIF_PROVIDER=${WIF_PROVIDER}"
 echo "   WIF_SERVICE_ACCOUNT=${DEPLOY_SA}"
 echo ""
-echo "   用 gh CLI 一次設完:"
+echo "用 gh CLI 一次設完:"
 echo "   gh secret set WIF_PROVIDER --repo ${GITHUB_REPO} --body '${WIF_PROVIDER}'"
 echo "   gh secret set WIF_SERVICE_ACCOUNT --repo ${GITHUB_REPO} --body '${DEPLOY_SA}'"
 echo ""
-echo "2. 簽發一個有私有依賴讀取權限的 GitHub PAT,設成 GH_PAT secret:"
-echo "   gh secret set GH_PAT --repo ${GITHUB_REPO}"
-echo ""
-echo "完成以上兩步後,push 到 main(或手動觸發 workflow_dispatch)即可部署,"
+echo "完成這步後,push 到 main(或手動觸發 workflow_dispatch)即可部署,"
 echo "不需要額外的手動部署腳本——.github/workflows/deploy-cloudrun.yml"
 echo "已包含 --allow-unauthenticated,首次建立新服務也會自動開放公開存取。"

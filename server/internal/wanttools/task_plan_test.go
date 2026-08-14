@@ -3,11 +3,9 @@ package wanttools
 import (
 	"strings"
 	"testing"
-
-	"github.com/tim72117/want/types"
 )
 
-// fakeToolCtx 是 types.ToolContext 的測試假物件:只實作 task_plan 會用到的
+// fakeToolCtx 是 ToolContext 的測試假物件:只實作 task_plan 會用到的
 // GetSessionEnvs(供 TripFrom 取 tripID)與 EmitToolResult(記下最後結果供斷言),
 // 其餘 interface 方法一律 no-op / 回傳零值。
 type fakeToolCtx struct {
@@ -18,23 +16,23 @@ type fakeToolCtx struct {
 func (c *fakeToolCtx) GetSessionEnvs() map[string]string            { return c.envs }
 func (c *fakeToolCtx) EmitToolResult(result map[string]interface{}) { c.lastResult = result }
 
-// 以下為滿足 types.ToolContext interface 的其餘方法(task_plan 不使用)。
-func (c *fakeToolCtx) AddMessage(string, types.Experience)                  {}
-func (c *fakeToolCtx) CommitToolResult(*types.ToolUse, ...types.Experience) {}
-func (c *fakeToolCtx) GetAgentID() string                                   { return "" }
-func (c *fakeToolCtx) GetWorkingDirectory() string                          { return "" }
-func (c *fakeToolCtx) SetWorkingDirectory(string)                           {}
-func (c *fakeToolCtx) GetAppState() types.AppState                          { return types.AppState{} }
-func (c *fakeToolCtx) SetAppState(func(types.AppState) types.AppState)      {}
-func (c *fakeToolCtx) GetLastSnapshotFile() string                          { return "" }
-func (c *fakeToolCtx) SetLastSnapshotFile(string)                           {}
-func (c *fakeToolCtx) SetSessionEnvs(map[string]string)                     {}
-func (c *fakeToolCtx) GetReadFileState() interface{}                        { return nil }
-func (c *fakeToolCtx) GetStagedChanges() interface{}                        { return nil }
-func (c *fakeToolCtx) GetExposedTools() []string                            { return nil }
-func (c *fakeToolCtx) SetExposedTools([]string)                             {}
-func (c *fakeToolCtx) EmitEvent(interface{})                                {}
-func (c *fakeToolCtx) EmitError(error)                                      {}
+// 以下為滿足 ToolContext interface 的其餘方法(task_plan 不使用)。
+func (c *fakeToolCtx) AddMessage(string, Experience)            {}
+func (c *fakeToolCtx) CommitToolResult(*ToolUse, ...Experience) {}
+func (c *fakeToolCtx) GetAgentID() string                       { return "" }
+func (c *fakeToolCtx) GetWorkingDirectory() string              { return "" }
+func (c *fakeToolCtx) SetWorkingDirectory(string)               {}
+func (c *fakeToolCtx) GetAppState() AppState                    { return AppState{} }
+func (c *fakeToolCtx) SetAppState(func(AppState) AppState)      {}
+func (c *fakeToolCtx) GetLastSnapshotFile() string              { return "" }
+func (c *fakeToolCtx) SetLastSnapshotFile(string)               {}
+func (c *fakeToolCtx) SetSessionEnvs(map[string]string)         {}
+func (c *fakeToolCtx) GetReadFileState() interface{}            { return nil }
+func (c *fakeToolCtx) GetStagedChanges() interface{}            { return nil }
+func (c *fakeToolCtx) GetExposedTools() []string                { return nil }
+func (c *fakeToolCtx) SetExposedTools([]string)                 {}
+func (c *fakeToolCtx) EmitEvent(interface{})                    {}
+func (c *fakeToolCtx) EmitError(error)                          {}
 func (c *fakeToolCtx) RequestInteraction(map[string]interface{}) (interface{}, error) {
 	return nil, nil
 }
@@ -53,7 +51,7 @@ func callCreate(t *testing.T, ch string, items []map[string]interface{}) []Task 
 		raw[i] = it
 	}
 	tool := &TaskPlanTool{}
-	args := types.ToolArguments{"action": "create", "items": raw}
+	args := ToolArguments{"action": "create", "items": raw}
 	if _, err := tool.Call(args, newTaskCtx(ch)); err != nil {
 		t.Fatalf("create 失敗: %v", err)
 	}
@@ -140,7 +138,7 @@ func TestTaskPlanCreateSingleText(t *testing.T) {
 	t.Cleanup(func() { tasks.Clear(ch) })
 
 	tool := &TaskPlanTool{}
-	args := types.ToolArguments{"action": "create", "text": "只有一筆"}
+	args := ToolArguments{"action": "create", "text": "只有一筆"}
 	if _, err := tool.Call(args, newTaskCtx(ch)); err != nil {
 		t.Fatalf("create 單筆失敗: %v", err)
 	}
@@ -160,7 +158,7 @@ func TestTaskPlanCreateIgnoresCallerID(t *testing.T) {
 
 	// 單筆:args 帶了 id=999,期望被忽略,實得工具產生的 id=1。
 	tool := &TaskPlanTool{}
-	single := types.ToolArguments{"action": "create", "text": "單筆", "id": 999}
+	single := ToolArguments{"action": "create", "text": "單筆", "id": 999}
 	if _, err := tool.Call(single, newTaskCtx(ch)); err != nil {
 		t.Fatalf("單筆 create 失敗: %v", err)
 	}
@@ -187,7 +185,7 @@ func TestTaskPlanCreateIgnoresCallerID(t *testing.T) {
 func callCreateRaw(t *testing.T, ch string, raw []interface{}) []Task {
 	t.Helper()
 	tool := &TaskPlanTool{}
-	args := types.ToolArguments{"action": "create", "items": raw}
+	args := ToolArguments{"action": "create", "items": raw}
 	if _, err := tool.Call(args, newTaskCtx(ch)); err != nil {
 		t.Fatalf("create 失敗: %v", err)
 	}
@@ -203,7 +201,7 @@ func TestTaskPlanValidateInputRejectsMissingParentID(t *testing.T) {
 	t.Cleanup(func() { tasks.Clear(ch) })
 
 	tool := &TaskPlanTool{}
-	args := types.ToolArguments{"action": "create", "items": []interface{}{
+	args := ToolArguments{"action": "create", "items": []interface{}{
 		map[string]interface{}{"text": "查 geo", "parentID": 999},
 	}}
 	if err := tool.ValidateInput(args, newTaskCtx(ch)); err == nil {
@@ -229,7 +227,7 @@ func TestTaskPlanValidateInputRejectsThirdLayer(t *testing.T) {
 
 	// 嘗試把新任務掛在 id=2(本身是第二層)底下,應被拒絕。
 	tool := &TaskPlanTool{}
-	args := types.ToolArguments{"action": "create", "items": []interface{}{
+	args := ToolArguments{"action": "create", "items": []interface{}{
 		map[string]interface{}{"text": "再查一次", "parentID": 2},
 	}}
 	if err := tool.ValidateInput(args, newTaskCtx(ch)); err == nil {
@@ -248,7 +246,7 @@ func TestTaskPlanCallRejectsInvalidParentID(t *testing.T) {
 	t.Cleanup(func() { tasks.Clear(ch) })
 
 	tool := &TaskPlanTool{}
-	args := types.ToolArguments{"action": "create", "items": []interface{}{
+	args := ToolArguments{"action": "create", "items": []interface{}{
 		map[string]interface{}{"text": "查 geo", "parentID": 42},
 	}}
 	if _, err := tool.Call(args, newTaskCtx(ch)); err == nil {

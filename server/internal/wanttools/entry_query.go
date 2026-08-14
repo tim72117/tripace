@@ -16,7 +16,6 @@ import (
 
 	"github.com/tim72117/tripace/internal/model"
 	"github.com/tim72117/tripace/internal/store"
-	"github.com/tim72117/want/types"
 )
 
 // entryStore 是工具共用的 store 實例(server 啟動時用 BindStore 注入)。
@@ -28,7 +27,7 @@ func BindStore(s *store.Store) {
 }
 
 func init() {
-	types.RegisterTool(QueryEntriesDeclaration, func() types.ToolInterface {
+	RegisterTool(QueryEntriesDeclaration, func() ToolInterface {
 		return &QueryEntriesTool{}
 	})
 }
@@ -37,7 +36,7 @@ func init() {
 // 用於決定查詢範圍、把行程中已記錄的條目(待辦/行程/會議等)載入到前端的
 // 旅程清單表格——查到的結果不會回傳給 LLM 閱讀,LLM 只會收到一句確認文字,
 // 實際內容由前端表格顯示,供使用者查看與編輯。
-var QueryEntriesDeclaration = types.ToolDeclaration{
+var QueryEntriesDeclaration = ToolDeclaration{
 	Name: "entry_query",
 	Description: "依時間範圍查詢行程中已記錄的條目(待辦、行程、會議等),把查到的結果載入到前端的旅程清單表格供使用者查看與編輯。" +
 		"當使用者在提問、想知道某段時間有什麼安排,或你在記錄新條目前需要確認是否已經記過同一件事時呼叫。可用 from / to 限定時間範圍。" +
@@ -63,13 +62,13 @@ var QueryEntriesDeclaration = types.ToolDeclaration{
 }
 
 type QueryEntriesTool struct {
-	types.BaseToolConfig
+	BaseToolConfig
 }
 
 // Call 執行查詢:回傳 []ResultContentBlock(want 新規格),結果 map 以 ctx.EmitToolResult 發送。
 // 查到的條目不進入回傳內容——轉換成 TripEntryPayload 後透過 NotifyEntriesLoaded
 // 廣播給前端,回傳與 EmitToolResult 都只帶簡短確認文字與筆數。
-func (t *QueryEntriesTool) Call(args types.ToolArguments, ctx types.ToolContext) ([]types.ResultContentBlock, error) {
+func (t *QueryEntriesTool) Call(args ToolArguments, ctx ToolContext) ([]ResultContentBlock, error) {
 	// from / to 是 LLM 給的英文日期語詞(範圍以兩個日期點表達),用 when 換算成絕對日期。
 	// 查詢只需日期粒度,不需時刻。
 	now := time.Now()
@@ -111,7 +110,7 @@ func (t *QueryEntriesTool) Call(args types.ToolArguments, ctx types.ToolContext)
 		"summary": confirm,
 		"count":   len(entries),
 	})
-	return []types.ResultContentBlock{types.TextBlock(confirm)}, nil
+	return []ResultContentBlock{TextBlock(confirm)}, nil
 }
 
 // toTripEntryPayloads 把 store 查到的 model.Entry 轉成前端 TripEntry 格式
@@ -138,7 +137,7 @@ func toTripEntryPayloads(entries []model.Entry) []TripEntryPayload {
 	return out
 }
 
-func (t *QueryEntriesTool) RenderToolUse(args types.ToolArguments) string {
+func (t *QueryEntriesTool) RenderToolUse(args ToolArguments) string {
 	from, to := args.GetString("from"), args.GetString("to")
 	if from == "" && to == "" {
 		return "正在查詢全部條目"

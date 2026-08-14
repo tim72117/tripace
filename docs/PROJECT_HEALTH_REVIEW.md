@@ -19,8 +19,7 @@
 
 ## 依賴與架構耦合
 
-- 私有依賴 `github.com/tim72117/want v0.0.2`(LLM/agent 編排核心)是極早期版本號,被 26 個檔案 import。版本沒有穩定承諾,是一個外部風險敞口。
-- `server/internal/clienttools/interaction.go` 自陳:want 已內建 `RequestInteraction`/`ResolveInteraction` 機制,但這個專案自己另外刻了一套平行的 `pendingCalls` 機制,作者註記「未來可考慮整合」——是重複造輪子的技術債。
+- ~~私有依賴 `github.com/tim72117/want v0.0.2`~~——**已解決**(2026-08-14):`server/internal/wanttools/` 對 `want/types` 的引用已改為本地定義(見該套件的 `wanttypes.go`),`want` 已從 `go.mod`/`go.sum` 完全移除。連帶讓 4 支 Dockerfile 的 `GH_PAT` build-arg、5 個 GitHub Actions workflow 的對應設定都不再需要。`internal/wanttools/` 本身沒有被任何 binary import(`go list -deps` 對 `cmd/server`/`cmd/adminserver`/`cmd/cli` 驗證過皆為空),是保留下來的舊 want 對話系統工具實作,未被刪除。
 - 兩個前端子專案版本已分岔:`web/`(TypeScript 5.6、Vite 5.4)vs `web/admin/`(TypeScript 7.0、Vite 6.0)。建議找時機同步,避免越拖越難統一。
 
 ## 程式碼組織
