@@ -300,12 +300,19 @@ type SearchOptions struct {
 	// Region 是 ISO 3166-1 alpha-2 國家代碼（如 "jp"、"tw"、"cn"），
 	// 讓結果優先偏向該國。空字串表示不限制。
 	Region string
-	// MaxResults 最多回傳幾筆候選，預設 1，最大 5。
+	// MaxResults 最多回傳幾筆候選，預設 1，最大 20（Places API (New)
+	// Text Search 的 pageSize 官方硬性上限，見下方 Search 的說明）。
 	MaxResults int
 }
 
 // Search 查詢地點名稱，回傳候選清單。
 // opts 可傳 nil 使用預設值（只回傳第一筆，不限地區）。
+//
+// 20 這個上限是 Google Places API (New) Text Search 的 pageSize 官方
+// 硬性上限，不是這裡自行決定的節流值——呼叫成本以「每次請求」計費，
+// 不隨回傳筆數變動，故拉高 MaxResults 不影響費用,只影響單次查詢能看到
+// 多少候選(見 handleGeoGeocode 的說明,用來讓使用者從更完整的候選清單
+// 裡挑對的那一筆)。
 func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) ([]Place, error) {
 	if c.apiKey == "" {
 		return nil, ErrNoKey
@@ -319,8 +326,8 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 	if opts != nil {
 		if opts.MaxResults > 0 {
 			maxN = opts.MaxResults
-			if maxN > 5 {
-				maxN = 5
+			if maxN > 20 {
+				maxN = 20
 			}
 		}
 		region = opts.Region

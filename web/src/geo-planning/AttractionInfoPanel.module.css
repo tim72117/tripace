@@ -128,6 +128,115 @@
   color: var(--ios-gray);
 }
 
+/* tagRow/tagChip(.tagChipActive):地點的標籤清單,點擊可切換「周邊同
+   標籤地點」查詢(見 AttractionInfoPanel.tsx 的 activeTag)——視覺上跟
+   .badge 區隔開(badge 是唯讀的中繼資料,tagChip 是可點擊的互動元素),
+   用 accent 色系表示可互動、選中態用實心底色標示目前查詢中的標籤。 */
+.tagRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.tagChip {
+  padding: 3px 10px;
+  border: 1px solid var(--color-accent);
+  border-radius: 10px;
+  background: none;
+  color: var(--color-accent);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.tagChip:hover {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.tagChipActive {
+  background: var(--color-accent);
+  color: var(--ios-card);
+}
+
+/* neighbors/neighborItem/neighborName/neighborDistance/neighborsEmpty:
+   點擊 tagChip 後展開的「周邊同標籤地點」清單(見
+   fetchGeoAttractionTagNeighbors),依距離由近到遠——後端已排序好,
+   前端不需要再排一次。 */
+.neighbors {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--ios-bg);
+}
+
+.neighborItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: 6px;
+  color: var(--color-dark);
+  cursor: default;
+  transition: background 0.1s;
+}
+
+/* hover 時同步高亮地圖上對應的地標(見 AttractionInfoPanel.tsx 的
+   onHoverNeighbor),這裡的底色變化是給使用者「這一列跟地圖上哪個點
+   是同一個」的即時回饋,理由同側欄列表項目 hover 時的既有慣例。 */
+.neighborItem:hover {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+/* neighborThumb/neighborThumbPlaceholder:每個周邊地點前面的小圖示——
+   有 landmarkPhotoUrl 就顯示真實縮圖,理由同卡片主圖(.photo)一樣是
+   後端已編碼好的 data: URI/外部連結,可以直接當 <img src>;沒有照片的
+   地點(人工建檔時 Pexels 查無結果)才退回純圖示佔位,不留空白讓清單
+   對不齊。 */
+.neighborThumb,
+.neighborThumbPlaceholder {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.neighborThumbPlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #C4956A, #9E9488);
+  color: var(--ios-card);
+}
+
+.neighborName {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.neighborDistance {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--ios-gray);
+  font-variant-numeric: tabular-nums;
+}
+
+.neighborsEmpty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ios-gray);
+}
+
 /* exploreBtn:「探索周邊」——attraction 卡片專屬操作,不是 GeoInfoPanel
    那組「加入候選/加入行程」的變體,視覺上刻意跟 addCandidateBtn(見
    GeoInfoPanel.module.css)同等份量(單顆完整按鈕、accent 底色),但這裡

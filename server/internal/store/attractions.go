@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 
 	"github.com/tim72117/tripace/internal/model"
+	"gorm.io/gorm"
 )
 
 // newAttractionID 產生景點區域 ID(對齊既有 ent_/tr_/usr_ 風格)。
@@ -27,6 +28,36 @@ func toAttraction(r attractionRow) model.Attraction {
 		PhotoURL:     r.PhotoURL,
 		UpdatedAt:    r.UpdatedAt,
 	}
+}
+
+// attachTags 依 attraction ID 批次查出對應的標籤,填回每筆 model.Attraction
+// 的 Tags 欄位——所有回傳一批 Attraction 的方法(ListAttractionsByCity/
+// ListAttractionsNearby)都呼叫這個共用步驟,不在各自方法內各自重複一次
+// 查詢+填值邏輯。用「先查全部 attraction,再一次查這批 ID 對應的全部
+// tag」兩趟查詢,而非每筆各自查一次標籤(N+1)——attraction 資料量小
+// (幾百到幾千筆量級,見 docs/ATTRACTION_SYNC_DESIGN.md 對這批資料規模
+// 的既有假設),兩趟查詢的成本遠低於 N 趟。就地修改 out 內每筆元素的
+// Tags 欄位,不回傳新切片。
+func (s *Store) attachTags(out []model.Attraction) error {
+	if len(out) == 0 {
+		return nil
+	}
+	ids := make([]string, len(out))
+	for i, a := range out {
+		ids[i] = a.ID
+	}
+	var rows []attractionTagRow
+	if err := s.db.Where("attraction_id IN ?", ids).Order("tag ASC").Find(&rows).Error; err != nil {
+		return err
+	}
+	tagsByID := make(map[string][]string, len(out))
+	for _, r := range rows {
+		tagsByID[r.AttractionID] = append(tagsByID[r.AttractionID], r.Tag)
+	}
+	for i := range out {
+		out[i].Tags = tagsByID[out[i].ID]
+	}
+	return nil
 }
 
 // CreateAttraction 建立一筆景點區域資料(見 model.Attraction 的完整說明)。
@@ -66,6 +97,9 @@ func (s *Store) ListAttractionsByCity(cityName string) ([]model.Attraction, erro
 	for _, r := range rows {
 		out = append(out, toAttraction(r))
 	}
+	if err := s.attachTags(out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -97,6 +131,9 @@ func (s *Store) ListAttractionsNearby(lat, lng, radiusMeters float64) ([]model.A
 	for _, r := range rows {
 		out = append(out, toAttraction(r))
 	}
+	if err := s.attachTags(out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -127,7 +164,71 @@ func (s *Store) GetAttraction(id string) (model.Attraction, error) {
 	if err := s.db.Where("id = ?", id).First(&r).Error; err != nil {
 		return model.Attraction{}, err
 	}
-	return toAttraction(r), nil
+	a := toAttraction(r)
+	out := []model.Attraction{a}
+	if err := s.attachTags(out); err != nil {
+		return model.Attraction{}, err
+	}
+	return out[0], nil
+}
+
+// SetAttractionTags 覆蓋一筆景點區域的完整標籤集合——用「先刪光這筆
+// 現有的關聯、再整批寫入新的」而非逐一比對新增/刪除差異,理由是標籤
+// 數量小(單一地點通常個位數到十幾個標籤),整批覆蓋的實作與呼叫端
+// 語意都比「diff 後只變更差異部分」單純,呼叫端(CLI attraction-tag
+// 指令)每次都是傳入這筆地點「現在該有的完整標籤清單」,不是增量的
+// 加一個/減一個。tags 為空切片時等同清空該地點的所有標籤。
+//
+// 兩個步驟包在同一個交易裡——若刪除成功但寫入新標籤時中途失敗,不該
+// 讓這筆地點停在「標籤被清空但沒有新標籤」的中間狀態,那樣呼叫端重試
+// 前完全看不出來上次執行到哪裡,直接整個操作失敗回滾比較安全。
+func (s *Store) SetAttractionTags(attractionID string, tags []string) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("attraction_id = ?", attractionID).Delete(&attractionTagRow{}).Error; err != nil {
+			return err
+		}
+		if len(tags) == 0 {
+			return nil
+		}
+		rows := make([]attractionTagRow, len(tags))
+		for i, t := range tags {
+			rows[i] = attractionTagRow{AttractionID: attractionID, Tag: t}
+		}
+		return tx.Create(&rows).Error
+	})
+}
+
+// ListAttractionsByTagInCity 回傳同一個城市底下、帶有指定標籤的所有
+// 景點區域資料(含目標地點本身,由呼叫端自行從結果中排除)——供
+// AttractionInfoPanel「顯示周邊相同標籤的地點」使用。範圍刻意收在同
+// 城市而非全域搜尋、也不另外限制半徑,理由見
+// docs/TRIP_PLANNING_DESIGN_DISCUSSION.md 相關設計討論:同城市內的
+// 「周邊」已經是使用者規劃單一城市行程時合理的地理範圍,呼叫端
+// (handleMaintenanceAttractionTagNeighbors)再依實際距離排序、只取
+// 前幾筆顯示,不需要在 SQL 層再加一層半徑篩選徒增複雜度。
+func (s *Store) ListAttractionsByTagInCity(cityName, tag string) ([]model.Attraction, error) {
+	var ids []string
+	if err := s.db.Model(&attractionRow{}).
+		Joins("JOIN attraction_tags ON attraction_tags.attraction_id = attractions.id").
+		Where("attractions.city_name = ? AND attraction_tags.tag = ?", cityName, tag).
+		Pluck("attractions.id", &ids).Error; err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []model.Attraction{}, nil
+	}
+	var rows []attractionRow
+	if err := s.db.Where("id IN ?", ids).Order("level ASC, created_at ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]model.Attraction, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, toAttraction(r))
+	}
+	if err := s.attachTags(out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // UpdateAttractionPhoto 更新一筆景點區域的照片(data: URI,見
@@ -138,4 +239,14 @@ func (s *Store) UpdateAttractionPhoto(id, photoURL string) error {
 	return s.db.Model(&attractionRow{}).
 		Where("id = ?", id).
 		Updates(map[string]any{"photo_url": photoURL, "updated_at": now()}).Error
+}
+
+// UpdateAttractionCoords 更新一筆景點區域的座標。只更新 lat/lng/
+// updated_at 三欄,不動其餘欄位——這支方法專門服務 CLI 的
+// attraction-update 指令,修正建檔時輸入錯誤的座標,不需要像
+// UpdateAttractionPhoto 那樣重新查詢外部服務,單純覆蓋兩個數值欄位。
+func (s *Store) UpdateAttractionCoords(id string, lat, lng float64) error {
+	return s.db.Model(&attractionRow{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"lat": lat, "lng": lng, "updated_at": now()}).Error
 }

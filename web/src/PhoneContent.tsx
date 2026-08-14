@@ -76,13 +76,16 @@ export function PhoneContent(props: ContentProps) {
   // 配速表等內容分頁」的預設狀態,不再對應 PhoneNavDrawer 自己的任何一顆
   // 分頁(行程列表已經拆成獨立抽屜,見上方 tripsDrawerOpen)。
   const { panelMode: panelModeParam } = useParams<{ panelMode?: string }>()
-  // geo-outline(地理輪廓底圖規劃介面)桌面版才有實作,手機版
-  // PhoneNavDrawer 的 DrawerMode 型別故意不含它——使用者若從桌面版
-  // 縮小視窗跨越斷點、網址剛好停在 /app/geo-outline,手機版 fallback
-  // 回 'trips'(理由同其餘不合法字串的 fallback),避免型別不符,也讓
+  // geo-outline(地理輪廓底圖規劃介面)、demo-route-editor(路徑編輯器
+  // 試做)桌面版才有實作,手機版 PhoneNavDrawer 的 DrawerMode 型別故意
+  // 不含它們——使用者若從桌面版縮小視窗跨越斷點、網址剛好停在
+  // /app/geo-outline 或 /app/demo-route-editor,手機版 fallback 回
+  // 'trips'(理由同其餘不合法字串的 fallback),避免型別不符,也讓
   // 使用者落地到一個看得懂的畫面。
   const drawerMode: DrawerMode =
-    isPanelMode(panelModeParam) && panelModeParam !== 'geo-outline' ? panelModeParam : 'trips'
+    isPanelMode(panelModeParam) && panelModeParam !== 'geo-outline' && panelModeParam !== 'demo-route-editor'
+      ? panelModeParam
+      : 'trips'
   const navigate = useNavigate()
   // lastContentMode:記住使用者上一次主動選取的「時間軸」或「配速表」分頁。
   // 開啟獨立行程抽屜選新行程時,這個值仍保留原值不變,驅動 PhoneNavDrawer

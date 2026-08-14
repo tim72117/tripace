@@ -52,7 +52,7 @@ func Open(dsn string) (*Store, error) {
 	// 明顯的警示 log 後繼續,讓 server 降級啟動;只有實際用到未同步欄位的功能
 	// 才會在被呼叫到時出錯,這是可接受的降級行為。
 	migrationOK := true
-	if err := db.AutoMigrate(&userRow{}, &tripRow{}, &entryRow{}, &memberLink{}, &publicLinkRow{}, &adminUserRow{}, &adminSessionRow{}, &cliAuthSessionRow{}, &attractionRow{}, &photoCacheRow{}, &placeDetailsCacheRow{}, &pexelsPhotoCacheRow{}, &apiRequestLogRow{}, &geoAPICallLogRow{}); err != nil {
+	if err := db.AutoMigrate(&userRow{}, &tripRow{}, &entryRow{}, &memberLink{}, &publicLinkRow{}, &adminUserRow{}, &adminSessionRow{}, &cliAuthSessionRow{}, &attractionRow{}, &attractionTagRow{}, &photoCacheRow{}, &placeDetailsCacheRow{}, &pexelsPhotoCacheRow{}, &apiRequestLogRow{}, &geoAPICallLogRow{}); err != nil {
 		log.Printf("!!! AutoMigrate 失敗,資料庫 schema 可能未同步,部分功能可能異常或無法使用,請盡快檢查: %v", err)
 		migrationOK = false
 	}

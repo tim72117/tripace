@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -82,16 +84,25 @@ func fetchNearbyHotels(ctx context.Context, client *geo.Client, lat, lng, radius
 // 分別處理。Level 只有走資料庫路徑才會有值(1~5,見 model.Attraction 的
 // 完整說明);走 Google Places 路徑的結果一律不帶 level(前端據此判斷
 // 全部顯示,不受縮放層級篩選——這批資料目前沒有分級資訊可用)。
+//
+// ID/CityName/Tags 同樣只有走資料庫路徑才會有值——即時查 Google Places
+// 的過渡/後備資料沒有資料庫記錄可對應,ID 留空字串(json 的 omitempty
+// 讓它不出現在回應裡)。前端據此判斷:只有 id 非空的地點才能查詢「同
+// 標籤周邊地點」(見 handleGeoAttractionTagNeighbors),對齊
+// AttractionInfoPanel 的標籤功能只支援人工建檔地點的設計範圍。
 type attractionResponse struct {
-	Name             string  `json:"name"`
-	Lat              float64 `json:"lat"`
-	Lng              float64 `json:"lng"`
-	PlaceCount       int     `json:"placeCount,omitempty"`
-	LandmarkPhotoURL string  `json:"landmarkPhotoUrl,omitempty"`
-	LandmarkName     string  `json:"landmarkName,omitempty"`
-	RadiusMeters     int     `json:"radiusMeters,omitempty"`
-	Summary          string  `json:"summary,omitempty"`
-	Level            int     `json:"level,omitempty"`
+	ID               string   `json:"id,omitempty"`
+	Name             string   `json:"name"`
+	CityName         string   `json:"cityName,omitempty"`
+	Lat              float64  `json:"lat"`
+	Lng              float64  `json:"lng"`
+	PlaceCount       int      `json:"placeCount,omitempty"`
+	LandmarkPhotoURL string   `json:"landmarkPhotoUrl,omitempty"`
+	LandmarkName     string   `json:"landmarkName,omitempty"`
+	RadiusMeters     int      `json:"radiusMeters,omitempty"`
+	Summary          string   `json:"summary,omitempty"`
+	Level            int      `json:"level,omitempty"`
+	Tags             []string `json:"tags,omitempty"`
 }
 
 // GET /internal/geo/attractions?city={城市名稱}
@@ -133,11 +144,14 @@ func (s *Server) handleGeoAttractions(w http.ResponseWriter, r *http.Request) {
 	if landmarks, err := s.store.ListAttractionsByCity(city); err == nil && len(landmarks) > 0 {
 		for _, l := range landmarks {
 			ar := attractionResponse{
+				ID:           l.ID,
 				Name:         l.Name,
+				CityName:     l.CityName,
 				Lat:          l.Lat,
 				Lng:          l.Lng,
 				RadiusMeters: l.RadiusMeters,
 				Level:        l.Level,
+				Tags:         l.Tags,
 			}
 			if l.Summary != nil {
 				ar.Summary = *l.Summary
@@ -224,16 +238,28 @@ func toAttractionResponses(in []geo.District) []attractionResponse {
 
 // GET /internal/geo/geocode?query={地名/城市名}
 //
-// 供地理輪廓底圖的城市搜尋框使用:只把輸入字串解析成一組座標,不查詢
-// 景點區域/飯店資料——「搜尋只負責定位,把地圖移過去」,之後畫面上
-// 該顯示什麼資料,一律交給 handleGeoAttractionsNearby 依地圖當時的可視
-// 範圍(bounds)另外查詢,兩個關注點刻意分開,不像 handleGeoAttractions
-// 那樣把「找座標」與「查資料」耦合在同一支端點裡。
+// 供地理輪廓底圖的城市搜尋框使用:把輸入字串解析成一組候選地點清單
+// (含座標),不查詢景點區域/飯店資料——「搜尋只負責定位,把地圖移
+// 過去」,之後畫面上該顯示什麼資料,一律交給 handleGeoAttractionsNearby
+// 依地圖當時的可視範圍(bounds)另外查詢,兩個關注點刻意分開,不像
+// handleGeoAttractions 那樣把「找座標」與「查資料」耦合在同一支端點裡。
 //
-// 用 geo.Client.Geocode(傳統 Geocoding API)而非 Places API 文字搜尋:
-// 只需要「這個地名大概在哪」這組座標,不需要 Places 額外回傳的分類/
-// 評分/照片等資料,Geocoding API 對純地名/城市名查詢既快又不計入
-// Places 配額,理由同 entry_geocode.go 的 handleGeocodeEntry。
+// 改用 geo.Client.Search(Places API (New) Text Search)而非
+// geo.Client.Geocode(傳統 Geocoding API):Geocoding API 只回傳單一
+// 「最佳匹配」,對城市/觀光區/商圈這類口語化地名(不是門牌地址)常常
+// 直接查無結果或答非所問,且沒有候選清單可退——這是實際回報過的體驗
+// 問題(規劃分頁很容易找不到地點)。Places Text Search 偏向地標/商家/
+// 觀光區查詢,且能回傳多筆候選(見下方 maxCandidates),讓使用者自己
+// 從地圖上標出來的候選點裡挑對的那一個,不用完全依賴系統猜中「使用者
+// 說的到底是哪個地方」。entry_geocode.go 的 handleGeocodeEntry 是另一支
+// 獨立端點,查詢情境是「橋樑/道路」這類 Places Text Search 支援較弱的
+// 地理要素,不受這次變更影響,仍沿用 Geocoding API(見該檔案的說明)。
+// maxGeoGeocodeCandidates:對齊 geo.Client.Search 的官方硬性上限(見該
+// 函式的說明)——不是額外的節流,單純把後端請求到的候選筆數上限跟
+// Google 這支 API 本身能給到的上限拉齊,讓使用者能看到 Text Search
+// 排序前 20 名的完整候選清單。
+const maxGeoGeocodeCandidates = 20
+
 func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("query")
 	if query == "" {
@@ -249,7 +275,7 @@ func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
 	ctx = geo.WithCaller(ctx, "handleGeoGeocode")
 	ctx = geo.WithPath(ctx, r.URL.Path)
 
-	result, err := client.Geocode(ctx, query)
+	places, err := client.Search(ctx, query, &geo.SearchOptions{MaxResults: maxGeoGeocodeCandidates})
 	if err != nil {
 		if err == geo.ErrNotFound {
 			writeErr(w, http.StatusNotFound, "no_match", "查無「"+query+"」相關地點")
@@ -258,12 +284,23 @@ func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, "geocode_failed", err.Error())
 		return
 	}
+	if len(places) == 0 {
+		writeErr(w, http.StatusNotFound, "no_match", "查無「"+query+"」相關地點")
+		return
+	}
 
+	candidates := make([]map[string]any, len(places))
+	for i, p := range places {
+		candidates[i] = map[string]any{
+			"name":    p.Name,
+			"address": p.Address,
+			"lat":     p.Lat,
+			"lng":     p.Lng,
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"query":   query,
-		"address": result.FormattedAddress,
-		"lat":     result.Lat,
-		"lng":     result.Lng,
+		"query":      query,
+		"candidates": candidates,
 	})
 }
 
@@ -332,11 +369,14 @@ func (s *Server) listAttractionResponses(lat, lng, radiusMeters float64) ([]attr
 	attractions := make([]attractionResponse, 0, len(landmarks))
 	for _, l := range landmarks {
 		ar := attractionResponse{
+			ID:           l.ID,
 			Name:         l.Name,
+			CityName:     l.CityName,
 			Lat:          l.Lat,
 			Lng:          l.Lng,
 			RadiusMeters: l.RadiusMeters,
 			Level:        l.Level,
+			Tags:         l.Tags,
 		}
 		if l.Summary != nil {
 			ar.Summary = *l.Summary
@@ -405,6 +445,108 @@ func (s *Server) handleGeoAttractionsOnlyNearby(w http.ResponseWriter, r *http.R
 	writeJSON(w, http.StatusOK, map[string]any{
 		"attractions": attractions,
 	})
+}
+
+// maxTagNeighbors 是 handleGeoAttractionTagNeighbors 回傳筆數上限——「顯示
+// 周邊相同標籤地點」是側欄快速瀏覽用的清單,不是完整搜尋結果,只需要
+// 依距離排序最近的幾筆(見 docs/TRIP_PLANNING_DESIGN_DISCUSSION.md 對
+// 這個功能範圍的既有設計討論:同城市內、依距離排序、只顯示前幾筆,
+// 避免地點過於分散時仍硬要塞一長串清單)。
+const maxTagNeighbors = 5
+
+// GET /internal/geo/attractions/{id}/tag-neighbors?tag={標籤}
+//
+// 供 AttractionInfoPanel「顯示周邊相同標籤地點」使用:查同一個城市底下
+// 帶有指定標籤的其他地點,依與目前地點的距離由近到遠排序,只回傳前
+// maxTagNeighbors 筆(見該常數說明)。回傳的地點不含 {id} 本身——這支
+// 端點的語意是「其他」帶相同標籤的地點,不是「所有」帶這個標籤的地點,
+// 呼叫端不需要自己再過濾掉當前這筆。
+//
+// tag 由查詢參數傳入(而非直接查詢 {id} 這筆地點的全部標籤、逐一各自
+// 回傳一批鄰居)——AttractionInfoPanel 一次只顯示使用者點擊的其中一個
+// 標籤徽章底下的周邊地點,由前端決定要查哪個標籤,不是由後端一次算好
+// 全部標籤各自的鄰居清單(那樣多數情況下是白算,使用者通常只會點開
+// 其中一兩個標籤看看)。
+func (s *Server) handleGeoAttractionTagNeighbors(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少地標 ID")
+		return
+	}
+	tag := r.URL.Query().Get("tag")
+	if tag == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 tag 查詢參數")
+		return
+	}
+
+	origin, err := s.store.GetAttraction(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "not_found", "找不到這筆景點資料")
+		return
+	}
+
+	candidates, err := s.store.ListAttractionsByTagInCity(origin.CityName, tag)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+
+	type neighborWithDistance struct {
+		attractionResponse
+		distanceKm float64
+	}
+	neighbors := make([]neighborWithDistance, 0, len(candidates))
+	for _, c := range candidates {
+		if c.ID == id {
+			continue
+		}
+		ar := attractionResponse{
+			ID: c.ID, Name: c.Name, CityName: c.CityName, Lat: c.Lat, Lng: c.Lng,
+			RadiusMeters: c.RadiusMeters, Level: c.Level, Tags: c.Tags,
+		}
+		if c.Summary != nil {
+			ar.Summary = *c.Summary
+		}
+		if c.PhotoURL != nil {
+			ar.LandmarkPhotoURL = *c.PhotoURL
+		}
+		neighbors = append(neighbors, neighborWithDistance{
+			attractionResponse: ar,
+			distanceKm:         haversineKm(origin.Lat, origin.Lng, c.Lat, c.Lng),
+		})
+	}
+	sort.Slice(neighbors, func(i, j int) bool { return neighbors[i].distanceKm < neighbors[j].distanceKm })
+	if len(neighbors) > maxTagNeighbors {
+		neighbors = neighbors[:maxTagNeighbors]
+	}
+
+	out := make([]map[string]any, len(neighbors))
+	for i, n := range neighbors {
+		out[i] = map[string]any{
+			"id": n.ID, "name": n.Name, "cityName": n.CityName, "lat": n.Lat, "lng": n.Lng,
+			"radiusMeters": n.RadiusMeters, "level": n.Level, "tags": n.Tags,
+			"summary": n.Summary, "landmarkPhotoUrl": n.LandmarkPhotoURL,
+			"distanceKm": roundTo1Decimal(n.distanceKm),
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tag": tag, "attractions": out})
+}
+
+// haversineKm 計算兩點間的球面距離(公里)——比 ListAttractionsNearby 的
+// bounding box 近似精確,但這裡的資料量是「單一城市底下、通常十幾到
+// 數十筆的候選」,精確排序的成本可以接受,不需要為此改用近似公式。
+func haversineKm(lat1, lng1, lat2, lng2 float64) float64 {
+	const earthRadiusKm = 6371.0
+	dLat := (lat2 - lat1) * math.Pi / 180
+	dLng := (lng2 - lng1) * math.Pi / 180
+	la1 := lat1 * math.Pi / 180
+	la2 := lat2 * math.Pi / 180
+	h := math.Sin(dLat/2)*math.Sin(dLat/2) + math.Cos(la1)*math.Cos(la2)*math.Sin(dLng/2)*math.Sin(dLng/2)
+	return 2 * earthRadiusKm * math.Asin(math.Sqrt(h))
+}
+
+func roundTo1Decimal(v float64) float64 {
+	return math.Round(v*10) / 10
 }
 
 // placeDetailsResponse 是 GET /internal/geo/place-details 回應的單一地點

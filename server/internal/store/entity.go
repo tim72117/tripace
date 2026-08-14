@@ -86,6 +86,28 @@ type attractionRow struct {
 
 func (attractionRow) TableName() string { return "attractions" }
 
+// attractionTagRow 是 attraction 與標籤的多對多關聯——一筆景點區域可以
+// 有複數標籤(如「寺廟」「世界遺產」「建築師作品」),同一個標籤也可以
+// 掛在同城市任意數量的地點上。獨立關聯表(而非把標籤塞進 attractionRow
+// 的 JSON 欄位)是為了讓「這個標籤底下有哪些地點」「同城市、同標籤的
+// 其他地點」這兩種查詢能直接下 SQL(WHERE tag = ? AND city_name = ?
+// 搭配 JOIN),不需要在應用層對 JSON 陣列逐筆反序列化再篩選——這正是
+// AttractionInfoPanel「顯示周邊相同標籤地點」功能的核心查詢路徑,資料量
+// 隨標籤數量增長時這個查詢方式仍然可以走索引,不會退化成全表掃描。
+//
+// 複合主鍵(attraction_id, tag)取代自增 ID:同一筆地點對同一個標籤只會
+// 有一筆關聯,複合主鍵本身就保證了這個唯一性,不需要額外的 unique
+// index,也不需要一個沒有語意的自增欄位。
+type attractionTagRow struct {
+	AttractionID string `gorm:"primaryKey;column:attraction_id"`
+	// Tag 加獨立索引,供 ListAttractionsByTag(依標籤查地點,不透過某個
+	// 特定 attraction)使用——複合主鍵的索引以 attraction_id 為前導欄,
+	// 對「單純依 tag 查」這種查詢方向無法命中索引,需要這支獨立索引。
+	Tag string `gorm:"primaryKey;column:tag;index:idx_attraction_tags_tag"`
+}
+
+func (attractionTagRow) TableName() string { return "attraction_tags" }
+
 // photoCacheRow 快取 Google Places Photo Media API 已下載過的圖片(見
 // server/internal/geo/places.go 的 fetchPhotoAsDataURI)——同一個地點
 // (place id + 寬度組合)重複被查詢時直接吃快取,不重新打 Photo Media

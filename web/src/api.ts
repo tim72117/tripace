@@ -361,6 +361,11 @@ export function geocodeEntry(cfg: ClientConfig, entryID: string) {
 // type),圖片資料直接內嵌在回應裡,可以直接當 <img src> 用,不需要
 // 額外拼接網址或發第二次請求。
 export interface GeoAttraction {
+  // id:只有走後端資料庫路徑(人工建檔的 model.Attraction)才會有值,
+  // 即時查 Google Places 的路徑沒有站內 ID——前端據此判斷能不能查詢
+  // 「周邊同標籤地點」(見 fetchGeoAttractionTagNeighbors),沒有 id
+  // 就代表這筆資料不是資料庫記錄,無從查起。
+  id?: string
   name: string
   lat: number
   lng: number
@@ -385,6 +390,10 @@ export interface GeoAttraction {
   // 才會有值——即時查 Google Places 的結果沒有分級資訊,固定不帶這個
   // 欄位。前端依此決定隨縮放層級顯示哪些粒度,見 GeoOutlineMap.tsx。
   level?: number
+  // tags:人工建檔時標注的標籤(如「寺廟」「世界遺產」),用來查詢
+  // 「周邊同標籤地點」(見 fetchGeoAttractionTagNeighbors)。即時查
+  // Google Places 的路徑沒有這個欄位。
+  tags?: string[]
 }
 
 // GeoHotel:地理輪廓底圖上疊加的飯店圖層單筆結果,對齊後端
@@ -410,12 +419,25 @@ export function fetchGeoAttractions(cfg: ClientConfig, city: string) {
   )
 }
 
-// 對齊 server 的 GET /internal/geo/geocode(handleGeoGeocode)——只把輸入
-// 字串解析成一組座標,不查詢景點區域/飯店資料。地理輪廓底圖的城市搜尋框
-// 用這支端點「只負責定位」,查完把地圖 panTo 過去,畫面上該顯示什麼資料
-// 交給 fetchGeoAttractionsNearby 依地圖當時的可視範圍另外查詢。
+// GeoGeocodeCandidate:fetchGeoGeocode 單筆候選地點——對齊後端
+// handleGeoGeocode 的回應形狀(見該函式的說明)。
+export interface GeoGeocodeCandidate {
+  name: string
+  address: string
+  lat: number
+  lng: number
+}
+
+// 對齊 server 的 GET /internal/geo/geocode(handleGeoGeocode)——把輸入
+// 字串解析成一組候選地點清單(座標),不查詢景點區域/飯店資料。地理
+// 輪廓底圖的城市搜尋框用這支端點「只負責定位」,回傳多筆候選(改走
+// Places API Text Search,對城市/觀光區這類口語化地名支援較差的
+// Geocoding API 已不再使用,見後端該函式的完整說明)供地圖標出來讓
+// 使用者自己點選確認,不再像過去只回一組座標、猜錯了無法挑選——查完
+// 選定其中一筆後,畫面上該顯示什麼資料交給 fetchGeoAttractionsNearby
+// 依地圖當時的可視範圍另外查詢。
 export function fetchGeoGeocode(cfg: ClientConfig, query: string) {
-  return request<{ query: string; address: string; lat: number; lng: number }>(
+  return request<{ query: string; candidates: GeoGeocodeCandidate[] }>(
     cfg,
     'GET',
     `/internal/geo/geocode?query=${encodeURIComponent(query)}`,
@@ -452,6 +474,36 @@ export function fetchGeoAttractionsOnlyNearby(cfg: ClientConfig, lat: number, ln
     cfg,
     'GET',
     `/internal/geo/attractions/nearby-only?${params.toString()}`,
+  )
+}
+
+// GeoAttractionTagNeighbor:「周邊同標籤地點」單筆結果,對齊後端
+// handleGeoAttractionTagNeighbors 手動組出的 map[string]any 回應(見
+// server/internal/api/geo_outline.go)。比 GeoAttraction 多一個
+// distanceKm(後端已算好、依距離排序,前端不需要自己算 Haversine)。
+export interface GeoAttractionTagNeighbor {
+  id: string
+  name: string
+  cityName?: string
+  lat: number
+  lng: number
+  radiusMeters?: number
+  level?: number
+  tags?: string[]
+  summary?: string
+  landmarkPhotoUrl?: string
+  distanceKm: number
+}
+
+// 對齊 server 的 GET /internal/geo/attractions/{id}/tag-neighbors
+// (handleGeoAttractionTagNeighbors)——查詢與 id 同城市、帶有指定標籤的
+// 其他地點,依距離由近到遠排序,最多回傳 5 筆(後端常數
+// maxTagNeighbors)。供 AttractionInfoPanel 點擊標籤時使用。
+export function fetchGeoAttractionTagNeighbors(cfg: ClientConfig, id: string, tag: string) {
+  return request<{ tag: string; attractions: GeoAttractionTagNeighbor[] }>(
+    cfg,
+    'GET',
+    `/internal/geo/attractions/${encodeURIComponent(id)}/tag-neighbors?tag=${encodeURIComponent(tag)}`,
   )
 }
 

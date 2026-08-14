@@ -8,11 +8,13 @@
 //     是低頻、人工觸發的。把兩者混在一起,日後看請求統計(見
 //     internal/adminconsole 的 request-stats)時很難一眼分辨「這是真的
 //     使用者流量」還是「工程師在跑維運指令」。
-//  2. 底層呼叫的 Google API 也可能不同——例如這裡的 handleMaintenanceGeocode
-//     用 Places API Text Search(支援多候選、地區限定,對齊 CLI 原本
-//     geocode 子命令的行為),跟核心的 handleGeoGeocode(用 Geocoding API,
-//     只回單一最佳匹配,見該函式的說明)是兩個不同的底層機制,刻意不共用
-//     同一支端點,避免其中一邊改動時誤傷到另一邊的呼叫端。
+//  2. 呼叫者的操作介面不同——這裡的 handleMaintenanceGeocode 支援
+//     -region 地區限定(對齊 CLI 原本 geocode 子命令的行為),核心的
+//     handleGeoGeocode 是前端搜尋框用,不需要這個參數。兩者底層現在都是
+//     Places API (New) Text Search(見 handleGeoGeocode 的說明——原本用
+//     Geocoding API,只回單一最佳匹配,對城市/觀光區這類口語化地名支援
+//     較弱、常查無結果,已改為回傳多筆候選),但刻意不共用同一支端點,
+//     避免其中一邊改動時誤傷到另一邊的呼叫端,且回應形狀也不同(見下方)。
 //
 // 這兩支端點取代原本 tripace-cli 裡「直接在 CLI process 本地建立
 // geo.Client、繞過後端」的做法(geocode 子命令)、與「只能在 -db 直連模式
@@ -43,10 +45,12 @@ import (
 //
 // 對齊 tripace-cli 原本 geocode 子命令的行為(見 cmd/cli/geocode.go 移除
 // 前的版本):用 Places API Text Search 查詢地名,支援多候選(-n)與地區
-// 限定(-region)——這跟核心的 handleGeoGeocode(用 Geocoding API,只回
-// 傳單一最佳匹配)是不同的查詢機制,不能互相取代:handleGeoGeocode 是
-// 前端搜尋框「把地圖移過去」用的,只需要一組座標;這支端點是工程師手動
-// 核對地名解析結果、或批次補座標時要看多個候選比較用的維運工具。
+// 限定(-region)——handleGeoGeocode 現在也改走同一套 Places API Text
+// Search(見該函式的說明),但兩支端點呼叫情境不同,不能互相取代:
+// handleGeoGeocode 是前端搜尋框用,固定回傳一組(對齊產品面「候選清單」
+// 的呈現需求);這支端點是工程師手動核對地名解析結果、或批次補座標時
+// 用 -region/-n 這些維運場景才需要的參數調整候選筆數與地區限定,是純
+// CLI 專用的維運工具。
 func (s *Server) handleMaintenanceGeocode(w http.ResponseWriter, r *http.Request) {
 	place := r.URL.Query().Get("place")
 	if place == "" {
@@ -327,4 +331,59 @@ func (s *Server) handleMaintenanceAttractionDelete(w http.ResponseWriter, r *htt
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"deleted": id})
+}
+
+// PATCH /internal/maintenance/attractions/{id}/coords
+// Body: {"lat": 緯度, "lng": 經度}
+//
+// 供 tripace-cli 的 attraction-update 指令修正建檔時輸入錯誤的座標(見
+// store.UpdateAttractionCoords)。只改座標,不是通用的景點區域編輯端點
+// ——理由同 handleMaintenanceLandmarkUpdatePhoto 只改照片欄位的說明,
+// 未來若要支援更多欄位,應個別新增對應端點,而非讓這支端點的 body 逐漸
+// 長成完整的 model.Attraction。
+func (s *Server) handleMaintenanceAttractionUpdateCoords(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少地標 ID")
+		return
+	}
+	var in struct {
+		Lat float64 `json:"lat"`
+		Lng float64 `json:"lng"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := s.store.UpdateAttractionCoords(id, in.Lat, in.Lng); err != nil {
+		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "lat": in.Lat, "lng": in.Lng})
+}
+
+// PUT /internal/maintenance/attractions/{id}/tags
+// Body: {"tags": ["寺廟", "世界遺產"]}
+//
+// 供 tripace-cli 的 attraction-tag 指令設定一筆景點區域的完整標籤集合
+// (見 store.SetAttractionTags 的說明)——PUT(覆蓋整個集合)而非 POST
+// (逐一新增)或 PATCH(局部調整),對齊呼叫端每次都傳入「這筆地點現在
+// 該有的完整標籤清單」的語意,不是增量操作。tags 未帶或為空陣列時視為
+// 清空該地點的所有標籤,不視為錯誤輸入。
+func (s *Server) handleMaintenanceAttractionSetTags(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少地標 ID")
+		return
+	}
+	var in struct {
+		Tags []string `json:"tags"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := s.store.SetAttractionTags(id, in.Tags); err != nil {
+		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "tags": in.Tags})
 }

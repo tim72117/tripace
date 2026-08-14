@@ -121,6 +121,15 @@ type Attraction struct {
 	RadiusMeters int     `json:"radiusMeters,omitempty"`
 	Summary      *string `json:"summary,omitempty"`
 	PhotoURL     *string `json:"photoUrl,omitempty"`
+	// Tags 是這個地點的複數標籤(如「寺廟」「世界遺產」「建築師作品」),
+	// 供前端點選地點介紹時查詢「同城市、同標籤」的周邊地點使用(見
+	// server/internal/store/attractions.go 的 attachTags)。由關聯表
+	// attraction_tags 組回,不是這個 struct 自己的欄位映射到單一資料庫
+	// 欄位——每次查詢都是額外一趟關聯查詢組上去的衍生資料,不透過
+	// CreateAttraction/UpdateAttractionCoords 這類一般寫入路徑設定,
+	// 標籤異動要透過獨立的 SetAttractionTags。nil 與空切片視為同義
+	// (都代表沒有任何標籤),呼叫端不需要區分兩者。
+	Tags []string `json:"tags,omitempty"`
 	// UpdatedAt 是這筆資料最後一次寫入的時間(建立或透過
 	// UpdateAttractionPhoto 等方式更新)——目前只單純曝露出來供人工核對
 	// 哪些資料較舊,尚未實作自動過期判斷/自動重新整理。

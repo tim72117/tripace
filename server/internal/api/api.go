@@ -222,6 +222,7 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("GET /internal/geo/attractions", s.handleGeoAttractions)
 	internalMux.HandleFunc("GET /internal/geo/attractions/nearby", s.handleGeoAttractionsNearby)
 	internalMux.HandleFunc("GET /internal/geo/attractions/nearby-only", s.handleGeoAttractionsOnlyNearby)
+	internalMux.HandleFunc("GET /internal/geo/attractions/{id}/tag-neighbors", s.handleGeoAttractionTagNeighbors)
 	internalMux.HandleFunc("GET /internal/geo/geocode", s.handleGeoGeocode)
 	internalMux.HandleFunc("GET /internal/geo/places/nearby", s.handleGeoPlacesNearby)
 	internalMux.HandleFunc("GET /internal/geo/place-details", s.handleGeoPlaceDetails)
@@ -237,6 +238,8 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("GET /internal/maintenance/attractions", s.handleMaintenanceAttractionList)
 	internalMux.HandleFunc("GET /internal/maintenance/attractions/cities", s.handleMaintenanceAttractionCities)
 	internalMux.HandleFunc("DELETE /internal/maintenance/attractions/{id}", s.handleMaintenanceAttractionDelete)
+	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/coords", s.handleMaintenanceAttractionUpdateCoords)
+	internalMux.HandleFunc("PUT /internal/maintenance/attractions/{id}/tags", s.handleMaintenanceAttractionSetTags)
 
 	mux.Handle("/internal/", internalAuth(s.signer, internalMux))
 
