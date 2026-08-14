@@ -410,12 +410,25 @@ export function fetchGeoAttractions(cfg: ClientConfig, city: string) {
   )
 }
 
-// 對齊 server 的 GET /internal/geo/geocode(handleGeoGeocode)——只把輸入
-// 字串解析成一組座標,不查詢景點區域/飯店資料。地理輪廓底圖的城市搜尋框
-// 用這支端點「只負責定位」,查完把地圖 panTo 過去,畫面上該顯示什麼資料
-// 交給 fetchGeoAttractionsNearby 依地圖當時的可視範圍另外查詢。
+// GeoGeocodeCandidate:fetchGeoGeocode 單筆候選地點——對齊後端
+// handleGeoGeocode 的回應形狀(見該函式的說明)。
+export interface GeoGeocodeCandidate {
+  name: string
+  address: string
+  lat: number
+  lng: number
+}
+
+// 對齊 server 的 GET /internal/geo/geocode(handleGeoGeocode)——把輸入
+// 字串解析成一組候選地點清單(座標),不查詢景點區域/飯店資料。地理
+// 輪廓底圖的城市搜尋框用這支端點「只負責定位」,回傳多筆候選(改走
+// Places API Text Search,對城市/觀光區這類口語化地名支援較差的
+// Geocoding API 已不再使用,見後端該函式的完整說明)供地圖標出來讓
+// 使用者自己點選確認,不再像過去只回一組座標、猜錯了無法挑選——查完
+// 選定其中一筆後,畫面上該顯示什麼資料交給 fetchGeoAttractionsNearby
+// 依地圖當時的可視範圍另外查詢。
 export function fetchGeoGeocode(cfg: ClientConfig, query: string) {
-  return request<{ query: string; address: string; lat: number; lng: number }>(
+  return request<{ query: string; candidates: GeoGeocodeCandidate[] }>(
     cfg,
     'GET',
     `/internal/geo/geocode?query=${encodeURIComponent(query)}`,

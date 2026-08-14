@@ -237,6 +237,7 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("GET /internal/maintenance/attractions", s.handleMaintenanceAttractionList)
 	internalMux.HandleFunc("GET /internal/maintenance/attractions/cities", s.handleMaintenanceAttractionCities)
 	internalMux.HandleFunc("DELETE /internal/maintenance/attractions/{id}", s.handleMaintenanceAttractionDelete)
+	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/coords", s.handleMaintenanceAttractionUpdateCoords)
 
 	mux.Handle("/internal/", internalAuth(s.signer, internalMux))
 

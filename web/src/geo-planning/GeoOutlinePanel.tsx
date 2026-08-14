@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from '../api'
+import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from '../api'
 import { fetchEntries, fetchGeoGeocode } from '../api'
 import { GeoOutlineMap } from './GeoOutlineMap'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
@@ -79,6 +79,7 @@ export function GeoOutlinePanel({
   onHotelSelect,
   onPlaceSelect,
   onPoiSelect,
+  onGeocodeCandidateSelect,
   panTarget: externalPanTarget,
   selectedKey,
   candidateKeys,
@@ -112,6 +113,12 @@ export function GeoOutlinePanel({
   onHotelSelect?: (hotel: GeoHotel) => void
   onPlaceSelect?: (place: GeoPlace) => void
   onPoiSelect?: (details: GeoPlaceDetails) => void
+  // onGeocodeCandidateSelect:使用者點擊地圖上的搜尋候選 marker 時觸發
+  // ——原封不動轉傳給呼叫端(DesktopLayout.tsx),讓它跟 onHotelSelect 等
+  // 既有選取來源一樣開啟 GeoInfoPanel 顯示這個候選的資訊。這個元件自己
+  // 只負責「移動地圖+標記選中狀態」(見下方 handleGeocodeCandidateSelect),
+  // 不知道資訊欄長什麼樣子。
+  onGeocodeCandidateSelect?: (candidate: GeoGeocodeCandidate) => void
   panTarget?: { lat: number; lng: number; level?: number; radiusMeters?: number } | null
   selectedKey?: GeoSelectedKey
   // candidateKeys/hoverKey:原封不動轉傳給 GeoOutlineMap——理由同
@@ -149,6 +156,19 @@ export function GeoOutlinePanel({
   // 偵測到「這是一次新的移動請求」(理由同 GeoOutlineMap.tsx 對 panTarget
   // 的說明)。
   const [panRequest, setPanRequest] = useState<{ lat: number; lng: number; level?: number; radiusMeters?: number; suppressQuery: boolean } | null>(null)
+  // geocodeCandidates:fetchGeoGeocode 查到多筆候選時(見上方
+  // searchTrigger 的 effect)暫存在這裡,傳給 GeoOutlineMap 畫成可點擊
+  // 的候選 marker、並 fitBounds 縮放到能同時看見所有候選的範圍——
+  // 使用者自己從地圖上辨認、點選正確的那一筆,不再像過去只回一組座標、
+  // 猜錯了無從挑選。點擊確認後不清空(見 handleGeocodeCandidateSelect
+  // 的說明),讓使用者能隨時回頭比較/改選別的候選;只有觸發新一次搜尋
+  // 才會換成新的候選清單(見上方 searchTrigger 的 effect)。
+  const [geocodeCandidates, setGeocodeCandidates] = useState<GeoGeocodeCandidate[]>([])
+  // selectedGeocodeCandidateKey:目前選中的候選識別鍵(geoItemKey 同一套
+  // 「名稱+座標」規則,見 GeoHotelSidebar.tsx 的說明),供 GeoOutlineMap
+  // 判斷該把哪一個候選 marker 畫成選取樣式——null 代表尚未選過、或剛
+  // 觸發新搜尋重置。
+  const [selectedGeocodeCandidateKey, setSelectedGeocodeCandidateKey] = useState<string | null>(null)
   // tripCenter:目前行程底下已有座標的 entry 算出來的中心點,見下方
   // useEffect,傳給 GeoOutlineMap 當地圖第一次建立時的初始中心(見該
   // 元件 initialCenter prop 的完整說明)——三態:undefined 代表「還在
@@ -175,10 +195,21 @@ export function GeoOutlinePanel({
     let cancelled = false
     setLoading(true)
     setErr(null)
+    setGeocodeCandidates([])
     fetchGeoGeocode(cfg, trimmed)
       .then((result) => {
         if (cancelled) return
-        setPanRequest({ lat: result.lat, lng: result.lng, suppressQuery: false })
+        // 只有一筆候選時不需要使用者再點一次確認——直接沿用原本
+        // 「查完就 pan 過去」的行為;多筆候選才交給地圖標出來讓使用者
+        // 自己選(見下方 geocodeCandidates 的完整說明與
+        // handleGeocodeCandidateSelect)。
+        setSelectedGeocodeCandidateKey(null)
+        if (result.candidates.length === 1) {
+          const only = result.candidates[0]
+          setPanRequest({ lat: only.lat, lng: only.lng, suppressQuery: false })
+        } else {
+          setGeocodeCandidates(result.candidates)
+        }
       })
       .catch((e) => {
         if (!cancelled) setErr(e instanceof Error ? e.message : String(e))
@@ -191,6 +222,21 @@ export function GeoOutlinePanel({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTrigger])
+
+  // handleGeocodeCandidateSelect:使用者在地圖上點擊某個候選 marker
+  // 確認選定——不再清空候選圖層(先前版本會清空,但這樣使用者選錯後
+  // 沒辦法直接點另一個候選重選,得重新搜尋一次;改成其餘候選繼續留在
+  // 地圖上,只用 selectedGeocodeCandidateKey 標記目前選中的是哪一個,
+  // 讓呼叫端能把它畫成明顯的選取樣式,理由同其餘圖層 selectedKey 的
+  // 既有機制)。用該候選的座標觸發原本「搜尋定位」的 panRequest 流程,
+  // 並把完整候選資料往上回報(見 onGeocodeCandidateSelect),讓呼叫端
+  // 開啟 GeoInfoPanel 顯示這個候選的資訊——跟其餘圖層(飯店/推薦地點)
+  // 點擊 marker 的既有行為一致。
+  const handleGeocodeCandidateSelect = (c: GeoGeocodeCandidate) => {
+    setSelectedGeocodeCandidateKey(`${c.name}|${c.lat}|${c.lng}`)
+    setPanRequest({ lat: c.lat, lng: c.lng, suppressQuery: false })
+    onGeocodeCandidateSelect?.(c)
+  }
 
   // 查詢中/錯誤狀態往上回報給 GeoCandidateSidebar 顯示——這個元件自己
   // 不畫任何搜尋 UI(見上方元件註解),loading/err 這兩個 state 純粹是
@@ -317,6 +363,9 @@ export function GeoOutlinePanel({
           selectedKey={selectedKey}
           candidateKeys={candidateKeys}
           hoverKey={hoverKey}
+          geocodeCandidates={geocodeCandidates}
+          selectedGeocodeCandidateKey={selectedGeocodeCandidateKey}
+          onGeocodeCandidateSelect={handleGeocodeCandidateSelect}
         />
       </div>
     </div>

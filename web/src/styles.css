@@ -3,16 +3,16 @@
 
 :root {
   --ios-blue: #7C6F5B;      /* 大地棕：主要互動色 */
-  --ios-bg: #F5F2ED;        /* 暖米色背景 */
+  --ios-bg: #F7F3EC;        /* 暖紙色背景——對齊首頁 --paper */
   --ios-card: #FDFCFA;      /* 卡片白 */
   --ios-sep: #E2DDD7;       /* 暖灰分隔線 */
   --ios-gray: #9E9488;      /* 暖灰文字 */
-  --ios-green: #5A8A6A;     /* 森綠（成功） */
+  --ios-green: #5C6B57;     /* 苔綠（成功）——對齊首頁 --moss */
   --ios-red: #C0604A;       /* 磚紅（錯誤） */
-  --color-accent: #C4956A;  /* 沙棕強調色 */
+  --color-accent: #8B3A2F;  /* 硃紅強調色——對齊首頁 --vermilion */
   --color-dark: #3D3530;    /* 深棕文字 */
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
-  --tl-trip-color: #C4956A; /* 行程主軸色（沙棕） */
+  --tl-trip-color: #8B3A2F; /* 行程主軸色（硃紅） */
 }
 
 * {
@@ -162,6 +162,11 @@ body {
 }
 .new-trip-composer input {
   flex: 1;
+  /* min-width: 0 覆蓋 flex 子項預設的 min-width: auto(依內容/
+     placeholder 文字撐出的最小寬度)——沒有這行,側欄較窄時 input 會
+     拒絕縮小到能容納旁邊「建立」按鈕的程度,把整個 .new-trip-composer
+     橫向撐爆,讓按鈕溢出側欄右邊界(實際發生過的 bug)。 */
+  min-width: 0;
   border: 1.5px solid var(--ios-sep);
   border-radius: 10px;
   padding: 9px 12px;

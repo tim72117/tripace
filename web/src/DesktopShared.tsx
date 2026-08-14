@@ -26,9 +26,15 @@ import langSelectStyles from './LangSelect.module.css'
 // MultiTrackTimeline/PaceChart+PaceRouteMap、GeoCandidateSidebar/
 // GeoOutlinePanel,見 DesktopLayout.tsx / PhoneContent.tsx /
 // PhoneNavDrawer.tsx,不屬於這組共用的 demo 面板(DemoPanelContent)。
+// 'demo-route-editor':旅程分享/路徑編輯器試做(見 docs/ 同一輪討論的
+// 雜誌式編輯介面構想與 artifact mockup)——目前只做右側雜誌內容編輯區
+// (純前端假資料,不呼叫任何 API,見 RouteEditor.tsx 開頭的說明),左側
+// 常駐地圖與後端 schema 都尚未設計,故歸在 demo-* 這組試做面板底下
+// (DEMO_ROUTE_EDITOR_ENABLED,見下方),不是正式導覽項目——等資料結構
+// 定案、真的接上後端,才會比照 pace/geo-outline 升級成正式功能。
 export type PanelMode =
   | 'trips' | 'timeline' | 'pace' | 'geo-outline'
-  | 'demo-cards' | 'demo-row' | 'demo-onagent'
+  | 'demo-cards' | 'demo-row' | 'demo-onagent' | 'demo-route-editor'
   | null
 
 // GEO_OUTLINE_ENABLED:地理輪廓底圖(規劃分頁)功能開關——目前是唯一
@@ -65,6 +71,9 @@ export const DEMO_CARDS_ENABLED = import.meta.env.VITE_FEATURE_DEMO_CARDS === 't
 export const DEMO_ROW_ENABLED = import.meta.env.VITE_FEATURE_DEMO_ROW === 'true'
 export const DEMO_ONAGENT_ENABLED = import.meta.env.VITE_FEATURE_DEMO_ONAGENT === 'true'
 export const DEBUG_PANEL_ENABLED = import.meta.env.VITE_FEATURE_DEBUG_PANEL === 'true'
+// DEMO_ROUTE_EDITOR_ENABLED:路徑編輯器試做的開關,同上面幾個 DEMO_*
+// 一套機制——預設關閉,只在明確設為字串 "true" 時才啟用。
+export const DEMO_ROUTE_EDITOR_ENABLED = import.meta.env.VITE_FEATURE_DEMO_ROUTE_EDITOR === 'true'
 
 // PANEL_MODES:PanelMode 扣掉 null 之後的合法字串值列表——給 isPanelMode()
 // 在執行期驗證用(型別系統只在編譯期擋得住,URL 路徑參數是使用者可任意
@@ -78,6 +87,7 @@ const PANEL_MODES = [
   ...(DEMO_CARDS_ENABLED ? (['demo-cards'] as const) : []),
   ...(DEMO_ROW_ENABLED ? (['demo-row'] as const) : []),
   ...(DEMO_ONAGENT_ENABLED ? (['demo-onagent'] as const) : []),
+  ...(DEMO_ROUTE_EDITOR_ENABLED ? (['demo-route-editor'] as const) : []),
 ] as const
 
 // isPanelMode:驗證 URL 路徑參數(/app/:panelMode,見 App.tsx)是不是合法的
@@ -89,19 +99,24 @@ export function isPanelMode(v: string | undefined): v is Exclude<PanelMode, null
   return v != null && (PANEL_MODES as readonly string[]).includes(v)
 }
 
-// DemoPanelMode:PanelMode 扣掉 trips/timeline/pace/geo-outline/null 之後
-// 只剩的 4 種 demo 面板——正式功能(trips/timeline/pace/geo-outline)在
-// 桌面版是 side panel 的正式功能,手機版則是 PhoneNavDrawer(見該檔案)
-// 裡對應的分頁,兩邊各自處理,不算在這組共用的 demo 面板裡。
-export type DemoPanelMode = Exclude<PanelMode, 'trips' | 'timeline' | 'pace' | 'geo-outline' | null>
+// DemoPanelMode:PanelMode 扣掉 trips/timeline/pace/geo-outline/
+// demo-route-editor/null 之後只剩的 3 種 demo 面板——正式功能
+// (trips/timeline/pace/geo-outline)在桌面版是 side panel 的正式功能,
+// 手機版則是 PhoneNavDrawer(見該檔案)裡對應的分頁,兩邊各自處理,不算
+// 在這組共用的 demo 面板裡。demo-route-editor 雖然也是 demo-* 系列旗標
+// (見 DEMO_ROUTE_EDITOR_ENABLED),但只做桌面版(見路徑編輯器介面構想
+// 討論——手機先只做瀏覽別人的路徑,不做編輯),不透過這組手機/桌面共用
+// 的 DemoPanelContent 渲染,改在 DesktopLayout.tsx 的 <main> 分支裡直接
+// 特殊處理(同 pace/geo-outline 的作法),PhoneNavDrawer 不提供對應分頁。
+export type DemoPanelMode = Exclude<PanelMode, 'trips' | 'timeline' | 'pace' | 'geo-outline' | 'demo-route-editor' | null>
 
-// DemoPanelContent:4 個 demo 面板的內容渲染,供桌面版 DesktopContent 的
+// DemoPanelContent:3 個 demo 面板的內容渲染,供桌面版 DesktopContent 的
 // <main>(見 DesktopLayout.tsx)與手機版 PhoneNavDrawer(見該檔案)共用,
 // 避免同一段 JSX 兩處各寫一份、之後改一邊忘了改另一邊。(配速表/地理輪廓
 // 底圖已轉為正式功能'pace'/'geo-outline',不再屬於這組 demo 面板,渲染
 // 邏輯改為直接使用 PaceChart/PaceRouteMap、GeoCandidateSidebar/
 // GeoOutlinePanel,見 DesktopLayout.tsx / PhoneContent.tsx /
-// PhoneNavDrawer.tsx。這 4 種 demo 模式都不需要 cfg,故不接這個 prop。)
+// PhoneNavDrawer.tsx。這 3 種 demo 模式都不需要 cfg,故不接這個 prop。)
 export function DemoPanelContent({
   mode,
 }: {

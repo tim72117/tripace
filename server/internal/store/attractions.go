@@ -139,3 +139,13 @@ func (s *Store) UpdateAttractionPhoto(id, photoURL string) error {
 		Where("id = ?", id).
 		Updates(map[string]any{"photo_url": photoURL, "updated_at": now()}).Error
 }
+
+// UpdateAttractionCoords 更新一筆景點區域的座標。只更新 lat/lng/
+// updated_at 三欄,不動其餘欄位——這支方法專門服務 CLI 的
+// attraction-update 指令,修正建檔時輸入錯誤的座標,不需要像
+// UpdateAttractionPhoto 那樣重新查詢外部服務,單純覆蓋兩個數值欄位。
+func (s *Store) UpdateAttractionCoords(id string, lat, lng float64) error {
+	return s.db.Model(&attractionRow{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"lat": lat, "lng": lng, "updated_at": now()}).Error
+}

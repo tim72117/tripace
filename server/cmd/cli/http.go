@@ -150,3 +150,10 @@ func (c *httpClient) attractionDelete(id string) error {
 	_, err := c.do("DELETE", "/internal/maintenance/attractions/"+id, nil)
 	return err
 }
+
+// attractionUpdateCoords 對齊 PATCH /internal/maintenance/attractions/{id}/
+// coords(見 server/internal/api/maintenance.go)——修正建檔時輸入錯誤的
+// 座標,供 attraction-update 子命令使用。
+func (c *httpClient) attractionUpdateCoords(id string, lat, lng float64) (any, error) {
+	return c.do("PATCH", "/internal/maintenance/attractions/"+id+"/coords", map[string]any{"lat": lat, "lng": lng})
+}

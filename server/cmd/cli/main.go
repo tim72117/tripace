@@ -40,6 +40,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 
 	"github.com/tim72117/tripace/internal/model"
@@ -117,6 +118,8 @@ func main() {
 		cmdAttractionCities(c)
 	case "attraction-delete":
 		cmdAttractionDelete(c, args)
+	case "attraction-update":
+		cmdAttractionUpdate(c, args)
 	case "attraction-update-photo":
 		cmdAttractionUpdatePhoto(apiURL, args)
 	case "-h", "--help", "help":
@@ -256,12 +259,20 @@ func cmdNotify(args []string) {
 // 使用者的 /v1/* 寫入,但跟其餘 CLI 指令一樣走 HTTP + JWT 登入路徑,不再
 // 直連資料庫(見本檔案開頭「架構說明」)。-photo-url 未帶時,後端會自動
 // 查 Pexels 補一張示意圖(見該端點的完整說明)。
+//
+// -lat/-lng 與 -place 二擇一,做法與 cmdAttractionUpdate 一致(見該函式
+// 的完整說明):-place 有值時改用 GET /internal/maintenance/geocode 查詢
+// 該地名的座標,取第一筆候選結果當建檔座標,不需要使用者自己先查好經
+// 緯度;明確帶 -lat/-lng 時優先採用(不查 geocode)。統一走同一段查詢
+// 邏輯,避免「新增用一套查詢方式、修正座標又是另一套」的兩份邏輯。
 func cmdAttractionAdd(c *httpClient, args []string) {
 	fs := flag.NewFlagSet("attraction-add", flag.ExitOnError)
 	name := fs.String("name", "", "地標/區域白話名稱（必填），如「古城區」「101」")
 	city := fs.String("city", "", "所屬城市名稱（必填），對齊 GET /internal/geo/attractions?city= 的查詢字串")
-	lat := fs.Float64("lat", 0, "緯度（必填）")
-	lng := fs.Float64("lng", 0, "經度（必填）")
+	lat := fs.Float64("lat", 0, "緯度（與 -place 二擇一）")
+	lng := fs.Float64("lng", 0, "經度（與 -place 二擇一）")
+	place := fs.String("place", "", "改查這個地名的座標（與 -lat/-lng 二擇一，取第一筆候選結果）")
+	region := fs.String("region", "", "地名查詢的國家代碼限制，如 jp / tw / cn（僅搭配 -place 使用，選填）")
 	level := fs.Int("level", 0, "知名度分級（必填），1=國際 2=國家 3=區域 4=城市 5=在地")
 	radius := fs.Int("radius", 0, "大致範圍半徑（公尺），0 表示這是單點地標而非有範圍的區域")
 	summary := fs.String("summary", "", "白話簡介（選填）")
@@ -273,8 +284,33 @@ func cmdAttractionAdd(c *httpClient, args []string) {
 	if *level < 1 || *level > 5 {
 		fatal("attraction-add 的 -level 必須介於 1~5")
 	}
+	haveCoords := *lat != 0 || *lng != 0
+	if !haveCoords && *place == "" {
+		fatal("attraction-add 需要 -lat/-lng 或 -place 其中一組")
+	}
+
+	newLat, newLng := *lat, *lng
+	if !haveCoords {
+		q := url.Values{}
+		q.Set("place", *place)
+		if *region != "" {
+			q.Set("region", *region)
+		}
+		geoRes, err := c.do("GET", "/internal/maintenance/geocode?"+q.Encode(), nil)
+		if err != nil {
+			fatal("attraction-add geocode: %v", err)
+		}
+		places, _ := geoRes["places"].([]any)
+		if len(places) == 0 {
+			fatal("attraction-add: -place 查無候選地點")
+		}
+		first, _ := places[0].(map[string]any)
+		newLat, _ = first["lat"].(float64)
+		newLng, _ = first["lng"].(float64)
+	}
+
 	in := model.Attraction{
-		Name: *name, CityName: *city, Lat: *lat, Lng: *lng,
+		Name: *name, CityName: *city, Lat: newLat, Lng: newLng,
 		Level: *level, RadiusMeters: *radius,
 	}
 	if *summary != "" {
@@ -330,6 +366,61 @@ func cmdAttractionDelete(c *httpClient, args []string) {
 		fatal("attraction-delete: %v", err)
 	}
 	output(map[string]string{"deleted": *id})
+}
+
+// cmdAttractionUpdate 修正一筆景點區域資料的座標——走
+// PATCH /internal/maintenance/attractions/{id}/coords(見
+// server/internal/api/maintenance.go 與 httpClient.attractionUpdateCoords
+// 的完整說明)。目前只支援座標,理由同 handleMaintenanceAttractionUpdateCoords
+// 的說明:避免這支端點的 body 逐漸長成完整的 model.Attraction,未來若要
+// 支援其他欄位應個別新增對應端點。
+//
+// -lat/-lng 與 -place 二擇一:-place 有值時改用 GET
+// /internal/maintenance/geocode 查詢該地名的座標(對齊 cmdGeocode 的
+// -entry 寫回模式,見 geocode.go),取第一筆候選結果當新座標,不需要
+// 使用者自己查好經緯度再手動輸入;明確帶 -lat/-lng 時優先採用(不查
+// geocode),讓使用者仍能在已知精確座標時跳過一次網路查詢。
+func cmdAttractionUpdate(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("attraction-update", flag.ExitOnError)
+	id := fs.String("id", "", "地標 ID（必填）")
+	lat := fs.Float64("lat", 0, "新緯度（與 -place 二擇一）")
+	lng := fs.Float64("lng", 0, "新經度（與 -place 二擇一）")
+	place := fs.String("place", "", "改查這個地名的座標（與 -lat/-lng 二擇一，取第一筆候選結果）")
+	region := fs.String("region", "", "地名查詢的國家代碼限制，如 jp / tw / cn（僅搭配 -place 使用，選填）")
+	_ = fs.Parse(args)
+	if *id == "" {
+		fatal("attraction-update 需要 -id")
+	}
+	haveCoords := *lat != 0 || *lng != 0
+	if !haveCoords && *place == "" {
+		fatal("attraction-update 需要 -lat/-lng 或 -place 其中一組")
+	}
+
+	newLat, newLng := *lat, *lng
+	if !haveCoords {
+		q := url.Values{}
+		q.Set("place", *place)
+		if *region != "" {
+			q.Set("region", *region)
+		}
+		geoRes, err := c.do("GET", "/internal/maintenance/geocode?"+q.Encode(), nil)
+		if err != nil {
+			fatal("attraction-update geocode: %v", err)
+		}
+		places, _ := geoRes["places"].([]any)
+		if len(places) == 0 {
+			fatal("attraction-update: -place 查無候選地點")
+		}
+		first, _ := places[0].(map[string]any)
+		newLat, _ = first["lat"].(float64)
+		newLng, _ = first["lng"].(float64)
+	}
+
+	res, err := c.attractionUpdateCoords(*id, newLat, newLng)
+	if err != nil {
+		fatal("attraction-update: %v", err)
+	}
+	output(res)
 }
 
 // cmdAttractionUpdatePhoto 重新查詢一次地標圖片並回寫到資料庫——走
@@ -424,7 +515,7 @@ func usage() {
                帶 -entry 時直接寫回該筆 entry 的經緯度。
   notify       -trip ID [-api URL]
 
-  attraction-add    -name 文字 -city 文字 -lat 緯度 -lng 經度
+  attraction-add    -name 文字 -city 文字 (-lat 緯度 -lng 經度 | -place 文字 [-region 國碼])
                         -level 1~5 [-radius 公尺] [-summary 文字] [-photo-url 網址]
                         新增景點區域資料（地理輪廓底圖用，構想 6，見
                         docs/TRIP_PLANNING_DESIGN_DISCUSSION.md）。分級對照：
@@ -432,6 +523,8 @@ func usage() {
                         3=區域（如淡水、陽明山） 4=城市（如象山）
                         5=在地（如博愛特區、永康商圈、公館商圈）。走
                         POST /internal/maintenance/attractions，需要先登入；
+                        -lat/-lng 與 -place 二擇一，-place 會先查該地名座標
+                        （取第一筆候選）再建檔，不需要自己先查好經緯度；
                         -photo-url 未帶時，後端會自動查 Pexels 補一張示意圖
                         （查無結果不影響建檔）。
   attraction-list   -city 文字
@@ -440,6 +533,12 @@ func usage() {
                         列出目前已有景點區域資料的城市清單。
   attraction-delete -id 地標ID
                         刪除一筆景點區域資料。
+  attraction-update -id 地標ID [-lat 緯度 -lng 經度 | -place 文字 [-region 國碼]]
+                        修正一筆景點區域資料的座標（走 PATCH
+                        /internal/maintenance/attractions/{id}/coords，需要
+                        先登入）。-lat/-lng 與 -place 二擇一：明確帶 -lat/-lng
+                        時直接採用；帶 -place 則改查該地名的座標（取第一筆
+                        候選結果），不需要自己先查好經緯度。
   attraction-update-photo -id 地標ID [-query 文字] [-source google|pexels]
                         重新查詢一次圖片並回寫到資料庫（走
                         /internal/maintenance/landmarks/{id}/update-photo，

@@ -2,6 +2,24 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.4.3 — 2026-08-15
+
+### 新增
+
+- **CLI `attraction-update` 子命令**（`server/cmd/cli/main.go`/`http.go`）：修正建檔時輸入錯誤的景點座標，走新增的 `PATCH /internal/maintenance/attractions/{id}/coords` 端點（`server/internal/api/maintenance.go`、`store.UpdateAttractionCoords`）。支援 `-lat/-lng` 直接指定，或 `-place/-region` 改查該地名座標取第一筆候選結果，不需要自己先查好經緯度。
+- **地理輪廓底圖搜尋框改為多候選**：`GET /internal/geo/geocode`（`handleGeoGeocode`）改用 Places API (New) Text Search 取代原本的 Geocoding API，回應形狀從單一最佳匹配 `{query, address, lat, lng}` 改為候選陣列 `{query, candidates: [...]}`，最多回傳 20 筆（`geo.Client.Search` 的 `MaxResults` 官方硬性上限，原本受限於本專案自訂的 5 筆節流已一併拉高）。原因：Geocoding API 對城市/觀光區/商圈這類口語化地名常查無結果或答非所問，且沒有候選清單可退。前端（`GeoOutlineMap.tsx`/`GeoOutlinePanel.tsx`）新增候選 marker 圖層：地圖 `fitBounds` 到能同時看見所有候選的範圍，點擊任一個確認選定、其餘候選仍留在地圖上可隨時回頭改選，選定後開啟 `GeoInfoPanel` 顯示該候選的名稱/地址。此端點僅供自家前端/CLI 呼叫（`/internal/*` 命名空間、需 JWT 登入），呼叫端已在同一次異動中同步更新，不構成對外相容性影響。
+- **路徑編輯器試做**（`web/src/RouteEditor.tsx`/`.module.css`）：旅程分享/路徑編輯功能的雜誌式編輯介面試做，`contentEditable` 行內編輯（標題/段落/地點卡）、拖拉排序、圖片文繞圖。純前端假資料，不呼叫任何後端 API。透過 `DEMO_ROUTE_EDITOR_ENABLED` feature flag 控制（`DesktopShared.tsx`，環境變數 `VITE_FEATURE_DEMO_ROUTE_EDITOR`），預設關閉，桌面版限定入口收在 `DesktopRail.tsx` 分隔線之後、與其餘 demo-* 試做項目同組。
+
+### 修正
+
+- **新增行程後未自動選中**：`AppCommon.tsx` 的 `submitCreate` 建立行程成功後，明確標記 `hasAutoNavigatedRef` 避免緊接著的行程列表刷新觸發「自動導向 localStorage 預設行程」的既有 effect，把使用者剛選中的新行程蓋掉。
+- **新增行程按鈕溢出側欄邊框**：`.new-trip-composer input`（`styles.css`）補上 `min-width: 0`，修正 flex 子元素預設 `min-width: auto` 導致無法縮小、把固定寬度的「建立」按鈕擠出側欄邊界的問題。
+- **404 頁面風格與首頁不一致**：`NotFoundPage.tsx` 改用 `LegalPage.css` 既有的 `.legal-bloom` 京都和風視覺語言（暖紙底色、日夜間切換），取代原本沿用的舊版 `landing.css` 藍綠度假風格。
+
+### 其他
+
+- `web/index.html` 補上標準版 `mobile-web-app-capable` meta tag（`apple-mobile-web-app-capable` 前綴版本保留供 iOS Safari 相容），修正瀏覽器主控台的 deprecation 警告。
+
 ## v0.4.2 — 2026-08-14
 
 ### 清理

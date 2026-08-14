@@ -1,5 +1,5 @@
 import {
-  List, Sparkles, GalleryHorizontal, Layers, Radio, Activity, Route,
+  List, Sparkles, GalleryHorizontal, Layers, Radio, Activity, Route, BookOpen,
 } from 'lucide-react'
 import { Timeline } from 'lucide-react'
 import type { ClientConfig } from './api'
@@ -8,6 +8,7 @@ import { DesktopUserMenu } from './DesktopUserMenu'
 import {
   type PanelMode, GEO_OUTLINE_ENABLED, TIMELINE_ENABLED, PACE_ENABLED,
   DEMO_CARDS_ENABLED, DEMO_ROW_ENABLED, DEMO_ONAGENT_ENABLED, DEBUG_PANEL_ENABLED,
+  DEMO_ROUTE_EDITOR_ENABLED,
 } from './DesktopShared'
 
 // DesktopRail:桌面版最左側的導覽圖示列——從 DesktopLayout.tsx 抽出獨立
@@ -137,6 +138,15 @@ export function DesktopRail({
             title="API / WS 狀態面板"
           >
             <Activity size={20} strokeWidth={1.8} />
+          </button>
+        )}
+        {DEMO_ROUTE_EDITOR_ENABLED && (
+          <button
+            className={`desktop-rail-btn desktop-rail-btn-demo${panelMode === 'demo-route-editor' ? ' active' : ''}`}
+            onClick={() => onSelect('demo-route-editor')}
+            title="路徑編輯器(試做)"
+          >
+            <BookOpen size={20} strokeWidth={1.8} />
           </button>
         )}
       </div>

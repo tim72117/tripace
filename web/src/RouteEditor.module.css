@@ -1,0 +1,560 @@
+/* RouteEditor 的視覺語言沿用 HomePage.tsx/LegalPage.tsx 的京都和風配色
+   (--paper/--vermilion/--moss 等,見 HomePage.css .kyoto-bloom 開頭的
+   token 定義),但這裡不在 .kyoto-bloom 底下(那是行銷頁專用的 scope,
+   不該讓 app 內部功能頁面依賴它),故在這個 module 裡重新宣告同一組
+   token——沿用相同色票、獨立維護,理由同 LegalPage.css 對 .legal-bloom
+   的處理方式。深色模式跟隨系統(prefers-color-scheme),app 內部尚未有
+   使用者可手動切換主題的機制,故不像 HomePage/LegalPage 額外處理
+   data-theme 手動切換。 */
+.editor {
+  --paper: #F7F3EC;
+  --paper-dim: #EFE9DC;
+  --paper-card: #FDFCFA;
+  --ink: #2B2420;
+  --ink-soft: #5A5148;
+  --ink-faint: #9E9488;
+  --vermilion: #8B3A2F;
+  --vermilion-soft: #B85C4A;
+  --vermilion-wash: rgba(139, 58, 47, 0.08);
+  --moss: #5C6B57;
+  --moss-wash: rgba(92, 107, 87, 0.1);
+  --line: #C9BFA8;
+  --line-soft: #DED5C0;
+  --shadow-card: 0 18px 40px -20px rgba(43, 36, 32, 0.28);
+  --shadow-float: 0 10px 24px -10px rgba(43, 36, 32, 0.35);
+  --font-display: 'Shippori Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', serif;
+
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  .editor {
+    --paper: #211C18;
+    --paper-dim: #2A241F;
+    --paper-card: #2C2621;
+    --ink: #EDE6DA;
+    --ink-soft: #B8AD9D;
+    --ink-faint: #776E62;
+    --vermilion: #D08871;
+    --vermilion-soft: #E0A491;
+    --vermilion-wash: rgba(208, 136, 113, 0.14);
+    --moss: #93A28C;
+    --moss-wash: rgba(147, 162, 140, 0.14);
+    --line: #453D34;
+    --line-soft: #362F29;
+    --shadow-card: 0 18px 40px -20px rgba(0, 0, 0, 0.5);
+    --shadow-float: 0 10px 24px -10px rgba(0, 0, 0, 0.6);
+  }
+}
+
+/* ---------- 提示條:左側地圖尚未實作 ---------- */
+.mapPendingNotice {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 20px;
+  background: var(--vermilion-wash);
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--vermilion);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* ---------- 頂部工具列 ---------- */
+.topbar {
+  flex: 0 0 auto;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: var(--paper-card);
+  border-bottom: 1px solid var(--line-soft);
+}
+.topbarMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.topbarEyebrow {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.topbarStatus {
+  font-size: 12.5px;
+  color: var(--moss);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.topbarStatus .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--moss);
+}
+.topbarRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.btn {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--ink-soft); color: var(--ink); }
+.btnPrimary {
+  background: var(--vermilion);
+  border-color: var(--vermilion);
+  color: var(--paper-card);
+}
+.btnPrimary:hover { background: var(--vermilion-soft); border-color: var(--vermilion-soft); color: var(--paper-card); }
+
+/* ---------- 雜誌內容區 ---------- */
+.articlePane {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* articleInner:雜誌欄本身加寬到 880px(原本 640px 在寬螢幕主顯示區
+   看起來像貼著左邊的窄欄、右側大片留白——地點卡是雙欄版面本身已經
+   有結構撐開寬度,只有純段落文字需要控制行寬避免過長難讀,故改成
+   對純段落/引言文字另外設較窄的 max-width(見 .paragraph/.lede),
+   容器本身撐到更接近 .desktop-main 實際可用寬度)。 */
+.articleInner {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 0 48px 120px;
+}
+
+.cover {
+  position: relative;
+  margin: 0;
+  width: 100%;
+  height: 320px;
+  background:
+    linear-gradient(180deg, rgba(43,36,32,0) 40%, rgba(43,36,32,0.72) 100%),
+    linear-gradient(135deg, #C9A98A 0%, #A9765D 55%, #7C4A3A 100%);
+  display: flex;
+  align-items: flex-end;
+  cursor: pointer;
+  overflow: hidden;
+}
+.coverEditHint {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 14px;
+  background: rgba(43,36,32,0.4);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.cover:hover .coverEditHint { opacity: 1; }
+.coverCaption {
+  /* padding-inline 對齊 .articleInner 的 48px,讓封面標題跟下方正文
+     左緣切齊,理由同上方 .articleInner 加寬的說明。 */
+  padding: 28px 48px 26px;
+  color: #FBF6EC;
+  max-width: 880px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+.coverEyebrow {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 700;
+  opacity: 0.85;
+  margin-bottom: 8px;
+}
+.coverTitle {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-wrap: balance;
+  outline: none;
+  background: transparent;
+  border: none;
+  color: inherit;
+  width: 100%;
+  padding: 0;
+}
+.coverTitle:focus { text-decoration: underline dashed rgba(255,255,255,0.4); text-underline-offset: 6px; }
+
+.lede {
+  margin-top: 24px;
+  font-family: var(--font-display);
+  font-size: 17px;
+  line-height: 1.85;
+  color: var(--ink-soft);
+  outline: none;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin-left: -4px;
+  resize: none;
+  border: none;
+  background: transparent;
+  width: 100%;
+  display: block;
+  font-weight: 400;
+}
+.lede:focus { background: var(--vermilion-wash); }
+
+.paragraph {
+  font-size: 16px;
+  line-height: 1.95;
+  color: var(--ink);
+  padding: 3px 6px;
+  margin: 2px -6px;
+  border-radius: 4px;
+  outline: none;
+  border: none;
+  background: transparent;
+  width: 100%;
+  display: block;
+  resize: none;
+  font-family: inherit;
+}
+.paragraph:hover { background: var(--paper-dim); }
+.paragraph:focus { background: var(--vermilion-wash); }
+
+/* ---------- 插入區塊間隙 ---------- */
+.gap {
+  position: relative;
+  height: 30px;
+  display: flex;
+  align-items: center;
+}
+.gapLine {
+  position: absolute;
+  left: 0; right: 0; top: 50%;
+  height: 1px;
+  background: transparent;
+}
+.gap:hover .gapLine { background: var(--line-soft); }
+.insertBtn {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--paper-card);
+  border: 1.5px solid var(--line);
+  color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.85);
+  transition: all 0.15s;
+  z-index: 2;
+}
+.gap:hover .insertBtn,
+.insertBtn.menuOpen { opacity: 1; transform: scale(1); }
+.insertBtn:hover { border-color: var(--vermilion); color: var(--vermilion); background: var(--vermilion-wash); }
+
+.insertMenu {
+  position: absolute;
+  left: 34px;
+  top: -6px;
+  background: var(--paper-card);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  box-shadow: var(--shadow-float);
+  padding: 6px;
+  display: flex;
+  gap: 2px;
+  flex-direction: column;
+  min-width: 168px;
+  z-index: 10;
+}
+.insertMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  cursor: pointer;
+  background: none;
+  border: none;
+  text-align: left;
+  width: 100%;
+}
+.insertMenuItem:hover { background: var(--paper-dim); color: var(--ink); }
+.insertMenuItem:disabled { color: var(--ink-faint); cursor: not-allowed; }
+.insertMenuItem:disabled:hover { background: none; }
+.insertMenuIcon {
+  width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--vermilion);
+  flex: 0 0 auto;
+}
+.insertMenuItem:disabled .insertMenuIcon { color: var(--ink-faint); }
+
+/* ---------- 地點卡 ---------- */
+.placeCard {
+  display: grid;
+  grid-template-columns: 168px 1fr;
+  gap: 20px;
+  margin: 8px 0;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--paper-card);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-card);
+  position: relative;
+}
+.placeCard:hover { border-color: var(--line); }
+.placePhoto {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  height: 168px;
+  background-size: cover;
+  background-position: center;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+}
+.placePhotoOverlay {
+  position: absolute; inset: 0;
+  background: rgba(43,36,32,0.35);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11.5px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.15s;
+  text-align: center;
+  padding: 10px;
+  gap: 6px;
+  flex-direction: column;
+}
+.placePhoto:hover .placePhotoOverlay { opacity: 1; }
+.placePhotoEmpty {
+  background: var(--paper-dim);
+  border: 1.5px dashed var(--line);
+}
+.placePhotoEmpty .placePhotoOverlay { opacity: 1; background: transparent; color: var(--ink-faint); }
+
+.placeBody {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.placeHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.placeIndex {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--vermilion);
+  letter-spacing: 0.06em;
+  margin-bottom: 3px;
+}
+.placeIndex .num {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--vermilion);
+  color: var(--paper-card);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9.5px;
+}
+.placeName {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--ink);
+  outline: none;
+  border-radius: 4px;
+  padding: 1px 3px;
+  margin: -1px -3px;
+  border: none;
+  background: transparent;
+  width: 100%;
+}
+.placeName:hover { background: var(--paper-dim); }
+.placeName:focus { background: var(--vermilion-wash); }
+.placeSource {
+  font-size: 10.5px;
+  color: var(--moss);
+  background: var(--moss-wash);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.placeSourceCustom { color: var(--ink-faint); background: var(--paper-dim); }
+.placeDesc {
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--ink-soft);
+  padding: 3px;
+  margin: 0 -3px;
+  flex: 1;
+  outline: none;
+  border: none;
+  background: transparent;
+  width: 100%;
+  resize: none;
+  font-family: inherit;
+}
+.placeDesc:hover { background: var(--paper-dim); }
+.placeDesc:focus { background: var(--vermilion-wash); }
+.placeRemove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-faint);
+  background: var(--paper-card);
+  border: 1px solid var(--line-soft);
+  opacity: 0;
+  transition: opacity 0.15s;
+  cursor: pointer;
+}
+.placeCard:hover .placeRemove { opacity: 1; }
+.placeRemove:hover { color: var(--vermilion); border-color: var(--vermilion); }
+
+/* ---------- 圖片區塊 ---------- */
+.imageBlock {
+  margin: 8px 0;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: var(--shadow-card);
+  clear: both;
+}
+.imageFill {
+  display: block;
+  width: 100%;
+  height: 280px;
+}
+.imageCaption {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  padding: 30px 16px 12px;
+  background: linear-gradient(180deg, transparent, rgba(43,36,32,0.75));
+  color: #FBF6EC;
+  font-size: 12.5px;
+  outline: none;
+  border: none;
+  width: 100%;
+}
+
+.imageBlockFloatLeft,
+.imageBlockFloatRight {
+  width: 240px;
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+.imageBlockFloatLeft { float: left; margin-right: 20px; clear: left; }
+.imageBlockFloatRight { float: right; margin-left: 20px; clear: right; }
+.imageBlockFloatLeft .imageFill,
+.imageBlockFloatRight .imageFill { height: 180px; }
+.imageBlockFloatLeft .imageCaption,
+.imageBlockFloatRight .imageCaption { font-size: 11px; padding: 20px 10px 8px; }
+
+.imageToolbar {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 8px;
+  background: rgba(43,36,32,0.55);
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 3;
+}
+.imageBlock:hover .imageToolbar { opacity: 1; }
+.imageToolbarBtn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(255,255,255,0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.imageToolbarBtn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+.imageToolbarBtnActive { background: var(--vermilion); color: #fff; }
+
+.imageRemove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.75);
+  background: rgba(43,36,32,0.55);
+  opacity: 0;
+  transition: opacity 0.15s;
+  cursor: pointer;
+  z-index: 3;
+  border: none;
+}
+.imageBlock:hover .imageRemove { opacity: 1; }
+.imageRemove:hover { background: var(--vermilion); color: #fff; }
+
+.clearfix { clear: both; }
+
+.endNote {
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 12px;
+  color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

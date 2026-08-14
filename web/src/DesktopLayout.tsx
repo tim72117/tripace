@@ -15,9 +15,10 @@ import { GeoCandidateSidebar, type GeoCandidate, createEntryFromCandidate } from
 import { AddFromCandidateSidebar, dayGroupLabel } from './geo-planning/AddFromCandidateSidebar'
 import { GeoOutlinePanel } from './geo-planning/GeoOutlinePanel'
 import { placesQueryRadiusMeters } from './geo-planning/geoAttractionClick'
-import type { GeoAttraction, GeoHotel, GeoPlace, GeoPlaceDetails } from './api'
+import type { GeoAttraction, GeoGeocodeCandidate, GeoHotel, GeoPlace, GeoPlaceDetails } from './api'
 import { type ContentProps } from './AppCommon'
 import { type PanelMode, isPanelMode, DemoPanelContent, DEBUG_PANEL_ENABLED } from './DesktopShared'
+import { RouteEditor } from './RouteEditor'
 import { DesktopRail } from './DesktopRail'
 import { DesktopTripList } from './DesktopTripList'
 import { SettingsDialog } from './SettingsDialog'
@@ -98,6 +99,27 @@ function poiInfoContent(details: GeoPlaceDetails): GeoInfoContent {
       lng: details.lng,
       primaryType: '',
       photoUrl: details.photoUrl,
+    },
+  }
+}
+
+// geocodeCandidateInfoContent:點擊地圖上的搜尋候選 marker(見
+// GeoOutlineMap.tsx 的 geocodeCandidates/onGeocodeCandidateSelect)開
+// 資訊欄——GeoGeocodeCandidate 跟 GeoPlaceDetails 一樣沒有 primaryType/
+// summary/rating,補法同 poiInfoContent 的既有慣例(primaryType 補空
+// 字串,badges 固定空陣列)。
+function geocodeCandidateInfoContent(c: GeoGeocodeCandidate): GeoInfoContent {
+  return {
+    name: c.name,
+    subtitle: c.address,
+    badges: [],
+    candidate: {
+      kind: 'place',
+      name: c.name,
+      address: c.address,
+      lat: c.lat,
+      lng: c.lng,
+      primaryType: '',
     },
   }
 }
@@ -741,6 +763,17 @@ export function DesktopContent(props: ContentProps) {
                 setGeoAttractionContent(null)
                 setGeoInfoContent(poiInfoContent(details))
               }}
+              onGeocodeCandidateSelect={(c) => {
+                // 點擊搜尋候選 marker——理由同 onPlaceSelect 等既有選取
+                // 來源,開 GeoInfoPanel 顯示這個候選的名稱/地址。不設
+                // geoSelectedKey(候選 marker 的選取樣式由 GeoOutlinePanel
+                // 自己的 selectedGeocodeCandidateKey 獨立管理,見該元件
+                // 的說明,不共用 geoSelectedKey 這套機制——候選圖層是
+                // 暫時的搜尋結果,跟飯店/景點/推薦地點這些「常駐可選取」
+                // 的圖層性質不同)。
+                setGeoAttractionContent(null)
+                setGeoInfoContent(geocodeCandidateInfoContent(c))
+              }}
               selectedKey={geoSelectedKey}
               candidateKeys={geoCandidateKeys}
               hoverKey={geoHoverKey}
@@ -763,6 +796,11 @@ export function DesktopContent(props: ContentProps) {
               shiftLeft={geoHotelSidebarVisible}
             />
             </>
+          ) : panelMode === 'demo-route-editor' ? (
+            // demo-route-editor 不透過 DemoPanelContent(見該常數在
+            // DesktopShared.tsx 的說明——只做桌面版,手機版 PhoneNavDrawer
+            // 不提供對應分頁),直接在這裡渲染。
+            <RouteEditor />
           ) : panelMode === 'demo-cards' || panelMode === 'demo-row'
             || panelMode === 'demo-onagent' ? (
             <DemoPanelContent mode={panelMode} />

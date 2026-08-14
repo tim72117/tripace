@@ -224,16 +224,30 @@ func toAttractionResponses(in []geo.District) []attractionResponse {
 
 // GET /internal/geo/geocode?query={地名/城市名}
 //
-// 供地理輪廓底圖的城市搜尋框使用:只把輸入字串解析成一組座標,不查詢
-// 景點區域/飯店資料——「搜尋只負責定位,把地圖移過去」,之後畫面上
-// 該顯示什麼資料,一律交給 handleGeoAttractionsNearby 依地圖當時的可視
-// 範圍(bounds)另外查詢,兩個關注點刻意分開,不像 handleGeoAttractions
-// 那樣把「找座標」與「查資料」耦合在同一支端點裡。
+// 供地理輪廓底圖的城市搜尋框使用:把輸入字串解析成一組候選地點清單
+// (含座標),不查詢景點區域/飯店資料——「搜尋只負責定位,把地圖移
+// 過去」,之後畫面上該顯示什麼資料,一律交給 handleGeoAttractionsNearby
+// 依地圖當時的可視範圍(bounds)另外查詢,兩個關注點刻意分開,不像
+// handleGeoAttractions 那樣把「找座標」與「查資料」耦合在同一支端點裡。
 //
-// 用 geo.Client.Geocode(傳統 Geocoding API)而非 Places API 文字搜尋:
-// 只需要「這個地名大概在哪」這組座標,不需要 Places 額外回傳的分類/
-// 評分/照片等資料,Geocoding API 對純地名/城市名查詢既快又不計入
-// Places 配額,理由同 entry_geocode.go 的 handleGeocodeEntry。
+// 改用 geo.Client.Search(Places API (New) Text Search)而非
+// geo.Client.Geocode(傳統 Geocoding API):Geocoding API 只回傳單一
+// 「最佳匹配」,對城市/觀光區/商圈這類口語化地名(不是門牌地址)常常
+// 直接查無結果或答非所問,且沒有候選清單可退——這是實際回報過的體驗
+// 問題(規劃分頁很容易找不到地點)。Places Text Search 偏向地標/商家/
+// 觀光區查詢,且能回傳多筆候選(見下方 maxGeoGeocodeCandidates),讓
+// 使用者自己從地圖上標出來的候選點裡挑對的那一個,不用完全依賴系統
+// 猜中「使用者說的到底是哪個地方」。entry_geocode.go 的
+// handleGeocodeEntry 是另一支獨立端點,查詢情境是「橋樑/道路」這類
+// Places Text Search 支援較弱的地理要素,不受這次變更影響,仍沿用
+// Geocoding API(見該檔案的說明)。
+//
+// maxGeoGeocodeCandidates:對齊 geo.Client.Search 的官方硬性上限(見該
+// 函式的說明)——不是額外的節流,單純把後端請求到的候選筆數上限跟
+// Google 這支 API 本身能給到的上限拉齊,讓使用者能看到 Text Search
+// 排序前 20 名的完整候選清單。
+const maxGeoGeocodeCandidates = 20
+
 func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("query")
 	if query == "" {
@@ -249,7 +263,7 @@ func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
 	ctx = geo.WithCaller(ctx, "handleGeoGeocode")
 	ctx = geo.WithPath(ctx, r.URL.Path)
 
-	result, err := client.Geocode(ctx, query)
+	places, err := client.Search(ctx, query, &geo.SearchOptions{MaxResults: maxGeoGeocodeCandidates})
 	if err != nil {
 		if err == geo.ErrNotFound {
 			writeErr(w, http.StatusNotFound, "no_match", "查無「"+query+"」相關地點")
@@ -258,12 +272,23 @@ func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, "geocode_failed", err.Error())
 		return
 	}
+	if len(places) == 0 {
+		writeErr(w, http.StatusNotFound, "no_match", "查無「"+query+"」相關地點")
+		return
+	}
 
+	candidates := make([]map[string]any, len(places))
+	for i, p := range places {
+		candidates[i] = map[string]any{
+			"name":    p.Name,
+			"address": p.Address,
+			"lat":     p.Lat,
+			"lng":     p.Lng,
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"query":   query,
-		"address": result.FormattedAddress,
-		"lat":     result.Lat,
-		"lng":     result.Lng,
+		"query":      query,
+		"candidates": candidates,
 	})
 }
 
