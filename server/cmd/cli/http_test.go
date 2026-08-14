@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/tim72117/tripace/internal/tripsvc"
@@ -52,32 +53,60 @@ func newFakeServer(t *testing.T) (*httptest.Server, *capturedReq) {
 
 // withToken 讓 loadToken() 讀得到一把假 token。
 //
-// tokenPath() 走 os.UserConfigDir(),那是讀環境變數決定的(Windows 讀 AppData、
-// 其餘平台讀 XDG_CONFIG_HOME,沒設才 fallback 到 ~/.config),所以用 t.Setenv
-// 把它導到測試專屬的暫存目錄即可,不需要為了測試在 production code 開一個
-// 可注入的路徑參數。t.Setenv 會在測試結束時自動還原。
+// tokenPath() 走 os.UserConfigDir(),這個函式依平台分三種情況(見該函式
+// 的 doc):Windows 讀 %AppData%;Darwin 固定回傳 $HOME/Library/Application
+// Support,完全不讀任何環境變數;其餘 Unix 系統才讀 XDG_CONFIG_HOME
+// (沒設才 fallback 到 ~/.config)。曾經誤以為「非 Windows 就是讀
+// XDG_CONFIG_HOME」,導致這個 helper 在 Darwin 上設的環境變數完全沒有
+// 效果、實際寫到了開發者本機真實的 ~/Library/Application Support/
+// tripace/(而非測試暫存目錄)——這是一次實際發生過的事故:跑測試時
+// 覆蓋掉了開發者已經登入過的真實 token,見 sync_token_test.go 開頭
+// withSyncTokenDir 的同款修正。改用 setUserConfigDirEnv 統一依平台設定
+// 正確的環境變數。
 func withToken(t *testing.T, token string) {
 	t.Helper()
 	dir := t.TempDir()
-	if runtime.GOOS == "windows" {
-		t.Setenv("AppData", dir)
-	} else {
-		t.Setenv("XDG_CONFIG_HOME", dir)
-	}
-	if err := os.MkdirAll(filepath.Join(dir, "tripace"), 0700); err != nil {
-		t.Fatalf("建立 token 目錄: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "tripace", "token"), []byte(token), 0600); err != nil {
-		t.Fatalf("寫入 token: %v", err)
-	}
-	// 確認上面的環境變數操作真的生效——否則後續斷言會在「其實讀到了開發者本機
-	// 真實 token」的情況下通過,測試就失去意義。
+	setUserConfigDirEnv(t, dir)
+	// 不假設 tripace 設定目錄跟 dir 的相對關係(平台不同、關係也不同——
+	// 例如 Darwin 上設 HOME=dir 之後,實際的設定目錄是
+	// dir/Library/Application Support/tripace,不是 dir/tripace)。改成
+	// 直接呼叫 tokenPath() 拿到 os.UserConfigDir() 實際解析出的路徑,
+	// 這樣不管哪個平台、哪種環境變數對應關係,都一定寫到真正會被
+	// loadToken() 讀到的位置,也不需要重複一份「這個平台的路徑長怎樣」
+	// 的假設。
 	path, err := tokenPath()
 	if err != nil {
 		t.Fatalf("tokenPath: %v", err)
 	}
-	if want := filepath.Join(dir, "tripace", "token"); path != want {
-		t.Fatalf("tokenPath 指向 %q，預期 %q（環境變數沒有生效）", path, want)
+	// 確認 path 真的落在這次測試專屬的暫存目錄底下,而不是不小心又解析回
+	// 開發者本機真實的設定目錄——這正是本檔案開頭註解提到的那次事故的
+	// 防呆:任何一次環境變數對應關係設錯,都會在這裡直接 fail,而不是
+	// 悄悄寫到真實路徑後才被發現。
+	if !strings.HasPrefix(path, dir) {
+		t.Fatalf("tokenPath 指向 %q，不在這次測試的暫存目錄 %q 底下（環境變數沒有生效）", path, dir)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatalf("建立 token 目錄: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(token), 0600); err != nil {
+		t.Fatalf("寫入 token: %v", err)
+	}
+}
+
+// setUserConfigDirEnv 把 os.UserConfigDir() 導到 dir——依平台設定它實際
+// 會讀的環境變數(見上方 withToken 的說明),而不是想當然爾地只處理
+// Windows/其餘兩種情況。同時被 withToken(本檔案)與 withSyncTokenDir
+// (sync_token_test.go)使用,只在這裡維護一份「各平台該設哪個環境變數」
+// 的知識,不重複兩份、容易顧此失彼。
+func setUserConfigDirEnv(t *testing.T, dir string) {
+	t.Helper()
+	switch runtime.GOOS {
+	case "windows":
+		t.Setenv("AppData", dir)
+	case "darwin":
+		t.Setenv("HOME", dir)
+	default:
+		t.Setenv("XDG_CONFIG_HOME", dir)
 	}
 }
 

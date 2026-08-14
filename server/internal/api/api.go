@@ -238,6 +238,25 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("GET /internal/maintenance/attractions/cities", s.handleMaintenanceAttractionCities)
 	internalMux.HandleFunc("DELETE /internal/maintenance/attractions/{id}", s.handleMaintenanceAttractionDelete)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/coords", s.handleMaintenanceAttractionUpdateCoords)
+	// 景點資料同步機制新增的端點(見 attraction_sync.go、
+	// docs/ATTRACTION_SYNC_DESIGN.md)——專門服務
+	// server/internal/attractionsync 套件的三層比對 + 交握式傳輸,不是
+	// 給前端或一般維運操作用,獨立命名空間 /internal/maintenance/sync/*
+	// 跟上面的 /internal/maintenance/attractions* 區分開來。
+	internalMux.HandleFunc("GET /internal/maintenance/sync/attractions/schema", s.handleMaintenanceAttractionSchema)
+	internalMux.HandleFunc("GET /internal/maintenance/sync/server-time", s.handleMaintenanceServerTime)
+	internalMux.HandleFunc("GET /internal/maintenance/sync/attractions/freshness", s.handleMaintenanceAttractionFreshness)
+	internalMux.HandleFunc("GET /internal/maintenance/sync/attractions/list", s.handleMaintenanceAttractionSyncList)
+	internalMux.HandleFunc("GET /internal/maintenance/sync/attractions/{id}", s.handleMaintenanceAttractionSyncGet)
+	internalMux.HandleFunc("POST /internal/maintenance/sync/attractions/compare", s.handleMaintenanceAttractionSyncCompare)
+	internalMux.HandleFunc("POST /internal/maintenance/sync/attractions/write", s.handleMaintenanceAttractionSyncWrite)
+	internalMux.HandleFunc("POST /internal/maintenance/sync/attractions/update", s.handleMaintenanceAttractionSyncUpdate)
+	internalMux.HandleFunc("POST /internal/maintenance/sync/attractions/delete", s.handleMaintenanceAttractionSyncDelete)
+	// setup/run 是「本機」角色專用:CLI 觸發後,由本機 server 主動發起
+	// HTTP 請求去跟同步對象(target)對話(見 attraction_sync.go 開頭的
+	// 角色說明),跟上面那批「被動接收方」端點分開列出。
+	internalMux.HandleFunc("POST /internal/maintenance/sync/setup", s.handleMaintenanceSyncSetup)
+	internalMux.HandleFunc("POST /internal/maintenance/sync/attractions/run", s.handleMaintenanceSyncRun)
 
 	mux.Handle("/internal/", internalAuth(s.signer, internalMux))
 

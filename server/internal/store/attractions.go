@@ -52,6 +52,72 @@ func (s *Store) CreateAttraction(in model.Attraction) (model.Attraction, error) 
 	return toAttraction(r), nil
 }
 
+// CreateAttractionWithID 建立一筆景點區域資料,但沿用呼叫端指定的 ID,
+// 不像 CreateAttraction 自動產生新 ID——專供景點資料同步機制(見
+// server/internal/attractionsync、docs/ATTRACTION_SYNC_DESIGN.md)的
+// push/pull 寫入使用:同步的本質是「讓目的方的某筆記錄跟來源方的那筆
+// 記錄一致」,若目的方另外產生一個新 ID,下一輪同步比對 ID 時會誤判成
+// 兩筆互不相干的記錄,導致同一筆資料被無限重複新增。一般人工建檔
+// (CreateAttraction/attraction-add)不會遇到「這筆資料在別的伺服器已經
+// 有固定 ID」的情境,故維持原本自動產生 ID 的行為不變,兩者分開提供。
+func (s *Store) CreateAttractionWithID(in model.Attraction) (model.Attraction, error) {
+	r := attractionRow{
+		ID:           in.ID,
+		Name:         in.Name,
+		CityName:     in.CityName,
+		Lat:          in.Lat,
+		Lng:          in.Lng,
+		Level:        in.Level,
+		RadiusMeters: in.RadiusMeters,
+		Summary:      in.Summary,
+		PhotoURL:     in.PhotoURL,
+		CreatedAt:    now(),
+		UpdatedAt:    now(),
+	}
+	if err := s.db.Create(&r).Error; err != nil {
+		return model.Attraction{}, err
+	}
+	return toAttraction(r), nil
+}
+
+// UpdateAttractionFields 用來源方版本覆蓋目的方既有記錄的全部 8 個比對
+// 欄位(見 attractionsync.CompareFields 的欄位清單)——同步機制的「兩邊
+// 都有、內容不同」情境用來源方版本覆蓋目的方,不是欄位級局部更新,
+// 因此一次覆蓋全部比對欄位,不像 UpdateAttractionPhoto 只動單一欄位。
+func (s *Store) UpdateAttractionFields(in model.Attraction) error {
+	return s.db.Model(&attractionRow{}).
+		Where("id = ?", in.ID).
+		Updates(map[string]any{
+			"name":          in.Name,
+			"city_name":     in.CityName,
+			"lat":           in.Lat,
+			"lng":           in.Lng,
+			"level":         in.Level,
+			"radius_meters": in.RadiusMeters,
+			"summary":       in.Summary,
+			"photo_url":     in.PhotoURL,
+			"updated_at":    now(),
+		}).Error
+}
+
+// ListAllAttractions 回傳資料庫裡全部的景點區域資料,不分城市——供
+// attractionsync(見 server/internal/attractionsync)的三層比對使用,
+// 同步需要看到跨城市的完整資料集,不像 ListAttractionsByCity 是給地圖
+// 依可視範圍查詢用的。依 UpdatedAt 由舊到新排序,對齊三層比對/交握式
+// 傳輸「依時間序」的既有慣例(見 docs/ATTRACTION_SYNC_DESIGN.md「二、
+// 傳輸流程」),呼叫端不需要自己再排一次序。
+func (s *Store) ListAllAttractions() ([]model.Attraction, error) {
+	var rows []attractionRow
+	if err := s.db.Order("updated_at ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]model.Attraction, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, toAttraction(r))
+	}
+	return out, nil
+}
+
 // ListAttractionsByCity 回傳指定城市的所有景點區域資料,依 Level 由小到大
 // (國際→在地)、同 Level 內依建立時間排序——這個順序讓 CLI 列表輸出
 // 時,知名度越高的景點區域排越前面,方便人工核對資料是否齊全。

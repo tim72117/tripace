@@ -74,6 +74,18 @@ func (f *fakeClient) reset(tripID string) error {
 	return nil
 }
 
+// attractionSyncSetup/attractionSync 的最小實作,單純讓 fakeClient 滿足
+// client 介面——實際斷言這兩個方法收到的參數,由
+// attraction_sync_test.go 的 fakeSyncClient(內嵌 fakeClient 並覆寫這兩個
+// 方法)負責,這裡不需要記錄任何東西。
+func (f *fakeClient) attractionSyncSetup(target string) (any, error) {
+	return f.result, nil
+}
+
+func (f *fakeClient) attractionSync(direction string, allowDelete, apply, retry bool) (any, error) {
+	return f.result, nil
+}
+
 // captureOutput 攔截 output() 印到 stdout 的 JSON,解析成 map 回傳。
 // output() 直接用 fmt.Println 寫 os.Stdout,沒有可注入的 writer,所以這裡
 // 暫時把 os.Stdout 換成 pipe。

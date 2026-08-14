@@ -56,6 +56,13 @@ type client interface {
 	updateEntry(in tripsvc.UpdateEntryInput) error
 	deleteEntry(entryID string) error
 	reset(tripID string) error
+	// attractionSyncSetup/attractionSync 見 attraction_sync.go——兩者刻意
+	// 不像其餘方法那樣打 c.base(這個 httpClient 實例自己代表的伺服器),
+	// 而是打 sync-token 記錄的 target 網址(見 docs/ATTRACTION_SYNC_DESIGN.md
+	// 「四、認證」),因為同步的對象是另一台伺服器,不是這個 CLI 當下
+	// -api 指向的那一台。
+	attractionSyncSetup(target string) (any, error)
+	attractionSync(direction string, allowDelete, apply, retry bool) (any, error)
 }
 
 func main() {
@@ -122,6 +129,10 @@ func main() {
 		cmdAttractionUpdate(c, args)
 	case "attraction-update-photo":
 		cmdAttractionUpdatePhoto(apiURL, args)
+	case "attraction-sync-setup":
+		cmdAttractionSyncSetup(c, args)
+	case "attraction-sync":
+		cmdAttractionSync(c, args)
 	case "-h", "--help", "help":
 		usage()
 	default:
