@@ -238,6 +238,7 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("GET /internal/maintenance/attractions/cities", s.handleMaintenanceAttractionCities)
 	internalMux.HandleFunc("DELETE /internal/maintenance/attractions/{id}", s.handleMaintenanceAttractionDelete)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/coords", s.handleMaintenanceAttractionUpdateCoords)
+	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/name", s.handleMaintenanceAttractionUpdateName)
 	// 景點資料同步機制新增的端點(見 attraction_sync.go、
 	// docs/ATTRACTION_SYNC_DESIGN.md)——專門服務
 	// server/internal/attractionsync 套件的三層比對 + 交握式傳輸,不是

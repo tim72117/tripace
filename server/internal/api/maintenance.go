@@ -360,3 +360,32 @@ func (s *Server) handleMaintenanceAttractionUpdateCoords(w http.ResponseWriter, 
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "lat": in.Lat, "lng": in.Lng})
 }
+
+// PATCH /internal/maintenance/attractions/{id}/name
+// Body: {"name": "新名稱"}
+//
+// 供 tripace-cli 的 attraction-update 指令修正建檔時輸入錯誤/需要調整的
+// 名稱(見 store.UpdateAttractionName)。同 handleMaintenanceAttractionUpdateCoords
+// 只改單一欄位的理由,不是通用的景點區域編輯端點。
+func (s *Server) handleMaintenanceAttractionUpdateName(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少地標 ID")
+		return
+	}
+	var in struct {
+		Name string `json:"name"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.Name == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 name")
+		return
+	}
+	if err := s.store.UpdateAttractionName(id, in.Name); err != nil {
+		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "name": in.Name})
+}

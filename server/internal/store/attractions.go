@@ -215,3 +215,13 @@ func (s *Store) UpdateAttractionCoords(id string, lat, lng float64) error {
 		Where("id = ?", id).
 		Updates(map[string]any{"lat": lat, "lng": lng, "updated_at": now()}).Error
 }
+
+// UpdateAttractionName 更新一筆景點區域的名稱。只更新 name/updated_at
+// 兩欄,不動其餘欄位——同 UpdateAttractionCoords 的理由,專門服務 CLI 的
+// attraction-update 指令修正建檔時輸入錯誤/需要調整的名稱,不重新查詢
+// 外部服務。
+func (s *Store) UpdateAttractionName(id, name string) error {
+	return s.db.Model(&attractionRow{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"name": name, "updated_at": now()}).Error
+}
