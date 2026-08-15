@@ -1,0 +1,24 @@
+/* JiufenMap — 視覺語言對齊 JiufenPage.css 的卡片(圓角、陰影),色票數值
+   由 MINIMAL_MAP_STYLE(JiufenMap.tsx)直接對齊 --paper/--line 系列,兩處
+   數值需保持一致(CSS 變數在這裡讀不到,Google Maps styles 只能寫死色碼)。 */
+.jiufen-map {
+  width: 100%;
+  height: 360px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+}
+
+.jiufen-map-error {
+  width: 100%;
+  height: 360px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper-dim);
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 1rem;
+}

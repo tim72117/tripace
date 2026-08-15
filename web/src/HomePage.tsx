@@ -702,10 +702,20 @@ export function HomePage() {
           「聯絡我們」跟其他頁面一樣先用佔位連結。 */}
       <footer className="kyoto-footer">
         <span className="kyoto-footer-brand">Tripace · 行程規劃</span>
+        <div className="kyoto-footer-sitemap">
+          <div className="kyoto-footer-sitemap-col">
+            <span className="kyoto-footer-sitemap-title">產品功能</span>
+            <a href="/product">產品介紹</a>
+            <a href="/app">開始使用</a>
+          </div>
+          <div className="kyoto-footer-sitemap-col">
+            <span className="kyoto-footer-sitemap-title">更多景點</span>
+            <a href="/jiufen">台灣・九份</a>
+          </div>
+        </div>
         <div className="kyoto-footer-bar">
           <span className="kyoto-footer-copyright">Copyright © 2026 Tripace</span>
           <nav className="kyoto-footer-links">
-            <a href="/product">產品功能</a>
             <a href="/privacy">隱私權政策</a>
             <a href="/terms">服務條款</a>
             <a href="#">聯絡我們</a>

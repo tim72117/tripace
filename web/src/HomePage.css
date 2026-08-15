@@ -453,12 +453,28 @@
 }
 .kyoto-bloom .kyoto-footer-brand { font-size: 15px; font-weight: 600; color: var(--ink); }
 
-/* kyoto-footer-bar:左邊版權宣告、右邊連結列,窄螢幕下換行堆疊——撐滿
-   .kyoto-footer 的寬度,故用 align-self 覆蓋外層 .kyoto-footer 的
-   align-items: center(同 landing.css 的 .landing-footer-bar)。 */
+/* kyoto-footer-sitemap:仿常見網站頁尾的多欄式網站地圖(見 Atlassian 官網
+   footer),放在品牌名下方——不加分隔線,靠間距跟上方品牌名、下方
+   kyoto-footer-bar 區隔,避免同一個 footer 裡線條太多。窄螢幕下兩欄並排,
+   避免堆成單欄過長。 */
+.kyoto-bloom .kyoto-footer-sitemap {
+  align-self: stretch; display: flex; gap: 48px; justify-content: center;
+  flex-wrap: wrap; margin-top: 48px; text-align: left;
+}
+.kyoto-bloom .kyoto-footer-sitemap-col { display: flex; flex-direction: column; gap: 10px; min-width: 120px; }
+.kyoto-bloom .kyoto-footer-sitemap-title {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--ink); text-transform: uppercase; margin-bottom: 2px;
+}
+.kyoto-bloom .kyoto-footer-sitemap-col a { color: var(--ink-soft); text-decoration: none; font-size: 13.5px; }
+.kyoto-bloom .kyoto-footer-sitemap-col a:hover { color: var(--vermilion); text-decoration: underline; }
+
+/* kyoto-footer-bar:左邊版權宣告、右邊連結列,窄螢幕下換行堆疊——寬度收在
+   跟 .journey 一致的內容欄寬(1180px)內、置中,不貼齊 .kyoto-footer 的
+   全寬邊緣(先前 align-self: stretch 會讓連結列頂到畫面最邊邊,在寬螢幕
+   上跟其他區塊的內容寬度不一致)。 */
 .kyoto-bloom .kyoto-footer-bar {
-  align-self: stretch; margin-top: 14px; padding-top: 14px;
-  border-top: 1px solid var(--line);
+  width: 100%; max-width: 1180px; margin: 48px auto 0;
   display: flex; align-items: center; justify-content: space-between;
   flex-wrap: wrap; gap: 10px 24px; font-size: 13px;
 }

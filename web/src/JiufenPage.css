@@ -1,0 +1,448 @@
+/* JiufenPage — 對齊 HomePage/ProductPage 的「紙感和風」視覺語言,色票數值
+   直接照抄,不重新配色。 */
+
+@font-face {
+  font-family: 'ShipporiSerif';
+  src: local('Hiragino Mincho ProN'), local('Yu Mincho'), local('Noto Serif JP');
+  font-weight: 400 700;
+}
+
+.jiufen-page {
+  --paper: #F7F3EC;
+  --paper-dim: #EFE9DC;
+  --ink: #2B2420;
+  --ink-soft: #5A5148;
+  --vermilion: #8B3A2F;
+  --vermilion-soft: #B85C4A;
+  --moss: #5C6B57;
+  --line: #C9BFA8;
+  --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
+  line-height: 1.7;
+}
+
+@media (prefers-color-scheme: dark) {
+  .jiufen-page:not([data-theme="light"]) {
+    --paper: #1C1815;
+    --paper-dim: #14110F;
+    --ink: #EDE6D8;
+    --ink-soft: #B8AD9C;
+    --vermilion: #D97A63;
+    --vermilion-soft: #E89A85;
+    --moss: #8FA089;
+    --line: #443C34;
+    --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+  }
+}
+
+.jiufen-page[data-theme="dark"] {
+  --paper: #1C1815;
+  --paper-dim: #14110F;
+  --ink: #EDE6D8;
+  --ink-soft: #B8AD9C;
+  --vermilion: #D97A63;
+  --vermilion-soft: #E89A85;
+  --moss: #8FA089;
+  --line: #443C34;
+  --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+}
+
+.jiufen-page[data-theme="light"] {
+  --paper: #F7F3EC;
+  --paper-dim: #EFE9DC;
+  --ink: #2B2420;
+  --ink-soft: #5A5148;
+  --vermilion: #8B3A2F;
+  --vermilion-soft: #B85C4A;
+  --moss: #5C6B57;
+  --line: #C9BFA8;
+  --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+}
+
+.jiufen-page * {
+  box-sizing: border-box;
+}
+
+.jiufen-page h1,
+.jiufen-page h2,
+.jiufen-page h3 {
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.jiufen-page a {
+  color: inherit;
+}
+
+/* 品牌標記/日夜間切換/CTA — 對齊 HomePage.css 的浮動角落式樣式,取代原本
+   sticky 橫向 nav bar。三者皆 fixed 定位、不隨頁面捲動。 */
+.jiufen-page .jiufen-brand-mark {
+  position: fixed; left: 16px; top: 16px; z-index: 10;
+  padding: 8px 4px;
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+  color: var(--ink); text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+.jiufen-page .jiufen-brand-mark:hover { opacity: 0.75; }
+
+.jiufen-theme-toggle {
+  position: fixed; right: 16px; top: 16px; z-index: 10;
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; border: 1px solid var(--line);
+  background: var(--paper); color: var(--ink);
+  cursor: pointer; box-shadow: var(--card-shadow);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.jiufen-theme-toggle:hover { background: var(--paper-dim); }
+
+.jiufen-page .jiufen-app-cta {
+  position: fixed; right: 62px; top: 16px; z-index: 10;
+  display: flex; align-items: center;
+  height: 36px; padding: 0 18px;
+  border-radius: 999px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+  background: transparent; color: var(--ink); border: 1px solid var(--line);
+  text-decoration: none;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.jiufen-page .jiufen-app-cta:hover { border-color: var(--vermilion-soft); color: var(--vermilion); }
+@media (max-width: 900px) {
+  .jiufen-page .jiufen-app-cta { right: 62px; padding: 0 14px; font-size: 12px; }
+}
+
+/* Hero */
+.jiufen-hero {
+  position: relative;
+  max-width: 760px;
+  min-height: 70vh;
+  margin: 0 auto;
+  padding: 5rem 1.5rem 4rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
+
+.jiufen-hero-scroll-hint {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  color: var(--ink-soft);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.75;
+}
+.jiufen-hero-scroll-hint .bar {
+  width: 1px;
+  height: 42px;
+  background: linear-gradient(var(--ink-soft), transparent);
+  animation: jiufen-pulse-bar 2.2s ease-in-out infinite;
+}
+@keyframes jiufen-pulse-bar { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+.jiufen-hero-eyebrow {
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--vermilion);
+  letter-spacing: 0.08em;
+  margin-bottom: 1rem;
+}
+
+.jiufen-hero h1 {
+  font-size: clamp(2rem, 5vw, 2.75rem);
+  line-height: 1.4;
+  margin: 0 0 1.25rem;
+}
+
+.jiufen-hero p {
+  font-size: 1.05rem;
+  color: var(--ink-soft);
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+/* jiufen-overview-map — 地點總覽圖的排版容器,寬度對齊 .jiufen-stop-
+   inner--side 的 1000px 欄寬,留白節奏跟其餘區塊一致。--compare 修飾符是
+   兩種地圖版本並排試做比較用的暫時性佈局(見 JiufenPage.tsx 說明),決定
+   取捨後應收斂回單一版本、拿掉這個修飾符。 */
+.jiufen-overview-map {
+  max-width: 1000px;
+  margin: 0 auto 3rem;
+  padding: 0 1.5rem;
+}
+.jiufen-overview-map--compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+.jiufen-overview-map-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.jiufen-overview-map-label {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  text-align: center;
+}
+@media (max-width: 720px) {
+  .jiufen-overview-map--compare {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Stops — 整頁式捲動敘事:每站佔一個視窗高度、捲入視窗時文字淡入,保留
+   「跟著往下走」的節奏感,但照片維持有限尺寸的卡片(不做滿版背景鋪
+   照片)——文字放在照片下方,不疊加在照片上,故不需要暗角遮罩。不畫路徑
+   地圖/游標,不做 HomePage.tsx 那種 bloom 照片展開動畫。 */
+.jiufen-stops {
+  position: relative;
+}
+
+.jiufen-stop {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1.5rem;
+}
+
+/* jiufen-stop-inner — 兩種版面,依各站照片方向擇一(見 STOPS 的 layout
+   欄位說明):
+   --stacked(預設,橫式照片用):圖在上、文字在下,垂直堆疊、置中對齊。
+   --side(直式照片用):左欄照片、右欄文字並排,避免直式照片把整段版面
+   撐得過高。 */
+.jiufen-stop-inner {
+  width: 100%;
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.jiufen-stop.is-active .jiufen-stop-inner {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.jiufen-stop-inner--stacked {
+  max-width: 640px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.jiufen-stop-inner--side {
+  max-width: 1000px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2.5rem;
+  align-items: center;
+  text-align: left;
+}
+
+.jiufen-stop-photo {
+  position: relative;
+  width: 100%;
+  max-height: 70vh;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+}
+.jiufen-stop-inner--stacked .jiufen-stop-photo {
+  margin: 0 auto 2rem;
+}
+
+/* 不裁切——依照片自身比例決定顯示高度(橫式/直式照片各自算出不同的
+   容器高度),取代先前固定 height + object-fit: cover 硬裁掉超出範圍的
+   部分。max-height 只是避免直式照片在小螢幕撐得過高,不是裁切用途。 */
+.jiufen-stop-photo img {
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+  display: block;
+}
+
+@media (max-width: 640px) {
+  .jiufen-stop-inner--side {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+  .jiufen-stop-inner--side .jiufen-stop-photo {
+    margin: 0 auto;
+  }
+}
+
+/* jiufen-stop-credit — Pexels 使用條款要求標示攝影師署名,放在圖片右下角
+   半透明黑底條,深淺色模式下都維持同一組黑底/白字組合(疊在照片上的固定
+   深色條,不是頁面背景,不跟隨主題反轉)。 */
+.jiufen-stop-credit {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(0, 0, 0, 0.45);
+  padding: 0.2rem 0.5rem;
+  border-top-left-radius: 8px;
+}
+
+.jiufen-stop-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+@media (max-width: 640px) {
+  .jiufen-stop-meta { justify-content: center; }
+}
+
+.jiufen-stop-index {
+  font-family: 'ShipporiSerif', serif;
+  font-weight: 700;
+  color: var(--vermilion);
+  font-size: 0.95rem;
+}
+
+.jiufen-stop-kind {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  background: var(--paper-dim);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+}
+
+.jiufen-stop h2 {
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  font-size: clamp(1.4rem, 3.5vw, 1.9rem);
+  color: var(--ink);
+  margin: 0 0 0.75rem;
+}
+
+.jiufen-stop p {
+  font-size: 0.95rem;
+  line-height: 1.85;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+/* 進度指示——固定右側一排點,對齊 HomePage.css 的 .progress-rail 精神
+   (常駐畫面角落、z-index 拉高),但這裡不畫路徑/游標,純粹是可點擊的
+   站點索引。 */
+.jiufen-progress-rail {
+  position: fixed;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.jiufen-progress-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: background 0.25s ease, transform 0.25s ease;
+}
+.jiufen-progress-dot.is-active {
+  background: #fff;
+  transform: scale(1.4);
+}
+@media (max-width: 640px) {
+  .jiufen-progress-rail { right: 12px; gap: 8px; }
+  .jiufen-progress-dot { width: 6px; height: 6px; }
+}
+
+/* Final CTA */
+.jiufen-final-cta {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 5rem 1.5rem;
+  text-align: center;
+}
+
+.jiufen-final-cta h2 {
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  margin: 0 0 1rem;
+}
+
+.jiufen-final-cta p {
+  color: var(--ink-soft);
+  margin: 0 0 2rem;
+}
+
+.jiufen-page .jiufen-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--paper);
+  background: var(--ink);
+  text-decoration: none;
+  padding: 0.85rem 1.75rem;
+  border-radius: 999px;
+  box-shadow: var(--card-shadow);
+  transition: transform 0.2s ease;
+}
+
+.jiufen-page .jiufen-btn-primary:hover {
+  transform: translateY(-2px);
+}
+
+/* Footer — 結構、文案對齊 ProductPage.css 的 .product-footer,以首頁為準 */
+.jiufen-footer {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  border-top: 1px solid var(--line); padding: 28px 1.5rem;
+  text-align: center; font-size: 14px; color: var(--ink-soft);
+}
+.jiufen-footer-brand { font-size: 15px; font-weight: 600; color: var(--ink); }
+
+/* jiufen-footer-sitemap — 對齊 HomePage.css 的 .kyoto-footer-sitemap:
+   放在品牌名下方,不加分隔線,靠間距跟上下區塊區隔。 */
+.jiufen-footer-sitemap {
+  align-self: stretch; display: flex; gap: 48px; justify-content: center;
+  flex-wrap: wrap; margin-top: 48px; text-align: left;
+}
+.jiufen-footer-sitemap-col { display: flex; flex-direction: column; gap: 10px; min-width: 120px; }
+.jiufen-footer-sitemap-title {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--ink); text-transform: uppercase; margin-bottom: 2px;
+}
+.jiufen-footer-sitemap-col a { color: var(--ink-soft); text-decoration: none; font-size: 13.5px; }
+.jiufen-footer-sitemap-col a:hover { color: var(--vermilion); text-decoration: underline; }
+
+/* jiufen-footer-bar — 對齊 HomePage.css:寬度收在內容欄寬內置中,不貼齊
+   footer 全寬邊緣,不額外加分隔線。 */
+.jiufen-footer-bar {
+  width: 100%; max-width: 1180px; margin: 48px auto 0;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px 24px; font-size: 13px;
+}
+.jiufen-footer-copyright { color: var(--ink-soft); }
+.jiufen-footer-links { display: flex; align-items: center; gap: 20px; }
+.jiufen-footer-links a { color: var(--ink-soft); text-decoration: none; }
+.jiufen-footer-links a:hover { color: var(--vermilion); text-decoration: underline; }
+
+.jiufen-page .jiufen-footer-onagent {
+  margin-top: 10px; font-size: 12px; color: var(--ink-soft);
+  text-decoration: none; opacity: 0.75;
+}
+.jiufen-page .jiufen-footer-onagent:hover { opacity: 1; text-decoration: underline; }

@@ -14,6 +14,7 @@ import { ErrorBoundary } from './ErrorBoundary'
 // 感知延遲之前就完成,不需要額外的載入動畫。
 const HomePage = lazy(() => import('./HomePage').then((m) => ({ default: m.HomePage })))
 const ProductPage = lazy(() => import('./ProductPage').then((m) => ({ default: m.ProductPage })))
+const JiufenPage = lazy(() => import('./JiufenPage').then((m) => ({ default: m.JiufenPage })))
 const PrivacyPage = lazy(() => import('./PrivacyPage').then((m) => ({ default: m.PrivacyPage })))
 const TermsPage = lazy(() => import('./TermsPage').then((m) => ({ default: m.TermsPage })))
 const CliAuthPage = lazy(() => import('./CliAuthPage').then((m) => ({ default: m.CliAuthPage })))
@@ -56,6 +57,10 @@ export function App() {
               三步驟操作流程,原本掛在 "/",首頁改成 HomePage.tsx 之後搬到
               這裡,供首頁導覽連結指向。 */}
           <Route path="/product" element={<ProductPage />} />
+          {/* /jiufen:九份介紹頁,見 JiufenPage.tsx——地形→礦業→衰退→人文
+              重生因果鏈的分段長頁,視覺語言對齊 ProductPage/HomePage 的
+              紙感和風,無捲動視差特效。 */}
+          <Route path="/jiufen" element={<JiufenPage />} />
           {/* 隱私權政策/服務條款——視覺語言對齊首頁(HomePage.tsx)的紙感和風
               風格,見 LegalPage.tsx。 */}
           <Route path="/privacy" element={<PrivacyPage />} />

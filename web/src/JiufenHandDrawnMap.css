@@ -1,0 +1,126 @@
+/* JiufenHandDrawnMap — 純手繪風示意地圖,跟 JiufenMap.tsx(Google Maps
+   真實地理版)並存比較用。色票沿用 JiufenPage.css 的紙感和風變數,容器
+   樣式對齊 .jiufen-map(同尺寸、圓角、陰影),方便兩者並排比較時視覺
+   基準一致。 */
+.jiufen-hand-map {
+  width: 100%;
+  height: 360px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+
+.jiufen-hand-map svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* 泛黃紙底——比 --paper 更深一階的暖褐黃,noise rect 疊在它上面用
+   multiply 混合,noise 本身偏灰,乘上暖色底才會讀成「泛黃紙纖維」而不是
+   灰塵/雜訊感。 */
+.jiufen-hand-map-paper-base {
+  fill: #EFE2C0;
+}
+.jiufen-hand-map svg > rect:nth-of-type(2) {
+  mix-blend-mode: multiply;
+  opacity: 0.5;
+}
+
+/* 暗角暈影——pointer-events: none 避免蓋住下方站點標記的點擊區域。 */
+.jiufen-hand-map-vignette-rect {
+  pointer-events: none;
+}
+
+/* 山形等高線——三層疊加的不規則筆觸,線條粗細不均模擬手繪,不用純幾何
+   圖形的均勻描邊。 */
+.jiufen-hand-map-contour path {
+  fill: none;
+  stroke: var(--moss);
+  stroke-width: 1.4;
+  opacity: 0.55;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.jiufen-hand-map-contour path:nth-child(1) { opacity: 0.35; }
+.jiufen-hand-map-contour path:nth-child(3) { opacity: 0.7; stroke-width: 1.1; }
+
+.jiufen-hand-map-settlement {
+  fill: var(--paper-dim);
+  stroke: var(--vermilion-soft);
+  stroke-width: 1;
+  opacity: 0.6;
+}
+
+.jiufen-hand-map-road {
+  fill: none;
+  stroke: var(--ink-soft);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 1 5;
+  opacity: 0.6;
+}
+.jiufen-hand-map-road--minor {
+  stroke-width: 1.4;
+  opacity: 0.45;
+}
+
+/* 山澗溪流——低飽和青綠色實線(區別於道路的虛線),比主幹道更細,曲折
+   幅度更大,表現山澗蜿蜒而非人工開闢的路徑。 */
+.jiufen-hand-map-river {
+  fill: none;
+  stroke: #5E8A82;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  opacity: 0.5;
+}
+.jiufen-hand-map-river--minor {
+  stroke-width: 1.1;
+  opacity: 0.4;
+}
+
+/* 街區內部路網——聚落色塊內的巷弄紋理,線條最細、最淡,只在放大檢視時
+   才明顯,避免蓋過聚落色塊本身的視覺重量。 */
+.jiufen-hand-map-street-grid path {
+  fill: none;
+  stroke: var(--vermilion-soft);
+  stroke-width: 0.8;
+  stroke-linecap: round;
+  opacity: 0.4;
+}
+
+.jiufen-hand-map-coast {
+  fill: none;
+  stroke: var(--moss);
+  stroke-width: 1.2;
+  opacity: 0.4;
+  stroke-linecap: round;
+}
+
+.jiufen-hand-map-pin {
+  cursor: pointer;
+}
+.jiufen-hand-map-pin circle {
+  fill: var(--vermilion);
+  stroke: var(--paper);
+  stroke-width: 2;
+  transition: r 0.15s ease;
+}
+.jiufen-hand-map-pin:hover circle {
+  r: 14;
+}
+.jiufen-hand-map-pin text {
+  font-family: 'ShipporiSerif', serif;
+  font-weight: 700;
+  font-size: 11px;
+  fill: var(--paper);
+  pointer-events: none;
+}
+.jiufen-hand-map-pin-label {
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", sans-serif;
+  font-weight: 400;
+  font-size: 10px;
+  fill: var(--ink-soft) !important;
+}
