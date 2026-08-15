@@ -137,6 +137,16 @@ jobs:
           echo "::add-mask::$KEY"
           echo "key=$KEY" >> "$GITHUB_OUTPUT"
 
+      # 讀 GOOGLE_MAPS_MAP_ID,GeoOutlineMap.tsx 的 AdvancedMarkerElement
+      # 要求地圖必須帶 mapId 才能運作(對齊 deploy-cloudrun.yml 的既有做法,
+      # 見該檔案與 Dockerfile 的說明)。
+      - name: Read Google Maps Map ID from Secret Manager
+        id: maps_map_id
+        run: |
+          MAP_ID=$(gcloud secrets versions access latest --secret=GOOGLE_MAPS_MAP_ID --project=${{ env.GCP_PROJECT_ID }})
+          echo "::add-mask::$MAP_ID"
+          echo "map_id=$MAP_ID" >> "$GITHUB_OUTPUT"
+
       # 新版 tripace-server image 先建置、推上 Artifact Registry 待命——
       # 這一步不影響正在運行的正式站(舊 revision 仍在處理流量),可以放心
       # 花時間 build,不需要搶時間。
@@ -144,6 +154,7 @@ jobs:
         run: |
           docker build \
             --build-arg VITE_GOOGLE_MAPS_API_KEY=${{ steps.maps_key.outputs.key }} \
+            --build-arg VITE_GOOGLE_MAPS_MAP_ID=${{ steps.maps_map_id.outputs.map_id }} \
             -t ${{ env.SERVER_IMAGE }}:${{ github.sha }} \
             -t ${{ env.SERVER_IMAGE }}:latest \
             .

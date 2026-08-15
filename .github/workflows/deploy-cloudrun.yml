@@ -76,6 +76,19 @@ jobs:
           echo "::add-mask::$KEY"
           echo "key=$KEY" >> "$GITHUB_OUTPUT"
 
+      # VITE_GOOGLE_MAPS_MAP_ID:GeoOutlineMap.tsx 的 AdvancedMarkerElement
+      # 要求地圖必須帶 mapId 才能運作(見 Dockerfile 的說明),對應 GCP
+      # Console 手動建立的 Map Style ID。不是機密資料,放 Secret Manager
+      # 純粹是集中管理(見 update-secret-manager.sh 的說明),遮罩只是沿用
+      # 跟其他 secret 一致的處理方式。
+      - name: Read Google Maps Map ID from Secret Manager
+        if: github.event.inputs.skip_build != 'true'
+        id: maps_map_id
+        run: |
+          MAP_ID=$(gcloud secrets versions access latest --secret=GOOGLE_MAPS_MAP_ID --project=${{ env.GCP_PROJECT_ID }})
+          echo "::add-mask::$MAP_ID"
+          echo "map_id=$MAP_ID" >> "$GITHUB_OUTPUT"
+
       # onagent 平台(tripace app)的 apiKey,同上放 Secret Manager 而非
       # GitHub Secrets(見 server/scripts/update-secret-manager.sh
       # -cleanup-legacy-provider 附近的說明——這把 key 只顯示一次、重發會讓
@@ -93,6 +106,7 @@ jobs:
         run: |
           docker build \
             --build-arg VITE_GOOGLE_MAPS_API_KEY=${{ steps.maps_key.outputs.key }} \
+            --build-arg VITE_GOOGLE_MAPS_MAP_ID=${{ steps.maps_map_id.outputs.map_id }} \
             --build-arg VITE_ONAGENT_APP_KEY=${{ steps.onagent_key.outputs.key }} \
             --build-arg VITE_ONAGENT_URL=https://onagent.shuttle.tools \
             -t ${{ env.IMAGE }}:${{ github.sha }} \

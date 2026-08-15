@@ -7,11 +7,12 @@
 # 短暫存在。
 #
 # GOOGLE_PLACES_API_KEY(後端 geocode/recommend_nearby 工具用)、
-# GOOGLE_MAPS_API_KEY(前端 Maps JavaScript API 用)、VITE_ONAGENT_APP_KEY
-# (前端 onagent 平台 tripace app 的 apiKey)是三組獨立的金鑰,不同用途、
-# 不同申請/輪替方式,互不影響。這支腳本目前是 Cloud Run
-# (shuttle-045094509 專案)唯一設定它們的地方,故一併整合進來,不另外開
-# 一支腳本。
+# GOOGLE_MAPS_API_KEY(前端 Maps JavaScript API 用)、
+# GOOGLE_MAPS_MAP_ID(前端 GeoOutlineMap.tsx 的 AdvancedMarkerElement 要求
+# 的地圖樣式 ID)、VITE_ONAGENT_APP_KEY(前端 onagent 平台 tripace app 的
+# apiKey)是四組獨立的金鑰/識別碼,不同用途、不同申請/輪替方式,互不影響。
+# 這支腳本目前是 Cloud Run(shuttle-045094509 專案)唯一設定它們的地方,
+# 故一併整合進來,不另外開一支腳本。
 #
 # VITE_ONAGENT_APP_KEY 跟前兩把 Google key 的關鍵差異:Google key 可以用
 # gcloud 現場申請新的(見 upsert_google_api_key);onagent 平台的 apiKey
@@ -32,6 +33,7 @@
 #   bash server/scripts/update-secret-manager.sh                     # 全部類型都問一輪(預設)
 #   bash server/scripts/update-secret-manager.sh -places              # 只處理 GOOGLE_PLACES_API_KEY
 #   bash server/scripts/update-secret-manager.sh -maps                # 只處理 GOOGLE_MAPS_API_KEY
+#   bash server/scripts/update-secret-manager.sh -map-id              # 只處理 GOOGLE_MAPS_MAP_ID
 #   bash server/scripts/update-secret-manager.sh -onagent             # 只處理 VITE_ONAGENT_APP_KEY
 #   bash server/scripts/update-secret-manager.sh -cleanup-legacy-provider
 #       # 刪除已隨 want 移除而不再使用的 ANTHROPIC_API_KEY/GOOGLE_API_KEY
@@ -53,6 +55,7 @@ print_usage() {
   (不帶參數)              全部類型都問一輪(預設)
   -places                  只處理 GOOGLE_PLACES_API_KEY
   -maps                    只處理 GOOGLE_MAPS_API_KEY
+  -map-id                  只處理 GOOGLE_MAPS_MAP_ID
   -onagent                 只處理 VITE_ONAGENT_APP_KEY
   -cleanup-legacy-provider 刪除已隨 want 移除而不再使用的
                            ANTHROPIC_API_KEY/GOOGLE_API_KEY secret 容器
@@ -63,24 +66,34 @@ EOF
 
 DO_PLACES=1
 DO_MAPS=1
+DO_MAP_ID=1
 DO_ONAGENT=1
 DO_CLEANUP_LEGACY_PROVIDER=0
 case "${1:-}" in
   -places)
     DO_MAPS=0
+    DO_MAP_ID=0
     DO_ONAGENT=0
     ;;
   -maps)
     DO_PLACES=0
+    DO_MAP_ID=0
+    DO_ONAGENT=0
+    ;;
+  -map-id)
+    DO_PLACES=0
+    DO_MAPS=0
     DO_ONAGENT=0
     ;;
   -onagent)
     DO_PLACES=0
     DO_MAPS=0
+    DO_MAP_ID=0
     ;;
   -cleanup-legacy-provider)
     DO_PLACES=0
     DO_MAPS=0
+    DO_MAP_ID=0
     DO_ONAGENT=0
     DO_CLEANUP_LEGACY_PROVIDER=1
     ;;
@@ -319,6 +332,25 @@ if [[ "${DO_MAPS}" == "1" ]]; then
 fi
 
 # -----------------------------------------------------------------------------
+# 4b. GOOGLE_MAPS_MAP_ID —— 前端 GeoOutlineMap.tsx 的
+#     google.maps.marker.AdvancedMarkerElement 要求地圖必須帶 mapId 才能
+#     運作(Google 官方規定),對應 GCP Console → Maps Platform → Map
+#     Management 手動建立的 Cloud-based Map Style ID。跟上面兩把 Google
+#     key 不同,這不是能用 gcloud 現場申請的 API key,只能到 Console 手動
+#     建立樣式後貼上既有值(同 VITE_ONAGENT_APP_KEY 的模式,走
+#     upsert_secret,不支援現場建立選項)。透過 Dockerfile 的 web-build
+#     階段以 --build-arg 編入前端 bundle(見 deploy-cloudrun.yml 的
+#     "Read Google Maps Map ID from Secret Manager" step)。不是機密資料
+#     (Map ID 本身不具敏感性,前端 bundle 裡本來就看得到),放 Secret
+#     Manager純粹是為了集中管理、換樣式不用改 workflow 檔案。只在 -map-id
+#     或不帶參數(全部處理)時執行。
+# -----------------------------------------------------------------------------
+if [[ "${DO_MAP_ID}" == "1" ]]; then
+  upsert_secret "GOOGLE_MAPS_MAP_ID" "GOOGLE_MAPS_MAP_ID(GCP Console → Maps Platform → Map Management 建立的 Map Style ID)"
+  echo
+fi
+
+# -----------------------------------------------------------------------------
 # 5. VITE_ONAGENT_APP_KEY —— onagent 平台 tripace app 的 apiKey,前端
 #    OnagentBridgeDemo.tsx/useOnagentChatBridge.ts 讀取,透過 Dockerfile 的
 #    web-build 階段以 --build-arg 編入前端 bundle(見 deploy-cloudrun.yml
@@ -348,6 +380,10 @@ fi
 
 if [[ "${DO_MAPS}" == "1" ]]; then
   echo "   (secret: GOOGLE_MAPS_API_KEY，deploy-cloudrun.yml build 階段讀取)"
+fi
+
+if [[ "${DO_MAP_ID}" == "1" ]]; then
+  echo "   (secret: GOOGLE_MAPS_MAP_ID，deploy-cloudrun.yml build 階段讀取)"
 fi
 
 if [[ "${DO_ONAGENT}" == "1" ]]; then

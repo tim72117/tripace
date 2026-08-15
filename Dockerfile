@@ -27,6 +27,12 @@ COPY web/ ./
 # deploy-cloudrun.yml 在呼叫 docker build 前讀出再當 --build-arg 傳入。
 ARG VITE_GOOGLE_MAPS_API_KEY
 ENV VITE_GOOGLE_MAPS_API_KEY=${VITE_GOOGLE_MAPS_API_KEY}
+# VITE_GOOGLE_MAPS_MAP_ID:GeoOutlineMap.tsx 的 AdvancedMarkerElement 要求
+# 地圖必須帶 mapId 才能運作(Google 官方規定,見該檔案的說明),對應 GCP
+# Console Map Style 的自訂樣式 ID——不是機密資料,不需要走 Secret Manager,
+# 直接用一般 build-arg 傳入。
+ARG VITE_GOOGLE_MAPS_MAP_ID
+ENV VITE_GOOGLE_MAPS_MAP_ID=${VITE_GOOGLE_MAPS_MAP_ID}
 # VITE_ONAGENT_APP_KEY:onagent 平台(tripace app)的 apiKey,同上放 Secret
 # Manager,由 deploy-cloudrun.yml 讀出後當 --build-arg 傳入。
 # VITE_ONAGENT_URL:onagent 平台位址,不是機密(見 web/.env.production.local
