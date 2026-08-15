@@ -2,6 +2,22 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.4.5 — 2026-08-15
+
+### 新增
+
+- **景點資料同步機制**（`server/internal/attractionsync/`、`server/internal/api/attraction_sync.go`/`synctoken.go`、CLI `attraction-sync-setup`/`attraction-sync` 子命令，見 `docs/ATTRACTION_SYNC_DESIGN.md`）：本機開發站與正式站之間的景點資料單向同步，三層比對（新鮮度探測→輕量清單 diff→欄位級 diff）+ 交握式傳輸，依同步方向由來源方負責比對決策，sync-token 由本機 server 自行保管，CLI 只負責觸發。
+
+  **⚠️ 已知安全風險，尚未修復完成，不應部署到正式站**：上線前複查（`docs/ATTRACTION_SYNC_SECURITY_REVIEW.md`）發現 `target` 參數未驗證、既有 `internalAuth` 中介層無角色檢查，任何在正式站註冊的一般使用者都能觸發 SSRF，並經由偽造的同步對象竊取/竄改/清空正式站景點資料（Critical）；錯誤訊息會把同步對象的回應內容原樣回吐，構成內網探測/資料外洩管道（High）；`-retry` 旗標目前是空殼，設計文件裡的續傳邏輯（`Transfer`/`ResumeFrom`/`PushTo`）在正式路徑上未被呼叫、是死碼（High）。這三項風險（複查編號 #1/#2/#4）皆未修復。詳見風險文件的完整清單、攻擊鏈說明與處理建議。
+  - **本次已修正**：`NeedsSync`（`diff.go`）原本只看目的方最新一筆記錄的時間，忽略雙方記錄筆數差異，導致目的方有人手動新增一筆較新的資料時，即使來源方還有大量更早的資料未同步，也會被誤判為「不需要同步」而靜默漏同步（複查編號 #3）。已改為筆數不同即視為需要同步，並補上回歸測試 `TestNeedsSync_CountDiffersDespiteOlderTimestamp`。
+  - 因為 CLI 介面純新增、未變更既有子命令、未刪除任何正式功能、未變更資料庫 schema（`attractionRow` 與 `AutoMigrate` 清單皆未變動），依 `.claude/skills/version-tagging/override.md` 三條判準本身不構成破壞性變更；但上述資安風險是獨立於破壞性判準之外、必須在對外部署前處理的問題。
+- **CLI `attraction-update` 新增 `-name` 選項**（`server/cmd/cli/main.go`/`http.go`、`server/internal/api/maintenance.go`、`server/internal/store/attractions.go`）：新增 `PATCH /internal/maintenance/attractions/{id}/name` 端點，修正建檔時輸入錯誤/需要調整的景點名稱。`-name` 與既有的座標修正（`-lat/-lng` 或 `-place`）互不排斥，可同時帶入或只改其中一種，只要至少帶了一項即動作；既有的「必須帶 `-lat/-lng` 或 `-place`」規則放寬為「三者擇一」，舊呼叫方式不受影響，非破壞性。
+- `docs/PLAYWRIGHT_WALKTHROUGH_FEEDBACK_2026-08-13.md`：Playwright 走查回饋文件。
+
+### 文件
+
+- `.claude/skills/tripace-cli/SKILL.md` 補上 `attraction-update` 子命令的說明與範例（原本完全沒有提及，本次連同 `-name` 選項一併補齊）；景點資料同步機制刻意不列入，避免在已知安全風險未修復前間接鼓勵在正式站使用。
+
 ## v0.4.4 — 2026-08-15
 
 ### 變更
