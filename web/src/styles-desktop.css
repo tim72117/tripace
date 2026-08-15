@@ -140,14 +140,20 @@
   overflow: hidden;
   transition: flex-basis 0.2s ease, width 0.2s ease, border-color 0.2s ease;
 }
-.desktop-sidepanel.wide {
-  flex-basis: 380px;
-  width: 380px;
-}
 .desktop-sidepanel.collapsed {
   flex-basis: 0;
   width: 0;
   border-right-color: transparent;
+}
+/* .wide:登入後正式介面(DesktopLayout.tsx)已改用 panelMode 驅動的浮動卡片
+   (見 PANEL_REGISTRY 的 width 欄位),不再需要 side panel 本身變寬,故
+   DesktopContent 不再套用這個 class。但 PublicPaceDemoPage.tsx(/demo/pace
+   公開分享頁)與 PhoneScreens.tsx 的 PublicPaceDrawerMap(行程分享頁的桌面
+   寬度分支)仍沿用「側欄清單 + 主區地圖」這套舊版型(見兩處各自的說明,
+   刻意不比照登入後版面),故保留這個 class 供它們使用。 */
+.desktop-sidepanel.wide {
+  flex-basis: 380px;
+  width: 380px;
 }
 /* inner 維持完整寬度渲染內容,收合時靠外層 width:0 裁掉,避免收合過程中內容
    本身被壓縮換行(transition 期間看起來會很醜)。 */
@@ -161,32 +167,66 @@
 .desktop-sidepanel.wide .desktop-sidepanel-inner {
   width: 380px;
 }
-
-/* add-from-candidate-sidebar:「從候選加入」第二側欄(見
-   AddFromCandidateSidebar.tsx 的說明)——絕對定位疊在 .desktop-main
-   (地圖/主顯示,已有 position: relative)左緣之上,不佔用 flex 版面空間、
-   不推擠地圖——使用者明確要求不要壓縮主顯示的可用寬度,改成漂浮在
-   主顯示上方。四周(含左緣)留出間距、圓角+陰影,而不是直接貼齊
-   .desktop-main 邊界——使用者明確要求「周圍留間隙,才有漂浮感」,貼齊
-   邊界會讓這塊看起來像版面裡緊鄰的一欄,而非真的浮在主顯示之上的卡片。
-   寬度沿用跟 .desktop-sidepanel 一致的固定寬度,讓使用者感覺這是同一組
-   側欄語言的延伸,只是這次是浮層而非佔版面的欄位。DesktopLayout.tsx
-   只在 pickingDayKey 有值時才渲染這個節點(條件掛載),故不需要另外定義
-   收合樣式。 */
-.add-from-candidate-sidebar {
+/* floating-panel:疊在 .desktop-main(地圖,已有 position: relative)上方的
+   浮動卡片共用樣式——絕對定位、不佔用 flex 版面空間、不推擠地圖(使用者
+   明確要求不要壓縮主顯示的可用寬度)。四周留出間距、圓角+陰影,而不是
+   直接貼齊 .desktop-main 邊界——使用者明確要求「周圍留間隙,才有漂浮
+   感」,貼齊邊界會讓這塊看起來像版面裡緊鄰的一欄,而非真的浮在主顯示
+   之上的卡片。寬度由呼叫端各自決定(inline style 或 modifier class),
+   這裡只定義共用的定位/視覺樣式。取代原本各自獨立定義的
+   .add-from-candidate-sidebar/.geo-hotel-sidebar-wrap,以及 panelMode
+   驅動的 trips/timeline/pace/geo-outline 四種浮動卡片(見
+   DesktopLayout.tsx/DesktopShared.tsx 的 PANEL_REGISTRY),同一套視覺
+   語言只定義一次。 */
+.floating-panel {
   position: absolute;
   top: 12px;
-  left: 12px;
   bottom: 12px;
   z-index: 3;
-  width: 272px;
   overflow: hidden;
   border-radius: 16px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
-  animation: add-from-candidate-sidebar-in 0.16s ease-out;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--ios-card);
+  animation: floating-panel-in 0.16s ease-out;
+}
+.floating-panel-left {
+  left: 12px;
+}
+.floating-panel-right {
+  right: 12px;
+}
+/* floating-panel-close:panelMode 浮動卡片(trips/timeline/pace/geo-outline,
+   見 DesktopLayout.tsx 的 panelSpec.slot === 'float' 分支)共用的關閉
+   按鈕——疊在卡片右上角,點擊導回 /app 收起卡片(同再點一次 rail 圖示的
+   行為)。四個內容元件(DesktopTripList/MultiTrackTimeline/PaceChart/
+   GeoCandidateSidebar)各自的 header 排版不同,不逐一加專屬的關閉按鈕
+   (AddFromCandidateSidebar/GeoHotelSidebar 那種),改在 .floating-panel
+   外層統一疊加一顆,四種內容共用同一個關閉入口。 */
+.floating-panel-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
+}
+.floating-panel-close:hover {
+  background: var(--ios-bg);
+  color: var(--color-dark);
 }
 
-@keyframes add-from-candidate-sidebar-in {
+@keyframes floating-panel-in {
   from {
     opacity: 0;
     transform: translateX(-16px);
@@ -195,24 +235,6 @@
     opacity: 1;
     transform: translateX(0);
   }
-}
-
-/* geo-hotel-sidebar-wrap:「飯店/附近推薦清單」(GeoHotelSidebar)——
-   同上,絕對定位疊在 .desktop-main 右緣之上,不佔用 flex 版面空間、不
-   推擠地圖(使用者明確要求)。四周留間距+圓角+陰影,理由同
-   .add-from-candidate-sidebar,兩者是同一組「漂浮側欄」視覺語言的左右
-   兩個實例。這個節點由 panelMode/geoHotels/geoPlaces 條件掛載(見
-   DesktopLayout.tsx),同樣不需要另外定義收合樣式。 */
-.geo-hotel-sidebar-wrap {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  bottom: 12px;
-  z-index: 3;
-  width: 280px;
-  overflow: hidden;
-  border-radius: 16px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
 }
 .desktop-timeline-panel {
   flex: 1 1 auto;

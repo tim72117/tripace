@@ -64,7 +64,7 @@ export function GeoInfoPanel({
   onClose: () => void
   // shiftLeft:GeoHotelSidebar(飯店/附近推薦清單)有內容顯示時,那個
   // 側欄會漂浮在 .desktop-main 右緣之上(見 styles-desktop.css 的
-  // .geo-hotel-sidebar-wrap),跟這張卡片預設的定位重疊——由呼叫端
+  // .floating-panel-right),跟這張卡片預設的定位重疊——由呼叫端
   // (DesktopLayout.tsx)判斷 GeoHotelSidebar 目前是否顯示、傳入這個
   // flag,把卡片推到它左側,詳見 GeoInfoPanel.module.css 的 .shifted。
   shiftLeft?: boolean

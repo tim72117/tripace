@@ -25,7 +25,7 @@
 
 /* shifted:GeoHotelSidebar(飯店/附近推薦清單)有內容時,那個側欄改成
    絕對定位漂浮在 .desktop-main 右緣之上(見 styles-desktop.css 的
-   .geo-hotel-sidebar-wrap,right: 12px、寬度 280px),跟這張卡片原本
+   .floating-panel-right,right: 12px、寬度 280px),跟這張卡片原本
    同樣定位在 .desktop-main 右緣的 right: 16px 直接疊在一起——這是實際
    發生過的 bug,不是預防性寫法。GeoHotelSidebar 顯示時,由呼叫端
    (DesktopLayout.tsx)傳入 shiftLeft,把這張卡片推到 GeoHotelSidebar

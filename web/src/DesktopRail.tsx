@@ -1,5 +1,5 @@
 import {
-  List, Sparkles, GalleryHorizontal, Layers, Radio, Activity, Route, BookOpen,
+  List, Sparkles, GalleryHorizontal, Layers, Radio, Activity, Route, BookOpen, PanelLeft,
 } from 'lucide-react'
 import { Timeline } from 'lucide-react'
 import type { ClientConfig } from './api'
@@ -8,7 +8,7 @@ import { DesktopUserMenu } from './DesktopUserMenu'
 import {
   type PanelMode, GEO_OUTLINE_ENABLED, TIMELINE_ENABLED, PACE_ENABLED,
   DEMO_CARDS_ENABLED, DEMO_ROW_ENABLED, DEMO_ONAGENT_ENABLED, DEBUG_PANEL_ENABLED,
-  DEMO_ROUTE_EDITOR_ENABLED,
+  DEMO_ROUTE_EDITOR_ENABLED, PANEL_REGISTRY,
 } from './DesktopShared'
 
 // DesktopRail:桌面版最左側的導覽圖示列——從 DesktopLayout.tsx 抽出獨立
@@ -18,9 +18,9 @@ import {
 export function DesktopRail({
   panelMode,
   onSelect,
-  tripListOpen,
-  onToggleTripList,
-  timelineDisabled,
+  activeTrip,
+  chatCollapsed,
+  onToggleChat,
   user,
   isGuest,
   cfg,
@@ -32,13 +32,15 @@ export function DesktopRail({
 }: {
   panelMode: PanelMode
   onSelect: (mode: Exclude<PanelMode, null>) => void
-  // tripListOpen/onToggleTripList:「行程列表」按鈕改成獨立疊加面板後,不再
-  // 走 onSelect('trips')/panelMode 這套機制(理由見 DesktopLayout.tsx 內
-  // tripListOpen state 宣告處的說明),故 active 樣式與點擊行為都改吃這組
-  // 獨立傳入的 boolean/toggle,不再從 panelMode 判斷。
-  tripListOpen: boolean
-  onToggleTripList: () => void
-  timelineDisabled: boolean
+  // activeTrip:是否已選定行程——只用來決定 requiresTrip 的按鈕(目前是
+  // 時間軸)要不要 disabled,判斷本身統一從 PANEL_REGISTRY 讀
+  // (見下方 requiresTrip 用法),不再各別硬寫 timelineDisabled 這種
+  // 單一按鈕專屬的 prop。
+  activeTrip: boolean
+  // chatCollapsed/onToggleChat:左側常駐對話欄(見 DesktopLayout.tsx 的
+  // chatCollapsed state)自己的收合開關,獨立於 panelMode 之外。
+  chatCollapsed: boolean
+  onToggleChat: () => void
   user: User
   isGuest: boolean
   cfg: ClientConfig
@@ -56,8 +58,15 @@ export function DesktopRail({
     <nav className="desktop-rail">
       <div className="desktop-rail-buttons">
         <button
-          className={`desktop-rail-btn${tripListOpen ? ' active' : ''}`}
-          onClick={onToggleTripList}
+          className={`desktop-rail-btn${chatCollapsed ? '' : ' active'}`}
+          onClick={onToggleChat}
+          title={chatCollapsed ? '展開對話欄' : '收合對話欄'}
+        >
+          <PanelLeft size={20} strokeWidth={1.8} />
+        </button>
+        <button
+          className={`desktop-rail-btn${panelMode === 'trips' ? ' active' : ''}`}
+          onClick={() => onSelect('trips')}
           title="行程列表"
         >
           <List size={20} strokeWidth={1.8} />
@@ -78,16 +87,19 @@ export function DesktopRail({
         {/* TIMELINE_ENABLED/PACE_ENABLED:編譯時 feature flag(見
             DesktopShared.tsx 對這兩個常數的說明),關閉時按鈕不渲染,
             isPanelMode 也不再承認對應字串,同 GEO_OUTLINE_ENABLED 的機制。 */}
-        {TIMELINE_ENABLED && (
-          <button
-            className={`desktop-rail-btn${panelMode === 'timeline' ? ' active' : ''}`}
-            onClick={() => !timelineDisabled && onSelect('timeline')}
-            disabled={timelineDisabled}
-            title={timelineDisabled ? '請先選擇一個行程' : '時間軸'}
-          >
-            <Timeline size={20} strokeWidth={1.8} />
-          </button>
-        )}
+        {TIMELINE_ENABLED && (() => {
+          const disabled = !!PANEL_REGISTRY.timeline.requiresTrip && !activeTrip
+          return (
+            <button
+              className={`desktop-rail-btn${panelMode === 'timeline' ? ' active' : ''}`}
+              onClick={() => !disabled && onSelect('timeline')}
+              disabled={disabled}
+              title={disabled ? '請先選擇一個行程' : '時間軸'}
+            >
+              <Timeline size={20} strokeWidth={1.8} />
+            </button>
+          )
+        })()}
         {PACE_ENABLED && (
           <button
             className={`desktop-rail-btn${panelMode === 'pace' ? ' active' : ''}`}

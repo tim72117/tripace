@@ -87,7 +87,7 @@ function CandidateRow({
 
 // AddFromCandidateSidebar:「第二側欄」——絕對定位疊在主顯示區(地圖)
 // 左緣之上(見 DesktopLayout.tsx 的接線與 styles-desktop.css 的
-// .add-from-candidate-sidebar),不佔用 flex 版面空間、不推擠地圖——
+// .floating-panel/.floating-panel-left),不佔用 flex 版面空間、不推擠地圖——
 // 使用者明確要求漂浮在主顯示上方,不要壓縮主顯示的可用寬度。
 //
 // 由候選籃(GeoCandidateSidebar)每個已排入行程日期分組標題列的「從候選

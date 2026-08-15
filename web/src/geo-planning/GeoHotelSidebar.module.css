@@ -1,4 +1,4 @@
-/* sidebar:寬度/絕對定位由外層 .geo-hotel-sidebar-wrap(見
+/* sidebar:寬度/絕對定位由外層 .floating-panel/.floating-panel-right(見
    DesktopLayout.tsx/styles-desktop.css)控制,漂浮在主顯示右緣之上——這裡
    只負責填滿外層容器與內部排版,不再自己決定寬度/定位方式,也不設
    border-left(理由同 AddFromCandidateSidebar.module.css 的 .sidebar:

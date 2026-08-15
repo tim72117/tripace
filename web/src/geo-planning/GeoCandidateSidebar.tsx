@@ -22,9 +22,10 @@ export { candidateEntryKind, candidateListKey, createEntryFromCandidate, dayGrou
 
 // GeoCandidateSidebar:候選籃(構想 1,見
 // docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)——地理輪廓底圖(構想 6)的
-// 桌面版試做承載元件,渲染在 rail 與主顯示區之間的 side panel(跟
-// trips/timeline/pace 用同一個 .desktop-sidepanel 位置,見
-// DesktopLayout.tsx 的 isSidepanelMode),對齊構想 1 定案的「候選籃是
+// 桌面版試做承載元件,渲染在疊加於主顯示區(地圖)左緣之上的浮動卡片
+// (跟 trips/timeline/pace 用同一套 .floating-panel 視覺語言,見
+// DesktopLayout.tsx 的 panelSpec.slot === 'float' 分支與
+// styles-desktop.css 的 .floating-panel),對齊構想 1 定案的「候選籃是
 // 規劃引導介面的主結構」空間配置。
 //
 // 目前只是純前端試做:候選清單只存在記憶體(DesktopContent 的

@@ -22,7 +22,7 @@
 
 /* shifted:理由同 GeoInfoPanel.module.css 的同名規則——GeoHotelSidebar
    有內容時漂浮在 .desktop-main 右緣之上(見 styles-desktop.css 的
-   .geo-hotel-sidebar-wrap,right: 12px、寬度 280px),跟這張卡片預設的
+   .floating-panel-right,right: 12px、寬度 280px),跟這張卡片預設的
    right: 16px 直接疊在一起。 */
 .panel.shifted {
   right: 304px;

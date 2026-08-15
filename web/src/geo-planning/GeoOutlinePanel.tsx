@@ -69,6 +69,8 @@ export function GeoOutlinePanel({
   cfg,
   tripID,
   city,
+  onCityChange,
+  onSearch,
   onSearchStateChange,
   onHotelsChange,
   onAttractionsChange,
@@ -95,6 +97,13 @@ export function GeoOutlinePanel({
   // useEffect),不是每次 city 變動就查(那樣會在使用者打字打到一半時
   // 就發送請求)。
   city: string
+  // onCityChange/onSearch:原封不動轉傳給 GeoOutlineMap,讓地圖上方(類別
+  // 標籤旁)也能顯示同一個城市搜尋框,不需要先展開候選籃側欄——理由同
+  // GeoCandidateSidebar 既有的搜尋框(見該元件的 city/onCityChange/
+  // onSearch prop),兩處是同一份輸入值(DesktopLayout.tsx 的
+  // geoSearchCity state)的兩個 UI 入口,不是各自獨立的搜尋狀態。
+  onCityChange?: (city: string) => void
+  onSearch?: () => void
   // onSearchStateChange:查詢中/錯誤狀態往上回報給 GeoCandidateSidebar
   // 顯示(loading 文字、錯誤訊息),搜尋按鈕本身觸發查詢的方式是遞增
   // searchTrigger prop(見下方)。
@@ -351,6 +360,11 @@ export function GeoOutlinePanel({
           cfg={cfg}
           initialCenter={tripCenter}
           tripEntries={tripEntries}
+          city={city}
+          onCityChange={onCityChange}
+          onSearch={onSearch}
+          searching={loading}
+          searchError={err}
           onAttractionsChange={onAttractionsChange}
           onVisibleHotelsChange={onHotelsChange}
           onPlacesNearby={onPlacesNearby}

@@ -42,11 +42,12 @@ const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
 // TripsScreen、ChatScreen 自己的右側時間軸抽屜,與右下角漢堡按鈕開的
 // PhoneDemoDrawer。
 //
-// 主顯示區(抽屜關閉後看到的內容)對齊桌面版 DesktopContent 的
-// .desktop-main 邏輯:選到的分頁是 'pace' 時顯示 PaceRouteMap(地圖),
-// 其餘情況顯示 ChatScreen(有選行程)或空白提示(沒有)——'trips'/
-// 'timeline' 分頁不影響主顯示,只影響抽屜欄裡的內容,同桌面版
-// isSidepanelMode 的邏輯。
+// 主顯示區(抽屜關閉後看到的內容):選到的分頁是 'pace' 時顯示
+// PaceRouteMap(地圖),其餘情況顯示 ChatScreen(有選行程)或空白提示
+// (沒有)——'trips'/'timeline' 分頁不影響主顯示,只影響抽屜欄裡的內容。
+// 桌面版 DesktopContent 已改版(見該檔案的說明:主顯示固定是規劃地圖,
+// pace/trips/timeline/geo-outline 全部改成疊加在地圖上的浮動卡片),
+// 手機版這裡刻意不比照,維持原本「分頁決定主顯示內容」的版型。
 export function PhoneContent(props: ContentProps) {
   const { cfg, activeTrip, setActiveTrip } = props
   const [inSettings, setInSettings] = useState(false)

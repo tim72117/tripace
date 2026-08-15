@@ -86,6 +86,75 @@
   border-color: transparent;
 }
 
+/* citySearch:城市搜尋框,跟候選籃側欄(GeoCandidateSidebar.module.css 的
+   .searchRow/.searchInput/.searchBtn)共用同一份輸入值/查詢邏輯,但視覺
+   語言改成跟 .categoryTag 一致的毛玻璃卡片(這裡疊在地圖上、底下有內容
+   透出來,故用 backdrop-filter,跟側欄版本用實色卡片的理由相反,見
+   GeoCandidateSidebar.module.css 的 .searchRow 說明)。排在 .categoryTags
+   這個 flex row 最後一個項目,不需要另外定位。 */
+.citySearch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 4px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  background: rgba(245, 242, 237, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px rgba(61, 53, 48, 0.16);
+}
+
+.citySearchInput {
+  width: 140px;
+  border: none;
+  background: transparent;
+  color: var(--color-dark);
+  font-size: 13px;
+}
+
+.citySearchInput:focus {
+  outline: none;
+}
+
+.citySearchBtn {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: var(--ios-card);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.12s;
+}
+
+.citySearchBtn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.citySearchBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* citySearchError:城市搜尋失敗時的錯誤訊息,疊在 .categoryTags 正下方
+   ——理由同 .searchThisAreaButton 跟 .categoryTags 錯開高度的說明,避免
+   跟類別標籤列/搜尋框同一行擠在一起。 */
+.citySearchError {
+  position: absolute;
+  top: 60px;
+  left: 16px;
+  z-index: 2;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(192, 96, 74, 0.12);
+  color: var(--ios-red);
+  font-size: 12px;
+}
+
 /* 「搜尋這個區域」按鈕:疊在地圖上方置中,對齊 GeoOutlinePanel.module.css
    的 .floatingSearch/.searchBtn 視覺語言(毛玻璃卡片 + accent 實心按鈕)
    ——但這裡是單顆獨立浮動按鈕,不是搜尋列的一部分,故置中而非靠左對齊,

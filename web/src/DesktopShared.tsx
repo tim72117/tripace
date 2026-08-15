@@ -75,20 +75,46 @@ export const DEBUG_PANEL_ENABLED = import.meta.env.VITE_FEATURE_DEBUG_PANEL === 
 // 一套機制——預設關閉,只在明確設為字串 "true" 時才啟用。
 export const DEMO_ROUTE_EDITOR_ENABLED = import.meta.env.VITE_FEATURE_DEMO_ROUTE_EDITOR === 'true'
 
+// PanelSlot/PanelSpec/PANEL_REGISTRY:每個 panelMode 的版面行為單一定義處
+// ——'float' 表示疊在 .desktop-main(地圖)上方的浮動卡片(不佔 flex 版面
+// 空間、不擠壓地圖寬度),'main-replace' 表示整個取代 .desktop-main(僅
+// demo-cards/demo-row/demo-onagent/demo-route-editor 這幾個預設關閉的
+// 試做功能維持這個舊行為)。width 只有 float 用到,決定浮動卡片寬度
+// (見 styles-desktop.css 的 .floating-panel)。requiresTrip 給 rail 按鈕
+// 的 disabled 判斷用(見 DesktopRail.tsx)。
+//
+// 這張表存在的理由:先前 panelMode 的行為判斷散落在至少 5 個地方
+// (這裡的白名單、side panel 是否展開的判斷式、.wide 樣式字串拼接、side
+// panel 內容 ternary、main 區 ternary),新增一種模式要同步改 5 處,曾經
+// 因為漏改其中一處出過 bug。現在只需要改這張表跟 DesktopLayout.tsx 的
+// render 分支各一次,其餘地方(PANEL_MODES 白名單、isPanelMode())都是
+// 從這張表衍生,不會漏改。
+export type PanelSlot = 'float' | 'main-replace'
+
+export interface PanelSpec {
+  enabled: boolean
+  slot: PanelSlot
+  width?: number
+  requiresTrip?: boolean
+}
+
+export const PANEL_REGISTRY: Record<Exclude<PanelMode, null>, PanelSpec> = {
+  trips: { enabled: true, slot: 'float', width: 272 },
+  timeline: { enabled: TIMELINE_ENABLED, slot: 'float', width: 380, requiresTrip: true },
+  pace: { enabled: PACE_ENABLED, slot: 'float', width: 380 },
+  'geo-outline': { enabled: GEO_OUTLINE_ENABLED, slot: 'float', width: 380 },
+  'demo-cards': { enabled: DEMO_CARDS_ENABLED, slot: 'main-replace' },
+  'demo-row': { enabled: DEMO_ROW_ENABLED, slot: 'main-replace' },
+  'demo-onagent': { enabled: DEMO_ONAGENT_ENABLED, slot: 'main-replace' },
+  'demo-route-editor': { enabled: DEMO_ROUTE_EDITOR_ENABLED, slot: 'main-replace' },
+}
+
 // PANEL_MODES:PanelMode 扣掉 null 之後的合法字串值列表——給 isPanelMode()
 // 在執行期驗證用(型別系統只在編譯期擋得住,URL 路徑參數是使用者可任意
-// 輸入的字串,需要執行期白名單檢查)。'geo-outline' 依 GEO_OUTLINE_ENABLED
-// 動態決定要不要列入合法值,理由見該常數的說明。
-const PANEL_MODES = [
-  'trips',
-  ...(TIMELINE_ENABLED ? (['timeline'] as const) : []),
-  ...(PACE_ENABLED ? (['pace'] as const) : []),
-  ...(GEO_OUTLINE_ENABLED ? (['geo-outline'] as const) : []),
-  ...(DEMO_CARDS_ENABLED ? (['demo-cards'] as const) : []),
-  ...(DEMO_ROW_ENABLED ? (['demo-row'] as const) : []),
-  ...(DEMO_ONAGENT_ENABLED ? (['demo-onagent'] as const) : []),
-  ...(DEMO_ROUTE_EDITOR_ENABLED ? (['demo-route-editor'] as const) : []),
-] as const
+// 輸入的字串,需要執行期白名單檢查)。從 PANEL_REGISTRY 衍生,不再手動
+// 條列——新增/移除模式只需要改上面那張表。
+const PANEL_MODES = (Object.keys(PANEL_REGISTRY) as Exclude<PanelMode, null>[])
+  .filter((m) => PANEL_REGISTRY[m].enabled)
 
 // isPanelMode:驗證 URL 路徑參數(/app/:panelMode,見 App.tsx)是不是合法的
 // PanelMode 字串。使用者可能手動輸入或分享一個帶著錯字/過期參數的網址

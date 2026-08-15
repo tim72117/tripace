@@ -1,5 +1,6 @@
-/* sidebar:第二側欄本體——由 DesktopLayout.tsx 用 add-from-candidate-sidebar
-   固定 class 名(見 styles-desktop.css)控制絕對定位/寬度/陰影,這裡只
+/* sidebar:第二側欄本體——由 DesktopLayout.tsx 用 .floating-panel/
+   .floating-panel-left 共用 class(見 styles-desktop.css)控制絕對定位/
+   寬度/陰影,這裡只
    負責內部排版與視覺,不決定自己的定位方式。視覺語言比照候選籃
    (GeoCandidateSidebar)——同樣的卡片背景色,讓使用者感覺是同一組側欄
    家族的延伸,而不是跳出去的另一種介面。不設 border-left(理由同外層
