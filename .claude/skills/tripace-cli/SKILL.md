@@ -77,6 +77,13 @@ GOWORK=off go run ./cmd/cli attraction-cities
 # 刪除一筆景點區域資料
 GOWORK=off go run ./cmd/cli attraction-delete -id lmk_xxx
 
+# 修正一筆景點區域資料的座標和/或名稱（建檔時輸入錯誤時用）；
+# -lat/-lng、-place（改查該地名座標，取第一筆候選）、-name 三者可任選
+# 一項或多項一起帶，只要至少帶了一項就會動作
+GOWORK=off go run ./cmd/cli attraction-update -id lmk_xxx -lat 22.99 -lng 120.20
+GOWORK=off go run ./cmd/cli attraction-update -id lmk_xxx -place "安平古堡" -region tw
+GOWORK=off go run ./cmd/cli attraction-update -id lmk_xxx -name "新名稱"
+
 # 重新透過 Google Places 查詢一次地標圖片並回寫
 GOWORK=off go run ./cmd/cli attraction-update-photo -id lmk_xxx
 ```
