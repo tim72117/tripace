@@ -2,6 +2,24 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.4.4 — 2026-08-15
+
+### 變更
+
+- **桌面版側欄改為常駐對話欄 + 浮動卡片**（`DesktopLayout.tsx`/`DesktopRail.tsx`/`DesktopShared.tsx`/`styles-desktop.css`）：`ChatScreen` 移入常駐左側欄（可收合，`chatCollapsed`），主顯示區固定為規劃地圖，`trips`/`timeline`/`pace`/`geo-outline` 改為疊加在地圖上的浮動卡片（右上角有共用關閉按鈕），不再擠壓地圖寬度；`demo-*` 系列維持原本整頁取代主顯示的行為。桌面版 `pace` 模式不再掛載 `PaceRouteMap`（與「主顯示固定為地圖」的新版面衝突），該元件保留供 `/demo/pace` 公開分享頁與手機版使用。
+- **新增 `PANEL_REGISTRY` 設定表**（`DesktopShared.tsx`）：取代原本散落在 `isSidepanelMode`／`.wide` 字串拼接／側欄與主區各自 ternary 等處的 `panelMode` 字串比對，新增或調整面板行為（浮動卡片 vs. 整頁取代、寬度、是否需要已選行程）現在只需要改這張表一處。
+- **浮動卡片視覺語言統一為 `.floating-panel`**（`styles-desktop.css`）：取代原本各自獨立定義的 `.add-from-candidate-sidebar`/`.geo-hotel-sidebar-wrap`，四種 `panelMode` 浮動卡片與候選籃第二側欄、飯店/附近推薦清單共用同一套定位/樣式。
+- **地圖上方新增城市搜尋框**（`GeoOutlineMap.tsx`/`GeoOutlinePanel.tsx`）：類別標籤列旁新增城市搜尋輸入框，與候選籃側欄共用同一份搜尋狀態，不需要先展開候選籃就能在地圖上直接搜尋城市。
+
+### 修正
+
+- **正式環境地圖標記無法顯示**（`Dockerfile`/`deploy-cloudrun.yml`/`deploy-with-migration.yml`/`update-secret-manager.sh`）：`GeoOutlineMap.tsx` 改用 `AdvancedMarkerElement` 後要求地圖必須帶有效的 `mapId` 才能運作，但部署設定先前只設定了 `VITE_GOOGLE_MAPS_API_KEY`，`VITE_GOOGLE_MAPS_MAP_ID` 在正式環境建置時是 `undefined`，導致所有地圖標記（飯店/景點/推薦地點/搜尋候選點等）靜默失效。新增 `GOOGLE_MAPS_MAP_ID` secret（GCP Console 手動建立的 Map Style ID，非機密資料但集中管理），`update-secret-manager.sh` 新增 `-map-id` 選項維護，兩個部署 workflow 比照既有 `GOOGLE_MAPS_API_KEY` 的讀取模式，build 時當 `--build-arg` 傳入。
+
+### 文件
+
+- `.claude/skills/version-tagging/override.md` 新增第三條破壞性判準：資料表變更若無法只靠 `AutoMigrate` 無痛套用（需要 backfill 既有資料、刪除表/欄位、或手寫 migration/人工介入資料庫），即算破壞性，不論是否對外公開、有沒有動到 CLI 介面。
+- `docs/TERMINOLOGY.md` 修正過時內容：桌面版三段式版面段落更新為「常駐對話欄 + 固定地圖主顯示 + 四種 panelMode 浮動卡片」的現況（原文件仍描述舊版「side panel 依分頁切換」的版面），一併修正多處指向 `web/src/` 根目錄、實際已搬到 `web/src/geo-planning/` 子目錄的檔案路徑（`AddFromCandidateSidebar.tsx`/`GeoHotelSidebar.tsx`/`GeoOutlineMap.tsx`/`AttractionInfoPanel.tsx`），與已改名的 CSS class（`.add-from-candidate-sidebar`/`.geo-hotel-sidebar-wrap` → `.floating-panel`/`.floating-panel-left`/`.floating-panel-right`）。
+
 ## v0.4.3 — 2026-08-15
 
 ### 新增

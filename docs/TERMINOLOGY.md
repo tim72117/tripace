@@ -8,18 +8,18 @@
 
 | 正式用語 | 介面用語（畫面顯示文字） | 介面/前端程式碼 | 後端變數 | 資料庫 |
 |---|---|---|---|---|
-| 功能列 | （無文字，純圖示列） | `DesktopRail`（`DesktopLayout.tsx`）／class `.desktop-rail` | — | — |
-| 側欄 | （無獨立標題，依分頁各自顯示標題） | class `.desktop-sidepanel`（`DesktopLayout.tsx`） | — | — |
-| 主顯示 | （無獨立標題） | class `.desktop-main`（`DesktopLayout.tsx`） | — | — |
+| 功能列 | （無文字，純圖示列） | `DesktopRail`（`DesktopRail.tsx`）／class `.desktop-rail` | — | — |
+| 對話欄 | （無獨立標題；未選行程時顯示空狀態提示） | class `.desktop-sidepanel`（`DesktopLayout.tsx`），常駐顯示 `ChatScreen` 或空狀態，可收合（`chatCollapsed`） | — | — |
+| 主顯示 | （無獨立標題） | class `.desktop-main`（`DesktopLayout.tsx`），固定顯示規劃地圖（`GeoOutlinePanel`），不再依 `panelMode` 切換內容 | — | — |
 
-規劃分頁（`panelMode === 'geo-outline'`）額外會在主顯示（地圖）左右兩側各漂浮一塊獨立卡片，不算在上面三段式的任何一段裡，也不佔用 flex 版面空間、不壓縮主顯示的可用寬度：
+`trips`/`timeline`/`pace`/`geo-outline` 這四種 `panelMode`（見 `DesktopShared.tsx` 的 `PANEL_REGISTRY`，`slot: 'float'`）額外會在主顯示（地圖）左緣漂浮一塊卡片，不算在上面三段式的任何一段裡，也不佔用 flex 版面空間、不壓縮主顯示的可用寬度；`geo-outline` 有查詢結果時另外在右緣漂浮飯店/附近推薦清單。四種浮動卡片共用同一個 `.floating-panel`/`.floating-panel-left` 位置與視覺樣式（互斥顯示，同時只會有一張），右上角有共用的關閉按鈕：
 
 | 正式用語 | 介面用語（畫面顯示文字） | 介面/前端程式碼 | 後端變數 | 資料庫 |
 |---|---|---|---|---|
-| 第二側欄 | 從候選加入 · {日期} | `AddFromCandidateSidebar`（`web/src/AddFromCandidateSidebar.tsx`）／class `.add-from-candidate-sidebar`（`web/src/styles-desktop.css`） | — | — |
-| 飯店/附近推薦清單 | （依分頁顯示「飯店」／附近推薦類別名，如「餐廳」） | `GeoHotelSidebar`（`web/src/GeoHotelSidebar.tsx`）／class `.geo-hotel-sidebar-wrap`（`web/src/styles-desktop.css`） | — | — |
+| 第二側欄 | 從候選加入 · {日期} | `AddFromCandidateSidebar`（`web/src/geo-planning/AddFromCandidateSidebar.tsx`）／class `.floating-panel.floating-panel-left`（`web/src/styles-desktop.css`） | — | — |
+| 飯店/附近推薦清單 | （依分頁顯示「飯店」／附近推薦類別名，如「餐廳」） | `GeoHotelSidebar`（`web/src/geo-planning/GeoHotelSidebar.tsx`）／class `.floating-panel.floating-panel-right`（`web/src/styles-desktop.css`） | — | — |
 
-兩者都是絕對定位疊在主顯示（`.desktop-main`）之上的漂浮卡片（四周留間距、圓角＋陰影），不是版面裡緊鄰的一欄——第二側欄疊在主顯示左緣，飯店/附近推薦清單疊在主顯示右緣。第二側欄由側欄（候選籃，`GeoCandidateSidebar`）內「已排入行程」每個日期分組標題列的「從候選加入」按鈕觸發；候選中清單（hotel/place/退回候選的 entry）已整個搬進第二側欄顯示，候選籃側欄本身只顯示「已排入行程」。飯店/附近推薦清單只在使用者觸發過查詢（點類別標籤／地標／「搜尋這個區域」）後才出現。
+兩者都是絕對定位疊在主顯示（`.desktop-main`）之上的漂浮卡片（四周留間距、圓角＋陰影），不是版面裡緊鄰的一欄——第二側欄疊在主顯示左緣，飯店/附近推薦清單疊在主顯示右緣。第二側欄由候選籃（`GeoCandidateSidebar`，見上方 `geo-outline` 的浮動卡片）內「已排入行程」每個日期分組標題列的「從候選加入」按鈕觸發，與 `panelMode` 浮動卡片同屬左緣、互斥顯示（`pickingDayKey` 有值時優先顯示）；候選中清單（hotel/place/退回候選的 entry）已整個搬進第二側欄顯示，候選籃本身只顯示「已排入行程」。飯店/附近推薦清單只在使用者觸發過查詢（點類別標籤／地標／「搜尋這個區域」）後才出現。
 
 ## 手機版
 
@@ -47,7 +47,7 @@
 
 | 正式用語 | 介面用語（畫面顯示文字） | 介面/前端程式碼 | 後端變數 | 資料庫 |
 |---|---|---|---|---|
-| 景點區域 | （地圖上以光暈＋標籤呈現，無獨立分頁；點擊開啟地點介紹卡片） | `GeoAttraction` / `attractions` / `setAttractions`（`web/src/GeoOutlineMap.tsx`）／地點介紹卡片 `AttractionInfoPanel`（`web/src/AttractionInfoPanel.tsx`） | `model.Attraction` / `attractionRow`（`server/internal/store/entity.go`） | 表 `attractions` |
+| 景點區域 | （地圖上以光暈＋標籤呈現，無獨立分頁；點擊開啟地點介紹卡片） | `GeoAttraction` / `attractions` / `setAttractions`（`web/src/geo-planning/GeoOutlineMap.tsx`）／地點介紹卡片 `AttractionInfoPanel`（`web/src/geo-planning/AttractionInfoPanel.tsx`） | `model.Attraction` / `attractionRow`（`server/internal/store/entity.go`） | 表 `attractions` |
 | 飯店（即時查詢） | 飯店 | `GeoHotel` / `hotels`（`web/src/api.ts`） | `geo.NearbyPlace`（`server/internal/geo/places.go`） | — |
 | 附近推薦（即時查詢） | 附近推薦 | `GeoPlace` / `places`（`web/src/api.ts`） | `placeResponse`（`server/internal/api/geo_outline.go`） | — |
 
