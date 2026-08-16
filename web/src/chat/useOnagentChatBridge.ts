@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { AgentBridge } from '@onagent/bridge'
-import { tripEntryAdd } from './clienttools/tools/tripEntryAdd'
-import { tripEntryList } from './clienttools/tools/tripEntryList'
-import { tripListBatches } from './clienttools/tools/tripListBatches'
-import { tripEntryDelete } from './clienttools/tools/tripEntryDelete'
-import { tripEntryUpdate } from './clienttools/tools/tripEntryUpdate'
-import type { TripBatches } from './clienttools/tripEntryTools'
-import { toAgentBridgeTools } from './sdk-proposals/toAgentBridgeTools'
+import { tripEntryAdd } from '../clienttools/tools/tripEntryAdd'
+import { tripEntryList } from '../clienttools/tools/tripEntryList'
+import { tripListBatches } from '../clienttools/tools/tripListBatches'
+import { tripEntryDelete } from '../clienttools/tools/tripEntryDelete'
+import { tripEntryUpdate } from '../clienttools/tools/tripEntryUpdate'
+import type { TripBatches } from '../clienttools/tripEntryTools'
+import { toAgentBridgeTools } from '../sdk-proposals/toAgentBridgeTools'
 
 // useOnagentChatBridge:ChatScreen「onagent 推論模式」開關(見
 // DesktopShared.tsx 的 CHAT_ONAGENT_TOGGLE_ENABLED)用的獨立連線 hook——

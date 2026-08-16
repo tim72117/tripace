@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { ChevronDown, ChevronRight, MapPin, ClipboardList, Trash2 } from 'lucide-react'
-import type { AssistPlace, PresentedEntry } from './api'
+import type { AssistPlace, PresentedEntry } from '../api'
 import { ASSISTANT_ID, ENTRY_QUERY_BATCH_KEY, type ChatMessage } from './chatTypes'
-import { RecommendedPlacesList, type RecommendedPlace } from './RecommendedPlaces'
-import type { TripBatches, TripEntry } from './clienttools/tripEntryTools'
+import { RecommendedPlacesList, type RecommendedPlace } from '../recommended-places/RecommendedPlaces'
+import type { TripBatches, TripEntry } from '../clienttools/tripEntryTools'
 import styles from './MessageBubble.module.css'
 
 export function MessageBubble({

@@ -3,11 +3,11 @@ import { AlertCircle } from 'lucide-react'
 import type { PublicLinkViewMode } from './api'
 import * as api from './api'
 import type { Entry } from './types'
-import { MultiTrackTimeline } from './Timeline'
+import { MultiTrackTimeline } from './timeline/Timeline'
 import { BASE_URL, errMsg, useIsDesktop } from './AppCommon'
-import { PaceChart, type Checkpoint, type PaceCheckpointDetail } from './PaceChart'
-import { PaceRouteMap } from './PaceRouteMap'
-import { PacePhoneSwipe } from './PacePhoneSwipe'
+import { PaceChart, type Checkpoint, type PaceCheckpointDetail } from './pace/PaceChart'
+import { PaceRouteMap } from './pace/PaceRouteMap'
+import { PacePhoneSwipe } from './pace/PacePhoneSwipe'
 import './styles-desktop.css'
 import './desktop-layout-shell.css'
 
@@ -42,7 +42,7 @@ function hasPaceData(entries: Entry[]): boolean {
 // PublicPaceDrawerMap:路徑模式下的呈現——套用跟登入後正式介面/`/demo/pace`
 // 示範頁相同的「左側抽屜欄(PaceChart 檢查站清單)+ 主顯示區地圖
 // (PaceRouteMap)」結構(PacePhoneSwipe.tsx 手機寬度、桌面寬度則側欄+主區
-// 並排,比照 PublicPaceDemoPage.tsx 的桌面分支),取代原本精簡的卡片清單
+// 並排,比照 pace/PacePage.tsx 的桌面分支),取代原本精簡的卡片清單
 // (PublicPaceList,已移除)——這裡不帶上方功能列(navbar),因為
 // PublicViewScreen 本身已經有自己的 navbar(行程名稱標題),不需要疊兩層。
 // checkpoints 狀態提升到這裡,理由同 DesktopLayout.tsx/PhoneContent.tsx:

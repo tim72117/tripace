@@ -9,8 +9,8 @@ import {
   type DemoPanelMode, DemoPanelContent, TIMELINE_ENABLED, PACE_ENABLED,
   DEMO_CARDS_ENABLED, DEMO_ROW_ENABLED, DEMO_ONAGENT_ENABLED,
 } from './DesktopShared'
-import { PaceChart, type Checkpoint } from './PaceChart'
-import type { SelectedEntry } from './PaceRouteMap'
+import { PaceChart, type Checkpoint } from './pace/PaceChart'
+import type { SelectedEntry } from './pace/PaceRouteMap'
 import { TripMenu } from './trip/TripMenu'
 import { MembersScreen } from './trip/MembersScreen'
 import type { ClientConfig } from './api'

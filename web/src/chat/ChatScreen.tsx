@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Send, Sparkles } from 'lucide-react'
-import type { ClientConfig } from './api'
-import * as api from './api'
-import type { Trip, Entry, User } from './types'
+import type { ClientConfig } from '../api'
+import * as api from '../api'
+import type { Trip, Entry, User } from '../types'
 import {
   listAllTripBatches,
   listMessageRecommendedPlaces,
   listMessages,
   listMessageTripListKeys,
   replaceTripBatch,
-} from './deviceDB'
-import { ErrorBanner, errMsg, isSubmitEnter } from './AppCommon'
-import type { TaskPlaceholder } from './Timeline'
-import type { TripBatches, TripEntry } from './clienttools/tripEntryTools'
+} from '../deviceDB'
+import { ErrorBanner, errMsg, isSubmitEnter } from '../AppCommon'
+import type { TaskPlaceholder } from '../timeline/Timeline'
+import type { TripBatches, TripEntry } from '../clienttools/tripEntryTools'
 import { ASSISTANT_ID, ENTRY_QUERY_BATCH_KEY, type ChatMessage } from './chatTypes'
 import { AskUserSheet, AskChoiceSheet, type AskChoiceOption } from './AskSheets'
 import { MessageBubble } from './MessageBubble'

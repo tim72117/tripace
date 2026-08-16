@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Pencil, X } from 'lucide-react'
-import type { Entry } from './types'
-import type { ClientConfig } from './api'
-import * as api from './api'
-import { ApiError } from './api'
+import type { Entry } from '../types'
+import type { ClientConfig } from '../api'
+import * as api from '../api'
+import { ApiError } from '../api'
 import styles from './Timeline.module.css'
 
 // 對齊 App.tsx 的 errMsg,但不 import App.tsx(App.tsx 已 import 本檔的

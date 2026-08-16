@@ -3,7 +3,7 @@ import { LocateFixed, Play, Square, Compass, MapPin, Check } from 'lucide-react'
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 import styles from './PaceRouteMap.module.css'
 import './PaceMap.css'
-import { BASE_URL } from './AppCommon'
+import { BASE_URL } from '../AppCommon'
 import type { Checkpoint } from './PaceChart'
 
 // SelectedEntry:使用者點擊某張檢查站卡片後選取的 entry,驅動地圖平移+
@@ -143,7 +143,7 @@ export function PaceRouteMap({
   // 少於 2 筆(該段還沒有 checkpoint,或還在載入中)時不計算路線,地圖
   // 仍正常顯示,只是沒有 Polyline 可畫。
   checkpoints: Checkpoint[]
-  // publicToken:公開分享頁(PublicPaceDemoPage.tsx/PhoneScreens.tsx 的
+  // publicToken:公開分享頁(pace/PacePage.tsx/PhoneScreens.tsx 的
   // PublicViewScreen/PacePhoneSwipe)傳入,對應這個分享連結的 token——非
   // undefined 時代表這個元件掛載在「訪客沒有登入身分」的情境,路線計算改
   // 打免登入的 POST /v1/public/{token}/compute-route(見下方路線 effect
@@ -153,7 +153,7 @@ export function PaceRouteMap({
   publicToken?: string
   // selectedEntry:使用者在側欄點擊的檢查站(見 DesktopLayout.tsx 登入後
   // 正式介面的 pace 面板),非 null 時才顯示中央選點圖釘與「儲存座標」
-  // 按鈕。可選是因為 PublicPaceDemoPage.tsx(/demo/pace 公開分享頁)刻意
+  // 按鈕。可選是因為 pace/PacePage.tsx(/demo/pace 公開分享頁)刻意
   // 不接這套互動(寫入座標需要登入身分,不該出現在公開頁),掛載這個元件
   // 時完全不傳這兩個 props。
   selectedEntry?: SelectedEntry | null

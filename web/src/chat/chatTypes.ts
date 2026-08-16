@@ -1,8 +1,8 @@
 // ChatScreen.tsx 與 MessageBubble.tsx 共用的型別/常數,獨立成檔案避免兩者
 // 互相 import 對方造成循環依賴(ChatScreen 需要 MessageBubble 元件本身,
 // MessageBubble 需要這裡的 ChatMessage/ASSISTANT_ID/ENTRY_QUERY_BATCH_KEY)。
-import type { AssistPlace, PresentedEntry } from './api'
-import type { Message } from './types'
+import type { AssistPlace, PresentedEntry } from '../api'
+import type { Message } from '../types'
 
 // 助手(assist 回答)的作者 ID,需與後端及 iOS ChatStore.assistantID 一致。
 export const ASSISTANT_ID = 'usr_assistant'

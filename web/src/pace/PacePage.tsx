@@ -1,25 +1,27 @@
 import { useState } from 'react'
-import { useIsDesktop } from './AppCommon'
+import { useIsDesktop } from '../AppCommon'
 import { PaceChart, PACE_PUBLIC_LINK_TOKEN, type Checkpoint } from './PaceChart'
 import { PaceRouteMap } from './PaceRouteMap'
 import { PacePhoneSwipe } from './PacePhoneSwipe'
-import './styles-desktop.css'
-import './desktop-layout-shell.css'
+import '../styles-desktop.css'
+import '../desktop-layout-shell.css'
 
-// PublicPaceDemoPage:/demo/pace 的公開分享頁內容(見 App.tsx App() 的路由
-// 判斷)。版型直接比照登入後 pace 面板的樣子(側欄清單 + 主區地圖,見
-// DesktopLayout.tsx DesktopContent 的 pace 分支),只是不放最左側的
-// DesktopRail(行程/時間軸/使用者選單那條圖示列,公開頁不需要、也沒有
-// 登入身分可以顯示)。沿用同一套 .desktop-sidepanel/.desktop-main class,
-// 不是重新設計一份版型;.desktop-layout 底下少了 DesktopRail 這個 flex
-// sibling 不影響 sidepanel/main 各自的排版,不需要額外 CSS。手機寬度沿用
-// 跟登入後手機版一致的 PacePhoneSwipe(滑動雙頁),不需要另外做一份。
+// PacePage:/demo/pace 的公開分享頁內容(見 App.tsx App() 的路由判斷,原本
+// 檔名/元件名叫 PublicPaceDemoPage,搬進 pace/ 目錄後去掉 Public/Demo
+// 前綴——目錄本身已表明這是配速表功能的一部分,不需要再重複)。版型直接
+// 比照登入後 pace 面板的樣子(側欄清單 + 主區地圖,見 DesktopLayout.tsx
+// DesktopContent 的 pace 分支),只是不放最左側的 DesktopRail(行程/
+// 時間軸/使用者選單那條圖示列,公開頁不需要、也沒有登入身分可以顯示)。
+// 沿用同一套 .desktop-sidepanel/.desktop-main class,不是重新設計一份
+// 版型;.desktop-layout 底下少了 DesktopRail 這個 flex sibling 不影響
+// sidepanel/main 各自的排版,不需要額外 CSS。手機寬度沿用跟登入後手機版
+// 一致的 PacePhoneSwipe(滑動雙頁),不需要另外做一份。
 //
 // 「點卡片→地圖平移→手動微調→儲存座標」這套互動(見 PaceRouteMap.tsx 的
 // SelectedEntry/selectedEntry/onSelectedEntryDone)刻意不接在這個公開頁:
 // 這是任何人不用登入都能看的分享頁,寫入座標是需要登入身分的維運操作,
 // 不該出現在公開頁面上——只在 DesktopLayout.tsx(登入後正式介面)提供。
-export function PublicPaceDemoPage() {
+export function PacePage() {
   const isDesktop = useIsDesktop()
   // checkpoints:比照登入後正式介面(DesktopLayout.tsx/PhoneContent.tsx)的
   // 作法,PaceChart 目前選取的那一段透過 onRouteChange 鏡像上來,轉傳給

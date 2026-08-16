@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import type { TouchEvent as ReactTouchEvent } from 'react'
-import type { ClientConfig } from './api'
+import type { ClientConfig } from '../api'
 import { PaceChart, type Checkpoint } from './PaceChart'
 import { PaceRouteMap } from './PaceRouteMap'
 import styles from './PacePhoneSwipe.module.css'
@@ -37,7 +37,7 @@ export function PacePhoneSwipe({
   // publicToken:未登入的公開分享頁要查詢的公開連結 token,直接轉傳給
   // PaceChart(見該檔案 publicToken prop 的說明)——真正的分享連結
   // /public/{token}(PublicViewScreen.tsx)傳這個 prop 指定實際的 token;
-  // /demo/pace(PublicPaceDemoPage.tsx)不傳,fallback 用固定的 demo token。
+  // /demo/pace(pace/PacePage.tsx)不傳,fallback 用固定的 demo token。
   publicToken?: string
   // checkpoints/onRouteChange:PaceRouteMap 畫路線需要的 checkpoint 清單,
   // 由呼叫端持有 state 並透過 PaceChart 的 onRouteChange 鏡像、往下傳給

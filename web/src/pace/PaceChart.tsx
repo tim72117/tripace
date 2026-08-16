@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Share2 } from 'lucide-react'
 import styles from './PaceChart.module.css'
 import './PaceMap.css'
-import { BASE_URL } from './AppCommon'
-import { fetchEntries, geocodeEntry, type ClientConfig } from './api'
+import { BASE_URL } from '../AppCommon'
+import { fetchEntries, geocodeEntry, type ClientConfig } from '../api'
 
 // 單車配速表(UI 試做):手機優先的直向卡片堆疊,每張卡片是一個檢查站,
 // 核心資訊是「離站時間」(視覺上用最大字級呈現)。設計與互動邏輯直接
@@ -162,12 +162,12 @@ interface RouteMeta {
 // 開始記錄),故部分路段的進度條起點不是 0%。
 
 // PACE_PUBLIC_LINK_TOKEN:未登入的公開分享頁(/demo/pace,見
-// PublicPaceDemoPage.tsx)讀取固定展示行程用的公開分享連結 token。由
+// pace/PacePage.tsx)讀取固定展示行程用的公開分享連結 token。由
 // VITE_PACE_PUBLIC_LINK_TOKEN 決定(見 .env.development)。登入後的正式
 // 介面(DesktopLayout.tsx)不使用這個 token——跟時間軸(Timeline)同一套
 // 邏輯,改讀登入使用者目前選取的行程(見下方 tripID prop 與
 // useEffect),不綁定固定行程,也不需要經過公開連結機制。
-// export:PublicPaceDemoPage.tsx 掛載 PaceRouteMap 時也需要同一把 token(公開
+// export:pace/PacePage.tsx 掛載 PaceRouteMap 時也需要同一把 token(公開
 // 頁的 compute-route 改走 /v1/public/{token}/compute-route,見 PaceRouteMap.tsx
 // 的 publicToken prop 說明),不重複讀一次 import.meta.env,直接共用這份。
 export const PACE_PUBLIC_LINK_TOKEN = import.meta.env.VITE_PACE_PUBLIC_LINK_TOKEN as string | undefined
@@ -416,7 +416,7 @@ export function PaceChart({
   publicToken?: string
   // onCheckpointClick:通知父層(DesktopLayout.tsx 登入後正式介面)使用者
   // 點了哪個檢查站,讓地圖(PaceRouteMap)能平移過去、進入手動微調座標模式。
-  // 可選是因為 PublicPaceDemoPage.tsx(/demo/pace 公開分享頁)刻意不接這套
+  // 可選是因為 pace/PacePage.tsx(/demo/pace 公開分享頁)刻意不接這套
   // 互動(寫入座標需要登入身分,不該出現在公開頁),掛載時不傳這個 prop。
   onCheckpointClick?: (entry: { id: string; lat: number | null; lng: number | null }) => void
   // onRouteChange:目前選取的那一段(routeIdx 對應的 route.checkpoints)
@@ -426,7 +426,7 @@ export function PaceChart({
   // 這裡有,故用這個 callback 把「目前這一段有哪些 checkpoint」往上鏡像給
   // 共同的父層(DesktopLayout.tsx/PhoneContent.tsx),再由父層轉傳給
   // PaceRouteMap——同一套模式比照 ChatScreen 的 onTimelineData 鏡像
-  // 機制。可選是因為 PublicPaceDemoPage.tsx 公開分享頁沒有相鄰的地圖
+  // 機制。可選是因為 pace/PacePage.tsx 公開分享頁沒有相鄰的地圖
   // 元件可以接收這份資料,不需要傳。
   onRouteChange?: (checkpoints: Checkpoint[]) => void
   // savedEntry:地圖(PaceRouteMap.tsx)那邊手動拖曳選點、按下「儲存座標」

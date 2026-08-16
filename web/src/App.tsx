@@ -13,21 +13,21 @@ import styles from './App.module.css'
 // 載入的 JS 體積只包含這條路由實際需要的程式碼。Suspense fallback 給
 // null(空白瞬間),因為這些都是整頁級的路由切換,chunk 載入通常在使用者
 // 感知延遲之前就完成,不需要額外的載入動畫。
-const HomePage = lazy(() => import('./HomePage').then((m) => ({ default: m.HomePage })))
-const ProductPage = lazy(() => import('./ProductPage').then((m) => ({ default: m.ProductPage })))
-const PrivacyPage = lazy(() => import('./PrivacyPage').then((m) => ({ default: m.PrivacyPage })))
-const TermsPage = lazy(() => import('./TermsPage').then((m) => ({ default: m.TermsPage })))
+const HomePage = lazy(() => import('./home/HomePage').then((m) => ({ default: m.HomePage })))
+const ProductPage = lazy(() => import('./home/ProductPage').then((m) => ({ default: m.ProductPage })))
+const PrivacyPage = lazy(() => import('./home/PrivacyPage').then((m) => ({ default: m.PrivacyPage })))
+const TermsPage = lazy(() => import('./home/TermsPage').then((m) => ({ default: m.TermsPage })))
 const CliAuthPage = lazy(() => import('./CliAuthPage').then((m) => ({ default: m.CliAuthPage })))
 const DeviceAuthPage = lazy(() => import('./DeviceAuthPage').then((m) => ({ default: m.DeviceAuthPage })))
 const PublicViewScreen = lazy(() => import('./PhoneScreens').then((m) => ({ default: m.PublicViewScreen })))
-const PublicPaceDemoPage = lazy(() => import('./PublicPaceDemoPage').then((m) => ({ default: m.PublicPaceDemoPage })))
+const PacePage = lazy(() => import('./pace/PacePage').then((m) => ({ default: m.PacePage })))
 const PhoneContent = lazy(() => import('./PhoneContent').then((m) => ({ default: m.PhoneContent })))
-const NotFoundPage = lazy(() => import('./NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
+const NotFoundPage = lazy(() => import('./home/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
 
 // App.tsx 只保留路由判斷(App() 本身)——PhoneContent(含 PhoneNavDrawer 導覽
-// 抽屜)搬到 PhoneContent.tsx、PublicPaceDemoPage 搬到自己的檔案、
-// useIsDesktop 搬到 AppCommon.tsx(供多處共用),讓這裡回到單純的「進入點
-// 依路徑分派」職責。
+// 抽屜)搬到 PhoneContent.tsx、PacePage(原 PublicPaceDemoPage)搬到
+// pace/ 目錄、useIsDesktop 搬到 AppCommon.tsx(供多處共用),讓這裡回到
+// 單純的「進入點依路徑分派」職責。
 //
 // 改用 react-router-dom(v7)的 <BrowserRouter>/<Routes>/<Route> 取代原本
 // window.location.pathname 手寫字串比對——目的是讓 /app 底下的 panelMode
@@ -107,7 +107,7 @@ export function App() {
             path="/demo/pace"
             element={
               <div className={styles.webApp}>
-                <PublicPaceDemoPage />
+                <PacePage />
               </div>
             }
           />

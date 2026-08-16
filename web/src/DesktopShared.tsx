@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, Check } from 'lucide-react'
 import type { AssistLang } from './assistLang'
-import { RecommendedPlacesList, RecommendedPlacesRow, FAKE_RECOMMENDED_PLACES } from './RecommendedPlaces'
+import { RecommendedPlacesList, RecommendedPlacesRow, FAKE_RECOMMENDED_PLACES } from './recommended-places/RecommendedPlaces'
 import { OnagentBridgeDemo } from './clienttools/OnagentBridgeDemo'
 import langSelectStyles from './LangSelect.module.css'
 import styles from './DesktopShared.module.css'
