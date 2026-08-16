@@ -1,5 +1,10 @@
-/* Tripace 主應用樣式。
-   左:套 iPhone 外框的 app 視圖;右:可展開的 debug panel。 */
+/* 全站基礎樣式:CSS 變數、reset、以及真正跨多個元件共用的全域 class
+   (.navbar/.btn/.icon-btn/.new-trip-composer/.screen-body/.row/.grow/
+   .section-title/.btn-primary/.field/.empty/.banner/.btn-secondary/
+   .rp-modal 系列/.settings-dialog 系列/pre)。從原本單一巨大的 styles.css
+   拆出——這些規則不屬於任何單一元件,拆進單一元件的 CSS Module 會打斷
+   共用關係(變成要嘛重複定義、要嘛互相 import),故獨立成這份依性質命名
+   的檔案,由 main.tsx 全域 import 一次。 */
 
 :root {
   --ios-blue: #7C6F5B;      /* 大地棕：主要互動色 */
@@ -41,36 +46,9 @@ body {
   overscroll-behavior-y: none;
 }
 
-/* ---- 正式網頁版面 ---- */
-/* 手機版(< 768px):單頁全螢幕切換(見 PhoneContent),寬度撐滿視窗——不再
-   模擬一個居中的手機外框(原本 max-width: 480px + margin: 0 auto),改成
-   真正滿版視窗寬,跟桌面版(下方 media query)用同一種「撐滿視窗」邏輯,
-   只差高度用 100dvh(行動瀏覽器網址列高度變化時的可視高度)而非 100vh。 */
-.web-app {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
-  background: var(--ios-bg);
-  /* 手機版導覽抽屜欄(PhoneNavDrawer)/設定面板(PhoneContent.tsx 的
-     .settingsPanel)都是用 position: absolute + transform 位移到畫面外
-     來做「收合」狀態,而不是條件卸載(理由見各自檔案的說明:唯有元件全程
-     留在 DOM 上,CSS transition 才能播放開關動畫)。沒有這行 overflow:
-     hidden,位移到畫面外的內容不會被裁掉,使用者滾動畫面(尤其垂直方向,
-     比水平方向更容易不小心觸發)時,原本該隱藏的面板會被捲動帶進可視
-     範圍——這是實際發生過的 bug,不是預防性寫法。 */
-  overflow: hidden;
-}
-/* 桌面版(>= 768px):側欄 + 主要區塊佈局。斷點需與 App.tsx 的
-   DESKTOP_BREAKPOINT(useIsDesktop)一致。 */
-@media (min-width: 768px) {
-  .web-app {
-    height: 100vh;
-  }
-}
-
-/* 導航列 */
-/* 樣式/高度刻意跟 PhoneNavDrawer.module.css 的 .tabs(抽屜欄上方功能列)
+/* 導航列:ChatScreen/PhoneContent/PhoneScreens/SettingsScreen/
+   clienttools/OnagentBridgeDemo/trip/MembersScreen/trip/ShareModal 共用。
+   樣式/高度刻意跟 PhoneNavDrawer.module.css 的 .tabs(抽屜欄上方功能列)
    對齊——同一份 padding 公式(含 safe-area-inset-top 避讓瀏海/狀態列)、同一種
    background/border-bottom 處理(不用陰影),讓主顯示區跟抽屜欄的上方欄視覺
    高度一致,使用者在兩者之間切換時不會有跳動感。 */
@@ -144,14 +122,8 @@ body {
   color: var(--color-accent);
 }
 
-/* 登入下拉(內嵌於行程列表 navbar) */
-.login-dropdown {
-  border-bottom: 1px solid var(--ios-sep);
-  background: var(--ios-card);
-  padding: 8px 16px 16px;
-}
-
-/* 新增行程輸入列(嵌在 navbar 下方的一般版面,非聊天室浮空輸入條) */
+/* 新增行程輸入列(嵌在 navbar 下方的一般版面,非聊天室浮空輸入條):
+   DesktopTripList/PhoneTripsDrawer 共用。 */
 .new-trip-composer {
   display: flex;
   align-items: center;
@@ -185,23 +157,9 @@ body {
   font-size: 15px;
 }
 
-/* 手機版行程列表(PhoneNavDrawer.tsx 的 TripsTabContent)瀏覽狀態下,
-   常駐在列表正上方的「新增行程」按鈕。跟 .new-trip-composer 一樣是
-   整條橫幅,寬度撐滿容器,不是一般行內按鈕的自然寬度,故需要額外覆寫
-   .btn-primary 預設的置中/自動寬度樣式。 */
-.new-trip-trigger {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 12px;
-  border-bottom: 0.5px solid var(--ios-sep);
-  border-radius: 0;
-  font-size: 15px;
-}
-
-/* 內容捲動區 */
+/* 內容捲動區:ChatScreen/DesktopLayout/PhoneContent/PhoneScreens/
+   PhoneTripsDrawer/SettingsScreen/clienttools/OnagentBridgeDemo/
+   trip/MembersScreen/trip/ShareModal 共用。 */
 .screen-body {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -213,7 +171,8 @@ body {
   display: none;
 }
 
-/* ---- 列表 / 卡片 ---- */
+/* ---- 列表 / 卡片:DesktopUserMenu/SettingsDialog/SettingsScreen/
+   trip/MembersScreen/trip/TripManageModal 共用 ---- */
 .list {
   list-style: none;
   margin: 12px 0 0;
@@ -271,156 +230,11 @@ body {
   margin-top: 2px;
 }
 
-.avatar {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-weight: 600;
-  font-size: 17px;
-  flex: 0 0 auto;
-}
-
-/* avatarColor 未設定時的低對比 fallback:底色貼近側欄背景(--ios-card),
-   用分隔線色(--ios-sep)做出一階深淺差,融入背景又保留圓圈輪廓;
-   文字改用灰棕字色(--ios-gray)維持可讀對比,避免沿用預設白字而看不清。 */
-.avatar-empty {
-  background: var(--ios-sep);
-  color: var(--ios-gray);
-}
-
 .section-title {
   padding: 18px 16px 6px;
   font-size: 15px;
   color: var(--ios-gray);
   text-transform: uppercase;
-}
-
-/* 「開發」可折疊區塊觸發列(SettingsDialog,見 DesktopLayout.tsx):視覺比照 .section-title
-   (同樣大寫灰字、字級),但改為可點擊列,故補上 flex 排版放 ChevronDown 圖示、
-   cursor: pointer,並沿用 .row:active 的按壓回饋色,讓互動感跟同一個 dialog
-   裡其他可點擊列(.row)一致。圖示依展開狀態旋轉 180 度,是常見折疊區塊慣例。 */
-.dev-section-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 16px 6px;
-  font-size: 15px;
-  color: var(--ios-gray);
-  text-transform: uppercase;
-  cursor: pointer;
-}
-.dev-section-toggle:active {
-  background: #f5f5f7;
-}
-.dev-section-chevron {
-  transition: transform 0.15s;
-}
-.dev-section-chevron.open {
-  transform: rotate(180deg);
-}
-
-/* ---- 聊天 ---- */
-.chat-list {
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.tag {
-  font-size: 12px;
-  padding: 1px 7px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.06);
-  color: #333;
-}
-.cat {
-  font-size: 12px;
-  font-weight: 700;
-  padding: 1px 7px;
-  border-radius: 8px;
-  background: var(--ios-green);
-  color: #fff;
-}
-.entry-loc {
-  font-size: 12px;
-  color: #8e8e93;
-  margin-top: 2px;
-}
-
-/* 公開分享頁(/public/{token},PhoneScreens.tsx PublicViewScreen)的輸入列:
-   刻意跟 ChatScreen 的 .composer* 分開一份獨立規則,即使視覺目前完全一樣
-   (同一份圓角浮空輸入卡設計)——公開頁跟正式聊天室是兩個不同情境(訪客
-   免登入、只有輸入+送出,沒有 ChatScreen 的推薦景點功能鈕/inputFocused
-   狀態追蹤等),不應該共用同一條全域規則,以免之後改 ChatScreen 的輸入列
-   不小心連動到公開頁,或反過來。內容跟 .composer/.composer-row/input/
-   button 是刻意複製,不是打字失誤;要改公開頁的輸入列外觀,直接改這裡,
-   不要去改 .composer*。 */
-.public-composer {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  padding: 14px 24px calc(12px + env(safe-area-inset-bottom, 0px));
-  background: transparent;
-  pointer-events: none;
-}
-.public-composer-row {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--ios-card);
-  border-radius: 28px;
-  padding: 8px 8px 8px 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
-  transition: box-shadow 0.15s;
-}
-.public-composer-row:focus-within {
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.06);
-}
-.public-composer input,
-.public-composer button {
-  pointer-events: auto;
-}
-.public-composer input {
-  flex: 1;
-  border: none;
-  padding: 8px 0;
-  font-size: 17px;
-  outline: none;
-  background: transparent;
-}
-.public-composer button {
-  flex: 0 0 auto;
-  border: none;
-  background: var(--color-accent);
-  color: #fff;
-  border-radius: 50%;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
-}
-.public-composer button:active {
-  transform: scale(0.92);
-}
-.public-composer button:disabled {
-  background: #D9C4AA;
-  cursor: default;
-}
-.public-composer button:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
 }
 
 /* 主要行動按鈕 */
@@ -498,7 +312,9 @@ pre {
   color: #d4d4d8;
 }
 
-/* 危險操作按鈕（撤銷） */
+/* 危險操作按鈕（撤銷）:目前僅 trip/ShareModal.tsx 使用,但骨架用途通用
+   (跟 .btn-primary/.btn-secondary 同一組行動按鈕家族),留在這裡與其他
+   按鈕變體集中管理,不獨立搬進 ShareModal 專屬 module。 */
 .btn-danger {
   display: flex;
   align-items: center;
@@ -521,18 +337,6 @@ pre {
   outline-offset: 2px;
 }
 
-/* ---- 帳號設定：token display ---- */
-.token-box {
-  margin: 0 16px 8px;
-  padding: 12px;
-  background: var(--ios-bg);
-  border-radius: 10px;
-  border: 1px solid var(--ios-sep);
-  font-family: var(--mono);
-  font-size: 12px;
-  word-break: break-all;
-  color: var(--color-dark);
-}
 .btn-secondary {
   display: block;
   width: 100%;
@@ -557,133 +361,13 @@ pre {
   outline-offset: 2px;
 }
 
-/* ---- ask_user 詢問框:底部彈出 sheet(agent 缺資訊時請使用者補上) ---- */
-.ask-user-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 60;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  background: rgba(0, 0, 0, 0.32);
-  animation: ask-user-fade 0.2s ease;
-}
-.ask-user-sheet {
-  background: var(--ios-card);
-  border-top-left-radius: 20px;
-  border-top-right-radius: 20px;
-  padding: 20px 20px calc(20px + env(safe-area-inset-bottom, 0px));
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.18);
-  animation: ask-user-slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1);
-}
-.ask-user-prompt {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--color-dark);
-  text-align: center;
-  line-height: 1.4;
-}
-/* 日期選擇器:放大、置中、易點 */
-.ask-user-date {
-  width: 100%;
-  box-sizing: border-box;
-  font-size: 18px;
-  text-align: center;
-  padding: 14px 12px;
-  border: 1.5px solid var(--ios-sep);
-  border-radius: 12px;
-  background: var(--ios-bg);
-  color: var(--color-dark);
-  outline: none;
-  font-family: inherit;
-}
-.ask-user-date:focus {
-  border-color: var(--color-accent);
-}
-.ask-user-unsupported {
-  font-size: 14px;
-  color: var(--ios-red);
-  text-align: center;
-}
-/* ask_choice 選單:一排可捲動的選項按鈕,每個選項是主標題 + 一行描述(可選)。
-   視覺語言比照 .list/.row(卡片背景、分隔線),但改成可點的完整按鈕。 */
-.ask-choice-list {
-  display: flex;
-  flex-direction: column;
-  max-height: 46vh;
-  overflow-y: auto;
-  background: var(--ios-card);
-  border-radius: 12px;
-  border: 1px solid var(--ios-sep);
-}
-.ask-choice-option {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
-  width: 100%;
-  padding: 14px 16px;
-  border: none;
-  border-bottom: 0.5px solid var(--ios-sep);
-  background: transparent;
-  text-align: left;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background 0.1s;
-}
-.ask-choice-option:last-child {
-  border-bottom: none;
-}
-.ask-choice-option:active {
-  background: #f5f5f7;
-}
-.ask-choice-option:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: -2px;
-}
-.ask-choice-option-title {
-  font-size: 17px;
-  font-weight: 500;
-  color: var(--color-dark);
-}
-.ask-choice-option-desc {
-  font-size: 14px;
-  color: var(--ios-gray);
-}
-/* 按鈕列:取消 / 確定 並排,各佔一半,大面積好點 */
-.ask-user-actions {
-  display: flex;
-  gap: 12px;
-}
-.ask-user-actions .btn-primary,
-.ask-user-actions .btn-secondary {
-  flex: 1;
-  padding: 14px;
-  font-size: 16px;
-}
-@keyframes ask-user-fade {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-@keyframes ask-user-slide-up {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .ask-user-backdrop,
-  .ask-user-sheet {
-    animation: none;
-  }
-}
-
-/* ---- 置中卡片彈窗骨架(.rp-modal*):原為 recommend_nearby 查詢完成後彈出的
-   RecommendedPlacesModal 所用,對齊 .ask-user-backdrop 的浮層模式但用置中卡片
-   (內容是可捲動清單,不適合底部 sheet)。該彈窗已移除(推薦景點改成掛在觸發
-   它的訊息底下顯示,見 ChatScreen.tsx MessageBubble),但這組樣式繼續由桌面版
-   「設定」dialog(SettingsDialog,見下方)沿用,故保留。 ---- */
+/* ---- 置中卡片彈窗骨架(.rp-modal*):DesktopLayout(分享/成員彈窗、原
+   RecommendedPlacesModal)與 SettingsDialog 共用。原為 recommend_nearby
+   查詢完成後彈出的 RecommendedPlacesModal 所用,對齊 .ask-user-backdrop
+   的浮層模式但用置中卡片(內容是可捲動清單,不適合底部 sheet)。該彈窗
+   已移除(推薦景點改成掛在觸發它的訊息底下顯示,見 ChatScreen.tsx
+   MessageBubble),但這組樣式繼續由桌面版「設定」dialog(SettingsDialog)
+   與行程列表的分享/成員彈窗(DesktopLayout.tsx)沿用,故保留。 ---- */
 .rp-modal-backdrop {
   position: absolute;
   inset: 0;
@@ -693,7 +377,7 @@ pre {
   justify-content: center;
   padding: 24px 16px;
   background: rgba(0, 0, 0, 0.4);
-  animation: ask-user-fade 0.2s ease;
+  animation: rp-modal-fade 0.2s ease;
 }
 .rp-modal {
   width: 100%;
@@ -726,6 +410,10 @@ pre {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
+@keyframes rp-modal-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 @keyframes rp-modal-pop {
   from { opacity: 0; transform: scale(0.94); }
   to { opacity: 1; transform: scale(1); }
@@ -753,29 +441,3 @@ pre {
 .settings-dialog {
   max-width: 520px;
 }
-
-/* ---- 推薦景點地圖(RecommendedPlacesMap,UI 試做用):Maps JavaScript API
-   極簡風格底圖 + 多標記。---- */
-.rp-map {
-  width: 100%;
-  height: 100%;
-  min-height: 320px;
-  background: var(--ios-sep); /* SDK 載入前的底色,避免白閃 */
-}
-.rp-map-error {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 320px;
-  padding: 24px;
-  text-align: center;
-  color: var(--ios-red);
-  background: var(--ios-card);
-}
-.rp-map-error-detail {
-  font-size: 12px;
-  color: var(--ios-gray);
-}
-

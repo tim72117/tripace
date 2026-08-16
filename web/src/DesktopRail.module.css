@@ -1,0 +1,96 @@
+/* DesktopRail.tsx 專屬樣式(CSS Modules)。命名省略掉原本的 desktop-rail-
+   前綴(例如 .buttons 對應原本的 .desktop-rail-buttons,.btn 對應
+   .desktop-rail-btn)——import 時已經有明確的命名空間。
+
+   .desktop-rail/.desktop-rail.expanded(rail 根節點與展開狀態)不在這裡
+   ——它們刻意保留在 styles-desktop.css 當全域 class,因為
+   DesktopUserMenu.module.css 用 :global(.desktop-rail)/
+   :global(.desktop-rail.expanded) 依賴這兩個全域名稱偵測外層容器狀態
+   (DesktopUserMenu 渲染在 DesktopRail 底下,需要感知目前是收合/展開)。
+   若把它們也雜湊化,DesktopUserMenu.module.css 那組選擇器會直接失效——
+   這是真正跨檔案共用的部分,不能搬進單一元件 module。
+
+   .desktop-rail-btn-demo* 這 3 條規則雖然語意上屬於 demo 分類,但結構上
+   內嵌在核心 rail 按鈕樣式中間,為了避免非連續切割增加維護風險,一併
+   搬進這份檔案,不獨立分類。 */
+
+:global(.desktop-rail) .buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+.btn {
+  position: relative;
+  width: 100%;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+:global(.desktop-rail.expanded) .btn {
+  justify-content: flex-start;
+  padding: 0 16px;
+}
+:global(.desktop-rail.expanded) .btn > svg {
+  flex: 0 0 auto;
+}
+.btnLabel {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.btn:hover:not(:disabled) {
+  background: var(--ios-bg);
+  color: var(--color-accent);
+}
+.btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+.btn:disabled {
+  color: var(--ios-sep);
+  cursor: not-allowed;
+}
+/* 啟用中的圖示:左緣 accent 豎條 + 淡底色標記(比照 VSCode activity bar)。 */
+.btn.active {
+  color: var(--color-accent);
+  background: var(--ios-bg);
+}
+.btn.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--color-accent);
+}
+/* 試做用導覽項目(?demo）與正式功能的視覺區隔:一條細分隔線,
+   按鈕本身圖示顏色也偏淡一階,一眼可辨識是實驗性質、非正式功能。 */
+.divider {
+  width: 24px;
+  height: 1px;
+  margin: 6px auto;
+  background: var(--ios-sep);
+}
+.btnDemo {
+  color: var(--ios-gray);
+  opacity: 0.75;
+}
+.btnDemo:hover:not(:disabled) {
+  opacity: 1;
+}
+.btnDemo.active {
+  opacity: 1;
+}

@@ -71,7 +71,7 @@ export function GeoOutlinePanel({
   city,
   onCityChange,
   onSearch,
-  onSearchStateChange,
+  onOpenChat,
   onHotelsChange,
   onAttractionsChange,
   onPlacesNearby,
@@ -97,17 +97,17 @@ export function GeoOutlinePanel({
   // useEffect),不是每次 city 變動就查(那樣會在使用者打字打到一半時
   // 就發送請求)。
   city: string
-  // onCityChange/onSearch:原封不動轉傳給 GeoOutlineMap,讓地圖上方(類別
-  // 標籤旁)也能顯示同一個城市搜尋框,不需要先展開候選籃側欄——理由同
-  // GeoCandidateSidebar 既有的搜尋框(見該元件的 city/onCityChange/
-  // onSearch prop),兩處是同一份輸入值(DesktopLayout.tsx 的
-  // geoSearchCity state)的兩個 UI 入口,不是各自獨立的搜尋狀態。
+  // onCityChange/onSearch:原封不動轉傳給 GeoOutlineMap,渲染在地圖上方
+  // (類別標籤旁)的城市搜尋框——DesktopLayout.tsx 的 geoSearchCity state
+  // 是唯一持有這份輸入值的地方。查詢中/錯誤狀態(searching/error)直接
+  // 由下方的 loading/err state 轉給 GeoOutlineMap 顯示,不需要另外往上
+  // 層回報,搜尋按鈕本身觸發查詢的方式是遞增 searchTrigger prop(見
+  // 下方)。
   onCityChange?: (city: string) => void
   onSearch?: () => void
-  // onSearchStateChange:查詢中/錯誤狀態往上回報給 GeoCandidateSidebar
-  // 顯示(loading 文字、錯誤訊息),搜尋按鈕本身觸發查詢的方式是遞增
-  // searchTrigger prop(見下方)。
-  onSearchStateChange?: (state: { searching: boolean; error: string | null }) => void
+  // onOpenChat:原封不動轉傳給 GeoOutlineMap——搜尋框膠囊左側的 AI
+  // 按鈕,見 GeoOutlineMap.tsx 對這個 prop 的完整說明。
+  onOpenChat?: () => void
   onHotelsChange?: (hotels: GeoHotel[]) => void
   onAttractionsChange?: (attractions: GeoAttraction[]) => void
   onPlacesNearby?: (places: GeoPlace[]) => void
@@ -247,14 +247,6 @@ export function GeoOutlinePanel({
     onGeocodeCandidateSelect?.(c)
   }
 
-  // 查詢中/錯誤狀態往上回報給 GeoCandidateSidebar 顯示——這個元件自己
-  // 不畫任何搜尋 UI(見上方元件註解),loading/err 這兩個 state 純粹是
-  // 內部查詢邏輯的副產品,真正要顯示什麼交給接住這個 callback 的一方。
-  useEffect(() => {
-    onSearchStateChange?.({ searching: loading, error: err })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, err])
-
   // 切到這個分頁或換行程時,若行程底下已有帶座標的 entry,算出這些點的
   // 平均座標當地圖初始中心——只在 tripID 變動時查一次,不是每次都重查:
   // 這裡只負責「一開始該看哪裡」,之後使用者搜尋/拖曳地圖的移動不該被
@@ -363,6 +355,7 @@ export function GeoOutlinePanel({
           city={city}
           onCityChange={onCityChange}
           onSearch={onSearch}
+          onOpenChat={onOpenChat}
           searching={loading}
           searchError={err}
           onAttractionsChange={onAttractionsChange}

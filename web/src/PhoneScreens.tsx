@@ -8,6 +8,8 @@ import { BASE_URL, errMsg, useIsDesktop } from './AppCommon'
 import { PaceChart, type Checkpoint, type PaceCheckpointDetail } from './PaceChart'
 import { PaceRouteMap } from './PaceRouteMap'
 import { PacePhoneSwipe } from './PacePhoneSwipe'
+import './styles-desktop.css'
+import './desktop-layout-shell.css'
 
 // PhoneScreens:手機版公開分享頁(PublicViewScreen)——從 App.tsx 拆出來。
 // 設定頁(SettingsScreen)已經拆成獨立的 SettingsScreen.tsx,不再放這裡

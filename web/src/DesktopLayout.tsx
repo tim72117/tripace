@@ -22,6 +22,11 @@ import { RouteEditor } from './RouteEditor'
 import { DesktopRail } from './DesktopRail'
 import { DesktopTripList } from './DesktopTripList'
 import { SettingsDialog } from './SettingsDialog'
+import { TripManageModal } from './trip/TripManageModal'
+import type { Trip } from './types'
+import './styles-desktop.css'
+import './desktop-layout-shell.css'
+import styles from './DesktopLayout.module.css'
 
 // DesktopLayout:桌面版(寬度 >= 768px)專屬佈局元件——左側邊欄(行程列表 +
 // 使用者選單)+ 右側 ChatScreen 主要區塊,類似 Slack/Discord 的行程側欄
@@ -141,6 +146,14 @@ export function DesktopContent(props: ContentProps) {
   // 提升到這裡、和 .desktop-layout 同層,搭配 CSS 的 position: fixed 疊加,
   // 才能保證 dialog 蓋住整個桌面版佈局(含側欄)最上層。
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // manageTrip:行程管理彈窗(分享連結/成員/開啟時自動進入,見
+  // TripManageModal.tsx)——原本分成 shareTrip/membersTrip 兩個獨立彈窗,
+  // 現在合併成一個彈窗、一個觸發來源(行程列表每一筆項目的「管理」按鈕,
+  // 見 DesktopTripList.tsx 的 onManage)。存「哪個行程」而非布林值,因為
+  // 觸發來源是清單裡任一筆,不一定是 activeTrip。跟 settingsOpen 一樣
+  // 提升到這一層渲染(理由同上方 settingsOpen 的說明:避免被 272px 寬的
+  // 浮動卡片裁切)。
+  const [manageTrip, setManageTrip] = useState<Trip | null>(null)
   // panelMode:rail/side panel 的狀態改由網址驅動(/app/:panelMode,見 App.tsx),
   // 不再是這一層自己的 useState——這樣瀏覽器上一頁/下一頁、重新整理、分享連結
   // 都能還原到對應的 side panel/main 畫面。navigate 的部分見下方 setPanelMode。
@@ -162,12 +175,10 @@ export function DesktopContent(props: ContentProps) {
   const setPanelMode = useCallback((mode: Exclude<PanelMode, null>) => {
     navigate(panelMode === mode ? '/app' : `/app/${mode}`)
   }, [navigate, panelMode])
-  // chatCollapsed:左側對話欄(.desktop-sidepanel,現在常駐顯示
-  // ChatScreen/空狀態,見下方 render 邏輯)自己的收合開關——獨立於
-  // panelMode 之外的純 boolean,收合純粹是 CSS width 動畫(見
-  // styles-desktop.css 的 .desktop-sidepanel.collapsed),不影響
-  // ChatScreen 掛載狀態,也不影響地圖/浮動卡片。
-  const [chatCollapsed, setChatCollapsed] = useState(false)
+  // chatPopoverOpen:地圖右上角城市搜尋框旁 AI 按鈕觸發的對話浮動小匡
+  // 開關——沒有常駐對話欄,ChatScreen 只在這個小匡開啟時才掛載(見下方
+  // render 邏輯),這是使用者存取對話功能的唯一入口。
+  const [chatPopoverOpen, setChatPopoverOpen] = useState(false)
   // geoHotels:地理輪廓底圖(構想 6 試做,demo-geo-outline)查詢到的飯店
   // 清單,由 GeoOutlinePanel(main 區塊內部)透過 onHotelsChange 回報,
   // 這裡的 state 供下方渲染的 GeoHotelSidebar(整個桌面版介面最外側,
@@ -305,18 +316,15 @@ export function DesktopContent(props: ContentProps) {
     addGeoCandidate(c)
     setGeoCandidateFlashTrigger((n) => n + 1)
   }, [addGeoCandidate])
-  // geoSearchCity/geoSearchTrigger/geoSearchState:城市搜尋欄的狀態,UI
-  // 渲染在 GeoCandidateSidebar(左側候選籃側欄最上方),查詢邏輯留在
+  // geoSearchCity/geoSearchTrigger:城市搜尋欄的狀態,UI 渲染在
+  // GeoOutlineMap.tsx(地圖左上角類別標籤列旁),查詢邏輯留在
   // GeoOutlinePanel.tsx(見該檔案的說明)——兩者是分開掛載的 sibling,
   // 只能靠這層 state 中介。geoSearchTrigger 每次遞增觸發一次查詢(見
-  // GeoOutlinePanel 的 searchTrigger prop 說明),geoSearchState 是
-  // GeoOutlinePanel 回報的查詢中/錯誤狀態,供側欄顯示。
+  // GeoOutlinePanel 的 searchTrigger prop 說明)。查詢中/錯誤狀態
+  // (searching/error)由 GeoOutlinePanel 內部直接轉給 GeoOutlineMap
+  // 顯示,不需要再往上層回報,故這裡不持有對應 state。
   const [geoSearchCity, setGeoSearchCity] = useState('')
   const [geoSearchTrigger, setGeoSearchTrigger] = useState(0)
-  const [geoSearchState, setGeoSearchState] = useState<{ searching: boolean; error: string | null }>({
-    searching: false,
-    error: null,
-  })
   // geoRefetchTripEntriesTrigger:同 geoSearchTrigger 的中介模式,但驅動的
   // 是 GeoOutlinePanel 的 refetchTripEntriesTrigger prop——GeoCandidateSidebar
   // 幫「未排定日期」的候選補上日期(PATCH 成功)後透過 onDatesAssigned
@@ -328,8 +336,8 @@ export function DesktopContent(props: ContentProps) {
   // 見該檔案的說明)目前是為哪一天開啟的——null 代表收合、不渲染這張卡片。
   // 由 GeoCandidateSidebar 的 onPickFromCandidate 回報使用者按了哪一天
   // 的按鈕,狀態提升到這裡是因為這張卡片是跟 panelMode 浮動卡片同一個
-  // .floating-panel-left 位置的獨立浮層(見 styles-desktop.css 的
-  // .floating-panel),不是候選籃元件內部的浮層,只能由共同的父層中介
+  // .left 位置的獨立浮層(見 DesktopLayout.module.css 的
+  // .panel),不是候選籃元件內部的浮層,只能由共同的父層中介
   // 才能同時控制兩者(見下方 render 邏輯裡兩者互斥的判斷)。
   const [pickingDayKey, setPickingDayKey] = useState<string | null>(null)
   // onlyGeoCandidate:候選中(非「已排入行程」)的候選——AddFromCandidateSidebar
@@ -479,10 +487,19 @@ export function DesktopContent(props: ContentProps) {
   // 一致——GeoInfoPanel/AttractionInfoPanel 都定位在 .desktop-main 右緣
   // (見 GeoInfoPanel.module.css/AttractionInfoPanel.module.css 的
   // .panel),GeoHotelSidebar 有內容時會漂浮在同一個位置(見
-  // styles-desktop.css 的 .floating-panel-right),兩張卡片需要知道
-  // 要不要往左避讓(見兩者的 shiftLeft prop 說明)。抽成一個變數,避免
+  // DesktopLayout.module.css 的 .right),兩張卡片需要知道
+  // 要不要往左避讓(見兩者的 shiftBy prop 說明)。抽成一個變數,避免
   // 下方兩處 JSX 各自重複同一段條件判斷式、之後改其中一處忘了同步另一處。
   const geoHotelSidebarVisible = panelMode === 'geo-outline' && (geoHotels.length > 0 || geoPlaces.length > 0)
+  // infoPanelShiftBy:GeoInfoPanel/AttractionInfoPanel 右緣可能同時要
+  // 避開兩種東西——GeoHotelSidebar(飯店清單,.right)
+  // 與對話浮動小匡(.chat-popover,見 chatPopoverOpen)。對話小匡更寬
+  // (340px vs GeoHotelSidebar 的 280px),兩者都存在時優先避開較寬的
+  // 那個,不是疊加兩者的偏移量——資訊卡只需要跟「當下右緣實際佔用最多
+  // 寬度的東西」錯開,不需要真的把兩個偏移量加總(那樣會把卡片推到不
+  // 必要的更左邊)。'none' 代表右緣沒有東西需要避開,維持貼齊 16px。
+  const infoPanelShiftBy: 'none' | 'hotel' | 'chat' =
+    chatPopoverOpen ? 'chat' : geoHotelSidebarVisible ? 'hotel' : 'none'
 
   return (
     <>
@@ -491,8 +508,6 @@ export function DesktopContent(props: ContentProps) {
           panelMode={panelMode}
           onSelect={setPanelMode}
           activeTrip={!!activeTrip}
-          chatCollapsed={chatCollapsed}
-          onToggleChat={() => setChatCollapsed((v) => !v)}
           user={props.user}
           isGuest={props.isGuest}
           cfg={cfg}
@@ -502,34 +517,9 @@ export function DesktopContent(props: ContentProps) {
           showDebugPanel={showDebugPanel}
           onToggleDebugPanel={() => setShowDebugPanel((v) => !v)}
         />
-        {/* .desktop-sidepanel:改為常駐對話欄——有 activeTrip 時顯示
-            ChatScreen,沒有時顯示空狀態提示。原本依 panelMode 顯示
-            行程列表/時間軸/配速清單/候選籃的內容,現在全部改成浮動卡片
-            (見下方 .floating-panel,由 panelSpec.slot === 'float' 驅動),
-            不再佔用這個側欄。ChatScreen 固定放在同一個 JSX 樹位置,收合/
-            展開純粹是 CSS width 動畫(見 styles-desktop.css 的
-            .desktop-sidepanel.collapsed),不會被卸載,故不需要比照
-            PhoneContent.tsx 的 portal 穩定掛載機制,不會有 WebSocket
-            重連問題。 */}
-        <aside className={`desktop-sidepanel${chatCollapsed ? ' collapsed' : ''}`}>
-          <div className="desktop-sidepanel-inner">
-            {activeTrip ? (
-              <ChatScreen
-                key={activeTrip.id}
-                cfg={cfg}
-                trip={activeTrip}
-                user={props.user}
-                onBack={() => setActiveTrip(null)}
-                desktopChat={desktopChat}
-              />
-            ) : (
-              <div className="desktop-empty-state">選擇一個行程開始</div>
-            )}
-          </div>
-        </aside>
         <main className="desktop-main">
           {pickingDayKey && (
-            <div className="floating-panel floating-panel-left" style={{ width: 272 }}>
+            <div className={`${styles.panel} ${styles.left}`} style={{ width: 272 }}>
               <AddFromCandidateSidebar
                 dayLabel={dayGroupLabel(pickingDayKey)}
                 candidates={onlyGeoCandidate}
@@ -555,7 +545,7 @@ export function DesktopContent(props: ContentProps) {
             // main-replace 以外的所有情況(含 panelMode === null、'trips'/
             // 'timeline'/'pace'/'geo-outline'):主顯示固定是規劃地圖——
             // 這四種正式功能現在改成浮動卡片疊加在地圖上(見下方
-            // .floating-panel),不再取代主顯示,故這裡不需要再檢查
+            // DesktopLayout.module.css 的 .panel),不再取代主顯示,故這裡不需要再檢查
             // activeTrip/panelMode 的組合,地圖永遠掛載。
             <>
               <GeoOutlinePanel
@@ -564,9 +554,9 @@ export function DesktopContent(props: ContentProps) {
                 city={geoSearchCity}
                 onCityChange={setGeoSearchCity}
                 onSearch={() => setGeoSearchTrigger((n) => n + 1)}
+                onOpenChat={() => setChatPopoverOpen(true)}
                 searchTrigger={geoSearchTrigger}
                 refetchTripEntriesTrigger={geoRefetchTripEntriesTrigger}
-                onSearchStateChange={setGeoSearchState}
                 onHotelsChange={setGeoHotels}
                 onPlacesNearby={(places) => {
                   // places 分頁的結果不只來自逐一點擊 marker(onPlaceSelect,
@@ -665,33 +655,33 @@ export function DesktopContent(props: ContentProps) {
                 onSchedule={handleScheduleCandidate}
                 tripName={activeTrip?.name ?? '行程'}
                 scheduledDates={geoScheduledDates}
-                shiftLeft={geoHotelSidebarVisible}
+                shiftBy={infoPanelShiftBy}
               />
               <AttractionInfoPanel
                 attraction={geoAttractionContent}
                 onClose={() => setGeoAttractionContent(null)}
                 onExplore={handleExploreAttraction}
-                shiftLeft={geoHotelSidebarVisible}
+                shiftBy={infoPanelShiftBy}
               />
             </>
           )}
           {/* panelMode 浮動卡片:trips/timeline/pace/geo-outline 這四種正式
               功能的內容(見 PANEL_REGISTRY 的 slot: 'float'),疊在地圖左緣
               上方,不佔用 flex 版面空間、不推擠地圖——沿用跟
-              AddFromCandidateSidebar/GeoHotelSidebar 一致的 .floating-panel
-              視覺語言。pickingDayKey 有值時優先顯示上面的
+              AddFromCandidateSidebar/GeoHotelSidebar 一致的 .panel
+              視覺語言(見 DesktopLayout.module.css)。pickingDayKey 有值時優先顯示上面的
               「從候選加入」卡片(同屬左緣候選清單性質,避免疊在一起),
               故這裡额外排除 pickingDayKey 有值的情況。右上角疊加共用的
-              .floating-panel-close 關閉按鈕(見 styles-desktop.css)——
+              .close 關閉按鈕(見 DesktopLayout.module.css)——
               四種內容元件(DesktopTripList/MultiTrackTimeline/PaceChart/
               GeoCandidateSidebar)各自 header 排版不同,不逐一加專屬關閉
               按鈕,統一在這裡放一顆,導回 /app 收起卡片(同再點一次 rail
               圖示的行為)。 */}
           {panelSpec?.slot === 'float' && !pickingDayKey && (
-            <div className="floating-panel floating-panel-left" style={{ width: panelSpec.width }}>
+            <div className={`${styles.panel} ${styles.left}`} style={{ width: panelSpec.width }}>
               <button
                 type="button"
-                className="floating-panel-close"
+                className={styles.close}
                 onClick={() => navigate('/app')}
                 title="關閉"
               >
@@ -707,9 +697,10 @@ export function DesktopContent(props: ContentProps) {
                     // 顯示對話」的預設狀態。
                     navigate('/app')
                   }}
+                  onManage={setManageTrip}
                 />
               ) : panelMode === 'timeline' ? (
-                <div className="desktop-timeline-panel">
+                <div className={styles.timelinePanel}>
                   <div className="desktop-sidebar-head">
                     <span className="desktop-sidebar-title">時間軸</span>
                   </div>
@@ -742,11 +733,6 @@ export function DesktopContent(props: ContentProps) {
                   onRemove={removeGeoCandidate}
                   onSelect={selectGeoCandidate}
                   onHover={setGeoHoverKey}
-                  city={geoSearchCity}
-                  onCityChange={setGeoSearchCity}
-                  onSearch={() => setGeoSearchTrigger((n) => n + 1)}
-                  searching={geoSearchState.searching}
-                  searchError={geoSearchState.error}
                   onDatesAssigned={() => setGeoRefetchTripEntriesTrigger((n) => n + 1)}
                   onReturnToCandidate={(c) =>
                     setGeoCandidates((prev) =>
@@ -769,9 +755,9 @@ export function DesktopContent(props: ContentProps) {
               後還沒做過任何查詢動作,這時不顯示。使用者明確要求不要壓縮
               主顯示的可用寬度,改成絕對定位疊在 .desktop-main(已有
               position: relative)右緣之上,不佔用 flex 版面空間——理由/
-              寫法同左緣的 .floating-panel-left。 */}
+              寫法同左緣的 .left(見 DesktopLayout.module.css)。 */}
           {panelMode === 'geo-outline' && (geoHotels.length > 0 || geoPlaces.length > 0) && (
-            <div className="floating-panel floating-panel-right" style={{ width: 280 }}>
+            <div className={`${styles.panel} ${styles.right}`} style={{ width: 280 }}>
               <GeoHotelSidebar
                 cfg={cfg}
                 tripID={activeTrip?.id}
@@ -797,6 +783,35 @@ export function DesktopContent(props: ContentProps) {
               />
             </div>
           )}
+          {/* chat-popover:對話浮動小匡,由地圖右上角城市搜尋框旁的 AI
+              按鈕觸發(見 GeoOutlineMap.tsx 的 onOpenChat),疊在搜尋框
+              正下方——沒有常駐對話欄,這是使用者存取 ChatScreen 的唯一
+              入口(見 chatPopoverOpen 宣告處的說明)。沒有 activeTrip 時
+              仍掛載 ChatScreen(trip 不傳,見該元件 trip prop 的說明)——
+              使用者不需要先選/建立行程就能開始對話,不再顯示空狀態擋板。
+              key 用 activeTrip?.id ?? 'no-trip',確保「無行程對話」跟
+              「某個行程的對話」是各自獨立的掛載週期(避免沿用前一個行程
+              殘留的 WebSocket/訊息 state)。 */}
+          {chatPopoverOpen && (
+            <div className="chat-popover">
+              <button
+                type="button"
+                className={styles.close}
+                onClick={() => setChatPopoverOpen(false)}
+                title="關閉"
+              >
+                <X size={16} strokeWidth={2} />
+              </button>
+              <ChatScreen
+                key={activeTrip?.id ?? 'no-trip'}
+                cfg={cfg}
+                trip={activeTrip ?? undefined}
+                user={props.user}
+                onBack={() => setActiveTrip(null)}
+                desktopChat={desktopChat}
+              />
+            </div>
+          )}
         </main>
         {DEBUG_PANEL_ENABLED && showDebugPanel && (
           <DemoPanel
@@ -817,6 +832,25 @@ export function DesktopContent(props: ContentProps) {
           email={props.email}
           onClose={() => setSettingsOpen(false)}
         />
+      )}
+      {/* manageTrip:行程管理彈窗(分享連結/成員/開啟時自動進入),原本掛在
+          ChatScreen navbar 的三個分散入口(TripMenu/分享按鈕/成員按鈕)
+          合併成這一個,搬到行程列表觸發——用 base-ui.css 既有的
+          .rp-modal*(置中卡片彈窗骨架,跟 SettingsDialog 同一套)包住,
+          TripManageModal 本身用 .rp-modal-head/.rp-modal-body 渲染內容
+          (見該檔案的說明)。提升到這一層渲染,理由同上方 settingsOpen
+          的說明。 */}
+      {manageTrip && (
+        <div className="rp-modal-backdrop" onClick={() => setManageTrip(null)}>
+          <div className="rp-modal" onClick={(e) => e.stopPropagation()}>
+            <TripManageModal
+              cfg={cfg}
+              trip={manageTrip}
+              isOwner={manageTrip.ownerID === props.user.id}
+              onClose={() => setManageTrip(null)}
+            />
+          </div>
+        </div>
       )}
     </>
   )

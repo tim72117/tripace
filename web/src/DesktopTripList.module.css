@@ -1,0 +1,121 @@
+/* DesktopTripList.tsx 專屬樣式(CSS Modules)。命名省略掉原本的
+   desktop-trip- 前綴(例如 .list 對應原本的 .desktop-trip-list,.item
+   對應 .desktop-trip-item)——import 時已經有明確的命名空間。
+
+   .desktop-sidebar-head/.desktop-sidebar-title 不在這裡——雖然出現在
+   DesktopTripList.tsx 裡,但這兩個 class 也被 DesktopLayout.tsx/
+   DesktopShared.tsx/geo-planning/GeoCandidateSidebar.tsx 共用,是真正
+   跨檔案共用的標題橫條樣式,留在 styles-desktop.css。 */
+
+.list {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 4px 8px 12px;
+}
+
+/* 側欄行程列表項目(緊湊列表,對應手機版 .row，但選中時有高亮)。改成
+   <div> 外層 + 內部 .itemOpen <button>(佔滿剩餘寬度)+ 一顆獨立的
+   .itemAction 圖示鈕(行程管理,見 DesktopTripList.tsx 的 onManage 說明)
+   ——原本整個項目是一顆 <button>,管理按鈕加進來後需要各自獨立可點擊、
+   不能巢狀 <button>(HTML 不允許 button 內嵌 button)。 */
+.item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px 0 8px;
+  border-radius: 8px;
+  transition: background 0.12s;
+}
+.item:hover {
+  background: var(--ios-bg);
+}
+.itemOpen {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px 8px 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.itemOpen:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+/* 管理圖示鈕:預設淡出,hover 整列時才顯現(常駐圖示會讓密集的行程清單
+   看起來雜亂),對齊 GeoCandidateSidebar 等側欄清單項目常見的「hover
+   才顯示次要動作」慣例。 */
+.itemAction {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.item:hover .itemAction,
+.itemAction:focus-visible {
+  opacity: 1;
+}
+.itemAction:hover {
+  background: var(--ios-sep);
+  color: var(--color-dark);
+}
+.itemAction:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+/* 目前選取的行程:低調的灰底(--ios-sep),不用強調色實心底——對齊手機版
+   PhoneNavDrawer.module.css 的 .tripItemActive,理由同該處說明:
+   「目前選中」只是狀態提示,不需要搶視覺份量。 */
+.item.active {
+  background: var(--ios-sep);
+}
+/* 行程項目的圖示徽章:取代原本的實心色塊大頭貼(Avatar),改用無色圖示
+   (MapPin/Plus,見 DesktopLayout.tsx),跟手機版 PhoneNavDrawer.module.css
+   的 .tripItem/.newTripIcon 同一種低調視覺調性。 */
+.icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ios-gray);
+  background: var(--ios-sep);
+  flex: 0 0 auto;
+}
+.item :global(.name) {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.item :global(.sub) {
+  font-size: 12px;
+  color: var(--ios-gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}

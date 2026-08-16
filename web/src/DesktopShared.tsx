@@ -4,6 +4,8 @@ import type { AssistLang } from './assistLang'
 import { RecommendedPlacesList, RecommendedPlacesRow, FAKE_RECOMMENDED_PLACES } from './RecommendedPlaces'
 import { OnagentBridgeDemo } from './clienttools/OnagentBridgeDemo'
 import langSelectStyles from './LangSelect.module.css'
+import styles from './DesktopShared.module.css'
+import './styles-desktop.css'
 
 // DesktopShared:桌面版與手機版都會用到的 UI 小塊,從 App.tsx 拆出來獨立成
 // 檔案——這些東西不屬於「純桌面版佈局」(見 DesktopLayout.tsx),因為手機版
@@ -257,7 +259,7 @@ export function TokenDisplay({ token }: { token: string | null }) {
 
   return (
     <>
-      <div className="token-box">{displayToken}</div>
+      <div className={styles.tokenBox}>{displayToken}</div>
       <div style={{ padding: '0 16px 12px' }}>
         <button className={`btn-secondary${copied ? ' success' : ''}`} onClick={copyToken}>
           {copied ? '✅ 已複製' : '複製 Token'}

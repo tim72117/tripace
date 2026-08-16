@@ -37,9 +37,6 @@ function renderSidebar(candidates: GeoCandidate[]) {
       cfg={cfg}
       tripID="trip_1"
       candidates={candidates}
-      city=""
-      onCityChange={() => {}}
-      onSearch={() => {}}
       draggingCandidate={null}
       onDraggingCandidateChange={() => {}}
     />,

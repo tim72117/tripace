@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   List, Sparkles, GalleryHorizontal, Layers, Radio, Activity, Route, BookOpen, PanelLeft,
 } from 'lucide-react'
@@ -10,6 +11,8 @@ import {
   DEMO_CARDS_ENABLED, DEMO_ROW_ENABLED, DEMO_ONAGENT_ENABLED, DEBUG_PANEL_ENABLED,
   DEMO_ROUTE_EDITOR_ENABLED, PANEL_REGISTRY,
 } from './DesktopShared'
+import styles from './DesktopRail.module.css'
+import './desktop-layout-shell.css'
 
 // DesktopRail:桌面版最左側的導覽圖示列——從 DesktopLayout.tsx 抽出獨立
 // 成檔案,原本就是完整獨立的函式,搬移純粹是移動程式碼位置,不涉及邏輯
@@ -19,8 +22,6 @@ export function DesktopRail({
   panelMode,
   onSelect,
   activeTrip,
-  chatCollapsed,
-  onToggleChat,
   user,
   isGuest,
   cfg,
@@ -37,10 +38,6 @@ export function DesktopRail({
   // (見下方 requiresTrip 用法),不再各別硬寫 timelineDisabled 這種
   // 單一按鈕專屬的 prop。
   activeTrip: boolean
-  // chatCollapsed/onToggleChat:左側常駐對話欄(見 DesktopLayout.tsx 的
-  // chatCollapsed state)自己的收合開關,獨立於 panelMode 之外。
-  chatCollapsed: boolean
-  onToggleChat: () => void
   user: User
   isGuest: boolean
   cfg: ClientConfig
@@ -54,22 +51,39 @@ export function DesktopRail({
   showDebugPanel: boolean
   onToggleDebugPanel: () => void
 }) {
+  // expanded:rail 從純 icon(48px)展開成帶文字標籤的寬版——純 UI 狀態,
+  // 跟對話功能完全無關(對話小匡的開關由地圖上的 AI 按鈕獨立控制,見
+  // GeoOutlineMap.tsx 的 onOpenChat),不提升到 DesktopLayout.tsx,
+  // 留在這個元件自己管理。展開時每顆按鈕在 icon 旁多顯示一個文字標籤
+  // (.desktop-rail-btn-label),讓使用者不需要靠 title 提示 hover 才知道
+  // 每顆圖示的功能——理由同一般 IDE/工具列「圖示列可展開成帶標籤側欄」
+  // 的既有慣例(如 VSCode 的 activity bar 搭配可展開的側欄標題)。
+  const [expanded, setExpanded] = useState(false)
+
   return (
-    <nav className="desktop-rail">
-      <div className="desktop-rail-buttons">
+    <nav className={`desktop-rail${expanded ? ' expanded' : ''}`}>
+      <div className={styles.buttons}>
+        {/* 展開/收合 rail 本身的開關,固定用 PanelLeft 圖示(不隨 expanded
+            切換圖示)——跟其餘功能按鈕排在同一組列表最上方,不是獨立區塊,
+            對話功能已完全不在 rail 上(見 GeoOutlineMap.tsx 的 AI 按鈕,
+            對話浮動小匡由地圖上的 onOpenChat 觸發,與這裡的 rail 展開/
+            收合無關)。 */}
         <button
-          className={`desktop-rail-btn${chatCollapsed ? '' : ' active'}`}
-          onClick={onToggleChat}
-          title={chatCollapsed ? '展開對話欄' : '收合對話欄'}
+          type="button"
+          className={styles.btn}
+          onClick={() => setExpanded((v) => !v)}
+          title={expanded ? '收合導覽列' : '展開導覽列'}
         >
           <PanelLeft size={20} strokeWidth={1.8} />
+          {expanded && <span className={styles.btnLabel}>收合導覽列</span>}
         </button>
         <button
-          className={`desktop-rail-btn${panelMode === 'trips' ? ' active' : ''}`}
+          className={panelMode === 'trips' ? `${styles.btn} ${styles.active}` : styles.btn}
           onClick={() => onSelect('trips')}
           title="行程列表"
         >
           <List size={20} strokeWidth={1.8} />
+          {expanded && <span className={styles.btnLabel}>行程列表</span>}
         </button>
         {/* GEO_OUTLINE_ENABLED:這次部署刻意不開啟(見 DesktopShared.tsx
             對這個常數的說明),按鈕本身不渲染——不是只隱藏視覺,isPanelMode
@@ -77,11 +91,12 @@ export function DesktopRail({
             不只是找不到入口。 */}
         {GEO_OUTLINE_ENABLED && (
           <button
-            className={`desktop-rail-btn${panelMode === 'geo-outline' ? ' active' : ''}`}
+            className={panelMode === 'geo-outline' ? `${styles.btn} ${styles.active}` : styles.btn}
             onClick={() => onSelect('geo-outline')}
             title="規劃"
           >
             <Layers size={20} strokeWidth={1.8} />
+            {expanded && <span className={styles.btnLabel}>規劃</span>}
           </button>
         )}
         {/* TIMELINE_ENABLED/PACE_ENABLED:編譯時 feature flag(見
@@ -91,22 +106,24 @@ export function DesktopRail({
           const disabled = !!PANEL_REGISTRY.timeline.requiresTrip && !activeTrip
           return (
             <button
-              className={`desktop-rail-btn${panelMode === 'timeline' ? ' active' : ''}`}
+              className={panelMode === 'timeline' ? `${styles.btn} ${styles.active}` : styles.btn}
               onClick={() => !disabled && onSelect('timeline')}
               disabled={disabled}
               title={disabled ? '請先選擇一個行程' : '時間軸'}
             >
               <Timeline size={20} strokeWidth={1.8} />
+              {expanded && <span className={styles.btnLabel}>時間軸</span>}
             </button>
           )
         })()}
         {PACE_ENABLED && (
           <button
-            className={`desktop-rail-btn${panelMode === 'pace' ? ' active' : ''}`}
+            className={panelMode === 'pace' ? `${styles.btn} ${styles.active}` : styles.btn}
             onClick={() => onSelect('pace')}
             title="路徑"
           >
             <Route size={20} strokeWidth={1.8} />
+            {expanded && <span className={styles.btnLabel}>路徑</span>}
           </button>
         )}
         {/* DEMO_*_ENABLED/DEBUG_PANEL_ENABLED:各自獨立的編譯時 feature flag
@@ -114,51 +131,56 @@ export function DesktopRail({
             ?demo 底下的單一 isDemo 開關——分隔線只在至少一項開啟時出現,
             避免試做項目跟正式功能混在一起難以分辨。 */}
         {(DEMO_CARDS_ENABLED || DEMO_ROW_ENABLED || DEMO_ONAGENT_ENABLED || DEBUG_PANEL_ENABLED) && (
-          <div className="desktop-rail-divider" />
+          <div className={styles.divider} />
         )}
         {DEMO_CARDS_ENABLED && (
           <button
-            className={`desktop-rail-btn desktop-rail-btn-demo${panelMode === 'demo-cards' ? ' active' : ''}`}
+            className={panelMode === 'demo-cards' ? `${styles.btn} ${styles.btnDemo} ${styles.active}` : `${styles.btn} ${styles.btnDemo}`}
             onClick={() => onSelect('demo-cards')}
             title="推薦景點卡片(試做)"
           >
             <Sparkles size={20} strokeWidth={1.8} />
+            {expanded && <span className={styles.btnLabel}>推薦景點卡片(試做)</span>}
           </button>
         )}
         {DEMO_ROW_ENABLED && (
           <button
-            className={`desktop-rail-btn desktop-rail-btn-demo${panelMode === 'demo-row' ? ' active' : ''}`}
+            className={panelMode === 'demo-row' ? `${styles.btn} ${styles.btnDemo} ${styles.active}` : `${styles.btn} ${styles.btnDemo}`}
             onClick={() => onSelect('demo-row')}
             title="推薦景點橫滑(試做)"
           >
             <GalleryHorizontal size={20} strokeWidth={1.8} />
+            {expanded && <span className={styles.btnLabel}>推薦景點橫滑(試做)</span>}
           </button>
         )}
         {DEMO_ONAGENT_ENABLED && (
           <button
-            className={`desktop-rail-btn desktop-rail-btn-demo${panelMode === 'demo-onagent' ? ' active' : ''}`}
+            className={panelMode === 'demo-onagent' ? `${styles.btn} ${styles.btnDemo} ${styles.active}` : `${styles.btn} ${styles.btnDemo}`}
             onClick={() => onSelect('demo-onagent')}
             title="onagent 平台串接試做"
           >
             <Radio size={20} strokeWidth={1.8} />
+            {expanded && <span className={styles.btnLabel}>onagent 平台串接試做</span>}
           </button>
         )}
         {DEBUG_PANEL_ENABLED && (
           <button
-            className={`desktop-rail-btn desktop-rail-btn-demo${showDebugPanel ? ' active' : ''}`}
+            className={showDebugPanel ? `${styles.btn} ${styles.btnDemo} ${styles.active}` : `${styles.btn} ${styles.btnDemo}`}
             onClick={onToggleDebugPanel}
             title="API / WS 狀態面板"
           >
             <Activity size={20} strokeWidth={1.8} />
+            {expanded && <span className={styles.btnLabel}>API / WS 狀態面板</span>}
           </button>
         )}
         {DEMO_ROUTE_EDITOR_ENABLED && (
           <button
-            className={`desktop-rail-btn desktop-rail-btn-demo${panelMode === 'demo-route-editor' ? ' active' : ''}`}
+            className={panelMode === 'demo-route-editor' ? `${styles.btn} ${styles.btnDemo} ${styles.active}` : `${styles.btn} ${styles.btnDemo}`}
             onClick={() => onSelect('demo-route-editor')}
             title="路徑編輯器(試做)"
           >
             <BookOpen size={20} strokeWidth={1.8} />
+            {expanded && <span className={styles.btnLabel}>路徑編輯器(試做)</span>}
           </button>
         )}
       </div>

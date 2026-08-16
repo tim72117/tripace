@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { LocateFixed, Play, Square, Compass, MapPin, Check } from 'lucide-react'
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 import styles from './PaceRouteMap.module.css'
+import './PaceMap.css'
 import { BASE_URL } from './AppCommon'
 import type { Checkpoint } from './PaceChart'
 

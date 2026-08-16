@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from '../api'
 import { fetchGeoAttractionsNearby, fetchGeoAttractionsOnlyNearby, fetchGeoPlaceDetails, fetchGeoPlacesNearby } from '../api'
-import { Hotel, Loader2, MapPin, Search, UtensilsCrossed } from 'lucide-react'
+import { Hotel, Loader2, MapPin, Search, Sparkles, UtensilsCrossed } from 'lucide-react'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
 import { isSubmitEnter } from '../AppCommon'
 import { initialAreaSearchState, reduceAreaSearchState } from './geoAreaSearchState'
@@ -251,6 +251,7 @@ export function GeoOutlineMap({
   onSearch,
   searching,
   searchError,
+  onOpenChat,
   onAttractionsChange,
   onVisibleHotelsChange,
   onPlacesNearby,
@@ -299,6 +300,13 @@ export function GeoOutlineMap({
   onSearch?: () => void
   searching?: boolean
   searchError?: string | null
+  // onOpenChat:搜尋框膠囊左側的 AI 按鈕觸發——不是獨立的對話 UI,而是
+  // 常駐右側對話欄(DesktopLayout.tsx 的 .desktop-sidepanel)收合時的
+  // 快捷展開入口,對應 DesktopRail 上 PanelLeft 圖示按鈕的同一個
+  // chatCollapsed/onToggleChat 開關,只是多一個離地圖操作更近的入口。
+  // optional——理由同 onCityChange 等搜尋框 props,呼叫端沒接就不顯示
+  // 這顆按鈕。
+  onOpenChat?: () => void
   // onAttractionsChange/onVisibleHotelsChange:每當地圖可視範圍(bounds)
   // 查詢有新結果時,回報目前地圖上實際顯示的景點區域/飯店清單——側欄
   // (GeoHotelSidebar,見 DesktopLayout.tsx)渲染在整個桌面版介面最
@@ -1313,31 +1321,55 @@ export function GeoOutlineMap({
               {label}
             </button>
           ))}
-          {/* 城市搜尋框:跟候選籃側欄(GeoCandidateSidebar)裡原本就有的
-              同一個搜尋框共用輸入值/查詢邏輯(見上方 city/onCityChange/
-              onSearch prop 的說明),排在類別標籤列最後面,讓使用者不需要
-              先展開候選籃側欄就能直接在地圖上方搜尋城市。只有呼叫端有
-              接這組 prop(目前只有 GeoOutlinePanel.tsx)才顯示。 */}
-          {onCityChange && onSearch && (
-            <div className={styles.citySearch}>
-              <input
-                className={styles.citySearchInput}
-                type="text"
-                placeholder="輸入目的地城市,如「東京」"
-                value={city ?? ''}
-                onChange={(e) => onCityChange(e.target.value)}
-                onKeyDown={(e) => { if (isSubmitEnter(e)) onSearch() }}
-              />
-              <button
-                type="button"
-                className={styles.citySearchBtn}
-                onClick={onSearch}
-                disabled={searching || !(city ?? '').trim()}
-              >
-                {searching ? '查詢中...' : '查看'}
-              </button>
-            </div>
+        </div>
+      )}
+      {/* 城市搜尋框:跟候選籃側欄(GeoCandidateSidebar)裡原本就有的同一個
+          搜尋框共用輸入值/查詢邏輯(見上方 city/onCityChange/onSearch
+          prop 的說明),獨立疊在地圖右上角(不跟類別標籤列同一個 flex
+          row,理由是那排已經靠左貼齊、放右側需要獨立定位),固定貼齊
+          最上緣(top:16px,見 GeoOutlineMap.module.css 的 .citySearch)
+          ——讓使用者不需要先展開候選籃側欄就能直接在地圖上方搜尋城市。
+          GeoInfoPanel/AttractionInfoPanel 改往下避開這個搜尋框(見這兩個
+          元件的 .panel),而非反過來,因為搜尋框是常駐 UI。只有呼叫端
+          有接這組 prop(目前只有 GeoOutlinePanel.tsx)才顯示。
+          膠囊左側的 AI 按鈕(onOpenChat)是常駐右側對話欄收合時的快捷
+          展開入口,見上方 prop 說明——只有呼叫端有接才顯示,不影響
+          搜尋輸入本身。 */}
+      {!err && onCityChange && onSearch && (
+        <div className={styles.citySearch}>
+          {onOpenChat && (
+            <button
+              type="button"
+              className={styles.citySearchAiBtn}
+              onClick={onOpenChat}
+              title="開啟對話"
+              aria-label="開啟對話"
+            >
+              <Sparkles size={16} aria-hidden="true" />
+            </button>
           )}
+          <input
+            className={styles.citySearchInput}
+            type="text"
+            placeholder="輸入目的地城市,如「東京」"
+            value={city ?? ''}
+            onChange={(e) => onCityChange(e.target.value)}
+            onKeyDown={(e) => { if (isSubmitEnter(e)) onSearch() }}
+          />
+          <button
+            type="button"
+            className={styles.citySearchBtn}
+            onClick={onSearch}
+            disabled={searching || !(city ?? '').trim()}
+            title={searching ? '查詢中…' : '搜尋'}
+            aria-label={searching ? '查詢中' : '搜尋'}
+          >
+            {searching ? (
+              <Loader2 size={16} className={styles.citySearchBtnIconLoading} aria-hidden="true" />
+            ) : (
+              <Search size={16} aria-hidden="true" />
+            )}
+          </button>
         </div>
       )}
       {!err && searchError && <div className={styles.citySearchError}>{searchError}</div>}

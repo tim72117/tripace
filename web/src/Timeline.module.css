@@ -541,3 +541,27 @@
     animation: none;
   }
 }
+
+/* 條目卡片的標籤/分類/地點——原本是全站共用的 .tag/.cat/.entry-loc,
+   查證後只有這個檔案在用,故搬進來對應改名 .entryTag/.entryCat/
+   .entryLoc(避免跟 CSS Modules 常見的通用命名如 .tag 混淆語意)。 */
+.entryTag {
+  font-size: 12px;
+  padding: 1px 7px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.06);
+  color: #333;
+}
+.entryCat {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 8px;
+  background: var(--ios-green);
+  color: #fff;
+}
+.entryLoc {
+  font-size: 12px;
+  color: #8e8e93;
+  margin-top: 2px;
+}

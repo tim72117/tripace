@@ -1,0 +1,25 @@
+/* AppCommon.tsx 專屬樣式(CSS Modules)——目前只有 Avatar 元件用到,
+   ErrorBanner 用的 .banner 是跨檔案共用的全域 class,留在 base-ui.css。
+   命名省略前綴(.avatar 對應原本的 .avatar,.empty 對應原本的
+   .avatar-empty)——import 時已經有明確的命名空間。 */
+
+.avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 600;
+  font-size: 17px;
+  flex: 0 0 auto;
+}
+
+/* avatarColor 未設定時的低對比 fallback:底色貼近側欄背景(--ios-card),
+   用分隔線色(--ios-sep)做出一階深淺差,融入背景又保留圓圈輪廓;
+   文字改用灰棕字色(--ios-gray)維持可讀對比,避免沿用預設白字而看不清。 */
+.empty {
+  background: var(--ios-sep);
+  color: var(--ios-gray);
+}

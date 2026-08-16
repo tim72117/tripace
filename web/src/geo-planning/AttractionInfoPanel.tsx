@@ -23,7 +23,7 @@ export function AttractionInfoPanel({
   attraction,
   onClose,
   onExplore,
-  shiftLeft,
+  shiftBy,
 }: {
   attraction: GeoAttraction | null
   onClose: () => void
@@ -32,10 +32,10 @@ export function AttractionInfoPanel({
   // GeoOutlineMap.tsx handleAttractionClick 已有的 planAttractionClick
   // 決策邏輯,只是這次由按鈕觸發而非直接點地圖上的地標)。
   onExplore: (attraction: GeoAttraction) => void
-  // shiftLeft:理由同 GeoInfoPanel.tsx 的同名 prop——GeoHotelSidebar
-  // 有內容顯示時會漂浮在 .desktop-main 右緣之上,跟這張卡片預設定位
-  // 重疊,由呼叫端判斷後傳入,把卡片推到它左側。
-  shiftLeft?: boolean
+  // shiftBy:理由同 GeoInfoPanel.tsx 的同名 prop——右緣可能同時有
+  // GeoHotelSidebar 與對話浮動小匡,由呼叫端判斷目前實際被哪個佔用後
+  // 傳入對應值,把卡片推到它左側。
+  shiftBy?: 'none' | 'hotel' | 'chat'
 }) {
   if (!attraction) return null
 
@@ -45,20 +45,20 @@ export function AttractionInfoPanel({
     ...(attraction.radiusMeters != null ? [`範圍約 ${Math.round(attraction.radiusMeters)} 公尺`] : []),
   ]
 
+  const shiftClass = shiftBy === 'chat' ? ` ${styles.shiftedChat}` : shiftBy === 'hotel' ? ` ${styles.shiftedHotel}` : ''
   return (
-    <div className={`${styles.panel}${shiftLeft ? ` ${styles.shifted}` : ''}`}>
-      <div className={styles.head}>
-        <span className={styles.title}>地點介紹</span>
-        <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
-          <X size={16} strokeWidth={2} />
-        </button>
-      </div>
+    <div className={`${styles.panel}${shiftClass}`}>
       <div className={styles.body}>
-        {attraction.landmarkPhotoUrl ? (
-          <img className={styles.photo} src={attraction.landmarkPhotoUrl} alt={attraction.landmarkName ?? attraction.name} />
-        ) : (
-          <div className={styles.photoPlaceholder} />
-        )}
+        <div className={styles.imageWrap}>
+          {attraction.landmarkPhotoUrl ? (
+            <img className={styles.photo} src={attraction.landmarkPhotoUrl} alt={attraction.landmarkName ?? attraction.name} />
+          ) : (
+            <div className={styles.photoPlaceholder} />
+          )}
+          <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
+            <X size={16} strokeWidth={2} />
+          </button>
+        </div>
         <div className={styles.content}>
           <h2 className={styles.name}>{attraction.name}</h2>
           {attraction.landmarkName && attraction.landmarkName !== attraction.name && (

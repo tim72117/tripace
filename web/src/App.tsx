@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom'
 import { useAppState } from './AppCommon'
 import { ErrorBoundary } from './ErrorBoundary'
+import styles from './App.module.css'
 
 // 每條路由的頁面元件改用 React.lazy() 動態載入,取代原本的靜態 import——
 // 靜態 import 會讓 Vite 把所有路由元件塞進同一個模組圖,不管使用者當下
@@ -66,7 +67,7 @@ export function App() {
           <Route
             path="/public/:token"
             element={
-              <div className="web-app">
+              <div className={styles.webApp}>
                 <PublicTokenRoute />
               </div>
             }
@@ -78,7 +79,7 @@ export function App() {
           <Route
             path="/cli-auth"
             element={
-              <div className="web-app">
+              <div className={styles.webApp}>
                 <CliAuthPage />
               </div>
             }
@@ -92,7 +93,7 @@ export function App() {
           <Route
             path="/device"
             element={
-              <div className="web-app">
+              <div className={styles.webApp}>
                 <DeviceAuthPage />
               </div>
             }
@@ -105,7 +106,7 @@ export function App() {
           <Route
             path="/demo/pace"
             element={
-              <div className="web-app">
+              <div className={styles.webApp}>
                 <PublicPaceDemoPage />
               </div>
             }
@@ -117,7 +118,7 @@ export function App() {
           <Route
             path="/app/:panelMode?"
             element={
-              <div className="web-app">
+              <div className={styles.webApp}>
                 <PhoneContent {...props} />
               </div>
             }

@@ -1,0 +1,27 @@
+/* App.tsx 專屬樣式(CSS Modules)。命名省略前綴(.webApp 對應原本的
+   .web-app)——import 時已經有明確的命名空間,不需要重複加前綴。 */
+
+/* 手機版(< 768px):單頁全螢幕切換(見 PhoneContent),寬度撐滿視窗——不再
+   模擬一個居中的手機外框(原本 max-width: 480px + margin: 0 auto),改成
+   真正滿版視窗寬,跟桌面版(下方 media query)用同一種「撐滿視窗」邏輯,
+   高度統一用 100dvh(行動瀏覽器網址列高度變化時的可視高度)。桌面斷點
+   原本用 100vh,但 iPad(尤其橫向寬度輕鬆超過 768px 桌面斷點、或直向
+   剛好落在斷點附近)的 Safari 也有動態工具列與底部 home indicator 的
+   安全區域,100vh 不會扣除這些、會被工具列/home indicator 蓋住底部
+   內容——這是實際回報過的 bug(iPad 開啟時下方部分被遮蔽),不是預防性
+   寫法,故不再区分手機/桌面兩種高度公式,統一用 100dvh。 */
+.webApp {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: var(--ios-bg);
+  /* 手機版導覽抽屜欄(PhoneNavDrawer)/設定面板(PhoneContent.tsx 的
+     .settingsPanel)都是用 position: absolute + transform 位移到畫面外
+     來做「收合」狀態,而不是條件卸載(理由見各自檔案的說明:唯有元件全程
+     留在 DOM 上,CSS transition 才能播放開關動畫)。沒有這行 overflow:
+     hidden,位移到畫面外的內容不會被裁掉,使用者滾動畫面(尤其垂直方向,
+     比水平方向更容易不小心觸發)時,原本該隱藏的面板會被捲動帶進可視
+     範圍——這是實際發生過的 bug,不是預防性寫法。 */
+  overflow: hidden;
+}

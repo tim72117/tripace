@@ -1,0 +1,129 @@
+/* AskSheets.tsx(AskUserSheet/AskChoiceSheet)專屬樣式(CSS Modules)。
+   命名省略前綴(.backdrop 對應原本的 .ask-user-backdrop,.sheet 對應
+   .ask-user-sheet,以此類推)——import 時已經有明確的命名空間。
+
+   .actions 底下的 .btn-primary/.btn-secondary 是跨檔案共用的全域 class
+   (留在 base-ui.css),這裡不重新定義,直接在 .tsx 用全域字串 className
+   套用,只有 AskSheets 專屬的排版/視覺才在這份檔案定義。 */
+
+/* ---- ask_user 詢問框:底部彈出 sheet(agent 缺資訊時請使用者補上) ---- */
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.32);
+  animation: fade 0.2s ease;
+}
+.sheet {
+  background: var(--ios-card);
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  padding: 20px 20px calc(20px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.18);
+  animation: slideUp 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.prompt {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-dark);
+  text-align: center;
+  line-height: 1.4;
+}
+/* 日期選擇器:放大、置中、易點 */
+.date {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 18px;
+  text-align: center;
+  padding: 14px 12px;
+  border: 1.5px solid var(--ios-sep);
+  border-radius: 12px;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  outline: none;
+  font-family: inherit;
+}
+.date:focus {
+  border-color: var(--color-accent);
+}
+.unsupported {
+  font-size: 14px;
+  color: var(--ios-red);
+  text-align: center;
+}
+/* ask_choice 選單:一排可捲動的選項按鈕,每個選項是主標題 + 一行描述(可選)。
+   視覺語言比照 base-ui.css 的 .list/.row(卡片背景、分隔線),但改成可點的完整按鈕。 */
+.choiceList {
+  display: flex;
+  flex-direction: column;
+  max-height: 46vh;
+  overflow-y: auto;
+  background: var(--ios-card);
+  border-radius: 12px;
+  border: 1px solid var(--ios-sep);
+}
+.choiceOption {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  border-bottom: 0.5px solid var(--ios-sep);
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.choiceOption:last-child {
+  border-bottom: none;
+}
+.choiceOption:active {
+  background: #f5f5f7;
+}
+.choiceOption:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+.choiceOptionTitle {
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--color-dark);
+}
+.choiceOptionDesc {
+  font-size: 14px;
+  color: var(--ios-gray);
+}
+/* 按鈕列:取消 / 確定 並排,各佔一半,大面積好點 */
+.actions {
+  display: flex;
+  gap: 12px;
+}
+.actions :global(.btn-primary),
+.actions :global(.btn-secondary) {
+  flex: 1;
+  padding: 14px;
+  font-size: 16px;
+}
+@keyframes fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .backdrop,
+  .sheet {
+    animation: none;
+  }
+}

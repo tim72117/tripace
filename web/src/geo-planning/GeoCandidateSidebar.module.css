@@ -28,67 +28,6 @@
   }
 }
 
-/* searchRow:城市搜尋欄,從 GeoOutlinePanel.tsx 疊在地圖上方的浮動毛玻璃
-   搜尋列搬過來——側欄本身是不透明底色的靜態表單區,不需要 backdrop-filter
-   毛玻璃處理(那是為了讓地圖內容從底下透出來才需要的效果,搬進側欄後
-   底下沒有內容可透),改用側欄慣用的實色卡片樣式,與候選籃項目
-   (.item)的視覺語言一致。 */
-.searchRow {
-  flex: 0 0 auto;
-  display: flex;
-  gap: 8px;
-  padding: 12px 12px 8px;
-}
-
-.searchInput {
-  flex: 1;
-  min-width: 0;
-  padding: 8px 12px;
-  border: 1px solid var(--ios-sep);
-  border-radius: 10px;
-  background: var(--ios-card);
-  color: var(--color-dark);
-  font-size: 13px;
-}
-
-.searchInput:focus {
-  outline: none;
-  border-color: var(--color-accent);
-}
-
-.searchBtn {
-  flex: 0 0 auto;
-  padding: 8px 14px;
-  border: none;
-  border-radius: 10px;
-  background: var(--color-accent);
-  color: var(--ios-card);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: opacity 0.12s;
-}
-
-.searchBtn:hover:not(:disabled) {
-  opacity: 0.88;
-}
-
-.searchBtn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.searchError {
-  flex: 0 0 auto;
-  margin: 0 12px 8px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: rgba(192, 96, 74, 0.12);
-  color: var(--ios-red);
-  font-size: 12px;
-}
-
 .list {
   flex: 1;
   overflow-y: auto;

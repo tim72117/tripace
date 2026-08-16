@@ -5,6 +5,7 @@ import type { ClientConfig } from './api'
 import * as api from './api'
 import { ApiError } from './api'
 import type { Trip, User } from './types'
+import styles from './AppCommon.module.css'
 
 // AppCommon:App.tsx 拆出來的共用工具/元件,供 App.tsx 本身、以及
 // ChatScreen.tsx/CliAuthPage.tsx 等其他檔案共同 import——這些原本寄生在
@@ -109,7 +110,7 @@ export function Avatar({ user }: { user: { name: string; avatarColor: string } }
   const hasColor = !!user.avatarColor
   return (
     <div
-      className={hasColor ? 'avatar' : 'avatar avatar-empty'}
+      className={hasColor ? styles.avatar : `${styles.avatar} ${styles.empty}`}
       style={hasColor ? { background: user.avatarColor } : undefined}
     >
       {user.name.slice(0, 1)}

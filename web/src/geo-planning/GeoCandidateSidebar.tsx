@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ListPlus, Undo2 } from 'lucide-react'
-import { isSubmitEnter } from '../AppCommon'
 import * as api from '../api'
 import type { ClientConfig } from '../api'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
 import { geoItemKey } from './GeoHotelSidebar'
 import styles from './GeoCandidateSidebar.module.css'
+import '../styles-desktop.css'
 import {
   type GeoCandidate,
   NO_DATE_GROUP,
@@ -201,14 +201,6 @@ function NoDateDayHead({
   )
 }
 
-// GeoCandidateSidebar 的城市搜尋欄 props——原本是 GeoOutlinePanel.tsx 疊在
-// 地圖上方的浮動搜尋列(毛玻璃卡片),改放進這個側欄最上方,以側欄慣用的
-// 靜態表單列呈現(不再需要 backdrop-filter 毛玻璃處理,側欄本身已經是
-// 不透明底色,不會有內容從底下透出來的疑慮)。查詢邏輯本身(呼叫
-// fetchGeoGeocode、算 panTarget)仍留在 GeoOutlinePanel.tsx——這裡只負責
-// 呈現輸入框/按鈕/錯誤訊息,狀態與行為透過 props 從外部傳入,理由同
-// candidates/onRemove 這組既有 props 的模式,維持這個元件單純是「受控
-// 呈現層」。
 export function GeoCandidateSidebar({
   cfg,
   tripID,
@@ -216,11 +208,6 @@ export function GeoCandidateSidebar({
   onRemove,
   onSelect,
   onHover,
-  city,
-  onCityChange,
-  onSearch,
-  searching,
-  searchError,
   onDatesAssigned,
   onReturnToCandidate,
   onPickFromCandidate,
@@ -239,11 +226,6 @@ export function GeoCandidateSidebar({
   onRemove?: (candidate: GeoCandidate) => void
   onSelect?: (candidate: GeoCandidate) => void
   onHover?: (key: GeoSelectedKey) => void
-  city: string
-  onCityChange: (city: string) => void
-  onSearch: () => void
-  searching?: boolean
-  searchError?: string | null
   // onDatesAssigned:「未排定日期」分組補上日期成功後觸發,通知呼叫端
   // (DesktopLayout.tsx)重新查一次 tripEntries——這個元件自己拿到的
   // candidates 是上游傳下來的 props,寫入日期成功後沒辦法自己更新它,
@@ -535,20 +517,9 @@ export function GeoCandidateSidebar({
 
   return (
     <div className={`${styles.panel}${flashing ? ` ${styles.panelFlash}` : ''}`}>
-      <div className={styles.searchRow}>
-        <input
-          className={styles.searchInput}
-          type="text"
-          placeholder="輸入目的地城市,如「東京」"
-          value={city}
-          onChange={(e) => onCityChange(e.target.value)}
-          onKeyDown={(e) => { if (isSubmitEnter(e)) onSearch() }}
-        />
-        <button className={styles.searchBtn} onClick={onSearch} disabled={searching || !city.trim()}>
-          {searching ? '查詢中...' : '查看'}
-        </button>
+      <div className="desktop-sidebar-head">
+        <span className="desktop-sidebar-title">候選籃</span>
       </div>
-      {searchError && <div className={styles.searchError}>{searchError}</div>}
       <div className={styles.list}>
         {candidates.length === 0 ? (
           <div className={styles.empty}>

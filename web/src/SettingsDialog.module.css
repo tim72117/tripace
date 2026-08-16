@@ -1,0 +1,28 @@
+/* SettingsDialog.tsx 專屬樣式(CSS Modules)。命名省略前綴(.devToggle
+   對應原本的 .dev-section-toggle,.devChevron 對應 .dev-section-chevron)
+   ——import 時已經有明確的命名空間。 */
+
+/* 「開發」可折疊區塊觸發列:視覺比照 base-ui.css 的 .section-title
+   (同樣大寫灰字、字級),但改為可點擊列,故補上 flex 排版放 ChevronDown
+   圖示、cursor: pointer,並沿用 .row:active 的按壓回饋色,讓互動感跟
+   同一個 dialog 裡其他可點擊列(.row)一致。圖示依展開狀態旋轉 180 度,
+   是常見折疊區塊慣例。 */
+.devToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 16px 6px;
+  font-size: 15px;
+  color: var(--ios-gray);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.devToggle:active {
+  background: #f5f5f7;
+}
+.devChevron {
+  transition: transform 0.15s;
+}
+.devChevronOpen {
+  transform: rotate(180deg);
+}

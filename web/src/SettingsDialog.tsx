@@ -7,6 +7,7 @@ import type { AssistLang } from './assistLang'
 import { ASSIST_LANG_KEY, getAssistLang } from './assistLang'
 import { Avatar, errMsg } from './AppCommon'
 import { LangSelect, TokenDisplay } from './DesktopShared'
+import styles from './SettingsDialog.module.css'
 
 // 桌面版「設定」dialog:點選 DesktopUserMenu 的「設定」項目後開啟,置中卡片彈窗,
 // 視覺沿用原 RecommendedPlacesModal(已移除)留下的 .rp-modal-backdrop/.rp-modal
@@ -71,13 +72,13 @@ export function SettingsDialog({
               }}
             />
           </div>
-          <div className="dev-section-toggle" onClick={() => setDevOpen((o) => !o)}>
+          <div className={styles.devToggle} onClick={() => setDevOpen((o) => !o)}>
             <span>開發</span>
             <ChevronDown
               size={16}
               strokeWidth={1.8}
               color="var(--ios-gray)"
-              className={devOpen ? 'dev-section-chevron open' : 'dev-section-chevron'}
+              className={devOpen ? `${styles.devChevron} ${styles.devChevronOpen}` : styles.devChevron}
             />
           </div>
           {devOpen && (

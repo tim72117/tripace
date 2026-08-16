@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronLeft, AlignLeft, Users, Send, Share2, Sparkles } from 'lucide-react'
+import { Send, Sparkles } from 'lucide-react'
 import type { ClientConfig } from './api'
 import * as api from './api'
 import type { Trip, Entry, User } from './types'
@@ -13,9 +13,6 @@ import {
 import { ErrorBanner, errMsg, isSubmitEnter } from './AppCommon'
 import type { TaskPlaceholder } from './Timeline'
 import type { TripBatches, TripEntry } from './clienttools/tripEntryTools'
-import { MembersScreen } from './trip/MembersScreen'
-import { ShareModal } from './trip/ShareModal'
-import { TripMenu } from './trip/TripMenu'
 import { ASSISTANT_ID, ENTRY_QUERY_BATCH_KEY, type ChatMessage } from './chatTypes'
 import { AskUserSheet, AskChoiceSheet, type AskChoiceOption } from './AskSheets'
 import { MessageBubble } from './MessageBubble'
@@ -59,14 +56,24 @@ export function ChatScreen({
   cfg,
   trip,
   user,
-  onBack,
-  onOpenDrawer,
-  mobileHeader,
+  // onBack/onOpenDrawer/mobileHeader:navbar 移除後(見下方 JSX 的說明)
+  // 這三個 prop 在元件內部已經沒有消費點,但簽章保留不動——PhoneContent.tsx
+  // 仍在傳值,屬於手機版既有 API 的一部分,不在這次「移除桌面對話小匡
+  // navbar」的範圍內清理,解構時用底線前綴避免 noUnusedParameters 報錯。
+  onBack: _onBack,
+  onOpenDrawer: _onOpenDrawer,
+  mobileHeader: _mobileHeader,
   onTimelineData,
   desktopChat,
 }: {
   cfg: ClientConfig
-  trip: Trip
+  // trip:可不傳——對話小匡在使用者尚未選定/建立行程時仍要能用(見
+  // DesktopLayout.tsx 的 chat-popover 說明,唯一入口不再強制先選行程)。
+  // 無 trip 時,所有綁在 trip.id 上的資料流(歷史訊息/entries/WebSocket/
+  // clientToolsBatches 持久化)與行程專屬功能(成員/分享)一律跳過,只保留
+  // onagentBridge 對話本身可用——這是刻意的簡化邊界,不是把整個元件重新
+  // 設計成無 trip 也能記事。
+  trip?: Trip
   user: User
   onBack: () => void
   // onOpenDrawer:手機版專用,左上角按鈕改成開啟左側導覽抽屜(行程列表/配速表/
@@ -93,7 +100,8 @@ export function ChatScreen({
   desktopChat?: DesktopChatOptions
 }) {
   // owner 輸入=發訊息;成員輸入=語意查詢(回答顯示在訊息流,對齊 iOS App)。
-  const isOwner = trip.ownerID === user.id
+  // 無 trip 時視同 owner(輸入直接送出對話,不是語意查詢——沒有行程可查)。
+  const isOwner = !trip || trip.ownerID === user.id
   const [messages, setMessages] = useState<ChatMessage[]>([])
   // latestAnswerID:這次「即時產生」(send() 內)的最新一則答案訊息 id,供
   // MessageBubble 判斷附加資料區塊(推薦景點/旅程清單)要不要預設展開——
@@ -175,13 +183,7 @@ export function ChatScreen({
     },
     [],
   )
-  // 成員管理在行程內開啟(對齊 iOS App 的聊天頁右上角入口)。
-  const [showMembers, setShowMembers] = useState(false)
-  // 分享彈窗
-  const [showShare, setShowShare] = useState(false)
   const bodyRef = useRef<HTMLDivElement>(null)
-  const navbarRef = useRef<HTMLDivElement>(null)
-  const lastScrollY = useRef(0)
   // chatMessagesRef:手機版訊息列表(現在是固定顯示的主要內容,不再是浮層)
   // 的捲動容器,供進入行程時「捲到最底」使用(桌面版走 bodyRef,見下方
   // useEffect)。改版前這支 ref 叫 chatOverlayInnerRef、只在浮層條件渲染時
@@ -189,37 +191,13 @@ export function ChatScreen({
   // 新的呈現方式。
   const chatMessagesRef = useRef<HTMLDivElement>(null)
 
-  // 捲動時自動收合/浮現 navbar:只在手機版生效。桌面版 navbar 要持續顯示、
-  // 寬度對齊右側顯示區(.desktop-main),不隨捲動收合——桌面版沒有手機那種
-  // 「小螢幕捲動時讓出空間」的需求,收合反而會讓 navbar 寬度對齊的視覺
-  // 一致性看起來不穩定。desktopChat 非 undefined 即代表目前是桌面模式
-  // (見上方 desktopChat prop 的說明)。
-  //
-  // 改版前這裡監聽的是 bodyRef(當時是時間軸的捲動容器,也是手機版底層唯一
-  // 固定顯示的主要內容)。改版後訊息列表(chatMessagesRef)才是固定顯示的
-  // 主要內容,時間軸變成抽屜、只有開啟時才可視/可捲動——故改監聽
-  // chatMessagesRef,讓「捲動主要內容時收合 navbar」這個語意繼續對應到
-  // 使用者實際在看的畫面,而不是可能根本沒開啟的抽屜。
-  useEffect(() => {
-    if (desktopChat) return
-    const el = chatMessagesRef.current
-    const nav = navbarRef.current
-    if (!el || !nav) return
-    const onScroll = () => {
-      const y = el.scrollTop
-      const diff = y - lastScrollY.current
-      lastScrollY.current = y
-      if (diff > 4) {
-        nav.classList.add('navbar-hidden')
-      } else if (diff < -4) {
-        nav.classList.remove('navbar-hidden')
-      }
-    }
-    el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
-  }, [!!desktopChat])
-
   const load = useCallback(async () => {
+    // 無 trip:沒有歷史訊息/entries/批次可讀,直接視為載入完成,維持全部
+    // state 的初始空值即可(對話小匡此時只提供 onagentBridge 對話本身)。
+    if (!trip) {
+      setLoaded(true)
+      return
+    }
     setErr(null)
     try {
       // 原話從「裝置端 DB」讀(與 server 隔離);entry/trip 從後端讀(僅 owner)。
@@ -266,7 +244,7 @@ export function ChatScreen({
       setLoaded(true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cfg.baseURL, cfg.token, trip.id, isOwner])
+  }, [cfg.baseURL, cfg.token, trip?.id, isOwner])
 
   useEffect(() => {
     setLoaded(false)
@@ -316,10 +294,10 @@ export function ChatScreen({
       entries,
       updatingEntryIDs,
       taskPlaceholders,
-      refetchEntries: () => api.fetchEntries(cfg, trip.id).then(setEntries).catch(() => {}),
+      refetchEntries: trip ? () => api.fetchEntries(cfg, trip.id).then(setEntries).catch(() => {}) : () => {},
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [desktopChat, onTimelineData, entries, updatingEntryIDs, taskPlaceholders, cfg.baseURL, cfg.token, trip.id])
+  }, [desktopChat, onTimelineData, entries, updatingEntryIDs, taskPlaceholders, cfg.baseURL, cfg.token, trip?.id])
 
   // updatingSince:記每個更新中 entryID 的起始時間,用來保證「更新中」動畫最短顯示 800ms
   // (entry_update 後端很快完成,不設下限會一閃而過看不見)。
@@ -327,11 +305,15 @@ export function ChatScreen({
   const MIN_UPDATING_MS = 800
 
   useEffect(() => {
+    // 無 trip:沒有行程可訂閱即時事件,不建立連線(entry_updating/
+    // entries_updated 等事件全部綁在某個 trip 底下)。
+    if (!trip) return
+    const tripID = trip.id
     const base = cfg.baseURL.replace(/^http/, 'ws')
     // 瀏覽器原生 WebSocket API 不支援自訂 header,token 改用 query string 帶,
     // 供後端驗證是否為此行程成員(見 server/internal/api/ws.go handleWS)。
     const tokenQS = cfg.token ? `?token=${encodeURIComponent(cfg.token)}` : ''
-    const ws = new WebSocket(`${base}/v1/trips/${trip.id}/ws${tokenQS}`)
+    const ws = new WebSocket(`${base}/v1/trips/${tripID}/ws${tokenQS}`)
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data)
@@ -344,7 +326,7 @@ export function ChatScreen({
           setUpdatingEntryIDs((prev) => new Set(prev).add(msg.entryID))
         } else if (msg.event === 'entries_updated') {
           // 更新完成:重抓條目,並依最短顯示時間逐一解除「更新中」狀態。
-          api.fetchEntries(cfg, trip.id).then(setEntries).catch(() => {})
+          api.fetchEntries(cfg, tripID).then(setEntries).catch(() => {})
           const now = Date.now()
           updatingSinceRef.current.forEach((since, id) => {
             const elapsed = now - since
@@ -377,7 +359,7 @@ export function ChatScreen({
         } else if (msg.event === 'task_entry_ready' && typeof msg.taskID === 'number') {
           // entry_add 已完成對應步驟:移除佔位卡,並重抓條目讓正式卡片出現。
           setTaskPlaceholders((prev) => prev.filter((p) => p.taskID !== msg.taskID))
-          api.fetchEntries(cfg, trip.id).then(setEntries).catch(() => {})
+          api.fetchEntries(cfg, tripID).then(setEntries).catch(() => {})
         } else if (msg.event === 'entries_loaded' && Array.isArray(msg.entries)) {
           // entry_query 查詢完成(見 server/internal/wanttools/entry_query.go
           // 的 NotifyEntriesLoaded):查到的條目轉成 TripEntry,依 id 合併進
@@ -396,12 +378,12 @@ export function ChatScreen({
           }))
           const merged = mergeTripEntriesById(clientToolsBatchesRef.current[ENTRY_QUERY_BATCH_KEY] ?? [], loaded)
           setClientToolsBatchesBoth((prev) => ({ ...prev, [ENTRY_QUERY_BATCH_KEY]: merged }))
-          void replaceTripBatch(trip.id, ENTRY_QUERY_BATCH_KEY, merged).catch(() => {})
+          void replaceTripBatch(tripID, ENTRY_QUERY_BATCH_KEY, merged).catch(() => {})
         }
       } catch {}
     }
     return () => ws.close()
-  }, [cfg.baseURL, cfg.token, trip.id])
+  }, [cfg.baseURL, cfg.token, trip?.id])
 
   // 本地訊息(不寫入後端,純前端顯示用):查詢的提問/回答泡泡。
   const mkLocalMsg = (
@@ -410,7 +392,9 @@ export function ChatScreen({
     authorName: string,
     text: string,
   ): ChatMessage => ({
-    id, tripID: trip.id, authorID, authorName, text,
+    // tripID:純前端顯示用(不寫回後端),無 trip 時填空字串佔位——
+    // MessageBubble 渲染不讀這個欄位,只是型別要求給值。
+    id, tripID: trip?.id ?? '', authorID, authorName, text,
     createdAt: new Date().toISOString(),
   })
 
@@ -456,7 +440,7 @@ export function ChatScreen({
     const ans = mkLocalMsg(`onagent_ans_${Date.now()}`, ASSISTANT_ID, '', text)
     setMessages((prev) => [...prev, ans])
     setLatestAnswerID(ans.id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mkLocalMsg 只讀 trip.id,不需要列進依賴。
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mkLocalMsg 只讀 trip?.id,不需要列進依賴。
   }, [])
   // onagentBridge:接上既有的 clientToolsBatchesRef/setClientToolsBatchesBoth
   // (而非另開一份獨立記憶體)——onagent 路徑的 trip_entry_* 工具寫入結果
@@ -502,61 +486,22 @@ export function ChatScreen({
     setClientToolsBatchesBoth((prev) => {
       const next = (prev[key] ?? []).filter((e) => !ids.has(e.id))
       const updated = { ...prev, [key]: next }
-      void replaceTripBatch(trip.id, key, next).catch(() => {})
+      // 無 trip 時 clientToolsBatches 不持久化(裝置端 DB 的批次表以 tripID
+      // 為鍵,沒有行程就沒有對應的持久化目標),只更新記憶體內的 state。
+      if (trip) void replaceTripBatch(trip.id, key, next).catch(() => {})
       return updated
     })
   }
 
-  // 行程內的成員管理(對齊 iOS App:聊天頁 → 成員)。
-  if (showMembers) {
-    return (
-      <MembersScreen
-        cfg={cfg}
-        trip={trip}
-        isOwner={isOwner}
-        onBack={() => setShowMembers(false)}
-      />
-    )
-  }
-
-  if (showShare) {
-    return (
-      <ShareModal
-        cfg={cfg}
-        trip={trip}
-        isOwner={isOwner}
-        onClose={() => setShowShare(false)}
-      />
-    )
-  }
-
   return (
     <>
-      {mobileHeader === undefined && (
-        <div className="navbar" ref={navbarRef}>
-          {!desktopChat && onOpenDrawer ? (
-            <button className="btn icon-btn" onClick={onOpenDrawer} title="行程列表/路徑">
-              <AlignLeft size={20} strokeWidth={1.8} />
-            </button>
-          ) : (
-            <button className="btn icon-btn" onClick={onBack}>
-              <ChevronLeft size={20} strokeWidth={1.8} />
-            </button>
-          )}
-          <span className="title">{trip.name}</span>
-          <TripMenu tripID={trip.id} />
-          <div style={{ display: 'flex', gap: 2 }}>
-            {isOwner && (
-              <button className="btn icon-btn" onClick={() => setShowShare(true)} title="分享">
-                <Share2 size={18} strokeWidth={1.8} />
-              </button>
-            )}
-            <button className="btn icon-btn" onClick={() => setShowMembers(true)} title="成員">
-              <Users size={18} strokeWidth={1.8} />
-            </button>
-          </div>
-        </div>
-      )}
+      {/* mobileHeader === undefined 只會發生在桌面模式(desktopChat,見
+          該 prop 的說明——PhoneContent.tsx 呼叫時一定帶 'main'/'drawer',
+          唯一不傳的呼叫端是 DesktopLayout.tsx)。桌面模式不渲染 navbar——
+          對話小匡(chat-popover)外層已經有跟其他浮動卡片(.floating-panel)
+          一致的右上角關閉按鈕(見 DesktopLayout.tsx 的 .floating-panel-close),
+          不需要再疊一層「返回」按鈕/標題列。原本掛在這裡的 TripMenu(含
+          「設為開啟時自動進入」)已搬進行程列表的 TripManageModal。 */}
       <div className={styles.area}>
         {desktopChat ? (
           // 桌面模式:主區不渲染時間軸(時間軸只活在左側 side panel 的時間軸模式裡)。
@@ -568,7 +513,10 @@ export function ChatScreen({
             <ErrorBanner msg={err} />
             {messages.length === 0 ? (
               <div className="empty">
-                {isOwner ? '在下方輸入記事，會依時間排列在左側時間軸。' : '在下方查詢這趟行程的內容。'}
+                {/* 無 trip(對話小匡未綁定行程)時,文字與有 trip 但尚無
+                    對話時共用同一句簡短引導——不提時間軸,因為無 trip 時
+                    根本沒有時間軸可排列。 */}
+                {!trip ? '在下方輸入，開始對話。' : isOwner ? '在下方輸入記事，會依時間排列在左側時間軸。' : '在下方查詢這趟行程的內容。'}
               </div>
             ) : (
               messages.map((m) => (
@@ -585,7 +533,7 @@ export function ChatScreen({
             <ErrorBanner msg={err} />
             {messages.length === 0 ? (
               <div className="empty">
-                {isOwner ? '在下方輸入記事，會依時間排列在時間軸(左上角選單)。' : '在下方查詢這趟行程的內容。'}
+                {!trip ? '在下方輸入，開始對話。' : isOwner ? '在下方輸入記事，會依時間排列在時間軸(左上角選單)。' : '在下方查詢這趟行程的內容。'}
               </div>
             ) : (
               messages.map((m) => (
@@ -597,17 +545,21 @@ export function ChatScreen({
 
         <div className={styles.composer}>
           <div className={styles.row}>
-            <button
-              className={styles.fnBtn}
-              onClick={() => sendOnagent('推薦附近的景點')}
-              title="推薦附近景點"
-            >
-              <Sparkles size={20} strokeWidth={1.8} />
-            </button>
+            {/* 桌面版對話小匡(chat-popover)只有 340px 寬,「推薦附近景點」
+                快捷鈕跟輸入框/送出鈕擠在一起會跑版,故只在手機版顯示。 */}
+            {!desktopChat && (
+              <button
+                className={styles.fnBtn}
+                onClick={() => sendOnagent('推薦附近的景點')}
+                title="推薦附近景點"
+              >
+                <Sparkles size={20} strokeWidth={1.8} />
+              </button>
+            )}
             <input
               autoFocus
               value={draft}
-              placeholder="輸入記事，例如「6/29 宿希爾頓」…"
+              placeholder="輸入訊息…"
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (!isSubmitEnter(e)) return

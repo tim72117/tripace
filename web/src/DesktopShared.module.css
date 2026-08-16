@@ -1,0 +1,14 @@
+/* DesktopShared.tsx 專屬樣式(CSS Modules)——目前只有 TokenDisplay 元件
+   用到 .token-box。命名省略前綴(.tokenBox 對應原本的 .token-box)。 */
+
+.tokenBox {
+  margin: 0 16px 8px;
+  padding: 12px;
+  background: var(--ios-bg);
+  border-radius: 10px;
+  border: 1px solid var(--ios-sep);
+  font-family: var(--mono);
+  font-size: 12px;
+  word-break: break-all;
+  color: var(--color-dark);
+}

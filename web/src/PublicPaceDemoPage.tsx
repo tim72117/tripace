@@ -3,6 +3,8 @@ import { useIsDesktop } from './AppCommon'
 import { PaceChart, PACE_PUBLIC_LINK_TOKEN, type Checkpoint } from './PaceChart'
 import { PaceRouteMap } from './PaceRouteMap'
 import { PacePhoneSwipe } from './PacePhoneSwipe'
+import './styles-desktop.css'
+import './desktop-layout-shell.css'
 
 // PublicPaceDemoPage:/demo/pace 的公開分享頁內容(見 App.tsx App() 的路由
 // 判斷)。版型直接比照登入後 pace 面板的樣子(側欄清單 + 主區地圖,見

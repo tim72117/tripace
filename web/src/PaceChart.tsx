@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Share2 } from 'lucide-react'
 import styles from './PaceChart.module.css'
+import './PaceMap.css'
 import { BASE_URL } from './AppCommon'
 import { fetchEntries, geocodeEntry, type ClientConfig } from './api'
 

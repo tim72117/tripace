@@ -1,0 +1,26 @@
+/* PaceChart.tsx/PaceRouteMap.tsx 共用的配速表地圖樣式(Maps JavaScript API
+   極簡風格底圖 + 多標記)。兩個檔案各自 import 這份全域 CSS(非 CSS
+   Module)——共用同一組 class 字串(.rp-map/.rp-map-error/
+   .rp-map-error-detail),獨立成依用途命名的檔案,不進單一元件 module。 */
+.rp-map {
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  background: var(--ios-sep); /* SDK 載入前的底色,避免白閃 */
+}
+.rp-map-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 320px;
+  padding: 24px;
+  text-align: center;
+  color: var(--ios-red);
+  background: var(--ios-card);
+}
+.rp-map-error-detail {
+  font-size: 12px;
+  color: var(--ios-gray);
+}

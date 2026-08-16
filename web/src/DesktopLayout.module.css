@@ -1,0 +1,90 @@
+/* DesktopLayout.tsx 專屬樣式(CSS Modules)。命名省略掉原本的
+   floating-panel- 前綴(例如 .panel 對應原本的 .floating-panel,.left
+   對應 .floating-panel-left)——import 時已經有明確的命名空間。
+
+   查證後這批 class 只被 DesktopLayout.tsx 一個檔案使用(不像
+   .chat-popover/.desktop-sidebar-head 等跨檔案共用),故能搬進單一元件
+   module,不需要留在全域的 styles-desktop.css。 */
+
+/* panel:疊在 .desktop-main(地圖,已有 position: relative)上方的浮動
+   卡片共用樣式——絕對定位、不佔用 flex 版面空間、不推擠地圖(使用者
+   明確要求不要壓縮主顯示的可用寬度)。四周留出間距、圓角+陰影,而不是
+   直接貼齊 .desktop-main 邊界——使用者明確要求「周圍留間隙,才有漂浮
+   感」,貼齊邊界會讓這塊看起來像版面裡緊鄰的一欄,而非真的浮在主顯示
+   之上的卡片。寬度由呼叫端各自決定(inline style 或 modifier class),
+   這裡只定義共用的定位/視覺樣式。取代原本各自獨立定義的
+   .add-from-candidate-sidebar/.geo-hotel-sidebar-wrap,以及 panelMode
+   驅動的 trips/timeline/pace/geo-outline 四種浮動卡片(見
+   DesktopShared.tsx 的 PANEL_REGISTRY),同一套視覺語言只定義一次。 */
+.panel {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  z-index: 3;
+  overflow: hidden;
+  border-radius: 16px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--ios-card);
+  animation: panelIn 0.16s ease-out;
+}
+/* left 的 top 特別下修(蓋掉 .panel 的 top:12px)——地圖左上角疊著類別
+   標籤列(見 GeoOutlineMap.module.css 的 .categoryTags,top:16px、單顆
+   膠囊高度約 36px),panelMode 浮動卡片(trips/timeline/pace/geo-outline)
+   跟 AddFromCandidateSidebar 都固定貼在同一個左緣位置,若沿用 top:12px
+   會跟標籤列重疊、蓋住標籤列。右緣(.right,GeoHotelSidebar)沒有這個
+   問題,不受影響。 */
+.left {
+  left: 12px;
+  top: 64px;
+}
+.right {
+  right: 12px;
+}
+/* close:panelMode 浮動卡片(trips/timeline/pace/geo-outline,見
+   panelSpec.slot === 'float' 分支)共用的關閉按鈕——疊在卡片右上角,
+   點擊導回 /app 收起卡片(同再點一次 rail 圖示的行為)。四個內容元件
+   (DesktopTripList/MultiTrackTimeline/PaceChart/GeoCandidateSidebar)
+   各自的 header 排版不同,不逐一加專屬的關閉按鈕(AddFromCandidateSidebar/
+   GeoHotelSidebar 那種),改在 .panel 外層統一疊加一顆,四種內容共用
+   同一個關閉入口。 */
+.close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
+}
+.close:hover {
+  background: var(--ios-bg);
+  color: var(--color-dark);
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.timelinePanel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}

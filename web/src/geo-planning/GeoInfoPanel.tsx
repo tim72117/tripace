@@ -58,16 +58,18 @@ export function GeoInfoPanel({
   onSchedule,
   tripName,
   scheduledDates,
-  shiftLeft,
+  shiftBy,
 }: {
   content: GeoInfoContent | null
   onClose: () => void
-  // shiftLeft:GeoHotelSidebar(飯店/附近推薦清單)有內容顯示時,那個
-  // 側欄會漂浮在 .desktop-main 右緣之上(見 styles-desktop.css 的
-  // .floating-panel-right),跟這張卡片預設的定位重疊——由呼叫端
-  // (DesktopLayout.tsx)判斷 GeoHotelSidebar 目前是否顯示、傳入這個
-  // flag,把卡片推到它左側,詳見 GeoInfoPanel.module.css 的 .shifted。
-  shiftLeft?: boolean
+  // shiftBy:右緣可能同時有 GeoHotelSidebar(飯店/附近推薦清單,見
+  // styles-desktop.css 的 .floating-panel-right)與對話浮動小匡(見
+  // DesktopLayout.tsx 的 .chat-popover),兩者都跟這張卡片預設的定位
+  // 重疊——由呼叫端(DesktopLayout.tsx)判斷目前右緣實際被哪個佔用、
+  // 傳入對應值,把卡片推到它左側。'chat' 偏移量大於 'hotel'(對話小匡
+  // 較寬),兩者都存在時呼叫端只會傳其中較寬的那個,不是疊加,詳見
+  // GeoInfoPanel.module.css 的 .shiftedHotel/.shiftedChat。
+  shiftBy?: 'none' | 'hotel' | 'chat'
   // onAddCandidate:「加入候選」按鈕觸發,理由同 GeoHotelSidebar 卡片上
   // 既有的同名 callback——這裡刻意不做「已在候選籃裡就不顯示按鈕」的
   // 判斷,重複加入由呼叫端的候選籃 state 用內容比對去重(見
@@ -204,20 +206,20 @@ export function GeoInfoPanel({
     setDateValue('')
   }
 
+  const shiftClass = shiftBy === 'chat' ? ` ${styles.shiftedChat}` : shiftBy === 'hotel' ? ` ${styles.shiftedHotel}` : ''
   return (
-    <div className={`${styles.panel}${shiftLeft ? ` ${styles.shifted}` : ''}`}>
-      <div className={styles.head}>
-        <span className={styles.title}>地點介紹</span>
-        <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
-          <X size={16} strokeWidth={2} />
-        </button>
-      </div>
+    <div className={`${styles.panel}${shiftClass}`}>
       <div className={styles.body}>
-        {content.photoUrl ? (
-          <img className={styles.photo} src={content.photoUrl} alt={content.name} />
-        ) : (
-          <div className={styles.photoPlaceholder} />
-        )}
+        <div className={styles.imageWrap}>
+          {content.photoUrl ? (
+            <img className={styles.photo} src={content.photoUrl} alt={content.name} />
+          ) : (
+            <div className={styles.photoPlaceholder} />
+          )}
+          <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
+            <X size={16} strokeWidth={2} />
+          </button>
+        </div>
         <div className={styles.content}>
           <h2 className={styles.name}>{content.name}</h2>
           {content.subtitle && <span className={styles.landmarkName}>{content.subtitle}</span>}

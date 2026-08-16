@@ -337,7 +337,7 @@ function MainCard({
         <div className={styles.item}>
           <span className={styles.mainTitle}>{entry.title}</span>
         </div>
-        {entry.location && <div className="entry-loc"><PinIcon /> {entry.location}</div>}
+        {entry.location && <div className={styles.entryLoc}><PinIcon /> {entry.location}</div>}
         <div className={`${styles.cardExpand}${open ? ` ${styles.open}` : ''}`}>
           <div className={styles.cardExpandInner}>
             {entry.note && <div className={styles.expandSummary}>{entry.note}</div>}
@@ -398,11 +398,11 @@ function SubCard({
           {entry.title}
           {span && <span className={styles.span}>{span}</span>}
         </div>
-        {entry.location && <div className="entry-loc"><PinIcon /> {entry.location}</div>}
+        {entry.location && <div className={styles.entryLoc}><PinIcon /> {entry.location}</div>}
         {(entry.category || (entry.tags ?? []).length > 0) && (
           <div className="meta">
-            {entry.category && <span className="cat">{entry.category}</span>}
-            {(entry.tags ?? []).map(t => <span key={t} className="tag">#{t}</span>)}
+            {entry.category && <span className={styles.entryCat}>{entry.category}</span>}
+            {(entry.tags ?? []).map(t => <span key={t} className={styles.entryTag}>#{t}</span>)}
           </div>
         )}
         <div className={`${styles.cardExpand}${open ? ` ${styles.open}` : ''}`}>

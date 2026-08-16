@@ -1,17 +1,20 @@
 /* panel:浮動卡片,絕對定位疊在地圖上方(見 GeoOutlinePanel.tsx 的
    .mapArea 同一種疊層手法)——不是佔用 flex 版面空間的側欄,四周
    (上/右/下)都留出間距,右緣貼齊 .desktop-main 的右邊界(即
-   GeoHotelSidebar 左側),與主顯示區同高(top/bottom 都設 16px,
-   不用 height: 100%,避免內容較短時卡片仍撐滿整個高度顯得空洞——
-   flex column + 內容自然高度,配合 overflow-y:auto 處理內容過長的
-   情況)。 */
+   GeoHotelSidebar 左側)。top 往下移到 64px(而非緊貼 16px)避開地圖
+   右上角常駐的城市搜尋框(見 GeoOutlineMap.module.css 的 .citySearch,
+   top:16px、膠囊高度約 38px)——搜尋框是常駐 UI,這張卡片只在點擊地點
+   後才出現,故由這張卡片避開搜尋框而非反過來。bottom 維持 16px,不用
+   height: 100%,避免內容較短時卡片仍撐滿整個高度顯得空洞——flex
+   column + 內容自然高度,配合 overflow-y:auto 處理內容過長的情況。 */
 .panel {
   position: absolute;
-  top: 16px;
+  top: 64px;
   right: 16px;
   bottom: 16px;
   width: 300px;
   max-height: calc(100% - 32px);
+  overflow-x: hidden;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -23,49 +26,51 @@
   transition: right 0.15s ease-out;
 }
 
-/* shifted:GeoHotelSidebar(飯店/附近推薦清單)有內容時,那個側欄改成
-   絕對定位漂浮在 .desktop-main 右緣之上(見 styles-desktop.css 的
+/* shiftedHotel:GeoHotelSidebar(飯店/附近推薦清單)有內容時,那個側欄
+   改成絕對定位漂浮在 .desktop-main 右緣之上(見 styles-desktop.css 的
    .floating-panel-right,right: 12px、寬度 280px),跟這張卡片原本
    同樣定位在 .desktop-main 右緣的 right: 16px 直接疊在一起——這是實際
    發生過的 bug,不是預防性寫法。GeoHotelSidebar 顯示時,由呼叫端
-   (DesktopLayout.tsx)傳入 shiftLeft,把這張卡片推到 GeoHotelSidebar
-   左側(12 + 280 = 292px,再加 12px 間隙)之外,兩者才不會重疊。 */
-.panel.shifted {
+   (DesktopLayout.tsx)傳入 shiftBy="hotel",把這張卡片推到
+   GeoHotelSidebar 左側(12 + 280 = 292px,再加 12px 間隙)之外,兩者
+   才不會重疊。 */
+.panel.shiftedHotel {
   right: 304px;
 }
 
-.head {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 10px 10px 16px;
+/* shiftedChat:對話浮動小匡(見 DesktopLayout.tsx 的 .chat-popover,
+   right: 16px、寬度 340px)開啟時,同理往左推到它左側(16 + 340 = 356px,
+   再加 12px 間隙)之外——比 shiftedHotel 的偏移量更大,因為對話小匡比
+   GeoHotelSidebar 更寬。兩者都存在時,呼叫端只會傳其中之一(見
+   DesktopLayout.tsx 的 infoPanelShiftBy 說明,優先避開較寬的對話小匡),
+   不會疊加兩個 class。 */
+.panel.shiftedChat {
+  right: 368px;
 }
 
-.title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--ios-gray);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
+/* closeBtn:懸浮在照片右上角(而非獨立的標題橫條)——照片是 .body 的
+   第一個子元素、緊貼卡片頂部,.imageWrap 提供 position: relative 錨點
+   讓按鈕能 position: absolute 疊在照片上,不佔用版面高度。深色半透明底
+   (而非 GeoHotelSidebar 等側欄慣用的透明底 hover 才顯色)是因為底下是
+   照片而非卡片底色,淺色照片下若沿用側欄那套素色圖示會看不清楚。 */
 .closeBtn {
-  width: 26px;
-  height: 26px;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
   border-radius: 50%;
-  background: none;
-  color: var(--ios-gray);
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
   cursor: pointer;
 }
 
 .closeBtn:hover {
-  background: var(--ios-bg);
-  color: var(--color-dark);
+  background: rgba(0, 0, 0, 0.6);
 }
 
 .body {
@@ -73,12 +78,17 @@
   flex-direction: column;
 }
 
+.imageWrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
 .photo,
 .photoPlaceholder {
   width: 100%;
   height: 160px;
   object-fit: cover;
-  flex: 0 0 auto;
+  display: block;
 }
 
 .photoPlaceholder {
