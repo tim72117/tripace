@@ -3,7 +3,7 @@
 設計 Web 前端(`web/src`)的行程編排體驗:對話式 AI 操作、手動編輯、推薦整合、
 以及貫穿三者的**地理理解**呈現。本文是設計文件,不是實作;所有設計立足於
 現有元件與後端能力(以 `ChatScreen.tsx`、`Timeline.tsx`、`wanttools/`、
-`ROUTING_ARCHITECTURE.md` 盤點的現況為基準),凡需要新增後端能力或外部
+`routing-architecture.md` 盤點的現況為基準),凡需要新增後端能力或外部
 API 之處,逐一標註成本與風險。
 
 ---

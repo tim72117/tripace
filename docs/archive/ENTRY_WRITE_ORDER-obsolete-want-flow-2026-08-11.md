@@ -4,7 +4,7 @@
 > 本文件描述的 `entry_query`/`geocode`/`entry_add`（帶 `item`/`start`/`end`/
 > `location` 等欄位）三步驟工具鏈，屬於 tripace 自家 want LLM 對話系統，
 > 已於 2026-08-11 隨該系統整套移除（前端對話改走 onagent 平台，見
-> `docs/ROUTING_ARCHITECTURE.md`「三之一、`/onagent/*`」一節、
+> `docs/routing-architecture.md`「三之一、`/onagent/*`」一節、
 > `web/src/useOnagentChatBridge.ts`）。目前寫入條目改用 onagent 的
 > `trip_entry_add` clienttools 工具（欄位是 `title`/`date`/`time`/`note`，
 > 見 `server/tools/onagent-tools.yaml`），沒有本文件描述的
@@ -24,7 +24,7 @@
 > `server/internal/llm/assistant_agent.go` 的 `addThought` 常數，此處不再重複，
 > 只保留該常數沒有的細節：條目粒度判斷、geocode 技術規格、範例、多筆處理順序。
 >
-> CLI 指令對照與實作注意事項見 `docs/ENTRY_CLI_GUIDE.md`。
+> CLI 指令對照與實作注意事項見 `docs/entry-cli-guide.md`。
 
 ---
 
@@ -219,4 +219,4 @@ entry_add(
 ## 相關文件
 
 - `server/internal/llm/assistant_agent.go` — `addThought` 常數，實際餵給 LLM 的固定順序與欄位規則
-- `docs/ENTRY_CLI_GUIDE.md` — entry_add / entry_query / geocode 的 CLI 指令對照與實作注意事項
+- `docs/entry-cli-guide.md` — entry_add / entry_query / geocode 的 CLI 指令對照與實作注意事項

@@ -5,7 +5,7 @@
 > 整套移除、文件移至 `docs/archive/ENTRY_WRITE_ORDER-obsolete-want-flow-2026-08-11.md`
 > （僅供歷史參考）。本文件描述的是**獨立於 LLM 對話流程**的 `cmd/cli` 直接操作路徑
 > （`entry-add`/`trip-entries`/`geocode` 等子指令，走 `/internal/*` 路由，見
-> `docs/ROUTING_ARCHITECTURE.md`「三、`/internal/*` 完整路由表」），不受 want 移除
+> `docs/routing-architecture.md`「三、`/internal/*` 完整路由表」），不受 want 移除
 > 影響，目前仍準確有效。本文件只提供對應的 CLI 指令與實作時的注意事項。
 
 ---

@@ -1,6 +1,6 @@
 # 構想 3（新手旅行者提出）：沒有座標的行程項目，新手根本看不出風險——逐輪原始稿
 
-> 仲裁後的結論見主文件 `AI_TRIP_PLANNING_DISCUSSION.md` 構想 3 段落，這裡是完整逐輪過程。
+> 仲裁後的結論見主文件 `ai-trip-planning-discussion.md` 構想 3 段落，這裡是完整逐輪過程。
 
 **新手旅行者（開場）**：我讀了文件開頭的技術現況錨點，`trip_entry_add`
 寫進去的項目只有 `title/date/time/note`，完全沒有座標——這代表 AI 幫我

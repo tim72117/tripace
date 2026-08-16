@@ -93,7 +93,7 @@ rail  side panel         main(對話)
 1. **出現**:收到第一個 `entry_updating` 或 `entries_updated` WS 事件(即 LLM 這一回合開始動行程)時,在對話串尾端插入一張「行程編排卡片」;同一回合(同一次 send 之後)只插一張,不重複插
 2. **進行中**:卡片標頭「正在編排行程…」+ 現有 `WaveLoader` 波浪動畫;卡片內是行程表格(欄位:標題/日期/時間/備註,參考 debug 的 `cts-table` 結構但配色用 styles.css 暖色調),表格資料直接讀主 `entries` state 即時刷新;正在被改的列用現有 `updatingEntryIDs` 高亮(復用 800ms 最短顯示機制)
 3. **定格**:AI 回合結束(訊息串收到 AI 的文字回覆,或一段時間沒有新的 entry 事件)後,標頭改為「行程已更新」,波浪動畫停止;卡片保留在對話流中該位置,附一顆「開啟時間軸」按鈕(點了等於按 rail 的 📅)
-4. **表格內容範圍**:第一版顯示全部 entries(變動列高亮);「只顯示本回合差集」需要 diff 基準,依賴 CLIENTTOOLS_DESIGN_NOTES / FEATURE_PRIORITIES 裡的 diff 機制,列為後續項目不在本次範圍
+4. **表格內容範圍**:第一版顯示全部 entries(變動列高亮);「只顯示本回合差集」需要 diff 基準,依賴 clienttools-design-notes.md / feature-priorities.md 裡的 diff 機制,列為後續項目不在本次範圍
 
 ### 3.5 手機版不動的保證方式
 
@@ -103,9 +103,9 @@ rail  side panel         main(對話)
 - icon rail / side panel 是 `DesktopContent` 層的新結構,完全不碰手機版
 - 驗收條件必須包含:手機寬度(<768px)下畫面與行為跟改版前一致
 
-## 四、與 ITINERARY_UX_DESIGN.md 的關係
+## 四、與 itinerary-ux-design.md 的關係
 
-該文件(2026-07-20 稍早完成)以「時間軸為主體、對話為暫態浮層」為核心原則,是**手機優先**的設計;本次改版把**桌面版**反轉為「對話為主體」。兩者並存的解釋:手機小螢幕上時間軸值得佔滿主畫面,桌面寬螢幕則有空間讓對話與時間軸並排/切換。實作完成後需回頭在 ITINERARY_UX_DESIGN.md 的「2.3 桌面寬版」章節加註記,指向本文件作為桌面版的新方向,避免兩份文件矛盾沒人發現。
+該文件(2026-07-20 稍早完成)以「時間軸為主體、對話為暫態浮層」為核心原則,是**手機優先**的設計;本次改版把**桌面版**反轉為「對話為主體」。兩者並存的解釋:手機小螢幕上時間軸值得佔滿主畫面,桌面寬螢幕則有空間讓對話與時間軸並排/切換。實作完成後需回頭在 itinerary-ux-design.md 的「2.3 桌面寬版」章節加註記,指向本文件作為桌面版的新方向,避免兩份文件矛盾沒人發現。
 
 ## 五、分階段實作計畫(交給 subagent,指定 sonnet)
 
@@ -129,4 +129,4 @@ rail  side panel         main(對話)
 - side panel 寬度拖曳
 - 對話歷史持久化(若階段 1 查證結果是沒存)
 - rail 擴充(推薦、地圖入口)
-- ITINERARY_UX_DESIGN.md 2.3 章節修訂
+- itinerary-ux-design.md 2.3 章節修訂

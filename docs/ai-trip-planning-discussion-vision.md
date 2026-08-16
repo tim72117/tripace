@@ -2,8 +2,8 @@
 
 ## 討論背景與方式
 
-本文件與 `docs/AI_TRIP_PLANNING_DISCUSSION.md`（第一輪，現況限制導向）
-及 `docs/AI_TRIP_PLANNING_DISCUSSION_R2.md`（第二輪，地基補齊後的風險
+本文件與 `docs/ai-trip-planning-discussion.md`（第一輪，現況限制導向）
+及 `docs/ai-trip-planning-discussion-r2.md`（第二輪，地基補齊後的風險
 與標示導向）是姊妹文件，共用同一組角色與同一套流程規則，但**討論方向
 刻意相反**：前兩份文件的每一項構想幾乎都是「AI 現在/補齊後會遇到什麼
 問題、缺口在哪、該怎麼標示風險」——這是必要的誠實工作，但長期只做這
@@ -18,7 +18,7 @@ AI 真的能參與規劃，使用者的體驗可以被推進到什麼程度」**
 本文件只是刻意把鏡頭轉向前者，作為對前兩份文件的補充視角，不是要
 取代它們防禦性的結論。
 
-討論方式沿用 `docs/DESIGN_DISCUSSION_PROCESS.md` 定義的規則：三個角色
+討論方式沿用 `docs/design-discussion-process.md` 定義的規則：三個角色
 輪流發言、逐輪收斂至共識，不設輪數上限，仲裁者（本文件由主代理擔任）
 判斷共識是否達成並寫下結論。
 
@@ -51,11 +51,11 @@ AI 真的能參與規劃，使用者的體驗可以被推進到什麼程度」**
   的正向構想若不小心假設了取捨能力已經存在，仲裁者會比照第一輪、第二
   輪的處理方式，要求角色重新收斂在「候選整理」的能力邊界內，只是
   在這個邊界**之內**去想像更豐富的可能性，而不是想像邊界被打破。
-- **與 `docs/TRIP_PLANNING_DESIGN_DISCUSSION.md` 的分工**：維持既有
+- **與 `docs/trip-planning-design-discussion.md` 的分工**：維持既有
   分界線——「AI 有沒有主動決定要不要把某個候選排進某一天的某個時段」，
   該文件討論的是使用者自己探索、AI 被動提供候選的階段，不受本文件
   影響。
-- **與 `docs/FEATURE_BRAINSTORM.md`／`docs/FEATURE_PRIORITIES.md` 的
+- **與 `docs/feature-brainstorm.md`／`docs/feature-priorities.md` 的
   分工**：那兩份文件是功能發想與實作排序，本文件產出的是設計方向的
   想像與判斷，不是功能清單或排期，即使構想聽起來像「功能點子」，
   討論的重點仍是「這個方向站不站得住腳、邊界在哪」而非「要不要做、
@@ -1368,7 +1368,7 @@ AI 能做的事情絕對數量變多了，使用者的認知也不會被誤導�
 構想 9（多人即時協作輸入，依賴介面與資料同步機制）、構想 6/8/11
 （多項依賴 `recommend_nearby` 目前不含的欄位，如開放時間、票價、
 地點類型）。這些構想沒有因為「討論要有結論」而勉強想像不存在的
-能力，延續 `docs/DESIGN_DISCUSSION_PROCESS.md` 與第一輪文件一貫
+能力，延續 `docs/design-discussion-process.md` 與第一輪文件一貫
 的範疇紀律。
 
 **給下一階段的入口清單（按主題分組）**：

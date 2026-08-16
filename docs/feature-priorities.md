@@ -1,6 +1,6 @@
 # 實作優先序:10 個項目的落地順序
 
-> 產生方式:2026-07-20,以 [FEATURE_BRAINSTORM.md](FEATURE_BRAINSTORM.md) 統整出的 10 個項目為對象,對照目前程式碼實況排出實作順序。
+> 產生方式:2026-07-20,以 [feature-brainstorm.md](feature-brainstorm.md) 統整出的 10 個項目為對象,對照目前程式碼實況排出實作順序。
 > 排序原則:**(1) 建立在現有基礎上的先做**(缺口小、風險低)、**(2) 信任基礎建設優先於華麗功能**(diff 預覽/undo 沒做好,AI 改壞一次行程使用者就走了)、**(3) 共用基礎建設要一次到位**(候選池、路線資料被多個項目依賴)、**(4) 獲客功能等產品核心穩了再放大**。
 
 ## 現況盤點(排序的依據)
@@ -11,7 +11,7 @@
 |---|---|
 | LLM 對話操作旅程清單(`trip_entry_add`/`trip_entry_update`/`trip_entry_list`/`trip_list_batches`、ask_user/ask_choice、entry_query) | ✅ 正式功能——已改走 clienttools 機制(見下一列的說明) |
 | 附近景點推薦(recommend_nearby,Places Nearby/Text Search,含照片) | ✅ 正式功能 |
-| Entry 資料模型含 Location/Lat/Lng 欄位、Kind 分類、Detail 結構化欄位 | ⚠️ 欄位在 Postgres `model.Entry` 上都還在,但 AI 對話這條主力寫入路徑已不再經過它:`server/internal/wanttools/entry_add.go` 等直寫 Postgres 的工具已刪除,現行 LLM 寫入改呼叫 `trip_entry_add`(`server/tools/clienttools.yaml`、`web/src/clienttools/tools/tripEntryAdd.ts`),經 clienttools 機制轉發到瀏覽器分頁,寫進裝置端的旅程清單(`web/src/deviceDB.ts`),欄位只有 `title/date/time/note`,連 location 都不是輸入欄位,更談不上 lat/lng——資料洞不只「沒落地座標」,而是整條路徑已經沒有座標概念。座標欄位目前只服務另外兩條獨立路徑:(1) `tripsvc.Record`(`POST /internal/trips/{id}/entries`、`POST /v1/trips/{id}/entries` 等)寫入 Postgres entry 時可帶座標,(2) `POST /internal/entries/{id}/geocode`(`server/internal/api/entry_geocode.go`、`server/internal/geo/geocode.go`)可事後補座標,以及地圖上手動拖曳選點校正座標(`web/src/PaceRouteMap.tsx`)。詳見 ITINERARY_UX_DESIGN.md 6.2(該節已更新反映 clienttools 現況) |
+| Entry 資料模型含 Location/Lat/Lng 欄位、Kind 分類、Detail 結構化欄位 | ⚠️ 欄位在 Postgres `model.Entry` 上都還在,但 AI 對話這條主力寫入路徑已不再經過它:`server/internal/wanttools/entry_add.go` 等直寫 Postgres 的工具已刪除,現行 LLM 寫入改呼叫 `trip_entry_add`(`server/tools/clienttools.yaml`、`web/src/clienttools/tools/tripEntryAdd.ts`),經 clienttools 機制轉發到瀏覽器分頁,寫進裝置端的旅程清單(`web/src/deviceDB.ts`),欄位只有 `title/date/time/note`,連 location 都不是輸入欄位,更談不上 lat/lng——資料洞不只「沒落地座標」,而是整條路徑已經沒有座標概念。座標欄位目前只服務另外兩條獨立路徑:(1) `tripsvc.Record`(`POST /internal/trips/{id}/entries`、`POST /v1/trips/{id}/entries` 等)寫入 Postgres entry 時可帶座標,(2) `POST /internal/entries/{id}/geocode`(`server/internal/api/entry_geocode.go`、`server/internal/geo/geocode.go`)可事後補座標,以及地圖上手動拖曳選點校正座標(`web/src/PaceRouteMap.tsx`)。詳見 itinerary-ux-design.md 6.2(該節已更新反映 clienttools 現況) |
 | WebSocket 即時推送(entries_updated、entry_updating、recommended_places…) | ✅ 正式功能 |
 | 行程公開分享(/public/{token}) | ✅ 正式功能 |
 | 多人成員與編輯者權限 | ✅ 正式功能 |
@@ -39,7 +39,7 @@
 **工程量**:小(建立在第 2 位之上)。**依賴**:第 2 位。
 
 ### 第 4 位:接駁自動補齊(交通資料基礎建設)
-**為什麼第四**:Routes/Distance Matrix API 的接入是一次性基建,同時解鎖三件事——行程健檢第二階段(「趕不到」警示)、時間軸相鄰點的移動時間呈現(地理理解的核心,見 ITINERARY_UX_DESIGN.md)、後續今天模式的重排依據。放在健檢第一階段之後是因為它有 API 成本,需要先設計好快取策略(只算相鄰段、行程變動才重算)。
+**為什麼第四**:Routes/Distance Matrix API 的接入是一次性基建,同時解鎖三件事——行程健檢第二階段(「趕不到」警示)、時間軸相鄰點的移動時間呈現(地理理解的核心,見 itinerary-ux-design.md)、後續今天模式的重排依據。放在健檢第一階段之後是因為它有 API 成本,需要先設計好快取策略(只算相鄰段、行程變動才重算)。
 **要補的缺口**:Routes API 接入與快取層;時間軸「兩點之間」的移動時間 UI;銜接不可能的警示併入健檢。
 **工程量**:中→小~中(可下修)。核心前提「Routes API 接入」其實已經在線上——`server/internal/api/pace_route.go` 的 `computeRoutes` 呼叫、`POST /internal/entries/compute-route` 以 entry 座標算路線、`PaceRouteMap.tsx` 的 localStorage 路線快取(cache key 含座標,座標變動即失效)都已運作。剩下的是把既有能力**接到時間軸**:相鄰段的移動時間 UI、快取層從前端 localStorage 升級為後端共用快取(多人共用、跨裝置),以及銜接不可能的警示。**依賴**:Entry 座標(已有,但 AI 對話路徑仍需靠 geocode 端點或手動拖曳補齊)。
 

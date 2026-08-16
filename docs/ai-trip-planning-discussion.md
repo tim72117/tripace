@@ -7,7 +7,7 @@
 主動規劃出一份完整或半完整的行程**——不是使用者一步步搜尋、拖曳，而是 AI
 自己排查候選地點、判斷地點類型、估算交通時程，把結果排進日程。
 
-討論方式沿用 `docs/DESIGN_DISCUSSION_PROCESS.md` 定義的規則：三個角色輪流
+討論方式沿用 `docs/design-discussion-process.md` 定義的規則：三個角色輪流
 發言、逐輪收斂至共識，不設輪數上限，仲裁者（本文件由主代理擔任）判斷共識
 是否達成並寫下結論。
 
@@ -23,13 +23,13 @@
 
 ## 涵蓋範圍與既有文件的關係
 
-- **與 `docs/TRIP_PLANNING_DESIGN_DISCUSSION.md` 的分工**：該文件討論的是
+- **與 `docs/trip-planning-design-discussion.md` 的分工**：該文件討論的是
   「使用者自己探索、AI 被動提供候選」的階段（構想 4「對話即候選來源」
   已經定義了 AI 在那個階段的角色邊界——AI 建議候選、不越權替使用者排
   時間）。這份文件討論的是**下一步**：AI 主動規劃、直接產出排定時段的
   行程草稿，這是該文件明確留白、刻意不處理的範疇。兩份文件的分界線是
   「AI 有沒有主動決定要不要把某個候選排進某一天的某個時段」。
-- **與 `docs/FEATURE_BRAINSTORM.md`／`docs/FEATURE_PRIORITIES.md` 的分工**：
+- **與 `docs/feature-brainstorm.md`／`docs/feature-priorities.md` 的分工**：
   那兩份文件是功能發想與實作排序，產出是「要做哪些功能、先做哪個」；
   這份文件產出的是「AI 主動規劃這件事，設計上該長什麼樣、邊界在哪」，
   是更前一步的設計判斷，不是功能清單或排期。
@@ -188,15 +188,15 @@ R1-R4 全數落地後，回到本文件開頭「技術現況錨點」一節，�
 出的缺口，不在原始三塊地基內）；接著以「三塊地基 + 營業時間查詢皆已
 補齊，但取捨判斷能力仍不存在」為新的技術現況前提，重新選定角色（可
 沿用新手旅行者／老手旅行者／行程規劃師三者，或依新前提重新評估是否
-仍是最適角色組合，依 `docs/DESIGN_DISCUSSION_PROCESS.md` 的角色設定
+仍是最適角色組合，依 `docs/design-discussion-process.md` 的角色設定
 規則決定），開一輪新構想清單，另存新文件，不覆蓋本文件——本文件的
 15 項構想與其定案理由，在「地基未補齊」的現況下依然是有效的歷史紀錄。
 
-**下一輪討論文件已建立**：[AI_TRIP_PLANNING_DISCUSSION_R2.md](AI_TRIP_PLANNING_DISCUSSION_R2.md)，
+**下一輪討論文件已建立**：[ai-trip-planning-discussion-r2.md](ai-trip-planning-discussion-r2.md)，
 已將上方 R1-R4 假設為已落地的技術現況前提寫入該文件開頭，角色設定
 沿用本文件三者，構想清單尚未開始討論。
 
-**平行的正向願景討論文件也已建立**：[AI_TRIP_PLANNING_DISCUSSION_VISION.md](AI_TRIP_PLANNING_DISCUSSION_VISION.md)，
+**平行的正向願景討論文件也已建立**：[ai-trip-planning-discussion-vision.md](ai-trip-planning-discussion-vision.md)，
 方向與 R2 相反——不問「還有什麼風險要標示」，改問「AI 如果做得好，
 能打開什麼第一輪文件目前想像不到的價值」，與 R2 各自獨立累積構想，
 互不覆蓋。
