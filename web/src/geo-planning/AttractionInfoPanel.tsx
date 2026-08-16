@@ -1,5 +1,6 @@
 import { Compass, X } from 'lucide-react'
 import type { GeoAttraction } from '../api'
+import { attractionBadges } from './geoInfoContent'
 import styles from './AttractionInfoPanel.module.css'
 
 // AttractionInfoPanel:attraction(人工建檔的景點區域,見 model.Attraction)
@@ -39,11 +40,7 @@ export function AttractionInfoPanel({
 }) {
   if (!attraction) return null
 
-  const badges = [
-    ...(attraction.level != null ? [`知名度 L${attraction.level}`] : []),
-    ...(attraction.placeCount != null ? [`${attraction.placeCount} 筆景點`] : []),
-    ...(attraction.radiusMeters != null ? [`範圍約 ${Math.round(attraction.radiusMeters)} 公尺`] : []),
-  ]
+  const badges = attractionBadges(attraction)
 
   const shiftClass = shiftBy === 'chat' ? ` ${styles.shiftedChat}` : shiftBy === 'hotel' ? ` ${styles.shiftedHotel}` : ''
   return (

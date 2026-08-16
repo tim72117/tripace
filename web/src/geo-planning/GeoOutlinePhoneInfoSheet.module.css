@@ -1,0 +1,192 @@
+/* backdrop:半透明背景鋪滿全螢幕,點擊背景(非 sheet 本體)可關閉——同
+   PhoneContent.tsx 既有 .settingsPanel/.sharePanel 的疊層慣例。 */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+/* sheet:從下滑入蓋住畫面下半部,不佔滿全螢幕——讓使用者仍看得到上半部
+   地圖,可以在資訊卡開啟狀態下繼續觀察地圖位置(同桌面版 GeoInfoPanel
+   「卡片與地圖並存可見」的體感)。max-height 限制 + overflow-y:auto
+   處理內容過長的情況(比照桌面版 GeoInfoPanel.module.css 的 .panel)。 */
+.sheet {
+  width: 100%;
+  max-height: 60vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px 20px 0 0;
+  background: var(--ios-card);
+  box-shadow: 0 -8px 28px rgba(61, 53, 48, 0.22);
+}
+
+.closeBtn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  cursor: pointer;
+}
+
+.imageWrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.photo,
+.photoPlaceholder {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  display: block;
+}
+
+.photoPlaceholder {
+  background: linear-gradient(135deg, #C4956A, #9E9488);
+}
+
+.content {
+  padding: 14px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.name {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-dark);
+  margin: 0;
+}
+
+.subtitle {
+  font-size: 12px;
+  color: var(--ios-gray);
+}
+
+.metaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 2px;
+}
+
+.badge {
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: var(--ios-bg);
+  color: var(--ios-gray);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.summary {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-dark);
+}
+
+.summaryEmpty {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ios-gray);
+}
+
+/* addCandidateWrap/addCandidateBtn/dateEdit*:「加入候選」按鈕與日期選擇
+   區——視覺語言比照桌面版 GeoInfoPanel.module.css 的 .addCandidateBtn/
+   .dateEdit,但拿掉懸浮定位的 .dateMenu(改成常駐在按鈕正下方展開,見
+   GeoOutlinePhoneInfoSheet.tsx 的說明)。 */
+.addCandidateWrap {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.addCandidateBtn {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dateEdit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--ios-bg);
+}
+
+.dateChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dateChip {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 999px;
+  background: var(--ios-card);
+  color: var(--color-dark);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dateInputRow {
+  display: flex;
+  gap: 8px;
+}
+
+.dateInput {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--color-dark);
+  background: var(--ios-card);
+}
+
+.dateConfirmBtn {
+  flex: 0 0 auto;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dateConfirmBtn:disabled {
+  opacity: 0.5;
+}

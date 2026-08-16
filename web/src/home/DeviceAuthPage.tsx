@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import * as api from './api'
-import { ApiError } from './api'
-import { useAppState, ErrorBanner, errMsg } from './AppCommon'
+import * as api from '../api'
+import { ApiError } from '../api'
+import { ErrorBanner, errMsg } from '../AppCommon'
+import { useAppState } from '../hooks/useAppState'
 import { LoginForm, LoginCard } from './LoginForm'
 
 type Status = 'entry' | 'checking' | 'ready' | 'approving' | 'approved' | 'error'

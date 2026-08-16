@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useIsDesktop } from '../AppCommon'
+import { useIsDesktop } from '../hooks/useIsDesktop'
 import { PaceChart, PACE_PUBLIC_LINK_TOKEN, type Checkpoint } from './PaceChart'
 import { PaceRouteMap } from './PaceRouteMap'
 import { PacePhoneSwipe } from './PacePhoneSwipe'

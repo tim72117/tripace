@@ -4,10 +4,10 @@
 // 本身的狀態機邏輯,不是它底下呼叫 api 的實作細節。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
-import type { Trip } from './types'
+import type { Trip } from '../trip/types'
 
-vi.mock('./api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./api')>()
+vi.mock('../api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api')>()
   return {
     ...actual,
     fetchTrips: vi.fn(),
@@ -15,8 +15,9 @@ vi.mock('./api', async (importOriginal) => {
   }
 })
 
-import * as api from './api'
-import { useTripsState, LS_DEFAULT_TRIP } from './AppCommon'
+import * as api from '../api'
+import { useTripsState } from './useTripsState'
+import { LS_DEFAULT_TRIP } from '../AppCommon'
 
 const cfg = { baseURL: 'http://localhost:8080', token: null }
 

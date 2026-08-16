@@ -1,57 +1,12 @@
 // 與 Go server 的 model.go / docs/API.md 嚴格對齊的型別。
 // 任何欄位改動都應同步這裡與後端,前端才能忠實反映後端回應。
-
-export interface Trip {
-  id: string
-  name: string
-  ownerID: string
-  memberCount: number
-  lastMessagePreview: string | null
-  updatedAt: string // ISO8601
-}
-
-// Message 是使用者說的「原話」:純文字 + 作者 + 時間。
-// LLM 處理後的結構化資訊(分類/標籤/摘要/事件時間)改放在 Entry。
-export interface Message {
-  id: string
-  tripID: string
-  authorID: string
-  authorName: string
-  text: string
-  createdAt: string // ISO8601
-}
-
-// User 是公開身分(成員列表、訊息作者等),不含私密資料。
-export interface User {
-  id: string
-  name: string
-  avatarColor: string
-}
-
-// 行程成員角色:editor 可記事/編輯,viewer 只能查詢。對應後端 model 的 role。
-export type TripRole = 'editor' | 'viewer'
-
-// Member 是行程成員:公開身分 + 在該行程的角色。對應後端 model.Member(扁平結構)。
-export interface Member extends User {
-  role: TripRole
-}
-
-// Profile 是私密資料,只在「自己的帳號」端點回傳。
-export interface Profile {
-  email: string
-}
-
-// Me 是登入後的自己:公開身分 + 私密資料。GET /v1/me 回傳此結構。
-export interface Me {
-  user: User
-  profile: Profile
-}
-
-export interface SearchAnswer {
-  answer: string
-  citedMessageIDs: string[]
-  confidence?: number
-}
+//
+// 這裡只留 Entry——被 timeline/geo-planning/chat/trip 等幾乎所有領域
+// 共用的核心資料實體,沒有明確的單一功能歸屬,不適合搬進任何一個功能
+// 目錄。其餘型別已依領域拆分:Trip 見 trip/types.ts,User/TripRole/
+// Member/Profile/Me/AuthResponse 見 user/types.ts,Message 見
+// chat/types.ts,APIErrorBody(純 API 層錯誤格式,非業務型別)已併入
+// api.ts。
 
 // Entry 是主體:LLM 處理訊息後產出的「事件/條目」,承載所有結構化結果。
 // 可獨立存在,並可關聯多則來源訊息(多對多)。
@@ -80,19 +35,4 @@ export interface Entry {
   // "note"|"car"|"restaurant"|"ticket",未分類時為 null。
   kind?: string | null
   createdAt: string // ISO8601
-}
-
-// login / register / apple 的回應:Me + token。
-export interface AuthResponse {
-  token: string
-  user: User
-  profile: Profile
-}
-
-// 後端統一錯誤格式:{ "error": { "code", "message" } }
-export interface APIErrorBody {
-  error: {
-    code: string
-    message: string
-  }
 }

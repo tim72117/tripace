@@ -1,10 +1,3 @@
-import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, Check } from 'lucide-react'
-import type { AssistLang } from './assistLang'
-import { RecommendedPlacesList, RecommendedPlacesRow, FAKE_RECOMMENDED_PLACES } from './recommended-places/RecommendedPlaces'
-import { OnagentBridgeDemo } from './clienttools/OnagentBridgeDemo'
-import langSelectStyles from './LangSelect.module.css'
-import styles from './DesktopShared.module.css'
 import './styles-desktop.css'
 
 // DesktopShared:桌面版與手機版都會用到的 UI 小塊,從 App.tsx 拆出來獨立成
@@ -138,133 +131,22 @@ export function isPanelMode(v: string | undefined): v is Exclude<PanelMode, null
 // 特殊處理(同 pace/geo-outline 的作法),PhoneNavDrawer 不提供對應分頁。
 export type DemoPanelMode = Exclude<PanelMode, 'trips' | 'timeline' | 'pace' | 'geo-outline' | 'demo-route-editor' | null>
 
-// DemoPanelContent:3 個 demo 面板的內容渲染,供桌面版 DesktopContent 的
-// <main>(見 DesktopLayout.tsx)與手機版 PhoneNavDrawer(見該檔案)共用,
-// 避免同一段 JSX 兩處各寫一份、之後改一邊忘了改另一邊。(配速表/地理輪廓
-// 底圖已轉為正式功能'pace'/'geo-outline',不再屬於這組 demo 面板,渲染
-// 邏輯改為直接使用 PaceChart/PaceRouteMap、GeoCandidateSidebar/
-// GeoOutlinePanel,見 DesktopLayout.tsx / PhoneContent.tsx /
-// PhoneNavDrawer.tsx。這 3 種 demo 模式都不需要 cfg,故不接這個 prop。)
-export function DemoPanelContent({
-  mode,
-}: {
-  mode: DemoPanelMode
-}) {
-  if (mode === 'demo-cards') {
-    return (
-      <div className="desktop-demo-panel">
-        <div className="desktop-sidebar-head">
-          <span className="desktop-sidebar-title">推薦景點卡片(試做)</span>
-        </div>
-        <div className="desktop-timeline-scroll">
-          <RecommendedPlacesList places={FAKE_RECOMMENDED_PLACES} />
-        </div>
-      </div>
-    )
-  }
-  if (mode === 'demo-row') {
-    return (
-      <div className="desktop-demo-panel">
-        <div className="desktop-sidebar-head">
-          <span className="desktop-sidebar-title">推薦景點橫滑(試做)</span>
-        </div>
-        <div className="desktop-timeline-scroll">
-          <RecommendedPlacesRow places={FAKE_RECOMMENDED_PLACES} />
-        </div>
-      </div>
-    )
-  }
-  return <OnagentBridgeDemo />
-}
+// DrawerMode:手機版分頁列(PhoneTabBar.tsx 底部常駐 + PhoneSideTools.tsx
+// 右側小圖示)/主顯示區可切換到的模式——即 PanelMode 扣掉 null 與
+// demo-route-editor(該模式只有桌面版路徑編輯器試做才有實作,見
+// DEMO_ROUTE_EDITOR_ENABLED 的說明,手機版故意不支援,網址落在
+// /app/demo-route-editor 時 fallback 回 'geo-outline')。原本定義在
+// PhoneNavDrawer.tsx,搬到這裡與 PanelMode 收斂在同一份檔案,避免兩份
+// 值域各自維護、日後新增/移除模式時漏改其中一處。
+export type DrawerMode = Exclude<PanelMode, 'demo-route-editor' | null>
 
-// LLM 回答語言下拉選單:自訂觸發列 + 選項清單,取代原生 <select>,樣式與互動
-// 比照 iOS 風格(觸發列排版沿用 .field input,選項清單沿用 .desktop-user-popover
-// 的浮層視覺——卡片背景、圓角、陰影)。SettingsDialog(桌面版,見
-// DesktopLayout.tsx)/SettingsScreen(手機版,見 App.tsx)共用同一份實作,
-// 只各自傳入目前值與 onChange;兩處容器寬度不同但元件本身以 width: 100%
-// 撐滿父層 .field,不需要為此分開兩份程式碼。點擊外部關閉的實作模式沿用
-// DesktopUserMenu:useRef 抓容器 + mousedown 監聽判斷點擊處是否在容器內。
-const ASSIST_LANG_OPTIONS: { value: AssistLang; label: string }[] = [
-  { value: 'zh-TW', label: '繁體中文' },
-  { value: 'en', label: '英文' },
-]
+// DemoPanelContent 函式本體已移到 demo/DemoPanelContent.tsx——三種模式
+// (demo-cards/demo-row/demo-onagent)都是預設關閉的試做功能,不算正式
+// 桌面/手機共用邏輯,理由同 RouteEditor.tsx 移到 demo/ 目錄。這裡的
+// DemoPanelMode 型別維持不動(從 PanelMode 衍生,被 PANEL_REGISTRY/
+// isPanelMode 等正式邏輯依賴)。
 
-export function LangSelect({
-  value,
-  onChange,
-}: {
-  value: AssistLang
-  onChange: (v: AssistLang) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const boxRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onClickOutside = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [open])
-
-  const current = ASSIST_LANG_OPTIONS.find((o) => o.value === value)
-
-  return (
-    <div className={langSelectStyles.select} ref={boxRef}>
-      <button
-        type="button"
-        className={langSelectStyles.trigger}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span>{current?.label ?? value}</span>
-        <ChevronDown size={16} strokeWidth={1.8} color="var(--ios-gray)" />
-      </button>
-      {open && (
-        <div className={langSelectStyles.popover}>
-          {ASSIST_LANG_OPTIONS.map((o) => (
-            <button
-              type="button"
-              key={o.value}
-              className={langSelectStyles.option}
-              onClick={() => { onChange(o.value); setOpen(false) }}
-            >
-              <span>{o.label}</span>
-              {o.value === value && <Check size={16} strokeWidth={2} color="var(--ios-blue)" />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// TokenDisplay:API Token 顯示 + 複製按鈕,SettingsDialog(桌面版)/
-// SettingsScreen(手機版)共用,理由同 LangSelect。
-export function TokenDisplay({ token }: { token: string | null }) {
-  const [copied, setCopied] = useState(false)
-
-  const copyToken = () => {
-    if (token) {
-      navigator.clipboard.writeText(token).then(() => {
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
-      })
-    }
-  }
-
-  if (!token) return null
-
-  const displayToken = token.substring(0, 20) + '...' + token.substring(token.length - 10)
-
-  return (
-    <>
-      <div className={styles.tokenBox}>{displayToken}</div>
-      <div style={{ padding: '0 16px 12px' }}>
-        <button className={`btn-secondary${copied ? ' success' : ''}`} onClick={copyToken}>
-          {copied ? '✅ 已複製' : '複製 Token'}
-        </button>
-      </div>
-    </>
-  )
-}
+// LangSelect/TokenDisplay 已移到 user/LangSelect.tsx、user/TokenDisplay.tsx
+// ——兩者都是設定畫面(SettingsDialog 桌面版/SettingsScreen 手機版)專用的
+// UI 小塊,不是桌面/手機共用的正式邏輯,理由同 DemoPanelContent/
+// RouteEditor 移到 demo/ 目錄。

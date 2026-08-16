@@ -4,8 +4,8 @@ import {
 } from 'lucide-react'
 import { Timeline } from 'lucide-react'
 import type { ClientConfig } from './api'
-import type { User } from './types'
-import { DesktopUserMenu } from './DesktopUserMenu'
+import type { User } from './user/types'
+import { DesktopUserMenu } from './user/DesktopUserMenu'
 import {
   type PanelMode, GEO_OUTLINE_ENABLED, TIMELINE_ENABLED, PACE_ENABLED,
   DEMO_CARDS_ENABLED, DEMO_ROW_ENABLED, DEMO_ONAGENT_ENABLED, DEBUG_PANEL_ENABLED,

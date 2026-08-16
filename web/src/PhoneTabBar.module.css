@@ -1,0 +1,49 @@
+/* bar:底部常駐導覽列——position: absolute 掛在 .mainArea(PhoneContent.tsx)
+   內,不佔 flex 版面空間(理由同 geo-planning/GeoOutlinePhoneView.tsx 的
+   candidateBtn 等疊加按鈕),各主畫面(地圖/地圖等)需要自行留
+   padding-bottom 避免視覺上被蓋住,見 GeoOutlinePhoneView.module.css 的
+   調整。padding-bottom 用 safe-area-inset-bottom 避開 iPhone home
+   indicator(需要 index.html 的 viewport-fit=cover 才會生效,否則
+   iOS Safari 一律算成 0)——方向與原本 PhoneNavDrawer.module.css 的
+   .tabs padding-top(避瀏海)相反,因為這裡貼的是螢幕下緣而非側滑抽屜
+   頂部。padding-bottom 加在 .bar(而非 .tab)上,是讓 safe-area 變成
+   bar 底部的純留白,不擠壓 .tab 本身的可視高度——.tab 的圖示才不會被
+   往上推離開自然置中的位置。 */
+.bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  background: var(--ios-card);
+  border-top: 1px solid var(--ios-sep);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* tab:固定等寬三等分(行程/時間軸/規劃),取代原本 .tabs 的
+   overflow-x: auto 橫向捲動——底部列項目固定就 3 個,不需要捲動,等寬
+   排列更符合一般 App 底部導覽列的慣例。高度維持 52px 不受 .bar 的
+   safe-area padding-bottom 影響,圖示置中在這個固定高度內。 */
+.tab {
+  flex: 1 1 0;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--ios-gray);
+  opacity: 0.75;
+  cursor: pointer;
+}
+
+.tab:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.tabActive {
+  opacity: 1;
+  color: var(--color-accent);
+}

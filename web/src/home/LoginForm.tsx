@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Navigation } from 'lucide-react'
-import type { ClientConfig } from './api'
-import * as api from './api'
-import type { User } from './types'
-import { ErrorBanner, errMsg, isSubmitEnter } from './AppCommon'
+import type { ClientConfig } from '../api'
+import * as api from '../api'
+import type { User } from '../user/types'
+import { ErrorBanner, errMsg, isSubmitEnter } from '../AppCommon'
 import './LoginForm.css'
 
 // LoginForm.tsx——從 AppCommon.tsx 拆出來的登入相關元件(LoginCard/

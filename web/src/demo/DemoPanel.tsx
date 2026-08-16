@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
-import type { ApiCall, ClientConfig, WsEvent } from './api'
-import * as api from './api'
-import type { Trip, Entry } from './types'
+import type { ApiCall, ClientConfig, WsEvent } from '../api'
+import * as api from '../api'
+import type { Entry } from '../types'
+import type { Trip } from '../trip/types'
 import styles from './DemoPanel.module.css'
 
 // DemoPanel:只在 DEBUG_PANEL_ENABLED 開啟(見 DesktopShared.tsx)、且點開

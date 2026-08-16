@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { ChevronLeft } from 'lucide-react'
-import type { ClientConfig } from './api'
-import * as api from './api'
+import type { ClientConfig } from '../api'
+import * as api from '../api'
 import type { User } from './types'
-import type { AssistLang } from './assistLang'
-import { ASSIST_LANG_KEY, getAssistLang } from './assistLang'
-import { Avatar, errMsg } from './AppCommon'
-import { LoginForm } from './LoginForm'
-import { LangSelect, TokenDisplay } from './DesktopShared'
+import type { AssistLang } from '../assistLang'
+import { ASSIST_LANG_KEY, getAssistLang } from '../assistLang'
+import { Avatar, errMsg } from '../AppCommon'
+import { LoginForm } from '../home/LoginForm'
+import { LangSelect } from './LangSelect'
+import { TokenDisplay } from './TokenDisplay'
 
 // SettingsScreen:手機版設定整頁(連線設定 + 測試 health)——從
 // PhoneScreens.tsx 拆成獨立檔案,只有這一個元件在用,不再跟 PublicViewScreen

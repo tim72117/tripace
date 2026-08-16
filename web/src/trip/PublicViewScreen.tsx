@@ -1,20 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
-import type { PublicLinkViewMode } from './api'
-import * as api from './api'
-import type { Entry } from './types'
-import { MultiTrackTimeline } from './timeline/Timeline'
-import { BASE_URL, errMsg, useIsDesktop } from './AppCommon'
-import { PaceChart, type Checkpoint, type PaceCheckpointDetail } from './pace/PaceChart'
-import { PaceRouteMap } from './pace/PaceRouteMap'
-import { PacePhoneSwipe } from './pace/PacePhoneSwipe'
-import './styles-desktop.css'
-import './desktop-layout-shell.css'
+import type { PublicLinkViewMode } from '../api'
+import * as api from '../api'
+import type { Entry } from '../types'
+import { MultiTrackTimeline } from '../timeline/Timeline'
+import { BASE_URL, errMsg } from '../AppCommon'
+import { useIsDesktop } from '../hooks/useIsDesktop'
+import { PaceChart, type Checkpoint, type PaceCheckpointDetail } from '../pace/PaceChart'
+import { PaceRouteMap } from '../pace/PaceRouteMap'
+import { PacePhoneSwipe } from '../pace/PacePhoneSwipe'
+import '../styles-desktop.css'
+import '../desktop-layout-shell.css'
 
-// PhoneScreens:手機版公開分享頁(PublicViewScreen)——從 App.tsx 拆出來。
-// 設定頁(SettingsScreen)已經拆成獨立的 SettingsScreen.tsx,不再放這裡
-// (原本的 TripsScreen 行程列表也已改為 PhoneNavDrawer.tsx 的行程列表
-// 分頁,不再是整頁元件)。
+// PublicViewScreen:手機版公開分享頁——從 App.tsx 拆出來,原檔名
+// PhoneScreens.tsx(當時裝多個畫面),設定頁/行程列表陸續拆成獨立檔案
+// (SettingsScreen.tsx/PhoneNavDrawer.tsx)後只剩這一個,改名對齊實際內容
+// 並歸進 trip/(分享連結是行程底下的功能)。
 
 // ---- 配速表模式的檢查站資料形狀 ----
 // 對應後端 Entry.detail 這個自訂 JSON 欄位裡,配速表專屬會用到的子集——

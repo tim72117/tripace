@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom'
-import { useAppState } from './AppCommon'
+import { useAppState } from './hooks/useAppState'
 import { ErrorBoundary } from './ErrorBoundary'
 import styles from './App.module.css'
 
@@ -17,9 +17,9 @@ const HomePage = lazy(() => import('./home/HomePage').then((m) => ({ default: m.
 const ProductPage = lazy(() => import('./home/ProductPage').then((m) => ({ default: m.ProductPage })))
 const PrivacyPage = lazy(() => import('./home/PrivacyPage').then((m) => ({ default: m.PrivacyPage })))
 const TermsPage = lazy(() => import('./home/TermsPage').then((m) => ({ default: m.TermsPage })))
-const CliAuthPage = lazy(() => import('./CliAuthPage').then((m) => ({ default: m.CliAuthPage })))
-const DeviceAuthPage = lazy(() => import('./DeviceAuthPage').then((m) => ({ default: m.DeviceAuthPage })))
-const PublicViewScreen = lazy(() => import('./PhoneScreens').then((m) => ({ default: m.PublicViewScreen })))
+const CliAuthPage = lazy(() => import('./home/CliAuthPage').then((m) => ({ default: m.CliAuthPage })))
+const DeviceAuthPage = lazy(() => import('./home/DeviceAuthPage').then((m) => ({ default: m.DeviceAuthPage })))
+const PublicViewScreen = lazy(() => import('./trip/PublicViewScreen').then((m) => ({ default: m.PublicViewScreen })))
 const PacePage = lazy(() => import('./pace/PacePage').then((m) => ({ default: m.PacePage })))
 const PhoneContent = lazy(() => import('./PhoneContent').then((m) => ({ default: m.PhoneContent })))
 const NotFoundPage = lazy(() => import('./home/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))

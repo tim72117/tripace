@@ -1,0 +1,32 @@
+/* tools:疊在畫面右側下方,bottom 距離避開底部常駐列(PhoneTabBar.tsx,
+   52px 高 + safe-area)再加一些間距,不重疊。position: absolute 掛在
+   .mainArea(PhoneContent.tsx)內,跟隨主畫面而非全域固定——理由同
+   GeoOutlinePhoneView.tsx 的疊加按鈕群組。 */
+.tools {
+  position: absolute;
+  right: 16px;
+  bottom: calc(52px + env(safe-area-inset-bottom, 0px) + 16px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* toolBtn:圓形浮動按鈕,視覺語言沿用
+   geo-planning/GeoOutlinePhoneView.module.css 的 candidateBtn/listBtn
+   ——毛玻璃圓形卡片,跟該檔案的疊加按鈕群組維持一致的手機版視覺系統。 */
+.toolBtn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(245, 242, 237, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px rgba(61, 53, 48, 0.16);
+  color: var(--color-dark);
+  cursor: pointer;
+}

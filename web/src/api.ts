@@ -2,16 +2,19 @@
 // 每次呼叫都產生一筆 ApiCall 交易紀錄(含原始 request/response、狀態碼、耗時),
 // 無論成功或失敗都會記錄,供 debug panel 顯示,方便排查問題。
 
-import type {
-  AuthResponse,
-  Trip,
-  TripRole,
-  Entry,
-  Me,
-  Member,
-  APIErrorBody,
-} from './types'
+import type { Entry } from './types'
+import type { Trip } from './trip/types'
+import type { AuthResponse, TripRole, Me, Member } from './user/types'
 import type { TripEntry } from './clienttools/tripEntryTools'
+
+// 後端統一錯誤格式:{ "error": { "code", "message" } }——純 API 層錯誤
+// 格式,不是業務型別,不放 types.ts(理由同該檔案開頭的說明)。
+export interface APIErrorBody {
+  error: {
+    code: string
+    message: string
+  }
+}
 
 // 一筆 API 交易的完整紀錄,debug panel 與 console log 都靠它。
 export interface ApiCall {

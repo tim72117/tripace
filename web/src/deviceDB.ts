@@ -9,7 +9,7 @@
 import initSqlJs from 'sql.js'
 import type { Database, SqlJsStatic } from 'sql.js'
 import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url'
-import type { Message } from './types'
+import type { Message } from './chat/types'
 import type { TripBatches, TripEntry } from './clienttools/tripEntryTools'
 import type { AssistPlace } from './api'
 

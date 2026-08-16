@@ -27,7 +27,10 @@
   touch-action: pan-y;
 }
 
-/* 上方功能列:對應桌面版 DesktopRail 的圖示列,只是這裡橫向排列。 */
+/* 操作列:精簡版抽屜只剩分享/成員/頭像這組(見 headerActions),原本
+   橫向排列的分頁圖示(.tabActive 等)已隨改版拿掉,見 PhoneNavDrawer.tsx
+   開頭的說明——分頁列已改為 PhoneTabBar.tsx(底部常駐)+
+   PhoneSideTools.tsx(右側小圖示)。 */
 .tabs {
   flex: 0 0 auto;
   display: flex;
@@ -53,14 +56,8 @@
   opacity: 0.75;
   cursor: pointer;
 }
-.tabActive {
-  opacity: 1;
-  color: var(--color-accent);
-  background: var(--ios-bg);
-}
 /* 右上角操作群組(分享/成員/使用者頭像):margin-left: auto 貼齊分頁列
-   右緣,跟左側的行程/時間軸/配速表/demo 分頁圖示群組分開,理由見上方
-   PhoneNavDrawer.tsx 開頭的說明。 */
+   右緣,見上方 PhoneNavDrawer.tsx 開頭的說明。 */
 .headerActions {
   flex: 0 0 auto;
   margin-left: auto;
@@ -98,33 +95,5 @@
 }
 .body::-webkit-scrollbar {
   display: none;
-}
-/* 配速表分頁(PaceChart,只有檢查站清單,地圖搬到主顯示區,見
-   PhoneContent.tsx)::global(.pace-chart) 本身預設是 flex: 1 1 auto +
-   overflow-y: auto(見 PaceChart.module.css),自己就是一個捲動容器——疊在
-   同樣 overflow-y: auto 的 .body 裡會變成兩層捲動容器互相干擾。這裡把
-   .pace-chart 攤平成跟隨外層自然高度、不自己管捲動,改由 .body(維持
-   上方預設的 overflow-y: auto)當唯一的捲動擁有者,只特殊處理這一種情況,
-   其餘 demo 面板/時間軸/行程列表不受影響。 */
-.body > :global(.pace-chart) {
-  flex: 0 0 auto;
-  min-height: auto;
-  overflow-y: visible;
-}
-
-/* 時間軸分頁:對調後這裡改放對話(ChatScreen,透過 PhoneContent.tsx 的
-   React Portal 投影進來,見 timelineSlotRef 的說明),不是自己的內容——
-   這個 class 本身是 CSS Modules 本地 class,不需要跨檔案偵測,不用像
-   .pace-chart 那樣寫成 :global() 的描述子選擇器。ChatScreen 自己內部是
-   navbar/訊息列表(自帶 .screen-body 捲動)/輸入列三個 flex column 子項,
-   理由同 .pace-chart 的案例——不該再讓 .body 也是一層 overflow-y: auto
-   的捲動容器疊在上面,故也攤平成跟隨外層自然高度、不自己管捲動,交給
-   ChatScreen 自己的 .screen-body 當唯一捲動擁有者。 */
-.timelineChatSlot {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow-y: visible;
 }
 

@@ -1,0 +1,326 @@
+/* GeoOutlinePhoneCandidateDrawer.tsx 專屬樣式(CSS Modules)。從右側滑入
+   蓋在地圖上面的抽屜——backdrop/panel 的滑入手勢寫法比照
+   PacePhoneSwipe.module.css/PhoneTripsDrawer.module.css 既有的左側抽屜
+   模式,只是方向相反(見該元件開頭的說明)。 */
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 13;
+  display: flex;
+  flex-direction: column;
+  background: var(--ios-bg);
+  box-shadow: -2px 0 16px rgba(0, 0, 0, 0.2);
+  touch-action: pan-y;
+}
+
+/* panelFlash:「加入候選並顯示候選籃」觸發(見 GeoOutlinePhoneInfoSheet.tsx
+   複合按鈕)時的短暫 highlight 提示——視覺語彙沿用桌面版
+   GeoCandidateSidebar.module.css 的 .panelFlash/panelFlashPulse,行為
+   完全一致,只是換一個 CSS Module 檔案(手機版元件不 import 桌面版的
+   .module.css)。 */
+.panelFlash {
+  animation: panelFlashPulse 0.9s ease-out;
+}
+
+@keyframes panelFlashPulse {
+  0% {
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-accent) 70%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  }
+  100% {
+    box-shadow: inset 0 0 0 2px transparent;
+    background: transparent;
+  }
+}
+
+.head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 10px;
+  border-bottom: 1px solid var(--ios-sep);
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-dark);
+}
+
+.closeBtn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--ios-sep);
+  color: var(--color-dark);
+  cursor: pointer;
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+}
+
+.empty {
+  padding: 32px 12px;
+  text-align: center;
+  color: var(--ios-gray);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.section + .section {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ios-sep);
+}
+
+.sectionHead {
+  padding: 0 4px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ios-gray);
+  letter-spacing: 0.02em;
+}
+
+/* candidateCard:「候選中」卡片——本體(名稱+分類圖示)+「加入」+「移除」
+   兩顆按鈕橫向並排,展開時下方接一段日期選擇區(.scheduleRow)。 */
+.candidateCard {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  background: var(--ios-card);
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+
+.candidateTopRow {
+  display: flex;
+  align-items: center;
+}
+
+.candidateCardBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 6px 9px 8px;
+  cursor: pointer;
+}
+
+.itemPin {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--ios-sep);
+  color: var(--color-accent);
+}
+
+.itemName {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--color-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.addBtn,
+.removeBtn {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
+  margin-right: 4px;
+}
+
+.removeBtn {
+  font-size: 16px;
+  line-height: 1;
+  margin-right: 6px;
+}
+
+.addBtn:active,
+.removeBtn:active {
+  background: var(--ios-sep);
+}
+
+.scheduleRow {
+  padding: 0 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scheduleChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.scheduleChip {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 999px;
+  background: var(--ios-sep);
+  color: var(--color-dark);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.scheduleChip:disabled {
+  opacity: 0.5;
+}
+
+.scheduleInputRow {
+  display: flex;
+  gap: 8px;
+}
+
+.scheduleInput {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--color-dark);
+  background: var(--ios-card);
+}
+
+.scheduleConfirmBtn {
+  flex: 0 0 auto;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.scheduleConfirmBtn:disabled {
+  opacity: 0.5;
+}
+
+.scheduleErr {
+  font-size: 12px;
+  color: var(--ios-red);
+}
+
+/* day/dayHead/dayCard*:「已排入行程」分組——視覺語言比照桌面版
+   GeoCandidateSidebar.module.css 的同名規則(日層架:標題列日期+安排數,
+   卡片是圓形分類 pin + 名稱 + 靠右時刻的緊湊橫列),拿掉拖曳相關樣式
+   (手機版不支援拖曳排期,見元件開頭說明)。 */
+.day + .day {
+  margin-top: 10px;
+}
+
+.dayHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 4px 6px;
+}
+
+.dayDate {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-dark);
+}
+
+.dayStatus {
+  font-size: 11px;
+  color: var(--ios-gray);
+}
+
+.dayCard {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 6px 8px 8px;
+  border-radius: 10px;
+  background: var(--ios-card);
+  margin-bottom: 6px;
+}
+
+.dayCardBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.dayCardPin {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--ios-sep);
+  color: var(--color-accent);
+}
+
+.dayCardName {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--color-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dayCardTime {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--ios-gray);
+}
+
+.returnBtn {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: var(--ios-sep);
+  color: var(--color-accent);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}

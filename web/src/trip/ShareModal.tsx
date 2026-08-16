@@ -3,7 +3,7 @@ import { ChevronLeft, Copy, Check, Trash2 } from 'lucide-react'
 import QRCode from 'qrcode'
 import type { ClientConfig, PublicLinkViewMode } from '../api'
 import * as api from '../api'
-import type { Trip } from '../types'
+import type { Trip } from './types'
 import { ErrorBanner, errMsg } from '../AppCommon'
 import styles from './ShareModal.module.css'
 

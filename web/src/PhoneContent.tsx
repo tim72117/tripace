@@ -2,23 +2,29 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { TouchEvent as ReactTouchEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlignLeft, Timeline, Route } from 'lucide-react'
+import { AlignLeft, Timeline, Route, Layers, Sparkles, GalleryHorizontal, Radio } from 'lucide-react'
 import { ChatScreen, type DesktopTimelineMirror } from './chat/ChatScreen'
 import { MultiTrackTimeline } from './timeline/Timeline'
+import { type ContentProps } from './AppCommon'
+import { useIsDesktop } from './hooks/useIsDesktop'
+import { useTripsState } from './hooks/useTripsState'
+import { LoginForm, LoginCard } from './home/LoginForm'
 import {
-  useIsDesktop, useTripsState,
-  type ContentProps,
-} from './AppCommon'
-import { LoginForm, LoginCard } from './LoginForm'
-import { isPanelMode } from './DesktopShared'
+  isPanelMode, type DrawerMode, TIMELINE_ENABLED, GEO_OUTLINE_ENABLED, PACE_ENABLED,
+  DEMO_CARDS_ENABLED, DEMO_ROW_ENABLED, DEMO_ONAGENT_ENABLED,
+} from './DesktopShared'
 import { DesktopContent } from './DesktopLayout'
-import { SettingsScreen } from './SettingsScreen'
+import { SettingsScreen } from './user/SettingsScreen'
 import { ShareModal } from './trip/ShareModal'
 import { PaceRouteMap, type SelectedEntry } from './pace/PaceRouteMap'
 import type { Checkpoint } from './pace/PaceChart'
-import { PhoneNavDrawer, type DrawerMode } from './PhoneNavDrawer'
-import { PhoneTripsDrawer } from './PhoneTripsDrawer'
-import type { Trip, User } from './types'
+import { GeoOutlinePhoneView } from './geo-planning/GeoOutlinePhoneView'
+import { PhoneNavDrawer } from './PhoneNavDrawer'
+import { PhoneTripsDrawer } from './trip/PhoneTripsDrawer'
+import { PhoneTabBar } from './PhoneTabBar'
+import { PhoneSideTools } from './PhoneSideTools'
+import type { Trip } from './trip/types'
+import type { User } from './user/types'
 import type { ClientConfig } from './api'
 import styles from './PhoneContent.module.css'
 
@@ -60,33 +66,31 @@ export function PhoneContent(props: ContentProps) {
   // 登入畫面(登入前沒有行程/聊天可看,不必特地做桌面版登入版面)。
   const isDesktop = useIsDesktop()
   // drawerOpen:抽屜開關本身是純 UI state,不進 URL——使用者收合/展開抽屜
-  // 不該影響網址或瀏覽器上一頁/下一頁的行為。初始值取決於進入當下有沒有
-  // 已選的行程:還沒選行程時預設開啟(維持「一進 App 先看到行程列表」的
-  // 既有使用者習慣),已有 activeTrip(例如熱重載後恢復狀態)則不強制
-  // 開啟,直接顯示 ChatScreen。
-  const [drawerOpen, setDrawerOpen] = useState(!activeTrip)
+  // 不該影響網址或瀏覽器上一頁/下一頁的行為。預設收合:規劃地圖(見下方
+  // drawerMode fallback)是進 App 後的預設起始畫面,不需要先選行程就能
+  // 瀏覽,不再像改版前那樣「還沒選行程就自動開抽屜」。
+  const [drawerOpen, setDrawerOpen] = useState(false)
   // tripsDrawerOpen:行程列表已經拆成獨立抽屜(PhoneTripsDrawer.tsx,
   // 疊在 PhoneNavDrawer 之上),開關是自己獨立的一組 UI state,不再是
-  // drawerMode 眾多值的其中一個——初始值沿用原本「還沒選行程時預設開啟」
-  // 的既有使用者習慣(一進 App 先看到行程列表)。
-  const [tripsDrawerOpen, setTripsDrawerOpen] = useState(!activeTrip)
+  // drawerMode 眾多值的其中一個。預設收合,理由同上方 drawerOpen——使用者
+  // 需要選行程時自行點底部「行程」按鈕開啟,不再進 App 就強制彈出。
+  const [tripsDrawerOpen, setTripsDrawerOpen] = useState(false)
   // drawerMode:改用路徑參數驅動,跟桌面版 DesktopContent 的 panelMode 共用
   // 同一個 /app/:panelMode 路由——理由與既有設計相同,使用者縮放視窗跨越
   // 桌面/手機斷點時網址不必跳轉、狀態自然延續。網址沒帶 panelMode 或帶了
-  // 不合法字串時,fallback 成 'trips'——現在純粹代表「尚未選取時間軸/
-  // 配速表等內容分頁」的預設狀態,不再對應 PhoneNavDrawer 自己的任何一顆
-  // 分頁(行程列表已經拆成獨立抽屜,見上方 tripsDrawerOpen)。
+  // 不合法字串時,fallback 成 'geo-outline'——規劃地圖是進 App 後的預設
+  // 起始畫面(不需要先選行程就能瀏覽,見 GeoOutlinePhoneView.tsx),取代
+  // 原本 fallback 到 'trips'(尚未選取內容分頁的中性狀態,會落到
+  // PhoneEmptyState 空白提示或自動彈出行程列表抽屜)的既有行為。
   const { panelMode: panelModeParam } = useParams<{ panelMode?: string }>()
-  // geo-outline(地理輪廓底圖規劃介面)、demo-route-editor(路徑編輯器
-  // 試做)桌面版才有實作,手機版 PhoneNavDrawer 的 DrawerMode 型別故意
-  // 不含它們——使用者若從桌面版縮小視窗跨越斷點、網址剛好停在
-  // /app/geo-outline 或 /app/demo-route-editor,手機版 fallback 回
-  // 'trips'(理由同其餘不合法字串的 fallback),避免型別不符,也讓
-  // 使用者落地到一個看得懂的畫面。
+  // demo-route-editor(路徑編輯器試做)只有桌面版才有實作,手機版
+  // PhoneNavDrawer 的 DrawerMode 型別故意不含它——網址剛好停在
+  // /app/demo-route-editor 時 fallback 回 'geo-outline'(理由同其餘不合法
+  // 字串的 fallback),避免型別不符,也讓使用者落地到一個看得懂的畫面。
   const drawerMode: DrawerMode =
-    isPanelMode(panelModeParam) && panelModeParam !== 'geo-outline' && panelModeParam !== 'demo-route-editor'
+    isPanelMode(panelModeParam) && panelModeParam !== 'demo-route-editor'
       ? panelModeParam
-      : 'trips'
+      : 'geo-outline'
   const navigate = useNavigate()
   // lastContentMode:記住使用者上一次主動選取的「時間軸」或「配速表」分頁。
   // 開啟獨立行程抽屜選新行程時,這個值仍保留原值不變,驅動 PhoneNavDrawer
@@ -154,15 +158,19 @@ export function PhoneContent(props: ContentProps) {
   // selectedEntry:配速表「點卡片→地圖平移→手動微調→儲存座標」互動用,
   // 跟桌面版 DesktopContent 同一套設計(見該檔案的說明)。
   const [selectedEntry, setSelectedEntry] = useState<SelectedEntry | null>(null)
-  // paceCheckpoints:PhoneNavDrawer 的 'pace' 分頁(PaceChart)目前選取的
-  // 那一段 checkpoint 清單,透過 onRouteChange 鏡像過來,轉傳給主顯示區的
-  // PaceRouteMap(地圖)——同一套模式比照桌面版 DesktopLayout.tsx。
-  const [paceCheckpoints, setPaceCheckpoints] = useState<Checkpoint[]>([])
+  // paceCheckpoints:'pace' 分頁(PaceChart)目前選取的那一段 checkpoint
+  // 清單,透過 onRouteChange 鏡像過來,轉傳給主顯示區的 PaceRouteMap(地圖)
+  // ——同一套模式比照桌面版 DesktopLayout.tsx。PaceChart 目前還沒接回
+  // PhoneFloatCard(下一步),setPaceCheckpoints 暫時沒有呼叫端,底線前綴
+  // 避免 noUnusedLocals 報錯,paceCheckpoints 本身仍被 PaceRouteMap 讀取。
+  const [paceCheckpoints, _setPaceCheckpoints] = useState<Checkpoint[]>([])
   // savedEntry:PaceRouteMap 手動拖曳選點、儲存座標成功後回報的結果,轉傳給
-  // PhoneNavDrawer 的 PaceChart 讓它就地更新自己的 checkpointsBySegment
-  // (見 PaceChart.tsx 的 savedEntry prop 說明)——同一套模式比照桌面版
-  // DesktopLayout.tsx。
-  const [savedEntry, setSavedEntry] = useState<{ id: string; lat: number; lng: number } | null>(null)
+  // PaceChart 讓它就地更新自己的 checkpointsBySegment(見 PaceChart.tsx 的
+  // savedEntry prop 說明)——同一套模式比照桌面版 DesktopLayout.tsx。
+  // PaceChart 目前還沒接回 PhoneFloatCard(下一步),savedEntry 暫時沒有
+  // 讀取端,底線前綴避免 noUnusedLocals 報錯,setSavedEntry 仍被
+  // PaceRouteMap 的 onEntrySaved 呼叫。
+  const [_savedEntry, setSavedEntry] = useState<{ id: string; lat: number; lng: number } | null>(null)
 
   // 時間軸與對話(ChatScreen)顯示位置對調:'timeline' 分頁時,時間軸改到
   // 主顯示區滿版顯示,對話改顯示在抽屜欄裡(跟配速表分頁的「側欄放清單、
@@ -174,7 +182,11 @@ export function PhoneContent(props: ContentProps) {
   // 因為節點掛載的時機在 effect 之後,需要能觸發重新渲染才能讓 portal
   // 抓到剛掛載好的節點。
   const [mainChatSlotNode, setMainChatSlotNode] = useState<HTMLDivElement | null>(null)
-  const [timelineSlotNode, setTimelineSlotNode] = useState<HTMLDivElement | null>(null)
+  // timelineSlotNode 的宿主容器原本是 PhoneNavDrawer 的 .body,已隨精簡版
+  // 抽屜拿掉;下一步會改成掛在 PhoneFloatCard(時間軸那張)內部,
+  // setTimelineSlotNode 暫時沒有呼叫端,底線前綴避免 noUnusedLocals 報錯,
+  // timelineSlotNode 本身仍被下方 chatPortalTarget 讀取。
+  const [timelineSlotNode, _setTimelineSlotNode] = useState<HTMLDivElement | null>(null)
   // chatParkingNode:一律存在、不可見的備援投影目標——瀏覽「行程列表」
   // 分頁選新行程期間(見下方 effectiveMainMode 的說明),主顯示區跟抽屜欄
   // 可能同時都沒有 chatElement 該投影的容器,這時投進這裡「暫放」,避免
@@ -231,12 +243,28 @@ export function PhoneContent(props: ContentProps) {
   }
 
   // effectiveMainMode:主顯示區實際要顯示什麼——drawerMode 的 'trips' 值
-  // 只出現在還沒選過任何內容分頁的預設狀態(URL fallback,見上方說明),
-  // 這裡沿用 lastContentMode(若有)取代它,行為跟原本一致:剛進 App 或
-  // 開獨立行程抽屜挑選行程期間,主顯示區不會因為 drawerMode 暫時落在
-  // 'trips' 這個預設值就閃一下換成空白畫面又換回來。
+  // 不再是 URL fallback 的預設狀態(見上方說明,預設已改成 'geo-outline'),
+  // 只會在使用者手動打 /app/trips 網址時出現;這裡沿用 lastContentMode
+  // (若有)取代它,維持原本的既有行為(不會因為 drawerMode 落在 'trips'
+  // 就閃一下換成空白畫面又換回來),不強行拿掉這條邏輯。
   const effectiveMainMode: DrawerMode =
     drawerMode === 'trips' && lastContentMode ? lastContentMode : drawerMode
+  // bottomTabs/sideTools:底部常駐列(PhoneTabBar.tsx)/右側小圖示群組
+  // (PhoneSideTools.tsx)各自的項目清單,依 feature flag 組出——理由同
+  // 原本 PhoneNavDrawer.tsx 的 items 陣列(現已拆分)。目前階段兩者都還是
+  // 呼叫既有的 setDrawerMode/onOpenTrips,行為對齊改版前,只是按鈕位置
+  // 換了容器,尚未接上底部列常駐後「再點同一分頁 no-op」與浮動卡片的
+  // 後續調整。
+  const bottomTabs: { mode: DrawerMode; icon: typeof Timeline; title: string; disabled?: boolean }[] = [
+    ...(TIMELINE_ENABLED ? [{ mode: 'timeline' as DrawerMode, icon: Timeline, title: '時間軸', disabled: !activeTrip }] : []),
+    ...(GEO_OUTLINE_ENABLED ? [{ mode: 'geo-outline' as DrawerMode, icon: Layers, title: '規劃' }] : []),
+  ]
+  const sideTools: { mode: DrawerMode; icon: typeof Route; title: string }[] = [
+    ...(PACE_ENABLED ? [{ mode: 'pace' as DrawerMode, icon: Route, title: '路徑' }] : []),
+    ...(DEMO_CARDS_ENABLED ? [{ mode: 'demo-cards' as DrawerMode, icon: Sparkles, title: '推薦景點卡片' }] : []),
+    ...(DEMO_ROW_ENABLED ? [{ mode: 'demo-row' as DrawerMode, icon: GalleryHorizontal, title: '推薦景點橫滑' }] : []),
+    ...(DEMO_ONAGENT_ENABLED ? [{ mode: 'demo-onagent' as DrawerMode, icon: Radio, title: 'onagent 串接' }] : []),
+  ]
   // chatElement:ChatScreen 的唯一掛載點,固定用同一個 JSX 呼叫(不因
   // drawerMode 改變而換成不同的條件式),只透過下方 createPortal 決定它的
   // 畫面實際投影到哪個容器——這樣切換 'timeline' 分頁前後,React 對這個
@@ -274,7 +302,22 @@ export function PhoneContent(props: ContentProps) {
         onTouchMove={onMainTouchMove}
         onTouchEnd={onMainTouchEnd}
       >
-        {effectiveMainMode === 'pace' ? (
+        {effectiveMainMode === 'geo-outline' ? (
+          // 規劃地圖分頁(第二階段:唯讀瀏覽 + 候選籃,見
+          // GeoOutlinePhoneView.tsx)——不渲染 MainNavBar,搜尋框/使用者
+          // 頭像/開抽屜按鈕/候選籃按鈕改由 GeoOutlinePhoneView 自己疊在
+          // 地圖上方(理由見該檔案開頭說明:使用者要求的版位跟
+          // MainNavBar 既有佈局重疊)。activeTrip 供候選籃「加入
+          // {tripName}」按鈕文字使用。
+          <GeoOutlinePhoneView
+            cfg={cfg}
+            tripID={activeTrip?.id ?? null}
+            activeTrip={activeTrip}
+            user={props.user}
+            onOpenDrawer={() => setDrawerOpen(true)}
+            onOpenSettings={() => setInSettings(true)}
+          />
+        ) : effectiveMainMode === 'pace' ? (
           // 配速表分頁:主顯示區改成地圖(對齊桌面版 .desktop-main 在
           // panelMode === 'pace' 時顯示 PaceRouteMap 的邏輯),檢查站清單留在
           // 抽屜欄裡(見下方 PhoneNavDrawer 的 mode === 'pace' 分支)。標題
@@ -334,6 +377,19 @@ export function PhoneContent(props: ContentProps) {
             onSelectMode={setDrawerMode}
           />
         )}
+        {/* PhoneSideTools:右側下方路徑+demo-* 小圖示,跨所有主畫面模式
+            共用(不是規劃地圖專屬),見該元件開頭說明。 */}
+        <PhoneSideTools tools={sideTools} onSelect={setDrawerMode} />
+        {/* PhoneTabBar:底部常駐導覽列(行程/時間軸/規劃),取代原本要開
+            PhoneNavDrawer 抽屜才看得到的分頁列,見該元件開頭說明。 */}
+        <PhoneTabBar
+          tabs={bottomTabs}
+          mode={drawerMode}
+          lastContentMode={lastContentMode}
+          tripsDrawerOpen={tripsDrawerOpen}
+          onOpenTrips={onOpenTrips}
+          onSelectMode={setDrawerMode}
+        />
       </div>
       {/* chatParking:一律掛載、不可見的備援投影目標,見上方 chatParkingNode
           的說明。 */}
@@ -342,16 +398,7 @@ export function PhoneContent(props: ContentProps) {
       <PhoneNavDrawer
         open={drawerOpen}
         cfg={cfg}
-        mode={drawerMode}
-        onSelectMode={setDrawerMode}
         activeTrip={activeTrip}
-        timelineSlotRef={setTimelineSlotNode}
-        lastContentMode={lastContentMode}
-        onSelectedEntry={setSelectedEntry}
-        onRouteChange={setPaceCheckpoints}
-        savedEntry={savedEntry}
-        tripsDrawerOpen={tripsDrawerOpen}
-        onOpenTrips={onOpenTrips}
         user={props.user}
         onOpenSettings={() => setInSettings(true)}
         onOpenShare={() => setInShare(true)}

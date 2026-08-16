@@ -36,6 +36,7 @@
    flex 屬性延續原本這些內容直接排列在 .web-app 底下時的版面——撐滿剩餘
    高度,內部各自(navbar/內容/輸入列)再用自己的 flex column 排列。 */
 .mainArea {
+  position: relative; /* 供 PhoneTabBar/PhoneSideTools 的 absolute 定位錨點 */
   flex: 1 1 auto;
   min-height: 0;
   display: flex;

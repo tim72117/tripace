@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import type { TouchEvent as ReactTouchEvent } from 'react'
 import { Plus, MapPin } from 'lucide-react'
 import type { Trip } from './types'
-import { ErrorBanner, isSubmitEnter } from './AppCommon'
+import { ErrorBanner, isSubmitEnter } from '../AppCommon'
 import styles from './PhoneTripsDrawer.module.css'
 
 // PhoneTripsDrawer:行程列表獨立抽屜——原本是 PhoneNavDrawer.tsx 分頁列

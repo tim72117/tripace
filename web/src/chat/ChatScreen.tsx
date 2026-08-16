@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Send, Sparkles } from 'lucide-react'
 import type { ClientConfig } from '../api'
 import * as api from '../api'
-import type { Trip, Entry, User } from '../types'
+import type { Entry } from '../types'
+import type { Trip } from '../trip/types'
+import type { User } from '../user/types'
 import {
   listAllTripBatches,
   listMessageRecommendedPlaces,

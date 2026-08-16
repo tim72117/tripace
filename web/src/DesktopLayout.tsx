@@ -7,7 +7,7 @@ import { ChatScreen } from './chat/ChatScreen'
 import type { DesktopTimelineMirror } from './chat/ChatScreen'
 import { MultiTrackTimeline, type TaskPlaceholder } from './timeline/Timeline'
 import { PaceChart } from './pace/PaceChart'
-import { DemoPanel } from './DemoPanel'
+import { DemoPanel } from './demo/DemoPanel'
 import { GeoHotelSidebar, geoItemKey, type GeoSelectedKey, type Tab as GeoTab } from './geo-planning/GeoHotelSidebar'
 import { GeoInfoPanel, type GeoInfoContent } from './geo-planning/GeoInfoPanel'
 import { AttractionInfoPanel } from './geo-planning/AttractionInfoPanel'
@@ -15,15 +15,17 @@ import { GeoCandidateSidebar, type GeoCandidate, createEntryFromCandidate } from
 import { AddFromCandidateSidebar, dayGroupLabel } from './geo-planning/AddFromCandidateSidebar'
 import { GeoOutlinePanel } from './geo-planning/GeoOutlinePanel'
 import { placesQueryRadiusMeters } from './geo-planning/geoAttractionClick'
-import type { GeoAttraction, GeoGeocodeCandidate, GeoHotel, GeoPlace, GeoPlaceDetails } from './api'
+import { hotelInfoContent, placeInfoContent, poiInfoContent } from './geo-planning/geoInfoContent'
+import type { GeoAttraction, GeoGeocodeCandidate, GeoHotel, GeoPlace } from './api'
 import { type ContentProps } from './AppCommon'
-import { type PanelMode, isPanelMode, DemoPanelContent, DEBUG_PANEL_ENABLED, PANEL_REGISTRY } from './DesktopShared'
-import { RouteEditor } from './RouteEditor'
+import { type PanelMode, isPanelMode, DEBUG_PANEL_ENABLED, PANEL_REGISTRY } from './DesktopShared'
+import { DemoPanelContent } from './demo/DemoPanelContent'
+import { RouteEditor } from './demo/RouteEditor'
 import { DesktopRail } from './DesktopRail'
-import { DesktopTripList } from './DesktopTripList'
-import { SettingsDialog } from './SettingsDialog'
+import { DesktopTripList } from './trip/DesktopTripList'
+import { SettingsDialog } from './user/SettingsDialog'
 import { TripManageModal } from './trip/TripManageModal'
-import type { Trip } from './types'
+import type { Trip } from './trip/types'
 import './styles-desktop.css'
 import './desktop-layout-shell.css'
 import styles from './DesktopLayout.module.css'
@@ -43,64 +45,11 @@ const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
   refetchEntries: () => {},
 }
 
-// hotelInfoContent/placeInfoContent/poiInfoContent/candidateInfoContent:
-// 把各種點擊來源(側欄飯店/推薦地點清單、地圖上 Google 原生 POI 圖標、
-// 候選籃項目)統一轉成 GeoInfoPanel 需要的 GeoInfoContent 形狀,含
-// candidate 欄位(見 GeoInfoPanel.tsx 的說明)——抽成獨立函式而非寫在各個
-// onClick 內聯,是因為「地圖上點擊/側欄點擊/候選籃點擊同一個地點」三種
-// 觸發來源现在都要組出一樣的卡片內容,重複三次內聯邏輯容易在其中一處
-// 修改欄位後忘記同步另外兩處。
+// hotelInfoContent/placeInfoContent/poiInfoContent 已抽到
+// geo-planning/geoInfoContent.ts(手機版 GeoOutlinePhoneView.tsx 共用同一份)
+// ——candidateInfoContent/geocodeCandidateInfoContent 仍留在這裡,因為是
+// 候選籃專屬邏輯(手機版第一階段沒有候選籃,不需要共用)。
 //
-// attraction(人工建檔的景點區域)不再走這套 GeoInfoContent/GeoInfoPanel
-// 流程——改用獨立的 AttractionInfoPanel(見該檔案的說明),直接吃原始
-// GeoAttraction 物件,不需要轉換成 GeoInfoContent 形狀,也不需要
-// candidate 欄位的 undefined 判斷(attraction 本來就不接受加入候選籃/
-// 行程)。
-
-function hotelInfoContent(h: GeoHotel): GeoInfoContent {
-  return {
-    name: h.name,
-    photoUrl: h.photoUrl,
-    subtitle: h.address,
-    badges: [],
-    candidate: { kind: 'hotel', ...h },
-  }
-}
-
-function placeInfoContent(p: GeoPlace): GeoInfoContent {
-  return {
-    name: p.name,
-    photoUrl: p.photoUrl,
-    subtitle: p.address,
-    badges: [],
-    candidate: { kind: 'place', ...p },
-  }
-}
-
-// poiInfoContent:點擊地圖上 Google 原生 POI 圖標查回的 GeoPlaceDetails——
-// 沒有 primaryType 欄位(GeoPlace 候選籃形狀需要,但 Places Details API
-// 這支查詢沒有回傳分類),補空字串,理由同 GeoHotelSidebar 卡片「+」的
-// 既有慣例(這裡的候選籃資料本來就只拿 name/address/lat/lng/photoUrl
-// 顯示,primaryType 目前沒有任何顯示邏輯依賴它)。
-function poiInfoContent(details: GeoPlaceDetails): GeoInfoContent {
-  return {
-    name: details.name,
-    photoUrl: details.photoUrl,
-    subtitle: details.address,
-    summary: details.summary,
-    badges: details.rating != null ? [`評分 ${details.rating.toFixed(1)}`] : [],
-    candidate: {
-      kind: 'place',
-      name: details.name,
-      address: details.address,
-      lat: details.lat,
-      lng: details.lng,
-      primaryType: '',
-      photoUrl: details.photoUrl,
-    },
-  }
-}
-
 // geocodeCandidateInfoContent:點擊地圖上的搜尋候選 marker(見
 // GeoOutlineMap.tsx 的 geocodeCandidates/onGeocodeCandidateSelect)開
 // 資訊欄——GeoGeocodeCandidate 跟 GeoPlaceDetails 一樣沒有 primaryType/

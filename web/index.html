@@ -2,7 +2,10 @@
 <html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover:讓內容延伸到 iPhone 瀏海/home indicator 這類安全區之外,
+         CSS 的 env(safe-area-inset-*) 才會回傳實際值(否則 iOS Safari 一律算成 0,
+         底部常駐列/浮動卡片的 safe-area padding 會完全失效)。 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="canonical" href="https://tripace.shuttle.tools/" />
 
