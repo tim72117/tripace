@@ -2,11 +2,14 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -14,6 +17,7 @@ import (
 	"github.com/tim72117/tripace/internal/geo"
 	"github.com/tim72117/tripace/internal/model"
 	"github.com/tim72117/tripace/internal/onagenttools"
+	"github.com/tim72117/tripace/internal/photostorage"
 	"github.com/tim72117/tripace/internal/store"
 	"github.com/tim72117/tripace/internal/tripsvc"
 )
@@ -32,16 +36,34 @@ type Server struct {
 	// geo.Client 的地方會呼叫 client.SetCache(s.photoCache) 接上這層快取,
 	// 避免同一批飯店/地點照片隨地圖移動被重複下載(見該檔案的說明)。
 	photoCache geo.PhotoCache
+
+	// photoUploader 把景點區域的照片來源網址(使用者指定或 Pexels 查詢
+	// 結果)下載後上傳到 GCS,見 internal/photostorage 的完整說明與
+	// handleMaintenanceAttractionAdd/handleMaintenanceAttractionUpdatePhoto
+	// 的呼叫端。GCS_PHOTO_BUCKET 未設定時 photostorage.New 回傳一個
+	// bucket 為空字串的 Uploader,Upload 呼叫會直接回傳 ErrNoBucket,
+	// 呼叫端據此降級(維持原始外部連結,不阻擋建檔/更新操作)。
+	photoUploader *photostorage.Uploader
 }
 
 func New(st *store.Store, signer *auth.Signer, devMode bool) *Server {
+	uploader, err := photostorage.New(context.Background(), os.Getenv("GCS_PHOTO_BUCKET"))
+	if err != nil {
+		// 建立 GCS client 失敗(通常是本機沒有可用的 Application Default
+		// Credentials)不該讓整個 server 起不來——景點照片落地是輔助功能,
+		// 降級成「這次啟動沒有這個功能」,記一則警示 log,理由同下方
+		// AutoMigrate 失敗時的既有降級慣例。
+		log.Printf("!!! 建立 GCS photo uploader 失敗,景點照片將不會落地到 GCS,僅使用原始來源網址: %v", err)
+		uploader = &photostorage.Uploader{}
+	}
 	return &Server{
-		store:      st,
-		signer:     signer,
-		hub:        newHub(),
-		devMode:    devMode,
-		guestUser:  model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
-		photoCache: storePhotoCache{store: st},
+		store:         st,
+		signer:        signer,
+		hub:           newHub(),
+		devMode:       devMode,
+		guestUser:     model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
+		photoCache:    storePhotoCache{store: st},
+		photoUploader: uploader,
 	}
 }
 
@@ -232,13 +254,13 @@ func (s *Server) Routes() http.Handler {
 	// /internal/geo/* 那批核心端點,方便日後從請求統計(見 adminconsole
 	// 的 request-stats)一眼分辨流量來源。
 	internalMux.HandleFunc("GET /internal/maintenance/geocode", s.handleMaintenanceGeocode)
-	internalMux.HandleFunc("POST /internal/maintenance/landmarks/{id}/update-photo", s.handleMaintenanceLandmarkUpdatePhoto)
+	internalMux.HandleFunc("POST /internal/maintenance/attractions/{id}/update-photo", s.handleMaintenanceAttractionUpdatePhoto)
 	internalMux.HandleFunc("POST /internal/maintenance/attractions", s.handleMaintenanceAttractionAdd)
 	internalMux.HandleFunc("GET /internal/maintenance/attractions", s.handleMaintenanceAttractionList)
 	internalMux.HandleFunc("GET /internal/maintenance/attractions/cities", s.handleMaintenanceAttractionCities)
 	internalMux.HandleFunc("DELETE /internal/maintenance/attractions/{id}", s.handleMaintenanceAttractionDelete)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/coords", s.handleMaintenanceAttractionUpdateCoords)
-	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/name", s.handleMaintenanceAttractionUpdateName)
+	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/field", s.handleMaintenanceAttractionUpdateField)
 	// 景點資料同步機制新增的端點(見 attraction_sync.go、
 	// docs/ATTRACTION_SYNC_DESIGN.md)——專門服務
 	// server/internal/attractionsync 套件的三層比對 + 交握式傳輸,不是

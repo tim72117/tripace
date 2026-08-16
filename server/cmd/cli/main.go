@@ -264,6 +264,45 @@ func cmdNotify(args []string) {
 	output(map[string]string{"notified": *trip})
 }
 
+// resolveCoords 依 -lat/-lng 或 -place 決定座標,供 cmdAttractionAdd 與
+// cmdAttractionUpdate 共用——兩者原本各自內聯一份逐字重複的邏輯(查詢
+// geocode、剝 JSON、取第一筆候選),抽成純函式後不只省重複,還讓這段
+// 邏輯第一次變得可單元測試(原本夾在 flag.Parse 與 fatal() 之間,
+// fatal 會直接 os.Exit,無法在測試裡攔截)。
+//
+// haveCoords 明確帶 -lat/-lng 時優先採用,不查 geocode,讓使用者在已知
+// 精確座標時能跳過一次網路查詢;否則要求 place 非空,改查該地名的座標
+// (取第一筆候選結果),不需要使用者自己先查好經緯度。lat/lng 皆為 0
+// 視為「未帶」——這在理論上會誤判座標剛好落在赤道或本初子午線的地點,
+// 但 tripace 目前的資料範圍(日本/台灣/泰國等)不會出現這種座標,不為
+// 這個理論邊界增加旗標複雜度(例如改用 *float64 或另開 -coords 旗標)。
+func resolveCoords(c *httpClient, lat, lng float64, place, region string) (float64, float64, error) {
+	if lat != 0 || lng != 0 {
+		return lat, lng, nil
+	}
+	if place == "" {
+		return 0, 0, fmt.Errorf("需要 -lat/-lng 或 -place 其中一組")
+	}
+
+	q := url.Values{}
+	q.Set("place", place)
+	if region != "" {
+		q.Set("region", region)
+	}
+	geoRes, err := c.do("GET", "/internal/maintenance/geocode?"+q.Encode(), nil)
+	if err != nil {
+		return 0, 0, fmt.Errorf("geocode: %w", err)
+	}
+	places, _ := geoRes["places"].([]any)
+	if len(places) == 0 {
+		return 0, 0, fmt.Errorf("-place 查無候選地點")
+	}
+	first, _ := places[0].(map[string]any)
+	newLat, _ := first["lat"].(float64)
+	newLng, _ := first["lng"].(float64)
+	return newLat, newLng, nil
+}
+
 // cmdAttractionAdd 新增一筆景點區域資料(見 model.Attraction 的完整說明)。
 // 走 POST /internal/maintenance/attractions(見
 // server/internal/api/maintenance.go)——這是人工建檔操作,不開放給一般
@@ -271,11 +310,11 @@ func cmdNotify(args []string) {
 // 直連資料庫(見本檔案開頭「架構說明」)。-photo-url 未帶時,後端會自動
 // 查 Pexels 補一張示意圖(見該端點的完整說明)。
 //
-// -lat/-lng 與 -place 二擇一,做法與 cmdAttractionUpdate 一致(見該函式
-// 的完整說明):-place 有值時改用 GET /internal/maintenance/geocode 查詢
-// 該地名的座標,取第一筆候選結果當建檔座標,不需要使用者自己先查好經
-// 緯度;明確帶 -lat/-lng 時優先採用(不查 geocode)。統一走同一段查詢
-// 邏輯,避免「新增用一套查詢方式、修正座標又是另一套」的兩份邏輯。
+// -lat/-lng 與 -place 二擇一,做法與 cmdAttractionUpdate 一致(見
+// resolveCoords 的完整說明):-place 有值時改用 GET
+// /internal/maintenance/geocode 查詢該地名的座標,取第一筆候選結果當
+// 建檔座標,不需要使用者自己先查好經緯度;明確帶 -lat/-lng 時優先採用
+// (不查 geocode)。兩個子命令共用同一段查詢邏輯,不再各自維護一份。
 func cmdAttractionAdd(c *httpClient, args []string) {
 	fs := flag.NewFlagSet("attraction-add", flag.ExitOnError)
 	name := fs.String("name", "", "地標/區域白話名稱（必填），如「古城區」「101」")
@@ -295,29 +334,10 @@ func cmdAttractionAdd(c *httpClient, args []string) {
 	if *level < 1 || *level > 5 {
 		fatal("attraction-add 的 -level 必須介於 1~5")
 	}
-	haveCoords := *lat != 0 || *lng != 0
-	if !haveCoords && *place == "" {
-		fatal("attraction-add 需要 -lat/-lng 或 -place 其中一組")
-	}
 
-	newLat, newLng := *lat, *lng
-	if !haveCoords {
-		q := url.Values{}
-		q.Set("place", *place)
-		if *region != "" {
-			q.Set("region", *region)
-		}
-		geoRes, err := c.do("GET", "/internal/maintenance/geocode?"+q.Encode(), nil)
-		if err != nil {
-			fatal("attraction-add geocode: %v", err)
-		}
-		places, _ := geoRes["places"].([]any)
-		if len(places) == 0 {
-			fatal("attraction-add: -place 查無候選地點")
-		}
-		first, _ := places[0].(map[string]any)
-		newLat, _ = first["lat"].(float64)
-		newLng, _ = first["lng"].(float64)
+	newLat, newLng, err := resolveCoords(c, *lat, *lng, *place, *region)
+	if err != nil {
+		fatal("attraction-add: %v", err)
 	}
 
 	in := model.Attraction{
@@ -379,15 +399,16 @@ func cmdAttractionDelete(c *httpClient, args []string) {
 	output(map[string]string{"deleted": *id})
 }
 
-// cmdAttractionUpdate 修正一筆景點區域資料的座標和/或名稱——座標走
-// PATCH /internal/maintenance/attractions/{id}/coords、名稱走 PATCH
-// /internal/maintenance/attractions/{id}/name(見
-// server/internal/api/maintenance.go 與 httpClient.attractionUpdateCoords/
-// attractionUpdateName 的完整說明)。只支援這兩類欄位,理由同
-// handleMaintenanceAttractionUpdateCoords 的說明:避免這支端點的 body
-// 逐漸長成完整的 model.Attraction,未來若要支援其他欄位應個別新增對應
-// 端點。-name 與座標修正互不排斥,可以同時帶入、也可以只改其中一種
-// ——兩者是各自獨立的 PATCH 呼叫,只要至少帶了一種才動作。
+// cmdAttractionUpdate 修正一筆景點區域資料的座標和/或其他單一欄位——
+// 座標走 PATCH /internal/maintenance/attractions/{id}/coords(見
+// httpClient.attractionUpdateCoords 的完整說明);其餘欄位(目前開放
+// name、summary,見 store.attractionUpdatableFields 白名單)走通用的
+// PATCH .../field,用 -field 指定欄位名、-value 指定新內容(見
+// httpClient.attractionUpdateField)。新增可更新欄位只需要在後端白名單
+// 加一行,不需要在這裡多加一組 CLI flag——理由同
+// handleMaintenanceAttractionUpdateCoords 的說明:座標需要同時處理兩個
+// 數字欄位、且有 geocode 查詢邏輯,不適合塞進這個通用機制,維持獨立。
+// -field/-value 與座標修正互不排斥,可以同時帶入、也可以只改其中一種。
 //
 // -lat/-lng 與 -place 二擇一:-place 有值時改用 GET
 // /internal/maintenance/geocode 查詢該地名的座標(對齊 cmdGeocode 的
@@ -401,35 +422,24 @@ func cmdAttractionUpdate(c *httpClient, args []string) {
 	lng := fs.Float64("lng", 0, "新經度（與 -place 二擇一）")
 	place := fs.String("place", "", "改查這個地名的座標（與 -lat/-lng 二擇一，取第一筆候選結果）")
 	region := fs.String("region", "", "地名查詢的國家代碼限制，如 jp / tw / cn（僅搭配 -place 使用，選填）")
-	name := fs.String("name", "", "新名稱（可單獨使用，也可與座標修正一起帶入）")
+	field := fs.String("field", "", "要更新的欄位名（目前開放 name、summary，與 -value 一起使用）")
+	value := fs.String("value", "", "-field 指定欄位的新內容")
 	_ = fs.Parse(args)
 	if *id == "" {
 		fatal("attraction-update 需要 -id")
 	}
 	haveCoords := *lat != 0 || *lng != 0
-	if !haveCoords && *place == "" && *name == "" {
-		fatal("attraction-update 需要 -lat/-lng、-place 或 -name 其中一項")
+	if !haveCoords && *place == "" && *field == "" {
+		fatal("attraction-update 需要 -lat/-lng、-place 或 -field/-value 其中一項")
+	}
+	if (*field == "") != (*value == "") {
+		fatal("attraction-update 的 -field 與 -value 必須一起提供")
 	}
 
 	if haveCoords || *place != "" {
-		newLat, newLng := *lat, *lng
-		if !haveCoords {
-			q := url.Values{}
-			q.Set("place", *place)
-			if *region != "" {
-				q.Set("region", *region)
-			}
-			geoRes, err := c.do("GET", "/internal/maintenance/geocode?"+q.Encode(), nil)
-			if err != nil {
-				fatal("attraction-update geocode: %v", err)
-			}
-			places, _ := geoRes["places"].([]any)
-			if len(places) == 0 {
-				fatal("attraction-update: -place 查無候選地點")
-			}
-			first, _ := places[0].(map[string]any)
-			newLat, _ = first["lat"].(float64)
-			newLng, _ = first["lng"].(float64)
+		newLat, newLng, err := resolveCoords(c, *lat, *lng, *place, *region)
+		if err != nil {
+			fatal("attraction-update: %v", err)
 		}
 
 		res, err := c.attractionUpdateCoords(*id, newLat, newLng)
@@ -439,8 +449,8 @@ func cmdAttractionUpdate(c *httpClient, args []string) {
 		output(res)
 	}
 
-	if *name != "" {
-		res, err := c.attractionUpdateName(*id, *name)
+	if *field != "" {
+		res, err := c.attractionUpdateField(*id, *field, *value)
 		if err != nil {
 			fatal("attraction-update: %v", err)
 		}
@@ -449,12 +459,12 @@ func cmdAttractionUpdate(c *httpClient, args []string) {
 }
 
 // cmdAttractionUpdatePhoto 重新查詢一次地標圖片並回寫到資料庫——走
-// POST /internal/maintenance/landmarks/{id}/update-photo(見
+// POST /internal/maintenance/attractions/{id}/update-photo(見
 // server/internal/api/maintenance.go 與 httpClient.attractionUpdatePhoto
 // 的完整說明)。-query 未指定時用該筆地標既有的城市+名稱組成預設查詢
 // 字串(後端決定,不在 CLI 端組)。-source 選 google(預設,真實照片,需要
 // GOOGLE_PLACES_API_KEY)或 pexels(關鍵字比對到的示意圖,非真實照片,
-// 需要 PEXELS_API_KEY)。
+// 需要 PEXELS_API_KEY,查到後端會自動下載並落地到 GCS)。
 func cmdAttractionUpdatePhoto(apiURL string, args []string) {
 	fs := flag.NewFlagSet("attraction-update-photo", flag.ExitOnError)
 	id := fs.String("id", "", "地標 ID（必填）")
@@ -558,16 +568,18 @@ func usage() {
                         列出目前已有景點區域資料的城市清單。
   attraction-delete -id 地標ID
                         刪除一筆景點區域資料。
-  attraction-update -id 地標ID [-lat 緯度 -lng 經度 | -place 文字 [-region 國碼]] [-name 新名稱]
-                        修正一筆景點區域資料的座標和/或名稱（座標走 PATCH
-                        /internal/maintenance/attractions/{id}/coords、名稱走
-                        PATCH .../name，需要先登入）。-lat/-lng 與 -place
-                        二擇一：明確帶 -lat/-lng 時直接採用；帶 -place 則改查
-                        該地名的座標（取第一筆候選結果），不需要自己先查好
-                        經緯度。-name 可單獨使用，也可與座標修正一起帶入。
+  attraction-update -id 地標ID [-lat 緯度 -lng 經度 | -place 文字 [-region 國碼]] [-field 欄位名 -value 新內容]
+                        修正一筆景點區域資料的座標和/或其他單一欄位（座標
+                        走 PATCH /internal/maintenance/attractions/{id}/coords、
+                        其餘欄位走通用的 PATCH .../field，需要先登入）。
+                        -lat/-lng 與 -place 二擇一：明確帶 -lat/-lng 時直接
+                        採用；帶 -place 則改查該地名的座標（取第一筆候選
+                        結果），不需要自己先查好經緯度。-field/-value 目前
+                        開放 name、summary 兩個欄位，須一起提供，可單獨
+                        使用也可與座標修正一起帶入。
   attraction-update-photo -id 地標ID [-query 文字] [-source google|pexels]
                         重新查詢一次圖片並回寫到資料庫（走
-                        /internal/maintenance/landmarks/{id}/update-photo，
+                        /internal/maintenance/attractions/{id}/update-photo，
                         需要先登入）。-query 未指定時，用該地標既有的城市+名稱
                         當查詢字串。-source 預設 google（真實照片，需要
                         GOOGLE_PLACES_API_KEY）；pexels 是關鍵字比對到的示意圖

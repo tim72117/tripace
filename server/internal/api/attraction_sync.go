@@ -141,7 +141,7 @@ func (s *Server) handleMaintenanceAttractionSyncList(w http.ResponseWriter, r *h
 func (s *Server) handleMaintenanceAttractionSyncGet(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
-		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少地標 ID")
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少景點 ID")
 		return
 	}
 	a, err := s.store.GetAttraction(id)
@@ -480,20 +480,47 @@ func (s *Server) checkClockSkew(client *syncClient) (attractionsync.ClockSkewRes
 	return attractionsync.CheckClockSkew(tLocal, remote.ServerTime, clockSkewThreshold), nil
 }
 
+// syncRunSetup 是 runSyncPush/runSyncPull 共用的前置步驟(取本機全量
+// 資料、探測 target 新鮮度)的結果——兩者原本各自內聯一份逐字重複的
+// 15 行(見 prepareSyncRun 的完整說明),抽出後差異只剩 NeedsSync 的
+// 參數順序,刻意留在呼叫端各自明寫(而非也塞進這個共用函式),讓 push
+// 是「本機比對方是否需要同步」、pull 是「target 比本機是否需要同步」
+// 這兩個方向不同的判斷,在呼叫處就能一眼確認參數順序沒有寫反——這正是
+// push/pull 兩情境最容易混淆出錯的地方(見上方「二、傳輸流程」對兩種
+// 角色的說明)。
+type syncRunSetup struct {
+	localAll    []model.Attraction
+	localProbe  attractionsync.FreshnessProbe
+	remoteProbe attractionsync.FreshnessProbe
+}
+
+// prepareSyncRun 查詢本機全量景點資料與 target 的新鮮度探測,回傳兩者
+// 供呼叫端(runSyncPush/runSyncPull)自行決定 NeedsSync 的參數順序。
+func (s *Server) prepareSyncRun(client *syncClient) (syncRunSetup, error) {
+	localAll, err := s.store.ListAllAttractions()
+	if err != nil {
+		return syncRunSetup{}, err
+	}
+	var remoteProbe attractionsync.FreshnessProbe
+	if err := client.get("/internal/maintenance/sync/attractions/freshness", &destProbeResponse{&remoteProbe}); err != nil {
+		return syncRunSetup{}, err
+	}
+	return syncRunSetup{
+		localAll:    localAll,
+		localProbe:  attractionFreshness(localAll),
+		remoteProbe: remoteProbe,
+	}, nil
+}
+
 // runSyncPush 執行 push 情境(本機是來源＋決策方,見設計文件「二、傳輸
 // 流程」):依序查詢 target 的新鮮度探測/清單,自行比對算出差異,
 // -apply 時才透過交握式傳輸逐筆寫入 target。
 func (s *Server) runSyncPush(client *syncClient, allowDelete, apply bool) (syncRunReport, error) {
-	localAll, err := s.store.ListAllAttractions()
+	setup, err := s.prepareSyncRun(client)
 	if err != nil {
 		return syncRunReport{}, err
 	}
-	localProbe := attractionFreshness(localAll)
-
-	var destProbe attractionsync.FreshnessProbe
-	if err := client.get("/internal/maintenance/sync/attractions/freshness", &destProbeResponse{&destProbe}); err != nil {
-		return syncRunReport{}, err
-	}
+	localAll, localProbe, destProbe := setup.localAll, setup.localProbe, setup.remoteProbe
 
 	report := syncRunReport{SourceCount: localProbe.Count, DestCount: destProbe.Count}
 	report.NeedsSync = attractionsync.NeedsSync(localProbe, destProbe)
@@ -567,16 +594,11 @@ func (s *Server) runSyncPush(client *syncClient, allowDelete, apply bool) (syncR
 // target 決策後回傳結果,本機收到後直接寫入本機 DB,不在本機端執行
 // 任何比對判斷。
 func (s *Server) runSyncPull(client *syncClient, allowDelete, apply bool) (syncRunReport, error) {
-	localAll, err := s.store.ListAllAttractions()
+	setup, err := s.prepareSyncRun(client)
 	if err != nil {
 		return syncRunReport{}, err
 	}
-	localProbe := attractionFreshness(localAll)
-
-	var sourceProbe attractionsync.FreshnessProbe
-	if err := client.get("/internal/maintenance/sync/attractions/freshness", &destProbeResponse{&sourceProbe}); err != nil {
-		return syncRunReport{}, err
-	}
+	localAll, localProbe, sourceProbe := setup.localAll, setup.localProbe, setup.remoteProbe
 
 	report := syncRunReport{SourceCount: sourceProbe.Count, DestCount: localProbe.Count}
 	report.NeedsSync = attractionsync.NeedsSync(sourceProbe, localProbe)

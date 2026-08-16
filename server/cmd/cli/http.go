@@ -113,10 +113,13 @@ func (c *httpClient) reset(tripID string) error {
 	return err
 }
 
-// attractionUpdatePhoto 對齊 POST /internal/maintenance/landmarks/{id}/
-// update-photo(見 server/internal/api/maintenance.go)——原本只能在 -db
-// 直連模式下使用(見 dbClient 移除前的同名方法),現已搬進後端統一處理,
-// 理由同 geocode.go 開頭的說明。source 未帶時後端預設用 "google"。
+// attractionUpdatePhoto 對齊 POST /internal/maintenance/attractions/{id}/
+// update-photo(見 server/internal/api/maintenance.go)——路徑曾經是
+// /internal/maintenance/landmarks/{id}/update-photo,與同一資源底下其餘
+// /internal/maintenance/attractions/* 端點命名不一致,已改名對齊,子命令
+// 名稱 attraction-update-photo 本身不受影響。原本只能在 -db 直連模式下
+// 使用(見 dbClient 移除前的同名方法),現已搬進後端統一處理,理由同
+// geocode.go 開頭的說明。source 未帶時後端預設用 "google"。
 func (c *httpClient) attractionUpdatePhoto(id, query, source string) (any, error) {
 	body := map[string]any{}
 	if query != "" {
@@ -125,7 +128,7 @@ func (c *httpClient) attractionUpdatePhoto(id, query, source string) (any, error
 	if source != "" {
 		body["source"] = source
 	}
-	return c.do("POST", "/internal/maintenance/landmarks/"+id+"/update-photo", body)
+	return c.do("POST", "/internal/maintenance/attractions/"+id+"/update-photo", body)
 }
 
 // attractionAdd/attractionList/attractionCities/attractionDelete 對齊
@@ -158,9 +161,12 @@ func (c *httpClient) attractionUpdateCoords(id string, lat, lng float64) (any, e
 	return c.do("PATCH", "/internal/maintenance/attractions/"+id+"/coords", map[string]any{"lat": lat, "lng": lng})
 }
 
-// attractionUpdateName 對齊 PATCH /internal/maintenance/attractions/{id}/
-// name(見 server/internal/api/maintenance.go)——修正建檔時輸入錯誤/需要
-// 調整的名稱,供 attraction-update 子命令使用。
-func (c *httpClient) attractionUpdateName(id, name string) (any, error) {
-	return c.do("PATCH", "/internal/maintenance/attractions/"+id+"/name", map[string]any{"name": name})
+// attractionUpdateField 對齊 PATCH /internal/maintenance/attractions/
+// {id}/field(見 server/internal/api/maintenance.go)——通用的單一字串
+// 欄位更新,取代原本各自獨立的 attractionUpdateName/attractionUpdateSummary,
+// 供 attraction-update -field -value 子命令使用。可更新的欄位由後端白
+// 名單控制(見 store.attractionUpdatableFields),field 不在白名單時後端
+// 回 400。
+func (c *httpClient) attractionUpdateField(id, field, value string) (any, error) {
+	return c.do("PATCH", "/internal/maintenance/attractions/"+id+"/field", map[string]any{"field": field, "value": value})
 }

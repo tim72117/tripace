@@ -74,7 +74,8 @@ GOWORK=off go run ./cmd/cli attraction-list -city "台南"
 # 列出目前已有景點區域資料的城市清單
 GOWORK=off go run ./cmd/cli attraction-cities
 
-# 刪除一筆景點區域資料
+# 刪除一筆景點區域資料；若 photo_url 是我方 GCS 物件會一併刪除該圖片
+# （非 GCS 的外部連結不受影響，安全 no-op）
 GOWORK=off go run ./cmd/cli attraction-delete -id lmk_xxx
 
 # 修正一筆景點區域資料的座標和/或名稱（建檔時輸入錯誤時用）；
@@ -86,6 +87,19 @@ GOWORK=off go run ./cmd/cli attraction-update -id lmk_xxx -name "新名稱"
 
 # 重新透過 Google Places 查詢一次地標圖片並回寫
 GOWORK=off go run ./cmd/cli attraction-update-photo -id lmk_xxx
+
+# 授權本機 server 對另一台 server（target）做景點資料同步——走瀏覽器核准
+# 流程換一把 JWT，交給本機 server 自行保管（不是存在 CLI），之後同步都
+# 由本機 server 主動發起，CLI 不再經手這把 token
+GOWORK=off go run ./cmd/cli attraction-sync-setup -target https://tripace.shuttle.tools
+
+# 把本機景點資料同步到 target（-direction push）或反過來從 target 同步
+# 進本機（-direction pull）；預設 dry-run 只顯示差異報告，加 -apply 才會
+# 真正寫入；預設不刪除只存在於目的方的記錄，加 -allow-delete 才會刪除；
+# -retry 強制從目的方最新狀態重新查詢斷點並續傳
+GOWORK=off go run ./cmd/cli attraction-sync -direction push
+GOWORK=off go run ./cmd/cli attraction-sync -direction push -apply
+GOWORK=off go run ./cmd/cli attraction-sync -direction pull -apply -allow-delete
 ```
 
 `entry-add`/`entry-update` 的 `-kind` 若填 `stay`，代表這筆是住宿（飯店）項目；`-location` 填地址或飯店名稱、`-detail` 可帶額外 JSON（例如飯店資訊）。飯店本身沒有獨立的「加入行程」子命令——飯店資料是即時透過 Google Places 查詢（見 `server/internal/geo/places.go`），流程是先用 `geocode` 或前端地圖找到飯店名稱/座標，再用 `entry-add -kind stay` 把它記成一筆行程項目。

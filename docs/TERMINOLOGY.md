@@ -4,22 +4,24 @@
 
 新增/修改用語時，同步更新對應程式碼裡的註解用詞，並檢查畫面上顯示的文字是否已對齊「介面用語」這欄（不需要為了對齊這份文件而重新命名變數本身，除非變數名稱本身就是造成混淆的原因）。
 
-## 桌面版三段式版面
+## 桌面版版面
 
-| 正式用語 | 介面用語（畫面顯示文字） | 介面/前端程式碼 | 後端變數 | 資料庫 |
-|---|---|---|---|---|
-| 功能列 | （無文字，純圖示列） | `DesktopRail`（`DesktopRail.tsx`）／class `.desktop-rail` | — | — |
-| 對話欄 | （無獨立標題；未選行程時顯示空狀態提示） | class `.desktop-sidepanel`（`DesktopLayout.tsx`），常駐顯示 `ChatScreen` 或空狀態，可收合（`chatCollapsed`） | — | — |
-| 主顯示 | （無獨立標題） | class `.desktop-main`（`DesktopLayout.tsx`），固定顯示規劃地圖（`GeoOutlinePanel`），不再依 `panelMode` 切換內容 | — | — |
+桌面版**沒有常駐對話欄**：對話（`ChatScreen`）只透過地圖右上角搜尋框旁的 AI 按鈕以浮動小匡形式開啟，不佔用版面空間、不推擠地圖寬度。除了功能列／主顯示這組版面骨架，其餘全部是絕對定位疊在主顯示（`.desktop-main`）之上的漂浮卡片（四周留間距、圓角＋陰影），左緣一組、右緣一組，各自互斥顯示（同一側同時只會有一張）：
 
-`trips`/`timeline`/`pace`/`geo-outline` 這四種 `panelMode`（見 `DesktopShared.tsx` 的 `PANEL_REGISTRY`，`slot: 'float'`）額外會在主顯示（地圖）左緣漂浮一塊卡片，不算在上面三段式的任何一段裡，也不佔用 flex 版面空間、不壓縮主顯示的可用寬度；`geo-outline` 有查詢結果時另外在右緣漂浮飯店/附近推薦清單。四種浮動卡片共用同一個 `.floating-panel`/`.floating-panel-left` 位置與視覺樣式（互斥顯示，同時只會有一張），右上角有共用的關閉按鈕：
+| 正式用語 | 定位 | 介面用語（畫面顯示文字） | 介面/前端程式碼 |
+|---|---|---|---|
+| 功能列 | 版面骨架 | 無文字，純圖示列；展開時每顆按鈕旁顯示文字標籤；展開/收合按鈕 tooltip「展開導覽列」／「收合導覽列」 | `DesktopRail`（`DesktopRail.tsx`）／class `.desktop-rail`，內部 `expanded` state 控制寬度 48px↔180px，由列表最上方的 `PanelLeft` 圖示按鈕切換，與對話功能無關 |
+| 主顯示 | 版面骨架 | 無獨立標題，固定顯示規劃地圖 | class `.desktop-main`（`DesktopLayout.tsx`），固定顯示 `GeoOutlinePanel` |
+| 對話按鈕 | 城市搜尋框膠囊左側 | tooltip／aria-label「開啟對話」 | `GeoOutlineMap.tsx`，`Sparkles` 圖示按鈕，僅在 `onOpenChat` 存在時渲染 |
+| 城市搜尋框 | 地圖右上角，`top:16px; right:16px` | 輸入框＋搜尋按鈕（icon，`Search`/`Loader2`，非文字） | class `.citySearch`（`GeoOutlineMap.tsx`），跟分類標籤（飯店/景點/餐廳）列彼此獨立、不共用同一行 |
+| 行程列表／時間軸／配速表／候選籃 | 左緣，`.floating-panel-left`，寬度取自 `PANEL_REGISTRY[panelMode].width` | 依 `panelMode` 顯示：「行程」（無標題橫條）／「時間軸」（標題橫條）／配速表內容（無標題橫條）／「候選籃」（標題橫條）；共用關閉按鈕 tooltip「關閉」 | `trips→DesktopTripList`／`timeline→MultiTrackTimeline`（包在 `desktop-timeline-panel`）／`pace→PaceChart`／`geo-outline→GeoCandidateSidebar`（`DesktopLayout.tsx`），四種互斥、由 `panelMode` 決定 |
+| 第二側欄 | 左緣，`.floating-panel-left`，與上一列互斥（`pickingDayKey` 有值時優先顯示） | 「從候選加入 · {日期}」 | `AddFromCandidateSidebar`（`web/src/geo-planning/AddFromCandidateSidebar.tsx`），由候選籃「已排入行程」日期分組標題列的「從候選加入」按鈕觸發 |
+| 飯店/附近推薦清單 | 右緣，`.floating-panel-right`，`right:12px`，寬度 280px | 依分頁顯示「飯店」／附近推薦類別名（如「餐廳」） | `GeoHotelSidebar`（`web/src/geo-planning/GeoHotelSidebar.tsx`），只在觸發過查詢（點類別標籤／地標／「搜尋這個區域」）後才出現 |
+| 地點介紹卡 | 右緣，`top:64px`，避開常駐搜尋框；與下一列互斥 | 無標題橫條；關閉按鈕懸浮於卡片頂部照片右上角 | `GeoInfoPanel`（`web/src/geo-planning/GeoInfoPanel.tsx`），飯店/推薦地點/Google 原生 POI／候選籃項目共用 |
+| 景點區域介紹卡 | 右緣，`top:64px`；與上一列互斥 | 無標題橫條；關閉按鈕懸浮於卡片頂部照片右上角；「探索周邊」按鈕 | `AttractionInfoPanel`（`web/src/geo-planning/AttractionInfoPanel.tsx`） |
+| 對話小匡 | 右緣，`right:16px`，寬度 340px | 無標題橫條；未選行程時顯示空狀態提示「選擇一個行程開始」；關閉按鈕 tooltip「關閉」 | class `.chat-popover`（`DesktopLayout.tsx`），由 `chatPopoverOpen` state 控制顯示，內嵌 `ChatScreen`，由對話按鈕觸發 |
 
-| 正式用語 | 介面用語（畫面顯示文字） | 介面/前端程式碼 | 後端變數 | 資料庫 |
-|---|---|---|---|---|
-| 第二側欄 | 從候選加入 · {日期} | `AddFromCandidateSidebar`（`web/src/geo-planning/AddFromCandidateSidebar.tsx`）／class `.floating-panel.floating-panel-left`（`web/src/styles-desktop.css`） | — | — |
-| 飯店/附近推薦清單 | （依分頁顯示「飯店」／附近推薦類別名，如「餐廳」） | `GeoHotelSidebar`（`web/src/geo-planning/GeoHotelSidebar.tsx`）／class `.floating-panel.floating-panel-right`（`web/src/styles-desktop.css`） | — | — |
-
-兩者都是絕對定位疊在主顯示（`.desktop-main`）之上的漂浮卡片（四周留間距、圓角＋陰影），不是版面裡緊鄰的一欄——第二側欄疊在主顯示左緣，飯店/附近推薦清單疊在主顯示右緣。第二側欄由候選籃（`GeoCandidateSidebar`，見上方 `geo-outline` 的浮動卡片）內「已排入行程」每個日期分組標題列的「從候選加入」按鈕觸發，與 `panelMode` 浮動卡片同屬左緣、互斥顯示（`pickingDayKey` 有值時優先顯示）；候選中清單（hotel/place/退回候選的 entry）已整個搬進第二側欄顯示，候選籃本身只顯示「已排入行程」。飯店/附近推薦清單只在使用者觸發過查詢（點類別標籤／地標／「搜尋這個區域」）後才出現。
+右緣同時有 `GeoHotelSidebar`／對話小匡、以及地點介紹卡或景點區域介紹卡時，介紹卡透過 `shiftBy: 'none' | 'hotel' | 'chat'` 往左避讓（見 `DesktopLayout.tsx` 的 `infoPanelShiftBy`；對話小匡較寬，兩者同時存在時優先避開對話小匡，不疊加偏移量）。
 
 ## 手機版
 
@@ -39,7 +41,7 @@
 | 時間軸 | 時間軸 | `MultiTrackTimeline`（`web/src/Timeline.tsx`） | — | — |
 | 路徑（配速表介面） | 配速表 | `PaceRouteMap`（`web/src/PaceRouteMap.tsx`） | — | — |
 
-## 地理輪廓底圖（構想 6）
+## 地理輪廓底圖
 
 **景點區域**：具觀光吸引力的地點或區域，人工建檔、依知名程度分 1～5 級（1 級如國際知名地標「101」，5 級如在地商圈「永康商圈」）。可以是單點地標（`radiusMeters` 為 0）也可以是有範圍的區域（如「古城區」），不拆成兩個型別，用同一個符號涵蓋兩種情況。正式用語定為「景點區域」，程式碼命名統一用 `Attraction`。
 

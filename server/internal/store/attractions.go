@@ -3,6 +3,7 @@ package store
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 
 	"github.com/tim72117/tripace/internal/model"
 )
@@ -216,12 +217,32 @@ func (s *Store) UpdateAttractionCoords(id string, lat, lng float64) error {
 		Updates(map[string]any{"lat": lat, "lng": lng, "updated_at": now()}).Error
 }
 
-// UpdateAttractionName 更新一筆景點區域的名稱。只更新 name/updated_at
-// 兩欄,不動其餘欄位——同 UpdateAttractionCoords 的理由,專門服務 CLI 的
-// attraction-update 指令修正建檔時輸入錯誤/需要調整的名稱,不重新查詢
-// 外部服務。
-func (s *Store) UpdateAttractionName(id, name string) error {
+// attractionUpdatableFields 是 UpdateAttractionField 允許寫入的欄位白
+// 名單——key 是對外(CLI -field 參數/API field 欄位)使用的名稱,value 是
+// 資料庫實際的欄位名。只收字串型欄位:lat/lng 需要同時更新兩個數字
+// 欄位、且有 geocode 查詢邏輯,photo_url 有專屬的「重新查詢外部服務」
+// endpoint(attraction-update-photo),兩者都不適合塞進這個通用的單欄位
+// 字串更新機制,維持原本各自獨立的 UpdateAttractionCoords/
+// UpdateAttractionPhoto。新增可更新的字串欄位只需要在這裡加一行,不需要
+// 像 name/summary 原本那樣各自新增一支 store method + API handler +
+// CLI flag。
+var attractionUpdatableFields = map[string]string{
+	"name":    "name",
+	"summary": "summary",
+}
+
+// UpdateAttractionField 更新一筆景點區域的單一字串欄位(白名單見
+// attractionUpdatableFields)。只更新該欄位與 updated_at,不動其餘欄位
+// ——通用版本取代原本 UpdateAttractionName/UpdateAttractionSummary 各自
+// 獨立的 store method,供 CLI 的 attraction-update -field -value 使用,
+// 不重新查詢外部服務。field 不在白名單時回傳錯誤,呼叫端(API handler)
+// 應轉成 400 而非讓非預期欄位被寫入。
+func (s *Store) UpdateAttractionField(id, field, value string) error {
+	column, ok := attractionUpdatableFields[field]
+	if !ok {
+		return fmt.Errorf("不支援更新欄位 %q", field)
+	}
 	return s.db.Model(&attractionRow{}).
 		Where("id = ?", id).
-		Updates(map[string]any{"name": name, "updated_at": now()}).Error
+		Updates(map[string]any{column: value, "updated_at": now()}).Error
 }

@@ -308,12 +308,27 @@ func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
 //
 // 找不到任何地標時不視為錯誤,直接回傳空陣列(HTTP 200)——地圖移動到
 // 還沒建檔的區域是正常情況,不該回錯誤讓前端顯示紅色錯誤訊息。
+// maxNearbyRadiusMeters 是所有「以座標為中心、依半徑查附近資料」端點
+// 共用的查詢半徑上限(50km,同 geo.NearbyOptions.RadiusMeters 的上限,
+// 見 places.go 的說明)——這些端點只需要合法 JWT 就能呼叫(見 api.go
+// 掛在 internalMux/internalAuth 之後),若不設上限,任何登入使用者
+// (或洩漏的 token)都能反覆帶超大 radius 觸發大範圍資料庫 bounding
+// box 查詢與 Google Places Nearby Search 呼叫(後者直接計費),故在
+// 送出前就夾住,不把「這個查詢半徑是否合理」完全交給下游(資料庫/
+// 第三方 API)判斷。提升到套件層級常數,原本 parseNearbyLatLngRadius
+// 與 handleGeoPlacesNearby 各自宣告一份同樣的值,容易改一處漏改另一處。
+const maxNearbyRadiusMeters = 50000.0
+
 // parseNearbyLatLngRadius 解析 lat/lng/radius 這三個查詢參數,供
-// handleGeoAttractionsNearby 與 handleGeoAttractionsOnlyNearby 共用——兩支
-// 端點都是「以座標為中心、依半徑查附近資料」的形狀,只是後面接的資料源
-// 不同(前者額外查即時 Google Places 飯店,後者純查自家資料庫),不需要
-// 各自重複一份參數解析與夾限邏輯。
-func parseNearbyLatLngRadius(r *http.Request) (lat, lng, radiusMeters float64, err error) {
+// handleGeoAttractionsNearby、handleGeoAttractionsOnlyNearby 與
+// handleGeoPlacesNearby 共用——三支端點都是「以座標為中心、依半徑查
+// 附近資料」的形狀,只是後面接的資料源不同(前兩者查自家資料庫,分別
+// 額外查即時 Google Places 飯店/純查自家資料庫;後者即時查 Google
+// Places Nearby Search),不需要各自重複一份參數解析與夾限邏輯。
+// defaultRadius 由呼叫端決定——handleGeoPlacesNearby 是使用者明確點擊
+// 類別標籤觸發、範圍通常較小(1500),另兩支是地圖可視範圍查詢、範圍
+// 較大(15000),兩者的合理預設值不同,不適合寫死在這支共用函式裡。
+func parseNearbyLatLngRadius(r *http.Request, defaultRadius float64) (lat, lng, radiusMeters float64, err error) {
 	lat, err = strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
 	if err != nil {
 		return 0, 0, 0, errInvalidLat
@@ -322,20 +337,12 @@ func parseNearbyLatLngRadius(r *http.Request) (lat, lng, radiusMeters float64, e
 	if err != nil {
 		return 0, 0, 0, errInvalidLng
 	}
-	// radiusMeters 上限 50000(50km,同 geo.NearbyOptions.RadiusMeters 的
-	// 上限,見 places.go 的說明)——這兩支端點只需要合法 JWT 就能呼叫(見
-	// api.go 掛在 internalMux/internalAuth 之後),若不設上限,任何登入
-	// 使用者(或洩漏的 token)都能反覆帶超大 radius 觸發大範圍資料庫
-	// bounding box 查詢與 Google Places Nearby Search 呼叫(後者直接
-	// 計費),故在送出前就夾住,不把「這個查詢半徑是否合理」完全交給
-	// 下游(資料庫/第三方 API)判斷。
-	const maxRadiusMeters = 50000.0
-	radiusMeters = 15000.0
+	radiusMeters = defaultRadius
 	if raw := r.URL.Query().Get("radius"); raw != "" {
 		if parsed, err := strconv.ParseFloat(raw, 64); err == nil && parsed > 0 {
 			radiusMeters = parsed
-			if radiusMeters > maxRadiusMeters {
-				radiusMeters = maxRadiusMeters
+			if radiusMeters > maxNearbyRadiusMeters {
+				radiusMeters = maxNearbyRadiusMeters
 			}
 		}
 	}
@@ -375,7 +382,7 @@ func (s *Server) listAttractionResponses(lat, lng, radiusMeters float64) ([]attr
 }
 
 func (s *Server) handleGeoAttractionsNearby(w http.ResponseWriter, r *http.Request) {
-	lat, lng, radiusMeters, err := parseNearbyLatLngRadius(r)
+	lat, lng, radiusMeters, err := parseNearbyLatLngRadius(r, 15000)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid_input", err.Error())
 		return
@@ -415,7 +422,7 @@ func (s *Server) handleGeoAttractionsNearby(w http.ResponseWriter, r *http.Reque
 // 可視範圍/縮放自動觸發(idle 事件),不需要等使用者按鈕,只要不會連帶
 // 觸發付費的飯店查詢即可——見 web/src/GeoOutlineMap.tsx 的說明。
 func (s *Server) handleGeoAttractionsOnlyNearby(w http.ResponseWriter, r *http.Request) {
-	lat, lng, radiusMeters, err := parseNearbyLatLngRadius(r)
+	lat, lng, radiusMeters, err := parseNearbyLatLngRadius(r, 15000)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid_input", err.Error())
 		return
@@ -630,27 +637,15 @@ var allowedPlaceTypes = map[string]bool{
 // 找不到任何地點時不視為錯誤,直接回傳空陣列(HTTP 200)——理由同
 // handleGeoAttractionsNearby。
 func (s *Server) handleGeoPlacesNearby(w http.ResponseWriter, r *http.Request) {
-	lat, err := strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
+	// defaultRadius 1500——理由同 handleGeoAttractionsNearby(15000)的
+	// 差異說明:這支端點是使用者明確點擊類別標籤觸發的低頻動作,查詢
+	// 範圍通常較小,不像地圖可視範圍查詢那樣需要涵蓋大片區域。上限
+	// (maxNearbyRadiusMeters)與參數解析邏輯跟另外兩支「以座標為中心
+	// 查附近資料」的端點共用,見 parseNearbyLatLngRadius 的完整說明。
+	lat, lng, radiusMeters, err := parseNearbyLatLngRadius(r, 1500)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid_input", "lat 查詢參數缺失或格式錯誤")
+		writeErr(w, http.StatusBadRequest, "invalid_input", err.Error())
 		return
-	}
-	lng, err := strconv.ParseFloat(r.URL.Query().Get("lng"), 64)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid_input", "lng 查詢參數缺失或格式錯誤")
-		return
-	}
-	// radiusMeters 上限同 handleGeoAttractionsNearby,理由一致(避免任何
-	// 登入使用者反覆帶超大 radius 觸發大範圍、直接計費的 Google API 呼叫)。
-	const maxRadiusMeters = 50000.0
-	radiusMeters := 1500.0
-	if raw := r.URL.Query().Get("radius"); raw != "" {
-		if parsed, err := strconv.ParseFloat(raw, 64); err == nil && parsed > 0 {
-			radiusMeters = parsed
-			if radiusMeters > maxRadiusMeters {
-				radiusMeters = maxRadiusMeters
-			}
-		}
 	}
 
 	var includedTypes []string
