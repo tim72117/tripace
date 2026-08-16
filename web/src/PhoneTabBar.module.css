@@ -14,7 +14,12 @@
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 20;
+  /* z-index 35:高於 trip/PhoneTripsDrawer.module.css 的 .backdrop(32)/
+     .panel(33)——底部常駐列在任何情況下都該疊在最上層、保持可見可點,
+     不該被任何浮動內容蓋住(使用者回報「功能列被遮住了」,先把疊層順序
+     錯開排除掉 z-index 造成的可能性,而不是繼續在 bottom 定位數值上
+     猜測)。 */
+  z-index: 35;
   display: flex;
   background: var(--ios-card);
   border-top: 1px solid var(--ios-sep);
@@ -23,11 +28,14 @@
 
 /* tab:固定等寬三等分(行程/時間軸/規劃),取代原本 .tabs 的
    overflow-x: auto 橫向捲動——底部列項目固定就 3 個,不需要捲動,等寬
-   排列更符合一般 App 底部導覽列的慣例。高度維持 52px 不受 .bar 的
-   safe-area padding-bottom 影響,圖示置中在這個固定高度內。 */
+   排列更符合一般 App 底部導覽列的慣例。高度維持 64px 不受 .bar 的
+   safe-area padding-bottom 影響,圖示置中在這個固定高度內——這個數值
+   同時是其他手機版元件(GeoOutlinePhoneView/PhoneSideTools/
+   PhoneTripsDrawer 等)預留底部空間避開功能列的依據,調整這裡要一併
+   同步那幾處。 */
 .tab {
   flex: 1 1 0;
-  height: 52px;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -38,12 +46,27 @@
   cursor: pointer;
 }
 
-.tab:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
+/* tabIcon:包住 icon 本身的內層圓形,陰影(見下方 tabIconActive)只圍繞
+   這個貼合 icon 尺寸的圓,不是整顆 .tab 按鈕矩形(使用者要求「陰影不要
+   整片,在 icon 四周」)。padding 撐出圓形陰影的可視範圍,比 icon 本身
+   (20px)大一圈。 */
+.tabIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: inherit;
 }
 
-.tabActive {
+/* tabIconActive:選中的分頁除了變色,額外加陰影做視覺區分(使用者要求
+   「被點選的要有陰影」)——陰影視覺語言對齊 GeoOutlinePhoneView.module.css
+   的 candidateBtn/listBtn 等浮動圓按鈕(同一套 box-shadow 數值),讓
+   選中的分頁圖示看起來像微微浮起。 */
+.tabIconActive {
   opacity: 1;
   color: var(--color-accent);
+  background: var(--ios-card);
+  box-shadow: 0 4px 12px rgba(61, 53, 48, 0.2);
 }

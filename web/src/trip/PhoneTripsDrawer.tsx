@@ -1,22 +1,19 @@
 import { useRef, useState } from 'react'
 import type { TouchEvent as ReactTouchEvent } from 'react'
-import { Plus, MapPin } from 'lucide-react'
+import { Plus, MapPin, Settings } from 'lucide-react'
 import type { Trip } from './types'
 import { ErrorBanner, isSubmitEnter } from '../AppCommon'
 import styles from './PhoneTripsDrawer.module.css'
 
-// PhoneTripsDrawer:行程列表獨立抽屜——原本是 PhoneNavDrawer.tsx 分頁列
-// 其中一顆分頁(mode === 'trips'),現在拆成自己的左側滑入抽屜,疊在
-// PhoneNavDrawer(時間軸/配速表/demo)之上(見 PhoneTripsDrawer.module.css
-// 的 z-index,高於 PhoneNavDrawer.module.css 的 .backdrop/.panel)。由
-// PhoneNavDrawer 分頁列右側的「行程」觸發鈕開啟(見該檔案的 onOpenTrips),
-// 不再是那個抽屜自己 mode 切換的一部分。
+// PhoneTripsDrawer:行程列表獨立抽屜,由下往上彈出(bottom sheet),由
+// PhoneContent.tsx 的「行程」入口(底部常駐列/空狀態按鈕,見該檔案的
+// tripsDrawerOpen state)開關,只有一種內容:瀏覽/新增行程。
 //
-// backdrop/panel 的滑入手勢/拖曳關閉寫法完全比照 PhoneNavDrawer.tsx(同一套
-// 左側滑入抽屜模式),只是這裡疊得更高、且不需要分頁列(只有一種內容:
-// 瀏覽/新增行程)。
+// 拖曳關閉手勢改成垂直方向(向下拖超過門檻關閉),視覺語言對齊一般 App
+// 常見的底部彈出選單(使用者要求「行程由下方往上彈出」,原本是左側滑入
+// 抽屜)。
 
-const DRAWER_WIDTH_PERCENT = 82
+const SHEET_MAX_HEIGHT_VH = 70
 
 export function PhoneTripsDrawer({
   open,
@@ -30,6 +27,7 @@ export function PhoneTripsDrawer({
   submitCreate,
   activeTripID,
   onSelectTrip,
+  onManage,
   onClose,
 }: {
   open: boolean
@@ -43,31 +41,36 @@ export function PhoneTripsDrawer({
   submitCreate: () => void
   activeTripID: string | null
   onSelectTrip: (t: Trip) => void
+  // onManage:「管理」按鈕觸發,開啟 TripManageModal(分享連結/成員/
+  // 開啟時自動進入,見該檔案的說明)——對齊桌面版 DesktopTripList.tsx
+  // 的 onManage,分享/成員/開啟時自動進入這幾個功能統一收到行程項目上,
+  // 跟桌面版同一套心智模型。
+  onManage: (t: Trip) => void
   onClose: () => void
 }) {
   const [dragOffset, setDragOffset] = useState(0)
-  const startXRef = useRef<number | null>(null)
+  const startYRef = useRef<number | null>(null)
   const draggingRef = useRef(false)
 
   function onTouchStart(e: ReactTouchEvent) {
-    startXRef.current = e.touches[0].clientX
+    startYRef.current = e.touches[0].clientY
     draggingRef.current = true
   }
   function onTouchMove(e: ReactTouchEvent) {
-    if (!draggingRef.current || startXRef.current === null) return
-    const delta = Math.min(0, e.touches[0].clientX - startXRef.current)
+    if (!draggingRef.current || startYRef.current === null) return
+    const delta = Math.max(0, e.touches[0].clientY - startYRef.current)
     setDragOffset(delta)
   }
   function onTouchEnd() {
     if (!draggingRef.current) return
     draggingRef.current = false
     const threshold = 60
-    if (dragOffset < -threshold) onClose()
+    if (dragOffset > threshold) onClose()
     setDragOffset(0)
-    startXRef.current = null
+    startYRef.current = null
   }
 
-  const translate = open ? `${dragOffset}px` : `calc(-100% + ${dragOffset}px)`
+  const translate = open ? `${dragOffset}px` : `calc(100% + ${dragOffset}px)`
 
   return (
     <>
@@ -77,14 +80,17 @@ export function PhoneTripsDrawer({
       <div
         className={styles.panel}
         style={{
-          width: `${DRAWER_WIDTH_PERCENT}%`,
-          transform: `translateX(${translate})`,
+          maxHeight: `${SHEET_MAX_HEIGHT_VH}vh`,
+          transform: `translateY(${translate})`,
           transition: draggingRef.current ? 'none' : 'transform 0.25s ease',
         }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
+        <div className={styles.dragHandle}>
+          <div className={styles.dragHandleBar} />
+        </div>
         <div className="screen-body">
           <ErrorBanner msg={err} />
           {trips.length === 0 && !err && (
@@ -131,21 +137,33 @@ export function PhoneTripsDrawer({
             </li>
             {trips.map((t) => (
               <li key={t.id}>
-                <button
-                  type="button"
-                  className={`${styles.tripItem}${t.id === activeTripID ? ` ${styles.tripItemActive}` : ''}`}
-                  onClick={() => onSelectTrip(t)}
-                >
-                  <div className={styles.newTripIcon}>
-                    <MapPin size={18} strokeWidth={1.8} />
-                  </div>
-                  <div className={styles.tripGrow}>
-                    <div className={styles.tripName}>{t.name}</div>
-                    <div className={styles.tripSub}>
-                      {t.lastMessagePreview ?? '尚無訊息'} · {t.memberCount} 人
+                <div className={`${styles.tripItem}${t.id === activeTripID ? ` ${styles.tripItemActive}` : ''}`}>
+                  <button
+                    type="button"
+                    className={styles.tripItemOpen}
+                    onClick={() => onSelectTrip(t)}
+                  >
+                    <div className={styles.newTripIcon}>
+                      <MapPin size={18} strokeWidth={1.8} />
                     </div>
-                  </div>
-                </button>
+                    <div className={styles.tripGrow}>
+                      <div className={styles.tripName}>{t.name}</div>
+                      <div className={styles.tripSub}>
+                        {t.lastMessagePreview ?? '尚無訊息'} · {t.memberCount} 人
+                      </div>
+                    </div>
+                  </button>
+                  {/* 管理:對齊桌面版 DesktopTripList.tsx 的 itemAction,
+                      見上方 onManage 說明。 */}
+                  <button
+                    type="button"
+                    className={styles.tripItemAction}
+                    onClick={() => onManage(t)}
+                    title="行程設定"
+                  >
+                    <Settings size={15} strokeWidth={1.8} />
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

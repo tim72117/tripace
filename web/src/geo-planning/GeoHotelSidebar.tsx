@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Compass, Hotel, Plus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import type { ClientConfig, GeoHotel, GeoPlace } from '../api'
 import { type GeoCandidate, createEntryFromCandidate } from './GeoCandidateSidebar'
 import styles from './GeoHotelSidebar.module.css'
@@ -11,9 +11,10 @@ import styles from './GeoHotelSidebar.module.css'
 // (panelMode === 'geo-outline')時才顯示,見 DesktopLayout.tsx
 // 的掛載條件。
 //
-// 頂部分頁標籤(飯店/附近推薦)切換要顯示哪一份清單,視覺語言比照
-// 左側 DesktopRail 的 active 態(左緣 accent 豎條 + 淡底色),讓使用者
-// 一眼認出這是同一套導覽介面慣例,不是另一套新樣式。
+// 飯店/附近推薦(景點/餐廳)合併顯示在同一份清單裡,不再分頁切換
+// (使用者明確要求,原本的頂部分頁標籤已移除)——手機版
+// GeoOutlinePhoneListDrawer.tsx 仍保留分頁概念,兩者UI各自獨立維護,
+// 不因這裡改版而互相牽動。
 //
 // 原本還有一個「地點」分頁(人工建檔的景點區域,見 model.Attraction)已
 // 整個移除(使用者明確要求)——attraction 改成只透過地圖上本來就會畫出的
@@ -183,8 +184,6 @@ export function GeoHotelSidebar({
   places = [],
   placesCategory,
   selectedKey,
-  activeTab,
-  onTabChange,
   onSelectHotel,
   onSelectPlace,
   onAddCandidate,
@@ -202,15 +201,11 @@ export function GeoHotelSidebar({
   places?: GeoPlace[]
   // placesCategory:目前 places 內容屬於地圖上方哪個類別標籤(飯店/景點/
   // 餐廳,見 GeoOutlineMap.tsx 的 onActiveCategoryChange),null 代表不屬於
-  // 任何特定類別(來自點擊地標查附近推薦)——用來讓「附近推薦」分頁的
-  // 標題/空狀態文字反映目前實際查的是哪個類別,而不是籠統的「附近推薦」
-  // 四個字,使用者才看得出來點餐廳標籤查到的清單「就是」這個分頁,不是
-  // 沒反應或查到別的東西。刻意不新增第四顆分頁按鈕(用戶明確要求不要),
-  // 沿用既有的「附近推薦」分頁位置,只是內容標題動態換字。
+  // 任何特定類別(來自點擊地標查附近推薦)——用來讓空狀態文字反映目前
+  // 實際查的是哪個類別,而不是籠統的「附近推薦」四個字,使用者才看得出來
+  // 點餐廳標籤查到的清單「就是」這份清單,不是沒反應或查到別的東西。
   placesCategory?: string | null
   selectedKey?: GeoSelectedKey
-  activeTab?: Tab
-  onTabChange?: (tab: Tab) => void
   onSelectHotel?: (hotel: GeoHotel) => void
   onSelectPlace?: (place: GeoPlace) => void
   onAddCandidate?: (candidate: GeoCandidate) => void
@@ -226,119 +221,102 @@ export function GeoHotelSidebar({
   // 統一傳字串,不比照 onSelectXxx 拆成各自帶完整物件的 callback。
   onHover?: (key: GeoSelectedKey) => void
 }) {
-  const [internalTab, setInternalTab] = useState<Tab>('hotels')
-  // activeTab 有傳時視為受控元件,忽略內部 state;沒傳時退回內部 state,
-  // 維持既有(尚未接上父層中介邏輯的情境)行為不變。
-  const tab = activeTab ?? internalTab
-  const setTab = onTabChange ?? setInternalTab
   const placesLabel = (placesCategory && PLACES_CATEGORY_LABELS[placesCategory]) || '附近推薦'
+  const isEmpty = hotels.length === 0 && places.length === 0
 
   return (
     <aside className={styles.sidebar}>
-      <div className={styles.tabs}>
-        <button
-          type="button"
-          className={`${styles.tab}${tab === 'hotels' ? ` ${styles.tabActive}` : ''}`}
-          onClick={() => setTab('hotels')}
-          title="飯店"
-        >
-          <Hotel size={18} strokeWidth={1.8} />
-        </button>
-        <button
-          type="button"
-          className={`${styles.tab}${tab === 'places' ? ` ${styles.tabActive}` : ''}`}
-          onClick={() => setTab('places')}
-          title={placesLabel}
-        >
-          <Compass size={18} strokeWidth={1.8} />
-        </button>
-      </div>
       <div className={styles.list}>
-        {tab === 'hotels' ? (
-          hotels.length === 0 ? (
-            <div className={styles.empty}>還沒有飯店資料——按下地圖上的「搜尋這個區域」,附近的住宿會列在這裡。</div>
-          ) : (
-            hotels.map((h) => (
-              <div
-                key={`${h.name}-${h.lat}-${h.lng}`}
-                className={`${styles.item}${selectedKey === geoItemKey('hotel', h) ? ` ${styles.itemSelected}` : ''}`}
-              >
-                <div
-                  role="button"
-                  tabIndex={0}
-                  className={styles.itemBody}
-                  onClick={() => onSelectHotel?.(h)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') onSelectHotel?.(h) }}
-                  onMouseEnter={() => onHover?.(geoItemKey('hotel', h))}
-                  onMouseLeave={() => onHover?.(null)}
-                >
-                  {h.photoUrl ? (
-                    <img className={styles.itemPhoto} src={h.photoUrl} alt={h.name} loading="lazy" />
-                  ) : (
-                    <div className={styles.itemPhotoPlaceholder} />
-                  )}
-                  <div className={styles.itemInfo}>
-                    <span className={styles.itemName}>{h.name}</span>
-                    <span className={styles.itemAddress}>{h.address}</span>
-                  </div>
-                </div>
-                <AddCandidateButton
-                  cfg={cfg}
-                  tripID={tripID}
-                  candidate={{ kind: 'hotel', ...h }}
-                  onAddCandidate={onAddCandidate}
-                  onCreated={onCandidateCreated}
-                />
-              </div>
-            ))
-          )
-        ) : places.length === 0 ? (
+        {isEmpty ? (
           <div className={styles.empty}>
-            {placesCategory
-              ? `還沒有${placesLabel}資料——這個範圍內查不到${placesLabel},試試移動地圖再查一次。`
-              : '還沒有附近推薦——點地圖上的地標圖示,或按上方類別標籤(飯店/景點/餐廳),附近的地點會列在這裡。'}
+            還沒有查詢結果——按上方類別標籤(飯店/景點/餐廳)或地圖上的地標圖示,查到的地點會列在這裡。
           </div>
         ) : (
           <>
-            {/* placesCategory 有值時額外顯示一行小標題,標明目前清單是哪個
-                類別標籤查出來的結果——分頁按鈕本身只有圖示+hover
-                title,不夠顯眼,使用者點了「餐廳」標籤後很容易誤以為清單
-                沒反應,加這行文字讓對應關係一眼可見。沒有 placesCategory
-                時(來自點地標的泛用推薦)不顯示,維持原本簡潔。 */}
-            {placesCategory && <div className={styles.placesCategoryHead}>{placesLabel}</div>}
-            {places.map((p) => (
-              <div
-                key={`${p.name}-${p.lat}-${p.lng}`}
-                className={`${styles.item}${selectedKey === geoItemKey('place', p) ? ` ${styles.itemSelected}` : ''}`}
-              >
-                <div
-                  role="button"
-                  tabIndex={0}
-                  className={styles.itemBody}
-                  onClick={() => onSelectPlace?.(p)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') onSelectPlace?.(p) }}
-                  onMouseEnter={() => onHover?.(geoItemKey('place', p))}
-                  onMouseLeave={() => onHover?.(null)}
-                >
-                  {p.photoUrl ? (
-                    <img className={styles.itemPhoto} src={p.photoUrl} alt={p.name} loading="lazy" />
-                  ) : (
-                    <div className={styles.itemPhotoPlaceholder} />
-                  )}
-                  <div className={styles.itemInfo}>
-                    <span className={styles.itemName}>{p.name}</span>
-                    <span className={styles.itemAddress}>{p.address}</span>
+            {/* 飯店/景點/餐廳三種類別合併顯示在同一份清單,不再用分頁切換
+                (使用者明確要求)。飯店有內容時前面加一行小標題方便辨識
+                來源;places(景點/餐廳/點地標的泛用推薦)有 placesCategory
+                時同樣加標題,標明是哪個類別標籤查出來的結果——沒有
+                placesCategory 時(來自點地標的泛用推薦)不顯示標題,維持
+                簡潔。飯店清單永遠排在前面,理由:飯店是「搜尋這個區域」
+                觸發、通常是使用者當下主要在找的資訊,places 是點類別標籤/
+                地標時才查的補充資訊。 */}
+            {hotels.length > 0 && (
+              <>
+                <div className={styles.placesCategoryHead}>飯店</div>
+                {hotels.map((h) => (
+                  <div
+                    key={`${h.name}-${h.lat}-${h.lng}`}
+                    className={`${styles.item}${selectedKey === geoItemKey('hotel', h) ? ` ${styles.itemSelected}` : ''}`}
+                  >
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      className={styles.itemBody}
+                      onClick={() => onSelectHotel?.(h)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') onSelectHotel?.(h) }}
+                      onMouseEnter={() => onHover?.(geoItemKey('hotel', h))}
+                      onMouseLeave={() => onHover?.(null)}
+                    >
+                      {h.photoUrl ? (
+                        <img className={styles.itemPhoto} src={h.photoUrl} alt={h.name} loading="lazy" />
+                      ) : (
+                        <div className={styles.itemPhotoPlaceholder} />
+                      )}
+                      <div className={styles.itemInfo}>
+                        <span className={styles.itemName}>{h.name}</span>
+                        <span className={styles.itemAddress}>{h.address}</span>
+                      </div>
+                    </div>
+                    <AddCandidateButton
+                      cfg={cfg}
+                      tripID={tripID}
+                      candidate={{ kind: 'hotel', ...h }}
+                      onAddCandidate={onAddCandidate}
+                      onCreated={onCandidateCreated}
+                    />
                   </div>
-                </div>
-                <AddCandidateButton
-                  cfg={cfg}
-                  tripID={tripID}
-                  candidate={{ kind: 'place', ...p }}
-                  onAddCandidate={onAddCandidate}
-                  onCreated={onCandidateCreated}
-                />
-              </div>
-            ))}
+                ))}
+              </>
+            )}
+            {places.length > 0 && (
+              <>
+                {placesCategory && <div className={styles.placesCategoryHead}>{placesLabel}</div>}
+                {places.map((p) => (
+                  <div
+                    key={`${p.name}-${p.lat}-${p.lng}`}
+                    className={`${styles.item}${selectedKey === geoItemKey('place', p) ? ` ${styles.itemSelected}` : ''}`}
+                  >
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      className={styles.itemBody}
+                      onClick={() => onSelectPlace?.(p)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') onSelectPlace?.(p) }}
+                      onMouseEnter={() => onHover?.(geoItemKey('place', p))}
+                      onMouseLeave={() => onHover?.(null)}
+                    >
+                      {p.photoUrl ? (
+                        <img className={styles.itemPhoto} src={p.photoUrl} alt={p.name} loading="lazy" />
+                      ) : (
+                        <div className={styles.itemPhotoPlaceholder} />
+                      )}
+                      <div className={styles.itemInfo}>
+                        <span className={styles.itemName}>{p.name}</span>
+                        <span className={styles.itemAddress}>{p.address}</span>
+                      </div>
+                    </div>
+                    <AddCandidateButton
+                      cfg={cfg}
+                      tripID={tripID}
+                      candidate={{ kind: 'place', ...p }}
+                      onAddCandidate={onAddCandidate}
+                      onCreated={onCandidateCreated}
+                    />
+                  </div>
+                ))}
+              </>
+            )}
           </>
         )}
       </div>

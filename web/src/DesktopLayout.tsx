@@ -8,7 +8,7 @@ import type { DesktopTimelineMirror } from './chat/ChatScreen'
 import { MultiTrackTimeline, type TaskPlaceholder } from './timeline/Timeline'
 import { PaceChart } from './pace/PaceChart'
 import { DemoPanel } from './demo/DemoPanel'
-import { GeoHotelSidebar, geoItemKey, type GeoSelectedKey, type Tab as GeoTab } from './geo-planning/GeoHotelSidebar'
+import { GeoHotelSidebar, geoItemKey, type GeoSelectedKey } from './geo-planning/GeoHotelSidebar'
 import { GeoInfoPanel, type GeoInfoContent } from './geo-planning/GeoInfoPanel'
 import { AttractionInfoPanel } from './geo-planning/AttractionInfoPanel'
 import { GeoCandidateSidebar, type GeoCandidate, createEntryFromCandidate } from './geo-planning/GeoCandidateSidebar'
@@ -190,14 +190,6 @@ export function DesktopContent(props: ContentProps) {
   // 只清空這個 state,不影響 geoSelectedKey 記得的「上一次點擊選中的
   // 項目」。
   const [geoHoverKey, setGeoHoverKey] = useState<GeoSelectedKey>(null)
-  // geoActiveTab:GeoHotelSidebar 目前顯示哪個分頁(飯店/附近推薦)——原本
-  // 是該元件的內部 state,提到這裡中介的理由是地圖上直接點擊飯店/推薦
-  // 地點的 marker(見下方 onHotelSelect 等)時,要能自動切到對應分頁,
-  // 使用者才看得到剛點的項目介紹,不會停留在原本選取的分頁而看起來像沒
-  // 反應。地標(attraction)點擊不影響這個分頁狀態——地標介紹改走
-  // AttractionInfoPanel(獨立元件,見該檔案的說明),不屬於這個側欄的
-  // 分頁範圍。
-  const [geoActiveTab, setGeoActiveTab] = useState<GeoTab>('hotels')
   // geoInfoContent:目前要在浮動資訊卡(GeoInfoPanel)顯示的內容,觸發來源
   // 是側欄飯店/推薦地點清單點擊項目本體、或點擊地圖上 Google 原生 POI
   // 圖標(轉自 GeoOutlineMap.tsx onPoiSelect 回報的 GeoPlaceDetails)——
@@ -439,7 +431,15 @@ export function DesktopContent(props: ContentProps) {
   // DesktopLayout.module.css 的 .right),兩張卡片需要知道
   // 要不要往左避讓(見兩者的 shiftBy prop 說明)。抽成一個變數,避免
   // 下方兩處 JSX 各自重複同一段條件判斷式、之後改其中一處忘了同步另一處。
-  const geoHotelSidebarVisible = panelMode === 'geo-outline' && (geoHotels.length > 0 || geoPlaces.length > 0)
+  //
+  // 不再檢查 panelMode === 'geo-outline'——地圖(GeoOutlineMap)上的類別
+  // 標籤(飯店/景點/餐廳)不論目前是哪個 panelMode 都可以按到(地圖是
+  // 主顯示區固定內容),先前這裡多檢查 panelMode 會導致「在其他 panelMode
+  // 下按類別標籤查詢,geoHotels/geoPlaces 明明已經有資料,清單卻不會跳
+  // 出來」的 bug(使用者需要先手動切到「規劃」panelMode 才看得到剛查到
+  // 的結果)。查詢本身要不要顯示只看有沒有內容,跟目前主顯示區在哪個
+  // panelMode 無關。
+  const geoHotelSidebarVisible = geoHotels.length > 0 || geoPlaces.length > 0
   // infoPanelShiftBy:GeoInfoPanel/AttractionInfoPanel 右緣可能同時要
   // 避開兩種東西——GeoHotelSidebar(飯店清單,.right)
   // 與對話浮動小匡(.chat-popover,見 chatPopoverOpen)。對話小匡更寬
@@ -508,15 +508,7 @@ export function DesktopContent(props: ContentProps) {
                 refetchTripEntriesTrigger={geoRefetchTripEntriesTrigger}
                 onHotelsChange={setGeoHotels}
                 onPlacesNearby={(places) => {
-                  // places 分頁的結果不只來自逐一點擊 marker(onPlaceSelect,
-                  // 已有切分頁邏輯),也來自地圖上方類別標籤(飯店/景點/餐廳,
-                  // 見 GeoOutlineMap.tsx 的 handleCategoryClick)與點擊地標
-                  // 查附近推薦(handleAttractionClick)——這三種來源查完都
-                  // 該讓側欄自動切到「附近推薦」分頁,使用者才看得到剛查到
-                  // 的結果,不會停留在原本的分頁而看起來像沒反應(理由同
-                  // onAttractionSelect/onHotelSelect/onPlaceSelect 的說明)。
                   setGeoPlaces(places)
-                  setGeoActiveTab('places')
                 }}
                 onActiveCategoryChange={setGeoActiveCategory}
                 onTripEntriesChange={(entries) => {
@@ -563,13 +555,11 @@ export function DesktopContent(props: ContentProps) {
                 }}
                 onHotelSelect={(h) => {
                   setGeoSelectedKey(geoItemKey('hotel', h))
-                  setGeoActiveTab('hotels')
                   setGeoAttractionContent(null)
                   setGeoInfoContent(hotelInfoContent(h))
                 }}
                 onPlaceSelect={(p) => {
                   setGeoSelectedKey(geoItemKey('place', p))
-                  setGeoActiveTab('places')
                   setGeoAttractionContent(null)
                   setGeoInfoContent(placeInfoContent(p))
                 }}
@@ -696,16 +686,18 @@ export function DesktopContent(props: ContentProps) {
               ) : null}
             </div>
           )}
-          {/* GeoHotelSidebar(飯店/附近推薦)只在使用者實際觸發過查詢後才
-              顯示——geoHotels 只有按下「搜尋這個區域」才會有內容
+          {/* GeoHotelSidebar(飯店/景點/餐廳合併清單)只在使用者實際觸發過
+              查詢後才顯示——geoHotels 只有按下「搜尋這個區域」才會有內容
               (GeoOutlineMap.tsx 的 queryTrigger === 0 guard,地圖掛載/拖曳
               本身不會查),geoPlaces 只有點類別標籤/地標才會有內容(見
               onPlacesNearby 的說明);兩者都還是空的代表使用者進到規劃分頁
-              後還沒做過任何查詢動作,這時不顯示。使用者明確要求不要壓縮
-              主顯示的可用寬度,改成絕對定位疊在 .desktop-main(已有
+              後還沒做過任何查詢動作,這時不顯示。不再檢查
+              panelMode === 'geo-outline'(見上方 geoHotelSidebarVisible
+              的說明,同一個 bug 修復)。使用者明確要求不要壓縮主顯示的
+              可用寬度,改成絕對定位疊在 .desktop-main(已有
               position: relative)右緣之上,不佔用 flex 版面空間——理由/
               寫法同左緣的 .left(見 DesktopLayout.module.css)。 */}
-          {panelMode === 'geo-outline' && (geoHotels.length > 0 || geoPlaces.length > 0) && (
+          {geoHotelSidebarVisible && (
             <div className={`${styles.panel} ${styles.right}`} style={{ width: 280 }}>
               <GeoHotelSidebar
                 cfg={cfg}
@@ -715,8 +707,6 @@ export function DesktopContent(props: ContentProps) {
                 placesCategory={geoActiveCategory}
                 selectedKey={geoSelectedKey}
                 onHover={setGeoHoverKey}
-                activeTab={geoActiveTab}
-                onTabChange={setGeoActiveTab}
                 onSelectHotel={(h) => {
                   setGeoSelectedKey(geoItemKey('hotel', h))
                   setGeoAttractionContent(null)

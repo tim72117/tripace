@@ -22,6 +22,13 @@
 
 * {
   box-sizing: border-box;
+  /* 關掉手機瀏覽器(尤其 iOS Safari/Chrome for Android)點擊可互動元素
+     (含容器包著 <input>/<button> 的情況,如規劃地圖的搜尋框)時預設會
+     短暫閃一層灰色半透明疊色的內建行為——使用者回報「搜尋匡按下的瞬間
+     會有灰色陰影」,這是瀏覽器原生 tap highlight,不是我們自己的 CSS
+     造成的,全域關閉不影響原本設計好的 active/hover 樣式(那些是元件
+     自己明確定義的規則,不受這個屬性影響)。 */
+  -webkit-tap-highlight-color: transparent;
 }
 
 html {

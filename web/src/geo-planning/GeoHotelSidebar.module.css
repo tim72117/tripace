@@ -11,51 +11,6 @@
   flex-direction: column;
 }
 
-/* tabs/tab/tabActive:頂部分頁標籤,視覺語言比照 DesktopRail 的
-   .desktop-rail-btn(見 styles-desktop.css)——active 態用左緣改成
-   底部 accent 橫條(這裡是橫向排列的標籤,豎條語意對應改成橫條),
-   讓使用者一眼認出這是同一套導覽介面慣例。 */
-.tabs {
-  flex: 0 0 auto;
-  display: flex;
-  border-bottom: 1px solid var(--ios-sep);
-}
-
-.tab {
-  position: relative;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 12px 8px;
-  border: none;
-  background: none;
-  color: var(--ios-gray);
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-
-.tab:hover {
-  background: var(--ios-bg);
-  color: var(--color-accent);
-}
-
-.tabActive {
-  color: var(--color-accent);
-  background: var(--ios-bg);
-}
-
-.tabActive::after {
-  content: '';
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 0;
-  height: 2px;
-  border-radius: 2px 2px 0 0;
-  background: var(--color-accent);
-}
-
 .list {
   flex: 1;
   overflow-y: auto;

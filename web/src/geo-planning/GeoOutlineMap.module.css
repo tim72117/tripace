@@ -14,6 +14,18 @@
   height: 100%;
   min-height: 320px;
   background: var(--ios-sep); /* SDK 載入前的底色,避免白閃(比照 .rp-map) */
+  /* touch-action: none:讓瀏覽器完全不介入這個容器的觸控手勢(單指拖曳/
+     雙指縮放/雙指旋轉全部不觸發瀏覽器原生捲動或縮放),手勢完全交給
+     Google Maps SDK 自己的事件處理——沒有這行時,瀏覽器的原生手勢辨識
+     器可能跟 Maps SDK 搶著解讀同一批觸控事件,尤其是頁面本身可捲動、
+     viewport 又沒有 user-scalable=no(這個專案刻意不加,理由見
+     index.html,不能為了地圖犧牲全站無障礙縮放)的情況下,單指拖曳容易
+     被瀏覽器誤判成頁面捲動而不是地圖平移,呈現出「一開始可以單指滑動,
+     之後(尤其是地圖 panTo 重繪後)變成要雙指才能動」的現象。跟
+     GeoOutlineMap.tsx 建圖 options 的 gestureHandling: 'greedy' 互補
+     ——那個是 Maps SDK 層級的手勢模式設定,這個是瀏覽器層級,兩者管的
+     是不同層,同時需要才能保證單指平移在各種瀏覽器/裝置組合下都穩定。 */
+  touch-action: none;
 }
 
 /* mapError 跟 .map(地圖容器)同時存在於 DOM(見 GeoOutlineMap.tsx 的
@@ -419,34 +431,3 @@
   pointer-events: none;
 }
 
-/* 距離圖例:延遲淡入連線同時出現的文字說明,貼在地圖左下角,
-   避免直接把文字畫在地圖上跟光暈/標籤搶視覺焦點。 */
-.distanceLegend {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: rgba(253, 252, 250, 0.88);
-  box-shadow: 0 1px 4px rgba(61, 53, 48, 0.12);
-  animation: legendFadeIn 600ms ease-out;
-  pointer-events: none;
-}
-
-@keyframes legendFadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.distanceItem {
-  font-size: 11px;
-  color: var(--ios-gray);
-  font-variant-numeric: tabular-nums;
-}

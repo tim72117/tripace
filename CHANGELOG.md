@@ -2,6 +2,23 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.7.0 — 2026-08-17
+
+### 新增
+
+- **手機版導覽再簡化，時間軸改為規劃地圖專屬的彈出面板**（`web/src/timeline/PhoneTimelineDrawer.tsx`）：底部常駐列（`PhoneTabBar.tsx`）不再含「時間軸」項目，改成規劃地圖畫面左下角的專屬入口，由下往上彈出（bottom sheet），只顯示唯讀清單，不含對話輸入列；選擇行程後不再自動跳轉到時間軸/路徑分頁，留在使用者原本所在的畫面（已與使用者確認）。分享連結/成員管理/開啟時自動進入三個功能，從精簡版側滑抽屜 `PhoneNavDrawer.tsx`（本次整個移除）搬到 `PhoneTripsDrawer.tsx` 每筆行程項目的「管理」按鈕，改用共用的 `TripManageModal`，對齊桌面版 `DesktopTripList.tsx` 的 `onManage` 心智模型；使用者頭像改為直接開啟設定畫面，不再先進中介選單。
+- **地圖分類標籤旁新增城市搜尋框**（`GeoOutlineMap.tsx`）：不需要先開候選籃側欄，可直接在地圖上方輸入目的地城市觸發搜尋，樣式/行為對齊候選籃既有的搜尋框。
+- **手機版鎖住整站手動縮放**（`web/index.html` 的 `maximum-scale=1, user-scalable=no`）：修正 iOS Safari 對小字級 `<input>`（規劃地圖城市搜尋框，13px）focus 時自動放大整頁面的不一致體感，取捨是使用者同時失去手動縮放頁面的能力（使用者明確選擇此做法）。
+
+### 變更
+
+- **搜尋結果清單（`GeoHotelSidebar.tsx`）取消飯店/附近推薦分頁，合併成單一清單**：不再需要切換分頁才能看到另一類別的查詢結果，飯店排在清單最前面，附近推薦（景點/餐廳）依查詢類別加小標題；兩者皆無資料時顯示統一空狀態提示。手機版 `GeoOutlinePhoneListDrawer.tsx` 維持原本雙分頁呈現，不受影響。
+- **修正搜尋清單顯示條件錯誤**（`DesktopLayout.tsx` 的 `geoHotelSidebarVisible`）：原本額外檢查 `panelMode === 'geo-outline'`，導致在其他 `panelMode` 下用地圖上方類別標籤查詢時，即使已查到資料，清單也不會跳出來；改為只要有查詢結果就顯示，不受目前 `panelMode` 影響。
+
+### 移除
+
+- **移除地圖上景點區域間的距離估算連線示意功能**（`GeoOutlineMap.tsx`/`.module.css`）：兩兩相距較遠的景點區域之間原本會畫虛線並標示距離、伴隨文字圖例，使用者確認此功能整個移除，含 `farPairs`/`distanceKm` 計算邏輯與對應 CSS。
+
 ## v0.6.0 — 2026-08-16
 
 ### 新增

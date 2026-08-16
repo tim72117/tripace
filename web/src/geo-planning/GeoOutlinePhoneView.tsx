@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { AlignLeft, ListPlus, MapPinned } from 'lucide-react'
+import { ListPlus, MapPinned, Timeline } from 'lucide-react'
 import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace } from '../api'
 import type { Trip } from '../trip/types'
 import type { User } from '../user/types'
@@ -60,8 +60,8 @@ export function GeoOutlinePhoneView({
   tripID,
   activeTrip,
   user,
-  onOpenDrawer,
   onOpenSettings,
+  onOpenTimeline,
 }: {
   cfg: ClientConfig
   tripID?: string | null
@@ -69,7 +69,14 @@ export function GeoOutlinePhoneView({
   // 桌面版 DesktopLayout.tsx 傳給 GeoInfoPanel 的 tripName prop。
   activeTrip?: Trip | null
   user: User
-  onOpenDrawer: () => void
+  // onOpenTimeline:左下角「時間軸」按鈕觸發,由 PhoneContent.tsx 傳入
+  // (呼叫 setDrawerMode('timeline')切換主畫面)——這個元件本身不管全域
+  // drawerMode 導航,只負責觸發。使用者要求「時間軸放左側」,原本是
+  // PhoneTabBar.tsx 底部常駐三分頁之一,改成規劃地圖專屬、併入候選籃/
+  // 清單所在的 candidateGroup(見下方 JSX)——時間軸入口從此只在規劃
+  // 地圖畫面才看得到,已與使用者確認其他主畫面(配速表/對話)不再需要
+  // 直接切到時間軸的入口。
+  onOpenTimeline?: () => void
   onOpenSettings: () => void
 }) {
   const [searchCity, setSearchCity] = useState('')
@@ -171,29 +178,35 @@ export function GeoOutlinePhoneView({
 
   return (
     <div className={styles.wrap}>
-      <button type="button" className={styles.drawerBtn} onClick={onOpenDrawer} title="選單">
-        <AlignLeft size={20} strokeWidth={1.8} />
-      </button>
-      <button type="button" className={styles.avatarBtn} onClick={onOpenSettings} title="設定">
-        <Avatar user={user} />
-      </button>
-      <button
-        type="button"
-        className={styles.candidateBtn}
-        onClick={() => setCandidateDrawerOpen(true)}
-        title="候選籃"
-      >
-        <ListPlus size={18} strokeWidth={1.8} />
-        {geoCandidates.length > 0 && <span className={styles.candidateBadge}>{geoCandidates.length}</span>}
-      </button>
-      <button
-        type="button"
-        className={styles.listBtn}
-        onClick={() => setListDrawerOpen(true)}
-        title="飯店/推薦地點"
-      >
-        <MapPinned size={18} strokeWidth={1.8} />
-      </button>
+      <div className={styles.candidateGroup}>
+        <button
+          type="button"
+          className={styles.candidateBtn}
+          onClick={() => setCandidateDrawerOpen(true)}
+          title="候選籃"
+        >
+          <ListPlus size={20} strokeWidth={1.8} />
+          {geoCandidates.length > 0 && <span className={styles.candidateBadge}>{geoCandidates.length}</span>}
+        </button>
+        <button
+          type="button"
+          className={styles.listBtn}
+          onClick={() => setListDrawerOpen(true)}
+          title="飯店/推薦地點"
+        >
+          <MapPinned size={20} strokeWidth={1.8} />
+        </button>
+        {onOpenTimeline && (
+          <button
+            type="button"
+            className={styles.listBtn}
+            onClick={onOpenTimeline}
+            title="時間軸"
+          >
+            <Timeline size={20} strokeWidth={1.8} />
+          </button>
+        )}
+      </div>
       <GeoOutlinePanel
         cfg={cfg}
         tripID={tripID}
@@ -201,6 +214,12 @@ export function GeoOutlinePhoneView({
         onCityChange={setSearchCity}
         onSearch={() => setSearchTrigger((n) => n + 1)}
         searchTrigger={searchTrigger}
+        showZoomControl={false}
+        searchRightSlot={
+          <button type="button" className={styles.avatarBtn} onClick={onOpenSettings} title="設定">
+            <Avatar user={user} />
+          </button>
+        }
         refetchTripEntriesTrigger={geoRefetchTripEntriesTrigger}
         onTripEntriesChange={(entries) => {
           // 行程本身已有座標的 entry 自動併入候選籃——對齊桌面版

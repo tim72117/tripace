@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from '../api'
 import { fetchEntries, fetchGeoGeocode } from '../api'
 import { GeoOutlineMap } from './GeoOutlineMap'
@@ -72,6 +73,8 @@ export function GeoOutlinePanel({
   onCityChange,
   onSearch,
   onOpenChat,
+  showZoomControl,
+  searchRightSlot,
   onHotelsChange,
   onAttractionsChange,
   onPlacesNearby,
@@ -108,6 +111,13 @@ export function GeoOutlinePanel({
   // onOpenChat:原封不動轉傳給 GeoOutlineMap——搜尋框膠囊左側的 AI
   // 按鈕,見 GeoOutlineMap.tsx 對這個 prop 的完整說明。
   onOpenChat?: () => void
+  // showZoomControl:原封不動轉傳給 GeoOutlineMap——地圖右下角縮放按鈕
+  // 開關,見 GeoOutlineMap.tsx 對這個 prop 的完整說明。
+  showZoomControl?: boolean
+  // searchRightSlot:原封不動轉傳給 GeoOutlineMap——搜尋框膠囊最右側的
+  // 額外內容(手機版放使用者頭像),見 GeoOutlineMap.tsx 對這個 prop 的
+  // 完整說明。
+  searchRightSlot?: ReactNode
   onHotelsChange?: (hotels: GeoHotel[]) => void
   onAttractionsChange?: (attractions: GeoAttraction[]) => void
   onPlacesNearby?: (places: GeoPlace[]) => void
@@ -356,6 +366,8 @@ export function GeoOutlinePanel({
           onCityChange={onCityChange}
           onSearch={onSearch}
           onOpenChat={onOpenChat}
+          showZoomControl={showZoomControl}
+          searchRightSlot={searchRightSlot}
           searching={loading}
           searchError={err}
           onAttractionsChange={onAttractionsChange}

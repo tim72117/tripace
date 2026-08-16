@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from '../api'
 import { fetchGeoAttractionsNearby, fetchGeoAttractionsOnlyNearby, fetchGeoPlaceDetails, fetchGeoPlacesNearby } from '../api'
@@ -60,22 +61,6 @@ function ensureOptionsSet(apiKey: string) {
   // 理由同後端 Places API 呼叫固定 languageCode: zh-TW(見
   // server/internal/geo/places.go),專案介面語言只有繁中。
   setOptions({ key: apiKey, v: 'weekly', language: 'zh-TW' })
-}
-
-// 兩點間距離(公里,Haversine 公式)——用來在延遲淡入的連線標籤上顯示
-// 約略距離。構想 6 定案要求分鐘制優先、公里數為次要,但目前專案還沒有
-// 「城市內步行/轉乘估算分鐘數」的既有換算依據(PaceRouteMap.tsx 的
-// bearingBetween 只算方位角,不算距離換算時間),先用公里數如實呈現,
-// 避免編造未經驗證的分鐘數字。
-function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-  const R = 6371
-  const dLat = ((b.lat - a.lat) * Math.PI) / 180
-  const dLng = ((b.lng - a.lng) * Math.PI) / 180
-  const la1 = (a.lat * Math.PI) / 180
-  const la2 = (b.lat * Math.PI) / 180
-  const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2
-  return 2 * R * Math.asin(Math.sqrt(h))
 }
 
 // candidateBadgeSvg:「已加入候選籃」的小勾選徽章 fragment,綠底 + 白色
@@ -252,6 +237,8 @@ export function GeoOutlineMap({
   searching,
   searchError,
   onOpenChat,
+  showZoomControl = true,
+  searchRightSlot,
   onAttractionsChange,
   onVisibleHotelsChange,
   onPlacesNearby,
@@ -307,6 +294,20 @@ export function GeoOutlineMap({
   // optional——理由同 onCityChange 等搜尋框 props,呼叫端沒接就不顯示
   // 這顆按鈕。
   onOpenChat?: () => void
+  // showZoomControl:地圖右下角放大/縮小按鈕,預設 true(桌面版沿用原本
+  // 行為)。手機版可以傳 false 隱藏——手機本來就能雙指縮放,這顆按鈕在
+  // 小螢幕上顯得多餘、佔用畫面空間(使用者要求「地圖可以隱藏縮放按鈕
+  // 嗎」)。跟 mapId 等其他建圖參數一樣只在地圖第一次建立時讀取一次
+  // (見下方 new Map 呼叫處),不在 useEffect 依賴陣列裡,執行期間改變
+  // 這個 prop 不會觸發重新建圖。
+  showZoomControl?: boolean
+  // searchRightSlot:搜尋框膠囊最右側的額外內容(optional)——手機版拿來
+  // 放使用者頭像(GeoOutlinePhoneView.tsx),讓頭像變成搜尋框自己的
+  // flexbox 子元素,交給 .citySearch 既有的 display:flex; align-items:
+  // center; gap 自動對齊,不需要另外用絕對定位疊加、手動計算座標猜位置
+  // (之前的做法,見 GeoOutlinePhoneView.module.css 的歷史說明,實測數值
+  // 一直對不準)。桌面版不傳這個 prop,渲染行為完全不受影響。 */
+  searchRightSlot?: ReactNode
   // onAttractionsChange/onVisibleHotelsChange:每當地圖可視範圍(bounds)
   // 查詢有新結果時,回報目前地圖上實際顯示的景點區域/飯店清單——側欄
   // (GeoHotelSidebar,見 DesktopLayout.tsx)渲染在整個桌面版介面最
@@ -428,8 +429,6 @@ export function GeoOutlineMap({
   const tripEntryMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([])
   const geocodeCandidateMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([])
   const radiusCirclesRef = useRef<google.maps.Circle[]>([])
-  const linesRef = useRef<google.maps.Polyline[]>([])
-  const lineLabelsRef = useRef<google.maps.OverlayView[]>([])
   // onPoiSelectRef:建立地圖的 effect 只在掛載時執行一次(依賴陣列見
   // 下方 [apiKey, initialCenter]),裡面註冊的 click listener 若直接閉包
   // 捕捉 onPoiSelect,呼叫端(DesktopLayout.tsx)每次重渲染傳入新的內聯
@@ -440,9 +439,6 @@ export function GeoOutlineMap({
   onPoiSelectRef.current = onPoiSelect
   const [err, setErr] = useState<string | null>(null)
   const [mapReady, setMapReady] = useState(false)
-  // linesVisible:區塊間連線延遲淡入的開關,對齊構想 6「使用者明顯停留
-  // 1-2 秒才出現」的節奏——手比眼快的人根本等不到這條線畫上去。
-  const [linesVisible, setLinesVisible] = useState(false)
   // zoom:即時反映地圖目前縮放層級,驅動下方 filteredAttractions 依
   // maxLevelForZoom 篩選要顯示哪些知名度分級的地標。初始值對齊
   // Map 建構時的 zoom: 12(見下方 useEffect)。
@@ -575,7 +571,13 @@ export function GeoOutlineMap({
           zoom: 12,
           mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID as string,
           disableDefaultUI: true,
-          zoomControl: true,
+          zoomControl: showZoomControl,
+          // gestureHandling 明確設為 'greedy':預設值 'auto' 在
+          // panTo/fitBounds(搜尋觸發,見下方 panTarget effect)之後,
+          // SDK 內部可能重新判定為 cooperative 模式,導致單指平移失效、
+          // 變成要雙指才能拖動地圖。'greedy' 讓單指平移永遠可用,不受
+          // 程式化移動地圖影響。
+          gestureHandling: 'greedy',
         })
         // zoom_changed 監聽器:即時反映使用者拖曳滾輪/點擊縮放控制項
         // 造成的縮放層級變化,驅動下方 filteredAttractions 重新計算。
@@ -756,11 +758,11 @@ export function GeoOutlineMap({
   // 沒有 level 的景點區域(即時查 Google Places 的結果)一律顯示,不受
   // 縮放層級篩選影響(這批資料沒有分級可言,無從篩起)。用 useMemo 快取,
   // 理由同 visibleHotels(見下方):.filter() 若每次 render 都重算,會
-  // 產生新陣列參照,讓依賴它的 useEffect(畫景點區域光暈/範圍圓圈/
-  // farPairs)誤判成「內容變了」而重複清除重畫——即使這裡本身不會形成
-  // 無限迴圈(filteredAttractions 沒有驅動任何 setState),但仍會在
-  // sibling state(如 visibleHotels 變動連鎖傳回的新 hotels/attractions
-  // prop)造成這個元件重渲染時,讓光暈/圓圈/連線動畫不必要地重播、閃爍。
+  // 產生新陣列參照,讓依賴它的 useEffect(畫景點區域光暈/範圍圓圈)誤判成
+  // 「內容變了」而重複清除重畫——即使這裡本身不會形成無限迴圈
+  // (filteredAttractions 沒有驅動任何 setState),但仍會在 sibling state
+  // (如 visibleHotels 變動連鎖傳回的新 hotels/attractions prop)造成這個
+  // 元件重渲染時,讓光暈/圓圈動畫不必要地重播、閃爍。
   const maxLevel = maxLevelForZoom(zoom)
   const filteredAttractions = useMemo(
     () => attractions.filter((d) => d.level == null || d.level <= maxLevel),
@@ -1221,69 +1223,6 @@ export function GeoOutlineMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, panTarget])
 
-  // farPairs:「距離較遠的項目間」連線示意——只在大範圍區域級尺度
-  // (maxLevel<=2,對應 zoom<=12,見 maxLevelForZoom)才有意義,拉近到
-  // 城市/在地級尺度後,景點區域彼此距離通常只有幾百公尺到幾公里,連線
-  // 示意的「這幾塊大致隔多遠」已經沒有資訊量,故用 filteredAttractions
-  // (而非全部 attractions)當母體,兩層篩選都通過才畫:
-  //  1. 目前縮放層級允許畫連線(maxLevel<=2)
-  //  2. 該配對距離超過所有配對的平均值(只挑「較遠的」,不畫全部
-  //     兩兩配對——景點區域一多,全連線會變成蜘蛛網,失去示意的意義)
-  const showLines = maxLevel <= 2
-  // farPairs 同樣用 useMemo 快取,理由同 filteredAttractions——避免每次
-  // render 都建立新陣列參照,讓下方依賴它的 useEffect(延遲淡入計時器、
-  // 畫連線)誤判成內容變了而重新觸發,造成已淡入的連線在地圖拖曳時
-  // 反覆消失、重新等待、再淡入。
-  const farPairs = useMemo(() => {
-    if (!showLines || filteredAttractions.length < 2) return []
-    const pairs: { a: GeoAttraction; b: GeoAttraction; km: number }[] = []
-    for (let i = 0; i < filteredAttractions.length; i++) {
-      for (let j = i + 1; j < filteredAttractions.length; j++) {
-        const a = filteredAttractions[i]
-        const b = filteredAttractions[j]
-        pairs.push({ a, b, km: distanceKm(a, b) })
-      }
-    }
-    const avgKm = pairs.reduce((sum, p) => sum + p.km, 0) / pairs.length
-    return pairs.filter((p) => p.km > avgKm)
-  }, [showLines, filteredAttractions])
-
-  // 延遲淡入計時器:每次 farPairs 變動(換城市/縮放層級跨越 showLines
-  // 門檻)重新起算停留時間。
-  useEffect(() => {
-    setLinesVisible(false)
-    if (farPairs.length === 0) return
-    const t = setTimeout(() => setLinesVisible(true), 1500)
-    return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [farPairs])
-
-  // 畫區塊間連線:只在 linesVisible 為 true 時畫,退場(換城市/清空)時清掉。
-  // 用極淡描邊(對齊構想 6「極淡連線」定案),不畫箭頭、不做路網貼合,
-  // 純粹是「這幾塊大致隔多遠」的示意直線。
-  useEffect(() => {
-    linesRef.current.forEach((l) => l.setMap(null))
-    linesRef.current = []
-    lineLabelsRef.current.forEach((l) => l.setMap(null))
-    lineLabelsRef.current = []
-    if (!linesVisible || !mapReady || !mapRef.current) return
-
-    farPairs.forEach(({ a, b }) => {
-      const line = new google.maps.Polyline({
-        path: [
-          { lat: a.lat, lng: a.lng },
-          { lat: b.lat, lng: b.lng },
-        ],
-        strokeColor: '#C4956A',
-        strokeOpacity: 0.28,
-        strokeWeight: 1.5,
-        map: mapRef.current,
-      })
-      linesRef.current.push(line)
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linesVisible, mapReady, farPairs])
-
   // 地圖容器(<div ref={containerRef}>)必須無條件渲染,不能像先前那樣
   // 依 err/attractions 狀態切換成完全不同的 JSX 分支——地圖初始化的
   // useEffect 依賴是 [apiKey](地圖只需要建立一次),若元件第一次掛載時
@@ -1351,6 +1290,8 @@ export function GeoOutlineMap({
           <input
             className={styles.citySearchInput}
             type="text"
+            inputMode="search"
+            enterKeyHint="search"
             placeholder="輸入目的地城市,如「東京」"
             value={city ?? ''}
             onChange={(e) => onCityChange(e.target.value)}
@@ -1370,6 +1311,7 @@ export function GeoOutlineMap({
               <Search size={16} aria-hidden="true" />
             )}
           </button>
+          {searchRightSlot}
         </div>
       )}
       {!err && searchError && <div className={styles.citySearchError}>{searchError}</div>}
@@ -1404,15 +1346,6 @@ export function GeoOutlineMap({
         <div className={styles.mapError}>
           <span>地圖載入失敗</span>
           <span className={styles.mapErrorDetail}>{err}</span>
-        </div>
-      )}
-      {linesVisible && farPairs.length > 0 && (
-        <div className={styles.distanceLegend}>
-          {farPairs.map(({ a, b, km }) => (
-            <span key={`${a.name}-${b.name}`} className={styles.distanceItem}>
-              {a.name}—{b.name} 約 {km.toFixed(1)} 公里
-            </span>
-          ))}
         </div>
       )}
     </div>

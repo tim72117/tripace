@@ -4,8 +4,19 @@
     <meta charset="UTF-8" />
     <!-- viewport-fit=cover:讓內容延伸到 iPhone 瀏海/home indicator 這類安全區之外,
          CSS 的 env(safe-area-inset-*) 才會回傳實際值(否則 iOS Safari 一律算成 0,
-         底部常駐列/浮動卡片的 safe-area padding 會完全失效)。 -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+         底部常駐列/浮動卡片的 safe-area padding 會完全失效)。
+
+         maximum-scale=1, user-scalable=no:鎖住整站手動縮放,這是刻意的取捨
+         (使用者明確選擇這個做法,而非只調整觸發自動放大的那個輸入框
+         font-size)——iOS Safari 對 font-size < 16px 的 <input> focus 時
+         會自動放大整頁面(避免使用者看不清楚輸入內容),規劃地圖的城市
+         搜尋框(GeoOutlineMap.module.css 的 .citySearchInput,13px)就是
+         這樣被觸發。放行縮放的代價是使用者失去手動放大頁面的無障礙能力,
+         換來的是不會有「點某些輸入框頁面突然跳一下」的不一致體感。 -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="canonical" href="https://tripace.shuttle.tools/" />
 

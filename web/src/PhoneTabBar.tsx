@@ -19,7 +19,7 @@ export function PhoneTabBar({
   onOpenTrips,
   onSelectMode,
 }: {
-  tabs: { mode: DrawerMode; icon: typeof List; title: string; disabled?: boolean }[]
+  tabs: { mode: DrawerMode; icon: typeof List; title: string }[]
   mode: DrawerMode
   // lastContentMode:沿用 PhoneContent.tsx 既有邏輯——瀏覽獨立行程抽屜期間,
   // 使用者切換前正在看的時間軸分頁圖示仍要顯示 active(見該檔案的說明)。
@@ -32,24 +32,27 @@ export function PhoneTabBar({
     <nav className={styles.bar}>
       <button
         type="button"
-        className={`${styles.tab}${tripsDrawerOpen ? ` ${styles.tabActive}` : ''}`}
+        className={styles.tab}
         onClick={onOpenTrips}
         title="行程列表"
       >
-        <List size={20} strokeWidth={1.8} />
+        <span className={`${styles.tabIcon}${tripsDrawerOpen ? ` ${styles.tabIconActive}` : ''}`}>
+          <List size={20} strokeWidth={1.8} />
+        </span>
       </button>
-      {tabs.map(({ mode: m, icon: Icon, title, disabled }) => {
+      {tabs.map(({ mode: m, icon: Icon, title }) => {
         const isActive = mode === m || (tripsDrawerOpen && lastContentMode === m)
         return (
           <button
             key={m}
             type="button"
-            className={`${styles.tab}${isActive ? ` ${styles.tabActive}` : ''}`}
-            onClick={() => !disabled && onSelectMode(m)}
-            disabled={disabled}
-            title={disabled ? '請先選擇一個行程' : title}
+            className={styles.tab}
+            onClick={() => onSelectMode(m)}
+            title={title}
           >
-            <Icon size={20} strokeWidth={1.8} />
+            <span className={`${styles.tabIcon}${isActive ? ` ${styles.tabIconActive}` : ''}`}>
+              <Icon size={20} strokeWidth={1.8} />
+            </span>
           </button>
         )
       })}

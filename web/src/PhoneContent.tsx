@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { TouchEvent as ReactTouchEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AlignLeft, Timeline, Route, Layers, Sparkles, GalleryHorizontal, Radio } from 'lucide-react'
+import { Timeline, Route, Layers, Sparkles, GalleryHorizontal, Radio } from 'lucide-react'
 import { ChatScreen, type DesktopTimelineMirror } from './chat/ChatScreen'
-import { MultiTrackTimeline } from './timeline/Timeline'
 import { type ContentProps } from './AppCommon'
 import { useIsDesktop } from './hooks/useIsDesktop'
 import { useTripsState } from './hooks/useTripsState'
@@ -15,17 +13,15 @@ import {
 } from './DesktopShared'
 import { DesktopContent } from './DesktopLayout'
 import { SettingsScreen } from './user/SettingsScreen'
-import { ShareModal } from './trip/ShareModal'
+import { TripManageModal } from './trip/TripManageModal'
 import { PaceRouteMap, type SelectedEntry } from './pace/PaceRouteMap'
 import type { Checkpoint } from './pace/PaceChart'
 import { GeoOutlinePhoneView } from './geo-planning/GeoOutlinePhoneView'
-import { PhoneNavDrawer } from './PhoneNavDrawer'
 import { PhoneTripsDrawer } from './trip/PhoneTripsDrawer'
+import { PhoneTimelineDrawer } from './timeline/PhoneTimelineDrawer'
 import { PhoneTabBar } from './PhoneTabBar'
 import { PhoneSideTools } from './PhoneSideTools'
 import type { Trip } from './trip/types'
-import type { User } from './user/types'
-import type { ClientConfig } from './api'
 import styles from './PhoneContent.module.css'
 
 // 時間軸鏡像資料的初始值(尚未收到 ChatScreen 鏡像前,或未選擇行程時使用)
@@ -41,40 +37,44 @@ const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
 }
 
 // PhoneContent:手機版(寬度 < 768px)主要應用狀態切換器——登入畫面/桌面版
-// 導轉/聊天室/設定/導覽抽屜,見 App.tsx App() 的 /app 路由分支。
-// 導覽比照桌面版 DesktopLayout.tsx 的 DesktopRail + .desktop-sidepanel 結構:
-// 左上角常駐按鈕開啟左側抽屜(PhoneNavDrawer,見該檔案),裝著行程列表/
-// 時間軸/配速表/demo 面板分頁 + 底部設定入口——取代原本各自獨立的整頁
-// TripsScreen、ChatScreen 自己的右側時間軸抽屜,與右下角漢堡按鈕開的
-// PhoneDemoDrawer。
+// 導轉/聊天室/設定,見 App.tsx App() 的 /app 路由分支。
+// 導覽:底部常駐 PhoneTabBar.tsx(行程/時間軸/規劃)+ 右側小圖示
+// PhoneSideTools.tsx(路徑/demo-*),不需要先開抽屜才看得到分頁——取代
+// 原本各自獨立的整頁 TripsScreen、ChatScreen 自己的右側時間軸抽屜,與
+// PhoneNavDrawer 側滑抽屜的分頁列。行程列表獨立成 PhoneTripsDrawer 抽屜
+// (由底部列「行程」按鈕開關),分享/成員/開啟時自動進入合併成
+// TripManageModal,入口在該抽屜每筆行程項目的「管理」按鈕,對齊桌面版
+// DesktopTripList.tsx 的 onManage 心智模型。
 //
-// 主顯示區(抽屜關閉後看到的內容):選到的分頁是 'pace' 時顯示
-// PaceRouteMap(地圖),其餘情況顯示 ChatScreen(有選行程)或空白提示
-// (沒有)——'trips'/'timeline' 分頁不影響主顯示,只影響抽屜欄裡的內容。
-// 桌面版 DesktopContent 已改版(見該檔案的說明:主顯示固定是規劃地圖,
-// pace/trips/timeline/geo-outline 全部改成疊加在地圖上的浮動卡片),
-// 手機版這裡刻意不比照,維持原本「分頁決定主顯示內容」的版型。
+// 主顯示區:選到的分頁是 'pace' 時顯示 PaceRouteMap(地圖),'geo-outline'
+// 顯示規劃地圖,其餘情況顯示 ChatScreen(有選行程)或空白提示(沒有)
+// ——'trips'/'timeline' 分頁不影響主顯示。桌面版 DesktopContent 已改版
+// (見該檔案的說明:主顯示固定是規劃地圖,pace/trips/timeline/geo-outline
+// 全部改成疊加在地圖上的浮動卡片),手機版這裡刻意不比照,維持原本
+// 「分頁決定主顯示內容」的版型。
 export function PhoneContent(props: ContentProps) {
   const { cfg, activeTrip, setActiveTrip } = props
   const [inSettings, setInSettings] = useState(false)
-  // inShare:分享面板(見下方 .sharePanel)開關——跟 inSettings 同一種
-  // 「從底部滿版滑入/滑出」呈現方式,由 PhoneNavDrawer 分頁列右上角的分享
-  // 按鈕觸發(見該檔案的 onOpenShare),取代原本點下去就地取代抽屜分頁
-  // 內容的行為。
-  const [inShare, setInShare] = useState(false)
+  // manageTrip:行程管理彈窗(分享連結/成員/開啟時自動進入,見
+  // TripManageModal.tsx)——對齊桌面版 DesktopLayout.tsx 的同名 state,
+  // 原本手機版這幾個功能散落在 PhoneNavDrawer 抽屜(已隨底部常駐導覽列
+  // 拿掉),現在跟桌面版一樣統一收到行程列表每一筆項目的「管理」按鈕
+  // (見 PhoneTripsDrawer.tsx 的 onManage)。
+  const [manageTrip, setManageTrip] = useState<Trip | null>(null)
   // 寬度 >= 768px:改走桌面版佈局(側欄 + 主要區塊)。登入前不分寬度,一律走下面的
   // 登入畫面(登入前沒有行程/聊天可看,不必特地做桌面版登入版面)。
   const isDesktop = useIsDesktop()
-  // drawerOpen:抽屜開關本身是純 UI state,不進 URL——使用者收合/展開抽屜
-  // 不該影響網址或瀏覽器上一頁/下一頁的行為。預設收合:規劃地圖(見下方
-  // drawerMode fallback)是進 App 後的預設起始畫面,不需要先選行程就能
-  // 瀏覽,不再像改版前那樣「還沒選行程就自動開抽屜」。
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  // tripsDrawerOpen:行程列表已經拆成獨立抽屜(PhoneTripsDrawer.tsx,
-  // 疊在 PhoneNavDrawer 之上),開關是自己獨立的一組 UI state,不再是
-  // drawerMode 眾多值的其中一個。預設收合,理由同上方 drawerOpen——使用者
-  // 需要選行程時自行點底部「行程」按鈕開啟,不再進 App 就強制彈出。
+  // tripsDrawerOpen:行程列表獨立抽屜(PhoneTripsDrawer.tsx)開關——預設
+  // 收合,使用者需要選行程時自行點底部「行程」按鈕開啟,不再進 App 就
+  // 強制彈出。原本還有 drawerOpen 控制 PhoneNavDrawer(分享/成員/頭像
+  // 精簡版抽屜),隨分享/成員對齊桌面版搬到行程項目、頭像改直接開設定,
+  // 這個抽屜已無存在必要,整組移除(不再有任何畫面殘留「開抽屜」入口)。
   const [tripsDrawerOpen, setTripsDrawerOpen] = useState(false)
+  // timelineDrawerOpen:時間軸 bottom sheet(timeline/PhoneTimelineDrawer.tsx)
+  // 開關——由規劃地圖左下角「時間軸」按鈕觸發(見下方 GeoOutlinePhoneView
+  // 的 onOpenTimeline),不經過 drawerMode/navigate,純粹是這個元件內部
+  // 的疊加狀態(使用者要求「時間軸不用獨立路由」)。
+  const [timelineDrawerOpen, setTimelineDrawerOpen] = useState(false)
   // drawerMode:改用路徑參數驅動,跟桌面版 DesktopContent 的 panelMode 共用
   // 同一個 /app/:panelMode 路由——理由與既有設計相同,使用者縮放視窗跨越
   // 桌面/手機斷點時網址不必跳轉、狀態自然延續。網址沒帶 panelMode 或帶了
@@ -92,45 +92,37 @@ export function PhoneContent(props: ContentProps) {
       ? panelModeParam
       : 'geo-outline'
   const navigate = useNavigate()
-  // lastContentMode:記住使用者上一次主動選取的「時間軸」或「配速表」分頁。
-  // 開啟獨立行程抽屜選新行程時,這個值仍保留原值不變,驅動 PhoneNavDrawer
-  // 讓對應圖示繼續顯示 active(使用者觀點:行程列表只是暫時借用的工具畫面,
-  // 不是真的離開了時間軸/配速表這個內容模式);選完行程後再靠這個值把
-  // 使用者帶回選擇行程「之前」正在看的內容。用 state(而非 ref)是因為
-  // 現在需要驅動 UI(tab 的 active 樣式),不能只是純暫存值。
-  const [lastContentMode, setLastContentMode] = useState<'pace' | 'timeline' | null>(null)
-  // setDrawerMode:再點一次目前啟用中的分頁圖示時收合抽屜,對齊桌面版
-  // DesktopLayout.tsx 的 setPanelMode 行為。
+  // lastContentMode:記住使用者上一次主動選取的「配速表」分頁——時間軸
+  // 已不再是這個值的一員(改成規劃地圖專屬的 bottom sheet,見
+  // timeline/PhoneTimelineDrawer.tsx,不經過 drawerMode 導航)。開啟獨立
+  // 行程抽屜選新行程時,這個值仍保留原值不變,驅動 PhoneTabBar 讓對應圖示
+  // 繼續顯示 active(使用者觀點:行程列表只是暫時借用的工具畫面,不是真的
+  // 離開了配速表這個內容模式);選完行程後這個值只用於 effectiveMainMode
+  // fallback(見下方),不再驅動任何自動導航。用 state(而非 ref)是因為
+  // 需要驅動 UI(tab 的 active 樣式),不能只是純暫存值。
+  const [lastContentMode, setLastContentMode] = useState<'pace' | null>(null)
+  // setDrawerMode:底部常駐列/右側小圖示常駐顯示,沒有「收合」的概念——
+  // 再點一次目前已選中的分頁是 no-op。
   const setDrawerMode = (mode: DrawerMode) => {
-    if (mode === drawerMode) {
-      setDrawerOpen(false)
-      return
-    }
-    if (mode === 'pace' || mode === 'timeline') {
+    if (mode === drawerMode) return
+    if (mode === 'pace') {
       setLastContentMode(mode)
     }
     navigate(`/app/${mode}`)
   }
-  // onOpenTrips:PhoneNavDrawer 分頁列的「行程」觸發鈕——開啟獨立的行程
-  // 抽屜(疊在 PhoneNavDrawer 之上),已開啟時再點一次視為收合(toggle),
-  // 不是切換 drawerMode。
+  // onOpenTrips:底部常駐列「行程」按鈕——開啟獨立的行程抽屜
+  // (PhoneTripsDrawer.tsx),已開啟時再點一次視為收合(toggle)。
   const onOpenTrips = () => {
     setTripsDrawerOpen((v) => !v)
   }
-  // selectTrip:切換使用中的行程,並關閉獨立行程抽屜——若使用者選行程前
-  // 正在看時間軸或配速表(lastContentMode 有值),選完後帶回同一個分頁、
-  // 順便開啟 PhoneNavDrawer(時間軸/配速表元件都是依 activeTrip 反應式
-  // 讀資料,不需要額外處理)。若 lastContentMode 為 null(例如剛進 App
-  // 第一次選),維持原行為:關閉兩個抽屜直接看對話。
+  // selectTrip:切換使用中的行程,並關閉獨立行程抽屜——不再自動跳轉到
+  // lastContentMode(時間軸/路徑),使用者要求「選擇旅程後不用跳轉到
+  // 時間軸」。時間軸/路徑現在都是規劃地圖畫面專屬的入口(見
+  // GeoOutlinePhoneView.tsx 的 onOpenTimeline/onOpenPace),選行程後
+  // 留在使用者原本所在的畫面即可,不需要強制帶去別的內容模式。
   const selectTrip = (t: Trip) => {
     setActiveTrip(t)
     setTripsDrawerOpen(false)
-    if (lastContentMode) {
-      navigate(`/app/${lastContentMode}`)
-      setDrawerOpen(true)
-    } else {
-      setDrawerOpen(false)
-    }
   }
 
   // useTripsState 提升到這裡頂層常駐呼叫(不只在抽屜開啟時才掛載)——
@@ -172,63 +164,22 @@ export function PhoneContent(props: ContentProps) {
   // PaceRouteMap 的 onEntrySaved 呼叫。
   const [_savedEntry, setSavedEntry] = useState<{ id: string; lat: number; lng: number } | null>(null)
 
-  // 時間軸與對話(ChatScreen)顯示位置對調:'timeline' 分頁時,時間軸改到
-  // 主顯示區滿版顯示,對話改顯示在抽屜欄裡(跟配速表分頁的「側欄放清單、
-  // 主區放地圖」相反過來)。ChatScreen 只在這裡掛載「一次」(下方
-  // chatElement),不會因為 drawerMode 切換而重新掛載/重新連線 WebSocket
-  // ——用 React Portal 把它的畫面投影到目前該出現的容器(主顯示區或抽屜欄),
-  // 兩個容器都只是空的 DOM 節點,實際內容(元件實例、state、WS 連線)全程
-  // 只存在這一份。mainChatSlotNode/timelineSlotNode 用 state(而非 ref)是
-  // 因為節點掛載的時機在 effect 之後,需要能觸發重新渲染才能讓 portal
-  // 抓到剛掛載好的節點。
+  // ChatScreen 只在這裡掛載「一次」(下方 chatElement),不會因為
+  // drawerMode 切換而重新掛載/重新連線 WebSocket——用 React Portal 把它的
+  // 畫面投影到主顯示區的容器。時間軸原本是另一個投影目標(timelineSlotNode,
+  // 對話與時間軸顯示位置對調),已隨「時間軸不用獨立路由」(改成規劃地圖
+  // 專屬的 bottom sheet,見 timeline/PhoneTimelineDrawer.tsx)拿掉——時間軸
+  // sheet 只顯示 timelineMirror 唯讀清單,不含 ChatScreen 的對話輸入列,
+  // 不需要再投影對話畫面進去。mainChatSlotNode 用 state(而非 ref)是因為
+  // 節點掛載的時機在 effect 之後,需要能觸發重新渲染才能讓 portal 抓到剛
+  // 掛載好的節點。
   const [mainChatSlotNode, setMainChatSlotNode] = useState<HTMLDivElement | null>(null)
-  // timelineSlotNode 的宿主容器原本是 PhoneNavDrawer 的 .body,已隨精簡版
-  // 抽屜拿掉;下一步會改成掛在 PhoneFloatCard(時間軸那張)內部,
-  // setTimelineSlotNode 暫時沒有呼叫端,底線前綴避免 noUnusedLocals 報錯,
-  // timelineSlotNode 本身仍被下方 chatPortalTarget 讀取。
-  const [timelineSlotNode, _setTimelineSlotNode] = useState<HTMLDivElement | null>(null)
   // chatParkingNode:一律存在、不可見的備援投影目標——瀏覽「行程列表」
-  // 分頁選新行程期間(見下方 effectiveMainMode 的說明),主顯示區跟抽屜欄
-  // 可能同時都沒有 chatElement 該投影的容器,這時投進這裡「暫放」,避免
-  // createPortal 因為找不到容器而讓 chatElement 整個從輸出樹消失(等同
-  // 解除掛載,會導致 WebSocket 重新連線)。
+  // 分頁選新行程期間(見下方 effectiveMainMode 的說明),主顯示區可能還
+  // 沒有 chatElement 該投影的容器,這時投進這裡「暫放」,避免 createPortal
+  // 因為找不到容器而讓 chatElement 整個從輸出樹消失(等同解除掛載,會導致
+  // WebSocket 重新連線)。
   const [chatParkingNode, setChatParkingNode] = useState<HTMLDivElement | null>(null)
-
-  // 主顯示區右滑開啟抽屜欄:只在觸控起點落在螢幕左邊緣一小段範圍內
-  // (EDGE_ZONE_PX)才開始追蹤,不是整個主顯示區域都能滑——主顯示區裡有
-  // 地圖(PaceRouteMap 需要自己的平移/縮放手勢)、訊息列表(ChatScreen 需要
-  // 垂直捲動)等本來就有手勢需求的內容,若整片區域都能觸發開抽屜,會跟這些
-  // 既有互動打架。只偵測「是否滑過門檻」就直接開啟,不做即時跟手的拖曳
-  // 位移(那需要把這裡的手勢狀態跟 PhoneNavDrawer.tsx 自己的關閉拖曳狀態
-  // 合併管理,複雜度不成比例)——開啟當下靠 PhoneNavDrawer 面板本身的
-  // CSS transition 播放滑入動畫,體感依然順暢。
-  const EDGE_ZONE_PX = 24
-  const SWIPE_OPEN_THRESHOLD_PX = 60
-  const edgeSwipeStartRef = useRef<{ x: number; y: number } | null>(null)
-  const onMainTouchStart = (e: ReactTouchEvent) => {
-    const touch = e.touches[0]
-    edgeSwipeStartRef.current = touch.clientX <= EDGE_ZONE_PX ? { x: touch.clientX, y: touch.clientY } : null
-  }
-  const onMainTouchMove = (e: ReactTouchEvent) => {
-    const start = edgeSwipeStartRef.current
-    if (!start) return
-    const touch = e.touches[0]
-    const dx = touch.clientX - start.x
-    const dy = touch.clientY - start.y
-    // 垂直位移大於水平位移時判定使用者其實是想捲動(訊息列表/檢查站清單
-    // 等),放棄這次手勢,交還給底下元件本來的捲動行為。
-    if (Math.abs(dy) > Math.abs(dx)) {
-      edgeSwipeStartRef.current = null
-      return
-    }
-    if (dx >= SWIPE_OPEN_THRESHOLD_PX) {
-      setDrawerOpen(true)
-      edgeSwipeStartRef.current = null
-    }
-  }
-  const onMainTouchEnd = () => {
-    edgeSwipeStartRef.current = null
-  }
 
   if (props.isGuest) {
     return (
@@ -247,16 +198,31 @@ export function PhoneContent(props: ContentProps) {
   // 只會在使用者手動打 /app/trips 網址時出現;這裡沿用 lastContentMode
   // (若有)取代它,維持原本的既有行為(不會因為 drawerMode 落在 'trips'
   // 就閃一下換成空白畫面又換回來),不強行拿掉這條邏輯。
+  // 'timeline' 併入 'geo-outline'——時間軸不再是獨立的主畫面模式(見上方
+  // mainChatSlotNode 的說明),手動打 /app/timeline 網址(或舊書籤)時退回
+  // 規劃地圖,不再有專屬渲染分支;真正開啟時間軸內容改用下方
+  // timelineDrawerOpen 這個獨立 state(見 PhoneTimelineDrawer 渲染處)。
   const effectiveMainMode: DrawerMode =
-    drawerMode === 'trips' && lastContentMode ? lastContentMode : drawerMode
+    drawerMode === 'trips' && lastContentMode
+      ? lastContentMode
+      : drawerMode === 'timeline'
+        ? 'geo-outline'
+        : drawerMode
   // bottomTabs/sideTools:底部常駐列(PhoneTabBar.tsx)/右側小圖示群組
   // (PhoneSideTools.tsx)各自的項目清單,依 feature flag 組出——理由同
   // 原本 PhoneNavDrawer.tsx 的 items 陣列(現已拆分)。目前階段兩者都還是
   // 呼叫既有的 setDrawerMode/onOpenTrips,行為對齊改版前,只是按鈕位置
   // 換了容器,尚未接上底部列常駐後「再點同一分頁 no-op」與浮動卡片的
   // 後續調整。
-  const bottomTabs: { mode: DrawerMode; icon: typeof Timeline; title: string; disabled?: boolean }[] = [
-    ...(TIMELINE_ENABLED ? [{ mode: 'timeline' as DrawerMode, icon: Timeline, title: '時間軸', disabled: !activeTrip }] : []),
+  // disabled 不再依 activeTrip 鎖死「時間軸」分頁——使用者要求底部三顆
+  // 分頁都要可以點擊,未選行程時點進時間軸由畫面本身顯示空狀態引導選
+  // 行程(見下方 chatElement 的 !activeTrip 分支),不在按鈕層級就整個
+  // 灰掉不能點。
+  // bottomTabs:不再含「時間軸」——使用者要求「時間軸放左側」,改成規劃
+  // 地圖(GeoOutlinePhoneView)專屬的 onOpenTimeline prop(見下方該元件
+  // 呼叫處),不再是跨畫面常駐的底部列項目;其他主畫面(配速表/對話)
+  // 因此不再有直接切到時間軸的入口,已與使用者確認可接受。
+  const bottomTabs: { mode: DrawerMode; icon: typeof Timeline; title: string }[] = [
     ...(GEO_OUTLINE_ENABLED ? [{ mode: 'geo-outline' as DrawerMode, icon: Layers, title: '規劃' }] : []),
   ]
   const sideTools: { mode: DrawerMode; icon: typeof Route; title: string }[] = [
@@ -267,67 +233,52 @@ export function PhoneContent(props: ContentProps) {
   ]
   // chatElement:ChatScreen 的唯一掛載點,固定用同一個 JSX 呼叫(不因
   // drawerMode 改變而換成不同的條件式),只透過下方 createPortal 決定它的
-  // 畫面實際投影到哪個容器——這樣切換 'timeline' 分頁前後,React 對這個
-  // 元件的認定都是「同一個 portal 底下的同一個 child」,不會判定成解除掛載
-  // 又重新掛載一個新的 ChatScreen。
+  // 畫面實際投影到哪個容器——mobileHeader 固定 'main'(時間軸不再是另一個
+  // 投影目標,見上方 mainChatSlotNode 的說明,ChatScreen 永遠顯示主畫面
+  // header)。
   const chatElement = activeTrip && (
     <ChatScreen
       cfg={cfg}
       trip={activeTrip}
       user={props.user}
       onBack={() => setActiveTrip(null)}
-      onOpenDrawer={() => setDrawerOpen(true)}
-      mobileHeader={effectiveMainMode === 'timeline' ? 'drawer' : 'main'}
+      mobileHeader="main"
       onTimelineData={onTimelineData}
     />
   )
-  // chatPortalTarget:對話實際投影到哪個容器,見 effectiveMainMode 的理由。
-  // chatParkingNode 是一個一律存在、只是不可見的備援掛載點——沒有它,轉場
-  // 瞬間 chatElement 可能因為 createPortal 找不到容器而整個從輸出樹消失,
-  // 等同解除掛載,WebSocket 重新連線。
-  const chatPortalTarget =
-    effectiveMainMode === 'timeline'
-      ? (timelineSlotNode ?? chatParkingNode)
-      : (mainChatSlotNode ?? chatParkingNode)
+  // chatPortalTarget:chatParkingNode 是一個一律存在、只是不可見的備援
+  // 掛載點——沒有它,轉場瞬間 chatElement 可能因為 createPortal 找不到
+  // 容器而整個從輸出樹消失,等同解除掛載,WebSocket 重新連線。
+  const chatPortalTarget = mainChatSlotNode ?? chatParkingNode
 
   return (
     <>
-      {/* 主顯示區容器:承接左邊緣右滑開啟抽屜欄的手勢(見上方
-          onMainTouchStart 等的說明),包住主顯示內容共用同一個手勢偵測
-          範圍。flex 屬性延續原本 .web-app 直接排列這些內容時的版面
-          (撐滿剩餘高度、內部再各自 flex column 排 navbar/內容/輸入列)。 */}
-      <div
-        className={styles.mainArea}
-        onTouchStart={onMainTouchStart}
-        onTouchMove={onMainTouchMove}
-        onTouchEnd={onMainTouchEnd}
-      >
+      {/* 主顯示區容器:flex 屬性延續原本 .web-app 直接排列這些內容時的
+          版面(撐滿剩餘高度、內部再各自 flex column 排 navbar/內容/
+          輸入列)。 */}
+      <div className={styles.mainArea}>
         {effectiveMainMode === 'geo-outline' ? (
-          // 規劃地圖分頁(第二階段:唯讀瀏覽 + 候選籃,見
-          // GeoOutlinePhoneView.tsx)——不渲染 MainNavBar,搜尋框/使用者
-          // 頭像/開抽屜按鈕/候選籃按鈕改由 GeoOutlinePhoneView 自己疊在
-          // 地圖上方(理由見該檔案開頭說明:使用者要求的版位跟
-          // MainNavBar 既有佈局重疊)。activeTrip 供候選籃「加入
-          // {tripName}」按鈕文字使用。
+          // 規劃地圖分頁:不渲染 MainNavBar,搜尋框/使用者頭像/候選籃
+          // 按鈕改由 GeoOutlinePhoneView 自己疊在地圖上方。activeTrip
+          // 供候選籃「加入 {tripName}」按鈕文字使用。
           <GeoOutlinePhoneView
             cfg={cfg}
             tripID={activeTrip?.id ?? null}
             activeTrip={activeTrip}
             user={props.user}
-            onOpenDrawer={() => setDrawerOpen(true)}
             onOpenSettings={() => setInSettings(true)}
+            onOpenTimeline={TIMELINE_ENABLED ? () => setTimelineDrawerOpen(true) : undefined}
           />
         ) : effectiveMainMode === 'pace' ? (
           // 配速表分頁:主顯示區改成地圖(對齊桌面版 .desktop-main 在
-          // panelMode === 'pace' 時顯示 PaceRouteMap 的邏輯),檢查站清單留在
-          // 抽屜欄裡(見下方 PhoneNavDrawer 的 mode === 'pace' 分支)。標題
-          // 顯示目前行程名稱(不是「配速表」這個畫面名稱本身,配速表已經是
+          // panelMode === 'pace' 時顯示 PaceRouteMap 的邏輯)。標題顯示
+          // 目前行程名稱(不是「配速表」這個畫面名稱本身,配速表已經是
           // 這個畫面唯一的內容,不需要再重複標示)。
           <>
             <MainNavBar
-              onOpenDrawer={() => setDrawerOpen(true)}
               mode={effectiveMainMode}
               onSelectMode={setDrawerMode}
+              onOpenTimeline={() => setTimelineDrawerOpen(true)}
               activeTrip={activeTrip}
               title={activeTrip?.name ?? 'Tripace'}
             />
@@ -338,34 +289,19 @@ export function PhoneContent(props: ContentProps) {
               onEntrySaved={setSavedEntry}
             />
           </>
-        ) : effectiveMainMode === 'timeline' ? (
-          // 時間軸分頁:對調後時間軸改滿版顯示在主顯示區,對話(chatElement)
-          // 改投影進抽屜欄(見下方 PhoneNavDrawer 的 timelineSlotRef)。用
-          // effectiveMainMode(而非 drawerMode)判斷,瀏覽行程列表分頁選新
-          // 行程期間主顯示區才不會閃一下切走又切回來(見上方說明)。
-          <TimelineMainView
-            cfg={cfg}
-            activeTrip={activeTrip}
-            user={props.user}
-            timelineMirror={timelineMirror}
-            drawerMode={effectiveMainMode}
-            onSelectMode={setDrawerMode}
-            onOpenDrawer={() => setDrawerOpen(true)}
-          />
         ) : activeTrip ? (
-          // 對話顯示在主顯示區:navbar 統一由這裡渲染(左上角開抽屜按鈕、
-          // 時間軸/路徑切換、標題、ChatScreen 自己 navbar 右側按鈕的投影
-          // 目標),ChatScreen 本身不再畫這段(見 ChatScreen.tsx 的
-          // mobileHeader==='main')。下方 .chatSlot 是內容區(訊息列表/
-          // 輸入列)的 portal 投影目標,見上方 chatElement/chatPortalTarget
-          // 的說明。這裡的 mode 傳 'trips'(既非 timeline 也非
-          // pace)——對話狀態本身不對應任何一顆時間軸/路徑圖示,兩顆都該
-          // 顯示未選中。
+          // 對話顯示在主顯示區:navbar 統一由這裡渲染(時間軸/路徑切換、
+          // 標題、ChatScreen 自己 navbar 右側按鈕的投影目標),ChatScreen
+          // 本身不再畫這段(見 ChatScreen.tsx 的 mobileHeader==='main')。
+          // 下方 .chatSlot 是內容區(訊息列表/輸入列)的 portal 投影目標,
+          // 見上方 chatElement/chatPortalTarget 的說明。這裡的 mode 傳
+          // 'trips'(既非 timeline 也非 pace)——對話狀態本身不對應任何
+          // 一顆時間軸/路徑圖示,兩顆都該顯示未選中。
           <>
             <MainNavBar
-              onOpenDrawer={() => setDrawerOpen(true)}
               mode="trips"
               onSelectMode={setDrawerMode}
+              onOpenTimeline={() => setTimelineDrawerOpen(true)}
               activeTrip={activeTrip}
               title={activeTrip.name}
             />
@@ -373,14 +309,15 @@ export function PhoneContent(props: ContentProps) {
           </>
         ) : (
           <PhoneEmptyState
-            onOpenDrawer={() => setTripsDrawerOpen(true)}
+            onOpenTrips={() => setTripsDrawerOpen(true)}
             onSelectMode={setDrawerMode}
+            onOpenTimeline={() => setTimelineDrawerOpen(true)}
           />
         )}
         {/* PhoneSideTools:右側下方路徑+demo-* 小圖示,跨所有主畫面模式
             共用(不是規劃地圖專屬),見該元件開頭說明。 */}
         <PhoneSideTools tools={sideTools} onSelect={setDrawerMode} />
-        {/* PhoneTabBar:底部常駐導覽列(行程/時間軸/規劃),取代原本要開
+        {/* PhoneTabBar:底部常駐導覽列(行程/規劃),取代原本要開
             PhoneNavDrawer 抽屜才看得到的分頁列,見該元件開頭說明。 */}
         <PhoneTabBar
           tabs={bottomTabs}
@@ -390,44 +327,53 @@ export function PhoneContent(props: ContentProps) {
           onOpenTrips={onOpenTrips}
           onSelectMode={setDrawerMode}
         />
+        {/* 行程列表獨立抽屜,由底部常駐列的「行程」按鈕開關(onOpenTrips)。
+            onManage 對齊桌面版 DesktopTripList.tsx,開啟合併後的
+            TripManageModal(分享連結/成員/開啟時自動進入),見下方渲染。
+            渲染在 .mainArea 內部(跟 PhoneTabBar 同一層,而非它的
+            sibling)——PhoneTripsDrawer 的 .panel/.backdrop 用
+            position: absolute 定位到「貼齊 PhoneTabBar 上緣」(bottom:
+            calc(52px + safe-area)),定位基準要跟 PhoneTabBar 同一個
+            position: relative 祖先(.mainArea 本身),放在外面會找到
+            錯的祖先容器計算高度,導致視覺上蓋住 PhoneTabBar(使用者
+            回報「功能列被遮住了」的根因)。 */}
+        <PhoneTripsDrawer
+          open={tripsDrawerOpen}
+          trips={trips}
+          err={tripsErr}
+          loading={tripsLoading}
+          creating={creating}
+          setCreating={setCreating}
+          newName={newName}
+          setNewName={setNewName}
+          submitCreate={submitCreate}
+          activeTripID={activeTrip?.id ?? null}
+          onSelectTrip={selectTrip}
+          onManage={setManageTrip}
+          onClose={() => setTripsDrawerOpen(false)}
+        />
+        {/* 時間軸 bottom sheet,由規劃地圖左下角「時間軸」按鈕開關
+            (timelineDrawerOpen,見上方說明)——同樣渲染在 .mainArea 內部、
+            跟 PhoneTabBar 同一層,理由同上方 PhoneTripsDrawer 的說明
+            (定位基準要一致,才不會蓋住底部功能列)。timelineMirror 是
+            ChatScreen 透過 onTimelineData 鏡像過來的資料,不論目前主畫面
+            顯示什麼都持續更新(mainChatSlotNode 是 ChatScreen 唯一的投影
+            目標,見上方說明)。 */}
+        <PhoneTimelineDrawer
+          open={timelineDrawerOpen}
+          onClose={() => setTimelineDrawerOpen(false)}
+          tripName={activeTrip?.name ?? '時間軸'}
+          timelineMirror={timelineMirror}
+          editCfg={activeTrip && activeTrip.ownerID === props.user.id ? cfg : undefined}
+        />
       </div>
       {/* chatParking:一律掛載、不可見的備援投影目標,見上方 chatParkingNode
           的說明。 */}
       <div ref={setChatParkingNode} style={{ display: 'none' }} />
       {chatElement && chatPortalTarget && createPortal(chatElement, chatPortalTarget)}
-      <PhoneNavDrawer
-        open={drawerOpen}
-        cfg={cfg}
-        activeTrip={activeTrip}
-        user={props.user}
-        onOpenSettings={() => setInSettings(true)}
-        onOpenShare={() => setInShare(true)}
-        onClose={() => setDrawerOpen(false)}
-      />
-      {/* 行程列表獨立抽屜:疊在 PhoneNavDrawer 之上(見
-          PhoneTripsDrawer.module.css 的 z-index),由上方分頁列的「行程」
-          觸發鈕開關(onOpenTrips),不是 PhoneNavDrawer 自己 mode 的一部分
-          ——見檔案開頭的說明。 */}
-      <PhoneTripsDrawer
-        open={tripsDrawerOpen}
-        trips={trips}
-        err={tripsErr}
-        loading={tripsLoading}
-        creating={creating}
-        setCreating={setCreating}
-        newName={newName}
-        setNewName={setNewName}
-        submitCreate={submitCreate}
-        activeTripID={activeTrip?.id ?? null}
-        onSelectTrip={selectTrip}
-        onClose={() => setTripsDrawerOpen(false)}
-      />
-      {/* 設定頁:一律掛載,只切換 transform(translateY)——理由同抽屜欄的
-          open prop 設計(見 PhoneNavDrawer.tsx 開頭說明),唯有元件全程留在
+      {/* 設定頁:一律掛載,只切換 transform(translateY)——唯有元件全程留在
           DOM 上,CSS transition 才能在開/關切換的當下播放滑入/滑出動畫。
-          從底部滑入(對齊使用者要求的「設定由下方往上滑出」),關閉時滑回
-          底部(「關閉由上往下滑」——即這個面板本身往下滑回螢幕外,不是另一個
-          方向的動畫)。 */}
+          從底部滑入,關閉時滑回底部。 */}
       <div
         className={styles.settingsPanel}
         style={{ transform: inSettings ? 'translateY(0)' : 'translateY(100%)' }}
@@ -442,58 +388,62 @@ export function PhoneContent(props: ContentProps) {
           onBack={() => setInSettings(false)}
         />
       </div>
-      {/* 分享面板:一律掛載,只切換 transform(translateY)——同一套「從底部
-          滿版滑入/滑出」模式,理由同上方 .settingsPanel 的說明。只在
-          activeTrip 存在時渲染 ShareModal(分享操作的對象是目前選取的
-          行程,見 PhoneNavDrawer.tsx 分享按鈕只在 activeTrip 存在時才
-          顯示的邏輯,這裡對稱處理)。 */}
-      {activeTrip && (
-        <div
-          className={styles.sharePanel}
-          style={{ transform: inShare ? 'translateY(0)' : 'translateY(100%)' }}
-        >
-          <ShareModal
-            cfg={cfg}
-            trip={activeTrip}
-            isOwner={activeTrip.ownerID === props.user.id}
-            onClose={() => setInShare(false)}
-          />
+      {/* manageTrip:行程管理彈窗,對齊桌面版 DesktopLayout.tsx 的同名
+          渲染邏輯——用 base-ui.css 既有的 .rp-modal*(置中卡片彈窗骨架)
+          包住,TripManageModal 本身用 .rp-modal-head/.rp-modal-body
+          渲染內容(見該檔案的說明)。分享/成員/開啟時自動進入原本散落在
+          PhoneNavDrawer 抽屜(已隨底部常駐導覽列拿掉),現在統一收到這裡,
+          跟桌面版同一套心智模型。 */}
+      {manageTrip && (
+        <div className="rp-modal-backdrop" onClick={() => setManageTrip(null)}>
+          <div className="rp-modal" onClick={(e) => e.stopPropagation()}>
+            <TripManageModal
+              cfg={cfg}
+              trip={manageTrip}
+              isOwner={manageTrip.ownerID === props.user.id}
+              onClose={() => setManageTrip(null)}
+            />
+          </div>
         </div>
       )}
     </>
   )
 }
 
-// MainNavBar:主顯示區統一的上方列,四種狀態(配速表/時間軸/對話/空狀態)
-// 共用同一份——左上角開抽屜按鈕,中間是時間軸/路徑這兩顆內容分頁的切換
-// 圖示(原本在 PhoneNavDrawer 抽屜欄的分頁列,使用者要求搬到主顯示區上方
-// 列,不必先開抽屜才能切換),標題(對話顯示行程名稱,其餘顯示畫面名稱)。
-// 分享/成員/使用者頭像已經搬到 PhoneNavDrawer 抽屜欄分頁列右上角(永遠
-// 顯示,不受這裡切換分頁影響,見該檔案的說明),這裡右側只留一個等寬的
-// 空白佔位,讓標題維持視覺置中,不因為左右不對稱而偏移。
+// MainNavBar:主顯示區統一的上方列,三種狀態(配速表/對話/空狀態)共用
+// 同一份——中間是時間軸/路徑這兩顆入口圖示,時間軸點下去開啟
+// timeline/PhoneTimelineDrawer.tsx 的 bottom sheet(onOpenTimeline,見下方
+// 說明),路徑點下去仍是 onSelectMode('pace')切換主畫面(路徑還是獨立的
+// drawerMode)。標題(對話顯示行程名稱,其餘顯示畫面名稱)。左側不再有
+// 開抽屜按鈕(分頁列已改為底部常駐 PhoneTabBar.tsx,行程列表也是底部列
+// 「行程」按鈕直接開,不需要再從這裡多一層入口),改留一個等寬空白佔位
+// 跟右側對稱,讓標題維持視覺置中。
 function MainNavBar({
-  onOpenDrawer,
   mode,
   onSelectMode,
+  onOpenTimeline,
   activeTrip,
   title,
 }: {
-  onOpenDrawer: () => void
   mode: DrawerMode
   onSelectMode: (mode: DrawerMode) => void
+  // onOpenTimeline:時間軸圖示觸發,開啟 timeline/PhoneTimelineDrawer.tsx
+  // 的 bottom sheet——不再透過 onSelectMode('timeline')/navigate(時間軸
+  // 已不是獨立的 drawerMode 主畫面模式,見 PhoneContent 上方 effectiveMainMode
+  // 的說明),改由呼叫端(PhoneContent.tsx)直接傳入
+  // () => setTimelineDrawerOpen(true)。
+  onOpenTimeline: () => void
   activeTrip: Trip | null
   title: string
 }) {
   return (
     <div className="navbar">
-      <button className="btn icon-btn" onClick={onOpenDrawer} title="行程列表">
-        <AlignLeft size={20} strokeWidth={1.8} />
-      </button>
+      <span style={{ width: 36 }} />
       <div style={{ display: 'flex', gap: 2 }}>
         <button
           type="button"
-          className={mode === 'timeline' ? 'btn icon-btn active' : 'btn icon-btn'}
-          onClick={() => onSelectMode('timeline')}
+          className="btn icon-btn"
+          onClick={onOpenTimeline}
           disabled={!activeTrip}
           title={activeTrip ? '時間軸' : '請先選擇一個行程'}
         >
@@ -514,96 +464,34 @@ function MainNavBar({
   )
 }
 
-// PhoneEmptyState:抽屜關閉且尚未選擇任何行程時,主要內容區顯示的提示畫面
-// ——對應桌面版 DesktopLayout.tsx 的 .desktop-empty-state「選擇一個行程
-// 開始」。
+// PhoneEmptyState:尚未選擇任何行程時,主要內容區顯示的提示畫面——對應
+// 桌面版 DesktopLayout.tsx 的 .desktop-empty-state「選擇一個行程開始」。
 function PhoneEmptyState({
-  onOpenDrawer,
+  onOpenTrips,
   onSelectMode,
+  onOpenTimeline,
 }: {
-  onOpenDrawer: () => void
+  onOpenTrips: () => void
   onSelectMode: (mode: DrawerMode) => void
+  onOpenTimeline: () => void
 }) {
   return (
     <>
       <MainNavBar
-        onOpenDrawer={onOpenDrawer}
         mode="trips"
         onSelectMode={onSelectMode}
+        onOpenTimeline={onOpenTimeline}
         activeTrip={null}
         title="Tripace"
       />
       <div className="screen-body">
-        <div className="empty">選擇一個行程開始</div>
+        <div className="empty">
+          <button type="button" className="btn-primary" onClick={onOpenTrips}>
+            選擇一個行程開始
+          </button>
+        </div>
       </div>
     </>
   )
 }
 
-// TimelineMainView:時間軸滿版顯示在主顯示區的內容(對調後對話改進抽屜欄,
-// 見 PhoneContent 的說明)。對齊桌面版 DesktopContent 的
-// panelMode === 'timeline' 分支(同樣的兩層空狀態判斷、cfg 依 owner 身分
-// 決定是否可編輯)——原本是抽屜欄自己的分頁內容(PhoneNavDrawer.tsx 的
-// TimelineTabContent),對調後搬來這裡,改用跟其他主顯示畫面共用的
-// MainNavBar(左上角展開抽屜欄按鈕+時間軸/路徑切換)。todayRef/捲到今天的
-// 邏輯搬自原本 ChatScreen.tsx 的右側時間軸抽屜(該機制已移除)。
-function TimelineMainView({
-  cfg,
-  activeTrip,
-  user,
-  timelineMirror,
-  drawerMode,
-  onSelectMode,
-  onOpenDrawer,
-}: {
-  cfg: ClientConfig
-  activeTrip: Trip | null
-  user: User
-  timelineMirror: DesktopTimelineMirror
-  drawerMode: DrawerMode
-  onSelectMode: (mode: DrawerMode) => void
-  onOpenDrawer: () => void
-}) {
-  const todayRef = useRef<HTMLDivElement>(null as unknown as HTMLDivElement)
-  const bodyRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (timelineMirror.entries.length > 0 && todayRef.current && bodyRef.current) {
-      const el = todayRef.current
-      const body = bodyRef.current
-      body.scrollTo({ top: el.offsetTop - 60, behavior: 'instant' })
-    }
-  }, [timelineMirror.entries])
-
-  return (
-    <>
-      <MainNavBar
-        onOpenDrawer={onOpenDrawer}
-        mode={drawerMode}
-        onSelectMode={onSelectMode}
-        activeTrip={activeTrip}
-        title={activeTrip?.name ?? '時間軸'}
-      />
-      {!activeTrip ? (
-        <div className="screen-body">
-          <div className="empty">選擇一個行程後顯示時間軸。</div>
-        </div>
-      ) : timelineMirror.entries.length === 0 ? (
-        <div className="screen-body">
-          <div className="empty">尚無行程內容。</div>
-        </div>
-      ) : (
-        <div className="screen-body" ref={bodyRef}>
-          <MultiTrackTimeline
-            entries={timelineMirror.entries}
-            todayRef={todayRef}
-            updatingIDs={timelineMirror.updatingEntryIDs}
-            taskPlaceholders={timelineMirror.taskPlaceholders}
-            cfg={activeTrip.ownerID === user.id ? cfg : undefined}
-            onEntryUpdated={timelineMirror.refetchEntries}
-          />
-        </div>
-      )}
-    </>
-  )
-}

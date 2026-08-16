@@ -8,16 +8,10 @@ import styles from './GeoOutlinePhoneListDrawer.module.css'
 
 // GeoOutlinePhoneListDrawer:手機版「飯店/推薦地點」清單——第三階段新增。
 // 對齊桌面版 GeoHotelSidebar.tsx 的分頁概念(Tab = 'hotels' | 'places'),
-// 但這裡是「從左側滑入」的抽屜,不是常駐側欄——手機螢幕沒有桌面版那種
-// 固定寬度側欄的空間,同候選籃(GeoOutlinePhoneCandidateDrawer.tsx)的
-// 判斷,滑入抽屜能佔滿畫面高度容納完整清單。選左側滑入(不是右側)是因為
-// 候選籃已經佔用右側滑入語意(見 GeoOutlinePhoneCandidateDrawer.tsx 的
-// 說明:右上角候選籃圖示 → 右側滑入),這裡改成左上角新增的清單圖示 →
-// 左側滑入,跟 PhoneNavDrawer.tsx(左側選單)共用同一個方向,但這個抽屜
-// 疊在 PhoneNavDrawer 之上時兩者不會同時開啟(各自獨立的開關 state,使用
-// 情境也不重疊:PhoneNavDrawer 是切換主畫面模式,這裡是規劃地圖內部的
-// 清單瀏覽),手勢寫法完全比照 PhoneNavDrawer.tsx 的左側抽屜模式(拖曳
-// 關閉方向 delta 為負)。
+// 由下往上彈出(bottom sheet)——使用者要求「地點清單跟旅程清單一樣從
+// 下方彈出」,視覺語言與拖曳關閉手勢對齊 trip/PhoneTripsDrawer.tsx(同
+// 一套 bottom sheet 模式:垂直拖曳關閉、貼齊底部常駐列上緣、上緣圓角、
+// 拖曳把手)。
 //
 // 純邏輯全部複用既有模組,不重新定義:geoItemKey/Tab 來自
 // GeoHotelSidebar.tsx(與桌面版共用同一套識別鍵/分頁型別),
@@ -34,7 +28,7 @@ import styles from './GeoOutlinePhoneListDrawer.module.css'
 // 座標往上回報移動地圖、同步 selectedKey 高亮對應 marker,並開啟資訊卡
 // (呼叫端 GeoOutlinePhoneView.tsx 複用既有的 GeoOutlinePhoneInfoSheet,不
 // 在這個抽屜內部重複刻一份資訊卡 UI)。
-const DRAWER_WIDTH_PERCENT = 86
+const SHEET_MAX_HEIGHT_VH = 70
 
 function ItemAddButton({
   cfg,
@@ -174,30 +168,30 @@ export function GeoOutlinePhoneListDrawer({
   onCandidateCreated: () => void
 }) {
   const [dragOffset, setDragOffset] = useState(0)
-  const startXRef = useRef<number | null>(null)
+  const startYRef = useRef<number | null>(null)
   const draggingRef = useRef(false)
 
-  // 拖曳關閉手勢:左側滑入,比照 PhoneNavDrawer.tsx——開啟時只能往左拖
-  // (關閉方向,delta 為負)。
+  // 拖曳關閉手勢:垂直方向,比照 trip/PhoneTripsDrawer.tsx——開啟時只能
+  // 往下拖(關閉方向,delta 為正)。
   function onTouchStart(e: ReactTouchEvent) {
-    startXRef.current = e.touches[0].clientX
+    startYRef.current = e.touches[0].clientY
     draggingRef.current = true
   }
   function onTouchMove(e: ReactTouchEvent) {
-    if (!draggingRef.current || startXRef.current === null) return
-    const delta = Math.min(0, e.touches[0].clientX - startXRef.current)
+    if (!draggingRef.current || startYRef.current === null) return
+    const delta = Math.max(0, e.touches[0].clientY - startYRef.current)
     setDragOffset(delta)
   }
   function onTouchEnd() {
     if (!draggingRef.current) return
     draggingRef.current = false
     const threshold = 60
-    if (dragOffset < -threshold) onClose()
+    if (dragOffset > threshold) onClose()
     setDragOffset(0)
-    startXRef.current = null
+    startYRef.current = null
   }
 
-  const translate = open ? `${dragOffset}px` : `calc(-100% + ${dragOffset}px)`
+  const translate = open ? `${dragOffset}px` : `calc(100% + ${dragOffset}px)`
   const placesLabel = placesCategory
     ? { tourist_attraction: '景點', lodging: '飯店', restaurant: '餐廳' }[placesCategory] ?? '附近推薦'
     : '附近推薦'
@@ -208,14 +202,17 @@ export function GeoOutlinePhoneListDrawer({
       <div
         className={styles.panel}
         style={{
-          width: `${DRAWER_WIDTH_PERCENT}%`,
-          transform: `translateX(${translate})`,
+          maxHeight: `${SHEET_MAX_HEIGHT_VH}vh`,
+          transform: `translateY(${translate})`,
           transition: draggingRef.current ? 'none' : 'transform 0.25s ease',
         }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
+        <div className={styles.dragHandle}>
+          <div className={styles.dragHandleBar} />
+        </div>
         <div className={styles.head}>
           <span className={styles.title}>{activeTab === 'hotels' ? '飯店' : placesLabel}</span>
           <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">

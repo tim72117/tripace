@@ -35,7 +35,7 @@ export function PhoneSideTools({
           onClick={() => onSelect(mode)}
           title={title}
         >
-          <Icon size={18} strokeWidth={1.8} />
+          <Icon size={20} strokeWidth={1.8} />
         </button>
       ))}
     </div>

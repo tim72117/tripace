@@ -6,7 +6,7 @@
    是必要的第二步:GeoOutlinePanel.module.css 的 .wrap 本身是
    flex: 1 1 auto,只有在父層是 flex 容器時才會生效撐滿——這裡不用
    position: absolute; inset: 0 是因為還要保留 position: relative 給
-   drawerBtn/avatarBtn(見下方)當定位錨點,兩者不衝突(絕對定位的子元素
+   candidateGroup(見下方)當定位錨點,兩者不衝突(絕對定位的子元素
    不受 flex 版面影響)。 */
 .wrap {
   position: relative;
@@ -14,65 +14,62 @@
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
-  /* 底部留白避免地圖被 PhoneTabBar.tsx 底部常駐列(52px 高 + safe-area)
+  /* 底部留白避免地圖被 PhoneTabBar.tsx 底部常駐列(64px 高 + safe-area)
      蓋住——PhoneTabBar 是 position: absolute 掛在 .mainArea(PhoneContent.
      module.css)上,不佔 flex 版面空間,故由地圖容器主動讓出對應高度。 */
-  padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
 }
 
-/* drawerBtn/avatarBtn:左上角開抽屜按鈕、右上角使用者頭像——取代拿掉的
-   MainNavBar(見 GeoOutlinePhoneView.tsx 的說明),疊在地圖上方,兩者
-   對稱、同一條高度基準線。z-index 高於 GeoOutlineMap 內部圖層(.citySearch
-   等 z-index:2),確保按鈕可點擊不被地圖 UI 蓋住。 */
-.drawerBtn,
+/* avatarBtn:使用者頭像——取代拿掉的 MainNavBar(見 GeoOutlinePhoneView.
+   tsx 的說明)。透過 GeoOutlineMap.tsx 的 searchRightSlot prop 真正
+   渲染在搜尋框(.citySearch)的 DOM 結構內部,是它自己的 flexbox 子
+   元素(使用者要求「頭像放到搜尋框內的最右側」)——不再用絕對定位疊加
+   猜座標(先前的做法反覆對不準,見 git 歷史),交給 .citySearch 既有的
+   display:flex; align-items:center; gap 自動對齊、自動置中,搜尋框
+   尺寸之後再怎麼調整也不需要同步改這裡的座標。尺寸跟著搜尋框內其他
+   按鈕(citySearchBtn/citySearchAiBtn)一樣是 36px,視覺一致。 */
 .avatarBtn {
-  position: absolute;
-  top: 12px;
-  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 36px;
   height: 36px;
+  padding: 0;
   border: none;
   border-radius: 50%;
-  background: rgba(245, 242, 237, 0.92);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 4px 16px rgba(61, 53, 48, 0.16);
-  color: var(--color-dark);
-  cursor: pointer;
-}
-
-.drawerBtn {
-  left: 16px;
-}
-
-.avatarBtn {
-  right: 16px;
-  padding: 0;
   background: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  box-shadow: none;
+  cursor: pointer;
+  flex: 0 0 auto;
 }
 
-/* candidateBtn:候選籃抽屜開關(第二階段新增)——疊在左上角開抽屜按鈕
-   正下方同一條垂直線上,不放右側:右側從 top:56 開始整排都是搜尋框
-   (.citySearch 現在是 left:16 right:16 的滿版寬度輸入框,見下方
-   :global() 覆寫),疊在頭像下方會直接蓋住搜尋框。數字徽章
-   （geoCandidates.length > 0 時才顯示）比照一般 App「購物車角標」慣例,
-   讓使用者一眼看出候選籃裡已經有幾項,不需要點開才知道。 */
-.candidateBtn {
+/* candidateGroup:候選籃/飯店清單抽屜開關的外層容器,疊在畫面左側下方,
+   跟 PhoneSideTools.module.css 的 .tools(右側下方 demo/路徑小圖示群組)
+   同一套定位邏輯與間距數值(bottom 貼近底部常駐列上方、垂直堆疊、
+   8px 間距)——使用者要求「候選欄、景點清單按鈕放在左下角,是跟 demo
+   的按鈕一樣、只是在左邊」,不是自己另外算一組 top 座標。 */
+.candidateGroup {
   position: absolute;
-  top: 60px;
   left: 16px;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 16px);
   z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* candidateBtn/listBtn:視覺語言跟 PhoneSideTools.module.css 的
+   .toolBtn 一致(毛玻璃圓形卡片),尺寸沿用這個檔案原本已放大過的 44px
+   (比 .toolBtn 的 36px 大一點,候選籃/清單是更常用的主要操作,維持
+   既有的放大尺寸不縮小)。數字徽章(geoCandidates.length > 0 時才顯示)
+   比照一般 App「購物車角標」慣例,讓使用者一眼看出候選籃裡已經有幾項,
+   不需要點開才知道。 */
+.candidateBtn {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border: none;
   border-radius: 50%;
   background: rgba(245, 242, 237, 0.92);
@@ -101,20 +98,12 @@
   line-height: 1;
 }
 
-/* listBtn:飯店/推薦地點清單抽屜開關(第三階段新增)——疊在右上角頭像
-   正下方同一條垂直線上,跟左側的 candidateBtn(候選籃)左右對稱,理由
-   同 candidateBtn 的說明(避開右側原本從 top:56 開始的搜尋框,故往下
-   移到 top:60,同時把搜尋框本身往下推,見下方 :global() 覆寫)。 */
 .listBtn {
-  position: absolute;
-  top: 60px;
-  right: 16px;
-  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border: none;
   border-radius: 50%;
   background: rgba(245, 242, 237, 0.92);
@@ -125,38 +114,86 @@
   cursor: pointer;
 }
 
-/* 以下透過 :global() 覆寫 GeoOutlineMap 內建的搜尋框/類別標籤列/
-   「搜尋這個區域」按鈕版位——只在這個手機版容器的 DOM 子樹內生效,不
-   修改 GeoOutlineMap.module.css 本身,桌面版版位不受影響。三者原本分散
-   在左上/右上/置中三個角落(見 GeoOutlineMap.module.css),手機版改成
-   由上到下四排錯開,避免跟兩顆固定按鈕(drawerBtn/avatarBtn,約 36px
-   + 12px 留白 = 48px 高)、以及彼此重疊:
-   1. 搜尋框:緊接在候選籃/清單按鈕列下方、置中、留出左右間隙(使用者
-      要求「搜尋在上方」「上方置中、四周留間隙」)——第三階段新增
-      listBtn 跟 candidateBtn 共用 top:60 那一排,搜尋框往下多推一排
-      (原本 top:56 → 100)讓出空間,避免跟這兩顆圓形按鈕重疊。
-   2. 類別標籤列:搜尋框下方(使用者要求「標籤放下方」)
-   3. 搜尋這個區域按鈕:再往下錯開一排,避免跟標籤列同一行 */
-.wrap :global(.citySearch) {
-  top: 100px;
+/* 以下覆寫 GeoOutlineMap 內建的搜尋框/類別標籤列/「搜尋這個區域」按鈕
+   版位——只在這個手機版容器的 DOM 子樹內生效,不修改 GeoOutlineMap.
+   module.css 本身,桌面版版位不受影響。
+
+   選擇器用屬性子字串比對(`[class*="_citySearch_"]`),不是 `:global()`
+   類別選擇器——Vite CSS Modules 預設 generateScopedName 會把
+   `styles.citySearch` 編成 `_citySearch_<hash>_98` 這種單一 token
+   (不是獨立的 `citySearch` class),`:global(.citySearch)` 要求完整
+   token 相符,永遠比對不到,實測發現這批位移規則從未真正生效
+   (使用者回報「搜尋標籤沒有移動到搜尋匡下面」才發現)。改用屬性子字串
+   選擇器就能比對到雜湊後的 class,但要小心 `citySearch` 本身也是
+   `citySearchInput`/`citySearchBtn`/`citySearchBtnIconLoading` 等子
+   元素 class 的前綴,子字串比對会一併命中——用 `_citySearch_`(前後都
+   帶底線)取代 `citySearch`,精準只比對容器本身這個 token,不會誤中
+   前綴相同的子元素(比對 `_citySearchInput_...` 時,字串裡沒有
+   `_citySearch_` 這個連續片段,因為 hash 後綴接在 `Input` 後面,不會
+   在 `citySearch` 後面立刻出現底線)。
+
+   由上到下重新排版:
+   1. 搜尋框:最上排,頭像(avatarBtn)是搜尋框自己的 flexbox 子元素
+      (見上方 avatarBtn 說明,透過 searchRightSlot prop 真正渲染在
+      DOM 內部,不是疊加)。
+   2. 類別標籤列:第二排、置左對齊(使用者要求「搜尋標籤與搜尋欄加大
+      間距」,top:76,跟搜尋框下緣留 16px 間距,原本只有 4px)。
+   3. 候選籃/清單按鈕:移到左側下方,跟 PhoneSideTools.tsx 的右側
+      demo/路徑小圖示同一套定位邏輯(見 candidateGroup 說明),不再
+      屬於這個由上到下的排列。
+   4. 搜尋這個區域按鈕:類別標籤列下方再錯開,避免同一行擠在一起。 */
+.wrap [class*='_citySearch_'] {
+  top: 12px;
   left: 16px;
   right: 16px;
   width: auto;
+  height: 48px;
+  box-sizing: border-box;
+  padding: 6px;
+  gap: 8px;
 }
 
-.wrap :global(.citySearchError) {
-  top: 144px;
+/* citySearchInput/citySearchBtn:放大搜尋框本身的文字與按鈕(使用者
+   要求「按鈕搜尋匡放大一點」)——font-size 沿用 index.html 鎖定縮放後
+   16px 的臨界值說明(見該檔案 viewport meta 的註解),這裡本來就已經是
+   16px 沒有觸發自動放大的疑慮,單純視覺放大到更好點按。 */
+.wrap [class*='_citySearchInput_'] {
+  font-size: 16px;
+}
+
+/* [class*='_citySearchBtn_']:手機版直接隱藏搜尋圖示按鈕(使用者要求
+   「搜尋匡頭像左邊搜尋按鈕移除」)——輸入框已經改用 enterKeyHint="search"
+   (見 GeoOutlineMap.tsx),手機鍵盤本身就有搜尋/送出鍵可以觸發查詢,不
+   需要額外的圖示按鈕佔用搜尋框內部空間。不動 GeoOutlineMap.tsx 本身的
+   DOM 結構(桌面版仍要保留這顆按鈕給滑鼠點擊,沒有虛擬鍵盤可以替代)。
+   刻意用結尾底線的 token 邊界(理由同上方 citySearch/citySearchInput
+   的說明),避免子字串誤中 citySearchBtnIconLoading(查詢中的 svg 圖示
+   本身)。 */
+.wrap [class*='_citySearchBtn_'] {
+  display: none;
+}
+
+.wrap [class*='_citySearchAiBtn_'] {
+  width: 36px;
+  height: 36px;
+}
+
+.wrap [class*='_citySearchError_'] {
+  top: 68px;
   left: 16px;
   right: 16px;
 }
 
-.wrap :global(.categoryTags) {
-  top: 148px;
+/* categoryTags:跟搜尋框保留明確間距(使用者要求「搜尋標籤與搜尋欄加大
+   間距」)——搜尋框 top:12px + height:48px,下緣在 60px,這裡改成
+   top:76px,留出 16px 間距(原本只有 4px,太貼近)。 */
+.wrap [class*='_categoryTags_'] {
+  top: 76px;
   left: 16px;
   right: 16px;
   flex-wrap: wrap;
 }
 
-.wrap :global(.searchThisAreaButton) {
-  top: 192px;
+.wrap [class*='_searchThisAreaButton_'] {
+  top: 120px;
 }

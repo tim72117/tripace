@@ -1,27 +1,60 @@
-/* PhoneTripsDrawer.tsx 專屬樣式(CSS Modules)。左側滑入抽屜,疊在
-   PhoneNavDrawer 之上(z-index 高於 PhoneNavDrawer.module.css 的 30/31)——
-   backdrop/panel 的寫法直接複製 PhoneNavDrawer.module.css 的同名規則,只是
-   疊層更高;.tripList 系列規則也是原封不動從那裡搬過來(視覺不變,只是
-   現在裝在獨立抽屜裡)。 */
+/* PhoneTripsDrawer.tsx 專屬樣式(CSS Modules)。由下往上彈出的 bottom
+   sheet(使用者要求「行程由下方往上彈出」,原本是左側滑入抽屜)。 */
 
+/* backdrop:遮罩範圍到底部常駐列(PhoneTabBar.tsx)上緣為止,不蓋住它
+   ——底部列在 sheet 開啟時仍要保持可視、可點擊(使用者要求「不要遮蔽
+   到下方功能列」),bottom 值同 .panel,需要保持一致。 */
 .backdrop {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
   z-index: 32;
   background: rgba(0, 0, 0, 0.35);
 }
 
+/* panel:貼齊底部常駐列(PhoneTabBar.tsx)上緣,不是螢幕最底部(使用者
+   要求「行程彈出時從下方功能列底下彈出,不要遮蔽到下方功能列」)——
+   bottom 值等於 PhoneTabBar.module.css 的 .bar 高度(64px + safe-area),
+   兩處數值需要保持一致,PhoneTabBar 的高度公式之後若調整這裡要一併改。
+   滿版寬度,上緣圓角(bottom sheet 慣例視覺)。這裡自己不需要再額外處理
+   safe-area-inset-bottom(底部功能列已經處理過那段安全區,.panel 貼在
+   它上緣、不會延伸到安全區範圍內)。
+
+   touch-action: none——拖曳關閉手勢改成垂直方向(見 PhoneTripsDrawer.tsx
+   的 onTouchMove),不能再用 pan-y 讓瀏覽器自己接手垂直手勢,否則會跟
+   我們自己的拖曳關閉邏輯搶事件;.tripList 內部清單捲動改由
+   overflow-y: auto 處理,不依賴瀏覽器原生 touch pan。 */
 .panel {
   position: absolute;
-  top: 0;
   left: 0;
-  bottom: 0;
+  right: 0;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
   z-index: 33;
   display: flex;
   flex-direction: column;
   background: var(--ios-bg);
-  box-shadow: 2px 0 16px rgba(0, 0, 0, 0.2);
-  touch-action: pan-y;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
+  touch-action: none;
+  overflow: hidden;
+}
+
+/* dragHandle:bottom sheet 頂部的拖曳把手視覺提示,讓使用者一眼看出
+   可以往下拖關閉——一般 App bottom sheet 的慣例元素。 */
+.dragHandle {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 4px;
+}
+
+.dragHandleBar {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ios-sep);
 }
 
 .tripList {
@@ -32,12 +65,35 @@
   flex-direction: column;
   gap: 2px;
 }
+/* tripItem:改成容器 <div>(原本是單一 <button>)——理由同桌面版
+   DesktopTripList.module.css 的 .item:項目本體需要並排兩顆獨立按鈕
+   (開啟/管理),單一 button 裝不下第二顆可點區域。tripItemOpen 是原本
+   .tripItem 的按鈕部分(佔滿剩餘寬度),tripItemAction 是新增的「管理」
+   齒輪按鈕,對齊桌面版 DesktopTripList.tsx 的 onManage(見該檔案說明:
+   分享/成員/開啟時自動進入合併成 TripManageModal,入口統一收在行程
+   項目上)。 */
 .tripItem {
   width: 100%;
   display: flex;
   align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  transition: background 0.12s;
+}
+.tripItem:hover {
+  background: var(--ios-bg);
+}
+.tripItemActive {
+  background: var(--ios-sep);
+}
+.tripItemOpen {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
   gap: 10px;
-  padding: 8px;
+  padding: 4px;
   border: none;
   border-radius: 8px;
   background: none;
@@ -45,12 +101,21 @@
   text-align: left;
   font: inherit;
   color: inherit;
-  transition: background 0.12s;
 }
-.tripItem:hover {
-  background: var(--ios-bg);
+.tripItemAction {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
 }
-.tripItemActive {
+.tripItemAction:hover {
   background: var(--ios-sep);
 }
 .newTripIcon {
