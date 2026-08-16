@@ -2,6 +2,30 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.6.0 — 2026-08-16
+
+### 新增
+
+- **手機版新增「規劃地圖」畫面，分三階段完成**（`web/src/geo-planning/GeoOutlinePhoneView.tsx` 及相關檔案）：
+  - 第一階段：地圖瀏覽 + 唯讀資訊卡（`GeoOutlinePhoneInfoSheet.tsx`），複用桌面版的地圖引擎（`GeoOutlineMap.tsx`/`GeoOutlinePanel.tsx`）與資料轉換邏輯（新增 `geo-planning/geoInfoContent.ts` 供桌面/手機共用），並設為手機版進 App 後的預設起始畫面（不再自動彈出行程列表）。
+  - 第二階段：候選籃抽屜（`GeoOutlinePhoneCandidateDrawer.tsx`，右側滑入），資訊卡加回「加入候選」「排入行程某一天」互動，純邏輯複用既有的 `geo-planning/geoCandidateHelpers.ts`。
+  - 第三階段：飯店/推薦地點清單抽屜（`GeoOutlinePhoneListDrawer.tsx`，左側滑入，雙分頁），補上手機版原本缺漏的飯店/地點資料流串接。
+  - 全程未修改任何桌面版檔案的行為，僅原封不動複用其匯出的元件與純函式。
+- **手機版導覽從側滑抽屜改為底部常駐 tab bar**（新增 `web/src/PhoneTabBar.tsx`：行程/時間軸/規劃三項常駐顯示；新增 `web/src/PhoneSideTools.tsx`：路徑（配速表）與 demo-* 試做功能收成畫面右下角小圖示）：不再需要先點開抽屜才能切換分頁。`PhoneNavDrawer.tsx` 精簡為只剩分享/成員/頭像的操作抽屜。`web/index.html` 補上 `viewport-fit=cover`，讓 `env(safe-area-inset-*)` 在 iOS 上正確生效，底部導覽列與浮動卡片才能正確避開 home indicator。
+
+### 清理
+
+- **前端 `web/src/` 依功能領域重新整理目錄結構**，消除多個身兼多職的共用檔案：
+  - 新增 `pace/`、`home/`、`chat/`、`timeline/`、`recommended-places/`、`demo/`、`user/`、`trip/` 等功能子目錄，搬入對應元件（含多個歷史遺留檔名的更新，例如 `PublicPaceDemoPage.tsx`→`pace/PacePage.tsx`、`PhoneScreens.tsx`→`trip/PublicViewScreen.tsx`），並移除確認無人引用的死碼 `landing.css`。
+  - `AppCommon.tsx` 的 `useIsDesktop`/`useAppState`/`useTripsState` 三個 hook 拆到新增的 `web/src/hooks/` 目錄，各自獨立成檔案，對應測試同步搬到 `hooks/useTripsState.test.tsx`。
+  - `types.ts` 依領域拆分為 `trip/types.ts`、`user/types.ts`、`chat/types.ts`，只保留跨領域共用的 `Entry`；未使用的 `SearchAnswer` 型別移除；純 API 層格式 `APIErrorBody` 併入 `api.ts`。
+  - `DrawerMode` 型別與桌面版既有的 `PanelMode` 收斂到同一份定義（`DesktopShared.tsx`），避免兩份值域各自維護。
+  - `docs/` 底下建立 `doc-file-format` skill 規範文件命名（`audit-*`/`research-*`/`refactor-*` 三種字首），現有全大寫底線檔名文件統一改為小寫橫線，並新增 `docs/audit-security.md`、`docs/audit-functional.md` 彙整多代理掃描結果。
+
+### 文件
+
+- `docs/terminology.md` 修正對手機版導覽結構的過時描述（`PhoneNavDrawer` 不再含分頁列、`SettingsScreen`/`SettingsDialog` 已搬到 `user/`），反映本次重構後的實際檔案位置。
+
 ## v0.5.0 — 2026-08-16
 
 ### 破壞性變更
