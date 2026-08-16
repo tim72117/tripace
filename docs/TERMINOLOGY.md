@@ -19,7 +19,8 @@
 | 飯店/附近推薦清單 | 右緣，`.floating-panel-right`，`right:12px`，寬度 280px | 依分頁顯示「飯店」／附近推薦類別名（如「餐廳」） | `GeoHotelSidebar`（`web/src/geo-planning/GeoHotelSidebar.tsx`），只在觸發過查詢（點類別標籤／地標／「搜尋這個區域」）後才出現 |
 | 地點介紹卡 | 右緣，`top:64px`，避開常駐搜尋框；與下一列互斥 | 無標題橫條；關閉按鈕懸浮於卡片頂部照片右上角 | `GeoInfoPanel`（`web/src/geo-planning/GeoInfoPanel.tsx`），飯店/推薦地點/Google 原生 POI／候選籃項目共用 |
 | 景點區域介紹卡 | 右緣，`top:64px`；與上一列互斥 | 無標題橫條；關閉按鈕懸浮於卡片頂部照片右上角；「探索周邊」按鈕 | `AttractionInfoPanel`（`web/src/geo-planning/AttractionInfoPanel.tsx`） |
-| 對話小匡 | 右緣，`right:16px`，寬度 340px | 無標題橫條；未選行程時顯示空狀態提示「選擇一個行程開始」；關閉按鈕 tooltip「關閉」 | class `.chat-popover`（`DesktopLayout.tsx`），由 `chatPopoverOpen` state 控制顯示，內嵌 `ChatScreen`，由對話按鈕觸發 |
+| 對話小匡 | 右緣，`right:16px`，寬度 340px | 無標題橫條；不需先選行程即可使用，尚無訊息時顯示簡短引導「在下方輸入，開始對話。」；關閉按鈕 tooltip「關閉」 | class `.chat-popover`（`DesktopLayout.tsx`），由 `chatPopoverOpen` state 控制顯示，內嵌 `ChatScreen`（`trip` prop 未選行程時不傳），由對話按鈕觸發 |
+| 行程設定彈窗 | 置中彈窗（`.rp-modal`），由行程列表項目觸發 | 標題「行程設定 · {行程名}」；含「開啟時自動進入」開關／公開連結／成員管理三個區塊，各區塊間以留白色塊分隔 | `TripManageModal`（`web/src/trip/TripManageModal.tsx`），由 `DesktopTripList` 每筆項目的管理按鈕觸發，取代原本掛在對話小匡上的分享／成員按鈕與「設為開啟時自動進入」選單 |
 
 右緣同時有 `GeoHotelSidebar`／對話小匡、以及地點介紹卡或景點區域介紹卡時，介紹卡透過 `shiftBy: 'none' | 'hotel' | 'chat'` 往左避讓（見 `DesktopLayout.tsx` 的 `infoPanelShiftBy`；對話小匡較寬，兩者同時存在時優先避開對話小匡，不疊加偏移量）。
 

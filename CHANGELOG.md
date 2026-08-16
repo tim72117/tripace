@@ -2,6 +2,33 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.5.0 — 2026-08-16
+
+### 破壞性變更
+
+- **CLI `attraction-update` 移除 `-name` 選項，改為通用的 `-field`/`-value`**（`server/cmd/cli/main.go`、`server/internal/store/attractions.go` 的 `UpdateAttractionName`→`UpdateAttractionField`）：上一版（v0.4.5）才新增的 `-name` 選項改成 `-field name -value "新名稱"`，`-field` 目前開放 `name`、`summary` 兩個欄位（白名單機制，見 `attractionUpdatableFields`），日後新增可更新欄位只需要在白名單加一行，不必再各自新增一支 store method + API handler + CLI flag。呼叫端一律改用 `-field`/`-value`，舊的 `-name` 用法不再支援。
+- **維運端點路徑改名**：`POST /internal/maintenance/landmarks/{id}/update-photo` 改為 `POST /internal/maintenance/attractions/{id}/update-photo`，對齊同一資源底下其餘 `/internal/maintenance/attractions/*` 端點命名（這條路徑先前漏改，是唯一還留著 `landmarks` 命名的維運端點）。CLI 呼叫端（`attractionUpdatePhoto`）已同步更新，子命令名稱 `attraction-update-photo` 本身不受影響。
+
+### 新增
+
+- **景點照片改存 Google Cloud Storage**（新增 `server/internal/photostorage` 套件，`GCS_PHOTO_BUCKET` 環境變數）：景點建檔（`attraction-add`）、換圖（`attraction-update-photo`）時，不論圖片來源是使用者手動指定的連結或後端自動查詢的 Pexels 示意圖，都會下載後上傳到 GCS，資料庫欄位存我方 GCS 網址，不再直接引用外部圖床連結（避免外部連結失效或變更導致照片消失）。刪除景點（`attraction-delete`）或換圖覆蓋舊照片時，會連帶清理舊的 GCS 物件；非本 bucket 的外部連結（例如尚未遷移前既有的 Pexels 直連）安全 no-op，不受影響。GCS 客戶端初始化失敗時（例如未設定憑證）降級為不落地、僅記警示 log，不阻擋 server 啟動。
+- **桌面版對話小匡支援無行程狀態**（`ChatScreen.tsx`、`DesktopLayout.tsx`）：`trip` prop 改為選填，使用者不需要先選定/建立行程就能開啟對話小匡並開始對話；未帶 `trip` 時，所有綁定行程 ID 的資料流（歷史訊息、entries、WebSocket、批次持久化）與行程專屬功能（分享／成員／`TripMenu`）一律跳過，只保留即時對話本身可用，尚無訊息時顯示簡短通用引導文字。
+- **新增行程設定彈窗 `TripManageModal`**（`web/src/trip/TripManageModal.tsx`）：合併原本分散在對話小匡 navbar 上的分享連結（`ShareModal`）、成員管理（`MembersScreen`）、開啟時自動進入（`TripMenu` 下拉選單）三個入口，改為行程列表每筆項目的單一「行程設定」按鈕觸發同一個置中彈窗，三個功能以區塊分隔呈現。手機版仍使用原本的 `ShareModal`/`MembersScreen`/`TripMenu`，不受影響。
+- **`DesktopUserMenu` 改用 Portal 動態定位**：左下角使用者選單改用 `createPortal` 投影到 `document.body` + `position: fixed`（依觸發按鈕即時量測的座標定位），修正原本 `position: absolute` 相對 `.desktop-rail` 定位、被該容器的 `overflow: hidden`（寬度收合/展開過渡動畫用）裁切邊緣、以及展開方向計算錯誤導致選單蓋住觸發按鈕本身的問題。
+
+### 修正
+
+- **`NeedsSync` 相關 API 一致性修復**（`server/internal/api/attraction_sync.go`/`geo_outline.go`）：抽出 `resolveCoords`／`prepareSyncRun` 共用函式，消除 CLI 與 API 端重複的座標解析、同步前置檢查邏輯；`geo_outline.go` 整合原本兩處重複宣告的查詢半徑上限常數為套件層級 `maxNearbyRadiusMeters`；維運端點錯誤訊息用詞統一（「地標」→「景點」、`no_match`→`not_found` 語意修正）。
+
+### 清理
+
+- 前端全域樣式依歸屬重新拆分：原本單一巨大的 `styles.css` 拆為 `base-ui.css`（跨檔案共用基礎樣式，如 `.navbar`/`.btn`/`.row`/`.rp-modal*`）與多個元件專屬 CSS Module（`App.module.css`、`AppCommon.module.css`、`SettingsDialog.module.css`、`AskSheets.module.css`、`DesktopShared.module.css`、`DesktopLayout.module.css`、`DesktopRail.module.css`、`DesktopTripList.module.css`、`DesktopUserMenu.module.css`、`trip/TripManageModal.module.css`）；`styles-desktop.css` 依「版面骨架」（新增 `desktop-layout-shell.css`）與「單一元件專屬」（併入對應元件的 module）進一步拆分，只保留真正跨多檔案共用的部分。所有拆出的 CSS 檔案改由實際使用的元件各自 `import`，不再於 `main.tsx` 全域載入，手機版使用者不再連帶下載桌面版專屬樣式。過程中發現並修正一起 CSS 註解內 `*/` 字元序列提前結束整段區塊註解、導致後續規則（含 `:root` 變數定義）解析失敗的 bug。
+
+### 文件
+
+- `docs/TERMINOLOGY.md` 修正過時內容：對話小匡條目更新為反映無行程狀態下的通用引導文字（原文件仍描述「未選行程時顯示空狀態提示」的舊行為），新增「行程設定彈窗」條目說明 `TripManageModal` 取代原本分散的分享/成員入口。
+- `.claude/skills/tripace-cli/SKILL.md` 修正 `attraction-update` 範例改用新的 `-field`/`-value` 語法，修正已改名的 `landmarks/{id}/update-photo` 舊路徑引用，新增景點照片落地 GCS 的行為說明。
+
 ## v0.4.5 — 2026-08-15
 
 ### 新增

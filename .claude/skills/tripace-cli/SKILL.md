@@ -78,12 +78,13 @@ GOWORK=off go run ./cmd/cli attraction-cities
 # （非 GCS 的外部連結不受影響，安全 no-op）
 GOWORK=off go run ./cmd/cli attraction-delete -id lmk_xxx
 
-# 修正一筆景點區域資料的座標和/或名稱（建檔時輸入錯誤時用）；
-# -lat/-lng、-place（改查該地名座標，取第一筆候選）、-name 三者可任選
-# 一項或多項一起帶，只要至少帶了一項就會動作
+# 修正一筆景點區域資料的座標和/或單一字串欄位（建檔時輸入錯誤時用）；
+# -lat/-lng、-place（改查該地名座標，取第一筆候選）、-field/-value（兩者
+# 須一起提供；-field 目前開放 name、summary）三者可任選一項或多項一起
+# 帶，只要至少帶了一項就會動作
 GOWORK=off go run ./cmd/cli attraction-update -id lmk_xxx -lat 22.99 -lng 120.20
 GOWORK=off go run ./cmd/cli attraction-update -id lmk_xxx -place "安平古堡" -region tw
-GOWORK=off go run ./cmd/cli attraction-update -id lmk_xxx -name "新名稱"
+GOWORK=off go run ./cmd/cli attraction-update -id lmk_xxx -field name -value "新名稱"
 
 # 重新透過 Google Places 查詢一次地標圖片並回寫
 GOWORK=off go run ./cmd/cli attraction-update-photo -id lmk_xxx
@@ -107,5 +108,6 @@ GOWORK=off go run ./cmd/cli attraction-sync -direction pull -apply -allow-delete
 ## 已知限制
 
 - `reset`/`entry-delete`/`attraction-delete` 都是真的會刪除資料的操作，執行前要跟使用者確認範圍（哪個行程/哪個 entry/哪個地標），不要在不確定的情況下對正式環境資料執行。
-- `/internal/maintenance/*`（`geocode`、`attraction-*`、`landmarks/{id}/update-photo` 的底層端點）是刻意跟 `/internal/geo/*` 分開命名空間的維運專用端點，前端產品本身不會呼叫這批路徑，只有 CLI 會用到。
+- `/internal/maintenance/*`（`geocode`、`attraction-*`、`attractions/{id}/update-photo` 的底層端點）是刻意跟 `/internal/geo/*` 分開命名空間的維運專用端點，前端產品本身不會呼叫這批路徑，只有 CLI 會用到。
+- 景點照片（`attraction-add` 未帶 `-photo-url` 時的 Pexels 自動配圖、或使用者手動指定的 `-photo-url`）建檔/換圖時會下載後落地存進 GCS（`GCS_PHOTO_BUCKET` 環境變數），不直接引用外部圖床連結；`attraction-delete`／換圖時會連帶清理舊的 GCS 物件（非本 bucket 的外部連結安全 no-op）。
 - `attraction-add` 未帶 `-photo-url` 時會自動打 Pexels Search API 查一張示意圖補上（見 `server/internal/pexels`）——這不是該地點的真實照片，只是關鍵字比對到的示意圖；需要 `PEXELS_API_KEY` 環境變數，未設定時靜默略過照片查詢，不影響其餘欄位建檔。
