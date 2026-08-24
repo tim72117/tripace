@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/tim72117/tripace/internal/apigateway"
+	"github.com/tim72117/tripace/internal/pexels"
 )
 
 // defaultGateway 是這個 process 內所有 geo.Client(除非透過 NewWithGateway
@@ -155,7 +156,7 @@ const placeDetailsFieldMask = "displayName,formattedAddress,location,rating,phot
 // 目前不取;若之後需要依評分排序,再評估是否值得多付費升級 field mask。
 const nearbyFieldMask = "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType"
 
-// districtFieldMask 供 SearchDistricts 用:額外取 addressComponents,才能從
+// districtFieldMask 供 SearchCityAttractions 用:額外取 addressComponents,才能從
 // 每筆景點結果反推它屬於哪個行政區/次分區(sublocality),藉此把一批景點
 // 依所在區域分組、算出各區重心座標。rating 用來在同區內挑「最具代表性」
 // 的地點當地標圖片來源;photos 取該地點的相片參考(id),供之後組
@@ -212,9 +213,10 @@ type requestDoer interface {
 // 直接結果:併發數限制、請求間隔節流、呼叫記錄,全部收在 gateway 這一層,
 // Client 本身只負責組請求內容與解析回應。
 type Client struct {
-	apiKey  string
-	gateway requestDoer
-	cache   PhotoCache
+	apiKey       string
+	gateway      requestDoer
+	cache        PhotoCache
+	pexelsClient *pexels.Client
 }
 
 // New 建立 Client,使用整個 process 共用的預設 Gateway(見 defaultGateway
@@ -241,6 +243,28 @@ func NewWithGateway(apiKey string, gateway requestDoer) *Client {
 // 需要接上,不是每個 Client 都必須呼叫這個方法。
 func (c *Client) SetCache(cache PhotoCache) {
 	c.cache = cache
+}
+
+// SetPexelsClient 注入 Pexels 查詢用的 client(見 pexels.New)。供呼叫端
+// (api 層)在 geo.New() 之後呼叫——只有需要「照片優先用 Pexels、查無
+// 結果才 fallback 回 Google Places 真實照片」這種降低計費成本考量的
+// 查詢端點需要接上(見 SearchCityAttractions 的說明,以及
+// server/internal/api/geo_outline.go 的 handleGeoPlaceDetails)。不像
+// apiKey 是建構 Client 時的必要參數,這裡選擇事後注入的 setter 模式
+// (對齊 SetCache 的既有做法),避免 geo.New 的簽名為了這個只有少數
+// 呼叫端需要的功能而變動,牽動其餘呼叫端。
+func (c *Client) SetPexelsClient(client *pexels.Client) {
+	c.pexelsClient = client
+}
+
+// PexelsClient 回傳目前注入的 Pexels client(見 SetPexelsClient),未注入
+// 時為 nil。供套件外(api 層)在自己的照片來源優先序邏輯裡判斷是否已經
+// 注入、進而直接呼叫 pexels.Client.Search——理由同 handleGeoPlaceDetails
+// 的說明:該端點的照片優先序邏輯發生在拿到 GetPlaceDetails 結果之後,
+// 無法完全收在 geo 套件內部一次做完(不像 SearchCityAttractions 整段
+// 查詢流程都在套件內),故需要這個匯出的讀取入口。
+func (c *Client) PexelsClient() *pexels.Client {
+	return c.pexelsClient
 }
 
 var ErrNoKey = fmt.Errorf("geo: Google Places API key 未設定")
@@ -424,7 +448,7 @@ type District struct {
 	// LandmarkPhotoURL 是該區評分最高地點的代表性照片,已編碼成
 	// data: URI(base64,含 MIME type),可直接當 <img src> 使用。
 	//
-	// 這裡在 SearchDistricts 內就同步把圖片位元組取回並編碼進來,而非
+	// 這裡在 SearchCityAttractions 內就同步把圖片位元組取回並編碼進來,而非
 	// 回傳一個需要前端另外發請求的網址——理由:圖片是隨這支端點本身的
 	// JSON 回應一起送出,天生就走前端既有的 fetch()+Authorization
 	// header 驗證路徑;若改成回傳網址讓前端用 <img src> 另外請求,
@@ -443,11 +467,12 @@ type District struct {
 	// 不用 LLM 生成。該地標沒有 editorialSummary 資料時為空字串
 	// (Google 並非每個地點都有這欄位)。
 	Summary string `json:"summary,omitempty"`
-	// RadiusMeters 是這個區大致範圍的半徑(公尺),只有走
-	// SearchKnownDistricts(手動整理的觀光慣稱分區,見
-	// district_aliases.go)的結果才會有值——透過泛用
-	// addressComponents 分組(SearchDistricts)算出來的分區沒有實際
-	// 邊界資料可用,這個欄位固定是 0(前端據此判斷要不要畫範圍圓圈)。
+	// RadiusMeters 是這個區大致範圍的半徑(公尺)——SearchCityAttractions(依
+	// addressComponents 分組)算出來的分區沒有實際邊界資料可用,這個
+	// 欄位固定是 0(前端據此判斷要不要畫範圍圓圈)。原本手動整理的觀光
+	// 慣稱分區路徑(SearchKnownDistricts)才會設這個值,該路徑已於
+	// 2026-08 隨 district_aliases.go 一併移除(見 CHANGELOG),欄位本身
+	// 保留以維持 District 回應格式穩定。
 	RadiusMeters int `json:"radiusMeters,omitempty"`
 }
 
@@ -484,15 +509,24 @@ func pickDistrictName(components []struct {
 	return ""
 }
 
-// SearchDistricts 用一個查詢字串(通常是「{城市} 觀光景點」這類廣泛查詢)
-// 取一批地點,依各自所屬的行政區/次分區分組,回傳每區的白話名稱與景點
-// 座標平均值(重心)。供地理輪廓底圖(構想 6)使用:不需要 LLM,直接用
-// Places API 既有的地點分布與地址結構反推城市大致分成哪幾塊。
+// SearchCityAttractions 用一個查詢字串(通常是「{城市} 觀光景點」這類
+// 廣泛查詢)取一批地點,依各自所屬的行政區/次分區分組,回傳每區的白話
+// 名稱與景點座標平均值(重心)。供地理輪廓底圖(構想 6)使用:不需要
+// LLM,直接用 Places API 既有的地點分布與地址結構反推城市大致分成
+// 哪幾塊。
 //
 // query 應包含城市名稱以提高相關性,例如「東京 觀光景點」。maxResults
 // 建議 15~20(需要足夠樣本數才能形成有意義的分組,太少容易每區只有 1
 // 個點、重心失去平均的意義)。
-func (c *Client) SearchDistricts(ctx context.Context, query string, maxResults int) ([]District, error) {
+//
+// 每區代表性照片的來源優先序:若已透過 SetPexelsClient 注入 Pexels
+// client,優先用該區名稱查一張 Pexels 示意圖;查無結果、未注入、或
+// 查詢失敗,才 fallback 回原本的邏輯——取該區評分最高且有照片的地點,
+// 用其 Google Places 真實照片。這個順序是刻意的:Pexels 是免費/低成本
+// 的關鍵字比對圖庫,Google Places Photo Media 則按張數計費,先試前者
+// 能降低這支端點(每次查詢未建檔城市都會觸發)的 Google 呼叫成本,
+// 只有 Pexels 找不到示意圖時才退回較準確、但要付費的 Google 照片。
+func (c *Client) SearchCityAttractions(ctx context.Context, query string, maxResults int) ([]District, error) {
 	if c.apiKey == "" {
 		return nil, ErrNoKey
 	}
@@ -630,7 +664,20 @@ func (c *Client) SearchDistricts(ctx context.Context, query string, maxResults i
 			PlaceCount: g.placeCount,
 			Summary:    g.landmarkSummary,
 		}
-		if g.landmarkPhoto != "" {
+
+		// 優先序見本函式開頭的說明:先試 Pexels(免費/低成本),查無
+		// 結果或未注入 pexelsClient 時才 fallback 回 Google Places 該區
+		// 代表性地標的真實照片。兩者皆失敗時這一區就是沒有圖可顯示,
+		// 不視為整體查詢失敗——理由同下方 fetchPhotoAsDataURI 錯誤處理
+		// 的既有說明,呼叫端(前端)已經預期這個欄位可能不存在(見
+		// District.LandmarkPhotoURL 的 omitempty)。
+		if c.pexelsClient != nil {
+			if photo, ok, err := c.pexelsClient.Search(ctx, query+" "+g.name); err == nil && ok {
+				d.LandmarkPhotoURL = photo.ImageURL
+				d.LandmarkName = g.name
+			}
+		}
+		if d.LandmarkPhotoURL == "" && g.landmarkPhoto != "" {
 			// 圖片下載失敗(額度用盡、逾時等)不視為整體查詢失敗——
 			// 這一區只是沒有地標圖可顯示,不影響其餘分區資料,故忽略
 			// 錯誤、留空字串即可,呼叫端(前端)已經預期這個欄位可能
@@ -645,57 +692,14 @@ func (c *Client) SearchDistricts(ctx context.Context, query string, maxResults i
 	return out, nil
 }
 
-// SearchKnownDistricts 是 SearchDistricts 的替代路徑:city 若命中
-// district_aliases.go 手動整理的觀光慣稱分區資料,直接依該資料集逐區
-// 查詢地標座標與照片,不再用 addressComponents 反推分組——後者對
-// 「古城區」「尼曼區」這類非官方行政區劃的觀光慣稱完全無效(Google
-// 的行政區劃資料庫沒有這種命名體系)。
-//
-// city 沒有命中已知城市時,回傳 (nil, false),呼叫端(handleGeoAttractions)
-// 應 fallback 呼叫 SearchDistricts。
-func (c *Client) SearchKnownDistricts(ctx context.Context, city string) ([]District, bool) {
-	aliases, ok := lookupKnownDistricts(city)
-	if !ok {
-		return nil, false
-	}
-
-	out := make([]District, 0, len(aliases))
-	for _, alias := range aliases {
-		place, photoRef, _, summary, err := c.SearchLandmarkWithPhoto(ctx, alias.LandmarkQuery)
-		if err != nil {
-			// 單一分區的地標查詢失敗不影響其餘分區——例如某個地標
-			// 名稱剛好在 Google 那邊查無結果,略過這一區即可,不讓
-			// 整個城市的地理輪廓查詢失敗。
-			continue
-		}
-		d := District{
-			Name:         alias.Name,
-			Lat:          place.Lat,
-			Lng:          place.Lng,
-			PlaceCount:   1,
-			RadiusMeters: alias.RadiusMeters,
-			Summary:      summary,
-		}
-		if photoRef != "" {
-			if photoURL, err := c.fetchPhotoAsDataURI(ctx, place.PlaceID, photoRef, 400); err == nil {
-				d.LandmarkPhotoURL = photoURL
-				d.LandmarkName = place.Name
-			}
-		}
-		out = append(out, d)
-	}
-	return out, true
-}
-
 // SearchLandmarkWithPhoto 查詢單一地標名稱,回傳其座標(Place)、
 // 評分最高的照片 resource name(查無照片則為空字串)、其評分、與
 // editorialSummary。field mask 比泛用的 Search 多取 rating/photos/
 // editorialSummary(皆屬 Pro 級欄位),故不直接複用 Search。
 //
-// 供 SearchKnownDistricts(構想 6 過渡資料,見 district_aliases.go)當
-// 該區白話簡介用,也供 cmd/cli 的 attraction-update-photo 指令(見
-// cmd/cli/http.go 的 attractionUpdatePhoto)重新查詢地標圖片時使用——
-// 這是套件對外的正式入口,故大寫匯出而非只服務套件內部。
+// 供 cmd/cli 的 attraction-update-photo 指令(見 cmd/cli/http.go 的
+// attractionUpdatePhoto)重新查詢地標圖片時使用——這是套件對外的正式
+// 入口,故大寫匯出而非只服務套件內部。
 func (c *Client) SearchLandmarkWithPhoto(ctx context.Context, query string) (place Place, photoRef string, rating float64, summary string, err error) {
 	if c.apiKey == "" {
 		return Place{}, "", 0, "", ErrNoKey
@@ -939,7 +943,7 @@ func (c *Client) ListPlacePhotoRefs(ctx context.Context, placeID string) ([]stri
 // 效益——理由同 c.cache 為 nil 時的既有降級行為。
 //
 // 這裡直接把圖片位元組編碼進回應,而非回傳一個「前端需要另外發請求」
-// 的網址——理由見呼叫端(SearchDistricts)的說明:圖片資料要跟著這支
+// 的網址——理由見呼叫端(SearchCityAttractions)的說明:圖片資料要跟著這支
 // 端點本身的 JSON 回應一起送出,才能沿用前端既有的已驗證 fetch()
 // 路徑,不受瀏覽器 <img> 標籤無法附加自訂 Authorization header 的限制。
 // GOOGLE_PLACES_API_KEY 只在這支函式内部、伺服器對伺服器的請求裡出現,
@@ -1172,8 +1176,8 @@ func (c *Client) SearchNearby(ctx context.Context, lat, lng float64, opts *Nearb
 // PhotoDataURI 是 fetchPhotoAsDataURI 的匯出包裝,供套件外(api 層)
 // 把 NearbyPlace.PhotoRef 轉成可直接當 <img src> 用的 data: URI。
 // fetchPhotoAsDataURI 本身未匯出,是因為它原本只服務套件內部的
-// SearchDistricts/SearchKnownDistricts;飯店圖層(handleGeoAttractions)
-// 需要在套件外對 NearbyPlace 結果做同樣的轉換,故加這層薄包裝,
+// SearchCityAttractions;飯店圖層(handleGeoAttractions)需要在套件外對
+// NearbyPlace 結果做同樣的轉換,故加這層薄包裝,
 // 不重複實作下載邏輯。
 func (c *Client) PhotoDataURI(ctx context.Context, placeID, photoRef string, maxWidthPx int) (string, error) {
 	return c.fetchPhotoAsDataURI(ctx, placeID, photoRef, maxWidthPx)

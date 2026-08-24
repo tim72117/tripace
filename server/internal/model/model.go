@@ -100,11 +100,11 @@ type SearchAnswer struct {
 // ——可以是單點地標(如「101」)也可以是有範圍的區域(如「古城區」),
 // 不拆成兩個型別,用同一個符號涵蓋兩種情況,見下方 RadiusMeters 的說明。
 //
-// 這是取代/擴充 server/internal/geo/district_aliases.go(手動整理的
-// 少量城市觀光慣稱分區,寫死在 Go 程式碼)的正式資料庫版本——後者
-// 只能靠改程式碼+重新部署才能新增資料,這個模型讓資料能透過 CLI
-// (tripace-cli attraction-add 等,見 cmd/cli)直接寫入資料庫,不需要
-// 改程式碼。
+// 這是取代/擴充原本 server/internal/geo/district_aliases.go(手動整理的
+// 少量城市觀光慣稱分區,寫死在 Go 程式碼,已於 2026-08 移除,見
+// CHANGELOG)的正式資料庫版本——後者只能靠改程式碼+重新部署才能新增
+// 資料,這個模型讓資料能透過 CLI(tripace-cli attraction-add 等,見
+// cmd/cli)直接寫入資料庫,不需要改程式碼。
 type Attraction struct {
 	ID   string `json:"id"`
 	Name string `json:"name"` // 白話名稱,如「古城區」「101」

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/tim72117/tripace/internal/geo"
+	"github.com/tim72117/tripace/internal/pexels"
 )
 
 // hotelResponse 是 GET /internal/geo/attractions 與
@@ -77,11 +78,11 @@ func fetchNearbyHotels(ctx context.Context, client *geo.Client, lat, lng, radius
 
 // attractionResponse 是 GET /internal/geo/attractions 回應裡單筆景點區域
 // 的統一格式——不論資料來自 store.ListAttractionsByCity(人工建檔,見
-// model.Attraction)或 geo.SearchKnownDistricts/SearchDistricts(即時查
-// Google Places 的過渡/後備資料),前端拿到的形狀一致,不需要依來源
-// 分別處理。Level 只有走資料庫路徑才會有值(1~5,見 model.Attraction 的
-// 完整說明);走 Google Places 路徑的結果一律不帶 level(前端據此判斷
-// 全部顯示,不受縮放層級篩選——這批資料目前沒有分級資訊可用)。
+// model.Attraction)或 geo.SearchCityAttractions(即時查 Google Places 的
+// 後備資料),前端拿到的形狀一致,不需要依來源分別處理。Level 只有走
+// 資料庫路徑才會有值(1~5,見 model.Attraction 的完整說明);走 Google
+// Places 路徑的結果一律不帶 level(前端據此判斷全部顯示,不受縮放層級
+// 篩選——這批資料目前沒有分級資訊可用)。
 type attractionResponse struct {
 	Name             string  `json:"name"`
 	Lat              float64 `json:"lat"`
@@ -105,7 +106,7 @@ type attractionResponse struct {
 // 目的地城市欄位時再改由後端從 Trip 帶出、前端不需再手動輸入。
 //
 // 回傳的每個景點區域的 landmarkPhotoUrl 已經是編碼好的 data: URI
-// (見 geo.SearchDistricts/fetchPhotoAsDataURI 的說明),圖片資料直接
+// (見 geo.SearchCityAttractions/fetchPhotoAsDataURI 的說明),圖片資料直接
 // 內嵌在這支端點的 JSON 回應裡——不再另外開一支圖片代理端點:圖片是
 // 隨這支已驗證(internalAuth)的 JSON 回應一起送出,前端透過既有的
 // fetch()+Authorization header 拿到即可直接當 <img src> 用,不受
@@ -118,17 +119,19 @@ func (s *Server) handleGeoAttractions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 三層 fallback,依優先順序:
+	// 兩層 fallback,依優先順序:
 	//  1. store.ListAttractionsByCity——人工建檔的正式資料(見
 	//     model.Attraction、cmd/cli 的 attraction-add 等指令),含知名度
 	//     分級(level),讓前端能依縮放層級篩選顯示粒度。這是最新、最
 	//     準確的資料來源。
-	//  2. geo.SearchKnownDistricts——手動整理但寫死在程式碼的少量城市資料
-	//     (見 district_aliases.go),沒有分級,是資料庫方案上線前的過渡
-	//     資料,之後應逐步把這裡的城市搬進資料庫、汰除這條路徑。
-	//  3. geo.SearchDistricts——即時查 Google Places、依 addressComponents
+	//  2. geo.SearchCityAttractions——即時查 Google Places、依 addressComponents
 	//     反推分組,涵蓋任何城市但只有官方行政區劃名稱,無法呈現「古城區」
 	//     這類觀光慣稱,是完全沒有人工資料時的最終後備。
+	//
+	// 原本還有第二層 geo.SearchKnownDistricts(手動整理但寫死在程式碼的
+	// 少量城市資料,見已刪除的 district_aliases.go)——2026-08 確認
+	// 該資料集已清空、對應查表恆回傳 false,是死碼,已隨同移除(見
+	// CHANGELOG)。
 	var attractions []attractionResponse
 	if landmarks, err := s.store.ListAttractionsByCity(city); err == nil && len(landmarks) > 0 {
 		for _, l := range landmarks {
@@ -152,30 +155,27 @@ func (s *Server) handleGeoAttractions(w http.ResponseWriter, r *http.Request) {
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	client := geo.New(apiKey)
 	client.SetCache(s.photoCache)
+	client.SetPexelsClient(pexels.New(os.Getenv("PEXELS_API_KEY")))
 
-	// 這支端點會同步下載每個景點區域的地標圖片(見 SearchDistricts 內部
-	// fetchPhotoAsDataURI 的呼叫),逐張圖片各自一次 HTTP 請求,故逾時
-	// 設寬鬆一些(原本純文字查詢只需要 8 秒)。
+	// 這支端點會同步下載每個景點區域的地標圖片(見 SearchCityAttractions
+	// 內部 fetchPhotoAsDataURI 的呼叫),逐張圖片各自一次 HTTP 請求,故
+	// 逾時設寬鬆一些(原本純文字查詢只需要 8 秒)。
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	ctx = geo.WithCaller(ctx, "handleGeoAttractions")
 	ctx = geo.WithPath(ctx, r.URL.Path)
 
 	if len(attractions) == 0 {
-		if geoDistricts, ok := client.SearchKnownDistricts(ctx, city); ok {
-			attractions = toAttractionResponses(geoDistricts)
-		} else {
-			geoDistricts, err := client.SearchDistricts(ctx, city+" 觀光景點", 20)
-			if err != nil {
-				if err == geo.ErrNotFound {
-					writeErr(w, http.StatusNotFound, "no_match", "查無「"+city+"」相關景點,無法產生地理輪廓")
-					return
-				}
-				writeErr(w, http.StatusBadGateway, "geo_attractions_failed", err.Error())
+		geoDistricts, err := client.SearchCityAttractions(ctx, city+" 觀光景點", 20)
+		if err != nil {
+			if err == geo.ErrNotFound {
+				writeErr(w, http.StatusNotFound, "no_match", "查無「"+city+"」相關景點,無法產生地理輪廓")
 				return
 			}
-			attractions = toAttractionResponses(geoDistricts)
+			writeErr(w, http.StatusBadGateway, "geo_attractions_failed", err.Error())
+			return
 		}
+		attractions = toAttractionResponses(geoDistricts)
 	}
 
 	// 飯店圖層:以「所有景點區域重心的平均值」當整座城市的概略中心,
@@ -202,9 +202,9 @@ func (s *Server) handleGeoAttractions(w http.ResponseWriter, r *http.Request) {
 }
 
 // toAttractionResponses 把 geo.District(即時查 Google Places 得到的結果,
-// 見 geo.SearchDistricts/SearchKnownDistricts)轉成統一的
-// attractionResponse 格式。這條路徑的資料沒有知名度分級,Level 固定為 0
-// (json 的 omitempty 讓它不出現在回應裡)。
+// 見 geo.SearchCityAttractions)轉成統一的 attractionResponse 格式。這條路徑
+// 的資料沒有知名度分級,Level 固定為 0(json 的 omitempty 讓它不出現在
+// 回應裡)。
 func toAttractionResponses(in []geo.District) []attractionResponse {
 	out := make([]attractionResponse, 0, len(in))
 	for _, d := range in {
@@ -494,6 +494,26 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 		if cached.PhotoURL != nil {
 			resp.PhotoURL = *cached.PhotoURL
 		}
+
+		// 快取命中但當初沒查到照片(PhotoURL 為空)時,單獨補一次
+		// Pexels 查詢——只試 Pexels,不重新呼叫 Google GetPlaceDetails
+		// (這裡快取命中的整個重點就是不打 Google;快取本身也沒存
+		// PhotoRef,見 store.GetCachedPlaceDetails 的說明,無法直接跟
+		// Google 換圖,除非重新查一次 Details,那就違背了這裡「命中就
+		// 不打 Google」的設計)。Pexels 仍查不到就維持無圖回傳,不視為
+		// 錯誤。補到圖時一併更新回快取,下次同一 placeID 命中就不用再
+		// 重複查一次 Pexels。
+		if resp.PhotoURL == "" {
+			pexelsClient := pexels.New(os.Getenv("PEXELS_API_KEY"))
+			pctx, pcancel := context.WithTimeout(r.Context(), 5*time.Second)
+			if photo, ok, pErr := pexelsClient.Search(pctx, resp.Name); pErr == nil && ok {
+				resp.PhotoURL = photo.ImageURL
+				photoURL := resp.PhotoURL
+				_ = s.store.SetCachedPlaceDetails(placeID, resp.Name, resp.Address, resp.Lat, resp.Lng, resp.Rating, cached.Summary, &photoURL)
+			}
+			pcancel()
+		}
+
 		writeJSON(w, http.StatusOK, resp)
 		return
 	}
@@ -501,6 +521,7 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	client := geo.New(apiKey)
 	client.SetCache(s.photoCache)
+	client.SetPexelsClient(pexels.New(os.Getenv("PEXELS_API_KEY")))
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	ctx = geo.WithCaller(ctx, "handleGeoPlaceDetails")
@@ -524,7 +545,16 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 		Rating:  details.Rating,
 		Summary: details.Summary,
 	}
-	if details.PhotoRef != "" {
+	// 照片來源優先序同 geo.Client.SearchCityAttractions 的說明:先試
+	// Pexels(免費/低成本示意圖),查無結果或未注入時才 fallback 回
+	// Google Places 這個地點的真實照片——原生 POI 點擊是使用者互動觸發
+	// 的低頻查詢,但 Photo Media API 仍按張數計費,能省則省。
+	if client.PexelsClient() != nil {
+		if photo, ok, pErr := client.PexelsClient().Search(ctx, details.Name); pErr == nil && ok {
+			resp.PhotoURL = photo.ImageURL
+		}
+	}
+	if resp.PhotoURL == "" && details.PhotoRef != "" {
 		// 圖片下載失敗不影響整體查詢結果——只是沒有照片可顯示,理由同
 		// fetchNearbyHotels 等既有端點的處理方式。
 		if photoURL, pErr := client.PhotoDataURI(ctx, placeID, details.PhotoRef, 400); pErr == nil {
