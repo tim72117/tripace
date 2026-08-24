@@ -1,18 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
 import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from '../api'
 import { fetchGeoAttractionsNearby, fetchGeoAttractionsOnlyNearby, fetchGeoPlaceDetails, fetchGeoPlacesNearby } from '../api'
 import { Hotel, Loader2, MapPin, Search, Sparkles, UtensilsCrossed } from 'lucide-react'
-import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
+import type { GeoSelectedKey } from './GeoHotelSidebar'
 import { isSubmitEnter } from '../AppCommon'
 import { initialAreaSearchState, reduceAreaSearchState } from './geoAreaSearchState'
-import {
-  getAttractionOverlayClass,
-  maxLevelForZoom,
-  minZoomForLevel,
-  type AttractionOverlayInstance,
-} from './geoAttractionOverlay'
+import { minZoomForLevel } from './geoAttractionOverlay'
+import { useAttractionOverlays } from './useAttractionOverlays'
+import { useHotelMarkers } from './useHotelMarkers'
+import { usePlaceMarkers } from './usePlaceMarkers'
+import { useTripEntryMarkers } from './useTripEntryMarkers'
+import { useGeocodeCandidateMarkers } from './useGeocodeCandidateMarkers'
 import styles from './GeoOutlineMap.module.css'
 
 // 地理輪廓底圖(構想 6,見 docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)——桌面版。
@@ -61,155 +61,6 @@ function ensureOptionsSet(apiKey: string) {
   // 理由同後端 Places API 呼叫固定 languageCode: zh-TW(見
   // server/internal/geo/places.go),專案介面語言只有繁中。
   setOptions({ key: apiKey, v: 'weekly', language: 'zh-TW' })
-}
-
-// candidateBadgeSvg:「已加入候選籃」的小勾選徽章 fragment,綠底 + 白色
-// 勾勾,疊在 marker 右上角——跟 GeoOutlineMap.module.css 的
-// .geo-attraction-overlay-candidate 是同一套視覺語言。cx/cy 是徽章圓心
-// 座標,由呼叫端依自己的 viewBox 尺寸決定要疊在哪個角落——兩邊呼叫端
-// (飯店/推薦地點)的圖示尺寸不同,由呼叫端決定位置比在這裡寫死一組
-// 座標更不容易疊錯。
-function candidateBadgeSvg(cx: number, cy: number): string {
-  const r = 4.5
-  return (
-    `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#5A8A6A" stroke="#FDFCFA" stroke-width="1"/>` +
-    `<path d="M${cx - 2} ${cy}l1.3 1.3L${cx + 2} ${cy - 2.3}" fill="none" stroke="#FDFCFA" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>`
-  )
-}
-
-// svgStringToElement:把一段 <svg>...</svg> 字串解析成真正的 DOM 元素,供
-// AdvancedMarkerElement.content 使用——這個元件改用 AdvancedMarkerElement
-// 之前(google.maps.Marker 年代),同一段字串是包成 data:image/svg+xml
-// 塞進 icon.url(圖片),而不是活的 DOM;AdvancedMarkerElement.content
-// 要求真正的 Node,故這裡用 DOMParser 解析成 <svg> Element 後回傳,讓下面
-// 三個 xxxMarkerContent 函式能沿用原本已經寫好、視覺調校過的 SVG 字串,
-// 不必為了換 API 重寫一次繪圖邏輯。
-function svgStringToElement(svg: string): SVGElement {
-  const doc = new DOMParser().parseFromString(svg, 'image/svg+xml')
-  return doc.documentElement as unknown as SVGElement
-}
-
-// hotelMarkerContent:飯店 marker 的內容 DOM,依選取/候選籃狀態回傳不同
-// 樣式——拆成模組層級的純函式(而非寫在 render 裡的閉包),讓建立飯店
-// marker(全量重畫)與切換選取樣式(見下方改用 setContent() 的 effect)
-// 兩個 effect 共用同一份定義,不重複維護兩份圖示邏輯。candidate 為 true
-// 時,不論是否選中都疊加右上角勾選徽章(見 candidateBadgeSvg 的說明)
-// ——候選籃狀態跟選取狀態是兩件獨立的事,可以同時成立。
-//
-// 選中態畫「同色實心圓 + 白色間隙環 + 同色外環」三層同心圓;未選中且非
-// 候選籃時只畫單層描邊圓點——不再像 google.maps.Marker 年代需要為了
-// 「內建 Symbol 只能單色」的限制而特意在 selected||candidate 才切換成
-// SVG 字串分支,AdvancedMarkerElement 的 content 本來就是自由 DOM,兩種
-// 狀態統一都走 SVG,寫法更單純。
-function hotelMarkerContent(selected: boolean, candidate: boolean): SVGElement {
-  const svg =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">' +
-    (selected
-      ? '<circle cx="10" cy="10" r="9" fill="#5A8A6A"/>' +
-        '<circle cx="10" cy="10" r="6.5" fill="#FDFCFA"/>' +
-        '<circle cx="10" cy="10" r="4" fill="#5A8A6A"/>'
-      : '<circle cx="10" cy="10" r="5" fill="#5A8A6A" stroke="#FDFCFA" stroke-width="1.5"/>') +
-    (candidate ? candidateBadgeSvg(16.5, 3.5) : '') +
-    '</svg>'
-  return svgStringToElement(svg)
-}
-
-// PLACE_CATEGORY_GLYPHS:附近推薦地點(見 handleCategoryClick 觸發的
-// fetchGeoPlacesNearby)依 GeoPlace.primaryType
-// 分類要畫的圖案內容(白色線條,座標為 lucide-react 對應圖示的原生 24x24
-// path 資料,直接取自 hotel/map-pin/utensils-crossed 三顆 icon)——讓地圖
-// 上方類別標籤(飯店/景點/餐廳,見 CATEGORY_TAGS)查出來的三種地點,各自
-// 用跟標籤一致的圖示語意,而非全部套同一顆相機圖示。
-const CAMERA_GLYPH =
-  '<path d="M8.5 8.2h1.1l.7-1.1a.8.8 0 01.7-.4h2a.8.8 0 01.7.4l.7 1.1h1.1a1.6 1.6 0 011.6 1.6v5.4a1.6 1.6 0 01-1.6 1.6H8.5a1.6 1.6 0 01-1.6-1.6V9.8a1.6 1.6 0 011.6-1.6z" fill="none" stroke="#FDFCFA" stroke-width="1.3" stroke-linejoin="round"/>' +
-  '<circle cx="12" cy="12.6" r="2.1" fill="none" stroke="#FDFCFA" stroke-width="1.3"/>'
-// 每顆 lucide 圖示原生是 24x24 stroke 繪製、幾乎頂到邊框,直接套用會蓋過
-// 圓形底色的邊緣——用同一個 <g transform> 把座標系縮到 60%、以 (12,12)
-// 為中心再置中,壓進圓形底色內側,視覺份量對齊原本相機圖示的手繪尺寸。
-const PLACE_CATEGORY_GLYPHS: Record<string, string> = {
-  lodging:
-    '<g transform="translate(12 12) scale(0.6) translate(-12 -12)" fill="none" stroke="#FDFCFA" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">' +
-    '<path d="M10 22v-6.57"/><path d="M12 11h.01"/><path d="M12 7h.01"/><path d="M14 15.43V22"/>' +
-    '<path d="M15 16a5 5 0 0 0-6 0"/><path d="M16 11h.01"/><path d="M16 7h.01"/><path d="M8 11h.01"/><path d="M8 7h.01"/>' +
-    '<rect x="4" y="2" width="16" height="20" rx="2"/></g>',
-  tourist_attraction:
-    '<g transform="translate(12 12) scale(0.6) translate(-12 -12)" fill="none" stroke="#FDFCFA" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">' +
-    '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/>' +
-    '<circle cx="12" cy="10" r="3"/></g>',
-  restaurant:
-    '<g transform="translate(12 12) scale(0.6) translate(-12 -12)" fill="none" stroke="#FDFCFA" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">' +
-    '<path d="m16 2-2.3 2.3a3 3 0 0 0 0 4.2l1.8 1.8a3 3 0 0 0 4.2 0L22 8"/>' +
-    '<path d="M15 15 3.3 3.3a4.2 4.2 0 0 0 0 6l7.3 7.3c.7.7 2 .7 2.8 0L15 15Zm0 0 7 7"/>' +
-    '<path d="m2.1 21.8 6.4-6.3"/><path d="m19 5-7 7"/></g>',
-}
-
-// placeMarkerContent:附近推薦地點的 marker 內容 DOM——用一顆小小的類別
-// 圖示(而非 hotelMarkerContent 那種純色圓點),讓使用者一眼認出這是
-// 「推薦景點」語意,跟景點區域光暈、飯店圓點的抽象色塊區隔開來。底色
-// 維持靛藍(區分於景點區域的暖沙棕、飯店的森綠),圖案本身用白色線條,
-// 尺寸刻意壓小(未選中 22px、選中 28px)——這是輔助辨識用的小圖標,
-// 不搶過分區光暈與地標照片的視覺份量。選中態只放大 + 加一圈白色描邊
-// 光暈(而非飯店那種三層同心圓靶心)——圖案本身已經有清楚的形狀語意,
-// 不需要再疊靶心結構,加大加亮已足夠表達「這是選中的那個」。candidate
-// 為 true 時疊加右上角勾選徽章,理由同 hotelMarkerContent。
-function placeMarkerContent(selected: boolean, candidate: boolean, category?: string): SVGElement {
-  const size = selected ? 28 : 22
-  const glyph = (category && PLACE_CATEGORY_GLYPHS[category]) || CAMERA_GLYPH
-  const svg =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 24 24">' +
-    (selected
-      ? '<circle cx="12" cy="12" r="11.5" fill="#5A7A9E" stroke="#FDFCFA" stroke-width="2"/>'
-      : '<circle cx="12" cy="12" r="11.5" fill="#5A7A9E"/>') +
-    glyph +
-    (candidate ? candidateBadgeSvg(19.5, 4.5) : '') +
-    '</svg>'
-  return svgStringToElement(svg)
-}
-
-// tripEntryMarkerContent:行程本身已有座標的 entry(見 tripEntries prop)
-// 的 marker 內容 DOM——用全案主色 accent(暖橘,對齊 --color-accent)
-// 搭配一枚小旗子造型,語意是「這裡已經排進行程」,跟分區光暈的暖沙棕、
-// 飯店的森綠、推薦地點的靛藍相機都不同,一眼就能認出「這是我已經
-// 決定要去的點」而非還在探索/推薦階段的候選。尺寸比其餘三種圖層
-// 稍大一階(未選中 24px、選中 30px),因為這是這批圖層裡「已確定」
-// 的內容,理當比還在探索的候選更顯眼一些。
-function tripEntryMarkerContent(selected: boolean): SVGElement {
-  const size = selected ? 30 : 24
-  const flagSvg =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 24 24">' +
-    (selected
-      ? '<circle cx="12" cy="12" r="11.5" fill="#C4956A" stroke="#FDFCFA" stroke-width="2"/>'
-      : '<circle cx="12" cy="12" r="11.5" fill="#C4956A"/>') +
-    // 小旗子造型:一根直立旗桿 + 三角形旗面,線條走白色,座標配合
-    // 24x24 viewBox,足夠在 24-30px 的小尺寸下清楚辨識。
-    '<path d="M9 7v11" stroke="#FDFCFA" stroke-width="1.4" stroke-linecap="round"/>' +
-    '<path d="M9 7.3l6.5 2.2-6.5 2.2z" fill="#FDFCFA"/>' +
-    '</svg>'
-  return svgStringToElement(flagSvg)
-}
-
-// geocodeCandidateMarkerContent:搜尋候選 marker 的內容 DOM——用跟其餘
-// 圖層(飯店森綠、推薦地點靛藍、行程 entry 暖橘)都不同的紫色系,並疊上
-// 候選編號(1-based),讓使用者在地圖上能一眼分辨「這是搜尋查到的第幾筆
-// 候選」,不需要另外對照清單。圖案本身用放大鏡造型(呼應「搜尋結果」
-// 語意),而非既有的相機/旗子/純色點,故獨立一個函式而非重用
-// placeMarkerContent 加個新的 category。selected 為 true 時放大並加一圈
-// 白色描邊光暈(理由同 placeMarkerContent 的選中態),讓使用者選定後仍
-// 能一眼認出「這是我剛選的那個」,即使其餘候選還留在地圖上也不會混淆。
-function geocodeCandidateMarkerContent(index: number, selected: boolean): SVGElement {
-  const size = selected ? 34 : 28
-  const svg =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 24 24">' +
-    (selected
-      ? '<circle cx="12" cy="12" r="11.5" fill="#7A5C99" stroke="#FDFCFA" stroke-width="2.5"/>'
-      : '<circle cx="12" cy="12" r="11.5" fill="#7A5C99" stroke="#FDFCFA" stroke-width="2"/>') +
-    '<g transform="translate(12 12) scale(0.55) translate(-12 -12)" fill="none" stroke="#FDFCFA" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>' +
-    '</g>' +
-    '<circle cx="20" cy="4" r="4.5" fill="#FDFCFA"/>' +
-    '<text x="20" y="4" text-anchor="middle" dominant-baseline="central" font-size="6.5" font-weight="700" font-family="-apple-system, sans-serif" fill="#7A5C99">' + index + '</text>' +
-    '</svg>'
-  return svgStringToElement(svg)
 }
 
 // sameAttractionsContent/sameHotelsContent:比對兩批查詢結果的內容是否
@@ -336,8 +187,9 @@ export function GeoOutlineMap({
   // 到對應分頁並顯示該項目的介紹(見 DesktopLayout.tsx 的串接),但側欄
   // 跟這個地圖元件是分開掛載的 sibling,只能靠這三個 callback 往上回報,
   // 跟 onPlacesNearby 同一套「地圖是唯一知道使用者點了哪個 marker 的
-  // 一方」的理由。attraction 的情形從既有的 handleAttractionClick 點擊
-  // 入口呼叫這個 callback,不是另外新增一個獨立的點擊處理路徑。
+  // 一方」的理由。attraction 的情形從 useAttractionOverlays.ts 既有的
+  // handleAttractionClick 點擊入口呼叫這個 callback,不是另外新增一個
+  // 獨立的點擊處理路徑。
   onAttractionSelect?: (attraction: GeoAttraction) => void
   onHotelSelect?: (hotel: GeoHotel) => void
   onPlaceSelect?: (place: GeoPlace) => void
@@ -376,8 +228,8 @@ export function GeoOutlineMap({
   // 重新呼叫該決策函式)。有值時用 fitBounds 縮放到剛好 framing 這個
   // 半徑的範圍,取代原本的 panTo+setZoom(level)行為;level 若同時存在
   // 會被忽略,因為 fitBounds 本身就是更精確的縮放依據。點擊地圖上的
-  // 地標圖示本身(handleAttractionClick)不再觸發任何地圖移動,只開
-  // 介紹卡,見該函式的說明。
+  // 地標圖示本身(useAttractionOverlays.ts 的 handleAttractionClick)
+  // 不再觸發任何地圖移動,只開介紹卡,見該函式的說明。
   panTarget?: { lat: number; lng: number; level?: number; radiusMeters?: number; suppressQuery?: boolean } | null
   // selectedKey:目前被選中的飯店/地點識別鍵(見 GeoHotelSidebar.tsx 的
   // geoItemKey)——由 DesktopLayout.tsx 中介,驅動下方地標/飯店圖示畫出
@@ -423,12 +275,6 @@ export function GeoOutlineMap({
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
-  const overlaysRef = useRef<AttractionOverlayInstance[]>([])
-  const hotelMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([])
-  const placeMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([])
-  const tripEntryMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([])
-  const geocodeCandidateMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([])
-  const radiusCirclesRef = useRef<google.maps.Circle[]>([])
   // onPoiSelectRef:建立地圖的 effect 只在掛載時執行一次(依賴陣列見
   // 下方 [apiKey, initialCenter]),裡面註冊的 click listener 若直接閉包
   // 捕捉 onPoiSelect,呼叫端(DesktopLayout.tsx)每次重渲染傳入新的內聯
@@ -439,15 +285,16 @@ export function GeoOutlineMap({
   onPoiSelectRef.current = onPoiSelect
   const [err, setErr] = useState<string | null>(null)
   const [mapReady, setMapReady] = useState(false)
-  // zoom:即時反映地圖目前縮放層級,驅動下方 filteredAttractions 依
-  // maxLevelForZoom 篩選要顯示哪些知名度分級的地標。初始值對齊
-  // Map 建構時的 zoom: 12(見下方 useEffect)。
+  // zoom:即時反映地圖目前縮放層級,傳給 useAttractionOverlays 依
+  // maxLevelForZoom 篩選要顯示哪些知名度分級的地標(見該 hook 的
+  // filteredAttractions 說明)。初始值對齊 Map 建構時的 zoom: 12(見下方
+  // useEffect)。
   const [zoom, setZoom] = useState(12)
-  // bounds:即時反映地圖目前可視範圍,驅動 visibleHotels 只顯示範圍內的
-  // 飯店(地圖拖曳/縮放後,原本查到但已經滑出畫面的飯店不該繼續佔用
+  // bounds:即時反映地圖目前可視範圍,傳給 useHotelMarkers 只顯示範圍內
+  // 的飯店(地圖拖曳/縮放後,原本查到但已經滑出畫面的飯店不該繼續佔用
   // marker/側欄清單的版面)。初始 null——地圖剛掛載、還沒收到第一次
-  // bounds_changed 前,visibleHotels 直接顯示全部(見下方判斷),避免
-  // 開頭一瞬間清單/地圖是空的。
+  // bounds_changed 前,該 hook 的 visibleHotels 直接顯示全部,避免開頭
+  // 一瞬間清單/地圖是空的。
   const [bounds, setBounds] = useState<google.maps.LatLngBounds | null>(null)
   // attractions/hotels:改成這個元件內部管理(不再是外部傳入的完整清單再
   // 篩選),由下方「依可視範圍查詢」的 effect 寫入——景點區域與飯店都是
@@ -580,7 +427,8 @@ export function GeoOutlineMap({
           gestureHandling: 'greedy',
         })
         // zoom_changed 監聽器:即時反映使用者拖曳滾輪/點擊縮放控制項
-        // 造成的縮放層級變化,驅動下方 filteredAttractions 重新計算。
+        // 造成的縮放層級變化,驅動 useAttractionOverlays 的
+        // filteredAttractions 重新計算。
         mapRef.current.addListener('zoom_changed', () => {
           setZoom(mapRef.current?.getZoom() ?? 12)
         })
@@ -753,34 +601,6 @@ export function GeoOutlineMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, queryTrigger])
 
-  // filteredAttractions:依目前 zoom 對應的知名度分級上限篩選——只篩選
-  // 「有 level 資訊」的景點區域(人工建檔的資料,見 model.Attraction);
-  // 沒有 level 的景點區域(即時查 Google Places 的結果)一律顯示,不受
-  // 縮放層級篩選影響(這批資料沒有分級可言,無從篩起)。用 useMemo 快取,
-  // 理由同 visibleHotels(見下方):.filter() 若每次 render 都重算,會
-  // 產生新陣列參照,讓依賴它的 useEffect(畫景點區域光暈/範圍圓圈)誤判成
-  // 「內容變了」而重複清除重畫——即使這裡本身不會形成無限迴圈
-  // (filteredAttractions 沒有驅動任何 setState),但仍會在 sibling state
-  // (如 visibleHotels 變動連鎖傳回的新 hotels/attractions prop)造成這個
-  // 元件重渲染時,讓光暈/圓圈動畫不必要地重播、閃爍。
-  const maxLevel = maxLevelForZoom(zoom)
-  const filteredAttractions = useMemo(
-    () => attractions.filter((d) => d.level == null || d.level <= maxLevel),
-    [attractions, maxLevel],
-  )
-
-  // 點擊地標圖示只開介紹卡(見上方 onAttractionSelect),不移動/縮放
-  // 地圖——原本會依 planAttractionClick 的決策 fitBounds/panTo/setZoom
-  // 到該景點區域的範圍,但這會打斷使用者原本瀏覽地圖的視角(尤其在已經
-  // 手動調整過範圍的情況下),點擊圖示的意圖是「看這個地點的介紹」,
-  // 不是「把我帶過去那裡」。地圖移動仍保留給明確以此為意圖的入口:
-  // AttractionInfoPanel「探索周邊」按鈕(見 handleExploreAttraction,
-  // 複用 planAttractionClick 的同一套決策邏輯)。
-  const handleAttractionClick = useCallback((d: GeoAttraction) => {
-    onAttractionSelect?.(d)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onAttractionSelect])
-
   // categoryQueryRadiusMeters:類別標籤列(飯店/景點/餐廳)查詢用的固定
   // 半徑——查詢中心是「目前地圖中心點」,沒有天然的範圍可以依據,故用
   // 一個固定的中等半徑,對齊後端 handleGeoPlacesNearby 的預設值
@@ -848,332 +668,55 @@ export function GeoOutlineMap({
     if (activeCategory) runCategoryQuery(activeCategory)
   }, [activeCategory, runCategoryQuery])
 
-  // 畫景點區域光暈疊層:地圖就緒或 filteredAttractions 變動時重畫,先清掉舊的。
-  // selected 初始值直接讀當下的 selectedKey/hoverKey(重畫當下若剛好是
-  // 選中/hover 項目,一開始就該是選中樣式,不必等下面那個獨立的
-  // setSelected effect 補上)。
-  useEffect(() => {
-    if (!mapReady || !mapRef.current) return
-    overlaysRef.current.forEach((o) => o.setMap(null))
-    const OverlayClass = getAttractionOverlayClass()
-    overlaysRef.current = filteredAttractions.map((d) => {
-      const key = geoItemKey('attraction', d)
-      const overlay = new OverlayClass(
-        d,
-        new google.maps.LatLng(d.lat, d.lng),
-        selectedKey === key || hoverKey === key,
-        candidateKeys?.has(key) ?? false,
-        handleAttractionClick,
-      )
-      overlay.setMap(mapRef.current!)
-      return overlay
-    })
-    return () => {
-      overlaysRef.current.forEach((o) => o.setMap(null))
-      overlaysRef.current = []
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, filteredAttractions])
-
-  // 同步選取狀態:只切換既有 overlay 的 class,不重建 DOM(重建會讓光暈/
-  // 照片的 fadeIn 動畫重播,側欄點擊選取時地圖上的地標會不必要地閃一下)。
-  // selectedKey/hoverKey 用 || 合併(見 hoverKey prop 的說明)。
-  useEffect(() => {
-    overlaysRef.current.forEach((o, i) => {
-      const d = filteredAttractions[i]
-      if (d) {
-        const key = geoItemKey('attraction', d)
-        o.setSelected(selectedKey === key || hoverKey === key)
-      }
-    })
-  }, [selectedKey, hoverKey, filteredAttractions])
-
-  // candidateKeysToken:candidateKeys 的內容摘要(排序後 join),供下方
-  // 同步候選籃狀態的 effect 依賴——candidateKeys 是 DesktopLayout.tsx
-  // 用 useMemo 從 geoCandidates 陣列算出的 Set,理論上內容沒變時參照
-  // 應該穩定,但用內容摘要當依賴陣列項目更保險(理由同 visibleHotelsKey
-  // 等既有的內容摘要 pattern),不依賴上游一定記得做好參照穩定化。
-  const candidateKeysToken = candidateKeys ? Array.from(candidateKeys).sort().join(',') : ''
-
-  // 同步候選籃狀態:只切換既有 overlay 的 class,理由同上方同步選取狀態
-  // 的 effect——加入/移出候選籃不該讓其他沒被動到的景點區域跟著重畫。
-  useEffect(() => {
-    overlaysRef.current.forEach((o, i) => {
-      const d = filteredAttractions[i]
-      if (d) o.setCandidate(candidateKeys?.has(geoItemKey('attraction', d)) ?? false)
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidateKeysToken, filteredAttractions])
-
-  // 範圍圓圈:只有帶 radiusMeters 的景點區域(手動整理的觀光慣稱分區,如
-  // 清邁的古城區/尼曼區,見 server/internal/geo/district_aliases.go)
-  // 才畫——這類區域沒有官方邊界資料,圓圈只是「大概這一帶」的粗略
-  // 示意,故用低透明度填色+淡邊框,刻意不搶過光暈與標籤的視覺焦點。
-  useEffect(() => {
-    if (!mapReady || !mapRef.current) return
-    radiusCirclesRef.current.forEach((c) => c.setMap(null))
-    radiusCirclesRef.current = filteredAttractions
-      .filter((d) => d.radiusMeters && d.radiusMeters > 0)
-      .map(
-        (d) =>
-          new google.maps.Circle({
-            center: { lat: d.lat, lng: d.lng },
-            radius: d.radiusMeters,
-            map: mapRef.current!,
-            fillColor: '#C4956A',
-            fillOpacity: 0.08,
-            strokeColor: '#C4956A',
-            strokeOpacity: 0.35,
-            strokeWeight: 1,
-            clickable: false,
-          }),
-      )
-    return () => {
-      radiusCirclesRef.current.forEach((c) => c.setMap(null))
-      radiusCirclesRef.current = []
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, filteredAttractions])
-
-  // visibleHotels:只保留落在目前地圖可視範圍(bounds)內的飯店——
-  // bounds 為 null(地圖剛掛載、還沒收到第一次 bounds_changed)時顯示
-  // 全部,避免開頭一瞬間地圖/側欄清單是空的。用 useMemo 快取,避免每次
-  // render 都建立新陣列參照——filter 的結果若每次都是新參照,下面依賴
-  // visibleHotels 的 useEffect 會被判定成「每次都變了」而重複觸發,
-  // 呼叫 onVisibleHotelsChange 進而讓外層 DesktopLayout 的 setGeoHotels
-  // 觸發重新渲染、這個元件又跟著重新渲染、又產生新的 visibleHotels
-  // 參照——形成不必要的重渲染迴圈,曾經導致飯店 marker 在畫面上閃爍/
-  // 消失。bounds 是 google.maps.LatLngBounds 物件參照,只有真的呼叫
-  // setBounds 時才會變(見 bounds_changed 監聽器),不會每次 render 換新,
-  // 可以安全放進依賴陣列。
-  const visibleHotels = useMemo(
-    () =>
-      bounds == null
-        ? hotels
-        : hotels.filter((h) => bounds.contains({ lat: h.lat, lng: h.lng })),
-    [bounds, hotels],
-  )
-
-  // visibleHotelsKey:visibleHotels 的內容摘要(座標字串),供下面的
-  // useEffect 依賴——即使 useMemo 已經避免多數不必要的重算,穩妥起見
-  // 再用內容而非陣列參照本身判斷「真的變了」才觸發 onVisibleHotelsChange/
-  // 重畫 marker,双重保險避免依賴陣列比對出現參照不穩定的問題。
-  const visibleHotelsKey = visibleHotels.map((h) => `${h.name}|${h.lat}|${h.lng}`).join(',')
-
-  // 每當 visibleHotels 內容變動,往上回報給 onVisibleHotelsChange——飯店
-  // 側欄(GeoHotelSidebar)渲染在這個元件之外,只能靠這個 callback
-  // 同步「目前地圖範圍內有哪些飯店」。
-  useEffect(() => {
-    onVisibleHotelsChange?.(visibleHotels)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleHotelsKey])
-
-  // 飯店圖層:地圖就緒或 visibleHotels(範圍/清單本身)變動時重畫,先清掉
-  // 舊的。用 google.maps.marker.AdvancedMarkerElement(非 OverlayView)
-  // ——飯店只需要單點圖示,不像分區光暈需要複合 DOM 結構,圖示用森綠色
-  // 圓點區分於分區光暈的暖沙棕色系,讓使用者一眼分得出「這是分區重心」
-  // 還是「這是可以住的地方」。
-  //
-  // 這個 effect 刻意不依賴 selectedKey——選取狀態變動時只切換對應那顆
-  // marker 的 content(見下方獨立的 effect),不重建整批 marker。理由同
-  // 下方那個 effect 的說明:選中/取消選中只是側欄點擊,不代表地圖範圍
-  // 或飯店清單本身有變化,若整批重畫,畫面上其他沒被點的飯店 marker
-  // 也會跟著經歷一次 map=null→重新 new AdvancedMarkerElement() 的閃爍,
-  // 是不必要的。
-  useEffect(() => {
-    if (!mapReady || !mapRef.current) return
-    hotelMarkersRef.current.forEach((m) => { m.map = null })
-    hotelMarkersRef.current = visibleHotels.map((h) => {
-      const marker = new google.maps.marker.AdvancedMarkerElement({
-        position: { lat: h.lat, lng: h.lng },
-        map: mapRef.current!,
-        title: h.name,
-        content: hotelMarkerContent(false, candidateKeys?.has(geoItemKey('hotel', h)) ?? false),
-      })
-      // 點擊飯店 marker 往上回報選取(見 onHotelSelect 的說明),讓側欄
-      // 能同步標記選取狀態並切到「飯店」分頁顯示介紹——跟地標圖示不同,
-      // 飯店 marker 本身沒有需要額外放大範圍/查附近推薦的行為,單純
-      // 回報選取即可。AdvancedMarkerElement 用 gmp-click(而非
-      // google.maps.Marker 的 'click'),沿用官方遷移指南的事件名稱。
-      marker.addListener('gmp-click', () => onHotelSelect?.(h))
-      return marker
-    })
-    return () => {
-      hotelMarkersRef.current.forEach((m) => { m.map = null })
-      hotelMarkersRef.current = []
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, visibleHotelsKey, onHotelSelect])
-
-  // 同步飯店 marker 的選取/候選籃樣式:只對「狀態真的改變」的那幾顆重設
-  // content,其餘 marker 完全不動,不重建、不閃爍。visibleHotels 與
-  // hotelMarkersRef.current 依 map() 建立時保證同順序,故直接用陣列
-  // 索引配對,不需要另外存一份 marker↔hotel 的對照表。candidateKeysToken
-  // 見上方景點區域同步候選籃狀態 effect 的說明。
-  useEffect(() => {
-    visibleHotels.forEach((h, i) => {
-      const marker = hotelMarkersRef.current[i]
-      if (!marker) return
-      const key = geoItemKey('hotel', h)
-      const selected = selectedKey === key || hoverKey === key
-      const candidate = candidateKeys?.has(key) ?? false
-      marker.content = hotelMarkerContent(selected, candidate)
-      marker.zIndex = selected ? 999 : null
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKey, hoverKey, visibleHotelsKey, candidateKeysToken])
-
-  // placesKey:places 的內容摘要,供下面兩個 effect 依賴——理由同
-  // visibleHotelsKey。
-  const placesKey = places.map((p) => `${p.name}|${p.lat}|${p.lng}`).join(',')
-
-  // 附近推薦地點圖層:points 變動時重畫,先清掉舊的。這批地點不像
-  // attractions/hotels 依可視範圍(bounds)篩選——它們是點擊地圖上方
-  // 類別標籤(handleCategoryClick)才觸發的一次性查詢結果,查詢中心是
-  // 「目前地圖中心點」,理應都落在可視範圍內,不需要再疊一層篩選判斷
-  // 增加複雜度。圖示用 placeMarkerContent(靛藍色系,見該函式的說明),
-  // 讓使用者一眼分得出這是「查出來的推薦」而非常駐的景點區域/飯店資料。
-  useEffect(() => {
-    if (!mapReady || !mapRef.current) return
-    placeMarkersRef.current.forEach((m) => { m.map = null })
-    placeMarkersRef.current = places.map((p) => {
-      const marker = new google.maps.marker.AdvancedMarkerElement({
-        position: { lat: p.lat, lng: p.lng },
-        map: mapRef.current!,
-        title: p.name,
-        content: placeMarkerContent(false, candidateKeys?.has(geoItemKey('place', p)) ?? false, p.category),
-      })
-      // 點擊推薦地點 marker 往上回報選取,理由同飯店 marker 的 gmp-click
-      // listener——單純回報選取,不觸發額外的地圖放大/查詢行為。
-      marker.addListener('gmp-click', () => onPlaceSelect?.(p))
-      return marker
-    })
-    return () => {
-      placeMarkersRef.current.forEach((m) => { m.map = null })
-      placeMarkersRef.current = []
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, placesKey, onPlaceSelect])
-
-  // 同步附近推薦地點 marker 的選取/候選籃樣式,理由與做法同上方飯店那個
-  // 獨立的 content 同步 effect。
-  useEffect(() => {
-    places.forEach((p, i) => {
-      const marker = placeMarkersRef.current[i]
-      if (!marker) return
-      const key = geoItemKey('place', p)
-      const selected = selectedKey === key || hoverKey === key
-      const candidate = candidateKeys?.has(key) ?? false
-      marker.content = placeMarkerContent(selected, candidate, p.category)
-      marker.zIndex = selected ? 999 : null
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKey, hoverKey, placesKey, candidateKeysToken])
-
-  // tripEntriesKey:tripEntries 的內容摘要,供下面兩個 effect 依賴——
-  // 理由同 visibleHotelsKey/placesKey。
-  const tripEntriesKey = tripEntries.map((e) => `${e.name}|${e.lat}|${e.lng}`).join(',')
-
-  // 行程本身已有座標的 entry 圖層:tripEntries 變動(換行程)時重畫,
-  // 先清掉舊的——這批點不受地圖可視範圍篩選(理由同附近推薦地點:
-  // 是行程固定的內容,不是依範圍查詢的圖層,全部顯示讓使用者看到完整
-  // 的行程分布)。圖示用 tripEntryMarkerContent(暖橘旗子,見該函式的
-  // 說明),一眼分得出「這是已經排進行程的點」。
-  useEffect(() => {
-    if (!mapReady || !mapRef.current) return
-    tripEntryMarkersRef.current.forEach((m) => { m.map = null })
-    tripEntryMarkersRef.current = tripEntries.map(
-      (e) =>
-        new google.maps.marker.AdvancedMarkerElement({
-          position: { lat: e.lat, lng: e.lng },
-          map: mapRef.current!,
-          title: e.name,
-          content: tripEntryMarkerContent(false),
-        }),
-    )
-    return () => {
-      tripEntryMarkersRef.current.forEach((m) => { m.map = null })
-      tripEntryMarkersRef.current = []
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, tripEntriesKey])
-
-  // 同步行程 entry marker 的選取樣式,理由與做法同上方飯店/推薦地點
-  // 那兩個獨立的 content 同步 effect。
-  useEffect(() => {
-    tripEntries.forEach((e, i) => {
-      const marker = tripEntryMarkersRef.current[i]
-      if (!marker) return
-      const key = geoItemKey('entry', e)
-      const selected = selectedKey === key || hoverKey === key
-      marker.content = tripEntryMarkerContent(selected)
-      marker.zIndex = selected ? 999 : null
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKey, hoverKey, tripEntriesKey])
-
-  // geocodeCandidates 圖層:搜尋查到多筆候選時(見該 prop 的說明)畫成
-  // 可點擊的候選 marker,並 fitBounds 到能同時看見所有候選的範圍——
-  // 跟其餘圖層不同,這批點不是「常駐顯示、跟著地圖範圍/行程變動」,而是
-  // 「這次搜尋」的暫時圖層,只有 geocodeCandidates 變成空陣列(觸發新
-  // 一次搜尋、換掉舊候選,見 GeoOutlinePanel.tsx 的 searchTrigger effect)
-  // 時 marker 才會清空——使用者點擊確認選定後(見下方 gmp-click)其餘
-  // 候選仍留在地圖上,不會因為選了一個就整批消失,讓使用者能隨時回頭
-  // 比較/改選別的候選。
-  const geocodeCandidates = geocodeCandidatesProp ?? []
-  const geocodeCandidatesKey = geocodeCandidates.map((c) => `${c.name}|${c.lat}|${c.lng}`).join(',')
-  useEffect(() => {
-    if (!mapReady || !mapRef.current) return
-    geocodeCandidateMarkersRef.current.forEach((m) => { m.map = null })
-    if (geocodeCandidates.length === 0) {
-      geocodeCandidateMarkersRef.current = []
-      return
-    }
-    geocodeCandidateMarkersRef.current = geocodeCandidates.map((c, i) => {
-      const key = `${c.name}|${c.lat}|${c.lng}`
-      const marker = new google.maps.marker.AdvancedMarkerElement({
-        position: { lat: c.lat, lng: c.lng },
-        map: mapRef.current!,
-        title: c.name,
-        content: geocodeCandidateMarkerContent(i + 1, key === selectedGeocodeCandidateKey),
-        zIndex: key === selectedGeocodeCandidateKey ? 999 : 998,
-      })
-      marker.addListener('gmp-click', () => onGeocodeCandidateSelect?.(c))
-      return marker
-    })
-    // fitBounds 包住所有候選點,讓使用者一次看見全部候選的相對位置再
-    // 決定要點哪一個——只有一筆候選時 GeoOutlinePanel 已經直接走原本的
-    // panRequest 流程(見該元件 searchTrigger 的 effect),不會走到這裡,
-    // 故這裡不需要額外處理「只有一個點,fitBounds 反而過度拉近」的
-    // 邊界情況。這個 effect 只在 geocodeCandidatesKey 變動(新一批候選)
-    // 時重畫,不依賴 selectedGeocodeCandidateKey——否則每次選定/改選都會
-    // 整批重建 marker、重新 fitBounds,把使用者手動調整過的地圖範圍
-    // 蓋掉(見下方獨立的選取樣式同步 effect,只換 content 不重建)。
-    const bounds = new google.maps.LatLngBounds()
-    geocodeCandidates.forEach((c) => bounds.extend({ lat: c.lat, lng: c.lng }))
-    mapRef.current.fitBounds(bounds, 64)
-    return () => {
-      geocodeCandidateMarkersRef.current.forEach((m) => { m.map = null })
-      geocodeCandidateMarkersRef.current = []
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, geocodeCandidatesKey])
-
-  // 同步候選 marker 的選取樣式:selectedGeocodeCandidateKey 變動時(使用者
-  // 點了另一個候選)只切換對應 marker 的 content/zIndex,不重建整批
-  // marker、不重新 fitBounds——理由同上方 effect 的說明,做法對齊
-  // 飯店/推薦地點/行程 entry 三個既有圖層各自獨立的 content 同步 effect。
-  useEffect(() => {
-    geocodeCandidates.forEach((c, i) => {
-      const marker = geocodeCandidateMarkersRef.current[i]
-      if (!marker) return
-      const key = `${c.name}|${c.lat}|${c.lng}`
-      const selected = key === selectedGeocodeCandidateKey
-      marker.content = geocodeCandidateMarkerContent(i + 1, selected)
-      marker.zIndex = selected ? 999 : 998
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedGeocodeCandidateKey, geocodeCandidatesKey])
+  // 以下五個圖層(景點區域光暈、飯店、附近推薦地點、行程 entry、搜尋候選)
+  // 各自獨立成 hook(見各檔案開頭說明)——每個只讀 mapRef/mapReady/自己的
+  // 資料/selectedKey/hoverKey/candidateKeys,不寫入任何其他共享狀態,故
+  // 拆開不影響本檔案其餘查詢/地圖生命週期邏輯,呼叫順序本身也不重要
+  // (彼此不互相依賴)。
+  useAttractionOverlays({
+    mapRef,
+    mapReady,
+    attractions,
+    zoom,
+    selectedKey,
+    hoverKey,
+    candidateKeys,
+    onAttractionSelect,
+  })
+  useHotelMarkers({
+    mapRef,
+    mapReady,
+    hotels,
+    bounds,
+    selectedKey,
+    hoverKey,
+    candidateKeys,
+    onHotelSelect,
+    onVisibleHotelsChange,
+  })
+  usePlaceMarkers({
+    mapRef,
+    mapReady,
+    places,
+    selectedKey,
+    hoverKey,
+    candidateKeys,
+    onPlaceSelect,
+  })
+  useTripEntryMarkers({
+    mapRef,
+    mapReady,
+    tripEntries,
+    selectedKey,
+    hoverKey,
+  })
+  useGeocodeCandidateMarkers({
+    mapRef,
+    mapReady,
+    geocodeCandidates: geocodeCandidatesProp ?? [],
+    selectedGeocodeCandidateKey,
+    onGeocodeCandidateSelect,
+  })
 
   // 點擊飯店/地點側欄(GeoHotelSidebar,渲染在整個介面最外側)的項目時,
   // 把地圖移動到該座標。panTo 一律執行(平移);只有點擊「地點」帶了
