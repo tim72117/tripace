@@ -93,18 +93,10 @@ func (s *Server) handleMaintenanceGeocode(w http.ResponseWriter, r *http.Request
 // POST /internal/maintenance/attractions/{id}/update-photo
 // Body(選填): { "query": "自訂查詢字串", "source": "google"|"pexels" }
 //
-// 路徑曾經是 /internal/maintenance/landmarks/{id}/update-photo(對齊
-// tripace-cli 原本 landmark-update-photo 子命令、-db 模式下的
-// dbClient.landmarkUpdatePhoto)——攻擊面/資源命名已在 v0.4.x 全面改成
-// attraction(見 docs/TERMINOLOGY.md),但這條路徑當時漏改,與同一資源
-// 底下其餘 /internal/maintenance/attractions/* 端點不一致,這次一併
-// 改名對齊,CLI 呼叫端(cmd/cli/http.go 的 attractionUpdatePhoto)同一次
-// commit 更新,子命令名稱 attraction-update-photo 本身不受影響。
-//
 // 重新查詢一次該地標的圖片並回寫到資料庫。query 未帶時,用該地標既有的
 // CityName+Name 組成預設查詢字串。查無圖片時回傳明確錯誤,不靜默略過
 // ——這是使用者主動觸發的單筆操作,呼叫端需要知道這次操作到底有沒有
-// 真的取到圖(理由同原本 dbClient 版本的說明)。
+// 真的取到圖。
 //
 // source 未帶時預設 "google"(對齊改動前的既有行為,不影響任何既有呼叫
 // 端);"pexels" 改走 internal/pexels 查詢示意圖(不是該地點的真實照片,

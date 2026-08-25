@@ -114,12 +114,8 @@ func (c *httpClient) reset(tripID string) error {
 }
 
 // attractionUpdatePhoto 對齊 POST /internal/maintenance/attractions/{id}/
-// update-photo(見 server/internal/api/maintenance.go)——路徑曾經是
-// /internal/maintenance/landmarks/{id}/update-photo,與同一資源底下其餘
-// /internal/maintenance/attractions/* 端點命名不一致,已改名對齊,子命令
-// 名稱 attraction-update-photo 本身不受影響。原本只能在 -db 直連模式下
-// 使用(見 dbClient 移除前的同名方法),現已搬進後端統一處理,理由同
-// geocode.go 開頭的說明。source 未帶時後端預設用 "google"。
+// update-photo(見 server/internal/api/maintenance.go)。source 未帶時
+// 後端預設用 "google"。
 func (c *httpClient) attractionUpdatePhoto(id, query, source string) (any, error) {
 	body := map[string]any{}
 	if query != "" {
@@ -133,10 +129,8 @@ func (c *httpClient) attractionUpdatePhoto(id, query, source string) (any, error
 
 // attractionAdd/attractionList/attractionCities/attractionDelete 對齊
 // POST/GET/DELETE /internal/maintenance/attractions(見
-// server/internal/api/maintenance.go)——原本只能在 -db 直連模式下使用
-// (見 dbClient 移除前的同名方法),現已搬進後端統一處理,理由同
-// attractionUpdatePhoto 的說明:CLI 不再需要直連資料庫,PhotoURL 未帶時
-// 由後端自動查 Pexels 補上(見 handleMaintenanceAttractionAdd)。
+// server/internal/api/maintenance.go)。PhotoURL 未帶時由後端自動查
+// Pexels 補上(見 handleMaintenanceAttractionAdd)。
 func (c *httpClient) attractionAdd(in model.Attraction) (any, error) {
 	return c.do("POST", "/internal/maintenance/attractions", in)
 }

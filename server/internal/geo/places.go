@@ -132,6 +132,20 @@ func pathFromContext(ctx context.Context) string {
 	return ""
 }
 
+// defaultLanguageCode 是這個套件對 Google Places API 所有請求固定使用的
+// 語言——專案介面語言只有繁中,回傳的地名/地址盡量用中文(實際仍依
+// Google 該地點的翻譯資料完整度而定,非所有地點都有中文譯名)。
+//
+// 這是單一事實來源,不要在個別函式裡直接寫死 "zh-TW" 字串——Text
+// Search/Nearby Search(POST,參數放 JSON body)與 Place Details(GET,
+// 沒有 body,必須放進查詢字串)兩種端點形狀不同,若各自手動組請求容易
+// 漏加,先前就實際發生過 GetPlaceDetails 漏放這個參數、導致查回的名稱
+// /地址一律是英文的 bug(跟其餘用 Text/Nearby Search 的端點顯示中文不
+// 一致)。改用 newPlacesSearchRequest/newPlaceDetailsRequest 這兩個
+// helper 組請求,由 helper 統一負責帶上這個參數,呼叫端不需要、也不應該
+// 自己記得加。
+const defaultLanguageCode = "zh-TW"
+
 // 新版 Places API (New) 的 Text Search 端點(POST)。
 // 舊版為 maps.googleapis.com/maps/api/place/textsearch/json(GET),已於 2026 遷移至此。
 const placesURL = "https://places.googleapis.com/v1/places:searchText"
@@ -269,6 +283,48 @@ func (c *Client) PexelsClient() *pexels.Client {
 	return c.pexelsClient
 }
 
+// newPlacesSearchRequest 組一支 Places API (New) 的 POST 搜尋請求(Text
+// Search/Nearby Search 共用這個形狀:JSON body + 三個固定 header)。
+// body 由呼叫端準備好其餘欄位(textQuery/pageSize/locationBias 等),這裡
+// 統一補上 languageCode(見 defaultLanguageCode 的說明——這是這個 helper
+// 存在的主要理由,避免呼叫端各自手動組 body 時忘記加)、序列化、設定
+// Content-Type/X-Goog-Api-Key/X-Goog-FieldMask 這三個新版 API 必要的
+// header。呼叫端仍需自行呼叫 c.gateway.Do 派送(不同呼叫端的 endpoint
+// 識別字串不同,如 "places.searchText"/"places.searchNearby",不適合
+// 收進這個 helper)。
+func (c *Client) newPlacesSearchRequest(ctx context.Context, url string, body map[string]any, fieldMask string) (*http.Request, error) {
+	body["languageCode"] = defaultLanguageCode
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Goog-Api-Key", c.apiKey)
+	req.Header.Set("X-Goog-FieldMask", fieldMask)
+	return req, nil
+}
+
+// newPlaceDetailsRequest 組一支 Places API (New) 的 GET Place Details
+// 請求(GET /v1/places/{placeID})——這支端點沒有 body,languageCode 必須
+// 放進查詢字串,是先前 GetPlaceDetails 實際漏放過的參數(見
+// defaultLanguageCode 的說明)。這個 helper 統一組出含 languageCode 的
+// 完整 URL 並設定 X-Goog-Api-Key/X-Goog-FieldMask 這兩個必要 header,
+// 讓之後新增的 GET 端點(如需要)不會重蹈同樣的疏漏。
+func (c *Client) newPlaceDetailsRequest(ctx context.Context, path, fieldMask string) (*http.Request, error) {
+	u := fmt.Sprintf("https://places.googleapis.com/v1/%s?languageCode=%s", path, defaultLanguageCode)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("X-Goog-Api-Key", c.apiKey)
+	req.Header.Set("X-Goog-FieldMask", fieldMask)
+	return req, nil
+}
+
 var ErrNoKey = fmt.Errorf("geo: Google Places API key 未設定")
 var ErrNotFound = fmt.Errorf("geo: 找不到符合的地點")
 
@@ -376,13 +432,11 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 	}
 
 	// 新版:參數放 JSON body。pageSize 對應舊版 MaxResults;
-	// regionCode 對應舊版 region(新版用大寫國碼,如 "JP")。
-	// languageCode 固定繁中:專案介面語言只有繁中,回傳的地名/地址盡量用中文
-	// (實際仍依 Google 該地點的翻譯資料完整度而定,非所有地點都有中文譯名)。
+	// regionCode 對應舊版 region(新版用大寫國碼,如 "JP")。languageCode
+	// 由 newPlacesSearchRequest 統一補上(見 defaultLanguageCode 的說明)。
 	reqBody := map[string]any{
-		"textQuery":    place,
-		"pageSize":     maxN,
-		"languageCode": "zh-TW",
+		"textQuery": place,
+		"pageSize":  maxN,
 	}
 	if region != "" {
 		reqBody["regionCode"] = region
@@ -410,18 +464,11 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 			},
 		}
 	}
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, err
-	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", placesURL, bytes.NewReader(jsonBody))
+	req, err := c.newPlacesSearchRequest(ctx, placesURL, reqBody, fieldMask)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Goog-Api-Key", c.apiKey)
-	req.Header.Set("X-Goog-FieldMask", fieldMask)
 
 	resp, err := c.gateway.Do(ctx, req, "places.searchText", callerFromContext(ctx), pathFromContext(ctx))
 	if err != nil {
@@ -584,22 +631,13 @@ func (c *Client) SearchCityAttractions(ctx context.Context, query string, maxRes
 	}
 
 	reqBody := map[string]any{
-		"textQuery":    query,
-		"pageSize":     maxResults,
-		"languageCode": "zh-TW",
+		"textQuery": query,
+		"pageSize":  maxResults,
 	}
-	jsonBody, err := json.Marshal(reqBody)
+	req, err := c.newPlacesSearchRequest(ctx, placesURL, reqBody, districtFieldMask)
 	if err != nil {
 		return nil, err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", placesURL, bytes.NewReader(jsonBody))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Goog-Api-Key", c.apiKey)
-	req.Header.Set("X-Goog-FieldMask", districtFieldMask)
 
 	resp, err := c.gateway.Do(ctx, req, "places.searchText", callerFromContext(ctx), pathFromContext(ctx))
 	if err != nil {
@@ -752,22 +790,13 @@ func (c *Client) SearchLandmarkWithPhoto(ctx context.Context, query string) (pla
 	}
 
 	reqBody := map[string]any{
-		"textQuery":    query,
-		"pageSize":     1,
-		"languageCode": "zh-TW",
+		"textQuery": query,
+		"pageSize":  1,
 	}
-	jsonBody, err := json.Marshal(reqBody)
+	req, err := c.newPlacesSearchRequest(ctx, placesURL, reqBody, districtFieldMask)
 	if err != nil {
 		return Place{}, "", 0, "", err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", placesURL, bytes.NewReader(jsonBody))
-	if err != nil {
-		return Place{}, "", 0, "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Goog-Api-Key", c.apiKey)
-	req.Header.Set("X-Goog-FieldMask", districtFieldMask)
 
 	resp, err := c.gateway.Do(ctx, req, "places.searchText", callerFromContext(ctx), pathFromContext(ctx))
 	if err != nil {
@@ -848,19 +877,10 @@ func (c *Client) GetPlaceDetails(ctx context.Context, placeID string) (PlaceDeta
 		return PlaceDetails{}, ErrNotFound
 	}
 
-	// languageCode 固定繁中,理由同 Search() 的說明——這支是 GET 端點,
-	// 沒有 body 可以放 languageCode(不像 Text Search/Nearby Search 那樣
-	// 放進 POST body),必須放進查詢字串,先前漏放導致這支查回的名稱/
-	// 地址一律是英文(Google 未指定語言時的預設行為),跟其餘三支端點
-	// 顯示中文不一致(這是實際發生過的 bug:搜尋清單顯示中文,點選候選
-	// 後查到的圖卡卻顯示英文)。
-	url := fmt.Sprintf("https://places.googleapis.com/v1/places/%s?languageCode=zh-TW", placeID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := c.newPlaceDetailsRequest(ctx, "places/"+placeID, placeDetailsFieldMask)
 	if err != nil {
 		return PlaceDetails{}, err
 	}
-	req.Header.Set("X-Goog-Api-Key", c.apiKey)
-	req.Header.Set("X-Goog-FieldMask", placeDetailsFieldMask)
 
 	resp, err := c.gateway.Do(ctx, req, "places.get", callerFromContext(ctx), pathFromContext(ctx))
 	if err != nil {
@@ -938,13 +958,13 @@ func (c *Client) ListPlacePhotoRefs(ctx context.Context, placeID string) ([]stri
 		return nil, ErrNotFound
 	}
 
-	url := fmt.Sprintf("https://places.googleapis.com/v1/places/%s", placeID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	// 這裡只查 photos 欄位(不含名稱/地址等文字欄位),languageCode 對結果
+	// 沒有實質影響,但仍統一走 newPlaceDetailsRequest(見該 helper 的
+	// 說明)——理由是一致性,不需要為了這一支端點特別評估要不要加。
+	req, err := c.newPlaceDetailsRequest(ctx, "places/"+placeID, photoRefsFieldMask)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("X-Goog-Api-Key", c.apiKey)
-	req.Header.Set("X-Goog-FieldMask", photoRefsFieldMask)
 
 	resp, err := c.gateway.Do(ctx, req, "places.get", callerFromContext(ctx), pathFromContext(ctx))
 	if err != nil {
@@ -1127,10 +1147,8 @@ func (c *Client) SearchNearby(ctx context.Context, lat, lng float64, opts *Nearb
 		includePhotos = opts.IncludePhotos
 	}
 
-	// languageCode 固定繁中,理由同 Search()。
 	reqBody := map[string]any{
 		"maxResultCount": maxN,
-		"languageCode":   "zh-TW",
 		"locationRestriction": map[string]any{
 			"circle": map[string]any{
 				"center": map[string]any{
@@ -1144,21 +1162,13 @@ func (c *Client) SearchNearby(ctx context.Context, lat, lng float64, opts *Nearb
 	if len(includedTypes) > 0 {
 		reqBody["includedTypes"] = includedTypes
 	}
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", nearbyURL, bytes.NewReader(jsonBody))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Goog-Api-Key", c.apiKey)
+	fm := nearbyFieldMask
 	if includePhotos {
-		req.Header.Set("X-Goog-FieldMask", nearbyFieldMask+",places.photos")
-	} else {
-		req.Header.Set("X-Goog-FieldMask", nearbyFieldMask)
+		fm = nearbyFieldMask + ",places.photos"
+	}
+	req, err := c.newPlacesSearchRequest(ctx, nearbyURL, reqBody, fm)
+	if err != nil {
+		return nil, err
 	}
 
 	resp, err := c.gateway.Do(ctx, req, "places.searchNearby", callerFromContext(ctx), pathFromContext(ctx))

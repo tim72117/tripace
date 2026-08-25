@@ -5,7 +5,7 @@ package main
 // os.Exit(1),在測試裡會直接終結整個測試程序,要測得先把 fatal 改成可注入的
 // 變數。那是另一件事,這裡不做。
 //
-// 這一層刻意用 fakeClient 而不是真的 httpClient/dbClient:cmd* 函式的職責就只有
+// 這一層刻意用 fakeClient 而不是真的 httpClient:cmd* 函式的職責就只有
 // 「把命令列參數翻譯成 client 呼叫」,用 fake 才能精確斷言翻譯結果。client 實作
 // 本身跟 server 對不對得上,由 http_test.go 那層負責。
 
