@@ -34,7 +34,8 @@ export function FloatingPanel({
   // height:'default' 對齊原本 .panel 的 top:12px/bottom:12px(trips/
   // timeline/pace/geo-outline 等 panelMode 浮動卡片);'info' 對齊
   // GeoInfoPanel/AttractionInfoPanel 的高度(top:64px/bottom:16px,原
-  // .infoPanelHeight),目前只有 GeoHotelSidebar 用到。
+  // .infoPanelHeight),目前只有 DesktopLayout.tsx 包 GeoHotelSidebar 的
+  // 那個 FloatingPanel 用到。
   height?: 'default' | 'info'
   title?: string
   onClose?: () => void

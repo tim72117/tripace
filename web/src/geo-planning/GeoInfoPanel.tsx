@@ -160,7 +160,7 @@ export function GeoInfoPanel({
   // 選單/日曆本身,見上方 ref 掛載處)之外就收回 'closed'。用 mousedown
   // 而非 click,是為了在選單項目自己的 onClick(handlePickScheduledDate/
   // 切到 'calendar')或日曆格子的 onSelect 觸發前就能正確判斷「這次點擊
-  // 是不是點在浮層內」,避免兩個事件的觸發順序打架。 */
+  // 是不是點在浮層內」,避免兩個事件的觸發順序打架。
   useEffect(() => {
     if (addUiMode === 'closed') return
     const handlePointerDown = (e: MouseEvent) => {

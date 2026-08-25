@@ -7,9 +7,8 @@ import styles from './DatePickerPopover.module.css'
 // <input type="date">(見 GeoInfoPanel.tsx 的 .dateEdit 分支、
 // GeoCandidateSidebar.tsx 的 NoDateDayHead)——原生 date input 的樣式
 // 完全交給瀏覽器/作業系統決定,無法客製化,使用者要求改成月曆格線 UI
-// (月份切換+可點選日期網格+「今天」按鈕)。用 react-day-picker(套件名稱
-// 已改為 @daypicker/react,react-day-picker 保留為相容舊名,兩者 API
-// 相同)而非自己刻——這是成熟、輕量(~19KB gzip,含 tree-shake 過的
+// (月份切換+可點選日期網格+「今天」按鈕)。用 react-day-picker(v10,見
+// package.json)而非自己刻——這是成熟、輕量(~19KB gzip,含 tree-shake 過的
 // date-fns)、下載量最大的同類套件,且用純 CSS 變數(--rdp-*)暴露樣式,
 // 不會像部分套件把樣式寫死在元件內部、難以覆蓋。
 //

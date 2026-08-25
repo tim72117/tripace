@@ -475,10 +475,10 @@ export function DesktopContent(props: ContentProps) {
             </FloatingPanel>
           )}
           {/* GeoHotelSidebar(飯店/景點/餐廳合併清單)只在使用者實際觸發過
-              查詢後才顯示——geoHotels 只有按下「搜尋這個區域」才會有內容
-              (GeoOutlineMap.tsx 的 queryTrigger === 0 guard,地圖掛載/拖曳
-              本身不會查),geoPlaces 只有點類別標籤/地標才會有內容(見
-              onPlacesNearby 的說明);兩者都還是空的代表使用者進到規劃分頁
+              查詢後才顯示——geo.searchResults(見 onSearchResultsChange
+              的說明)只有按下「搜尋這個區域」、點類別標籤、或點地標才會有
+              內容(GeoOutlineMap.tsx 的 queryTrigger === 0 guard,地圖掛載/
+              拖曳本身不會查);還是空的代表使用者進到規劃分頁
               後還沒做過任何查詢動作,這時不顯示。不再檢查
               panelMode === 'geo-outline'(見上方 geoHotelSidebarVisible
               的說明,同一個 bug 修復)。使用者明確要求不要壓縮主顯示的

@@ -36,9 +36,9 @@ import styles from './GeoOutlinePhoneView.module.css'
 // 第三階段新增「飯店/推薦地點」清單(GeoOutlinePhoneListDrawer)——同樣是
 // 從一側滑入的抽屜,選左側(候選籃已佔用右側滑入語意,見
 // GeoOutlinePhoneListDrawer.tsx 的說明)。資料來源對照桌面版
-// DesktopLayout.tsx 的 geoHotels/geoPlaces——GeoOutlinePanel 本來就已經
-// 把 onHotelsChange/onPlacesNearby 轉傳給 GeoOutlineMap(第一、二階段的
-// 手機版容器沒有接這幾個 callback,地圖仍會查詢,只是查到的結果沒有
+// DesktopLayout.tsx 的 geo.searchResults——GeoOutlinePanel 本來就已經
+// 把 onSearchResultsChange 轉傳給 GeoOutlineMap(第一、二階段的
+// 手機版容器沒有接這個 callback,地圖仍會查詢,只是查到的結果沒有
 // 清單可以顯示,這次補上)。清單合併顯示飯店/推薦地點/搜尋結果,不分頁
 // 切換——對齊桌面版 GeoHotelSidebar.tsx 現行的合併清單設計,原本這裡
 // 分成 hotels/places 兩個 tab 的設計已移除(見 GeoOutlinePhoneListDrawer.tsx

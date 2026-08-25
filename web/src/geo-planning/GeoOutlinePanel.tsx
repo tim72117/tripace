@@ -36,8 +36,8 @@ function mapLocatedTripEntries(entries: Awaited<ReturnType<typeof fetchEntries>>
 // 查詢邏輯(呼叫 fetchGeoGeocode、算 panTarget)留在這裡,透過
 // onCitySearched 這個 callback 讓外部(DesktopLayout.tsx)觸發查詢、
 // 這裡才是唯一持有 cfg、知道怎麼呼叫 API 的地方。這個切分理由同
-// onHotelsChange 等既有 callback 模式:UI 呈現與資料查詢分別交給
-// 「離使用者比較近」與「離 API 比較近」的元件負責。
+// onSearchResultsChange 等既有 callback 模式:UI 呈現與資料查詢分別
+// 交給「離使用者比較近」與「離 API 比較近」的元件負責。
 //
 // 這個元件本身不再查詢景點/飯店資料:輸入內容後只呼叫 fetchGeoGeocode
 // (GET /internal/geo/geocode)拿到一組候選座標,轉成 panTarget 讓
@@ -54,11 +54,11 @@ function mapLocatedTripEntries(entries: Awaited<ReturnType<typeof fetchEntries>>
 // 地圖目前的可視範圍——查到離目前位置很遠的地點是預期中的既有限制,
 // 見後端 handleGeoGeocode 的完整說明。
 //
-// onHotelsChange/onAttractionsChange 原封不動轉傳給 GeoOutlineMap——飯店/
-// 地點清單改由 DesktopLayout.tsx 在「整個桌面版介面最外側」渲染(比照
-// DemoPanel debug 面板的固定寬度側欄模式,跟 .desktop-main 平行,而非
-// 塞在 main 內部),兩者是分開掛載的 sibling,只能靠這兩個 callback 往上
-// 回報。
+// onSearchResultsChange/onAttractionsChange 原封不動轉傳給 GeoOutlineMap
+// ——飯店/推薦地點/搜尋結果合併清單改由 DesktopLayout.tsx 在「整個桌面版
+// 介面最外側」渲染(比照 DemoPanel debug 面板的固定寬度側欄模式,跟
+// .desktop-main 平行,而非塞在 main 內部),兩者是分開掛載的 sibling,
+// 只能靠這兩個 callback 往上回報。
 //
 // externalPanTarget:使用者在 GeoHotelSidebar/GeoCandidateSidebar 點擊某個
 // 飯店/地點/已排入行程項目時要移動地圖到的座標,由 DesktopLayout.tsx
@@ -70,11 +70,11 @@ function mapLocatedTripEntries(entries: Awaited<ReturnType<typeof fetchEntries>>
 // 已經有帶座標的 entry(如老手回來繼續規劃、或搬過去用等機制搬進來的
 // 候選點),應該優先以這些點的中心當地圖初始位置,而不是固定顯示東京。
 // 見下方 tripCenter 的查詢。
-// onTripEntriesChange:同 onHotelsChange 等,把行程本身已有座標的 entry
-// (見下方查詢 tripCenter 的同一個 useEffect,順便保留完整清單而不只是
-// 平均座標)往上回報,供 DesktopLayout.tsx 在整個桌面版介面最外側渲染
-// (地圖上畫 marker、候選籃自動帶入)——理由同 onHotelsChange/
-// onAttractionsChange。
+// onTripEntriesChange:同 onSearchResultsChange 等,把行程本身已有座標的
+// entry(見下方查詢 tripCenter 的同一個 useEffect,順便保留完整清單而不
+// 只是平均座標)往上回報,供 DesktopLayout.tsx 在整個桌面版介面最外側
+// 渲染(地圖上畫 marker、候選籃自動帶入)——理由同
+// onSearchResultsChange/onAttractionsChange。
 export function GeoOutlinePanel({
   cfg,
   tripID,

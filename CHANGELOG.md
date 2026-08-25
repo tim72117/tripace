@@ -2,6 +2,38 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.8.0 — 2026-08-26
+
+### 破壞性變更
+
+- **地理規劃地圖飯店/地點/搜尋結果三種來源統一為單一資料流 `GeoSearchResult`**（`GeoOutlineMap.tsx`、`GeoOutlinePanel.tsx`、`GeoHotelSidebar.tsx`、`GeoOutlinePhoneListDrawer.tsx`、`geoInfoContent.ts`）：原本各自獨立的 `onVisibleHotelsChange`/`onPlacesNearby`/`onHotelSelect`/`onPlaceSelect`/`onGeocodeCandidateSelect` 等 callback 全部移除，合併為 `onSearchResultsChange`/`onSearchResultSelect`；`GeoHotelSidebar.tsx` 匯出的 `Tab` 型別與雙分頁切換（`onSelectHotel`/`onSelectPlace`）一併移除，改為單一合併清單搭配 `onSelect`；`geoInfoContent.ts` 的 `hotelInfoContent`/`placeInfoContent` 改為 `searchResultInfoContent`/`candidateInfoContent`。手機版 `GeoOutlinePhoneListDrawer.tsx` 的 `hotels`/`places`/`geocodeCandidates`/`onTabChange` 一併改為單一 `results`/`onSelect`。
+- **`GeoOutlinePhoneView` 新增必填 prop `onOpenTrips`**：修正沒有選定行程時點日期選擇加入行程會靜默失敗的問題（見下方「修正」），呼叫端（`PhoneContent.tsx`）需額外傳入切到行程列表的導覽函式。
+- **後端 `geo.SearchDistricts` 改名為 `SearchCityAttractions`，`geo.SearchKnownDistricts`/`DistrictAlias` 型別整個移除**（`server/internal/geo/places.go`，原 `district_aliases.go` 已刪除）：`SearchKnownDistricts` 呼叫前已確認恆為空 map，屬安全的死碼清除。`fetchNearbyHotels` 從套件層級函式改為 `(s *Server)` 方法，因落地 GCS 需要存取 `s.photoUploader`。以上均為套件內部符號，本次範圍內呼叫端已同步更新。
+
+### 新增
+
+- **地圖照片查詢改為 Pexels-first + GCS 落地**（`server/internal/geo/places.go`、新增 `server/internal/photostorage`）：查詢地點照片時優先查詢 Pexels 免費圖庫並落地存進自家 GCS bucket，查無結果或未設定 Pexels API key 才 fallback 回 Google Places 真實照片；`GET /internal/geo/place-details` 新增 `photoOnly=1`/`textOnly=1` 兩種輕量查詢模式供搜尋結果清單延遲載入使用，`GET /internal/geo/geocode` 新增可選的 `biasLat`/`biasLng` 位置偏向參數。
+- **日期選擇 UI 改用 `react-day-picker` 月曆浮動匡**（新增 `web/src/geo-planning/DatePickerPopover.tsx`）：取代原本「加入行程」流程裡的原生 `<input type="date">`，改成疊加在按鈕組正下方（或視剩餘空間自動往上翻轉）的月曆格線浮動匡，點選日期格子即視為確定，不再需要額外的「確定」按鈕；配色沿用專案既有暖色系 CSS token，不使用套件預設的藍色主題。
+- **浮動卡片外殼收斂為共用元件 `FloatingPanel`/`PanelHead`**（新增 `web/src/FloatingPanel.tsx`、`web/src/PanelHead.tsx`）：取代原本六處各自重複的「絕對定位疊在地圖上方 + 右上角關閉按鈕 + 標題列」樣板程式碼與 CSS，`styles-desktop.css` 拆分歸位到各元件的 module.css 後整份刪除。
+
+### 修正
+
+- **地圖搜尋結果 marker 連續點擊時，資訊卡照片/評分/「加入行程」按鈕會消失且不會補回來**（`GeoOutlinePanel.tsx`、`geoSelection.ts`）：地圖 marker 的點擊事件在建立當下就把候選物件封進 closure，同一顆 marker 被連續點擊時傳入的是同一個物件參照，導致負責補查照片/文字的 `useEffect` 依賴比對判定「沒有變化」而不重新查詢；同時 `geoSelection` reducer 對同一個地點的重複選取，原本會無條件用輕量版內容覆蓋已經補齊的完整內容。改為 `useEffect` 依賴穩定的 `placeId` 字串，`geoSelection` 對同一個 key 的重複選取保留既有內容不覆蓋。
+- **對話浮動小匡與搜尋結果側欄同時開啟時位置重疊、高度不一致**（`DesktopLayout.module.css`）：兩者原本都固定貼右緣、互不避讓；改為對話小匡在搜尋結果側欄同時顯示時自動往左推開，且改用與搜尋結果側欄一致的高度計算方式，不再各自獨立換算。
+- **候選籃「×」刪除時，同一個地點若已排入行程多次會被一併誤刪**（`useGeoPlanningState.ts` 的 `removeCandidate`）：原本用「名稱+座標」比對要移除的候選，同一地點多次排入行程時會產生多筆座標相同、但各自獨立的 entry，刪除其中一筆會誤判成全部符合刪除條件而一起消失。改為 entry 類型改用穩定的 `id` 精確比對，其餘沒有 `id` 的候選類型維持原本比對方式。
+- **沒有選定行程時點日期選擇加入行程會靜默失敗**（`DesktopLayout.tsx`、`GeoOutlinePhoneView.tsx`）：原本 `handleScheduleCandidate` 內部因缺少 `tripID` 直接 no-op，使用者點了日期、浮動匡正常關閉卻毫無提示。改為記住候選與選定日期，導向行程列表引導使用者先選定行程，選定後自動補寫入剛才的候選。
+- **加入行程成功後，已經展開的行程欄反而被收合**（`DesktopLayout.tsx`）：誤用了帶有「再次呼叫同一個 mode 會 toggle 收合」邏輯的 `setPanelMode`，改為直接呼叫 `navigate` 導向目標路徑，不受 toggle 邏輯影響。
+- **候選籃某天「從候選加入」卡片外殼樣式全部失效、畫面版面錯亂**（`DesktopLayout.tsx`）：先前浮動卡片外殼重構時漏改這個分支，仍引用已經搬移、不存在的 CSS class 名稱，導致這張卡片變成沒有任何定位/樣式的裸元素。改用共用的 `FloatingPanel` 元件，並依需求調整為與行程欄並排顯示（不再互斥取代）。
+- **Google Places 地點詳細資訊查詢缺少語系參數，回應內容為英文**（`server/internal/geo/places.go`）：`GetPlaceDetails` 補上 `languageCode=zh-TW`。
+
+### 清理
+
+- **地理規劃地圖標記邏輯拆分為多個獨立 hook**（`GeoOutlineMap.tsx` 拆出 `useAttractionOverlays`/`useTripEntryMarkers`/`useSearchResultMarkers` 等，新增 `geoMarkerSelection.ts`/`mapMarkers.ts`）：取代原本集中在單一元件裡的多份圖層邏輯，各圖層獨立成純函式/hook，方便個別測試與維護。
+- **後端 Places API 請求組裝統一**（`server/internal/geo/places.go`）：`Search`/`GetPlaceDetails` 改用共用的 `newPlacesSearchRequest`/`newPlaceDetailsRequest` helper 組裝請求，消除各端點各自手寫 `languageCode` 導致容易遺漏的問題。
+- **移除試做功能「推薦景點卡片」「推薦景點橫滑」**（`DesktopShared.tsx`、`DesktopRail.tsx`、`demo/DemoPanelContent.tsx`、`recommended-places/RecommendedPlaces.tsx`）：含入口按鈕、`PanelMode`/feature flag、對應死碼（`RecommendedPlacesRow`/`FAKE_RECOMMENDED_PLACES`）與 CSS 一併移除；`RecommendedPlacesList`/`RecommendedPlaceCard` 仍被 `MessageBubble.tsx` 使用，予以保留。
+- **手機版側滑/彈出抽屜的拖曳關閉手勢收斂為共用 hook `useDragToClose`**（新增 `web/src/hooks/useDragToClose.ts`）：取代原本 `PhoneTripsDrawer.tsx`/`GeoOutlinePhoneListDrawer.tsx`/`PhoneTimelineDrawer.tsx`/`GeoOutlinePhoneCandidateDrawer.tsx` 四份檔案各自複製貼上的 `dragOffset`/touch handler 邏輯。
+- **候選籃側欄標題「候選籃」改為「行程」，行程列表改稱「旅程列表」**（`GeoCandidateSidebar.tsx`、`DesktopTripList.tsx`、`DesktopRail.tsx`、`PhoneTabBar.tsx`）：兩者原本都稱作「行程」容易混淆，明確區分「旅程」（挑選哪一趟旅行）與「行程」（該趟旅程裡排定的地點清單）。
+
 ## v0.7.0 — 2026-08-17
 
 ### 新增
