@@ -39,10 +39,19 @@ const maxPhotoResults = 3
 
 // fetchNearbyHotels 以指定中心座標做一次 Nearby Search 限定 lodging
 // 類型(不細分 hotel/hostel/inn 等子類,泛用即可涵蓋大部分住宿選項),
-// 只取前 maxPhotoResults 筆逐一把 photo resource name 轉成 data URI
-// (見該常數的說明)。查詢失敗時回傳空陣列而非 error——飯店只是附加
-// 圖層,不應該讓呼叫端的整支 API 因此失敗,見兩個 handler 呼叫端的說明。
-func fetchNearbyHotels(ctx context.Context, client *geo.Client, lat, lng, radiusMeters float64) []hotelResponse {
+// 只取前 maxPhotoResults 筆查照片。查詢失敗時回傳空陣列而非 error——
+// 飯店只是附加圖層,不應該讓呼叫端的整支 API 因此失敗,見兩個 handler
+// 呼叫端的說明。
+//
+// 照片來源優先序同 handleGeoPlaceDetails 的說明:先試 Pexels(免費/
+// 低成本示意圖,經 s.landmarkPhotoURL 落地到 GCS),查無結果或
+// client 未注入 Pexels 才 fallback 回 Google Places 真實照片(經
+// s.landmarkPhotoURLFromDataURI 落地)——這支函式現在改成 *Server
+// 方法,理由是落地 GCS 需要用到 s.photoUploader,套件層級函式(改版前)
+// 沒有管道能存取它。呼叫端需自行決定是否透過 client.SetPexelsClient
+// 注入 Pexels client(見 handleGeoAttractions/handleGeoAttractionsNearby
+// 的呼叫端)。
+func (s *Server) fetchNearbyHotels(ctx context.Context, client *geo.Client, lat, lng, radiusMeters float64) []hotelResponse {
 	hotels := make([]hotelResponse, 0)
 	found, err := client.SearchNearby(ctx, lat, lng, &geo.NearbyOptions{
 		RadiusMeters:  radiusMeters,
@@ -64,11 +73,16 @@ func fetchNearbyHotels(ctx context.Context, client *geo.Client, lat, lng, radius
 			Lng:         h.Lng,
 			PrimaryType: h.PrimaryType,
 		}
-		if h.PhotoRef != "" {
+		if client.PexelsClient() != nil {
+			if photo, ok, pErr := client.PexelsClient().Search(ctx, h.Name); pErr == nil && ok {
+				hr.PhotoURL = s.landmarkPhotoURL(ctx, h.PlaceID, photo.ImageURL)
+			}
+		}
+		if hr.PhotoURL == "" && h.PhotoRef != "" {
 			// 單張圖片下載失敗不影響這筆飯店資料本身——只是沒有照片
 			// 可顯示,理由同分區地標圖的處理方式。
 			if photoURL, pErr := client.PhotoDataURI(ctx, h.PlaceID, h.PhotoRef, 200); pErr == nil {
-				hr.PhotoURL = photoURL
+				hr.PhotoURL = s.landmarkPhotoURLFromDataURI(ctx, h.PlaceID, photoURL)
 			}
 		}
 		hotels = append(hotels, hr)
@@ -191,7 +205,7 @@ func (s *Server) handleGeoAttractions(w http.ResponseWriter, r *http.Request) {
 		}
 		centerLat := latSum / float64(len(attractions))
 		centerLng := lngSum / float64(len(attractions))
-		hotels = fetchNearbyHotels(ctx, client, centerLat, centerLng, 15000)
+		hotels = s.fetchNearbyHotels(ctx, client, centerLat, centerLng, 15000)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -222,13 +236,24 @@ func toAttractionResponses(in []geo.District) []attractionResponse {
 	return out
 }
 
-// GET /internal/geo/geocode?query={地名/城市名}
+// GET /internal/geo/geocode?query={地名/城市名/關鍵字}&biasLat={緯度,選填}&biasLng={經度,選填}
 //
 // 供地理輪廓底圖的城市搜尋框使用:把輸入字串解析成一組候選地點清單
-// (含座標),不查詢景點區域/飯店資料——「搜尋只負責定位,把地圖移
-// 過去」,之後畫面上該顯示什麼資料,一律交給 handleGeoAttractionsNearby
-// 依地圖當時的可視範圍(bounds)另外查詢,兩個關注點刻意分開,不像
-// handleGeoAttractions 那樣把「找座標」與「查資料」耦合在同一支端點裡。
+// (含座標),不查詢景點區域/飯店資料——這支端點本身只回傳「Text
+// Search 查到的候選」,之後畫面上該顯示什麼資料,一律交給
+// handleGeoAttractionsNearby 依地圖當時的可視範圍(bounds)另外查詢,
+// 兩個關注點刻意分開,不像 handleGeoAttractions 那樣把「找座標」與
+// 「查資料」耦合在同一支端點裡。
+//
+// 這支端點原本設計給「輸入城市/地標名稱,把地圖移過去」這種定位用途
+// (查到候選後純粹平移地圖,不代表查詢範圍),但實際使用上已經不只
+// 這樣——使用者也會直接輸入「甜點」「拉麵」這類泛用關鍵字,期待查到
+// 目前地圖所在區域附近的結果。biasLat/biasLng(前端帶目前地圖中心座標
+// 過來)讓這類查詢優先偏向地圖目前所在區域(見 geo.SearchOptions.
+// LocationBias 的完整說明)——只是偏向、不是限制,對「京都」這類文字
+// 意圖已經很明確的地名查詢幾乎不影響,查到離目前位置很遠但文字上更
+// 匹配的地點仍是預期中的行為,不是 bug。缺少這兩個參數時退回不套用
+// 位置偏向,查詢行為不受影響。
 //
 // 改用 geo.Client.Search(Places API (New) Text Search)而非
 // geo.Client.Geocode(傳統 Geocoding API):Geocoding API 只回傳單一
@@ -263,7 +288,23 @@ func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
 	ctx = geo.WithCaller(ctx, "handleGeoGeocode")
 	ctx = geo.WithPath(ctx, r.URL.Path)
 
-	places, err := client.Search(ctx, query, &geo.SearchOptions{MaxResults: maxGeoGeocodeCandidates})
+	// biasLat/biasLng:選填,前端(GeoOutlinePanel.tsx)帶目前地圖中心
+	// 座標過來——讓「甜點」「apple」這類沒有明確指向單一地點的泛用
+	// 關鍵字查詢優先偏向地圖目前所在區域,對「京都」這類文字意圖已經
+	// 很明確的地名查詢幾乎不影響(見 geo.SearchOptions.LocationBias 的
+	// 完整說明)。缺少或格式錯誤時視為未提供,不套用位置偏向、也不視為
+	// 錯誤——這支端點在沒有地圖中心可用的情境下(例如尚未建立地圖)
+	// 仍應該能正常查詢。
+	var locationBias *geo.LocationBias
+	if latRaw, lngRaw := r.URL.Query().Get("biasLat"), r.URL.Query().Get("biasLng"); latRaw != "" && lngRaw != "" {
+		if lat, err := strconv.ParseFloat(latRaw, 64); err == nil {
+			if lng, err := strconv.ParseFloat(lngRaw, 64); err == nil {
+				locationBias = &geo.LocationBias{Lat: lat, Lng: lng}
+			}
+		}
+	}
+
+	places, err := client.Search(ctx, query, &geo.SearchOptions{MaxResults: maxGeoGeocodeCandidates, LocationBias: locationBias})
 	if err != nil {
 		if err == geo.ErrNotFound {
 			writeErr(w, http.StatusNotFound, "no_match", "查無「"+query+"」相關地點")
@@ -277,14 +318,24 @@ func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// placeId:供前端(GeoOutlinePanel.tsx 的 handleGeocodeCandidateSelect)
+	// 拿去換發 GET /internal/geo/place-details,取得完整資訊(含照片,
+	// Pexels-first + GCS 落地,跟點地圖上原生 POI 完全同一套流程),不再
+	// 只是純定位用的座標——見 geo.Client.Search 的 fieldMask 說明,這裡
+	// 選擇性帶出(理論上 Text Search 每筆結果都會有 id,查無則省略此欄位,
+	// 前端據此判斷是否要走這條補查流程)。
 	candidates := make([]map[string]any, len(places))
 	for i, p := range places {
-		candidates[i] = map[string]any{
+		c := map[string]any{
 			"name":    p.Name,
 			"address": p.Address,
 			"lat":     p.Lat,
 			"lng":     p.Lng,
 		}
+		if p.PlaceID != "" {
+			c["placeId"] = p.PlaceID
+		}
+		candidates[i] = c
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"query":      query,
@@ -400,11 +451,12 @@ func (s *Server) handleGeoAttractionsNearby(w http.ResponseWriter, r *http.Reque
 	// 呼叫問題最大的來源(見 SetCache/PhotoCache 的說明)——同一批飯店隨
 	// 地圖小幅拖曳反覆落在查詢範圍內時,直接吃快取,不重新下載同一張照片。
 	client.SetCache(s.photoCache)
+	client.SetPexelsClient(pexels.New(os.Getenv("PEXELS_API_KEY")))
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	ctx = geo.WithCaller(ctx, "handleGeoAttractionsNearby")
 	ctx = geo.WithPath(ctx, r.URL.Path)
-	hotels := fetchNearbyHotels(ctx, client, lat, lng, radiusMeters)
+	hotels := s.fetchNearbyHotels(ctx, client, lat, lng, radiusMeters)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"attractions": attractions,
@@ -469,12 +521,88 @@ type placeDetailsResponse struct {
 // 重複呼叫與計費。
 const placeDetailsCacheMaxAge = 24 * time.Hour
 
+// landmarkPhotoURL 把地圖上點選任意地點查到的 Pexels 示意圖網址落地到
+// GCS(見 internal/photostorage 的完整說明),回傳我方 bucket 底下的
+// 公開 URL;落地失敗(未設定 GCS_PHOTO_BUCKET、下載/上傳出錯)時降級
+// 回傳原始的 sourceURL,不阻擋整體查詢流程——理由同景點區域建檔既有的
+// 「照片是輔助欄位」降級慣例(見 maintenance.go 的呼叫端)。這裡跟景點
+// 建檔共用同一個 s.photoUploader,只是 objectKey 換成 placeID(這條
+// 路徑唯一的穩定識別碼,跟 place_details_cache 的 key 一致),寫入
+// place-details/ 前綴(見 UploadDataURI 的說明),不與 attractions/
+// 前綴的人工建檔資料混在一起。
+func (s *Server) landmarkPhotoURL(ctx context.Context, placeID, sourceURL string) string {
+	uploaded, err := s.photoUploader.Upload(ctx, placeID, sourceURL)
+	if err != nil {
+		return sourceURL
+	}
+	return uploaded
+}
+
+// landmarkPhotoURLFromDataURI 是 landmarkPhotoURL 的 data: URI 版本——
+// Google Photo Media 這條路徑(client.PhotoDataURI)回傳的已經是 base64
+// 編碼好的圖片資料,不是外部網址,故改呼叫 UploadDataURI(解碼後上傳,
+// 不需要另外發 HTTP 請求下載)。落地失敗時降級回傳原始的 data URI,
+// 理由同 landmarkPhotoURL。
+func (s *Server) landmarkPhotoURLFromDataURI(ctx context.Context, placeID, dataURI string) string {
+	uploaded, err := s.photoUploader.UploadDataURI(ctx, placeID, dataURI)
+	if err != nil {
+		return dataURI
+	}
+	return uploaded
+}
+
+// photoOnlyResponse 是 photoOnly=1 時的回應形狀——只有 photoUrl,不含
+// name/address/rating/summary,理由見 handleGeoPlaceDetails 對 photoOnly
+// 分支的說明。
+type photoOnlyResponse struct {
+	PhotoURL string `json:"photoUrl,omitempty"`
+}
+
+// textOnlyResponse 是 textOnly=1 時的回應形狀——name/address/rating/
+// summary,不含 photoUrl,理由見 handleGeoPlaceDetails 對 textOnly 分支
+// 的說明。
+type textOnlyResponse struct {
+	Name    string  `json:"name"`
+	Address string  `json:"address"`
+	Lat     float64 `json:"lat"`
+	Lng     float64 `json:"lng"`
+	Rating  float64 `json:"rating,omitempty"`
+	Summary string  `json:"summary,omitempty"`
+}
+
 func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 	placeID := r.URL.Query().Get("placeId")
 	if placeID == "" {
 		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 placeId 查詢參數")
 		return
 	}
+	// photoOnly:供 GeoHotelSidebar.tsx 的搜尋結果清單延遲載入使用(見該
+	// 檔案 GeocodeCandidateItem 的說明)——清單一次最多 20 筆候選,每筆
+	// 捲進可視範圍就查一次,若比照原生 POI 點擊那樣打 Google
+	// GetPlaceDetails(Pro 級,要收費)+ Photo Media,一次搜尋捲完整份
+	// 清單的成本太高。這個模式下:
+	//   1. 快取命中就沿用完整快取的 photoUrl 欄位(理由同一般模式,不重複
+	//      打任何外部 API);
+	//   2. 快取未命中時只試 Pexels(免費),用呼叫端傳入的 name 查詢
+	//      (清單本來就已經有 Text Search 查到的名稱,不需要為了拿名稱
+	//      再多打一次 Google Details),查無結果就回空,不 fallback
+	//      Google GetPlaceDetails/Photo Media——這是刻意的成本上限,
+	//      「只查圖像」代表只承擔 Pexels 這一種免費查詢的成本,不是
+	//      「換一種方式取得同樣完整的資料」。
+	//   3. 不寫入 place_details_cache——這個模式下沒有 address/rating/
+	//      summary 等完整資料,寫入會讓快取列殘缺不全,之後真正需要完整
+	//      資訊時(使用者點選這筆候選,見 handleGeocodeCandidateSelect)
+	//      仍會呼叫這支端點的一般模式重新查一次完整內容,兩種模式的
+	//      快取各自獨立、互不干擾更安全。
+	photoOnly := r.URL.Query().Get("photoOnly") == "1"
+	// textOnly:供 GeoOutlinePanel.tsx 的 handleGeocodeCandidateSelect
+	// 使用——使用者點選候選後,先打這個模式立即拿到名稱/地址/評分/簡介
+	// 開啟資訊卡(此時 photoUrl 還沒有值,前端顯示佔位圖),不必等照片
+	// 查完才有畫面反應;照片另外並行呼叫 photoOnly 模式取得,查到後再
+	// 補上實際圖片。跟 photoOnly 對稱:快取未命中時完全跳過照片查詢
+	// (不打 Pexels/Google Photo Media),也不寫入快取(理由同 photoOnly
+	// 分支的說明,這個模式沒有 photoUrl 可安全寫入完整快取列)。
+	textOnly := r.URL.Query().Get("textOnly") == "1"
 
 	// 快取命中(且未過期)直接回傳,不打 Google——place_id 是 Places API
 	// 對同一地點的穩定識別碼(見 store.GetCachedPlaceDetails 的說明),
@@ -495,6 +623,16 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 			resp.PhotoURL = *cached.PhotoURL
 		}
 
+		// textOnly 不需要照片,略過下面的 Pexels 補查(理由見 textOnly
+		// 宣告處的說明),直接回文字部分。
+		if textOnly {
+			writeJSON(w, http.StatusOK, textOnlyResponse{
+				Name: resp.Name, Address: resp.Address, Lat: resp.Lat, Lng: resp.Lng,
+				Rating: resp.Rating, Summary: resp.Summary,
+			})
+			return
+		}
+
 		// 快取命中但當初沒查到照片(PhotoURL 為空)時,單獨補一次
 		// Pexels 查詢——只試 Pexels,不重新呼叫 Google GetPlaceDetails
 		// (這裡快取命中的整個重點就是不打 Google;快取本身也沒存
@@ -502,18 +640,64 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 		// Google 換圖,除非重新查一次 Details,那就違背了這裡「命中就
 		// 不打 Google」的設計)。Pexels 仍查不到就維持無圖回傳,不視為
 		// 錯誤。補到圖時一併更新回快取,下次同一 placeID 命中就不用再
-		// 重複查一次 Pexels。
+		// 重複查一次 Pexels。photoOnly 模式一樣適用這段補查邏輯——快取
+		// 命中的情況下,不論哪種模式,補圖成本都相同(只試 Pexels),
+		// 不需要另外區分。
 		if resp.PhotoURL == "" {
 			pexelsClient := pexels.New(os.Getenv("PEXELS_API_KEY"))
 			pctx, pcancel := context.WithTimeout(r.Context(), 5*time.Second)
 			if photo, ok, pErr := pexelsClient.Search(pctx, resp.Name); pErr == nil && ok {
-				resp.PhotoURL = photo.ImageURL
+				resp.PhotoURL = s.landmarkPhotoURL(pctx, placeID, photo.ImageURL)
 				photoURL := resp.PhotoURL
 				_ = s.store.SetCachedPlaceDetails(placeID, resp.Name, resp.Address, resp.Lat, resp.Lng, resp.Rating, cached.Summary, &photoURL)
 			}
 			pcancel()
 		}
 
+		if photoOnly {
+			writeJSON(w, http.StatusOK, photoOnlyResponse{PhotoURL: resp.PhotoURL})
+			return
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
+	if textOnly {
+		apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+		client := geo.New(apiKey)
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		ctx = geo.WithCaller(ctx, "handleGeoPlaceDetails")
+		ctx = geo.WithPath(ctx, r.URL.Path)
+		details, err := client.GetPlaceDetails(ctx, placeID)
+		if err != nil {
+			if err == geo.ErrNotFound {
+				writeErr(w, http.StatusNotFound, "no_match", "查無這個地點的詳細資訊")
+				return
+			}
+			writeErr(w, http.StatusBadGateway, "place_details_failed", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, textOnlyResponse{
+			Name: details.Name, Address: details.Address, Lat: details.Lat, Lng: details.Lng,
+			Rating: details.Rating, Summary: details.Summary,
+		})
+		return
+	}
+
+	if photoOnly {
+		name := r.URL.Query().Get("name")
+		if name == "" {
+			writeErr(w, http.StatusBadRequest, "invalid_input", "photoOnly 模式缺少 name 查詢參數")
+			return
+		}
+		pexelsClient := pexels.New(os.Getenv("PEXELS_API_KEY"))
+		pctx, pcancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer pcancel()
+		resp := photoOnlyResponse{}
+		if photo, ok, pErr := pexelsClient.Search(pctx, name); pErr == nil && ok {
+			resp.PhotoURL = s.landmarkPhotoURL(pctx, placeID, photo.ImageURL)
+		}
 		writeJSON(w, http.StatusOK, resp)
 		return
 	}
@@ -551,14 +735,14 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 	// 的低頻查詢,但 Photo Media API 仍按張數計費,能省則省。
 	if client.PexelsClient() != nil {
 		if photo, ok, pErr := client.PexelsClient().Search(ctx, details.Name); pErr == nil && ok {
-			resp.PhotoURL = photo.ImageURL
+			resp.PhotoURL = s.landmarkPhotoURL(ctx, placeID, photo.ImageURL)
 		}
 	}
 	if resp.PhotoURL == "" && details.PhotoRef != "" {
 		// 圖片下載失敗不影響整體查詢結果——只是沒有照片可顯示,理由同
 		// fetchNearbyHotels 等既有端點的處理方式。
 		if photoURL, pErr := client.PhotoDataURI(ctx, placeID, details.PhotoRef, 400); pErr == nil {
-			resp.PhotoURL = photoURL
+			resp.PhotoURL = s.landmarkPhotoURLFromDataURI(ctx, placeID, photoURL)
 		}
 	}
 
@@ -690,6 +874,7 @@ func (s *Server) handleGeoPlacesNearby(w http.ResponseWriter, r *http.Request) {
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	client := geo.New(apiKey)
 	client.SetCache(s.photoCache)
+	client.SetPexelsClient(pexels.New(os.Getenv("PEXELS_API_KEY")))
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	ctx = geo.WithCaller(ctx, "handleGeoPlacesNearby")
@@ -716,9 +901,16 @@ func (s *Server) handleGeoPlacesNearby(w http.ResponseWriter, r *http.Request) {
 				PrimaryType: p.PrimaryType,
 				Category:    classifyPlaceCategory(p.PrimaryType),
 			}
-			if p.PhotoRef != "" {
+			// 照片來源優先序同 fetchNearbyHotels/handleGeoPlaceDetails 的
+			// 說明:先試 Pexels(落地 GCS),查無結果才 fallback Google。
+			if client.PexelsClient() != nil {
+				if photo, ok, pErr := client.PexelsClient().Search(ctx, p.Name); pErr == nil && ok {
+					pr.PhotoURL = s.landmarkPhotoURL(ctx, p.PlaceID, photo.ImageURL)
+				}
+			}
+			if pr.PhotoURL == "" && p.PhotoRef != "" {
 				if photoURL, pErr := client.PhotoDataURI(ctx, p.PlaceID, p.PhotoRef, 200); pErr == nil {
-					pr.PhotoURL = photoURL
+					pr.PhotoURL = s.landmarkPhotoURLFromDataURI(ctx, p.PlaceID, photoURL)
 				}
 			}
 			places = append(places, pr)

@@ -414,27 +414,38 @@ export function fetchGeoAttractions(cfg: ClientConfig, city: string) {
 }
 
 // GeoGeocodeCandidate:fetchGeoGeocode 單筆候選地點——對齊後端
-// handleGeoGeocode 的回應形狀(見該函式的說明)。
+// handleGeoGeocode 的回應形狀(見該函式的說明)。搜尋本身只查免費的
+// Essentials 級欄位(不含照片/評分/簡介,理由見後端 geo.Client.Search
+// 的 fieldMask 說明),placeId 供使用者點選候選後另外呼叫
+// fetchGeoPlaceDetails 補查完整資訊(含照片,Pexels-first + GCS 落地,
+// 跟點地圖上原生 POI 走同一套流程)——選填,理論上 Text Search 每筆
+// 結果都會有,查無則省略。
 export interface GeoGeocodeCandidate {
   name: string
   address: string
   lat: number
   lng: number
+  placeId?: string
 }
 
 // 對齊 server 的 GET /internal/geo/geocode(handleGeoGeocode)——把輸入
 // 字串解析成一組候選地點清單(座標),不查詢景點區域/飯店資料。地理
-// 輪廓底圖的城市搜尋框用這支端點「只負責定位」,回傳多筆候選(改走
-// Places API Text Search,對城市/觀光區這類口語化地名支援較差的
-// Geocoding API 已不再使用,見後端該函式的完整說明)供地圖標出來讓
-// 使用者自己點選確認,不再像過去只回一組座標、猜錯了無法挑選——查完
-// 選定其中一筆後,畫面上該顯示什麼資料交給 fetchGeoAttractionsNearby
-// 依地圖當時的可視範圍另外查詢。
-export function fetchGeoGeocode(cfg: ClientConfig, query: string) {
+// 輪廓底圖的城市搜尋框用這支端點,回傳多筆候選(改走 Places API Text
+// Search,對城市/觀光區這類口語化地名支援較差的 Geocoding API 已不再
+// 使用,見後端該函式的完整說明)供地圖標出來讓使用者自己點選確認,不再
+// 像過去只回一組座標、猜錯了無法挑選——查完選定其中一筆後,畫面上該
+// 顯示什麼資料交給 fetchGeoAttractionsNearby 依地圖當時的可視範圍另外
+// 查詢。這支端點原本設計給城市/地標名稱這類定位用途,但實際使用上也會
+// 直接輸入「甜點」這類泛用關鍵字——bias(選填,通常是目前地圖中心座標)
+// 讓這類查詢優先偏向該區域附近的結果(見後端 handleGeoGeocode 的
+// locationBias 完整說明),對「京都」這類文字意圖已經很明確的地名查詢
+// 幾乎不影響。不傳 bias 時退回純文字查詢,不套用任何位置偏向。
+export function fetchGeoGeocode(cfg: ClientConfig, query: string, bias?: { lat: number; lng: number }) {
+  const biasParams = bias ? `&biasLat=${bias.lat}&biasLng=${bias.lng}` : ''
   return request<{ query: string; candidates: GeoGeocodeCandidate[] }>(
     cfg,
     'GET',
-    `/internal/geo/geocode?query=${encodeURIComponent(query)}`,
+    `/internal/geo/geocode?query=${encodeURIComponent(query)}${biasParams}`,
   )
 }
 
@@ -555,6 +566,44 @@ export interface GeoPlaceDetails {
 
 export function fetchGeoPlaceDetails(cfg: ClientConfig, placeId: string) {
   return request<GeoPlaceDetails>(cfg, 'GET', `/internal/geo/place-details?placeId=${encodeURIComponent(placeId)}`)
+}
+
+// fetchGeoPlacePhoto:GET /internal/geo/place-details 的 photoOnly=1 模式
+// (見後端 handleGeoPlaceDetails 的說明)——只查/回傳照片,不含 name/
+// address/rating/summary,供 GeoHotelSidebar.tsx 搜尋結果清單的延遲載入
+// 使用(GeocodeCandidateItem,項目捲進可視範圍才觸發)。跟一般的
+// fetchGeoPlaceDetails 是同一支後端端點、同一套快取,只是這個模式下
+// 快取未命中時只試 Pexels、不 fallback 較貴的 Google GetPlaceDetails/
+// Photo Media(理由見後端說明),成本上限比完整查詢低很多——一次搜尋
+// 清單最多 20 筆,適合逐一延遲觸發。name 是清單本身已經有的候選名稱
+// (來自 fetchGeoGeocode 的 Text Search 結果),快取未命中時後端拿去查
+// Pexels,不需要為了拿名稱多打一次 Google Details。
+export function fetchGeoPlacePhoto(cfg: ClientConfig, placeId: string, name: string) {
+  return request<{ photoUrl?: string }>(
+    cfg,
+    'GET',
+    `/internal/geo/place-details?placeId=${encodeURIComponent(placeId)}&photoOnly=1&name=${encodeURIComponent(name)}`,
+  )
+}
+
+// GeoPlaceText:fetchGeoPlaceText 的回應形狀——GeoPlaceDetails 扣掉
+// photoUrl,理由見該函式的說明。
+export type GeoPlaceText = Omit<GeoPlaceDetails, 'photoUrl'>
+
+// fetchGeoPlaceText:GET /internal/geo/place-details 的 textOnly=1 模式
+// (見後端 handleGeoPlaceDetails 的說明)——只查/回傳文字資訊(名稱/
+// 地址/評分/簡介),不含照片,供 GeoOutlinePanel.tsx 的
+// handleGeocodeCandidateSelect 使用:使用者點選候選後,先打這支立即
+// 拿到文字資訊開啟資訊卡(此時沒有 photoUrl,前端顯示佔位圖),不必
+// 等照片查完才有畫面反應;照片另外並行呼叫 fetchGeoPlacePhoto 取得,
+// 查到後再補上實際圖片——兩支請求平行發出,不互相等待。跟 photoOnly
+// 對稱:快取未命中時完全跳過照片查詢,成本比完整查詢低。
+export function fetchGeoPlaceText(cfg: ClientConfig, placeId: string) {
+  return request<GeoPlaceText>(
+    cfg,
+    'GET',
+    `/internal/geo/place-details?placeId=${encodeURIComponent(placeId)}&textOnly=1`,
+  )
 }
 
 // 手動編輯條目(不經 AI),對齊 server 的 PATCH /v1/entries/{id}(handleUpdateEntry)。

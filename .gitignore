@@ -27,8 +27,11 @@ server/server
 
 # go:embed 的前端 build 產物,只在 Docker build 過程中由 COPY --from=web-build
 # 產生(見 Dockerfile、Dockerfile.admin),本機驗證/除錯時手動複製進來的副本
-# 不該進版控。
+# 不該進版控。webadmin/dist 先前漏排除,導致本機手動複製的 admin build
+# 產物被 git 追蹤到,這裡一併補上(見 Dockerfile 第 74 行的 COPY --from=
+# admin-build,同一套「編譯時才產生,不進版控」的既有慣例)。
 server/cmd/server/web/dist/
+server/cmd/server/webadmin/dist/
 server/cmd/adminserver/web/dist/
 
 # ---- 系統 / 編輯器 ----

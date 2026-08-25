@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from '../api'
-import { fetchEntries, fetchGeoGeocode } from '../api'
+import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoHotel, GeoPlace, GeoPlaceDetails, GeoPlaceText, GeoTripEntry } from '../api'
+import { fetchEntries, fetchGeoGeocode, fetchGeoPlacePhoto, fetchGeoPlaceText } from '../api'
 import { GeoOutlineMap } from './GeoOutlineMap'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
 import styles from './GeoOutlinePanel.module.css'
@@ -38,12 +38,20 @@ function mapLocatedTripEntries(entries: Awaited<ReturnType<typeof fetchEntries>>
 // onHotelsChange 等既有 callback 模式:UI 呈現與資料查詢分別交給
 // 「離使用者比較近」與「離 API 比較近」的元件負責。
 //
-// 這個元件本身不再查詢景點/飯店資料——「搜尋只負責定位」:輸入城市名
-// 後只呼叫 fetchGeoGeocode(GET /internal/geo/geocode)拿到一組座標,轉成
-// panTarget 讓 GeoOutlineMap 把地圖平移過去;地圖到了新位置後,會依它
-// 當時的可視範圍自己向 GET /internal/geo/attractions/nearby 查詢該顯示
-// 什麼景點/飯店(見 GeoOutlineMap.tsx 的說明),查詢責任完全收在地圖
-// 元件內部,這裡不再重複維護一份 attractions/hotels state。
+// 這個元件本身不再查詢景點/飯店資料:輸入內容後只呼叫 fetchGeoGeocode
+// (GET /internal/geo/geocode)拿到一組候選座標,轉成 panTarget 讓
+// GeoOutlineMap 把地圖平移過去;地圖到了新位置後,會依它當時的可視範圍
+// 自己向 GET /internal/geo/attractions/nearby 查詢該顯示什麼景點/飯店
+// (見 GeoOutlineMap.tsx 的說明),查詢責任完全收在地圖元件內部,這裡
+// 不再重複維護一份 attractions/hotels state。
+//
+// 這個搜尋框最初的設計是「輸入城市/地標名稱,把地圖移過去」的純定位
+// 用途,但實際使用上已經不只如此——使用者也會直接輸入「甜點」「拉麵」
+// 這類泛用關鍵字,期待查到目前地圖所在區域附近的結果。fetchGeoGeocode
+// 底層的 Text Search 目前不知道地圖當下在哪裡(純文字查詢,沒有座標
+// 概念),這種關鍵字查詢會依 Google 全球相關性排序回傳結果,不會偏向
+// 地圖目前的可視範圍——查到離目前位置很遠的地點是預期中的既有限制,
+// 見後端 handleGeoGeocode 的完整說明。
 //
 // onHotelsChange/onAttractionsChange 原封不動轉傳給 GeoOutlineMap——飯店/
 // 地點清單改由 DesktopLayout.tsx 在「整個桌面版介面最外側」渲染(比照
@@ -85,6 +93,10 @@ export function GeoOutlinePanel({
   onPlaceSelect,
   onPoiSelect,
   onGeocodeCandidateSelect,
+  onGeocodeCandidateText,
+  onGeocodeCandidatePhoto,
+  onGeocodeCandidatesChange,
+  externalGeocodeCandidateSelect,
   panTarget: externalPanTarget,
   selectedKey,
   candidateKeys,
@@ -132,12 +144,46 @@ export function GeoOutlinePanel({
   onHotelSelect?: (hotel: GeoHotel) => void
   onPlaceSelect?: (place: GeoPlace) => void
   onPoiSelect?: (details: GeoPlaceDetails) => void
-  // onGeocodeCandidateSelect:使用者點擊地圖上的搜尋候選 marker 時觸發
-  // ——原封不動轉傳給呼叫端(DesktopLayout.tsx),讓它跟 onHotelSelect 等
-  // 既有選取來源一樣開啟 GeoInfoPanel 顯示這個候選的資訊。這個元件自己
-  // 只負責「移動地圖+標記選中狀態」(見下方 handleGeocodeCandidateSelect),
-  // 不知道資訊欄長什麼樣子。
+  // onGeocodeCandidateSelect:使用者點擊地圖上的搜尋候選 marker(或側欄
+  // 清單裡的候選項目)時立即觸發——只帶 Text Search 查到的輕量資料
+  // (名稱/地址/座標,不含照片,理由見 GeoGeocodeCandidate 型別的說明),
+  // 讓呼叫端(DesktopLayout.tsx)先開 GeoInfoPanel 顯示基本資訊,不必
+  // 等待下方 onGeocodeCandidateText/onGeocodeCandidatePhoto 的補查完成
+  // 才有畫面反應。
   onGeocodeCandidateSelect?: (candidate: GeoGeocodeCandidate) => void
+  // onGeocodeCandidateText/onGeocodeCandidatePhoto:候選有 placeId 時,
+  // 選定後這個元件會平行呼叫 fetchGeoPlaceText(文字:名稱/地址/評分/
+  // 簡介)與 fetchGeoPlacePhoto(照片,Pexels-first + GCS 落地),兩支
+  // 請求互不等待——文字通常先回來,讓呼叫端能立刻把資訊卡升級成完整
+  // 文字版本(此時 photoUrl 仍未知,畫面顯示佔位圖,使用者不需要等
+  // 照片查完才看到名稱/地址/簡介這些內容,見下方
+  // handleGeocodeCandidateSelect 的說明);照片查到後再單獨補上,不影響
+  // 已經顯示的文字內容。這樣拆分後就不能再直接沿用 onPoiSelect 那樣
+  // 「一次拿到完整 GeoPlaceDetails 才觸發」的既有慣例,呼叫端需要自行
+  // 用 useState 或類似機制,把文字/照片兩次回呼的結果合併成同一張
+  // 資訊卡(見 DesktopLayout.tsx 的接線)。查詢失敗、或候選沒有 placeId
+  // (理論上不該發生,見該型別的說明)時不會觸發,不視為錯誤。
+  onGeocodeCandidateText?: (placeId: string, text: GeoPlaceText) => void
+  onGeocodeCandidatePhoto?: (placeId: string, photoUrl: string | null) => void
+  // onGeocodeCandidatesChange:同 onHotelsChange 等既有 callback 模式——
+  // geocodeCandidates 只有這個元件自己留一份(供 GeoOutlineMap 畫
+  // marker),使用者要求搜尋到多筆候選時也要能在 GeoHotelSidebar(整個
+  // 桌面版介面最外側的合併清單)裡直接看到、點選,而不是只能在地圖上
+  // 辨認 marker——側欄跟這個元件是分開掛載的 sibling,只能靠這個
+  // callback 往上回報,理由完全同 onHotelsChange。
+  onGeocodeCandidatesChange?: (candidates: GeoGeocodeCandidate[]) => void
+  // externalGeocodeCandidateSelect:GeoHotelSidebar 合併清單裡的候選項目
+  // 被點擊時,由 DesktopLayout.tsx 傳入同一個候選物件——不能直接沿用
+  // externalPanTarget(那個機制固定 suppressQuery:true,是刻意給「只是
+  // 想對齊看清楚一個已知項目」的候選籃/探索周邊用的,見該 prop 的完整
+  // 說明),候選是使用者剛主動搜尋、意圖是「移動並查詢新範圍」,必須走
+  // 跟地圖上點 candidate marker 完全相同的 handleGeocodeCandidateSelect
+  // (suppressQuery:false),兩種入口(地圖 marker/側欄清單)才會有一致
+  // 的行為,不會出現「清單點候選,地圖有移動但景點/飯店清單卻沒有跟著
+  // 更新」的落差(這是實際發生過的 bug)。用物件參照(而非純座標)當
+  // useEffect 依賴,理由同下方 handleGeocodeCandidateSelect 的呼叫時機
+  // ——每次點擊呼叫端都會建立新物件參照,即使連續點同一筆候選也能觸發。
+  externalGeocodeCandidateSelect?: GeoGeocodeCandidate | null
   panTarget?: { lat: number; lng: number; level?: number; radiusMeters?: number } | null
   selectedKey?: GeoSelectedKey
   // candidateKeys/hoverKey:原封不動轉傳給 GeoOutlineMap——理由同
@@ -163,6 +209,14 @@ export function GeoOutlinePanel({
 }) {
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  // mapCenter:GeoOutlineMap 每次 idle 回報的目前地圖中心座標(見該元件
+  // onCenterChange prop 的說明)——供下方 searchTrigger 的 effect 當
+  // locationBias 使用,讓「甜點」「apple」這類沒有明確指向單一地點的
+  // 泛用關鍵字查詢優先偏向目前地圖所在區域(見 handleGeoGeocode 的完整
+  // 說明)。初始值 null 代表地圖尚未 idle 過一次(理論上進入這個分頁、
+  // 地圖建立完成後很快就會有第一次 idle),此時查詢不帶位置偏向,不視為
+  // 錯誤。
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null)
   // panRequest:目前要移動地圖到的目標,兩個獨立來源(搜尋框查到的座標/
   // externalPanTarget 側欄點擊)共用同一個 state,誰最後觸發就用誰——
   // 取代原本「搜尋 > 側欄點擊」寫死優先序的舊寫法(見下方 effectivePanTarget
@@ -215,19 +269,40 @@ export function GeoOutlinePanel({
     setLoading(true)
     setErr(null)
     setGeocodeCandidates([])
-    fetchGeoGeocode(cfg, trimmed)
+    onGeocodeCandidatesChange?.([])
+    fetchGeoGeocode(cfg, trimmed, mapCenter ?? undefined)
       .then((result) => {
         if (cancelled) return
         // 只有一筆候選時不需要使用者再點一次確認——直接沿用原本
         // 「查完就 pan 過去」的行為;多筆候選才交給地圖標出來讓使用者
         // 自己選(見下方 geocodeCandidates 的完整說明與
-        // handleGeocodeCandidateSelect)。
+        // handleGeocodeCandidateSelect)。使用者明確要求:即使只有一筆
+        // 也要自動顯示這個地點的資訊卡(理由同 handleGeocodeCandidateSelect
+        // 對多筆候選點選後的既有行為)——原本這裡只 setPanRequest、不呼叫
+        // onGeocodeCandidateSelect,搜尋整座城市這類唯一解查詢時地圖會
+        // 移動過去,但完全沒有任何資訊卡跳出來,使用者容易誤以為搜尋沒有
+        // 生效。
         setSelectedGeocodeCandidateKey(null)
         if (result.candidates.length === 1) {
           const only = result.candidates[0]
           setPanRequest({ lat: only.lat, lng: only.lng, suppressQuery: false })
+          onGeocodeCandidateSelect?.(only)
+          // 平行補查文字/照片——理由/失敗處理同 handleGeocodeCandidateSelect
+          // 的說明,這裡不直接呼叫該函式是因為它定義在這個 effect 之後
+          // (避免打亂既有函式宣告順序),故重複這幾行呼叫邏輯,而非改成
+          // 互相呼叫。
+          if (only.placeId) {
+            const placeId = only.placeId
+            fetchGeoPlaceText(cfg, placeId)
+              .then((text) => onGeocodeCandidateText?.(placeId, text))
+              .catch(() => {})
+            fetchGeoPlacePhoto(cfg, placeId, only.name)
+              .then((result) => onGeocodeCandidatePhoto?.(placeId, result.photoUrl ?? null))
+              .catch(() => {})
+          }
         } else {
           setGeocodeCandidates(result.candidates)
+          onGeocodeCandidatesChange?.(result.candidates)
         }
       })
       .catch((e) => {
@@ -255,7 +330,40 @@ export function GeoOutlinePanel({
     setSelectedGeocodeCandidateKey(`${c.name}|${c.lat}|${c.lng}`)
     setPanRequest({ lat: c.lat, lng: c.lng, suppressQuery: false })
     onGeocodeCandidateSelect?.(c)
+    // 有 placeId 才補查(理論上 Text Search 每筆結果都會有,見
+    // GeoGeocodeCandidate 型別的說明;沒有就維持只顯示輕量版內容,不視為
+    // 錯誤)。使用者明確要求把文字/照片拆成兩個平行請求:文字
+    // (fetchGeoPlaceText)通常先回來,能讓資訊卡提早顯示完整名稱/地址/
+    // 簡介,不必等照片查完才有反應,照片還沒到之前畫面顯示佔位圖(見
+    // onGeocodeCandidatePhoto 的說明)。兩支請求彼此獨立、不互相等待,
+    // 也各自的 .catch 靜默放棄失敗——理由同這支端點其餘呼叫端「照片/
+    // 詳細資訊是加值,查不到不算整體失敗」的既有慣例。不設 cancelled
+    // flag:使用者短時間內連續切換候選是可能的(見上方「其餘候選繼續
+    // 留在地圖上」的說明),但因為每次呼叫都是獨立 fetch、結果各自對應
+    // 各自的候選物件,即使前一次還沒回來、後一次已經觸發,兩次回呼都
+    // 只是「更新成含更多資訊的版本」,不會互相覆蓋錯誤的內容——不像
+    // searchTrigger 那個 effect 需要 cancelled(那裡是換掉整個
+    // candidates 清單,舊查詢回來會覆蓋新查詢的結果)。
+    if (c.placeId) {
+      const placeId = c.placeId
+      fetchGeoPlaceText(cfg, placeId)
+        .then((text) => onGeocodeCandidateText?.(placeId, text))
+        .catch(() => {})
+      fetchGeoPlacePhoto(cfg, placeId, c.name)
+        .then((result) => onGeocodeCandidatePhoto?.(placeId, result.photoUrl ?? null))
+        .catch(() => {})
+    }
   }
+
+  // externalGeocodeCandidateSelect(GeoHotelSidebar 合併清單裡的候選項目
+  // 被點擊,見該 prop 的說明)變動時,直接呼叫跟地圖上點 candidate
+  // marker 完全相同的 handleGeocodeCandidateSelect——兩種入口共用同一份
+  // 邏輯,不重新實作一份跳過 suppressQuery:false 的簡化版。
+  useEffect(() => {
+    if (!externalGeocodeCandidateSelect) return
+    handleGeocodeCandidateSelect(externalGeocodeCandidateSelect)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalGeocodeCandidateSelect])
 
   // 切到這個分頁或換行程時,若行程底下已有帶座標的 entry,算出這些點的
   // 平均座標當地圖初始中心——只在 tripID 變動時查一次,不是每次都重查:
@@ -378,6 +486,7 @@ export function GeoOutlinePanel({
           onHotelSelect={onHotelSelect}
           onPlaceSelect={onPlaceSelect}
           onPoiSelect={onPoiSelect}
+          onCenterChange={setMapCenter}
           panTarget={panRequest}
           selectedKey={selectedKey}
           candidateKeys={candidateKeys}

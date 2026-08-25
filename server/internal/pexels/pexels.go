@@ -17,12 +17,17 @@ import (
 	"time"
 )
 
-const baseURL = "https://api.pexels.com/v1/search"
+const defaultBaseURL = "https://api.pexels.com/v1/search"
 
 // Client 是 Pexels Search API 的最小可用封裝。
 type Client struct {
 	apiKey     string
 	httpClient *http.Client
+	// baseURL 預設是正式的 Pexels API 端點(defaultBaseURL),測試用
+	// newClientWithBaseURL 覆寫成 httptest.NewServer 的位址,不需要真的
+	// 打外部網路——理由同 internal/photostorage 的 objectStore 注入,
+	// 只是這裡端點本身就是最小可替換的單元,不需要另外抽介面。
+	baseURL string
 }
 
 // New 建立一個 Client。apiKey 是 Pexels 開發者後台簽發的 API Key(見
@@ -32,7 +37,16 @@ func New(apiKey string) *Client {
 	return &Client{
 		apiKey:     apiKey,
 		httpClient: &http.Client{Timeout: 8 * time.Second},
+		baseURL:    defaultBaseURL,
 	}
+}
+
+// newClientWithBaseURL 供測試使用——同 New,但可指定 baseURL(通常是
+// httptest.NewServer 的位址),不對外匯出。
+func newClientWithBaseURL(apiKey, baseURL string) *Client {
+	c := New(apiKey)
+	c.baseURL = baseURL
+	return c
 }
 
 // ErrNoAPIKey 是未設定 apiKey 時 Search 回傳的錯誤——這是刻意的早期
@@ -81,7 +95,7 @@ func (c *Client) Search(ctx context.Context, query string) (photo Photo, ok bool
 		return Photo{}, false, fmt.Errorf("pexels: query 不可為空")
 	}
 
-	u := baseURL + "?per_page=1&query=" + url.QueryEscape(query)
+	u := c.baseURL + "?per_page=1&query=" + url.QueryEscape(query)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return Photo{}, false, fmt.Errorf("pexels: 建立請求失敗: %w", err)

@@ -137,8 +137,10 @@ func pathFromContext(ctx context.Context) string {
 const placesURL = "https://places.googleapis.com/v1/places:searchText"
 
 // fieldMask 指定新版 API 要回傳哪些欄位(新版必填 header X-Goog-FieldMask,
-// 不給會回 400)。只取目前用到的:顯示名稱、格式化地址、經緯度。
-const fieldMask = "places.displayName,places.formattedAddress,places.location"
+// 不給會回 400)。取顯示名稱、格式化地址、經緯度、id——id 屬於
+// Essentials 級(免費,不加價),供呼叫端(handleGeoGeocode)拿去換發
+// GetPlaceDetails,查詢完整資訊(含照片),理由見該函式的說明。
+const fieldMask = "places.displayName,places.formattedAddress,places.location,places.id"
 
 // nearbyURL 是 Places API (New) 的 Nearby Search 端點(POST),依座標+半徑找附近地點。
 const nearbyURL = "https://places.googleapis.com/v1/places:searchNearby"
@@ -327,6 +329,20 @@ type SearchOptions struct {
 	// MaxResults 最多回傳幾筆候選，預設 1，最大 20（Places API (New)
 	// Text Search 的 pageSize 官方硬性上限，見下方 Search 的說明）。
 	MaxResults int
+	// LocationBias 讓結果優先偏向這個座標附近——只是「偏向」不是
+	// 「限制」(locationBias,不是 locationRestriction,見下方 Search
+	// 的說明),對「甜點」「apple」這類沒有明確指向單一地點的泛用關鍵字
+	// 查詢有實質影響(優先回傳查詢座標附近的結果,而非全球知名度最高的
+	// 結果);對「京都」這類文字意圖已經很明確的地名查詢幾乎不影響
+	// (Google 的文字比對信心已經夠高,不需要靠地理位置輔助判斷)。
+	// nil 代表不套用任何位置偏向。
+	LocationBias *LocationBias
+}
+
+// LocationBias 是一個圓形區域,供 SearchOptions.LocationBias 使用。
+type LocationBias struct {
+	Lat, Lng     float64
+	RadiusMeters float64
 }
 
 // Search 查詢地點名稱，回傳候選清單。
@@ -347,6 +363,7 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 
 	maxN := 1
 	region := ""
+	var locationBias *LocationBias
 	if opts != nil {
 		if opts.MaxResults > 0 {
 			maxN = opts.MaxResults
@@ -355,6 +372,7 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 			}
 		}
 		region = opts.Region
+		locationBias = opts.LocationBias
 	}
 
 	// 新版:參數放 JSON body。pageSize 對應舊版 MaxResults;
@@ -368,6 +386,29 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 	}
 	if region != "" {
 		reqBody["regionCode"] = region
+	}
+	// locationBias(非 locationRestriction)——只偏向、不排除其他結果,
+	// 理由見 SearchOptions.LocationBias 的說明。半徑未指定或超出上限時
+	// 退回/夾到 50km(對齊 Nearby Search 的既有上限,見
+	// NearbyOptions.RadiusMeters 的說明,Places API 的圓形區域參數兩者
+	// 共用同一個官方上限)。
+	if locationBias != nil {
+		radius := locationBias.RadiusMeters
+		if radius <= 0 {
+			radius = 50000
+		}
+		if radius > 50000 {
+			radius = 50000
+		}
+		reqBody["locationBias"] = map[string]any{
+			"circle": map[string]any{
+				"center": map[string]any{
+					"latitude":  locationBias.Lat,
+					"longitude": locationBias.Lng,
+				},
+				"radius": radius,
+			},
+		}
 	}
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
@@ -402,7 +443,7 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 		return nil, fmt.Errorf("geo: request failed (HTTP %d)", resp.StatusCode)
 	}
 
-	// 新版回應結構:places[].displayName.text / formattedAddress / location.{latitude,longitude}
+	// 新版回應結構:places[].displayName.text / formattedAddress / location.{latitude,longitude} / id
 	var body struct {
 		Places []struct {
 			DisplayName struct {
@@ -413,6 +454,7 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 				Latitude  float64 `json:"latitude"`
 				Longitude float64 `json:"longitude"`
 			} `json:"location"`
+			ID string `json:"id"`
 		} `json:"places"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
@@ -432,6 +474,7 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 			Address: p.FormattedAddress,
 			Lat:     p.Location.Latitude,
 			Lng:     p.Location.Longitude,
+			PlaceID: p.ID,
 		})
 	}
 	return out, nil
@@ -805,7 +848,13 @@ func (c *Client) GetPlaceDetails(ctx context.Context, placeID string) (PlaceDeta
 		return PlaceDetails{}, ErrNotFound
 	}
 
-	url := fmt.Sprintf("https://places.googleapis.com/v1/places/%s", placeID)
+	// languageCode 固定繁中,理由同 Search() 的說明——這支是 GET 端點,
+	// 沒有 body 可以放 languageCode(不像 Text Search/Nearby Search 那樣
+	// 放進 POST body),必須放進查詢字串,先前漏放導致這支查回的名稱/
+	// 地址一律是英文(Google 未指定語言時的預設行為),跟其餘三支端點
+	// 顯示中文不一致(這是實際發生過的 bug:搜尋清單顯示中文,點選候選
+	// 後查到的圖卡卻顯示英文)。
+	url := fmt.Sprintf("https://places.googleapis.com/v1/places/%s?languageCode=zh-TW", placeID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return PlaceDetails{}, err

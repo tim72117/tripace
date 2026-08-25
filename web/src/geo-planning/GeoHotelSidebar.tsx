@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
-import type { ClientConfig, GeoHotel, GeoPlace } from '../api'
+import type { ClientConfig, GeoGeocodeCandidate, GeoHotel, GeoPlace } from '../api'
+import { fetchGeoPlacePhoto } from '../api'
 import { type GeoCandidate, createEntryFromCandidate } from './GeoCandidateSidebar'
 import styles from './GeoHotelSidebar.module.css'
 
@@ -49,7 +50,7 @@ export type GeoSelectedKey = string | null
 // kind 值仍保留(地圖上的地標圖示/AttractionInfoPanel 仍會用到,見
 // GeoOutlineMap.tsx),只是這個側欄不再渲染 attraction 清單。
 export function geoItemKey(
-  kind: 'hotel' | 'attraction' | 'place' | 'entry',
+  kind: 'hotel' | 'attraction' | 'place' | 'entry' | 'geocode',
   item: { name: string; lat: number; lng: number },
 ) {
   return `${kind}:${item.name}:${item.lat}:${item.lng}`
@@ -177,15 +178,115 @@ function AddCandidateButton({
   )
 }
 
+// GeocodeCandidateItem:搜尋結果清單裡的單一候選項目——照片延遲載入
+// (使用者明確要求:清單一次最多 20 筆,若每筆一出現就立刻查照片,一次
+// 搜尋最多觸發 20 次額外查詢,成本太高;改成只在項目真的捲進可視範圍
+// 時才查,配合下方 GeoHotelSidebar 的 photoCache 避免同一筆候選重複
+// 進出視窗時重複查詢)。查詢用 fetchGeoPlacePhoto(後端 photoOnly 模式,
+// 見該函式的說明)而非完整的 fetchGeoPlaceDetails——清單只需要照片,
+// 不需要 rating/summary,photoOnly 模式跳過較貴的 Google
+// GetPlaceDetails,只試免費的 Pexels,一次搜尋清單捲完 20 筆的成本上限
+// 因此低很多(使用者明確要求「只查詢圖像」)。用 IntersectionObserver
+// 綁在這個項目自己的 DOM 節點上,而非在父層 GeoHotelSidebar 對所有候選
+// 共用一個 observer 逐一 observe/unobserve——每個項目自己管理自己的
+// 可見狀態,元件卸載時 observer 自動跟著清掉,不需要額外的清單管理邏輯。
+function GeocodeCandidateItem({
+  cfg,
+  candidate,
+  photoUrl,
+  onPhotoLoaded,
+  selected,
+  onSelect,
+  onHover,
+}: {
+  cfg: ClientConfig
+  candidate: GeoGeocodeCandidate
+  // photoUrl:undefined 代表還沒查過,null 代表查過但沒有照片(兩者都不
+  // 該再重複觸發查詢),string 代表查到的照片網址——由父層的 photoCache
+  // 傳入,這個元件本身不持有查詢結果的真實來源,只負責「觸發查詢」與
+  // 「顯示查詢結果」。
+  photoUrl: string | null | undefined
+  // onPhotoLoaded:查詢完成時往上回報,寫回父層的 photoCache——理由同
+  // photoUrl,快取集中存在父層,同一個 placeId 才能在多次進出視窗時
+  // 只查一次。
+  onPhotoLoaded: (placeId: string, url: string | null) => void
+  selected: boolean
+  onSelect: () => void
+  onHover: (hovering: boolean) => void
+}) {
+  const ref = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    // 已經查過(不論有沒有查到照片)、或沒有 placeId(理論上不該發生,
+    // 見 GeoGeocodeCandidate 型別的說明)就不需要 observe。
+    if (photoUrl !== undefined || !candidate.placeId) return
+    const el = ref.current
+    if (!el) return
+    const placeId = candidate.placeId
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return
+        // 一旦真的進入可視範圍就立刻停止觀察並查詢——不需要持續監看,
+        // 這是一次性的「有沒有出現過」判斷,理由同 HomePage.tsx 的
+        // IntersectionObserver 既有用法。
+        observer.disconnect()
+        // 用 fetchGeoPlacePhoto(photoOnly 模式,見該函式的說明),不是
+        // fetchGeoPlaceDetails——清單延遲載入只需要照片,不需要 rating/
+        // summary,photoOnly 模式跳過較貴的 Google GetPlaceDetails,只試
+        // 免費的 Pexels,適合一次搜尋最多 20 筆逐一觸發的情境。
+        fetchGeoPlacePhoto(cfg, placeId, candidate.name)
+          .then((result) => onPhotoLoaded(placeId, result.photoUrl ?? null))
+          .catch(() => onPhotoLoaded(placeId, null))
+      },
+      // rootMargin 讓查詢提前一點觸發(捲動到剛好看到一半時圖片已經在
+      // 路上了),但不用太大(200px 足夠涵蓋這個側欄清單一般的捲動速度,
+      // 不需要一次預載太多筆)。
+      { rootMargin: '200px' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidate.placeId, photoUrl])
+
+  return (
+    <div
+      ref={ref}
+      className={`${styles.item}${selected ? ` ${styles.itemSelected}` : ''}`}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        className={styles.itemBody}
+        onClick={onSelect}
+        onKeyDown={(e) => { if (e.key === 'Enter') onSelect() }}
+        onMouseEnter={() => onHover(true)}
+        onMouseLeave={() => onHover(false)}
+      >
+        {photoUrl ? (
+          <img className={styles.itemPhoto} src={photoUrl} alt={candidate.name} loading="lazy" />
+        ) : (
+          <div className={styles.itemPhotoPlaceholder} />
+        )}
+        <div className={styles.itemInfo}>
+          <span className={styles.itemName}>{candidate.name}</span>
+          <span className={styles.itemAddress}>{candidate.address}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function GeoHotelSidebar({
   cfg,
   tripID,
   hotels,
   places = [],
+  geocodeCandidates = [],
   placesCategory,
   selectedKey,
   onSelectHotel,
   onSelectPlace,
+  onSelectGeocodeCandidate,
   onAddCandidate,
   onCandidateCreated,
   onHover,
@@ -199,6 +300,15 @@ export function GeoHotelSidebar({
   tripID?: string | null
   hotels: GeoHotel[]
   places?: GeoPlace[]
+  // geocodeCandidates:城市搜尋框查到多筆候選時(見 GeoOutlinePanel.tsx
+  // 的 onGeocodeCandidatesChange)由 DesktopLayout.tsx 中介——理由同
+  // hotels/places,讓使用者不需要在地圖上逐一辨認 candidate marker 就能
+  // 直接在清單裡點選(使用者明確要求)。這是純定位用的候選(見
+  // api.ts 的 GeoGeocodeCandidate,只有名稱/地址/座標,沒有 photoUrl),
+  // 不是「可加入候選籃」的資料類型(GeoCandidate 判別聯集沒有對應的
+  // 'geocode' kind),故渲染時不顯示 AddCandidateButton,只有可點擊的
+  // 項目本體。
+  geocodeCandidates?: GeoGeocodeCandidate[]
   // placesCategory:目前 places 內容屬於地圖上方哪個類別標籤(飯店/景點/
   // 餐廳,見 GeoOutlineMap.tsx 的 onActiveCategoryChange),null 代表不屬於
   // 任何特定類別(來自點擊地標查附近推薦)——用來讓空狀態文字反映目前
@@ -208,6 +318,7 @@ export function GeoHotelSidebar({
   selectedKey?: GeoSelectedKey
   onSelectHotel?: (hotel: GeoHotel) => void
   onSelectPlace?: (place: GeoPlace) => void
+  onSelectGeocodeCandidate?: (candidate: GeoGeocodeCandidate) => void
   onAddCandidate?: (candidate: GeoCandidate) => void
   // onCandidateCreated:AddCandidateButton 選了日期、直接建立成後端 entry
   // 成功後觸發,轉發給呼叫端(DesktopLayout.tsx)重新查一次 tripEntries
@@ -222,25 +333,62 @@ export function GeoHotelSidebar({
   onHover?: (key: GeoSelectedKey) => void
 }) {
   const placesLabel = (placesCategory && PLACES_CATEGORY_LABELS[placesCategory]) || '附近推薦'
-  const isEmpty = hotels.length === 0 && places.length === 0
+  const isEmpty = hotels.length === 0 && places.length === 0 && geocodeCandidates.length === 0
+  // geocodePhotos:搜尋候選的照片延遲載入快取(見 GeocodeCandidateItem 的
+  // 說明),key 是 placeId——存在這裡(而非每個 GeocodeCandidateItem 各自
+  // 記憶)是因為候選清單重新渲染(hover/選取狀態變化)不該讓已經查過的
+  // 照片消失重查,且同一個 placeId 若因為使用者上下捲動導致項目重新
+  // mount,也不該重複觸發查詢。value 為 undefined 代表還沒查過,null
+  // 代表查過但沒有照片,string 代表查到的照片網址——理由同
+  // GeocodeCandidateItem 的 photoUrl prop 說明。新一輪搜尋(見
+  // DesktopLayout.tsx 關閉按鈕清空 geoGeocodeCandidates 的既有行為)
+  // 不特別清空這份快取——不同次搜尋查到同一個 placeId 時直接沿用舊結果
+  // 沒有正確性疑慮(地點的照片不會頻繁變動),還能省一次查詢。
+  const [geocodePhotos, setGeocodePhotos] = useState<Record<string, string | null>>({})
 
   return (
     <aside className={styles.sidebar}>
       <div className={styles.list}>
         {isEmpty ? (
           <div className={styles.empty}>
-            還沒有查詢結果——按上方類別標籤(飯店/景點/餐廳)或地圖上的地標圖示,查到的地點會列在這裡。
+            還沒有查詢結果——按上方類別標籤(飯店/景點/餐廳)、地圖上的地標圖示,或使用城市搜尋框,查到的地點會列在這裡。
           </div>
         ) : (
           <>
+            {/* geocodeCandidates(城市搜尋框查到的候選,見該 prop 的說明)
+                排最前面——使用者剛主動觸發這次搜尋、意圖最明確,理應第一
+                個看到。跟 hotels/places 不同,沒有 AddCandidateButton
+                (純定位用途,不是「可加入候選籃」的資料);照片改成捲進
+                可視範圍才延遲查詢(見 GeocodeCandidateItem 的說明),不是
+                查完候選就立刻全部要圖——一次搜尋最多 20 筆,一次全查
+                成本太高。 */}
+            {geocodeCandidates.length > 0 && (
+              <>
+                <div className={styles.placesCategoryHead}>搜尋結果</div>
+                {geocodeCandidates.map((c) => (
+                  <GeocodeCandidateItem
+                    key={`${c.name}-${c.lat}-${c.lng}`}
+                    cfg={cfg}
+                    candidate={c}
+                    photoUrl={c.placeId ? geocodePhotos[c.placeId] : null}
+                    onPhotoLoaded={(placeId, url) => {
+                      setGeocodePhotos((prev) => ({ ...prev, [placeId]: url }))
+                    }}
+                    selected={selectedKey === geoItemKey('geocode', c)}
+                    onSelect={() => onSelectGeocodeCandidate?.(c)}
+                    onHover={(hovering) => onHover?.(hovering ? geoItemKey('geocode', c) : null)}
+                  />
+                ))}
+              </>
+            )}
             {/* 飯店/景點/餐廳三種類別合併顯示在同一份清單,不再用分頁切換
                 (使用者明確要求)。飯店有內容時前面加一行小標題方便辨識
                 來源;places(景點/餐廳/點地標的泛用推薦)有 placesCategory
                 時同樣加標題,標明是哪個類別標籤查出來的結果——沒有
                 placesCategory 時(來自點地標的泛用推薦)不顯示標題,維持
-                簡潔。飯店清單永遠排在前面,理由:飯店是「搜尋這個區域」
-                觸發、通常是使用者當下主要在找的資訊,places 是點類別標籤/
-                地標時才查的補充資訊。 */}
+                簡潔。飯店清單排在 geocodeCandidates 之後,理由:飯店是
+                「搜尋這個區域」觸發、通常是使用者當下主要在找的資訊,
+                places 是點類別標籤/地標時才查的補充資訊。 */}
             {hotels.length > 0 && (
               <>
                 <div className={styles.placesCategoryHead}>飯店</div>

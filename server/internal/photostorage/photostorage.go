@@ -14,6 +14,7 @@ package photostorage
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,10 +25,46 @@ import (
 	"cloud.google.com/go/storage"
 )
 
+// objectStore 是 Uploader 實際需要用到的 GCS 操作子集(寫入一個物件、
+// 刪除一個物件)——抽成介面讓測試能注入一份 in-memory 假實作
+// (見 photostorage_test.go 的 fakeObjectStore),不需要真的連線 GCS 或
+// 依賴 STORAGE_EMULATOR_HOST 這類外部環境。gcsObjectStore(下方)是唯一
+// 的正式實作,包住 *storage.Client 對應的呼叫。
+type objectStore interface {
+	// writeObject 寫入 objectName 的完整內容(bucket 已經由實作內部固定
+	// 住,呼叫端不需要重複傳)。
+	writeObject(ctx context.Context, objectName, contentType string, r io.Reader) error
+	// deleteObject 刪除 objectName,物件不存在時回傳 storage.ErrObjectNotExist
+	// (呼叫端 Delete 依這個哨兵值判斷是否視為冪等成功,見該函式的說明)。
+	deleteObject(ctx context.Context, objectName string) error
+}
+
+// gcsObjectStore 是 objectStore 的正式實作,包住 *storage.Client。
+type gcsObjectStore struct {
+	client *storage.Client
+	bucket string
+}
+
+func (s *gcsObjectStore) writeObject(ctx context.Context, objectName, contentType string, r io.Reader) error {
+	w := s.client.Bucket(s.bucket).Object(objectName).NewWriter(ctx)
+	if contentType != "" {
+		w.ContentType = contentType
+	}
+	if _, err := io.Copy(w, r); err != nil {
+		_ = w.Close()
+		return err
+	}
+	return w.Close()
+}
+
+func (s *gcsObjectStore) deleteObject(ctx context.Context, objectName string) error {
+	return s.client.Bucket(s.bucket).Object(objectName).Delete(ctx)
+}
+
 // Uploader 把外部圖片網址下載後上傳到固定的 GCS bucket。
 type Uploader struct {
 	bucket string
-	client *storage.Client
+	store  objectStore
 }
 
 // New 建立一個 Uploader。bucket 為空字串時,Upload 會直接回傳
@@ -42,7 +79,7 @@ func New(ctx context.Context, bucket string) (*Uploader, error) {
 	if err != nil {
 		return nil, fmt.Errorf("建立 GCS client 失敗: %w", err)
 	}
-	return &Uploader{bucket: bucket, client: client}, nil
+	return &Uploader{bucket: bucket, store: &gcsObjectStore{client: client, bucket: bucket}}, nil
 }
 
 // ErrNoBucket 表示呼叫端未設定 bucket(對齊 pexels.ErrNoAPIKey 的既有
@@ -89,22 +126,94 @@ func (u *Uploader) Upload(ctx context.Context, objectKey, sourceURL string) (str
 		return "", fmt.Errorf("下載圖片失敗: HTTP %d", resp.StatusCode)
 	}
 
+	contentType := resp.Header.Get("Content-Type")
+	objectName := "attractions/" + objectKey + extFromURL(sourceURL)
+	return u.uploadBytes(ctx, objectName, contentType, resp.Body)
+}
+
+// UploadDataURI 把一個 data: URI(base64,含 MIME type——例如
+// geo.Client.PhotoDataURI/fetchPhotoAsDataURI 已組好的 Google Photo
+// Media 圖片)解碼後上傳到 GCS 的 place-details/{objectKey}{ext} 路徑,
+// 回傳公開存取 URL。跟 Upload(下載外部網址)是同一組落地機制的兩個
+// 入口,差別只在來源已經是本機記憶體裡的 base64 資料、不需要另外發
+// HTTP 請求下載——見 handleGeoPlaceDetails 的呼叫端說明:地圖上點選
+// 任意地點查到的 Google 照片是這種格式,不像 Pexels 查詢結果本身就是
+// 一個外部網址(走 Upload)。
+//
+// objectKey 用呼叫端的穩定識別碼(通常是 Google placeId,同一地點重查
+// 會覆蓋舊物件,不會在 bucket 裡累積孤兒檔案)——理由同 Upload 的
+// objectKey 說明,只是這裡的物件前綴改用 place-details/,跟景點區域
+// 建檔用的 attractions/ 前綴分開,避免兩種不同性質的資料(人工建檔 vs
+// 使用者即時查詢)混在同一個前綴下。
+//
+// dataURI 格式不符預期(缺少 "data:" 前綴或 "," 分隔符、base64 解碼
+// 失敗)時回傳錯誤,呼叫端應比照 Upload 失敗的既有降級慣例處理(保留
+// 原始來源,不阻擋主要查詢流程)。
+func (u *Uploader) UploadDataURI(ctx context.Context, objectKey, dataURI string) (string, error) {
+	if u.bucket == "" {
+		return "", ErrNoBucket
+	}
+
+	contentType, payload, err := decodeDataURI(dataURI)
+	if err != nil {
+		return "", err
+	}
+
+	ext := extFromContentType(contentType)
+	objectName := "place-details/" + objectKey + ext
+	return u.uploadBytes(ctx, objectName, contentType, strings.NewReader(payload))
+}
+
+// uploadBytes 是 Upload/UploadDataURI 共用的實際 GCS 寫入邏輯,理由同
+// downloadPhotoBytes 拆出來供 geo.Client 多個呼叫端共用的既有慣例——
+// 兩種上層入口只是取得圖片位元組的方式不同(下載 vs. base64 解碼),
+// 寫入 GCS 這一步完全相同,不該各自重複實作一份。
+func (u *Uploader) uploadBytes(ctx context.Context, objectName, contentType string, r io.Reader) (string, error) {
 	uctx, cancel := context.WithTimeout(ctx, uploadTimeout)
 	defer cancel()
-	objectName := "attractions/" + objectKey + extFromURL(sourceURL)
-	w := u.client.Bucket(u.bucket).Object(objectName).NewWriter(uctx)
-	if ct := resp.Header.Get("Content-Type"); ct != "" {
-		w.ContentType = ct
-	}
-	if _, err := io.Copy(w, resp.Body); err != nil {
-		_ = w.Close()
-		return "", fmt.Errorf("上傳 GCS 失敗: %w", err)
-	}
-	if err := w.Close(); err != nil {
+	if err := u.store.writeObject(uctx, objectName, contentType, r); err != nil {
 		return "", fmt.Errorf("上傳 GCS 失敗: %w", err)
 	}
 
 	return fmt.Sprintf("https://storage.googleapis.com/%s/%s", u.bucket, objectName), nil
+}
+
+// decodeDataURI 解析 "data:{contentType};base64,{payload}" 格式的字串,
+// 回傳 MIME type 與解碼後的原始位元組(以 string 形式回傳,供
+// strings.NewReader 直接使用,避免多一次 []byte→string 轉換)。
+func decodeDataURI(dataURI string) (contentType, payload string, err error) {
+	const prefix = "data:"
+	if !strings.HasPrefix(dataURI, prefix) {
+		return "", "", fmt.Errorf("photostorage: 不是有效的 data URI")
+	}
+	rest := dataURI[len(prefix):]
+	commaIdx := strings.Index(rest, ",")
+	if commaIdx == -1 {
+		return "", "", fmt.Errorf("photostorage: data URI 缺少 ',' 分隔符")
+	}
+	meta := rest[:commaIdx]
+	encoded := rest[commaIdx+1:]
+	contentType = strings.TrimSuffix(meta, ";base64")
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return "", "", fmt.Errorf("photostorage: base64 解碼失敗: %w", err)
+	}
+	return contentType, string(decoded), nil
+}
+
+// extFromContentType 依 MIME type 猜副檔名,查不到對應項目時預設 .jpg
+// (理由同 extFromURL 的既有預設值)——Google Photo Media 回傳的
+// Content-Type 目前實務上只會是 image/jpeg 或 image/png,這裡只涵蓋
+// 這兩種常見情況,其餘一律當 jpg 處理,不追求窮舉所有 MIME type。
+func extFromContentType(contentType string) string {
+	switch contentType {
+	case "image/png":
+		return ".png"
+	case "image/webp":
+		return ".webp"
+	default:
+		return ".jpg"
+	}
 }
 
 // publicURLPrefix 回傳這個 bucket 的公開 URL 前綴,供 Delete 判斷一個
@@ -135,7 +244,7 @@ func (u *Uploader) Delete(ctx context.Context, photoURL string) error {
 
 	dctx, cancel := context.WithTimeout(ctx, uploadTimeout)
 	defer cancel()
-	if err := u.client.Bucket(u.bucket).Object(objectName).Delete(dctx); err != nil {
+	if err := u.store.deleteObject(dctx, objectName); err != nil {
 		// 物件本來就不存在(ErrObjectNotExist)不視為錯誤——刪除操作本身
 		// 是冪等的,重複呼叫或物件已經被清過都應該視為「這筆照片現在確實
 		// 不在 bucket 裡」這個目標已達成,不該讓呼叫端(attraction-delete)

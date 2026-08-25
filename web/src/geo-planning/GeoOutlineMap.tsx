@@ -98,6 +98,7 @@ export function GeoOutlineMap({
   onHotelSelect,
   onPlaceSelect,
   onPoiSelect,
+  onCenterChange,
   panTarget,
   selectedKey,
   candidateKeys,
@@ -201,6 +202,13 @@ export function GeoOutlineMap({
   // 只傳一個 ID 讓外層自己決定何時查詢——這個元件本來就持有 cfg,沒有
   // 理由把查詢責任推給不見得拿得到 cfg 時機的呼叫端。
   onPoiSelect?: (details: GeoPlaceDetails) => void
+  // onCenterChange:地圖 idle(拖曳/縮放動畫結束)時,把目前中心座標往上
+  // 回報——供 GeoOutlinePanel.tsx 的城市搜尋框使用,讓「甜點」「apple」
+  // 這類沒有明確指向單一地點的泛用關鍵字查詢,能帶上目前地圖中心當
+  // locationBias(見 handleGeoGeocode 的完整說明),優先偏向這個區域的
+  // 結果,而非全球知名度最高的結果。跟 attractionsQueryTrigger 共用同一個
+  // idle 事件,不需要另外掛一個監聽器。
+  onCenterChange?: (center: { lat: number; lng: number }) => void
   // panTarget:使用者在搜尋框查到城市座標、或在 GeoHotelSidebar 點擊某個
   // 飯店/地點項目時要移動地圖到的座標——每次(即使連續觸發同一個目標)
   // DesktopLayout/GeoOutlinePanel 都會建立新的物件參照,故這裡直接把整個
@@ -283,6 +291,10 @@ export function GeoOutlineMap({
   // onPoiSelect 加進建圖 effect 的依賴陣列(那樣反而會導致地圖重建)。
   const onPoiSelectRef = useRef(onPoiSelect)
   onPoiSelectRef.current = onPoiSelect
+  // onCenterChangeRef:理由同 onPoiSelectRef——idle listener 註冊在只
+  // 執行一次的建圖 effect 裡,需要用 ref 讀取最新的 callback 參照。
+  const onCenterChangeRef = useRef(onCenterChange)
+  onCenterChangeRef.current = onCenterChange
   const [err, setErr] = useState<string | null>(null)
   const [mapReady, setMapReady] = useState(false)
   // zoom:即時反映地圖目前縮放層級,傳給 useAttractionOverlays 依
@@ -462,6 +474,8 @@ export function GeoOutlineMap({
         //    搜尋),不是使用者主動拖曳探索新範圍,不該冒出搜尋按鈕。
         mapRef.current.addListener('idle', () => {
           setAttractionsQueryTrigger((n) => n + 1)
+          const center = mapRef.current?.getCenter()
+          if (center) onCenterChangeRef.current?.({ lat: center.lat(), lng: center.lng() })
           if (suppressNextIdleQueryRef.current) {
             suppressNextIdleQueryRef.current = false
             return

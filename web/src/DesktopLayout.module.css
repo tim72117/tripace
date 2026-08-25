@@ -43,6 +43,16 @@
 .right {
   right: 12px;
 }
+/* infoPanelHeight:GeoHotelSidebar(搜尋清單)容器高度改成跟地點卡
+   (AttractionInfoPanel/GeoInfoPanel,見兩者 module.css 的 .panel:
+   top:64px、bottom:16px)一致——使用者明確要求兩者容器高度對齊,原本
+   .panel 預設的 top:12px/bottom:12px(比照 trips/timeline/pace 等
+   panelMode 浮動卡片)在這裡不適用,改用這組 modifier 覆蓋。只套用在
+   GeoHotelSidebar 的 .right 容器,不動其餘沿用預設高度的浮動卡片。 */
+.infoPanelHeight {
+  top: 64px;
+  bottom: 16px;
+}
 /* close:panelMode 浮動卡片(trips/timeline/pace/geo-outline,見
    panelSpec.slot === 'float' 分支)共用的關閉按鈕——疊在卡片右上角,
    點擊導回 /app 收起卡片(同再點一次 rail 圖示的行為)。四個內容元件
