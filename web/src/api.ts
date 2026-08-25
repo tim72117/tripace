@@ -367,11 +367,11 @@ export interface GeoAttraction {
   name: string
   lat: number
   lng: number
-  // placeCount:只有走即時查 Google Places 的路徑(SearchDistricts/
-  // SearchKnownDistricts)才會有值——後端該欄位帶 json 的 omitempty,
-  // 走資料庫路徑(人工建檔的 model.Attraction)組回應時完全不設這個
-  // 欄位,JSON 回應裡不會出現這個 key,故這裡不能宣告成必定存在的
-  // number,否則型別與實際執行期契約不符。
+  // placeCount:只有走即時查 Google Places 的路徑(geo.SearchCityAttractions,
+  // 見後端 server/internal/geo/places.go)才會有值——後端該欄位帶 json 的
+  // omitempty,走資料庫路徑(人工建檔的 model.Attraction)組回應時完全
+  // 不設這個欄位,JSON 回應裡不會出現這個 key,故這裡不能宣告成必定
+  // 存在的 number,否則型別與實際執行期契約不符。
   placeCount?: number
   landmarkPhotoUrl?: string
   landmarkName?: string
@@ -503,6 +503,47 @@ export interface GeoPlace {
   // 除錯/未來需要更細分類時使用。
   category?: string
   photoUrl?: string
+}
+
+// GeoSearchResult:飯店(GeoHotel)/推薦地點(GeoPlace)/搜尋結果
+// (GeoGeocodeCandidate)三種來源統一轉成的單一形狀——這三者後端查詢
+// 來源不同(自建資料庫+Google Places nearby / Google Places nearby /
+// Google Places Text Search geocoding),但對前端而言都是「使用者搜尋
+// 或瀏覽時查到的地點」,理應共用同一份清單 state、同一套點擊/選取
+// 邏輯,不該在 GeoOutlineMap/GeoOutlinePanel/DesktopLayout/手機版分別
+// 維護三條平行的 state 與 callback(這是實際發生過的問題:三者行為
+// 逐漸各自演化,飯店清單意外變成即時依可視範圍過濾,導致清單項目
+// 點擊後永遠已經在畫面內、地圖移動邏輯形同虛設)。kind 判別欄位保留
+// 「這筆結果原本是哪種來源」,供分組標題(見 GeoHotelSidebar.tsx 的
+// 「搜尋結果/飯店/附近推薦」分段標題)、marker 圖示樣式(見
+// mapMarkers.ts 的 searchResultMarkerContent)、加入候選籃時要組成的
+// GeoCandidate 判別欄位(hotel/place 才能加入候選籃,geocode 不能,見
+// geoCandidateHelpers.ts 的 GeoCandidate 型別)使用。
+//
+// 欄位全部盡量共用、只有各自來源才有的欄位設為 optional——geocode 沒有
+// photoUrl(fetchGeoGeocode 只查免費欄位,不含照片)、只有 geocode 有
+// placeId(供選定後補查文字/照片,見 GeoOutlinePanel.tsx 的
+// selectedCandidate effect);category 只有 place 會有值(對應地圖上方
+// 類別標籤,見 GeoPlace.category 的完整說明)。
+export interface GeoSearchResult {
+  kind: 'hotel' | 'place' | 'geocode'
+  name: string
+  address: string
+  lat: number
+  lng: number
+  photoUrl?: string
+  category?: string
+  placeId?: string
+}
+
+export function hotelToSearchResult(h: GeoHotel): GeoSearchResult {
+  return { kind: 'hotel', name: h.name, address: h.address, lat: h.lat, lng: h.lng, photoUrl: h.photoUrl }
+}
+export function placeToSearchResult(p: GeoPlace): GeoSearchResult {
+  return { kind: 'place', name: p.name, address: p.address, lat: p.lat, lng: p.lng, photoUrl: p.photoUrl, category: p.category }
+}
+export function geocodeCandidateToSearchResult(c: GeoGeocodeCandidate): GeoSearchResult {
+  return { kind: 'geocode', name: c.name, address: c.address, lat: c.lat, lng: c.lng, placeId: c.placeId }
 }
 
 // GeoTripEntry:行程本身已有座標的 entry,轉成地理輪廓底圖圖層通用的

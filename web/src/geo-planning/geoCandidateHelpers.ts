@@ -5,6 +5,7 @@
 // 純邏輯時,不需要把整支候選籃 UI 元件檔案一起拉進 bundle 依賴圖。
 // GeoCandidateSidebar.tsx 本身也從這裡 re-import 使用,行為與抽出前完全
 // 一致,只是定義位置搬動。
+import { useState } from 'react'
 import * as api from '../api'
 import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace, GeoTripEntry } from '../api'
 import { Car, Hotel, MapPin, Plane, StickyNote, Ticket, UtensilsCrossed } from 'lucide-react'
@@ -163,4 +164,66 @@ export function localDateKey(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
+}
+
+// candidateHasScheduledDate:判斷這個候選是否已經有排定日期——只有
+// kind==='entry' 且 start 非空字串的候選才符合(entry 是「返回候選」後
+// 暫時退回候選籃、但仍保留原本 start/startTime 的項目,見 GeoCandidate
+// 型別定義的完整說明;hotel/attraction/place 三種來源天生沒有日期概念,
+// 一律視為「沒有排定日期」)。供各處「加入候選」按鈕決定要不要先跳日期
+// 選擇——桌面版 GeoInfoPanel.tsx 與手機版 GeoOutlinePhoneInfoSheet.tsx
+// 原本各自獨立定義過一份逐字相同的複製,收斂成這裡的單一定義。
+export function candidateHasScheduledDate(c: GeoCandidate): boolean {
+  return c.kind === 'entry' && !!c.start
+}
+
+// useCandidateDatePicker:「選日期把候選寫成真正的行程 entry」這段 async
+// 流程的共用核心——桌面版 GeoHotelSidebar.tsx 的 AddCandidateButton(懸浮
+// popover)、手機版 GeoOutlinePhoneListDrawer.tsx 的 ItemAddButton(原地
+// 展開)、GeoOutlinePhoneCandidateDrawer.tsx 的 CandidateRow(原地展開)
+// 三處原本各自重寫一份逐字幾乎相同的 saving/err state + try/catch/finally
+// 呼叫 createEntryFromCandidate 邏輯,只有「選好日期後」的收尾動作不同
+// (收合 popover/清空輸入框/通知外部刷新)——這裡把 saving/err state 與
+// 實際發 API 呼叫的部分收斂成一個 hook,呼叫端只需要傳入「成功後要做
+// 什麼」(onScheduled),自己決定要不要額外收合 UI 狀態,視覺外殼(懸浮
+// popover vs. 原地展開的 inline 區塊)本身因觸控/滑鼠操作習慣不同而各自
+// 維護,不在這裡收斂。
+//
+// candidate 用 getter(而非直接傳值)是因為呼叫端(如 ItemAddButton)的
+// candidate prop 在使用者操作 UI 展開期間可能因為上層重新查詢而變成新的
+//物件參照(座標/名稱不變,但陣列 map 產生新物件)——這個 hook 本身沒有
+// state 依賴 candidate,不需要 re-render 時重建 handlePick,用 getter 讀
+// 呼叫當下最新的值即可,不需要為此把 candidate 放進任何依賴陣列。
+export function useCandidateDatePicker({
+  cfg,
+  tripID,
+  getCandidate,
+  onScheduled,
+}: {
+  cfg: ClientConfig
+  tripID?: string | null
+  getCandidate: () => GeoCandidate
+  // onScheduled:成功寫入後端 entry 後觸發——呼叫端決定要收合哪個 UI
+  // 狀態、要不要清空輸入框、要不要通知外部重新查詢 tripEntries,這個
+  // hook 本身不管視覺呈現。
+  onScheduled: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const handlePick = async (date: string) => {
+    if (!date || !tripID) return
+    setSaving(true)
+    setErr(null)
+    try {
+      await createEntryFromCandidate(cfg, tripID, getCandidate(), date)
+      onScheduled()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return { saving, err, handlePick }
 }

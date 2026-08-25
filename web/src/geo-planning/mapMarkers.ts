@@ -108,6 +108,67 @@ export function placeMarkerContent(selected: boolean, candidate: boolean, catego
   return svgStringToElement(svg)
 }
 
+// searchResultMarkerContent:飯店/推薦地點/搜尋候選三種來源統一後的
+// GeoSearchResult marker 內容 DOM——取代原本 hotelMarkerContent(森綠色點)
+// /placeMarkerContent(靛藍類別圖示)/geocodeCandidateMarkerContent(紫色
+// 編號金牌)三個各自獨立的函式,視覺差異改用這裡的條件判斷處理(依
+// kind 決定底色與圖案),但仍保留三者原有的視覺語意——使用者能沿用
+// 既有的顏色記憶(森綠=飯店/靛藍=地點/紫色=搜尋候選)分辨清單裡不同
+// 來源的項目,只是底層合併成同一個圖層/同一份 marker 陣列。
+//
+// geocode 類型額外疊上 index(1-based 編號金牌,理由同原
+// geocodeCandidateMarkerContent 的說明);hotel/place 才會疊
+// candidateBadgeSvg(候選籃已加入標記——geocode 純定位用途,不能加入
+// 候選籃,見 api.ts GeoSearchResult 的說明)。
+export function searchResultMarkerContent(
+  result: { kind: 'hotel' | 'place' | 'geocode'; category?: string },
+  selected: boolean,
+  candidate: boolean,
+  index?: number,
+): SVGElement {
+  if (result.kind === 'hotel') {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">' +
+      (selected
+        ? '<circle cx="10" cy="10" r="9" fill="#5A8A6A"/>' +
+          '<circle cx="10" cy="10" r="6.5" fill="#FDFCFA"/>' +
+          '<circle cx="10" cy="10" r="4" fill="#5A8A6A"/>'
+        : '<circle cx="10" cy="10" r="5" fill="#5A8A6A" stroke="#FDFCFA" stroke-width="1.5"/>') +
+      (candidate ? candidateBadgeSvg(16.5, 3.5) : '') +
+      '</svg>'
+    return svgStringToElement(svg)
+  }
+  if (result.kind === 'place') {
+    const size = selected ? 28 : 22
+    const glyph = (result.category && PLACE_CATEGORY_GLYPHS[result.category]) || CAMERA_GLYPH
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 24 24">' +
+      (selected
+        ? '<circle cx="12" cy="12" r="11.5" fill="#5A7A9E" stroke="#FDFCFA" stroke-width="2"/>'
+        : '<circle cx="12" cy="12" r="11.5" fill="#5A7A9E"/>') +
+      glyph +
+      (candidate ? candidateBadgeSvg(19.5, 4.5) : '') +
+      '</svg>'
+    return svgStringToElement(svg)
+  }
+  // geocode
+  const size = selected ? 34 : 28
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 24 24">' +
+    (selected
+      ? '<circle cx="12" cy="12" r="11.5" fill="#7A5C99" stroke="#FDFCFA" stroke-width="2.5"/>'
+      : '<circle cx="12" cy="12" r="11.5" fill="#7A5C99" stroke="#FDFCFA" stroke-width="2"/>') +
+    '<g transform="translate(12 12) scale(0.55) translate(-12 -12)" fill="none" stroke="#FDFCFA" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>' +
+    '</g>' +
+    (index != null
+      ? '<circle cx="20" cy="4" r="4.5" fill="#FDFCFA"/>' +
+        '<text x="20" y="4" text-anchor="middle" dominant-baseline="central" font-size="6.5" font-weight="700" font-family="-apple-system, sans-serif" fill="#7A5C99">' + index + '</text>'
+      : '') +
+    '</svg>'
+  return svgStringToElement(svg)
+}
+
 // tripEntryMarkerContent:行程本身已有座標的 entry(見 tripEntries prop)
 // 的 marker 內容 DOM——用全案主色 accent(暖橘,對齊 --color-accent)
 // 搭配一枚小旗子造型,語意是「這裡已經排進行程」,跟分區光暈的暖沙棕、

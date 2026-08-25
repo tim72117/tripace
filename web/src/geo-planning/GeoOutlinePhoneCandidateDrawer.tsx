@@ -7,10 +7,10 @@ import {
   type GeoCandidate,
   NO_DATE_GROUP,
   candidateListKey,
-  createEntryFromCandidate,
   dayGroupKey,
   dayGroupLabel,
   entryKindIcon,
+  useCandidateDatePicker,
 } from './geoCandidateHelpers'
 import styles from './GeoOutlinePhoneCandidateDrawer.module.css'
 
@@ -60,24 +60,16 @@ function CandidateRow({
 }) {
   const [expanded, setExpanded] = useState(false)
   const [dateValue, setDateValue] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-
-  const handlePick = async (date: string) => {
-    if (!tripID) return
-    setSaving(true)
-    setErr(null)
-    try {
-      await createEntryFromCandidate(cfg, tripID, c, date)
+  const { saving, err, handlePick } = useCandidateDatePicker({
+    cfg,
+    tripID,
+    getCandidate: () => c,
+    onScheduled: () => {
       onScheduled()
       onRemove(c)
       setExpanded(false)
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
-    } finally {
-      setSaving(false)
-    }
-  }
+    },
+  })
 
   const Icon = entryKindIcon(c.kind === 'entry' ? c.entryKind : undefined)
 

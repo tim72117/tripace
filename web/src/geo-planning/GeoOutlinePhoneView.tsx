@@ -1,30 +1,16 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { ListPlus, MapPinned, Timeline } from 'lucide-react'
-import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace } from '../api'
+import type { ClientConfig } from '../api'
 import type { Trip } from '../trip/types'
 import type { User } from '../user/types'
 import { Avatar } from '../AppCommon'
 import { GeoOutlinePanel } from './GeoOutlinePanel'
-import { geoItemKey, type GeoSelectedKey, type Tab } from './GeoHotelSidebar'
-import type { GeoInfoContent } from './GeoInfoPanel'
-import { hotelInfoContent, placeInfoContent, poiInfoContent } from './geoInfoContent'
-import { type GeoCandidate, createEntryFromCandidate } from './geoCandidateHelpers'
+import { useGeoPlanningState } from './useGeoPlanningState'
+import type { GeoCandidate } from './geoCandidateHelpers'
 import { GeoOutlinePhoneInfoSheet } from './GeoOutlinePhoneInfoSheet'
 import { GeoOutlinePhoneCandidateDrawer } from './GeoOutlinePhoneCandidateDrawer'
 import { GeoOutlinePhoneListDrawer } from './GeoOutlinePhoneListDrawer'
 import styles from './GeoOutlinePhoneView.module.css'
-
-// candidateInfoContent:候選籃項目本體被點擊(候選籃抽屜內的卡片)時開
-// 資訊卡——對齊桌面版 DesktopLayout.tsx 的同名函式,candidate 欄位刻意
-// 不帶(這個項目已經在候選籃裡,不需要再顯示一次「加入候選」按鈕)。
-// 候選籃不會出現 kind==='attraction' 的項目(attraction 沒有任何入口能
-// 被加入候選籃,理由同桌面版),故這裡不處理該分支。
-function candidateInfoContent(c: Exclude<GeoCandidate, { kind: 'attraction' }>): GeoInfoContent {
-  if (c.kind === 'entry') {
-    return { name: c.name, subtitle: c.location ?? undefined, badges: [] }
-  }
-  return { name: c.name, photoUrl: c.photoUrl, subtitle: c.address, badges: [] }
-}
 
 // GeoOutlinePhoneView:手機版規劃地圖(geo-outline)主容器。第一階段是
 // 地圖瀏覽 + 唯讀資訊卡;第二階段(這次)新增候選籃——讓使用者能把地圖上
@@ -50,11 +36,13 @@ function candidateInfoContent(c: Exclude<GeoCandidate, { kind: 'attraction' }>):
 // 第三階段新增「飯店/推薦地點」清單(GeoOutlinePhoneListDrawer)——同樣是
 // 從一側滑入的抽屜,選左側(候選籃已佔用右側滑入語意,見
 // GeoOutlinePhoneListDrawer.tsx 的說明)。資料來源對照桌面版
-// DesktopLayout.tsx 的 geoHotels/geoPlaces/geoActiveTab/geoActiveCategory
-// ——GeoOutlinePanel 本來就已經把 onHotelsChange/onPlacesNearby/
-// onActiveCategoryChange 轉傳給 GeoOutlineMap(第一、二階段的手機版容器
-// 沒有接這幾個 callback,地圖仍會查詢,只是查到的結果沒有清單可以顯示,
-// 這次補上)。
+// DesktopLayout.tsx 的 geoHotels/geoPlaces——GeoOutlinePanel 本來就已經
+// 把 onHotelsChange/onPlacesNearby 轉傳給 GeoOutlineMap(第一、二階段的
+// 手機版容器沒有接這幾個 callback,地圖仍會查詢,只是查到的結果沒有
+// 清單可以顯示,這次補上)。清單合併顯示飯店/推薦地點/搜尋結果,不分頁
+// 切換——對齊桌面版 GeoHotelSidebar.tsx 現行的合併清單設計,原本這裡
+// 分成 hotels/places 兩個 tab 的設計已移除(見 GeoOutlinePhoneListDrawer.tsx
+// 的說明)。
 export function GeoOutlinePhoneView({
   cfg,
   tripID,
@@ -81,50 +69,10 @@ export function GeoOutlinePhoneView({
 }) {
   const [searchCity, setSearchCity] = useState('')
   const [searchTrigger, setSearchTrigger] = useState(0)
-  const [selectedKey, setSelectedKey] = useState<GeoSelectedKey>(null)
-  const [infoContent, setInfoContent] = useState<GeoInfoContent | null>(null)
-  const [attractionContent, setAttractionContent] = useState<GeoAttraction | null>(null)
-  const [panTarget, setPanTarget] = useState<{ lat: number; lng: number } | null>(null)
-
-  // geoCandidates/geoCandidateKeys/addGeoCandidate/geoScheduledDates/
-  // refetchTripEntriesTrigger:候選籃資料流,對照桌面版 DesktopLayout.tsx
-  // 的同名 state/函式,見該檔案各自的完整說明,這裡不重複——行為完全
-  // 一致(同一份去重規則、同一份 tripEntries 併入邏輯),只是掛在這個元件
-  // 而非 DesktopLayout。
-  const [geoCandidates, setGeoCandidates] = useState<GeoCandidate[]>([])
-  const geoCandidateKeys = useMemo(
-    () =>
-      new Set(
-        geoCandidates
-          .filter((c): c is Extract<GeoCandidate, { kind: 'hotel' | 'attraction' | 'place' }> => c.kind !== 'entry')
-          .map((c) => geoItemKey(c.kind, c)),
-      ),
-    [geoCandidates],
-  )
-  const addGeoCandidate = useCallback((c: GeoCandidate) => {
-    setGeoCandidates((prev) =>
-      prev.some((p) => p.kind === c.kind && p.name === c.name && p.lat === c.lat && p.lng === c.lng)
-        ? prev
-        : [...prev, c],
-    )
-  }, [])
-  const removeGeoCandidate = useCallback((c: GeoCandidate) => {
-    setGeoCandidates((prev) =>
-      prev.filter((p) => !(p.kind === c.kind && p.name === c.name && p.lat === c.lat && p.lng === c.lng)),
-    )
-  }, [])
-  const geoScheduledDates = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          geoCandidates
-            .filter((c): c is GeoCandidate & { kind: 'entry'; inTrip: true } => c.kind === 'entry' && c.inTrip && !!c.start)
-            .map((c) => c.start as string),
-        ),
-      ).sort(),
-    [geoCandidates],
-  )
-  const [geoRefetchTripEntriesTrigger, setGeoRefetchTripEntriesTrigger] = useState(0)
+  // geo:選取狀態/候選籃/搜尋候選等地理規劃共用邏輯,與桌面版
+  // DesktopLayout.tsx 共用同一個 hook(geo-planning/useGeoPlanningState.ts),
+  // 不是各自實作一份形狀相同但獨立維護的版本。
+  const geo = useGeoPlanningState({ cfg, tripID })
 
   // candidateDrawerOpen/candidateFlashTrigger:候選籃抽屜開關與「剛加入
   // 東西了」的短暫提示——理由同桌面版 geoCandidateFlashTrigger,見
@@ -132,32 +80,11 @@ export function GeoOutlinePhoneView({
   const [candidateDrawerOpen, setCandidateDrawerOpen] = useState(false)
   const [candidateFlashTrigger, setCandidateFlashTrigger] = useState(0)
 
-  // geoHotels/geoPlaces/geoActiveTab/geoPlacesCategory:飯店/推薦地點清單
-  // 資料流(第三階段新增),對照桌面版 DesktopLayout.tsx 的同名 geo* state
-  // ——GeoOutlinePanel 本來就已經把 onHotelsChange/onPlacesNearby/
-  // onActiveCategoryChange 轉傳給 GeoOutlineMap(見該檔案),只是第一/
-  // 二階段的手機版容器沒有接這幾個 callback,這裡補上,資料來源與桌面版
-  // 完全一致(地圖依可視範圍/使用者點擊類別標籤自己查詢,這裡只是接住
-  // 往上回報的結果)。listDrawerOpen 是清單抽屜開關,對照桌面版側欄本身
-  // 常駐展開(桌面版沒有這個 state,側欄固定顯示)。
-  const [geoHotels, setGeoHotels] = useState<GeoHotel[]>([])
-  const [geoPlaces, setGeoPlaces] = useState<GeoPlace[]>([])
-  const [geoPlacesCategory, setGeoPlacesCategory] = useState<string | null>(null)
-  const [geoActiveTab, setGeoActiveTab] = useState<Tab>('hotels')
+  // listDrawerOpen:清單抽屜開關,對照桌面版側欄本身常駐展開(桌面版沒有
+  // 這個 state,側欄固定顯示)。清單本身的資料(geo.searchResults)已由
+  // useGeoPlanningState 統一管理,不再需要這個元件自己持有 geoHotels/
+  // geoPlaces/geoGeocodeCandidates 三組 state。
   const [listDrawerOpen, setListDrawerOpen] = useState(false)
-
-  // handleScheduleCandidate:資訊卡「加入 {tripName}」在候選沒有排定日期
-  // 時,選好日期觸發——對齊桌面版 DesktopLayout.tsx 的同名函式。
-  const handleScheduleCandidate = useCallback(async (c: GeoCandidate, date: string) => {
-    if (!activeTrip?.id) return
-    try {
-      await createEntryFromCandidate(cfg, activeTrip.id, c, date)
-      setGeoRefetchTripEntriesTrigger((n) => n + 1)
-    } catch (err) {
-      console.error('[GeoOutlinePhoneView] 加入行程(選定日期)失敗:', err)
-    }
-  }, [activeTrip?.id, cfg])
-
   // handleAddCandidateAndReveal:資訊卡「加入候選」按鈕(候選已有排定
   // 日期,直接加入)成功後順便打開候選籃抽屜給使用者看——手機版沒有
   // 桌面版「側欄本來就常駐展開」的前提(側欄本身可收合,見
@@ -166,15 +93,10 @@ export function GeoOutlinePhoneView({
   // 觸發一次 flash 提示,讓使用者確實看到剛加的項目,不需要使用者自己
   // 再多按一次「候選籃」圖示才看得到結果。
   const handleAddCandidate = useCallback((c: GeoCandidate) => {
-    addGeoCandidate(c)
+    geo.addCandidate(c)
     setCandidateDrawerOpen(true)
     setCandidateFlashTrigger((n) => n + 1)
-  }, [addGeoCandidate])
-
-  const closeSheet = () => {
-    setInfoContent(null)
-    setAttractionContent(null)
-  }
+  }, [geo])
 
   return (
     <div className={styles.wrap}>
@@ -186,7 +108,7 @@ export function GeoOutlinePhoneView({
           title="候選籃"
         >
           <ListPlus size={20} strokeWidth={1.8} />
-          {geoCandidates.length > 0 && <span className={styles.candidateBadge}>{geoCandidates.length}</span>}
+          {geo.candidates.length > 0 && <span className={styles.candidateBadge}>{geo.candidates.length}</span>}
         </button>
         <button
           type="button"
@@ -212,7 +134,12 @@ export function GeoOutlinePhoneView({
         tripID={tripID}
         city={searchCity}
         onCityChange={setSearchCity}
-        onSearch={() => setSearchTrigger((n) => n + 1)}
+        onSearch={() => {
+          // 重新搜尋時清空目前選取的地點,關閉正在顯示的地點介紹卡——
+          // 理由同 DesktopLayout.tsx 對應的 onSearch 說明。
+          geo.clearSelection()
+          setSearchTrigger((n) => n + 1)
+        }}
         searchTrigger={searchTrigger}
         showZoomControl={false}
         searchRightSlot={
@@ -220,81 +147,42 @@ export function GeoOutlinePhoneView({
             <Avatar user={user} />
           </button>
         }
-        refetchTripEntriesTrigger={geoRefetchTripEntriesTrigger}
-        onTripEntriesChange={(entries) => {
-          // 行程本身已有座標的 entry 自動併入候選籃——對齊桌面版
-          // DesktopLayout.tsx onTripEntriesChange 的完整邏輯(見該處說明),
-          // 這裡原封不動搬過來,理由與桌面版完全一致,不重新設計。
-          setGeoCandidates((prev) => {
-            const keptCandidates = prev.filter((p) => !(p.kind === 'entry' && p.inTrip))
-            const freshEntries = entries.map((e): GeoCandidate => ({
-              ...e,
-              kind: 'entry',
-              inTrip: true,
-              entryKind: e.kind,
-            }))
-            return [...keptCandidates, ...freshEntries]
-          })
-        }}
-        onAttractionSelect={(a) => {
-          setSelectedKey(geoItemKey('attraction', a))
-          setInfoContent(null)
-          setAttractionContent(a)
-        }}
-        onHotelSelect={(h) => {
-          setSelectedKey(geoItemKey('hotel', h))
-          setAttractionContent(null)
-          setInfoContent(hotelInfoContent(h))
-        }}
-        onPlaceSelect={(p) => {
-          setSelectedKey(geoItemKey('place', p))
-          setAttractionContent(null)
-          setInfoContent(placeInfoContent(p))
-        }}
-        onPoiSelect={(details) => {
-          setAttractionContent(null)
-          setInfoContent(poiInfoContent(details))
-        }}
-        onGeocodeCandidateSelect={(c) => {
-          setAttractionContent(null)
-          setInfoContent({ name: c.name, subtitle: c.address, badges: [] })
-        }}
-        onHotelsChange={setGeoHotels}
-        onPlacesNearby={setGeoPlaces}
-        onActiveCategoryChange={setGeoPlacesCategory}
-        selectedKey={selectedKey}
-        candidateKeys={geoCandidateKeys}
-        panTarget={panTarget}
+        refetchTripEntriesTrigger={geo.refetchTripEntriesTrigger}
+        onSearchResultsChange={geo.setSearchResults}
+        externalGeocodeCandidateSelect={geo.searchResultSelect}
+        onTripEntriesChange={geo.onTripEntriesChange}
+        onAttractionSelect={geo.selectAttraction}
+        onSearchResultSelect={geo.selectSearchResult}
+        onPoiSelect={geo.selectPoi}
+        onGeocodeCandidateText={(_placeId, text) => geo.patchGeocodeCandidateText(text)}
+        onGeocodeCandidatePhoto={(_placeId, photoUrl) => geo.patchGeocodeCandidatePhoto(photoUrl)}
+        selectedKey={geo.selectedKey}
+        candidateKeys={geo.candidateKeys}
+        panTarget={geo.panTarget}
       />
       <GeoOutlinePhoneInfoSheet
-        content={infoContent}
-        attraction={attractionContent}
+        content={geo.infoContent}
+        attraction={geo.attractionContent}
         tripName={activeTrip?.name ?? '行程'}
-        scheduledDates={geoScheduledDates}
-        onClose={closeSheet}
+        scheduledDates={geo.scheduledDates}
+        onClose={geo.clearSelection}
         onAddCandidate={handleAddCandidate}
-        onSchedule={handleScheduleCandidate}
+        onSchedule={(c, date) => geo.handleScheduleCandidate(c, date, 'GeoOutlinePhoneView')}
       />
       <GeoOutlinePhoneCandidateDrawer
         cfg={cfg}
         tripID={tripID}
         open={candidateDrawerOpen}
         onClose={() => setCandidateDrawerOpen(false)}
-        candidates={geoCandidates}
-        scheduledDates={geoScheduledDates}
-        onRemove={removeGeoCandidate}
+        candidates={geo.candidates}
+        scheduledDates={geo.scheduledDates}
+        onRemove={geo.removeCandidate}
         onSelect={(c) => {
-          if (c.kind === 'attraction') return
-          setSelectedKey(c.kind === 'entry' ? null : geoItemKey(c.kind, c))
-          setAttractionContent(null)
-          setInfoContent(candidateInfoContent(c))
-          setPanTarget({ lat: c.lat, lng: c.lng })
+          geo.selectCandidateFromBasket(c)
           setCandidateDrawerOpen(false)
         }}
-        onReturnToCandidate={(c) => {
-          setGeoCandidates((prev) => prev.map((p) => (p === c ? { ...p, inTrip: false } : p)))
-        }}
-        onScheduled={() => setGeoRefetchTripEntriesTrigger((n) => n + 1)}
+        onReturnToCandidate={geo.onReturnToCandidate}
+        onScheduled={() => geo.setRefetchTripEntriesTrigger((n) => n + 1)}
         flashTrigger={candidateFlashTrigger}
       />
       <GeoOutlinePhoneListDrawer
@@ -302,30 +190,21 @@ export function GeoOutlinePhoneView({
         tripID={tripID}
         open={listDrawerOpen}
         onClose={() => setListDrawerOpen(false)}
-        hotels={geoHotels}
-        places={geoPlaces}
-        placesCategory={geoPlacesCategory}
-        activeTab={geoActiveTab}
-        onTabChange={setGeoActiveTab}
-        selectedKey={selectedKey}
-        candidateKeys={geoCandidateKeys}
-        scheduledDates={geoScheduledDates}
-        onSelectHotel={(h) => {
-          setSelectedKey(geoItemKey('hotel', h))
-          setAttractionContent(null)
-          setInfoContent(hotelInfoContent(h))
-          setPanTarget({ lat: h.lat, lng: h.lng })
-          setListDrawerOpen(false)
-        }}
-        onSelectPlace={(p) => {
-          setSelectedKey(geoItemKey('place', p))
-          setAttractionContent(null)
-          setInfoContent(placeInfoContent(p))
-          setPanTarget({ lat: p.lat, lng: p.lng })
+        results={geo.searchResults}
+        selectedKey={geo.selectedKey}
+        candidateKeys={geo.candidateKeys}
+        scheduledDates={geo.scheduledDates}
+        onSelect={(r) => {
+          // 三種來源(飯店/地點/搜尋結果)既然合併成同一份清單,點擊行為
+          // 一律走 selectSearchResultFromList,對齊桌面版
+          // GeoHotelSidebar——讓 GeoOutlinePanel 觸發完整查詢(含
+          // onlyIfOutOfView 移動地圖,見 useGeoPlanningState.ts 對這個
+          // 函式的說明),不在這裡重新實作一份簡化版邏輯。
+          geo.selectSearchResultFromList(r)
           setListDrawerOpen(false)
         }}
         onAddCandidate={handleAddCandidate}
-        onCandidateCreated={() => setGeoRefetchTripEntriesTrigger((n) => n + 1)}
+        onCandidateCreated={() => geo.setRefetchTripEntriesTrigger((n) => n + 1)}
       />
     </div>
   )

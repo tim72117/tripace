@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { GeoTripEntry } from '../api'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
+import { isMarkerSelected } from './geoMarkerSelection'
 import { tripEntryMarkerContent } from './mapMarkers'
 
 // useTripEntryMarkers——從 GeoOutlineMap.tsx 抽出來的行程 entry marker
@@ -61,7 +62,7 @@ export function useTripEntryMarkers({
       const marker = tripEntryMarkersRef.current[i]
       if (!marker) return
       const key = geoItemKey('entry', e)
-      const selected = selectedKey === key || hoverKey === key
+      const selected = isMarkerSelected(key, selectedKey, hoverKey)
       marker.content = tripEntryMarkerContent(selected)
       marker.zIndex = selected ? 999 : null
     })

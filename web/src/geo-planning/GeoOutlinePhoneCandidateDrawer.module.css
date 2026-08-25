@@ -3,11 +3,14 @@
    PacePhoneSwipe.module.css/PhoneTripsDrawer.module.css 既有的左側抽屜
    模式,只是方向相反(見該元件開頭的說明)。 */
 
+/* 使用者要求清單出現時地圖不要被遮罩變暗——這層仍保留(不整個移除),
+   用來承接「點擊清單外部關閉抽屜」的既有互動,只是改成透明,不再疊一層
+   暗色調。 */
 .backdrop {
   position: absolute;
   inset: 0;
   z-index: 12;
-  background: rgba(0, 0, 0, 0.32);
+  background: transparent;
 }
 
 .panel {

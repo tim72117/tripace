@@ -6,6 +6,9 @@
    GeoHotelSidebar.module.css,只是換一個 CSS Module 檔案(手機版元件不
    import 桌面版的 .module.css)。 */
 
+/* 使用者要求清單出現時地圖不要被遮罩變暗,方便同時看清單與地圖——這層
+   仍保留(不整個移除),用來承接「點擊清單外部關閉抽屜」的既有互動,只是
+   改成透明,不再疊一層暗色調。 */
 .backdrop {
   position: absolute;
   top: 0;
@@ -13,7 +16,7 @@
   right: 0;
   bottom: calc(64px + env(safe-area-inset-bottom, 0px));
   z-index: 12;
-  background: rgba(0, 0, 0, 0.32);
+  background: transparent;
 }
 
 /* panel:bottom 值同 trip/PhoneTripsDrawer.module.css 的 .panel(貼齊
@@ -142,6 +145,14 @@
   color: var(--ios-gray);
   font-size: 13px;
   line-height: 1.6;
+}
+
+.placesCategoryHead {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ios-gray);
+  letter-spacing: 0.02em;
 }
 
 .item {

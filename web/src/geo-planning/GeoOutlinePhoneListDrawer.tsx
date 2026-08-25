@@ -1,20 +1,25 @@
 import { useRef, useState } from 'react'
 import type { TouchEvent as ReactTouchEvent } from 'react'
-import { Compass, Hotel, Plus, X } from 'lucide-react'
-import type { ClientConfig, GeoHotel, GeoPlace } from '../api'
-import { geoItemKey, type GeoSelectedKey, type Tab } from './GeoHotelSidebar'
-import { type GeoCandidate, createEntryFromCandidate, dayGroupLabel } from './geoCandidateHelpers'
+import { Plus, X } from 'lucide-react'
+import type { ClientConfig, GeoSearchResult } from '../api'
+import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
+import { type GeoCandidate, dayGroupLabel, useCandidateDatePicker } from './geoCandidateHelpers'
+import { GeoListItemCard } from './GeoListItemCard'
 import styles from './GeoOutlinePhoneListDrawer.module.css'
 
-// GeoOutlinePhoneListDrawer:手機版「飯店/推薦地點」清單——第三階段新增。
-// 對齊桌面版 GeoHotelSidebar.tsx 的分頁概念(Tab = 'hotels' | 'places'),
-// 由下往上彈出(bottom sheet)——使用者要求「地點清單跟旅程清單一樣從
-// 下方彈出」,視覺語言與拖曳關閉手勢對齊 trip/PhoneTripsDrawer.tsx(同
-// 一套 bottom sheet 模式:垂直拖曳關閉、貼齊底部常駐列上緣、上緣圓角、
-// 拖曳把手)。
+// GeoOutlinePhoneListDrawer:手機版「飯店/推薦地點/搜尋結果」清單——第三
+// 階段新增,由下往上彈出(bottom sheet)——使用者要求「地點清單跟旅程
+// 清單一樣從下方彈出」,視覺語言與拖曳關閉手勢對齊
+// trip/PhoneTripsDrawer.tsx(同一套 bottom sheet 模式:垂直拖曳關閉、
+// 貼齊底部常駐列上緣、上緣圓角、拖曳把手)。
 //
-// 純邏輯全部複用既有模組,不重新定義:geoItemKey/Tab 來自
-// GeoHotelSidebar.tsx(與桌面版共用同一套識別鍵/分頁型別),
+// 飯店/推薦地點/搜尋結果三種來源(見 api.ts GeoSearchResult 的完整說明)
+// 合併成單一 results 陣列,不分段、不重排——對齊桌面版 GeoHotelSidebar.tsx
+// 現行的合併清單設計(使用者明確要求「同一份清單、同一套邏輯」,不再
+// 各自獨立分段加小標題)。
+//
+// 純邏輯全部複用既有模組,不重新定義:geoItemKey 來自
+// GeoHotelSidebar.tsx(與桌面版共用同一套識別鍵),
 // createEntryFromCandidate/dayGroupLabel 來自 geoCandidateHelpers.ts。
 //
 // 清單項目本身不像桌面版 AddCandidateButton 那樣用懸浮彈出層選日期
@@ -22,12 +27,13 @@ import styles from './GeoOutlinePhoneListDrawer.module.css'
 // 對懸浮選單的點外部收合手勢沒有滑鼠事件可用)——改成點「+」原地展開
 // inline 日期選擇區,寫法比照 GeoOutlinePhoneCandidateDrawer.tsx 的
 // CandidateRow 展開模式:選一個行程既有日期的 chip,或輸入新日期,或
-// 「僅加入候選」不排定日期。
+// 「僅加入候選」不排定日期。geocode 類型不能加入候選籃(理由見
+// GeoSearchResult 的說明),不顯示這顆按鈕。
 //
-// 點擊卡片本體(非「+」)——比照桌面版 onSelectHotel/onSelectPlace,把
-// 座標往上回報移動地圖、同步 selectedKey 高亮對應 marker,並開啟資訊卡
-// (呼叫端 GeoOutlinePhoneView.tsx 複用既有的 GeoOutlinePhoneInfoSheet,不
-// 在這個抽屜內部重複刻一份資訊卡 UI)。
+// 點擊卡片本體(非「+」)——比照桌面版 onSelect,把該項目往上回報,由
+// GeoOutlinePhoneView.tsx 中介觸發移動地圖、同步 selectedKey 高亮對應
+// marker,並開啟資訊卡(複用既有的 GeoOutlinePhoneInfoSheet,不在這個
+// 抽屜內部重複刻一份資訊卡 UI)。
 const SHEET_MAX_HEIGHT_VH = 70
 
 function ItemAddButton({
@@ -47,30 +53,21 @@ function ItemAddButton({
 }) {
   const [expanded, setExpanded] = useState(false)
   const [dateValue, setDateValue] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-
-  const handlePick = async (date: string) => {
-    if (!tripID) return
-    setSaving(true)
-    setErr(null)
-    try {
-      await createEntryFromCandidate(cfg, tripID, candidate, date)
+  const { saving, err, handlePick } = useCandidateDatePicker({
+    cfg,
+    tripID,
+    getCandidate: () => candidate,
+    onScheduled: () => {
       onCreated()
       setExpanded(false)
       setDateValue('')
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
-    } finally {
-      setSaving(false)
-    }
-  }
+    },
+  })
 
   const addWithoutDate = () => {
     onAddCandidate(candidate)
     setExpanded(false)
     setDateValue('')
-    setErr(null)
   }
 
   return (
@@ -131,16 +128,11 @@ export function GeoOutlinePhoneListDrawer({
   tripID,
   open,
   onClose,
-  hotels,
-  places,
-  placesCategory,
-  activeTab,
-  onTabChange,
+  results,
   selectedKey,
   candidateKeys,
   scheduledDates,
-  onSelectHotel,
-  onSelectPlace,
+  onSelect,
   onAddCandidate,
   onCandidateCreated,
 }: {
@@ -148,11 +140,11 @@ export function GeoOutlinePhoneListDrawer({
   tripID?: string | null
   open: boolean
   onClose: () => void
-  hotels: GeoHotel[]
-  places: GeoPlace[]
-  placesCategory?: string | null
-  activeTab: Tab
-  onTabChange: (tab: Tab) => void
+  // results:飯店/推薦地點/搜尋結果三種來源合併後的單一清單(見 api.ts
+  // GeoSearchResult 的完整說明),由 GeoOutlinePhoneView.tsx 透過
+  // useGeoPlanningState 中介——取代原本各自獨立的 hotels/places/
+  // geocodeCandidates 三個 prop。
+  results: GeoSearchResult[]
   selectedKey: GeoSelectedKey
   // candidateKeys:已在候選籃中的項目識別鍵集合——桌面版 GeoHotelSidebar.tsx
   // 本身沒有這個視覺標記,這裡手機版額外加一個「已加入候選」小標籤,讓
@@ -162,14 +154,16 @@ export function GeoOutlinePhoneListDrawer({
   // 見 GeoOutlinePhoneView.tsx 的 addGeoCandidate)。
   candidateKeys: Set<string>
   scheduledDates: string[]
-  onSelectHotel: (hotel: GeoHotel) => void
-  onSelectPlace: (place: GeoPlace) => void
+  onSelect: (result: GeoSearchResult) => void
   onAddCandidate: (c: GeoCandidate) => void
   onCandidateCreated: () => void
 }) {
   const [dragOffset, setDragOffset] = useState(0)
   const startYRef = useRef<number | null>(null)
   const draggingRef = useRef(false)
+  // geocodePhotos:搜尋結果(geocode)的照片延遲載入快取,理由同桌面版
+  // GeoHotelSidebar.tsx 的同名 state。
+  const [geocodePhotos, setGeocodePhotos] = useState<Record<string, string | null>>({})
 
   // 拖曳關閉手勢:垂直方向,比照 trip/PhoneTripsDrawer.tsx——開啟時只能
   // 往下拖(關閉方向,delta 為正)。
@@ -192,9 +186,7 @@ export function GeoOutlinePhoneListDrawer({
   }
 
   const translate = open ? `${dragOffset}px` : `calc(100% + ${dragOffset}px)`
-  const placesLabel = placesCategory
-    ? { tourist_attraction: '景點', lodging: '飯店', restaurant: '餐廳' }[placesCategory] ?? '附近推薦'
-    : '附近推薦'
+  const isEmpty = results.length === 0
 
   return (
     <>
@@ -214,106 +206,51 @@ export function GeoOutlinePhoneListDrawer({
           <div className={styles.dragHandleBar} />
         </div>
         <div className={styles.head}>
-          <span className={styles.title}>{activeTab === 'hotels' ? '飯店' : placesLabel}</span>
+          <span className={styles.title}>地點</span>
           <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
             <X size={16} strokeWidth={2} />
           </button>
         </div>
-        <div className={styles.tabs}>
-          <button
-            type="button"
-            className={`${styles.tab}${activeTab === 'hotels' ? ` ${styles.tabActive}` : ''}`}
-            onClick={() => onTabChange('hotels')}
-          >
-            <Hotel size={16} strokeWidth={1.8} />
-            飯店
-          </button>
-          <button
-            type="button"
-            className={`${styles.tab}${activeTab === 'places' ? ` ${styles.tabActive}` : ''}`}
-            onClick={() => onTabChange('places')}
-          >
-            <Compass size={16} strokeWidth={1.8} />
-            {placesLabel}
-          </button>
-        </div>
         <div className={styles.list}>
-          {activeTab === 'hotels' ? (
-            hotels.length === 0 ? (
-              <div className={styles.empty}>還沒有飯店資料——移動地圖或按「搜尋這個區域」,附近的住宿會列在這裡。</div>
-            ) : (
-              hotels.map((h) => {
-                const key = geoItemKey('hotel', h)
-                return (
-                  <div key={key} className={`${styles.item}${selectedKey === key ? ` ${styles.itemSelected}` : ''}`}>
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      className={styles.itemBody}
-                      onClick={() => onSelectHotel(h)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') onSelectHotel(h) }}
-                    >
-                      {h.photoUrl ? (
-                        <img className={styles.itemPhoto} src={h.photoUrl} alt={h.name} loading="lazy" />
-                      ) : (
-                        <div className={styles.itemPhotoPlaceholder} />
-                      )}
-                      <div className={styles.itemInfo}>
-                        <span className={styles.itemName}>{h.name}</span>
-                        <span className={styles.itemAddress}>{h.address}</span>
-                      </div>
-                    </div>
-                    {candidateKeys.has(key) && <span className={styles.inCandidateBadge}>已加入候選</span>}
-                    <ItemAddButton
-                      cfg={cfg}
-                      tripID={tripID}
-                      candidate={{ kind: 'hotel', ...h }}
-                      scheduledDates={scheduledDates}
-                      onAddCandidate={onAddCandidate}
-                      onCreated={onCandidateCreated}
-                    />
-                  </div>
-                )
-              })
-            )
-          ) : places.length === 0 ? (
+          {isEmpty ? (
             <div className={styles.empty}>
-              {placesCategory
-                ? `還沒有${placesLabel}資料——這個範圍內查不到${placesLabel},試試移動地圖再查一次。`
-                : '還沒有附近推薦——點地圖上的地標圖示,或按上方類別標籤(飯店/景點/餐廳),附近的地點會列在這裡。'}
+              還沒有查詢結果——移動地圖或按「搜尋這個區域」,查到的地點會列在這裡。
             </div>
           ) : (
-            places.map((p) => {
-              const key = geoItemKey('place', p)
+            results.map((r) => {
+              const key = geoItemKey(r.kind, r)
               return (
-                <div key={key} className={`${styles.item}${selectedKey === key ? ` ${styles.itemSelected}` : ''}`}>
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    className={styles.itemBody}
-                    onClick={() => onSelectPlace(p)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') onSelectPlace(p) }}
-                  >
-                    {p.photoUrl ? (
-                      <img className={styles.itemPhoto} src={p.photoUrl} alt={p.name} loading="lazy" />
-                    ) : (
-                      <div className={styles.itemPhotoPlaceholder} />
-                    )}
-                    <div className={styles.itemInfo}>
-                      <span className={styles.itemName}>{p.name}</span>
-                      <span className={styles.itemAddress}>{p.address}</span>
-                    </div>
-                  </div>
-                  {candidateKeys.has(key) && <span className={styles.inCandidateBadge}>已加入候選</span>}
-                  <ItemAddButton
-                    cfg={cfg}
-                    tripID={tripID}
-                    candidate={{ kind: 'place', ...p }}
-                    scheduledDates={scheduledDates}
-                    onAddCandidate={onAddCandidate}
-                    onCreated={onCandidateCreated}
-                  />
-                </div>
+                <GeoListItemCard
+                  key={key}
+                  cfg={cfg}
+                  name={r.name}
+                  address={r.address}
+                  photoUrl={r.kind === 'geocode' ? (r.placeId ? geocodePhotos[r.placeId] : null) : r.photoUrl}
+                  placeId={r.kind === 'geocode' ? r.placeId : undefined}
+                  onPhotoLoaded={(placeId, url) => {
+                    setGeocodePhotos((prev) => ({ ...prev, [placeId]: url }))
+                  }}
+                  selected={selectedKey === key}
+                  onSelect={() => onSelect(r)}
+                  styles={styles}
+                  badgeSlot={candidateKeys.has(key) && <span className={styles.inCandidateBadge}>已加入候選</span>}
+                  addSlot={
+                    r.kind !== 'geocode' && (
+                      <ItemAddButton
+                        cfg={cfg}
+                        tripID={tripID}
+                        candidate={
+                          r.kind === 'hotel'
+                            ? { kind: 'hotel', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', photoUrl: r.photoUrl }
+                            : { kind: 'place', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', category: r.category, photoUrl: r.photoUrl }
+                        }
+                        scheduledDates={scheduledDates}
+                        onAddCandidate={onAddCandidate}
+                        onCreated={onCandidateCreated}
+                      />
+                    )
+                  }
+                />
               )
             })
           )}

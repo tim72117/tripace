@@ -1,18 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
-import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoHotel, GeoPlace, GeoPlaceDetails, GeoTripEntry } from '../api'
-import { fetchGeoAttractionsNearby, fetchGeoAttractionsOnlyNearby, fetchGeoPlaceDetails, fetchGeoPlacesNearby } from '../api'
+import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoHotel, GeoPlace, GeoPlaceDetails, GeoSearchResult, GeoTripEntry } from '../api'
+import { fetchGeoAttractionsNearby, fetchGeoAttractionsOnlyNearby, fetchGeoPlaceDetails, fetchGeoPlacesNearby, geocodeCandidateToSearchResult, hotelToSearchResult, placeToSearchResult } from '../api'
 import { Hotel, Loader2, MapPin, Search, Sparkles, UtensilsCrossed } from 'lucide-react'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
 import { isSubmitEnter } from '../AppCommon'
 import { initialAreaSearchState, reduceAreaSearchState } from './geoAreaSearchState'
 import { minZoomForLevel } from './geoAttractionOverlay'
 import { useAttractionOverlays } from './useAttractionOverlays'
-import { useHotelMarkers } from './useHotelMarkers'
-import { usePlaceMarkers } from './usePlaceMarkers'
+import { useSearchResultMarkers } from './useSearchResultMarkers'
 import { useTripEntryMarkers } from './useTripEntryMarkers'
-import { useGeocodeCandidateMarkers } from './useGeocodeCandidateMarkers'
 import styles from './GeoOutlineMap.module.css'
 
 // 地理輪廓底圖(構想 6,見 docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)——桌面版。
@@ -91,12 +89,10 @@ export function GeoOutlineMap({
   showZoomControl = true,
   searchRightSlot,
   onAttractionsChange,
-  onVisibleHotelsChange,
-  onPlacesNearby,
+  onSearchResultsChange,
   onActiveCategoryChange,
   onAttractionSelect,
-  onHotelSelect,
-  onPlaceSelect,
+  onSearchResultSelect,
   onPoiSelect,
   onCenterChange,
   panTarget,
@@ -104,8 +100,6 @@ export function GeoOutlineMap({
   candidateKeys,
   hoverKey,
   geocodeCandidates: geocodeCandidatesProp,
-  selectedGeocodeCandidateKey,
-  onGeocodeCandidateSelect,
 }: {
   cfg: ClientConfig
   // initialCenter:地圖第一次建立時該用的中心點——undefined 代表呼叫端
@@ -160,21 +154,23 @@ export function GeoOutlineMap({
   // (之前的做法,見 GeoOutlinePhoneView.module.css 的歷史說明,實測數值
   // 一直對不準)。桌面版不傳這個 prop,渲染行為完全不受影響。 */
   searchRightSlot?: ReactNode
-  // onAttractionsChange/onVisibleHotelsChange:每當地圖可視範圍(bounds)
-  // 查詢有新結果時,回報目前地圖上實際顯示的景點區域/飯店清單——側欄
-  // (GeoHotelSidebar,見 DesktopLayout.tsx)渲染在整個桌面版介面最
-  // 外側、不是這個地圖元件的子節點,清單要跟著地圖範圍同步,只能靠
-  // 這兩個 callback 往上回報,而不是側欄自己重新查一次(bounds 只有
-  // 地圖實例本身知道)。景點與飯店都改成「以地圖可視範圍為準」查詢
-  // (見下方 fetchNearby),不再依賴外部傳入完整清單後再篩選可視範圍。
+  // onAttractionsChange:每當地圖可視範圍(bounds)查詢有新結果時,回報
+  // 目前地圖上實際顯示的景點區域清單——側欄(GeoHotelSidebar,見
+  // DesktopLayout.tsx)渲染在整個桌面版介面最外側、不是這個地圖元件的
+  // 子節點,清單要跟著地圖範圍同步,只能靠這個 callback 往上回報,而
+  // 不是側欄自己重新查一次(bounds 只有地圖實例本身知道)。
   onAttractionsChange?: (attractions: GeoAttraction[]) => void
-  onVisibleHotelsChange?: (hotels: GeoHotel[]) => void
-  // onPlacesNearby:點擊地圖上方類別標籤(見下方 handleCategoryClick)時,
-  // 即時查詢目前地圖中心點附近的推薦地點(對齊 GET
-  // /internal/geo/places/nearby),查詢完成後透過這個 callback 往上回報
-  // ——理由同 onAttractionsChange/onVisibleHotelsChange,側欄
-  // (GeoHotelSidebar 的「附近推薦」分頁)是分開掛載的 sibling。
-  onPlacesNearby?: (places: GeoPlace[]) => void
+  // onSearchResultsChange:飯店(「搜尋這個區域」按鈕觸發)/推薦地點
+  // (點類別標籤觸發)兩種來源合併後的搜尋結果清單——原本分別用
+  // onVisibleHotelsChange/onPlacesNearby 兩個 callback 往上回報,使用者
+  // 要求這兩者(連同搜尋結果)都收斂成同一份清單、同一套邏輯(見 api.ts
+  // GeoSearchResult 的完整說明),故合併成單一 callback。查詢觸發時機
+  // 本身仍分開(飯店按鈕觸發且付費、地點點類別標籤觸發,見下方
+  // handleSearchThisArea/handleCategoryClick),只有「往上回報結果」這一
+  // 端收斂成一份。搜尋結果(geocodeCandidates prop)不透過這個 callback
+  // 回報——它是 GeoOutlinePanel.tsx 自己持有並傳入的暫時圖層,不是這個
+  // 元件內部查詢管理的結果,見該 prop 的完整說明。
+  onSearchResultsChange?: (results: GeoSearchResult[]) => void
   // onActiveCategoryChange:上方類別標籤列(飯店/景點/餐廳,見
   // handleCategoryClick)目前選中的類別往上回報,null 代表沒有任何類別
   // 標籤被選取。側欄「附近推薦」分頁標題/空狀態文字要能反映「目前顯示
@@ -182,18 +178,20 @@ export function GeoOutlineMap({
   // 「附近推薦」),這個回報讓側欄不必自己猜測 places 陣列內容屬於哪個
   // 類別。
   onActiveCategoryChange?: (category: string | null) => void
-  // onAttractionSelect/onHotelSelect/onPlaceSelect:使用者直接點擊地圖上的
-  // 地標圖示/飯店 marker/推薦地點 marker 時觸發(而非透過側欄清單),把
-  // 該項目往上回報——側欄(GeoHotelSidebar)要能同步標記選取狀態、切換
-  // 到對應分頁並顯示該項目的介紹(見 DesktopLayout.tsx 的串接),但側欄
-  // 跟這個地圖元件是分開掛載的 sibling,只能靠這三個 callback 往上回報,
-  // 跟 onPlacesNearby 同一套「地圖是唯一知道使用者點了哪個 marker 的
-  // 一方」的理由。attraction 的情形從 useAttractionOverlays.ts 既有的
+  // onAttractionSelect:使用者直接點擊地圖上的地標圖示時觸發(而非透過
+  // 側欄清單),把該項目往上回報——側欄(GeoHotelSidebar)要能同步標記
+  // 選取狀態、切換到對應分頁並顯示該項目的介紹(見 DesktopLayout.tsx 的
+  // 串接),但側欄跟這個地圖元件是分開掛載的 sibling,只能靠這個
+  // callback 往上回報。從 useAttractionOverlays.ts 既有的
   // handleAttractionClick 點擊入口呼叫這個 callback,不是另外新增一個
   // 獨立的點擊處理路徑。
   onAttractionSelect?: (attraction: GeoAttraction) => void
-  onHotelSelect?: (hotel: GeoHotel) => void
-  onPlaceSelect?: (place: GeoPlace) => void
+  // onSearchResultSelect:使用者直接點擊地圖上的飯店/推薦地點/搜尋結果
+  // marker 時觸發(而非透過側欄清單)——原本是 onHotelSelect/
+  // onPlaceSelect/onGeocodeCandidateSelect 三個各自獨立的 callback,理由
+  // 同 onSearchResultsChange,收斂成單一 callback,呼叫端依
+  // GeoSearchResult.kind 判斷來源即可,不需要三套各自的處理函式。
+  onSearchResultSelect?: (result: GeoSearchResult) => void
   // onPoiSelect:使用者點擊底圖上 Google 原生繪製的 POI 圖標(不是上面
   // 三個 callback 對應的自訂 marker/overlay)時觸發——地圖 click 事件
   // 本身只給得出一個 placeId,沒有名稱/地址/介紹等資料(見
@@ -238,7 +236,25 @@ export function GeoOutlineMap({
   // 會被忽略,因為 fitBounds 本身就是更精確的縮放依據。點擊地圖上的
   // 地標圖示本身(useAttractionOverlays.ts 的 handleAttractionClick)
   // 不再觸發任何地圖移動,只開介紹卡,見該函式的說明。
-  panTarget?: { lat: number; lng: number; level?: number; radiusMeters?: number; suppressQuery?: boolean } | null
+  //
+  // onlyIfOutOfView:true 時,先用目前的 bounds.contains 檢查該座標是否
+  // 已經在可視範圍內,在範圍內就完全跳過這次 panTo(維持地圖不動)——
+  // 供 GeoHotelSidebar 側欄清單點擊項目本體使用(見 DesktopLayout.tsx
+  // 的 onSelectHotel/onSelectPlace):清單項目本來就是目前地圖範圍查出來
+  // 的結果,理論上多半已經在畫面上,只有極少數「範圍剛好在查詢完成後
+  // 移動過」的邊界情況才需要真的移動;沒有帶這個欄位(或帶 false)的
+  // 其餘來源(候選籃、探索周邊、搜尋城市)維持既有行為,一律無條件
+  // panTo,不受這裡影響。bounds 為 null(地圖剛掛載、還沒收到第一次
+  // bounds_changed)時視為「無法判斷是否在範圍內」,保守起見仍執行
+  // panTo,不因為判斷不了就默默跳過移動。
+  panTarget?: {
+    lat: number
+    lng: number
+    level?: number
+    radiusMeters?: number
+    suppressQuery?: boolean
+    onlyIfOutOfView?: boolean
+  } | null
   // selectedKey:目前被選中的飯店/地點識別鍵(見 GeoHotelSidebar.tsx 的
   // geoItemKey)——由 DesktopLayout.tsx 中介,驅動下方地標/飯店圖示畫出
   // 對應的選取樣式(外圈 accent 描邊 + 放大),與側欄的選取標記同步。
@@ -269,17 +285,6 @@ export function GeoOutlineMap({
   // 候選 marker 並 fitBounds 到能同時看見所有候選的範圍——空陣列
   // (預設)代表沒有待確認的候選,不畫任何東西。
   geocodeCandidates?: GeoGeocodeCandidate[]
-  // selectedGeocodeCandidateKey:目前選中的候選識別鍵(見 GeoOutlinePanel
-  // 的說明),供候選 marker 的選取樣式同步 effect 判斷該把哪一個畫成
-  // 選中態——選定後其餘候選仍留在地圖上(不像先前版本選了就清空整批),
-  // 讓使用者能隨時回頭比較/改選別的候選。
-  selectedGeocodeCandidateKey?: string | null
-  // onGeocodeCandidateSelect:使用者點擊某個候選 marker 確認選定時觸發
-  // ——由 GeoOutlinePanel 負責轉成一般的 panRequest 並回報完整候選資料
-  // 給上層開啟 GeoInfoPanel(見該元件 handleGeocodeCandidateSelect 的
-  // 完整說明),這個元件本身不知道「選定之後該顯示什麼資訊」,只負責
-  // 回報使用者點了哪一個。
-  onGeocodeCandidateSelect?: (candidate: GeoGeocodeCandidate) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
@@ -302,11 +307,14 @@ export function GeoOutlineMap({
   // filteredAttractions 說明)。初始值對齊 Map 建構時的 zoom: 12(見下方
   // useEffect)。
   const [zoom, setZoom] = useState(12)
-  // bounds:即時反映地圖目前可視範圍,傳給 useHotelMarkers 只顯示範圍內
-  // 的飯店(地圖拖曳/縮放後,原本查到但已經滑出畫面的飯店不該繼續佔用
-  // marker/側欄清單的版面)。初始 null——地圖剛掛載、還沒收到第一次
-  // bounds_changed 前,該 hook 的 visibleHotels 直接顯示全部,避免開頭
-  // 一瞬間清單/地圖是空的。
+  // bounds:即時反映地圖目前可視範圍,供下方 panTarget effect 的
+  // onlyIfOutOfView 判斷使用(見該欄位的完整說明)。初始 null——地圖剛
+  // 掛載、還沒收到第一次 bounds_changed 前視為「無法判斷是否在範圍
+  // 內」。搜尋結果(飯店/地點/搜尋結果)不再用這份 bounds 即時篩選要
+  // 顯示的清單/marker——理由見下方 searchResults 的說明,清單改回查詢
+  // 完成時的靜態快照,拖曳地圖不會讓清單/marker 跟著瘦身,這是實際
+  // 發生過的 bug(清單項目永遠已經在畫面內,清單點擊的移動地圖邏輯
+  // 因此形同虛設)。
   const [bounds, setBounds] = useState<google.maps.LatLngBounds | null>(null)
   // attractions/hotels:改成這個元件內部管理(不再是外部傳入的完整清單再
   // 篩選),由下方「依可視範圍查詢」的 effect 寫入——景點區域與飯店都是
@@ -323,9 +331,23 @@ export function GeoOutlineMap({
   // places:點擊地圖上方類別標籤(handleCategoryClick)時查到的附近推薦
   // 地點,跟 attractions/hotels 不同的是這不是「依可視範圍持續查詢」的
   // 常駐圖層,是「點了某個類別才會有內容」的一次性查詢結果——換一個
-  // 類別點擊會直接覆蓋掉整批(不累加),理由同 onPlacesNearby 回報邏輯
-  // 本身。
+  // 類別點擊會直接覆蓋掉整批(不累加),理由同 onSearchResultsChange 回報
+  // 邏輯本身。
   const [places, setPlaces] = useState<GeoPlace[]>([])
+  // searchResults:hotels/places/geocodeCandidatesProp 三種來源統一轉成
+  // GeoSearchResult 後合併的單一陣列——供下方 useSearchResultMarkers 畫
+  // 單一 marker 圖層,也是往上回報給 onSearchResultsChange 的內容(見
+  // api.ts GeoSearchResult 的完整說明)。三者查詢時機/state 仍各自獨立
+  // (理由見各自 state 宣告處),只有「對外呈現」這一層收斂成一份,故用
+  // useMemo 衍生而非另外開一個 state 手動同步三邊。
+  const searchResults = useMemo<GeoSearchResult[]>(
+    () => [
+      ...(geocodeCandidatesProp ?? []).map(geocodeCandidateToSearchResult),
+      ...hotels.map(hotelToSearchResult),
+      ...places.map(placeToSearchResult),
+    ],
+    [geocodeCandidatesProp, hotels, places],
+  )
   // queryTrigger:每次「該重新查詢景點區域」時遞增一次,驅動下方「依可視
   // 範圍查詢」的 effect 重新執行——用遞增計數器而非直接把查詢邏輯寫進
   // 觸發來源的 callback 內,是為了讓查詢邏輯留在 useEffect 裡統一處理
@@ -642,13 +664,12 @@ export function GeoOutlineMap({
     fetchGeoPlacesNearby(cfg, center.lat(), center.lng(), categoryQueryRadiusMeters, type)
       .then((result) => {
         setPlaces(result.places)
-        onPlacesNearby?.(result.places)
       })
       .catch(() => {
         // 查詢失敗不視為致命錯誤——維持上一次查到的內容即可,不彈錯誤
         // 訊息打斷瀏覽,理由同這個檔案其餘查詢失敗處理的一貫慣例。
       })
-  }, [cfg, onPlacesNearby])
+  }, [cfg])
 
   // handleCategoryClick:點擊地圖上方的類別標籤(飯店/景點/餐廳)時觸發第
   // 一次查詢——再點一次目前已選中的類別會清空 places 圖層並取消選取,
@@ -659,13 +680,22 @@ export function GeoOutlineMap({
       setActiveCategory(null)
       onActiveCategoryChange?.(null)
       setPlaces([])
-      onPlacesNearby?.([])
       return
     }
     setActiveCategory(type)
     onActiveCategoryChange?.(type)
     runCategoryQuery(type)
-  }, [activeCategory, onActiveCategoryChange, onPlacesNearby, runCategoryQuery])
+  }, [activeCategory, onActiveCategoryChange, runCategoryQuery])
+
+  // searchResults 變動(hotels/places/geocodeCandidatesProp 任一來源變動)
+  // 時統一往上回報一次——取代原本 setHotels/setPlaces 各自呼叫
+  // onVisibleHotelsChange/onPlacesNearby 的寫法,理由見 onSearchResultsChange
+  // 的完整說明:三個來源合併成一份清單後,不該再各自負責回報自己那一份,
+  // 改由這裡統一監看合併後的結果變動。
+  useEffect(() => {
+    onSearchResultsChange?.(searchResults)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchResults])
 
   // handleSearchThisArea:「搜尋這個區域」按鈕的點擊處理——進入查詢中
   // 狀態、收起按鈕(見 geoAreaSearchState.ts 的 search-pressed 轉換),
@@ -682,11 +712,13 @@ export function GeoOutlineMap({
     if (activeCategory) runCategoryQuery(activeCategory)
   }, [activeCategory, runCategoryQuery])
 
-  // 以下五個圖層(景點區域光暈、飯店、附近推薦地點、行程 entry、搜尋候選)
-  // 各自獨立成 hook(見各檔案開頭說明)——每個只讀 mapRef/mapReady/自己的
-  // 資料/selectedKey/hoverKey/candidateKeys,不寫入任何其他共享狀態,故
-  // 拆開不影響本檔案其餘查詢/地圖生命週期邏輯,呼叫順序本身也不重要
-  // (彼此不互相依賴)。
+  // 以下三個圖層(景點區域光暈、搜尋結果、行程 entry)各自獨立成 hook
+  // (見各檔案開頭說明)——每個只讀 mapRef/mapReady/自己的資料/
+  // selectedKey/hoverKey/candidateKeys,不寫入任何其他共享狀態,故拆開
+  // 不影響本檔案其餘查詢/地圖生命週期邏輯,呼叫順序本身也不重要(彼此
+  // 不互相依賴)。飯店/推薦地點/搜尋結果原本各自獨立的三個 marker hook
+  // (useHotelMarkers/usePlaceMarkers/useGeocodeCandidateMarkers)已合併成
+  // 單一 useSearchResultMarkers(見 api.ts GeoSearchResult 的完整說明)。
   useAttractionOverlays({
     mapRef,
     mapReady,
@@ -697,25 +729,14 @@ export function GeoOutlineMap({
     candidateKeys,
     onAttractionSelect,
   })
-  useHotelMarkers({
+  useSearchResultMarkers({
     mapRef,
     mapReady,
-    hotels,
-    bounds,
+    results: searchResults,
     selectedKey,
     hoverKey,
     candidateKeys,
-    onHotelSelect,
-    onVisibleHotelsChange,
-  })
-  usePlaceMarkers({
-    mapRef,
-    mapReady,
-    places,
-    selectedKey,
-    hoverKey,
-    candidateKeys,
-    onPlaceSelect,
+    onSelect: onSearchResultSelect,
   })
   useTripEntryMarkers({
     mapRef,
@@ -723,13 +744,6 @@ export function GeoOutlineMap({
     tripEntries,
     selectedKey,
     hoverKey,
-  })
-  useGeocodeCandidateMarkers({
-    mapRef,
-    mapReady,
-    geocodeCandidates: geocodeCandidatesProp ?? [],
-    selectedGeocodeCandidateKey,
-    onGeocodeCandidateSelect,
   })
 
   // 點擊飯店/地點側欄(GeoHotelSidebar,渲染在整個介面最外側)的項目時,
@@ -756,6 +770,11 @@ export function GeoOutlineMap({
   // 無限迴圈,即使地圖靜止不動也會持續發送查詢請求。
   useEffect(() => {
     if (!mapReady || !mapRef.current || !panTarget) return
+    // onlyIfOutOfView:見該欄位的完整說明——bounds 為 null 時視為無法
+    // 判斷,不跳過,保守起見仍執行後續的 panTo。
+    if (panTarget.onlyIfOutOfView && bounds && bounds.contains({ lat: panTarget.lat, lng: panTarget.lng })) {
+      return
+    }
     if (panTarget.suppressQuery) {
       suppressNextIdleQueryRef.current = true
     }
@@ -764,9 +783,12 @@ export function GeoOutlineMap({
         center: { lat: panTarget.lat, lng: panTarget.lng },
         radius: panTarget.radiusMeters,
       })
-      const bounds = circle.getBounds()
-      if (bounds) {
-        mapRef.current.fitBounds(bounds, 48)
+      // circleBounds:刻意不叫 bounds,避免跟外層同名的 bounds state
+      // (見上方 onlyIfOutOfView 判斷式讀取的那個)混淆——兩者是完全不同
+      // 的東西,這裡是暫時算出來、只為了這次 fitBounds 呼叫用的局部值。
+      const circleBounds = circle.getBounds()
+      if (circleBounds) {
+        mapRef.current.fitBounds(circleBounds, 48)
         return
       }
     }

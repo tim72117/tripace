@@ -11,11 +11,13 @@
 
 /* sheet:從下滑入蓋住畫面下半部,不佔滿全螢幕——讓使用者仍看得到上半部
    地圖,可以在資訊卡開啟狀態下繼續觀察地圖位置(同桌面版 GeoInfoPanel
-   「卡片與地圖並存可見」的體感)。max-height 限制 + overflow-y:auto
-   處理內容過長的情況(比照桌面版 GeoInfoPanel.module.css 的 .panel)。 */
+   「卡片與地圖並存可見」的體感)。max-height 由 GeoOutlinePhoneInfoSheet.tsx
+   透過行內 style 動態控制(見該檔案 dragHandle 拖曳的說明,預設 60vh、
+   可往上拖曳展開到 90vh)+ overflow-y:auto 處理內容過長的情況(比照
+   桌面版 GeoInfoPanel.module.css 的 .panel)。transition 只在拖曳結束
+   後套用(拖曳中即時跟手,見該檔案 draggingRef 的說明)。 */
 .sheet {
   width: 100%;
-  max-height: 60vh;
   overflow-x: hidden;
   overflow-y: auto;
   display: flex;
@@ -23,6 +25,25 @@
   border-radius: 20px 20px 0 0;
   background: var(--ios-card);
   box-shadow: 0 -8px 28px rgba(61, 53, 48, 0.22);
+}
+
+/* dragHandle:頂部拖曳把手,比照 GeoOutlinePhoneListDrawer.module.css/
+   trip/PhoneTripsDrawer.module.css 的同名規則——這裡多了「往上拖曳展開
+   卡片高度」的用途,不只是「往下拖曳關閉」,理由見
+   GeoOutlinePhoneInfoSheet.tsx 的拖曳手勢說明。 */
+.dragHandle {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 4px;
+  touch-action: none;
+}
+
+.dragHandleBar {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ios-sep);
 }
 
 .closeBtn {

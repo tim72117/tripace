@@ -6,6 +6,7 @@ import {
   maxLevelForZoom,
   type AttractionOverlayInstance,
 } from './geoAttractionOverlay'
+import { isMarkerCandidate, isMarkerSelected } from './geoMarkerSelection'
 
 // useAttractionOverlays——從 GeoOutlineMap.tsx 抽出來的景點區域光暈圖層。
 // 只讀 mapRef/mapReady/自己的資料(attractions)/selectedKey/hoverKey/
@@ -82,8 +83,8 @@ export function useAttractionOverlays({
       const overlay = new OverlayClass(
         d,
         new google.maps.LatLng(d.lat, d.lng),
-        selectedKey === key || hoverKey === key,
-        candidateKeys?.has(key) ?? false,
+        isMarkerSelected(key, selectedKey, hoverKey),
+        isMarkerCandidate(key, candidateKeys),
         handleAttractionClick,
       )
       overlay.setMap(mapRef.current!)
@@ -104,7 +105,7 @@ export function useAttractionOverlays({
       const d = filteredAttractions[i]
       if (d) {
         const key = geoItemKey('attraction', d)
-        o.setSelected(selectedKey === key || hoverKey === key)
+        o.setSelected(isMarkerSelected(key, selectedKey, hoverKey))
       }
     })
   }, [selectedKey, hoverKey, filteredAttractions])
@@ -114,7 +115,7 @@ export function useAttractionOverlays({
   useEffect(() => {
     overlaysRef.current.forEach((o, i) => {
       const d = filteredAttractions[i]
-      if (d) o.setCandidate(candidateKeys?.has(geoItemKey('attraction', d)) ?? false)
+      if (d) o.setCandidate(isMarkerCandidate(geoItemKey('attraction', d), candidateKeys))
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidateKeysToken, filteredAttractions])

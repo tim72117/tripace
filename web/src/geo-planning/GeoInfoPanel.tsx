@@ -1,17 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { PanelLeft, Plus, X } from 'lucide-react'
 import { dayGroupLabel, type GeoCandidate } from './GeoCandidateSidebar'
+import { candidateHasScheduledDate } from './geoCandidateHelpers'
 import styles from './GeoInfoPanel.module.css'
-
-// candidateHasScheduledDate:判斷這個候選是否已經有排定日期——只有
-// kind==='entry' 且 start 非空字串的候選才符合(entry 是「返回候選」後
-// 暫時退回候選籃、但仍保留原本 start/startTime 的項目,見 GeoCandidate
-// 型別定義的完整說明;hotel/attraction/place 三種來源天生沒有日期概念,
-// 一律視為「沒有排定日期」)。供「加入 {tripName}」按鈕決定要不要先跳
-// 日期選擇,見下方 handleAddClick 的說明。
-function candidateHasScheduledDate(c: GeoCandidate): boolean {
-  return c.kind === 'entry' && !!c.start
-}
 
 // GeoInfoPanel:一張浮動卡片,絕對定位疊在地圖上方,貼齊主顯示區右緣
 // (即 GeoHotelSidebar 左側),與主顯示區同高、四周留出間距,不像
@@ -27,7 +18,7 @@ function candidateHasScheduledDate(c: GeoCandidate): boolean {
 //     那個互動假設「使用者想看這個地點在地圖上的位置」,這次要的是
 //     「先看介紹內容」,不需要地圖跟著動,尤其地圖目前顯示的範圍可能就是
 //     使用者刻意瀏覽的範圍,點清單項目把它搬走反而打斷瀏覽。地圖上直接
-//     點自訂地標圖示(GeoOutlineMap.tsx 的 handleDistrictClick)維持
+//     點自訂地標圖示(useAttractionOverlays.ts 的 handleAttractionClick)維持
 //     原本「放大到該範圍+查附近推薦」的行為不變——那是使用者已經在
 //     地圖上、明確想放大看這個地點的意圖,跟清單點擊是兩種不同情境。
 //  2. 點擊底圖上 Google 原生繪製的 POI 圖標(見 GeoOutlineMap.tsx 攔截

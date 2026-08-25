@@ -8,15 +8,15 @@ import type { DesktopTimelineMirror } from './chat/ChatScreen'
 import { MultiTrackTimeline, type TaskPlaceholder } from './timeline/Timeline'
 import { PaceChart } from './pace/PaceChart'
 import { DemoPanel } from './demo/DemoPanel'
-import { GeoHotelSidebar, geoItemKey, type GeoSelectedKey } from './geo-planning/GeoHotelSidebar'
-import { GeoInfoPanel, type GeoInfoContent } from './geo-planning/GeoInfoPanel'
+import { GeoHotelSidebar } from './geo-planning/GeoHotelSidebar'
+import { GeoInfoPanel } from './geo-planning/GeoInfoPanel'
 import { AttractionInfoPanel } from './geo-planning/AttractionInfoPanel'
-import { GeoCandidateSidebar, type GeoCandidate, createEntryFromCandidate } from './geo-planning/GeoCandidateSidebar'
+import { GeoCandidateSidebar, type GeoCandidate } from './geo-planning/GeoCandidateSidebar'
 import { AddFromCandidateSidebar, dayGroupLabel } from './geo-planning/AddFromCandidateSidebar'
 import { GeoOutlinePanel } from './geo-planning/GeoOutlinePanel'
+import { useGeoPlanningState } from './geo-planning/useGeoPlanningState'
 import { placesQueryRadiusMeters } from './geo-planning/geoAttractionClick'
-import { hotelInfoContent, placeInfoContent, poiInfoContent } from './geo-planning/geoInfoContent'
-import type { GeoAttraction, GeoGeocodeCandidate, GeoHotel, GeoPlace } from './api'
+import type { GeoAttraction } from './api'
 import { type ContentProps } from './AppCommon'
 import { type PanelMode, isPanelMode, DEBUG_PANEL_ENABLED, PANEL_REGISTRY } from './DesktopShared'
 import { DemoPanelContent } from './demo/DemoPanelContent'
@@ -45,45 +45,9 @@ const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
   refetchEntries: () => {},
 }
 
-// hotelInfoContent/placeInfoContent/poiInfoContent 已抽到
-// geo-planning/geoInfoContent.ts(手機版 GeoOutlinePhoneView.tsx 共用同一份)
-// ——candidateInfoContent/geocodeCandidateInfoContent 仍留在這裡,因為是
-// 候選籃專屬邏輯(手機版第一階段沒有候選籃,不需要共用)。
-//
-// geocodeCandidateInfoContent:點擊地圖上的搜尋候選 marker(見
-// GeoOutlineMap.tsx 的 geocodeCandidates/onGeocodeCandidateSelect)開
-// 資訊欄——GeoGeocodeCandidate 跟 GeoPlaceDetails 一樣沒有 primaryType/
-// summary/rating,補法同 poiInfoContent 的既有慣例(primaryType 補空
-// 字串,badges 固定空陣列)。
-function geocodeCandidateInfoContent(c: GeoGeocodeCandidate): GeoInfoContent {
-  return {
-    name: c.name,
-    subtitle: c.address,
-    badges: [],
-    candidate: {
-      kind: 'place',
-      name: c.name,
-      address: c.address,
-      lat: c.lat,
-      lng: c.lng,
-      primaryType: '',
-    },
-  }
-}
-
-// candidateInfoContent:候選籃項目本體被點擊時開資訊欄——candidate 欄位
-// 刻意不帶(undefined),因為這個項目已經在候選籃裡,GeoInfoPanel 不需要再
-// 顯示一次「加入候選」按鈕(理由同 GeoInfoPanel.tsx candidate 欄位的
-// optional 設計,呼叫端可以視情境不組出這個欄位)。候選籃不會出現
-// kind==='attraction' 的項目(attraction 沒有任何入口能被加入候選籃,見
-// 上方說明),故這裡不需要處理該分支。entry 種類(行程本身已有座標的
-// 既有內容)用 location 當 subtitle,其餘兩種沿用 address。
-function candidateInfoContent(c: Exclude<GeoCandidate, { kind: 'attraction' }>): GeoInfoContent {
-  if (c.kind === 'entry') {
-    return { name: c.name, subtitle: c.location ?? undefined, badges: [] }
-  }
-  return { name: c.name, photoUrl: c.photoUrl, subtitle: c.address, badges: [] }
-}
+// hotelInfoContent/placeInfoContent/poiInfoContent/candidateInfoContent/
+// geocodeCandidateInfoContent 已抽到 geo-planning/geoInfoContent.ts,
+// 桌面版/手機版共用同一份。
 
 export function DesktopContent(props: ContentProps) {
   const { cfg, activeTrip, setActiveTrip } = props
@@ -128,140 +92,32 @@ export function DesktopContent(props: ContentProps) {
   // 開關——沒有常駐對話欄,ChatScreen 只在這個小匡開啟時才掛載(見下方
   // render 邏輯),這是使用者存取對話功能的唯一入口。
   const [chatPopoverOpen, setChatPopoverOpen] = useState(false)
-  // geoHotels:地理輪廓底圖(構想 6 試做,demo-geo-outline)查詢到的飯店
-  // 清單,由 GeoOutlinePanel(main 區塊內部)透過 onHotelsChange 回報,
-  // 這裡的 state 供下方渲染的 GeoHotelSidebar(整個桌面版介面最外側,
-  // 跟 .desktop-main 平行)使用——兩個分開掛載的 sibling 需要這層 state
-  // 中介資料。
-  const [geoHotels, setGeoHotels] = useState<GeoHotel[]>([])
-  // geoPlaces:點擊地圖上的地標圖示時即時查詢到的附近推薦地點(見
-  // GeoOutlineMap.tsx 的 handleAttractionClick、GeoHotelSidebar 的「附近
-  // 推薦」分頁),由 GeoOutlinePanel 透過 onPlacesNearby 回報——理由同
-  // geoHotels/geoAttractions。跟那兩者不同的是這不是常駐跟著地圖範圍
-  // 更新的圖層,是「點了某個地標才會有內容」的一次性查詢結果,換行程/
-  // 切換分頁時不特別清空(下一次點擊地標會自然覆蓋掉舊結果)。
-  const [geoPlaces, setGeoPlaces] = useState<GeoPlace[]>([])
-  // geoGeocodeCandidates:城市搜尋框查到多筆候選時(見 GeoOutlinePanel.tsx
-  // 的 onGeocodeCandidatesChange)由 GeoOutlinePanel 回報——理由同
-  // geoHotels/geoPlaces,這裡的 state 供下方 GeoHotelSidebar 合併清單
-  // 顯示,讓使用者不需要在地圖上逐一辨認 candidate marker 就能直接點選
-  // (使用者明確要求「搜尋後的結果要顯示在清單中」)。
-  const [geoGeocodeCandidates, setGeoGeocodeCandidates] = useState<GeoGeocodeCandidate[]>([])
-  // geoGeocodeCandidateSelect:GeoHotelSidebar 清單裡的候選項目被點擊時
-  // 設值,原封不動傳給 GeoOutlinePanel 的 externalGeocodeCandidateSelect
-  // ——不能沿用 geoPanTarget(那個機制固定 suppressQuery:true,只適合
-  // 「對齊看清楚一個已知項目」的候選籃/探索周邊,見該 state 的完整
-  // 說明),候選項目點擊的意圖是「移動並查詢新範圍」,必須讓
-  // GeoOutlinePanel 內部呼叫它自己的 handleGeocodeCandidateSelect(見該
-  // 元件對 externalGeocodeCandidateSelect 的完整說明),兩種入口(地圖
-  // marker/側欄清單)才會有一致的行為——這是實際發生過的 bug:清單點
-  // 候選後地圖有移動,但因為查詢被抑制,景點/飯店清單卻沒有跟著更新。
-  const [geoGeocodeCandidateSelect, setGeoGeocodeCandidateSelect] = useState<GeoGeocodeCandidate | null>(null)
-  // geoInfoPlaceId:目前 GeoInfoPanel 顯示的候選對應的 placeId,供
-  // onGeocodeCandidateText/onGeocodeCandidatePhoto 判斷「這次非同步回來
-  // 的查詢結果,是不是還對應使用者目前正在看的那張卡片」——使用者可能
-  // 在文字/照片查詢還沒回來前就切換到另一個候選(見
-  // GeoOutlinePanel.tsx 對這兩個 callback 的說明:不設 cancelled flag,
-  // 舊查詢回來時不該覆蓋新候選已經顯示的內容),用這個 state 在
-  // DesktopLayout 這一層做最後一道「還是不是同一張卡片」的判斷,而非
-  // 在 GeoOutlinePanel 內部處理(那裡沒有「目前資訊卡在顯示誰」的概念,
-  // 只知道候選本身)。
-  const [geoInfoPlaceId, setGeoInfoPlaceId] = useState<string | null>(null)
-  // geoActiveCategory:地圖上方類別標籤列(飯店/景點/餐廳)目前選中的類別
-  // (見 GeoOutlineMap.tsx 的 onActiveCategoryChange 說明),null 代表
-  // geoPlaces 目前的內容不屬於任何特定類別(來自點擊地標查附近推薦,或
-  // 沒有查詢過)。供 GeoHotelSidebar「附近推薦」分頁的標題/空狀態文字
-  // 顯示目前實際查的是哪個類別,理由同 geoPlaces 本身。
-  const [geoActiveCategory, setGeoActiveCategory] = useState<string | null>(null)
-  // geoSelectedKey:目前被選中的飯店/地點識別鍵(見 GeoHotelSidebar.tsx
-  // 的 geoItemKey)——側欄(GeoHotelSidebar)與地圖(GeoOutlineMap)是分開
-  // 掛載的 sibling,「哪一項被選中」的狀態只能靠這層 state 中介,才能讓
-  // 側欄的選取標記與地圖上的選取樣式同步。GeoHotelSidebar 清單/地圖上
-  // 點擊只開 GeoInfoPanel 資訊卡,不觸發 panTo;候選籃(GeoCandidateSidebar)
-  // 點擊則額外會移動地圖(見下方 geoPanTarget 的說明),這是使用者明確
-  // 要求的例外。
-  const [geoSelectedKey, setGeoSelectedKey] = useState<GeoSelectedKey>(null)
-  // geoPanTarget:候選籃(GeoCandidateSidebar)裡任何一項被點擊、或
-  // AttractionInfoPanel「探索周邊」按鈕(見下方 handleExploreAttraction)
-  // 觸發時,要移動地圖到的目標——候選籃/AttractionInfoPanel(在
-  // DesktopLayout 最外側)跟地圖(在 main 內部的 GeoOutlinePanel 裡)是
-  // 分開掛載的 sibling,只能靠這層 state 中介。其餘來源(GeoHotelSidebar
-  // 清單/地圖上點擊)點擊都只開資訊欄、不移動地圖,故只有這兩處會設值
-  // ——每次設值都建立新物件參照(即使連續觸發同一個目標),讓
-  // GeoOutlineMap 能偵測到「這是一次新的移動請求」而重新 panTo/fitBounds
-  // (理由同 GeoOutlinePanel.tsx 對這個 prop 的既有說明)。radiusMeters
-  // 只有「探索周邊」會帶(見該 handler 的說明),候選籃點擊沿用原本純
-  // 平移的行為,不帶這個欄位。
-  const [geoPanTarget, setGeoPanTarget] = useState<{ lat: number; lng: number; radiusMeters?: number } | null>(null)
+  // geo:地理規劃地圖的共用狀態/互動邏輯——選取卡片、地圖移動目標、
+  // 候選籃、城市搜尋候選清單、第二側欄相關中介 state 等,見
+  // geo-planning/useGeoPlanningState.ts 的完整說明。桌面版/手機版
+  // (GeoOutlinePhoneView.tsx)呼叫同一個 hook,不再各自實作一份形狀
+  // 相似但容易跑出不一致的版本。
+  const geo = useGeoPlanningState({ cfg, tripID: activeTrip?.id })
+  const geoSelectedKey = geo.selectedKey
+  const geoInfoContent = geo.infoContent
+  const geoAttractionContent = geo.attractionContent
   // handleExploreAttraction:AttractionInfoPanel「探索周邊」按鈕觸發——
   // 複用 GeoOutlineMap.tsx handleAttractionClick 已有的
   // placesQueryRadiusMeters 決策邏輯算出縮放半徑(優先用該景點區域自己的
   // radiusMeters,單點地標退回 PLACES_QUERY_DEFAULT_RADIUS_METERS),透過
-  // geoPanTarget 中介讓地圖 fitBounds 到這個範圍(見 GeoOutlineMap.tsx
+  // geo.panTarget 中介讓地圖 fitBounds 到這個範圍(見 GeoOutlineMap.tsx
   // panTarget.radiusMeters 分支的說明)。跟直接點地圖上的地標
   // (handleAttractionClick)不同的是這裡固定走 fit-bounds,不區分
   // pan-and-zoom——「探索周邊」的使用者意圖本來就是「讓我看看這一整個
   // 區域多大」,即使是沒有 radiusMeters 的單點地標,用預設查詢半徑框出的
   // 範圍也已經是合理的「周邊」大小,不需要再依 level 判斷是否要動 zoom。
   const handleExploreAttraction = useCallback((attraction: GeoAttraction) => {
-    setGeoPanTarget({
+    geo.setPanTarget({
       lat: attraction.lat,
       lng: attraction.lng,
       radiusMeters: placesQueryRadiusMeters(attraction),
     })
-  }, [])
-  // geoHoverKey:滑鼠移到側欄(GeoHotelSidebar/GeoCandidateSidebar)項目上時
-  // 的臨時識別鍵,獨立於 geoSelectedKey 之外(見 GeoOutlineMap.tsx 的
-  // hoverKey prop 說明,兩者在地圖端用 || 合併判斷選取樣式)——滑鼠移開時
-  // 只清空這個 state,不影響 geoSelectedKey 記得的「上一次點擊選中的
-  // 項目」。
-  const [geoHoverKey, setGeoHoverKey] = useState<GeoSelectedKey>(null)
-  // geoInfoContent:目前要在浮動資訊卡(GeoInfoPanel)顯示的內容,觸發來源
-  // 是側欄飯店/推薦地點清單點擊項目本體、或點擊地圖上 Google 原生 POI
-  // 圖標(轉自 GeoOutlineMap.tsx onPoiSelect 回報的 GeoPlaceDetails)——
-  // 兩種來源欄位形狀不同,統一轉成 GeoInfoContent 後才存進這個 state,
-  // GeoInfoPanel 本身不需要分辨來源。attraction 不使用這個 state,見下方
-  // geoAttractionContent 的說明。
-  const [geoInfoContent, setGeoInfoContent] = useState<GeoInfoContent | null>(null)
-  // geoAttractionContent:目前要在 AttractionInfoPanel 顯示的 attraction——
-  // 獨立於 geoInfoContent 之外(見 AttractionInfoPanel.tsx 的說明,
-  // attraction 的操作集合跟 GeoInfoPanel 完全不同,不共用同一個 state/
-  // 同一份轉換函式)。觸發來源是側欄「地點」分頁點擊項目本體、或點擊
-  // 地圖上自訂地標圖示(GeoOutlineMap.tsx 的 onAttractionSelect),兩者
-  // 都直接回報原始 GeoAttraction,不需要轉換。
-  const [geoAttractionContent, setGeoAttractionContent] = useState<GeoAttraction | null>(null)
-  // geoCandidates:候選籃(構想 1,見
-  // docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)目前收集的候選清單——純
-  // 前端試做,只存在這份記憶體 state,重新整理頁面會消失,尚未接上任何
-  // 持久化(見 GeoCandidateSidebar.tsx 的說明)。加入來源是
-  // GeoHotelSidebar 每張卡片的「+」按鈕。
-  const [geoCandidates, setGeoCandidates] = useState<GeoCandidate[]>([])
-  // geoCandidateKeys:geoCandidates 轉成地圖端要的識別鍵集合(見
-  // GeoOutlineMap.tsx 的 candidateKeys prop 說明),只涵蓋使用者手動加入的
-  // 三種(hotel/attraction/place)——entry 種類是行程本身已有座標的既有
-  // 內容,地圖上該類 marker 已有旗標圖示語意,不需要再疊加「已加入候選」
-  // 徽章(理由同 GeoOutlineMap.tsx candidateKeys 的完整說明)。用 useMemo
-  // 而非每次渲染重建 Set,避免傳給 GeoOutlineMap 的參照每次都變動觸發
-  // 不必要的 marker 同步。
-  const geoCandidateKeys = useMemo(
-    () =>
-      new Set(
-        geoCandidates
-          .filter((c): c is Extract<GeoCandidate, { kind: 'hotel' | 'attraction' | 'place' }> => c.kind !== 'entry')
-          .map((c) => geoItemKey(c.kind, c)),
-      ),
-    [geoCandidates],
-  )
-  // addGeoCandidate:候選籃的加入邏輯集中在這裡,GeoHotelSidebar 卡片「+」
-  // 按鈕與 GeoInfoPanel「加入候選」按鈕共用同一份比對去重規則(kind+name+
-  // lat+lng),避免兩處各自維護一份邏輯後來跑歪。
-  const addGeoCandidate = useCallback((c: GeoCandidate) => {
-    setGeoCandidates((prev) =>
-      prev.some((p) => p.kind === c.kind && p.name === c.name && p.lat === c.lat && p.lng === c.lng)
-        ? prev
-        : [...prev, c],
-    )
-  }, [])
+  }, [geo])
   // geoCandidateFlashTrigger:候選籃浮動卡片(GeoCandidateSidebar,見下方
   // panelSpec.slot === 'float' 的 'geo-outline' 分支)「剛加入東西了」的
   // 視覺提示觸發器——每次遞增觸發一次短暫的 highlight 動畫(見
@@ -272,17 +128,19 @@ export function DesktopContent(props: ContentProps) {
   // 遞增計數器(而非 boolean)是因為使用者可能連續加入好幾個候選,即使
   // 卡片的 flash 動畫還沒播完,遞增值仍能保證每次都是新的 useEffect
   // 依賴值、重新觸發一次動畫(boolean 在連續兩次都設成 true 時不會變動,
-  // 不會重新觸發)。
+  // 不會重新觸發)。這是桌面版專屬的視覺提示,不在 useGeoPlanningState
+  // 共用範圍內(手機版加入候選後改成直接打開候選籃抽屜,見
+  // GeoOutlinePhoneView.tsx 的 handleAddCandidate)。
   const [geoCandidateFlashTrigger, setGeoCandidateFlashTrigger] = useState(0)
   // addGeoCandidateAndReveal:GeoInfoPanel 複合按鈕右半邊(PanelLeft icon)
-  // 觸發——跟左半邊 addGeoCandidate 一樣單純加入候選籃(同一份去重邏輯,
+  // 觸發——跟左半邊 geo.addCandidate 一樣單純加入候選籃(同一份去重邏輯,
   // 不涉及日期選擇),額外多做的事只有讓候選籃側欄短暫 highlight 一下,
   // 提示使用者「加進去了,去左邊看」(側欄本身在這個情境下必然已經展開,
   // 詳見 geoCandidateFlashTrigger 的說明)。
   const addGeoCandidateAndReveal = useCallback((c: GeoCandidate) => {
-    addGeoCandidate(c)
+    geo.addCandidate(c)
     setGeoCandidateFlashTrigger((n) => n + 1)
-  }, [addGeoCandidate])
+  }, [geo])
   // geoSearchCity/geoSearchTrigger:城市搜尋欄的狀態,UI 渲染在
   // GeoOutlineMap.tsx(地圖左上角類別標籤列旁),查詢邏輯留在
   // GeoOutlinePanel.tsx(見該檔案的說明)——兩者是分開掛載的 sibling,
@@ -292,110 +150,6 @@ export function DesktopContent(props: ContentProps) {
   // 顯示,不需要再往上層回報,故這裡不持有對應 state。
   const [geoSearchCity, setGeoSearchCity] = useState('')
   const [geoSearchTrigger, setGeoSearchTrigger] = useState(0)
-  // geoRefetchTripEntriesTrigger:同 geoSearchTrigger 的中介模式,但驅動的
-  // 是 GeoOutlinePanel 的 refetchTripEntriesTrigger prop——GeoCandidateSidebar
-  // 幫「未排定日期」的候選補上日期(PATCH 成功)後透過 onDatesAssigned
-  // 遞增這個值,通知 GeoOutlinePanel 重新查一次 tripEntries,讓補了日期的
-  // 項目在下一次渲染自然移到正確的日期分組(見 GeoOutlinePanel.tsx 該
-  // prop 的完整說明)。
-  const [geoRefetchTripEntriesTrigger, setGeoRefetchTripEntriesTrigger] = useState(0)
-  // pickingDayKey:「從候選加入」第二張浮動卡片(AddFromCandidateSidebar,
-  // 見該檔案的說明)目前是為哪一天開啟的——null 代表收合、不渲染這張卡片。
-  // 由 GeoCandidateSidebar 的 onPickFromCandidate 回報使用者按了哪一天
-  // 的按鈕,狀態提升到這裡是因為這張卡片是跟 panelMode 浮動卡片同一個
-  // .left 位置的獨立浮層(見 DesktopLayout.module.css 的
-  // .panel),不是候選籃元件內部的浮層,只能由共同的父層中介
-  // 才能同時控制兩者(見下方 render 邏輯裡兩者互斥的判斷)。
-  const [pickingDayKey, setPickingDayKey] = useState<string | null>(null)
-  // onlyGeoCandidate:候選中(非「已排入行程」)的候選——AddFromCandidateSidebar
-  // 要挑選的清單,篩選規則跟 GeoCandidateSidebar.tsx 內部的 onlyCandidate
-  // 完全一致(kind !== 'entry',或 kind === 'entry' 但 inTrip !== true),
-  // 這裡獨立算一份是因為第二側欄現在是分開掛載的 sibling,拿不到
-  // GeoCandidateSidebar 元件內部的那份計算結果。
-  const onlyGeoCandidate = useMemo(
-    () => geoCandidates.filter((c) => !(c.kind === 'entry' && c.inTrip)),
-    [geoCandidates],
-  )
-  // geoScheduledDates:行程本身目前已排定的日期清單(去重、升冪排序)——
-  // 從 geoCandidates 裡 kind === 'entry' && inTrip 且 start 非空的項目
-  // 取出,分組規則跟 GeoCandidateSidebar.tsx 的「已排入行程」dayGroupKey/
-  // NO_DATE_GROUP 邏輯一致(未排定日期的 entry 不算數)。傳給
-  // GeoInfoPanel 的 scheduledDates,見該元件的 prop 說明——按下「加入
-  // {tripName}」時,候選沒有自己的日期但行程已有這些既有日期可選,先跳
-  // 下拉選單而不是直接展開日曆。
-  const geoScheduledDates = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          geoCandidates
-            .filter((c): c is GeoCandidate & { kind: 'entry'; inTrip: true } => c.kind === 'entry' && c.inTrip && !!c.start)
-            .map((c) => c.start as string),
-        ),
-      ).sort(),
-    [geoCandidates],
-  )
-  // handlePickFromCandidate:第二側欄點選一項候選——直接呼叫
-  // createEntryFromCandidate 建立成 pickingDayKey 這天的 entry,成功後
-  // 側欄保持開啟(使用者明確要求可以連續加入多項),並觸發
-  // geoRefetchTripEntriesTrigger 讓「已排入行程」重新查詢、把新條目帶入
-  // 正確的日期分組。失敗只印 console 不關閉側欄,讓使用者可以重試或改選
-  // 別項(理由同候選籃內其餘拖曳/建立失敗的既有處理方式)。
-  const handlePickFromCandidate = useCallback(async (c: GeoCandidate) => {
-    if (!pickingDayKey || !activeTrip?.id) return
-    try {
-      await createEntryFromCandidate(cfg, activeTrip.id, c, pickingDayKey)
-      setGeoCandidates((prev) =>
-        prev.filter((p) => !(p.kind === c.kind && p.name === c.name && p.lat === c.lat && p.lng === c.lng)),
-      )
-      setGeoRefetchTripEntriesTrigger((n) => n + 1)
-    } catch (err) {
-      console.error('[DesktopLayout] 從候選加入失敗:', err)
-    }
-  }, [pickingDayKey, activeTrip?.id, cfg])
-  // handleScheduleCandidate:GeoInfoPanel「加入 {tripName}」按鈕在候選
-  // 沒有排定日期時,展開日期選擇 UI、選好日期按確定觸發(見
-  // GeoInfoPanel.tsx 的 onSchedule 說明)——跟 handlePickFromCandidate
-  // 是同一種「候選 + 日期 → 真正的行程 entry」的動作,共用同一支
-  // createEntryFromCandidate,只是觸發來源(第二側欄點選 vs. 地點介紹卡
-  // 按鈕)跟已經知道的日期來源(pickingDayKey 這個外部 state vs. 這裡直接
-  // 收到的 date 參數)不同,故不合併成同一個 callback。失敗只印 console、
-  // 不特別處理,理由同 handlePickFromCandidate。
-  const handleScheduleCandidate = useCallback(async (c: GeoCandidate, date: string) => {
-    if (!activeTrip?.id) return
-    try {
-      await createEntryFromCandidate(cfg, activeTrip.id, c, date)
-      setGeoRefetchTripEntriesTrigger((n) => n + 1)
-    } catch (err) {
-      console.error('[DesktopLayout] 加入行程(選定日期)失敗:', err)
-    }
-  }, [activeTrip?.id, cfg])
-  // removeGeoCandidate/selectGeoCandidate:候選籃(GeoCandidateSidebar)與
-  // 第二側欄(AddFromCandidateSidebar)共用同一份「移除候選」/「點選候選」
-  // 行為——候選中清單原本只在候選籃側欄渲染,搬到第二側欄後,兩個分開
-  // 掛載的元件都需要一模一樣的處理邏輯,抽成具名函式而非各自的元件內聯
-  // callback,避免兩處各寫一份、之後改一邊忘了改另一邊。
-  const removeGeoCandidate = useCallback((c: GeoCandidate) => {
-    setGeoCandidates((prev) =>
-      prev.filter((p) => !(p.kind === c.kind && p.name === c.name && p.lat === c.lat && p.lng === c.lng)),
-    )
-  }, [])
-  const selectGeoCandidate = useCallback((c: GeoCandidate) => {
-    if (c.kind === 'attraction') return
-    setGeoSelectedKey(c.kind === 'entry' ? null : geoItemKey(c.kind, c))
-    setGeoAttractionContent(null)
-    setGeoInfoContent(candidateInfoContent(c))
-    // 候選籃/第二側欄裡任何一項被點擊,都移動地圖到該點為中心——使用者
-    // 明確要求候選相關清單點擊要跟「已排入行程」項目一樣有這個行為。
-    // 其餘來源(GeoHotelSidebar 清單/地圖上點擊)維持只開資訊欄、不移動
-    // 地圖(見 geoPanTarget 宣告處的完整說明)。
-    setGeoPanTarget({ lat: c.lat, lng: c.lng })
-  }, [])
-  // draggingCandidate:目前正在拖曳的候選卡片——候選中清單搬到第二側欄
-  // 後,拖曳會跨元件(起點在 AddFromCandidateSidebar 的候選卡片,放開
-  // 目標是 GeoCandidateSidebar 底下的日期分組 .dayBody),兩個分開掛載的
-  // sibling 只能靠這層 state 中介(見 GeoCandidateSidebar.tsx 對這個 prop
-  // 的完整說明)。
-  const [draggingCandidate, setDraggingCandidate] = useState<GeoCandidate | null>(null)
   // timelineMirror:ChatScreen 透過 desktopChat.onTimelineData 鏡像過來的時間軸資料
   // (entries/updatingEntryIDs/taskPlaceholders/refetchEntries)。ChatScreen 是這份
   // 資料唯一的擁有者(它的 WS 連線即時維護這些 state),這裡只是接住鏡像後轉交給
@@ -433,7 +187,8 @@ export function DesktopContent(props: ContentProps) {
   // 可能已經不存在(或屬於別的行程),繼續開著會讓使用者選到的候選建立
   // 到一個已經看不到脈絡的日期,故一併清空。
   useEffect(() => {
-    setPickingDayKey(null)
+    geo.setPickingDayKey(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelMode, activeTrip?.id])
 
   const onTimelineData = useCallback((data: DesktopTimelineMirror) => {
@@ -465,7 +220,7 @@ export function DesktopContent(props: ContentProps) {
   // 出來」的 bug(使用者需要先手動切到「規劃」panelMode 才看得到剛查到
   // 的結果)。查詢本身要不要顯示只看有沒有內容,跟目前主顯示區在哪個
   // panelMode 無關。
-  const geoHotelSidebarVisible = geoHotels.length > 0 || geoPlaces.length > 0 || geoGeocodeCandidates.length > 0
+  const geoHotelSidebarVisible = geo.searchResults.length > 0
   // infoPanelShiftBy:GeoInfoPanel/AttractionInfoPanel 右緣可能同時要
   // 避開兩種東西——GeoHotelSidebar(飯店清單,.right)
   // 與對話浮動小匡(.chat-popover,見 chatPopoverOpen)。對話小匡更寬
@@ -493,17 +248,17 @@ export function DesktopContent(props: ContentProps) {
           onToggleDebugPanel={() => setShowDebugPanel((v) => !v)}
         />
         <main className="desktop-main">
-          {pickingDayKey && (
+          {geo.pickingDayKey && (
             <div className={`${styles.panel} ${styles.left}`} style={{ width: 272 }}>
               <AddFromCandidateSidebar
-                dayLabel={dayGroupLabel(pickingDayKey)}
-                candidates={onlyGeoCandidate}
-                onRemove={removeGeoCandidate}
-                onPick={handlePickFromCandidate}
-                onHover={setGeoHoverKey}
-                onDragStart={setDraggingCandidate}
-                onDragEnd={() => setDraggingCandidate(null)}
-                onClose={() => setPickingDayKey(null)}
+                dayLabel={dayGroupLabel(geo.pickingDayKey)}
+                candidates={geo.onlyCandidates}
+                onRemove={geo.removeCandidate}
+                onPick={geo.handlePickFromCandidate}
+                onHover={geo.setHoverKey}
+                onDragStart={geo.setDraggingCandidate}
+                onDragEnd={() => geo.setDraggingCandidate(null)}
+                onClose={() => geo.setPickingDayKey(null)}
               />
             </div>
           )}
@@ -528,139 +283,47 @@ export function DesktopContent(props: ContentProps) {
                 tripID={activeTrip?.id ?? null}
                 city={geoSearchCity}
                 onCityChange={setGeoSearchCity}
-                onSearch={() => setGeoSearchTrigger((n) => n + 1)}
+                onSearch={() => {
+                  // 重新搜尋時清空目前選取的地點,關閉正在顯示的地點
+                  // 介紹卡——使用者發起新的城市搜尋通常代表要換一個地方
+                  // 看,舊的資訊卡若繼續顯示,容易讓人誤以為卡片內容跟這次
+                  // 新搜尋結果有關聯。geo.clearSelection 一次涵蓋
+                  // selectedKey/infoContent/attractionContent 三者(見
+                  // geo-planning/geoSelection.ts 的說明)——這裡曾經只清
+                  // 其中一個 state、資訊卡沒有跟著真的關閉,改成單一
+                  // reducer 後不會再有「清一半」的中間態。
+                  geo.clearSelection()
+                  setGeoSearchTrigger((n) => n + 1)
+                }}
                 onOpenChat={() => setChatPopoverOpen(true)}
                 searchTrigger={geoSearchTrigger}
-                refetchTripEntriesTrigger={geoRefetchTripEntriesTrigger}
-                onHotelsChange={setGeoHotels}
-                onPlacesNearby={(places) => {
-                  setGeoPlaces(places)
-                }}
-                onActiveCategoryChange={setGeoActiveCategory}
-                onGeocodeCandidatesChange={setGeoGeocodeCandidates}
-                externalGeocodeCandidateSelect={geoGeocodeCandidateSelect}
-                onTripEntriesChange={(entries) => {
-                  // 行程本身已有座標的 entry 自動併入候選籃——跟手動用
-                  // 「+」加入的來源(飯店/地點/推薦地點)共用同一份
-                  // geoCandidates,用 id 比對避免換行程/重新查詢時重複加入。
-                  // 舊行程遺留的「真的已排入行程」候選(kind==='entry' 且
-                  // inTrip===true,但不在這次新清單裡)一併移除,避免換行程
-                  // 後候選籃留著上一趟的行程內容;使用者手動加入的其他三種
-                  // 候選、以及按過「返回候選」的項目(kind==='entry' 但
-                  // inTrip===false,見 DayEntryCard 的說明)不受影響——後者
-                  // 本來就不在後端 entries 查詢結果裡,不該被這次查詢結果
-                  // 清掉。
-                  //
-                  // 這批新的 entries 一律直接覆蓋掉同 id 的舊候選(而非只在
-                  // id 不存在時才新增)——GeoCandidateSidebar 補上「未排定
-                  // 日期」項目的日期後(見 handleAssignDate),會透過
-                  // onDatesAssigned 觸發這裡重新查詢,拿到的是帶新 start 的
-                  // 新資料;若沿用舊寫法(id 存在就跳過、只保留 prev 裡的
-                  // 舊物件),畫面會繼續顯示舊的 start,補日期後看起來像
-                  // 沒生效,直到下次整個換行程才會被覆蓋——這正是實際發生
-                  // 過的 bug,不是預防性寫法。
-                  setGeoCandidates((prev) => {
-                    const keptCandidates = prev.filter((p) => !(p.kind === 'entry' && p.inTrip))
-                    // entryKind(entry 本身的分類,如 "stay"/"activity")跟
-                    // GeoCandidate 判別欄位 kind('entry' 字面值)分開存放,
-                    // 理由見 GeoCandidate 型別定義處的完整說明——e.kind 是
-                    // GeoTripEntry 原本的分類欄位,必須先讀出來存進
-                    // entryKind,才展開 ...e(此時 e 物件上已經不含 kind,
-                    // 見 GeoTripEntry 的型別,不會有覆蓋問題)。
-                    const freshEntries = entries.map((e): GeoCandidate => ({
-                      ...e,
-                      kind: 'entry',
-                      inTrip: true,
-                      entryKind: e.kind,
-                    }))
-                    return [...keptCandidates, ...freshEntries]
-                  })
-                }}
-                onAttractionSelect={(d) => {
-                  setGeoSelectedKey(geoItemKey('attraction', d))
-                  setGeoInfoContent(null)
-                  setGeoAttractionContent(d)
-                }}
-                onHotelSelect={(h) => {
-                  setGeoSelectedKey(geoItemKey('hotel', h))
-                  setGeoAttractionContent(null)
-                  setGeoInfoContent(hotelInfoContent(h))
-                }}
-                onPlaceSelect={(p) => {
-                  setGeoSelectedKey(geoItemKey('place', p))
-                  setGeoAttractionContent(null)
-                  setGeoInfoContent(placeInfoContent(p))
-                }}
-                onPoiSelect={(details) => {
-                  // 點擊 Google 原生 POI 圖標查回的詳細資訊——沒有知名度
-                  // 分級/景點數量/範圍半徑這些只有自建 attraction 資料才有的
-                  // 欄位,改顯示 Google 評分當 badge。
-                  setGeoAttractionContent(null)
-                  setGeoInfoContent(poiInfoContent(details))
-                }}
-                onGeocodeCandidateSelect={(c) => {
-                  // 點擊搜尋候選 marker,或 GeoHotelSidebar 合併清單裡的
-                  // 候選項目(理由同 onPlaceSelect 等既有選取來源)——開
-                  // GeoInfoPanel 顯示這個候選的名稱/地址。地圖上 candidate
-                  // marker 本身的選取樣式仍由 GeoOutlinePanel 自己的
-                  // selectedGeocodeCandidateKey 獨立管理(見該元件的說明,
-                  // 候選圖層是暫時的搜尋結果,marker 樣式不需要跟其餘
-                  // 「常駐可選取」圖層共用同一套機制);這裡另外設
-                  // geoSelectedKey,只用於讓 GeoHotelSidebar 清單裡對應的
-                  // 那一項也能顯示選取樣式,跟飯店/推薦地點清單項目的既有
-                  // 行為一致——兩套 key 各自獨立、互不影響,只是分別驅動
-                  // 「地圖 marker」與「側欄清單項目」兩處不同的視覺。
-                  setGeoSelectedKey(geoItemKey('geocode', c))
-                  setGeoAttractionContent(null)
-                  setGeoInfoContent(geocodeCandidateInfoContent(c))
-                  // 記下這張卡片對應的 placeId(見該 state 的完整說明),
-                  // 供下方 onGeocodeCandidateText/onGeocodeCandidatePhoto
-                  // 判斷非同步回來的結果是否還對應目前顯示的卡片。沒有
-                  // placeId 時設 null——GeoOutlinePanel 不會為這種候選
-                  // 觸發文字/照片查詢,理論上不會有回呼進來,但仍需要
-                  // 清掉上一張卡片可能殘留的 placeId,避免誤判成同一張。
-                  setGeoInfoPlaceId(c.placeId ?? null)
-                }}
-                onGeocodeCandidateText={(placeId, text) => {
-                  // 使用者要求把文字/照片拆成兩個平行請求(見
-                  // GeoOutlinePanel.tsx 對這兩個 prop 的說明)——文字通常
-                  // 先回來,用 geocodeCandidateInfoContent 的形狀升級成
-                  // 完整文字版本(名稱/地址/評分/簡介),但不動 photoUrl
-                  // (可能還沒查完,也可能是另一支請求已經先回來設好的
-                  // 值,兩支請求互相獨立、誰先回來都只更新自己負責的
-                  // 欄位,不覆蓋對方)。placeId 比對:若已經不是目前顯示
-                  // 的那張卡片(使用者切到別的候選了),整個回呼直接
-                  // 放棄,不更新畫面。
-                  if (placeId !== geoInfoPlaceId) return
-                  setGeoInfoContent((prev) => (prev ? { ...prev, ...poiInfoContent({ ...text, photoUrl: prev.photoUrl }) } : prev))
-                }}
-                onGeocodeCandidatePhoto={(placeId, photoUrl) => {
-                  // 照片回來時只更新 photoUrl 這一欄,不動其餘已經顯示的
-                  // 文字內容(不論是 onGeocodeCandidateSelect 的輕量版,
-                  // 或 onGeocodeCandidateText 已經升級過的完整版)——理由
-                  // 同上方 onGeocodeCandidateText 的說明。photoUrl 為
-                  // null 代表查無照片,維持原本顯示佔位圖,不視為錯誤。
-                  if (placeId !== geoInfoPlaceId) return
-                  setGeoInfoContent((prev) => (prev ? { ...prev, photoUrl: photoUrl ?? undefined } : prev))
-                }}
+                refetchTripEntriesTrigger={geo.refetchTripEntriesTrigger}
+                onSearchResultsChange={geo.setSearchResults}
+                externalGeocodeCandidateSelect={geo.searchResultSelect}
+                onTripEntriesChange={geo.onTripEntriesChange}
+                onAttractionSelect={geo.selectAttraction}
+                onSearchResultSelect={geo.selectSearchResult}
+                onPoiSelect={geo.selectPoi}
+                onGeocodeCandidateText={(_placeId, text) => geo.patchGeocodeCandidateText(text)}
+                onGeocodeCandidatePhoto={(_placeId, photoUrl) => geo.patchGeocodeCandidatePhoto(photoUrl)}
                 selectedKey={geoSelectedKey}
-                candidateKeys={geoCandidateKeys}
-                hoverKey={geoHoverKey}
-                panTarget={geoPanTarget}
+                candidateKeys={geo.candidateKeys}
+                hoverKey={geo.hoverKey}
+                panTarget={geo.panTarget}
               />
               <GeoInfoPanel
                 content={geoInfoContent}
-                onClose={() => setGeoInfoContent(null)}
-                onAddCandidate={addGeoCandidate}
+                onClose={geo.clearSelection}
+                onAddCandidate={geo.addCandidate}
                 onAddAndReveal={addGeoCandidateAndReveal}
-                onSchedule={handleScheduleCandidate}
+                onSchedule={(c, date) => geo.handleScheduleCandidate(c, date, 'DesktopLayout')}
                 tripName={activeTrip?.name ?? '行程'}
-                scheduledDates={geoScheduledDates}
+                scheduledDates={geo.scheduledDates}
                 shiftBy={infoPanelShiftBy}
               />
               <AttractionInfoPanel
                 attraction={geoAttractionContent}
-                onClose={() => setGeoAttractionContent(null)}
+                onClose={geo.clearSelection}
                 onExplore={handleExploreAttraction}
                 shiftBy={infoPanelShiftBy}
               />
@@ -678,7 +341,7 @@ export function DesktopContent(props: ContentProps) {
               GeoCandidateSidebar)各自 header 排版不同,不逐一加專屬關閉
               按鈕,統一在這裡放一顆,導回 /app 收起卡片(同再點一次 rail
               圖示的行為)。 */}
-          {panelSpec?.slot === 'float' && !pickingDayKey && (
+          {panelSpec?.slot === 'float' && !geo.pickingDayKey && (
             <div className={`${styles.panel} ${styles.left}`} style={{ width: panelSpec.width }}>
               <button
                 type="button"
@@ -730,19 +393,15 @@ export function DesktopContent(props: ContentProps) {
                 <GeoCandidateSidebar
                   cfg={cfg}
                   tripID={activeTrip?.id}
-                  candidates={geoCandidates}
-                  onRemove={removeGeoCandidate}
-                  onSelect={selectGeoCandidate}
-                  onHover={setGeoHoverKey}
-                  onDatesAssigned={() => setGeoRefetchTripEntriesTrigger((n) => n + 1)}
-                  onReturnToCandidate={(c) =>
-                    setGeoCandidates((prev) =>
-                      prev.map((p) => (p.kind === 'entry' && p.id === c.id ? { ...p, inTrip: false } : p)),
-                    )
-                  }
-                  draggingCandidate={draggingCandidate}
-                  onDraggingCandidateChange={setDraggingCandidate}
-                  onPickFromCandidate={setPickingDayKey}
+                  candidates={geo.candidates}
+                  onRemove={geo.removeCandidate}
+                  onSelect={geo.selectCandidateFromBasket}
+                  onHover={geo.setHoverKey}
+                  onDatesAssigned={() => geo.setRefetchTripEntriesTrigger((n) => n + 1)}
+                  onReturnToCandidate={geo.onReturnToCandidate}
+                  draggingCandidate={geo.draggingCandidate}
+                  onDraggingCandidateChange={geo.setDraggingCandidate}
+                  onPickFromCandidate={geo.setPickingDayKey}
                   flashTrigger={geoCandidateFlashTrigger}
                 />
               ) : null}
@@ -771,11 +430,7 @@ export function DesktopContent(props: ContentProps) {
                 // 填回來、重新顯示,不需要額外狀態去追蹤「使用者主動關閉
                 // 過」,也不會有「关閉後新查詢卻因為 dismissed 標記仍是 true
                 // 而不顯示」這種容易忘記重置的邊界情況。
-                onClick={() => {
-                  setGeoHotels([])
-                  setGeoPlaces([])
-                  setGeoGeocodeCandidates([])
-                }}
+                onClick={() => geo.setSearchResults([])}
                 title="關閉"
               >
                 <X size={16} strokeWidth={2} />
@@ -783,38 +438,23 @@ export function DesktopContent(props: ContentProps) {
               <GeoHotelSidebar
                 cfg={cfg}
                 tripID={activeTrip?.id}
-                hotels={geoHotels}
-                places={geoPlaces}
-                geocodeCandidates={geoGeocodeCandidates}
-                placesCategory={geoActiveCategory}
+                results={geo.searchResults}
                 selectedKey={geoSelectedKey}
-                onHover={setGeoHoverKey}
-                onSelectHotel={(h) => {
-                  setGeoSelectedKey(geoItemKey('hotel', h))
-                  setGeoAttractionContent(null)
-                  setGeoInfoContent(hotelInfoContent(h))
+                onHover={geo.setHoverKey}
+                onSelect={(r) => {
+                  // 三種來源(飯店/地點/搜尋候選)既然合併成同一份清單,
+                  // 點擊行為一律走 selectSearchResultFromList,讓
+                  // GeoOutlinePanel 內部呼叫它自己的
+                  // handleGeocodeCandidateSelect(含正確的
+                  // suppressQuery:false、onlyIfOutOfView 移動地圖、選取
+                  // 樣式、開資訊卡),不在這裡重新實作一份簡化版邏輯——
+                  // 使用者要求「同一份清單、同一套邏輯」,不再區分
+                  // hotel/place 走 onlyIfOutOfView panTarget、geocode 走
+                  // 中介 state 兩條不同路徑。
+                  geo.selectSearchResultFromList(r)
                 }}
-                onSelectPlace={(p) => {
-                  setGeoSelectedKey(geoItemKey('place', p))
-                  setGeoAttractionContent(null)
-                  setGeoInfoContent(placeInfoContent(p))
-                }}
-                onSelectGeocodeCandidate={(c) => {
-                  // 候選是「搜尋定位」的查詢結果,使用者點清單裡的項目
-                  // 跟點地圖上的 candidate marker 意圖相同,都是「我要
-                  // 移動到這個地方、並查詢這裡的景點/飯店資料」——不能
-                  // 用 geoPanTarget(那個機制固定抑制查詢,見
-                  // geoGeocodeCandidateSelect 宣告處的完整說明),改設
-                  // geoGeocodeCandidateSelect,讓 GeoOutlinePanel 內部
-                  // 呼叫它自己的 handleGeocodeCandidateSelect(含正確的
-                  // suppressQuery:false、選取樣式、開資訊卡),不在這裡
-                  // 重新實作一份簡化版邏輯。每次設值建立新物件參照
-                  // (即使連續點同一筆候選),讓 GeoOutlinePanel 的
-                  // useEffect 能偵測到「這是一次新的選取」。
-                  setGeoGeocodeCandidateSelect({ ...c })
-                }}
-                onAddCandidate={addGeoCandidate}
-                onCandidateCreated={() => setGeoRefetchTripEntriesTrigger((n) => n + 1)}
+                onAddCandidate={geo.addCandidate}
+                onCandidateCreated={() => geo.setRefetchTripEntriesTrigger((n) => n + 1)}
               />
             </div>
           )}

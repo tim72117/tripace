@@ -1,18 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { TouchEvent as ReactTouchEvent } from 'react'
 import { Plus, X } from 'lucide-react'
 import type { GeoAttraction } from '../api'
 import type { GeoInfoContent } from './GeoInfoPanel'
 import { attractionBadges } from './geoInfoContent'
-import { dayGroupLabel, type GeoCandidate } from './geoCandidateHelpers'
+import { candidateHasScheduledDate, dayGroupLabel, type GeoCandidate } from './geoCandidateHelpers'
 import styles from './GeoOutlinePhoneInfoSheet.module.css'
 
-// candidateHasScheduledDate:同桌面版 GeoInfoPanel.tsx 的同名函式(該檔案
-// 沒有 export,這裡是獨立的一份極簡複製,不是共用同一個函式)——只有
-// kind==='entry' 且 start 非空字串的候選才符合。供下方「加入候選」按鈕
-// 決定要不要先跳日期選擇,見 handleAddClick 的說明。
-function candidateHasScheduledDate(c: GeoCandidate): boolean {
-  return c.kind === 'entry' && !!c.start
-}
+// SHEET_MIN/MAX_HEIGHT_VH:資訊卡預設高度(60vh,同原本固定值)與往上
+// 拖曳展開的上限(90vh,留一點空間讓使用者仍能看到地圖與狀態列,不整個
+// 佔滿螢幕)。
+const SHEET_MIN_HEIGHT_VH = 60
+const SHEET_MAX_HEIGHT_VH = 90
 
 // GeoOutlinePhoneInfoSheet:手機版規劃地圖資訊卡,從畫面下方滑入蓋住下
 // 半部——桌面版對應的 GeoInfoPanel/AttractionInfoPanel 是絕對定位疊在
@@ -73,6 +72,60 @@ export function GeoOutlinePhoneInfoSheet({
     setDateValue('')
   }, [content, attraction])
 
+  // sheetHeightVh:目前卡片高度(vh 單位)——往上拖曳把手可以展開到
+  // SHEET_MAX_HEIGHT_VH,看到更多卡片自己的內容(簡介、加入候選按鈕等,
+  // 使用者明確要求「往上拉看到下面的內容」,不是收合卡片露出地圖)。
+  // 每次換一張新卡片(content/attraction 變動,同上方 addUiMode 的重置
+  // 依賴)重設回預設高度,不延續上一張卡片被拖曳展開過的高度。
+  const [sheetHeightVh, setSheetHeightVh] = useState(SHEET_MIN_HEIGHT_VH)
+  useEffect(() => {
+    setSheetHeightVh(SHEET_MIN_HEIGHT_VH)
+  }, [content, attraction])
+
+  // 拖曳手勢:垂直方向,雙向——往上拖曳增加卡片高度(delta 為負,換算成
+  // 正的展開量),往下拖曳關閉(delta 為正,理由與做法對齊
+  // GeoOutlinePhoneListDrawer.tsx/trip/PhoneTripsDrawer.tsx 既有的
+  // 「只能往下拖關閉」手勢,這裡額外多支援往上的方向)。startHeightRef
+  // 記住手勢開始當下的高度,讓拖曳量是相對這次手勢起點的增量,而非每次
+  // onTouchMove 都疊加,避免快速連續觸發時高度計算飄移。
+  const startYRef = useRef<number | null>(null)
+  const startHeightRef = useRef(SHEET_MIN_HEIGHT_VH)
+  const draggingRef = useRef(false)
+  const [closeDragOffset, setCloseDragOffset] = useState(0)
+
+  function onHandleTouchStart(e: ReactTouchEvent) {
+    startYRef.current = e.touches[0].clientY
+    startHeightRef.current = sheetHeightVh
+    draggingRef.current = true
+  }
+  function onHandleTouchMove(e: ReactTouchEvent) {
+    if (!draggingRef.current || startYRef.current === null) return
+    const delta = e.touches[0].clientY - startYRef.current
+    if (delta < 0) {
+      // 往上拖:增加高度,夾在 [起始高度, SHEET_MAX_HEIGHT_VH] 之間——
+      // 用視窗高度換算 px 差距對應的 vh 量,避免不同裝置高度下拖曳手感
+      // 不一致。
+      const deltaVh = (-delta / window.innerHeight) * 100
+      setSheetHeightVh(Math.min(SHEET_MAX_HEIGHT_VH, startHeightRef.current + deltaVh))
+      setCloseDragOffset(0)
+    } else {
+      // 往下拖:維持起始高度,改用既有的「往下拖關閉」位移量,理由同
+      // GeoOutlinePhoneListDrawer.tsx 的既有手勢。
+      setSheetHeightVh(startHeightRef.current)
+      setCloseDragOffset(delta)
+    }
+  }
+  function onHandleTouchEnd() {
+    if (!draggingRef.current) return
+    draggingRef.current = false
+    const threshold = 60
+    if (closeDragOffset > threshold) {
+      onClose()
+    }
+    setCloseDragOffset(0)
+    startYRef.current = null
+  }
+
   const open = content != null || attraction != null
   if (!open) return null
 
@@ -113,7 +166,23 @@ export function GeoOutlinePhoneInfoSheet({
 
   return (
     <div className={styles.backdrop} onClick={onClose}>
-      <div className={styles.sheet} onClick={(e) => e.stopPropagation()}>
+      <div
+        className={styles.sheet}
+        style={{
+          maxHeight: `${sheetHeightVh}vh`,
+          transform: `translateY(${closeDragOffset}px)`,
+          transition: draggingRef.current ? 'none' : 'max-height 0.2s ease, transform 0.25s ease',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className={styles.dragHandle}
+          onTouchStart={onHandleTouchStart}
+          onTouchMove={onHandleTouchMove}
+          onTouchEnd={onHandleTouchEnd}
+        >
+          <div className={styles.dragHandleBar} />
+        </div>
         <div className={styles.imageWrap}>
           {photoUrl ? (
             <img className={styles.photo} src={photoUrl} alt={name} />
