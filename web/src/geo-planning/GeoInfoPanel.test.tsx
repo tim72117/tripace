@@ -1,6 +1,4 @@
-// GeoInfoPanel「加入行程」按鈕的日期選擇行為——這是尚未實作的新需求,先寫測試
-// 定義預期契約,再動手改 GeoInfoPanel.tsx(TDD:紅燈在先)。目前這支測試會
-// FAIL,因為 GeoInfoPanel.tsx 還沒有 onSchedule prop 也沒有日曆 UI。
+// GeoInfoPanel「加入行程」按鈕的日期選擇行為。
 //
 // 需求(使用者原話):「加入行程的按鈕按下時,如果沒有已安排的時間,則要跳出
 // 日歷選擇」——換句話說:
@@ -10,13 +8,15 @@
 //     維持現有行為,直接呼叫 onAddCandidate,不彈日曆。
 //   - 候選沒有已排定日期(hotel/attraction/place 三種來源天生沒有日期概念,
 //     或 entry 候選但 start 是空字串)→ 按下「加入 {tripName}」不直接呼叫
-//     onAddCandidate,而是原地展開一個日期選擇 UI(比照 GeoCandidateSidebar.tsx
-//     的 NoDateDayHead 既有樣式慣例:一個 <input type="date"> + 一顆「確定」
-//     按鈕),選好日期按確定後改呼叫新的 onSchedule(candidate, date) 回報
-//     使用者選定的日期,不呼叫 onAddCandidate(這個新流程完全取代原本的
+//     onAddCandidate,而是展開一個日曆浮動匡(見 DatePickerPopover.tsx),
+//     點選日期格子即視為確定,改呼叫新的 onSchedule(candidate, date) 回報
+//     使用者選定的日期,不呼叫 onAddCandidate(這個流程完全取代原本的
 //     一鍵加入,不是先加入候選籃、之後才補日期——因為候選籃裡的「已排入
 //     行程」分組本來就要有日期才有意義,見 GeoCandidateSidebar.tsx 的
-//     dayGroupKey/NO_DATE_GROUP 分組邏輯)。
+//     dayGroupKey/NO_DATE_GROUP 分組邏輯)。日曆 UI 原本是原生
+//     <input type="date"> + 「確定」按鈕,使用者明確要求改成月曆格線浮動匡
+//     (react-day-picker),點日期格子直接生效,不再需要「確定」按鈕/日期
+//     文字輸入這兩個中介步驟。
 //   - 右半邊複合按鈕(onAddAndReveal,PanelLeft icon)不受這個需求影響,
 //     維持現有的「直接加入候選籃 + 側欄 highlight」行為不變——這顆按鈕的
 //     語意本來就是「先丟進候選籃,之後再從候選籃那邊處理日期」(見
@@ -29,6 +29,17 @@ import { GeoInfoPanel, type GeoInfoContent } from './GeoInfoPanel'
 import type { GeoCandidate } from './GeoCandidateSidebar'
 
 const TRIP_NAME = '東京五日遊'
+
+// pickCalendarDate:react-day-picker 的日期格子沒有穩定的 test id,只有
+// aria-label(格式「YYYY年M月D日 星期X」,見 DatePickerPopover 渲染出的
+// 實際 DOM)可以精確定位——月份/星期文字用正則比對,避免每次測試都要
+// 手動組出完整字串(尤其星期幾隨日期變動,測試不該關心這個)。只在同一個
+// 月份內選日期,測試資料刻意避開跨月換頁的情況,不需要額外處理上一頁/
+// 下一頁導覽。
+async function pickCalendarDate(user: ReturnType<typeof userEvent.setup>, year: number, month: number, day: number) {
+  const label = new RegExp(`^${year}年${month}月${day}日`)
+  await user.click(screen.getByRole('button', { name: label }))
+}
 
 function contentWithCandidate(candidate: GeoCandidate): GeoInfoContent {
   return {
@@ -93,10 +104,9 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕的日期選擇', () => {
     await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
 
     expect(onAddCandidate).not.toHaveBeenCalled()
-    // 日期選擇 UI 比照 GeoCandidateSidebar.tsx NoDateDayHead 的既有樣式:
-    // 一個原生 <input type="date"> + 一顆「確定」按鈕。
-    expect(document.querySelector('input[type="date"]')).not.toBeNull()
-    expect(screen.getByRole('button', { name: '確定' })).not.toBeNull()
+    // 日期選擇 UI 改用日曆浮動匡(react-day-picker,見 DatePickerPopover.tsx)
+    // ——用 grid role 確認月曆格線本身有渲染出來,不再檢查原生 date input。
+    expect(screen.getByRole('grid')).not.toBeNull()
   })
 
   it('候選是 entry 且已有 start(已排定日期)時,按下按鈕直接呼叫 onAddCandidate,不展開日期選擇 UI', async () => {
@@ -116,7 +126,7 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕的日期選擇', () => {
 
     expect(onAddCandidate).toHaveBeenCalledTimes(1)
     expect(onAddCandidate).toHaveBeenCalledWith(candidate)
-    expect(document.querySelector('input[type="date"]')).toBeNull()
+    expect(screen.queryByRole('grid')).toBeNull()
   })
 
   it('候選是 entry 但 start 是空字串(尚未排定日期)時,行為比照沒有日期的候選,展開日期選擇 UI', async () => {
@@ -134,10 +144,10 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕的日期選擇', () => {
     await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
 
     expect(onAddCandidate).not.toHaveBeenCalled()
-    expect(document.querySelector('input[type="date"]')).not.toBeNull()
+    expect(screen.getByRole('grid')).not.toBeNull()
   })
 
-  it('日期選擇 UI 選好日期按「確定」後,呼叫 onSchedule(candidate, date),不呼叫 onAddCandidate', async () => {
+  it('日曆浮動匡點選日期格子後,直接呼叫 onSchedule(candidate, date),不呼叫 onAddCandidate', async () => {
     const user = userEvent.setup()
     const onAddCandidate = vi.fn()
     const onSchedule = vi.fn()
@@ -152,32 +162,11 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕的日期選擇', () => {
     )
 
     await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
-
-    const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement
-    await user.type(dateInput, '2026-09-01')
-    await user.click(screen.getByRole('button', { name: '確定' }))
+    await pickCalendarDate(user, 2026, 8, 27)
 
     expect(onSchedule).toHaveBeenCalledTimes(1)
-    expect(onSchedule).toHaveBeenCalledWith(hotelCandidate, '2026-09-01')
+    expect(onSchedule).toHaveBeenCalledWith(hotelCandidate, '2026-08-27')
     expect(onAddCandidate).not.toHaveBeenCalled()
-  })
-
-  it('沒有選日期就按「確定」不會呼叫 onSchedule(比照 NoDateDayHead 既有的 disabled 慣例)', async () => {
-    const user = userEvent.setup()
-    const onSchedule = vi.fn()
-    render(
-      <GeoInfoPanel
-        content={contentWithCandidate(hotelCandidate)}
-        onClose={() => {}}
-        onSchedule={onSchedule}
-        tripName={TRIP_NAME}
-      />,
-    )
-
-    await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
-    await user.click(screen.getByRole('button', { name: '確定' }))
-
-    expect(onSchedule).not.toHaveBeenCalled()
   })
 
   it('複合按鈕右半邊(加入候選並顯示候選籃)不受影響:即使候選沒有日期,按下仍直接呼叫 onAddAndReveal,不展開日期選擇 UI', async () => {
@@ -196,26 +185,26 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕的日期選擇', () => {
 
     expect(onAddAndReveal).toHaveBeenCalledTimes(1)
     expect(onAddAndReveal).toHaveBeenCalledWith(hotelCandidate)
-    expect(document.querySelector('input[type="date"]')).toBeNull()
+    expect(screen.queryByRole('grid')).toBeNull()
   })
 })
 
 // ---- 行程已有排定日期時,「加入 {tripName}」先跳日期下拉選單 ----
 //
-// 這是上面那組測試的延伸(同一輪 TDD 討論,先寫測試再實作):使用者原話
-// 「當已有安排行程時,加入行程按鈕按下後先出現日期選單,就是已經有排入的
-// 日期清單,下面還有其他日期」。完整分岔邏輯(候選沒有自己排定日期時):
+// 使用者原話:「當已有安排行程時,加入行程按鈕按下後先出現日期選單,就是
+// 已經有排入的日期清單,下面還有其他日期」。完整分岔邏輯(候選沒有自己
+// 排定日期時):
 //   - 行程本身完全沒有已排定日期(scheduledDates 是空陣列/未傳入)→ 維持
-//     上面那組測試的行為,直接展開日曆(input[type="date"] + 確定),不跳
-//     下拉選單——沒有任何既有日期可以列,選單只會是空的,沒有意義。
+//     上面那組測試的行為,直接展開日曆浮動匡,不跳下拉選單——沒有任何
+//     既有日期可以列,選單只會是空的,沒有意義。
 //   - 行程本身已有排定日期(scheduledDates 非空)→ 按下按鈕先展開一個下拉
 //     選單,列出 scheduledDates 每一天(用跟 GeoCandidateSidebar.tsx
 //     dayGroupLabel 一致的「M/D」格式顯示),選單最下面多一個「其他日期」
 //     選項:
 //       - 點選單裡的某一天 → 直接呼叫 onSchedule(candidate, 那一天的
 //         ISO 日期字串),選單收合,不會再跳日曆。
-//       - 點「其他日期」→ 選單收合、改展開日曆(跟原本沒有既有日期時同一份
-//         UI),選好日期按確定才呼叫 onSchedule。
+//       - 點「其他日期」→ 選單收合、改展開日曆浮動匡(跟原本沒有既有日期
+//         時同一份 UI),點選日期格子直接呼叫 onSchedule。
 // scheduledDates 由呼叫端(DesktopLayout.tsx)傳入,格式為 YYYY-MM-DD 字串
 // 陣列,這個元件不需要知道這些日期是怎麼算出來的。
 const SCHEDULED_DATES = ['2026-08-16', '2026-08-17']
@@ -238,7 +227,7 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕:行程已有排定日期時�
     expect(screen.getByRole('button', { name: '8/17' })).not.toBeNull()
     expect(screen.getByRole('button', { name: '其他日期' })).not.toBeNull()
     // 還沒點「其他日期」之前不該直接看到日曆。
-    expect(document.querySelector('input[type="date"]')).toBeNull()
+    expect(screen.queryByRole('grid')).toBeNull()
   })
 
   it('下拉選單裡點選某個既有日期,直接呼叫 onSchedule(candidate, 該日期),不展開日曆', async () => {
@@ -259,10 +248,10 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕:行程已有排定日期時�
 
     expect(onSchedule).toHaveBeenCalledTimes(1)
     expect(onSchedule).toHaveBeenCalledWith(hotelCandidate, '2026-08-17')
-    expect(document.querySelector('input[type="date"]')).toBeNull()
+    expect(screen.queryByRole('grid')).toBeNull()
   })
 
-  it('下拉選單裡點「其他日期」,選單收合、改展開日曆;選好日期按確定才呼叫 onSchedule', async () => {
+  it('下拉選單裡點「其他日期」,選單收合、改展開日曆浮動匡;點選日期格子才呼叫 onSchedule', async () => {
     const user = userEvent.setup()
     const onSchedule = vi.fn()
     render(
@@ -280,15 +269,13 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕:行程已有排定日期時�
 
     // 選單應該收合(既有日期選項不再出現),改成看到日曆。
     expect(screen.queryByRole('button', { name: '8/16' })).toBeNull()
-    const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement
-    expect(dateInput).not.toBeNull()
+    expect(screen.getByRole('grid')).not.toBeNull()
     expect(onSchedule).not.toHaveBeenCalled()
 
-    await user.type(dateInput, '2026-09-01')
-    await user.click(screen.getByRole('button', { name: '確定' }))
+    await pickCalendarDate(user, 2026, 8, 27)
 
     expect(onSchedule).toHaveBeenCalledTimes(1)
-    expect(onSchedule).toHaveBeenCalledWith(hotelCandidate, '2026-09-01')
+    expect(onSchedule).toHaveBeenCalledWith(hotelCandidate, '2026-08-27')
   })
 
   it('scheduledDates 是空陣列時,行為比照完全沒有既有日期:直接展開日曆,不跳下拉選單', async () => {
@@ -304,7 +291,7 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕:行程已有排定日期時�
 
     await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
 
-    expect(document.querySelector('input[type="date"]')).not.toBeNull()
+    expect(screen.getByRole('grid')).not.toBeNull()
     expect(screen.queryByRole('button', { name: '其他日期' })).toBeNull()
   })
 
@@ -327,6 +314,6 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕:行程已有排定日期時�
     expect(onAddCandidate).toHaveBeenCalledTimes(1)
     expect(onAddCandidate).toHaveBeenCalledWith(candidate)
     expect(screen.queryByRole('button', { name: '其他日期' })).toBeNull()
-    expect(document.querySelector('input[type="date"]')).toBeNull()
+    expect(screen.queryByRole('grid')).toBeNull()
   })
 })

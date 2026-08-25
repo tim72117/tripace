@@ -3,7 +3,7 @@
    .desktop-rail-btn)——import 時已經有明確的命名空間。
 
    .desktop-rail/.desktop-rail.expanded(rail 根節點與展開狀態)不在這裡
-   ——它們刻意保留在 styles-desktop.css 當全域 class,因為
+   ——它們刻意保留在 desktop-layout-shell.css 當全域 class,因為
    DesktopUserMenu.module.css 用 :global(.desktop-rail)/
    :global(.desktop-rail.expanded) 依賴這兩個全域名稱偵測外層容器狀態
    (DesktopUserMenu 渲染在 DesktopRail 底下,需要感知目前是收合/展開)。

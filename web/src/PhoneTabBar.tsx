@@ -34,7 +34,7 @@ export function PhoneTabBar({
         type="button"
         className={styles.tab}
         onClick={onOpenTrips}
-        title="行程列表"
+        title="旅程列表"
       >
         <span className={`${styles.tabIcon}${tripsDrawerOpen ? ` ${styles.tabIconActive}` : ''}`}>
           <List size={20} strokeWidth={1.8} />

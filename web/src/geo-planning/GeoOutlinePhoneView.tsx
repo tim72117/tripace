@@ -50,6 +50,7 @@ export function GeoOutlinePhoneView({
   user,
   onOpenSettings,
   onOpenTimeline,
+  onOpenTrips,
 }: {
   cfg: ClientConfig
   tripID?: string | null
@@ -66,6 +67,15 @@ export function GeoOutlinePhoneView({
   // 直接切到時間軸的入口。
   onOpenTimeline?: () => void
   onOpenSettings: () => void
+  // onOpenTrips:候選籃「加入 {tripName}」流程裡,使用者還沒選定任何行程
+  // (activeTrip 為空,見上方 activeTrip 的說明——這個畫面本身允許不選
+  // 行程就瀏覽)時觸發,由呼叫端(PhoneContent.tsx)切到行程列表分頁,
+  // 引導使用者先選一個行程。原本沒有這個 prop 時,geo.handleScheduleCandidate
+  // 內部的 tripID guard 會直接靜默 no-op——使用者點了日期、資訊卡正常
+  // 關閉,卻完全沒有任何提示告訴他「因為沒有選行程所以沒加成功」,是
+  // 實際發生過的 bug(桌面版 DesktopLayout.tsx 對應改成開啟行程列表
+  // 浮動卡,這裡是同一個修法的手機版對應)。
+  onOpenTrips: () => void
 }) {
   const [searchCity, setSearchCity] = useState('')
   const [searchTrigger, setSearchTrigger] = useState(0)
@@ -167,7 +177,13 @@ export function GeoOutlinePhoneView({
         scheduledDates={geo.scheduledDates}
         onClose={geo.clearSelection}
         onAddCandidate={handleAddCandidate}
-        onSchedule={(c, date) => geo.handleScheduleCandidate(c, date, 'GeoOutlinePhoneView')}
+        onSchedule={(c, date) => {
+          if (!activeTrip) {
+            onOpenTrips()
+            return
+          }
+          geo.handleScheduleCandidate(c, date, 'GeoOutlinePhoneView')
+        }}
       />
       <GeoOutlinePhoneCandidateDrawer
         cfg={cfg}
@@ -176,12 +192,12 @@ export function GeoOutlinePhoneView({
         onClose={() => setCandidateDrawerOpen(false)}
         candidates={geo.candidates}
         scheduledDates={geo.scheduledDates}
-        onRemove={geo.removeCandidate}
+        onRemove={(c) => geo.handleRemoveCandidate(c, 'GeoOutlinePhoneCandidateDrawer')}
         onSelect={(c) => {
           geo.selectCandidateFromBasket(c)
           setCandidateDrawerOpen(false)
         }}
-        onReturnToCandidate={geo.onReturnToCandidate}
+        onReturnToCandidate={(c) => geo.handleReturnToCandidate(c, 'GeoOutlinePhoneCandidateDrawer')}
         onScheduled={() => geo.setRefetchTripEntriesTrigger((n) => n + 1)}
         flashTrigger={candidateFlashTrigger}
       />

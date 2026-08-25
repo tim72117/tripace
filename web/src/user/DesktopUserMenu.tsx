@@ -54,7 +54,7 @@ export function DesktopUserMenu({
   return (
     <div className={styles.menu} ref={menuRef}>
       {/* portal 到 document.body——.desktop-rail 為了寬度收合/展開過渡
-          動畫設有 overflow:hidden(見 styles-desktop.css 的說明),popover
+          動畫設有 overflow:hidden(見 desktop-layout-shell.css 的說明),popover
           若留在 rail 子樹內,只要往上/往右超出 rail 當下的窄版範圍就會被
           裁掉一角,這是實際回報過的 bug(選單邊緣被邊框遮蔽),不是預防性
           寫法。改成 portal 出去+position:fixed(用 rect 動態算座標),不再
@@ -69,8 +69,8 @@ export function DesktopUserMenu({
             // left 用觸發按鈕的左緣(rect.left)往右留 8px 間隙,不直接
             // 貼齊——rect.left 通常等於 rail 本身的左邊界(頭像列貼齊
             // rail 左緣),選單左緣若直接等於 rect.left 會緊貼視窗/rail
-            // 左邊界,跟其他浮動卡片(.floating-panel-left 等)一致留有
-            // 呼吸空間的慣例不符。也不用 rect.right(選單會整個跑到 rail
+            // 左邊界,跟其他浮動卡片(FloatingPanel side="left" 等)一致
+            // 留有呼吸空間的慣例不符。也不用 rect.right(選單會整個跑到 rail
             // 右邊變成「往右展開」而非「往上展開」,先前誤用過)。
             // rail 收合時只有 48px 寬,260px 選單勢必會超出 rail 右緣、
             // 蓋到主顯示區地圖上方一部分,這是預期行為(選單本來就比

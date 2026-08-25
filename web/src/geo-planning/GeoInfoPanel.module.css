@@ -27,8 +27,8 @@
 }
 
 /* shiftedHotel:GeoHotelSidebar(飯店/附近推薦清單)有內容時,那個側欄
-   改成絕對定位漂浮在 .desktop-main 右緣之上(見 styles-desktop.css 的
-   .floating-panel-right,right: 12px、寬度 280px),跟這張卡片原本
+   改成絕對定位漂浮在 .desktop-main 右緣之上(見 FloatingPanel.tsx 的
+   side="right",right: 12px、寬度 280px),跟這張卡片原本
    同樣定位在 .desktop-main 右緣的 right: 16px 直接疊在一起——這是實際
    發生過的 bug,不是預防性寫法。GeoHotelSidebar 顯示時,由呼叫端
    (DesktopLayout.tsx)傳入 shiftBy="hotel",把這張卡片推到
@@ -209,55 +209,31 @@
   opacity: 0.88;
 }
 
-/* dateEdit/dateInput/dateConfirmBtn:候選沒有排定日期時,按下「加入
-   {tripName}」原地展開的日期選擇 UI——樣式比照
-   GeoCandidateSidebar.module.css 的 .dayDateEdit/.dayDateInput/
-   .dayDateConfirmBtn(NoDateDayHead 用),讓兩處「補日期」的視覺語言
-   一致,各自獨立維護一份(理由同 AttractionInfoPanel.module.css 開頭
-   對重複視覺語言的既有說明)。 */
-.dateEdit {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.dateInput {
-  flex: 1;
-  min-width: 0;
-  padding: 6px 10px;
+/* calendarPopover:候選沒有排定日期時,按下「加入 {tripName}」(或從
+   .dateMenu 點「其他日期」)展開的日曆浮動匡——position: absolute 貼齊
+   .addCandidateWrap(見上方)正下方,疊在卡片其餘內容之上,不推擠版面,
+   跟 .dateMenu 是同一種疊層手法與定位邏輯(top/left/z-index/陰影/圓角
+   完全比照,只是內容從清單換成 DatePickerPopover)。原本這裡是原地展開
+   的 <input type="date">(佔用卡片版面空間、撐開高度),使用者明確要求
+   改成跟 .dateMenu 一樣的浮動小匡,不佔用版面空間。 */
+.calendarPopover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 1;
   border: 1px solid var(--ios-sep);
-  border-radius: 8px;
-  background: var(--ios-bg);
-  color: var(--color-dark);
-  font-size: 12px;
+  border-radius: 12px;
+  background: var(--ios-card);
+  box-shadow: 0 6px 20px rgba(61, 53, 48, 0.18);
 }
 
-.dateInput:focus {
-  outline: none;
-  border-color: var(--color-accent);
-}
-
-.dateConfirmBtn {
-  flex: 0 0 auto;
-  padding: 6px 14px;
-  border: none;
-  border-radius: 8px;
-  background: var(--color-accent);
-  color: var(--ios-card);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: opacity 0.12s;
-}
-
-.dateConfirmBtn:hover:not(:disabled) {
-  opacity: 0.88;
-}
-
-.dateConfirmBtn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+/* calendarPopoverOpenUp:同 .dateMenuOpenUp——.addCandidateWrap 下方
+   視窗剩餘空間不足以容納日曆估計高度時套用,改用 bottom 取代 top,讓
+   浮動匡往上長、貼齊按鈕組正上方,避免固定往下展開時被視窗底部邊界
+   截斷或推出可視範圍外。 */
+.calendarPopoverOpenUp {
+  top: auto;
+  bottom: calc(100% + 6px);
 }
 
 /* dateMenu/dateMenuItem:候選沒有排定日期、但行程本身已有排定日期時,

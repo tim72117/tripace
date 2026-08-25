@@ -31,31 +31,6 @@ export function svgStringToElement(svg: string): SVGElement {
   return doc.documentElement as unknown as SVGElement
 }
 
-// hotelMarkerContent:飯店 marker 的內容 DOM,依選取/候選籃狀態回傳不同
-// 樣式——拆成模組層級的純函式(而非寫在 render 裡的閉包),讓建立飯店
-// marker(全量重畫)與切換選取樣式(改用 setContent() 的 effect)兩個
-// effect 共用同一份定義,不重複維護兩份圖示邏輯。candidate 為 true 時,
-// 不論是否選中都疊加右上角勾選徽章(見 candidateBadgeSvg 的說明)——
-// 候選籃狀態跟選取狀態是兩件獨立的事,可以同時成立。
-//
-// 選中態畫「同色實心圓 + 白色間隙環 + 同色外環」三層同心圓;未選中且非
-// 候選籃時只畫單層描邊圓點——不再像 google.maps.Marker 年代需要為了
-// 「內建 Symbol 只能單色」的限制而特意在 selected||candidate 才切換成
-// SVG 字串分支,AdvancedMarkerElement 的 content 本來就是自由 DOM,兩種
-// 狀態統一都走 SVG,寫法更單純。
-export function hotelMarkerContent(selected: boolean, candidate: boolean): SVGElement {
-  const svg =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">' +
-    (selected
-      ? '<circle cx="10" cy="10" r="9" fill="#5A8A6A"/>' +
-        '<circle cx="10" cy="10" r="6.5" fill="#FDFCFA"/>' +
-        '<circle cx="10" cy="10" r="4" fill="#5A8A6A"/>'
-      : '<circle cx="10" cy="10" r="5" fill="#5A8A6A" stroke="#FDFCFA" stroke-width="1.5"/>') +
-    (candidate ? candidateBadgeSvg(16.5, 3.5) : '') +
-    '</svg>'
-  return svgStringToElement(svg)
-}
-
 // PLACE_CATEGORY_GLYPHS:附近推薦地點(見 handleCategoryClick 觸發的
 // fetchGeoPlacesNearby)依 GeoPlace.primaryType
 // 分類要畫的圖案內容(白色線條,座標為 lucide-react 對應圖示的原生 24x24
@@ -85,41 +60,26 @@ const PLACE_CATEGORY_GLYPHS: Record<string, string> = {
     '<path d="m2.1 21.8 6.4-6.3"/><path d="m19 5-7 7"/></g>',
 }
 
-// placeMarkerContent:附近推薦地點的 marker 內容 DOM——用一顆小小的類別
-// 圖示(而非 hotelMarkerContent 那種純色圓點),讓使用者一眼認出這是
-// 「推薦景點」語意,跟景點區域光暈、飯店圓點的抽象色塊區隔開來。底色
-// 維持靛藍(區分於景點區域的暖沙棕、飯店的森綠),圖案本身用白色線條,
-// 尺寸刻意壓小(未選中 22px、選中 28px)——這是輔助辨識用的小圖標,
-// 不搶過分區光暈與地標照片的視覺份量。選中態只放大 + 加一圈白色描邊
-// 光暈(而非飯店那種三層同心圓靶心)——圖案本身已經有清楚的形狀語意,
-// 不需要再疊靶心結構,加大加亮已足夠表達「這是選中的那個」。candidate
-// 為 true 時疊加右上角勾選徽章,理由同 hotelMarkerContent。
-export function placeMarkerContent(selected: boolean, candidate: boolean, category?: string): SVGElement {
-  const size = selected ? 28 : 22
-  const glyph = (category && PLACE_CATEGORY_GLYPHS[category]) || CAMERA_GLYPH
-  const svg =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 24 24">' +
-    (selected
-      ? '<circle cx="12" cy="12" r="11.5" fill="#5A7A9E" stroke="#FDFCFA" stroke-width="2"/>'
-      : '<circle cx="12" cy="12" r="11.5" fill="#5A7A9E"/>') +
-    glyph +
-    (candidate ? candidateBadgeSvg(19.5, 4.5) : '') +
-    '</svg>'
-  return svgStringToElement(svg)
-}
-
 // searchResultMarkerContent:飯店/推薦地點/搜尋候選三種來源統一後的
-// GeoSearchResult marker 內容 DOM——取代原本 hotelMarkerContent(森綠色點)
-// /placeMarkerContent(靛藍類別圖示)/geocodeCandidateMarkerContent(紫色
-// 編號金牌)三個各自獨立的函式,視覺差異改用這裡的條件判斷處理(依
-// kind 決定底色與圖案),但仍保留三者原有的視覺語意——使用者能沿用
-// 既有的顏色記憶(森綠=飯店/靛藍=地點/紫色=搜尋候選)分辨清單裡不同
-// 來源的項目,只是底層合併成同一個圖層/同一份 marker 陣列。
+// GeoSearchResult marker 內容 DOM——依 kind 決定底色與圖案,但保留三者
+// 原有的視覺語意:使用者能沿用既有的顏色記憶(森綠=飯店/靛藍=地點/
+// 紫色=搜尋候選)分辨清單裡不同來源的項目,只是底層合併成同一個圖層/
+// 同一份 marker 陣列。
 //
-// geocode 類型額外疊上 index(1-based 編號金牌,理由同原
-// geocodeCandidateMarkerContent 的說明);hotel/place 才會疊
-// candidateBadgeSvg(候選籃已加入標記——geocode 純定位用途,不能加入
-// 候選籃,見 api.ts GeoSearchResult 的說明)。
+// place 分支:用一顆小小的類別圖示(而非 hotel 分支那種純色圓點),讓
+// 使用者一眼認出這是「推薦景點」語意,跟景點區域光暈、飯店圓點的抽象
+// 色塊區隔開來。底色維持靛藍(區分於景點區域的暖沙棕、飯店的森綠),
+// 圖案本身用白色線條,尺寸刻意壓小(未選中 22px、選中 28px)——這是
+// 輔助辨識用的小圖標,不搶過分區光暈與地標照片的視覺份量。選中態只
+// 放大 + 加一圈白色描邊光暈(而非 hotel 分支那種三層同心圓靶心)——
+// 圖案本身已經有清楚的形狀語意,不需要再疊靶心結構,加大加亮已足夠
+// 表達「這是選中的那個」。candidate 為 true 時疊加右上角勾選徽章,
+// 理由同下方說明。
+//
+// geocode 類型額外疊上 index(1-based 編號金牌,讓使用者在地圖上能一眼
+// 分辨「這是搜尋查到的第幾筆候選」,不需要另外對照清單);hotel/place
+// 才會疊 candidateBadgeSvg(候選籃已加入標記——geocode 純定位用途,不能
+// 加入候選籃,見 api.ts GeoSearchResult 的說明)。
 export function searchResultMarkerContent(
   result: { kind: 'hotel' | 'place' | 'geocode'; category?: string },
   selected: boolean,
@@ -189,28 +149,4 @@ export function tripEntryMarkerContent(selected: boolean): SVGElement {
     '<path d="M9 7.3l6.5 2.2-6.5 2.2z" fill="#FDFCFA"/>' +
     '</svg>'
   return svgStringToElement(flagSvg)
-}
-
-// geocodeCandidateMarkerContent:搜尋候選 marker 的內容 DOM——用跟其餘
-// 圖層(飯店森綠、推薦地點靛藍、行程 entry 暖橘)都不同的紫色系,並疊上
-// 候選編號(1-based),讓使用者在地圖上能一眼分辨「這是搜尋查到的第幾筆
-// 候選」,不需要另外對照清單。圖案本身用放大鏡造型(呼應「搜尋結果」
-// 語意),而非既有的相機/旗子/純色點,故獨立一個函式而非重用
-// placeMarkerContent 加個新的 category。selected 為 true 時放大並加一圈
-// 白色描邊光暈(理由同 placeMarkerContent 的選中態),讓使用者選定後仍
-// 能一眼認出「這是我剛選的那個」,即使其餘候選還留在地圖上也不會混淆。
-export function geocodeCandidateMarkerContent(index: number, selected: boolean): SVGElement {
-  const size = selected ? 34 : 28
-  const svg =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 24 24">' +
-    (selected
-      ? '<circle cx="12" cy="12" r="11.5" fill="#7A5C99" stroke="#FDFCFA" stroke-width="2.5"/>'
-      : '<circle cx="12" cy="12" r="11.5" fill="#7A5C99" stroke="#FDFCFA" stroke-width="2"/>') +
-    '<g transform="translate(12 12) scale(0.55) translate(-12 -12)" fill="none" stroke="#FDFCFA" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
-    '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>' +
-    '</g>' +
-    '<circle cx="20" cy="4" r="4.5" fill="#FDFCFA"/>' +
-    '<text x="20" y="4" text-anchor="middle" dominant-baseline="central" font-size="6.5" font-weight="700" font-family="-apple-system, sans-serif" fill="#7A5C99">' + index + '</text>' +
-    '</svg>'
-  return svgStringToElement(svg)
 }

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { X } from 'lucide-react'
 import type { ApiCall, WsEvent } from './api'
 import { onApiCall, onWsEvent } from './api'
 import { ChatScreen } from './chat/ChatScreen'
@@ -12,6 +11,7 @@ import { GeoHotelSidebar } from './geo-planning/GeoHotelSidebar'
 import { GeoInfoPanel } from './geo-planning/GeoInfoPanel'
 import { AttractionInfoPanel } from './geo-planning/AttractionInfoPanel'
 import { GeoCandidateSidebar, type GeoCandidate } from './geo-planning/GeoCandidateSidebar'
+import { createEntryFromCandidate } from './geo-planning/geoCandidateHelpers'
 import { AddFromCandidateSidebar, dayGroupLabel } from './geo-planning/AddFromCandidateSidebar'
 import { GeoOutlinePanel } from './geo-planning/GeoOutlinePanel'
 import { useGeoPlanningState } from './geo-planning/useGeoPlanningState'
@@ -22,11 +22,12 @@ import { type PanelMode, isPanelMode, DEBUG_PANEL_ENABLED, PANEL_REGISTRY } from
 import { DemoPanelContent } from './demo/DemoPanelContent'
 import { RouteEditor } from './demo/RouteEditor'
 import { DesktopRail } from './DesktopRail'
+import { FloatingPanel } from './FloatingPanel'
+import { PanelHead } from './PanelHead'
 import { DesktopTripList } from './trip/DesktopTripList'
 import { SettingsDialog } from './user/SettingsDialog'
 import { TripManageModal } from './trip/TripManageModal'
 import type { Trip } from './trip/types'
-import './styles-desktop.css'
 import './desktop-layout-shell.css'
 import styles from './DesktopLayout.module.css'
 
@@ -92,6 +93,15 @@ export function DesktopContent(props: ContentProps) {
   // 開關——沒有常駐對話欄,ChatScreen 只在這個小匡開啟時才掛載(見下方
   // render 邏輯),這是使用者存取對話功能的唯一入口。
   const [chatPopoverOpen, setChatPopoverOpen] = useState(false)
+  // pendingSchedule:使用者在還沒選定行程時,對某個候選按了日期選擇(見
+  // GeoInfoPanel 的 onSchedule)——原本這個情境下 geo.handleScheduleCandidate
+  // 內部的 tripID guard 會直接靜默 no-op,浮動匡正常關閉卻完全沒有任何
+  // 提示告訴使用者「因為沒有選行程所以沒加成功」,是實際發生過的 bug。
+  // 改成先記住這筆候選+選定的日期,導向行程列表浮動卡(見下方
+  // onSchedule 的說明),使用者選定行程後(DesktopTripList 的 onOpen)
+  // 自動把這筆候選補寫進剛選的行程,不需要使用者回頭重新走一次「加入
+  // 行程」流程。 */
+  const [pendingSchedule, setPendingSchedule] = useState<{ candidate: GeoCandidate; date: string } | null>(null)
   // geo:地理規劃地圖的共用狀態/互動邏輯——選取卡片、地圖移動目標、
   // 候選籃、城市搜尋候選清單、第二側欄相關中介 state 等,見
   // geo-planning/useGeoPlanningState.ts 的完整說明。桌面版/手機版
@@ -101,6 +111,31 @@ export function DesktopContent(props: ContentProps) {
   const geoSelectedKey = geo.selectedKey
   const geoInfoContent = geo.infoContent
   const geoAttractionContent = geo.attractionContent
+  // pendingSchedule 補寫效果:activeTrip 剛被設定(DesktopTripList 的
+  // onOpen)且有一筆待補的候選+日期時,直接呼叫 createEntryFromCandidate
+  // 寫入剛選定的行程——不透過 geo.handleScheduleCandidate(該函式的
+  // tripID 是從這個元件呼叫 useGeoPlanningState 時傳入的 activeTrip?.id
+  // 閉包值,setActiveTrip(t) 剛執行完的同一輪渲染裡還沒有更新到新值,
+  // 直接呼叫在同一個 event handler 裡會拿到 stale tripID,見
+  // useGeoPlanningState.ts 對這類 stale closure 風險的既有說明),改用
+  // useEffect 依賴 activeTrip?.id 本身,保證真的等到新行程生效後才補寫。
+  // 成功後清空 pendingSchedule(避免重複補寫)並觸發 refetchTripEntriesTrigger
+  // 讓候選籃/時間軸即時反映這筆新 entry(理由同 handleScheduleCandidate
+  // 既有的收尾動作)。寫入失敗只印 console,不清空 pendingSchedule 之外
+  // 也不彈錯誤訊息——理由同這個檔案其餘候選寫入失敗的既有慣例(見
+  // handleScheduleCandidate 的說明),使用者可以在候選籃裡看到這筆候選
+  // 仍停留在「候選中」,自行重試。
+  useEffect(() => {
+    if (!pendingSchedule || !activeTrip?.id) return
+    const { candidate, date } = pendingSchedule
+    setPendingSchedule(null)
+    createEntryFromCandidate(cfg, activeTrip.id, candidate, date)
+      .then(() => geo.setRefetchTripEntriesTrigger((n) => n + 1))
+      .catch((err) => {
+        console.error('[DesktopLayout] 選定行程後補寫候選失敗:', err)
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTrip?.id])
   // handleExploreAttraction:AttractionInfoPanel「探索周邊」按鈕觸發——
   // 複用 GeoOutlineMap.tsx handleAttractionClick 已有的
   // placesQueryRadiusMeters 決策邏輯算出縮放半徑(優先用該景點區域自己的
@@ -223,7 +258,7 @@ export function DesktopContent(props: ContentProps) {
   const geoHotelSidebarVisible = geo.searchResults.length > 0
   // infoPanelShiftBy:GeoInfoPanel/AttractionInfoPanel 右緣可能同時要
   // 避開兩種東西——GeoHotelSidebar(飯店清單,.right)
-  // 與對話浮動小匡(.chat-popover,見 chatPopoverOpen)。對話小匡更寬
+  // 與對話浮動小匡(styles.chatPopover,見 chatPopoverOpen)。對話小匡更寬
   // (340px vs GeoHotelSidebar 的 280px),兩者都存在時優先避開較寬的
   // 那個,不是疊加兩者的偏移量——資訊卡只需要跟「當下右緣實際佔用最多
   // 寬度的東西」錯開,不需要真的把兩個偏移量加總(那樣會把卡片推到不
@@ -249,18 +284,26 @@ export function DesktopContent(props: ContentProps) {
         />
         <main className="desktop-main">
           {geo.pickingDayKey && (
-            <div className={`${styles.panel} ${styles.left}`} style={{ width: 272 }}>
+            // side="left" 只是借用左緣的 top/z-index/陰影等視覺語言,實際
+            // 水平位置用 style.left 覆蓋——使用者明確要求候選卡並排顯示
+            // 在行程欄(GeoCandidateSidebar,geo-outline 模式寬度固定
+            // 380px,見 PANEL_REGISTRY)右側,不是取代它。12(行程欄左緣
+            // 間距)+ 380(行程欄寬度)+ 12(兩卡之間的間距)= 404px。
+            // pickingDayKey 只在 panelMode === 'geo-outline' 時才可能有值
+            // (見 handlePickFromCandidate 的觸發來源),故這裡不需要依
+            // panelMode 動態換算寬度,直接寫死對應這個模式的寬度即可。
+            <FloatingPanel side="left" width={272} style={{ left: 404 }}>
               <AddFromCandidateSidebar
                 dayLabel={dayGroupLabel(geo.pickingDayKey)}
                 candidates={geo.onlyCandidates}
-                onRemove={geo.removeCandidate}
+                onRemove={(c) => geo.handleRemoveCandidate(c, 'AddFromCandidateSidebar')}
                 onPick={geo.handlePickFromCandidate}
                 onHover={geo.setHoverKey}
                 onDragStart={geo.setDraggingCandidate}
                 onDragEnd={() => geo.setDraggingCandidate(null)}
                 onClose={() => geo.setPickingDayKey(null)}
               />
-            </div>
+            </FloatingPanel>
           )}
           {panelSpec?.slot === 'main-replace' ? (
             panelMode === 'demo-route-editor' ? (
@@ -316,7 +359,41 @@ export function DesktopContent(props: ContentProps) {
                 onClose={geo.clearSelection}
                 onAddCandidate={geo.addCandidate}
                 onAddAndReveal={addGeoCandidateAndReveal}
-                onSchedule={(c, date) => geo.handleScheduleCandidate(c, date, 'DesktopLayout')}
+                onSchedule={(c, date) => {
+                  // activeTrip 為空時 geo.handleScheduleCandidate 內部會
+                  // 直接 no-op(見該函式的 tripID guard)——原本使用者點了
+                  // 日期、浮動匡正常關閉,卻完全沒有任何提示告訴他「因為
+                  // 沒有選行程所以沒加成功」,是實際發生過的 bug。改成
+                  // 沒有 activeTrip 時先記住這筆候選+日期(pendingSchedule)
+                  // 再開啟行程列表浮動卡(同點 rail「行程列表」按鈕),
+                  // 使用者選定行程後(見下方 DesktopTripList 的 onOpen)
+                  // 自動補寫進去,不需要使用者回頭重新走一次「加入行程」
+                  // 流程。
+                  if (!activeTrip) {
+                    setPendingSchedule({ candidate: c, date })
+                    setPanelMode('trips')
+                    return
+                  }
+                  geo.handleScheduleCandidate(c, date, 'DesktopLayout')
+                  // 加入成功後展開行程欄(GeoCandidateSidebar,見下方
+                  // panelSpec.slot === 'float' 的 'geo-outline' 分支)並
+                  // 觸發短暫 highlight,理由同 addGeoCandidateAndReveal——
+                  // 使用者選日期加入後應該能立刻看到剛加的項目,不用自己
+                  // 再點一次 rail「規劃」按鈕才看得到。跟 addGeoCandidateAndReveal
+                  // 不同的是:onSchedule 這條路徑不像複合按鈕只在
+                  // panelMode === 'geo-outline' 時才能被按到,GeoInfoPanel
+                  // 在任何 panelMode 下都可能顯示,故這裡額外導向
+                  // /app/geo-outline 確保行程欄真的有掛載,flashTrigger
+                  // 才有作用(欄位沒掛載時單純遞增計數器不會有任何視覺
+                  // 效果)。刻意直接呼叫 navigate,不透過 setPanelMode——
+                  // setPanelMode 對「目前已經是這個 mode」的情況會 toggle
+                  // 收合(見該函式的說明,是給 rail 按鈕「再點一次收合」
+                  // 這個互動設計的),若使用者本來就開著行程欄再呼叫
+                  // setPanelMode('geo-outline') 反而會把它關掉,這是實際
+                  // 發生過的 bug。 */
+                  navigate('/app/geo-outline')
+                  setGeoCandidateFlashTrigger((n) => n + 1)
+                }}
                 tripName={activeTrip?.name ?? '行程'}
                 scheduledDates={geo.scheduledDates}
                 shiftBy={infoPanelShiftBy}
@@ -332,25 +409,17 @@ export function DesktopContent(props: ContentProps) {
           {/* panelMode 浮動卡片:trips/timeline/pace/geo-outline 這四種正式
               功能的內容(見 PANEL_REGISTRY 的 slot: 'float'),疊在地圖左緣
               上方,不佔用 flex 版面空間、不推擠地圖——沿用跟
-              AddFromCandidateSidebar/GeoHotelSidebar 一致的 .panel
-              視覺語言(見 DesktopLayout.module.css)。pickingDayKey 有值時優先顯示上面的
-              「從候選加入」卡片(同屬左緣候選清單性質,避免疊在一起),
-              故這裡额外排除 pickingDayKey 有值的情況。右上角疊加共用的
-              .close 關閉按鈕(見 DesktopLayout.module.css)——
-              四種內容元件(DesktopTripList/MultiTrackTimeline/PaceChart/
-              GeoCandidateSidebar)各自 header 排版不同,不逐一加專屬關閉
-              按鈕,統一在這裡放一顆,導回 /app 收起卡片(同再點一次 rail
-              圖示的行為)。 */}
-          {panelSpec?.slot === 'float' && !geo.pickingDayKey && (
-            <div className={`${styles.panel} ${styles.left}`} style={{ width: panelSpec.width }}>
-              <button
-                type="button"
-                className={styles.close}
-                onClick={() => navigate('/app')}
-                title="關閉"
-              >
-                <X size={16} strokeWidth={2} />
-              </button>
+              AddFromCandidateSidebar/GeoHotelSidebar 一致的 FloatingPanel
+              外殼。不傳 title——四種內容元件(DesktopTripList/
+              MultiTrackTimeline/PaceChart/GeoCandidateSidebar)各自 header
+              排版不同,不逐一加專屬標題,FloatingPanel 只在右上角疊加共用
+              的關閉按鈕,導回 /app 收起卡片(同再點一次 rail 圖示的行為)。
+              pickingDayKey 有值時,AddFromCandidateSidebar(見下方)改成
+              並排顯示在這張卡片右側,不再互斥——使用者明確要求「候選要
+              出現在行程右邊,不是替換」,兩張卡同時可見,不需要先關掉
+              候選卡才能看到行程欄剩餘內容。 */}
+          {panelSpec?.slot === 'float' && (
+            <FloatingPanel side="left" width={panelSpec.width ?? 380} onClose={() => navigate('/app')}>
               {panelMode === 'trips' ? (
                 <DesktopTripList
                   cfg={cfg}
@@ -365,10 +434,8 @@ export function DesktopContent(props: ContentProps) {
                 />
               ) : panelMode === 'timeline' ? (
                 <div className={styles.timelinePanel}>
-                  <div className="desktop-sidebar-head">
-                    <span className="desktop-sidebar-title">時間軸</span>
-                  </div>
-                  <div className="desktop-timeline-scroll">
+                  <PanelHead title="時間軸" />
+                  <div className={styles.timelineScroll}>
                     {!activeTrip ? (
                       <div className="empty">選擇一個行程後顯示時間軸。</div>
                     ) : timelineMirror.entries.length === 0 ? (
@@ -386,7 +453,7 @@ export function DesktopContent(props: ContentProps) {
                   </div>
                 </div>
               ) : panelMode === 'pace' ? (
-                <div className="desktop-sidepanel-pace">
+                <div className={styles.pacePanel}>
                   <PaceChart cfg={cfg} tripID={activeTrip?.id} />
                 </div>
               ) : panelMode === 'geo-outline' ? (
@@ -394,18 +461,18 @@ export function DesktopContent(props: ContentProps) {
                   cfg={cfg}
                   tripID={activeTrip?.id}
                   candidates={geo.candidates}
-                  onRemove={geo.removeCandidate}
+                  onRemove={(c) => geo.handleRemoveCandidate(c, 'GeoCandidateSidebar')}
                   onSelect={geo.selectCandidateFromBasket}
                   onHover={geo.setHoverKey}
                   onDatesAssigned={() => geo.setRefetchTripEntriesTrigger((n) => n + 1)}
-                  onReturnToCandidate={geo.onReturnToCandidate}
+                  onReturnToCandidate={(c) => geo.handleReturnToCandidate(c, 'GeoCandidateSidebar')}
                   draggingCandidate={geo.draggingCandidate}
                   onDraggingCandidateChange={geo.setDraggingCandidate}
                   onPickFromCandidate={geo.setPickingDayKey}
                   flashTrigger={geoCandidateFlashTrigger}
                 />
               ) : null}
-            </div>
+            </FloatingPanel>
           )}
           {/* GeoHotelSidebar(飯店/景點/餐廳合併清單)只在使用者實際觸發過
               查詢後才顯示——geoHotels 只有按下「搜尋這個區域」才會有內容
@@ -417,24 +484,12 @@ export function DesktopContent(props: ContentProps) {
               的說明,同一個 bug 修復)。使用者明確要求不要壓縮主顯示的
               可用寬度,改成絕對定位疊在 .desktop-main(已有
               position: relative)右緣之上,不佔用 flex 版面空間——理由/
-              寫法同左緣的 .left(見 DesktopLayout.module.css)。 */}
+              寫法同左緣的 left side(見 FloatingPanel.tsx)。不傳
+              title/onClose——GeoHotelSidebar 自己渲染頂部條(含標題文字+
+              關閉按鈕,見該元件的說明),FloatingPanel 這裡只負責定位/
+              陰影外殼。 */}
           {geoHotelSidebarVisible && (
-            <div className={`${styles.panel} ${styles.right} ${styles.infoPanelHeight}`} style={{ width: 280 }}>
-              <button
-                type="button"
-                className={styles.close}
-                // 手動關閉直接清空 geoHotels/geoPlaces/geoGeocodeCandidates,
-                // 不另外加一個 dismissed state——理由:資料為空清單本來就會讓
-                // geoHotelSidebarVisible 算出 false 而隱藏,下一次查詢
-                // (按「搜尋這個區域」、點類別標籤、或城市搜尋)會自然把清單
-                // 填回來、重新顯示,不需要額外狀態去追蹤「使用者主動關閉
-                // 過」,也不會有「关閉後新查詢卻因為 dismissed 標記仍是 true
-                // 而不顯示」這種容易忘記重置的邊界情況。
-                onClick={() => geo.setSearchResults([])}
-                title="關閉"
-              >
-                <X size={16} strokeWidth={2} />
-              </button>
+            <FloatingPanel side="right" width={280} height="info">
               <GeoHotelSidebar
                 cfg={cfg}
                 tripID={activeTrip?.id}
@@ -455,8 +510,18 @@ export function DesktopContent(props: ContentProps) {
                 }}
                 onAddCandidate={geo.addCandidate}
                 onCandidateCreated={() => geo.setRefetchTripEntriesTrigger((n) => n + 1)}
+                // onClose:手動關閉直接清空 searchResults,不另外加一個
+                // dismissed state——理由:資料為空清單本來就會讓
+                // geoHotelSidebarVisible 算出 false 而隱藏,下一次查詢
+                // (按「搜尋這個區域」、點類別標籤、或城市搜尋)會自然把清單
+                // 填回來、重新顯示,不需要額外狀態去追蹤「使用者主動關閉
+                // 過」,也不會有「关閉後新查詢卻因為 dismissed 標記仍是 true
+                // 而不顯示」這種容易忘記重置的邊界情況。改由 GeoHotelSidebar
+                // 自己渲染頂部條(含標題文字+關閉按鈕,見該元件的說明),
+                // 這裡不再額外疊加一顆單獨浮動的關閉按鈕。
+                onClose={() => geo.setSearchResults([])}
               />
-            </div>
+            </FloatingPanel>
           )}
           {/* chat-popover:對話浮動小匡,由地圖右上角城市搜尋框旁的 AI
               按鈕觸發(見 GeoOutlineMap.tsx 的 onOpenChat),疊在搜尋框
@@ -468,15 +533,12 @@ export function DesktopContent(props: ContentProps) {
               「某個行程的對話」是各自獨立的掛載週期(避免沿用前一個行程
               殘留的 WebSocket/訊息 state)。 */}
           {chatPopoverOpen && (
-            <div className="chat-popover">
-              <button
-                type="button"
-                className={styles.close}
-                onClick={() => setChatPopoverOpen(false)}
-                title="關閉"
-              >
-                <X size={16} strokeWidth={2} />
-              </button>
+            <FloatingPanel
+              side="right"
+              width={340}
+              className={geoHotelSidebarVisible ? `${styles.chatPopover} ${styles.chatPopoverShifted}` : styles.chatPopover}
+              onClose={() => setChatPopoverOpen(false)}
+            >
               <ChatScreen
                 key={activeTrip?.id ?? 'no-trip'}
                 cfg={cfg}
@@ -485,7 +547,7 @@ export function DesktopContent(props: ContentProps) {
                 onBack={() => setActiveTrip(null)}
                 desktopChat={desktopChat}
               />
-            </div>
+            </FloatingPanel>
           )}
         </main>
         {DEBUG_PANEL_ENABLED && showDebugPanel && (

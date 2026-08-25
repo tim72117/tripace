@@ -1,0 +1,83 @@
+/* FloatingPanel.tsx 專屬樣式(CSS Modules)。命名省略掉原本的
+   floating-panel- 前綴——import 時已經有明確的命名空間。
+
+   取代原本各自獨立定義的 DesktopLayout.module.css 的 .panel/.left/
+   .right/.close/.chatPopover、GeoHotelSidebar.module.css/
+   AddFromCandidateSidebar.module.css 各自的 .head/.title/.closeBtn——
+   同一套視覺語言只定義一次,呼叫端不再各自組一份幾乎一樣的 CSS。 */
+
+.panel {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  z-index: 3;
+  overflow: hidden;
+  border-radius: 16px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--ios-card);
+  animation: panelIn 0.16s ease-out;
+}
+
+/* left 的 top 特別下修(蓋掉 .panel 的 top:12px)——地圖左上角疊著類別
+   標籤列(見 GeoOutlineMap.module.css 的 .categoryTags,top:16px、單顆
+   膠囊高度約 36px),左緣浮動卡片固定貼在同一個左緣位置,若沿用
+   top:12px 會跟標籤列重疊、蓋住標籤列。右緣沒有這個問題,不受影響。 */
+.left {
+  left: 12px;
+  top: 64px;
+}
+.right {
+  right: 12px;
+}
+
+/* infoHeight:容器高度改成跟地點卡(AttractionInfoPanel/GeoInfoPanel,見
+   兩者 module.css 的 .panel:top:64px、bottom:16px)一致——目前只有
+   GeoHotelSidebar 用(使用者明確要求跟地點卡容器高度對齊),原本 .panel
+   預設的 top:12px/bottom:12px 在這裡不適用,改用這個 modifier 覆蓋。 */
+.infoHeight {
+  top: 64px;
+  bottom: 16px;
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* 帶標題文字的頂部條(title != null 分支)直接複用 PanelHead 元件,不在
+   這裡重複定義 head/title/closeBtn 樣式。 */
+
+/* floatingCloseBtn:沒有標題文字時的關閉按鈕——絕對定位疊在卡片右上角,
+   供 panelMode 浮動卡片(trips/timeline/pace/geo-outline,內容元件各自
+   有自己的 header 排版,不需要外殼再重複一份標題列)與 chat-popover
+   (完全沒有標題文字)使用。 */
+.floatingCloseBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
+}
+
+.floatingCloseBtn:hover {
+  background: var(--ios-bg);
+  color: var(--color-dark);
+}

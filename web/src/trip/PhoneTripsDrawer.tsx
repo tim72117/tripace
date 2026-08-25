@@ -1,17 +1,16 @@
-import { useRef, useState } from 'react'
-import type { TouchEvent as ReactTouchEvent } from 'react'
 import { Plus, MapPin, Settings } from 'lucide-react'
 import type { Trip } from './types'
 import { ErrorBanner, isSubmitEnter } from '../AppCommon'
+import { useDragToClose } from '../hooks/useDragToClose'
 import styles from './PhoneTripsDrawer.module.css'
 
 // PhoneTripsDrawer:行程列表獨立抽屜,由下往上彈出(bottom sheet),由
 // PhoneContent.tsx 的「行程」入口(底部常駐列/空狀態按鈕,見該檔案的
 // tripsDrawerOpen state)開關,只有一種內容:瀏覽/新增行程。
 //
-// 拖曳關閉手勢改成垂直方向(向下拖超過門檻關閉),視覺語言對齊一般 App
-// 常見的底部彈出選單(使用者要求「行程由下方往上彈出」,原本是左側滑入
-// 抽屜)。
+// 拖曳關閉手勢(向下拖超過門檻關閉)由 useDragToClose 共用 hook 提供,
+// 視覺語言對齊一般 App 常見的底部彈出選單(使用者要求「行程由下方往上
+// 彈出」,原本是左側滑入抽屜)。
 
 const SHEET_MAX_HEIGHT_VH = 70
 
@@ -48,29 +47,11 @@ export function PhoneTripsDrawer({
   onManage: (t: Trip) => void
   onClose: () => void
 }) {
-  const [dragOffset, setDragOffset] = useState(0)
-  const startYRef = useRef<number | null>(null)
-  const draggingRef = useRef(false)
-
-  function onTouchStart(e: ReactTouchEvent) {
-    startYRef.current = e.touches[0].clientY
-    draggingRef.current = true
-  }
-  function onTouchMove(e: ReactTouchEvent) {
-    if (!draggingRef.current || startYRef.current === null) return
-    const delta = Math.max(0, e.touches[0].clientY - startYRef.current)
-    setDragOffset(delta)
-  }
-  function onTouchEnd() {
-    if (!draggingRef.current) return
-    draggingRef.current = false
-    const threshold = 60
-    if (dragOffset > threshold) onClose()
-    setDragOffset(0)
-    startYRef.current = null
-  }
-
-  const translate = open ? `${dragOffset}px` : `calc(100% + ${dragOffset}px)`
+  const { translate, transition, onTouchStart, onTouchMove, onTouchEnd } = useDragToClose({
+    axis: 'y',
+    open,
+    onClose,
+  })
 
   return (
     <>
@@ -82,7 +63,7 @@ export function PhoneTripsDrawer({
         style={{
           maxHeight: `${SHEET_MAX_HEIGHT_VH}vh`,
           transform: `translateY(${translate})`,
-          transition: draggingRef.current ? 'none' : 'transform 0.25s ease',
+          transition,
         }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}

@@ -3,8 +3,8 @@ import { useIsDesktop } from '../hooks/useIsDesktop'
 import { PaceChart, PACE_PUBLIC_LINK_TOKEN, type Checkpoint } from './PaceChart'
 import { PaceRouteMap } from './PaceRouteMap'
 import { PacePhoneSwipe } from './PacePhoneSwipe'
-import '../styles-desktop.css'
 import '../desktop-layout-shell.css'
+import styles from './PacePage.module.css'
 
 // PacePage:/demo/pace 的公開分享頁內容(見 App.tsx App() 的路由判斷,原本
 // 檔名/元件名叫 PublicPaceDemoPage,搬進 pace/ 目錄後去掉 Public/Demo
@@ -41,13 +41,13 @@ export function PacePage() {
     <div className="desktop-layout">
       <aside className="desktop-sidepanel wide">
         <div className="desktop-sidepanel-inner">
-          <div className="desktop-sidepanel-pace">
+          <div className={styles.sidepanelPace}>
             <PaceChart onRouteChange={setCheckpoints} />
           </div>
         </div>
       </aside>
       <main className="desktop-main">
-        <div className="desktop-demo-panel">
+        <div className={styles.demoPanel}>
           <PaceRouteMap checkpoints={checkpoints} publicToken={PACE_PUBLIC_LINK_TOKEN} />
         </div>
       </main>

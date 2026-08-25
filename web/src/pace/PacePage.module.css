@@ -1,0 +1,47 @@
+/* PacePage.tsx 專屬樣式(CSS Modules)。原本跟 trip/PublicViewScreen.tsx
+   共用同一份全域 class(.desktop-sidepanel-pace/.desktop-demo-panel)——
+   雖然兩者都是「側欄清單+主區地圖」的舊版公開頁版型,但各自是獨立元件、
+   沒有直接依賴關係,改成各自在自己的 module.css 定義一份(內容目前相同,
+   是巧合而非耦合),不再靠全域 class 共用。 */
+
+/* sidepanelPace:配速表檢查站清單的捲動容器。捲動權明確收在這一層、
+   不依賴 .pace-chart 自己的 flex/min-height:0/overflow-y:auto——同一種
+   多層 flex 傳遞鏈實測發現在行動瀏覽器的疊層情境下沒有正確生效過(見
+   PhoneNavDrawer.module.css .body 的說明),這裡不再假設理論上應該生效,
+   直接沿用同一套已經證實可行的做法。 */
+.sidepanelPace {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  /* 捲到底/頂繼續同方向捲動時,不要把剩餘手勢交給外層(整個側欄/頁面)
+     去彈跳——限制在這個容器自己裡面處理。 */
+  overscroll-behavior-y: contain;
+}
+.sidepanelPace :global(.pace-chart) {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow-y: visible;
+  max-width: none;
+  margin: 0;
+  /* .pace-chart 原本的 padding: 18px 16px 40px 是手機滿版寬度情境下訂的,
+     搬進這個較窄的側欄後左右 16px 顯得太擠、跟邊緣幾乎貼齊,這裡加大左右
+     間距讓內容有明顯留白。 */
+  padding-left: 24px;
+  padding-right: 24px;
+}
+/* Day1/Day2 路線分頁按鈕是 .pace-chart 裡的第一個元素,搬進側欄後緊貼側欄
+   頂端(側欄本身沒有額外 header 撐開間距),補上頂部間距避免按鈕貼齊邊緣。 */
+.sidepanelPace :global(.pace-route-tabs) {
+  margin-top: 12px;
+}
+
+/* demoPanel:主區容器,撐滿容器高度的 flex column 結構,讓 PaceRouteMap
+   填滿 .desktop-main。 */
+.demoPanel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}

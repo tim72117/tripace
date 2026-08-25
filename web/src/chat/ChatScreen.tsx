@@ -500,9 +500,9 @@ export function ChatScreen({
       {/* mobileHeader === undefined 只會發生在桌面模式(desktopChat,見
           該 prop 的說明——PhoneContent.tsx 呼叫時一定帶 'main'/'drawer',
           唯一不傳的呼叫端是 DesktopLayout.tsx)。桌面模式不渲染 navbar——
-          對話小匡(chat-popover)外層已經有跟其他浮動卡片(.floating-panel)
-          一致的右上角關閉按鈕(見 DesktopLayout.tsx 的 .floating-panel-close),
-          不需要再疊一層「返回」按鈕/標題列。原本掛在這裡的 TripMenu(含
+          對話小匡(chatPopoverOpen)外層已經有跟其他浮動卡片一致的右上角
+          關閉按鈕(見 FloatingPanel.tsx),不需要再疊一層「返回」按鈕/
+          標題列。原本掛在這裡的 TripMenu(含
           「設為開啟時自動進入」)已搬進行程列表的 TripManageModal。 */}
       <div className={styles.area}>
         {desktopChat ? (

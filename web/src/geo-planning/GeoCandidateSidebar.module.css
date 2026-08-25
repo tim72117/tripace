@@ -8,11 +8,10 @@
    說明)按下、候選加入候選籃後,這個側欄短暫套上的 highlight 動畫——
    這個側欄在那顆按鈕能被按到的情境下本來就已經展開顯示,沒有獨立的
    「收合/展開」動作可以做,改用 accent 色的邊框脈動提示使用者「東西
-   加進候選籃了、看這裡」。視覺語彙借鏡 styles-desktop.css 的
-   add-from-candidate-sidebar-in(同樣用 accent 色系傳達「這裡剛發生了
-   跟候選籃相關的變化」),但那個是「掛載時滑入」的一次性效果,這裡是
-   「已掛載元件被重新提示」,故用 outline 脈動而非位移,兩種情境不適合
-   共用同一個 keyframe。 */
+   加進候選籃了、看這裡」。視覺語彙借鏡 FloatingPanel.module.css 的
+   panelIn(同樣用強調色/位移傳達「這裡剛發生了變化」),但那個是「掛載
+   時滑入」的一次性效果,這裡是「已掛載元件被重新提示」,故用 outline
+   脈動而非位移,兩種情境不適合共用同一個 keyframe。 */
 .panelFlash {
   animation: panelFlashPulse 0.9s ease-out;
 }

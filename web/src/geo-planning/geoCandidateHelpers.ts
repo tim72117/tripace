@@ -7,7 +7,7 @@
 // 一致,只是定義位置搬動。
 import { useState } from 'react'
 import * as api from '../api'
-import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace, GeoTripEntry } from '../api'
+import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace, GeoSearchResult, GeoTripEntry } from '../api'
 import { Car, Hotel, MapPin, Plane, StickyNote, Ticket, UtensilsCrossed } from 'lucide-react'
 
 // entryKind:entry 本身的類型(對齊 model.Entry.Kind,如
@@ -56,6 +56,27 @@ const ENTRY_KIND_ICONS: Record<string, typeof MapPin> = {
 }
 export function entryKindIcon(kind?: string | null): typeof MapPin {
   return (kind && ENTRY_KIND_ICONS[kind]) || MapPin
+}
+
+// searchResultToCandidate:把 GeoSearchResult(飯店/推薦地點/搜尋結果
+// 三種來源統一後的清單形狀,見 api.ts 的完整說明)轉成 GeoCandidate——
+// 只有 hotel/place 兩種 kind 能加入候選籃(geocode 純定位用途,理由見
+// GeoSearchResult 的說明,呼叫端應先用 r.kind !== 'geocode' 篩掉再呼叫
+// 這支函式,故這裡的參數型別直接排除 geocode,由 TypeScript 在呼叫端
+// 強制檢查,不需要在函式內部再判斷一次)。primaryType 補空字串,理由
+// 同 poiInfoContent(geoInfoContent.ts)的既有慣例——這裡的候選籃資料
+// 本來就只拿 name/address/lat/lng/photoUrl(/category)顯示,primaryType
+// 沒有任何顯示邏輯依賴它。
+//
+// 抽成這支函式前,這段轉換邏輯在 geoInfoContent.ts、GeoHotelSidebar.tsx、
+// GeoOutlinePhoneListDrawer.tsx 三處各自逐字重複——正是這個檔案開頭
+// 註解反覆提醒要避免的「兩處各寫一份、之後改一邊忘了改另一邊」模式,
+// 這次一併修正,三處呼叫端改叫這支函式。
+export function searchResultToCandidate(r: Exclude<GeoSearchResult, { kind: 'geocode' }>): GeoCandidate {
+  if (r.kind === 'hotel') {
+    return { kind: 'hotel', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', photoUrl: r.photoUrl }
+  }
+  return { kind: 'place', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', category: r.category, photoUrl: r.photoUrl }
 }
 
 // PLACE_CATEGORY_TO_ENTRY_KIND:GeoPlace.category(後端封裝過的自訂分類,

@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import type { TouchEvent as ReactTouchEvent } from 'react'
+import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import type { DesktopTimelineMirror } from '../chat/ChatScreen'
 import type { ClientConfig } from '../api'
 import { MultiTrackTimeline } from './Timeline'
+import { useDragToClose } from '../hooks/useDragToClose'
 import styles from './PhoneTimelineDrawer.module.css'
 
 // PhoneTimelineDrawer:手機版時間軸,由下往上彈出(bottom sheet)——使用者
@@ -40,11 +40,13 @@ export function PhoneTimelineDrawer({
   timelineMirror: DesktopTimelineMirror
   editCfg: ClientConfig | undefined
 }) {
-  const [dragOffset, setDragOffset] = useState(0)
-  const startYRef = useRef<number | null>(null)
-  const draggingRef = useRef(false)
   const todayRef = useRef<HTMLDivElement>(null as unknown as HTMLDivElement)
   const bodyRef = useRef<HTMLDivElement>(null)
+  const { translate, transition, onTouchStart, onTouchMove, onTouchEnd } = useDragToClose({
+    axis: 'y',
+    open,
+    onClose,
+  })
 
   useEffect(() => {
     if (open && timelineMirror.entries.length > 0 && todayRef.current && bodyRef.current) {
@@ -54,26 +56,6 @@ export function PhoneTimelineDrawer({
     }
   }, [open, timelineMirror.entries])
 
-  function onTouchStart(e: ReactTouchEvent) {
-    startYRef.current = e.touches[0].clientY
-    draggingRef.current = true
-  }
-  function onTouchMove(e: ReactTouchEvent) {
-    if (!draggingRef.current || startYRef.current === null) return
-    const delta = Math.max(0, e.touches[0].clientY - startYRef.current)
-    setDragOffset(delta)
-  }
-  function onTouchEnd() {
-    if (!draggingRef.current) return
-    draggingRef.current = false
-    const threshold = 60
-    if (dragOffset > threshold) onClose()
-    setDragOffset(0)
-    startYRef.current = null
-  }
-
-  const translate = open ? `${dragOffset}px` : `calc(100% + ${dragOffset}px)`
-
   return (
     <>
       {open && <div className={styles.backdrop} onClick={onClose} aria-hidden="true" />}
@@ -82,7 +64,7 @@ export function PhoneTimelineDrawer({
         style={{
           maxHeight: `${SHEET_MAX_HEIGHT_VH}vh`,
           transform: `translateY(${translate})`,
-          transition: draggingRef.current ? 'none' : 'transform 0.25s ease',
+          transition,
         }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}

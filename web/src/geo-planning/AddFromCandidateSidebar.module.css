@@ -1,49 +1,16 @@
-/* sidebar:第二側欄本體——由 DesktopLayout.tsx 用 .floating-panel/
-   .floating-panel-left 共用 class(見 styles-desktop.css)控制絕對定位/
-   寬度/陰影,這裡只
-   負責內部排版與視覺,不決定自己的定位方式。視覺語言比照候選籃
-   (GeoCandidateSidebar)——同樣的卡片背景色,讓使用者感覺是同一組側欄
-   家族的延伸,而不是跳出去的另一種介面。不設 border-left(理由同外層
-   class 的說明,已改用陰影暗示「漂浮在主顯示上方」,不是版面裡緊鄰的
-   一欄,不需要邊框分隔線)。 */
+/* sidebar:第二側欄本體——由 DesktopLayout.tsx 用 FloatingPanel(見
+   ../FloatingPanel.tsx)控制絕對定位/寬度/陰影,這裡只負責內部排版與
+   視覺,不決定自己的定位方式。視覺語言比照候選籃(GeoCandidateSidebar)
+   ——同樣的卡片背景色,讓使用者感覺是同一組側欄家族的延伸,而不是跳
+   出去的另一種介面。不設 border-left(理由同外層元件的說明,已改用
+   陰影暗示「漂浮在主顯示上方」,不是版面裡緊鄰的一欄,不需要邊框分隔
+   線)。頂部標題列已改用共用元件 PanelHead(見 ../PanelHead.tsx),不再
+   自己定義 head/title/closeBtn。 */
 .sidebar {
   height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--ios-card);
-}
-
-.head {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 8px 10px 12px;
-  border-bottom: 1px solid var(--ios-sep);
-}
-
-.title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--color-dark);
-}
-
-.closeBtn {
-  width: 26px;
-  height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  background: none;
-  color: var(--ios-gray);
-  cursor: pointer;
-}
-
-.closeBtn:hover {
-  background: var(--ios-bg);
-  color: var(--color-dark);
 }
 
 .list {

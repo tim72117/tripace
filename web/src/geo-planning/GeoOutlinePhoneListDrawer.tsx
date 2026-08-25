@@ -1,10 +1,10 @@
-import { useRef, useState } from 'react'
-import type { TouchEvent as ReactTouchEvent } from 'react'
+import { useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import type { ClientConfig, GeoSearchResult } from '../api'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
-import { type GeoCandidate, dayGroupLabel, useCandidateDatePicker } from './geoCandidateHelpers'
+import { type GeoCandidate, dayGroupLabel, searchResultToCandidate, useCandidateDatePicker } from './geoCandidateHelpers'
 import { GeoListItemCard } from './GeoListItemCard'
+import { useDragToClose } from '../hooks/useDragToClose'
 import styles from './GeoOutlinePhoneListDrawer.module.css'
 
 // GeoOutlinePhoneListDrawer:手機版「飯店/推薦地點/搜尋結果」清單——第三
@@ -158,34 +158,15 @@ export function GeoOutlinePhoneListDrawer({
   onAddCandidate: (c: GeoCandidate) => void
   onCandidateCreated: () => void
 }) {
-  const [dragOffset, setDragOffset] = useState(0)
-  const startYRef = useRef<number | null>(null)
-  const draggingRef = useRef(false)
   // geocodePhotos:搜尋結果(geocode)的照片延遲載入快取,理由同桌面版
   // GeoHotelSidebar.tsx 的同名 state。
   const [geocodePhotos, setGeocodePhotos] = useState<Record<string, string | null>>({})
+  const { translate, transition, onTouchStart, onTouchMove, onTouchEnd } = useDragToClose({
+    axis: 'y',
+    open,
+    onClose,
+  })
 
-  // 拖曳關閉手勢:垂直方向,比照 trip/PhoneTripsDrawer.tsx——開啟時只能
-  // 往下拖(關閉方向,delta 為正)。
-  function onTouchStart(e: ReactTouchEvent) {
-    startYRef.current = e.touches[0].clientY
-    draggingRef.current = true
-  }
-  function onTouchMove(e: ReactTouchEvent) {
-    if (!draggingRef.current || startYRef.current === null) return
-    const delta = Math.max(0, e.touches[0].clientY - startYRef.current)
-    setDragOffset(delta)
-  }
-  function onTouchEnd() {
-    if (!draggingRef.current) return
-    draggingRef.current = false
-    const threshold = 60
-    if (dragOffset > threshold) onClose()
-    setDragOffset(0)
-    startYRef.current = null
-  }
-
-  const translate = open ? `${dragOffset}px` : `calc(100% + ${dragOffset}px)`
   const isEmpty = results.length === 0
 
   return (
@@ -196,7 +177,7 @@ export function GeoOutlinePhoneListDrawer({
         style={{
           maxHeight: `${SHEET_MAX_HEIGHT_VH}vh`,
           transform: `translateY(${translate})`,
-          transition: draggingRef.current ? 'none' : 'transform 0.25s ease',
+          transition,
         }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
@@ -239,11 +220,7 @@ export function GeoOutlinePhoneListDrawer({
                       <ItemAddButton
                         cfg={cfg}
                         tripID={tripID}
-                        candidate={
-                          r.kind === 'hotel'
-                            ? { kind: 'hotel', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', photoUrl: r.photoUrl }
-                            : { kind: 'place', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', category: r.category, photoUrl: r.photoUrl }
-                        }
+                        candidate={searchResultToCandidate(r)}
                         scheduledDates={scheduledDates}
                         onAddCandidate={onAddCandidate}
                         onCreated={onCandidateCreated}

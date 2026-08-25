@@ -1,100 +1,83 @@
-/* DesktopLayout.tsx 專屬樣式(CSS Modules)。命名省略掉原本的
-   floating-panel- 前綴(例如 .panel 對應原本的 .floating-panel,.left
-   對應 .floating-panel-left)——import 時已經有明確的命名空間。
-
-   查證後這批 class 只被 DesktopLayout.tsx 一個檔案使用(不像
-   .chat-popover/.desktop-sidebar-head 等跨檔案共用),故能搬進單一元件
-   module,不需要留在全域的 styles-desktop.css。 */
-
-/* panel:疊在 .desktop-main(地圖,已有 position: relative)上方的浮動
-   卡片共用樣式——絕對定位、不佔用 flex 版面空間、不推擠地圖(使用者
-   明確要求不要壓縮主顯示的可用寬度)。四周留出間距、圓角+陰影,而不是
-   直接貼齊 .desktop-main 邊界——使用者明確要求「周圍留間隙,才有漂浮
-   感」,貼齊邊界會讓這塊看起來像版面裡緊鄰的一欄,而非真的浮在主顯示
-   之上的卡片。寬度由呼叫端各自決定(inline style 或 modifier class),
-   這裡只定義共用的定位/視覺樣式。取代原本各自獨立定義的
-   .add-from-candidate-sidebar/.geo-hotel-sidebar-wrap,以及 panelMode
-   驅動的 trips/timeline/pace/geo-outline 四種浮動卡片(見
-   DesktopShared.tsx 的 PANEL_REGISTRY),同一套視覺語言只定義一次。 */
-.panel {
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
-  z-index: 3;
-  overflow: hidden;
-  border-radius: 16px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  background: var(--ios-card);
-  animation: panelIn 0.16s ease-out;
-}
-/* left 的 top 特別下修(蓋掉 .panel 的 top:12px)——地圖左上角疊著類別
-   標籤列(見 GeoOutlineMap.module.css 的 .categoryTags,top:16px、單顆
-   膠囊高度約 36px),panelMode 浮動卡片(trips/timeline/pace/geo-outline)
-   跟 AddFromCandidateSidebar 都固定貼在同一個左緣位置,若沿用 top:12px
-   會跟標籤列重疊、蓋住標籤列。右緣(.right,GeoHotelSidebar)沒有這個
-   問題,不受影響。 */
-.left {
-  left: 12px;
-  top: 64px;
-}
-.right {
-  right: 12px;
-}
-/* infoPanelHeight:GeoHotelSidebar(搜尋清單)容器高度改成跟地點卡
-   (AttractionInfoPanel/GeoInfoPanel,見兩者 module.css 的 .panel:
-   top:64px、bottom:16px)一致——使用者明確要求兩者容器高度對齊,原本
-   .panel 預設的 top:12px/bottom:12px(比照 trips/timeline/pace 等
-   panelMode 浮動卡片)在這裡不適用,改用這組 modifier 覆蓋。只套用在
-   GeoHotelSidebar 的 .right 容器,不動其餘沿用預設高度的浮動卡片。 */
-.infoPanelHeight {
-  top: 64px;
-  bottom: 16px;
-}
-/* close:panelMode 浮動卡片(trips/timeline/pace/geo-outline,見
-   panelSpec.slot === 'float' 分支)共用的關閉按鈕——疊在卡片右上角,
-   點擊導回 /app 收起卡片(同再點一次 rail 圖示的行為)。四個內容元件
-   (DesktopTripList/MultiTrackTimeline/PaceChart/GeoCandidateSidebar)
-   各自的 header 排版不同,不逐一加專屬的關閉按鈕(AddFromCandidateSidebar/
-   GeoHotelSidebar 那種),改在 .panel 外層統一疊加一顆,四種內容共用
-   同一個關閉入口。 */
-.close {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 1;
-  width: 26px;
-  height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  background: none;
-  color: var(--ios-gray);
-  cursor: pointer;
-}
-.close:hover {
-  background: var(--ios-bg);
-  color: var(--color-dark);
-}
-
-@keyframes panelIn {
-  from {
-    opacity: 0;
-    transform: translateX(-16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
+/* DesktopLayout.tsx 專屬樣式(CSS Modules)。原本的浮動卡片外殼(.panel/
+   .left/.right/.close 等)已抽成獨立元件 FloatingPanel(見 FloatingPanel.tsx/
+   FloatingPanel.module.css),這裡只保留真的只有這個檔案在用、且不屬於
+   「浮動卡片外殼」本身的樣式(時間軸內容排版、對話小匡的特殊定位覆蓋)。 */
 
 .timelinePanel {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+.timelineScroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 4px 8px 12px;
+}
+
+/* pacePanel:配速表檢查站清單的捲動容器——原本跟 pace/PacePage.tsx/
+   trip/PublicViewScreen.tsx 共用同一個全域 class(.desktop-sidepanel-pace),
+   但那兩個公開頁用的是舊版「側欄+主區地圖」外殼(.desktop-sidepanel.wide),
+   這裡用的是新版 FloatingPanel 外殼,三者只是內容捲動行為剛好一樣、
+   彼此並不相關,故拆開各自獨立定義(pace/PacePage.module.css 與
+   trip/PublicViewScreen.module.css 各自也有一份同名規則),不再共用
+   同一份、靠巧合維持一致。 */
+.pacePanel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  /* 捲到底/頂繼續同方向捲動時,不要把剩餘手勢交給外層(整個側欄/頁面)
+     去彈跳——限制在這個容器自己裡面處理。 */
+  overscroll-behavior-y: contain;
+}
+.pacePanel :global(.pace-chart) {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow-y: visible;
+  max-width: none;
+  margin: 0;
+  /* .pace-chart 原本的 padding: 18px 16px 40px 是手機滿版寬度情境下訂的,
+     搬進這個較窄的側欄後左右 16px 顯得太擠、跟邊緣幾乎貼齊,這裡加大左右
+     間距讓內容有明顯留白。 */
+  padding-left: 24px;
+  padding-right: 24px;
+}
+/* Day1/Day2 路線分頁按鈕是 .pace-chart 裡的第一個元素,搬進側欄後緊貼側欄
+   頂端(側欄本身沒有額外 header 撐開間距),補上頂部間距避免按鈕貼齊邊緣。 */
+.pacePanel :global(.pace-route-tabs) {
+  margin-top: 12px;
+}
+
+/* chatPopover:對話浮動小匡(見 DesktopLayout.tsx 的 chatPopoverOpen)
+   ——疊加在 FloatingPanel 的 .right 之上,覆蓋 top/bottom 定位,不使用
+   預設值(top:12px/bottom:12px)——沒有常駐對話欄,這是使用者存取
+   ChatScreen 的唯一入口,由地圖右上角城市搜尋框旁的 AI 按鈕觸發(見
+   GeoOutlineMap.tsx 的 onOpenChat),疊在搜尋框正下方。top/bottom 改成
+   跟 FloatingPanel.module.css 的 .infoHeight(GeoHotelSidebar 用,
+   top:64px、bottom:16px)完全一致的數值——原本這裡用
+   max-height: calc(100% - 80px) 換算出來的實際高度跟 .infoHeight 對不
+   齊,是實際發生過的 bug(使用者回報「對話浮動視窗高度沒有跟搜尋結果
+   一樣」),改成直接寫死 top/bottom 兩個值,不再靠 max-height 換算。
+   right 維持 16px,搭配自己的邊框強調「這是當下主動觸發的浮層,不是
+   常駐側欄」。 */
+.chatPopover {
+  top: 64px;
+  right: 16px;
+  bottom: 16px;
+  box-shadow: 0 8px 28px rgba(61, 53, 48, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+/* chatPopoverShifted:搜尋結果側欄(GeoHotelSidebar,見 FloatingPanel.tsx
+   的 side="right"、right:12px、寬度280px)同時顯示時,對話小匡原本
+   right:16px 會直接疊在它上面——這是實際發生過的 bug(使用者回報「對話
+   浮動視窗遮蔽搜尋匡」,根本原因其實是兩個浮動卡片疊在同一塊螢幕矩形,
+   不是只有高度對不齊)。往左推到 GeoHotelSidebar 左側(12 + 280 = 292px,
+   再加 12px 間隙)之外——理由/數值對齊 GeoInfoPanel.module.css 的
+   .shiftedHotel。由呼叫端(DesktopLayout.tsx)在 geoHotelSidebarVisible
+   為 true 時額外疊加這個 class。 */
+.chatPopoverShifted {
+  right: 304px;
 }

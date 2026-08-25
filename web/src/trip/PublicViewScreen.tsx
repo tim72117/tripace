@@ -9,8 +9,8 @@ import { useIsDesktop } from '../hooks/useIsDesktop'
 import { PaceChart, type Checkpoint, type PaceCheckpointDetail } from '../pace/PaceChart'
 import { PaceRouteMap } from '../pace/PaceRouteMap'
 import { PacePhoneSwipe } from '../pace/PacePhoneSwipe'
-import '../styles-desktop.css'
 import '../desktop-layout-shell.css'
+import styles from './PublicViewScreen.module.css'
 
 // PublicViewScreen:手機版公開分享頁——從 App.tsx 拆出來,原檔名
 // PhoneScreens.tsx(當時裝多個畫面),設定頁/行程列表陸續拆成獨立檔案
@@ -61,13 +61,13 @@ function PublicPaceDrawerMap({ token }: { token: string }) {
     <div className="desktop-layout">
       <aside className="desktop-sidepanel wide">
         <div className="desktop-sidepanel-inner">
-          <div className="desktop-sidepanel-pace">
+          <div className={styles.sidepanelPace}>
             <PaceChart publicToken={token} onRouteChange={setCheckpoints} />
           </div>
         </div>
       </aside>
       <main className="desktop-main">
-        <div className="desktop-demo-panel">
+        <div className={styles.demoPanel}>
           <PaceRouteMap checkpoints={checkpoints} publicToken={token} />
         </div>
       </main>

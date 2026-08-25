@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useReducer, useState } from 'react'
 import type { ClientConfig, GeoAttraction, GeoPlaceDetails, GeoPlaceText, GeoSearchResult, GeoTripEntry } from '../api'
+import { deleteEntry } from '../api'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
 import {
   poiInfoContent,
@@ -14,10 +15,12 @@ import { geoSelectionReducer, GEO_SELECTION_NONE, type GeoPanTarget } from './ge
 // 兩邊各自實作一份形狀高度相似的 state/handler(geoSelection reducer、
 // candidateKeys/addGeoCandidate/removeGeoCandidate/geoScheduledDates 的
 // useMemo/useCallback、onTripEntriesChange 的候選籃合併邏輯、
-// handleScheduleCandidate),曾經因為各自維護而出現不一致(例如
-// onReturnToCandidate 一邊用穩定 id 比對、另一邊用物件參照比對;
-// handleScheduleCandidate 只有 console.error 前綴字串不同)。收斂到這裡
-// 統一實作,兩邊呼叫同一份邏輯,之後只需要改一處。
+// handleScheduleCandidate/handleReturnToCandidate/handleRemoveCandidate),
+// 曾經因為各自維護而出現不一致(例如 onReturnToCandidate 一邊用穩定 id
+// 比對、另一邊用物件參照比對;handleScheduleCandidate/
+// handleReturnToCandidate/handleRemoveCandidate 都只有 console.error
+// 前綴字串不同)。收斂到這裡統一實作,兩邊呼叫同一份邏輯,之後只需要改
+// 一處。
 //
 // 平台差異的處理方式:這個 hook 回傳「聯集」——桌面版才用得到的部分
 // (pickingDayKey/onlyGeoCandidate/draggingCandidate/geoHoverKey,見各自
@@ -86,9 +89,24 @@ export function useGeoPlanningState({
         : [...prev, c],
     )
   }, [])
+  // removeCandidate:「×」按鈕觸發,純前端從 candidates 移除——entry 類型
+  // 一定要用穩定的 id 比對,不能沿用 hotel/place/attraction 這幾種沒有
+  // id、只能靠「名稱+座標」辨識身分的候選共用的比對條件。理由:使用者
+  // 明確要求「同一個地點可以排入行程多次」(例如同一景點在不同天各去
+  // 一次),這種情況下會出現多筆 kind/name/lat/lng 完全相同、但 id 不同
+  // 的 entry 候選——若沿用「名稱+座標」比對,刪除其中任何一筆會被誤判
+  // 成同時符合刪除條件的全部都要移除,實際發生過的 bug:使用者點刪除
+  // 其中一筆,畫面上這個地點的全部項目(即使後端只有那一筆真的被
+  // deleteEntry 刪除)瞬間一起消失。entry 類型比對 id;其餘沒有 id 的
+  // 候選類型維持原本「名稱+座標」比對(hotel/place/attraction 本來就
+  // 不該同一個地點出現兩筆重複候選,addCandidate 的去重邏輯已經擋掉)。
   const removeCandidate = useCallback((c: GeoCandidate) => {
     setCandidates((prev) =>
-      prev.filter((p) => !(p.kind === c.kind && p.name === c.name && p.lat === c.lat && p.lng === c.lng)),
+      prev.filter((p) =>
+        c.kind === 'entry' && p.kind === 'entry'
+          ? p.id !== c.id
+          : !(p.kind === c.kind && p.name === c.name && p.lat === c.lat && p.lng === c.lng),
+      ),
     )
   }, [])
   const scheduledDates = useMemo(
@@ -137,6 +155,45 @@ export function useGeoPlanningState({
       prev.map((p) => (p.kind === 'entry' && p.id === c.id ? { ...p, inTrip: false } : p)),
     )
   }, [])
+
+  // handleReturnToCandidate:「返回候選」按鈕觸發——先呼叫 api.deleteEntry
+  // 真的把後端那筆 entry 刪除(不像 removeCandidate 只從前端候選籃清單
+  // 移除、後端資料仍在),成功後呼叫 onReturnToCandidate 把這個物件的
+  // inTrip 改成 false、繼續留在 candidates 裡。刪除失敗不彈錯誤訊息打斷
+  // 瀏覽,理由同其餘拖放/日期寫入失敗的既有處理方式,印 console 供除錯
+  // 即可,使用者可以再按一次重試。logTag 參數化,理由同
+  // handleScheduleCandidate。
+  const handleReturnToCandidate = useCallback(async (c: GeoCandidate & { kind: 'entry' }, logTag: string) => {
+    try {
+      await deleteEntry(cfg, c.id)
+      onReturnToCandidate(c)
+    } catch (err) {
+      console.error(`[${logTag}] 返回候選失敗:`, err)
+    }
+  }, [cfg, onReturnToCandidate])
+
+  // handleRemoveCandidate:「×」按鈕觸發——真正已排入行程的項目
+  // (kind==='entry' && inTrip===true)點「×」時,要先呼叫 api.deleteEntry
+  // 把後端那筆 entry 真的刪除,成功才呼叫 removeCandidate 讓上游把它從
+  // candidates 移除;過去「×」對這種項目只從前端畫面移除、完全沒動後端
+  // 資料,重新整理頁面或任何情境觸發 onTripEntriesChange 重新查詢時,
+  // 這筆資料會重新出現在候選籃,使用者會誤以為「刪除」沒有生效(實際
+  // 發生過的 bug)。其餘情況(候選中的 hotel/attraction/place,或
+  // inTrip===false 的 entry——後端那筆已經在先前「返回候選」時被刪除,
+  // 這裡沒有東西可刪)本來就沒有對應的後端資料,維持原本「只從前端移除」
+  // 的行為,不需要呼叫任何 API。刪除失敗時不從前端移除(避免畫面顯示跟
+  // 後端狀態不一致),只印 console 供除錯,使用者可以再按一次重試。
+  const handleRemoveCandidate = useCallback(async (c: GeoCandidate, logTag: string) => {
+    if (c.kind === 'entry' && c.inTrip) {
+      try {
+        await deleteEntry(cfg, c.id)
+      } catch (err) {
+        console.error(`[${logTag}] 刪除已排入行程項目失敗:`, err)
+        return
+      }
+    }
+    removeCandidate(c)
+  }, [cfg, removeCandidate])
 
   // handleScheduleCandidate:候選沒有排定日期、選好日期後觸發——把候選
   // 建立成真正的行程 entry。兩邊原本只有 console.error 的前綴字串不同,
@@ -274,6 +331,8 @@ export function useGeoPlanningState({
     scheduledDates,
     onTripEntriesChange,
     onReturnToCandidate,
+    handleReturnToCandidate,
+    handleRemoveCandidate,
     handleScheduleCandidate,
     selectCandidateFromBasket,
     // 飯店/推薦地點/搜尋結果統一後的清單

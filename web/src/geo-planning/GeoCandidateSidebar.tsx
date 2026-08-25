@@ -4,8 +4,8 @@ import * as api from '../api'
 import type { ClientConfig } from '../api'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
 import { geoItemKey } from './GeoHotelSidebar'
+import { PanelHead } from '../PanelHead'
 import styles from './GeoCandidateSidebar.module.css'
-import '../styles-desktop.css'
 import {
   type GeoCandidate,
   NO_DATE_GROUP,
@@ -23,10 +23,10 @@ export { candidateEntryKind, candidateListKey, createEntryFromCandidate, dayGrou
 // GeoCandidateSidebar:候選籃(構想 1,見
 // docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)——地理輪廓底圖(構想 6)的
 // 桌面版試做承載元件,渲染在疊加於主顯示區(地圖)左緣之上的浮動卡片
-// (跟 trips/timeline/pace 用同一套 .floating-panel 視覺語言,見
+// (跟 trips/timeline/pace 用同一套 FloatingPanel 外殼,見
 // DesktopLayout.tsx 的 panelSpec.slot === 'float' 分支與
-// styles-desktop.css 的 .floating-panel),對齊構想 1 定案的「候選籃是
-// 規劃引導介面的主結構」空間配置。
+// FloatingPanel.tsx),對齊構想 1 定案的「候選籃是規劃引導介面的主結構」
+// 空間配置。
 //
 // 目前只是純前端試做:候選清單只存在記憶體(DesktopContent 的
 // geoCandidates state),重新整理頁面會消失,尚未接上任何持久化——構想
@@ -82,11 +82,11 @@ function DayEntryCard({
   onDragEnd?: () => void
   // onReturnToCandidate:「返回候選」按鈕觸發(只在 inTrip===true 時
   // 顯示,見下方 render 條件)——把這筆真正已排入行程的 entry 退回候選籃
-  // (見呼叫端 handleReturnToCandidate 的完整說明:真的刪除後端那筆
-  // entry,本地保留內容並標記 inTrip:false)。跟既有的「×」(onRemove)
-  // 語意不同,不互相取代:onRemove 只從前端候選籃清單移除、不動後端
-  // 資料(換行程/重新查詢時舊行為仍會讓它重新出現);這顆新按鈕才是
-  // 「真的讓這筆項目不再算入行程」的操作。
+  // (見 useGeoPlanningState.ts 的 handleReturnToCandidate 完整說明:真的
+  // 刪除後端那筆 entry,本地保留內容並標記 inTrip:false)。跟既有的
+  // 「×」(onRemove)語意不同,不互相取代:onRemove 只從前端候選籃清單
+  // 移除、不動後端資料(換行程/重新查詢時舊行為仍會讓它重新出現);這顆
+  // 新按鈕才是「真的讓這筆項目不再算入行程」的操作。
   onReturnToCandidate?: (candidate: GeoCandidate & { kind: 'entry'; inTrip: true }) => void
 }) {
   return (
@@ -393,47 +393,12 @@ export function GeoCandidateSidebar({
     onDatesAssigned?.()
   }
 
-  // handleReturnToCandidate:「返回候選」按鈕觸發(見 DayEntryCard 的
-  // 說明)——先呼叫 api.deleteEntry 真的把後端那筆 entry 刪除(不像
-  // onRemove 只從前端候選籃清單移除、後端資料仍在),成功後呼叫
-  // onReturnToCandidate 讓上游(DesktopLayout.tsx)把這個物件的 inTrip
-  // 改成 false、繼續留在 geoCandidates 裡——這個元件本身不持有
-  // geoCandidates state(見上方元件註解「維持這個元件單純是受控呈現
-  // 層」),不能自己改,只能呼叫回呼委託上游處理。刪除失敗不彈錯誤訊息
-  // 打斷瀏覽,理由同其餘拖放/日期寫入失敗的既有處理方式,印 console 供
-  // 除錯即可,使用者可以再按一次重試。
-  const handleReturnToCandidate = async (c: GeoCandidate & { kind: 'entry'; inTrip: true }) => {
-    try {
-      await api.deleteEntry(cfg, c.id)
-      onReturnToCandidate?.(c)
-    } catch (err) {
-      console.error('[GeoCandidateSidebar] 返回候選失敗:', err)
-    }
-  }
-
-  // handleRemove:「×」按鈕觸發——真正已排入行程的項目
-  // (kind==='entry' && inTrip===true)點「×」時,要先呼叫
-  // api.deleteEntry 把後端那筆 entry 真的刪除,成功才呼叫 onRemove 讓
-  // 上游把它從前端 geoCandidates 移除;過去「×」對這種項目只從前端
-  // 畫面移除、完全沒動後端資料,重新整理頁面或任何情境觸發
-  // onTripEntriesChange 重新查詢時,這筆資料會重新出現在候選籃,使用者
-  // 會誤以為「刪除」沒有生效(實際發生過的 bug)。其餘情況(候選中的
-  // hotel/attraction/place,或 inTrip===false 的 entry——後端那筆已經
-  // 在先前「返回候選」時被刪除,這裡沒有東西可刪)本來就沒有對應的後端
-  // 資料,維持原本「只從前端移除」的行為,不需要呼叫任何 API。刪除失敗
-  // 時不從前端移除(避免畫面顯示跟後端狀態不一致),只印 console 供
-  // 除錯,使用者可以再按一次重試。
-  const handleRemove = async (c: GeoCandidate) => {
-    if (c.kind === 'entry' && c.inTrip) {
-      try {
-        await api.deleteEntry(cfg, c.id)
-      } catch (err) {
-        console.error('[GeoCandidateSidebar] 刪除已排入行程項目失敗:', err)
-        return
-      }
-    }
-    onRemove?.(c)
-  }
+  // onRemove/onReturnToCandidate 現在直接是 useGeoPlanningState.ts 的
+  // handleRemoveCandidate/handleReturnToCandidate(已內建 api.deleteEntry
+  // 呼叫與錯誤處理,不在這個檔案裡重複實作一份,見該 hook 的說明;
+  // DesktopLayout.tsx 呼叫端傳入時已綁好自己的 logTag)——這個元件維持
+  // 單純受控呈現層,不再需要本地包一層 handleReturnToCandidate/
+  // handleRemove。
 
   // handleCreateEntryFromCandidate:拖曳純候選(飯店/景點/推薦地點,或
   // 按過「返回候選」、inTrip===false 的 entry 形狀候選)放進某一天時
@@ -517,9 +482,7 @@ export function GeoCandidateSidebar({
 
   return (
     <div className={`${styles.panel}${flashing ? ` ${styles.panelFlash}` : ''}`}>
-      <div className="desktop-sidebar-head">
-        <span className="desktop-sidebar-title">候選籃</span>
-      </div>
+      <PanelHead title="行程" />
       <div className={styles.list}>
         {candidates.length === 0 ? (
           <div className={styles.empty}>
@@ -608,12 +571,12 @@ export function GeoCandidateSidebar({
                         <DayEntryCard
                           key={candidateListKey(c)}
                           c={c}
-                          onRemove={handleRemove}
+                          onRemove={onRemove}
                           onSelect={onSelect}
                           onHover={onHover}
                           onDragStart={onDraggingCandidateChange}
                           onDragEnd={() => { onDraggingCandidateChange(null); setDragOverDay(null) }}
-                          onReturnToCandidate={handleReturnToCandidate}
+                          onReturnToCandidate={onReturnToCandidate}
                         />
                       ))}
                     </div>
@@ -643,12 +606,12 @@ export function GeoCandidateSidebar({
                         <DayEntryCard
                           key={candidateListKey(c)}
                           c={c}
-                          onRemove={handleRemove}
+                          onRemove={onRemove}
                           onSelect={onSelect}
                           onHover={onHover}
                           onDragStart={onDraggingCandidateChange}
                           onDragEnd={() => { onDraggingCandidateChange(null); setDragOverDay(null) }}
-                          onReturnToCandidate={handleReturnToCandidate}
+                          onReturnToCandidate={onReturnToCandidate}
                         />
                       ))}
                     </div>

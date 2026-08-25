@@ -1,5 +1,3 @@
-import './styles-desktop.css'
-
 // DesktopShared:桌面版與手機版都會用到的 UI 小塊,從 App.tsx 拆出來獨立成
 // 檔案——這些東西不屬於「純桌面版佈局」(見 DesktopLayout.tsx),因為手機版
 // 的 PhoneNavDrawer/SettingsScreen(見 PhoneNavDrawer.tsx/PhoneScreens.tsx)
@@ -8,14 +6,15 @@ import './styles-desktop.css'
 // 兩邊都單向 import 這裡,不互相依賴。
 
 // PanelMode:桌面版 side panel 目前顯示的內容;null 代表收合(主區全寬)。
-// 'demo-cards'/'demo-row':試做用的推薦景點呈現方式(假資料,見
-// RecommendedPlaces.tsx)。'demo-onagent':「LLM 呼叫前端 tool」走 onagent
-// 平台的試做(見 clienttools/OnagentBridgeDemo.tsx 的說明;原本另有一條走
-// tripace 自家 want 框架的 ClientToolsBridge/clienttools_ws.go 路徑,隨
-// want 對話系統整套移除已一併刪除)。這幾個模式各自由獨立的 DEMO_*_ENABLED
-// 編譯時 feature flag 控制是否出現(見下方說明),不是綁在同一個開關底下。
-// (原本還有 'demo-map'——推薦景點地圖試做,見 RecommendedPlacesMap.tsx——
-// 已整個移除,含入口與實作。)
+// 'demo-onagent':「LLM 呼叫前端 tool」走 onagent 平台的試做(見
+// clienttools/OnagentBridgeDemo.tsx 的說明;原本另有一條走 tripace 自家
+// want 框架的 ClientToolsBridge/clienttools_ws.go 路徑,隨 want 對話系統
+// 整套移除已一併刪除)。這個模式由獨立的 DEMO_ONAGENT_ENABLED 編譯時
+// feature flag 控制是否出現(見下方說明)。
+// (原本還有 'demo-cards'——推薦景點卡片試做,見 RecommendedPlacesList——
+// 與 'demo-map'——推薦景點地圖試做,見 RecommendedPlacesMap.tsx——與
+// 'demo-row'——推薦景點橫滑試做,見 RecommendedPlacesRow——都已整個
+// 移除,含入口與實作。)
 // 'trips'/'timeline'/'pace'/'geo-outline':正式導覽項目,所有使用者都能在
 // rail 上看到(依各自的 *_ENABLED flag),渲染邏輯直接使用 DesktopTripList/
 // MultiTrackTimeline/PaceChart+PaceRouteMap、GeoCandidateSidebar/
@@ -29,7 +28,7 @@ import './styles-desktop.css'
 // 定案、真的接上後端,才會比照 pace/geo-outline 升級成正式功能。
 export type PanelMode =
   | 'trips' | 'timeline' | 'pace' | 'geo-outline'
-  | 'demo-cards' | 'demo-row' | 'demo-onagent' | 'demo-route-editor'
+  | 'demo-onagent' | 'demo-route-editor'
   | null
 
 // GEO_OUTLINE_ENABLED:地理輪廓底圖(規劃分頁)功能開關——目前是唯一
@@ -52,18 +51,16 @@ export const GEO_OUTLINE_ENABLED = import.meta.env.VITE_FEATURE_GEO_OUTLINE !== 
 export const TIMELINE_ENABLED = import.meta.env.VITE_FEATURE_TIMELINE === 'true'
 export const PACE_ENABLED = import.meta.env.VITE_FEATURE_PACE === 'true'
 
-// DEMO_CARDS_ENABLED/DEMO_ROW_ENABLED/DEMO_ONAGENT_ENABLED/
-// DEBUG_PANEL_ENABLED:原本綁在網址參數 ?demo(見 main.tsx 的 isDemo)底下
-// 的試做用導覽項目(推薦景點卡片/橫滑兩種呈現方式、onagent 平台的 LLM
-// 呼叫前端 tool 資料流試做、API/WS 狀態除錯面板),改成跟
-// TIMELINE_ENABLED/PACE_ENABLED 同一種編譯時 feature flag 機制——各自獨立
-// 開關而非沿用單一 isDemo 布林值,是因為部署時可能只想開放其中幾項給特定
-// 環境驗證,不是全開或全關兩種選擇。同 TIMELINE_ENABLED/PACE_ENABLED,
-// 預設關閉,只在明確設為字串 "true" 時才啟用。(原本還有
-// DEMO_CLIENTTOOLS_ENABLED——tripace 自家 want 框架 ClientToolsBridge 的
-// 試做入口——隨 want 對話系統整套移除已一併刪除。)
-export const DEMO_CARDS_ENABLED = import.meta.env.VITE_FEATURE_DEMO_CARDS === 'true'
-export const DEMO_ROW_ENABLED = import.meta.env.VITE_FEATURE_DEMO_ROW === 'true'
+// DEMO_ONAGENT_ENABLED/DEBUG_PANEL_ENABLED:原本綁在網址參數 ?demo(見
+// main.tsx 的 isDemo)底下的試做用導覽項目(onagent 平台的 LLM 呼叫前端
+// tool 資料流試做、API/WS 狀態除錯面板),改成跟 TIMELINE_ENABLED/
+// PACE_ENABLED 同一種編譯時 feature flag 機制——各自獨立開關而非沿用單一
+// isDemo 布林值,是因為部署時可能只想開放其中幾項給特定環境驗證,不是全開
+// 或全關兩種選擇。同 TIMELINE_ENABLED/PACE_ENABLED,預設關閉,只在明確設為
+// 字串 "true" 時才啟用。(原本還有 DEMO_CARDS_ENABLED——推薦景點卡片
+// 試做——DEMO_ROW_ENABLED——推薦景點橫滑試做——與 DEMO_CLIENTTOOLS_ENABLED
+// ——tripace 自家 want 框架 ClientToolsBridge 的試做入口——都已整個移除,
+// 含入口與實作。)
 export const DEMO_ONAGENT_ENABLED = import.meta.env.VITE_FEATURE_DEMO_ONAGENT === 'true'
 export const DEBUG_PANEL_ENABLED = import.meta.env.VITE_FEATURE_DEBUG_PANEL === 'true'
 // DEMO_ROUTE_EDITOR_ENABLED:路徑編輯器試做的開關,同上面幾個 DEMO_*
@@ -73,9 +70,9 @@ export const DEMO_ROUTE_EDITOR_ENABLED = import.meta.env.VITE_FEATURE_DEMO_ROUTE
 // PanelSlot/PanelSpec/PANEL_REGISTRY:每個 panelMode 的版面行為單一定義處
 // ——'float' 表示疊在 .desktop-main(地圖)上方的浮動卡片(不佔 flex 版面
 // 空間、不擠壓地圖寬度),'main-replace' 表示整個取代 .desktop-main(僅
-// demo-cards/demo-row/demo-onagent/demo-route-editor 這幾個預設關閉的
-// 試做功能維持這個舊行為)。width 只有 float 用到,決定浮動卡片寬度
-// (見 styles-desktop.css 的 .floating-panel)。requiresTrip 給 rail 按鈕
+// demo-onagent/demo-route-editor 這幾個預設關閉的試做功能維持
+// 這個舊行為)。width 只有 float 用到,決定浮動卡片寬度
+// (見 FloatingPanel.tsx)。requiresTrip 給 rail 按鈕
 // 的 disabled 判斷用(見 DesktopRail.tsx)。
 //
 // 這張表存在的理由:先前 panelMode 的行為判斷散落在至少 5 個地方
@@ -98,8 +95,6 @@ export const PANEL_REGISTRY: Record<Exclude<PanelMode, null>, PanelSpec> = {
   timeline: { enabled: TIMELINE_ENABLED, slot: 'float', width: 380, requiresTrip: true },
   pace: { enabled: PACE_ENABLED, slot: 'float', width: 380 },
   'geo-outline': { enabled: GEO_OUTLINE_ENABLED, slot: 'float', width: 380 },
-  'demo-cards': { enabled: DEMO_CARDS_ENABLED, slot: 'main-replace' },
-  'demo-row': { enabled: DEMO_ROW_ENABLED, slot: 'main-replace' },
   'demo-onagent': { enabled: DEMO_ONAGENT_ENABLED, slot: 'main-replace' },
   'demo-route-editor': { enabled: DEMO_ROUTE_EDITOR_ENABLED, slot: 'main-replace' },
 }
@@ -121,7 +116,7 @@ export function isPanelMode(v: string | undefined): v is Exclude<PanelMode, null
 }
 
 // DemoPanelMode:PanelMode 扣掉 trips/timeline/pace/geo-outline/
-// demo-route-editor/null 之後只剩的 3 種 demo 面板——正式功能
+// demo-route-editor/null 之後只剩的 demo 面板——正式功能
 // (trips/timeline/pace/geo-outline)在桌面版是 side panel 的正式功能,
 // 手機版則是 PhoneNavDrawer(見該檔案)裡對應的分頁,兩邊各自處理,不算
 // 在這組共用的 demo 面板裡。demo-route-editor 雖然也是 demo-* 系列旗標
@@ -140,11 +135,10 @@ export type DemoPanelMode = Exclude<PanelMode, 'trips' | 'timeline' | 'pace' | '
 // 值域各自維護、日後新增/移除模式時漏改其中一處。
 export type DrawerMode = Exclude<PanelMode, 'demo-route-editor' | null>
 
-// DemoPanelContent 函式本體已移到 demo/DemoPanelContent.tsx——三種模式
-// (demo-cards/demo-row/demo-onagent)都是預設關閉的試做功能,不算正式
-// 桌面/手機共用邏輯,理由同 RouteEditor.tsx 移到 demo/ 目錄。這裡的
-// DemoPanelMode 型別維持不動(從 PanelMode 衍生,被 PANEL_REGISTRY/
-// isPanelMode 等正式邏輯依賴)。
+// DemoPanelContent 函式本體已移到 demo/DemoPanelContent.tsx——demo-onagent
+// 是預設關閉的試做功能,不算正式桌面/手機共用邏輯,理由同 RouteEditor.tsx
+// 移到 demo/ 目錄。這裡的 DemoPanelMode 型別維持不動(從 PanelMode 衍生,
+// 被 PANEL_REGISTRY/isPanelMode 等正式邏輯依賴)。
 
 // LangSelect/TokenDisplay 已移到 user/LangSelect.tsx、user/TokenDisplay.tsx
 // ——兩者都是設定畫面(SettingsDialog 桌面版/SettingsScreen 手機版)專用的

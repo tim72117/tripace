@@ -45,6 +45,17 @@ export function geoSelectionReducer(state: GeoSelection, action: GeoSelectionAct
     case 'SELECT_ATTRACTION':
       return { kind: 'attraction', key: action.key, data: action.data }
     case 'SELECT_INFO':
+      // 重複選取同一個 key(例如地圖上連續點同一顆 geocode marker 兩次)
+      // 時,保留目前已經顯示的內容,不整卡覆蓋回呼叫端傳入的輕量版
+      // ——這是實際發生過的 bug:GeoOutlinePanel.tsx 的補查文字/照片
+      // effect 依賴 placeId(字串)判斷要不要重查,同一個地點沒變就不會
+      // 重查,但這裡若無條件覆蓋,已經補齊的評分/簡介/「加入行程」按鈕
+      // 會被清空且永遠不會被補查 effect 復原(該 effect 只在 placeId
+      // 真的變動時才觸發)。只有 key 未定義(見 GeoSelection 型別對
+      // onPoiSelect 的說明)或跟目前不同時才視為新一次選取、整卡替換。
+      if (state.kind === 'info' && action.key != null && action.key === state.key) {
+        return state
+      }
       return { kind: 'info', key: action.key, content: action.content }
     case 'PATCH_INFO_CONTENT':
       if (state.kind !== 'info') return state

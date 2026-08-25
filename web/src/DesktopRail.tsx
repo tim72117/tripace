@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  List, Sparkles, GalleryHorizontal, Layers, Radio, Activity, Route, BookOpen, PanelLeft,
+  List, Layers, Radio, Activity, Route, BookOpen, PanelLeft,
 } from 'lucide-react'
 import { Timeline } from 'lucide-react'
 import type { ClientConfig } from './api'
@@ -8,7 +8,7 @@ import type { User } from './user/types'
 import { DesktopUserMenu } from './user/DesktopUserMenu'
 import {
   type PanelMode, GEO_OUTLINE_ENABLED, TIMELINE_ENABLED, PACE_ENABLED,
-  DEMO_CARDS_ENABLED, DEMO_ROW_ENABLED, DEMO_ONAGENT_ENABLED, DEBUG_PANEL_ENABLED,
+  DEMO_ONAGENT_ENABLED, DEBUG_PANEL_ENABLED,
   DEMO_ROUTE_EDITOR_ENABLED, PANEL_REGISTRY,
 } from './DesktopShared'
 import styles from './DesktopRail.module.css'
@@ -80,10 +80,10 @@ export function DesktopRail({
         <button
           className={panelMode === 'trips' ? `${styles.btn} ${styles.active}` : styles.btn}
           onClick={() => onSelect('trips')}
-          title="行程列表"
+          title="旅程列表"
         >
           <List size={20} strokeWidth={1.8} />
-          {expanded && <span className={styles.btnLabel}>行程列表</span>}
+          {expanded && <span className={styles.btnLabel}>旅程列表</span>}
         </button>
         {/* GEO_OUTLINE_ENABLED:這次部署刻意不開啟(見 DesktopShared.tsx
             對這個常數的說明),按鈕本身不渲染——不是只隱藏視覺,isPanelMode
@@ -129,29 +129,10 @@ export function DesktopRail({
         {/* DEMO_*_ENABLED/DEBUG_PANEL_ENABLED:各自獨立的編譯時 feature flag
             (見 DesktopShared.tsx 對這幾個常數的說明),取代原本綁在網址參數
             ?demo 底下的單一 isDemo 開關——分隔線只在至少一項開啟時出現,
-            避免試做項目跟正式功能混在一起難以分辨。 */}
-        {(DEMO_CARDS_ENABLED || DEMO_ROW_ENABLED || DEMO_ONAGENT_ENABLED || DEBUG_PANEL_ENABLED) && (
+            避免試做項目跟正式功能混在一起難以分辨。(原本還有推薦景點
+            卡片/橫滑兩顆試做按鈕,已整個移除,含入口與實作。) */}
+        {(DEMO_ONAGENT_ENABLED || DEBUG_PANEL_ENABLED) && (
           <div className={styles.divider} />
-        )}
-        {DEMO_CARDS_ENABLED && (
-          <button
-            className={panelMode === 'demo-cards' ? `${styles.btn} ${styles.btnDemo} ${styles.active}` : `${styles.btn} ${styles.btnDemo}`}
-            onClick={() => onSelect('demo-cards')}
-            title="推薦景點卡片(試做)"
-          >
-            <Sparkles size={20} strokeWidth={1.8} />
-            {expanded && <span className={styles.btnLabel}>推薦景點卡片(試做)</span>}
-          </button>
-        )}
-        {DEMO_ROW_ENABLED && (
-          <button
-            className={panelMode === 'demo-row' ? `${styles.btn} ${styles.btnDemo} ${styles.active}` : `${styles.btn} ${styles.btnDemo}`}
-            onClick={() => onSelect('demo-row')}
-            title="推薦景點橫滑(試做)"
-          >
-            <GalleryHorizontal size={20} strokeWidth={1.8} />
-            {expanded && <span className={styles.btnLabel}>推薦景點橫滑(試做)</span>}
-          </button>
         )}
         {DEMO_ONAGENT_ENABLED && (
           <button

@@ -2,10 +2,8 @@
    desktop-trip- 前綴(例如 .list 對應原本的 .desktop-trip-list,.item
    對應 .desktop-trip-item)——import 時已經有明確的命名空間。
 
-   .desktop-sidebar-head/.desktop-sidebar-title 不在這裡——雖然出現在
-   DesktopTripList.tsx 裡,但這兩個 class 也被 DesktopLayout.tsx/
-   DesktopShared.tsx/geo-planning/GeoCandidateSidebar.tsx 共用,是真正
-   跨檔案共用的標題橫條樣式,留在 styles-desktop.css。 */
+   標題橫條(原本的 .desktop-sidebar-head/.desktop-sidebar-title)已改用
+   共用元件 PanelHead(見 ../PanelHead.tsx),不在這裡定義。 */
 
 .list {
   flex: 1 1 auto;

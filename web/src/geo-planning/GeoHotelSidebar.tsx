@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { Plus } from 'lucide-react'
 import type { ClientConfig, GeoSearchResult } from '../api'
 import { type GeoCandidate } from './GeoCandidateSidebar'
-import { useCandidateDatePicker } from './geoCandidateHelpers'
+import { searchResultToCandidate, useCandidateDatePicker } from './geoCandidateHelpers'
 import { GeoListItemCard } from './GeoListItemCard'
+import { PanelHead } from '../PanelHead'
 import styles from './GeoHotelSidebar.module.css'
 
 // GeoHotelSidebar:地理輪廓底圖(構想 6)查詢到的飯店/推薦地點/搜尋結果
@@ -154,6 +155,7 @@ export function GeoHotelSidebar({
   onAddCandidate,
   onCandidateCreated,
   onHover,
+  onClose,
 }: {
   cfg: ClientConfig
   // tripID:「+」按鈕展開日期選擇、直接建立成後端 entry 時需要知道寫進
@@ -178,6 +180,14 @@ export function GeoHotelSidebar({
   // 傳 null)——由 DesktopLayout.tsx 中介,驅動地圖上對應 marker 暫時顯示
   // 選取樣式(見 GeoOutlineMap.tsx 的 hoverKey prop 說明)。
   onHover?: (key: GeoSelectedKey) => void
+  // onClose:頂部標題列的關閉按鈕觸發——使用者明確要求跟候選籃側欄
+  // (AddFromCandidateSidebar)一樣的頂部條樣式(標題文字+關閉按鈕),
+  // 原本這個側欄的關閉按鈕由呼叫端(DesktopLayout.tsx)在外層容器額外
+  // 疊加、沒有標題文字搭配,這次改成側欄自己渲染完整的頂部條,呼叫端
+  // 只需要傳這個 callback,不用再自己管理按鈕定位/樣式。未接這個 prop
+  // 時不顯示頂部條(理論上不該發生,這個側欄目前唯一的呼叫端
+  // DesktopLayout.tsx 一定會傳)。
+  onClose?: () => void
 }) {
   const isEmpty = results.length === 0
   // geocodePhotos:搜尋結果(geocode)的照片延遲載入快取(見
@@ -190,6 +200,7 @@ export function GeoHotelSidebar({
 
   return (
     <aside className={styles.sidebar}>
+      <PanelHead title="搜尋結果" onClose={onClose} />
       <div className={styles.list}>
         {isEmpty ? (
           <div className={styles.empty}>
@@ -218,11 +229,7 @@ export function GeoHotelSidebar({
                     <AddCandidateButton
                       cfg={cfg}
                       tripID={tripID}
-                      candidate={
-                        r.kind === 'hotel'
-                          ? { kind: 'hotel', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', photoUrl: r.photoUrl }
-                          : { kind: 'place', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', category: r.category, photoUrl: r.photoUrl }
-                      }
+                      candidate={searchResultToCandidate(r)}
                       onAddCandidate={onAddCandidate}
                       onCreated={onCandidateCreated}
                     />

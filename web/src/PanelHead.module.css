@@ -1,0 +1,36 @@
+/* PanelHead.tsx 專屬樣式(CSS Modules)。取代原本各自重複定義的
+   GeoHotelSidebar.module.css/AddFromCandidateSidebar.module.css 的
+   .head/.title/.closeBtn,以及原本的全域 class .desktop-sidebar-head/
+   .desktop-sidebar-title——同一套標題列視覺語言只定義一次。 */
+.head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 8px 10px 12px;
+  border-bottom: 1px solid var(--ios-sep);
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-dark);
+}
+
+.closeBtn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
+}
+
+.closeBtn:hover {
+  background: var(--ios-bg);
+  color: var(--color-dark);
+}

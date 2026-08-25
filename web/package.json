@@ -16,9 +16,11 @@
   "dependencies": {
     "@googlemaps/js-api-loader": "^2.1.1",
     "@onagent/bridge": "^0.0.2",
+    "date-fns": "^4.4.0",
     "lucide-react": "^1.21.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
+    "react-day-picker": "^10.0.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.2",

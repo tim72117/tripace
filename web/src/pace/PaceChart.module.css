@@ -12,17 +12,21 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 手機優先的直向卡片堆疊,渲染在 .desktop-demo-panel/.desktop-sidepanel-pace
-   裡(見 App.tsx),自己負責 flex: 1 1 auto + overflow-y: auto(取代其他
-   demo panel 常見的「.desktop-sidebar-head + .desktop-timeline-scroll」
-   兩截式結構)——因為這個元件本身就有自己的標題/摘要列(對齊 pace-chart.html
-   原型的 .page 版面),不是一個只有 body 要捲動的簡單清單。
+/* 手機優先的直向卡片堆疊,渲染在 pace/PacePage.module.css/
+   trip/PublicViewScreen.module.css 的 .demoPanel、或 DesktopLayout.module.css
+   的 .pacePanel(三者原本共用同一個全域 .desktop-sidepanel-pace/
+   .desktop-demo-panel,已拆開各自獨立定義,見各檔案的說明)裡,自己負責
+   flex: 1 1 auto + overflow-y: auto(取代其他浮動卡片常見的「PanelHead +
+   獨立捲動容器」兩截式結構,見 DesktopLayout.tsx 的 timelineScroll)——
+   因為這個元件本身就有自己的標題/摘要列(對齊 pace-chart.html 原型的
+   .page 版面),不是一個只有 body 要捲動的簡單清單。
    顏色/字體全部沿用全站既有的 --ios-x / --color-x token(見 styles.css 開頭
    :root),專案沒有 prefers-color-scheme/data-theme 這套機制,故不新增
    深色模式。這個 class 名稱刻意保留全域(:global),因為好幾處全域/其他
-   CSS Modules 規則(styles-desktop.css 的 .desktop-main:has(.pace-route-map-wrap)
-   的鄰居們、PhoneNavDrawer.module.css 的 .body > :global(.pace-chart) 等)
-   需要從外部用固定字串偵測到它,雜湊過的名稱無法讓外部選擇器可靠指到。 */
+   CSS Modules 規則(desktop-layout-shell.css 的
+   .desktop-main:has(.pace-route-map-wrap) 的鄰居們、PhoneNavDrawer.module.css
+   的 .body > :global(.pace-chart) 等)需要從外部用固定字串偵測到它,雜湊
+   過的名稱無法讓外部選擇器可靠指到。 */
 :global(.pace-chart) {
   flex: 1 1 auto;
   min-height: 0;
@@ -58,10 +62,11 @@
 }
 
 /* 路線分頁(4 段真實路線切換),橫向捲動避免窄螢幕擠壓。這個 class 名稱
-   刻意保留全域(:global),理由同上方 .pace-chart——styles.css 裡的
-   .desktop-sidepanel-pace .pace-route-tabs 需要從外部用固定字串偵測到它
-   (幫分頁按鈕在側欄情境下補頂部間距),雜湊過的名稱會讓那條規則永遠
-   不命中。 */
+   刻意保留全域(:global),理由同上方 .pace-chart——pace/PacePage.module.css/
+   trip/PublicViewScreen.module.css 的 .sidepanelPace 與
+   DesktopLayout.module.css 的 .pacePanel 底下都各自需要從外部用固定
+   字串偵測到它(幫分頁按鈕在側欄情境下補頂部間距),雜湊過的名稱會讓
+   那條規則永遠不命中。 */
 :global(.pace-route-tabs) {
   display: flex;
   gap: 6px;

@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Timeline, Route, Layers, Sparkles, GalleryHorizontal, Radio } from 'lucide-react'
+import { Timeline, Route, Layers, Radio } from 'lucide-react'
 import { ChatScreen, type DesktopTimelineMirror } from './chat/ChatScreen'
 import { type ContentProps } from './AppCommon'
 import { useIsDesktop } from './hooks/useIsDesktop'
@@ -9,7 +9,7 @@ import { useTripsState } from './hooks/useTripsState'
 import { LoginForm, LoginCard } from './home/LoginForm'
 import {
   isPanelMode, type DrawerMode, TIMELINE_ENABLED, GEO_OUTLINE_ENABLED, PACE_ENABLED,
-  DEMO_CARDS_ENABLED, DEMO_ROW_ENABLED, DEMO_ONAGENT_ENABLED,
+  DEMO_ONAGENT_ENABLED,
 } from './DesktopShared'
 import { DesktopContent } from './DesktopLayout'
 import { SettingsScreen } from './user/SettingsScreen'
@@ -227,8 +227,6 @@ export function PhoneContent(props: ContentProps) {
   ]
   const sideTools: { mode: DrawerMode; icon: typeof Route; title: string }[] = [
     ...(PACE_ENABLED ? [{ mode: 'pace' as DrawerMode, icon: Route, title: '路徑' }] : []),
-    ...(DEMO_CARDS_ENABLED ? [{ mode: 'demo-cards' as DrawerMode, icon: Sparkles, title: '推薦景點卡片' }] : []),
-    ...(DEMO_ROW_ENABLED ? [{ mode: 'demo-row' as DrawerMode, icon: GalleryHorizontal, title: '推薦景點橫滑' }] : []),
     ...(DEMO_ONAGENT_ENABLED ? [{ mode: 'demo-onagent' as DrawerMode, icon: Radio, title: 'onagent 串接' }] : []),
   ]
   // chatElement:ChatScreen 的唯一掛載點,固定用同一個 JSX 呼叫(不因
@@ -268,6 +266,7 @@ export function PhoneContent(props: ContentProps) {
             user={props.user}
             onOpenSettings={() => setInSettings(true)}
             onOpenTimeline={TIMELINE_ENABLED ? () => setTimelineDrawerOpen(true) : undefined}
+            onOpenTrips={() => setTripsDrawerOpen(true)}
           />
         ) : effectiveMainMode === 'pace' ? (
           // 配速表分頁:主顯示區改成地圖(對齊桌面版 .desktop-main 在

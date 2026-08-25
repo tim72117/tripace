@@ -1,7 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { TouchEvent as ReactTouchEvent } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ListPlus, X } from 'lucide-react'
-import * as api from '../api'
 import type { ClientConfig } from '../api'
 import {
   type GeoCandidate,
@@ -12,6 +10,7 @@ import {
   entryKindIcon,
   useCandidateDatePicker,
 } from './geoCandidateHelpers'
+import { useDragToClose } from '../hooks/useDragToClose'
 import styles from './GeoOutlinePhoneCandidateDrawer.module.css'
 
 // GeoOutlinePhoneCandidateDrawer:手機版候選籃——第二階段新增。桌面版是
@@ -218,6 +217,10 @@ export function GeoOutlinePhoneCandidateDrawer({
   // scheduledDates:行程本身目前已排定的日期清單——理由同桌面版
   // DesktopLayout.tsx 的 geoScheduledDates,由呼叫端算好傳入。
   scheduledDates: string[]
+  // onRemove/onReturnToCandidate:直接是 useGeoPlanningState.ts 的
+  // handleRemoveCandidate/handleReturnToCandidate(已內建 api.deleteEntry
+  // 呼叫與錯誤處理,不在這個檔案裡重複實作一份,見該 hook 的說明)——呼叫
+  // 端(GeoOutlinePhoneView.tsx)傳入時各自帶上自己的 logTag。
   onRemove: (candidate: GeoCandidate) => void
   // onSelect:點卡片本體(候選中/已排入行程皆同)——把該候選轉成資訊卡
   // 內容並開啟 GeoOutlinePhoneInfoSheet,理由同桌面版 selectGeoCandidate。
@@ -228,32 +231,14 @@ export function GeoOutlinePhoneCandidateDrawer({
   onScheduled: () => void
   flashTrigger?: number
 }) {
-  const [dragOffset, setDragOffset] = useState(0)
-  const startXRef = useRef<number | null>(null)
-  const draggingRef = useRef(false)
-
-  function onTouchStart(e: ReactTouchEvent) {
-    startXRef.current = e.touches[0].clientX
-    draggingRef.current = true
-  }
-  function onTouchMove(e: ReactTouchEvent) {
-    if (!draggingRef.current || startXRef.current === null) return
-    // 從右側滑入的抽屜,開啟狀態下只能往右拖(關閉方向,delta 為正)——
-    // 對稱 PacePhoneSwipe.tsx/PhoneTripsDrawer.tsx 左側抽屜「只能往關閉
-    // 方向拖」的既有慣例,方向相反(那兩個抽屜是左側滑入、只能往左拖)。
-    const delta = Math.max(0, e.touches[0].clientX - startXRef.current)
-    setDragOffset(delta)
-  }
-  function onTouchEnd() {
-    if (!draggingRef.current) return
-    draggingRef.current = false
-    const threshold = 60
-    if (dragOffset > threshold) onClose()
-    setDragOffset(0)
-    startXRef.current = null
-  }
-
-  const translate = open ? `${dragOffset}px` : `calc(100% + ${dragOffset}px)`
+  // 從右側滑入的抽屜,開啟狀態下只能往右拖(關閉方向)——對稱
+  // PacePhoneSwipe.tsx/PhoneTripsDrawer.tsx 左側抽屜「只能往關閉方向拖」
+  // 的既有慣例,方向相反(那兩個抽屜是左側滑入、只能往左拖)。
+  const { translate, transition, onTouchStart, onTouchMove, onTouchEnd } = useDragToClose({
+    axis: 'x',
+    open,
+    onClose,
+  })
 
   // onlyCandidate/inTrip:同桌面版 GeoCandidateSidebar.tsx/DesktopLayout.tsx
   // 的篩選規則——kind==='entry' && inTrip===true 是「已排入行程」,其餘
@@ -278,27 +263,6 @@ export function GeoOutlinePhoneCandidateDrawer({
     })
   }, [inTrip])
 
-  const handleReturnToCandidate = async (c: GeoCandidate & { kind: 'entry'; inTrip: true }) => {
-    try {
-      await api.deleteEntry(cfg, c.id)
-      onReturnToCandidate(c)
-    } catch (err) {
-      console.error('[GeoOutlinePhoneCandidateDrawer] 返回候選失敗:', err)
-    }
-  }
-
-  const handleRemove = async (c: GeoCandidate) => {
-    if (c.kind === 'entry' && c.inTrip) {
-      try {
-        await api.deleteEntry(cfg, c.id)
-      } catch (err) {
-        console.error('[GeoOutlinePhoneCandidateDrawer] 刪除已排入行程項目失敗:', err)
-        return
-      }
-    }
-    onRemove(c)
-  }
-
   const [flashing, setFlashing] = useState(false)
   useEffect(() => {
     if (!flashTrigger) return
@@ -315,7 +279,7 @@ export function GeoOutlinePhoneCandidateDrawer({
         style={{
           width: `${DRAWER_WIDTH_PERCENT}%`,
           transform: `translateX(${translate})`,
-          transition: draggingRef.current ? 'none' : 'transform 0.25s ease',
+          transition,
         }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
@@ -344,7 +308,7 @@ export function GeoOutlinePhoneCandidateDrawer({
                       tripID={tripID}
                       c={c}
                       scheduledDates={scheduledDates}
-                      onRemove={handleRemove}
+                      onRemove={onRemove}
                       onSelect={onSelect}
                       onScheduled={onScheduled}
                     />
@@ -364,9 +328,9 @@ export function GeoOutlinePhoneCandidateDrawer({
                         <DayEntryCard
                           key={candidateListKey(c)}
                           c={c}
-                          onRemove={handleRemove}
+                          onRemove={onRemove}
                           onSelect={onSelect}
-                          onReturnToCandidate={handleReturnToCandidate}
+                          onReturnToCandidate={onReturnToCandidate}
                         />
                       ))}
                     </div>

@@ -640,7 +640,7 @@ export function PaceChart({
     }
   }
 
-  // 跟時間軸(desktop-timeline-panel 的「選擇一個行程後顯示時間軸。」)
+  // 跟時間軸(DesktopLayout.tsx 的「選擇一個行程後顯示時間軸。」)
   // 同一套邏輯:登入後正式介面還沒選行程時,只顯示提示,不當成錯誤、
   // 也不用「載入中」那組畫面(根本沒有發出任何請求)。
   if (cfg && !tripID) {

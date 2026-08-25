@@ -135,23 +135,3 @@
   color: var(--ios-gray);
   font-style: italic;
 }
-
-/* 橫向捲動版清單容器(RecommendedPlacesRow):比照 App Store/Netflix 橫向
-   卡片列。復用 .card 本身樣式,這裡只覆蓋外層排列方式(flex row +
-   overflow-x 捲動)與卡片固定寬度(避免被 flex 壓縮變形)。捲動軸用
-   scrollbar-width: thin 讓它不突兀,同時保留滑鼠滾輪/觸控板/觸控手勢的
-   原生橫向拖曳能力,不需要額外的 JS 或套件。 */
-.row {
-  display: flex;
-  flex-direction: row;
-  gap: 12px;
-  padding: 12px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  width: 100%;
-}
-.row .card {
-  flex: 0 0 auto;
-  width: 240px;
-}

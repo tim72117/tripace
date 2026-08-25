@@ -1,16 +1,20 @@
-/* sidebar:寬度/絕對定位由外層 .floating-panel/.floating-panel-right(見
-   DesktopLayout.tsx/styles-desktop.css)控制,漂浮在主顯示右緣之上——這裡
-   只負責填滿外層容器與內部排版,不再自己決定寬度/定位方式,也不設
-   border-left(理由同 AddFromCandidateSidebar.module.css 的 .sidebar:
-   已改用圓角+陰影暗示「漂浮在主顯示上方」,不需要邊框分隔線)。 */
+/* sidebar:寬度/絕對定位由外層 FloatingPanel(side="right",見
+   ../FloatingPanel.tsx 與 DesktopLayout.tsx 的呼叫處)控制,漂浮在主顯示
+   右緣之上——這裡只負責填滿外層容器與內部排版,不再自己決定寬度/定位
+   方式,也不設 border-left(理由同 AddFromCandidateSidebar.module.css 的
+   .sidebar:已改用圓角+陰影暗示「漂浮在主顯示上方」,不需要邊框分隔
+   線)。 */
 .sidebar {
   height: 100%;
-  overflow-y: auto;
   background: var(--ios-card);
   display: flex;
   flex-direction: column;
 }
 
+/* 頂部標題列已改用共用元件 PanelHead(見 ../PanelHead.tsx),不再自己
+   定義 head/title/closeBtn。overflow-y 留在 .list(而非 .sidebar)——
+   .sidebar 要固定高度容納 PanelHead(不隨內容捲動),只有 .list 這個
+   清單本體區域需要可以捲動。 */
 .list {
   flex: 1;
   overflow-y: auto;

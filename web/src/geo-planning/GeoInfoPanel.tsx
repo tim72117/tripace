@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { PanelLeft, Plus, X } from 'lucide-react'
 import { dayGroupLabel, type GeoCandidate } from './GeoCandidateSidebar'
 import { candidateHasScheduledDate } from './geoCandidateHelpers'
+import { DatePickerPopover } from './DatePickerPopover'
 import styles from './GeoInfoPanel.module.css'
 
 // GeoInfoPanel:一張浮動卡片,絕對定位疊在地圖上方,貼齊主顯示區右緣
@@ -54,8 +55,8 @@ export function GeoInfoPanel({
   content: GeoInfoContent | null
   onClose: () => void
   // shiftBy:右緣可能同時有 GeoHotelSidebar(飯店/附近推薦清單,見
-  // styles-desktop.css 的 .floating-panel-right)與對話浮動小匡(見
-  // DesktopLayout.tsx 的 .chat-popover),兩者都跟這張卡片預設的定位
+  // FloatingPanel.tsx 的 side="right")與對話浮動小匡(見
+  // DesktopLayout.tsx 的 .chatPopover),兩者都跟這張卡片預設的定位
   // 重疊——由呼叫端(DesktopLayout.tsx)判斷目前右緣實際被哪個佔用、
   // 傳入對應值,把卡片推到它左側。'chat' 偏移量大於 'hotel'(對話小匡
   // 較寬),兩者都存在時呼叫端只會傳其中較寬的那個,不是疊加,詳見
@@ -112,49 +113,56 @@ export function GeoInfoPanel({
   // 慣例)。用 content 的參照當依賴重置——切換到別的地點介紹卡時,不該讓
   // 上一張卡片展開的 UI 殘留在新內容上。
   const [addUiMode, setAddUiMode] = useState<'closed' | 'menu' | 'calendar'>('closed')
-  const [dateValue, setDateValue] = useState('')
   useEffect(() => {
     setAddUiMode('closed')
-    setDateValue('')
   }, [content])
 
-  // dateMenuOpenUp/addCandidateWrapRef:.dateMenu 預設往下展開(見 CSS
-  // top: calc(100% + 6px)),但這張卡片本身可能出現在視窗下半部(例如
-  // 點擊地圖上靠近視窗底部的地點),導致按鈕位置偏低、選單往下展開會被
-  // 視窗邊界截斷或推出可視範圍外。addUiMode 切到 'menu' 時量測按鈕組
-  // (.addCandidateWrap)相對視窗底部的剩餘空間,不夠容納選單估計高度時
-  // 改成往上展開(dateMenuOpenUp=true,CSS 端對應切換 bottom 取代 top,
-  // 見 GeoInfoPanel.module.css 的 .dateMenuOpenUp)。用 getBoundingClientRect
-  // 量測而非 CSS-only 方案(如 @supports position-try),因為選單項目數
-  // 隨 scheduledDates 長度變動、實際高度無法只靠 CSS 預先得知。
+  // dateMenuOpenUp/addCandidateWrapRef:.dateMenu 與 .calendarPopover(見
+  // GeoInfoPanel.module.css)預設都往下展開(top: calc(100% + 6px)),但
+  // 這張卡片本身可能出現在視窗下半部(例如點擊地圖上靠近視窗底部的
+  // 地點),導致按鈕位置偏低、往下展開會被視窗邊界截斷或推出可視範圍
+  // 外。addUiMode 切到 'menu' 或 'calendar' 時都量測按鈕組
+  // (.addCandidateWrap)相對視窗底部的剩餘空間,不夠容納估計高度時改成
+  // 往上展開(dateMenuOpenUp=true,CSS 端對應切換 bottom 取代 top)。用
+  // getBoundingClientRect 量測而非 CSS-only 方案(如 @supports
+  // position-try),因為選單項目數隨 scheduledDates 長度變動、日曆本身
+  // 高度也不是固定值,無法只靠 CSS 預先得知。
   const addCandidateWrapRef = useRef<HTMLDivElement>(null)
   const [dateMenuOpenUp, setDateMenuOpenUp] = useState(false)
   useEffect(() => {
-    if (addUiMode !== 'menu') return
+    if (addUiMode === 'closed') return
     const wrap = addCandidateWrapRef.current
     if (!wrap) return
     const rect = wrap.getBoundingClientRect()
     const spaceBelow = window.innerHeight - rect.bottom
-    // 估計選單高度:每個選項約 30px(padding 7px*2 + 字高約 16px,見
-    // .dateMenuItem)+ 一個固定的「其他日期」選項 + 選單自身 padding
-    // (4px*2)+ 跟按鈕的間距(6px,見 CSS top: calc(100% + 6px))。用
-    // 估計值而非實際渲染後量測,避免「先渲染量測、量完發現不夠再翻轉」
-    // 這種會讓使用者看到選單先在錯誤位置閃一下的做法。
-    const estimatedItemCount = (scheduledDates?.length ?? 0) + 1
-    const estimatedMenuHeight = estimatedItemCount * 30 + 8 + 6
-    setDateMenuOpenUp(spaceBelow < estimatedMenuHeight)
+    if (addUiMode === 'menu') {
+      // 估計選單高度:每個選項約 30px(padding 7px*2 + 字高約 16px,見
+      // .dateMenuItem)+ 一個固定的「其他日期」選項 + 選單自身 padding
+      // (4px*2)+ 跟按鈕的間距(6px,見 CSS top: calc(100% + 6px))。用
+      // 估計值而非實際渲染後量測,避免「先渲染量測、量完發現不夠再翻轉」
+      // 這種會讓使用者看到選單先在錯誤位置閃一下的做法。
+      const estimatedItemCount = (scheduledDates?.length ?? 0) + 1
+      const estimatedMenuHeight = estimatedItemCount * 30 + 8 + 6
+      setDateMenuOpenUp(spaceBelow < estimatedMenuHeight)
+    } else {
+      // 日曆浮動匡估計高度:月份標題列(約32px)+ 星期列(約28px)+
+      // 最多 6 週 * 34px(見 DatePickerPopover.module.css 的
+      // --rdp-day-height)+ 外層 padding(8px*2,見 .wrap)+ 跟按鈕的
+      // 間距(6px)——用最寬鬆的 6 週估計,避免月份跨 6 週時才發現空間
+      // 不夠、UI 突然跳動。
+      const estimatedCalendarHeight = 32 + 28 + 6 * 34 + 16 + 6
+      setDateMenuOpenUp(spaceBelow < estimatedCalendarHeight)
+    }
   }, [addUiMode, scheduledDates])
 
-  // 點選單以外的地方收合:'menu' 展開時,在 document 上掛一個 mousedown
-  // 監聽——點擊落在 addCandidateWrapRef(按鈕組 + 懸浮選單本身,見上方
-  // ref 掛載處)之外就收回 'closed'。用 mousedown 而非 click,是為了
-  // 在選單項目自己的 onClick(handlePickScheduledDate/切到 'calendar')
-  // 觸發前就能正確判斷「這次點擊是不是點在選單內」,避免兩個事件的
-  // 觸發順序打架;只在 addUiMode === 'menu' 時才掛監聽、離開時立刻
-  // 移除,'calendar' 模式不受影響(那個模式沒有懸浮選單、原地展開,
-  // 也不需要點外部收合這個行為)。
+  // 點選單/日曆以外的地方收合:'menu'/'calendar' 展開時,在 document 上
+  // 掛一個 mousedown 監聽——點擊落在 addCandidateWrapRef(按鈕組 + 懸浮
+  // 選單/日曆本身,見上方 ref 掛載處)之外就收回 'closed'。用 mousedown
+  // 而非 click,是為了在選單項目自己的 onClick(handlePickScheduledDate/
+  // 切到 'calendar')或日曆格子的 onSelect 觸發前就能正確判斷「這次點擊
+  // 是不是點在浮層內」,避免兩個事件的觸發順序打架。 */
   useEffect(() => {
-    if (addUiMode !== 'menu') return
+    if (addUiMode === 'closed') return
     const handlePointerDown = (e: MouseEvent) => {
       if (addCandidateWrapRef.current?.contains(e.target as Node)) return
       setAddUiMode('closed')
@@ -190,11 +198,10 @@ export function GeoInfoPanel({
     setAddUiMode('closed')
   }
 
-  const handleConfirmDate = () => {
-    if (!candidate || !dateValue) return
-    onSchedule?.(candidate, dateValue)
+  const handleConfirmDate = (date: string) => {
+    if (!candidate) return
+    onSchedule?.(candidate, date)
     setAddUiMode('closed')
-    setDateValue('')
   }
 
   const shiftClass = shiftBy === 'chat' ? ` ${styles.shiftedChat}` : shiftBy === 'hotel' ? ` ${styles.shiftedHotel}` : ''
@@ -278,31 +285,22 @@ export function GeoInfoPanel({
                     </button>
                   </div>
                 )}
+                {/* 日期選擇日曆浮動匡:候選沒有排定日期時,按下「加入
+                    {tripName}」(或從上方下拉選單點「其他日期」)展開,
+                    絕對定位疊在按鈕組正下方,不推擠卡片其餘內容版面——
+                    跟 .dateMenu 是同一種疊層手法(見 .calendarPopover 的
+                    說明),使用者明確要求改成浮動小匡而非原地展開。改用
+                    DatePickerPopover(月曆格線 UI,見該元件開頭的說明,
+                    取代原本的原生 <input type="date">)。點選日期格子即
+                    視為確定,不需要額外的「確定」按鈕——原本的按鈕是
+                    搭配原生 date input 沒有選取瞬間回饋才需要的中介
+                    步驟。 */}
+                {addUiMode === 'calendar' && (
+                  <div className={`${styles.calendarPopover}${dateMenuOpenUp ? ` ${styles.calendarPopoverOpenUp}` : ''}`}>
+                    <DatePickerPopover onSelect={handleConfirmDate} />
+                  </div>
+                )}
               </div>
-              {/* 日期選擇 UI:候選沒有排定日期時,按下「加入 {tripName}」
-                  (或從上方下拉選單點「其他日期」)原地展開,不彈跳窗——
-                  樣式比照 GeoCandidateSidebar.tsx NoDateDayHead 的既有慣例
-                  (單一 <input type="date"> + 一顆確定按鈕),讓兩處「補日期」
-                  的互動語言一致。 */}
-              {addUiMode === 'calendar' && (
-                <div className={styles.dateEdit}>
-                  <input
-                    type="date"
-                    className={styles.dateInput}
-                    value={dateValue}
-                    onChange={(e) => setDateValue(e.target.value)}
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    className={styles.dateConfirmBtn}
-                    onClick={handleConfirmDate}
-                    disabled={!dateValue}
-                  >
-                    確定
-                  </button>
-                </div>
-              )}
             </>
           )}
         </div>

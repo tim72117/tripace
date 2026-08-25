@@ -3,8 +3,8 @@ import type { ClientConfig } from '../api'
 import type { Trip } from './types'
 import { ErrorBanner, isSubmitEnter } from '../AppCommon'
 import { useTripsState } from '../hooks/useTripsState'
+import { PanelHead } from '../PanelHead'
 import styles from './DesktopTripList.module.css'
-import '../styles-desktop.css'
 
 // 桌面版側欄行程列表:複用 useTripsState(與手機版 PhoneNavDrawer 的
 // 行程列表分頁共用抓取/建立邏輯),只是呈現方式改成緊湊的側欄列表項目,
@@ -35,9 +35,7 @@ export function DesktopTripList({
 
   return (
     <div className={styles.list}>
-      <div className="desktop-sidebar-head">
-        <span className="desktop-sidebar-title">行程</span>
-      </div>
+      <PanelHead title="旅程列表" />
       <ErrorBanner msg={err} />
       <div className={styles.scroll}>
         {trips.length === 0 && !err && (

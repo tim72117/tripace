@@ -1,9 +1,11 @@
 /* 桌面版版面骨架:整體佈局容器(.desktop-layout)、icon rail 根節點
    (.desktop-rail/.desktop-rail.expanded)、可收合側欄(.desktop-sidepanel*)、
    右側主要區塊(.desktop-main)、空狀態提示(.desktop-empty-state)——這些
-   是「版面本身長什麼樣子」的骨架容器樣式,從 styles-desktop.css 拆出來,
-   跟其餘「塞進骨架裡的具體內容/浮動卡片」樣式(仍留在 styles-desktop.css)
-   分開,依實際使用需要各自 import。
+   是「版面本身長什麼樣子」的骨架容器樣式。登入後正式介面(DesktopLayout.tsx)
+   的浮動卡片機制已改用獨立元件 FloatingPanel(見 FloatingPanel.tsx),不再
+   有額外的全域「內容/浮動卡片」樣式檔案;公開分享頁(pace/PacePage.tsx/
+   trip/PublicViewScreen.tsx)沿用的舊版「側欄+主區地圖」內容樣式現在各自
+   收在自己的 module.css。
 
    .desktop-rail/.desktop-rail.expanded 這兩個 class 名稱被
    DesktopUserMenu.module.css 用 :global(.desktop-rail)/

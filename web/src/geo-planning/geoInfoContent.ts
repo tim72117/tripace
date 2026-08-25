@@ -1,6 +1,6 @@
 import type { GeoAttraction, GeoPlaceDetails, GeoSearchResult } from '../api'
 import type { GeoInfoContent } from './GeoInfoPanel'
-import { type GeoCandidate } from './geoCandidateHelpers'
+import { type GeoCandidate, searchResultToCandidate } from './geoCandidateHelpers'
 
 // searchResultInfoContent:把飯店/推薦地點/搜尋結果三種來源統一後的
 // GeoSearchResult 轉成 GeoInfoPanel(桌面版)/GeoOutlinePhoneInfoSheet
@@ -20,10 +20,7 @@ export function searchResultInfoContent(r: GeoSearchResult): GeoInfoContent {
     photoUrl: r.photoUrl,
     subtitle: r.address,
     badges: [],
-    candidate:
-      r.kind === 'hotel'
-        ? { kind: 'hotel', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', photoUrl: r.photoUrl }
-        : { kind: 'place', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', category: r.category, photoUrl: r.photoUrl },
+    candidate: searchResultToCandidate(r),
   }
 }
 

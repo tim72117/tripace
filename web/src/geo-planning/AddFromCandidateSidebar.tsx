@@ -1,8 +1,8 @@
-import { X } from 'lucide-react'
 import {
   type GeoCandidate, candidateEntryKind, candidateListKey, dayGroupLabel, entryKindIcon,
 } from './GeoCandidateSidebar'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
+import { PanelHead } from '../PanelHead'
 import styles from './AddFromCandidateSidebar.module.css'
 
 // CandidateRow:單一候選項目的卡片——原本是 GeoCandidateSidebar.tsx 的
@@ -86,9 +86,9 @@ function CandidateRow({
 }
 
 // AddFromCandidateSidebar:「第二側欄」——絕對定位疊在主顯示區(地圖)
-// 左緣之上(見 DesktopLayout.tsx 的接線與 styles-desktop.css 的
-// .floating-panel/.floating-panel-left),不佔用 flex 版面空間、不推擠地圖——
-// 使用者明確要求漂浮在主顯示上方,不要壓縮主顯示的可用寬度。
+// 左緣之上(見 DesktopLayout.tsx 的接線與 FloatingPanel.tsx),不佔用
+// flex 版面空間、不推擠地圖——使用者明確要求漂浮在主顯示上方,不要壓縮
+// 主顯示的可用寬度。
 //
 // 由候選籃(GeoCandidateSidebar)每個已排入行程日期分組標題列的「從候選
 // 加入」按鈕觸發開啟。內容是候選中(hotel/place/inTrip===false 的
@@ -126,12 +126,7 @@ export function AddFromCandidateSidebar({
 }) {
   return (
     <aside className={styles.sidebar}>
-      <div className={styles.head}>
-        <span className={styles.title}>從候選加入 · {dayLabel}</span>
-        <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
-          <X size={16} strokeWidth={2} />
-        </button>
-      </div>
+      <PanelHead title={`從候選加入 · ${dayLabel}`} onClose={onClose} />
       <div className={styles.list}>
         {candidates.length === 0 ? (
           <div className={styles.empty}>候選籃目前是空的——先從左側清單「+」加入幾個候選,再回來這裡挑選。</div>

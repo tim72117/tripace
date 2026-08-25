@@ -217,8 +217,8 @@ body {
 /* 不限定 .row 祖先——.grow 的用途(flex:1 撐滿剩餘空間 + min-width:0 讓
    子層的 text-overflow: ellipsis 能真的生效)是通用的,任何 flex row 裡
    放一塊「文字可能過長要截斷」的內容都用得到,不是 .row 專屬。曾經只限定
-   在 .row .grow,導致 .desktop-trip-item/.desktop-user-trigger(見
-   styles-desktop.css)底下的同名 .grow 完全吃不到這條規則,文字過長時
+   在 .row .grow,導致 DesktopTripList.module.css/DesktopUserMenu.module.css
+   底下用 :global(.grow) 標記的同名 .grow 完全吃不到這條規則,文字過長時
    直接撐破容器邊界而非省略號截斷。 */
 .grow {
   flex: 1;

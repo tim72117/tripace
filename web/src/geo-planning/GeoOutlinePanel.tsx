@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoPlaceDetails, GeoPlaceText, GeoSearchResult, GeoTripEntry } from '../api'
 import { fetchEntries, fetchGeoGeocode, fetchGeoPlacePhoto, fetchGeoPlaceText, geocodeCandidateToSearchResult } from '../api'
+import { useStableCallback } from '../hooks/useStableCallback'
 import { GeoOutlineMap } from './GeoOutlineMap'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
 import styles from './GeoOutlinePanel.module.css'
@@ -329,7 +330,16 @@ export function GeoOutlinePanel({
   // 機制)——候選是使用者剛主動搜尋、意圖是「移動並查詢新範圍」,理由同
   // externalGeocodeCandidateSelect prop 的完整說明,移動後仍要重新查詢
   // 新範圍的景點/飯店資料。
-  const handleGeocodeCandidateSelect = (r: GeoSearchResult) => {
+  // useStableCallback:這個 handler 會被傳進 GeoOutlineMap →
+  // useSearchResultMarkers 的 onSelect,後者的 marker 建立 useEffect 把
+  // onSelect 放進依賴陣列(見該檔案的說明)——若這裡是一般函式,每次
+  // GeoOutlinePanel 重渲染(例如使用者拖曳地圖觸發 bounds/zoom 狀態
+  // 更新連帶父層重渲染)都會產生新的函式參照,讓那個 effect 誤判成
+  // 「有新一批搜尋結果」而重新執行,若清單裡含 geocode 結果還會重新
+  // fitBounds、把地圖拉回搜尋結果範圍(這是實際發生過的 bug:拖曳地圖
+  // 會自動彈回原位)。用 useStableCallback 讓這個 handler 天生擁有穩定
+  // 參照,消費端不需要再各自寫 ref 包裝防禦這件事。
+  const handleGeocodeCandidateSelect = useStableCallback((r: GeoSearchResult) => {
     onSearchResultSelect?.(r)
     setPanRequest({ lat: r.lat, lng: r.lng, suppressQuery: false, onlyIfOutOfView: true })
     // 文字/照片補查交給下方統一的 selectedCandidate effect,不在這裡
@@ -339,7 +349,7 @@ export function GeoOutlinePanel({
     // geocode 類型會有 placeId(見 GeoSearchResult 的說明),hotel/place
     // 沒有 placeId,下方 effect 會自然 no-op,不需要在這裡先過濾。
     setSelectedCandidate(r)
-  }
+  })
 
   // selectedCandidate 變動時(見該 state 的說明)平行查文字/照片——文字
   // (fetchGeoPlaceText)通常先回來,能讓資訊卡提早顯示完整名稱/地址/
@@ -355,6 +365,19 @@ export function GeoOutlinePanel({
   // stale closure(見 git 歷史這裡曾經修過的實際 bug)。沒有 placeId 時
   // 不查(理論上 Text Search 每筆結果都會有,見 GeoGeocodeCandidate 型別
   // 的說明;沒有就維持只顯示輕量版內容,不視為錯誤)。
+  //
+  // 依賴陣列刻意用 selectedCandidate?.placeId(字串),不是 selectedCandidate
+  // 本身(物件參照)——這是實際發生過的 bug:地圖上連續點同一顆 marker
+  // 兩次,useSearchResultMarkers.ts 的 gmp-click handler 是在 marker 建立
+  // 當下就把 GeoSearchResult 物件封進 closure,同一顆 marker 兩次點擊傳的
+  // 是完全相同的物件參照,setSelectedCandidate(r) 沒有換掉參照,若依賴
+  // 陣列比對的是物件本身,React 會判定「沒有變化」而不重新執行這個
+  // effect,導致 handleGeocodeCandidateSelect 已經把卡片內容重置成輕量版
+  // (見該函式呼叫的 onSearchResultSelect),卻沒有觸發任何補查請求,評分/
+  // 簡介/「加入行程」按鈕永久消失、不會補回來(側欄清單點擊不會出現這個
+  // 問題,是因為 selectSearchResultFromList 每次都用 {...r} 建立新物件)。
+  // 改成比對 placeId 這個穩定字串後,不管呼叫端傳的是不是新物件參照,只要
+  // 選定的地點沒變就不重查、變了就一定重查,兩種入口行為一致。
   useEffect(() => {
     const placeId = selectedCandidate?.placeId
     if (!placeId) return
@@ -376,17 +399,19 @@ export function GeoOutlinePanel({
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCandidate])
+  }, [selectedCandidate?.placeId])
 
   // externalGeocodeCandidateSelect(GeoHotelSidebar 合併清單裡的候選項目
   // 被點擊,見該 prop 的說明)變動時,直接呼叫跟地圖上點 candidate
   // marker 完全相同的 handleGeocodeCandidateSelect——兩種入口共用同一份
   // 邏輯,不重新實作一份跳過 suppressQuery:false 的簡化版。
+  // handleGeocodeCandidateSelect 現在用 useStableCallback 包過(見該處
+  // 說明),參照永遠不變,可以放心放進依賴陣列,不需要 eslint-disable
+  // 跳過檢查。
   useEffect(() => {
     if (!externalGeocodeCandidateSelect) return
     handleGeocodeCandidateSelect(externalGeocodeCandidateSelect)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [externalGeocodeCandidateSelect])
+  }, [externalGeocodeCandidateSelect, handleGeocodeCandidateSelect])
 
   // 切到這個分頁或換行程時,若行程底下已有帶座標的 entry,算出這些點的
   // 平均座標當地圖初始中心——只在 tripID 變動時查一次,不是每次都重查:
@@ -485,8 +510,8 @@ export function GeoOutlinePanel({
 
   return (
     // geo-outline-panel-wrap:固定字串 class(與 CSS Modules 的 styles.wrap
-    // 並存),供 styles-desktop.css 的 .desktop-main:has(...) 全域選擇器
-    // 偵測——理由同 PaceRouteMap.tsx 的 pace-route-map-wrap(見該檔案
+    // 並存),供 desktop-layout-shell.css 的 .desktop-main:has(...) 全域
+    // 選擇器偵測——理由同 PaceRouteMap.tsx 的 pace-route-map-wrap(見該檔案
     // module.css 的說明):CSS Modules 雜湊過的名稱編譯時不固定,外部
     // 全域 CSS 選擇器無法可靠指到它,故需要一個不受雜湊影響的固定名稱。
     <div className={`${styles.wrap} geo-outline-panel-wrap`}>

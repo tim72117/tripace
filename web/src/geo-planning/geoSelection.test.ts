@@ -154,4 +154,43 @@ describe('geoSelectionReducer', () => {
     })
     expect(second).toEqual({ kind: 'info', key: 'geocode:候選B', content: { name: '候選B', badges: [] } })
   })
+
+  // 對應「地圖上連續點同一顆 geocode marker 兩次」的實際 bug:第一次點擊
+  // 補查完成後(PATCH_INFO_CONTENT 補上 photoUrl/candidate),第二次點擊
+  // 同一個地點若無條件用輕量版 content 覆蓋,已經補齊的欄位會被清空,
+  // 且 GeoOutlinePanel.tsx 的補查 effect 依賴 placeId 沒變不會重新觸發,
+  // 導致照片/加入行程按鈕永久消失。這裡驗證同一個 key 重複 SELECT_INFO
+  // 時保留既有的(較完整的)內容,不整卡覆蓋回呼叫端傳入的輕量版。
+  it('SELECT_INFO 對同一個 key 重複選取時,保留既有內容不覆蓋', () => {
+    const first = geoSelectionReducer(GEO_SELECTION_NONE, {
+      type: 'SELECT_INFO',
+      key: 'geocode:候選A',
+      content: { name: '候選A', badges: [] },
+    })
+    const patched = geoSelectionReducer(first, {
+      type: 'PATCH_INFO_CONTENT',
+      patch: (prev) => ({ ...prev, photoUrl: 'https://example.com/photo.jpg', candidate: undefined }),
+    })
+    const secondClickSameKey = geoSelectionReducer(patched, {
+      type: 'SELECT_INFO',
+      key: 'geocode:候選A',
+      content: { name: '候選A', badges: [] },
+    })
+    expect(secondClickSameKey).toEqual(patched)
+  })
+
+  // key 為 undefined 的來源(原生 POI 點擊,見上方「未帶 key」測試)不受
+  // 這個保留邏輯影響——每次都視為新一次選取、整卡替換,理由是這類來源
+  // 本來就沒有穩定識別鍵可以比對「是不是同一個地點」。
+  it('SELECT_INFO 未帶 key 時,即使內容相同也不觸發保留邏輯', () => {
+    const first = geoSelectionReducer(GEO_SELECTION_NONE, {
+      type: 'SELECT_INFO',
+      content: { name: 'POI A', badges: [] },
+    })
+    const second = geoSelectionReducer(first, {
+      type: 'SELECT_INFO',
+      content: { name: 'POI B', badges: [] },
+    })
+    expect(second).toEqual({ kind: 'info', key: undefined, content: { name: 'POI B', badges: [] } })
+  })
 })
