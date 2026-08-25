@@ -25,6 +25,7 @@
 - **加入行程成功後，已經展開的行程欄反而被收合**（`DesktopLayout.tsx`）：誤用了帶有「再次呼叫同一個 mode 會 toggle 收合」邏輯的 `setPanelMode`，改為直接呼叫 `navigate` 導向目標路徑，不受 toggle 邏輯影響。
 - **候選籃某天「從候選加入」卡片外殼樣式全部失效、畫面版面錯亂**（`DesktopLayout.tsx`）：先前浮動卡片外殼重構時漏改這個分支，仍引用已經搬移、不存在的 CSS class 名稱，導致這張卡片變成沒有任何定位/樣式的裸元素。改用共用的 `FloatingPanel` 元件，並依需求調整為與行程欄並排顯示（不再互斥取代）。
 - **Google Places 地點詳細資訊查詢缺少語系參數，回應內容為英文**（`server/internal/geo/places.go`）：`GetPlaceDetails` 補上 `languageCode=zh-TW`。
+- **`web/package-lock.json` 版本解析無效，Docker build 內 `npm ci` 失敗**：lockfile 在本機 npm 11 環境下產生，`vitest` v4 巢狀相依的 `vite@8.x` 要求 `esbuild@^0.27||^0.28`，被本機 npm 11 錯誤去重成跟頂層 `vite@5.x` 共用不相容的 `esbuild@0.21.5`，本機較新版 npm 容忍此無效狀態繼續運作，但 `Dockerfile` 用的 `node:22-alpine`（內建 npm 10.9.8）執行 `npm ci` 時嚴格拒絕。改在與 `Dockerfile` 完全一致的容器環境內重新產生 lockfile，讓兩份巢狀 `esbuild` 各自獨立鎖定相容版本。
 
 ### 清理
 
