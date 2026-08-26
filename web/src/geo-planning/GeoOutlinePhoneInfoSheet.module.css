@@ -1,56 +1,22 @@
-/* backdrop:半透明背景鋪滿全螢幕,點擊背景(非 sheet 本體)可關閉——同
-   PhoneContent.tsx 既有 .settingsPanel/.sharePanel 的疊層慣例。 */
-.backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  display: flex;
-  align-items: flex-end;
-  background: rgba(0, 0, 0, 0.32);
-}
-
-/* sheet:從下滑入蓋住畫面下半部,不佔滿全螢幕——讓使用者仍看得到上半部
-   地圖,可以在資訊卡開啟狀態下繼續觀察地圖位置(同桌面版 GeoInfoPanel
-   「卡片與地圖並存可見」的體感)。max-height 由 GeoOutlinePhoneInfoSheet.tsx
-   透過行內 style 動態控制(見該檔案 dragHandle 拖曳的說明,預設 60vh、
-   可往上拖曳展開到 90vh)+ overflow-y:auto 處理內容過長的情況(比照
-   桌面版 GeoInfoPanel.module.css 的 .panel)。transition 只在拖曳結束
-   後套用(拖曳中即時跟手,見該檔案 draggingRef 的說明)。 */
-.sheet {
-  width: 100%;
-  overflow-x: hidden;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  border-radius: 20px 20px 0 0;
-  background: var(--ios-card);
-  box-shadow: 0 -8px 28px rgba(61, 53, 48, 0.22);
-}
-
-/* dragHandle:頂部拖曳把手,比照 GeoOutlinePhoneListDrawer.module.css/
-   trip/PhoneTripsDrawer.module.css 的同名規則——這裡多了「往上拖曳展開
-   卡片高度」的用途,不只是「往下拖曳關閉」,理由見
-   GeoOutlinePhoneInfoSheet.tsx 的拖曳手勢說明。 */
-.dragHandle {
-  flex: 0 0 auto;
-  display: flex;
-  justify-content: center;
-  padding: 10px 0 4px;
-  touch-action: none;
-}
-
-.dragHandleBar {
-  width: 36px;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--ios-sep);
-}
+/* GeoOutlinePhoneInfoSheet.tsx 專屬樣式(CSS Modules)。外殼
+   (backdrop/panel/dragHandle)已改用共用容器
+   components/PhoneBottomSheet.tsx(mode="snap"),定位樣式
+   (position/z-index/bottom/background)透過 panelStyle/backdropStyle
+   傳入(見該檔案呼叫端的說明),這裡只保留 head/內容區塊本身的樣式。 */
 
 /* head:標頭區塊(名稱/副標/badges + 加入行程 icon 按鈕 + 關閉按鈕),見
    GeoOutlinePhoneInfoSheet.tsx 的說明——使用者明確要求放在圖片上方,
    原本圖片滿版貼齊卡片邊緣、關閉按鈕疊在圖片右上角的做法已移除。
    headText 用 min-width: 0 讓長名稱能正確被右側兩顆按鈕(flex: 0 0 auto)
-   擠壓省略,不會把按鈕推出可視範圍。 */
+   擠壓省略,不會把按鈕推出可視範圍。不覆寫 touch-action(維持繼承共用
+   容器 .panel 的 touch-action: none)——曾經在這裡加過 pan-y 想讓內容
+   區可以原生捲動,但會讓瀏覽器把這幾塊區域的觸控事件當成原生垂直捲動
+   處理,不再派發給 React 的 onTouchMove,導致整張卡片絕大部分面積
+   (標頭/圖片/內容)完全無法觸發拖曳收合/展開手勢,只剩下拖曳把手那一
+   小條還能拖(使用者實測回報「介紹卡變成不能拉動了」)——跟「整張卡片
+   都能拖曳」(對齊 GeoOutlinePhoneListDrawer.tsx,使用者明確要求)的目標
+   衝突,取捨後拿掉這個覆寫,簡介文字改靠 body 的 overflow-y: auto 處理
+   捲動(理由同 components/PhoneBottomSheet.tsx 的 .body 說明)。 */
 .head {
   flex: 0 0 auto;
   display: flex;
@@ -99,7 +65,8 @@
 }
 
 /* imageWrap:圖片左右留間距,不再滿版貼齊卡片邊緣(使用者明確要求)——
-   padding 對齊 .head/.content 的水平留白(16px)。 */
+   padding 對齊 .head/.content 的水平留白(16px)。不覆寫 touch-action,
+   說明見上方 .head。 */
 .imageWrap {
   flex: 0 0 auto;
   padding: 0 16px;
@@ -118,6 +85,7 @@
   background: linear-gradient(135deg, #C4956A, #9E9488);
 }
 
+/* 不覆寫 touch-action,說明見上方 .head。 */
 .content {
   padding: 14px 16px calc(18px + env(safe-area-inset-bottom, 0px));
   display: flex;

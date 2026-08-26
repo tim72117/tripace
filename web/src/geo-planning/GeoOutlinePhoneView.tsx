@@ -48,12 +48,22 @@ export function GeoOutlinePhoneView({
   tripID,
   activeTrip,
   user,
+  active,
   onOpenSettings,
   onOpenTimeline,
   onOpenTrips,
 }: {
   cfg: ClientConfig
   tripID?: string | null
+  // active:是否為目前主畫面顯示的分頁——這個元件現在由呼叫端
+  // (PhoneContent.tsx)永遠掛載,不再隨分頁切換整個卸載重掛(使用者回報
+  // 「規劃地圖第一次開啟會閃動」,根因是切分頁時整個 GeoOutlinePhoneView
+  // 被銷毀重建,Google Maps SDK 每次都要重新跑一次建圖流程)。active 為
+  // false 時只用 CSS(display:none)隱藏,元件本身、內部 state、地圖
+  // 實例全部維持存活,切回來時不需要重新初始化——對齊桌面版
+  // GeoOutlinePanel 永遠掛載、只用浮動卡片疊加其他內容的既有模式(見
+  // DesktopLayout.tsx 的說明)。
+  active: boolean
   // activeTrip:判斷使用者是否已選定旅程——為空時「加入行程」按下要先
   // 導向旅程列表(見下方 onOpenTrips),理由同桌面版 DesktopLayout.tsx
   // 的 pendingSchedule 機制。
@@ -110,7 +120,7 @@ export function GeoOutlinePhoneView({
   }, [geo])
 
   return (
-    <div className={styles.wrap}>
+    <div className={`${styles.wrap}${active ? '' : ` ${styles.inactive}`}`}>
       <div className={styles.candidateGroup}>
         <button
           type="button"

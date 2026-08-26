@@ -255,24 +255,34 @@ export function PhoneContent(props: ContentProps) {
           版面(撐滿剩餘高度、內部再各自 flex column 排 navbar/內容/
           輸入列)。 */}
       <div className={styles.mainArea}>
-        {effectiveMainMode === 'geo-outline' ? (
-          // 規劃地圖分頁:不渲染 MainNavBar,搜尋框/使用者頭像/候選籃
-          // 按鈕改由 GeoOutlinePhoneView 自己疊在地圖上方。activeTrip
-          // 供候選籃「加入行程」判斷是否已選定旅程使用。
-          <GeoOutlinePhoneView
-            cfg={cfg}
-            tripID={activeTrip?.id ?? null}
-            activeTrip={activeTrip}
-            user={props.user}
-            onOpenSettings={() => setInSettings(true)}
-            onOpenTimeline={TIMELINE_ENABLED ? () => setTimelineDrawerOpen(true) : undefined}
-            onOpenTrips={() => setTripsDrawerOpen(true)}
-          />
-        ) : effectiveMainMode === 'pace' ? (
+        {/* 規劃地圖:永遠掛載,不隨分頁切換卸載重掛——使用者回報「規劃
+            地圖第一次開啟會閃動」,根因是這個元件原本包在下方的分頁
+            條件式裡,每次切分頁都整個銷毀重建,Google Maps SDK 要重新
+            跑一次建圖流程。改成永遠渲染、用 active prop 控制
+            display:none(見 GeoOutlinePhoneView.tsx 的說明),對齊桌面版
+            GeoOutlinePanel 永遠掛載的既有模式(DesktopLayout.tsx)。
+            不渲染 MainNavBar,搜尋框/使用者頭像/候選籃按鈕改由
+            GeoOutlinePhoneView 自己疊在地圖上方。activeTrip 供候選籃
+            「加入行程」判斷是否已選定旅程使用。 */}
+        <GeoOutlinePhoneView
+          active={effectiveMainMode === 'geo-outline'}
+          cfg={cfg}
+          tripID={activeTrip?.id ?? null}
+          activeTrip={activeTrip}
+          user={props.user}
+          onOpenSettings={() => setInSettings(true)}
+          onOpenTimeline={TIMELINE_ENABLED ? () => setTimelineDrawerOpen(true) : undefined}
+          onOpenTrips={() => setTripsDrawerOpen(true)}
+        />
+        {effectiveMainMode === 'pace' ? (
           // 配速表分頁:主顯示區改成地圖(對齊桌面版 .desktop-main 在
           // panelMode === 'pace' 時顯示 PaceRouteMap 的邏輯)。標題顯示
           // 目前旅程名稱(不是「配速表」這個畫面名稱本身,配速表已經是
-          // 這個畫面唯一的內容,不需要再重複標示)。
+          // 這個畫面唯一的內容,不需要再重複標示)。跟規劃地圖不同,這裡
+          // 維持條件式掛載(而非永遠掛載+CSS隱藏)——PaceRouteMap 是
+          // 使用者主動切換分頁才需要的路徑地圖,不是進 App 就會看到的
+          // 起始畫面,沒有「第一次開啟閃動」的既有回報,不需要一併擴大
+          // 這次修法範圍。
           <>
             <MainNavBar
               mode={effectiveMainMode}
@@ -288,7 +298,7 @@ export function PhoneContent(props: ContentProps) {
               onEntrySaved={setSavedEntry}
             />
           </>
-        ) : activeTrip ? (
+        ) : effectiveMainMode !== 'geo-outline' && activeTrip ? (
           // 對話顯示在主顯示區:navbar 統一由這裡渲染(時間軸/路徑切換、
           // 標題、ChatScreen 自己 navbar 右側按鈕的投影目標),ChatScreen
           // 本身不再畫這段(見 ChatScreen.tsx 的 mobileHeader==='main')。
@@ -306,13 +316,13 @@ export function PhoneContent(props: ContentProps) {
             />
             <div ref={setMainChatSlotNode} className={styles.chatSlot} />
           </>
-        ) : (
+        ) : effectiveMainMode !== 'geo-outline' ? (
           <PhoneEmptyState
             onOpenTrips={() => setTripsDrawerOpen(true)}
             onSelectMode={setDrawerMode}
             onOpenTimeline={() => setTimelineDrawerOpen(true)}
           />
-        )}
+        ) : null}
         {/* PhoneSideTools:右側下方路徑+demo-* 小圖示,跨所有主畫面模式
             共用(不是規劃地圖專屬),見該元件開頭說明。 */}
         <PhoneSideTools tools={sideTools} onSelect={setDrawerMode} />

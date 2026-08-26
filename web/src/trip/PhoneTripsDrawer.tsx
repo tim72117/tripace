@@ -1,18 +1,24 @@
 import { Plus, MapPin, Settings } from 'lucide-react'
 import type { Trip } from './types'
 import { ErrorBanner, isSubmitEnter } from '../AppCommon'
-import { useDragToClose } from '../hooks/useDragToClose'
+import { PhoneBottomSheet } from '../components/PhoneBottomSheet'
 import styles from './PhoneTripsDrawer.module.css'
 
 // PhoneTripsDrawer:旅程列表獨立抽屜,由下往上彈出(bottom sheet),由
 // PhoneContent.tsx 的「旅程」入口(底部常駐列/空狀態按鈕,見該檔案的
 // tripsDrawerOpen state)開關,只有一種內容:瀏覽/新增旅程。
 //
-// 拖曳關閉手勢(向下拖超過門檻關閉)由 useDragToClose 共用 hook 提供,
-// 視覺語言對齊一般 App 常見的底部彈出選單(使用者要求「行程由下方往上
-// 彈出」,原本是左側滑入抽屜)。
+// 外殼(backdrop/panel/dragHandle)與拖曳關閉手勢(向下拖超過門檻關閉)
+// 改用共用容器 PhoneBottomSheet(mode="slide-close"),視覺語言對齊一般
+// App 常見的底部彈出選單(使用者要求「行程由下方往上彈出」,原本是左側
+// 滑入抽屜)。z-index/bottom 定位維持原本數值,透過 panelStyle/
+// backdropStyle 傳入——貼齊底部常駐列(PhoneTabBar.tsx)上緣,不是螢幕
+// 最底部,bottom 值等於 PhoneTabBar.module.css 的 .bar 高度
+// (64px + safe-area),兩處數值需要保持一致,PhoneTabBar 的高度公式之後
+// 若調整這裡要一併改。
 
 const SHEET_MAX_HEIGHT_VH = 70
+const SHEET_BOTTOM = 'calc(64px + env(safe-area-inset-bottom, 0px))'
 
 export function PhoneTripsDrawer({
   open,
@@ -47,109 +53,92 @@ export function PhoneTripsDrawer({
   onManage: (t: Trip) => void
   onClose: () => void
 }) {
-  const { translate, transition, onTouchStart, onTouchMove, onTouchEnd } = useDragToClose({
-    axis: 'y',
-    open,
-    onClose,
-  })
-
   return (
-    <>
-      {open && (
-        <div className={styles.backdrop} onClick={onClose} aria-hidden="true" />
-      )}
-      <div
-        className={styles.panel}
-        style={{
-          maxHeight: `${SHEET_MAX_HEIGHT_VH}vh`,
-          transform: `translateY(${translate})`,
-          transition,
-        }}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-      >
-        <div className={styles.dragHandle}>
-          <div className={styles.dragHandleBar} />
-        </div>
-        <div className="screen-body">
-          <ErrorBanner msg={err} />
-          {trips.length === 0 && !err && (
-            <div className="empty">
-              {loading ? '載入中…' : '沒有旅程。按下方「新增旅程」建立一個。'}
-            </div>
-          )}
-          <ul className={styles.tripList}>
-            {/* 新增旅程:跟下面實際的旅程項目共用同一套 .tripItem 樣式
-                (借來瀏覽/新增旅程的是同一個工具畫面,視覺上該是同一組清單
-                的一份子,不是另一顆突兀的強調色橫幅按鈕),只把大頭貼換成
-                「＋」圖示徽章區分。點擊後這個項目原地換成輸入框(composer),
-                下面既有旅程清單維持可見、可捲動,不會像原本整塊消失。 */}
-            <li>
-              {creating ? (
-                <div className="new-trip-composer">
-                  <input
-                    autoFocus
-                    value={newName}
-                    placeholder="新旅程名稱…"
-                    onChange={(e) => setNewName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (isSubmitEnter(e)) submitCreate()
-                      if (e.key === 'Escape') {
-                        setCreating(false)
-                        setNewName('')
-                      }
-                    }}
-                  />
-                  <button className="btn-primary" onClick={submitCreate} disabled={!newName.trim()}>
-                    建立
-                  </button>
+    <PhoneBottomSheet
+      open={open}
+      onClose={onClose}
+      mode="slide-close"
+      maxHeightVh={SHEET_MAX_HEIGHT_VH}
+      panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: 33 }}
+      backdropStyle={{ top: 0, left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: 32, background: 'rgba(0, 0, 0, 0.35)' }}
+    >
+      <div className="screen-body">
+        <ErrorBanner msg={err} />
+        {trips.length === 0 && !err && (
+          <div className="empty">
+            {loading ? '載入中…' : '沒有旅程。按下方「新增旅程」建立一個。'}
+          </div>
+        )}
+        <ul className={styles.tripList}>
+          {/* 新增旅程:跟下面實際的旅程項目共用同一套 .tripItem 樣式
+              (借來瀏覽/新增旅程的是同一個工具畫面,視覺上該是同一組清單
+              的一份子,不是另一顆突兀的強調色橫幅按鈕),只把大頭貼換成
+              「＋」圖示徽章區分。點擊後這個項目原地換成輸入框(composer),
+              下面既有旅程清單維持可見、可捲動,不會像原本整塊消失。 */}
+          <li>
+            {creating ? (
+              <div className="new-trip-composer">
+                <input
+                  autoFocus
+                  value={newName}
+                  placeholder="新旅程名稱…"
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (isSubmitEnter(e)) submitCreate()
+                    if (e.key === 'Escape') {
+                      setCreating(false)
+                      setNewName('')
+                    }
+                  }}
+                />
+                <button className="btn-primary" onClick={submitCreate} disabled={!newName.trim()}>
+                  建立
+                </button>
+              </div>
+            ) : (
+              <button type="button" className={styles.tripItem} onClick={() => setCreating(true)}>
+                <div className={styles.newTripIcon}>
+                  <Plus size={18} strokeWidth={1.8} />
                 </div>
-              ) : (
-                <button type="button" className={styles.tripItem} onClick={() => setCreating(true)}>
+                <div className={styles.tripGrow}>
+                  <div className={styles.tripName}>新增旅程</div>
+                </div>
+              </button>
+            )}
+          </li>
+          {trips.map((t) => (
+            <li key={t.id}>
+              <div className={`${styles.tripItem}${t.id === activeTripID ? ` ${styles.tripItemActive}` : ''}`}>
+                <button
+                  type="button"
+                  className={styles.tripItemOpen}
+                  onClick={() => onSelectTrip(t)}
+                >
                   <div className={styles.newTripIcon}>
-                    <Plus size={18} strokeWidth={1.8} />
+                    <MapPin size={18} strokeWidth={1.8} />
                   </div>
                   <div className={styles.tripGrow}>
-                    <div className={styles.tripName}>新增旅程</div>
+                    <div className={styles.tripName}>{t.name}</div>
+                    <div className={styles.tripSub}>
+                      {t.lastMessagePreview ?? '尚無訊息'} · {t.memberCount} 人
+                    </div>
                   </div>
                 </button>
-              )}
+                {/* 管理:對齊桌面版 DesktopTripList.tsx 的 itemAction,
+                    見上方 onManage 說明。 */}
+                <button
+                  type="button"
+                  className={styles.tripItemAction}
+                  onClick={() => onManage(t)}
+                  title="旅程設定"
+                >
+                  <Settings size={15} strokeWidth={1.8} />
+                </button>
+              </div>
             </li>
-            {trips.map((t) => (
-              <li key={t.id}>
-                <div className={`${styles.tripItem}${t.id === activeTripID ? ` ${styles.tripItemActive}` : ''}`}>
-                  <button
-                    type="button"
-                    className={styles.tripItemOpen}
-                    onClick={() => onSelectTrip(t)}
-                  >
-                    <div className={styles.newTripIcon}>
-                      <MapPin size={18} strokeWidth={1.8} />
-                    </div>
-                    <div className={styles.tripGrow}>
-                      <div className={styles.tripName}>{t.name}</div>
-                      <div className={styles.tripSub}>
-                        {t.lastMessagePreview ?? '尚無訊息'} · {t.memberCount} 人
-                      </div>
-                    </div>
-                  </button>
-                  {/* 管理:對齊桌面版 DesktopTripList.tsx 的 itemAction,
-                      見上方 onManage 說明。 */}
-                  <button
-                    type="button"
-                    className={styles.tripItemAction}
-                    onClick={() => onManage(t)}
-                    title="旅程設定"
-                  >
-                    <Settings size={15} strokeWidth={1.8} />
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
+          ))}
+        </ul>
       </div>
-    </>
+    </PhoneBottomSheet>
   )
 }

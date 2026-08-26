@@ -1,0 +1,77 @@
+/* PhoneBottomSheet.tsx 專屬樣式(CSS Modules)。backdrop/panel 的基礎
+   視覺語言(上緣圓角、拖曳把手、box-shadow)比照三份原始檔案
+   (trip/PhoneTripsDrawer.module.css、
+   geo-planning/GeoOutlinePhoneListDrawer.module.css、
+   geo-planning/GeoOutlinePhoneInfoSheet.module.css)彼此一致的部分——
+   定位相關屬性(position/z-index/left/right/bottom/background)不在這裡
+   寫死,由呼叫端透過 panelStyle/backdropStyle 傳入(見
+   PhoneBottomSheet.tsx 的說明)。
+
+   backdrop 的顯示/隱藏由 PhoneBottomSheet.tsx 條件渲染(節點掛載/卸載)
+   控制,不是靠 opacity 切換——直接卸載沒有退場動畫的機會,這裡用
+   animation: fadeIn 讓掛載當下至少有進場淡入,卸載時的瞬間消失則接受
+   (backdrop 本身只是遮罩,消失得快不太打斷體感,跟 panel 本體的滑動/
+   高度動畫是分開處理的兩件事)。 */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.backdrop {
+  position: absolute;
+  inset: 0;
+  animation: fadeIn 0.2s ease;
+}
+
+/* panel:touch-action: none——拖曳手勢由 PhoneBottomSheet.tsx 自己的
+   onTouchMove 處理,不讓瀏覽器原生 touch pan 介入搶事件,確保整張卡片
+   都能穩定觸發拖曳(使用者明確要求)。.body 內部內容捲動改由
+   overflow-y: auto 處理——這代表按在內容區拖曳時,拖曳手勢優先於內容
+   捲動,不會有兩者搶事件的問題,但也意味著內容本身無法用手指原生
+   捲動,只能靠拖曳把卡片展開到夠高、把內容整個露出來看。 */
+.panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--ios-bg);
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
+  touch-action: none;
+  overflow: hidden;
+}
+
+/* panelCollapsed:'snap' 模式停在最小 snap point 時的狀態——不使用
+   display: none 隱藏 .body(那樣會在收合動畫播放中途瞬間消失,跟 .panel
+   的 height transition 不同步,視覺上像是「內容先不見、卡片才慢慢
+   收合」而非平滑收縮,是實際發生過的體感問題)。改成只把 .body 的
+   visibility/opacity 調整為不可見,讓它繼續留在 DOM 版面裡,隨 .panel
+   的 height 收縮時被父層 overflow: hidden 自然裁切、平滑淡出——
+   head slot 不受影響維持顯示,panel 自然收縮成一條標頭列,仍留在畫面上
+   (不是完全關閉/消失,見 PhoneBottomSheet.tsx 的 mode 說明)。 */
+.panelCollapsed .body {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+/* dragHandle:bottom sheet 頂部的拖曳把手視覺提示,讓使用者一眼看出
+   可以拖曳——三份原始檔案共通的慣例元素。 */
+.dragHandle {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 4px;
+}
+
+.dragHandleBar {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ios-sep);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}

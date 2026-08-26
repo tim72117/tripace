@@ -1,22 +1,49 @@
-import { useEffect, useRef, useState } from 'react'
-import type { TouchEvent as ReactTouchEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import type { GeoAttraction } from '../api'
 import type { GeoInfoContent } from './GeoInfoPanel'
 import { attractionBadges } from './geoInfoContent'
 import { candidateHasScheduledDate, dayGroupLabel, type GeoCandidate } from './geoCandidateHelpers'
+import { PhoneBottomSheet, PHONE_BOTTOM_SHEET_EXIT_MS } from '../components/PhoneBottomSheet'
 import styles from './GeoOutlinePhoneInfoSheet.module.css'
 
-// SHEET_MIN/MAX_HEIGHT_VH:資訊卡預設高度(60vh,同原本固定值)與往上
-// 拖曳展開的上限(90vh,留一點空間讓使用者仍能看到地圖與狀態列,不整個
-// 佔滿螢幕)。
-const SHEET_MIN_HEIGHT_VH = 60
-const SHEET_MAX_HEIGHT_VH = 90
+// SHEET_SNAP_POINTS:三段式高度(vh,使用者明確要求「最小/中間/滿版」
+// 三段吸附,見 components/PhoneBottomSheet.tsx 的 mode="snap" 說明,
+// 共用容器泛化支援任意段數,不限兩段)——
+// [0] 最小/收合狀態:只顯示標頭,見該值選擇理由(12 才能完整容納
+//     .head 的實際內容:名稱可能到 2 行 + 副標 + badges 換行 + 拖曳
+//     把手,原本用 8 太小導致標頭被裁切只剩一小條)。
+// [1] 中間狀態:能看到圖片+標頭,簡介文字部分被截斷(卡片高度不夠完整
+//     顯示,使用者可以再往上拉到 SHEET_SNAP_POINTS[2] 或靠 .body 的
+//     overflow-y: auto 捲動看更多)。
+// [2] 滿版/展開狀態:完整內容,理由與做法對齊
+//     GeoOutlinePhoneListDrawer.tsx 的 SHEET_MAX_HEIGHT_VH(該檔案用
+//     70vh,這裡維持原本的 90vh,資訊卡內容含圖片/簡介較長,需要更多
+//     空間)。
+const SHEET_SNAP_POINTS = [12, 50, 90]
 
 // GeoOutlinePhoneInfoSheet:手機版規劃地圖資訊卡,從畫面下方滑入蓋住下
 // 半部——桌面版對應的 GeoInfoPanel/AttractionInfoPanel 是絕對定位疊在
 // 地圖右緣的浮動卡片,手機螢幕沒有那個空間,改用 bottom sheet(同 iOS/
 // Material Design 地圖 App 的資訊卡呈現方式)。
+//
+// 外殼(backdrop/panel/dragHandle)與拖曳手勢改用共用容器
+// components/PhoneBottomSheet.tsx(mode="snap"),對齊 GeoOutlinePhoneListDrawer.tsx
+// 「整張卡片都能拖曳,不限頂部把手」的觸控區域(使用者明確要求),但
+// 「拖曳到底」的語意跟地點清單不同,不是滑出畫面消失,而是收合成只剩
+// head 標題列並保留在畫面上(使用者明確要求)——用 SHEET_SNAP_POINTS
+// 兩段式吸附高度表達:
+//  - 往下拖:吸附到索引 0(收合成標題列),卡片仍留在畫面上,不觸發
+//    onClose。
+//  - 收合狀態下往上拖:吸附到索引 1(展開回完整卡片)。
+//  - 點 .closeBtn(X):不分展開/收合狀態,一律呼叫 onClose 真正關閉
+//    (卡片從畫面消失,下次選新地點才再出現)。
+// 卡片高度固定為 snap point 的值,不再支援「往上拖曳展開高度」,內容
+// 過長時交給 body 的 overflow-y: auto 原生捲動——這是舊版「往上拖曳
+// 展開卡片高度、到頂後接手捲動內容」複雜手勢邏輯的來源問題(使用者實測
+// 回報拖到頂後完全沒反應,根因是同一個 touchmove 事件裡先 setState 改
+// 高度、緊接著讀 DOM 量測捲動空間,state 更新的非同步特性導致讀到舊的
+// 版面),改成固定高度後不再有這個問題。
 //
 // 第二階段新增候選籃相關按鈕與互動(第一階段唯讀瀏覽時特意拿掉,見舊版
 // 註解)——「加入候選」按鈕行為對齊桌面版 GeoInfoPanel.tsx 的
@@ -65,94 +92,20 @@ export function GeoOutlinePhoneInfoSheet({
   // 多顯示一排 chips)。
   const [addUiMode, setAddUiMode] = useState<'closed' | 'open'>('closed')
   const [dateValue, setDateValue] = useState('')
+  // activeSnapIndex:卡片高度狀態,對應 SHEET_SNAP_POINTS 三段式索引
+  // (0 = 最小/收合,1 = 中間,2 = 滿版/展開)——使用者明確要求卡片開啟
+  // 時的初始狀態是中間(不是滿版),每次換一張新卡片(content/attraction
+  // 變動)都重設回中間,不延續上一張卡片被拖曳到其他段的狀態(比照
+  // addUiMode 同一個 useEffect 依賴)。
+  const [activeSnapIndex, setActiveSnapIndex] = useState(1)
   useEffect(() => {
     setAddUiMode('closed')
     setDateValue('')
+    setActiveSnapIndex(1)
   }, [content, attraction])
-
-  // sheetHeightVh:目前卡片高度(vh 單位)——往上拖曳把手可以展開到
-  // SHEET_MAX_HEIGHT_VH,看到更多卡片自己的內容(簡介、加入候選按鈕等,
-  // 使用者明確要求「往上拉看到下面的內容」,不是收合卡片露出地圖)。
-  // 每次換一張新卡片(content/attraction 變動,同上方 addUiMode 的重置
-  // 依賴)重設回預設高度,不延續上一張卡片被拖曳展開過的高度。
-  const [sheetHeightVh, setSheetHeightVh] = useState(SHEET_MIN_HEIGHT_VH)
-  useEffect(() => {
-    setSheetHeightVh(SHEET_MIN_HEIGHT_VH)
-  }, [content, attraction])
-
-  // 拖曳手勢:垂直方向,雙向——往上拖曳增加卡片高度(delta 為負,換算成
-  // 正的展開量),往下拖曳關閉(delta 為正,理由與做法對齊
-  // GeoOutlinePhoneListDrawer.tsx/trip/PhoneTripsDrawer.tsx 既有的
-  // 「只能往下拖關閉」手勢,這裡額外多支援往上的方向)。startHeightRef
-  // 記住手勢開始當下的高度,讓拖曳量是相對這次手勢起點的增量,而非每次
-  // onTouchMove 都疊加,避免快速連續觸發時高度計算飄移。
-  const startYRef = useRef<number | null>(null)
-  const startHeightRef = useRef(SHEET_MIN_HEIGHT_VH)
-  const draggingRef = useRef(false)
-  const [closeDragOffset, setCloseDragOffset] = useState(0)
-  // sheetRef/lastTouchYRef:把手拖曳觸及 SHEET_MAX_HEIGHT_VH 上限後,
-  // 讓使用者仍在把手上繼續往上拖曳時能接手捲動卡片內容(而非完全沒有
-  // 反應)——理由見下方 onHandleTouchMove 的說明。lastTouchYRef 記錄
-  // 上一次 touchmove 的 Y 座標,用來算出「這一小段移動量」轉發給
-  // sheetRef.scrollTop,而不是每次都用手勢起點算總量(那樣捲動的量會
-  // 一路疊加、不是自然的逐步捲動)。
-  const sheetRef = useRef<HTMLDivElement>(null)
-  const lastTouchYRef = useRef<number | null>(null)
-
-  function onHandleTouchStart(e: ReactTouchEvent) {
-    startYRef.current = e.touches[0].clientY
-    lastTouchYRef.current = e.touches[0].clientY
-    startHeightRef.current = sheetHeightVh
-    draggingRef.current = true
-  }
-  function onHandleTouchMove(e: ReactTouchEvent) {
-    if (!draggingRef.current || startYRef.current === null) return
-    const currentY = e.touches[0].clientY
-    const delta = currentY - startYRef.current
-    if (delta < 0) {
-      // 往上拖:增加高度,夾在 [起始高度, SHEET_MAX_HEIGHT_VH] 之間——
-      // 用視窗高度換算 px 差距對應的 vh 量,避免不同裝置高度下拖曳手感
-      // 不一致。
-      const deltaVh = (-delta / window.innerHeight) * 100
-      const nextHeight = startHeightRef.current + deltaVh
-      setSheetHeightVh(Math.min(SHEET_MAX_HEIGHT_VH, nextHeight))
-      setCloseDragOffset(0)
-      // 卡片高度已經到達上限、使用者手指仍在把手上繼續往上拖時,
-      // .dragHandle 的 touch-action: none(見該 class 的說明)會讓瀏覽器
-      // 完全不處理這個手勢的原生捲動,即使下面 .sheet 本身有
-      // overflow-y: auto 也接不到——這是實際發生過的體感問題(拖到頂
-      // 後繼續往上滑完全沒反應)。改成手動把「這一小段移動量」轉發成
-      // sheetRef.scrollTop 的捲動量,讓使用者不需要放開把手、改摸內容
-      // 區域,就能無縫接續往上滑動查看下方內容(簡介、加入行程按鈕等)。
-      if (nextHeight >= SHEET_MAX_HEIGHT_VH && lastTouchYRef.current !== null) {
-        const stepDelta = lastTouchYRef.current - currentY
-        sheetRef.current?.scrollBy(0, stepDelta)
-      }
-    } else {
-      // 往下拖:維持起始高度,改用既有的「往下拖關閉」位移量,理由同
-      // GeoOutlinePhoneListDrawer.tsx 的既有手勢。卡片內容若已經被上面
-      // 的接手捲動邏輯往下捲過,這裡不用特別復原捲動位置——使用者往下
-      // 拖的意圖是關閉卡片,不是「回到內容頂部」,捲動位置留著即可,
-      // 卡片下次開啟時(content/attraction 變動)會是全新的 DOM 節點,
-      // 不會殘留捲動位置。
-      setSheetHeightVh(startHeightRef.current)
-      setCloseDragOffset(delta)
-    }
-    lastTouchYRef.current = currentY
-  }
-  function onHandleTouchEnd() {
-    if (!draggingRef.current) return
-    draggingRef.current = false
-    const threshold = 60
-    if (closeDragOffset > threshold) {
-      onClose()
-    }
-    setCloseDragOffset(0)
-    startYRef.current = null
-    lastTouchYRef.current = null
-  }
 
   const open = content != null || attraction != null
+
   if (!open) return null
 
   const name = attraction ? attraction.name : content!.name
@@ -190,34 +143,31 @@ export function GeoOutlinePhoneInfoSheet({
     setDateValue('')
   }
 
+  // panelStyle 的 zIndex 36:比 PhoneTabBar.module.css 的 .bar
+  // (z-index: 35)高一階,使用者明確要求資訊卡(不論展開或收合)要疊在
+  // 底部常駐導覽列上面、蓋住它,不是讓開空間避開——維持 bottom: 0 貼齊
+  // 螢幕最底,兩者本來就該重疊,只是疊放順序要反過來(資訊卡在上)。
   return (
-    <div className={styles.backdrop} onClick={onClose}>
-      <div
-        ref={sheetRef}
-        className={styles.sheet}
-        style={{
-          maxHeight: `${sheetHeightVh}vh`,
-          transform: `translateY(${closeDragOffset}px)`,
-          transition: draggingRef.current ? 'none' : 'max-height 0.2s ease, transform 0.25s ease',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div
-          className={styles.dragHandle}
-          onTouchStart={onHandleTouchStart}
-          onTouchMove={onHandleTouchMove}
-          onTouchEnd={onHandleTouchEnd}
-        >
-          <div className={styles.dragHandleBar} />
-        </div>
-        {/* head:標頭區塊(名稱/副標/badges),使用者明確要求放在圖片
-            上方——原本圖片在最上面、關閉按鈕疊在圖片右上角,改成標頭先
-            顯示基本資訊,關閉按鈕跟著移到標頭這裡(見 .head 的說明)。
-            candidate 存在時,「加入行程」也改成放在關閉按鈕左邊的純
-            icon 按鈕(使用者明確要求),不再是圖片下方帶文字的按鈕——
-            點下去展開的日期選擇區塊(既有日期 chips/日期輸入)不跟著
-            移到這裡,標頭這排太窄放不下,維持顯示在下方 .content 裡
-            (見該處 addUiMode === 'open' 分支)。 */}
+    <PhoneBottomSheet
+      open={open}
+      onClose={onClose}
+      mode="snap"
+      snapPoints={SHEET_SNAP_POINTS}
+      activeSnapIndex={activeSnapIndex}
+      onSnapIndexChange={setActiveSnapIndex}
+      panelStyle={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 36 }}
+      backdropStyle={{ position: 'fixed', inset: 0, zIndex: 35, background: 'rgba(0, 0, 0, 0.32)' }}
+      showBackdrop={false}
+      exitDurationMs={PHONE_BOTTOM_SHEET_EXIT_MS}
+      head={
+        /* head:標頭區塊(名稱/副標/badges),使用者明確要求放在圖片
+           上方——原本圖片在最上面、關閉按鈕疊在圖片右上角,改成標頭先
+           顯示基本資訊,關閉按鈕跟著移到標頭這裡(見 .head 的說明)。
+           candidate 存在時,「加入行程」也改成放在關閉按鈕左邊的純
+           icon 按鈕(使用者明確要求),不再是圖片下方帶文字的按鈕——
+           點下去展開的日期選擇區塊(既有日期 chips/日期輸入)不跟著
+           移到這裡,標頭這排太窄放不下,維持顯示在下方 .content 裡
+           (見該處 addUiMode === 'open' 分支)。 */
         <div className={styles.head}>
           <div className={styles.headText}>
             <h2 className={styles.name}>{name}</h2>
@@ -245,62 +195,63 @@ export function GeoOutlinePhoneInfoSheet({
             <X size={16} strokeWidth={2} />
           </button>
         </div>
-        {/* imageWrap:圖片左右留間距(見 .imageWrap 的說明),不再滿版貼齊
-            卡片邊緣——使用者明確要求。 */}
-        <div className={styles.imageWrap}>
-          {photoUrl ? (
-            <img className={styles.photo} src={photoUrl} alt={name} />
-          ) : (
-            <div className={styles.photoPlaceholder} />
-          )}
-        </div>
-        <div className={styles.content}>
-          {/* 日期選擇展開區塊:由標頭的加入行程 icon 按鈕觸發(見上方
-              .head 的說明),不再包在 .addCandidateWrap 裡跟著按鈕本身
-              移到標頭——這排區塊(既有日期 chips + 日期輸入)需要的寬度
-              比標頭那排能容納的空間大,維持顯示在這裡。 */}
-          {candidate && addUiMode === 'open' && (
-            <div className={styles.dateEdit}>
-              {scheduledDates.length > 0 && (
-                <div className={styles.dateChips}>
-                  {scheduledDates.map((date) => (
-                    <button
-                      key={date}
-                      type="button"
-                      className={styles.dateChip}
-                      onClick={() => handlePickScheduledDate(date)}
-                    >
-                      {dayGroupLabel(date)}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div className={styles.dateInputRow}>
-                <input
-                  type="date"
-                  className={styles.dateInput}
-                  value={dateValue}
-                  onChange={(e) => setDateValue(e.target.value)}
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  className={styles.dateConfirmBtn}
-                  onClick={handleConfirmDate}
-                  disabled={!dateValue}
-                >
-                  確定
-                </button>
-              </div>
-            </div>
-          )}
-          {summary ? (
-            <p className={styles.summary}>{summary}</p>
-          ) : (
-            <p className={styles.summaryEmpty}>這個地點還沒有簡介資料。</p>
-          )}
-        </div>
+      }
+    >
+      {/* imageWrap:圖片左右留間距(見 .imageWrap 的說明),不再滿版貼齊
+          卡片邊緣——使用者明確要求。 */}
+      <div className={styles.imageWrap}>
+        {photoUrl ? (
+          <img className={styles.photo} src={photoUrl} alt={name} />
+        ) : (
+          <div className={styles.photoPlaceholder} />
+        )}
       </div>
-    </div>
+      <div className={styles.content}>
+        {/* 日期選擇展開區塊:由標頭的加入行程 icon 按鈕觸發(見上方
+            .head 的說明),不再包在 .addCandidateWrap 裡跟著按鈕本身
+            移到標頭——這排區塊(既有日期 chips + 日期輸入)需要的寬度
+            比標頭那排能容納的空間大,維持顯示在這裡。 */}
+        {candidate && addUiMode === 'open' && (
+          <div className={styles.dateEdit}>
+            {scheduledDates.length > 0 && (
+              <div className={styles.dateChips}>
+                {scheduledDates.map((date) => (
+                  <button
+                    key={date}
+                    type="button"
+                    className={styles.dateChip}
+                    onClick={() => handlePickScheduledDate(date)}
+                  >
+                    {dayGroupLabel(date)}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className={styles.dateInputRow}>
+              <input
+                type="date"
+                className={styles.dateInput}
+                value={dateValue}
+                onChange={(e) => setDateValue(e.target.value)}
+                autoFocus
+              />
+              <button
+                type="button"
+                className={styles.dateConfirmBtn}
+                onClick={handleConfirmDate}
+                disabled={!dateValue}
+              >
+                確定
+              </button>
+            </div>
+          </div>
+        )}
+        {summary ? (
+          <p className={styles.summary}>{summary}</p>
+        ) : (
+          <p className={styles.summaryEmpty}>這個地點還沒有簡介資料。</p>
+        )}
+      </div>
+    </PhoneBottomSheet>
   )
 }
