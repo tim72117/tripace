@@ -10,9 +10,21 @@
 # GOOGLE_MAPS_API_KEY(前端 Maps JavaScript API 用)、
 # GOOGLE_MAPS_MAP_ID(前端 GeoOutlineMap.tsx 的 AdvancedMarkerElement 要求
 # 的地圖樣式 ID)、VITE_ONAGENT_APP_KEY(前端 onagent 平台 tripace app 的
-# apiKey)是四組獨立的金鑰/識別碼,不同用途、不同申請/輪替方式,互不影響。
-# 這支腳本目前是 Cloud Run(shuttle-045094509 專案)唯一設定它們的地方,
-# 故一併整合進來,不另外開一支腳本。
+# apiKey)、PEXELS_API_KEY(後端地圖照片查詢的優先來源,見 geo_outline.go
+# 的 os.Getenv("PEXELS_API_KEY") 呼叫處)是五組獨立的金鑰/識別碼,不同
+# 用途、不同申請/輪替方式,互不影響。這支腳本目前是 Cloud Run
+# (shuttle-045094509 專案)唯一設定它們的地方,故一併整合進來,不另外開
+# 一支腳本。
+#
+# PEXELS_API_KEY 跟 GOOGLE_MAPS_MAP_ID/VITE_ONAGENT_APP_KEY 一樣只支援
+# 貼上既有值(Pexels 沒有 gcloud 現場申請機制,不像 GOOGLE_PLACES_API_KEY/
+# GOOGLE_MAPS_API_KEY 能用 upsert_google_api_key 現場建立),到
+# https://www.pexels.com/api/ 申請後貼上即可,走 upsert_secret。這把 key
+# 部署到 Cloud Run 前一直漏設(deploy-cloudrun.yml/deploy-with-migration.yml
+# 的 --update-secrets 清單都沒有它,只有本機 server/.env 有設定),導致
+# 正式環境的地圖照片查詢完全沒有 Pexels-first 這個管道,一律直接 fallback
+# 到 GOOGLE_PLACES_API_KEY(受 GOOGLE_PLACES_FETCH_PHOTOS 開關管控)或
+# 完全沒有照片——這次一併補上。
 #
 # VITE_ONAGENT_APP_KEY 跟前兩把 Google key 的關鍵差異:Google key 可以用
 # gcloud 現場申請新的(見 upsert_google_api_key);onagent 平台的 apiKey
@@ -35,6 +47,7 @@
 #   bash server/scripts/update-secret-manager.sh -maps                # 只處理 GOOGLE_MAPS_API_KEY
 #   bash server/scripts/update-secret-manager.sh -map-id              # 只處理 GOOGLE_MAPS_MAP_ID
 #   bash server/scripts/update-secret-manager.sh -onagent             # 只處理 VITE_ONAGENT_APP_KEY
+#   bash server/scripts/update-secret-manager.sh -pexels              # 只處理 PEXELS_API_KEY
 #   bash server/scripts/update-secret-manager.sh -cleanup-legacy-provider
 #       # 刪除已隨 want 移除而不再使用的 ANTHROPIC_API_KEY/GOOGLE_API_KEY
 #       # secret 容器(互動逐一確認,不影響上面四種一般用法)——刻意獨立成
@@ -57,6 +70,7 @@ print_usage() {
   -maps                    只處理 GOOGLE_MAPS_API_KEY
   -map-id                  只處理 GOOGLE_MAPS_MAP_ID
   -onagent                 只處理 VITE_ONAGENT_APP_KEY
+  -pexels                  只處理 PEXELS_API_KEY
   -cleanup-legacy-provider 刪除已隨 want 移除而不再使用的
                            ANTHROPIC_API_KEY/GOOGLE_API_KEY secret 容器
                            (互動逐一確認,不影響上面四種一般用法)
@@ -68,33 +82,45 @@ DO_PLACES=1
 DO_MAPS=1
 DO_MAP_ID=1
 DO_ONAGENT=1
+DO_PEXELS=1
 DO_CLEANUP_LEGACY_PROVIDER=0
 case "${1:-}" in
   -places)
     DO_MAPS=0
     DO_MAP_ID=0
     DO_ONAGENT=0
+    DO_PEXELS=0
     ;;
   -maps)
     DO_PLACES=0
     DO_MAP_ID=0
     DO_ONAGENT=0
+    DO_PEXELS=0
     ;;
   -map-id)
     DO_PLACES=0
     DO_MAPS=0
     DO_ONAGENT=0
+    DO_PEXELS=0
     ;;
   -onagent)
     DO_PLACES=0
     DO_MAPS=0
     DO_MAP_ID=0
+    DO_PEXELS=0
+    ;;
+  -pexels)
+    DO_PLACES=0
+    DO_MAPS=0
+    DO_MAP_ID=0
+    DO_ONAGENT=0
     ;;
   -cleanup-legacy-provider)
     DO_PLACES=0
     DO_MAPS=0
     DO_MAP_ID=0
     DO_ONAGENT=0
+    DO_PEXELS=0
     DO_CLEANUP_LEGACY_PROVIDER=1
     ;;
   -h|--help)
@@ -366,8 +392,24 @@ if [[ "${DO_ONAGENT}" == "1" ]]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 6. 摘要 —— 只印出這次實際有跑過的類型，避免 -places/-maps/-onagent 單獨
-#    執行時印出沒處理過的項目。
+# 5b. PEXELS_API_KEY —— 後端地圖照片查詢的優先來源(見 geo_outline.go 的
+#     os.Getenv("PEXELS_API_KEY") 呼叫處),Pexels 沒有申請機制可以像
+#     Google 那樣現場申請,只支援貼上既有值(同 GOOGLE_MAPS_MAP_ID/
+#     VITE_ONAGENT_APP_KEY 的模式)——到 https://www.pexels.com/api/ 申請
+#     後貼上即可。這把 key 屬 Cloud Run 執行期讀取(不是 build-time
+#     --build-arg,見 deploy-cloudrun.yml/deploy-with-migration.yml 的
+#     --update-secrets),寫進 Secret Manager 後還需要同步更新那兩份
+#     workflow 的 --update-secrets 清單才會真的生效,這支腳本本身不會
+#     去改 workflow 檔案。只在 -pexels 或不帶參數(全部處理)時執行。
+# -----------------------------------------------------------------------------
+if [[ "${DO_PEXELS}" == "1" ]]; then
+  upsert_secret "PEXELS_API_KEY" "PEXELS_API_KEY(到 https://www.pexels.com/api/ 申請,免費)"
+  echo
+fi
+
+# -----------------------------------------------------------------------------
+# 6. 摘要 —— 只印出這次實際有跑過的類型，避免 -places/-maps/-onagent/-pexels
+#    單獨執行時印出沒處理過的項目。
 # -----------------------------------------------------------------------------
 echo "=============================================="
 echo " 完成。"
@@ -388,6 +430,11 @@ fi
 
 if [[ "${DO_ONAGENT}" == "1" ]]; then
   echo "   (secret: VITE_ONAGENT_APP_KEY，deploy-cloudrun.yml build 階段讀取)"
+fi
+
+if [[ "${DO_PEXELS}" == "1" ]]; then
+  echo "   (secret: PEXELS_API_KEY，記得同步更新 deploy-cloudrun.yml/"
+  echo "    deploy-with-migration.yml 的 --update-secrets 清單才會真的生效)"
 fi
 
 echo

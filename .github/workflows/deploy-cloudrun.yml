@@ -130,7 +130,7 @@ jobs:
             --allow-unauthenticated \
             --add-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
             --update-env-vars=DEV_MODE=false,SEED=false \
-            --update-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,GOOGLE_PLACES_API_KEY=GOOGLE_PLACES_API_KEY:latest \
+            --update-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,GOOGLE_PLACES_API_KEY=GOOGLE_PLACES_API_KEY:latest,PEXELS_API_KEY=PEXELS_API_KEY:latest \
             --quiet
 
       - name: Show Cloud Run URL
