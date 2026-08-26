@@ -71,13 +71,14 @@
 }
 
 /* chatPopoverShifted:搜尋結果側欄(GeoHotelSidebar,見 FloatingPanel.tsx
-   的 side="right"、right:12px、寬度280px)同時顯示時,對話小匡原本
-   right:16px 會直接疊在它上面——這是實際發生過的 bug(使用者回報「對話
-   浮動視窗遮蔽搜尋匡」,根本原因其實是兩個浮動卡片疊在同一塊螢幕矩形,
-   不是只有高度對不齊)。往左推到 GeoHotelSidebar 左側(12 + 280 = 292px,
-   再加 12px 間隙)之外——理由/數值對齊 GeoInfoPanel.module.css 的
-   .shiftedHotel。由呼叫端(DesktopLayout.tsx)在 geoHotelSidebarVisible
-   為 true 時額外疊加這個 class。 */
+   的 side="right"、right:12px、寬度340px,與對話小匡/地點介紹卡/搜尋框
+   統一寬度,見 GeoInfoPanel.module.css 的 .panel 說明)同時顯示時,對話
+   小匡原本 right:16px 會直接疊在它上面——這是實際發生過的 bug(使用者
+   回報「對話浮動視窗遮蔽搜尋匡」,根本原因其實是兩個浮動卡片疊在同一塊
+   螢幕矩形,不是只有高度對不齊)。往左推到 GeoHotelSidebar 左側
+   (12 + 340 = 352px,再加 12px 間隙)之外——理由/數值對齊
+   GeoInfoPanel.module.css 的 .shiftedHotel。由呼叫端(DesktopLayout.tsx)
+   在 geoHotelSidebarVisible 為 true 時額外疊加這個 class。 */
 .chatPopoverShifted {
-  right: 304px;
+  right: 364px;
 }
