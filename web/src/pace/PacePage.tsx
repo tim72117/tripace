@@ -10,7 +10,7 @@ import styles from './PacePage.module.css'
 // 檔名/元件名叫 PublicPaceDemoPage,搬進 pace/ 目錄後去掉 Public/Demo
 // 前綴——目錄本身已表明這是配速表功能的一部分,不需要再重複)。版型直接
 // 比照登入後 pace 面板的樣子(側欄清單 + 主區地圖,見 DesktopLayout.tsx
-// DesktopContent 的 pace 分支),只是不放最左側的 DesktopRail(行程/
+// DesktopContent 的 pace 分支),只是不放最左側的 DesktopRail(旅程/
 // 時間軸/使用者選單那條圖示列,公開頁不需要、也沒有登入身分可以顯示)。
 // 沿用同一套 .desktop-sidepanel/.desktop-main class,不是重新設計一份
 // 版型;.desktop-layout 底下少了 DesktopRail 這個 flex sibling 不影響

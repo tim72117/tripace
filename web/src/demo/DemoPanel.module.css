@@ -47,7 +47,7 @@
 }
 
 /* emptyState:三個分頁(API/WS/Entries)共用的空狀態提示文字樣式——原本
-   四處(API 無交易、WS 無事件、未選行程、行程無 entry)各自重複同一組
+   四處(API 無交易、WS 無事件、未選旅程、旅程無 entry)各自重複同一組
    內聯 style,抽成共用 class。 */
 .emptyState {
   color: #6e6e78;

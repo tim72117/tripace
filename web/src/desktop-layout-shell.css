@@ -20,8 +20,8 @@
    自動去重,不會重複打包。 */
 
 /* ---- 桌面版佈局(寬度 >= 768px,見 DesktopLayout.tsx DesktopContent):
-   左側邊欄(行程列表 + 使用者選單)+ 右側 ChatScreen 主要區塊,
-   類似 Slack/Discord 的行程側欄模式。只在 useIsDesktop() 判定為桌面寬度時才會掛載,
+   左側邊欄(旅程列表 + 使用者選單)+ 右側 ChatScreen 主要區塊,
+   類似 Slack/Discord 的旅程側欄模式。只在 useIsDesktop() 判定為桌面寬度時才會掛載,
    手機版走 PhoneContent 既有的整頁切換邏輯,兩者互斥、不會同時掛載。 ---- */
 .desktop-layout {
   flex: 1 1 auto;
@@ -30,7 +30,7 @@
   overflow: hidden;
 }
 
-/* ---- icon rail(最左緣 48px 固定寬,VSCode activity bar / Slack 行程列模式):
+/* ---- icon rail(最左緣 48px 固定寬,VSCode activity bar / Slack 旅程列模式):
    上方兩顆圖示鈕切換 side panel 內容,底部是 DesktopUserMenu。可展開成
    帶文字標籤的寬版(見 .expanded),寬度變化用 transition 過渡,理由同
    .desktop-sidepanel 的收合/展開動畫。 */
@@ -56,7 +56,7 @@
   flex-basis: 180px;
   width: 180px;
 }
-/* side panel:改造自原本的 desktop-sidebar,內容可切換(行程列表/時間軸)、
+/* side panel:改造自原本的 desktop-sidebar,內容可切換(旅程列表/時間軸)、
    可收合(主區跟著縮放的 push 模式,非 overlay);寬度切換與收合都走 CSS transition。 */
 .desktop-sidepanel {
   flex: 0 0 272px;
@@ -78,7 +78,7 @@
 /* .wide:登入後正式介面(DesktopLayout.tsx)已改用 panelMode 驅動的浮動卡片
    (見 PANEL_REGISTRY 的 width 欄位),不再需要 side panel 本身變寬,故
    DesktopContent 不再套用這個 class。但 PublicPaceDemoPage.tsx(/demo/pace
-   公開分享頁)與 PhoneScreens.tsx 的 PublicPaceDrawerMap(行程分享頁的桌面
+   公開分享頁)與 PhoneScreens.tsx 的 PublicPaceDrawerMap(旅程分享頁的桌面
    寬度分支)仍沿用「側欄清單 + 主區地圖」這套舊版型(見兩處各自的說明,
    刻意不比照登入後版面),故保留這個 class 供它們使用。 */
 .desktop-sidepanel.wide {

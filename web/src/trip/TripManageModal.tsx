@@ -8,10 +8,10 @@ import type { TripRole, Member } from '../user/types'
 import { Avatar, ErrorBanner, errMsg, isSubmitEnter, LS_DEFAULT_TRIP } from '../AppCommon'
 import styles from './TripManageModal.module.css'
 
-// TripManageModal:行程管理彈窗,合併原本分開的 ShareModal(分享連結)與
+// TripManageModal:旅程管理彈窗,合併原本分開的 ShareModal(分享連結)與
 // MembersScreen(成員管理),再加上原本掛在 ChatScreen navbar 的 TripMenu
-// (開啟時自動進入)——三者都是「對某一個行程的管理操作」,合併成單一
-// 入口(行程列表每筆項目的「管理」按鈕,見 DesktopTripList.tsx 的
+// (開啟時自動進入)——三者都是「對某一個旅程的管理操作」,合併成單一
+// 入口(旅程列表每筆項目的「管理」按鈕,見 DesktopTripList.tsx 的
 // onManage),取代原本三個分散的觸發點。
 //
 // 用 .rp-modal-head/.rp-modal-body 骨架(而非原本 ShareModal/MembersScreen
@@ -33,7 +33,7 @@ export function TripManageModal({
   return (
     <>
       <div className="rp-modal-head">
-        <span className="rp-modal-title">行程設定 · {trip.name}</span>
+        <span className="rp-modal-title">旅程設定 · {trip.name}</span>
         <button className="btn icon-btn" onClick={onClose} title="關閉">
           <X size={18} strokeWidth={1.8} />
         </button>
@@ -71,7 +71,7 @@ function DefaultTripSection({ tripID }: { tripID: string }) {
     <>
       <div className="section-title">開啟</div>
       <div className={styles.toggleRow}>
-        <span className={styles.toggleLabel}>開啟時自動進入這個行程</span>
+        <span className={styles.toggleLabel}>開啟時自動進入這個旅程</span>
         <label className={styles.toggle}>
           <input type="checkbox" checked={isDefault} onChange={(e) => toggle(e.target.checked)} />
           <span className={styles.toggleSlider} />
@@ -185,7 +185,7 @@ function ShareSection({
       <ErrorBanner msg={err} />
       <div className="section-title">公開連結</div>
       <div className={styles.hint}>
-        任何人取得連結後即可查看此行程的內容（無需登入）。
+        任何人取得連結後即可查看此旅程的內容（無需登入）。
       </div>
       {loading ? (
         <div className="empty">載入中…</div>
@@ -354,7 +354,7 @@ function MembersSection({
   return (
     <>
       <ErrorBanner msg={err} />
-      <div className="section-title">行程成員</div>
+      <div className="section-title">旅程成員</div>
       <ul className="list">
         {members.map((m) => {
           const isTripOwner = m.id === trip.ownerID

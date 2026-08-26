@@ -49,7 +49,7 @@ export type GeoSelectedKey = string | null
 // geoItemKey:飯店/景點區域/推薦地點/搜尋結果都沒有穩定的 id(飯店/
 // 推薦地點/搜尋結果是即時查詢結果,景點區域可能來自三種不同來源,見
 // api.ts 的 GeoAttraction 說明),用「名稱+座標」組合當識別鍵——同一份
-// 查詢結果內足以識別惟一項目,不需要额外引入 id 欄位。entry(行程本身
+// 查詢結果內足以識別惟一項目,不需要额外引入 id 欄位。entry(旅程本身
 // 已有座標的 entry,見 GeoTripEntry)雖然有穩定 id,仍沿用同一套
 // 「名稱+座標」規則,跟其他來源保持一致,不需要為它另外分岔一套識別
 // 邏輯。'attraction' 這個 kind 值仍保留(地圖上的地標圖示/
@@ -65,12 +65,12 @@ export function geoItemKey(
 // AddCandidateButton:卡片右側「+」按鈕——按下後原地展開一個極簡的日期
 // 輸入(單一 <input type="date"> + 確定按鈕),寫法比照
 // GeoCandidateSidebar.tsx 的 NoDateDayHead。選了日期按確定,直接呼叫
-// createEntryFromCandidate 建立一筆有 start 日期的真正行程 entry(不再
+// createEntryFromCandidate 建立一筆有 start 日期的真正旅程 entry(不再
 // 只是丟進純前端候選籃);不想選日期時可以按「僅加入候選」,行為維持
 // 原本的 onAddCandidate(丟進 geoCandidates,純前端、不寫入後端)——兩條
 // 路徑並存,讓使用者自行決定要不要當場定案日期。tripID 為空(理論上不該
-// 發生,這個側欄只在已選行程的情境下渲染)時不顯示日期輸入选項,只保留
-// 「僅加入候選」,避免呼叫 createEntryFromCandidate 時沒有行程可寫。
+// 發生,這個側欄只在已選旅程的情境下渲染)時不顯示日期輸入选項,只保留
+// 「僅加入候選」,避免呼叫 createEntryFromCandidate 時沒有旅程可寫。
 function AddCandidateButton({
   cfg,
   tripID,
@@ -159,8 +159,8 @@ export function GeoHotelSidebar({
 }: {
   cfg: ClientConfig
   // tripID:「+」按鈕展開日期選擇、直接建立成後端 entry 時需要知道寫進
-  // 哪個行程(見 AddCandidateButton 呼叫 createEntryFromCandidate 的說明)
-  // ——這個側欄本來就綁定在已選行程的情境下渲染,故 undefined/null 理論
+  // 哪個旅程(見 AddCandidateButton 呼叫 createEntryFromCandidate 的說明)
+  // ——這個側欄本來就綁定在已選旅程的情境下渲染,故 undefined/null 理論
   // 上不該發生,但保守起見 AddCandidateButton 內部仍會判斷,沒有 tripID
   // 就不允許選日期,只保留「僅加入候選」。
   tripID?: string | null

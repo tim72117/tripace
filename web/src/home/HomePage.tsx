@@ -701,7 +701,7 @@ export function HomePage() {
           隱私權政策/服務條款連結沿用同一組既有頁面(/privacy、/terms),
           「聯絡我們」跟其他頁面一樣先用佔位連結。 */}
       <footer className="kyoto-footer">
-        <span className="kyoto-footer-brand">Tripace · 行程規劃</span>
+        <span className="kyoto-footer-brand">Tripace · 旅程規劃</span>
         <div className="kyoto-footer-bar">
           <span className="kyoto-footer-copyright">Copyright © 2026 Tripace</span>
           <nav className="kyoto-footer-links">

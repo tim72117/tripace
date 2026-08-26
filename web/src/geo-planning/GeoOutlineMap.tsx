@@ -15,7 +15,7 @@ import styles from './GeoOutlineMap.module.css'
 
 // 地理輪廓底圖(構想 6,見 docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)——桌面版。
 //
-// 空行程、任何候選點出現之前,地圖先浮現一層純定向的地理輪廓:重心光暈
+// 空旅程、任何候選點出現之前,地圖先浮現一層純定向的地理輪廓:重心光暈
 // 搭配白話地名標籤,暗示城市大致分成幾個有名字的區塊,區塊間用延遲淡入
 // 的極淡連線帶出分鐘制的相對方位與距離(此處先用約略公里數,分鐘制估算
 // 留待接上真實路網資料再補)。
@@ -129,22 +129,22 @@ export function GeoOutlineMap({
 }: {
   cfg: ClientConfig
   // initialCenter:地圖第一次建立時該用的中心點——undefined 代表呼叫端
-  // 還在查詢「這個行程有沒有既有地點可以當初始中心」(見
+  // 還在查詢「這個旅程有沒有既有地點可以當初始中心」(見
   // GeoOutlinePanel.tsx 的 tripCenterPanTarget),此時地圖建立要等待,
   // 不能先用預設值建起來、查完才用 panTarget 再移動一次過去:那樣會
   // 白白查一次「移動前那個位置」的資料(見下方查詢 effect 的說明),
   // 移動後那次查詢又可能因為 panTarget 的 suppressQuery 被抑制,導致
   // 使用者進頁面時地圖上什麼資料都沒有,要等他自己動一下地圖才觸發
-  // 查詢。null 代表已確定查無可用的初始中心(沒有行程、或行程沒有帶
+  // 查詢。null 代表已確定查無可用的初始中心(沒有旅程、或旅程沒有帶
   // 座標的既有地點),這時退回寫死的預設值。物件代表確定要用這組座標
   // 當初始中心,直接建圖在那裡,一步到位、只查一次正確範圍的資料。
   initialCenter?: { lat: number; lng: number } | null
-  // tripEntries:目前行程本身已有座標的 entry(見 GeoOutlinePanel.tsx 查詢
+  // tripEntries:目前旅程本身已有座標的 entry(見 GeoOutlinePanel.tsx 查詢
   // tripCenter 時一併保留的完整清單)——這批點要顯示在地圖上(見下方
-  // 畫 marker 的 effect),讓使用者看得到「這趟行程已經排進候選籃/日
+  // 畫 marker 的 effect),讓使用者看得到「這趟旅程已經排進候選籃/日
   // 層架的地點跟這座城市其他景點的相對位置關係」,不只是拿來算初始
   // 定位而已。跟 hotels/places 不同,這批資料不是「以地圖範圍為準」
-  // 查詢的結果,是行程本身固定的內容,換行程才會變。
+  // 查詢的結果,是旅程本身固定的內容,換旅程才會變。
   tripEntries?: GeoTripEntry[]
   // city/onCityChange/onSearch/searching/searchError:城市搜尋框,顯示在
   // 地圖上方類別標籤列旁邊(見下方 JSX)——跟 GeoCandidateSidebar 側欄裡
@@ -248,7 +248,7 @@ export function GeoOutlineMap({
   // suppressQuery:這次移動完成後,平移動畫結束觸發的 idle 事件要不要
   // 跳過「冒出搜尋這個區域按鈕」(見 areaSearch/geoAreaSearchState.ts 的
   // 說明)——true 用於「使用者只是想對齊看清楚/選中一個已知項目」的
-  // 移動(側欄點擊、行程初始定位),資料範圍通常沒有實質改變,不該冒出
+  // 移動(側欄點擊、旅程初始定位),資料範圍通常沒有實質改變,不該冒出
   // 按鈕暗示「這裡有新範圍待查詢」;false(或不帶,預設當 false)用於
   // 「使用者明確想換一個地方看」的移動(搜尋城市),該讓按鈕冒出來提示
   // 使用者可以查詢這個新範圍——這正是由呼叫端決定該不該抑制,而不是
@@ -288,7 +288,7 @@ export function GeoOutlineMap({
   // candidateKeys:目前候選籃裡有哪些項目的識別鍵集合(同樣用
   // GeoHotelSidebar.tsx 的 geoItemKey 產生,由 DesktopLayout.tsx 中介)
   // ——只涵蓋使用者手動用「+」加入候選籃的三種來源(飯店/景點區域/
-  // 附近推薦),行程本身已有座標的 entry(tripEntries)雖然也會自動併入
+  // 附近推薦),旅程本身已有座標的 entry(tripEntries)雖然也會自動併入
   // 候選籃資料結構,但那批本來就有自己的旗子圖示語意(見
   // tripEntryMarkerContent 的說明——「已排進行程」跟「候選中」是不同概念),
   // 不需要再疊加候選籃徽章,故這裡刻意只給前三種圖層用,不比對
@@ -438,7 +438,7 @@ export function GeoOutlineMap({
     // 這個判斷本身無法擋住非同步競態:mapRef.current 要等
     // importLibrary('maps').then() 真正 resolve 才會被賦值,若 effect 在
     // 那之前又因為 initialCenter 從 undefined 解析成 null/物件而重新
-    // 執行(常發生在沒有行程既有地點、tripCenter 幾乎同步就決議成 null
+    // 執行(常發生在沒有旅程既有地點、tripCenter 幾乎同步就決議成 null
     // 的情況),第二次執行當下 mapRef.current 仍是 null,一樣會通過這個
     // 判斷、再呼叫一次 importLibrary('maps').then(),建出第二個地圖
     // 實例、掛上第二組 idle/bounds_changed/zoom_changed 監聽器——兩個
@@ -451,7 +451,7 @@ export function GeoOutlineMap({
     // effect 執行已經在建圖了」,擋住後續執行在 mapRef.current 賦值前
     // 搶著再建一次。
     if (mapRef.current || buildingRef.current) return
-    // initialCenter 為 undefined 代表呼叫端還在查「這個行程有沒有既有
+    // initialCenter 為 undefined 代表呼叫端還在查「這個旅程有沒有既有
     // 地點可以當初始中心」,地圖建立要等待——見這個 prop 的完整說明。
     if (initialCenter === undefined) return
     buildingRef.current = true
@@ -465,7 +465,7 @@ export function GeoOutlineMap({
     Promise.all([importLibrary('maps'), importLibrary('marker')])
       .then(([{ Map }]) => {
         if (cancelled || !containerRef.current) return
-        // 初始中心點:優先用 initialCenter(行程既有地點的中心,若已確定
+        // 初始中心點:優先用 initialCenter(旅程既有地點的中心,若已確定
         // 有值),查無可用資料(initialCenter 為 null)才退回寫死的東京
         // 預設起點——一步到位直接建圖在正確位置,不再需要「先建圖在
         // 東京、查一次沒用的資料、再 panTo 移動過去」這道多餘手續(那樣
@@ -818,7 +818,7 @@ export function GeoOutlineMap({
     if (activeCategory) runCategoryQuery(activeCategory)
   }, [activeCategory, runCategoryQuery, runExploreQuery])
 
-  // 以下三個圖層(景點區域光暈、搜尋結果、行程 entry)各自獨立成 hook
+  // 以下三個圖層(景點區域光暈、搜尋結果、旅程 entry)各自獨立成 hook
   // (見各檔案開頭說明)——每個只讀 mapRef/mapReady/自己的資料/
   // selectedKey/hoverKey/candidateKeys,不寫入任何其他共享狀態,故拆開
   // 不影響本檔案其餘查詢/地圖生命週期邏輯,呼叫順序本身也不重要(彼此

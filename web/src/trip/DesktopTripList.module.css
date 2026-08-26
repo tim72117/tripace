@@ -17,9 +17,9 @@
   padding: 4px 8px 12px;
 }
 
-/* 側欄行程列表項目(緊湊列表,對應手機版 .row，但選中時有高亮)。改成
+/* 側欄旅程列表項目(緊湊列表,對應手機版 .row，但選中時有高亮)。改成
    <div> 外層 + 內部 .itemOpen <button>(佔滿剩餘寬度)+ 一顆獨立的
-   .itemAction 圖示鈕(行程管理,見 DesktopTripList.tsx 的 onManage 說明)
+   .itemAction 圖示鈕(旅程管理,見 DesktopTripList.tsx 的 onManage 說明)
    ——原本整個項目是一顆 <button>,管理按鈕加進來後需要各自獨立可點擊、
    不能巢狀 <button>(HTML 不允許 button 內嵌 button)。 */
 .item {
@@ -52,7 +52,7 @@
   outline: 2px solid var(--color-accent);
   outline-offset: -2px;
 }
-/* 管理圖示鈕:預設淡出,hover 整列時才顯現(常駐圖示會讓密集的行程清單
+/* 管理圖示鈕:預設淡出,hover 整列時才顯現(常駐圖示會讓密集的旅程清單
    看起來雜亂),對齊 GeoCandidateSidebar 等側欄清單項目常見的「hover
    才顯示次要動作」慣例。 */
 .itemAction {
@@ -82,13 +82,13 @@
   outline: 2px solid var(--color-accent);
   outline-offset: -2px;
 }
-/* 目前選取的行程:低調的灰底(--ios-sep),不用強調色實心底——對齊手機版
+/* 目前選取的旅程:低調的灰底(--ios-sep),不用強調色實心底——對齊手機版
    PhoneNavDrawer.module.css 的 .tripItemActive,理由同該處說明:
    「目前選中」只是狀態提示,不需要搶視覺份量。 */
 .item.active {
   background: var(--ios-sep);
 }
-/* 行程項目的圖示徽章:取代原本的實心色塊大頭貼(Avatar),改用無色圖示
+/* 旅程項目的圖示徽章:取代原本的實心色塊大頭貼(Avatar),改用無色圖示
    (MapPin/Plus,見 DesktopLayout.tsx),跟手機版 PhoneNavDrawer.module.css
    的 .tripItem/.newTripIcon 同一種低調視覺調性。 */
 .icon {

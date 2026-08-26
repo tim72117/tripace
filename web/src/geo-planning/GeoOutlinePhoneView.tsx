@@ -54,8 +54,9 @@ export function GeoOutlinePhoneView({
 }: {
   cfg: ClientConfig
   tripID?: string | null
-  // activeTrip:候選籃「加入 {tripName}」按鈕文字需要行程名稱——理由同
-  // 桌面版 DesktopLayout.tsx 傳給 GeoInfoPanel 的 tripName prop。
+  // activeTrip:判斷使用者是否已選定旅程——為空時「加入行程」按下要先
+  // 導向旅程列表(見下方 onOpenTrips),理由同桌面版 DesktopLayout.tsx
+  // 的 pendingSchedule 機制。
   activeTrip?: Trip | null
   user: User
   // onOpenTimeline:左下角「時間軸」按鈕觸發,由 PhoneContent.tsx 傳入
@@ -67,13 +68,13 @@ export function GeoOutlinePhoneView({
   // 直接切到時間軸的入口。
   onOpenTimeline?: () => void
   onOpenSettings: () => void
-  // onOpenTrips:候選籃「加入 {tripName}」流程裡,使用者還沒選定任何行程
+  // onOpenTrips:候選籃「加入行程」流程裡,使用者還沒選定任何旅程
   // (activeTrip 為空,見上方 activeTrip 的說明——這個畫面本身允許不選
-  // 行程就瀏覽)時觸發,由呼叫端(PhoneContent.tsx)切到行程列表分頁,
-  // 引導使用者先選一個行程。原本沒有這個 prop 時,geo.handleScheduleCandidate
+  // 旅程就瀏覽)時觸發,由呼叫端(PhoneContent.tsx)切到旅程列表分頁,
+  // 引導使用者先選一個旅程。原本沒有這個 prop 時,geo.handleScheduleCandidate
   // 內部的 tripID guard 會直接靜默 no-op——使用者點了日期、資訊卡正常
-  // 關閉,卻完全沒有任何提示告訴他「因為沒有選行程所以沒加成功」,是
-  // 實際發生過的 bug(桌面版 DesktopLayout.tsx 對應改成開啟行程列表
+  // 關閉,卻完全沒有任何提示告訴他「因為沒有選旅程所以沒加成功」,是
+  // 實際發生過的 bug(桌面版 DesktopLayout.tsx 對應改成開啟旅程列表
   // 浮動卡,這裡是同一個修法的手機版對應)。
   onOpenTrips: () => void
 }) {
@@ -173,7 +174,6 @@ export function GeoOutlinePhoneView({
       <GeoOutlinePhoneInfoSheet
         content={geo.infoContent}
         attraction={geo.attractionContent}
-        tripName={activeTrip?.name ?? '行程'}
         scheduledDates={geo.scheduledDates}
         onClose={geo.clearSelection}
         onAddCandidate={handleAddCandidate}

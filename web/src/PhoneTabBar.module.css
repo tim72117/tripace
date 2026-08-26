@@ -26,7 +26,7 @@
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* tab:固定等寬三等分(行程/時間軸/規劃),取代原本 .tabs 的
+/* tab:固定等寬三等分(旅程/時間軸/規劃),取代原本 .tabs 的
    overflow-x: auto 橫向捲動——底部列項目固定就 3 個,不需要捲動,等寬
    排列更符合一般 App 底部導覽列的慣例。高度維持 64px 不受 .bar 的
    safe-area padding-bottom 影響,圖示置中在這個固定高度內——這個數值

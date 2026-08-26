@@ -26,7 +26,7 @@ const FEATURES = [
   {
     icon: Route,
     title: '路徑地圖',
-    description: '自動在地圖上畫出當天行程的路徑，掌握每天的動線。',
+    description: '自動在地圖上畫出當天旅程的路徑，掌握每天的動線。',
   },
   {
     icon: MessageSquareText,
@@ -36,19 +36,19 @@ const FEATURES = [
   {
     icon: Users,
     title: '協作與權限',
-    description: '邀請旅伴共同編輯行程，依角色設定檢視或編輯權限。',
+    description: '邀請旅伴共同編輯旅程，依角色設定檢視或編輯權限。',
   },
   {
     icon: Share2,
     title: '公開分享連結',
-    description: '產生公開連結，把完成的行程分享給親友，免登入也能檢視。',
+    description: '產生公開連結，把完成的旅程分享給親友，免登入也能檢視。',
   },
 ] as const;
 
 const STEPS = [
   {
-    title: '建立行程',
-    description: '輸入目的地與日期，建立一份屬於你的行程。',
+    title: '建立旅程',
+    description: '輸入目的地與日期，建立一份屬於你的旅程。',
   },
   {
     title: '探索與收藏',
@@ -109,7 +109,7 @@ export function ProductPage() {
       </nav>
 
       <header className="product-hero">
-        <h1>把想去的地方，變成一份順暢的行程</h1>
+        <h1>把想去的地方，變成一份順暢的旅程</h1>
         <p>
           Tripace 讓你在地圖上探索景點、拖曳排入日程，並自動畫出每天的路徑，
           與旅伴協作、分享，輕鬆完成一趟旅行的規劃。
@@ -153,7 +153,7 @@ export function ProductPage() {
 
       <section className="product-final-cta">
         <h2>準備好規劃下一趟旅程了嗎？</h2>
-        <p>立即建立你的第一份行程，體驗地圖探索與拖曳排程的便利。</p>
+        <p>立即建立你的第一份旅程，體驗地圖探索與拖曳排程的便利。</p>
         <Link to="/app" className="product-btn-primary">
           免費開始使用
         </Link>
@@ -163,7 +163,7 @@ export function ProductPage() {
           Copyright 列、法律/導覽連結、onagent 背書連結),只是 class 前綴
           換成 product-footer-*。 */}
       <footer className="product-footer">
-        <span className="product-footer-brand">Tripace · 行程規劃</span>
+        <span className="product-footer-brand">Tripace · 旅程規劃</span>
         <div className="product-footer-bar">
           <span className="product-footer-copyright">Copyright © 2026 Tripace</span>
           <nav className="product-footer-links">

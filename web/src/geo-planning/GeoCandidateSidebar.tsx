@@ -342,6 +342,54 @@ export function GeoCandidateSidebar({
     return [...allKeys].sort().map((k) => [k, byKey.get(k) ?? []] as [string, (GeoCandidate & { kind: 'entry' })[]])
   }, [datedDaysRaw, manualBlankDayKeys])
 
+  // datedDayRows:datedDays 基礎上,把「連續多天都沒有任何安排」的區段
+  // 收攏成單一摘要列(例如「1/2 ~ 1/9(共 8 天)無安排」),取代原本
+  // 一天一個空區塊、有缺口就全部展開列出的做法——使用者要求「不要把
+  // 所有日期都列出來」,長天數行程中間的空白天原樣列出會佔用大量版面
+  // 卻沒有任何內容。只收攏「完全空白」的天(dayEntries.length === 0);
+  // 手動新增的空白天(manualBlankDayKeys)一樣視為空白,同樣參與收攏
+  // ——使用者按「新增前一天/隔天」通常是準備緊接著排東西進去,若因為
+  // 連續多天空白而被收攏,只要那天真的排了行程,下一次渲染 datedDays
+  // 就會有內容,自然跳出收攏的區段(見下方合併規則,只收攏「連續且都是
+  // 空的」,單一天有內容就會截斷這個區段)。單一天的空白(前後都不是
+  // 空的,只有這一天)不算「連續」,不收攏,維持原樣顯示——收攏是為了
+  // 省略「一長串都沒事」的區段,不是為了讓正常的單一空白天也消失。
+  // expandedBlankRuns 記錄使用者手動展開過的收攏區段(用起訖 key 組成
+  // 的字串識別),展開後改回逐日顯示每個空白天各自的拖放區,讓使用者
+  // 仍然可以把候選拖進區段內某一天——收攏只是視覺上的預設簡化,不
+  // 拿掉功能。
+  type DatedDayRow =
+    | { type: 'day'; key: string; entries: (GeoCandidate & { kind: 'entry' })[] }
+    | { type: 'blank-run'; startKey: string; endKey: string; days: string[] }
+  const datedDayRows = useMemo<DatedDayRow[]>(() => {
+    const rows: DatedDayRow[] = []
+    let runStart: string | null = null
+    let runDays: string[] = []
+    const flushRun = () => {
+      if (runStart == null) return
+      if (runDays.length <= 1) {
+        for (const k of runDays) rows.push({ type: 'day', key: k, entries: [] })
+      } else {
+        rows.push({ type: 'blank-run', startKey: runStart, endKey: runDays[runDays.length - 1], days: runDays })
+      }
+      runStart = null
+      runDays = []
+    }
+    for (const [k, entries] of datedDays) {
+      if (entries.length === 0) {
+        if (runStart == null) runStart = k
+        runDays.push(k)
+        continue
+      }
+      flushRun()
+      rows.push({ type: 'day', key: k, entries })
+    }
+    flushRun()
+    return rows
+  }, [datedDays])
+
+  const [expandedBlankRuns, setExpandedBlankRuns] = useState<Set<string>>(new Set())
+
   // nextDayKey/prevDayKey:目前「已排入行程」最後一天的隔天、第一天的
   // 前一天(YYYY-MM-DD)——分別是「新增隔天」「新增前一天」按鈕按下時
   // 要加進 manualBlankDayKeys 的日期。沒有任何已有日期的分組時
@@ -546,7 +594,68 @@ export function GeoCandidateSidebar({
                     + 新增 {dayGroupLabel(prevDayKey)}(前一天)
                   </button>
                 )}
-                {datedDays.map(([dayKey, dayEntries]) => (
+                {datedDayRows.map((row) => {
+                  if (row.type === 'blank-run') {
+                    // blank-run:連續多天都沒有任何安排,收攏成單一摘要列
+                    // (見上方 datedDayRows 的完整說明)——預設收合,顯示
+                    // 「起日 ~ 迄日(共 N 天)無安排」;點擊展開後改回逐日
+                    // 顯示每一天各自的拖放區,讓使用者仍能把候選拖進區段
+                    // 內特定一天,不是完全拿掉功能,只是預設不佔版面。
+                    const runKey = `${row.startKey}~${row.endKey}`
+                    const expanded = expandedBlankRuns.has(runKey)
+                    if (!expanded) {
+                      return (
+                        <button
+                          key={runKey}
+                          type="button"
+                          className={styles.blankRunSummary}
+                          onClick={() => setExpandedBlankRuns((prev) => new Set(prev).add(runKey))}
+                        >
+                          {dayGroupLabel(row.startKey)} ~ {dayGroupLabel(row.endKey)}(共 {row.days.length} 天)無安排
+                        </button>
+                      )
+                    }
+                    return (
+                      <div key={runKey} className={styles.blankRunExpanded}>
+                        <button
+                          type="button"
+                          className={styles.blankRunCollapseBtn}
+                          onClick={() => setExpandedBlankRuns((prev) => {
+                            const next = new Set(prev)
+                            next.delete(runKey)
+                            return next
+                          })}
+                        >
+                          收合 {dayGroupLabel(row.startKey)} ~ {dayGroupLabel(row.endKey)}
+                        </button>
+                        {row.days.map((dayKey) => (
+                          <div key={dayKey} className={styles.day}>
+                            <div className={styles.dayHead}>
+                              <span className={styles.dayDate}>{dayGroupLabel(dayKey)}</span>
+                              <span className={styles.dayStatus}>無安排</span>
+                              <button
+                                type="button"
+                                className={styles.addFromCandidateBtn}
+                                onClick={() => onPickFromCandidate?.(dayKey)}
+                                title="從候選加入"
+                              >
+                                <ListPlus size={13} strokeWidth={2} />
+                                從候選加入
+                              </button>
+                            </div>
+                            <div
+                              className={`${styles.dayBody} ${styles.dayBodyEmpty}${dragOverDay === dayKey ? ` ${styles.dayBodyDragOver}` : ''}`}
+                              onDragOver={(e) => { e.preventDefault(); setDragOverDay(dayKey) }}
+                              onDragLeave={() => setDragOverDay((d) => (d === dayKey ? null : d))}
+                              onDrop={(e) => { e.preventDefault(); handleDropOnDay(dayKey) }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  }
+                  const { key: dayKey, entries: dayEntries } = row
+                  return (
                   <div key={dayKey} className={styles.day}>
                     <div className={styles.dayHead}>
                       <span className={styles.dayDate}>{dayGroupLabel(dayKey)}</span>
@@ -581,7 +690,8 @@ export function GeoCandidateSidebar({
                       ))}
                     </div>
                   </div>
-                ))}
+                  )
+                })}
                 {/* 「新增隔天」按鈕:算得出最後一天(nextDayKey)時才有
                     意義顯示,理由與上方「新增前一天」按鈕完全對稱,見該
                     處的完整說明——同樣改成常駐按鈕,取代原本拖曳觸發的

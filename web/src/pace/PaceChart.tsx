@@ -35,8 +35,8 @@ export interface Checkpoint {
   lng: number | null
 }
 
-// PaceSegment:對應後端 Detail.segment 的值——任意行程可以自訂任何段名,
-// 不再假設固定是 leg1~leg4 這四個(那是原本花東193公路 demo 行程自己選用
+// PaceSegment:對應後端 Detail.segment 的值——任意旅程可以自訂任何段名,
+// 不再假設固定是 leg1~leg4 這四個(那是原本花東193公路 demo 旅程自己選用
 // 的 key,不是後端強制的合法值集合)。型別因此收斂成單純的 string;
 // leg1~leg4 仍然是「已知/手動維護摘要資料」的其中幾個 key,見下方
 // KNOWN_ROUTE_META。
@@ -112,7 +112,7 @@ function entryToCheckpoint(e: PublicEntry): Checkpoint {
 // 一個依 segment 分組好的 Map,依 segment key 字母序排序(跟
 // PhoneScreens.tsx 的 PublicPaceList 同一套分組/排序寫法,見該檔案
 // `[...groups.entries()].sort(([a], [b]) => a.localeCompare(b))`)——任意
-// 行程會出現任意數量、任意命名的 segment,不再假設剛好四段、也不再假設
+// 旅程會出現任意數量、任意命名的 segment,不再假設剛好四段、也不再假設
 // key 一定是 leg1~leg4。缺少 segment 的條目(理論上不該發生)直接跳過,
 // 不強行塞進某一段造成錯誤分類。
 function groupBySegment(entries: PublicEntry[]): Map<string, Checkpoint[]> {
@@ -135,7 +135,7 @@ function groupBySegment(entries: PublicEntry[]): Map<string, Checkpoint[]> {
 }
 
 // RouteMeta:每段路線的摘要資訊。title/subtitle/eyebrow 是純展示用文字,
-// 對任意行程的 segment 沒有對應的後端資料來源,故改成可選——沒有值時
+// 對任意旅程的 segment 沒有對應的後端資料來源,故改成可選——沒有值時
 // 對應的區塊直接不渲染(見下方渲染邏輯),不用假資料頂著。totalKm 同理
 // 可能算不出來(checkpoint 完全沒有 km 資料),故也允許 null。date 一樣
 // 允許 null/undefined——「目前站」判斷(computeNowMark)拿不到可靠日期時,
@@ -151,7 +151,7 @@ interface RouteMeta {
   date?: string | null
 }
 
-// ---- 花東193公路 pace note(真實手寫紀錄轉錄,與 ch_57910e64 行程底下的
+// ---- 花東193公路 pace note(真實手寫紀錄轉錄,與 ch_57910e64 旅程底下的
 // entries 資料一致——這裡的陣列順序即建立順序,也就是紙條原始的先後順序)----
 // 收錄全部條目,含沒記錄到時刻的純轉彎指示(km/depart/arrive 皆為 null)。
 // 這批純轉彎指示依然依原始順序顯示,只是:
@@ -162,20 +162,20 @@ interface RouteMeta {
 // 開始記錄),故部分路段的進度條起點不是 0%。
 
 // PACE_PUBLIC_LINK_TOKEN:未登入的公開分享頁(/demo/pace,見
-// pace/PacePage.tsx)讀取固定展示行程用的公開分享連結 token。由
+// pace/PacePage.tsx)讀取固定展示旅程用的公開分享連結 token。由
 // VITE_PACE_PUBLIC_LINK_TOKEN 決定(見 .env.development)。登入後的正式
 // 介面(DesktopLayout.tsx)不使用這個 token——跟時間軸(Timeline)同一套
-// 邏輯,改讀登入使用者目前選取的行程(見下方 tripID prop 與
-// useEffect),不綁定固定行程,也不需要經過公開連結機制。
+// 邏輯,改讀登入使用者目前選取的旅程(見下方 tripID prop 與
+// useEffect),不綁定固定旅程,也不需要經過公開連結機制。
 // export:pace/PacePage.tsx 掛載 PaceRouteMap 時也需要同一把 token(公開
 // 頁的 compute-route 改走 /v1/public/{token}/compute-route,見 PaceRouteMap.tsx
 // 的 publicToken prop 說明),不重複讀一次 import.meta.env,直接共用這份。
 export const PACE_PUBLIC_LINK_TOKEN = import.meta.env.VITE_PACE_PUBLIC_LINK_TOKEN as string | undefined
 
 // KNOWN_ROUTE_META:已知/手動維護的路線摘要,目前只有花東193公路 demo
-// 行程的 leg1~leg4 四段——這些是純展示用的文字/彙總數字,後端 Entry/Detail
+// 旅程的 leg1~leg4 四段——這些是純展示用的文字/彙總數字,後端 Entry/Detail
 // 沒有對應的「整段路線摘要」資料結構可以承載,故仍維持手動維護的常數。
-// 任意真實行程的 segment 名稱不會出現在這個表裡,會落到下方
+// 任意真實旅程的 segment 名稱不會出現在這個表裡,會落到下方
 // computeRouteMeta() 的通用推算路徑,不是這裡的責任。
 const KNOWN_ROUTE_META: Record<string, RouteMeta> = {
   leg1: {
@@ -201,7 +201,7 @@ const KNOWN_ROUTE_META: Record<string, RouteMeta> = {
 }
 
 // KNOWN_ROUTE_LABELS:已知 segment 對應的分頁標籤文字,同樣只涵蓋
-// leg1~leg4——維持既有 demo 行程的確切文案。
+// leg1~leg4——維持既有 demo 旅程的確切文案。
 const KNOWN_ROUTE_LABELS: Record<string, string> = {
   leg1: 'Day1 光復橋',
   leg2: 'Day1 193/83K',
@@ -209,7 +209,7 @@ const KNOWN_ROUTE_LABELS: Record<string, string> = {
   leg4: 'Day2 安通驛站',
 }
 
-// computeRouteMeta:任意行程的 segment(不在 KNOWN_ROUTE_META 裡)沒有
+// computeRouteMeta:任意旅程的 segment(不在 KNOWN_ROUTE_META 裡)沒有
 // 手動維護的摘要文字/數字可用,改由這一段的 checkpoints 本身推算出合理的
 // 預設值——totalKm 取最大 km(或終點站 km);startTime/finishTime 取第一筆
 // 有時刻的離站時間、最後一筆(終點優先)有時刻的抵達時間;title 用「起點
@@ -245,7 +245,7 @@ function computeRouteMeta(checkpoints: Checkpoint[]): RouteMeta {
 // buildRoutes:bySegment 是 fetch 回來、依 segment 分組排序好的資料(見
 // groupBySegment),依 segment key 字母序排列(Map 本身已經是排序過的,見
 // groupBySegment)。已知 segment(leg1~leg4)套用手動維護的
-// KNOWN_ROUTE_META/KNOWN_ROUTE_LABELS,維持既有 demo 行程的確切文案;
+// KNOWN_ROUTE_META/KNOWN_ROUTE_LABELS,維持既有 demo 旅程的確切文案;
 // 其餘任意 segment 落到 computeRouteMeta() 通用推算、標籤直接用 segment
 // key 本身(沒有更好的來源可用)。
 function buildRoutes(
@@ -402,16 +402,16 @@ export function PaceChart({
   // useEffect),依 publicToken 是否有值決定用哪一個 token(見該 prop
   // 說明)。
   cfg?: ClientConfig
-  // tripID:登入後正式介面要讀取的行程 ID,跟時間軸(MultiTrackTimeline)
-  // 同一套邏輯——用使用者目前選取的 activeTrip?.id,不綁定固定行程。
-  // 沒有選取行程時(undefined/null)顯示提示訊息,不發任何請求(見下方
+  // tripID:登入後正式介面要讀取的旅程 ID,跟時間軸(MultiTrackTimeline)
+  // 同一套邏輯——用使用者目前選取的 activeTrip?.id,不綁定固定旅程。
+  // 沒有選取旅程時(undefined/null)顯示提示訊息,不發任何請求(見下方
   // useEffect)。cfg 為 undefined(公開分享頁)時這個 prop 不會被使用。
   tripID?: string | null
   // publicToken:未登入的公開分享頁(cfg 為 undefined 時)要查詢的公開連結
   // token——真正的分享連結 /public/{token}(見 PublicViewScreen.tsx,任意
-  // 使用者行程的分享連結,網址列上的動態 token)應該傳這個 prop 指定實際的
+  // 使用者旅程的分享連結,網址列上的動態 token)應該傳這個 prop 指定實際的
   // token。不傳時 fallback 用 PACE_PUBLIC_LINK_TOKEN(見下方常數說明,固定
-  // 的 demo 展示行程專用,/demo/pace 那個獨立示範頁在用),維持該頁既有行為
+  // 的 demo 展示旅程專用,/demo/pace 那個獨立示範頁在用),維持該頁既有行為
   // 不變。
   publicToken?: string
   // onCheckpointClick:通知父層(DesktopLayout.tsx 登入後正式介面)使用者
@@ -467,7 +467,7 @@ export function PaceChart({
   const [geocodeErr, setGeocodeErr] = useState<string | null>(null)
 
   useEffect(() => {
-    // 登入後正式介面(cfg 有值)但還沒選行程:比照時間軸「選擇一個行程後
+    // 登入後正式介面(cfg 有值)但還沒選旅程:比照時間軸「選擇一趟旅程後
     // 顯示時間軸。」的作法,不發任何請求,只顯示提示訊息,也不當成錯誤。
     if (cfg && !tripID) {
       setCheckpointsBySegment(null)
@@ -475,8 +475,8 @@ export function PaceChart({
       return
     }
     let cancelled = false
-    // 登入後正式介面(cfg 有值):走一般認證過的行程 entries API,讀取
-    // 使用者目前選取的行程(tripID),不再經過公開連結 token。未登入的
+    // 登入後正式介面(cfg 有值):走一般認證過的旅程 entries API,讀取
+    // 使用者目前選取的旅程(tripID),不再經過公開連結 token。未登入的
     // 公開分享頁(cfg 為 undefined):走公開連結 token——優先用呼叫端傳入的
     // publicToken(真正的分享連結 /public/{token},見該 prop 說明),沒傳
     // 才 fallback 用固定的 PACE_PUBLIC_LINK_TOKEN(/demo/pace 那個獨立示範
@@ -522,11 +522,11 @@ export function PaceChart({
     [checkpointsBySegment],
   )
   // route:routes 現在长度不再保證固定為 4(依實際出現的 segment 數量而
-  // 定),理論上也可能是空陣列(行程所有 entries 都沒有 detail.segment)。
+  // 定),理論上也可能是空陣列(旅程所有 entries 都沒有 detail.segment)。
   // fallback 一個空段落,避免下方邏輯對 undefined 取屬性而炸掉——渲染端
   // 對 checkpoints.length === 0 本身就有既有的空清單呈現方式,不需要額外
   // 處理。用 useMemo 包住 fallback 物件本身:routes 為空陣列時(例如這個
-  // 行程完全沒有 detail.segment 資料)每次 render 若直接 new 一個 fallback
+  // 旅程完全沒有 detail.segment 資料)每次 render 若直接 new 一個 fallback
   // 物件字面量,route.checkpoints 參照每次都不同,會讓下方依賴
   // route.checkpoints 的 onRouteChange effect 誤判「變了」而每次渲染都重新
   // 觸發、setPaceCheckpoints(在父層)→ 父層重渲染 → 這裡再重渲染,形成無窮
@@ -614,7 +614,7 @@ export function PaceChart({
     try {
       const result = await geocodeEntry(cfg, cp.id)
       // 把查到的座標寫回本地狀態,讓卡片立刻反映「已有座標」(不用等下次
-      // 重新 fetch 整個行程),理由同 checkpointsBySegment 本身的資料流:
+      // 重新 fetch 整個旅程),理由同 checkpointsBySegment 本身的資料流:
       // 這裡是唯一的資料來源,route/routes 都是從它 useMemo 出來的。
       setCheckpointsBySegment((prev) => {
         if (!prev) return prev
@@ -640,13 +640,13 @@ export function PaceChart({
     }
   }
 
-  // 跟時間軸(DesktopLayout.tsx 的「選擇一個行程後顯示時間軸。」)
-  // 同一套邏輯:登入後正式介面還沒選行程時,只顯示提示,不當成錯誤、
+  // 跟時間軸(DesktopLayout.tsx 的「選擇一趟旅程後顯示時間軸。」)
+  // 同一套邏輯:登入後正式介面還沒選旅程時,只顯示提示,不當成錯誤、
   // 也不用「載入中」那組畫面(根本沒有發出任何請求)。
   if (cfg && !tripID) {
     return (
       <div className="pace-chart">
-        <div className="empty">選擇一個行程後顯示路徑。</div>
+        <div className="empty">選擇一趟旅程後顯示路徑。</div>
       </div>
     )
   }
@@ -687,8 +687,8 @@ export function PaceChart({
       </div>
 
       {/* 這是 ?demo 才會出現的固定示範資料(花東193公路),不是真實使用者
-          行程,分享出去的公開頁不需要登入、不涉及任何真實資料權限問題——
-          跟 /public/{token} 那套給真實行程用的公開分享連結是分開的機制,
+          旅程,分享出去的公開頁不需要登入、不涉及任何真實資料權限問題——
+          跟 /public/{token} 那套給真實旅程用的公開分享連結是分開的機制,
           直接複製一個固定網址即可,不用走後端建立/驗證 token 那套流程。 */}
       <button
         type="button"

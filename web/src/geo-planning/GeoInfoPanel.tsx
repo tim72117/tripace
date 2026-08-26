@@ -48,7 +48,6 @@ export function GeoInfoPanel({
   onAddCandidate,
   onAddAndReveal,
   onSchedule,
-  tripName,
   scheduledDates,
   shiftBy,
 }: {
@@ -93,21 +92,19 @@ export function GeoInfoPanel({
   // 讓使用者感覺到「東西加進候選籃了、去左邊看」。這個元件不知道呼叫端
   // 具體怎麼做視覺提示,只負責原封不動往上回報使用者按了這顆按鈕。
   onAddAndReveal?: (candidate: GeoCandidate) => void
-  // tripName:左半邊按鈕文字「加入 {tripName}」要顯示的行程名稱,由呼叫端
-  // (DesktopLayout.tsx)傳入 activeTrip?.name——這個元件不猜行程名稱從
-  // 哪來,呼叫端已經有 activeTrip 可用,由它決定 fallback 文字。
-  tripName: string
   // scheduledDates:行程本身目前已排定的日期清單(YYYY-MM-DD),由呼叫端
   // (DesktopLayout.tsx)算好傳入——這個元件不需要知道怎麼從候選籃/行程
   // entries 推導出這份清單。候選沒有自己的日期、但行程已有排定日期時,
-  // 「加入 {tripName}」改先跳下拉選單列出這些日期(格式比照
+  // 「加入行程」改先跳下拉選單列出這些日期(格式比照
   // GeoCandidateSidebar.tsx 的 dayGroupLabel),而不是直接展開日曆——
   // 多數情況下使用者是把新地點加進「已經在排的行程」,列出既有日期讓
   // 一鍵選比每次都要重新開日曆挑日期快。undefined 或空陣列都視為「沒有
-  // 既有日期可選」,行為退回原本直接展開日曆,見 handleAddClick。
+  // 既有日期可選」,行為退回原本直接展開日曆,見 handleAddClick。使用者
+  // 明確要求按鈕文字不用串上旅程名稱(原本是「加入 {tripName}」),故
+  // tripName prop 已移除,不再由呼叫端傳入。
   scheduledDates?: string[]
 }) {
-  // addUiMode:「加入 {tripName}」按下、候選沒有排定日期時展開的 UI 狀態
+  // addUiMode:「加入行程」按下、候選沒有排定日期時展開的 UI 狀態
   // ——'closed' 沒有展開任何東西、'menu' 展開既有日期下拉選單、'calendar'
   // 展開日期選擇 UI(比照 GeoCandidateSidebar.tsx NoDateDayHead 的既有樣式
   // 慣例)。用 content 的參照當依賴重置——切換到別的地點介紹卡時,不該讓
@@ -247,7 +244,7 @@ export function GeoInfoPanel({
                     onClick={handleAddClick}
                   >
                     <Plus size={14} strokeWidth={2} />
-                    加入 {tripName}
+                    加入行程
                   </button>
                   <button
                     type="button"

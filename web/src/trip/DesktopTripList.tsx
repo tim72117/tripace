@@ -6,9 +6,9 @@ import { useTripsState } from '../hooks/useTripsState'
 import { PanelHead } from '../PanelHead'
 import styles from './DesktopTripList.module.css'
 
-// 桌面版側欄行程列表:複用 useTripsState(與手機版 PhoneNavDrawer 的
-// 行程列表分頁共用抓取/建立邏輯),只是呈現方式改成緊湊的側欄列表項目,
-// 選中的行程有高亮(.desktop-trip-item.active)。從 DesktopLayout.tsx
+// 桌面版側欄旅程列表:複用 useTripsState(與手機版 PhoneNavDrawer 的
+// 旅程列表分頁共用抓取/建立邏輯),只是呈現方式改成緊湊的側欄列表項目,
+// 選中的旅程有高亮(.desktop-trip-item.active)。從 DesktopLayout.tsx
 // 抽出獨立成檔案,搬移純粹是移動程式碼位置,不涉及邏輯重組。
 export function DesktopTripList({
   cfg,
@@ -19,10 +19,10 @@ export function DesktopTripList({
   cfg: ClientConfig
   activeTripID: string | null
   onOpen: (t: Trip) => void
-  // onManage:行程管理(分享連結/成員/開啟時自動進入,見
+  // onManage:旅程管理(分享連結/成員/開啟時自動進入,見
   // TripManageModal.tsx)原本掛在 ChatScreen navbar 的三個分散入口,現在
   // 對話小匡可能無 trip(見 ChatScreen.tsx trip prop 的說明),合併成單一
-  // 動作移到行程本來就存在的地方——行程列表每一筆項目上。呼叫端
+  // 動作移到旅程本來就存在的地方——旅程列表每一筆項目上。呼叫端
   // (DesktopLayout.tsx)負責開啟合併後的 TripManageModal。
   onManage: (t: Trip) => void
 }) {
@@ -40,20 +40,20 @@ export function DesktopTripList({
       <div className={styles.scroll}>
         {trips.length === 0 && !err && (
           <div className="empty">
-            {loading ? '載入中…' : '沒有行程,按下方「新增行程」建立一個。'}
+            {loading ? '載入中…' : '沒有旅程,按下方「新增旅程」建立一個。'}
           </div>
         )}
-        {/* 新增行程:跟下面實際的行程項目共用同一套 .item 樣式(對齊手機版
+        {/* 新增旅程:跟下面實際的旅程項目共用同一套 .item 樣式(對齊手機版
             PhoneNavDrawer.tsx 的 TripsTabContent,同一組清單的一份子,
             不是另外一顆獨立的圖示按鈕),只把大頭貼換成「＋」圖示徽章
-            區分。點擊後原地換成輸入框(composer),下面既有行程清單維持
+            區分。點擊後原地換成輸入框(composer),下面既有旅程清單維持
             可見。 */}
         {creating ? (
           <div className="new-trip-composer">
             <input
               autoFocus
               value={newName}
-              placeholder="新行程名稱…"
+              placeholder="新旅程名稱…"
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => {
                 if (isSubmitEnter(e)) submitCreate()
@@ -74,7 +74,7 @@ export function DesktopTripList({
                 <Plus size={18} strokeWidth={1.8} />
               </div>
               <div className="grow">
-                <div className="name">新增行程</div>
+                <div className="name">新增旅程</div>
               </div>
             </button>
           </div>
@@ -100,7 +100,7 @@ export function DesktopTripList({
                 e.stopPropagation()
                 onManage(t)
               }}
-              title="行程設定"
+              title="旅程設定"
             >
               <Settings size={15} strokeWidth={1.8} />
             </button>

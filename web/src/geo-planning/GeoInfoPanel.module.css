@@ -148,8 +148,8 @@
    GeoHotelSidebar 卡片「+」按鈕的加入候選籃動作,但這裡是獨立卡片底部的
    完整按鈕(文字+圖示),不是側欄清單裡那種縮成一顆圓形圖示鈕的密集
    排版——這張卡片本身版面較寬鬆,用完整按鈕更符合「這是這張卡片的主要
-   操作」的份量。左半邊(addCandidateBtn,加入目前行程)/右半邊
-   (addToNewTripBtn,加入到新行程)視覺上共用外框、只在中間留一條細
+   操作」的份量。左半邊(addCandidateBtn,加入目前旅程)/右半邊
+   (addToNewTripBtn,加入到新旅程)視覺上共用外框、只在中間留一條細
    分隔線,讓使用者感覺是同一顆按鈕的兩個區塊,而不是兩顆獨立按鈕。 */
 /* addCandidateWrap:position: relative 錨點,讓 .dateMenu 懸浮選單
    (position: absolute)貼齊這個按鈕組正下方——選單展開/收合純疊在上層,

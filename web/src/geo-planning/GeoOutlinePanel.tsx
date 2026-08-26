@@ -8,7 +8,7 @@ import type { GeoSelectedKey } from './GeoHotelSidebar'
 import styles from './GeoOutlinePanel.module.css'
 
 // mapLocatedTripEntries:把 fetchEntries 查回的完整 Entry 清單篩出有座標的
-// 那批、轉成 GeoTripEntry 形狀——供下方「換行程」與「補上日期後刷新」
+// 那批、轉成 GeoTripEntry 形狀——供下方「換旅程」與「補上日期後刷新」
 // 兩個 effect 共用同一份映射邏輯,避免其中一處修改欄位後忘記同步另一處。
 function mapLocatedTripEntries(entries: Awaited<ReturnType<typeof fetchEntries>>): GeoTripEntry[] {
   const located = entries.filter(
@@ -66,11 +66,11 @@ function mapLocatedTripEntries(entries: Awaited<ReturnType<typeof fetchEntries>>
 // 觸發就用誰」,見下方 panRequest 的完整說明。
 // selectedKey:由 DesktopLayout.tsx 往下傳,原封不動轉傳給 GeoOutlineMap,
 // 讓地圖上的地標/飯店圖示能標記出目前選中的是哪一個。
-// tripID:目前選中的行程 ID——切到規劃分頁、或切換行程時,若這個行程底下
+// tripID:目前選中的旅程 ID——切到規劃分頁、或切換旅程時,若這個旅程底下
 // 已經有帶座標的 entry(如老手回來繼續規劃、或搬過去用等機制搬進來的
 // 候選點),應該優先以這些點的中心當地圖初始位置,而不是固定顯示東京。
 // 見下方 tripCenter 的查詢。
-// onTripEntriesChange:同 onSearchResultsChange 等,把行程本身已有座標的
+// onTripEntriesChange:同 onSearchResultsChange 等,把旅程本身已有座標的
 // entry(見下方查詢 tripCenter 的同一個 useEffect,順便保留完整清單而不
 // 只是平均座標)往上回報,供 DesktopLayout.tsx 在整個桌面版介面最外側
 // 渲染(地圖上畫 marker、候選籃自動帶入)——理由同
@@ -195,7 +195,7 @@ export function GeoOutlinePanel({
   // 才查詢」的單向資料流,對齊這個檔案其餘 panTarget/tripID 等 prop 的
   // 既有慣例(見下方 useEffect 的依賴陣列)。
   searchTrigger?: number
-  // refetchTripEntriesTrigger:每次遞增時重新查一次目前行程的 entries、
+  // refetchTripEntriesTrigger:每次遞增時重新查一次目前旅程的 entries、
   // 更新 tripEntries/onTripEntriesChange,但不動 tripCenter(不重新判斷
   // 地圖初始中心、也不讓 GeoOutlineMap 重新等待)——供
   // GeoCandidateSidebar 幫「未排定日期」的候選補上日期後,通知這裡刷新
@@ -249,13 +249,13 @@ export function GeoOutlinePanel({
   // 內發起、依賴這個 state 本身,cancelled 這個區域變數在同一個閉包裡
   // 建立與讀取,不會有跨 render 的過時值問題,不需要额外的 ref/手動比對。
   const [selectedCandidate, setSelectedCandidate] = useState<GeoSearchResult | null>(null)
-  // tripCenter:目前行程底下已有座標的 entry 算出來的中心點,見下方
+  // tripCenter:目前旅程底下已有座標的 entry 算出來的中心點,見下方
   // useEffect,傳給 GeoOutlineMap 當地圖第一次建立時的初始中心(見該
   // 元件 initialCenter prop 的完整說明)——三態:undefined 代表「還在
   // 查、尚未確定」(初始值,地圖建立要等待這個狀態解除);null 代表
-  // 「已確定查無可用資料」(沒有 tripID、或行程沒有帶座標的既有地點、
+  // 「已確定查無可用資料」(沒有 tripID、或旅程沒有帶座標的既有地點、
   // 或查詢失敗),退回地圖內建的預設起點;物件代表確定要用這組座標。
-  // 每次 tripID 變動就重新設回 undefined、重新查一次——換行程後舊行程
+  // 每次 tripID 變動就重新設回 undefined、重新查一次——換旅程後舊旅程
   // 的中心點不該繼續生效。
   const [tripCenter, setTripCenter] = useState<{ lat: number; lng: number } | null | undefined>(undefined)
   // tripEntries:同 tripCenter 查詢流程一併算出的完整帶座標 entry 清單
@@ -413,7 +413,7 @@ export function GeoOutlinePanel({
     handleGeocodeCandidateSelect(externalGeocodeCandidateSelect)
   }, [externalGeocodeCandidateSelect, handleGeocodeCandidateSelect])
 
-  // 切到這個分頁或換行程時,若行程底下已有帶座標的 entry,算出這些點的
+  // 切到這個分頁或換旅程時,若旅程底下已有帶座標的 entry,算出這些點的
   // 平均座標當地圖初始中心——只在 tripID 變動時查一次,不是每次都重查:
   // 這裡只負責「一開始該看哪裡」,之後使用者搜尋/拖曳地圖的移動不該被
   // 這份初始定位持續蓋過。重設回 undefined(而非直接設 null)是關鍵:

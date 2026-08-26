@@ -10,7 +10,7 @@ import styles from './DemoPanel.module.css'
 // 桌面版 rail 上的 API/WS 狀態面板圖示時才會出現(見 DesktopLayout.tsx 的
 // showDebugPanel),不是正式使用者預設看得到的功能——元件/檔案命名故意
 // 帶上 Demo 反映這件事。
-// 三個分頁 —— API 交易紀錄、WS 事件、目前行程的 Entry 條目。
+// 三個分頁 —— API 交易紀錄、WS 事件、目前旅程的 Entry 條目。
 // API:依時間倒序列出每筆交易,點開看原始 request/response JSON。
 // WS 事件:後端主動推送的介面更新事件(entries_updated/ask_user/task_created/
 //   entries_loaded 等,見 server/internal/api/ws.go 的各個 Notify* 方法)。
@@ -108,7 +108,7 @@ export function DemoPanel({
   )
 }
 
-// EntriesView 顯示目前行程的 Entry 條目(record_entry 工具寫進 DB 的結構化資料)。
+// EntriesView 顯示目前旅程的 Entry 條目(record_entry 工具寫進 DB 的結構化資料)。
 function EntriesView({
   cfg,
   trip,
@@ -138,10 +138,10 @@ function EntriesView({
     load()
   }, [load])
 
-  // 重置:清空此行程的 entry(破壞性,限 owner)。完成後重新載入。
+  // 重置:清空此旅程的 entry(破壞性,限 owner)。完成後重新載入。
   const reset = useCallback(async () => {
     if (!trip) return
-    if (!window.confirm(`確定清空行程「${trip.name}」的所有條目?此操作無法復原。`))
+    if (!window.confirm(`確定清空旅程「${trip.name}」的所有條目?此操作無法復原。`))
       return
     setLoading(true)
     setErr(null)
@@ -160,7 +160,7 @@ function EntriesView({
     return (
       <div className={styles.list}>
         <div className={styles.emptyState}>
-          先在左側進入一個行程,這裡會顯示該行程的 Entry 條目。
+          先在左側進入一個旅程,這裡會顯示該旅程的 Entry 條目。
         </div>
       </div>
     )
@@ -169,7 +169,7 @@ function EntriesView({
   return (
     <div className={styles.list}>
       <div className={styles.entriesHead}>
-        <span>行程 {trip.name} · {entries.length} 筆</span>
+        <span>旅程 {trip.name} · {entries.length} 筆</span>
         <span style={{ display: 'flex', gap: 6 }}>
           <button onClick={load} disabled={loading}>
             {loading ? '…' : '↻ 重整'}
@@ -182,7 +182,7 @@ function EntriesView({
       {err && <pre className={styles.jsonErr}>{err}</pre>}
       {!err && entries.length === 0 && !loading && (
         <div className={styles.emptyState}>
-          這個行程還沒有 Entry。owner 記事(需 -llm want)後會出現。
+          這個旅程還沒有 Entry。owner 記事(需 -llm want)後會出現。
         </div>
       )}
       {entries.map((e) => (

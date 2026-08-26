@@ -4,8 +4,8 @@ import * as api from '../api'
 import type { Trip } from '../trip/types'
 import { LS_DEFAULT_TRIP, errMsg } from '../AppCommon'
 
-// useTripsState:行程列表共用資料邏輯(抓取/建立/自動導向預設行程)。
-// 手機版 PhoneNavDrawer 的行程列表分頁(見 trip/PhoneTripsDrawer.tsx)與
+// useTripsState:旅程列表共用資料邏輯(抓取/建立/自動導向預設旅程)。
+// 手機版 PhoneNavDrawer 的旅程列表分頁(見 trip/PhoneTripsDrawer.tsx)與
 // 桌面版側欄列表 DesktopTripList(見 trip/DesktopTripList.tsx)共用同一份
 // state 管理與 API 呼叫,只有呈現方式(渲染 JSX)不同,避免整套重寫一份。
 export function useTripsState(cfg: ClientConfig, onOpen: (t: Trip) => void) {
@@ -54,11 +54,11 @@ export function useTripsState(cfg: ClientConfig, onOpen: (t: Trip) => void) {
       const created = await api.createTrip(cfg, name)
       setNewName('')
       setCreating(false)
-      // 新增後預設選中剛建立的這個行程,而不是只重新整理清單留在原地——
-      // 使用者建立行程的意圖幾乎都是「馬上開始用它」,若不自動選中,還得
+      // 新增後預設選中剛建立的這個旅程,而不是只重新整理清單留在原地——
+      // 使用者建立旅程的意圖幾乎都是「馬上開始用它」,若不自動選中,還得
       // 從剛整理好的清單裡再找一次自己剛剛建的那筆。hasAutoNavigatedRef
       // 先標記為 true,避免緊接著 load() 觸發下方「自動導向 localStorage
-      // 預設行程」的 effect 又把選取蓋掉——onOpen 本身通常也會寫入這個
+      // 預設旅程」的 effect 又把選取蓋掉——onOpen 本身通常也會寫入這個
       // localStorage 值(見各呼叫端),但那是非同步的,這裡不能依賴它先
       // 生效。
       hasAutoNavigatedRef.current = true

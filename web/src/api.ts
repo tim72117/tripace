@@ -284,7 +284,7 @@ export function fetchMembers(cfg: ClientConfig, tripID: string) {
   ).then((r) => r.members)
 }
 
-// 以 email 邀請使用者加入行程;role 預設 viewer(僅 owner 能加)。
+// 以 email 邀請使用者加入旅程;role 預設 viewer(僅 owner 能加)。
 export function addMember(
   cfg: ClientConfig,
   tripID: string,
@@ -333,7 +333,7 @@ export interface AssistPlace {
   primaryType: string
 }
 
-// 取行程的 Entry 條目(LLM record_entry 工具處理後的結果)。
+// 取旅程的 Entry 條目(LLM record_entry 工具處理後的結果)。
 export function fetchEntries(cfg: ClientConfig, tripID: string) {
   return request<{ entries: Entry[] }>(
     cfg,
@@ -546,10 +546,10 @@ export function geocodeCandidateToSearchResult(c: GeoGeocodeCandidate): GeoSearc
   return { kind: 'geocode', name: c.name, address: c.address, lat: c.lat, lng: c.lng, placeId: c.placeId }
 }
 
-// GeoTripEntry:行程本身已有座標的 entry,轉成地理輪廓底圖圖層通用的
+// GeoTripEntry:旅程本身已有座標的 entry,轉成地理輪廓底圖圖層通用的
 // name/lat/lng 形狀,供 GeoOutlineMap 畫 marker、GeoCandidateSidebar
 // 顯示用——欄位命名對齊 GeoHotel/GeoPlace(而非直接重用 Entry,因為
-// Entry 的欄位是 title/location,語意上屬於行程資料,不是地理圖層資料,
+// Entry 的欄位是 title/location,語意上屬於旅程資料,不是地理圖層資料,
 // 混用會讓兩套型別的職責模糊)。id 保留供候選籃移除比對用(entry 有
 // 穩定 id,不像飯店/推薦地點只能用名稱+座標當識別鍵)。
 export interface GeoTripEntry {
@@ -728,7 +728,7 @@ export function deleteEntry(cfg: ClientConfig, entryID: string) {
   )
 }
 
-// 重置:清空行程的所有條目(開發/測試用,限 owner)。
+// 重置:清空旅程的所有條目(開發/測試用,限 owner)。
 export function resetTripData(cfg: ClientConfig, tripID: string) {
   return request<{ status: string }>(
     cfg,
@@ -785,7 +785,7 @@ export function deleteTripEntry(cfg: ClientConfig, tripID: string, entryID: stri
 // server/internal/store 的 view_mode 欄位（"pace" 以外一律視為 "timeline"）。
 export type PublicLinkViewMode = 'timeline' | 'pace'
 
-// 建立（或取得已有）行程公開連結。viewMode 不傳時後端預設為 'timeline'。
+// 建立（或取得已有）旅程公開連結。viewMode 不傳時後端預設為 'timeline'。
 export function createPublicLink(cfg: ClientConfig, tripID: string, editable: boolean, viewMode?: PublicLinkViewMode) {
   return request<{ linkToken: string; editable: boolean; viewMode: PublicLinkViewMode }>(
     cfg,
@@ -795,7 +795,7 @@ export function createPublicLink(cfg: ClientConfig, tripID: string, editable: bo
   )
 }
 
-// 取得行程公開連結資訊。
+// 取得旅程公開連結資訊。
 export function getPublicLink(cfg: ClientConfig, tripID: string) {
   return request<{ linkToken: string; editable: boolean; viewMode: PublicLinkViewMode }>(
     cfg,
@@ -804,7 +804,7 @@ export function getPublicLink(cfg: ClientConfig, tripID: string) {
   )
 }
 
-// 刪除行程公開連結。
+// 刪除旅程公開連結。
 export function deletePublicLink(cfg: ClientConfig, tripID: string) {
   return request<{ status: string }>(
     cfg,

@@ -29,7 +29,7 @@ export function PacePhoneSwipe({
   onRouteChange,
 }: {
   // cfg/tripID:登入後正式介面(見 PhoneContent.tsx 的 PhoneNavDrawer)傳入
-  // 目前選取的行程,改走認證過的 fetchEntries——跟桌面版 DesktopLayout.tsx
+  // 目前選取的旅程,改走認證過的 fetchEntries——跟桌面版 DesktopLayout.tsx
   // 的 <PaceChart cfg={cfg} tripID={activeTrip?.id} /> 同一套邏輯,不再
   // 掛載時完全不傳而落到公開分享 token 的 fallback 路徑。
   cfg?: ClientConfig

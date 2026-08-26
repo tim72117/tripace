@@ -115,14 +115,14 @@ export function ShareModal({
         <button className="btn icon-btn" onClick={onClose}>
           <ChevronLeft size={20} strokeWidth={1.8} />
         </button>
-        <span className="title">分享行程</span>
+        <span className="title">分享旅程</span>
         <span style={{ width: 36 }} />
       </div>
       <div className="screen-body">
         <ErrorBanner msg={err} />
         <div className="section-title">公開連結</div>
         <div className="field" style={{ color: 'var(--ios-gray)', fontSize: 13 }}>
-          任何人取得連結後即可查看此行程的內容（無需登入）。
+          任何人取得連結後即可查看此旅程的內容（無需登入）。
         </div>
         {loading ? (
           <div className="empty">載入中…</div>

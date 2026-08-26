@@ -1,5 +1,5 @@
 /* PhoneTripsDrawer.tsx 專屬樣式(CSS Modules)。由下往上彈出的 bottom
-   sheet(使用者要求「行程由下方往上彈出」,原本是左側滑入抽屜)。 */
+   sheet(使用者要求「旅程由下方往上彈出」,原本是左側滑入抽屜)。 */
 
 /* backdrop:遮罩範圍到底部常駐列(PhoneTabBar.tsx)上緣為止,不蓋住它
    ——底部列在 sheet 開啟時仍要保持可視、可點擊(使用者要求「不要遮蔽
@@ -15,7 +15,7 @@
 }
 
 /* panel:貼齊底部常駐列(PhoneTabBar.tsx)上緣,不是螢幕最底部(使用者
-   要求「行程彈出時從下方功能列底下彈出,不要遮蔽到下方功能列」)——
+   要求「旅程彈出時從下方功能列底下彈出,不要遮蔽到下方功能列」)——
    bottom 值等於 PhoneTabBar.module.css 的 .bar 高度(64px + safe-area),
    兩處數值需要保持一致,PhoneTabBar 的高度公式之後若調整這裡要一併改。
    滿版寬度,上緣圓角(bottom sheet 慣例視覺)。這裡自己不需要再額外處理
@@ -70,7 +70,7 @@
    (開啟/管理),單一 button 裝不下第二顆可點區域。tripItemOpen 是原本
    .tripItem 的按鈕部分(佔滿剩餘寬度),tripItemAction 是新增的「管理」
    齒輪按鈕,對齊桌面版 DesktopTripList.tsx 的 onManage(見該檔案說明:
-   分享/成員/開啟時自動進入合併成 TripManageModal,入口統一收在行程
+   分享/成員/開啟時自動進入合併成 TripManageModal,入口統一收在旅程
    項目上)。 */
 .tripItem {
   width: 100%;

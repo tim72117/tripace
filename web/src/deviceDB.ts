@@ -159,7 +159,7 @@ export async function saveMessage(m: Message): Promise<void> {
   await persist()
 }
 
-// listMessages 回傳某行程的原話,依時間舊到新。
+// listMessages 回傳某旅程的原話,依時間舊到新。
 export async function listMessages(tripID: string): Promise<Message[]> {
   await initDeviceDB()
   if (!db) return []
@@ -202,7 +202,7 @@ export async function replaceTripBatch(tripID: string, key: string, entries: Tri
   await persist()
 }
 
-// listAllTripBatches 撈回某行程目前存的所有批次,回傳 key -> 清單(依寫入
+// listAllTripBatches 撈回某旅程目前存的所有批次,回傳 key -> 清單(依寫入
 // 順序,rowid)的對照表,供 ChatScreen 的 load() 一次性還原 clientToolsBatches
 // 的初始值(取代先前只處理 ENTRY_QUERY_BATCH_KEY 單一批次的做法)。
 export async function listAllTripBatches(tripID: string): Promise<TripBatches> {

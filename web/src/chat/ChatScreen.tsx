@@ -69,18 +69,18 @@ export function ChatScreen({
   desktopChat,
 }: {
   cfg: ClientConfig
-  // trip:可不傳——對話小匡在使用者尚未選定/建立行程時仍要能用(見
-  // DesktopLayout.tsx 的 chat-popover 說明,唯一入口不再強制先選行程)。
+  // trip:可不傳——對話小匡在使用者尚未選定/建立旅程時仍要能用(見
+  // DesktopLayout.tsx 的 chat-popover 說明,唯一入口不再強制先選旅程)。
   // 無 trip 時,所有綁在 trip.id 上的資料流(歷史訊息/entries/WebSocket/
-  // clientToolsBatches 持久化)與行程專屬功能(成員/分享)一律跳過,只保留
+  // clientToolsBatches 持久化)與旅程專屬功能(成員/分享)一律跳過,只保留
   // onagentBridge 對話本身可用——這是刻意的簡化邊界,不是把整個元件重新
   // 設計成無 trip 也能記事。
   trip?: Trip
   user: User
   onBack: () => void
-  // onOpenDrawer:手機版專用,左上角按鈕改成開啟左側導覽抽屜(行程列表/配速表/
+  // onOpenDrawer:手機版專用,左上角按鈕改成開啟左側導覽抽屜(旅程列表/配速表/
   // 設定入口,見 PhoneContent.tsx 的 PhoneNavDrawer),不再直接呼叫 onBack
-  // 清空 activeTrip——抽屜裡本來就能選別的行程或關閉抽屜留在原地,不需要
+  // 清空 activeTrip——抽屜裡本來就能選別的旅程或關閉抽屜留在原地,不需要
   // 一顆單純「回列表」的按鈕。只在 !desktopChat(手機版)時使用;桌面版
   // ChatScreen 沒有這顆抽屜,維持原本點左上角呼叫 onBack 的行為不變。
   onOpenDrawer?: () => void
@@ -102,7 +102,7 @@ export function ChatScreen({
   desktopChat?: DesktopChatOptions
 }) {
   // owner 輸入=發訊息;成員輸入=語意查詢(回答顯示在訊息流,對齊 iOS App)。
-  // 無 trip 時視同 owner(輸入直接送出對話,不是語意查詢——沒有行程可查)。
+  // 無 trip 時視同 owner(輸入直接送出對話,不是語意查詢——沒有旅程可查)。
   const isOwner = !trip || trip.ownerID === user.id
   const [messages, setMessages] = useState<ChatMessage[]>([])
   // latestAnswerID:這次「即時產生」(send() 內)的最新一則答案訊息 id,供
@@ -119,7 +119,7 @@ export function ChatScreen({
   // WS 收到 entry_updating 加入(並保證最短顯示 800ms),entries_updated(更新完成刷新)時清空。
   const [updatingEntryIDs, setUpdatingEntryIDs] = useState<Set<string>>(new Set())
   const [draft, setDraft] = useState('')
-  // loaded:這個行程的 load() 是否已完成過一次(見 load() 的 finally)。
+  // loaded:這個旅程的 load() 是否已完成過一次(見 load() 的 finally)。
   const [loaded, setLoaded] = useState(false)
   // ask_user:agent 缺資訊(如住宿退房日)時,透過 WS 推來的請求;非 null 時前端開對應 UI。
   const [askUser, setAskUser] = useState<{ askType: string; prompt: string } | null>(null)
@@ -153,7 +153,7 @@ export function ChatScreen({
   //
   // 持久化:比照推薦景點(recommendedPlaces)的模式,web/src/deviceDB.ts 的
   // trip_batches 表(schema 有 key 欄位,見該處宣告的說明)能忠實表示多批次
-  // 資料——load() 用 listAllTripBatches(trip.id) 一次撈回整個行程所有
+  // 資料——load() 用 listAllTripBatches(trip.id) 一次撈回整個旅程所有
   // 批次當初始值(含 ENTRY_QUERY_BATCH_KEY)。重新整理頁面後,onagent 透過
   // trip_entry_add/update 建立的批次資料能正確還原。
   //
@@ -187,7 +187,7 @@ export function ChatScreen({
   )
   const bodyRef = useRef<HTMLDivElement>(null)
   // chatMessagesRef:手機版訊息列表(現在是固定顯示的主要內容,不再是浮層)
-  // 的捲動容器,供進入行程時「捲到最底」使用(桌面版走 bodyRef,見下方
+  // 的捲動容器,供進入旅程時「捲到最底」使用(桌面版走 bodyRef,見下方
   // useEffect)。改版前這支 ref 叫 chatOverlayInnerRef、只在浮層條件渲染時
   // 才存在;現在訊息列表一律渲染,ref 永遠掛得到,行為不變只是命名對齊
   // 新的呈現方式。
@@ -207,7 +207,7 @@ export function ChatScreen({
       // (記錄了就不留泡泡,見 send() 的 drop(true)),故這裡讀回的只會是曾經
       // 存過的「提問 + 回答」對話紀錄,不影響記事泡泡「記錄了就消失」的既有設計。
       // clientToolsBatches 比照推薦景點的模式持久化(見上方宣告處的說明):
-      // 用 listAllTripBatches 一次撈回整個行程目前存的所有批次(含
+      // 用 listAllTripBatches 一次撈回整個旅程目前存的所有批次(含
       // ENTRY_QUERY_BATCH_KEY 這個 entry_query 專用的固定保留 key,統一走同一套
       // schema/API,見該常數宣告處的說明)當初始值。
       const [msgs, ents, allBatches] = await Promise.all([
@@ -217,7 +217,7 @@ export function ChatScreen({
       ])
       // 推薦景點(recommend_nearby)與旅程清單觸發 key(tripListTriggered)都是
       // 掛在個別訊息底下的附加資料,不在 messages 表裡,故讀完訊息清單後再
-      // 各自一次批次撈回這個行程裡所有訊息對應的資料(而非每則訊息各自查
+      // 各自一次批次撈回這個旅程裡所有訊息對應的資料(而非每則訊息各自查
       // 一次),合併進對應訊息物件。
       const [placesByMsgID, tripListKeysByMsgID] = await Promise.all([
         listMessageRecommendedPlaces(msgs.map((m) => m.id)),
@@ -239,9 +239,9 @@ export function ChatScreen({
     } catch (e) {
       setErr(errMsg(e))
     } finally {
-      // loaded:標記這個行程的初次載入已完成(不論成功或失敗),供下方
-      // 「進入行程時捲到最底」的 effect 判斷時機——特意用獨立旗標而非直接
-      // 監聽 messages,因為 messages.length===0(行程沒有歷史訊息)時無法用
+      // loaded:標記這個旅程的初次載入已完成(不論成功或失敗),供下方
+      // 「進入旅程時捲到最底」的 effect 判斷時機——特意用獨立旗標而非直接
+      // 監聽 messages,因為 messages.length===0(旅程沒有歷史訊息)時無法用
       // 「有沒有內容」區分「初次進入」與「之後使用者送出第一則新訊息」。
       setLoaded(true)
     }
@@ -253,11 +253,11 @@ export function ChatScreen({
     load()
   }, [load])
 
-  // 進入行程(或切換行程)時捲到最底,讓使用者一進來就看到最新對話,不用
+  // 進入旅程(或切換旅程)時捲到最底,讓使用者一進來就看到最新對話,不用
   // 自己往下滑。只監聽 loaded(而非 messages)是關鍵:loaded 從 false 變
-  // true 每個行程週期只發生一次(trip.id 變化時於上方 effect 重置為
+  // true 每個旅程週期只發生一次(trip.id 變化時於上方 effect 重置為
   // false、load() 完成時設回 true),天然具備「只觸發一次」的語意——若改
-  // 監聽 messages,行程進來時若沒有歷史訊息(messages.length===0)會無法
+  // 監聽 messages,旅程進來時若沒有歷史訊息(messages.length===0)會無法
   // 區分「初次進入」與「之後使用者送出第一則新訊息」,導致這個 effect 被
   // 誤觸發、跟 scrollMessageToTop(送出訊息時捲到頂端)搶控制權。用
   // requestAnimationFrame 等 loaded 變化觸發的渲染真正完成、DOM(手機版的
@@ -307,13 +307,13 @@ export function ChatScreen({
   const MIN_UPDATING_MS = 800
 
   useEffect(() => {
-    // 無 trip:沒有行程可訂閱即時事件,不建立連線(entry_updating/
+    // 無 trip:沒有旅程可訂閱即時事件,不建立連線(entry_updating/
     // entries_updated 等事件全部綁在某個 trip 底下)。
     if (!trip) return
     const tripID = trip.id
     const base = cfg.baseURL.replace(/^http/, 'ws')
     // 瀏覽器原生 WebSocket API 不支援自訂 header,token 改用 query string 帶,
-    // 供後端驗證是否為此行程成員(見 server/internal/api/ws.go handleWS)。
+    // 供後端驗證是否為此旅程成員(見 server/internal/api/ws.go handleWS)。
     const tokenQS = cfg.token ? `?token=${encodeURIComponent(cfg.token)}` : ''
     const ws = new WebSocket(`${base}/v1/trips/${tripID}/ws${tokenQS}`)
     ws.onmessage = (e) => {
@@ -489,7 +489,7 @@ export function ChatScreen({
       const next = (prev[key] ?? []).filter((e) => !ids.has(e.id))
       const updated = { ...prev, [key]: next }
       // 無 trip 時 clientToolsBatches 不持久化(裝置端 DB 的批次表以 tripID
-      // 為鍵,沒有行程就沒有對應的持久化目標),只更新記憶體內的 state。
+      // 為鍵,沒有旅程就沒有對應的持久化目標),只更新記憶體內的 state。
       if (trip) void replaceTripBatch(trip.id, key, next).catch(() => {})
       return updated
     })
@@ -503,7 +503,7 @@ export function ChatScreen({
           對話小匡(chatPopoverOpen)外層已經有跟其他浮動卡片一致的右上角
           關閉按鈕(見 FloatingPanel.tsx),不需要再疊一層「返回」按鈕/
           標題列。原本掛在這裡的 TripMenu(含
-          「設為開啟時自動進入」)已搬進行程列表的 TripManageModal。 */}
+          「設為開啟時自動進入」)已搬進旅程列表的 TripManageModal。 */}
       <div className={styles.area}>
         {desktopChat ? (
           // 桌面模式:主區不渲染時間軸(時間軸只活在左側 side panel 的時間軸模式裡)。
@@ -515,10 +515,10 @@ export function ChatScreen({
             <ErrorBanner msg={err} />
             {messages.length === 0 ? (
               <div className="empty">
-                {/* 無 trip(對話小匡未綁定行程)時,文字與有 trip 但尚無
+                {/* 無 trip(對話小匡未綁定旅程)時,文字與有 trip 但尚無
                     對話時共用同一句簡短引導——不提時間軸,因為無 trip 時
                     根本沒有時間軸可排列。 */}
-                {!trip ? '在下方輸入，開始對話。' : isOwner ? '在下方輸入記事，會依時間排列在左側時間軸。' : '在下方查詢這趟行程的內容。'}
+                {!trip ? '在下方輸入，開始對話。' : isOwner ? '在下方輸入記事，會依時間排列在左側時間軸。' : '在下方查詢這趟旅程的內容。'}
               </div>
             ) : (
               messages.map((m) => (
@@ -535,7 +535,7 @@ export function ChatScreen({
             <ErrorBanner msg={err} />
             {messages.length === 0 ? (
               <div className="empty">
-                {!trip ? '在下方輸入，開始對話。' : isOwner ? '在下方輸入記事，會依時間排列在時間軸(左上角選單)。' : '在下方查詢這趟行程的內容。'}
+                {!trip ? '在下方輸入，開始對話。' : isOwner ? '在下方輸入記事，會依時間排列在時間軸(左上角選單)。' : '在下方查詢這趟旅程的內容。'}
               </div>
             ) : (
               messages.map((m) => (

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { LS_DEFAULT_TRIP } from '../AppCommon'
 
-// ---- 行程菜單(右上角設定) ----
+// ---- 旅程菜單(右上角設定) ----
 
 export function TripMenu({ tripID }: { tripID: string }) {
   const [open, setOpen] = useState(false)
@@ -23,7 +23,7 @@ export function TripMenu({ tripID }: { tripID: string }) {
       <button
         className="btn icon-btn"
         onClick={() => setOpen(!open)}
-        title="行程設定"
+        title="旅程設定"
         style={{ padding: 0 }}
       >
         ⋯

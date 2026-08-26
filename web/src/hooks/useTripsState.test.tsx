@@ -1,5 +1,5 @@
-// useTripsState 是每個使用者打開 App 第一件會碰到的邏輯:列出行程、建立
-// 行程、選擇行程、自動導向使用者先前設定的預設行程。這裡直接 mock 掉
+// useTripsState 是每個使用者打開 App 第一件會碰到的邏輯:列出旅程、建立
+// 旅程、選擇旅程、自動導向使用者先前設定的預設旅程。這裡直接 mock 掉
 // ./api 模組(而非像 api.test.ts 那樣 mock fetch),因為要測的是這個 hook
 // 本身的狀態機邏輯,不是它底下呼叫 api 的實作細節。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -70,7 +70,7 @@ describe('useTripsState', () => {
     expect(result.current.err).toBe('連線失敗')
   })
 
-  it('localStorage 記錄的預設行程存在於清單中時,自動呼叫 onOpen', async () => {
+  it('localStorage 記錄的預設旅程存在於清單中時,自動呼叫 onOpen', async () => {
     const target = makeTrip({ id: 'tr_target' })
     const other = makeTrip({ id: 'tr_other' })
     localStorage.setItem(LS_DEFAULT_TRIP, 'tr_target')
@@ -83,7 +83,7 @@ describe('useTripsState', () => {
     expect(onOpen).toHaveBeenCalledWith(target)
   })
 
-  it('localStorage 沒有記錄預設行程時,不會呼叫 onOpen', async () => {
+  it('localStorage 沒有記錄預設旅程時,不會呼叫 onOpen', async () => {
     vi.mocked(api.fetchTrips).mockResolvedValue([makeTrip()])
     const onOpen = vi.fn()
 
@@ -93,7 +93,7 @@ describe('useTripsState', () => {
     expect(onOpen).not.toHaveBeenCalled()
   })
 
-  it('localStorage 記錄的預設行程 ID 不在目前清單中時,不會誤觸發 onOpen', async () => {
+  it('localStorage 記錄的預設旅程 ID 不在目前清單中時,不會誤觸發 onOpen', async () => {
     localStorage.setItem(LS_DEFAULT_TRIP, 'tr_不存在的id')
     vi.mocked(api.fetchTrips).mockResolvedValue([makeTrip({ id: 'tr_1' })])
     const onOpen = vi.fn()
@@ -112,14 +112,14 @@ describe('useTripsState', () => {
     const { result } = renderHook(() => useTripsState(cfg, onOpen))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
-    act(() => result.current.setNewName('新的花蓮行程'))
-    expect(result.current.newName).toBe('新的花蓮行程')
+    act(() => result.current.setNewName('新的花蓮旅程'))
+    expect(result.current.newName).toBe('新的花蓮旅程')
 
     await act(async () => {
       await result.current.submitCreate()
     })
 
-    expect(api.createTrip).toHaveBeenCalledWith(cfg, '新的花蓮行程')
+    expect(api.createTrip).toHaveBeenCalledWith(cfg, '新的花蓮旅程')
     // 建立成功後重新呼叫 fetchTrips 刷新清單(掛載時 1 次 + submitCreate 後 1 次)。
     expect(api.fetchTrips).toHaveBeenCalledTimes(2)
     expect(result.current.newName).toBe('')

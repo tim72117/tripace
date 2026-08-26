@@ -78,7 +78,7 @@ export function MembersScreen({
       </div>
       <div className="screen-body">
         <ErrorBanner msg={err} />
-        <div className="section-title">行程成員 · {trip.name}</div>
+        <div className="section-title">旅程成員 · {trip.name}</div>
         <ul className="list">
           {members.map((m) => {
             const isTripOwner = m.id === trip.ownerID

@@ -4,10 +4,10 @@
 // 日歷選擇」——換句話說:
 //   - 候選本身已經有排定日期(目前只有 kind==='entry' 且 start 有值的候選
 //     才可能符合,見 GeoCandidate 型別定義,entry 是「返回候選」後暫時退回
-//     候選籃、但仍保留原本 start/startTime 的項目)→ 按下「加入 {tripName}」
+//     候選籃、但仍保留原本 start/startTime 的項目)→ 按下「加入行程」
 //     維持現有行為,直接呼叫 onAddCandidate,不彈日曆。
 //   - 候選沒有已排定日期(hotel/attraction/place 三種來源天生沒有日期概念,
-//     或 entry 候選但 start 是空字串)→ 按下「加入 {tripName}」不直接呼叫
+//     或 entry 候選但 start 是空字串)→ 按下「加入行程」不直接呼叫
 //     onAddCandidate,而是展開一個日曆浮動匡(見 DatePickerPopover.tsx),
 //     點選日期格子即視為確定,改呼叫新的 onSchedule(candidate, date) 回報
 //     使用者選定的日期,不呼叫 onAddCandidate(這個流程完全取代原本的
@@ -28,7 +28,6 @@ import userEvent from '@testing-library/user-event'
 import { GeoInfoPanel, type GeoInfoContent } from './GeoInfoPanel'
 import type { GeoCandidate } from './GeoCandidateSidebar'
 
-const TRIP_NAME = '東京五日遊'
 
 // pickCalendarDate:react-day-picker 的日期格子沒有穩定的 test id,只有
 // aria-label(格式「YYYY年M月D日 星期X」,見 DatePickerPopover 渲染出的
@@ -88,7 +87,7 @@ function entryCandidateWithoutDate(): GeoCandidate {
   }
 }
 
-describe('GeoInfoPanel「加入 {tripName}」按鈕的日期選擇', () => {
+describe('GeoInfoPanel「加入行程」按鈕的日期選擇', () => {
   it('候選沒有已排定日期(hotel/attraction/place 天生沒有日期)時,按下按鈕不會直接呼叫 onAddCandidate,而是展開日期選擇 UI', async () => {
     const user = userEvent.setup()
     const onAddCandidate = vi.fn()
@@ -97,11 +96,10 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕的日期選擇', () => {
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         onAddCandidate={onAddCandidate}
-        tripName={TRIP_NAME}
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
+    await user.click(screen.getByRole('button', { name: '加入行程' }))
 
     expect(onAddCandidate).not.toHaveBeenCalled()
     // 日期選擇 UI 改用日曆浮動匡(react-day-picker,見 DatePickerPopover.tsx)
@@ -118,11 +116,10 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕的日期選擇', () => {
         content={contentWithCandidate(candidate)}
         onClose={() => {}}
         onAddCandidate={onAddCandidate}
-        tripName={TRIP_NAME}
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
+    await user.click(screen.getByRole('button', { name: '加入行程' }))
 
     expect(onAddCandidate).toHaveBeenCalledTimes(1)
     expect(onAddCandidate).toHaveBeenCalledWith(candidate)
@@ -137,11 +134,10 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕的日期選擇', () => {
         content={contentWithCandidate(entryCandidateWithoutDate())}
         onClose={() => {}}
         onAddCandidate={onAddCandidate}
-        tripName={TRIP_NAME}
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
+    await user.click(screen.getByRole('button', { name: '加入行程' }))
 
     expect(onAddCandidate).not.toHaveBeenCalled()
     expect(screen.getByRole('grid')).not.toBeNull()
@@ -157,11 +153,10 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕的日期選擇', () => {
         onClose={() => {}}
         onAddCandidate={onAddCandidate}
         onSchedule={onSchedule}
-        tripName={TRIP_NAME}
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
+    await user.click(screen.getByRole('button', { name: '加入行程' }))
     await pickCalendarDate(user, 2026, 8, 27)
 
     expect(onSchedule).toHaveBeenCalledTimes(1)
@@ -177,7 +172,6 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕的日期選擇', () => {
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         onAddAndReveal={onAddAndReveal}
-        tripName={TRIP_NAME}
       />,
     )
 
@@ -189,7 +183,7 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕的日期選擇', () => {
   })
 })
 
-// ---- 行程已有排定日期時,「加入 {tripName}」先跳日期下拉選單 ----
+// ---- 行程已有排定日期時,「加入行程」先跳日期下拉選單 ----
 //
 // 使用者原話:「當已有安排行程時,加入行程按鈕按下後先出現日期選單,就是
 // 已經有排入的日期清單,下面還有其他日期」。完整分岔邏輯(候選沒有自己
@@ -209,7 +203,7 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕的日期選擇', () => {
 // 陣列,這個元件不需要知道這些日期是怎麼算出來的。
 const SCHEDULED_DATES = ['2026-08-16', '2026-08-17']
 
-describe('GeoInfoPanel「加入 {tripName}」按鈕:行程已有排定日期時先跳下拉選單', () => {
+describe('GeoInfoPanel「加入行程」按鈕:行程已有排定日期時先跳下拉選單', () => {
   it('候選沒有日期、但行程已有排定日期時,按下按鈕展開下拉選單(列出既有日期 + 其他日期),不直接展開日曆', async () => {
     const user = userEvent.setup()
     render(
@@ -217,11 +211,10 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕:行程已有排定日期時�
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         scheduledDates={SCHEDULED_DATES}
-        tripName={TRIP_NAME}
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
+    await user.click(screen.getByRole('button', { name: '加入行程' }))
 
     expect(screen.getByRole('button', { name: '8/16' })).not.toBeNull()
     expect(screen.getByRole('button', { name: '8/17' })).not.toBeNull()
@@ -239,11 +232,10 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕:行程已有排定日期時�
         onClose={() => {}}
         onSchedule={onSchedule}
         scheduledDates={SCHEDULED_DATES}
-        tripName={TRIP_NAME}
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
+    await user.click(screen.getByRole('button', { name: '加入行程' }))
     await user.click(screen.getByRole('button', { name: '8/17' }))
 
     expect(onSchedule).toHaveBeenCalledTimes(1)
@@ -260,11 +252,10 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕:行程已有排定日期時�
         onClose={() => {}}
         onSchedule={onSchedule}
         scheduledDates={SCHEDULED_DATES}
-        tripName={TRIP_NAME}
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
+    await user.click(screen.getByRole('button', { name: '加入行程' }))
     await user.click(screen.getByRole('button', { name: '其他日期' }))
 
     // 選單應該收合(既有日期選項不再出現),改成看到日曆。
@@ -285,11 +276,10 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕:行程已有排定日期時�
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         scheduledDates={[]}
-        tripName={TRIP_NAME}
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
+    await user.click(screen.getByRole('button', { name: '加入行程' }))
 
     expect(screen.getByRole('grid')).not.toBeNull()
     expect(screen.queryByRole('button', { name: '其他日期' })).toBeNull()
@@ -305,11 +295,10 @@ describe('GeoInfoPanel「加入 {tripName}」按鈕:行程已有排定日期時�
         onClose={() => {}}
         onAddCandidate={onAddCandidate}
         scheduledDates={SCHEDULED_DATES}
-        tripName={TRIP_NAME}
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
+    await user.click(screen.getByRole('button', { name: '加入行程' }))
 
     expect(onAddCandidate).toHaveBeenCalledTimes(1)
     expect(onAddCandidate).toHaveBeenCalledWith(candidate)

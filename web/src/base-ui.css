@@ -17,7 +17,7 @@
   --color-accent: #8B3A2F;  /* 硃紅強調色——對齊首頁 --vermilion */
   --color-dark: #3D3530;    /* 深棕文字 */
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
-  --tl-trip-color: #8B3A2F; /* 行程主軸色（硃紅） */
+  --tl-trip-color: #8B3A2F; /* 旅程主軸色（硃紅） */
 }
 
 * {
@@ -129,7 +129,7 @@ body {
   color: var(--color-accent);
 }
 
-/* 新增行程輸入列(嵌在 navbar 下方的一般版面,非聊天室浮空輸入條):
+/* 新增旅程輸入列(嵌在 navbar 下方的一般版面,非聊天室浮空輸入條):
    DesktopTripList/PhoneTripsDrawer 共用。 */
 .new-trip-composer {
   display: flex;
@@ -205,7 +205,7 @@ body {
 .row:active {
   background: #f5f5f7;
 }
-/* .row.active:目前選取的項目(見 PhoneNavDrawer.tsx 行程列表分頁),對應
+/* .row.active:目前選取的項目(見 PhoneNavDrawer.tsx 旅程列表分頁),對應
    桌面版 .desktop-trip-item.active 同一種「目前選中」的強調色底 + 白字。 */
 .row.active {
   background: var(--color-accent);
@@ -374,7 +374,7 @@ pre {
    的浮層模式但用置中卡片(內容是可捲動清單,不適合底部 sheet)。該彈窗
    已移除(推薦景點改成掛在觸發它的訊息底下顯示,見 ChatScreen.tsx
    MessageBubble),但這組樣式繼續由桌面版「設定」dialog(SettingsDialog)
-   與行程列表的分享/成員彈窗(DesktopLayout.tsx)沿用,故保留。 ---- */
+   與旅程列表的分享/成員彈窗(DesktopLayout.tsx)沿用,故保留。 ---- */
 .rp-modal-backdrop {
   position: absolute;
   inset: 0;

@@ -37,7 +37,6 @@ const SHEET_MAX_HEIGHT_VH = 90
 export function GeoOutlinePhoneInfoSheet({
   content,
   attraction,
-  tripName,
   scheduledDates,
   onClose,
   onAddCandidate,
@@ -46,11 +45,10 @@ export function GeoOutlinePhoneInfoSheet({
   content: GeoInfoContent | null
   attraction: GeoAttraction | null
   onClose: () => void
-  // tripName:「加入 {tripName}」按鈕文字——理由同桌面版 GeoInfoPanel.tsx
-  // 的同名 prop,由呼叫端(GeoOutlinePhoneView.tsx)傳入 activeTrip?.name。
-  tripName: string
   // scheduledDates:行程本身目前已排定的日期清單,由呼叫端算好傳入——
-  // 理由同桌面版 GeoInfoPanel.tsx 的同名 prop。
+  // 理由同桌面版 GeoInfoPanel.tsx 的同名 prop。使用者明確要求「加入行程」
+  // 按鈕文字不用串上旅程名稱(原本是「加入 {tripName}」),故 tripName
+  // prop 已移除,不再由呼叫端傳入。
   scheduledDates: string[]
   // onAddCandidate:候選已有排定日期時直接加入候選籃(純前端,不寫入
   // 後端)——理由同桌面版 GeoInfoPanel.tsx 的同名 prop。
@@ -216,7 +214,7 @@ export function GeoOutlinePhoneInfoSheet({
                 onClick={handleAddClick}
               >
                 <Plus size={14} strokeWidth={2} />
-                加入 {tripName}
+                加入行程
               </button>
               {addUiMode === 'open' && (
                 <div className={styles.dateEdit}>

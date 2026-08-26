@@ -13,9 +13,9 @@ import '../desktop-layout-shell.css'
 import styles from './PublicViewScreen.module.css'
 
 // PublicViewScreen:手機版公開分享頁——從 App.tsx 拆出來,原檔名
-// PhoneScreens.tsx(當時裝多個畫面),設定頁/行程列表陸續拆成獨立檔案
+// PhoneScreens.tsx(當時裝多個畫面),設定頁/旅程列表陸續拆成獨立檔案
 // (SettingsScreen.tsx/PhoneNavDrawer.tsx)後只剩這一個,改名對齊實際內容
-// 並歸進 trip/(分享連結是行程底下的功能)。
+// 並歸進 trip/(分享連結是旅程底下的功能)。
 
 // ---- 配速表模式的檢查站資料形狀 ----
 // 對應後端 Entry.detail 這個自訂 JSON 欄位裡,配速表專屬會用到的子集——
@@ -32,7 +32,7 @@ function entryPaceDetail(e: Entry): PaceCheckpointDetail | null {
   return detail as PaceCheckpointDetail
 }
 
-// hasPaceData:分享彈窗選了「路徑」時,公開頁要判斷這個行程的地點是否
+// hasPaceData:分享彈窗選了「路徑」時,公開頁要判斷這個旅程的地點是否
 // 真的帶有路徑用的 detail 結構——這是額外用 CLI/entry-update 手動標註
 // 的資料,不是分享彈窗本身能自動產生的,沒有這類資料時要顯示提示訊息,
 // 而不是渲染一個空的抽屜欄假裝正常。
@@ -45,12 +45,12 @@ function hasPaceData(entries: Entry[]): boolean {
 // (PaceRouteMap)」結構(PacePhoneSwipe.tsx 手機寬度、桌面寬度則側欄+主區
 // 並排,比照 pace/PacePage.tsx 的桌面分支),取代原本精簡的卡片清單
 // (PublicPaceList,已移除)——這裡不帶上方功能列(navbar),因為
-// PublicViewScreen 本身已經有自己的 navbar(行程名稱標題),不需要疊兩層。
+// PublicViewScreen 本身已經有自己的 navbar(旅程名稱標題),不需要疊兩層。
 // checkpoints 狀態提升到這裡,理由同 DesktopLayout.tsx/PhoneContent.tsx:
 // PaceChart(抽屜/側欄)與 PaceRouteMap(地圖)是分開掛載的 sibling,靠
 // PaceChart 的 onRouteChange 把目前選取的段落鏡像上來再轉傳給地圖。
 // publicToken 直接傳這個分享頁自己的 token(見 PaceChart.tsx 的 publicToken
-// prop 說明),不是 /demo/pace 那個寫死的展示行程 token。
+// prop 說明),不是 /demo/pace 那個寫死的展示旅程 token。
 function PublicPaceDrawerMap({ token }: { token: string }) {
   const isDesktop = useIsDesktop()
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([])
@@ -107,7 +107,7 @@ export function PublicViewScreen({ token }: { token: string }) {
   // 路徑模式且真的有路徑資料時,改用抽屜欄+地圖的滿版結構(見
   // PublicPaceDrawerMap 的說明)——那套結構自己已經佔滿整個畫面(比照
   // PacePhoneSwipe.tsx/DesktopLayout.tsx 的定位方式),不需要再包一層這裡
-  // 的 .navbar/.screen-body,也不會有新增行程的輸入列(路徑模式不接寫入
+  // 的 .navbar/.screen-body,也不會有新增旅程的輸入列(路徑模式不接寫入
   // 互動,理由同時間軸模式以外的其餘邏輯不變)。
   if (data && data.entries.length > 0 && data.viewMode === 'pace' && hasPaceData(data.entries)) {
     return <PublicPaceDrawerMap token={token} />
@@ -117,7 +117,7 @@ export function PublicViewScreen({ token }: { token: string }) {
     <>
       <div className="navbar">
         <span style={{ width: 36 }} />
-        <span className="title">{data?.tripName ?? '行程'}</span>
+        <span className="title">{data?.tripName ?? '旅程'}</span>
         <span style={{ width: 36 }} />
       </div>
       <div className="screen-body" ref={bodyRef}>
@@ -125,13 +125,13 @@ export function PublicViewScreen({ token }: { token: string }) {
         {err && <div className="banner"><AlertCircle size={14} strokeWidth={2} style={{ verticalAlign: 'middle', marginRight: 6 }} />{err}</div>}
         {data && (
           data.entries.length === 0
-            ? <div className="empty">此行程尚無內容。</div>
+            ? <div className="empty">此旅程尚無內容。</div>
             : data.viewMode === 'pace'
-              // 分享者選了「路徑」,但這個行程的地點沒有路徑需要的 detail
+              // 分享者選了「路徑」,但這個旅程的地點沒有路徑需要的 detail
               // 結構(那是額外用 CLI/entry-update 手動標註的資料,分享彈窗
               // 本身不會自動產生)——顯示明確提示,不要求訪客自己猜「怎麼
               // 是空的」,也不要靜默退回時間軸掩蓋掉分享者原本的選擇。
-              ? <div className="empty">此行程尚無路徑資料。</div>
+              ? <div className="empty">此旅程尚無路徑資料。</div>
               : <MultiTrackTimeline entries={data.entries} todayRef={todayRef} />
         )}
       </div>

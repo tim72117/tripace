@@ -2,6 +2,23 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.8.1 — 2026-08-26
+
+### 新增
+
+- **候選籃「已排入行程」日層架，連續多天無安排時收攏成單一摘要列**（`GeoCandidateSidebar.tsx`）：長天數旅程中間若有連續多天完全沒有安排，原本會逐天各自渲染一個空白日期區塊，長天數旅程會佔用大量版面卻沒有內容；改為收攏顯示「{起日} ~ {迄日}（共 N 天）無安排」單一列，點擊可展開查看/操作區段內每一天（含拖放候選卡片），僅單一天的空白（前後皆非空白）不收攏，維持原樣顯示。
+
+### 修正
+
+- **正式環境部署從未設定 `PEXELS_API_KEY`，Pexels-first 照片查詢完全不會生效**（`.github/workflows/deploy-cloudrun.yml`、`deploy-with-migration.yml`、`server/scripts/update-secret-manager.sh`）：兩份部署 workflow 的 `--update-secrets` 清單一直漏了這把 key（只有本機 `server/.env` 有設定），導致正式站的地圖照片查詢直接跳過 v0.8.0 新增的 Pexels 管道，一律 fallback 到按張計費的 Google Photo Media 或完全沒有照片。`update-secret-manager.sh` 新增 `-pexels` 旗標寫入 Secret Manager，兩份 workflow 的 `--update-secrets` 補上 `PEXELS_API_KEY=PEXELS_API_KEY:latest`。
+- **選日期加入行程、但尚未選定旅程時，沒有確實引導使用者切到旅程列表**（`DesktopLayout.tsx`）：`onSchedule` 分支呼叫 `setPanelMode('trips')` 帶有「再點一次同個 mode 會收合」的 toggle 邏輯，若使用者當下已經在旅程列表畫面（例如先前操作留下的狀態），會被誤判成「收合」而不是「確保開啟」。改為直接呼叫 `navigate('/app/trips')`，不受目前面板狀態影響。
+- **選定旅程後，先前待補寫的候選沒有自動展開「行程」欄讓使用者確認**（`DesktopLayout.tsx`）：`DesktopTripList` 的 `onOpen` 原本選定旅程後一律收合浮動卡回到預設畫面；現在若是因為 `pendingSchedule`（選日期加入行程時尚未選定旅程）才被導來選旅程，選定後改為導向 `/app/geo-outline` 並觸發短暫 highlight，讓使用者立即看到剛補寫進去的候選是否成功。
+
+### 變更
+
+- **「加入行程」按鈕文字不再串接旅程名稱**（`GeoInfoPanel.tsx`、`GeoOutlinePhoneInfoSheet.tsx`）：原本顯示「加入 {旅程名稱}」，改為固定文字「加入行程」，兩元件的 `tripName` prop 一併移除（呼叫端 `DesktopLayout.tsx`／`GeoOutlinePhoneView.tsx` 同步更新）。
+- **統一「行程」與「旅程」两個中文用語的定義，修正過去混用造成的混淆**（跨 `web/src` 約 40 個檔案的畫面文字與註解，`docs/terminology.md` 同步更新）：「旅程」專指 `Trip` 實體本身（選哪一趟旅行，如旅程列表、旅程設定彈窗），「行程」專指旅程裡的日層架排程內容（如候選籃「行程」欄、「加入行程」按鈕、「已排入行程」文案）。前端變數/型別名稱（`Trip`／`activeTrip`／`tripID`／`TripRole` 等）維持英文不變，只調整畫面顯示的中文字與註解用詞。
+
 ## v0.8.0 — 2026-08-26
 
 ### 破壞性變更

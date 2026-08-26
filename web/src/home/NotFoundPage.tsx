@@ -65,7 +65,7 @@ export function NotFoundPage() {
       </main>
 
       <footer className="legal-footer">
-        <span className="legal-footer-brand">Tripace · 行程規劃</span>
+        <span className="legal-footer-brand">Tripace · 旅程規劃</span>
         <div className="legal-footer-bar">
           <span className="legal-footer-copyright">Copyright © 2026 Tripace</span>
           <nav className="legal-footer-links">

@@ -33,7 +33,7 @@ export function DesktopRail({
 }: {
   panelMode: PanelMode
   onSelect: (mode: Exclude<PanelMode, null>) => void
-  // activeTrip:是否已選定行程——只用來決定 requiresTrip 的按鈕(目前是
+  // activeTrip:是否已選定旅程——只用來決定 requiresTrip 的按鈕(目前是
   // 時間軸)要不要 disabled,判斷本身統一從 PANEL_REGISTRY 讀
   // (見下方 requiresTrip 用法),不再各別硬寫 timelineDisabled 這種
   // 單一按鈕專屬的 prop。
@@ -109,7 +109,7 @@ export function DesktopRail({
               className={panelMode === 'timeline' ? `${styles.btn} ${styles.active}` : styles.btn}
               onClick={() => !disabled && onSelect('timeline')}
               disabled={disabled}
-              title={disabled ? '請先選擇一個行程' : '時間軸'}
+              title={disabled ? '請先選擇一趟旅程' : '時間軸'}
             >
               <Timeline size={20} strokeWidth={1.8} />
               {expanded && <span className={styles.btnLabel}>時間軸</span>}

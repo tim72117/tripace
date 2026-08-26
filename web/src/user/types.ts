@@ -8,10 +8,10 @@ export interface User {
   avatarColor: string
 }
 
-// 行程成員角色:editor 可記事/編輯,viewer 只能查詢。對應後端 model 的 role。
+// 旅程成員角色:editor 可記事/編輯,viewer 只能查詢。對應後端 model 的 role。
 export type TripRole = 'editor' | 'viewer'
 
-// Member 是行程成員:公開身分 + 在該行程的角色。對應後端 model.Member(扁平結構)。
+// Member 是旅程成員:公開身分 + 在該旅程的角色。對應後端 model.Member(扁平結構)。
 export interface Member extends User {
   role: TripRole
 }

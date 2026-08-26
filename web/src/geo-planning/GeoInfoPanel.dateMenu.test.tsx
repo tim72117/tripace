@@ -1,4 +1,4 @@
-// GeoInfoPanel「加入 {tripName}」既有日期下拉選單(.dateMenu)的兩個行為:
+// GeoInfoPanel「加入行程」既有日期下拉選單(.dateMenu)的兩個行為:
 //   1. 自動翻轉方向——按鈕組所在位置離視窗底部的剩餘空間不足以容納選單
 //      估計高度時,改成往上展開(dateMenuOpenUp)。
 //   2. 點選單以外的地方自動收合(mousedown 監聽,見 GeoInfoPanel.tsx)。
@@ -10,7 +10,6 @@ import userEvent from '@testing-library/user-event'
 import { GeoInfoPanel, type GeoInfoContent } from './GeoInfoPanel'
 import type { GeoCandidate } from './GeoCandidateSidebar'
 
-const TRIP_NAME = '東京五日遊'
 const SCHEDULED_DATES = ['2026-08-16', '2026-08-17']
 
 const hotelCandidate: GeoCandidate = {
@@ -61,10 +60,9 @@ describe('GeoInfoPanel 既有日期下拉選單:自動翻轉方向', () => {
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         scheduledDates={SCHEDULED_DATES}
-        tripName={TRIP_NAME}
       />,
     )
-    await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
+    await user.click(screen.getByRole('button', { name: '加入行程' }))
 
     const menuItem = screen.getByRole('button', { name: '8/16' })
     // .dateMenu 容器是選單項目的直接父層。
@@ -82,10 +80,9 @@ describe('GeoInfoPanel 既有日期下拉選單:自動翻轉方向', () => {
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         scheduledDates={SCHEDULED_DATES}
-        tripName={TRIP_NAME}
       />,
     )
-    await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
+    await user.click(screen.getByRole('button', { name: '加入行程' }))
 
     const menuItem = screen.getByRole('button', { name: '8/16' })
     const menu = menuItem.parentElement
@@ -106,11 +103,10 @@ describe('GeoInfoPanel 既有日期下拉選單:點外部收合', () => {
           content={contentWithCandidate(hotelCandidate)}
           onClose={() => {}}
           scheduledDates={SCHEDULED_DATES}
-          tripName={TRIP_NAME}
         />
       </div>,
     )
-    await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
+    await user.click(screen.getByRole('button', { name: '加入行程' }))
     expect(screen.getByRole('button', { name: '8/16' })).not.toBeNull()
 
     await user.click(screen.getByTestId('outside'))
@@ -127,10 +123,9 @@ describe('GeoInfoPanel 既有日期下拉選單:點外部收合', () => {
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         scheduledDates={SCHEDULED_DATES}
-        tripName={TRIP_NAME}
       />,
     )
-    await user.click(screen.getByRole('button', { name: new RegExp(`加入.*${TRIP_NAME}`) }))
+    await user.click(screen.getByRole('button', { name: '加入行程' }))
 
     // 點選單容器本身(非選單項目按鈕),不應觸發收合。
     const menuItem = screen.getByRole('button', { name: '8/16' })

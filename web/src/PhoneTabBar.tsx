@@ -3,7 +3,7 @@ import type { DrawerMode } from './DesktopShared'
 import styles from './PhoneTabBar.module.css'
 
 // PhoneTabBar:手機版底部常駐導覽列——取代原本藏在 PhoneNavDrawer 側滑
-// 抽屜裡的分頁列(.tabs),不需要先開抽屜才看得到分頁。只放 3 項:行程
+// 抽屜裡的分頁列(.tabs),不需要先開抽屜才看得到分頁。只放 3 項:旅程
 // (維持原本開啟 PhoneTripsDrawer 側滑抽屜的既有行為,不是切換 drawerMode,
 // 故獨立用 onOpenTrips 而非塞進 tabs 陣列)、時間軸、規劃地圖——路徑
 // (pace)與 demo-* 改放 PhoneSideTools.tsx 右側小圖示,不在這裡。
@@ -21,7 +21,7 @@ export function PhoneTabBar({
 }: {
   tabs: { mode: DrawerMode; icon: typeof List; title: string }[]
   mode: DrawerMode
-  // lastContentMode:沿用 PhoneContent.tsx 既有邏輯——瀏覽獨立行程抽屜期間,
+  // lastContentMode:沿用 PhoneContent.tsx 既有邏輯——瀏覽獨立旅程抽屜期間,
   // 使用者切換前正在看的時間軸分頁圖示仍要顯示 active(見該檔案的說明)。
   lastContentMode: 'pace' | 'timeline' | null
   tripsDrawerOpen: boolean

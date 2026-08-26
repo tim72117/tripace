@@ -41,7 +41,7 @@ export interface SelectedEntry {
 // 限制範圍。
 //
 // entryIDs 改由 checkpoints prop 動態決定(見下方 props 說明)——不再寫死
-// 特定行程的 entry。登入後的正式介面打 POST /internal/entries/compute-route
+// 特定旅程的 entry。登入後的正式介面打 POST /internal/entries/compute-route
 // (見 server/internal/api/entry_geocode.go 的 handleComputeRouteFromEntries),
 // 掛在 /internal/*,需要帶有效的自家 JWT(見 middleware.go 的
 // internalAuth),故底下改用帶 Authorization header 的 POST 呼叫。公開分享頁
@@ -137,7 +137,7 @@ export function PaceRouteMap({
   // checkpoints:目前選取的那一段路線(PaceChart 的 route.checkpoints,依
   // order 排序),由共同的父層(DesktopLayout.tsx/PhoneContent.tsx)透過
   // PaceChart 的 onRouteChange 鏡像過來——取代原本寫死的 4 筆 entry
-  // 常數,改成真的跟著使用者目前選取的行程/路段變動。第一筆/最後一筆當
+  // 常數,改成真的跟著使用者目前選取的旅程/路段變動。第一筆/最後一筆當
   // origin/destination,中間的當 intermediates,直接對應後端
   // handleComputeRouteFromEntries 的 entryIDs 陣列語意(見該檔案說明)。
   // 少於 2 筆(該段還沒有 checkpoint,或還在載入中)時不計算路線,地圖
@@ -321,7 +321,7 @@ export function PaceRouteMap({
     // publicToken 有值:公開分享頁的訪客,沒有登入身分,改打免登入的
     // POST /v1/public/{token}/compute-route(見 server/internal/api/
     // public_link.go handlePublicComputeRoute)——那支端點會反查 token 對應
-    // 的行程,並要求 entryIDs 都屬於這個行程才放行,不是完全不設防。
+    // 的旅程,並要求 entryIDs 都屬於這個旅程才放行,不是完全不設防。
     //
     // publicToken 未傳(登入後的正式介面):沿用原本行為,POST
     // /internal/entries/compute-route 掛在 internalAuth 之後,需要帶有效的

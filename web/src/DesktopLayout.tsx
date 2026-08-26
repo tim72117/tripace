@@ -31,14 +31,14 @@ import type { Trip } from './trip/types'
 import './desktop-layout-shell.css'
 import styles from './DesktopLayout.module.css'
 
-// DesktopLayout:桌面版(寬度 >= 768px)專屬佈局元件——左側邊欄(行程列表 +
-// 使用者選單)+ 右側 ChatScreen 主要區塊,類似 Slack/Discord 的行程側欄
+// DesktopLayout:桌面版(寬度 >= 768px)專屬佈局元件——左側邊欄(旅程列表 +
+// 使用者選單)+ 右側 ChatScreen 主要區塊,類似 Slack/Discord 的旅程側欄
 // 模式。PanelMode/DemoPanelContent/LangSelect/TokenDisplay/useTripsState
 // 這些「桌面/手機共用」的部分不在這裡,分別在 DesktopShared.tsx/
 // AppCommon.tsx——避免這裡跟手機版檔案(PhoneContent.tsx/PhoneNavDrawer.tsx/
 // PhoneScreens.tsx)互相 import 對方造成循環依賴。
 
-// 時間軸鏡像資料的初始值(尚未收到 ChatScreen 鏡像前,或未選擇行程時使用)。
+// 時間軸鏡像資料的初始值(尚未收到 ChatScreen 鏡像前,或未選擇旅程時使用)。
 const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
   entries: [],
   updatingEntryIDs: new Set<string>(),
@@ -60,10 +60,10 @@ export function DesktopContent(props: ContentProps) {
   // 提升到這裡、和 .desktop-layout 同層,搭配 CSS 的 position: fixed 疊加,
   // 才能保證 dialog 蓋住整個桌面版佈局(含側欄)最上層。
   const [settingsOpen, setSettingsOpen] = useState(false)
-  // manageTrip:行程管理彈窗(分享連結/成員/開啟時自動進入,見
+  // manageTrip:旅程管理彈窗(分享連結/成員/開啟時自動進入,見
   // TripManageModal.tsx)——原本分成 shareTrip/membersTrip 兩個獨立彈窗,
-  // 現在合併成一個彈窗、一個觸發來源(行程列表每一筆項目的「管理」按鈕,
-  // 見 DesktopTripList.tsx 的 onManage)。存「哪個行程」而非布林值,因為
+  // 現在合併成一個彈窗、一個觸發來源(旅程列表每一筆項目的「管理」按鈕,
+  // 見 DesktopTripList.tsx 的 onManage)。存「哪個旅程」而非布林值,因為
   // 觸發來源是清單裡任一筆,不一定是 activeTrip。跟 settingsOpen 一樣
   // 提升到這一層渲染(理由同上方 settingsOpen 的說明:避免被 272px 寬的
   // 浮動卡片裁切)。
@@ -78,7 +78,7 @@ export function DesktopContent(props: ContentProps) {
   // 預設落地的網址」跟「側欄收合」可以是同一個狀態,不需要分開表示法。
   // 網址帶了不合法的 panelMode 字串(不在 PanelMode 列表)時,同樣視為
   // 收合——理由同上,收合狀態本身已經有明確畫面可看(地圖),不需要再
-  // fallback 到行程列表當「看得懂的畫面」。
+  // fallback 到旅程列表當「看得懂的畫面」。
   const { panelMode: panelModeParam } = useParams<{ panelMode?: string }>()
   const panelMode: PanelMode =
     panelModeParam == null ? null : isPanelMode(panelModeParam) ? panelModeParam : null
@@ -93,14 +93,14 @@ export function DesktopContent(props: ContentProps) {
   // 開關——沒有常駐對話欄,ChatScreen 只在這個小匡開啟時才掛載(見下方
   // render 邏輯),這是使用者存取對話功能的唯一入口。
   const [chatPopoverOpen, setChatPopoverOpen] = useState(false)
-  // pendingSchedule:使用者在還沒選定行程時,對某個候選按了日期選擇(見
+  // pendingSchedule:使用者在還沒選定旅程時,對某個候選按了日期選擇(見
   // GeoInfoPanel 的 onSchedule)——原本這個情境下 geo.handleScheduleCandidate
   // 內部的 tripID guard 會直接靜默 no-op,浮動匡正常關閉卻完全沒有任何
-  // 提示告訴使用者「因為沒有選行程所以沒加成功」,是實際發生過的 bug。
-  // 改成先記住這筆候選+選定的日期,導向行程列表浮動卡(見下方
-  // onSchedule 的說明),使用者選定行程後(DesktopTripList 的 onOpen)
-  // 自動把這筆候選補寫進剛選的行程,不需要使用者回頭重新走一次「加入
-  // 行程」流程。 */
+  // 提示告訴使用者「因為沒有選旅程所以沒加成功」,是實際發生過的 bug。
+  // 改成先記住這筆候選+選定的日期,導向旅程列表浮動卡(見下方
+  // onSchedule 的說明),使用者選定旅程後(DesktopTripList 的 onOpen)
+  // 自動把這筆候選補寫進剛選的旅程,不需要使用者回頭重新走一次「加入
+  // 旅程」流程。 */
   const [pendingSchedule, setPendingSchedule] = useState<{ candidate: GeoCandidate; date: string } | null>(null)
   // geo:地理規劃地圖的共用狀態/互動邏輯——選取卡片、地圖移動目標、
   // 候選籃、城市搜尋候選清單、第二側欄相關中介 state 等,見
@@ -113,12 +113,12 @@ export function DesktopContent(props: ContentProps) {
   const geoAttractionContent = geo.attractionContent
   // pendingSchedule 補寫效果:activeTrip 剛被設定(DesktopTripList 的
   // onOpen)且有一筆待補的候選+日期時,直接呼叫 createEntryFromCandidate
-  // 寫入剛選定的行程——不透過 geo.handleScheduleCandidate(該函式的
+  // 寫入剛選定的旅程——不透過 geo.handleScheduleCandidate(該函式的
   // tripID 是從這個元件呼叫 useGeoPlanningState 時傳入的 activeTrip?.id
   // 閉包值,setActiveTrip(t) 剛執行完的同一輪渲染裡還沒有更新到新值,
   // 直接呼叫在同一個 event handler 裡會拿到 stale tripID,見
   // useGeoPlanningState.ts 對這類 stale closure 風險的既有說明),改用
-  // useEffect 依賴 activeTrip?.id 本身,保證真的等到新行程生效後才補寫。
+  // useEffect 依賴 activeTrip?.id 本身,保證真的等到新旅程生效後才補寫。
   // 成功後清空 pendingSchedule(避免重複補寫)並觸發 refetchTripEntriesTrigger
   // 讓候選籃/時間軸即時反映這筆新 entry(理由同 handleScheduleCandidate
   // 既有的收尾動作)。寫入失敗只印 console,不清空 pendingSchedule 之外
@@ -130,9 +130,15 @@ export function DesktopContent(props: ContentProps) {
     const { candidate, date } = pendingSchedule
     setPendingSchedule(null)
     createEntryFromCandidate(cfg, activeTrip.id, candidate, date)
-      .then(() => geo.setRefetchTripEntriesTrigger((n) => n + 1))
+      .then(() => {
+        geo.setRefetchTripEntriesTrigger((n) => n + 1)
+        // 補寫成功後短暫 highlight 行程欄(理由同 onSchedule 已選旅程
+        // 分支的既有收尾動作)——onOpen 已經導向 /app/geo-outline(見該
+        // 處說明),行程欄這時已經掛載,flashTrigger 才有作用。
+        setGeoCandidateFlashTrigger((n) => n + 1)
+      })
       .catch((err) => {
-        console.error('[DesktopLayout] 選定行程後補寫候選失敗:', err)
+        console.error('[DesktopLayout] 選定旅程後補寫候選失敗:', err)
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTrip?.id])
@@ -211,15 +217,15 @@ export function DesktopContent(props: ContentProps) {
   // 字串比對。
   const panelSpec = panelMode ? PANEL_REGISTRY[panelMode] : undefined
 
-  // 切換行程時,先清空鏡像資料,避免新行程的 ChatScreen 還沒送出第一次鏡像前,
-  // side panel 短暫顯示上一個行程的時間軸內容。
+  // 切換旅程時,先清空鏡像資料,避免新旅程的 ChatScreen 還沒送出第一次鏡像前,
+  // side panel 短暫顯示上一個旅程的時間軸內容。
   useEffect(() => {
     setTimelineMirror(EMPTY_TIMELINE_MIRROR)
   }, [activeTrip?.id])
 
-  // 離開規劃分頁或切換行程時收起第二側欄——pickingDayKey 記的是「已排入
-  // 行程」某一天的日期字串,離開 geo-outline 或換了行程後,這個日期分組
-  // 可能已經不存在(或屬於別的行程),繼續開著會讓使用者選到的候選建立
+  // 離開規劃分頁或切換旅程時收起第二側欄——pickingDayKey 記的是「已排入
+  // 行程」某一天的日期字串,離開 geo-outline 或換了旅程後,這個日期分組
+  // 可能已經不存在(或屬於別的旅程),繼續開著會讓使用者選到的候選建立
   // 到一個已經看不到脈絡的日期,故一併清空。
   useEffect(() => {
     geo.setPickingDayKey(null)
@@ -363,15 +369,22 @@ export function DesktopContent(props: ContentProps) {
                   // activeTrip 為空時 geo.handleScheduleCandidate 內部會
                   // 直接 no-op(見該函式的 tripID guard)——原本使用者點了
                   // 日期、浮動匡正常關閉,卻完全沒有任何提示告訴他「因為
-                  // 沒有選行程所以沒加成功」,是實際發生過的 bug。改成
+                  // 沒有選旅程所以沒加成功」,是實際發生過的 bug。改成
                   // 沒有 activeTrip 時先記住這筆候選+日期(pendingSchedule)
-                  // 再開啟行程列表浮動卡(同點 rail「行程列表」按鈕),
-                  // 使用者選定行程後(見下方 DesktopTripList 的 onOpen)
+                  // 再開啟旅程列表浮動卡(同點 rail「旅程列表」按鈕),
+                  // 使用者選定旅程後(見下方 DesktopTripList 的 onOpen)
                   // 自動補寫進去,不需要使用者回頭重新走一次「加入行程」
-                  // 流程。
+                  // 流程。刻意直接呼叫 navigate,不透過 setPanelMode——
+                  // trips 是 float 面板,可能跟 GeoInfoPanel 同時顯示
+                  // (例如使用者原本就開著旅程列表、又點了地圖上的地點),
+                  // 此時 panelMode 已經是 'trips',setPanelMode('trips')
+                  // 的 toggle 邏輯(再點一次同個 mode 會收合)反而會把它
+                  // 關掉,是實際發生過的 bug——跟下方 onSchedule 成功寫入
+                  // 分支刻意改用 navigate 而非 setPanelMode 的理由完全
+                  // 相同。
                   if (!activeTrip) {
                     setPendingSchedule({ candidate: c, date })
-                    setPanelMode('trips')
+                    navigate('/app/trips')
                     return
                   }
                   geo.handleScheduleCandidate(c, date, 'DesktopLayout')
@@ -394,7 +407,6 @@ export function DesktopContent(props: ContentProps) {
                   navigate('/app/geo-outline')
                   setGeoCandidateFlashTrigger((n) => n + 1)
                 }}
-                tripName={activeTrip?.name ?? '行程'}
                 scheduledDates={geo.scheduledDates}
                 shiftBy={infoPanelShiftBy}
               />
@@ -426,9 +438,16 @@ export function DesktopContent(props: ContentProps) {
                   activeTripID={activeTrip?.id ?? null}
                   onOpen={(t) => {
                     setActiveTrip(t)
-                    // 選定行程後浮動卡片自動收起,回到「地圖滿版、左欄
-                    // 顯示對話」的預設狀態。
-                    navigate('/app')
+                    // pendingSchedule 有值代表使用者是因為選日期加入行程、
+                    // 但當時還沒選定旅程才被導來這裡(見 onSchedule 的
+                    // 說明)——選定後應該直接展開「行程」欄
+                    // (geo-outline,GeoCandidateSidebar)讓使用者立刻看到
+                    // 補寫進去的那筆候選,不能沿用一般選旅程時「收起浮動
+                    // 卡回到預設畫面」的行為,否則使用者選完旅程後畫面
+                    // 直接收合,完全看不到剛才那筆候選有沒有加成功。
+                    // pendingSchedule 補寫本身由下方 useEffect 依賴
+                    // activeTrip?.id 觸發,這裡只負責導覽,不重複寫入。
+                    navigate(pendingSchedule ? '/app/geo-outline' : '/app')
                   }}
                   onManage={setManageTrip}
                 />
@@ -437,7 +456,7 @@ export function DesktopContent(props: ContentProps) {
                   <PanelHead title="時間軸" />
                   <div className={styles.timelineScroll}>
                     {!activeTrip ? (
-                      <div className="empty">選擇一個行程後顯示時間軸。</div>
+                      <div className="empty">選擇一趟旅程後顯示時間軸。</div>
                     ) : timelineMirror.entries.length === 0 ? (
                       <div className="empty">尚無行程內容。</div>
                     ) : (
@@ -528,9 +547,9 @@ export function DesktopContent(props: ContentProps) {
               正下方——沒有常駐對話欄,這是使用者存取 ChatScreen 的唯一
               入口(見 chatPopoverOpen 宣告處的說明)。沒有 activeTrip 時
               仍掛載 ChatScreen(trip 不傳,見該元件 trip prop 的說明)——
-              使用者不需要先選/建立行程就能開始對話,不再顯示空狀態擋板。
-              key 用 activeTrip?.id ?? 'no-trip',確保「無行程對話」跟
-              「某個行程的對話」是各自獨立的掛載週期(避免沿用前一個行程
+              使用者不需要先選/建立旅程就能開始對話,不再顯示空狀態擋板。
+              key 用 activeTrip?.id ?? 'no-trip',確保「無旅程對話」跟
+              「某個旅程的對話」是各自獨立的掛載週期(避免沿用前一個旅程
               殘留的 WebSocket/訊息 state)。 */}
           {chatPopoverOpen && (
             <FloatingPanel
@@ -570,9 +589,9 @@ export function DesktopContent(props: ContentProps) {
           onClose={() => setSettingsOpen(false)}
         />
       )}
-      {/* manageTrip:行程管理彈窗(分享連結/成員/開啟時自動進入),原本掛在
+      {/* manageTrip:旅程管理彈窗(分享連結/成員/開啟時自動進入),原本掛在
           ChatScreen navbar 的三個分散入口(TripMenu/分享按鈕/成員按鈕)
-          合併成這一個,搬到行程列表觸發——用 base-ui.css 既有的
+          合併成這一個,搬到旅程列表觸發——用 base-ui.css 既有的
           .rp-modal*(置中卡片彈窗骨架,跟 SettingsDialog 同一套)包住,
           TripManageModal 本身用 .rp-modal-head/.rp-modal-body 渲染內容
           (見該檔案的說明)。提升到這一層渲染,理由同上方 settingsOpen

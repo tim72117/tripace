@@ -266,6 +266,53 @@
   color: var(--color-accent);
 }
 
+/* blankRunSummary/blankRunExpanded/blankRunCollapseBtn:連續多天都沒有
+   任何安排時收攏成的單一摘要列(見 GeoCandidateSidebar.tsx 的
+   datedDayRows 完整說明)——視覺上比 .addDayBtn 更輕(純文字置中,不畫
+   虛線框),語意是「這裡本來就沒事,不是可以按的新增動作」,跟
+   .addDayBtn「按下去會新增一個空白天」的操作型按鈕區分開來;點擊仍可
+   展開查看/操作區段內每一天,只是預設狀態刻意做得不顯眼,避免使用者
+   誤以為這是重要的可操作項目。 */
+.blankRunSummary {
+  width: 100%;
+  margin: 4px 0;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  color: var(--ios-gray);
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+
+.blankRunSummary:hover {
+  color: var(--color-accent);
+}
+
+.blankRunExpanded {
+  display: flex;
+  flex-direction: column;
+}
+
+.blankRunCollapseBtn {
+  width: 100%;
+  margin: 4px 0;
+  padding: 5px 8px;
+  border: 1px dashed var(--ios-sep);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ios-gray);
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.blankRunCollapseBtn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
 
 /* dayBodyDragOver:拖曳「已排入行程」卡片(見 GeoCandidateSidebar.tsx 的
    draggingEntry/dragOverDay)懸停在別天的日期分組上時的樣式——虛線變

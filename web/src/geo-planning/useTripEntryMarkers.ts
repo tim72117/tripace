@@ -31,7 +31,7 @@ export function useTripEntryMarkers({
   // placesKey。
   const tripEntriesKey = tripEntries.map((e) => `${e.name}|${e.lat}|${e.lng}`).join(',')
 
-  // 行程本身已有座標的 entry 圖層:tripEntries 變動(換行程)時重畫,
+  // 行程本身已有座標的 entry 圖層:tripEntries 變動(換旅程)時重畫,
   // 先清掉舊的——這批點不受地圖可視範圍篩選(理由同附近推薦地點:
   // 是行程固定的內容,不是依範圍查詢的圖層,全部顯示讓使用者看到完整
   // 的行程分布)。圖示用 tripEntryMarkerContent(暖橘旗子,見該函式的

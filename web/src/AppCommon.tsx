@@ -20,7 +20,7 @@ import styles from './AppCommon.module.css'
 // 未設時退回目前頁面 origin(production 前後端同源部署)。
 export const BASE_URL: string =
   import.meta.env.VITE_API_BASE || `${window.location.protocol}//${window.location.host}`
-// 默認行程 ID (用戶設定的「開啟時自動進入」)
+// 默認旅程 ID (用戶設定的「開啟時自動進入」)
 export const LS_DEFAULT_TRIP = 'tripace.defaultTripID'
 
 export interface ContentProps {

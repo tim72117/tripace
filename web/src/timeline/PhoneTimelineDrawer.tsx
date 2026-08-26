@@ -28,7 +28,7 @@ export function PhoneTimelineDrawer({
   tripName,
   timelineMirror,
   // editCfg:對齊桌面版 DesktopContent panelMode === 'timeline' 分支的
-  // cfg 傳遞方式——只有行程擁有者才能編輯時間軸項目,呼叫端
+  // cfg 傳遞方式——只有旅程擁有者才能編輯時間軸項目,呼叫端
   // (PhoneContent.tsx)依 activeTrip.ownerID === user.id 判斷通過才傳
   // cfg,否則傳 undefined(唯讀),這裡不重複判斷身分,直接轉傳給
   // MultiTrackTimeline。
