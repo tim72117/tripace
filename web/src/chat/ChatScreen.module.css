@@ -113,7 +113,7 @@
   transform: scale(0.92);
 }
 .composer button:disabled {
-  background: #D9C4AA;
+  background: var(--btn-primary-disabled);
   cursor: default;
 }
 .composer button:focus-visible {

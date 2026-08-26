@@ -5,8 +5,10 @@ import * as api from '../api'
 import type { User } from './types'
 import type { AssistLang } from '../assistLang'
 import { ASSIST_LANG_KEY, getAssistLang } from '../assistLang'
+import type { Theme } from '../theme'
 import { Avatar, errMsg } from '../AppCommon'
 import { LangSelect } from './LangSelect'
+import { ThemeToggle } from './ThemeToggle'
 import { TokenDisplay } from './TokenDisplay'
 import styles from './SettingsDialog.module.css'
 
@@ -23,11 +25,15 @@ export function SettingsDialog({
   cfg,
   user,
   email,
+  theme,
+  setTheme,
   onClose,
 }: {
   cfg: ClientConfig
   user: User
   email: string
+  theme: Theme
+  setTheme: (v: Theme) => void
   onClose: () => void
 }) {
   const [health, setHealth] = useState<string>('未測試')
@@ -72,6 +78,11 @@ export function SettingsDialog({
                 localStorage.setItem(ASSIST_LANG_KEY, v)
               }}
             />
+          </div>
+          <div className="section-title">外觀</div>
+          <div className="field">
+            <label>介面深色/淺色模式,「跟隨系統」會依裝置設定自動切換</label>
+            <ThemeToggle value={theme} onChange={setTheme} />
           </div>
           <div className={styles.devToggle} onClick={() => setDevOpen((o) => !o)}>
             <span>開發</span>

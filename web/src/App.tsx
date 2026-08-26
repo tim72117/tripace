@@ -64,10 +64,13 @@ export function App() {
           {/* /public/{token} 路徑:直接渲染公開分享頁。原本用正則
               /^\/public\/([^/]+)$/ 手動解析 token,改用 Route 的 :token
               路徑參數 + useParams() 取代。 */}
+          {/* data-theme="light" 寫死:這是任何人(含未登入訪客)都能開的公開
+              分享連結,不該受訪問者(若剛好也是登入使用者)的 App 內深色模式
+              偏好影響,永遠維持淺色。 */}
           <Route
             path="/public/:token"
             element={
-              <div className={styles.webApp}>
+              <div className={styles.webApp} data-theme="light">
                 <PublicTokenRoute />
               </div>
             }
@@ -103,10 +106,12 @@ export function App() {
               使用者旅程,不需要登入、不涉及任何真實資料權限問題——跟 /public/{token}
               那套給真實旅程用的公開分享是分開的機制,不走後端建立/驗證 token 那套
               流程,單純是一個固定網址。 */}
+          {/* data-theme="light" 寫死,理由同 /public/:token——固定示範資料的
+              公開分享頁,不受訪問者 App 內深色模式偏好影響。 */}
           <Route
             path="/demo/pace"
             element={
-              <div className={styles.webApp}>
+              <div className={styles.webApp} data-theme="light">
                 <PacePage />
               </div>
             }
@@ -114,11 +119,17 @@ export function App() {
           {/* /app 路徑:主要應用畫面本體(套 iPhone 外框,寬螢幕自動切桌面版佈局)。
               :panelMode 是選填的路徑參數(對應桌面版 side panel/手機版 demo 抽屜
               目前顯示的面板,見 DesktopLayout.tsx/PhoneContent.tsx),用 "?"
-              後綴讓 /app(無參數)跟 /app/:panelMode 共用同一個 element。 */}
+              後綴讓 /app(無參數)跟 /app/:panelMode 共用同一個 element。
+              額外疊加全域 class app-theme-root(見 base-ui.css 深色模式 token
+              區塊)——.webApp 是 CSS Modules 雜湊 class,base-ui.css 這種全域
+              樣式表無法直接選取它,需要這個穩定的全域 class 名稱當掛載點。
+              data-theme 屬性值來自 useAppState() 的 theme(登入後 App 的深色/
+              淺色偏好,見 theme.ts),null 時不掛屬性交給 CSS 的
+              prefers-color-scheme media query 處理「跟隨系統」。 */}
           <Route
             path="/app/:panelMode?"
             element={
-              <div className={styles.webApp}>
+              <div className={`${styles.webApp} app-theme-root`} data-theme={props.theme ?? undefined}>
                 <PhoneContent {...props} />
               </div>
             }

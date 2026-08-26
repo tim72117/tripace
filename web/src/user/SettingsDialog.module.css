@@ -18,7 +18,7 @@
   cursor: pointer;
 }
 .devToggle:active {
-  background: #f5f5f7;
+  background: var(--ios-active);
 }
 .devChevron {
   transition: transform 0.15s;

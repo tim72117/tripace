@@ -5,9 +5,11 @@ import * as api from '../api'
 import type { User } from './types'
 import type { AssistLang } from '../assistLang'
 import { ASSIST_LANG_KEY, getAssistLang } from '../assistLang'
+import type { Theme } from '../theme'
 import { Avatar, errMsg } from '../AppCommon'
 import { LoginForm } from '../home/LoginForm'
 import { LangSelect } from './LangSelect'
+import { ThemeToggle } from './ThemeToggle'
 import { TokenDisplay } from './TokenDisplay'
 
 // SettingsScreen:手機版設定整頁(連線設定 + 測試 health)——從
@@ -24,6 +26,8 @@ export function SettingsScreen({
   onAuthed,
   onLogout,
   onBack,
+  theme,
+  setTheme,
 }: {
   cfg: ClientConfig
   user: User
@@ -32,6 +36,8 @@ export function SettingsScreen({
   onAuthed: (token: string, user: User, email: string) => void
   onLogout: () => void
   onBack?: () => void
+  theme: Theme
+  setTheme: (v: Theme) => void
 }) {
   const [health, setHealth] = useState<string>('未測試')
   const [assistLang, setAssistLang] = useState<AssistLang>(() => getAssistLang())
@@ -107,6 +113,11 @@ export function SettingsScreen({
               localStorage.setItem(ASSIST_LANG_KEY, v)
             }}
           />
+        </div>
+        <div className="section-title">外觀</div>
+        <div className="field">
+          <label>介面深色/淺色模式,「跟隨系統」會依裝置設定自動切換</label>
+          <ThemeToggle value={theme} onChange={setTheme} />
         </div>
         <div className="section-title">健康檢查</div>
         <div className="row" onClick={ping}>

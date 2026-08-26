@@ -85,6 +85,27 @@
   transition: opacity 0.12s, background-color 0.12s, color 0.12s;
 }
 
+/* 深色模式:這幾個疊在地圖上的毛玻璃卡片(.categoryTag/.citySearch/
+   .searchThisAreaButton)背景是寫死的暖白 rgba,不是 --ios-card token
+   ——因為疊在地圖上需要半透明毛玻璃效果,不能直接套用不透明的卡片
+   token。地圖圖磚本身依規劃恆亮(Google Maps 渲染不跟著切換),但這些
+   HTML 疊加 UI 屬於 App chrome,不該在夜間模式下維持刺眼的亮白色卡片
+   ——換成對應深色卡片色(--ios-card 深色值 #26211D)的半透明版本。 */
+:global(.app-theme-root[data-theme='dark']) .categoryTag,
+:global(.app-theme-root[data-theme='dark']) .citySearch,
+:global(.app-theme-root[data-theme='dark']) .searchThisAreaButton {
+  background: rgba(38, 33, 29, 0.88);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+@media (prefers-color-scheme: dark) {
+  :global(.app-theme-root:not([data-theme='light'])) .categoryTag,
+  :global(.app-theme-root:not([data-theme='light'])) .citySearch,
+  :global(.app-theme-root:not([data-theme='light'])) .searchThisAreaButton {
+    background: rgba(38, 33, 29, 0.88);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+}
+
 .categoryTag:hover {
   opacity: 0.9;
 }
@@ -147,6 +168,26 @@
 
 .citySearchAiBtn:hover {
   background: rgba(0, 0, 0, 0.12);
+}
+
+/* 深色模式:.citySearchAiBtn 底色疊加黑色半透明(rgba(0,0,0,*))在淺色
+   毛玻璃卡片上是「壓暗」效果,但深色模式下卡片本身已經是深色
+   (.categoryTag 等的深色覆寫,見上方),疊黑只會讓這顆按鈕幾乎融進
+   背景、看不出是個可點擊的圓形按鈕——改疊加白色半透明做「提亮」效果,
+   維持跟卡片底色的可辨識對比。 */
+:global(.app-theme-root[data-theme='dark']) .citySearchAiBtn {
+  background: rgba(255, 255, 255, 0.08);
+}
+:global(.app-theme-root[data-theme='dark']) .citySearchAiBtn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+@media (prefers-color-scheme: dark) {
+  :global(.app-theme-root:not([data-theme='light'])) .citySearchAiBtn {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  :global(.app-theme-root:not([data-theme='light'])) .citySearchAiBtn:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
 }
 
 .citySearchInput {
@@ -382,7 +423,7 @@
 :global(.geo-attraction-overlay-selected) :global(.geo-attraction-landmark-placeholder) {
   width: 64px;
   height: 64px;
-  border-color: #FDFCFA;
+  border-color: var(--ios-card);
   border-width: 3px;
   box-shadow: 0 0 0 3px var(--color-accent), 0 2px 10px rgba(61, 53, 48, 0.24);
 }

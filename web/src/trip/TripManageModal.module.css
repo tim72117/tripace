@@ -81,7 +81,7 @@
 }
 .toggleLabel {
   font-size: 15px;
-  color: var(--ios-label);
+  color: var(--color-dark);
 }
 .toggle {
   position: relative;
@@ -131,7 +131,7 @@
 .viewModeBtn {
   border: none;
   background: var(--ios-bg);
-  color: var(--ios-label);
+  color: var(--color-dark);
   font-size: 13px;
   padding: 6px 12px;
   cursor: pointer;
@@ -170,11 +170,17 @@
   border: 1px solid var(--ios-sep);
   background: var(--ios-card);
   cursor: pointer;
-  color: #1c1c1e;
+  color: var(--color-dark);
 }
+/* editor/owner 底色原本寫死淺暖白(#f0ebe4/#f5f0e8),深色模式下會維持
+   亮色沒有變暗,在深色卡片/背景中變成突兀的亮色方塊——改用
+   --btn-primary-disabled(該 token 本身就是「弱化的 accent 底色」語意,
+   淺色值 #D9C4AA 跟原本兩個寫死色同一色系,深色值 #4A3E30 隨主題正確
+   轉暗),兩個 chip 底色統一共用同一個 token,不再各自寫死微幅不同的
+   淺色數值。 */
 .chip.editor {
-  background: #f0ebe4;
-  border-color: #d9c4aa;
+  background: var(--btn-primary-disabled);
+  border-color: var(--btn-primary-disabled);
   color: var(--color-accent);
 }
 .chip.viewer {
@@ -183,8 +189,8 @@
   border-color: var(--ios-sep);
 }
 .chip.owner {
-  background: #f5f0e8;
-  border-color: #d9c4aa;
+  background: var(--btn-primary-disabled);
+  border-color: var(--btn-primary-disabled);
   color: var(--color-dark);
 }
 .chip.static {

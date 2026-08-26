@@ -1,0 +1,32 @@
+/* ThemeToggle 專屬樣式(CSS Modules)。三段式分段按鈕,視覺上比照
+   LangSelect.module.css 的 token 用法(卡片背景/分隔線/深色文字),但骨架
+   不同——這裡是同層並排的三顆按鈕(segmented control),不是下拉選單。 */
+.segmented {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--ios-bg);
+  border: 1px solid var(--ios-sep);
+  border-radius: 10px;
+}
+.option {
+  flex: 1;
+  padding: 8px 6px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--color-dark);
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, color 0.15s;
+}
+.option:focus-visible {
+  outline: 2px solid var(--ios-blue);
+  outline-offset: 2px;
+}
+.optionActive {
+  background: var(--color-accent);
+  color: #fff;
+}

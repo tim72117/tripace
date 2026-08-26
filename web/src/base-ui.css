@@ -18,6 +18,84 @@
   --color-dark: #3D3530;    /* 深棕文字 */
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   --tl-trip-color: #8B3A2F; /* 旅程主軸色（硃紅） */
+  --ios-active: #f5f5f7;         /* .row:active 底色 */
+  --ios-red-bg: #fff3f2;         /* .banner 底色 */
+  --ios-red-border: #ffd9d6;     /* .banner 邊框 */
+  --btn-primary-disabled: #D9C4AA; /* .btn-primary:disabled 底色 */
+}
+
+/* 登入後 App(PhoneContent.tsx/DesktopLayout.tsx 及底下畫面)的深色模式
+   token——掛載點是 App.tsx 的 .app-theme-root(見該檔案說明,只包住 /app
+   路由本身;/public/:token、/demo/pace 這類公開分享頁固定寫死
+   data-theme="light",不吃這裡的深色 token)。
+
+   結構沿用 home/HomePage.css(原 KyotoExploreBloom.css)/LegalPage.css 已有
+   的四段式寫法,但 scope 換成 .app-theme-root:
+     1. 上面的 :root 區塊——淺色預設值(不動)。
+     2. @media (prefers-color-scheme: dark) 搭配
+        .app-theme-root:not([data-theme="light"])——使用者沒有明確選過
+        主題(theme === null,未掛 data-theme 屬性)時,跟隨系統偏好。
+        :not([data-theme="light"]) 這個守衛是必要的:沒有它,使用者手動選了
+        「日間模式」(data-theme="light")、但系統本身是深色時,這條
+        media query 選擇器一樣會命中 .app-theme-root(它沒有檢查
+        data-theme 屬性值,只檢查 prefers-color-scheme),蓋掉使用者的
+        明確選擇。
+     3. .app-theme-root[data-theme="dark"]——使用者手動選「夜間模式」,
+        不論系統偏好為何都套用深色,數值跟第 2 段完全一致。
+     4. [data-theme="light"] 不需要額外寫規則——它只是「不套用上面的深色
+        media query」,token 自然維持 :root 定義的淺色值。 */
+@media (prefers-color-scheme: dark) {
+  .app-theme-root:not([data-theme="light"]) {
+    --ios-blue: #B3A692;
+    --ios-bg: #1C1815;
+    --ios-card: #26211D;
+    --ios-sep: #3A332C;
+    --ios-gray: #8A8072;
+    --ios-green: #8FA089;
+    --ios-red: #E08668;
+    --color-accent: #D97A63;
+    --color-dark: #EDE6D8;
+    --tl-trip-color: #D97A63;
+    --ios-active: #332C26;
+    --ios-red-bg: #3A2420;
+    --ios-red-border: #5A342C;
+    --btn-primary-disabled: #4A3E30;
+  }
+  /* body 本身不是 .app-theme-root 的後代(是其祖先/兄弟,見 App.tsx 的
+     DOM 結構說明),所以上面那組 --ios-bg 覆寫不會影響 body { background }
+     這條規則實際解析到的值——body 仍會拿到 :root 的淺色 --ios-bg。
+     結果是頁面邊緣、尚未被 .app-theme-root 完全填滿的縫隙(例如視覺
+     視窗因為地址列收合/展開而露出的底部空隙)會看到一塊突兀的亮色。
+     這裡直接覆寫 body 的 background 跟隨系統深色偏好——只有在 body 內
+     實際掛了 .app-theme-root(即 /app 路由)時才生效,/public/:token、
+     /demo/pace、首頁等公開頁面各自用自己的 class(.kyoto-bloom/
+     .legal-bloom/.product-page)當深色 scope,不依賴 body 的
+     background,不受這條規則影響。 */
+  body:has(.app-theme-root:not([data-theme="light"])) {
+    background: #1C1815;
+  }
+}
+.app-theme-root[data-theme="dark"] {
+  --ios-blue: #B3A692;
+  --ios-bg: #1C1815;
+  --ios-card: #26211D;
+  --ios-sep: #3A332C;
+  --ios-gray: #8A8072;
+  --ios-green: #8FA089;
+  --ios-red: #E08668;
+  --color-accent: #D97A63;
+  --color-dark: #EDE6D8;
+  --tl-trip-color: #D97A63;
+  --ios-active: #332C26;
+  --ios-red-bg: #3A2420;
+  --ios-red-border: #5A342C;
+  --btn-primary-disabled: #4A3E30;
+}
+/* 使用者手動選「夜間模式」時,同理覆寫 body 的 background——理由同上方
+   media query 內的說明,:has() 守衛確保只在 body 內確實掛著
+   data-theme="dark" 的 .app-theme-root 時才生效。 */
+body:has(.app-theme-root[data-theme="dark"]) {
+  background: #1C1815;
 }
 
 * {
@@ -203,7 +281,7 @@ body {
   border-bottom: none;
 }
 .row:active {
-  background: #f5f5f7;
+  background: var(--ios-active);
 }
 /* .row.active:目前選取的項目(見 PhoneNavDrawer.tsx 旅程列表分頁),對應
    桌面版 .desktop-trip-item.active 同一種「目前選中」的強調色底 + 白字。 */
@@ -259,7 +337,7 @@ body {
   transition: opacity 0.15s;
 }
 .btn-primary:disabled {
-  background: #D9C4AA;
+  background: var(--btn-primary-disabled);
   cursor: default;
 }
 .btn-primary:active:not(:disabled) {
@@ -304,9 +382,9 @@ body {
   padding: 10px 12px;
   border-radius: 10px;
   font-size: 15px;
-  background: #fff3f2;
+  background: var(--ios-red-bg);
   color: var(--ios-red);
-  border: 1px solid #ffd9d6;
+  border: 1px solid var(--ios-red-border);
 }
 
 /* ChatScreen 的助理回答(react-markdown)可能渲染 <pre> 程式碼區塊,

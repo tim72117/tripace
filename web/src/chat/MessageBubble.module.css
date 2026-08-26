@@ -111,12 +111,17 @@
 .text.markdown code {
   font-family: var(--mono);
   font-size: 0.9em;
-  background: rgba(0, 0, 0, 0.06);
+  /* rgba(0,0,0,0.06):黑色 6% 疊加在泡泡底色上——淺色模式下泡泡底是亮色,
+     疊出可辨識的淡灰色塊沒問題。但深色模式下泡泡底(--ios-card)本身已經
+     很深,再疊黑色只會讓色塊幾乎融進背景、看不出「這是一段程式碼」的
+     視覺區隔。改疊加 --ios-sep(隨主題切換的分隔線色調,深色模式下比
+     --ios-card 稍亮,在深色泡泡上仍能形成可辨識的色塊)。 */
+  background: var(--ios-sep);
   padding: 1px 4px;
   border-radius: 4px;
 }
 .text.markdown pre {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--ios-sep);
   padding: 8px 10px;
   border-radius: 8px;
   overflow-x: auto;
@@ -201,7 +206,7 @@
 .entryItem {
   font-size: 16px;
   font-weight: 500;
-  color: #1c1c1e;
+  color: var(--color-dark);
 }
 .entryWhen {
   font-size: 13px;

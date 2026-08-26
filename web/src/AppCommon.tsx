@@ -4,6 +4,7 @@ import type { ClientConfig } from './api'
 import { ApiError } from './api'
 import type { Trip } from './trip/types'
 import type { User } from './user/types'
+import type { Theme } from './theme'
 import styles from './AppCommon.module.css'
 
 // AppCommon:App.tsx 拆出來的共用工具/元件/常數/型別,供 App.tsx 本身、
@@ -34,6 +35,8 @@ export interface ContentProps {
   isGuest: boolean
   onAuthed: (token: string, user: User, email: string) => void
   onLogout: () => void
+  theme: Theme
+  setTheme: (t: Theme) => void
 }
 
 // ---- 共用小元件 ----

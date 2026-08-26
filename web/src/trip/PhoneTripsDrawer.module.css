@@ -24,7 +24,19 @@
   align-items: center;
   gap: 4px;
   padding: 4px;
+  border: none;
   border-radius: 8px;
+  /* 「新增旅程」項目目前仍渲染成單一 <button>(見 PhoneTripsDrawer.tsx
+     creating===false 分支),沒有明確設定 background 就會落回瀏覽器對
+     <button> 的原生預設樣式(系統灰 rgb(239,239,239))——淺色模式下這個
+     灰色跟周圍的暖白背景接近,不明顯,但深色模式下完全不會跟著
+     --ios-bg/--ios-card 切換深色,變成一塊突兀的亮灰方塊。明確設成
+     transparent,交給下面 :hover 規則接手變化。 */
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
   transition: background 0.12s;
 }
 .tripItem:hover {

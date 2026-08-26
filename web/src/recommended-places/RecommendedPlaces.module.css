@@ -125,11 +125,15 @@
   flex: 0 0 auto;
   margin-top: 2px;
 }
+/* color 原本寫死 #3a3a3c(深灰),深色模式下卡片底色會變暗
+   (var(--ios-card) 深色值 #26211D),深灰文字在深色卡片上對比不足、
+   幾乎讀不出來——改用 --color-dark,跟卡片內其餘文字(.name/
+   .ratingValue)一致隨主題切換。 */
 .summary {
   margin: 4px 0 0;
   font-size: 13px;
   line-height: 1.55;
-  color: #3a3a3c;
+  color: var(--color-dark);
 }
 .summaryEmpty {
   color: var(--ios-gray);

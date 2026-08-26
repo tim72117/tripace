@@ -395,6 +395,8 @@ export function PhoneContent(props: ContentProps) {
           onAuthed={props.onAuthed}
           onLogout={() => { props.onLogout(); setInSettings(false) }}
           onBack={() => setInSettings(false)}
+          theme={props.theme}
+          setTheme={props.setTheme}
         />
       </div>
       {/* manageTrip:旅程管理彈窗,對齊桌面版 DesktopLayout.tsx 的同名

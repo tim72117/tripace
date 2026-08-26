@@ -588,6 +588,8 @@ export function DesktopContent(props: ContentProps) {
           cfg={cfg}
           user={props.user}
           email={props.email}
+          theme={props.theme}
+          setTheme={props.setTheme}
           onClose={() => setSettingsOpen(false)}
         />
       )}
