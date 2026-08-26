@@ -6,13 +6,16 @@
    top:16px、膠囊高度約 38px)——搜尋框是常駐 UI,這張卡片只在點擊地點
    後才出現,故由這張卡片避開搜尋框而非反過來。bottom 維持 16px,不用
    height: 100%,避免內容較短時卡片仍撐滿整個高度顯得空洞——flex
-   column + 內容自然高度,配合 overflow-y:auto 處理內容過長的情況。 */
+   column + 內容自然高度,配合 overflow-y:auto 處理內容過長的情況。
+   width 對齊搜尋框(.citySearch)/對話小匡(DesktopLayout.module.css 的
+   .chatPopover)一致的 340px,使用者明確要求這幾個右緣浮動元素統一
+   寬度,不要各自獨立的數值。 */
 .panel {
   position: absolute;
   top: 64px;
   right: 16px;
   bottom: 16px;
-  width: 300px;
+  width: 340px;
   max-height: calc(100% - 32px);
   overflow-x: hidden;
   overflow-y: auto;
@@ -28,22 +31,24 @@
 
 /* shiftedHotel:GeoHotelSidebar(飯店/附近推薦清單)有內容時,那個側欄
    改成絕對定位漂浮在 .desktop-main 右緣之上(見 FloatingPanel.tsx 的
-   side="right",right: 12px、寬度 280px),跟這張卡片原本
-   同樣定位在 .desktop-main 右緣的 right: 16px 直接疊在一起——這是實際
-   發生過的 bug,不是預防性寫法。GeoHotelSidebar 顯示時,由呼叫端
+   side="right",right: 12px、寬度 340px,與這張卡片/對話小匡/搜尋框
+   統一寬度,見上方 .panel 的說明),跟這張卡片原本同樣定位在
+   .desktop-main 右緣的 right: 16px 直接疊在一起——這是實際發生過的
+   bug,不是預防性寫法。GeoHotelSidebar 顯示時,由呼叫端
    (DesktopLayout.tsx)傳入 shiftBy="hotel",把這張卡片推到
-   GeoHotelSidebar 左側(12 + 280 = 292px,再加 12px 間隙)之外,兩者
+   GeoHotelSidebar 左側(12 + 340 = 352px,再加 12px 間隙)之外,兩者
    才不會重疊。 */
 .panel.shiftedHotel {
-  right: 304px;
+  right: 364px;
 }
 
 /* shiftedChat:對話浮動小匡(見 DesktopLayout.tsx 的 .chat-popover,
    right: 16px、寬度 340px)開啟時,同理往左推到它左側(16 + 340 = 356px,
-   再加 12px 間隙)之外——比 shiftedHotel 的偏移量更大,因為對話小匡比
-   GeoHotelSidebar 更寬。兩者都存在時,呼叫端只會傳其中之一(見
-   DesktopLayout.tsx 的 infoPanelShiftBy 說明,優先避開較寬的對話小匡),
-   不會疊加兩個 class。 */
+   再加 12px 間隙)之外——跟 shiftedHotel 寬度相同(兩者都是 340px),但
+   起始 right 偏移不同(16px vs 12px),換算出來的位置仍略有差異。兩者
+   都存在時,呼叫端只會傳其中之一(見 DesktopLayout.tsx 的
+   infoPanelShiftBy 說明,優先避開較寬的對話小匡),不會疊加兩個
+   class。 */
 .panel.shiftedChat {
   right: 368px;
 }

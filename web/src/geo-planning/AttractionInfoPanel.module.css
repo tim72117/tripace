@@ -3,13 +3,14 @@
    GeoInfoPanel.module.css 的同名規則一致(見 AttractionInfoPanel.tsx 的
    說明——兩份卡片外觀相同是巧合不是共用),各自獨立維護一份。top 往下
    移到 64px 避開地圖右上角常駐的城市搜尋框,理由同 GeoInfoPanel.module.css
-   的同名規則說明。 */
+   的同名規則說明。width 對齊搜尋框/對話小匡/GeoHotelSidebar 統一的
+   340px,理由同上。 */
 .panel {
   position: absolute;
   top: 64px;
   right: 16px;
   bottom: 16px;
-  width: 300px;
+  width: 340px;
   max-height: calc(100% - 32px);
   overflow-x: hidden;
   overflow-y: auto;
@@ -26,9 +27,10 @@
 /* shiftedHotel/shiftedChat:理由同 GeoInfoPanel.module.css 的同名規則
    ——GeoHotelSidebar/對話浮動小匡分別漂浮在 .desktop-main 右緣之上,
    跟這張卡片預設的 right: 16px 直接疊在一起,由呼叫端判斷後傳入對應
-   shiftBy 值。 */
+   shiftBy 值。GeoHotelSidebar/對話小匡皆已統一寬度為 340px,換算方式
+   同 GeoInfoPanel.module.css 的說明。 */
 .panel.shiftedHotel {
-  right: 304px;
+  right: 364px;
 }
 .panel.shiftedChat {
   right: 368px;

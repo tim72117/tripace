@@ -46,10 +46,29 @@
   background: var(--ios-sep);
 }
 
+/* head:標頭區塊(名稱/副標/badges + 加入行程 icon 按鈕 + 關閉按鈕),見
+   GeoOutlinePhoneInfoSheet.tsx 的說明——使用者明確要求放在圖片上方,
+   原本圖片滿版貼齊卡片邊緣、關閉按鈕疊在圖片右上角的做法已移除。
+   headText 用 min-width: 0 讓長名稱能正確被右側兩顆按鈕(flex: 0 0 auto)
+   擠壓省略,不會把按鈕推出可視範圍。 */
+.head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 16px 12px;
+}
+
+.headText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .closeBtn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
+  flex: 0 0 auto;
   width: 28px;
   height: 28px;
   display: flex;
@@ -57,14 +76,33 @@
   justify-content: center;
   border: none;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--ios-bg);
+  color: var(--ios-gray);
+  cursor: pointer;
+}
+
+/* addCandidateIconBtn:「加入行程」改成放在關閉按鈕左邊的純 icon 按鈕
+   (使用者明確要求,取代原本圖片下方帶文字的按鈕)——尺寸/視覺語言比照
+   同一排的 .closeBtn,只是底色換成強調色以區分「這是主要動作」。 */
+.addCandidateIconBtn {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-accent);
   color: #fff;
   cursor: pointer;
 }
 
+/* imageWrap:圖片左右留間距,不再滿版貼齊卡片邊緣(使用者明確要求)——
+   padding 對齊 .head/.content 的水平留白(16px)。 */
 .imageWrap {
-  position: relative;
   flex: 0 0 auto;
+  padding: 0 16px;
 }
 
 .photo,
@@ -73,6 +111,7 @@
   height: 160px;
   object-fit: cover;
   display: block;
+  border-radius: 12px;
 }
 
 .photoPlaceholder {
@@ -128,33 +167,13 @@
   color: var(--ios-gray);
 }
 
-/* addCandidateWrap/addCandidateBtn/dateEdit*:「加入候選」按鈕與日期選擇
-   區——視覺語言比照桌面版 GeoInfoPanel.module.css 的 .addCandidateBtn/
-   .dateEdit,但拿掉懸浮定位的 .dateMenu(改成常駐在按鈕正下方展開,見
-   GeoOutlinePhoneInfoSheet.tsx 的說明)。 */
-.addCandidateWrap {
-  margin-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.addCandidateBtn {
-  align-self: flex-start;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border: none;
-  border-radius: 999px;
-  background: var(--color-accent);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
+/* dateEdit*:日期選擇展開區塊,由標頭的 .addCandidateIconBtn 觸發(見
+   GeoOutlinePhoneInfoSheet.tsx 的說明,展開內容仍顯示在這裡而非標頭
+   那排,標頭容不下日期輸入框的寬度)——視覺語言比照桌面版
+   GeoInfoPanel.module.css 的 .dateEdit,但拿掉懸浮定位的 .dateMenu
+   (改成常駐在這裡展開)。 */
 .dateEdit {
+  margin-bottom: 4px;
   display: flex;
   flex-direction: column;
   gap: 8px;

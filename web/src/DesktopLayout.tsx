@@ -264,11 +264,13 @@ export function DesktopContent(props: ContentProps) {
   const geoHotelSidebarVisible = geo.searchResults.length > 0
   // infoPanelShiftBy:GeoInfoPanel/AttractionInfoPanel 右緣可能同時要
   // 避開兩種東西——GeoHotelSidebar(飯店清單,.right)
-  // 與對話浮動小匡(styles.chatPopover,見 chatPopoverOpen)。對話小匡更寬
-  // (340px vs GeoHotelSidebar 的 280px),兩者都存在時優先避開較寬的
-  // 那個,不是疊加兩者的偏移量——資訊卡只需要跟「當下右緣實際佔用最多
-  // 寬度的東西」錯開,不需要真的把兩個偏移量加總(那樣會把卡片推到不
-  // 必要的更左邊)。'none' 代表右緣沒有東西需要避開,維持貼齊 16px。
+  // 與對話浮動小匡(styles.chatPopover,見 chatPopoverOpen)。兩者寬度
+  // 已統一為 340px(見 FloatingPanel/GeoInfoPanel.module.css 的說明),
+  // 但起始 right 偏移不同(GeoHotelSidebar 12px、對話小匡 16px),換算
+  // 出來對話小匡佔用範圍略往左多 4px,兩者都存在時優先避開較寬的那個,
+  // 不是疊加兩者的偏移量——資訊卡只需要跟「當下右緣實際佔用最多寬度的
+  // 東西」錯開,不需要真的把兩個偏移量加總(那樣會把卡片推到不必要的
+  // 更左邊)。'none' 代表右緣沒有東西需要避開,維持貼齊 16px。
   const infoPanelShiftBy: 'none' | 'hotel' | 'chat' =
     chatPopoverOpen ? 'chat' : geoHotelSidebarVisible ? 'hotel' : 'none'
 
@@ -508,7 +510,7 @@ export function DesktopContent(props: ContentProps) {
               關閉按鈕,見該元件的說明),FloatingPanel 這裡只負責定位/
               陰影外殼。 */}
           {geoHotelSidebarVisible && (
-            <FloatingPanel side="right" width={280} height="info">
+            <FloatingPanel side="right" width={340} height="info">
               <GeoHotelSidebar
                 cfg={cfg}
                 tripID={activeTrip?.id}

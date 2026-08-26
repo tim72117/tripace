@@ -90,28 +90,55 @@ export function GeoOutlinePhoneInfoSheet({
   const startHeightRef = useRef(SHEET_MIN_HEIGHT_VH)
   const draggingRef = useRef(false)
   const [closeDragOffset, setCloseDragOffset] = useState(0)
+  // sheetRef/lastTouchYRef:把手拖曳觸及 SHEET_MAX_HEIGHT_VH 上限後,
+  // 讓使用者仍在把手上繼續往上拖曳時能接手捲動卡片內容(而非完全沒有
+  // 反應)——理由見下方 onHandleTouchMove 的說明。lastTouchYRef 記錄
+  // 上一次 touchmove 的 Y 座標,用來算出「這一小段移動量」轉發給
+  // sheetRef.scrollTop,而不是每次都用手勢起點算總量(那樣捲動的量會
+  // 一路疊加、不是自然的逐步捲動)。
+  const sheetRef = useRef<HTMLDivElement>(null)
+  const lastTouchYRef = useRef<number | null>(null)
 
   function onHandleTouchStart(e: ReactTouchEvent) {
     startYRef.current = e.touches[0].clientY
+    lastTouchYRef.current = e.touches[0].clientY
     startHeightRef.current = sheetHeightVh
     draggingRef.current = true
   }
   function onHandleTouchMove(e: ReactTouchEvent) {
     if (!draggingRef.current || startYRef.current === null) return
-    const delta = e.touches[0].clientY - startYRef.current
+    const currentY = e.touches[0].clientY
+    const delta = currentY - startYRef.current
     if (delta < 0) {
       // 往上拖:增加高度,夾在 [起始高度, SHEET_MAX_HEIGHT_VH] 之間——
       // 用視窗高度換算 px 差距對應的 vh 量,避免不同裝置高度下拖曳手感
       // 不一致。
       const deltaVh = (-delta / window.innerHeight) * 100
-      setSheetHeightVh(Math.min(SHEET_MAX_HEIGHT_VH, startHeightRef.current + deltaVh))
+      const nextHeight = startHeightRef.current + deltaVh
+      setSheetHeightVh(Math.min(SHEET_MAX_HEIGHT_VH, nextHeight))
       setCloseDragOffset(0)
+      // 卡片高度已經到達上限、使用者手指仍在把手上繼續往上拖時,
+      // .dragHandle 的 touch-action: none(見該 class 的說明)會讓瀏覽器
+      // 完全不處理這個手勢的原生捲動,即使下面 .sheet 本身有
+      // overflow-y: auto 也接不到——這是實際發生過的體感問題(拖到頂
+      // 後繼續往上滑完全沒反應)。改成手動把「這一小段移動量」轉發成
+      // sheetRef.scrollTop 的捲動量,讓使用者不需要放開把手、改摸內容
+      // 區域,就能無縫接續往上滑動查看下方內容(簡介、加入行程按鈕等)。
+      if (nextHeight >= SHEET_MAX_HEIGHT_VH && lastTouchYRef.current !== null) {
+        const stepDelta = lastTouchYRef.current - currentY
+        sheetRef.current?.scrollBy(0, stepDelta)
+      }
     } else {
       // 往下拖:維持起始高度,改用既有的「往下拖關閉」位移量,理由同
-      // GeoOutlinePhoneListDrawer.tsx 的既有手勢。
+      // GeoOutlinePhoneListDrawer.tsx 的既有手勢。卡片內容若已經被上面
+      // 的接手捲動邏輯往下捲過,這裡不用特別復原捲動位置——使用者往下
+      // 拖的意圖是關閉卡片,不是「回到內容頂部」,捲動位置留著即可,
+      // 卡片下次開啟時(content/attraction 變動)會是全新的 DOM 節點,
+      // 不會殘留捲動位置。
       setSheetHeightVh(startHeightRef.current)
       setCloseDragOffset(delta)
     }
+    lastTouchYRef.current = currentY
   }
   function onHandleTouchEnd() {
     if (!draggingRef.current) return
@@ -122,6 +149,7 @@ export function GeoOutlinePhoneInfoSheet({
     }
     setCloseDragOffset(0)
     startYRef.current = null
+    lastTouchYRef.current = null
   }
 
   const open = content != null || attraction != null
@@ -165,6 +193,7 @@ export function GeoOutlinePhoneInfoSheet({
   return (
     <div className={styles.backdrop} onClick={onClose}>
       <div
+        ref={sheetRef}
         className={styles.sheet}
         style={{
           maxHeight: `${sheetHeightVh}vh`,
@@ -181,77 +210,94 @@ export function GeoOutlinePhoneInfoSheet({
         >
           <div className={styles.dragHandleBar} />
         </div>
+        {/* head:標頭區塊(名稱/副標/badges),使用者明確要求放在圖片
+            上方——原本圖片在最上面、關閉按鈕疊在圖片右上角,改成標頭先
+            顯示基本資訊,關閉按鈕跟著移到標頭這裡(見 .head 的說明)。
+            candidate 存在時,「加入行程」也改成放在關閉按鈕左邊的純
+            icon 按鈕(使用者明確要求),不再是圖片下方帶文字的按鈕——
+            點下去展開的日期選擇區塊(既有日期 chips/日期輸入)不跟著
+            移到這裡,標頭這排太窄放不下,維持顯示在下方 .content 裡
+            (見該處 addUiMode === 'open' 分支)。 */}
+        <div className={styles.head}>
+          <div className={styles.headText}>
+            <h2 className={styles.name}>{name}</h2>
+            {subtitle && <span className={styles.subtitle}>{subtitle}</span>}
+            {badges.length > 0 && (
+              <div className={styles.metaRow}>
+                {badges.map((b) => (
+                  <span key={b} className={styles.badge}>{b}</span>
+                ))}
+              </div>
+            )}
+          </div>
+          {candidate && (
+            <button
+              type="button"
+              className={styles.addCandidateIconBtn}
+              onClick={handleAddClick}
+              title="加入行程"
+              aria-label="加入行程"
+            >
+              <Plus size={16} strokeWidth={2} />
+            </button>
+          )}
+          <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
+            <X size={16} strokeWidth={2} />
+          </button>
+        </div>
+        {/* imageWrap:圖片左右留間距(見 .imageWrap 的說明),不再滿版貼齊
+            卡片邊緣——使用者明確要求。 */}
         <div className={styles.imageWrap}>
           {photoUrl ? (
             <img className={styles.photo} src={photoUrl} alt={name} />
           ) : (
             <div className={styles.photoPlaceholder} />
           )}
-          <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
-            <X size={16} strokeWidth={2} />
-          </button>
         </div>
         <div className={styles.content}>
-          <h2 className={styles.name}>{name}</h2>
-          {subtitle && <span className={styles.subtitle}>{subtitle}</span>}
-          {badges.length > 0 && (
-            <div className={styles.metaRow}>
-              {badges.map((b) => (
-                <span key={b} className={styles.badge}>{b}</span>
-              ))}
+          {/* 日期選擇展開區塊:由標頭的加入行程 icon 按鈕觸發(見上方
+              .head 的說明),不再包在 .addCandidateWrap 裡跟著按鈕本身
+              移到標頭——這排區塊(既有日期 chips + 日期輸入)需要的寬度
+              比標頭那排能容納的空間大,維持顯示在這裡。 */}
+          {candidate && addUiMode === 'open' && (
+            <div className={styles.dateEdit}>
+              {scheduledDates.length > 0 && (
+                <div className={styles.dateChips}>
+                  {scheduledDates.map((date) => (
+                    <button
+                      key={date}
+                      type="button"
+                      className={styles.dateChip}
+                      onClick={() => handlePickScheduledDate(date)}
+                    >
+                      {dayGroupLabel(date)}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className={styles.dateInputRow}>
+                <input
+                  type="date"
+                  className={styles.dateInput}
+                  value={dateValue}
+                  onChange={(e) => setDateValue(e.target.value)}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className={styles.dateConfirmBtn}
+                  onClick={handleConfirmDate}
+                  disabled={!dateValue}
+                >
+                  確定
+                </button>
+              </div>
             </div>
           )}
           {summary ? (
             <p className={styles.summary}>{summary}</p>
           ) : (
             <p className={styles.summaryEmpty}>這個地點還沒有簡介資料。</p>
-          )}
-          {candidate && (
-            <div className={styles.addCandidateWrap}>
-              <button
-                type="button"
-                className={styles.addCandidateBtn}
-                onClick={handleAddClick}
-              >
-                <Plus size={14} strokeWidth={2} />
-                加入行程
-              </button>
-              {addUiMode === 'open' && (
-                <div className={styles.dateEdit}>
-                  {scheduledDates.length > 0 && (
-                    <div className={styles.dateChips}>
-                      {scheduledDates.map((date) => (
-                        <button
-                          key={date}
-                          type="button"
-                          className={styles.dateChip}
-                          onClick={() => handlePickScheduledDate(date)}
-                        >
-                          {dayGroupLabel(date)}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <div className={styles.dateInputRow}>
-                    <input
-                      type="date"
-                      className={styles.dateInput}
-                      value={dateValue}
-                      onChange={(e) => setDateValue(e.target.value)}
-                      autoFocus
-                    />
-                    <button
-                      type="button"
-                      className={styles.dateConfirmBtn}
-                      onClick={handleConfirmDate}
-                      disabled={!dateValue}
-                    >
-                      確定
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
           )}
         </div>
       </div>
