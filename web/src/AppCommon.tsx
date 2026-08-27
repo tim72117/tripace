@@ -1,10 +1,10 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { AlertCircle } from 'lucide-react'
 import type { ClientConfig } from './api'
 import { ApiError } from './api'
 import type { Trip } from './trip/types'
 import type { User } from './user/types'
 import type { Theme } from './theme'
+import { Banner } from './components/Banner'
 import styles from './AppCommon.module.css'
 
 // AppCommon:App.tsx 拆出來的共用工具/元件/常數/型別,供 App.tsx 本身、
@@ -53,9 +53,14 @@ export function Avatar({ user }: { user: { name: string; avatarColor: string } }
   )
 }
 
+// ErrorBanner:薄包裝,轉呼叫共用的 components/Banner.tsx(icon 固定開啟
+// ——這裡原本就是帶 AlertCircle 圖示的版本)。維持 ErrorBanner 這個名字與
+// msg prop 不變,而不是直接把 13+ 處呼叫端全部改成 import Banner——
+// ErrorBanner 已經是這個專案裡「錯誤訊息橫幅」的慣用稱呼與慣用 API
+// (見本檔案開頭說明,被 chat/trip/home 底下多個檔案共用),沒有必要為了
+// 這次重構去動一個跟這次目標(收斂 DOM 結構重複)無關的命名/介面。
 export function ErrorBanner({ msg }: { msg: string | null }) {
-  if (!msg) return null
-  return <div className="banner"><AlertCircle size={14} strokeWidth={2} style={{verticalAlign: 'middle', marginRight: 6}} />{msg}</div>
+  return <Banner message={msg} icon />
 }
 
 // 統一把 API 錯誤轉成可顯示訊息。

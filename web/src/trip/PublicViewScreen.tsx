@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle } from 'lucide-react'
 import type { PublicLinkViewMode } from '../api'
 import * as api from '../api'
 import type { Entry } from '../types'
@@ -9,7 +8,12 @@ import { useIsDesktop } from '../hooks/useIsDesktop'
 import { PaceChart, type Checkpoint, type PaceCheckpointDetail } from '../pace/PaceChart'
 import { PaceRouteMap } from '../pace/PaceRouteMap'
 import { PacePhoneSwipe } from '../pace/PacePhoneSwipe'
-import '../desktop-layout-shell.css'
+import { ScrollArea } from '../components/ScrollArea'
+import { Banner } from '../components/Banner'
+import { Navbar } from '../components/Navbar'
+import { DesktopLayoutShell } from '../DesktopLayoutShell'
+import { DesktopSidepanel } from '../DesktopSidepanel'
+import { DesktopMain } from '../DesktopMain'
 import styles from './PublicViewScreen.module.css'
 
 // PublicViewScreen:手機版公開分享頁——從 App.tsx 拆出來,原檔名
@@ -58,20 +62,21 @@ function PublicPaceDrawerMap({ token }: { token: string }) {
     return <PacePhoneSwipe publicToken={token} checkpoints={checkpoints} onRouteChange={setCheckpoints} />
   }
   return (
-    <div className="desktop-layout">
-      <aside className="desktop-sidepanel wide">
-        <div className="desktop-sidepanel-inner">
-          <div className={styles.sidepanelPace}>
-            <PaceChart publicToken={token} onRouteChange={setCheckpoints} />
-          </div>
+    <DesktopLayoutShell>
+      <DesktopSidepanel wide>
+        <div className={styles.sidepanelPace}>
+          <PaceChart publicToken={token} onRouteChange={setCheckpoints} />
         </div>
-      </aside>
-      <main className="desktop-main">
+      </DesktopSidepanel>
+      {/* unbounded + unboundedScroll:這個分享頁固定渲染 PaceRouteMap
+          (含 pace-route-map-wrap),見 DesktopMain.tsx/pace/PacePage.tsx
+          同樣的說明。 */}
+      <DesktopMain unbounded unboundedScroll>
         <div className={styles.demoPanel}>
           <PaceRouteMap checkpoints={checkpoints} publicToken={token} />
         </div>
-      </main>
-    </div>
+      </DesktopMain>
+    </DesktopLayoutShell>
   )
 }
 
@@ -107,7 +112,7 @@ export function PublicViewScreen({ token }: { token: string }) {
   // 路徑模式且真的有路徑資料時,改用抽屜欄+地圖的滿版結構(見
   // PublicPaceDrawerMap 的說明)——那套結構自己已經佔滿整個畫面(比照
   // PacePhoneSwipe.tsx/DesktopLayout.tsx 的定位方式),不需要再包一層這裡
-  // 的 .navbar/.screen-body,也不會有新增旅程的輸入列(路徑模式不接寫入
+  // 的 .navbar/ScrollArea,也不會有新增旅程的輸入列(路徑模式不接寫入
   // 互動,理由同時間軸模式以外的其餘邏輯不變)。
   if (data && data.entries.length > 0 && data.viewMode === 'pace' && hasPaceData(data.entries)) {
     return <PublicPaceDrawerMap token={token} />
@@ -115,14 +120,10 @@ export function PublicViewScreen({ token }: { token: string }) {
 
   return (
     <>
-      <div className="navbar">
-        <span style={{ width: 36 }} />
-        <span className="title">{data?.tripName ?? '旅程'}</span>
-        <span style={{ width: 36 }} />
-      </div>
-      <div className="screen-body" ref={bodyRef}>
+      <Navbar title={data?.tripName ?? '旅程'} />
+      <ScrollArea ref={bodyRef}>
         {loading && <div className="empty">載入中…</div>}
-        {err && <div className="banner"><AlertCircle size={14} strokeWidth={2} style={{ verticalAlign: 'middle', marginRight: 6 }} />{err}</div>}
+        <Banner message={err} icon />
         {data && (
           data.entries.length === 0
             ? <div className="empty">此旅程尚無內容。</div>
@@ -134,7 +135,7 @@ export function PublicViewScreen({ token }: { token: string }) {
               ? <div className="empty">此旅程尚無路徑資料。</div>
               : <MultiTrackTimeline entries={data.entries} todayRef={todayRef} />
         )}
-      </div>
+      </ScrollArea>
     </>
   )
 }

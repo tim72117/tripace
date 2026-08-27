@@ -5,6 +5,7 @@ import type { ClientConfig } from '../api'
 import type { User } from './types'
 import { Avatar } from '../AppCommon'
 import { LoginForm } from '../home/LoginForm'
+import { ListRow } from '../components/ListRow'
 import styles from './DesktopUserMenu.module.css'
 
 // 桌面版左下方使用者設定入口:頭像 + 名稱一列,點擊展開 popover 選單。
@@ -21,6 +22,7 @@ export function DesktopUserMenu({
   onAuthed,
   onLogout,
   onOpenSettings,
+  expanded,
 }: {
   cfg: ClientConfig
   user: User
@@ -28,6 +30,15 @@ export function DesktopUserMenu({
   onAuthed: (token: string, user: User, email: string) => void
   onLogout: () => void
   onOpenSettings: () => void
+  // expanded:目前掛載在收合(48px)還是展開(180px)的 DesktopRail 底下——
+  // 原本用 :global(.desktop-rail)/:global(.desktop-rail.expanded) 這兩個
+  // 全域字串 class 選擇器從 CSS 側「猜測」外層容器的寬度狀態,DesktopRail
+  // 元件化雜湊 class 後這組選擇器會直接失效。改成 DesktopRail 把它自己已經
+  // 持有的 expanded state 直接當 prop 往下傳,DesktopUserMenu 不再需要靠
+  // CSS 選擇器反推自己被放進什麼容器——更符合 React「資料由上往下明確
+  // 傳遞」的慣例,也讓這個元件的排版分支在型別層級就可見(而非藏在
+  // CSS 選擇器裡)。
+  expanded: boolean
 }) {
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -53,13 +64,13 @@ export function DesktopUserMenu({
 
   return (
     <div className={styles.menu} ref={menuRef}>
-      {/* portal 到 document.body——.desktop-rail 為了寬度收合/展開過渡
-          動畫設有 overflow:hidden(見 desktop-layout-shell.css 的說明),popover
-          若留在 rail 子樹內,只要往上/往右超出 rail 當下的窄版範圍就會被
-          裁掉一角,這是實際回報過的 bug(選單邊緣被邊框遮蔽),不是預防性
-          寫法。改成 portal 出去+position:fixed(用 rect 動態算座標),不再
-          受任何祖先層 overflow/stacking context 影響——理由與做法對齊
-          Timeline.tsx EditEntrySheet 的 createPortal 說明。 */}
+      {/* portal 到 document.body——DesktopRail 為了寬度收合/展開過渡動畫
+          設有 overflow:hidden(見 DesktopRail.module.css 的 .rail 說明),
+          popover 若留在 rail 子樹內,只要往上/往右超出 rail 當下的窄版
+          範圍就會被裁掉一角,這是實際回報過的 bug(選單邊緣被邊框遮蔽),
+          不是預防性寫法。改成 portal 出去+position:fixed(用 rect 動態算
+          座標),不再受任何祖先層 overflow/stacking context 影響——理由
+          與做法對齊 Timeline.tsx EditEntrySheet 的 createPortal 說明。 */}
       {open && rect && createPortal(
         <div
           className={styles.popover}
@@ -86,13 +97,7 @@ export function DesktopUserMenu({
           {isGuest ? (
             <>
               <div className="section-title">目前身分</div>
-              <div className="row">
-                <Avatar user={user} />
-                <div className="grow">
-                  <div className="name">訪客</div>
-                  <div className="sub">登入後發送的訊息會以你的身分顯示</div>
-                </div>
-              </div>
+              <ListRow icon={<Avatar user={user} />} title="訪客" subtitle="登入後發送的訊息會以你的身分顯示" />
               <LoginForm baseURL={cfg.baseURL} onAuthed={(tok, u, mail) => {
                 onAuthed(tok, u, mail)
                 setOpen(false)
@@ -119,7 +124,11 @@ export function DesktopUserMenu({
         </div>,
         document.body,
       )}
-      <button className={styles.trigger} ref={triggerRef} onClick={() => setOpen((v) => !v)}>
+      <button
+        className={expanded ? `${styles.trigger} ${styles.triggerExpanded}` : styles.trigger}
+        ref={triggerRef}
+        onClick={() => setOpen((v) => !v)}
+      >
         <Avatar user={user} />
         <div className="grow">
           <div className="name">{isGuest ? '訪客' : user.name}</div>

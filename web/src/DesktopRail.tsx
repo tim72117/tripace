@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { forwardRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import {
   List, Layers, Radio, Activity, Route, BookOpen, PanelLeft,
 } from 'lucide-react'
@@ -12,25 +13,12 @@ import {
   DEMO_ROUTE_EDITOR_ENABLED, PANEL_REGISTRY,
 } from './DesktopShared'
 import styles from './DesktopRail.module.css'
-import './desktop-layout-shell.css'
 
 // DesktopRail:桌面版最左側的導覽圖示列——從 DesktopLayout.tsx 抽出獨立
 // 成檔案,原本就是完整獨立的函式,搬移純粹是移動程式碼位置,不涉及邏輯
 // 重組。內部渲染 DesktopUserMenu(左下角使用者選單),兩者的耦合關係
 // 維持不變。
-export function DesktopRail({
-  panelMode,
-  onSelect,
-  activeTrip,
-  user,
-  isGuest,
-  cfg,
-  onAuthed,
-  onLogout,
-  onOpenSettings,
-  showDebugPanel,
-  onToggleDebugPanel,
-}: {
+export interface DesktopRailProps {
   panelMode: PanelMode
   onSelect: (mode: Exclude<PanelMode, null>) => void
   // activeTrip:是否已選定旅程——只用來決定 requiresTrip 的按鈕(目前是
@@ -50,7 +38,33 @@ export function DesktopRail({
   // 的內容(見 DesktopLayout.tsx 渲染邏輯裡 showDebugPanel 的用法)。
   showDebugPanel: boolean
   onToggleDebugPanel: () => void
-}) {
+  // className/style:比照 ScrollArea/Button 等其餘共用元件的既有慣例,
+  // 保留一次性覆寫的逃生口——目前沒有呼叫端需要,但沒有理由讓這個共用
+  // 元件成為擋住未來需求的瓶頸。
+  className?: string
+  style?: CSSProperties
+}
+
+// forwardRef——比照 ScrollArea.tsx 等既有慣例保留轉發能力,目前沒有
+// 呼叫端需要,但沒有理由讓這個共用元件成為擋住未來需求的瓶頸。
+export const DesktopRail = forwardRef<HTMLElement, DesktopRailProps>(function DesktopRail(
+  {
+    panelMode,
+    onSelect,
+    activeTrip,
+    user,
+    isGuest,
+    cfg,
+    onAuthed,
+    onLogout,
+    onOpenSettings,
+    showDebugPanel,
+    onToggleDebugPanel,
+    className,
+    style,
+  },
+  ref,
+) {
   // expanded:rail 從純 icon(48px)展開成帶文字標籤的寬版——純 UI 狀態,
   // 跟對話功能完全無關(對話小匡的開關由地圖上的 AI 按鈕獨立控制,見
   // GeoOutlineMap.tsx 的 onOpenChat),不提升到 DesktopLayout.tsx,
@@ -61,7 +75,11 @@ export function DesktopRail({
   const [expanded, setExpanded] = useState(false)
 
   return (
-    <nav className={`desktop-rail${expanded ? ' expanded' : ''}`}>
+    <nav
+      ref={ref}
+      className={[styles.rail, expanded && styles.expanded, className].filter(Boolean).join(' ')}
+      style={style}
+    >
       <div className={styles.buttons}>
         {/* 展開/收合 rail 本身的開關,固定用 PanelLeft 圖示(不隨 expanded
             切換圖示)——跟其餘功能按鈕排在同一組列表最上方,不是獨立區塊,
@@ -169,7 +187,8 @@ export function DesktopRail({
         onAuthed={onAuthed}
         onLogout={onLogout}
         onOpenSettings={onOpenSettings}
+        expanded={expanded}
       />
     </nav>
   )
-}
+})

@@ -22,13 +22,14 @@ import { type PanelMode, isPanelMode, DEBUG_PANEL_ENABLED, PANEL_REGISTRY } from
 import { DemoPanelContent } from './demo/DemoPanelContent'
 import { RouteEditor } from './demo/RouteEditor'
 import { DesktopRail } from './DesktopRail'
-import { FloatingPanel } from './FloatingPanel'
-import { PanelHead } from './PanelHead'
+import { DesktopLayoutShell } from './DesktopLayoutShell'
+import { DesktopMain } from './DesktopMain'
+import { FloatingPanel } from './components/FloatingPanel'
+import { PanelHead } from './components/PanelHead'
 import { DesktopTripList } from './trip/DesktopTripList'
 import { SettingsDialog } from './user/SettingsDialog'
 import { TripManageModal } from './trip/TripManageModal'
 import type { Trip } from './trip/types'
-import './desktop-layout-shell.css'
 import styles from './DesktopLayout.module.css'
 
 // DesktopLayout:桌面版(寬度 >= 768px)專屬佈局元件——左側邊欄(旅程列表 +
@@ -55,10 +56,10 @@ export function DesktopContent(props: ContentProps) {
   // settingsOpen 獨立於 DesktopUserMenu 內部的 popover 開關狀態:選單裡點「設定」
   // 時會同時關閉 popover(DesktopUserMenu 內部 state)並開啟這裡的 dialog。
   // dialog 提升到這一層(而非渲染在 DesktopUserMenu/側欄內部)渲染,是因為
-  // .desktop-layout 設有 overflow: hidden,side bar 寬度也只有 272px——
+  // DesktopLayoutShell 設有 overflow: hidden,side bar 寬度也只有 272px——
   // 若 dialog 渲染在側欄內部,置中/覆蓋全畫面的彈窗會被側欄裁切或擠壓變形。
-  // 提升到這裡、和 .desktop-layout 同層,搭配 CSS 的 position: fixed 疊加,
-  // 才能保證 dialog 蓋住整個桌面版佈局(含側欄)最上層。
+  // 提升到這裡、和 DesktopLayoutShell 同層,搭配 CSS 的 position: fixed
+  // 疊加,才能保證 dialog 蓋住整個桌面版佈局(含側欄)最上層。
   const [settingsOpen, setSettingsOpen] = useState(false)
   // manageTrip:旅程管理彈窗(分享連結/成員/開啟時自動進入,見
   // TripManageModal.tsx)——原本分成 shareTrip/membersTrip 兩個獨立彈窗,
@@ -201,7 +202,7 @@ export function DesktopContent(props: ContentProps) {
   // showDebugPanel/calls/wsEvents:原本 DebugApp.tsx(?debug 獨立工作台)裡的
   // API/WS 狀態面板,併入正式 App 後改成只在 DEBUG_PANEL_ENABLED 開啟時、由
   // rail 上一顆獨立按鈕切換顯示的附加面板(不佔用 panelMode 的三態切換,
-  // 因為它要能疊加顯示、不取代 side panel 或 .desktop-main 的內容——見下方
+  // 因為它要能疊加顯示、不取代 side panel 或 DesktopMain 的內容——見下方
   // 渲染邏輯)。
   // onApiCall/onWsEvent 訂閱本身沒有開銷(見 api.ts),即使面板收合也持續
   // 累積,收合後重新展開不會漏掉收合期間發生的紀錄。
@@ -247,7 +248,7 @@ export function DesktopContent(props: ContentProps) {
   const desktopChat = useMemo(() => ({ onTimelineData }), [onTimelineData])
 
   // geoHotelSidebarVisible:跟下方 GeoHotelSidebar 實際渲染的條件完全
-  // 一致——GeoInfoPanel/AttractionInfoPanel 都定位在 .desktop-main 右緣
+  // 一致——GeoInfoPanel/AttractionInfoPanel 都定位在 DesktopMain 右緣
   // (見 GeoInfoPanel.module.css/AttractionInfoPanel.module.css 的
   // .panel),GeoHotelSidebar 有內容時會漂浮在同一個位置(見
   // DesktopLayout.module.css 的 .right),兩張卡片需要知道
@@ -276,7 +277,7 @@ export function DesktopContent(props: ContentProps) {
 
   return (
     <>
-      <div className="desktop-layout">
+      <DesktopLayoutShell>
         <DesktopRail
           panelMode={panelMode}
           onSelect={setPanelMode}
@@ -290,7 +291,11 @@ export function DesktopContent(props: ContentProps) {
           showDebugPanel={showDebugPanel}
           onToggleDebugPanel={() => setShowDebugPanel((v) => !v)}
         />
-        <main className="desktop-main">
+        {/* unbounded:main-replace 以外的所有情況固定渲染 GeoOutlinePanel
+            (見下方),故拿掉 860px 寬度上限——見 DesktopMain.tsx 對
+            unbounded prop 的完整說明。不傳 unboundedScroll——地理規劃
+            輪廓底圖用 position:absolute 撐滿容器,不需要接手垂直捲動。 */}
+        <DesktopMain unbounded={panelSpec?.slot !== 'main-replace'}>
           {geo.pickingDayKey && (
             // side="left" 只是借用左緣的 top/z-index/陰影等視覺語言,實際
             // 水平位置用 style.left 覆蓋——使用者明確要求候選卡並排顯示
@@ -503,7 +508,7 @@ export function DesktopContent(props: ContentProps) {
               後還沒做過任何查詢動作,這時不顯示。不再檢查
               panelMode === 'geo-outline'(見上方 geoHotelSidebarVisible
               的說明,同一個 bug 修復)。使用者明確要求不要壓縮主顯示的
-              可用寬度,改成絕對定位疊在 .desktop-main(已有
+              可用寬度,改成絕對定位疊在 DesktopMain(已有
               position: relative)右緣之上,不佔用 flex 版面空間——理由/
               寫法同左緣的 left side(見 FloatingPanel.tsx)。不傳
               title/onClose——GeoHotelSidebar 自己渲染頂部條(含標題文字+
@@ -579,7 +584,7 @@ export function DesktopContent(props: ContentProps) {
               desktopChat={desktopChat}
             />
           </FloatingPanel>
-        </main>
+        </DesktopMain>
         {DEBUG_PANEL_ENABLED && showDebugPanel && (
           <DemoPanel
             calls={debugCalls}
@@ -591,7 +596,7 @@ export function DesktopContent(props: ContentProps) {
             style={{ flex: '0 0 360px', height: '100%' }}
           />
         )}
-      </div>
+      </DesktopLayoutShell>
       {settingsOpen && (
         <SettingsDialog
           cfg={cfg}

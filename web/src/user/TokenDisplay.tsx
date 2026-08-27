@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Button } from '../components/Button'
 import styles from './TokenDisplay.module.css'
 
 // TokenDisplay:API Token 顯示 + 複製按鈕,SettingsDialog(桌面版)/
@@ -23,9 +24,9 @@ export function TokenDisplay({ token }: { token: string | null }) {
     <>
       <div className={styles.tokenBox}>{displayToken}</div>
       <div style={{ padding: '0 16px 12px' }}>
-        <button className={`btn-secondary${copied ? ' success' : ''}`} onClick={copyToken}>
+        <Button variant="secondary" success={copied} onClick={copyToken}>
           {copied ? '✅ 已複製' : '複製 Token'}
-        </button>
+        </Button>
       </div>
     </>
   )

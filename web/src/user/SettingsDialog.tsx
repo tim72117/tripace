@@ -10,6 +10,9 @@ import { Avatar, errMsg } from '../AppCommon'
 import { LangSelect } from './LangSelect'
 import { ThemeToggle } from './ThemeToggle'
 import { TokenDisplay } from './TokenDisplay'
+import { FormField } from '../components/FormField'
+import { IconButton } from '../components/IconButton'
+import { ListRow } from '../components/ListRow'
 import styles from './SettingsDialog.module.css'
 
 // 桌面版「設定」dialog:點選 DesktopUserMenu 的「設定」項目後開啟,置中卡片彈窗,
@@ -55,22 +58,15 @@ export function SettingsDialog({
       <div className="rp-modal settings-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="rp-modal-head">
           <span className="rp-modal-title">設定</span>
-          <button className="btn icon-btn" onClick={onClose} title="關閉">
+          <IconButton onClick={onClose} title="關閉">
             <X size={18} strokeWidth={1.8} />
-          </button>
+          </IconButton>
         </div>
         <div className="rp-modal-body">
           <div className="section-title">目前登入</div>
-          <div className="row">
-            <Avatar user={user} />
-            <div className="grow">
-              <div className="name">{user.name}</div>
-              <div className="sub">{email || user.id}</div>
-            </div>
-          </div>
+          <ListRow icon={<Avatar user={user} />} title={user.name} subtitle={email || user.id} />
           <div className="section-title">LLM 回答語言</div>
-          <div className="field">
-            <label>助理回答(assist/語意查詢)使用的語言,不影響介面文字</label>
+          <FormField label="助理回答(assist/語意查詢)使用的語言,不影響介面文字">
             <LangSelect
               value={assistLang}
               onChange={(v) => {
@@ -78,12 +74,11 @@ export function SettingsDialog({
                 localStorage.setItem(ASSIST_LANG_KEY, v)
               }}
             />
-          </div>
+          </FormField>
           <div className="section-title">外觀</div>
-          <div className="field">
-            <label>介面深色/淺色模式,「跟隨系統」會依裝置設定自動切換</label>
+          <FormField label="介面深色/淺色模式,「跟隨系統」會依裝置設定自動切換">
             <ThemeToggle value={theme} onChange={setTheme} />
-          </div>
+          </FormField>
           <div className={styles.devToggle} onClick={() => setDevOpen((o) => !o)}>
             <span>開發</span>
             <ChevronDown
@@ -98,17 +93,11 @@ export function SettingsDialog({
               <div className="section-title">API Token (CLI 用)</div>
               <TokenDisplay token={cfg.token} />
               <div className="section-title">後端連線</div>
-              <div className="field">
-                <label>Base URL(由 VITE_API_BASE 設定,不可於此修改)</label>
+              <FormField label="Base URL(由 VITE_API_BASE 設定,不可於此修改)">
                 <input value={cfg.baseURL} readOnly disabled />
-              </div>
+              </FormField>
               <div className="section-title">健康檢查</div>
-              <div className="row" onClick={ping}>
-                <div className="grow">
-                  <div className="name">GET /health</div>
-                  <div className="sub">{health}</div>
-                </div>
-              </div>
+              <ListRow title="GET /health" subtitle={health} onClick={ping} />
             </>
           )}
         </div>

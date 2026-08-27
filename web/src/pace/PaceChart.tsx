@@ -3,6 +3,7 @@ import { Share2 } from 'lucide-react'
 import styles from './PaceChart.module.css'
 import './PaceMap.css'
 import { BASE_URL } from '../AppCommon'
+import { Banner } from '../components/Banner'
 import { fetchEntries, geocodeEntry, type ClientConfig } from '../api'
 
 // 單車配速表(UI 試做):手機優先的直向卡片堆疊,每張卡片是一個檢查站,
@@ -755,7 +756,7 @@ export function PaceChart({
         <span className={styles.count}>{route.checkpoints.length} 站</span>
       </div>
 
-      {geocodeErr && <div className="banner">定位失敗:{geocodeErr}</div>}
+      <Banner message={geocodeErr && `定位失敗:${geocodeErr}`} />
       <div className={styles.stops}>
         {route.checkpoints.map((cp, i) => (
           <CheckpointCard

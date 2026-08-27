@@ -1,0 +1,31 @@
+/* NewTripComposer.tsx 專屬樣式(CSS Modules)。原本是 base-ui.css 的全域
+   class .new-trip-composer,數值原封不動搬進來——只被 DesktopTripList.tsx/
+   PhoneTripsDrawer.tsx 兩處使用,語意上專屬旅程列表,不符合「跨多個不相關
+   功能模組共用」的全站基礎樣式定義,故從 base-ui.css 移出,隨元件本身
+   封裝成 CSS Module(見 NewTripComposer.tsx 的說明)。 */
+.composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--ios-card);
+  border-bottom: 0.5px solid var(--ios-sep);
+}
+.composer input {
+  flex: 1;
+  /* min-width: 0 覆蓋 flex 子項預設的 min-width: auto(依內容/
+     placeholder 文字撐出的最小寬度)——沒有這行,側欄較窄時 input 會
+     拒絕縮小到能容納旁邊「建立」按鈕的程度,把整個 .composer 橫向撐爆,
+     讓按鈕溢出側欄右邊界(實際發生過的 bug)。 */
+  min-width: 0;
+  border: 1.5px solid var(--ios-sep);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 16px;
+  outline: none;
+  background: var(--ios-bg);
+  transition: border-color 0.15s;
+}
+.composer input:focus {
+  border-color: var(--color-accent);
+}

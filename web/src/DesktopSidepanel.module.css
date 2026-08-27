@@ -1,0 +1,36 @@
+/* DesktopSidepanel.tsx 專屬樣式(CSS Modules)。原全域字串 class
+   .desktop-sidepanel/.collapsed/.wide/.desktop-sidepanel-inner——數值原封
+   不動搬過來,沒有呼叫端依賴外部 CSS 選擇器指到這些 class,可以安心
+   雜湊化(不像 .desktop-rail 有 DesktopUserMenu.module.css 的
+   :global() 依賴)。 */
+.sidepanel {
+  flex: 0 0 272px;
+  width: 272px;
+  display: flex;
+  flex-direction: column;
+  background: var(--ios-card);
+  border-right: 1px solid var(--ios-sep);
+  min-height: 0;
+  overflow: hidden;
+  transition: flex-basis 0.2s ease, width 0.2s ease, border-color 0.2s ease;
+}
+.collapsed {
+  flex-basis: 0;
+  width: 0;
+  border-right-color: transparent;
+  border-left-color: transparent;
+}
+.wide {
+  flex-basis: 380px;
+  width: 380px;
+}
+.inner {
+  width: 272px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.innerWide {
+  width: 380px;
+}

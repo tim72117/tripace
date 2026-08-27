@@ -2,7 +2,7 @@ import {
   type GeoCandidate, candidateEntryKind, candidateListKey, dayGroupLabel, entryKindIcon,
 } from './GeoCandidateSidebar'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
-import { PanelHead } from '../PanelHead'
+import { PanelHead } from '../components/PanelHead'
 import styles from './AddFromCandidateSidebar.module.css'
 
 // CandidateRow:單一候選項目的卡片——原本是 GeoCandidateSidebar.tsx 的

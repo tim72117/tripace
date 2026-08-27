@@ -6,6 +6,10 @@ import * as api from '../api'
 import type { Trip } from './types'
 import type { TripRole, Member } from '../user/types'
 import { Avatar, ErrorBanner, errMsg, isSubmitEnter, LS_DEFAULT_TRIP } from '../AppCommon'
+import { Button } from '../components/Button'
+import { FormField } from '../components/FormField'
+import { IconButton } from '../components/IconButton'
+import { List, ListRow } from '../components/ListRow'
 import styles from './TripManageModal.module.css'
 
 // TripManageModal:旅程管理彈窗,合併原本分開的 ShareModal(分享連結)與
@@ -34,9 +38,9 @@ export function TripManageModal({
     <>
       <div className="rp-modal-head">
         <span className="rp-modal-title">旅程設定 · {trip.name}</span>
-        <button className="btn icon-btn" onClick={onClose} title="關閉">
+        <IconButton onClick={onClose} title="關閉">
           <X size={18} strokeWidth={1.8} />
-        </button>
+        </IconButton>
       </div>
       <div className="rp-modal-body">
         <DefaultTripSection tripID={trip.id} />
@@ -198,9 +202,9 @@ function ShareSection({
             </button>
           </div>
           <div className={styles.actionRow}>
-            <button className="btn-primary" onClick={copy}>
+            <Button variant="primary" onClick={copy}>
               {copied ? '✅ 已複製' : '複製連結'}
-            </button>
+            </Button>
           </div>
           {qrDataURL && (
             <>
@@ -221,10 +225,10 @@ function ShareSection({
               </div>
               <ViewModePicker value={viewMode} onChange={changeViewMode} />
               <div className={styles.actionRow}>
-                <button className="btn-danger" onClick={revoke}>
+                <Button variant="danger" onClick={revoke}>
                   <Trash2 size={14} strokeWidth={1.8} style={{ marginRight: 6 }} />
                   撤銷連結
-                </button>
+                </Button>
               </div>
             </>
           )}
@@ -245,9 +249,9 @@ function ShareSection({
               </div>
               <ViewModePicker value={viewMode} onChange={changeViewMode} />
               <div className={styles.actionRow}>
-                <button className="btn-primary" onClick={generate}>
+                <Button variant="primary" onClick={generate}>
                   建立公開連結
-                </button>
+                </Button>
               </div>
             </>
           )}
@@ -355,32 +359,34 @@ function MembersSection({
     <>
       <ErrorBanner msg={err} />
       <div className="section-title">旅程成員</div>
-      <ul className="list">
+      <List>
         {members.map((m) => {
           const isTripOwner = m.id === trip.ownerID
           const roleLabel = isTripOwner ? '擁有者' : m.role === 'editor' ? '可修改' : '查詢'
           return (
-            <li key={m.id} className="row">
-              <Avatar user={m} />
-              <div className="grow">
-                <div className="name">{m.name}</div>
-                <div className="sub">{m.id}</div>
-              </div>
-              {isOwner && !isTripOwner ? (
-                <button className={`${styles.chip} ${styles[m.role]}`} onClick={() => toggleRole(m)} title="點擊切換 修改/查詢 權限">
-                  {roleLabel}
-                </button>
-              ) : (
-                <span className={`${styles.chip} ${styles[isTripOwner ? 'owner' : m.role]} ${styles.static}`}>
-                  {roleLabel}
-                </span>
-              )}
-            </li>
+            <ListRow
+              as="li"
+              key={m.id}
+              icon={<Avatar user={m} />}
+              title={m.name}
+              subtitle={m.id}
+              trailing={
+                isOwner && !isTripOwner ? (
+                  <button className={`${styles.chip} ${styles[m.role]}`} onClick={() => toggleRole(m)} title="點擊切換 修改/查詢 權限">
+                    {roleLabel}
+                  </button>
+                ) : (
+                  <span className={`${styles.chip} ${styles[isTripOwner ? 'owner' : m.role]} ${styles.static}`}>
+                    {roleLabel}
+                  </span>
+                )
+              }
+            />
           )
         })}
-      </ul>
+      </List>
       <div className="section-title">以 Email 邀請</div>
-      <div className="field">
+      <FormField>
         <input
           value={email}
           type="email"
@@ -389,11 +395,11 @@ function MembersSection({
           onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => isSubmitEnter(e) && invite()}
         />
-      </div>
+      </FormField>
       <div className={styles.actionRow}>
-        <button className="btn-primary" onClick={invite} disabled={adding || !email.includes('@')}>
+        <Button variant="primary" onClick={invite} disabled={adding || !email.includes('@')}>
           {adding ? '邀請中…' : '邀請加入'}
-        </button>
+        </Button>
       </div>
     </>
   )

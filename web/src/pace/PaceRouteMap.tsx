@@ -602,7 +602,7 @@ export function PaceRouteMap({
   }
 
   return (
-    <div className="pace-route-map-wrap">
+    <div className={styles.wrap}>
       <div className={styles.frame}>
         <div ref={containerRef} className="rp-map" />
         {mePos && (

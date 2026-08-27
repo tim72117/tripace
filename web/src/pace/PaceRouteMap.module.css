@@ -2,11 +2,13 @@
    class 名稱衝突)。.rp-map/.rp-map-error* 是跟 RecommendedPlacesMap.tsx
    共用的既有全域樣式,刻意不搬進來,留在 styles.css。
 
-   wrap 這個 class 特別用 :global() 保留原名不雜湊——App.tsx 的全域樣式裡
-   有 .desktop-main:has(.pace-route-map-wrap) 這條規則需要從外部偵測到這個
-   class,CSS Modules 預設雜湊過的名稱在編譯時不固定,無法讓外部全域 CSS
-   選擇器可靠地指到它,故這個(且僅這個)class 刻意保留可預期的原始名稱。 */
-:global(.pace-route-map-wrap) {
+   wrap 原本用 :global() 保留固定字串名稱 pace-route-map-wrap,供
+   desktop-layout-shell.css 的 .desktop-main:has(.pace-route-map-wrap)
+   全域選擇器從外部偵測——DesktopMain 元件化後改用明確的 unbounded/
+   unboundedScroll prop 取代 :has() 偵測(見 DesktopMain.tsx 的說明),
+   不再需要外部 CSS 選擇器指到這個 class,故改回一般會被雜湊的 CSS
+   Modules class。 */
+.wrap {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;

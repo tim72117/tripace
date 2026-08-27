@@ -18,10 +18,15 @@
    - 訊息列表渲染、其餘 UI 相關的 class 尚未搬移,留待未來另外的 pass
      再個別處理。
 
-   .chat-area .screen-body 這條規則裡的 .screen-body 是全站共用的全域
-   class(DesktopLayout.tsx/PhoneScreens.tsx/MembersScreen.tsx/ShareModal.tsx
-   等多處都有用),故用 :global(.screen-body) 保留原本「只在 .chat-area
-   底下」的巢狀限定範圍,不把 .screen-body 本身納入雜湊。
+   .area .messages 這條規則原本寫成 .chat-area :global(.screen-body)——
+   .screen-body 曾是全站共用的全域 class(DesktopLayout.tsx/
+   PhoneScreens.tsx/MembersScreen.tsx/ShareModal.tsx 等多處都有用),故當時
+   用 :global(.screen-body) 保留「只在 .chat-area 底下」的巢狀限定範圍,
+   不把 .screen-body 本身納入雜湊。改用共用元件 components/ScrollArea.tsx
+   後,ChatScreen.tsx 改成直接傳自己的 styles.messages 給 ScrollArea 的
+   className prop 疊加(該元件內部已經有自己的 CSS Module class 負責
+   overflow-y/touch-action,不再需要靠這裡的全域字串 class 命中),故這裡
+   直接用一般 CSS Module 選擇器 .messages,不再需要 :global()。
 
    時間軸(.backdrop/.timelinePanel,手機版右側滑入抽屜)已移除:時間軸
    改成手機版左側導覽抽屜(PhoneNavDrawer.tsx)的一個分頁,對齊桌面版
@@ -29,27 +34,34 @@
 
 .area {
   flex: 1 1 auto;
-  min-height: 0; /* 解除 flex 子項預設撐開父層的行為,讓內部改由 .screen-body 自己捲動 */
+  min-height: 0; /* 解除 flex 子項預設撐開父層的行為,讓內部改由 ScrollArea 自己捲動 */
   position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
-.area :global(.screen-body) {
-  flex: 1 1 auto;
-  min-height: 0; /* 同上:沒有這行,內容過長時會撐開 .chat-area 進而撐開整頁,而非自己內部捲動 */
-  padding-bottom: 104px; /* 預留 composer 高度(約80px)+24px間隙,捲到底時最後一則訊息跟輸入框之間留一點呼吸空間,不緊貼在一起 */
-}
 
 /* .messages:訊息列表的排版,桌面版(desktopChat 分支)、手機版共用同一份
-   規則——兩邊現在都是「訊息在 .screen-body 容器內走一般文件流、整個對話區
+   規則——兩邊現在都是「訊息在 ScrollArea 容器內走一般文件流、整個對話區
    當一個整體捲動」的同一種呈現方式,不像改版前手機版是浮層疊在時間軸上方
    (毛玻璃背景 + 獨立捲動)的另一套設計。.bubble-group 本身不帶 margin,
-   依賴這裡的 gap 維持彼此間距。 */
+   依賴這裡的 gap 維持彼此間距。
+
+   flex/min-height/padding-bottom 這三個屬性疊加在 ScrollArea 本身既有的
+   overflow-y/touch-action 之上(見 components/ScrollArea.tsx 的
+   className prop 說明)——ScrollArea 負責「怎麼捲動」,這裡只負責
+   ChatScreen 特有的排版細節,兩者職責不重疊:flex/min-height 同上方
+   .area 的說明(沒有這兩行,內容過長時會撐開 .area 進而撐開整頁,而非
+   自己內部捲動);padding-bottom: 104px 預留 composer 高度(約80px)+
+   24px間隙,捲到底時最後一則訊息跟輸入框之間留一點呼吸空間,不緊貼在
+   一起。 */
 .messages {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  padding-bottom: 104px;
 }
 
 /* 輸入列:浮空固定在對話區底部,整列包在一張卡片容器裡(白底/圓角/陰影

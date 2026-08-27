@@ -1,7 +1,9 @@
 import { Plus, MapPin, Settings } from 'lucide-react'
 import type { Trip } from './types'
-import { ErrorBanner, isSubmitEnter } from '../AppCommon'
+import { ErrorBanner } from '../AppCommon'
 import { PhoneBottomSheet } from '../components/PhoneBottomSheet'
+import { ScrollArea } from '../components/ScrollArea'
+import { NewTripComposer } from './NewTripComposer'
 import styles from './PhoneTripsDrawer.module.css'
 
 // PhoneTripsDrawer:旅程列表獨立抽屜,由下往上彈出(bottom sheet),由
@@ -64,7 +66,7 @@ export function PhoneTripsDrawer({
       panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: 33 }}
       backdropStyle={{ top: 0, left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: 32, background: 'rgba(0, 0, 0, 0.35)' }}
     >
-      <div className="screen-body">
+      <ScrollArea>
         <ErrorBanner msg={err} />
         {trips.length === 0 && !err && (
           <div className="empty">
@@ -79,24 +81,15 @@ export function PhoneTripsDrawer({
               下面既有旅程清單維持可見、可捲動,不會像原本整塊消失。 */}
           <li>
             {creating ? (
-              <div className="new-trip-composer">
-                <input
-                  autoFocus
-                  value={newName}
-                  placeholder="新旅程名稱…"
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (isSubmitEnter(e)) submitCreate()
-                    if (e.key === 'Escape') {
-                      setCreating(false)
-                      setNewName('')
-                    }
-                  }}
-                />
-                <button className="btn-primary" onClick={submitCreate} disabled={!newName.trim()}>
-                  建立
-                </button>
-              </div>
+              <NewTripComposer
+                value={newName}
+                onChange={setNewName}
+                onSubmit={submitCreate}
+                onCancel={() => {
+                  setCreating(false)
+                  setNewName('')
+                }}
+              />
             ) : (
               <button type="button" className={styles.tripItem} onClick={() => setCreating(true)}>
                 <div className={styles.newTripIcon}>
@@ -140,7 +133,7 @@ export function PhoneTripsDrawer({
             </li>
           ))}
         </ul>
-      </div>
+      </ScrollArea>
     </PhoneBottomSheet>
   )
 }

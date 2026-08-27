@@ -4,7 +4,7 @@ import * as api from '../api'
 import type { ClientConfig } from '../api'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
 import { geoItemKey } from './GeoHotelSidebar'
-import { PanelHead } from '../PanelHead'
+import { PanelHead } from '../components/PanelHead'
 import styles from './GeoCandidateSidebar.module.css'
 import {
   type GeoCandidate,

@@ -1,0 +1,44 @@
+/* ScrollArea.tsx 專屬樣式(CSS Modules)。這份規則是從 base-ui.css 的
+   全域 .screen-body 原封不動搬過來的(逐一比對過每個屬性,不是「看起來
+   像但漏了某個細節」的重寫)——原本的說明與踩過的坑一併保留在下方,
+   往後修這類行為只改這一個檔案。 */
+
+/* flex: 1 1 auto——這個容器通常是某個 flex column 版面(navbar + 內容區
+   的常見結構)裡「撐滿剩餘空間」的那一塊,不寫死高度,讓上方 navbar/
+   下方固定列決定各自的自然高度,這個容器吃掉中間剩下的空間。
+
+   overflow-y: auto——允許垂直捲動,但只在內容真的超出容器高度時才出現
+   捲軸(不像 scroll 那樣永遠佔用捲軸空間)。
+
+   touch-action: pan-y——這是找到的根因:.webApp(App.module.css)已經把
+   全站根容器設成 touch-action: none 擋雙指縮放,但這個全域共用的捲動
+   容器本身如果沒有另外宣告 touch-action,子元素未設定時會被父層的 none
+   影響、理論上垂直捲動也會被擋住,但實測發現對話視窗(ChatScreen.tsx)、
+   旅程清單(PhoneTripsDrawer.tsx)這些用 .screen-body 的畫面反而還是能
+   雙指縮放(使用者實測回報)——這代表 touch-action: none 在沒有更明確
+   宣告的情況下,某些瀏覽器對「祖先鏈中間完全沒有任何一層明確宣告
+   touch-action,只在最頂層根容器設定」的繼承路徑處理不夠可靠,必須在
+   真正承載觸控手勢起點的這個捲動容器上直接宣告,不能只靠很上層的祖先
+   設定。pan-y 只允許垂直平移(捲動本身需要),明確排除縮放與水平平移。
+
+   -webkit-overflow-scrolling: touch——iOS Safari 的慣性捲動(momentum
+   scrolling),沒有這個屬性舊版 iOS Safari 的捲動會頓挫、不流暢。
+
+   scrollbar-width: none + 下方 ::-webkit-scrollbar { display: none }——
+   隱藏捲軸視覺(手機版 App 觀感,不要出現桌面瀏覽器那種捲軸滑塊),但
+   不影響捲動能力本身(overflow-y: auto 這個行為不受影響,只是不繪製
+   捲軸視覺元件)。
+
+   padding: 0 12px 16px——原本 .screen-body 就帶的內距(左右 12px、底部
+   16px、頂部 0,頂部通常已由 navbar 或 head slot 隔開),沿用不變。 */
+.scrollArea {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 0 12px 16px;
+}
+.scrollArea::-webkit-scrollbar {
+  display: none;
+}

@@ -1,0 +1,18 @@
+/* Banner.tsx 專屬樣式(CSS Modules)。從 base-ui.css 的全域 .banner
+   原封不動搬過來(逐一比對過每個屬性)——見 Banner.tsx 開頭的說明。 */
+.banner {
+  margin: 10px 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 15px;
+  background: var(--ios-red-bg);
+  color: var(--ios-red);
+  border: 1px solid var(--ios-red-border);
+}
+/* icon:AlertCircle 圖示的行內間距——原本每個帶圖示的呼叫端各自用
+   style={{verticalAlign: 'middle', marginRight: 6}} 重複貼一次的 inline
+   style,收斂成這一條規則。 */
+.icon {
+  vertical-align: middle;
+  margin-right: 6px;
+}

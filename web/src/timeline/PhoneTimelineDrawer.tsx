@@ -3,6 +3,7 @@ import type { DesktopTimelineMirror } from '../chat/ChatScreen'
 import type { ClientConfig } from '../api'
 import { MultiTrackTimeline } from './Timeline'
 import { PhoneBottomSheet, SheetHead } from '../components/PhoneBottomSheet'
+import { ScrollArea } from '../components/ScrollArea'
 
 // PhoneTimelineDrawer:手機版時間軸,由下往上彈出(bottom sheet)——使用者
 // 要求「時間軸不用獨立路由」,原本是底部常駐 PhoneTabBar.tsx 的一個分頁
@@ -21,9 +22,10 @@ import { PhoneBottomSheet, SheetHead } from '../components/PhoneBottomSheet'
 // 用法(同一套 bottom sheet 模式)。可拖曳收合到只顯示標頭(minHeightPx/
 // activeSnapIndex,見下方)——當初是為了排查「對話疊加層內容區拖不動」
 // 問題而加的對照組(時間軸內容區 MultiTrackTimeline 跟 ChatScreen 的
-// 訊息列表一樣用 screen-body,驗證同樣結構在這裡能正常拖動整張卡片,
-// 藉此排除 screen-body 本身的嫌疑,見 PhoneContent.tsx 對話疊加層
-// keepMounted 的說明),驗證後使用者要求保留這個收合功能。
+// 訊息列表一樣用 ScrollArea(前身是全域 .screen-body class),驗證同樣
+// 結構在這裡能正常拖動整張卡片,藉此排除這個捲動容器本身的嫌疑,見
+// PhoneContent.tsx 對話疊加層 keepMounted 的說明),驗證後使用者要求
+// 保留這個收合功能。
 //
 // SHEET_TOP:面板頂部離定位祖先頂端的距離(px)——見
 // components/PhoneBottomSheet.tsx 的說明。TODO(使用者稍後決定合理
@@ -84,11 +86,11 @@ export function PhoneTimelineDrawer({
       head={<SheetHead title={tripName} onClose={onClose} />}
     >
       {timelineMirror.entries.length === 0 ? (
-        <div className="screen-body">
+        <ScrollArea>
           <div className="empty">尚無行程內容。</div>
-        </div>
+        </ScrollArea>
       ) : (
-        <div className="screen-body" ref={bodyRef}>
+        <ScrollArea ref={bodyRef}>
           <MultiTrackTimeline
             entries={timelineMirror.entries}
             todayRef={todayRef}
@@ -97,7 +99,7 @@ export function PhoneTimelineDrawer({
             cfg={editCfg}
             onEntryUpdated={timelineMirror.refetchEntries}
           />
-        </div>
+        </ScrollArea>
       )}
     </PhoneBottomSheet>
   )

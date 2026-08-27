@@ -59,25 +59,14 @@
 /* floatingCloseBtn:沒有標題文字時的關閉按鈕——絕對定位疊在卡片右上角,
    供 panelMode 浮動卡片(trips/timeline/pace/geo-outline,內容元件各自
    有自己的 header 排版,不需要外殼再重複一份標題列)與 chat-popover
-   (完全沒有標題文字)使用。 */
+   (完全沒有標題文字)使用。視覺(尺寸/形狀/顏色/hover)跟 PanelHead 的
+   .closeBtn 完全一致(同一個圓形關閉鈕,只是這裡沒有標題列可以掛,
+   改成絕對定位疊在卡片右上角)——用 composes 直接繼承,不重複定義同一份
+   規則,這裡只疊加定位相關的差異部分。 */
 .floatingCloseBtn {
+  composes: closeBtn from './PanelHead.module.css';
   position: absolute;
   top: 8px;
   right: 8px;
   z-index: 1;
-  width: 26px;
-  height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  background: none;
-  color: var(--ios-gray);
-  cursor: pointer;
-}
-
-.floatingCloseBtn:hover {
-  background: var(--ios-bg);
-  color: var(--color-dark);
 }

@@ -5,6 +5,9 @@ import type { Entry } from '../types'
 import type { ClientConfig } from '../api'
 import * as api from '../api'
 import { ApiError } from '../api'
+import { Button } from '../components/Button'
+import { Banner } from '../components/Banner'
+import { IconButton } from '../components/IconButton'
 import styles from './Timeline.module.css'
 
 // 對齊 App.tsx 的 errMsg,但不 import App.tsx(App.tsx 已 import 本檔的
@@ -518,12 +521,12 @@ function EditEntrySheet({
       <div className={styles.sheet} onClick={(e) => e.stopPropagation()}>
         <div className={styles.head}>
           <span className={styles.title}>編輯條目</span>
-          <button className="btn icon-btn" onClick={onClose} title="關閉">
+          <IconButton onClick={onClose} title="關閉">
             <X size={18} strokeWidth={1.8} />
-          </button>
+          </IconButton>
         </div>
         <div className={styles.body}>
-          {err && <div className="banner">{err}</div>}
+          <Banner message={err} />
           <label className={styles.field}>
             <span>標題</span>
             <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
@@ -558,10 +561,10 @@ function EditEntrySheet({
           </label>
         </div>
         <div className={styles.actions}>
-          <button className="btn-secondary" onClick={onClose} disabled={saving}>取消</button>
-          <button className="btn-primary" onClick={save} disabled={saving || !title.trim()}>
+          <Button variant="secondary" className={styles.actionBtn} onClick={onClose} disabled={saving}>取消</Button>
+          <Button variant="primary" className={styles.actionBtn} onClick={save} disabled={saving || !title.trim()}>
             {saving ? '儲存中…' : '儲存'}
-          </button>
+          </Button>
         </div>
       </div>
     </div>,

@@ -509,12 +509,7 @@ export function GeoOutlinePanel({
   }, [externalLat, externalLng, externalLevel, externalRadiusMeters, externalOnlyIfOutOfView])
 
   return (
-    // geo-outline-panel-wrap:固定字串 class(與 CSS Modules 的 styles.wrap
-    // 並存),供 desktop-layout-shell.css 的 .desktop-main:has(...) 全域
-    // 選擇器偵測——理由同 PaceRouteMap.tsx 的 pace-route-map-wrap(見該檔案
-    // module.css 的說明):CSS Modules 雜湊過的名稱編譯時不固定,外部
-    // 全域 CSS 選擇器無法可靠指到它,故需要一個不受雜湊影響的固定名稱。
-    <div className={`${styles.wrap} geo-outline-panel-wrap`}>
+    <div className={styles.wrap}>
       <div className={styles.mapArea}>
         <GeoOutlineMap
           cfg={cfg}

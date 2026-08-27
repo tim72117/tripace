@@ -6,9 +6,13 @@
    選擇器(含 App.tsx 的 :has() 規則)需要從外部偵測這裡的 class,MultiTrackTimeline
    /EditEntrySheet 也沒有被其他元件以 CSS 選擇器方式跨檔案引用。
 
-   .btn-primary/.btn-secondary 是全站共用的按鈕樣式(見 styles.css),這裡
-   用 :global() 選中它們(組合選擇器 .actions :global(.btn-primary)),
-   不是把它們也一併搬進本 module。
+   .btn-primary/.btn-secondary 全域字串 class 已改成共用元件
+   components/Button.tsx(見該檔案的說明)——這裡的「取消」/「儲存」按鈕
+   在 .actions 這個橫向並排的容器裡需要 flex:1 撐開、字級也比 Button
+   預設的 primary/secondary 尺寸小一號,這組局部覆寫透過 Button 的
+   className prop 疊加自己的 .actionBtn class 達成(取代原本
+   `.actions :global(.btn-primary)` 這種依賴全域 class 名稱、
+   容易在改名/重構時悄悄失效的組合選擇器)。
 
    fade/slideUp 這兩個 keyframes 效果對齊 styles.css 的 .ask-user-backdrop/
    .ask-user-sheet(彈出詢問框)用的 ask-user-fade/ask-user-slide-up——
@@ -529,8 +533,7 @@
   padding: 14px 20px calc(14px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--ios-sep);
 }
-.actions :global(.btn-primary),
-.actions :global(.btn-secondary) {
+.actionBtn {
   flex: 1;
   padding: 12px;
   font-size: 15px;

@@ -1,0 +1,33 @@
+/* DesktopMain.tsx 專屬樣式(CSS Modules)。原全域字串 class .desktop-main
+   + 兩條 :has() 選擇器(見 DesktopMain.tsx 開頭說明,已改用 unbounded/
+   unboundedScroll prop 取代 :has() 偵測)。數值原封不動搬過來。 */
+.main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+  position: relative;
+}
+/* unbounded:對應原本 .desktop-main:has(.pace-route-map-wrap)/
+   .desktop-main:has(.geo-outline-panel-wrap) 共同的部分(拿掉寬度上限與
+   置中)。 */
+.unbounded {
+  max-width: none;
+  margin: 0;
+}
+/* unboundedScroll:對應原本 .desktop-main:has(.pace-route-map-wrap) 額外
+   接手垂直捲動的部分——.pace-chart 改自然高度不再自己捲,捲動權明確收在
+   這裡。只設 overflow-y 會連帶讓水平軸也變成可捲動(規範預設行為),明確
+   鎖死 overflow-x: hidden 避免內容稍微超寬就變成可以左右拖曳。地理規劃
+   輪廓底圖(GeoOutlinePanel)不套這個 class——地圖本身用 position:
+   absolute; inset: 0 撐滿容器,不需要接手捲動權。 */
+.unboundedScroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}

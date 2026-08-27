@@ -3,7 +3,9 @@ import { useIsDesktop } from '../hooks/useIsDesktop'
 import { PaceChart, PACE_PUBLIC_LINK_TOKEN, type Checkpoint } from './PaceChart'
 import { PaceRouteMap } from './PaceRouteMap'
 import { PacePhoneSwipe } from './PacePhoneSwipe'
-import '../desktop-layout-shell.css'
+import { DesktopLayoutShell } from '../DesktopLayoutShell'
+import { DesktopSidepanel } from '../DesktopSidepanel'
+import { DesktopMain } from '../DesktopMain'
 import styles from './PacePage.module.css'
 
 // PacePage:/demo/pace 的公開分享頁內容(見 App.tsx App() 的路由判斷,原本
@@ -12,10 +14,10 @@ import styles from './PacePage.module.css'
 // 比照登入後 pace 面板的樣子(側欄清單 + 主區地圖,見 DesktopLayout.tsx
 // DesktopContent 的 pace 分支),只是不放最左側的 DesktopRail(旅程/
 // 時間軸/使用者選單那條圖示列,公開頁不需要、也沒有登入身分可以顯示)。
-// 沿用同一套 .desktop-sidepanel/.desktop-main class,不是重新設計一份
-// 版型;.desktop-layout 底下少了 DesktopRail 這個 flex sibling 不影響
-// sidepanel/main 各自的排版,不需要額外 CSS。手機寬度沿用跟登入後手機版
-// 一致的 PacePhoneSwipe(滑動雙頁),不需要另外做一份。
+// 沿用同一套 DesktopLayoutShell/DesktopSidepanel(wide 變體)/DesktopMain
+// 元件,不是重新設計一份版型;DesktopLayoutShell 底下少了 DesktopRail 這個
+// flex sibling 不影響 sidepanel/main 各自的排版,不需要額外 CSS。手機寬度
+// 沿用跟登入後手機版一致的 PacePhoneSwipe(滑動雙頁),不需要另外做一份。
 //
 // 「點卡片→地圖平移→手動微調→儲存座標」這套互動(見 PaceRouteMap.tsx 的
 // SelectedEntry/selectedEntry/onSelectedEntryDone)刻意不接在這個公開頁:
@@ -38,19 +40,21 @@ export function PacePage() {
     )
   }
   return (
-    <div className="desktop-layout">
-      <aside className="desktop-sidepanel wide">
-        <div className="desktop-sidepanel-inner">
-          <div className={styles.sidepanelPace}>
-            <PaceChart onRouteChange={setCheckpoints} />
-          </div>
+    <DesktopLayoutShell>
+      <DesktopSidepanel wide>
+        <div className={styles.sidepanelPace}>
+          <PaceChart onRouteChange={setCheckpoints} />
         </div>
-      </aside>
-      <main className="desktop-main">
+      </DesktopSidepanel>
+      {/* unbounded + unboundedScroll:這個公開頁固定渲染 PaceRouteMap
+          (含 pace-route-map-wrap),見 DesktopMain.tsx 對這兩個 prop 的
+          完整說明——拿掉 860px 寬度上限,並讓 DesktopMain 本身接手垂直
+          捲動(.pace-chart 改自然高度不再自己捲)。 */}
+      <DesktopMain unbounded unboundedScroll>
         <div className={styles.demoPanel}>
           <PaceRouteMap checkpoints={checkpoints} publicToken={PACE_PUBLIC_LINK_TOKEN} />
         </div>
-      </main>
-    </div>
+      </DesktopMain>
+    </DesktopLayoutShell>
   )
 }

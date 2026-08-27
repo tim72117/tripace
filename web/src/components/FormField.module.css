@@ -1,0 +1,29 @@
+/* FormField.tsx 專屬樣式(CSS Modules)。從 base-ui.css 的全域 .field
+   原封不動搬過來(逐一比對過每個屬性)——見 FormField.tsx 開頭的完整
+   說明,呼叫端不應該再自己宣告這組 padding/border-bottom/label 字級。 */
+.field {
+  display: block;
+  padding: 12px 16px;
+  background: var(--ios-card);
+  border-bottom: 0.5px solid var(--ios-sep);
+}
+.field label {
+  display: block;
+  font-size: 13px;
+  color: var(--ios-gray);
+  margin-bottom: 4px;
+}
+/* :global——children 插槽裡實際的 <input>/<select> 是呼叫端自己 JSX
+   出來的原生元素,不是這個 CSS Module 認得的 class,用 :global 讓這條
+   規則能命中它們(對齊原本全域 class 的行為:.field input 不分呼叫端
+   直接命中任何巢狀 input/select)。LangSelect/ThemeToggle 這類自訂元件
+   插槽(SettingsScreen.tsx/SettingsDialog.tsx)不受影響——它們內部渲染
+   的是 <button>,這條規則本來就不會、也不該命中。 */
+.field :global(input),
+.field :global(select) {
+  width: 100%;
+  border: none;
+  font-size: 17px;
+  outline: none;
+  font-family: var(--mono);
+}

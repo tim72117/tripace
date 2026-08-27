@@ -1,3 +1,4 @@
+import { forwardRef } from 'react'
 import { X } from 'lucide-react'
 import { PanelHead } from './PanelHead'
 import styles from './FloatingPanel.module.css'
@@ -19,16 +20,7 @@ import styles from './FloatingPanel.module.css'
 // 在內容裡渲染標題列(見 PanelHead),不需要外殼再重複一份;chat-popover
 // 沒有標題文字,只需要關閉按鈕。三種組合(有 title+onClose、只有
 // onClose、都沒有)都支援。
-export function FloatingPanel({
-  side,
-  width,
-  height = 'default',
-  title,
-  onClose,
-  className,
-  style,
-  children,
-}: {
+export interface FloatingPanelProps {
   side: 'left' | 'right'
   width: number
   // height:'default' 對齊原本 .panel 的 top:12px/bottom:12px(trips/
@@ -42,11 +34,19 @@ export function FloatingPanel({
   className?: string
   style?: React.CSSProperties
   children: React.ReactNode
-}) {
+}
+
+// forwardRef——比照 ScrollArea.tsx 等既有慣例保留轉發能力,目前沒有
+// 呼叫端需要,但沒有理由讓這個共用元件成為擋住未來需求的瓶頸。
+export const FloatingPanel = forwardRef<HTMLDivElement, FloatingPanelProps>(function FloatingPanel(
+  { side, width, height = 'default', title, onClose, className, style, children },
+  ref,
+) {
   const sideClass = side === 'left' ? styles.left : styles.right
   const heightClass = height === 'info' ? styles.infoHeight : ''
   return (
     <div
+      ref={ref}
       className={`${styles.panel} ${sideClass} ${heightClass}${className ? ` ${className}` : ''}`}
       style={{ width, ...style }}
     >
@@ -62,4 +62,4 @@ export function FloatingPanel({
       {children}
     </div>
   )
-}
+})

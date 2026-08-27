@@ -1,0 +1,78 @@
+/* ListRow.tsx/List.tsx 專屬樣式(CSS Modules)——完整比對數值搬自原本
+   base-ui.css 的全域 .list/.row/.grow/.row .name/.row .sub,數值原封
+   不動,不是「看起來像但漏了細節」的重寫。
+
+   grep 全部呼叫端確認過的實際 DOM 結構:
+     - SettingsScreen.tsx/SettingsDialog.tsx/DesktopUserMenu.tsx:單獨的
+       <div className="row">,沒有外層 .list 容器(這幾處只有 1~2 列,
+       不是清單,不需要 .list 的卡片背景/圓角/陰影包一層)。
+     - TripManageModal.tsx(成員清單):<ul className="list"><li
+       className="row">...</li></ul>——唯一同時用到 .list 外層容器
+       的呼叫端。
+   由於「只有 .row 沒有 .list」跟「.list 包 .row」兩種用法都存在且數量
+   相當,這裡拆成兩個獨立元件(ListRow 本身、List 作為可選外層容器),
+   而非強迫所有 .row 呼叫端都要包一層 <List>——沒有清單語意的單列 row
+   (例如 SettingsScreen 的「目前登入」)硬套 List 容器只會多一層不必要的
+   卡片背景/圓角,跟原本 base-ui.css 呼叫端各自決定要不要用 .list 外層的
+   彈性不符。 */
+.list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  background: var(--ios-card);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--ios-card);
+  border-bottom: 0.5px solid var(--ios-sep);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.row:last-child {
+  border-bottom: none;
+}
+.row:active {
+  background: var(--ios-active);
+}
+/* 目前選取的項目(原 base-ui.css 的 .row.active,見 TripManageModal.tsx
+   成員清單/DesktopTripList.tsx 旅程項目同一種「目前選中」的用法)。 */
+.row.active {
+  background: var(--color-accent);
+}
+.row.active .name,
+.row.active .sub {
+  color: #fff;
+}
+/* .grow(base-ui.css 保留的全站 utility class,flex:1 撐滿剩餘空間 +
+   min-width:0 讓子層 text-overflow: ellipsis 生效)刻意沒有整組跟著遷移
+   進這個 CSS Module——DesktopTripList.tsx/DesktopUserMenu.tsx 都有呼叫端
+   在完全不是 .row/.list 的自訂容器(各自的 .item/.trigger,不在這次
+   遷移範圍內)裡用字串 className="grow"/"name"/"sub",靠各自 module CSS
+   的 :global(.name)/:global(.sub) 覆寫出不同字級——這些呼叫端不會換成
+   ListRow(它們的項目結構是圓形頭像徽章+管理鈕等,跟 .row 的樣式/DOM
+   結構已經走向不同的排版邏輯,勉強套用 ListRow 只會犧牲既有的客製化
+   外觀)。若把 .grow 整個收進這個 scoped module,會讓那些呼叫端失去
+   可用的全域字串 class,故 base-ui.css 繼續保留 .grow 的全域定義(見該
+   檔案的說明)。這裡的 .name/.sub 則是 ListRow 元件自己內部用來呈現
+   title/subtitle 插槽的 scoped 規則,base-ui.css 已不再定義任何
+   .name/.sub 的視覺樣式(原本巢狀在 .row .name/.row .sub 之下,隨 .row
+   一起移除),兩邊是完全獨立的兩份東西,只是恰好同名、數值相同(都是
+   為了跟原本 .row .name/.row .sub 的視覺一致)。 */
+.name {
+  font-size: 17px;
+  font-weight: 500;
+}
+.sub {
+  font-size: 15px;
+  color: var(--ios-gray);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}

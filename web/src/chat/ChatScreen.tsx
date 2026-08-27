@@ -19,6 +19,7 @@ import { ASSISTANT_ID, ENTRY_QUERY_BATCH_KEY, type ChatMessage } from './chatTyp
 import { AskUserSheet, AskChoiceSheet, type AskChoiceOption } from './AskSheets'
 import { MessageBubble } from './MessageBubble'
 import { useOnagentChatBridge } from './useOnagentChatBridge'
+import { ScrollArea } from '../components/ScrollArea'
 import styles from './ChatScreen.module.css'
 
 // mergeTripEntriesById 把 incoming 依 id 合併進 base:id 已存在於 base 就用
@@ -509,9 +510,9 @@ export function ChatScreen({
           // 桌面模式:主區不渲染時間軸(時間軸只活在左側 side panel 的時間軸模式裡)。
           // 不同於手機版的浮層疊層設計(時間軸在底層、對話泡泡浮在上方,兩者各自
           // 獨立捲動)——桌面版沒有時間軸需要被浮層蓋住看見,底層只會是引導文字,
-          // 故引導文字與對話泡泡改成同一個 .screen-body 容器內的一般文件流內容,
+          // 故引導文字與對話泡泡改成同一個 ScrollArea 容器內的一般文件流內容,
           // 整個對話區當一個整體捲動,捲軸貼齊右欄邊緣,不再套用 .chat-overlay。
-          <div className={`screen-body ${styles.messages}`} ref={bodyRef}>
+          <ScrollArea className={styles.messages} ref={bodyRef}>
             <ErrorBanner msg={err} />
             {messages.length === 0 ? (
               <div className="empty">
@@ -525,13 +526,13 @@ export function ChatScreen({
                 <MessageBubble key={m.id} msg={m} meID={user.id} tripBatches={clientToolsBatches} isLatest={m.id === latestAnswerID} onDeleteTripBatchEntries={deleteTripBatchEntries} />
               ))
             )}
-          </div>
+          </ScrollArea>
         ) : (
           // 手機版:訊息列表是固定顯示的主要內容。時間軸改成左側導覽抽屜
           // (PhoneNavDrawer.tsx)的一個分頁,對齊桌面版——不再是這裡自己的
           // 右側滑入抽屜(原本的 timelineOpen/backdrop/timelinePanel 整套
           // 已移除,資料改透過上方 onTimelineData 鏡像給外層)。
-          <div className={`screen-body ${styles.messages}`} ref={chatMessagesRef}>
+          <ScrollArea className={styles.messages} ref={chatMessagesRef}>
             <ErrorBanner msg={err} />
             {messages.length === 0 ? (
               <div className="empty">
@@ -542,7 +543,7 @@ export function ChatScreen({
                 <MessageBubble key={m.id} msg={m} meID={user.id} tripBatches={clientToolsBatches} isLatest={m.id === latestAnswerID} onDeleteTripBatchEntries={deleteTripBatchEntries} />
               ))
             )}
-          </div>
+          </ScrollArea>
         )}
 
         <div className={styles.composer}>

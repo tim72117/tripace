@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Button } from '../components/Button'
 import styles from './AskSheets.module.css'
 
 // AskUserSheet:agent 呼叫 ask_user 時,前端依 askType 開啟對應輸入 UI 的底部彈出面板。
@@ -31,14 +32,14 @@ export function AskUserSheet({
           <div className={styles.unsupported}>不支援的輸入類型：{askType}</div>
         )}
         <div className={styles.actions}>
-          <button className="btn-secondary" onClick={onCancel}>取消</button>
-          <button
-            className="btn-primary"
+          <Button variant="secondary" onClick={onCancel}>取消</Button>
+          <Button
+            variant="primary"
             disabled={!value}
             onClick={() => value && onSubmit(value)}
           >
             確定
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -84,7 +85,7 @@ export function AskChoiceSheet({
           ))}
         </div>
         <div className={styles.actions}>
-          <button className="btn-secondary" onClick={onCancel}>取消</button>
+          <Button variant="secondary" onClick={onCancel}>取消</Button>
         </div>
       </div>
     </div>

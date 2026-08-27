@@ -1,9 +1,10 @@
 import { Plus, Settings } from 'lucide-react'
 import type { ClientConfig } from '../api'
 import type { Trip } from './types'
-import { ErrorBanner, isSubmitEnter } from '../AppCommon'
+import { ErrorBanner } from '../AppCommon'
 import { useTripsState } from '../hooks/useTripsState'
-import { PanelHead } from '../PanelHead'
+import { PanelHead } from '../components/PanelHead'
+import { NewTripComposer } from './NewTripComposer'
 import styles from './DesktopTripList.module.css'
 
 // 桌面版側欄旅程列表:複用 useTripsState(與手機版 PhoneNavDrawer 的
@@ -49,24 +50,15 @@ export function DesktopTripList({
             區分。點擊後原地換成輸入框(composer),下面既有旅程清單維持
             可見。 */}
         {creating ? (
-          <div className="new-trip-composer">
-            <input
-              autoFocus
-              value={newName}
-              placeholder="新旅程名稱…"
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (isSubmitEnter(e)) submitCreate()
-                if (e.key === 'Escape') {
-                  setCreating(false)
-                  setNewName('')
-                }
-              }}
-            />
-            <button className="btn-primary" onClick={submitCreate} disabled={!newName.trim()}>
-              建立
-            </button>
-          </div>
+          <NewTripComposer
+            value={newName}
+            onChange={setNewName}
+            onSubmit={submitCreate}
+            onCancel={() => {
+              setCreating(false)
+              setNewName('')
+            }}
+          />
         ) : (
           <div className={styles.item}>
             <button className={styles.itemOpen} onClick={() => setCreating(true)}>

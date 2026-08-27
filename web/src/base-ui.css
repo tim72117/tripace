@@ -1,10 +1,9 @@
 /* 全站基礎樣式:CSS 變數、reset、以及真正跨多個元件共用的全域 class
-   (.navbar/.btn/.icon-btn/.new-trip-composer/.screen-body/.row/.grow/
-   .section-title/.btn-primary/.field/.empty/.banner/.btn-secondary/
-   .rp-modal 系列/.settings-dialog 系列/pre)。從原本單一巨大的 styles.css
-   拆出——這些規則不屬於任何單一元件,拆進單一元件的 CSS Module 會打斷
-   共用關係(變成要嘛重複定義、要嘛互相 import),故獨立成這份依性質命名
-   的檔案,由 main.tsx 全域 import 一次。 */
+   (.grow/.section-title/.empty/.rp-modal 系列/
+   .settings-dialog 系列/pre)。從原本單一巨大的 styles.css 拆出——這些
+   規則不屬於任何單一元件,拆進單一元件的 CSS Module 會打斷共用關係
+   (變成要嘛重複定義、要嘛互相 import),故獨立成這份依性質命名的檔案,
+   由 main.tsx 全域 import 一次。 */
 
 :root {
   --ios-blue: #7C6F5B;      /* 大地棕：主要互動色 */
@@ -19,9 +18,9 @@
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   --tl-trip-color: #8B3A2F; /* 旅程主軸色（硃紅） */
   --ios-active: #f5f5f7;         /* .row:active 底色 */
-  --ios-red-bg: #fff3f2;         /* .banner 底色 */
-  --ios-red-border: #ffd9d6;     /* .banner 邊框 */
-  --btn-primary-disabled: #D9C4AA; /* .btn-primary:disabled 底色 */
+  --ios-red-bg: #fff3f2;         /* components/Banner.tsx 底色 */
+  --ios-red-border: #ffd9d6;     /* components/Banner.tsx 邊框 */
+  --btn-primary-disabled: #D9C4AA; /* components/Button.tsx variant="primary" disabled 底色 */
 }
 
 /* 登入後 App(PhoneContent.tsx/DesktopLayout.tsx 及底下畫面)的深色模式
@@ -122,197 +121,36 @@ body {
   background: var(--ios-bg);
   color: var(--color-dark);
   /* 鎖住瀏覽器原生的下拉重新整理/整頁彈性拉伸(overscroll bounce)——這個
-     app 本身內部到處都是自己管理捲動的容器(.screen-body/.body 等,各自
-     已設 overscroll-behavior-y: contain 擋住捲動穿透到父層),但瀏覽器
-     原生的「整頁下拉」手勢是在 body/html 這層攔截的,內層容器各自 contain
-     並不會連帶擋掉它。手機版導覽抽屜欄/設定面板等疊層都是用觸控手勢
+     app 本身內部到處都是自己管理捲動的容器(components/ScrollArea.tsx、
+     components/PhoneBottomSheet.tsx 的 .body 等),但瀏覽器原生的
+     「整頁下拉」手勢是在 body/html 這層攔截的,內層容器各自的 overflow
+     設定並不會連帶擋掉它。手機版導覽抽屜欄/設定面板等疊層都是用觸控手勢
      操作,下拉重新整理誤觸發會直接把整個 App 狀態重置掉,體驗上完全不
      該出現在一個看起來像原生 App 的介面裡。 */
   overscroll-behavior-y: none;
 }
 
-/* 導航列:ChatScreen/PhoneContent/PhoneScreens/SettingsScreen/
-   clienttools/OnagentBridgeDemo/trip/MembersScreen/trip/ShareModal 共用。
-   樣式/高度刻意跟 PhoneNavDrawer.module.css 的 .tabs(抽屜欄上方功能列)
-   對齊——同一份 padding 公式(含 safe-area-inset-top 避讓瀏海/狀態列)、同一種
-   background/border-bottom 處理(不用陰影),讓主顯示區跟抽屜欄的上方欄視覺
-   高度一致,使用者在兩者之間切換時不會有跳動感。 */
-.navbar {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: calc(10px + env(safe-area-inset-top, 0px)) 10px 10px 10px;
-  background: var(--ios-card);
-  border-bottom: 1px solid var(--ios-sep);
-  transition: transform 0.25s ease, opacity 0.25s ease;
-}
-.navbar.navbar-hidden {
-  transform: translateY(-100%);
-  opacity: 0;
-  pointer-events: none;
-  /* 對應上面 .navbar 新的高度公式(不含 safe-area 的部分):10px 上 padding +
-     10px 下 padding + icon-btn 固定 40px 高(見 .navbar .icon-btn),與抽屜欄
-     .tabs 的高度公式(PhoneNavDrawer.module.css)一致。 */
-  margin-bottom: -60px;
-  transition: transform 0.25s ease, opacity 0.25s ease, margin-bottom 0.25s ease;
-}
-.navbar .title {
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.2px;
-  flex: 1;
-  text-align: center;
-}
-.btn {
-  color: var(--ios-blue);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 8px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 17px;
-}
-.btn:disabled {
-  color: var(--ios-gray);
-  cursor: default;
-}
-.btn:active {
-  background: var(--ios-sep);
-}
-.btn:focus-visible {
-  outline: 2px solid var(--ios-blue);
-  outline-offset: 2px;
-}
-.icon-btn {
-  padding: 8px !important;
-}
-/* .navbar 裡的 icon-btn 固定成 40x40px 的方形按鈕框——跟抽屜欄分頁列
-   .tab(PhoneNavDrawer.module.css)同樣的 40x40px 尺寸,理由同上方 .navbar
-   統一樣式的說明:兩處上方列的實際高度要完全一致(10px padding + 40px
-   內容 + 10px padding = 60px),不能各自依 icon 尺寸+padding 算出略有落差
-   的高度(先前是 36px vs 40px,相差 4px)。 */
-.navbar .icon-btn {
-  width: 40px;
-  height: 40px;
-  justify-content: center;
-}
-/* 主顯示區上方列的時間軸/路徑切換圖示(PhoneContent.tsx 的 MainNavBar)
-   選中狀態——跟抽屜欄分頁列的 .tabActive(PhoneNavDrawer.module.css)同一種
-   低調強調色,不用實心底,理由同該處的說明。 */
-.icon-btn.active {
-  color: var(--color-accent);
-}
-
-/* 新增旅程輸入列(嵌在 navbar 下方的一般版面,非聊天室浮空輸入條):
-   DesktopTripList/PhoneTripsDrawer 共用。 */
-.new-trip-composer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  background: var(--ios-card);
-  border-bottom: 0.5px solid var(--ios-sep);
-}
-.new-trip-composer input {
-  flex: 1;
-  /* min-width: 0 覆蓋 flex 子項預設的 min-width: auto(依內容/
-     placeholder 文字撐出的最小寬度)——沒有這行,側欄較窄時 input 會
-     拒絕縮小到能容納旁邊「建立」按鈕的程度,把整個 .new-trip-composer
-     橫向撐爆,讓按鈕溢出側欄右邊界(實際發生過的 bug)。 */
-  min-width: 0;
-  border: 1.5px solid var(--ios-sep);
-  border-radius: 10px;
-  padding: 9px 12px;
-  font-size: 16px;
-  outline: none;
-  background: var(--ios-bg);
-  transition: border-color 0.15s;
-}
-.new-trip-composer input:focus {
-  border-color: var(--color-accent);
-}
-.new-trip-composer .btn-primary {
-  width: auto;
-  flex: 0 0 auto;
-  padding: 9px 16px;
-  font-size: 15px;
-}
-
-/* 內容捲動區:ChatScreen/DesktopLayout/PhoneContent/PhoneScreens/
-   PhoneTripsDrawer/SettingsScreen/clienttools/OnagentBridgeDemo/
-   trip/MembersScreen/trip/ShareModal 共用。 */
-.screen-body {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  padding: 0 12px 16px;
-}
-.screen-body::-webkit-scrollbar {
-  display: none;
-}
-
-/* ---- 列表 / 卡片:DesktopUserMenu/SettingsDialog/SettingsScreen/
-   trip/MembersScreen/trip/TripManageModal 共用 ---- */
-.list {
-  list-style: none;
-  margin: 12px 0 0;
-  padding: 0;
-  background: var(--ios-card);
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-}
-.row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  background: var(--ios-card);
-  border-bottom: 0.5px solid var(--ios-sep);
-  cursor: pointer;
-  transition: background 0.1s;
-}
-.row:last-child {
-  border-bottom: none;
-}
-.row:active {
-  background: var(--ios-active);
-}
-/* .row.active:目前選取的項目(見 PhoneNavDrawer.tsx 旅程列表分頁),對應
-   桌面版 .desktop-trip-item.active 同一種「目前選中」的強調色底 + 白字。 */
-.row.active {
-  background: var(--color-accent);
-}
-.row.active .name,
-.row.active .sub {
-  color: #fff;
-}
-/* 不限定 .row 祖先——.grow 的用途(flex:1 撐滿剩餘空間 + min-width:0 讓
-   子層的 text-overflow: ellipsis 能真的生效)是通用的,任何 flex row 裡
-   放一塊「文字可能過長要截斷」的內容都用得到,不是 .row 專屬。曾經只限定
-   在 .row .grow,導致 DesktopTripList.module.css/DesktopUserMenu.module.css
-   底下用 :global(.grow) 標記的同名 .grow 完全吃不到這條規則,文字過長時
-   直接撐破容器邊界而非省略號截斷。 */
+/* .grow/.name/.sub 這三個 class 繼續留在這裡當全站 utility class——
+   DesktopTripList.tsx
+   (旅程項目,自己的 .item 結構,不是 .list/.row)/DesktopUserMenu.tsx
+   (頭像列 .trigger,同樣不是 .list/.row)這兩處呼叫端仍在用字串
+   className="grow"/"name"/"sub",且各自的 module CSS 靠
+   :global(.grow)/:global(.name)/:global(.sub) 疊加覆寫出不同排版(見
+   DesktopTripList.module.css/DesktopUserMenu.module.css 的說明)——這兩處
+   的項目結構(圓形圖示徽章+管理鈕、rail 收合/展開切換頭像位置等)跟
+   ListRow 的 icon+title+subtitle+trailing 五段式插槽不同,不適合套用
+   ListRow,故評估後維持原本直接引用全域字串 class 的寫法,不強行遷移。
+   .grow 本身(flex:1 撐滿剩餘空間 + min-width:0 讓子層 text-overflow:
+   ellipsis 生效)不限定任何祖先 class,任何 flex row 裡放一塊「文字可能
+   過長要截斷」的內容都用得到。.name/.sub 原本的字級/顏色是巢狀在
+   .row .name/.row .sub 之下,隨 .row 一起移除——這裡不需要另外補一條
+   空規則宣告 .name/.sub 存在,className="name"/"sub" 只是 DOM 上的字串
+   屬性值,DesktopTripList.module.css/DesktopUserMenu.module.css 的
+   :global(.name)/:global(.sub) 選擇器直接比對這個字串即可命中,不需要
+   這份檔案先幫它們定義一條(哪怕是空的)規則。 */
 .grow {
   flex: 1;
   min-width: 0;
-}
-.row .name {
-  font-size: 17px;
-  font-weight: 500;
-}
-.row .sub {
-  font-size: 15px;
-  color: var(--ios-gray);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-top: 2px;
 }
 
 .section-title {
@@ -322,69 +160,11 @@ body {
   text-transform: uppercase;
 }
 
-/* 主要行動按鈕 */
-.btn-primary {
-  display: block;
-  width: 100%;
-  padding: 13px;
-  border: none;
-  border-radius: 12px;
-  background: var(--color-accent);
-  color: #fff;
-  font-size: 17px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-.btn-primary:disabled {
-  background: var(--btn-primary-disabled);
-  cursor: default;
-}
-.btn-primary:active:not(:disabled) {
-  opacity: 0.85;
-}
-.btn-primary:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-/* 一般輸入框(設定 / 查詢) */
-.field {
-  display: block;
-  padding: 12px 16px;
-  background: var(--ios-card);
-  border-bottom: 0.5px solid var(--ios-sep);
-}
-.field label {
-  display: block;
-  font-size: 13px;
-  color: var(--ios-gray);
-  margin-bottom: 4px;
-}
-.field input,
-.field select {
-  width: 100%;
-  border: none;
-  font-size: 17px;
-  outline: none;
-  font-family: var(--mono);
-}
-
 .empty {
   text-align: center;
   color: var(--ios-gray);
   padding: 40px 20px;
   font-size: 16px;
-}
-
-.banner {
-  margin: 10px 16px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  font-size: 15px;
-  background: var(--ios-red-bg);
-  color: var(--ios-red);
-  border: 1px solid var(--ios-red-border);
 }
 
 /* ChatScreen 的助理回答(react-markdown)可能渲染 <pre> 程式碼區塊,
@@ -395,55 +175,6 @@ pre {
   white-space: pre-wrap;
   word-break: break-word;
   color: #d4d4d8;
-}
-
-/* 危險操作按鈕（撤銷）:目前僅 trip/ShareModal.tsx 使用,但骨架用途通用
-   (跟 .btn-primary/.btn-secondary 同一組行動按鈕家族),留在這裡與其他
-   按鈕變體集中管理,不獨立搬進 ShareModal 專屬 module。 */
-.btn-danger {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  padding: 11px;
-  border: 1px solid var(--ios-sep);
-  border-radius: 12px;
-  background: var(--ios-card);
-  color: var(--ios-red);
-  font-size: 15px;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-.btn-danger:active {
-  opacity: 0.75;
-}
-.btn-danger:focus-visible {
-  outline: 2px solid var(--ios-red);
-  outline-offset: 2px;
-}
-
-.btn-secondary {
-  display: block;
-  width: 100%;
-  padding: 11px;
-  border: 1px solid var(--ios-sep);
-  border-radius: 12px;
-  background: var(--ios-card);
-  color: var(--color-dark);
-  font-size: 15px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-.btn-secondary.success {
-  color: var(--ios-green);
-}
-.btn-secondary:active {
-  opacity: 0.75;
-}
-.btn-secondary:focus-visible {
-  outline: 2px solid var(--ios-blue);
-  outline-offset: 2px;
 }
 
 /* ---- 置中卡片彈窗骨架(.rp-modal*):DesktopLayout(分享/成員彈窗、原

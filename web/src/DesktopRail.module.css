@@ -2,19 +2,36 @@
    前綴(例如 .buttons 對應原本的 .desktop-rail-buttons,.btn 對應
    .desktop-rail-btn)——import 時已經有明確的命名空間。
 
-   .desktop-rail/.desktop-rail.expanded(rail 根節點與展開狀態)不在這裡
-   ——它們刻意保留在 desktop-layout-shell.css 當全域 class,因為
-   DesktopUserMenu.module.css 用 :global(.desktop-rail)/
-   :global(.desktop-rail.expanded) 依賴這兩個全域名稱偵測外層容器狀態
-   (DesktopUserMenu 渲染在 DesktopRail 底下,需要感知目前是收合/展開)。
-   若把它們也雜湊化,DesktopUserMenu.module.css 那組選擇器會直接失效——
-   這是真正跨檔案共用的部分,不能搬進單一元件 module。
+   .rail/.expanded(原全域字串 .desktop-rail/.desktop-rail.expanded)現在
+   併入這份檔案雜湊化——DesktopUserMenu.module.css 原本用 :global()
+   依賴這兩個全域名稱偵測外層容器是收合還是展開,現在改成 DesktopRail
+   直接把 expanded 這個 boolean 當 prop 傳給 DesktopUserMenu(見
+   DesktopUserMenu.tsx 的 expanded prop),不再靠 CSS 選擇器猜測「自己被
+   放進哪個容器」,故這裡不再需要保留全域字串命名。
 
    .desktop-rail-btn-demo* 這 3 條規則雖然語意上屬於 demo 分類,但結構上
    內嵌在核心 rail 按鈕樣式中間,為了避免非連續切割增加維護風險,一併
    搬進這份檔案,不獨立分類。 */
 
-:global(.desktop-rail) .buttons {
+.rail {
+  flex: 0 0 48px;
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--ios-card);
+  border-right: 1px solid var(--ios-sep);
+  min-height: 0;
+  padding: 8px 0;
+  transition: flex-basis 0.18s ease, width 0.18s ease;
+  overflow: hidden;
+}
+.rail.expanded {
+  flex-basis: 180px;
+  width: 180px;
+}
+
+.buttons {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -36,11 +53,11 @@
   white-space: nowrap;
   transition: background 0.12s, color 0.12s;
 }
-:global(.desktop-rail.expanded) .btn {
+.rail.expanded .btn {
   justify-content: flex-start;
   padding: 0 16px;
 }
-:global(.desktop-rail.expanded) .btn > svg {
+.rail.expanded .btn > svg {
   flex: 0 0 auto;
 }
 .btnLabel {

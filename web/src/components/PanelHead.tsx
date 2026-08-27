@@ -1,3 +1,5 @@
+import { forwardRef } from 'react'
+import type { CSSProperties } from 'react'
 import { X } from 'lucide-react'
 import styles from './PanelHead.module.css'
 
@@ -11,9 +13,24 @@ import styles from './PanelHead.module.css'
 // onClose 是選填的——GeoCandidateSidebar/DesktopTripList 不需要自己的
 // 關閉按鈕(它們外層由 DesktopLayout.tsx 的 FloatingPanel 統一提供關閉
 // 入口,見該元件),只用這個元件的標題列部分。
-export function PanelHead({ title, onClose }: { title: string; onClose?: () => void }) {
+export interface PanelHeadProps {
+  title: string
+  onClose?: () => void
+  // className/style:比照 ScrollArea/Button 等其餘共用元件的既有慣例,
+  // 保留一次性覆寫的逃生口——目前沒有呼叫端需要,但沒有理由讓這個共用
+  // 元件成為擋住未來需求的瓶頸。
+  className?: string
+  style?: CSSProperties
+}
+
+// forwardRef——比照 ScrollArea.tsx 等既有慣例保留轉發能力,目前沒有
+// 呼叫端需要,但沒有理由讓這個共用元件成為擋住未來需求的瓶頸。
+export const PanelHead = forwardRef<HTMLDivElement, PanelHeadProps>(function PanelHead(
+  { title, onClose, className, style },
+  ref,
+) {
   return (
-    <div className={styles.head}>
+    <div ref={ref} className={className ? `${styles.head} ${className}` : styles.head} style={style}>
       <span className={styles.title}>{title}</span>
       {onClose && (
         <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
@@ -22,4 +39,4 @@ export function PanelHead({ title, onClose }: { title: string; onClose?: () => v
       )}
     </div>
   )
-}
+})

@@ -4,7 +4,7 @@ import type { ClientConfig, GeoSearchResult } from '../api'
 import { type GeoCandidate } from './GeoCandidateSidebar'
 import { searchResultToCandidate, useCandidateDatePicker } from './geoCandidateHelpers'
 import { GeoListItemCard } from './GeoListItemCard'
-import { PanelHead } from '../PanelHead'
+import { PanelHead } from '../components/PanelHead'
 import styles from './GeoHotelSidebar.module.css'
 
 // GeoHotelSidebar:地理輪廓底圖(構想 6)查詢到的飯店/推薦地點/搜尋結果

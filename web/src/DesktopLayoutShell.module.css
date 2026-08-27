@@ -1,0 +1,9 @@
+/* DesktopLayoutShell.tsx 專屬樣式(CSS Modules)。原全域字串 class
+   .desktop-layout(見 git blame desktop-layout-shell.css)——數值原封不動
+   搬過來,沒有呼叫端依賴外部 CSS 選擇器指到這個 class,可以安心雜湊化。 */
+.layout {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}

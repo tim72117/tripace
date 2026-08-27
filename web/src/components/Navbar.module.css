@@ -1,0 +1,50 @@
+/* Navbar.tsx 專屬樣式(CSS Modules)——完整比對數值搬自原本 base-ui.css
+   的全域 .navbar/.navbar.navbar-hidden/.navbar .title,數值原封不動,
+   不是「看起來像但漏了細節」的重寫。
+
+   樣式/高度刻意跟抽屜欄上方功能列(.tabs)對齊——同一份 padding 公式
+   (含 safe-area-inset-top 避讓瀏海/狀態列)、同一種 background/
+   border-bottom 處理(不用陰影),讓主顯示區跟抽屜欄的上方欄視覺高度
+   一致,使用者在兩者之間切換時不會有跳動感。 */
+.navbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 10px 10px 10px;
+  background: var(--ios-card);
+  border-bottom: 1px solid var(--ios-sep);
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+/* hidden prop——目前沒有呼叫端使用(見 Navbar.tsx 開頭說明),保留供未來
+   「導覽列可捲動收合」的需求使用。 */
+.navbarHidden {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+  /* 對應上面 .navbar 的高度公式(不含 safe-area 的部分):10px 上 padding +
+     10px 下 padding + 圖示鈕固定 40px 高(見 IconButton.module.css 的
+     square 說明),與抽屜欄上方功能列的高度公式一致。 */
+  margin-bottom: -60px;
+  transition: transform 0.25s ease, opacity 0.25s ease, margin-bottom 0.25s ease;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  flex: 1;
+  text-align: center;
+}
+
+/* left/right slot 的佔位寬度——原本兩處呼叫端(OnagentBridgeDemo.tsx/
+   PublicViewScreen.tsx)都手寫 `<span style={{ width: 36 }} />` 讓中間
+   標題視覺置中(即使左右都還沒有真的按鈕),這裡收進元件內部統一處理,
+   呼叫端不用自己重複這個內聯樣式。36px 是原始數值,未特別對齊
+   IconButton 的 40px(square prop)——因為現存兩處呼叫端左右都還是空
+   佔位,不是實際的圖示鈕,沿用原本就有的 36px 數值,不是重寫時的猜測。 */
+.side {
+  width: 36px;
+  flex: 0 0 auto;
+}

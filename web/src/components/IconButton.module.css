@@ -1,0 +1,68 @@
+/* IconButton.tsx 專屬樣式(CSS Modules)——完整比對數值搬自原本
+   base-ui.css 的全域 .btn/.icon-btn/.icon-btn.active,數值原封不動,
+   不是「看起來像但漏了細節」的重寫。
+
+   base-ui.css 原本把 .btn(基底:文字色、無邊框、8px 內距/圓角、disabled/
+   active/focus-visible 狀態)跟 .icon-btn(疊加在 .btn 上的 modifier,
+   !important 覆寫 padding)分成兩個字串 class,呼叫端一律寫
+   className="btn icon-btn" 兩個字串並列(grep 全部呼叫端確認過,沒有任何
+   一處只單獨用 .btn 而不疊加 .icon-btn)——這代表這個專案裡「.btn」實際上
+   從未獨立存在過,一律搭配圖示按鈕的用法出現。因此這裡不比照 Button.tsx
+   拆成「基底 class + 疊加 modifier」兩層,直接收斂成一個
+   .iconButton class 涵蓋兩者疊加後的最終樣式,避免無意義地開放一個從未被
+   單獨使用過的「純 .btn、不帶 icon-btn」組合。 */
+.iconButton {
+  color: var(--ios-blue);
+  background: none;
+  border: none;
+  cursor: pointer;
+  /* 原本 .icon-btn 用 !important 覆寫 .btn 的 padding: 8px——兩者疊加後
+     實際數值仍是 8px,!important 只是當年為了確保覆寫順序正確,這裡兩條
+     規則合併成一個 class 後不再需要 !important(沒有更晚載入的 .btn
+     規則需要覆寫)。 */
+  padding: 8px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 17px;
+}
+.iconButton:disabled {
+  color: var(--ios-gray);
+  cursor: default;
+}
+.iconButton:active {
+  background: var(--ios-sep);
+}
+.iconButton:focus-visible {
+  outline: 2px solid var(--ios-blue);
+  outline-offset: 2px;
+}
+/* 主顯示區上方列的時間軸/路徑切換圖示選中狀態,原 base-ui.css
+   .icon-btn.active——目前 grep 全部呼叫端(SettingsDialog/TripManageModal/
+   Timeline 的關閉鈕)都沒有用到 active 狀態,但既然原本的全域規則存在,
+   保留這個 prop 供未來需要「選中態圖示鈕」的呼叫端使用(例如主顯示區
+   上方列的時間軸/路徑切換,若未來改用這個元件重寫),不要因為目前沒有
+   呼叫端用就砍掉這個能力,這是原本全域樣式明確定義過的行為。 */
+.iconButton.active {
+  color: var(--color-accent);
+}
+
+/* square:取代原本 base-ui.css 的巢狀選擇器覆寫 `.navbar .icon-btn`
+   (跟抽屜欄分頁列 .tab 同樣 40x40px,兩處上方列高度要對齊 60px)。這裡
+   沒有比照「父層容器決定子層尺寸」的寫法(該寫法依賴呼叫端把這個元件放進
+   特定 class 名稱的父層,元件本身看呼叫端在哪裡渲染就換外觀,屬於隱性
+   耦合),改用具名 prop 明確由呼叫端自己決定「我現在要 40x40 方形」,
+   比照 Button.tsx 的 compact prop 取代
+   `.new-trip-composer .btn-primary` 巢狀覆寫的先例。
+   .navbar 本身已遷移成 components/Navbar.tsx(見該元件說明),目前該元件
+   的兩個呼叫端(OnagentBridgeDemo.tsx/PublicViewScreen.tsx)left/right
+   slot 都還是空佔位,沒有放 IconButton,所以這個 square prop 目前沒有
+   呼叫端會傳 true,但保留它是因為 base-ui.css 原本明確定義過這個尺寸
+   規格,不該借這次機會砍掉「Navbar 的 left/right slot 未來若放圖示鈕該
+   長什麼樣子」這個已經實測過的規格。 */
+.iconButton.square {
+  width: 40px;
+  height: 40px;
+  justify-content: center;
+}

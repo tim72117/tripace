@@ -2,46 +2,54 @@
    desktop-user- 前綴(例如 .menu 對應原本的 .desktop-user-menu,.trigger
    對應 .desktop-user-trigger)——import 時已經有明確的命名空間。
 
-   :global(.desktop-rail)/:global(.desktop-rail.expanded):這個元件常駐
-   掛載在 DesktopRail.tsx 的 rail 最下方,rail 收合(48px)/展開(180px)
-   兩種寬度需要不同排版(收合只顯示頭像置中、展開顯示頭像+姓名靠左),
-   用 :global() 引用外部元件的 class 感知目前是哪種寬度狀態——這不是
-   跨檔案共用樣式,是這個元件對「自己被放進什麼容器」的條件式排版,
-   選擇器本身仍完全只服務 DesktopUserMenu.tsx 的渲染結果。
+   .expanded/.triggerExpanded:這個元件常駐掛載在 DesktopRail.tsx 的 rail
+   最下方,rail 收合(48px)/展開(180px)兩種寬度需要不同排版(收合只顯示
+   頭像置中、展開顯示頭像+姓名靠左)。原本用 :global(.desktop-rail)/
+   :global(.desktop-rail.expanded) 這兩個全域字串選擇器從 CSS 側偵測外層
+   容器寬度狀態,DesktopRail 元件化雜湊 class 後這組選擇器會失效——改成
+   DesktopRail 把 expanded state 直接當 prop 傳下來(見 DesktopUserMenu.tsx
+   的 expanded prop),這裡只需要一個由 prop 驅動的本地 modifier class,
+   不再依賴任何外部/全域 class 名稱。
 
-   :global(.section-title)/:global(.row)/:global(.grow)/:global(.name)/
+   :global(.section-title)/:global(.grow)/:global(.name)/:global(.sub)/
    :global(.avatar) 等是 base-ui.css/AppCommon.module.css 定義的全域或
-   其他 module 的 class,這裡只是巢狀選中它們微調間距,不重新定義。 */
+   其他 module 的 class,這裡只是巢狀選中它們微調間距,不重新定義——
+   .grow/.name/.sub 只用在 .trigger 頭像列(非清單語意,不是
+   components/ListRow.tsx 的 .row),故繼續沿用 base-ui.css 保留的全域
+   class,見該檔案的說明。訪客身分那一列已改用 <ListRow>(見
+   DesktopUserMenu.tsx),不再依賴這裡的任何全域字串 class。 */
 
 .menu {
   position: relative;
   flex: 0 0 auto;
-  border-top: 1px solid var(--ios-sep);
-  padding: 8px;
-}
-:global(.desktop-rail) .menu {
-  width: 100%;
   border-top: none;
   padding: 8px 0;
+  width: 100%;
   margin-top: auto;
 }
 
+/* trigger 基礎樣式——這個元件只會渲染在 48px 收合 rail 或 180px 展開 rail
+   底下(見 DesktopRail.tsx),沒有其他掛載情境,故 hover 高亮限縮成圓形、
+   只貼合頭像本身(justify-content: center/padding 9px 0)、背景色移到
+   .avatar 本身這組「rail 底下的排版」直接當基礎樣式寫,不需要再區分
+   「trigger 本身」與「trigger 在 rail 底下」兩層——原本 width:100% 的
+   按鈕收合狀態下 hover 起來像一整條橫向色塊,跟其餘 .desktop-rail-btn
+   (hover 只 highlight 圖示週邊的小圓角矩形)量級不一致,故背景改移到
+   .avatar 本身,trigger 只負責置中排版、不再自己承接 hover 背景色。 */
 .trigger {
   width: 100%;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px;
+  padding: 9px 0;
   border: none;
   border-radius: 8px;
-  background: none;
+  background: none !important;
   cursor: pointer;
   text-align: left;
   font: inherit;
   color: inherit;
-}
-.trigger:hover {
-  background: var(--ios-bg);
+  justify-content: center;
 }
 .trigger:focus-visible {
   outline: 2px solid var(--color-accent);
@@ -55,24 +63,13 @@
   font-size: 12px;
   color: var(--ios-gray);
 }
-
-/* hover 高亮限縮成圓形、只貼合頭像本身,而非撐滿整顆 48px 寬 trigger
-   按鈕——原本 width:100% 的按鈕收合狀態下 hover 起來像一整條橫向色塊,
-   跟其餘 .desktop-rail-btn(hover 只 highlight 圖示週邊的小圓角矩形)
-   量級不一致。:hover 背景改移到 .avatar 本身,trigger 只負責置中排版、
-   不再自己承接 hover 背景色。 */
-:global(.desktop-rail) .trigger {
-  justify-content: center;
-  padding: 9px 0;
-  background: none !important;
-}
 /* 頭像縮小(38px→22px):原尺寸在 48px 寬的 rail 裡左右只留 5px,比上方
    .desktop-rail-btn 圖示(20px,左右留 14px)侷促很多,視覺上明顯擠壓。
    22px 頭像 + hover 高亮圈 spread 4px(見下方)算出的高亮圈半徑 15px,
    跟 rail 半寬 24px 之間仍留 9px 間隙,量級對齊圖示按鈕的 14px 留白——
    先前試過 26px 頭像+5px spread,高亮圈幾乎貼齊 rail 邊緣(只剩 6px),
    這是實際比對後修正的數值,不是隨意縮小。 */
-:global(.desktop-rail) .trigger :global(.avatar) {
+.trigger :global(.avatar) {
   width: 22px;
   height: 22px;
   font-size: 11px;
@@ -82,31 +79,33 @@
    頭像本身,且圈與 rail 兩側邊緣之間仍留有間隙(見上方 .avatar 尺寸說明
    的間距計算)。顏色用 --ios-sep(分隔線色,比 rail 背景 --ios-card 深
    一階)才會實際可見——若用背景同色的 --ios-bg 等於沒有視覺效果。 */
-:global(.desktop-rail) .trigger:hover :global(.avatar),
-:global(.desktop-rail) .trigger:focus-visible :global(.avatar) {
+.trigger:hover :global(.avatar),
+.trigger:focus-visible :global(.avatar) {
   box-shadow: 0 0 0 4px var(--ios-sep);
 }
-:global(.desktop-rail) .trigger :global(.grow) {
+.trigger :global(.grow) {
   display: none;
 }
 /* rail 展開成 180px 寬版時,頭像列比照其餘 .desktop-rail-btn 改成靠左
-   對齊、頭像旁顯示姓名文字(.grow),不再是收合狀態下的純置中頭像。 */
-:global(.desktop-rail.expanded) .trigger {
+   對齊、頭像旁顯示姓名文字(.grow),不再是收合狀態下的純置中頭像。
+   triggerExpanded 由 DesktopUserMenu.tsx 依 expanded prop 疊加(見該檔案
+   說明),取代原本靠 :global(.desktop-rail.expanded) 祖先選擇器偵測。 */
+.triggerExpanded {
   justify-content: flex-start;
   padding: 9px 16px;
 }
-:global(.desktop-rail.expanded) .trigger :global(.grow) {
+.triggerExpanded :global(.grow) {
   display: block;
   min-width: 0;
 }
-:global(.desktop-rail.expanded) .trigger :global(.name) {
+.triggerExpanded :global(.name) {
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-:global(.desktop-rail.expanded) .trigger :global(.sub) {
+.triggerExpanded :global(.sub) {
   font-size: 11px;
   color: var(--ios-gray);
   white-space: nowrap;

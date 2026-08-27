@@ -8,6 +8,9 @@ import { tripEntryDelete } from './tools/tripEntryDelete'
 import { tripEntryUpdate } from './tools/tripEntryUpdate'
 import type { TripBatches } from './tripEntryTools'
 import { toAgentBridgeTools } from '../sdk-proposals/toAgentBridgeTools'
+import { ScrollArea } from '../components/ScrollArea'
+import { Button } from '../components/Button'
+import { Navbar } from '../components/Navbar'
 
 // OnagentToolCtx — 這個測試頁面需要的 context 形狀,結構對齊
 // ClientToolsBridge.ts 的 ToolContext,但刻意在這裡自己宣告一份,不 import
@@ -179,12 +182,8 @@ export function OnagentBridgeDemo() {
 
   return (
     <>
-      <div className="navbar">
-        <span style={{ width: 36 }} />
-        <span className="title">onagent 串接試做(trip_entry_add/list/list_batches/delete/update)</span>
-        <span style={{ width: 36 }} />
-      </div>
-      <div className="screen-body" style={{ padding: 16 }}>
+      <Navbar title="onagent 串接試做(trip_entry_add/list/list_batches/delete/update)" />
+      <ScrollArea style={{ padding: 16 }}>
         <div style={{ marginBottom: 12, opacity: 0.7 }}>連線狀態: {status}</div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           <input
@@ -194,9 +193,9 @@ export function OnagentBridgeDemo() {
             placeholder="輸入一句話,例如「幫我加一筆晚餐吃火鍋」"
             style={{ flex: 1, padding: 8 }}
           />
-          <button className="btn-secondary" onClick={sendPrompt} disabled={status !== 'ready'}>
+          <Button variant="secondary" onClick={sendPrompt} disabled={status !== 'ready'}>
             送出
-          </button>
+          </Button>
         </div>
         <div style={{ marginBottom: 16 }}>
           <strong>目前 allBatches(僅此元件記憶體,不持久化)——每張表是一個批次(key),
@@ -254,7 +253,7 @@ export function OnagentBridgeDemo() {
             </div>
           ))}
         </div>
-      </div>
+      </ScrollArea>
     </>
   )
 }
