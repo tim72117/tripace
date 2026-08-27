@@ -91,15 +91,19 @@
 - 旅程清單表格 checkbox、列本體點擊｜勾選/取消勾選要刪除的項目
 - 「刪除(N)」按鈕｜刪除勾選的項目
 
-## PhoneContent.tsx / PhoneNavDrawer.tsx / PhoneTripsDrawer.tsx(手機版導覽)
+## PhoneContent.tsx / PhoneTabBar.tsx / PhoneSideTools.tsx / PhoneTripsDrawer.tsx(手機版導覽)
 
-- 主導覽列「行程列表」按鈕｜開啟導覽抽屜
-- 主導覽列「時間軸」/「路徑」圖示鈕｜切換主顯示區模式
-- 抽屜「行程列表」觸發鈕｜開啟獨立的行程列表抽屜
-- 抽屜分頁列圖示鈕｜切換抽屜內容分頁
-- 抽屜右上角「⋯」/「分享」/「成員」/頭像按鈕｜同 ChatScreen 對應功能
-- 行程列表抽屜「新增行程」/既有行程項目｜新增或切換行程
-- 抽屜左滑手勢｜關閉抽屜
+`PhoneNavDrawer.tsx` 已整個移除（分享/成員/開啟時自動進入合併進
+`TripManageModal`）。規劃地圖現為唯一常駐主畫面，不再有可切換的分頁，
+底部常駐列（`PhoneTabBar.tsx`）只剩「旅程」／「對話」兩個項目，各自是
+獨立開關的疊加層，不是互斥分頁。
+
+- 底部常駐列「旅程」按鈕｜開啟/收合旅程列表抽屜（`PhoneTripsDrawer`）
+- 底部常駐列「對話」按鈕｜開啟對話疊加層（`PhoneBottomSheet`，`chatSheetOpen`）
+- 右側工具列（`PhoneSideTools.tsx`）「路徑」圖示按鈕｜開啟配速表疊加層（`paceSheetOpen`）
+- 旅程列表抽屜「新增旅程」/既有旅程項目｜新增或切換旅程
+- 旅程列表項目「管理」按鈕｜開啟 `TripManageModal`（分享連結/成員/開啟時自動進入）
+- 疊加層（旅程列表/對話/配速表/設定/地點清單）向下拖曳｜關閉疊加層
 
 ## PaceChart.tsx / PaceRouteMap.tsx(配速表)
 

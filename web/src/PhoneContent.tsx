@@ -1,16 +1,12 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate, useParams } from 'react-router-dom'
-import { Timeline, Route, Layers, Radio } from 'lucide-react'
+import { Route, Radio, MessageSquareText } from 'lucide-react'
 import { ChatScreen, type DesktopTimelineMirror } from './chat/ChatScreen'
 import { type ContentProps } from './AppCommon'
 import { useIsDesktop } from './hooks/useIsDesktop'
 import { useTripsState } from './hooks/useTripsState'
 import { LoginForm, LoginCard } from './home/LoginForm'
-import {
-  isPanelMode, type DrawerMode, TIMELINE_ENABLED, GEO_OUTLINE_ENABLED, PACE_ENABLED,
-  DEMO_ONAGENT_ENABLED,
-} from './DesktopShared'
+import { TIMELINE_ENABLED, PACE_ENABLED, DEMO_ONAGENT_ENABLED } from './DesktopShared'
 import { DesktopContent } from './DesktopLayout'
 import { SettingsScreen } from './user/SettingsScreen'
 import { TripManageModal } from './trip/TripManageModal'
@@ -19,6 +15,7 @@ import type { Checkpoint } from './pace/PaceChart'
 import { GeoOutlinePhoneView } from './geo-planning/GeoOutlinePhoneView'
 import { PhoneTripsDrawer } from './trip/PhoneTripsDrawer'
 import { PhoneTimelineDrawer } from './timeline/PhoneTimelineDrawer'
+import { PhoneBottomSheet, SheetHead, PHONE_BOTTOM_SHEET_EXIT_MS } from './components/PhoneBottomSheet'
 import { PhoneTabBar } from './PhoneTabBar'
 import { PhoneSideTools } from './PhoneSideTools'
 import type { Trip } from './trip/types'
@@ -35,6 +32,15 @@ const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
   taskPlaceholders: [],
   refetchEntries: () => {},
 }
+
+// 設定頁 bottom sheet 面板頂部離定位祖先頂端的距離(px)——見
+// components/PhoneBottomSheet.tsx 的說明,定位數值(bottom/z-index)見
+// 下方 PhoneBottomSheet 呼叫處的說明。TODO(使用者稍後決定合理數值):
+// 暫時估算。
+const SETTINGS_SHEET_TOP = 200
+// 對話/配速表 bottom sheet 的離頂部距離(px)——比設定頁/地點清單更高
+// (數值更小),理由見下方對話 PhoneBottomSheet 呼叫處的說明。
+const CHAT_SHEET_TOP = 60
 
 // PhoneContent:手機版(寬度 < 768px)主要應用狀態切換器——登入畫面/桌面版
 // 導轉/聊天室/設定,見 App.tsx App() 的 /app 路由分支。
@@ -72,54 +78,55 @@ export function PhoneContent(props: ContentProps) {
   const [tripsDrawerOpen, setTripsDrawerOpen] = useState(false)
   // timelineDrawerOpen:時間軸 bottom sheet(timeline/PhoneTimelineDrawer.tsx)
   // 開關——由規劃地圖左下角「時間軸」按鈕觸發(見下方 GeoOutlinePhoneView
-  // 的 onOpenTimeline),不經過 drawerMode/navigate,純粹是這個元件內部
-  // 的疊加狀態(使用者要求「時間軸不用獨立路由」)。
+  // 的 onOpenTimeline),不經過路由導航,純粹是這個元件內部的疊加狀態
+  // (使用者要求「時間軸不用獨立路由」)。
   const [timelineDrawerOpen, setTimelineDrawerOpen] = useState(false)
-  // drawerMode:改用路徑參數驅動,跟桌面版 DesktopContent 的 panelMode 共用
-  // 同一個 /app/:panelMode 路由——理由與既有設計相同,使用者縮放視窗跨越
-  // 桌面/手機斷點時網址不必跳轉、狀態自然延續。網址沒帶 panelMode 或帶了
-  // 不合法字串時,fallback 成 'geo-outline'——規劃地圖是進 App 後的預設
-  // 起始畫面(不需要先選旅程就能瀏覽,見 GeoOutlinePhoneView.tsx),取代
-  // 原本 fallback 到 'trips'(尚未選取內容分頁的中性狀態,會落到
-  // PhoneEmptyState 空白提示或自動彈出旅程列表抽屜)的既有行為。
-  const { panelMode: panelModeParam } = useParams<{ panelMode?: string }>()
-  // demo-route-editor(路徑編輯器試做)只有桌面版才有實作,手機版
-  // PhoneNavDrawer 的 DrawerMode 型別故意不含它——網址剛好停在
-  // /app/demo-route-editor 時 fallback 回 'geo-outline'(理由同其餘不合法
-  // 字串的 fallback),避免型別不符,也讓使用者落地到一個看得懂的畫面。
-  const drawerMode: DrawerMode =
-    isPanelMode(panelModeParam) && panelModeParam !== 'demo-route-editor'
-      ? panelModeParam
-      : 'geo-outline'
-  const navigate = useNavigate()
-  // lastContentMode:記住使用者上一次主動選取的「配速表」分頁——時間軸
-  // 已不再是這個值的一員(改成規劃地圖專屬的 bottom sheet,見
-  // timeline/PhoneTimelineDrawer.tsx,不經過 drawerMode 導航)。開啟獨立
-  // 旅程抽屜選新旅程時,這個值仍保留原值不變,驅動 PhoneTabBar 讓對應圖示
-  // 繼續顯示 active(使用者觀點:旅程列表只是暫時借用的工具畫面,不是真的
-  // 離開了配速表這個內容模式);選完旅程後這個值只用於 effectiveMainMode
-  // fallback(見下方),不再驅動任何自動導航。用 state(而非 ref)是因為
-  // 需要驅動 UI(tab 的 active 樣式),不能只是純暫存值。
-  const [lastContentMode, setLastContentMode] = useState<'pace' | null>(null)
-  // setDrawerMode:底部常駐列/右側小圖示常駐顯示,沒有「收合」的概念——
-  // 再點一次目前已選中的分頁是 no-op。
-  const setDrawerMode = (mode: DrawerMode) => {
-    if (mode === drawerMode) return
-    if (mode === 'pace') {
-      setLastContentMode(mode)
+  // chatSheetOpen/paceSheetOpen:對話/配速表改成疊加層開關,同
+  // timelineDrawerOpen 同一套模式——使用者明確要求「規劃地圖常駐為主
+  // 畫面,對話/配速表都改成跟地點清單/設定頁一樣的 PhoneBottomSheet 疊加
+  // 層」,不再是「分頁決定主顯示內容」的版型(舊版 drawerMode/
+  // effectiveMainMode 整組邏輯隨這次調整移除,不再需要路徑參數驅動主畫面
+  // 切換——規劃地圖是唯一常駐的主畫面,/app/:panelMode 這個路由現在只供
+  // 桌面版使用,見 App.tsx)。
+  const [chatSheetOpen, setChatSheetOpen] = useState(false)
+  const [paceSheetOpen, setPaceSheetOpen] = useState(false)
+  // chatSheetSettled:投影目標 div(mainChatSlotNode)是否可以掛載——不是
+  // chatSheetOpen 一變 true 就立刻掛載,而是延後到 PhoneBottomSheet 的
+  // 滑入動畫確定播完之後。根因:<div ref={setMainChatSlotNode} .../>
+  // 掛載後的 ref callback 會觸發 setMainChatSlotNode 這個 state 更新,
+  // 這次更新如果跟 chatSheetOpen 變 true 落在同一個瀏覽器繪製週期內,
+  // 會跟 PhoneBottomSheet 內部 entered 進場動畫的 requestAnimationFrame
+  // 排程互相競爭——瀏覽器/React 可能把「entered 還是 false、面板該在
+  // 畫面外」那一幀直接跳過,只繪製出最終合成結果,使用者因此看到「面板
+  // 瞬間出現在最終位置,只剩 transform 的一小段尾巴動畫」而非完整的滑入
+  // 過程(使用者實測回報「對話滑出來時有問題」,且直接把投影換成一個
+  // 不會觸發 ref callback 的靜態測試 div 後滑入動畫立刻恢復正常,確認
+  // 問題就在這個 ref callback 的時序)。曾經試過 setTimeout(0)、兩層
+  // requestAnimationFrame,使用者實測仍偶發同樣問題——setTimeout 與
+  // requestAnimationFrame 的相對執行順序瀏覽器不保證,RAF 層數也只是
+  // 「大機率晚於某一幀」而非可靠的時間保證。改用 setTimeout 搭配
+  // PHONE_BOTTOM_SHEET_EXIT_MS(跟 PhoneBottomSheet.tsx 的
+  // SHEET_DURATION CSS transition 時長對齊)——實測用遠超過這個時長的
+  // 500ms 驗證過確實是這個時序問題,拉長延遲後滑入動畫正常;改用跟
+  // 動畫時長本身對齊的這個常數,而非隨意選的數字,確保投影掛載動作
+  // 落在整個滑入動畫播完之後,不再有任何時序上的僥倖。
+  const [chatSheetSettled, setChatSheetSettled] = useState(false)
+  useEffect(() => {
+    if (!chatSheetOpen) {
+      setChatSheetSettled(false)
+      return
     }
-    navigate(`/app/${mode}`)
-  }
+    const timer = setTimeout(() => setChatSheetSettled(true), PHONE_BOTTOM_SHEET_EXIT_MS)
+    return () => clearTimeout(timer)
+  }, [chatSheetOpen])
   // onOpenTrips:底部常駐列「旅程」按鈕——開啟獨立的旅程抽屜
   // (PhoneTripsDrawer.tsx),已開啟時再點一次視為收合(toggle)。
   const onOpenTrips = () => {
     setTripsDrawerOpen((v) => !v)
   }
-  // selectTrip:切換使用中的旅程,並關閉獨立旅程抽屜——不再自動跳轉到
-  // lastContentMode(時間軸/路徑),使用者要求「選擇旅程後不用跳轉到
-  // 時間軸」。時間軸/路徑現在都是規劃地圖畫面專屬的入口(見
-  // GeoOutlinePhoneView.tsx 的 onOpenTimeline/onOpenPace),選旅程後
-  // 留在使用者原本所在的畫面即可,不需要強制帶去別的內容模式。
+  // selectTrip:切換使用中的旅程,並關閉獨立旅程抽屜——不自動跳轉到其他
+  // 畫面,選完旅程後留在使用者原本所在的畫面(規劃地圖/對話/配速表疊加層)
+  // 即可,不需要強制帶去別的內容模式。
   const selectTrip = (t: Trip) => {
     setActiveTrip(t)
     setTripsDrawerOpen(false)
@@ -193,51 +200,35 @@ export function PhoneContent(props: ContentProps) {
     return <DesktopContent {...props} />
   }
 
-  // effectiveMainMode:主顯示區實際要顯示什麼——drawerMode 的 'trips' 值
-  // 不再是 URL fallback 的預設狀態(見上方說明,預設已改成 'geo-outline'),
-  // 只會在使用者手動打 /app/trips 網址時出現;這裡沿用 lastContentMode
-  // (若有)取代它,維持原本的既有行為(不會因為 drawerMode 落在 'trips'
-  // 就閃一下換成空白畫面又換回來),不強行拿掉這條邏輯。
-  // 'timeline' 併入 'geo-outline'——時間軸不再是獨立的主畫面模式(見上方
-  // mainChatSlotNode 的說明),手動打 /app/timeline 網址(或舊書籤)時退回
-  // 規劃地圖,不再有專屬渲染分支;真正開啟時間軸內容改用下方
-  // timelineDrawerOpen 這個獨立 state(見 PhoneTimelineDrawer 渲染處)。
-  const effectiveMainMode: DrawerMode =
-    drawerMode === 'trips' && lastContentMode
-      ? lastContentMode
-      : drawerMode === 'timeline'
-        ? 'geo-outline'
-        : drawerMode
   // bottomTabs/sideTools:底部常駐列(PhoneTabBar.tsx)/右側小圖示群組
-  // (PhoneSideTools.tsx)各自的項目清單,依 feature flag 組出——理由同
-  // 原本 PhoneNavDrawer.tsx 的 items 陣列(現已拆分)。目前階段兩者都還是
-  // 呼叫既有的 setDrawerMode/onOpenTrips,行為對齊改版前,只是按鈕位置
-  // 換了容器,尚未接上底部列常駐後「再點同一分頁 no-op」與浮動卡片的
-  // 後續調整。
-  // disabled 不再依 activeTrip 鎖死「時間軸」分頁——使用者要求底部三顆
-  // 分頁都要可以點擊,未選旅程時點進時間軸由畫面本身顯示空狀態引導選
-  // 旅程(見下方 chatElement 的 !activeTrip 分支),不在按鈕層級就整個
-  // 灰掉不能點。
-  // bottomTabs:不再含「時間軸」——使用者要求「時間軸放左側」,改成規劃
-  // 地圖(GeoOutlinePhoneView)專屬的 onOpenTimeline prop(見下方該元件
-  // 呼叫處),不再是跨畫面常駐的底部列項目;其他主畫面(配速表/對話)
-  // 因此不再有直接切到時間軸的入口,已與使用者確認可接受。
-  const bottomTabs: { mode: DrawerMode; icon: typeof Timeline; title: string }[] = [
-    ...(GEO_OUTLINE_ENABLED ? [{ mode: 'geo-outline' as DrawerMode, icon: Layers, title: '規劃' }] : []),
+  // (PhoneSideTools.tsx)各自的項目清單——每個項目自帶 onClick,直接開啟
+  // 對應的疊加層(使用者明確要求「規劃地圖常駐為主畫面,對話/配速表都
+  // 改成疊加層」,不再是切換分頁模式,見上方 chatSheetOpen/paceSheetOpen
+  // 的說明)。
+  const bottomTabs: { key: string; icon: typeof MessageSquareText; title: string; active: boolean; onClick: () => void }[] = [
+    { key: 'chat', icon: MessageSquareText, title: '對話', active: chatSheetOpen, onClick: () => setChatSheetOpen(true) },
   ]
-  const sideTools: { mode: DrawerMode; icon: typeof Route; title: string }[] = [
-    ...(PACE_ENABLED ? [{ mode: 'pace' as DrawerMode, icon: Route, title: '路徑' }] : []),
-    ...(DEMO_ONAGENT_ENABLED ? [{ mode: 'demo-onagent' as DrawerMode, icon: Radio, title: 'onagent 串接' }] : []),
+  const sideTools: { key: string; icon: typeof Route; title: string; onClick: () => void }[] = [
+    ...(PACE_ENABLED ? [{ key: 'pace', icon: Route, title: '路徑', onClick: () => setPaceSheetOpen(true) }] : []),
+    ...(DEMO_ONAGENT_ENABLED ? [{ key: 'demo-onagent', icon: Radio, title: 'onagent 串接', onClick: () => {} }] : []),
   ]
-  // chatElement:ChatScreen 的唯一掛載點,固定用同一個 JSX 呼叫(不因
-  // drawerMode 改變而換成不同的條件式),只透過下方 createPortal 決定它的
-  // 畫面實際投影到哪個容器——mobileHeader 固定 'main'(時間軸不再是另一個
-  // 投影目標,見上方 mainChatSlotNode 的說明,ChatScreen 永遠顯示主畫面
-  // header)。
-  const chatElement = activeTrip && (
+  // chatElement:ChatScreen 的唯一掛載點,固定用同一個 JSX 呼叫(永遠
+  // 掛載,不因對話疊加層開關而卸載重掛,避免 WebSocket 重新連線),只透過
+  // 下方 createPortal 決定它的畫面實際投影到哪個容器——mobileHeader 固定
+  // 'main'。
+  //
+  // trip 允許是 undefined(不要求 activeTrip 存在才渲染)——使用者明確
+  // 要求「手機版的對話跟桌面版用一樣的」,對齊桌面版 DesktopLayout.tsx
+  // 的 chat-popover 既有行為(ChatScreen 本身已經支援無 trip 也能對話,
+  // 見該元件 trip prop 的說明):沒選旅程時依然能開啟對話,不需要先選/
+  // 建立旅程。key 比照桌面版加上 activeTrip?.id ?? 'no-trip',確保「無
+  // 旅程對話」跟「某個旅程的對話」是各自獨立的掛載週期,避免沿用前一個
+  // 旅程殘留的 WebSocket/訊息 state。
+  const chatElement = (
     <ChatScreen
+      key={activeTrip?.id ?? 'no-trip'}
       cfg={cfg}
-      trip={activeTrip}
+      trip={activeTrip ?? undefined}
       user={props.user}
       onBack={() => setActiveTrip(null)}
       mobileHeader="main"
@@ -245,8 +236,10 @@ export function PhoneContent(props: ContentProps) {
     />
   )
   // chatPortalTarget:chatParkingNode 是一個一律存在、只是不可見的備援
-  // 掛載點——沒有它,轉場瞬間 chatElement 可能因為 createPortal 找不到
-  // 容器而整個從輸出樹消失,等同解除掛載,WebSocket 重新連線。
+  // 掛載點——對話疊加層關閉時(chatSheetOpen 為 false)其內部的投影容器
+  // 不會渲染,這時投進這裡「暫放」,避免 createPortal 因為找不到容器而讓
+  // chatElement 整個從輸出樹消失(等同解除掛載,會導致 WebSocket 重新
+  // 連線)。
   const chatPortalTarget = mainChatSlotNode ?? chatParkingNode
 
   return (
@@ -255,17 +248,13 @@ export function PhoneContent(props: ContentProps) {
           版面(撐滿剩餘高度、內部再各自 flex column 排 navbar/內容/
           輸入列)。 */}
       <div className={styles.mainArea}>
-        {/* 規劃地圖:永遠掛載,不隨分頁切換卸載重掛——使用者回報「規劃
-            地圖第一次開啟會閃動」,根因是這個元件原本包在下方的分頁
-            條件式裡,每次切分頁都整個銷毀重建,Google Maps SDK 要重新
-            跑一次建圖流程。改成永遠渲染、用 active prop 控制
-            display:none(見 GeoOutlinePhoneView.tsx 的說明),對齊桌面版
-            GeoOutlinePanel 永遠掛載的既有模式(DesktopLayout.tsx)。
-            不渲染 MainNavBar,搜尋框/使用者頭像/候選籃按鈕改由
+        {/* 規劃地圖:唯一常駐的主畫面(使用者明確要求,見上方
+            chatSheetOpen/paceSheetOpen 的說明),不再隨分頁切換卸載重掛
+            ——理由同對齊桌面版 GeoOutlinePanel 永遠掛載的既有模式
+            (DesktopLayout.tsx)。搜尋框/使用者頭像/候選籃按鈕由
             GeoOutlinePhoneView 自己疊在地圖上方。activeTrip 供候選籃
             「加入行程」判斷是否已選定旅程使用。 */}
         <GeoOutlinePhoneView
-          active={effectiveMainMode === 'geo-outline'}
           cfg={cfg}
           tripID={activeTrip?.id ?? null}
           activeTrip={activeTrip}
@@ -274,67 +263,15 @@ export function PhoneContent(props: ContentProps) {
           onOpenTimeline={TIMELINE_ENABLED ? () => setTimelineDrawerOpen(true) : undefined}
           onOpenTrips={() => setTripsDrawerOpen(true)}
         />
-        {effectiveMainMode === 'pace' ? (
-          // 配速表分頁:主顯示區改成地圖(對齊桌面版 .desktop-main 在
-          // panelMode === 'pace' 時顯示 PaceRouteMap 的邏輯)。標題顯示
-          // 目前旅程名稱(不是「配速表」這個畫面名稱本身,配速表已經是
-          // 這個畫面唯一的內容,不需要再重複標示)。跟規劃地圖不同,這裡
-          // 維持條件式掛載(而非永遠掛載+CSS隱藏)——PaceRouteMap 是
-          // 使用者主動切換分頁才需要的路徑地圖,不是進 App 就會看到的
-          // 起始畫面,沒有「第一次開啟閃動」的既有回報,不需要一併擴大
-          // 這次修法範圍。
-          <>
-            <MainNavBar
-              mode={effectiveMainMode}
-              onSelectMode={setDrawerMode}
-              onOpenTimeline={() => setTimelineDrawerOpen(true)}
-              activeTrip={activeTrip}
-              title={activeTrip?.name ?? 'Tripace'}
-            />
-            <PaceRouteMap
-              checkpoints={paceCheckpoints}
-              selectedEntry={selectedEntry}
-              onSelectedEntryDone={() => setSelectedEntry(null)}
-              onEntrySaved={setSavedEntry}
-            />
-          </>
-        ) : effectiveMainMode !== 'geo-outline' && activeTrip ? (
-          // 對話顯示在主顯示區:navbar 統一由這裡渲染(時間軸/路徑切換、
-          // 標題、ChatScreen 自己 navbar 右側按鈕的投影目標),ChatScreen
-          // 本身不再畫這段(見 ChatScreen.tsx 的 mobileHeader==='main')。
-          // 下方 .chatSlot 是內容區(訊息列表/輸入列)的 portal 投影目標,
-          // 見上方 chatElement/chatPortalTarget 的說明。這裡的 mode 傳
-          // 'trips'(既非 timeline 也非 pace)——對話狀態本身不對應任何
-          // 一顆時間軸/路徑圖示,兩顆都該顯示未選中。
-          <>
-            <MainNavBar
-              mode="trips"
-              onSelectMode={setDrawerMode}
-              onOpenTimeline={() => setTimelineDrawerOpen(true)}
-              activeTrip={activeTrip}
-              title={activeTrip.name}
-            />
-            <div ref={setMainChatSlotNode} className={styles.chatSlot} />
-          </>
-        ) : effectiveMainMode !== 'geo-outline' ? (
-          <PhoneEmptyState
-            onOpenTrips={() => setTripsDrawerOpen(true)}
-            onSelectMode={setDrawerMode}
-            onOpenTimeline={() => setTimelineDrawerOpen(true)}
-          />
-        ) : null}
         {/* PhoneSideTools:右側下方路徑+demo-* 小圖示,跨所有主畫面模式
             共用(不是規劃地圖專屬),見該元件開頭說明。 */}
-        <PhoneSideTools tools={sideTools} onSelect={setDrawerMode} />
-        {/* PhoneTabBar:底部常駐導覽列(旅程/規劃),取代原本要開
+        <PhoneSideTools tools={sideTools} />
+        {/* PhoneTabBar:底部常駐導覽列(旅程/對話),取代原本要開
             PhoneNavDrawer 抽屜才看得到的分頁列,見該元件開頭說明。 */}
         <PhoneTabBar
           tabs={bottomTabs}
-          mode={drawerMode}
-          lastContentMode={lastContentMode}
           tripsDrawerOpen={tripsDrawerOpen}
           onOpenTrips={onOpenTrips}
-          onSelectMode={setDrawerMode}
         />
         {/* 旅程列表獨立抽屜,由底部常駐列的「旅程」按鈕開關(onOpenTrips)。
             onManage 對齊桌面版 DesktopTripList.tsx,開啟合併後的
@@ -380,12 +317,23 @@ export function PhoneContent(props: ContentProps) {
           的說明。 */}
       <div ref={setChatParkingNode} style={{ display: 'none' }} />
       {chatElement && chatPortalTarget && createPortal(chatElement, chatPortalTarget)}
-      {/* 設定頁:一律掛載,只切換 transform(translateY)——唯有元件全程留在
-          DOM 上,CSS transition 才能在開/關切換的當下播放滑入/滑出動畫。
-          從底部滑入,關閉時滑回底部。 */}
-      <div
-        className={styles.settingsPanel}
-        style={{ transform: inSettings ? 'translateY(0)' : 'translateY(100%)' }}
+      {/* 設定頁:改用共用容器 components/PhoneBottomSheet.tsx
+          (mode="slide-close"),對齊 trip/PhoneTripsDrawer.tsx 的既有用法
+          (使用者明確要求改成一般高度、可下滑關閉的 bottom sheet,不再是
+          滿版全螢幕滑入)。bottom: 0、zIndex: 36——使用者明確要求開啟時
+          不要被底部常駐導覽列 PhoneTabBar.tsx(z-index: 35)蓋住,不是貼齊
+          它的上緣讓開空間,理由同 geo-planning/GeoOutlinePhoneListDrawer.tsx
+          的 panelStyle 說明。showBackdrop={false}——使用者明確要求完全
+          不要遮罩,點外部不關閉,只能靠 head 的關閉鈕或下滑手勢關閉。
+          head 改用共用的 SheetHead(標題+關閉鈕標準樣式),不再自己拼
+          navbar class,理由見該元件的說明。 */}
+      <PhoneBottomSheet
+        open={inSettings}
+        onClose={() => setInSettings(false)}
+        snapPoints={[SETTINGS_SHEET_TOP]}
+        panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 36 }}
+        showBackdrop={false}
+        head={<SheetHead title="設定" onClose={() => setInSettings(false)} />}
       >
         <SettingsScreen
           cfg={props.cfg}
@@ -394,11 +342,66 @@ export function PhoneContent(props: ContentProps) {
           isGuest={props.isGuest}
           onAuthed={props.onAuthed}
           onLogout={() => { props.onLogout(); setInSettings(false) }}
-          onBack={() => setInSettings(false)}
           theme={props.theme}
           setTheme={props.setTheme}
         />
-      </div>
+      </PhoneBottomSheet>
+      {/* 對話:改成跟地點清單/設定頁一樣的滿版 PhoneBottomSheet 疊加層,由
+          底部常駐列「對話」按鈕開關(chatSheetOpen,見上方說明)——使用者
+          明確要求「規劃地圖常駐為主畫面,對話變疊加層」,取代原本「分頁
+          決定主顯示內容」的版型。ChatScreen 本身永遠掛載在上方(見
+          chatElement/chatPortalTarget 的說明),這裡只是它的投影目標。
+          maxHeightVh 設 92——比其餘 bottom sheet(70)更高,貼近桌面版
+          chat-popover 幾乎滿版的視覺比例,對話輸入/訊息列表需要的垂直
+          空間本來就比清單類內容多。bottom: 0、zIndex: 36、
+          showBackdrop={false}——理由同設定頁。
+          exitDurationMs——使用者回報「對話 sheet 滑出時地圖會抽動」,根因
+          是這裡原本在 children 多包一層 {'{'}chatSheetOpen && ...{'}'} 判斷,
+          chatSheetOpen 一變 false,投影目標 div 立刻從 DOM 拔除,
+          mainChatSlotNode 瞬間變 null,ChatScreen 的 portal target 同一瞬間
+          改投進 chatParkingNode——這個大範圍 DOM 搬移剛好跟 sheet 開始滑出
+          的那一幀重疊,觸發一次性 reflow,視覺上像地圖跟著滑動方向偏移。
+          拿掉那層判斷(讓投影目標 div 跟 PhoneBottomSheet 本身的
+          shouldRender 同步,不要比它更早卸載),再給 exitDurationMs 讓退場
+          滑出動畫播完才真正卸載——DOM 搬移延後到動畫結束後才發生,不再
+          跟滑動動畫同時觸發。 */}
+      <PhoneBottomSheet
+        open={chatSheetOpen}
+        onClose={() => setChatSheetOpen(false)}
+        snapPoints={[CHAT_SHEET_TOP]}
+        panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 36 }}
+        showBackdrop={false}
+        exitDurationMs={PHONE_BOTTOM_SHEET_EXIT_MS}
+        head={<SheetHead title={activeTrip?.name ?? 'Tripace'} onClose={() => setChatSheetOpen(false)} />}
+      >
+        {/* 投影目標延後到 chatSheetSettled 才掛載(見該 state 的說明)——
+            chatSheetOpen 剛變 true 的那一瞬間先不掛,避免 ref callback
+            觸發的 setMainChatSlotNode 更新跟 entered 進場動畫的 RAF
+            排程互相競爭。 */}
+        {chatSheetSettled && <div ref={setMainChatSlotNode} className={styles.chatSlot} />}
+      </PhoneBottomSheet>
+      {/* 配速表:同上方對話,改成滿版 PhoneBottomSheet 疊加層,由右側小圖示
+          「路徑」按鈕開關(paceSheetOpen)。跟對話不同,PaceRouteMap 不需要
+          永遠掛載+portal 投影這套機制(沒有 WebSocket 之類需要避免重連的
+          成本),sheet 關閉時直接卸載,開啟時才掛載,維持原本條件式掛載的
+          既有行為。 */}
+      <PhoneBottomSheet
+        open={paceSheetOpen}
+        onClose={() => setPaceSheetOpen(false)}
+        snapPoints={[CHAT_SHEET_TOP]}
+        panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 36 }}
+        showBackdrop={false}
+        head={<SheetHead title={activeTrip?.name ?? 'Tripace'} onClose={() => setPaceSheetOpen(false)} />}
+      >
+        {paceSheetOpen && (
+          <PaceRouteMap
+            checkpoints={paceCheckpoints}
+            selectedEntry={selectedEntry}
+            onSelectedEntryDone={() => setSelectedEntry(null)}
+            onEntrySaved={setSavedEntry}
+          />
+        )}
+      </PhoneBottomSheet>
       {/* manageTrip:旅程管理彈窗,對齊桌面版 DesktopLayout.tsx 的同名
           渲染邏輯——用 base-ui.css 既有的 .rp-modal*(置中卡片彈窗骨架)
           包住,TripManageModal 本身用 .rp-modal-head/.rp-modal-body
@@ -421,88 +424,4 @@ export function PhoneContent(props: ContentProps) {
   )
 }
 
-// MainNavBar:主顯示區統一的上方列,三種狀態(配速表/對話/空狀態)共用
-// 同一份——中間是時間軸/路徑這兩顆入口圖示,時間軸點下去開啟
-// timeline/PhoneTimelineDrawer.tsx 的 bottom sheet(onOpenTimeline,見下方
-// 說明),路徑點下去仍是 onSelectMode('pace')切換主畫面(路徑還是獨立的
-// drawerMode)。標題(對話顯示旅程名稱,其餘顯示畫面名稱)。左側不再有
-// 開抽屜按鈕(分頁列已改為底部常駐 PhoneTabBar.tsx,旅程列表也是底部列
-// 「旅程」按鈕直接開,不需要再從這裡多一層入口),改留一個等寬空白佔位
-// 跟右側對稱,讓標題維持視覺置中。
-function MainNavBar({
-  mode,
-  onSelectMode,
-  onOpenTimeline,
-  activeTrip,
-  title,
-}: {
-  mode: DrawerMode
-  onSelectMode: (mode: DrawerMode) => void
-  // onOpenTimeline:時間軸圖示觸發,開啟 timeline/PhoneTimelineDrawer.tsx
-  // 的 bottom sheet——不再透過 onSelectMode('timeline')/navigate(時間軸
-  // 已不是獨立的 drawerMode 主畫面模式,見 PhoneContent 上方 effectiveMainMode
-  // 的說明),改由呼叫端(PhoneContent.tsx)直接傳入
-  // () => setTimelineDrawerOpen(true)。
-  onOpenTimeline: () => void
-  activeTrip: Trip | null
-  title: string
-}) {
-  return (
-    <div className="navbar">
-      <span style={{ width: 36 }} />
-      <div style={{ display: 'flex', gap: 2 }}>
-        <button
-          type="button"
-          className="btn icon-btn"
-          onClick={onOpenTimeline}
-          disabled={!activeTrip}
-          title={activeTrip ? '時間軸' : '請先選擇一趟旅程'}
-        >
-          <Timeline size={20} strokeWidth={1.8} />
-        </button>
-        <button
-          type="button"
-          className={mode === 'pace' ? 'btn icon-btn active' : 'btn icon-btn'}
-          onClick={() => onSelectMode('pace')}
-          title="路徑"
-        >
-          <Route size={20} strokeWidth={1.8} />
-        </button>
-      </div>
-      <span className="title">{title}</span>
-      <span style={{ width: 36 }} />
-    </div>
-  )
-}
-
-// PhoneEmptyState:尚未選擇任何旅程時,主要內容區顯示的提示畫面——對應
-// 桌面版 DesktopLayout.tsx 的 .desktop-empty-state「選擇一趟旅程開始」。
-function PhoneEmptyState({
-  onOpenTrips,
-  onSelectMode,
-  onOpenTimeline,
-}: {
-  onOpenTrips: () => void
-  onSelectMode: (mode: DrawerMode) => void
-  onOpenTimeline: () => void
-}) {
-  return (
-    <>
-      <MainNavBar
-        mode="trips"
-        onSelectMode={onSelectMode}
-        onOpenTimeline={onOpenTimeline}
-        activeTrip={null}
-        title="Tripace"
-      />
-      <div className="screen-body">
-        <div className="empty">
-          <button type="button" className="btn-primary" onClick={onOpenTrips}>
-            選擇一趟旅程開始
-          </button>
-        </div>
-      </div>
-    </>
-  )
-}
 

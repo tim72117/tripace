@@ -82,3 +82,12 @@
 .chatPopoverShifted {
   right: 364px;
 }
+
+/* chatPopoverHidden:對話小匡關閉時,FloatingPanel 仍然掛載(見
+   DesktopLayout.tsx 的說明——使用者明確要求桌面版也改成常駐掛載,對齊
+   手機版 GeoOutlinePhoneView.module.css 的 .inactive 同一套「display:
+   none 隱藏但不卸載」模式),只是用這個 class 隱藏起來,讓 ChatScreen
+   內部的 WebSocket 連線/訊息 state 不隨小匡開關而重建。 */
+.chatPopoverHidden {
+  display: none;
+}

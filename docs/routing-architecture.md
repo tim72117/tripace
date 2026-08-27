@@ -52,20 +52,20 @@ handler、不共用 store 存取層以外的任何程式碼。
 | PATCH | /v1/trips/{id}/members/{userID} | handleSetMemberRole | **requireOwner** | ✅ | ✅ |
 | GET | /v1/trips/{id}/entries | handleListEntries | Bearer token | ✅ | ✅ |
 | DELETE | /v1/trips/{id}/entries | handleResetTripData | **requireOwner** | ✅ | — |
-| PATCH | /v1/entries/{id} | handleUpdateEntry | 查 entry 取 tripID → **requireEditor** | ✅(`api.ts` 的 `updateEntry`,`Timeline.tsx` 的 `EditEntrySheet`) | — |
+| PATCH | /v1/entries/{id} | handleUpdateEntry | 查 entry 取 tripID → **requireEditor** | ✅(`api.ts` 的 `updateEntry`,`timeline/Timeline.tsx` 的 `EditEntrySheet`) | — |
 | GET | /v1/trips/{id}/ws | handleWS | **requireMember**(WS 訂閱) | ✅ | — |
 | POST | /v1/trips/{id}/public-link | handleCreatePublicLink | **requireEditor** | ✅ | — |
 | GET | /v1/trips/{id}/public-link | handleGetPublicLink | Bearer token | ✅ | — |
 | DELETE | /v1/trips/{id}/public-link | handleDeletePublicLink | **requireEditor** | ✅ | — |
 | GET | /v1/public/{token} | handlePublicView | 連結 token 存在即可(公開頁,無使用者身分) | ✅ | — |
 
-> `PATCH /v1/entries/{id}` 的前端表單已實作(`web/src/Timeline.tsx` 的
+> `PATCH /v1/entries/{id}` 的前端表單已實作(`web/src/timeline/Timeline.tsx` 的
 > `EditEntrySheet`),見「待辦」一節。
 >
 > `POST /v1/trips/{id}/query`、`POST /v1/trips/{id}/assist`、
 > `POST /v1/public/{token}/assist` 三條路由已於
 > tripace 自家 want LLM 對話系統整套移除時一併刪除(前端對話改走 onagent
-> 平台,見 `web/src/useOnagentChatBridge.ts`)——三者的權限檢查邏輯
+> 平台,見 `web/src/chat/useOnagentChatBridge.ts`)——三者的權限檢查邏輯
 > (`requireMember`/`requireEditor`/`info.Editable` 旗標)也隨之消失,不再是
 > 這份文件要描述的對象。onagent 平台自己觸發推論的路徑不經過 tripace 的
 > `/v1/*`,見下方新增的「三之一、`/onagent/*`」一節。
@@ -208,7 +208,7 @@ Admin SPA 是跨網域呼叫並帶 cookie(`credentials: 'include'`),不能沿用
 ## 七、待辦 / 已知缺口
 
 1. ~~**`PATCH /v1/entries/{id}` 前端表單尚未實作**~~——**已完成**。
-   `web/src/api.ts` 有 `updateEntry(cfg, entryID, input)`,`Timeline.tsx`
+   `web/src/api.ts` 有 `updateEntry(cfg, entryID, input)`,`timeline/Timeline.tsx`
    的卡片展開後有編輯入口,彈出 `EditEntrySheet` 底部表單(涵蓋
    title/start/startTime/end/endTime/location/note,以 portal 掛到最上層,
    避免被其他底部面板疊層遮住)。**iOS 端目前仍未實作**,是這條剩下的缺口。

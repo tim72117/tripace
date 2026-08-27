@@ -38,14 +38,14 @@
   overflow: hidden;
 }
 
-/* panelCollapsed:'snap' 模式停在最小 snap point 時的狀態——不使用
-   display: none 隱藏 .body(那樣會在收合動畫播放中途瞬間消失,跟 .panel
-   的 height transition 不同步,視覺上像是「內容先不見、卡片才慢慢
-   收合」而非平滑收縮,是實際發生過的體感問題)。改成只把 .body 的
-   visibility/opacity 調整為不可見,讓它繼續留在 DOM 版面裡,隨 .panel
-   的 height 收縮時被父層 overflow: hidden 自然裁切、平滑淡出——
-   head slot 不受影響維持顯示,panel 自然收縮成一條標頭列,仍留在畫面上
-   (不是完全關閉/消失,見 PhoneBottomSheet.tsx 的 mode 說明)。 */
+/* panelCollapsed:多段模式停在最小段時的狀態——不使用 display: none
+   隱藏 .body(那樣會在收合動畫播放中途瞬間消失,跟 .panel 的 top
+   transition 不同步,視覺上像是「內容先不見、卡片才慢慢收合」而非平滑
+   收縮,是實際發生過的體感問題)。改成只把 .body 的 visibility/opacity
+   調整為不可見,讓它繼續留在 DOM 版面裡,隨 .panel 的 top 變化(高度
+   跟著收縮)被父層 overflow: hidden 自然裁切、平滑淡出——head slot
+   不受影響維持顯示,panel 自然收縮成一條標頭列,仍留在畫面上(不是完全
+   關閉/消失,見 PhoneBottomSheet.tsx 的說明)。 */
 .panelCollapsed .body {
   opacity: 0;
   pointer-events: none;
@@ -74,4 +74,59 @@
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+}
+
+/* head/title/closeBtn:標準 head slot 內容樣式(標題文字 + 關閉鈕),供
+   PhoneBottomSheet.tsx 匯出的 SheetHead 元件使用——原本
+   geo-planning/GeoOutlinePhoneListDrawer.module.css、
+   timeline/PhoneTimelineDrawer.module.css 各自定義同一組樣式,使用者
+   明確要求「用相同樣式的 head」,收斂成這裡一份共用定義,不繼續讓每個
+   呼叫端各自複製貼上。不是所有呼叫端都用這組標準樣式(例如
+   trip/PhoneTripsDrawer.tsx 目前不帶 head、
+   GeoOutlinePhoneInfoSheet.tsx 的 head 內容結構不同,兩者都不受影響,
+   繼續用自己的樣式)。 */
+.head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 14px 10px;
+  border-bottom: 1px solid var(--ios-sep);
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-dark);
+}
+
+.closeBtn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--ios-sep);
+  color: var(--color-dark);
+  cursor: pointer;
+}
+
+/* spinner:loading prop 為 true 時取代 children 顯示的置中轉圈動畫——見
+   PhoneBottomSheet.tsx 的 loading prop 說明。 */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spinner {
+  flex: 1;
+  align-self: center;
+  justify-self: center;
+  width: 28px;
+  height: 28px;
+  margin: 32px auto;
+  border: 3px solid var(--ios-sep);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
 }

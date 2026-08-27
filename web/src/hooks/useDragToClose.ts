@@ -1,12 +1,13 @@
 import { useRef, useState } from 'react'
 import type { TouchEvent as ReactTouchEvent } from 'react'
 
-// useDragToClose:手機版 bottom sheet / 側滑抽屜共用的拖曳關閉手勢——抽出
-// 自 trip/PhoneTripsDrawer.tsx、geo-planning/GeoOutlinePhoneListDrawer.tsx、
-// timeline/PhoneTimelineDrawer.tsx(垂直,由下往上彈出)、
-// geo-planning/GeoOutlinePhoneCandidateDrawer.tsx(水平,由右側滑入)——四份
-// 檔案原本各自複製貼上同一套 dragOffset/startRef/draggingRef + touch handler
-// 邏輯,只有軸向(x/y)與門檻不同,收斂成這個 hook,往後只需要修一處。
+// useDragToClose:手機版側滑抽屜共用的拖曳關閉手勢。
+// 原本抽出自四份垂直/水平拖曳關閉的檔案,其中 trip/PhoneTripsDrawer.tsx、
+// geo-planning/GeoOutlinePhoneListDrawer.tsx、timeline/PhoneTimelineDrawer.tsx
+// 已改用 components/PhoneBottomSheet.tsx 的共用 bottom sheet 容器,
+// 目前只剩 geo-planning/GeoOutlinePhoneCandidateDrawer.tsx(水平,由右側滑入)
+// 仍在使用這個 hook——因為它只支援單段整片滑出,語意上不同於
+// PhoneBottomSheet 的 slide-close/snap 兩種 mode。
 //
 // axis 決定量測哪個座標軸、以及超過門檻時 delta 該箝制的方向:
 // - 'y'(bottom sheet 下滑關閉):只允許往下拖(delta >= 0)

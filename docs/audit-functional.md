@@ -338,7 +338,7 @@
 
 ### 已解決：`web/src/App.tsx`（1295 行）技術債
 - **原始問題**：單一檔案 1295 行，是前端最大的技術債訊號。
-- **修復確認**：`App.tsx` 目前只有 112 行。內容已拆成 `AppCommon`/`DesktopLayout`/`PhoneContent`/`PhoneNavDrawer`/`SettingsScreen` 等元件，且導入 React Router 後只剩路由骨架。
+- **修復確認**：`App.tsx` 目前只有 112 行。內容已拆成 `AppCommon`/`DesktopLayout`/`PhoneContent`/`PhoneNavDrawer`/`SettingsScreen` 等元件，且導入 React Router 後只剩路由骨架（`PhoneNavDrawer` 之後已整個移除，功能併入 `PhoneTabBar`/`PhoneSideTools`/`TripManageModal`，見 `docs/terminology.md`；此處記錄的是本次拆分確認當下的狀態）。
 - **確認方式**：程式碼複核（`docs/PROJECT_HEALTH_REVIEW.md`）。
 
 ### 已解決：過時架構/API 文件（`docs/API.md`、`docs/ARCHITECTURE.md` 等）

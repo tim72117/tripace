@@ -1,5 +1,7 @@
 # clienttools 前端架構設計筆記
 
+> **已過時**：本文件記錄的 `ClientToolsBridge.ts` 隨 tripace 自家 want LLM 對話系統整套移除時已一併刪除（前端對話改走 onagent 平台，見 `web/src/chat/useOnagentChatBridge.ts`、`docs/routing-architecture.md` 對這次移除的說明），下方內容描述的是已不存在的架構，僅保留作歷史設計脈絡參考，不代表現況。
+>
 > 2026-07-20,對 `web/src/clienttools/` 這批「LLM 呼叫前端 tool」技術試做(POC)做的一次設計檢視。記錄已辨識的設計模式、已修復的問題、以及尚未處理但值得記住的架構決策點。核心程式碼在 `web/src/clienttools/ClientToolsBridge.ts`,搭配 `web/src/clienttools/tools/` 底下各工具檔案。
 
 ## 目前的分層與設計模式

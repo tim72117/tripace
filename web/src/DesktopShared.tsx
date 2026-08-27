@@ -31,15 +31,11 @@ export type PanelMode =
   | 'demo-onagent' | 'demo-route-editor'
   | null
 
-// GEO_OUTLINE_ENABLED:地理輪廓底圖(規劃分頁)功能開關——目前是唯一
-// 預設開啟的正式功能(未設定部署環境變數 VITE_FEATURE_GEO_OUTLINE 時,
-// 一律視為開啟),只有明確設為字串 "false" 才關閉。開啟時 DesktopRail
-// 渲染「規劃」按鈕(見該元件),isPanelMode 承認 'geo-outline' 是合法值;
-// 關閉時兩者都會擋下,即使手動打 /app/geo-outline 網址也會 fallback 回
-// 'trips'(對齊 DesktopContent 對不合法 panelMode 字串的既有 fallback
-// 行為,見該處說明)——整套關閉是「進不去這個功能」而不只是「rail 上看
-// 不到按鈕」。
-export const GEO_OUTLINE_ENABLED = import.meta.env.VITE_FEATURE_GEO_OUTLINE !== 'false'
+// 規劃地圖(geo-outline)已不再有獨立的 feature flag——使用者明確要求
+// 「規劃不需要 feature flag 了」,它現在是核心功能(手機版的預設起始
+// 畫面,見 PhoneContent.tsx 的 drawerMode 說明),不該再能被部署環境變數
+// 關閉。原本的 GEO_OUTLINE_ENABLED/VITE_FEATURE_GEO_OUTLINE 已移除,
+// PANEL_REGISTRY 的 'geo-outline' 項目改成固定 enabled: true(見下方)。
 
 // TIMELINE_ENABLED/PACE_ENABLED:「時間軸」/「路徑」(配速表)rail 按鈕各自
 // 獨立的開關,同 GEO_OUTLINE_ENABLED 的擋法(見上方說明),但預設值相反
@@ -94,7 +90,7 @@ export const PANEL_REGISTRY: Record<Exclude<PanelMode, null>, PanelSpec> = {
   trips: { enabled: true, slot: 'float', width: 272 },
   timeline: { enabled: TIMELINE_ENABLED, slot: 'float', width: 380, requiresTrip: true },
   pace: { enabled: PACE_ENABLED, slot: 'float', width: 380 },
-  'geo-outline': { enabled: GEO_OUTLINE_ENABLED, slot: 'float', width: 380 },
+  'geo-outline': { enabled: true, slot: 'float', width: 380 },
   'demo-onagent': { enabled: DEMO_ONAGENT_ENABLED, slot: 'main-replace' },
   'demo-route-editor': { enabled: DEMO_ROUTE_EDITOR_ENABLED, slot: 'main-replace' },
 }

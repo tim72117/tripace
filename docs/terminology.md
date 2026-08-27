@@ -26,7 +26,7 @@
 | 搜尋結果清單 | 右緣，`.floating-panel-right`，`right:12px`，寬度 280px | 標題「搜尋結果」；飯店/推薦地點/搜尋結果（geocode）三種來源合併成單一清單，不分頁、不分段小標題 | `GeoHotelSidebar`（`web/src/geo-planning/GeoHotelSidebar.tsx`），結果型別統一為 `GeoSearchResult`（見下方「地理輪廓底圖」一節），只在觸發過查詢（點類別標籤／地標／「搜尋這個區域」／城市搜尋框）後才出現 |
 | 地點介紹卡 | 右緣，`top:64px`，避開常駐搜尋框；與下一列互斥 | 無標題橫條；關閉按鈕懸浮於卡片頂部照片右上角；「加入行程」按鈕（不串上旅程名稱） | `GeoInfoPanel`（`web/src/geo-planning/GeoInfoPanel.tsx`），飯店/推薦地點/搜尋結果/Google 原生 POI／行程候選項目共用；日期選擇改用 `DatePickerPopover`（`react-day-picker` 月曆浮動匡） |
 | 景點區域介紹卡 | 右緣，`top:64px`；與上一列互斥 | 無標題橫條；關閉按鈕懸浮於卡片頂部照片右上角；「探索周邊」按鈕 | `AttractionInfoPanel`（`web/src/geo-planning/AttractionInfoPanel.tsx`） |
-| 對話小匡 | 右緣，`right:16px`，寬度 340px | 無標題橫條；不需先選旅程即可使用，尚無訊息時顯示簡短引導「在下方輸入，開始對話。」；關閉按鈕 tooltip「關閉」 | class `.chat-popover`（`DesktopLayout.tsx`），由 `chatPopoverOpen` state 控制顯示，內嵌 `ChatScreen`（`trip` prop 未選旅程時不傳），由對話按鈕觸發 |
+| 對話小匡 | 右緣，`right:16px`，寬度 340px | 無標題橫條；不需先選旅程即可使用，尚無訊息時顯示簡短引導「在下方輸入，開始對話。」；關閉按鈕 tooltip「關閉」 | class `.chat-popover`（`DesktopLayout.tsx`），`FloatingPanel` 永遠掛載、只用 `.chatPopoverHidden`（`display:none`）依 `chatPopoverOpen` 隱藏，避免每次開關重新掛載 `ChatScreen`、重新連線 WebSocket；由對話按鈕觸發 |
 | 旅程設定彈窗 | 置中彈窗（`.rp-modal`），由旅程列表項目觸發 | 標題「旅程設定 · {旅程名}」；含「開啟時自動進入」開關／公開連結／成員管理三個區塊，各區塊間以留白色塊分隔 | `TripManageModal`（`web/src/trip/TripManageModal.tsx`），由 `DesktopTripList` 每筆項目的管理按鈕觸發 |
 
 右緣同時有 `GeoHotelSidebar`／對話小匡、以及地點介紹卡或景點區域介紹卡時，介紹卡透過 `shiftBy: 'none' | 'hotel' | 'chat'` 往左避讓（見 `DesktopLayout.tsx` 的 `infoPanelShiftBy`；對話小匡較寬，兩者同時存在時優先避開對話小匡，不疊加偏移量）。
@@ -37,13 +37,17 @@
 
 | 正式用語 | 介面用語（畫面顯示文字） | 介面/前端程式碼 | 後端變數 | 資料庫 |
 |---|---|---|---|---|
-| 底部導覽列 | 「旅程列表」按鈕 tooltip；其餘純圖示 | 螢幕下緣常駐的分頁列（旅程／時間軸／規劃）；`PhoneTabBar`（`PhoneTabBar.tsx`），不需開抽屜即可見 | — | — |
+| 主顯示（規劃地圖） | 無獨立標題，固定顯示規劃地圖 | `GeoOutlinePhoneView`（`web/src/geo-planning/GeoOutlinePhoneView.tsx`），唯一常駐主畫面，不再有可切換的分頁模式（規劃地圖已不再有獨立 feature flag，見下方「地理輪廓底圖」一節） | — | — |
+| 底部導覽列 | 「旅程列表」按鈕 tooltip；「對話」按鈕 tooltip | 螢幕下緣常駐的分頁列（旅程／對話，各自獨立開關疊加層，不是互斥分頁）；`PhoneTabBar`（`PhoneTabBar.tsx`），不需開抽屜即可見 | — | — |
 | 旅程列表抽屜 | 標題「旅程列表」 | `PhoneTripsDrawer`（`web/src/trip/PhoneTripsDrawer.tsx`），由底部導覽列「旅程」按鈕開關，每筆項目的「管理」按鈕開啟 `TripManageModal` | — | — |
-| 右側工具列 | （無文字，純圖示列） | 疊在畫面右下角的路徑／demo-* 小圖示群組；`PhoneSideTools`（`PhoneSideTools.tsx`） | — | — |
-| 主顯示 | （無獨立標題） | `PhoneContent.tsx` 的主要 render 分支（底部導覽列常駐顯示，不受這裡切換影響） | — | — |
-| 規劃地圖清單抽屜 | 標題「地點」 | `GeoOutlinePhoneListDrawer`（`web/src/geo-planning/GeoOutlinePhoneListDrawer.tsx`），飯店/推薦地點/搜尋結果三種來源合併成單一清單（同桌面版 `GeoHotelSidebar`，不分頁），由規劃地圖畫面的清單按鈕開啟 | — | — |
+| 對話疊加層 | 標題為旅程名稱（未選旅程時顯示「Tripace」） | `PhoneContent.tsx` 內建的 `PhoneBottomSheet`，由底部導覽列「對話」按鈕開關（`chatSheetOpen`）；`ChatScreen` 永遠掛載、透過 React Portal 投影進疊加層內部的投影目標容器，關閉時不卸載，避免 WebSocket 重新連線；不需先選旅程即可使用 | — | — |
+| 配速表疊加層 | 標題為旅程名稱（未選旅程時顯示「Tripace」） | `PhoneContent.tsx` 內建的 `PhoneBottomSheet`，由右側工具列「路徑」按鈕開關（`paceSheetOpen`），內嵌 `PaceRouteMap`；跟對話不同，關閉時直接卸載（無需保持連線） | — | — |
+| 右側工具列 | （無文字，純圖示列） | 疊在畫面右下角的路徑／demo-* 小圖示群組；`PhoneSideTools`（`PhoneSideTools.tsx`），每個項目自帶 `onClick`（不再是統一切換分頁模式） | — | — |
+| 規劃地圖清單抽屜 | 標題「地點」 | `GeoOutlinePhoneListDrawer`（`web/src/geo-planning/GeoOutlinePhoneListDrawer.tsx`），飯店/推薦地點/搜尋結果三種來源合併成單一清單（同桌面版 `GeoHotelSidebar`，不分頁），由規劃地圖畫面的清單按鈕開啟；觸發搜尋的同一刻即開啟並顯示載入中，不等查詢結果回來才開啟 | — | — |
 | 地點介紹卡（手機版） | 由下往上滑入的 bottom sheet；「加入行程」按鈕 | `GeoOutlinePhoneInfoSheet`（`web/src/geo-planning/GeoOutlinePhoneInfoSheet.tsx`），未選定旅程時按「加入行程」會先引導切到旅程列表（`onOpenTrips`） | — | — |
-| 設定面板 | 設定 | `SettingsScreen`（`user/SettingsScreen.tsx`）／桌面版 `SettingsDialog`（`user/SettingsDialog.tsx`） | — | — |
+| 設定面板 | 設定 | `SettingsScreen`（`user/SettingsScreen.tsx`，改用共用容器 `PhoneBottomSheet`）／桌面版 `SettingsDialog`（`user/SettingsDialog.tsx`） | — | — |
+
+手機版 bottom sheet（旅程列表／對話／配速表／設定／規劃地圖清單抽屜／地點介紹卡）共用同一個外殼元件 `PhoneBottomSheet`（`web/src/components/PhoneBottomSheet.tsx`）——不區分模式，統一用 `snapPoints`（由大到小排序的「離螢幕頂部距離」陣列，單位 px）＋選填的 `minHeightPx`（收合段的固定高度）決定能滑到哪些段落、段落分別在哪：只給一個 `snapPoints` 值時退化成固定高度＋只能拖到底關閉；給多個值（或額外帶 `minHeightPx`）時在各段之間拖曳吸附。標題列共用 `SheetHead`（標題文字＋關閉鈕）。
 
 ## 資料模型
 
@@ -66,6 +70,8 @@
 | 搜尋結果（統一型別） | 依來源分類但同一份清單，不分頁：飯店／附近推薦類別名（如「餐廳」）／搜尋結果（geocode） | `GeoSearchResult`（`web/src/api.ts`，`kind` 判別欄位）／`GeoHotelSidebar`（桌面）／`GeoOutlinePhoneListDrawer`（手機）／共用卡片元件 `GeoListItemCard`（`web/src/geo-planning/GeoListItemCard.tsx`） | `geo.NearbyPlace`（飯店/附近推薦，`server/internal/geo/places.go`）／`placeResponse`（`server/internal/api/geo_outline.go`） | — |
 
 前端命名的改名已完成對齊（`GeoDistrict`/`districts` 等舊名稱已不存在）。景點區域原本在 `GeoHotelSidebar`（飯店/附近推薦清單）有一個「地點」分頁可瀏覽清單，已依需求整個移除；景點區域現在只能透過地圖上本來就會畫出的光暈／標籤瀏覽與點擊，不再提供獨立的文字清單入口。
+
+規劃地圖已不再有獨立 feature flag（原 `GEO_OUTLINE_ENABLED`/`VITE_FEATURE_GEO_OUTLINE` 已整個移除）——已是核心功能，`DesktopRail` 的「規劃」按鈕、手機版 `GeoOutlinePhoneView` 主畫面固定顯示，不受部署環境變數控制。
 
 **待辦**：`server/internal/geo/places.go` 內部仍沿用 `District`/`Landmark` 命名（尚未改名跟進 `Attraction`），屬於獨立待辦事項，尚未執行。
 

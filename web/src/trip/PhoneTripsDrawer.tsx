@@ -9,15 +9,18 @@ import styles from './PhoneTripsDrawer.module.css'
 // tripsDrawerOpen state)開關,只有一種內容:瀏覽/新增旅程。
 //
 // 外殼(backdrop/panel/dragHandle)與拖曳關閉手勢(向下拖超過門檻關閉)
-// 改用共用容器 PhoneBottomSheet(mode="slide-close"),視覺語言對齊一般
-// App 常見的底部彈出選單(使用者要求「行程由下方往上彈出」,原本是左側
-// 滑入抽屜)。z-index/bottom 定位維持原本數值,透過 panelStyle/
-// backdropStyle 傳入——貼齊底部常駐列(PhoneTabBar.tsx)上緣,不是螢幕
-// 最底部,bottom 值等於 PhoneTabBar.module.css 的 .bar 高度
-// (64px + safe-area),兩處數值需要保持一致,PhoneTabBar 的高度公式之後
-// 若調整這裡要一併改。
-
-const SHEET_MAX_HEIGHT_VH = 70
+// 改用共用容器 PhoneBottomSheet,視覺語言對齊一般 App 常見的底部彈出
+// 選單(使用者要求「行程由下方往上彈出」,原本是左側滑入抽屜)。z-index/
+// bottom 定位維持原本數值,透過 panelStyle/backdropStyle 傳入——貼齊
+// 底部常駐列(PhoneTabBar.tsx)上緣,不是螢幕最底部,bottom 值等於
+// PhoneTabBar.module.css 的 .bar 高度(64px + safe-area),兩處數值需要
+// 保持一致,PhoneTabBar 的高度公式之後若調整這裡要一併改。
+//
+// SHEET_TOP:面板頂部離這個定位祖先頂端的距離(px)——PhoneBottomSheet
+// 改成用「離頂部距離」而非「高度百分比」決定展開程度(見該元件的說明,
+// 適應不同裝置高度)。TODO(使用者稍後決定合理數值):暫時估算,先讓
+// 編譯通過與行為大致對齊原本 maxHeightVh=70 的視覺比例。
+const SHEET_TOP = 200
 const SHEET_BOTTOM = 'calc(64px + env(safe-area-inset-bottom, 0px))'
 
 export function PhoneTripsDrawer({
@@ -57,8 +60,7 @@ export function PhoneTripsDrawer({
     <PhoneBottomSheet
       open={open}
       onClose={onClose}
-      mode="slide-close"
-      maxHeightVh={SHEET_MAX_HEIGHT_VH}
+      snapPoints={[SHEET_TOP]}
       panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: 33 }}
       backdropStyle={{ top: 0, left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: 32, background: 'rgba(0, 0, 0, 0.35)' }}
     >

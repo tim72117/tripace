@@ -7,20 +7,21 @@ import { candidateHasScheduledDate, dayGroupLabel, type GeoCandidate } from './g
 import { PhoneBottomSheet, PHONE_BOTTOM_SHEET_EXIT_MS } from '../components/PhoneBottomSheet'
 import styles from './GeoOutlinePhoneInfoSheet.module.css'
 
-// SHEET_SNAP_POINTS:三段式高度(vh,使用者明確要求「最小/中間/滿版」
-// 三段吸附,見 components/PhoneBottomSheet.tsx 的 mode="snap" 說明,
-// 共用容器泛化支援任意段數,不限兩段)——
-// [0] 最小/收合狀態:只顯示標頭,見該值選擇理由(12 才能完整容納
-//     .head 的實際內容:名稱可能到 2 行 + 副標 + badges 換行 + 拖曳
-//     把手,原本用 8 太小導致標頭被裁切只剩一小條)。
-// [1] 中間狀態:能看到圖片+標頭,簡介文字部分被截斷(卡片高度不夠完整
-//     顯示,使用者可以再往上拉到 SHEET_SNAP_POINTS[2] 或靠 .body 的
+// SHEET_MIN_HEIGHT/SHEET_SNAP_POINTS:三段式吸附,見
+// components/PhoneBottomSheet.tsx 的說明(minHeightPx + snapPoints 兩個
+// 參數合起來決定段落,不再用 vh 高度百分比,改用固定 px——SHEET_MIN_HEIGHT
+// 是收合段的固定高度,SHEET_SNAP_POINTS 是其餘展開段的離頂部距離,由大到
+// 小排序)——
+// SHEET_MIN_HEIGHT:最小/收合狀態的固定高度,只顯示標頭。TODO(使用者
+// 稍後決定合理數值):暫時估算,先讓編譯通過。
+// SHEET_SNAP_POINTS:
+// [0] 中間狀態:能看到圖片+標頭,簡介文字部分被截斷(卡片高度不夠完整
+//     顯示,使用者可以再往上拉到 SHEET_SNAP_POINTS[1] 或靠 .body 的
 //     overflow-y: auto 捲動看更多)。
-// [2] 滿版/展開狀態:完整內容,理由與做法對齊
-//     GeoOutlinePhoneListDrawer.tsx 的 SHEET_MAX_HEIGHT_VH(該檔案用
-//     70vh,這裡維持原本的 90vh,資訊卡內容含圖片/簡介較長,需要更多
-//     空間)。
-const SHEET_SNAP_POINTS = [12, 50, 90]
+// [1] 滿版/展開狀態:完整內容,離頂部距離比索引 0 更小(展開更多)。
+// TODO(使用者稍後決定合理數值):暫時估算。
+const SHEET_MIN_HEIGHT = 100
+const SHEET_SNAP_POINTS = [400, 80]
 
 // GeoOutlinePhoneInfoSheet:手機版規劃地圖資訊卡,從畫面下方滑入蓋住下
 // 半部——桌面版對應的 GeoInfoPanel/AttractionInfoPanel 是絕對定位疊在
@@ -151,8 +152,8 @@ export function GeoOutlinePhoneInfoSheet({
     <PhoneBottomSheet
       open={open}
       onClose={onClose}
-      mode="snap"
       snapPoints={SHEET_SNAP_POINTS}
+      minHeightPx={SHEET_MIN_HEIGHT}
       activeSnapIndex={activeSnapIndex}
       onSnapIndexChange={setActiveSnapIndex}
       panelStyle={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 36 }}

@@ -1,10 +1,8 @@
 import { useEffect, useRef } from 'react'
-import { X } from 'lucide-react'
 import type { DesktopTimelineMirror } from '../chat/ChatScreen'
 import type { ClientConfig } from '../api'
 import { MultiTrackTimeline } from './Timeline'
-import { useDragToClose } from '../hooks/useDragToClose'
-import styles from './PhoneTimelineDrawer.module.css'
+import { PhoneBottomSheet, SheetHead } from '../components/PhoneBottomSheet'
 
 // PhoneTimelineDrawer:手機版時間軸,由下往上彈出(bottom sheet)——使用者
 // 要求「時間軸不用獨立路由」,原本是底部常駐 PhoneTabBar.tsx 的一個分頁
@@ -18,9 +16,15 @@ import styles from './PhoneTimelineDrawer.module.css'
 // PhoneContent.tsx 的說明),同時投影進兩個容器會讓架構複雜化,不符合
 // 「時間軸只是規劃地圖的輔助檢視」這個新定位。
 //
-// 拖曳關閉手勢/backdrop/panel 的寫法比照 trip/PhoneTripsDrawer.tsx、
-// geo-planning/GeoOutlinePhoneListDrawer.tsx(同一套 bottom sheet 模式)。
-const SHEET_MAX_HEIGHT_VH = 70
+// 外殼(backdrop/panel/dragHandle)與拖曳關閉手勢改用共用容器
+// components/PhoneBottomSheet.tsx,對齊 trip/PhoneTripsDrawer.tsx 的既有
+// 用法(同一套 bottom sheet 模式)。
+//
+// SHEET_TOP:面板頂部離定位祖先頂端的距離(px)——見
+// components/PhoneBottomSheet.tsx 的說明。TODO(使用者稍後決定合理
+// 數值):暫時估算。
+const SHEET_TOP = 200
+const SHEET_BOTTOM = 'calc(64px + env(safe-area-inset-bottom, 0px))'
 
 export function PhoneTimelineDrawer({
   open,
@@ -42,11 +46,6 @@ export function PhoneTimelineDrawer({
 }) {
   const todayRef = useRef<HTMLDivElement>(null as unknown as HTMLDivElement)
   const bodyRef = useRef<HTMLDivElement>(null)
-  const { translate, transition, onTouchStart, onTouchMove, onTouchEnd } = useDragToClose({
-    axis: 'y',
-    open,
-    onClose,
-  })
 
   useEffect(() => {
     if (open && timelineMirror.entries.length > 0 && todayRef.current && bodyRef.current) {
@@ -57,45 +56,30 @@ export function PhoneTimelineDrawer({
   }, [open, timelineMirror.entries])
 
   return (
-    <>
-      {open && <div className={styles.backdrop} onClick={onClose} aria-hidden="true" />}
-      <div
-        className={styles.panel}
-        style={{
-          maxHeight: `${SHEET_MAX_HEIGHT_VH}vh`,
-          transform: `translateY(${translate})`,
-          transition,
-        }}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-      >
-        <div className={styles.dragHandle}>
-          <div className={styles.dragHandleBar} />
+    <PhoneBottomSheet
+      open={open}
+      onClose={onClose}
+      snapPoints={[SHEET_TOP]}
+      panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: 13 }}
+      backdropStyle={{ top: 0, left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: 12, background: 'rgba(0, 0, 0, 0.32)' }}
+      head={<SheetHead title={tripName} onClose={onClose} />}
+    >
+      {timelineMirror.entries.length === 0 ? (
+        <div className="screen-body">
+          <div className="empty">尚無行程內容。</div>
         </div>
-        <div className={styles.head}>
-          <span className={styles.title}>{tripName}</span>
-          <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
-            <X size={16} strokeWidth={2} />
-          </button>
+      ) : (
+        <div className="screen-body" ref={bodyRef}>
+          <MultiTrackTimeline
+            entries={timelineMirror.entries}
+            todayRef={todayRef}
+            updatingIDs={timelineMirror.updatingEntryIDs}
+            taskPlaceholders={timelineMirror.taskPlaceholders}
+            cfg={editCfg}
+            onEntryUpdated={timelineMirror.refetchEntries}
+          />
         </div>
-        {timelineMirror.entries.length === 0 ? (
-          <div className="screen-body">
-            <div className="empty">尚無行程內容。</div>
-          </div>
-        ) : (
-          <div className="screen-body" ref={bodyRef}>
-            <MultiTrackTimeline
-              entries={timelineMirror.entries}
-              todayRef={todayRef}
-              updatingIDs={timelineMirror.updatingEntryIDs}
-              taskPlaceholders={timelineMirror.taskPlaceholders}
-              cfg={editCfg}
-              onEntryUpdated={timelineMirror.refetchEntries}
-            />
-          </div>
-        )}
-      </div>
-    </>
+      )}
+    </PhoneBottomSheet>
   )
 }

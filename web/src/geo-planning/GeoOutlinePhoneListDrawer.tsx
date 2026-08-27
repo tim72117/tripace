@@ -1,10 +1,10 @@
-import { useState } from 'react'
-import { Plus, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Plus } from 'lucide-react'
 import type { ClientConfig, GeoSearchResult } from '../api'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
 import { type GeoCandidate, dayGroupLabel, searchResultToCandidate, useCandidateDatePicker } from './geoCandidateHelpers'
 import { GeoListItemCard } from './GeoListItemCard'
-import { useDragToClose } from '../hooks/useDragToClose'
+import { PhoneBottomSheet, PHONE_BOTTOM_SHEET_EXIT_MS, SheetHead } from '../components/PhoneBottomSheet'
 import styles from './GeoOutlinePhoneListDrawer.module.css'
 
 // GeoOutlinePhoneListDrawer:手機版「飯店/推薦地點/搜尋結果」清單——第三
@@ -34,7 +34,19 @@ import styles from './GeoOutlinePhoneListDrawer.module.css'
 // GeoOutlinePhoneView.tsx 中介觸發移動地圖、同步 selectedKey 高亮對應
 // marker,並開啟資訊卡(複用既有的 GeoOutlinePhoneInfoSheet,不在這個
 // 抽屜內部重複刻一份資訊卡 UI)。
-const SHEET_MAX_HEIGHT_VH = 70
+// SHEET_MIN_HEIGHT/SHEET_SNAP_POINTS:這個抽屜專屬的兩段式吸附——跟
+// GeoOutlinePhoneInfoSheet.tsx 的三段式是各自獨立的段落組合,共用容器
+// components/PhoneBottomSheet.tsx 本身就是為了讓不同呼叫端各自帶一組
+// 段落參數而設計,不是全站共用同一組段落(見該元件的說明)。
+// SHEET_MIN_HEIGHT:收合狀態的固定高度,只顯示標頭(標題+關閉鈕)——
+// 理由同 GeoOutlinePhoneInfoSheet.tsx 的 SHEET_MIN_HEIGHT。TODO(使用者
+// 稍後決定合理數值):暫時估算。
+// SHEET_SNAP_POINTS:
+// [0] 展開狀態:可看清單內容,不額外加中間段——這個清單本身內容都是
+//     同一種高度的項目,不像資訊卡有圖片/簡介需要中繼高度過渡。TODO
+//     (使用者稍後決定合理數值):暫時估算。
+const SHEET_MIN_HEIGHT = 100
+const SHEET_SNAP_POINTS = [200]
 
 function ItemAddButton({
   cfg,
@@ -135,6 +147,7 @@ export function GeoOutlinePhoneListDrawer({
   onSelect,
   onAddCandidate,
   onCandidateCreated,
+  loading = false,
 }: {
   cfg: ClientConfig
   tripID?: string | null
@@ -157,82 +170,86 @@ export function GeoOutlinePhoneListDrawer({
   onSelect: (result: GeoSearchResult) => void
   onAddCandidate: (c: GeoCandidate) => void
   onCandidateCreated: () => void
+  // loading:搜尋觸發後、結果還沒回來前顯示置中轉圈動畫——使用者明確
+  // 要求「搜尋時要先開啟地點清單並顯示載入中」,呼叫端
+  // (GeoOutlinePhoneView.tsx)在觸發搜尋的同一刻就開啟這個抽屜
+  // (setListDrawerOpen(true))並傳 true,不用等查詢結果回來才開啟清單。
+  // 轉傳給 PhoneBottomSheet 的 loading prop,見該元件的說明。
+  loading?: boolean
 }) {
   // geocodePhotos:搜尋結果(geocode)的照片延遲載入快取,理由同桌面版
   // GeoHotelSidebar.tsx 的同名 state。
   const [geocodePhotos, setGeocodePhotos] = useState<Record<string, string | null>>({})
-  const { translate, transition, onTouchStart, onTouchMove, onTouchEnd } = useDragToClose({
-    axis: 'y',
-    open,
-    onClose,
-  })
+  // activeSnapIndex:這個抽屜自己的吸附段落狀態,初始為展開(索引 1)——
+  // 理由同 GeoOutlinePhoneInfoSheet.tsx 的同名 state,每次重新開啟都重設
+  // 回展開,不延續上次被拖曳收合的狀態。
+  const [activeSnapIndex, setActiveSnapIndex] = useState(1)
+  useEffect(() => {
+    if (open) setActiveSnapIndex(1)
+  }, [open])
 
   const isEmpty = results.length === 0
 
   return (
-    <>
-      {open && <div className={styles.backdrop} onClick={onClose} aria-hidden="true" />}
-      <div
-        className={styles.panel}
-        style={{
-          maxHeight: `${SHEET_MAX_HEIGHT_VH}vh`,
-          transform: `translateY(${translate})`,
-          transition,
-        }}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-      >
-        <div className={styles.dragHandle}>
-          <div className={styles.dragHandleBar} />
-        </div>
-        <div className={styles.head}>
-          <span className={styles.title}>地點</span>
-          <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
-            <X size={16} strokeWidth={2} />
-          </button>
-        </div>
-        <div className={styles.list}>
-          {isEmpty ? (
-            <div className={styles.empty}>
-              還沒有查詢結果——移動地圖或按「搜尋這個區域」,查到的地點會列在這裡。
-            </div>
-          ) : (
-            results.map((r) => {
-              const key = geoItemKey(r.kind, r)
-              return (
-                <GeoListItemCard
-                  key={key}
-                  cfg={cfg}
-                  name={r.name}
-                  address={r.address}
-                  photoUrl={r.kind === 'geocode' ? (r.placeId ? geocodePhotos[r.placeId] : null) : r.photoUrl}
-                  placeId={r.kind === 'geocode' ? r.placeId : undefined}
-                  onPhotoLoaded={(placeId, url) => {
-                    setGeocodePhotos((prev) => ({ ...prev, [placeId]: url }))
-                  }}
-                  selected={selectedKey === key}
-                  onSelect={() => onSelect(r)}
-                  styles={styles}
-                  badgeSlot={candidateKeys.has(key) && <span className={styles.inCandidateBadge}>已加入候選</span>}
-                  addSlot={
-                    r.kind !== 'geocode' && (
-                      <ItemAddButton
-                        cfg={cfg}
-                        tripID={tripID}
-                        candidate={searchResultToCandidate(r)}
-                        scheduledDates={scheduledDates}
-                        onAddCandidate={onAddCandidate}
-                        onCreated={onCandidateCreated}
-                      />
-                    )
-                  }
-                />
-              )
-            })
-          )}
-        </div>
+    <PhoneBottomSheet
+      open={open}
+      onClose={onClose}
+      snapPoints={SHEET_SNAP_POINTS}
+      minHeightPx={SHEET_MIN_HEIGHT}
+      activeSnapIndex={activeSnapIndex}
+      onSnapIndexChange={setActiveSnapIndex}
+      showBackdrop={false}
+      exitDurationMs={PHONE_BOTTOM_SHEET_EXIT_MS}
+      // panelStyle:bottom: 0、zIndex 36——使用者明確要求清單要蓋住底部
+      // 常駐導覽列 PhoneTabBar.tsx(z-index: 35),不是貼齊它的上緣讓開
+      // 空間(原本的 bottom 算式跟 z-index: 13 都只適合「清單在導覽列之上
+      // 但不遮住它」的版面,實測遮住了導覽列的可點擊區域,理由同
+      // GeoOutlinePhoneInfoSheet.tsx 的 panelStyle 說明——該元件用的就是
+      // bottom: 0、zIndex: 36,這裡改成一致)。
+      panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 36 }}
+      head={<SheetHead title="地點" onClose={onClose} />}
+      loading={loading}
+    >
+      <div className={styles.list}>
+        {isEmpty ? (
+          <div className={styles.empty}>
+            還沒有查詢結果——移動地圖或按「搜尋這個區域」,查到的地點會列在這裡。
+          </div>
+        ) : (
+          results.map((r) => {
+            const key = geoItemKey(r.kind, r)
+            return (
+              <GeoListItemCard
+                key={key}
+                cfg={cfg}
+                name={r.name}
+                address={r.address}
+                photoUrl={r.kind === 'geocode' ? (r.placeId ? geocodePhotos[r.placeId] : null) : r.photoUrl}
+                placeId={r.kind === 'geocode' ? r.placeId : undefined}
+                onPhotoLoaded={(placeId, url) => {
+                  setGeocodePhotos((prev) => ({ ...prev, [placeId]: url }))
+                }}
+                selected={selectedKey === key}
+                onSelect={() => onSelect(r)}
+                styles={styles}
+                badgeSlot={candidateKeys.has(key) && <span className={styles.inCandidateBadge}>已加入候選</span>}
+                addSlot={
+                  r.kind !== 'geocode' && (
+                    <ItemAddButton
+                      cfg={cfg}
+                      tripID={tripID}
+                      candidate={searchResultToCandidate(r)}
+                      scheduledDates={scheduledDates}
+                      onAddCandidate={onAddCandidate}
+                      onCreated={onCandidateCreated}
+                    />
+                  )
+                }
+              />
+            )
+          })
+        )}
       </div>
-    </>
+    </PhoneBottomSheet>
   )
 }

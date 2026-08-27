@@ -2,6 +2,31 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.9.0 — 2026-08-27
+
+### 破壞性變更
+
+- **手機版底部常駐列拿掉「規劃」「時間軸」入口，改為「旅程」「對話」兩項**（`PhoneTabBar.tsx`、`PhoneContent.tsx`）：規劃地圖（`GeoOutlinePhoneView`）已是唯一常駐主畫面，不再是可切換的分頁之一，故底部列不再需要額外的「規劃」入口；「時間軸」改為規劃地圖左下角專屬按鈕（此前已是如此，這次移除的是舊有殘留的底部列位置）。使用者原本能從底部列直接切到規劃地圖/時間軸的操作方式已不存在，改為規劃地圖預設可見、時間軸從地圖內按鈕開啟。
+- **手機版對話、配速表從「主畫面分頁切換」改為「滿版疊加層」**（`PhoneContent.tsx`）：原本切換底部列分頁會取代整個主顯示區內容，現在對話／配速表各自透過獨立按鈕開啟一個蓋在規劃地圖之上的 `PhoneBottomSheet` 疊加層，關閉後回到規劃地圖；不再有可以「切換到對話分頁」這個操作路徑本身（改成「開啟對話」）。
+- **手機版設定頁移除「API Token」「後端連線 Base URL」「健康檢查」三個區塊**（`user/SettingsScreen.tsx`）：這些是開發除錯用的資訊，非一般使用者需要的設定項目，移除後這幾項操作/資訊在畫面上不再可見（桌面版 `SettingsDialog` 不受影響）。
+- **`components/PhoneBottomSheet.tsx` 移除 `mode: 'slide-close' | 'snap'` 這個 prop**，改用 `snapPoints`（由大到小排序的「離螢幕頂部距離」陣列，單位 px，取代原本以 `vh` 高度百分比表達的 `snapPoints`/`maxHeightVh`）搭配選填的 `minHeightPx`（收合段的固定高度）決定拖曳吸附的段數與位置——只給一個 `snapPoints` 值時退化為固定高度＋只能拖到底關閉的語意。這是本應用程式內部共用元件的 props 變動，不影響任何使用者可感知的行為（各呼叫端已在同一次異動中同步更新），依專案慣例（見 `.claude/skills/version-tagging/override.md`）不計入本次破壞性項目，僅記錄於此供日後檢索。
+- **地理輪廓底圖（規劃地圖）移除獨立 feature flag**（`DesktopShared.tsx` 的 `GEO_OUTLINE_ENABLED`、環境變數 `VITE_FEATURE_GEO_OUTLINE` 一併移除）：已是核心功能，`PANEL_REGISTRY` 的 `geo-outline` 項目固定 `enabled: true`，不再能透過部署環境變數關閉——若有部署環境依賴這個變數關閉規劃地圖，該環境會發現規劃地圖無法再被關閉。
+
+### 新增
+
+- **手機版對話不再要求先選定旅程**（`PhoneContent.tsx`）：`ChatScreen` 的 `trip` prop 改為允許 `undefined`，對齊桌面版 chat-popover 既有行為，未選旅程時仍可開啟對話並直接發送訊息。
+- **搜尋觸發時立即開啟地點清單並顯示載入中動畫**（`GeoOutlinePhoneView.tsx`、`GeoOutlinePhoneListDrawer.tsx`、`components/PhoneBottomSheet.tsx`）：`PhoneBottomSheet` 新增 `loading` prop（true 時 body 顯示置中轉圈動畫取代 children），搜尋一觸發就開啟清單抽屜並進入載入中狀態，不用等查詢結果回來才看到清單出現。
+- **`components/PhoneBottomSheet.tsx` 新增共用進場滑入動畫**：`'slide-close'` 語意（現為單段 `snapPoints`）此前只有滑出動畫、沒有滑入動畫，現在跟多段模式共用同一套「掛載時先在畫面外、下一幀才滑入」邏輯。
+- **`components/PhoneBottomSheet.tsx` 新增共用標頭元件 `SheetHead`**（標題文字＋關閉鈕），收斂原本 `GeoOutlinePhoneListDrawer.tsx`、`timeline/PhoneTimelineDrawer.tsx`、手機版設定頁各自重複刻一份的標頭 JSX/CSS。
+- **桌面版對話小匡改為永遠掛載**（`DesktopLayout.tsx`、`DesktopLayout.module.css` 新增 `.chatPopoverHidden`）：關閉小匡時不再卸載 `ChatScreen`，改用 `display: none` 隱藏，避免每次開關對話都重新連線 WebSocket——對齊手機版對話疊加層的常駐掛載設計。
+
+### 修正
+
+- **對話疊加層滑出關閉時，規劃地圖畫面會跟著抽動偏移**（`PhoneContent.tsx`）：投影目標容器（`mainChatSlotNode`）原本隨 `chatSheetOpen` 一起提前卸載，觸發的 DOM 搬移剛好跟 sheet 滑出動畫的同一幀重疊，造成一次性版面重排波及地圖。改為投影目標的卸載延後到 `PhoneBottomSheet` 本身的退場動畫（`exitDurationMs`）播完之後。
+- **對話疊加層開啟時滑入動畫看不到、直接出現在最終位置**（`PhoneContent.tsx`）：投影目標容器掛載時觸發的 `ref` callback 會連帶一次額外的 state 更新，這次更新與 `PhoneBottomSheet` 內部進場動畫的 `requestAnimationFrame` 排程在同一個瀏覽器繪製週期內互相競爭，導致「畫面外」的中間態被跳過，只看到 `transform` 的收尾動畫。改為投影目標延後掛載，確保排在進場動畫確定播完之後。
+- **`PhoneBottomSheet` 內部量測容器高度的邏輯每次 render 都重新讀取 DOM**（`components/PhoneBottomSheet.tsx`）：`useEffect` 原本沒有依賴陣列，含拖曳中每一幀都會強制瀏覽器同步重新計算一次版面（layout thrashing），這個同步重排恰好跟 sheet 自身的 CSS transition 動畫同時發生，連帶讓地圖跟著抽動。改為只在 `open` 變 `true` 時量測一次。
+- **`PhoneBottomSheet` 多段拖曳吸附的離頂部距離計算方向寫反**（`components/PhoneBottomSheet.tsx`）：手指往上拖曳時計算出的面板位置反而往下移動，跟預期方向相反；修正拖曳位移量的加減號。
+
 ## v0.8.2 — 2026-08-26
 
 ### 變更

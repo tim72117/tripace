@@ -16,7 +16,7 @@
 | 行程公開分享(/public/{token}) | ✅ 正式功能 |
 | 多人成員與編輯者權限 | ✅ 正式功能 |
 | 手動編輯 | ✅ 正式功能——後端 `PATCH /v1/entries/{id}` 與前端編輯表單皆已完成(`web/src/Timeline.tsx` 的 `EditEntrySheet` 涵蓋 title/start/startTime/end/endTime/location/note,呼叫 `web/src/api.ts` 的 `updateEntry`);另有 trip-scoped 的新增/修改/刪除端點(見「共用基礎建設」說明) |
-| 地圖(Maps JS API 極簡風格) | ✅ 正式功能——「路徑」是常駐導覽項目,不受 `?demo` 限制:桌面版 rail(`web/src/DesktopLayout.tsx`,`panelMode === 'pace'` 那顆按鈕在 `isDemo &&` 條件之外)、手機版分頁(`web/src/PhoneNavDrawer.tsx`)皆常駐 |
+| 地圖(Maps JS API 極簡風格) | ✅ 正式功能——「路徑」是常駐導覽項目,不受 `?demo` 限制:桌面版 rail(`web/src/DesktopRail.tsx`,`panelMode === 'pace'` 那顆按鈕在 `isDemo &&` 條件之外)、手機版右側工具列(`web/src/PhoneSideTools.tsx`)皆常駐 |
 | Entry 的 place_id | ❌ 未儲存(營業時間查詢的前提) |
 | 點對點交通時間(Routes/Distance Matrix) | ✅ 已接 Routes API——`server/internal/api/pace_route.go` 直接呼叫 `routes.googleapis.com/directions/v2:computeRoutes`,`server/internal/api/entry_geocode.go` 的 `handleComputeRouteFromEntries`(`POST /internal/entries/compute-route`)以 entry 座標組 origin/intermediates/destination;前端 `web/src/PaceRouteMap.tsx` 有 localStorage 路線快取(cache key 含座標,座標一改自動失效) |
 | mock LLM e2e 測試框架 | ✅ 已建立(所有改動的安全網) |

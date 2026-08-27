@@ -1,5 +1,6 @@
-// 端到端測試:規劃分頁(地理輪廓底圖,GEO_OUTLINE_ENABLED)每一個可點擊/可拖曳
-// 的互動元件都至少操作一次、驗證會產生預期的畫面反應。
+// 端到端測試:規劃分頁(地理輪廓底圖,已無獨立 feature flag,見
+// DesktopShared.tsx 的說明)每一個可點擊/可拖曳的互動元件都至少操作一次、
+// 驗證會產生預期的畫面反應。
 //
 // 這支測試「不」負責啟動任何 process——跑之前必須已經有一份完整的開發環境
 // 在跑(server :8080 + web dev server,見 web/.env.development 的
@@ -293,11 +294,11 @@ async function openSeedTrip(page: Page) {
 }
 
 // openGeoOutlineTab:點擊桌面版左側 rail 上 title="規劃" 的圖示鈕,切到地理
-// 輪廓底圖分頁——需要 GEO_OUTLINE_ENABLED(見 DesktopShared.tsx)為 true,
-// 本機開發環境的 .env.development.local 已預設開啟。
+// 輪廓底圖分頁——規劃地圖已不再有獨立 feature flag(見 DesktopShared.tsx
+// 的說明),按鈕永遠存在。
 async function openGeoOutlineTab(page: Page) {
   const railBtn = page.locator('button[title="規劃"]')
-  await expect(railBtn, 'Rail 上應該有 title="規劃" 的圖示按鈕(需 VITE_FEATURE_GEO_OUTLINE=true)')
+  await expect(railBtn, 'Rail 上應該有 title="規劃" 的圖示按鈕')
     .toBeVisible({ timeout: STEP_TIMEOUT })
   await railBtn.click()
   // 候選籃側欄出現代表已切換到規劃分頁(見 DesktopLayout.tsx panelMode ===

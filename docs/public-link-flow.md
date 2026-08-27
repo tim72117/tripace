@@ -329,12 +329,12 @@ Response 404: 連結不存在或已刪除
 
 公開連結目前**不論 `editable` 開關切成什麼，一律唯讀**。
 
-`editable` 欄位、DB 欄位、`POST`/`GET /v1/trips/{id}/public-link` 的讀寫 API、`web/src/channel/ShareModal.tsx` 的 UI 開關都還在，切換後也會被存下來，但沒有任何後端路徑會讀這個旗標做權限判斷——公開連結頁面（`GET /v1/public/{token}`）只回傳資料供閱讀，訪客端沒有對話/寫入介面。
+`editable` 欄位、DB 欄位、`POST`/`GET /v1/trips/{id}/public-link` 的讀寫 API、`web/src/trip/TripManageModal.tsx` 的 UI 開關都還在，切換後也會被存下來，但沒有任何後端路徑會讀這個旗標做權限判斷——公開連結頁面（`GET /v1/public/{token}`）只回傳資料供閱讀，訪客端沒有對話/寫入介面。
 
-前端對話（`ChatScreen.tsx`）走 onagent 平台（`web/src/useOnagentChatBridge.ts`），採全域單一連線（`APP_ID = 'tripace'`），不區分「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」，因此公開連結目前沒有任何授權寫入的路徑。
+前端對話（`ChatScreen.tsx`）走 onagent 平台（`web/src/chat/useOnagentChatBridge.ts`），採全域單一連線（`APP_ID = 'tripace'`），不區分「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」，因此公開連結目前沒有任何授權寫入的路徑。
 
 `POST /v1/public/{token}/compute-route`（`handlePublicComputeRoute`）不受此影響，仍然存在、只做路線計算、不寫入資料，並限制 `entryIDs` 必須屬於該 token 對應的行程。
 
 **待辦**：若要讓公開連結支援匿名寫入協作，需要在 `useOnagentChatBridge`／onagent 的 dispatch 協定裡補上「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」這組上下文，並在 `internal/onagenttools` 對應的寫入類工具裡加入授權檢查——目前完全沒有這層機制。
 
-相關程式碼：`server/internal/api/public_link.go`、`server/internal/store/entity.go` 的 `publicLinkRow.Editable`、`web/src/channel/ShareModal.tsx`（UI 開關）、`web/src/useOnagentChatBridge.ts`。
+相關程式碼：`server/internal/api/public_link.go`、`server/internal/store/entity.go` 的 `publicLinkRow.Editable`、`web/src/trip/TripManageModal.tsx`（UI 開關）、`web/src/chat/useOnagentChatBridge.ts`。

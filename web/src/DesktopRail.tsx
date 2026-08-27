@@ -7,7 +7,7 @@ import type { ClientConfig } from './api'
 import type { User } from './user/types'
 import { DesktopUserMenu } from './user/DesktopUserMenu'
 import {
-  type PanelMode, GEO_OUTLINE_ENABLED, TIMELINE_ENABLED, PACE_ENABLED,
+  type PanelMode, TIMELINE_ENABLED, PACE_ENABLED,
   DEMO_ONAGENT_ENABLED, DEBUG_PANEL_ENABLED,
   DEMO_ROUTE_EDITOR_ENABLED, PANEL_REGISTRY,
 } from './DesktopShared'
@@ -85,23 +85,20 @@ export function DesktopRail({
           <List size={20} strokeWidth={1.8} />
           {expanded && <span className={styles.btnLabel}>旅程列表</span>}
         </button>
-        {/* GEO_OUTLINE_ENABLED:這次部署刻意不開啟(見 DesktopShared.tsx
-            對這個常數的說明),按鈕本身不渲染——不是只隱藏視覺,isPanelMode
-            也不再承認 'geo-outline',兩者搭配才是「整個功能真的進不去」,
-            不只是找不到入口。 */}
-        {GEO_OUTLINE_ENABLED && (
-          <button
-            className={panelMode === 'geo-outline' ? `${styles.btn} ${styles.active}` : styles.btn}
-            onClick={() => onSelect('geo-outline')}
-            title="規劃"
-          >
-            <Layers size={20} strokeWidth={1.8} />
-            {expanded && <span className={styles.btnLabel}>規劃</span>}
-          </button>
-        )}
+        {/* 規劃地圖已不再有獨立 feature flag(使用者明確要求——見
+            DesktopShared.tsx 對這件事的說明),按鈕永遠渲染,不再用條件式
+            包住。 */}
+        <button
+          className={panelMode === 'geo-outline' ? `${styles.btn} ${styles.active}` : styles.btn}
+          onClick={() => onSelect('geo-outline')}
+          title="規劃"
+        >
+          <Layers size={20} strokeWidth={1.8} />
+          {expanded && <span className={styles.btnLabel}>規劃</span>}
+        </button>
         {/* TIMELINE_ENABLED/PACE_ENABLED:編譯時 feature flag(見
             DesktopShared.tsx 對這兩個常數的說明),關閉時按鈕不渲染,
-            isPanelMode 也不再承認對應字串,同 GEO_OUTLINE_ENABLED 的機制。 */}
+            isPanelMode 也不再承認對應字串,同理。 */}
         {TIMELINE_ENABLED && (() => {
           const disabled = !!PANEL_REGISTRY.timeline.requiresTrip && !activeTrip
           return (

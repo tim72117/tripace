@@ -1,91 +1,12 @@
 /* GeoOutlinePhoneListDrawer.tsx 專屬樣式(CSS Modules)。由下往上彈出的
-   bottom sheet(使用者要求「地點清單跟旅程清單一樣從下方彈出」)——
-   backdrop/panel 的寫法比照 trip/PhoneTripsDrawer.module.css(同一套
-   bottom sheet 模式:貼齊底部常駐列 PhoneTabBar.tsx 上緣、不蓋住它、
-   垂直拖曳關閉、上緣圓角、拖曳把手)。分頁列/清單項目視覺語言比照桌面版
+   bottom sheet,外殼(backdrop/panel/dragHandle)與拖曳手勢已改用共用
+   容器 components/PhoneBottomSheet.tsx(mode="snap",見該元件的說明)——
+   該元件的 .panel 基礎樣式(背景/圓角/陰影)已經涵蓋這裡原本的視覺設定,
+   不需要再疊加一份,故這裡不再定義 .panel。head(標題+關閉鈕)也改用該
+   元件匯出的 SheetHead 共用元件(見其說明),這裡同樣不再定義
+   .head/.title/.closeBtn。分頁列/清單項目視覺語言比照桌面版
    GeoHotelSidebar.module.css,只是換一個 CSS Module 檔案(手機版元件不
    import 桌面版的 .module.css)。 */
-
-/* 使用者要求清單出現時地圖不要被遮罩變暗,方便同時看清單與地圖——這層
-   仍保留(不整個移除),用來承接「點擊清單外部關閉抽屜」的既有互動,只是
-   改成透明,不再疊一層暗色調。 */
-.backdrop {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-  z-index: 12;
-  background: transparent;
-}
-
-/* panel:bottom 值同 trip/PhoneTripsDrawer.module.css 的 .panel(貼齊
-   PhoneTabBar.tsx 上緣,64px 高 + safe-area),兩處數值需要保持一致。
-   touch-action: none——拖曳關閉手勢改成垂直方向,不能再用 pan-y 讓
-   瀏覽器自己接手垂直手勢,否則會跟拖曳關閉邏輯搶事件;.list 內部清單
-   捲動改由 overflow-y: auto 處理(見下方 .list),不依賴瀏覽器原生
-   touch pan。 */
-.panel {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-  z-index: 13;
-  display: flex;
-  flex-direction: column;
-  background: var(--ios-bg);
-  border-radius: 20px 20px 0 0;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
-  touch-action: none;
-  overflow: hidden;
-}
-
-/* dragHandle:bottom sheet 頂部的拖曳把手視覺提示,比照
-   trip/PhoneTripsDrawer.module.css 的同名規則。 */
-.dragHandle {
-  flex: 0 0 auto;
-  display: flex;
-  justify-content: center;
-  padding: 10px 0 4px;
-}
-
-.dragHandleBar {
-  width: 36px;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--ios-sep);
-}
-
-/* padding-top 不再需要 env(safe-area-inset-top, 0px)——這是 bottom
-   sheet,不貼齊螢幕上緣,上方已經有 .dragHandle 佔掉安全間距,不會被
-   瀏海/狀態列蓋住(舊的左側滑入抽屜才需要處理上緣安全區)。 */
-.head {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 14px 10px;
-  border-bottom: 1px solid var(--ios-sep);
-}
-
-.title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--color-dark);
-}
-
-.closeBtn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  background: var(--ios-sep);
-  color: var(--color-dark);
-  cursor: pointer;
-}
 
 .tabs {
   flex: 0 0 auto;

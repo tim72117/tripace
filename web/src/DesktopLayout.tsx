@@ -547,29 +547,38 @@ export function DesktopContent(props: ContentProps) {
           {/* chat-popover:對話浮動小匡,由地圖右上角城市搜尋框旁的 AI
               按鈕觸發(見 GeoOutlineMap.tsx 的 onOpenChat),疊在搜尋框
               正下方——沒有常駐對話欄,這是使用者存取 ChatScreen 的唯一
-              入口(見 chatPopoverOpen 宣告處的說明)。沒有 activeTrip 時
-              仍掛載 ChatScreen(trip 不傳,見該元件 trip prop 的說明)——
-              使用者不需要先選/建立旅程就能開始對話,不再顯示空狀態擋板。
-              key 用 activeTrip?.id ?? 'no-trip',確保「無旅程對話」跟
-              「某個旅程的對話」是各自獨立的掛載週期(避免沿用前一個旅程
-              殘留的 WebSocket/訊息 state)。 */}
-          {chatPopoverOpen && (
-            <FloatingPanel
-              side="right"
-              width={340}
-              className={geoHotelSidebarVisible ? `${styles.chatPopover} ${styles.chatPopoverShifted}` : styles.chatPopover}
-              onClose={() => setChatPopoverOpen(false)}
-            >
-              <ChatScreen
-                key={activeTrip?.id ?? 'no-trip'}
-                cfg={cfg}
-                trip={activeTrip ?? undefined}
-                user={props.user}
-                onBack={() => setActiveTrip(null)}
-                desktopChat={desktopChat}
-              />
-            </FloatingPanel>
-          )}
+              入口(見 chatPopoverOpen 宣告處的說明)。
+              FloatingPanel 永遠掛載,只用 .chatPopoverHidden(display:
+              none)隱藏——使用者明確要求桌面版也改成常駐掛載,對齊手機版
+              PhoneContent.tsx 的 chatElement/chatPortalTarget 同一套「永遠
+              掛載、只切換顯示」設計,避免小匡每次開關都讓 ChatScreen 卸載
+              重掛、WebSocket 重新連線(原本 {chatPopoverOpen && (...)}
+              這種條件渲染,關閉就等於解除掛載)。沒有 activeTrip 時仍掛載
+              ChatScreen(trip 不傳,見該元件 trip prop 的說明)——使用者
+              不需要先選/建立旅程就能開始對話,不再顯示空狀態擋板。key 用
+              activeTrip?.id ?? 'no-trip',確保「無旅程對話」跟「某個旅程
+              的對話」是各自獨立的掛載週期(避免沿用前一個旅程殘留的
+              WebSocket/訊息 state)。 */}
+          <FloatingPanel
+            side="right"
+            width={340}
+            title="對話"
+            className={[
+              styles.chatPopover,
+              geoHotelSidebarVisible ? styles.chatPopoverShifted : '',
+              chatPopoverOpen ? '' : styles.chatPopoverHidden,
+            ].filter(Boolean).join(' ')}
+            onClose={() => setChatPopoverOpen(false)}
+          >
+            <ChatScreen
+              key={activeTrip?.id ?? 'no-trip'}
+              cfg={cfg}
+              trip={activeTrip ?? undefined}
+              user={props.user}
+              onBack={() => setActiveTrip(null)}
+              desktopChat={desktopChat}
+            />
+          </FloatingPanel>
         </main>
         {DEBUG_PANEL_ENABLED && showDebugPanel && (
           <DemoPanel

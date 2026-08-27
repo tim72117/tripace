@@ -1,32 +1,24 @@
 import { List } from 'lucide-react'
-import type { DrawerMode } from './DesktopShared'
+import type { LucideIcon } from 'lucide-react'
 import styles from './PhoneTabBar.module.css'
 
 // PhoneTabBar:手機版底部常駐導覽列——取代原本藏在 PhoneNavDrawer 側滑
-// 抽屜裡的分頁列(.tabs),不需要先開抽屜才看得到分頁。只放 3 項:旅程
-// (維持原本開啟 PhoneTripsDrawer 側滑抽屜的既有行為,不是切換 drawerMode,
-// 故獨立用 onOpenTrips 而非塞進 tabs 陣列)、時間軸、規劃地圖——路徑
-// (pace)與 demo-* 改放 PhoneSideTools.tsx 右側小圖示,不在這裡。
+// 抽屜裡的分頁列(.tabs),不需要先開抽屜才看得到分頁。只放 2 項:旅程
+// (開啟 PhoneTripsDrawer 側滑抽屜)、對話(開啟對話 PhoneBottomSheet 疊加
+// 層)——路徑(pace)與 demo-* 改放 PhoneSideTools.tsx 右側小圖示,不在這裡。
 //
-// 目前階段(先讓按鈕到位):onSelectMode 仍呼叫既有的 PhoneContent.tsx
-// setDrawerMode,行為對齊改版前——之後會接上底部列常駐後「再點同一分頁
-// no-op」的邏輯調整,這裡先不動,只負責讓按鈕出現在正確位置。
+// 規劃地圖已是唯一常駐主畫面,不再有可切換的分頁模式(使用者明確要求,見
+// PhoneContent.tsx 的 chatSheetOpen/paceSheetOpen 說明)——這裡的每個項目
+// 各自是獨立開關的疊加層,不是互斥的分頁,active 狀態因此改成呼叫端直接
+// 傳 boolean,不再需要比對「目前選中哪個 mode」。
 export function PhoneTabBar({
   tabs,
-  mode,
-  lastContentMode,
   tripsDrawerOpen,
   onOpenTrips,
-  onSelectMode,
 }: {
-  tabs: { mode: DrawerMode; icon: typeof List; title: string }[]
-  mode: DrawerMode
-  // lastContentMode:沿用 PhoneContent.tsx 既有邏輯——瀏覽獨立旅程抽屜期間,
-  // 使用者切換前正在看的時間軸分頁圖示仍要顯示 active(見該檔案的說明)。
-  lastContentMode: 'pace' | 'timeline' | null
+  tabs: { key: string; icon: LucideIcon; title: string; active: boolean; onClick: () => void }[]
   tripsDrawerOpen: boolean
   onOpenTrips: () => void
-  onSelectMode: (mode: DrawerMode) => void
 }) {
   return (
     <nav className={styles.bar}>
@@ -40,22 +32,19 @@ export function PhoneTabBar({
           <List size={20} strokeWidth={1.8} />
         </span>
       </button>
-      {tabs.map(({ mode: m, icon: Icon, title }) => {
-        const isActive = mode === m || (tripsDrawerOpen && lastContentMode === m)
-        return (
-          <button
-            key={m}
-            type="button"
-            className={styles.tab}
-            onClick={() => onSelectMode(m)}
-            title={title}
-          >
-            <span className={`${styles.tabIcon}${isActive ? ` ${styles.tabIconActive}` : ''}`}>
-              <Icon size={20} strokeWidth={1.8} />
-            </span>
-          </button>
-        )
-      })}
+      {tabs.map(({ key, icon: Icon, title, active, onClick }) => (
+        <button
+          key={key}
+          type="button"
+          className={styles.tab}
+          onClick={onClick}
+          title={title}
+        >
+          <span className={`${styles.tabIcon}${active ? ` ${styles.tabIconActive}` : ''}`}>
+            <Icon size={20} strokeWidth={1.8} />
+          </span>
+        </button>
+      ))}
     </nav>
   )
 }

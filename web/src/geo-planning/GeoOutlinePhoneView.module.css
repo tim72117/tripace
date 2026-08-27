@@ -20,15 +20,6 @@
   padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
 }
 
-/* inactive:元件永遠掛載(見 GeoOutlinePhoneView.tsx 的 active prop
-   說明),不是目前主畫面顯示的分頁時只用 display:none 隱藏,不卸載
-   ——地圖實例、內部 state 全部維持存活,不佔用 .mainArea 的 flex 版面
-   空間(display:none 元素不參與 flex 排版計算,其他分頁內容能正常撐滿
-   剩餘空間)。 */
-.wrap.inactive {
-  display: none;
-}
-
 /* avatarBtn:使用者頭像——取代拿掉的 MainNavBar(見 GeoOutlinePhoneView.
    tsx 的說明)。透過 GeoOutlineMap.tsx 的 searchRightSlot prop 真正
    渲染在搜尋框(.citySearch)的 DOM 結構內部,是它自己的 flexbox 子

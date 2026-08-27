@@ -17,7 +17,33 @@ description: 協助使用者透過 onagent CLI 登入 onagent 平台、在 conso
 
 （原本曾一次編過 linux/darwin 共 4 個平台，之後決定先只保留 Windows；下面的平台判斷邏輯仍保留完整寫法，未來若補回其他平台的執行檔，不需要再改這段邏輯，只要把對應檔案放進 `bin/` 目錄即可生效。）
 
-`go install github.com/tim72117/onagent/backend/cmd/onagent@latest` 現在也能用了（go.mod 的 module path 先前跟實際 repo 位置對不上導致 `go install` 失敗，這個問題已修好）。但即使如此，**優先使用上面內建的執行檔**：不需要本機裝 Go 工具鏈、不需要等編譯、也不依賴網路抓取私有相依套件。全域 PATH 上通常也不會有 `onagent` 指令，所以**不要**直接執行裸指令 `onagent`，而是要先判斷目前所在平台，再直接呼叫 `${CLAUDE_SKILL_DIR}/bin/` 底下對應的執行檔。
+**優先使用上面內建的執行檔**：不需要重新下載、不需要等編譯。全域 PATH 上通常也不會有 `onagent` 指令，所以**不要**直接執行裸指令 `onagent`，而是要先判斷目前所在平台，再直接呼叫 `${CLAUDE_SKILL_DIR}/bin/` 底下對應的執行檔。
+
+**確認 bundled 版本是否過舊**：執行 `${CLAUDE_SKILL_DIR}/bin/onagent-<os>-<arch>[.exe] version` 印出版號（如 `onagent v0.2.7`）。若這個子命令本身不存在（印出 usage 說明、非 0 結束碼），代表 bundled 的是比 v0.2.7 更舊、還沒有 `version` 子命令的版本——這種情況下應主動更新 bundled 執行檔（見下方「更新 bundled 執行檔」），不要繼續沿用。
+
+#### 更新 / 首次取得 bundled 執行檔：優先用 GitHub Release 的官方編譯檔
+
+`https://github.com/tim72117/onagent` 的 Releases 頁面固定提供編譯好的執行檔（`onagent-windows-amd64.zip`、`onagent-darwin-amd64.tar.gz`、`onagent-darwin-arm64.tar.gz`），這是取得/更新 CLI 的**第一優先**方式——比自行 `go install` 或 clone+build 更快、也不依賴本機 Go 工具鏈版本是否相容：
+
+```bash
+# 查最新版號（也可以直接看 https://github.com/tim72117/onagent/releases）
+gh release list --repo tim72117/onagent
+
+# 下載對應平台的壓縮檔到暫存目錄(用 scratchpad,不要下載到 skill bin/ 目錄本身,
+# 解壓縮後再手動複製過去,避免半途失敗留下壞掉的檔案覆蓋掉原本能動的版本)
+gh release download <version> --repo tim72117/onagent --pattern "onagent-windows-amd64.zip" -D <暫存目錄>
+
+# Windows 用 unzip 解壓縮；macOS 平台換成對應的 .tar.gz 用 tar -xzf 解壓縮
+cd <暫存目錄> && unzip -o onagent-windows-amd64.zip
+
+# 驗證新執行檔可以正常執行、版號正確,再覆蓋 bundled 的那份
+<暫存目錄>/onagent-windows-amd64.exe version
+cp <暫存目錄>/onagent-windows-amd64.exe "${CLAUDE_SKILL_DIR}/bin/onagent-windows-amd64.exe"
+```
+
+Linux/macOS 平台目前 `bin/` 底下沒有 bundled 執行檔，同樣優先從 Release 下載對應的 `.tar.gz`（`onagent-darwin-amd64.tar.gz`/`onagent-darwin-arm64.tar.gz`）解壓縮後放進 `${CLAUDE_SKILL_DIR}/bin/onagent-<os>-<arch>`，不要跳過這一步直接走下方的「自行 clone + 編譯」備援方案——Release 二進位檔永遠是第一選擇，只有 Release 頁面剛好沒有涵蓋當下平台時，才退回 `go install`/clone+build。
+
+`go install github.com/tim72117/onagent/backend/cmd/onagent@latest` 目前可能因為 go.mod 的 module path 宣告與實際 import path 不一致而解析失敗（`version constraints conflict` 錯誤）——遇到這個錯誤不需要深究，直接跳到下方「自行 clone + 編譯」備援方案，或優先改用上面的 Release 二進位檔（通常更快且不會遇到這個問題）。
 
 判斷平台的方式：
 
@@ -43,25 +69,25 @@ chmod +x "${CLAUDE_SKILL_DIR}/bin/onagent-linux-amd64"
 
 不要假設 `onagent` 已經加進 PATH，每次呼叫都應該用上述判斷邏輯組出完整路徑直接執行。如果之後在同一個 session 裡要重複呼叫，可以把判斷出來的完整路徑存進一個變數重複使用，但不要省略判斷平台這一步、也不要寫死成單一平台的路徑。
 
-**判斷出來的檔案在 `bin/` 目錄下實際不存在時**（目前只有 `onagent-windows-amd64.exe` 真的存在，判斷出 Linux/macOS 的情況一定會落到這裡），改用下面的「備援方案」，不要嘗試執行一個不存在的檔案。
+**判斷出來的檔案在 `bin/` 目錄下實際不存在時**（目前只有 `onagent-windows-amd64.exe` 真的存在，判斷出 Linux/macOS 的情況一定會落到這裡），先照上方「更新 / 首次取得 bundled 執行檔」的說明從 GitHub Release 下載對應平台的官方編譯檔，只有 Release 頁面剛好沒有涵蓋當下平台時，才用下面的「備援方案」，不要嘗試執行一個不存在的檔案。
 
 #### 備援方案：自行 clone + 編譯
 
-目前只內建 Windows 的執行檔，判斷出其他平台（Linux、macOS，或更少見的 linux/386、linux/arm 等）時都會落到這裡。如果本機已有 Go 工具鏈，最簡單的方式是：
+只有在 GitHub Release 頁面沒有對應平台的編譯檔時才走這裡（見上方「更新 / 首次取得 bundled 執行檔」，Release 二進位檔一律優先）。如果本機已有 Go 工具鏈，可以先試：
 
 ```bash
 go install github.com/tim72117/onagent/backend/cmd/onagent@latest
 ```
 
-沒有 Go 工具鏈的話，才 fallback 用 clone 整個 repo 後在本機用 `go build` 編譯：
+這支指令目前可能因為 go.mod 的 module path 宣告與實際 import path 不一致而失敗（`version constraints conflict` 錯誤，屬已知問題）——遇到就直接跳到下面 clone 整個 repo 後在本機用 `go build` 編譯：
 
 ```bash
 git clone https://github.com/tim72117/onagent.git
-cd agent/backend
-go build -o onagent ./cmd/onagent
+cd onagent/backend
+go build -o onagent.exe ./cmd/onagent
 ```
 
-編譯完成後會在 `backend` 目錄下產生 `onagent`（Windows 上是 `onagent.exe`）執行檔。之後可以用相對路徑（如 `./onagent` 或 `.\onagent.exe`）呼叫，或自行加進 PATH。
+（若本機有多個 Go workspace/`go.work` 檔案導致模組解析錯亂，加上 `GOWORK=off` 環境變數執行 `go build`。）編譯完成後會在 `backend` 目錄下產生 `onagent`（Windows 上是 `onagent.exe`）執行檔。之後可以用相對路徑（如 `./onagent` 或 `.\onagent.exe`）呼叫，或自行加進 PATH，也可以複製進 `${CLAUDE_SKILL_DIR}/bin/` 供下次直接使用。
 
 ### 2. 登入
 
@@ -244,7 +270,7 @@ onagent save-tools <appId> tools.yaml
 
 ## 完整流程總覽
 
-1. 判斷目前平台（`uname -sm` 或 Windows），呼叫 skill 內建的 `${CLAUDE_SKILL_DIR}/bin/onagent-<os>-<arch>[.exe]`；目前只實際內建 Windows，偵測到其他平台就用 `go install`（現在可以用了）或 clone repo 後 `go build` 自行編譯。
+1. 判斷目前平台（`uname -sm` 或 Windows），呼叫 skill 內建的 `${CLAUDE_SKILL_DIR}/bin/onagent-<os>-<arch>[.exe]`，先用 `version` 子命令確認版號沒有過舊；目前只實際內建 Windows，偵測到其他平台、或 bundled 版本過舊時，優先從 GitHub Release 下載對應平台的官方編譯檔，Release 沒有涵蓋的平台才 fallback 用 `go install` 或 clone repo 後 `go build` 自行編譯。
 2. 執行 `onagent login --web`（或無瀏覽器環境用 `onagent login`）登入。
 3. 用 `onagent list-apps` 確認不再出現「not logged in」，驗證登入成功。
 4. 執行 `onagent create-app <appId>` 建立 app（也可以到 console 網頁 https://onagent.shuttle.tools/app 點「+ New app」手動建立，效果相同）。

@@ -176,7 +176,7 @@ Response:
 
 ### ⚠️ `editable` 開關：欄位仍在，但目前是死功能（不再有任何寫入效果）
 
-`public_links` 有一個 `editable` 欄位（`server/internal/store/entity.go` 的 `publicLinkRow`），建立連結時由 request body 的 `editable` 決定（`server/internal/api/public_link.go` 的 `handleCreatePublicLink`），前端對應的 UI 開關在 `web/src/channel/ShareModal.tsx`。已建立的連結也可以事後改這個開關。
+`public_links` 有一個 `editable` 欄位（`server/internal/store/entity.go` 的 `publicLinkRow`），建立連結時由 request body 的 `editable` 決定（`server/internal/api/public_link.go` 的 `handleCreatePublicLink`），前端對應的 UI 開關在 `web/src/trip/TripManageModal.tsx`。已建立的連結也可以事後改這個開關。
 
 - `editable` 欄位、DB 欄位、`POST`/`GET /v1/trips/{id}/public-link` 的讀寫 API 都還在，UI 開關也還能切換、還會被存下來。
 - 但**沒有任何後端路徑會讀這個旗標去做權限判斷**——切成 `editable = true` 不會讓任何人透過公開連結寫入行程，這個開關目前形同虛設。

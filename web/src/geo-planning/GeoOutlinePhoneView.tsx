@@ -48,22 +48,12 @@ export function GeoOutlinePhoneView({
   tripID,
   activeTrip,
   user,
-  active,
   onOpenSettings,
   onOpenTimeline,
   onOpenTrips,
 }: {
   cfg: ClientConfig
   tripID?: string | null
-  // active:是否為目前主畫面顯示的分頁——這個元件現在由呼叫端
-  // (PhoneContent.tsx)永遠掛載,不再隨分頁切換整個卸載重掛(使用者回報
-  // 「規劃地圖第一次開啟會閃動」,根因是切分頁時整個 GeoOutlinePhoneView
-  // 被銷毀重建,Google Maps SDK 每次都要重新跑一次建圖流程)。active 為
-  // false 時只用 CSS(display:none)隱藏,元件本身、內部 state、地圖
-  // 實例全部維持存活,切回來時不需要重新初始化——對齊桌面版
-  // GeoOutlinePanel 永遠掛載、只用浮動卡片疊加其他內容的既有模式(見
-  // DesktopLayout.tsx 的說明)。
-  active: boolean
   // activeTrip:判斷使用者是否已選定旅程——為空時「加入行程」按下要先
   // 導向旅程列表(見下方 onOpenTrips),理由同桌面版 DesktopLayout.tsx
   // 的 pendingSchedule 機制。
@@ -106,6 +96,14 @@ export function GeoOutlinePhoneView({
   // useGeoPlanningState 統一管理,不再需要這個元件自己持有 geoHotels/
   // geoPlaces/geoGeocodeCandidates 三組 state。
   const [listDrawerOpen, setListDrawerOpen] = useState(false)
+  // listSearchLoading:搜尋觸發後、查詢結果還沒回來前的載入中狀態——
+  // 使用者明確要求「搜尋時要先開啟地點清單並顯示載入中」,不用等查到
+  // 結果才開啟清單抽屜。搜尋觸發時(下方 GeoOutlinePanel 的 onSearch)
+  // 同時開啟抽屜跟設 true,結果透過 onSearchResultsChange 回來時
+  // (不論查到多少筆,含 0 筆)一律設回 false——查詢本身是非同步的
+  // Google Places API 呼叫,由 GeoOutlineMap/GeoOutlinePanel 內部處理,
+  // 這裡不重複實作查詢邏輯,只是在既有的資料回呼上多接一個旗標。
+  const [listSearchLoading, setListSearchLoading] = useState(false)
   // handleAddCandidateAndReveal:資訊卡「加入候選」按鈕(候選已有排定
   // 日期,直接加入)成功後順便打開候選籃抽屜給使用者看——手機版沒有
   // 桌面版「側欄本來就常駐展開」的前提(側欄本身可收合,見
@@ -120,7 +118,7 @@ export function GeoOutlinePhoneView({
   }, [geo])
 
   return (
-    <div className={`${styles.wrap}${active ? '' : ` ${styles.inactive}`}`}>
+    <div className={styles.wrap}>
       <div className={styles.candidateGroup}>
         <button
           type="button"
@@ -157,9 +155,13 @@ export function GeoOutlinePhoneView({
         onCityChange={setSearchCity}
         onSearch={() => {
           // 重新搜尋時清空目前選取的地點,關閉正在顯示的地點介紹卡——
-          // 理由同 DesktopLayout.tsx 對應的 onSearch 說明。
+          // 理由同 DesktopLayout.tsx 對應的 onSearch 說明。搜尋觸發的
+          // 同一刻就開啟地點清單抽屜並進入載入中狀態(見上方
+          // listSearchLoading 的說明),不用等查詢結果回來才開啟。
           geo.clearSelection()
           setSearchTrigger((n) => n + 1)
+          setListDrawerOpen(true)
+          setListSearchLoading(true)
         }}
         searchTrigger={searchTrigger}
         showZoomControl={false}
@@ -169,7 +171,12 @@ export function GeoOutlinePhoneView({
           </button>
         }
         refetchTripEntriesTrigger={geo.refetchTripEntriesTrigger}
-        onSearchResultsChange={geo.setSearchResults}
+        onSearchResultsChange={(results) => {
+          // 查詢結果回來時(不論查到多少筆,含 0 筆)結束載入中狀態——見
+          // 上方 listSearchLoading 的說明。
+          geo.setSearchResults(results)
+          setListSearchLoading(false)
+        }}
         externalGeocodeCandidateSelect={geo.searchResultSelect}
         onTripEntriesChange={geo.onTripEntriesChange}
         onAttractionSelect={geo.selectAttraction}
@@ -216,6 +223,7 @@ export function GeoOutlinePhoneView({
         tripID={tripID}
         open={listDrawerOpen}
         onClose={() => setListDrawerOpen(false)}
+        loading={listSearchLoading}
         results={geo.searchResults}
         selectedKey={geo.selectedKey}
         candidateKeys={geo.candidateKeys}
