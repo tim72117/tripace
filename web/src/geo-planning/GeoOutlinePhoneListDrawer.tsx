@@ -34,19 +34,22 @@ import styles from './GeoOutlinePhoneListDrawer.module.css'
 // GeoOutlinePhoneView.tsx 中介觸發移動地圖、同步 selectedKey 高亮對應
 // marker,並開啟資訊卡(複用既有的 GeoOutlinePhoneInfoSheet,不在這個
 // 抽屜內部重複刻一份資訊卡 UI)。
-// SHEET_MIN_HEIGHT/SHEET_SNAP_POINTS:這個抽屜專屬的兩段式吸附——跟
+// SHEET_MIN_HEIGHT/SHEET_SNAP_POINTS:這個抽屜專屬的三段式吸附(使用者
+// 明確要求「地點清單改成三層」,原本只有收合+一個展開段共兩層)——跟
 // GeoOutlinePhoneInfoSheet.tsx 的三段式是各自獨立的段落組合,共用容器
 // components/PhoneBottomSheet.tsx 本身就是為了讓不同呼叫端各自帶一組
 // 段落參數而設計,不是全站共用同一組段落(見該元件的說明)。
 // SHEET_MIN_HEIGHT:收合狀態的固定高度,只顯示標頭(標題+關閉鈕)——
 // 理由同 GeoOutlinePhoneInfoSheet.tsx 的 SHEET_MIN_HEIGHT。TODO(使用者
 // 稍後決定合理數值):暫時估算。
-// SHEET_SNAP_POINTS:
-// [0] 展開狀態:可看清單內容,不額外加中間段——這個清單本身內容都是
-//     同一種高度的項目,不像資訊卡有圖片/簡介需要中繼高度過渡。TODO
-//     (使用者稍後決定合理數值):暫時估算。
+// SHEET_SNAP_POINTS(由大到小排序,數值越小展開越多):
+// [0] 中間狀態:可看清單內容,離頂部距離比照
+//     GeoOutlinePhoneInfoSheet.tsx 三段式的中間值。TODO(使用者稍後
+//     決定合理數值):暫時估算。
+// [1] 滿版狀態:離頂部距離比照 GeoOutlinePhoneInfoSheet.tsx 三段式的
+//     滿版值。TODO(使用者稍後決定合理數值):暫時估算。
 const SHEET_MIN_HEIGHT = 100
-const SHEET_SNAP_POINTS = [200]
+const SHEET_SNAP_POINTS = [400, 80]
 
 function ItemAddButton({
   cfg,
