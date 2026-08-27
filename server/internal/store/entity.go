@@ -9,8 +9,9 @@ type userRow struct {
 	ID           string  `gorm:"primaryKey;column:id"`
 	Name         string  `gorm:"column:name;not null"`
 	AvatarColor  string  `gorm:"column:avatar_color;not null"`
-	AppleSub     *string `gorm:"column:apple_sub;uniqueIndex"` // 可為 NULL
-	Email        *string `gorm:"column:email;uniqueIndex"`     // 可為 NULL
+	AppleSub     *string `gorm:"column:apple_sub;uniqueIndex"`  // 可為 NULL
+	GoogleSub    *string `gorm:"column:google_sub;uniqueIndex"` // 可為 NULL
+	Email        *string `gorm:"column:email;uniqueIndex"`      // 可為 NULL
 	PasswordHash *string `gorm:"column:password_hash"`         // 可為 NULL
 
 	// 多對多:此使用者參與的行程(透過 members 中介表)。

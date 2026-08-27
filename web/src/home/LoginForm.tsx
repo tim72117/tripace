@@ -5,7 +5,19 @@ import type { ClientConfig } from '../api'
 import * as api from '../api'
 import type { User } from '../user/types'
 import { ErrorBanner, errMsg, isSubmitEnter } from '../AppCommon'
+import { useGoogleSignIn } from '../hooks/useGoogleSignIn'
+import { Button } from '../components/Button'
+import { FormField } from '../components/FormField'
 import './LoginForm.css'
+
+// build time 注入的 Google OAuth Client ID(GSI 模式,見 useGoogleSignIn.ts
+// 開頭的完整背景說明)。未設定時整個 Google 登入按鈕不會渲染——這是
+// tripace 選擇的優雅降級方式:直接讓前端檢查自己的 build-time 環境變數
+// 決定要不要顯示按鈕,不需要額外打一支 /auth/config 之類的 API 才能知道
+// (這個值本來就是 build time 決定、不會在執行期間變動)。
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID as
+  | string
+  | undefined
 
 // LoginForm.tsx——從 AppCommon.tsx 拆出來的登入相關元件(LoginCard/
 // LoginForm),原本跟 useIsDesktop/useTripsState 等完全不相關的工具擠在
@@ -107,9 +119,26 @@ export function LoginForm({
     }
   }
 
+  // Google 登入(GSI 模式):按鈕由 Google 官方 SDK 渲染,成功時直接拿到
+  // credential(ID Token),送給後端驗證換自家 token,回呼跟帳密登入共用
+  // 同一個 onAuthed。busy 沿用同一個旗標避免使用者在請求進行中重複點擊
+  // (帳密表單的輸入框/按鈕與 Google 按鈕共用同一個忙碌狀態的體感)。
+  const { buttonRef: googleButtonRef, error: googleErr } = useGoogleSignIn(
+    GOOGLE_CLIENT_ID,
+    (credential) => {
+      setErr(null)
+      setBusy(true)
+      api
+        .signInWithGoogle(cfg, credential)
+        .then((res) => onAuthed(res.token, res.user, res.profile.email))
+        .catch((e) => setErr(errMsg(e)))
+        .finally(() => setBusy(false))
+    },
+  )
+
   return (
     <div className={pill ? 'login-form pill' : 'login-form'}>
-      <div className="field">
+      <FormField>
         <input
           value={email}
           type="email"
@@ -117,8 +146,8 @@ export function LoginForm({
           onChange={(e) => setEmail(e.target.value)}
           placeholder="輸入你的 Email"
         />
-      </div>
-      <div className="field">
+      </FormField>
+      <FormField>
         <input
           type="password"
           value={password}
@@ -127,25 +156,39 @@ export function LoginForm({
           onKeyDown={(e) => isSubmitEnter(e) && submit()}
           placeholder="輸入密碼"
         />
-      </div>
+      </FormField>
       {mode === 'register' && (
-        <div className="field">
+        <FormField>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="顯示名稱(可選,留空則用 email)"
           />
-        </div>
+        </FormField>
       )}
       <ErrorBanner msg={err} />
       <div className="login-form-actions">
-        <button
-          className="btn-primary"
+        <Button
+          variant="primary"
           onClick={submit}
           disabled={busy || !email.trim() || !password}
         >
           {busy ? '處理中…' : mode === 'login' ? '登入' : '註冊並登入'}
-        </button>
+        </Button>
+        {/* GOOGLE_CLIENT_ID 未設定(VITE_GOOGLE_OAUTH_CLIENT_ID 沒填)時
+            完全不渲染這一整塊——不顯示壞掉的按鈕,也不留一段空白的分隔線,
+            對齊 useGoogleSignIn 開頭說明的優雅降級原則。googleErr 只在
+            SDK 載入/初始化本身失敗時才會有值(例如網路擋掉
+            accounts.google.com),同樣直接不渲染按鈕區塊,不額外顯示
+            一則多餘的錯誤訊息干擾主要的帳密登入流程。 */}
+        {GOOGLE_CLIENT_ID && !googleErr && (
+          <>
+            <div className="login-form-divider">
+              <span>或</span>
+            </div>
+            <div className="login-form-google" ref={googleButtonRef} />
+          </>
+        )}
         <div className="login-form-switch">
           <span className="login-form-switch-hint">
             {mode === 'login' ? '還沒有帳號?' : '已有帳號?'}

@@ -207,6 +207,41 @@
   color: #8B3A2F; /* HomePage.css 的 --vermilion */
 }
 
+/* Google 登入分隔線(「或」)+ 按鈕容器——夾在帳密表單的送出按鈕與切換
+   登入/註冊連結之間,見 LoginForm.tsx 的說明:只有設定
+   VITE_GOOGLE_OAUTH_CLIENT_ID 時才會渲染這整塊。 */
+.login-form-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0;
+  font-size: 12px;
+  color: var(--ios-gray);
+}
+.login-form-divider::before,
+.login-form-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--ios-sep);
+}
+.login-form.pill .login-form-divider {
+  color: #5A5148; /* HomePage.css 的 --ink-soft */
+}
+.login-form.pill .login-form-divider::before,
+.login-form.pill .login-form-divider::after {
+  background: #E4DCCB; /* HomePage.css 的 --line */
+}
+/* Google 官方按鈕(google.accounts.id.renderButton)渲染進這個容器——
+   置中顯示,寬度跟隨表單其餘欄位,不強制撐滿(官方按鈕有自己的最小/
+   最大寬度限制)。SDK 載入完成前這裡是空的,不預留固定高度,避免載入
+   前後版面跳動的問題比保留空間更明顯(這顆按鈕只在有 client id 時才會
+   出現,首次渲染到 SDK 就緒的間隔通常很短)。 */
+.login-form-google {
+  display: flex;
+  justify-content: center;
+}
+
 /* 表單底部同意條款——改成一行短文字+連到 /terms 的連結,取代原本一整段
    逐條列出的免責聲明(內容跟 /terms 頁面重複,又在乾淨的表單裡顯得雜亂),
    不再需要套用 .field 的膠囊底色/邊框,單純一行置中小字。 */

@@ -191,6 +191,14 @@ export function signInWithApple(
   })
 }
 
+// Google 登入(GSI 模式):idToken 是 Google Identity Services 官方
+// renderButton 成功回呼拿到的 credential 字串(一個 Google 簽發的 ID
+// Token/JWT)。後端驗證簽章/audience/issuer/過期時間後,回傳格式與其他
+// 登入方式一致的 { token, user, profile }。
+export function signInWithGoogle(cfg: ClientConfig, idToken: string) {
+  return request<AuthResponse>(cfg, 'POST', '/v1/auth/google', { idToken })
+}
+
 // 帳密登入:回傳 { token, user }。
 export function login(cfg: ClientConfig, email: string, password: string) {
   return request<AuthResponse>(cfg, 'POST', '/v1/auth/login', { email, password })

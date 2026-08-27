@@ -17,7 +17,7 @@ func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	st := store.OpenTest(t)
 	signer := auth.NewSigner("test-secret", time.Hour)
-	return New(st, signer, true)
+	return New(st, signer, true, "test-google-client-id")
 }
 
 // TestUserFromToken_DeletedUser 重現一個真實發生過的問題:JWT 簽章有效,

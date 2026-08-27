@@ -28,6 +28,10 @@ type Server struct {
 	hub    *Hub
 	// devMode:Apple token 不驗簽章(原型用)。
 	devMode bool
+	// googleClientID:Google OAuth Client ID,GET /v1/auth/google 驗證
+	// ID Token 的 audience 用(見 auth.VerifyGoogleToken)。空字串代表
+	// Google 登入功能未設定,handleGoogleAuth 一律回錯誤(見該 handler)。
+	googleClientID string
 	// 未登入時的預設使用者(維持可跳過登入的體驗)。
 	guestUser model.User
 
@@ -46,7 +50,7 @@ type Server struct {
 	photoUploader *photostorage.Uploader
 }
 
-func New(st *store.Store, signer *auth.Signer, devMode bool) *Server {
+func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID string) *Server {
 	uploader, err := photostorage.New(context.Background(), os.Getenv("GCS_PHOTO_BUCKET"))
 	if err != nil {
 		// 建立 GCS client 失敗(通常是本機沒有可用的 Application Default
@@ -57,13 +61,14 @@ func New(st *store.Store, signer *auth.Signer, devMode bool) *Server {
 		uploader = &photostorage.Uploader{}
 	}
 	return &Server{
-		store:         st,
-		signer:        signer,
-		hub:           newHub(),
-		devMode:       devMode,
-		guestUser:     model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
-		photoCache:    storePhotoCache{store: st},
-		photoUploader: uploader,
+		store:          st,
+		signer:         signer,
+		hub:            newHub(),
+		devMode:        devMode,
+		googleClientID: googleClientID,
+		guestUser:      model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
+		photoCache:     storePhotoCache{store: st},
+		photoUploader:  uploader,
 	}
 }
 
@@ -174,6 +179,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /onagent/geocode", onagenttools.HandleGeocode)
 
 	mux.HandleFunc("POST /v1/auth/apple", s.handleAppleAuth)
+	mux.HandleFunc("POST /v1/auth/google", s.handleGoogleAuth)
 	mux.HandleFunc("POST /v1/auth/register", s.handleRegister)
 	mux.HandleFunc("POST /v1/auth/login", s.handleLogin)
 	mux.HandleFunc("GET /v1/me", s.handleMe)

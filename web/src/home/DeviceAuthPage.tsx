@@ -3,6 +3,8 @@ import * as api from '../api'
 import { ApiError } from '../api'
 import { ErrorBanner, errMsg } from '../AppCommon'
 import { useAppState } from '../hooks/useAppState'
+import { Button } from '../components/Button'
+import { FormField } from '../components/FormField'
 import { LoginForm, LoginCard } from './LoginForm'
 
 type Status = 'entry' | 'checking' | 'ready' | 'approving' | 'approved' | 'error'
@@ -83,7 +85,7 @@ export function DeviceAuthPage() {
             if (userCode.trim()) lookupName(userCode.trim())
           }}
         >
-          <div className="field">
+          <FormField>
             <input
               type="text"
               value={userCode}
@@ -91,12 +93,12 @@ export function DeviceAuthPage() {
               placeholder="XXXX-XXXX"
               autoFocus
             />
-          </div>
+          </FormField>
           <ErrorBanner msg={error} />
           <div className="login-form-actions">
-            <button type="submit" className="btn-primary" disabled={!userCode.trim()}>
+            <Button type="submit" variant="primary" disabled={!userCode.trim()}>
               查詢
-            </button>
+            </Button>
           </div>
         </form>
       </LoginCard>
@@ -131,14 +133,13 @@ export function DeviceAuthPage() {
       subtitle={<><strong>{cliName}</strong> 想要以 <strong>{user.name}</strong> 的身分登入。</>}
     >
       <ErrorBanner msg={error} />
-      <button
-        type="button"
-        className="btn-primary"
+      <Button
+        variant="primary"
         disabled={status === 'approving'}
         onClick={approve}
       >
         {status === 'approving' ? '核准中…' : '核准登入'}
-      </button>
+      </Button>
     </LoginCard>
   )
 }

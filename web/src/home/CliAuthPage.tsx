@@ -3,6 +3,7 @@ import * as api from '../api'
 import { ApiError } from '../api'
 import { ErrorBanner, errMsg } from '../AppCommon'
 import { useAppState } from '../hooks/useAppState'
+import { Button } from '../components/Button'
 import { LoginForm, LoginCard } from './LoginForm'
 
 type Status = 'checking' | 'ready' | 'approving' | 'approved' | 'error'
@@ -102,14 +103,13 @@ export function CliAuthPage() {
       subtitle={<><strong>{cliName}</strong> 想要以 <strong>{user.name}</strong> 的身分登入。</>}
     >
       <ErrorBanner msg={error} />
-      <button
-        type="button"
-        className="btn-primary"
+      <Button
+        variant="primary"
         disabled={status === 'approving'}
         onClick={approve}
       >
         {status === 'approving' ? '核准中…' : '核准登入'}
-      </button>
+      </Button>
     </LoginCard>
   )
 }

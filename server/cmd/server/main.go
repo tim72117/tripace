@@ -58,6 +58,12 @@ func main() {
 	// GOOGLE_PLACES_FETCH_PHOTOS 環境變數開啟。關閉時飯店/景點/POI 查詢
 	// 仍正常運作,只是拿不到照片(降級,不是整體失敗)。
 	geoFetchPhotos := flag.Bool("geo-fetch-photos", false, "是否向 Google Photo Media API 下載照片(依張數計費,預設關閉)")
+	// googleClientID:Google 登入(GSI 模式)驗證 ID Token 用的 OAuth Client
+	// ID,見 auth.VerifyGoogleToken 的 audience 檢查。留空代表 Google 登入
+	// 功能未設定,POST /v1/auth/google 會一律回 401(見該 handler)。這裡
+	// 沒有對應的 flag(只走環境變數),理由同這個功能的定位:純粹是
+	// 部署環境設定,不需要本機開發時用 flag 覆寫。
+	googleClientID := os.Getenv("GOOGLE_OAUTH_CLIENT_ID")
 	flag.Parse()
 
 	// Cloud Run 等托管環境只方便傳環境變數(不方便改 ENTRYPOINT 傳 flag),
@@ -128,8 +134,12 @@ func main() {
 		}
 	}
 
+	if googleClientID == "" {
+		log.Printf("GOOGLE_OAUTH_CLIENT_ID 未設定,Google 登入功能停用(POST /v1/auth/google 一律回 401)")
+	}
+
 	signer := auth.NewSigner(*jwtSecret, 30*24*time.Hour)
-	srv := api.New(st, signer, *devMode)
+	srv := api.New(st, signer, *devMode, googleClientID)
 
 	dbKind := "sqlite:" + dsn
 	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {

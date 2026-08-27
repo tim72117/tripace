@@ -3,10 +3,12 @@ module github.com/tim72117/tripace
 go 1.26.3
 
 require (
+	cloud.google.com/go/storage v1.64.0
 	github.com/glebarez/sqlite v1.11.0
 	github.com/joho/godotenv v1.5.1
 	github.com/olebedev/when v1.1.0
 	golang.org/x/crypto v0.53.0
+	google.golang.org/api v0.287.1
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
 	nhooyr.io/websocket v1.8.17
@@ -20,7 +22,6 @@ require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	cloud.google.com/go/iam v1.11.0 // indirect
 	cloud.google.com/go/monitoring v1.29.0 // indirect
-	cloud.google.com/go/storage v1.64.0 // indirect
 	github.com/AlekSi/pointer v1.0.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.32.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.57.0 // indirect
@@ -66,7 +67,6 @@ require (
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	google.golang.org/api v0.287.1 // indirect
 	google.golang.org/genproto v0.0.0-20260519071638-aa98bba5eb94 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260630182238-925bb5da69e7 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260630182238-925bb5da69e7 // indirect

@@ -77,6 +77,71 @@ func (s *Server) handleAppleAuth(w http.ResponseWriter, r *http.Request) {
 	s.issueToken(w, user, identity.Email)
 }
 
+// POST /v1/auth/google
+// Body: { "idToken": "..." } — idToken 是 Google Identity Services
+// (前端 renderButton 成功回呼)拿到的 credential 字串,本質是一個
+// Google 簽發的 ID Token(JWT)。
+// 驗證 Google ID Token(簽章/audience/issuer/過期時間,見
+// auth.VerifyGoogleToken)→ 依 google_sub 查/建使用者 → 簽自家 JWT 回傳。
+// 與 handleAppleAuth 結構一致,差別在多了「email 已存在時關聯既有帳號」
+// 這一步(見下方註解與 store.LinkGoogleSubByEmail 的完整說明)。
+func (s *Server) handleGoogleAuth(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDToken string `json:"idToken"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if body.IDToken == "" {
+		writeErr(w, http.StatusBadRequest, "missing_token", "idToken 不可為空")
+		return
+	}
+
+	identity, err := auth.VerifyGoogleToken(r.Context(), body.IDToken, s.googleClientID)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "google_verify_failed", err.Error())
+		return
+	}
+
+	// 身分查詢一律用 sub(穩定、不會變動),不是 email(見
+	// auth.GoogleIdentity 的說明)。
+	user, err := s.store.FindUserByGoogleSub(identity.Sub)
+	if errors.Is(err, store.ErrNotFound) {
+		// google_sub 沒對應到任何使用者——若該 email 已通過 Google 驗證
+		// (email_verified)且已存在於 users 表(不論原本是帳密使用者或
+		// Apple 使用者),把這個 Google identity 關聯到既有帳號,而不是
+		// 报错或建立重複帳號(見 store.LinkGoogleSubByEmail 開頭的完整
+		// 說明,含這裡為何一定要先檢查 EmailVerified 才能合併)。
+		linked := false
+		if identity.EmailVerified && identity.Email != "" {
+			user, err = s.store.LinkGoogleSubByEmail(identity.Email, identity.Sub)
+			switch {
+			case err == nil:
+				linked = true
+			case errors.Is(err, store.ErrNotFound):
+				// 該 email 不存在既有帳號,落到下方建立新使用者。
+				err = nil
+			default:
+				writeErr(w, http.StatusInternalServerError, "user_failed", err.Error())
+				return
+			}
+		}
+		if !linked {
+			name := identity.Name
+			if name == "" {
+				name = "Google 使用者"
+			}
+			user, err = s.store.CreateGoogleUser("usr_"+newID(), name, "#8C7B6A", identity.Sub)
+		}
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "user_failed", err.Error())
+		return
+	}
+
+	s.issueToken(w, user, identity.Email)
+}
+
 // POST /v1/auth/register
 // Body: { "email", "password", "name" }
 // 建立帳密使用者 → 簽自家 JWT 回傳(註冊即登入)。
