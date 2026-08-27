@@ -30,15 +30,3 @@
   display: flex;
   flex-direction: column;
 }
-
-/* chatSlot:對話(ChatScreen)投影(React Portal)進主顯示區時的目標容器
-   ——見 PhoneContent.tsx 的 chatElement/chatPortalTarget 說明。flex 屬性
-   延續 ChatScreen 原本直接掛在 .mainArea 底下時的版面(它自己內部是
-   navbar/內容/輸入列三個 flex column 子項,需要父層也是 flex column 才能
-   正確撐滿高度)。 */
-.chatSlot {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}

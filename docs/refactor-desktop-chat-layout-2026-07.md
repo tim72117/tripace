@@ -1,5 +1,7 @@
 # 桌面版佈局改版規劃:對話為主體、時間軸抽屜化
 
+> **已過時**:本文件規劃的方向（對話常駐主區、時間軸移到 side panel）與現況不符——桌面版後續又經過至少一次方向逆轉,現況是**規劃地圖（`GeoOutlinePanel`）固定顯示於主區**,對話（`ChatScreen`）改為透過地圖右上角 AI 按鈕觸發的**浮動小匡**（見 `docs/terminology.md` 桌面版版面一節、`web/src/DesktopLayout.tsx` 的 `chat-popover`），不是常駐主體；旅程列表/時間軸/配速表/行程皆為疊在主區之上的浮動卡片（`FloatingPanel`），不是本文件規劃的可收合 side panel。保留本文件作歷史規劃脈絡參考,不代表現況。
+>
 > 2026-07-20 規劃。範圍:**僅正式產品桌面版**(`/app`,寬度 ≥768px 的 `DesktopContent` 分支),手機版佈局完全不動。已定案的設計決策:切換按鈕採**左側直立功能列 icon rail**(VSCode / Slack 模式)。實作交給 subagent 執行,本文件是實作的依據。
 
 ## 一、目標

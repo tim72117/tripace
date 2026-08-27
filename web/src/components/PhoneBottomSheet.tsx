@@ -141,6 +141,20 @@ export interface PhoneBottomSheetProps {
   // 就是後者),這個元件本身不規定任何一種流程。省略則不顯示,body 照常
   // 渲染 children(預設行為不變)。
   loading?: boolean
+  // keepMounted:true 時 shouldRender 恆為 true,不論 open 值為何,不走
+  // exitDurationMs 那套「延遲一段時間後才卸載」的邏輯——children 永遠
+  // 留在 DOM 上,open 變 false 只用 translateY 位移到畫面外隱藏,不會被
+  // React 拔掉。用於呼叫端把某個需要維持連線/內部 state 的元件(例如
+  // ChatScreen,要避免每次開關對話都重新連線 WebSocket)直接放進
+  // children 的情境——這樣不需要額外透過 React Portal 把該元件從別處
+  // 投影進來(見 PhoneContent.tsx 對話疊加層原本的 mainChatSlotNode/
+  // createPortal 設計),避免 portal 內容在 React 元件樹上跟這個元件是
+  // 平行兄弟節點、導致觸控事件無法沿 React 樹冒泡到這裡的
+  // onTouchStart/onTouchMove/onTouchEnd(使用者實測回報「對話疊加層只有
+  // 標頭能拖,內容區完全拖不動」,地點清單/時間軸同樣結構但內容直接是
+  // children、沒有這個問題,兩相對照後確認的根因)。與 exitDurationMs
+  // 互斥,同時給的話 keepMounted 優先。預設 false,不影響既有呼叫端。
+  keepMounted?: boolean
 }
 
 export function PhoneBottomSheet({
@@ -158,6 +172,7 @@ export function PhoneBottomSheet({
   panelClassName,
   exitDurationMs,
   loading = false,
+  keepMounted = false,
 }: PhoneBottomSheetProps) {
   // shouldRender/lastContent:延遲卸載——呼叫端(如
   // GeoOutlinePhoneInfoSheet.tsx)常常是「資料來源本身決定要不要渲染」
@@ -188,8 +203,8 @@ export function PhoneBottomSheet({
   // 滑出動畫正常,滑入完全沒有」,改成容器一直掛載的呼叫端獨有)。改成
   // render 階段同步判斷後,不論呼叫端用哪種掛載方式,open 變 true 的那一次
   // render 就已經是 shouldRender: true,不再有跨渲染輪次的落差。
-  const [shouldRender, setShouldRender] = useState(open)
-  if (open && !shouldRender) {
+  const [shouldRender, setShouldRender] = useState(open || keepMounted)
+  if ((open || keepMounted) && !shouldRender) {
     setShouldRender(true)
   }
   const lastContentRef = useRef<{ head?: ReactNode; children: ReactNode }>({ head, children })
@@ -197,16 +212,21 @@ export function PhoneBottomSheet({
     lastContentRef.current = { head, children }
   }
   useEffect(() => {
-    if (open) return
+    if (keepMounted || open) return
     if (!exitDurationMs) {
       setShouldRender(false)
       return
     }
     const timer = setTimeout(() => setShouldRender(false), exitDurationMs)
     return () => clearTimeout(timer)
-  }, [open, exitDurationMs])
-  const renderedHead = open ? head : lastContentRef.current.head
-  const renderedChildren = open ? children : lastContentRef.current.children
+  }, [open, exitDurationMs, keepMounted])
+  // keepMounted 時 renderedChildren/renderedHead 恆讀取即時的 props,不用
+  // lastContentRef 快照——children 從不因為 open 變化而被拔除,呼叫端
+  // (例如永遠掛載 ChatScreen 的對話疊加層)本身就會持續傳入同一份即時
+  // 內容,不需要快照機制(那是給「open 變 false 時呼叫端已經清空資料」
+  // 的情境設計的,keepMounted 情境不適用)。
+  const renderedHead = keepMounted || open ? head : lastContentRef.current.head
+  const renderedChildren = keepMounted || open ? children : lastContentRef.current.children
 
   // stops:合併 minHeightPx(若有)與 snapPoints 成單一「離頂部距離 px」
   // 陣列,由大到小排序(索引 0 展開最少、最後一項展開最多)——內部拖曳/

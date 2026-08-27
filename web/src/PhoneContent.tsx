@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { Route, Radio, MessageSquareText } from 'lucide-react'
 import { ChatScreen, type DesktopTimelineMirror } from './chat/ChatScreen'
 import { type ContentProps } from './AppCommon'
@@ -15,7 +14,7 @@ import type { Checkpoint } from './pace/PaceChart'
 import { GeoOutlinePhoneView } from './geo-planning/GeoOutlinePhoneView'
 import { PhoneTripsDrawer } from './trip/PhoneTripsDrawer'
 import { PhoneTimelineDrawer } from './timeline/PhoneTimelineDrawer'
-import { PhoneBottomSheet, SheetHead, PHONE_BOTTOM_SHEET_EXIT_MS } from './components/PhoneBottomSheet'
+import { PhoneBottomSheet, SheetHead } from './components/PhoneBottomSheet'
 import { PhoneTabBar } from './PhoneTabBar'
 import { PhoneSideTools } from './PhoneSideTools'
 import type { Trip } from './trip/types'
@@ -41,6 +40,14 @@ const SETTINGS_SHEET_TOP = 200
 // 對話/配速表 bottom sheet 的離頂部距離(px)——比設定頁/地點清單更高
 // (數值更小),理由見下方對話 PhoneBottomSheet 呼叫處的說明。
 const CHAT_SHEET_TOP = 60
+// CHAT_SHEET_MIN_HEIGHT:對話疊加層收合段的固定高度(px)——使用者明確
+// 要求「對話也要可縮到最底」,比照地點清單/地點資訊卡,新增可拖曳收合到
+// 只顯示標頭的最小段,不再只能整個滑出關閉。理由/算法見
+// components/PhoneBottomSheet.tsx 的 minHeightPx 說明。配速表疊加層不
+// 套用(維持單段,見下方 paceSheetOpen 的 PhoneBottomSheet 呼叫處)——
+// 配速表是地圖類內容,收合成只剩標頭列的用途不大,使用者這次明確只提到
+// 「對話」。
+const CHAT_SHEET_MIN_HEIGHT = 100
 
 // PhoneContent:手機版(寬度 < 768px)主要應用狀態切換器——登入畫面/桌面版
 // 導轉/聊天室/設定,見 App.tsx App() 的 /app 路由分支。
@@ -90,34 +97,14 @@ export function PhoneContent(props: ContentProps) {
   // 桌面版使用,見 App.tsx)。
   const [chatSheetOpen, setChatSheetOpen] = useState(false)
   const [paceSheetOpen, setPaceSheetOpen] = useState(false)
-  // chatSheetSettled:投影目標 div(mainChatSlotNode)是否可以掛載——不是
-  // chatSheetOpen 一變 true 就立刻掛載,而是延後到 PhoneBottomSheet 的
-  // 滑入動畫確定播完之後。根因:<div ref={setMainChatSlotNode} .../>
-  // 掛載後的 ref callback 會觸發 setMainChatSlotNode 這個 state 更新,
-  // 這次更新如果跟 chatSheetOpen 變 true 落在同一個瀏覽器繪製週期內,
-  // 會跟 PhoneBottomSheet 內部 entered 進場動畫的 requestAnimationFrame
-  // 排程互相競爭——瀏覽器/React 可能把「entered 還是 false、面板該在
-  // 畫面外」那一幀直接跳過,只繪製出最終合成結果,使用者因此看到「面板
-  // 瞬間出現在最終位置,只剩 transform 的一小段尾巴動畫」而非完整的滑入
-  // 過程(使用者實測回報「對話滑出來時有問題」,且直接把投影換成一個
-  // 不會觸發 ref callback 的靜態測試 div 後滑入動畫立刻恢復正常,確認
-  // 問題就在這個 ref callback 的時序)。曾經試過 setTimeout(0)、兩層
-  // requestAnimationFrame,使用者實測仍偶發同樣問題——setTimeout 與
-  // requestAnimationFrame 的相對執行順序瀏覽器不保證,RAF 層數也只是
-  // 「大機率晚於某一幀」而非可靠的時間保證。改用 setTimeout 搭配
-  // PHONE_BOTTOM_SHEET_EXIT_MS(跟 PhoneBottomSheet.tsx 的
-  // SHEET_DURATION CSS transition 時長對齊)——實測用遠超過這個時長的
-  // 500ms 驗證過確實是這個時序問題,拉長延遲後滑入動畫正常;改用跟
-  // 動畫時長本身對齊的這個常數,而非隨意選的數字,確保投影掛載動作
-  // 落在整個滑入動畫播完之後,不再有任何時序上的僥倖。
-  const [chatSheetSettled, setChatSheetSettled] = useState(false)
+  // chatSnapIndex:對話疊加層自己的吸附段落狀態——使用者明確要求「對話
+  // 也要可縮到最底」,比照地點清單/地點資訊卡(GeoOutlinePhoneListDrawer.tsx/
+  // GeoOutlinePhoneInfoSheet.tsx 的同名 state),索引 0 是收合段
+  // (CHAT_SHEET_MIN_HEIGHT),索引 1 是展開段(CHAT_SHEET_TOP)。初始為
+  // 展開,每次重新開啟都重設回展開,不延續上次被拖曳收合的狀態。
+  const [chatSnapIndex, setChatSnapIndex] = useState(1)
   useEffect(() => {
-    if (!chatSheetOpen) {
-      setChatSheetSettled(false)
-      return
-    }
-    const timer = setTimeout(() => setChatSheetSettled(true), PHONE_BOTTOM_SHEET_EXIT_MS)
-    return () => clearTimeout(timer)
+    if (chatSheetOpen) setChatSnapIndex(1)
   }, [chatSheetOpen])
   // onOpenTrips:底部常駐列「旅程」按鈕——開啟獨立的旅程抽屜
   // (PhoneTripsDrawer.tsx),已開啟時再點一次視為收合(toggle)。
@@ -171,23 +158,6 @@ export function PhoneContent(props: ContentProps) {
   // PaceRouteMap 的 onEntrySaved 呼叫。
   const [_savedEntry, setSavedEntry] = useState<{ id: string; lat: number; lng: number } | null>(null)
 
-  // ChatScreen 只在這裡掛載「一次」(下方 chatElement),不會因為
-  // drawerMode 切換而重新掛載/重新連線 WebSocket——用 React Portal 把它的
-  // 畫面投影到主顯示區的容器。時間軸原本是另一個投影目標(timelineSlotNode,
-  // 對話與時間軸顯示位置對調),已隨「時間軸不用獨立路由」(改成規劃地圖
-  // 專屬的 bottom sheet,見 timeline/PhoneTimelineDrawer.tsx)拿掉——時間軸
-  // sheet 只顯示 timelineMirror 唯讀清單,不含 ChatScreen 的對話輸入列,
-  // 不需要再投影對話畫面進去。mainChatSlotNode 用 state(而非 ref)是因為
-  // 節點掛載的時機在 effect 之後,需要能觸發重新渲染才能讓 portal 抓到剛
-  // 掛載好的節點。
-  const [mainChatSlotNode, setMainChatSlotNode] = useState<HTMLDivElement | null>(null)
-  // chatParkingNode:一律存在、不可見的備援投影目標——瀏覽「旅程列表」
-  // 分頁選新旅程期間(見下方 effectiveMainMode 的說明),主顯示區可能還
-  // 沒有 chatElement 該投影的容器,這時投進這裡「暫放」,避免 createPortal
-  // 因為找不到容器而讓 chatElement 整個從輸出樹消失(等同解除掛載,會導致
-  // WebSocket 重新連線)。
-  const [chatParkingNode, setChatParkingNode] = useState<HTMLDivElement | null>(null)
-
   if (props.isGuest) {
     return (
       <LoginCard title="歡迎使用 Tripace" subtitle="請先登入或註冊帳號,才能查看與使用旅程功能。">
@@ -212,10 +182,11 @@ export function PhoneContent(props: ContentProps) {
     ...(PACE_ENABLED ? [{ key: 'pace', icon: Route, title: '路徑', onClick: () => setPaceSheetOpen(true) }] : []),
     ...(DEMO_ONAGENT_ENABLED ? [{ key: 'demo-onagent', icon: Radio, title: 'onagent 串接', onClick: () => {} }] : []),
   ]
-  // chatElement:ChatScreen 的唯一掛載點,固定用同一個 JSX 呼叫(永遠
-  // 掛載,不因對話疊加層開關而卸載重掛,避免 WebSocket 重新連線),只透過
-  // 下方 createPortal 決定它的畫面實際投影到哪個容器——mobileHeader 固定
-  // 'main'。
+  // chatElement:ChatScreen 的唯一掛載點,固定用同一個 JSX 呼叫,直接放在
+  // 下方對話疊加層 PhoneBottomSheet 的 children 裡(該元件傳
+  // keepMounted,即使 chatSheetOpen 為 false 也不卸載,避免每次關閉對話
+  // 都重新連線 WebSocket——理由與原本改用 React Portal 投影的目的相同,
+  // 但不再需要 portal,見該處呼叫的說明)。
   //
   // trip 允許是 undefined(不要求 activeTrip 存在才渲染)——使用者明確
   // 要求「手機版的對話跟桌面版用一樣的」,對齊桌面版 DesktopLayout.tsx
@@ -235,12 +206,6 @@ export function PhoneContent(props: ContentProps) {
       onTimelineData={onTimelineData}
     />
   )
-  // chatPortalTarget:chatParkingNode 是一個一律存在、只是不可見的備援
-  // 掛載點——對話疊加層關閉時(chatSheetOpen 為 false)其內部的投影容器
-  // 不會渲染,這時投進這裡「暫放」,避免 createPortal 因為找不到容器而讓
-  // chatElement 整個從輸出樹消失(等同解除掛載,會導致 WebSocket 重新
-  // 連線)。
-  const chatPortalTarget = mainChatSlotNode ?? chatParkingNode
 
   return (
     <>
@@ -303,8 +268,8 @@ export function PhoneContent(props: ContentProps) {
             跟 PhoneTabBar 同一層,理由同上方 PhoneTripsDrawer 的說明
             (定位基準要一致,才不會蓋住底部功能列)。timelineMirror 是
             ChatScreen 透過 onTimelineData 鏡像過來的資料,不論目前主畫面
-            顯示什麼都持續更新(mainChatSlotNode 是 ChatScreen 唯一的投影
-            目標,見上方說明)。 */}
+            顯示什麼都持續更新(ChatScreen 永遠掛載在下方對話疊加層的
+            children 裡,見該處 chatElement 的說明)。 */}
         <PhoneTimelineDrawer
           open={timelineDrawerOpen}
           onClose={() => setTimelineDrawerOpen(false)}
@@ -313,10 +278,6 @@ export function PhoneContent(props: ContentProps) {
           editCfg={activeTrip && activeTrip.ownerID === props.user.id ? cfg : undefined}
         />
       </div>
-      {/* chatParking:一律掛載、不可見的備援投影目標,見上方 chatParkingNode
-          的說明。 */}
-      <div ref={setChatParkingNode} style={{ display: 'none' }} />
-      {chatElement && chatPortalTarget && createPortal(chatElement, chatPortalTarget)}
       {/* 設定頁:改用共用容器 components/PhoneBottomSheet.tsx
           (mode="slide-close"),對齊 trip/PhoneTripsDrawer.tsx 的既有用法
           (使用者明確要求改成一般高度、可下滑關閉的 bottom sheet,不再是
@@ -349,36 +310,38 @@ export function PhoneContent(props: ContentProps) {
       {/* 對話:改成跟地點清單/設定頁一樣的滿版 PhoneBottomSheet 疊加層,由
           底部常駐列「對話」按鈕開關(chatSheetOpen,見上方說明)——使用者
           明確要求「規劃地圖常駐為主畫面,對話變疊加層」,取代原本「分頁
-          決定主顯示內容」的版型。ChatScreen 本身永遠掛載在上方(見
-          chatElement/chatPortalTarget 的說明),這裡只是它的投影目標。
-          maxHeightVh 設 92——比其餘 bottom sheet(70)更高,貼近桌面版
-          chat-popover 幾乎滿版的視覺比例,對話輸入/訊息列表需要的垂直
-          空間本來就比清單類內容多。bottom: 0、zIndex: 36、
-          showBackdrop={false}——理由同設定頁。
-          exitDurationMs——使用者回報「對話 sheet 滑出時地圖會抽動」,根因
-          是這裡原本在 children 多包一層 {'{'}chatSheetOpen && ...{'}'} 判斷,
-          chatSheetOpen 一變 false,投影目標 div 立刻從 DOM 拔除,
-          mainChatSlotNode 瞬間變 null,ChatScreen 的 portal target 同一瞬間
-          改投進 chatParkingNode——這個大範圍 DOM 搬移剛好跟 sheet 開始滑出
-          的那一幀重疊,觸發一次性 reflow,視覺上像地圖跟著滑動方向偏移。
-          拿掉那層判斷(讓投影目標 div 跟 PhoneBottomSheet 本身的
-          shouldRender 同步,不要比它更早卸載),再給 exitDurationMs 讓退場
-          滑出動畫播完才真正卸載——DOM 搬移延後到動畫結束後才發生,不再
-          跟滑動動畫同時觸發。 */}
+          決定主顯示內容」的版型。maxHeightVh 設 92——比其餘 bottom sheet
+          (70)更高,貼近桌面版 chat-popover 幾乎滿版的視覺比例,對話輸入/
+          訊息列表需要的垂直空間本來就比清單類內容多。bottom: 0、
+          zIndex: 36、showBackdrop={false}——理由同設定頁。
+          keepMounted——ChatScreen 直接放在 children 裡(不再透過 React
+          Portal 投影),用 keepMounted 讓 PhoneBottomSheet 即使
+          chatSheetOpen 為 false 也不卸載 children,避免每次關閉對話都
+          重新連線 WebSocket(理由同 PhoneBottomSheet.tsx 的 keepMounted
+          說明)。原本改用 React Portal(mainChatSlotNode/chatParkingNode/
+          createPortal)是為了達到同樣的「永遠掛載」效果,但 portal 內容
+          在 React 元件樹上跟 PhoneBottomSheet 是平行兄弟節點,不是它的
+          React 子孫,導致觸控事件無法沿 React 樹冒泡到 PhoneBottomSheet
+          的 onTouchStart/onTouchMove/onTouchEnd——使用者實測回報「對話
+          疊加層只有標頭能拖,內容區完全拖不動」,跟地點清單/時間軸(內容
+          直接是 children,沒有這個問題)對照後找到的根因。改用
+          keepMounted 後不再需要 portal,ChatScreen 是真正的 React 子孫,
+          觸控事件正常運作,原本用來解決「投影目標過早卸載導致地圖抽動」
+          的 exitDurationMs/chatSheetSettled 雙層延遲機制也一併不再需要
+          ——children 從不卸載,沒有卸載時機的問題可言。 */}
       <PhoneBottomSheet
         open={chatSheetOpen}
         onClose={() => setChatSheetOpen(false)}
         snapPoints={[CHAT_SHEET_TOP]}
+        minHeightPx={CHAT_SHEET_MIN_HEIGHT}
+        activeSnapIndex={chatSnapIndex}
+        onSnapIndexChange={setChatSnapIndex}
         panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 36 }}
         showBackdrop={false}
-        exitDurationMs={PHONE_BOTTOM_SHEET_EXIT_MS}
+        keepMounted
         head={<SheetHead title={activeTrip?.name ?? 'Tripace'} onClose={() => setChatSheetOpen(false)} />}
       >
-        {/* 投影目標延後到 chatSheetSettled 才掛載(見該 state 的說明)——
-            chatSheetOpen 剛變 true 的那一瞬間先不掛,避免 ref callback
-            觸發的 setMainChatSlotNode 更新跟 entered 進場動畫的 RAF
-            排程互相競爭。 */}
-        {chatSheetSettled && <div ref={setMainChatSlotNode} className={styles.chatSlot} />}
+        {chatElement}
       </PhoneBottomSheet>
       {/* 配速表:同上方對話,改成滿版 PhoneBottomSheet 疊加層,由右側小圖示
           「路徑」按鈕開關(paceSheetOpen)。跟對話不同,PaceRouteMap 不需要
