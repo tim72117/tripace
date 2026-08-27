@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ListPlus, X } from 'lucide-react'
+import { ListPlus } from 'lucide-react'
 import type { ClientConfig } from '../api'
 import {
   type GeoCandidate,
@@ -10,20 +10,19 @@ import {
   entryKindIcon,
   useCandidateDatePicker,
 } from './geoCandidateHelpers'
-import { useDragToClose } from '../hooks/useDragToClose'
+import { PhoneBottomSheet, PHONE_BOTTOM_SHEET_EXIT_MS, SheetHead } from '../components/PhoneBottomSheet'
 import styles from './GeoOutlinePhoneCandidateDrawer.module.css'
 
-// GeoOutlinePhoneCandidateDrawer:手機版候選籃——第二階段新增。桌面版是
-// 兩張並排的浮動側欄(GeoCandidateSidebar「已排入行程」日層架 +
-// AddFromCandidateSidebar「候選中」清單,見兩檔案的說明),手機螢幕放不下
-// 並排兩塊,這裡合併成一份「從右側滑入」的抽屜:上半部是「候選中」清單
-// (尚未排進任何一天),下半部依日期分組列出「已排入行程」。選用滑入
-// 抽屜(而非再開一層 bottom sheet)理由同 pace/PacePhoneSwipe.tsx 的
-// 既有先例——地圖是固定不動的底層,只有這塊面板本身滑入/滑出,手勢只
-// 綁在面板上不綁地圖,避免跟 Google Maps 原生手勢衝突;選右側滑入(不是
-// 左側,PhoneNavDrawer/PhoneTripsDrawer 已佔用左側滑入語意——地圖上
-// 左上角是開抽屜按鈕,若候選籃也從左邊滑入,兩者的觸發方向會混淆使用者
-// 對「這個方向是選單、那個方向是候選籃」的直覺區分)。
+// GeoOutlinePhoneCandidateDrawer:手機版候選籃——第二階段新增,第四階段
+// (這次)改用共用容器 components/PhoneBottomSheet.tsx,從下方彈出
+// (bottom sheet),取代原本「從右側滑入」的獨立側邊抽屜實作——使用者
+// 明確要求「改成從下方滑入(跟地點清單等其他手機版抽屜一致)」,統一成
+// 跟 GeoOutlinePhoneListDrawer.tsx/GeoOutlinePhoneInfoSheet.tsx 一致的
+// bottom sheet 視覺語言,不再是本檔案獨立維護一份 useDragToClose(axis:
+// 'x')側滑手勢。桌面版是兩張並排的浮動側欄(GeoCandidateSidebar「已排入
+// 行程」日層架 + AddFromCandidateSidebar「候選中」清單,見兩檔案的
+// 說明),手機螢幕放不下並排兩塊,這裡合併成一份 sheet:上半部是「候選中」
+// 清單(尚未排進任何一天),下半部依日期分組列出「已排入行程」。
 //
 // 不像桌面版那樣支援拖曳排期(HTML5 drag events 在觸控裝置上沒有對應
 // 手勢,且拖曳排期本來就是滑鼠/大螢幕才好操作的細緻動作)——手機版排期
@@ -33,8 +32,19 @@ import styles from './GeoOutlinePhoneCandidateDrawer.module.css'
 //
 // 純邏輯(分組/建立 entry/型別)完全複用 geoCandidateHelpers.ts,與桌面版
 // GeoCandidateSidebar.tsx 共用同一份,不重新實作——這個檔案只負責手機版
-// 排版與觸控手勢,沒有另外定義任何候選籃相關的資料結構或轉換規則。
-const DRAWER_WIDTH_PERCENT = 86
+// 排版與觸控手勢(現在完全交給 PhoneBottomSheet,見下方)。
+//
+// SHEET_MIN_HEIGHT/SHEET_SNAP_POINTS:單段開關(只有一個 snapPoint,沒有
+// minHeightPx)——比照原本「開/關」兩態,只是方向從右側改下方。候選籃是
+// 使用者「打開看一下候選/排期、關掉繼續操作地圖」的短暫互動(點候選卡片
+// 會直接關閉抽屜並開資訊卡,見下方 onSelect 呼叫端 GeoOutlinePhoneView.tsx
+// 的用法),不像地點清單(GeoOutlinePhoneListDrawer.tsx)是「邊看地圖邊
+// 持續瀏覽清單」的情境,不需要多段吸附(收合到只剩標頭/中間展開/滿版三態)
+// ——單段開關以「離頂部固定距離」表達,足以覆蓋候選籃內容(候選中清單+
+// 已排入行程依日期分組),過長時交給 PhoneBottomSheet 的 .body 統一捲動。
+// 若之後候選籃內容經常長到需要分段瀏覽,可仿照 GeoOutlinePhoneListDrawer.tsx
+// 加上 minHeightPx 改成多段。
+const SHEET_SNAP_POINTS = [80]
 
 // CandidateRow:「候選中」卡片——比照桌面版 AddFromCandidateSidebar.tsx
 // 的 CandidateRow 視覺語言(緊湊橫列:分類圖示 + 名稱),但互動改成手機版
@@ -231,15 +241,6 @@ export function GeoOutlinePhoneCandidateDrawer({
   onScheduled: () => void
   flashTrigger?: number
 }) {
-  // 從右側滑入的抽屜,開啟狀態下只能往右拖(關閉方向)——對稱
-  // PacePhoneSwipe.tsx/PhoneTripsDrawer.tsx 左側抽屜「只能往關閉方向拖」
-  // 的既有慣例,方向相反(那兩個抽屜是左側滑入、只能往左拖)。
-  const { translate, transition, onTouchStart, onTouchMove, onTouchEnd } = useDragToClose({
-    axis: 'x',
-    open,
-    onClose,
-  })
-
   // onlyCandidate/inTrip:同桌面版 GeoCandidateSidebar.tsx/DesktopLayout.tsx
   // 的篩選規則——kind==='entry' && inTrip===true 是「已排入行程」,其餘
   // 是「候選中」。
@@ -272,75 +273,79 @@ export function GeoOutlinePhoneCandidateDrawer({
   }, [flashTrigger])
 
   return (
-    <>
-      {open && <div className={styles.backdrop} onClick={onClose} aria-hidden="true" />}
-      <div
-        className={`${styles.panel}${flashing ? ` ${styles.panelFlash}` : ''}`}
-        style={{
-          width: `${DRAWER_WIDTH_PERCENT}%`,
-          transform: `translateX(${translate})`,
-          transition,
-        }}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-      >
-        <div className={styles.head}>
-          <span className={styles.title}>候選籃</span>
-          <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
-            <X size={16} strokeWidth={2} />
-          </button>
-        </div>
-        <div className={styles.list}>
-          {candidates.length === 0 ? (
-            <div className={styles.empty}>
-              地圖上點飯店/景點/地點,資訊卡裡按「加入候選」把想去的丟進來。
-            </div>
-          ) : (
-            <>
-              {onlyCandidate.length > 0 && (
-                <div className={styles.section}>
-                  <div className={styles.sectionHead}>候選中</div>
-                  {onlyCandidate.map((c) => (
-                    <CandidateRow
-                      key={candidateListKey(c)}
-                      cfg={cfg}
-                      tripID={tripID}
-                      c={c}
-                      scheduledDates={scheduledDates}
-                      onRemove={onRemove}
-                      onSelect={onSelect}
-                      onScheduled={onScheduled}
-                    />
-                  ))}
-                </div>
-              )}
-              {inTripByDay.length > 0 && (
-                <div className={styles.section}>
-                  <div className={styles.sectionHead}>已排入行程</div>
-                  {inTripByDay.map(([dayKey, dayEntries]) => (
-                    <div key={dayKey} className={styles.day}>
-                      <div className={styles.dayHead}>
-                        <span className={styles.dayDate}>{dayGroupLabel(dayKey)}</span>
-                        <span className={styles.dayStatus}>{dayEntries.length} 個安排</span>
-                      </div>
-                      {dayEntries.map((c) => (
-                        <DayEntryCard
-                          key={candidateListKey(c)}
-                          c={c}
-                          onRemove={onRemove}
-                          onSelect={onSelect}
-                          onReturnToCandidate={onReturnToCandidate}
-                        />
-                      ))}
+    <PhoneBottomSheet
+      open={open}
+      onClose={onClose}
+      snapPoints={SHEET_SNAP_POINTS}
+      // showBackdrop:false——比照 GeoOutlinePhoneInfoSheet.tsx/
+      // GeoOutlinePhoneListDrawer.tsx 的用法,使用者要求候選籃出現時地圖
+      // 不要被遮罩變暗,背景地圖保持可見可互動(候選籃打開時使用者仍可能
+      // 想操作地圖比對位置)——這是延續原本透明 backdrop 的既有行為,不是
+      // 這次重構新引入的決策。
+      showBackdrop={false}
+      exitDurationMs={PHONE_BOTTOM_SHEET_EXIT_MS}
+      // panelStyle:bottom: 0、zIndex: 36——比照 GeoOutlinePhoneListDrawer.tsx/
+      // GeoOutlinePhoneInfoSheet.tsx 的慣例,蓋住底部常駐導覽列
+      // PhoneTabBar.tsx(z-index: 35)。候選籃與地點清單雖然理論上互不
+      // 依賴各自的 open state(GeoOutlinePhoneView.tsx 各自獨立
+      // useState,沒有互斥開關),但兩者都是「點按鈕才開,開啟後通常會先
+      // 關掉才做下一步」的短暫操作,採用同一個 z-index 慣例、讓兩者都能
+      // 蓋住導覽列即可,不需要額外設計互斥邏輯或分開層級——真的同時觸發
+      // 開啟時(少見的操作順序),後開啟的那個在 DOM 順序中排在後面,
+      // 自然疊在上層,不會出現互相穿透看不到內容的情況。
+      panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 36 }}
+      panelClassName={flashing ? styles.panelFlash : undefined}
+      head={<SheetHead title="候選籃" onClose={onClose} />}
+    >
+      <div className={styles.list}>
+        {candidates.length === 0 ? (
+          <div className={styles.empty}>
+            地圖上點飯店/景點/地點,資訊卡裡按「加入候選」把想去的丟進來。
+          </div>
+        ) : (
+          <>
+            {onlyCandidate.length > 0 && (
+              <div className={styles.section}>
+                <div className={styles.sectionHead}>候選中</div>
+                {onlyCandidate.map((c) => (
+                  <CandidateRow
+                    key={candidateListKey(c)}
+                    cfg={cfg}
+                    tripID={tripID}
+                    c={c}
+                    scheduledDates={scheduledDates}
+                    onRemove={onRemove}
+                    onSelect={onSelect}
+                    onScheduled={onScheduled}
+                  />
+                ))}
+              </div>
+            )}
+            {inTripByDay.length > 0 && (
+              <div className={styles.section}>
+                <div className={styles.sectionHead}>已排入行程</div>
+                {inTripByDay.map(([dayKey, dayEntries]) => (
+                  <div key={dayKey} className={styles.day}>
+                    <div className={styles.dayHead}>
+                      <span className={styles.dayDate}>{dayGroupLabel(dayKey)}</span>
+                      <span className={styles.dayStatus}>{dayEntries.length} 個安排</span>
                     </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
+                    {dayEntries.map((c) => (
+                      <DayEntryCard
+                        key={candidateListKey(c)}
+                        c={c}
+                        onRemove={onRemove}
+                        onSelect={onSelect}
+                        onReturnToCandidate={onReturnToCandidate}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
-    </>
+    </PhoneBottomSheet>
   )
 }

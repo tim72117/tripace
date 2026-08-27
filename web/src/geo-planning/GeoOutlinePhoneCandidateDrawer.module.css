@@ -1,36 +1,22 @@
-/* GeoOutlinePhoneCandidateDrawer.tsx 專屬樣式(CSS Modules)。從右側滑入
-   蓋在地圖上面的抽屜——backdrop/panel 的滑入手勢寫法比照
-   PacePhoneSwipe.module.css/PhoneTripsDrawer.module.css 既有的左側抽屜
-   模式,只是方向相反(見該元件開頭的說明)。 */
-
-/* 使用者要求清單出現時地圖不要被遮罩變暗——這層仍保留(不整個移除),
-   用來承接「點擊清單外部關閉抽屜」的既有互動,只是改成透明,不再疊一層
-   暗色調。 */
-.backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 12;
-  background: transparent;
-}
-
-.panel {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 13;
-  display: flex;
-  flex-direction: column;
-  background: var(--ios-bg);
-  box-shadow: -2px 0 16px rgba(0, 0, 0, 0.2);
-  touch-action: pan-y;
-}
+/* GeoOutlinePhoneCandidateDrawer.tsx 專屬樣式(CSS Modules)。由下往上
+   彈出的 bottom sheet,外殼(backdrop/panel/dragHandle)與拖曳手勢已改用
+   共用容器 components/PhoneBottomSheet.tsx——該元件的 .panel 基礎樣式
+   (背景/圓角/陰影/touch-action)已經涵蓋這裡原本的視覺設定,不需要再
+   疊加一份,故這裡不再定義 .backdrop/.panel。head(標題+關閉鈕)也改用
+   該元件匯出的 SheetHead 共用元件,這裡同樣不再定義
+   .head/.title/.closeBtn。原本「從右側滑入」時期用來鎖鬥雙指縮放的
+   touch-action 設定(.panel: none / .list: pan-y)也一併移除——改用
+   PhoneBottomSheet 後,捲動/拖曳手勢互斥完全交給該元件自己的
+   .body/.bodyScrollable 機制接手(overflow: hidden 與 overflow-y: auto
+   兩態切換,不靠 touch-action 勸阻瀏覽器),不需要在這裡重新宣告,見該
+   元件 module.css 的完整說明。 */
 
 /* panelFlash:「加入候選並顯示候選籃」觸發(見 GeoOutlinePhoneInfoSheet.tsx
    複合按鈕)時的短暫 highlight 提示——視覺語彙沿用桌面版
    GeoCandidateSidebar.module.css 的 .panelFlash/panelFlashPulse,行為
    完全一致,只是換一個 CSS Module 檔案(手機版元件不 import 桌面版的
-   .module.css)。 */
+   .module.css)。透過 PhoneBottomSheet 的 panelClassName prop 疊加到
+   它的 .panel 上(見 GeoOutlinePhoneCandidateDrawer.tsx 的用法)。 */
 .panelFlash {
   animation: panelFlashPulse 0.9s ease-out;
 }
@@ -46,39 +32,18 @@
   }
 }
 
-.head {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 10px;
-  border-bottom: 1px solid var(--ios-sep);
-}
-
-.title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--color-dark);
-}
-
-.closeBtn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  background: var(--ios-sep);
-  color: var(--color-dark);
-  cursor: pointer;
-}
-
+/* 不再自己宣告 overflow-y/touch-action——這個 .list 是
+   components/PhoneBottomSheet.tsx 的 children,會被放進該元件的 .body
+   容器裡;.body 有一套 overflow: hidden/.bodyScrollable 的開關機制,
+   只在「sheet 已經拖到展開最多的那個段」時才切換成可捲動,交給瀏覽器
+   原生捲動處理(見該元件 atMaxExpansion 的說明)。這裡若自己再開一層
+   獨立的 overflow-y: auto,會繞過那套機制,變成不論 sheet 展開到哪一段,
+   這層都能被瀏覽器原生捲動接管,導致「中段拖曳 sheet 時,清單內容還是
+   會跟著捲動」(GeoOutlinePhoneListDrawer.tsx 已踩過的坑,見該檔案
+   .list 的說明)。捲動改由外層 .body 統一負責,這裡只保留排版用的 padding。 */
 .list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 10px;
-  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  padding: 8px;
+  padding-bottom: 16px;
 }
 
 .empty {

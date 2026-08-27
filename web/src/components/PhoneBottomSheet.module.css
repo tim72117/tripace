@@ -24,10 +24,24 @@
 
 /* panel:touch-action: none——拖曳手勢由 PhoneBottomSheet.tsx 自己的
    onTouchMove 處理,不讓瀏覽器原生 touch pan 介入搶事件,確保整張卡片
-   都能穩定觸發拖曳(使用者明確要求)。.body 內部內容捲動改由
-   overflow-y: auto 處理——這代表按在內容區拖曳時,拖曳手勢優先於內容
-   捲動,不會有兩者搶事件的問題,但也意味著內容本身無法用手指原生
-   捲動,只能靠拖曳把卡片展開到夠高、把內容整個露出來看。 */
+   都能穩定觸發拖曳(使用者明確要求)。子層 .body 是否接收原生捲動,由
+   overflow: hidden/.bodyScrollable 這組 CSS 開關決定,不是這裡的
+   touch-action 管轄範圍——見下方 .body 的說明與 PhoneBottomSheet.tsx
+   atMaxExpansion 的說明。
+
+   will-change: transform——修正實際發生過的瀏覽器渲染 bug:keepMounted
+   的呼叫端(見 PhoneContent.tsx 的對話疊加層)首次掛載、open 一開始就是
+   false 的情況下,DevTools 檢查發現 computed style 的 transform 數值
+   完全正確(translateY(calc(0px + 100vh))),但瀏覽器沒有真正把這個
+   位移套用到畫面上(元素視覺上仍佔滿整個螢幕),直到在 DevTools 手動
+   關閉再重新勾選這個 CSS 屬性(強迫瀏覽器重新計算/合成)才會消失——
+   代表瀏覽器算出了正確的樣式值,但沒有觸發實際的重繪/合成,是典型的
+   「初次掛載時直接套用一個沒有前一個狀態可以比較的 transform,瀏覽器
+   優化路徑跳過建立合成層」的瀏覽器行為。will-change: transform 明確
+   告訴瀏覽器這個屬性之後會變化,強迫它為這個元素建立獨立的合成層,
+   確保每次 transform 改變都會被正確重繪,不會卡在舊的畫面(使用者
+   實測回報「一開啟手機版就一直看到對話匡,即使確認 CSS 數值正確也
+   關不掉」,根因在此)。 */
 .panel {
   display: flex;
   flex-direction: column;
@@ -36,6 +50,7 @@
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
   touch-action: none;
   overflow: hidden;
+  will-change: transform;
 }
 
 /* panelCollapsed:多段模式停在最小段時的狀態——不使用 display: none
@@ -68,12 +83,48 @@
   background: var(--ios-sep);
 }
 
+/* overflow: hidden(預設)——未到展開最多的那個段時,.body 完全不可捲動
+   (連 DOM 層級都不行,不是靠 touch-action 勸阻瀏覽器)。曾經嘗試過
+   touch-action: none + JS 手動模擬 scrollTop 讓拖曳/捲動互斥,但使用者
+   實測(含真實手機,不只 DevTools 模擬)回報「sheet 拖曳跟清單捲動兩者
+   會同時被觸發」——touch-action 只能降低瀏覽器接管的機率,無法保證
+   100% 不會在某些情境下仍嘗試原生捲動這個 overflow 容器,兩套手勢系統
+   (JS 模擬 + 瀏覽器原生)在同一個 DOM 節點上互搶,沒辦法做到真正互斥。
+   改成 overflow: hidden 後,這個節點在瀏覽器眼裡根本不是可捲動容器,
+   不需要也不能再靠 touch-action 或 JS 攔截,從根本消除搶事件的可能。
+   .bodyScrollable(見下方)是到了最頂段時額外疊加的 modifier class,切回
+   overflow-y: auto 交給真正的原生捲動——見 PhoneBottomSheet.tsx
+   atMaxExpansion/bodyOnTouchStart 等的說明。 */
 .body {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+/* touch-action: pan-y——只允許垂直平移(捲動),明確排除縮放(pinch-zoom)
+   與水平平移。切到 .bodyScrollable 時 touch-action 若不設,會繼承瀏覽器
+   預設值 auto,代表這個節點重新允許瀏覽器接手包含雙指縮放在內的所有
+   原生手勢(使用者實測回報「手機版某個 bottom sheet 內容還能雙指放大」,
+   即使全站 viewport 已設 user-scalable=no——viewport 的縮放鎖定跟個別
+   元素的 touch-action 是兩層獨立機制,元素若允許 pinch 手勢仍可能觸發
+   瀏覽器自己的手勢辨識,不能只依賴 viewport 設定)。pan-y 縮小允許範圍到
+   剛好只有捲動需要的垂直平移,徹底排除縮放。
+
+   overscroll-behavior-y: contain——擋掉瀏覽器原生的 overscroll/橡皮筋
+   回彈視覺效果(使用者實測回報「手機上往下拉時,清單第一筆內容會跟上方
+   邊界拉出一個間隙」)。捲到 scrollTop === 0 後繼續往下拖,PhoneBottomSheet.tsx
+   的 bodyOnTouchMove 會偵測到並呼叫 preventDefault() 搶回控制權、交接給
+   sheet 拖曳,但瀏覽器的原生 overscroll bounce 動畫是在偵測到那一刻之前
+   就可能已經開始播放(尤其 iOS Safari),preventDefault() 沒辦法追溯取消
+   已經觸發的原生視覺效果,導致內容被瀏覽器自己拉開一段空隙、卡在那裡才
+   慢慢彈回。設定這個屬性後,瀏覽器捲動到邊界會直接停住,不會再有這段
+   自行播放的橡皮筋動畫,不需要仰賴 JS 判斷時間點去事後補救。 */
+.bodyScrollable {
   overflow-y: auto;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
 }
 
 /* head/title/closeBtn:標準 head slot 內容樣式(標題文字 + 關閉鈕),供

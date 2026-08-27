@@ -22,6 +22,36 @@
      留在 DOM 上,CSS transition 才能播放開關動畫)。沒有這行 overflow:
      hidden,位移到畫面外的內容不會被裁掉,使用者滾動畫面(尤其垂直方向,
      比水平方向更容易不小心觸發)時,原本該隱藏的面板會被捲動帶進可視
-     範圍——這是實際發生過的 bug,不是預防性寫法。 */
+     範圍——這是實際發生過的 bug,不是預防性寫法。
+
+     touch-action: none——全站(含桌面版共用同一個根容器)一次擋掉所有
+     瀏覽器原生觸控手勢,含雙指縮放(pinch-zoom)與水平/垂直平移。原本
+     靠各個 PhoneBottomSheet 呼叫端(地圖/清單/對話疊加層等)各自宣告
+     touch-action,使用者實測發現逐一補的方式會漏(例如對話疊加層
+     ChatScreen、候選籃抽屜 GeoOutlinePhoneCandidateDrawer 都還能雙指
+     放大)——index.html 的 viewport user-scalable=no 只鎖住瀏覽器層級的
+     整頁縮放手勢,不影響個別 DOM 元素能不能被瀏覽器辨識出獨立的
+     pinch 手勢並觸發其他副作用,兩者是不同機制,只設定 viewport 不足夠。
+     曾經先試過 pan-y(規範上定義為「只允許垂直平移」,理論上應該隱含
+     排除縮放與水平平移),但使用者實測發現兩個問題:一是候選籃抽屜
+     (GeoOutlinePhoneCandidateDrawer.module.css 的 .panel,同樣是
+     touch-action: pan-y)雙指縮放依然會讓面板跑版,而地點清單
+     (PhoneBottomSheet.module.css 的 .panel,touch-action: none)卻能
+     正確擋住——兩者的差異就是 none 跟 pan-y,證實 pan-y 在實際瀏覽器
+     行為上不夠嚴謹,必須用更明確的 none 才能真正擋住縮放;二是也曾誤寫
+     成 pan-x pan-y 導致整頁多了不該有的水平拖動,顯示這個環境對
+     touch-action 的關鍵字組合處理跟預期有落差,改用單一明確值更可靠。
+     改成 none 後,全站不靠瀏覽器原生手勢做任何平移/縮放/捲動——這本來
+     就是既有的實際狀況:垂直捲動一律由各元件自己的捲動容器負責(例如
+     PhoneBottomSheet.tsx 的 .bodyScrollable,只在需要捲動的那個內層
+     元素上局部切換成 auto + pan-y,範圍小、可控),水平滑動手勢
+     (PhoneNavDrawer 側邊抽屜、PhoneContent.tsx 的 onMainTouchStart 等)
+     本來就是元件自己監聽 touchstart/touchmove 用 JS 判斷座標實作,從不
+     依賴瀏覽器原生 touch-action 才能運作,.webApp 這層本身沒有自己的
+     overflow 捲動需求,不需要放行任何原生手勢。子層(例如
+     GeoOutlineMap.module.css 的地圖容器)有自己的 touch-action 宣告時,
+     CSS 層疊規則下子層設定優先於父層,不會被這裡覆蓋掉,地圖原本的
+     縮放/平移手勢不受影響。 */
+  touch-action: none;
   overflow: hidden;
 }

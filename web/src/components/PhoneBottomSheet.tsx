@@ -249,6 +249,40 @@ export function PhoneBottomSheet({
   const draggingRef = useRef(false)
   const [dragOffset, setDragOffset] = useState(0)
 
+  // bodyRef:.body 是否接收原生捲動由 CSS overflow 屬性直接切換(見下方
+  // bodyOverflow),不是 JS 攔截 touch 事件模擬——曾經嘗試用 JS 手動改
+  // scrollTop 模擬捲動(搭配 .panel/.body 都設 touch-action: none 擋掉
+  // 原生行為),但使用者實測(含真實手機,不是只有 DevTools 模擬)回報
+  // 「sheet 拖曳跟清單捲動兩者會同時被觸發」——touch-action: none 只能
+  // 降低瀏覽器接管的機率,無法保證瀏覽器完全不會在某些情境下仍嘗試原生
+  // 捲動這個 overflow 容器,兩套手勢系統(JS 模擬 + 瀏覽器原生)在同一個
+  // DOM 節點上互搶,沒有辦法做到真正互斥。改成完全不用 JS 模擬,情境
+  // 未到最頂段時直接把 .body 設成 overflow: hidden(內容在 DOM 層級就
+  // 不可能被捲動,不需要依賴 touch-action 去「勸阻」瀏覽器),到了最頂段
+  // 才切回 overflow-y: auto 交給瀏覽器原生捲動——兩態互斥且由瀏覽器自己
+  // 保證,不會再有兩套邏輯同時搶一次觸控手勢的問題。
+  const bodyRef = useRef<HTMLDivElement>(null)
+
+  // hasOpenedRef:是否曾經真正 open 過——keepMounted 的呼叫端(如
+  // PhoneContent.tsx 的對話疊加層)首次掛載時 open 就是 false,這個元件
+  // 從第一次 render 開始就要位移到畫面外(translateY(100vh))。實測發現
+  // 這個「從未開啟過、掛載當下就要在畫面外」的情境,即使 transform 算出
+  // 的值正確,套用了 transition 動畫屬性後,瀏覽器仍會在某些情況下把
+  // 首次掛載的樣式直接當成最終穩定狀態繪製,不觸發任何過渡效果——但
+  // React devtools 顯示的 computed style 卻讀到位移已生效的矩陣,實際
+  // 視覺(getBoundingClientRect)卻仍停在未位移的位置,兩者矛盾(使用者
+  // 實測回報「一開啟手機版就看到對話匡,關不掉」,用醒目邊框直接肉眼
+  // 確認面板真的佔滿整個畫面、完全沒有位移,但手動在 DevTools 把
+  // transform 改成固定的 900px 卻能立刻生效)——懷疑是掛載當下「沒有
+  // 真正的前一個狀態可以過渡」時,浏览器對 transition 動畫的合併/跳過
+  // 優化造成的邊界案例。保守起見,「從未真正 open 過」的這段期間強制
+  // transition: none,不依賴任何動畫過渡把它擺到畫面外的最終位置,確保
+  // 穩定;一旦真正 open 過一次(hasOpenedRef.current 變 true),之後才
+  // 恢復正常的動畫過渡(不影響「開啟中/已經開過一次後續的關閉」這些
+  // 情境原本就穩定的動畫效果)。
+  const hasOpenedRef = useRef(open)
+  if (open) hasOpenedRef.current = true
+
   // entered:首次出現時「整張卡片從螢幕下方滑入」的進場動畫旗標——參考
   // Vaul(react bottom sheet 函式庫)的做法:掛載當下先讓 panel 停在
   // translateY(100%)(位移到畫面外),下一個 requestAnimationFrame 才切到
@@ -286,7 +320,17 @@ export function PhoneBottomSheet({
     }
   }, [open])
 
+  // atMaxExpansion:是否已經停在展開最多的那個段——這個狀態直接決定
+  // .body 的 CSS overflow(見下方 bodyOverflow)是不是要交給瀏覽器原生
+  // 捲動,不是在 JS 手勢處理常式裡才判斷。未到最頂段時 .body 是
+  // overflow: hidden,這個 DOM 節點在瀏覽器眼裡根本不可捲動,onTouchStart
+  // 當下這個節點就已經不會攔截任何觸控手勢,不需要再靠 JS 判斷「這次
+  // 手勢該不該讓內容捲」——手勢天生只可能落在 sheet 拖曳上。到了最頂段
+  // 換成 overflow-y: auto,這時要反過來完全不驅動 sheet 拖曳,把手勢
+  // 讓給瀏覽器原生捲動處理,onTouchStart/onTouchMove 直接視為未在拖曳。
+  const atMaxExpansion = !isSingleStop && activeSnapIndex === stops.length - 1
   function onTouchStart(e: ReactTouchEvent) {
+    if (atMaxExpansion) return
     startYRef.current = e.touches[0].clientY
     startTopRef.current = currentTop
     draggingRef.current = true
@@ -307,6 +351,62 @@ export function PhoneBottomSheet({
   function onTouchEnd() {
     if (!draggingRef.current) return
     draggingRef.current = false
+    finishDrag()
+  }
+
+  // bodyOnTouchStart/Move/End:只在展開最多的那個段掛在 .body 上(見下方
+  // JSX),負責「已經捲到清單最上面(scrollTop <= 0)時,繼續往下拖要能
+  // 收合 sheet」這個交接——使用者明確要求「捲動到頂時,sheet 又可以往下
+  // 拉動」。平常(scrollTop > 0,或往上拖看更多內容)完全不介入,讓
+  // .body 的 overflow-y: auto 走真正的原生捲動(見上方 atMaxExpansion
+  // 的說明,不用 JS 模擬)。一旦偵測到「起點就在頂部且往下拖」,呼叫
+  // preventDefault() 擋掉這次手勢接下來的原生捲動(這個節點此時
+  // touch-action 是預設的 auto,不像 .panel 那樣整段禁用原生手勢,才需要
+  // 在這裡主動擋),改交給跟 .panel 共用的同一套 draggingRef/dragOffset
+  // 拖曳邏輯,行為與「非最頂段時直接拖曳」完全一致。
+  const bodyDragHandoffRef = useRef(false)
+  function bodyOnTouchStart(e: ReactTouchEvent) {
+    if (!atMaxExpansion) return
+    startYRef.current = e.touches[0].clientY
+    startTopRef.current = currentTop
+    bodyDragHandoffRef.current = false
+  }
+  function bodyOnTouchMove(e: ReactTouchEvent) {
+    if (!atMaxExpansion || startYRef.current === null) return
+    const body = bodyRef.current
+    const delta = e.touches[0].clientY - startYRef.current
+
+    if (!bodyDragHandoffRef.current) {
+      if (draggingRef.current) {
+        // 已經交接過、正在拖 sheet——後續的移動事件不再重新判斷,固定
+        // 繼續拖曳(避免手勢中途因為 scrollTop 讀值時機不同又跳回捲動)。
+        bodyDragHandoffRef.current = true
+      } else if (delta > 0 && (!body || body.scrollTop <= 0)) {
+        // 起點就在頂部(或還沒有真正捲動過)且往下拖——交接給 sheet 拖曳。
+        bodyDragHandoffRef.current = true
+        draggingRef.current = true
+      } else {
+        // 其餘情況(還沒捲到頂、或往上拖看更多內容)交給原生捲動,不介入。
+        return
+      }
+    }
+
+    if (!draggingRef.current) return
+    e.preventDefault()
+    setDragOffset(delta)
+  }
+  function bodyOnTouchEnd() {
+    if (!draggingRef.current) return
+    draggingRef.current = false
+    bodyDragHandoffRef.current = false
+    finishDrag()
+  }
+
+  // finishDrag:onTouchEnd 的共用收尾邏輯——.panel 的 onTouchEnd 與
+  // .body 的 bodyOnTouchEnd 都需要同一套「鬆手後依 dragOffset 決定吸附
+  // 到哪一段(或單段模式時是否觸發 onClose)」判斷,抽出來避免兩處各自
+  // 重複一份。
+  function finishDrag() {
     if (isSingleStop) {
       if (dragOffset > 60) onClose()
       setDragOffset(0)
@@ -371,21 +471,29 @@ export function PhoneBottomSheet({
   // .panelCollapsed 的隱藏 body 視覺生效)。
   const isAtMinSnap = !draggingRef.current && activeSnapIndex === 0
 
-  // translate:關閉時整個位移出畫面(100% + dragOffset,對齊
-  // useDragToClose 原本的算法),開啟且已完成進場動畫(entered)時歸 0
+  // translate:關閉時整個位移出畫面,開啟且已完成進場動畫(entered)時歸 0
   // (展開程度變化交給 panelTop 呈現,拖曳中的跟手位移則由 dragOffset
   // 反映在 panelTop 本身,不透過 translate),entered 之前維持在畫面外
-  // (100% + dragOffset)——讓首次出現時整張卡片從螢幕下方滑入,而不是
-  // 原地长高。
+  // ——讓首次出現時整張卡片從螢幕下方滑入,而不是原地长高。位移量用
+  // 100vh(不是 100%)——CSS transform: translateY(百分比) 是相對於
+  // 元素自身高度計算,不是相對螢幕/視窗高度;keepMounted 的呼叫端(見
+  // PhoneContent.tsx 的對話疊加層)在 open=false 時面板仍會渲染,但這時
+  // .panelCollapsed 可能讓 .body 隱藏、面板實際高度縮得很小,100% 换算
+  // 出來的實際位移距離遠遠不夠把面板推出可視範圍,導致「使用者實測
+  // 回報一開啟手機版對話匡就一直陰在畫面上,點關閉也沒反應」——面板其實
+  // 已經在嘗試位移,只是位移量不足以真正離開螢幕。100vh 是視窗高度的
+  // 固定值,不受面板自身高度影響,足以確保任何情況下都能推出畫面外。
   const translate = !open
-    ? `calc(100% + ${dragOffset}px)`
+    ? `calc(100vh + ${dragOffset}px)`
     : entered
       ? '0px'
-      : '100%'
+      : '100vh'
   // transition:拖曳中關掉動畫(即時跟手),放開手指後才套用「回彈到位」
   // 動畫——top 跟 transform 套同一條曲線跟時長(見上方
-  // SHEET_EASE/SHEET_DURATION 的說明),避免不同步的違和感。
-  const transition = draggingRef.current
+  // SHEET_EASE/SHEET_DURATION 的說明),避免不同步的違和感。「從未
+  // open 過」(!hasOpenedRef.current)時強制 none,不套用任何過渡——
+  // 理由見上方 hasOpenedRef 的說明。
+  const transition = draggingRef.current || !hasOpenedRef.current
     ? 'none'
     : `top ${SHEET_DURATION} ${SHEET_EASE}, transform ${SHEET_DURATION} ${SHEET_EASE}`
 
@@ -412,6 +520,20 @@ export function PhoneBottomSheet({
           top: `${panelTop}px`,
           transform: `translateY(${translate})`,
           transition,
+          // visibility: hidden 是「從未 open 過」時的雙重保險——實測
+          // 發現即使 transform 的計算值正確(DevTools 檢查 computed style
+          // 確認過)、will-change: transform 也加了,keepMounted 呼叫端
+          // 首次掛載時仍可能出現「元素明明該在畫面外,卻整個佔滿螢幕」
+          // 的瀏覽器渲染異常(使用者實測回報「一開啟手機版就一直看到
+          // 對話匡,關不掉」,多輪排查都無法用單純調整 transform/
+          // transition 的寫法解決)。不再嘗試釐清瀏覽器內部合成/重繪的
+          // 確切原因,改用 visibility: hidden 這個不依賴 transform 計算
+          // 結果、直接讓元素完全不可見(不佔用畫面、不接收互動)的
+          // 保底機制——只在「從未 open 過」這段期間套用,一旦真正 open
+          // 過一次(hasOpenedRef.current 變 true),之後的關閉/收合都
+          // 恢復依賴 transform 動畫(不影響「開啟中/已經開過一次後續的
+          // 關閉」這些情境原本就正常的動畫效果)。
+          ...(hasOpenedRef.current ? {} : { visibility: 'hidden' }),
           ...panelStyle,
         }}
         onTouchStart={onTouchStart}
@@ -427,8 +549,17 @@ export function PhoneBottomSheet({
             轉圈動畫取代 children——讓呼叫端可以先把面板打開(例如使用者
             按下某個會觸發非同步查詢的入口),資料還沒回來前先顯示這個,
             不用自己在每個 children 裡各刻一份 loading 畫面(見上方
-            loading prop 的說明)。 */}
-        <div className={styles.body}>
+            loading prop 的說明)。bodyScrollable/onTouch*:只在展開最多
+            的那個段疊加(見上方 atMaxExpansion/bodyOnTouchStart 等的
+            說明),交給真正的原生捲動,不影響其餘段落維持 overflow:
+            hidden、完全不接收觸控事件的預設行為。 */}
+        <div
+          className={`${styles.body}${atMaxExpansion ? ` ${styles.bodyScrollable}` : ''}`}
+          ref={bodyRef}
+          onTouchStart={bodyOnTouchStart}
+          onTouchMove={bodyOnTouchMove}
+          onTouchEnd={bodyOnTouchEnd}
+        >
           {loading ? <div className={styles.spinner} aria-label="載入中" /> : renderedChildren}
         </div>
       </div>

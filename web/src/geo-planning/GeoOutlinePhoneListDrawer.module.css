@@ -49,10 +49,20 @@
 /* padding-bottom 不再需要 env(safe-area-inset-bottom, 0px)——.panel
    已經貼齊 PhoneTabBar.tsx 上緣、不延伸到底部安全區範圍內(理由同
    trip/PhoneTripsDrawer.module.css 的 .panel 說明),這裡維持純數字
-   留白即可。 */
+   留白即可。
+
+   不再自己宣告 overflow-y: auto——這個 .list 是
+   components/PhoneBottomSheet.tsx 的 children,會被放進該元件的 .body
+   容器裡;.body 有一套 overflow: hidden/.bodyScrollable 的開關機制,
+   只在「sheet 已經拖到展開最多的那個段」時才切換成可捲動,交給瀏覽器
+   原生捲動處理(見該元件 atMaxExpansion 的說明)。這裡若自己再開一層
+   獨立的 overflow-y: auto,會繞過那套機制,變成不論 sheet 展開到哪一段,
+   這層都能被瀏覽器原生捲動接管,導致「中段拖曳 sheet 時,清單內容還是
+   會跟著捲動」(使用者實測回報)。捲動改由外層 .body 統一負責,這裡只
+   保留排版用的 flex 屬性。 */
 .list {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
   padding: 8px;
   padding-bottom: 16px;
   display: flex;
