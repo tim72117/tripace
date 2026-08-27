@@ -42,6 +42,7 @@ handler、不共用 store 存取層以外的任何程式碼。
 | 方法 | 路徑 | Handler | 權限檢查 | Web 呼叫 | iOS 呼叫 |
 |---|---|---|---|---|---|
 | POST | /v1/auth/apple | handleAppleAuth | 無(登入端點本身) | ✅ | ✅ |
+| POST | /v1/auth/google | handleGoogleAuth | 無(登入端點本身) | ✅ | ❌ |
 | POST | /v1/auth/register | handleRegister | 無(註冊端點本身) | ✅ | ✅ |
 | POST | /v1/auth/login | handleLogin | 無(登入端點本身) | ✅ | ✅ |
 | GET | /v1/me | handleMe | Bearer token | ✅ | ✅ |

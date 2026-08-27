@@ -2,6 +2,42 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.10.0 — 2026-08-28
+
+### 破壞性變更
+
+- **`api.New()` 新增 `googleClientID` 參數**（`server/internal/api/api.go`）：簽章從 `New(st, signer, devMode)` 改為 `New(st, signer, devMode, googleClientID)`，任何呼叫這個函式的程式碼需要同步更新。
+- **`base-ui.css`/`desktop-layout-shell.css` 移除大量全域字串 CSS class**：`.navbar`、`.btn`/`.icon-btn`、`.new-trip-composer`、`.screen-body`、`.list`/`.row`、`.btn-primary`/`.btn-secondary`/`.btn-danger`、`.field`、`.banner`、`.desktop-layout`、`.desktop-rail`、`.desktop-sidepanel`、`.desktop-main` 等已改用型別安全的共用 React 元件（`components/Navbar.tsx`、`components/IconButton.tsx`、`trip/NewTripComposer.tsx`、`components/ScrollArea.tsx`、`components/ListRow.tsx`、`components/Button.tsx`、`components/FormField.tsx`、`components/Banner.tsx`、`DesktopLayoutShell.tsx`、`DesktopRail.tsx`、`DesktopSidepanel.tsx`、`DesktopMain.tsx`）取代，這批全域 class 名稱已從樣式表中移除，任何依賴這些字串選擇器的外部程式碼（樣式表、E2E 測試腳本等）會失效。
+- **`web/src/hooks/useDragToClose.ts` 移除**：唯一呼叫端（`GeoOutlinePhoneCandidateDrawer.tsx`）已改用共用元件 `components/PhoneBottomSheet.tsx`，這個 hook 沒有其他消費者。
+- **`components/PhoneBottomSheet.tsx` 的 `.body`/`.bodyScrollable` 捲動機制內部實作改變**（`touch-action` 統一改為更嚴格的 `none`，取代先前實測發現在部分裝置上無法可靠擋住雙指縮放的 `pan-y`）：不影響對外 props 介面，但依賴內部 CSS class 結構的外部程式碼（若有）會受影響。
+
+### 新增
+
+- **Google 登入**（GSI 模式）：前端用 Google Identity Services 官方按鈕取得 ID Token，送至新端點 `POST /v1/auth/google`；後端用 `idtoken.Validate` 驗證簽章/audience/issuer 後，比照既有 Apple 登入模式查詢/建立使用者（`google_sub` 欄位）並簽發同一套 JWT。email 已驗證（`email_verified`）且對應既有帳號時自動關聯，避免重複帳號；未驗證則拒絕，防止帳號接管。環境變數新增 `GOOGLE_OAUTH_CLIENT_ID`（後端）、`VITE_GOOGLE_OAUTH_CLIENT_ID`（前端建置期）；兩者留空時 Google 登入功能整體停用，不影響既有登入方式。
+- **候選籃抽屜改用共用 bottom sheet 容器**（`geo-planning/GeoOutlinePhoneCandidateDrawer.tsx`）：原本從右側滑入的獨立實作，改成跟地點清單等其餘手機版抽屜一致的由下往上滑入語言，單段開關（比照原本開/關兩態，不含多段吸附）。
+- **`components/PhoneBottomSheet.tsx` 的 `.bodyScrollable` 內容捲動改用瀏覽器原生捲動**：取代先前用 JS 手動模擬 `scrollTop` 的做法（該做法在部分裝置上會與拖曳手勢互搶事件，導致「sheet 拖曳跟清單捲動同時被觸發」），改為在已展開到最頂段時，用 CSS `overflow-y: auto` 讓瀏覽器原生接手，中途才透過 `preventDefault()` 精確交接回拖曳手勢。
+- 新增基礎 UI 元件：`components/Banner.tsx`、`components/Button.tsx`（`variant="primary"|"secondary"|"danger"`）、`components/FormField.tsx`、`components/IconButton.tsx`、`components/ListRow.tsx`（含 `List`）、`components/Navbar.tsx`、`components/ScrollArea.tsx`；`components/FloatingPanel.tsx`、`components/PanelHead.tsx` 從 `web/src/` 根目錄搬入 `components/`；`trip/NewTripComposer.tsx`（旅程列表領域專屬）。
+- 新增桌面版版面骨架元件：`DesktopLayoutShell.tsx`、`DesktopSidepanel.tsx`、`DesktopMain.tsx`（`unbounded`/`unboundedScroll` prop 取代原本的 CSS `:has()` 被動偵測）；`DesktopRail.tsx` 內部合併原骨架 class，新增把 `expanded` 狀態當 prop 傳給 `DesktopUserMenu` 的機制，取代原本 `:global(.desktop-rail)` CSS 選擇器偵測。
+
+### 修正
+
+- **手機版主畫面可以捲動到底部功能列下方**（`App.module.css`）：`.webApp` 的 `overflow: hidden` 屬性在先前多輪修改 `touch-action` 過程中被意外刪除（僅剩解釋用的註解），導致靠 `transform` 位移到畫面外的抽屜/面板在捲動時被帶進可視範圍。
+- **手機版部分 bottom sheet（對話疊加層、旅程清單、候選籃抽屜）雙指縮放未被正確擋住**：`touch-action: pan-y` 在實機測試（含真實手機，非僅 DevTools 模擬）中證實無法可靠排除縮放手勢，全面改用更嚴格的 `touch-action: none`，捲動需求改在真正需要的內層元素上局部放行 `pan-y`。
+- **手機版整頁一度可以左右拖動**：修正 `.webApp` 誤設為 `touch-action: pan-x pan-y`（應只放行垂直方向）的問題。
+- **地點清單捲到頂端後往下拉，內容會先被瀏覽器原生 overscroll 效果拉開一段間隙**：`.bodyScrollable` 新增 `overscroll-behavior-y: contain`。
+
+## v0.9.1 — 2026-08-27
+
+### 新增
+
+- **手機版地點清單改為三段式拖曳吸附**（`geo-planning/GeoOutlinePhoneListDrawer.tsx`）：原本收合（標頭）＋一個展開段共兩層，新增中間段，對齊地點資訊卡既有的三段式段落結構。
+- **`components/PhoneBottomSheet.tsx` 新增 `keepMounted` prop**：`true` 時 `children` 即使 `open` 為 `false` 也不卸載，只用 `translateY` 位移隱藏。取代對話疊加層原本透過 React Portal（`mainChatSlotNode`/`chatParkingNode`/`chatPortalTarget`/`chatSheetSettled`/`createPortal`）投影 `ChatScreen` 的機制——投影內容在 React 樹上是平行兄弟節點，觸控事件無法冒泡到 `PhoneBottomSheet` 的拖曳手勢處理，導致「對話疊加層只有標頭能拖，內容區完全拖不動」。
+
+### 修正
+
+- **對話疊加層拖曳手勢只有標頭能拖，內容區完全無法拖動**（根因見上方 `keepMounted` 說明）：改為 `ChatScreen` 直接放進 `children`，移除整套投影機制。
+- **時間軸抽屜**（`timeline/PhoneTimelineDrawer.tsx`）新增可拖曳收合到標頭的功能（原為排查上述投影問題新增的對照組，驗證完成後保留）。
+
 ## v0.9.0 — 2026-08-27
 
 ### 破壞性變更
