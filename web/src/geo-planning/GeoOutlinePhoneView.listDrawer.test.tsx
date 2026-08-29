@@ -29,14 +29,17 @@ import type { ClientConfig, GeoSearchResult } from '../api'
 import type { User } from '../user/types'
 
 let capturedOnSearch: (() => void) | undefined
+let capturedOnSearchStart: (() => void) | undefined
 let capturedOnSearchResultsChange: ((results: GeoSearchResult[]) => void) | undefined
 
 vi.mock('./GeoOutlinePanel', () => ({
   GeoOutlinePanel: (props: {
     onSearch?: () => void
+    onSearchStart?: () => void
     onSearchResultsChange?: (results: GeoSearchResult[]) => void
   }) => {
     capturedOnSearch = props.onSearch
+    capturedOnSearchStart = props.onSearchStart
     capturedOnSearchResultsChange = props.onSearchResultsChange
     return null
   },
@@ -83,20 +86,23 @@ describe('GeoOutlinePhoneView：查詢完成後自動打開地點清單抽屜', 
     expect(isListDrawerOpen(container)).toBe(true)
   })
 
-  it('類別標籤/搜尋這個區域按鈕不經過 onSearch，只呼叫 onSearchResultsChange 時，清單也應該打開', () => {
+  it('類別標籤/搜尋這個區域按鈕不經過 onSearch，只呼叫 onSearchStart+onSearchResultsChange 時，清單也應該打開', () => {
     const { container } = renderView()
+    expect(capturedOnSearchStart).toBeTypeOf('function')
     expect(capturedOnSearchResultsChange).toBeTypeOf('function')
 
     expect(isListDrawerOpen(container)).toBe(false)
 
     // 不呼叫 capturedOnSearch()——比照類別標籤/搜尋這個區域按鈕現在的
-    // 實際呼叫路徑(直接呼叫 GeoOutlineMap 內部的 runPlacesQuery,完全
-    // 不經過 GeoOutlinePanel 的 onSearch prop),只有查詢結果回來時才會
-    // 呼叫 onSearchResultsChange。
+    // 實際呼叫路徑(GeoOutlineMap 內部的 runPlacesQuery 觸發時呼叫
+    // onSearchStart,不經過 GeoOutlinePanel 的 onSearch prop)。2026-08
+    // 這次 sheetStack 重構後,「查詢開始」這個時機本身(不是查詢結果回來)
+    // 才是清單被 push 進堆疊的時刻(見 GeoOutlinePhoneView.tsx 的
+    // onSearchStart 說明)——故這裡要先呼叫 onSearchStart,才能重現
+    // 真實的呼叫順序。
+    act(() => capturedOnSearchStart!())
     act(() => capturedOnSearchResultsChange!([]))
 
-    // 這是目前失敗的斷言——修復前,「打開清單」的邏輯只寫在 onSearch
-    // 裡,不經過 onSearch 的入口不會觸發它,清單維持關閉。
     expect(isListDrawerOpen(container)).toBe(true)
   })
 

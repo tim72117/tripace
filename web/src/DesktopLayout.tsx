@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { ApiCall, WsEvent } from './api'
 import { onApiCall, onWsEvent } from './api'
@@ -16,6 +16,7 @@ import { AddFromCandidateSidebar, dayGroupLabel } from './geo-planning/AddFromCa
 import { GeoOutlinePanel } from './geo-planning/GeoOutlinePanel'
 import { useGeoPlanningState } from './geo-planning/useGeoPlanningState'
 import { placesQueryRadiusMeters } from './geo-planning/geoAttractionClick'
+import { reduceCategoryTagsState, initialCategoryTagsState } from './geo-planning/geoCategoryTagsState'
 import type { GeoAttraction } from './api'
 import { type ContentProps } from './AppCommon'
 import { type PanelMode, isPanelMode, DEBUG_PANEL_ENABLED, PANEL_REGISTRY } from './DesktopShared'
@@ -192,6 +193,15 @@ export function DesktopContent(props: ContentProps) {
   // 顯示,不需要再往上層回報,故這裡不持有對應 state。
   const [geoSearchCity, setGeoSearchCity] = useState('')
   const [geoSearchTrigger, setGeoSearchTrigger] = useState(0)
+  // categoryTagsState:地圖上方類別標籤列該不該隱藏——跟手機版
+  // (GeoOutlinePhoneView.tsx)共用同一個 reduceCategoryTagsState 狀態機
+  // (見 geo-planning/geoCategoryTagsState.ts 的完整說明),取代原本桌面版
+  // 「searchResults 非空就隱藏」的衍生值判斷。桌面版沒有「清單抽屜關閉」
+  // 這個動作(候選籃側欄由 panelMode 導覽控制,不是這個狀態機的訂閱端),
+  // 故只會 dispatch search-started/results-arrived,不會 dispatch
+  // user-closed——標籤列只在下一次查詢結果為空時才會重新顯示,這是桌面版
+  // 目前這套導覽下的合理行為,不是遺漏。
+  const [categoryTagsState, dispatchCategoryTags] = useReducer(reduceCategoryTagsState, initialCategoryTagsState)
   // timelineMirror:ChatScreen 透過 desktopChat.onTimelineData 鏡像過來的時間軸資料
   // (entries/updatingEntryIDs/taskPlaceholders/refetchEntries)。ChatScreen 是這份
   // 資料唯一的擁有者(它的 WS 連線即時維護這些 state),這裡只是接住鏡像後轉交給
@@ -348,13 +358,37 @@ export function DesktopContent(props: ContentProps) {
                   // geo-planning/geoSelection.ts 的說明)——這裡曾經只清
                   // 其中一個 state、資訊卡沒有跟著真的關閉,改成單一
                   // reducer 後不會再有「清一半」的中間態。
+                  //
+                  // dispatch search-started 給標籤列狀態機——立刻隱藏
+                  // 標籤列,不等結果回來(見 geo-planning/geoCategoryTagsState.ts
+                  // 的說明,跟手機版 GeoOutlinePhoneView.tsx 共用同一個
+                  // reducer)。
                   geo.clearSelection()
                   setGeoSearchTrigger((n) => n + 1)
+                  dispatchCategoryTags({ type: 'search-started' })
                 }}
+                onSearchStart={() => {
+                  // 類別標籤/「搜尋這個區域」按鈕這兩個入口的「查詢開始」
+                  // 時機——不經過上面的 onSearch,見 GeoOutlineMap.tsx
+                  // onSearchStart 的完整說明。
+                  dispatchCategoryTags({ type: 'search-started' })
+                }}
+                hideCategoryTags={categoryTagsState.hidden}
                 onOpenChat={() => setChatPopoverOpen(true)}
                 searchTrigger={geoSearchTrigger}
                 refetchTripEntriesTrigger={geo.refetchTripEntriesTrigger}
-                onSearchResultsChange={geo.setSearchResults}
+                geocodeCandidates={geo.geocodeCandidates}
+                setGeocodeCandidates={geo.setGeocodeCandidates}
+                selectedCandidate={geo.selectedCandidate}
+                setSelectedCandidate={geo.setSelectedCandidate}
+                onSearchResultsChange={(results) => {
+                  // 查詢結果回來時(不論筆數)——標籤列依結果是否為空決定
+                  // 要不要重新顯示(見 geoCategoryTagsState.ts 的說明)。
+                  // geo.searchResults 現在是 geo.geocodeCandidates 衍生出來
+                  // 的鏡像(見 useGeoPlanningState.ts 的說明),不需要在這裡
+                  // 再手動同步一次。
+                  dispatchCategoryTags({ type: 'results-arrived', hasResults: results.length > 0 })
+                }}
                 externalGeocodeCandidateSelect={geo.searchResultSelect}
                 onTripEntriesChange={geo.onTripEntriesChange}
                 onAttractionSelect={geo.selectAttraction}
@@ -537,16 +571,21 @@ export function DesktopContent(props: ContentProps) {
                 }}
                 onAddCandidate={geo.addCandidate}
                 onCandidateCreated={() => geo.setRefetchTripEntriesTrigger((n) => n + 1)}
-                // onClose:手動關閉直接清空 searchResults,不另外加一個
-                // dismissed state——理由:資料為空清單本來就會讓
-                // geoHotelSidebarVisible 算出 false 而隱藏,下一次查詢
-                // (按「搜尋這個區域」、點類別標籤、或城市搜尋)會自然把清單
-                // 填回來、重新顯示,不需要額外狀態去追蹤「使用者主動關閉
-                // 過」,也不會有「关閉後新查詢卻因為 dismissed 標記仍是 true
-                // 而不顯示」這種容易忘記重置的邊界情況。改由 GeoHotelSidebar
-                // 自己渲染頂部條(含標題文字+關閉按鈕,見該元件的說明),
-                // 這裡不再額外疊加一顆單獨浮動的關閉按鈕。
-                onClose={() => geo.setSearchResults([])}
+                // onClose:手動關閉直接清空 geocodeCandidates(searchResults
+                // 是它衍生出來的鏡像,見 useGeoPlanningState.ts 的說明,清空
+                // 前者後者自然一併變空),不另外加一個 dismissed state——
+                // 理由:資料為空清單本來就會讓 geoHotelSidebarVisible 算出
+                // false 而隱藏,下一次查詢(按「搜尋這個區域」、點類別標籤、
+                // 或城市搜尋)會自然把清單填回來、重新顯示,不需要額外狀態
+                // 去追蹤「使用者主動關閉過」,也不會有「关閉後新查詢卻因為
+                // dismissed 標記仍是 true 而不顯示」這種容易忘記重置的邊界
+                // 情況。改由 GeoHotelSidebar 自己渲染頂部條(含標題文字+
+                // 關閉按鈕,見該元件的說明),這裡不再額外疊加一顆單獨浮動
+                // 的關閉按鈕。這是桌面版「使用者主動放棄查詢結果」語意對等
+                // 的動作點,一併接上清空地圖 marker——理由同手機版
+                // GeoOutlinePhoneListDrawer.onClose(見 GeoOutlinePhoneView.tsx
+                // 的說明)。
+                onClose={() => geo.setGeocodeCandidates([])}
               />
             </FloatingPanel>
           )}

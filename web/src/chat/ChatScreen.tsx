@@ -546,6 +546,12 @@ export function ChatScreen({
           </ScrollArea>
         )}
 
+        {/* 已驗證:.composer 的 bottom: 0(CSS 預設值)本身數學上就是正確
+            位置,不需要額外調整(見 useKeyboardInset 的說明——實測
+            offsetTop + visualViewport.height 恆等於掛載時的基準高度,
+            代表 iOS 已經把可視視窗精確平移到頁面最底部,composer 天生
+            落在可視範圍內)。真正的問題是「上方內容被平移出畫面」,由
+            App.tsx 統一處理,不是這個元件的職責。 */}
         <div className={styles.composer}>
           <div className={styles.row}>
             {/* 桌面版對話小匡(chat-popover)只有 340px 寬,「推薦附近景點」

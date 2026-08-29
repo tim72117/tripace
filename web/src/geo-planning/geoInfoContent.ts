@@ -18,8 +18,8 @@ export function searchResultInfoContent(r: GeoSearchResult): GeoInfoContent {
   return {
     name: r.name,
     photoUrl: r.photoUrl,
-    // placeId:只有 place 來源(GeoPlace,2026-08 起才有這個欄位,見該
-    // 型別的說明)才可能有值,hotel(GeoHotel)本身已經有 eager photoUrl、
+    // placeId:只有 place 來源(GeoGeocodeCandidate,見該型別的說明)才
+    // 可能有值,hotel(GeoHotel)本身已經有 eager photoUrl、
     // 沒有 placeId——見 GeoInfoContent.placeId 的完整說明,呼叫端據此決定
     // 要不要另外補查照片。
     placeId: r.placeId,
@@ -30,13 +30,14 @@ export function searchResultInfoContent(r: GeoSearchResult): GeoInfoContent {
 }
 
 // poiInfoContent:點擊地圖上 Google 原生 POI 圖標查回的 GeoPlaceDetails——
-// 沒有 primaryType 欄位(GeoPlace 候選籃形狀需要,但 Places Details API
-// 這支查詢沒有回傳分類),補空字串,理由同 GeoHotelSidebar 卡片「+」的
-// 既有慣例(這裡的候選籃資料本來就只拿 name/address/lat/lng 顯示,
-// primaryType 目前沒有任何顯示邏輯依賴它)。
+// 沒有 primaryType 欄位(GeoCandidate 的 place 分支需要,見
+// GeoGeocodeCandidate 型別,但 Places Details API 這支查詢沒有回傳分類),
+// 補空字串,理由同 GeoHotelSidebar 卡片「+」的既有慣例(這裡的候選籃
+// 資料本來就只拿 name/address/lat/lng 顯示,primaryType 目前沒有任何
+// 顯示邏輯依賴它)。
 //
-// candidate.photoUrl:GeoCandidate 的 place 分支(2026-08 起)已經跟著
-// GeoPlace 拿掉 photoUrl、改成 placeId(見該型別的說明)——但這裡的資料
+// candidate.photoUrl:GeoCandidate 的 place 分支已經跟著
+// GeoGeocodeCandidate 拿掉 photoUrl、改成 placeId(見該型別的說明)——但這裡的資料
 // 來源是 GeoPlaceDetails(handleGeoPlaceDetails,POI 點擊查詢,不受這次
 // 背景化重構影響,仍同步回傳完整 photoUrl),且這支查詢本身沒有回傳
 // placeId 讓候選籃形狀可以承接,故候選籃項目這裡不帶 photoUrl(候選籃
@@ -88,7 +89,7 @@ export function candidateInfoContent(c: Exclude<GeoCandidate, { kind: 'attractio
     return { name: c.name, subtitle: c.location ?? undefined, badges: [] }
   }
   // hotel 候選有 photoUrl(GeoHotel 查詢完成時就同步帶照片);place 候選
-  // 2026-08 起改成 placeId(見 GeoPlace/GeoCandidate 的說明),交給
+  // 用 placeId(見 GeoGeocodeCandidate/GeoCandidate 的說明),交給
   // useGeoPlanningState.ts 的 infoContentPhotoFetch effect 補查。
   return {
     name: c.name,

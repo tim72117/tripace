@@ -106,7 +106,7 @@ server 的 HTTP API(見 `cmd/cli/main.go` 開頭的架構說明),不再有任何
 | 方法 | 路徑 | Handler | CLI 呼叫方法(cmd/cli/http.go) |
 |---|---|---|---|
 | GET | /internal/maintenance/geocode | handleMaintenanceGeocode | geocode() |
-| POST | /internal/maintenance/landmarks/{id}/update-photo | handleMaintenanceLandmarkUpdatePhoto | attractionUpdatePhoto() |
+| POST | /internal/maintenance/attractions/{id}/update-photo | handleMaintenanceAttractionUpdatePhoto | attractionUpdatePhoto() |
 | POST | /internal/maintenance/attractions | handleMaintenanceAttractionAdd | attractionAdd() |
 | GET | /internal/maintenance/attractions | handleMaintenanceAttractionList | attractionList() |
 | GET | /internal/maintenance/attractions/cities | handleMaintenanceAttractionCities | attractionCities() |

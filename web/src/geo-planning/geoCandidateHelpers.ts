@@ -7,7 +7,7 @@
 // 一致,只是定義位置搬動。
 import { useState } from 'react'
 import * as api from '../api'
-import type { ClientConfig, GeoAttraction, GeoHotel, GeoPlace, GeoSearchResult, GeoTripEntry } from '../api'
+import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoHotel, GeoSearchResult, GeoTripEntry } from '../api'
 import { Car, Hotel, MapPin, Plane, StickyNote, Ticket, UtensilsCrossed } from 'lucide-react'
 
 // entryKind:entry 本身的類型(對齊 model.Entry.Kind,如
@@ -32,7 +32,7 @@ import { Car, Hotel, MapPin, Plane, StickyNote, Ticket, UtensilsCrossed } from '
 export type GeoCandidate =
   | ({ kind: 'hotel' } & GeoHotel)
   | ({ kind: 'attraction' } & GeoAttraction)
-  | ({ kind: 'place' } & GeoPlace)
+  | ({ kind: 'place' } & GeoGeocodeCandidate)
   | ({ kind: 'entry'; inTrip: boolean; entryKind?: string | null } & Omit<GeoTripEntry, 'kind'>)
 
 // ENTRY_KIND_ICONS:「已排入行程」日層架卡片的類別圖示,對應後端
@@ -76,19 +76,20 @@ export function searchResultToCandidate(r: Exclude<GeoSearchResult, { kind: 'geo
   if (r.kind === 'hotel') {
     return { kind: 'hotel', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', photoUrl: r.photoUrl }
   }
-  // place:2026-08 起 GeoPlace 不再帶 photoUrl(見該型別的說明,改成
+  // place:GeoGeocodeCandidate 不帶 photoUrl(見該型別的說明,改成
   // placeId 供延遲查詢),候選籃項目的照片顯示已經跟著改用 placeId(見
   // GeoHotelSidebar.tsx 卡片的「+」按鈕候選預覽,同樣走 GeoListItemCard
   // 的延遲載入邏輯)。
   return { kind: 'place', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', category: r.category, placeId: r.placeId }
 }
 
-// PLACE_CATEGORY_TO_ENTRY_KIND:GeoPlace.category(後端封裝過的自訂分類,
-// 值域固定是 lodging/tourist_attraction/restaurant,見該欄位的完整說明)
-// 對應到 model.Entry.Kind 的值域——兩套字串剛好在這三個類別上重疊,故
-// 直接沿用同樣的字串。不要用 GeoPlace.primaryType(Google 原始細分類型,
-// 如 "hotel"/"japanese_restaurant")做這個判斷,那是後端已經處理過、
-// 前端不該重複解讀的原始資料。
+// PLACE_CATEGORY_TO_ENTRY_KIND:GeoGeocodeCandidate.category(後端封裝過
+// 的自訂分類,值域固定是 lodging/tourist_attraction/restaurant,見該
+// 欄位的完整說明)對應到 model.Entry.Kind 的值域——兩套字串剛好在這三個
+// 類別上重疊,故直接沿用同樣的字串。不要用
+// GeoGeocodeCandidate.primaryType(Google 原始細分類型,如 "hotel"/
+// "japanese_restaurant")做這個判斷,那是後端已經處理過、前端不該重複
+// 解讀的原始資料。
 const PLACE_CATEGORY_TO_ENTRY_KIND: Record<string, string> = {
   lodging: 'stay',
   restaurant: 'restaurant',

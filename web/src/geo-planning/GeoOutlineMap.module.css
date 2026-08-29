@@ -110,15 +110,6 @@
   opacity: 0.9;
 }
 
-/* aria-pressed 反映選取態(見 GeoOutlineMap.tsx 的 handleCategoryClick)
-   ——選中時改用 accent 實心底色,跟未選中的毛玻璃卡片明確區分開來,
-   一眼看出目前查詢的是哪個類別。 */
-.categoryTag[aria-pressed='true'] {
-  background: var(--color-accent);
-  color: var(--ios-card);
-  border-color: transparent;
-}
-
 /* citySearch:城市搜尋框,跟候選籃側欄(GeoCandidateSidebar.module.css 的
    .searchRow/.searchInput/.searchBtn)共用同一份輸入值/查詢邏輯,但視覺
    語言改成跟 .categoryTag 一致的毛玻璃卡片(這裡疊在地圖上、底下有內容
@@ -260,11 +251,13 @@
    讓它讀起來像「針對目前畫面的一次性操作」而非常駐工具列。 */
 .searchThisAreaButton {
   position: absolute;
-  /* top 往下讓出 .categoryTags(top: 16px + 約 32px 高)的空間,兩者才不會
-     在小螢幕/標籤列換行時互相重疊——置中的搜尋按鈕與靠左的類別標籤列
-     水平上通常不會相撞,但把兩者錯開高度更保險,理由同 .categoryTags 的
-     說明。 */
-  top: 64px;
+  /* top 對齊 .citySearch(城市搜尋框,top: 16px + 約 38px 高 ≈ 54px)的
+     下緣,使用者明確要求這顆按鈕要接在搜尋框下面——不是對齊
+     .categoryTags(類別標籤列,top: 16px + 約 32px 高 ≈ 48px,較矮),但
+     兩者本來就在同一條 top: 16px 基準線起算,對齊搜尋框(較高)的下緣
+     自然也不會跟標籤列重疊。置中的搜尋按鈕與靠左的類別標籤列水平上不
+     相撞,不需要額外處理。 */
+  top: 62px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;

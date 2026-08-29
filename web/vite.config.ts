@@ -21,8 +21,18 @@ export default defineConfig({
       // 都是直接用 dev server(見這個 session 反覆用 :5173 測試的慣例),
       // 不開這個選項的話,Chrome DevTools 在 dev server 底下永遠會顯示
       // 「no Manifest detected」,不是設定壞掉,是預設就沒開。
+      //
+      // 2026-08 暫時關閉(enabled: false):排查手機版 iOS 鍵盤彈出問題時,
+      // 使用者連續多輪回報「不管怎麼改都沒有任何差異」——即使是幾乎不需要
+      // JS、重新整理就該立刻生效的 index.html meta tag 改動也一樣沒反應,
+      // 高度懷疑是這裡的 dev-mode service worker 把 index.html/JS 快取住,
+      // 導致手機端(透過 VITE_API_BASE 指向的區網位址存取)拿到的一直是
+      // 舊版本,不是程式邏輯本身的問題。先關閉排除這個變因,確認是否為
+      // 快取造成的假象;若排查完成、確認不是快取問題,記得改回 true
+      // (不開的話 Chrome DevTools 在 dev server 底下會顯示「no Manifest
+      // detected」,見上方說明,只是不影響功能本身)。
       devOptions: {
-        enabled: true,
+        enabled: false,
         type: 'module',
       },
       manifest: {

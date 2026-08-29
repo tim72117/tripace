@@ -1,7 +1,9 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useRef } from 'react'
+import type { ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom'
 import { useAppState } from './hooks/useAppState'
 import { ErrorBoundary } from './ErrorBoundary'
+import { useKeyboardShrink } from './components/useKeyboardInset'
 import styles from './App.module.css'
 
 // 每條路由的頁面元件改用 React.lazy() 動態載入,取代原本的靜態 import——
@@ -23,6 +25,48 @@ const PublicViewScreen = lazy(() => import('./trip/PublicViewScreen').then((m) =
 const PacePage = lazy(() => import('./pace/PacePage').then((m) => ({ default: m.PacePage })))
 const PhoneContent = lazy(() => import('./PhoneContent').then((m) => ({ default: m.PhoneContent })))
 const NotFoundPage = lazy(() => import('./home/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
+
+// KeyboardShrinkGuard:/app 路由專用——鍵盤彈出時把根容器高度直接改成
+// visualViewport.height,取代先前試過的 transform: translateY(-offsetTop)
+// 反向抵銷做法。
+//
+// 排查過程(手機真機實測)確定的關鍵事實:.composer(輸入框,
+// position: absolute; bottom: 0)的位置數學上一直是對的,不需要調整——
+// offsetTop + visualViewport.height 恆等於掛載時的基準高度,代表 iOS
+// 已經把可視視窗精確平移到頁面最底部,composer 天生落在可視範圍內。
+// 但 translateY(-offsetTop) 這個做法實測失敗、且反而讓輸入框跑位——
+// iOS 平移可視視窗的目的就是要讓聚焦的輸入框露出鍵盤上方,translateY
+// 把整份內容視覺上搬回原位,等於把原本剛好對齊鍵盤上緣的輸入框,又搬回
+// 了鍵盤底下被擋住的位置——治標不治本。
+//
+// 改成直接讓根容器的實際高度縮小成 visualViewport.height(取代 CSS 的
+// 100dvh)——縮小後,composer 的 bottom: 0 天生就貼在新高度的底部(即
+// 鍵盤上緣),iOS 沒有理由再平移可視視窗。動畫過渡期的處理邏輯(穩定幀
+// 偵測、resize/scroll 分開處理、focusout 零延遲還原)見
+// useKeyboardShrink 的完整說明。
+//
+// 高度覆蓋必須直接套用在 .webApp 本身,不能是外層再包一層 wrapper div
+// ——實測發現套在外層完全無效(輸入框仍跑位到鍵盤下方):.webApp 自己
+// 的 CSS 寫死 height: 100dvh,這是絕對值,不會因為父層 wrapper 變矮就
+// 跟著收縮(block 元素預設不受父層 height 限制強制縮小)。外層 wrapper
+// 縮小只是把部分溢出內容裁切掉,製造出「上方平移改善了」的錯覺,實際上
+// .webApp 內部的定位鏈(含 PhoneBottomSheet 的 .panel、.composer 的
+// bottom: 0)仍然是相對舊高度(100dvh)計算,完全沒有跟著縮小。改成
+// KeyboardShrinkGuard 直接渲染 .webApp 本身(吃進 className/data-theme
+// prop 並掛 ref),不再是外層 wrapper。
+//
+// useKeyboardShrink 直接操作 DOM(見該函式說明),不透過 React state
+// 回傳高度值——這個元件因此不需要用 height 觸發重新渲染,只需要把
+// ref 交給 hook,children 完全不受這個高度變化影響重新渲染。
+function KeyboardShrinkGuard({ className, dataTheme, children }: { className: string; dataTheme?: string; children: ReactNode }) {
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  useKeyboardShrink(rootRef)
+  return (
+    <div ref={rootRef} className={className} data-theme={dataTheme}>
+      {children}
+    </div>
+  )
+}
 
 // App.tsx 只保留路由判斷(App() 本身)——PhoneContent(含 PhoneNavDrawer 導覽
 // 抽屜)搬到 PhoneContent.tsx、PacePage(原 PublicPaceDemoPage)搬到
@@ -129,9 +173,9 @@ export function App() {
           <Route
             path="/app/:panelMode?"
             element={
-              <div className={`${styles.webApp} app-theme-root`} data-theme={props.theme ?? undefined}>
+              <KeyboardShrinkGuard className={`${styles.webApp} app-theme-root`} dataTheme={props.theme ?? undefined}>
                 <PhoneContent {...props} />
-              </div>
+              </KeyboardShrinkGuard>
             }
           />
           {/* catch-all:真正找不到對應路由的路徑,渲染 404 頁面(NotFoundPage)。

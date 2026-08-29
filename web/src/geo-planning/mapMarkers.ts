@@ -32,7 +32,7 @@ export function svgStringToElement(svg: string): SVGElement {
 }
 
 // PLACE_CATEGORY_GLYPHS:附近推薦地點(見 handleCategoryClick 觸發的
-// runPlacesQuery/fetchGeoGeocode)依 GeoPlace.category
+// runPlacesQuery/fetchGeoGeocode)依 GeoGeocodeCandidate.category
 // 分類要畫的圖案內容(白色線條,座標為 lucide-react 對應圖示的原生 24x24
 // path 資料,直接取自 hotel/map-pin/utensils-crossed 三顆 icon)——讓地圖
 // 上方類別標籤(景點/飯店/餐廳,見 CATEGORY_TAGS)查出來的三種地點,各自

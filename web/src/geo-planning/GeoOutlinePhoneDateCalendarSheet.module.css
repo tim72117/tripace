@@ -1,0 +1,13 @@
+/* GeoOutlinePhoneDateCalendarSheet.tsx 專屬樣式(CSS Modules)。外殼
+   (backdrop/panel/dragHandle/head)已改用共用容器
+   components/PhoneBottomSheet.tsx,內容本身是 DatePickerPopover
+   (react-day-picker 月曆格線 UI,見 DatePickerPopover.module.css 的
+   樣式——那裡才是真正的月曆視覺定義,這裡只需要讓它在 sheet 內置中/
+   留白)——使用者明確要求「日曆要用跟桌面版的日曆一樣」,取代 2026-08
+   剛改成獨立 sheet 時暫用的原生 <input type="date">。 */
+
+.body {
+  padding: 4px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  justify-content: center;
+}

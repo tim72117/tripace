@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import type { ClientConfig, GeoAttraction, GeoPlaceDetails, GeoPlaceText, GeoSearchResult, GeoTripEntry } from '../api'
-import { deleteEntry, fetchGeoPlacePhoto } from '../api'
+import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoPlaceDetails, GeoPlaceText, GeoSearchResult, GeoTripEntry } from '../api'
+import { deleteEntry, fetchGeoPlacePhoto, geocodeCandidateToSearchResult } from '../api'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
 import {
   poiInfoContent,
@@ -220,10 +220,50 @@ export function useGeoPlanningState({
     setSearchResultSelect({ ...r })
   }, [])
 
-  // searchResults/setSearchResults:飯店/推薦地點/搜尋結果三種來源統一後
-  // 的清單資料——見 GeoOutlineMap.tsx 的 onSearchResultsChange prop 說明,
-  // 取代原本各自獨立的 hotels/places/geocodeCandidates 三組 state。
-  const [searchResults, setSearchResults] = useState<GeoSearchResult[]>([])
+  // geocodeCandidates/setGeocodeCandidates:2026-08 從 GeoOutlinePanel.tsx
+  // 搬遷到這裡——原本是那個檔案的私有 state,但「手機版清單抽屜關閉時
+  // 連動清空地圖 marker」這個需求的觸發點(GeoOutlinePhoneView.tsx 的
+  // GeoOutlinePhoneListDrawer.onClose)活在比 GeoOutlinePanel 更外層,沒
+  // 辦法碰到它內部的 state,只能把擁有權移到這個兩邊(桌面版/手機版)
+  // 共用的狀態層,讓外層能直接呼叫 setter 清空。搬遷後 GeoOutlinePanel.tsx
+  // 改為受控元件,經由 geocodeCandidates/setGeocodeCandidates props 讀寫
+  // 這裡,語意/呼叫位置與原本完全相同(城市搜尋框查詢完成/類別標籤搜尋
+  // 完成寫入、搜尋框文字清空時連動清空),只是「setState」換成「呼叫傳入
+  // 的 setter」——見 GeoOutlinePanel.tsx 對應 prop 的完整說明,那裡有這份
+  // state 更完整的背景(三個查詢入口共用、為什麼點擊候選後不清空等)。
+  const [geocodeCandidates, setGeocodeCandidates] = useState<GeoGeocodeCandidate[]>([])
+  // selectedCandidate/setSelectedCandidate:同上,一併從 GeoOutlinePanel.tsx
+  // 搬過來——這份 state 驅動候選選定後平行補查文字/照片的 effect(仍然
+  // 留在 GeoOutlinePanel.tsx 內,只是讀寫的 state 改成 props),跟
+  // geocodeCandidates 概念上獨立但生命週期緊密相關(見該檔案原本的
+  // 說明),搬遷時一併搬移,避免兩者分屬不同層造成日後維護時各自為政。
+  const [selectedCandidate, setSelectedCandidate] = useState<GeoSearchResult | null>(null)
+
+  // searchResults:飯店/推薦地點/搜尋結果三種來源統一後的清單資料——見
+  // GeoOutlineMap.tsx 的 onSearchResultsChange prop 說明,取代原本各自
+  // 獨立的 hotels/places/geocodeCandidates 三組 state。
+  //
+  // 2026-08 起改成用 useMemo 從上面的 geocodeCandidates 衍生,不再是獨立
+  // 手動同步的 state——搬遷 geocodeCandidates 到這一層之前,兩者是分開
+  // 維護的:GeoOutlinePanel.tsx 在城市搜尋框查詢完成、onGeocodeCandidatesChange
+  // 兩處各自手動呼叫 setGeocodeCandidates 與 onSearchResultsChange(内部
+  // 呼叫這裡的 setSearchResults),靠人工保證兩處呼叫永遠成對出現。確認
+  // 過 onSearchResultsChange 在整個程式碼庫裡只有這兩處呼叫,且每次呼叫
+  // 傳入的值都固定是 geocodeCandidates.map(geocodeCandidateToSearchResult)
+  // ——也就是說 searchResults 從來就是 geocodeCandidates 的純轉型鏡像,
+  // 不曾有過其他寫入路徑或額外資料,故改成 useMemo 衍生是安全的簡化,不
+  // 是冒險的行為變更。
+  //
+  // 注意這裡刻意「不」用一個觀察 geocodeCandidates 變化的 useEffect 去算
+  // searchResults 再 setState——直接用 useMemo 同步衍生,理由是這個專案
+  // 先前吃過 level-triggered useEffect 的虧(見 GeoOutlinePanel.tsx/
+  // GeoOutlineMap.tsx 對 edge-triggered 設計的完整說明):useMemo 只是
+  // 「讀取時算一次值」,不是額外一個會在任何寫入 geocodeCandidates 的
+  // 時機被誤觸發的副作用,不會重新引入同一類 bug。
+  const searchResults = useMemo(
+    () => geocodeCandidates.map(geocodeCandidateToSearchResult),
+    [geocodeCandidates],
+  )
 
   // selectAttraction/selectSearchResult/selectPoi(地圖直接點擊/
   // GeoOutlinePanel 回呼版本):GeoOutlinePanel 的
@@ -261,8 +301,8 @@ export function useGeoPlanningState({
     })
   }, [])
 
-  // infoContentPhotoFetch:推薦地點(GeoPlace)資訊卡開啟時的照片延遲補查
-  // ——2026-08 起 GeoPlace 不再帶 eager photoUrl(後端照片查詢改成背景
+  // infoContentPhotoFetch:推薦地點(GeoGeocodeCandidate)資訊卡開啟時的
+  // 照片延遲補查——這支查詢不帶 eager photoUrl(後端照片查詢改成背景
   // 預熱快取,見 server 端 handleGeoPlacesNearby 的說明),這張卡片
   // (GeoInfoPanel/GeoOutlinePhoneInfoSheet)本身是純展示元件、沒有
   // IntersectionObserver 延遲載入機制(不像 GeoListItemCard,理由是資訊
@@ -379,9 +419,17 @@ export function useGeoPlanningState({
     handleRemoveCandidate,
     handleScheduleCandidate,
     selectCandidateFromBasket,
-    // 飯店/推薦地點/搜尋結果統一後的清單
+    // 搜尋結果原始資料(geocode 查詢的唯一資料來源)——見上方宣告處的
+    // 完整說明,搬遷自 GeoOutlinePanel.tsx。
+    geocodeCandidates,
+    setGeocodeCandidates,
+    selectedCandidate,
+    setSelectedCandidate,
+    // 飯店/推薦地點/搜尋結果統一後的清單——現在是 geocodeCandidates 的
+    // 衍生值(見上方 useMemo 的說明),不再提供 setSearchResults:任何想
+    // 清空/改變搜尋結果的呼叫端都應該改動 geocodeCandidates(唯一資料
+    // 來源),而不是繞過它直接改這份鏡像——那樣會讓兩者不同步。
     searchResults,
-    setSearchResults,
     searchResultSelect,
     selectSearchResultFromList,
     // 行程 entry 重新查詢觸發

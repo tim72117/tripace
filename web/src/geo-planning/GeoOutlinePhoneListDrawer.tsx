@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
 import type { ClientConfig, GeoSearchResult } from '../api'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
@@ -151,6 +151,8 @@ export function GeoOutlinePhoneListDrawer({
   onAddCandidate,
   onCandidateCreated,
   loading = false,
+  isTopmost = true,
+  forceCollapsed = false,
 }: {
   cfg: ClientConfig
   tripID?: string | null
@@ -179,6 +181,19 @@ export function GeoOutlinePhoneListDrawer({
   // (setListDrawerOpen(true))並傳 true,不用等查詢結果回來才開啟清單。
   // 轉傳給 PhoneBottomSheet 的 loading prop,見該元件的說明。
   loading?: boolean
+  // isTopmost:點清單項目後資訊卡疊上來時傳 false——轉傳給
+  // PhoneBottomSheet,套用退縮視覺並停用拖曳手勢(見 useSheetStack.ts
+  // 與 GeoOutlinePhoneView.tsx 的 sheetStack 說明)。預設 true,不影響
+  // 清單單獨開啟(沒有資訊卡疊加)時的既有行為。
+  isTopmost?: boolean
+  // forceCollapsed:true 時強制縮到最小段(索引 0,只顯示標頭)——使用者
+  // 明確要求「前一層比後層高時,往下拉後層也要跟著往下」,由
+  // GeoOutlinePhoneView.tsx 依資訊卡(疊在這個清單上面的那一層)的
+  // onDraggingDownChange 訊號設定。true→false(資訊卡停止往下拖,見
+  // 下方 useEffect)時恢復成使用者原本停留的段落,不是每次都重設回展開
+  // (使用者可能原本就把清單拖到收合過,不該因為上層曾經往下拖一下就
+  // 強制展開回去)。
+  forceCollapsed?: boolean
 }) {
   // lazyPhotos:依 placeId 延遲載入的照片快取,理由同桌面版
   // GeoHotelSidebar.tsx 的同名 state(2026-08 起不分 kind、只要有
@@ -191,6 +206,24 @@ export function GeoOutlinePhoneListDrawer({
   useEffect(() => {
     if (open) setActiveSnapIndex(1)
   }, [open])
+
+  // forceCollapsed 變 true 時記住目前段落(preForceSnapIndexRef)、強制
+  // 切到索引 0(最小段);變回 false 時恢復記住的段落——見 forceCollapsed
+  // prop 的說明。用 ref 而非 state 記住「強制前的段落」,因為這個值只在
+  // forceCollapsed 由 true 變 false 那一刻讀取一次,不需要參與渲染。
+  const preForceSnapIndexRef = useRef(activeSnapIndex)
+  const wasForcedRef = useRef(false)
+  useEffect(() => {
+    if (forceCollapsed) {
+      if (!wasForcedRef.current) preForceSnapIndexRef.current = activeSnapIndex
+      wasForcedRef.current = true
+      setActiveSnapIndex(0)
+    } else if (wasForcedRef.current) {
+      wasForcedRef.current = false
+      setActiveSnapIndex(preForceSnapIndexRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forceCollapsed])
 
   const isEmpty = results.length === 0
 
@@ -213,6 +246,8 @@ export function GeoOutlinePhoneListDrawer({
       panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 36 }}
       head={<SheetHead title="地點" onClose={onClose} />}
       loading={loading}
+      isTopmost={isTopmost}
+      stackOffsetPx={16}
     >
       <div className={styles.list}>
         {isEmpty ? (

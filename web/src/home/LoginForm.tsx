@@ -9,6 +9,7 @@ import { useGoogleSignIn } from '../hooks/useGoogleSignIn'
 import { Button } from '../components/Button'
 import { FormField } from '../components/FormField'
 import './LoginForm.css'
+import loginFieldStyles from './LoginForm.module.css'
 
 // build time 注入的 Google OAuth Client ID(GSI 模式,見 useGoogleSignIn.ts
 // 開頭的完整背景說明)。未設定時整個 Google 登入按鈕不會渲染——這是
@@ -138,7 +139,7 @@ export function LoginForm({
 
   return (
     <div className={pill ? 'login-form pill' : 'login-form'}>
-      <FormField>
+      <FormField className={loginFieldStyles.loginFormField}>
         <input
           value={email}
           type="email"
@@ -147,7 +148,7 @@ export function LoginForm({
           placeholder="輸入你的 Email"
         />
       </FormField>
-      <FormField>
+      <FormField className={loginFieldStyles.loginFormField}>
         <input
           type="password"
           value={password}
@@ -158,7 +159,7 @@ export function LoginForm({
         />
       </FormField>
       {mode === 'register' && (
-        <FormField>
+        <FormField className={loginFieldStyles.loginFormField}>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}

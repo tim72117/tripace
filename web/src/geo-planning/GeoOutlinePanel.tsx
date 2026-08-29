@@ -87,6 +87,8 @@ export function GeoOutlinePanel({
   searchRightSlot,
   onAttractionsChange,
   onSearchResultsChange,
+  onSearchStart,
+  hideCategoryTags,
   onActiveCategoryChange,
   onTripEntriesChange,
   onAttractionSelect,
@@ -102,6 +104,10 @@ export function GeoOutlinePanel({
   searchTrigger,
   refetchTripEntriesTrigger,
   theme,
+  geocodeCandidates,
+  setGeocodeCandidates,
+  selectedCandidate,
+  setSelectedCandidate,
 }: {
   cfg: ClientConfig
   tripID?: string | null
@@ -119,6 +125,16 @@ export function GeoOutlinePanel({
   // 下方)。
   onCityChange?: (city: string) => void
   onSearch?: () => void
+  // onSearchStart:原封不動轉傳給 GeoOutlineMap——見該元件對這個 prop
+  // 的完整說明,類別標籤/「搜尋這個區域」按鈕觸發查詢時通知呼叫端。跟
+  // onSearch 是兩個獨立的「查詢開始」訊號:onSearch 只有城市搜尋框會
+  // 呼叫,onSearchStart 只有類別標籤/搜尋這個區域會呼叫(見
+  // GeoOutlineMap.tsx runPlacesQuery 的說明),呼叫端
+  // (GeoOutlinePhoneView.tsx)需要同時接兩個才能涵蓋全部三個入口。
+  onSearchStart?: () => void
+  // hideCategoryTags:原封不動轉傳給 GeoOutlineMap——見該元件對這個 prop
+  // 的完整說明,手機版專用。
+  hideCategoryTags?: boolean
   // onOpenChat:原封不動轉傳給 GeoOutlineMap——搜尋框膠囊左側的 AI
   // 按鈕,見 GeoOutlineMap.tsx 對這個 prop 的完整說明。
   onOpenChat?: () => void
@@ -211,6 +227,23 @@ export function GeoOutlinePanel({
   // ——見 GeoOutlineMap.tsx 對這個 prop 的完整說明。這個元件本身不消費
   // theme,純轉傳。
   theme?: Theme
+  // geocodeCandidates/setGeocodeCandidates:2026-08 起這份 state 的擁有權
+  // 從這個元件搬到 useGeoPlanningState.ts(桌面版/手機版共用的狀態層),
+  // 這個元件改為受控,只負責讀寫傳入的 props——搬遷理由:「關閉搜尋清單
+  // 時連動清空地圖 marker」這個需求的觸發點(GeoOutlinePhoneView.tsx 的
+  // GeoOutlinePhoneListDrawer.onClose)活在比這個元件更外層,原本的私有
+  // useState 碰不到,只有搬到兩邊呼叫端共用的那一層,外層才能直接呼叫
+  // setter 清空它。型別/語意跟原本的私有 state 完全相同,見下方讀取處
+  // (城市搜尋框查詢完成、onGeocodeCandidatesChange、搜尋框文字清空時
+  // 連動清空)——這幾處原本呼叫 setGeocodeCandidates(內部 setState)的
+  // 地方,現在呼叫的是這個 prop(呼叫端傳入的 setter),行為不變。
+  geocodeCandidates: GeoGeocodeCandidate[]
+  setGeocodeCandidates: (candidates: GeoGeocodeCandidate[]) => void
+  // selectedCandidate/setSelectedCandidate:同上,一併搬遷——驅動下方
+  // 補查文字/照片的 useEffect(依賴陣列用 selectedCandidate?.placeId,
+  // 這個既有的坑見該 effect 的完整說明,搬遷後維持不變)。
+  selectedCandidate: GeoSearchResult | null
+  setSelectedCandidate: (candidate: GeoSearchResult | null) => void
 }) {
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -234,28 +267,13 @@ export function GeoOutlinePanel({
   // 偵測到「這是一次新的移動請求」(理由同 GeoOutlineMap.tsx 對 panTarget
   // 的說明)。
   const [panRequest, setPanRequest] = useState<{ lat: number; lng: number; level?: number; radiusMeters?: number; suppressQuery: boolean; onlyIfOutOfView?: boolean } | null>(null)
-  // geocodeCandidates:fetchGeoGeocode 查到多筆候選時(見上方
-  // searchTrigger 的 effect)暫存在這裡,傳給 GeoOutlineMap 畫成可點擊
-  // 的候選 marker、並 fitBounds 縮放到能同時看見所有候選的範圍——
-  // 使用者自己從地圖上辨認、點選正確的那一筆,不再像過去只回一組座標、
-  // 猜錯了無從挑選。點擊確認後不清空(見 handleGeocodeCandidateSelect
-  // 的說明),讓使用者能隨時回頭比較/改選別的候選;只有觸發新一次搜尋
-  // 才會換成新的候選清單(見上方 searchTrigger 的 effect)。
-  const [geocodeCandidates, setGeocodeCandidates] = useState<GeoGeocodeCandidate[]>([])
-  // selectedCandidate:目前選定要顯示文字/照片補查結果的候選——單一
-  // state 收斂原本分散在 searchTrigger effect(單筆候選分支)與
-  // handleGeocodeCandidateSelect 兩處各自手動呼叫 fetchGeoPlaceText/
-  // fetchGeoPlacePhoto 的重複邏輯,改由下方唯一一個 useEffect 統一發起
-  // 查詢。用標準的 useEffect + cancelled flag 模式(對齊這個檔案其餘
-  // effect 的既有慣例,如上方 tripID/refetchTripEntriesTrigger 兩個
-  // effect)取代先前「呼叫端另外用一個變數記住目前是誰、非同步回來時
-  // 手動比對」的做法——後者曾經在 DesktopLayout.tsx 出過 stale closure
-  // 的實際 bug(setState 更新不會在同一輪同步程式碼內立刻反映到已經
-  // 建立好的閉包裡,導致比對用的值永遠是設值前的舊值,查到的照片被永久
-  // 判定成「已經不是目前這張卡片」而擋下)。這裡改成請求直接在 effect
-  // 內發起、依賴這個 state 本身,cancelled 這個區域變數在同一個閉包裡
-  // 建立與讀取,不會有跨 render 的過時值問題,不需要额外的 ref/手動比對。
-  const [selectedCandidate, setSelectedCandidate] = useState<GeoSearchResult | null>(null)
+  // geocodeCandidates/selectedCandidate:2026-08 起改由 props 傳入(見上方
+  // 型別區塊對這兩個 prop 的完整說明),這個元件不再持有私有 useState。
+  // 保留在這裡的原因說明(唯一資料來源、三個查詢入口共用、點擊確認後
+  // 不清空、與 selectedCandidate 的關聯)完整內容見
+  // useGeoPlanningState.ts 對應宣告處與下方各處讀寫的說明,不重複貼一份
+  // 在這裡——這個元件現在只負責「什麼時候該讀/寫」,不再是「資料實際
+  // 放在哪裡」的擁有者。
   // tripCenter:目前旅程底下已有座標的 entry 算出來的中心點,見下方
   // useEffect,傳給 GeoOutlineMap 當地圖第一次建立時的初始中心(見該
   // 元件 initialCenter prop 的完整說明)——三態:undefined 代表「還在
@@ -282,7 +300,15 @@ export function GeoOutlinePanel({
     let cancelled = false
     setLoading(true)
     setErr(null)
-    setGeocodeCandidates([])
+    // 不在這裡先 setGeocodeCandidates([])清空——這個清空動作若走舊版
+    // level-triggered 設計(觀察 state 變化間接觸發 onSearchResultsChange)
+    // 會被誤判成「查詢完成」提前結束 loading(使用者實測回報過這個
+    // bug)。2026-08 起改成 edge-triggered:onSearchResultsChange 只在
+    // 下方查詢真正完成的位置直接呼叫,不再依賴觀察 state 變化,故這裡
+    // 即使不清空也不會有這個問題——但依然不清空,理由不變:loading 為
+    // true 期間清單抽屜/資訊卡本來就已經用轉圈動畫蓋住整個 body(見
+    // GeoOutlinePhoneListDrawer.tsx 轉傳給 PhoneBottomSheet 的 loading
+    // prop),不需要另外搶先清空候選來避免舊資料殘留。
     fetchGeoGeocode(cfg, trimmed, mapCenter ?? undefined)
       .then((result) => {
         if (cancelled) return
@@ -294,9 +320,10 @@ export function GeoOutlinePanel({
         // 對多筆候選點選後的既有行為)——原本這裡只 setPanRequest、不呼叫
         // onSearchResultSelect,搜尋整座城市這類唯一解查詢時地圖會
         // 移動過去,但完全沒有任何資訊卡跳出來,使用者容易誤以為搜尋沒有
-        // 生效。setGeocodeCandidates 本身的變動會經由 GeoOutlineMap 內部
-        // 合併進 searchResults、觸發 onSearchResultsChange 往上回報,不需要
-        // 這裡另外呼叫一次。
+        // 生效。setGeocodeCandidates 這裡仍然要呼叫(即使只有一筆),讓
+        // geocodeCandidates 完整反映這次查詢結果;下方統一呼叫
+        // onSearchResultsChange 通知清單抽屜(edge-triggered,見該呼叫處
+        // 的說明)。
         if (result.candidates.length === 1) {
           const only = result.candidates[0]
           setPanRequest({ lat: only.lat, lng: only.lng, suppressQuery: false })
@@ -305,9 +332,19 @@ export function GeoOutlinePanel({
           // 文字/照片補查交給下方統一的 selectedCandidate effect,不在
           // 這裡重複發請求——理由見該 state 的說明。
           setSelectedCandidate(onlyResult)
+          setGeocodeCandidates(result.candidates)
         } else {
           setGeocodeCandidates(result.candidates)
         }
+        // 查詢真正完成的這一刻直接呼叫 onSearchResultsChange(edge-
+        // triggered),不再依賴 GeoOutlineMap.tsx 觀察 geocodeCandidates
+        // 衍生出的 searchResults state 變化去間接觸發(level-triggered)
+        // ——後者是「任何寫入 geocodeCandidates 的地方都會被誤判成查詢
+        // 完成」這類 bug 的結構性根因(已修過兩次同類問題:清空候選被
+        // 誤判成查詢完成、元件掛載時 useEffect 必定執行一次被誤判)。
+        // 這裡直接在唯一真正代表「查詢完成」的語意位置呼叫,不管
+        // geocodeCandidates 之後有沒有動、為什麼動,都不會再意外觸發。
+        onSearchResultsChange?.(result.candidates.map(geocodeCandidateToSearchResult))
       })
       .catch((e) => {
         if (!cancelled) setErr(e instanceof Error ? e.message : String(e))
@@ -320,6 +357,18 @@ export function GeoOutlinePanel({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTrigger])
+
+  // 搜尋框文字清空時,連動清空地圖上的搜尋結果——使用者清空輸入框是
+  // 明確的「不想再看這批結果了」訊號(對齊探索標籤再點一次取消選取、
+  // 清空 attractions 圖層的既有互動語意,見 GeoOutlineMap.tsx 該處的
+  // 說明),不清掉的話,候選 marker/籃還會停留在地圖上,跟使用者「已經
+  // 清空搜尋」的預期不符。這條規則以前沒辦法乾淨地寫,是因為地圖結果
+  // 分裂成 geocodeCandidates(這裡)與 GeoOutlineMap.tsx 內部的 places
+  // 兩份 state,後者沒有直接存取 city 的必要性——合併成這裡唯一一份
+  // geocodeCandidates 之後,只需要這一處。
+  useEffect(() => {
+    if (city.trim() === '') setGeocodeCandidates([])
+  }, [city])
 
   // handleGeocodeCandidateSelect:使用者在地圖上點擊某個候選 marker、或
   // 在 GeoHotelSidebar 合併清單裡點候選項目確認選定——不再清空候選圖層
@@ -531,7 +580,21 @@ export function GeoOutlinePanel({
           searching={loading}
           searchError={err}
           onAttractionsChange={onAttractionsChange}
-          onSearchResultsChange={onSearchResultsChange}
+          onSearchStart={onSearchStart}
+          hideCategoryTags={hideCategoryTags}
+          // onGeocodeCandidatesChange:類別標籤/「搜尋這個區域」按鈕觸發
+          // 的查詢完成時,GeoOutlineMap.tsx 透過這個 callback 通知這裡
+          // 更新 geocodeCandidates(理由見該 state 宣告處的完整說明)——
+          // 這個元件是 geocodeCandidates 唯一的資料來源,GeoOutlineMap
+          // 本身不再自己持有一份平行的 state。同時在這個查詢真正完成的
+          // 位置直接呼叫 onSearchResultsChange(edge-triggered)——理由
+          // 同上方城市搜尋框 fetchGeoGeocode.then() 裡的說明,不再依賴
+          // GeoOutlineMap.tsx 內部觀察 state 變化間接觸發(該檔案那個
+          // useEffect 已移除,見其說明)。
+          onGeocodeCandidatesChange={(candidates) => {
+            setGeocodeCandidates(candidates)
+            onSearchResultsChange?.(candidates.map(geocodeCandidateToSearchResult))
+          }}
           onActiveCategoryChange={onActiveCategoryChange}
           onAttractionSelect={onAttractionSelect}
           // 統一走 handleGeocodeCandidateSelect(含補查文字/照片、

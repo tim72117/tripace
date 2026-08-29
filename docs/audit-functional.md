@@ -304,11 +304,6 @@
 - **現況（2026-08-16）**：本次未覆核，狀態延續原記錄，屬產品規劃層級，非程式碼 bug。
 - **備註**：`docs/architecture-review-2026-07.md` 原文附有完整的 B-3 產品功能建議清單（iCal 匯出、地圖總覽、交通時間計算、全文檢索、推播通知、PWA、相片附件、費用分帳等 15 項），為避免重複記錄，此處不逐條複製，需要時請參照該文件的「B-3. 產品功能」章節（該文件本身已於本次稽核整理後標記為可移除的來源文件，內容已完整併入本檔案與 `docs/audit-security.md`，若日後需要查閱原文可從 git 歷史還原）。
 
-### F9 ⚪ `docs/routing-architecture.md` 仍記載已改名的路由（文件過時）
-- **位置**：`docs/routing-architecture.md:108`
-- **問題**：仍列出 `POST /internal/maintenance/landmarks/{id}/update-photo` → `handleMaintenanceLandmarkUpdatePhoto`，但 commit `3d8d300` 已改名為 `/internal/maintenance/attractions/{id}/update-photo` → `handleMaintenanceAttractionUpdatePhoto`（`CHANGELOG.md`、`tripace-cli` skill 文件都已同步更新，唯獨此文件遺漏）。
-- **現況（2026-08-16 複核）**：CONFIRMED 為文件遺漏，非程式碼 bug，修法為單純更新文件內容對齊現有路由。
-
 ### F10 ⚪ `geo_outline.go` 的 `attractionResponse` 仍用 `Landmark*` 命名，違反 terminology.md 統一用語規則
 - **位置**：`server/internal/api/geo_outline.go:89-91`（`LandmarkPhotoURL`/`LandmarkName` 欄位，JSON tag `landmarkPhotoUrl`/`landmarkName`）
 - **問題**：`docs/terminology.md` 規定正式用語統一為「景點區域」/`Attraction`，介面用語不應有同義詞變體；commit `3d8d300` 已在 `maintenance.go` 做過同一輪「landmark → attraction」改名清理，但同一 commit 觸及的 `geo_outline.go` 卻遺漏了這兩個欄位，且未被 `terminology.md` 已知的 `server/internal/geo/places.go` `District`/`Landmark` 待辦揭露涵蓋——屬於清理漏網之魚。
@@ -350,3 +345,8 @@
 - **原始問題**：專案沒有 `CLAUDE.md`，AI 協作每次都要重新建立上下文。
 - **修復確認**：已有 `.claude/CLAUDE.md`（目前內容精簡，僅記載對話語言慣例）。
 - **確認方式**：檔案存在確認（`docs/PROJECT_HEALTH_REVIEW.md`）。
+
+### 已解決：`docs/routing-architecture.md` 仍記載已改名的路由（原 F9，文件過時）
+- **原始問題**：仍列出 `POST /internal/maintenance/landmarks/{id}/update-photo` → `handleMaintenanceLandmarkUpdatePhoto`，但 commit `3d8d300` 已改名為 `/internal/maintenance/attractions/{id}/update-photo` → `handleMaintenanceAttractionUpdatePhoto`（`CHANGELOG.md`、`tripace-cli` skill 文件都已同步更新，唯獨此文件遺漏）。
+- **修復確認**：已對照 `server/internal/api/api.go:274`、`server/internal/api/maintenance.go:111` 驗證現行路由與 handler 名稱，並更新 `docs/routing-architecture.md` 第 109 行為 `POST /internal/maintenance/attractions/{id}/update-photo` → `handleMaintenanceAttractionUpdatePhoto`。全文掃描確認無其餘 `landmark` 舊命名殘留。
+- **確認方式**：程式碼複核（`server/internal/api/api.go`、`server/internal/api/maintenance.go`），2026-08-30。

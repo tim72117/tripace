@@ -170,6 +170,19 @@ export interface PhoneBottomSheetProps {
   // 讓多層堆疊時每一層都露出一小段邊緣,不會完全重疊看不出「後面還有
   // 東西」。isTopmost 為 true 時忽略這個值。
   stackOffsetPx?: number
+  // onDraggingDownChange:這個 sheet 是否「正在往下拖曳」的即時回報
+  // (true = 目前正往下拖;false = 沒有在往下拖,含鬆手/往上拖/根本沒在
+  // 拖曳)——供呼叫端(堆疊容器,例如 geo-planning/GeoOutlinePhoneView.tsx)
+  // 得知「使用者正在把這個 sheet 往下拉」這個訊號,決定要不要連動堆疊
+  // 中其他層的顯示狀態(例如頂層被往下拖時,後層縮到最小段,見
+  // GeoOutlinePhoneView.tsx 的接線)。這個元件本身不管跨 sheet 的堆疊
+  // 互動邏輯要怎麼反應(使用者明確要求「上層容器管理交互邏輯」),只負責
+  // 回報自己「正在往下拖」這個布林狀態,不回報精確位移量——呼叫端目前
+  // 的需求只需要知道「有沒有在往下拖」這個粗粒度訊號,不需要逐 px 跟手
+  // 連動,不做超出實際需求的精確度設計。只有 isTopmost 為 true(接收
+  // 拖曳手勢的那一層)才會觸發,非頂層本身不接收手勢,沒有拖曳狀態可以
+  // 回報。
+  onDraggingDownChange?: (draggingDown: boolean) => void
 }
 
 export function PhoneBottomSheet({
@@ -190,6 +203,7 @@ export function PhoneBottomSheet({
   keepMounted = false,
   isTopmost = true,
   stackOffsetPx = 0,
+  onDraggingDownChange,
 }: PhoneBottomSheetProps) {
   // shouldRender/lastContent:延遲卸載——呼叫端(如
   // GeoOutlinePhoneInfoSheet.tsx)常常是「資料來源本身決定要不要渲染」
@@ -496,6 +510,18 @@ export function PhoneBottomSheet({
   const panelTop = (draggingRef.current
     ? Math.min(stops[0], Math.max(stops[stops.length - 1], startTopRef.current + dragOffset))
     : currentTop) + (isTopmost ? 0 : stackOffsetPx)
+
+  // 拖曳中即時回報「是否正在往下拖」給呼叫端(見 onDraggingDownChange
+  // prop 的說明)——依賴 dragOffset(state,變化會觸發這個 effect;
+  // draggingRef 是 ref,不會觸發 re-render,不能當依賴)。dragOffset > 0
+  // 代表往下拖(見上方 panelTop/onTouchMove 對 dragOffset 正負號方向的
+  // 說明),鬆手後 dragOffset 歸零、draggingRef 變 false,這裡回報 false
+  // 讓呼叫端知道「不再往下拖了」。
+  useEffect(() => {
+    if (!onDraggingDownChange) return
+    onDraggingDownChange(draggingRef.current && dragOffset > 0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragOffset])
 
   // 是否目前停在展開最少的那個段(對齊原本 expand-collapse 設計的
   // 「收合」狀態,見元件開頭的說明)——只有這個狀態才隱藏 body、不顯示

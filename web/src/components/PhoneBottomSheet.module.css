@@ -183,19 +183,27 @@
   cursor: pointer;
 }
 
-/* spinner:loading prop 為 true 時取代 children 顯示的置中轉圈動畫——見
-   PhoneBottomSheet.tsx 的 loading prop 說明。 */
+/* spinner:loading prop 為 true 時取代 children 顯示的轉圈動畫——見
+   PhoneBottomSheet.tsx 的 loading prop 說明。改成靠頂對齊(不是垂直
+   置中撐滿 .body 剩餘高度)──.body 本身是 flex: 1,撐到目前吸附段的
+   完整高度(例如地點清單展開段 400px),若圈圈用 flex: 1 + align-self:
+   center 這種「參與 flex 分配並置中」的寫法,不論圈圈本身多小,都會被
+   擺在這一大片高度的正中央,視覺上讀起來像「整個清單容器都是 loading
+   佔用的空間」(使用者實測回報「地點清單 loading 圖是太大了」「還是很
+   大,是整個清單容器的大小」)。改成 flex: 0 0 auto 靠頂、只留一段固定
+   margin-top 跟 head 保持間距,展開段高度本身維持不變(使用者明確要求
+   不改高度,只調整圈圈的大小與位置),loading 結束後內容從同一個位置
+   往下展開,不會有「先看到一大片空白圓圈,結果回來又整個跳位」的落差。 */
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 .spinner {
-  flex: 1;
+  flex: 0 0 auto;
   align-self: center;
-  justify-self: center;
-  width: 28px;
-  height: 28px;
-  margin: 32px auto;
-  border: 3px solid var(--ios-sep);
+  width: 18px;
+  height: 18px;
+  margin: 24px auto 0;
+  border: 2px solid var(--ios-sep);
   border-top-color: var(--color-accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;

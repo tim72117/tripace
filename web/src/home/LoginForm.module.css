@@ -1,0 +1,27 @@
+/* LoginFormField:蓋掉 components/FormField.module.css 的 .field 規則
+   ——那組規則用 var(--ios-card)/var(--color-dark),會跟著 App 登入後的
+   深色模式 token 變化,但 LoginForm 是登入前的畫面(渲染在
+   App.tsx 的 .app-theme-root 底下,見 PhoneContent.tsx 的 isGuest 分支)
+   ,理應維持固定淺色、不受深色模式影響(對齊 HomePage.css/ProductPage.css
+   這類公開頁面各自獨立的視覺語言,不隨登入後 App 的偏好切換)。
+
+   FormField.tsx 的 .field :global(input) 選擇器優先權跟這裡的
+   .loginFormField :global(input) 相同(都是「一個 class + 一個
+   :global()」的組合),CSS 層疊規則下,後定義的規則勝出——這個檔案透過
+   FormField 的 className prop 疊加在 styles.field 之後,只要在 JSX 裡
+   className 的疊加順序把這個 class 放在 FormField 自己的 class 之後
+   (見 FormField.tsx:41 的 `${styles.field} ${className}`,className
+   確實排在後面),瀏覽器解析到的最後一條規則(這裡的規則)會蓋掉前一條
+   (FormField 自己的規則),不需要 !important。
+
+   數值直接寫死系統 token 的淺色值(--ios-card: #FDFCFA、
+   --color-dark: #3D3530,見 base-ui.css 的 :root 區塊)而非 var()——
+   寫死才能保證不受 .app-theme-root 深色模式 token 覆寫影響,若改用
+   var(--ios-card) 只是在兜圈子,深色模式下仍會解析成深色值,等於沒修。 */
+.loginFormField {
+  background: #FDFCFA;
+}
+.loginFormField :global(input),
+.loginFormField :global(select) {
+  color: #3D3530;
+}

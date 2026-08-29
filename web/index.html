@@ -12,7 +12,19 @@
          會自動放大整頁面(避免使用者看不清楚輸入內容),規劃地圖的城市
          搜尋框(GeoOutlineMap.module.css 的 .citySearchInput,13px)就是
          這樣被觸發。放行縮放的代價是使用者失去手動放大頁面的無障礙能力,
-         換來的是不會有「點某些輸入框頁面突然跳一下」的不一致體感。 -->
+         換來的是不會有「點某些輸入框頁面突然跳一下」的不一致體感。
+
+         2026-08 曾經嘗試加 interactive-widget=resizes-content(CSS
+         Viewport Module Level 1 規範,想讓虛擬鍵盤彈出時瀏覽器把它當成
+         真正縮小 layout viewport 處理,不再需要 JS 反向修正)解決聊天室
+         輸入框聚焦時「上方內容被往上推」的問題——實測(手機真機 Safari
+         console)確認 Safari 印出「Viewport argument key
+         "interactive-widget" not recognized and ignored」,查證後
+         確認這不是版本問題,是 Safari 整個瀏覽器引擎目前完全沒有實作
+         這個屬性(WebKit 有一個追蹤這個功能的 open bug #259770,尚未
+         完成),只有 Chrome 108+/Firefox 132+ 支援,對 iOS Safari 完全
+         無效,故已移除,改回 chat/ChatScreen.tsx 的 window.visualViewport
+         JS 方案(見該檔案的說明)。 -->
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover"

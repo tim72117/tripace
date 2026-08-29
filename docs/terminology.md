@@ -13,7 +13,7 @@
 
 ## 桌面版版面
 
-桌面版**沒有常駐對話欄**：對話（`ChatScreen`）只透過地圖右上角搜尋框旁的 AI 按鈕以浮動小匡形式開啟，不佔用版面空間、不推擠地圖寬度。除了功能列／主顯示這組版面骨架，其餘全部是絕對定位疊在主顯示（`.desktop-main`）之上的漂浮卡片（四周留間距、圓角＋陰影，共用外殼元件 `FloatingPanel`／`PanelHead`，見 `web/src/FloatingPanel.tsx`／`PanelHead.tsx`），左緣一組、右緣一組，各自互斥顯示（同一側同時只會有一張）：
+桌面版**沒有常駐對話欄**：對話（`ChatScreen`）只透過地圖右上角搜尋框旁的 AI 按鈕以浮動小匡形式開啟，不佔用版面空間、不推擠地圖寬度。除了功能列／主顯示這組版面骨架，其餘全部是絕對定位疊在主顯示（`.desktop-main`）之上的漂浮卡片（四周留間距、圓角＋陰影，共用外殼元件 `FloatingPanel`／`PanelHead`，見 `web/src/components/FloatingPanel.tsx`／`web/src/components/PanelHead.tsx`），左緣一組、右緣一組，各自互斥顯示（同一側同時只會有一張）：
 
 | 正式用語 | 定位 | 介面用語（畫面顯示文字） | 介面/前端程式碼 |
 |---|---|---|---|

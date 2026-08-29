@@ -434,12 +434,32 @@ export function fetchGeoAttractions(cfg: ClientConfig, city: string) {
 // 已確認目前渲染路徑實際上都是走 placeId 延遲查詢(見
 // GeoHotelSidebar.tsx/GeoOutlinePhoneListDrawer.tsx),移除這個欄位不影響
 // 任何畫面顯示。
+//
+// primaryType/category:原本是另外獨立的 GeoPlace 型別才有的欄位——
+// fetchGeoGeocode 這同一支端點,城市搜尋框(mode=bias)跟地圖上方類別
+// 標籤/「搜尋這個區域」按鈕(mode=restrict)呼叫時傳的 mode 不同,但
+// 回應形狀完全一樣,前端卻各自轉存成 GeoGeocodeCandidate/GeoPlace 兩份
+// 幾乎重複的型別與 state,這是實際發生過的重複——2026-08
+// 起兩者合併,GeoPlace 整個移除,全部改用這個型別。primaryType 選填
+// (bias 模式呼叫端目前不會填,只有 restrict 模式的呼叫端——見
+// GeoOutlineMap.tsx 的 runPlacesQuery——會帶入,固定空字串,理由同原本
+// GeoPlace 分支的既有慣例);category 同樣選填,值域固定是
+// 'lodging'/'tourist_attraction'/'restaurant' 其中之一(對齊地圖上方
+// 類別標籤,見 GeoOutlineMap.tsx 的 CATEGORY_TAGS),只有 restrict 模式
+// 查出來的候選才會有值,查無對應分類或 bias 模式查出來的候選則為
+// undefined。前端分類判斷(圖示、entry kind 推導等)一律讀 category,不
+// 要自己解讀 primaryType——直接拿 primaryType 跟這三個查詢用的類型字面
+// 值比對幾乎必定失敗(Google 回傳的是更精確的細分類型,不是查詢用的
+// 類型本身),這是實際發生過的 bug。primaryType 保留純供除錯/未來需要
+// 更細分類時使用。
 export interface GeoGeocodeCandidate {
   name: string
   address: string
   lat: number
   lng: number
   placeId?: string
+  primaryType?: string
+  category?: string
 }
 
 // 對齊 server 的 GET /internal/geo/geocode(handleGeoGeocode)——把輸入
@@ -519,57 +539,28 @@ export function fetchGeoAttractionsOnlyNearby(cfg: ClientConfig, lat: number, ln
   )
 }
 
-// GeoPlace:不限類型的附近推薦地點(景點/餐廳/商店等),對齊後端
-// placeResponse(server/internal/api/geo_outline.go 的 handleGeoPlacesNearby)。
-// 形狀與 GeoHotel 相近,但語意上是「點擊地標查詢附近推薦」而非「地圖
-// 上常駐的飯店圖層」,故另外命名,不共用 GeoHotel 型別。
-//
-// placeId:2026-08 起這支端點的照片查詢改成後端背景執行(見 server 端
-// handleGeoPlacesNearby 的說明),回應不再帶 photoUrl——改成回傳
-// placeId,前端比照 GeoGeocodeCandidate 既有的做法,用 GeoListItemCard
-// 的延遲查詢(fetchGeoPlacePhoto,捲進可視範圍才查)取得照片,不是新的
-// 機制,只是這批結果先前沒有 placeId 可用。
-export interface GeoPlace {
-  name: string
-  address: string
-  lat: number
-  lng: number
-  primaryType: string
-  // category:後端把 primaryType(Google 原始細分類型,如 "hotel"/
-  // "japanese_restaurant")封裝過的自訂分類,值域固定是
-  // 'lodging'/'tourist_attraction'/'restaurant' 其中之一(對齊地圖上方
-  // 類別標籤,見 GeoOutlineMap.tsx 的 CATEGORY_TAGS),查無對應分類時為
-  // 空字串/undefined。前端分類判斷(圖示、entry kind 推導等)一律讀這個
-  // 欄位,不要自己再解讀 primaryType——直接拿 primaryType 跟這三個查詢用
-  // 的類型字面值比對幾乎必定失敗(Google 回傳的是更精確的細分類型,不是
-  // 查詢用的類型本身),這是實際發生過的 bug。primaryType 保留純供
-  // 除錯/未來需要更細分類時使用。
-  category?: string
-  placeId?: string
-}
-
-// GeoSearchResult:飯店(GeoHotel)/推薦地點(GeoPlace)/搜尋結果
-// (GeoGeocodeCandidate)三種來源統一轉成的單一形狀——這三者後端查詢
-// 來源不同(自建資料庫+Google Places nearby / Google Places nearby /
-// Google Places Text Search geocoding),但對前端而言都是「使用者搜尋
-// 或瀏覽時查到的地點」,理應共用同一份清單 state、同一套點擊/選取
-// 邏輯,不該在 GeoOutlineMap/GeoOutlinePanel/DesktopLayout/手機版分別
-// 維護三條平行的 state 與 callback(這是實際發生過的問題:三者行為
-// 逐漸各自演化,飯店清單意外變成即時依可視範圍過濾,導致清單項目
-// 點擊後永遠已經在畫面內、地圖移動邏輯形同虛設)。kind 判別欄位保留
-// 「這筆結果原本是哪種來源」,供分組標題(見 GeoHotelSidebar.tsx 的
-// 「搜尋結果/飯店/附近推薦」分段標題)、marker 圖示樣式(見
-// mapMarkers.ts 的 searchResultMarkerContent)、加入候選籃時要組成的
-// GeoCandidate 判別欄位(hotel/place 才能加入候選籃,geocode 不能,見
+// GeoSearchResult:飯店(GeoHotel)/推薦地點(GeoGeocodeCandidate,見該
+// 型別關於 primaryType/category 欄位的完整說明)/搜尋結果
+// (GeoGeocodeCandidate)三種來源統一轉成的單一形狀——這幾者後端查詢
+// 來源不同(自建資料庫+Google Places nearby / Google Places Text
+// Search geocoding),但對前端而言都是「使用者搜尋或瀏覽時查到的地點」,
+// 理應共用同一份清單 state、同一套點擊/選取邏輯,不該在
+// GeoOutlineMap/GeoOutlinePanel/DesktopLayout/手機版分別維護三條平行的
+// state 與 callback(這是實際發生過的問題:三者行為逐漸各自演化,飯店
+// 清單意外變成即時依可視範圍過濾,導致清單項目點擊後永遠已經在畫面
+// 內、地圖移動邏輯形同虛設)。kind 判別欄位保留「這筆結果原本是哪種
+// 來源」,供分組標題(見 GeoHotelSidebar.tsx 的「搜尋結果/飯店/附近
+// 推薦」分段標題)、marker 圖示樣式(見 mapMarkers.ts 的
+// searchResultMarkerContent)、加入候選籃時要組成的 GeoCandidate 判別
+// 欄位(hotel/place 才能加入候選籃,geocode 不能,見
 // geoCandidateHelpers.ts 的 GeoCandidate 型別)使用。
 //
 // 欄位全部盡量共用、只有各自來源才有的欄位設為 optional——photoUrl 只有
 // hotel(GeoHotel,查詢完成時就同步帶照片,見該型別的說明)會有值;
-// placeId 則是 geocode 與 place 兩種來源都有(2026-08 起
-// handleGeoPlacesNearby 也開始回傳 placeId,理由見 GeoPlace.placeId 的
-// 完整說明),兩者都靠 GeoListItemCard 依 placeId 觸發的延遲查詢取得
-// 照片,不再依賴任何欄位帶著現成的 photoUrl;category 只有 place 會有值
-// (對應地圖上方類別標籤,見 GeoPlace.category 的完整說明)。
+// placeId 則是 geocode 與 place 兩種來源都有(兩者都靠 GeoListItemCard
+// 依 placeId 觸發的延遲查詢取得照片,不再依賴任何欄位帶著現成的
+// photoUrl);category 只有 place 會有值(對應地圖上方類別標籤,見
+// GeoGeocodeCandidate.category 的完整說明)。
 export interface GeoSearchResult {
   kind: 'hotel' | 'place' | 'geocode'
   name: string
@@ -584,7 +575,13 @@ export interface GeoSearchResult {
 export function hotelToSearchResult(h: GeoHotel): GeoSearchResult {
   return { kind: 'hotel', name: h.name, address: h.address, lat: h.lat, lng: h.lng, photoUrl: h.photoUrl }
 }
-export function placeToSearchResult(p: GeoPlace): GeoSearchResult {
+// placeToSearchResult:kind:'place' 的搜尋結果(地圖上方類別標籤/「搜尋
+// 這個區域」按鈕查到的候選,見 GeoOutlineMap.tsx 的 runPlacesQuery)轉成
+// GeoSearchResult——來源型別跟 geocodeCandidateToSearchResult 相同,都是
+// GeoGeocodeCandidate(2026-08 起合併,見該型別的完整說明),只有 kind
+// 判別欄位不同,故仍拆成兩支函式,不合併成一支——kind 由呼叫端的查詢
+// 情境決定,不是資料本身能推導出來的屬性。
+export function placeToSearchResult(p: GeoGeocodeCandidate): GeoSearchResult {
   return { kind: 'place', name: p.name, address: p.address, lat: p.lat, lng: p.lng, placeId: p.placeId, category: p.category }
 }
 export function geocodeCandidateToSearchResult(c: GeoGeocodeCandidate): GeoSearchResult {

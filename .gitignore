@@ -25,6 +25,10 @@ server/tmp/
 *.exe
 server/server
 
+# tripace-cli skill 內建的本機編譯執行檔(見 .claude/skills/tripace-cli-setup
+# 的說明)——16MB 二進位檔,依平台各自建置,不適合進版控。
+.claude/skills/tripace-cli/bin/
+
 # go:embed 的前端 build 產物,只在 Docker build 過程中由 COPY --from=web-build
 # 產生(見 Dockerfile、Dockerfile.admin),本機驗證/除錯時手動複製進來的副本
 # 不該進版控。webadmin/dist 先前漏排除,導致本機手動複製的 admin build
@@ -33,6 +37,13 @@ server/server
 server/cmd/server/web/dist/
 server/cmd/server/webadmin/dist/
 server/cmd/adminserver/web/dist/
+
+# ---- 本機工作區(非主專案內容,不進版控) ----
+# marketing/:行銷相關工具(如 fb-page-tools),跟 App 主體程式碼是分開維護
+# 的獨立工作區。
+marketing/
+# tmp/:暫存檔案(如本機 docker-compose 覆寫設定),純本機用途。
+tmp/
 
 # ---- 系統 / 編輯器 ----
 .DS_Store
