@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react'
-import { ListPlus, MapPinned, Timeline } from 'lucide-react'
+import { ListPlus, Timeline } from 'lucide-react'
 import type { ClientConfig } from '../api'
 import type { Trip } from '../trip/types'
 import type { User } from '../user/types'
+import type { Theme } from '../theme'
 import { Avatar } from '../AppCommon'
 import { GeoOutlinePanel } from './GeoOutlinePanel'
 import { useGeoPlanningState } from './useGeoPlanningState'
@@ -43,6 +44,21 @@ import styles from './GeoOutlinePhoneView.module.css'
 // 切換——對齊桌面版 GeoHotelSidebar.tsx 現行的合併清單設計,原本這裡
 // 分成 hotels/places 兩個 tab 的設計已移除(見 GeoOutlinePhoneListDrawer.tsx
 // 的說明)。
+//
+// 2026-08:移除獨立的「飯店/推薦地點」手動開啟按鈕(原本的 .listBtn,
+// MapPinned 圖示)——清單唯一入口改成「搜尋後自動打開」,不需要使用者
+// 額外按一顆按鈕才看得到查詢結果。listDrawerOpen 因此改成掛在查詢結果
+// 真正回來的那一刻(onSearchResultsChange),不是查詢觸發的那一刻
+// (onSearch)——這是刻意選擇的邊緣觸發(edge-triggered)設計:查詢入口
+// 有三個(城市搜尋框的 onSearch、地圖上方類別標籤、「搜尋這個區域」
+// 按鈕),後兩者已經改走 GeoOutlineMap.tsx 內部的 runPlacesQuery,不經過
+// onSearch(見該函式的說明),若「打開清單」的邏輯留在 onSearch 裡,這兩個
+// 入口永遠不會觸發它。onSearchResultsChange 則是三個入口查詢完成後都會
+// 流經的單一匯合點(GeoOutlineMap.tsx 的 searchResults 變動 effect,見該
+// 檔案的說明),不論由誰觸發查詢,只要真的查到結果(含 0 筆),清單就該
+// 打開——不會有 level-triggered 那種「資料因無關原因重新計算就誤開啟
+// 使用者剛手動關掉的清單」的疑慮,因為這個 effect 天生只在查詢真正完成
+// 時觸發一次。
 export function GeoOutlinePhoneView({
   cfg,
   tripID,
@@ -51,6 +67,7 @@ export function GeoOutlinePhoneView({
   onOpenSettings,
   onOpenTimeline,
   onOpenTrips,
+  theme,
 }: {
   cfg: ClientConfig
   tripID?: string | null
@@ -77,6 +94,12 @@ export function GeoOutlinePhoneView({
   // 實際發生過的 bug(桌面版 DesktopLayout.tsx 對應改成開啟旅程列表
   // 浮動卡,這裡是同一個修法的手機版對應)。
   onOpenTrips: () => void
+  // theme:這個 App 的深色/淺色模式偏好(useAppState() 的 theme,見
+  // theme.ts),由 PhoneContent.tsx 中介(props.theme)——原封不動轉傳給
+  // GeoOutlinePanel → GeoOutlineMap 決定建圖時的 colorScheme,見
+  // GeoOutlineMap.tsx 對這個 prop 的完整說明。這個元件本身不消費 theme,
+  // 純轉傳。
+  theme?: Theme
 }) {
   const [searchCity, setSearchCity] = useState('')
   const [searchTrigger, setSearchTrigger] = useState(0)
@@ -94,7 +117,9 @@ export function GeoOutlinePhoneView({
   // listDrawerOpen:清單抽屜開關,對照桌面版側欄本身常駐展開(桌面版沒有
   // 這個 state,側欄固定顯示)。清單本身的資料(geo.searchResults)已由
   // useGeoPlanningState 統一管理,不再需要這個元件自己持有 geoHotels/
-  // geoPlaces/geoGeocodeCandidates 三組 state。
+  // geoPlaces/geoGeocodeCandidates 三組 state。沒有獨立的手動開啟入口
+  // (見上方元件開頭 2026-08 註解)——只在 onSearchResultsChange 打開、
+  // 點清單項目或按關閉鈕時收起。
   const [listDrawerOpen, setListDrawerOpen] = useState(false)
   // listSearchLoading:搜尋觸發後、查詢結果還沒回來前的載入中狀態——
   // 使用者明確要求「搜尋時要先開啟地點清單並顯示載入中」,不用等查到
@@ -129,14 +154,6 @@ export function GeoOutlinePhoneView({
           <ListPlus size={20} strokeWidth={1.8} />
           {geo.candidates.length > 0 && <span className={styles.candidateBadge}>{geo.candidates.length}</span>}
         </button>
-        <button
-          type="button"
-          className={styles.listBtn}
-          onClick={() => setListDrawerOpen(true)}
-          title="飯店/推薦地點"
-        >
-          <MapPinned size={20} strokeWidth={1.8} />
-        </button>
         {onOpenTimeline && (
           <button
             type="button"
@@ -155,12 +172,17 @@ export function GeoOutlinePhoneView({
         onCityChange={setSearchCity}
         onSearch={() => {
           // 重新搜尋時清空目前選取的地點,關閉正在顯示的地點介紹卡——
-          // 理由同 DesktopLayout.tsx 對應的 onSearch 說明。搜尋觸發的
-          // 同一刻就開啟地點清單抽屜並進入載入中狀態(見上方
-          // listSearchLoading 的說明),不用等查詢結果回來才開啟。
+          // 理由同 DesktopLayout.tsx 對應的 onSearch 說明。「打開清單」
+          // 的動作不在這裡做(見上方 2026-08 註解)——這個 callback 只有
+          // 城市搜尋框這個入口會呼叫到,地圖上方類別標籤/「搜尋這個
+          // 區域」按鈕完全不經過它,若把開清單的邏輯留在這裡會讓那兩個
+          // 入口永遠打不開清單。loading 狀態則三個入口都共用同一個
+          // onSearchResultsChange 收尾,起始的 loading=true 只需要在
+          // 這個入口(唯一會提前知道「即將查詢」的地方)設定即可——地圖
+          // 上方那兩個入口沒有對應的「查詢開始前」時機可掛,查詢很快,
+          // 沒有 loading 動畫可接受。
           geo.clearSelection()
           setSearchTrigger((n) => n + 1)
-          setListDrawerOpen(true)
           setListSearchLoading(true)
         }}
         searchTrigger={searchTrigger}
@@ -172,10 +194,13 @@ export function GeoOutlinePhoneView({
         }
         refetchTripEntriesTrigger={geo.refetchTripEntriesTrigger}
         onSearchResultsChange={(results) => {
-          // 查詢結果回來時(不論查到多少筆,含 0 筆)結束載入中狀態——見
-          // 上方 listSearchLoading 的說明。
+          // 查詢結果回來時(不論查到多少筆,含 0 筆)結束載入中狀態、
+          // 打開清單抽屜——見上方 2026-08 註解:這是三個查詢入口(城市
+          // 搜尋框/類別標籤/搜尋這個區域)共用的唯一匯合點,不論誰觸發
+          // 查詢,結果回來就開,不需要呼叫端各自記得開清單。
           geo.setSearchResults(results)
           setListSearchLoading(false)
+          setListDrawerOpen(true)
         }}
         externalGeocodeCandidateSelect={geo.searchResultSelect}
         onTripEntriesChange={geo.onTripEntriesChange}
@@ -187,6 +212,7 @@ export function GeoOutlinePhoneView({
         selectedKey={geo.selectedKey}
         candidateKeys={geo.candidateKeys}
         panTarget={geo.panTarget}
+        theme={theme}
       />
       <GeoOutlinePhoneInfoSheet
         content={geo.infoContent}

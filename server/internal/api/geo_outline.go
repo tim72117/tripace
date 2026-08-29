@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/tim72117/tripace/internal/geo"
@@ -36,6 +35,236 @@ type hotelResponse struct {
 // 數量、清單本身筆數不變。fetchNearbyHotels 與 handleGeoPlacesNearby
 // 共用這個常數,兩處是同一種取捨。
 const maxPhotoResults = 3
+
+// photoCandidate 是「查完地點清單後,要不要幫這筆結果附加照片」這個下游
+// 共用步驟(見 fetchPhotosForCandidates)的中介輸入型別——geo.Place(Text
+// Search)與 geo.NearbyPlace(Nearby Search)欄位不完全相同(見兩者各自的
+// 完整說明),但這段照片查詢邏輯只需要 Name/PlaceID/PhotoRef 三個欄位就能
+// 執行,故收斂成這個共同形狀,呼叫端各自把自己的型別轉成這個中介形式
+// 再傳入,不需要為了共用這段邏輯而強迫兩個查詢結果型別本身趨同。
+type photoCandidate struct {
+	Name     string
+	PlaceID  string
+	PhotoRef string
+}
+
+// fetchPhotosForCandidates 是 handleGeoPlacesNearby 原本內嵌的照片查詢邏輯
+// 抽出來的共用函式,供 handleGeoPlacesNearby 與 handleGeoGeocode 共用——
+// 兩支端點都是「查完一批候選地點後,只想幫前幾筆附加照片」的形狀,邏輯
+// 本身原封不動(先試 Pexels,查無結果才 fallback Google Places 真實照片,
+// 兩者皆落地存 GCS),只是換了呼叫介面。
+//
+// 只有前 maxResults 筆會被查詢/填上 PhotoURL,其餘維持空字串——理由見
+// maxPhotoResults 的說明:逐筆下載照片是序列執行、無平行處理,是耗時的
+// 主要來源,故從候選清單一開始就截斷要查照片的筆數(不影響候選清單本身
+// 的筆數,只影響其中幾筆有圖)。單筆查詢失敗不影響其餘候選,也不視為
+// 整體失敗——理由同呼叫端既有的降級慣例。
+//
+// 回傳值是一個 map[候選在輸入 slice 中的 index]photoURL,只包含成功查到
+// 照片的筆數;呼叫端依自己的候選型別 index 對照回去、寫入各自回應型別的
+// PhotoURL 欄位,避免這支函式需要認識呼叫端的回應型別。
+//
+// 2026-08 起,handleGeoPlacesNearby/handleGeoGeocode 已經改成呼叫
+// warmPlaceDetailsPhotoCache(背景執行、不等待),不再同步呼叫這支函式
+// 組回應——這支函式目前保留給還需要同步取得 PhotoURL 才能組回應的呼叫端
+// (例如 fetchNearbyHotels 內嵌的同一套邏輯雖然沒有直接呼叫這支函式,但
+// 形狀相同,見該函式的說明)。若之後這支函式完全沒有呼叫端了,可以考慮
+// 一併移除。
+func (s *Server) fetchPhotosForCandidates(ctx context.Context, candidates []photoCandidate, maxResults int, client *geo.Client) map[int]string {
+	photoURLs := make(map[int]string)
+	limit := len(candidates)
+	if limit > maxResults {
+		limit = maxResults
+	}
+	for i := 0; i < limit; i++ {
+		c := candidates[i]
+		var photoURL string
+		// 照片來源優先序:先試 Pexels(落地 GCS),查無結果才 fallback
+		// Google——理由見 maxPhotoResults 附近既有呼叫端的說明。
+		if client.PexelsClient() != nil {
+			if photo, ok, pErr := client.PexelsClient().Search(ctx, c.Name); pErr == nil && ok {
+				photoURL = s.landmarkPhotoURL(ctx, c.PlaceID, photo.ImageURL)
+			}
+		}
+		if photoURL == "" && c.PhotoRef != "" {
+			if dataURI, pErr := client.PhotoDataURI(ctx, c.PlaceID, c.PhotoRef, 200); pErr == nil {
+				photoURL = s.landmarkPhotoURLFromDataURI(ctx, c.PlaceID, dataURI)
+			}
+		}
+		if photoURL != "" {
+			photoURLs[i] = photoURL
+		}
+	}
+	return photoURLs
+}
+
+// backgroundPhotoWarmTimeout 是 warmPlaceDetailsPhotoCache 背景 goroutine
+// 的逾時上限——刻意獨立於觸發它的 HTTP request 的生命週期(見該函式的
+// 說明,handler 一旦寫出回應就會返回,r.Context() 會跟著被取消),用
+// context.Background() 搭配這個固定逾時,避免背景查詢在某個外部 API
+// 掛住時無限期卡住 goroutine、累積資源。30 秒比一般同步查詢的逾時
+// (10 秒)寬鬆,因為背景執行不再有使用者等待中的時間壓力,只要不無限期
+// 卡住即可。
+const backgroundPhotoWarmTimeout = 30 * time.Second
+
+// warmPlaceDetailsPhotoCache 在背景 goroutine 裡查詢候選地點的照片
+// (Pexels-first、查無才 fallback Google,同 fetchPhotosForCandidates 的
+// 邏輯與 maxResults 截斷規則),查到後寫入 place_details_cache(見
+// store.SetCachedPlaceDetails)——目的是預熱快取:前端不使用
+// handleGeoPlacesNearby/handleGeoGeocode 回應裡的 photoUrl 欄位(改走
+// fetchGeoPlacePhoto 的 photoOnly=1 延遲查詢,見 handleGeoPlaceDetails
+// 對 photoOnly 分支的說明),但那條延遲查詢本身是以 placeID 為 key 查
+// place_details_cache,快取命中就完全不必再打 Pexels/Google 一次。這支
+// 函式讓「使用者稍後真的捲到/點開這個地點」時,大機率已經有現成的快取
+// 可用,不需要重新等一次第三方 API。
+//
+// 呼叫端(handleGeoPlacesNearby/handleGeoGeocode)必須用
+// `go s.warmPlaceDetailsPhotoCache(...)` 呼叫,不等待這支函式返回——
+// handler 應該在呼叫後立即組裝「無圖」的回應並寫出,不阻塞在這裡等查詢
+// 完成,這是這次背景化重構的核心目的。
+//
+// Context 生命週期:呼叫端必須傳入一個獨立於 r.Context() 的
+// context(例如 context.Background()),因為 net/http 會在 handler
+// function 返回、回應寫出去之後就取消 r.Context()——這支函式執行時
+// handler 已經返回,若沿用 r.Context() 會導致查詢立刻被中斷。這支函式
+// 內部另外用 backgroundPhotoWarmTimeout 包一層逾時,確保就算呼叫端真的
+// 傳了 context.Background(),也不會無限期執行。
+//
+// Panic 防護:背景 goroutine 若 panic 且沒有 recover,會直接讓整個
+// process 崩潰(不像同步呼叫的 error 可以直接 return 給呼叫端處理)——
+// 這支函式最上層用 defer+recover 攔截任何 panic,只記錄、不重新拋出,
+// 理由同這個檔案其餘地方「查詢失敗不視為致命錯誤」的一貫慣例:背景照片
+// 預熱查詢失敗頂多讓快取沒有預熱到,使用者稍後還是能透過既有的
+// fetchGeoPlacePhoto 即時查詢補上,不影響任何人正在等待的回應。
+//
+// 並行安全:candidates 是呼叫端在呼叫當下就已經組好、傳值進來的獨立
+// slice(不是共用的迴圈變數閉包,呼叫端遵循 Go 1.22+ 的每次迭代獨立變數
+// 語意,不會有多個 goroutine 共用同一個迴圈變數的經典陷阱——這個專案的
+// go.mod 已經是 go 1.26.3);client/store/photoUploader 底層都是連線池化
+// 或無共享可變狀態的物件(*gorm.DB、GCS *storage.Client),多個背景
+// goroutine 同時呼叫是安全的(見呼叫端各自的說明)。
+func (s *Server) warmPlaceDetailsPhotoCache(candidates []photoCandidate, maxResults int, apiKey string) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			// 背景 goroutine 沒有任何管道能把這個 panic 回報給正在等待的
+			// HTTP 呼叫端(回應早就已經送出了)——只能靜默記錄,不重新
+			// 拋出,避免整個 process 崩潰。
+			fmt.Printf("warmPlaceDetailsPhotoCache panic: %v\n", rec)
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), backgroundPhotoWarmTimeout)
+	defer cancel()
+	ctx = geo.WithCaller(ctx, "warmPlaceDetailsPhotoCache")
+
+	// 這支函式自己建立獨立的 geo.Client/pexels.Client,不沿用呼叫端
+	// handler 裡已經建立的那個——理由不是並行安全疑慮(client 本身無
+	// 共享可變狀態,見上方並行安全說明),而是避免耦合呼叫端 client 的
+	// 生命週期(呼叫端的 ctx 在 handler 返回後就失效,但 client 值本身
+	// 沒有綁定 ctx,理論上沿用也不會出錯;這裡仍選擇重新建立,讓這支
+	// 函式的輸入介面單純只依賴 apiKey 字串,不需要呼叫端多傳一個
+	// *geo.Client 參數,呼叫端程式碼也更清楚「背景查詢是完全獨立的一次
+	// 查詢」)。
+	client := geo.New(apiKey)
+	client.SetCache(s.photoCache)
+	client.SetPexelsClient(pexels.New(os.Getenv("PEXELS_API_KEY")))
+
+	limit := len(candidates)
+	if limit > maxResults {
+		limit = maxResults
+	}
+	for i := 0; i < limit; i++ {
+		c := candidates[i]
+		if c.PlaceID == "" {
+			// 沒有 PlaceID 就沒有快取鍵可寫,略過——理論上 Text
+			// Search/Nearby Search 每筆結果都會有 id,這裡保守處理。
+			continue
+		}
+		var photoURL string
+		if client.PexelsClient() != nil {
+			if photo, ok, pErr := client.PexelsClient().Search(ctx, c.Name); pErr == nil && ok {
+				photoURL = s.landmarkPhotoURL(ctx, c.PlaceID, photo.ImageURL)
+			}
+		}
+		if photoURL == "" && c.PhotoRef != "" {
+			if dataURI, pErr := client.PhotoDataURI(ctx, c.PlaceID, c.PhotoRef, 200); pErr == nil {
+				photoURL = s.landmarkPhotoURLFromDataURI(ctx, c.PlaceID, dataURI)
+			}
+		}
+		if photoURL == "" {
+			// 沒查到照片,沒有任何欄位需要寫回快取——理由同
+			// fetchPhotosForCandidates 既有慣例,查無照片不視為錯誤,
+			// 單純略過,不佔用一筆殘缺的快取列。
+			continue
+		}
+		s.mergePhotoURLIntoPlaceDetailsCache(c.PlaceID, c.Name, photoURL)
+	}
+}
+
+// mergePhotoURLIntoPlaceDetailsCache 把背景查到的 photoURL 安全地寫入
+// place_details_cache,不覆蓋既有更完整的資料——store.SetCachedPlaceDetails
+// 是整列覆寫的 upsert(GORM Save,依 place_id 主鍵覆蓋整列,不是部分欄位
+// 更新,見該函式的說明),若這裡直接呼叫 SetCachedPlaceDetails 且傳入
+// rating=0、summary=nil,會把「使用者稍早已經點開過這個地點、快取裡已經
+// 有的 rating/summary」整個覆蓋掉、造成資料倒退。
+//
+// 策略:先讀一次既有快取(不管新鮮/過期,只要列存在就代表曾經查過完整
+// 資料)——
+//   - 若已存在,保留原本的 name/address/lat/lng/rating/summary,只把
+//     photoURL 換成這次查到的(除非既有快取本身已經有 photoURL,那就
+//     不需要再覆寫,直接跳過,理由同下方說明)。
+//   - 若不存在,才寫入這批只有 name/placeID + photoURL 的部分資料——
+//     address/lat/lng/rating/summary 這些背景查詢當下沒有的欄位,比照
+//     handleGeoPlaceDetails 裡 photoOnly/textOnly 模式「欄位不全時不寫入
+//     完整快取列」的既有慣例(見該函式對 photoOnly 分支的說明:「不寫入
+//     place_details_cache——這個模式下沒有 address/rating/summary 等
+//     完整資料,寫入會讓快取列殘缺不全」)。但這裡的目的（預熱
+//     photoOnly 查詢的快取命中）恰好只需要 photoURL 就夠——
+//     handleGeoPlaceDetails 的 GetCachedPlaceDetails 命中判斷只要求
+//     ok=true(列存在且未過期),不要求其他欄位非空;photoOnly 分支只讀
+//     cached.PhotoURL,並不理會 rating/summary 是否為空。故這裡寫入
+//     address=""/lat=0/lng=0/rating=0/summary=nil 的部分資料列,不會讓
+//     photoOnly 這條路徑的行為出錯,只是這筆快取列本身還不夠完整、不能
+//     拿來滿足 textOnly 或一般模式的查詢——那兩種模式仍會照常重新查
+//     Google 補齊完整資料,並在查完後用完整資料重新覆寫這一列(見
+//     handleGeoPlaceDetails 主流程結尾的 SetCachedPlaceDetails 呼叫),
+//     不會有資料一直卡在殘缺狀態。
+//
+// 這支函式內的「先讀後寫」仍有理論上的 TOCTOU 競態(讀跟寫之間沒有
+// transaction 包住,見 store.GetCachedPlaceDetails/SetCachedPlaceDetails
+// 的說明)——例如兩個背景 goroutine 同時對同一個 placeID 讀到「尚未
+// 存在」,然後都各自寫入,最後一次寫入的會生效,但兩者寫的都是同樣只有
+// name+photoURL 的部分資料,不會造成資料遺失(不是「一個寫完整、一個寫
+// 殘缺,殘缺的蓋掉完整的」這種情況)。真正需要避免的是「新查到的殘缺
+// 資料蓋掉舊的完整資料」,這支函式已經用讀取既有快取來防範。
+func (s *Server) mergePhotoURLIntoPlaceDetailsCache(placeID, name, photoURL string) {
+	name, address, lat, lng, rating := name, "", 0.0, 0.0, 0.0
+	var summary *string
+
+	// maxAge 傳 0 只是為了「找出這一列是否存在」,新鮮度判斷交給真正
+	// 使用這筆快取的呼叫端(handleGeoPlaceDetails)自己的 maxAge 決定——
+	// 這裡只是要決定寫入策略(保留既有欄位 vs 寫入部分資料),跟這筆快取
+	// 本身算不算「新鮮」無關,即使既有快取已經過期,它裡面的
+	// rating/summary 仍然是比空值更有參考價值的資料,不應該因為過期就
+	// 被空值蓋掉。
+	if cached, ok, err := s.store.GetCachedPlaceDetails(placeID, 0); err == nil && ok {
+		if cached.PhotoURL != nil && *cached.PhotoURL != "" {
+			// 既有快取已經有照片了,不需要再覆寫——理由同
+			// handleGeoPlaceDetails 快取命中分支「命中但沒查到照片才
+			// 補查」的既有邏輯,對稱地,這裡「已經有照片就不用補」。
+			return
+		}
+		name = cached.Name
+		address = cached.Address
+		lat = cached.Lat
+		lng = cached.Lng
+		rating = cached.Rating
+		summary = cached.Summary
+	}
+
+	photoURLCopy := photoURL
+	_ = s.store.SetCachedPlaceDetails(placeID, name, address, lat, lng, rating, summary, &photoURLCopy)
+}
 
 // fetchNearbyHotels 以指定中心座標做一次 Nearby Search 限定 lodging
 // 類型(不細分 hotel/hostel/inn 等子類,泛用即可涵蓋大部分住宿選項),
@@ -236,24 +465,30 @@ func toAttractionResponses(in []geo.District) []attractionResponse {
 	return out
 }
 
-// GET /internal/geo/geocode?query={地名/城市名/關鍵字}&biasLat={緯度,選填}&biasLng={經度,選填}
+// GET /internal/geo/geocode?query={地名/城市名/關鍵字}&mode={bias|restrict,選填}
 //
-// 供地理輪廓底圖的城市搜尋框使用:把輸入字串解析成一組候選地點清單
-// (含座標),不查詢景點區域/飯店資料——這支端點本身只回傳「Text
-// Search 查到的候選」,之後畫面上該顯示什麼資料,一律交給
-// handleGeoAttractionsNearby 依地圖當時的可視範圍(bounds)另外查詢,
-// 兩個關注點刻意分開,不像 handleGeoAttractions 那樣把「找座標」與
-// 「查資料」耦合在同一支端點裡。
+//	&lat={緯度,選填}&lng={經度,選填}&radius={公尺,選填}
 //
-// 這支端點原本設計給「輸入城市/地標名稱,把地圖移過去」這種定位用途
-// (查到候選後純粹平移地圖,不代表查詢範圍),但實際使用上已經不只
-// 這樣——使用者也會直接輸入「甜點」「拉麵」這類泛用關鍵字,期待查到
-// 目前地圖所在區域附近的結果。biasLat/biasLng(前端帶目前地圖中心座標
-// 過來)讓這類查詢優先偏向地圖目前所在區域(見 geo.SearchOptions.
-// LocationBias 的完整說明)——只是偏向、不是限制,對「京都」這類文字
-// 意圖已經很明確的地名查詢幾乎不影響,查到離目前位置很遠但文字上更
-// 匹配的地點仍是預期中的行為,不是 bug。缺少這兩個參數時退回不套用
-// 位置偏向,查詢行為不受影響。
+// 供地理輪廓底圖的三個查地點入口統一使用:城市搜尋框(打字輸入)、地圖
+// 上方類別標籤(景點/飯店/餐廳,標籤文字當查詢詞)、「搜尋這個區域」
+// 按鈕(沿用搜尋框目前文字)。三者都改走這支端點的 Text Search,不再各自
+// 打不同的 Google Places 端點(原本類別標籤與搜尋這個區域走
+// handleGeoPlacesNearby/handleGeoAttractionsNearby 的 Nearby Search,見
+// 這兩支端點各自的完整說明)——差異只在「查詢文字從哪來」跟「範圍限制
+// 參數」,由呼叫端透過 mode 參數告知這次呼叫該用哪種範圍策略,不查詢
+// 景點區域/飯店資料本身(這支端點只回傳「Text Search 查到的候選」,畫面
+// 上該顯示什麼資料一律交給 handleGeoAttractionsNearby 依地圖可視範圍另外
+// 查詢,兩個關注點刻意分開)。
+//
+// mode 值域:
+//   - "bias"(預設,省略也視為此值):城市搜尋框用——兩階段查詢,見下方
+//     handleGeoGeocode 函式內的完整說明。lat/lng 選填,當作
+//     locationBias 中心(對應原本的 biasLat/biasLng,新版沿用同一組
+//     query 參數名稱,不再用 bias 前綴,理由是這組參數現在也給
+//     locationRestriction 的矩形中心共用,加 bias 前綴會誤導)。
+//   - "restrict":類別標籤/搜尋這個區域用——固定套用 locationRestriction,
+//     不做兩階段判斷。lat/lng 必填(矩形中心),radius 選填(矩形半徑,
+//     公尺,預設同 parseNearbyLatLngRadius 的既有慣例)。
 //
 // 改用 geo.Client.Search(Places API (New) Text Search)而非
 // geo.Client.Geocode(傳統 Geocoding API):Geocoding API 只回傳單一
@@ -273,6 +508,82 @@ func toAttractionResponses(in []geo.District) []attractionResponse {
 // 排序前 20 名的完整候選清單。
 const maxGeoGeocodeCandidates = 20
 
+// geoGeocodeDefaultRestrictRadiusMeters 是 mode=restrict 且未帶 radius
+// 參數時的預設矩形半徑——對齊地圖上方類別標籤原本查詢附近地點的既有
+// 預設值(1500m),類別標籤/搜尋這個區域都是「使用者明確操作觸發、查詢
+// 範圍通常不需要很大」的情境,理由與原本一致;bias 模式進入第二階段
+// (多筆候選、改用 locationRestriction 收斂)時也沿用同一個預設值。
+const geoGeocodeDefaultRestrictRadiusMeters = 1500.0
+
+// geoGeocodeCandidateResponse 是 handleGeoGeocode 回應裡單筆候選地點的
+// 格式——原本用 map[string]any 手動組,新增 photoUrl 欄位後改成強型別
+// struct 較不容易漏欄位/打錯 key。
+//
+// PhotoURL:2026-08 起這支端點不再同步查照片(見 handleGeoGeocode 內
+// warmPlaceDetailsPhotoCache 的呼叫說明),這個欄位一律留空(json
+// omitempty 讓它直接不出現在回應裡)——保留欄位本身不移除,因為前端
+// GeoGeocodeCandidate.photoUrl 目前仍是型別定義的一部分(即使實際上永遠
+// 收到空值),前端的照片顯示已經完全改走 fetchGeoPlacePhoto 對 PlaceID
+// 的延遲查詢,不依賴這個欄位。
+type geoGeocodeCandidateResponse struct {
+	Name     string  `json:"name"`
+	Address  string  `json:"address"`
+	Lat      float64 `json:"lat"`
+	Lng      float64 `json:"lng"`
+	PlaceID  string  `json:"placeId,omitempty"`
+	PhotoURL string  `json:"photoUrl,omitempty"`
+}
+
+// geoGeocodeCandidateResponses 把 geo.Search 的結果轉成
+// geoGeocodeCandidateResponse 清單,並用 go 關鍵字背景預熱前
+// maxPhotoResults 筆的照片快取(見 warmPlaceDetailsPhotoCache 的完整
+// 說明)——handleGeoGeocode 兩階段查詢的三個回傳點(bias 命中 1 筆、
+// bias 查無、restriction 收斂後的最終結果)都要做同一組「轉回應格式 +
+// 背景預熱照片」收尾動作,抽成這支函式避免三處各寫一份。
+func (s *Server) geoGeocodeCandidateResponses(places []geo.Place, apiKey string) []geoGeocodeCandidateResponse {
+	// 照片處理改成背景執行、不阻塞這支端點的回應(見
+	// warmPlaceDetailsPhotoCache 的完整說明)——只取前 maxPhotoResults 筆
+	// 查照片,其餘候選不查,理由同該常數的說明。這支端點的回應本身不再
+	// 帶 photoUrl(前端改走 fetchGeoPlacePhoto 對 placeId 的延遲查詢,見
+	// geoGeocodeCandidateResponse.PhotoURL 欄位的說明),背景查詢的價值
+	// 是預熱 place_details_cache,讓那條延遲查詢大機率能直接命中快取、
+	// 不必重新打 Pexels/Google。用 go 關鍵字呼叫、不等待,呼叫時傳入的
+	// photoCandidates 是這裡新配置的獨立 slice(不是共用的迴圈變數),
+	// apiKey 是字串值,goroutine 內部完全不依賴這支 handler 的
+	// r.Context()/ctx(那個 ctx 會在這個 handler 返回後被取消,見
+	// warmPlaceDetailsPhotoCache 的 Context 生命週期說明)。
+	photoCandidates := make([]photoCandidate, len(places))
+	for i, p := range places {
+		photoCandidates[i] = photoCandidate{Name: p.Name, PlaceID: p.PlaceID, PhotoRef: p.PhotoRef}
+	}
+	go s.warmPlaceDetailsPhotoCache(photoCandidates, maxPhotoResults, apiKey)
+
+	// placeId:供前端(GeoOutlinePanel.tsx 的 handleGeocodeCandidateSelect)
+	// 拿去換發 GET /internal/geo/place-details,取得完整資訊(含照片,
+	// Pexels-first + GCS 落地,跟點地圖上原生 POI 完全同一套流程),不再
+	// 只是純定位用的座標——見 geo.Client.Search 的 fieldMask 說明,這裡
+	// 選擇性帶出(理論上 Text Search 每筆結果都會有 id,查無則省略此欄位,
+	// 前端據此判斷是否要走這條補查流程)。
+	// PhotoURL 這裡一律留空——照片查詢已經改成上面的背景預熱(見
+	// warmPlaceDetailsPhotoCache 的說明),不再同步查完才組這筆回應。
+	// 保留 PhotoURL 欄位本身(不整個移除)是因為 geoGeocodeCandidateResponse
+	// 是強型別 struct、且前端 GeoGeocodeCandidate.photoUrl 目前仍是「快取
+	// 未命中時的即時預覽」這個既有語意的一部分(見該欄位的說明)——只是
+	// 這裡不再有值可填,故乾脆不寫入這個欄位,讓它保持 struct 零值(空
+	// 字串),json:"photoUrl,omitempty" 讓它在回應裡直接不出現。
+	candidates := make([]geoGeocodeCandidateResponse, len(places))
+	for i, p := range places {
+		candidates[i] = geoGeocodeCandidateResponse{
+			Name:    p.Name,
+			Address: p.Address,
+			Lat:     p.Lat,
+			Lng:     p.Lng,
+			PlaceID: p.PlaceID,
+		}
+	}
+	return candidates
+}
+
 func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("query")
 	if query == "" {
@@ -280,31 +591,122 @@ func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
-	client := geo.New(apiKey)
+	// mode:見這支端點的完整說明——"restrict"(類別標籤/搜尋這個區域)固定
+	// 套用 locationRestriction;其餘值(含空字串/未帶)一律視為 "bias"
+	// (城市搜尋框)的兩階段查詢,不對不明的 mode 值回錯誤,理由同這支
+	// 端點原本對缺少 biasLat/biasLng 的寬容處理——未知輸入退回最寬鬆的
+	// 既有行為,不是拒絕請求。
+	mode := r.URL.Query().Get("mode")
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	ctx = geo.WithCaller(ctx, "handleGeoGeocode")
-	ctx = geo.WithPath(ctx, r.URL.Path)
-
-	// biasLat/biasLng:選填,前端(GeoOutlinePanel.tsx)帶目前地圖中心
-	// 座標過來——讓「甜點」「apple」這類沒有明確指向單一地點的泛用
-	// 關鍵字查詢優先偏向地圖目前所在區域,對「京都」這類文字意圖已經
-	// 很明確的地名查詢幾乎不影響(見 geo.SearchOptions.LocationBias 的
-	// 完整說明)。缺少或格式錯誤時視為未提供,不套用位置偏向、也不視為
-	// 錯誤——這支端點在沒有地圖中心可用的情境下(例如尚未建立地圖)
-	// 仍應該能正常查詢。
-	var locationBias *geo.LocationBias
-	if latRaw, lngRaw := r.URL.Query().Get("biasLat"), r.URL.Query().Get("biasLng"); latRaw != "" && lngRaw != "" {
+	// lat/lng/radius:選填(bias 模式)或必填(restrict 模式,見下方各自
+	// 分支的檢查)。lat/lng 在 bias 模式下當 locationBias 中心(對應原本的
+	// biasLat/biasLng 參數,新版沿用同一組座標語意,只是不再限定只能用在
+	// locationBias);在 restrict 模式下當 locationRestriction 矩形中心。
+	// radius 只有 restrict 模式使用(bias 模式的 locationBias 半徑固定用
+	// geo.Client.Search 內建的預設值,理由同原本既有行為——bias 模式不需要
+	// 精確控制半徑,只是「往這個方向偏」)。格式錯誤或缺少時視為未提供,
+	// 不視為錯誤——理由同原本 biasLat/biasLng 的既有處理方式,這支端點在
+	// 沒有座標可用的情境下(例如尚未建立地圖)仍應該能正常查詢。
+	var centerLat, centerLng float64
+	var hasCenterLatLng bool
+	if latRaw, lngRaw := r.URL.Query().Get("lat"), r.URL.Query().Get("lng"); latRaw != "" && lngRaw != "" {
 		if lat, err := strconv.ParseFloat(latRaw, 64); err == nil {
 			if lng, err := strconv.ParseFloat(lngRaw, 64); err == nil {
-				locationBias = &geo.LocationBias{Lat: lat, Lng: lng}
+				centerLat, centerLng = lat, lng
+				hasCenterLatLng = true
 			}
 		}
 	}
 
-	places, err := client.Search(ctx, query, &geo.SearchOptions{MaxResults: maxGeoGeocodeCandidates, LocationBias: locationBias})
+	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+	client := s.newGeoGeocodeClient(apiKey)
+	client.SetCache(s.photoCache)
+	client.SetPexelsClient(pexels.New(os.Getenv("PEXELS_API_KEY")))
+
+	// 逾時原本是 5 秒(純文字查詢,不含照片處理),後來因為曾經同步處理
+	// 照片查詢拉長到 10 秒。2026-08 起照片查詢已經改成背景執行(見
+	// warmPlaceDetailsPhotoCache 的呼叫),不再計入這支 handler 本身回應
+	// 的耗時,但仍維持 10 秒——這個逾時現在保護 client.Search 最多兩次
+	// Text Search 查詢(bias 模式的兩階段,見下方),10 秒對純文字查詢仍是
+	// 合理的寬限值。
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	ctx = geo.WithCaller(ctx, "handleGeoGeocode")
+	ctx = geo.WithPath(ctx, r.URL.Path)
+
+	if mode == "restrict" {
+		// restrict 模式:類別標籤/搜尋這個區域用,固定套用
+		// locationRestriction,不做兩階段判斷——查詢文字(景點/飯店/餐廳
+		// 標籤文字,或搜尋框既有文字)已經確定,範圍限制才是這裡的重點,
+		// 不需要像 bias 模式那樣先試探性查一次判斷意圖。
+		if !hasCenterLatLng {
+			writeErr(w, http.StatusBadRequest, "invalid_input", "mode=restrict 需要 lat/lng 查詢參數")
+			return
+		}
+		radiusMeters := geoGeocodeDefaultRestrictRadiusMeters
+		if raw := r.URL.Query().Get("radius"); raw != "" {
+			if parsed, err := strconv.ParseFloat(raw, 64); err == nil && parsed > 0 {
+				radiusMeters = parsed
+				if radiusMeters > maxNearbyRadiusMeters {
+					radiusMeters = maxNearbyRadiusMeters
+				}
+			}
+		}
+		rect := geo.RectFromCenterRadius(centerLat, centerLng, radiusMeters)
+		places, err := client.Search(ctx, query, &geo.SearchOptions{
+			MaxResults:          maxGeoGeocodeCandidates,
+			LocationRestriction: &rect,
+			IncludePhotos:       true,
+		})
+		if err != nil {
+			if err == geo.ErrNotFound {
+				writeErr(w, http.StatusNotFound, "no_match", "查無「"+query+"」相關地點")
+				return
+			}
+			writeErr(w, http.StatusBadGateway, "geocode_failed", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"query":      query,
+			"candidates": s.geoGeocodeCandidateResponses(places, apiKey),
+		})
+		return
+	}
+
+	// bias 模式(預設,城市搜尋框):兩階段查詢——
+	//   1. 先用 locationBias(只偏向、不排除範圍外結果)查一次。
+	//   2. 依這次結果筆數判斷查詢意圖:
+	//      - 剛好 1 筆:文字意圖已經夠明確(bias 沒有排除任何結果,能收斂
+	//        到唯一解代表 Google 對這個查詢的信心已經足夠),直接採用,
+	//        不需要再查一次。
+	//      - 0 筆:直接回查無結果,不重試——locationRestriction 只會讓
+	//        結果更少,重試不會有幫助。
+	//      - 多筆:文字意圖不夠明確(bias 沒有收斂出唯一解),改用
+	//        locationRestriction(強制限制在目前地圖矩形範圍內)重新查一次,
+	//        回傳這次的結果——這是實際用 curl 對 Google API 驗證過的行為
+	//        (見這支函式所在檔案開頭以外的設計討論):locationRestriction
+	//        會排除範圍外結果,但也可能讓「範圍內文字碰巧相符但語意完全
+	//        不相關」的結果混進來(例如地圖在京都、搜尋「東京」,
+	//        locationRestriction 會回傳店名含「東京」兩字但實際在京都的
+	//        無關店家);locationBias 則能正確回傳真正的「東京」這類跨
+	//        範圍地名查詢(不受偏向範圍干擾,精準回傳 1 筆正確結果)。用
+	//        「bias 查詢的結果筆數」判斷查詢意圖是明確地名(用 bias 的
+	//        結果)還是模糊關鍵字(需要 restriction 收斂),就是這兩階段
+	//        設計的理由。
+	//
+	// 這整套判斷收在這支 handler 內部完成,單一 HTTP 請求進來、最多觸發
+	// 兩次 Google API 呼叫、只回傳一次 HTTP 回應——前端呼叫端不需要知道
+	// 背後的兩階段細節,行為對前端而言就是「打一次 API,拿到正確結果」。
+	var locationBias *geo.LocationBias
+	if hasCenterLatLng {
+		locationBias = &geo.LocationBias{Lat: centerLat, Lng: centerLng}
+	}
+
+	places, err := client.Search(ctx, query, &geo.SearchOptions{
+		MaxResults:    maxGeoGeocodeCandidates,
+		LocationBias:  locationBias,
+		IncludePhotos: true,
+	})
 	if err != nil {
 		if err == geo.ErrNotFound {
 			writeErr(w, http.StatusNotFound, "no_match", "查無「"+query+"」相關地點")
@@ -313,33 +715,40 @@ func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, "geocode_failed", err.Error())
 		return
 	}
-	if len(places) == 0 {
-		writeErr(w, http.StatusNotFound, "no_match", "查無「"+query+"」相關地點")
+
+	// 剛好 1 筆或沒有可用地圖中心(無法組出 locationRestriction 矩形,
+	// 只能沿用 bias 這次的結果)時直接採用,不進入第二階段。
+	if len(places) == 1 || !hasCenterLatLng {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"query":      query,
+			"candidates": s.geoGeocodeCandidateResponses(places, apiKey),
+		})
 		return
 	}
 
-	// placeId:供前端(GeoOutlinePanel.tsx 的 handleGeocodeCandidateSelect)
-	// 拿去換發 GET /internal/geo/place-details,取得完整資訊(含照片,
-	// Pexels-first + GCS 落地,跟點地圖上原生 POI 完全同一套流程),不再
-	// 只是純定位用的座標——見 geo.Client.Search 的 fieldMask 說明,這裡
-	// 選擇性帶出(理論上 Text Search 每筆結果都會有 id,查無則省略此欄位,
-	// 前端據此判斷是否要走這條補查流程)。
-	candidates := make([]map[string]any, len(places))
-	for i, p := range places {
-		c := map[string]any{
-			"name":    p.Name,
-			"address": p.Address,
-			"lat":     p.Lat,
-			"lng":     p.Lng,
+	// 多筆候選:改用 locationRestriction 收斂,以目前地圖中心座標為矩形
+	// 中心——半徑沿用 restrict 模式同一個預設值,這裡沒有呼叫端傳入的
+	// radius 可用(bias 模式的 query 參數不含 radius,見上方參數說明),
+	// 固定用預設值收斂即可,不需要額外開放這個維度給城市搜尋框呼叫端
+	// 控制。
+	rect := geo.RectFromCenterRadius(centerLat, centerLng, geoGeocodeDefaultRestrictRadiusMeters)
+	restrictedPlaces, err := client.Search(ctx, query, &geo.SearchOptions{
+		MaxResults:          maxGeoGeocodeCandidates,
+		LocationRestriction: &rect,
+		IncludePhotos:       true,
+	})
+	if err != nil {
+		if err == geo.ErrNotFound {
+			writeErr(w, http.StatusNotFound, "no_match", "查無「"+query+"」相關地點")
+			return
 		}
-		if p.PlaceID != "" {
-			c["placeId"] = p.PlaceID
-		}
-		candidates[i] = c
+		writeErr(w, http.StatusBadGateway, "geocode_failed", err.Error())
+		return
 	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"query":      query,
-		"candidates": candidates,
+		"candidates": s.geoGeocodeCandidateResponses(restrictedPlaces, apiKey),
 	})
 }
 
@@ -432,6 +841,27 @@ func (s *Server) listAttractionResponses(lat, lng, radiusMeters float64) ([]attr
 	return attractions, nil
 }
 
+// GET /internal/geo/attractions/nearby?lat={緯度}&lng={經度}&radius={公尺,選填,預設 15000}
+//
+// 回傳 {"attractions": [...], "hotels": [...]} 兩個陣列——attractions 是
+// 人工建檔的景點區域(store.ListAttractionsNearby,免費,格式見
+// listAttractionResponses),hotels 是即時查 Google Places Nearby Search
+// 附近住宿(geo.Client.SearchNearby,經 fetchNearbyHotels,計費、含照片
+// Pexels-first + Google fallback,見該函式的完整說明)。
+//
+// 目前(2026-08)前端已無任何呼叫端——「搜尋這個區域」按鈕原本呼叫這支
+// 端點取得 hotels,已改走 handleGeoGeocode(mode=restrict,Text Search),
+// 不再需要這支端點的座標+半徑 Nearby Search 語意。故意保留不刪:
+//  1. hotels 部分沿用的 fetchNearbyHotels 仍被其他情境使用(見該函式的
+//     說明),不是這支端點獨有的邏輯,清理風險低但也沒有立即必要。
+//  2. 這支端點的「座標+半徑查詢範圍內的飯店」語意,適合日後暴露成 LLM
+//     可呼叫的工具(對齊 internal/onagenttools/geocode.go、
+//     internal/wanttools/recommend_nearby.go 的既有 BackendDispatch 模式
+//     ——LLM 決定要幫使用者查「這附近有什麼飯店」時,直接呼叫這支端點
+//     形狀的邏輯最直覺,不需要重新設計參數)。若之後要接上,可以比照
+//     geocode.go 的寫法,在 internal/onagenttools 新增一個獨立的
+//     dispatch handler,內部呼叫這支端點背後同一組 s.fetchNearbyHotels/
+//     listAttractionResponses,不需要更動這支 HTTP 端點本身。
 func (s *Server) handleGeoAttractionsNearby(w http.ResponseWriter, r *http.Request) {
 	lat, lng, radiusMeters, err := parseNearbyLatLngRadius(r, 15000)
 	if err != nil {
@@ -761,166 +1191,14 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// placeResponse 是 GET /internal/geo/places/nearby 回應裡單筆推薦地點的
-// 格式——形狀與 hotelResponse 相同(名稱/地址/座標/類型/照片),但語意上
-// 是「不限類型的附近推薦地點」而非「飯店」,故另外命名,不直接借用
-// hotelResponse 造成語意混淆(即使目前欄位一致)。
-type placeResponse struct {
-	Name        string  `json:"name"`
-	Address     string  `json:"address"`
-	Lat         float64 `json:"lat"`
-	Lng         float64 `json:"lng"`
-	PrimaryType string  `json:"primaryType"`
-	// Category:後端封裝過的自訂分類,值域固定是 allowedPlaceTypes 的三個
-	// 字串之一(lodging/tourist_attraction/restaurant),查無對應分類時為
-	// 空字串(前端據此退回泛用呈現,例如相機圖示)——見 classifyPlaceCategory
-	// 的完整說明。前端應該一律讀這個欄位做分類判斷,不要自己再解讀
-	// PrimaryType(Google 原始分類,值域是上百種細分類型,如
-	// "hotel"/"japanese_restaurant",直接拿來跟 lodging/restaurant 這類
-	// 查詢用的類型字面值比對幾乎必定比對失敗,這是實際發生過的 bug)。
-	// PrimaryType 保留在回應裡純供除錯/未來需要更細分類時使用,不移除。
-	Category string `json:"category,omitempty"`
-	PhotoURL string `json:"photoUrl,omitempty"`
-}
-
-// classifyPlaceCategory 把 Google Places 回傳的 primaryType(細分類型,如
-// "hotel"/"japanese_restaurant"/"museum")歸類成 allowedPlaceTypes 的三個
-// 值之一——Google 用 includedTypes: ["lodging"] 查詢時,實際回傳的
-// primaryType 幾乎不會直接等於 "lodging" 本身,而是更精確的細分類型,故
-// 這裡列舉 Google Places API 底下常見的住宿/餐飲細分類型(參考 Places API
-// Table A 的 Lodging/Food and Drink 分類),餐廳額外用 "_restaurant" 結尾
-// 的通用規則涵蓋各種料理系(如 japanese_restaurant、italian_restaurant,
-// Google 這類細分類型數量很多,窮舉字面值不切實際)。查無對應分類回傳
-// 空字串,不強塞一個不精確的分類。
-var (
-	lodgingPrimaryTypes = map[string]bool{
-		"lodging": true, "hotel": true, "motel": true, "resort_hotel": true,
-		"extended_stay_hotel": true, "guest_house": true, "bed_and_breakfast": true,
-		"hostel": true, "inn": true, "cottage": true, "farmstay": true,
-		"campground": true, "rv_park": true, "private_guest_room": true,
-	}
-	restaurantPrimaryTypes = map[string]bool{
-		"restaurant": true, "cafe": true, "bar": true, "bakery": true,
-		"meal_takeaway": true, "meal_delivery": true, "fast_food_restaurant": true,
-		"food_court": true, "coffee_shop": true,
-	}
-)
-
-func classifyPlaceCategory(primaryType string) string {
-	switch {
-	case primaryType == "tourist_attraction":
-		return "tourist_attraction"
-	case lodgingPrimaryTypes[primaryType]:
-		return "lodging"
-	case restaurantPrimaryTypes[primaryType] || strings.HasSuffix(primaryType, "_restaurant"):
-		return "restaurant"
-	default:
-		return ""
-	}
-}
-
-// allowedPlaceTypes 是 handleGeoPlacesNearby 的 type 查詢參數白名單——
-// 對齊地圖上方的類別標籤列(飯店/景點/餐廳,見 web/src/GeoOutlineMap.tsx
-// 的類別標籤說明),只接受這幾個已知類別,不接受任意字串直接透傳給
-// Google——這是目前 UI 唯一會用到的類別集合,收斂輸入範圍比開放任意
-// Places API type 字串更安全(雖然無效值頂多讓 Google 回錯誤,不構成
-// 注入風險,但沒必要開放超出實際使用情境的輸入),之後 UI 真的需要新
-// 類別時再擴充這個白名單即可。
-var allowedPlaceTypes = map[string]bool{
-	"lodging":            true, // 飯店
-	"tourist_attraction": true, // 景點
-	"restaurant":         true, // 餐廳
-}
-
-// GET /internal/geo/places/nearby?lat={緯度}&lng={經度}&radius={公尺,選填}&type={類別,選填}
-//
-// 供兩種情境使用:
-//  1. 地圖上點擊地標(構想 6 地理輪廓底圖,見 GeoOutlineMap.tsx 點擊地標
-//     放大範圍後的說明)——不帶 type,即時查詢 Google Places Nearby
-//     Search 找附近的推薦景點/餐廳/商店等,不限類型(泛用推薦,同
-//     internal/wanttools/recommend_nearby.go 的 LLM 工具留空 category
-//     時的行為)。
-//  2. 地圖上方的類別標籤列(飯店/景點/餐廳)——帶 type,限定只查詢該
-//     類別,對齊 geo.NearbyOptions.IncludedTypes(見該欄位的說明)。
-//
-// 這是「使用者明確點擊、低頻觸發」的動作,不像 handleGeoAttractionsNearby
-// 那樣要顧慮地圖高頻移動觸發大量 Google API 呼叫成本,故這裡直接即時查
-// Places API,不像那支端點只查自建資料庫——兩支端點的節流考量不同,
-// 不適合合併成同一支。
-//
-// 找不到任何地點時不視為錯誤,直接回傳空陣列(HTTP 200)——理由同
-// handleGeoAttractionsNearby。
-func (s *Server) handleGeoPlacesNearby(w http.ResponseWriter, r *http.Request) {
-	// defaultRadius 1500——理由同 handleGeoAttractionsNearby(15000)的
-	// 差異說明:這支端點是使用者明確點擊類別標籤觸發的低頻動作,查詢
-	// 範圍通常較小,不像地圖可視範圍查詢那樣需要涵蓋大片區域。上限
-	// (maxNearbyRadiusMeters)與參數解析邏輯跟另外兩支「以座標為中心
-	// 查附近資料」的端點共用,見 parseNearbyLatLngRadius 的完整說明。
-	lat, lng, radiusMeters, err := parseNearbyLatLngRadius(r, 1500)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid_input", err.Error())
-		return
-	}
-
-	var includedTypes []string
-	if placeType := r.URL.Query().Get("type"); placeType != "" {
-		if !allowedPlaceTypes[placeType] {
-			writeErr(w, http.StatusBadRequest, "invalid_input", "type 參數不支援: "+placeType)
-			return
-		}
-		includedTypes = []string{placeType}
-	}
-
-	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
-	client := geo.New(apiKey)
-	client.SetCache(s.photoCache)
-	client.SetPexelsClient(pexels.New(os.Getenv("PEXELS_API_KEY")))
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-	defer cancel()
-	ctx = geo.WithCaller(ctx, "handleGeoPlacesNearby")
-	ctx = geo.WithPath(ctx, r.URL.Path)
-
-	places := make([]placeResponse, 0)
-	found, err := client.SearchNearby(ctx, lat, lng, &geo.NearbyOptions{
-		RadiusMeters:  radiusMeters,
-		MaxResults:    20,
-		IncludePhotos: true,
-		IncludedTypes: includedTypes,
-	})
-	if err == nil {
-		// 只取前 maxPhotoResults 筆顯示/查圖片,理由見該常數的說明。
-		if len(found) > maxPhotoResults {
-			found = found[:maxPhotoResults]
-		}
-		for _, p := range found {
-			pr := placeResponse{
-				Name:        p.Name,
-				Address:     p.Address,
-				Lat:         p.Lat,
-				Lng:         p.Lng,
-				PrimaryType: p.PrimaryType,
-				Category:    classifyPlaceCategory(p.PrimaryType),
-			}
-			// 照片來源優先序同 fetchNearbyHotels/handleGeoPlaceDetails 的
-			// 說明:先試 Pexels(落地 GCS),查無結果才 fallback Google。
-			if client.PexelsClient() != nil {
-				if photo, ok, pErr := client.PexelsClient().Search(ctx, p.Name); pErr == nil && ok {
-					pr.PhotoURL = s.landmarkPhotoURL(ctx, p.PlaceID, photo.ImageURL)
-				}
-			}
-			if pr.PhotoURL == "" && p.PhotoRef != "" {
-				if photoURL, pErr := client.PhotoDataURI(ctx, p.PlaceID, p.PhotoRef, 200); pErr == nil {
-					pr.PhotoURL = s.landmarkPhotoURLFromDataURI(ctx, p.PlaceID, photoURL)
-				}
-			}
-			places = append(places, pr)
-		}
-	}
-	// 查詢失敗不視為整支端點失敗,直接回傳查到的部分(這裡是空陣列)——
-	// 理由同 fetchNearbyHotels 的說明,避免因為附加圖層查詢失敗讓使用者
-	// 看到紅色錯誤訊息。
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"places": places,
-	})
-}
+// handleGeoPlacesNearby(GET /internal/geo/places/nearby)、其專屬的
+// placeResponse/classifyPlaceCategory/allowedPlaceTypes 已於 2026-08
+// 隨「地圖三個查地點入口統一改走 handleGeoGeocode」這次改動一併移除——
+// 地圖上方類別標籤(景點/飯店/餐廳)原本是這支端點(client.SearchNearby,
+// Nearby Search)唯一的前端呼叫端,改走 handleGeoGeocode(mode=restrict,
+// Text Search)後,已確認 grep 全專案不再有任何呼叫端使用這支端點/前端
+// fetchGeoPlacesNearby,故視為死代碼一併清理(見 CHANGELOG)。
+// client.SearchNearby 本身不受影響、繼續保留——fetchNearbyHotels(供
+// handleGeoAttractionsNearby/handleGeoAttractions 使用)與
+// internal/wanttools、internal/onagenttools 的 recommend_nearby LLM 工具
+// 仍是這個函式現存的呼叫端。

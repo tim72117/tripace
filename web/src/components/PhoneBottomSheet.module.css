@@ -53,6 +53,25 @@
   will-change: transform;
 }
 
+/* panelStacked:sheet 堆疊管理(見 components/useSheetStack.ts)中「不是
+   目前最上層」的項目套用的退縮視覺修飾——實際的位移量已經由
+   PhoneBottomSheet.tsx 直接算進 inline style 的 top(見該檔案
+   stackOffsetPx 的說明,不在這裡用 CSS 覆蓋 top,避免跟拖曳手勢算出的
+   inline top 打架),這個 class 只疊加「看起來像背景卡片」的視覺:
+   稍淡的陰影(比正常展開時淺,暗示這層目前不是互動焦點)、關閉拖曳把手
+   (非頂層不接收手勢,見下方 dragHandle 選擇器)。pointer-events: none
+   讓非頂層完全不接收任何觸控/滑鼠事件(含點擊、拖曳)——這是使用者明確
+   要求的行為:非頂層 sheet 純粹是視覺背景,必須先關閉/退回頂層才能繼續
+   互動,不支援「點背景卡片直接跳回那一層」這種手勢。 */
+.panelStacked {
+  pointer-events: none;
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.12);
+}
+
+.panelStacked .dragHandleBar {
+  opacity: 0.4;
+}
+
 /* panelCollapsed:多段模式停在最小段時的狀態——不使用 display: none
    隱藏 .body(那樣會在收合動畫播放中途瞬間消失,跟 .panel 的 top
    transition 不同步,視覺上像是「內容先不見、卡片才慢慢收合」而非平滑

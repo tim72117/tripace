@@ -35,11 +35,14 @@ const SHEET_DURATION = '0.35s'
 // 這裡的動畫時長(毫秒版本,SHEET_DURATION 是 CSS transition 用的字串)
 // ——見 exitDurationMs prop 的說明。
 export const PHONE_BOTTOM_SHEET_EXIT_MS = 350
-// MID_SNAP_TOLERANCE_PX:拖曳起點若是三段以上 snapPoints 裡「既不是最小
-// 也不是最大展開程度」的中繼點,結束時的位移量在這個門檻(px)內一律彈回
-// 原本的中繼點,不切換段——見 onTouchEnd 裡的說明(使用者明確要求的
-// 「防手滑」設計)。
-const MID_SNAP_TOLERANCE_PX = 40
+// SNAP_TOLERANCE_PX:拖曳結束時的位移量在這個門檻(px)內一律彈回原本的
+// 段,不切換段/不關閉——所有段(不論單段模式、多段模式的最頂/最底/中繼
+// 段)統一套用同一個容忍帶,沒有例外(使用者明確要求「不管單段多段,都
+// 是關卡點移動 60,中間應該要往上有 60 往下也有 60,最上方也是往下
+// 60」)——原本最頂/最底段是「沒有容忍帶,拉了就走」,跟中繼段的防手滑
+// 邏輯不一致,已統一。單段模式的 finishDrag 分支沿用同一個常數(原本
+// 就是寫死 60,現在改讀這個常數,理由同上,值不變)。
+const SNAP_TOLERANCE_PX = 60
 
 // PhoneBottomSheet:手機版由下往上彈出的 bottom sheet 共用容器——抽出自
 // trip/PhoneTripsDrawer.tsx、geo-planning/GeoOutlinePhoneListDrawer.tsx、
@@ -155,6 +158,18 @@ export interface PhoneBottomSheetProps {
   // children、沒有這個問題,兩相對照後確認的根因)。與 exitDurationMs
   // 互斥,同時給的話 keepMounted 優先。預設 false,不影響既有呼叫端。
   keepMounted?: boolean
+  // isTopmost:配合 components/useSheetStack.ts 的多層 sheet 堆疊管理——
+  // false 代表這個 sheet 目前被壓在堆疊下層(不是使用者目前互動的那一
+  // 層),套用退縮視覺(見下方 stackOffsetPx)並停用所有觸控手勢(拖曳/
+  // 點擊),純粹當背景卡片顯示。預設 true,不使用堆疊管理的既有呼叫端
+  // 不受影響(永遠是 true,行為與新增這個 prop 前完全相同)。
+  isTopmost?: boolean
+  // stackOffsetPx:isTopmost 為 false 時,這個 sheet 相對於「原本
+  // panelTop 該在的位置」要往下(離頂部更遠)位移多少 px——由呼叫端依
+  // 這個項目在堆疊中的深度算出(例如離頂端 1 層用 8px、2 層用 16px),
+  // 讓多層堆疊時每一層都露出一小段邊緣,不會完全重疊看不出「後面還有
+  // 東西」。isTopmost 為 true 時忽略這個值。
+  stackOffsetPx?: number
 }
 
 export function PhoneBottomSheet({
@@ -173,6 +188,8 @@ export function PhoneBottomSheet({
   exitDurationMs,
   loading = false,
   keepMounted = false,
+  isTopmost = true,
+  stackOffsetPx = 0,
 }: PhoneBottomSheetProps) {
   // shouldRender/lastContent:延遲卸載——呼叫端(如
   // GeoOutlinePhoneInfoSheet.tsx)常常是「資料來源本身決定要不要渲染」
@@ -328,9 +345,25 @@ export function PhoneBottomSheet({
   // 手勢該不該讓內容捲」——手勢天生只可能落在 sheet 拖曳上。到了最頂段
   // 換成 overflow-y: auto,這時要反過來完全不驅動 sheet 拖曳,把手勢
   // 讓給瀏覽器原生捲動處理,onTouchStart/onTouchMove 直接視為未在拖曳。
-  const atMaxExpansion = !isSingleStop && activeSnapIndex === stops.length - 1
+  //
+  // 單段模式(isSingleStop)恆為 true——單段模式只有一個 snapPoints 值,
+  // 這個唯一的段本身就是「展開最多」的段,語意上跟多段模式的最頂段完全
+  // 一樣:內容需要能原生捲動(使用者明確要求「旅程數量多時清單還是需要
+  // 能捲動」),捲到頂端後繼續往下拖要能交接給 sheet 收合。原本這裡寫成
+  // `!isSingleStop && ...`,單段模式恆為 false,導致 .body 疊加的
+  // bodyOnTouchStart/Move/End(見下方)整組直接失效(第一行就
+  // `if (!atMaxExpansion) return`)——.body 卻同時有 ScrollArea 帶來的
+  // touch-action: pan-y(內容需要捲動,不能拿掉),這組 CSS 屬性讓瀏覽器
+  // 對這個節點的觸控手勢優先走原生路徑,跟 .panel 上被停用的 JS 拖曳邏輯
+  // 互搶,使用者實測回報「往下拖曳時卡片完全不跟手移動,放開手指才突然
+  // 關閉」——正是這個交接機制沒有生效、原生手勢又搶走事件的結果。
+  const atMaxExpansion = isSingleStop || activeSnapIndex === stops.length - 1
   function onTouchStart(e: ReactTouchEvent) {
-    if (atMaxExpansion) return
+    // 事件起點若落在 .body 內部,交給 bodyOnTouchStart 判斷(見下方)——
+    // 這裡只處理起點在 .body 之外的情況(拖曳把手/標頭),不能無差別用
+    // atMaxExpansion 擋掉整個 .panel,那樣會連帶讓單段模式的拖曳把手
+    // 也失效(冒泡上來的事件一樣會被這裡擋住)。
+    if (atMaxExpansion && bodyRef.current?.contains(e.target as Node)) return
     startYRef.current = e.touches[0].clientY
     startTopRef.current = currentTop
     draggingRef.current = true
@@ -393,7 +426,10 @@ export function PhoneBottomSheet({
 
     if (!draggingRef.current) return
     e.preventDefault()
-    setDragOffset(delta)
+    // 單段模式只能往下拖(比照 onTouchMove 的 isSingleStop 分支)——交接
+    // 條件本身已限制 delta > 0 才會交接,但交接後使用者可能中途把手指
+    // 往上推回去,這裡同樣要夾住下限,避免面板被往上推超出原位置。
+    setDragOffset(isSingleStop ? Math.max(0, delta) : delta)
   }
   function bodyOnTouchEnd() {
     if (!draggingRef.current) return
@@ -408,7 +444,7 @@ export function PhoneBottomSheet({
   // 重複一份。
   function finishDrag() {
     if (isSingleStop) {
-      if (dragOffset > 60) onClose()
+      if (dragOffset > SNAP_TOLERANCE_PX) onClose()
       setDragOffset(0)
     } else {
       const minTop = stops[stops.length - 1]
@@ -420,26 +456,19 @@ export function PhoneBottomSheet({
       // 吸附規則(使用者明確要求的設計,非 Vaul 的距離最近判斷)——
       // dragOffset > 0 代表往下拖(面板頂部離螢幕頂部的距離變大,展開
       // 變少),dragOffset < 0 代表往上拖(距離變小,展開變多)——跟觸控
-      // Y 座標差的方向一致,不像舊版(vh 高度)需要額外反號。
-      //  - 起點是索引 0(展開最少的段):只要有往上拖的動作(dragOffset
-      //    < 0,不論拉多遠/多快),一律吸附到相鄰的下一段(展開更多)
-      //    ——沒有容忍帶,拉了就走。
-      //  - 起點是最後一個索引(展開最多的段):同理,只要有往下拖
-      //    (dragOffset > 0)就吸附到相鄰的上一段(展開較少)。
-      //  - 起點是中繼點(其餘所有段):有 ±MID_SNAP_TOLERANCE_PX 的容忍
-      //    帶——結束時的距離落在容忍帶內,彈回原本的中繼點;落在容忍帶
-      //    之外,依方向(往上拖/往下拖)吸附到相鄰的下一段/上一段。
+      // Y 座標差的方向一致,不像舊版(vh 高度)需要額外反號。所有段
+      // (不論起點是最頂/最底/中繼段)統一套用 ±SNAP_TOLERANCE_PX 的
+      // 容忍帶——結束時的距離落在容忍帶內,彈回原本的段;落在容忍帶之外,
+      // 依方向(往上拖/往下拖)吸附到相鄰的下一段/上一段。原本最頂/最底
+      // 段是「沒有容忍帶,拉了就走」的例外,使用者明確要求取消這個例外,
+      // 三種情況(最頂/最底/中繼)行為完全一致。
       let nearestIndex: number
-      if (startIndex === 0) {
-        nearestIndex = dragOffset < 0 ? 1 : 0
-      } else if (startIndex === stops.length - 1) {
-        nearestIndex = dragOffset > 0 ? stops.length - 2 : startIndex
-      } else if (Math.abs(clampedTop - startTopRef.current) <= MID_SNAP_TOLERANCE_PX) {
+      if (Math.abs(clampedTop - startTopRef.current) <= SNAP_TOLERANCE_PX) {
         nearestIndex = startIndex
       } else if (dragOffset < 0) {
-        nearestIndex = startIndex + 1
+        nearestIndex = Math.min(stops.length - 1, startIndex + 1)
       } else {
-        nearestIndex = startIndex - 1
+        nearestIndex = Math.max(0, startIndex - 1)
       }
       onSnapIndexChange?.(nearestIndex)
       setDragOffset(0)
@@ -459,9 +488,14 @@ export function PhoneBottomSheet({
   // bottom: 0),不用 height——top + bottom: 0 讓瀏覽器自己算出實際
   // 高度,不需要這個元件自己量測視窗高度做百分比換算,天然適應不同裝置
   // (使用者明確要求的「離頂部/離下方距離」設計)。
-  const panelTop = draggingRef.current
+  // isTopmost 為 false 時額外疊加 stackOffsetPx——讓被壓在堆疊下層的
+  // sheet 露出一小段邊緣(見 isTopmost/stackOffsetPx prop 的說明)。非
+  // 頂層不接收拖曳手勢(見下方 onTouchStart 等的 isTopmost 短路判斷),
+  // 這裡的 panelTop 因此不需要考慮 draggingRef 分支——非頂層時
+  // draggingRef 恆為 false,天然走 currentTop 分支。
+  const panelTop = (draggingRef.current
     ? Math.min(stops[0], Math.max(stops[stops.length - 1], startTopRef.current + dragOffset))
-    : currentTop
+    : currentTop) + (isTopmost ? 0 : stackOffsetPx)
 
   // 是否目前停在展開最少的那個段(對齊原本 expand-collapse 設計的
   // 「收合」狀態,見元件開頭的說明)——只有這個狀態才隱藏 body、不顯示
@@ -472,21 +506,31 @@ export function PhoneBottomSheet({
   const isAtMinSnap = !draggingRef.current && activeSnapIndex === 0
 
   // translate:關閉時整個位移出畫面,開啟且已完成進場動畫(entered)時歸 0
-  // (展開程度變化交給 panelTop 呈現,拖曳中的跟手位移則由 dragOffset
-  // 反映在 panelTop 本身,不透過 translate),entered 之前維持在畫面外
-  // ——讓首次出現時整張卡片從螢幕下方滑入,而不是原地长高。位移量用
-  // 100vh(不是 100%)——CSS transform: translateY(百分比) 是相對於
-  // 元素自身高度計算,不是相對螢幕/視窗高度;keepMounted 的呼叫端(見
+  // 或反映拖曳位移(見下方單段模式說明),entered 之前維持在畫面外——讓
+  // 首次出現時整張卡片從螢幕下方滑入,而不是原地长高。位移量用 100vh
+  // (不是 100%)——CSS transform: translateY(百分比) 是相對於元素自身
+  // 高度計算,不是相對螢幕/視窗高度;keepMounted 的呼叫端(見
   // PhoneContent.tsx 的對話疊加層)在 open=false 時面板仍會渲染,但這時
   // .panelCollapsed 可能讓 .body 隱藏、面板實際高度縮得很小,100% 换算
   // 出來的實際位移距離遠遠不夠把面板推出可視範圍,導致「使用者實測
   // 回報一開啟手機版對話匡就一直陰在畫面上,點關閉也沒反應」——面板其實
   // 已經在嘗試位移,只是位移量不足以真正離開螢幕。100vh 是視窗高度的
   // 固定值,不受面板自身高度影響,足以確保任何情況下都能推出畫面外。
+  //
+  // 單段模式(isSingleStop)拖曳中要加上 dragOffset——多段模式的展開
+  // 程度變化交給 panelTop(top 屬性)呈現,不透過 translate,但單段模式
+  // 只有一個 stops 值,panelTop 的 Math.min(stops[0], Math.max(stops[0],
+  // ...)) 夾出來的結果恆等於那一個值,dragOffset 完全反映不到 top 上;
+  // 若 translate 也忽略 dragOffset(entered 時固定回傳 '0px'),整張卡片
+  // 拖曳中會完全不跟手——使用者實測回報「往下拖曳時卡片完全不跟手
+  // 移動,放開手指才突然關閉」,單段模式必須靠 translate 呈現跟手位移,
+  // 這是它跟多段模式(用 panelTop)不同的呈現路徑,原本遺漏了這一段。
   const translate = !open
     ? `calc(100vh + ${dragOffset}px)`
     : entered
-      ? '0px'
+      ? isSingleStop
+        ? `${dragOffset}px`
+        : '0px'
       : '100vh'
   // transition:拖曳中關掉動畫(即時跟手),放開手指後才套用「回彈到位」
   // 動畫——top 跟 transform 套同一條曲線跟時長(見上方
@@ -502,10 +546,18 @@ export function PhoneBottomSheet({
   // 恆為 true(見上方說明),若沿用這個條件會變成「backdrop 永遠不顯示」
   // ——跟原本'slide-close'模式「backdrop 只要 open 就顯示」的既有行為
   // 不符,故單段模式不看 isAtMinSnap,只看 open && showBackdrop。
-  const backdropVisible = isSingleStop ? open && showBackdrop : open && showBackdrop && !isAtMinSnap
+  // isTopmost 為 false 時一律不顯示 backdrop——同一個堆疊裡只該有最上層
+  // 那個 sheet 負責遮罩背景內容(地圖等),下層的 backdrop 若也顯示,會
+  // 疊加出比實際需要更暗的遮罩,且點擊 backdrop 關閉的語意也只該作用在
+  // 目前真正互動中的那一層。
+  const backdropVisible =
+    isTopmost && (isSingleStop ? open && showBackdrop : open && showBackdrop && !isAtMinSnap)
 
   // shouldRender 為 false 代表退場動畫(若有)已播完、或呼叫端根本沒給
   // exitDurationMs——這個元件完全不渲染,理由見上方 shouldRender 的說明。
+  // 這代表 data-testid="phone-bottom-sheet"(見下方 panel div)存在與否,
+  // 就等同於 open 狀態是否成立——測試可以直接查這個節點,不需要猜呼叫端
+  // 的文案內容或反查這裡的實作細節。
   if (!shouldRender) return null
 
   return (
@@ -515,7 +567,8 @@ export function PhoneBottomSheet({
       )}
       <div
         ref={panelRef}
-        className={`${styles.panel}${panelClassName ? ` ${panelClassName}` : ''}${!isSingleStop && isAtMinSnap ? ` ${styles.panelCollapsed}` : ''}`}
+        data-testid="phone-bottom-sheet"
+        className={`${styles.panel}${panelClassName ? ` ${panelClassName}` : ''}${!isSingleStop && isAtMinSnap ? ` ${styles.panelCollapsed}` : ''}${isTopmost ? '' : ` ${styles.panelStacked}`}`}
         style={{
           top: `${panelTop}px`,
           transform: `translateY(${translate})`,

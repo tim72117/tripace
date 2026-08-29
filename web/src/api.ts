@@ -422,12 +422,18 @@ export function fetchGeoAttractions(cfg: ClientConfig, city: string) {
 }
 
 // GeoGeocodeCandidate:fetchGeoGeocode 單筆候選地點——對齊後端
-// handleGeoGeocode 的回應形狀(見該函式的說明)。搜尋本身只查免費的
-// Essentials 級欄位(不含照片/評分/簡介,理由見後端 geo.Client.Search
-// 的 fieldMask 說明),placeId 供使用者點選候選後另外呼叫
-// fetchGeoPlaceDetails 補查完整資訊(含照片,Pexels-first + GCS 落地,
-// 跟點地圖上原生 POI 走同一套流程)——選填,理論上 Text Search 每筆
-// 結果都會有,查無則省略。
+// handleGeoGeocode 的回應形狀(見該函式的說明)。placeId 供使用者點選
+// 候選後另外呼叫 fetchGeoPlaceDetails 補查完整資訊(含照片,Pexels-first
+// + GCS 落地,跟點地圖上原生 POI 走同一套流程)——選填,理論上 Text
+// Search 每筆結果都會有,查無則省略。
+//
+// 2026-08 起這支端點的照片查詢改成後端背景執行(見 server 端
+// handleGeoGeocode 的說明),回應不再帶 photoUrl 欄位——前端一律改成
+// GeoListItemCard 依 placeId 觸發的延遲查詢(fetchGeoPlacePhoto,捲進
+// 可視範圍才查),原本這裡的 photoUrl 只是「前幾筆候選的即時預覽」,
+// 已確認目前渲染路徑實際上都是走 placeId 延遲查詢(見
+// GeoHotelSidebar.tsx/GeoOutlinePhoneListDrawer.tsx),移除這個欄位不影響
+// 任何畫面顯示。
 export interface GeoGeocodeCandidate {
   name: string
   address: string
@@ -438,22 +444,45 @@ export interface GeoGeocodeCandidate {
 
 // 對齊 server 的 GET /internal/geo/geocode(handleGeoGeocode)——把輸入
 // 字串解析成一組候選地點清單(座標),不查詢景點區域/飯店資料。地理
-// 輪廓底圖的城市搜尋框用這支端點,回傳多筆候選(改走 Places API Text
-// Search,對城市/觀光區這類口語化地名支援較差的 Geocoding API 已不再
-// 使用,見後端該函式的完整說明)供地圖標出來讓使用者自己點選確認,不再
-// 像過去只回一組座標、猜錯了無法挑選——查完選定其中一筆後,畫面上該
-// 顯示什麼資料交給 fetchGeoAttractionsNearby 依地圖當時的可視範圍另外
-// 查詢。這支端點原本設計給城市/地標名稱這類定位用途,但實際使用上也會
-// 直接輸入「甜點」這類泛用關鍵字——bias(選填,通常是目前地圖中心座標)
-// 讓這類查詢優先偏向該區域附近的結果(見後端 handleGeoGeocode 的
-// locationBias 完整說明),對「京都」這類文字意圖已經很明確的地名查詢
-// 幾乎不影響。不傳 bias 時退回純文字查詢,不套用任何位置偏向。
-export function fetchGeoGeocode(cfg: ClientConfig, query: string, bias?: { lat: number; lng: number }) {
-  const biasParams = bias ? `&biasLat=${bias.lat}&biasLng=${bias.lng}` : ''
+// 輪廓底圖的三個查地點入口(城市搜尋框、地圖上方類別標籤、「搜尋這個
+// 區域」按鈕)統一改走這支端點(見後端該函式的完整說明,不再各自打
+// fetchGeoPlacesNearby(Nearby Search,已隨這次改動移除)/
+// fetchGeoAttractionsNearby(飯店專用的 Nearby Search,「搜尋這個區域」
+// 原本呼叫的端點)),回傳多筆候選(Places API Text Search)供地圖標出來
+// 讓使用者自己點選確認,不再像過去只回一組座標、猜錯了無法挑選——查完
+// 選定其中一筆後,畫面上該顯示什麼景點區域資料交給
+// fetchGeoAttractionsOnlyNearby 依地圖當時的可視範圍另外查詢。
+//
+// center:選填,通常是目前地圖中心座標——bias 模式(預設,見下方 mode
+// 參數)下當 locationBias 中心,讓「甜點」這類泛用關鍵字查詢優先偏向該
+// 區域附近的結果,對「京都」這類文字意圖已經很明確的地名查詢幾乎不影響
+// (見後端 handleGeoGeocode 的完整說明);restrict 模式下當
+// locationRestriction 矩形中心(必填,呼叫端須確保有值)。不傳 center 時
+// bias 模式退回純文字查詢,不套用任何位置偏向。
+//
+// mode:'bias'(預設,省略即此值,城市搜尋框用)或 'restrict'(地圖上方
+// 類別標籤/「搜尋這個區域」按鈕用,固定套用 locationRestriction,不做
+// 後端兩階段判斷)——見後端 handleGeoGeocode 的完整說明。
+// radiusMeters:只有 mode='restrict' 時有意義(locationRestriction 矩形
+// 半徑),bias 模式下這個參數會被忽略,不需要呼叫端自行判斷要不要傳。
+export function fetchGeoGeocode(
+  cfg: ClientConfig,
+  query: string,
+  center?: { lat: number; lng: number },
+  mode?: 'bias' | 'restrict',
+  radiusMeters?: number,
+) {
+  const params = new URLSearchParams({ query })
+  if (center) {
+    params.set('lat', String(center.lat))
+    params.set('lng', String(center.lng))
+  }
+  if (mode) params.set('mode', mode)
+  if (radiusMeters != null) params.set('radius', String(radiusMeters))
   return request<{ query: string; candidates: GeoGeocodeCandidate[] }>(
     cfg,
     'GET',
-    `/internal/geo/geocode?query=${encodeURIComponent(query)}${biasParams}`,
+    `/internal/geo/geocode?${params.toString()}`,
   )
 }
 
@@ -492,8 +521,14 @@ export function fetchGeoAttractionsOnlyNearby(cfg: ClientConfig, lat: number, ln
 
 // GeoPlace:不限類型的附近推薦地點(景點/餐廳/商店等),對齊後端
 // placeResponse(server/internal/api/geo_outline.go 的 handleGeoPlacesNearby)。
-// 形狀與 GeoHotel 相同,但語意上是「點擊地標查詢附近推薦」而非「地圖
+// 形狀與 GeoHotel 相近,但語意上是「點擊地標查詢附近推薦」而非「地圖
 // 上常駐的飯店圖層」,故另外命名,不共用 GeoHotel 型別。
+//
+// placeId:2026-08 起這支端點的照片查詢改成後端背景執行(見 server 端
+// handleGeoPlacesNearby 的說明),回應不再帶 photoUrl——改成回傳
+// placeId,前端比照 GeoGeocodeCandidate 既有的做法,用 GeoListItemCard
+// 的延遲查詢(fetchGeoPlacePhoto,捲進可視範圍才查)取得照片,不是新的
+// 機制,只是這批結果先前沒有 placeId 可用。
 export interface GeoPlace {
   name: string
   address: string
@@ -510,7 +545,7 @@ export interface GeoPlace {
   // 查詢用的類型本身),這是實際發生過的 bug。primaryType 保留純供
   // 除錯/未來需要更細分類時使用。
   category?: string
-  photoUrl?: string
+  placeId?: string
 }
 
 // GeoSearchResult:飯店(GeoHotel)/推薦地點(GeoPlace)/搜尋結果
@@ -528,11 +563,13 @@ export interface GeoPlace {
 // GeoCandidate 判別欄位(hotel/place 才能加入候選籃,geocode 不能,見
 // geoCandidateHelpers.ts 的 GeoCandidate 型別)使用。
 //
-// 欄位全部盡量共用、只有各自來源才有的欄位設為 optional——geocode 沒有
-// photoUrl(fetchGeoGeocode 只查免費欄位,不含照片)、只有 geocode 有
-// placeId(供選定後補查文字/照片,見 GeoOutlinePanel.tsx 的
-// selectedCandidate effect);category 只有 place 會有值(對應地圖上方
-// 類別標籤,見 GeoPlace.category 的完整說明)。
+// 欄位全部盡量共用、只有各自來源才有的欄位設為 optional——photoUrl 只有
+// hotel(GeoHotel,查詢完成時就同步帶照片,見該型別的說明)會有值;
+// placeId 則是 geocode 與 place 兩種來源都有(2026-08 起
+// handleGeoPlacesNearby 也開始回傳 placeId,理由見 GeoPlace.placeId 的
+// 完整說明),兩者都靠 GeoListItemCard 依 placeId 觸發的延遲查詢取得
+// 照片,不再依賴任何欄位帶著現成的 photoUrl;category 只有 place 會有值
+// (對應地圖上方類別標籤,見 GeoPlace.category 的完整說明)。
 export interface GeoSearchResult {
   kind: 'hotel' | 'place' | 'geocode'
   name: string
@@ -548,7 +585,7 @@ export function hotelToSearchResult(h: GeoHotel): GeoSearchResult {
   return { kind: 'hotel', name: h.name, address: h.address, lat: h.lat, lng: h.lng, photoUrl: h.photoUrl }
 }
 export function placeToSearchResult(p: GeoPlace): GeoSearchResult {
-  return { kind: 'place', name: p.name, address: p.address, lat: p.lat, lng: p.lng, photoUrl: p.photoUrl, category: p.category }
+  return { kind: 'place', name: p.name, address: p.address, lat: p.lat, lng: p.lng, placeId: p.placeId, category: p.category }
 }
 export function geocodeCandidateToSearchResult(c: GeoGeocodeCandidate): GeoSearchResult {
   return { kind: 'geocode', name: c.name, address: c.address, lat: c.lat, lng: c.lng, placeId: c.placeId }
@@ -573,29 +610,6 @@ export interface GeoTripEntry {
   // 分組,理由同 Timeline.tsx 對無日期 entry 的處理。
   start?: string | null
   startTime?: string | null
-}
-
-// 對齊 server 的 GET /internal/geo/places/nearby(handleGeoPlacesNearby)——
-// 即時查 Google Places Nearby Search,供兩種情境使用:地圖上點擊地標
-// (不帶 type,不限類型,見 GeoOutlineMap.tsx 點擊地標的說明)、或地圖
-// 上方的類別標籤列(帶 type,限定單一類別,見該檔案的說明)。這是使用者
-// 明確點擊觸發的低頻動作,不像 fetchGeoAttractionsNearby 那樣顧慮地圖
-// 高頻移動的 API 呼叫成本,故直接即時查 Places API。
-//
-// type 只接受後端白名單認可的值(見 geo_outline.go 的
-// allowedPlaceTypes):'lodging'(飯店)/'tourist_attraction'(景點)/
-// 'restaurant'(餐廳),帶不支援的值會被後端拒絕(400)。
-export function fetchGeoPlacesNearby(
-  cfg: ClientConfig,
-  lat: number,
-  lng: number,
-  radiusMeters?: number,
-  type?: string,
-) {
-  const params = new URLSearchParams({ lat: String(lat), lng: String(lng) })
-  if (radiusMeters != null) params.set('radius', String(radiusMeters))
-  if (type) params.set('type', type)
-  return request<{ places: GeoPlace[] }>(cfg, 'GET', `/internal/geo/places/nearby?${params.toString()}`)
 }
 
 // GeoPlaceDetails:對齊 server 的 GET /internal/geo/place-details

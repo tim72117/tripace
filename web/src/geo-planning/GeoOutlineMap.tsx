@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader'
-import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoHotel, GeoPlace, GeoPlaceDetails, GeoSearchResult, GeoTripEntry } from '../api'
-import { fetchGeoAttractionsNearby, fetchGeoAttractionsOnlyNearby, fetchGeoPlaceDetails, fetchGeoPlacesNearby, geocodeCandidateToSearchResult, hotelToSearchResult, placeToSearchResult } from '../api'
+import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoPlace, GeoPlaceDetails, GeoSearchResult, GeoTripEntry } from '../api'
+import { fetchGeoAttractionsOnlyNearby, fetchGeoGeocode, fetchGeoPlaceDetails, geocodeCandidateToSearchResult, placeToSearchResult } from '../api'
 import { Compass, Hotel, Loader2, MapPin, Search, Sparkles, UtensilsCrossed } from 'lucide-react'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
 import { isSubmitEnter } from '../AppCommon'
+import type { Theme } from '../theme'
 import { initialAreaSearchState, reduceAreaSearchState } from './geoAreaSearchState'
 import { minZoomForLevel } from './geoAttractionOverlay'
 import { useAttractionOverlays } from './useAttractionOverlays'
@@ -40,41 +41,56 @@ import styles from './GeoOutlineMap.module.css'
 // 的 Map Style,設計意圖不變:見本檔案開頭「構想 6」的說明,地圖只回答
 // 「這城市長什麼樣」,低飽和度暖色系,不搶過光暈與標籤的視覺焦點。
 
-// CATEGORY_TAGS:地圖上方類別標籤列的定義,type 值必須跟後端
-// handleGeoPlacesNearby 的 allowedPlaceTypes 白名單一致(見
-// server/internal/api/geo_outline.go)——這裡沒有另外定義一份型別檢查,
-// 純粹靠兩邊維護時保持同步,不一致頂多讓後端回 400,不是安全風險。
+// CATEGORY_TAGS:地圖上方類別標籤列的定義——type 值同時是 GeoPlace.category
+// 的值域(景點/飯店/餐廳,見該欄位的完整說明,決定 marker 圖示)。
 const CATEGORY_TAGS: { type: string; label: string; Icon: typeof Hotel }[] = [
   { type: 'tourist_attraction', label: '景點', Icon: MapPin },
   { type: 'lodging', label: '飯店', Icon: Hotel },
   { type: 'restaurant', label: '餐廳', Icon: UtensilsCrossed },
 ]
 
-// SEARCH_BOX_CATEGORY_LABELS:哪些類別標籤按下時不查 fetchGeoPlacesNearby
-// (Nearby Search),改成觸發城市搜尋框搜尋對應文字(走 Text Search,見
-// handleCategoryClick 的完整說明)——目前是使用者明確要求的「飯店」
-// 「餐廳」兩個,key 對齊 CATEGORY_TAGS 的 type、value 是要填進搜尋框的
-// 文字(直接沿用 CATEGORY_TAGS 的 label,理由是標籤文字本身就是最直覺
-// 的搜尋關鍵字,不需要另外維護一份對照)。「景點」(tourist_attraction)
-// 不在這裡,維持原本的 Nearby Search 行為。
+// SEARCH_BOX_CATEGORY_LABELS:CATEGORY_TAGS 的 type 對應到要填進搜尋框
+// 的查詢文字——三顆標籤(景點/飯店/餐廳)統一改成「標籤文字當查詢詞、
+// 寫入搜尋框、觸發搜尋」的行為(見 handleCategoryClick 的完整說明),不
+// 再有 fetchGeoPlacesNearby(Nearby Search)那條路徑,也不再有「再點一次
+// 取消選取」的機制——直接沿用 CATEGORY_TAGS 的 label,理由是標籤文字
+// 本身就是最直覺的搜尋關鍵字,不需要另外維護一份對照。
 const SEARCH_BOX_CATEGORY_LABELS: Record<string, string> = {
+  tourist_attraction: '景點',
   lodging: '飯店',
   restaurant: '餐廳',
 }
 
-// EXPLORE_CATEGORY:「探索」標籤的識別值,跟 CATEGORY_TAGS 用同一顆
+// EXPLORE_CATEGORY:「探索」標籤的識別值,跟 CATEGORY_TAGS 共用同一顆
 // activeCategory state 判斷選取態、共用同一套「點下去查、再點一次取消」
 // 互動語意(見 handleCategoryClick/handleExploreClick 的說明),但不放進
-// CATEGORY_TAGS 陣列本身——CATEGORY_TAGS 的 type 值必須對齊後端
-// allowedPlaceTypes 白名單(給 fetchGeoPlacesNearby 用),探索標籤查的是
-// 完全不同的資料來源(自建景點區域 attraction,見 fetchGeoAttractionsOnlyNearby,
-// 免費、查自家資料庫),混進同一個陣列會誤導成「這也是傳給後端的 place
-// type」。使用者明確要求:attraction 光暈圖層原本是進畫面就自動顯示、
-// 拖曳縮放自動刷新的常駐圖層,改成跟飯店/景點/餐廳一致的「標籤控制」
-// 模式——預設不顯示,只有點探索才查詢並顯示,顯示後也不再自動跟拖曳/
-// 縮放刷新(除非再次點探索或按「搜尋這個區域」),見下方 attractionsQueryTrigger
-// 相關 effect 的改動。
+// CATEGORY_TAGS 陣列本身——探索標籤查的是完全不同的資料來源(自建景點
+// 區域 attraction,見 fetchGeoAttractionsOnlyNearby,免費、查自家
+// 資料庫),CATEGORY_TAGS 三顆標籤現在統一觸發城市搜尋框查詢(見
+// SEARCH_BOX_CATEGORY_LABELS 的說明),兩者互動語意已經分道揚鑣,活躍態
+// 判斷式(activeCategory === EXPLORE_CATEGORY)之後只服務探索標籤本身。
 const EXPLORE_CATEGORY = 'attraction'
+
+// themeToColorScheme:把這個 App 自己的三態主題偏好(theme.ts 的 Theme,
+// 見該檔案說明)轉成 Google Maps JS API 的 colorScheme 建圖選項——官方
+// 文件明確規定 colorScheme 只能在 new google.maps.Map(...) 當下設定,
+// 建圖之後再改完全無效("setting this option after the map is created
+// will have no effect"),故這個轉換結果只會被下方建圖 effect 讀取一次,
+// 不是能動態套用的選項。
+//
+// null(這個 App 的「跟隨系統」)在 Google 這邊沒有「跟隨這個 App 自己的
+// CSS media query 邏輯」這個選項可選,只有 LIGHT/DARK/FOLLOW_SYSTEM
+// (跟隨瀏覽器/OS 層級偏好)三選一——這裡選 FOLLOW_SYSTEM 是合理的退化
+// 方案:這個 App 的「跟隨系統」本身也是透過瀏覽器 prefers-color-scheme
+// media query 實現(見 theme.ts 開頭說明,null 時不寫 data-theme 屬性,
+// 交給 CSS 判斷),語意上跟 Google Maps 的 FOLLOW_SYSTEM(同樣讀瀏覽器/
+// OS 層級偏好)一致,不會出現「App 本體跟著系統走,地圖卻沒有」的不
+// 同步情況。
+function themeToColorScheme(theme: Theme): 'LIGHT' | 'DARK' | 'FOLLOW_SYSTEM' {
+  if (theme === 'dark') return 'DARK'
+  if (theme === 'light') return 'LIGHT'
+  return 'FOLLOW_SYSTEM'
+}
 
 let optionsSet = false
 function ensureOptionsSet(apiKey: string) {
@@ -87,19 +103,14 @@ function ensureOptionsSet(apiKey: string) {
   setOptions({ key: apiKey, v: 'weekly', language: 'zh-TW' })
 }
 
-// sameAttractionsContent/sameHotelsContent:比對兩批查詢結果的內容是否
-// 完全相同(依名稱+座標組成的字串逐筆比對,足以判斷「這就是同一批
-// 資料」),供依可視範圍查詢完成時判斷要不要真的替換 state——見該處
-// useEffect 的說明,避免地圖移動一下又移回來、或新舊查詢半徑重疊涵蓋
-// 同一批資料時,內容明明相同卻無條件換新陣列參照,讓景點區域光暈/飯店
-// marker 不必要地整批重建、閃爍。
+// sameAttractionsContent:比對兩批查詢結果的內容是否完全相同(依名稱+
+// 座標組成的字串逐筆比對,足以判斷「這就是同一批資料」),供依可視範圍
+// 查詢完成時判斷要不要真的替換 state——見該處 useEffect 的說明,避免地圖
+// 移動一下又移回來、或新舊查詢半徑重疊涵蓋同一批資料時,內容明明相同卻
+// 無條件換新陣列參照,讓景點區域光暈不必要地整批重建、閃爍。
 function sameAttractionsContent(a: GeoAttraction[], b: GeoAttraction[]): boolean {
   if (a.length !== b.length) return false
   return a.every((d, i) => d.name === b[i].name && d.lat === b[i].lat && d.lng === b[i].lng)
-}
-function sameHotelsContent(a: GeoHotel[], b: GeoHotel[]): boolean {
-  if (a.length !== b.length) return false
-  return a.every((h, i) => h.name === b[i].name && h.lat === b[i].lat && h.lng === b[i].lng)
 }
 
 export function GeoOutlineMap({
@@ -126,6 +137,7 @@ export function GeoOutlineMap({
   candidateKeys,
   hoverKey,
   geocodeCandidates: geocodeCandidatesProp,
+  theme,
 }: {
   cfg: ClientConfig
   // initialCenter:地圖第一次建立時該用的中心點——undefined 代表呼叫端
@@ -311,6 +323,22 @@ export function GeoOutlineMap({
   // 候選 marker 並 fitBounds 到能同時看見所有候選的範圍——空陣列
   // (預設)代表沒有待確認的候選,不畫任何東西。
   geocodeCandidates?: GeoGeocodeCandidate[]
+  // theme:這個 App 的深色/淺色模式偏好(見 theme.ts),決定建圖時傳給
+  // Google Maps 的 colorScheme(見 themeToColorScheme 的完整說明)——
+  // mapId 底下的 Cloud-based Map Style 現在同時綁定明暗兩份樣式,SDK 靠
+  // colorScheme 決定套用哪一份。colorScheme 只能在建圖當下決定、事後無法
+  // 動態改變(Google 官方文件明講),故這個 prop 變動時,下方建圖 effect
+  // 必須整個重建地圖(銷毀舊實例、建立新實例),不是單純更新某個選項——
+  // 見下方建圖 effect 對 builtColorSchemeRef 的說明,重建過程中會把
+  // mapReady 先設回 false 再設回 true,讓 useAttractionOverlays/
+  // useSearchResultMarkers/useTripEntryMarkers 與 panTarget effect(皆以
+  // mapReady 為依賴項)重新綁定到新的地圖實例上。呼叫端
+  // (GeoOutlinePanel.tsx/GeoOutlinePhoneView.tsx)一路從 useAppState() 的
+  // theme 往下傳;公開分享頁(PaceRouteMap.tsx/PublicViewScreen.tsx 等)
+  // 目前未引用這個元件,不需要處理「固定淺色」的情境,見呼叫端說明。
+  // 預設 null(跟隨系統)——理由同其餘 optional props 給合理預設值的
+  // 慣例,不強制每個呼叫端都要接這個 prop。
+  theme?: Theme
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
@@ -342,55 +370,57 @@ export function GeoOutlineMap({
   // 發生過的 bug(清單項目永遠已經在畫面內,清單點擊的移動地圖邏輯
   // 因此形同虛設)。
   const [bounds, setBounds] = useState<google.maps.LatLngBounds | null>(null)
-  // attractions/hotels:改成這個元件內部管理(不再是外部傳入的完整清單再
-  // 篩選),由下方「依可視範圍查詢」的 effect 寫入——景點區域與飯店都是
-  // 「以地圖可視範圍為準」查詢的結果,查詢責任收在地圖元件自己身上
-  // (只有它知道當下的 bounds),搜尋框(GeoOutlinePanel.tsx)只負責把
-  // 座標查出來、透過 panTarget 移動地圖,不再自己查一份完整清單。
-  //
-  // hotels 這批「即時查 Google Places」的資料刻意不跟著 attractions 一起
-  // 自動查——見下方 handleSearchThisArea 的說明,只有掛載時的第一次
-  // 查詢與使用者明確按下「搜尋這個區域」時才會更新,拖曳/縮放本身不再
-  // 觸發它,理由同該函式的說明。
+  // attractions:改成這個元件內部管理(不再是外部傳入的完整清單再篩選),
+  // 由下方「依可視範圍查詢」的 effect 寫入——景點區域是「以地圖可視範圍
+  // 為準」查詢的結果,查詢責任收在地圖元件自己身上(只有它知道當下的
+  // bounds),搜尋框(GeoOutlinePanel.tsx)只負責把座標查出來、透過
+  // panTarget 移動地圖,不再自己查一份完整清單。
   const [attractions, setAttractions] = useState<GeoAttraction[]>([])
-  const [hotels, setHotels] = useState<GeoHotel[]>([])
-  // places:點擊地圖上方類別標籤(handleCategoryClick)時查到的附近推薦
-  // 地點,跟 attractions/hotels 不同的是這不是「依可視範圍持續查詢」的
-  // 常駐圖層,是「點了某個類別才會有內容」的一次性查詢結果——換一個
-  // 類別點擊會直接覆蓋掉整批(不累加),理由同 onSearchResultsChange 回報
-  // 邏輯本身。
+  // places:地圖上方類別標籤(景點/飯店/餐廳)寫入搜尋框、觸發搜尋後,或
+  // 「搜尋這個區域」按鈕按下後查到的結果——2026-08 起這三個入口(連同
+  // 城市搜尋框本身)統一改走 fetchGeoGeocode(Text Search,類別標籤/搜尋
+  // 這個區域固定用 mode=restrict,見 handleCategoryClick/
+  // handleSearchThisArea/runPlacesQuery 的完整說明),不再打
+  // fetchGeoPlacesNearby(Nearby Search)/fetchGeoAttractionsNearby(飯店
+  // 專用的 Nearby Search,原本供「搜尋這個區域」使用)。查到的候選
+  // (GeoGeocodeCandidate)在這裡轉成 GeoPlace 形狀(category 直接用觸發
+  // 時的類別標籤,不像原本的 fetchGeoPlacesNearby 那樣由後端依
+  // primaryType 分類),繼續沿用既有的 places state/
+  // searchResultToCandidate 候選籃路徑,讓「附近推薦」清單、marker 圖示
+  // (依類別的專屬圖案,見 mapMarkers.ts 的 PLACE_CATEGORY_GLYPHS)、加入
+  // 候選籃這幾個下游行為完全不受影響——飯店類別標籤查出來的結果現在也走
+  // 這條路徑(kind:'place'、category:'lodging'),不再產生 kind:'hotel'
+  // 的搜尋結果(hotels state 已隨這次改動移除,見下方 searchResults 的
+  // 說明;GeoHotel/hotelToSearchResult/kind:'hotel' 這條型別/UI 路徑本身
+  // 不移除,是候選籃/side panel 廣泛共用的既有型別基礎設施,只是目前沒有
+  // 任何查詢會再產生 kind:'hotel' 的結果)。跟 attractions 不同的是這不是
+  // 「依可視範圍持續查詢」的常駐圖層,是「觸發了搜尋才會有內容」的一次性
+  // 查詢結果——換一次觸發會直接覆蓋掉整批(不累加),理由同
+  // onSearchResultsChange 回報邏輯本身。
   const [places, setPlaces] = useState<GeoPlace[]>([])
-  // searchResults:hotels/places/geocodeCandidatesProp 三種來源統一轉成
+  // searchResults:places/geocodeCandidatesProp 兩種來源統一轉成
   // GeoSearchResult 後合併的單一陣列——供下方 useSearchResultMarkers 畫
   // 單一 marker 圖層,也是往上回報給 onSearchResultsChange 的內容(見
-  // api.ts GeoSearchResult 的完整說明)。三者查詢時機/state 仍各自獨立
-  // (理由見各自 state 宣告處),只有「對外呈現」這一層收斂成一份,故用
-  // useMemo 衍生而非另外開一個 state 手動同步三邊。
+  // api.ts GeoSearchResult 的完整說明)。原本還有 hotels 這個來源(見
+  // handleSearchThisArea 改走 fetchGeoGeocode 前的說明),2026-08 起
+  // 「搜尋這個區域」不再即時查 Google Places Nearby Search 取得飯店,改
+  // 跟景點/餐廳一樣統一併入 places(見該 state 的完整說明),故這裡不再
+  // 合併 hotels。兩者查詢時機/state 仍各自獨立(理由見各自 state 宣告
+  // 處),只有「對外呈現」這一層收斂成一份,故用 useMemo 衍生而非另外開
+  // 一個 state 手動同步。
   const searchResults = useMemo<GeoSearchResult[]>(
     () => [
       ...(geocodeCandidatesProp ?? []).map(geocodeCandidateToSearchResult),
-      ...hotels.map(hotelToSearchResult),
       ...places.map(placeToSearchResult),
     ],
-    [geocodeCandidatesProp, hotels, places],
+    [geocodeCandidatesProp, places],
   )
-  // queryTrigger:每次「該重新查詢景點區域」時遞增一次,驅動下方「依可視
-  // 範圍查詢」的 effect 重新執行——用遞增計數器而非直接把查詢邏輯寫進
-  // 觸發來源的 callback 內,是為了讓查詢邏輯留在 useEffect 裡統一處理
-  // cancelled/競態問題(見下方該 effect 的說明)。掛載後第一次(這個值
-  // 還是初始值 0)會執行一次,查詢初始中心點周邊的景點區域,讓使用者
-  // 不用任何互動就能看到內容;之後只有使用者明確按下「搜尋這個區域」
-  // (見 handleSearchThisArea)才會再次遞增——地圖拖曳本身不再直接驅動
-  // 這個 effect,理由見 idle 監聽器與 areaSearch 的說明。
-  const [queryTrigger, setQueryTrigger] = useState(0)
   // attractionsQueryTrigger:每次「該重新查詢景點區域」時遞增一次,驅動
-  // 下方「景點區域自動查詢」的 effect——跟 queryTrigger 分開是因為景點
-  // 區域(免費、查自家資料庫,見 fetchGeoAttractionsOnlyNearby)跟飯店
-  // (付費、即時查 Google Places,見 queryTrigger 那個 effect)現在是兩條
-  // 獨立的觸發時機:景點區域單純依地圖可視範圍/縮放自動觸發(idle 事件,
-  // 見下方 idle 監聽器),不需要使用者按「搜尋這個區域」;飯店仍收在
-  // 按鈕之後,理由同 queryTrigger 的說明。初始值 0,mapReady 剛變 true 時
-  // 這個 effect 會執行一次,查詢初始中心點周邊的景點區域。
+  // 下方「景點區域自動查詢」的 effect——景點區域(免費、查自家資料庫,見
+  // fetchGeoAttractionsOnlyNearby)單純依地圖可視範圍/縮放自動觸發(idle
+  // 事件,見下方 idle 監聽器),不需要使用者按「搜尋這個區域」。初始值
+  // 0,mapReady 剛變 true 時這個 effect 會執行一次,查詢初始中心點周邊的
+  // 景點區域。
   const [attractionsQueryTrigger, setAttractionsQueryTrigger] = useState(0)
   // areaSearch:「搜尋這個區域」按鈕的顯示/查詢中狀態,轉換邏輯抽成純
   // reducer(見 geoAreaSearchState.ts,可獨立於 Google Maps SDK 單元測試)
@@ -417,6 +447,16 @@ export function GeoOutlineMap({
   // undefined 解析成確定值而重新執行時,誤判成「還沒建過圖」而重複
   // 建圖、重複掛監聽器的非同步競態。
   const buildingRef = useRef(false)
+  // builtColorSchemeRef:記住目前 mapRef.current 這個地圖實例建立當下
+  // 使用的 colorScheme——colorScheme 只能在建圖當下決定、事後無法動態
+  // 改變(見 themeToColorScheme 的完整說明),故 theme prop 改變時,下方
+  // 建圖 effect 不能只是「已經建過圖就跳過」,必須先判斷這次重新執行是
+  // 不是因為 colorScheme 真的變了——是的話才需要銷毀舊實例、整個重建;
+  // 不是的話(例如純粹因為別的依賴項變動而重新執行,理論上不會發生,
+  // 但保守起見仍判斷)維持原本「已建過圖就跳過」的既有 guard。初始值
+  // null 代表「尚未建過圖」,與任何合法的 colorScheme 字串都不同,確保
+  // 第一次建圖一定會執行。
+  const builtColorSchemeRef = useRef<string | null>(null)
   // lastAttractionsQueryKeyRef:見下方景點區域查詢 effect 裡的完整說明——
   // 記住上一次真正送出查詢的座標+半徑,idle 事件在初始載入階段連續
   // 觸發但位置沒變時用來去重,不再重複發送請求。
@@ -430,11 +470,17 @@ export function GeoOutlineMap({
       return
     }
     if (!containerRef.current) return
+    const colorScheme = themeToColorScheme(theme ?? null)
     // mapRef.current 已存在代表地圖已經建立過——這個 effect 依賴陣列
     // 包含 initialCenter(見下方),當它從 undefined 解析成確定的值(或
     // null)時會重新執行一次,這裡要擋掉重複建圖,只在第一次(尚未建立
-    // 過)真正呼叫 new Map()。
-    //
+    // 過)真正呼叫 new Map()。theme 改變(colorScheme 跟著變)是唯一的
+    // 例外——colorScheme 只能在建圖當下決定、事後無法動態改變(見
+    // themeToColorScheme 的完整說明),故這裡要先判斷這次重新執行是不是
+    // 「已經建過圖,但 colorScheme 真的變了」,是的話銷毀舊實例、整個
+    // 重建,不是的話才維持原本「已建過圖就跳過」的既有 guard。
+    if (mapRef.current && builtColorSchemeRef.current === colorScheme) return
+    if (buildingRef.current) return
     // 這個判斷本身無法擋住非同步競態:mapRef.current 要等
     // importLibrary('maps').then() 真正 resolve 才會被賦值,若 effect 在
     // 那之前又因為 initialCenter 從 undefined 解析成 null/物件而重新
@@ -450,10 +496,25 @@ export function GeoOutlineMap({
     // 現象。用 buildingRef 在呼叫 importLibrary 之前就同步標記「這次
     // effect 執行已經在建圖了」,擋住後續執行在 mapRef.current 賦值前
     // 搶著再建一次。
-    if (mapRef.current || buildingRef.current) return
     // initialCenter 為 undefined 代表呼叫端還在查「這個旅程有沒有既有
     // 地點可以當初始中心」,地圖建立要等待——見這個 prop 的完整說明。
     if (initialCenter === undefined) return
+    // 銷毀舊地圖實例(theme 改變觸發的重建,見上方 guard 判斷):清掉這個
+    // effect 掛上去的全部監聽器(google.maps.event.clearInstanceListeners
+    // 是官方文件提供的批次清除 API,不需要逐一保存 addListener 回傳的
+    // MapsEventListener 再逐一 removeListener)。marker/overlay 圖層不在
+    // 這裡清——它們各自的 hook(useAttractionOverlays/
+    // useSearchResultMarkers/useTripEntryMarkers)與下方 panTarget effect
+    // 都以 mapReady 為依賴項之一,下面把 mapReady 先設回 false 再等新
+    // 地圖就緒時設回 true,會讓這些 hook 的清理函式(各自 marker.map =
+    // null / overlaysRef 清空)與重新掛載邏輯自然重新跑一輪,不需要在這
+    // 裡手動介入它們的 marker 陣列。這裡只負責這個 effect 自己掛的地圖
+    // 層級監聽器與地圖實例本身。
+    if (mapRef.current) {
+      google.maps.event.clearInstanceListeners(mapRef.current)
+      mapRef.current = null
+    }
+    setMapReady(false)
     buildingRef.current = true
     let cancelled = false
 
@@ -484,6 +545,12 @@ export function GeoOutlineMap({
           center: initialCenter ?? { lat: 35.0, lng: 135.76 },
           zoom: 12,
           mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID as string,
+          // colorScheme:決定 mapId 底下要套用明/暗哪一份 Cloud-based Map
+          // Style(見 themeToColorScheme 的完整說明)——只在建圖當下讀取
+          // 一次,事後改變這個選項無效,故 theme prop 改變時是靠上方的
+          // 銷毀舊實例、重新執行這個 effect 建新地圖來套用新樣式,不是
+          // 靠更新既有地圖實例的某個屬性。
+          colorScheme,
           disableDefaultUI: true,
           zoomControl: showZoomControl,
           // gestureHandling 明確設為 'greedy':預設值 'auto' 在
@@ -493,6 +560,7 @@ export function GeoOutlineMap({
           // 程式化移動地圖影響。
           gestureHandling: 'greedy',
         })
+        builtColorSchemeRef.current = colorScheme
         // zoom_changed 監聽器:即時反映使用者拖曳滾輪/點擊縮放控制項
         // 造成的縮放層級變化,驅動 useAttractionOverlays 的
         // filteredAttractions 重新計算。
@@ -521,14 +589,15 @@ export function GeoOutlineMap({
         //    故探索標籤選中時仍不受 suppressNextIdleQueryRef 影響(即使
         //    是 panTarget 造成的移動,只要探索已選中就該立刻反映新範圍,
         //    沒有「稍後才查」的必要)。
-        // 2. 飯店(hotels)與地圖上方類別標籤查到的地點不在這裡自動觸發
-        //    ——這兩者都是即時查 Google Places、直接計費,仍收在使用者
-        //    明確按下「搜尋這個區域」按鈕之後才觸發(見 queryTrigger 那個
-        //    effect 與 handleSearchThisArea)。地圖移動本身只標記「這個
-        //    範圍還沒查過」(dispatch 'map-idle',見 geoAreaSearchState.ts
-        //    的說明),在地圖上方冒出按鈕,等使用者按下才真的發請求——
-        //    若沿用「拖曳就查」會讓每次小幅拖曳都觸發一次計費查詢,改成
-        //    「按下才查」讓使用者對何時會產生查詢有明確控制。
+        // 2. 地圖上方類別標籤(景點/飯店/餐廳)與「搜尋這個區域」按鈕
+        //    查到的地點(places state)不在這裡自動觸發——這兩者都是即時
+        //    查 Google Places(fetchGeoGeocode)、直接計費,仍收在使用者
+        //    明確按下「搜尋這個區域」按鈕之後才觸發(見 handleSearchThisArea
+        //    /runPlacesQuery)。地圖移動本身只標記「這個範圍還沒查過」
+        //    (dispatch 'map-idle',見 geoAreaSearchState.ts 的說明),在
+        //    地圖上方冒出按鈕,等使用者按下才真的發請求——若沿用「拖曳就
+        //    查」會讓每次小幅拖曳都觸發一次計費查詢,改成「按下才查」讓
+        //    使用者對何時會產生查詢有明確控制。
         //    suppressNextIdleQueryRef 為 true 時跳過這一半的觸發並消耗掉
         //    旗標:這代表這次 idle 是 panTarget 的 panTo 造成的(側欄點擊/
         //    搜尋),不是使用者主動拖曳探索新範圍,不該冒出搜尋按鈕。
@@ -577,8 +646,13 @@ export function GeoOutlineMap({
     return () => {
       cancelled = true
     }
+    // theme 加入依賴陣列:theme prop 改變時要重新執行這個 effect 才能
+    // 用新的 colorScheme 重建地圖(見上方 guard 判斷的完整說明)——colorScheme
+    // 本身是從 theme 衍生的,不直接放 colorScheme 變數是因為它在每次
+    // effect 執行時才計算,放進依賴陣列沒有意義,theme 才是真正驅動變化
+    // 的來源值。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKey, initialCenter])
+  }, [apiKey, initialCenter, theme])
 
   // 依地圖可視範圍自動查詢景點區域:attractionsQueryTrigger 遞增時
   // (mapReady 剛變 true 的掛載當下、以及之後每次地圖 idle,見上方 idle
@@ -652,81 +726,68 @@ export function GeoOutlineMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, attractionsQueryTrigger])
 
-  // 依使用者按下「搜尋這個區域」查詢飯店:queryTrigger 從 0(尚未觸發過)
-  // 遞增時才查——跟上面景點區域的 effect 不同,這支端點(GET
-  // /internal/geo/attractions/nearby,雖然一併回傳 attractions,但這裡
-  // 刻意只採用 result.hotels、忽略 attractions 欄位,景點區域已交給上面
-  // 那個免費的 effect 負責)即時查 Google Places、直接計費,不能自動跟著
-  // 地圖移動觸發,必須收在使用者明確按下「搜尋這個區域」按鈕之後——見
-  // handleSearchThisArea 與該按鈕的顯示條件(僅在已選類別標籤時出現)。
-  useEffect(() => {
-    if (!mapReady || !mapRef.current || queryTrigger === 0) return
+  // categoryQueryRadiusMeters:類別標籤(景點/飯店/餐廳)與「搜尋這個
+  // 區域」按鈕共用的 locationRestriction 矩形半徑——查詢中心是「目前地圖
+  // 中心點」,沒有天然的範圍可以依據,故用一個固定的中等半徑,對齊後端
+  // geoGeocodeDefaultRestrictRadiusMeters 的預設值(1500m),不特別放大或
+  // 縮小。
+  const categoryQueryRadiusMeters = 1500
+
+  // runPlacesQuery:以目前地圖中心點為中心、指定查詢文字,呼叫
+  // fetchGeoGeocode(mode=restrict,見該函式與後端 handleGeoGeocode 的完整
+  // 說明)——2026-08 起地圖上方類別標籤(景點/飯店/餐廳)與「搜尋這個
+  // 區域」按鈕統一改走這條路徑,不再各自打 fetchGeoPlacesNearby(Nearby
+  // Search)/fetchGeoAttractionsNearby(飯店專用的 Nearby Search)。查到的
+  // 候選(GeoGeocodeCandidate)轉成 GeoPlace 形狀寫進既有的 places state
+  // ——category 直接用呼叫端傳入的類別(標籤文字本身就代表類別;
+  // 「搜尋這個區域」沿用目前搜尋框文字,不一定對應某個已知類別,此時傳
+  // undefined,對應的 marker 退回泛用相機圖示,理由同 GeoPlace.category
+  // 查無對應分類時的既有處理)。抽成獨立函式供 handleCategoryClick 與
+  // handleSearchThisArea 共用同一份查詢邏輯,不重複維護。
+  const runPlacesQuery = useCallback((query: string, category?: string) => {
+    if (!mapRef.current || !query.trim()) return
     const center = mapRef.current.getCenter()
     if (!center) return
-    let cancelled = false
-    const radiusMeters = Math.min(50000, 20000 * Math.pow(2, 12 - zoom))
-    fetchGeoAttractionsNearby(cfg, center.lat(), center.lng(), radiusMeters)
+    fetchGeoGeocode(cfg, query, { lat: center.lat(), lng: center.lng() }, 'restrict', categoryQueryRadiusMeters)
       .then((result) => {
-        if (cancelled) return
-        setHotels((prev) => (sameHotelsContent(prev, result.hotels) ? prev : result.hotels))
+        setPlaces(
+          result.candidates.map((c) => ({
+            name: c.name,
+            address: c.address,
+            lat: c.lat,
+            lng: c.lng,
+            primaryType: '',
+            category,
+            placeId: c.placeId,
+          })),
+        )
         setAreaSearch((s) => reduceAreaSearchState(s, { type: 'query-succeeded' }))
       })
       .catch(() => {
-        // 查詢失敗(網路錯誤/伺服器錯誤)不視為致命錯誤——地圖本身仍可
-        // 正常瀏覽,只是這次沒能刷新飯店資料,維持上一次查到的內容即可,
-        // 讓按鈕重新出現提供重試入口。
-        setAreaSearch((s) => reduceAreaSearchState(s, { type: 'query-failed' }))
-      })
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, queryTrigger])
-
-  // categoryQueryRadiusMeters:類別標籤列(飯店/景點/餐廳)查詢用的固定
-  // 半徑——查詢中心是「目前地圖中心點」,沒有天然的範圍可以依據,故用
-  // 一個固定的中等半徑,對齊後端 handleGeoPlacesNearby 的預設值
-  // (1500m),不特別放大或縮小。
-  const categoryQueryRadiusMeters = 1500
-
-  // activeCategory:目前選中的類別標籤(飯店/景點/餐廳),null 代表沒有
-  // 任何標籤被選取。再點一次目前已選中的標籤會取消選取、清空 places
-  // 圖層(理由同下方 handleCategoryClick 的說明)——這是「切換」而非
-  // 「只能疊加」的互動,標籤有明確的選取態需要在畫面上反映(見下方標籤列
-  // UI 的 aria-pressed)。
-  const [activeCategory, setActiveCategory] = useState<string | null>(null)
-
-  // runCategoryQuery:以目前地圖中心點為中心,查詢指定類別附近的地點(見
-  // fetchGeoPlacesNearby 的 type 參數,對齊後端 handleGeoPlacesNearby 的
-  // 白名單)。查詢結果寫進既有的 places state(驅動下方畫 marker 的
-  // effect 與「附近推薦」側欄分頁),同時透過 onPlacesNearby 往上回報。
-  // 抽成獨立函式,供 handleCategoryClick(第一次選取該類別)與
-  // handleSearchThisArea(類別選取後,地圖移動到新範圍要重新查詢)共用同
-  // 一份查詢邏輯,不重複維護。
-  const runCategoryQuery = useCallback((type: string) => {
-    if (!mapRef.current) return
-    const center = mapRef.current.getCenter()
-    if (!center) return
-    fetchGeoPlacesNearby(cfg, center.lat(), center.lng(), categoryQueryRadiusMeters, type)
-      .then((result) => {
-        setPlaces(result.places)
-      })
-      .catch(() => {
         // 查詢失敗不視為致命錯誤——維持上一次查到的內容即可,不彈錯誤
-        // 訊息打斷瀏覽,理由同這個檔案其餘查詢失敗處理的一貫慣例。
+        // 訊息打斷瀏覽,理由同這個檔案其餘查詢失敗處理的一貫慣例。這裡
+        // 額外重置 areaSearch 讓「搜尋這個區域」按鈕重新出現提供重試入口
+        // (僅在這是由該按鈕觸發時有意義,由 handleSearchThisArea 決定要不
+        // 要呼叫這支函式,這裡不需要另外分辨呼叫來源)。
+        setAreaSearch((s) => reduceAreaSearchState(s, { type: 'query-failed' }))
       })
   }, [cfg])
 
-  // runExploreQuery:探索標籤專用的查詢函式——跟 runCategoryQuery 平行
-  // (兩者都以目前地圖中心點為圓心查附近資料),但資料來源完全不同:這裡
-  // 查自建景點區域(attraction,fetchGeoAttractionsOnlyNearby,免費、
-  // 查自家資料庫),不是 fetchGeoPlacesNearby(即時查 Google Places、
-  // 計費)。半徑沿用原本 attractionsQueryTrigger 那個 effect 的既有公式
-  // (依 zoom 反推),不是 categoryQueryRadiusMeters 那個固定 1500m——
-  // 探索標籤查的是「一整個城市層級的景點分區」,天然需要比飯店/景點/
-  // 餐廳附近推薦更大的涵蓋範圍。查詢結果寫進 attractions state,結果
-  // 透過 onAttractionsChange 往上回報,理由同 attractionsQueryTrigger
-  // 那個 effect 原本的既有邏輯。
+  // activeCategory:目前選中的類別標籤——2026-08 起只剩「探索」
+  // (EXPLORE_CATEGORY)會進入這個選取態(見 EXPLORE_CATEGORY 的完整
+  // 說明,景點/飯店/餐廳三顆標籤統一改成觸發城市搜尋框查詢,不再使用
+  // activeCategory,見 handleCategoryClick 的說明)。null 代表探索未選取。
+  // 再點一次探索標籤會取消選取、清空 attractions 圖層——這是使用者想
+  // 「不看這批結果了」的自然操作,不需要額外的關閉按鈕。
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
+
+  // runExploreQuery:探索標籤專用的查詢函式——查自建景點區域(attraction,
+  // fetchGeoAttractionsOnlyNearby,免費、查自家資料庫)。半徑沿用原本
+  // attractionsQueryTrigger 那個 effect 的既有公式(依 zoom 反推)——探索
+  // 標籤查的是「一整個城市層級的景點分區」,天然需要比景點/飯店/餐廳附近
+  // 推薦更大的涵蓋範圍。查詢結果寫進 attractions state,結果透過
+  // onAttractionsChange 往上回報,理由同 attractionsQueryTrigger 那個
+  // effect 原本的既有邏輯。
   const runExploreQuery = useCallback(() => {
     if (!mapRef.current) return
     const center = mapRef.current.getCenter()
@@ -738,61 +799,54 @@ export function GeoOutlineMap({
         onAttractionsChange?.(result.attractions)
       })
       .catch(() => {
-        // 查詢失敗不視為致命錯誤——維持上一次查到的內容即可,理由同
-        // runCategoryQuery 的既有處理方式。
+        // 查詢失敗不視為致命錯誤——維持上一次查到的內容即可,理由同這個
+        // 檔案其餘查詢失敗處理的一貫慣例。
       })
   }, [cfg, zoom, onAttractionsChange])
 
-  // handleCategoryClick:點擊地圖上方的類別標籤(飯店/景點/餐廳/探索)時
-  // 觸發第一次查詢——再點一次目前已選中的類別會清空對應圖層並取消
-  // 選取,這是使用者想「不看這批結果了」的自然操作,不需要額外的關閉
-  // 按鈕。探索標籤(EXPLORE_CATEGORY)走 runExploreQuery/attractions,
-  // 「景點」「飯店」走 runCategoryQuery/places,兩條分支共用同一顆
-  // activeCategory state 判斷選取態,但清空/查詢的目標圖層不同。
+  // handleCategoryClick:點擊地圖上方的類別標籤(景點/飯店/餐廳/探索)時
+  // 觸發查詢。景點/飯店/餐廳三顆標籤(見 SEARCH_BOX_CATEGORY_LABELS 的
+  // 說明)統一改成:把城市搜尋框的輸入值設成標籤文字(onCityChange,比照
+  // 這三顆標籤原本就有的既有慣例,讓畫面上的搜尋框內容跟目前查詢的類別
+  // 保持一致、選取樣式也能跟隨這個值判斷,見下方 aria-pressed),同時
+  // 直接呼叫 runPlacesQuery(mode=restrict,固定套用 locationRestriction,
+  // 不需要兩階段、不需要 fallback,見該函式的完整說明)——不透過
+  // onSearch()(那會經 DesktopLayout.tsx 的 geoSearchTrigger 流向
+  // GeoOutlinePanel.tsx 的 fetchGeoGeocode 呼叫,固定走 bias 模式的兩階段
+  // 查詢,不是這裡要的固定 restrict),避免誤觸發一次多餘的 bias 模式
+  // 查詢。不再各自打 fetchGeoPlacesNearby(Nearby Search)、不進入
+  // activeCategory 選取態、不做「再點一次取消」的判斷(那套邏輯依賴
+  // activeCategory,這三顆標籤現在都不使用它),按下即觸發,行為對齊一般
+  // 搜尋操作的即時回饋。
   //
-  // 「飯店」「餐廳」是使用者明確要求的例外(見 SEARCH_BOX_CATEGORY_LABELS
-  // 的說明)——不查 fetchGeoPlacesNearby、不進入 activeCategory 選取態,
-  // 改成把城市搜尋框的輸入值設成對應文字並觸發一次搜尋(走 Text Search,
-  // 見 onCityChange/onSearch prop 的完整說明),等同使用者自己在搜尋框
-  // 打這段文字按下 Enter。這裡不做「再點一次取消」的判斷(那套邏輯依賴
-  // activeCategory,這兩顆標籤根本不使用它),按下即觸發,行為對齊一般
-  // 的搜尋框操作。選取樣式(見下方 render 區的 aria-pressed)改跟隨 city
-  // 是否等於對應文字判斷,不是 activeCategory——使用者之後手動改搜尋框
-  // 內容會讓按鈕自然失去選取樣式,不需要另外維護一個獨立 state 手動同步。
+  // 探索標籤(EXPLORE_CATEGORY)維持原本的 activeCategory 選取/取消機制,
+  // 查的是完全不同的資料來源(自建景點區域,免費),不受這次改動影響。
   const handleCategoryClick = useCallback((type: string) => {
     if (!mapRef.current) return
     const searchBoxLabel = SEARCH_BOX_CATEGORY_LABELS[type]
     if (searchBoxLabel) {
       onCityChange?.(searchBoxLabel)
-      onSearch?.()
+      runPlacesQuery(searchBoxLabel, type)
       return
     }
     if (activeCategory === type) {
       setActiveCategory(null)
       activeCategoryRef.current = null
       onActiveCategoryChange?.(null)
-      if (type === EXPLORE_CATEGORY) {
-        setAttractions([])
-        onAttractionsChange?.([])
-      } else {
-        setPlaces([])
-      }
+      setAttractions([])
+      onAttractionsChange?.([])
       return
     }
     setActiveCategory(type)
     activeCategoryRef.current = type
     onActiveCategoryChange?.(type)
-    if (type === EXPLORE_CATEGORY) {
-      runExploreQuery()
-    } else {
-      runCategoryQuery(type)
-    }
-  }, [activeCategory, onActiveCategoryChange, runCategoryQuery, runExploreQuery, onAttractionsChange, onCityChange, onSearch])
+    runExploreQuery()
+  }, [activeCategory, onActiveCategoryChange, runExploreQuery, runPlacesQuery, onAttractionsChange, onCityChange])
 
-  // searchResults 變動(hotels/places/geocodeCandidatesProp 任一來源變動)
-  // 時統一往上回報一次——取代原本 setHotels/setPlaces 各自呼叫
+  // searchResults 變動(places/geocodeCandidatesProp 任一來源變動)時統一
+  // 往上回報一次——取代原本 setHotels/setPlaces 各自呼叫
   // onVisibleHotelsChange/onPlacesNearby 的寫法,理由見 onSearchResultsChange
-  // 的完整說明:三個來源合併成一份清單後,不該再各自負責回報自己那一份,
+  // 的完整說明:多個來源合併成一份清單後,不該再各自負責回報自己那一份,
   // 改由這裡統一監看合併後的結果變動。
   useEffect(() => {
     onSearchResultsChange?.(searchResults)
@@ -801,22 +855,34 @@ export function GeoOutlineMap({
 
   // handleSearchThisArea:「搜尋這個區域」按鈕的點擊處理——進入查詢中
   // 狀態、收起按鈕(見 geoAreaSearchState.ts 的 search-pressed 轉換)。
-  // 這顆按鈕現在只在 activeCategory 有值時才會顯示(見下方 render 區的
-  // 條件),按下時依目前選中的標籤分流重新查詢:探索標籤(EXPLORE_CATEGORY)
-  // 呼叫 runExploreQuery(景點區域,免費、查自家資料庫,不遞增 queryTrigger
-  // ——那是飯店查詢專用的觸發器,理由見該 state 的說明);其餘三個標籤
-  // 遞增 queryTrigger 觸發飯店查詢 effect,並呼叫 runCategoryQuery 以新
-  // 的地圖中心重新查詢該類別,否則使用者移動地圖後點下這顆按鈕,畫面上
-  // 的類別地點清單會停留在舊範圍、看起來像沒反應。
+  // 這顆按鈕現在的顯示條件是「搜尋框有文字」+「地圖被拖曳/縮放過」(見
+  // 下方 render 區 areaSearch.areaDirty 的判斷式與該欄位的完整說明),不
+  // 再依賴 activeCategory——景點/飯店/餐廳三顆標籤已經不進入
+  // activeCategory 選取態(見 handleCategoryClick 的說明),原本「僅在已
+  // 選類別標籤時顯示」的條件不再成立。
+  //
+  // 按下後沿用「搜尋框目前的文字」(city prop,這顆按鈕只在該文字非空時
+  // 才會顯示,見下方顯示條件,故這裡不需要另外處理空字串情境)重新以
+  // 目前地圖中心呼叫 runPlacesQuery(mode=restrict)。category 反查
+  // SEARCH_BOX_CATEGORY_LABELS(搜尋框文字剛好等於某個類別標籤的文字時,
+  // 例如使用者剛點過景點/飯店/餐廳標籤、還沒手動改過搜尋框內容),讓
+  // marker 圖示維持該類別的專屬圖案(見 mapMarkers.ts 的
+  // PLACE_CATEGORY_GLYPHS);查不到對應類別(使用者手動輸入「甜點」這類
+  // 泛用關鍵字)則傳 undefined,退回泛用相機圖示,理由同 runPlacesQuery
+  // 的說明。探索標籤選中時(EXPLORE_CATEGORY)額外呼叫 runExploreQuery
+  // 一併刷新景點區域圖層,對齊改動前的既有行為——這條查詢免費,不因為
+  // 新增了 places 查詢就跳過。
   const handleSearchThisArea = useCallback(() => {
     setAreaSearch((s) => reduceAreaSearchState(s, { type: 'search-pressed' }))
     if (activeCategory === EXPLORE_CATEGORY) {
       runExploreQuery()
-      return
     }
-    setQueryTrigger((n) => n + 1)
-    if (activeCategory) runCategoryQuery(activeCategory)
-  }, [activeCategory, runCategoryQuery, runExploreQuery])
+    const trimmedCity = (city ?? '').trim()
+    const matchedCategory = Object.entries(SEARCH_BOX_CATEGORY_LABELS).find(
+      ([, label]) => label === trimmedCity,
+    )?.[0]
+    runPlacesQuery(trimmedCity, matchedCategory)
+  }, [activeCategory, runExploreQuery, runPlacesQuery, city])
 
   // 以下三個圖層(景點區域光暈、搜尋結果、旅程 entry)各自獨立成 hook
   // (見各檔案開頭說明)——每個只讀 mapRef/mapReady/自己的資料/
@@ -925,25 +991,34 @@ export function GeoOutlineMap({
           正常情況,不是搜尋失敗,不該用一片實色背景蓋住整個地圖。地圖
           本身(含飯店 marker,若該範圍剛好有查到)照常顯示,使用者只是
           單純看不到任何景點區域光暈而已,不需要額外文字說明。 */}
-      {/* 類別標籤列(飯店/景點/餐廳):固定疊在地圖左上角,跟置中的「搜尋
-          這個區域」按鈕分開排版、不互相重疊。「景點」點下去以目前地圖
-          中心點查詢該類別附近地點(見 handleCategoryClick),再點一次
-          同一個標籤取消選取並清空結果;「飯店」「餐廳」改觸發城市搜尋
-          框搜尋對應文字(見 SEARCH_BOX_CATEGORY_LABELS 的完整說明),不
-          走這套查詢/取消邏輯。err 存在時不顯示,理由同「搜尋這個區域」
-          按鈕。 */}
-      {!err && (
+      {/* 類別標籤列(景點/飯店/餐廳):固定疊在地圖左上角,跟置中的「搜尋
+          這個區域」按鈕分開排版、不互相重疊。三顆標籤點下去都會把標籤
+          文字寫入搜尋框,並以目前地圖中心點查詢該類別附近地點(見
+          handleCategoryClick/SEARCH_BOX_CATEGORY_LABELS 的完整說明),不再
+          有選取/取消的切換機制,行為對齊一般的搜尋操作。err 存在時不
+          顯示,理由同「搜尋這個區域」按鈕。畫面上已經有任何搜尋結果
+          (searchResults 非空,含 places/geocodeCandidatesProp 兩種來源,
+          不限定是不是點這排標籤查出來的)時也不顯示——使用者明確要求
+          「有搜尋結果的時候,搜尋標籤就不要顯示」,理由是結果清單(候選籃
+          側欄/手機版抽屜)出現後,畫面上方同時有標籤列跟結果內容會互相
+          干擾/佔用空間。 */}
+      {!err && searchResults.length === 0 && (
         <div className={styles.categoryTags}>
           {CATEGORY_TAGS.map(({ type, label, Icon }) => (
             <button
               key={type}
               type="button"
               className={styles.categoryTag}
-              // 「飯店」「餐廳」不進 activeCategory(見 handleCategoryClick
-              // 的說明,它們現在觸發的是城市搜尋框,不是查詢圖層),選取
-              // 樣式改跟隨搜尋框目前的輸入值是否就是對應文字——使用者
-              // 之後手動改搜尋框內容或清空,這顆按鈕會自然失去選取樣式,
-              // 不需要另外維護一個獨立 state 手動同步兩者。
+              // 景點/飯店/餐廳三顆標籤都不進 activeCategory(見
+              // handleCategoryClick 的說明,它們現在觸發的是城市搜尋框+
+              // 直接查詢,不是選取態圖層),選取樣式改跟隨搜尋框目前的
+              // 輸入值是否就是對應文字——使用者之後手動改搜尋框內容或
+              // 清空,這顆按鈕會自然失去選取樣式,不需要另外維護一個獨立
+              // state 手動同步兩者。activeCategory 分支理論上不會再被
+              // 用到(CATEGORY_TAGS 三個 type 現在都在
+              // SEARCH_BOX_CATEGORY_LABELS 裡),保留純粹是防呆——若之後
+              // CATEGORY_TAGS 新增不在該白名單裡的標籤,仍有合理的退回
+              // 判斷可用。
               aria-pressed={
                 SEARCH_BOX_CATEGORY_LABELS[type]
                   ? city === SEARCH_BOX_CATEGORY_LABELS[type]
@@ -956,11 +1031,12 @@ export function GeoOutlineMap({
               {label}
             </button>
           ))}
-          {/* 探索標籤:跟其餘三個類別標籤同一排、共用同一套「點下去查、
-              再點一次取消」互動語意與 activeCategory 選取態,但查的是
-              自建景點區域(attraction,見 EXPLORE_CATEGORY/runExploreQuery
-              的完整說明),不是 fetchGeoPlacesNearby 的 place type,故不
-              放進 CATEGORY_TAGS 陣列、獨立渲染這顆按鈕。 */}
+          {/* 探索標籤:跟其餘三個類別標籤同一排,但互動語意不同——它是
+              CATEGORY_TAGS 三顆標籤裡唯一還保留「點下去查、再點一次取消」
+              activeCategory 選取態的標籤,查的是自建景點區域(attraction,
+              見 EXPLORE_CATEGORY/runExploreQuery 的完整說明),不是
+              fetchGeoGeocode 這條搜尋框查詢路徑,故不放進 CATEGORY_TAGS
+              陣列、獨立渲染這顆按鈕。 */}
           <button
             type="button"
             className={styles.categoryTag}
@@ -1029,16 +1105,19 @@ export function GeoOutlineMap({
       {/* 「搜尋這個區域」按鈕:areaDirty 為 true(使用者拖曳/縮放過地圖
           但還沒查詢這個新範圍,見 areaSearch/geoAreaSearchState.ts 的
           說明)時顯示,疊在地圖上方置中,毛玻璃卡片視覺語言(對齊構想 1
-          定案的 iOS header 風格)。額外要求 activeCategory 有值(使用者
-          已經選了一個類別標籤)才顯示——這顆按鈕存在的意義是「重新查詢
-          目前選中的類別」,沒有選類別時按下去沒有東西可重新整理,顯示
-          出來只會讓人誤以為要做什麼卻沒反應。按下後呼叫
-          handleSearchThisArea,查詢中(searching)把 lucide 的 Search
-          圖示換成 Loader2(疊加 CSS 自轉動畫,lucide 本身不含動畫),
-          不改按鈕文字或停用互動——查詢通常很快,不需要額外 disable 按鈕
-          製造等待感。err 存在時不顯示(地圖本身都載入失敗了,顯示這顆
-          按鈕沒有意義)。 */}
-      {!err && areaSearch.areaDirty && activeCategory != null && (
+          定案的 iOS header 風格)。額外要求搜尋框目前有文字(city 非空)
+          才顯示——這顆按鈕現在的行為是「沿用搜尋框目前文字,以新範圍重新
+          查詢」(見 handleSearchThisArea 的完整說明),搜尋框是空字串時
+          沒有查詢文字可用,顯示出來按下去也不會有任何結果,只會讓人誤以
+          為要做什麼卻沒反應——這個條件取代了原本「activeCategory 有值
+          (已選類別標籤)才顯示」的判斷:景點/飯店/餐廳三顆標籤已經不再
+          進入 activeCategory 選取態(見 handleCategoryClick 的說明),沿用
+          舊條件會讓這顆按鈕永遠不出現。按下後呼叫 handleSearchThisArea,
+          查詢中(searching)把 lucide 的 Search 圖示換成 Loader2(疊加
+          CSS 自轉動畫,lucide 本身不含動畫),不改按鈕文字或停用互動——
+          查詢通常很快,不需要額外 disable 按鈕製造等待感。err 存在時不
+          顯示(地圖本身都載入失敗了,顯示這顆按鈕沒有意義)。 */}
+      {!err && areaSearch.areaDirty && !!(city ?? '').trim() && (
         <button
           type="button"
           className={styles.searchThisAreaButton}

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sync"
 	"time"
@@ -338,6 +339,11 @@ type Place struct {
 	// 有時效性的照片資源名稱)——供 fetchPhotoAsDataURI 當快取鍵用,
 	// 見 PhotoCache 介面的完整說明。查詢結果沒有解析出來時為空字串。
 	PlaceID string `json:"-"`
+	// PhotoRef 是這個地點第一張照片的 Places API photo resource name,
+	// 只有 SearchOptions.IncludePhotos 為 true 時才會有值——同
+	// NearbyPlace.PhotoRef 的說明,內部欄位不外洩給前端,呼叫端需另外
+	// 呼叫 Client.PhotoDataURI 轉成 data: URI。
+	PhotoRef string `json:"-"`
 }
 
 // NearbyPlace 是 Nearby Search 的候選景點。
@@ -392,13 +398,80 @@ type SearchOptions struct {
 	// 結果);對「京都」這類文字意圖已經很明確的地名查詢幾乎不影響
 	// (Google 的文字比對信心已經夠高,不需要靠地理位置輔助判斷)。
 	// nil 代表不套用任何位置偏向。
+	//
+	// 與 LocationRestriction 二擇一——Google API 本身規定 locationBias 與
+	// locationRestriction 不能同時帶(HTTP 400)。若呼叫端不慎兩者都給,
+	// Search 以 LocationRestriction 優先、忽略這個欄位(見 Search 內的
+	// 說明),呼叫端仍應自行避免同時設定兩者,不要依賴這個防呆順序。
 	LocationBias *LocationBias
+	// LocationRestriction 讓結果被硬性限制在這個矩形範圍內(範圍外的結果
+	// 完全不會出現,不只是排序上被降權)——用於「已知使用者想找的就是
+	// 目前這個地圖範圍內的地點」情境(見 handleGeoGeocode 的兩階段查詢
+	// 設計說明:文字意圖不明確、bias 查詢回傳多筆候選時,改用這個欄位
+	// 收斂結果)。與 LocationBias 二擇一,見該欄位的說明。nil 代表不套用
+	// 任何範圍限制。
+	LocationRestriction *LocationRestriction
+	// IncludePhotos 為 true 時,field mask 額外要求 photos(Pro 級欄位,
+	// 呼叫成本高於預設的 Essentials 級 fieldMask),結果的 PhotoRef 才會
+	// 有值。預設 false——理由同 NearbyOptions.IncludePhotos 的說明,大多數
+	// 呼叫端(如 Lookup)不需要照片,沒必要多付這筆呼叫成本。
+	IncludePhotos bool
 }
 
 // LocationBias 是一個圓形區域,供 SearchOptions.LocationBias 使用。
 type LocationBias struct {
 	Lat, Lng     float64
 	RadiusMeters float64
+}
+
+// LatLng 是一個經緯度座標點,供 LocationRestriction 的兩個矩形角落
+// 座標使用。
+type LatLng struct {
+	Lat, Lng float64
+}
+
+// LocationRestriction 是一個矩形區域,供 SearchOptions.LocationRestriction
+// 使用——Text Search API 的 locationRestriction 只支援矩形(rectangle,由
+// Low/High 兩個對角座標定義),不支援圓形(這點與 Nearby Search 的
+// locationRestriction 只支援圓形恰好相反,是 Google 官方文件明確規定的
+// 限制,不是這裡自行選擇的設計)。Low 是矩形西南角(緯度/經度皆較小)、
+// High 是東北角(緯度/經度皆較大)。
+//
+// 呼叫端手上通常是「中心點座標 + 半徑(公尺)」這種圓形範圍語意(對齊
+// NearbyOptions.RadiusMeters 等既有參數格式),需要換算成矩形——見
+// RectFromCenterRadius 這個 helper。
+type LocationRestriction struct {
+	Low, High LatLng
+}
+
+// metersPerDegreeLat 是緯度方向每一度的距離(公尺)——全球固定,不隨
+// 緯度變化(地球子午線周長 ≈ 40,007.86km,除以 360 度)。
+const metersPerDegreeLat = 111320.0
+
+// RectFromCenterRadius 把「中心點座標 + 半徑(公尺)」的圓形範圍語意換算
+// 成 LocationRestriction 需要的矩形(兩個對角座標)——這是標準的地理座標
+// 換算,放在這個套件層級(而非呼叫端 API handler)是因為這屬於「Google
+// API 請求格式的實作細節」,呼叫端(前端、handler)只需要知道語意層級的
+// 「中心點+半徑」,不需要知道底層 Text Search 的 locationRestriction 只
+// 接受矩形這個實作限制。
+//
+// 換算公式:
+//   - 緯度方向:1 度緯度的距離全球固定(見 metersPerDegreeLat),
+//     deltaLat = radiusMeters / metersPerDegreeLat。
+//   - 經度方向:1 度經度的實際距離隨緯度變化(赤道最寬、極地趨近於 0,
+//     公式為 metersPerDegreeLat * cos(緯度)),deltaLng = radiusMeters /
+//     (metersPerDegreeLat * cos(centerLat 轉徑度))。
+//
+// 換算出的矩形是「內切正方形」而非精確的圓形範圍(矩形四個角落會比圓形
+// 涵蓋更大的面積)——這是可接受的近似,locationRestriction 本身的用途
+// 是「收斂到目前地圖大致範圍」,不需要精確到圓形邊界。
+func RectFromCenterRadius(centerLat, centerLng, radiusMeters float64) LocationRestriction {
+	deltaLat := radiusMeters / metersPerDegreeLat
+	deltaLng := radiusMeters / (metersPerDegreeLat * math.Cos(centerLat*math.Pi/180))
+	return LocationRestriction{
+		Low:  LatLng{Lat: centerLat - deltaLat, Lng: centerLng - deltaLng},
+		High: LatLng{Lat: centerLat + deltaLat, Lng: centerLng + deltaLng},
+	}
 }
 
 // Search 查詢地點名稱，回傳候選清單。
@@ -420,6 +493,8 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 	maxN := 1
 	region := ""
 	var locationBias *LocationBias
+	var locationRestriction *LocationRestriction
+	includePhotos := false
 	if opts != nil {
 		if opts.MaxResults > 0 {
 			maxN = opts.MaxResults
@@ -429,6 +504,8 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 		}
 		region = opts.Region
 		locationBias = opts.LocationBias
+		locationRestriction = opts.LocationRestriction
+		includePhotos = opts.IncludePhotos
 	}
 
 	// 新版:參數放 JSON body。pageSize 對應舊版 MaxResults;
@@ -441,12 +518,31 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 	if region != "" {
 		reqBody["regionCode"] = region
 	}
-	// locationBias(非 locationRestriction)——只偏向、不排除其他結果,
-	// 理由見 SearchOptions.LocationBias 的說明。半徑未指定或超出上限時
-	// 退回/夾到 50km(對齊 Nearby Search 的既有上限,見
-	// NearbyOptions.RadiusMeters 的說明,Places API 的圓形區域參數兩者
-	// 共用同一個官方上限)。
-	if locationBias != nil {
+	// locationRestriction(矩形,硬性限制)優先於 locationBias(圓形,只
+	// 偏向)——Google API 本身規定兩者不能同時帶,見 SearchOptions.
+	// LocationBias 的防呆順序說明。呼叫端理應只設定其中一個,這裡的
+	// if/else if 只是確保萬一兩者都被設定時,行為是明確且有文件記載的
+	// (優先套用限制較強的 locationRestriction),不會讓 Google API 因為
+	// 同時收到兩個互斥參數而直接回錯誤。
+	if locationRestriction != nil {
+		reqBody["locationRestriction"] = map[string]any{
+			"rectangle": map[string]any{
+				"low": map[string]any{
+					"latitude":  locationRestriction.Low.Lat,
+					"longitude": locationRestriction.Low.Lng,
+				},
+				"high": map[string]any{
+					"latitude":  locationRestriction.High.Lat,
+					"longitude": locationRestriction.High.Lng,
+				},
+			},
+		}
+	} else if locationBias != nil {
+		// locationBias——只偏向、不排除其他結果,理由見
+		// SearchOptions.LocationBias 的說明。半徑未指定或超出上限時
+		// 退回/夾到 50km(對齊 Nearby Search 的既有上限,見
+		// NearbyOptions.RadiusMeters 的說明,Places API 的圓形區域參數兩者
+		// 共用同一個官方上限)。
 		radius := locationBias.RadiusMeters
 		if radius <= 0 {
 			radius = 50000
@@ -465,7 +561,14 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 		}
 	}
 
-	req, err := c.newPlacesSearchRequest(ctx, placesURL, reqBody, fieldMask)
+	// fieldMask 只取 Essentials 級欄位(呼叫成本最低);IncludePhotos 為
+	// true 時額外要求 photos(Pro 級欄位),比照 SearchNearby 既有模式,見
+	// SearchOptions.IncludePhotos 的說明。
+	fm := fieldMask
+	if includePhotos {
+		fm = fieldMask + ",places.photos"
+	}
+	req, err := c.newPlacesSearchRequest(ctx, placesURL, reqBody, fm)
 	if err != nil {
 		return nil, err
 	}
@@ -501,7 +604,10 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 				Latitude  float64 `json:"latitude"`
 				Longitude float64 `json:"longitude"`
 			} `json:"location"`
-			ID string `json:"id"`
+			ID     string `json:"id"`
+			Photos []struct {
+				Name string `json:"name"`
+			} `json:"photos"`
 		} `json:"places"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
@@ -516,13 +622,17 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 		if i >= maxN {
 			break
 		}
-		out = append(out, Place{
+		place := Place{
 			Name:    p.DisplayName.Text,
 			Address: p.FormattedAddress,
 			Lat:     p.Location.Latitude,
 			Lng:     p.Location.Longitude,
 			PlaceID: p.ID,
-		})
+		}
+		if len(p.Photos) > 0 {
+			place.PhotoRef = p.Photos[0].Name
+		}
+		out = append(out, place)
 	}
 	return out, nil
 }

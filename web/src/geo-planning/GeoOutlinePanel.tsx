@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoPlaceDetails, GeoPlaceText, GeoSearchResult, GeoTripEntry } from '../api'
 import { fetchEntries, fetchGeoGeocode, fetchGeoPlacePhoto, fetchGeoPlaceText, geocodeCandidateToSearchResult } from '../api'
 import { useStableCallback } from '../hooks/useStableCallback'
+import type { Theme } from '../theme'
 import { GeoOutlineMap } from './GeoOutlineMap'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
 import styles from './GeoOutlinePanel.module.css'
@@ -100,6 +101,7 @@ export function GeoOutlinePanel({
   hoverKey,
   searchTrigger,
   refetchTripEntriesTrigger,
+  theme,
 }: {
   cfg: ClientConfig
   tripID?: string | null
@@ -204,6 +206,11 @@ export function GeoOutlinePanel({
   // useEffect 偵測到變化才動作」模式,理由同該 prop 的說明。0(初始值)
   // 不觸發。
   refetchTripEntriesTrigger?: number
+  // theme:這個 App 的深色/淺色模式偏好(useAppState() 的 theme,見
+  // theme.ts),原封不動轉傳給 GeoOutlineMap 決定建圖時的 colorScheme
+  // ——見 GeoOutlineMap.tsx 對這個 prop 的完整說明。這個元件本身不消費
+  // theme,純轉傳。
+  theme?: Theme
 }) {
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -541,6 +548,7 @@ export function GeoOutlinePanel({
           candidateKeys={candidateKeys}
           hoverKey={hoverKey}
           geocodeCandidates={geocodeCandidates}
+          theme={theme}
         />
       </div>
     </div>

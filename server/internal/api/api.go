@@ -48,6 +48,17 @@ type Server struct {
 	// bucket 為空字串的 Uploader,Upload 呼叫會直接回傳 ErrNoBucket,
 	// 呼叫端據此降級(維持原始外部連結,不阻擋建檔/更新操作)。
 	photoUploader *photostorage.Uploader
+
+	// newGeoGeocodeClient 建立 handleGeoGeocode 專用的 geo.Client——預設
+	// geo.New(真的打 Google Places API,見該函式)。只有這支 handler 透過
+	// 這個可覆寫欄位取得 client(其餘 8 處呼叫端仍直接寫死 geo.New,見
+	// geo_outline.go/maintenance.go/entry_geocode.go 各自的呼叫點,這次
+	// 沒有一併重構——只有 handleGeoGeocode 的兩階段 bias/restrict 判斷
+	// 邏輯需要測試守住,不是每支 handler 都需要這個可測試性投資)。測試
+	// 用 newTestServerWithGeoClient(見 geo_outline_test.go)把這個欄位換成
+	// 回傳「內部 gateway 是假實作」的 client,讓 handleGeoGeocode 整支
+	// (含兩階段串接判斷)可以在不打真實 Google API 的情況下被驗證。
+	newGeoGeocodeClient func(apiKey string) *geo.Client
 }
 
 func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID string) *Server {
@@ -61,14 +72,15 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 		uploader = &photostorage.Uploader{}
 	}
 	return &Server{
-		store:          st,
-		signer:         signer,
-		hub:            newHub(),
-		devMode:        devMode,
-		googleClientID: googleClientID,
-		guestUser:      model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
-		photoCache:     storePhotoCache{store: st},
-		photoUploader:  uploader,
+		store:               st,
+		signer:              signer,
+		hub:                 newHub(),
+		devMode:             devMode,
+		googleClientID:      googleClientID,
+		guestUser:           model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
+		photoCache:          storePhotoCache{store: st},
+		photoUploader:       uploader,
+		newGeoGeocodeClient: geo.New,
 	}
 }
 
@@ -251,7 +263,6 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("GET /internal/geo/attractions/nearby", s.handleGeoAttractionsNearby)
 	internalMux.HandleFunc("GET /internal/geo/attractions/nearby-only", s.handleGeoAttractionsOnlyNearby)
 	internalMux.HandleFunc("GET /internal/geo/geocode", s.handleGeoGeocode)
-	internalMux.HandleFunc("GET /internal/geo/places/nearby", s.handleGeoPlacesNearby)
 	internalMux.HandleFunc("GET /internal/geo/place-details", s.handleGeoPlaceDetails)
 
 	// maintenance — 只給 tripace-cli 這類維運工具用的端點,不是產品前端
