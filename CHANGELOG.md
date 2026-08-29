@@ -2,6 +2,25 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.11.0 — 2026-08-30
+
+### 新增
+
+- **手機版規劃地圖的地點清單／地點介紹卡／日期選擇改由統一堆疊管理**（`GeoOutlinePhoneView.tsx` 新增 `sheetStack`，`components/useSheetStack.ts`）：原本清單開關（`listDrawerState.open`）與資訊卡開關（`geo.infoContent`）是兩條獨立真相來源，任何新增的「打開資訊卡」入口（點地圖 marker、城市搜尋唯一解、候選籃選取）都繞過堆疊直接操作，導致堆疊記錄與畫面實際顯示不同步。改為所有入口統一透過 `push`／`replace`／`pop`／`closeAll` 操作同一個堆疊，任何時刻該顯示哪些 sheet 只需要看堆疊本身即可確定。非頂層的 sheet 仍掛載但套用退縮視覺、停用手勢。
+- **搜尋結果只有一筆時（唯一解）不再顯示地點清單**，直接開啟地點介紹卡（`geoListDrawerState.ts` 的 `results-arrived` 事件依 `resultCount` 決定）。
+- **「加入行程」的日期選擇改為兩層獨立 bottom sheet**：日期清單 sheet（`GeoOutlinePhoneDatePickerSheet.tsx`，既有排定日期改為縱向可捲動清單，取代原本橫向 chips）、日曆 sheet（`GeoOutlinePhoneDateCalendarSheet.tsx`，改用跟桌面版一致的 `DatePickerPopover` 月曆格線，取代原生 `<input type="date">`）；行程完全沒有排定日期時直接跳過清單、開日曆 sheet。加入成功後「加入行程」按鈕短暫變成打勾圖示提示（`geoAddCandidateState.ts`）。
+- **地點介紹卡往下拖曳或收合到最小段時，下層地點清單連動縮到最小段**（`components/PhoneBottomSheet.tsx` 新增 `onDraggingDownChange`／`onSnapIndexChange`／`isTopmost`／`stackOffsetPx`），鬆手/展開後清單恢復原本段落。
+- 地圖上方類別標籤列新增獨立狀態機控制隱藏/顯示（`geoCategoryTagsState.ts`），搜尋開始時立即隱藏（不等結果回來），取代原本手機版/桌面版各自一套判斷式。
+- `geocodeCandidates`／`selectedCandidate` 資料擁有權從 `GeoOutlinePanel.tsx` 遷移到共用的 `useGeoPlanningState.ts`，讓上層能在關閉清單時一併清空地圖上的搜尋結果 marker；`searchResults` 改為 `geocodeCandidates` 的衍生值，不再是獨立手動同步的 state。
+
+### 修正
+
+- 地點清單/旅程列表的 loading 轉圈動畫尺寸過大、置中於整個容器高度：改為靠頂顯示的較小圖示。
+- 「搜尋這個區域」按鈕位置改為對齊城市搜尋框下緣（原本對齊類別標籤列，在小螢幕下容易讓人誤以為兩者有關聯）。
+- 移除搜尋標籤（景點/飯店/餐廳/探索）的選取態視覺高亮，底層查詢/開關邏輯不受影響。
+- 修正日期選擇 sheet 選定日期後誤用 `sheetStack.closeAll()` 導致地點介紹卡本身也被一併關閉的問題（新增 `popDateSheets()`，只收掉堆疊頂端連續的日期選擇層）。
+- 修正 `docs/routing-architecture.md`、`docs/terminology.md` 記載已過時的路由/元件路徑（`server/internal/api/maintenance.go` 的 `update-photo` 路由改名、`FloatingPanel`/`PanelHead` 元件搬移後路徑未同步更新）。
+
 ## v0.10.0 — 2026-08-28
 
 ### 破壞性變更
