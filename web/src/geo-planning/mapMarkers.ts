@@ -32,10 +32,10 @@ export function svgStringToElement(svg: string): SVGElement {
 }
 
 // PLACE_CATEGORY_GLYPHS:附近推薦地點(見 handleCategoryClick 觸發的
-// fetchGeoPlacesNearby)依 GeoPlace.primaryType
+// runPlacesQuery/fetchGeoGeocode)依 GeoPlace.category
 // 分類要畫的圖案內容(白色線條,座標為 lucide-react 對應圖示的原生 24x24
 // path 資料,直接取自 hotel/map-pin/utensils-crossed 三顆 icon)——讓地圖
-// 上方類別標籤(飯店/景點/餐廳,見 CATEGORY_TAGS)查出來的三種地點,各自
+// 上方類別標籤(景點/飯店/餐廳,見 CATEGORY_TAGS)查出來的三種地點,各自
 // 用跟標籤一致的圖示語意,而非全部套同一顆相機圖示。
 const CAMERA_GLYPH =
   '<path d="M8.5 8.2h1.1l.7-1.1a.8.8 0 01.7-.4h2a.8.8 0 01.7.4l.7 1.1h1.1a1.6 1.6 0 011.6 1.6v5.4a1.6 1.6 0 01-1.6 1.6H8.5a1.6 1.6 0 01-1.6-1.6V9.8a1.6 1.6 0 011.6-1.6z" fill="none" stroke="#FDFCFA" stroke-width="1.3" stroke-linejoin="round"/>' +

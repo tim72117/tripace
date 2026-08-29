@@ -1,9 +1,9 @@
 // geoAttractionClick:點擊地圖上的景點區域地標圖示時,決定「該怎麼放大
 // 地圖」與「該用多大的半徑查附近推薦地點」——從 GeoOutlineMap.tsx 的
 // handleAttractionClick 抽出的純決策邏輯,不碰 google.maps SDK 本身
-// (實際呼叫 fitBounds/panTo/setZoom/fetchGeoPlacesNearby 的動作留在
-// GeoOutlineMap.tsx,那裡才知道地圖實例與目前 zoom),讓「該做什麼」與
-// 「怎麼做」分開,前者才能不依賴 Google Maps 環境單獨測試。
+// (實際呼叫 fitBounds/panTo/setZoom 的動作留在 GeoOutlineMap.tsx,那裡
+// 才知道地圖實例與目前 zoom),讓「該做什麼」與「怎麼做」分開,前者才能
+// 不依賴 Google Maps 環境單獨測試。
 
 // 對齊 GeoOutlineMap.tsx 的 minZoomForLevel:給定一個知名度分級,回傳
 // 「至少要縮放到多少 zoom 才看得到它」的最小 zoom 值——這裡重新匯出

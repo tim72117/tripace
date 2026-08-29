@@ -108,6 +108,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--color-dark);
 }
 .item :global(.sub) {
   font-size: 12px;

@@ -64,7 +64,7 @@ export function PhoneTripsDrawer({
       onClose={onClose}
       snapPoints={[SHEET_TOP]}
       panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: 33 }}
-      backdropStyle={{ top: 0, left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: 32, background: 'rgba(0, 0, 0, 0.35)' }}
+      showBackdrop={false}
     >
       <ScrollArea>
         <ErrorBanner msg={err} />

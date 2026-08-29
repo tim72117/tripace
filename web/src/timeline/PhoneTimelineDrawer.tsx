@@ -82,7 +82,7 @@ export function PhoneTimelineDrawer({
       activeSnapIndex={snapIndex}
       onSnapIndexChange={setSnapIndex}
       panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: 13 }}
-      backdropStyle={{ top: 0, left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: 12, background: 'rgba(0, 0, 0, 0.32)' }}
+      showBackdrop={false}
       head={<SheetHead title={tripName} onClose={onClose} />}
     >
       {timelineMirror.entries.length === 0 ? (

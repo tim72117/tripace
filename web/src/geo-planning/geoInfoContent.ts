@@ -18,6 +18,11 @@ export function searchResultInfoContent(r: GeoSearchResult): GeoInfoContent {
   return {
     name: r.name,
     photoUrl: r.photoUrl,
+    // placeId:只有 place 來源(GeoPlace,2026-08 起才有這個欄位,見該
+    // 型別的說明)才可能有值,hotel(GeoHotel)本身已經有 eager photoUrl、
+    // 沒有 placeId——見 GeoInfoContent.placeId 的完整說明,呼叫端據此決定
+    // 要不要另外補查照片。
+    placeId: r.placeId,
     subtitle: r.address,
     badges: [],
     candidate: searchResultToCandidate(r),
@@ -27,8 +32,17 @@ export function searchResultInfoContent(r: GeoSearchResult): GeoInfoContent {
 // poiInfoContent:點擊地圖上 Google 原生 POI 圖標查回的 GeoPlaceDetails——
 // 沒有 primaryType 欄位(GeoPlace 候選籃形狀需要,但 Places Details API
 // 這支查詢沒有回傳分類),補空字串,理由同 GeoHotelSidebar 卡片「+」的
-// 既有慣例(這裡的候選籃資料本來就只拿 name/address/lat/lng/photoUrl
-// 顯示,primaryType 目前沒有任何顯示邏輯依賴它)。
+// 既有慣例(這裡的候選籃資料本來就只拿 name/address/lat/lng 顯示,
+// primaryType 目前沒有任何顯示邏輯依賴它)。
+//
+// candidate.photoUrl:GeoCandidate 的 place 分支(2026-08 起)已經跟著
+// GeoPlace 拿掉 photoUrl、改成 placeId(見該型別的說明)——但這裡的資料
+// 來源是 GeoPlaceDetails(handleGeoPlaceDetails,POI 點擊查詢,不受這次
+// 背景化重構影響,仍同步回傳完整 photoUrl),且這支查詢本身沒有回傳
+// placeId 讓候選籃形狀可以承接,故候選籃項目這裡不帶 photoUrl(候選籃
+// UI 目前也沒有為 place 分支顯示候選卡片縮圖的路徑,僅供加入候選/寫入
+// entry 使用,不影響任何畫面呈現)。頂層的 GeoInfoContent.photoUrl 仍然
+// 完整帶入,資訊卡本身的照片顯示不受影響。
 export function poiInfoContent(details: GeoPlaceDetails): GeoInfoContent {
   return {
     name: details.name,
@@ -43,7 +57,6 @@ export function poiInfoContent(details: GeoPlaceDetails): GeoInfoContent {
       lat: details.lat,
       lng: details.lng,
       primaryType: '',
-      photoUrl: details.photoUrl,
     },
   }
 }
@@ -74,5 +87,14 @@ export function candidateInfoContent(c: Exclude<GeoCandidate, { kind: 'attractio
   if (c.kind === 'entry') {
     return { name: c.name, subtitle: c.location ?? undefined, badges: [] }
   }
-  return { name: c.name, photoUrl: c.photoUrl, subtitle: c.address, badges: [] }
+  // hotel 候選有 photoUrl(GeoHotel 查詢完成時就同步帶照片);place 候選
+  // 2026-08 起改成 placeId(見 GeoPlace/GeoCandidate 的說明),交給
+  // useGeoPlanningState.ts 的 infoContentPhotoFetch effect 補查。
+  return {
+    name: c.name,
+    photoUrl: c.kind === 'hotel' ? c.photoUrl : undefined,
+    placeId: c.kind === 'place' ? c.placeId : undefined,
+    subtitle: c.address,
+    badges: [],
+  }
 }

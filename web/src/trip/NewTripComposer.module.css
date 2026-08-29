@@ -24,6 +24,7 @@
   font-size: 16px;
   outline: none;
   background: var(--ios-bg);
+  color: var(--color-dark);
   transition: border-color 0.15s;
 }
 .composer input:focus {

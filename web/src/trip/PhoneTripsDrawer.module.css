@@ -91,9 +91,13 @@
   flex: 1;
   min-width: 0;
 }
+/* .tripName 原本沒有明確設定 color,靠繼承鏈路(.tripGrow/.tripItemOpen/
+   .tripItem 皆未設定 color)一路繼承到 body { color: var(--color-dark) }
+   ——這裡只補上明確宣告,視覺結果不變。 */
 .tripName {
   font-size: 14px;
   font-weight: 500;
+  color: var(--color-dark);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

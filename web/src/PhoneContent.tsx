@@ -34,9 +34,9 @@ const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
 
 // 設定頁 bottom sheet 面板頂部離定位祖先頂端的距離(px)——見
 // components/PhoneBottomSheet.tsx 的說明,定位數值(bottom/z-index)見
-// 下方 PhoneBottomSheet 呼叫處的說明。TODO(使用者稍後決定合理數值):
-// 暫時估算。
-const SETTINGS_SHEET_TOP = 200
+// 下方 PhoneBottomSheet 呼叫處的說明。使用者已確認改成 60(跟對話/配速表
+// 的 CHAT_SHEET_TOP 同一個展開高度)。
+const SETTINGS_SHEET_TOP = 60
 // 對話/配速表 bottom sheet 的離頂部距離(px)——比設定頁/地點清單更高
 // (數值更小),理由見下方對話 PhoneBottomSheet 呼叫處的說明。
 const CHAT_SHEET_TOP = 60
@@ -227,6 +227,7 @@ export function PhoneContent(props: ContentProps) {
           onOpenSettings={() => setInSettings(true)}
           onOpenTimeline={TIMELINE_ENABLED ? () => setTimelineDrawerOpen(true) : undefined}
           onOpenTrips={() => setTripsDrawerOpen(true)}
+          theme={props.theme}
         />
         {/* PhoneSideTools:右側下方路徑+demo-* 小圖示,跨所有主畫面模式
             共用(不是規劃地圖專屬),見該元件開頭說明。 */}

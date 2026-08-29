@@ -67,6 +67,7 @@
 .name {
   font-size: 17px;
   font-weight: 500;
+  color: var(--color-dark);
 }
 .sub {
   font-size: 15px;

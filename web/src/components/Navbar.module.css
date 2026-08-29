@@ -36,6 +36,7 @@
   letter-spacing: -0.2px;
   flex: 1;
   text-align: center;
+  color: var(--color-dark);
 }
 
 /* left/right slot 的佔位寬度——原本兩處呼叫端(OnagentBridgeDemo.tsx/

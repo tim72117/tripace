@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useReducer, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { ClientConfig, GeoAttraction, GeoPlaceDetails, GeoPlaceText, GeoSearchResult, GeoTripEntry } from '../api'
-import { deleteEntry } from '../api'
+import { deleteEntry, fetchGeoPlacePhoto } from '../api'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
 import {
   poiInfoContent,
@@ -260,6 +260,50 @@ export function useGeoPlanningState({
       patch: (prev) => ({ ...prev, photoUrl: photoUrl ?? undefined }),
     })
   }, [])
+
+  // infoContentPhotoFetch:推薦地點(GeoPlace)資訊卡開啟時的照片延遲補查
+  // ——2026-08 起 GeoPlace 不再帶 eager photoUrl(後端照片查詢改成背景
+  // 預熱快取,見 server 端 handleGeoPlacesNearby 的說明),這張卡片
+  // (GeoInfoPanel/GeoOutlinePhoneInfoSheet)本身是純展示元件、沒有
+  // IntersectionObserver 延遲載入機制(不像 GeoListItemCard,理由是資訊
+  // 卡一開啟就整張可見,不需要捲動觸發的節流),故改在這裡用 useEffect
+  // 主動補查一次。
+  //
+  // 條件:content.placeId 有值(見 GeoInfoContent.placeId 的完整說明,
+  // 只有 place 來源才有)且 photoUrl 目前是 undefined(還沒查過)。用
+  // fetchedPlaceIdsRef 記錄「這個 placeId 已經查過」(不論查到與否),
+  // 避免同一張卡片因為其他欄位變動重新渲染時重複觸發查詢,也避免查到
+  // 「沒有照片」的結果後,因為 photoUrl 維持 undefined 而無限重查。
+  //
+  // 競態保護:用 cancelled flag(同 GeoOutlinePanel.tsx 既有的
+  // selectedCandidate effect 手法)——使用者若在查詢完成前已經切換到
+  // 另一張卡片,查詢結果不應該誤植到新卡片上;patch 內部再用 placeId
+  // 比對目前實際顯示的卡片(而非只靠 cancelled flag)雙重確認,理由同
+  // patchGeocodeCandidatePhoto 系列 callback 一貫的保守寫法。
+  const fetchedPlaceIdsRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const placeId = infoContent?.placeId
+    if (!placeId || infoContent.photoUrl !== undefined) return
+    if (fetchedPlaceIdsRef.current.has(placeId)) return
+    fetchedPlaceIdsRef.current.add(placeId)
+    let cancelled = false
+    fetchGeoPlacePhoto(cfg, placeId, infoContent.name)
+      .then((result) => {
+        if (cancelled) return
+        dispatchGeoSelection({
+          type: 'PATCH_INFO_CONTENT',
+          patch: (prev) => (prev.placeId !== placeId ? prev : { ...prev, photoUrl: result.photoUrl ?? undefined }),
+        })
+      })
+      .catch(() => {
+        // 查詢失敗不視為錯誤,維持無圖——理由同這個檔案其餘查詢失敗的
+        // 既有慣例,靜默處理即可,使用者不會因此看到任何錯誤訊息。
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [infoContent?.placeId, infoContent?.photoUrl, cfg])
 
   // selectCandidateFromBasket:候選籃/清單抽屜裡任何一項被點擊——開資訊
   // 卡並移動地圖到該點為中心(見兩邊原本 selectGeoCandidate/onSelect 的

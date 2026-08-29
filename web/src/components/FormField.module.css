@@ -26,4 +26,5 @@
   font-size: 17px;
   outline: none;
   font-family: var(--mono);
+  color: var(--color-dark);
 }

@@ -366,6 +366,7 @@ export function DesktopContent(props: ContentProps) {
                 candidateKeys={geo.candidateKeys}
                 hoverKey={geo.hoverKey}
                 panTarget={geo.panTarget}
+                theme={props.theme}
               />
               <GeoInfoPanel
                 content={geoInfoContent}

@@ -65,6 +65,7 @@
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--ios-gray);
 }
 .btn:hover:not(:disabled) {
   background: var(--ios-bg);

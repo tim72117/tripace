@@ -76,7 +76,11 @@ export function searchResultToCandidate(r: Exclude<GeoSearchResult, { kind: 'geo
   if (r.kind === 'hotel') {
     return { kind: 'hotel', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', photoUrl: r.photoUrl }
   }
-  return { kind: 'place', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', category: r.category, photoUrl: r.photoUrl }
+  // place:2026-08 起 GeoPlace 不再帶 photoUrl(見該型別的說明,改成
+  // placeId 供延遲查詢),候選籃項目的照片顯示已經跟著改用 placeId(見
+  // GeoHotelSidebar.tsx 卡片的「+」按鈕候選預覽,同樣走 GeoListItemCard
+  // 的延遲載入邏輯)。
+  return { kind: 'place', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', category: r.category, placeId: r.placeId }
 }
 
 // PLACE_CATEGORY_TO_ENTRY_KIND:GeoPlace.category(後端封裝過的自訂分類,

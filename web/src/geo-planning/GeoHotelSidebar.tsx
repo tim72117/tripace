@@ -190,13 +190,16 @@ export function GeoHotelSidebar({
   onClose?: () => void
 }) {
   const isEmpty = results.length === 0
-  // geocodePhotos:搜尋結果(geocode)的照片延遲載入快取(見
-  // GeoListItemCard 的說明),key 是 placeId——存在這裡(而非每個
-  // GeoListItemCard 各自記憶)是因為清單重新渲染(hover/選取狀態變化)
-  // 不該讓已經查過的照片消失重查,且同一個 placeId 若因為使用者上下捲動
-  // 導致項目重新 mount,也不該重複觸發查詢。value 為 undefined 代表還沒
-  // 查過,null 代表查過但沒有照片,string 代表查到的照片網址。
-  const [geocodePhotos, setGeocodePhotos] = useState<Record<string, string | null>>({})
+  // lazyPhotos:依 placeId 延遲載入的照片快取(見 GeoListItemCard 的
+  // 說明)——原本只有 geocode(搜尋結果)會用到,2026-08 起 place(附近
+  // 推薦地點,見 api.ts GeoPlace.placeId 的說明)也改成同一套延遲查詢,
+  // 故泛化成不分 kind、只要有 placeId 就共用同一份快取。key 是
+  // placeId——存在這裡(而非每個 GeoListItemCard 各自記憶)是因為清單
+  // 重新渲染(hover/選取狀態變化)不該讓已經查過的照片消失重查,且同一個
+  // placeId 若因為使用者上下捲動導致項目重新 mount,也不該重複觸發查詢。
+  // value 為 undefined 代表還沒查過,null 代表查過但沒有照片,string
+  // 代表查到的照片網址。
+  const [lazyPhotos, setLazyPhotos] = useState<Record<string, string | null>>({})
 
   return (
     <aside className={styles.sidebar}>
@@ -215,10 +218,10 @@ export function GeoHotelSidebar({
                 cfg={cfg}
                 name={r.name}
                 address={r.address}
-                photoUrl={r.kind === 'geocode' ? (r.placeId ? geocodePhotos[r.placeId] : null) : r.photoUrl}
-                placeId={r.kind === 'geocode' ? r.placeId : undefined}
+                photoUrl={r.placeId ? lazyPhotos[r.placeId] : r.photoUrl}
+                placeId={r.placeId}
                 onPhotoLoaded={(placeId, url) => {
-                  setGeocodePhotos((prev) => ({ ...prev, [placeId]: url }))
+                  setLazyPhotos((prev) => ({ ...prev, [placeId]: url }))
                 }}
                 selected={selectedKey === key}
                 onSelect={() => onSelect?.(r)}

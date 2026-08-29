@@ -71,6 +71,7 @@
 .bubble .text {
   font-size: 17px;
   line-height: 1.35;
+  color: var(--color-dark);
 }
 .bubble .meta {
   margin-top: 5px;
@@ -84,6 +85,7 @@
   font-size: 13px;
   opacity: 0.8;
   font-style: italic;
+  color: var(--color-dark);
 }
 .bubble.pending {
   padding: 10px 14px;
@@ -149,6 +151,7 @@
 .text.markdown h3 {
   font-size: 17px;
   margin: 8px 0 4px;
+  color: var(--color-dark);
 }
 
 /* ---- 處理中:海浪載入動畫 ---- */

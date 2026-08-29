@@ -17,8 +17,11 @@ import { fetchGeoPlacePhoto } from '../api'
 // 捲進可視範圍時才查,配合呼叫端的 photoCache 避免同一筆候選重複進出
 // 視窗時重複查詢。查詢用 fetchGeoPlacePhoto(後端 photoOnly 模式,見該
 // 函式的說明)而非完整的 fetchGeoPlaceDetails——清單只需要照片,不需要
-// rating/summary。飯店/地點本身已經有 eager photoUrl(查詢完成時就帶
-// 照片),沒有 placeId,不會觸發這段延遲查詢邏輯。
+// rating/summary。飯店(GeoHotel)查詢完成時就同步帶 photoUrl、沒有
+// placeId,不會觸發這段延遲查詢邏輯;推薦地點(GeoPlace)2026-08 起
+// 改成跟搜尋結果(geocode)一樣只有 placeId、沒有 eager photoUrl(後端
+// 照片查詢改成背景預熱快取,見 server 端 handleGeoPlacesNearby 的
+// 說明),故呼叫端一律傳入 placeId 觸發這段延遲查詢。
 //
 // styles:桌面版/手機版各自的 CSS Modules 物件,理由同原本
 // GeocodeCandidateItem 的同名 prop——class 命名慣例一致(item/

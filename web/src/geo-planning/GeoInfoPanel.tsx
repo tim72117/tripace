@@ -29,6 +29,16 @@ import styles from './GeoInfoPanel.module.css'
 export interface GeoInfoContent {
   name: string
   photoUrl?: string
+  // placeId:2026-08 起,推薦地點(GeoPlace)不再帶 eager photoUrl(後端
+  // 照片查詢改成背景預熱快取,見 server 端 handleGeoPlacesNearby 的
+  // 說明),故這張卡片開啟時若 photoUrl 未知、但有 placeId,呼叫端
+  // (useGeoPlanningState.ts 的 infoContentPhotoFetch effect)會另外呼叫
+  // fetchGeoPlacePhoto 補查、查到後用 PATCH_INFO_CONTENT 補上——這個
+  // 元件本身不主動發起查詢(維持純展示,理由同其餘 GeoInfoContent 欄位
+  // 的設計),只是要保留這個欄位讓呼叫端知道「這張卡片有沒有東西可補查」。
+  // geocode(搜尋結果)本身已經有另一套獨立的文字/照片補查流程(見
+  // GeoOutlinePanel.tsx 的 selectedCandidate effect),不依賴這個欄位。
+  placeId?: string
   subtitle?: string
   summary?: string
   badges: string[]

@@ -180,9 +180,10 @@ export function GeoOutlinePhoneListDrawer({
   // 轉傳給 PhoneBottomSheet 的 loading prop,見該元件的說明。
   loading?: boolean
 }) {
-  // geocodePhotos:搜尋結果(geocode)的照片延遲載入快取,理由同桌面版
-  // GeoHotelSidebar.tsx 的同名 state。
-  const [geocodePhotos, setGeocodePhotos] = useState<Record<string, string | null>>({})
+  // lazyPhotos:依 placeId 延遲載入的照片快取,理由同桌面版
+  // GeoHotelSidebar.tsx 的同名 state(2026-08 起不分 kind、只要有
+  // placeId 就共用同一份快取)。
+  const [lazyPhotos, setLazyPhotos] = useState<Record<string, string | null>>({})
   // activeSnapIndex:這個抽屜自己的吸附段落狀態,初始為展開(索引 1)——
   // 理由同 GeoOutlinePhoneInfoSheet.tsx 的同名 state,每次重新開啟都重設
   // 回展開,不延續上次被拖曳收合的狀態。
@@ -227,10 +228,10 @@ export function GeoOutlinePhoneListDrawer({
                 cfg={cfg}
                 name={r.name}
                 address={r.address}
-                photoUrl={r.kind === 'geocode' ? (r.placeId ? geocodePhotos[r.placeId] : null) : r.photoUrl}
-                placeId={r.kind === 'geocode' ? r.placeId : undefined}
+                photoUrl={r.placeId ? lazyPhotos[r.placeId] : r.photoUrl}
+                placeId={r.placeId}
                 onPhotoLoaded={(placeId, url) => {
-                  setGeocodePhotos((prev) => ({ ...prev, [placeId]: url }))
+                  setLazyPhotos((prev) => ({ ...prev, [placeId]: url }))
                 }}
                 selected={selectedKey === key}
                 onSelect={() => onSelect(r)}

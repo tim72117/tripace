@@ -58,6 +58,7 @@
 .trigger :global(.name) {
   font-size: 14px;
   font-weight: 500;
+  color: var(--color-dark);
 }
 .trigger :global(.sub) {
   font-size: 12px;
@@ -104,6 +105,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--color-dark);
 }
 .triggerExpanded :global(.sub) {
   font-size: 11px;
