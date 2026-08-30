@@ -1,4 +1,4 @@
-import { PhoneBottomSheet, SheetHead } from '../components/PhoneBottomSheet'
+import { PhoneBottomSheet, PHONE_BOTTOM_SHEET_EXIT_MS, SheetHead } from '../components/PhoneBottomSheet'
 import { DatePickerPopover } from './DatePickerPopover'
 import styles from './GeoOutlinePhoneDateCalendarSheet.module.css'
 
@@ -71,6 +71,10 @@ export function GeoOutlinePhoneDateCalendarSheet({
       backdropStyle={{ position: 'fixed', inset: 0, zIndex: 35, background: 'rgba(0, 0, 0, 0.32)' }}
       isTopmost={isTopmost}
       stackOffsetPx={stackOffsetPx}
+      // exitDurationMs:理由同 GeoOutlinePhoneDatePickerSheet.tsx 的說明
+      // ——原本遺漏,關閉時瞬間消失、沒有退場滑出動畫,跟資訊卡/清單/
+      // 候選籃的節奏不一致。
+      exitDurationMs={PHONE_BOTTOM_SHEET_EXIT_MS}
       head={<SheetHead title="選擇日期" onClose={onClose} />}
     >
       <div className={styles.body}>

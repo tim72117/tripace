@@ -204,6 +204,7 @@ export function PhoneContent(props: ContentProps) {
       onBack={() => setActiveTrip(null)}
       mobileHeader="main"
       onTimelineData={onTimelineData}
+      open={chatSheetOpen}
     />
   )
 

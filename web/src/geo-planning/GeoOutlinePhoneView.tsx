@@ -13,20 +13,18 @@ import { GeoOutlinePhoneDatePickerSheet } from './GeoOutlinePhoneDatePickerSheet
 import { GeoOutlinePhoneDateCalendarSheet } from './GeoOutlinePhoneDateCalendarSheet'
 import { GeoOutlinePhoneCandidateDrawer } from './GeoOutlinePhoneCandidateDrawer'
 import { GeoOutlinePhoneListDrawer } from './GeoOutlinePhoneListDrawer'
-import { reduceListDrawerState, initialListDrawerState } from './geoListDrawerState'
 import { reduceCategoryTagsState, initialCategoryTagsState } from './geoCategoryTagsState'
 import { useSheetStack } from '../components/useSheetStack'
 import styles from './GeoOutlinePhoneView.module.css'
 
 // SheetEntry:2026-08 這次重構後,清單與資訊卡「該不該顯示」的真相來源
-// 全部收斂進這個堆疊——不再有 listDrawerState.open 或 geo.infoContent
-// 单独決定某個 sheet 是否顯示的舊機制(這兩者仍然存在,但語意各自窄化:
-// listDrawerState 只剩 loading 這個查詢中動畫的語意,open 欄位不再被
-// 讀取;geo.infoContent/attractionContent 只負責「選中的是什麼內容」,
-// 不負責「該不該顯示」)。
+// 全部收斂進這個堆疊——不再有獨立的清單開關 state 或 geo.infoContent
+// 単独決定某個 sheet 是否顯示的舊機制(geo.infoContent/attractionContent
+// 只負責「選中的是什麼內容」,不負責「該不該顯示」;清單查詢中動畫則是
+// 獨立的 listLoading 布林值,見下方宣告處,跟「該不該顯示」完全無關)。
 //
-// 為什麼清單也要進堆疊(舊版只有資訊卡會 push,清單開關另外交給
-// listDrawerState.open):舊版有兩條真相來源並存,任何新增的「打開資訊卡」
+// 為什麼清單也要進堆疊(舊版只有資訊卡會 push,清單開關另外交給獨立的
+// state):舊版有兩條真相來源並存,任何新增的「打開資訊卡」
 // 入口(點地圖 marker、城市搜尋唯一解、候選籃選取)都繞過 sheetStack 直接
 // 操作 geo.infoContent,導致 sheetStack 記錄的堆疊狀態跟畫面實際顯示的
 // sheet 不同步,是使用者要求「開關 sheet 全部改由堆疊控制」的直接原因。
@@ -112,13 +110,17 @@ type SheetEntry =
 // 的說明)。
 //
 // 2026-08:移除獨立的「飯店/推薦地點」手動開啟按鈕(原本的 .listBtn,
-// MapPinned 圖示)——清單唯一入口改成「搜尋觸發時自動打開」。開關/
-// 載入中狀態收斂成 geoListDrawerState.ts 的 reduceListDrawerState 純
-// reducer 統一管理(listDrawerState/dispatchListDrawer,見下方宣告處與
-// 該檔案開頭的完整說明)——三個查詢入口(城市搜尋框的 onSearch、地圖上方
-// 類別標籤/「搜尋這個區域」按鈕共用的 onSearchStart)都必須明確 dispatch
-// 'search-started',查詢結果回來時(onSearchResultsChange)dispatch
-// 'results-arrived',使用者手動關閉時 dispatch 'user-closed'。
+// MapPinned 圖示)——清單唯一入口改成「搜尋觸發時自動打開」。開關本身
+// 的真相來源已收斂進 sheetStack(見下方 SheetEntry 的說明),這裡只剩
+// listLoading 這個單純的查詢中動畫旗標——曾經抽成 geoListDrawerState.ts
+// 的 reduceListDrawerState 純 reducer 管理「open + loading」兩個欄位,
+// 但 sheetStack 統一控制開關之後,open 欄位變成沒有任何消費端的死碼
+// (FE8:reducer 仍會正確算出 open,但沒有地方讀取這個值;
+// results-arrived 的 resultCount !== 1 規則也已經被 onSearchResultsChange
+// 下方 `results.length === 1` 時 sheetStack.replace(...) 這條判斷式重寫
+// 一次,同一條業務規則活在兩處、reducer 那份完全不生效)——已降級回單純
+// 的 useState<boolean>,不再需要 reducer 這層間接。
+
 export function GeoOutlinePhoneView({
   cfg,
   tripID,
@@ -174,29 +176,26 @@ export function GeoOutlinePhoneView({
   const [candidateDrawerOpen, setCandidateDrawerOpen] = useState(false)
   const [candidateFlashTrigger, setCandidateFlashTrigger] = useState(0)
 
-  // listDrawerState:清單抽屜開關/載入中狀態,收斂成 reduceListDrawerState
-  // 這個純 reducer 統一管理(見 geoListDrawerState.ts 的完整說明)——這是
-  // 第二次因為「多個查詢入口需要同步打開清單」這件事出 bug 才抽出來的
-  // 設計:第一次是子代理重構搜尋路徑時繞開了背負隱藏副作用的 onSearch,
-  // 第二次是掛在 onSearchResultsChange 卻踩到 useEffect 掛載時必定執行
-  // 一次的陷阱。用顯式的 dispatch(search-started/results-arrived/
-  // user-closed)取代分散在各處的 setListDrawerOpen(true/false),每個
-  // 查詢入口都必須明確回報「查詢開始了」,不再是某個 callback 字面命名
-  // 底下容易被忽略的隱藏副作用。
-  const [listDrawerState, dispatchListDrawer] = useReducer(reduceListDrawerState, initialListDrawerState)
+  // listLoading:清單查詢中動畫旗標(見上方元件說明的 FE8 修法)——單純
+  // 布林值,由三個查詢入口在查詢開始時設 true,查詢結果回來時設 false,
+  // 不需要 reducer:這裡沒有「多個獨立欄位需要同步轉換」的複合狀態,
+  // 只有一個布林值、且每次寫入的新值都是常數(true/false),不依賴目前
+  // 狀態計算,useState 已經完整表達這個需求。清單「該不該顯示」本身的
+  // 開關真相來源是 sheetStack(見下方 SheetEntry 的說明),不是這個值。
+  const [listLoading, setListLoading] = useState(false)
   // categoryTagsState:地圖上方類別標籤列該不該隱藏,收斂成
   // reduceCategoryTagsState 這個純 reducer 統一管理(見
-  // geoCategoryTagsState.ts 的完整說明)——跟 listDrawerState 是兩個
-  // 獨立的狀態機(理由同上),但共用完全相同的三個查詢入口,故下方每個
-  // 查詢入口的 callback 都會同時 dispatch 這兩個 reducer,不是先後
-  // 兩次分開觸發。手機版/桌面版(DesktopLayout.tsx)共用同一個
-  // reduceCategoryTagsState,取代原本兩邊各自一套判斷式的做法。
+  // geoCategoryTagsState.ts 的完整說明)——這是真的需要 reducer 的案例
+  // (跟上面 listLoading 不同):search-started/results-arrived/
+  // user-closed 三種事件對「該不該隱藏」的轉換規則不是各自獨立設常數,
+  // results-arrived 要依 hasResults 決定隱藏與否,且這個狀態機是手機版/
+  // 桌面版(DesktopLayout.tsx)共用同一份規則,值得抽成獨立可測試的純
+  // 函式。三個查詢入口共用完全相同的觸發時機,下方每個查詢入口的
+  // callback 都會同時 dispatch 這個 reducer 與更新 listLoading,不是
+  // 先後兩次分開觸發。
   const [categoryTagsState, dispatchCategoryTags] = useReducer(reduceCategoryTagsState, initialCategoryTagsState)
   // sheetStack:清單/資訊卡「該不該顯示」的唯一真相來源(見上方
-  // SheetEntry 的說明與 useSheetStack.ts 開頭的完整背景)——
-  // listDrawerState 仍然存在,但只保留 loading(查詢中動畫)這個語意,
-  // open 欄位不再被下方任何地方讀取(清單的 open prop 改成從
-  // sheetStack.stack 衍生,見下方 GeoOutlinePhoneListDrawer 的說明)。
+  // SheetEntry 的說明與 useSheetStack.ts 開頭的完整背景)。
   const sheetStack = useSheetStack<SheetEntry>()
   // infoSheetDraggingDown/infoSheetSnapIndex:資訊卡目前是否正在被使用者
   // 往下拖曳、以及目前停在哪一段——使用者明確要求「前一層比後層高時,
@@ -210,7 +209,7 @@ export function GeoOutlinePhoneView({
   // 本身也在畫面上)這個情境才有意義——資訊卡若是由其他入口(點 marker、
   // 城市搜尋單一候選)打開、清單根本沒有疊在下面,這個訊號也不會造成
   // 任何影響(下方傳給 GeoOutlinePhoneListDrawer 的 forceCollapsed 只在
-  // listDrawerState.open 為 true 時才有渲染出來的 sheet 可以被強制收合)。
+  // 清單本身確實開啟時才有渲染出來的 sheet 可以被強制收合)。
   const [infoSheetDraggingDown, setInfoSheetDraggingDown] = useState(false)
   const [infoSheetSnapIndex, setInfoSheetSnapIndex] = useState(1)
   // addFlashTrigger:候選透過日期清單/日曆 sheet 成功排入某天後遞增,
@@ -317,17 +316,17 @@ export function GeoOutlinePhoneView({
         onSearch={() => {
           // 重新搜尋時清空目前選取的地點,關閉正在顯示的地點介紹卡——
           // 理由同 DesktopLayout.tsx 對應的 onSearch 說明。城市搜尋框
-          // 這個入口的「查詢開始」時機——dispatchListDrawer/dispatchCategoryTags
-          // 的 search-started 語意保留(loading 動畫、標籤列隱藏,見
-          // geoListDrawerState.ts/geoCategoryTagsState.ts 的說明),但清單
-          // 「該不該顯示」這件事現在改由 sheetStack 表達:sheetStack.closeAll()
+          // 這個入口的「查詢開始」時機——setListLoading(true)/
+          // dispatchCategoryTags 的 search-started 語意保留(loading
+          // 動畫、標籤列隱藏,見 geoCategoryTagsState.ts 的說明),但清單
+          // 「該不該顯示」這件事由 sheetStack 表達:sheetStack.closeAll()
           // 先清空整個堆疊(不管之前疊了什麼——可能還顯示著上一次查詢
           // 選中的資訊卡,新一次搜尋是全新的操作循環,不需要延續舊的堆疊
           // 狀態,這是使用者明確確認的設計決策),再 push({type:'list'})
           // 讓清單重新以「堆疊底層」的姿態打開。
           geo.clearSelection()
           setSearchTrigger((n) => n + 1)
-          dispatchListDrawer({ type: 'search-started' })
+          setListLoading(true)
           dispatchCategoryTags({ type: 'search-started' })
           sheetStack.closeAll()
           sheetStack.push({ type: 'list' })
@@ -339,7 +338,7 @@ export function GeoOutlinePhoneView({
           // 涵蓋全部三個入口。sheetStack 的操作跟上面 onSearch 完全對稱
           // (closeAll 再 push 'list')——理由相同:三個查詢入口都代表
           // 「使用者開始了一次全新的搜尋操作」,不該讓舊堆疊殘留。
-          dispatchListDrawer({ type: 'search-started' })
+          setListLoading(true)
           dispatchCategoryTags({ type: 'search-started' })
           sheetStack.closeAll()
           sheetStack.push({ type: 'list' })
@@ -358,25 +357,21 @@ export function GeoOutlinePhoneView({
         selectedCandidate={geo.selectedCandidate}
         setSelectedCandidate={geo.setSelectedCandidate}
         onSearchResultsChange={(results) => {
-          // 查詢結果回來時——dispatchListDrawer({type:'results-arrived'})
-          // 這個 dispatch 保留,但不再依賴它回傳的 open 欄位(那個欄位
-          // 已經沒有任何地方讀取,見上方 SheetEntry 的說明)——這裡只需要
-          // 它的 loading:false 語意(結束查詢中動畫)。標籤列的顯示/隱藏
-          // 邏輯不受這次改動影響(依結果是否為空決定,見
+          // 查詢結果回來時——setListLoading(false) 結束查詢中動畫。標籤列
+          // 的顯示/隱藏邏輯不受這次改動影響(依結果是否為空決定,見
           // geoCategoryTagsState.ts 的說明)。
           //
-          // 「唯一解時清單不顯示、資訊卡自動顯示」這條規則現在改用
-          // sheetStack.replace 表達:resultCount === 1 時,把堆疊頂端
-          // 換成 {type:'info'}——查詢入口(onSearch/onSearchStart)已經
-          // 在「查詢開始」的當下 push 過 {type:'list'},此刻堆疊頂端必然
-          // 是 'list',replace 換成 'info' 精準對應「清單不需要了,直接
-          // 顯示資訊卡」這個語意,不增加堆疊深度(此時堆疊仍只有一層)。
-          // 這裡不需要知道是哪個查詢入口觸發的——三個入口對堆疊的操作
-          // 完全一致,replace 邏輯天然正確。
-          //
-          // resultCount 為 0 或多筆時,堆疊維持不動(頂端仍是 'list',
-          // 查詢開始時 push 的那一層,讓清單顯示結果或空狀態文案)。
-          dispatchListDrawer({ type: 'results-arrived', resultCount: results.length })
+          // 「唯一解時清單不顯示、資訊卡自動顯示」這條規則用 sheetStack.replace
+          // 表達:resultCount === 1 時,把堆疊頂端換成 {type:'info'}——
+          // 查詢入口(onSearch/onSearchStart)已經在「查詢開始」的當下
+          // push 過 {type:'list'},此刻堆疊頂端必然是 'list',replace
+          // 換成 'info' 精準對應「清單不需要了,直接顯示資訊卡」這個語意,
+          // 不增加堆疊深度(此時堆疊仍只有一層)。這裡不需要知道是哪個
+          // 查詢入口觸發的——三個入口對堆疊的操作完全一致,replace 邏輯
+          // 天然正確。resultCount 為 0 或多筆時,堆疊維持不動(頂端仍是
+          // 'list',查詢開始時 push 的那一層,讓清單顯示結果或空狀態
+          // 文案)。
+          setListLoading(false)
           dispatchCategoryTags({ type: 'results-arrived', hasResults: results.length > 0 })
           if (results.length === 1) {
             sheetStack.replace({ type: 'info' })
@@ -407,8 +402,8 @@ export function GeoOutlinePhoneView({
           geo.selectPoi(details)
           sheetStack.replace({ type: 'info' })
         }}
-        onGeocodeCandidateText={(_placeId, text) => geo.patchGeocodeCandidateText(text)}
-        onGeocodeCandidatePhoto={(_placeId, photoUrl) => geo.patchGeocodeCandidatePhoto(photoUrl)}
+        onGeocodeCandidateText={(placeId, text) => geo.patchGeocodeCandidateText(placeId, text)}
+        onGeocodeCandidatePhoto={(placeId, photoUrl) => geo.patchGeocodeCandidatePhoto(placeId, photoUrl)}
         selectedKey={geo.selectedKey}
         candidateKeys={geo.candidateKeys}
         panTarget={geo.panTarget}
@@ -488,22 +483,18 @@ export function GeoOutlinePhoneView({
       <GeoOutlinePhoneListDrawer
         cfg={cfg}
         tripID={tripID}
-        // open:改成從 sheetStack 衍生——堆疊裡任何位置(不限頂層)存在
+        // open:從 sheetStack 衍生——堆疊裡任何位置(不限頂層)存在
         // {type:'list'} 就算開啟。「不限頂層」是關鍵:資訊卡疊在清單上面
         // 時('list' 在下、'info' 在頂),清單仍要維持掛載顯示(只是套用
         // 退縮視覺,見下方 isTopmost/forceCollapsed),不能因為它不是
-        // 堆疊頂層就整個消失——舊版 listDrawerState.open 這個獨立布林值
-        // 已經不再是真相來源(仍保留 loading 語意)。
+        // 堆疊頂層就整個消失。
         open={sheetStack.stack.some((e) => e.type === 'list')}
         onClose={() => {
           // 使用者手動關閉清單(拖到底/按關閉鈕)——sheetStack.closeAll()
-          // 現在是真正決定清單(跟可能疊在上面的資訊卡)一起消失的動作,
-          // 不再只是「清空堆疊記錄」這種輔助語意(舊版清單開關的真相
-          // 來源是 listDrawerState.open,closeAll 只是順便清掉堆疊記錄
-          // 避免資訊卡之後 pop 到不存在的清單;現在 open 本身就是從
-          // sheetStack 衍生,closeAll 直接讓 open 變 false)。同時
-          // dispatch user-closed 給標籤列狀態機,重新顯示標籤列(見
-          // geoCategoryTagsState.ts 的說明)。
+          // 是真正決定清單(跟可能疊在上面的資訊卡)一起消失的動作,open
+          // 本身就是從 sheetStack 衍生。同時 dispatch user-closed 給
+          // 標籤列狀態機,重新顯示標籤列(見 geoCategoryTagsState.ts 的
+          // 說明)。
           //
           // 清空 geo.geocodeCandidates——使用者主動關閉清單是明確的「不想
           // 再看這批搜尋結果」訊號,地圖上對應的候選 marker 若繼續留著,
@@ -522,11 +513,11 @@ export function GeoOutlinePhoneView({
           // geocodeCandidates」規則的反向對應。
           setSearchCity('')
           geo.setGeocodeCandidates([])
-          dispatchListDrawer({ type: 'user-closed' })
+          setListLoading(false)
           dispatchCategoryTags({ type: 'user-closed' })
           sheetStack.closeAll()
         }}
-        loading={listDrawerState.loading}
+        loading={listLoading}
         results={geo.searchResults}
         selectedKey={geo.selectedKey}
         candidateKeys={geo.candidateKeys}
@@ -555,7 +546,7 @@ export function GeoOutlinePhoneView({
           // onlyIfOutOfView 移動地圖,見 useGeoPlanningState.ts 對這個
           // 函式的說明),不在這裡重新實作一份簡化版邏輯。
           //
-          // 不再關閉清單(dispatchListDrawer user-closed)——改成把資訊卡
+          // 不再關閉清單——改成把資訊卡
           // push 進堆疊,疊在清單上面(isTopmost 變 false,清單套用退縮
           // 視覺、停用手勢,見上方 isTopmost prop)。資訊卡關閉時
           // sheetStack.pop() 讓清單自動重新變回頂層,不需要「重新打開」

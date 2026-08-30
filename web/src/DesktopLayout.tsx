@@ -394,8 +394,8 @@ export function DesktopContent(props: ContentProps) {
                 onAttractionSelect={geo.selectAttraction}
                 onSearchResultSelect={geo.selectSearchResult}
                 onPoiSelect={geo.selectPoi}
-                onGeocodeCandidateText={(_placeId, text) => geo.patchGeocodeCandidateText(text)}
-                onGeocodeCandidatePhoto={(_placeId, photoUrl) => geo.patchGeocodeCandidatePhoto(photoUrl)}
+                onGeocodeCandidateText={(placeId, text) => geo.patchGeocodeCandidateText(placeId, text)}
+                onGeocodeCandidatePhoto={(placeId, photoUrl) => geo.patchGeocodeCandidatePhoto(placeId, photoUrl)}
                 selectedKey={geoSelectedKey}
                 candidateKeys={geo.candidateKeys}
                 hoverKey={geo.hoverKey}

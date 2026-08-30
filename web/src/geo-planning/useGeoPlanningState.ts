@@ -283,21 +283,32 @@ export function useGeoPlanningState({
     // 側欄清單項目需要同步標記選取樣式,理由見 GeoSelection 型別的說明。
     dispatchGeoSelection({ type: 'SELECT_INFO', content: poiInfoContent(details) })
   }, [])
-  const patchGeocodeCandidateText = useCallback((text: GeoPlaceText) => {
+  // patchGeocodeCandidateText/patchGeocodeCandidatePhoto 的 placeId 二次
+  // 確認:原本只依賴 GeoOutlinePanel.tsx 的 useEffect + cancelled flag
+  // 當唯一防線(呼叫端的 onGeocodeCandidateText/onGeocodeCandidatePhoto
+  // callback 簽章雖然帶 placeId 參數,但兩個呼叫端(GeoOutlinePhoneView.tsx/
+  // DesktopLayout.tsx)先前都用 `_placeId` 忽略未傳入)——這是單點防禦,
+  // 不是縱深防禦:一旦 cancelled flag 邏輯本身有 bug(或未來新增一條
+  // 繞過那個 effect、直接呼叫這兩個函式的路徑),連續快速點擊兩個不同
+  // 候選(例如地圖上先點 A marker、還沒等文字/照片查完就點 B marker)時,
+  // A 的查詢結果就可能在 B 已經顯示之後才回來、誤蓋掉 B 卡片的內容。
+  // 這裡補上跟下方 infoContentPhotoFetch(同檔案,推薦地點資訊卡的照片
+  // 補查)一致的雙重確認模式:patch 內部比對 prev.placeId !== placeId
+  // 才套用,即使呼叫端的 cancelled flag 意外失效,這裡仍是最後一道防線。
+  const patchGeocodeCandidateText = useCallback((placeId: string, text: GeoPlaceText) => {
     // 文字通常先回來,用 poiInfoContent 的形狀升級成完整文字版本(名稱/
     // 地址/評分/簡介),但不動 photoUrl(可能還沒查完,也可能是另一支
-    // 請求已經先回來設好的值)。不需要比對 placeId 是否還對應目前顯示
-    // 的卡片——GeoOutlinePanel.tsx 內部已經用 useEffect + cancelled flag
-    // 保護過這個競態,只要這個 callback 被呼叫,保證是目前有效的候選。
+    // 請求已經先回來設好的值)。
     dispatchGeoSelection({
       type: 'PATCH_INFO_CONTENT',
-      patch: (prev) => ({ ...prev, ...poiInfoContent({ ...text, photoUrl: prev.photoUrl }) }),
+      patch: (prev) =>
+        prev.placeId !== placeId ? prev : { ...prev, ...poiInfoContent({ ...text, photoUrl: prev.photoUrl }) },
     })
   }, [])
-  const patchGeocodeCandidatePhoto = useCallback((photoUrl: string | null) => {
+  const patchGeocodeCandidatePhoto = useCallback((placeId: string, photoUrl: string | null) => {
     dispatchGeoSelection({
       type: 'PATCH_INFO_CONTENT',
-      patch: (prev) => ({ ...prev, photoUrl: photoUrl ?? undefined }),
+      patch: (prev) => (prev.placeId !== placeId ? prev : { ...prev, photoUrl: photoUrl ?? undefined }),
     })
   }, [])
 

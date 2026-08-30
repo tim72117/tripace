@@ -222,9 +222,9 @@ export function GeoOutlineMap({
   // 因此自動共用同一個「查詢開始」時機,不需要在 handleCategoryClick/
   // handleSearchThisArea 各自呼叫、容易漏掉(城市搜尋框走的是完全不同
   // 的路徑,見 GeoOutlinePanel.tsx 的 onSearch,不經過這個函式)。呼叫端
-  // (GeoOutlinePhoneView.tsx)用這個時機 dispatch
-  // geoListDrawerState.ts 的 'search-started' 事件,讓地點清單抽屜在
-  // 使用者按下查詢的當下就打開、顯示載入中,不用等查詢結果回來。
+  // (GeoOutlinePhoneView.tsx)用這個時機把 listLoading 設 true、把
+  // {type:'list'} push 進 sheetStack,讓地點清單抽屜在使用者按下查詢的
+  // 當下就打開、顯示載入中,不用等查詢結果回來。
   onSearchStart?: () => void
   // hideCategoryTags:類別標籤列(景點/飯店/餐廳/探索)是否隱藏——手機版/
   // 桌面版共用同一個狀態機 geoCategoryTagsState.ts 算出來的
@@ -752,13 +752,31 @@ export function GeoOutlineMap({
   // 呼叫端(GeoOutlinePanel.tsx)的 geocodeCandidates 承接,是這批候選
   // 唯一的資料來源。抽成獨立函式供 handleCategoryClick 與
   // handleSearchThisArea 共用同一份查詢邏輯,不重複維護。
+  // placesQueryRequestIdRef:FE24 修法——runPlacesQuery 原本沒有任何機制
+  // 標記「這是第幾次查詢」,連續點擊不同類別標籤(例如先點「飯店」、還沒
+  // 回來又點「餐廳」)會併發兩支 fetchGeoGeocode 請求,若先發出的「飯店」
+  // 比後發出的「餐廳」晚回來,會用舊結果覆蓋掉使用者最後一次點擊、理應
+  // 顯示的「餐廳」結果——清單/marker 顯示的內容跟搜尋框當下的文字對不
+  // 上,且若先回來的那批剛好只有 1 筆,還會提前把 results-arrived 收掉
+  // loading、甚至直接 replace 成資訊卡(見 GeoOutlinePhoneView.tsx 的
+  // sheetStack 說明),使用者會看到跟自己點擊順序不符的畫面。
+  //
+  // 每次呼叫 runPlacesQuery 就遞增這個 ref、記下「這次查詢的序號」,
+  // .then()/.catch() 回來時比對序號是否還是目前最新的一次——不是的話代表
+  // 呼叫端已經發起過更新的查詢,這批已經過期的結果直接捨棄,不寫入任何
+  // state(含 onGeocodeCandidatesChange/setAreaSearch),讓最後一次點擊
+  // 永遠贏,不論實際完成順序為何。用 ref(而非 state)是因為這個值只在
+  // 事件處理常式與非同步回呼之間傳遞,不需要參與渲染。
+  const placesQueryRequestIdRef = useRef(0)
   const runPlacesQuery = useCallback((query: string, category?: string) => {
     if (!mapRef.current || !query.trim()) return
     const center = mapRef.current.getCenter()
     if (!center) return
     onSearchStart?.()
+    const requestId = ++placesQueryRequestIdRef.current
     fetchGeoGeocode(cfg, query, { lat: center.lat(), lng: center.lng() }, 'restrict', categoryQueryRadiusMeters)
       .then((result) => {
+        if (requestId !== placesQueryRequestIdRef.current) return
         onGeocodeCandidatesChange?.(
           result.candidates.map((c) => ({
             name: c.name,
@@ -772,6 +790,7 @@ export function GeoOutlineMap({
         setAreaSearch((s) => reduceAreaSearchState(s, { type: 'query-succeeded' }))
       })
       .catch(() => {
+        if (requestId !== placesQueryRequestIdRef.current) return
         // 查詢失敗不視為致命錯誤——維持上一次查到的內容即可,不彈錯誤
         // 訊息打斷瀏覽,理由同這個檔案其餘查詢失敗處理的一貫慣例。這裡
         // 額外重置 areaSearch 讓「搜尋這個區域」按鈕重新出現提供重試入口

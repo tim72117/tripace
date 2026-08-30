@@ -82,7 +82,7 @@
 }
 
 .photoPlaceholder {
-  background: linear-gradient(135deg, #C4956A, #9E9488);
+  background: linear-gradient(135deg, var(--ios-sand), var(--ios-gray));
 }
 
 /* 不覆寫 touch-action,說明見上方 .head。 */

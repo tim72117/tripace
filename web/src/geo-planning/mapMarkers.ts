@@ -130,19 +130,28 @@ export function searchResultMarkerContent(
 }
 
 // tripEntryMarkerContent:行程本身已有座標的 entry(見 tripEntries prop)
-// 的 marker 內容 DOM——用全案主色 accent(暖橘,對齊 --color-accent)
-// 搭配一枚小旗子造型,語意是「這裡已經排進行程」,跟分區光暈的暖沙棕、
-// 飯店的森綠、推薦地點的靛藍相機都不同,一眼就能認出「這是我已經
-// 決定要去的點」而非還在探索/推薦階段的候選。尺寸比其餘三種圖層
-// 稍大一階(未選中 24px、選中 30px),因為這是這批圖層裡「已確定」
-// 的內容,理當比還在探索的候選更顯眼一些。
-export function tripEntryMarkerContent(selected: boolean): SVGElement {
+// 的 marker 內容 DOM——用全案主色 accent(暖橘)搭配一枚小旗子造型,語意
+// 是「這裡已經排進行程」,跟分區光暈的暖沙棕、飯店的森綠、推薦地點的
+// 靛藍相機都不同,一眼就能認出「這是我已經決定要去的點」而非還在探索/
+// 推薦階段的候選。尺寸比其餘三種圖層稍大一階(未選中 24px、選中
+// 30px),因為這是這批圖層裡「已確定」的內容,理當比還在探索的候選更
+// 顯眼一些。
+//
+// color 參數:原本這裡直接硬寫 '#C4956A'(暖沙棕)——跟上面註解描述的
+// 「全案主色 accent(暖橘)」不一致,是既有的誤用(混進了 attraction
+// 光暈的顏色),已修正成真正的 accent。這個函式本身是刻意設計成不吃
+// React state 的純函式(見檔案開頭說明),不能自己讀 CSS 變數決定顏色
+// (--color-accent 依主題變化,純函式沒有 DOM 存取權),故改成由呼叫端
+// (useTripEntryMarkers.ts,有 mapRef 可以透過 getDiv() 讀取實際計算值)
+// 解析好顏色字串再傳入,理由同 useAttractionOverlays.ts 對
+// --ios-sand 的讀取方式,兩者是同一套模式。
+export function tripEntryMarkerContent(selected: boolean, color: string): SVGElement {
   const size = selected ? 30 : 24
   const flagSvg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 24 24">' +
     (selected
-      ? '<circle cx="12" cy="12" r="11.5" fill="#C4956A" stroke="#FDFCFA" stroke-width="2"/>'
-      : '<circle cx="12" cy="12" r="11.5" fill="#C4956A"/>') +
+      ? '<circle cx="12" cy="12" r="11.5" fill="' + color + '" stroke="#FDFCFA" stroke-width="2"/>'
+      : '<circle cx="12" cy="12" r="11.5" fill="' + color + '"/>') +
     // 小旗子造型:一根直立旗桿 + 三角形旗面,線條走白色,座標配合
     // 24x24 viewBox,足夠在 24-30px 的小尺寸下清楚辨識。
     '<path d="M9 7v11" stroke="#FDFCFA" stroke-width="1.4" stroke-linecap="round"/>' +

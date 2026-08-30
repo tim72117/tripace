@@ -1,5 +1,5 @@
 import { dayGroupLabel } from './geoCandidateHelpers'
-import { PhoneBottomSheet, SheetHead } from '../components/PhoneBottomSheet'
+import { PhoneBottomSheet, PHONE_BOTTOM_SHEET_EXIT_MS, SheetHead } from '../components/PhoneBottomSheet'
 import styles from './GeoOutlinePhoneDatePickerSheet.module.css'
 
 // SHEET_SNAP_POINTS:單段模式(只有一個值)——這層 sheet 的內容是一份
@@ -84,6 +84,14 @@ export function GeoOutlinePhoneDatePickerSheet({
       backdropStyle={{ position: 'fixed', inset: 0, zIndex: 35, background: 'rgba(0, 0, 0, 0.32)' }}
       isTopmost={isTopmost}
       stackOffsetPx={stackOffsetPx}
+      // exitDurationMs:原本遺漏,導致關閉時是瞬間消失、沒有退場滑出
+      // 動畫,跟資訊卡/地點清單抽屜/候選籃(三者都有帶這個 prop)的節奏
+      // 不一致(使用者實測回報「資訊卡與其他卡片動畫節奏不一樣」)——這個
+      // 呼叫端是容器常駐掛載(open 由 sheetStack gate,不是資料驅動卸載,
+      // 見上方元件說明),不帶這個 prop 時 shouldRender 會在 open 變
+      // false 的當下就同步變 false,PhoneBottomSheet.tsx 直接不渲染
+      // panel,退場動畫完全沒有機會播放。
+      exitDurationMs={PHONE_BOTTOM_SHEET_EXIT_MS}
       head={<SheetHead title="選擇日期" onClose={onClose} />}
     >
       <div className={styles.body}>

@@ -35,9 +35,17 @@ export function useTripEntryMarkers({
   // 先清掉舊的——這批點不受地圖可視範圍篩選(理由同附近推薦地點:
   // 是行程固定的內容,不是依範圍查詢的圖層,全部顯示讓使用者看到完整
   // 的行程分布)。圖示用 tripEntryMarkerContent(暖橘旗子,見該函式的
-  // 說明),一眼分得出「這是已經排進行程的點」。
+  // 說明),一眼分得出「這是已經排進行程的點」——顏色改成執行期讀取
+  // --color-accent(見 mapMarkers.ts 對 color 參數的完整說明),讀取
+  // 目標是地圖容器本身的 DOM(mapRef.current.getDiv()),理由同
+  // useAttractionOverlays.ts 對 --ios-sand 的讀取方式:這個
+  // token 掛在 App.tsx 的 .app-theme-root(.webApp 容器 div)上,不是
+  // <html>/<body>,必須讀 .app-theme-root 子孫節點的 computed style
+  // 才能拿到正確覆寫後的深/淺色版本。
   useEffect(() => {
     if (!mapReady || !mapRef.current) return
+    const mapDiv = mapRef.current.getDiv()
+    const accentColor = getComputedStyle(mapDiv).getPropertyValue('--color-accent').trim() || '#8B3A2F'
     tripEntryMarkersRef.current.forEach((m) => { m.map = null })
     tripEntryMarkersRef.current = tripEntries.map(
       (e) =>
@@ -45,7 +53,7 @@ export function useTripEntryMarkers({
           position: { lat: e.lat, lng: e.lng },
           map: mapRef.current!,
           title: e.name,
-          content: tripEntryMarkerContent(false),
+          content: tripEntryMarkerContent(false, accentColor),
         }),
     )
     return () => {
@@ -58,12 +66,15 @@ export function useTripEntryMarkers({
   // 同步行程 entry marker 的選取樣式,理由與做法同上方飯店/推薦地點
   // 那兩個獨立的 content 同步 effect。
   useEffect(() => {
+    if (!mapRef.current) return
+    const mapDiv = mapRef.current.getDiv()
+    const accentColor = getComputedStyle(mapDiv).getPropertyValue('--color-accent').trim() || '#8B3A2F'
     tripEntries.forEach((e, i) => {
       const marker = tripEntryMarkersRef.current[i]
       if (!marker) return
       const key = geoItemKey('entry', e)
       const selected = isMarkerSelected(key, selectedKey, hoverKey)
-      marker.content = tripEntryMarkerContent(selected)
+      marker.content = tripEntryMarkerContent(selected, accentColor)
       marker.zIndex = selected ? 999 : null
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps

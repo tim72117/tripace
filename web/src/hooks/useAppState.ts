@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import type { ClientConfig } from '../api'
 import type { Trip } from '../trip/types'
 import type { User } from '../user/types'
-import { BASE_URL } from '../AppCommon'
+import { BASE_URL, LS_DEFAULT_TRIP } from '../AppCommon'
 import { type Theme, THEME_KEY, getTheme } from '../theme'
 
 // 登入身分存 localStorage:跨分頁共用同一身分(一般網站慣例)。
@@ -34,16 +34,24 @@ export function useAppState() {
     setEmail(mail)
   }, [])
 
+  const [activeTrip, setActiveTrip] = useState<Trip | null>(null)
+
+  // onLogout:除了清空 auth 三項(token/user/email),也要清掉
+  // activeTrip/LS_DEFAULT_TRIP——否則登出後換帳號登入,舊帳號選過的旅程
+  // (activeTrip 這個 state、以及 localStorage 記住的預設旅程 ID)會原封
+  // 不動留著,新帳號一登入就會拿著上一位使用者的 tripID 建 WebSocket、
+  // 呼叫 fetchEntries(該旅程不屬於新帳號,後端回 403),畫面標題還會短暫
+  // 顯示前一位使用者的旅程名稱,直到使用者自己手動切換旅程才會發現不對。
   const onLogout = useCallback(() => {
     localStorage.removeItem(AUTH_TOKEN_KEY)
     localStorage.removeItem(AUTH_USER_KEY)
     localStorage.removeItem(AUTH_EMAIL_KEY)
+    localStorage.removeItem(LS_DEFAULT_TRIP)
     setToken(null)
     setUser(null)
     setEmail('')
+    setActiveTrip(null)
   }, [])
-
-  const [activeTrip, setActiveTrip] = useState<Trip | null>(null)
 
   // theme:登入後 App 的深色/淺色模式偏好,見 theme.ts 開頭說明。狀態提升到
   // 這裡(而非留在 App.tsx 或掛載點元件本地)是因為要被 App.tsx(掛在

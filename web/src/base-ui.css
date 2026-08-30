@@ -21,6 +21,12 @@
   --ios-red-bg: #fff3f2;         /* components/Banner.tsx 底色 */
   --ios-red-border: #ffd9d6;     /* components/Banner.tsx 邊框 */
   --btn-primary-disabled: #D9C4AA; /* components/Button.tsx variant="primary" disabled 底色 */
+  --ios-sand: #C4956A; /* 暖沙棕——景點區域地圖光暈/佔位圓/範圍圓圈、
+    行程 entry marker 旗子、推薦地點裝飾漸層共用色,見 base-ui.css 開頭
+    深色 token 區塊的說明。原本 8 個檔案各自硬寫這個十六進位色碼、完全
+    不跟隨夜間模式切換(使用者實測回報「夜間版 attraction 底圖上的點
+    顏色有問題」),收斂成 token 後才能在深色模式下換成對比度足夠的
+    版本。 */
 }
 
 /* 登入後 App(PhoneContent.tsx/DesktopLayout.tsx 及底下畫面)的深色模式
@@ -59,6 +65,7 @@
     --ios-red-bg: #3A2420;
     --ios-red-border: #5A342C;
     --btn-primary-disabled: #4A3E30;
+    --ios-sand: #D9A97D;
   }
   /* body 本身不是 .app-theme-root 的後代(是其祖先/兄弟,見 App.tsx 的
      DOM 結構說明),所以上面那組 --ios-bg 覆寫不會影響 body { background }
@@ -89,6 +96,7 @@
   --ios-red-bg: #3A2420;
   --ios-red-border: #5A342C;
   --btn-primary-disabled: #4A3E30;
+  --ios-sand: #D9A97D;
 }
 /* 使用者手動選「夜間模式」時,同理覆寫 body 的 background——理由同上方
    media query 內的說明,:has() 守衛確保只在 body 內確實掛著

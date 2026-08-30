@@ -124,8 +124,29 @@ export function useAttractionOverlays({
   // 清邁的古城區/尼曼區,見 server/internal/geo/district_aliases.go)
   // 才畫——這類區域沒有官方邊界資料,圓圈只是「大概這一帶」的粗略
   // 示意,故用低透明度填色+淡邊框,刻意不搶過光暈與標籤的視覺焦點。
+  //
+  // 顏色改成執行期讀取 --ios-sand 這個 CSS token(見 base-ui.css
+  // 的完整說明),取代原本硬寫的 '#C4956A'——google.maps.Circle 是原生
+  // Google Maps 物件,fillColor/strokeColor 只吃真正的色碼字串,不能直接
+  // 傳 CSS 變數,故用 getComputedStyle 在建立圓圈的當下讀取實際解析到的
+  // token 值。讀取目標是 mapRef.current.getDiv()(地圖本身的 DOM 容器),
+  // 不是 document.documentElement——--ios-sand 這個 token 掛在
+  // App.tsx 的 .app-theme-root(見該檔案的說明),是 .webApp 容器 div 上
+  // 的 class,不是 <html> 元素,CSS 變數不會從子孫節點反向繼承到祖先,
+  // 讀 document.documentElement 只會拿到未定義的空字串(退回硬寫的
+  // fallback,等於白改)。地圖容器本身在 DOM 樹上是 .app-theme-root 的
+  // 子孫,讀它的 computed style 才能拿到正確覆寫後的深/淺色版本,不需要
+  // 這個 hook 自己另外接收 theme prop 或重新判斷主題邏輯。這個 effect
+  // 本來就依賴 filteredAttractions 重新執行(新一批景點區域資料進來就
+  // 重畫圓圈),不需要額外的 theme 依賴——使用者切換主題不會立即重畫
+  // 既有圓圈,但下一次資料變動(例如重新搜尋、切換地圖範圍)自然會用
+  // 當下的主題色重建,對齊這批圓圈本身「資料驅動、非常駐」的既有設計,
+  // 不需要為了即時切換主題這個次要情境額外監聽 data-theme 變化。
   useEffect(() => {
     if (!mapReady || !mapRef.current) return
+    const mapDiv = mapRef.current.getDiv()
+    const attractionColor =
+      getComputedStyle(mapDiv).getPropertyValue('--ios-sand').trim() || '#C4956A'
     radiusCirclesRef.current.forEach((c) => c.setMap(null))
     radiusCirclesRef.current = filteredAttractions
       .filter((d) => d.radiusMeters && d.radiusMeters > 0)
@@ -135,9 +156,9 @@ export function useAttractionOverlays({
             center: { lat: d.lat, lng: d.lng },
             radius: d.radiusMeters,
             map: mapRef.current!,
-            fillColor: '#C4956A',
+            fillColor: attractionColor,
             fillOpacity: 0.08,
-            strokeColor: '#C4956A',
+            strokeColor: attractionColor,
             strokeOpacity: 0.35,
             strokeWeight: 1,
             clickable: false,

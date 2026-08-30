@@ -68,6 +68,7 @@ export function ChatScreen({
   mobileHeader: _mobileHeader,
   onTimelineData,
   desktopChat,
+  open,
 }: {
   cfg: ClientConfig
   // trip:可不傳——對話小匡在使用者尚未選定/建立旅程時仍要能用(見
@@ -101,6 +102,25 @@ export function ChatScreen({
   // 只想鏡像資料,不想連帶把手機版的訊息呈現也切成桌面版那套。
   onTimelineData?: (data: DesktopTimelineMirror) => void
   desktopChat?: DesktopChatOptions
+  // open:這個對話疊加層目前是否真的顯示給使用者看(手機版由
+  // PhoneContent.tsx 的 chatSheetOpen 傳入;桌面版對話小匡永遠掛載且
+  // 常駐可見,見 DesktopLayout.tsx 的 .chatPopoverHidden 說明,不需要
+  // 這個 prop 判斷,不傳時預設 undefined、視同不自動聚焦)。
+  //
+  // FE23:原本輸入框用 <input autoFocus>,但 ChatScreen 走 keepMounted
+  // 常駐掛載(見 PhoneContent.tsx 對 chatElement 的說明,避免每次開關
+  // 對話都重新連線 WebSocket)。切換旅程時 key={activeTrip?.id} 改變,
+  // 觸發整個 ChatScreen 重新掛載——即使當下對話疊加層是關閉的
+  // (chatSheetOpen === false,靠 translateY 位移到畫面外,見
+  // PhoneBottomSheet.tsx 的 hasOpenedRef 說明:使用者開過一次對話後,
+  // 面板不再套用 visibility: hidden 這層保底機制),重新掛載的
+  // <input autoFocus> 仍會觸發瀏覽器原生聚焦,元素在 DOM 上依然可以被
+  // 聚焦、只是視覺上被移出畫面外——手機瀏覽器對聚焦中的輸入框會自動
+  // 彈出虛擬鍵盤,連帶讓 App.tsx 的 useKeyboardShrink 縮小根容器高度、
+  // 地圖跟著跳動,即使使用者根本沒有打開對話。改成不用 autoFocus,只在
+  // 這個 prop 從 false 變 true(疊加層真的被使用者打開的那一刻)才用
+  // ref 手動聚焦(見下方 useEffect),重新掛載但疊加層仍關閉時不會誤觸發。
+  open?: boolean
 }) {
   // owner 輸入=發訊息;成員輸入=語意查詢(回答顯示在訊息流,對齊 iOS App)。
   // 無 trip 時視同 owner(輸入直接送出對話,不是語意查詢——沒有旅程可查)。
@@ -120,6 +140,14 @@ export function ChatScreen({
   // WS 收到 entry_updating 加入(並保證最短顯示 800ms),entries_updated(更新完成刷新)時清空。
   const [updatingEntryIDs, setUpdatingEntryIDs] = useState<Set<string>>(new Set())
   const [draft, setDraft] = useState('')
+  // inputRef/聚焦 effect:取代原本的 <input autoFocus>——見 open prop 的
+  // 完整說明(FE23)。只在 open 從 false 變 true(疊加層真的被打開)時才
+  // 手動聚焦,重新掛載(切旅程)但疊加層仍是關閉狀態不會誤觸發聚焦、連帶
+  // 彈出虛擬鍵盤。
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (open) inputRef.current?.focus()
+  }, [open])
   // loaded:這個旅程的 load() 是否已完成過一次(見 load() 的 finally)。
   const [loaded, setLoaded] = useState(false)
   // ask_user:agent 缺資訊(如住宿退房日)時,透過 WS 推來的請求;非 null 時前端開對應 UI。
@@ -566,7 +594,7 @@ export function ChatScreen({
               </button>
             )}
             <input
-              autoFocus
+              ref={inputRef}
               value={draft}
               placeholder="輸入訊息…"
               onChange={(e) => setDraft(e.target.value)}

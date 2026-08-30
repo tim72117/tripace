@@ -329,7 +329,13 @@
    但這裡明確寫死——光暈是 140px 絕對定位、範圍比 56px 的地標圖大得多,
    物理上會蓋在地標圖旁邊(甚至跟相鄰景點區域的光暈重疊),明確宣告不可
    互動,避免依賴繼承推斷、日後改動父層規則時意外變成可點擊、擋掉
-   底下地標圖的點擊事件。 */
+   底下地標圖的點擊事件。
+   原本三段透明度直接寫死 rgba(196, 149, 106, X)(#C4956A 的 RGB 展開值),
+   完全不跟隨夜間模式切換(使用者實測回報「夜間版 attraction 底圖上的
+   點顏色有問題」)。改用 color-mix()(對齊 GeoCandidateSidebar.module.css/
+   DatePickerPopover.module.css 已有的既有寫法)套上 --ios-sand
+   token——CSS 變數不能直接塞進 rgba() 的參數位置,color-mix() 是目前
+   瀏覽器支援下能讓 token 值攜帶透明度漸層的正確做法。 */
 :global(.geo-attraction-glow) {
   position: absolute;
   bottom: -20px;
@@ -338,7 +344,12 @@
   width: 140px;
   height: 140px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(196, 149, 106, 0.32) 0%, rgba(196, 149, 106, 0.14) 45%, rgba(196, 149, 106, 0) 72%);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--ios-sand) 32%, transparent) 0%,
+    color-mix(in srgb, var(--ios-sand) 14%, transparent) 45%,
+    transparent 72%
+  );
   filter: blur(2px);
   animation: glowFadeIn 900ms ease-out;
   pointer-events: none;
@@ -385,7 +396,7 @@
   border-radius: 50%;
   pointer-events: auto;
   cursor: pointer;
-  background: linear-gradient(135deg, #C4956A, #9E9488);
+  background: linear-gradient(135deg, var(--ios-sand), var(--ios-gray));
   border: 2px solid var(--ios-card);
   box-shadow: 0 2px 8px rgba(61, 53, 48, 0.18);
 }
@@ -451,12 +462,21 @@
 /* 白話地名標籤:即現無延遲(構想 6 定案——標籤只是把既有地名貼回它
    本該在的位置,不算推薦,老手掃一眼也不覺得被擋),字級克制、
    不用粗體搶戲。pointer-events: none 明確寫死,理由同 .geo-attraction-glow
-   ——不依賴從父層繼承推斷,標籤本身不該可互動。 */
+   ——不依賴從父層繼承推斷,標籤本身不該可互動。
+   原本 background 直接寫死 rgba(253, 252, 250, 0.88)(卡片白的展開值),
+   不跟隨夜間模式切換——夜間模式下這塊底色仍是接近全白,配上同樣沒切換
+   深色的 color: var(--color-dark)(夜間模式下 --color-dark 會變成淺色文字)
+   會變成「淺色文字疊在淺色底上」,幾乎看不清文字,這正是使用者回報
+   「日夜間地標文字底色都有問題」的根因:日間模式只是碰巧數值跟
+   --ios-card 淺色版接近而看起來正常,夜間模式則直接不可讀。改用
+   color-mix() 疊 --ios-card token(理由同 .geo-attraction-glow 的做法),
+   讓底色跟著主題正確切換,底色與文字色永遠出自同一套主題色階,不會再
+   錯配。 */
 :global(.geo-attraction-label) {
   margin-top: 6px;
   padding: 3px 10px;
   border-radius: 10px;
-  background: rgba(253, 252, 250, 0.88);
+  background: color-mix(in srgb, var(--ios-card) 88%, transparent);
   color: var(--color-dark);
   font-size: 12px;
   font-weight: 500;
