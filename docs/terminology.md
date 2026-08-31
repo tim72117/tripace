@@ -40,7 +40,7 @@
 | 主顯示（規劃地圖） | 無獨立標題，固定顯示規劃地圖 | `GeoOutlinePhoneView`（`web/src/geo-planning/GeoOutlinePhoneView.tsx`），唯一常駐主畫面，不再有可切換的分頁模式（規劃地圖已不再有獨立 feature flag，見下方「地理輪廓底圖」一節） | — | — |
 | 底部導覽列 | 「旅程列表」按鈕 tooltip；「對話」按鈕 tooltip | 螢幕下緣常駐的分頁列（旅程／對話，各自獨立開關疊加層，不是互斥分頁）；`PhoneTabBar`（`PhoneTabBar.tsx`），不需開抽屜即可見 | — | — |
 | 旅程列表抽屜 | 標題「旅程列表」 | `PhoneTripsDrawer`（`web/src/trip/PhoneTripsDrawer.tsx`），由底部導覽列「旅程」按鈕開關，每筆項目的「管理」按鈕開啟 `TripManageModal` | — | — |
-| 對話疊加層 | 標題為旅程名稱（未選旅程時顯示「Tripace」） | `PhoneContent.tsx` 內建的 `PhoneBottomSheet`，由底部導覽列「對話」按鈕開關（`chatSheetOpen`）；`ChatScreen` 永遠掛載、透過 React Portal 投影進疊加層內部的投影目標容器，關閉時不卸載，避免 WebSocket 重新連線；不需先選旅程即可使用 | — | — |
+| 對話疊加層 | 標題為旅程名稱（未選旅程時顯示「Tripace」） | `PhoneContent.tsx` 內建的 `PhoneBottomSheet`，由底部導覽列「對話」按鈕開關（`chatSheetOpen`）；`ChatScreen` 直接放在 `PhoneBottomSheet` 的 `children` 裡，搭配該元件的 `keepMounted` prop 讓它即使關閉也不卸載（只用位移隱藏），避免 WebSocket 重新連線——原本改用 React Portal 投影達到同樣效果，但 portal 內容在 React 元件樹上跟 `PhoneBottomSheet` 是平行兄弟節點、導致觸控事件無法冒泡到拖曳手勢，故已改用 `keepMounted` 取代；不需先選旅程即可使用 | — | — |
 | 配速表疊加層 | 標題為旅程名稱（未選旅程時顯示「Tripace」） | `PhoneContent.tsx` 內建的 `PhoneBottomSheet`，由右側工具列「路徑」按鈕開關（`paceSheetOpen`），內嵌 `PaceRouteMap`；跟對話不同，關閉時直接卸載（無需保持連線） | — | — |
 | 右側工具列 | （無文字，純圖示列） | 疊在畫面右下角的路徑／demo-* 小圖示群組；`PhoneSideTools`（`PhoneSideTools.tsx`），每個項目自帶 `onClick`（不再是統一切換分頁模式） | — | — |
 | 規劃地圖清單抽屜 | 標題「地點」 | `GeoOutlinePhoneListDrawer`（`web/src/geo-planning/GeoOutlinePhoneListDrawer.tsx`），飯店/推薦地點/搜尋結果三種來源合併成單一清單（同桌面版 `GeoHotelSidebar`，不分頁）；觸發搜尋的同一刻即開啟並顯示載入中，不等查詢結果回來才開啟，但查到唯一解時清單不顯示、直接開啟地點介紹卡（見下一列） | — | — |

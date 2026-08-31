@@ -180,7 +180,7 @@ Response:
 
 - `editable` 欄位、DB 欄位、`POST`/`GET /v1/trips/{id}/public-link` 的讀寫 API 都還在，UI 開關也還能切換、還會被存下來。
 - 但**沒有任何後端路徑會讀這個旗標去做權限判斷**——切成 `editable = true` 不會讓任何人透過公開連結寫入行程，這個開關目前形同虛設。
-- 前端對話（`ChatScreen.tsx`）走 onagent 平台（`web/src/useOnagentChatBridge.ts`），採全域單一連線（`APP_ID = 'tripace'`），不區分「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」——現在**沒有任何機制**能讓匿名訪客透過公開連結寫入行程，不論 `editable` 開關切成什麼。
+- 前端對話（`ChatScreen.tsx`）走 onagent 平台（`web/src/chat/useOnagentChatBridge.ts`），採全域單一連線（`APP_ID = 'tripace'`），不區分「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」——現在**沒有任何機制**能讓匿名訪客透過公開連結寫入行程，不論 `editable` 開關切成什麼。
 
 | | 唯讀連結 | editable 連結 |
 |---|---|---|

@@ -125,8 +125,8 @@
 - **現況（2026-08-16）**：本次未覆核，狀態延續原記錄。
 - **建議修法**：找時機同步版本，避免越拖越難統一。
 
-### F18 ⚪ `web/src/ChatScreen.tsx`（911 行）是目前前端最大單一檔案
-- **位置**：`web/src/ChatScreen.tsx`
+### F18 ⚪ `web/src/chat/ChatScreen.tsx`（911 行，記錄當時路徑為 `web/src/ChatScreen.tsx`，該檔案已搬到 `chat/` 子目錄）是目前前端最大單一檔案
+- **位置**：`web/src/chat/ChatScreen.tsx`
 - **問題**：已有過一次拆分嘗試（commit `9b0b425`），但行數不減反增，目前是前端最大的單一檔案，值得再排一輪拆分。
 - **首次記錄**：`docs/PROJECT_HEALTH_REVIEW.md`「程式碼組織」章節。
 - **現況（2026-08-16）**：本次未覆核行數是否有變化，狀態延續原記錄。
@@ -199,7 +199,7 @@
 - **建議修法**：引入狀態管理（Context + useReducer 或 Zustand），消除 prop drilling；伺服器狀態改用 TanStack Query；加 code splitting（`lazy`/`Suspense`）。
 
 ### F28 🟡 記憶化嚴重不足，`Timeline.tsx` 等元件零 `useMemo`/`useCallback`/`memo`
-- **位置**：`web/src/Timeline.tsx`（539 行）等 7 個元件；`web/src/`（99 處 inline `style={{...}}`）
+- **位置**：`web/src/timeline/Timeline.tsx`（記錄當時路徑為 `web/src/Timeline.tsx`，該檔案已搬到 `timeline/` 子目錄，539 行）等 7 個元件；`web/src/`（99 處 inline `style={{...}}`）
 - **問題**：`Timeline.tsx` 零 `useMemo`/`useCallback`/`memo`，`MultiTrackTimeline` 每次 render 都重建整棵列表。`MessageBubble.tsx` 等 7 個元件同樣零記憶化，無 `React.memo`，每次 WS 事件更新 state，整棵 Timeline + 所有 MessageBubble 全部重繪。99 處 inline `style={{...}}` 每次 render 新建參考，破壞任何下游 memo 效果。
 - **首次記錄**：`docs/architecture-review-2026-07.md`「3.2 效能」。
 - **現況（2026-08-16）**：本次未安排 verifier 覆核，狀態延續原記錄。
@@ -220,7 +220,7 @@
 - **建議修法**（長期）：用 OpenAPI 當單一真實來源，前後端型別都從 spec codegen；前端 API 回應加 zod 執行期驗證。
 
 ### F31 ⚪ 純全域 CSS，無 scope 隔離，斷點魔數重複
-- **位置**：`web/src/styles.css`（2,475 行）+ `landing.css` + `debug.css`；`web/src/App.tsx:76`（`DESKTOP_BREAKPOINT = 768`）
+- **位置**：記錄當時是單一 `web/src/styles.css`（2,475 行）+ `landing.css` + `debug.css`；`web/src/App.tsx:76`（`DESKTOP_BREAKPOINT = 768`）。**`styles.css` 本身已不存在**——已拆分為 `base-ui.css` 加多個 CSS Module（commit `313a90a`，2026-08-16 前後），這項拆分本身可能已改善「純全域 CSS、無 scope 隔離」的問題核心，但本次未安排 verifier 覆核實際改善程度，僅確認檔案路徑已變動。
 - **問題**：純全域 CSS，無 CSS Modules / Tailwind / CSS-in-JS，類名靠約定，無 scope 隔離。有初步 design token（12 個 CSS 變數），但無 spacing / typography / radius / shadow scale，大量硬編碼數值。斷點魔數重複：`App.tsx:76 DESKTOP_BREAKPOINT = 768` 註解自承「需與 styles.css 的 @media 一致」——手動同步的耦合。
 - **首次記錄**：`docs/architecture-review-2026-07.md`「3.5 樣式」。
 - **現況（2026-08-16）**：本次未安排 verifier 覆核，狀態延續原記錄。此章節與 [[313a90a]]（桌面版對話小匡與行程管理重構，CSS 依歸屬拆分為按需引入模組）commit 有部分重疊，下次稽核應確認該次重構是否已緩解「純全域 CSS」問題。
