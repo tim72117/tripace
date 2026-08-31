@@ -11,10 +11,11 @@
 # GOOGLE_MAPS_MAP_ID(前端 GeoOutlineMap.tsx 的 AdvancedMarkerElement 要求
 # 的地圖樣式 ID)、VITE_ONAGENT_APP_KEY(前端 onagent 平台 tripace app 的
 # apiKey)、PEXELS_API_KEY(後端地圖照片查詢的優先來源,見 geo_outline.go
-# 的 os.Getenv("PEXELS_API_KEY") 呼叫處)是五組獨立的金鑰/識別碼,不同
-# 用途、不同申請/輪替方式,互不影響。這支腳本目前是 Cloud Run
-# (shuttle-045094509 專案)唯一設定它們的地方,故一併整合進來,不另外開
-# 一支腳本。
+# 的 os.Getenv("PEXELS_API_KEY") 呼叫處)、GOOGLE_OAUTH_CLIENT_ID(前端
+# Google 登入 GSI 模式與後端 idtoken.Validate 共用的 OAuth 用戶端 ID,見
+# server/internal/auth/google.go)是六組獨立的金鑰/識別碼,不同用途、不同
+# 申請/輪替方式,互不影響。這支腳本目前是 Cloud Run(shuttle-045094509
+# 專案)唯一設定它們的地方,故一併整合進來,不另外開一支腳本。
 #
 # PEXELS_API_KEY 跟 GOOGLE_MAPS_MAP_ID/VITE_ONAGENT_APP_KEY 一樣只支援
 # 貼上既有值(Pexels 沒有 gcloud 現場申請機制,不像 GOOGLE_PLACES_API_KEY/
@@ -48,6 +49,7 @@
 #   bash server/scripts/update-secret-manager.sh -map-id              # 只處理 GOOGLE_MAPS_MAP_ID
 #   bash server/scripts/update-secret-manager.sh -onagent             # 只處理 VITE_ONAGENT_APP_KEY
 #   bash server/scripts/update-secret-manager.sh -pexels              # 只處理 PEXELS_API_KEY
+#   bash server/scripts/update-secret-manager.sh -oauth-client-id      # 只處理 GOOGLE_OAUTH_CLIENT_ID
 #   bash server/scripts/update-secret-manager.sh -cleanup-legacy-provider
 #       # 刪除已隨 want 移除而不再使用的 ANTHROPIC_API_KEY/GOOGLE_API_KEY
 #       # secret 容器(互動逐一確認,不影響上面四種一般用法)——刻意獨立成
@@ -71,6 +73,7 @@ print_usage() {
   -map-id                  只處理 GOOGLE_MAPS_MAP_ID
   -onagent                 只處理 VITE_ONAGENT_APP_KEY
   -pexels                  只處理 PEXELS_API_KEY
+  -oauth-client-id         只處理 GOOGLE_OAUTH_CLIENT_ID
   -cleanup-legacy-provider 刪除已隨 want 移除而不再使用的
                            ANTHROPIC_API_KEY/GOOGLE_API_KEY secret 容器
                            (互動逐一確認,不影響上面四種一般用法)
@@ -83,6 +86,7 @@ DO_MAPS=1
 DO_MAP_ID=1
 DO_ONAGENT=1
 DO_PEXELS=1
+DO_OAUTH_CLIENT_ID=1
 DO_CLEANUP_LEGACY_PROVIDER=0
 case "${1:-}" in
   -places)
@@ -90,30 +94,42 @@ case "${1:-}" in
     DO_MAP_ID=0
     DO_ONAGENT=0
     DO_PEXELS=0
+    DO_OAUTH_CLIENT_ID=0
     ;;
   -maps)
     DO_PLACES=0
     DO_MAP_ID=0
     DO_ONAGENT=0
     DO_PEXELS=0
+    DO_OAUTH_CLIENT_ID=0
     ;;
   -map-id)
     DO_PLACES=0
     DO_MAPS=0
     DO_ONAGENT=0
     DO_PEXELS=0
+    DO_OAUTH_CLIENT_ID=0
     ;;
   -onagent)
     DO_PLACES=0
     DO_MAPS=0
     DO_MAP_ID=0
     DO_PEXELS=0
+    DO_OAUTH_CLIENT_ID=0
     ;;
   -pexels)
     DO_PLACES=0
     DO_MAPS=0
     DO_MAP_ID=0
     DO_ONAGENT=0
+    DO_OAUTH_CLIENT_ID=0
+    ;;
+  -oauth-client-id)
+    DO_PLACES=0
+    DO_MAPS=0
+    DO_MAP_ID=0
+    DO_ONAGENT=0
+    DO_PEXELS=0
     ;;
   -cleanup-legacy-provider)
     DO_PLACES=0
@@ -121,6 +137,7 @@ case "${1:-}" in
     DO_MAP_ID=0
     DO_ONAGENT=0
     DO_PEXELS=0
+    DO_OAUTH_CLIENT_ID=0
     DO_CLEANUP_LEGACY_PROVIDER=1
     ;;
   -h|--help)
@@ -408,8 +425,30 @@ if [[ "${DO_PEXELS}" == "1" ]]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 6. 摘要 —— 只印出這次實際有跑過的類型，避免 -places/-maps/-onagent/-pexels
-#    單獨執行時印出沒處理過的項目。
+# 5c. GOOGLE_OAUTH_CLIENT_ID —— Google 登入(GSI 模式)用的 OAuth 用戶端
+#     ID,前端 useGoogleSignIn.ts/LoginForm.tsx 與後端
+#     server/internal/auth/google.go 的 idtoken.Validate 共用同一組值(見
+#     server/cmd/server/main.go 讀 GOOGLE_OAUTH_CLIENT_ID 環境變數的呼叫
+#     處)。不像 GOOGLE_MAPS_MAP_ID/VITE_ONAGENT_APP_KEY 只在前端 build 時
+#     期需要——這把值同時是「Cloud Run 執行期環境變數」(後端驗證 ID
+#     Token 時讀)也是「build-time --build-arg」(前端 bundle 需要編入,
+#     見 Dockerfile 的 VITE_GOOGLE_OAUTH_CLIENT_ID ARG),兩份
+#     deploy-*.yml 都同時需要「build 前先讀出當 --build-arg」與
+#     「--update-secrets 帶進 Cloud Run 執行期」兩處,已一併補上,不像
+#     PEXELS_API_KEY 當初漏掉需要事後補。跟 GOOGLE_MAPS_MAP_ID 一樣沒有
+#     現場申請機制,只支援貼上既有值——到 Google Cloud Console →
+#     API 和服務 → 憑證 → 建立 OAuth 用戶端 ID(應用程式類型選「網頁
+#     應用程式」)取得。只在 -oauth-client-id 或不帶參數(全部處理)時
+#     執行。
+# -----------------------------------------------------------------------------
+if [[ "${DO_OAUTH_CLIENT_ID}" == "1" ]]; then
+  upsert_secret "GOOGLE_OAUTH_CLIENT_ID" "GOOGLE_OAUTH_CLIENT_ID(GCP Console → API 和服務 → 憑證 → OAuth 用戶端 ID)"
+  echo
+fi
+
+# -----------------------------------------------------------------------------
+# 6. 摘要 —— 只印出這次實際有跑過的類型，避免 -places/-maps/-onagent/-pexels/
+#    -oauth-client-id 單獨執行時印出沒處理過的項目。
 # -----------------------------------------------------------------------------
 echo "=============================================="
 echo " 完成。"
@@ -435,6 +474,12 @@ fi
 if [[ "${DO_PEXELS}" == "1" ]]; then
   echo "   (secret: PEXELS_API_KEY，記得同步更新 deploy-cloudrun.yml/"
   echo "    deploy-with-migration.yml 的 --update-secrets 清單才會真的生效)"
+fi
+
+if [[ "${DO_OAUTH_CLIENT_ID}" == "1" ]]; then
+  echo "   (secret: GOOGLE_OAUTH_CLIENT_ID，deploy-cloudrun.yml/"
+  echo "    deploy-with-migration.yml 的 build 階段(--build-arg)與"
+  echo "    --update-secrets 皆已接上，無需另外同步)"
 fi
 
 echo

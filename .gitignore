@@ -55,3 +55,8 @@ xcuserdata/
 DerivedData/
 
 # 注意:web/ 有自己的 .gitignore(node_modules、dist 等)
+
+# marketing/ 是獨立的 git repo(內含自己的 .git),巢狀在這個專案目錄底下
+# 但跟 tripace 產品本身無關——不能讓外層這個 repo 把它當一般目錄追蹤
+# 內容(那樣會把它自己的 .git 一併掃進來,狀態會很奇怪),整個排除。
+marketing/

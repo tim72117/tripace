@@ -42,6 +42,16 @@ ARG VITE_ONAGENT_APP_KEY
 ARG VITE_ONAGENT_URL
 ENV VITE_ONAGENT_APP_KEY=${VITE_ONAGENT_APP_KEY}
 ENV VITE_ONAGENT_URL=${VITE_ONAGENT_URL}
+# VITE_GOOGLE_OAUTH_CLIENT_ID:Google 帳號登入(GSI 模式,LoginForm.tsx/
+# useGoogleSignIn.ts)用的 OAuth 用戶端 ID——不是機密（Google OAuth client
+# ID 設計上本來就會出現在前端程式碼裡，真正的機密是後端才有的
+# GOOGLE_OAUTH_CLIENT_SECRET，但這裡沒有用到 client secret，tripace 走的
+# 是後端用 idtoken.Validate 驗證 ID Token 的 GSI 模式，見
+# server/internal/auth/google.go），仍放 Secret Manager 集中管理，理由同
+# VITE_GOOGLE_MAPS_MAP_ID：換值只需更新 Secret Manager 版本，不需要另外
+# 同步 GitHub Secrets。由 deploy-cloudrun.yml 讀出後當 --build-arg 傳入。
+ARG VITE_GOOGLE_OAUTH_CLIENT_ID
+ENV VITE_GOOGLE_OAUTH_CLIENT_ID=${VITE_GOOGLE_OAUTH_CLIENT_ID}
 RUN npm run build
 
 # ---- 階段 1b:build admin 後台前端 ----

@@ -101,6 +101,17 @@ jobs:
           echo "::add-mask::$KEY"
           echo "key=$KEY" >> "$GITHUB_OUTPUT"
 
+      # VITE_GOOGLE_OAUTH_CLIENT_ID:Google 登入(GSI 模式)用的 OAuth 用戶端
+      # ID，見 Dockerfile 該 ARG 的說明。同 GOOGLE_MAPS_MAP_ID，不是機密但
+      # 集中放 Secret Manager 管理。
+      - name: Read Google OAuth client ID from Secret Manager
+        if: github.event.inputs.skip_build != 'true'
+        id: google_oauth_client_id
+        run: |
+          CLIENT_ID=$(gcloud secrets versions access latest --secret=GOOGLE_OAUTH_CLIENT_ID --project=${{ env.GCP_PROJECT_ID }})
+          echo "::add-mask::$CLIENT_ID"
+          echo "client_id=$CLIENT_ID" >> "$GITHUB_OUTPUT"
+
       - name: Build Docker image
         if: github.event.inputs.skip_build != 'true'
         run: |
@@ -109,6 +120,7 @@ jobs:
             --build-arg VITE_GOOGLE_MAPS_MAP_ID=${{ steps.maps_map_id.outputs.map_id }} \
             --build-arg VITE_ONAGENT_APP_KEY=${{ steps.onagent_key.outputs.key }} \
             --build-arg VITE_ONAGENT_URL=https://onagent.shuttle.tools \
+            --build-arg VITE_GOOGLE_OAUTH_CLIENT_ID=${{ steps.google_oauth_client_id.outputs.client_id }} \
             -t ${{ env.IMAGE }}:${{ github.sha }} \
             -t ${{ env.IMAGE }}:latest \
             .
@@ -130,7 +142,7 @@ jobs:
             --allow-unauthenticated \
             --add-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
             --update-env-vars=DEV_MODE=false,SEED=false \
-            --update-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,GOOGLE_PLACES_API_KEY=GOOGLE_PLACES_API_KEY:latest,PEXELS_API_KEY=PEXELS_API_KEY:latest \
+            --update-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,GOOGLE_PLACES_API_KEY=GOOGLE_PLACES_API_KEY:latest,PEXELS_API_KEY=PEXELS_API_KEY:latest,GOOGLE_OAUTH_CLIENT_ID=GOOGLE_OAUTH_CLIENT_ID:latest \
             --quiet
 
       - name: Show Cloud Run URL

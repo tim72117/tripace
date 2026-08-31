@@ -147,6 +147,16 @@ jobs:
           echo "::add-mask::$MAP_ID"
           echo "map_id=$MAP_ID" >> "$GITHUB_OUTPUT"
 
+      # 讀 GOOGLE_OAUTH_CLIENT_ID,Google 登入(GSI 模式)用的 OAuth 用戶端
+      # ID(對齊 deploy-cloudrun.yml 的既有做法,見該檔案與 Dockerfile 的
+      # 說明)。
+      - name: Read Google OAuth client ID from Secret Manager
+        id: google_oauth_client_id
+        run: |
+          CLIENT_ID=$(gcloud secrets versions access latest --secret=GOOGLE_OAUTH_CLIENT_ID --project=${{ env.GCP_PROJECT_ID }})
+          echo "::add-mask::$CLIENT_ID"
+          echo "client_id=$CLIENT_ID" >> "$GITHUB_OUTPUT"
+
       # 新版 tripace-server image 先建置、推上 Artifact Registry 待命——
       # 這一步不影響正在運行的正式站(舊 revision 仍在處理流量),可以放心
       # 花時間 build,不需要搶時間。
@@ -155,6 +165,7 @@ jobs:
           docker build \
             --build-arg VITE_GOOGLE_MAPS_API_KEY=${{ steps.maps_key.outputs.key }} \
             --build-arg VITE_GOOGLE_MAPS_MAP_ID=${{ steps.maps_map_id.outputs.map_id }} \
+            --build-arg VITE_GOOGLE_OAUTH_CLIENT_ID=${{ steps.google_oauth_client_id.outputs.client_id }} \
             -t ${{ env.SERVER_IMAGE }}:${{ github.sha }} \
             -t ${{ env.SERVER_IMAGE }}:latest \
             .
@@ -209,7 +220,7 @@ jobs:
             --allow-unauthenticated \
             --add-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
             --update-env-vars=DEV_MODE=false,SEED=false,AI_PROVIDER=googleapis,AI_MODEL=gemini-2.5-flash-lite \
-            --update-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,GOOGLE_API_KEY=GOOGLE_API_KEY:latest,GOOGLE_PLACES_API_KEY=GOOGLE_PLACES_API_KEY:latest,PEXELS_API_KEY=PEXELS_API_KEY:latest \
+            --update-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,GOOGLE_API_KEY=GOOGLE_API_KEY:latest,GOOGLE_PLACES_API_KEY=GOOGLE_PLACES_API_KEY:latest,PEXELS_API_KEY=PEXELS_API_KEY:latest,GOOGLE_OAUTH_CLIENT_ID=GOOGLE_OAUTH_CLIENT_ID:latest \
             --quiet
 
       - name: Show deployment summary
