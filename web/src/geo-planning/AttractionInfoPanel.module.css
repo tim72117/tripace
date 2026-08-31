@@ -153,3 +153,71 @@
 .exploreBtn:hover {
   opacity: 0.88;
 }
+
+/* nearbySection/nearbyTitle/nearbyList/nearbyItem/nearbyItemSelected/
+   nearbyName/nearbyMinutes:散策羅盤「附近景點」清單——列出目前地圖可視
+   範圍內離這個錨點最近的候選景點,點擊後在地圖上畫出手繪感連線(見
+   GeoOutlineMap.tsx 的 useAttractionRibbon)。刻意用細分隔線的列表而非
+   卡片(GeoListItemCard 那種縮圖卡片形式),理由是這裡只需要快速掃視
+   「名稱+分鐘數」做選擇,不需要縮圖——縮圖需要額外的 landmarkPhotoUrl
+   查詢/版面空間,對「挑一個要看關聯的候選」這個任務是干擾而非幫助。 */
+.nearbySection {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ios-bg);
+}
+
+.nearbyTitle {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ios-gray);
+  text-transform: uppercase;
+  margin: 0 0 6px;
+}
+
+.nearbyList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nearbyItem {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background-color 0.12s;
+}
+
+.nearbyItem:hover {
+  background: var(--ios-bg);
+}
+
+.nearbyItemSelected {
+  background: var(--ios-bg);
+}
+
+.nearbyName {
+  font-size: 13px;
+  color: var(--color-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nearbyMinutes {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ios-sand);
+  font-variant-numeric: tabular-nums;
+}

@@ -25,6 +25,9 @@ export function AttractionInfoPanel({
   onClose,
   onExplore,
   shiftBy,
+  nearby,
+  ribbonKey,
+  onSelectNearby,
 }: {
   attraction: GeoAttraction | null
   onClose: () => void
@@ -37,6 +40,22 @@ export function AttractionInfoPanel({
   // GeoHotelSidebar 與對話浮動小匡,由呼叫端判斷目前實際被哪個佔用後
   // 傳入對應值,把卡片推到它左側。
   shiftBy?: 'none' | 'hotel' | 'chat'
+  // nearby:散策羅盤「附近景點」清單——目前地圖可視範圍內離這個錨點最近
+  // 的候選景點,依距離由近到遠排序,由呼叫端(DesktopLayout.tsx)算好
+  // 傳入(見該處 nearbyAttractions 的說明),這個元件不自己查詢/排序。
+  // undefined 或空陣列時不顯示這個區塊——理由同 badges.length > 0 的既有
+  // 判斷,沒有內容時不留一個空標題。
+  nearby?: { attraction: GeoAttraction; minutes: number }[]
+  // ribbonKey:目前選中要畫連線的候選景點名稱(見 geoItemKey 的 key 組成
+  // 慣例,這裡先用景點名稱本身當 key——attraction 沒有像 hotel/place 那樣
+  // 穩定的 id,人工建檔資料才有 id,即時查詢結果沒有,名稱在同一批 nearby
+  // 清單內足以識別)。用來標記清單裡目前選中的那一項,對齊地圖上絲線
+  // 另一端的高亮。
+  ribbonKey?: string | null
+  // onSelectNearby:點擊清單項目觸發——再點一次目前已選中的項目視為取消
+  // (見 AttractionInfoPanel 呼叫這個 prop 時的判斷),讓使用者能收起
+  // 已經看過的連線,不需要额外的關閉按鈕。
+  onSelectNearby?: (attraction: GeoAttraction) => void
 }) {
   if (!attraction) return null
 
@@ -81,6 +100,24 @@ export function AttractionInfoPanel({
             <Compass size={14} strokeWidth={2} />
             探索周邊
           </button>
+          {nearby && nearby.length > 0 && (
+            <div className={styles.nearbySection}>
+              <p className={styles.nearbyTitle}>附近景點</p>
+              <div className={styles.nearbyList}>
+                {nearby.map(({ attraction: n, minutes }) => (
+                  <button
+                    key={n.name}
+                    type="button"
+                    className={`${styles.nearbyItem}${n.name === ribbonKey ? ` ${styles.nearbyItemSelected}` : ''}`}
+                    onClick={() => onSelectNearby?.(n)}
+                  >
+                    <span className={styles.nearbyName}>{n.name}</span>
+                    <span className={styles.nearbyMinutes}>約 {minutes} 分</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
