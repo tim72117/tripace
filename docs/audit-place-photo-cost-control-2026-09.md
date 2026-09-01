@@ -44,6 +44,129 @@ limiting」** 已經記錄「內部端點完全沒有任何請求頻率限制」
 - **R3（多 instance 放大攻擊面）：⚪ 未處理**——新機制同樣只在單一
   process 內生效，維持原文結論。
 
+### 🟡 新發現（R4）：第一次查詢的地點若撞上 `places.get` 限流，會整體降級成空白卡片，Pexels 也不會顯示
+
+**這是本次修補新引入的問題，原始稽核未涵蓋**（因為當時 Pexels/Google 查詢
+還沒有這種耦合關係）。`fetchAndCachePlaceDetails`（`geo_outline.go`）目前
+把「查 Google 文字資訊」（`GetPlaceDetails`，受 `places.get` 拒絕型限流
+保護）與「查 Pexels 照片」（免費、不受任何限流保護）寫成同一支函式裡的
+循序步驟——`GetPlaceDetails` 若被限流拒絕（`ErrRateLimited`），函式立即
+`return error`，**Pexels 查詢完全沒有機會執行**。
+
+對「這個地點從未被查詢過」（`place_details_cache` 沒有這一列）的情況，
+後續走 `buildDegradedPlaceDetailsResponse` 降級時，因為快取列不存在，
+只能回傳完全空殼的 `placeDetailsResponse{}`——使用者會看到一張沒有名稱、
+地址、照片（連 Pexels 這種免費、理應總是能查到的資料也沒有）的空白卡片。
+`places.get` 限流視窗只有 10 秒/1 次，代表**只要 10 秒內有其他人也在
+查詢任一個新地點，這次查詢就會落空**，體驗不算好但不算罕見。
+
+修法方向（未實作，供之後決策）：讓 Pexels 查詢獨立於 `GetPlaceDetails`
+是否成功之外執行（例如就算 Google 文字查詢被限流，仍嘗試查一次 Pexels
+並寫入快取），這樣至少能在沒有名稱/地址的情況下先顯示照片，之後使用者
+重新點擊（觸發新的 `GetPlaceDetails` 嘗試）就能補上文字。
+
+### 🟡 新發現（R5）：快取命中分支完全沒有「Pexels 缺圖時補查」機制，跟 Google 端的持續補圖節奏不對稱
+
+**已實測重現**：手動清空某地點的 `google_place_photos`/`place_pexels_photos`
+兩張表（保留 `place_details_cache` 本身這一列），重新點擊該地點，卡片
+確實顯示為空白（無 Google 圖、無 Pexels 圖）。
+
+根因：`handleGeoPlaceDetails` 快取命中分支（`geo_outline.go` 第 1263 行
+附近）裡，Pexels 照片只是單純的 `ListPlacePexelsPhotos(placeID)` 讀取
+（第 1380 行），**不論讀出來是不是空陣列都直接使用，沒有任何「發現是空的
+就補查一次」的邏輯**——跟同一個分支裡 Google 端「點擊節奏 OR 7 天時間」
+雙觸發、持續嘗試重新確認/補圖的機制形成明顯不對稱。Pexels 查詢只會在
+`fetchAndCachePlaceDetails`（初次查詢，資料庫完全沒有這個 placeID 時）
+發生恰好一次；之後不論這次查詢成功、失敗、或像本次實測一樣資料被清空，
+快取命中分支都不會再嘗試。
+
+觸發情境不只是本次刻意清空資料庫這種人為操作——初次查詢時 Pexels 查無
+結果（`pExels.Search` 回傳 `ok=false`，例如地點名稱在 Pexels 圖庫沒有
+匹配的示意圖）是完全合理、會實際發生的情況，一旦發生，這個地點就永久
+沒有 Pexels 照片可顯示，沒有任何重試機制。
+
+修法方向（未實作，供之後決策）：在快取命中分支比照 Google 端的節奏，
+加上「`PexelsPhotoURLs` 為空且符合觸發條件（例如點擊節奏或時間視窗）時
+補查一次 Pexels」的邏輯——Pexels API 免費，不需要跟 Google 端一樣嚴格
+的節流保護，可以用比 Google 端更寬鬆的觸發頻率（甚至「只要目前是空的
+就每次點擊都嘗試」也是可接受的成本，因為沒有計費風險，只是要避免真的
+查無結果時每次點擊都重複打 Pexels API 造成不必要的外部呼叫）。
+
+### 🔴 新發現（R6）：`textStale` 與照片補圖判斷共用同一個限流 key，兩者同時觸發時照片補圖必然被自家限流器擋下
+
+**這是這次新增速率限制機制自己造成的自我矛盾，嚴重度高於 R4/R5——不是
+邊界情況才發生，是「兩個判斷式同時成立」時 100% 必然發生，不是機率性
+問題。**
+
+根因（已逐行追查程式碼與 endpoint 字串確認）：
+
+- `GetPlaceDetails`（`textStale` 分支使用，`geo_outline.go` 第 1220 行）
+  與 `ListPlacePhotoRefs`（照片補圖判斷使用，第 1320 行）在
+  `server/internal/geo/places.go` 底層都呼叫
+  `c.gateway.Do(ctx, req, "places.get", ...)`——**共用完全相同的 endpoint
+  字串 `"places.get"`**。
+- 兩者都透過 `s.newPlaceDetailsClient(apiKey)`（預設即 `geo.New`）取得
+  client，而 `geo.New` 內部使用的是 process 唯一的單例
+  `defaultGateway()`——這代表兩者**共用同一個 `apigateway.Gateway`
+  實例，也共用同一個掛在其上的 `RateLimiter` 實例**。
+- 這次修補設定 `places.get` 的拒絕型限流視窗是 **10 秒最多 1 次**
+  （`geo.RateLimitConfig`／`main.go` 預設值）。
+- 「逐項結論」問題 4 已經記錄過：`textStale`（第 1206 行）與
+  `clickTriggered || timeTriggered`（第 1305 行）是兩個獨立求值的判斷式，
+  程式碼**允許兩者在同一次請求中都成立**（這是原始設計刻意如此，且有
+  詳細註解解釋為什麼不能綁在一起）。
+
+當兩者確實在同一次請求中都成立時，執行順序是：
+
+1. 第 1206 行 `textStale` 分支先執行，呼叫 `GetPlaceDetails`（`places.get`）
+   ——**用掉這 10 秒視窗僅有的 1 次額度**。
+2. 第 1305 行照片補圖分支接著執行，呼叫 `ListPlacePhotoRefs`（同樣是
+   `places.get`）——**此時同一個 `RateLimiter` 已經沒有額度可放行**，
+   必然回傳 `apigateway.ErrRateLimited`。
+3. 第 1321 行 `if refsErr == nil` 為假，整段照片補圖邏輯被**吞掉錯誤、
+   略過**——不是因為判斷「這次不該補圖」，而是被同一次請求裡稍早那次
+   `GetPlaceDetails` 用光了限流額度，屬於誤傷。
+
+**影響範圍**：任何「熱門地點 24 小時窗口重新打開後第一次被點擊、且剛好
+命中補圖節奏」的情境（問題 4 描述的既有案例），這次修補之後都會讓照片
+補圖判斷必然失敗，不會真的去確認/更新 Google 照片——這條路徑等於被這次
+新加的限流機制**意外關閉**了，且沒有任何錯誤訊息或日誌能區分「這次是
+真的不該補圖」還是「被自己人擋下來」。
+
+**已查證關鍵事實（推薦修法，見選項 2）**：`GetPlaceDetails` 目前使用的
+`placeDetailsFieldMask`（`server/internal/geo/places.go` 第 257 行）內容
+是 `"displayName,formattedAddress,location,rating,photos,editorialSummary"`
+——**本來就包含 `photos`**，回應天生就帶有完整的 `photos[]` 陣列，跟
+`ListPlacePhotoRefs`（`photoRefsFieldMask = "photos"` 窄遮罩版）能拿到的
+是同一份資料。而 Google Places API (New) 是依 field mask 分級整批計費
+（Essentials/Pro/Enterprise），不是按欄位數量計費，只要遮罩含 `photos`
+就整批算 Enterprise 級——故「只查 photos」跟「查完整欄位+photos」**費用
+完全相同**，沒有理由分開查兩次。
+
+修法方向（未實作，供之後決策）：
+
+1. **（推薦）`textStale` 觸發時直接把 `GetPlaceDetails` 回應的
+   `details.PhotoRefs` 交給照片補圖判斷使用，不再另外呼叫
+   `ListPlacePhotoRefs`**——两個判斷式改成共用同一次 API 呼叫的結果：
+   若 `textStale` 這次已經觸發，`currentGoogleTarget` 直接用
+   `len(details.PhotoRefs)`（跟 `fetchAndCachePlaceDetails` 初次查詢的
+   既有寫法一致，見該函式第 1651 行），完全不需要再打
+   `ListPlacePhotoRefs`；只有當 `textStale` 沒觸發、但照片補圖判斷觸發
+   時，才需要單獨打一次（這時反正沒有 `textStale` 用掉額度，不會撞
+   限流）。這個修法不只解決 R6 的額度衝突，還能在兩者剛好同時觸發時
+   省下一次外呼（原本兩次變一次），是目前評估下最乾淨的方案，且已確認
+   技術上完全可行（field mask 本來就含 photos，不需要改動任何請求
+   參數）。
+2. **`ListPlacePhotoRefs` 改用獨立的 endpoint 字串**（例如
+   `"places.photoRefs"`），讓它跟 `GetPlaceDetails` 的 `"places.get"`
+   分開計算限流額度——次要方案：不解決「兩次查詢重複」的浪費，只是讓
+   兩者不再互相排擠，且需要重新評估這支查詢該歸類為「地點資訊」還是
+   「地點照片」分組。
+3. **接受現狀，僅記錄**：這個情境的實際發生頻率取決於「文字 24 小時
+   窗口」與「照片點擊/7 天窗口」剛好重疊的機率，可能不算高頻，但一旦
+   發生就是必然失敗，建議至少加一筆日誌記錄這種「被限流跳過」的情況，
+   方便之後觀察實際發生頻率再決定要不要修。
+
 ---
 
 ## 稽核方法
