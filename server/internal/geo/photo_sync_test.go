@@ -320,7 +320,7 @@ func TestPhotosEnabled_DefaultsToDisabled(t *testing.T) {
 	doer := &fakeSyncDoer{photoRefs: []string{"places/x/photos/ref0"}}
 	client := NewWithGateway("test-key", doer)
 
-	_, err := client.downloadPhotoBytes(context.Background(), "places/x/photos/ref0", 400)
+	_, err := client.downloadPhotoBytes(context.Background(), "places/x/photos/ref0", 400, false)
 	if err != ErrPhotosDisabled {
 		t.Errorf("預設狀態下 downloadPhotoBytes 應該回傳 ErrPhotosDisabled,got %v", err)
 	}
@@ -336,7 +336,7 @@ func TestPhotosEnabled_TrueAllowsDownload(t *testing.T) {
 	doer := &fakeSyncDoer{photoRefs: []string{"places/x/photos/ref0"}}
 	client := NewWithGateway("test-key", doer)
 
-	dataURI, err := client.downloadPhotoBytes(context.Background(), "places/x/photos/ref0", 400)
+	dataURI, err := client.downloadPhotoBytes(context.Background(), "places/x/photos/ref0", 400, false)
 	if err != nil {
 		t.Fatalf("開啟後應該能正常下載,got err: %v", err)
 	}

@@ -49,6 +49,94 @@ func ConfigureDefaultGateway(cfg apigateway.Config, logger apigateway.CallLogger
 	defaultGatewayLogger = logger
 }
 
+// RateLimitConfig 是 ConfigureDefaultGatewayRateLimit 的參數——只涵蓋
+// "places.get"(地點資訊查詢)與 "places.photoMedia"(地點照片下載)這
+// 兩個 endpoint,理由見該函式的說明:這兩個是目前唯一評估過需要拒絕型
+// 限流保護的呼叫(對應「單點地點介紹」這條路徑,見
+// server/internal/api/geo_outline.go 的 handleGeoPlaceDetails 一般模式)。
+// "places.searchText"(城市搜尋/文字查詢)、"places.searchNearby"(附近
+// 景點/飯店查詢)等其餘 endpoint 刻意不套用這個 RateLimiter,繼續只受
+// Gateway 既有的排隊節流(MaxConcurrency/MinInterval)保護,不受這次改動
+// 影響——這幾個 endpoint 目前沒有像「單點地點介紹」那樣被評估出明確的
+// 拒絕型限流需求,不需要跟著一起被限流,避免不必要地收緊尚未出問題的
+// 呼叫路徑。
+type RateLimitConfig struct {
+	// PlaceGetWindow/PlaceGetMaxCalls 是 "places.get"(地點資訊——對應
+	// geo.Client.GetPlaceDetails 與 ListPlacePhotoRefs,見
+	// placeGetEndpoint 對兩者共用同一個 endpoint 字串的說明)的視窗長度與
+	// 視窗內上限次數。
+	PlaceGetWindow   time.Duration
+	PlaceGetMaxCalls int
+	// PhotoMediaWindow/PhotoMediaMaxCalls 是 "places.photoMedia"(地點
+	// 照片——Google Photo Media,依張數計費的圖片下載,對應
+	// geo.Client.PhotoDataURI/PhotoDataURIUnrestricted)的視窗長度與視窗
+	// 內上限次數。
+	//
+	// 這兩個 endpoint 各自獨立設定視窗長度(不共用同一份)——地點照片
+	// 下載是依張數計費、風險最高的一種呼叫,合理的節奏遠比純文字查詢
+	// 稀疏,故給它一個明顯更長的視窗搭配更少的次數(見
+	// cmd/server/main.go 的預設值:地點照片 10 分鐘視窗內最多 1 次,
+	// 地點資訊 10 秒視窗內最多 1 次),而不是用同一個視窗長度、只靠
+	// 次數多寡拉開差異。
+	PhotoMediaWindow   time.Duration
+	PhotoMediaMaxCalls int
+}
+
+// placeGetEndpoint/photoMediaEndpoint 是這兩個受限 endpoint 使用的字串,
+// 對齊 internal/geo/places.go 呼叫 gateway.Do 時實際傳入的字面值(見各自
+// 呼叫點)——ConfigureDefaultGatewayRateLimit 用這兩個常數對 RateLimiter
+// 設定專屬上限,程式碼裡只有這一處需要跟實際呼叫點的字面值保持一致,不
+// 需要這個套件對外公開一份「合法 endpoint 清單」這種更重的抽象。
+//
+// placeGetEndpoint 同時對應 GetPlaceDetails(查名稱/地址/評分/簡介)與
+// ListPlacePhotoRefs(只查 photos[] 長度,用於漸進補圖判斷是否需要重新
+// 確認 target)——兩者在 internal/geo/places.go 裡呼叫 gateway.Do 時
+// 都寫死傳入 "places.get"(見稽核報告
+// docs/audit-place-photo-cost-control-2026-09.md 問題 1 的既有記錄)。
+// 這裡刻意不為 ListPlacePhotoRefs 另外拆一個獨立的 endpoint 字串(例如
+// "places.photoRefs")來精確對應「地點照片 vs 地點資訊」的語意——理由:
+//  1. Google 端實際計費層級上,ListPlacePhotoRefs 走的是 Place Details
+//     (Get)API,只是 field mask 縮小成只取 photos 欄位,並非 Photo
+//     Media(下載圖片位元組)那個真正依張數計費的端點,它查的是「這個
+//     地點的照片目錄有幾張」的中繼資料,不是圖片內容本身——語意上更
+//     接近「查地點資訊(這次只挑了 photos 這個子集)」而非「下載照片」,
+//     跟 places.photoMedia 混為一談反而不準確。
+//  2. 改動這個字串會連動影響 apigateway.CallLogger 現有的記錄分類(見
+//     CallLogger.LogCall 的 endpoint 參數,寫入 DB 供事後查記錄用)——
+//     現有記錄資料與任何依 endpoint 字串做的既有查詢/報表都會被拆成
+//     兩種字串,是超出這次限流任務範圍的資料結構變動,不宜順手夾帶。
+//  3. 使用者要求的兩個分組是「地點資訊」vs「地點照片」,ListPlacePhotoRefs
+//     歸進「地點資訊」(place.get)這組同時符合實際計費類別與現狀最小改動
+//     的原則,是合理且刻意的選擇,不是因為疏漏才維持共用。
+const (
+	placeGetEndpoint   = "places.get"
+	photoMediaEndpoint = "places.photoMedia"
+)
+
+// ConfigureDefaultGatewayRateLimit 額外設定預設 Gateway 依 endpoint 拒絕
+// 超額呼叫的 RateLimiter(見 apigateway.RateLimiter 的完整說明)——獨立
+// 於 ConfigureDefaultGateway 是刻意的,呼叫端(cmd/server/main.go)的
+// 兩組參數(MaxConcurrency/MinInterval 排隊節流 vs. 這裡的視窗長度/上限
+// 拒絕型限流)在概念上是兩件不同的事,分開設定較不容易讓呼叫端誤以為
+// 兩者是同一組參數的不同表示法。同樣必須在 process 內第一次呼叫
+// geo.New() 之前呼叫才會生效,理由與 ConfigureDefaultGateway 相同(底層
+// 共用同一個 defaultGatewayConfig,由 defaultGateway 的 sync.Once 延遲
+// 建立)。
+//
+// 只對 placeGetEndpoint/photoMediaEndpoint 這兩個 key 設定規則(見
+// RateLimitConfig 的說明)——底層 apigateway.RateLimiter 的設計是「只有
+// 明確透過 SetLimitForKey 設定過的 key 才會被限流,其餘 key 一律直接
+// 放行」(見該型別的完整說明),故這裡不呼叫 SetLimitForKey 的其他
+// endpoint(如 "places.searchText"/"places.searchNearby")自然完全不受
+// 這個 RateLimiter 影響,繼續只受 Gateway 既有的排隊節流保護,不需要
+// 額外的判斷邏輯排除它們。
+func ConfigureDefaultGatewayRateLimit(cfg RateLimitConfig) {
+	rl := apigateway.NewRateLimiter()
+	rl.SetLimitForKey(placeGetEndpoint, cfg.PlaceGetWindow, cfg.PlaceGetMaxCalls)
+	rl.SetLimitForKey(photoMediaEndpoint, cfg.PhotoMediaWindow, cfg.PhotoMediaMaxCalls)
+	defaultGatewayConfig.RateLimiter = rl
+}
+
 // photosEnabled 是全域開關,控制要不要真的向 Google Photo Media API
 // 下載照片(見 downloadPhotoBytes 的說明)——預設關閉(false),必須由
 // 呼叫端明確呼叫 SetPhotosEnabled(true) 才會真的開始抓照片。這是刻意
@@ -873,7 +961,7 @@ func (c *Client) SearchCityAttractions(ctx context.Context, query string, maxRes
 			// 這一區只是沒有地標圖可顯示,不影響其餘分區資料,故忽略
 			// 錯誤、留空字串即可,呼叫端(前端)已經預期這個欄位可能
 			// 不存在(見 District.LandmarkPhotoURL 的 omitempty)。
-			if photoURL, err := c.fetchPhotoAsDataURI(ctx, g.landmarkPlaceID, g.landmarkPhoto, 400); err == nil {
+			if photoURL, err := c.fetchPhotoAsDataURI(ctx, g.landmarkPlaceID, g.landmarkPhoto, 400, false); err == nil {
 				d.LandmarkPhotoURL = photoURL
 				d.LandmarkName = g.landmarkName
 			}
@@ -963,13 +1051,18 @@ func (c *Client) SearchLandmarkWithPhoto(ctx context.Context, query string) (pla
 // Google 原生 POI 圖標」情境即時查該地點的完整介紹,不是分區/飯店/
 // 附近推薦那幾種批次查詢的結果形狀。
 type PlaceDetails struct {
-	Name     string  `json:"name"`
-	Address  string  `json:"address"`
-	Lat      float64 `json:"lat"`
-	Lng      float64 `json:"lng"`
-	Rating   float64 `json:"rating,omitempty"`
-	Summary  string  `json:"summary,omitempty"`
-	PhotoRef string  `json:"-"` // 同 NearbyPlace.PhotoRef,呼叫端需另外呼叫 PhotoDataURI 轉成 data URI
+	Name    string  `json:"name"`
+	Address string  `json:"address"`
+	Lat     float64 `json:"lat"`
+	Lng     float64 `json:"lng"`
+	Rating  float64 `json:"rating,omitempty"`
+	Summary string  `json:"summary,omitempty"`
+	// PhotoRefs 是 Google 回傳 photos[] 的完整參照清單(依原始順序),
+	// 供需要多張照片的呼叫端(如 handleGeoPlaceDetails 一般模式,見該
+	// 函式對 Google/Pexels 照片同時並列顯示的說明)逐一呼叫 PhotoDataURI
+	// 換成真正的圖片內容。每個元素是同 NearbyPlace.PhotoRef 的照片
+	// resource name,呼叫端需另外呼叫 PhotoDataURI 轉成 data URI。
+	PhotoRefs []string `json:"-"`
 }
 
 // GetPlaceDetails 用 Place ID 查詢單一地點的詳細資訊(Places API (New) 的
@@ -1044,7 +1137,10 @@ func (c *Client) GetPlaceDetails(ctx context.Context, placeID string) (PlaceDeta
 		Summary: body.EditorialSummary.Text,
 	}
 	if len(body.Photos) > 0 {
-		details.PhotoRef = body.Photos[0].Name
+		details.PhotoRefs = make([]string, len(body.Photos))
+		for i, p := range body.Photos {
+			details.PhotoRefs[i] = p.Name
+		}
 	}
 	return details, nil
 }
@@ -1127,7 +1223,19 @@ func (c *Client) ListPlacePhotoRefs(ctx context.Context, placeID string) ([]stri
 // 路徑,不受瀏覽器 <img> 標籤無法附加自訂 Authorization header 的限制。
 // GOOGLE_PLACES_API_KEY 只在這支函式内部、伺服器對伺服器的請求裡出現,
 // 不會出現在回傳給前端的任何資料裡。
-func (c *Client) fetchPhotoAsDataURI(ctx context.Context, placeID, photoResourceName string, maxWidthPx int) (string, error) {
+// bypassGlobalPhotosToggle:見 downloadPhotoBytes 對這個參數的完整說明——
+// true 代表這次呼叫不受套件層級的 photosEnabled 全域開關限制,即使
+// SetPhotosEnabled(false)(本機開發預設值),這次呼叫仍會真的向 Google
+// Photo Media API 發出請求。這個參數沿著 fetchPhotoAsDataURI →
+// downloadPhotoBytes 這條呼叫鏈往下傳遞,不透過修改任何套件層級或
+// *Client 層級的共用狀態——理由是 photosEnabled 是套件層級的全域變數
+// (不是掛在 *Client 上),若靠「暫時切換全域變數、呼叫完再切回去」實作
+// 繞過,在同一個 process 內會有嚴重的並發安全問題:兩個並發請求,一個
+// 要繞過、一個不要繞過,對同一個全域變數的切換動作會互相干擾,可能讓
+// 不該繞過的那個請求也意外繞過(或反過來)。改成單純的參數傳遞,則每次
+// 呼叫各自攜帶自己的「要不要繞過」意圖,天生就是並發安全的,不需要任何
+// 鎖或協調機制。
+func (c *Client) fetchPhotoAsDataURI(ctx context.Context, placeID, photoResourceName string, maxWidthPx int, bypassGlobalPhotosToggle bool) (string, error) {
 	if photoResourceName == "" || c.apiKey == "" {
 		return "", ErrNoKey
 	}
@@ -1143,14 +1251,17 @@ func (c *Client) fetchPhotoAsDataURI(ctx context.Context, placeID, photoResource
 	// 移動被重複查詢、每次都重新下載同一張照片」問題的關鍵(見
 	// server/internal/api/geo_outline.go 的 handleGeoAttractionsNearby)。
 	// c.cache 為 nil、或 placeID 為空字串時都視為快取不可用(見上方
-	// 函式說明),兩者都是 no-op,直接往下真的向 Google 查詢。
+	// 函式說明),兩者都是 no-op,直接往下真的向 Google 查詢。這個快取
+	// 命中判斷不受 bypassGlobalPhotosToggle 影響——不論這次呼叫是否要
+	// 繞過全域開關,只要快取有資料就直接用,不需要為了「繞過開關」而
+	// 連帶跳過快取重新下載一次。
 	if c.cache != nil && placeID != "" {
 		if dataURI, ok := c.cache.Get(placeID, photoIndex, maxWidthPx); ok {
 			return dataURI, nil
 		}
 	}
 
-	dataURI, err := c.downloadPhotoBytes(ctx, photoResourceName, maxWidthPx)
+	dataURI, err := c.downloadPhotoBytes(ctx, photoResourceName, maxWidthPx, bypassGlobalPhotosToggle)
 	if err != nil {
 		return "", err
 	}
@@ -1179,8 +1290,21 @@ var ErrPhotosDisabled = fmt.Errorf("geo: 已透過 SetPhotosEnabled(false) 關�
 // photosEnabled 開關(見該變數的完整說明)在這裡檢查——這是唯一真的會
 // 對 Google Photo Media API 發出請求的地方,把開關收在這一個進入點,
 // 而不是分散到每個呼叫端各自判斷,確保沒有漏網之魚。
-func (c *Client) downloadPhotoBytes(ctx context.Context, photoResourceName string, maxWidthPx int) (string, error) {
-	if !photosEnabled {
+//
+// bypassGlobalPhotosToggle 為 true 時,這次呼叫完全跳過上面
+// photosEnabled 的檢查,即使全域開關是關閉的也會照常發出請求——這是
+// 刻意的例外開口,只給明確需要繞過的呼叫端使用(見 PhotoDataURIUnrestricted
+// 的完整說明:目前只有「單點地點介紹」這條路徑,因為它已經有速率限制
+// (apigateway.RateLimiter)+ 同 placeID 併發丟棄(Server.placeDetailsInFlight)
+// + 24 小時快取三重機制頂著成本風險,不再需要仰賴這個全域開關當唯一
+// 防線;其餘呼叫端(飯店照片、附近景點候選卡片縮圖等)沒有這些額外防線,
+// 必須繼續受全域開關控制,故這個參數預設(由 downloadPhotoBytes 唯一的
+// 呼叫端 fetchPhotoAsDataURI 決定)是 false,只有明確傳 true 才會繞過)。
+// 這個參數是單純的呼叫層級傳遞,不觸碰 photosEnabled 這個全域變數本身,
+// 故多個並發呼叫各自攜帶自己的意圖,不會互相干擾(完整理由見
+// fetchPhotoAsDataURI 對這個參數的說明)。
+func (c *Client) downloadPhotoBytes(ctx context.Context, photoResourceName string, maxWidthPx int, bypassGlobalPhotosToggle bool) (string, error) {
+	if !photosEnabled && !bypassGlobalPhotosToggle {
 		return "", ErrPhotosDisabled
 	}
 
@@ -1349,5 +1473,41 @@ func (c *Client) SearchNearby(ctx context.Context, lat, lng float64, opts *Nearb
 // NearbyPlace 結果做同樣的轉換,故加這層薄包裝,
 // 不重複實作下載邏輯。
 func (c *Client) PhotoDataURI(ctx context.Context, placeID, photoRef string, maxWidthPx int) (string, error) {
-	return c.fetchPhotoAsDataURI(ctx, placeID, photoRef, maxWidthPx)
+	return c.fetchPhotoAsDataURI(ctx, placeID, photoRef, maxWidthPx, false)
+}
+
+// PhotoDataURIUnrestricted 是 PhotoDataURI 的變體——行為完全相同,唯一
+// 差異是這次呼叫不受套件層級的 photosEnabled 全域開關限制(見
+// downloadPhotoBytes 對 bypassGlobalPhotosToggle 參數的完整說明),即使
+// process 啟動時透過 SetPhotosEnabled(false) 關閉了 Google Photo Media
+// 下載(本機開發的預設值),呼叫這個方法仍會真的向 Google 發出請求。
+//
+// 只給明確需要繞過的呼叫端使用——目前唯一的使用情境是「單點地點介紹」
+// (server/internal/api/geo_outline.go 的 handleGeoPlaceDetails 一般模式,
+// 含 fetchAndCachePlaceDetails 與快取命中分支裡觸發漸進補圖那段)。這條
+// 路徑之所以不該再受這個全域開關控制,是因為它現在已經疊了三層獨立的
+// 成本防線:
+//
+//  1. apigateway.RateLimiter 依 endpoint("places.photoMedia")的拒絕型
+//     速率限制,超過視窗內上限直接拒絕,不會無上限累積呼叫。
+//  2. Server.placeDetailsInFlight 的同 placeID 併發丟棄機制——同一時間
+//     對同一個地點的重複請求不會疊加觸發下載。
+//  3. place_details_cache/google_place_photos 的每日快取(見
+//     placeDetailsCacheMaxAge/漸進補圖節奏機制),同一地點短期內反覆
+//     點擊不會反覆下載。
+//
+// 換句話說,「全域開關關閉」原本是唯一的成本防線(本機/測試環境預設
+// 關閉,避免不小心在開發時就產生真實計費呼叫);但單點地點介紹這條路徑
+// 已經有更精細、更即時的防線頂著,繼續讓它被這個全域粗粒度開關擋住,
+// 只會讓開發者必須手動開啟 GOOGLE_PLACES_FETCH_PHOTOS 才能測試/使用這個
+// 功能,體驗上不必要,故明確讓這條路徑繞過。
+//
+// 其餘所有呼叫 PhotoDataURI(飯店照片查詢、附近景點候選卡片縮圖、
+// handleMaintenanceAttractionUpdatePhoto 等)必須維持原樣、繼續受全域
+// 開關控制——這些路徑沒有上述三層防線,全域開關仍是它們唯一的成本
+// 控制手段,不能因為這次改動意外讓它們也繞過去。呼叫端務必只在明確
+// 理解「這裡有其他機制頂著」的情況下才改用這個方法,不要因為想跳過
+// 開關方便本機測試就隨意套用。
+func (c *Client) PhotoDataURIUnrestricted(ctx context.Context, placeID, photoRef string, maxWidthPx int) (string, error) {
+	return c.fetchPhotoAsDataURI(ctx, placeID, photoRef, maxWidthPx, true)
 }

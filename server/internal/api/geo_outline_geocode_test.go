@@ -102,7 +102,7 @@ func placesJSON(names ...string) string {
 	places := make([]place, len(names))
 	for i, name := range names {
 		places[i].DisplayName.Text = name
-		places[i].FormattedAddress = "测试地址"
+		places[i].FormattedAddress = "測試地址"
 		places[i].Location.Latitude = 35.0
 		places[i].Location.Longitude = 135.76
 		places[i].ID = "place_" + name

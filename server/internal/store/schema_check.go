@@ -45,7 +45,8 @@ func schemaCheckTargets() []any {
 	return []any{
 		&userRow{}, &tripRow{}, &entryRow{}, &memberLink{}, &publicLinkRow{},
 		&adminUserRow{}, &adminSessionRow{}, &cliAuthSessionRow{},
-		&attractionRow{}, &photoCacheRow{}, &placeDetailsCacheRow{}, &pexelsPhotoCacheRow{},
+		&attractionRow{}, &photoCacheRow{}, &placeDetailsCacheRow{},
+		&googlePlacePhotoRow{}, &placePexelsPhotoRow{}, &pexelsPhotoCacheRow{},
 		&apiRequestLogRow{}, &geoAPICallLogRow{},
 	}
 }

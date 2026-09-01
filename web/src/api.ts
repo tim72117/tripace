@@ -622,6 +622,15 @@ export interface GeoPlaceDetails {
   rating?: number
   summary?: string
   photoUrl?: string
+  // googlePhotoUrls/pexelsPhotoUrls:2026-08 起,一般模式(不帶 photoOnly/
+  // textOnly query 參數)的後端回應改成 Google/Pexels 兩種來源同時並列的
+  // 多圖清單(見 server 端 handleGeoPlaceDetails 的說明)——photoUrl 仍然
+  // 保留,是這兩份清單合併後的第一張(相容用,舊版前端/其餘沒有跟進多圖
+  // UI 的呼叫端可以繼續只看這個欄位)。顯示時這兩份清單要「先 Google 後
+  // Pexels」依序合併顯示,見 PhotoCarousel.tsx。photoOnly=1/textOnly=1
+  // 這兩種查詢模式維持舊格式不變,不會有這兩個欄位。
+  googlePhotoUrls?: string[]
+  pexelsPhotoUrls?: string[]
 }
 
 export function fetchGeoPlaceDetails(cfg: ClientConfig, placeId: string) {

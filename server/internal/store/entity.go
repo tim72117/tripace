@@ -12,7 +12,7 @@ type userRow struct {
 	AppleSub     *string `gorm:"column:apple_sub;uniqueIndex"`  // 可為 NULL
 	GoogleSub    *string `gorm:"column:google_sub;uniqueIndex"` // 可為 NULL
 	Email        *string `gorm:"column:email;uniqueIndex"`      // 可為 NULL
-	PasswordHash *string `gorm:"column:password_hash"`         // 可為 NULL
+	PasswordHash *string `gorm:"column:password_hash"`          // 可為 NULL
 
 	// 多對多:此使用者參與的行程(透過 members 中介表)。
 	Trips []tripRow `gorm:"many2many:members;joinForeignKey:user_id;joinReferences:trip_id"`
@@ -144,19 +144,79 @@ func (pexelsPhotoCacheRow) TableName() string { return "pexels_photo_cache" }
 // 直接吃快取,不重新打 Place Details API。PhotoURL 存的是已經轉換好的
 // data: URI(圖片本身也走 photoCacheRow 快取,這裡直接存最終結果,快取
 // 命中時不需要再組一次轉換邏輯)。
+// ClickCount/GooglePhotoTargetCount/NewPhotoCount 三欄支援「漸進補圖」
+// 機制(見 server/internal/api/geo_outline.go 的 shouldAddGooglePlacePhoto/
+// resetPhotoProgressOnTargetChange 兩支純函式的完整規格)：
+//
+//   - ClickCount:這個地點被點擊的累積總次數,只增不減、永遠不歸零——
+//     即使 GooglePhotoTargetCount 中途變動導致 NewPhotoCount 被重置,
+//     點擊次數本身仍是一路累加的歷史事實,不隨補圖進度重置而重置。
+//   - GooglePhotoTargetCount:上次查詢 Google 時 photos[] 陣列的實際
+//     長度——用來偵測「這次查到的張數跟上次不一樣」(resetPhotoProgressOnTargetChange
+//     的輸入),不是「這個地點理論上有幾張圖」的固定值,會隨每次查詢
+//     覆寫。
+//   - NewPhotoCount:目前已經漸進補到第幾張(0-based 累積數,不是
+//     photo_index)——即 shouldAddGooglePlacePhoto 的 newPhotoCount
+//     參數,每次觸發補圖後 +1,target 變動時可能被歸零重置。
+//
+// 三欄都給預設值 0(gorm default),對應「這個地點第一次被查詢/點擊」
+// 的初始狀態——新增欄位時既有的舊資料列也會因為 AutoMigrate 的
+// ALTER TABLE ADD COLUMN 而自動補上這個預設值,不需要額外的資料回填。
 type placeDetailsCacheRow struct {
-	PlaceID   string    `gorm:"primaryKey;column:place_id"`
-	Name      string    `gorm:"column:name;not null"`
-	Address   string    `gorm:"column:address"`
-	Lat       float64   `gorm:"column:lat;not null"`
-	Lng       float64   `gorm:"column:lng;not null"`
-	Rating    float64   `gorm:"column:rating"`
-	Summary   *string   `gorm:"column:summary"`
-	PhotoURL  *string   `gorm:"column:photo_url"`
-	FetchedAt time.Time `gorm:"column:fetched_at;not null"`
+	PlaceID                string    `gorm:"primaryKey;column:place_id"`
+	Name                   string    `gorm:"column:name;not null"`
+	Address                string    `gorm:"column:address"`
+	Lat                    float64   `gorm:"column:lat;not null"`
+	Lng                    float64   `gorm:"column:lng;not null"`
+	Rating                 float64   `gorm:"column:rating"`
+	Summary                *string   `gorm:"column:summary"`
+	FetchedAt              time.Time `gorm:"column:fetched_at;not null"`
+	ClickCount             int64     `gorm:"column:click_count;not null;default:0"`
+	GooglePhotoTargetCount int       `gorm:"column:google_photo_target_count;not null;default:0"`
+	NewPhotoCount          int       `gorm:"column:new_photo_count;not null;default:0"`
 }
 
 func (placeDetailsCacheRow) TableName() string { return "place_details_cache" }
+
+// googlePlacePhotoRow 存放「使用者點擊地圖上 Google 原生 POI 圖標」情境
+// 下,從 Google Places 取得的照片(見 server/internal/api/geo_outline.go
+// 的 handleGeoPlaceDetails 一般模式)——欄位存的是已經落地到 GCS 的公開
+// URL(或落地失敗降級的原始 data URI/來源網址,見 landmarkPhotoURLFromDataURI
+// 的說明),不是圖片內容本身(那是 photoCacheRow 的職責,見該型別說明
+// 「place_details_cache 是上層產物,photo_cache 是它可能依賴的下層快取」)。
+//
+// 跟 Pexels 的照片分成獨立的 placePexelsPhotoRow 表,不是同一張表加一個
+// 「來源」欄位——兩者要存的欄位本來就不一樣(Pexels 依授權條款需要額外
+// 保留 PageURL 可追溯來源,Google 這邊沒有這個需求),且兩者是要「同時
+// 並列顯示」的兩份獨立清單,不是互斥的單一選擇,分表比同一張表用
+// 一個 kind 判別欄位更直接對應這個使用情境。
+//
+// PhotoIndex 從 0 開始,對應 Google Places API 回傳 photos[] 陣列裡的
+// 原始順序,前端依此排序顯示——這批圖排在 Pexels 那批之前(見前端
+// GeoInfoPanel 的說明)。
+type googlePlacePhotoRow struct {
+	PlaceID    string    `gorm:"primaryKey;column:place_id"`
+	PhotoIndex int       `gorm:"primaryKey;column:photo_index"`
+	PhotoURL   string    `gorm:"column:photo_url;not null"`
+	FetchedAt  time.Time `gorm:"column:fetched_at;not null"`
+}
+
+func (googlePlacePhotoRow) TableName() string { return "google_place_photos" }
+
+// placePexelsPhotoRow 存放同一個 POI 點擊情境下,從 Pexels 取得的照片,
+// 與 googlePlacePhotoRow 同時並列顯示、互不取代(見該型別的完整說明)。
+// PageURL 是這張照片在 pexels.com 的原始頁面網址(非下載連結)——依
+// Pexels License 的建議保留可追溯到來源的連結,同 pexelsPhotoCacheRow
+// 的說明。
+type placePexelsPhotoRow struct {
+	PlaceID    string    `gorm:"primaryKey;column:place_id"`
+	PhotoIndex int       `gorm:"primaryKey;column:photo_index"`
+	PhotoURL   string    `gorm:"column:photo_url;not null"`
+	PageURL    string    `gorm:"column:page_url;not null"`
+	FetchedAt  time.Time `gorm:"column:fetched_at;not null"`
+}
+
+func (placePexelsPhotoRow) TableName() string { return "place_pexels_photos" }
 
 // apiRequestLogRow 記錄後端每一個 HTTP 請求(見 middleware.go 的
 // requestLogging)——method/path/狀態碼/耗時/呼叫者,供之後排查異常流量

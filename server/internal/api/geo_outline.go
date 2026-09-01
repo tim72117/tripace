@@ -2,12 +2,14 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 
+	"github.com/tim72117/tripace/internal/apigateway"
 	"github.com/tim72117/tripace/internal/geo"
 	"github.com/tim72117/tripace/internal/pexels"
 )
@@ -202,33 +204,41 @@ func (s *Server) warmPlaceDetailsPhotoCache(candidates []photoCandidate, maxResu
 }
 
 // mergePhotoURLIntoPlaceDetailsCache 把背景查到的 photoURL 安全地寫入
-// place_details_cache,不覆蓋既有更完整的資料——store.SetCachedPlaceDetails
-// 是整列覆寫的 upsert(GORM Save,依 place_id 主鍵覆蓋整列,不是部分欄位
-// 更新,見該函式的說明),若這裡直接呼叫 SetCachedPlaceDetails 且傳入
-// rating=0、summary=nil,會把「使用者稍早已經點開過這個地點、快取裡已經
-// 有的 rating/summary」整個覆蓋掉、造成資料倒退。
+// place_details_cache 與 place_pexels_photos,不覆蓋既有更完整的資料——
+// store.SetCachedPlaceDetails 是整列覆寫的 upsert(GORM Save,依
+// place_id 主鍵覆蓋整列,不是部分欄位更新,見該函式的說明),若這裡直接
+// 呼叫 SetCachedPlaceDetails 且傳入 rating=0、summary=nil,會把「使用者
+// 稍早已經點開過這個地點、快取裡已經有的 rating/summary」整個覆蓋掉、
+// 造成資料倒退。
+//
+// 這支函式只服務 photoOnly 模式的快取預熱(見呼叫端 fetchPhotosForCandidates
+// 的說明:只試 Pexels,不 fallback Google GetPlaceDetails/Photo
+// Media)——傳入的 photoURL 恆為 Pexels 來源,故寫入 place_pexels_photos
+// (index 固定 0,這條路徑一次只查一張)而非 google_place_photos。一般
+// 模式(handleGeoPlaceDetails 無參數版本)的雙來源照片由該函式自己在
+// 查詢完成後寫入,不經過這支函式。
 //
 // 策略:先讀一次既有快取(不管新鮮/過期,只要列存在就代表曾經查過完整
 // 資料)——
 //   - 若已存在,保留原本的 name/address/lat/lng/rating/summary,只把
-//     photoURL 換成這次查到的(除非既有快取本身已經有 photoURL,那就
-//     不需要再覆寫,直接跳過,理由同下方說明)。
-//   - 若不存在,才寫入這批只有 name/placeID + photoURL 的部分資料——
+//     Pexels 照片換成這次查到的(除非既有快取本身已經有 Pexels 照片,
+//     那就不需要再覆寫,直接跳過,理由同下方說明)。
+//   - 若不存在,才寫入這批只有 name/placeID 的部分資料——
 //     address/lat/lng/rating/summary 這些背景查詢當下沒有的欄位,比照
 //     handleGeoPlaceDetails 裡 photoOnly/textOnly 模式「欄位不全時不寫入
 //     完整快取列」的既有慣例(見該函式對 photoOnly 分支的說明:「不寫入
 //     place_details_cache——這個模式下沒有 address/rating/summary 等
 //     完整資料,寫入會讓快取列殘缺不全」)。但這裡的目的（預熱
-//     photoOnly 查詢的快取命中）恰好只需要 photoURL 就夠——
+//     photoOnly 查詢的快取命中）恰好只需要照片就夠——
 //     handleGeoPlaceDetails 的 GetCachedPlaceDetails 命中判斷只要求
 //     ok=true(列存在且未過期),不要求其他欄位非空;photoOnly 分支只讀
-//     cached.PhotoURL,並不理會 rating/summary 是否為空。故這裡寫入
-//     address=""/lat=0/lng=0/rating=0/summary=nil 的部分資料列,不會讓
-//     photoOnly 這條路徑的行為出錯,只是這筆快取列本身還不夠完整、不能
-//     拿來滿足 textOnly 或一般模式的查詢——那兩種模式仍會照常重新查
-//     Google 補齊完整資料,並在查完後用完整資料重新覆寫這一列(見
-//     handleGeoPlaceDetails 主流程結尾的 SetCachedPlaceDetails 呼叫),
-//     不會有資料一直卡在殘缺狀態。
+//     ListPlacePexelsPhotos,並不理會 rating/summary 是否為空。故這裡
+//     寫入 address=""/lat=0/lng=0/rating=0/summary=nil 的部分資料列,
+//     不會讓 photoOnly 這條路徑的行為出錯,只是這筆快取列本身還不夠
+//     完整、不能拿來滿足 textOnly 或一般模式的查詢——那兩種模式仍會
+//     照常重新查 Google 補齊完整資料,並在查完後用完整資料重新覆寫這
+//     一列(見 handleGeoPlaceDetails 主流程結尾的 SetCachedPlaceDetails
+//     呼叫),不會有資料一直卡在殘缺狀態。
 //
 // 這支函式內的「先讀後寫」仍有理論上的 TOCTOU 競態(讀跟寫之間沒有
 // transaction 包住,見 store.GetCachedPlaceDetails/SetCachedPlaceDetails
@@ -248,7 +258,7 @@ func (s *Server) mergePhotoURLIntoPlaceDetailsCache(placeID, name, photoURL stri
 	// rating/summary 仍然是比空值更有參考價值的資料,不應該因為過期就
 	// 被空值蓋掉。
 	if cached, ok, err := s.store.GetCachedPlaceDetails(placeID, 0); err == nil && ok {
-		if cached.PhotoURL != nil && *cached.PhotoURL != "" {
+		if pexelsPhotos, pErr := s.store.ListPlacePexelsPhotos(placeID); pErr == nil && len(pexelsPhotos) > 0 {
 			// 既有快取已經有照片了,不需要再覆寫——理由同
 			// handleGeoPlaceDetails 快取命中分支「命中但沒查到照片才
 			// 補查」的既有邏輯,對稱地,這裡「已經有照片就不用補」。
@@ -262,8 +272,8 @@ func (s *Server) mergePhotoURLIntoPlaceDetailsCache(placeID, name, photoURL stri
 		summary = cached.Summary
 	}
 
-	photoURLCopy := photoURL
-	_ = s.store.SetCachedPlaceDetails(placeID, name, address, lat, lng, rating, summary, &photoURLCopy)
+	_ = s.store.SetCachedPlaceDetails(placeID, name, address, lat, lng, rating, summary)
+	_ = s.store.SetPlacePexelsPhotos(placeID, []string{photoURL}, []string{""})
 }
 
 // fetchNearbyHotels 以指定中心座標做一次 Nearby Search 限定 lodging
@@ -923,14 +933,27 @@ func (s *Server) handleGeoAttractionsOnlyNearby(w http.ResponseWriter, r *http.R
 
 // placeDetailsResponse 是 GET /internal/geo/place-details 回應的單一地點
 // 詳細資訊格式,對齊 geo.PlaceDetails(見該型別的完整說明)。
+//
+// PhotoURL 是舊有單張欄位,photoOnly/textOnly 模式(見兩者對應的
+// photoOnlyResponse/textOnlyResponse)仍維持單張 Pexels-first fallback
+// Google 的既有行為,不受這次改動影響,故保留給那兩種模式使用。
+//
+// 一般模式(無 query 參數,對應「使用者點擊地圖上 Google 原生 POI」)
+// 改為 GooglePhotoURLs/PexelsPhotoURLs 兩份獨立清單同時並列——Google
+// 的圖排前面、Pexels 排後面(見前端 GeoInfoPanel 的顯示順序),不再是
+// Pexels-first 互斥選擇其中一種來源。PhotoURL 在這個模式下維持等於
+// 「兩份清單合併後的第一張」,供還沒改用新欄位的舊呼叫端過渡期間
+// 兼容(見下方一般模式組裝邏輯)。
 type placeDetailsResponse struct {
-	Name     string  `json:"name"`
-	Address  string  `json:"address"`
-	Lat      float64 `json:"lat"`
-	Lng      float64 `json:"lng"`
-	Rating   float64 `json:"rating,omitempty"`
-	Summary  string  `json:"summary,omitempty"`
-	PhotoURL string  `json:"photoUrl,omitempty"`
+	Name            string   `json:"name"`
+	Address         string   `json:"address"`
+	Lat             float64  `json:"lat"`
+	Lng             float64  `json:"lng"`
+	Rating          float64  `json:"rating,omitempty"`
+	Summary         string   `json:"summary,omitempty"`
+	PhotoURL        string   `json:"photoUrl,omitempty"`
+	GooglePhotoURLs []string `json:"googlePhotoUrls,omitempty"`
+	PexelsPhotoURLs []string `json:"pexelsPhotoUrls,omitempty"`
 }
 
 // GET /internal/geo/place-details?placeId={Google Place ID}
@@ -944,12 +967,60 @@ type placeDetailsResponse struct {
 // 這是「使用者明確點擊、低頻觸發」的動作,跟 handleGeoPlacesNearby 同一種
 // 節流考量,不像 handleGeoAttractionsNearby 那樣要顧慮地圖高頻移動觸發大量
 // Google API 呼叫成本,故直接即時查 Places API,不查自建資料庫。
+// placeDetailsTargetRecheckMaxAge 是「距離上次真正查過 Google 確認
+// photos[] 長度」視為新鮮的上限——與 shouldAddGooglePlacePhoto 的點擊
+// 節奏判斷是 OR 關係的另一個觸發條件(見 handleGeoPlaceDetails 快取命中
+// 分支的完整說明):即使這次點擊依點擊節奏判斷不該觸發補圖,只要距離
+// 上次查過 Google 已經超過這個天數,仍然要重新查一次 ListPlacePhotoRefs
+// 確認 target 有沒有變動——這是為了避免「補圖進度已經追上舊 target 後
+// 就再也不會觸發 shouldAddGooglePlacePhoto(newPhotoCount >=
+// googlePhotoTargetCount 時恆為 false)、導致店家之後新增了更多照片也
+// 永遠不會被發現」這個情境。7 天這個天數比照 photoCacheMaxAge/
+// placeDetailsCacheMaxAge 既有慣例,是使用者確認過的值,不是隨意選定。
+//
+// 只要「打過 ListPlacePhotoRefs」這件事發生(不論這次判斷結果是否真的
+// shouldFetch),呼叫端就該用 store.UpdatePlacePhotoProgress 的
+// touchFetchedAt=true 把 fetched_at 重置成現在(見該函式的完整說明),
+// 讓這個時間視窗重新從現在起算——否則同一個已經確認過的地點,會在
+// 接下來每一次點擊都因為 fetched_at 沒有被更新而持續觸發這個時間條件,
+// 完全違背「大部分點擊應該零成本」的設計初衷。
+const placeDetailsTargetRecheckMaxAge = 7 * 24 * time.Hour
+
+// placeDetailsRowExistenceMaxAge 是 handleGeoPlaceDetails 快取命中分支
+// 判斷「這一列 place_details_cache 資料是否還算存在、值得沿用」的上限——
+// 故意設得比 placeDetailsTargetRecheckMaxAge(7 天)更寬鬆,理由是這兩個
+// 常數各自服務不同層級的判斷,不能共用同一個值:若拿 placeDetailsTargetRecheckMaxAge
+// 本身當這一層的存在門檻,會導致「距離上次查詢超過 7 天」這個時間觸發
+// 條件永遠沒有機會為真——能走到快取命中分支,就代表 fetched_at 距今
+// 必定小於這一層的存在門檻,若這個門檻剛好等於 7 天,timeTriggered
+// 判斷式（同樣拿 7 天當門檻比較同一個 fetched_at）就會恆為 false,變成
+// 死碼(這是這個機制在實作過程中實際踩到的設計錯誤,見
+// placeDetailsTargetRecheckMaxAge 完整說明對這個情境的描述)。
+//
+// 30 天是刻意選定、比 7 天寬裕一段緩衝的值——只要地點在 30 天內曾被
+// 查詢過,這一列就仍然值得當「快取命中」處理(文字欄位是否需要重新查詢
+// 由下面獨立的 placeDetailsCacheMaxAge/textStale 判斷式決定,不受這個
+// 常數影響);超過 30 天完全沒人查詢的冷門地點,才真的整批視為未命中,
+// 走 fetchAndCachePlaceDetails 從頭查起。這個值本身沒有精確計算依據,
+// 只要「明顯大於 placeDetailsTargetRecheckMaxAge」即可讓 7 天時間觸發
+// 條件有機會被觸發到,30 天是取整、易記的選擇。
+const placeDetailsRowExistenceMaxAge = 30 * 24 * time.Hour
+
 // placeDetailsCacheMaxAge 是 handleGeoPlaceDetails 快取結果視為新鮮的
 // 上限——原生 POI 點擊是使用者互動觸發、同一個地點短期內可能被反覆點擊
 // (例如來回切換比較),但地點的名稱/地址/評分/簡介不會頻繁變動,一天內
 // 直接吃快取沒有正確性疑慮,同時能大幅減少 Place Details/Photo Media 的
 // 重複呼叫與計費。
 const placeDetailsCacheMaxAge = 24 * time.Hour
+
+// placeDetailsDegradedResponseMaxAge 是 buildDegradedPlaceDetailsResponse
+// 讀取快取時傳給 store.GetCachedPlaceDetails 的 maxAge——刻意選一個極大
+// 的時長(10 年),讓「這一列是否存在」實質上成為 GetCachedPlaceDetails
+// 唯一會生效的判斷依據(見該函式 now().Sub(FetchedAt) > maxAge 的判斷式,
+// maxAge 越大這個條件越不可能為真)。降級情境下,舊資料(不論多舊)都
+// 好過完全沒有資料或直接回錯誤給使用者,不應該讓這裡的讀取因為「快取
+// 已經過期」而白白放棄一筆其實還有參考價值的資料。
+const placeDetailsDegradedResponseMaxAge = 10 * 365 * 24 * time.Hour
 
 // landmarkPhotoURL 把地圖上點選任意地點查到的 Pexels 示意圖網址落地到
 // GCS(見 internal/photostorage 的完整說明),回傳我方 bucket 底下的
@@ -973,12 +1044,35 @@ func (s *Server) landmarkPhotoURL(ctx context.Context, placeID, sourceURL string
 // 編碼好的圖片資料,不是外部網址,故改呼叫 UploadDataURI(解碼後上傳,
 // 不需要另外發 HTTP 請求下載)。落地失敗時降級回傳原始的 data URI,
 // 理由同 landmarkPhotoURL。
-func (s *Server) landmarkPhotoURLFromDataURI(ctx context.Context, placeID, dataURI string) string {
-	uploaded, err := s.photoUploader.UploadDataURI(ctx, placeID, dataURI)
+//
+// 參數命名為 objectKey(而非 placeID)——這支函式本身不對這個字串做
+// 任何跟 place 相關的邏輯,只是原封不動轉交給 UploadDataURI 當 GCS
+// 物件路徑的一部分,呼叫端決定要不要在裡面帶入 photo_index(見
+// googlePlacePhotoObjectKey 的完整說明,漸進補圖多張情境必須帶,單張
+// 情境的既有呼叫端則直接傳 placeID 本身維持原行為不變)。
+func (s *Server) landmarkPhotoURLFromDataURI(ctx context.Context, objectKey, dataURI string) string {
+	uploaded, err := s.photoUploader.UploadDataURI(ctx, objectKey, dataURI)
 	if err != nil {
 		return dataURI
 	}
 	return uploaded
+}
+
+// googlePlacePhotoObjectKey 組出漸進補圖機制專用的 GCS objectKey——
+// place-details/{placeID}{ext} 這個既有物件路徑格式(見
+// photostorage.UploadDataURI 的說明)原本假設「同一個 placeID 只對應
+// 一張照片,重查會覆蓋舊物件」,這在單張照片時代(fetchPhotosForCandidates/
+// fetchNearbyHotels 等既有呼叫端,查候選景點清單/飯店照片時每個地點
+// 只存一張)成立;但漸進補圖機制下,同一個 placeID 現在會依序累積多張
+// 不同 index 的照片,若仍只用 placeID 當 objectKey,每次補圖都會覆寫
+// 到同一個 GCS 物件,造成 google_place_photos 表裡不同 photo_index
+// 的紀錄全部指向同一張(最後上傳那張)實際圖片內容——這是實測清水寺
+// 補到 3 張照片後,3 筆紀錄的 photo_url 完全相同時發現的真實 bug。
+// 加上 "-{index}" 尾綴讓每個 index 各自落在獨立的物件路徑,不再互相
+// 覆寫;仍以 placeID 開頭,同一地點的所有照片仍聚在同一個物件路徑
+// 前綴下,方便之後需要時人工核對/批次清理。
+func googlePlacePhotoObjectKey(placeID string, photoIndex int) string {
+	return placeID + "-" + strconv.Itoa(photoIndex)
 }
 
 // photoOnlyResponse 是 photoOnly=1 時的回應形狀——只有 photoUrl,不含
@@ -998,6 +1092,35 @@ type textOnlyResponse struct {
 	Lng     float64 `json:"lng"`
 	Rating  float64 `json:"rating,omitempty"`
 	Summary string  `json:"summary,omitempty"`
+}
+
+// appendGooglePlacePhoto 把新下載的一張 Google 照片(dataURI)追加進這個
+// place_id 目前已經落地的 Google 照片清單,再整批呼叫 SetGooglePlacePhotos
+// 寫回——SetGooglePlacePhotos 本身是「整批覆寫」語意(先刪全部、再整批
+// 寫入,見該函式的完整說明),呼叫端若只傳這一張新照片進去,會把先前
+// 已經補齊的其他張全部洗掉。這支 helper 統一負責「先讀出
+// ListGooglePlacePhotos 現有清單、把新下載的這張接在後面、再整批連同
+// 舊的一起寫回」這個順序,供初次查詢(fetchAndCachePlaceDetails)與快取
+// 命中後的後續補圖(handleGeoPlaceDetails 快取命中分支)共用,避免兩處
+// 各自實作出不一致的行為(例如其中一處忘記先讀舊清單,實際發生過的那種
+// 疏漏)。
+//
+// 回傳追加後的完整照片 URL 清單(供呼叫端組裝回應使用,不需要呼叫端
+// 再自己重新組一次)。newPhotoURL 為空字串時(這張下載失敗)直接跳過
+// 追加動作、原封不動回傳現有清單,不寫入一筆空字串進資料庫。
+func (s *Server) appendGooglePlacePhoto(placeID, newPhotoURL string) []string {
+	existing, _ := s.store.ListGooglePlacePhotos(placeID)
+	urls := make([]string, 0, len(existing)+1)
+	for _, p := range existing {
+		urls = append(urls, p.PhotoURL)
+	}
+	if newPhotoURL != "" {
+		urls = append(urls, newPhotoURL)
+	}
+	if newPhotoURL != "" {
+		_ = s.store.SetGooglePlacePhotos(placeID, urls)
+	}
+	return urls
 }
 
 func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
@@ -1038,7 +1161,23 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 	// 對同一地點的穩定識別碼(見 store.GetCachedPlaceDetails 的說明),
 	// 這裡把整筆詳細資訊(含已轉換好的照片 data URI)一起存,快取命中時
 	// 完全不需要任何額外的 Google API 呼叫。
-	if cached, ok, err := s.store.GetCachedPlaceDetails(placeID, placeDetailsCacheMaxAge); err == nil && ok {
+	//
+	// 這裡改傳 placeDetailsRowExistenceMaxAge(30 天,只判斷「這一列還算
+	// 不算存在」)而非 placeDetailsCacheMaxAge(24 小時,文字欄位新鮮度
+	// 門檻)當這一層的判斷依據——這幾個常數各自服務獨立的新鮮度保證,
+	// 不能共用同一個門檻讓其中一個吃掉另一個的判斷空間:若沿用 24 小時,
+	// 能走到這個分支的請求 fetched_at 距今必定小於 24 小時,下面用同一個
+	// fetched_at、門檻 7 天算出來的 timeTriggered 就永遠不可能為真
+	// (24 小時恆小於 7 天)——時間觸發這個條件會變成永遠打不到的死碼,
+	// 失去「持續熱門但補圖已追平 target」這種地點該有的重新確認機會。
+	// 若改傳 placeDetailsTargetRecheckMaxAge(7 天)本身,一樣會有同樣的
+	// 問題(能走到這個分支代表 fetched_at 距今必定小於 7 天,timeTriggered
+	// 拿同一個 7 天門檻比較同一個 fetched_at 一樣恆為 false)。故改用
+	// 明顯更寬鬆的 placeDetailsRowExistenceMaxAge(30 天,見該常數的完整
+	// 說明)當這一層的存在門檻,文字欄位是否需要重新整批查詢交給下面
+	// textStale 這個獨立判斷式決定,照片 target 是否需要重新確認交給
+	// timeTriggered 決定,三個常數各自沿用各自的門檻獨立生效,互不牽制。
+	if cached, ok, err := s.store.GetCachedPlaceDetails(placeID, placeDetailsRowExistenceMaxAge); err == nil && ok {
 		resp := placeDetailsResponse{
 			Name:    cached.Name,
 			Address: cached.Address,
@@ -1049,12 +1188,48 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 		if cached.Summary != nil {
 			resp.Summary = *cached.Summary
 		}
-		if cached.PhotoURL != nil {
-			resp.PhotoURL = *cached.PhotoURL
+
+		// textStale 為 true 時,這一列的 name/address/rating/summary 已經
+		// 超過 placeDetailsCacheMaxAge(24 小時)沒更新,需要重新打一次
+		// 完整的 GetPlaceDetails 更新文字欄位——但這裡刻意不像改動前那樣
+		// 整個提早 return、把「文字要不要重查」與「照片 target 要不要
+		// 重新確認」這兩件事綁死在同一個 24 小時開關上:textStale 為
+		// true 也不該連帶跳過下面漸進補圖的點擊節奏/7 天時間判斷,否則
+		// 「能進到這段補圖判斷邏輯」的前提會被限縮成「文字必須在 24
+		// 小時內」,而 24 小時又遠小於漸進補圖自己的 7 天門檻,會導致
+		// 7 天時間觸發條件在數學上永遠不可能為真(這是實作過程中實際
+		// 踩到的設計錯誤,見 placeDetailsTargetRecheckMaxAge 與
+		// placeDetailsRowExistenceMaxAge 兩個常數的完整說明)。故這裡把
+		// 「重查文字」與「重新確認照片 target」拆成兩個獨立判斷,各自
+		// 求值、各自視需要各打各的 Google API,不互相牽制對方能不能
+		// 執行。
+		if textStale := time.Since(cached.FetchedAt) > placeDetailsCacheMaxAge; textStale {
+			apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+			client := s.newPlaceDetailsClient(apiKey)
+			tctx, tcancel := context.WithTimeout(r.Context(), 10*time.Second)
+			tctx = geo.WithCaller(tctx, "handleGeoPlaceDetails")
+			tctx = geo.WithPath(tctx, r.URL.Path)
+			// 文字重查失敗不影響這次回應——沿用快取現有的文字欄位繼續
+			// 回應,只是這次沒能刷新,下次點擊會再嘗試,理由同這支
+			// handler 既有的「失敗就略過、繼續用現有資料回應」慣例。這裡
+			// 刻意不特別檢查 dErr 是否為 apigateway.ErrRateLimited——這個
+			// 分支本來就是「任何錯誤都吞掉、沿用現有快取」,已經自然符合
+			// 這次成本控制設計要求的「限流拒絕不當作錯誤回應給前端,改
+			// 讀現有快取降級」,不需要額外的特殊分支。下面 ListPlacePhotoRefs/
+			// PhotoDataURI 的錯誤處理是同一種既有慣例,同樣不需要改動。
+			if details, dErr := client.GetPlaceDetails(tctx, placeID); dErr == nil {
+				resp.Name, resp.Address, resp.Lat, resp.Lng, resp.Rating, resp.Summary =
+					details.Name, details.Address, details.Lat, details.Lng, details.Rating, details.Summary
+				var summaryPtr *string
+				if resp.Summary != "" {
+					summaryPtr = &resp.Summary
+				}
+				_ = s.store.SetCachedPlaceDetails(placeID, resp.Name, resp.Address, resp.Lat, resp.Lng, resp.Rating, summaryPtr)
+			}
+			tcancel()
 		}
 
-		// textOnly 不需要照片,略過下面的 Pexels 補查(理由見 textOnly
-		// 宣告處的說明),直接回文字部分。
+		// textOnly 不需要照片,略過下面的照片查詢/補查,直接回文字部分。
 		if textOnly {
 			writeJSON(w, http.StatusOK, textOnlyResponse{
 				Name: resp.Name, Address: resp.Address, Lat: resp.Lat, Lng: resp.Lng,
@@ -1063,30 +1238,153 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// 快取命中但當初沒查到照片(PhotoURL 為空)時,單獨補一次
-		// Pexels 查詢——只試 Pexels,不重新呼叫 Google GetPlaceDetails
-		// (這裡快取命中的整個重點就是不打 Google;快取本身也沒存
-		// PhotoRef,見 store.GetCachedPlaceDetails 的說明,無法直接跟
-		// Google 換圖,除非重新查一次 Details,那就違背了這裡「命中就
-		// 不打 Google」的設計)。Pexels 仍查不到就維持無圖回傳,不視為
-		// 錯誤。補到圖時一併更新回快取,下次同一 placeID 命中就不用再
-		// 重複查一次 Pexels。photoOnly 模式一樣適用這段補查邏輯——快取
-		// 命中的情況下,不論哪種模式,補圖成本都相同(只試 Pexels),
-		// 不需要另外區分。
-		if resp.PhotoURL == "" {
-			pexelsClient := pexels.New(os.Getenv("PEXELS_API_KEY"))
-			pctx, pcancel := context.WithTimeout(r.Context(), 5*time.Second)
-			if photo, ok, pErr := pexelsClient.Search(pctx, resp.Name); pErr == nil && ok {
-				resp.PhotoURL = s.landmarkPhotoURL(pctx, placeID, photo.ImageURL)
-				photoURL := resp.PhotoURL
-				_ = s.store.SetCachedPlaceDetails(placeID, resp.Name, resp.Address, resp.Lat, resp.Lng, resp.Rating, cached.Summary, &photoURL)
+		// photoOnly 模式維持既有的單張 Pexels-first 邏輯(見
+		// photoOnlyResponse 的說明,不受這次雙來源改動影響)——只讀
+		// Pexels 表的第一張當單張欄位,快取未命中時單獨補一次 Pexels
+		// 查詢,不查 Google Places(理由同原本註解:這裡快取命中的整個
+		// 重點就是不打 Google)。
+		if photoOnly {
+			pexelsPhotos, _ := s.store.ListPlacePexelsPhotos(placeID)
+			if len(pexelsPhotos) > 0 {
+				resp.PhotoURL = pexelsPhotos[0].PhotoURL
+			} else {
+				pexelsClient := pexels.New(os.Getenv("PEXELS_API_KEY"))
+				pctx, pcancel := context.WithTimeout(r.Context(), 5*time.Second)
+				if photo, ok, pErr := pexelsClient.Search(pctx, resp.Name); pErr == nil && ok {
+					resp.PhotoURL = s.landmarkPhotoURL(pctx, placeID, photo.ImageURL)
+					_ = s.store.SetPlacePexelsPhotos(placeID, []string{resp.PhotoURL}, []string{""})
+				}
+				pcancel()
+			}
+			writeJSON(w, http.StatusOK, photoOnlyResponse{PhotoURL: resp.PhotoURL})
+			return
+		}
+
+		// 一般模式快取命中:Google 與 Pexels 的照片各自從對應的表讀出、
+		// 同時並列回傳(見 placeDetailsResponse 的說明)。
+		//
+		// 這裡是漸進補圖機制真正的核心判斷點——「點擊節奏 OR 時間」兩個
+		// 觸發條件任一為真時,才值得多付一次 Enterprise 級的 Google 查詢
+		// 成本重新確認 target(見 placeDetailsTargetRecheckMaxAge 的完整
+		// 說明):
+		//
+		//   1. 點擊節奏觸發:用舊的 previousGoogleTarget(這裡即
+		//      cached.GooglePhotoTargetCount)跑 shouldAddGooglePlacePhoto,
+		//      為 true 代表「照原本的漸進節奏,這次該補圖了」——但這個
+		//      判斷本身用的是上次查到的舊 target,可能已經過時(店家新增
+		//      或刪除了照片),所以判斷為真只代表「該重新查一次確認」,
+		//      不是「一定要補圖」,真正的補圖決策仍要等重新查完
+		//      currentGoogleTarget 之後,交給 decidePlacePhotoAction 統一
+		//      判斷。
+		//   2. 時間觸發:距離上次真正查過 Google(cached.FetchedAt)已經
+		//      超過 placeDetailsTargetRecheckMaxAge,即使點擊節奏沒觸發,
+		//      也要重新確認一次——避免補圖進度追上舊 target 後,
+		//      shouldAddGooglePlacePhoto 因為 newPhotoCount >=
+		//      googlePhotoTargetCount 恆為 false、永遠不再有機會發現店家
+		//      新增了更多照片。這裡刻意仍然使用 cached.FetchedAt(重查
+		//      文字前的舊值)而非上面 textStale 重查後可能更新過的
+		//      fetched_at——textStale 分支若真的重查成功,會透過
+		//      SetCachedPlaceDetails 寫入新的 fetched_at,但這裡讀的
+		//      cached 是進這個 if 區塊當下就已經固定的區域變數快照,不會
+		//      反映那次寫入;這正是我們要的效果:即使文字剛剛才被
+		//      textStale 分支重新整批查過,也不代表照片 target 已經一併
+		//      確認過(GetPlaceDetails 拿到的 rating/summary 不含
+		//      photos[] 長度資訊,見 placeDetailsFieldMask 與
+		//      photoRefsFieldMask 是兩種不同的 field mask),故照片 target
+		//      的時間觸發判斷仍然只看「上一次真正確認過 target 是什麼
+		//      時候」,不會因為文字剛被重查就誤判成也已經確認過 target。
+		//
+		// 兩者都不觸發時,完全不打任何 Google API,直接用下面讀出的快取
+		// 現有資料回傳——這是最常見的路徑,必須維持零成本,這也是為什麼
+		// 「重新查一次 Google 確認」這段邏輯只能包在這個 if 區塊內,不能
+		// 無條件執行。
+		clickCount, newPhotoCount, previousGoogleTarget, clickErr := s.store.IncrementPlaceClickCount(placeID)
+		clickTriggered := clickErr == nil && shouldAddGooglePlacePhoto(clickCount, newPhotoCount, previousGoogleTarget)
+		timeTriggered := time.Since(cached.FetchedAt) > placeDetailsTargetRecheckMaxAge
+
+		if clickErr == nil && (clickTriggered || timeTriggered) {
+			apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+			client := s.newPlaceDetailsClient(apiKey)
+			pctx, pcancel := context.WithTimeout(r.Context(), 10*time.Second)
+			pctx = geo.WithCaller(pctx, "handleGeoPlaceDetails")
+			pctx = geo.WithPath(pctx, r.URL.Path)
+
+			// ListPlacePhotoRefs 只查 photos 欄位長度(見該函式的完整
+			// 說明),但計費等級跟完整的 GetPlaceDetails 是同一級
+			// (Enterprise,見 docs/refactor-place-photo-progressive-loading-2026-09.md
+			// 的查證結果)——這裡查詢失敗不應該讓整個快取命中的回應
+			// 失敗,比照這支 handler 既有的「失敗就略過、繼續用現有
+			// 資料回應」慣例(見下方 fetchAndCachePlaceDetails 對單張
+			// 照片下載失敗的處理),吞掉錯誤、直接沿用快取現有的照片
+			// 清單。
+			refs, refsErr := client.ListPlacePhotoRefs(pctx, placeID)
+			if refsErr == nil {
+				currentGoogleTarget := len(refs)
+				_, effectiveNewPhotoCount, shouldFetch, indexToFetch := decidePlacePhotoAction(
+					clickCount, newPhotoCount, previousGoogleTarget, currentGoogleTarget)
+
+				if shouldFetch && indexToFetch >= 0 && indexToFetch < len(refs) {
+					// decidePlacePhotoAction 回傳的 effectiveNewPhotoCount
+					// 是「補圖前」的累積數(同時也是 indexToFetch 本身,
+					// 見該函式的完整說明)。只有這張真的下載成功時,才
+					// 代表已經補到的張數往前推進了一張,effectiveNewPhotoCount
+					// 才需要 +1——下載失敗時維持原值不變,讓下次點擊
+					// (或下次時間觸發)重新嘗試同一個 index,不因為這次
+					// 失敗就跳過這張沒真正補到的照片。
+					// landmarkPhotoURLFromDataURI 的 objectKey 必須帶入
+					// indexToFetch(googlePlacePhotoObjectKey,見該函式的
+					// 完整說明)——這支函式原本的呼叫端(fetchPhotosForCandidates/
+					// fetchNearbyHotels)每個 placeID 只存一張照片,用
+					// placeID 本身當 GCS 物件路徑沒有問題,但漸進補圖機制
+					// 下同一個 placeID 現在會依序累積多張照片,若仍只用
+					// placeID 當 objectKey,每次補圖都會覆寫到同一個 GCS
+					// 物件,導致 google_place_photos 表裡不同 photo_index
+					// 的紀錄全部指向同一張(最後上傳那張)實際圖片內容——
+					// 這是實測時發現的真實 bug,不是理論疑慮。
+					//
+					// 這裡改用 PhotoDataURIUnrestricted(而非 PhotoDataURI)——
+					// 這一段是「單點地點介紹」快取命中後觸發漸進補圖重新確認
+					// 的路徑,已經有 apigateway.RateLimiter(依 "places.photoMedia"
+					// 拒絕型限流)+ Server.placeDetailsInFlight(同 placeID
+					// 併發丟棄)+ 這裡本身的點擊節奏/24 小時快取三重機制頂著
+					// 成本風險,不應該再被 GOOGLE_PLACES_FETCH_PHOTOS 這個
+					// 全域開關擋住(本機開發預設關閉)——完整理由見
+					// geo.Client.PhotoDataURIUnrestricted 的說明。
+					if photoURL, pErr := client.PhotoDataURIUnrestricted(pctx, placeID, refs[indexToFetch], 400); pErr == nil {
+						objectKey := googlePlacePhotoObjectKey(placeID, indexToFetch)
+						resp.GooglePhotoURLs = s.appendGooglePlacePhoto(placeID, s.landmarkPhotoURLFromDataURI(pctx, objectKey, photoURL))
+						effectiveNewPhotoCount++
+					}
+				}
+
+				// 只要打過 ListPlacePhotoRefs(不論最後有沒有真的觸發
+				// shouldFetch),就要把 fetched_at 重置成現在(見
+				// UpdatePlacePhotoProgress 對 touchFetchedAt 參數的完整
+				// 說明),讓 7 天時間觸發條件重新從現在起算。
+				_ = s.store.UpdatePlacePhotoProgress(placeID, effectiveNewPhotoCount, currentGoogleTarget, true)
 			}
 			pcancel()
 		}
 
-		if photoOnly {
-			writeJSON(w, http.StatusOK, photoOnlyResponse{PhotoURL: resp.PhotoURL})
-			return
+		// Pexels 查詢邏輯維持既有行為不變——快取命中時沒有補查邏輯,只有
+		// 初次查詢(fetchAndCachePlaceDetails)時查一次,不受這次 Google
+		// 漸進補圖節奏影響(見 docs/refactor-place-photo-progressive-loading-2026-09.md
+		// 「Pexels 補圖順序」段落的範圍判斷,這次改動刻意不擴大範圍幫
+		// Pexels 也加一套節奏邏輯)。
+		if resp.GooglePhotoURLs == nil {
+			googlePhotos, _ := s.store.ListGooglePlacePhotos(placeID)
+			for _, p := range googlePhotos {
+				resp.GooglePhotoURLs = append(resp.GooglePhotoURLs, p.PhotoURL)
+			}
+		}
+		pexelsPhotos, _ := s.store.ListPlacePexelsPhotos(placeID)
+		for _, p := range pexelsPhotos {
+			resp.PexelsPhotoURLs = append(resp.PexelsPhotoURLs, p.PhotoURL)
+		}
+		if len(resp.GooglePhotoURLs) > 0 {
+			resp.PhotoURL = resp.GooglePhotoURLs[0]
+		} else if len(resp.PexelsPhotoURLs) > 0 {
+			resp.PhotoURL = resp.PexelsPhotoURLs[0]
 		}
 		writeJSON(w, http.StatusOK, resp)
 		return
@@ -1132,23 +1430,166 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// tryClaimPlaceDetailsInFlight 用 placeID 當 key,判斷這次請求是否
+	// 搶到「處理這個地點」的權利(見 Server.placeDetailsInFlight 與
+	// tryClaimPlaceDetailsInFlight 的完整說明)——搶到的請求(claimed
+	// 為 true)才會真正執行 fetchAndCachePlaceDetails(打 Google/Pexels、
+	// 寫入快取),沒搶到代表已經有其他並發請求正在處理同一個 placeID,
+	// 這次直接視為「被丟棄」,不等待、不共享結果,改走下面的降級邏輯
+	// (讀現有快取,見 buildDegradedPlaceDetailsResponse)。
+	//
+	// r.Context() 不能直接傳給 fetchAndCachePlaceDetails:若這個
+	// context 因為使用者提早關閉頁面而被取消,不該連帶讓這次「代表這個
+	// placeID 在跑」的查詢中途中斷、卻仍佔用著 in-flight 標記——故改用
+	// 獨立於任何單一請求的 context.Background() 搭配自己的逾時,理由同
+	// warmPlaceDetailsPhotoCache 的說明。
+	if claimed := s.tryClaimPlaceDetailsInFlight(placeID); claimed {
+		defer s.releasePlaceDetailsInFlight(placeID)
+		resp, err := s.fetchAndCachePlaceDetails(context.Background(), r.URL.Path, placeID)
+		if err != nil {
+			// ErrRateLimited(apigateway 依 endpoint 的拒絕型限流,見該
+			// sentinel error 的說明)發生在 fetchAndCachePlaceDetails 內部
+			// 呼叫 client.GetPlaceDetails/ListPlacePhotoRefs/PhotoDataURI
+			// 任何一個的當下——這跟「被丟棄」是同一類「這次沒能取得新
+			// 資料」的情況,一律不當作錯誤回應給前端,改走降級邏輯。
+			if errors.Is(err, apigateway.ErrRateLimited) {
+				writeDegradedPlaceDetails(w, s.buildDegradedPlaceDetailsResponse(placeID))
+				return
+			}
+			if err == geo.ErrNotFound {
+				writeErr(w, http.StatusNotFound, "no_match", "查無這個地點的詳細資訊")
+				return
+			}
+			writeErr(w, http.StatusBadGateway, "place_details_failed", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
+	// 沒搶到:同一 placeID 已經有其他並發請求在處理中,這次直接丟棄,
+	// 不等待對方完成——降級成「盡量用現有快取回應」,理由與行為細節見
+	// buildDegradedPlaceDetailsResponse 的說明。
+	writeDegradedPlaceDetails(w, s.buildDegradedPlaceDetailsResponse(placeID))
+}
+
+// tryClaimPlaceDetailsInFlight 嘗試搶到「處理這個 placeID」的權利——用
+// sync.Map.LoadOrStore 確保「檢查是否已存在」與「標記為存在」是單一
+// 原子操作(見 Server.placeDetailsInFlight 的完整說明)。回傳 true 代表
+// 這次呼叫是第一個搶到的(loaded 為 false,呼叫端必須之後呼叫
+// releasePlaceDetailsInFlight 釋放);回傳 false 代表已經有其他請求正在
+// 處理同一個 placeID,這次呼叫端不應該執行查詢。
+//
+// 抽成獨立方法(不直接在 handler 內操作 placeDetailsInFlight 欄位)是為了
+// 讓測試能單獨驗證「兩個並發呼叫,第一個回傳 true、第二個回傳 false」這種
+// 情境,不需要真的發兩個並發 HTTP 請求、也不需要真的觸發
+// fetchAndCachePlaceDetails 才能測試搶佔邏輯本身。
+func (s *Server) tryClaimPlaceDetailsInFlight(placeID string) (claimed bool) {
+	_, loaded := s.placeDetailsInFlight.LoadOrStore(placeID, struct{}{})
+	return !loaded
+}
+
+// releasePlaceDetailsInFlight 移除 placeID 的 in-flight 標記——只有
+// tryClaimPlaceDetailsInFlight 回傳 true 的那個呼叫端負責呼叫這個方法
+// (見該函式的說明),且不論 fetchAndCachePlaceDetails 成功或失敗都要
+// 呼叫(handler 用 defer 呼叫,見上方呼叫點),避免查詢失敗時這個 placeID
+// 的標記卡住不會被清除,導致之後所有對這個 placeID 的請求永遠被丟棄。
+func (s *Server) releasePlaceDetailsInFlight(placeID string) {
+	s.placeDetailsInFlight.Delete(placeID)
+}
+
+// buildDegradedPlaceDetailsResponse 是 handleGeoPlaceDetails 一般模式的
+// 降級路徑——不論是同一 placeID 被其他並發請求佔用(tryClaimPlaceDetailsInFlight
+// 回傳 false)、還是 fetchAndCachePlaceDetails 內部被 apigateway
+// 的拒絕型限流擋下(ErrRateLimited),都不當作錯誤回應給前端,而是盡量
+// 用現有資料組一個可以顯示的回應:
+//
+//  1. 先讀 s.store.GetCachedPlaceDetails(不限制新鮮度,maxAge 傳
+//     0 等同不檢查是否過期——見該函式簽章,傳 0 代表任何存在的列都算
+//     命中)——降級情境下,舊資料好過完全沒有資料或直接回錯誤給使用者,
+//     這個地點過去查過的名稱/地址/評分/簡介仍然有參考價值。
+//  2. 若有快取列,一併讀 ListGooglePlacePhotos/ListPlacePexelsPhotos
+//     補上照片欄位,格式對齊一般模式的 placeDetailsResponse(前端不需要
+//     額外處理「這是降級回應」的特殊格式)。
+//  3. 若完全沒有任何快取資料(這個 placeID 第一次被查詢、且剛好被丟棄
+//     或限流擋下)——回傳一個只有 placeId 的最小回應(其餘欄位皆為零值/
+//     空字串),讓前端至少能顯示卡片本身(以 placeId 為標題佔位),不是
+//     整支 API 回 500 或無回應。這裡選擇「回一個內容空但結構完整的
+//     placeDetailsResponse」而非另外定義一個「暫時無法取得資料」的新
+//     狀態欄位——理由是前端目前處理 placeDetailsResponse 的方式本來就是
+//     依欄位是否為空決定要不要顯示(見各欄位 json:",omitempty"),沿用
+//     同一個回應形狀不需要前端另外處理一種新的錯誤/待重試狀態,使用者
+//     體驗上等同「這個地點的詳細資訊還在補齊中」,重新整理或稍後再次
+//     點擊會重新觸發查詢。
+func (s *Server) buildDegradedPlaceDetailsResponse(placeID string) placeDetailsResponse {
+	resp := placeDetailsResponse{}
+
+	// GetCachedPlaceDetails 的 maxAge 語意是「距今超過這個時長就視為
+	// 未命中」(見該函式的說明,now().Sub(FetchedAt) > maxAge 時回傳
+	// ok=false)——傳 0 會讓幾乎任何存在的列都被判定為「已過期」而回傳
+	// ok=false,跟這裡「不論新鮮度、只要列存在就要拿來用」的降級意圖恰好
+	// 相反。故改傳 placeDetailsDegradedResponseMaxAge(見該常數的說明),
+	// 一個刻意選得極大的時長,讓「列是否存在」實質上成為唯一的判斷依據。
+	cached, ok, err := s.store.GetCachedPlaceDetails(placeID, placeDetailsDegradedResponseMaxAge)
+	if err != nil || !ok {
+		// 完全沒有快取資料可用——回傳空殼回應,理由見上方函式說明第 3 點。
+		return resp
+	}
+
+	resp.Name = cached.Name
+	resp.Address = cached.Address
+	resp.Lat = cached.Lat
+	resp.Lng = cached.Lng
+	resp.Rating = cached.Rating
+	if cached.Summary != nil {
+		resp.Summary = *cached.Summary
+	}
+
+	if googlePhotos, gErr := s.store.ListGooglePlacePhotos(placeID); gErr == nil {
+		for _, p := range googlePhotos {
+			resp.GooglePhotoURLs = append(resp.GooglePhotoURLs, p.PhotoURL)
+		}
+	}
+	if pexelsPhotos, pErr := s.store.ListPlacePexelsPhotos(placeID); pErr == nil {
+		for _, p := range pexelsPhotos {
+			resp.PexelsPhotoURLs = append(resp.PexelsPhotoURLs, p.PhotoURL)
+		}
+	}
+	if len(resp.GooglePhotoURLs) > 0 {
+		resp.PhotoURL = resp.GooglePhotoURLs[0]
+	} else if len(resp.PexelsPhotoURLs) > 0 {
+		resp.PhotoURL = resp.PexelsPhotoURLs[0]
+	}
+
+	return resp
+}
+
+// writeDegradedPlaceDetails 把降級回應寫出——固定回 HTTP 200(不是錯誤
+// 狀態碼),理由見 buildDegradedPlaceDetailsResponse 的說明:這個路徑
+// 刻意不當作錯誤處理,前端拿到的是格式正常、但可能欄位不全的
+// placeDetailsResponse,不需要另外處理錯誤分支。抽成獨立函式只是避免
+// 兩個呼叫點(搶到但降級、沒搶到直接降級)重複同一行 writeJSON 呼叫。
+func writeDegradedPlaceDetails(w http.ResponseWriter, resp placeDetailsResponse) {
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// fetchAndCachePlaceDetails 是 handleGeoPlaceDetails 一般模式的實際查詢
+// 邏輯——查 Google Place Details、下載 Google 與 Pexels 照片、寫入快取,
+// 回傳組好的回應。抽成獨立函式是為了讓 singleflight.Do 能包住整段查詢+
+// 寫入過程(見呼叫端的說明),不是為了重用。
+func (s *Server) fetchAndCachePlaceDetails(ctx context.Context, requestPath, placeID string) (placeDetailsResponse, error) {
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
-	client := geo.New(apiKey)
+	client := s.newPlaceDetailsClient(apiKey)
 	client.SetCache(s.photoCache)
 	client.SetPexelsClient(pexels.New(os.Getenv("PEXELS_API_KEY")))
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	ctx = geo.WithCaller(ctx, "handleGeoPlaceDetails")
-	ctx = geo.WithPath(ctx, r.URL.Path)
+	ctx = geo.WithPath(ctx, requestPath)
 
 	details, err := client.GetPlaceDetails(ctx, placeID)
 	if err != nil {
-		if err == geo.ErrNotFound {
-			writeErr(w, http.StatusNotFound, "no_match", "查無這個地點的詳細資訊")
-			return
-		}
-		writeErr(w, http.StatusBadGateway, "place_details_failed", err.Error())
-		return
+		return placeDetailsResponse{}, err
 	}
 
 	resp := placeDetailsResponse{
@@ -1159,36 +1600,206 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 		Rating:  details.Rating,
 		Summary: details.Summary,
 	}
-	// 照片來源優先序同 geo.Client.SearchCityAttractions 的說明:先試
-	// Pexels(免費/低成本示意圖),查無結果或未注入時才 fallback 回
-	// Google Places 這個地點的真實照片——原生 POI 點擊是使用者互動觸發
-	// 的低頻查詢,但 Photo Media API 仍按張數計費,能省則省。
-	if client.PexelsClient() != nil {
-		if photo, ok, pErr := client.PexelsClient().Search(ctx, details.Name); pErr == nil && ok {
-			resp.PhotoURL = s.landmarkPhotoURL(ctx, placeID, photo.ImageURL)
-		}
-	}
-	if resp.PhotoURL == "" && details.PhotoRef != "" {
-		// 圖片下載失敗不影響整體查詢結果——只是沒有照片可顯示,理由同
-		// fetchNearbyHotels 等既有端點的處理方式。
-		if photoURL, pErr := client.PhotoDataURI(ctx, placeID, details.PhotoRef, 400); pErr == nil {
-			resp.PhotoURL = s.landmarkPhotoURLFromDataURI(ctx, placeID, photoURL)
-		}
-	}
 
-	// 查詢成功才寫入快取(不論照片是否成功下載都值得快取名稱/地址等
-	// 資料)——快取寫入失敗不影響這次回應,只是下次查詢會再打一次
-	// Google,不視為這支端點的錯誤。
-	var summaryPtr, photoURLPtr *string
+	// 這裡先寫入一次 SetCachedPlaceDetails,才接著呼叫
+	// IncrementPlaceClickCount——順序是刻意的,不能顛倒:
+	// IncrementPlaceClickCount 對「place_id 在 place_details_cache 裡
+	// 還不存在」的情況會直接回傳 clickCount=0、且完全不遞增任何欄位
+	// (見該函式的說明,UPDATE 語句在沒有符合條件的列時單純不生效,不會
+	// 自己 insert 一列)。走到這支函式代表快取未命中或已過期,對「這個
+	// 地點第一次被查詢」的情境而言,place_details_cache 這時通常還沒有
+	// 這個 place_id 的列,若在這裡才呼叫 IncrementPlaceClickCount,會
+	// 因為列不存在而永遠拿到 clickCount=0、且這次點擊不會被真正記錄
+	// 進資料庫,之後每次「快取未命中」的查詢都會重複發生同樣的問題。
+	// 故先用 SetCachedPlaceDetails 確保這一列已經存在(即使是覆寫既有
+	// 過期列也無妨,理由見下方註解),IncrementPlaceClickCount 才能穩定
+	// 命中同一列、正確累加 click_count。
+	var summaryPtr *string
 	if resp.Summary != "" {
 		summaryPtr = &resp.Summary
 	}
-	if resp.PhotoURL != "" {
-		photoURLPtr = &resp.PhotoURL
-	}
-	_ = s.store.SetCachedPlaceDetails(placeID, resp.Name, resp.Address, resp.Lat, resp.Lng, resp.Rating, summaryPtr, photoURLPtr)
+	_ = s.store.SetCachedPlaceDetails(placeID, resp.Name, resp.Address, resp.Lat, resp.Lng, resp.Rating, summaryPtr)
 
-	writeJSON(w, http.StatusOK, resp)
+	// Google 與 Pexels 的照片同時並列顯示(見 placeDetailsResponse 的
+	// 說明),不再是「先試 Pexels,查無才 fallback Google」的互斥選擇——
+	// 兩邊各自獨立查詢、各自寫入對應的表,互不影響彼此的結果。
+	//
+	// Google 這邊改由 decidePlacePhotoAction 驅動,不再是「一次下載到
+	// maxPlaceDetailPhotos 上限」的舊寫法(該常數已移除)——這裡是這個
+	// 地點第一次被查詢的情境(走到這支函式代表 place_details_cache 快取
+	// 未命中或已過期),IncrementPlaceClickCount 對「查無資料」回傳全 0
+	// 是既有慣例(見該函式的說明),但因為上面已經先呼叫過
+	// SetCachedPlaceDetails 確保這一列存在,這裡實際會走到「列已存在」
+	// 的正常遞增路徑,不會觸發那個零值慣例——previousGoogleTarget 拿到
+	// 的是這一列剛被 SetCachedPlaceDetails 覆寫後的
+	// GooglePhotoTargetCount(該函式白名單只更新 name/address/.../
+	// fetched_at 幾欄,不含這幾個補圖進度欄位,見其說明,故沿用列原本
+	// 的值——若這是全新地點則是 gorm 預設值 0)。previousGoogleTarget
+	// 為 0 時會被 decidePlacePhotoAction 內部的
+	// resetPhotoProgressOnTargetChange 視為「跟任何非零的
+	// currentGoogleTarget 不同」而觸發 reset(reset 後仍是 0,不影響
+	// 結果),接著任意 clickCount 都會觸發 shouldFetch(分母為 1),補
+	// index=0——即「初次查詢只下載第一張,之後漸進累積」,跟後續點擊
+	// 觸發補圖走的是完全同一段程式碼,不是特殊路徑。
+	//
+	// currentGoogleTarget 不需要額外呼叫 ListPlacePhotoRefs——上面已經
+	// 呼叫過 GetPlaceDetails,details.PhotoRefs 本身就是這次查詢當下
+	// photos[] 的完整清單,len(details.PhotoRefs) 直接就是
+	// currentGoogleTarget,不需要為了拿這個長度多打一次同等計費等級的
+	// Google 查詢。
+	clickCount, newPhotoCount, previousGoogleTarget, _ := s.store.IncrementPlaceClickCount(placeID)
+	currentGoogleTarget := len(details.PhotoRefs)
+	_, effectiveNewPhotoCount, shouldFetch, indexToFetch := decidePlacePhotoAction(
+		clickCount, newPhotoCount, previousGoogleTarget, currentGoogleTarget)
+
+	if shouldFetch && indexToFetch >= 0 && indexToFetch < len(details.PhotoRefs) {
+		// 圖片下載失敗不影響整體查詢結果——只是這張沒有照片可顯示,
+		// 理由同 fetchNearbyHotels 等既有端點的處理方式,略過即可,
+		// 不中斷整支函式。這裡初次查詢的情境下,google_place_photos
+		// 底下這個 place_id 原本應該一張都還沒有,直接寫入這一張是對的
+		// (不需要走 appendGooglePlacePhoto 的「讀現有+追加」流程,那是
+		// 給快取命中後續補圖用的,見該 helper 的說明——但這裡呼叫它仍然
+		// 正確、只是現有清單必然是空的,統一呼叫同一支 helper 可以避免
+		// 兩處分別實作出不一致的行為)。
+		//
+		// decidePlacePhotoAction 回傳的 effectiveNewPhotoCount 是「補圖
+		// 前」的累積數(同時也是 indexToFetch 本身,見該函式的完整
+		// 說明:indexToFetch 就是 effectiveNewPhotoCount),只有這張真的
+		// 下載成功時,才代表「已經補到第幾張」的累積數往前推進了一張,
+		// 需要 +1 才是接下來要寫回 UpdatePlacePhotoProgress 的正確值
+		// ——若下載失敗,effectiveNewPhotoCount 維持不變,下次點擊會
+		// 再次嘗試同一個 index,不會因為這次失敗而跳過這張沒真正補到的
+		// 照片。
+		// objectKey 帶入 indexToFetch(googlePlacePhotoObjectKey,完整
+		// 說明見該函式與上方快取命中分支同一處的呼叫點註解)——避免同一
+		// placeID 之後陸續補到的多張照片,全部覆寫到同一個 GCS 物件。
+		//
+		// 這裡改用 PhotoDataURIUnrestricted(而非 PhotoDataURI)——這是
+		// fetchAndCachePlaceDetails 本身,即「單點地點介紹」初次查詢的
+		// 路徑,理由同上方快取命中分支同一處呼叫點的說明:已經有速率
+		// 限制 + 同 placeID 併發丟棄 + 快取三重機制頂著成本風險,不應該
+		// 再受 GOOGLE_PLACES_FETCH_PHOTOS 全域開關限制(完整理由見
+		// geo.Client.PhotoDataURIUnrestricted 的說明)。
+		if photoURL, pErr := client.PhotoDataURIUnrestricted(ctx, placeID, details.PhotoRefs[indexToFetch], 400); pErr == nil {
+			objectKey := googlePlacePhotoObjectKey(placeID, indexToFetch)
+			resp.GooglePhotoURLs = s.appendGooglePlacePhoto(placeID, s.landmarkPhotoURLFromDataURI(ctx, objectKey, photoURL))
+			effectiveNewPhotoCount++
+		}
+	}
+
+	var pexelsPageURLs []string
+	if client.PexelsClient() != nil {
+		if photo, ok, pErr := client.PexelsClient().Search(ctx, details.Name); pErr == nil && ok {
+			resp.PexelsPhotoURLs = append(resp.PexelsPhotoURLs, s.landmarkPhotoURL(ctx, placeID, photo.ImageURL))
+			pexelsPageURLs = append(pexelsPageURLs, photo.PageURL)
+		}
+	}
+	if len(resp.GooglePhotoURLs) > 0 {
+		resp.PhotoURL = resp.GooglePhotoURLs[0]
+	} else if len(resp.PexelsPhotoURLs) > 0 {
+		resp.PhotoURL = resp.PexelsPhotoURLs[0]
+	}
+
+	// 名稱/地址/座標/評分/簡介已經在上面呼叫 SetCachedPlaceDetails 寫入
+	// 過一次(理由見上方對呼叫順序的說明),這裡不需要重複寫入——這幾個
+	// 欄位在拿到 GetPlaceDetails 結果的當下就已經確定,不會因為後續的
+	// 照片查詢而改變。Pexels 照片查詢結果 SetPlacePexelsPhotos 內部是
+	// 整批覆寫(理由同 SetGooglePlacePhotos 的說明),初次查詢時
+	// place_pexels_photos 底下這個 place_id 原本就是空的,不需要額外的
+	// 讀現有+追加流程。UpdatePlacePhotoProgress 的 touchFetchedAt 傳
+	// true 是讓 fetched_at 反映「剛剛真的查過 Google」的事實(即使
+	// SetCachedPlaceDetails 已經寫過一次 fetched_at=now(),這裡的 now()
+	// 只會比那次稍晚一點點,不會造成矛盾)。
+	_ = s.store.SetPlacePexelsPhotos(placeID, resp.PexelsPhotoURLs, pexelsPageURLs)
+	_ = s.store.UpdatePlacePhotoProgress(placeID, effectiveNewPhotoCount, currentGoogleTarget, true)
+
+	return resp, nil
+}
+
+// shouldAddGooglePlacePhoto 決定這次點擊(handleGeoPlaceDetails 一般模式)
+// 是否該對這個地點新增一張 Google 照片——純函式,不涉及資料庫/隨機數,
+// 天生具備確定性(給定同樣的輸入,永遠回傳同樣的結果),方便測試與推演。
+//
+// 背景:Google Places 這個地點目前實際有 googlePhotoTargetCount 張照片
+// (這次查詢當下的 photos[] 長度),但一次把它們全部下載完成本下載成本
+// 太高(Photo Media API 依張數計費)。改成依「這個地點被點擊的累積次數」
+// 漸進式地一張一張補齊:點擊越多次,已經補到的張數(newPhotoCount)越
+// 接近目標值,但補圖的頻率隨著已補張數增加而遞減(張數越多,下一張需要
+// 等的點擊次數越長)——用 clickCount % (newPhotoCount+1)² == 0 這個判斷
+// 式達成:0 張時分母是 1,每次點擊都觸發;1 張時分母是 4,每 4 次點擊
+// 觸發一次;2 張時分母是 9,以此類推。
+//
+// newPhotoCount 追上 googlePhotoTargetCount 後不再觸發(沒有更多張可補
+// ——目標值本身若之後又變動,見下方 resetPhotoProgressOnTargetChange 的
+// 說明,那是另一支函式的職責,不是這裡要處理的)。
+//
+// clickCount 是這個地點被點擊的總次數,只增不減、跨越目標值變動也不會
+// 重置(見 resetPhotoProgressOnTargetChange 的說明,重置的是
+// newPhotoCount,不是 clickCount)。
+func shouldAddGooglePlacePhoto(clickCount int64, newPhotoCount, googlePhotoTargetCount int) bool {
+	if newPhotoCount < 0 {
+		// 防禦性邊界:正常流程 newPhotoCount 只會是 0 或 UpdatePlacePhotoProgress
+		// 寫入過的非負值,不該出現負數。但若資料庫曾經寫入髒資料,
+		// newPhotoCount+1 可能算出 0,下面的 n*n 當除數會直接 panic
+		// (integer divide by zero)——寧可回傳「不觸發」讓這次點擊
+		// 略過補圖,也不要讓整支 handler 崩潰。
+		return false
+	}
+	if newPhotoCount >= googlePhotoTargetCount {
+		return false
+	}
+	n := int64(newPhotoCount + 1)
+	return clickCount%(n*n) == 0
+}
+
+// resetPhotoProgressOnTargetChange 判斷這次查詢到的 Google 照片目標張數
+// 跟上次記錄的是否不同——不同時,補圖進度(newPhotoCount)要歸零重新
+// 累積(見 shouldAddGooglePlacePhoto 的說明,這支函式的職責只有「要不要
+// 歸零」,不負責實際刪除 google_place_photos 裡超出新長度的列,那是
+// 呼叫端 store.SetGooglePlacePhotos 之類函式的職責)。
+func resetPhotoProgressOnTargetChange(previousGooglePhotoTargetCount, newGooglePhotoTargetCount int) bool {
+	return previousGooglePhotoTargetCount != newGooglePhotoTargetCount
+}
+
+// decidePlacePhotoAction 把 resetPhotoProgressOnTargetChange 與
+// shouldAddGooglePlacePhoto 兩支既有純函式串成一支合併後的決策函式,
+// 供 handleGeoPlaceDetails 一般模式（無論是這個地點第一次被查詢,還是
+// 快取命中後的後續點擊觸發補圖）在單一呼叫點決定完整動作,不需要呼叫端
+// 自己分別呼叫兩支函式再手動串接判斷結果。
+//
+// previousGooglePhotoTargetCount 初次查詢時傳 0(place_details_cache
+// 尚不存在,IncrementPlaceClickCount 對「查無資料」回傳的零值,見該
+// 函式的說明)——0 視為跟任何非零的 currentGoogleTarget 不同,自然觸發
+// reset(雖然本來就是 0,reset 後仍是 0,不影響結果),接著在 clickCount
+// 為任意值時都會觸發(分母為 1),補 index=0,即「初次查詢只下載第一張,
+// 不再一次下載到某個固定上限」——與之後的漸進補圖走同一套邏輯,沒有
+// 特殊路徑。
+//
+// 回傳值:
+//   - didReset:這次是否因為 target 變動而重置了補圖進度。
+//   - effectiveNewPhotoCount:reset 後(或未 reset,維持原值)的
+//     newPhotoCount,呼叫端應該用這個值(而非呼叫端手上原本的舊值)去
+//     更新 UpdatePlacePhotoProgress 裡尚未觸發補圖的欄位。
+//   - shouldFetch:這次是否該真的去下載一張新圖。
+//   - indexToFetch:shouldFetch 為 true 時,要補的 photo_index(即
+//     effectiveNewPhotoCount 本身);shouldFetch 為 false 時固定回傳 -1,
+//     代表這個值不適用,呼叫端不該把它當成有效的 index 使用。
+func decidePlacePhotoAction(
+	clickCount int64,
+	newPhotoCount int,
+	previousGoogleTarget int,
+	currentGoogleTarget int,
+) (didReset bool, effectiveNewPhotoCount int, shouldFetch bool, indexToFetch int) {
+	effectiveNewPhotoCount = newPhotoCount
+	if resetPhotoProgressOnTargetChange(previousGoogleTarget, currentGoogleTarget) {
+		didReset = true
+		effectiveNewPhotoCount = 0
+	}
+
+	if shouldAddGooglePlacePhoto(clickCount, effectiveNewPhotoCount, currentGoogleTarget) {
+		return didReset, effectiveNewPhotoCount, true, effectiveNewPhotoCount
+	}
+	return didReset, effectiveNewPhotoCount, false, -1
 }
 
 // handleGeoPlacesNearby(GET /internal/geo/places/nearby)、其專屬的

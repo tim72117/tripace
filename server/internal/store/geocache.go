@@ -113,8 +113,12 @@ func (s *Store) GetCachedPlaceDetails(placeID string, maxAge time.Duration) (row
 	return row, true, nil
 }
 
-// SetCachedPlaceDetails 寫入(或覆蓋既有)一筆 Place Details 快取。
-func (s *Store) SetCachedPlaceDetails(placeID, name, address string, lat, lng, rating float64, summary, photoURL *string) error {
+// SetCachedPlaceDetails 寫入(或覆蓋既有)一筆 Place Details 快取——只含
+// 名稱/地址/座標/評分/簡介,不含照片。照片改由 SetGooglePlacePhotos/
+// SetPlacePexelsPhotos 分別寫入 google_place_photos/place_pexels_photos
+// 兩張表(見 googlePlacePhotoRow 的完整說明:Google 與 Pexels 的照片要
+// 同時並列顯示,不是互斥的單一選擇,故從這張表拆出、各自獨立管理)。
+func (s *Store) SetCachedPlaceDetails(placeID, name, address string, lat, lng, rating float64, summary *string) error {
 	row := placeDetailsCacheRow{
 		PlaceID:   placeID,
 		Name:      name,
@@ -123,10 +127,158 @@ func (s *Store) SetCachedPlaceDetails(placeID, name, address string, lat, lng, r
 		Lng:       lng,
 		Rating:    rating,
 		Summary:   summary,
-		PhotoURL:  photoURL,
 		FetchedAt: now(),
 	}
 	return s.db.Save(&row).Error
+}
+
+// IncrementPlaceClickCount 對 place_id 的 click_count 做原子性 +1,並
+// 回傳遞增後的 click_count、以及目前的 new_photo_count/google_photo_target_count
+// (供呼叫端接著餵給 shouldAddGooglePlacePhoto/resetPhotoProgressOnTargetChange
+// 兩支純函式判斷這次點擊要不要觸發漸進補圖)。
+//
+// 用 GORM 的 Model().Update() 產生單一 UPDATE place_details_cache
+// SET click_count = click_count + 1 WHERE place_id = ? 語句——遞增
+// 運算式(click_count + 1)整個在 SQL 端、同一條 UPDATE 陳述式裡完成,
+// 不是先 SELECT 讀出目前值、在 Go 端加一、再 UPDATE 寫回,所以不會有
+// 「讀取後、寫回前」這段時間窗口被其他併發請求插隊、導致漏加的
+// read-modify-write 競態(多個使用者同時點同一個地點時常見的問題)。
+// Postgres/SQLite 兩種 dialector 都支援這個語法,不需要另外分支處理。
+//
+// 遞增後緊接著用同一個 s.db(非另開 transaction)以 First 讀回整列——
+// 這裡沒有用交易包住「UPDATE + 讀回」兩步驟:SQLite/Postgres 的單一
+// UPDATE 陳述式本身已經是原子的(click_count 的加法不會漏算),讀回
+// 這一步只是要把 UPDATE 之後「當下」的 new_photo_count/
+// google_photo_target_count 一併取回給呼叫端,即使讀回前後又有其他
+// 併發點擊把這兩欄改動,也只是讓呼叫端拿到「稍舊一點」的補圖進度快照
+// ——反映在下一次點擊的判斷裡即可,不影響 click_count 本身的正確性,
+// 不需要為此提高一致性等級、犧牲併發吞吐。
+//
+// place_id 在 place_details_cache 裡還不存在時(這個地點第一次被查詢,
+// 還沒走過 SetCachedPlaceDetails 寫入這一列),UPDATE 會影響 0 列、
+// 不報錯;這裡比照 GetCachedPlaceDetails 對「查無資料」的處理慣例
+// (回傳 ok=false/零值,不當作 error),回傳 clickCount=0, newPhotoCount=0,
+// googlePhotoTargetCount=0, err=nil——呼叫端本來就只會在快取未命中時
+// 才走一般查詢流程,那時候才會第一次呼叫 SetCachedPlaceDetails 寫入
+// 這一列,所以「查不到」在這個函式是預期中的正常情況,不是異常。
+func (s *Store) IncrementPlaceClickCount(placeID string) (clickCount int64, newPhotoCount int, googlePhotoTargetCount int, err error) {
+	result := s.db.Model(&placeDetailsCacheRow{}).
+		Where("place_id = ?", placeID).
+		Update("click_count", gorm.Expr("click_count + 1"))
+	if result.Error != nil {
+		return 0, 0, 0, result.Error
+	}
+	if result.RowsAffected == 0 {
+		// place_id 尚未存在於 place_details_cache——這是第一次查詢這個
+		// 地點,還沒有任何一列可以遞增,交由呼叫端走一般查詢流程。
+		return 0, 0, 0, nil
+	}
+
+	var row placeDetailsCacheRow
+	if err := s.db.Where("place_id = ?", placeID).First(&row).Error; err != nil {
+		return 0, 0, 0, err
+	}
+	return row.ClickCount, row.NewPhotoCount, row.GooglePhotoTargetCount, nil
+}
+
+// UpdatePlacePhotoProgress 更新這個 place_id 的 new_photo_count/
+// google_photo_target_count 兩欄——呼叫端在觸發(或判斷不觸發)漸進
+// 補圖之後,把最新進度寫回時使用。
+//
+// 用 Model(...).Where(...).Updates(map[...]) 做部分欄位更新,不是
+// Save(&row) 整列覆寫——Save 會用呼叫端手上這個 struct 的所有欄位
+// (含零值)覆蓋整列,若呼叫端沒有先把 click_count/name/address 等
+// 其他欄位也填好,會被誤寫成零值/空字串,清空既有資料。這裡只關心
+// 這兩欄(加上下面說明的 fetched_at),用欄位白名單(map)明確只更新
+// 這幾欄,其餘欄位(click_count、name、address...)完全不受影響。
+//
+// touchFetchedAt 控制是否同時把 fetched_at 更新成現在(見
+// server/internal/api/geo_outline.go 的 handleGeoPlaceDetails 快取命中
+// 分支對「點擊節奏 OR 時間」雙觸發條件的完整說明)——只要這次呼叫端
+// 實際打過 geo.Client.ListPlacePhotoRefs/GetPlaceDetails 去跟 Google
+// 確認過目前的 photos[] 長度(不論最後有沒有真的觸發補圖下載),就該傳
+// true,讓「距離上次真正查過 Google 已經超過 7 天」這個時間觸發條件
+// 重新從現在起算,避免同一個已經確認過的地點在接下來 7 天內因為時間
+// 條件被重複觸發。完全沒有觸發任何查詢(點擊節奏跟時間都未觸發)的
+// 路徑不應該呼叫這支函式,或應傳 false——這種情況下 fetched_at 理應
+// 維持原值不動。
+func (s *Store) UpdatePlacePhotoProgress(placeID string, newPhotoCount, googlePhotoTargetCount int, touchFetchedAt bool) error {
+	updates := map[string]interface{}{
+		"new_photo_count":           newPhotoCount,
+		"google_photo_target_count": googlePhotoTargetCount,
+	}
+	if touchFetchedAt {
+		updates["fetched_at"] = now()
+	}
+	return s.db.Model(&placeDetailsCacheRow{}).
+		Where("place_id = ?", placeID).
+		Updates(updates).Error
+}
+
+// ListGooglePlacePhotos 回傳該地點目前已落地的 Google Places 照片清單,
+// 依 photo_index 由小到大排序——供 handleGeoPlaceDetails 組裝回應與
+// GeoInfoPanel 顯示使用。查無資料回傳空 slice(非 nil、非 error)。
+func (s *Store) ListGooglePlacePhotos(placeID string) ([]googlePlacePhotoRow, error) {
+	rows := make([]googlePlacePhotoRow, 0)
+	err := s.db.Where("place_id = ?", placeID).Order("photo_index ASC").Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// SetGooglePlacePhotos 覆寫該地點的 Google Places 照片清單——先刪除
+// 這個 place_id 底下所有既有列,再寫入這次查到的完整清單,不是逐筆
+// upsert。理由:這裡要處理的是「整批取代」(每次查詢都拿到 Google 目前
+// 完整的 photos[] 順序),用刪除+整批寫入比逐筆比對新舊 index 差異更
+// 直接,且能自然處理「這次查到的張數比上次少」的情況(多餘的舊列會
+// 隨刪除一併清掉,不需要像 photoCacheRow 那樣另外呼叫 Trim)。
+func (s *Store) SetGooglePlacePhotos(placeID string, photoURLs []string) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("place_id = ?", placeID).Delete(&googlePlacePhotoRow{}).Error; err != nil {
+			return err
+		}
+		if len(photoURLs) == 0 {
+			return nil
+		}
+		rows := make([]googlePlacePhotoRow, len(photoURLs))
+		fetchedAt := now()
+		for i, url := range photoURLs {
+			rows[i] = googlePlacePhotoRow{PlaceID: placeID, PhotoIndex: i, PhotoURL: url, FetchedAt: fetchedAt}
+		}
+		return tx.Create(&rows).Error
+	})
+}
+
+// ListPlacePexelsPhotos 回傳該地點目前已快取的 Pexels 照片清單,依
+// photo_index 由小到大排序,理由同 ListGooglePlacePhotos。
+func (s *Store) ListPlacePexelsPhotos(placeID string) ([]placePexelsPhotoRow, error) {
+	rows := make([]placePexelsPhotoRow, 0)
+	err := s.db.Where("place_id = ?", placeID).Order("photo_index ASC").Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// SetPlacePexelsPhotos 覆寫該地點的 Pexels 照片清單,理由同
+// SetGooglePlacePhotos。photoURLs/pageURLs 兩個 slice 長度必須一致,
+// 依相同索引一一對應同一張照片的下載網址與可追溯來源網址。
+func (s *Store) SetPlacePexelsPhotos(placeID string, photoURLs, pageURLs []string) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("place_id = ?", placeID).Delete(&placePexelsPhotoRow{}).Error; err != nil {
+			return err
+		}
+		if len(photoURLs) == 0 {
+			return nil
+		}
+		rows := make([]placePexelsPhotoRow, len(photoURLs))
+		fetchedAt := now()
+		for i, url := range photoURLs {
+			rows[i] = placePexelsPhotoRow{PlaceID: placeID, PhotoIndex: i, PhotoURL: url, PageURL: pageURLs[i], FetchedAt: fetchedAt}
+		}
+		return tx.Create(&rows).Error
+	})
 }
 
 // LogAPIRequest 寫入一筆 API 請求記錄(見 apiRequestLogRow 的完整說明,

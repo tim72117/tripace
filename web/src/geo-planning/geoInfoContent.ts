@@ -48,6 +48,8 @@ export function poiInfoContent(details: GeoPlaceDetails): GeoInfoContent {
   return {
     name: details.name,
     photoUrl: details.photoUrl,
+    googlePhotoUrls: details.googlePhotoUrls,
+    pexelsPhotoUrls: details.pexelsPhotoUrls,
     subtitle: details.address,
     summary: details.summary,
     badges: details.rating != null ? [`評分 ${details.rating.toFixed(1)}`] : [],

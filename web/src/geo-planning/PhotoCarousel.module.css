@@ -1,0 +1,202 @@
+/* wrap:對齊 GeoInfoPanel.module.css 的 .imageWrap——position: relative
+   錨點,讓圓點頁碼/文字計數能疊在照片上,不佔用版面高度,尺寸/比例維持
+   跟改版前的 <img>/.photoPlaceholder 完全一樣(width:100%,height:
+   160px),不讓卡片明顯變高或版面跳動。 */
+.wrap {
+  position: relative;
+  width: 100%;
+  height: 160px;
+  overflow: hidden;
+}
+
+.photo,
+.photoPlaceholder {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  display: block;
+}
+
+.photoPlaceholder {
+  background: linear-gradient(135deg, var(--ios-sand), var(--ios-gray));
+}
+
+/* desktopTrigger:桌面版多圖時卡片內顯示的縮圖按鈕——外觀跟原本
+   .wrap 底下的 <img> 一致(width:100%,height:160px),疊加透明的
+   <button> 語意,滑鼠移上去顯示可點擊游標,點擊開啟 Lightbox。 */
+.desktopTrigger {
+  position: relative;
+  width: 100%;
+  height: 160px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: block;
+}
+
+/* swipeTrack/swipeItem:手機版橫向並排滑動列——純 overflow-x: auto
+   自由捲動(不用 scroll-snap),手指滑多少、圖片就跟著移動多少,鬆手後
+   停在滑到的位置,不會自動吸附回某一張的邊界。使用者明確要求「圖片
+   滑動,不用吸附」——原本用 scroll-snap-type: x mandatory 讓鬆手後
+   對齊整張的做法已改掉,理由是吸附動作在快速滑動時會有一段跳動位移,
+   使用者體驗上不希望有這個強制對齊。scrollbar 隱藏(手機版原生捲動列
+   不需要顯示捲軸)。
+   軌道本身(.swipeTrack)不留左右 padding——貼齊卡片外緣捲動,不能有
+   多餘留白,理由見 .swipeItem。 */
+.swipeTrack {
+  display: flex;
+  width: 100%;
+  height: 160px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  gap: 8px;
+}
+
+.swipeTrack::-webkit-scrollbar {
+  display: none;
+}
+
+/* swipeItem:每張圖片各自像相簿卡片一樣有圓角+四周間距,不是整條軌道
+   共用一塊無縫貼齊的大圖——使用者明確要求「像相簿卡片一張張滑」。
+   寬度用 calc(100% - 16px)而非 100%(扣掉的 16px 略小於容器寬度,
+   讓下一張圖的邊緣先露出一點遠景,提示使用者還可以繼續往右滑,這是
+   使用者確認過的效果,不是單純把圖縮小置中);搭配上面 .swipeTrack
+   的 gap: 8px 當作卡片間距,不需要在每個 item 自己加左右 margin。
+   首尾項目在 MobileSwipeStrip 裡會依 activeIndex 動態疊加 inline
+   style(flexBasis)覆寫這個基準寬度(見該元件 itemStyle 的完整
+   說明:第一張顯示時左邊留間距、最後一張顯示時右邊留間距,首尾
+   項目的寬度要額外扣掉那個 padding 值,才能維持跟其他張一致的
+   遠景露出比例)——這裡的 calc(100% - 16px)是所有情境共用的預設
+   基準值,不是只給中間張數使用。overflow: hidden 負責裁出圓角
+   (img 本身是方形,靠容器裁切)。 */
+.swipeItem {
+  flex: 0 0 calc(100% - 16px);
+  height: 160px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* dots:目前第幾張的圓點頁碼——疊在照片底部置中,風格比照卡片既有的
+   圓角/半透明底色系。手機版由 IntersectionObserver 更新 active 狀態
+   (見 PhotoCarousel.tsx 的 MobileSwipeStrip),圓點本身不可點擊——
+   手機版的切換手段是滑動,圓點純粹是頁碼指示,不重複提供另一種切換
+   入口。 */
+.dots {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.dotActive {
+  background: #fff;
+}
+
+/* counter:文字版「第幾張/共幾張」或「共 N 張照片」(桌面版縮圖上),
+   疊在照片上——風格同 GeoInfoPanel.module.css 的 .closeBtn 深色半透明
+   底系。 */
+.counter {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ---- Lightbox:桌面版點擊縮圖後的全螢幕檢視層 ---- */
+
+.lightboxOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lightboxImg {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.lightboxCloseBtn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  cursor: pointer;
+}
+
+.lightboxCloseBtn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.lightboxNavBtn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  cursor: pointer;
+}
+
+.lightboxNavBtn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.lightboxNavBtnPrev {
+  left: 24px;
+}
+
+.lightboxNavBtnNext {
+  right: 24px;
+}
+
+.lightboxCounter {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}

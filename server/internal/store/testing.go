@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // memDBCounter 供 OpenTest 產生互不重複的記憶體資料庫名稱。
@@ -46,4 +47,22 @@ func OpenTest(t *testing.T) *Store {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	return s
+}
+
+// SetPlaceDetailsFetchedAtForTest 直接把 place_details_cache 這個 place_id
+// 的 fetched_at 改成呼叫端指定的任意時間點——供
+// server/internal/api 的 handler 層整合測試模擬「距離上次真正查過
+// Google 已經超過 placeDetailsTargetRecheckMaxAge(7 天)」這個時間觸發
+// 條件使用,不需要真的等待 7 天,也不需要為了這單一測試情境把
+// UpdatePlacePhotoProgress/SetCachedPlaceDetails 的參數複雜化成可以
+// 注入任意時間。這支函式只服務測試,正式流程完全不會呼叫到,故只在
+// testing.go(見檔案開頭的說明,這裡本來就是測試專用 helper 的固定
+// 位置)內提供,不放進 geocache.go 跟其餘正式功能函式混在一起。
+func (s *Store) SetPlaceDetailsFetchedAtForTest(t *testing.T, placeID string, fetchedAt time.Time) {
+	t.Helper()
+	if err := s.db.Model(&placeDetailsCacheRow{}).
+		Where("place_id = ?", placeID).
+		Update("fetched_at", fetchedAt).Error; err != nil {
+		t.Fatalf("SetPlaceDetailsFetchedAtForTest 失敗: %v", err)
+	}
 }

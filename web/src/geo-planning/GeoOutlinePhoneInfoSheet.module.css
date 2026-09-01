@@ -64,25 +64,36 @@
   cursor: pointer;
 }
 
-/* imageWrap:圖片左右留間距,不再滿版貼齊卡片邊緣(使用者明確要求)——
-   padding 對齊 .head/.content 的水平留白(16px)。不覆寫 touch-action,
-   說明見上方 .head。 */
+/* imageWrap:placeholder/單張圖片情境的預設樣式——圖片左右留間距,
+   不再滿版貼齊卡片邊緣(使用者明確要求),padding 對齊 .head/.content
+   的水平留白(16px)。桌面版 GeoInfoPanel 的圖片本身沒有圓角(滿版貼齊
+   卡片頂部,靠 .panel 本身裁邊角),圓角是手機版特有的視覺(使用者明確
+   要求),故不改 PhotoCarousel.module.css 共用樣式(那樣會連帶影響
+   桌面版),改在這層容器加 border-radius+overflow:hidden——
+   PhotoCarousel 的 .wrap 本身已經是 overflow:hidden 的滿版容器,這裡
+   再裁一層剛好讓四個角落被裁圓,不衝突。
+   不覆寫 touch-action,說明見上方 .head。 */
 .imageWrap {
   flex: 0 0 auto;
   padding: 0 16px;
-}
-
-.photo,
-.photoPlaceholder {
-  width: 100%;
-  height: 160px;
-  object-fit: cover;
-  display: block;
   border-radius: 12px;
+  overflow: hidden;
 }
 
-.photoPlaceholder {
-  background: linear-gradient(135deg, var(--ios-sand), var(--ios-gray));
+/* imageWrapSwipe:isMobileSwipe 為 true(PhotoCarousel 目前渲染成手機版
+   多圖橫滑軌道,見 GeoOutlinePhoneInfoSheet.tsx 的 onLayoutChange 說明)
+   時疊加的 modifier,覆寫 .imageWrap 拿掉左右留白與容器圓角——使用者
+   明確要求「有圖片的邊邊軌道不能有空隙」,固定 16px padding 套用到
+   多圖橫滑軌道上時,會讓整條軌道跟卡片外緣之間多出一圈間隙,不是真正
+   貼齊。容器本身也不再裁一層圓角(overflow:hidden 移除)——多圖情境
+   下每張圖片各自的圓角+間距已經由 PhotoCarousel 的 .swipeItem 逐張
+   處理(像相簿卡片一張張滑,同樣是使用者明確要求),若容器再裁一次
+   圓角/邊界,會裁掉還在軌道裡、尚未完全捲動進可視範圍的相鄰圖片邊緣,
+   跟「軌道貼齊外框、內部逐張露出遠景」的效果衝突。 */
+.imageWrapSwipe {
+  padding: 0;
+  border-radius: 0;
+  overflow: visible;
 }
 
 /* 不覆寫 touch-action,說明見上方 .head。 */

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tim72117/tripace/internal/auth"
@@ -59,6 +60,52 @@ type Server struct {
 	// 回傳「內部 gateway 是假實作」的 client,讓 handleGeoGeocode 整支
 	// (含兩階段串接判斷)可以在不打真實 Google API 的情況下被驗證。
 	newGeoGeocodeClient func(apiKey string) *geo.Client
+
+	// newPlaceDetailsClient 建立 handleGeoPlaceDetails 一般模式(fetchAndCachePlaceDetails)
+	// 專用的 geo.Client——預設 geo.New(真的打 Google Places API)。理由與
+	// newGeoGeocodeClient 相同:這支 handler 內部串接了漸進補圖決策
+	// (decidePlacePhotoAction)、IncrementPlaceClickCount、
+	// UpdatePlacePhotoProgress 等多個步驟,需要能在測試裡完整驗證整條
+	// 鏈路(而不只是各自獨立的純函式/store 方法),同時不能真的打 Google
+	// API。測試用 newTestServerWithFakePlaceDetailsGateway 把這個欄位換成
+	// 回傳「內部 gateway 是假實作」的 client。
+	newPlaceDetailsClient func(apiKey string) *geo.Client
+
+	// placeDetailsInFlight 標記目前哪些 placeID 正在執行
+	// fetchAndCachePlaceDetails(handleGeoPlaceDetails 一般模式的實際查詢
+	// 邏輯)——兩個使用者幾乎同時點擊地圖上同一個 Google 原生 POI 圖標、
+	// 且快取都未命中時,若不做任何處理,兩個請求會各自重複打
+	// GetPlaceDetails/PhotoDataURI/Pexels Search 這些依用量計費的外部
+	// API,且各自呼叫 SetGooglePlacePhotos/SetPlacePexelsPhotos(整批
+	// 覆寫寫入,見兩者的完整說明)可能互相覆蓋、造成其中一個請求查到的
+	// 結果被另一個請求的結果蓋掉。
+	//
+	// 這裡刻意不用 golang.org/x/sync/singleflight——singleflight.Group.Do
+	// 的語意是「合併」:只有第一個呼叫真正執行,後續同 key 的呼叫阻塞
+	// 等待、共享第一個呼叫的結果,是「等待」不是「丟棄」。這次的成本
+	// 控制設計要求的是真正的丟棄語意:同一 placeID 若已經有請求在
+	// in-flight,後續並發請求必須不等待、立即得知「這次被丟棄」,交由
+	// 呼叫端(handleGeoPlaceDetails)決定接下來的降級行為(例如改讀現有
+	// 快取),而不是讓它們排隊等第一個請求做完——singleflight 沒有提供
+	// 這種「不等待、直接告知被丟棄」的 API(DoChan 讓呼叫端可以不等待
+	// channel,但底層邏輯仍是排隊執行,只是呼叫端選擇不等而已,不是
+	// 「這次直接不執行」的語意),故改用最簡單的 sync.Map 自行實作。
+	//
+	// key 是 placeID,value 恆為 struct{}{}(只用來當 set 使用,不需要
+	// 儲存任何實際內容)——用 LoadOrStore 確保「檢查是否已存在」與「標記
+	// 為存在」是單一原子操作,避免兩個 goroutine 同時通過檢查、都以為
+	// 自己是第一個。搶到的呼叫端(LoadOrStore 回傳 loaded=false)負責在
+	// 查詢完成後(不論成功失敗)呼叫 Delete 移除標記,讓這個 placeID
+	// 之後的請求能重新觸發查詢——這個「搶到/移除」的配對邏輯收在
+	// tryClaimPlaceDetailsInFlight/releasePlaceDetailsInFlight 這兩個
+	// 方法裡(見 geo_outline.go),不直接在 handler 裡操作這個欄位,
+	// 方便測試單獨驗證「兩個並發請求,第一個進去、第二個被丟棄」這種
+	// 情境,不需要真的發兩個並發 HTTP 請求才能測試搶佔邏輯本身。
+	//
+	// 這只在單一 process 內生效——多個 Cloud Run instance 之間不會互相
+	// 合併,但目前規模下這已經足夠攔下同一台伺服器內的重複查詢,跟原本
+	// singleflight 的既有侷限一致。
+	placeDetailsInFlight sync.Map
 }
 
 func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID string) *Server {
@@ -72,15 +119,16 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 		uploader = &photostorage.Uploader{}
 	}
 	return &Server{
-		store:               st,
-		signer:              signer,
-		hub:                 newHub(),
-		devMode:             devMode,
-		googleClientID:      googleClientID,
-		guestUser:           model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
-		photoCache:          storePhotoCache{store: st},
-		photoUploader:       uploader,
-		newGeoGeocodeClient: geo.New,
+		store:                 st,
+		signer:                signer,
+		hub:                   newHub(),
+		devMode:               devMode,
+		googleClientID:        googleClientID,
+		guestUser:             model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
+		photoCache:            storePhotoCache{store: st},
+		photoUploader:         uploader,
+		newGeoGeocodeClient:   geo.New,
+		newPlaceDetailsClient: geo.New,
 	}
 }
 

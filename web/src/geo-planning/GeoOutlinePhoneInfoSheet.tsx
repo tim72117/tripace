@@ -6,6 +6,7 @@ import { attractionBadges } from './geoInfoContent'
 import { candidateHasScheduledDate, type GeoCandidate } from './geoCandidateHelpers'
 import { reduceAddCandidateUiState, initialAddCandidateUiState } from './geoAddCandidateState'
 import { PhoneBottomSheet, PHONE_BOTTOM_SHEET_EXIT_MS } from '../components/PhoneBottomSheet'
+import { PhotoCarousel } from './PhotoCarousel'
 import styles from './GeoOutlinePhoneInfoSheet.module.css'
 
 // ADDED_HINT_MS:「加入行程」icon 按鈕成功後短暫變成打勾圖示的顯示時長
@@ -163,6 +164,16 @@ export function GeoOutlinePhoneInfoSheet({
     setActiveSnapIndex(1)
   }, [content, attraction])
 
+  // isMobileSwipe:PhotoCarousel 目前是否渲染成手機版多圖橫滑軌道——
+  // 見下方 .imageWrap 的說明,單張圖片/placeholder 情境維持左右留白
+  // +圓角(使用者明確要求的既有視覺),多圖橫滑情境改成滿版無留白貼齊
+  // 卡片外緣(使用者明確要求「有圖片的邊邊軌道不能有空隙」),圓角+
+  // 間距改由 PhotoCarousel 內部每張 .swipeItem 各自處理(像相簿卡片
+  // 一張張滑)。靠 PhotoCarousel 的 onLayoutChange 回呼(見該元件的
+  // 完整說明)得知目前是哪一種,不在這個元件自己重新判斷一次
+  // photos.length(避免兩處各自判斷卻不小心寫出不一致的條件)。
+  const [isMobileSwipe, setIsMobileSwipe] = useState(false)
+
   // 往外回報目前停在哪一段(見 onSnapIndexChange prop 的說明)——不是
   // 提升成完全受控(activeSnapIndex 仍是這個元件自己的 state,呼叫端
   // 不能反過來指定),單純讓呼叫端能「觀察」目前段落,理由同
@@ -210,7 +221,14 @@ export function GeoOutlinePhoneInfoSheet({
   if (!open) return null
 
   const name = attraction ? attraction.name : content!.name
+  // photoUrl/googlePhotoUrls/pexelsPhotoUrls:attraction(人工建檔景點)
+  // 只有單一 landmarkPhotoUrl,沒有雙來源多圖清單——PhotoCarousel 收到
+  // 兩份清單皆為 undefined 時會 fallback 回 photoUrl 顯示單張,行為
+  // 與改版前一致,理由同 AttractionInfoPanel.tsx/GeoInfoPanel.tsx 不對
+  // attraction 分支特別處理多圖的既有慣例。
   const photoUrl = attraction ? attraction.landmarkPhotoUrl : content!.photoUrl
+  const googlePhotoUrls = attraction ? undefined : content!.googlePhotoUrls
+  const pexelsPhotoUrls = attraction ? undefined : content!.pexelsPhotoUrls
   const subtitle = attraction
     ? attraction.landmarkName && attraction.landmarkName !== attraction.name
       ? attraction.landmarkName
@@ -305,14 +323,21 @@ export function GeoOutlinePhoneInfoSheet({
         </div>
       }
     >
-      {/* imageWrap:圖片左右留間距(見 .imageWrap 的說明),不再滿版貼齊
-          卡片邊緣——使用者明確要求。 */}
-      <div className={styles.imageWrap}>
-        {photoUrl ? (
-          <img className={styles.photo} src={photoUrl} alt={name} />
-        ) : (
-          <div className={styles.photoPlaceholder} />
-        )}
+      {/* imageWrap:placeholder/單張圖片情境維持左右留白+圓角(見
+          .imageWrap 的說明,使用者明確要求);isMobileSwipe 為 true
+          (手機版多圖橫滑)時改套 .imageWrapSwipe,拿掉留白與容器圓角,
+          讓橫滑軌道整體真正貼齊卡片外緣——使用者明確要求「有圖片的
+          邊邊軌道不能有空隙」。多圖情境下每張圖片各自的圓角+間距改由
+          PhotoCarousel 自己的 .swipeItem 逐張處理(像相簿卡片一張張
+          滑,同樣是使用者明確要求),不是這層容器的職責。 */}
+      <div className={`${styles.imageWrap}${isMobileSwipe ? ` ${styles.imageWrapSwipe}` : ''}`}>
+        <PhotoCarousel
+          googlePhotoUrls={googlePhotoUrls}
+          pexelsPhotoUrls={pexelsPhotoUrls}
+          fallbackUrl={photoUrl}
+          alt={name}
+          onLayoutChange={setIsMobileSwipe}
+        />
       </div>
       <div className={styles.content}>
         {summary ? (

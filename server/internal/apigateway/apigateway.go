@@ -18,10 +18,20 @@ package apigateway
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
 )
+
+// ErrRateLimited 是 Gateway.Do 在 RateLimiter 拒絕這次呼叫時回傳的
+// sentinel error——export 出去讓呼叫端能用 errors.Is(err,
+// apigateway.ErrRateLimited) 判斷「這次失敗是因為被限流拒絕」,藉此
+// 跟其他失敗原因(連線逾時、HTTP 錯誤狀態碼等)區分開來,才能決定要不要
+// 走降級路徑(例如 server/internal/api/geo_outline.go 的
+// handleGeoPlaceDetails 收到這個 error 時不當作一般錯誤處理,而是改讀
+// 現有快取降級回應)。
+var ErrRateLimited = errors.New("apigateway: rate limited")
 
 // HTTPDoer 是底層實際發送 HTTP 請求的介面——標準函式庫的 *http.Client 已經
 // 滿足這個介面(Do 方法簽章相同),測試時可以換成假實作,不需要真的連網路。
@@ -55,6 +65,13 @@ type Config struct {
 	// 送出下一個請求(見 Gateway.Do 的說明)。<=0 時 New 會夾成 0(不限制
 	// 間隔,只受 MaxConcurrency 限制)。
 	MinInterval time.Duration
+
+	// RateLimiter 是選填的拒絕型限流器(見 RateLimiter 的完整說明)——
+	// nil 時代表不啟用,Gateway 維持原本「排隊等待、最終一定送出」的
+	// 行為,完全向後相容,現有呼叫端不受影響。非 nil 時,Gateway.Do 會
+	// 在原本的排隊邏輯之前先呼叫 RateLimiter.Allow(endpoint),若被拒絕
+	// 就直接回傳 ErrRateLimited,完全不進入排隊、不送出任何 HTTP 請求。
+	RateLimiter *RateLimiter
 }
 
 // DefaultConfig 是使用者確認過的預設值:同時最多 1 個請求在飛行中、
@@ -76,6 +93,9 @@ type Gateway struct {
 
 	mu       sync.Mutex // 保護 nextSlot,序列化「取得下一個可送出時間點」的判斷
 	nextSlot time.Time
+
+	// rateLimiter 見 Config.RateLimiter 的說明,nil 時不啟用。
+	rateLimiter *RateLimiter
 }
 
 // New 建立 Gateway。logger 可傳 nil(不記錄)。
@@ -87,10 +107,11 @@ func New(doer HTTPDoer, cfg Config, logger CallLogger) *Gateway {
 		cfg.MinInterval = 0
 	}
 	return &Gateway{
-		doer:     doer,
-		logger:   logger,
-		sem:      make(chan struct{}, cfg.MaxConcurrency),
-		interval: cfg.MinInterval,
+		doer:        doer,
+		logger:      logger,
+		sem:         make(chan struct{}, cfg.MaxConcurrency),
+		interval:    cfg.MinInterval,
+		rateLimiter: cfg.RateLimiter,
 	}
 }
 
@@ -112,6 +133,16 @@ func New(doer HTTPDoer, cfg Config, logger CallLogger) *Gateway {
 // 分開算,這是刻意的簡化:這次要解決的是「整個後端對 Google 的呼叫
 // 總量」,不是「個別端點各自的獨立配額」。
 func (g *Gateway) Do(ctx context.Context, req *http.Request, endpoint, caller, path string) (*http.Response, error) {
+	// RateLimiter 檢查必須在排隊邏輯(g.sem/waitForSlot)之前——這是
+	// 拒絕型限流跟下面排隊型節流的根本差異:一旦進入排隊,這次呼叫就已經
+	// 確定最終會被送出,只是延後,不會被拒絕。若被 RateLimiter 拒絕,
+	// 直接回傳 ErrRateLimited,不佔用併發名額、不等待間隔、不送出任何
+	// HTTP 請求,是同步立即回答,不阻塞呼叫端(見 RateLimiter.Allow 的
+	// 說明)。
+	if g.rateLimiter != nil && !g.rateLimiter.Allow(endpoint) {
+		return nil, ErrRateLimited
+	}
+
 	select {
 	case g.sem <- struct{}{}:
 	case <-ctx.Done():

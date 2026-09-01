@@ -3,6 +3,7 @@ import { PanelLeft, Plus, X } from 'lucide-react'
 import { dayGroupLabel, type GeoCandidate } from './GeoCandidateSidebar'
 import { candidateHasScheduledDate } from './geoCandidateHelpers'
 import { DatePickerPopover } from './DatePickerPopover'
+import { PhotoCarousel } from './PhotoCarousel'
 import styles from './GeoInfoPanel.module.css'
 
 // GeoInfoPanel:一張浮動卡片,絕對定位疊在地圖上方,貼齊主顯示區右緣
@@ -29,6 +30,11 @@ import styles from './GeoInfoPanel.module.css'
 export interface GeoInfoContent {
   name: string
   photoUrl?: string
+  // googlePhotoUrls/pexelsPhotoUrls:目前只有「點擊地圖上 Google 原生 POI
+  // 圖標」這個來源(poiInfoContent,見 geoInfoContent.ts)會帶值——其餘
+  // 來源(地點清單/候選籃項目)只有單一 photoUrl,這兩個欄位維持
+  // undefined,PhotoCarousel 收到兩者皆空時會 fallback 回 photoUrl,行為
+  // 不受影響。顯示順序「先 Google 後 Pexels」,見 PhotoCarousel.tsx。
   // placeId:2026-08 起,推薦地點(GeoPlace)不再帶 eager photoUrl(後端
   // 照片查詢改成背景預熱快取,見 server 端 handleGeoPlacesNearby 的
   // 說明),故這張卡片開啟時若 photoUrl 未知、但有 placeId,呼叫端
@@ -39,6 +45,8 @@ export interface GeoInfoContent {
   // geocode(搜尋結果)本身已經有另一套獨立的文字/照片補查流程(見
   // GeoOutlinePanel.tsx 的 selectedCandidate effect),不依賴這個欄位。
   placeId?: string
+  googlePhotoUrls?: string[]
+  pexelsPhotoUrls?: string[]
   subtitle?: string
   summary?: string
   badges: string[]
@@ -216,11 +224,12 @@ export function GeoInfoPanel({
     <div className={`${styles.panel}${shiftClass}`}>
       <div className={styles.body}>
         <div className={styles.imageWrap}>
-          {content.photoUrl ? (
-            <img className={styles.photo} src={content.photoUrl} alt={content.name} />
-          ) : (
-            <div className={styles.photoPlaceholder} />
-          )}
+          <PhotoCarousel
+            googlePhotoUrls={content.googlePhotoUrls}
+            pexelsPhotoUrls={content.pexelsPhotoUrls}
+            fallbackUrl={content.photoUrl}
+            alt={content.name}
+          />
           <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
             <X size={16} strokeWidth={2} />
           </button>

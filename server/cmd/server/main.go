@@ -52,6 +52,34 @@ func main() {
 	// 這個節流元件存在的理由。
 	geoMaxConcurrency := flag.Int("geo-max-concurrency", apigateway.DefaultConfig().MaxConcurrency, "對 Google Places/Geocoding API 同時可以在飛行中的最大請求數")
 	geoMinIntervalMs := flag.Int64("geo-min-interval-ms", apigateway.DefaultConfig().MinInterval.Milliseconds(), "對 Google Places/Geocoding API 連續請求之間至少間隔多少毫秒")
+	// geoRateLimit*:對 Google Places 的 "places.get"(地點資訊——
+	// GetPlaceDetails/ListPlacePhotoRefs)與 "places.photoMedia"(地點
+	// 照片——PhotoDataURI,依張數計費的圖片下載)這兩個 endpoint 分別
+	// 設定的拒絕型限流(見 apigateway.RateLimiter、geo.RateLimitConfig
+	// 的完整說明)——跟上面 geoMaxConcurrency/geoMinIntervalMs 是完全
+	// 不同的機制:那組參數只是「排隊,最終還是會送出」,不設總量上限;
+	// 這裡才是真正「超過就拒絕」的總量上限,目的是防止惡意或異常流量
+	// 長時間持續發送、最終累積無上限的計費呼叫(見
+	// docs/audit-place-photo-cost-control-2026-09.md 的 R1 風險項目)。
+	//
+	// 只涵蓋這兩個 endpoint——"places.searchText"(城市搜尋)/
+	// "places.searchNearby"(附近景點/飯店查詢)等其餘 endpoint 不套用
+	// 這個拒絕型限流,繼續只受上面 Gateway 的排隊節流保護,理由見
+	// geo.RateLimitConfig 的完整說明:這兩個 endpoint 對應「單點地點
+	// 介紹」這條已評估過需要拒絕型限流保護的路徑,其餘 endpoint 目前
+	// 沒有同等急迫性,不需要跟著一起收緊。
+	//
+	// 兩個 endpoint 各自獨立的視窗長度與上限次數(不共用同一份視窗)——
+	// 地點照片下載是依張數計費、風險最高的一種呼叫,給它更長的視窗
+	// 搭配更少的次數(預設 10 分鐘視窗內最多 1 次);地點資訊查詢相對
+	// 便宜,給它較短的視窗(預設 10 秒視窗內最多 1 次)。這兩組預設值都
+	// 是刻意保守但不會擋到正常使用的量級——一般使用者操作(點擊地圖
+	// POI 觸發單點地點介紹)遠低於這個頻率,精確數字之後可以再依實際
+	// 觀察調整。
+	geoRateLimitPlaceGetWindowSec := flag.Int64("geo-rate-limit-place-get-window-sec", 10, "對 places.get(地點資訊查詢)限流的視窗長度(秒)")
+	geoRateLimitPlaceGetMaxCalls := flag.Int("geo-rate-limit-place-get-max-calls", 1, "對 places.get(地點資訊查詢)視窗內最多可放行的呼叫次數,超過直接拒絕")
+	geoRateLimitPhotoMediaWindowSec := flag.Int64("geo-rate-limit-photo-media-window-sec", 600, "對 places.photoMedia(地點照片下載,依張數計費)限流的視窗長度(秒)")
+	geoRateLimitPhotoMediaMaxCalls := flag.Int("geo-rate-limit-photo-media-max-calls", 1, "對 places.photoMedia(地點照片下載)視窗內最多可放行的呼叫次數,超過直接拒絕")
 	// geoFetchPhotos:要不要真的向 Google Photo Media API 下載照片(見
 	// geo.SetPhotosEnabled 的完整說明)。預設關閉——Photo Media 依張數
 	// 計費,這是刻意保守的預設值,需要明確透過這個 flag 或下方的
@@ -97,6 +125,26 @@ func main() {
 	if v := os.Getenv("GOOGLE_PLACES_FETCH_PHOTOS"); v != "" {
 		*geoFetchPhotos = v == "1" || strings.EqualFold(v, "true")
 	}
+	if v := os.Getenv("GOOGLE_PLACES_GET_RATE_LIMIT_WINDOW_SEC"); v != "" {
+		if parsed, perr := strconv.ParseInt(v, 10, 64); perr == nil {
+			*geoRateLimitPlaceGetWindowSec = parsed
+		}
+	}
+	if v := os.Getenv("GOOGLE_PLACES_GET_RATE_LIMIT_MAX_CALLS"); v != "" {
+		if parsed, perr := strconv.Atoi(v); perr == nil {
+			*geoRateLimitPlaceGetMaxCalls = parsed
+		}
+	}
+	if v := os.Getenv("GOOGLE_PLACES_PHOTO_MEDIA_RATE_LIMIT_WINDOW_SEC"); v != "" {
+		if parsed, perr := strconv.ParseInt(v, 10, 64); perr == nil {
+			*geoRateLimitPhotoMediaWindowSec = parsed
+		}
+	}
+	if v := os.Getenv("GOOGLE_PLACES_PHOTO_MEDIA_RATE_LIMIT_MAX_CALLS"); v != "" {
+		if parsed, perr := strconv.Atoi(v); perr == nil {
+			*geoRateLimitPhotoMediaMaxCalls = parsed
+		}
+	}
 
 	// DATABASE_URL(postgres://…,正式環境為 Cloud SQL)優先;未設時退回 -db 的 SQLite。
 	dsn := *dbPath
@@ -118,6 +166,16 @@ func main() {
 		apigateway.Config{MaxConcurrency: *geoMaxConcurrency, MinInterval: time.Duration(*geoMinIntervalMs) * time.Millisecond},
 		storeGeoCallLogger{store: st},
 	)
+	// 只對 places.get/places.photoMedia 兩個 endpoint 的拒絕型限流(見
+	// geoRateLimitPlaceGet*/geoRateLimitPhotoMedia* 的說明)——必須同樣
+	// 在任何 geo.New() 呼叫之前設定,理由與上面 ConfigureDefaultGateway
+	// 相同。
+	geo.ConfigureDefaultGatewayRateLimit(geo.RateLimitConfig{
+		PlaceGetWindow:     time.Duration(*geoRateLimitPlaceGetWindowSec) * time.Second,
+		PlaceGetMaxCalls:   *geoRateLimitPlaceGetMaxCalls,
+		PhotoMediaWindow:   time.Duration(*geoRateLimitPhotoMediaWindowSec) * time.Second,
+		PhotoMediaMaxCalls: *geoRateLimitPhotoMediaMaxCalls,
+	})
 	geo.SetPhotosEnabled(*geoFetchPhotos)
 	if *geoFetchPhotos {
 		log.Printf("Google Photo Media 下載已啟用(依張數計費)")

@@ -73,7 +73,11 @@ func (c *Client) SyncPlacePhotos(ctx context.Context, placeID string, maxWidthPx
 	toFetch, trimFrom := planPhotoSync(cachedAt, len(photoRefs), maxAge, time.Now())
 
 	for _, idx := range toFetch {
-		dataURI, err := c.downloadPhotoBytes(ctx, photoRefs[idx], maxWidthPx)
+		// bypassGlobalPhotosToggle 傳 false——SyncPlacePhotos 是背景批次
+		// 同步機制,不是「單點地點介紹」那條有速率限制+併發丟棄+快取三重
+		// 防線頂著的路徑(見 geo.Client.PhotoDataURIUnrestricted 的完整
+		// 說明),必須繼續受 photosEnabled 全域開關控制。
+		dataURI, err := c.downloadPhotoBytes(ctx, photoRefs[idx], maxWidthPx, false)
 		if err != nil {
 			// 單張下載失敗不影響其他張——理由同 fetchNearbyHotels 等既有
 			// 端點的處理方式,不讓一張圖的暫時性失敗拖垮整個地點的同步。
