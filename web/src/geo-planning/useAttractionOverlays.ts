@@ -22,6 +22,8 @@ export function useAttractionOverlays({
   hoverKey,
   candidateKeys,
   onAttractionSelect,
+  revealedAttractionNames,
+  hoveredCuratedName,
 }: {
   mapRef: React.RefObject<google.maps.Map | null>
   mapReady: boolean
@@ -31,24 +33,47 @@ export function useAttractionOverlays({
   hoverKey?: GeoSelectedKey
   candidateKeys?: Set<string>
   onAttractionSelect?: (attraction: GeoAttraction) => void
+  // hoveredCuratedName:使用者滑鼠移到 AttractionInfoPanel「附近景點」
+  // 清單裡對應項目時,那個精選點的名稱(見 DesktopLayout.tsx 的
+  // hoveredNearbyAttraction 說明)——對應的地圖圓點暫時升級成完整照片
+  // 呈現(見 geoAttractionOverlay.ts 的 setHovered/renderContent),滑開
+  // 後收回圓點。跟 selectedKey/hoverKey 是不同概念:後兩者驅動的是
+  // 「選取靶心」樣式(見 isMarkerSelected),這裡驅動的是「要不要顯示
+  // 照片」這個 DOM 結構層級的切換,只對精選點有意義(主題點永遠顯示
+  // 照片,見 setHovered 對 isTheme 的忽略邏輯)。
+  // revealedAttractionNames:主題點/精選點分級(2026-08,使用者明確要求)
+  // ——level === 1 視為「主題點」,其餘(2/3/…)視為「精選點」,精選點
+  // 預設不在地圖上顯示,只有使用者點開某個主題點、呼叫端(DesktopLayout.tsx
+  // 的 revealedAttractionNames)依附近距離算出這個名稱集合後,對應的精選
+  // 點才會出現在地圖上——見下方 filteredAttractions 的判斷式。undefined/
+  // null 代表目前沒有開啟任何主題,精選點一律不顯示。暫不新增後端欄位
+  // 區分主題/精選(見 docs/research-curated-attraction-relationships-2026-08.md
+  // 的方向 C 結論:先用既有 level 表達,之後若證明不夠用再考慮專屬欄位)。
+  revealedAttractionNames?: Set<string> | null
+  hoveredCuratedName?: string | null
 }) {
   const overlaysRef = useRef<AttractionOverlayInstance[]>([])
   const radiusCirclesRef = useRef<google.maps.Circle[]>([])
 
-  // filteredAttractions:依目前 zoom 對應的知名度分級上限篩選——只篩選
-  // 「有 level 資訊」的景點區域(人工建檔的資料,見 model.Attraction);
-  // 沒有 level 的景點區域(即時查 Google Places 的結果)一律顯示,不受
-  // 縮放層級篩選影響(這批資料沒有分級可言,無從篩起)。用 useMemo 快取,
-  // 理由同 hotel/place/tripEntry 各自的內容摘要 pattern:.filter() 若每次
-  // render 都重算,會產生新陣列參照,讓依賴它的 useEffect(畫景點區域
-  // 光暈/範圍圓圈)誤判成「內容變了」而重複清除重畫——即使這裡本身不會
-  // 形成無限迴圈(filteredAttractions 沒有驅動任何 setState),但仍會在
-  // sibling state(如 visibleHotels 變動連鎖傳回的新 hotels/attractions
-  // prop)造成這個元件重渲染時,讓光暈/圓圈動畫不必要地重播、閃爍。
+  // filteredAttractions:主題點(level === 1)維持原本「依 zoom 對應的
+  // 知名度分級上限」規則——level 1 在 maxLevelForZoom 的定義下恆通過
+  // (見該函式說明),等於主題點不論 zoom 都顯示,這點沒有改變舊行為。
+  // 精選點(level 不是 1、也不是 null)不再吃 zoom 分級,改成完全由
+  // revealedAttractionNames 這個集合決定要不要顯示——只有揭露它的那個
+  // 主題點被開啟時,這批精選點才會出現在地圖上,不受使用者當下 zoom
+  // 到哪一層影響(理由同呼叫端 nearbyAttractions 的說明:這是「進入
+  // 主題後才依附近距離顯示精選點」,不是傳統的知名度分級揭露)。沒有
+  // level 資訊的景點區域(即時查 Google Places 的結果)一律顯示,不受
+  // 這整套主題/精選規則影響——這批資料沒有分級可言,無從歸類。用
+  // useMemo 快取的理由(避免不必要的重畫/閃爍)同舊版說明,不變。
   const maxLevel = maxLevelForZoom(zoom)
   const filteredAttractions = useMemo(
-    () => attractions.filter((d) => d.level == null || d.level <= maxLevel),
-    [attractions, maxLevel],
+    () => attractions.filter((d) => {
+      if (d.level == null) return true
+      if (d.level === 1) return d.level <= maxLevel
+      return revealedAttractionNames?.has(d.name) ?? false
+    }),
+    [attractions, maxLevel, revealedAttractionNames],
   )
 
   // 點擊地標圖示只開介紹卡(見 onAttractionSelect),不移動/縮放地圖——
@@ -119,6 +144,19 @@ export function useAttractionOverlays({
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidateKeysToken, filteredAttractions])
+
+  // 同步精選點的照片展開狀態:只切換既有 overlay 的 innerHTML(見
+  // geoAttractionOverlay.ts 的 setHovered/renderContent),不重建整批
+  // overlay——理由同上方同步選取/候選籃狀態的 effect,使用者在「附近
+  // 景點」清單裡滑過不同項目時,不該讓其他沒被滑到的精選點跟著重畫。
+  // setHovered 內部對 isTheme 的 no-op 與 hovered 值未變的提早跳出,已經
+  // 確保主題點與非目標精選點不會被無謂觸發。
+  useEffect(() => {
+    overlaysRef.current.forEach((o, i) => {
+      const d = filteredAttractions[i]
+      if (d) o.setHovered(d.name === hoveredCuratedName)
+    })
+  }, [hoveredCuratedName, filteredAttractions])
 
   // 範圍圓圈:只有帶 radiusMeters 的景點區域(手動整理的觀光慣稱分區,如
   // 清邁的古城區/尼曼區,見 server/internal/geo/district_aliases.go)

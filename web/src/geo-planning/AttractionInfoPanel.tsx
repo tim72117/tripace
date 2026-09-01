@@ -1,6 +1,7 @@
-import { Compass, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import type { GeoAttraction } from '../api'
 import { attractionBadges } from './geoInfoContent'
+import { curatedCategoryOf, CURATED_CATEGORY_ICONS, CURATED_CATEGORY_LABELS } from './geoCuratedCategoryStub'
 import styles from './AttractionInfoPanel.module.css'
 
 // AttractionInfoPanel:attraction(人工建檔的景點區域,見 model.Attraction)
@@ -8,11 +9,16 @@ import styles from './AttractionInfoPanel.module.css'
 // 的那個)之外——理由是這兩者的操作集合已經完全不同:GeoInfoPanel 的
 // 「加入候選/加入行程」按鈕組是給還沒被選進行程規劃的地點用的,而
 // attraction 本身不接受被加入候選籃或行程(見 DesktopLayout.tsx
-// attractionInfoContent 不帶 candidate 欄位的說明),它反而需要一個
-// GeoInfoPanel 完全沒有的動作:「探索周邊」(縮放地圖到這個區域的完整
-// 範圍,見下方 onExplore)。與其在同一個元件裡用 candidate 是否存在去
-// 判斷該渲染哪一組按鈕,拆成獨立元件讓兩邊各自的操作集合單純、不互相
-// 污染,之後任一邊要新增/調整專屬按鈕也不需要擔心波及另一邊。
+// attractionInfoContent 不帶 candidate 欄位的說明)。與其在同一個元件裡
+// 用 candidate 是否存在去判斷該渲染哪一組按鈕,拆成獨立元件讓兩邊各自的
+// 操作集合單純、不互相污染,之後任一邊要新增/調整專屬按鈕也不需要擔心
+// 波及另一邊。
+//
+// 2026-08:移除「探索周邊」按鈕(原本縮放地圖到這個景點區域的完整範圍,
+// 對應的 handleExploreAttraction/placesQueryRadiusMeters 已一併從
+// DesktopLayout.tsx/geoAttractionClick.ts 移除)——使用者要求拿掉,散策
+// 羅盤的「附近景點」清單(見下方 nearby)已經是目前主要的延伸探索入口,
+// 不需要另一顆會改變地圖視角的按鈕並存。
 //
 // 版面(浮動卡片疊在地圖上方,標題/關閉鍵/照片/名稱/badges/簡介)刻意
 // 沿用跟 GeoInfoPanel 相同的視覺語言(見 AttractionInfoPanel.module.css
@@ -23,19 +29,13 @@ import styles from './AttractionInfoPanel.module.css'
 export function AttractionInfoPanel({
   attraction,
   onClose,
-  onExplore,
   shiftBy,
   nearby,
-  ribbonKey,
   onSelectNearby,
+  onHoverNearby,
 }: {
   attraction: GeoAttraction | null
   onClose: () => void
-  // onExplore:「探索周邊」按鈕觸發——地圖縮放到這個景點區域的完整範圍
-  // (見 DesktopLayout.tsx 的 handleExploreAttraction,複用
-  // GeoOutlineMap.tsx handleAttractionClick 已有的 planAttractionClick
-  // 決策邏輯,只是這次由按鈕觸發而非直接點地圖上的地標)。
-  onExplore: (attraction: GeoAttraction) => void
   // shiftBy:理由同 GeoInfoPanel.tsx 的同名 prop——右緣可能同時有
   // GeoHotelSidebar 與對話浮動小匡,由呼叫端判斷目前實際被哪個佔用後
   // 傳入對應值,把卡片推到它左側。
@@ -46,16 +46,17 @@ export function AttractionInfoPanel({
   // undefined 或空陣列時不顯示這個區塊——理由同 badges.length > 0 的既有
   // 判斷,沒有內容時不留一個空標題。
   nearby?: { attraction: GeoAttraction; minutes: number }[]
-  // ribbonKey:目前選中要畫連線的候選景點名稱(見 geoItemKey 的 key 組成
-  // 慣例,這裡先用景點名稱本身當 key——attraction 沒有像 hotel/place 那樣
-  // 穩定的 id,人工建檔資料才有 id,即時查詢結果沒有,名稱在同一批 nearby
-  // 清單內足以識別)。用來標記清單裡目前選中的那一項,對齊地圖上絲線
-  // 另一端的高亮。
-  ribbonKey?: string | null
-  // onSelectNearby:點擊清單項目觸發——再點一次目前已選中的項目視為取消
-  // (見 AttractionInfoPanel 呼叫這個 prop 時的判斷),讓使用者能收起
-  // 已經看過的連線,不需要额外的關閉按鈕。
+  // onSelectNearby:點擊清單項目觸發——呼叫端(DesktopLayout.tsx)開啟
+  // 這個精選點自己的「地點」卡片(GeoInfoPanel,見 openedNearbyAttraction
+  // 的完整說明),疊在這張主題卡左側,不是切換掉它。
   onSelectNearby?: (attraction: GeoAttraction) => void
+  // onHoverNearby:滑鼠移入/移出清單項目時觸發(移出傳 null)——地圖上
+  // 對應的精選點圓點會暫時升級成完整照片呈現(見
+  // useAttractionOverlays.ts 的 hoveredCuratedName/setHovered 完整說明),
+  // 讓使用者不用點擊就能先看一眼「這是哪裡」,滑開後地圖自動收回圓點。
+  // 跟 onSelectNearby(點擊,開啟地點卡)是兩個獨立的互動:hover 是
+  // 「順便看一眼」,click 才是「我要進一步看這個」的明確意圖。
+  onHoverNearby?: (attraction: GeoAttraction | null) => void
 }) {
   if (!attraction) return null
 
@@ -64,6 +65,9 @@ export function AttractionInfoPanel({
   const shiftClass = shiftBy === 'chat' ? ` ${styles.shiftedChat}` : shiftBy === 'hotel' ? ` ${styles.shiftedHotel}` : ''
   return (
     <div className={`${styles.panel}${shiftClass}`}>
+      <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
+        <X size={16} strokeWidth={2} />
+      </button>
       <div className={styles.body}>
         <div className={styles.imageWrap}>
           {attraction.landmarkPhotoUrl ? (
@@ -71,9 +75,6 @@ export function AttractionInfoPanel({
           ) : (
             <div className={styles.photoPlaceholder} />
           )}
-          <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
-            <X size={16} strokeWidth={2} />
-          </button>
         </div>
         <div className={styles.content}>
           <h2 className={styles.name}>{attraction.name}</h2>
@@ -92,29 +93,38 @@ export function AttractionInfoPanel({
           ) : (
             <p className={styles.summaryEmpty}>這個地點還沒有簡介資料。</p>
           )}
-          <button
-            type="button"
-            className={styles.exploreBtn}
-            onClick={() => onExplore(attraction)}
-          >
-            <Compass size={14} strokeWidth={2} />
-            探索周邊
-          </button>
           {nearby && nearby.length > 0 && (
             <div className={styles.nearbySection}>
               <p className={styles.nearbyTitle}>附近景點</p>
               <div className={styles.nearbyList}>
-                {nearby.map(({ attraction: n, minutes }) => (
-                  <button
-                    key={n.name}
-                    type="button"
-                    className={`${styles.nearbyItem}${n.name === ribbonKey ? ` ${styles.nearbyItemSelected}` : ''}`}
-                    onClick={() => onSelectNearby?.(n)}
-                  >
-                    <span className={styles.nearbyName}>{n.name}</span>
-                    <span className={styles.nearbyMinutes}>約 {minutes} 分</span>
-                  </button>
-                ))}
+                {nearby.map(({ attraction: n, minutes }) => {
+                  const category = curatedCategoryOf(n.name)
+                  const CategoryIcon = category ? CURATED_CATEGORY_ICONS[category] : null
+                  return (
+                    <button
+                      key={n.name}
+                      type="button"
+                      className={styles.nearbyItem}
+                      onClick={() => onSelectNearby?.(n)}
+                      onMouseEnter={() => onHoverNearby?.(n)}
+                      onMouseLeave={() => onHoverNearby?.(null)}
+                    >
+                      <div className={styles.nearbyItemHead}>
+                        {CategoryIcon && (
+                          <CategoryIcon
+                            size={13}
+                            strokeWidth={2}
+                            className={styles.nearbyCategoryIcon}
+                            aria-label={CURATED_CATEGORY_LABELS[category!]}
+                          />
+                        )}
+                        <span className={styles.nearbyName}>{n.name}</span>
+                        <span className={styles.nearbyMinutes}>約 {minutes} 分</span>
+                      </div>
+                      {n.summary && <p className={styles.nearbySummary}>{n.summary}</p>}
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )}

@@ -15,7 +15,8 @@ import { createEntryFromCandidate } from './geo-planning/geoCandidateHelpers'
 import { AddFromCandidateSidebar, dayGroupLabel } from './geo-planning/AddFromCandidateSidebar'
 import { GeoOutlinePanel } from './geo-planning/GeoOutlinePanel'
 import { useGeoPlanningState } from './geo-planning/useGeoPlanningState'
-import { placesQueryRadiusMeters } from './geo-planning/geoAttractionClick'
+import { haversineMeters, walkMinutesEstimate } from './geo-planning/geoDistance'
+import { attractionToInfoContent } from './geo-planning/geoInfoContent'
 import { reduceCategoryTagsState, initialCategoryTagsState } from './geo-planning/geoCategoryTagsState'
 import type { GeoAttraction } from './api'
 import { type ContentProps } from './AppCommon'
@@ -39,6 +40,12 @@ import styles from './DesktopLayout.module.css'
 // 這些「桌面/手機共用」的部分不在這裡,分別在 DesktopShared.tsx/
 // AppCommon.tsx——避免這裡跟手機版檔案(PhoneContent.tsx/PhoneNavDrawer.tsx/
 // PhoneScreens.tsx)互相 import 對方造成循環依賴。
+
+// NEARBY_ATTRACTION_LIMIT:AttractionInfoPanel「附近景點」清單最多顯示
+// 幾筆——見 handleSelectNearbyAttraction/nearbyAttractions 的說明,清單
+// 只是給使用者一個「順路可以看什麼」的線索,不是完整清單,故取一個畫面上
+// 一眼看得完的小數字。
+const NEARBY_ATTRACTION_LIMIT = 5
 
 // 時間軸鏡像資料的初始值(尚未收到 ChatScreen 鏡像前,或未選擇旅程時使用)。
 const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
@@ -144,23 +151,92 @@ export function DesktopContent(props: ContentProps) {
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTrip?.id])
-  // handleExploreAttraction:AttractionInfoPanel「探索周邊」按鈕觸發——
-  // 複用 GeoOutlineMap.tsx handleAttractionClick 已有的
-  // placesQueryRadiusMeters 決策邏輯算出縮放半徑(優先用該景點區域自己的
-  // radiusMeters,單點地標退回 PLACES_QUERY_DEFAULT_RADIUS_METERS),透過
-  // geo.panTarget 中介讓地圖 fitBounds 到這個範圍(見 GeoOutlineMap.tsx
-  // panTarget.radiusMeters 分支的說明)。跟直接點地圖上的地標
-  // (handleAttractionClick)不同的是這裡固定走 fit-bounds,不區分
-  // pan-and-zoom——「探索周邊」的使用者意圖本來就是「讓我看看這一整個
-  // 區域多大」,即使是沒有 radiusMeters 的單點地標,用預設查詢半徑框出的
-  // 範圍也已經是合理的「周邊」大小,不需要再依 level 判斷是否要動 zoom。
-  const handleExploreAttraction = useCallback((attraction: GeoAttraction) => {
-    geo.setPanTarget({
-      lat: attraction.lat,
-      lng: attraction.lng,
-      radiusMeters: placesQueryRadiusMeters(attraction),
-    })
-  }, [geo])
+  // geoAttractions:GeoOutlineMap 目前查到的景點區域完整清單(即時反映
+  // 地圖移動/縮放後重新查詢的結果,見 GeoOutlineMap.tsx onAttractionsChange
+  // 的說明)——供下方 nearbyAttractions 算「附近景點」用,不是給地圖繪製
+  // 本身用(地圖自己另外依 zoom 做知名度分級篩選,見 useAttractionOverlays.ts
+  // 的 filteredAttractions,兩者是分開的兩份資料,這裡拿到的是篩選之前的
+  // 原始清單)。
+  const [geoAttractions, setGeoAttractions] = useState<GeoAttraction[]>([])
+  // nearbyAttractions:離目前錨點最近的 NEARBY_ATTRACTION_LIMIT 個「精選
+  // 點」,依距離由近到遠排序——資料來源限定在 geoAttractions(地圖已經
+  // 查到、不另發 API,見 docs/handoff-radar-map-prototype-2026-08.md
+  // 「附近候選來源」的決策)。
+  //
+  // 主題點/精選點的區分(2026-08,使用者明確要求):暫不新增後端欄位,
+  // 先重用既有的 level——level === 1 視為「主題點」(地圖預設就會顯示,
+  // 見 useAttractionOverlays.ts 對 level 1 恆通過的規則),其餘(level
+  // 2/3/…)一律視為「精選點」,預設不在地圖上顯示,只有使用者點開某個
+  // 主題點(錨點本身 level === 1)後,才依附近距離揭露該主題底下的精選點
+  // ——這是純粹的距離篩選(方向 C,見 docs/research-curated-attraction-
+  // relationships-2026-08.md 的結論:C 該作為底層能力保留),不是存在
+  // 資料庫裡的固定父子關聯。
+  //
+  // 若目前錨點本身不是主題點(level !== 1,例如使用者直接點了一個已被
+  // 揭露的精選點卡片),不計算附近清單——精選點不該再遞迴揭露下一層精選
+  // 點,「進入主題」這件事只由主題點觸發。
+  const nearbyAttractions = useMemo(() => {
+    if (!geoAttractionContent || geoAttractionContent.level !== 1) return []
+    return geoAttractions
+      .filter((a) => a.level !== 1)
+      .filter((a) => !(
+        a.name === geoAttractionContent.name
+        && a.lat === geoAttractionContent.lat
+        && a.lng === geoAttractionContent.lng
+      ))
+      .map((a) => ({ attraction: a, minutes: walkMinutesEstimate(haversineMeters(geoAttractionContent, a)) }))
+      .sort((a, b) => a.minutes - b.minutes)
+      .slice(0, NEARBY_ATTRACTION_LIMIT)
+  }, [geoAttractions, geoAttractionContent])
+  // revealedAttractionNames:目前應該在地圖上顯示的精選點名稱集合——
+  // nearbyAttractions 只是「附近景點」清單這個 UI 的資料(取 top N、
+  // 已排序),地圖上的揭露規則直接用同一批候選(不受 top N 限制,見
+  // useAttractionOverlays.ts 對這個 prop 的說明),讓地圖上看得到的點
+  // 跟清單顯示的點不需要嚴格一致——清單是「推薦你看這幾個」,地圖是
+  // 「這個主題底下有這些精選點存在」,兩者資料來源相同但呈現目的不同。
+  const revealedAttractionNames = useMemo(() => {
+    if (!geoAttractionContent || geoAttractionContent.level !== 1) return null
+    return new Set(geoAttractions.filter((a) => a.level !== 1).map((a) => a.name))
+  }, [geoAttractions, geoAttractionContent])
+  // openedNearbyAttraction:點擊「附近景點」清單項目後要開啟的精選點——
+  // 刻意不重用 geo.selectAttraction/geoSelection(那套是「主題卡/地點卡
+  // 互斥,同時只能顯示一張」的既有機制,見 geoSelection.ts 開頭的完整
+  // 說明),因為使用者明確要求這張卡片要「開在 attraction 左邊」——跟
+  // AttractionInfoPanel(主題卡)同時並存,不是切換掉它。獨立成這個
+  // state,搭配下方 nearbyInfoContent 用 attractionToInfoContent 轉成
+  // GeoInfoContent,走「地點」卡片(GeoInfoPanel,含加入候選/加入行程)
+  // 而非唯讀的 AttractionInfoPanel——理由是精選點(茶屋、店舖這類使用者
+  // 真的可能想排進行程的地點)需要跟飯店/推薦地點一樣的「加入行程」操作,
+  // attraction 本身唯讀卡片沒有這個入口(見 AttractionInfoPanel.tsx 開頭
+  // 的說明)。錨點(geoAttractionContent)換掉或被清空時一併重置,避免
+  // 殘留舊主題底下開過的精選點地點卡。
+  const [openedNearbyAttraction, setOpenedNearbyAttraction] = useState<GeoAttraction | null>(null)
+  useEffect(() => {
+    setOpenedNearbyAttraction(null)
+  }, [geoAttractionContent])
+  // nearbyInfoContent:openedNearbyAttraction 轉成 GeoInfoPanel 需要的
+  // GeoInfoContent 形狀——見 geoInfoContent.ts 的 attractionToInfoContent
+  // 完整說明(含 candidate 欄位:第一個真正會建構出 kind:'attraction'
+  // 候選的入口)。
+  const nearbyInfoContent = useMemo(
+    () => (openedNearbyAttraction ? attractionToInfoContent(openedNearbyAttraction) : null),
+    [openedNearbyAttraction],
+  )
+  // handleSelectNearbyAttraction:點擊「附近景點」清單項目——開啟上方的
+  // 第二張地點卡(不是切換 AttractionInfoPanel 本身)。
+  const handleSelectNearbyAttraction = useCallback((attraction: GeoAttraction) => {
+    setOpenedNearbyAttraction(attraction)
+  }, [])
+  // hoveredNearbyAttraction:「附近景點」清單目前滑鼠移入的項目(見
+  // AttractionInfoPanel.tsx 的 onHoverNearby)——只驅動地圖上對應精選點
+  // 圓點暫時展開成照片(見 GeoOutlineMap.tsx/useAttractionOverlays.ts 的
+  // hoveredCuratedName)。跟 handleSelectNearbyAttraction(點擊,直接開啟
+  // 介紹卡)是彼此獨立的兩個互動,理由同 AttractionInfoPanel.tsx
+  // onHoverNearby 的說明:hover 是「順便看一眼」,click 才是「進一步看」。
+  const [hoveredNearbyAttraction, setHoveredNearbyAttraction] = useState<GeoAttraction | null>(null)
+  useEffect(() => {
+    setHoveredNearbyAttraction(null)
+  }, [geoAttractionContent])
   // geoCandidateFlashTrigger:候選籃浮動卡片(GeoCandidateSidebar,見下方
   // panelSpec.slot === 'float' 的 'geo-outline' 分支)「剛加入東西了」的
   // 視覺提示觸發器——每次遞增觸發一次短暫的 highlight 動畫(見
@@ -184,6 +260,47 @@ export function DesktopContent(props: ContentProps) {
     geo.addCandidate(c)
     setGeoCandidateFlashTrigger((n) => n + 1)
   }, [geo])
+  // handleScheduleGeoCandidate:GeoInfoPanel 的 onSchedule 共用處理——
+  // 從原本內嵌在單一 <GeoInfoPanel> JSX 裡的匿名函式抽出,理由是「附近
+  // 景點」點擊後開的第二個 GeoInfoPanel 執行個體(見下方
+  // openedNearbyAttraction)需要一模一樣的排程邏輯,抽成具名函式讓兩個
+  // 執行個體共用同一份實作,不需要複製貼上兩份容易日後改一邊忘了改
+  // 另一邊。
+  const handleScheduleGeoCandidate = useCallback((c: GeoCandidate, date: string) => {
+    // activeTrip 為空時 geo.handleScheduleCandidate 內部會直接 no-op
+    // (見該函式的 tripID guard)——原本使用者點了日期、浮動匡正常關閉,
+    // 卻完全沒有任何提示告訴他「因為沒有選旅程所以沒加成功」,是實際發生
+    // 過的 bug。改成沒有 activeTrip 時先記住這筆候選+日期(pendingSchedule)
+    // 再開啟旅程列表浮動卡(同點 rail「旅程列表」按鈕),使用者選定旅程
+    // 後(見下方 DesktopTripList 的 onOpen)自動補寫進去,不需要使用者
+    // 回頭重新走一次「加入行程」流程。刻意直接呼叫 navigate,不透過
+    // setPanelMode——trips 是 float 面板,可能跟 GeoInfoPanel 同時顯示
+    // (例如使用者原本就開著旅程列表、又點了地圖上的地點),此時 panelMode
+    // 已經是 'trips',setPanelMode('trips') 的 toggle 邏輯(再點一次同個
+    // mode 會收合)反而會把它關掉,是實際發生過的 bug——跟下方 onSchedule
+    // 成功寫入分支刻意改用 navigate 而非 setPanelMode 的理由完全相同。
+    if (!activeTrip) {
+      setPendingSchedule({ candidate: c, date })
+      navigate('/app/trips')
+      return
+    }
+    geo.handleScheduleCandidate(c, date, 'DesktopLayout')
+    // 加入成功後展開行程欄(GeoCandidateSidebar,見下方 panelSpec.slot
+    // === 'float' 的 'geo-outline' 分支)並觸發短暫 highlight,理由同
+    // addGeoCandidateAndReveal——使用者選日期加入後應該能立刻看到剛加的
+    // 項目,不用自己再點一次 rail「規劃」按鈕才看得到。跟
+    // addGeoCandidateAndReveal 不同的是:onSchedule 這條路徑不像複合
+    // 按鈕只在 panelMode === 'geo-outline' 時才能被按到,GeoInfoPanel
+    // 在任何 panelMode 下都可能顯示,故這裡額外導向 /app/geo-outline
+    // 確保行程欄真的有掛載,flashTrigger 才有作用(欄位沒掛載時單純遞增
+    // 計數器不會有任何視覺效果)。刻意直接呼叫 navigate,不透過
+    // setPanelMode——setPanelMode 對「目前已經是這個 mode」的情況會
+    // toggle 收合(見該函式的說明,是給 rail 按鈕「再點一次收合」這個
+    // 互動設計的),若使用者本來就開著行程欄再呼叫 setPanelMode('geo-outline')
+    // 反而會把它關掉,這是實際發生過的 bug。
+    navigate('/app/geo-outline')
+    setGeoCandidateFlashTrigger((n) => n + 1)
+  }, [activeTrip, geo, navigate])
   // geoSearchCity/geoSearchTrigger:城市搜尋欄的狀態,UI 渲染在
   // GeoOutlineMap.tsx(地圖左上角類別標籤列旁),查詢邏輯留在
   // GeoOutlinePanel.tsx(見該檔案的說明)——兩者是分開掛載的 sibling,
@@ -284,6 +401,17 @@ export function DesktopContent(props: ContentProps) {
   // 更左邊)。'none' 代表右緣沒有東西需要避開,維持貼齊 16px。
   const infoPanelShiftBy: 'none' | 'hotel' | 'chat' =
     chatPopoverOpen ? 'chat' : geoHotelSidebarVisible ? 'hotel' : 'none'
+  // nearbyInfoPanelRightPx:第二個 GeoInfoPanel(見上方 nearbyInfoContent)
+  // 要疊在 AttractionInfoPanel 左側的精確位置——AttractionInfoPanel 目前
+  // 實際佔用的 right 值(依 infoPanelShiftBy 是否已經因為飯店側欄/對話
+  // 小匡往左推,對應 16/364/368 三種)再加上它自己的寬度(340px)與間隙
+  // (12px),讓兩張卡片並排、不重疊,也不會在飯店側欄/對話小匡也同時
+  // 開啟時互相疊在一起。用數字常數(而非再擴充 GeoInfoPanel.module.css
+  // 的 shiftBy class 矩陣)是因為這個值是三種 infoPanelShiftBy 狀態各自
+  // 動態算出來的組合,固定寫成 CSS class 反而要展開成更多字面值,可讀性
+  // 更差(見 GeoInfoPanel.tsx style prop 的完整說明)。
+  const attractionPanelRightPx = infoPanelShiftBy === 'chat' ? 368 : infoPanelShiftBy === 'hotel' ? 364 : 16
+  const nearbyInfoPanelRightPx = attractionPanelRightPx + 340 + 12
 
   return (
     <>
@@ -392,6 +520,9 @@ export function DesktopContent(props: ContentProps) {
                 externalGeocodeCandidateSelect={geo.searchResultSelect}
                 onTripEntriesChange={geo.onTripEntriesChange}
                 onAttractionSelect={geo.selectAttraction}
+                onAttractionsChange={setGeoAttractions}
+                revealedAttractionNames={revealedAttractionNames}
+                hoveredCuratedName={hoveredNearbyAttraction?.name ?? null}
                 onSearchResultSelect={geo.selectSearchResult}
                 onPoiSelect={geo.selectPoi}
                 onGeocodeCandidateText={(placeId, text) => geo.patchGeocodeCandidateText(placeId, text)}
@@ -407,57 +538,38 @@ export function DesktopContent(props: ContentProps) {
                 onClose={geo.clearSelection}
                 onAddCandidate={geo.addCandidate}
                 onAddAndReveal={addGeoCandidateAndReveal}
-                onSchedule={(c, date) => {
-                  // activeTrip 為空時 geo.handleScheduleCandidate 內部會
-                  // 直接 no-op(見該函式的 tripID guard)——原本使用者點了
-                  // 日期、浮動匡正常關閉,卻完全沒有任何提示告訴他「因為
-                  // 沒有選旅程所以沒加成功」,是實際發生過的 bug。改成
-                  // 沒有 activeTrip 時先記住這筆候選+日期(pendingSchedule)
-                  // 再開啟旅程列表浮動卡(同點 rail「旅程列表」按鈕),
-                  // 使用者選定旅程後(見下方 DesktopTripList 的 onOpen)
-                  // 自動補寫進去,不需要使用者回頭重新走一次「加入行程」
-                  // 流程。刻意直接呼叫 navigate,不透過 setPanelMode——
-                  // trips 是 float 面板,可能跟 GeoInfoPanel 同時顯示
-                  // (例如使用者原本就開著旅程列表、又點了地圖上的地點),
-                  // 此時 panelMode 已經是 'trips',setPanelMode('trips')
-                  // 的 toggle 邏輯(再點一次同個 mode 會收合)反而會把它
-                  // 關掉,是實際發生過的 bug——跟下方 onSchedule 成功寫入
-                  // 分支刻意改用 navigate 而非 setPanelMode 的理由完全
-                  // 相同。
-                  if (!activeTrip) {
-                    setPendingSchedule({ candidate: c, date })
-                    navigate('/app/trips')
-                    return
-                  }
-                  geo.handleScheduleCandidate(c, date, 'DesktopLayout')
-                  // 加入成功後展開行程欄(GeoCandidateSidebar,見下方
-                  // panelSpec.slot === 'float' 的 'geo-outline' 分支)並
-                  // 觸發短暫 highlight,理由同 addGeoCandidateAndReveal——
-                  // 使用者選日期加入後應該能立刻看到剛加的項目,不用自己
-                  // 再點一次 rail「規劃」按鈕才看得到。跟 addGeoCandidateAndReveal
-                  // 不同的是:onSchedule 這條路徑不像複合按鈕只在
-                  // panelMode === 'geo-outline' 時才能被按到,GeoInfoPanel
-                  // 在任何 panelMode 下都可能顯示,故這裡額外導向
-                  // /app/geo-outline 確保行程欄真的有掛載,flashTrigger
-                  // 才有作用(欄位沒掛載時單純遞增計數器不會有任何視覺
-                  // 效果)。刻意直接呼叫 navigate,不透過 setPanelMode——
-                  // setPanelMode 對「目前已經是這個 mode」的情況會 toggle
-                  // 收合(見該函式的說明,是給 rail 按鈕「再點一次收合」
-                  // 這個互動設計的),若使用者本來就開著行程欄再呼叫
-                  // setPanelMode('geo-outline') 反而會把它關掉,這是實際
-                  // 發生過的 bug。 */
-                  navigate('/app/geo-outline')
-                  setGeoCandidateFlashTrigger((n) => n + 1)
-                }}
+                onSchedule={handleScheduleGeoCandidate}
                 scheduledDates={geo.scheduledDates}
                 shiftBy={infoPanelShiftBy}
               />
               <AttractionInfoPanel
                 attraction={geoAttractionContent}
                 onClose={geo.clearSelection}
-                onExplore={handleExploreAttraction}
+                nearby={nearbyAttractions}
+                onSelectNearby={handleSelectNearbyAttraction}
+                onHoverNearby={setHoveredNearbyAttraction}
                 shiftBy={infoPanelShiftBy}
               />
+              {/* nearbyInfoContent:「附近景點」清單點擊觸發,獨立於
+                  geo.infoContent/geo.attractionContent 之外的第二個
+                  GeoInfoPanel 執行個體——刻意不重用 geoSelection 那套
+                  互斥選取狀態(見 openedNearbyAttraction 的說明),讓這張
+                  「地點」卡片能跟 AttractionInfoPanel(主題卡)同時並存,
+                  疊在它左側,而不是切換掉它。style 算出的 right 值疊加了
+                  infoPanelShiftBy 本身可能已經因為飯店側欄/對話小匡往左推
+                  的偏移量,確保三者(飯店側欄/對話小匡、主題卡、這張地點
+                  卡)不會互相重疊。 */}
+              {nearbyInfoContent && (
+                <GeoInfoPanel
+                  content={nearbyInfoContent}
+                  onClose={() => setOpenedNearbyAttraction(null)}
+                  onAddCandidate={geo.addCandidate}
+                  onAddAndReveal={addGeoCandidateAndReveal}
+                  onSchedule={handleScheduleGeoCandidate}
+                  scheduledDates={geo.scheduledDates}
+                  style={{ right: nearbyInfoPanelRightPx }}
+                />
+              )}
             </>
           )}
           {/* panelMode 浮動卡片:trips/timeline/pace/geo-outline 這四種正式

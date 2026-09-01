@@ -127,6 +127,8 @@ export function GeoOutlineMap({
   showZoomControl = true,
   searchRightSlot,
   onAttractionsChange,
+  revealedAttractionNames,
+  hoveredCuratedName,
   onGeocodeCandidatesChange,
   onSearchStart,
   hideCategoryTags,
@@ -201,6 +203,13 @@ export function GeoOutlineMap({
   // 子節點,清單要跟著地圖範圍同步,只能靠這個 callback 往上回報,而
   // 不是側欄自己重新查一次(bounds 只有地圖實例本身知道)。
   onAttractionsChange?: (attractions: GeoAttraction[]) => void
+  // revealedAttractionNames:原封不動轉傳給 useAttractionOverlays——目前
+  // 應該在地圖上顯示的精選點名稱集合,由呼叫端(DesktopLayout.tsx)算好
+  // 傳入,見該處與 useAttractionOverlays.ts 的完整說明。
+  revealedAttractionNames?: Set<string> | null
+  // hoveredCuratedName:原封不動轉傳給 useAttractionOverlays——見該處對
+  // 這個 prop 的完整說明。
+  hoveredCuratedName?: string | null
   // onGeocodeCandidatesChange:地圖上方類別標籤(景點/飯店/餐廳)寫入
   // 搜尋框、觸發搜尋後,或「搜尋這個區域」按鈕按下後,runPlacesQuery
   // 查詢完成時觸發——這個元件原本自己用 useState 存一份 places,跟
@@ -269,8 +278,7 @@ export function GeoOutlineMap({
   // 回報——供 GeoOutlinePanel.tsx 的城市搜尋框使用,讓「甜點」「apple」
   // 這類沒有明確指向單一地點的泛用關鍵字查詢,能帶上目前地圖中心當
   // locationBias(見 handleGeoGeocode 的完整說明),優先偏向這個區域的
-  // 結果,而非全球知名度最高的結果。跟 attractionsQueryTrigger 共用同一個
-  // idle 事件,不需要另外掛一個監聽器。
+  // 結果,而非全球知名度最高的結果。
   onCenterChange?: (center: { lat: number; lng: number }) => void
   // panTarget:使用者在搜尋框查到城市座標、或在 GeoHotelSidebar 點擊某個
   // 飯店/地點項目時要移動地圖到的座標——每次(即使連續觸發同一個目標)
@@ -293,14 +301,16 @@ export function GeoOutlineMap({
   // 使用者可以查詢這個新範圍——這正是由呼叫端決定該不該抑制,而不是
   // 這裡憑空猜測,因為只有呼叫端知道這次移動背後的使用者意圖是什麼。
   //
-  // radiusMeters:GeoInfoPanel/AttractionInfoPanel「探索周邊」按鈕觸發時
-  // 帶入(見 DesktopLayout.tsx 的 handleExploreAttraction,呼叫
-  // planAttractionClick 決策後直接把最終半徑帶過來,不在這個元件內部
-  // 重新呼叫該決策函式)。有值時用 fitBounds 縮放到剛好 framing 這個
-  // 半徑的範圍,取代原本的 panTo+setZoom(level)行為;level 若同時存在
-  // 會被忽略,因為 fitBounds 本身就是更精確的縮放依據。點擊地圖上的
-  // 地標圖示本身(useAttractionOverlays.ts 的 handleAttractionClick)
-  // 不再觸發任何地圖移動,只開介紹卡,見該函式的說明。
+  // radiusMeters:呼叫端(DesktopLayout.tsx)算好最終半徑後帶入(呼叫
+  // planAttractionClick 決策,不在這個元件內部重新呼叫該決策函式)。有值
+  // 時用 fitBounds 縮放到剛好 framing 這個半徑的範圍,取代原本的
+  // panTo+setZoom(level)行為;level 若同時存在會被忽略,因為 fitBounds
+  // 本身就是更精確的縮放依據。點擊地圖上的地標圖示本身
+  // (useAttractionOverlays.ts 的 handleAttractionClick)不再觸發任何
+  // 地圖移動,只開介紹卡,見該函式的說明。2026-08:AttractionInfoPanel
+  // 的「探索周邊」按鈕(這個分支原本唯一的呼叫來源)已移除,目前沒有
+  // 呼叫端會傳入帶 radiusMeters 的 panTarget,這個分支保留給未來其他
+  // 需要 fitBounds 的入口使用,不因暫時沒有呼叫端就刪除。
   //
   // onlyIfOutOfView:true 時,先用目前的 bounds.contains 檢查該座標是否
   // 已經在可視範圍內,在範圍內就完全跳過這次 panTo(維持地圖不動)——
@@ -422,13 +432,6 @@ export function GeoOutlineMap({
     () => (geocodeCandidatesProp ?? []).map(geocodeCandidateToSearchResult),
     [geocodeCandidatesProp],
   )
-  // attractionsQueryTrigger:每次「該重新查詢景點區域」時遞增一次,驅動
-  // 下方「景點區域自動查詢」的 effect——景點區域(免費、查自家資料庫,見
-  // fetchGeoAttractionsOnlyNearby)單純依地圖可視範圍/縮放自動觸發(idle
-  // 事件,見下方 idle 監聽器),不需要使用者按「搜尋這個區域」。初始值
-  // 0,mapReady 剛變 true 時這個 effect 會執行一次,查詢初始中心點周邊的
-  // 景點區域。
-  const [attractionsQueryTrigger, setAttractionsQueryTrigger] = useState(0)
   // areaSearch:「搜尋這個區域」按鈕的顯示/查詢中狀態,轉換邏輯抽成純
   // reducer(見 geoAreaSearchState.ts,可獨立於 Google Maps SDK 單元測試)
   // ——areaDirty 為 true 時在地圖上方顯示該按鈕(見下方 render 區),
@@ -442,13 +445,6 @@ export function GeoOutlineMap({
   // 新範圍(見下方處理 panTarget 的 useEffect 如何設這個旗標)。用 ref 而
   // 非 state,因為它只是單次事件間的旗標,不需要驅動任何渲染。
   const suppressNextIdleQueryRef = useRef(false)
-  // activeCategoryRef:idle 監聽器註冊在只執行一次的建圖 effect 裡(見
-  // 下方),不能直接讀 activeCategory state(會拿到建圖當下的舊值,
-  // stale closure)——用 ref 讀取最新值,判斷探索標籤(EXPLORE_CATEGORY)
-  // 是否選中,決定要不要在這次 idle 時重新查詢景點區域(見下方 idle
-  // 監聽器的說明:探索標籤選中後才跟拖曳/縮放自動刷新,未選中或選中
-  // 其他標籤時完全不查)。理由同 onPoiSelectRef/onCenterChangeRef。
-  const activeCategoryRef = useRef<string | null>(null)
   // buildingRef:見下方地圖建立 effect 裡的完整說明——擋住
   // importLibrary('maps') resolve 之前,effect 因 initialCenter 從
   // undefined 解析成確定值而重新執行時,誤判成「還沒建過圖」而重複
@@ -464,10 +460,6 @@ export function GeoOutlineMap({
   // null 代表「尚未建過圖」,與任何合法的 colorScheme 字串都不同,確保
   // 第一次建圖一定會執行。
   const builtColorSchemeRef = useRef<string | null>(null)
-  // lastAttractionsQueryKeyRef:見下方景點區域查詢 effect 裡的完整說明——
-  // 記住上一次真正送出查詢的座標+半徑,idle 事件在初始載入階段連續
-  // 觸發但位置沒變時用來去重,不再重複發送請求。
-  const lastAttractionsQueryKeyRef = useRef<string | null>(null)
 
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined
 
@@ -496,8 +488,8 @@ export function GeoOutlineMap({
     // 判斷、再呼叫一次 importLibrary('maps').then(),建出第二個地圖
     // 實例、掛上第二組 idle/bounds_changed/zoom_changed 監聽器——兩個
     // 實例都停在同一個預設中心,使用者完全感覺不出來地圖被建了兩次,但
-    // 之後只要觸發一次 idle,兩組監聽器就會各自遞增
-    // attractionsQueryTrigger、各打一次 fetchGeoAttractionsOnlyNearby,
+    // 之後只要觸發一次 idle,兩組監聽器就會各自重複執行 idle 監聽器裡的
+    // 副作用(area-dirty 狀態、onCenterChange 回報等),
     // 且每多重執行一次這個 effect(例如初始資料陸續回來、上層連鎖重渲染)
     // 就再疊一組監聽器,才會出現「進頁面後短時間內連發幾十筆」的爆量
     // 現象。用 buildingRef 在呼叫 importLibrary 之前就同步標記「這次
@@ -583,35 +575,23 @@ export function GeoOutlineMap({
           setBounds(mapRef.current?.getBounds() ?? null)
         })
         // idle 監聽器:拖曳/縮放動畫「結束」時才觸發一次(不像
-        // bounds_changed 拖曳過程中會連續觸發)。分成兩件事處理:
+        // bounds_changed 拖曳過程中會連續觸發)。
         //
-        // 1. 景點區域(attractions)只有「探索」標籤選中時才遞增
-        //    attractionsQueryTrigger、驅動下方的自動查詢 effect 以新範圍
-        //    重查——使用者明確要求跟飯店/景點/餐廳三個標籤統一互動語意:
-        //    預設不顯示,點探索才查詢並顯示,顯示後才跟拖曳/縮放自動刷新
-        //    (原本是不論選了哪個標籤都無條件自動刷新的常駐圖層,這是
-        //    改版前的既有行為,這次改掉)。用 activeCategoryRef 判斷(見
-        //    該 ref 的說明,idle 監聽器读不到 state 最新值)。這支查詢
-        //    本身免費(只查自家資料庫,見 fetchGeoAttractionsOnlyNearby),
-        //    故探索標籤選中時仍不受 suppressNextIdleQueryRef 影響(即使
-        //    是 panTarget 造成的移動,只要探索已選中就該立刻反映新範圍,
-        //    沒有「稍後才查」的必要)。
-        // 2. 地圖上方類別標籤(景點/飯店/餐廳)與「搜尋這個區域」按鈕
-        //    查到的地點(見 onGeocodeCandidatesChange)不在這裡自動觸發——這兩者都是即時
-        //    查 Google Places(fetchGeoGeocode)、直接計費,仍收在使用者
-        //    明確按下「搜尋這個區域」按鈕之後才觸發(見 handleSearchThisArea
-        //    /runPlacesQuery)。地圖移動本身只標記「這個範圍還沒查過」
-        //    (dispatch 'map-idle',見 geoAreaSearchState.ts 的說明),在
-        //    地圖上方冒出按鈕,等使用者按下才真的發請求——若沿用「拖曳就
-        //    查」會讓每次小幅拖曳都觸發一次計費查詢,改成「按下才查」讓
-        //    使用者對何時會產生查詢有明確控制。
-        //    suppressNextIdleQueryRef 為 true 時跳過這一半的觸發並消耗掉
-        //    旗標:這代表這次 idle 是 panTarget 的 panTo 造成的(側欄點擊/
-        //    搜尋),不是使用者主動拖曳探索新範圍,不該冒出搜尋按鈕。
+        // 景點區域(attractions,探索標籤)、地圖上方類別標籤(景點/飯店/
+        // 餐廳)與「搜尋這個區域」按鈕查到的地點(見 onGeocodeCandidatesChange)
+        // 三者現在統一都不在這裡自動觸發查詢(2026-08 改動前,景點區域
+        // 曾經因為免費查自家資料庫而自動跟拖曳/縮放刷新,使用者實測後
+        // 明確要求改掉——地圖移動時不該無論查詢種類是否計費都自動重打,
+        // 一律統一成同一套「按下才查」的互動語意,不再有例外)。地圖移動
+        // 本身只標記「這個範圍還沒查過」(dispatch 'map-idle',見
+        // geoAreaSearchState.ts 的說明),在地圖上方冒出「搜尋這個區域」
+        // 按鈕,等使用者按下才真的發請求(見 handleSearchThisArea,依
+        // activeCategory 決定要重打 runExploreQuery 還是 runPlacesQuery,
+        // 或兩者都打)。suppressNextIdleQueryRef 為 true 時跳過這次冒出
+        // 按鈕的判斷並消耗掉旗標:這代表這次 idle 是 panTarget 的 panTo
+        // 造成的(側欄點擊/搜尋),不是使用者主動拖曳探索新範圍,不該冒出
+        // 搜尋按鈕。
         mapRef.current.addListener('idle', () => {
-          if (activeCategoryRef.current === EXPLORE_CATEGORY) {
-            setAttractionsQueryTrigger((n) => n + 1)
-          }
           const center = mapRef.current?.getCenter()
           if (center) onCenterChangeRef.current?.({ lat: center.lat(), lng: center.lng() })
           if (suppressNextIdleQueryRef.current) {
@@ -661,77 +641,14 @@ export function GeoOutlineMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey, initialCenter, theme])
 
-  // 依地圖可視範圍自動查詢景點區域:attractionsQueryTrigger 遞增時
-  // (mapReady 剛變 true 的掛載當下、以及之後每次地圖 idle,見上方 idle
-  // 監聽器的說明),以地圖目前中心座標+半徑呼叫
-  // fetchGeoAttractionsOnlyNearby(GET /internal/geo/attractions/nearby-only)
-  // ——這支端點只查自家資料庫(免費、無外部 API 成本),故可以放心讓它
-  // 單純跟著地圖可視範圍/縮放自動觸發,不需要使用者按「搜尋這個區域」
-  // 才查,呼應構想 6「不待召喚即先給出地理輪廓」的精神。
-  //
-  // 半徑依 zoom 反推(zoom 越小代表可視範圍越大,需要的查詢半徑也越大)
-  // ——沒有查詢 Google Maps 官方公式反推可視範圍公里數的必要,這裡只是
-  // 抓一個「大致夠涵蓋畫面」的粗略估計,查詢範圍比實際可視範圍稍大一些
-  // 沒有壞處(下方 filteredAttractions 還會再依實際 zoom 精確篩選一次,
-  // 詳見對應的說明)。
-  useEffect(() => {
-    if (!mapReady || !mapRef.current) return
-    // activeCategory !== EXPLORE_CATEGORY:使用者明確要求探索標籤預設
-    // 不顯示——這個 effect 依賴陣列含 mapReady,地圖剛建好、mapReady
-    // 從 false 變 true 時本來就會執行一次(不需要 attractionsQueryTrigger
-    // 遞增),若不擋掉,即使沒點過探索標籤,進畫面還是會自動查一次景點
-    // 區域,等同沒有真正做到「預設不顯示」。
-    if (activeCategory !== EXPLORE_CATEGORY) return
-    const center = mapRef.current.getCenter()
-    if (!center) return
-    const radiusMeters = Math.min(50000, 20000 * Math.pow(2, 12 - zoom))
-    // Google Maps 在初始載入階段(tiles 陸續載入完成、zoom/bounds/center
-    // 各自 settle)常常會連續觸發不只一次 idle 事件,即使地圖實際上完全
-    // 沒有移動——每次 idle 都會讓 attractionsQueryTrigger 遞增、驅動這個
-    // effect 重新執行一次,若不去重,同一個座標+半徑會在極短時間內被
-    // 重複查詢好幾次,浪費請求(即使回應內容相同、不會觸發多餘渲染,
-    // 見下方 sameAttractionsContent 的比對,但請求本身已經送出去了)。
-    // 用座標(取到小數點後 4 位,約 11 公尺誤差,足夠判斷「這是同一個
-    // 位置」)+半徑組字串跟上一次真正查詢的參數比對,完全相同就跳過,
-    // 不再送出重複請求。
-    const queryKey = `${center.lat().toFixed(4)},${center.lng().toFixed(4)},${radiusMeters}`
-    if (lastAttractionsQueryKeyRef.current === queryKey) return
-    lastAttractionsQueryKeyRef.current = queryKey
-    let cancelled = false
-    fetchGeoAttractionsOnlyNearby(cfg, center.lat(), center.lng(), radiusMeters)
-      .then((result) => {
-        if (cancelled) return
-        // 用函式式更新比對內容摘要(名稱+座標組成的字串),完全相同就回傳
-        // 舊陣列參照、不觸發 re-render——地圖移動一下又移回來、或新舊
-        // 查詢半徑重疊涵蓋同一批資料時很常見,若每次查詢完成都無條件
-        // 換新陣列參照,即使內容一模一樣,依賴 attractions 的
-        // filteredAttractions(見下方 useMemo)也會被判定成「變了」,讓
-        // 景點區域光暈整批不必要地重建、閃爍(理由同該 useMemo 已有的
-        // 說明)。
-        setAttractions((prev) => (sameAttractionsContent(prev, result.attractions) ? prev : result.attractions))
-        onAttractionsChange?.(result.attractions)
-      })
-      .catch(() => {
-        // 查詢失敗(網路錯誤/伺服器錯誤)不視為致命錯誤——地圖本身仍可
-        // 正常瀏覽,只是這次移動沒能刷新資料,維持上一次查到的內容即可,
-        // 不清空、不彈錯誤訊息打斷瀏覽。
-      })
-    return () => {
-      cancelled = true
-      // 這次執行在請求完成前就被取消(常見於 React StrictMode 開發模式
-      // 的「執行→cleanup→再執行一次」雙重呼叫,或 attractionsQueryTrigger
-      // 在請求完成前又變動)——若不釋放 lastAttractionsQueryKeyRef,留下來
-      // 那次真正該生效的執行會看到 ref 已經被這次「注定作廢」的執行佔走
-      // 同一個 queryKey,誤判成「已經查過」而直接跳過,導致這個位置永遠
-      // 查不到任何結果(實際發生過的 bug:地圖上完全沒有景點區域出現)。
-      // 只有在 ref 仍然是「這次執行設定的值」時才清空,避免不小心清掉
-      // 後來另一次執行(不同 queryKey)已經合法設定的值。
-      if (lastAttractionsQueryKeyRef.current === queryKey) {
-        lastAttractionsQueryKeyRef.current = null
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, attractionsQueryTrigger])
+  // 2026-08:移除原本在這裡「依地圖可視範圍自動查詢景點區域」的 effect
+  // (attractionsQueryTrigger 遞增驅動,跟拖曳/縮放的 idle 事件自動連動)
+  // ——使用者明確要求縮放/移動地圖時不要自動重新查詢景點區域,一律改成
+  // 跟地圖上方類別標籤(景點/飯店/餐廳)、Google Places 查詢一致的「按下
+  // 搜尋這個區域才查」語意(見 runExploreQuery/handleSearchThisArea)。
+  // 探索標籤第一次被點擊時仍會立即查一次目前範圍(runExploreQuery,見
+  // handleCategoryClick),之後使用者拖曳/縮放地圖不會再自動觸發,只有
+  // 再按一次「搜尋這個區域」才會用新範圍重新查詢。
 
   // categoryQueryRadiusMeters:類別標籤(景點/飯店/餐廳)與「搜尋這個
   // 區域」按鈕共用的 locationRestriction 矩形半徑——查詢中心是「目前地圖
@@ -809,12 +726,14 @@ export function GeoOutlineMap({
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
 
   // runExploreQuery:探索標籤專用的查詢函式——查自建景點區域(attraction,
-  // fetchGeoAttractionsOnlyNearby,免費、查自家資料庫)。半徑沿用原本
-  // attractionsQueryTrigger 那個 effect 的既有公式(依 zoom 反推)——探索
-  // 標籤查的是「一整個城市層級的景點分區」,天然需要比景點/飯店/餐廳附近
-  // 推薦更大的涵蓋範圍。查詢結果寫進 attractions state,結果透過
-  // onAttractionsChange 往上回報,理由同 attractionsQueryTrigger 那個
-  // effect 原本的既有邏輯。
+  // fetchGeoAttractionsOnlyNearby,免費、查自家資料庫)。半徑用依 zoom
+  // 反推的公式——探索標籤查的是「一整個城市層級的景點分區」,天然需要比
+  // 景點/飯店/餐廳附近推薦更大的涵蓋範圍。查詢結果寫進 attractions
+  // state,並透過 onAttractionsChange 往上回報。由 handleCategoryClick
+  // (第一次點選探索標籤)與 handleSearchThisArea(使用者按下「搜尋這個
+  // 區域」)共用同一份查詢邏輯——2026-08 起地圖拖曳/縮放不再自動觸發這支
+  // 查詢(見下方「搜尋這個區域」按鈕與 idle 監聽器的說明),只有這兩個
+  // 明確的使用者動作才會呼叫。
   const runExploreQuery = useCallback(() => {
     if (!mapRef.current) return
     const center = mapRef.current.getCenter()
@@ -858,14 +777,12 @@ export function GeoOutlineMap({
     }
     if (activeCategory === type) {
       setActiveCategory(null)
-      activeCategoryRef.current = null
       onActiveCategoryChange?.(null)
       setAttractions([])
       onAttractionsChange?.([])
       return
     }
     setActiveCategory(type)
-    activeCategoryRef.current = type
     onActiveCategoryChange?.(type)
     runExploreQuery()
   }, [activeCategory, onActiveCategoryChange, runExploreQuery, runPlacesQuery, onAttractionsChange, onCityChange])
@@ -931,6 +848,8 @@ export function GeoOutlineMap({
     hoverKey,
     candidateKeys,
     onAttractionSelect,
+    revealedAttractionNames,
+    hoveredCuratedName,
   })
   useSearchResultMarkers({
     mapRef,
@@ -1121,19 +1040,19 @@ export function GeoOutlineMap({
       {/* 「搜尋這個區域」按鈕:areaDirty 為 true(使用者拖曳/縮放過地圖
           但還沒查詢這個新範圍,見 areaSearch/geoAreaSearchState.ts 的
           說明)時顯示,疊在地圖上方置中,毛玻璃卡片視覺語言(對齊構想 1
-          定案的 iOS header 風格)。額外要求搜尋框目前有文字(city 非空)
-          才顯示——這顆按鈕現在的行為是「沿用搜尋框目前文字,以新範圍重新
-          查詢」(見 handleSearchThisArea 的完整說明),搜尋框是空字串時
-          沒有查詢文字可用,顯示出來按下去也不會有任何結果,只會讓人誤以
-          為要做什麼卻沒反應——這個條件取代了原本「activeCategory 有值
-          (已選類別標籤)才顯示」的判斷:景點/飯店/餐廳三顆標籤已經不再
-          進入 activeCategory 選取態(見 handleCategoryClick 的說明),沿用
-          舊條件會讓這顆按鈕永遠不出現。按下後呼叫 handleSearchThisArea,
-          查詢中(searching)把 lucide 的 Search 圖示換成 Loader2(疊加
-          CSS 自轉動畫,lucide 本身不含動畫),不改按鈕文字或停用互動——
-          查詢通常很快,不需要額外 disable 按鈕製造等待感。err 存在時不
-          顯示(地圖本身都載入失敗了,顯示這顆按鈕沒有意義)。 */}
-      {!err && areaSearch.areaDirty && !!(city ?? '').trim() && (
+          定案的 iOS header 風格)。顯示條件是「搜尋框目前有文字(city
+          非空)」或「探索標籤選中(activeCategory === EXPLORE_CATEGORY)」
+          兩者之一——這顆按鈕現在身兼兩種查詢的重新觸發入口:沿用搜尋框
+          文字重查 Google Places(見 handleSearchThisArea 呼叫
+          runPlacesQuery 的部分,city 是空字串時 runPlacesQuery 內部會
+          自行 no-op,不需要在這裡特別擋)、或重查景點區域(見
+          handleSearchThisArea 呼叫 runExploreQuery 的部分,不依賴 city
+          文字,只依賴 activeCategory)。若只用 city 非空當條件,使用者
+          選了探索標籤、搜尋框卻是空字串時,拖曳地圖後會完全沒有入口能
+          重新查詢景點區域(2026-08 改動前景點區域是自動跟拖曳/縮放刷新,
+          改成按下才查後才浮現這個缺口)。err 存在時不顯示(地圖本身都
+          載入失敗了,顯示這顆按鈕沒有意義)。 */}
+      {!err && areaSearch.areaDirty && (!!(city ?? '').trim() || activeCategory === EXPLORE_CATEGORY) && (
         <button
           type="button"
           className={styles.searchThisAreaButton}

@@ -68,6 +68,7 @@ export function GeoInfoPanel({
   onSchedule,
   scheduledDates,
   shiftBy,
+  style,
 }: {
   content: GeoInfoContent | null
   onClose: () => void
@@ -79,6 +80,14 @@ export function GeoInfoPanel({
   // 較寬),兩者都存在時呼叫端只會傳其中較寬的那個,不是疊加,詳見
   // GeoInfoPanel.module.css 的 .shiftedHotel/.shiftedChat。
   shiftBy?: 'none' | 'hotel' | 'chat'
+  // style:2026-08 新增的逃生艙——目前唯一的用途是 DesktopLayout.tsx
+  // 讓「附近景點」點擊後開的第二個 GeoInfoPanel 執行個體,動態算出要
+  // 疊在 AttractionInfoPanel 左側多少距離(這個距離還要疊加
+  // infoPanelShiftBy 本身是否已經因為飯店側欄/對話小匡而往左推,是三種
+  // shiftBy 組合各自的動態值,不適合再展開成更多固定的 shiftBy enum
+  // 字面值——那樣可讀性反而更差)。用 style(而非再擴充 shiftBy)是因為
+  // 這個位移量是執行期算出來的數字,不是有限枚舉。
+  style?: React.CSSProperties
   // onAddCandidate:「加入候選」按鈕觸發,理由同 GeoHotelSidebar 卡片上
   // 既有的同名 callback——這裡刻意不做「已在候選籃裡就不顯示按鈕」的
   // 判斷,重複加入由呼叫端的候選籃 state 用內容比對去重(見
@@ -221,7 +230,10 @@ export function GeoInfoPanel({
 
   const shiftClass = shiftBy === 'chat' ? ` ${styles.shiftedChat}` : shiftBy === 'hotel' ? ` ${styles.shiftedHotel}` : ''
   return (
-    <div className={`${styles.panel}${shiftClass}`}>
+    <div className={`${styles.panel}${shiftClass}`} style={style}>
+      <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
+        <X size={16} strokeWidth={2} />
+      </button>
       <div className={styles.body}>
         <div className={styles.imageWrap}>
           <PhotoCarousel
@@ -230,9 +242,6 @@ export function GeoInfoPanel({
             fallbackUrl={content.photoUrl}
             alt={content.name}
           />
-          <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
-            <X size={16} strokeWidth={2} />
-          </button>
         </div>
         <div className={styles.content}>
           <h2 className={styles.name}>{content.name}</h2>

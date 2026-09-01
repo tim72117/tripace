@@ -17,8 +17,9 @@
   bottom: 16px;
   width: 340px;
   max-height: calc(100% - 32px);
-  overflow-x: hidden;
-  overflow-y: auto;
+  /* overflow: hidden(而非 overflow-y: auto)——捲動改移到下方 .body,
+     這裡只需要負責裁切圓角,理由見 .closeBtn/.body 的說明。 */
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   border-radius: 16px;
@@ -62,6 +63,7 @@
   position: absolute;
   top: 10px;
   right: 10px;
+  z-index: 1;
   width: 28px;
   height: 28px;
   display: flex;
@@ -78,13 +80,32 @@
   background: rgba(0, 0, 0, 0.6);
 }
 
+/* body:.panel 內真正會捲動的區域,自訂細滾條樣式,理由同
+   AttractionInfoPanel.module.css 的同名規則說明。 */
 .body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ios-gray) transparent;
+}
+.body::-webkit-scrollbar {
+  width: 6px;
+}
+.body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.body::-webkit-scrollbar-thumb {
+  background-color: var(--ios-gray);
+  border-radius: 999px;
+}
+.body::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-dark);
 }
 
 .imageWrap {
-  position: relative;
   flex: 0 0 auto;
 }
 

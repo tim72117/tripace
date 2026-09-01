@@ -18,11 +18,6 @@ export function minZoomForLevel(level: number): number {
   return 15
 }
 
-// PLACES_QUERY_DEFAULT_RADIUS_METERS:單點地標(無 radiusMeters,無實際
-// 範圍可言)查附近推薦地點時的退回半徑——對齊
-// internal/wanttools/recommend_nearby.go 那個 LLM 工具的預設半徑。
-export const PLACES_QUERY_DEFAULT_RADIUS_METERS = 1500
-
 // FALLBACK_ZOOM_NO_LEVEL:沒有分級資訊的即時查詢結果(GeoAttraction.level
 // 為 undefined)點擊放大時的退回 zoom——明顯比一般瀏覽尺度更近的固定
 // 值,確保點下去有感、看得出範圍被放大了。
@@ -56,13 +51,4 @@ export function planAttractionClick(attraction: AttractionClickInput): Attractio
     return { kind: 'pan-and-zoom', minZoom: minZoomForLevel(attraction.level) }
   }
   return { kind: 'pan-and-zoom', minZoom: null }
-}
-
-// placesQueryRadiusMeters:決定點擊景點區域後,查附近推薦地點該用多大的
-// 半徑——優先用該區域自己的 radiusMeters(範圍剛好對應查詢半徑),單點
-// 地標沒有範圍可言,退回 PLACES_QUERY_DEFAULT_RADIUS_METERS。
-export function placesQueryRadiusMeters(attraction: AttractionClickInput): number {
-  return attraction.radiusMeters && attraction.radiusMeters > 0
-    ? attraction.radiusMeters
-    : PLACES_QUERY_DEFAULT_RADIUS_METERS
 }

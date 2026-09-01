@@ -322,6 +322,23 @@
   z-index: 1;
 }
 
+/* 滑鼠指到景點時把這個地標整組(光暈/照片/圓點/標籤)拉到最上層——
+   所有 overlay 預設都是同一個 z-index(見上方),彼此的疊放順序純粹看
+   建立順序(DOM 順序),精選點緊鄰時常常互相蓋住一部分,使用者實測回報
+   「指到景點時地圖上的圖標要到上層」。:hover 涵蓋滑鼠真的停在地圖上
+   這個地標(圓形/圓點/標籤)的情況——pointer-events:none 不影響 :hover
+   判斷,子層(照片/圓點)命中時祖層仍會 match :hover,理由是瀏覽器判斷
+   :hover 純看游標是否落在該元素視覺範圍內,不受 pointer-events 影響
+   (pointer-events 只影響「誰是事件目標」,不影響「誰算被 hover」)。
+   geo-attraction-overlay-hovered 則是另一個觸發來源:使用者滑鼠移到
+   AttractionInfoPanel「附近景點」清單項目時(見 setHovered 的完整說明),
+   游標實際上不在地圖上,無法靠 :hover 判斷,改由 JS 主動切這個 class。
+   兩者用同一個 z-index 值,語意上是同一件事的兩種觸發方式。 */
+:global(.geo-attraction-overlay):hover,
+:global(.geo-attraction-overlay-hovered) {
+  z-index: 2;
+}
+
 /* 光暈本體:radial-gradient 由中心沙棕色漸淡到透明,疊加 blur 讓邊緣柔化,
    刻意不畫色塊/多邊形邊界——只暗示「這裡有一團光」,承載不了推薦重量
    (構想 6 定案的核心視覺原則)。
@@ -401,6 +418,69 @@
   box-shadow: 0 2px 8px rgba(61, 53, 48, 0.18);
 }
 
+/* 精選點圓點(散策羅盤):geo-attraction-overlay.ts 對精選點(level 不是
+   1)預設用的輕量呈現——不帶光暈、不帶照片,只是一個小圓點,理由見
+   geoAttractionOverlay.ts renderContent() 的完整說明。尺寸刻意遠小於
+   主題點的 56px 照片圓(14px),視覺上一眼就能分辨「這是主角(主題點)」
+   還是「這是環繞的衛星(精選點)」,不需要額外的文字標示。使用者滑鼠
+   移到「附近景點」清單對應項目時(見 useAttractionOverlays.ts 的
+   hoveredCuratedName),這個元素會被整個換成跟主題點一樣的
+   .geo-attraction-landmark-photo/.geo-attraction-landmark-placeholder,
+   不是靠 CSS 放大這個圓點本身。 */
+:global(.geo-attraction-curated-dot) {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  pointer-events: auto;
+  cursor: pointer;
+  background: var(--ios-sand);
+  border: 2px solid var(--ios-card);
+  box-shadow: 0 1px 4px rgba(61, 53, 48, 0.24);
+  transition: transform 0.12s;
+}
+
+:global(.geo-attraction-curated-dot):hover {
+  transform: scale(1.15);
+}
+
+/* geo-attraction-curated-dot-{tea,restaurant,craft,street}:店家分類配色
+   (見 geoCuratedCategoryStub.ts 的完整說明——目前是前端寫死的原型對照表,
+   不是真正的資料欄位)。只覆寫 background,尺寸/邊框/陰影/hover 動畫都
+   沿用基底 .geo-attraction-curated-dot 不重複定義。顏色沿用既有、已有
+   淺/深色雙版本定義的 base-ui.css token,不新增色票——tea 維持圓點原本
+   的 --ios-sand(暖沙棕,茶屋暖意)其實跟基底色相同,寫出來是為了讓四個
+   分類的定義並列、之後要調整任何一色時容易一眼看出彼此關係,不依賴
+   「沒寫就是預設值」這種隱性推斷。 */
+:global(.geo-attraction-curated-dot-tea) {
+  background: var(--ios-sand);
+}
+:global(.geo-attraction-curated-dot-restaurant) {
+  background: var(--color-accent);
+}
+:global(.geo-attraction-curated-dot-craft) {
+  /* 不直接用 --ios-blue 原色——它跟 tea 的 --ios-sand 色相太近(兩者都
+     偏棕),深色模式下更嚴重(#B3A692 vs #D9A97D,同是淺暖灰調),14px
+     圓點這個尺度靠色相根本分不出來。color-mix 疊 22% 的 #3D3530(全站
+     陰影/墨色錨點,這份檔案 box-shadow 的 rgba(61,53,48,…)就是它的展開
+     值)把 craft 壓暗一階——刻意用固定深色而非任何 token 當混色端,
+     因為 token 在深色模式會整組翻亮,混 token 只會讓兩色一起變、距離
+     不變;混固定深色才能在兩種模式下都拉開跟 tea 的明度差。 */
+  background: color-mix(in srgb, var(--ios-blue) 78%, #3D3530);
+}
+:global(.geo-attraction-curated-dot-street) {
+  background: var(--ios-green);
+}
+
+/* 清單 hover 觸發的圓點→照片展開,把 photoFadeIn 從 900ms 壓到 160ms
+   ——900ms 是主題點「地圖載入時登場」的節奏,但 hover 是「順便看一眼」
+   的即時回饋(見 AttractionInfoPanel.tsx onHoverNearby 的說明),照片
+   要等近一秒才完全浮現,體感上像卡頓而非展開;且每次滑入 innerHTML
+   重建都會重播這段動畫,慢動畫重播起來更明顯。 */
+:global(.geo-attraction-overlay-hovered) :global(.geo-attraction-landmark-photo) {
+  animation-duration: 160ms;
+}
+
 @keyframes photoFadeIn {
   from {
     opacity: 0;
@@ -432,6 +512,14 @@
   box-shadow: 0 0 0 3px var(--color-accent), 0 2px 10px rgba(61, 53, 48, 0.24);
 }
 
+/* 精選點圓點的選中態:不像照片圓那樣放大到 64px(圓點本身只有 14px,
+   等比放大會失去「輕量」的視覺意圖),改成只加粗外環,尺寸維持不變。 */
+:global(.geo-attraction-overlay-selected) :global(.geo-attraction-curated-dot) {
+  border-color: var(--ios-card);
+  border-width: 3px;
+  box-shadow: 0 0 0 3px var(--color-accent), 0 2px 10px rgba(61, 53, 48, 0.24);
+}
+
 :global(.geo-attraction-overlay-selected) :global(.geo-attraction-label) {
   background: var(--color-accent);
   color: var(--ios-card);
@@ -454,8 +542,31 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #5A8A6A url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7' fill='none' stroke='%23FDFCFA' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 11px no-repeat;
+  /* 底色用 --ios-green token(苔綠=全站「成功/已完成」語意色,且有深色
+     版本)取代原本寫死的 #5A8A6A——寫死的綠在深色模式下不會跟著主題
+     切換,是這批樣式裡唯一漏接深色模式的色值。勾勾本身仍是 data URI
+     內寫死的近白色(CSS 變數無法進 data URI),白勾疊在苔綠上兩種模式
+     對比都足夠,可接受。 */
+  background: var(--ios-green) url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7' fill='none' stroke='%23FDFCFA' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 11px no-repeat;
   border: 2px solid var(--ios-card);
+  box-shadow: 0 1px 3px rgba(61, 53, 48, 0.3);
+}
+
+/* 精選點圓點的候選籃徽章:原本 -candidate 的勾選徽章只定義在照片/佔位
+   圓上,精選點在「未 hover 的圓點型態」下加入候選籃後地圖上完全沒有
+   任何標記——只有滑回清單讓它展開成照片才看得到勾勾,狀態等於憑空
+   消失。這裡補一枚縮小版(14px 圓點配 18px 徽章會整個蓋掉本體,縮到
+   10px、往右上外側偏移,讓分類色圓點跟綠勾同時可辨)。 */
+:global(.geo-attraction-overlay-candidate) :global(.geo-attraction-curated-dot)::after {
+  content: '';
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ios-green) url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7' fill='none' stroke='%23FDFCFA' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 6px no-repeat;
+  border: 1.5px solid var(--ios-card);
   box-shadow: 0 1px 3px rgba(61, 53, 48, 0.3);
 }
 
