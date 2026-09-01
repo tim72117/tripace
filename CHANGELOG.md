@@ -4,6 +4,10 @@
 
 ## v0.11.1 — 2026-09-01
 
+### 新增
+
+- **安裝 Google Tag Manager**（容器 `GTM-563D8TXG`，`web/index.html`）：容器代碼放在 `<head>` 開頭、`<noscript>` 備援放在 `<body>` 開頭，符合官方安裝規範。容器內已設定「GA4 設定」代碼（測量 ID `G-ZSPVT49BNE`，觸發條件 All Pages）並發布，之後新增 Google Ads 轉換等追蹤只需在 GTM 後台調整，不需再改動程式碼。
+
 ### 修正
 
 - **登出未清除殘留旅程**（FE21）：`onLogout` 補上 `setActiveTrip(null)` 並清除 `LS_DEFAULT_TRIP`，避免換帳號後沿用舊 `tripID`。
