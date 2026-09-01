@@ -1,0 +1,69 @@
+{
+  "variant": "dark",
+  "styles": [
+    {
+      "id": "infrastructure",
+      "geometry": {
+        "fillColor": "#2A2620",
+        "strokeColor": "#2A2620"
+      },
+      "label": {
+        "pinFillColor": "#2A2620",
+        "textFillColor": "#2A2620",
+        "textStrokeColor": "#2A2620"
+      }
+    },
+    {
+      "id": "infrastructure.roadNetwork",
+      "geometry": {
+        "fillColor": "#4A4438",
+        "strokeColor": "#4A4438"
+      },
+      "label": {
+        "visible": false,
+        "textFillColor": "#4A4438",
+        "textStrokeColor": "#4A4438"
+      }
+    },
+    {
+      "id": "infrastructure.roadNetwork.road.highway",
+      "geometry": {
+        "fillColor": "#5C543F",
+        "strokeColor": "#5C543F"
+      },
+      "label": {
+        "textFillColor": "#5C543F",
+        "textStrokeColor": "#5C543F"
+      }
+    },
+    {
+      "id": "natural.land",
+      "geometry": {
+        "fillColor": "#232018"
+      }
+    },
+    {
+      "id": "natural.water",
+      "geometry": {
+        "fillColor": "#161D24"
+      },
+      "label": {
+        "visible": false,
+        "textFillColor": "#161D24",
+        "textStrokeColor": "#161D24"
+      }
+    },
+    {
+      "id": "pointOfInterest",
+      "geometry": {
+        "visible": true
+      }
+    },
+    {
+      "id": "political",
+      "label": {
+        "visible": false
+      }
+    }
+  ]
+}
