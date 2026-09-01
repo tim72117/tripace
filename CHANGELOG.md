@@ -2,6 +2,17 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.12.1 — 2026-09-02
+
+### 修正
+
+- **Pexels 照片缺圖時永久不會補查**：`handleGeoPlaceDetails` 快取命中／降級回應分支新增 `ensurePexelsPhotos`，只要 Pexels 沒圖且 Google 也沒圖（`cached.NewPhotoCount == 0`）就嘗試補查一次，取代原本「Pexels 只在地點第一次被查詢時查一次、之後永遠不再嘗試」的行為——已實測重現：手動清空某地點的照片快取後，卡片會永久顯示空白，直到這次修正。
+- **CI 部署腳本明確帶上地點速率限制參數**：`GOOGLE_PLACES_GET_RATE_LIMIT_*`／`GOOGLE_PLACES_PHOTO_MEDIA_RATE_LIMIT_*` 加進 `deploy-cloudrun.yml` 的 `--update-env-vars`，讓正式環境實際生效的限流參數在部署設定裡可見，之後調整不需要改程式碼重新編譯（行為與原本的程式碼預設值等價，純粹讓設定顯性化）。
+
+### 文件
+
+- `docs/audit-place-photo-cost-control-2026-09.md` 補上三項後續稽核發現：R4（第一次查詢撞上限流會整體降級成空白卡片）、R5（已修正，見上）、R6（`GetPlaceDetails` 與 `ListPlacePhotoRefs` 共用同一個 `places.get` 限流 key，兩者同時觸發時後者必然被前者用光的額度擋下，已查證修法方向為合併成同一次查詢）。
+
 ## v0.12.0 — 2026-09-02
 
 ### 新增

@@ -65,9 +65,14 @@ limiting」** 已經記錄「內部端點完全沒有任何請求頻率限制」
 並寫入快取），這樣至少能在沒有名稱/地址的情況下先顯示照片，之後使用者
 重新點擊（觸發新的 `GetPlaceDetails` 嘗試）就能補上文字。
 
-### 🟡 新發現（R5）：快取命中分支完全沒有「Pexels 缺圖時補查」機制，跟 Google 端的持續補圖節奏不對稱
+### 🟡 新發現（R5）：快取命中分支完全沒有「Pexels 缺圖時補查」機制，跟 Google 端的持續補圖節奏不對稱　✅ 已解決（commit `5055c5d`）
 
-**已實測重現**：手動清空某地點的 `google_place_photos`/`place_pexels_photos`
+**已解決**：新增 `ensurePexelsPhotos`，快取命中/降級回應分支都會在
+「Pexels 沒圖且 Google 也沒圖（`cached.NewPhotoCount == 0`）」時嘗試
+補查一次，獨立於 Google 端節流之外——只有兩個來源都沒圖、卡片真的會
+顯示空白時才觸發，Google 已有圖時不多打這次外部呼叫。
+
+**已實測重現（修復前）**：手動清空某地點的 `google_place_photos`/`place_pexels_photos`
 兩張表（保留 `place_details_cache` 本身這一列），重新點擊該地點，卡片
 確實顯示為空白（無 Google 圖、無 Pexels 圖）。
 
