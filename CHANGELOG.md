@@ -2,6 +2,19 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.11.1 — 2026-09-01
+
+### 修正
+
+- **登出未清除殘留旅程**（FE21）：`onLogout` 補上 `setActiveTrip(null)` 並清除 `LS_DEFAULT_TRIP`，避免換帳號後沿用舊 `tripID`。
+- **切換旅程時意外彈出鍵盤**（FE23）：`ChatScreen` 輸入框移除 `autoFocus`，改由 `open` prop 轉為 `true` 時的 effect 手動聚焦。
+- **地圖類別標籤連點造成查詢結果亂序覆蓋**（FE24）：`runPlacesQuery` 加入 `requestId` 防護，只採最新一筆回應。
+- **快速切換候選卡片時舊查詢覆蓋新卡片內容**：`patchGeocodeCandidateText`／`patchGeocodeCandidatePhoto` 加入 `placeId` 二次確認。
+- 移除已退化成死碼的 `geoListDrawerState` reducer，`GeoOutlinePhoneView.tsx` 改用單純的 `listLoading` state（FE8）。
+- 補上日期選擇／日曆 sheet 缺少的退場動畫。
+- 新增 `--ios-sand` 深色模式 token，修正 attraction 地圖光暈、地標佔位圖、地名標籤底色在夜間模式下不正確或不可讀的問題；修正 `tripEntry` marker 誤用 attraction 色而非 accent 色。
+- 補上 Google 帳號登入（GSI 模式，v0.11.0 之前已隨 commit `b8c1d2f` 加入）正式環境所需的部署配置：`GOOGLE_OAUTH_CLIENT_ID` 納入 Secret Manager 管理腳本，並補上兩份 Cloud Run 部署 workflow 缺少的 build-time `--build-arg` 與執行期 `--update-secrets`——先前功能程式碼已存在，但未部署到正式站即無法運作。
+
 ## v0.11.0 — 2026-08-30
 
 ### 新增
