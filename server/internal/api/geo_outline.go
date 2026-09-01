@@ -1366,11 +1366,17 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 			pcancel()
 		}
 
-		// Pexels 查詢邏輯維持既有行為不變——快取命中時沒有補查邏輯,只有
-		// 初次查詢(fetchAndCachePlaceDetails)時查一次,不受這次 Google
-		// 漸進補圖節奏影響(見 docs/refactor-place-photo-progressive-loading-2026-09.md
-		// 「Pexels 補圖順序」段落的範圍判斷,這次改動刻意不擴大範圍幫
-		// Pexels 也加一套節奏邏輯)。
+		// Pexels 查詢邏輯已從「只在初次查詢時查一次」改成獨立於 Google
+		// 補圖節奏之外、每次點擊都各自判斷的同步機制(見 ensurePexelsPhotos
+		// 的完整說明)——這是稽核文件 docs/audit-place-photo-cost-control-2026-09.md
+		// R5 記錄的修法:原本快取命中分支完全沒有「Pexels 缺圖時補查」的
+		// 機制,跟 Google 端持續嘗試補圖/重新確認的節奏形成不對稱,一旦
+		// 初次查詢時 Pexels 查無結果(或像本次稽核實測操作一樣被清空),
+		// 這個地點就永久沒有 Pexels 照片可顯示。Pexels API 免費、不像
+		// Google Photo Media 有計費風險,不需要跟 Google 端一樣嚴格的
+		// 節流保護,每次發現是空的就直接嘗試補查一次是可接受的成本
+		// (使用者明確選擇「每次都重試,不特別標記查無結果」這個最簡單的
+		// 版本,不需要額外欄位記錄「已查過但確實沒有」的狀態)。
 		if resp.GooglePhotoURLs == nil {
 			googlePhotos, _ := s.store.ListGooglePlacePhotos(placeID)
 			for _, p := range googlePhotos {
@@ -1381,6 +1387,7 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 		for _, p := range pexelsPhotos {
 			resp.PexelsPhotoURLs = append(resp.PexelsPhotoURLs, p.PhotoURL)
 		}
+		resp.PexelsPhotoURLs = s.ensurePexelsPhotos(r.Context(), placeID, cached.Name, resp.PexelsPhotoURLs, cached.NewPhotoCount > 0)
 		if len(resp.GooglePhotoURLs) > 0 {
 			resp.PhotoURL = resp.GooglePhotoURLs[0]
 		} else if len(resp.PexelsPhotoURLs) > 0 {
@@ -1453,7 +1460,7 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 			// 任何一個的當下——這跟「被丟棄」是同一類「這次沒能取得新
 			// 資料」的情況,一律不當作錯誤回應給前端,改走降級邏輯。
 			if errors.Is(err, apigateway.ErrRateLimited) {
-				writeDegradedPlaceDetails(w, s.buildDegradedPlaceDetailsResponse(placeID))
+				writeDegradedPlaceDetails(w, s.buildDegradedPlaceDetailsResponse(r.Context(), placeID))
 				return
 			}
 			if err == geo.ErrNotFound {
@@ -1470,7 +1477,7 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 	// 沒搶到:同一 placeID 已經有其他並發請求在處理中,這次直接丟棄,
 	// 不等待對方完成——降級成「盡量用現有快取回應」,理由與行為細節見
 	// buildDegradedPlaceDetailsResponse 的說明。
-	writeDegradedPlaceDetails(w, s.buildDegradedPlaceDetailsResponse(placeID))
+	writeDegradedPlaceDetails(w, s.buildDegradedPlaceDetailsResponse(r.Context(), placeID))
 }
 
 // tryClaimPlaceDetailsInFlight 嘗試搶到「處理這個 placeID」的權利——用
@@ -1521,7 +1528,7 @@ func (s *Server) releasePlaceDetailsInFlight(placeID string) {
 //     同一個回應形狀不需要前端另外處理一種新的錯誤/待重試狀態,使用者
 //     體驗上等同「這個地點的詳細資訊還在補齊中」,重新整理或稍後再次
 //     點擊會重新觸發查詢。
-func (s *Server) buildDegradedPlaceDetailsResponse(placeID string) placeDetailsResponse {
+func (s *Server) buildDegradedPlaceDetailsResponse(ctx context.Context, placeID string) placeDetailsResponse {
 	resp := placeDetailsResponse{}
 
 	// GetCachedPlaceDetails 的 maxAge 語意是「距今超過這個時長就視為
@@ -1555,6 +1562,7 @@ func (s *Server) buildDegradedPlaceDetailsResponse(placeID string) placeDetailsR
 			resp.PexelsPhotoURLs = append(resp.PexelsPhotoURLs, p.PhotoURL)
 		}
 	}
+	resp.PexelsPhotoURLs = s.ensurePexelsPhotos(ctx, placeID, resp.Name, resp.PexelsPhotoURLs, cached.NewPhotoCount > 0)
 	if len(resp.GooglePhotoURLs) > 0 {
 		resp.PhotoURL = resp.GooglePhotoURLs[0]
 	} else if len(resp.PexelsPhotoURLs) > 0 {
@@ -1562,6 +1570,50 @@ func (s *Server) buildDegradedPlaceDetailsResponse(placeID string) placeDetailsR
 	}
 
 	return resp
+}
+
+// ensurePexelsPhotos 是 Pexels 查詢從「只在初次查詢時查一次」抽出來的
+// 獨立同步機制——existing 是這次已經從快取讀到的 Pexels 照片清單,若
+// 為空「且」Google 那邊這次也沒有照片可顯示(hasGooglePhoto 為
+// false),才直接查一次 Pexels(用 name 當關鍵字)並整批寫回
+// place_pexels_photos,回傳這次查到(或原本已有)的清單。查詢失敗或
+// 查無結果時原樣回傳 existing(維持 nil/空),不視為錯誤——理由同這支
+// handler 既有的「照片是輔助欄位,失敗不影響整體回應」慣例。
+//
+// hasGooglePhoto 這個條件是使用者明確要求的:只要 Google 這邊已經有圖
+// 可以顯示,卡片就不會是空白的,Pexels 缺圖此時不影響使用者實際看到的
+// 畫面,不值得為了「補滿另一個來源」多打一次外部呼叫——只有兩個來源
+// 都沒有圖、卡片真的會顯示空白時,才有必要嘗試用 Pexels 補救。呼叫端
+// 傳入 cached.NewPhotoCount > 0(place_details_cache 本身就有追蹤的
+// 漸進補圖進度欄位,見 placeDetailsCacheRow 的完整說明),不是重新查
+// google_place_photos 表算筆數——兩者數值上應該一致(NewPhotoCount
+// 正是「目前已經漸進補到第幾張」,即已下載進這張表的實際筆數),但直接
+// 讀已經在手上的快取欄位語意更直接、也不需要額外一次查詢。
+//
+// 這支函式完全獨立於 Google 端的點擊節奏/7 天時間雙觸發之外,不共用
+// 任何節流狀態——Pexels API 免費,不需要跟 Google Photo Media 一樣
+// 嚴格的節流保護(見稽核文件 R5 的完整說明,使用者明確選擇「每次發現
+// 是空的就查」這個最簡單的版本,不特別區分「從未查過」與「查過但確實
+// 沒有結果」,故真的查無結果的地點會在之後每次點擊都重試——這是刻意
+// 接受的成本,不是遺漏)。
+//
+// name 為空字串時(例如降級回應完全沒有快取資料可用)直接回傳
+// existing,不嘗試查詢——沒有名稱就沒有關鍵字可以查,勉強查了也只會
+// 查到不相關的結果。
+func (s *Server) ensurePexelsPhotos(ctx context.Context, placeID, name string, existing []string, hasGooglePhoto bool) []string {
+	if len(existing) > 0 || name == "" || hasGooglePhoto {
+		return existing
+	}
+	pexelsClient := pexels.New(os.Getenv("PEXELS_API_KEY"))
+	pctx, pcancel := context.WithTimeout(ctx, 5*time.Second)
+	defer pcancel()
+	photo, ok, err := pexelsClient.Search(pctx, name)
+	if err != nil || !ok {
+		return existing
+	}
+	photoURL := s.landmarkPhotoURL(pctx, placeID, photo.ImageURL)
+	_ = s.store.SetPlacePexelsPhotos(placeID, []string{photoURL}, []string{photo.PageURL})
+	return []string{photoURL}
 }
 
 // writeDegradedPlaceDetails 把降級回應寫出——固定回 HTTP 200(不是錯誤
