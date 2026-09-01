@@ -2,6 +2,17 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.12.0 — 2026-09-02
+
+### 新增
+
+- **地點照片改為 Google／Pexels 雙來源並列，Google 端漸進補圖**（`handleGeoPlaceDetails`）：點擊地圖上 Google 原生 POI 圖標查詢地點詳情時，照片不再是「Pexels 優先、查無才 fallback Google」互斥擇一，改成兩種來源同時並列顯示（`googlePhotoUrls`／`pexelsPhotoUrls`）。Google 端因 Photos 欄位屬 Enterprise 級計費，改成依「點擊節奏 OR 距上次查詢逾 7 天」雙觸發條件才重新確認該地點實際照片張數，每次至多補下載一張，不再一次查詢就下載到上限，大幅降低單次查詢成本。
+- **拒絕型速率限制元件 `apigateway.RateLimiter`**：對「地點資訊查詢」（10 秒視窗最多 1 次）與「地點照片下載」（10 分鐘視窗最多 1 次）分別設定獨立上限，超過視窗上限直接拒絕、不排隊等待，取代原本 `apigateway.Gateway` 純排隊型節流在長時間持續請求下總量無上限的缺口。
+- **同一地點併發請求改為搶佔丟棄**：原本用 `singleflight.Group` 合併同一 placeID 的併發查詢（後續請求等待、共享結果），改用 `sync.Map` 搶佔機制——同一 placeID 若已有請求在處理，後續並發請求立即丟棄（不等待），降級改讀現有快取回應，使用者體驗上仍能看到內容，只是這次沒有觸發新查詢。
+- 單點地點介紹查詢路徑新增 `PhotoDataURIUnrestricted`，不再受 `GOOGLE_PLACES_FETCH_PHOTOS` 全域開關控制（改由上述新機制控管成本），飯店照片／附近景點候選卡片縮圖等其餘照片查詢路徑維持原樣受此開關控制。
+- 手機版地點介紹卡（`GeoOutlinePhoneInfoSheet.tsx`）補上 `PhotoCarousel` 元件（原本只有桌面版有）：多張照片時可自由橫向捲動瀏覽（不用 scroll-snap 吸附），每張照片各自帶圓角與間距，首尾張顯示時對應側留白、其餘情況貼齊卡片外緣；新增左右滑動時鎖住卡片上下拖曳手勢的方向鎖定，避免瀏覽照片時誤觸卡片收合/展開。
+- 新增 `docs/audit-place-photo-cost-control-2026-09.md`，記錄這次改動前後對 Google API 呼叫成本控制的稽核結果與風險處理狀態。
+
 ## v0.11.1 — 2026-09-01
 
 ### 新增
