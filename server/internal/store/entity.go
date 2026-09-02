@@ -80,6 +80,22 @@ type attractionRow struct {
 	RadiusMeters int     `gorm:"column:radius_meters;not null;default:0"`
 	Summary      *string `gorm:"column:summary"`
 	PhotoURL     *string `gorm:"column:photo_url"`
+	// PlaceID:對應這個景點區域的 Google Place ID,可為 NULL——人工建檔時
+	// 若沒有透過 -place/-place-id 指定(或建檔當下查無對應地點)就不會有
+	// 值。有值時前端優先改用「地點照片漸進補圖機制」(place_details_cache/
+	// google_place_photos/place_pexels_photos 三張表,見這幾個型別的完整
+	// 說明)取得的 Google/Pexels 雙來源照片陣列顯示,取代/補強單一的
+	// PhotoURL;沒有值時維持原本 PhotoURL 這條路徑不變。兩套機制刻意並存
+	// 而非一次性遷移——PhotoURL 是人工建檔當下落地存進 GCS 的單張快照,
+	// PlaceID 對應的漸進補圖結果會隨使用者點擊持續累積更新,兩者服務的
+	// 情境不同(見 docs/audit-place-photo-cost-control-2026-09.md 的完整
+	// 討論),沒有理由讓其中一套機制完全取代另一套。
+	//
+	// place_id 本身是 Google 官方文件明確允許長期保存與展示的穩定識別碼
+	// (跟 photo resource name 那種禁止長期快取的欄位規則不同,見
+	// photoCacheRow 型別說明的 Google Maps Platform ToS 3.2.3(b) 引用),
+	// 存進資料庫、對外曝露都沒有 Google TOS 疑慮。
+	PlaceID *string `gorm:"column:place_id"`
 
 	CreatedAt time.Time `gorm:"column:created_at;not null"`
 	UpdatedAt time.Time `gorm:"column:updated_at;not null"`

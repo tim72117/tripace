@@ -164,3 +164,11 @@ func (c *httpClient) attractionUpdateCoords(id string, lat, lng float64) (any, e
 func (c *httpClient) attractionUpdateField(id, field, value string) (any, error) {
 	return c.do("PATCH", "/internal/maintenance/attractions/"+id+"/field", map[string]any{"field": field, "value": value})
 }
+
+// attractionUpdatePlaceID 對齊 PATCH /internal/maintenance/attractions/
+// {id}/place-id(見 server/internal/api/maintenance.go)——供既有已建檔的
+// attraction 事後補上(或清空,placeID 傳空字串)對應的 Google place_id,
+// 供 attraction-set-place-id 子命令使用。
+func (c *httpClient) attractionUpdatePlaceID(id, placeID string) (any, error) {
+	return c.do("PATCH", "/internal/maintenance/attractions/"+id+"/place-id", map[string]any{"placeId": placeID})
+}

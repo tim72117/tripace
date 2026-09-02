@@ -544,6 +544,7 @@ export function DesktopContent(props: ContentProps) {
               />
               <AttractionInfoPanel
                 attraction={geoAttractionContent}
+                cfg={cfg}
                 onClose={geo.clearSelection}
                 nearby={nearbyAttractions}
                 onSelectNearby={handleSelectNearbyAttraction}

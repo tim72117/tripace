@@ -49,8 +49,8 @@ export const CURATED_CATEGORY_MAP_CLASS: Record<CuratedCategory, string> = {
 }
 
 // NAME_TO_CURATED_CATEGORY:name → 分類的寫死對照表,只涵蓋目前已建檔的
-// 清水寺周邊精選點(見 docs/handoff-radar-map-prototype-2026-08.md 建檔
-// 記錄)。CHASEN 茶筅當初查不到精確座標而跳過建檔,故這裡也沒有它的條目。
+// 清水寺周邊精選點(透過 tripace-cli attraction-add 手動建檔)。CHASEN
+// 茶筅當初查不到精確座標而跳過建檔,故這裡也沒有它的條目。
 const NAME_TO_CURATED_CATEGORY: Record<string, CuratedCategory> = {
   '忠僕茶屋': 'tea',
   '%ARABICA 京都東山': 'tea',

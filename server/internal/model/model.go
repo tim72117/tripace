@@ -121,6 +121,12 @@ type Attraction struct {
 	RadiusMeters int     `json:"radiusMeters,omitempty"`
 	Summary      *string `json:"summary,omitempty"`
 	PhotoURL     *string `json:"photoUrl,omitempty"`
+	// PlaceID 是這個景點區域對應的 Google Place ID,可為 nil——見
+	// store.attractionRow.PlaceID 的完整說明(並存策略、Google TOS 可
+	// 長期保存的依據)。有值時前端(AttractionInfoPanel.tsx)優先改打
+	// GET /internal/geo/place-details 取得漸進補圖機制的雙來源照片陣列,
+	// 取代/補強單一的 PhotoURL;沒有值時維持原本 PhotoURL 顯示。
+	PlaceID *string `json:"placeId,omitempty"`
 	// UpdatedAt 是這筆資料最後一次寫入的時間(建立或透過
 	// UpdateAttractionPhoto 等方式更新)——目前只單純曝露出來供人工核對
 	// 哪些資料較舊,尚未實作自動過期判斷/自動重新整理。

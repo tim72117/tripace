@@ -426,7 +426,22 @@ type Place struct {
 	// PlaceID 是 Google 的穩定地點識別碼(不會過期,對照 PhotoRef 那種
 	// 有時效性的照片資源名稱)——供 fetchPhotoAsDataURI 當快取鍵用,
 	// 見 PhotoCache 介面的完整說明。查詢結果沒有解析出來時為空字串。
-	PlaceID string `json:"-"`
+	//
+	// 2026-09:json tag 從 "-"(不對外曝露)改成輸出 "placeId"——place_id
+	// 本身是 Google 官方文件明確允許長期保存與展示的穩定識別碼,不同於
+	// PhotoRef(photo resource name)那種 Google Maps Platform ToS 3.2.3(b)
+	// 明文禁止長期快取、且有時效性的欄位(見 store.photoCacheRow 的完整
+	// 說明),原本的「不對外洩漏」考量是針對後者這類有保存限制的欄位,
+	// 不適用於 PlaceID。改動動機:CLI 的 attraction-add -place 查詢流程
+	// (handleMaintenanceGeocode)需要把候選地點的 place_id 一併帶回 CLI,
+	// 才能讓人工建檔的 attraction 對應到 place_id、進而使用「地點照片
+	// 漸進補圖機制」(見 model.Attraction.PlaceID 的完整說明)。這個欄位
+	// 曝露後,所有回傳 []Place/[]NearbyPlace 的既有回應格式都會多出一個
+	// placeId 欄位——place_id 本身不敏感,多這個欄位不構成資安或商業
+	// 風險,見呼叫端逐一盤點的說明(server/internal/api/geo_outline.go、
+	// maintenance.go)。PhotoRef 維持 json:"-"不變,那個欄位的保存限制
+	// 依然適用。
+	PlaceID string `json:"placeId,omitempty"`
 	// PhotoRef 是這個地點第一張照片的 Places API photo resource name,
 	// 只有 SearchOptions.IncludePhotos 為 true 時才會有值——同
 	// NearbyPlace.PhotoRef 的說明,內部欄位不外洩給前端,呼叫端需另外

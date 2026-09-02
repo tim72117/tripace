@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useState } from 'react'
 import { Check, Plus, X } from 'lucide-react'
-import type { GeoAttraction } from '../api'
+import type { ClientConfig, GeoAttraction, GeoPlaceDetails } from '../api'
+import { fetchGeoPlaceDetails } from '../api'
 import type { GeoInfoContent } from './GeoInfoPanel'
 import { attractionBadges } from './geoInfoContent'
 import { candidateHasScheduledDate, type GeoCandidate } from './geoCandidateHelpers'
@@ -93,6 +94,7 @@ const SHEET_SNAP_POINTS = [400, 80]
 export function GeoOutlinePhoneInfoSheet({
   content,
   attraction,
+  cfg,
   onClose,
   onAddCandidate,
   onOpenDatePicker,
@@ -102,6 +104,12 @@ export function GeoOutlinePhoneInfoSheet({
 }: {
   content: GeoInfoContent | null
   attraction: GeoAttraction | null
+  // cfg:attraction.placeId 有值時,用來呼叫 fetchGeoPlaceDetails 補查
+  // 「地點照片漸進補圖機制」的雙來源照片——理由同桌面版
+  // AttractionInfoPanel.tsx 的同名 prop,兩邊是同一套邏輯的桌面/手機版
+  // 各自實作(手機版走 bottom sheet,無法直接共用同一個元件),見下方
+  // placeDetails effect 的完整說明。
+  cfg: ClientConfig
   onClose: () => void
   // onAddCandidate:候選已有排定日期時直接加入候選籃(純前端,不寫入
   // 後端)——理由同桌面版 GeoInfoPanel.tsx 的同名 prop。這條路徑完全不
@@ -216,19 +224,43 @@ export function GeoOutlinePhoneInfoSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addFlashTrigger])
 
+  // placeDetails:attraction.placeId 有值時,補查一次「地點照片漸進補圖
+  // 機制」的雙來源照片——理由與寫法同桌面版 AttractionInfoPanel.tsx 的
+  // 同名 effect(不重新發明呼叫邏輯,同一支 fetchGeoPlaceDetails 端點),
+  // 這裡放在 open 判斷之前(所有 early return 之前),遵守 Hooks 規則。
+  const attractionPlaceId = attraction?.placeId
+  const [placeDetails, setPlaceDetails] = useState<GeoPlaceDetails | null>(null)
+  useEffect(() => {
+    setPlaceDetails(null)
+    if (!attractionPlaceId) return
+    let cancelled = false
+    fetchGeoPlaceDetails(cfg, attractionPlaceId)
+      .then((details) => {
+        if (!cancelled) setPlaceDetails(details)
+      })
+      .catch(() => {
+        // 查詢失敗不視為錯誤,維持 null——PhotoCarousel 的 fallbackUrl
+        // 會退回 landmarkPhotoUrl,理由同 AttractionInfoPanel.tsx。
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [cfg, attractionPlaceId])
+
   const open = content != null || attraction != null
 
   if (!open) return null
 
   const name = attraction ? attraction.name : content!.name
   // photoUrl/googlePhotoUrls/pexelsPhotoUrls:attraction(人工建檔景點)
-  // 只有單一 landmarkPhotoUrl,沒有雙來源多圖清單——PhotoCarousel 收到
-  // 兩份清單皆為 undefined 時會 fallback 回 photoUrl 顯示單張,行為
-  // 與改版前一致,理由同 AttractionInfoPanel.tsx/GeoInfoPanel.tsx 不對
-  // attraction 分支特別處理多圖的既有慣例。
+  // 有 placeId 時改用上方 placeDetails effect 查回的雙來源照片(見該
+  // effect 的完整說明),沒有 placeId 時維持只有單一 landmarkPhotoUrl——
+  // PhotoCarousel 收到兩份清單皆為 undefined(或查詢中/查無結果)時會
+  // fallback 回 photoUrl 顯示單張,理由同 AttractionInfoPanel.tsx/
+  // GeoInfoPanel.tsx 的既有慣例。
   const photoUrl = attraction ? attraction.landmarkPhotoUrl : content!.photoUrl
-  const googlePhotoUrls = attraction ? undefined : content!.googlePhotoUrls
-  const pexelsPhotoUrls = attraction ? undefined : content!.pexelsPhotoUrls
+  const googlePhotoUrls = attraction ? (attractionPlaceId ? placeDetails?.googlePhotoUrls : undefined) : content!.googlePhotoUrls
+  const pexelsPhotoUrls = attraction ? (attractionPlaceId ? placeDetails?.pexelsPhotoUrls : undefined) : content!.pexelsPhotoUrls
   const subtitle = attraction
     ? attraction.landmarkName && attraction.landmarkName !== attraction.name
       ? attraction.landmarkName

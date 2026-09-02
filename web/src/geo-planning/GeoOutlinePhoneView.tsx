@@ -421,6 +421,7 @@ export function GeoOutlinePhoneView({
         // 還沒反映),畫面也不會誤顯示——sheetStack 才是唯一真相來源。
         content={sheetStack.stack.some((e) => e.type === 'info') ? geo.infoContent : null}
         attraction={sheetStack.stack.some((e) => e.type === 'info') ? geo.attractionContent : null}
+        cfg={cfg}
         onClose={() => {
           // pop 移除堆疊頂層的 'info'——若下面疊著 'list'(從清單點進來
           // 的路徑),清單自動露出重新變回頂層;若堆疊裡沒有 'list'(由

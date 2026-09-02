@@ -469,3 +469,35 @@ func (s *Server) handleMaintenanceAttractionUpdateField(w http.ResponseWriter, r
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "field": in.Field, "value": in.Value})
 }
+
+// PATCH /internal/maintenance/attractions/{id}/place-id
+// Body: {"placeId": "ChIJ..."}
+//
+// 供 tripace-cli 的 attraction-set-place-id 指令使用(見
+// store.UpdateAttractionPlaceID)——讓既有已建檔的景點區域(建檔當下沒有
+// 透過 attraction-add -place/-place-id 帶入 place_id)事後補上對應的
+// Google place_id,補上後前端(AttractionInfoPanel.tsx)才會開始改用
+// 「地點照片漸進補圖機制」的雙來源照片,取代/補強單一的 photo_url。獨立
+// 端點而非塞進通用的 .../field(見 handleMaintenanceAttractionUpdateField
+// 的白名單機制)——理由同座標/照片各自獨立端點的既有慣例:place_id 允許
+// 傳空字串主動清空(見 store.UpdateAttractionPlaceID 的說明),這跟
+// attractionUpdatableFields 白名單那組欄位「值本身不可為空」的既有語意
+// 不同,不適合共用同一個通用機制。
+func (s *Server) handleMaintenanceAttractionUpdatePlaceID(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少景點 ID")
+		return
+	}
+	var in struct {
+		PlaceID string `json:"placeId"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := s.store.UpdateAttractionPlaceID(id, in.PlaceID); err != nil {
+		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "placeId": in.PlaceID})
+}

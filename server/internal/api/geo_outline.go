@@ -346,6 +346,14 @@ type attractionResponse struct {
 	RadiusMeters     int     `json:"radiusMeters,omitempty"`
 	Summary          string  `json:"summary,omitempty"`
 	Level            int     `json:"level,omitempty"`
+	// PlaceID:只有走 store.ListAttractionsByCity/ListAttractionsNearby
+	// 這條人工建檔資料路徑、且該筆 model.Attraction.PlaceID 有值時才會有
+	// 值——即時查 Google Places 的 toAttractionResponses 路徑(geo.District
+	// 沒有這個欄位)固定不帶。有值時前端(AttractionInfoPanel.tsx)優先
+	// 改打 GET /internal/geo/place-details 取得漸進補圖機制的雙來源照片,
+	// 取代/補強 LandmarkPhotoURL 這個單張欄位,見 model.Attraction.PlaceID
+	// 的完整說明。
+	PlaceID string `json:"placeId,omitempty"`
 }
 
 // GET /internal/geo/attractions?city={城市名稱}
@@ -400,6 +408,9 @@ func (s *Server) handleGeoAttractions(w http.ResponseWriter, r *http.Request) {
 			}
 			if l.PhotoURL != nil {
 				ar.LandmarkPhotoURL = *l.PhotoURL
+			}
+			if l.PlaceID != nil {
+				ar.PlaceID = *l.PlaceID
 			}
 			attractions = append(attractions, ar)
 		}
@@ -845,6 +856,9 @@ func (s *Server) listAttractionResponses(lat, lng, radiusMeters float64) ([]attr
 		}
 		if l.PhotoURL != nil {
 			ar.LandmarkPhotoURL = *l.PhotoURL
+		}
+		if l.PlaceID != nil {
+			ar.PlaceID = *l.PlaceID
 		}
 		attractions = append(attractions, ar)
 	}

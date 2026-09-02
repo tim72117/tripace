@@ -26,6 +26,7 @@ func toAttraction(r attractionRow) model.Attraction {
 		RadiusMeters: r.RadiusMeters,
 		Summary:      r.Summary,
 		PhotoURL:     r.PhotoURL,
+		PlaceID:      r.PlaceID,
 		UpdatedAt:    r.UpdatedAt,
 	}
 }
@@ -44,6 +45,7 @@ func (s *Store) CreateAttraction(in model.Attraction) (model.Attraction, error) 
 		RadiusMeters: in.RadiusMeters,
 		Summary:      in.Summary,
 		PhotoURL:     in.PhotoURL,
+		PlaceID:      in.PlaceID,
 		CreatedAt:    now(),
 		UpdatedAt:    now(),
 	}
@@ -72,6 +74,7 @@ func (s *Store) CreateAttractionWithID(in model.Attraction) (model.Attraction, e
 		RadiusMeters: in.RadiusMeters,
 		Summary:      in.Summary,
 		PhotoURL:     in.PhotoURL,
+		PlaceID:      in.PlaceID,
 		CreatedAt:    now(),
 		UpdatedAt:    now(),
 	}
@@ -85,6 +88,14 @@ func (s *Store) CreateAttractionWithID(in model.Attraction) (model.Attraction, e
 // 欄位(見 attractionsync.CompareFields 的欄位清單)——同步機制的「兩邊
 // 都有、內容不同」情境用來源方版本覆蓋目的方,不是欄位級局部更新,
 // 因此一次覆蓋全部比對欄位,不像 UpdateAttractionPhoto 只動單一欄位。
+//
+// 刻意不含 PlaceID:attractionsync.compareFieldSpecs 目前只定義 8 個比對
+// 欄位,PlaceID 尚未列入(見該檔案的完整說明,新增比對欄位只需要改那
+// 一處)——這裡若單獨覆蓋 PlaceID 而比對邏輯完全不知道這個欄位存在,會
+// 出現「這裡覆蓋了但 dry-run 報告不會顯示差異」的不一致。是否要讓
+// PlaceID 加入同步比對範圍是後續可以再評估的獨立決策,目前先讓
+// CreateAttractionWithID(建立新記錄時)帶入來源方的 PlaceID,已有記錄的
+// 兩邊同步更新則維持現狀不動這個欄位。
 func (s *Store) UpdateAttractionFields(in model.Attraction) error {
 	return s.db.Model(&attractionRow{}).
 		Where("id = ?", in.ID).
@@ -205,6 +216,25 @@ func (s *Store) UpdateAttractionPhoto(id, photoURL string) error {
 	return s.db.Model(&attractionRow{}).
 		Where("id = ?", id).
 		Updates(map[string]any{"photo_url": photoURL, "updated_at": now()}).Error
+}
+
+// UpdateAttractionPlaceID 更新一筆景點區域對應的 Google place_id。只更新
+// place_id 與 updated_at 兩欄,不動其餘欄位——這支方法專門服務 CLI 的
+// attraction-set-place-id 指令(見 handleMaintenanceAttractionUpdatePlaceID
+// 的完整說明),讓既有已建檔的 attraction(建檔當下沒有透過 -place/
+// -place-id 帶入 place_id)也能事後補上,開始使用「地點照片漸進補圖
+// 機制」。placeID 允許傳空字串(清空既有值,回到只用 PhotoURL 的舊行為)
+// ——不像 UpdateAttractionCoords/UpdateAttractionPhoto 那些欄位「清空」
+// 沒有實際意義,place_id 清空是使用者可能主動想要的操作(例如發現先前
+// 綁錯了 place_id)。
+func (s *Store) UpdateAttractionPlaceID(id, placeID string) error {
+	var value any
+	if placeID != "" {
+		value = placeID
+	}
+	return s.db.Model(&attractionRow{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"place_id": value, "updated_at": now()}).Error
 }
 
 // UpdateAttractionCoords 更新一筆景點區域的座標。只更新 lat/lng/

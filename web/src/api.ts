@@ -396,6 +396,16 @@ export interface GeoAttraction {
   // 才會有值——即時查 Google Places 的結果沒有分級資訊,固定不帶這個
   // 欄位。前端依此決定隨縮放層級顯示哪些粒度,見 GeoOutlineMap.tsx。
   level?: number
+  // placeId:這個景點區域對應的 Google Place ID,只有走後端資料庫路徑
+  // (人工建檔的 model.Attraction 有設定 place_id)才會有值——即時查
+  // Google Places 的結果(toAttractionResponses/geo.District)沒有這個
+  // 欄位,固定不帶。有值時 AttractionInfoPanel.tsx 優先改打 GET
+  // /internal/geo/place-details 取得「地點照片漸進補圖機制」的
+  // Google/Pexels 雙來源照片(見 fetchGeoPlaceDetails),取代/補強單一的
+  // landmarkPhotoUrl;沒有值時維持顯示 landmarkPhotoUrl 單張圖的既有
+  // 行為,兩套機制並存,不是互斥的一次性遷移(見後端
+  // model.Attraction.PlaceID 的完整說明)。
+  placeId?: string
 }
 
 // GeoHotel:地理輪廓底圖上疊加的飯店圖層單筆結果,對齊後端

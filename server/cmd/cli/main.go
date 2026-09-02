@@ -127,6 +127,8 @@ func main() {
 		cmdAttractionDelete(c, args)
 	case "attraction-update":
 		cmdAttractionUpdate(c, args)
+	case "attraction-set-place-id":
+		cmdAttractionSetPlaceID(c, args)
 	case "attraction-update-photo":
 		cmdAttractionUpdatePhoto(apiURL, args)
 	case "attraction-sync-setup":
@@ -276,12 +278,19 @@ func cmdNotify(args []string) {
 // 視為「未帶」——這在理論上會誤判座標剛好落在赤道或本初子午線的地點,
 // 但 tripace 目前的資料範圍(日本/台灣/泰國等)不會出現這種座標,不為
 // 這個理論邊界增加旗標複雜度(例如改用 *float64 或另開 -coords 旗標)。
-func resolveCoords(c *httpClient, lat, lng float64, place, region string) (float64, float64, error) {
+// resolveCoords 解析 -lat/-lng 或 -place 二擇一的座標輸入,額外回傳查詢
+// 候選地點附帶的 place_id(第三個回傳值 placeID)——只有走 -place 查詢
+// 分支、且該筆候選結果確實有解析出 place_id(見 geo.Place.PlaceID 的
+// 完整說明,json tag 已從 "-" 改成輸出 "placeId")時才會有值,明確帶
+// -lat/-lng 的分支、或查詢結果沒有 place_id 時回傳空字串,不是錯誤——
+// place_id 是選填的加值資訊,呼叫端(cmdAttractionAdd/cmdAttractionUpdate)
+// 自行決定拿到空字串時要不要當作沒有變動。
+func resolveCoords(c *httpClient, lat, lng float64, place, region string) (float64, float64, string, error) {
 	if lat != 0 || lng != 0 {
-		return lat, lng, nil
+		return lat, lng, "", nil
 	}
 	if place == "" {
-		return 0, 0, fmt.Errorf("需要 -lat/-lng 或 -place 其中一組")
+		return 0, 0, "", fmt.Errorf("需要 -lat/-lng 或 -place 其中一組")
 	}
 
 	q := url.Values{}
@@ -291,16 +300,17 @@ func resolveCoords(c *httpClient, lat, lng float64, place, region string) (float
 	}
 	geoRes, err := c.do("GET", "/internal/maintenance/geocode?"+q.Encode(), nil)
 	if err != nil {
-		return 0, 0, fmt.Errorf("geocode: %w", err)
+		return 0, 0, "", fmt.Errorf("geocode: %w", err)
 	}
 	places, _ := geoRes["places"].([]any)
 	if len(places) == 0 {
-		return 0, 0, fmt.Errorf("-place 查無候選地點")
+		return 0, 0, "", fmt.Errorf("-place 查無候選地點")
 	}
 	first, _ := places[0].(map[string]any)
 	newLat, _ := first["lat"].(float64)
 	newLng, _ := first["lng"].(float64)
-	return newLat, newLng, nil
+	newPlaceID, _ := first["placeId"].(string)
+	return newLat, newLng, newPlaceID, nil
 }
 
 // cmdAttractionAdd 新增一筆景點區域資料(見 model.Attraction 的完整說明)。
@@ -327,6 +337,13 @@ func cmdAttractionAdd(c *httpClient, args []string) {
 	radius := fs.Int("radius", 0, "大致範圍半徑（公尺），0 表示這是單點地標而非有範圍的區域")
 	summary := fs.String("summary", "", "白話簡介（選填）")
 	photoURL := fs.String("photo-url", "", "代表性照片網址（選填）")
+	// placeIDFlag:讓使用者可以不透過 -place 查詢、直接明確指定 place_id
+	// ——例如使用者已經從別處(如 Google Maps 網頁版分享連結)拿到確切的
+	// place_id,不需要再讓 -place 的文字查詢去猜一次(文字查詢可能因為
+	// 地名口語化/多個同名候選而選到不是使用者原本想要的那筆)。有值時
+	// 優先採用(不查 -place 查詢結果附帶的 place_id),對齊 -lat/-lng
+	// 優先於 -place 查詢結果的既有慣例。
+	placeIDFlag := fs.String("place-id", "", "手動指定這個景點對應的 Google place_id（選填，優先於 -place 查詢結果附帶的 place_id）；有值時可讓前端優先使用漸進補圖機制的雙來源照片")
 	_ = fs.Parse(args)
 	if *name == "" || *city == "" || *level == 0 {
 		fatal("attraction-add 需要 -name、-city、-level（1~5）")
@@ -335,7 +352,7 @@ func cmdAttractionAdd(c *httpClient, args []string) {
 		fatal("attraction-add 的 -level 必須介於 1~5")
 	}
 
-	newLat, newLng, err := resolveCoords(c, *lat, *lng, *place, *region)
+	newLat, newLng, resolvedPlaceID, err := resolveCoords(c, *lat, *lng, *place, *region)
 	if err != nil {
 		fatal("attraction-add: %v", err)
 	}
@@ -349,6 +366,15 @@ func cmdAttractionAdd(c *httpClient, args []string) {
 	}
 	if *photoURL != "" {
 		in.PhotoURL = photoURL
+	}
+	// place_id 優先順序:使用者明確帶 -place-id > -place 查詢結果附帶的
+	// place_id > 都沒有時維持 nil(舊有行為,只用 PhotoURL 這條路徑)。
+	finalPlaceID := *placeIDFlag
+	if finalPlaceID == "" {
+		finalPlaceID = resolvedPlaceID
+	}
+	if finalPlaceID != "" {
+		in.PlaceID = &finalPlaceID
 	}
 	res, err := c.attractionAdd(in)
 	if err != nil {
@@ -437,7 +463,10 @@ func cmdAttractionUpdate(c *httpClient, args []string) {
 	}
 
 	if haveCoords || *place != "" {
-		newLat, newLng, err := resolveCoords(c, *lat, *lng, *place, *region)
+		// 第三個回傳值(place_id)這裡不需要——attraction-update 只修正座標,
+		// 不動 place_id;要補上/修改 place_id 用 attraction-set-place-id
+		// (見該指令的說明)。
+		newLat, newLng, _, err := resolveCoords(c, *lat, *lng, *place, *region)
 		if err != nil {
 			fatal("attraction-update: %v", err)
 		}
@@ -456,6 +485,34 @@ func cmdAttractionUpdate(c *httpClient, args []string) {
 		}
 		output(res)
 	}
+}
+
+// cmdAttractionSetPlaceID 補上(或清空)一筆既有景點區域對應的 Google
+// place_id——走 PATCH /internal/maintenance/attractions/{id}/place-id(見
+// httpClient.attractionUpdatePlaceID 的完整說明)。獨立於 attraction-update
+// 之外(不塞進 -field/-value 通用機制),理由同後端 handler 的說明:
+// place_id 允許明確傳空字串清空,跟 -field/-value 那組欄位「不可為空」的
+// 既有語意不同。
+//
+// 使用情境:這批 attraction 資料原本(2026-09 之前)完全沒有 place_id
+// 概念,既有已建檔的景點區域不會自動補上——透過這個指令補上後,前端
+// (AttractionInfoPanel.tsx)才會開始改用「地點照片漸進補圖機制」的
+// Google/Pexels 雙來源照片,取代/補強單一的 photo_url。新建的景點區域
+// 可以直接用 attraction-add -place-id(或 -place 查詢自動帶出),不需要
+// 額外再跑這個指令。
+func cmdAttractionSetPlaceID(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("attraction-set-place-id", flag.ExitOnError)
+	id := fs.String("id", "", "地標 ID（必填）")
+	placeID := fs.String("place-id", "", "Google place_id（必填；傳空字串等同不帶此旗標，會被視為缺少必填參數）")
+	_ = fs.Parse(args)
+	if *id == "" || *placeID == "" {
+		fatal("attraction-set-place-id 需要 -id 與 -place-id")
+	}
+	res, err := c.attractionUpdatePlaceID(*id, *placeID)
+	if err != nil {
+		fatal("attraction-set-place-id: %v", err)
+	}
+	output(res)
 }
 
 // cmdAttractionUpdatePhoto 重新查詢一次地標圖片並回寫到資料庫——走
