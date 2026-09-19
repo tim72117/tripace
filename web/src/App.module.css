@@ -49,7 +49,7 @@
      本來就是元件自己監聽 touchstart/touchmove 用 JS 判斷座標實作,從不
      依賴瀏覽器原生 touch-action 才能運作,.webApp 這層本身沒有自己的
      overflow 捲動需求,不需要放行任何原生手勢。子層(例如
-     GeoOutlineMap.module.css 的地圖容器)有自己的 touch-action 宣告時,
+     ExploreMap.module.css 的地圖容器)有自己的 touch-action 宣告時,
      CSS 層疊規則下子層設定優先於父層,不會被這裡覆蓋掉,地圖原本的
      縮放/平移手勢不受影響。 */
   touch-action: none;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { TouchEvent as ReactTouchEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useIsDesktop } from '../hooks/useIsDesktop'
 import styles from './PhotoCarousel.module.css'
@@ -10,7 +11,7 @@ import styles from './PhotoCarousel.module.css'
 // 等位移量明確超過這個門檻才判斷「這次手勢主要是水平還是垂直」。
 const DIRECTION_LOCK_THRESHOLD_PX = 6
 
-// PhotoCarousel:GeoInfoPanel.tsx 照片顯示區域的抽出元件——「點擊地圖上
+// PhotoCarousel:PlacePanel.tsx 照片顯示區域的抽出元件——「點擊地圖上
 // Google 原生 POI 圖標」這個來源(poiInfoContent,見 geoInfoContent.ts)的
 // 後端回應改成 Google/Pexels 兩種來源並列的多圖清單(見 handleGeoPlaceDetails
 // 的說明),這個元件負責把兩份清單合併成一份「先 Google 後 Pexels」的
@@ -32,10 +33,10 @@ const DIRECTION_LOCK_THRESHOLD_PX = 6
 //       操作方式,手機版使用者不需要瞄準小按鈕。頁碼用圓點呈現(以
 //       IntersectionObserver 判斷目前捲動到哪一張最靠近可視範圍中心)。
 //
-// fallbackUrl:兩份清單合併結果為空時的相容 fallback——GeoInfoContent.
+// fallbackUrl:兩份清單合併結果為空時的相容 fallback——PlaceInfoContent.
 // photoUrl(見該型別的說明)本身可能是單一舊格式來源(地點清單/候選籃
 // 項目)的唯一照片,這個元件統一收斂「該顯示什麼」的判斷,呼叫端
-// (GeoInfoPanel.tsx)不需要自己判斷要不要繞過這個元件直接畫 <img>。
+// (PlacePanel.tsx)不需要自己判斷要不要繞過這個元件直接畫 <img>。
 export function PhotoCarousel({
   googlePhotoUrls,
   pexelsPhotoUrls,
@@ -56,7 +57,7 @@ export function PhotoCarousel({
   // 效果改由 .swipeItem 逐張處理(像相簿卡片一張張滑,同樣是使用者
   // 明確要求)。PhotoCarousel 本身不知道外層容器套了多少 padding,故
   // 不用固定負 margin 硬編碼去抵銷,改由呼叫端根據這個回呼決定要不要
-  // 套 padding——桌面版(GeoInfoPanel.tsx)固定滿版顯示,不需要這個
+  // 套 padding——桌面版(PlacePanel.tsx)固定滿版顯示,不需要這個
   // 機制,不傳這個 prop 即可。
   onLayoutChange?: (isMobileSwipe: boolean) => void
 }) {
@@ -174,8 +175,21 @@ function MobileSwipeStrip({ photos, alt }: { photos: string[]; alt: string }) {
     touchStateRef.current = null
   }
 
+  // observerRef:目前掛載中的 IntersectionObserver 實例——registerObserver
+  // 改回傳 void(不是 cleanup 函式)是因為專案的 React 版本是 18.3.1(見
+  // package.json),還不支援 React 19 才新增的「callback ref 可以回傳
+  // cleanup 函式,卸載時自動呼叫」語法,React 18 會把任何非 undefined
+  // 的回傳值當成用法錯誤,在 console 印出
+  // 「Warning: Unexpected return value from a callback ref in div.」
+  // (實測踩到的警告,見這次修正的完整說明)。改用這個 ref 自己手動記住
+  // observer 實例,在 registerObserver 每次被呼叫、node 變成 null(元件
+  // 卸載或 track 換掉)時自己呼叫 disconnect(),達到同樣的清理效果,
+  // 不依賴 React 19 才有的語法。
+  const observerRef = useRef<IntersectionObserver | null>(null)
   function registerObserver(node: HTMLDivElement | null) {
     trackRef.current = node
+    observerRef.current?.disconnect()
+    observerRef.current = null
     if (!node) return
     const observer = new IntersectionObserver(
       (entries) => {
@@ -196,7 +210,7 @@ function MobileSwipeStrip({ photos, alt }: { photos: string[]; alt: string }) {
       { root: node, threshold: [0.5, 0.75, 1] },
     )
     itemRefs.current.forEach((el) => el && observer.observe(el))
-    return () => observer.disconnect()
+    observerRef.current = observer
   }
 
   // edgePadding:只有目前顯示第一張(activeIndex===0)或最後一張
@@ -273,6 +287,17 @@ function MobileSwipeStrip({ photos, alt }: { photos: string[]; alt: string }) {
 // 鍵切換,點背景或右上角關閉鈕收起。桌面版用滑鼠操作,箭頭按鈕比觸控
 // 滑動手勢更符合滑鼠使用者的操作習慣,故桌面/手機在這裡刻意採用不同的
 // 切換方式,而非同一套邏輯套用到兩種裝置。
+//
+// 用 createPortal 掛到 document.body,不是直接內嵌在呼叫端(PlacePanel/
+// AttractionInfoPanel)的 JSX 樹裡——.lightboxOverlay 的 position: fixed
+// 理論上該相對整個視窗定位,但這張卡片現在是掛在地圖元件(ExploreMap/
+// NativeMapBase)的 children 裡(見這兩個檔案的完整說明),巢狀在較深的
+// DOM 樹層級,一旦祖先鏈上任何一層意外引入 transform/filter/will-change
+// 等會建立新包含區塊的屬性,fixed 定位就會改成相對那層祖先,不再是整個
+// 視窗——實際發生過這個問題(照片放大後卡在卡片原本位置,沒有真正貼齊
+// 視窗置中,見這次修正前的截圖)。掛到 body 讓這個檢視層完全脫離卡片的
+// DOM 巢狀關係,不管呼叫端未來套在多深的容器裡,都能保證真正覆蓋整個
+// 視窗置中顯示,不用逐一排查每一層祖先有沒有踩到這個 CSS 限制。
 function Lightbox({ photos, alt, onClose }: { photos: string[]; alt: string; onClose: () => void }) {
   const [index, setIndex] = useState(0)
 
@@ -280,7 +305,7 @@ function Lightbox({ photos, alt, onClose }: { photos: string[]; alt: string; onC
     setIndex((next + photos.length) % photos.length)
   }
 
-  return (
+  return createPortal(
     <div
       className={styles.lightboxOverlay}
       onClick={onClose}
@@ -334,6 +359,7 @@ function Lightbox({ photos, alt, onClose }: { photos: string[]; alt: string; onC
         <ChevronRight size={24} strokeWidth={2} />
       </button>
       <span className={styles.lightboxCounter}>{index + 1} / {photos.length}</span>
-    </div>
+    </div>,
+    document.body,
   )
 }

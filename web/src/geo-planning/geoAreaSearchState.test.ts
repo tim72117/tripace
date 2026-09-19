@@ -22,7 +22,7 @@ describe('reduceAreaSearchState', () => {
 
   it('掛載後尚未拖曳地圖,map-idle 之前按鈕不該出現(初始狀態即是如此,不需事件驅動)', () => {
     // 沒有任何事件發生時,狀態就是 initialAreaSearchState 本身——這裡
-    // 明確斷言一次,對齊 GeoOutlineMap.tsx「掛載時第一次查詢不算使用者
+    // 明確斷言一次,對齊 ExploreMap.tsx「掛載時第一次查詢不算使用者
     // 拖曳,不該顯示搜尋按鈕」的預期行為。
     expect(reduceAreaSearchState(initialAreaSearchState, { type: 'query-succeeded' })).toEqual({
       areaDirty: false,

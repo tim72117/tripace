@@ -54,7 +54,7 @@
    ——疊加在 FloatingPanel 的 .right 之上,覆蓋 top/bottom 定位,不使用
    預設值(top:12px/bottom:12px)——沒有常駐對話欄,這是使用者存取
    ChatScreen 的唯一入口,由地圖右上角城市搜尋框旁的 AI 按鈕觸發(見
-   GeoOutlineMap.tsx 的 onOpenChat),疊在搜尋框正下方。top/bottom 改成
+   ExploreMap.tsx 的 onOpenChat),疊在搜尋框正下方。top/bottom 改成
    跟 FloatingPanel.module.css 的 .infoHeight(GeoHotelSidebar 用,
    top:64px、bottom:16px)完全一致的數值——原本這裡用
    max-height: calc(100% - 80px) 換算出來的實際高度跟 .infoHeight 對不
@@ -72,12 +72,12 @@
 
 /* chatPopoverShifted:搜尋結果側欄(GeoHotelSidebar,見 FloatingPanel.tsx
    的 side="right"、right:12px、寬度340px,與對話小匡/地點介紹卡/搜尋框
-   統一寬度,見 GeoInfoPanel.module.css 的 .panel 說明)同時顯示時,對話
+   統一寬度,見 PlacePanel.module.css 的 .panel 說明)同時顯示時,對話
    小匡原本 right:16px 會直接疊在它上面——這是實際發生過的 bug(使用者
    回報「對話浮動視窗遮蔽搜尋匡」,根本原因其實是兩個浮動卡片疊在同一塊
    螢幕矩形,不是只有高度對不齊)。往左推到 GeoHotelSidebar 左側
    (12 + 340 = 352px,再加 12px 間隙)之外——理由/數值對齊
-   GeoInfoPanel.module.css 的 .shiftedHotel。由呼叫端(DesktopLayout.tsx)
+   PlacePanel.module.css 的 .shiftedHotel。由呼叫端(DesktopLayout.tsx)
    在 geoHotelSidebarVisible 為 true 時額外疊加這個 class。 */
 .chatPopoverShifted {
   right: 364px;

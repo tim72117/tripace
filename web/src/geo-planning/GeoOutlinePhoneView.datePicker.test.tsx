@@ -12,19 +12,29 @@
 //      日曆 sheet 選定日期後兩層都關閉。
 //   4. 加入成功後打勾提示(Check icon)不論走哪條路徑都正常運作。
 //
-// mock 掉 GeoOutlinePanel(理由同其餘 GeoOutlinePhoneView.*.test.tsx——
-// 這批測試不驗證地圖/查詢本身怎麼運作),直接暴露 onSearchResultSelect/
-// onTripEntriesChange 讓測試手動選中一個候選、寫入既有排定日期。同時
-// mock ../api 的 recordEntry/setEntryLatLng(createEntryFromCandidate
-// 底層呼叫的兩支 API),讓 geo.handleScheduleCandidate 這條 async 寫入
-// 路徑不需要真的打後端。
+// mock 掉 ExploreMap(理由同其餘 GeoOutlinePhoneView.*.test.tsx——這批
+// 測試不驗證地圖/查詢本身怎麼運作),直接暴露 onSearchResultSelect 讓
+// 測試手動選中一個候選。GeoOutlinePanel.tsx 已退役(見
+// useGeoOutlineMapState.ts 的完整說明),onSearchResultSelect 現在是
+// ExploreMap 的直接 prop(接的是 outlineMapState.onSearchResultSelect,
+// 即 hook 內部的 handleGeocodeCandidateSelect)——但 onTripEntriesChange
+// 不再流向 ExploreMap,它是 useGeoOutlineMapState 的輸入參數,在 hook
+// 內部的 useEffect 裡被呼叫(查 tripID 對應的 entries 時,見該檔案的
+// 完整說明),故無法再用同一招從 ExploreMap 的 props 攔截。改成 mock
+// fetchEntries(這個 hook 真正發出查詢的 API 函式),讓它回傳假資料,
+// 驅動真實的「查詢完成 → onTripEntriesChange → geo 寫入 candidates」
+// 完整鏈路,而不是繞過 hook 直接呼叫 callback——這樣才能讓
+// geo.scheduledDates(這批測試要操控的目標)反映測試想要的既有排定
+// 日期。同時 mock ../api 的 recordEntry/setEntryLatLng
+// (createEntryFromCandidate 底層呼叫的兩支 API),讓
+// geo.handleScheduleCandidate 這條 async 寫入路徑不需要真的打後端。
 //
 // 日曆 sheet 改用 DatePickerPopover(react-day-picker 月曆格線 UI,對齊
-// 桌面版 GeoInfoPanel.tsx 的既有升級,見該檔案 GeoInfoPanel.test.tsx 的
+// 桌面版 PlacePanel.tsx 的既有升級,見該檔案 PlacePanel.test.tsx 的
 // pickCalendarDate 輔助函式)——沿用同一套「用 aria-label 定位日期格子」
 // 的既有測試手法,不是原生 <input type="date">。
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { GeoOutlinePhoneView } from './GeoOutlinePhoneView'
 import type { ClientConfig, GeoSearchResult } from '../api'
@@ -32,6 +42,7 @@ import type { User } from '../user/types'
 
 const recordEntryMock = vi.fn(() => Promise.resolve({ entryID: 'entry_new' }))
 const setEntryLatLngMock = vi.fn(() => Promise.resolve())
+const fetchEntriesMock = vi.fn((): Promise<Awaited<ReturnType<typeof import('../api').fetchEntries>>> => Promise.resolve([]))
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api')>()
@@ -39,20 +50,22 @@ vi.mock('../api', async (importOriginal) => {
     ...actual,
     recordEntry: (...args: unknown[]) => recordEntryMock(...(args as [])),
     setEntryLatLng: (...args: unknown[]) => setEntryLatLngMock(...(args as [])),
+    fetchEntries: (...args: unknown[]) => fetchEntriesMock(...(args as [])),
   }
 })
 
 let capturedOnSearchResultSelect: ((r: GeoSearchResult) => void) | undefined
-let capturedOnTripEntriesChange: ((entries: unknown[]) => void) | undefined
 
-vi.mock('./GeoOutlinePanel', () => ({
-  GeoOutlinePanel: (props: {
+vi.mock('./ExploreMap', () => ({
+  ExploreMap: (props: {
     onSearchResultSelect?: (r: GeoSearchResult) => void
-    onTripEntriesChange?: (entries: unknown[]) => void
+    children?: React.ReactNode
   }) => {
     capturedOnSearchResultSelect = props.onSearchResultSelect
-    capturedOnTripEntriesChange = props.onTripEntriesChange
-    return null
+    // children(GeoOutlinePhoneInfoSheet)改掛入 ExploreMap 後(見
+    // GeoOutlinePhoneView.tsx 的完整說明),這個 mock 必須真的渲染
+    // children,否則資訊卡永遠不會出現在測試的 DOM 樹裡。
+    return props.children ?? null
   },
 }))
 
@@ -100,11 +113,11 @@ function openInfoSheet(container: HTMLElement) {
   expect(sheetPanels(container)).toHaveLength(1)
 }
 
-// pickCalendarDate:比照 GeoInfoPanel.test.tsx 的既有輔助函式——
+// pickCalendarDate:比照 PlacePanel.test.tsx 的既有輔助函式——
 // react-day-picker 的日期格子沒有穩定的 test id,只有 aria-label(格式
 // 「YYYY年M月D日 星期X」,若該格剛好是「今天」還會多出「今天,」前綴,
 // 見下方 pickThisMonthDay 特意避開今天的說明)可以精確定位,只在同一個
-// 月份內選日期,不處理跨月換頁。這裡不用 `^` 錨定開頭(GeoInfoPanel.test.tsx
+// 月份內選日期,不處理跨月換頁。這裡不用 `^` 錨定開頭(PlacePanel.test.tsx
 // 原本的寫法),改用不錨定的子字串比對,對「今天」那格的「今天,」前綴
 // 更寬容,不影響其餘日期格的精確比對(月份/日期組合在同一個月內不會
 // 重複)。
@@ -171,16 +184,18 @@ describe('GeoOutlinePhoneView：加入行程的日期選擇 sheet 流程', () =>
 
   it('候選沒有排定日期、行程已有排定日期時，先開日期清單 sheet；點日期項目後兩層都關閉、回到資訊卡', async () => {
     const u = userEvent.setup()
-    const { container } = renderView()
 
-    // 先建立一筆已排入行程的 entry(讓 geo.scheduledDates 非空)——透過
-    // onTripEntriesChange 這個 callback,理由同其餘測試檔案 mock
-    // GeoOutlinePanel 暴露內部查詢結果的既有模式。
-    act(() => {
-      capturedOnTripEntriesChange?.([
-        { id: 'entry_1', title: '既有安排', start: '2026-09-05', kind: 'activity' },
-      ])
-    })
+    // 先讓 fetchEntries 回傳一筆已排入行程、帶座標的 entry(讓
+    // geo.scheduledDates 非空)——useGeoOutlineMapState 內部的 tripID
+    // effect 在元件掛載時就會呼叫這支函式,mock 要在 renderView() 之前
+    // 設定好回傳值,才能讓掛載當下的第一次查詢直接帶出這批資料(理由見
+    // 上方檔案開頭的完整說明:onTripEntriesChange 已不再是 ExploreMap
+    // 的 prop,必須透過這支底層 API 函式驅動真實的資料流)。
+    fetchEntriesMock.mockResolvedValueOnce([
+      { id: 'entry_1', title: '既有安排', lat: 25.05, lng: 121.58, location: '', start: '2026-09-05', startTime: '', kind: 'activity' } as never,
+    ])
+    const { container } = renderView()
+    await waitFor(() => expect(fetchEntriesMock).toHaveBeenCalled())
 
     openInfoSheet(container)
     await u.click(screen.getByRole('button', { name: '加入行程' }))
@@ -201,13 +216,13 @@ describe('GeoOutlinePhoneView：加入行程的日期選擇 sheet 流程', () =>
 
   it('日期清單 sheet 點「其他日期」，日曆 sheet 疊上來（兩層同時存在）；日曆 sheet 選定日期後兩層都關閉', async () => {
     const u = userEvent.setup()
-    const { container } = renderView()
 
-    act(() => {
-      capturedOnTripEntriesChange?.([
-        { id: 'entry_1', title: '既有安排', start: '2026-09-05', kind: 'activity' },
-      ])
-    })
+    // 理由同上一個測試——先設定好 fetchEntries 的回傳值再掛載元件。
+    fetchEntriesMock.mockResolvedValueOnce([
+      { id: 'entry_1', title: '既有安排', lat: 25.05, lng: 121.58, location: '', start: '2026-09-05', startTime: '', kind: 'activity' } as never,
+    ])
+    const { container } = renderView()
+    await waitFor(() => expect(fetchEntriesMock).toHaveBeenCalled())
 
     openInfoSheet(container)
     await u.click(screen.getByRole('button', { name: '加入行程' }))

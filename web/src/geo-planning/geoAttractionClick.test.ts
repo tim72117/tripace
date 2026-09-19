@@ -1,9 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   planAttractionClick,
-  placesQueryRadiusMeters,
   minZoomForLevel,
-  PLACES_QUERY_DEFAULT_RADIUS_METERS,
   FALLBACK_ZOOM_NO_LEVEL,
 } from './geoAttractionClick'
 
@@ -42,21 +40,7 @@ describe('planAttractionClick', () => {
   })
 })
 
-describe('placesQueryRadiusMeters', () => {
-  it('有 radiusMeters 時直接沿用該區域的範圍', () => {
-    expect(placesQueryRadiusMeters({ radiusMeters: 2000 })).toBe(2000)
-  })
-
-  it('沒有 radiusMeters 時退回預設值 1500', () => {
-    expect(placesQueryRadiusMeters({})).toBe(PLACES_QUERY_DEFAULT_RADIUS_METERS)
-  })
-
-  it('radiusMeters 為 0 視同沒有範圍,退回預設值(跟 planAttractionClick 的判斷一致)', () => {
-    expect(placesQueryRadiusMeters({ radiusMeters: 0 })).toBe(PLACES_QUERY_DEFAULT_RADIUS_METERS)
-  })
-})
-
-describe('minZoomForLevel(與 GeoOutlineMap.tsx 的門檻表同步)', () => {
+describe('minZoomForLevel(與 ExploreMap.tsx 的門檻表同步)', () => {
   it.each([
     [1, 0],
     [2, 11],

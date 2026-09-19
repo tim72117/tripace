@@ -5,6 +5,7 @@ import type { ClientConfig } from '../api'
 import * as api from '../api'
 import type { User } from '../user/types'
 import { ErrorBanner, errMsg, isSubmitEnter } from '../AppCommon'
+import { fireRegistrationConversion } from '../analytics'
 import { useGoogleSignIn } from '../hooks/useGoogleSignIn'
 import { Button } from '../components/Button'
 import { FormField } from '../components/FormField'
@@ -112,6 +113,12 @@ export function LoginForm({
         mode === 'login'
           ? await api.login(cfg, email.trim(), password)
           : await api.register(cfg, email.trim(), password, name.trim())
+      // 註冊轉換事件:api.register 只有在真的建立新帳號時才會 resolve
+      // (email 已存在會被後端擋在 409、落到下面的 catch),故這裡不需要
+      // 再檢查 res.isNewUser——resolve 本身就是「剛建立新帳號」的保證,
+      // 理由同 web/src/analytics.ts 對 fireRegistrationConversion 呼叫
+      // 時機的完整說明。
+      if (mode === 'register') fireRegistrationConversion()
       onAuthed(res.token, res.user, res.profile.email)
     } catch (e) {
       setErr(errMsg(e))
@@ -131,7 +138,15 @@ export function LoginForm({
       setBusy(true)
       api
         .signInWithGoogle(cfg, credential)
-        .then((res) => onAuthed(res.token, res.user, res.profile.email))
+        .then((res) => {
+          // 註冊轉換事件:Google 登入沒有像 api.register 那樣「resolve
+          // 就代表新帳號」的天然保證(同一個 Google 帳號之後每次登入都
+          // 呼叫同一支端點),要靠後端回傳的 isNewUser 欄位分辨這次是
+          // 剛建立帳號還是既有帳號登入,理由同 web/src/analytics.ts 對
+          // fireRegistrationConversion 呼叫時機的完整說明。
+          if (res.isNewUser) fireRegistrationConversion()
+          onAuthed(res.token, res.user, res.profile.email)
+        })
         .catch((e) => setErr(errMsg(e)))
         .finally(() => setBusy(false))
     },

@@ -21,12 +21,12 @@ describe('reduceCategoryTagsState', () => {
     expect(afterStart).toEqual({ hidden: true })
   })
 
-  it('查詢結果回來且非空:維持隱藏(避免疊在清單/候選籃內容上方)', () => {
+  it('查詢結果回來且非空:重新顯示標籤列,讓使用者能立刻換一顆標籤再查', () => {
     const [, afterArrived] = run([
       { type: 'search-started' },
       { type: 'results-arrived', hasResults: true },
     ])
-    expect(afterArrived).toEqual({ hidden: true })
+    expect(afterArrived).toEqual({ hidden: false })
   })
 
   it('查詢結果回來但是空的:重新顯示標籤列,讓使用者能立刻換一顆標籤再查', () => {
@@ -40,7 +40,7 @@ describe('reduceCategoryTagsState', () => {
   it('使用者關閉清單/候選籃結果:重新顯示標籤列', () => {
     const [, , afterClosed] = run([
       { type: 'search-started' },
-      { type: 'results-arrived', hasResults: true },
+      { type: 'results-arrived', hasResults: false },
       { type: 'user-closed' },
     ])
     expect(afterClosed).toEqual({ hidden: false })

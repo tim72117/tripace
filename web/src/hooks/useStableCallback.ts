@@ -14,7 +14,7 @@ import { useCallback, useRef } from 'react'
 // 當下最新的 fn 執行——呼叫端因此可以放心把回傳值放進任何依賴陣列,
 // 不用擔心「這個 callback 有沒有 memo」這件事,也不需要每個消費端各自
 // 重寫一份 xxxRef = useRef(xxx); xxxRef.current = xxx 的樣板(見
-// GeoOutlineMap.tsx 的 onPoiSelectRef/onCenterChangeRef,這兩處是這個
+// ExploreMap.tsx 的 onPoiSelectRef/onCenterChangeRef,這兩處是這個
 // 模式抽出來前的既有寫法,保留不動,新的呼叫端建議改用這支 hook)。
 //
 // 這對應 React 官方提案中的 useEvent/useEffectEvent(尚未正式穩定發布,

@@ -1,6 +1,6 @@
 /* wrap:.mainArea(PhoneContent.module.css)是 flex column 容器,
    height: 100% 本身無法讓這個元件撐滿剩餘空間——沒有 flex: 1 1 auto,
-   高度只會退回內容自然高度(GeoOutlineMap 的 min-height: 320px),不會
+   高度只會退回內容自然高度(ExploreMap 的 min-height: 320px),不會
    隨外層可用空間變動。理由同 pace/PaceRouteMap.module.css 的
    .pace-route-map-wrap(同樣掛在 .mainArea 底下的地圖容器)。display: flex
    是必要的第二步:GeoOutlinePanel.module.css 的 .wrap 本身是
@@ -21,7 +21,7 @@
 }
 
 /* avatarBtn:使用者頭像——取代拿掉的 MainNavBar(見 GeoOutlinePhoneView.
-   tsx 的說明)。透過 GeoOutlineMap.tsx 的 searchRightSlot prop 真正
+   tsx 的說明)。透過 ExploreMap.tsx 的 searchRightSlot prop 真正
    渲染在搜尋框(.citySearch)的 DOM 結構內部,是它自己的 flexbox 子
    元素(使用者要求「頭像放到搜尋框內的最右側」)——不再用絕對定位疊加
    猜座標(先前的做法反覆對不準,見 git 歷史),交給 .citySearch 既有的
@@ -114,8 +114,8 @@
   cursor: pointer;
 }
 
-/* 以下覆寫 GeoOutlineMap 內建的搜尋框/類別標籤列/「搜尋這個區域」按鈕
-   版位——只在這個手機版容器的 DOM 子樹內生效,不修改 GeoOutlineMap.
+/* 以下覆寫 ExploreMap 內建的搜尋框/類別標籤列/「搜尋這個區域」按鈕
+   版位——只在這個手機版容器的 DOM 子樹內生效,不修改 ExploreMap.
    module.css 本身,桌面版版位不受影響。
 
    選擇器用屬性子字串比對(`[class*="_citySearch_"]`),不是 `:global()`
@@ -163,8 +163,8 @@
 
 /* [class*='_citySearchBtn_']:手機版直接隱藏搜尋圖示按鈕(使用者要求
    「搜尋匡頭像左邊搜尋按鈕移除」)——輸入框已經改用 enterKeyHint="search"
-   (見 GeoOutlineMap.tsx),手機鍵盤本身就有搜尋/送出鍵可以觸發查詢,不
-   需要額外的圖示按鈕佔用搜尋框內部空間。不動 GeoOutlineMap.tsx 本身的
+   (見 ExploreMap.tsx),手機鍵盤本身就有搜尋/送出鍵可以觸發查詢,不
+   需要額外的圖示按鈕佔用搜尋框內部空間。不動 ExploreMap.tsx 本身的
    DOM 結構(桌面版仍要保留這顆按鈕給滑鼠點擊,沒有虛擬鍵盤可以替代)。
    刻意用結尾底線的 token 邊界(理由同上方 citySearch/citySearchInput
    的說明),避免子字串誤中 citySearchBtnIconLoading(查詢中的 svg 圖示

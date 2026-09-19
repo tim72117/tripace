@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // GetCachedPhoto 查詢已快取的單張圖片(見 photoCacheRow 的完整說明)。
@@ -118,6 +119,22 @@ func (s *Store) GetCachedPlaceDetails(placeID string, maxAge time.Duration) (row
 // SetPlacePexelsPhotos 分別寫入 google_place_photos/place_pexels_photos
 // 兩張表(見 googlePlacePhotoRow 的完整說明:Google 與 Pexels 的照片要
 // 同時並列顯示,不是互斥的單一選擇,故從這張表拆出、各自獨立管理)。
+//
+// 用 Model(...).Where(...).Clauses(clause.OnConflict{...}).Create(&row)
+// 而非直接 db.Save(&row)——2026-09 修正一個實測到的真實 bug:原本用
+// db.Save(&row) 整列覆寫,呼叫端(fetchAndCachePlaceDetails)每次拿到新的
+// GetPlaceDetails 結果都會呼叫這支函式,而這支函式的參數列完全不含
+// ClickCount/GooglePhotoTargetCount/NewPhotoCount 三欄(那是漸進補圖
+// 機制的獨立狀態,見 placeDetailsCacheRow 的完整說明),row 這幾欄只能是
+// Go 零值——Save 對已存在的主鍵是整列 UPDATE,會把這三欄也覆寫回零值,
+// 導致 GooglePhotoTargetCount 每次都被重置回 0(而非保留 sentinel -1
+// 或既有的漸進補圖進度),又剛好落在 shouldAddGooglePlacePhoto 的死鎖
+// 值上(見該欄位與函式的完整說明)。改用 OnConflict DoUpdates 明確列出
+// 只更新這幾欄(name/address/lat/lng/rating/summary/fetched_at),
+// click_count/google_photo_target_count/new_photo_count 完全不在
+// DoUpdates 清單內,新插入時交由資料庫欄位的 DEFAULT 決定初始值
+// (GooglePhotoTargetCount 的 DEFAULT 是 -1,見該欄位說明),已存在時則
+// 完全不動,保留漸進補圖機制自己累積的進度。
 func (s *Store) SetCachedPlaceDetails(placeID, name, address string, lat, lng, rating float64, summary *string) error {
 	row := placeDetailsCacheRow{
 		PlaceID:   placeID,
@@ -129,7 +146,10 @@ func (s *Store) SetCachedPlaceDetails(placeID, name, address string, lat, lng, r
 		Summary:   summary,
 		FetchedAt: now(),
 	}
-	return s.db.Save(&row).Error
+	return s.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "place_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"name", "address", "lat", "lng", "rating", "summary", "fetched_at"}),
+	}).Create(&row).Error
 }
 
 // IncrementPlaceClickCount 對 place_id 的 click_count 做原子性 +1,並
@@ -213,6 +233,44 @@ func (s *Store) UpdatePlacePhotoProgress(placeID string, newPhotoCount, googlePh
 	return s.db.Model(&placeDetailsCacheRow{}).
 		Where("place_id = ?", placeID).
 		Updates(updates).Error
+}
+
+// PlaceDetailsZeroPhotoTarget 是 ListPlaceDetailsWithZeroPhotoTarget 單筆
+// 回應的形狀——只曝露後台管理介面需要顯示的欄位,不直接把
+// placeDetailsCacheRow 外流給呼叫端(見 store 層一貫慣例)。
+type PlaceDetailsZeroPhotoTarget struct {
+	PlaceID    string    `json:"placeId"`
+	Name       string    `json:"name"`
+	ClickCount int64     `json:"clickCount"`
+	FetchedAt  time.Time `json:"fetchedAt"`
+}
+
+// ListPlaceDetailsWithZeroPhotoTarget 回傳目前 google_photo_target_count
+// 恰好是 0 的全部地點——供後台管理介面核對「這個 0 是已確認過、真的沒有
+// Google 照片的合法值,還是 2026-09 修正前那個死鎖 bug 遺留的舊資料」
+// (見 placeDetailsCacheRow.GooglePhotoTargetCount 與
+// shouldAddGooglePlacePhoto 的完整說明:sentinel -1 才代表「尚未確認
+// 過」,0 現在是合法的已確認終態,但修復上線前寫入的舊資料仍然可能是
+// 卡住的死鎖值,無法只憑這個欄位本身的值分辨,需要人工核對)。純唯讀
+// 查詢,不做任何修改——要不要把某筆資料重置回 -1 讓它重新有機會被
+// Google 確認,是後台操作者看完這份清單後的人工判斷,這支函式不擅自
+// 決定。依 click_count 由高到低排序:點擊數越高的地點,「使用者其實
+// 常看到這個地點卻拿不到 Google 照片」影響越大,排在前面優先核對。
+func (s *Store) ListPlaceDetailsWithZeroPhotoTarget() ([]PlaceDetailsZeroPhotoTarget, error) {
+	var rows []placeDetailsCacheRow
+	if err := s.db.Where("google_photo_target_count = 0").Order("click_count DESC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]PlaceDetailsZeroPhotoTarget, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, PlaceDetailsZeroPhotoTarget{
+			PlaceID:    r.PlaceID,
+			Name:       r.Name,
+			ClickCount: r.ClickCount,
+			FetchedAt:  r.FetchedAt,
+		})
+	}
+	return out, nil
 }
 
 // ListGooglePlacePhotos 回傳該地點目前已落地的 Google Places 照片清單,

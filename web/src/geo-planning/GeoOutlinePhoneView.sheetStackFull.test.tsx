@@ -11,16 +11,21 @@
 //      onSearchResultsChange 對 sheetStack.replace 的接線。
 //   3. 候選籃選取候選項目——資訊卡正確顯示(同樣是 replace 語意)。
 //
-// mock 掉 GeoOutlinePanel(理由同其餘 GeoOutlinePhoneView.*.test.tsx——
-// 這批測試不驗證地圖/查詢本身怎麼運作,只驗證 GeoOutlinePhoneView 這一層
+// mock 掉 ExploreMap(理由同其餘 GeoOutlinePhoneView.*.test.tsx——這批
+// 測試不驗證地圖/查詢本身怎麼運作,只驗證 GeoOutlinePhoneView 這一層
 // 怎麼把查詢入口/選取入口接到 sheetStack 上),直接暴露這次重構動到的
-// 幾個 callback 讓測試手動觸發。
+// 幾個 callback 讓測試手動觸發。GeoOutlinePanel.tsx 已退役(見
+// useGeoOutlineMapState.ts 的完整說明),原本的 setGeocodeCandidates +
+// onSearchResultsChange 兩步(分別是 GeoOutlinePanel 的 prop),現在
+// 合併成 ExploreMap 的 onGeocodeCandidatesChange 一步(呼叫它會連帶
+// 觸發 hook 內部的兩者,見 useGeoOutlineMapState.ts
+// handleGeocodeCandidatesChange 的完整說明)。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { GeoOutlinePhoneView } from './GeoOutlinePhoneView'
 import { PHONE_BOTTOM_SHEET_EXIT_MS } from '../components/PhoneBottomSheet'
 import type { GeoCandidate } from './geoCandidateHelpers'
-import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoSearchResult } from '../api'
+import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate } from '../api'
 import type { User } from '../user/types'
 
 // PhoneBottomSheet 的 open 變 false 後不是立刻卸載,而是延遲
@@ -48,22 +53,26 @@ class FakeIntersectionObserver {
 ;(globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = FakeIntersectionObserver
 
 let capturedOnSearchStart: (() => void) | undefined
-let capturedOnSearchResultsChange: ((results: GeoSearchResult[]) => void) | undefined
+let capturedOnGeocodeCandidatesChange: ((candidates: GeoGeocodeCandidate[]) => void) | undefined
 let capturedOnAttractionSelect: ((a: GeoAttraction) => void) | undefined
-let capturedSetGeocodeCandidates: ((candidates: GeoGeocodeCandidate[]) => void) | undefined
+let capturedOnAttractionsChange: ((attractions: GeoAttraction[]) => void) | undefined
 
-vi.mock('./GeoOutlinePanel', () => ({
-  GeoOutlinePanel: (props: {
+vi.mock('./ExploreMap', () => ({
+  ExploreMap: (props: {
     onSearchStart?: () => void
-    onSearchResultsChange?: (results: GeoSearchResult[]) => void
+    onGeocodeCandidatesChange?: (candidates: GeoGeocodeCandidate[]) => void
     onAttractionSelect?: (a: GeoAttraction) => void
-    setGeocodeCandidates?: (candidates: GeoGeocodeCandidate[]) => void
+    onAttractionsChange?: (attractions: GeoAttraction[]) => void
+    children?: React.ReactNode
   }) => {
     capturedOnSearchStart = props.onSearchStart
-    capturedOnSearchResultsChange = props.onSearchResultsChange
+    capturedOnGeocodeCandidatesChange = props.onGeocodeCandidatesChange
     capturedOnAttractionSelect = props.onAttractionSelect
-    capturedSetGeocodeCandidates = props.setGeocodeCandidates
-    return null
+    capturedOnAttractionsChange = props.onAttractionsChange
+    // children(GeoOutlinePhoneInfoSheet)改掛入 ExploreMap 後(見
+    // GeoOutlinePhoneView.tsx 的完整說明),這個 mock 必須真的渲染
+    // children,否則資訊卡永遠不會出現在測試的 DOM 樹裡。
+    return props.children ?? null
   },
 }))
 
@@ -90,15 +99,27 @@ const fakeAttraction: GeoAttraction = {
   name: '測試景點',
   lat: 25.03,
   lng: 121.56,
+  isTheme: false,
 }
 
-const fakeResult: GeoSearchResult = {
-  kind: 'geocode',
-  placeId: 'place_1',
-  name: '測試地點',
-  address: '測試地址',
+// fakeTheme/fakeNearby——「附近景點」清單測試用的主題點+一個精選點,
+// isTheme:true/false 對齊 computeNearbyAttractions/nearbyAttractions
+// 的分流規則(見 GeoOutlinePhoneView.tsx 的完整說明)。fakeNearby 刻意
+// 不帶 placeId——驗證 handleSelectNearbyAttraction 在沒有 placeId 時
+// 走 fetchPoiContent 的 attractionToInfoContent 分支,不需要 mock
+// fetchGeoPlaceDetails。
+const fakeTheme: GeoAttraction = {
+  name: '測試主題點',
   lat: 25.03,
   lng: 121.56,
+  isTheme: true,
+}
+const fakeNearby: GeoAttraction = {
+  name: '測試精選點',
+  lat: 25.031,
+  lng: 121.561,
+  isTheme: false,
+  summary: '精選點簡介',
 }
 
 const fakeCandidate: GeoGeocodeCandidate = {
@@ -162,16 +183,17 @@ describe('GeoOutlinePhoneView：sheetStack 全面接管後新增的路徑', () =
     act(() => capturedOnSearchStart!())
     expect(sheetPanels(container)).toHaveLength(1)
 
-    // 查詢結果只有一筆——onSearchResultsChange 應該用 sheetStack.replace
-    // 把堆疊頂端的 'list' 換成 'info',不增加深度。這裡同時要有資訊卡
-    // 實際內容可顯示,故先透過 onAttractionSelect 之類的入口帶入內容
-    // ——用唯一解場景下最貼近真實情況的入口:GeoOutlinePanel 內部偵測
-    // 到唯一解時,會自己呼叫 onSearchResultSelect 開資訊卡,這裡簡化成
-    // 直接呼叫 onAttractionSelect 帶入內容(驗證的重點是 sheetStack 的
-    // 堆疊變化,不是內容從哪個 callback 來)。
+    // 查詢結果只有一筆——onSearchResultsChange(由
+    // onGeocodeCandidatesChange 連帶觸發,見上方 mock 宣告的完整說明)
+    // 應該用 sheetStack.replace 把堆疊頂端的 'list' 換成 'info',不增加
+    // 深度。這裡同時要有資訊卡實際內容可顯示,故先透過 onAttractionSelect
+    // 之類的入口帶入內容——用唯一解場景下最貼近真實情況的入口:
+    // useGeoOutlineMapState 內部偵測到唯一解時,會自己呼叫
+    // onSearchResultSelect 開資訊卡,這裡簡化成直接呼叫 onAttractionSelect
+    // 帶入內容(驗證的重點是 sheetStack 的堆疊變化,不是內容從哪個
+    // callback 來)。
     act(() => {
-      capturedSetGeocodeCandidates!([fakeCandidate])
-      capturedOnSearchResultsChange!([fakeResult])
+      capturedOnGeocodeCandidatesChange!([fakeCandidate])
       capturedOnAttractionSelect!(fakeAttraction)
     })
     // 清單的 open prop 已經變 false,但 PhoneBottomSheet 有退場動畫延遲
@@ -191,10 +213,8 @@ describe('GeoOutlinePhoneView：sheetStack 全面接管後新增的路徑', () =
     act(() => capturedOnSearchStart!())
     expect(sheetPanels(container)).toHaveLength(1)
 
-    const fakeResult2: GeoSearchResult = { ...fakeResult, placeId: 'place_2', name: '測試地點2' }
     act(() => {
-      capturedSetGeocodeCandidates!([fakeCandidate, { ...fakeCandidate, placeId: 'place_2', name: '測試地點2' }])
-      capturedOnSearchResultsChange!([fakeResult, fakeResult2])
+      capturedOnGeocodeCandidatesChange!([fakeCandidate, { ...fakeCandidate, placeId: 'place_2', name: '測試地點2' }])
     })
 
     // 堆疊頂端仍是 'list'(多筆結果不觸發 replace)——清單維持顯示。
@@ -229,5 +249,38 @@ describe('GeoOutlinePhoneView：sheetStack 全面接管後新增的路徑', () =
     const panels = sheetPanels(container)
     expect(panels).toHaveLength(1)
     expect(container.textContent).toContain('測試飯店')
+  })
+
+  it('點主題點打開資訊卡後顯示「附近景點」清單,點清單項目 push 一層新地點卡疊在主題卡上面', async () => {
+    const { container } = renderView()
+
+    // 地圖回報可視範圍查詢結果(供 nearbyAttractions 算附近清單用,見
+    // GeoOutlinePhoneView.tsx 的完整說明)——順序上先於點擊主題點,對齊
+    // 真實情況:地圖查詢結果本來就會在使用者互動前陸續回報。
+    act(() => capturedOnAttractionsChange!([fakeTheme, fakeNearby]))
+    act(() => capturedOnAttractionSelect!(fakeTheme))
+
+    // 只有主題卡這一個 sheet——附近景點清單是卡片內容的一部分,不是
+    // 獨立的 sheet。
+    expect(sheetPanels(container)).toHaveLength(1)
+    expect(container.textContent).toContain('附近景點')
+    expect(container.textContent).toContain('測試精選點')
+
+    // 點清單項目——handleSelectNearbyAttraction 查詢(這裡沒有 placeId,
+    // 走 attractionToInfoContent 同步 resolve 的分支)完成後 push
+    // {type:'nearby-place'},疊在主題卡之上,變成兩層 sheet 同時存在
+    // (對齊「跟目前手機版顯示多層卡片一樣」的既有模式,例如
+    // date-picker/date-calendar 疊在 info 之上)。
+    const nearbyItemBtn = Array.from(container.querySelectorAll('button')).find(
+      (btn) => btn.textContent?.includes('測試精選點'),
+    ) as HTMLButtonElement
+    expect(nearbyItemBtn).toBeTruthy()
+    await act(async () => {
+      nearbyItemBtn.click()
+      await Promise.resolve()
+    })
+
+    expect(sheetPanels(container)).toHaveLength(2)
+    expect(container.textContent).toContain('精選點簡介')
   })
 })

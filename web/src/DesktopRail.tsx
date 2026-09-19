@@ -67,7 +67,7 @@ export const DesktopRail = forwardRef<HTMLElement, DesktopRailProps>(function De
 ) {
   // expanded:rail 從純 icon(48px)展開成帶文字標籤的寬版——純 UI 狀態,
   // 跟對話功能完全無關(對話小匡的開關由地圖上的 AI 按鈕獨立控制,見
-  // GeoOutlineMap.tsx 的 onOpenChat),不提升到 DesktopLayout.tsx,
+  // ExploreMap.tsx 的 onOpenChat),不提升到 DesktopLayout.tsx,
   // 留在這個元件自己管理。展開時每顆按鈕在 icon 旁多顯示一個文字標籤
   // (.desktop-rail-btn-label),讓使用者不需要靠 title 提示 hover 才知道
   // 每顆圖示的功能——理由同一般 IDE/工具列「圖示列可展開成帶標籤側欄」
@@ -83,7 +83,7 @@ export const DesktopRail = forwardRef<HTMLElement, DesktopRailProps>(function De
       <div className={styles.buttons}>
         {/* 展開/收合 rail 本身的開關,固定用 PanelLeft 圖示(不隨 expanded
             切換圖示)——跟其餘功能按鈕排在同一組列表最上方,不是獨立區塊,
-            對話功能已完全不在 rail 上(見 GeoOutlineMap.tsx 的 AI 按鈕,
+            對話功能已完全不在 rail 上(見 ExploreMap.tsx 的 AI 按鈕,
             對話浮動小匡由地圖上的 onOpenChat 觸發,與這裡的 rail 展開/
             收合無關)。 */}
         <button

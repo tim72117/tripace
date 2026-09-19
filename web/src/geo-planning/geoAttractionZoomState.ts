@@ -1,6 +1,6 @@
 // geoAttractionZoomState:管理「點擊景點區域、地圖 fitBounds 縮放到該
 // 區域範圍時,該景點區域自己的圓形照片/佔位圓要不要改用縮小一半的尺寸
-// 呈現」這個狀態轉換,從 GeoOutlineMap.tsx 抽成不依賴 google.maps SDK 的
+// 呈現」這個狀態轉換,從 ExploreMap.tsx 抽成不依賴 google.maps SDK 的
 // 純 reducer——理由同 geoAreaSearchState.ts:該元件深度依賴 Google Maps
 // JS API,整個元件目前沒有任何測試覆蓋(mock 整個 Google Maps API 成本
 // 很高),但「什麼時候該進入縮小狀態、什麼時候該恢復」這組順序決策本身
@@ -23,7 +23,7 @@ export const initialAttractionZoomState: AttractionZoomState = null
 
 // AttractionZoomEvent 對應兩個實際觸發時機:
 //   attraction-clicked  使用者點擊地圖上的景點區域圖示(見
-//     GeoOutlineMap.tsx handleAttractionClick),帶這次點擊算出來的
+//     ExploreMap.tsx handleAttractionClick),帶這次點擊算出來的
 //     planKind(見 planAttractionClick)與這個景點區域的識別鍵。
 //   panel-closed         AttractionInfoPanel 被關閉(見 DesktopLayout.tsx
 //     的 onClose)——使用者已經看完介紹、不再聚焦這個景點區域,縮小狀態

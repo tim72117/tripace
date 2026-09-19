@@ -289,6 +289,15 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/cli-auth/device/{userCode}", s.handleGetDeviceAuth)
 	mux.HandleFunc("POST /v1/cli-auth/device/{userCode}/approve", s.handleApproveDeviceAuth)
 
+	// public — 登入前的公開展示頁(web/src/home/KiyomizuDemoPage.tsx)專用,
+	// 刻意不掛 internalAuth(訪客沒有 JWT,見該頁面 GUEST_CFG 的完整說明)
+	// ——只有這一支端點,且有白名單限制查詢範圍(見
+	// publicPlaceDetailsAllowlist 的完整說明),不是一般性「免認證」的
+	// 路由群組,之後新增其他公開端點時應各自評估是否也需要類似的範圍
+	// 限制,不能直接比照這裡的寫法就假設安全。
+	mux.HandleFunc("GET /public/geo/place-details", s.handlePublicGeoPlaceDetails)
+	mux.HandleFunc("GET /public/geo/attractions", s.handlePublicGeoAttractions)
+
 	// internal — 供 CLI(cmd/cli)/自動化腳本操作資料,不走 /v1/* 那套
 	// requireOwner/requireEditor 行程層級的權限檢查,改由 internalAuth 要求
 	// 呼叫端帶有效的自家 JWT(與 /v1/* 一般使用者同一套 auth.Signer),避免任何
@@ -326,6 +335,8 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("DELETE /internal/maintenance/attractions/{id}", s.handleMaintenanceAttractionDelete)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/coords", s.handleMaintenanceAttractionUpdateCoords)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/field", s.handleMaintenanceAttractionUpdateField)
+	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/place-id", s.handleMaintenanceAttractionUpdatePlaceID)
+	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/theme", s.handleMaintenanceAttractionUpdateTheme)
 	// 景點資料同步機制新增的端點(見 attraction_sync.go、
 	// docs/ATTRACTION_SYNC_DESIGN.md)——專門服務
 	// server/internal/attractionsync 套件的三層比對 + 交握式傳輸,不是

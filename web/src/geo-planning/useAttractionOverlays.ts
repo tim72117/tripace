@@ -3,52 +3,82 @@ import type { GeoAttraction } from '../api'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
 import {
   getAttractionOverlayClass,
-  maxLevelForZoom,
   type AttractionOverlayInstance,
 } from './geoAttractionOverlay'
 import { isMarkerCandidate, isMarkerSelected } from './geoMarkerSelection'
 
-// useAttractionOverlays——從 GeoOutlineMap.tsx 抽出來的景點區域光暈圖層。
+// useAttractionOverlays——從 ExploreMap.tsx 抽出來的景點區域光暈圖層。
 // 只讀 mapRef/mapReady/自己的資料(attractions)/selectedKey/hoverKey/
-// candidateKeys/zoom,不寫入任何其他共享狀態,是這個地圖元件裡最自成
-// 一體的一塊,故獨立成 hook 不影響其餘查詢/地圖生命週期邏輯。內部行為
-// (含全部原有註解說明)原封不動搬過來,搬動本身不改變任何行為。
+// candidateKeys,不寫入任何其他共享狀態,是這個地圖元件裡最自成一體的
+// 一塊,故獨立成 hook 不影響其餘查詢/地圖生命週期邏輯。內部行為(含全部
+// 原有註解說明)原封不動搬過來,搬動本身不改變任何行為。不再接收 zoom
+// prop——原本只用來算 maxLevelForZoom 判斷主題點是否隨縮放層級隱藏,
+// 但主題點(level===1)在該函式定義下恆通過,等於本來就是恆顯示,這層
+// zoom 判斷已被移除(見下方 filteredAttractions 的完整說明),故不再
+// 需要呼叫端傳入 zoom。
 export function useAttractionOverlays({
   mapRef,
   mapReady,
   attractions,
-  zoom,
   selectedKey,
   hoverKey,
   candidateKeys,
   onAttractionSelect,
+  revealedAttractionNames,
+  hoveredCuratedName,
 }: {
   mapRef: React.RefObject<google.maps.Map | null>
   mapReady: boolean
   attractions: GeoAttraction[]
-  zoom: number
   selectedKey?: GeoSelectedKey
   hoverKey?: GeoSelectedKey
   candidateKeys?: Set<string>
   onAttractionSelect?: (attraction: GeoAttraction) => void
+  // hoveredCuratedName:使用者滑鼠移到 AttractionInfoPanel「附近景點」
+  // 清單裡對應項目時,那個精選點的名稱(見 DesktopLayout.tsx 的
+  // hoveredNearbyAttraction 說明)——對應的地圖圓點暫時升級成完整照片
+  // 呈現(見 geoAttractionOverlay.ts 的 setHovered/renderContent),滑開
+  // 後收回圓點。跟 selectedKey/hoverKey 是不同概念:後兩者驅動的是
+  // 「選取靶心」樣式(見 isMarkerSelected),這裡驅動的是「要不要顯示
+  // 照片」這個 DOM 結構層級的切換,只對精選點有意義(主題點永遠顯示
+  // 照片,見 setHovered 對 isTheme 的忽略邏輯)。
+  // revealedAttractionNames:主題點/精選點分級(2026-08,使用者明確要求)
+  // ——isTheme(model.Attraction.IsTheme,見該欄位完整說明)為 true 視為
+  // 「主題點」,其餘視為「精選點」,精選點預設不在地圖上顯示,只有使用者
+  // 點開某個主題點、呼叫端(DesktopLayout.tsx 的 revealedAttractionNames)
+  // 依附近距離算出這個名稱集合後,對應的精選點才會出現在地圖上——見下方
+  // filteredAttractions 的判斷式。undefined/null 代表目前沒有開啟任何
+  // 主題,精選點一律不顯示。原本(2026-08 前)這個分級直接借用 level===1
+  // 表達(見 docs/research-curated-attraction-relationships-2026-08.md
+  // 的方向 C 結論),現已改用獨立的 isTheme 欄位,不再依賴 level 數字
+  // ——level 保留給地圖 zoom 顯示門檻/知名度描述使用,兩種語意不再混在
+  // 同一個欄位。
+  revealedAttractionNames?: Set<string> | null
+  hoveredCuratedName?: string | null
 }) {
   const overlaysRef = useRef<AttractionOverlayInstance[]>([])
-  const radiusCirclesRef = useRef<google.maps.Circle[]>([])
 
-  // filteredAttractions:依目前 zoom 對應的知名度分級上限篩選——只篩選
-  // 「有 level 資訊」的景點區域(人工建檔的資料,見 model.Attraction);
-  // 沒有 level 的景點區域(即時查 Google Places 的結果)一律顯示,不受
-  // 縮放層級篩選影響(這批資料沒有分級可言,無從篩起)。用 useMemo 快取,
-  // 理由同 hotel/place/tripEntry 各自的內容摘要 pattern:.filter() 若每次
-  // render 都重算,會產生新陣列參照,讓依賴它的 useEffect(畫景點區域
-  // 光暈/範圍圓圈)誤判成「內容變了」而重複清除重畫——即使這裡本身不會
-  // 形成無限迴圈(filteredAttractions 沒有驅動任何 setState),但仍會在
-  // sibling state(如 visibleHotels 變動連鎖傳回的新 hotels/attractions
-  // prop)造成這個元件重渲染時,讓光暈/圓圈動畫不必要地重播、閃爍。
-  const maxLevel = maxLevelForZoom(zoom)
+  // filteredAttractions:主題點(isTheme===true)恆顯示,不受 zoom 影響
+  // ——這點延續舊行為不變(舊版用 level===1 搭配 maxLevelForZoom 判斷,
+  // 但 level 1 在該函式定義下恆通過,等於本來就是恆顯示,只是繞了一層
+  // 數字比較,現在改用 isTheme 後這層繞路已無必要,一併移除)。精選點
+  // (isTheme===false)不吃 zoom 分級,完全由 revealedAttractionNames 這個
+  // 集合決定要不要顯示——只有揭露它的那個主題點被開啟時,這批精選點才會
+  // 出現在地圖上,不受使用者當下 zoom 到哪一層影響(理由同呼叫端
+  // nearbyAttractions 的說明:這是「進入主題後才依附近距離顯示精選點」,
+  // 不是傳統的知名度分級揭露)。沒有 level 資訊的景點區域(即時查 Google
+  // Places 的結果,同時 isTheme 固定是 false,見 GeoAttraction.isTheme 的
+  // 完整說明)一律顯示,不受這整套主題/精選規則影響——這批資料沒有
+  // 主題概念可言,無從歸類,故仍需保留 level == null 這個判斷式,不能只看
+  // isTheme。用 useMemo 快取的理由(避免不必要的重畫/閃爍)同舊版說明,
+  // 不變。
   const filteredAttractions = useMemo(
-    () => attractions.filter((d) => d.level == null || d.level <= maxLevel),
-    [attractions, maxLevel],
+    () => attractions.filter((d) => {
+      if (d.level == null) return true
+      if (d.isTheme) return true
+      return revealedAttractionNames?.has(d.name) ?? false
+    }),
+    [attractions, revealedAttractionNames],
   )
 
   // 點擊地標圖示只開介紹卡(見 onAttractionSelect),不移動/縮放地圖——
@@ -56,7 +86,7 @@ export function useAttractionOverlays({
   // 區域的範圍,但這會打斷使用者原本瀏覽地圖的視角(尤其在已經手動調整過
   // 範圍的情況下),點擊圖示的意圖是「看這個地點的介紹」,不是「把我帶
   // 過去那裡」。地圖移動仍保留給明確以此為意圖的入口:AttractionInfoPanel
-  // 「探索周邊」按鈕(見 GeoOutlineMap 的 handleExploreAttraction,複用
+  // 「探索周邊」按鈕(見 ExploreMap 的 handleExploreAttraction,複用
   // planAttractionClick 的同一套決策邏輯)。
   const handleAttractionClick = useCallback((d: GeoAttraction) => {
     onAttractionSelect?.(d)
@@ -120,54 +150,17 @@ export function useAttractionOverlays({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidateKeysToken, filteredAttractions])
 
-  // 範圍圓圈:只有帶 radiusMeters 的景點區域(手動整理的觀光慣稱分區,如
-  // 清邁的古城區/尼曼區,見 server/internal/geo/district_aliases.go)
-  // 才畫——這類區域沒有官方邊界資料,圓圈只是「大概這一帶」的粗略
-  // 示意,故用低透明度填色+淡邊框,刻意不搶過光暈與標籤的視覺焦點。
-  //
-  // 顏色改成執行期讀取 --ios-sand 這個 CSS token(見 base-ui.css
-  // 的完整說明),取代原本硬寫的 '#C4956A'——google.maps.Circle 是原生
-  // Google Maps 物件,fillColor/strokeColor 只吃真正的色碼字串,不能直接
-  // 傳 CSS 變數,故用 getComputedStyle 在建立圓圈的當下讀取實際解析到的
-  // token 值。讀取目標是 mapRef.current.getDiv()(地圖本身的 DOM 容器),
-  // 不是 document.documentElement——--ios-sand 這個 token 掛在
-  // App.tsx 的 .app-theme-root(見該檔案的說明),是 .webApp 容器 div 上
-  // 的 class,不是 <html> 元素,CSS 變數不會從子孫節點反向繼承到祖先,
-  // 讀 document.documentElement 只會拿到未定義的空字串(退回硬寫的
-  // fallback,等於白改)。地圖容器本身在 DOM 樹上是 .app-theme-root 的
-  // 子孫,讀它的 computed style 才能拿到正確覆寫後的深/淺色版本,不需要
-  // 這個 hook 自己另外接收 theme prop 或重新判斷主題邏輯。這個 effect
-  // 本來就依賴 filteredAttractions 重新執行(新一批景點區域資料進來就
-  // 重畫圓圈),不需要額外的 theme 依賴——使用者切換主題不會立即重畫
-  // 既有圓圈,但下一次資料變動(例如重新搜尋、切換地圖範圍)自然會用
-  // 當下的主題色重建,對齊這批圓圈本身「資料驅動、非常駐」的既有設計,
-  // 不需要為了即時切換主題這個次要情境額外監聽 data-theme 變化。
+  // 同步精選點的照片展開狀態:只切換既有 overlay 的 innerHTML(見
+  // geoAttractionOverlay.ts 的 setHovered/renderContent),不重建整批
+  // overlay——理由同上方同步選取/候選籃狀態的 effect,使用者在「附近
+  // 景點」清單裡滑過不同項目時,不該讓其他沒被滑到的精選點跟著重畫。
+  // setHovered 內部對 isTheme 的 no-op 與 hovered 值未變的提早跳出,已經
+  // 確保主題點與非目標精選點不會被無謂觸發。
   useEffect(() => {
-    if (!mapReady || !mapRef.current) return
-    const mapDiv = mapRef.current.getDiv()
-    const attractionColor =
-      getComputedStyle(mapDiv).getPropertyValue('--ios-sand').trim() || '#C4956A'
-    radiusCirclesRef.current.forEach((c) => c.setMap(null))
-    radiusCirclesRef.current = filteredAttractions
-      .filter((d) => d.radiusMeters && d.radiusMeters > 0)
-      .map(
-        (d) =>
-          new google.maps.Circle({
-            center: { lat: d.lat, lng: d.lng },
-            radius: d.radiusMeters,
-            map: mapRef.current!,
-            fillColor: attractionColor,
-            fillOpacity: 0.08,
-            strokeColor: attractionColor,
-            strokeOpacity: 0.35,
-            strokeWeight: 1,
-            clickable: false,
-          }),
-      )
-    return () => {
-      radiusCirclesRef.current.forEach((c) => c.setMap(null))
-      radiusCirclesRef.current = []
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, filteredAttractions])
+    overlaysRef.current.forEach((o, i) => {
+      const d = filteredAttractions[i]
+      if (d) o.setHovered(d.name === hoveredCuratedName)
+    })
+  }, [hoveredCuratedName, filteredAttractions])
+
 }

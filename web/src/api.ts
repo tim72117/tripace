@@ -394,8 +394,36 @@ export interface GeoAttraction {
   // level:知名度分級,1(國際)~5(在地),只有走後端資料庫路徑
   // (server/internal/api/geo_outline.go 的 store.ListAttractionsByCity)
   // 才會有值——即時查 Google Places 的結果沒有分級資訊,固定不帶這個
-  // 欄位。前端依此決定隨縮放層級顯示哪些粒度,見 GeoOutlineMap.tsx。
+  // 欄位。前端依此決定隨縮放層級顯示哪些粒度,見 ExploreMap.tsx。
   level?: number
+  // isTheme:是否為「主題點」(散策羅盤用語,見 useAttractionOverlays.ts
+  // 的完整說明)——後端 model.Attraction.IsTheme 新增欄位,與 level 並存
+  // (level 保留給 zoom 顯示門檻/知名度描述使用,不再依賴 level===1 判斷
+  // 主題點)。跟 level 不同,這個欄位後端固定回傳(沒有 omitempty),即時
+  // 查 Google Places 的路徑(toAttractionResponses/geo.District)沒有主題
+  // 概念,一律回傳 false,前端判斷「是否顯示這批精選點」時仍需搭配
+  // level == null(見 useAttractionOverlays.ts 的 filteredAttractions)
+  // 才能正確識別「這批資料完全沒有主題/分級概念,一律顯示」的情況,不能
+  // 只看 isTheme 是否為 true。
+  isTheme: boolean
+  // placeId:這個景點區域對應的 Google Place ID,只有走後端資料庫路徑
+  // (人工建檔的 model.Attraction 有設定 place_id)才會有值——即時查
+  // Google Places 的結果(toAttractionResponses/geo.District)沒有這個
+  // 欄位,固定不帶。有值時 AttractionInfoPanel.tsx 優先改打 GET
+  // /internal/geo/place-details 取得「地點照片漸進補圖機制」的
+  // Google/Pexels 雙來源照片(見 fetchGeoPlaceDetails),取代/補強單一的
+  // landmarkPhotoUrl;沒有值時維持顯示 landmarkPhotoUrl 單張圖的既有
+  // 行為,兩套機制並存,不是互斥的一次性遷移(見後端
+  // model.Attraction.PlaceID 的完整說明)。
+  placeId?: string
+  // category:「附近景點」清單用的店家分類(甜點/茶屋、餐廳、工藝、
+  // 街景,見後端 model.Attraction.Category 與前端 CuratedCategory 型別
+  // 的完整說明),只有走後端資料庫路徑、且該筆有設定值時才會有值——
+  // 取代原本純前端寫死在 geoCuratedCategoryStub.ts 的 name→分類對照表
+  // (NAME_TO_CURATED_CATEGORY),那張表只涵蓋少數已手動填過的店家,新
+  // 建檔的景點不會自動有分類。curatedCategoryOf 仍保留那張表當作這個
+  // 欄位缺值時的過渡期 fallback,見該函式的完整說明。
+  category?: string
 }
 
 // GeoHotel:地理輪廓底圖上疊加的飯店圖層單筆結果,對齊後端
@@ -421,6 +449,24 @@ export function fetchGeoAttractions(cfg: ClientConfig, city: string) {
   )
 }
 
+// fetchPublicGeoAttractions:GET /public/geo/attractions(免登入版,見
+// 後端 handlePublicGeoAttractions/publicAttractionsCityAllowlist 的完整
+// 說明)——供登入前的公開展示頁(web/src/home/KiyomizuDemoPage.tsx/
+// YasakaDemoPage.tsx)查詢固定示範城市裡人工建檔的景點區域清單,取代原本
+// 寫死在 kiyomizuDemoFixture.ts/yasakaDemoFixture.ts 的固定 fixture。只
+// 允許查詢後端白名單裡固定收錄的那批城市名稱,查詢白名單外的城市會收到
+// 403,不是這個函式自己判斷,由後端統一把關,理由同 fetchPublicGeoPlaceDetails
+// ——這裡不重複實作一份白名單邏輯。回應形狀跟 fetchGeoAttractions 不同:
+// 只有 attractions,沒有 city/hotels(這支端點刻意不含飯店圖層,見後端
+// handler 的完整說明)。
+export function fetchPublicGeoAttractions(cfg: ClientConfig, city: string) {
+  return request<{ attractions: GeoAttraction[] }>(
+    cfg,
+    'GET',
+    `/public/geo/attractions?city=${encodeURIComponent(city)}`,
+  )
+}
+
 // GeoGeocodeCandidate:fetchGeoGeocode 單筆候選地點——對齊後端
 // handleGeoGeocode 的回應形狀(見該函式的說明)。placeId 供使用者點選
 // 候選後另外呼叫 fetchGeoPlaceDetails 補查完整資訊(含照片,Pexels-first
@@ -442,10 +488,10 @@ export function fetchGeoAttractions(cfg: ClientConfig, city: string) {
 // 幾乎重複的型別與 state,這是實際發生過的重複——2026-08
 // 起兩者合併,GeoPlace 整個移除,全部改用這個型別。primaryType 選填
 // (bias 模式呼叫端目前不會填,只有 restrict 模式的呼叫端——見
-// GeoOutlineMap.tsx 的 runPlacesQuery——會帶入,固定空字串,理由同原本
+// ExploreMap.tsx 的 runPlacesQuery——會帶入,固定空字串,理由同原本
 // GeoPlace 分支的既有慣例);category 同樣選填,值域固定是
 // 'lodging'/'tourist_attraction'/'restaurant' 其中之一(對齊地圖上方
-// 類別標籤,見 GeoOutlineMap.tsx 的 CATEGORY_TAGS),只有 restrict 模式
+// 類別標籤,見 ExploreMap.tsx 的 CATEGORY_TAGS),只有 restrict 模式
 // 查出來的候選才會有值,查無對應分類或 bias 模式查出來的候選則為
 // undefined。前端分類判斷(圖示、entry kind 推導等)一律讀 category,不
 // 要自己解讀 primaryType——直接拿 primaryType 跟這三個查詢用的類型字面
@@ -526,7 +572,7 @@ export function fetchGeoAttractionsNearby(cfg: ClientConfig, lat: number, lng: n
 // 對齊 server 的 GET /internal/geo/attractions/nearby-only
 // (handleGeoAttractionsOnlyNearby)——跟 fetchGeoAttractionsNearby 查同一份
 // 景點區域資料,但不附帶 hotels(即時查 Google Places、直接計費)。這支
-// 端點查詢本身免費,故 GeoOutlineMap.tsx 用它做地圖 idle(拖曳/縮放停止)
+// 端點查詢本身免費,故 ExploreMap.tsx 用它做地圖 idle(拖曳/縮放停止)
 // 時的自動查詢,不需要像飯店那樣收在使用者明確按下「搜尋這個區域」
 // 按鈕之後才觸發。
 export function fetchGeoAttractionsOnlyNearby(cfg: ClientConfig, lat: number, lng: number, radiusMeters?: number) {
@@ -545,7 +591,7 @@ export function fetchGeoAttractionsOnlyNearby(cfg: ClientConfig, lat: number, ln
 // 來源不同(自建資料庫+Google Places nearby / Google Places Text
 // Search geocoding),但對前端而言都是「使用者搜尋或瀏覽時查到的地點」,
 // 理應共用同一份清單 state、同一套點擊/選取邏輯,不該在
-// GeoOutlineMap/GeoOutlinePanel/DesktopLayout/手機版分別維護三條平行的
+// ExploreMap/GeoOutlinePanel/DesktopLayout/手機版分別維護三條平行的
 // state 與 callback(這是實際發生過的問題:三者行為逐漸各自演化,飯店
 // 清單意外變成即時依可視範圍過濾,導致清單項目點擊後永遠已經在畫面
 // 內、地圖移動邏輯形同虛設)。kind 判別欄位保留「這筆結果原本是哪種
@@ -576,7 +622,7 @@ export function hotelToSearchResult(h: GeoHotel): GeoSearchResult {
   return { kind: 'hotel', name: h.name, address: h.address, lat: h.lat, lng: h.lng, photoUrl: h.photoUrl }
 }
 // placeToSearchResult:kind:'place' 的搜尋結果(地圖上方類別標籤/「搜尋
-// 這個區域」按鈕查到的候選,見 GeoOutlineMap.tsx 的 runPlacesQuery)轉成
+// 這個區域」按鈕查到的候選,見 ExploreMap.tsx 的 runPlacesQuery)轉成
 // GeoSearchResult——來源型別跟 geocodeCandidateToSearchResult 相同,都是
 // GeoGeocodeCandidate(2026-08 起合併,見該型別的完整說明),只有 kind
 // 判別欄位不同,故仍拆成兩支函式,不合併成一支——kind 由呼叫端的查詢
@@ -589,7 +635,7 @@ export function geocodeCandidateToSearchResult(c: GeoGeocodeCandidate): GeoSearc
 }
 
 // GeoTripEntry:旅程本身已有座標的 entry,轉成地理輪廓底圖圖層通用的
-// name/lat/lng 形狀,供 GeoOutlineMap 畫 marker、GeoCandidateSidebar
+// name/lat/lng 形狀,供 ExploreMap 畫 marker、GeoCandidateSidebar
 // 顯示用——欄位命名對齊 GeoHotel/GeoPlace(而非直接重用 Entry,因為
 // Entry 的欄位是 title/location,語意上屬於旅程資料,不是地理圖層資料,
 // 混用會讓兩套型別的職責模糊)。id 保留供候選籃移除比對用(entry 有
@@ -612,7 +658,7 @@ export interface GeoTripEntry {
 // GeoPlaceDetails:對齊 server 的 GET /internal/geo/place-details
 // (handleGeoPlaceDetails)——單一地點的詳細資訊,供「使用者點擊地圖上
 // Google 原生 POI 圖標」情境使用。原生 POI 點擊只會拿到一個 placeId,
-// 沒有附帶任何名稱/地址/介紹等資料(見 GeoOutlineMap.tsx 攔截
+// 沒有附帶任何名稱/地址/介紹等資料(見 ExploreMap.tsx 攔截
 // IconMouseEvent 的說明),必須再打這支端點查詳細內容。
 export interface GeoPlaceDetails {
   name: string
@@ -635,6 +681,19 @@ export interface GeoPlaceDetails {
 
 export function fetchGeoPlaceDetails(cfg: ClientConfig, placeId: string) {
   return request<GeoPlaceDetails>(cfg, 'GET', `/internal/geo/place-details?placeId=${encodeURIComponent(placeId)}`)
+}
+
+// fetchPublicGeoPlaceDetails:GET /public/geo/place-details(免登入版,見
+// 後端 handlePublicGeoPlaceDetails/publicPlaceDetailsAllowlist 的完整
+// 說明)——供登入前的公開展示頁(web/src/home/KiyomizuDemoPage.tsx)使用,
+// cfg.token 為 null 的訪客模式下,一般的 fetchGeoPlaceDetails 打
+// /internal/* 必定被 internalAuth 拒絕(401),這支端點走完全不同的
+// /public/* 路徑,不需要 Authorization header。只允許查詢後端白名單裡
+// 固定收錄的那批 placeId(展示頁固定資料實際會用到的清水寺周邊精選點),
+// 查詢白名單外的 placeId 會收到 403,不是這個函式自己判斷,由後端統一
+// 把關——這裡不重複實作一份白名單邏輯,避免前後端兩份清單不同步。
+export function fetchPublicGeoPlaceDetails(cfg: ClientConfig, placeId: string) {
+  return request<GeoPlaceDetails>(cfg, 'GET', `/public/geo/place-details?placeId=${encodeURIComponent(placeId)}`)
 }
 
 // fetchGeoPlacePhoto:GET /internal/geo/place-details 的 photoOnly=1 模式

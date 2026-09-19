@@ -4,7 +4,7 @@
 // 這件事從「顯示與否直接看 hideCategoryTags 這個布林值」的做法,收斂成
 // 明確事件驅動的狀態機。
 //
-// 背景:原本 GeoOutlineMap.tsx 用一個布林運算式決定標籤列顯示與否——
+// 背景:原本 ExploreMap.tsx 用一個布林運算式決定標籤列顯示與否——
 // 手機版 hideCategoryTags 直接吃 listDrawerState.open(清單開關狀態機的
 // 衍生值),桌面版沒有傳這個 prop 時退回 searchResults.length > 0——
 // 兩邊各自一套邏輯,且都是「結果有沒有東西」的衍生值,不是「查詢開始
@@ -29,11 +29,11 @@ export const initialCategoryTagsState: CategoryTagsState = {
 // CategoryTagsEvent:
 //   search-started   查詢開始的當下(城市搜尋框/類別標籤/搜尋這個區域
 //                     三個入口共用)——立刻隱藏標籤列。
-//   results-arrived  查詢結果回來(不論筆數)——結果非空時維持隱藏(避免
-//                     标籤列疊在清單/候選籃內容上方,理由同原本
-//                     searchResults.length > 0 隱藏的既有邏輯);結果為
-//                     空時重新顯示,讓使用者能立刻換一顆標籤再查,不用
-//                     先手動清空搜尋框。
+//   results-arrived  查詢結果回來(不論筆數)——一律重新顯示標籤列,讓
+//                     使用者能立刻換一顆標籤再查,不用先手動清空搜尋框
+//                     或關閉清單。原本結果非空時維持隱藏(避免疊在清單/
+//                     候選籃內容上方)是刻意設計,但實測後改回一律顯示,
+//                     隱藏造成的困擾比疊圖問題更明顯。
 //   user-closed      使用者關閉清單/候選籃結果(手機版清單抽屜關閉、
 //                     桌面版候選籃側欄收合等)——重新顯示標籤列。
 export type CategoryTagsEvent =
@@ -46,7 +46,7 @@ export function reduceCategoryTagsState(state: CategoryTagsState, event: Categor
     case 'search-started':
       return { hidden: true }
     case 'results-arrived':
-      return { hidden: event.hasResults }
+      return { hidden: false }
     case 'user-closed':
       return { hidden: false }
     default:

@@ -66,7 +66,7 @@
 
 /* imageWrap:placeholder/單張圖片情境的預設樣式——圖片左右留間距,
    不再滿版貼齊卡片邊緣(使用者明確要求),padding 對齊 .head/.content
-   的水平留白(16px)。桌面版 GeoInfoPanel 的圖片本身沒有圓角(滿版貼齊
+   的水平留白(16px)。桌面版 PlacePanel 的圖片本身沒有圓角(滿版貼齊
    卡片頂部,靠 .panel 本身裁邊角),圓角是手機版特有的視覺(使用者明確
    要求),故不改 PhotoCarousel.module.css 共用樣式(那樣會連帶影響
    桌面版),改在這層容器加 border-radius+overflow:hidden——
@@ -144,4 +144,160 @@
   font-size: 13px;
   line-height: 1.6;
   color: var(--ios-gray);
+}
+
+/* nearbySection/nearbyTitle:「附近景點」區塊——見 GeoOutlinePhoneInfoSheet.tsx
+   對 nearby prop 的完整說明,只有主題卡才會渲染這個區塊。跟桌面版
+   AttractionInfoPanel.module.css 的 .nearbySection 同一個概念,但這裡
+   是獨立的一份樣式(不共用桌面版那份),理由是觸控裝置的尺寸/互動回饋
+   規則本來就不同,見下方各 class 的說明。 */
+.nearbySection {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ios-sep);
+}
+
+.nearbyTitle {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-dark);
+}
+
+/* nearbyCategoryChips:分類篩選——橫向可捲動的 chip 列,取代桌面版的
+   下拉選單(使用者明確要求,見 GeoOutlinePhoneInfoSheet.tsx 的完整
+   說明:bottom sheet 空間有限,下拉選單的展開/收合 popover 容易被截斷
+   或蓋住清單本身,chip 列不需要展開狀態,一行就放得下)。
+   overflow-x: auto + white-space: nowrap 讓分類數量超過可視寬度時可以
+   橫向捲動,不會擠壓/換行破版;-webkit-overflow-scrolling: touch 讓
+   iOS Safari 有慣性捲動手感。scrollbar-width/::-webkit-scrollbar 隱藏
+   原生捲軸(使用者實測回報這條捲軸在畫面上太突兀)——只隱藏視覺軌道,
+   不影響實際的橫向捲動/觸控滑動功能,scrollbar-width: none 是
+   Firefox/新版 Chromium 標準寫法,::-webkit-scrollbar { display: none }
+   涵蓋 Safari(webkit 不支援 scrollbar-width)。 */
+.nearbyCategoryChips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+  margin-bottom: 10px;
+  scrollbar-width: none;
+}
+
+.nearbyCategoryChips::-webkit-scrollbar {
+  display: none;
+}
+
+.nearbyCategoryChip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--ios-sep);
+  background: var(--ios-bg);
+  color: var(--ios-gray);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* :active 而非 :hover——觸控裝置沒有 hover 狀態,桌面版下拉選單靠
+   :hover 提示可點,這裡改用按下當下的即時回饋(使用者明確要求觸控
+   互動不能照搬桌面版的 hover 樣式)。 */
+.nearbyCategoryChip:active {
+  background: var(--ios-sep);
+}
+
+/* 選中狀態不整個填滿分類色(對齊桌面版的既有慣例,見
+   AttractionInfoPanel.module.css 的 .nearbyCategoryTag 說明),改用右側
+   顏色小圓點(.nearbyCategoryDot)標示,理由同桌面版:文字/圖示維持
+   一致的預設色,只有小圓點承載分類配色語意,避免每個 chip 選中時底色
+   互相跳動造成視覺雜訊。
+   background 原本寫死 #fff——淺色模式下勉強能用,但深色模式(--color-dark
+   在深色模式底下是淺色文字,見 base-ui.css)底下會變成一塊刺眼的白色
+   方塊,文字/邊框都對不上整體深色底色(使用者實測回報配色不對)。改用
+   color-mix 把 --color-accent 跟 --ios-bg 混合出一個淡化的強調色底,
+   在淺色/深色模式下都能正確跟隨各自的 token 值變化,不會寫死成單一
+   固定色。 */
+.nearbyCategoryChipActive {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--ios-bg));
+}
+
+.nearbyCategoryDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ios-sand);
+}
+
+.nearbyList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* nearbyItem:清單項目本身——44px 觸控高度下限(見 min-height,對齊
+   iOS/Material Design 的觸控目標建議尺寸),取代桌面版靠 hover 提示可
+   點的設計(桌面版 .nearbyItem 沒有這個尺寸限制,因為滑鼠游標精度遠高
+   於手指觸控)。文字置左對齊,整塊都是按鈕(不是只有標題可點),觸控
+   範圍越大越不容易點錯。 */
+.nearbyItem {
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  background: var(--ios-bg);
+  text-align: left;
+  cursor: pointer;
+}
+
+.nearbyItem:active {
+  background: var(--ios-sep);
+}
+
+.nearbyItemHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  color: var(--ios-gray);
+}
+
+.nearbyName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-dark);
+}
+
+.nearbyMinutes {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--ios-gray);
+}
+
+.nearbySummary {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ios-gray);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

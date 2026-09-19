@@ -52,11 +52,48 @@ func Open(dsn string) (*Store, error) {
 	// 明顯的警示 log 後繼續,讓 server 降級啟動;只有實際用到未同步欄位的功能
 	// 才會在被呼叫到時出錯,這是可接受的降級行為。
 	migrationOK := true
-	if err := db.AutoMigrate(&userRow{}, &tripRow{}, &entryRow{}, &memberLink{}, &publicLinkRow{}, &adminUserRow{}, &adminSessionRow{}, &cliAuthSessionRow{}, &attractionRow{}, &photoCacheRow{}, &placeDetailsCacheRow{}, &googlePlacePhotoRow{}, &placePexelsPhotoRow{}, &pexelsPhotoCacheRow{}, &apiRequestLogRow{}, &geoAPICallLogRow{}); err != nil {
+	if err := db.AutoMigrate(&userRow{}, &tripRow{}, &entryRow{}, &memberLink{}, &publicLinkRow{}, &adminUserRow{}, &adminSessionRow{}, &cliAuthSessionRow{}, &attractionRow{}, &photoCacheRow{}, &placeDetailsCacheRow{}, &googlePlacePhotoRow{}, &placePexelsPhotoRow{}, &pexelsPhotoCacheRow{}, &apiRequestLogRow{}, &geoAPICallLogRow{}, &geoRateLimitRow{}); err != nil {
 		log.Printf("!!! AutoMigrate 失敗,資料庫 schema 可能未同步,部分功能可能異常或無法使用,請盡快檢查: %v", err)
 		migrationOK = false
 	}
+	if migrationOK {
+		repairGooglePhotoTargetCountDeadlock(db)
+	}
 	return &Store{db: db, MigrationOK: migrationOK}, nil
+}
+
+// repairGooglePhotoTargetCountDeadlock 修正 entity.go
+// placeDetailsCacheRow.GooglePhotoTargetCount 欄位說明裡記載的死鎖 bug——
+// AutoMigrate 新增這個欄位時的 default:-1(見該欄位完整說明)只套用在
+// 「新增欄位當下」,不會回頭修正已存在、卡在合法值 0 的既有資料列,故
+// 需要這段額外的一次性 UPDATE,每次 Open() 都執行(跟 AutoMigrate 一樣
+// 是 idempotent 的收斂操作,不是只跑一次的遷移腳本——沒有任何一次性
+// migration runner 或版本表,單純每次啟動都重新執行同一條收斂條件,已經
+// 符合條件的資料列會被 WHERE 子句排除、不會重複判斷或造成任何副作用)。
+//
+// 只鎖定「曾經有漸進補圖紀錄(NewPhotoCount > 0),但 GooglePhotoTargetCount
+// 卡在 0」這個矛盾狀態的資料列——target 卡在 0 理論上代表「已確認、
+// Google 那次真的回傳空 photos[]」,不該再有任何後續補圖動作,若
+// NewPhotoCount 卻大於 0,代表這筆資料是在這個 bug 修復前,先合法地
+// (透過某次查詢查到非空 photos[])把 target 寫成非 0 值、開始漸進補圖,
+// 之後又被同一個死鎖 bug 的另一種路徑重新覆寫回 0(shouldAddGooglePlacePhoto
+// 的完整說明有記載這個死鎖成因),兩個欄位互相矛盾,是明確能判定「這筆
+// 資料被這個 bug 影響過」的訊號,不會誤傷「這個地點本來就經確認是 0 張,
+// 從未觸發過任何補圖」的合法狀態(那種資料列 NewPhotoCount 也會是 0,
+// 不會落入這條 WHERE 條件)。修正後改回 -1(未確認 sentinel),下次該
+// 地點被點擊時 shouldAddGooglePlacePhoto 會無條件觸發重新跟 Google
+// 確認一次,不會永遠卡住。
+func repairGooglePhotoTargetCountDeadlock(db *gorm.DB) {
+	result := db.Exec(
+		`UPDATE place_details_cache SET google_photo_target_count = -1 WHERE google_photo_target_count = 0 AND new_photo_count > 0`,
+	)
+	if result.Error != nil {
+		log.Printf("!!! repairGooglePhotoTargetCountDeadlock 執行失敗,受影響的地點可能持續卡在死鎖 bug 中: %v", result.Error)
+		return
+	}
+	if result.RowsAffected > 0 {
+		log.Printf("repairGooglePhotoTargetCountDeadlock 修正了 %d 筆卡在 google_photo_target_count=0 死鎖的資料列", result.RowsAffected)
+	}
 }
 
 // dialector 依 dsn 前綴挑選 GORM driver:

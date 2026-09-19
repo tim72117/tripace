@@ -88,29 +88,36 @@ func NewRateLimiter() *RateLimiter {
 // 這個 key 從此受這個 RateLimiter 限流(見 RateLimiter 與 Allow 的說明:
 // 沒被這個方法設定過的 key 不受限、Allow 一律直接放行)。
 //
-// window <=0 時會被夾成安全的最小值(1 秒);maxCalls <=0 時視為「不
-// 設定」(直接不寫入,等同這個 key 維持不受限的狀態,不會被夾成 1 或其他
-// 數字)——避免呼叫端不小心傳入非正值的 maxCalls 造成這個 key 意外被
-// 限流成「永遠拒絕」(0 次額度),但 window 若不夾限,傳入 0 或負數會讓
-// 下面 Allow 的視窗過期判斷永遠成立,退化成「每次呼叫都开新視窗」而
-// 完全不限流,不符合「呼叫了 SetLimitForKey 就代表想限流」的預期,故
-// window 仍夾成一個明確、可運作的最小值,理由同 Gateway.New 對 Config
-// 的既有夾限慣例。
+// window <=0 時會被夾成安全的最小值(1 秒);maxCalls <=0 時視為「明確
+// 要求解除這個 key 的限流」,把它從 limits 表移除,退回未設定過的狀態
+// (Allow 一律放行)——2026-09 起後台管理介面(見
+// server/internal/adminconsole)可以執行期修改限流規則(見
+// geo.rateLimiterFromStore 的完整說明),使用者可能把某個 key 的上限
+// 次數改成 0 或負數來表達「暫時關閉這個 key 的限流」,這裡必須真的移除
+// 規則才能達成,不能只是靜默不寫入(原本的行為是「不寫入」,在 SetLimitForKey
+// 只會在啟動時呼叫一次的舊假設下,這兩種行為等價——反正一開始就沒有
+// 任何規則;但執行期重設時,「不寫入」代表維持先前已經設定過的規則不變,
+// 跟「移除限流」是兩種不同結果,必須明確區分)。
 //
-// 這支方法不是並行安全的關鍵路徑操作——預期用法是啟動時對少數幾個 key
-// 各自呼叫一次設定限流規則(比照 Gateway/RateLimiter 其餘設定「啟動時
-// 決定、執行期不動態調整」的既有慣例,見 apigateway.go Config 的說明),
-// 不是在 process 執行期間頻繁呼叫,故直接用同一把 mu 保護即可,不需要
-// 額外最佳化。
+// window 不論在新增或移除情境都不受這個判斷影響——移除限流只看
+// maxCalls,window 傳什麼值都無所謂(移除動作不會用到它)。
+//
+// 這支方法目前有兩種呼叫時機:啟動時對少數幾個 key 各自呼叫一次(舊有
+// 唯一用法),以及執行期背景 goroutine 定期從資料庫重讀設定後呼叫(見
+// geo.rateLimiterFromStore 的完整說明)——不論哪種時機呼叫頻率都遠低於
+// Allow 的呼叫頻率(每次 Google API 呼叫都會呼叫 Allow),同一把 mu
+// 保護已經足夠,不需要額外最佳化。
 func (rl *RateLimiter) SetLimitForKey(key string, window time.Duration, maxCalls int) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
 	if maxCalls <= 0 {
+		delete(rl.limits, key)
+		delete(rl.windows, key)
 		return
 	}
 	if window <= 0 {
 		window = time.Second
 	}
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
 	rl.limits[key] = rateLimit{window: window, maxCalls: maxCalls}
 }
 

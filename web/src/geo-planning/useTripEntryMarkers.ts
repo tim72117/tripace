@@ -4,12 +4,12 @@ import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
 import { isMarkerSelected } from './geoMarkerSelection'
 import { tripEntryMarkerContent } from './mapMarkers'
 
-// useTripEntryMarkers——從 GeoOutlineMap.tsx 抽出來的行程 entry marker
+// useTripEntryMarkers——從 ExploreMap.tsx 抽出來的行程 entry marker
 // 圖層。只讀 mapRef/mapReady/自己的資料(tripEntries)/selectedKey/
 // hoverKey,不寫入任何其他共享狀態,故獨立成 hook 不影響其餘查詢/地圖
 // 生命週期邏輯。內部行為(含全部原有註解說明)原封不動搬過來,搬動本身
 // 不改變任何行為。這批點不吃 candidateKeys(不論行程 entry 是否也在
-// 候選籃資料結構裡,理由見 GeoOutlineMap 原本 candidateKeys prop 的
+// 候選籃資料結構裡,理由見 ExploreMap 原本 candidateKeys prop 的
 // 說明:tripEntry 已經有自己的旗子圖示語意,不需要疊加候選籃徽章)。
 export function useTripEntryMarkers({
   mapRef,

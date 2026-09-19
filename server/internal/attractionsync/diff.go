@@ -120,6 +120,7 @@ var compareFieldSpecs = []struct {
 	{"Lat", func(a model.Attraction) string { return strconv.FormatFloat(a.Lat, 'f', -1, 64) }},
 	{"Lng", func(a model.Attraction) string { return strconv.FormatFloat(a.Lng, 'f', -1, 64) }},
 	{"Level", func(a model.Attraction) string { return strconv.Itoa(a.Level) }},
+	{"IsTheme", func(a model.Attraction) string { return strconv.FormatBool(a.IsTheme) }},
 	{"RadiusMeters", func(a model.Attraction) string { return strconv.Itoa(a.RadiusMeters) }},
 	{"Summary", func(a model.Attraction) string { return derefStr(a.Summary) }},
 	{"PhotoURL", func(a model.Attraction) string { return derefStr(a.PhotoURL) }},
@@ -132,7 +133,7 @@ func derefStr(p *string) string {
 	return *p
 }
 
-// CompareFields 比對兩筆記錄的 8 個內容欄位（見 compareFieldSpecs），
+// CompareFields 比對兩筆記錄的內容欄位（見 compareFieldSpecs），
 // 回傳有差異的欄位清單。欄位順序固定依 compareFieldSpecs 的宣告順序，
 // 方便測試斷言與呈現時的穩定性。nil 對非 nil 的 *string 欄位（Summary/
 // PhotoURL）視為與空字串比較，能正確判定為「不同」。

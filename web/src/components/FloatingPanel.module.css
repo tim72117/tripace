@@ -22,7 +22,7 @@
 }
 
 /* left 的 top 特別下修(蓋掉 .panel 的 top:12px)——地圖左上角疊著類別
-   標籤列(見 GeoOutlineMap.module.css 的 .categoryTags,top:16px、單顆
+   標籤列(見 ExploreMap.module.css 的 .categoryTags,top:16px、單顆
    膠囊高度約 36px),左緣浮動卡片固定貼在同一個左緣位置,若沿用
    top:12px 會跟標籤列重疊、蓋住標籤列。右緣沒有這個問題,不受影響。 */
 .left {
@@ -33,7 +33,7 @@
   right: 12px;
 }
 
-/* infoHeight:容器高度改成跟地點卡(AttractionInfoPanel/GeoInfoPanel,見
+/* infoHeight:容器高度改成跟地點卡(AttractionInfoPanel/PlacePanel,見
    兩者 module.css 的 .panel:top:64px、bottom:16px)一致——目前只有
    GeoHotelSidebar 用(使用者明確要求跟地點卡容器高度對齊),原本 .panel
    預設的 top:12px/bottom:12px 在這裡不適用,改用這個 modifier 覆蓋。 */

@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { geoSelectionReducer, GEO_SELECTION_NONE, type GeoSelection } from './geoSelection'
-import type { GeoInfoContent } from './GeoInfoPanel'
+import type { PlaceInfoContent } from './PlacePanel'
 import type { GeoAttraction } from '../api'
 
-const hotelContent: GeoInfoContent = {
+const hotelContent: PlaceInfoContent = {
   name: '測試飯店',
   subtitle: '測試地址',
   badges: [],
@@ -13,6 +13,7 @@ const attraction: GeoAttraction = {
   name: '測試景點',
   lat: 25.0,
   lng: 121.5,
+  isTheme: false,
 }
 
 describe('geoSelectionReducer', () => {

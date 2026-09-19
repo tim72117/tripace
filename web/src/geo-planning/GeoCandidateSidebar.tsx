@@ -34,7 +34,7 @@ export { candidateEntryKind, candidateListKey, createEntryFromCandidate, dayGrou
 //
 // 加入候選的入口是右側 GeoHotelSidebar(飯店/地點清單)每一項卡片上的
 // 「+」按鈕(見該元件),這裡只負責顯示已加入的候選與移除。
-// entry 種類:行程本身已有座標的 entry(見 GeoOutlineMap.tsx 的
+// entry 種類:行程本身已有座標的 entry(見 ExploreMap.tsx 的
 // tripEntries 說明)——這批點不是使用者手動用「+」加入的,是進入規劃
 // 分頁時自動帶入的行程既有內容(見 DesktopLayout.tsx 的
 // onTripEntriesChange),但仍走同一份候選籃資料結構與顯示邏輯,不另開
@@ -256,7 +256,7 @@ export function GeoCandidateSidebar({
   // 知道。
   draggingCandidate: GeoCandidate | null
   onDraggingCandidateChange: (c: GeoCandidate | null) => void
-  // flashTrigger:GeoInfoPanel 複合按鈕右半邊(見該元件 onAddAndReveal 的
+  // flashTrigger:PlacePanel 複合按鈕右半邊(見該元件 onAddAndReveal 的
   // 說明)按下、候選加入成功後遞增——這個側欄在那顆按鈕能被按到的情境下
   // 本來就已經展開顯示(沒有獨立的收合/展開開關可以觸發),故改用這個計數
   // 器觸發一次短暫的 highlight 動畫(見下方 useEffect 與

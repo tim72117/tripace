@@ -36,6 +36,15 @@ var (
 	defaultGatewayConfig = apigateway.DefaultConfig()
 	defaultGatewayLogger apigateway.CallLogger
 	defaultGatewayValue  *apigateway.Gateway
+	// defaultRateLimiter 是 defaultGatewayConfig.RateLimiter 的同一個
+	// instance——見 ConfigureDefaultGatewayRateLimit/UpdateDefaultGatewayRateLimit
+	// 的完整說明:package 級另外保留這個 reference,是為了讓
+	// UpdateDefaultGatewayRateLimit 能在 defaultGateway 已經透過
+	// sync.Once 建立完成之後,仍然可以修改限流規則——apigateway.Gateway
+	// 內部存的是 *RateLimiter(指標),不是值拷貝,對同一個 RateLimiter
+	// instance 呼叫 SetLimitForKey 會立即反映到 Gateway.Do 下一次呼叫
+	// Allow 時讀到的規則,不需要重建 Gateway、不需要繞過 sync.Once。
+	defaultRateLimiter *apigateway.RateLimiter
 )
 
 // ConfigureDefaultGateway 設定預設 Gateway 的節流參數與記錄器——必須在
@@ -47,6 +56,19 @@ var (
 func ConfigureDefaultGateway(cfg apigateway.Config, logger apigateway.CallLogger) {
 	defaultGatewayConfig = cfg
 	defaultGatewayLogger = logger
+}
+
+// ConfigureDefaultGatewayDailyQuota 設定預設 Gateway 的每日額度檢查器
+// (見 apigateway.DailyQuotaChecker 的完整說明)——跟 ConfigureDefaultGateway
+// 一樣必須在第一次 geo.New() 之前呼叫才會生效,理由相同(底層共用同一個
+// defaultGatewayConfig,由 defaultGateway 的 sync.Once 延遲建立)。獨立於
+// ConfigureDefaultGateway/ConfigureDefaultGatewayRateLimit 成一支函式,
+// 是因為每日額度檢查器需要存取資料庫(store.IncrementGeoRateLimitDailyUsage),
+// 而 geo 套件本身刻意不依賴 store 套件(理由同 apigateway.CallLogger 的
+// 既有注入模式)——checker 由呼叫端(cmd/server/main.go)實作並傳入,geo
+// 套件只依賴 apigateway.DailyQuotaChecker 這個介面。
+func ConfigureDefaultGatewayDailyQuota(checker apigateway.DailyQuotaChecker) {
+	defaultGatewayConfig.DailyQuotaChecker = checker
 }
 
 // RateLimitConfig 是 ConfigureDefaultGatewayRateLimit 的參數——只涵蓋
@@ -135,6 +157,39 @@ func ConfigureDefaultGatewayRateLimit(cfg RateLimitConfig) {
 	rl.SetLimitForKey(placeGetEndpoint, cfg.PlaceGetWindow, cfg.PlaceGetMaxCalls)
 	rl.SetLimitForKey(photoMediaEndpoint, cfg.PhotoMediaWindow, cfg.PhotoMediaMaxCalls)
 	defaultGatewayConfig.RateLimiter = rl
+	defaultRateLimiter = rl
+}
+
+// UpdateDefaultGatewayRateLimit 執行期修改 placeGetEndpoint/
+// photoMediaEndpoint 這兩個 key 的限流規則——不同於
+// ConfigureDefaultGatewayRateLimit(必須在第一次 geo.New() 之前呼叫才
+// 生效,見該函式的完整說明),這支函式設計成可以在 defaultGateway 已經
+// 建立完成、process 正常運作期間反覆呼叫,供後台管理介面(見
+// server/internal/adminconsole)修改限流設定後,不需要重啟 process 就能
+// 生效的機制使用(典型用法:cmd/server 啟動一個背景 goroutine,定期
+// 從資料庫重讀設定後呼叫這支函式,見該處呼叫端的完整說明)。
+//
+// 若在 ConfigureDefaultGatewayRateLimit 從未被呼叫過的情況下呼叫這支
+// 函式(defaultRateLimiter 仍是 nil,代表 process 啟動時沒有設定過任何
+// 限流規則,也就不會建立過 RateLimiter instance),這裡會補建一個新的
+// RateLimiter 並設回 defaultGatewayConfig.RateLimiter——但若
+// defaultGateway 已經被 sync.Once 建立過,Gateway 內部存的仍是舊的(nil)
+// RateLimiter 欄位,不會讀到這裡新建的 instance,這個修補分支只在
+// defaultGateway 尚未被建立過時才會真正生效。這是刻意接受的限制:
+// process 啟動時完全沒呼叫過 ConfigureDefaultGatewayRateLimit(等同
+// 「一開始就不想要限流」)又想在執行期臨時補上限流規則,是目前產品需求
+// 之外的情境,不需要為了涵蓋它額外引入鎖住 Gateway 建立時機的複雜度
+// (例如讓 Gateway.rateLimiter 也改成可以事後替換的指標),與其如此,
+// cmd/server/main.go 一律在啟動時呼叫一次 ConfigureDefaultGatewayRateLimit
+// (即使當下資料庫還沒有任何設定,也會用預設值呼叫,見該處呼叫端的完整
+// 說明),確保 defaultRateLimiter 一定會在 defaultGateway 建立之前就緒。
+func UpdateDefaultGatewayRateLimit(cfg RateLimitConfig) {
+	if defaultRateLimiter == nil {
+		ConfigureDefaultGatewayRateLimit(cfg)
+		return
+	}
+	defaultRateLimiter.SetLimitForKey(placeGetEndpoint, cfg.PlaceGetWindow, cfg.PlaceGetMaxCalls)
+	defaultRateLimiter.SetLimitForKey(photoMediaEndpoint, cfg.PhotoMediaWindow, cfg.PhotoMediaMaxCalls)
 }
 
 // photosEnabled 是全域開關,控制要不要真的向 Google Photo Media API
@@ -426,7 +481,22 @@ type Place struct {
 	// PlaceID 是 Google 的穩定地點識別碼(不會過期,對照 PhotoRef 那種
 	// 有時效性的照片資源名稱)——供 fetchPhotoAsDataURI 當快取鍵用,
 	// 見 PhotoCache 介面的完整說明。查詢結果沒有解析出來時為空字串。
-	PlaceID string `json:"-"`
+	//
+	// 2026-09:json tag 從 "-"(不對外曝露)改成輸出 "placeId"——place_id
+	// 本身是 Google 官方文件明確允許長期保存與展示的穩定識別碼,不同於
+	// PhotoRef(photo resource name)那種 Google Maps Platform ToS 3.2.3(b)
+	// 明文禁止長期快取、且有時效性的欄位(見 store.photoCacheRow 的完整
+	// 說明),原本的「不對外洩漏」考量是針對後者這類有保存限制的欄位,
+	// 不適用於 PlaceID。改動動機:CLI 的 attraction-add -place 查詢流程
+	// (handleMaintenanceGeocode)需要把候選地點的 place_id 一併帶回 CLI,
+	// 才能讓人工建檔的 attraction 對應到 place_id、進而使用「地點照片
+	// 漸進補圖機制」(見 model.Attraction.PlaceID 的完整說明)。這個欄位
+	// 曝露後,所有回傳 []Place/[]NearbyPlace 的既有回應格式都會多出一個
+	// placeId 欄位——place_id 本身不敏感,多這個欄位不構成資安或商業
+	// 風險,見呼叫端逐一盤點的說明(server/internal/api/geo_outline.go、
+	// maintenance.go)。PhotoRef 維持 json:"-"不變,那個欄位的保存限制
+	// 依然適用。
+	PlaceID string `json:"placeId,omitempty"`
 	// PhotoRef 是這個地點第一張照片的 Places API photo resource name,
 	// 只有 SearchOptions.IncludePhotos 為 true 時才會有值——同
 	// NearbyPlace.PhotoRef 的說明,內部欄位不外洩給前端,呼叫端需另外

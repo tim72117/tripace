@@ -1,25 +1,27 @@
 import type { GeoAttraction } from '../api'
+import { curatedCategoryOf, CURATED_CATEGORY_MAP_CLASS } from './geoCuratedCategoryStub'
 
 // AttractionOverlay:單一景點區域的複合 DOM 疊層(光暈 + 圓形地標圖 + 白話標籤),
 // 用 google.maps.OverlayView 子類別實作,讓它跟著地圖投影自動換算像素位置。
-// 從 GeoOutlineMap.tsx 抽成獨立模組——這裡是純 DOM/Google Maps SDK 操作,
+// 從 ExploreMap.tsx 抽成獨立模組——這裡是純 DOM/Google Maps SDK 操作,
 // 不涉及任何 React state,搬移風險最低,但下面這段關於 CSS class 命名的
 // 限制務必完整保留(見 onAdd() 內的說明):**這批 class 名稱與
-// GeoOutlineMap.module.css 的 :global(.geo-attraction-*) 選擇器是一一
+// ExploreMap.module.css 的 :global(.geo-attraction-*) 選擇器是一一
 // 對應的固定字串契約,兩邊修改必須同步,不能只改其中一邊**——搬到這個
 // 獨立檔案後,兩者在檔案樹上的物理距離變遠,更容易被之後的維護者忽略
 // 同步,故此處鄭重重申一次(該限制的完整技術理由見 onAdd() 內的行內
-// 註解與 GeoOutlineMap.module.css 開頭的對應說明)。
+// 註解與 ExploreMap.module.css 開頭的對應說明)。
 //
 // 這個 class 不能在模組頂層直接 `extends google.maps.OverlayView`——
 // extends 子句在 class 宣告當下就會被求值,而 google.maps SDK 是透過
-// importLibrary('maps')異步載入的(見 GeoOutlineMap.tsx 建圖的
+// importLibrary('maps')異步載入的(見 ExploreMap.tsx 建圖的
 // useEffect),模組載入的當下 google 這個全域變數還不存在,會直接拋出
 // ReferenceError: google is not defined。改用 getAttractionOverlayClass()
 // 延後到 SDK 確定載入完成後才定義並快取這個 class(單例,只建一次)。
 export type AttractionOverlayInstance = google.maps.OverlayView & {
   setSelected: (selected: boolean) => void
   setCandidate: (candidate: boolean) => void
+  setHovered: (hovered: boolean) => void
 }
 
 let AttractionOverlayClass:
@@ -40,11 +42,22 @@ export function getAttractionOverlayClass() {
     private position: google.maps.LatLng
     private selected: boolean
     // candidate:這個景點區域目前是否已經在候選籃裡(見
-    // GeoOutlineMap.tsx 的 candidateKeys prop 說明)——跟 selected 是
+    // ExploreMap.tsx 的 candidateKeys prop 說明)——跟 selected 是
     // 兩個獨立、可以同時成立的狀態:selected 是「側欄目前點開哪一項的
     // 介紹」,candidate 是「使用者已經把這個景點丟進候選籃」,一個是
     // 暫時的瀏覽焦點、一個是持續累積的規劃結果,不能合併成同一個布林值。
     private candidate: boolean
+    // hovered:僅精選點(見下方 isTheme)使用——使用者滑鼠移到
+    // AttractionInfoPanel「附近景點」清單裡對應的項目時暫時為 true,見
+    // useAttractionOverlays.ts 同步這個狀態的 effect。主題點永遠忽略這個
+    // 欄位(建構時就已經是完整照片呈現,沒有「展開」的必要)。
+    private hovered: boolean = false
+    // isTheme:主題點/精選點的分級,建構後不會再變動——見下方 onAdd() 對
+    // 這個分級如何影響 markup 的完整說明。直接讀 GeoAttraction.isTheme
+    // (後端 model.Attraction.IsTheme,見該欄位完整說明),不再用
+    // level===1 推斷——level 數字分級已改為只服務 zoom 顯示門檻用途,跟
+    // 「是否為主題」是兩個獨立語意,不應該再共用同一個數字欄位判斷。
+    private readonly isTheme: boolean
 
     constructor(
       private attraction: GeoAttraction,
@@ -57,6 +70,7 @@ export function getAttractionOverlayClass() {
       this.position = position
       this.selected = selected
       this.candidate = candidate
+      this.isTheme = attraction.isTheme
     }
 
     onAdd() {
@@ -68,15 +82,52 @@ export function getAttractionOverlayClass() {
       // :global()包裹的規則本來就不會被匯出(這正是 :global 的用途:定義
       // 不受雜湊影響的固定 class 名),若誤用 styles.xxx 取值會拿到
       // undefined,等於完全沒套用到任何 class、CSS 規則(尤其是關鍵的
-      // position: absolute)整個失效。故這裡與 GeoOutlineMap.module.css
+      // position: absolute)整個失效。故這裡與 ExploreMap.module.css
       // 的 :global(.xxx) 選擇器一致,直接寫死字串。
       div.className = [
         'geo-attraction-overlay',
         this.selected && 'geo-attraction-overlay-selected',
         this.candidate && 'geo-attraction-overlay-candidate',
       ].filter(Boolean).join(' ')
-      div.innerHTML = `
-        <div class="geo-attraction-glow"></div>
+      this.div = div
+      this.renderContent()
+      const panes = this.getPanes()
+      panes?.overlayMouseTarget.appendChild(div)
+    }
+
+    // renderContent:依 isTheme/hovered 組出 innerHTML 並重新綁定點擊——
+    // 主題點(isTheme===true)一律畫完整的光暈+圓形地標圖(或無照片時的
+    // 佔位圓)+白話標籤。精選點(isTheme===false,見 useAttractionOverlays.ts
+    // 對這個分級的完整說明)預設只畫散策羅盤那種輕量的圓點
+    // (geo-attraction-curated-dot),不帶照片,理由是精選點數量可能一次
+    // 揭露一整批(見 revealedAttractionNames),若每個都用跟主題點同等
+    // 份量的照片縮圖呈現,會搶過主題點本身的視覺焦點,失去「主題點才是
+    // 主角、精選點是環繞的衛星」這個散策羅盤的核心視覺隱喻——只有使用者
+    // 滑鼠移到「附近景點」清單對應項目時(hovered),才臨時升級成跟主題點
+    // 同樣的完整照片呈現(不含光暈,理由同 setHovered 的說明),滑開後
+    // 立刻收回圓點,讓地圖上的視覺重點永遠是「使用者當下感興趣的那一個」
+    // 而非一次攤開一整批照片。
+    //
+    // 每次呼叫都重新設定 innerHTML(而非像 setSelected/setCandidate 只切
+    // class),是因為圓點/照片兩種狀態的 DOM 結構本身不同(圓點沒有 img
+    // 元素),不是單純的樣式差異——但只有 setHovered 真的觸發狀態改變時
+    // 才會呼叫,實際觸發頻率很低(同一時間通常只有一個精選點被滑到),
+    // 不會像「所有 overlay 依賴陣列變動」那樣大量重繪。
+    private renderContent() {
+      if (!this.div) return
+      const showPhoto = this.isTheme || this.hovered
+      // 圓點分類配色:見 geoCuratedCategoryStub.ts 的完整說明——優先讀
+      // 後端 category 欄位,查無對應分類時圓點退回基底 class
+      // (ExploreMap.module.css 的 --ios-sand 預設色),不額外附加
+      // modifier class。
+      const category = curatedCategoryOf(this.attraction.category)
+      const dotClass = [
+        'geo-attraction-curated-dot',
+        category && CURATED_CATEGORY_MAP_CLASS[category],
+      ].filter(Boolean).join(' ')
+      this.div.innerHTML = showPhoto
+        ? `
+        ${this.isTheme ? '<div class="geo-attraction-glow"></div>' : ''}
         ${
           this.attraction.landmarkPhotoUrl
             ? `<img class="geo-attraction-landmark-photo" src="${this.attraction.landmarkPhotoUrl}" alt="${escapeHtml(this.attraction.landmarkName ?? this.attraction.name)}" loading="lazy" />`
@@ -84,27 +135,42 @@ export function getAttractionOverlayClass() {
         }
         <span class="geo-attraction-label">${escapeHtml(this.attraction.name)}</span>
       `
-      this.div = div
-      const panes = this.getPanes()
-      panes?.overlayMouseTarget.appendChild(div)
+        : `
+        <div class="${dotClass}"></div>
+        <span class="geo-attraction-label">${escapeHtml(this.attraction.name)}</span>
+      `
 
-      // 只在圓形地標圖/佔位圓本身綁點擊(見 module.css 的
+      // 只在圓形地標圖/佔位圓/精選點圓點本身綁點擊(見 module.css 的
       // pointer-events: auto 覆寫),不是整個 overlay 容器——光暈與標籤
       // 文字仍不可點擊,維持「只召喚不強加」,只有具體可辨識的地標本身
       // 才是可互動元素。點下去回報這個景點區域資料,由外層決定怎麼放大
-      // (見 GeoOutlineMap.tsx 的 handleAttractionClick)。
-      const clickTarget = div.querySelector('.geo-attraction-landmark-photo, .geo-attraction-landmark-placeholder')
+      // (見 ExploreMap.tsx 的 handleAttractionClick)。innerHTML 每次
+      // 重設都會拿掉舊的監聽器,故每次 renderContent() 都要重新綁定。
+      const clickTarget = this.div.querySelector('.geo-attraction-landmark-photo, .geo-attraction-landmark-placeholder, .geo-attraction-curated-dot')
       if (clickTarget) {
         clickTarget.addEventListener('click', () => this.onClick(this.attraction))
-        // preventMapHitsAndGesturesFrom:讓地圖的拖曳/縮放手勢判斷邏輯
-        // 知道「這個元素上的事件是給它自己的,不是給地圖拖曳用的」——
-        // overlayMouseTarget pane 本身雖然會把原生 DOM 事件傳給子元素,
-        // 但沒有這行的話,Maps 內部的拖曳偵測仍可能在滑鼠按下/放開之間
-        // 判斷成一次(即使是原地不動的)拖曳手勢而吃掉 click,導致單純
-        // 用 addEventListener('click', ...) 註冊的監聽器不會被觸發。
-        // 這是 Google 官方文件建議讓自訂 OverlayView 內元素能可靠接收
-        // 點擊的做法,addEventListener 本身要保留(不是被取代)。
-        google.maps.OverlayView.preventMapHitsAndGesturesFrom(clickTarget as HTMLElement)
+        // 2026-08:原本這裡呼叫 google.maps.OverlayView.preventMapHitsAndGesturesFrom
+        // (Google 官方文件建議讓自訂 OverlayView 內元素能可靠接收點擊的
+        // 做法)——但官方文件同時記載這個 API 連 wheel(滑鼠滾輪)事件都會
+        // 一併攔截,不只是點擊/拖曳,導致使用者滑鼠停在地標圖示/圓點正
+        // 上方時完全無法縮放地圖(使用者實測回報)。曾經試過兩種補救方式
+        // 都失敗:(1)自己算縮放後該把地圖中心挪到哪重現「對齊游標」效果,
+        // 位置算錯;(2)把 wheel 事件原封不動 dispatchEvent 轉發給
+        // map.getDiv(),疑似因為是合成事件(isTrusted: false)或轉發目標
+        // 不是 Maps 內部真正掛監聽器的那層,導致完全接收不到、縮放整個
+        // 失效。
+        //
+        // 改用更保守的做法:不整批攔截,只針對「拖曳手勢誤判吃掉 click」
+        // 這個原始問題本身動手——真正會被 Maps 內部拖曳偵測誤判的是
+        // mousedown/touchstart(滑鼠按下/觸控開始,拖曳判定從這裡起算),
+        // 不是 wheel,也不是 click 本身(click 監聽器掛在同一個元素上,
+        // 不受這裡的 stopPropagation 影響,一定會觸發)。只擋這兩個事件
+        // 冒泡到地圖,讓 wheel 完全不被觸碰、維持 100% 原生瀏覽器事件
+        // (真正的 isTrusted: true 事件,不依賴合成事件是否被 Maps 內部
+        // 邏輯接受),縮放位置自然正確,不需要自己重新推導投影數學或猜測
+        // Maps 內部監聽器掛在哪一層。
+        clickTarget.addEventListener('mousedown', (e) => e.stopPropagation())
+        clickTarget.addEventListener('touchstart', (e) => e.stopPropagation())
       }
     }
 
@@ -139,6 +205,21 @@ export function getAttractionOverlayClass() {
       if (!this.div) return
       this.div.classList.toggle('geo-attraction-overlay-candidate', candidate)
     }
+
+    // setHovered:主題點永遠 no-op(見 isTheme 的說明,建構後已經是完整
+    // 照片呈現,沒有「展開」的必要)。精選點才需要重繪 innerHTML(圓點↔
+    // 照片兩種 DOM 結構不同,不是切 class 能表達的差異,見 renderContent
+    // 的完整說明)——值沒有真的改變時提早跳出,避免使用者滑鼠在同一個
+    // 圓點上小幅移動時重複觸發不必要的 DOM 重建。額外切換
+    // geo-attraction-overlay-hovered class(見 module.css 的完整說明)
+    // 把整組地標拉到最上層——這個觸發來源(附近景點清單 hover)游標實際
+    // 不在地圖上,無法靠 CSS :hover 判斷,必須用 JS 主動切 class。
+    setHovered(hovered: boolean) {
+      if (this.isTheme || this.hovered === hovered) return
+      this.hovered = hovered
+      this.div?.classList.toggle('geo-attraction-overlay-hovered', hovered)
+      this.renderContent()
+    }
   }
 
   AttractionOverlayClass = AttractionOverlay
@@ -167,7 +248,7 @@ export function maxLevelForZoom(zoom: number): number {
 // minZoomForLevel:maxLevelForZoom 的反函式——給定一個知名度分級,回傳
 // 「至少要縮放到多少 zoom 才看得到它」的最小 zoom 值。供側欄點擊地點
 // 時使用:點一個 5 級(在地級,如「永康商圈」)的地點,若目前 zoom 只有
-// 12(對應 maxLevel=3),該點根本不會被畫出來(見 GeoOutlineMap.tsx 的
+// 12(對應 maxLevel=3),該點根本不會被畫出來(見 ExploreMap.tsx 的
 // filteredAttractions 篩選),必須先把 zoom 拉到 15 以上才看得到,單純
 // panTo 平移過去只會移到一個空地圖。數字取自 maxLevelForZoom 每個門檻的
 // 下一格,兩者需要保持同步——調整 maxLevelForZoom 的門檻時記得一併更新

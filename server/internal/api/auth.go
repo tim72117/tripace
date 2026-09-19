@@ -62,7 +62,8 @@ func (s *Server) handleAppleAuth(w http.ResponseWriter, r *http.Request) {
 
 	// 依 Apple sub 找使用者,沒有就建立。
 	user, err := s.store.FindUserByAppleSub(identity.Sub)
-	if errors.Is(err, store.ErrNotFound) {
+	isNewUser := errors.Is(err, store.ErrNotFound)
+	if isNewUser {
 		name := body.FullName
 		if name == "" {
 			name = "Apple 使用者"
@@ -74,7 +75,7 @@ func (s *Server) handleAppleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.issueToken(w, user, identity.Email)
+	s.issueToken(w, user, identity.Email, isNewUser)
 }
 
 // POST /v1/auth/google
@@ -105,6 +106,12 @@ func (s *Server) handleGoogleAuth(w http.ResponseWriter, r *http.Request) {
 
 	// 身分查詢一律用 sub(穩定、不會變動),不是 email(見
 	// auth.GoogleIdentity 的說明)。
+	//
+	// isNewUser 只在下方真的走到 CreateGoogleUser(!linked 分支)才設為
+	// true——linked 分支是把這個 Google identity 關聯到既有帳號(使用者
+	// 原本就有帳密或 Apple 帳號),對這位使用者而言不是「新建帳號」,不該
+	// 算一次註冊轉換(見 issueToken 的完整說明)。
+	isNewUser := false
 	user, err := s.store.FindUserByGoogleSub(identity.Sub)
 	if errors.Is(err, store.ErrNotFound) {
 		// google_sub 沒對應到任何使用者——若該 email 已通過 Google 驗證
@@ -132,6 +139,7 @@ func (s *Server) handleGoogleAuth(w http.ResponseWriter, r *http.Request) {
 				name = "Google 使用者"
 			}
 			user, err = s.store.CreateGoogleUser("usr_"+newID(), name, "#8C7B6A", identity.Sub)
+			isNewUser = true
 		}
 	}
 	if err != nil {
@@ -139,7 +147,7 @@ func (s *Server) handleGoogleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.issueToken(w, user, identity.Email)
+	s.issueToken(w, user, identity.Email, isNewUser)
 }
 
 // POST /v1/auth/register
@@ -182,7 +190,10 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "create_failed", err.Error())
 		return
 	}
-	s.issueToken(w, user, email)
+	// isNewUser 固定 true——email 已存在的情況在上面 email_taken 檢查就
+	// 已經回 409 擋掉,能走到這裡必然是剛建立的新帳號(見 issueToken 的
+	// 完整說明)。
+	s.issueToken(w, user, email, true)
 }
 
 // POST /v1/auth/login
@@ -203,21 +214,36 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "invalid_credentials", "email 或密碼錯誤")
 		return
 	}
-	s.issueToken(w, user, email)
+	// isNewUser 固定 false——帳密登入必然是既有帳號(見 issueToken 的
+	// 完整說明)。
+	s.issueToken(w, user, email, false)
 }
 
-// issueToken 簽發 JWT 並以 { token, user, profile } 回應(register/login/apple 共用)。
-// user 為公開身分;profile 含私密資料(email),分離設計。
-func (s *Server) issueToken(w http.ResponseWriter, user model.User, email string) {
+// issueToken 簽發 JWT 並以 { token, user, profile, isNewUser } 回應
+// (register/login/apple/google 共用)。user 為公開身分;profile 含私密
+// 資料(email),分離設計。
+//
+// isNewUser:這次驗證是否剛建立了一筆新帳號——register 呼叫端固定傳
+// true(email 已存在時 handleRegister 在呼叫這裡之前就已經回 409 擋掉,
+// 能走到這裡必然是新帳號)、login 固定傳 false(帳密登入不可能建立新
+// 帳號);apple/google 兩個第三方登入需要各自判斷「這次是查到既有帳號
+// 還是剛建立」再傳入對應值。前端(web/src/home/LoginForm.tsx)靠這個
+// 欄位決定要不要觸發註冊轉換事件(見 web/src/analytics.ts 的
+// fireRegistrationConversion 完整說明)——第三方登入沒有像 register
+// 端點那樣「resolve 就代表新帳號」的天然保證,同一個 Google/Apple 帳號
+// 之後每次登入都會呼叫同一支端點,若沒有這個欄位分辨,會導致每次登入都
+// 誤觸發一次註冊轉換。
+func (s *Server) issueToken(w http.ResponseWriter, user model.User, email string, isNewUser bool) {
 	token, err := s.signer.Sign(user.ID, user.Name)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "sign_failed", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"token":   token,
-		"user":    user,
-		"profile": model.Profile{Email: email},
+		"token":     token,
+		"user":      user,
+		"profile":   model.Profile{Email: email},
+		"isNewUser": isNewUser,
 	})
 }
 

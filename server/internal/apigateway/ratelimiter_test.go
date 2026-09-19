@@ -43,6 +43,33 @@ func TestRateLimiter_UnconfiguredKeyIsNeverLimited(t *testing.T) {
 	}
 }
 
+// TestRateLimiter_SetLimitForKeyWithNonPositiveMaxCallsRemovesLimit 驗證
+// 執行期用 maxCalls<=0 重新呼叫 SetLimitForKey 會真的移除這個 key 的
+// 限流規則,退回未設定過的狀態(Allow 一律放行)——這是 2026-09 支援後台
+// 執行期調整限流設定後新增的語意(見 SetLimitForKey 的完整說明:在只有
+// 啟動時呼叫一次的舊假設下,maxCalls<=0「不寫入」與「移除」是等價的,
+// 但執行期重設情境下兩者不同,必須驗證真的走到移除分支,而不是維持
+// 先前已設定的規則不變)。
+func TestRateLimiter_SetLimitForKeyWithNonPositiveMaxCallsRemovesLimit(t *testing.T) {
+	rl := NewRateLimiter()
+	rl.SetLimitForKey("k", time.Minute, 1)
+
+	if !rl.Allow("k") {
+		t.Fatal("第 1 次呼叫應被放行")
+	}
+	if rl.Allow("k") {
+		t.Fatal("第 2 次呼叫應被拒絕（已超過視窗內上限 1 次），卻被放行")
+	}
+
+	rl.SetLimitForKey("k", time.Minute, 0)
+
+	for i := 0; i < 10; i++ {
+		if !rl.Allow("k") {
+			t.Fatalf("移除限流規則後第 %d 次呼叫應被放行，卻被拒絕", i+1)
+		}
+	}
+}
+
 // TestRateLimiter_DifferentKeysHaveIndependentWindows 驗證不同 key 各自
 // 獨立計數，某個 key 被打滿額度不會連帶影響其他 key——這是「依 endpoint
 // 分開限流」這個核心設計目標的直接驗證。

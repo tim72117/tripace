@@ -4,7 +4,7 @@ import styles from './GeoOutlinePhoneDateCalendarSheet.module.css'
 
 // SHEET_SNAP_POINTS:單段模式,理由同 GeoOutlinePhoneDatePickerSheet.tsx
 // ——月曆格線(DatePickerPopover,見下方元件說明)本身需要的高度比原生
-// <input type="date"> 大很多,估算基準比照 GeoInfoPanel.tsx
+// <input type="date"> 大很多,估算基準比照 PlacePanel.tsx
 // estimatedCalendarHeight 的既有算法(32 導覽列 + 28 星期列 + 6 週 × 34
 // 格高 + 16 內距 + 6 邊界 ≈ 286px),再加上這個 sheet 的 head 標頭高度
 // (約 40px)與上下 padding,取 360px。
@@ -29,7 +29,7 @@ const SHEET_SNAP_POINTS = [360]
 // geoAddCandidateState.ts 的 addUi.dateValue——這次改成獨立 sheet 時
 // 先搬到這個元件自己的 useState。使用者接著明確要求「日曆要用跟桌面版
 // 的日曆一樣」,改用 DatePickerPopover(react-day-picker 月曆格線 UI,
-// 見 GeoInfoPanel.tsx/GeoCandidateSidebar.tsx 已經在用的同一個共用元件,
+// 見 PlacePanel.tsx/GeoCandidateSidebar.tsx 已經在用的同一個共用元件,
 // 平台無關、不是桌面版專屬——原本因為手機版尚未有這個元件才暫時退回
 // 原生 date input,不是刻意要跟桌面版呈現不同的日期選擇體驗)。
 // DatePickerPopover 本身點選日期格子即視為確定(見該檔案 onSelect 的

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from './api'
-import type { ExternalServiceStatus, GeoAPICallStats, PathRequestStats, SchemaCheck, TimelineBucket, UserSummary } from './api'
+import type { ExternalServiceStatus, GeoAPICallStats, GeoRateLimit, PathRequestStats, PlaceDetailsZeroPhotoTarget, SchemaCheck, TimelineBucket, UserSummary } from './api'
 import { TimelineChart } from './TimelineChart'
 
 export default function App() {
@@ -64,7 +64,7 @@ function Login({ onLoggedIn }: { onLoggedIn: (email: string) => void }) {
   )
 }
 
-type Tab = 'users' | 'external' | 'requests' | 'geo-api' | 'schema'
+type Tab = 'users' | 'external' | 'requests' | 'geo-api' | 'geo-rate-limits' | 'photo-target-check' | 'schema'
 
 function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOut: () => void }) {
   const [tab, setTab] = useState<Tab>('users')
@@ -102,6 +102,12 @@ function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOu
         <button className={tab === 'geo-api' ? 'tab active' : 'tab'} onClick={() => setTab('geo-api')}>
           Google API calls
         </button>
+        <button className={tab === 'geo-rate-limits' ? 'tab active' : 'tab'} onClick={() => setTab('geo-rate-limits')}>
+          Google API rate limits
+        </button>
+        <button className={tab === 'photo-target-check' ? 'tab active' : 'tab'} onClick={() => setTab('photo-target-check')}>
+          Photo target=0 check
+        </button>
         <button className={tab === 'schema' ? 'tab active' : 'tab'} onClick={() => setTab('schema')}>
           Schema check
         </button>
@@ -111,6 +117,8 @@ function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOu
       {tab === 'external' && <ExternalServicesTab onLoggedOut={onLoggedOut} />}
       {tab === 'requests' && <RequestStatsTab onLoggedOut={onLoggedOut} />}
       {tab === 'geo-api' && <GeoAPIStatsTab onLoggedOut={onLoggedOut} />}
+      {tab === 'geo-rate-limits' && <GeoRateLimitsTab onLoggedOut={onLoggedOut} />}
+      {tab === 'photo-target-check' && <PhotoTargetZeroCheckTab onLoggedOut={onLoggedOut} />}
       {tab === 'schema' && <SchemaCheckTab onLoggedOut={onLoggedOut} />}
     </div>
   )
@@ -283,6 +291,288 @@ function ExternalServicesTab({ onLoggedOut }: { onLoggedOut: () => void }) {
                   </td>
                 </tr>
               )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  )
+}
+
+// GeoRateLimitsTab: edits the "places.get" / "places.photoMedia" rows of
+// server/internal/store/geo_rate_limits.go. An endpoint with no row yet
+// (nothing saved through this form, or a fresh deployment before
+// cmd/server's startup seed runs) shows a blank editable row seeded from
+// DEFAULT_ENDPOINTS below rather than nothing — the admin shouldn't need to
+// already know the endpoint's exact string to create its first row.
+//
+// Saved edits don't apply instantly: cmd/server reads this table on a
+// background timer (~45s, see geoRateLimitRefreshInterval in
+// server/cmd/server/geo_rate_limit.go), not on every request — this tab
+// says so next to the save button rather than implying an immediate effect.
+const DEFAULT_ENDPOINTS = ['places.get', 'places.photoMedia']
+
+// EditableRow mirrors GeoRateLimit's editable fields as strings (so a
+// partially-typed number field, including empty, is representable while
+// the user is still typing) plus the two read-only usage fields pulled
+// straight from the last successful load/save.
+interface EditableRow {
+  endpoint: string
+  windowSec: string
+  maxCalls: string
+  dailyMax: string
+  usedToday: number
+  usedDay: string
+}
+
+function toEditableRow(limit: GeoRateLimit): EditableRow {
+  return {
+    endpoint: limit.endpoint,
+    windowSec: String(limit.windowSec),
+    maxCalls: String(limit.maxCalls),
+    dailyMax: String(limit.dailyMax),
+    usedToday: limit.usedToday,
+    usedDay: limit.usedDay,
+  }
+}
+
+function blankEditableRow(endpoint: string): EditableRow {
+  return { endpoint, windowSec: '', maxCalls: '', dailyMax: '0', usedToday: 0, usedDay: '' }
+}
+
+function GeoRateLimitsTab({ onLoggedOut }: { onLoggedOut: () => void }) {
+  const [rows, setRows] = useState<EditableRow[] | null>(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  // savingEndpoint tracks which single row's Save button is mid-request —
+  // rows are saved independently (one PUT per endpoint, see api.ts), so
+  // only that row's button should show a busy state, not the whole tab.
+  const [savingEndpoint, setSavingEndpoint] = useState<string | null>(null)
+  const [rowError, setRowError] = useState<{ endpoint: string; message: string } | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await api.geoRateLimits()
+      const byEndpoint = new Map(res.limits.map((l) => [l.endpoint, toEditableRow(l)]))
+      // Always show every DEFAULT_ENDPOINTS row, even if the backend has
+      // no data for it yet — see the component comment above.
+      const merged = DEFAULT_ENDPOINTS.map((ep) => byEndpoint.get(ep) ?? blankEditableRow(ep))
+      // Any endpoint present in the backend response but not in
+      // DEFAULT_ENDPOINTS (set through some other client, or a future
+      // endpoint this admin build doesn't know about yet) is still shown,
+      // appended after the known ones, so this form never silently hides
+      // a row that actually exists.
+      for (const l of res.limits) {
+        if (!DEFAULT_ENDPOINTS.includes(l.endpoint)) merged.push(toEditableRow(l))
+      }
+      setRows(merged)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onLoggedOut()
+        return
+      }
+      setError(err instanceof ApiError ? err.message : 'Failed to load')
+    } finally {
+      setLoading(false)
+    }
+  }, [onLoggedOut])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const updateField = (endpoint: string, field: 'windowSec' | 'maxCalls' | 'dailyMax', value: string) => {
+    setRows((prev) => (prev ?? []).map((r) => (r.endpoint === endpoint ? { ...r, [field]: value } : r)))
+  }
+
+  const save = async (row: EditableRow) => {
+    setRowError(null)
+    const windowSec = Number(row.windowSec)
+    const maxCalls = Number(row.maxCalls)
+    const dailyMax = Number(row.dailyMax)
+    if (!Number.isFinite(windowSec) || windowSec <= 0) {
+      setRowError({ endpoint: row.endpoint, message: 'Window (sec) must be a positive number' })
+      return
+    }
+    if (!Number.isFinite(maxCalls) || maxCalls <= 0) {
+      setRowError({ endpoint: row.endpoint, message: 'Max calls must be a positive number' })
+      return
+    }
+    if (!Number.isFinite(dailyMax) || dailyMax < 0) {
+      setRowError({ endpoint: row.endpoint, message: 'Daily max must be 0 or a positive number' })
+      return
+    }
+    setSavingEndpoint(row.endpoint)
+    try {
+      const res = await api.updateGeoRateLimit({ endpoint: row.endpoint, windowSec, maxCalls, dailyMax })
+      const byEndpoint = new Map(res.limits.map((l) => [l.endpoint, toEditableRow(l)]))
+      setRows((prev) => (prev ?? []).map((r) => byEndpoint.get(r.endpoint) ?? r))
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onLoggedOut()
+        return
+      }
+      setRowError({ endpoint: row.endpoint, message: err instanceof ApiError ? err.message : 'Save failed' })
+    } finally {
+      setSavingEndpoint(null)
+    }
+  }
+
+  return (
+    <>
+      {error && <div className="error banner">{error}</div>}
+
+      <section className="card">
+        <div className="section-head">
+          <h2>Google API rate limits</h2>
+          <button className="ghost" onClick={() => void load()} disabled={loading}>
+            {loading ? 'Loading…' : 'Refresh'}
+          </button>
+        </div>
+        <p className="muted">
+          Edits are picked up by the server within about 45 seconds, not instantly — the running process re-reads this
+          table on a background timer rather than applying every save immediately.
+        </p>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Endpoint</th>
+                <th>Window (sec)</th>
+                <th>Max calls / window</th>
+                <th>Daily max (0 = unlimited)</th>
+                <th>Used today</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {(rows ?? []).map((r) => (
+                <tr key={r.endpoint}>
+                  <td>{r.endpoint}</td>
+                  <td>
+                    <input
+                      type="number"
+                      min={1}
+                      value={r.windowSec}
+                      onChange={(e) => updateField(r.endpoint, 'windowSec', e.target.value)}
+                      style={{ width: '6rem' }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      min={1}
+                      value={r.maxCalls}
+                      onChange={(e) => updateField(r.endpoint, 'maxCalls', e.target.value)}
+                      style={{ width: '6rem' }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      min={0}
+                      value={r.dailyMax}
+                      onChange={(e) => updateField(r.endpoint, 'dailyMax', e.target.value)}
+                      style={{ width: '6rem' }}
+                    />
+                  </td>
+                  <td className="muted">
+                    {r.usedDay ? `${r.usedToday} (as of ${r.usedDay})` : '—'}
+                  </td>
+                  <td className="row-actions">
+                    <button onClick={() => void save(r)} disabled={savingEndpoint === r.endpoint}>
+                      {savingEndpoint === r.endpoint ? 'Saving…' : 'Save'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {rowError && <div className="error">{`${rowError.endpoint}: ${rowError.message}`}</div>}
+      </section>
+    </>
+  )
+}
+
+// PhotoTargetZeroCheckTab: lists every place_details_cache row where
+// google_photo_target_count is exactly 0 right now. That value is
+// ambiguous by itself (see PlaceDetailsZeroPhotoTarget's doc comment in
+// api.ts): it's the legitimate steady state for "confirmed with Google,
+// genuinely no photos", but it's also exactly what a since-fixed deadlock
+// bug used to leave for places that were never actually confirmed. This
+// tab intentionally has no "fix" button — telling those two cases apart
+// requires an actual judgment call (e.g. looking the place up on Google
+// Maps), not something safe to automate from this list alone. An operator
+// who confirms a row is a stale pre-fix artifact fixes it by hand (reset
+// google_photo_target_count back to -1 directly in the database, or wait
+// for it to be reached by whatever cleanup script eventually runs) — this
+// page is purely a read-only worklist for that manual triage.
+function PhotoTargetZeroCheckTab({ onLoggedOut }: { onLoggedOut: () => void }) {
+  const [places, setPlaces] = useState<PlaceDetailsZeroPhotoTarget[] | null>(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await api.photoTargetZeroCheck()
+      setPlaces(res.places)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onLoggedOut()
+        return
+      }
+      setError(err instanceof ApiError ? err.message : 'Failed to load')
+    } finally {
+      setLoading(false)
+    }
+  }, [onLoggedOut])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  return (
+    <>
+      {error && <div className="error banner">{error}</div>}
+
+      <section className="card">
+        <div className="section-head">
+          <h2>Photo target=0 check</h2>
+          <button className="ghost" onClick={() => void load()} disabled={loading}>
+            {loading ? 'Loading…' : 'Refresh'}
+          </button>
+        </div>
+        <p className="muted">
+          Every place below has google_photo_target_count = 0 right now. That's the legitimate value for "confirmed —
+          this place genuinely has no Google photos", but it's also what a since-fixed bug used to leave behind for
+          places that were never actually confirmed. Spot-check a row (e.g. on Google Maps) before assuming it's
+          correct — this list is a worklist, not a report of problems.
+        </p>
+        {places !== null && <p className="muted">{places.length} place(s) currently at target=0.</p>}
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Place ID</th>
+                <th>Name</th>
+                <th>Click count</th>
+                <th>Last confirmed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(places ?? []).map((p) => (
+                <tr key={p.placeId}>
+                  <td>{p.placeId}</td>
+                  <td>{p.name}</td>
+                  <td>{p.clickCount}</td>
+                  <td>{new Date(p.fetchedAt).toLocaleString()}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

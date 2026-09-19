@@ -14,6 +14,119 @@ import (
 	"time"
 )
 
+// TestSetCachedPlaceDetails_NewRowGetsSentinelGooglePhotoTargetCount 驗證
+// 新插入的一列 google_photo_target_count 是 sentinel -1(「尚未確認過」,
+// 見 placeDetailsCacheRow.GooglePhotoTargetCount 的完整說明),不是
+// 舊版的 0——0 是「已確認過、真的是 0 張」的合法終態,兩者不能混淆,
+// 否則 shouldAddGooglePlacePhoto 永遠不會觸發第一次確認(2026-09 修正
+// 的死鎖 bug,順正/清水順正 Okabe家 是實測踩到的真實案例)。
+func TestSetCachedPlaceDetails_NewRowGetsSentinelGooglePhotoTargetCount(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SetCachedPlaceDetails("place-new", "測試地點", "測試地址", 25.0, 121.5, 4.5, nil); err != nil {
+		t.Fatalf("SetCachedPlaceDetails failed: %v", err)
+	}
+
+	row, ok, err := s.GetCachedPlaceDetails("place-new", time.Hour)
+	if err != nil {
+		t.Fatalf("GetCachedPlaceDetails failed: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected cache hit right after SetCachedPlaceDetails")
+	}
+	if row.GooglePhotoTargetCount != -1 {
+		t.Fatalf("expected new row's GooglePhotoTargetCount to be sentinel -1, got %d", row.GooglePhotoTargetCount)
+	}
+}
+
+// TestSetCachedPlaceDetails_RepeatedCallsPreservePhotoProgress 驗證
+// SetCachedPlaceDetails 重複呼叫同一個 place_id(例如快取過期後文字
+// 欄位被重新查詢)不會覆蓋掉既有的 google_photo_target_count/
+// new_photo_count/click_count——這三欄是漸進補圖機制自己累積的獨立
+// 狀態,SetCachedPlaceDetails 的參數列完全不含這三欄,不該被它的呼叫
+// 意外歸零(2026-09 修正:原本用 db.Save(&row) 整列覆寫會踩到這個問題,
+// 見該函式的完整說明)。
+func TestSetCachedPlaceDetails_RepeatedCallsPreservePhotoProgress(t *testing.T) {
+	s := newTestStore(t)
+	const placeID = "place-repeat"
+	if err := s.SetCachedPlaceDetails(placeID, "測試地點", "測試地址", 25.0, 121.5, 4.5, nil); err != nil {
+		t.Fatalf("SetCachedPlaceDetails (initial) failed: %v", err)
+	}
+
+	// 模擬漸進補圖機制已經確認過 target、補了一張照片、累積了幾次點擊。
+	if _, _, _, err := s.IncrementPlaceClickCount(placeID); err != nil {
+		t.Fatalf("IncrementPlaceClickCount failed: %v", err)
+	}
+	if err := s.UpdatePlacePhotoProgress(placeID, 1, 5, true); err != nil {
+		t.Fatalf("UpdatePlacePhotoProgress failed: %v", err)
+	}
+
+	// 之後 SetCachedPlaceDetails 又被呼叫一次(例如 24 小時文字快取過期
+	// 重新查詢)——不該把上面設定的補圖進度洗掉。
+	if err := s.SetCachedPlaceDetails(placeID, "測試地點(更新後)", "測試地址", 25.0, 121.5, 4.6, nil); err != nil {
+		t.Fatalf("SetCachedPlaceDetails (repeat) failed: %v", err)
+	}
+
+	row, ok, err := s.GetCachedPlaceDetails(placeID, time.Hour)
+	if err != nil {
+		t.Fatalf("GetCachedPlaceDetails failed: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected cache hit")
+	}
+	if row.GooglePhotoTargetCount != 5 {
+		t.Fatalf("expected GooglePhotoTargetCount to survive repeated SetCachedPlaceDetails, got %d", row.GooglePhotoTargetCount)
+	}
+	if row.NewPhotoCount != 1 {
+		t.Fatalf("expected NewPhotoCount to survive repeated SetCachedPlaceDetails, got %d", row.NewPhotoCount)
+	}
+	if row.ClickCount != 1 {
+		t.Fatalf("expected ClickCount to survive repeated SetCachedPlaceDetails, got %d", row.ClickCount)
+	}
+	// 文字欄位本身應該有真的更新到最新值。
+	if row.Name != "測試地點(更新後)" {
+		t.Fatalf("expected Name to be updated by repeated SetCachedPlaceDetails, got %q", row.Name)
+	}
+}
+
+// TestListPlaceDetailsWithZeroPhotoTarget_OnlyReturnsExactZero 驗證只回傳
+// google_photo_target_count 恰好是 0 的列——sentinel -1(尚未確認過)跟
+// 正數(已確認、有實際張數)都不該出現在這份清單裡,這份清單的用途是
+// 「核對這個 0 是不是死鎖 bug 遺留的舊資料」(見
+// ListPlaceDetailsWithZeroPhotoTarget 的完整說明),混進其他狀態的列會
+// 讓核對失去意義。
+func TestListPlaceDetailsWithZeroPhotoTarget_OnlyReturnsExactZero(t *testing.T) {
+	s := newTestStore(t)
+
+	// never-confirmed:剛建立,target 是 sentinel -1。
+	if err := s.SetCachedPlaceDetails("place-never-confirmed", "尚未確認", "", 0, 0, 0, nil); err != nil {
+		t.Fatalf("SetCachedPlaceDetails failed: %v", err)
+	}
+
+	// confirmed-zero:已確認過、真的沒有照片。
+	if err := s.SetCachedPlaceDetails("place-confirmed-zero", "確認過沒照片", "", 0, 0, 0, nil); err != nil {
+		t.Fatalf("SetCachedPlaceDetails failed: %v", err)
+	}
+	if err := s.UpdatePlacePhotoProgress("place-confirmed-zero", 0, 0, true); err != nil {
+		t.Fatalf("UpdatePlacePhotoProgress failed: %v", err)
+	}
+
+	// confirmed-nonzero:已確認過、有 3 張照片。
+	if err := s.SetCachedPlaceDetails("place-confirmed-nonzero", "確認過有照片", "", 0, 0, 0, nil); err != nil {
+		t.Fatalf("SetCachedPlaceDetails failed: %v", err)
+	}
+	if err := s.UpdatePlacePhotoProgress("place-confirmed-nonzero", 1, 3, true); err != nil {
+		t.Fatalf("UpdatePlacePhotoProgress failed: %v", err)
+	}
+
+	got, err := s.ListPlaceDetailsWithZeroPhotoTarget()
+	if err != nil {
+		t.Fatalf("ListPlaceDetailsWithZeroPhotoTarget failed: %v", err)
+	}
+	if len(got) != 1 || got[0].PlaceID != "place-confirmed-zero" {
+		t.Fatalf("expected exactly [place-confirmed-zero], got %+v", got)
+	}
+}
+
 func TestIncrementPlaceClickCount_MissingRowReturnsZeroNoError(t *testing.T) {
 	s := newTestStore(t)
 
@@ -43,8 +156,11 @@ func TestIncrementPlaceClickCount_IncrementsFromExistingRow(t *testing.T) {
 	if clickCount != 1 {
 		t.Errorf("第一次點擊後 clickCount = %d, want 1", clickCount)
 	}
-	if newPhotoCount != 0 || googlePhotoTargetCount != 0 {
-		t.Errorf("SetCachedPlaceDetails 剛寫入時 newPhotoCount/googlePhotoTargetCount 應為 0,got %d/%d", newPhotoCount, googlePhotoTargetCount)
+	// googlePhotoTargetCount 是 sentinel -1(「尚未確認過」),不是 0——
+	// 2026-09 修正死鎖 bug 後的新行為,見
+	// placeDetailsCacheRow.GooglePhotoTargetCount 的完整說明。
+	if newPhotoCount != 0 || googlePhotoTargetCount != -1 {
+		t.Errorf("SetCachedPlaceDetails 剛寫入時 newPhotoCount 應為 0、googlePhotoTargetCount 應為 sentinel -1,got %d/%d", newPhotoCount, googlePhotoTargetCount)
 	}
 
 	// 寫入補圖進度後,再次點擊應該原封不動帶回這兩欄、並繼續累加 click_count。

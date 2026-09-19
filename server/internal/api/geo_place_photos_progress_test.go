@@ -34,6 +34,36 @@ func TestShouldAddGooglePlacePhoto(t *testing.T) {
 	}
 }
 
+// TestShouldAddGooglePlacePhoto_NeverConfirmedTargetAlwaysTriggers 驗證
+// googlePhotoTargetCount 為 sentinel -1(「這個地點從未真正跟 Google
+// 確認過 photos[] 長度」,見 placeDetailsCacheRow.GooglePhotoTargetCount
+// 的完整說明)時,不論 newPhotoCount/clickCount 為何都無條件觸發——
+// 這是 2026-09 修正的死鎖 bug 的直接回歸測試:若沒有這個特判,
+// newPhotoCount(0) >= googlePhotoTargetCount(舊版預設值 0)這個一般
+// 比較會誤判成「已達目標」,永遠不再觸發 ListPlacePhotoRefs 重新確認
+// (順正/清水順正 Okabe家 是實測踩到的真實案例,見
+// docs/audit-place-photo-cost-control-2026-09.md 或該筆資料的完整
+// 說明)。
+func TestShouldAddGooglePlacePhoto_NeverConfirmedTargetAlwaysTriggers(t *testing.T) {
+	cases := []struct {
+		clickCount    int64
+		newPhotoCount int
+	}{
+		{clickCount: 1, newPhotoCount: 0},
+		{clickCount: 2, newPhotoCount: 0},
+		{clickCount: 8, newPhotoCount: 0},
+		// 即使 newPhotoCount 非零(理論上不該跟 target=-1 同時出現,但
+		// 這裡驗證這個特判是無條件的,不依賴 newPhotoCount 的值)。
+		{clickCount: 8, newPhotoCount: 3},
+	}
+	for _, c := range cases {
+		if !shouldAddGooglePlacePhoto(c.clickCount, c.newPhotoCount, -1) {
+			t.Errorf("shouldAddGooglePlacePhoto(click=%d, new=%d, target=-1) = false, want true（尚未確認過 target 應無條件觸發）",
+				c.clickCount, c.newPhotoCount)
+		}
+	}
+}
+
 // TestShouldAddGooglePlacePhoto_ZeroPhotosAlwaysTriggers 驗證 0 張照片
 // 時分母是 1、任何 clickCount 都會觸發(對應規格「完全沒有圖片時 100%
 // 機率要取用照片」)。

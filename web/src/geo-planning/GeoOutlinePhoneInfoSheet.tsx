@@ -1,12 +1,21 @@
-import { useEffect, useReducer, useState } from 'react'
+import { useEffect, useMemo, useReducer, useState } from 'react'
 import { Check, Plus, X } from 'lucide-react'
-import type { GeoAttraction } from '../api'
-import type { GeoInfoContent } from './GeoInfoPanel'
+import type { ClientConfig, GeoAttraction, GeoPlaceDetails } from '../api'
+import { fetchGeoPlaceDetails, fetchPublicGeoPlaceDetails } from '../api'
+import type { PlaceInfoContent } from './PlacePanel'
 import { attractionBadges } from './geoInfoContent'
 import { candidateHasScheduledDate, type GeoCandidate } from './geoCandidateHelpers'
 import { reduceAddCandidateUiState, initialAddCandidateUiState } from './geoAddCandidateState'
 import { PhoneBottomSheet, PHONE_BOTTOM_SHEET_EXIT_MS } from '../components/PhoneBottomSheet'
 import { PhotoCarousel } from './PhotoCarousel'
+import { nearbyCategoriesPresent, filterNearbyByCategory, type NearbyAttraction } from './geoNearbyAttractions'
+import {
+  curatedCategoryOf,
+  CURATED_CATEGORY_ICONS,
+  CURATED_CATEGORY_LABELS,
+  CURATED_CATEGORY_MAP_CLASS,
+  type CuratedCategory,
+} from './geoCuratedCategoryStub'
 import styles from './GeoOutlinePhoneInfoSheet.module.css'
 
 // ADDED_HINT_MS:「加入行程」icon 按鈕成功後短暫變成打勾圖示的顯示時長
@@ -32,7 +41,7 @@ const SHEET_MIN_HEIGHT = 100
 const SHEET_SNAP_POINTS = [400, 80]
 
 // GeoOutlinePhoneInfoSheet:手機版規劃地圖資訊卡,從畫面下方滑入蓋住下
-// 半部——桌面版對應的 GeoInfoPanel/AttractionInfoPanel 是絕對定位疊在
+// 半部——桌面版對應的 PlacePanel/AttractionInfoPanel 是絕對定位疊在
 // 地圖右緣的浮動卡片,手機螢幕沒有那個空間,改用 bottom sheet(同 iOS/
 // Material Design 地圖 App 的資訊卡呈現方式)。
 //
@@ -55,7 +64,7 @@ const SHEET_SNAP_POINTS = [400, 80]
 // 版面),改成固定高度後不再有這個問題。
 //
 // 第二階段新增候選籃相關按鈕與互動(第一階段唯讀瀏覽時特意拿掉,見舊版
-// 註解)——「加入候選」按鈕行為對齊桌面版 GeoInfoPanel.tsx 的
+// 註解)——「加入候選」按鈕行為對齊桌面版 PlacePanel.tsx 的
 // handleAddClick 分岔邏輯,但簡化掉「懸浮選單 vs 展開日曆」的位置量測
 // (dateMenuOpenUp,桌面版是因為卡片可能出現在視窗下半部、選單需要
 // 動態翻轉方向;這裡的 bottom sheet 本身已經是從下滑入、卡片內容本來就
@@ -69,7 +78,7 @@ const SHEET_SNAP_POINTS = [400, 80]
 //     (GeoOutlinePhoneDatePickerSheet.tsx,顯示既有日期的縱向可捲動清單
 //     + 「其他日期」選項);完全沒有排定日期則跳過清單、直接開日曆 sheet
 //     (GeoOutlinePhoneDateCalendarSheet.tsx,DatePickerPopover 月曆格線
-//     UI,對齊桌面版 GeoInfoPanel.tsx 的既有升級)。
+//     UI,對齊桌面版 PlacePanel.tsx 的既有升級)。
 //
 // 2026-08 之前,這兩層日期選擇 UI(既有日期 chips/日期輸入)是內嵌在這個
 // 元件的 `.dateEdit` 區塊裡,由 addUi.mode==='open' 控制展開——這次改成
@@ -93,18 +102,30 @@ const SHEET_SNAP_POINTS = [400, 80]
 export function GeoOutlinePhoneInfoSheet({
   content,
   attraction,
+  cfg,
   onClose,
   onAddCandidate,
   onOpenDatePicker,
   addFlashTrigger,
   onDraggingDownChange,
   onSnapIndexChange,
+  usePublicPlaceDetails,
+  nearby,
+  onSelectNearby,
+  categoryFilter,
+  onCategoryFilterChange,
 }: {
-  content: GeoInfoContent | null
+  content: PlaceInfoContent | null
   attraction: GeoAttraction | null
+  // cfg:attraction.placeId 有值時,用來呼叫 fetchGeoPlaceDetails 補查
+  // 「地點照片漸進補圖機制」的雙來源照片——理由同桌面版
+  // AttractionInfoPanel.tsx 的同名 prop,兩邊是同一套邏輯的桌面/手機版
+  // 各自實作(手機版走 bottom sheet,無法直接共用同一個元件),見下方
+  // placeDetails effect 的完整說明。
+  cfg: ClientConfig
   onClose: () => void
   // onAddCandidate:候選已有排定日期時直接加入候選籃(純前端,不寫入
-  // 後端)——理由同桌面版 GeoInfoPanel.tsx 的同名 prop。這條路徑完全不
+  // 後端)——理由同桌面版 PlacePanel.tsx 的同名 prop。這條路徑完全不
   // 經過日期選擇 sheet,維持這次改動前的既有行為不動(見 handleAddClick
   // 的說明)。
   onAddCandidate?: (candidate: GeoCandidate) => void
@@ -143,6 +164,39 @@ export function GeoOutlinePhoneInfoSheet({
   // 縮到最小」的資訊卡視覺不符(使用者實測回報「資訊卡最小時,地點就
   // 恢復大小」)。
   onSnapIndexChange?: (index: number) => void
+  // usePublicPlaceDetails:true 時改打 fetchPublicGeoPlaceDetails(免登入
+  // 版,見該函式與後端 handlePublicGeoPlaceDetails/
+  // publicPlaceDetailsAllowlist 的完整說明)而非 fetchGeoPlaceDetails——
+  // 理由與用法同桌面版 AttractionInfoPanel.tsx 的同名 prop:供沒有真正
+  // 登入態的公開展示頁(手機螢幕寬度下的 KiyomizuDemoPage.tsx)使用,
+  // 讓固定示範資料也能顯示 Google/Pexels 雙來源照片輪播,不會像一般的
+  // fetchGeoPlaceDetails 那樣打 /internal/* 必定被 internalAuth 拒絕。
+  // 由呼叫端明確指定要用哪支端點,這個元件不自己依 cfg.token 是否為
+  // null 猜測。預設 false(或不傳),維持原本走 fetchGeoPlaceDetails 的
+  // 行為。
+  usePublicPlaceDetails?: boolean
+  // nearby:「附近景點」清單——只有主題卡(attraction 有值且 isTheme 為
+  // true)才有意義,理由與資料形狀對稱桌面版 AttractionInfoPanel.tsx 的
+  // 同名 prop(由呼叫端 GeoOutlinePhoneView.tsx 算好傳入,見該檔案
+  // nearbyAttractions 的完整說明,這個元件不自己查詢/排序)。undefined
+  // 或空陣列時不顯示這個區塊。
+  nearby?: NearbyAttraction[]
+  // onSelectNearby:點擊清單項目觸發——呼叫端(GeoOutlinePhoneView.tsx)
+  // push 一層新的 {type:'nearby-place'} sheet 疊在這張卡片之上(手機版
+  // 沒有桌面版並排疊放的空間,見該檔案 SheetEntry 'nearby-place' 的完整
+  // 說明),對稱桌面版 onSelectNearby 的角色,但手機版是疊一層 sheet 而
+  // 非開一張並存的側邊卡片。
+  onSelectNearby?: (attraction: GeoAttraction) => void
+  // categoryFilter/onCategoryFilterChange:分類篩選——對稱桌面版
+  // AttractionInfoPanel.tsx 的 activeCategoryFilter/onCategoryFilterChange,
+  // 但這個元件不像桌面版那樣自己持有 activeCategoryFilter 這個 state
+  // (受控,由呼叫端持有並透過 [geo.attractionContent] reset effect 清空,
+  // 見 GeoOutlinePhoneView.tsx 的完整說明)——理由是手機版沒有
+  // useThemeAttractionSelection 那套 reset 機制(見該檔案檔頭對手機版
+  // 的說明),若這個元件自己再管一份 categoryFilter state,會變成兩處
+  // 各自維護、容易漏同步,不如直接受控,單一真相來源在呼叫端。
+  categoryFilter?: CuratedCategory | null
+  onCategoryFilterChange?: (category: CuratedCategory | null) => void
 }) {
   // addUi:「加入行程」成功後短暫提示這件事,收斂成 reduceAddCandidateUiState
   // 這個純 reducer 統一管理(見 geoAddCandidateState.ts 的完整說明)——
@@ -216,19 +270,55 @@ export function GeoOutlinePhoneInfoSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addFlashTrigger])
 
+  // placeDetails:attraction.placeId 有值時,補查一次「地點照片漸進補圖
+  // 機制」的雙來源照片——理由與寫法同桌面版 AttractionInfoPanel.tsx 的
+  // 同名 effect(不重新發明呼叫邏輯,只是依 usePublicPlaceDetails 切換
+  // 打哪一支端點,見該 prop 的完整說明),這裡放在 open 判斷之前(所有
+  // early return 之前),遵守 Hooks 規則。
+  const attractionPlaceId = attraction?.placeId
+  const [placeDetails, setPlaceDetails] = useState<GeoPlaceDetails | null>(null)
+  useEffect(() => {
+    setPlaceDetails(null)
+    if (!attractionPlaceId) return
+    let cancelled = false
+    const fetcher = usePublicPlaceDetails ? fetchPublicGeoPlaceDetails : fetchGeoPlaceDetails
+    fetcher(cfg, attractionPlaceId)
+      .then((details) => {
+        if (!cancelled) setPlaceDetails(details)
+      })
+      .catch(() => {
+        // 查詢失敗不視為錯誤,維持 null——PhotoCarousel 的 fallbackUrl
+        // 會退回 landmarkPhotoUrl,理由同 AttractionInfoPanel.tsx。
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [cfg, attractionPlaceId, usePublicPlaceDetails])
+
+  // nearbyCategoryPresent/filteredNearby:分類篩選——沿用
+  // geoNearbyAttractions.ts 的共用純函式(見該檔案開頭說明),邏輯與
+  // 桌面版 AttractionInfoPanel.tsx 完全一致,只是這裡放在所有 early
+  // return 之前(遵守 Hooks 規則,理由同上方 placeDetails effect)。
+  const nearbyCategoryPresent = useMemo(() => nearbyCategoriesPresent(nearby ?? []), [nearby])
+  const filteredNearby = useMemo(
+    () => filterNearbyByCategory(nearby ?? [], categoryFilter ?? null),
+    [nearby, categoryFilter],
+  )
+
   const open = content != null || attraction != null
 
   if (!open) return null
 
   const name = attraction ? attraction.name : content!.name
   // photoUrl/googlePhotoUrls/pexelsPhotoUrls:attraction(人工建檔景點)
-  // 只有單一 landmarkPhotoUrl,沒有雙來源多圖清單——PhotoCarousel 收到
-  // 兩份清單皆為 undefined 時會 fallback 回 photoUrl 顯示單張,行為
-  // 與改版前一致,理由同 AttractionInfoPanel.tsx/GeoInfoPanel.tsx 不對
-  // attraction 分支特別處理多圖的既有慣例。
+  // 有 placeId 時改用上方 placeDetails effect 查回的雙來源照片(見該
+  // effect 的完整說明),沒有 placeId 時維持只有單一 landmarkPhotoUrl——
+  // PhotoCarousel 收到兩份清單皆為 undefined(或查詢中/查無結果)時會
+  // fallback 回 photoUrl 顯示單張,理由同 AttractionInfoPanel.tsx/
+  // PlacePanel.tsx 的既有慣例。
   const photoUrl = attraction ? attraction.landmarkPhotoUrl : content!.photoUrl
-  const googlePhotoUrls = attraction ? undefined : content!.googlePhotoUrls
-  const pexelsPhotoUrls = attraction ? undefined : content!.pexelsPhotoUrls
+  const googlePhotoUrls = attraction ? (attractionPlaceId ? placeDetails?.googlePhotoUrls : undefined) : content!.googlePhotoUrls
+  const pexelsPhotoUrls = attraction ? (attractionPlaceId ? placeDetails?.pexelsPhotoUrls : undefined) : content!.pexelsPhotoUrls
   const subtitle = attraction
     ? attraction.landmarkName && attraction.landmarkName !== attraction.name
       ? attraction.landmarkName
@@ -239,7 +329,7 @@ export function GeoOutlinePhoneInfoSheet({
   const candidate = attraction ? undefined : content!.candidate
 
   // handleAddClick:「加入 {tripName}」按下時的分岔——理由同桌面版
-  // GeoInfoPanel.tsx 的 handleAddClick,見上方元件說明。候選已有排定
+  // PlacePanel.tsx 的 handleAddClick,見上方元件說明。候選已有排定
   // 日期這條分支直接算「加入成功」,dispatch 'added' 顯示提示;候選沒有
   // 日期的分支不再由這個元件自己展開內部區塊,改成呼叫 onOpenDatePicker
   // 通知呼叫端——實際選定日期、呼叫 onSchedule 寫入候選的邏輯(對應舊版
@@ -344,6 +434,67 @@ export function GeoOutlinePhoneInfoSheet({
           <p className={styles.summary}>{summary}</p>
         ) : (
           <p className={styles.summaryEmpty}>這個地點還沒有簡介資料。</p>
+        )}
+        {/* nearbySection:「附近景點」清單——只有主題卡(nearby 有值且非
+            空)才會顯示,理由見上方 nearby prop 的說明。分類篩選改用
+            橫向可捲動的 chip 列(使用者明確要求),取代桌面版
+            AttractionInfoPanel.tsx 的下拉選單——bottom sheet 空間有限,
+            下拉選單展開/收合的 popover 容易被截斷或蓋住清單本身,chip
+            列不需要展開狀態,一行就放得下。刻意不另外放一顆「全部」
+            chip(使用者明確要求)——分類本身是可取消的單選:點下去選中
+            某個分類,再點一次同一個已選中的 chip 就取消回到不篩選狀態,
+            不需要額外佔一個位置的「全部」按鈕表達「不篩選」這件事,見
+            下方 onClick 的 active 三元判斷。 */}
+        {nearby && nearby.length > 0 && (
+          <div className={styles.nearbySection}>
+            <p className={styles.nearbyTitle}>附近景點</p>
+            {nearbyCategoryPresent.size > 0 && (
+              <div className={styles.nearbyCategoryChips} role="listbox" aria-label="附近景點分類篩選">
+                {Array.from(nearbyCategoryPresent).map((category) => {
+                  const CategoryIcon = CURATED_CATEGORY_ICONS[category]
+                  const active = categoryFilter === category
+                  return (
+                    <button
+                      key={category}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      className={`${styles.nearbyCategoryChip}${active ? ` ${styles.nearbyCategoryChipActive}` : ''}`}
+                      onClick={() => onCategoryFilterChange?.(active ? null : category)}
+                    >
+                      <CategoryIcon size={13} strokeWidth={2} aria-hidden="true" />
+                      {CURATED_CATEGORY_LABELS[category]}
+                      <span
+                        className={`${styles.nearbyCategoryDot} ${CURATED_CATEGORY_MAP_CLASS[category]}`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            <div className={styles.nearbyList}>
+              {filteredNearby.map(({ attraction: n, minutes }) => {
+                const category = curatedCategoryOf(n.category)
+                const CategoryIcon = category ? CURATED_CATEGORY_ICONS[category] : null
+                return (
+                  <button
+                    key={n.name}
+                    type="button"
+                    className={styles.nearbyItem}
+                    onClick={() => onSelectNearby?.(n)}
+                  >
+                    <div className={styles.nearbyItemHead}>
+                      {CategoryIcon && <CategoryIcon size={14} strokeWidth={2} aria-hidden="true" />}
+                      <span className={styles.nearbyName}>{n.name}</span>
+                      <span className={styles.nearbyMinutes}>約 {minutes} 分</span>
+                    </div>
+                    {n.summary && <p className={styles.nearbySummary}>{n.summary}</p>}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         )}
       </div>
     </PhoneBottomSheet>

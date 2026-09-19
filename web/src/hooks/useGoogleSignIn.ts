@@ -96,7 +96,7 @@ export function useGoogleSignIn(
   const [error, setError] = useState<string | null>(null)
   // onCredential 若直接進依賴陣列,呼叫端每次渲染傳新的箭頭函式會導致
   // 這個 effect 重複執行、重複渲染按鈕——用 ref 存最新的回呼,effect 本身
-  // 只依賴 clientID(理由同 GeoOutlineMap.tsx 對 onPoiSelectRef 之類的
+  // 只依賴 clientID(理由同 ExploreMap.tsx 對 onPoiSelectRef 之類的
   // 既有慣例:回呼在 initialize 當下被閉包捕捉,之後只透過 ref 取得最新
   // 版本,不需要因為回呼本身變動就重新初始化整個 GSI 元件)。
   const onCredentialRef = useRef(onCredential)

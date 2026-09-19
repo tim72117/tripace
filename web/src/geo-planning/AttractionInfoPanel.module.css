@@ -1,70 +1,9 @@
-/* panel/head/title/closeBtn/body/photo/photoPlaceholder/content/name/
-   landmarkName/metaRow/badge/summary/summaryEmpty:視覺語言刻意跟
-   GeoInfoPanel.module.css 的同名規則一致(見 AttractionInfoPanel.tsx 的
-   說明——兩份卡片外觀相同是巧合不是共用),各自獨立維護一份。top 往下
-   移到 64px 避開地圖右上角常駐的城市搜尋框,理由同 GeoInfoPanel.module.css
-   的同名規則說明。width 對齊搜尋框/對話小匡/GeoHotelSidebar 統一的
-   340px,理由同上。 */
-.panel {
-  position: absolute;
-  top: 64px;
-  right: 16px;
-  bottom: 16px;
-  width: 340px;
-  max-height: calc(100% - 32px);
-  overflow-x: hidden;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  border-radius: 16px;
-  background: var(--ios-card);
-  box-shadow: 0 8px 28px rgba(61, 53, 48, 0.22);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  z-index: 2;
-  transition: right 0.15s ease-out;
-}
-
-/* shiftedHotel/shiftedChat:理由同 GeoInfoPanel.module.css 的同名規則
-   ——GeoHotelSidebar/對話浮動小匡分別漂浮在 .desktop-main 右緣之上,
-   跟這張卡片預設的 right: 16px 直接疊在一起,由呼叫端判斷後傳入對應
-   shiftBy 值。GeoHotelSidebar/對話小匡皆已統一寬度為 340px,換算方式
-   同 GeoInfoPanel.module.css 的說明。 */
-.panel.shiftedHotel {
-  right: 364px;
-}
-.panel.shiftedChat {
-  right: 368px;
-}
-
-/* closeBtn:懸浮在照片右上角(而非獨立的標題橫條)——理由同
-   GeoInfoPanel.module.css 的同名規則。 */
-.closeBtn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.4);
-  color: #fff;
-  cursor: pointer;
-}
-
-.closeBtn:hover {
-  background: rgba(0, 0, 0, 0.6);
-}
-
-.body {
-  display: flex;
-  flex-direction: column;
-}
+/* panel/shiftedHotel/shiftedChat/closeBtn/body:桌面版浮動資訊卡共用外框
+   ——已抽成 DesktopInfoCard.tsx + DesktopInfoCard.module.css,這個檔案
+   只保留卡片內容本身的樣式(照片/文字/附近景點清單),見該元件開頭對
+   「為什麼從各自獨立一份改成共用」的完整說明。 */
 
 .imageWrap {
-  position: relative;
   flex: 0 0 auto;
 }
 
@@ -129,27 +68,250 @@
   color: var(--ios-gray);
 }
 
-/* exploreBtn:「探索周邊」——attraction 卡片專屬操作,不是 GeoInfoPanel
-   那組「加入候選/加入行程」的變體,視覺上刻意跟 addCandidateBtn(見
-   GeoInfoPanel.module.css)同等份量(單顆完整按鈕、accent 底色),但這裡
-   只有一顆、不是複合按鈕——attraction 只有這一個專屬動作。 */
-.exploreBtn {
-  align-self: flex-start;
+/* nearbySection/nearbyTitle/nearbyList/nearbyItem/nearbyItemHead/
+   nearbyCategoryIcon/nearbyName/nearbyMinutes:散策羅盤「附近景點」
+   清單——列出目前地圖可視範圍內離這個錨點最近的精選點,點擊後開啟該
+   精選點自己的「地點」卡片(見 AttractionInfoPanel.tsx onSelectNearby
+   的完整說明)。刻意用細分隔線的列表而非卡片(GeoListItemCard 那種縮圖
+   卡片形式),理由是這裡只需要快速掃視「分類+名稱+分鐘數」做選擇,不需要
+   縮圖——縮圖需要額外的 landmarkPhotoUrl 查詢/版面空間,對「挑一個要看
+   關聯的候選」這個任務是干擾而非幫助。 */
+.nearbySection {
+  margin-top: 14px;
+  padding-top: 12px;
+  /* 分隔線用 --ios-sep(全站分隔線專用 token,見 base-ui.css)而非
+     --ios-bg——--ios-bg 跟卡片底色 --ios-card 色差極小(暖紙色 vs 卡片
+     白),當分隔線幾乎看不見,「附近景點」區塊跟上方簡介就分不出段落。 */
+  border-top: 1px solid var(--ios-sep);
+}
+
+/* nearbyHeaderRow:「附近景點」標題與分類下拉膠囊同一行,標題靠左、
+   膠囊靠右——取代原本標題獨立一行、下拉膠囊另起一行的排版,收斂垂直
+   空間。 */
+.nearbyHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.nearbyTitle {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ios-gray);
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* nearbyCategoryDropdown/nearbyCategoryTag/nearbyCategoryTagActive:
+   「附近景點」清單上方的分類篩選下拉選單——只列出這批 nearby 清單裡
+   實際出現過的分類(見 AttractionInfoPanel.tsx nearbyCategoryPresent
+   的完整說明)。單一膠囊按鈕(.nearbyCategoryTag,顯示目前選中分類或
+   「全部分類」)點下去展開清單(.nearbyCategoryDropdownMenu)選一個
+   分類,一次只能選一個,對齊 <select> 的既有語意——原本是一排可各自
+   點擊切換的標籤,改成單一下拉是為了收斂橫向佔用的空間。 */
+.nearbyCategoryDropdown {
+  position: relative;
+  display: inline-block;
+  flex: none;
+}
+
+.nearbyCategoryTag {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 999px;
+  background: none;
+  color: var(--ios-gray);
+  /* font-family 繼承 <button> 預設的系統字體(瀏覽器 UA 樣式,不是這個
+     頁面的內文字體),故仍要顯式指定跟卡片其餘文字一致的字體家族——但
+     不能用 font: inherit 簡寫(那會連 font-size/font-weight 一起重置成
+     父層繼承值,父層 .content 沒有設字體大小,會一路往上繼承到全站預設
+     的 body 字級,遠比這裡要的字級大很多,是先前這裡看起來字體過大
+     的直接原因),改成只指定 font-family 這一個子屬性。 */
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.nearbyCategoryTag:hover {
+  background: var(--ios-bg);
+}
+
+/* nearbyCategoryDropdownChevron/nearbyCategoryDropdownChevronOpen:
+   觸發鈕右側的展開箭頭——展開時旋轉 180 度,對齊一般下拉選單的既有
+   慣例,讓使用者不需要額外文字就能感知目前是展開還是收合狀態。 */
+.nearbyCategoryDropdownChevron {
+  flex: none;
+  margin-left: 2px;
+  transition: transform 0.15s;
+}
+
+.nearbyCategoryDropdownChevronOpen {
+  transform: rotate(180deg);
+}
+
+/* nearbyCategoryDropdownMenu:展開的選項清單——絕對定位疊在觸發鈕下方,
+   不佔用清單本身的版面空間(收合時完全不影響清單位置)。z-index 需要
+   蓋過下面的 .nearbyList(選項清單可能疊在最上面幾筆清單項目之上)。 */
+.nearbyCategoryDropdownMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  /* right(而非 left)——膠囊現在貼卡片右緣(見 .nearbyHeaderRow 的
+     說明),選單要對齊膠囊右緣往左展開,不能維持 left:0(會讓選單右側
+     超出卡片邊界)。 */
+  right: 0;
+  z-index: 1;
+  min-width: 140px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--ios-card);
+  box-shadow: 0 8px 24px rgba(61, 53, 48, 0.22);
+  border: 1px solid var(--ios-sep);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nearbyCategoryDropdownItem {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 10px;
-  padding: 7px 14px;
+  padding: 6px 8px;
   border: none;
-  border-radius: 10px;
-  background: var(--color-accent);
-  color: var(--ios-card);
-  font-size: 13px;
-  font-weight: 600;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-dark);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
   cursor: pointer;
-  transition: opacity 0.12s;
 }
 
-.exploreBtn:hover {
-  opacity: 0.88;
+/* nearbyCategoryDropdownItemLabel:選項文字撐開剩餘寬度,把分類顏色
+   小圓點(.nearbyCategoryDot)推到選項最右側——「全部分類」選項沒有
+   分類色可標示,不套用這個 flex:1(維持原本只有文字的簡單排版)。 */
+.nearbyCategoryDropdownItemLabel {
+  flex: 1;
+}
+
+.nearbyCategoryDropdownItem:hover {
+  background: var(--ios-bg);
+}
+
+.nearbyCategoryDropdownItemActive {
+  font-weight: 700;
+  color: var(--ios-blue);
+}
+
+.nearbyList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* nearbyItem:原本是單行(名稱+分鐘數 justify-content:space-between)
+   的按鈕,加上簡介文字後改成上下兩段——上段(.nearbyItemHead)維持原本
+   的名稱+分鐘數單行配置,下段是簡介(.nearbySummary,沒有 summary 時
+   不渲染,不留空行)。整顆按鈕仍是同一個點擊/選取目標,不是分成兩個
+   可各自互動的區塊。 */
+.nearbyItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* 負 margin 抵銷 8px 水平 padding——讓清單文字左緣跟卡片主體文字
+     (.name/.summary,padding 16px)對齊在同一條垂直線上,hover 底色
+     則往兩側出血,不會出現「清單整段內縮 8px、跟上方簡介錯位」的
+     不對齊感。寬度交給 flex 容器預設的 stretch,不寫 width: 100%
+     (寫了會跟負 margin 疊出 16px 的水平溢出)。 */
+  margin: 0 -8px;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background-color 0.12s;
+}
+
+.nearbyItem:hover {
+  background: var(--ios-bg);
+}
+
+.nearbyItemHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+}
+
+/* nearbyCategoryIcon:店家分類圖示(見 geoCuratedCategoryStub.ts 的完整
+   說明——目前是前端寫死的原型對照表,不是真正的資料欄位)。用
+   --ios-gray(跟其餘輔助資訊同一色階)而非分類各自配色,理由是這批圖示
+   目的是「快速掃視時多一個辨識線索」,不是要建立一套視覺分類系統——
+   顏色統一才不會在清單裡搶過名稱本身的視覺重量。flex: none 避免長
+   名稱擠壓圖示寬度。 */
+.nearbyCategoryIcon {
+  flex: none;
+  color: var(--ios-gray);
+}
+
+/* nearbyCategoryDot:清單項目名稱前的分類顏色小圓點——跟
+   .nearbyCategoryIcon(灰色圖示)並存,不是取代它,理由同
+   AttractionInfoPanel.tsx 該處呼叫端的說明:圖示保留原本「快速掃視時的
+   辨識線索」用途,小圓點額外提供跟地圖上同分類圓點一致的顏色線索,兩者
+   分工。顏色靠 :global(.geo-attraction-curated-dot-*)(見
+   ExploreMap.module.css 的既有定義)生效,這裡只定義圓點本身的形狀/
+   尺寸——不重複定義一次顏色規則,直接沿用地圖圓點那組 class,兩處顏色
+   永遠保持同步。 */
+.nearbyCategoryDot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.nearbyName {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--color-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nearbyMinutes {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  /* 用 --ios-blue(全站主要互動色)而非 --ios-sand——暖沙棕疊在卡片白
+     上對比只有約 2.3:1,12px 小字下分鐘數幾乎讀不清;分鐘數是掃視清單
+     時的關鍵決策資訊(要走多遠),不是裝飾,對比必須過得了小字閱讀。 */
+  color: var(--ios-blue);
+  font-variant-numeric: tabular-nums;
+}
+
+/* nearbySummary:精選理由/簡介,克制字級與行高(理由同 .summaryEmpty 等
+   卡片主體既有的次要文字慣例),最多兩行後截斷(-webkit-line-clamp)——
+   這裡只是「附近景點」清單裡的輔助資訊,不該讓單一項目的長簡介把整份
+   清單撐得過高,想看完整內容可以點進去切換成這個景點的完整介紹卡。 */
+.nearbySummary {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ios-gray);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

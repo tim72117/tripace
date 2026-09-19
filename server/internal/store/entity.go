@@ -74,12 +74,39 @@ type attractionRow struct {
 	// 複合索引,不是地理空間索引(如 PostGIS 的 GiST),只能加速「先用 lat
 	// 範圍篩、再用 lng 範圍篩」這種寫法,篩出來的仍是方形 bounding box、
 	// 不是精確的圓形範圍(精度問題見 ListAttractionsNearby 的說明)。
-	Lat          float64 `gorm:"column:lat;not null;index:idx_attractions_lat_lng,priority:1"`
-	Lng          float64 `gorm:"column:lng;not null;index:idx_attractions_lat_lng,priority:2"`
-	Level        int     `gorm:"column:level;not null"`
+	Lat   float64 `gorm:"column:lat;not null;index:idx_attractions_lat_lng,priority:1"`
+	Lng   float64 `gorm:"column:lng;not null;index:idx_attractions_lat_lng,priority:2"`
+	Level int     `gorm:"column:level;not null"`
+	// IsTheme:見 model.Attraction.IsTheme 的完整說明——與 Level 並存,不
+	// 取代它。default:false 只影響 AutoMigrate 新增這個欄位時既有資料列
+	// 的補值,新資料一律由 CreateAttraction/CreateAttractionWithID 明確
+	// 帶入,不依賴這個 DB 層預設值(理由同其餘欄位一貫的顯式帶入慣例)。
+	IsTheme      bool    `gorm:"column:is_theme;not null;default:false"`
 	RadiusMeters int     `gorm:"column:radius_meters;not null;default:0"`
 	Summary      *string `gorm:"column:summary"`
 	PhotoURL     *string `gorm:"column:photo_url"`
+	// PlaceID:對應這個景點區域的 Google Place ID,可為 NULL——人工建檔時
+	// 若沒有透過 -place/-place-id 指定(或建檔當下查無對應地點)就不會有
+	// 值。有值時前端優先改用「地點照片漸進補圖機制」(place_details_cache/
+	// google_place_photos/place_pexels_photos 三張表,見這幾個型別的完整
+	// 說明)取得的 Google/Pexels 雙來源照片陣列顯示,取代/補強單一的
+	// PhotoURL;沒有值時維持原本 PhotoURL 這條路徑不變。兩套機制刻意並存
+	// 而非一次性遷移——PhotoURL 是人工建檔當下落地存進 GCS 的單張快照,
+	// PlaceID 對應的漸進補圖結果會隨使用者點擊持續累積更新,兩者服務的
+	// 情境不同(見 docs/audit-place-photo-cost-control-2026-09.md 的完整
+	// 討論),沒有理由讓其中一套機制完全取代另一套。
+	//
+	// place_id 本身是 Google 官方文件明確允許長期保存與展示的穩定識別碼
+	// (跟 photo resource name 那種禁止長期快取的欄位規則不同,見
+	// photoCacheRow 型別說明的 Google Maps Platform ToS 3.2.3(b) 引用),
+	// 存進資料庫、對外曝露都沒有 Google TOS 疑慮。
+	PlaceID *string `gorm:"column:place_id"`
+	// Category:見 model.Attraction.Category 的完整說明。跟 Summary/
+	// PhotoURL 一樣是選填的 *string,AutoMigrate 新增這個欄位時既有資料列
+	// 一律補 NULL(未設定),不像 IsTheme 有 default 值——這個欄位的空值
+	// 語意本身就是合法的最終狀態(不是所有景點都適用這四類語彙),不需要
+	// 補一個預設分類。
+	Category *string `gorm:"column:category"`
 
 	CreatedAt time.Time `gorm:"column:created_at;not null"`
 	UpdatedAt time.Time `gorm:"column:updated_at;not null"`
@@ -154,14 +181,29 @@ func (pexelsPhotoCacheRow) TableName() string { return "pexels_photo_cache" }
 //   - GooglePhotoTargetCount:上次查詢 Google 時 photos[] 陣列的實際
 //     長度——用來偵測「這次查到的張數跟上次不一樣」(resetPhotoProgressOnTargetChange
 //     的輸入),不是「這個地點理論上有幾張圖」的固定值,會隨每次查詢
-//     覆寫。
+//     覆寫。**預設值是 -1,不是 0**——2026-09 修正一個實測到的死鎖
+//     bug(順正/清水順正 Okabe家 這筆資料是實際案例:初次查詢當下
+//     Google 剛好回傳空的 photos[],target 被寫成合法值 0 之後,
+//     shouldAddGooglePlacePhoto 的 newPhotoCount(0) >= googlePhotoTargetCount(0)
+//     恆為 true,永遠不再觸發 ListPlacePhotoRefs 重新確認,即使 Google
+//     之後真的補上了照片也永遠不會被發現)。-1 代表「這個地點從未真正
+//     跟 Google 確認過 photos[] 長度」,跟 0(已確認過、當下真的是 0
+//     張)在語意上是兩種不同狀態,不能用同一個值表示——shouldAddGooglePlacePhoto
+//     必須先特判這個 sentinel、無條件觸發第一次確認,才能跳出「target
+//     卡在 0 之後永遠沒有機會重新驗證」的迴圈。
 //   - NewPhotoCount:目前已經漸進補到第幾張(0-based 累積數,不是
 //     photo_index)——即 shouldAddGooglePlacePhoto 的 newPhotoCount
 //     參數,每次觸發補圖後 +1,target 變動時可能被歸零重置。
 //
-// 三欄都給預設值 0(gorm default),對應「這個地點第一次被查詢/點擊」
-// 的初始狀態——新增欄位時既有的舊資料列也會因為 AutoMigrate 的
-// ALTER TABLE ADD COLUMN 而自動補上這個預設值,不需要額外的資料回填。
+// ClickCount/NewPhotoCount 給預設值 0(gorm default),GooglePhotoTargetCount
+// 給預設值 -1(見上方說明)——這三欄都對應「這個地點第一次被查詢/點擊」
+// 的初始狀態,新增欄位時既有的舊資料列也會因為 AutoMigrate 的
+// ALTER TABLE ADD COLUMN 而自動補上對應預設值,不需要額外的資料回填;
+// 但 AutoMigrate 只在「新增這個欄位」當下套用一次性的 DEFAULT,不會
+// 回頭修正已經因為這個 bug 而卡在合法值 0 的既有資料列(見
+// docs 或 CHANGELOG 記錄的一次性資料修復,若需要讓既有卡住的資料列
+// 重新有機會被確認,需要另外執行一次性的資料修復,把這些列的
+// google_photo_target_count 從 0 改回 -1)。
 type placeDetailsCacheRow struct {
 	PlaceID                string    `gorm:"primaryKey;column:place_id"`
 	Name                   string    `gorm:"column:name;not null"`
@@ -172,7 +214,7 @@ type placeDetailsCacheRow struct {
 	Summary                *string   `gorm:"column:summary"`
 	FetchedAt              time.Time `gorm:"column:fetched_at;not null"`
 	ClickCount             int64     `gorm:"column:click_count;not null;default:0"`
-	GooglePhotoTargetCount int       `gorm:"column:google_photo_target_count;not null;default:0"`
+	GooglePhotoTargetCount int       `gorm:"column:google_photo_target_count;not null;default:-1"`
 	NewPhotoCount          int       `gorm:"column:new_photo_count;not null;default:0"`
 }
 
@@ -280,3 +322,38 @@ type publicLinkRow struct {
 }
 
 func (publicLinkRow) TableName() string { return "public_links" }
+
+// geoRateLimitRow 是 Google Places API 限流設定,每個 endpoint key
+// (見 geo.placeGetEndpoint/photoMediaEndpoint,如 "places.get"/
+// "places.photoMedia")一列——取代原本寫死在 cmd/server/main.go 啟動
+// flag/環境變數的做法,讓限速視窗、上限次數、每日額度可以透過後台
+// 管理介面(adminconsole)執行期修改,不需要改程式碼重新部署。
+//
+// WindowSec/MaxCalls 對應 apigateway.RateLimiter.SetLimitForKey 的
+// window/maxCalls 兩個參數(固定視窗計數器,見該函式完整說明)。
+//
+// DailyMax/UsedToday/UsedDay 是每日額度的原子計數器,比照
+// IncrementPlaceClickCount(見 geocache.go)的「單一 UPDATE 陳述式完成
+// 加一 + 判斷換日歸零」設計,刻意存在資料庫而非記憶體——這是跨
+// Cloud Run 多實例真正共用一份額度的唯一辦法(RateLimiter 本身是
+// process 內記憶體單例,見該型別的完整說明,多實例各自一份、無法用來
+// 實作「整天總共只能打幾次」這種計費語意的額度)。UsedDay 存
+// "2006-01-02" 格式的日期字串(UTC,伺服器所在時區—— now() 回傳 UTC,
+// 見 store.go 的說明),不是完整 timestamp:每次遞增時比對 UsedDay 是否
+// 等於今天,不同就在同一條 UPDATE 陳述式裡把 UsedToday 重設成 1、
+// UsedDay 改成今天,相同就单純 UsedToday+1,兩種情況都不需要另外查詢
+// 判斷再各自送不同的 UPDATE(見 IncrementGeoRateLimitDailyUsage 的完整
+// 說明)。DailyMax 為 0 代表不限制每日額度(比照 RateLimiter.SetLimitForKey
+// 「maxCalls<=0 視為不限流」的既有語意,不需要另外用 nullable 欄位表達
+// 「未設定」)。
+type geoRateLimitRow struct {
+	Endpoint  string    `gorm:"primaryKey;column:endpoint"`
+	WindowSec int       `gorm:"column:window_sec;not null"`
+	MaxCalls  int       `gorm:"column:max_calls;not null"`
+	DailyMax  int       `gorm:"column:daily_max;not null;default:0"`
+	UsedToday int       `gorm:"column:used_today;not null;default:0"`
+	UsedDay   string    `gorm:"column:used_day;not null;default:''"`
+	UpdatedAt time.Time `gorm:"column:updated_at;not null"`
+}
+
+func (geoRateLimitRow) TableName() string { return "geo_rate_limits" }

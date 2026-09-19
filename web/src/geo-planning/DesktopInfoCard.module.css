@@ -1,0 +1,78 @@
+/* DesktopInfoCard:桌面版浮動資訊卡共用外框——原本 PlacePanel.module.css
+   與 AttractionInfoPanel.module.css 各自維護一份逐字重複的 .panel/
+   .closeBtn/.body/.shiftedHotel/.shiftedChat(見這兩個檔案改動前的開頭
+   說明:「兩份卡片外觀相同是巧合不是共用,各自獨立維護」)——這個假設
+   在這次「level 4/5 地標地點卡要並存疊在主題卡左側」的需求裡不再成立:
+   兩張卡片的定位規則需要保持精確同步(見 DesktopLayout.tsx
+   attractionPanelRightPx/nearbyInfoPanelRightPx 的說明),逐字複製一份
+   容易在其中一邊修改時忘記同步另一邊。抽成這個共用外框後,定位/避讓/
+   關閉鍵/捲動容器只有一份實作,兩張卡片各自的內容(照片/名稱/簡介/
+   按鈕組)透過 children 傳入,不受影響。 */
+.panel {
+  position: absolute;
+  top: 64px;
+  right: 16px;
+  bottom: 16px;
+  width: 340px;
+  max-height: calc(100% - 32px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  background: var(--ios-card);
+  box-shadow: 0 8px 28px rgba(61, 53, 48, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  z-index: 2;
+  transition: right 0.15s ease-out;
+}
+
+.panel.shiftedHotel {
+  right: 364px;
+}
+.panel.shiftedChat {
+  right: 368px;
+}
+
+.closeBtn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  cursor: pointer;
+}
+
+.closeBtn:hover {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ios-gray) transparent;
+}
+.body::-webkit-scrollbar {
+  width: 6px;
+}
+.body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.body::-webkit-scrollbar-thumb {
+  background-color: var(--ios-gray);
+  border-radius: 999px;
+}
+.body::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-dark);
+}

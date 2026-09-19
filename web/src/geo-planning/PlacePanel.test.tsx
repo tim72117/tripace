@@ -1,4 +1,4 @@
-// GeoInfoPanel「加入行程」按鈕的日期選擇行為。
+// PlacePanel「加入行程」按鈕的日期選擇行為。
 //
 // 需求(使用者原話):「加入行程的按鈕按下時,如果沒有已安排的時間,則要跳出
 // 日歷選擇」——換句話說:
@@ -25,7 +25,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { GeoInfoPanel, type GeoInfoContent } from './GeoInfoPanel'
+import { PlacePanel, type PlaceInfoContent } from './PlacePanel'
 import type { GeoCandidate } from './GeoCandidateSidebar'
 
 
@@ -40,7 +40,7 @@ async function pickCalendarDate(user: ReturnType<typeof userEvent.setup>, year: 
   await user.click(screen.getByRole('button', { name: label }))
 }
 
-function contentWithCandidate(candidate: GeoCandidate): GeoInfoContent {
+function contentWithCandidate(candidate: GeoCandidate): PlaceInfoContent {
   return {
     name: candidate.name,
     badges: [],
@@ -87,12 +87,12 @@ function entryCandidateWithoutDate(): GeoCandidate {
   }
 }
 
-describe('GeoInfoPanel「加入行程」按鈕的日期選擇', () => {
+describe('PlacePanel「加入行程」按鈕的日期選擇', () => {
   it('候選沒有已排定日期(hotel/attraction/place 天生沒有日期)時,按下按鈕不會直接呼叫 onAddCandidate,而是展開日期選擇 UI', async () => {
     const user = userEvent.setup()
     const onAddCandidate = vi.fn()
     render(
-      <GeoInfoPanel
+      <PlacePanel
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         onAddCandidate={onAddCandidate}
@@ -112,7 +112,7 @@ describe('GeoInfoPanel「加入行程」按鈕的日期選擇', () => {
     const onAddCandidate = vi.fn()
     const candidate = entryCandidateWithDate()
     render(
-      <GeoInfoPanel
+      <PlacePanel
         content={contentWithCandidate(candidate)}
         onClose={() => {}}
         onAddCandidate={onAddCandidate}
@@ -130,7 +130,7 @@ describe('GeoInfoPanel「加入行程」按鈕的日期選擇', () => {
     const user = userEvent.setup()
     const onAddCandidate = vi.fn()
     render(
-      <GeoInfoPanel
+      <PlacePanel
         content={contentWithCandidate(entryCandidateWithoutDate())}
         onClose={() => {}}
         onAddCandidate={onAddCandidate}
@@ -148,7 +148,7 @@ describe('GeoInfoPanel「加入行程」按鈕的日期選擇', () => {
     const onAddCandidate = vi.fn()
     const onSchedule = vi.fn()
     render(
-      <GeoInfoPanel
+      <PlacePanel
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         onAddCandidate={onAddCandidate}
@@ -168,7 +168,7 @@ describe('GeoInfoPanel「加入行程」按鈕的日期選擇', () => {
     const user = userEvent.setup()
     const onAddAndReveal = vi.fn()
     render(
-      <GeoInfoPanel
+      <PlacePanel
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         onAddAndReveal={onAddAndReveal}
@@ -203,11 +203,11 @@ describe('GeoInfoPanel「加入行程」按鈕的日期選擇', () => {
 // 陣列,這個元件不需要知道這些日期是怎麼算出來的。
 const SCHEDULED_DATES = ['2026-08-16', '2026-08-17']
 
-describe('GeoInfoPanel「加入行程」按鈕:行程已有排定日期時先跳下拉選單', () => {
+describe('PlacePanel「加入行程」按鈕:行程已有排定日期時先跳下拉選單', () => {
   it('候選沒有日期、但行程已有排定日期時,按下按鈕展開下拉選單(列出既有日期 + 其他日期),不直接展開日曆', async () => {
     const user = userEvent.setup()
     render(
-      <GeoInfoPanel
+      <PlacePanel
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         scheduledDates={SCHEDULED_DATES}
@@ -227,7 +227,7 @@ describe('GeoInfoPanel「加入行程」按鈕:行程已有排定日期時先跳
     const user = userEvent.setup()
     const onSchedule = vi.fn()
     render(
-      <GeoInfoPanel
+      <PlacePanel
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         onSchedule={onSchedule}
@@ -247,7 +247,7 @@ describe('GeoInfoPanel「加入行程」按鈕:行程已有排定日期時先跳
     const user = userEvent.setup()
     const onSchedule = vi.fn()
     render(
-      <GeoInfoPanel
+      <PlacePanel
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         onSchedule={onSchedule}
@@ -272,7 +272,7 @@ describe('GeoInfoPanel「加入行程」按鈕:行程已有排定日期時先跳
   it('scheduledDates 是空陣列時,行為比照完全沒有既有日期:直接展開日曆,不跳下拉選單', async () => {
     const user = userEvent.setup()
     render(
-      <GeoInfoPanel
+      <PlacePanel
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         scheduledDates={[]}
@@ -290,7 +290,7 @@ describe('GeoInfoPanel「加入行程」按鈕:行程已有排定日期時先跳
     const onAddCandidate = vi.fn()
     const candidate = entryCandidateWithDate()
     render(
-      <GeoInfoPanel
+      <PlacePanel
         content={contentWithCandidate(candidate)}
         onClose={() => {}}
         onAddCandidate={onAddCandidate}

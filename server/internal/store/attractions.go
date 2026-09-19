@@ -23,9 +23,12 @@ func toAttraction(r attractionRow) model.Attraction {
 		Lat:          r.Lat,
 		Lng:          r.Lng,
 		Level:        r.Level,
+		IsTheme:      r.IsTheme,
 		RadiusMeters: r.RadiusMeters,
 		Summary:      r.Summary,
 		PhotoURL:     r.PhotoURL,
+		PlaceID:      r.PlaceID,
+		Category:     r.Category,
 		UpdatedAt:    r.UpdatedAt,
 	}
 }
@@ -41,9 +44,12 @@ func (s *Store) CreateAttraction(in model.Attraction) (model.Attraction, error) 
 		Lat:          in.Lat,
 		Lng:          in.Lng,
 		Level:        in.Level,
+		IsTheme:      in.IsTheme,
 		RadiusMeters: in.RadiusMeters,
 		Summary:      in.Summary,
 		PhotoURL:     in.PhotoURL,
+		PlaceID:      in.PlaceID,
+		Category:     in.Category,
 		CreatedAt:    now(),
 		UpdatedAt:    now(),
 	}
@@ -69,9 +75,12 @@ func (s *Store) CreateAttractionWithID(in model.Attraction) (model.Attraction, e
 		Lat:          in.Lat,
 		Lng:          in.Lng,
 		Level:        in.Level,
+		IsTheme:      in.IsTheme,
 		RadiusMeters: in.RadiusMeters,
 		Summary:      in.Summary,
 		PhotoURL:     in.PhotoURL,
+		PlaceID:      in.PlaceID,
+		Category:     in.Category,
 		CreatedAt:    now(),
 		UpdatedAt:    now(),
 	}
@@ -81,10 +90,18 @@ func (s *Store) CreateAttractionWithID(in model.Attraction) (model.Attraction, e
 	return toAttraction(r), nil
 }
 
-// UpdateAttractionFields 用來源方版本覆蓋目的方既有記錄的全部 8 個比對
+// UpdateAttractionFields 用來源方版本覆蓋目的方既有記錄的全部比對
 // 欄位(見 attractionsync.CompareFields 的欄位清單)——同步機制的「兩邊
 // 都有、內容不同」情境用來源方版本覆蓋目的方,不是欄位級局部更新,
 // 因此一次覆蓋全部比對欄位,不像 UpdateAttractionPhoto 只動單一欄位。
+//
+// 刻意不含 PlaceID:attractionsync.compareFieldSpecs 目前只定義 8 個比對
+// 欄位,PlaceID 尚未列入(見該檔案的完整說明,新增比對欄位只需要改那
+// 一處)——這裡若單獨覆蓋 PlaceID 而比對邏輯完全不知道這個欄位存在,會
+// 出現「這裡覆蓋了但 dry-run 報告不會顯示差異」的不一致。是否要讓
+// PlaceID 加入同步比對範圍是後續可以再評估的獨立決策,目前先讓
+// CreateAttractionWithID(建立新記錄時)帶入來源方的 PlaceID,已有記錄的
+// 兩邊同步更新則維持現狀不動這個欄位。
 func (s *Store) UpdateAttractionFields(in model.Attraction) error {
 	return s.db.Model(&attractionRow{}).
 		Where("id = ?", in.ID).
@@ -94,6 +111,7 @@ func (s *Store) UpdateAttractionFields(in model.Attraction) error {
 			"lat":           in.Lat,
 			"lng":           in.Lng,
 			"level":         in.Level,
+			"is_theme":      in.IsTheme,
 			"radius_meters": in.RadiusMeters,
 			"summary":       in.Summary,
 			"photo_url":     in.PhotoURL,
@@ -207,6 +225,25 @@ func (s *Store) UpdateAttractionPhoto(id, photoURL string) error {
 		Updates(map[string]any{"photo_url": photoURL, "updated_at": now()}).Error
 }
 
+// UpdateAttractionPlaceID 更新一筆景點區域對應的 Google place_id。只更新
+// place_id 與 updated_at 兩欄,不動其餘欄位——這支方法專門服務 CLI 的
+// attraction-set-place-id 指令(見 handleMaintenanceAttractionUpdatePlaceID
+// 的完整說明),讓既有已建檔的 attraction(建檔當下沒有透過 -place/
+// -place-id 帶入 place_id)也能事後補上,開始使用「地點照片漸進補圖
+// 機制」。placeID 允許傳空字串(清空既有值,回到只用 PhotoURL 的舊行為)
+// ——不像 UpdateAttractionCoords/UpdateAttractionPhoto 那些欄位「清空」
+// 沒有實際意義,place_id 清空是使用者可能主動想要的操作(例如發現先前
+// 綁錯了 place_id)。
+func (s *Store) UpdateAttractionPlaceID(id, placeID string) error {
+	var value any
+	if placeID != "" {
+		value = placeID
+	}
+	return s.db.Model(&attractionRow{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"place_id": value, "updated_at": now()}).Error
+}
+
 // UpdateAttractionCoords 更新一筆景點區域的座標。只更新 lat/lng/
 // updated_at 三欄,不動其餘欄位——這支方法專門服務 CLI 的
 // attraction-update 指令,修正建檔時輸入錯誤的座標,不需要像
@@ -215,6 +252,21 @@ func (s *Store) UpdateAttractionCoords(id string, lat, lng float64) error {
 	return s.db.Model(&attractionRow{}).
 		Where("id = ?", id).
 		Updates(map[string]any{"lat": lat, "lng": lng, "updated_at": now()}).Error
+}
+
+// UpdateAttractionTheme 更新一筆景點區域是否為「主題點」(散策羅盤用語,
+// 見 model.Attraction.IsTheme 欄位註解)。只更新 is_theme 與 updated_at
+// 兩欄,不動其餘欄位——這支方法專門服務 CLI 的 attraction-set-theme
+// 指令,讓既有已建檔的 attraction(is_theme 欄位剛新增時全部預設為
+// false,不論原本 level 是多少)也能事後補上正確的主題點/精選點分類,
+// 不適合塞進 attractionUpdatableFields(該白名單只收字串型欄位,
+// is_theme 是布林型)。isTheme 允許明確傳 true 或 false(不像
+// UpdateAttractionPlaceID 的空字串代表清空——布林值沒有「清空」的
+// 語意,一律是明確的 true/false 覆蓋)。
+func (s *Store) UpdateAttractionTheme(id string, isTheme bool) error {
+	return s.db.Model(&attractionRow{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"is_theme": isTheme, "updated_at": now()}).Error
 }
 
 // attractionUpdatableFields 是 UpdateAttractionField 允許寫入的欄位白
@@ -227,8 +279,9 @@ func (s *Store) UpdateAttractionCoords(id string, lat, lng float64) error {
 // 像 name/summary 原本那樣各自新增一支 store method + API handler +
 // CLI flag。
 var attractionUpdatableFields = map[string]string{
-	"name":    "name",
-	"summary": "summary",
+	"name":     "name",
+	"summary":  "summary",
+	"category": "category",
 }
 
 // UpdateAttractionField 更新一筆景點區域的單一字串欄位(白名單見

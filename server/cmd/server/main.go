@@ -78,8 +78,9 @@ func main() {
 	// 觀察調整。
 	geoRateLimitPlaceGetWindowSec := flag.Int64("geo-rate-limit-place-get-window-sec", 10, "對 places.get(地點資訊查詢)限流的視窗長度(秒)")
 	geoRateLimitPlaceGetMaxCalls := flag.Int("geo-rate-limit-place-get-max-calls", 1, "對 places.get(地點資訊查詢)視窗內最多可放行的呼叫次數,超過直接拒絕")
-	geoRateLimitPhotoMediaWindowSec := flag.Int64("geo-rate-limit-photo-media-window-sec", 600, "對 places.photoMedia(地點照片下載,依張數計費)限流的視窗長度(秒)")
+	geoRateLimitPhotoMediaWindowSec := flag.Int64("geo-rate-limit-photo-media-window-sec", 5, "對 places.photoMedia(地點照片下載,依張數計費)限流的視窗長度(秒)")
 	geoRateLimitPhotoMediaMaxCalls := flag.Int("geo-rate-limit-photo-media-max-calls", 1, "對 places.photoMedia(地點照片下載)視窗內最多可放行的呼叫次數,超過直接拒絕")
+	geoRateLimitPhotoMediaDailyMax := flag.Int("geo-rate-limit-photo-media-daily-max", 100, "對 places.photoMedia(地點照片下載)每日總額度上限,0 表示不限制")
 	// geoFetchPhotos:要不要真的向 Google Photo Media API 下載照片(見
 	// geo.SetPhotosEnabled 的完整說明)。預設關閉——Photo Media 依張數
 	// 計費,這是刻意保守的預設值,需要明確透過這個 flag 或下方的
@@ -145,6 +146,29 @@ func main() {
 			*geoRateLimitPhotoMediaMaxCalls = parsed
 		}
 	}
+	if v := os.Getenv("GOOGLE_PLACES_PHOTO_MEDIA_RATE_LIMIT_DAILY_MAX"); v != "" {
+		if parsed, perr := strconv.Atoi(v); perr == nil {
+			*geoRateLimitPhotoMediaDailyMax = parsed
+		}
+	}
+
+	// geoRateLimitPlaceGetMaxCalls/geoRateLimitPhotoMediaMaxCalls 必須是
+	// 正整數才有意義——apigateway.RateLimiter.SetLimitForKey 把
+	// maxCalls<=0 解讀成「明確要求移除這個 key 的限流」(見該函式的完整
+	// 說明),不是「非常寬鬆的限制」。這兩個值最終會流入
+	// seedGeoRateLimitsIfEmpty 寫進資料庫、再被 applyGeoRateLimitsFromStore
+	// 讀出套用(見兩者的完整說明),若操作者透過環境變數/flag 不小心填入
+	// 0 或負數(例如部署設定誤植、或誤以為 0 代表關閉某個上限),會讓
+	// 這兩個依張數/次數計費的高風險 endpoint 直接失去限流保護且沒有任何
+	// 錯誤訊息——後台管理介面的 updateGeoRateLimit 已經對這個情境做了
+	// 同樣的驗證(見該檔案的說明),這裡補上對稱的檢查,讓啟動參數這條
+	// 路徑也不可能把 0/負數當成合法設定值送進去。
+	if *geoRateLimitPlaceGetMaxCalls <= 0 {
+		log.Fatalf("geo-rate-limit-place-get-max-calls 必須是正整數，收到 %d", *geoRateLimitPlaceGetMaxCalls)
+	}
+	if *geoRateLimitPhotoMediaMaxCalls <= 0 {
+		log.Fatalf("geo-rate-limit-photo-media-max-calls 必須是正整數，收到 %d", *geoRateLimitPhotoMediaMaxCalls)
+	}
 
 	// DATABASE_URL(postgres://…,正式環境為 Cloud SQL)優先;未設時退回 -db 的 SQLite。
 	dsn := *dbPath
@@ -166,16 +190,40 @@ func main() {
 		apigateway.Config{MaxConcurrency: *geoMaxConcurrency, MinInterval: time.Duration(*geoMinIntervalMs) * time.Millisecond},
 		storeGeoCallLogger{store: st},
 	)
-	// 只對 places.get/places.photoMedia 兩個 endpoint 的拒絕型限流(見
-	// geoRateLimitPlaceGet*/geoRateLimitPhotoMedia* 的說明)——必須同樣
-	// 在任何 geo.New() 呼叫之前設定,理由與上面 ConfigureDefaultGateway
-	// 相同。
-	geo.ConfigureDefaultGatewayRateLimit(geo.RateLimitConfig{
+	// geoRateLimitFallback:啟動 flag/環境變數讀到的值,當資料庫
+	// geo_rate_limits 表尚未有對應 endpoint 資料列時的退回值(見
+	// applyGeoRateLimitsFromStore 的完整說明)——同一組值也用來初次
+	// seed 進資料庫(見下方 seedGeoRateLimitsIfEmpty),讓後台管理介面
+	// 一開啟就能看到目前實際生效的規則可編輯,而不是空白表格。
+	geoRateLimitFallback := geo.RateLimitConfig{
 		PlaceGetWindow:     time.Duration(*geoRateLimitPlaceGetWindowSec) * time.Second,
 		PlaceGetMaxCalls:   *geoRateLimitPlaceGetMaxCalls,
 		PhotoMediaWindow:   time.Duration(*geoRateLimitPhotoMediaWindowSec) * time.Second,
 		PhotoMediaMaxCalls: *geoRateLimitPhotoMediaMaxCalls,
-	})
+	}
+	// 只對 places.get/places.photoMedia 兩個 endpoint 的拒絕型限流(見
+	// geoRateLimitPlaceGet*/geoRateLimitPhotoMedia* 的說明)——必須同樣
+	// 在任何 geo.New() 呼叫之前設定,理由與上面 ConfigureDefaultGateway
+	// 相同。這裡先用啟動參數值建立,緊接著 seedGeoRateLimitsIfEmpty/
+	// applyGeoRateLimitsFromStore 會視資料庫內容決定要不要覆蓋成資料庫
+	// 儲存的值(見兩者的完整說明)。
+	geo.ConfigureDefaultGatewayRateLimit(geoRateLimitFallback)
+	// 每日額度檢查器(見 storeGeoDailyQuotaChecker 的完整說明)——同樣
+	// 必須在任何 geo.New() 呼叫之前設定。
+	geo.ConfigureDefaultGatewayDailyQuota(storeGeoDailyQuotaChecker{store: st})
+	// 啟動時把 geoRateLimitFallback(含這次新增的 photoMediaDailyMax)
+	// 寫進資料庫——但只在該 endpoint 尚未有任何資料列時才寫入(見
+	// seedGeoRateLimitsIfEmpty 的完整說明),避免每次重啟都用啟動參數
+	// 覆蓋掉後台管理介面已經儲存過的自訂設定。緊接著讀一次資料庫套用
+	// (可能該次 seed 剛寫入、也可能資料庫早已有自訂值),讓
+	// defaultRateLimiter 建立當下就反映資料庫的最終結果,不需要等第一次
+	// 背景重讀週期。
+	seedGeoRateLimitsIfEmpty(st, geoRateLimitFallback, *geoRateLimitPhotoMediaDailyMax)
+	applyGeoRateLimitsFromStore(st, geoRateLimitFallback)
+	// 背景定期重讀(見 startGeoRateLimitRefreshLoop 的完整說明)——讓後台
+	// 管理介面之後修改設定時,不需要重啟這支 process 就能在
+	// geoRateLimitRefreshInterval 之內生效。
+	startGeoRateLimitRefreshLoop(st, geoRateLimitRefreshInterval, geoRateLimitFallback)
 	geo.SetPhotosEnabled(*geoFetchPhotos)
 	if *geoFetchPhotos {
 		log.Printf("Google Photo Media 下載已啟用(依張數計費)")
@@ -216,6 +264,18 @@ func main() {
 	// 真正處理請求——這正是 server/tools/onagent-tools.yaml 開頭警告過的
 	// 那個陷阱,這次在新增這個路由時實際踩到)。
 	mux.Handle("/onagent/", srv.Routes())
+	// /public/geo/ — GET /public/geo/place-details(見
+	// internal/api/geo_outline.go handlePublicGeoPlaceDetails/
+	// publicPlaceDetailsAllowlist 的完整說明),供登入前的公開展示頁
+	// (web/src/home/KiyomizuDemoPage.tsx)免登入查詢白名單內固定景點的
+	// Google Place Details。刻意只轉發 /public/geo/ 這個更深的前綴,不是
+	// 整個 /public/——/public/{token} 仍照上面第 207 行註解交給前端 React
+	// 路由處理(SPA fallback),兩者路徑前綴不同不會互相搶路由,但若改成
+	// 轉發整個 /public/ 會連帶把 /public/{token} 也送進 srv.Routes(),
+	// 那裡沒有對應 handler、Go 1.22+ mux 會回 404,反而打壞現有的分享
+	// 連結頁面。同一個「新路徑要明確轉發、否則落到 SPA fallback」的陷阱,
+	// 見上面 /onagent/ 的說明。
+	mux.Handle("/public/geo/", srv.Routes())
 
 	// 管理後台(/admin/api/*)預設拆分成獨立的 cmd/adminserver binary/
 	// Cloud Run 服務(見 server/cmd/adminserver/main.go),那條部署路徑

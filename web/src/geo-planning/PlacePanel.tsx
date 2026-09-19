@@ -1,19 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import { PanelLeft, Plus, X } from 'lucide-react'
+import { PanelLeft, Plus } from 'lucide-react'
 import { dayGroupLabel, type GeoCandidate } from './GeoCandidateSidebar'
 import { candidateHasScheduledDate } from './geoCandidateHelpers'
 import { DatePickerPopover } from './DatePickerPopover'
 import { PhotoCarousel } from './PhotoCarousel'
-import styles from './GeoInfoPanel.module.css'
+import { DesktopInfoCard } from './DesktopInfoCard'
+import styles from './PlacePanel.module.css'
 
-// GeoInfoPanel:一張浮動卡片,絕對定位疊在地圖上方,貼齊主顯示區右緣
+// PlacePanel:一張浮動卡片,絕對定位疊在地圖上方,貼齊主顯示區右緣
 // (即 GeoHotelSidebar 左側),與主顯示區同高、四周留出間距,不像
 // GeoHotelSidebar/GeoCandidateSidebar 那樣佔用一份平行的 flex 版面
 // 空間。故渲染位置放在 .desktop-main(見 DesktopLayout.tsx,該容器已有
 // position: relative)底下、跟 GeoOutlinePanel 同層,而非跟
 // GeoHotelSidebar 同層。
 //
-// 有兩個觸發來源,呼叫端(DesktopLayout.tsx)統一轉成 GeoInfoContent 後
+// 有兩個觸發來源,呼叫端(DesktopLayout.tsx)統一轉成 PlaceInfoContent 後
 // 才傳進來,這個元件不需要知道資料原始來自哪裡:
 //  1. 地點清單(GeoHotelSidebar「地點」分頁)點擊項目本體——刻意不移動
 //     地圖(不再 setGeoPanTarget),理由:原本點擊會讓地圖平移過去,但
@@ -23,11 +24,11 @@ import styles from './GeoInfoPanel.module.css'
 //     點自訂地標圖示(useAttractionOverlays.ts 的 handleAttractionClick)維持
 //     原本「放大到該範圍+查附近推薦」的行為不變——那是使用者已經在
 //     地圖上、明確想放大看這個地點的意圖,跟清單點擊是兩種不同情境。
-//  2. 點擊底圖上 Google 原生繪製的 POI 圖標(見 GeoOutlineMap.tsx 攔截
+//  2. 點擊底圖上 Google 原生繪製的 POI 圖標(見 ExploreMap.tsx 攔截
 //     IconMouseEvent、event.stop() 停用預設 InfoWindow 後改查
 //     fetchGeoPlaceDetails)——這種來源沒有知名度分級/景點數量/範圍
 //     半徑這些只有自建 district 資料才有的欄位,改顯示 Google 評分。
-export interface GeoInfoContent {
+export interface PlaceInfoContent {
   name: string
   photoUrl?: string
   // googlePhotoUrls/pexelsPhotoUrls:目前只有「點擊地圖上 Google 原生 POI
@@ -40,7 +41,7 @@ export interface GeoInfoContent {
   // 說明),故這張卡片開啟時若 photoUrl 未知、但有 placeId,呼叫端
   // (useGeoPlanningState.ts 的 infoContentPhotoFetch effect)會另外呼叫
   // fetchGeoPlacePhoto 補查、查到後用 PATCH_INFO_CONTENT 補上——這個
-  // 元件本身不主動發起查詢(維持純展示,理由同其餘 GeoInfoContent 欄位
+  // 元件本身不主動發起查詢(維持純展示,理由同其餘 PlaceInfoContent 欄位
   // 的設計),只是要保留這個欄位讓呼叫端知道「這張卡片有沒有東西可補查」。
   // geocode(搜尋結果)本身已經有另一套獨立的文字/照片補查流程(見
   // GeoOutlinePanel.tsx 的 selectedCandidate effect),不依賴這個欄位。
@@ -49,6 +50,21 @@ export interface GeoInfoContent {
   pexelsPhotoUrls?: string[]
   subtitle?: string
   summary?: string
+  // attractionSummary:這個地點同時也是人工建檔的景點區域(GeoAttraction)
+  // 時,我們自己寫的介紹文字——跟上面的 summary(這個來源本身的主要簡介,
+  // 例如 poiInfoContent 帶的是 Google editorialSummary)是兩個獨立欄位、
+  // 分開顯示,不互相覆蓋。只有「點擊地圖上非主題點地標」這個來源(見
+  // DesktopLayout.tsx 的 handleAttractionOpenPlaceDetails/ExploreMap.tsx
+  // 的 onAttractionOpenPlaceDetails)會帶值——這種情況下卡片主要內容查的
+  // 是 Google Place Details(含評分、雙來源照片),但這個地點同時也是
+  // 我們手動整理過介紹文字的景點區域,若只顯示 Google 資料,原本人工
+  // 寫的介紹會完全遺失,故額外保留這個欄位讓兩者並存顯示(見下方
+  // render 的 attractionIntro 區塊)。其餘來源(飯店/推薦地點/候選籃
+  // 項目/「附近景點」清單點擊)固定不帶——「附近景點」清單那個來源本身
+  // 用的是 attractionToInfoContent,直接把 attraction.summary 當主要
+  // summary 顯示,不需要額外的並存區塊(不是 Google 資料為主、attraction
+  // 介紹為輔的情境,是純 attraction 介紹本身)。
+  attractionSummary?: string
   badges: string[]
   // candidate:這張卡片對應的候選籃項目——由呼叫端(DesktopLayout.tsx)
   // 在兩個觸發來源(側欄「地點」清單點擊/點擊地圖上 Google 原生 POI
@@ -60,7 +76,7 @@ export interface GeoInfoContent {
   candidate?: GeoCandidate
 }
 
-export function GeoInfoPanel({
+export function PlacePanel({
   content,
   onClose,
   onAddCandidate,
@@ -68,8 +84,9 @@ export function GeoInfoPanel({
   onSchedule,
   scheduledDates,
   shiftBy,
+  style,
 }: {
-  content: GeoInfoContent | null
+  content: PlaceInfoContent | null
   onClose: () => void
   // shiftBy:右緣可能同時有 GeoHotelSidebar(飯店/附近推薦清單,見
   // FloatingPanel.tsx 的 side="right")與對話浮動小匡(見
@@ -77,8 +94,16 @@ export function GeoInfoPanel({
   // 重疊——由呼叫端(DesktopLayout.tsx)判斷目前右緣實際被哪個佔用、
   // 傳入對應值,把卡片推到它左側。'chat' 偏移量大於 'hotel'(對話小匡
   // 較寬),兩者都存在時呼叫端只會傳其中較寬的那個,不是疊加,詳見
-  // GeoInfoPanel.module.css 的 .shiftedHotel/.shiftedChat。
+  // PlacePanel.module.css 的 .shiftedHotel/.shiftedChat。
   shiftBy?: 'none' | 'hotel' | 'chat'
+  // style:2026-08 新增的逃生艙——目前唯一的用途是 DesktopLayout.tsx
+  // 讓「附近景點」點擊後開的第二個 PlacePanel 執行個體,動態算出要
+  // 疊在 AttractionInfoPanel 左側多少距離(這個距離還要疊加
+  // infoPanelShiftBy 本身是否已經因為飯店側欄/對話小匡而往左推,是三種
+  // shiftBy 組合各自的動態值,不適合再展開成更多固定的 shiftBy enum
+  // 字面值——那樣可讀性反而更差)。用 style(而非再擴充 shiftBy)是因為
+  // 這個位移量是執行期算出來的數字,不是有限枚舉。
+  style?: React.CSSProperties
   // onAddCandidate:「加入候選」按鈕觸發,理由同 GeoHotelSidebar 卡片上
   // 既有的同名 callback——這裡刻意不做「已在候選籃裡就不顯示按鈕」的
   // 判斷,重複加入由呼叫端的候選籃 state 用內容比對去重(見
@@ -133,7 +158,7 @@ export function GeoInfoPanel({
   }, [content])
 
   // dateMenuOpenUp/addCandidateWrapRef:.dateMenu 與 .calendarPopover(見
-  // GeoInfoPanel.module.css)預設都往下展開(top: calc(100% + 6px)),但
+  // PlacePanel.module.css)預設都往下展開(top: calc(100% + 6px)),但
   // 這張卡片本身可能出現在視窗下半部(例如點擊地圖上靠近視窗底部的
   // 地點),導致按鈕位置偏低、往下展開會被視窗邊界截斷或推出可視範圍
   // 外。addUiMode 切到 'menu' 或 'calendar' 時都量測按鈕組
@@ -219,108 +244,111 @@ export function GeoInfoPanel({
     setAddUiMode('closed')
   }
 
-  const shiftClass = shiftBy === 'chat' ? ` ${styles.shiftedChat}` : shiftBy === 'hotel' ? ` ${styles.shiftedHotel}` : ''
   return (
-    <div className={`${styles.panel}${shiftClass}`}>
-      <div className={styles.body}>
-        <div className={styles.imageWrap}>
-          <PhotoCarousel
-            googlePhotoUrls={content.googlePhotoUrls}
-            pexelsPhotoUrls={content.pexelsPhotoUrls}
-            fallbackUrl={content.photoUrl}
-            alt={content.name}
-          />
-          <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
-            <X size={16} strokeWidth={2} />
-          </button>
-        </div>
-        <div className={styles.content}>
-          <h2 className={styles.name}>{content.name}</h2>
-          {content.subtitle && <span className={styles.landmarkName}>{content.subtitle}</span>}
-          {content.badges.length > 0 && (
-            <div className={styles.metaRow}>
-              {content.badges.map((b) => (
-                <span key={b} className={styles.badge}>{b}</span>
-              ))}
-            </div>
-          )}
-          {content.summary ? (
-            <p className={styles.summary}>{content.summary}</p>
-          ) : (
-            <p className={styles.summaryEmpty}>這個地點還沒有簡介資料。</p>
-          )}
-          {candidate && (
-            <>
-              {/* addCandidateWrap:position: relative 錨點——讓下面的
-                  .dateMenu 懸浮選單能用 position: absolute 貼齊這個按鈕組
-                  正下方,不擠壓卡片其餘內容版面(選單展開/收合不會讓底下的
-                  日曆 UI 位置跳動)。 */}
-              <div className={styles.addCandidateWrap} ref={addCandidateWrapRef}>
-                <div className={styles.addCandidateGroup}>
-                  <button
-                    type="button"
-                    className={styles.addCandidateBtn}
-                    onClick={handleAddClick}
-                  >
-                    <Plus size={14} strokeWidth={2} />
-                    加入行程
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.addToNewTripBtn}
-                    onClick={() => onAddAndReveal?.(candidate)}
-                    title="加入候選並顯示候選籃"
-                    aria-label="加入候選並顯示候選籃"
-                  >
-                    <PanelLeft size={14} strokeWidth={2} />
-                  </button>
-                </div>
-                {/* 既有日期懸浮選單:候選沒有排定日期、但行程本身已有排定
-                    日期時,按下「加入 {tripName}」先展開,列出 scheduledDates
-                    每一天(格式同 GeoCandidateSidebar.tsx 的 dayGroupLabel)+
-                    一個「其他日期」選項,見 scheduledDates prop 的說明。
-                    絕對定位疊在按鈕下方,不推擠卡片其餘內容。 */}
-                {addUiMode === 'menu' && (
-                  <div className={`${styles.dateMenu}${dateMenuOpenUp ? ` ${styles.dateMenuOpenUp}` : ''}`}>
-                    {scheduledDates?.map((date) => (
-                      <button
-                        key={date}
-                        type="button"
-                        className={styles.dateMenuItem}
-                        onClick={() => handlePickScheduledDate(date)}
-                      >
-                        {dayGroupLabel(date)}
-                      </button>
-                    ))}
+    <DesktopInfoCard onClose={onClose} shiftBy={shiftBy} style={style}>
+      <div className={styles.imageWrap}>
+        <PhotoCarousel
+          googlePhotoUrls={content.googlePhotoUrls}
+          pexelsPhotoUrls={content.pexelsPhotoUrls}
+          fallbackUrl={content.photoUrl}
+          alt={content.name}
+        />
+      </div>
+      <div className={styles.content}>
+        <h2 className={styles.name}>{content.name}</h2>
+        {content.subtitle && <span className={styles.landmarkName}>{content.subtitle}</span>}
+        {content.badges.length > 0 && (
+          <div className={styles.metaRow}>
+            {content.badges.map((b) => (
+              <span key={b} className={styles.badge}>{b}</span>
+            ))}
+          </div>
+        )}
+        {content.summary ? (
+          <p className={styles.summary}>{content.summary}</p>
+        ) : (
+          <p className={styles.summaryEmpty}>這個地點還沒有簡介資料。</p>
+        )}
+        {/* attractionIntro:見 PlaceInfoContent.attractionSummary 的完整
+            說明——只有這個地點同時也是人工建檔的景點區域時才會有值,獨立
+            於上面的 summary(Google 資料)之外並存顯示,不覆蓋也不取代。 */}
+        {content.attractionSummary && (
+          <div className={styles.attractionIntro}>
+            <p className={styles.attractionIntroTitle}>景點介紹</p>
+            <p className={styles.attractionIntroText}>{content.attractionSummary}</p>
+          </div>
+        )}
+        {candidate && (
+          <>
+            {/* addCandidateWrap:position: relative 錨點——讓下面的
+                .dateMenu 懸浮選單能用 position: absolute 貼齊這個按鈕組
+                正下方,不擠壓卡片其餘內容版面(選單展開/收合不會讓底下的
+                日曆 UI 位置跳動)。 */}
+            <div className={styles.addCandidateWrap} ref={addCandidateWrapRef}>
+              <div className={styles.addCandidateGroup}>
+                <button
+                  type="button"
+                  className={styles.addCandidateBtn}
+                  onClick={handleAddClick}
+                >
+                  <Plus size={14} strokeWidth={2} />
+                  加入行程
+                </button>
+                <button
+                  type="button"
+                  className={styles.addToNewTripBtn}
+                  onClick={() => onAddAndReveal?.(candidate)}
+                  title="加入候選並顯示候選籃"
+                  aria-label="加入候選並顯示候選籃"
+                >
+                  <PanelLeft size={14} strokeWidth={2} />
+                </button>
+              </div>
+              {/* 既有日期懸浮選單:候選沒有排定日期、但行程本身已有排定
+                  日期時,按下「加入 {tripName}」先展開,列出 scheduledDates
+                  每一天(格式同 GeoCandidateSidebar.tsx 的 dayGroupLabel)+
+                  一個「其他日期」選項,見 scheduledDates prop 的說明。
+                  絕對定位疊在按鈕下方,不推擠卡片其餘內容。 */}
+              {addUiMode === 'menu' && (
+                <div className={`${styles.dateMenu}${dateMenuOpenUp ? ` ${styles.dateMenuOpenUp}` : ''}`}>
+                  {scheduledDates?.map((date) => (
                     <button
+                      key={date}
                       type="button"
                       className={styles.dateMenuItem}
-                      onClick={() => setAddUiMode('calendar')}
+                      onClick={() => handlePickScheduledDate(date)}
                     >
-                      其他日期
+                      {dayGroupLabel(date)}
                     </button>
-                  </div>
-                )}
-                {/* 日期選擇日曆浮動匡:候選沒有排定日期時,按下「加入
-                    {tripName}」(或從上方下拉選單點「其他日期」)展開,
-                    絕對定位疊在按鈕組正下方,不推擠卡片其餘內容版面——
-                    跟 .dateMenu 是同一種疊層手法(見 .calendarPopover 的
-                    說明),使用者明確要求改成浮動小匡而非原地展開。改用
-                    DatePickerPopover(月曆格線 UI,見該元件開頭的說明,
-                    取代原本的原生 <input type="date">)。點選日期格子即
-                    視為確定,不需要額外的「確定」按鈕——原本的按鈕是
-                    搭配原生 date input 沒有選取瞬間回饋才需要的中介
-                    步驟。 */}
-                {addUiMode === 'calendar' && (
-                  <div className={`${styles.calendarPopover}${dateMenuOpenUp ? ` ${styles.calendarPopoverOpenUp}` : ''}`}>
-                    <DatePickerPopover onSelect={handleConfirmDate} />
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+                  ))}
+                  <button
+                    type="button"
+                    className={styles.dateMenuItem}
+                    onClick={() => setAddUiMode('calendar')}
+                  >
+                    其他日期
+                  </button>
+                </div>
+              )}
+              {/* 日期選擇日曆浮動匡:候選沒有排定日期時,按下「加入
+                  {tripName}」(或從上方下拉選單點「其他日期」)展開,
+                  絕對定位疊在按鈕組正下方,不推擠卡片其餘內容版面——
+                  跟 .dateMenu 是同一種疊層手法(見 .calendarPopover 的
+                  說明),使用者明確要求改成浮動小匡而非原地展開。改用
+                  DatePickerPopover(月曆格線 UI,見該元件開頭的說明,
+                  取代原本的原生 <input type="date">)。點選日期格子即
+                  視為確定,不需要額外的「確定」按鈕——原本的按鈕是
+                  搭配原生 date input 沒有選取瞬間回饋才需要的中介
+                  步驟。 */}
+              {addUiMode === 'calendar' && (
+                <div className={`${styles.calendarPopover}${dateMenuOpenUp ? ` ${styles.calendarPopoverOpenUp}` : ''}`}>
+                  <DatePickerPopover onSelect={handleConfirmDate} />
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
-    </div>
+    </DesktopInfoCard>
   )
 }

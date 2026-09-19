@@ -1,4 +1,4 @@
-// PhotoCarousel:GeoInfoPanel.tsx 照片顯示區域的抽出元件——驗證
+// PhotoCarousel:PlacePanel.tsx 照片顯示區域的抽出元件——驗證
 // 0/1/多張三種張數的顯示分支,以及桌面版(點擊縮圖開 Lightbox)、手機版
 // (橫向並排滑動列)兩套完全不同的互動模式(見該元件開頭的說明)。
 //

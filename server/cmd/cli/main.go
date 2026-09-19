@@ -127,6 +127,10 @@ func main() {
 		cmdAttractionDelete(c, args)
 	case "attraction-update":
 		cmdAttractionUpdate(c, args)
+	case "attraction-set-place-id":
+		cmdAttractionSetPlaceID(c, args)
+	case "attraction-set-theme":
+		cmdAttractionSetTheme(c, args)
 	case "attraction-update-photo":
 		cmdAttractionUpdatePhoto(apiURL, args)
 	case "attraction-sync-setup":
@@ -276,12 +280,19 @@ func cmdNotify(args []string) {
 // 視為「未帶」——這在理論上會誤判座標剛好落在赤道或本初子午線的地點,
 // 但 tripace 目前的資料範圍(日本/台灣/泰國等)不會出現這種座標,不為
 // 這個理論邊界增加旗標複雜度(例如改用 *float64 或另開 -coords 旗標)。
-func resolveCoords(c *httpClient, lat, lng float64, place, region string) (float64, float64, error) {
+// resolveCoords 解析 -lat/-lng 或 -place 二擇一的座標輸入,額外回傳查詢
+// 候選地點附帶的 place_id(第三個回傳值 placeID)——只有走 -place 查詢
+// 分支、且該筆候選結果確實有解析出 place_id(見 geo.Place.PlaceID 的
+// 完整說明,json tag 已從 "-" 改成輸出 "placeId")時才會有值,明確帶
+// -lat/-lng 的分支、或查詢結果沒有 place_id 時回傳空字串,不是錯誤——
+// place_id 是選填的加值資訊,呼叫端(cmdAttractionAdd/cmdAttractionUpdate)
+// 自行決定拿到空字串時要不要當作沒有變動。
+func resolveCoords(c *httpClient, lat, lng float64, place, region string) (float64, float64, string, error) {
 	if lat != 0 || lng != 0 {
-		return lat, lng, nil
+		return lat, lng, "", nil
 	}
 	if place == "" {
-		return 0, 0, fmt.Errorf("需要 -lat/-lng 或 -place 其中一組")
+		return 0, 0, "", fmt.Errorf("需要 -lat/-lng 或 -place 其中一組")
 	}
 
 	q := url.Values{}
@@ -291,16 +302,17 @@ func resolveCoords(c *httpClient, lat, lng float64, place, region string) (float
 	}
 	geoRes, err := c.do("GET", "/internal/maintenance/geocode?"+q.Encode(), nil)
 	if err != nil {
-		return 0, 0, fmt.Errorf("geocode: %w", err)
+		return 0, 0, "", fmt.Errorf("geocode: %w", err)
 	}
 	places, _ := geoRes["places"].([]any)
 	if len(places) == 0 {
-		return 0, 0, fmt.Errorf("-place 查無候選地點")
+		return 0, 0, "", fmt.Errorf("-place 查無候選地點")
 	}
 	first, _ := places[0].(map[string]any)
 	newLat, _ := first["lat"].(float64)
 	newLng, _ := first["lng"].(float64)
-	return newLat, newLng, nil
+	newPlaceID, _ := first["placeId"].(string)
+	return newLat, newLng, newPlaceID, nil
 }
 
 // cmdAttractionAdd 新增一筆景點區域資料(見 model.Attraction 的完整說明)。
@@ -326,7 +338,27 @@ func cmdAttractionAdd(c *httpClient, args []string) {
 	level := fs.Int("level", 0, "知名度分級（必填），1=國際 2=國家 3=區域 4=城市 5=在地")
 	radius := fs.Int("radius", 0, "大致範圍半徑（公尺），0 表示這是單點地標而非有範圍的區域")
 	summary := fs.String("summary", "", "白話簡介（選填）")
+	category := fs.String("category", "", "「附近景點」清單用的店家分類（選填），見 model.Attraction.Category 的完整說明，目前前端 CuratedCategory 定義的合法值為 tea/restaurant/craft/street，這裡不驗證列舉值")
 	photoURL := fs.String("photo-url", "", "代表性照片網址（選填）")
+	// placeIDFlag:讓使用者可以不透過 -place 查詢、直接明確指定 place_id
+	// ——例如使用者已經從別處(如 Google Maps 網頁版分享連結)拿到確切的
+	// place_id,不需要再讓 -place 的文字查詢去猜一次(文字查詢可能因為
+	// 地名口語化/多個同名候選而選到不是使用者原本想要的那筆)。有值時
+	// 優先採用(不查 -place 查詢結果附帶的 place_id),對齊 -lat/-lng
+	// 優先於 -place 查詢結果的既有慣例。
+	placeIDFlag := fs.String("place-id", "", "手動指定這個景點對應的 Google place_id（選填，優先於 -place 查詢結果附帶的 place_id）；有值時可讓前端優先使用漸進補圖機制的雙來源照片")
+	// themeFlag:決定 model.Attraction.IsTheme 的值(散策羅盤用語,見
+	// model.Attraction.IsTheme 欄位註解的完整說明)——主題點是使用者點開後
+	// 會揭露周邊「精選點」的錨點,非主題點(精選點)預設不顯示。預設值
+	// false 只是 flag.Bool 語法上要求的初始值,實際套用的預設行為見下方
+	// fs.Visit 判斷:未明確帶這個 flag 時,依 model.Attraction.IsTheme 欄位
+	// 註解記載的既有慣例,退回用 -level === 1 自動推斷(對齊本函式下方
+	// 「非主題點強制要求 place_id」那段判斷式的既有語意),而不是一律預設
+	// false——這樣才不會讓沒特別處理過 -theme 的既有建檔流程,建出一批
+	// level=1 卻 IsTheme=false 的資料。若使用者明確帶 -theme(不論
+	// -theme=true 或 -theme=false),一律以使用者輸入為準,允許之後
+	// IsTheme 跟 Level 分開設定(例如某個 level 2 的地點也想設為主題點)。
+	themeFlag := fs.Bool("theme", false, "是否為「主題點」（選填，決定 model.Attraction.IsTheme；散策羅盤用語，主題點是使用者點開後會揭露周邊精選點的錨點）。未明確帶這個 flag 時，依 -level===1 自動推斷（對齊既有慣例）；明確帶 -theme=true 或 -theme=false 時，一律以使用者輸入為準，可讓 IsTheme 跟 -level 分開設定")
 	_ = fs.Parse(args)
 	if *name == "" || *city == "" || *level == 0 {
 		fatal("attraction-add 需要 -name、-city、-level（1~5）")
@@ -335,20 +367,68 @@ func cmdAttractionAdd(c *httpClient, args []string) {
 		fatal("attraction-add 的 -level 必須介於 1~5")
 	}
 
-	newLat, newLng, err := resolveCoords(c, *lat, *lng, *place, *region)
+	newLat, newLng, resolvedPlaceID, err := resolveCoords(c, *lat, *lng, *place, *region)
 	if err != nil {
 		fatal("attraction-add: %v", err)
 	}
 
+	// isTheme 決定順序:使用者明確帶 -theme(不論 true/false)時以其為準;
+	// 否則退回用 -level === 1 自動推斷(見上方 themeFlag 宣告處的完整
+	// 說明、model.Attraction.IsTheme 欄位註解)。用 fs.Visit 判斷使用者是
+	// 否「有傳這個 flag」,因為 flag.Bool 本身無法區分「沒傳」跟「傳了
+	// -theme=false」這兩種情況。
+	isTheme := *level == 1
+	themeFlagSet := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "theme" {
+			themeFlagSet = true
+		}
+	})
+	if themeFlagSet {
+		isTheme = *themeFlag
+	}
+
 	in := model.Attraction{
 		Name: *name, CityName: *city, Lat: newLat, Lng: newLng,
-		Level: *level, RadiusMeters: *radius,
+		Level: *level, IsTheme: isTheme, RadiusMeters: *radius,
 	}
 	if *summary != "" {
 		in.Summary = summary
 	}
+	if *category != "" {
+		in.Category = category
+	}
 	if *photoURL != "" {
 		in.PhotoURL = photoURL
+	}
+	// place_id 優先順序:使用者明確帶 -place-id > -place 查詢結果附帶的
+	// place_id > 都沒有時維持 nil(舊有行為,只用 PhotoURL 這條路徑)。
+	finalPlaceID := *placeIDFlag
+	if finalPlaceID == "" {
+		finalPlaceID = resolvedPlaceID
+	}
+	// 非主題點(isTheme === false)強制要求要有 place_id——「主題點/非
+	// 主題點」是這次「點擊 attraction 改開 place 資訊卡」功能(見
+	// web/src/geo-planning/GeoOutlineMap.tsx 的 handleAttractionClickRouted)
+	// 的判斷依據。這裡改用上方算出的 isTheme(預設等同 level===1,但使用者
+	// 明確帶 -theme 時可以覆寫),不再直接看 *level,對齊
+	// model.Attraction.IsTheme 欄位註解「IsTheme 跟 Level 之後可以獨立
+	// 設定」的說明——例如使用者明確用 -theme=true 把某個 level 2 的地點
+	// 設為主題點時,place_id 檢查也要跟著放寬,否則會出現「明明設定成主題
+	// 點卻還被當非主題點擋下來」的矛盾。前端點擊非主題點時完全依賴
+	// placeId 去打 /internal/geo/place-details,沒有 place_id 就查不到
+	// 任何東西、點擊會沒有反應。與其讓這批資料悄悄建檔成「看起來正常、
+	// 點下去卻沒有卡片可看」的壞資料,寧可在建檔當下就擋下來,把問題攤在
+	// 使用者眼前——不論這個 place_id 是使用者用 -place-id 明確指定,或是
+	// -place 查詢帶回的,只要最終有值就算滿足要求;-lat/-lng 手動指定座標
+	// 的路徑沒有查詢可以帶回 place_id,若同時也沒帶 -place-id,一律視為
+	// 不符合要求。主題點不受影響,place_id 仍是選填(主題點本身就會開
+	// attraction 自己的介紹卡,不依賴 place_id)。
+	if !isTheme && finalPlaceID == "" {
+		fatal("attraction-add: 非主題點(isTheme 為 false，預設等同 level 不是 1)必須有 place_id(前端點擊時會改開 place 資訊卡,沒有 place_id 會查不到資料)——請用 -place-id 明確指定,或改用 -place 查詢且該地名查得到 place_id")
+	}
+	if finalPlaceID != "" {
+		in.PlaceID = &finalPlaceID
 	}
 	res, err := c.attractionAdd(in)
 	if err != nil {
@@ -437,7 +517,10 @@ func cmdAttractionUpdate(c *httpClient, args []string) {
 	}
 
 	if haveCoords || *place != "" {
-		newLat, newLng, err := resolveCoords(c, *lat, *lng, *place, *region)
+		// 第三個回傳值(place_id)這裡不需要——attraction-update 只修正座標,
+		// 不動 place_id;要補上/修改 place_id 用 attraction-set-place-id
+		// (見該指令的說明)。
+		newLat, newLng, _, err := resolveCoords(c, *lat, *lng, *place, *region)
 		if err != nil {
 			fatal("attraction-update: %v", err)
 		}
@@ -456,6 +539,113 @@ func cmdAttractionUpdate(c *httpClient, args []string) {
 		}
 		output(res)
 	}
+}
+
+// cmdAttractionSetPlaceID 補上(或清空)一筆既有景點區域對應的 Google
+// place_id——走 PATCH /internal/maintenance/attractions/{id}/place-id(見
+// httpClient.attractionUpdatePlaceID 的完整說明)。獨立於 attraction-update
+// 之外(不塞進 -field/-value 通用機制),理由同後端 handler 的說明:
+// place_id 允許明確傳空字串清空,跟 -field/-value 那組欄位「不可為空」的
+// 既有語意不同。
+//
+// 使用情境:這批 attraction 資料原本(2026-09 之前)完全沒有 place_id
+// 概念,既有已建檔的景點區域不會自動補上——透過這個指令補上後,前端
+// (AttractionInfoPanel.tsx)才會開始改用「地點照片漸進補圖機制」的
+// Google/Pexels 雙來源照片,取代/補強單一的 photo_url。新建的景點區域
+// 可以直接用 attraction-add -place-id(或 -place 查詢自動帶出),不需要
+// 額外再跑這個指令。
+//
+// -place-id(手動指定)與 -place(改查地名)二擇一,互斥:-place-id 是
+// 使用者已經從別處(如 Google Maps 網頁版分享連結)拿到確切的
+// place_id,直接信任這個輸入、不再查詢驗證它是否有效(對齊
+// attraction-add 對這個 flag 的既有慣例,見該處說明);-place 則跟
+// attraction-add 共用同一支 resolveCoords 查詢地名的座標/place_id,不
+// 重新實作一次查詢邏輯。優先序:兩者都帶視為使用者輸入衝突,直接報錯
+// 而非靜默選一個(這裡沒有明顯的「合理預設」可言——不像
+// attraction-add 的 -lat/-lng 優先於 -place 查詢結果附帶的
+// place_id,那是「精確輸入優先於查詢猜測」的單向覆蓋關係;這裡兩個
+// flag 各自都是使用者主動指定的明確意圖,同時給很可能是誤用,錯誤
+// 訊息比默默選一個更安全)。resolveCoords 查到的座標在這裡用不到
+// (這個指令只改 place_id,不動座標),只取第三個回傳值。
+func cmdAttractionSetPlaceID(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("attraction-set-place-id", flag.ExitOnError)
+	id := fs.String("id", "", "地標 ID（必填）")
+	placeID := fs.String("place-id", "", "手動指定 Google place_id（與 -place 二擇一，信任使用者輸入，不查詢驗證）")
+	place := fs.String("place", "", "改查這個地名帶回的 place_id（與 -place-id 二擇一，取第一筆候選結果，查詢邏輯與 attraction-add 共用）")
+	region := fs.String("region", "", "地名查詢的國家代碼限制，如 jp / tw / cn（僅搭配 -place 使用，選填）")
+	_ = fs.Parse(args)
+	if *id == "" {
+		fatal("attraction-set-place-id 需要 -id")
+	}
+	if *placeID != "" && *place != "" {
+		fatal("attraction-set-place-id 的 -place-id 與 -place 二擇一，不能同時提供")
+	}
+	if *placeID == "" && *place == "" {
+		fatal("attraction-set-place-id 需要 -place-id 或 -place 其中一項")
+	}
+
+	finalPlaceID := *placeID
+	if finalPlaceID == "" {
+		// -place 分支:跟 attraction-add 共用同一支 resolveCoords(見該
+		// 函式的完整說明)——這裡傳入的 lat/lng 固定是 0,強迫
+		// resolveCoords 一定走 -place 查詢分支(haveCoords 判斷式恆為
+		// false),不會誤用 lat==0&&lng==0 的邊界情況(理由同該函式對這個
+		// 邊界的既有說明:tripace 目前的資料範圍不會出現座標剛好落在
+		// 0,0 的地點)。座標本身這裡用不到,只取查詢帶回的 place_id;
+		// 查無 place_id(resolveCoords 查得到候選地點,但該筆候選沒有
+		// place_id)時,fatal 提示使用者改用 -place-id 手動指定,而非
+		// 靜默送出空字串清空既有的 place_id(那樣會讓使用者誤以為補上了
+		// 卻其實被清空)。
+		_, _, resolvedPlaceID, err := resolveCoords(c, 0, 0, *place, *region)
+		if err != nil {
+			fatal("attraction-set-place-id: %v", err)
+		}
+		if resolvedPlaceID == "" {
+			fatal("attraction-set-place-id: -place 查到的候選地點沒有 place_id，請改用 -place-id 手動指定")
+		}
+		finalPlaceID = resolvedPlaceID
+	}
+
+	res, err := c.attractionUpdatePlaceID(*id, finalPlaceID)
+	if err != nil {
+		fatal("attraction-set-place-id: %v", err)
+	}
+	output(res)
+}
+
+// cmdAttractionSetTheme 更新一筆既有景點區域是否為「主題點」(散策羅盤
+// 用語,見 model.Attraction.IsTheme 欄位註解)——走 PATCH
+// /internal/maintenance/attractions/{id}/theme(見
+// httpClient.attractionUpdateTheme 的完整說明)。比 attraction-set-place-id
+// 單純:-theme 是必填的布林值,沒有「-place 改查」那種多來源輸入,單純
+// 設定使用者明確指定的值即可,不需要另外查詢驗證。
+//
+// 使用情境:is_theme 欄位剛新增時,資料庫既有資料一律預設為 false(不論
+// 原本 level 是多少),需要靠這支指令逐筆補上正確分類,把過去用
+// level===1 判斷主題點的既有前端邏輯,換成獨立的 isTheme 欄位。
+func cmdAttractionSetTheme(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("attraction-set-theme", flag.ExitOnError)
+	id := fs.String("id", "", "地標 ID（必填）")
+	isTheme := fs.Bool("theme", false, "是否為主題點（必填，true 或 false）")
+	_ = fs.Parse(args)
+	if *id == "" {
+		fatal("attraction-set-theme 需要 -id")
+	}
+	themeGiven := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "theme" {
+			themeGiven = true
+		}
+	})
+	if !themeGiven {
+		fatal("attraction-set-theme 需要明確指定 -theme=true 或 -theme=false")
+	}
+
+	res, err := c.attractionUpdateTheme(*id, *isTheme)
+	if err != nil {
+		fatal("attraction-set-theme: %v", err)
+	}
+	output(res)
 }
 
 // cmdAttractionUpdatePhoto 重新查詢一次地標圖片並回寫到資料庫——走
@@ -551,7 +741,8 @@ func usage() {
   notify       -trip ID [-api URL]
 
   attraction-add    -name 文字 -city 文字 (-lat 緯度 -lng 經度 | -place 文字 [-region 國碼])
-                        -level 1~5 [-radius 公尺] [-summary 文字] [-photo-url 網址]
+                        -level 1~5 [-radius 公尺] [-summary 文字] [-photo-url 網址] [-place-id ID]
+                        [-theme]
                         新增景點區域資料（地理輪廓底圖用，構想 6，見
                         docs/TRIP_PLANNING_DESIGN_DISCUSSION.md）。分級對照：
                         1=國際（如 101） 2=國家（如中正紀念堂）
@@ -561,7 +752,22 @@ func usage() {
                         -lat/-lng 與 -place 二擇一，-place 會先查該地名座標
                         （取第一筆候選）再建檔，不需要自己先查好經緯度；
                         -photo-url 未帶時，後端會自動查 Pexels 補一張示意圖
-                        （查無結果不影響建檔）。
+                        （查無結果不影響建檔）。-theme 決定這筆資料是否為
+                        「主題點」（散策羅盤用語，主題點是使用者點開後會
+                        揭露周邊精選點的錨點，見 model.Attraction.IsTheme
+                        欄位註解）；未明確帶 -theme 時，依 -level===1
+                        自動推斷（對齊既有慣例），明確帶 -theme=true 或
+                        -theme=false 時一律以使用者輸入為準，可讓是否為
+                        主題點跟 -level 分開設定。非主題點（最終判定的
+                        IsTheme 為 false，預設等同 level 不是 1）強制要求
+                        要有 place_id（不論來自 -place-id 手動指定或
+                        -place 查詢帶回，-lat/-lng 手動座標且未帶
+                        -place-id 時一律拒絕建檔）——前端點擊非主題點的
+                        地標會改開 Google 地點資訊卡（見 web/src/
+                        geo-planning/GeoOutlineMap.tsx 的
+                        handleAttractionClickRouted），沒有 place_id 會
+                        查不到資料、點擊沒有反應。主題點不受此限制，
+                        place_id 仍為選填。
   attraction-list   -city 文字
                         列出指定城市的所有景點區域資料。
   attraction-cities
@@ -577,6 +783,22 @@ func usage() {
                         結果），不需要自己先查好經緯度。-field/-value 目前
                         開放 name、summary 兩個欄位，須一起提供，可單獨
                         使用也可與座標修正一起帶入。
+  attraction-set-place-id -id 地標ID (-place-id ID | -place 文字 [-region 國碼])
+                        補上（或改查）一筆既有景點區域對應的 Google
+                        place_id（走 PATCH /internal/maintenance/
+                        attractions/{id}/place-id，需要先登入）。
+                        -place-id 與 -place 二擇一，不能同時提供：
+                        -place-id 手動指定（信任使用者輸入，不查詢驗證）；
+                        -place 改查該地名帶回的 place_id（取第一筆候選
+                        結果，查詢邏輯與 attraction-add 共用），查無
+                        place_id 時報錯，不會靜默清空既有值。
+  attraction-set-theme -id 地標ID -theme=true|false
+                        更新一筆既有景點區域是否為「主題點」（散策羅盤
+                        用語，主題點是使用者點開後會揭露周邊精選點的
+                        錨點，見 model.Attraction.IsTheme 欄位註解），走
+                        PATCH /internal/maintenance/attractions/{id}/theme，
+                        需要先登入。-theme 必填，須明確指定 true 或
+                        false（不能省略，以免誤觸預設值）。
   attraction-update-photo -id 地標ID [-query 文字] [-source google|pexels]
                         重新查詢一次圖片並回寫到資料庫（走
                         /internal/maintenance/attractions/{id}/update-photo，

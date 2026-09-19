@@ -112,6 +112,52 @@ export interface SchemaCheckResponse {
   tables: SchemaCheck[]
 }
 
+// One row of the Google Places API rate limit config. Mirrors
+// store.GeoRateLimit on the backend (server/internal/store/
+// geo_rate_limits.go) — one row per endpoint key ("places.get" /
+// "places.photoMedia"). windowSec/maxCalls are the rejecting rate limiter's
+// fixed window (server/internal/apigateway/ratelimiter.go); dailyMax is a
+// separate DB-backed atomic counter that's shared across every server
+// instance (0 means unlimited). usedToday/usedDay reflect today's usage so
+// far — read-only, not editable from this form.
+export interface GeoRateLimit {
+  endpoint: string
+  windowSec: number
+  maxCalls: number
+  dailyMax: number
+  usedToday: number
+  usedDay: string
+}
+
+export interface GeoRateLimitsResponse {
+  limits: GeoRateLimit[]
+}
+
+// One row of the "Google photo target=0 check" (GET /admin/api/
+// photo-target-zero-check). Mirrors store.PlaceDetailsZeroPhotoTarget on
+// the backend (server/internal/store/geocache.go) — every place_details_
+// cache row where google_photo_target_count is exactly 0 right now. This
+// value is ambiguous on its own: it's the legitimate steady state for "we
+// confirmed with Google and this place genuinely has no photos", but it's
+// also exactly what a since-fixed deadlock bug (see
+// shouldAddGooglePlacePhoto on the backend) used to leave behind for
+// places that were NEVER actually confirmed. There's no way to tell the
+// two apart from the stored value alone — this list exists so an operator
+// can spot-check entries (e.g. look the place up on Google Maps) and, if a
+// row turns out to be a stale pre-fix artifact, fix it by hand (the admin
+// console doesn't expose a "reset" action here on purpose — see the
+// GeoPhotoTargetZeroCheckTab component comment).
+export interface PlaceDetailsZeroPhotoTarget {
+  placeId: string
+  name: string
+  clickCount: number
+  fetchedAt: string
+}
+
+export interface PhotoTargetZeroCheckResponse {
+  places: PlaceDetailsZeroPhotoTarget[]
+}
+
 // Same resolution strategy as the main web app's api.ts BASE: an explicit
 // VITE_ADMIN_API_URL for local dev against a separately-running backend,
 // falling back to the serving origin (correct in production, where the
@@ -179,4 +225,26 @@ export const api = {
   // safe to call on page load / manual refresh.
   checkSchema: (): Promise<SchemaCheckResponse> =>
     request('GET', '/admin/api/schema-check').then((r) => r.json()),
+
+  // Reads geo_rate_limits — whatever is currently stored, not necessarily
+  // what's actively enforced this instant: cmd/server applies this table to
+  // the in-memory rate limiter on a background refresh loop (~45s period,
+  // see server/cmd/server/geo_rate_limit.go), so an edit here can take up
+  // to that long to actually take effect server-side.
+  geoRateLimits: (): Promise<GeoRateLimitsResponse> =>
+    request('GET', '/admin/api/geo-rate-limits').then((r) => r.json()),
+
+  // Upserts a single endpoint's rule. windowSec/maxCalls must be positive
+  // integers (the backend rejects <=0 — see updateGeoRateLimit's comment on
+  // the server: 0/negative there means "remove this limit", which this form
+  // doesn't expose). dailyMax may be 0 (means "no daily cap"). Returns the
+  // full updated list so the table can just replace its state with the
+  // response instead of re-fetching.
+  updateGeoRateLimit: (limit: { endpoint: string; windowSec: number; maxCalls: number; dailyMax: number }): Promise<GeoRateLimitsResponse> =>
+    request('PUT', '/admin/api/geo-rate-limits', limit).then((r) => r.json()),
+
+  // Pure read of place_details_cache — no external call, safe to call on
+  // page load / manual refresh.
+  photoTargetZeroCheck: (): Promise<PhotoTargetZeroCheckResponse> =>
+    request('GET', '/admin/api/photo-target-zero-check').then((r) => r.json()),
 }

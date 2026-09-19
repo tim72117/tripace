@@ -1,6 +1,6 @@
 /* 地理輪廓底圖(構想 6)桌面版樣式。
    光暈用 radial-gradient 疊 blur,圓形地標圖疊在光暈中心上緣,
-   標籤貼地圖投影像素位置(見 GeoOutlineMap.tsx 的 AttractionOverlay.draw)。 */
+   標籤貼地圖投影像素位置(見 ExploreMap.tsx 的 AttractionOverlay.draw)。 */
 
 .wrap {
   position: relative;
@@ -22,13 +22,13 @@
      index.html,不能為了地圖犧牲全站無障礙縮放)的情況下,單指拖曳容易
      被瀏覽器誤判成頁面捲動而不是地圖平移,呈現出「一開始可以單指滑動,
      之後(尤其是地圖 panTo 重繪後)變成要雙指才能動」的現象。跟
-     GeoOutlineMap.tsx 建圖 options 的 gestureHandling: 'greedy' 互補
+     ExploreMap.tsx 建圖 options 的 gestureHandling: 'greedy' 互補
      ——那個是 Maps SDK 層級的手勢模式設定,這個是瀏覽器層級,兩者管的
      是不同層,同時需要才能保證單指平移在各種瀏覽器/裝置組合下都穩定。 */
   touch-action: none;
 }
 
-/* mapError 跟 .map(地圖容器)同時存在於 DOM(見 GeoOutlineMap.tsx 的
+/* mapError 跟 .map(地圖容器)同時存在於 DOM(見 ExploreMap.tsx 的
    說明:地圖容器不能因狀態切換而消失),故改用絕對定位疊加在地圖容器
    上方,而非各自佔一份獨立版面空間。(先前這裡還有一個 .empty,查無
    景點區域資料時整片蓋住地圖——在依可視範圍查詢的架構下,查無資料是
@@ -116,7 +116,7 @@
    透出來,故用 backdrop-filter,跟側欄版本用實色卡片的理由相反,見
    GeoCandidateSidebar.module.css 的 .searchRow 說明)。獨立疊在地圖
    右上角(不跟 .categoryTags 同一個 flex row),固定貼齊最上緣(top:16px,
-   跟左緣 .categoryTags 對齊同一條高度基準線)——GeoInfoPanel/
+   跟左緣 .categoryTags 對齊同一條高度基準線)——PlacePanel/
    AttractionInfoPanel(見這兩個元件的 .panel)改成往下避開這個搜尋框,
    而非反過來,因為搜尋框是常駐 UI、資訊卡只在點擊地點後才出現。 */
 .citySearch {
@@ -137,7 +137,7 @@
   z-index: 2;
 }
 
-/* citySearchAiBtn:搜尋膠囊最左側的 AI 按鈕(見 GeoOutlineMap.tsx 的
+/* citySearchAiBtn:搜尋膠囊最左側的 AI 按鈕(見 ExploreMap.tsx 的
    onOpenChat prop 說明)——常駐右側對話欄收合時的快捷展開入口。用
    .citySearchBtn 同一套圓形尺寸,但底色是素色(而非 --color-accent
    強調色),避免跟右側的「搜尋」按鈕搶視覺焦點——搜尋才是這個膠囊的
@@ -284,7 +284,7 @@
 }
 
 /* searchThisAreaIconLoading:查詢中把 lucide 的 Search 圖示換成
-   Loader2(見 GeoOutlineMap.tsx 的按鈕 render 邏輯),lucide 圖示本身
+   Loader2(見 ExploreMap.tsx 的按鈕 render 邏輯),lucide 圖示本身
    不含動畫,這裡疊加一個等速自轉——跟其餘 loading 圈圈(如
    GeoOutlinePanel.tsx 的搜尋按鈕文字切換)不同語言,但地圖上的浮動按鈕
    用旋轉圖示比換文字更符合「這是一個小操作的即時回饋」語感。 */
@@ -299,7 +299,7 @@
 }
 
 /* geo-attraction-*:以下幾個 class 刻意用固定字串選擇器(非 CSS Modules
-   local class),因為對應的 DOM 是 GeoOutlineMap.tsx 用 innerHTML 字串
+   local class),因為對應的 DOM 是 ExploreMap.tsx 用 innerHTML 字串
    動態組裝出來的,不是 JSX className={styles.xxx} 直接寫的元素。若改成
    local class(拿掉 :global),CSS Modules 只會雜湊改名成
    styles.xxx 這個「有被 JSX 引用」的名字,innerHTML 字串裡的固定文字
@@ -310,7 +310,21 @@
 
 /* attractionOverlay:OverlayView 疊層的根容器,position:absolute 由
    draw() 動態設定 left/top(投影像素座標),故這裡只負責視覺與內部排版。
-   transform 把整組視覺置中在該座標點上(光暈重心對準實際重心座標)。 */
+   transform 把整組視覺置中在該座標點上(光暈重心對準實際重心座標)。
+   刻意不在這裡設定 z-index(維持 auto)——每個 .geo-attraction-overlay
+   都是掛在同一個 overlayMouseTarget pane 底下的獨立 sibling,若這裡設了
+   明確的 z-index(如先前的 1),position:absolute + z-index 的組合會讓
+   每個 overlay 各自形成獨立的 stacking context(CSS Stacking Context
+   規則),子層(點/標籤)的 z-index 只會在自己所屬的 stacking context
+   內部比較、無法跨到另一個 sibling overlay 去比——這正是使用者回報
+   「某個 attraction 的文字標籤蓋住另一個 attraction 的可點擊地標圖/
+   圓點」的根因:當時是整個 overlay(含標籤)一起蓋過另一個 overlay(含
+   地標圖),不是單一元素跨組疊放。保持 z-index: auto 讓子層直接被提升
+   到共同祖先(overlayMouseTarget pane)這個 stacking context 裡比較,
+   下方 .geo-attraction-landmark-photo 等「點」與 .geo-attraction-label
+   「標籤」各自的 z-index 才能真正做到全域分層——所有 attraction 的點
+   一律在所有 attraction 的標籤之上,不受哪個 overlay 先建立/DOM 順序
+   影響。 */
 :global(.geo-attraction-overlay) {
   position: absolute;
   transform: translate(-50%, -100%);
@@ -318,8 +332,29 @@
   flex-direction: column;
   align-items: center;
   pointer-events: none;
-  /* 讓地標圖與標籤有堆疊順序可言,不被地圖圖磚蓋住。 */
-  z-index: 1;
+}
+
+/* 滑鼠指到景點時把這個地標的「點」(照片/佔位圓/圓點)拉到比其他所有
+   attraction 的點更上層——見下方 .geo-attraction-landmark-photo 等的
+   z-index 說明,這裡疊加的是同一組數值再往上一階,而非重新定義一組
+   互相獨立的層級。:hover 涵蓋滑鼠真的停在地圖上這個地標(圓形/圓點/
+   標籤)的情況——pointer-events:none 不影響 :hover 判斷,子層(照片/
+   圓點)命中時祖層仍會 match :hover,理由是瀏覽器判斷 :hover 純看游標
+   是否落在該元素視覺範圍內,不受 pointer-events 影響(pointer-events
+   只影響「誰是事件目標」,不影響「誰算被 hover」)。
+   geo-attraction-overlay-hovered 則是另一個觸發來源:使用者滑鼠移到
+   AttractionInfoPanel「附近景點」清單項目時(見 setHovered 的完整說明),
+   游標實際上不在地圖上,無法靠 :hover 判斷,改由 JS 主動切這個 class。
+   兩者用同一組數值,語意上是同一件事的兩種觸發方式。標籤本身不需要
+   跟著拉高——標籤從來不需要蓋過其他 attraction 的點,只有「點」才有
+   互相遮擋、影響可點擊性的問題。 */
+:global(.geo-attraction-overlay):hover :global(.geo-attraction-landmark-photo),
+:global(.geo-attraction-overlay):hover :global(.geo-attraction-landmark-placeholder),
+:global(.geo-attraction-overlay):hover :global(.geo-attraction-curated-dot),
+:global(.geo-attraction-overlay-hovered) :global(.geo-attraction-landmark-photo),
+:global(.geo-attraction-overlay-hovered) :global(.geo-attraction-landmark-placeholder),
+:global(.geo-attraction-overlay-hovered) :global(.geo-attraction-curated-dot) {
+  z-index: 3;
 }
 
 /* 光暈本體:radial-gradient 由中心沙棕色漸淡到透明,疊加 blur 讓邊緣柔化,
@@ -371,7 +406,7 @@
    不是主視覺,光暈與白話標籤才是。
    pointer-events: auto 覆寫父層 .geo-attraction-overlay 的 none——只開放
    這個具體可辨識的圓形本身可點擊(點下去放大到該景點區域範圍,見
-   GeoOutlineMap.tsx 的 handleAttractionClick),光暈與標籤文字仍不可
+   ExploreMap.tsx 的 handleAttractionClick),光暈與標籤文字仍不可
    點擊,維持「只召喚不強加」——不會因為一團裝飾性的光暈範圍太大而誤擋
    到底下地圖的拖曳/縮放操作。 */
 :global(.geo-attraction-landmark-photo) {
@@ -385,6 +420,13 @@
   animation: photoFadeIn 900ms ease-out;
   pointer-events: auto;
   cursor: pointer;
+  /* z-index: 2——見上方 .geo-attraction-overlay 的說明,父層刻意不建立
+     stacking context,讓這裡的 z-index 能直接跟其他 attraction overlay
+     底下的同層元素比較(而非侷限在自己所屬的 overlay 內部)。這個數值
+     只需要比 .geo-attraction-label 的 1 高即可,確保「所有 attraction
+     的可點擊地標圖/圓點」一律蓋在「所有 attraction 的文字標籤」之上,
+     不會被其他景點的標籤擋住點擊。 */
+  z-index: 2;
 }
 
 /* 無照片時的佔位圓:同尺寸的柔和漸層色塊,維持版面一致,不留空洞。
@@ -399,6 +441,73 @@
   background: linear-gradient(135deg, var(--ios-sand), var(--ios-gray));
   border: 2px solid var(--ios-card);
   box-shadow: 0 2px 8px rgba(61, 53, 48, 0.18);
+  /* z-index: 2——理由同 .geo-attraction-landmark-photo 上方的說明。 */
+  z-index: 2;
+}
+
+/* 精選點圓點(散策羅盤):geo-attraction-overlay.ts 對精選點(level 不是
+   1)預設用的輕量呈現——不帶光暈、不帶照片,只是一個小圓點,理由見
+   geoAttractionOverlay.ts renderContent() 的完整說明。尺寸刻意遠小於
+   主題點的 56px 照片圓(14px),視覺上一眼就能分辨「這是主角(主題點)」
+   還是「這是環繞的衛星(精選點)」,不需要額外的文字標示。使用者滑鼠
+   移到「附近景點」清單對應項目時(見 useAttractionOverlays.ts 的
+   hoveredCuratedName),這個元素會被整個換成跟主題點一樣的
+   .geo-attraction-landmark-photo/.geo-attraction-landmark-placeholder,
+   不是靠 CSS 放大這個圓點本身。 */
+:global(.geo-attraction-curated-dot) {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  pointer-events: auto;
+  cursor: pointer;
+  background: var(--ios-sand);
+  border: 2px solid var(--ios-card);
+  box-shadow: 0 1px 4px rgba(61, 53, 48, 0.24);
+  transition: transform 0.12s;
+  /* z-index: 2——理由同 .geo-attraction-landmark-photo 上方的說明。 */
+  z-index: 2;
+}
+
+:global(.geo-attraction-curated-dot):hover {
+  transform: scale(1.15);
+}
+
+/* geo-attraction-curated-dot-{tea,restaurant,craft,street}:店家分類配色
+   (見 geoCuratedCategoryStub.ts 的完整說明——目前是前端寫死的原型對照表,
+   不是真正的資料欄位)。只覆寫 background,尺寸/邊框/陰影/hover 動畫都
+   沿用基底 .geo-attraction-curated-dot 不重複定義。顏色沿用既有、已有
+   淺/深色雙版本定義的 base-ui.css token,不新增色票——tea 維持圓點原本
+   的 --ios-sand(暖沙棕,茶屋暖意)其實跟基底色相同,寫出來是為了讓四個
+   分類的定義並列、之後要調整任何一色時容易一眼看出彼此關係,不依賴
+   「沒寫就是預設值」這種隱性推斷。 */
+:global(.geo-attraction-curated-dot-tea) {
+  background: var(--ios-sand);
+}
+:global(.geo-attraction-curated-dot-restaurant) {
+  background: var(--color-accent);
+}
+:global(.geo-attraction-curated-dot-craft) {
+  /* 不直接用 --ios-blue 原色——它跟 tea 的 --ios-sand 色相太近(兩者都
+     偏棕),深色模式下更嚴重(#B3A692 vs #D9A97D,同是淺暖灰調),14px
+     圓點這個尺度靠色相根本分不出來。color-mix 疊 22% 的 #3D3530(全站
+     陰影/墨色錨點,這份檔案 box-shadow 的 rgba(61,53,48,…)就是它的展開
+     值)把 craft 壓暗一階——刻意用固定深色而非任何 token 當混色端,
+     因為 token 在深色模式會整組翻亮,混 token 只會讓兩色一起變、距離
+     不變;混固定深色才能在兩種模式下都拉開跟 tea 的明度差。 */
+  background: color-mix(in srgb, var(--ios-blue) 78%, #3D3530);
+}
+:global(.geo-attraction-curated-dot-street) {
+  background: var(--ios-green);
+}
+
+/* 清單 hover 觸發的圓點→照片展開,把 photoFadeIn 從 900ms 壓到 160ms
+   ——900ms 是主題點「地圖載入時登場」的節奏,但 hover 是「順便看一眼」
+   的即時回饋(見 AttractionInfoPanel.tsx onHoverNearby 的說明),照片
+   要等近一秒才完全浮現,體感上像卡頓而非展開;且每次滑入 innerHTML
+   重建都會重播這段動畫,慢動畫重播起來更明顯。 */
+:global(.geo-attraction-overlay-hovered) :global(.geo-attraction-landmark-photo) {
+  animation-duration: 160ms;
 }
 
 @keyframes photoFadeIn {
@@ -413,7 +522,7 @@
 }
 
 /* geo-attraction-overlay-selected:目前被選中(側欄點擊過)的地標——改成
-   跟飯店 marker 選中態(見 GeoOutlineMap.tsx 的 hotelMarkerIcon)同款的
+   跟飯店 marker 選中態(見 ExploreMap.tsx 的 hotelMarkerIcon)同款的
    靶心構造:白色間隙環 + accent 外環,取代原本單純加粗描邊+外部發光的
    做法,讓兩種選取樣式一眼看起來是同一套語言。與飯店不同的是這裡的
    「內圈」是照片/佔位色塊而非純色圓點,故靶心用 box-shadow 疊兩層
@@ -432,6 +541,14 @@
   box-shadow: 0 0 0 3px var(--color-accent), 0 2px 10px rgba(61, 53, 48, 0.24);
 }
 
+/* 精選點圓點的選中態:不像照片圓那樣放大到 64px(圓點本身只有 14px,
+   等比放大會失去「輕量」的視覺意圖),改成只加粗外環,尺寸維持不變。 */
+:global(.geo-attraction-overlay-selected) :global(.geo-attraction-curated-dot) {
+  border-color: var(--ios-card);
+  border-width: 3px;
+  box-shadow: 0 0 0 3px var(--color-accent), 0 2px 10px rgba(61, 53, 48, 0.24);
+}
+
 :global(.geo-attraction-overlay-selected) :global(.geo-attraction-label) {
   background: var(--color-accent);
   color: var(--ios-card);
@@ -439,7 +556,7 @@
 }
 
 /* geo-attraction-overlay-candidate:這個景點區域已經被加入候選籃(見
-   GeoOutlineMap.tsx 的 candidateKeys prop)——跟上面的 -selected 是兩件
+   ExploreMap.tsx 的 candidateKeys prop)——跟上面的 -selected 是兩件
    獨立的事(可以同時成立),故不共用同一組視覺語言(靶心描邊),改用
    右上角一枚小勾選徽章疊在照片/佔位圓上,讀起來像「這個已經確定收進
    籃子了」的貼紙,不會跟「目前正被瀏覽介紹」的選取靶心混淆。用 ::after
@@ -454,8 +571,31 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #5A8A6A url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7' fill='none' stroke='%23FDFCFA' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 11px no-repeat;
+  /* 底色用 --ios-green token(苔綠=全站「成功/已完成」語意色,且有深色
+     版本)取代原本寫死的 #5A8A6A——寫死的綠在深色模式下不會跟著主題
+     切換,是這批樣式裡唯一漏接深色模式的色值。勾勾本身仍是 data URI
+     內寫死的近白色(CSS 變數無法進 data URI),白勾疊在苔綠上兩種模式
+     對比都足夠,可接受。 */
+  background: var(--ios-green) url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7' fill='none' stroke='%23FDFCFA' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 11px no-repeat;
   border: 2px solid var(--ios-card);
+  box-shadow: 0 1px 3px rgba(61, 53, 48, 0.3);
+}
+
+/* 精選點圓點的候選籃徽章:原本 -candidate 的勾選徽章只定義在照片/佔位
+   圓上,精選點在「未 hover 的圓點型態」下加入候選籃後地圖上完全沒有
+   任何標記——只有滑回清單讓它展開成照片才看得到勾勾,狀態等於憑空
+   消失。這裡補一枚縮小版(14px 圓點配 18px 徽章會整個蓋掉本體,縮到
+   10px、往右上外側偏移,讓分類色圓點跟綠勾同時可辨)。 */
+:global(.geo-attraction-overlay-candidate) :global(.geo-attraction-curated-dot)::after {
+  content: '';
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ios-green) url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7' fill='none' stroke='%23FDFCFA' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 6px no-repeat;
+  border: 1.5px solid var(--ios-card);
   box-shadow: 0 1px 3px rgba(61, 53, 48, 0.3);
 }
 
@@ -483,5 +623,17 @@
   white-space: nowrap;
   box-shadow: 0 1px 4px rgba(61, 53, 48, 0.12);
   pointer-events: none;
+  /* position: relative + z-index: 1——z-index 只對「非 static 定位」的
+     元素生效,標籤預設是 static(無 position),故需要補上 position 才能
+     讓下面的 z-index 真的產生效果。數值刻意比
+     .geo-attraction-landmark-photo/-placeholder/.geo-attraction-curated-dot
+     的 2 低一階(而非維持 auto)——見 .geo-attraction-overlay 的說明,
+     父層不再建立獨立 stacking context,所有 attraction 的標籤與點現在
+     共處同一個 stacking context,若標籤沒有明確給比點更低的 z-index,
+     跟其他 attraction 的點相遇時仍會落回 DOM 順序比較,可能重現「標籤
+     蓋過點」的問題;明確給 1(比點的 2 低)才能保證任何 attraction 的
+     標籤永遠不會蓋過任何 attraction 的點。 */
+  position: relative;
+  z-index: 1;
 }
 

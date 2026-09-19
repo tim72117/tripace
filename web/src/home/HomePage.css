@@ -206,6 +206,113 @@
 }
 .kyoto-bloom .explore-desc { color: var(--ink-soft); font-size: 15px; line-height: 1.9; }
 
+/* interactive-map-intro:第二段互動地圖(KiyomizuDemoPage,見
+   HomePage.tsx 的完整說明)的引言區塊——共用 .explore-eyebrow/
+   .explore-title/.explore-desc 三個既有文字樣式,只有外層容器的間距
+   規則獨立成這個 class(不共用 .explore-intro):.explore-intro 頂部
+   14vh 的大留白是「從敘事說明過渡到路線視覺開始」這個特定轉場的節奏
+   (見上方英文註解),這裡接在 .bloom-photo 段落收尾之後,不需要同樣
+   份量的頂部留白,只保留底部間距把這段引言與下方地圖拉開。 */
+.kyoto-bloom .interactive-map-intro { max-width: 60ch; margin: 0 auto; padding: 6vh var(--edge-pad) 4vh; text-align: center; }
+
+/* map-expand:互動地圖(KiyomizuDemoPage)手機版限定的一次性滿版擴張
+   容器——見 HomePage.tsx 對應的 useEffect 完整說明(scroll 監聽 +
+   getBoundingClientRect() 判斷標題是否捲到視窗中央的觸發邏輯在那裡,
+   這裡只放純樣式)。桌面版(>900px)這個容器完全不做任何事,
+   KiyomizuDemoPage 維持自己 .stage 的固定 680px 高度、跟隨頁面正常
+   往下捲動,不需要額外包一層特殊行為。
+   .map-expand-full 是 mapExpanded state 為 true 時加上的 class——不是
+   連續內插的漸進動畫(先前試過用 sticky 固定 + 滾動進度連續內插尺寸,
+   實測踩了兩個難以修好的坑:sticky 真正固定住的那段捲動距離完全沒
+   反映在進度公式裡、地圖本身 touch-action: none 會把手指滑動整個吃掉
+   不冒泡成頁面捲動,細節見 git history 這個檔案先前版本的說明),改成
+   捲到定點就直接切換的二選一狀態,不再依賴滾動進度或 sticky 固定區間
+   的數學計算。 */
+@media (max-width: 900px) {
+  /* position: relative——讓下面 .map-expand-swipe-catcher 的
+     position: absolute; inset: 0 有正確的定位基準(這個容器自己的
+     邊界),不設的話會往上找到更外層的 relative/fixed 祖先,蓋住範圍
+     就不對了。.map-expand-full 會再覆寫成 position: fixed(見下方),
+     兩者互斥(小卡片/滿版分別各自需要的定位方式)。 */
+  .kyoto-bloom .map-expand {
+    position: relative;
+  }
+
+  .kyoto-bloom .map-expand.map-expand-full {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+  }
+
+  /* 手機版還沒展開(小卡片)時的初始高度——覆寫 KiyomizuDemoPage.module.css
+     .stage 的預設 680px(那是桌面版/獨立展示頁的尺寸)。680px 在手機
+     螢幕上佔比過高,使用者要滑很久才能滑過這張卡片、看起來像地圖卡住
+     了頁面,改成 420px 讓卡片在手機版一開始就明顯比視窗矮,滾動感受
+     更輕;.map-expand-full 展開後這個限制被下面 --kiyomizu-stage-height:
+     100% 直接覆寫掉(見下方規則),不影響滿版尺寸。 */
+  .kyoto-bloom .map-expand:not(.map-expand-full) > div {
+    --kiyomizu-stage-height: 420px;
+  }
+
+  /* map-expand-swipe-catcher:見 HomePage.tsx 該元素旁邊的完整說明——
+     還沒展開成滿版時蓋在小卡片地圖上方,接住原本會被地圖
+     touch-action: none 吃掉的觸控滑動,讓它正常變成頁面捲動。
+     z-index 只需要蓋過同一個 .map-expand 容器內的地圖本身,不需要
+     額外的全域比較,故不用 --z-fixed-ui 那組變數,單純比 0(預設疊放
+     順序)高即可。 */
+  .kyoto-bloom .map-expand-swipe-catcher {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+  }
+
+  /* .map-expand-full > div:.stage/.page 的真實 layout 尺寸(透過 CSS
+     變數由外往內覆寫,見 KiyomizuDemoPage.module.css 的完整說明)直接
+     設成滿版數值,不是 transform: scale() 那種只改視覺呈現、放大後
+     內容會超出容器邊界被裁切或蓋住旁邊區塊的做法。 */
+  .kyoto-bloom .map-expand.map-expand-full > div {
+    width: 100%;
+    height: 100%;
+    --kiyomizu-stage-height: 100%;
+    --kiyomizu-page-max-width: none;
+    --kiyomizu-page-padding: 0;
+    --kiyomizu-stage-radius: 0;
+    --kiyomizu-stage-shadow: none;
+  }
+
+  /* map-expand-close:滿版時右上角的關閉按鈕(見 HomePage.tsx 該元素
+     旁邊的完整說明)——.map-expand 是 position: fixed 蓋滿整個視窗後,
+     使用者沒有任何方式可以再捲動離開,這顆按鈕是唯一的退出動作。
+     z-index 用 --z-fixed-ui 加 1(201)——這裡位置跟 .brand-mark/
+     .theme-toggle(見檔案開頭 z-index 清單,z-index: 200)左右對稱重疊
+     (同樣 top: 16px/right: 16px),原本只給 21(比 .map-expand-full 的
+     20 高一階,以為只需要蓋過同一個容器內的地圖跟卡片)結果被
+     .theme-toggle 疊在上面擋住點擊(實測發現按鈕點不到,
+     elementFromPoint 命中的是 .theme-toggle 不是這顆關閉鈕)——滿版
+     模式下這顆按鈕在使用者體感裡就是當下「最上層」的全域控制項,必須
+     真的蓋過 .theme-toggle,而非被完全等寬高、同一角落的固定按鈕擋住。
+     視覺上對齊 .theme-toggle 既有的圓形按鈕慣例(同樣 36px、圓形、
+     卡片背景+邊框),只是位置固定在滿版容器右上角而非整個頁面右上角
+     (滿版時兩者座標剛好重疊,視覺上就是同一顆按鈕換了圖示跟功能)。 */
+  .kyoto-bloom .map-expand-close {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: calc(var(--z-fixed-ui) + 1);
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    color: var(--ink);
+    cursor: pointer;
+    box-shadow: var(--card-shadow);
+  }
+}
+
 /* ---------- journey: sticky map left, flowing content right ---------- */
 
 .kyoto-bloom .journey {

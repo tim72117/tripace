@@ -1,13 +1,13 @@
-// GeoInfoPanel「加入行程」既有日期下拉選單(.dateMenu)的兩個行為:
+// PlacePanel「加入行程」既有日期下拉選單(.dateMenu)的兩個行為:
 //   1. 自動翻轉方向——按鈕組所在位置離視窗底部的剩餘空間不足以容納選單
 //      估計高度時,改成往上展開(dateMenuOpenUp)。
-//   2. 點選單以外的地方自動收合(mousedown 監聽,見 GeoInfoPanel.tsx)。
-// 這兩個行為都不在 GeoInfoPanel.test.tsx 涵蓋範圍內(那份測試聚焦在
+//   2. 點選單以外的地方自動收合(mousedown 監聽,見 PlacePanel.tsx)。
+// 這兩個行為都不在 PlacePanel.test.tsx 涵蓋範圍內(那份測試聚焦在
 // onSchedule/onAddCandidate 該不該被呼叫,不驗證選單本身的定位/收合)。
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { GeoInfoPanel, type GeoInfoContent } from './GeoInfoPanel'
+import { PlacePanel, type PlaceInfoContent } from './PlacePanel'
 import type { GeoCandidate } from './GeoCandidateSidebar'
 
 const SCHEDULED_DATES = ['2026-08-16', '2026-08-17']
@@ -21,11 +21,11 @@ const hotelCandidate: GeoCandidate = {
   primaryType: 'lodging',
 }
 
-function contentWithCandidate(candidate: GeoCandidate): GeoInfoContent {
+function contentWithCandidate(candidate: GeoCandidate): PlaceInfoContent {
   return { name: candidate.name, badges: [], candidate }
 }
 
-// mockWrapPosition:GeoInfoPanel.tsx 用 addCandidateWrapRef.current.getBoundingClientRect()
+// mockWrapPosition:PlacePanel.tsx 用 addCandidateWrapRef.current.getBoundingClientRect()
 // 量測按鈕組(.addCandidateWrap)底部離視窗底部的距離,決定選單要往上還是
 // 往下展開。jsdom 預設所有元素的 getBoundingClientRect 都回傳全 0,故這裡
 // mock 整個 HTMLElement.prototype.getBoundingClientRect,讓測試能控制
@@ -49,14 +49,14 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('GeoInfoPanel 既有日期下拉選單:自動翻轉方向', () => {
+describe('PlacePanel 既有日期下拉選單:自動翻轉方向', () => {
   it('按鈕組下方視窗剩餘空間充足時,選單維持預設往下展開(不套 dateMenuOpenUp 對應樣式)', async () => {
     const user = userEvent.setup()
     Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true })
     mockWrapBottom(100) // 下方剩餘 700px,遠大於估計選單高度
 
     render(
-      <GeoInfoPanel
+      <PlacePanel
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         scheduledDates={SCHEDULED_DATES}
@@ -76,7 +76,7 @@ describe('GeoInfoPanel 既有日期下拉選單:自動翻轉方向', () => {
     mockWrapBottom(790) // 下方只剩 10px,遠小於估計選單高度(至少 3 項*30+8+6)
 
     render(
-      <GeoInfoPanel
+      <PlacePanel
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         scheduledDates={SCHEDULED_DATES}
@@ -90,7 +90,7 @@ describe('GeoInfoPanel 既有日期下拉選單:自動翻轉方向', () => {
   })
 })
 
-describe('GeoInfoPanel 既有日期下拉選單:點外部收合', () => {
+describe('PlacePanel 既有日期下拉選單:點外部收合', () => {
   it('選單展開時點擊選單以外的地方,選單收合', async () => {
     const user = userEvent.setup()
     Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true })
@@ -99,7 +99,7 @@ describe('GeoInfoPanel 既有日期下拉選單:點外部收合', () => {
     render(
       <div>
         <div data-testid="outside">外部區域</div>
-        <GeoInfoPanel
+        <PlacePanel
           content={contentWithCandidate(hotelCandidate)}
           onClose={() => {}}
           scheduledDates={SCHEDULED_DATES}
@@ -119,7 +119,7 @@ describe('GeoInfoPanel 既有日期下拉選單:點外部收合', () => {
     mockWrapBottom(100)
 
     render(
-      <GeoInfoPanel
+      <PlacePanel
         content={contentWithCandidate(hotelCandidate)}
         onClose={() => {}}
         scheduledDates={SCHEDULED_DATES}

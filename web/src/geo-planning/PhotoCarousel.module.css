@@ -1,4 +1,4 @@
-/* wrap:對齊 GeoInfoPanel.module.css 的 .imageWrap——position: relative
+/* wrap:對齊 PlacePanel.module.css 的 .imageWrap——position: relative
    錨點,讓圓點頁碼/文字計數能疊在照片上,不佔用版面高度,尺寸/比例維持
    跟改版前的 <img>/.photoPlaceholder 完全一樣(width:100%,height:
    160px),不讓卡片明顯變高或版面跳動。 */
@@ -107,7 +107,7 @@
 }
 
 /* counter:文字版「第幾張/共幾張」或「共 N 張照片」(桌面版縮圖上),
-   疊在照片上——風格同 GeoInfoPanel.module.css 的 .closeBtn 深色半透明
+   疊在照片上——風格同 PlacePanel.module.css 的 .closeBtn 深色半透明
    底系。 */
 .counter {
   position: absolute;

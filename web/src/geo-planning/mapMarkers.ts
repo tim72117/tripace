@@ -1,12 +1,12 @@
-// mapMarkers.ts——從 GeoOutlineMap.tsx 抽出來的 marker 內容產生邏輯,全部
-// 是不吃 React state 的純函式,原本卡在 GeoOutlineMap.tsx 的 module scope
+// mapMarkers.ts——從 ExploreMap.tsx 抽出來的 marker 內容產生邏輯,全部
+// 是不吃 React state 的純函式,原本卡在 ExploreMap.tsx 的 module scope
 // 裡跟主元件擠在同一個 1300+ 行的檔案。搬過來的理由單純是「這批函式彼此
 // 互相呼叫(svgStringToElement 被其餘四個 xxxMarkerContent 共用、
 // candidateBadgeSvg 被 hotel/place 兩者共用),邏輯上是同一個小主題」,
 // 跟主元件的地圖生命週期/查詢邏輯沒有交集,搬動本身不改變任何行為。
 
 // candidateBadgeSvg:「已加入候選籃」的小勾選徽章 fragment,綠底 + 白色
-// 勾勾,疊在 marker 右上角——跟 GeoOutlineMap.module.css 的
+// 勾勾,疊在 marker 右上角——跟 ExploreMap.module.css 的
 // .geo-attraction-overlay-candidate 是同一套視覺語言。cx/cy 是徽章圓心
 // 座標,由呼叫端依自己的 viewBox 尺寸決定要疊在哪個角落——兩邊呼叫端
 // (飯店/推薦地點)的圖示尺寸不同,由呼叫端決定位置比在這裡寫死一組

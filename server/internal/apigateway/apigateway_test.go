@@ -2,12 +2,15 @@ package apigateway
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+var errFakeDailyQuotaChecker = errors.New("fakeDailyQuotaChecker: simulated failure")
 
 // fakeDoer 是測試用的 HTTPDoer 假實作——記錄每次呼叫的時間,不真的發送
 // HTTP 請求,示範這個元件「可以 mock」的設計目標。
@@ -36,6 +39,17 @@ func (d *fakeDoer) Do(req *http.Request) (*http.Response, error) {
 	// 模擬一點點處理時間,讓併發測試有機會真的重疊執行。
 	time.Sleep(5 * time.Millisecond)
 	return &http.Response{StatusCode: http.StatusOK}, nil
+}
+
+// fakeDailyQuotaChecker 是測試用的 DailyQuotaChecker 假實作——用一個
+// map 記錄每個 endpoint 目前允許的結果與要不要回傳 error,不真的連資料庫。
+type fakeDailyQuotaChecker struct {
+	allowed bool
+	err     error
+}
+
+func (c *fakeDailyQuotaChecker) AllowDaily(endpoint string) (bool, error) {
+	return c.allowed, c.err
 }
 
 func newTestRequest(t *testing.T) *http.Request {
@@ -146,5 +160,66 @@ func TestGateway_LogsEndpointCallerAndPath(t *testing.T) {
 	if got.endpoint != "places.searchNearby" || got.caller != "handleGeoAttractionsNearby" ||
 		got.path != "/internal/geo/attractions/nearby" || got.statusCode != http.StatusOK {
 		t.Errorf("unexpected logged call: %+v", got)
+	}
+}
+
+// TestGateway_DailyQuotaCheckerRejectsWhenNotAllowed 驗證
+// DailyQuotaChecker.AllowDaily 回傳 false 時,Gateway.Do 直接回傳
+// ErrDailyQuotaExceeded,完全不送出任何 HTTP 請求(doer 沒有被呼叫)——
+// 對稱 RateLimiter 拒絕時的既有行為。
+func TestGateway_DailyQuotaCheckerRejectsWhenNotAllowed(t *testing.T) {
+	doer := &fakeDoer{}
+	checker := &fakeDailyQuotaChecker{allowed: false}
+	gw := New(doer, Config{MaxConcurrency: 1, MinInterval: 0, DailyQuotaChecker: checker}, nil)
+
+	_, err := gw.Do(context.Background(), newTestRequest(t), "places.photoMedia", "caller", "/path")
+	if err != ErrDailyQuotaExceeded {
+		t.Fatalf("expected ErrDailyQuotaExceeded, got %v", err)
+	}
+
+	doer.mu.Lock()
+	n := len(doer.calls)
+	doer.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("expected doer.Do to never be called, got %d calls", n)
+	}
+}
+
+// TestGateway_DailyQuotaCheckerAllowsWhenUnderLimit 驗證額度未超過時
+// 正常放行、真的送出請求。
+func TestGateway_DailyQuotaCheckerAllowsWhenUnderLimit(t *testing.T) {
+	doer := &fakeDoer{}
+	checker := &fakeDailyQuotaChecker{allowed: true}
+	gw := New(doer, Config{MaxConcurrency: 1, MinInterval: 0, DailyQuotaChecker: checker}, nil)
+
+	if _, err := gw.Do(context.Background(), newTestRequest(t), "places.photoMedia", "caller", "/path"); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+
+	doer.mu.Lock()
+	n := len(doer.calls)
+	doer.mu.Unlock()
+	if n != 1 {
+		t.Fatalf("expected doer.Do to be called once, got %d calls", n)
+	}
+}
+
+// TestGateway_DailyQuotaCheckerFailsOpenOnError 驗證 AllowDaily 回傳
+// error 時採取 fail open 策略——不擋下這次呼叫(見 DailyQuotaChecker
+// 的完整說明:底層資料庫暫時不可用不該連帶讓核心查詢功能整個中斷)。
+func TestGateway_DailyQuotaCheckerFailsOpenOnError(t *testing.T) {
+	doer := &fakeDoer{}
+	checker := &fakeDailyQuotaChecker{allowed: false, err: errFakeDailyQuotaChecker}
+	gw := New(doer, Config{MaxConcurrency: 1, MinInterval: 0, DailyQuotaChecker: checker}, nil)
+
+	if _, err := gw.Do(context.Background(), newTestRequest(t), "places.photoMedia", "caller", "/path"); err != nil {
+		t.Fatalf("Do: %v (expected fail-open, no error)", err)
+	}
+
+	doer.mu.Lock()
+	n := len(doer.calls)
+	doer.mu.Unlock()
+	if n != 1 {
+		t.Fatalf("expected doer.Do to be called once (fail open), got %d calls", n)
 	}
 }

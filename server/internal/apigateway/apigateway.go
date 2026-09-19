@@ -39,6 +39,35 @@ type HTTPDoer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
+// ErrDailyQuotaExceeded 是 Gateway.Do 在 DailyQuotaChecker 回報這次呼叫
+// 已超過每日額度時回傳的 sentinel error——理由與用法對稱 ErrRateLimited
+// (見該變數的完整說明),呼叫端一樣可用 errors.Is 判斷、走降級路徑。
+// 獨立於 ErrRateLimited 是刻意的:兩者是不同層級的限制(視窗速率 vs.
+// 每日總量),呼叫端事後從記錄/監控判讀「這次拒絕的原因」時,兩種
+// sentinel error 讓這個區分不需要額外解析錯誤訊息字串。
+var ErrDailyQuotaExceeded = errors.New("apigateway: daily quota exceeded")
+
+// DailyQuotaChecker 是選填的每日額度檢查回呼——跟 RateLimiter(process
+// 內記憶體、視窗式)是刻意分開的獨立機制:RateLimiter 解決的是「短時間
+// 內呼叫太密集」,DailyQuotaChecker 解決的是「這一整天總共呼叫了幾次」
+// 這種計費語意的總量上限,且必須跨多個 process/實例真正共用同一份
+// 計數(見 store.IncrementGeoRateLimitDailyUsage 的完整說明:這是為什麼
+// 這裡設計成介面注入、而不是像 RateLimiter 一樣直接內建成 Gateway 的
+// 記憶體狀態——Gateway 本身不依賴任何資料庫套件,理由同 CallLogger 的
+// 說明,由呼叫端(geo 套件)注入一個把計數存進資料庫的實作)。
+type DailyQuotaChecker interface {
+	// AllowDaily 在這次呼叫即將真正送出前呼叫一次,回傳 true 代表這次
+	// 呼叫算進今天的額度且未超過上限、可以放行;false 代表已經超過今天
+	// 的額度上限,這次呼叫應該被拒絕。err 不為 nil 時(例如底層資料庫
+	// 呼叫失敗)視同「無法判斷」,呼叫端(Gateway.Do)採取的策略是放行
+	// (fail open)而非拒絕(fail closed)——理由同 RateLimiter「查不到
+	// 規則的 key 一律放行」的既有設計哲學:這是輔助性的成本控管機制,
+	// 底層儲存暫時不可用不該連帶讓核心功能(查詢地點資訊)整個不可用,
+	// 寧可在這種罕見情況下暫時失去每日額度保護,也不要讓資料庫的暫時性
+	// 問題放大成使用者可見的功能中斷。
+	AllowDaily(endpoint string) (allowed bool, err error)
+}
+
 // CallLogger 是每次請求完成後的記錄回呼——Gateway 本身不依賴任何資料庫套件
 // (維持這個元件的獨立性,理由同套件說明的第 1 點),由呼叫端(api 層)注入
 // 一個把記錄寫進資料庫的實作。nil 代表不記錄,Gateway 仍正常運作。
@@ -72,6 +101,15 @@ type Config struct {
 	// 在原本的排隊邏輯之前先呼叫 RateLimiter.Allow(endpoint),若被拒絕
 	// 就直接回傳 ErrRateLimited,完全不進入排隊、不送出任何 HTTP 請求。
 	RateLimiter *RateLimiter
+
+	// DailyQuotaChecker 是選填的每日額度檢查器(見該介面的完整說明)——
+	// nil 時代表不啟用每日額度限制。非 nil 時,Gateway.Do 在 RateLimiter
+	// 檢查通過之後(見 Do 的說明:兩者都要通過才會真正送出,RateLimiter
+	// 先判斷是因為它是純記憶體運算、成本更低,能更快拒絕明顯超速的呼叫,
+	// 不需要每次都多打一次資料庫)呼叫 AllowDaily(endpoint),被拒絕就
+	// 直接回傳 ErrDailyQuotaExceeded,同樣不進入排隊、不送出任何 HTTP
+	// 請求。
+	DailyQuotaChecker DailyQuotaChecker
 }
 
 // DefaultConfig 是使用者確認過的預設值:同時最多 1 個請求在飛行中、
@@ -96,6 +134,8 @@ type Gateway struct {
 
 	// rateLimiter 見 Config.RateLimiter 的說明,nil 時不啟用。
 	rateLimiter *RateLimiter
+	// dailyQuotaChecker 見 Config.DailyQuotaChecker 的說明,nil 時不啟用。
+	dailyQuotaChecker DailyQuotaChecker
 }
 
 // New 建立 Gateway。logger 可傳 nil(不記錄)。
@@ -107,11 +147,12 @@ func New(doer HTTPDoer, cfg Config, logger CallLogger) *Gateway {
 		cfg.MinInterval = 0
 	}
 	return &Gateway{
-		doer:        doer,
-		logger:      logger,
-		sem:         make(chan struct{}, cfg.MaxConcurrency),
-		interval:    cfg.MinInterval,
-		rateLimiter: cfg.RateLimiter,
+		doer:              doer,
+		logger:            logger,
+		sem:               make(chan struct{}, cfg.MaxConcurrency),
+		interval:          cfg.MinInterval,
+		rateLimiter:       cfg.RateLimiter,
+		dailyQuotaChecker: cfg.DailyQuotaChecker,
 	}
 }
 
@@ -141,6 +182,17 @@ func (g *Gateway) Do(ctx context.Context, req *http.Request, endpoint, caller, p
 	// 說明)。
 	if g.rateLimiter != nil && !g.rateLimiter.Allow(endpoint) {
 		return nil, ErrRateLimited
+	}
+	// DailyQuotaChecker 檢查同樣在排隊邏輯之前、且刻意排在 RateLimiter
+	// 之後(見 Config.DailyQuotaChecker 的完整說明)——AllowDaily 通常會
+	// 打一次資料庫,讓 RateLimiter 先擋掉明顯超速的呼叫,能減少不必要的
+	// 資料庫往返。
+	if g.dailyQuotaChecker != nil {
+		if allowed, err := g.dailyQuotaChecker.AllowDaily(endpoint); err == nil && !allowed {
+			return nil, ErrDailyQuotaExceeded
+		}
+		// err != nil:fail open,見 DailyQuotaChecker.AllowDaily 的完整
+		// 說明,不擋下這次呼叫。
 	}
 
 	select {

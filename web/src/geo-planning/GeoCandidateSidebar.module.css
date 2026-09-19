@@ -4,7 +4,7 @@
   height: 100%;
 }
 
-/* panelFlash:GeoInfoPanel 複合按鈕右半邊(見該元件 onAddAndReveal 的
+/* panelFlash:PlacePanel 複合按鈕右半邊(見該元件 onAddAndReveal 的
    說明)按下、候選加入候選籃後,這個側欄短暫套上的 highlight 動畫——
    這個側欄在那顆按鈕能被按到的情境下本來就已經展開顯示,沒有獨立的
    「收合/展開」動作可以做,改用 accent 色的邊框脈動提示使用者「東西

@@ -1,4 +1,4 @@
-// GeoOutlineMap 的「點擊地圖上 Google 原生 POI 圖標」路徑——mock 整個
+// ExploreMap 的「點擊地圖上 Google 原生 POI 圖標」路徑——mock 整個
 // @googlemaps/js-api-loader 與 api.ts 的查詢函式,不載入真實 Google Maps
 // SDK,只驗證 click 監聽器有被正確註冊、點擊帶 placeId 的事件後確實呼叫
 // fetchGeoPlaceDetails、查詢結果透過 onPoiSelect 往上回報。不驗證地圖
@@ -8,7 +8,7 @@
 // 呼叫到這裡沒有 mock 的 AdvancedMarkerElement/OverlayView 等 API)。
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
-import { GeoOutlineMap } from './GeoOutlineMap'
+import { ExploreMap } from './ExploreMap'
 import type { ClientConfig, GeoPlaceDetails } from '../api'
 
 // listeners:記錄 mock Map 實例上註冊過的所有事件監聽器,供測試手動
@@ -103,11 +103,11 @@ beforeEach(() => {
   vi.stubEnv('VITE_GOOGLE_MAPS_MAP_ID', 'test-map-id')
 })
 
-describe('GeoOutlineMap 點擊地圖上原生 POI', () => {
+describe('ExploreMap 點擊地圖上原生 POI', () => {
   it('click 監聽器有被註冊,點擊帶 placeId 的事件會呼叫 fetchGeoPlaceDetails 並透過 onPoiSelect 回報結果', async () => {
     const onPoiSelect = vi.fn()
     render(
-      <GeoOutlineMap
+      <ExploreMap
         cfg={cfg}
         initialCenter={{ lat: 35.0, lng: 135.76 }}
         onPoiSelect={onPoiSelect}
@@ -134,7 +134,7 @@ describe('GeoOutlineMap 點擊地圖上原生 POI', () => {
   it('點擊沒有 placeId 的一般點擊(地圖空白處)不觸發 fetchGeoPlaceDetails/onPoiSelect', async () => {
     const onPoiSelect = vi.fn()
     render(
-      <GeoOutlineMap
+      <ExploreMap
         cfg={cfg}
         initialCenter={{ lat: 35.0, lng: 135.76 }}
         onPoiSelect={onPoiSelect}

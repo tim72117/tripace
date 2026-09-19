@@ -1,13 +1,16 @@
-import { useCallback, useReducer, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { ListPlus, Timeline } from 'lucide-react'
-import type { ClientConfig } from '../api'
+import type { ClientConfig, GeoAttraction } from '../api'
 import type { Trip } from '../trip/types'
 import type { User } from '../user/types'
 import type { Theme } from '../theme'
 import { Avatar } from '../AppCommon'
-import { GeoOutlinePanel } from './GeoOutlinePanel'
+import { ExploreMap } from './ExploreMap'
+import { useGeoOutlineMapState } from './useGeoOutlineMapState'
+import outlineMapStyles from './GeoOutlinePanel.module.css'
 import { useGeoPlanningState } from './useGeoPlanningState'
 import type { GeoCandidate } from './geoCandidateHelpers'
+import type { PlaceInfoContent } from './PlacePanel'
 import { GeoOutlinePhoneInfoSheet } from './GeoOutlinePhoneInfoSheet'
 import { GeoOutlinePhoneDatePickerSheet } from './GeoOutlinePhoneDatePickerSheet'
 import { GeoOutlinePhoneDateCalendarSheet } from './GeoOutlinePhoneDateCalendarSheet'
@@ -15,6 +18,10 @@ import { GeoOutlinePhoneCandidateDrawer } from './GeoOutlinePhoneCandidateDrawer
 import { GeoOutlinePhoneListDrawer } from './GeoOutlinePhoneListDrawer'
 import { reduceCategoryTagsState, initialCategoryTagsState } from './geoCategoryTagsState'
 import { useSheetStack } from '../components/useSheetStack'
+import { computeNearbyAttractions } from './geoNearbyAttractions'
+import { fetchPoiContent } from './useThemeAttractionSelection'
+import { curatedCategoryOf, type CuratedCategory } from './geoCuratedCategoryStub'
+import { fetchGeoPlaceDetails } from '../api'
 import styles from './GeoOutlinePhoneView.module.css'
 
 // SheetEntry:2026-08 這次重構後,清單與資訊卡「該不該顯示」的真相來源
@@ -61,7 +68,7 @@ import styles from './GeoOutlinePhoneView.module.css'
 // 'date-calendar' 日曆 sheet(GeoOutlinePhoneDateCalendarSheet)——2026-08
 //         新增,取代舊版 `.dateEdit` 區塊裡的 <input type="date"> +
 //         確定按鈕(現改用 DatePickerPopover 月曆格線 UI,對齊桌面版
-//         GeoInfoPanel.tsx 的既有升級,點選日期格子即視為確定)。兩條
+//         PlacePanel.tsx 的既有升級,點選日期格子即視為確定)。兩條
 //         push 路徑:(1) 候選沒有排定日期、行程本身也沒有排定日期時,
 //         由資訊卡直接 push(跳過 'date-picker',見上方說明);(2)
 //         'date-picker' 的「其他日期」按鈕 push,疊在 'date-picker' 之上,
@@ -71,16 +78,32 @@ import styles from './GeoOutlinePhoneView.module.css'
 //         日期選擇層(不論底下疊的是 'info' 直接疊上來、還是還多疊了
 //         一層 'date-picker'),回到資訊卡;使用者主動關閉則只 pop 這
 //         一層。
+// 'nearby-place'  附近景點的地點卡(GeoOutlinePhoneInfoSheet,重用同一個
+//         元件,見下方渲染處的完整說明)——2026-09 新增,對齊桌面版
+//         AttractionInfoPanel.tsx「附近景點」清單點項目後並存顯示地點卡
+//         的功能。手機版沒有桌面版並排疊放的空間,改用 push 疊一層新
+//         sheet(對齊「跟目前手機版顯示多層卡片一樣」的既有模式,例如
+//         'date-picker'/'date-calendar' 疊在 'info' 之上),不是 replace
+//         掉主題卡——這樣使用者關閉這張地點卡後能回到原本的主題卡跟
+//         附近景點清單,而不是直接回到地圖(那樣等於清單白點了)。由
+//         GeoOutlinePhoneInfoSheet 內部的附近景點清單項目觸發 push,見
+//         下方 nearbyPoiContent 的完整說明。
+// NEARBY_ATTRACTION_LIMIT:「附近景點」清單最多顯示幾筆——對齊
+// DesktopLayout.tsx 同名常數的值(見該處說明),手機螢幕空間更有限,
+// 沒有理由列更多筆。
+const NEARBY_ATTRACTION_LIMIT = 5
+
 type SheetEntry =
   | { type: 'list' }
   | { type: 'info' }
+  | { type: 'nearby-place' }
   | { type: 'date-picker' }
   | { type: 'date-calendar' }
 
 // GeoOutlinePhoneView:手機版規劃地圖(geo-outline)主容器。第一階段是
 // 地圖瀏覽 + 唯讀資訊卡;第二階段(這次)新增候選籃——讓使用者能把地圖上
 // 瀏覽到的飯店/景點/地點加入候選籃,並排入行程的某一天。地圖引擎
-// (GeoOutlinePanel/GeoOutlineMap)與桌面版共用同一份,平台無關,這裡只
+// (GeoOutlinePanel/ExploreMap)與桌面版共用同一份,平台無關,這裡只
 // 負責手機版排版與候選籃資料流。
 //
 // 候選籃 UI 選用「從右側滑入的抽屜」(GeoOutlinePhoneCandidateDrawer),
@@ -102,7 +125,7 @@ type SheetEntry =
 // 從一側滑入的抽屜,選左側(候選籃已佔用右側滑入語意,見
 // GeoOutlinePhoneListDrawer.tsx 的說明)。資料來源對照桌面版
 // DesktopLayout.tsx 的 geo.searchResults——GeoOutlinePanel 本來就已經
-// 把 onSearchResultsChange 轉傳給 GeoOutlineMap(第一、二階段的
+// 把 onSearchResultsChange 轉傳給 ExploreMap(第一、二階段的
 // 手機版容器沒有接這個 callback,地圖仍會查詢,只是查到的結果沒有
 // 清單可以顯示,這次補上)。清單合併顯示飯店/推薦地點/搜尋結果,不分頁
 // 切換——對齊桌面版 GeoHotelSidebar.tsx 現行的合併清單設計,原本這裡
@@ -158,8 +181,8 @@ export function GeoOutlinePhoneView({
   onOpenTrips: () => void
   // theme:這個 App 的深色/淺色模式偏好(useAppState() 的 theme,見
   // theme.ts),由 PhoneContent.tsx 中介(props.theme)——原封不動轉傳給
-  // GeoOutlinePanel → GeoOutlineMap 決定建圖時的 colorScheme,見
-  // GeoOutlineMap.tsx 對這個 prop 的完整說明。這個元件本身不消費 theme,
+  // GeoOutlinePanel → ExploreMap 決定建圖時的 colorScheme,見
+  // ExploreMap.tsx 對這個 prop 的完整說明。這個元件本身不消費 theme,
   // 純轉傳。
   theme?: Theme
 }) {
@@ -169,6 +192,46 @@ export function GeoOutlinePhoneView({
   // DesktopLayout.tsx 共用同一個 hook(geo-planning/useGeoPlanningState.ts),
   // 不是各自實作一份形狀相同但獨立維護的版本。
   const geo = useGeoPlanningState({ cfg, tripID })
+
+  // geoAttractions/nearbyAttractions/revealedAttractionNames/categoryFilter:
+  // 「附近景點」清單——2026-09 新增,對齊桌面版 DesktopLayout.tsx 的
+  // nearbyAttractions/revealedAttractionNames/activeNearbyCategoryFilter
+  // (見各自的完整說明,純邏輯已抽成 geoNearbyAttractions.ts 共用,見該
+  // 檔案開頭說明)。geoAttractions 是地圖可視範圍查詢結果的完整清單
+  // (供下方 ExploreMap 的 onAttractionsChange 回填,理由跟桌面版同名
+  // state 一致:不另發 API,直接用地圖已經查到的資料算附近清單)。
+  const [geoAttractions, setGeoAttractions] = useState<GeoAttraction[]>([])
+  const nearbyAttractions = useMemo(() => {
+    if (!geo.attractionContent || !geo.attractionContent.isTheme) return []
+    return computeNearbyAttractions(
+      geo.attractionContent,
+      geoAttractions.filter((a) => !a.isTheme),
+      NEARBY_ATTRACTION_LIMIT,
+    )
+  }, [geoAttractions, geo.attractionContent])
+  const [categoryFilter, setCategoryFilter] = useState<CuratedCategory | null>(null)
+  // 主題卡切換時清空分類篩選——對齊桌面版 useThemeAttractionSelection.ts
+  // 的 [themeKey] reset effect(見該檔案完整說明),手機版沒有接整支那個
+  // hook(理由見該檔案檔頭對手機版的說明),但同一條「切主題要清空篩選」
+  // 的規則仍然適用,故這裡自己補一個等價的 reset effect,不是漏寫。
+  useEffect(() => {
+    setCategoryFilter(null)
+  }, [geo.attractionContent])
+  const revealedAttractionNames = useMemo(() => {
+    if (!geo.attractionContent || !geo.attractionContent.isTheme) return null
+    const nearbyPool = geoAttractions.filter((a) => !a.isTheme)
+    if (!categoryFilter) return new Set(nearbyPool.map((a) => a.name))
+    return new Set(
+      nearbyPool
+        .filter((a) => curatedCategoryOf(a.category) === categoryFilter)
+        .map((a) => a.name),
+    )
+  }, [geoAttractions, geo.attractionContent, categoryFilter])
+
+  // nearbyPoiContent:附近景點清單點擊項目後開啟的地點卡內容——見下方
+  // handleSelectNearbyAttraction(要用到 sheetStack,宣告順序排在該處
+  // 之後)的完整說明。
+  const [nearbyPoiContent, setNearbyPoiContent] = useState<PlaceInfoContent | null>(null)
 
   // candidateDrawerOpen/candidateFlashTrigger:候選籃抽屜開關與「剛加入
   // 東西了」的短暫提示——理由同桌面版 geoCandidateFlashTrigger,見
@@ -197,6 +260,18 @@ export function GeoOutlinePhoneView({
   // sheetStack:清單/資訊卡「該不該顯示」的唯一真相來源(見上方
   // SheetEntry 的說明與 useSheetStack.ts 開頭的完整背景)。
   const sheetStack = useSheetStack<SheetEntry>()
+  // handleSelectNearbyAttraction:附近景點清單點擊項目——push 一層
+  // {type:'nearby-place'} 顯示(見上方 SheetEntry 的完整說明),重用
+  // fetchPoiContent(useThemeAttractionSelection.ts 抽出的查詢/fallback
+  // 邏輯,見該函式說明)取得內容,不重新發明一套查詢規則,對稱桌面版
+  // DesktopLayout.tsx 的 handleSelectNearbyAttraction(直接就是
+  // useThemeAttractionSelection 回傳的 openPoiContent)。
+  const handleSelectNearbyAttraction = useCallback((attraction: GeoAttraction) => {
+    fetchPoiContent(attraction, (placeId) => fetchGeoPlaceDetails(cfg, placeId)).then((content) => {
+      setNearbyPoiContent(content)
+      sheetStack.push({ type: 'nearby-place' })
+    })
+  }, [cfg, sheetStack])
   // infoSheetDraggingDown/infoSheetSnapIndex:資訊卡目前是否正在被使用者
   // 往下拖曳、以及目前停在哪一段——使用者明確要求「前一層比後層高時,
   // 往下拉後層也要跟著往下」,這裡簡化成「頂層(資訊卡)一開始往下拖,
@@ -285,6 +360,50 @@ export function GeoOutlinePhoneView({
     setCandidateFlashTrigger((n) => n + 1)
   }, [geo])
 
+  // outlineMapState:原本 GeoOutlinePanel.tsx 內部持有的城市搜尋/旅程座標
+  // 查詢邏輯,已拆成 useGeoOutlineMapState(見該檔案的完整說明,與桌面版
+  // DesktopLayout.tsx 共用同一個 hook)——這個元件退役後,這裡直接呼叫
+  // <ExploreMap>,不再需要一層只做轉傳的包裝元件。
+  const outlineMapState = useGeoOutlineMapState({
+    cfg,
+    tripID,
+    city: searchCity,
+    onSearchResultSelect: (result) => {
+      geo.selectSearchResult(result)
+      sheetStack.replace({ type: 'info' })
+    },
+    onSearchResultsChange: (results) => {
+      // 查詢結果回來時——setListLoading(false) 結束查詢中動畫。標籤列
+      // 的顯示/隱藏邏輯不受這次改動影響(依結果是否為空決定,見
+      // geoCategoryTagsState.ts 的說明)。
+      //
+      // 「唯一解時清單不顯示、資訊卡自動顯示」這條規則用 sheetStack.replace
+      // 表達:resultCount === 1 時,把堆疊頂端換成 {type:'info'}——查詢
+      // 入口(onSearch/onSearchStart)已經在「查詢開始」的當下 push 過
+      // {type:'list'},此刻堆疊頂端必然是 'list',replace 換成 'info'
+      // 精準對應「清單不需要了,直接顯示資訊卡」這個語意,不增加堆疊
+      // 深度(此時堆疊仍只有一層)。resultCount 為 0 或多筆時,堆疊維持
+      // 不動(頂端仍是 'list',查詢開始時 push 的那一層,讓清單顯示結果
+      // 或空狀態文案)。
+      setListLoading(false)
+      dispatchCategoryTags({ type: 'results-arrived', hasResults: results.length > 0 })
+      if (results.length === 1) {
+        sheetStack.replace({ type: 'info' })
+      }
+    },
+    onGeocodeCandidateText: (placeId, text) => geo.patchGeocodeCandidateText(placeId, text),
+    onGeocodeCandidatePhoto: (placeId, photoUrl) => geo.patchGeocodeCandidatePhoto(placeId, photoUrl),
+    onTripEntriesChange: geo.onTripEntriesChange,
+    externalGeocodeCandidateSelect: geo.searchResultSelect,
+    panTarget: geo.panTarget,
+    searchTrigger,
+    refetchTripEntriesTrigger: geo.refetchTripEntriesTrigger,
+    geocodeCandidates: geo.geocodeCandidates,
+    setGeocodeCandidates: geo.setGeocodeCandidates,
+    selectedCandidate: geo.selectedCandidate,
+    setSelectedCandidate: geo.setSelectedCandidate,
+  })
+
   return (
     <div className={styles.wrap}>
       <div className={styles.candidateGroup}>
@@ -308,144 +427,188 @@ export function GeoOutlinePhoneView({
           </button>
         )}
       </div>
-      <GeoOutlinePanel
-        cfg={cfg}
-        tripID={tripID}
-        city={searchCity}
-        onCityChange={setSearchCity}
-        onSearch={() => {
-          // 重新搜尋時清空目前選取的地點,關閉正在顯示的地點介紹卡——
-          // 理由同 DesktopLayout.tsx 對應的 onSearch 說明。城市搜尋框
-          // 這個入口的「查詢開始」時機——setListLoading(true)/
-          // dispatchCategoryTags 的 search-started 語意保留(loading
-          // 動畫、標籤列隱藏,見 geoCategoryTagsState.ts 的說明),但清單
-          // 「該不該顯示」這件事由 sheetStack 表達:sheetStack.closeAll()
-          // 先清空整個堆疊(不管之前疊了什麼——可能還顯示著上一次查詢
-          // 選中的資訊卡,新一次搜尋是全新的操作循環,不需要延續舊的堆疊
-          // 狀態,這是使用者明確確認的設計決策),再 push({type:'list'})
-          // 讓清單重新以「堆疊底層」的姿態打開。
-          geo.clearSelection()
-          setSearchTrigger((n) => n + 1)
-          setListLoading(true)
-          dispatchCategoryTags({ type: 'search-started' })
-          sheetStack.closeAll()
-          sheetStack.push({ type: 'list' })
-        }}
-        onSearchStart={() => {
-          // 類別標籤/「搜尋這個區域」按鈕這兩個入口的「查詢開始」時機
-          // ——見 GeoOutlineMap.tsx onSearchStart 的完整說明,這兩個入口
-          // 不經過上面的 onSearch,故需要各自接這個獨立的 callback 才能
-          // 涵蓋全部三個入口。sheetStack 的操作跟上面 onSearch 完全對稱
-          // (closeAll 再 push 'list')——理由相同:三個查詢入口都代表
-          // 「使用者開始了一次全新的搜尋操作」,不該讓舊堆疊殘留。
-          setListLoading(true)
-          dispatchCategoryTags({ type: 'search-started' })
-          sheetStack.closeAll()
-          sheetStack.push({ type: 'list' })
-        }}
-        hideCategoryTags={categoryTagsState.hidden}
-        searchTrigger={searchTrigger}
-        showZoomControl={false}
-        searchRightSlot={
-          <button type="button" className={styles.avatarBtn} onClick={onOpenSettings} title="設定">
-            <Avatar user={user} />
-          </button>
-        }
-        refetchTripEntriesTrigger={geo.refetchTripEntriesTrigger}
-        geocodeCandidates={geo.geocodeCandidates}
-        setGeocodeCandidates={geo.setGeocodeCandidates}
-        selectedCandidate={geo.selectedCandidate}
-        setSelectedCandidate={geo.setSelectedCandidate}
-        onSearchResultsChange={(results) => {
-          // 查詢結果回來時——setListLoading(false) 結束查詢中動畫。標籤列
-          // 的顯示/隱藏邏輯不受這次改動影響(依結果是否為空決定,見
-          // geoCategoryTagsState.ts 的說明)。
-          //
-          // 「唯一解時清單不顯示、資訊卡自動顯示」這條規則用 sheetStack.replace
-          // 表達:resultCount === 1 時,把堆疊頂端換成 {type:'info'}——
-          // 查詢入口(onSearch/onSearchStart)已經在「查詢開始」的當下
-          // push 過 {type:'list'},此刻堆疊頂端必然是 'list',replace
-          // 換成 'info' 精準對應「清單不需要了,直接顯示資訊卡」這個語意,
-          // 不增加堆疊深度(此時堆疊仍只有一層)。這裡不需要知道是哪個
-          // 查詢入口觸發的——三個入口對堆疊的操作完全一致,replace 邏輯
-          // 天然正確。resultCount 為 0 或多筆時,堆疊維持不動(頂端仍是
-          // 'list',查詢開始時 push 的那一層,讓清單顯示結果或空狀態
-          // 文案)。
-          setListLoading(false)
-          dispatchCategoryTags({ type: 'results-arrived', hasResults: results.length > 0 })
-          if (results.length === 1) {
-            sheetStack.replace({ type: 'info' })
+      {/* GeoOutlinePanel 這個包裝元件已退役(見 useGeoOutlineMapState.ts
+          的完整說明)——這裡直接使用 ExploreMap,並補上等價於
+          GeoOutlinePanel.module.css 的 .mapArea 這層 position:absolute;
+          inset:0(這個元件自己已有的 .wrap,見該檔案 CSS,結構同構於
+          GeoOutlinePanel 原本的 .wrap,不需要重複兩層 position:relative,
+          只需要補上這層滿版定位,撐開版面尺寸鏈給 ExploreMap 的
+          width:100%/height:100% 生效)。 */}
+      <div className={outlineMapStyles.mapArea}>
+        <ExploreMap
+          cfg={cfg}
+          initialCenter={outlineMapState.initialCenter}
+          tripEntries={outlineMapState.tripEntries}
+          city={searchCity}
+          onCityChange={setSearchCity}
+          onSearch={() => {
+            // 重新搜尋時清空目前選取的地點,關閉正在顯示的地點介紹卡——
+            // 理由同 DesktopLayout.tsx 對應的 onSearch 說明。城市搜尋框
+            // 這個入口的「查詢開始」時機——setListLoading(true)/
+            // dispatchCategoryTags 的 search-started 語意保留(loading
+            // 動畫、標籤列隱藏,見 geoCategoryTagsState.ts 的說明),但清單
+            // 「該不該顯示」這件事由 sheetStack 表達:sheetStack.closeAll()
+            // 先清空整個堆疊(不管之前疊了什麼——可能還顯示著上一次查詢
+            // 選中的資訊卡,新一次搜尋是全新的操作循環,不需要延續舊的堆疊
+            // 狀態,這是使用者明確確認的設計決策),再 push({type:'list'})
+            // 讓清單重新以「堆疊底層」的姿態打開。
+            geo.clearSelection()
+            setSearchTrigger((n) => n + 1)
+            setListLoading(true)
+            dispatchCategoryTags({ type: 'search-started' })
+            sheetStack.closeAll()
+            sheetStack.push({ type: 'list' })
+          }}
+          searching={outlineMapState.searching}
+          searchError={outlineMapState.searchError}
+          onSearchStart={() => {
+            // 類別標籤/「搜尋這個區域」按鈕這兩個入口的「查詢開始」時機
+            // ——見 ExploreMap.tsx onSearchStart 的完整說明,這兩個入口
+            // 不經過上面的 onSearch,故需要各自接這個獨立的 callback 才能
+            // 涵蓋全部三個入口。sheetStack 的操作跟上面 onSearch 完全對稱
+            // (closeAll 再 push 'list')——理由相同:三個查詢入口都代表
+            // 「使用者開始了一次全新的搜尋操作」,不該讓舊堆疊殘留。
+            setListLoading(true)
+            dispatchCategoryTags({ type: 'search-started' })
+            sheetStack.closeAll()
+            sheetStack.push({ type: 'list' })
+          }}
+          hideCategoryTags={categoryTagsState.hidden}
+          showZoomControl={false}
+          searchRightSlot={
+            <button type="button" className={styles.avatarBtn} onClick={onOpenSettings} title="設定">
+              <Avatar user={user} />
+            </button>
           }
-        }}
-        externalGeocodeCandidateSelect={geo.searchResultSelect}
-        onTripEntriesChange={geo.onTripEntriesChange}
-        // onAttractionSelect/onSearchResultSelect/onPoiSelect:點地圖上的
-        // 自建景點/飯店與推薦地點/POI marker,由 GeoOutlineMap 內部觸發
-        // ——這三個入口跟清單 onSelect(下方)不同,沒有「從清單點進來」
-        // 這件事,故用 sheetStack.replace(而非 push)——理由見上方
-        // SheetEntry 的說明:連續點不同 marker 應該直接換資訊卡內容,
-        // 不增加堆疊深度(使用者明確確認的行為,關閉鍵不需要按兩次)。
-        // 這也是 onSearchResultSelect 唯一解自動選中(GeoOutlinePanel.tsx
-        // 內部呼叫,見該檔案 onlyResult 分支)共用的同一個 callback——
-        // 唯一解時堆疊頂端已經被上方 onSearchResultsChange 的 replace
-        // 換成 'info' 了,這裡再 replace 一次是 no-op(頂端本來就是
-        // 'info',語意上不會出錯)。
-        onAttractionSelect={(attraction) => {
-          geo.selectAttraction(attraction)
-          sheetStack.replace({ type: 'info' })
-        }}
-        onSearchResultSelect={(result) => {
-          geo.selectSearchResult(result)
-          sheetStack.replace({ type: 'info' })
-        }}
-        onPoiSelect={(details) => {
-          geo.selectPoi(details)
-          sheetStack.replace({ type: 'info' })
-        }}
-        onGeocodeCandidateText={(placeId, text) => geo.patchGeocodeCandidateText(placeId, text)}
-        onGeocodeCandidatePhoto={(placeId, photoUrl) => geo.patchGeocodeCandidatePhoto(placeId, photoUrl)}
-        selectedKey={geo.selectedKey}
-        candidateKeys={geo.candidateKeys}
-        panTarget={geo.panTarget}
-        theme={theme}
-      />
-      <GeoOutlinePhoneInfoSheet
-        // content/attraction:GeoOutlinePhoneInfoSheet 元件本身的職責只是
-        // 「有內容就顯示」(content!=null || attraction!=null),不知道
-        // 也不該知道 sheetStack 這個更上層的堆疊概念(職責邊界維持不動,
-        // 見這次重構的說明)——「該不該顯示」現在由呼叫端(這裡)做
-        // gate:只有堆疊裡確實有 {type:'info'} 這一項時,才把 geo 算出來
-        // 的真正內容傳進去,否則傳 null,讓元件自然判斷不渲染。這樣即使
-        // geo.infoContent/attractionContent 有殘留值(例如資訊卡剛被
-        // sheetStack.pop() 關閉,但 geo.clearSelection() 的 state 更新
-        // 還沒反映),畫面也不會誤顯示——sheetStack 才是唯一真相來源。
-        content={sheetStack.stack.some((e) => e.type === 'info') ? geo.infoContent : null}
-        attraction={sheetStack.stack.some((e) => e.type === 'info') ? geo.attractionContent : null}
-        onClose={() => {
-          // pop 移除堆疊頂層的 'info'——若下面疊著 'list'(從清單點進來
-          // 的路徑),清單自動露出重新變回頂層;若堆疊裡沒有 'list'(由
-          // 點 marker/唯一解/候選籃選取這幾個用 replace 打開的路徑),
-          // pop 後堆疊變空,回到「沒有上一層就什麼都不開」——這是使用者
-          // 先前確認過的既有行為,這次重構後依然成立,不需要特別處理。
-          // geo.clearSelection() 清空 infoContent/attractionContent 本身
-          // (內容清空),兩者合起來才是「資訊卡真正消失」的完整動作。
-          sheetStack.pop()
-          geo.clearSelection()
-        }}
-        onAddCandidate={handleAddCandidate}
-        // onOpenDatePicker:候選沒有排定日期時觸發(見
-        // GeoOutlinePhoneInfoSheet.tsx handleAddClick 的說明)——依
-        // geo.scheduledDates 是否為空決定 push 哪一層:非空時先顯示日期
-        // 清單 sheet 讓使用者快速挑既有日期,完全沒有排定日期時直接跳過
-        // 清單、開日曆 sheet(空清單沒有任何 chip 可選,見上方 SheetEntry
-        // 的說明)。
-        onOpenDatePicker={() => {
-          sheetStack.push(geo.scheduledDates.length === 0 ? { type: 'date-calendar' } : { type: 'date-picker' })
-        }}
-        onDraggingDownChange={setInfoSheetDraggingDown}
-        onSnapIndexChange={setInfoSheetSnapIndex}
-        addFlashTrigger={addFlashTrigger}
-      />
+          onGeocodeCandidatesChange={outlineMapState.onGeocodeCandidatesChange}
+          // onAttractionsChange/revealedAttractionNames:「附近景點」清單
+          // 的資料來源(見上方 geoAttractions/nearbyAttractions/
+          // revealedAttractionNames 的完整說明)——對齊桌面版
+          // DesktopLayout.tsx 同名 prop 的接線,原本手機版沒有傳這兩個
+          // prop,地圖仍會查詢,只是查到的結果沒有地方接住。
+          onAttractionsChange={setGeoAttractions}
+          revealedAttractionNames={revealedAttractionNames}
+          onAttractionSelect={(attraction) => {
+            geo.selectAttraction(attraction)
+            sheetStack.replace({ type: 'info' })
+          }}
+          // onSearchResultSelect:點地圖上的飯店/推薦地點/搜尋結果
+          // marker——接 outlineMapState.onSearchResultSelect(原
+          // GeoOutlinePanel.tsx 內部的 handleGeocodeCandidateSelect,含
+          // 補查文字/照片流程、suppressQuery:false 重新查詢新範圍,見
+          // useGeoOutlineMapState.ts 的完整說明),不是直接呼叫
+          // geo.selectSearchResult——兩種入口(地圖 marker/側欄清單)需要
+          // 共用同一套完整流程,不能各自實作簡化版(理由同該 hook 原本的
+          // 完整說明)。sheetStack 的操作已經內建在 hook 呼叫時傳入的
+          // onSearchResultSelect 參數裡(見上方 useGeoOutlineMapState 呼叫)。
+          onSearchResultSelect={outlineMapState.onSearchResultSelect}
+          onPoiSelect={(details) => {
+            geo.selectPoi(details)
+            sheetStack.replace({ type: 'info' })
+          }}
+          onCenterChange={outlineMapState.onCenterChange}
+          panTarget={outlineMapState.panTarget}
+          selectedKey={geo.selectedKey}
+          candidateKeys={geo.candidateKeys}
+          geocodeCandidates={outlineMapState.geocodeCandidates}
+          theme={theme}
+        >
+          {/* GeoOutlinePhoneInfoSheet 改用 children 掛入 ExploreMap——對齊
+              DesktopLayout.tsx/KiyomizuDemoPage.tsx 的組合方式(見兩者
+              ExploreMap/NativeMapBase 的 children 說明):這張資訊卡不是
+              掛在地圖元件上的東西(地圖建立方式跟卡片無關),但語意上
+              統一表達成「這些是附掛在這個地圖上的浮動 UI」,三個平台
+              (桌機/手機/展示頁)用同一種掛入慣例,不是各自平行的兄弟
+              元件。GeoOutlinePhoneDatePickerSheet/
+              GeoOutlinePhoneDateCalendarSheet/GeoOutlinePhoneCandidateDrawer/
+              GeoOutlinePhoneListDrawer 這四個維持在地圖外層(不是浮動疊在
+              地圖上的卡片,是從螢幕底部滑入的 sheet/抽屜,定位基準是整個
+              畫面而非地圖容器,跟桌機版的 GeoCandidateSidebar 等側欄同一
+              類,不屬於這次「地圖上的浮動卡片」統一範圍)。 */}
+          <GeoOutlinePhoneInfoSheet
+            // content/attraction:GeoOutlinePhoneInfoSheet 元件本身的職責
+            // 只是「有內容就顯示」(content!=null || attraction!=null),
+            // 不知道也不該知道 sheetStack 這個更上層的堆疊概念(職責邊界
+            // 維持不動,見這次重構的說明)——「該不該顯示」現在由呼叫端
+            // (這裡)做 gate:只有堆疊裡確實有 {type:'info'} 這一項時,
+            // 才把 geo 算出來的真正內容傳進去,否則傳 null,讓元件自然
+            // 判斷不渲染。這樣即使 geo.infoContent/attractionContent 有
+            // 殘留值(例如資訊卡剛被 sheetStack.pop() 關閉,但
+            // geo.clearSelection() 的 state 更新還沒反映),畫面也不會
+            // 誤顯示——sheetStack 才是唯一真相來源。
+            content={sheetStack.stack.some((e) => e.type === 'info') ? geo.infoContent : null}
+            attraction={sheetStack.stack.some((e) => e.type === 'info') ? geo.attractionContent : null}
+            cfg={cfg}
+            onClose={() => {
+              // pop 移除堆疊頂層的 'info'——若下面疊著 'list'(從清單點
+              // 進來的路徑),清單自動露出重新變回頂層;若堆疊裡沒有
+              // 'list'(由點 marker/唯一解/候選籃選取這幾個用 replace
+              // 打開的路徑),pop 後堆疊變空,回到「沒有上一層就什麼都不
+              // 開」——這是使用者先前確認過的既有行為,這次重構後依然
+              // 成立,不需要特別處理。geo.clearSelection() 清空
+              // infoContent/attractionContent 本身(內容清空),兩者合
+              // 起來才是「資訊卡真正消失」的完整動作。
+              sheetStack.pop()
+              geo.clearSelection()
+            }}
+            onAddCandidate={handleAddCandidate}
+            // onOpenDatePicker:候選沒有排定日期時觸發(見
+            // GeoOutlinePhoneInfoSheet.tsx handleAddClick 的說明)——依
+            // geo.scheduledDates 是否為空決定 push 哪一層:非空時先顯示
+            // 日期清單 sheet 讓使用者快速挑既有日期,完全沒有排定日期時
+            // 直接跳過清單、開日曆 sheet(空清單沒有任何 chip 可選,見
+            // 上方 SheetEntry 的說明)。
+            onOpenDatePicker={() => {
+              sheetStack.push(geo.scheduledDates.length === 0 ? { type: 'date-calendar' } : { type: 'date-picker' })
+            }}
+            onDraggingDownChange={setInfoSheetDraggingDown}
+            onSnapIndexChange={setInfoSheetSnapIndex}
+            addFlashTrigger={addFlashTrigger}
+            // nearby/onSelectNearby/categoryFilter/onCategoryFilterChange:
+            // 「附近景點」清單(見上方 nearbyAttractions/categoryFilter 的
+            // 完整說明)——只有主題卡(見 GeoOutlinePhoneInfoSheet.tsx
+            // 對 attraction 的說明)有意義,精選點(非主題點)地標打開的
+            // 資訊卡沒有下一層附近景點,nearbyAttractions 本身在
+            // geo.attractionContent 不是主題點時已經回傳空陣列(見該
+            // useMemo 的說明),這裡不需要額外判斷。onHoverNearby 刻意
+            // 不傳——觸控沒有 hover,見 GeoOutlinePhoneInfoSheet.tsx 對
+            // 這個 prop 的說明(手機版不支援)。
+            nearby={nearbyAttractions}
+            onSelectNearby={handleSelectNearbyAttraction}
+            categoryFilter={categoryFilter}
+            onCategoryFilterChange={setCategoryFilter}
+          />
+          {/* nearby-place:附近景點清單點擊項目後開啟的地點卡——重用同一個
+              GeoOutlinePhoneInfoSheet 元件(對稱桌面版 AttractionInfoPanel/
+              PlacePanel 都是各自獨立元件、但手機版沒有第二種卡片元件可用
+              的現況,見上方 SheetEntry 'nearby-place' 的完整說明),content
+              傳 nearbyPoiContent(attraction 傳 null,這張卡片內容已經是
+              查詢/組裝完成的 PlaceInfoContent,不需要元件內部再查一次
+              placeDetails)。不傳 nearby/onSelectNearby——這張地點卡本身
+              沒有再往下一層附近景點的需要(精選點不遞迴揭露下一層精選點,
+              理由同桌面版 DesktopLayout.tsx nearbyAttractions 的說明)。
+              closeAll() 而非 sheetStack.pop()——這裡不用 pop 是因為
+              onClose 的語意是「使用者明確要關掉這張地點卡」,pop 已經
+              足夠(只移除頂層的 'nearby-place',底下的 'info' 自動露出);
+              用 closeAll() 反而會誤連同主題卡一起關掉,故仍是 pop()。 */}
+          {sheetStack.stack.some((e) => e.type === 'nearby-place') && (
+            <GeoOutlinePhoneInfoSheet
+              content={nearbyPoiContent}
+              attraction={null}
+              cfg={cfg}
+              onClose={() => {
+                sheetStack.pop()
+                setNearbyPoiContent(null)
+              }}
+              onAddCandidate={handleAddCandidate}
+              onOpenDatePicker={() => {
+                sheetStack.push(geo.scheduledDates.length === 0 ? { type: 'date-calendar' } : { type: 'date-picker' })
+              }}
+              addFlashTrigger={addFlashTrigger}
+            />
+          )}
+        </ExploreMap>
+      </div>
       <GeoOutlinePhoneDatePickerSheet
         open={sheetStack.stack.some((e) => e.type === 'date-picker')}
         scheduledDates={geo.scheduledDates}

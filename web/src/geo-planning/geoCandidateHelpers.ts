@@ -1,7 +1,7 @@
 // geoCandidateHelpers:候選籃(GeoCandidateSidebar.tsx)相關的純函式與型別
 // 定義,不含任何 React JSX——從 GeoCandidateSidebar.tsx 抽出,理由是這批
 // 型別/函式被多個檔案廣泛引用(DesktopLayout.tsx、GeoHotelSidebar.tsx、
-// GeoInfoPanel.tsx、AddFromCandidateSidebar.tsx),讓這些呼叫端只依賴這批
+// PlacePanel.tsx、AddFromCandidateSidebar.tsx),讓這些呼叫端只依賴這批
 // 純邏輯時,不需要把整支候選籃 UI 元件檔案一起拉進 bundle 依賴圖。
 // GeoCandidateSidebar.tsx 本身也從這裡 re-import 使用,行為與抽出前完全
 // 一致,只是定義位置搬動。
@@ -38,7 +38,7 @@ export type GeoCandidate =
 // ENTRY_KIND_ICONS:「已排入行程」日層架卡片的類別圖示,對應後端
 // model.Entry.Kind(見 types.ts 的 Entry.kind 註解——
 // stay/flight/activity/note/car/restaurant/ticket,未分類或不認得的值
-// 一律退回 MapPin)。stay/restaurant/activity 刻意對齊 GeoOutlineMap.tsx
+// 一律退回 MapPin)。stay/restaurant/activity 刻意對齊 ExploreMap.tsx
 // CATEGORY_TAGS 用的 Hotel/UtensilsCrossed/MapPin(飯店就是飯店 icon),
 // 讓使用者在地圖類別標籤與這裡的日層架卡片看到同一種類型時,圖示語意
 // 一致;其餘沒有對應類別標籤的 kind(flight/note/car/ticket)沿用各自
@@ -123,7 +123,7 @@ export function candidateEntryKind(c: GeoCandidate): string {
 // createEntryFromCandidate:把一個純候選(飯店/景點/推薦地點,或按過
 // 「返回候選」、inTrip===false 的 entry 形狀候選)寫成一筆真正的行程
 // entry——抽成獨立函式供兩處呼叫端共用(GeoCandidateSidebar 的拖曳放進
-// 日層架、GeoHotelSidebar/GeoInfoPanel 的「+」按鈕展開日期選擇後直接
+// 日層架、GeoHotelSidebar/PlacePanel 的「+」按鈕展開日期選擇後直接
 // 建立),避免同一段「recordEntry 再 setEntryLatLng 補座標」的兩步驟邏輯
 // 兩處各寫一份、之後改一邊忘了改另一邊。title 用候選名稱、start 用選定
 // 的日期、location 用地址/地標名稱、kind 用 candidateEntryKind 推導出的
@@ -197,7 +197,7 @@ export function localDateKey(d: Date): string {
 // 暫時退回候選籃、但仍保留原本 start/startTime 的項目,見 GeoCandidate
 // 型別定義的完整說明;hotel/attraction/place 三種來源天生沒有日期概念,
 // 一律視為「沒有排定日期」)。供各處「加入候選」按鈕決定要不要先跳日期
-// 選擇——桌面版 GeoInfoPanel.tsx 與手機版 GeoOutlinePhoneInfoSheet.tsx
+// 選擇——桌面版 PlacePanel.tsx 與手機版 GeoOutlinePhoneInfoSheet.tsx
 // 原本各自獨立定義過一份逐字相同的複製,收斂成這裡的單一定義。
 export function candidateHasScheduledDate(c: GeoCandidate): boolean {
   return c.kind === 'entry' && !!c.start

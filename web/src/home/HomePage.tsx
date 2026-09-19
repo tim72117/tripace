@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Moon, Sun } from 'lucide-react'
+import { Moon, Sun, X } from 'lucide-react'
+import { KiyomizuDemoPage } from './KiyomizuDemoPage'
 import './HomePage.css'
 
 // HomePage — 網站首頁("/" 路由),以京都東山探索路線的捲動視差敘事
@@ -24,6 +25,9 @@ import './HomePage.css'
 //      沒有這個顧慮;搬進元件後不能再假設 document 裡只有這一份)。
 export function HomePage() {
   const rootRef = useRef<HTMLDivElement>(null)
+  // mapExpandRef:互動地圖(KiyomizuDemoPage)的 sticky 擴張容器,見下方
+  // 獨立 useEffect 的完整說明。
+  const mapExpandRef = useRef<HTMLDivElement>(null)
   // theme:手動日夜間切換,寫進根元素的 data-theme 屬性——CSS 已支援
   // .kyoto-bloom[data-theme="dark"]/[data-theme="light"](見
   // HomePage.css),沒有 data-theme 時預設跟隨系統的
@@ -603,6 +607,97 @@ export function HomePage() {
     }
   }, [])
 
+  // 互動地圖(KiyomizuDemoPage)的手機版擴張效果——完全獨立於上面那個
+  // 巨大的 SVG 路徑動畫 effect,不共用它的 rAF 迴圈或任何 DOM 查詢,理由
+  // 是兩者是概念上不相關的兩段效果(一個是路徑教程動畫,一個是這個地圖
+  // 區塊自己的進場過渡),混進同一支函式只會讓那支函式更難讀,沒有實質
+  // 好處(見檔案開頭「不重寫成宣告式渲染」的說明,那段是關於 SVG 動畫
+  // 本身的調校邏輯,不代表這個頁面上所有效果都要共用同一個 rAF)。
+  //
+  // 只在手機寬度(<=900px,對齊 HomePage.css 其餘手機斷點的既有慣例)
+  // 生效——桌面版螢幕已經夠寬,KiyomizuDemoPage 自己的 .stage 固定高度
+  // (680px)加上 1920px 的 max-width 容器已經是合理的展示尺寸,不需要
+  // 額外撐大到滿版,擴張到滿版反而在寬螢幕上會讓地圖失去「頁面裡的一個
+  // 區塊」這個定位、變成突兀地整個蓋掉其他內容。
+  //
+  // 運作方式:先前試過「隨滾動進度連續內插尺寸」(sticky 固定 + 讀
+  // getBoundingClientRect() 算 0~1 progress),實測踩了兩個坑——
+  // 1) sticky 真正固定住的那段(rect.top 恆為 0)完全沒有反映在
+  // progress 公式裡,导致捲動一大段距離 progress 都卡在 0,直到
+  // sticky 快要失效才突然開始跑,體感就是「捲了老半天完全沒反應」;
+  // 2) 地圖本身 touch-action: none + gestureHandling: 'greedy',手指
+  // 直接摸地圖滑動的手勢會被 Google Maps SDK 整個吃掉,不會冒泡成頁面
+  // 捲動事件,伺機要另外疊一層觸控攔截層才能繞開。兩個問題疊加,連續
+  // 內插的方案不管怎麼調整公式都很難在各種裝置尺寸/捲動手勢下穩定。
+  // 改用二選一的簡單方案:標題(#interactiveMapTitle)捲到視窗垂直
+  // 中央時觸發一次,直接切換 CSS class 讓地圖跳成滿版(不是連續內插),
+  // 不再依賴滾動進度或 sticky 固定區間的數學計算。
+  //
+  // 這裡刻意不用 IntersectionObserver 的 rootMargin 負百分比技巧(先前
+  // 版本試過 `rootMargin: '-50% 0px -50% 0px'`,理論上會在元素進入
+  // 視窗正中央那條線時觸發)——實測發現這個技巧不可靠:負百分比
+  // margin 縮出來的「有效偵測帶」只有幾像素高,標題文字用一般滾動速度
+  // 通過這條窄帶時,瀏覽器不保證會恰好在那個瞬間跑一次 callback(尤其
+  // 快速滑動時很容易整個跳過去,IntersectionObserver 本來就沒有「每一
+  // 幀都檢查」的保證),多次實測直接整個不觸發。改回最基本可靠的
+  // scroll + getBoundingClientRect() 做法(跟上面 SVG 動畫的既有慣例
+  // 一致,只是這裡只判斷一個布林條件、不做連續數學插值),每次捲動都
+  // 實際量測標題中心是否已經通過視窗中心,不會有取樣間隔漏掉的問題。
+  //
+  // mapExpanded 是 React state(不是像上面 SVG 動畫那樣直接操作
+  // classList)——因為這裡需要一顆「關閉」按鈕把使用者帶出滿版模式(見
+  // 下方 JSX 的 .map-expand-close),按鈕的 onClick 要能觸發重新渲染
+  // 把 CSS class 拿掉,單純的 ref.classList.add 沒有对應的「使用者互動
+  // 觸發的反向操作」路徑,改用 state 讓一次性觸發(捲動到定點展開)跟
+  // 使用者主動關閉兩個方向都走同一條 React 渲染路徑,不需要額外同步
+  // DOM class 跟 state 兩份真相來源。
+  //
+  // 觸發展開有兩條路徑並存,任一個先發生就展開(見下方 useEffect 跟
+  // JSX 的 .map-expand onClick):1) 捲動到標題中央時自動展開(理由見
+  // 下方 useEffect 說明);2) 使用者在地圖卡片還是小卡片尺寸時直接點下
+  // 去,不用特別滾到那個位置也能立即看到滿版——這是比較符合直覺的
+  // 「點地圖=放大地圖」互動,不用等使用者發現「原來要滾動才會展開」。
+  // 兩者共用同一個 state,不會互相衝突或需要協調。 */
+  const [mapExpanded, setMapExpanded] = useState(false)
+  useEffect(() => {
+    const title = rootRef.current?.querySelector<HTMLElement>('#interactiveMapTitle')
+    if (!title) return
+
+    const mobileQuery = window.matchMedia('(max-width: 900px)')
+    if (!mobileQuery.matches) return
+
+    let rafId: number | null = null
+    let ticking = false
+
+    function checkExpand() {
+      ticking = false
+      const rect = title!.getBoundingClientRect()
+      const titleCenter = rect.top + rect.height / 2
+      if (titleCenter <= window.innerHeight / 2) {
+        setMapExpanded(true)
+        window.removeEventListener('scroll', onScroll)
+        window.removeEventListener('resize', onScroll)
+      }
+    }
+
+    function onScroll() {
+      if (!ticking) {
+        ticking = true
+        rafId = requestAnimationFrame(checkExpand)
+      }
+    }
+
+    checkExpand()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+      if (rafId !== null) cancelAnimationFrame(rafId)
+    }
+  }, [])
+
   return (
     <div className="kyoto-bloom" ref={rootRef} data-theme={theme ?? undefined}>
       {/* 品牌標記——固定在左上角,不隨頁面捲動,跟日夜間切換鈕對稱(見下方
@@ -686,6 +781,91 @@ export function HomePage() {
       <div className="bloom-photo" id="bloomPhoto">
         <img id="bloomImg" alt="" />
       </div>
+
+      {/* interactive-map-intro/KiyomizuDemoPage:真實互動地圖(散策羅盤,
+          見該元件開頭完整說明),與上方 .journey 的 SVG 手繪路徑圖並存,
+          不是取代——上面那段是滾動驅動的敘事教程效果(路徑動畫+段落
+          綻放照片),這裡是使用者看完敘事後可以自己動手點、查詢真實
+          Google Maps 資料的互動版本,放在 closing 區塊(行動呼籲)之前,
+          當作「先讓你摸過真正的產品長什麼樣,再邀請你去規劃自己的路線」
+          這個順序的最後一步。KiyomizuDemoPage 是完全自成一體的元件
+          (自己的 state/查詢/主題切換,見該檔案開頭說明),用自己的
+          app-theme-root class + base-ui.css token 系統控管樣式,跟這個
+          頁面的 .kyoto-bloom scope 互不干擾,不需要額外的樣式轉接。 */}
+      <div className="interactive-map-intro" id="interactiveMap">
+        <div className="explore-eyebrow">不只是路線圖</div>
+        <h2 className="explore-title" id="interactiveMapTitle">試著自己走一趟</h2>
+        <p className="explore-desc">點主題點看故事，點附近景點看細節——這是真正在規劃時會用到的地圖。</p>
+      </div>
+      {/* map-expand:手機版限定的一次性滿版擴張效果(見上方獨立的
+          useEffect 完整說明)——上方標題(#interactiveMapTitle)捲到畫面
+          中央時,mapExpanded state 變 true,這個容器被加上
+          .map-expand-full(見 HomePage.css 對應規則),直接切成滿版
+          (position: fixed 蓋滿整個視窗),不是連續內插的漸進動畫。桌面版
+          這層容器不做任何事,維持 KiyomizuDemoPage 自己 .stage 的固定
+          680px 高度。擴張時改變的是 KiyomizuDemoPage 內部 .stage/.page
+          的真實 layout 尺寸(透過 CSS 變數由外往內覆寫,見
+          KiyomizuDemoPage.module.css 的完整說明),不是 transform:
+          scale() 那種只改視覺呈現的做法。
+          .map-expand-close:滿版時右上角的關閉按鈕(見下方 JSX 只在
+          mapExpanded 時渲染)——position: fixed 蓋滿整個視窗後,使用者
+          沒有任何方式可以再捲動離開這個畫面(fixed 元素不受頁面捲動
+          影響),必須提供明確的退出動作,按下後 setMapExpanded(false)
+          讓容器收回原本卡片尺寸、頁面恢復正常捲動。這顆按鈕刻意渲染成
+          .map-expand 的**手足**(不是放在它裡面)——.map-expand-full 本身
+          是 position: fixed + 明確 z-index(20),會建立自己的疊放
+          脈絡(stacking context),放在它裡面的任何子孫元素,z-index 都
+          只在這個脈絡內部比較,對外(跟 .kyoto-bloom 底下其他
+          fixed 元素,例如 z-index 200 的 .theme-toggle)比較時,實際
+          參與比較的是整個 .map-expand-full 容器的 20,不是子孫元素自己
+          設的值——實測踩過這個坑:按鈕自己給再高的 z-index,只要還在
+          .map-expand-full 裡面,一樣會被 .theme-toggle 完全擋住點不到
+          (兩者座標剛好重疊在右上角)。搬出來當手足後就不再受這個限制,
+          可以正常跟 .theme-toggle 用 z-index 直接比較。 */}
+      <div
+        className={`map-expand${mapExpanded ? ' map-expand-full' : ''}`}
+        id="mapExpand"
+        ref={mapExpandRef}
+        // onClick:點擊路徑的展開入口(見上方 mapExpanded 狀態說明,跟
+        // 捲動自動觸發並存)——只在還沒展開(mapExpanded 為 false)且
+        // 手機寬度時才處理,展開後這個容器變成滿版地圖本身,點擊要正常
+        // 交給地圖互動(平移/點標記),不能再攔截當成「再點一次也是展開」
+        // (反正已經展開了,這個分支本來就不會改變任何東西,但寫明條件
+        // 比較不會誤導成「點擊會一直搶走地圖的點擊事件」)。桌面版
+        // (>900px)這個容器本來就是 no-op(見上方 CSS 說明),不需要另外
+        // 排除——mobileQuery 在點擊當下重新讀一次,不快取成 ref,理由是
+        // 使用者可能在頁面停留期間轉動裝置或縮放瀏覽器視窗,要以點擊
+        // 當下的實際寬度為準。 */}
+        onClick={() => {
+          if (mapExpanded) return
+          if (!window.matchMedia('(max-width: 900px)').matches) return
+          setMapExpanded(true)
+        }}
+      >
+        <KiyomizuDemoPage showThemeToggle={false} />
+        {/* map-expand-swipe-catcher:還沒展開成滿版時,蓋在小卡片地圖
+            上方的透明觸控攔截層(見 HomePage.css 對應規則的完整說明)
+            ——地圖內部 touch-action: none + gestureHandling: 'greedy'
+            (見 ExploreMap.module.css/NativeMapBase.tsx 的完整說明)會把
+            手指直接摸地圖的滑動手勢整個吃掉當成「平移地圖」,不會冒泡
+            成頁面捲動事件,導致使用者想在小卡片地圖上滑動把頁面往上捲
+            時完全沒反應。這層蓋在地圖上面接住觸控,讓滑動正常變成頁面
+            捲動;點擊(非拖曳的單純 tap)則會正常冒泡到上面 .map-expand
+            的 onClick,一樣能點地圖展開成滿版,不受影響。只在
+            !mapExpanded 時渲染——滿版之後使用者理應能正常拖曳/縮放地圖
+            本身,不需要也不應該再攔截。 */}
+        {!mapExpanded && <div className="map-expand-swipe-catcher" aria-hidden="true" />}
+      </div>
+      {mapExpanded && (
+        <button
+          type="button"
+          className="map-expand-close"
+          onClick={() => setMapExpanded(false)}
+          aria-label="關閉地圖"
+        >
+          <X size={20} strokeWidth={2.5} aria-hidden="true" />
+        </button>
+      )}
 
       <section className="closing">
         <h2 className="closing-title">這條路線，只是一個開始</h2>

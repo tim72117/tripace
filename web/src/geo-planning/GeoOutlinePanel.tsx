@@ -4,7 +4,7 @@ import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoPlaceDetails,
 import { fetchEntries, fetchGeoGeocode, fetchGeoPlacePhoto, fetchGeoPlaceText, geocodeCandidateToSearchResult } from '../api'
 import { useStableCallback } from '../hooks/useStableCallback'
 import type { Theme } from '../theme'
-import { GeoOutlineMap } from './GeoOutlineMap'
+import { ExploreMap } from './ExploreMap'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
 import styles from './GeoOutlinePanel.module.css'
 
@@ -42,9 +42,9 @@ function mapLocatedTripEntries(entries: Awaited<ReturnType<typeof fetchEntries>>
 //
 // 這個元件本身不再查詢景點/飯店資料:輸入內容後只呼叫 fetchGeoGeocode
 // (GET /internal/geo/geocode)拿到一組候選座標,轉成 panTarget 讓
-// GeoOutlineMap 把地圖平移過去;地圖到了新位置後,會依它當時的可視範圍
+// ExploreMap 把地圖平移過去;地圖到了新位置後,會依它當時的可視範圍
 // 自己向 GET /internal/geo/attractions/nearby 查詢該顯示什麼景點/飯店
-// (見 GeoOutlineMap.tsx 的說明),查詢責任完全收在地圖元件內部,這裡
+// (見 ExploreMap.tsx 的說明),查詢責任完全收在地圖元件內部,這裡
 // 不再重複維護一份 attractions/hotels state。
 //
 // 這個搜尋框最初的設計是「輸入城市/地標名稱,把地圖移過去」的純定位
@@ -55,7 +55,7 @@ function mapLocatedTripEntries(entries: Awaited<ReturnType<typeof fetchEntries>>
 // 地圖目前的可視範圍——查到離目前位置很遠的地點是預期中的既有限制,
 // 見後端 handleGeoGeocode 的完整說明。
 //
-// onSearchResultsChange/onAttractionsChange 原封不動轉傳給 GeoOutlineMap
+// onSearchResultsChange/onAttractionsChange 原封不動轉傳給 ExploreMap
 // ——飯店/推薦地點/搜尋結果合併清單改由 DesktopLayout.tsx 在「整個桌面版
 // 介面最外側」渲染(比照 DemoPanel debug 面板的固定寬度側欄模式,跟
 // .desktop-main 平行,而非塞在 main 內部),兩者是分開掛載的 sibling,
@@ -65,7 +65,7 @@ function mapLocatedTripEntries(entries: Awaited<ReturnType<typeof fetchEntries>>
 // 飯店/地點/已排入行程項目時要移動地圖到的座標,由 DesktopLayout.tsx
 // 往下傳——跟這裡搜尋查到的座標共用同一個 panRequest state,「誰最後
 // 觸發就用誰」,見下方 panRequest 的完整說明。
-// selectedKey:由 DesktopLayout.tsx 往下傳,原封不動轉傳給 GeoOutlineMap,
+// selectedKey:由 DesktopLayout.tsx 往下傳,原封不動轉傳給 ExploreMap,
 // 讓地圖上的地標/飯店圖示能標記出目前選中的是哪一個。
 // tripID:目前選中的旅程 ID——切到規劃分頁、或切換旅程時,若這個旅程底下
 // 已經有帶座標的 entry(如老手回來繼續規劃、或搬過去用等機制搬進來的
@@ -86,6 +86,8 @@ export function GeoOutlinePanel({
   showZoomControl,
   searchRightSlot,
   onAttractionsChange,
+  revealedAttractionNames,
+  hoveredCuratedName,
   onSearchResultsChange,
   onSearchStart,
   hideCategoryTags,
@@ -94,6 +96,8 @@ export function GeoOutlinePanel({
   onAttractionSelect,
   onSearchResultSelect,
   onPoiSelect,
+  onAttractionOpenPlaceDetails,
+  onAttractionOpenPlaceWithoutGoogle,
   onGeocodeCandidateText,
   onGeocodeCandidatePhoto,
   externalGeocodeCandidateSelect,
@@ -108,6 +112,7 @@ export function GeoOutlinePanel({
   setGeocodeCandidates,
   selectedCandidate,
   setSelectedCandidate,
+  children,
 }: {
   cfg: ClientConfig
   tripID?: string | null
@@ -117,56 +122,66 @@ export function GeoOutlinePanel({
   // useEffect),不是每次 city 變動就查(那樣會在使用者打字打到一半時
   // 就發送請求)。
   city: string
-  // onCityChange/onSearch:原封不動轉傳給 GeoOutlineMap,渲染在地圖上方
+  // onCityChange/onSearch:原封不動轉傳給 ExploreMap,渲染在地圖上方
   // (類別標籤旁)的城市搜尋框——DesktopLayout.tsx 的 geoSearchCity state
   // 是唯一持有這份輸入值的地方。查詢中/錯誤狀態(searching/error)直接
-  // 由下方的 loading/err state 轉給 GeoOutlineMap 顯示,不需要另外往上
+  // 由下方的 loading/err state 轉給 ExploreMap 顯示,不需要另外往上
   // 層回報,搜尋按鈕本身觸發查詢的方式是遞增 searchTrigger prop(見
   // 下方)。
   onCityChange?: (city: string) => void
   onSearch?: () => void
-  // onSearchStart:原封不動轉傳給 GeoOutlineMap——見該元件對這個 prop
+  // onSearchStart:原封不動轉傳給 ExploreMap——見該元件對這個 prop
   // 的完整說明,類別標籤/「搜尋這個區域」按鈕觸發查詢時通知呼叫端。跟
   // onSearch 是兩個獨立的「查詢開始」訊號:onSearch 只有城市搜尋框會
   // 呼叫,onSearchStart 只有類別標籤/搜尋這個區域會呼叫(見
-  // GeoOutlineMap.tsx runPlacesQuery 的說明),呼叫端
+  // ExploreMap.tsx runPlacesQuery 的說明),呼叫端
   // (GeoOutlinePhoneView.tsx)需要同時接兩個才能涵蓋全部三個入口。
   onSearchStart?: () => void
-  // hideCategoryTags:原封不動轉傳給 GeoOutlineMap——見該元件對這個 prop
+  // hideCategoryTags:原封不動轉傳給 ExploreMap——見該元件對這個 prop
   // 的完整說明,手機版專用。
   hideCategoryTags?: boolean
-  // onOpenChat:原封不動轉傳給 GeoOutlineMap——搜尋框膠囊左側的 AI
-  // 按鈕,見 GeoOutlineMap.tsx 對這個 prop 的完整說明。
+  // onOpenChat:原封不動轉傳給 ExploreMap——搜尋框膠囊左側的 AI
+  // 按鈕,見 ExploreMap.tsx 對這個 prop 的完整說明。
   onOpenChat?: () => void
-  // showZoomControl:原封不動轉傳給 GeoOutlineMap——地圖右下角縮放按鈕
-  // 開關,見 GeoOutlineMap.tsx 對這個 prop 的完整說明。
+  // showZoomControl:原封不動轉傳給 ExploreMap——地圖右下角縮放按鈕
+  // 開關,見 ExploreMap.tsx 對這個 prop 的完整說明。
   showZoomControl?: boolean
-  // searchRightSlot:原封不動轉傳給 GeoOutlineMap——搜尋框膠囊最右側的
-  // 額外內容(手機版放使用者頭像),見 GeoOutlineMap.tsx 對這個 prop 的
+  // searchRightSlot:原封不動轉傳給 ExploreMap——搜尋框膠囊最右側的
+  // 額外內容(手機版放使用者頭像),見 ExploreMap.tsx 對這個 prop 的
   // 完整說明。
   searchRightSlot?: ReactNode
   onAttractionsChange?: (attractions: GeoAttraction[]) => void
+  // revealedAttractionNames:原封不動轉傳給 ExploreMap——目前應該在
+  // 地圖上顯示的精選點名稱集合,由呼叫端(DesktopLayout.tsx)依「使用者
+  // 是否已開啟某個主題點」算好傳入,見該處 revealedAttractionNames 的
+  // 完整說明。null 代表目前沒有開啟任何主題,精選點一律不顯示。
+  revealedAttractionNames?: Set<string> | null
+  // hoveredCuratedName:原封不動轉傳給 ExploreMap——見該處與
+  // useAttractionOverlays.ts 對這個 prop 的完整說明。
+  hoveredCuratedName?: string | null
   // onSearchResultsChange:飯店/推薦地點/搜尋結果三種來源統一轉成
-  // GeoSearchResult 合併後的搜尋結果清單,原封不動轉傳自 GeoOutlineMap
+  // GeoSearchResult 合併後的搜尋結果清單,原封不動轉傳自 ExploreMap
   // 的同名 callback(見該元件的完整說明)——使用者要求這三者「同一份
   // 清單、同一套邏輯」,原本的 onHotelsChange/onPlacesNearby/
   // onGeocodeCandidatesChange 三個 callback 已收斂成這一個。
   onSearchResultsChange?: (results: GeoSearchResult[]) => void
-  // onActiveCategoryChange:原封不動轉傳給 GeoOutlineMap——理由同
-  // onSearchResultsChange,見 GeoOutlineMap.tsx 對這個 prop 的完整說明。
+  // onActiveCategoryChange:原封不動轉傳給 ExploreMap——理由同
+  // onSearchResultsChange,見 ExploreMap.tsx 對這個 prop 的完整說明。
   onActiveCategoryChange?: (category: string | null) => void
   onTripEntriesChange?: (entries: GeoTripEntry[]) => void
-  // onAttractionSelect/onPoiSelect:原封不動轉傳給 GeoOutlineMap——理由同
-  // onSearchResultsChange 等既有 callback,見 GeoOutlineMap.tsx 對這幾個
+  // onAttractionSelect/onPoiSelect:原封不動轉傳給 ExploreMap——理由同
+  // onSearchResultsChange 等既有 callback,見 ExploreMap.tsx 對這幾個
   // prop 的說明。
   onAttractionSelect?: (attraction: GeoAttraction) => void
   onPoiSelect?: (details: GeoPlaceDetails) => void
+  onAttractionOpenPlaceDetails?: (details: GeoPlaceDetails, attraction?: GeoAttraction) => void
+  onAttractionOpenPlaceWithoutGoogle?: (attraction: GeoAttraction) => void
   // onSearchResultSelect:使用者點擊地圖上的飯店/推薦地點/搜尋結果
   // marker(或側欄清單裡的對應項目)時觸發——原本是 onHotelSelect/
   // onPlaceSelect/onGeocodeCandidateSelect 三個各自獨立的 callback,理由
   // 同 onSearchResultsChange,收斂成單一 callback。geocode 類型的點擊
   // 這個元件內部會先攔截走 handleGeocodeCandidateSelect(見下方
-  // GeoOutlineMap 呼叫處),確保跟側欄清單點候選(externalGeocodeCandidateSelect)
+  // ExploreMap 呼叫處),確保跟側欄清單點候選(externalGeocodeCandidateSelect)
   // 走同一套完整流程(含 suppressQuery:false 重新查詢新範圍),不會漏接
   // 這個中介步驟。
   onSearchResultSelect?: (result: GeoSearchResult) => void
@@ -202,8 +217,8 @@ export function GeoOutlinePanel({
   externalGeocodeCandidateSelect?: GeoSearchResult | null
   panTarget?: { lat: number; lng: number; level?: number; radiusMeters?: number; onlyIfOutOfView?: boolean } | null
   selectedKey?: GeoSelectedKey
-  // candidateKeys/hoverKey:原封不動轉傳給 GeoOutlineMap——理由同
-  // selectedKey,見 GeoOutlineMap.tsx 對這兩個 prop 的完整說明。
+  // candidateKeys/hoverKey:原封不動轉傳給 ExploreMap——理由同
+  // selectedKey,見 ExploreMap.tsx 對這兩個 prop 的完整說明。
   candidateKeys?: Set<string>
   hoverKey?: GeoSelectedKey
   // searchTrigger:每次遞增時觸發一次城市搜尋(用目前的 city prop 值)
@@ -215,7 +230,7 @@ export function GeoOutlinePanel({
   searchTrigger?: number
   // refetchTripEntriesTrigger:每次遞增時重新查一次目前旅程的 entries、
   // 更新 tripEntries/onTripEntriesChange,但不動 tripCenter(不重新判斷
-  // 地圖初始中心、也不讓 GeoOutlineMap 重新等待)——供
+  // 地圖初始中心、也不讓 ExploreMap 重新等待)——供
   // GeoCandidateSidebar 幫「未排定日期」的候選補上日期後,通知這裡刷新
   // 一份新的 tripEntries,好讓該候選從「未排定日期」分組移到正確的日期
   // 分組。跟 searchTrigger 是同一種「外部改變一個 prop 值 → 這裡的
@@ -223,8 +238,8 @@ export function GeoOutlinePanel({
   // 不觸發。
   refetchTripEntriesTrigger?: number
   // theme:這個 App 的深色/淺色模式偏好(useAppState() 的 theme,見
-  // theme.ts),原封不動轉傳給 GeoOutlineMap 決定建圖時的 colorScheme
-  // ——見 GeoOutlineMap.tsx 對這個 prop 的完整說明。這個元件本身不消費
+  // theme.ts),原封不動轉傳給 ExploreMap 決定建圖時的 colorScheme
+  // ——見 ExploreMap.tsx 對這個 prop 的完整說明。這個元件本身不消費
   // theme,純轉傳。
   theme?: Theme
   // geocodeCandidates/setGeocodeCandidates:2026-08 起這份 state 的擁有權
@@ -244,10 +259,14 @@ export function GeoOutlinePanel({
   // 這個既有的坑見該 effect 的完整說明,搬遷後維持不變)。
   selectedCandidate: GeoSearchResult | null
   setSelectedCandidate: (candidate: GeoSearchResult | null) => void
+  // children:原封不動穿透給 ExploreMap 的 children(見該檔案該 prop 的
+  // 完整說明)——這個元件本身只是 ExploreMap 外面的一層包裝(city 搜尋框
+  // 狀態、tripEntries 查詢等邏輯),不需要知道 children 內容是什麼。
+  children?: ReactNode
 }) {
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  // mapCenter:GeoOutlineMap 每次 idle 回報的目前地圖中心座標(見該元件
+  // mapCenter:ExploreMap 每次 idle 回報的目前地圖中心座標(見該元件
   // onCenterChange prop 的說明)——供下方 searchTrigger 的 effect 當
   // locationBias 使用,讓「甜點」「apple」這類沒有明確指向單一地點的
   // 泛用關鍵字查詢優先偏向目前地圖所在區域(見 handleGeoGeocode 的完整
@@ -263,8 +282,8 @@ export function GeoOutlinePanel({
   // 點擊——包含候選籃「已排入行程」項目點擊要移動地圖到該點——都會被
   // 這個過時的搜尋座標永久蓋掉,地圖只會不斷被拉回最後一次搜尋的地方,
   // 使用者會觀察到「資訊欄有正確顯示點擊的項目,但地圖完全不會動」)。
-  // 每次設值都建立新物件參照,即使連續觸發同一個座標也能讓 GeoOutlineMap
-  // 偵測到「這是一次新的移動請求」(理由同 GeoOutlineMap.tsx 對 panTarget
+  // 每次設值都建立新物件參照,即使連續觸發同一個座標也能讓 ExploreMap
+  // 偵測到「這是一次新的移動請求」(理由同 ExploreMap.tsx 對 panTarget
   // 的說明)。
   const [panRequest, setPanRequest] = useState<{ lat: number; lng: number; level?: number; radiusMeters?: number; suppressQuery: boolean; onlyIfOutOfView?: boolean } | null>(null)
   // geocodeCandidates/selectedCandidate:2026-08 起改由 props 傳入(見上方
@@ -275,7 +294,7 @@ export function GeoOutlinePanel({
   // 在這裡——這個元件現在只負責「什麼時候該讀/寫」,不再是「資料實際
   // 放在哪裡」的擁有者。
   // tripCenter:目前旅程底下已有座標的 entry 算出來的中心點,見下方
-  // useEffect,傳給 GeoOutlineMap 當地圖第一次建立時的初始中心(見該
+  // useEffect,傳給 ExploreMap 當地圖第一次建立時的初始中心(見該
   // 元件 initialCenter prop 的完整說明)——三態:undefined 代表「還在
   // 查、尚未確定」(初始值,地圖建立要等待這個狀態解除);null 代表
   // 「已確定查無可用資料」(沒有 tripID、或旅程沒有帶座標的既有地點、
@@ -285,7 +304,7 @@ export function GeoOutlinePanel({
   const [tripCenter, setTripCenter] = useState<{ lat: number; lng: number } | null | undefined>(undefined)
   // tripEntries:同 tripCenter 查詢流程一併算出的完整帶座標 entry 清單
   // ——這個元件自己也要留一份(不只是往外 callback),才能傳給
-  // GeoOutlineMap 畫 marker(見下方 <GeoOutlineMap tripEntries={...}>)。
+  // ExploreMap 畫 marker(見下方 <ExploreMap tripEntries={...}>)。
   const [tripEntries, setTripEntries] = useState<GeoTripEntry[]>([])
 
   // 每次 searchTrigger 遞增(GeoCandidateSidebar 的搜尋按鈕/Enter 觸發,
@@ -337,7 +356,7 @@ export function GeoOutlinePanel({
           setGeocodeCandidates(result.candidates)
         }
         // 查詢真正完成的這一刻直接呼叫 onSearchResultsChange(edge-
-        // triggered),不再依賴 GeoOutlineMap.tsx 觀察 geocodeCandidates
+        // triggered),不再依賴 ExploreMap.tsx 觀察 geocodeCandidates
         // 衍生出的 searchResults state 變化去間接觸發(level-triggered)
         // ——後者是「任何寫入 geocodeCandidates 的地方都會被誤判成查詢
         // 完成」這類 bug 的結構性根因(已修過兩次同類問題:清空候選被
@@ -360,10 +379,10 @@ export function GeoOutlinePanel({
 
   // 搜尋框文字清空時,連動清空地圖上的搜尋結果——使用者清空輸入框是
   // 明確的「不想再看這批結果了」訊號(對齊探索標籤再點一次取消選取、
-  // 清空 attractions 圖層的既有互動語意,見 GeoOutlineMap.tsx 該處的
+  // 清空 attractions 圖層的既有互動語意,見 ExploreMap.tsx 該處的
   // 說明),不清掉的話,候選 marker/籃還會停留在地圖上,跟使用者「已經
   // 清空搜尋」的預期不符。這條規則以前沒辦法乾淨地寫,是因為地圖結果
-  // 分裂成 geocodeCandidates(這裡)與 GeoOutlineMap.tsx 內部的 places
+  // 分裂成 geocodeCandidates(這裡)與 ExploreMap.tsx 內部的 places
   // 兩份 state,後者沒有直接存取 city 的必要性——合併成這裡唯一一份
   // geocodeCandidates 之後,只需要這一處。
   useEffect(() => {
@@ -374,10 +393,10 @@ export function GeoOutlinePanel({
   // 在 GeoHotelSidebar 合併清單裡點候選項目確認選定——不再清空候選圖層
   // (先前版本會清空,但這樣使用者選錯後沒辦法直接點另一個候選重選,得
   // 重新搜尋一次;改成其餘候選繼續留在地圖上,選取樣式現在跟飯店/地點
-  // 共用同一套 selectedKey/hoverKey 機制,見 GeoOutlineMap.tsx 對
+  // 共用同一套 selectedKey/hoverKey 機制,見 ExploreMap.tsx 對
   // useSearchResultMarkers 的說明,不需要再另外維護一個獨立的
   // selectedGeocodeCandidateKey)。把完整候選資料轉成 GeoSearchResult
-  // 往上回報(見 onSearchResultSelect)讓呼叫端開啟 GeoInfoPanel 顯示這個
+  // 往上回報(見 onSearchResultSelect)讓呼叫端開啟 PlacePanel 顯示這個
   // 候選的資訊,同時移動地圖——使用者要求搜尋結果、飯店、推薦地點三種
   // 來源既然合併成同一份清單顯示,點擊行為也該一致,故這裡改用跟
   // onSelectHotel/onSelectPlace 相同的 onlyIfOutOfView 規則(目前不在
@@ -386,7 +405,7 @@ export function GeoOutlinePanel({
   // 機制)——候選是使用者剛主動搜尋、意圖是「移動並查詢新範圍」,理由同
   // externalGeocodeCandidateSelect prop 的完整說明,移動後仍要重新查詢
   // 新範圍的景點/飯店資料。
-  // useStableCallback:這個 handler 會被傳進 GeoOutlineMap →
+  // useStableCallback:這個 handler 會被傳進 ExploreMap →
   // useSearchResultMarkers 的 onSelect,後者的 marker 建立 useEffect 把
   // onSelect 放進依賴陣列(見該檔案的說明)——若這裡是一般函式,每次
   // GeoOutlinePanel 重渲染(例如使用者拖曳地圖觸發 bounds/zoom 狀態
@@ -473,7 +492,7 @@ export function GeoOutlinePanel({
   // 平均座標當地圖初始中心——只在 tripID 變動時查一次,不是每次都重查:
   // 這裡只負責「一開始該看哪裡」,之後使用者搜尋/拖曳地圖的移動不該被
   // 這份初始定位持續蓋過。重設回 undefined(而非直接設 null)是關鍵:
-  // 讓 GeoOutlineMap 知道「還在查、地圖建立要等」,查完(不論有沒有查到
+  // 讓 ExploreMap 知道「還在查、地圖建立要等」,查完(不論有沒有查到
   // 可用資料)才轉成確定的 null 或物件,避免地圖搶先用預設值建好、之後
   // 才發現其實該建在別的地方,造成先查一次沒用的資料。
   useEffect(() => {
@@ -489,7 +508,7 @@ export function GeoOutlinePanel({
       .then((entries) => {
         if (cancelled) return
         // 順便把完整的帶座標 entry 清單(不只是算完就丟的平均座標)存下來
-        // 並往上回報——這批點要畫在地圖上(見下方 <GeoOutlineMap
+        // 並往上回報——這批點要畫在地圖上(見下方 <ExploreMap
         // tripEntries={...}>)、也要自動帶進候選籃(見 DesktopLayout.tsx),
         // 不是只用來算初始定位。
         const mapped = mapLocatedTripEntries(entries)
@@ -567,7 +586,7 @@ export function GeoOutlinePanel({
   return (
     <div className={styles.wrap}>
       <div className={styles.mapArea}>
-        <GeoOutlineMap
+        <ExploreMap
           cfg={cfg}
           initialCenter={tripCenter}
           tripEntries={tripEntries}
@@ -580,16 +599,18 @@ export function GeoOutlinePanel({
           searching={loading}
           searchError={err}
           onAttractionsChange={onAttractionsChange}
+          revealedAttractionNames={revealedAttractionNames}
+          hoveredCuratedName={hoveredCuratedName}
           onSearchStart={onSearchStart}
           hideCategoryTags={hideCategoryTags}
           // onGeocodeCandidatesChange:類別標籤/「搜尋這個區域」按鈕觸發
-          // 的查詢完成時,GeoOutlineMap.tsx 透過這個 callback 通知這裡
+          // 的查詢完成時,ExploreMap.tsx 透過這個 callback 通知這裡
           // 更新 geocodeCandidates(理由見該 state 宣告處的完整說明)——
-          // 這個元件是 geocodeCandidates 唯一的資料來源,GeoOutlineMap
+          // 這個元件是 geocodeCandidates 唯一的資料來源,ExploreMap
           // 本身不再自己持有一份平行的 state。同時在這個查詢真正完成的
           // 位置直接呼叫 onSearchResultsChange(edge-triggered)——理由
           // 同上方城市搜尋框 fetchGeoGeocode.then() 裡的說明,不再依賴
-          // GeoOutlineMap.tsx 內部觀察 state 變化間接觸發(該檔案那個
+          // ExploreMap.tsx 內部觀察 state 變化間接觸發(該檔案那個
           // useEffect 已移除,見其說明)。
           onGeocodeCandidatesChange={(candidates) => {
             setGeocodeCandidates(candidates)
@@ -605,6 +626,8 @@ export function GeoOutlinePanel({
           // 地圖的簡化路徑。
           onSearchResultSelect={handleGeocodeCandidateSelect}
           onPoiSelect={onPoiSelect}
+          onAttractionOpenPlaceDetails={onAttractionOpenPlaceDetails}
+          onAttractionOpenPlaceWithoutGoogle={onAttractionOpenPlaceWithoutGoogle}
           onCenterChange={setMapCenter}
           panTarget={panRequest}
           selectedKey={selectedKey}
@@ -612,7 +635,9 @@ export function GeoOutlinePanel({
           hoverKey={hoverKey}
           geocodeCandidates={geocodeCandidates}
           theme={theme}
-        />
+        >
+          {children}
+        </ExploreMap>
       </div>
     </div>
   )

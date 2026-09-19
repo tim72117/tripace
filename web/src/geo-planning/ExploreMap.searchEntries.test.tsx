@@ -1,11 +1,11 @@
-// GeoOutlineMap 地圖上「類別標籤(景點/飯店/餐廳)」與「搜尋這個區域」
+// ExploreMap 地圖上「類別標籤(景點/飯店/餐廳)」與「搜尋這個區域」
 // 按鈕這兩個查詢入口——斷言各自呼叫 fetchGeoGeocode 時帶的 mode/
 // center/radius/query 是否正確。城市搜尋框(onSearch prop)本身的查詢
 // 邏輯不在這個元件裡(在呼叫端 GeoOutlinePanel.tsx 的 useEffect,見該
 // 檔案),不在這裡涵蓋。
 //
 // 背景:2026-08 三個入口統一改走 fetchGeoGeocode(Text Search),各自
-// 固定帶不同的 mode(見 GeoOutlineMap.tsx 的 runPlacesQuery/
+// 固定帶不同的 mode(見 ExploreMap.tsx 的 runPlacesQuery/
 // handleCategoryClick/handleSearchThisArea 完整說明)——城市搜尋框用
 // bias(兩階段,由 GeoOutlinePanel.tsx 負責)、類別標籤/搜尋這個區域
 // 固定用 restrict、固定半徑 categoryQueryRadiusMeters(1500m)、中心點
@@ -16,11 +16,11 @@
 // 見 GeoOutlinePhoneView.listDrawer.test.tsx 同一輪對「清單沒有自動
 // 打開」bug 的教訓。
 //
-// mock 策略同 GeoOutlineMap.poiClick.test.tsx:整個 @googlemaps/
+// mock 策略同 ExploreMap.poiClick.test.tsx:整個 @googlemaps/
 // js-api-loader 與 api.ts 查詢函式,不載入真實 SDK。
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, waitFor, act } from '@testing-library/react'
-import { GeoOutlineMap } from './GeoOutlineMap'
+import { ExploreMap } from './ExploreMap'
 import type { ClientConfig, GeoGeocodeCandidate } from '../api'
 
 type MapListeners = Record<string, ((event?: unknown) => void)[]>
@@ -92,11 +92,11 @@ beforeEach(() => {
   vi.stubEnv('VITE_GOOGLE_MAPS_MAP_ID', 'test-map-id')
 })
 
-describe('GeoOutlineMap 地圖上的查詢入口：fetchGeoGeocode 呼叫參數', () => {
+describe('ExploreMap 地圖上的查詢入口：fetchGeoGeocode 呼叫參數', () => {
   it('點擊「景點」類別標籤：固定用 restrict 模式、地圖中心、1500m 半徑', async () => {
     const onCityChange = vi.fn()
     render(
-      <GeoOutlineMap
+      <ExploreMap
         cfg={cfg}
         initialCenter={{ lat: 35.0, lng: 135.76 }}
         city=""
@@ -135,7 +135,7 @@ describe('GeoOutlineMap 地圖上的查詢入口：fetchGeoGeocode 呼叫參數'
   it('「搜尋這個區域」按鈕：沿用搜尋框文字、固定用 restrict 模式、地圖中心、1500m 半徑', async () => {
     const onCityChange = vi.fn()
     const { rerender } = render(
-      <GeoOutlineMap
+      <ExploreMap
         cfg={cfg}
         initialCenter={{ lat: 35.0, lng: 135.76 }}
         city="京都"
@@ -181,7 +181,7 @@ describe('GeoOutlineMap 地圖上的查詢入口：fetchGeoGeocode 呼叫參數'
     // rerender 只是確保 React 沒有因為這次互動拋出任何警告/錯誤
     // (act 警告等)——不是這個測試的核心斷言。
     rerender(
-      <GeoOutlineMap
+      <ExploreMap
         cfg={cfg}
         initialCenter={{ lat: 35.0, lng: 135.76 }}
         city="京都"

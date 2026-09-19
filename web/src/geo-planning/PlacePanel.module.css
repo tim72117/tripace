@@ -1,90 +1,9 @@
-/* panel:浮動卡片,絕對定位疊在地圖上方(見 GeoOutlinePanel.tsx 的
-   .mapArea 同一種疊層手法)——不是佔用 flex 版面空間的側欄,四周
-   (上/右/下)都留出間距,右緣貼齊 .desktop-main 的右邊界(即
-   GeoHotelSidebar 左側)。top 往下移到 64px(而非緊貼 16px)避開地圖
-   右上角常駐的城市搜尋框(見 GeoOutlineMap.module.css 的 .citySearch,
-   top:16px、膠囊高度約 38px)——搜尋框是常駐 UI,這張卡片只在點擊地點
-   後才出現,故由這張卡片避開搜尋框而非反過來。bottom 維持 16px,不用
-   height: 100%,避免內容較短時卡片仍撐滿整個高度顯得空洞——flex
-   column + 內容自然高度,配合 overflow-y:auto 處理內容過長的情況。
-   width 對齊搜尋框(.citySearch)/對話小匡(DesktopLayout.module.css 的
-   .chatPopover)一致的 340px,使用者明確要求這幾個右緣浮動元素統一
-   寬度,不要各自獨立的數值。 */
-.panel {
-  position: absolute;
-  top: 64px;
-  right: 16px;
-  bottom: 16px;
-  width: 340px;
-  max-height: calc(100% - 32px);
-  overflow-x: hidden;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  border-radius: 16px;
-  background: var(--ios-card);
-  box-shadow: 0 8px 28px rgba(61, 53, 48, 0.22);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  z-index: 2;
-  transition: right 0.15s ease-out;
-}
-
-/* shiftedHotel:GeoHotelSidebar(飯店/附近推薦清單)有內容時,那個側欄
-   改成絕對定位漂浮在 .desktop-main 右緣之上(見 FloatingPanel.tsx 的
-   side="right",right: 12px、寬度 340px,與這張卡片/對話小匡/搜尋框
-   統一寬度,見上方 .panel 的說明),跟這張卡片原本同樣定位在
-   .desktop-main 右緣的 right: 16px 直接疊在一起——這是實際發生過的
-   bug,不是預防性寫法。GeoHotelSidebar 顯示時,由呼叫端
-   (DesktopLayout.tsx)傳入 shiftBy="hotel",把這張卡片推到
-   GeoHotelSidebar 左側(12 + 340 = 352px,再加 12px 間隙)之外,兩者
-   才不會重疊。 */
-.panel.shiftedHotel {
-  right: 364px;
-}
-
-/* shiftedChat:對話浮動小匡(見 DesktopLayout.tsx 的 .chat-popover,
-   right: 16px、寬度 340px)開啟時,同理往左推到它左側(16 + 340 = 356px,
-   再加 12px 間隙)之外——跟 shiftedHotel 寬度相同(兩者都是 340px),但
-   起始 right 偏移不同(16px vs 12px),換算出來的位置仍略有差異。兩者
-   都存在時,呼叫端只會傳其中之一(見 DesktopLayout.tsx 的
-   infoPanelShiftBy 說明,優先避開較寬的對話小匡),不會疊加兩個
-   class。 */
-.panel.shiftedChat {
-  right: 368px;
-}
-
-/* closeBtn:懸浮在照片右上角(而非獨立的標題橫條)——照片是 .body 的
-   第一個子元素、緊貼卡片頂部,.imageWrap 提供 position: relative 錨點
-   讓按鈕能 position: absolute 疊在照片上,不佔用版面高度。深色半透明底
-   (而非 GeoHotelSidebar 等側欄慣用的透明底 hover 才顯色)是因為底下是
-   照片而非卡片底色,淺色照片下若沿用側欄那套素色圖示會看不清楚。 */
-.closeBtn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.4);
-  color: #fff;
-  cursor: pointer;
-}
-
-.closeBtn:hover {
-  background: rgba(0, 0, 0, 0.6);
-}
-
-.body {
-  display: flex;
-  flex-direction: column;
-}
+/* panel/shiftedHotel/shiftedChat/closeBtn/body:桌面版浮動資訊卡共用外框
+   ——已抽成 DesktopInfoCard.tsx + DesktopInfoCard.module.css,這個檔案
+   只保留卡片內容本身的樣式(照片/文字/按鈕組),見該元件開頭對「為什麼
+   從各自獨立一份改成共用」的完整說明。 */
 
 .imageWrap {
-  position: relative;
   flex: 0 0 auto;
 }
 
@@ -147,6 +66,34 @@
   font-size: 13px;
   line-height: 1.6;
   color: var(--ios-gray);
+}
+
+/* attractionIntro/attractionIntroTitle/attractionIntroText:見
+   PlaceInfoContent.attractionSummary 的完整說明——這個地點同時也是人工
+   建檔的景點區域時,額外並存顯示的介紹段落,視覺語言比照
+   AttractionInfoPanel.module.css 的 .nearbySection/.nearbyTitle(分隔線
+   +大寫小標題),讓使用者一眼分辨這段是跟上面的 Google 簡介(.summary)
+   不同來源、我們自己整理的內容,不是同一段文字重複顯示。 */
+.attractionIntro {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ios-sep);
+}
+
+.attractionIntroTitle {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ios-gray);
+  text-transform: uppercase;
+  margin: 0 0 6px;
+}
+
+.attractionIntroText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-dark);
 }
 
 /* addCandidateGroup:複合按鈕(split button)的外層 wrapper——對齊
@@ -265,7 +212,7 @@
 }
 
 /* dateMenuOpenUp:.addCandidateWrap 下方視窗剩餘空間不足以容納選單估計
-   高度時套用(見 GeoInfoPanel.tsx 的 dateMenuOpenUp state)——改用
+   高度時套用(見 PlacePanel.tsx 的 dateMenuOpenUp state)——改用
    bottom 取代 top,讓選單往上長、貼齊按鈕組正上方,避免固定往下展開
    時被視窗底部邊界截斷或推出可視範圍外。left/z-index/其餘視覺樣式
    與預設方向共用不重複定義。 */

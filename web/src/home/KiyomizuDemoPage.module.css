@@ -1,0 +1,50 @@
+/* KiyomizuDemoPage:試做展示頁的最小樣式——之後細部規劃再對齊
+   HomePage.css 的視覺語言,目前先求排版能看、地圖容器有明確尺寸。
+   max-width 從 960px 加倍到 1920px(對應「地圖寬度放大兩倍」的要求),
+   .stage 本身寬度仍是 100%,由外層 .page 的 max-width 決定實際上限。 */
+.page {
+  /* width:100%——父層 .webApp(App.module.css)是 display:flex,這個
+     元件本身作為 flex item 若不給明確寬度,會 shrink-to-fit 內容自然
+     寬度(不是像一般 block 元素那樣自動撐滿父層)。原本靠標題文字的
+     內在寬度撐開,拿掉標題後底下 .stage 全是絕對定位內容(地圖本身、
+     AttractionInfoPanel 都不貢獻正常流程的內在寬度),.page 會直接
+     縮成 0,地圖跟著變寬度 0、整頁看起來一片空白——這是實際重現過的
+     bug,加回明確寬度即可修正,理由同上述分析。 */
+  width: 100%;
+  max-width: var(--kiyomizu-page-max-width, 1920px);
+  margin: 0 auto;
+  padding: var(--kiyomizu-page-padding, 48px 24px);
+}
+
+/* toggleRow:ThemeToggle 靠右對齊,置於地圖容器上方——「右上」的相對
+   位置由這裡的 justify-content 決定,不是疊在地圖裡面(那樣要跟地圖
+   本身的縮放控制項/標籤搶位置),獨立一排比較不會互相干擾。 */
+.toggleRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+/* stage:非滿版地圖容器——固定高度 + position:relative,見
+   KiyomizuDemoPage.tsx 對這層容器用途的完整說明。高度/圓角/陰影都改讀
+   CSS 變數(--kiyomizu-stage-height 預設 680px,即獨立路由
+   /demo/kiyomizu 原本固定寫死的值;--kiyomizu-stage-radius/
+   --kiyomizu-stage-shadow 預設維持原本卡片視覺)——讓外層呼叫端
+   (HomePage.tsx 把這個元件嵌入首頁,見 HomePage.css 的 .map-expand
+   完整說明)可以在不改這個元件本身任何程式碼的前提下,由外往內覆寫
+   這幾個變數,把地圖容器的真實 layout 尺寸(不是 transform: scale()
+   那種只改視覺呈現、不影響版面佔用空間的縮放)一次切到滿版、拿掉圓角
+   陰影讓它看起來像貼齊螢幕邊緣的全螢幕地圖——地圖內部
+   (NativeMapBase/ExploreMap 的 .map 是 width:100%/height:100%,見該
+   檔案的完整說明)會跟著父容器真正變大,搭配
+   google.maps.event.trigger(map, 'resize')(見 NativeMapBase.tsx
+   建圖 effect 的既有機制)重新計算版面,不會像 transform 那樣被
+   overflow: hidden 裁切或蓋住旁邊內容。 */
+.stage {
+  position: relative;
+  width: 100%;
+  height: var(--kiyomizu-stage-height, 680px);
+  border-radius: var(--kiyomizu-stage-radius, 16px);
+  overflow: hidden;
+  box-shadow: var(--kiyomizu-stage-shadow, 0 4px 20px rgba(0, 0, 0, 0.12));
+}

@@ -346,6 +346,23 @@ type attractionResponse struct {
 	RadiusMeters     int     `json:"radiusMeters,omitempty"`
 	Summary          string  `json:"summary,omitempty"`
 	Level            int     `json:"level,omitempty"`
+	// IsTheme:見 model.Attraction.IsTheme 的完整說明。跟 Level 一樣只有
+	// 走資料庫路徑才有意義,故沒有用 omitempty——false 是合法值(代表
+	// 「這是精選點」),omitempty 會讓前端收到的 JSON 完全沒有這個欄位,
+	// 跟「這筆資料來自沒有主題概念的 Google Places 後備路徑」混淆不清。
+	IsTheme bool `json:"isTheme"`
+	// PlaceID:只有走 store.ListAttractionsByCity/ListAttractionsNearby
+	// 這條人工建檔資料路徑、且該筆 model.Attraction.PlaceID 有值時才會有
+	// 值——即時查 Google Places 的 toAttractionResponses 路徑(geo.District
+	// 沒有這個欄位)固定不帶。有值時前端(AttractionInfoPanel.tsx)優先
+	// 改打 GET /internal/geo/place-details 取得漸進補圖機制的雙來源照片,
+	// 取代/補強 LandmarkPhotoURL 這個單張欄位,見 model.Attraction.PlaceID
+	// 的完整說明。
+	PlaceID string `json:"placeId,omitempty"`
+	// Category:見 model.Attraction.Category 的完整說明。跟 PlaceID 一樣
+	// 只有走資料庫路徑、且該筆有設定值時才會有值,即時查 Google Places 的
+	// 後備路徑沒有分類概念,固定不帶。
+	Category string `json:"category,omitempty"`
 }
 
 // GET /internal/geo/attractions?city={城市名稱}
@@ -394,12 +411,19 @@ func (s *Server) handleGeoAttractions(w http.ResponseWriter, r *http.Request) {
 				Lng:          l.Lng,
 				RadiusMeters: l.RadiusMeters,
 				Level:        l.Level,
+				IsTheme:      l.IsTheme,
 			}
 			if l.Summary != nil {
 				ar.Summary = *l.Summary
 			}
 			if l.PhotoURL != nil {
 				ar.LandmarkPhotoURL = *l.PhotoURL
+			}
+			if l.PlaceID != nil {
+				ar.PlaceID = *l.PlaceID
+			}
+			if l.Category != nil {
+				ar.Category = *l.Category
 			}
 			attractions = append(attractions, ar)
 		}
@@ -839,12 +863,19 @@ func (s *Server) listAttractionResponses(lat, lng, radiusMeters float64) ([]attr
 			Lng:          l.Lng,
 			RadiusMeters: l.RadiusMeters,
 			Level:        l.Level,
+			IsTheme:      l.IsTheme,
 		}
 		if l.Summary != nil {
 			ar.Summary = *l.Summary
 		}
 		if l.PhotoURL != nil {
 			ar.LandmarkPhotoURL = *l.PhotoURL
+		}
+		if l.PlaceID != nil {
+			ar.PlaceID = *l.PlaceID
+		}
+		if l.Category != nil {
+			ar.Category = *l.Category
 		}
 		attractions = append(attractions, ar)
 	}
@@ -1480,6 +1511,149 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 	writeDegradedPlaceDetails(w, s.buildDegradedPlaceDetailsResponse(r.Context(), placeID))
 }
 
+// publicPlaceDetailsAllowlist:GET /public/geo/place-details 只允許查詢
+// 這份白名單裡的 placeID——這支端點刻意不掛 internalAuth(見 api.go 路由
+// 註冊處的說明),供登入前的公開展示頁(web/src/home/KiyomizuDemoPage.tsx)
+// 查詢清水寺周邊精選點的完整 Google Place Details(評分/雙來源照片)。
+// 沒有登入身分驗證的公開端點若不限制查詢範圍,等同把這支端點變成任何人
+// 都能免費呼叫的 Google Places 代理(handleGeoPlaceDetails 本身雖有
+// 24 小時快取,但快取只在同一個 placeID 重複查詢時生效,不同 placeID
+// 之間完全不受限),故白名單只收錄展示頁固定資料(kiyomizuDemoFixture.ts)
+// 實際會用到的那批 placeID——不在這份清單內的查詢一律拒絕,不會觸發任何
+// Google API 呼叫。之後若展示頁新增其他固定景點,需要同步在這裡補上
+// 對應的 placeID,不會自動生效。
+var publicPlaceDetailsAllowlist = map[string]bool{
+	"ChIJB_vchdMIAWARujTEUIZlr2I": true, // 清水寺
+	"ChIJqZsSA9AIAWARewnW_cioTog": true, // 二年坂
+	"ChIJr_gZonkIAWARB1xyACZNUKM": true, // 產寧坂・三年坂
+	"ChIJIcT4YMUIAWARSTUi4EEky7E": true, // 八坂の塔（法観寺）
+	"ChIJuU17z9oIAWARgMhsX3kqUSQ": true, // 高台寺
+	"ChIJXTW5ttEIAWAR1QKT_XL0Q5g": true, // 產寧坂聚落
+	"ChIJ7__4OtIIAWARkGI9aNZSJM0": true, // 忠僕茶屋
+	"ChIJnW0DdsUIAWAROy9GuxW9QVI": true, // %ARABICA 京都東山
+	"ChIJf-Xvv9EJAWAR9UlHbdVU3DA": true, // 京都茶寮 産寧坂店
+	"ChIJU7jlIdAIAWAR6rlZS3_YitI": true, // 奧丹 清水店
+	"ChIJXfyy6NEIAWARU9VgU0q6Owk": true, // 順正
+	"ChIJ8Vjv2dEIAWARKo8E1PyKMbQ": true, // 七味家本舖
+	"ChIJbYS509EIAWAREUzj6gl3jgk": true, // 松韻堂
+	"ChIJVVWBKdIIAWARu9g_YmWYZ5M": true, // 朝日堂
+}
+
+// GET /public/geo/place-details?placeId={Google Place ID}
+//
+// 免登入版的 handleGeoPlaceDetails——供登入前的公開展示頁查詢固定示範
+// 景點的完整資料(見 publicPlaceDetailsAllowlist 的完整說明)。只做白名單
+// 檢查這一層額外把關,通過後轉呼叫既有的 handleGeoPlaceDetails(一般
+// 模式,不支援 photoOnly/textOnly 這兩種輕量模式——展示頁固定資料一次性
+// 查完整內容即可,不像正式搜尋清單有大量候選需要分階段延遲載入的成本
+// 考量),兩者共用同一套快取/降級/並發防護邏輯,不重新實作一份。
+//
+// 轉呼叫前明確清掉請求上的 photoOnly/textOnly 這兩個 query 參數——
+// handleGeoPlaceDetails 本身是直接讀 r.URL.Query() 判斷要走哪個分支
+// (見該函式的完整說明),若不清掉,呼叫端在這支公開端點的網址後面自行
+// 加上 &photoOnly=1/&textOnly=1 就能繞過上面「不支援」的說明實際觸發
+// 輕量模式,讓程式行為跟這段註解宣稱的合約不一致(即使兩種輕量模式本身
+// 沒有額外的安全疑慮,allowlist 仍然檔著 placeId,但呼叫端不該有辦法
+// 觸發文件宣稱不存在的行為)。
+func (s *Server) handlePublicGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
+	placeID := r.URL.Query().Get("placeId")
+	if !publicPlaceDetailsAllowlist[placeID] {
+		writeErr(w, http.StatusForbidden, "place_not_allowed", "這個 placeId 不在公開查詢白名單內")
+		return
+	}
+	q := r.URL.Query()
+	q.Del("photoOnly")
+	q.Del("textOnly")
+	r.URL.RawQuery = q.Encode()
+	s.handleGeoPlaceDetails(w, r)
+}
+
+// publicAttractionsCityAllowlist:GET /public/geo/attractions 只允許查詢
+// 這份白名單裡的城市——理由同 publicPlaceDetailsAllowlist,這支端點刻意
+// 不掛 internalAuth,供登入前的公開展示頁(web/src/home/KiyomizuDemoPage.tsx/
+// YasakaDemoPage.tsx)查詢清水寺/八坂神社周邊精選點的名稱/座標/分類等
+// 基本資料,取代原本寫死在 kiyomizuDemoFixture.ts/yasakaDemoFixture.ts
+// 的固定 fixture。這裡的白名單是城市層級(不是像 place-details 那樣逐一
+// 列出 placeID)——因為 handleGeoAttractionsByCity 本身只走
+// store.ListAttractionsByCity(純資料庫查詢,見該 handler 的完整說明,
+// 刻意不像 handleGeoAttractions 那樣有 Google Places 即時查詢的 fallback
+// 分支),不會觸發任何計費的外部 API 呼叫,城市層級的白名單已經足夠防止
+// 這支端點被當成任意查詢資料庫全部城市內容的公開清單端點濫用,不需要
+// 逐筆列舉 attraction ID 這麼細的授權粒度。之後若展示頁新增其他城市的
+// 固定示範資料,需要同步在這裡補上,不會自動生效。
+var publicAttractionsCityAllowlist = map[string]bool{
+	"京都": true,
+}
+
+// handleGeoAttractionsByCity 是 GET /public/geo/attractions 的核心邏輯,
+// 也被沒有白名單限制的用途共用(目前只有下面 handlePublicGeoAttractions
+// 這一個呼叫端,獨立成函式是為了讓白名單檢查與實際查詢邏輯分開,便於
+// 之後有其他需要純資料庫查詢、不含 Google 即時 fallback 的呼叫端加入
+// 時直接重用)——刻意不重用 handleGeoAttractions(那支有 Google Places
+// SearchCityAttractions 的即時查詢 fallback,見該函式的完整說明:
+// 沒有登入驗證的公開端點若間接觸發計費的外部 API 呼叫,等同把這支端點
+// 變成任何人都能觸發真實花費的入口,即使城市白名單只收錄「京都」,
+// 只要 store.ListAttractionsByCity 查無資料就會落到 fallback,仍然是
+// 不可接受的風險),只走 store.ListAttractionsByCity 這一層人工建檔的
+// 正式資料,查無資料就回空陣列,不嘗試任何其他資料來源。
+func (s *Server) handleGeoAttractionsByCity(city string) ([]attractionResponse, error) {
+	landmarks, err := s.store.ListAttractionsByCity(city)
+	if err != nil {
+		return nil, err
+	}
+	attractions := make([]attractionResponse, 0, len(landmarks))
+	for _, l := range landmarks {
+		ar := attractionResponse{
+			Name:         l.Name,
+			Lat:          l.Lat,
+			Lng:          l.Lng,
+			RadiusMeters: l.RadiusMeters,
+			Level:        l.Level,
+			IsTheme:      l.IsTheme,
+		}
+		if l.Summary != nil {
+			ar.Summary = *l.Summary
+		}
+		if l.PhotoURL != nil {
+			ar.LandmarkPhotoURL = *l.PhotoURL
+		}
+		if l.PlaceID != nil {
+			ar.PlaceID = *l.PlaceID
+		}
+		if l.Category != nil {
+			ar.Category = *l.Category
+		}
+		attractions = append(attractions, ar)
+	}
+	return attractions, nil
+}
+
+// GET /public/geo/attractions?city={城市名稱}
+//
+// 免登入版的景點區域清單查詢——供登入前的公開展示頁(見
+// publicAttractionsCityAllowlist 的完整說明)查詢固定示範城市裡人工
+// 建檔的全部景點區域(含主題點與精選點,前端自行依 isTheme 分流,見
+// KiyomizuDemoPage.tsx 的既有慣例),取代原本寫死在
+// kiyomizuDemoFixture.ts/yasakaDemoFixture.ts 的固定 fixture——資料庫
+// 內容更新(改名/補圖/新增精選點/補分類)後,展示頁會自動反映,不需要
+// 再手動同步一份重複資料。回應格式與 GET /internal/geo/attractions
+// 一致(共用 attractionResponse),差別只在這支端點只查資料庫、不含
+// Google Places 即時查詢 fallback(見 handleGeoAttractionsByCity 的
+// 完整說明)。
+func (s *Server) handlePublicGeoAttractions(w http.ResponseWriter, r *http.Request) {
+	city := r.URL.Query().Get("city")
+	if !publicAttractionsCityAllowlist[city] {
+		writeErr(w, http.StatusForbidden, "city_not_allowed", "這個城市不在公開查詢白名單內")
+		return
+	}
+	attractions, err := s.handleGeoAttractionsByCity(city)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"attractions": attractions})
+}
+
 // tryClaimPlaceDetailsInFlight 嘗試搶到「處理這個 placeID」的權利——用
 // sync.Map.LoadOrStore 確保「檢查是否已存在」與「標記為存在」是單一
 // 原子操作(見 Server.placeDetailsInFlight 的完整說明)。回傳 true 代表
@@ -1788,7 +1962,22 @@ func (s *Server) fetchAndCachePlaceDetails(ctx context.Context, requestPath, pla
 // clickCount 是這個地點被點擊的總次數,只增不減、跨越目標值變動也不會
 // 重置(見 resetPhotoProgressOnTargetChange 的說明,重置的是
 // newPhotoCount,不是 clickCount)。
+//
+// googlePhotoTargetCount < 0(sentinel -1,見 placeDetailsCacheRow.GooglePhotoTargetCount
+// 的完整說明)時無條件回傳 true——2026-09 修正一個實測到的死鎖 bug:
+// 若不特判這個 sentinel,「這個地點從未真正跟 Google 確認過 photos[]
+// 長度」會被 newPhotoCount(0) >= googlePhotoTargetCount(舊版預設值 0)
+// 這個一般比較誤判成「已經追上目標、不用再補」,永遠不會觸發
+// ListPlacePhotoRefs 去真正查一次,即使 Google 之後補上了照片也永遠不會
+// 被發現(順正/清水順正 Okabe家 是實際踩到的案例)。-1 這個 sentinel 的
+// 唯一合法來源是「這一列剛被建立、還沒有任何查詢確認過 target」,一旦
+// 觸發這裡回傳 true 之後,呼叫端會用查到的 currentGoogleTarget(可能是
+// 0,也可能是真實張數)透過 decidePlacePhotoAction/resetPhotoProgressOnTargetChange
+// 寫回一個 >=0 的值,之後就不會再落在這個分支,不會造成無限重複觸發。
 func shouldAddGooglePlacePhoto(clickCount int64, newPhotoCount, googlePhotoTargetCount int) bool {
+	if googlePhotoTargetCount < 0 {
+		return true
+	}
 	if newPhotoCount < 0 {
 		// 防禦性邊界:正常流程 newPhotoCount 只會是 0 或 UpdatePlacePhotoProgress
 		// 寫入過的非負值,不該出現負數。但若資料庫曾經寫入髒資料,

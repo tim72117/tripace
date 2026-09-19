@@ -16,22 +16,22 @@ import styles from './GeoHotelSidebar.module.css'
 //
 // 使用者要求飯店/推薦地點/搜尋結果三種來源(見 api.ts GeoSearchResult 的
 // 完整說明)「同一份清單、同一套邏輯」,不分段、不重排,依 results 陣列
-// 原本的順序(GeoOutlineMap.tsx 組裝 searchResults 時決定,見該處說明)
+// 原本的順序(ExploreMap.tsx 組裝 searchResults 時決定,見該處說明)
 // 直接顯示,不再像先前版本各自獨立分段加小標題——原本的分段標題/排序
 // 邏輯已整個移除,不是視覺調整,是底層資料流收斂成單一陣列後的自然
 // 結果。
 //
 // 原本還有一個「地點」分頁(人工建檔的景點區域,見 model.Attraction)已
 // 整個移除(使用者明確要求)——attraction 改成只透過地圖上本來就會畫出的
-// 自訂地標圖示(光暈+標籤,見 GeoOutlineMap.tsx)瀏覽/點擊,不再提供這份
+// 自訂地標圖示(光暈+標籤,見 ExploreMap.tsx)瀏覽/點擊,不再提供這份
 // 文字清單瀏覽入口;點擊地圖上的地標仍會開啟 AttractionInfoPanel(見該
 // 檔案),含「探索周邊」按鈕,這條路徑完全不受這次移除影響。
 //
 // onSelect:點擊清單項目本體時觸發,把該項目往上回報——這個側欄跟實際的
-// 地圖(GeoOutlineMap)是分開掛載的 sibling(側欄在 DesktopLayout 最
+// 地圖(ExploreMap)是分開掛載的 sibling(側欄在 DesktopLayout 最
 // 外側,地圖在 main 內部的 GeoOutlinePanel 裡),點擊「移動地圖到這個
 // 座標」的意圖只能靠 DesktopLayout 中介,往下傳給 GeoOutlinePanel 再傳給
-// GeoOutlineMap 執行實際的 panTo。
+// ExploreMap 執行實際的 panTo。
 //
 // onAddCandidate:卡片右側的「+」按鈕觸發,把該項目加入候選籃
 // (GeoCandidateSidebar,見該元件的說明)——跟 onSelect(移動地圖)是
@@ -53,7 +53,7 @@ export type GeoSelectedKey = string | null
 // 已有座標的 entry,見 GeoTripEntry)雖然有穩定 id,仍沿用同一套
 // 「名稱+座標」規則,跟其他來源保持一致,不需要為它另外分岔一套識別
 // 邏輯。'attraction' 這個 kind 值仍保留(地圖上的地標圖示/
-// AttractionInfoPanel 仍會用到,見 GeoOutlineMap.tsx),只是這個側欄不再
+// AttractionInfoPanel 仍會用到,見 ExploreMap.tsx),只是這個側欄不再
 // 渲染 attraction 清單。
 export function geoItemKey(
   kind: 'hotel' | 'attraction' | 'place' | 'entry' | 'geocode',
@@ -178,7 +178,7 @@ export function GeoHotelSidebar({
   onCandidateCreated?: () => void
   // onHover:滑鼠移到/移出項目本體時觸發,傳入該項目的 geoItemKey(移出時
   // 傳 null)——由 DesktopLayout.tsx 中介,驅動地圖上對應 marker 暫時顯示
-  // 選取樣式(見 GeoOutlineMap.tsx 的 hoverKey prop 說明)。
+  // 選取樣式(見 ExploreMap.tsx 的 hoverKey prop 說明)。
   onHover?: (key: GeoSelectedKey) => void
   // onClose:頂部標題列的關閉按鈕觸發——使用者明確要求跟候選籃側欄
   // (AddFromCandidateSidebar)一樣的頂部條樣式(標題文字+關閉按鈕),

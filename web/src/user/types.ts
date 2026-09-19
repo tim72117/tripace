@@ -32,4 +32,11 @@ export interface AuthResponse {
   token: string
   user: User
   profile: Profile
+  // isNewUser:這次驗證是否剛建立了一筆新帳號(見後端 issueToken 的完整
+  // 說明)——login/register 兩種方式必然是確定值(login 恆 false、
+  // register 恆 true),Google/Apple 第三方登入才需要靠這個欄位分辨
+  // 「這次是查到既有帳號還是剛建立」。web/src/analytics.ts 的
+  // fireRegistrationConversion 靠這個欄位決定要不要觸發註冊轉換事件,
+  // 避免同一個第三方帳號每次登入都誤觸發一次轉換。
+  isNewUser: boolean
 }

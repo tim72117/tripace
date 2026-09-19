@@ -50,7 +50,7 @@ export interface SelectedEntry {
 // publicToken prop 決定要打哪一支(見下方 props 說明)。
 //
 // MINIMAL_MAP_STYLE/ensureOptionsSet 是這個檔案自己的獨立副本,不與其他
-// Google Maps 元件(GeoOutlineMap.tsx 等)共用——各自維護一份極簡地圖樣式,
+// Google Maps 元件(ExploreMap.tsx 等)共用——各自維護一份極簡地圖樣式,
 // 避免跨檔案依賴讓這個元件被無關變更牽動。
 const MINIMAL_MAP_STYLE: google.maps.MapTypeStyle[] = [
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },

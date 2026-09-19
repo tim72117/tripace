@@ -115,12 +115,41 @@ type Attraction struct {
 	Lng      float64 `json:"lng"`
 	// Level 是知名度分級,1(國際)~5(在地),見上方型別註解的完整說明。
 	Level int `json:"level"`
+	// IsTheme:是否為「主題點」(散策羅盤用語,見
+	// web/src/geo-planning/useAttractionOverlays.ts 的 isTheme 完整說明)
+	// ——主題點是使用者點開後會揭露周邊「精選點」的錨點,非主題點(精選點)
+	// 預設不在地圖上顯示,只有其對應的主題點被開啟時才會依距離揭露。
+	// 新增這個欄位是因為前端原本直接拿 Level===1 當主題點判斷式,但 Level
+	// 數字分級(1~5)本身還有另一個獨立用途(zoom 顯示門檻/CLI 建檔時的
+	// 知名度描述),兩種語意混在同一個數字欄位裡容易造成「level 代表知名度
+	// 排序」的誤解(見 attractionBadges 已經拿掉顯示「知名度 Lx」的理由)。
+	// 目前跟 Level 並存,不取代它——建檔時預設 IsTheme = (Level == 1),
+	// 但兩者之後可以獨立設定(例如某個 level 2 的地點之後也想設為主題點)。
+	IsTheme bool `json:"isTheme"`
 	// RadiusMeters 是這個景點區域的大致範圍半徑(公尺),0 代表這是單點
 	// 地標(如「101」)而非有範圍的區域(如「古城區」)——前端據此判斷
 	// 要不要在地圖上疊加範圍圓圈。
 	RadiusMeters int     `json:"radiusMeters,omitempty"`
 	Summary      *string `json:"summary,omitempty"`
 	PhotoURL     *string `json:"photoUrl,omitempty"`
+	// PlaceID 是這個景點區域對應的 Google Place ID,可為 nil——見
+	// store.attractionRow.PlaceID 的完整說明(並存策略、Google TOS 可
+	// 長期保存的依據)。有值時前端(AttractionInfoPanel.tsx)優先改打
+	// GET /internal/geo/place-details 取得漸進補圖機制的雙來源照片陣列,
+	// 取代/補強單一的 PhotoURL;沒有值時維持原本 PhotoURL 顯示。
+	PlaceID *string `json:"placeId,omitempty"`
+	// Category 是「附近景點」清單用的店家分類(散策羅盤用語,如
+	// 甜點/茶屋、餐廳、工藝、街景),可為 nil——取代前端原本
+	// web/src/geo-planning/geoCuratedCategoryStub.ts 那張純前端寫死的
+	// name→分類對照表(NAME_TO_CURATED_CATEGORY,只涵蓋已手動填過的
+	// 少數店家,新建檔的景點不會自動有分類、名稱沒填進那張表就沒有圖示,
+	// 這正是「附近景點有些沒有 icon」的根因)。空字串比照 Summary/PhotoURL
+	// 既有慣例視為未設定,不強制所有景點都要有分類——只有「附近景點」
+	// 清單裡的店家/地標適用這四類語彙,主題點本身、街景類的大範圍地標
+	// 不一定適用。合法值由前端 CuratedCategory 型別定義(tea/restaurant/
+	// craft/street),後端刻意不驗證列舉值,理由同其餘自由字串欄位
+	// (name/summary)的既有慣例,不在這層加白名單檢查。
+	Category *string `json:"category,omitempty"`
 	// UpdatedAt 是這筆資料最後一次寫入的時間(建立或透過
 	// UpdateAttractionPhoto 等方式更新)——目前只單純曝露出來供人工核對
 	// 哪些資料較舊,尚未實作自動過期判斷/自動重新整理。
