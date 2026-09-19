@@ -173,6 +173,25 @@
 .kyoto-bloom .hero-cta:hover { transform: translateY(-2px); }
 .kyoto-bloom .hero-cta svg { width: 16px; height: 16px; }
 
+.kyoto-bloom .hero-actions { display: inline-flex; align-items: center; gap: 16px; }
+
+/* hero-cta-secondary:「體驗探索地圖」——捲動到下方 KiyomizuDemoPage
+   互動地圖展示區塊(#interactiveMap,見 HomePage.tsx 對應按鈕的完整
+   說明)。實心朱紅色底(vermilion),比旁邊「開始探索」(.hero-cta,
+   實心墨色)更搶眼——這是刻意的:「開始探索」帶你看一遍手繪路徑敘事,
+   「體驗探索地圖」直接跳去摸真實產品,對想快速判斷這個產品能不能用的
+   訪客而言反而是更關鍵的行動,值得用更醒目的顏色凸顯,不需要刻意收斂
+   成次要視覺。 */
+.kyoto-bloom .hero-cta-secondary {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 15px 34px; background: var(--vermilion); color: var(--paper);
+  border: none; border-radius: 999px; font-size: 15px;
+  letter-spacing: 0.06em; text-decoration: none; cursor: pointer;
+  box-shadow: var(--card-shadow); transition: transform 0.25s ease, background 0.25s ease;
+  font-family: inherit;
+}
+.kyoto-bloom .hero-cta-secondary:hover { transform: translateY(-2px); background: var(--vermilion-soft); }
+
 .kyoto-bloom .hero-scroll-hint {
   position: absolute; bottom: 36px; left: 50%; transform: translateX(-50%);
   font-size: 12px; letter-spacing: 0.2em; color: var(--ink-soft);

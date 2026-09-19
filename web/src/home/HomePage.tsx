@@ -593,10 +593,17 @@ export function HomePage() {
     }
     startBtn.addEventListener('click', onStartClick)
 
+    const tryMapBtn = root.querySelector<HTMLButtonElement>('#tryMapBtn')!
+    const onTryMapClick = () => {
+      root.querySelector('#interactiveMap')?.scrollIntoView({ behavior: 'smooth' })
+    }
+    tryMapBtn.addEventListener('click', onTryMapClick)
+
     return () => {
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onResize)
       startBtn.removeEventListener('click', onStartClick)
+      tryMapBtn.removeEventListener('click', onTryMapClick)
       textIO?.disconnect()
       if (rafId !== null) cancelAnimationFrame(rafId)
       // React StrictMode/HMR 重新掛載時，清掉這次 effect 動態產生的 DOM
@@ -742,10 +749,23 @@ export function HomePage() {
         <div className="hero-eyebrow">Kyoto · Higashiyama</div>
         <h1 className="hero-title">走進一個地方<br /><em>而不只是到過</em></h1>
         <p className="hero-sub">從地景、歷史、人文到日常生活，探索城市與自然之間那些容易錯過的故事。</p>
-        <button className="hero-cta" id="startBtn" type="button">
-          開始探索
-          <svg viewBox="0 0 16 16" fill="none"><path d="M8 3v9M4.5 9L8 12.5 11.5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        </button>
+        <div className="hero-actions">
+          <button className="hero-cta" id="startBtn" type="button">
+            開始探索
+            <svg viewBox="0 0 16 16" fill="none"><path d="M8 3v9M4.5 9L8 12.5 11.5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
+          {/* tryMapBtn/「體驗探索地圖」:跳過上方滾動驅動的手繪路徑敘事教程,
+              直接捲動到下方 KiyomizuDemoPage 真實互動地圖展示區塊
+              (#interactiveMap,見該區塊 JSX 的完整說明)——給想直接摸
+              真實產品、不想先看一遍敘事動畫的使用者一條捷徑。跟
+              #startBtn 一樣用 scrollIntoView(見下方 effect 的
+              onTryMapClick),不是 <a href="#interactiveMap">——避免瀏覽器
+              原生錨點跳轉的「瞬間跳到」體感,統一走 smooth 捲動,兩顆按鈕
+              手感一致。 */}
+          <button className="hero-cta-secondary" id="tryMapBtn" type="button">
+            體驗探索地圖
+          </button>
+        </div>
 
         <div className="hero-scroll-hint"><span>SCROLL</span><span className="bar" /></div>
       </section>
