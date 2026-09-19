@@ -2,6 +2,24 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.13.0 — 2026-09-20
+
+### 新增
+
+- **主題點/精選點兩級揭露機制**（`attractions.is_theme` 欄位）：地圖預設只顯示主題點，點開後才揭露該主題點周邊的精選點；精選點可對應 Google `place_id`，接上既有的漸進補圖機制。
+- **散策羅盤展示頁**（`KiyomizuDemoPage`）：嵌入首頁 `HomePage` 的互動地圖區塊，手機版支援點擊或滾動觸發全螢幕展開、右上角關閉按鈕退出；小卡片狀態下在地圖上滑動會正確轉為頁面捲動，不再被地圖手勢吃掉。
+- **`geo_rate_limits` 資料表與後台管理介面**：地點查詢／照片下載的限流視窗、上限次數、每日額度改為可透過後台即時調整，不需重新部署。
+- 手機版地點資訊卡新增「附近景點」清單，分類篩選改為點擊已選中的分類即取消（移除原本的「全部」按鈕）。
+
+### 修正
+
+- **`place_details_cache.google_photo_target_count` 預設值死鎖 bug**：`0` 同時代表「未確認」與「已確認且真的是 0 張」，導致某些地點永遠卡住、不再重新確認 Google 端照片張數。欄位預設值改為 `-1`（未確認 sentinel），並在 `store.Open()` 加入一次性資料修復，每次啟動自動修正符合條件的既有卡住資料列。
+
+### 重構
+
+- `GeoOutlineMap.tsx` 拆分為 `ExploreMap.tsx` + `NativeMapBase.tsx`，地圖建置與 overlay/marker 邏輯分離；抽出 `useAttractionOverlays`／`useInfoCardStack`／`useThemeAttractionSelection` 等共用 hook，供桌面版、手機版、展示頁三處共用同一套邏輯。
+- 移除獨立的 `/demo/kiyomizu` 展示路由，保留 `HomePage` 首頁內嵌入的版本。
+
 ## v0.12.2 — 2026-09-10
 
 ### 修正
