@@ -1,0 +1,435 @@
+/* KyotoPage — 頁面外殼(品牌列/切換鈕/CTA/進度導覽/地圖嵌入容器/頁尾)
+   對齊 JiufenPage.css 的架構與紙感和風視覺語言,色票數值直接照抄,不
+   重新配色。敘事站點(.kyoto-stop*)的字級/間距則對齊 HomePage.css 的
+   .stop-name/.stop-desc/.stop-kicker 既有數值(見各自規則旁的說明),
+   讓使用者一眼就覺得「跟首頁看到的一樣」——這是本檔案跟 JiufenPage.css
+   在敘事內容排版上唯一刻意不同的地方,其餘外殼樣式仍是 Jiufen 模式。 */
+
+@font-face {
+  font-family: 'ShipporiSerif';
+  src: local('Hiragino Mincho ProN'), local('Yu Mincho'), local('Noto Serif JP');
+  font-weight: 400 700;
+}
+
+.kyoto-page {
+  --paper: #F7F3EC;
+  --paper-dim: #EFE9DC;
+  --ink: #2B2420;
+  --ink-soft: #5A5148;
+  --vermilion: #8B3A2F;
+  --vermilion-soft: #B85C4A;
+  --moss: #5C6B57;
+  --line: #C9BFA8;
+  --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
+  line-height: 1.7;
+}
+
+@media (prefers-color-scheme: dark) {
+  .kyoto-page:not([data-theme="light"]) {
+    --paper: #1C1815;
+    --paper-dim: #14110F;
+    --ink: #EDE6D8;
+    --ink-soft: #B8AD9C;
+    --vermilion: #D97A63;
+    --vermilion-soft: #E89A85;
+    --moss: #8FA089;
+    --line: #443C34;
+    --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+  }
+}
+
+.kyoto-page[data-theme="dark"] {
+  --paper: #1C1815;
+  --paper-dim: #14110F;
+  --ink: #EDE6D8;
+  --ink-soft: #B8AD9C;
+  --vermilion: #D97A63;
+  --vermilion-soft: #E89A85;
+  --moss: #8FA089;
+  --line: #443C34;
+  --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+}
+
+.kyoto-page[data-theme="light"] {
+  --paper: #F7F3EC;
+  --paper-dim: #EFE9DC;
+  --ink: #2B2420;
+  --ink-soft: #5A5148;
+  --vermilion: #8B3A2F;
+  --vermilion-soft: #B85C4A;
+  --moss: #5C6B57;
+  --line: #C9BFA8;
+  --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+}
+
+.kyoto-page * {
+  box-sizing: border-box;
+}
+
+.kyoto-page h1,
+.kyoto-page h2,
+.kyoto-page h3 {
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.kyoto-page a {
+  color: inherit;
+}
+
+/* 品牌標記/日夜間切換/CTA — 結構與理由同 JiufenPage.css 對應區塊的完整
+   說明,三者皆 fixed 定位、不隨頁面捲動。 */
+.kyoto-page .kyoto-brand-row {
+  position: fixed; left: 16px; top: 16px; z-index: 10;
+  display: flex; align-items: baseline; gap: 2px;
+}
+.kyoto-page .kyoto-brand-mark {
+  padding: 8px 4px 8px 0;
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+  color: var(--ink); text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+.kyoto-page .kyoto-brand-mark:hover { opacity: 0.75; }
+.kyoto-page .kyoto-brand-page {
+  font-size: 14px; font-weight: 500;
+  color: var(--vermilion);
+}
+.kyoto-page .kyoto-brand-page::before {
+  content: '· ';
+  color: var(--line);
+}
+
+.kyoto-page .kyoto-theme-toggle {
+  position: fixed; right: 16px; top: 16px; z-index: 10;
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; border: 1px solid var(--line);
+  background: var(--paper); color: var(--ink);
+  cursor: pointer; box-shadow: var(--card-shadow);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.kyoto-page .kyoto-theme-toggle:hover { background: var(--paper-dim); }
+
+.kyoto-page .kyoto-app-cta {
+  position: fixed; right: 62px; top: 16px; z-index: 10;
+  display: flex; align-items: center;
+  height: 36px; padding: 0 18px;
+  border-radius: 999px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+  background: transparent; color: var(--ink); border: 1px solid var(--line);
+  text-decoration: none;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.kyoto-page .kyoto-app-cta:hover { border-color: var(--vermilion-soft); color: var(--vermilion); }
+@media (max-width: 900px) {
+  .kyoto-page .kyoto-app-cta { right: 62px; padding: 0 14px; font-size: 12px; }
+}
+
+/* Hero */
+.kyoto-page .kyoto-hero {
+  position: relative;
+  max-width: 760px;
+  min-height: 70vh;
+  margin: 0 auto;
+  padding: 5rem 1.5rem 4rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
+
+.kyoto-page .kyoto-hero-scroll-hint {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  color: var(--ink-soft);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.75;
+}
+.kyoto-page .kyoto-hero-scroll-hint .bar {
+  width: 1px;
+  height: 42px;
+  background: linear-gradient(var(--ink-soft), transparent);
+  animation: kyoto-pulse-bar 2.2s ease-in-out infinite;
+}
+@keyframes kyoto-pulse-bar { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+.kyoto-page .kyoto-hero-eyebrow {
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--vermilion);
+  letter-spacing: 0.08em;
+  margin-bottom: 1rem;
+}
+
+.kyoto-page .kyoto-hero h1 {
+  font-size: clamp(2rem, 5vw, 2.75rem);
+  line-height: 1.4;
+  margin: 0 0 1.25rem;
+}
+
+.kyoto-page .kyoto-hero p {
+  font-size: 1.05rem;
+  color: var(--ink-soft);
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+/* Stops — 整頁式捲動敘事,外殼結構(每站佔一個視窗高度、IntersectionObserver
+   驅動進場)對齊 JiufenPage.css,但字級/間距刻意改成對齊 HomePage.css
+   的 .stop-kicker/.stop-index/.stop-kind/.stop-name/.stop-desc 既有數值
+   (見各規則旁的原始出處),不是 Jiufen 自己的版面數字——這是使用者
+   明確要求的「跟首頁視覺一致」,兩邊只有進退場觸發機制不同(Jiufen 用
+   IntersectionObserver 的 is-active,首頁用逐幀 rAF 算出的 text-in/
+   in-hold),字級/間距/顏色 token 用法完全比照。 */
+.kyoto-page .kyoto-stops {
+  position: relative;
+}
+
+.kyoto-page .kyoto-stop {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1.5rem;
+}
+
+.kyoto-page .kyoto-stop-inner {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  text-align: center;
+  opacity: 0.15;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.kyoto-page .kyoto-stop.is-active .kyoto-stop-inner {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.kyoto-page .kyoto-stop-photo {
+  position: relative;
+  width: 100%;
+  max-height: 70vh;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+  margin: 0 auto 2rem;
+}
+
+.kyoto-page .kyoto-stop-photo img {
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+  display: block;
+}
+
+/* kyoto-stop-meta/index/kind — 數值對齊 HomePage.css 的 .stop-kicker/
+   .stop-index/.stop-kind(gap 14px、index font-size 13px letter-spacing
+   0.1em、kind font-size 12px letter-spacing 0.18em uppercase 加上
+   ::before 那道 22px 橫線裝飾),取代 Jiufen 自己原本的 0.6rem gap/
+   0.95rem index/0.78rem 膠囊背景 kind 版面。 */
+.kyoto-page .kyoto-stop-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.kyoto-page .kyoto-stop-index {
+  font-family: 'ShipporiSerif', serif;
+  font-size: 13px;
+  color: var(--vermilion);
+  letter-spacing: 0.1em;
+}
+.kyoto-page .kyoto-stop-kind {
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.kyoto-page .kyoto-stop-kind::before {
+  content: "";
+  display: inline-block;
+  width: 22px;
+  height: 1px;
+  background: var(--line);
+  margin-right: 10px;
+  vertical-align: middle;
+}
+
+/* kyoto-stop h2/p — 數值對齊 HomePage.css 的 .stop-name/.stop-desc
+   (font-size clamp(24px, 2.8vw, 32px)/15px line-height 1.9),取代
+   Jiufen 自己原本的 clamp(1.4rem, 3.5vw, 1.9rem)/0.95rem 1.85 版面。 */
+.kyoto-page .kyoto-stop h2 {
+  font-family: 'ShipporiSerif', "Noto Serif TC", serif;
+  font-size: clamp(24px, 2.8vw, 32px);
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 16px;
+  text-wrap: balance;
+}
+
+.kyoto-page .kyoto-stop p {
+  font-size: 15px;
+  line-height: 1.9;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+/* 進度指示——對齊 HomePage.css 的 .progress-rail/.progress-dot 數值,
+   理由同 JiufenPage.css 對應區塊的完整說明。 */
+.kyoto-page .kyoto-progress-rail {
+  position: fixed;
+  right: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: var(--z-progress, 20);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.kyoto-page .kyoto-progress-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: var(--line);
+  cursor: pointer;
+  transition: background 0.3s ease, transform 0.3s ease;
+}
+.kyoto-page .kyoto-progress-dot.is-active {
+  background: var(--vermilion);
+  transform: scale(1.6);
+}
+@media (max-width: 900px) {
+  .kyoto-page .kyoto-progress-rail { display: none; }
+}
+
+/* kyoto-map-intro — 同 JiufenPage.css 對應區塊的完整說明:覆寫
+   --kiyomizu-page-padding 避開頂部固定 UI,900px 以上桌面寬度加大右邊距
+   讓地圖右邊界跟進度點之間留白對稱。 */
+.kyoto-page .kyoto-map-intro {
+  --kiyomizu-page-padding: 88px 24px 48px;
+}
+@media (min-width: 901px) {
+  .kyoto-page .kyoto-map-intro {
+    --kiyomizu-page-padding: 88px 50px 48px 24px;
+  }
+}
+
+/* 同 JiufenPage.css 對應區塊的完整說明:四邊窄幅 mask-image 淡出,
+   讓地圖內容在容器邊界自然透出頁面背景色。 */
+.kyoto-page .kyoto-map-intro [class*="stage"] {
+  --fade-size: 10px;
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent),
+    linear-gradient(to bottom, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent);
+  mask-image:
+    linear-gradient(to right, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent),
+    linear-gradient(to bottom, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+
+/* 同 JiufenPage.css 對應區塊的完整說明:這個頁面的地圖沒有正式 App 那排
+   城市搜尋框/類別標籤列,卡片頂部不需要留給那排 UI 的空間。 */
+.kyoto-page .kyoto-map-intro [class*="panel"] {
+  --desktop-info-card-top: 16px;
+}
+
+/* Final CTA */
+.kyoto-page .kyoto-final-cta {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 8rem 1.5rem 5rem;
+  text-align: center;
+}
+
+.kyoto-page .kyoto-final-cta h2 {
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  margin: 0 0 1rem;
+}
+
+.kyoto-page .kyoto-final-cta p {
+  color: var(--ink-soft);
+  margin: 0 0 2rem;
+}
+
+.kyoto-page .kyoto-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--paper);
+  background: var(--ink);
+  text-decoration: none;
+  padding: 0.85rem 1.75rem;
+  border-radius: 999px;
+  box-shadow: var(--card-shadow);
+  transition: transform 0.2s ease;
+}
+
+.kyoto-page .kyoto-btn-primary:hover {
+  transform: translateY(-2px);
+}
+
+/* Footer — 結構、文案對齊 JiufenPage.css 的 .jiufen-footer。這批規則
+   之前是裸選擇器(無 .kyoto-page 前綴),跟 HomePage.css 的 .kyoto-bloom
+   scope 底下同樣存在 .kyoto-footer/.kyoto-footer-brand 等同名 class
+   (字面上「kyoto」在兩個檔案分別代表「首頁完整視覺 scope 名稱」與
+   「京都頁面的城市 slug」,容易混淆)——雖然 Vite 會把兩個元件的 CSS
+   打進各自獨立的 chunk,一般路由切換不會同時載入兩份樣式表,不構成
+   實際執行期問題,但統一補上 .kyoto-page 前綴,降低未來誤用/誤改的
+   風險(見 code review 報告)。 */
+.kyoto-page .kyoto-footer {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  border-top: 1px solid var(--line); padding: 28px 1.5rem;
+  text-align: center; font-size: 14px; color: var(--ink-soft);
+}
+.kyoto-page .kyoto-footer-brand { font-size: 15px; font-weight: 600; color: var(--ink); }
+
+.kyoto-page .kyoto-footer-sitemap {
+  align-self: stretch; display: flex; gap: 48px; justify-content: center;
+  flex-wrap: wrap; margin-top: 48px; text-align: left;
+}
+.kyoto-page .kyoto-footer-sitemap-col { display: flex; flex-direction: column; gap: 10px; min-width: 120px; }
+.kyoto-page .kyoto-footer-sitemap-title {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--ink); text-transform: uppercase; margin-bottom: 2px;
+}
+.kyoto-page .kyoto-footer-sitemap-col a { color: var(--ink-soft); text-decoration: none; font-size: 13.5px; }
+.kyoto-page .kyoto-footer-sitemap-col a:hover { color: var(--vermilion); text-decoration: underline; }
+
+.kyoto-page .kyoto-footer-bar {
+  width: 100%; max-width: 1180px; margin: 48px auto 0;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px 24px; font-size: 13px;
+}
+.kyoto-page .kyoto-footer-copyright { color: var(--ink-soft); }
+.kyoto-page .kyoto-footer-links { display: flex; align-items: center; gap: 20px; }
+.kyoto-page .kyoto-footer-links a { color: var(--ink-soft); text-decoration: none; }
+.kyoto-page .kyoto-footer-links a:hover { color: var(--vermilion); text-decoration: underline; }
+
+.kyoto-page .kyoto-footer-onagent {
+  margin-top: 10px; font-size: 12px; color: var(--ink-soft);
+  text-decoration: none; opacity: 0.75;
+}
+.kyoto-page .kyoto-footer-onagent:hover { opacity: 1; text-decoration: underline; }

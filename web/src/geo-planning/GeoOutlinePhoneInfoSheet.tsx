@@ -106,6 +106,7 @@ export function GeoOutlinePhoneInfoSheet({
   onClose,
   onAddCandidate,
   onOpenDatePicker,
+  requireAuth,
   addFlashTrigger,
   onDraggingDownChange,
   onSnapIndexChange,
@@ -136,6 +137,12 @@ export function GeoOutlinePhoneInfoSheet({
   // 說明移除 scheduledDates prop 的理由),純粹通知呼叫端「使用者想選
   // 日期了」,由 GeoOutlinePhoneView.tsx 判斷後 push 對應的 SheetEntry。
   onOpenDatePicker?: () => void
+  // requireAuth:公開展示頁(InteractiveExploreMap.tsx)專用的登入導轉,
+  // 理由同桌面版 PlacePanel.tsx 同名 prop 的完整說明——有值時
+  // handleAddClick 一開始就呼叫這個 callback 並直接 return,略過原本
+  // 的 onAddCandidate/onOpenDatePicker 分岔;未傳(undefined,正式版的
+  // 既有呼叫方式 GeoOutlinePhoneView.tsx)時完全不影響原本行為。
+  requireAuth?: () => void
   // addFlashTrigger:呼叫端(GeoOutlinePhoneView.tsx)每次候選成功排入
   // 某天後遞增這個計數器,通知這個元件觸發「已加入」的短暫打勾提示——
   // 比照 GeoOutlinePhoneCandidateDrawer.tsx 的 flashTrigger 既有模式。
@@ -168,7 +175,7 @@ export function GeoOutlinePhoneInfoSheet({
   // 版,見該函式與後端 handlePublicGeoPlaceDetails/
   // publicPlaceDetailsAllowlist 的完整說明)而非 fetchGeoPlaceDetails——
   // 理由與用法同桌面版 AttractionInfoPanel.tsx 的同名 prop:供沒有真正
-  // 登入態的公開展示頁(手機螢幕寬度下的 KiyomizuDemoPage.tsx)使用,
+  // 登入態的公開展示頁(手機螢幕寬度下的 InteractiveExploreMap.tsx)使用,
   // 讓固定示範資料也能顯示 Google/Pexels 雙來源照片輪播,不會像一般的
   // fetchGeoPlaceDetails 那樣打 /internal/* 必定被 internalAuth 拒絕。
   // 由呼叫端明確指定要用哪支端點,這個元件不自己依 cfg.token 是否為
@@ -339,6 +346,10 @@ export function GeoOutlinePhoneInfoSheet({
   // 'added',不是這個元件自己直接呼叫。
   const handleAddClick = () => {
     if (!candidate) return
+    if (requireAuth) {
+      requireAuth()
+      return
+    }
     if (candidateHasScheduledDate(candidate)) {
       onAddCandidate?.(candidate)
       dispatchAddUi({ type: 'added' })

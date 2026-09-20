@@ -4,7 +4,7 @@ import { computeNearbyAttractions, filterNearbyByCategory, nearbyCategoriesPrese
 
 // geoNearbyAttractions.test.ts——「附近景點」清單純邏輯(距離排序、分類
 // 篩選規則)的回歸測試,這三支函式是 DesktopLayout.tsx/AttractionInfoPanel.tsx/
-// KiyomizuDemoPage.tsx 原本各自寫死、之後 GeoOutlinePhoneView.tsx 手機版
+// InteractiveExploreMap.tsx 原本各自寫死、之後 GeoOutlinePhoneView.tsx 手機版
 // 也共用的唯一真相來源(見該檔案開頭的完整說明)。
 function attraction(overrides: Partial<GeoAttraction> = {}): GeoAttraction {
   return { name: '忠僕茶屋', lat: 34.99, lng: 135.78, isTheme: false, ...overrides }
@@ -35,7 +35,7 @@ describe('computeNearbyAttractions', () => {
     expect(result).toHaveLength(3)
   })
 
-  it('limit 為 Infinity 時不截斷(KiyomizuDemoPage.tsx 的用法)', () => {
+  it('limit 為 Infinity 時不截斷(InteractiveExploreMap.tsx 的用法)', () => {
     const anchor = attraction({ name: '清水寺', lat: 34.9949, lng: 135.785, isTheme: true })
     const pool = Array.from({ length: 20 }, (_, i) =>
       attraction({ name: `景點${i}`, lat: 34.995 + i * 0.001, lng: 135.785 }))

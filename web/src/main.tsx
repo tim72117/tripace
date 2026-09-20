@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { HelmetProvider } from 'react-helmet-async'
 import { registerSW } from 'virtual:pwa-register'
 import { App } from './App'
 import './base-ui.css'
@@ -20,6 +21,18 @@ if (import.meta.env.PROD) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    {/* HelmetProvider:讓 JiufenPage/KyotoPage 這類介紹頁能各自用
+        <Helmet> 宣告專屬的 title/description/OG/canonical(見這兩個檔案
+        的完整說明)——整站是純 client-side SPA,index.html 裡的這批 meta
+        標籤原本是所有路由共用的一份,搜尋引擎/社群分享 bot 看到的永遠是
+        首頁的標題與描述,不是實際瀏覽頁面的內容。react-helmet-async 在
+        client 端掛載後動態改寫 <head>,支援執行 JS 的爬蟲(Googlebot 等
+        現代爬蟲都會執行 JS)可以正確讀到每頁各自的 meta;不支援 JS 的
+        傳統爬蟲/純文字分享預覽仍會退回 index.html 的預設值,這是
+        client-side rendering 架構的已知限制,之後若要完全解決需要
+        SSR/預渲染,不在這次改動範圍內。 */}
+    <HelmetProvider>
+      <App />
+    </HelmetProvider>
   </React.StrictMode>,
 )

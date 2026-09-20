@@ -17,6 +17,8 @@ import styles from './App.module.css'
 // 感知延遲之前就完成,不需要額外的載入動畫。
 const HomePage = lazy(() => import('./home/HomePage').then((m) => ({ default: m.HomePage })))
 const ProductPage = lazy(() => import('./home/ProductPage').then((m) => ({ default: m.ProductPage })))
+const JiufenPage = lazy(() => import('./home/JiufenPage').then((m) => ({ default: m.JiufenPage })))
+const KyotoPage = lazy(() => import('./home/KyotoPage').then((m) => ({ default: m.KyotoPage })))
 const PrivacyPage = lazy(() => import('./home/PrivacyPage').then((m) => ({ default: m.PrivacyPage })))
 const TermsPage = lazy(() => import('./home/TermsPage').then((m) => ({ default: m.TermsPage })))
 const CliAuthPage = lazy(() => import('./home/CliAuthPage').then((m) => ({ default: m.CliAuthPage })))
@@ -101,6 +103,15 @@ export function App() {
               三步驟操作流程,原本掛在 "/",首頁改成 HomePage.tsx 之後搬到
               這裡,供首頁導覽連結指向。 */}
           <Route path="/product" element={<ProductPage />} />
+          {/* /jiufen:九份介紹頁,見 JiufenPage.tsx——地形→礦業→衰退→人文
+              重生因果鏈的分段長頁,視覺語言對齊 ProductPage/HomePage 的
+              紙感和風,無捲動視差特效。 */}
+          <Route path="/jiufen" element={<JiufenPage />} />
+          {/* /kyoto-kiyomizu:京都・清水寺介紹頁,見 KyotoPage.tsx——原本
+              HomePage.tsx 首頁捲動視差敘事的獨立頁面版本(該敘事與互動
+              地圖已從首頁移除,只留在這個獨立頁面),外殼架構對齊
+              JiufenPage.tsx 模式(互動地圖+進度導覽點+分段長頁)。 */}
+          <Route path="/kyoto-kiyomizu" element={<KyotoPage />} />
           {/* 隱私權政策/服務條款——視覺語言對齊首頁(HomePage.tsx)的紙感和風
               風格,見 LegalPage.tsx。 */}
           <Route path="/privacy" element={<PrivacyPage />} />

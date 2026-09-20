@@ -1,4 +1,5 @@
-/* KiyomizuDemoPage:試做展示頁的最小樣式——之後細部規劃再對齊
+/* InteractiveExploreMap(原檔名 KiyomizuDemoPage,2026-09 改名,見該
+   元件開頭的完整說明):試做展示頁的最小樣式——之後細部規劃再對齊
    HomePage.css 的視覺語言,目前先求排版能看、地圖容器有明確尺寸。
    max-width 從 960px 加倍到 1920px(對應「地圖寬度放大兩倍」的要求),
    .stage 本身寬度仍是 100%,由外層 .page 的 max-width 決定實際上限。 */
@@ -26,7 +27,7 @@
 }
 
 /* stage:非滿版地圖容器——固定高度 + position:relative,見
-   KiyomizuDemoPage.tsx 對這層容器用途的完整說明。高度/圓角/陰影都改讀
+   InteractiveExploreMap.tsx 對這層容器用途的完整說明。高度/圓角/陰影都改讀
    CSS 變數(--kiyomizu-stage-height 預設 680px,即獨立路由
    /demo/kiyomizu 原本固定寫死的值;--kiyomizu-stage-radius/
    --kiyomizu-stage-shadow 預設維持原本卡片視覺)——讓外層呼叫端

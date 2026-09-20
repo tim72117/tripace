@@ -451,7 +451,7 @@ export function fetchGeoAttractions(cfg: ClientConfig, city: string) {
 
 // fetchPublicGeoAttractions:GET /public/geo/attractions(免登入版,見
 // 後端 handlePublicGeoAttractions/publicAttractionsCityAllowlist 的完整
-// 說明)——供登入前的公開展示頁(web/src/home/KiyomizuDemoPage.tsx/
+// 說明)——供登入前的公開展示頁(web/src/home/InteractiveExploreMap.tsx/
 // YasakaDemoPage.tsx)查詢固定示範城市裡人工建檔的景點區域清單,取代原本
 // 寫死在 kiyomizuDemoFixture.ts/yasakaDemoFixture.ts 的固定 fixture。只
 // 允許查詢後端白名單裡固定收錄的那批城市名稱,查詢白名單外的城市會收到
@@ -685,7 +685,7 @@ export function fetchGeoPlaceDetails(cfg: ClientConfig, placeId: string) {
 
 // fetchPublicGeoPlaceDetails:GET /public/geo/place-details(免登入版,見
 // 後端 handlePublicGeoPlaceDetails/publicPlaceDetailsAllowlist 的完整
-// 說明)——供登入前的公開展示頁(web/src/home/KiyomizuDemoPage.tsx)使用,
+// 說明)——供登入前的公開展示頁(web/src/home/InteractiveExploreMap.tsx)使用,
 // cfg.token 為 null 的訪客模式下,一般的 fetchGeoPlaceDetails 打
 // /internal/* 必定被 internalAuth 拒絕(401),這支端點走完全不同的
 // /public/* 路徑,不需要 Authorization header。只允許查詢後端白名單裡

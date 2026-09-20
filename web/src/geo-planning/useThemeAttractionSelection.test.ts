@@ -6,7 +6,7 @@ import { fetchPoiContent, useThemeAttractionSelection } from './useThemeAttracti
 // useThemeAttractionSelection.test.ts——驗證這支 hook 要解決的核心問題:
 // 主題卡切換(themeKey 變動)時,poiContent/hoveredAttraction/
 // categoryFilter 三者都要一併清空(見該檔案開頭的完整說明:這是
-// DesktopLayout.tsx/KiyomizuDemoPage.tsx 兩邊原本各自手寫、容易漏寫其中
+// DesktopLayout.tsx/InteractiveExploreMap.tsx 兩邊原本各自手寫、容易漏寫其中
 // 一個 reset 的部分),以及 openPoiContent 的查詢/fallback 流程。
 function attraction(overrides: Partial<GeoAttraction> = {}): GeoAttraction {
   return { name: '忠僕茶屋', lat: 34.99, lng: 135.78, isTheme: false, ...overrides }

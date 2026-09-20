@@ -1537,6 +1537,17 @@ var publicPlaceDetailsAllowlist = map[string]bool{
 	"ChIJ8Vjv2dEIAWARKo8E1PyKMbQ": true, // 七味家本舖
 	"ChIJbYS509EIAWAREUzj6gl3jgk": true, // 松韻堂
 	"ChIJVVWBKdIIAWARu9g_YmWYZ5M": true, // 朝日堂
+
+	// 九份(JiufenPage.tsx 開頭嵌入 KiyomizuDemoPage,見上方
+	// publicAttractionsCityAllowlist 的完整說明)
+	"ChIJcZT7-hdFXTQR0qekplqCFV8": true, // 九份老街(主題點)
+	"ChIJvTQ487BaXTQRm-qTuFUFhcQ": true, // 小金瓜露頭
+	"EjpRaW5nYmlhbiBSZCwgUnVpZmFuZyBEaXN0cmljdCwgTmV3IFRhaXBlaSBDaXR5LCBUYWl3YW4gMjI0Ii4qLAoUChIJm7Juij1FXTQRVvd8PsllWyMSFAoSCXlnUwUYRV00EYQ7lYyDOrgp": true, // 輕便路(道路型地標,place_id 格式較長屬正常現象)
+	"ChIJi230vwRFXTQRc8Q3GycKrok": true, // 基隆山
+	"ChIJbzIi2RdFXTQRP-59mCj71DU": true, // 豎崎路
+	"ChIJIR7-nRdFXTQRcsrMwN-ne9o": true, // 昇平戲院
+	"ChIJ9653Kh5FXTQR1VWNys_RefA": true, // 新北市立黃金博物館
+	"ChIJsSYt4BdFXTQRquCsN8eG7BE": true, // 阿妹茶樓
 }
 
 // GET /public/geo/place-details?placeId={Google Place ID}
@@ -1583,6 +1594,7 @@ func (s *Server) handlePublicGeoPlaceDetails(w http.ResponseWriter, r *http.Requ
 // 固定示範資料,需要同步在這裡補上,不會自動生效。
 var publicAttractionsCityAllowlist = map[string]bool{
 	"京都": true,
+	"九份": true, // JiufenPage.tsx 開頭嵌入 KiyomizuDemoPage(參數化為 city prop)
 }
 
 // handleGeoAttractionsByCity 是 GET /public/geo/attractions 的核心邏輯,

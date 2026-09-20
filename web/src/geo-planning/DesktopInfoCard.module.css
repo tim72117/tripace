@@ -10,7 +10,15 @@
    按鈕組)透過 children 傳入,不受影響。 */
 .panel {
   position: absolute;
-  top: 64px;
+  /* top 用 CSS 變數(預設 64px)——正式 App(DesktopLayout.tsx 掛的
+     ExploreMap.tsx)地圖上方有城市搜尋框/類別標籤列這排固定 UI,
+     卡片頂部需要留這段距離避免重疊;NativeMapBase.tsx 這條「最小
+     原生地圖」路線(InteractiveExploreMap.tsx/JiufenPage.tsx 用)沒有這排
+     UI,卡片跟地圖邊框的間距不需要跟著留這麼多(2026-09 實測回報
+     「卡片跟地圖邊框間距太大」),故改成可由呼叫端覆寫的變數,不直接
+     改動這裡的預設值(避免動到正式 App 的既有版面)——見
+     JiufenPage.css 的 .jiufen-map-intro 作用域覆寫。 */
+  top: var(--desktop-info-card-top, 64px);
   right: 16px;
   bottom: 16px;
   width: 340px;

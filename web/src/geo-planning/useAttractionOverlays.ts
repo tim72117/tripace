@@ -19,6 +19,7 @@ import { isMarkerCandidate, isMarkerSelected } from './geoMarkerSelection'
 export function useAttractionOverlays({
   mapRef,
   mapReady,
+  mapVersion = 0,
   attractions,
   selectedKey,
   hoverKey,
@@ -29,6 +30,15 @@ export function useAttractionOverlays({
 }: {
   mapRef: React.RefObject<google.maps.Map | null>
   mapReady: boolean
+  // mapVersion:選填,只有呼叫端用 NativeMapBase.tsx(見該檔案
+  // MapHandle.mapVersion 的完整說明)才會有意義地傳入——ExploreMap.tsx
+  // 自己管理地圖生命週期,不經過 NativeMapBase,沒有這個概念,不傳時
+  // 預設 0(下方 useEffect 的依賴陣列多一個恆定值,不影響既有行為)。
+  // 存在的理由:單靠 mapReady 這個布林值,在地圖因 theme 改變而重建時,
+  // 可能被 React 18 自動批次處理合併掉中間的 false 狀態,導致這個
+  // effect 誤判成「沒有變化」而不重新執行,新地圖建好後 overlay 沒有
+  // 被重新掛上去(見 NativeMapBase.tsx 對這個問題的完整說明)。
+  mapVersion?: number
   attractions: GeoAttraction[]
   selectedKey?: GeoSelectedKey
   hoverKey?: GeoSelectedKey
@@ -125,7 +135,7 @@ export function useAttractionOverlays({
       overlaysRef.current = []
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, filteredAttractions])
+  }, [mapReady, mapVersion, filteredAttractions])
 
   // 同步選取狀態:只切換既有 overlay 的 class,不重建 DOM(重建會讓光暈/
   // 照片的 fadeIn 動畫重播,側欄點擊選取時地圖上的地標會不必要地閃一下)。

@@ -69,7 +69,7 @@ vi.mock('./ExploreMap', () => ({
     // children(GeoOutlinePhoneInfoSheet)改掛入 ExploreMap 後(見
     // GeoOutlinePhoneView.tsx 的完整說明),這個 mock 必須真的渲染
     // children,否則資訊卡永遠不會出現在測試的 DOM 樹裡——對齊
-    // DesktopLayout.tsx/KiyomizuDemoPage.tsx 對應測試 mock ExploreMap/
+    // DesktopLayout.tsx/InteractiveExploreMap.tsx 對應測試 mock ExploreMap/
     // NativeMapBase 時的既有慣例。
     return props.children ?? null
   },

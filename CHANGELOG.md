@@ -2,6 +2,27 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.14.0 — 2026-09-21
+
+### 新增
+
+- **京都獨立介紹頁**（`/kyoto-kiyomizu`）：比照九份介紹頁模式，把原本內嵌在首頁的京都東山捲動視差敘事獨立成一個頁面，敘事文案照搬首頁既有內容，圖片搬遷到 GCS（`landing/kyoto/`），嵌入互動地圖並支援日夜切換即時換色、進度導覽點、開頭自動聚焦。
+- 九份、京都介紹頁各自加上專屬的 SEO meta（`<title>`／`<meta description>`／OG／Twitter card／canonical，透過新引入的 `react-helmet-async`），取代原本整站共用首頁預設值的狀況；`sitemap.xml` 補上這兩條路由。
+- 首頁新增「目的地」文字列表區塊，取代原本的完整京都捲動敘事與互動地圖，改為列出九份、京都兩個城市介紹頁的連結入口。
+
+### 修正
+
+- **`/jiufen`、`/kyoto-kiyomizu` 直接訪問或重新整理回傳 404**：`server/cmd/server/static.go` 的 `knownRoutePatterns` 白名單未同步新路由。
+- **管理後台（`/admin`）被 PWA service worker 攔截成 404**：主應用的 `navigateFallback` 未排除 `/admin` 路徑，導致對它的導航請求被誤導回主應用的 `index.html`；`navigateFallbackDenylist` 補上 `/admin` 排除規則。
+- **九份頁面公開展示頁「加入行程」按鈕靜默失效**：訪客身份下按鈕會展開日期選單，選定後卻沒有任何動作（沒有候選籃/行程可寫入，也沒有提示登入）；`PlacePanel`／`GeoOutlinePhoneInfoSheet` 新增 `requireAuth` optional prop，公開展示頁改為點擊後直接導向登入頁。
+- `JiufenPage.tsx` 頁尾「更多景點」連結指向首頁而非京都介紹頁的錯字修正。
+
+### 重構
+
+- **`KiyomizuDemoPage` 更名為 `InteractiveExploreMap`**：這個元件已從最初的京都限定 demo，演變成首頁／九份頁／京都頁三個正式頁面共用的互動地圖元件，新名稱不再暗示綁定單一城市或暫時性質；新增 `initialZoom`／`centerNorthOffsetKm` 兩個 optional prop，讓呼叫端依景點分布密度覆寫地圖初始縮放與中心點偏移。
+- 首頁移除舊版京都捲動視差敘事（SVG 手繪路徑動畫、逐站文字、bloom 展開照片）與內嵌互動地圖的全部程式碼與樣式（`HomePage.css` 約 426 行死碼一併清除）。
+- `KyotoPage.css` 選擇器統一補上 `.kyoto-page` scope 前綴，避免與 `HomePage.css` 的 `.kyoto-bloom` scope 下同名 class 混淆。
+
 ## v0.13.1 — 2026-09-20
 
 ### 新增

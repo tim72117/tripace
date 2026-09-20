@@ -74,10 +74,22 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
         // navigateFallback 預設會把所有瀏覽器導航請求(網址列輸入、
         // reload,即 mode=navigate)一律導回快取的 index.html,不分
-        // 副檔名——這會導致直接開 /robots.txt、/sitemap.xml 這種
+        // 路徑/副檔名——這會導致直接開 /robots.txt、/sitemap.xml 這種
         // 非 HTML 靜態檔也被攔截成 SPA 外殼,而不是真正的檔案內容。
         // 明確排除這兩個路徑,讓它們照常打到伺服器拿實際檔案。
-        navigateFallbackDenylist: [/^\/robots\.txt$/, /^\/sitemap\.xml$/],
+        //
+        // /admin(/.*)?:管理後台是完全獨立的另一個 SPA(web/admin,見
+        // static_admin.go 開頭說明),ADMIN_ENABLED 開啟時可同源掛在主服務
+        // 的 /admin/ 底下——這支 service worker 是主應用(web/)自己 build
+        // 出來的,只 precache 主應用自己的 index.html,對 /admin/* 這個
+        // 網址完全不知情(不在它的建置產物範圍內)。若不排除,直接訪問
+        // /admin 或重新整理該頁面時,navigateFallback 一律攔截導航請求、
+        // 回填主應用的 index.html,而主應用的 React Router 沒有 /admin
+        // 路由,最終落到 NotFoundPage(404)——這是實際發生過的回報
+        // (「admin 會被 PWA 影響變成 404」),不是 adminserver 或
+        // static_admin.go 本身的問題,根因在這支主應用的 service worker
+        // 攔截了不屬於它的路徑。
+        navigateFallbackDenylist: [/^\/robots\.txt$/, /^\/sitemap\.xml$/, /^\/admin(\/.*)?$/],
       },
     }),
   ],

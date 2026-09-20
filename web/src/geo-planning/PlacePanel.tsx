@@ -82,6 +82,7 @@ export function PlacePanel({
   onAddCandidate,
   onAddAndReveal,
   onSchedule,
+  requireAuth,
   scheduledDates,
   shiftBy,
   style,
@@ -135,6 +136,17 @@ export function PlacePanel({
   // 讓使用者感覺到「東西加進候選籃了、去左邊看」。這個元件不知道呼叫端
   // 具體怎麼做視覺提示,只負責原封不動往上回報使用者按了這顆按鈕。
   onAddAndReveal?: (candidate: GeoCandidate) => void
+  // requireAuth:公開展示頁(InteractiveExploreMap.tsx)專用的登入導轉
+  // ——這個元件同時被正式版(DesktopLayout.tsx,已登入)與公開展示頁
+  // (未登入訪客)共用,但「加入行程」原本的三路分岔(見下方 handleAddClick
+  // 完整說明)全部走 onAddCandidate/onSchedule 這兩個 optional callback,
+  // 公開展示頁沒有候選籃/行程可以真的寫入,原本兩個 callback 都不傳,
+  // 結果是按鈕點下去展開日曆/選單、選完日期後整個操作靜默失效(沒有任何
+  // 回饋,使用者不知道發生了什麼事)——這比直接要求登入還糟,是這個 prop
+  // 要解決的問題。有值時 handleAddClick 一開始就呼叫這個 callback並直接
+  // return,略過原本的三路分岔(不展開日曆/選單);未傳(undefined,正式版
+  // 的既有呼叫方式)時完全不影響原本行為。 */
+  requireAuth?: () => void
   // scheduledDates:行程本身目前已排定的日期清單(YYYY-MM-DD),由呼叫端
   // (DesktopLayout.tsx)算好傳入——這個元件不需要知道怎麼從候選籃/行程
   // entries 推導出這份清單。候選沒有自己的日期、但行程已有排定日期時,
@@ -219,8 +231,13 @@ export function PlacePanel({
   // 日期(candidateHasScheduledDate)直接呼叫 onAddCandidate,維持既有行為;
   // 候選沒有日期時,行程本身有既有排定日期(scheduledDates 非空)就先展開
   // 下拉選單,否則直接展開日曆(見 onAddCandidate/onSchedule 的完整說明)。
+  // requireAuth 有值時優先攔截,略過整段分岔(見該 prop 的完整說明)。
   const handleAddClick = () => {
     if (!candidate) return
+    if (requireAuth) {
+      requireAuth()
+      return
+    }
     if (candidateHasScheduledDate(candidate)) {
       onAddCandidate?.(candidate)
       return
@@ -297,7 +314,7 @@ export function PlacePanel({
                 <button
                   type="button"
                   className={styles.addToNewTripBtn}
-                  onClick={() => onAddAndReveal?.(candidate)}
+                  onClick={() => (requireAuth ? requireAuth() : onAddAndReveal?.(candidate))}
                   title="加入候選並顯示候選籃"
                   aria-label="加入候選並顯示候選籃"
                 >

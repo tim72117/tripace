@@ -83,7 +83,7 @@ export function AttractionInfoPanel({
   // 版,見該函式與後端 handlePublicGeoPlaceDetails/
   // publicPlaceDetailsAllowlist 的完整說明)而非 fetchGeoPlaceDetails——
   // 供沒有真正登入態的公開展示頁使用(見
-  // web/src/home/KiyomizuDemoPage.tsx 的完整說明),讓固定示範資料也能
+  // web/src/home/InteractiveExploreMap.tsx 的完整說明),讓固定示範資料也能
   // 顯示 Google/Pexels 雙來源照片輪播,不會像一般的 fetchGeoPlaceDetails
   // 那樣打 /internal/* 必定被 internalAuth 拒絕。由呼叫端明確指定要用
   // 哪支端點,這個元件不自己依 cfg.token 是否為 null 猜測——避免把
@@ -93,7 +93,7 @@ export function AttractionInfoPanel({
   usePublicPlaceDetails?: boolean
   // onCategoryFilterChange:「附近景點」分類篩選變動時觸發(含清單本身
   // 因切換 attraction 被重置回 null)——讓呼叫端(DesktopLayout.tsx/
-  // KiyomizuDemoPage.tsx)能把地圖上精選點圓點的顯示範圍(見
+  // InteractiveExploreMap.tsx)能把地圖上精選點圓點的顯示範圍(見
   // useAttractionOverlays.ts 的 revealedAttractionNames)同步套用同一個
   // 篩選條件,使用者選「甜點/茶屋」時,地圖上應該只看得到甜點/茶屋類的
   // 圓點,跟清單篩選結果一致,不是清單篩了、地圖卻仍顯示全部精選點。

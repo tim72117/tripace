@@ -15,7 +15,7 @@ import { ThemeToggle } from '../user/ThemeToggle'
 import type { Theme } from '../theme'
 import { BASE_URL } from '../AppCommon'
 import { trackEvent } from '../analytics'
-import styles from './KiyomizuDemoPage.module.css'
+import styles from './InteractiveExploreMap.module.css'
 
 // GUEST_CFG:這個頁面是登入前的公開展示頁,沒有使用者自己的 JWT
 // ——token 傳 null(走訪客,見 api.ts ClientConfig 的完整說明)。baseURL
@@ -26,18 +26,16 @@ import styles from './KiyomizuDemoPage.module.css'
 // 不同 port)下打不到正確的後端,必須改用正確的 baseURL。
 const GUEST_CFG: ClientConfig = { baseURL: BASE_URL, token: null }
 
-// DEMO_CITY:這個展示頁固定查詢的城市——對應後端
-// publicAttractionsCityAllowlist 白名單裡的其中一個值(見該常數的完整
-// 說明),查詢白名單外的城市會被後端拒絕。
-const DEMO_CITY = '京都'
-
-// FALLBACK_CENTER:資料尚未從 API 載入完成前的暫定地圖中心(清水寺/
-// 八坂神社座標的粗略中點)——只在第一次渲染、attractions 還是空陣列時
-// 短暫使用,資料載入完成後 INITIAL_CENTER 會改用真正查到的主題點座標
-// 重新計算(見下方 useEffect)。刻意留一個粗略常數而非留 undefined,
-// 是因為 NativeMapBase 在 center 為 undefined 時不會建圖(見該檔案的
-// 說明),但這個展示頁在資料真正載入前仍需要顯示地圖容器本身(讀取中
-// 的空地圖背景),不能整個空白。
+// FALLBACK_CENTER:資料尚未從 API 載入完成前的暫定地圖中心——只在第一次
+// 渲染、attractions 還是空陣列時短暫使用,資料載入完成後 INITIAL_CENTER
+// 會改用真正查到的主題點座標重新計算(見下方 useEffect)。刻意留一個粗略
+// 常數而非留 undefined,是因為 NativeMapBase 在 center 為 undefined 時
+// 不會建圖(見該檔案的說明),但這個展示頁在資料真正載入前仍需要顯示
+// 地圖容器本身(讀取中的空地圖背景),不能整個空白。這個座標對齊原本
+// 唯一呼叫端(京都清水寺/八坂神社)的粗略中點——city prop 改成其他城市
+// (例如九份)時仍會短暫套用這個京都附近的預設值,但只在資料載入完成前
+// 那一瞬間可見,實測影響可忽略,不特地為每個城市各自維護一個 fallback
+// 中心。
 const FALLBACK_CENTER = { lat: 35.0007, lng: 135.7798 }
 
 // COMBINED_RESTRICT_RADIUS_KM:以兩個主題點的中點為圓心,東西南北四邊
@@ -70,7 +68,7 @@ function computeRestrictBounds(center: { lat: number; lng: number }): google.map
 // 反推「這個經緯度跨距,配合 .stage 容器實際像素寬高,剛好能完整顯示的
 // 最大 zoom」——取經度/緯度兩個方向算出來的較小值,確保兩個方向都不會
 // 超出容器,無條件捨去避免無條件進位導致邊界超出一點點誤差就被裁切。
-// 容器尺寸抓 KiyomizuDemoPage.module.css 的 .stage 目前固定寫死的 680px
+// 容器尺寸抓 InteractiveExploreMap.module.css 的 .stage 目前固定寫死的 680px
 // 高、寬度用該檔案 max-width 1920px 估算的可視寬度上限概算,不做即時
 // 量測。
 const MAP_WIDTH_PX_ESTIMATE = 960
@@ -94,15 +92,27 @@ function zoomToFitBounds(
 // 大小互相獨立,各自可以單獨調整,不會再互相牽動。
 const INITIAL_ZOOM = 15
 
-// KiyomizuDemoPage:landing page(登入前)的試做展示頁——非滿版地圖,
+// InteractiveExploreMap:landing page(登入前)的試做展示頁——非滿版地圖,
 // 共用登入後畫面在用的同一批元件(ExploreMap/AttractionInfoPanel),不是
 // 重新刻一份簡化版——這樣之後正式功能有任何視覺/互動調整,這個展示頁
-// 會自動跟著更新,不需要另外維護一份重複邏輯。
+// 會自動跟著更新,不需要另外維護一份重複邏輯。原檔名/元件名沿用
+// 「KiyomizuDemoPage」是歷史命名(最初只做京都清水寺一個城市,且定位是
+// 「demo」),city prop 加入後這個元件早已不只服務京都、也不只是 demo
+// 性質(首頁/JiufenPage.tsx/KyotoPage.tsx 三個正式頁面共用同一份實作),
+// 2026-09 改名成現在這個中性名稱,不再暗示綁定單一城市或暫時性質。
+// city prop 讓這個元件跟任何特定城市完全解耦,只要資料庫有對應資料、
+// 且已加進後端
+// publicAttractionsCityAllowlist/publicPlaceDetailsAllowlist(見兩者的
+// 完整說明)都能直接沿用——JiufenPage.tsx 傳 city="九份" 就是第一個
+// 非京都的呼叫端,沒有另外新建一份重複元件。
 //
-// 2026-09:從「固定顯示單一主題點」改成「兩個主題點並存,點哪個顯示
+// 2026-09:從「固定顯示單一主題點」改成「N 個主題點並存,點哪個顯示
 // 哪個」——見上方 THEME_POINTS/openThemeName 的說明,這是為了回答
 // 「八坂神社是否適合獨立成一個主題點」這個編輯判斷,需要直接看兩者
-// 放在同一張地圖上的實際效果,而非各自孤立展示。
+// 放在同一張地圖上的實際效果,而非各自孤立展示。這個機制天生支援任意
+// 數量的主題點(themePoints 直接從 attractions.filter(isTheme) 算出),
+// 京都是 2 個、九份目前是 1 個,不需要為了單一主題點的城市另外分支
+// 處理。
 //
 // 版面:外層 .stage 是這個展示頁自己的容器,固定高度、position:relative
 // ——ExploreMap/AttractionInfoPanel 內部的浮動卡片都是 position:absolute
@@ -117,7 +127,7 @@ const INITIAL_ZOOM = 15
 // 真的從 API 查回來」是同一件事的兩個面向,不需要分開處理:center 改成
 // 依 attractions 是否已載入完成動態計算(見下方 initialCenter),
 // attractions 為空陣列時仍未設定 center,天然延續原本的迴避手法。
-export function KiyomizuDemoPage({
+export function InteractiveExploreMap({
   // showThemeToggle:要不要顯示這個元件自己內建的日夜切換按鈕——預設
   // true,對齊獨立路由 /demo/kiyomizu(見 App.tsx)原本的行為,那裡這個
   // 元件是整頁唯一內容,需要自己的切換入口。HomePage.tsx 把這個元件嵌入
@@ -129,8 +139,61 @@ export function KiyomizuDemoPage({
   // 的說明),theme state 本身、地圖跟隨 theme 建圖的邏輯都不受影響,
   // 只是拿掉那顆按鈕跟它所在的 .toggleRow。
   showThemeToggle = true,
+  // city:這個展示頁固定查詢的城市——對應後端 publicAttractionsCityAllowlist
+  // 白名單裡的其中一個值(見該常數的完整說明),查詢白名單外的城市會被
+  // 後端拒絕。原本是模組層級的寫死常數 DEMO_CITY(固定「京都」),
+  // JiufenPage.tsx 需要同一套元件展示「九份」而參數化成 prop——預設值
+  // 維持「京都」,對齊原本唯一呼叫端(HomePage.tsx)不需要改動呼叫方式
+  // 就能繼續運作。
+  city = '京都',
+  // externalTheme:外部(呼叫端)控制的日夜模式——原本 showThemeToggle
+  // 為 false 時,這個元件假設「呼叫端沒有自己的切換鈕,只需要跟系統設定
+  // 走一次」(見下方 theme useState 初始值的說明),這個假設在
+  // HomePage.tsx 成立(它嵌入這個元件時本身也還沒有獨立的日夜切換鈕),
+  // 但 JiufenPage.tsx 有自己的 .jiufen-theme-toggle 手動切換鈕,使用者
+  // 切換時卻發現地圖底圖沒有跟著換(2026-09 實測回報「不會即時換」)
+  // ——根因是這個元件內部的 theme state 是獨立自管的,跟外部完全脫鉤,
+  // 只在掛載當下讀一次系統偏好,之後不論外部發生什麼變化都不會再更新。
+  // 新增這個 optional prop,有值時優先於內部 theme state,讓有自己
+  // 切換鈕的呼叫端(JiufenPage.tsx)可以把目前的 theme 直接傳進來讓
+  // 地圖跟著即時重建;未傳(undefined,HomePage.tsx 沿用原行為)時完全
+  // 不受影響,退回原本「掛載時讀一次系統設定」的邏輯。
+  externalTheme,
+  // defaultOpenTheme:attractions 從 API 查回來後,自動打開的主題點
+  // 名稱——未傳(undefined,HomePage.tsx 沿用原行為)時維持「掛載時
+  // 不預先開任何一張卡片,使用者要先點地圖上的主題點才會顯示」的既有
+  // 行為(見下方 openThemeName 的說明);傳值時,一旦 attractions 載入
+  // 完成且找得到對應名稱的主題點,就自動設定成打開狀態,不需要使用者
+  // 自己點擊。JiufenPage.tsx 傳「九份老街」——這個頁面只有一個主題點,
+  // 使用者一進頁面就先看到地圖是空的、要點一下才看得到內容,體驗上
+  // 不如直接開好給他看;HomePage.tsx 京都有兩個主題點(清水寺/八坂
+  // 神社)平等並存,預先選定其中一個反而暗示了優先順序(見
+  // openThemeName 說明的既有理由),故不套用這個行為,繼續維持
+  // undefined。
+  defaultOpenTheme,
+  // initialZoom:地圖初始縮放層級——未傳(undefined)時退回模組層級的
+  // INITIAL_ZOOM(15,見該常數完整說明),對齊原本唯一呼叫端(HomePage.tsx)
+  // 不需要改動呼叫方式就能繼續運作。JiufenPage.tsx 傳更大的值(見該檔案
+  // 呼叫處說明)——九份聚落腹地小、景點分布密集,15 這個對京都(景點
+  // 分布較開闊)校準過的縮放層級在九份地圖上顯得過遠,拉近能讓使用者
+  // 一進頁面就看清楚老街周邊的密集標記,不需要自己手動放大。
+  initialZoom,
+  // centerNorthOffsetKm:初始中心點往北偏移的公里數——未傳(undefined)
+  // 時退回下方 INITIAL_CENTER_NORTH_OFFSET_KM 預設值(0.1km,對齊原本
+  // 唯一呼叫端 HomePage.tsx 不需要改動呼叫方式就能繼續運作,見該常數
+  // 完整說明)。JiufenPage.tsx 傳負值(見該檔案呼叫處說明)——這個北偏
+  // 量原本是針對京都兩個主題點的中點校準出來的初始畫面調整,九份只有
+  // 一個主題點(九份老街),不需要這個「不偏袒任一邊」的置中考量,使用者
+  // 額外要求「中心點往下(南)100 公尺」,故傳 -0.1 抵消掉共用的預設北偏,
+  // 讓九份的初始中心落回九份老街本身(未偏移的原始座標)。
+  centerNorthOffsetKm,
 }: {
   showThemeToggle?: boolean
+  city?: string
+  externalTheme?: Theme
+  defaultOpenTheme?: string
+  initialZoom?: number
+  centerNorthOffsetKm?: number
 } = {}) {
   // theme 初始值:showThemeToggle 為 false(嵌入首頁,沒有按鈕可以手動
   // 切換)時,直接讀一次系統的 prefers-color-scheme 決定初始深淺色,
@@ -139,9 +202,16 @@ export function KiyomizuDemoPage({
   // showThemeToggle 為 true(獨立展示頁,原本行為)時維持 null,由使用者
   // 按下 ThemeToggle 才決定明確值,不搶先讀系統設定——理由同該按鈕原本
   // 的既有慣例(見下方 ThemeToggle 呼叫處)。
-  const [theme, setTheme] = useState<Theme>(() => (
+  const [internalTheme, setTheme] = useState<Theme>(() => (
     showThemeToggle ? null : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
   ))
+  // theme:externalTheme 有值時優先採用(見該 prop 的完整說明),否則退回
+  // 內部自管的 internalTheme——兩種模式不會同時發生:showThemeToggle
+  // 為 true 的呼叫端不會傳 externalTheme(自己的切換鈕要能運作,見下方
+  // <ThemeToggle onChange={setTheme}>),為 false 的呼叫端要嘛完全不傳
+  // (HomePage.tsx,退回讀系統設定一次的原行為)要嘛傳 externalTheme
+  // (JiufenPage.tsx,即時反映外部切換)。
+  const theme = externalTheme !== undefined ? externalTheme : internalTheme
   // isDesktop:寬度 >= 768px(見 useIsDesktop.ts 的完整說明,跟正式功能
   // 桌面/手機版分流用的同一個斷點跟同一支 hook)——決定主題卡要用桌面版
   // 的 AttractionInfoPanel(絕對定位疊在地圖右緣的浮動卡片)還是手機版
@@ -156,17 +226,20 @@ export function KiyomizuDemoPage({
   // 不同的清單邏輯。
   const isDesktop = useIsDesktop()
 
-  // attractions:這個展示頁固定城市(DEMO_CITY)裡人工建檔的全部景點區域
+  // attractions:這個展示頁固定城市(city prop)裡人工建檔的全部景點區域
   // ——取代原本 kiyomizuDemoFixture.ts/yasakaDemoFixture.ts 兩份寫死的
   // fixture,改成掛載時真的呼叫 fetchPublicGeoAttractions(免登入公開
   // 端點,見該函式與後端 handlePublicGeoAttractions/
   // publicAttractionsCityAllowlist 的完整說明)查詢。載入中/查詢失敗都
   // 維持空陣列,不特別顯示錯誤訊息——這是試做展示頁,查詢失敗時讓地圖
   // 顯示成「空的,沒有任何主題點/精選點」即可,不需要額外的錯誤 UI。
+  // city 加進依賴陣列:JiufenPage.tsx 這類非首次掛載就決定 city 的
+  // 呼叫端理論上不會動態切換這個 prop(掛載後固定),但保持依賴陣列
+  // 誠實對應 effect 內實際讀取的值,是比較安全的既有慣例。
   const [attractions, setAttractions] = useState<GeoAttraction[]>([])
   useEffect(() => {
     let cancelled = false
-    fetchPublicGeoAttractions(GUEST_CFG, DEMO_CITY)
+    fetchPublicGeoAttractions(GUEST_CFG, city)
       .then((res) => {
         if (!cancelled) setAttractions(res.attractions)
       })
@@ -176,7 +249,7 @@ export function KiyomizuDemoPage({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [city])
 
   // themePoints:依 attractions 動態分組——主題點(isTheme)各自搭配「同一
   // 城市底下其餘所有非主題點」當它的精選點清單。這個展示頁目前只有清水寺
@@ -203,13 +276,15 @@ export function KiyomizuDemoPage({
   // COMBINED_RESTRICT_RADIUS_KM(2km),兩個主題點仍完全落在偏移後的
   // 可拖曳範圍內,不影響「兩個主題點都在可探索範圍內」這個既有前提,
   // 只是整個範圍的中心跟著初始畫面一起微幅北移。 */
-  const INITIAL_CENTER_NORTH_OFFSET_KM = 0.1
+  const DEFAULT_CENTER_NORTH_OFFSET_KM = 0.1
+  const effectiveNorthOffsetKm = centerNorthOffsetKm ?? DEFAULT_CENTER_NORTH_OFFSET_KM
   const initialCenter = useMemo(() => {
     if (themePoints.length === 0) return undefined
     const lat = themePoints.reduce((sum, t) => sum + t.attraction.lat, 0) / themePoints.length
     const lng = themePoints.reduce((sum, t) => sum + t.attraction.lng, 0) / themePoints.length
-    return { lat: lat + INITIAL_CENTER_NORTH_OFFSET_KM / KM_PER_DEG_LAT, lng }
-  }, [themePoints])
+    return { lat: lat + effectiveNorthOffsetKm / KM_PER_DEG_LAT, lng }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themePoints, effectiveNorthOffsetKm])
 
   const [center, setCenter] = useState<{ lat: number; lng: number } | undefined>(undefined)
   useEffect(() => {
@@ -238,6 +313,24 @@ export function KiyomizuDemoPage({
   // 反而暗示了優先順序。
   const [openThemeName, setOpenThemeName] = useState<string | null>(null)
   const openTheme = themePoints.find((t) => t.attraction.name === openThemeName)
+
+  // defaultOpenTheme 自動打開——見該 prop 的完整說明。用 useEffect(而非
+  // 直接當 useState 初始值)是因為 attractions 是非同步從 API 查回來的
+  // (見上方 fetchPublicGeoAttractions 的 useEffect),掛載當下
+  // themePoints 必然是空陣列,useState 初始值算不出正確結果;改成等
+  // themePoints 有內容後才判斷要不要自動打開。只在 openThemeName 還是
+  // 初始值 null 時才設定(見下方判斷式)——避免使用者手動點擊切換到
+  // 另一個主題點或關閉卡片後,attractions 陣列若因故重新觸發這個
+  // effect(理論上不會,city 不會變動,純粹防禦性寫法),又把使用者
+  // 已經離開的預設主題點強制設回來。
+  useEffect(() => {
+    if (!defaultOpenTheme) return
+    if (openThemeName !== null) return
+    if (themePoints.some((t) => t.attraction.name === defaultOpenTheme)) {
+      setOpenThemeName(defaultOpenTheme)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultOpenTheme, themePoints])
 
   // useThemeAttractionSelection:主題卡開著時跟它並存/附掛的一組狀態
   // (poiContent/hoveredAttraction/categoryFilter)與對應的 reset/
@@ -274,7 +367,21 @@ export function KiyomizuDemoPage({
   // AttractionInfoPanel 一律可以有(使用者點過主題點)或没有(尚未點過)
   // 兩種狀態,精選點卡片都固定走並存渲染位置(見下方 JSX,PlacePanel 用
   // CSS 直接疊在主題卡預留位置,沒有主題卡開著時也不影響版面,理由見
-  // KiyomizuDemoPage.module.css 的說明)。
+  // InteractiveExploreMap.module.css 的說明)。
+  // handleRequireAuth:公開展示頁「加入行程」的登入導轉(見 PlacePanel.tsx/
+  // GeoOutlinePhoneInfoSheet.tsx requireAuth prop 的完整說明)——訪客沒有
+  // 候選籃/行程可以真的寫入,原本這裡完全不傳 onAddCandidate/onSchedule,
+  // 導致按鈕點下去展開日曆/選單、選完後整個操作靜默失效。改成導向 /app
+  // (全站既有的登入/進入 App 路由,見 HomePage.tsx/JiufenPage.tsx/
+  // KyotoPage.tsx 的「登入」按鈕同一個路由),讓使用者至少知道「要先登入
+  // 才能真的把這個地點排進行程」,而不是點了沒反應。用 window.location.href
+  // (整頁導航)而非 react-router 的 navigate——這個展示頁本身就是公開頁面
+  // 樹的一部分,/app 是完全不同的登入後應用程式入口,不是同一個 SPA router
+  // 底下的子路由。
+  const handleRequireAuth = useCallback(() => {
+    window.location.href = '/app'
+  }, [])
+
   const handleAttractionSelect = useCallback((a: GeoAttraction) => {
     // trackEvent:landing page 地圖互動追蹤(見 web/src/analytics.ts 的
     // 完整說明)——這是唯一的地圖點擊進入點(主題點/精選點都會經過這裡,
@@ -315,7 +422,7 @@ export function KiyomizuDemoPage({
   // 的 MapHandle,再往下傳給 useAttractionOverlays。跟 ExploreMap.tsx 內部
   // 原本的 mapRef/mapReady 是元件自己的 state 不同,這裡是从子元件
   // (NativeMapBase)回報上來的。
-  const [mapHandle, setMapHandle] = useState<MapHandle>({ mapRef: { current: null }, mapReady: false })
+  const [mapHandle, setMapHandle] = useState<MapHandle>({ mapRef: { current: null }, mapReady: false, mapVersion: 0 })
   const handleMapHandleChange = useCallback((handle: MapHandle) => {
     setMapHandle(handle)
   }, [])
@@ -323,6 +430,7 @@ export function KiyomizuDemoPage({
   useAttractionOverlays({
     mapRef: mapHandle.mapRef,
     mapReady: mapHandle.mapReady,
+    mapVersion: mapHandle.mapVersion,
     attractions,
     revealedAttractionNames,
     onAttractionSelect: handleAttractionSelect,
@@ -339,7 +447,7 @@ export function KiyomizuDemoPage({
       <div className={styles.stage}>
         <NativeMapBase
           center={center}
-          zoom={INITIAL_ZOOM}
+          zoom={initialZoom ?? INITIAL_ZOOM}
           minZoom={minZoom}
           restrictBounds={restrictBounds}
           // showZoomControl:手機版(!isDesktop)不顯示 Google Maps 內建的
@@ -401,6 +509,7 @@ export function KiyomizuDemoPage({
                   // 自動排到順位 0 的貼右緣位置,不會停在假設主題卡存在的
                   // 空洞位置。
                   style={{ right: stackedInfoCardRightPx(1, infoCardStack.presentOrders) }}
+                  requireAuth={handleRequireAuth}
                 />
               )}
             </>
@@ -443,6 +552,7 @@ export function KiyomizuDemoPage({
                   attraction={null}
                   cfg={GUEST_CFG}
                   onClose={() => setPoiContent(null)}
+                  requireAuth={handleRequireAuth}
                 />
               )}
             </>

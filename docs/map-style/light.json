@@ -43,6 +43,18 @@
       }
     },
     {
+      "id": "natural.land.landCover",
+      "geometry": {
+        "fillColor": "#a8b896"
+      }
+    },
+    {
+      "id": "pointOfInterest.recreation.park",
+      "geometry": {
+        "fillColor": "#a8b896"
+      }
+    },
+    {
       "id": "natural.water",
       "geometry": {
         "fillColor": "#f5f2ed"
@@ -57,6 +69,15 @@
       "id": "pointOfInterest",
       "geometry": {
         "visible": true
+      }
+    },
+    {
+      "id": "pointOfInterest.other.cemetery",
+      "geometry": {
+        "visible": false
+      },
+      "label": {
+        "visible": false
       }
     },
     {

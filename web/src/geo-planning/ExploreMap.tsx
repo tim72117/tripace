@@ -135,7 +135,7 @@ export function ExploreMap({
   // 當初始中心,直接建圖在那裡,一步到位、只查一次正確範圍的資料。
   initialCenter?: { lat: number; lng: number } | null
   // restrictBounds:限制使用者拖曳/縮放時能看到的地理範圍——目前唯一的
-  // 呼叫端是 KiyomizuDemoPage.tsx(見該檔案的完整說明,固定示範資料的
+  // 呼叫端是 InteractiveExploreMap.tsx(見該檔案的完整說明,固定示範資料的
   // 展示頁,不希望使用者拖走看到空白區域)。只在建圖當下讀取一次(跟
   // colorScheme 一樣,事後改變這個 prop 不會更新既有地圖實例,需要重新
   // 建圖才會生效——目前沒有任何呼叫端會動態改變這個值,故不特別處理
@@ -191,7 +191,7 @@ export function ExploreMap({
   onAttractionsChange?: (attractions: GeoAttraction[]) => void
   // initialAttractions:掛載當下就要顯示在地圖上的景點區域清單——供不經過
   // 使用者觸發查詢(探索標籤/搜尋)、頁面掛載時就要固定顯示一批已知資料的
-  // 情境使用(例如公開展示頁,見 web/src/home/KiyomizuDemoPage.tsx),只在
+  // 情境使用(例如公開展示頁,見 web/src/home/InteractiveExploreMap.tsx),只在
   // 元件掛載當下讀一次當初始值,之後使用者若觸發真正的查詢(runExploreQuery
   // 等)仍會照常覆蓋這份初始清單——不是「鎖定」這批資料,只是省去展示頁
   // 自己重新實作一份查詢流程的麻煩。

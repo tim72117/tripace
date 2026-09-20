@@ -7,7 +7,7 @@ import type { CuratedCategory } from './geoCuratedCategoryStub'
 
 // useThemeAttractionSelection:主題卡(AttractionInfoPanel)開著時,跟它
 // 並存/附掛的一組狀態與 reset 邏輯——DesktopLayout.tsx(正式功能)與
-// KiyomizuDemoPage.tsx(公開展示頁)原本各自獨立手寫了一份幾乎同構的
+// InteractiveExploreMap.tsx(公開展示頁)原本各自獨立手寫了一份幾乎同構的
 // 版本(poiContent/nearbyInfoContent、hoveredAttraction/
 // hoveredNearbyAttraction、activeCategoryFilter、三個依主題切換 reset 的
 // effect、infoCardStack 的 attraction/nearbyPlace 兩筆登記),這是先前
@@ -100,7 +100,7 @@ export function useThemeAttractionSelection(
   //     用物件參照比對才能保留「使用者重新點擊同一個主題點地標,也要
   //     清空左側並存卡回到乾淨狀態」這個原本的行為,同時避免「兩個不同
   //     地點但同名」被誤判成同一個主題(用 .name 字串比對會撞名)。
-  //   - 展示頁(KiyomizuDemoPage.tsx)傳 openThemeName 字串——展示頁的
+  //   - 展示頁(InteractiveExploreMap.tsx)傳 openThemeName 字串——展示頁的
   //     主題點是本地 useState,只在使用者真的換一個主題時才會變動,不會
   //     重複觸發同一個字串,且固定城市查詢範圍內沒有同名主題點的疑慮,
   //     字串比對已經足夠、不需要額外維護物件參照。
@@ -132,7 +132,7 @@ export function useThemeAttractionSelection(
   // 一次,呼叫端只需要把完整的 present 條件算好傳進來,不需要自己再呼叫
   // 一次 useInfoCardStackSync 补登記。
   //
-  // 未帶時預設 false(等同沒有額外分支)——展示頁(KiyomizuDemoPage.tsx)
+  // 未帶時預設 false(等同沒有額外分支)——展示頁(InteractiveExploreMap.tsx)
   // 沒有 geoInfoContent 這種第二種主題卡分支,不需要傳。
   extraAttractionPresent = false,
   // onAttractionPresent:'attraction' 這張 exclusive 卡片從不存在→存在時
@@ -156,7 +156,7 @@ export function useThemeAttractionSelection(
   // 舊主題卡左側的地點卡、地圖上展開成照片的圓點、篩選條件都沒有繼續
   // 存在的意義,避免殘留舊主題底下留下的狀態污染新主題。
   //
-  // 這正是抽出這支 hook 要解決的核心問題:原本展示頁(KiyomizuDemoPage.tsx)
+  // 這正是抽出這支 hook 要解決的核心問題:原本展示頁(InteractiveExploreMap.tsx)
   // 漏寫了 hoveredAttraction 的 reset(靠 AttractionInfoPanel 元件掛載
   // 方式差異意外沒觸發問題,但 categoryFilter 的 reset 因為展示頁把
   // AttractionInfoPanel 條件掛載、正式版常駐掛載,兩邊對「切換主題點時

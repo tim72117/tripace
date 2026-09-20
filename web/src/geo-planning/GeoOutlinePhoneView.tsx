@@ -514,7 +514,7 @@ export function GeoOutlinePhoneView({
           theme={theme}
         >
           {/* GeoOutlinePhoneInfoSheet 改用 children 掛入 ExploreMap——對齊
-              DesktopLayout.tsx/KiyomizuDemoPage.tsx 的組合方式(見兩者
+              DesktopLayout.tsx/InteractiveExploreMap.tsx 的組合方式(見兩者
               ExploreMap/NativeMapBase 的 children 說明):這張資訊卡不是
               掛在地圖元件上的東西(地圖建立方式跟卡片無關),但語意上
               統一表達成「這些是附掛在這個地圖上的浮動 UI」,三個平台

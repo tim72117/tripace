@@ -211,7 +211,7 @@ export function DesktopContent(props: ContentProps) {
   // useThemeAttractionSelection:主題卡開著時跟它並存/附掛的一組狀態
   // (poiContent/hoveredAttraction/categoryFilter)與對應的 reset/
   // infoCardStack('attraction'/'nearbyPlace' 兩筆)登記邏輯,抽成跟
-  // KiyomizuDemoPage.tsx 共用的 hook(見該檔案的完整說明)——原本這裡是
+  // InteractiveExploreMap.tsx 共用的 hook(見該檔案的完整說明)——原本這裡是
   // 四份各自獨立手寫的 state(nearbyInfoContent/hoveredNearbyAttraction/
   // activeNearbyCategoryFilter + 三個 reset effect),兩邊容易各自漏寫
   // 其中一個 reset(2026-09 實測踩過:展示頁漏了 hover/分類篩選的

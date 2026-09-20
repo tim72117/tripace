@@ -14,6 +14,22 @@
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
+  <!-- /jiufen、/kyoto-kiyomizu：城市介紹頁(見 App.tsx 的路由註解),各自有
+       獨立的 SEO meta(react-helmet-async,見 JiufenPage.tsx/KyotoPage.tsx
+       開頭的 SEO_TITLE/SEO_DESCRIPTION 說明)。優先度介於首頁與功能頁之間
+       ——是吸引搜尋流量的內容頁,但不是核心產品功能。 -->
+  <url>
+    <loc>https://tripace.shuttle.tools/jiufen</loc>
+    <lastmod>2026-09-21</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://tripace.shuttle.tools/kyoto-kiyomizu</loc>
+    <lastmod>2026-09-21</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
   <url>
     <loc>https://tripace.shuttle.tools/privacy</loc>
     <lastmod>2026-08-26</lastmod>

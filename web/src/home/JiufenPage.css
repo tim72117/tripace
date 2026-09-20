@@ -1,0 +1,518 @@
+/* JiufenPage — 對齊 HomePage/ProductPage 的「紙感和風」視覺語言,色票數值
+   直接照抄,不重新配色。 */
+
+@font-face {
+  font-family: 'ShipporiSerif';
+  src: local('Hiragino Mincho ProN'), local('Yu Mincho'), local('Noto Serif JP');
+  font-weight: 400 700;
+}
+
+.jiufen-page {
+  --paper: #F7F3EC;
+  --paper-dim: #EFE9DC;
+  --ink: #2B2420;
+  --ink-soft: #5A5148;
+  --vermilion: #8B3A2F;
+  --vermilion-soft: #B85C4A;
+  --moss: #5C6B57;
+  --line: #C9BFA8;
+  --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
+  line-height: 1.7;
+}
+
+@media (prefers-color-scheme: dark) {
+  .jiufen-page:not([data-theme="light"]) {
+    --paper: #1C1815;
+    --paper-dim: #14110F;
+    --ink: #EDE6D8;
+    --ink-soft: #B8AD9C;
+    --vermilion: #D97A63;
+    --vermilion-soft: #E89A85;
+    --moss: #8FA089;
+    --line: #443C34;
+    --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+  }
+}
+
+.jiufen-page[data-theme="dark"] {
+  --paper: #1C1815;
+  --paper-dim: #14110F;
+  --ink: #EDE6D8;
+  --ink-soft: #B8AD9C;
+  --vermilion: #D97A63;
+  --vermilion-soft: #E89A85;
+  --moss: #8FA089;
+  --line: #443C34;
+  --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+}
+
+.jiufen-page[data-theme="light"] {
+  --paper: #F7F3EC;
+  --paper-dim: #EFE9DC;
+  --ink: #2B2420;
+  --ink-soft: #5A5148;
+  --vermilion: #8B3A2F;
+  --vermilion-soft: #B85C4A;
+  --moss: #5C6B57;
+  --line: #C9BFA8;
+  --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+}
+
+.jiufen-page * {
+  box-sizing: border-box;
+}
+
+.jiufen-page h1,
+.jiufen-page h2,
+.jiufen-page h3 {
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.jiufen-page a {
+  color: inherit;
+}
+
+/* 品牌標記/日夜間切換/CTA — 對齊 HomePage.css 的浮動角落式樣式,取代原本
+   sticky 橫向 nav bar。三者皆 fixed 定位、不隨頁面捲動。 */
+/* jiufen-brand-row:承接原本 .jiufen-brand-mark 的 fixed 定位——拆成
+   外層 row + 內層 mark/page 兩個 span 之後,fixed 定位要放在共同的外層
+   容器上,不能繼續留在 <Link> 本身(那樣「・九份」這個 <span> 手足元素
+   不會跟著一起被定位在正確位置)。 */
+.jiufen-page .jiufen-brand-row {
+  position: fixed; left: 16px; top: 16px; z-index: 10;
+  display: flex; align-items: baseline; gap: 2px;
+}
+.jiufen-page .jiufen-brand-mark {
+  padding: 8px 4px 8px 0;
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+  color: var(--ink); text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+.jiufen-page .jiufen-brand-mark:hover { opacity: 0.75; }
+/* jiufen-brand-page:「· 九份」——純文字標示目前頁面,字級比品牌名小、
+   不做成連結(見 JiufenPage.tsx 該處的完整說明)。分隔符號用半形中點
+   「·」(U+00B7),對齊 HomePage.tsx 的 .hero-eyebrow(「Kyoto ·
+   Higashiyama」)既有慣例,不是這裡另外引入的新符號——半形中點比全形
+   「・」纖細,跟西式標點混排時視覺更一致。用 ::before 畫這個符號,不寫進
+   JSX 文字內容本身,避免螢幕閱讀器把它跟「九份」唸成一串奇怪的符號
+   組合。文字顏色用主題強調色 --vermilion(跟 .jiufen-hero-eyebrow「地形
+   決定了這一切」同一個 token)——「九份」是頁面主題本身,值得跟其他
+   強調文字一樣的視覺份量,不使用次要色 ink-soft 那種刻意壓低存在感的
+   處理(分隔符號本身仍用 --line 維持低調,只有「九份」兩個字上色)。 */
+.jiufen-page .jiufen-brand-page {
+  font-size: 14px; font-weight: 500;
+  color: var(--vermilion);
+}
+.jiufen-page .jiufen-brand-page::before {
+  content: '· ';
+  color: var(--line);
+}
+
+.jiufen-theme-toggle {
+  position: fixed; right: 16px; top: 16px; z-index: 10;
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; border: 1px solid var(--line);
+  background: var(--paper); color: var(--ink);
+  cursor: pointer; box-shadow: var(--card-shadow);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.jiufen-theme-toggle:hover { background: var(--paper-dim); }
+
+.jiufen-page .jiufen-app-cta {
+  position: fixed; right: 62px; top: 16px; z-index: 10;
+  display: flex; align-items: center;
+  height: 36px; padding: 0 18px;
+  border-radius: 999px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+  background: transparent; color: var(--ink); border: 1px solid var(--line);
+  text-decoration: none;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.jiufen-page .jiufen-app-cta:hover { border-color: var(--vermilion-soft); color: var(--vermilion); }
+@media (max-width: 900px) {
+  .jiufen-page .jiufen-app-cta { right: 62px; padding: 0 14px; font-size: 12px; }
+}
+
+/* Hero */
+.jiufen-hero {
+  position: relative;
+  max-width: 760px;
+  min-height: 70vh;
+  margin: 0 auto;
+  padding: 5rem 1.5rem 4rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
+
+.jiufen-hero-scroll-hint {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  color: var(--ink-soft);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.75;
+}
+.jiufen-hero-scroll-hint .bar {
+  width: 1px;
+  height: 42px;
+  background: linear-gradient(var(--ink-soft), transparent);
+  animation: jiufen-pulse-bar 2.2s ease-in-out infinite;
+}
+@keyframes jiufen-pulse-bar { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+.jiufen-hero-eyebrow {
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--vermilion);
+  letter-spacing: 0.08em;
+  margin-bottom: 1rem;
+}
+
+.jiufen-hero h1 {
+  font-size: clamp(2rem, 5vw, 2.75rem);
+  line-height: 1.4;
+  margin: 0 0 1.25rem;
+}
+
+.jiufen-hero p {
+  font-size: 1.05rem;
+  color: var(--ink-soft);
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+/* Stops — 整頁式捲動敘事:每站佔一個視窗高度、捲入視窗時文字淡入,保留
+   「跟著往下走」的節奏感,但照片維持有限尺寸的卡片(不做滿版背景鋪
+   照片)——文字放在照片下方,不疊加在照片上,故不需要暗角遮罩。不畫路徑
+   地圖/游標,不做 HomePage.tsx 那種 bloom 照片展開動畫。 */
+.jiufen-stops {
+  position: relative;
+}
+
+.jiufen-stop {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1.5rem;
+}
+
+/* jiufen-stop-inner — 兩種版面,依各站照片方向擇一(見 STOPS 的 layout
+   欄位說明):
+   --stacked(預設,橫式照片用):圖在上、文字在下,垂直堆疊、置中對齊。
+   --side(直式照片用):左欄照片、右欄文字並排,避免直式照片把整段版面
+   撐得過高。 */
+.jiufen-stop-inner {
+  width: 100%;
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.jiufen-stop.is-active .jiufen-stop-inner {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.jiufen-stop-inner--stacked {
+  max-width: 640px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.jiufen-stop-inner--side {
+  max-width: 1000px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2.5rem;
+  align-items: center;
+  text-align: left;
+}
+
+.jiufen-stop-photo {
+  position: relative;
+  width: 100%;
+  max-height: 70vh;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+}
+.jiufen-stop-inner--stacked .jiufen-stop-photo {
+  margin: 0 auto 2rem;
+}
+
+/* 不裁切——依照片自身比例決定顯示高度(橫式/直式照片各自算出不同的
+   容器高度),取代先前固定 height + object-fit: cover 硬裁掉超出範圍的
+   部分。max-height 只是避免直式照片在小螢幕撐得過高,不是裁切用途。 */
+.jiufen-stop-photo img {
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+  display: block;
+}
+
+@media (max-width: 640px) {
+  .jiufen-stop-inner--side {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+  .jiufen-stop-inner--side .jiufen-stop-photo {
+    margin: 0 auto;
+  }
+}
+
+/* jiufen-stop-credit — Pexels 使用條款要求標示攝影師署名,放在圖片右下角
+   半透明黑底條,深淺色模式下都維持同一組黑底/白字組合(疊在照片上的固定
+   深色條,不是頁面背景,不跟隨主題反轉)。 */
+.jiufen-stop-credit {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(0, 0, 0, 0.45);
+  padding: 0.2rem 0.5rem;
+  border-top-left-radius: 8px;
+}
+
+.jiufen-stop-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+@media (max-width: 640px) {
+  .jiufen-stop-meta { justify-content: center; }
+}
+
+.jiufen-stop-index {
+  font-family: 'ShipporiSerif', serif;
+  font-weight: 700;
+  color: var(--vermilion);
+  font-size: 0.95rem;
+}
+
+.jiufen-stop-kind {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  background: var(--paper-dim);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+}
+
+.jiufen-stop h2 {
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  font-size: clamp(1.4rem, 3.5vw, 1.9rem);
+  color: var(--ink);
+  margin: 0 0 0.75rem;
+}
+
+.jiufen-stop p {
+  font-size: 0.95rem;
+  line-height: 1.85;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+/* 進度指示——固定右側一排點,直接對齊 HomePage.css 的 .progress-rail/
+   .progress-dot 數值(常駐畫面角落、z-index 拉高、手機版直接隱藏,顏色
+   用 --line/--vermilion token)——第一個點對應開頭的互動地圖區塊
+   (activeIndex 的特殊值 -1,見 JiufenPage.tsx 該按鈕的完整說明),樣式
+   跟其餘 8 個站點點完全相同,不做任何外觀特例(2026-09 曾經一度做成
+   獨立的大顆圖示按鈕,實測回報「樣式要跟首頁一致」,故收斂回同一份
+   規則,不重複維護一套相似但獨立的樣式)。手機版隱藏(見下方 media
+   query)理由同首頁:手機螢幕寬度有限,固定在畫面角落的一排點持續
+   佔用空間,容易跟捲動內容(站點照片/開頭互動地圖)的邊緣打架,桌面版
+   才有足夠餘裕讓這排點常駐存在又不跟任何內容衝突。 */
+.jiufen-progress-rail {
+  position: fixed;
+  right: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: var(--z-progress, 20);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.jiufen-progress-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: var(--line);
+  cursor: pointer;
+  transition: background 0.3s ease, transform 0.3s ease;
+}
+.jiufen-progress-dot.is-active {
+  background: var(--vermilion);
+  transform: scale(1.6);
+}
+@media (max-width: 900px) {
+  .jiufen-progress-rail { display: none; }
+}
+
+/* jiufen-map-intro:包住開頭互動地圖(InteractiveExploreMap)的容器,見
+   JiufenPage.tsx 該處的完整說明——用來覆寫 --kiyomizu-page-padding
+   (預設 48px 24px,見 InteractiveExploreMap.module.css 的說明:這組
+   padding 直接決定 .stage 地圖容器的實際可視寬度/大小,不是外層留白)。
+   上邊距 88px 避開頂部固定 UI(.jiufen-brand-row/.jiufen-theme-toggle/
+   .jiufen-app-cta,見 JiufenPage.css 對應規則)。
+   右邊距在 900px 以上桌面寬度加大到 50px——直接縮小地圖本身的可視
+   寬度,讓地圖右邊界往內縮,不是在外層疊加 margin 把整個容器推開
+   (先前用 margin-right 這種「地圖大小不變、外面留白」的做法是繞路,
+   使用者明確要求「調整地圖大小」)。數值算法:「地圖與小點的間距」要
+   等於「小點與視窗右緣的間距」——後者是 .jiufen-progress-rail 的
+   right: 22px,加上點本身寬度 6px(.jiufen-progress-dot)得到點的
+   最左緣離視窗右緣 28px;地圖右邊界的 padding 直接設成同樣的 22px
+   間距概念換算成的 50px(=28px 點的位置 + 22px 間距),讓兩段間距
+   實測相等(見該檔案驗證腳本量到 mapToDotGap === dotToWindowGap)。
+   900px 以下維持預設值(見下方 media query 還原),進度點在該寬度
+   已經直接隱藏,不需要再幫地圖縮小尺寸。 */
+.jiufen-map-intro {
+  --kiyomizu-page-padding: 88px 24px 48px;
+}
+@media (min-width: 901px) {
+  .jiufen-map-intro {
+    --kiyomizu-page-padding: 88px 50px 48px 24px;
+  }
+}
+
+/* jiufen-map-intro 底下的 .stage(InteractiveExploreMap.module.css,CSS
+   Modules 雜湊 class,這裡用屬性選擇器命中,只作用在這個頁面的作用域
+   下,不動共用元件本身)——用 mask-image 沿著矩形四邊各自加一道窄幅
+   線性漸層,讓地圖內容(Google Maps 圖磚)在容器邊界處自然透出底下的
+   頁面背景色,而不是生硬的直角裁切。只套用在這個頁面(見上方需求範圍
+   的確認),不動 InteractiveExploreMap.module.css 本身,故 HomePage.tsx
+   沿用同一個元件時不受影響。
+   2026-09:原本用單一 radial-gradient(橢圓)做這件事,實測有兩個問題
+   ——(1) 橢圓範圍抓太大,淡出強度往中心蔓延太多,不是「貼著邊框」的
+   效果;(2) .stage 內部的浮動主題卡片(AttractionInfoPanel,見
+   InteractiveExploreMap.tsx 的 children)是 .stage 的子元素,遮罩套在
+   .stage 整體上連卡片右邊界都被淡出了。改成四道各自獨立的窄幅
+   linear-gradient(每道只往內淡出 fadeSize 這一小段距離,遠離邊框的
+   大片中央區域維持完全不透明)並用 mask-composite: intersect 疊加
+   ——這樣淡出範圍精確侷限在四邊各自的窄帶內,主題卡片只要不是貼著
+   .stage 最外緣的 fadeSize 範圍擺放(它本身有自己的 padding/margin,
+   實際測試確認不會落在這個窄帶內),自然不會被這道遮罩影響,不需要
+   額外排除卡片的 DOM 節點。四個角落因為兩個方向的漸層在該處疊加,
+   會比純邊中段更暗一點,這是刻意的(角落本來就該比邊中央淡出得更多,
+   矩形四角同時鄰接兩條邊界),不是需要修正的瑕疵。 */
+.jiufen-map-intro [class*="stage"] {
+  --fade-size: 10px;
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent),
+    linear-gradient(to bottom, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent);
+  mask-image:
+    linear-gradient(to right, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent),
+    linear-gradient(to bottom, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+
+/* jiufen-map-intro 作用域下覆寫 DesktopInfoCard.module.css 的
+   --desktop-info-card-top(見該檔案 .panel 的完整說明)——這個頁面的
+   地圖(NativeMapBase.tsx)沒有正式 App 那排城市搜尋框/類別標籤列,
+   卡片頂部不需要留給那排 UI 的 64px 空間,改成跟右邊/底邊一致的
+   16px,讓卡片四邊間距均勻貼合地圖容器。用屬性選擇器命中
+   DesktopInfoCard.module.css 雜湊出來的 .panel class,只作用在這個
+   頁面,不動共用元件的預設值。 */
+.jiufen-map-intro [class*="panel"] {
+  --desktop-info-card-top: 16px;
+}
+
+/* Final CTA */
+.jiufen-final-cta {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 5rem 1.5rem;
+  text-align: center;
+}
+
+.jiufen-final-cta h2 {
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  margin: 0 0 1rem;
+}
+
+.jiufen-final-cta p {
+  color: var(--ink-soft);
+  margin: 0 0 2rem;
+}
+
+.jiufen-page .jiufen-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--paper);
+  background: var(--ink);
+  text-decoration: none;
+  padding: 0.85rem 1.75rem;
+  border-radius: 999px;
+  box-shadow: var(--card-shadow);
+  transition: transform 0.2s ease;
+}
+
+.jiufen-page .jiufen-btn-primary:hover {
+  transform: translateY(-2px);
+}
+
+/* Footer — 結構、文案對齊 ProductPage.css 的 .product-footer,以首頁為準 */
+.jiufen-footer {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  border-top: 1px solid var(--line); padding: 28px 1.5rem;
+  text-align: center; font-size: 14px; color: var(--ink-soft);
+}
+.jiufen-footer-brand { font-size: 15px; font-weight: 600; color: var(--ink); }
+
+/* jiufen-footer-sitemap — 對齊 HomePage.css 的 .kyoto-footer-sitemap:
+   放在品牌名下方,不加分隔線,靠間距跟上下區塊區隔。 */
+.jiufen-footer-sitemap {
+  align-self: stretch; display: flex; gap: 48px; justify-content: center;
+  flex-wrap: wrap; margin-top: 48px; text-align: left;
+}
+.jiufen-footer-sitemap-col { display: flex; flex-direction: column; gap: 10px; min-width: 120px; }
+.jiufen-footer-sitemap-title {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--ink); text-transform: uppercase; margin-bottom: 2px;
+}
+.jiufen-footer-sitemap-col a { color: var(--ink-soft); text-decoration: none; font-size: 13.5px; }
+.jiufen-footer-sitemap-col a:hover { color: var(--vermilion); text-decoration: underline; }
+
+/* jiufen-footer-bar — 對齊 HomePage.css:寬度收在內容欄寬內置中,不貼齊
+   footer 全寬邊緣,不額外加分隔線。 */
+.jiufen-footer-bar {
+  width: 100%; max-width: 1180px; margin: 48px auto 0;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px 24px; font-size: 13px;
+}
+.jiufen-footer-copyright { color: var(--ink-soft); }
+.jiufen-footer-links { display: flex; align-items: center; gap: 20px; }
+.jiufen-footer-links a { color: var(--ink-soft); text-decoration: none; }
+.jiufen-footer-links a:hover { color: var(--vermilion); text-decoration: underline; }
+
+.jiufen-page .jiufen-footer-onagent {
+  margin-top: 10px; font-size: 12px; color: var(--ink-soft);
+  text-decoration: none; opacity: 0.75;
+}
+.jiufen-page .jiufen-footer-onagent:hover { opacity: 1; text-decoration: underline; }

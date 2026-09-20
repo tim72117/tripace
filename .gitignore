@@ -25,8 +25,9 @@ server/tmp/
 *.exe
 server/server
 
-# tripace-cli skill 內建的本機編譯執行檔(見 .claude/skills/tripace-cli-setup
-# 的說明)——16MB 二進位檔,依平台各自建置,不適合進版控。
+# tripace-cli skill 內建的預編譯執行檔(本機用,見
+# .claude/skills/tripace-cli/SKILL.md)——每台機器編譯出的二進位檔不同,
+# 不進版控,理由同 .claude/skills/onagent-cli-setup/bin/ 的 *.exe 排除。
 .claude/skills/tripace-cli/bin/
 
 # go:embed 的前端 build 產物,只在 Docker build 過程中由 COPY --from=web-build
