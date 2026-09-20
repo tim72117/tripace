@@ -16,7 +16,22 @@
 // 'sign_up')沒辦法比照這套萬用機制——Ads 的轉換動作綁定特定的轉換
 // ID/標籤,新增一種轉換類型仍然需要在 GTM/Ads 後台各自設定一個對應的
 // tag,這是 Google Ads 平台本身的限制,不是這裡的程式碼能繞過的。
+//
+// VITE_DISABLE_ANALYTICS:本機開發時排除追蹤的關閉開關——
+// web/index.html 的 GTM 容器腳本是純靜態 HTML(在任何 React/Vite 程式碼
+// 執行之前就已經載入),無法在那裡讀 import.meta.env 做條件式載入,故
+// 排除機制收斂在這裡:trackEvent 是所有追蹤事件(含 sign_up 這個 Ads
+// 轉換)唯一的 dataLayer.push 進入點,只要這裡直接 no-op,本機測試登入/
+// 註冊/點擊互動地圖等動作就不會把任何事件送進 GTM 容器,自然也不會誤觸發
+// 正式環境才該計入的 Google Ads 轉換數據或 GA4 事件——不需要額外去改
+// index.html 或猜測 GTM 容器裡還有沒有其他不經過 trackEvent 的 tag。
+// 對齊 onagent 參考實作(/Users/caitingyu/Documents/onagent/apps/console)
+// 同名環境變數的用途,預設(未設定)是啟用追蹤,需要在本機
+// .env.development.local 明確加上 VITE_DISABLE_ANALYTICS=1 才會關閉。
+const analyticsDisabled = import.meta.env.VITE_DISABLE_ANALYTICS === '1'
+
 export function trackEvent(name: string, data?: Record<string, unknown>) {
+  if (analyticsDisabled) return
   const w = window as unknown as { dataLayer?: Record<string, unknown>[] }
   w.dataLayer = w.dataLayer ?? []
   w.dataLayer.push({ event: name, ...data })
