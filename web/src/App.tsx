@@ -19,6 +19,7 @@ const HomePage = lazy(() => import('./home/HomePage').then((m) => ({ default: m.
 const ProductPage = lazy(() => import('./home/ProductPage').then((m) => ({ default: m.ProductPage })))
 const JiufenPage = lazy(() => import('./home/JiufenPage').then((m) => ({ default: m.JiufenPage })))
 const KyotoPage = lazy(() => import('./home/KyotoPage').then((m) => ({ default: m.KyotoPage })))
+const TainanPage = lazy(() => import('./home/TainanPage').then((m) => ({ default: m.TainanPage })))
 const PrivacyPage = lazy(() => import('./home/PrivacyPage').then((m) => ({ default: m.PrivacyPage })))
 const TermsPage = lazy(() => import('./home/TermsPage').then((m) => ({ default: m.TermsPage })))
 const CliAuthPage = lazy(() => import('./home/CliAuthPage').then((m) => ({ default: m.CliAuthPage })))
@@ -112,6 +113,10 @@ export function App() {
               地圖已從首頁移除,只留在這個獨立頁面),外殼架構對齊
               JiufenPage.tsx 模式(互動地圖+進度導覽點+分段長頁)。 */}
           <Route path="/kyoto-kiyomizu" element={<KyotoPage />} />
+          {/* /tainan-anping:台南・安平介紹頁,見 TainanPage.tsx——港口地形→
+              貿易→淤積轉型→人文重生因果鏈的分段長頁,外殼架構對齊
+              JiufenPage.tsx 模式(互動地圖+進度導覽點+分段長頁)。 */}
+          <Route path="/tainan-anping" element={<TainanPage />} />
           {/* 隱私權政策/服務條款——視覺語言對齊首頁(HomePage.tsx)的紙感和風
               風格,見 LegalPage.tsx。 */}
           <Route path="/privacy" element={<PrivacyPage />} />

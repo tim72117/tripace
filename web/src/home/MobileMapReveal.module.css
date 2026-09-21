@@ -1,0 +1,129 @@
+/* thumb:手機版初始顯示的圓形地點縮圖——100dvh 撐滿整個螢幕高度、
+   內容在正中央(水平+垂直),讓它在畫面上有跟展開後的滿版地圖對等的
+   存在感,而不是跟著文件流卡在頁面某個自然高度的一小塊。width: 100vw
+   + margin-left 抵消 .page 左右 padding 的手法同 .expandedStage(見
+   下方),讓縮圖左右也貼齊螢幕邊緣、不受頁面版心寬度限制。
+   aspect-ratio: 1 搭配 border-radius: 50% 確保任何來源圖片(不論原始
+   長寬比)裁切後都是正圓。 */
+.thumb {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100vw;
+  height: 100dvh;
+  margin-left: calc(-50vw + 50%);
+  border: none;
+  background: none;
+  cursor: pointer;
+  /* color: inherit——<button> 瀏覽器預設 color 是 ButtonText(通常是
+     黑色),不會隨 .kyoto-page/.jiufen-page 深色模式切換的 --ink 變數
+     改變。沒有這行,底下 .scrollHint/.scrollHintBar 讀的 currentColor
+     會取到這個沒有繼承到的預設黑色,在深色背景下整段 SCROLL 提示文字
+     實質上不可見(暗色模式回報「往下捲的字也消失」的根因)。 */
+  color: inherit;
+}
+
+.thumb img {
+  width: 148px;
+  height: 148px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+  /* clip-path 展開動畫的起點——與 .expandedStage 進場時的 circle(0%)
+     視覺呼應,縮圖本身雖然一直是完整圓形(不隨動畫變化),但用同一種
+     視覺語言(圓形、陰影)讓使用者感覺「點下去之後,就是這個圓長大」。 */
+  transition: transform 0.2s ease;
+}
+
+.thumb:active img {
+  transform: scale(0.96);
+}
+
+.thumbHint {
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+/* scrollHint:貼齊縮圖畫面底部的「向下捲動」提示——樣式對齊各城市頁
+   hero 區塊既有的 SCROLL 提示(見 MobileMapReveal.tsx 的說明),用
+   currentColor 而非寫死顏色,自然跟隨外層頁面(.kyoto-page/.jiufen-page)
+   設定的文字色。 */
+.scrollHint {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  color: currentColor;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.75;
+}
+
+.scrollHintBar {
+  width: 1px;
+  height: 42px;
+  background: linear-gradient(currentColor, transparent);
+  animation: mobile-map-reveal-pulse-bar 2.2s ease-in-out infinite;
+}
+
+@keyframes mobile-map-reveal-pulse-bar {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+/* expandedStage:展開後的滿版地圖容器——100dvh 直接以視窗高度撐開
+   (動態視窗高度單位,排除行動瀏覽器網址列伸縮造成的跳動,KyotoPage/
+   JiufenPage 是純文件流頁面,沒有固定高度的 flex-shell 祖先可以撐滿,
+   見元件說明)。clip-path 從中心圓形展開,呼應上方縮圖被點擊的那個
+   瞬間。margin-left 抵消頁面左右 padding(--kiyomizu-page-padding),
+   讓地圖真正貼齊螢幕邊緣——.page 本身的 padding 仍保留給其餘手機版
+   非地圖內容使用,只有這個容器需要滿版,故在這裡單獨用負 margin 撐出
+   邊界,不去改整個 .page 的 padding(那樣會連帶影響同一個 .page 底下
+   其他可能存在的內容版位)。 */
+.expandedStage {
+  position: relative;
+  width: 100vw;
+  height: 100dvh;
+  margin-left: calc(-50vw + 50%);
+  animation: reveal-circle 0.5s ease-out;
+}
+
+/* InteractiveExploreMap.module.css 的 .page/.stage 讀 --kiyomizu-*
+   CSS 變數決定尺寸(見該檔案 .page/.stage 的完整說明)——.stage 用
+   height: var(--kiyomizu-stage-height, 680px),但 CSS 的百分比高度要
+   相對「父層已定義的高度」才生效:.page 本身只有 padding、沒有明確
+   height,若只改 --kiyomizu-stage-height: 100%,.page 沒有高度可繼承,
+   .stage 的 100% 等同 auto(無效),地圖會退回內容自然高度、只佔上半部
+   一小塊(實測踩過的 bug)。改用屬性選擇器(:global,因為 .page/.stage
+   是 InteractiveExploreMap.module.css 雜湊出來的 class,這個檔案沒有
+   它們的具名 selector 可用,同 GeoOutlinePhoneView.module.css 既有
+   慣例)直接給 .page 明確 height: 100%(相對 .expandedStage 的
+   100dvh),高度鏈才能一路傳到 .stage。.page 的 padding 歸零(這個
+   容器本身已經是「只有地圖」的獨立滿版區塊,不需要卡片式內距),
+   --kiyomizu-stage-height 改吃滿 .page 的 100%,圓角/陰影也一併拿掉,
+   呈現貼齊螢幕邊緣的全螢幕地圖觀感。 */
+.expandedStage :global([class*='_page_']) {
+  height: 100%;
+  padding: 0;
+  max-width: none;
+  --kiyomizu-stage-height: 100%;
+  --kiyomizu-stage-radius: 0px;
+  --kiyomizu-stage-shadow: none;
+}
+
+@keyframes reveal-circle {
+  from {
+    clip-path: circle(0% at 50% 50%);
+  }
+  to {
+    clip-path: circle(75% at 50% 50%);
+  }
+}

@@ -22,6 +22,7 @@ var knownRoutePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^/product$`),
 	regexp.MustCompile(`^/jiufen$`),
 	regexp.MustCompile(`^/kyoto-kiyomizu$`),
+	regexp.MustCompile(`^/tainan-anping$`),
 	regexp.MustCompile(`^/privacy$`),
 	regexp.MustCompile(`^/terms$`),
 	regexp.MustCompile(`^/public/[^/]+$`),

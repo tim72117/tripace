@@ -144,28 +144,6 @@
   text-align: center;
 }
 
-.kyoto-page .kyoto-hero-scroll-hint {
-  position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 12px;
-  letter-spacing: 0.2em;
-  color: var(--ink-soft);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  opacity: 0.75;
-}
-.kyoto-page .kyoto-hero-scroll-hint .bar {
-  width: 1px;
-  height: 42px;
-  background: linear-gradient(var(--ink-soft), transparent);
-  animation: kyoto-pulse-bar 2.2s ease-in-out infinite;
-}
-@keyframes kyoto-pulse-bar { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
-
 .kyoto-page .kyoto-hero-eyebrow {
   display: inline-block;
   font-size: 0.85rem;
@@ -335,7 +313,10 @@
 }
 
 /* 同 JiufenPage.css 對應區塊的完整說明:四邊窄幅 mask-image 淡出,
-   讓地圖內容在容器邊界自然透出頁面背景色。 */
+   讓地圖內容在容器邊界自然透出頁面背景色。900px 以下(手機版)改
+   --fade-size: 0——淡出頻寬歸零,下方 mask-image 公式本身不用跟著
+   改,兩段線性漸層的中間段(#000 到 #000)直接頂到 0%/100%,等同沒有
+   遮罩,手機版地圖邊緣維持清晰直角,不再淡化。 */
 .kyoto-page .kyoto-map-intro [class*="stage"] {
   --fade-size: 10px;
   -webkit-mask-image:
@@ -346,6 +327,11 @@
     linear-gradient(to bottom, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent);
   -webkit-mask-composite: source-in;
   mask-composite: intersect;
+}
+@media (max-width: 900px) {
+  .kyoto-page .kyoto-map-intro [class*="stage"] {
+    --fade-size: 0px;
+  }
 }
 
 /* 同 JiufenPage.css 對應區塊的完整說明:這個頁面的地圖沒有正式 App 那排

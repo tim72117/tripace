@@ -154,28 +154,6 @@
   text-align: center;
 }
 
-.jiufen-hero-scroll-hint {
-  position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 12px;
-  letter-spacing: 0.2em;
-  color: var(--ink-soft);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  opacity: 0.75;
-}
-.jiufen-hero-scroll-hint .bar {
-  width: 1px;
-  height: 42px;
-  background: linear-gradient(var(--ink-soft), transparent);
-  animation: jiufen-pulse-bar 2.2s ease-in-out infinite;
-}
-@keyframes jiufen-pulse-bar { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
-
 .jiufen-hero-eyebrow {
   display: inline-block;
   font-size: 0.85rem;
@@ -427,6 +405,13 @@
     linear-gradient(to bottom, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent);
   -webkit-mask-composite: source-in;
   mask-composite: intersect;
+}
+/* 900px 以下(手機版)不淡化——同 KyotoPage.css 對應區塊的完整說明,
+   --fade-size 歸零即可,不用另外改上方 mask-image 公式。 */
+@media (max-width: 900px) {
+  .jiufen-map-intro [class*="stage"] {
+    --fade-size: 0px;
+  }
 }
 
 /* jiufen-map-intro 作用域下覆寫 DesktopInfoCard.module.css 的

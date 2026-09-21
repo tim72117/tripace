@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { Moon, Sun } from 'lucide-react';
 import { InteractiveExploreMap } from './InteractiveExploreMap';
+import { MobileMapReveal } from './MobileMapReveal';
 import './KyotoPage.css';
 
 // LANDING_ASSETS_BASE — 同 JiufenPage.tsx 的說明,同一個公開可讀 GCS
@@ -228,7 +229,9 @@ export function KyotoPage() {
           讓使用者自己點地圖決定先看哪一個。這是本次任務裡需要人工判斷
           的模糊地帶之一,見最終報告的說明,使用者可事後調整。 */}
       <div className="kyoto-map-intro" ref={mapIntroRef}>
-        <InteractiveExploreMap city="京都" showThemeToggle={false} externalTheme={theme} />
+        <MobileMapReveal photoUrl={`${LANDING_ASSETS_BASE}/kyoto/n1.jpg`} photoAlt="清水寺">
+          <InteractiveExploreMap city="京都" showThemeToggle={false} externalTheme={theme} />
+        </MobileMapReveal>
       </div>
 
       <header className="kyoto-hero">
@@ -239,7 +242,6 @@ export function KyotoPage() {
           參拜人潮踩出了產寧坂的坡道商店街，明治年間的土地政策把寺院境內地變成了圓山公園，
           而八坂神社門前的參拜人流，最終孕育出祇園的茶屋與藝妓文化。地質、信仰、商業、人文，是同一條因果鏈。
         </p>
-        <div className="kyoto-hero-scroll-hint"><span>SCROLL</span><span className="bar" /></div>
       </header>
 
       {/* 進度指示——同 JiufenPage.tsx 的說明,第一個點對應開頭互動地圖區塊

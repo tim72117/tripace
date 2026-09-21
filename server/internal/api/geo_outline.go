@@ -1548,6 +1548,16 @@ var publicPlaceDetailsAllowlist = map[string]bool{
 	"ChIJIR7-nRdFXTQRcsrMwN-ne9o": true, // 昇平戲院
 	"ChIJ9653Kh5FXTQR1VWNys_RefA": true, // 新北市立黃金博物館
 	"ChIJsSYt4BdFXTQRquCsN8eG7BE": true, // 阿妹茶樓
+
+	// 台南・安平(TainanPage.tsx 開頭嵌入 InteractiveExploreMap,見上方
+	// publicAttractionsCityAllowlist 的完整說明)
+	"ChIJZ-TjeHN2bjQR8a3Jat0VHps": true, // 安平古堡(主題點)
+	"ChIJlynOByF3bjQR_IzNSlgH-Ss": true, // 安平樹屋
+	"ChIJARA06hx2bjQRJa_TnkL0x28": true, // 林永泰興蜜餞行
+	"ChIJC_GkyqjYbTQR8AlhjOqU_0w": true, // 同記安平豆花
+	"ChIJ853g2xx2bjQR5L6IGrV8DQU": true, // 義豐冬瓜茶
+	"ChIJkaF4DBt2bjQRG_fUZd1WsEM": true, // Meller墨樂咖啡
+	"ChIJCzKLjwJ3bjQR7PnULJDx_w8": true, // 0343選物店
 }
 
 // GET /public/geo/place-details?placeId={Google Place ID}
@@ -1595,6 +1605,7 @@ func (s *Server) handlePublicGeoPlaceDetails(w http.ResponseWriter, r *http.Requ
 var publicAttractionsCityAllowlist = map[string]bool{
 	"京都": true,
 	"九份": true, // JiufenPage.tsx 開頭嵌入 KiyomizuDemoPage(參數化為 city prop)
+	"台南": true, // TainanPage.tsx 開頭嵌入 InteractiveExploreMap(參數化為 city prop)
 }
 
 // handleGeoAttractionsByCity 是 GET /public/geo/attractions 的核心邏輯,

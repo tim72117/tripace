@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { Moon, Sun } from 'lucide-react';
 import { InteractiveExploreMap } from './InteractiveExploreMap';
+import { MobileMapReveal } from './MobileMapReveal';
 import './JiufenPage.css';
 
 // SEO_TITLE/SEO_DESCRIPTION:這個頁面專屬的 <title>/<meta description>,
@@ -315,7 +316,9 @@ export function JiufenPage() {
           的置中考量,使用者要求「地圖中心點往下(南)100 公尺」,傳負值
           抵消掉共用預設,讓九份的初始中心落回九份老街本身。 */}
       <div className="jiufen-map-intro" ref={mapIntroRef}>
-        <InteractiveExploreMap city="九份" showThemeToggle={false} externalTheme={theme} defaultOpenTheme="九份老街" initialZoom={17} centerNorthOffsetKm={-0.1} />
+        <MobileMapReveal photoUrl={`${LANDING_ASSETS_BASE}/jiufen/n0.jpg`} photoAlt="九份老街">
+          <InteractiveExploreMap city="九份" showThemeToggle={false} externalTheme={theme} defaultOpenTheme="九份老街" initialZoom={17} centerNorthOffsetKm={-0.1} />
+        </MobileMapReveal>
       </div>
 
       <header className="jiufen-hero">
@@ -325,7 +328,6 @@ export function JiufenPage() {
           陡峭山勢逼出層疊石階，礦脈枯竭又讓聚落幾乎成為空城，最終因一部電影意外重生——
           這是一條地質、產業、衰敗、人文交織的因果鏈。
         </p>
-        <div className="jiufen-hero-scroll-hint"><span>SCROLL</span><span className="bar" /></div>
       </header>
 
       {/* 進度指示——固定右側,捲動敘事本身不畫路徑地圖或游標,純粹用 9 個點
