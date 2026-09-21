@@ -79,12 +79,16 @@ export function MobileMapReveal({
         <img src={photoUrl} alt="" />
         <span className={styles.thumbHint}>點一下探索地圖</span>
         {/* scrollHint:提示使用者不點縮圖、直接往下捲動也能繼續看內容
-            ——視覺上呼應各城市頁 hero 區塊已有的 SCROLL 提示(如
-            KyotoPage.tsx 的 .kyoto-hero-scroll-hint),但這裡是共用
-            元件,不能直接借用該頁面色票變數(--vermilion/--ink-soft
-            只在 .kyoto-page 作用域定義),改用中性的 currentColor +
-            透明度,顏色自然跟隨外層頁面(.kyoto-page/.jiufen-page 都
-            有設 color)。 */}
+            ——視覺語言沿用各城市頁 hero 區塊原本的 SCROLL 提示樣式(該
+            提示已隨這次改動從 hero 區塊移除,搬到這裡集中處理),但這裡
+            是共用元件,不能直接借用個別頁面的色票變數(--vermilion/
+            --ink-soft 只在 .kyoto-page 作用域定義),改用中性的
+            currentColor + 透明度,顏色自然跟隨外層頁面(.kyoto-page/
+            .jiufen-page 都有設 color)。
+            已知缺口(見 code review 記錄,待後續處理):這個提示只出現在
+            「手機版、尚未展開地圖」這個狀態,桌面版與「手機版已展開
+            地圖」的使用者目前完全沒有往下捲動的視覺引導,不像原本
+            hero 區塊的版本對所有使用者、所有狀態都可見。 */}
         <span className={styles.scrollHint} aria-hidden="true">
           <span>SCROLL</span>
           <span className={styles.scrollHintBar} />
