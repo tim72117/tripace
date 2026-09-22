@@ -30,6 +30,13 @@ server/server
 # 不進版控,理由同 .claude/skills/onagent-cli-setup/bin/ 的 *.exe 排除。
 .claude/skills/tripace-cli/bin/
 
+# onagent-cli-setup skill 整個目錄改成本機專用、不進版控——本機這份
+# SKILL.md 已被移除(本機環境清理/工具重新產生時異動),之前版控裡還
+# 留著舊版本,git status 因此一直顯示這個檔案為「已刪除但未 commit」。
+# 排除整個目錄,不只是刪除這次的異動,避免之後這個目錄下任何本機專屬
+# 的增減(binary、設定檔等)又被 git 追蹤提示。
+.claude/skills/onagent-cli-setup/
+
 # go:embed 的前端 build 產物,只在 Docker build 過程中由 COPY --from=web-build
 # 產生(見 Dockerfile、Dockerfile.admin),本機驗證/除錯時手動複製進來的副本
 # 不該進版控。webadmin/dist 先前漏排除,導致本機手動複製的 admin build
