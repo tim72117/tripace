@@ -1,0 +1,245 @@
+/* AutoPlanDemo:見 AutoPlanDemo.tsx 開頭的完整說明。聊天輸入框
+   (.chatInputWrap/.chatInput/.chatSendBtn/.caret/.aiLine/.aiLineIcon/
+   .thinkingDots/.dot)整份沿用 NaturalQueryDemo.module.css 對應規則的
+   數值(該檔案已照抄自 planning-demo/AIPlanTimelinePage.module.css 的
+   .inputWrap/.input/.sendBtn/.aiLine/.aiLineIcon)——2026-09「自然語言
+   查詢」改主題為「自動編排行程」,聊天輸入框這段視覺不變,只有下方
+   時間軸(.timeline 以下)是全新設計,取代原本的 .resultList/.resultCard
+   結果卡片系列規則,不搬過來。
+   外層容器(.demo)不套用 --ios-* 或 --color-* 這組 token(那些只在
+   app-theme-root scope 下有定義,見 ThemePointDemo.tsx 掛載處的完整
+   說明),沿用 ProductPage.tsx 既有的 --paper-dim/--line/--ink 等 token
+   (.product-page scope)——跟 ThemePointDemo/TimelineDemo/
+   NaturalQueryDemo 同樣的「外殼跟卡片一致、內部示意 UI 精確對齊正式
+   產品視覺」的兩層 token 並存設計。 */
+
+/* .demo:直接嵌在 .product-feature-card 卡片內部(比照既有三個示意元件
+   的慣例),不自己畫一層卡片外觀,避免「卡片裡面又包一層卡片」的視覺
+   巢狀。 */
+.demo {
+  margin-top: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 360px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* chatInputWrap:數值照抄 .inputWrap(44px 高、22px 圓角膠囊、
+   --ios-bg 底色+ --ios-sep 邊框),同 NaturalQueryDemo.module.css。這裡
+   不是真實可編輯的 <input>(理由見 NaturalQueryDemo.tsx 的完整說明),
+   用 span 承載逐字顯示的查詢文字。 */
+.chatInputWrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--ios-bg);
+  border: 1px solid var(--ios-sep);
+  border-radius: 22px;
+  padding: 0 8px 0 16px;
+  height: 44px;
+}
+
+/* chatInput:數值照抄 .input 的字級/文字色。white-space: nowrap +
+   overflow: hidden 避免打字打到一半時字串意外換行撐開輸入框高度。 */
+.chatInput {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--color-dark);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* caret:打字中的閃爍游標——純 CSS animation 做視覺提示,不是真實
+   <input> 的瀏覽器原生游標。 */
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 14px;
+  margin-left: 1px;
+  vertical-align: -2px;
+  background: var(--color-dark);
+  animation: caretBlink 0.9s step-end infinite;
+}
+
+@keyframes caretBlink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
+/* chatSendBtn:數值照抄 .sendBtn(36px 圓形按鈕)。未打完字時是低對比的
+   --ios-sep 灰階「尚不可送出」樣式,submitted(打完字/已送出)後才換成
+   --color-dark 實色。 */
+.chatSendBtn {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: var(--ios-sep);
+  color: var(--ios-gray);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+.chatSendBtnActive {
+  background: var(--color-dark);
+  color: var(--ios-bg);
+}
+
+/* aiLine/aiLineIcon:數值照抄同名規則(✦ 圖示用 --ios-sand、說明文字用
+   --ios-gray、14px 字級)。 */
+.aiLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ios-gray);
+  padding: 0 4px;
+  min-height: 18px;
+}
+.aiLineIcon {
+  color: var(--ios-sand);
+  flex: none;
+}
+
+/* thinkingDots/dot:thinking 階段的「自動安排中」提示——三顆呼吸點依序
+   輪流放大縮小,同 NaturalQueryDemo 的 .thinkingDots/.dot。 */
+.thinkingDots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ios-gray);
+  animation: dotBounce 1.1s ease-in-out infinite;
+}
+.dot:nth-of-type(2) { animation-delay: 0.15s; }
+.dot:nth-of-type(3) { animation-delay: 0.3s; }
+
+@keyframes dotBounce {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-2px); }
+}
+
+/* timeline:全新 UI(取代 NaturalQueryDemo 的 .resultList),模擬
+   AIPlanTimelinePage 時間軸上依序長出站點的視覺,但簡化成單欄垂直
+   流程(不像正式頁面分左中右三欄——時間/軸線/卡片各自一欄——那裡
+   還要容納地圖點擊互動與多種節點型別,這裡只有 stop 一種節點,單欄
+   版面在功能卡片的有限寬度下更緊湊)。position: relative 當
+   .axisLine 絕對定位的錨點。 */
+.timeline {
+  position: relative;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* axisLine:隨站點依序生成而往下延伸的縱向主軸線——用單一 absolute
+   長條模擬 AIPlanTimelinePage 的 axisLineAbove/axisLineBelow 軸線,這裡
+   簡化成一條連續的線(而非逐段拼接),因為這個示意動畫沒有「移除/插入」
+   這種需要斷開重接軸線的情境(見 AutoPlanDemo.tsx 的完整說明)。
+   2026-09:使用者要求「時間線不要一次就出現,而是隨編排出現」——不再
+   固定貫穿整個 .timeline 高度,改用 AutoPlanDemo.tsx 傳入的 CSS 自訂
+   屬性 --axis-progress(0~1 的比例,對應 generatedCount /
+   PLAN_STOPS.length)搭配 calc() 動態算出 height,並用 transition 讓
+   軸線隨每次 generatedCount 遞增平滑往下長,而非瞬間跳到新高度。
+   top/bottom 改成只設 top(不再用 bottom 撐滿),因為高度現在是算出來
+   的,不是靠 top+bottom 兩端固定撐開中間。 */
+.axisLine {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  width: 2px;
+  height: calc((100% - 12px) * var(--axis-progress, 0));
+  background: var(--ios-sep);
+  transition: height 0.4s ease;
+}
+
+.stopRow {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  /* 站點卡預設(尚未生成)opacity: 0 加上比正常位置略往下偏移的
+     transform,生成時(.stopRowRevealed)淡入回正常位置——手法同
+     ThemePointDemo 的 .demoPoi/.demoPoiRevealed、NaturalQueryDemo 的
+     .resultCard/.resultCardRevealed(節點一直存在於 DOM,只切換 class
+     觸發 transition)。 */
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.stopRowRevealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* stopDot:時間軸上的站點錨點——疊在 .axisLine 上方(z-index 高於軸線
+   底色),未生成時是低對比的 --ios-sep 灰階,生成後(.stopRowRevealed
+   套用時一併作用於子元素)換成 --ios-sand 實色,呼應「這一站已經被
+   排進行程」的視覺回饋。用 12px 圓點,比 TimelineDemo 的 .demoDot
+   (14px)略小——這裡的軸線本身較細(2px vs 主題點地圖沒有軸線可比,
+   單純配合這個元件自己的比例),圓點稍微縮小視覺上更協調。 */
+.stopDot {
+  position: relative;
+  left: 1px;
+  width: 12px;
+  height: 12px;
+  margin-top: 3px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ios-sep);
+  border: 2px solid var(--ios-card);
+  box-shadow: 0 1px 4px rgba(61, 53, 48, 0.18);
+  z-index: 1;
+  transition: background 0.3s ease;
+}
+
+.stopRowRevealed .stopDot {
+  background: var(--ios-sand);
+}
+
+.stopBody {
+  min-width: 0;
+  flex: 1;
+  padding-bottom: 2px;
+}
+
+/* stopTime:時段文字——比照 TimelineDemo 的 .timelineTime 用等寬數字
+   (tabular-nums)避免不同時間字串寬度跳動,但這裡是站點卡片自己的
+   標頭文字(不是獨立一欄),字級/字重比地點名稱低調一階。 */
+.stopTime {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ios-gray);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 2px;
+}
+
+/* stopName/stopNote:數值比照 NaturalQueryDemo 的 .resultName/.resultDesc
+   字級與配色,維持同一套功能卡片內示意 UI 的文字比例,不用另一套字級
+   系統。 */
+.stopName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-dark);
+  margin-bottom: 2px;
+}
+.stopNote {
+  font-size: 12px;
+  color: var(--ios-gray);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

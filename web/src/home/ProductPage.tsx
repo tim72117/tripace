@@ -1,62 +1,38 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  MapPin,
+  CalendarClock,
   Layers,
-  Route,
-  MessageSquareText,
-  Users,
-  Share2,
   Moon,
   Sun,
+  Wand2,
 } from 'lucide-react';
+import { ThemePointDemo } from './ThemePointDemo';
+import { TimelineDemo } from './TimelineDemo';
+import { AutoPlanDemo } from './AutoPlanDemo';
 import './ProductPage.css';
 
 const FEATURES = [
-  {
-    icon: MapPin,
-    title: '地圖探索候選籃',
-    description: '在地圖上探索景點、餐廳、住宿，一鍵加入候選籃，整理你想去的地方。',
-  },
   {
     icon: Layers,
     title: '主題景點',
     description: '找景點沒有方向？點開主題點，就能看到周邊精心挑選的店家與景點。',
   },
   {
-    icon: Route,
-    title: '路徑地圖',
-    description: '自動在地圖上畫出當天旅程的路徑，掌握每天的動線。',
+    icon: CalendarClock,
+    title: '時間軸排程',
+    description: '把候選景點排入每天的時間軸，安排順序，一眼掌握整趟旅程的節奏。',
   },
   {
-    icon: MessageSquareText,
-    title: '自然語言查詢',
-    description: '用一般口語描述需求，快速找到符合條件的地點。',
-  },
-  {
-    icon: Users,
-    title: '協作與權限',
-    description: '邀請旅伴共同編輯旅程，依角色設定檢視或編輯權限。',
-  },
-  {
-    icon: Share2,
-    title: '公開分享連結',
-    description: '產生公開連結，把完成的旅程分享給親友，免登入也能檢視。',
-  },
-] as const;
-
-const STEPS = [
-  {
-    title: '建立旅程',
-    description: '輸入目的地與日期，建立一份屬於你的旅程。',
-  },
-  {
-    title: '探索與收藏',
-    description: '在地圖上探索景點，把喜歡的地方加入候選籃。',
-  },
-  {
-    title: '排入日程並分享',
-    description: '把候選項目拖曳排入每天的日程，完成後分享給旅伴。',
+    // 2026-09:「自然語言查詢」改主題為「自動編排行程」——icon 從
+    // MessageSquareText 換成 Wand2(魔杖,「自動生成/一鍵搞定」語意),
+    // 避免跟同一組卡片裡「時間軸排程」的 CalendarClock(時鐘,強調時間
+    // 刻度本身)、「主題景點」的 Layers(圖層堆疊,強調空間分層)撞語意
+    // ——這三個 icon 分別對應「自動生成」「時間排程」「空間分層」三種
+    // 不同的視覺隱喻,不會讓人混淆這三張卡片在講同一件事。
+    icon: Wand2,
+    title: '自動編排行程',
+    description: '描述你的旅行需求，系統自動把候選景點排成一份完整的每日時間軸行程。',
   },
 ] as const;
 
@@ -129,25 +105,47 @@ export function ProductPage() {
               <div className="product-feature-icon">
                 <Icon size={22} />
               </div>
-              <h3>{title}</h3>
+              <h3>
+                {title}
+                {/* product-feature-badge:「即將推出」提示——2026-09
+                    使用者要求只在「自動編排行程」卡片標題旁加這個小
+                    膠囊(這個功能還沒實際上線,跟另外兩張已上線的卡片
+                    區隔開),用 title 字串比對挑出這一張卡片,寫法同
+                    下方 ThemePointDemo/TimelineDemo/AutoPlanDemo 依
+                    title 決定要不要多渲染內容的既有慣例。樣式見
+                    ProductPage.css 的 .product-feature-badge。 */}
+                {title === '自動編排行程' && (
+                  <span className="product-feature-badge">即將推出</span>
+                )}
+              </h3>
               <p>{description}</p>
+              {/* ThemePointDemo:只在「主題景點」這張卡片內渲染(見上方
+                  FEATURES 陣列的 Layers icon 那筆)——文字說明「點開
+                  主題點,就能看到周邊精選店家」這句話本身仍是抽象敘述,
+                  這裡用一個假地圖示意圖具體演示:中央大圓圈是主題點,
+                  周圍散布的小點是精選點,純靜態展示(不含任何按鈕/
+                  互動)——不是接真實 Google Maps(不需要,這裡純粹示範
+                  「主題點揭露精選點」這個產品概念本身,跟任何真實城市/
+                  資料庫內容無關),見 ThemePointDemo.tsx 的完整說明。
+                  用 title 字串比對挑出這一張卡片,而非把 FEATURES 拆成
+                  「主題景點」與「其餘」兩份陣列分開處理——FEATURES 的
+                  渲染順序、其餘三張卡片的結構完全不受影響,只有這一張
+                  卡片額外多渲染一段內容,改動範圍最小。
+                  TimelineDemo:同樣邏輯,只在「時間軸排程」卡片內渲染
+                  ——地圖上依序點選候選景點、依序飛入右側時間軸時段格
+                  的假動畫,見 TimelineDemo.tsx 的完整說明。
+                  AutoPlanDemo:同樣邏輯,只在「自動編排行程」卡片內
+                  渲染(2026-09 由「自然語言查詢」改主題,見 FEATURES
+                  陣列該筆資料的完整說明)——模擬打出一句旅行需求文字、
+                  送出後系統自動把候選景點依序排成一份時間軸行程的假
+                  動畫,聊天輸入框視覺沿用 planning-demo/
+                  AIPlanTimelinePage.tsx 的樣式,時間軸呈現方式則另外
+                  簡化設計,見 AutoPlanDemo.tsx 的完整說明。 */}
+              {title === '主題景點' && <ThemePointDemo dark={dark} />}
+              {title === '時間軸排程' && <TimelineDemo dark={dark} />}
+              {title === '自動編排行程' && <AutoPlanDemo dark={dark} />}
             </div>
           ))}
-        </div>
-      </section>
-
-      <section className="product-steps">
-        <div className="product-steps-inner">
-          <h2 className="product-section-title">三步驟開始規劃</h2>
-          <div className="product-steps-grid">
-            {STEPS.map((step, index) => (
-              <div className="product-step" key={step.title}>
-                <div className="product-step-number">{index + 1}</div>
-                <h3>{step.title}</h3>
-                <p>{step.description}</p>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 

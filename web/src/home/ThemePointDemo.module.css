@@ -1,0 +1,266 @@
+/* ThemePointDemo:見 ThemePointDemo.tsx 開頭的完整說明。地標本身的視覺
+   規格(光暈/圓形地標圖/佔位圓/精選點圓點/標籤)直接照抄
+   ExploreMap.module.css 對應規則(.geo-attraction-glow/
+   -landmark-placeholder/-curated-dot/-label)的數值,不重新設計一套——
+   使用者明確要求「要跟實際的樣式一樣」。這裡不用 :global() 包 class
+   名稱(那是給 Google Maps OverlayView 動態插入的 innerHTML 用的字串
+   class,ExploreMap.module.css 特有的作法),這裡是一般 React JSX,直接
+   用 CSS Modules 的 camelCase 具名 class 即可,兩者只是宣告方式不同,
+   視覺數值完全相同。
+   外層容器(.demo)不套用 --ios-* 或 --color-* 這組 token(那些只在
+   app-theme-root scope 下有定義,見 ThemePointDemo.tsx 掛載處的完整
+   說明),而是沿用 ProductPage.tsx 既有的 --paper-dim/--line/--ink 等
+   token(.product-page scope)——地標本身(.demoTheme/.demoPoi 以下)才
+   套用 app-theme-root 的色票,兩層 token 分屬不同 scope 但同時並存於
+   這個元件裡,是刻意的:外殼(文字說明卡片)維持跟 ProductPage 其餘區塊
+   一致的視覺語言,只有地圖地標本身要求精確對齊正式產品。 */
+
+/* .demo:2026-09 改成直接嵌在 .product-feature-card 卡片內部(見
+   ThemePointDemo.tsx 開頭的完整說明),不再自己畫一層卡片外觀(背景/
+   邊框/圓角/陰影)——那樣會變成「卡片裡面又包一層卡片」的視覺巢狀。
+   只留 margin-top 跟卡片本身既有的 h3/p 說明文字拉開距離,置中對齊
+   讓地圖示意圖在卡片內置中呈現。 */
+.demo {
+  margin-top: 1.25rem;
+  display: flex;
+  justify-content: center;
+}
+
+/* demoMapWrap:假地圖容器,320×320px 固定尺寸(對齊 POI_LIST/THEME_POINT
+   在 ThemePointDemo.tsx 裡手動排列座標時假設的容器大小)——真實地圖是
+   響應式的(依 .stage 容器實際尺寸而定),這裡刻意固定尺寸,因為地標
+   位置是寫死的像素座標,不像真實地圖有投影公式可以隨容器大小重新計算。
+   背景用 --ios-card token(app-theme-root scope,對齊真實地圖底圖的
+   淺色調),不是 .product-page 的 --paper。
+   2026-09:使用者回報「圖卡內太多線條、地圖展示不要加外匡」——拿掉了
+   原本的棋盤格線背景、主題點到精選點的連線、以及這裡原本的 border。
+   緊接著使用者又要求「做一些假的街道河川示意」,故背景改用
+   .demoTerrain(見下方)這層低對比度的抽象街道/河川線條,取代拿掉的
+   棋盤格線——兩次調整看似方向相反(先拿掉線條、又加線條回來),差異
+   在於棋盤格線是規則、密集、視覺上很搶眼的方格網,街道/河川線條是
+   稀疏、不規則、顏色更淡的示意紋理,份量遠低於棋盤格線,不會重蹈
+   「太多線條」的問題。 */
+.demoMapWrap {
+  position: relative;
+  width: 320px;
+  height: 320px;
+  margin: 0 auto;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--ios-card);
+}
+
+/* demoTerrain:街道/河川示意背景的 SVG 容器,見 ThemePointDemo.tsx 掛載
+   處的完整說明——鋪滿整個 .demoMapWrap,z-index 沒有明確設定(維持
+   auto,在 DOM 順序上排在地標之前,自然被疊在下層)。 */
+.demoTerrain {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* demoStreet:主幹道線條,細、顏色極淡(--line token 本身已經是低對比的
+   分隔線顏色,這裡不用額外調 opacity),線寬 1px、無虛線——跟主題點/
+   精選點之間的視覺份量差距要夠大,街道只是氛圍提示,不能搶戲。 */
+.demoStreet {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+
+/* demoLane:巷弄(次要街道)線條,比 .demoStreet 更細更淡(0.75px 線寬+
+   0.6 透明度)——2026-09 使用者要求「再多一點街區線條」,新增這批較短
+   的巷弄線條增加密度感,但故意壓低這個層級的視覺權重,不是直接複製
+   .demoStreet 的樣式多畫幾條,避免線條數量變多之後畫面又跟先前拿掉
+   的棋盤格線一樣搶戲。 */
+.demoLane {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 0.75;
+  stroke-linecap: round;
+  opacity: 0.6;
+}
+
+/* demoRiver:河川線條,比街道更粗、顏色帶一點藍(用 --ios-blue token,
+   跟街道的中性灰褐色 --line 區隔開),線寬 3px 讓它在畫面上明顯是
+   「另一種東西」而非又一條街道。 */
+.demoRiver {
+  fill: none;
+  stroke: var(--ios-blue);
+  stroke-width: 3;
+  stroke-linecap: round;
+  opacity: 0.35;
+}
+
+/* demoWater:左上角的水域色塊(封閉區域,非線條)——2026-09 使用者貼了
+   一張真實地圖截圖參考,左上角有一塊深藍色水域,這裡用同一個
+   --ios-blue token 填色(不用描邊,fill 而非 stroke)呼應那個視覺元素,
+   透明度比 .demoRiver 低一階(0.22),避免小小一塊色塊在角落顯得過於
+   突兀。 */
+.demoWater {
+  fill: var(--ios-blue);
+  stroke: none;
+  opacity: 0.22;
+}
+
+/* demoPoi/demoTheme:對齊 ExploreMap.module.css 的 .geo-attraction-overlay
+   ——position:absolute,用 transform 把視覺重心對準座標點(flex column
+   置中排列光暈/圓/標籤)。這裡座標直接寫進 inline style 的 left/top
+   (ThemePointDemo.tsx 傳入的 POI_LIST/THEME_POINT 像素值),CSS 只負責
+   從那個定位點往上/置中展開視覺元素。主題點(.demoTheme)固定可見,
+   精選點(.demoPoi)則有「輪播浮現」動畫,見下方 .demoPoiRevealed 的
+   完整說明。 */
+.demoPoi,
+.demoTheme {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.demoTheme {
+  transform: translate(-50%, -100%);
+}
+
+/* demoPoi 預設(尚未輪播到的精選點)——opacity: 0 加上比正常位置
+   縮小、往下偏移一點的 transform(scale(0.4) + 額外 8px 的 Y 偏移),
+   模擬「即將從主題點附近浮現出來」的視覺方向感,而不是單純淡入淡出。
+   translate(-50%, -100%) 那組平移是跟 .demoTheme 共用的定位基準(把
+   視覺重心對準座標點),縮小/位移疊加在後面,兩者不衝突。
+   2026-09:使用者要求「做出點選主題點出現附近景點的輪播動畫」——這裡
+   是動畫的「隱藏」狀態,revealedCount 還沒推進到這個精選點的索引時
+   套用,ThemePointDemo.tsx 的自動計時器會依序把每個精選點從這個狀態
+   切到 .demoPoiRevealed。 */
+.demoPoi {
+  opacity: 0;
+  transform: translate(-50%, -92%) scale(0.4);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+/* demoPoiRevealed:精選點已經輪播到、正式浮現的狀態——恢復成跟
+   .demoTheme 一致的定位基準(translate(-50%, -100%))、正常大小、
+   完全不透明,transition(定義在 .demoPoi 本身,兩個狀態共用同一組
+   transition 時間)讓從隱藏到浮現的過程是平滑的淡入+放大,而非瞬間
+   出現。 */
+.demoPoiRevealed {
+  opacity: 1;
+  transform: translate(-50%, -100%) scale(1);
+}
+
+/* demoGlow:光暈本體,數值照抄 .geo-attraction-glow(140px 直徑、
+   radial-gradient 三段透明度、blur(2px))。 */
+.demoGlow {
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--ios-sand) 32%, transparent) 0%,
+    color-mix(in srgb, var(--ios-sand) 14%, transparent) 45%,
+    transparent 72%
+  );
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+/* demoPhoto:主題點的圓形地標縮圖,數值照抄
+   .geo-attraction-landmark-photo(56px、object-fit: cover、2px 卡片白
+   邊框、陰影)——ThemePointDemo.tsx 的 THEME_POINT_PHOTO 是 Pexels 示意
+   圖,不是真實赤崁樓照片(理由見該常數的完整說明),但呈現方式(真的是
+   一張圓形縮圖,不是漸層色塊佔位符)對齊真實產品。 */
+.demoPhoto {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--ios-card);
+  box-shadow: 0 2px 8px rgba(61, 53, 48, 0.18);
+  z-index: 2;
+}
+
+/* demoPhotoPressed:主題點被「按下」瞬間的回饋動畫——2026-09 使用者
+   要求「按主題點時,加上按下的動畫」。用 CSS animation(不是
+   transition)播放一次「快速縮小→放大彈回→回穩」的三段式按壓感,
+   animation-fill-mode: backwards 讓動畫開始前(0% 那一幀)的樣式立刻
+   套用,避免第一幀跟目前 scale(1) 的正常大小之間有瞬間跳動。這個
+   class 只在 revealed 剛變成 true 的那個瞬間套用(見 ThemePointDemo.tsx
+   對應的 key={String(revealed)} 說明,確保每次循環都能重新觸發播放),
+   持續時間(0.4s)比精選點的浮現 transition(見 .demoPoi 的 0.5s)略短,
+   讓「主題點先被按下」跟「精選點接著浮現」在時間感上有先後順序,而非
+   完全同時發生的兩個獨立動畫。 */
+.demoPhotoPressed {
+  animation: demoThemePress 0.4s ease;
+  animation-fill-mode: backwards;
+}
+
+@keyframes demoThemePress {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(0.82);
+  }
+  70% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* demoDot:精選點圓點,數值照抄 .geo-attraction-curated-dot(14px、
+   --ios-sand 底色、2px 卡片白邊框、陰影)。 */
+.demoDot {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ios-sand);
+  border: 2px solid var(--ios-card);
+  box-shadow: 0 1px 4px rgba(61, 53, 48, 0.24);
+  z-index: 2;
+}
+
+/* demoDot{Tea,Restaurant,Craft,Street}:店家分類配色,數值照抄
+   .geo-attraction-curated-dot-{tea,restaurant,craft,street}——見
+   geoCuratedCategoryStub.ts/ExploreMap.module.css 對應規則的完整說明,
+   這裡不重複展開理由,只搬數值。ThemePointDemo.tsx 用
+   styles[`demoDot${Category}`] 動態組出這幾個 camelCase class 名稱
+   (CSS Modules 把 kebab-case 選擇器編譯成物件 key 時,這裡直接手寫
+   camelCase 選擇器,兩邊命名一致,不需要額外轉換)。 */
+.demoDotTea {
+  background: var(--ios-sand);
+}
+.demoDotRestaurant {
+  background: var(--color-accent);
+}
+.demoDotCraft {
+  background: color-mix(in srgb, var(--ios-blue) 78%, #3D3530);
+}
+.demoDotStreet {
+  background: var(--ios-green);
+}
+
+/* demoLabel:白話標籤,數值照抄 .geo-attraction-label(6px 上邊距、
+   3px/10px 內距、10px 圓角、color-mix 疊 --ios-card 的半透明底色、
+   --color-dark 文字色、12px/500 字重)。 */
+.demoLabel {
+  margin-top: 6px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ios-card) 88%, transparent);
+  color: var(--color-dark);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(61, 53, 48, 0.12);
+  position: relative;
+  z-index: 1;
+}

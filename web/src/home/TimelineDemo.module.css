@@ -1,0 +1,265 @@
+/* TimelineDemo:見 TimelineDemo.tsx 開頭的完整說明。地圖視覺規格(街道/
+   河川示意背景、精選點圓點/標籤樣式)數值整份照抄 ThemePointDemo.module.css
+   對應規則(2026-09 使用者明確要求「地圖可以用主題景點的」,後又要求
+   「地圖跟主題點的介紹地圖一樣大」,故容器尺寸也對齊 320×320px,不再
+   另外縮小)——這裡不重複展開理由,只搬過來用。時間軸卡(.timeline
+   以下)是全新 UI,地圖上沒有對應規則可抄,自成一套但配色 token 仍沿用
+   同一個 app-theme-root scope(--ios-card/--ios-sand/--line/--color-dark
+   等),跟地圖視覺維持一致的深色/淺色切換行為。 */
+
+.demo {
+  margin-top: 1.25rem;
+  display: flex;
+  justify-content: center;
+}
+
+/* demoMapWrap:假地圖容器——320×320px,跟 ThemePointDemo.module.css 的
+   .demoMapWrap 同尺寸(2026-09 使用者明確要求「地圖跟主題點的介紹地圖
+   一樣大」)。時間軸卡疊在這個容器內部(見下方 .timeline 的完整說明,
+   使用者要求「時間軸放在地圖中」),故這裡需要 position: relative 當
+   絕對定位的錨點,overflow: hidden 確保時間軸卡的圓角/邊界不會溢出
+   地圖範圍。 */
+.demoMapWrap {
+  position: relative;
+  width: 320px;
+  height: 320px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--ios-card);
+}
+
+.demoTerrain {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.demoStreet {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+
+.demoLane {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 0.75;
+  stroke-linecap: round;
+  opacity: 0.6;
+}
+
+.demoRiver {
+  fill: none;
+  stroke: var(--ios-blue);
+  stroke-width: 3;
+  stroke-linecap: round;
+  opacity: 0.35;
+}
+
+.demoWater {
+  fill: var(--ios-blue);
+  stroke: none;
+  opacity: 0.22;
+}
+
+/* demoPoi:候選點——比 ThemePointDemo 的 .demoPoi 簡化(這裡沒有隱藏/
+   浮現兩態,預設就是「未選」的正常大小可見狀態,只有 picked/flown 兩個
+   額外疊加的視覺修飾),因為這個示範裡地圖上的點一開始就是全部可見的
+   候選清單,不像主題景點卡片那樣有「收合/展開」的概念。 */
+.demoPoi {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translate(-50%, -100%);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+/* demoPoiPicked:候選點被按下選取的瞬間——用跟 ThemePointDemo 的
+   .demoPhotoPressed 同一種「快速縮小→放大彈回」按壓回饋節奏(見
+   demoPickPulse keyframes),但套用在整個 .demoPoi 節點(含圓點+標籤)
+   而非只有照片,因為這裡的候選點沒有照片縮圖,回饋動畫要讓使用者能
+   感覺到「這個點剛剛被點了」。 */
+.demoPoiPicked {
+  animation: demoPickPulse 0.38s ease;
+  animation-fill-mode: backwards;
+}
+
+@keyframes demoPickPulse {
+  0% { transform: translate(-50%, -100%) scale(1); }
+  40% { transform: translate(-50%, -100%) scale(0.8); }
+  75% { transform: translate(-50%, -100%) scale(1.12); }
+  100% { transform: translate(-50%, -100%) scale(1); }
+}
+
+.demoDot {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ios-sand);
+  border: 2px solid var(--ios-card);
+  box-shadow: 0 1px 4px rgba(61, 53, 48, 0.24);
+  z-index: 2;
+  transition: background 0.3s ease;
+}
+
+/* demoDotFlown:候選點已經飛進時間軸——2026-09 使用者要求「加進時間軸
+   後不要消失,更改圖標就好」,故不再讓整個 .demoPoi 節點淡出/位移離開
+   地圖(先前的 .demoPoiFlown 寫法),改成點本身留在原地,只把圖示換成
+   「已加入」的標記。2026-09:使用者接著要求把標記圖示從打勾換成旗幟
+   (比打勾更貼近「行程上的一站/終點」語意,常見於行程規劃類 App 的
+   「已選定」視覺慣例)——一樣用純 CSS 畫(::before 畫旗桿、::after 畫
+   三角旗面),不額外引入圖示字型/SVG,做法比照 demoDot 系列本來就是純
+   CSS 畫出來的圓點,風格一致。
+   2026-09:使用者依實際截圖回報「icon 要大一點,且顏色不要跟其他圖標
+   相近」——底色原本用 --ios-green,跟 .demoDotStreet(街道類別)撞色,
+   使用者截圖裡兩種點放在一起幾乎分不清楚;改用 --ios-red(磚紅),是
+   base-ui.css 這組色票裡唯一沒被其餘四個 demoDot 分類 modifier
+   (sand棕黃/accent硃紅/craft藍黑/green苔綠)用掉的顏色,色相與其他
+   四色都有明顯區隔。整個點本身也從 14px 放大到 20px(width/height/
+   border 都比照 .demoDot 基準等比放大,而非只放大內部旗幟圖案),旗桿/
+   旗面線條粗細跟著放大,確保放大後的比例協調、不是旗幟擠在小圓點裡
+   看起來失衡。 */
+.demoDotFlown {
+  width: 20px;
+  height: 20px;
+  background: var(--ios-red) !important;
+  border-width: 2.5px;
+  box-shadow: 0 2px 6px rgba(61, 53, 48, 0.32);
+}
+.demoDotFlown::before {
+  content: '';
+  position: absolute;
+  left: 6.5px;
+  top: 3.5px;
+  width: 1.5px;
+  height: 13px;
+  background: #fff;
+}
+.demoDotFlown::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 3.5px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 3px 0 3px 6px;
+  border-color: transparent transparent transparent #fff;
+}
+
+.demoDotTea {
+  background: var(--ios-sand);
+}
+.demoDotRestaurant {
+  background: var(--color-accent);
+}
+.demoDotCraft {
+  background: color-mix(in srgb, var(--ios-blue) 78%, #3D3530);
+}
+.demoDotStreet {
+  background: var(--ios-green);
+}
+
+.demoLabel {
+  margin-top: 6px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ios-card) 88%, transparent);
+  color: var(--color-dark);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(61, 53, 48, 0.12);
+  position: relative;
+  z-index: 1;
+}
+
+/* timeline:時段列表卡——2026-09 使用者要求「時間軸放在地圖中」,改成
+   position: absolute 疊在 .demoMapWrap 右下角的浮動面板(類似真實地圖
+   App 上「搜尋結果/行程摘要」蓋在地圖上方的常見版面模式),不是地圖
+   外部另一塊並排區域。背景用帶透明度的 --ios-card(color-mix 疊一層
+   透明,而非不透明的 var(--ios-card) 純色底)+ blur(8px) 做毛玻璃效果,
+   讓浮在地圖上方時仍能隱約看到下層的街道/候選點紋理,視覺上讀起來是
+   「蓋在地圖上的一層」而非「切開地圖硬塞一塊實色色塊」。寬度縮到
+   148px(比先前並排版面的 180px 更窄一點),避免完全遮住地圖左側的
+   街道背景與另外 3 個未被選中的候選點。 */
+.timeline {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 148px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ios-card) 82%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(61, 53, 48, 0.18);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 3;
+}
+
+.timelineHeader {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-dark);
+  opacity: 0.7;
+  margin-bottom: 1px;
+}
+
+.timelineSlot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.timelineTime {
+  width: 34px;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--color-dark);
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+}
+
+/* timelineCard:時段格本體——未填入時是低調的虛線佔位框,填入後
+   (.timelineCardFilled)換成實色底+文字標籤,用 transition 做這兩態
+   之間的平滑過渡(底色/邊框/文字 opacity 都可以 transition,不需要
+   額外的 keyframes 動畫)。 */
+.timelineCard {
+  flex: 1;
+  min-height: 26px;
+  border-radius: 7px;
+  border: 1px dashed var(--line);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  transition: background 0.4s ease, border-color 0.4s ease;
+}
+
+.timelineCardFilled {
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--ios-sand) 30%, var(--ios-card));
+}
+
+.timelineCardLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  animation: demoLabelFadeIn 0.4s ease forwards;
+}
+
+@keyframes demoLabelFadeIn {
+  from { opacity: 0; transform: translateX(-4px); }
+  to { opacity: 1; transform: translateX(0); }
+}

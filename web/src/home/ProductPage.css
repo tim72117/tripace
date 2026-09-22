@@ -239,6 +239,15 @@
   gap: 1.5rem;
 }
 
+/* .product-feature-card 統一套用給三張功能卡片(含內嵌 ThemePointDemo
+   的「主題景點」那張)——2026-09 曾試過讓「主題景點」那張卡片額外套
+   grid-column: 1 / -1 橫跨整個格線寬度,讓地圖示意圖(320px 固定寬)
+   有更多空間,但使用者回報「太寬了,沒有並排排列」:橫跨整行會讓這張
+   卡片在桌面寬螢幕下單獨佔一整列,把其餘卡片擠到上下各自一列,失去
+   「並排格線」的版面效果。已改回統一規則,三張卡片一起走
+   .product-features-grid 的 auto-fit 並排邏輯——地圖示意圖比格線最小
+   寬度(280px)略寬,但格線欄寬是 1fr(依可用空間平分,不是鎖死在最小
+   寬度),寬螢幕下單欄實際渲染寬度遠大於 320px,足夠容納。 */
 .product-feature-card {
   background: var(--paper-dim);
   border: 1px solid var(--line);
@@ -262,59 +271,32 @@
 .product-feature-card h3 {
   font-size: 1.1rem;
   margin: 0 0 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* product-feature-badge:標題旁的小膠囊標籤——2026-09 使用者要求在
+   「自動編排行程」卡片標題旁加「即將推出」提示,故 h3 改成 flex 容器
+   讓文字跟膠囊在同一行並排(見上方 h3 規則的 display: flex)。底色刻意
+   用 --vermilion(強調色)而非 --paper/--paper-dim(卡片本身底色),讓
+   這個標籤在視覺上跳出來、明確傳達「這是提示,不是功能標題的一部分」,
+   不會被誤認成標題文字的延伸。字級比標題小很多(0.7rem vs 1.1rem),
+   份量克制,不會搶過標題本身的視覺重心。 */
+.product-feature-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--paper);
+  background: var(--vermilion);
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  white-space: nowrap;
 }
 
 .product-feature-card p {
   font-size: 0.92rem;
-  color: var(--ink-soft);
-  margin: 0;
-}
-
-/* Steps */
-.product-steps {
-  background: var(--paper-dim);
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  padding: 4rem 1.5rem;
-}
-
-.product-steps-inner {
-  max-width: 900px;
-  margin: 0 auto;
-}
-
-.product-steps-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 2rem;
-  margin-top: 2.5rem;
-}
-
-.product-step {
-  text-align: center;
-}
-
-.product-step-number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 999px;
-  background: var(--vermilion);
-  color: #fff;
-  font-family: 'ShipporiSerif', serif;
-  font-weight: 700;
-  margin-bottom: 1rem;
-}
-
-.product-step h3 {
-  font-size: 1.05rem;
-  margin: 0 0 0.5rem;
-}
-
-.product-step p {
-  font-size: 0.9rem;
   color: var(--ink-soft);
   margin: 0;
 }

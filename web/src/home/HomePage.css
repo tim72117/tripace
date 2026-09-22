@@ -75,39 +75,72 @@
 
 /* ---------- 日夜間切換 ---------- */
 
+/* 2026-09:使用者要求「首頁的右上按鈕,都改成版透明毛玻璃」——
+   .theme-toggle/.app-cta(含 .app-cta-feature)原本一個是 var(--paper)
+   實心底圓鈕、一個是完全透明+純框線,兩者底色處理方式不一致。統一改成
+   同一種毛玻璃處理:半透明的 --paper(color-mix 疊一層透明,而非不透明
+   純色)+ backdrop-filter: blur(),讓按鈕蓋在 hero 區的山稜背景/內容
+   上方時,底下的畫面隱約透出來,而非完全遮擋或完全隱形。深色模式下
+   --paper 已經是深色系(見上方 --paper token 的 dark 分支),同一組
+   color-mix 寫法在深色模式自然呈現深色毛玻璃,不需要另外複寫。 */
 .kyoto-bloom .theme-toggle {
   position: fixed; right: 16px; top: 16px; z-index: var(--z-fixed-ui);
   width: 36px; height: 36px;
   display: flex; align-items: center; justify-content: center;
   border-radius: 50%; border: 1px solid var(--line);
-  background: var(--paper); color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 55%, transparent);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  color: var(--ink);
   cursor: pointer; box-shadow: var(--card-shadow);
   transition: background 0.2s ease, color 0.2s ease;
 }
-.kyoto-bloom .theme-toggle:hover { background: var(--paper-dim); }
+.kyoto-bloom .theme-toggle:hover { background: color-mix(in srgb, var(--paper-dim) 65%, transparent); }
 
 /* 登入捷徑——固定右上角,排在 .theme-toggle(36px 寬,right: 16px)左邊:
-   16(theme-toggle 右邊界) + 36(自身寬) + 10(間距) = 62px。純框線款,
-   background 完全透明(不是 var(--paper)那種「跟底色一樣」的假透明),
-   讓按鈕直接融入背後的內容,只靠邊框存在——比帶底色的版本更輕。 */
+   16(theme-toggle 右邊界) + 36(自身寬) + 10(間距) = 62px。原本是純框線
+   款(background: transparent,完全不帶底色),2026-09 改成跟
+   .theme-toggle 同一種半透明毛玻璃處理(見上方完整說明),兩顆按鈕的
+   視覺語言統一,不再是「一顆有底色玻璃感、一顆完全無底色」的不一致
+   組合。 */
 .kyoto-bloom .app-cta {
   position: fixed; right: 62px; top: 16px; z-index: var(--z-fixed-ui);
   display: flex; align-items: center;
   height: 36px; padding: 0 18px;
   border-radius: 999px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
-  background: transparent; color: var(--ink); border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 55%, transparent);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  color: var(--ink); border: 1px solid var(--line);
   text-decoration: none; white-space: nowrap;
-  transition: border-color 0.2s ease, color 0.2s ease;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
-.kyoto-bloom .app-cta:hover { border-color: var(--vermilion-soft); color: var(--vermilion); }
+.kyoto-bloom .app-cta:hover {
+  background: color-mix(in srgb, var(--paper-dim) 65%, transparent);
+  border-color: var(--vermilion-soft); color: var(--vermilion);
+}
 /* app-cta-feature:「功能介紹」再往左讓開一顆「登入」的空間——「登入」
    兩字在 13px/letter-spacing 0.02em/padding 0 18px 下實際渲染寬度約
    70px,62px(登入自己的 right)+70px+12px 間距,取整數 144px。「功能
    介紹」與原本的「產品介紹」同為四個中文字,渲染寬度不受字義影響,故
    沿用原本校準過的數值,不需重新計算。手機寬度下三顆固定按鈕(切換鈕
    36px 圓鈕+兩個文字膠囊)容易在窄螢幕擠壓,見下方 900px/480px 斷點
-   統一縮小字體/padding/間距換算後的 right 值。 */
-.kyoto-bloom .app-cta-feature { right: 144px; }
+   統一縮小字體/padding/間距換算後的 right 值。
+   2026-09:使用者要求「功能介紹改為主色」——最初試過實心 --vermilion
+   (主色)底+純白字,但使用者接連回報「會不會太亮」「太亮」,確認是
+   整顆按鈕的規格/份量感太強烈,跟另外兩顆(登入/日夜切換)的毛玻璃
+   樣式差距太大。改回跟 .app-cta 同一套半透明毛玻璃底(份量統一),
+   只把文字/邊框改成 --vermilion(主色),讓這顆按鈕維持跟其餘兩顆一致
+   的輕量玻璃質感,同時用主色文字/邊框做出「這是主要引導動作」的區隔
+   ——份量克制,不是靠實色滿版搶戲。深色模式下 --vermilion 已有對應的
+   較亮色值(見上方 --paper 等 token 的 dark 分支同一組 :root 變數),
+   同一條規則在深色模式自動套用該色值,不需要另外複寫。 */
+.kyoto-bloom .app-cta-feature {
+  right: 144px;
+  color: var(--vermilion); border-color: var(--vermilion-soft);
+}
+.kyoto-bloom .app-cta-feature:hover {
+  background: color-mix(in srgb, var(--paper-dim) 65%, transparent);
+  border-color: var(--vermilion); color: var(--vermilion);
+}
 @media (max-width: 900px) {
   .kyoto-bloom .app-cta { right: 62px; padding: 0 14px; font-size: 12px; }
   .kyoto-bloom .app-cta-feature { right: 128px; }

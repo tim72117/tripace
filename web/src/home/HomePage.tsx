@@ -79,7 +79,13 @@ export function HomePage() {
           樣式的按鈕(透明底+細框線),沒有需要另外命名的差異,只是連結
           目標跟文字不同;再往左讓開一顆 .app-cta 的寬度+間距(46px,見
           HomePage.css .app-cta-feature 的計算說明)。 */}
-      <a className="app-cta app-cta-feature" href="/product">功能介紹</a>
+      <a
+        className="app-cta app-cta-feature"
+        href="/product"
+        onClick={() => trackEvent('landing_feature_intro_click')}
+      >
+        功能介紹
+      </a>
       <section className="hero">
         <svg className="hero-ridge" viewBox="0 0 1200 300" preserveAspectRatio="none">
           <path
