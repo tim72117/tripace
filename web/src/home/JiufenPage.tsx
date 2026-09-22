@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { Moon, Sun } from 'lucide-react';
 import { InteractiveExploreMap } from './InteractiveExploreMap';
 import { MobileMapReveal } from './MobileMapReveal';
+import { CityPageFooter } from './CityPageFooter';
+import { useThemeToggle } from '../hooks/useThemeToggle';
+import { useScrollProgress } from '../hooks/useScrollProgress';
 import './JiufenPage.css';
 
 // SEO_TITLE/SEO_DESCRIPTION:這個頁面專屬的 <title>/<meta description>,
@@ -117,72 +120,15 @@ const STOPS = [
   },
 ] as const;
 
-function isCurrentlyDark(t: 'dark' | 'light' | null, systemPrefersDark: boolean) {
-  if (t === 'dark') return true;
-  if (t === 'light') return false;
-  return systemPrefersDark;
-}
-
+// activeIndex/stopRefs/mapIntroRef 的捲動進度邏輯已抽到 useScrollProgress
+// (見 src/hooks/useScrollProgress.ts 的完整說明)——原本這裡有一份約
+// 25 行逐字說明「-1 是開頭互動地圖區塊的專屬哨兵值」「threshold 0.5
+// 避免進度點跳來跳去」等細節,現在集中寫在該 hook 檔案裡,不重複貼在
+// 三個城市頁各自的檔案。
 export function JiufenPage() {
-  const [theme, setTheme] = useState<'dark' | 'light' | null>(null);
-  const [systemPrefersDark, setSystemPrefersDark] = useState(false);
-  // activeIndex:目前捲動到視窗中央的區塊索引——驅動右側進度點與每個
-  // 站點 section 的 is-active class(觸發文字淡入淡出),不牽涉座標/
-  // 路徑計算,跟首頁 HomePage.tsx 那套「地圖游標+bloom 照片」的捲動
-  // 邏輯是兩回事,這裡刻意不共用、不仿造那套複雜度。-1 是專屬於開頭
-  // 互動地圖區塊(mapIntroRef)的特殊值,0 以上對應 STOPS 陣列的索引——
-  // 初始值就是 -1,因為頁面一載入、還沒開始捲動時,使用者本來就正在
-  // 看地圖區塊,這個 icon 點應該從一開始就是高亮狀態,不需要等使用者
-  // 捲動一次才會顯示正確的高亮位置。
-  const [activeIndex, setActiveIndex] = useState(-1);
-  const stopRefs = useRef<(HTMLElement | null)[]>([]);
-  // mapIntroRef:開頭互動地圖(InteractiveExploreMap)的容器——供進度點列
-  // 第一個「回到地圖」圖示點擊時捲回去用,也跟 stopRefs 一起被同一個
-  // IntersectionObserver 觀察(見下方),捲動到這個區塊時把 activeIndex
-  // 設回 -1,讓地圖圖示點套用跟其餘站點點一致的 .is-active 變色效果
-  // (見 JiufenPage.css 該 class 的完整說明)。
+  const { theme, dark, toggleTheme } = useThemeToggle();
   const mapIntroRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const mql = window.matchMedia('(prefers-color-scheme: dark)');
-    setSystemPrefersDark(mql.matches);
-    const handleChange = (e: MediaQueryListEvent) => setSystemPrefersDark(e.matches);
-    mql.addEventListener('change', handleChange);
-    return () => mql.removeEventListener('change', handleChange);
-  }, []);
-
-  useEffect(() => {
-    const els = stopRefs.current.filter((el): el is HTMLElement => el !== null);
-    // mapIntroRef 一併加入觀察名單(data-index="-1",對應上方 activeIndex
-    // 的特殊值)——讓「回到地圖」圖示點在使用者實際捲動到地圖區塊時
-    // 也能正確套用 .is-active 高亮效果,理由見該狀態的完整說明。
-    if (mapIntroRef.current) mapIntroRef.current.setAttribute('data-index', '-1');
-    const allEls = mapIntroRef.current ? [mapIntroRef.current, ...els] : els;
-    if (typeof IntersectionObserver === 'undefined') {
-      els.forEach((el) => el.classList.add('is-active'));
-      return;
-    }
-    // threshold 0.5:站點區塊過半進入視窗才算「目前站點」,避免捲動途中
-    // 兩個區塊同時觸發、進度點跳來跳去。
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          const idx = Number(entry.target.getAttribute('data-index'));
-          entry.target.classList.toggle('is-active', entry.isIntersecting);
-          if (entry.isIntersecting) setActiveIndex(idx);
-        });
-      },
-      { threshold: 0.5 },
-    );
-    allEls.forEach((el) => io.observe(el));
-    return () => io.disconnect();
-  }, []);
-
-  const dark = isCurrentlyDark(theme, systemPrefersDark);
-
-  const toggleTheme = () => {
-    setTheme(dark ? 'light' : 'dark');
-  };
+  const { activeIndex, stopRefs } = useScrollProgress(STOPS.length, mapIntroRef);
 
   return (
     <div className="jiufen-page" data-theme={theme ?? undefined}>
@@ -393,37 +339,7 @@ export function JiufenPage() {
         </Link>
       </section>
 
-      <footer className="jiufen-footer">
-        <span className="jiufen-footer-brand">Tripace · 行程規劃</span>
-        <div className="jiufen-footer-sitemap">
-          <div className="jiufen-footer-sitemap-col">
-            <span className="jiufen-footer-sitemap-title">產品功能</span>
-            <Link to="/product">產品介紹</Link>
-            <Link to="/app">開始使用</Link>
-          </div>
-          <div className="jiufen-footer-sitemap-col">
-            <span className="jiufen-footer-sitemap-title">更多景點</span>
-            <Link to="/kyoto-kiyomizu">日本・京都</Link>
-          </div>
-        </div>
-        <div className="jiufen-footer-bar">
-          <span className="jiufen-footer-copyright">Copyright © 2026 Tripace</span>
-          <nav className="jiufen-footer-links">
-            <Link to="/">回首頁</Link>
-            <Link to="/privacy">隱私權政策</Link>
-            <Link to="/terms">服務條款</Link>
-            <a href="#">聯絡我們</a>
-          </nav>
-        </div>
-        <a
-          className="jiufen-footer-onagent"
-          href="https://onagent.shuttle.tools"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Powered by onagent
-        </a>
-      </footer>
+      <CityPageFooter />
     </div>
   );
 }

@@ -100,19 +100,21 @@
   transition: border-color 0.2s ease, color 0.2s ease;
 }
 .kyoto-bloom .app-cta:hover { border-color: var(--vermilion-soft); color: var(--vermilion); }
-/* app-cta-product:「產品介紹」再往左讓開一顆「登入」的空間——「登入」
+/* app-cta-feature:「功能介紹」再往左讓開一顆「登入」的空間——「登入」
    兩字在 13px/letter-spacing 0.02em/padding 0 18px 下實際渲染寬度約
-   70px,62px(登入自己的 right)+70px+12px 間距,取整數 144px。手機寬度
-   下三顆固定按鈕(切換鈕 36px 圓鈕+兩個文字膠囊)容易在窄螢幕擠壓,見
-   下方 900px/480px 斷點統一縮小字體/padding/間距換算後的 right 值。 */
-.kyoto-bloom .app-cta-product { right: 144px; }
+   70px,62px(登入自己的 right)+70px+12px 間距,取整數 144px。「功能
+   介紹」與原本的「產品介紹」同為四個中文字,渲染寬度不受字義影響,故
+   沿用原本校準過的數值,不需重新計算。手機寬度下三顆固定按鈕(切換鈕
+   36px 圓鈕+兩個文字膠囊)容易在窄螢幕擠壓,見下方 900px/480px 斷點
+   統一縮小字體/padding/間距換算後的 right 值。 */
+.kyoto-bloom .app-cta-feature { right: 144px; }
 @media (max-width: 900px) {
   .kyoto-bloom .app-cta { right: 62px; padding: 0 14px; font-size: 12px; }
-  .kyoto-bloom .app-cta-product { right: 128px; }
+  .kyoto-bloom .app-cta-feature { right: 128px; }
 }
 @media (max-width: 480px) {
   .kyoto-bloom .app-cta { padding: 0 10px; font-size: 11px; }
-  .kyoto-bloom .app-cta-product { right: 108px; }
+  .kyoto-bloom .app-cta-feature { right: 108px; }
 }
 /* 手機版沿用桌面版同一組固定左上/右上定位,不再另外覆寫。 */
 

@@ -1,0 +1,66 @@
+/* --footer-accent:hover 顏色讀這個中性變數,呼叫端(各城市頁的
+   .kyoto-page/.jiufen-page/.tainan-page 作用域)需各自定義指向自己的
+   強調色(見 CityPageFooter.tsx 開頭的完整說明)。--ink/--ink-soft/
+   --line 三個 token 名稱三個城市頁目前一致,直接沿用,不用另外中性化。 */
+.footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding: 28px 1.5rem;
+  text-align: center;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.brand {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.bar {
+  width: 100%;
+  max-width: 1180px;
+  margin: 48px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  font-size: 13px;
+}
+
+.copyright {
+  color: var(--ink-soft);
+}
+
+.links {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.links a {
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+
+.links a:hover {
+  color: var(--footer-accent);
+  text-decoration: underline;
+}
+
+.poweredby {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  text-decoration: none;
+  opacity: 0.75;
+}
+
+.poweredby:hover {
+  opacity: 1;
+  text-decoration: underline;
+}

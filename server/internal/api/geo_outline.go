@@ -1557,7 +1557,12 @@ var publicPlaceDetailsAllowlist = map[string]bool{
 	"ChIJC_GkyqjYbTQR8AlhjOqU_0w": true, // 同記安平豆花
 	"ChIJ853g2xx2bjQR5L6IGrV8DQU": true, // 義豐冬瓜茶
 	"ChIJkaF4DBt2bjQRG_fUZd1WsEM": true, // Meller墨樂咖啡
-	"ChIJCzKLjwJ3bjQR7PnULJDx_w8": true, // 0343選物店
+	// 0343選物店(ChIJCzKLjwJ3bjQR7PnULJDx_w8)已下架:店已關閉,
+	// TainanPage.tsx STOPS 該站已改為神農街、之後再改為海山館(見該
+	// 檔案的完整說明),這裡同步移除,避免地圖上繼續顯示一個已關閉的
+	// 商家。仍留在資料庫 attractions 表裡的同一筆記錄需另外清理(不是
+	// 這個 allowlist 能處理的範圍,見 store.DeleteAttraction 或對應的
+	// 資料庫維運操作)。
 }
 
 // GET /public/geo/place-details?placeId={Google Place ID}

@@ -26,6 +26,19 @@ import styles from './InteractiveExploreMap.module.css'
 // 不同 port)下打不到正確的後端,必須改用正確的 baseURL。
 const GUEST_CFG: ClientConfig = { baseURL: BASE_URL, token: null }
 
+// LANDING_MAP_ID:這個展示頁專用的 Cloud Style Map ID——正式規劃功能
+// (ExploreMap.tsx/GeoOutlinePhoneView.tsx 等)沒有傳 mapId 給
+// NativeMapBase,沿用預設的 VITE_GOOGLE_MAPS_MAP_ID;這個展示頁改用
+// VITE_GOOGLE_MAPS_LANDING_MAP_ID,對應不顯示餐廳/旅宿 POI 的樣式(見
+// docs/map-style/*-no-food-lodging.json 的樣式快照,原理是 pointOfInterest
+// 父層整批關閉標籤、只重新開啟 landmark/recreation/entertainment 三個
+// 子分類,不逐一命中餐廳/旅宿各自的 id)——這個城市介紹頁只想呈現地標/
+// 景點,不需要 Google 原生底圖的商家圖標干擾視覺焦點。環境變數未設定
+// 時 LANDING_MAP_ID 是 undefined,NativeMapBase 的 mapId prop 會自動
+// 退回 VITE_GOOGLE_MAPS_MAP_ID(見該檔案 mapId 的說明),不會讓地圖建立
+// 失敗。
+const LANDING_MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_LANDING_MAP_ID as string | undefined
+
 // FALLBACK_CENTER:資料尚未從 API 載入完成前的暫定地圖中心——只在第一次
 // 渲染、attractions 還是空陣列時短暫使用,資料載入完成後 INITIAL_CENTER
 // 會改用真正查到的主題點座標重新計算(見下方 useEffect)。刻意留一個粗略
@@ -462,6 +475,7 @@ export function InteractiveExploreMap({
           // 的完整說明),不跟著切換的話,使用者手動選了「夜間模式」但
           // 地圖底圖仍是淺色(或反過來),UI 跟地圖會對不起來。
           theme={theme}
+          mapId={LANDING_MAP_ID}
           onHandleChange={handleMapHandleChange}
         >
           {/* AttractionInfoPanel/GeoOutlinePhoneInfoSheet(主題卡,依

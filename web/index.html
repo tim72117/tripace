@@ -1,12 +1,31 @@
 <!doctype html>
 <html lang="zh-Hant">
   <head>
-    <!-- Google Tag Manager -->
-    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-    })(window,document,'script','dataLayer','GTM-563D8TXG');</script>
+    <!-- Google Tag Manager
+         下方判斷式讀的環境變數,關閉分析追蹤時整段容器載入直接跳過
+         ——原本 analytics.ts 的 trackEvent no-op 只能排除「自訂事件」
+         (點擊/登入等),GTM 容器本身是這段純靜態 script,在任何 React/
+         Vite 程式碼執行之前就已載入,即使排除了 trackEvent,GTM 容器
+         仍會自動觸發預設的 pageview 事件,本機開發瀏覽任何頁面(含
+         新增的 landing page,如台南介紹頁)都會被算進正式環境的
+         GA4/Ads 流量統計。判斷式裡那個帶 % 的 token 是 Vite 對
+         index.html 的建置期字串替換語法(讀 .env 系列檔案,dev/build
+         皆支援)——這則註解刻意不把該 token 逐字寫出來,寫出來會被
+         同一套替換機制連同註解文字一起代換掉,讀起來語意不通(曾經
+         踩過)。把判斷收在這裡,而非只排除 dataLayer.push 這一個
+         進入點——見 src/analytics.ts trackEvent 的完整說明,兩處排除
+         機制互補:這裡擋容器載入本身(連 gtm.js 都不會發出請求),
+         analytics.ts 擋自訂事件(容器已載入、但正式環境才該計入的
+         互動事件仍不誤觸發)。 -->
+    <script>
+      if ('%VITE_DISABLE_ANALYTICS%' !== '1') {
+        (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+        new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+        j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+        'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+        })(window,document,'script','dataLayer','GTM-563D8TXG');
+      }
+    </script>
     <!-- End Google Tag Manager -->
     <meta charset="UTF-8" />
     <!-- viewport-fit=cover:讓內容延伸到 iPhone 瀏海/home indicator 這類安全區之外,

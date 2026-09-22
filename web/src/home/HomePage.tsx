@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Moon, Sun } from 'lucide-react'
+import { trackEvent } from '../analytics'
 import './HomePage.css'
 
 // HomePage — 網站首頁("/" 路由)。原本以京都東山探索路線的捲動視差敘事
@@ -71,14 +72,14 @@ export function HomePage() {
           排在它左邊(theme-toggle 本身 right: 16px,這裡再往左讓開它的
           寬度+間距)。不用等使用者捲到結尾 CTA 或頁尾連結才找得到入口。 */}
       <a className="app-cta" href="/app">登入</a>
-      {/* 產品介紹——原本只在 footer 網站地圖裡才找得到(見下方
+      {/* 功能介紹——原本只在 footer 網站地圖裡才找得到(見下方
           .kyoto-footer-sitemap),使用者要求提升能見度、搬到右上角常駐
           功能列。跟 .app-cta 用同一個 class(.app-cta,而非另建一個
           class)——兩者視覺上就是同一種樣式的按鈕(透明底+細框線),沒有
           需要另外命名的差異,只是連結目標跟文字不同;再往左讓開一顆
-          .app-cta 的寬度+間距(46px,見 HomePage.css .app-cta-product
+          .app-cta 的寬度+間距(46px,見 HomePage.css .app-cta-feature
           的計算說明)。 */}
-      <a className="app-cta app-cta-product" href="/product">產品介紹</a>
+      <a className="app-cta app-cta-feature" href="/product">功能介紹</a>
       <section className="hero">
         <svg className="hero-ridge" viewBox="0 0 1200 300" preserveAspectRatio="none">
           <path
@@ -115,25 +116,49 @@ export function HomePage() {
           路由)集中列在這裡,取代舊版首頁「捲動看完一個城市的完整敘事」
           的單一路徑,改成「先看有哪些目的地,自己選一個點進去」。簡約
           文字列表樣式(不放縮圖),對齊使用者明確選擇的方向——之後新增
-          城市頁面,只需要在 DESTINATIONS 陣列多加一筆。 */}
+          城市頁面,只需要在 DESTINATIONS 陣列多加一筆。
+          landing_destination_click:每個項目的點擊事件(見 src/analytics.ts
+          trackEvent 的萬用機制,GTM 後台已有比對所有事件名稱的通用
+          trigger,不需要額外設定),destination 帶城市名稱——用來看首頁
+          目的地清單裡哪個城市的點擊率較高,GTM 未設定分析追蹤時(本機
+          開發)trackEvent 直接 no-op,不影響正常導覽。 */}
       <section className="destinations" id="destinations">
         <div className="destinations-inner">
           <div className="explore-eyebrow">目的地</div>
           <h2 className="explore-title">選一個地方，開始探索</h2>
           <div className="destination-list">
-            <a className="destination-item" href="/kyoto-kiyomizu">
+            <a
+              className="destination-item"
+              href="/kyoto-kiyomizu"
+              onClick={() => trackEvent('landing_destination_click', { destination: '京都' })}
+            >
               <span className="destination-row">
                 <span className="destination-name">日本 · 京都</span>
                 <svg className="destination-arrow" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </span>
               <span className="destination-desc">清水寺、産寧坂、祇園——地形、信仰與人文交織的東山散策路線</span>
             </a>
-            <a className="destination-item" href="/jiufen">
+            <a
+              className="destination-item"
+              href="/jiufen"
+              onClick={() => trackEvent('landing_destination_click', { destination: '九份' })}
+            >
               <span className="destination-row">
                 <span className="destination-name">台灣 · 九份</span>
                 <svg className="destination-arrow" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </span>
               <span className="destination-desc">礦業興衰與人文重生的山城故事，老街、茶樓與海景交錯的散策路線</span>
+            </a>
+            <a
+              className="destination-item"
+              href="/tainan-anping"
+              onClick={() => trackEvent('landing_destination_click', { destination: '台南安平' })}
+            >
+              <span className="destination-row">
+                <span className="destination-name">台灣 · 台南安平</span>
+                <svg className="destination-arrow" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </span>
+              <span className="destination-desc">港口地形、貿易與淤積轉型的故事，古堡、老街與老屋活化交織的散策路線</span>
             </a>
           </div>
         </div>

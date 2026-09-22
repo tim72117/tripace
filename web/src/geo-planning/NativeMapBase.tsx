@@ -51,6 +51,7 @@ export function NativeMapBase({
   restrictBounds,
   showZoomControl = true,
   theme,
+  mapId,
   onHandleChange,
   onPoiClick,
   children,
@@ -67,6 +68,14 @@ export function NativeMapBase({
   restrictBounds?: google.maps.LatLngBoundsLiteral | null
   showZoomControl?: boolean
   theme?: Theme
+  // mapId:不傳時退回 VITE_GOOGLE_MAPS_MAP_ID(見下方建圖 options 的既有
+  // 行為,ExploreMap.tsx/GeoOutlinePhoneView.tsx 等正式規劃功能呼叫端
+  // 都不傳,沿用原樣式不受影響)。InteractiveExploreMap.tsx(landing page
+  // 系列城市介紹頁的展示地圖)傳入另一個 Cloud Style Map ID(見該檔案
+  // 呼叫處的說明,不顯示餐廳/旅宿 POI 的樣式,docs/map-style/*-no-food-
+  // lodging.json 是對應的樣式快照)——這是唯一需要跟正式功能不同樣式的
+  // 呼叫端,不影響共用元件本身的預設行為。
+  mapId?: string
   // onHandleChange:每次 mapRef/mapReady 有實質變化就呼叫一次,把
   // MapHandle 往上交給呼叫端——呼叫端拿到後自行組裝掛載式 hook(見檔案
   // 開頭說明)。用 callback 而非直接 return 值,是因為 mapRef 是 ref、
@@ -139,7 +148,7 @@ export function NativeMapBase({
           center,
           zoom,
           ...(minZoom != null ? { minZoom } : {}),
-          mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID as string,
+          mapId: mapId ?? (import.meta.env.VITE_GOOGLE_MAPS_MAP_ID as string),
           colorScheme,
           disableDefaultUI: true,
           zoomControl: showZoomControl,
@@ -189,7 +198,7 @@ export function NativeMapBase({
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKey, center, theme, zoom, minZoom])
+  }, [apiKey, center, theme, zoom, minZoom, mapId])
 
   // 通知呼叫端的唯一進入點——依賴 mapVersion(state,見該欄位的完整
   // 說明)而非只依賴 mapReady:theme 改變觸發重建時,importLibrary('maps')

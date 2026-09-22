@@ -17,6 +17,9 @@
   --moss: #5C6B57;
   --line: #C9BFA8;
   --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+  /* --footer-accent:見 KyotoPage.css 對應規則的完整說明,CityPageFooter
+     這個共用元件讀的中性變數名。 */
+  --footer-accent: var(--vermilion);
 
   min-height: 100vh;
   background: var(--paper);
@@ -132,7 +135,10 @@
   display: flex; align-items: center;
   height: 36px; padding: 0 18px;
   border-radius: 999px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
-  background: transparent; color: var(--ink); border: 1px solid var(--line);
+  /* 改用低透明度的頁面背景色(--paper),取代原本的 transparent——同
+     KyotoPage.css 對應規則的說明:position: fixed 疊在捲動內容上方,
+     低透明度維持可讀性,同時保留融入頁面的質感。 */
+  background: color-mix(in srgb, var(--paper) 85%, transparent); color: var(--ink); border: 1px solid var(--line);
   text-decoration: none;
   transition: border-color 0.2s ease, color 0.2s ease;
 }
@@ -462,42 +468,7 @@
   transform: translateY(-2px);
 }
 
-/* Footer — 結構、文案對齊 ProductPage.css 的 .product-footer,以首頁為準 */
-.jiufen-footer {
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  border-top: 1px solid var(--line); padding: 28px 1.5rem;
-  text-align: center; font-size: 14px; color: var(--ink-soft);
-}
-.jiufen-footer-brand { font-size: 15px; font-weight: 600; color: var(--ink); }
-
-/* jiufen-footer-sitemap — 對齊 HomePage.css 的 .kyoto-footer-sitemap:
-   放在品牌名下方,不加分隔線,靠間距跟上下區塊區隔。 */
-.jiufen-footer-sitemap {
-  align-self: stretch; display: flex; gap: 48px; justify-content: center;
-  flex-wrap: wrap; margin-top: 48px; text-align: left;
-}
-.jiufen-footer-sitemap-col { display: flex; flex-direction: column; gap: 10px; min-width: 120px; }
-.jiufen-footer-sitemap-title {
-  font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
-  color: var(--ink); text-transform: uppercase; margin-bottom: 2px;
-}
-.jiufen-footer-sitemap-col a { color: var(--ink-soft); text-decoration: none; font-size: 13.5px; }
-.jiufen-footer-sitemap-col a:hover { color: var(--vermilion); text-decoration: underline; }
-
-/* jiufen-footer-bar — 對齊 HomePage.css:寬度收在內容欄寬內置中,不貼齊
-   footer 全寬邊緣,不額外加分隔線。 */
-.jiufen-footer-bar {
-  width: 100%; max-width: 1180px; margin: 48px auto 0;
-  display: flex; align-items: center; justify-content: space-between;
-  flex-wrap: wrap; gap: 10px 24px; font-size: 13px;
-}
-.jiufen-footer-copyright { color: var(--ink-soft); }
-.jiufen-footer-links { display: flex; align-items: center; gap: 20px; }
-.jiufen-footer-links a { color: var(--ink-soft); text-decoration: none; }
-.jiufen-footer-links a:hover { color: var(--vermilion); text-decoration: underline; }
-
-.jiufen-page .jiufen-footer-onagent {
-  margin-top: 10px; font-size: 12px; color: var(--ink-soft);
-  text-decoration: none; opacity: 0.75;
-}
-.jiufen-page .jiufen-footer-onagent:hover { opacity: 1; text-decoration: underline; }
+/* Footer 已抽成共用元件 CityPageFooter(見 home/CityPageFooter.tsx 與
+   CityPageFooter.module.css 的完整說明),樣式改用 CSS Modules,不再需要
+   這裡的 .jiufen-footer-* 規則——上方 --footer-accent 變數定義是這個
+   頁面唯一還需要提供給該共用元件的東西。 */

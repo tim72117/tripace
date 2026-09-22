@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   MapPin,
-  MousePointerClick,
+  Layers,
   Route,
   MessageSquareText,
   Users,
@@ -19,9 +19,9 @@ const FEATURES = [
     description: '在地圖上探索景點、餐廳、住宿，一鍵加入候選籃，整理你想去的地方。',
   },
   {
-    icon: MousePointerClick,
-    title: '拖曳排入日程',
-    description: '把候選籃裡的項目拖曳到日程表，安排每天的順序與時間。',
+    icon: Layers,
+    title: '主題景點',
+    description: '找景點沒有方向？點開主題點，就能看到周邊精心挑選的店家與景點。',
   },
   {
     icon: Route,

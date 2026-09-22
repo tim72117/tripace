@@ -21,6 +21,11 @@
   --moss: #5C6B57;
   --line: #C9BFA8;
   --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+  /* --footer-accent:CityPageFooter.module.css 讀的中性變數名,指向這個
+     頁面自己的強調色(--vermilion)——只需定義一次、引用既有 token,不用
+     在下方明/暗兩份色票區塊各自重複寫死數值,--vermilion 本身已經隨
+     data-theme/系統偏好切換,--footer-accent 自然跟著變。 */
+  --footer-accent: var(--vermilion);
 
   min-height: 100vh;
   background: var(--paper);
@@ -122,7 +127,11 @@
   display: flex; align-items: center;
   height: 36px; padding: 0 18px;
   border-radius: 999px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
-  background: transparent; color: var(--ink); border: 1px solid var(--line);
+  /* 改用低透明度的頁面背景色(--paper),取代原本的 transparent——這是
+     position: fixed 疊在捲動內容上方的按鈕,transparent 底會讓底下經過
+     的文字/圖片透出來影響可讀性;低透明度(而非完全不透明的純色卡片)
+     在維持可讀性的同時,仍保留一點毛玻璃般融入頁面的質感。 */
+  background: color-mix(in srgb, var(--paper) 85%, transparent); color: var(--ink); border: 1px solid var(--line);
   text-decoration: none;
   transition: border-color 0.2s ease, color 0.2s ease;
 }
@@ -377,45 +386,7 @@
   transform: translateY(-2px);
 }
 
-/* Footer — 結構、文案對齊 JiufenPage.css 的 .jiufen-footer。這批規則
-   之前是裸選擇器(無 .kyoto-page 前綴),跟 HomePage.css 的 .kyoto-bloom
-   scope 底下同樣存在 .kyoto-footer/.kyoto-footer-brand 等同名 class
-   (字面上「kyoto」在兩個檔案分別代表「首頁完整視覺 scope 名稱」與
-   「京都頁面的城市 slug」,容易混淆)——雖然 Vite 會把兩個元件的 CSS
-   打進各自獨立的 chunk,一般路由切換不會同時載入兩份樣式表,不構成
-   實際執行期問題,但統一補上 .kyoto-page 前綴,降低未來誤用/誤改的
-   風險(見 code review 報告)。 */
-.kyoto-page .kyoto-footer {
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  border-top: 1px solid var(--line); padding: 28px 1.5rem;
-  text-align: center; font-size: 14px; color: var(--ink-soft);
-}
-.kyoto-page .kyoto-footer-brand { font-size: 15px; font-weight: 600; color: var(--ink); }
-
-.kyoto-page .kyoto-footer-sitemap {
-  align-self: stretch; display: flex; gap: 48px; justify-content: center;
-  flex-wrap: wrap; margin-top: 48px; text-align: left;
-}
-.kyoto-page .kyoto-footer-sitemap-col { display: flex; flex-direction: column; gap: 10px; min-width: 120px; }
-.kyoto-page .kyoto-footer-sitemap-title {
-  font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
-  color: var(--ink); text-transform: uppercase; margin-bottom: 2px;
-}
-.kyoto-page .kyoto-footer-sitemap-col a { color: var(--ink-soft); text-decoration: none; font-size: 13.5px; }
-.kyoto-page .kyoto-footer-sitemap-col a:hover { color: var(--vermilion); text-decoration: underline; }
-
-.kyoto-page .kyoto-footer-bar {
-  width: 100%; max-width: 1180px; margin: 48px auto 0;
-  display: flex; align-items: center; justify-content: space-between;
-  flex-wrap: wrap; gap: 10px 24px; font-size: 13px;
-}
-.kyoto-page .kyoto-footer-copyright { color: var(--ink-soft); }
-.kyoto-page .kyoto-footer-links { display: flex; align-items: center; gap: 20px; }
-.kyoto-page .kyoto-footer-links a { color: var(--ink-soft); text-decoration: none; }
-.kyoto-page .kyoto-footer-links a:hover { color: var(--vermilion); text-decoration: underline; }
-
-.kyoto-page .kyoto-footer-onagent {
-  margin-top: 10px; font-size: 12px; color: var(--ink-soft);
-  text-decoration: none; opacity: 0.75;
-}
-.kyoto-page .kyoto-footer-onagent:hover { opacity: 1; text-decoration: underline; }
+/* Footer 已抽成共用元件 CityPageFooter(見 home/CityPageFooter.tsx 與
+   CityPageFooter.module.css 的完整說明),樣式改用 CSS Modules,不再需要
+   這裡的 .kyoto-footer-* 規則——上方 --footer-accent 變數定義是這個
+   頁面唯一還需要提供給該共用元件的東西。 */

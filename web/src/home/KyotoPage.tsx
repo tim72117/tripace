@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { Moon, Sun } from 'lucide-react';
 import { InteractiveExploreMap } from './InteractiveExploreMap';
 import { MobileMapReveal } from './MobileMapReveal';
+import { CityPageFooter } from './CityPageFooter';
+import { useThemeToggle } from '../hooks/useThemeToggle';
+import { useScrollProgress } from '../hooks/useScrollProgress';
 import './KyotoPage.css';
 
 // LANDING_ASSETS_BASE — 同 JiufenPage.tsx 的說明,同一個公開可讀 GCS
@@ -95,63 +98,16 @@ const STOPS = [
   },
 ] as const;
 
-function isCurrentlyDark(t: 'dark' | 'light' | null, systemPrefersDark: boolean) {
-  if (t === 'dark') return true;
-  if (t === 'light') return false;
-  return systemPrefersDark;
-}
-
 // KyotoPage — 比照 JiufenPage.tsx 的頁面外殼架構(品牌列/日夜切換/進度
 // 導覽點/開頭互動地圖+捲動敘事區塊+結尾 CTA+頁尾),class 名稱前綴改
 // jiufen- → kyoto-。跟 JiufenPage.tsx 唯一的結構性差異:少了「起點」
 // 這個獨立站點(併入 hero 文字,見上方 STOPS 說明的理由),故 STOPS 只有
-// 7 筆而非 8 筆,其餘 IntersectionObserver/進度點/data-index="-1" 地圖
-// 哨兵索引邏輯完全比照 JiufenPage.tsx,不需要為了少一筆而調整機制本身。
+// 7 筆而非 8 筆,其餘 useScrollProgress 的地圖哨兵索引邏輯完全比照
+// JiufenPage.tsx,不需要為了少一筆而調整機制本身。
 export function KyotoPage() {
-  const [theme, setTheme] = useState<'dark' | 'light' | null>(null);
-  const [systemPrefersDark, setSystemPrefersDark] = useState(false);
-  // activeIndex — 同 JiufenPage.tsx 的說明:-1 是開頭互動地圖區塊的專屬
-  // 哨兵值,0 以上對應 STOPS 陣列索引,初始值 -1 是因為頁面一載入使用者
-  // 就正在看地圖區塊。
-  const [activeIndex, setActiveIndex] = useState(-1);
-  const stopRefs = useRef<(HTMLElement | null)[]>([]);
+  const { theme, dark, toggleTheme } = useThemeToggle();
   const mapIntroRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const mql = window.matchMedia('(prefers-color-scheme: dark)');
-    setSystemPrefersDark(mql.matches);
-    const handleChange = (e: MediaQueryListEvent) => setSystemPrefersDark(e.matches);
-    mql.addEventListener('change', handleChange);
-    return () => mql.removeEventListener('change', handleChange);
-  }, []);
-
-  useEffect(() => {
-    const els = stopRefs.current.filter((el): el is HTMLElement => el !== null);
-    if (mapIntroRef.current) mapIntroRef.current.setAttribute('data-index', '-1');
-    const allEls = mapIntroRef.current ? [mapIntroRef.current, ...els] : els;
-    if (typeof IntersectionObserver === 'undefined') {
-      els.forEach((el) => el.classList.add('is-active'));
-      return;
-    }
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          const idx = Number(entry.target.getAttribute('data-index'));
-          entry.target.classList.toggle('is-active', entry.isIntersecting);
-          if (entry.isIntersecting) setActiveIndex(idx);
-        });
-      },
-      { threshold: 0.5 },
-    );
-    allEls.forEach((el) => io.observe(el));
-    return () => io.disconnect();
-  }, []);
-
-  const dark = isCurrentlyDark(theme, systemPrefersDark);
-
-  const toggleTheme = () => {
-    setTheme(dark ? 'light' : 'dark');
-  };
+  const { activeIndex, stopRefs } = useScrollProgress(STOPS.length, mapIntroRef);
 
   return (
     <div className="kyoto-page" data-theme={theme ?? undefined}>
@@ -299,37 +255,7 @@ export function KyotoPage() {
         </Link>
       </section>
 
-      <footer className="kyoto-footer">
-        <span className="kyoto-footer-brand">Tripace · 行程規劃</span>
-        <div className="kyoto-footer-sitemap">
-          <div className="kyoto-footer-sitemap-col">
-            <span className="kyoto-footer-sitemap-title">產品功能</span>
-            <Link to="/product">產品介紹</Link>
-            <Link to="/app">開始使用</Link>
-          </div>
-          <div className="kyoto-footer-sitemap-col">
-            <span className="kyoto-footer-sitemap-title">更多景點</span>
-            <Link to="/jiufen">台灣・九份</Link>
-          </div>
-        </div>
-        <div className="kyoto-footer-bar">
-          <span className="kyoto-footer-copyright">Copyright © 2026 Tripace</span>
-          <nav className="kyoto-footer-links">
-            <Link to="/">回首頁</Link>
-            <Link to="/privacy">隱私權政策</Link>
-            <Link to="/terms">服務條款</Link>
-            <a href="#">聯絡我們</a>
-          </nav>
-        </div>
-        <a
-          className="kyoto-footer-onagent"
-          href="https://onagent.shuttle.tools"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Powered by onagent
-        </a>
-      </footer>
+      <CityPageFooter />
     </div>
   );
 }

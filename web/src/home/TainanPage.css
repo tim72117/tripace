@@ -19,6 +19,10 @@
   --tide: #3E6E63;
   --line: #DCC7A3;
   --card-shadow: 0 24px 60px -24px rgba(46, 32, 24, 0.4);
+  /* --footer-accent:見 KyotoPage.css 對應規則的完整說明,CityPageFooter
+     這個共用元件讀的中性變數名——台南用 --brick(磚紅)而非京都/九份的
+     --vermilion(朱紅),變數名稱不同但作用相同。 */
+  --footer-accent: var(--brick);
 
   min-height: 100vh;
   background: var(--paper);
@@ -119,7 +123,10 @@
   display: flex; align-items: center;
   height: 36px; padding: 0 18px;
   border-radius: 999px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
-  background: transparent; color: var(--ink); border: 1px solid var(--line);
+  /* 改用低透明度的頁面背景色(--paper),取代原本的 transparent——同
+     KyotoPage.css 對應規則的說明:position: fixed 疊在捲動內容上方,
+     低透明度維持可讀性,同時保留融入頁面的質感。 */
+  background: color-mix(in srgb, var(--paper) 85%, transparent); color: var(--ink); border: 1px solid var(--line);
   text-decoration: none;
   transition: border-color 0.2s ease, color 0.2s ease;
 }
@@ -224,6 +231,20 @@
 .tainan-stop-inner--stacked .tainan-stop-photo {
   margin: 0 auto 2rem;
 }
+/* 已補上真實照片的站點(見 TainanPage.tsx STOPS 該欄位的完整說明)——不裁切,依
+   照片自身比例決定顯示高度,同 JiufenPage.css 對應規則的說明。
+   aspect-ratio: 4/3 只在色塊佔位(無 img 子元素)時生效撐出穩定高度,
+   有 img 時交由圖片本身的天然尺寸決定。 */
+.tainan-stop-photo:has(img) {
+  aspect-ratio: auto;
+}
+.tainan-stop-photo img {
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+}
+
 .tainan-stop-photo-label {
   font-family: 'ShipporiSerif', serif;
   font-size: 0.95rem;
@@ -391,38 +412,7 @@
   transform: translateY(-2px);
 }
 
-/* Footer */
-.tainan-footer {
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  border-top: 1px solid var(--line); padding: 28px 1.5rem;
-  text-align: center; font-size: 14px; color: var(--ink-soft);
-}
-.tainan-footer-brand { font-size: 15px; font-weight: 600; color: var(--ink); }
-
-.tainan-footer-sitemap {
-  align-self: stretch; display: flex; gap: 48px; justify-content: center;
-  flex-wrap: wrap; margin-top: 48px; text-align: left;
-}
-.tainan-footer-sitemap-col { display: flex; flex-direction: column; gap: 10px; min-width: 120px; }
-.tainan-footer-sitemap-title {
-  font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
-  color: var(--ink); text-transform: uppercase; margin-bottom: 2px;
-}
-.tainan-footer-sitemap-col a { color: var(--ink-soft); text-decoration: none; font-size: 13.5px; }
-.tainan-footer-sitemap-col a:hover { color: var(--brick); text-decoration: underline; }
-
-.tainan-footer-bar {
-  width: 100%; max-width: 1180px; margin: 48px auto 0;
-  display: flex; align-items: center; justify-content: space-between;
-  flex-wrap: wrap; gap: 10px 24px; font-size: 13px;
-}
-.tainan-footer-copyright { color: var(--ink-soft); }
-.tainan-footer-links { display: flex; align-items: center; gap: 20px; }
-.tainan-footer-links a { color: var(--ink-soft); text-decoration: none; }
-.tainan-footer-links a:hover { color: var(--brick); text-decoration: underline; }
-
-.tainan-page .tainan-footer-onagent {
-  margin-top: 10px; font-size: 12px; color: var(--ink-soft);
-  text-decoration: none; opacity: 0.75;
-}
-.tainan-page .tainan-footer-onagent:hover { opacity: 1; text-decoration: underline; }
+/* Footer 已抽成共用元件 CityPageFooter(見 home/CityPageFooter.tsx 與
+   CityPageFooter.module.css 的完整說明),樣式改用 CSS Modules,不再需要
+   這裡的 .tainan-footer-* 規則——上方 --footer-accent 變數定義是這個
+   頁面唯一還需要提供給該共用元件的東西。 */
