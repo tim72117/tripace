@@ -113,6 +113,19 @@ export function NativeMapBase({
   // 合併掉中間的 false 狀態(見該 useEffect 的完整說明),數字遞增則
   // 每次都是新值,不會被合併成看不出變化的同一個值。
   const [mapVersion, setMapVersion] = useState(0)
+  // isVisible:容器目前是否有實際尺寸(寬高皆非 0)——呼叫端可能用 CSS
+  // (display: none/hidden 屬性)讓這個元件所在的 DOM 子樹保持掛載但
+  // 暫時不可見(例如 MobileMapReveal.tsx 縮圖/滿版切換,見該檔案
+  // 「children 不會再 unmount」的完整說明),建圖 effect 依賴這個值、
+  // 容器不可見時不執行——Google Maps SDK 在零尺寸容器建圖的行為未定義
+  // (實測會直接失敗、地圖永遠不出現,即使之後容器變可見也不會自動補
+  // 建),不能假設「反正之後會 resize 就沒差」。初始值固定 false(而非
+  // 嘗試在這裡讀 containerRef.current.offsetWidth):useState 初始化
+  // 函式在第一次 render 當下執行,這時 ref 必然還是 null(ref 賦值發生
+  // 在 DOM 掛載後的 commit 階段,晚於 render),讀不到真實尺寸;false
+  // 是安全的保守預設,實際可見性由下方 ResizeObserver effect 掛載後
+  // 立即量測一次並修正。
+  const [isVisible, setIsVisible] = useState(false)
   // onPoiClickRef:建圖 effect 依賴陣列不含 onPoiClick(避免呼叫端每次
   // 重渲染傳入新的內聯函式參照時觸發不必要的重建),click 監聽器內透過
   // .current 讀取最新版本——理由同 ExploreMap.tsx 對 onPoiSelectRef 等
@@ -128,6 +141,11 @@ export function NativeMapBase({
       return
     }
     if (!containerRef.current) return
+    // 容器不可見時不建圖(見上方 isVisible 的完整說明)——這裡只擋「還
+    // 沒建過圖」的情況,已經建好的地圖實例(mapRef.current 有值)即使
+    // 容器暫時不可見也不清除、不重建,下方 ResizeObserver effect 會在
+    // 容器重新可見時補一次 resize,不需要整個重建。
+    if (!isVisible && !mapRef.current) return
     const colorScheme = themeToColorScheme(theme ?? null)
     if (mapRef.current && builtColorSchemeRef.current === colorScheme) return
     if (buildingRef.current) return
@@ -198,7 +216,7 @@ export function NativeMapBase({
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKey, center, theme, zoom, minZoom, mapId])
+  }, [apiKey, center, theme, zoom, minZoom, mapId, isVisible])
 
   // 通知呼叫端的唯一進入點——依賴 mapVersion(state,見該欄位的完整
   // 說明)而非只依賴 mapReady:theme 改變觸發重建時,importLibrary('maps')
@@ -218,6 +236,40 @@ export function NativeMapBase({
     onHandleChange?.({ mapRef, mapReady, mapVersion })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, mapVersion])
+
+  // ResizeObserver:持續追蹤容器是否有實際尺寸,同步進 isVisible
+  // state——呼叫端可能用 CSS(display: none/hidden 屬性)暫時隱藏這個
+  // 元件所在的 DOM 子樹而不 unmount(例如 MobileMapReveal.tsx 縮圖/
+  // 滿版切換,見該檔案「children 不會再 unmount」的完整說明)。兩種
+  // 情況分別處理:
+  // (1) 容器從一開始就不可見,地圖還沒建過(mapRef.current 為
+  //     null)——isVisible 變 true 會讓上方建圖 effect 的依賴陣列
+  //     觸發、真正第一次建圖(見該 effect 的完整說明)。
+  // (2) 地圖已經建好,只是容器暫時被藏起來又重新出現——Google Maps
+  //     SDK 本身沒有機制自動偵測「我又重新可見了」,不手動 trigger
+  //     'resize' 會停留在建圖當下算出的舊尺寸/圖磚快取,顯示灰色
+  //     空白或圖磚沒補齊,故仍額外手動 resize+setCenter 這一步,不能
+  //     只靠 isVisible 變化觸發建圖 effect(該 effect 見到
+  //     mapRef.current 已有值會直接 return,不會重新配置尺寸)。
+  useEffect(() => {
+    if (!containerRef.current) return
+    let wasVisible = false
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+      const { width, height } = entry.contentRect
+      const nowVisible = width > 0 && height > 0
+      if (!wasVisible && nowVisible && mapRef.current) {
+        google.maps.event.trigger(mapRef.current, 'resize')
+        if (center) mapRef.current.setCenter(center)
+      }
+      wasVisible = nowVisible
+      setIsVisible(nowVisible)
+    })
+    observer.observe(containerRef.current)
+    return () => observer.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className={styles.wrap}>

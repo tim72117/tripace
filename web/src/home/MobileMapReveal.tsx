@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { X } from 'lucide-react'
 import { useIsDesktop } from '../hooks/useIsDesktop'
 import styles from './MobileMapReveal.module.css'
 
@@ -12,6 +13,16 @@ import styles from './MobileMapReveal.module.css'
 // 原型,見該檔案 git 歷史,那份原型本身已刪除、且是完全不同的 SVG 假
 // 地圖機制,這裡只借用「圓形展開」這個轉場手法,地圖本體仍是這個共用
 // 元件外部傳入的真實 InteractiveExploreMap)。
+//
+// expanded 為 true 後,children 不會再 unmount——一旦使用者點過展開,
+// 地圖實例(及其內部查詢到的景點資料)保留在記憶體/DOM 中,收合/再展開
+// 只是切換 CSS 可見性(見下方 JSX,兩層都無條件渲染,用 aria-hidden +
+// [hidden] 屬性切換,不是條件式渲染)。這是刻意的取捨:收合後重新展開
+// 若走 unmount→remount,會重新呼叫 Google Maps SDK 建圖、重新查一次
+// attractions API,使用者體感是「每次展開都要等」;代價是即使使用者
+// 只展開過一次又收合,地圖仍在背景持續佔用記憶體、地圖本身的事件監聽
+// 仍在運作——這個展示頁一次只會有一份地圖實例,成本可控,故接受這個
+// 取捨。
 //
 // 桌面版(isDesktop true)完全不啟用這套機制,直接原樣渲染 children
 // ——桌面版本來就是非滿版、固定高度的展示卡片(見 InteractiveExploreMap.
@@ -27,10 +38,23 @@ export function MobileMapReveal({
   children: ReactNode
 }) {
   const isDesktop = useIsDesktop()
-  // expanded:是否已展開成滿版地圖——一旦展開就不會再收合回縮圖(這個
-  // 展示頁的地圖是「進入式」體驗,不是可反覆開關的抽屜,使用者展開後
-  // 就維持在地圖狀態)。
   const [expanded, setExpanded] = useState(false)
+  const stageRef = useRef<HTMLDivElement | null>(null)
+
+  // 展開時強制重播 clip-path 展開動畫——expandedStage 從一開始就掛載
+  // 在 DOM 中(見元件開頭「children 不會再 unmount」的完整說明),只靠
+  // CSS animation 掛在 class 上,第二次以後展開(hidden 從 true 變
+  // false)瀏覽器不會自動重播已經「播完」的 animation。強制觸發一次
+  // reflow(讀取 offsetWidth 會強制瀏覽器同步計算佈局,丟棄還沒套用的
+  // 樣式變更批次)讓瀏覽器把這次的 hidden 移除視為全新狀態,animation
+  // 才會重新從頭播放。
+  useEffect(() => {
+    if (!expanded || !stageRef.current) return
+    void stageRef.current.offsetWidth
+    stageRef.current.classList.remove(styles.replay)
+    void stageRef.current.offsetWidth
+    stageRef.current.classList.add(styles.replay)
+  }, [expanded])
 
   // 展開後鎖住 body 捲動——這個頁面(KyotoPage/JiufenPage)是純文件流
   // 頁面(body 本身會捲動),跟正式功能 GeoOutlinePhoneView 的情境不同
@@ -68,13 +92,14 @@ export function MobileMapReveal({
 
   if (isDesktop) return <>{children}</>
 
-  if (!expanded) {
-    return (
+  return (
+    <>
       <button
         type="button"
         className={styles.thumb}
         onClick={() => setExpanded(true)}
         aria-label={`展開${photoAlt}互動地圖`}
+        hidden={expanded}
       >
         <img src={photoUrl} alt="" />
         <span className={styles.thumbHint}>點一下探索地圖</span>
@@ -86,20 +111,30 @@ export function MobileMapReveal({
             currentColor + 透明度,顏色自然跟隨外層頁面(.kyoto-page/
             .jiufen-page 都有設 color)。
             已知缺口(見 code review 記錄,待後續處理):這個提示只出現在
-            「手機版、尚未展開地圖」這個狀態,桌面版與「手機版已展開
-            地圖」的使用者目前完全沒有往下捲動的視覺引導,不像原本
-            hero 區塊的版本對所有使用者、所有狀態都可見。 */}
+            「手機版、尚未展開地圖」這個狀態,桌面版目前完全沒有往下
+            捲動的視覺引導,不像原本 hero 區塊的版本對所有使用者都
+            可見。 */}
         <span className={styles.scrollHint} aria-hidden="true">
           <span>SCROLL</span>
           <span className={styles.scrollHintBar} />
         </span>
       </button>
-    )
-  }
-
-  return (
-    <div className={styles.expandedStage}>
-      {children}
-    </div>
+      {/* expandedStage 無條件掛載(見上方元件開頭的完整說明),用 hidden
+          屬性切換可見性,而非條件式渲染——children(InteractiveExploreMap)
+          第一次點縮圖展開後就不再 unmount,收合/再展開只是 CSS 顯示
+          切換,地圖實例/景點資料保留不重建。hidden 為原生屬性,瀏覽器
+          預設 display: none,不需要額外 CSS 規則。 */}
+      <div ref={stageRef} className={styles.expandedStage} hidden={!expanded}>
+        <button
+          type="button"
+          className={styles.closeBtn}
+          onClick={() => setExpanded(false)}
+          aria-label="關閉地圖"
+        >
+          <X size={20} strokeWidth={2} />
+        </button>
+        {children}
+      </div>
+    </>
   )
 }

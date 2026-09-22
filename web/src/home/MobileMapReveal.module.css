@@ -82,18 +82,61 @@
 /* expandedStage:展開後的滿版地圖容器——100dvh 直接以視窗高度撐開
    (動態視窗高度單位,排除行動瀏覽器網址列伸縮造成的跳動,KyotoPage/
    JiufenPage 是純文件流頁面,沒有固定高度的 flex-shell 祖先可以撐滿,
-   見元件說明)。clip-path 從中心圓形展開,呼應上方縮圖被點擊的那個
-   瞬間。margin-left 抵消頁面左右 padding(--kiyomizu-page-padding),
-   讓地圖真正貼齊螢幕邊緣——.page 本身的 padding 仍保留給其餘手機版
-   非地圖內容使用,只有這個容器需要滿版,故在這裡單獨用負 margin 撐出
-   邊界,不去改整個 .page 的 padding(那樣會連帶影響同一個 .page 底下
-   其他可能存在的內容版位)。 */
+   見元件說明)。margin-left 抵消頁面左右 padding(--kiyomizu-page-
+   padding),讓地圖真正貼齊螢幕邊緣——.page 本身的 padding 仍保留給
+   其餘手機版非地圖內容使用,只有這個容器需要滿版,故在這裡單獨用負
+   margin 撐出邊界,不去改整個 .page 的 padding(那樣會連帶影響同一個
+   .page 底下其他可能存在的內容版位)。這個容器現在從一開始就掛載在
+   DOM 中(見 MobileMapReveal.tsx 元件開頭的完整說明),用 hidden 屬性
+   切換可見性——故展開動畫不寫在這裡的基礎樣式(animation 只在元素
+   第一次出現時播放一次,hidden 屬性移除不會重播已播完的 animation),
+   改成獨立的 .replay class,由元件端在每次展開時用 JS 強制重播(見
+   下方說明)。 */
 .expandedStage {
   position: relative;
   width: 100vw;
   height: 100dvh;
   margin-left: calc(-50vw + 50%);
+}
+
+/* replay:clip-path 從中心圓形展開,呼應縮圖被點擊的那個瞬間——由
+   MobileMapReveal.tsx 在每次 expanded 變 true 時,先移除再重新加上
+   這個 class(中間強制觸發一次 reflow)來重播動畫,不能只靠 CSS 本身
+   的 animation 屬性(見上方 .expandedStage 的完整說明)。 */
+.expandedStage.replay {
   animation: reveal-circle 0.5s ease-out;
+}
+
+/* closeBtn:退出滿版地圖、收合回縮圖的按鈕——固定貼在螢幕左上角(不與
+   InteractiveExploreMap 本身的類別標籤列/搜尋框等 UI 搶右側/上方版位,
+   見該元件既有版面配置)。z-index 34,低於 GeoOutlinePhoneInfoSheet.tsx
+   的 bottom sheet(35/37,見該檔案的完整說明)——使用者若同時開著
+   地點資訊卡,退出鈕會被蓋住,這是刻意的:先關掉資訊卡才能退出地圖,
+   避免直接跳出、資訊卡狀態懸空的不一致體驗;但仍高於地圖本身內建的
+   縮放控制項等一般 UI,確保沒有 sheet 開著時能明確看到、點到這顆
+   按鈕。毛玻璃圓形卡片樣式對齊 PhoneSideTools.module.css 的
+   .toolBtn 既有視覺語言。 */
+.closeBtn {
+  position: fixed;
+  left: 16px;
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  z-index: 34;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(245, 242, 237, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px rgba(61, 53, 48, 0.16);
+  /* 深色文字/icon 配合固定的暖白毛玻璃背景——跟 .thumb 的 color: inherit
+     不同,這裡背景色本身是寫死的淺色(不隨頁面深色模式切換),故前景色
+     也直接寫死深色,不需要(也不應該)跟隨外層頁面的 --ink 變數。 */
+  color: #2B2420;
+  cursor: pointer;
 }
 
 /* InteractiveExploreMap.module.css 的 .page/.stage 讀 --kiyomizu-*
