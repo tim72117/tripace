@@ -72,13 +72,13 @@ export function HomePage() {
           排在它左邊(theme-toggle 本身 right: 16px,這裡再往左讓開它的
           寬度+間距)。不用等使用者捲到結尾 CTA 或頁尾連結才找得到入口。 */}
       <a className="app-cta" href="/app">登入</a>
-      {/* 功能介紹——原本只在 footer 網站地圖裡才找得到(見下方
-          .kyoto-footer-sitemap),使用者要求提升能見度、搬到右上角常駐
-          功能列。跟 .app-cta 用同一個 class(.app-cta,而非另建一個
-          class)——兩者視覺上就是同一種樣式的按鈕(透明底+細框線),沒有
-          需要另外命名的差異,只是連結目標跟文字不同;再往左讓開一顆
-          .app-cta 的寬度+間距(46px,見 HomePage.css .app-cta-feature
-          的計算說明)。 */}
+      {/* 功能介紹——原本只在 footer 網站地圖裡才找得到(該 sitemap 區塊
+          後來已從首頁 footer 移除,見下方 <footer> 的簡化版結構),使用者
+          要求提升能見度、搬到右上角常駐功能列。跟 .app-cta 用同一個
+          class(.app-cta,而非另建一個 class)——兩者視覺上就是同一種
+          樣式的按鈕(透明底+細框線),沒有需要另外命名的差異,只是連結
+          目標跟文字不同;再往左讓開一顆 .app-cta 的寬度+間距(46px,見
+          HomePage.css .app-cta-feature 的計算說明)。 */}
       <a className="app-cta app-cta-feature" href="/product">功能介紹</a>
       <section className="hero">
         <svg className="hero-ridge" viewBox="0 0 1200 300" preserveAspectRatio="none">

@@ -2,6 +2,24 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.16.0 — 2026-09-22
+
+### 新增
+
+- **台南・安平介紹頁補齊景點與 SEO**：STOPS 新增「億載金城」（純敘事，未建檔於資料庫）、「海山館」取代地理上不屬於安平的「神農街」；新增河岸咖啡、德記洋行、安平航海城三筆景點區域資料（已關閉的「0343選物店」同步從後端 allowlist 與資料庫移除）；補齊 `og:image`／`twitter:image`／JSON-LD `image` 等社群分享用 meta（之前缺漏，分享連結不會顯示縮圖）。
+- **手機版城市介紹頁地圖新增不顯示餐飲/旅宿樣式**：`NativeMapBase` 新增可選 `mapId` prop（不傳時沿用既有 `VITE_GOOGLE_MAPS_MAP_ID`，正式規劃功能不受影響），`InteractiveExploreMap` 改用專屬的 `VITE_GOOGLE_MAPS_LANDING_MAP_ID` Cloud Style（`docs/map-style/*-no-food-lodging.json` 為對應樣式快照：`pointOfInterest` 父層整批關閉標籤、只重新開啟 landmark／recreation／entertainment 三個子分類）。
+- 首頁「目的地」列表補上台南入口（修正此前的孤兒頁面問題），三個入口新增 `landing_destination_click` GA 事件。
+- 本機開發環境（`VITE_DISABLE_ANALYTICS=1`）現在會完全不載入 GTM 容器腳本，而不只是排除 `trackEvent` 自訂事件——原本 GTM 容器本身在任何 React 程式碼執行前就已載入，即使排除自訂事件仍會觸發預設 pageview，本機測試流量被誤計入正式站統計。
+
+### 重構
+
+- 抽出 `useThemeToggle`／`useScrollProgress` 共用 hook 與 `CityPageFooter` 共用元件，京都／九份／台南三個城市頁移除約 130 行重複邏輯；footer 精簡對齊首頁既有結構（移除「產品功能」「更多景點」sitemap 區塊），改用 `--footer-accent` 中性 CSS 變數統一 hover 顏色（各頁在自己作用域指向各自的強調色 token）。
+
+### 其他
+
+- `ProductPage.tsx` 功能清單以「主題景點」（主題點／精選點分級揭露機制）取代已移除的「拖曳排入日程」項目。
+- 京都／九份／台南三頁「立即開始」CTA 按鈕背景由完全透明改為低透明度頁面背景色，避免捲動內容穿透影響可讀性。
+
 ## v0.15.0 — 2026-09-21
 
 ### 新增
