@@ -1,0 +1,179 @@
+/* SiteNavButtons:見 SiteNavButtons.tsx 開頭的完整說明——HomePage.tsx/
+   ProductPage.tsx 共用的固定右上/左上角導覽按鈕樣式。讀外層 scope
+   (.kyoto-bloom/.product-page)定義的 --paper/--paper-dim/--ink/--line/
+   --vermilion/--vermilion-soft/--card-shadow token,不重新定義一份。
+   z-index 統一用字面值 200(對齊 HomePage.css 原本的 --z-fixed-ui),
+   不透過 CSS 變數傳遞(避免呼叫端 scope 沒定義這個變數時外顯 z-index
+   失效),固定 UI 必須蓋過頁面其餘所有內容。 */
+
+.site-nav-brand {
+  position: fixed;
+  left: 16px;
+  top: 16px;
+  z-index: 200;
+  padding: 8px 4px;
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+.site-nav-brand:hover {
+  opacity: 0.75;
+}
+
+/* site-nav-brand-row/site-nav-brand-page:2026-09 因應城市頁
+   (JiufenPage/KyotoPage/TainanPage/TainanChikanPage)改用共用元件而
+   新增——這幾頁品牌標記旁邊固定跟著一段純文字頁面標籤(例如「京都 ·
+   清水寺」),數值照抄自 KyotoPage.css 原本的 .kyoto-brand-row/
+   .kyoto-brand-mark/.kyoto-brand-page(其餘三頁的舊版規則數值逐一比對
+   後完全相同,只差 class 前綴)。這裡 .site-nav-brand-row 取代原本各頁
+   各自 position: fixed 的寫法,.site-nav-brand 在有 pageLabel 時改成
+   相對定位(疊在 row 裡),只有 row 本身固定;.site-nav-brand 沒有
+   pageLabel(HomePage/ProductPage)時仍維持自己 position: fixed。 */
+.site-nav-brand-row {
+  position: fixed;
+  left: 16px;
+  top: 16px;
+  z-index: 200;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+.site-nav-brand-row .site-nav-brand {
+  position: static;
+  padding: 8px 4px 8px 0;
+}
+/* site-nav-brand-page::before:分隔符號用半形中點「·」(U+00B7,對齊
+   HomePage.tsx 的 .hero-eyebrow「Kyoto · Higashiyama」既有慣例,半形
+   中點比全形「・」纖細,跟西式標點混排時視覺更一致)。用 ::before 畫,
+   不寫進呼叫端傳入的 pageLabel 文字內容本身,避免螢幕閱讀器把它跟頁面
+   名稱唸成一串奇怪的符號組合——呼叫端(各城市頁)只需要傳純頁面名稱
+   (例如「九份」「京都・清水寺」),不用自己處理分隔符號。分隔符號本身
+   用 --line 維持低調,只有頁面名稱用主題強調色 --vermilion,跟其他
+   強調文字一樣的視覺份量。 */
+.site-nav-brand-page {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--vermilion);
+}
+.site-nav-brand-page::before {
+  content: '· ';
+  color: var(--line);
+}
+
+/* site-nav-theme-toggle:固定右上角的日夜切換圓鈕,36px——2026-09
+   使用者陸續要求「按鈕放大到跟功能介紹的按鈕一樣大」「主題介紹頁的
+   按鈕也對齊」「都共用元件」,這裡收斂成單一數值來源,兩個頁面都是
+   精確 36×36px,不會再有各自對齊、下次改動又走鐘的問題。border 用
+   box-shadow: inset ... 1px 畫出來(不用 border 屬性本身)——border
+   直接畫在套用了 backdrop-filter: blur() 的元素邊緣上,部分瀏覽器會
+   出現顆粒/鋸齒瑕疵(見「有細小的毛狀顏色」的使用者截圖回報),inset
+   box-shadow 疊加繪製在 blur 結果之上、不受取樣干擾,邊緣乾淨許多。 */
+.site-nav-theme-toggle {
+  position: fixed;
+  right: 16px;
+  top: 16px;
+  z-index: 200;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--paper) 55%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px var(--line), var(--card-shadow);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.site-nav-theme-toggle:hover {
+  background: color-mix(in srgb, var(--paper-dim) 65%, transparent);
+}
+
+/* site-nav-cta:固定右上角的文字膠囊按鈕(登入/立即開始/功能介紹等)
+   ——固定 height: 36px + inline-flex 置中(不靠上下 padding 撐開
+   高度),精確對齊 .site-nav-theme-toggle 的 36px,水平方向用 padding
+   控制寬度。right 偏移由各自呼叫端頁面在自己的 CSS 用 nth-of-type 或
+   額外 class 決定(見下方 .site-nav-cta + .site-nav-cta ~ .site-nav-cta
+   的說明),因為固定按鈕數量/順序依頁面而異(HomePage 有登入+功能介紹
+   兩顆,ProductPage 只有立即開始一顆),right 偏移無法在這裡寫死同一個
+   數值。 */
+.site-nav-cta {
+  position: fixed;
+  right: 62px;
+  top: 16px;
+  z-index: 200;
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 1.1rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--paper) 55%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--ink);
+  --edge-color: var(--line);
+  box-shadow: inset 0 0 0 1px var(--edge-color);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+.site-nav-cta:hover {
+  background: color-mix(in srgb, var(--paper-dim) 65%, transparent);
+  --edge-color: var(--vermilion-soft);
+  color: var(--vermilion);
+}
+
+/* site-nav-cta-accent:主色強調版(HomePage 的「功能介紹」)——同一套
+   毛玻璃底(份量統一,不做實色滿版,理由見先前「會不會太亮」「太亮」的
+   使用者回報:整顆按鈕規格太強烈跟其餘按鈕差距過大),只把文字/邊框
+   換成 --vermilion(主色),做出「這是主要引導動作」的區隔。 */
+.site-nav-cta-accent {
+  color: var(--vermilion);
+  --edge-color: var(--vermilion-soft);
+}
+.site-nav-cta-accent:hover {
+  --edge-color: var(--vermilion);
+  color: var(--vermilion);
+}
+
+/* site-nav-cta-slot-N:第二/三顆固定 CTA 的 right 偏移(見
+   SiteNavButtons.tsx 的 slot prop 完整說明)——slot-2 是目前唯一用到
+   的情境(HomePage 的「功能介紹」,往左讓開第一顆「登入」CTA 的寬度+
+   間距):62px(登入自己的 right)+66.6px(登入實際渲染寬度,
+   Playwright getBoundingClientRect 實測)+12px(間距)≈140.6px,取
+   整數 141px。slot-3 目前沒有頁面用到,先保留同一套計算邏輯的擴充
+   位置(若未來某頁固定按鈕排到第三顆,不需要重新設計偏移規則,只要
+   量出前兩顆的實際寬度加總即可),值待實際需要時再校準。 */
+.site-nav-cta-slot-2 {
+  right: 141px;
+}
+
+/* 2026-09 code review 抓到:抽成共用元件時遺漏了 HomePage.css/
+   JiufenPage.css/KyotoPage.css/TainanPage.css 原本都有的窄螢幕縮小
+   斷點,導致固定按鈕在窄手機寬度下彼此間距被壓縮、甚至可能重疊(尤其
+   TainanChikanPage 的 pageLabel「赤崁工法巡禮（試做）」字數較多)。
+   補回同一組斷點數值(900px:padding/font-size 縮小;480px 只有
+   HomePage 原本用到,見 HomePage.tsx 目前並未再另外覆寫,這裡統一只
+   保留 900px 一層,對齊四個城市頁原本的既有斷點數量)。slot-2 的
+   right 偏移也要跟著縮小版的實際寬度重新校準——900px 以下 CTA 改用
+   font-size: 12px/padding 0 14px,寬度變窄,141px 這個用桌面版寬度
+   算出來的偏移量在窄螢幕下留白過多,改用同樣邏輯重新估算:62px+
+   58px(縮小後「登入」估計寬度)+12px≈132px。 */
+@media (max-width: 900px) {
+  .site-nav-cta {
+    padding: 0 14px;
+    font-size: 12px;
+  }
+  .site-nav-cta-slot-2 {
+    right: 132px;
+  }
+}

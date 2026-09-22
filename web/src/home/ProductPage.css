@@ -87,72 +87,15 @@
   color: inherit;
 }
 
-/* Nav */
-.product-nav {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem 1.5rem;
-  background: var(--paper);
-  border-bottom: 1px solid var(--line);
-}
-
-.product-page .product-nav-brand {
-  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--ink);
-  text-decoration: none;
-  letter-spacing: 0.02em;
-}
-
-.product-nav-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-/* 按鈕底色對齊 HomePage 的 .hero-cta:主要 CTA 是 var(--ink)(近黑)實心
-   底、var(--paper) 文字,不是 vermilion 實心底——vermilion 在首頁的用法
-   是強調色/連結/hover(見 .kyoto-footer-links a:hover 等),不是按鈕底色。 */
-.product-page .product-nav-cta {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--paper);
-  background: var(--ink);
-  text-decoration: none;
-  padding: 0.55rem 1.1rem;
-  border-radius: 999px;
-  transition: transform 0.2s ease;
-}
-
-.product-page .product-nav-cta:hover {
-  transform: translateY(-1px);
-}
-
-.product-theme-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  /* 對齊 HomePage 的 .theme-toggle:background var(--paper)、
-     color var(--ink)(接近黑色,非灰色的 --ink-soft),日間模式下按鈕
-     圖示要清楚讀成黑色,不是淡灰色。 */
-  background: var(--paper);
-  color: var(--ink);
-  cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
-}
-
-.product-theme-toggle:hover {
-  background: var(--paper-dim);
-}
+/* Nav——2026-09:使用者要求「都共用元件」「連定位一起改成同一套邏輯」
+   ——原本這裡的 .product-nav(sticky nav bar)/.product-nav-brand/
+   .product-nav-cta/.product-theme-toggle 已整組移除,改用
+   SiteNavButtons.tsx 的共用元件(.site-nav-brand/.site-nav-theme-toggle/
+   .site-nav-cta,固定左上/右上角疊層,見 ProductPage.tsx 掛載處與
+   SiteNavButtons.tsx 的完整說明),跟 HomePage.tsx 共用同一份樣式來源。
+   這裡不再需要任何專屬規則——按鈕視覺(含原本「立即開始」的近黑實心
+   底)統一改成跟 HomePage 一致的毛玻璃底,這是「共用元件」的必然結果:
+   兩個頁面的按鈕現在是同一份 CSS,不會再有各自獨立外觀的情況。 */
 
 /* Hero */
 .product-hero {

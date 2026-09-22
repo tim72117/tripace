@@ -28,6 +28,16 @@ import styles from './MobileMapReveal.module.css'
 // ——桌面版本來就是非滿版、固定高度的展示卡片(見 InteractiveExploreMap.
 // module.css 的 .stage),沒有「先佔滿手機小螢幕」的問題,維持原有的
 // 直接掛載行為,不需要縮圖/點擊這一步。
+//
+// 2026-09:原本這個元件內建一顆「SCROLL」往下捲動提示(scrollHint,見
+// git 歷史此區塊移除前的版本),提示使用者不點縮圖、直接往下捲也能
+// 繼續看內容——那時這個元件本身放在頁面最頂端(hero 標題之前),提示
+// 貼在圓形縮圖上合理。使用者接著要求把整個地圖 intro 區塊搬到分站
+// 列表結束、結尾 CTA 之前(見各城市頁 xxxPage.tsx 掛載處的完整說明),
+// 這個元件不再位於頁面頂端,原本「引導使用者往下看」的提示留在這裡
+// 已經不合語意。SCROLL 提示已搬到共用元件 ScrollHint.tsx,由各城市
+// 頁自行掛在 hero 標題區塊下方(仍然只在手機版顯示,維持原本範圍),
+// 不再是這個元件的職責。
 export function MobileMapReveal({
   photoUrl,
   photoAlt,
@@ -40,6 +50,21 @@ export function MobileMapReveal({
   const isDesktop = useIsDesktop()
   const [expanded, setExpanded] = useState(false)
   const stageRef = useRef<HTMLDivElement | null>(null)
+  // scrollYRef:展開瞬間(使用者按下縮圖的那一刻,不是 useEffect 執行
+  // 的時機)立刻記錄的捲動位置——2026-09 使用者回報「關閉後怎麼回到
+  // 首頁了」,根因是原本在鎖 body 捲動的 useEffect 內才讀 window.scrollY,
+  // 但這個 useEffect 執行時機是 React commit 之後的非同步階段,若中間
+  // 有任何 reflow/resize 插入(例如同一批 state 更新裡 body.style
+  // 已經被設成 fixed、或瀏覽器在這之間已經處理過一次捲動事件),
+  // 讀到的 scrollY 可能不是使用者按下縮圖那個瞬間的真實值,最壞情況
+  // 讀到 0,關閉地圖時 window.scrollTo(0, scrollY) 就會把頁面捲回最
+  // 頂部(品牌列+hero),在地圖已經搬到頁面中下段的版面裡,使用者會
+  // 誤以為「跳到了首頁」(京都頁最頂部的品牌名+大標題視覺上跟真的
+  // 首頁 hero 相似)。改成在 onClick 事件處理器裡同步讀取、立刻存進
+  // ref(事件處理器本身是同步執行,不會有 effect 排程的時序問題),
+  // 鎖 body 捲動的 effect 改讀這個 ref 而非重新呼叫 window.scrollY,
+  // 確保拿到的一定是使用者按下當下的真實捲動位置。
+  const scrollYRef = useRef(0)
 
   // 展開時強制重播 clip-path 展開動畫——expandedStage 從一開始就掛載
   // 在 DOM 中(見元件開頭「children 不會再 unmount」的完整說明),只靠
@@ -71,7 +96,7 @@ export function MobileMapReveal({
   // 避免 position: fixed 造成頁面視覺上跳回頂部。
   useEffect(() => {
     if (!expanded) return
-    const scrollY = window.scrollY
+    const scrollY = scrollYRef.current
     const { body } = document
     const prevPosition = body.style.position
     const prevTop = body.style.top
@@ -97,27 +122,15 @@ export function MobileMapReveal({
       <button
         type="button"
         className={styles.thumb}
-        onClick={() => setExpanded(true)}
+        onClick={() => {
+          scrollYRef.current = window.scrollY
+          setExpanded(true)
+        }}
         aria-label={`展開${photoAlt}互動地圖`}
         hidden={expanded}
       >
         <img src={photoUrl} alt="" />
         <span className={styles.thumbHint}>點一下探索地圖</span>
-        {/* scrollHint:提示使用者不點縮圖、直接往下捲動也能繼續看內容
-            ——視覺語言沿用各城市頁 hero 區塊原本的 SCROLL 提示樣式(該
-            提示已隨這次改動從 hero 區塊移除,搬到這裡集中處理),但這裡
-            是共用元件,不能直接借用個別頁面的色票變數(--vermilion/
-            --ink-soft 只在 .kyoto-page 作用域定義),改用中性的
-            currentColor + 透明度,顏色自然跟隨外層頁面(.kyoto-page/
-            .jiufen-page 都有設 color)。
-            已知缺口(見 code review 記錄,待後續處理):這個提示只出現在
-            「手機版、尚未展開地圖」這個狀態,桌面版目前完全沒有往下
-            捲動的視覺引導,不像原本 hero 區塊的版本對所有使用者都
-            可見。 */}
-        <span className={styles.scrollHint} aria-hidden="true">
-          <span>SCROLL</span>
-          <span className={styles.scrollHintBar} />
-        </span>
       </button>
       {/* expandedStage 無條件掛載(見上方元件開頭的完整說明),用 hidden
           屬性切換可見性,而非條件式渲染——children(InteractiveExploreMap)

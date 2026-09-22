@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Moon, Sun } from 'lucide-react'
 import { trackEvent } from '../analytics'
+import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons'
 import './HomePage.css'
 
 // HomePage — 網站首頁("/" 路由)。原本以京都東山探索路線的捲動視差敘事
@@ -45,47 +45,35 @@ export function HomePage() {
 
   return (
     <div className="kyoto-bloom" ref={rootRef} data-theme={theme ?? undefined}>
-      {/* 品牌標記——固定在左上角,不隨頁面捲動,跟日夜間切換鈕對稱(見下方
-          .theme-toggle)。用純文字「Tripace」而非圖示,對齊全站既有慣例
-          (ProductPage.tsx/LegalPage.tsx/NotFoundPage.tsx 的品牌標記都是
-          純文字標記,不是 favicon.svg 那個圖示)——這個元件是獨立 scope
-          的 .kyoto-bloom,不共用 landing.css,故在 HomePage.css 裡另外
-          定義一份視覺上一致的樣式。這個元件本身就是首頁("/"),連結指向
-          "/" 是回到最上方而非離開頁面。 */}
-      <a className="brand-mark" href="/">Tripace</a>
-      {/* 日夜間切換——固定在右上角,不隨頁面捲動。theme 為 null(預設)時
-          跟隨系統的 prefers-color-scheme,按下後切成明確的 dark/light,
-          之後每次按下在兩者之間互切(不會回到「跟隨系統」,同大多數網站
-          手動切換慣例一致)。圖示依「按下後會變成的樣子」顯示(currently
-          light 時顯示月亮,代表按下去會變暗;反之顯示太陽),是動作提示
-          而非目前狀態指示。 */}
-      <button
-        type="button"
-        className="theme-toggle"
-        onClick={() => setTheme((t) => (isCurrentlyDark(t) ? 'light' : 'dark'))}
-        title={isCurrentlyDark(theme) ? '切換成日間模式' : '切換成夜間模式'}
-        aria-label={isCurrentlyDark(theme) ? '切換成日間模式' : '切換成夜間模式'}
-      >
-        {isCurrentlyDark(theme) ? <Sun size={16} strokeWidth={1.8} /> : <Moon size={16} strokeWidth={1.8} />}
-      </button>
-      {/* 右上角直接進入 App 的捷徑——跟 .theme-toggle 同一組固定右上角,
-          排在它左邊(theme-toggle 本身 right: 16px,這裡再往左讓開它的
-          寬度+間距)。不用等使用者捲到結尾 CTA 或頁尾連結才找得到入口。 */}
-      <a className="app-cta" href="/app">登入</a>
-      {/* 功能介紹——原本只在 footer 網站地圖裡才找得到(該 sitemap 區塊
-          後來已從首頁 footer 移除,見下方 <footer> 的簡化版結構),使用者
-          要求提升能見度、搬到右上角常駐功能列。跟 .app-cta 用同一個
-          class(.app-cta,而非另建一個 class)——兩者視覺上就是同一種
-          樣式的按鈕(透明底+細框線),沒有需要另外命名的差異,只是連結
-          目標跟文字不同;再往左讓開一顆 .app-cta 的寬度+間距(46px,見
-          HomePage.css .app-cta-feature 的計算說明)。 */}
-      <a
-        className="app-cta app-cta-feature"
+      {/* 2026-09:使用者要求「主題介紹頁的按鈕也對齊」→「都共用元件」
+          ——原本這裡各自寫死 .brand-mark/.theme-toggle/.app-cta 三組
+          按鈕標記,現在改用 SiteNavButtons.tsx 的共用元件(跟
+          ProductPage.tsx 共用同一份樣式來源,見該檔案開頭的完整說明),
+          避免兩個頁面的按鈕尺寸/樣式每次改動都要手動同步、卻仍然容易
+          走鐘不一致的問題。
+          品牌標記:純文字「Tripace」,連結指向 "/"(這個元件本身就是
+          首頁,回到最上方而非離開頁面)。
+          日夜間切換:theme 為 null(預設)時跟隨系統的
+          prefers-color-scheme,按下後切成明確的 dark/light,之後每次
+          按下在兩者之間互切(不會回到「跟隨系統」)。
+          登入/功能介紹:登入 CTA 用預設樣式;功能介紹用
+          variant="accent"(主色文字/邊框區隔,見 SiteNavButtons.css
+          的 .site-nav-cta-accent 完整說明),往左讓開一顆登入按鈕的
+          寬度+間距,見 HomePage.css 對應的 nth-of-type 選擇器說明。 */}
+      <SiteNavBrand />
+      <SiteNavThemeToggle
+        dark={isCurrentlyDark(theme)}
+        onToggle={() => setTheme((t) => (isCurrentlyDark(t) ? 'light' : 'dark'))}
+      />
+      <SiteNavCta href="/app">登入</SiteNavCta>
+      <SiteNavCta
         href="/product"
+        variant="accent"
+        slot={2}
         onClick={() => trackEvent('landing_feature_intro_click')}
       >
         功能介紹
-      </a>
+      </SiteNavCta>
       <section className="hero">
         <svg className="hero-ridge" viewBox="0 0 1200 300" preserveAspectRatio="none">
           <path

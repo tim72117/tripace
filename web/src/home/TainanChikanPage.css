@@ -7,19 +7,24 @@
   font-weight: 400 700;
 }
 
-.jiufen-page {
+.tainan-chikan-page {
   --paper: #F7F3EC;
   --paper-dim: #EFE9DC;
   --ink: #2B2420;
   --ink-soft: #5A5148;
-  --vermilion: #8B3A2F;
-  --vermilion-soft: #B85C4A;
+  --brick: #A8402E;
+  --brick-soft: #C4654A;
   --moss: #5C6B57;
   --line: #C9BFA8;
   --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
   /* --footer-accent:見 KyotoPage.css 對應規則的完整說明,CityPageFooter
-     這個共用元件讀的中性變數名。 */
-  --footer-accent: var(--vermilion);
+     這個共用元件讀的中性變數名。
+     2026-09:SiteNavButtons.css 也是讀 --vermilion/--vermilion-soft 這組
+     中性變數名,同樣理由在這裡定義別名映射到 --brick/--brick-soft——見
+     TainanPage.css 對應規則的完整說明,這裡不重複展開。 */
+  --footer-accent: var(--brick);
+  --vermilion: var(--brick);
+  --vermilion-soft: var(--brick-soft);
 
   min-height: 100vh;
   background: var(--paper);
@@ -29,67 +34,66 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .jiufen-page:not([data-theme="light"]) {
+  .tainan-chikan-page:not([data-theme="light"]) {
     --paper: #1C1815;
     --paper-dim: #14110F;
     --ink: #EDE6D8;
     --ink-soft: #B8AD9C;
-    --vermilion: #D97A63;
-    --vermilion-soft: #E89A85;
+    --brick: #D9634B;
+    --brick-soft: #E0846B;
     --moss: #8FA089;
     --line: #443C34;
     --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
   }
 }
 
-.jiufen-page[data-theme="dark"] {
+.tainan-chikan-page[data-theme="dark"] {
   --paper: #1C1815;
   --paper-dim: #14110F;
   --ink: #EDE6D8;
   --ink-soft: #B8AD9C;
-  --vermilion: #D97A63;
-  --vermilion-soft: #E89A85;
+  --brick: #D9634B;
+  --brick-soft: #E0846B;
   --moss: #8FA089;
   --line: #443C34;
   --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
 }
 
-.jiufen-page[data-theme="light"] {
+.tainan-chikan-page[data-theme="light"] {
   --paper: #F7F3EC;
   --paper-dim: #EFE9DC;
   --ink: #2B2420;
   --ink-soft: #5A5148;
-  --vermilion: #8B3A2F;
-  --vermilion-soft: #B85C4A;
+  --brick: #A8402E;
+  --brick-soft: #C4654A;
   --moss: #5C6B57;
   --line: #C9BFA8;
   --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
 }
 
-.jiufen-page * {
+.tainan-chikan-page * {
   box-sizing: border-box;
 }
 
-.jiufen-page h1,
-.jiufen-page h2,
-.jiufen-page h3 {
+.tainan-chikan-page h1,
+.tainan-chikan-page h2,
+.tainan-chikan-page h3 {
   font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
   font-weight: 600;
   color: var(--ink);
 }
 
-.jiufen-page a {
+.tainan-chikan-page a {
   color: inherit;
 }
 
-/* 品牌標記/日夜間切換/CTA——2026-09 使用者要求跟首頁/功能介紹頁對齊
-   大小,回報「怎麼都沒改」後發現這裡原本各自維護一份獨立樣式,已整組
-   移除,改用 SiteNavButtons.tsx/.css 的共用元件(.site-nav-brand-row/
-   .site-nav-theme-toggle/.site-nav-cta,見 JiufenPage.tsx 掛載處與
-   SiteNavButtons.tsx 的完整說明)。 */
+/* 品牌標記/日夜間切換/CTA——2026-09 已改用 SiteNavButtons.tsx/.css 的
+   共用元件,理由/說明見 JiufenPage.css 對應區塊,這裡不重複展開。強調色
+   映射(--vermilion → --brick)見上方 .tainan-chikan-page token 定義
+   區塊。 */
 
 /* Hero */
-.jiufen-hero {
+.tainan-chikan-hero {
   position: relative;
   max-width: 760px;
   min-height: 70vh;
@@ -101,22 +105,22 @@
   text-align: center;
 }
 
-.jiufen-hero-eyebrow {
+.tainan-chikan-hero-eyebrow {
   display: inline-block;
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--vermilion);
+  color: var(--brick);
   letter-spacing: 0.08em;
   margin-bottom: 1rem;
 }
 
-.jiufen-hero h1 {
+.tainan-chikan-hero h1 {
   font-size: clamp(2rem, 5vw, 2.75rem);
   line-height: 1.4;
   margin: 0 0 1.25rem;
 }
 
-.jiufen-hero p {
+.tainan-chikan-hero p {
   font-size: 1.05rem;
   color: var(--ink-soft);
   max-width: 560px;
@@ -127,11 +131,11 @@
    「跟著往下走」的節奏感,但照片維持有限尺寸的卡片(不做滿版背景鋪
    照片)——文字放在照片下方,不疊加在照片上,故不需要暗角遮罩。不畫路徑
    地圖/游標,不做 HomePage.tsx 那種 bloom 照片展開動畫。 */
-.jiufen-stops {
+.tainan-chikan-stops {
   position: relative;
 }
 
-.jiufen-stop {
+.tainan-chikan-stop {
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -139,29 +143,29 @@
   padding: 3rem 1.5rem;
 }
 
-/* jiufen-stop-inner — 兩種版面,依各站照片方向擇一(見 STOPS 的 layout
+/* tainan-chikan-stop-inner — 兩種版面,依各站照片方向擇一(見 STOPS 的 layout
    欄位說明):
    --stacked(預設,橫式照片用):圖在上、文字在下,垂直堆疊、置中對齊。
    --side(直式照片用):左欄照片、右欄文字並排,避免直式照片把整段版面
    撐得過高。 */
-.jiufen-stop-inner {
+.tainan-chikan-stop-inner {
   width: 100%;
   opacity: 0;
   transform: translateY(24px);
   transition: opacity 0.6s ease, transform 0.6s ease;
 }
-.jiufen-stop.is-active .jiufen-stop-inner {
+.tainan-chikan-stop.is-active .tainan-chikan-stop-inner {
   opacity: 1;
   transform: translateY(0);
 }
 
-.jiufen-stop-inner--stacked {
+.tainan-chikan-stop-inner--stacked {
   max-width: 640px;
   margin: 0 auto;
   text-align: center;
 }
 
-.jiufen-stop-inner--side {
+.tainan-chikan-stop-inner--side {
   max-width: 1000px;
   margin: 0 auto;
   display: grid;
@@ -171,7 +175,7 @@
   text-align: left;
 }
 
-.jiufen-stop-photo {
+.tainan-chikan-stop-photo {
   position: relative;
   width: 100%;
   max-height: 70vh;
@@ -179,14 +183,14 @@
   overflow: hidden;
   box-shadow: var(--card-shadow);
 }
-.jiufen-stop-inner--stacked .jiufen-stop-photo {
+.tainan-chikan-stop-inner--stacked .tainan-chikan-stop-photo {
   margin: 0 auto 2rem;
 }
 
 /* 不裁切——依照片自身比例決定顯示高度(橫式/直式照片各自算出不同的
    容器高度),取代先前固定 height + object-fit: cover 硬裁掉超出範圍的
    部分。max-height 只是避免直式照片在小螢幕撐得過高,不是裁切用途。 */
-.jiufen-stop-photo img {
+.tainan-chikan-stop-photo img {
   width: 100%;
   height: auto;
   max-height: 70vh;
@@ -195,19 +199,19 @@
 }
 
 @media (max-width: 640px) {
-  .jiufen-stop-inner--side {
+  .tainan-chikan-stop-inner--side {
     grid-template-columns: 1fr;
     text-align: center;
   }
-  .jiufen-stop-inner--side .jiufen-stop-photo {
+  .tainan-chikan-stop-inner--side .tainan-chikan-stop-photo {
     margin: 0 auto;
   }
 }
 
-/* jiufen-stop-credit — Pexels 使用條款要求標示攝影師署名,放在圖片右下角
+/* tainan-chikan-stop-credit — Pexels 使用條款要求標示攝影師署名,放在圖片右下角
    半透明黑底條,深淺色模式下都維持同一組黑底/白字組合(疊在照片上的固定
    深色條,不是頁面背景,不跟隨主題反轉)。 */
-.jiufen-stop-credit {
+.tainan-chikan-stop-credit {
   position: absolute;
   right: 0;
   bottom: 0;
@@ -218,7 +222,7 @@
   border-top-left-radius: 8px;
 }
 
-.jiufen-stop-meta {
+.tainan-chikan-stop-meta {
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -226,17 +230,17 @@
   margin-bottom: 0.6rem;
 }
 @media (max-width: 640px) {
-  .jiufen-stop-meta { justify-content: center; }
+  .tainan-chikan-stop-meta { justify-content: center; }
 }
 
-.jiufen-stop-index {
+.tainan-chikan-stop-index {
   font-family: 'ShipporiSerif', serif;
   font-weight: 700;
-  color: var(--vermilion);
+  color: var(--brick);
   font-size: 0.95rem;
 }
 
-.jiufen-stop-kind {
+.tainan-chikan-stop-kind {
   font-size: 0.78rem;
   color: var(--ink-soft);
   background: var(--paper-dim);
@@ -244,14 +248,14 @@
   padding: 0.15rem 0.6rem;
 }
 
-.jiufen-stop h2 {
+.tainan-chikan-stop h2 {
   font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
   font-size: clamp(1.4rem, 3.5vw, 1.9rem);
   color: var(--ink);
   margin: 0 0 0.75rem;
 }
 
-.jiufen-stop p {
+.tainan-chikan-stop p {
   font-size: 0.95rem;
   line-height: 1.85;
   color: var(--ink-soft);
@@ -260,7 +264,7 @@
 
 /* 進度指示——固定右側一排點,直接對齊 HomePage.css 的 .progress-rail/
    .progress-dot 數值(常駐畫面角落、z-index 拉高、手機版直接隱藏,顏色
-   用 --line/--vermilion token)——第一個點對應開頭的互動地圖區塊
+   用 --line/--brick token)——第一個點對應開頭的互動地圖區塊
    (activeIndex 的特殊值 -1,見 JiufenPage.tsx 該按鈕的完整說明),樣式
    跟其餘 8 個站點點完全相同,不做任何外觀特例(2026-09 曾經一度做成
    獨立的大顆圖示按鈕,實測回報「樣式要跟首頁一致」,故收斂回同一份
@@ -268,7 +272,7 @@
    query)理由同首頁:手機螢幕寬度有限,固定在畫面角落的一排點持續
    佔用空間,容易跟捲動內容(站點照片/開頭互動地圖)的邊緣打架,桌面版
    才有足夠餘裕讓這排點常駐存在又不跟任何內容衝突。 */
-.jiufen-progress-rail {
+.tainan-chikan-progress-rail {
   position: fixed;
   right: 22px;
   top: 50%;
@@ -278,7 +282,7 @@
   flex-direction: column;
   gap: 10px;
 }
-.jiufen-progress-dot {
+.tainan-chikan-progress-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -288,46 +292,47 @@
   cursor: pointer;
   transition: background 0.3s ease, transform 0.3s ease;
 }
-.jiufen-progress-dot.is-active {
-  background: var(--vermilion);
+.tainan-chikan-progress-dot.is-active {
+  background: var(--brick);
   transform: scale(1.6);
 }
 @media (max-width: 900px) {
-  .jiufen-progress-rail { display: none; }
+  .tainan-chikan-progress-rail { display: none; }
 }
 
-/* jiufen-map-intro:包住開頭互動地圖(InteractiveExploreMap)的容器,見
+/* tainan-chikan-map-intro:包住開頭互動地圖(InteractiveExploreMap)的容器,見
    JiufenPage.tsx 該處的完整說明——用來覆寫 --kiyomizu-page-padding
    (預設 48px 24px,見 InteractiveExploreMap.module.css 的說明:這組
    padding 直接決定 .stage 地圖容器的實際可視寬度/大小,不是外層留白)。
-   2026-09:使用者要求把這個區塊從頁面最頂端搬到分站列表結束、結尾
-   CTA 之前——原本上邊距是 88px(避開頂部 position: fixed 的
-   .jiufen-brand-row/.jiufen-theme-toggle/.jiufen-app-cta,該區塊之前
-   放在頁面最頂端會被蓋住),搬到新位置後不再緊鄰頂部固定 UI,這個
-   補償上邊距的理由已經不成立,改回跟預設值一致的 48px(維持跟上方
-   .jiufen-stops 之間一致的區塊間距節奏,不需要額外留白)。
+   2026-09 code review 抓到:地圖區塊已搬到分站列表之後(見
+   TainanChikanPage.tsx 掛載處的完整說明),不再緊鄰頂部固定 UI,原本
+   88px 的上邊距補償(用來避開頂部固定品牌列/按鈕,舊註解提到的
+   .tainan-chikan-brand-row/.tainan-chikan-theme-toggle/
+   .tainan-chikan-app-cta 這幾個 class 本身也已經因為改用
+   SiteNavButtons 共用元件而不存在)理由已經不成立——這裡漏改,
+   JiufenPage.css/TainanPage.css 同一次改動都已修正,這裡補上同步改回
+   48px。
    右邊距在 900px 以上桌面寬度加大到 50px——直接縮小地圖本身的可視
    寬度,讓地圖右邊界往內縮,不是在外層疊加 margin 把整個容器推開
    (先前用 margin-right 這種「地圖大小不變、外面留白」的做法是繞路,
    使用者明確要求「調整地圖大小」)。數值算法:「地圖與小點的間距」要
-   等於「小點與視窗右緣的間距」——後者是 .jiufen-progress-rail 的
-   right: 22px,加上點本身寬度 6px(.jiufen-progress-dot)得到點的
+   等於「小點與視窗右緣的間距」——後者是 .tainan-chikan-progress-rail 的
+   right: 22px,加上點本身寬度 6px(.tainan-chikan-progress-dot)得到點的
    最左緣離視窗右緣 28px;地圖右邊界的 padding 直接設成同樣的 22px
    間距概念換算成的 50px(=28px 點的位置 + 22px 間距),讓兩段間距
    實測相等(見該檔案驗證腳本量到 mapToDotGap === dotToWindowGap)。
-   這個右邊距邏輯跟地圖搬移位置無關,搬移後仍然成立,不需要調整。
    900px 以下維持預設值(見下方 media query 還原),進度點在該寬度
    已經直接隱藏,不需要再幫地圖縮小尺寸。 */
-.jiufen-map-intro {
+.tainan-chikan-map-intro {
   --kiyomizu-page-padding: 48px 24px;
 }
 @media (min-width: 901px) {
-  .jiufen-map-intro {
+  .tainan-chikan-map-intro {
     --kiyomizu-page-padding: 48px 50px 48px 24px;
   }
 }
 
-/* jiufen-map-intro 底下的 .stage(InteractiveExploreMap.module.css,CSS
+/* tainan-chikan-map-intro 底下的 .stage(InteractiveExploreMap.module.css,CSS
    Modules 雜湊 class,這裡用屬性選擇器命中,只作用在這個頁面的作用域
    下,不動共用元件本身)——用 mask-image 沿著矩形四邊各自加一道窄幅
    線性漸層,讓地圖內容(Google Maps 圖磚)在容器邊界處自然透出底下的
@@ -347,7 +352,7 @@
    額外排除卡片的 DOM 節點。四個角落因為兩個方向的漸層在該處疊加,
    會比純邊中段更暗一點,這是刻意的(角落本來就該比邊中央淡出得更多,
    矩形四角同時鄰接兩條邊界),不是需要修正的瑕疵。 */
-.jiufen-map-intro [class*="stage"] {
+.tainan-chikan-map-intro [class*="stage"] {
   --fade-size: 10px;
   -webkit-mask-image:
     linear-gradient(to right, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent),
@@ -361,41 +366,41 @@
 /* 900px 以下(手機版)不淡化——同 KyotoPage.css 對應區塊的完整說明,
    --fade-size 歸零即可,不用另外改上方 mask-image 公式。 */
 @media (max-width: 900px) {
-  .jiufen-map-intro [class*="stage"] {
+  .tainan-chikan-map-intro [class*="stage"] {
     --fade-size: 0px;
   }
 }
 
-/* jiufen-map-intro 作用域下覆寫 DesktopInfoCard.module.css 的
+/* tainan-chikan-map-intro 作用域下覆寫 DesktopInfoCard.module.css 的
    --desktop-info-card-top(見該檔案 .panel 的完整說明)——這個頁面的
    地圖(NativeMapBase.tsx)沒有正式 App 那排城市搜尋框/類別標籤列,
    卡片頂部不需要留給那排 UI 的 64px 空間,改成跟右邊/底邊一致的
    16px,讓卡片四邊間距均勻貼合地圖容器。用屬性選擇器命中
    DesktopInfoCard.module.css 雜湊出來的 .panel class,只作用在這個
    頁面,不動共用元件的預設值。 */
-.jiufen-map-intro [class*="panel"] {
+.tainan-chikan-map-intro [class*="panel"] {
   --desktop-info-card-top: 16px;
 }
 
 /* Final CTA */
-.jiufen-final-cta {
+.tainan-chikan-final-cta {
   max-width: 720px;
   margin: 0 auto;
   padding: 5rem 1.5rem;
   text-align: center;
 }
 
-.jiufen-final-cta h2 {
+.tainan-chikan-final-cta h2 {
   font-size: clamp(1.5rem, 3vw, 2.25rem);
   margin: 0 0 1rem;
 }
 
-.jiufen-final-cta p {
+.tainan-chikan-final-cta p {
   color: var(--ink-soft);
   margin: 0 0 2rem;
 }
 
-.jiufen-page .jiufen-btn-primary {
+.tainan-chikan-page .tainan-chikan-btn-primary {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -410,11 +415,11 @@
   transition: transform 0.2s ease;
 }
 
-.jiufen-page .jiufen-btn-primary:hover {
+.tainan-chikan-page .tainan-chikan-btn-primary:hover {
   transform: translateY(-2px);
 }
 
 /* Footer 已抽成共用元件 CityPageFooter(見 home/CityPageFooter.tsx 與
    CityPageFooter.module.css 的完整說明),樣式改用 CSS Modules,不再需要
-   這裡的 .jiufen-footer-* 規則——上方 --footer-accent 變數定義是這個
+   這裡的 .tainan-chikan-footer-* 規則——上方 --footer-accent 變數定義是這個
    頁面唯一還需要提供給該共用元件的東西。 */

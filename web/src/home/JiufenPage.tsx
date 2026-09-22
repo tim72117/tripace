@@ -1,9 +1,10 @@
 import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { Moon, Sun } from 'lucide-react';
 import { InteractiveExploreMap } from './InteractiveExploreMap';
 import { MobileMapReveal } from './MobileMapReveal';
+import { ScrollHint } from './ScrollHint';
+import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { CityPageFooter } from './CityPageFooter';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { useScrollProgress } from '../hooks/useScrollProgress';
@@ -191,81 +192,18 @@ export function JiufenPage() {
           })}
         </script>
       </Helmet>
-      {/* 品牌標記/切換鈕/CTA——對齊 HomePage.tsx 的浮動角落式樣式(非 sticky
-          橫向 nav bar):品牌名 fixed 左上、日夜切換鈕 fixed 右上圓鈕、CTA
-          排在切換鈕左邊,皆不隨頁面捲動。
-          「・九份」是獨立的 <span>,不在 <Link> 裡面——Tripace 本身仍是
-          唯一可點擊、回首頁的連結,旁邊的頁面名稱純粹是文字標示目前在哪
-          個頁面,不該被誤以為點擊會停留在九份相關頁面。其餘子頁面
-          (/product、/privacy、/terms)沒有對應的頁面名稱可加,故這個
-          做法目前只在有明確主題城市的介紹頁(如這裡)使用,不是全站
-          品牌標記的新慣例。 */}
-      <div className="jiufen-brand-row">
-        <Link to="/" className="jiufen-brand-mark">Tripace</Link>
-        <span className="jiufen-brand-page">九份</span>
-      </div>
-      <button
-        type="button"
-        className="jiufen-theme-toggle"
-        onClick={toggleTheme}
-        aria-label={dark ? '切換至淺色模式' : '切換至深色模式'}
-      >
-        {dark ? <Sun size={16} strokeWidth={1.8} /> : <Moon size={16} strokeWidth={1.8} />}
-      </button>
-      <Link to="/app" className="jiufen-app-cta">立即開始</Link>
-
-      {/* 開頭互動地圖——跟首頁(HomePage.tsx)同一個元件(InteractiveExploreMap,
-          已參數化成 city prop,見該檔案開頭的完整說明),傳 city="九份"
-          直接沿用,不是另外複製一份重複邏輯。放在整個頁面最頂端(hero
-          標題之前),讓使用者一進頁面就先看到可互動的真實地圖,再往下讀
-          地形→礦業→衰退→重生的敘事文字——跟首頁「先敘事、地圖放在
-          結尾」的順序刻意相反,這裡是介紹頁而非行銷首頁,不需要先鋪陳
-          敘事才亮出產品能力。showThemeToggle 傳 false:這個頁面已經有
-          自己的日夜切換鈕(.jiufen-theme-toggle,上方 toggleTheme),不
-          需要 InteractiveExploreMap 內建的第二顆重複按鈕。
-          外層 div 用 .jiufen-map-intro 覆寫 --kiyomizu-page-padding
-          (預設 48px 24px,見 InteractiveExploreMap.module.css 的說明)——這個
-          頁面的品牌標記/切換鈕/CTA 是 position: fixed 疊在畫面最頂端
-          16px 處(.jiufen-brand-mark 等,見 JiufenPage.css),HomePage.tsx
-          把這個元件放在頁面結尾不會撞到這排固定 UI,但這裡放在最頂端會
-          直接被蓋住,故加大上邊距讓地圖容器往下讓開。改用具名 class
-          (而非直接 inline style)是因為手機版還需要額外加大右側
-          padding(見 JiufenPage.css 該 class 的 media query,讓地圖本身
-          跟畫面右緣/右側進度點之間有實際留白,而不是靠調整進度點自己的
-          位置去湊間隙),inline style 沒辦法寫 media query。HomePage.tsx
-          不需要這層覆寫,不動它的預設值。
-          externalTheme 傳這個頁面自己的 theme state(見上方
-          .jiufen-theme-toggle 的 toggleTheme)——InteractiveExploreMap 原本
-          假設 showThemeToggle=false 的呼叫端沒有自己的切換鈕、只需要
-          掛載時讀一次系統偏好即可,但這個頁面確實有獨立的手動切換鈕,
-          若不傳這個 prop,使用者按下切換鈕後頁面背景會換色但地圖底圖
-          不會跟著換(2026-09 實測回報「不會即時換」,見該 prop 在
-          InteractiveExploreMap.tsx 的完整說明)。
-          defaultOpenTheme="九份老街":這個頁面只有一個主題點,使用者
-          一進頁面就先看到地圖是空的、要點一下地圖才看得到內容,體驗
-          上不如直接開好給他看(見該 prop 的完整說明)——跟首頁不套用
-          這個行為的理由不同,首頁京都有兩個主題點平等並存,預先選定
-          其中一個反而暗示了優先順序。
-          initialZoom={17}:預設值(見 InteractiveExploreMap.tsx 的
-          INITIAL_ZOOM=15)是拿京都景點分布校準出來的,九份聚落腹地小、
-          景點(老街、茶樓、車站等)彼此距離近,同樣的縮放層級在九份地圖
-          上顯得過遠,拉近到 17 讓一進頁面就能看清老街周邊的密集標記。
-          曾一度改成 16(懷疑 17 標籤重疊,依據一次子代理的截圖判斷),
-          但實際瀏覽器觀察發現 16 反而比 17 更擁擠——子代理當時的截圖
-          判斷不可靠(該次截圖過程本身就記錄到 dev server 曾遇到 stale
-          module 快取問題,見背景任務報告),故改回實測(使用者直接觀察)
-          確認有效的 17。日後若還要調整,以實際瀏覽器觀察為準,不要單憑
-          自動化截圖的一次性判斷推翻。
-          centerNorthOffsetKm={-0.1}:抵消 InteractiveExploreMap.tsx
-          預設的往北偏移 0.1km(該偏移是針對京都兩個主題點的中點校準,
-          見該常數完整說明)——九份只有一個主題點,不需要「不偏袒任一邊」
-          的置中考量,使用者要求「地圖中心點往下(南)100 公尺」,傳負值
-          抵消掉共用預設,讓九份的初始中心落回九份老街本身。 */}
-      <div className="jiufen-map-intro" ref={mapIntroRef}>
-        <MobileMapReveal photoUrl={`${LANDING_ASSETS_BASE}/jiufen/n0.jpg`} photoAlt="九份老街">
-          <InteractiveExploreMap city="九份" showThemeToggle={false} externalTheme={theme} defaultOpenTheme="九份老街" initialZoom={17} centerNorthOffsetKm={-0.1} />
-        </MobileMapReveal>
-      </div>
+      {/* 2026-09:使用者要求「主題介紹頁的右上按鈕」跟首頁對齊大小,回報
+          「怎麼都沒改」後發現這四個城市頁(Jiufen/Kyoto/Tainan/
+          TainanChikan)原本各自維護一份獨立樣式(.jiufen-theme-toggle/
+          .jiufen-app-cta 等),完全沒有跟 HomePage.tsx/ProductPage.tsx
+          共用的 SiteNavButtons 對齊,這裡一併改用同一份共用元件(見
+          SiteNavButtons.tsx 的完整說明),徹底消除「各頁各自一份、容易
+          走鐘」的問題根源。pageLabel="九份" 對應原本獨立的
+          .jiufen-brand-page 純文字頁面標籤(不是連結,見 SiteNavBrand
+          的 pageLabel prop 完整說明)。 */}
+      <SiteNavBrand pageLabel="九份" />
+      <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
+      <SiteNavCta href="/app">立即開始</SiteNavCta>
 
       <header className="jiufen-hero">
         <span className="jiufen-hero-eyebrow">地形決定了這一切</span>
@@ -274,25 +212,27 @@ export function JiufenPage() {
           陡峭山勢逼出層疊石階，礦脈枯竭又讓聚落幾乎成為空城，最終因一部電影意外重生——
           這是一條地質、產業、衰敗、人文交織的因果鏈。
         </p>
+        {/* 2026-09 code review 抓到:JiufenPage 是唯一漏掉 <ScrollHint />
+            的城市頁——KyotoPage/TainanPage/TainanChikanPage 都在 hero
+            段落後掛了這個提示(見 ScrollHint.tsx 的完整說明:地圖搬到
+            分站列表之後,原本內建在 MobileMapReveal 縮圖裡的 SCROLL
+            提示已改成這個共用元件,由呼叫端各自掛在 hero 下方),補上
+            維持四頁一致。 */}
+        <ScrollHint />
       </header>
 
       {/* 進度指示——固定右側,捲動敘事本身不畫路徑地圖或游標,純粹用 9 個點
           呈現目前捲動到第幾個區塊。點擊可直接跳到對應區塊,不必一路捲
-          過去。第一個對應開頭的互動地圖區塊(activeIndex 的特殊值 -1,
-          見上方 IntersectionObserver 的完整說明),樣式/間距跟其餘 8 個
-          站點點完全一致(對齊 HomePage.css 的 .progress-dot,見
-          JiufenPage.css 該處的完整說明)——不是獨立的圖示按鈕,純粹是
-          這排點裡對應到不同區塊的其中一個,不需要靠外觀特例才能分辨,
-          位置(排在最前面)加上點擊行為(捲回地圖而非某個站點)已經
-          足夠說明它的角色。 */}
+          過去。2026-09:使用者要求把開頭互動地圖從頁面最頂端搬到分站
+          列表結束、結尾 CTA 之前(見下方 .jiufen-map-intro 掛載處的
+          完整說明)——「回到互動地圖」這顆進度點原本排在最前面(對應
+          地圖當時在頁面最頂端的視覺順序),現在改排在最後面(STOPS 之
+          後),對齊地圖搬移後的新視覺順序,使用者從進度列點下去的體感
+          方向(往下捲到最後)才會跟頁面實際排列一致。activeIndex 的
+          特殊值 -1(見上方 IntersectionObserver 的完整說明)本身不受
+          這次排列順序調整影響,純粹是 CSS 渲染順序(這顆 button 在
+          JSX 裡寫在後面)。 */}
       <nav className="jiufen-progress-rail" aria-label="站點進度">
-        <button
-          type="button"
-          className={`jiufen-progress-dot${activeIndex === -1 ? ' is-active' : ''}`}
-          onClick={() => mapIntroRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-          aria-label="回到互動地圖"
-          title="回到互動地圖"
-        />
         {STOPS.map((stop, i) => (
           <button
             key={stop.name}
@@ -303,6 +243,13 @@ export function JiufenPage() {
             title={stop.name}
           />
         ))}
+        <button
+          type="button"
+          className={`jiufen-progress-dot${activeIndex === -1 ? ' is-active' : ''}`}
+          onClick={() => mapIntroRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          aria-label="回到互動地圖"
+          title="回到互動地圖"
+        />
       </nav>
 
       <section className="jiufen-stops">
@@ -330,6 +277,43 @@ export function JiufenPage() {
           </article>
         ))}
       </section>
+
+      {/* 開頭互動地圖——2026-09:使用者要求把這個區塊從頁面最頂端(hero
+          標題之前)搬到這裡,分站列表結束、結尾 CTA 之前。跟首頁
+          (HomePage.tsx)同一個元件(InteractiveExploreMap,已參數化成
+          city prop,見該檔案開頭的完整說明),傳 city="九份"直接沿用,
+          不是另外複製一份重複邏輯。showThemeToggle 傳 false:這個頁面
+          已經有自己的日夜切換鈕(.jiufen-theme-toggle,上方
+          toggleTheme),不需要 InteractiveExploreMap 內建的第二顆重複
+          按鈕。
+          外層 div 用 .jiufen-map-intro 覆寫 --kiyomizu-page-padding
+          (預設 48px 24px,見 InteractiveExploreMap.module.css 的說明)
+          ——原本這裡有額外加大的上邊距(88px)讓地圖容器避開頂部
+          position: fixed 的品牌標記/切換鈕/CTA(該區塊之前放在頁面最
+          頂端會被蓋住),搬到這個新位置後不再緊鄰頂部固定 UI,這個
+          補償上邊距的理由已經不成立,已在 JiufenPage.css 對應規則改回
+          正常間距(見該處完整說明)。改用具名 class(而非直接 inline
+          style)是因為手機版還需要額外加大右側 padding(見
+          JiufenPage.css 該 class 的 media query),inline style 沒辦法
+          寫 media query。
+          externalTheme 傳這個頁面自己的 theme state(見上方
+          .jiufen-theme-toggle 的 toggleTheme)——InteractiveExploreMap
+          原本假設 showThemeToggle=false 的呼叫端沒有自己的切換鈕、只
+          需要掛載時讀一次系統偏好即可,但這個頁面確實有獨立的手動切換
+          鈕,若不傳這個 prop,使用者按下切換鈕後頁面背景會換色但地圖
+          底圖不會跟著換。
+          defaultOpenTheme="九份老街":這個頁面只有一個主題點,使用者
+          一進頁面就先看到地圖是空的、要點一下地圖才看得到內容,體驗
+          上不如直接開好給他看。
+          initialZoom={17}/centerNorthOffsetKm={-0.1}:九份聚落腹地小、
+          景點彼此距離近,拉近縮放層級並抵消共用預設的往北偏移,讓九份
+          的初始中心落回九份老街本身(校準理由同先前版本,見 git 歷史
+          此區塊移動前的完整說明)。 */}
+      <div className="jiufen-map-intro" ref={mapIntroRef}>
+        <MobileMapReveal photoUrl={`${LANDING_ASSETS_BASE}/jiufen/n0.jpg`} photoAlt="九份老街">
+          <InteractiveExploreMap city="九份" showThemeToggle={false} externalTheme={theme} defaultOpenTheme="九份老街" initialZoom={17} centerNorthOffsetKm={-0.1} />
+        </MobileMapReveal>
+      </div>
 
       <section className="jiufen-final-cta">
         <h2>把九份的故事，排進你的下一趟行程</h2>

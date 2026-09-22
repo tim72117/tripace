@@ -1,9 +1,10 @@
 import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { Moon, Sun } from 'lucide-react';
 import { InteractiveExploreMap } from './InteractiveExploreMap';
 import { MobileMapReveal } from './MobileMapReveal';
+import { ScrollHint } from './ScrollHint';
+import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { CityPageFooter } from './CityPageFooter';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { useScrollProgress } from '../hooks/useScrollProgress';
@@ -178,51 +179,14 @@ export function TainanPage() {
           })}
         </script>
       </Helmet>
-      <div className="tainan-brand-row">
-        <Link to="/" className="tainan-brand-mark">Tripace</Link>
-        <span className="tainan-brand-page">台南・安平</span>
-      </div>
-      <button
-        type="button"
-        className="tainan-theme-toggle"
-        onClick={toggleTheme}
-        aria-label={dark ? '切換至淺色模式' : '切換至深色模式'}
-      >
-        {dark ? <Sun size={16} strokeWidth={1.8} /> : <Moon size={16} strokeWidth={1.8} />}
-      </button>
-      <Link to="/app" className="tainan-app-cta">立即開始</Link>
-
-      {/* 開頭互動地圖 — 同 JiufenPage.tsx 的說明,傳 city="台南"。
-          defaultOpenTheme="安平古堡":這個頁面目前只有安平古堡一個主題點
-          (isTheme: true,見剛查到的 attraction-list 結果),理由同
-          JiufenPage.tsx 對這個 prop 的完整說明——單一主題點時直接開好
-          給使用者看,不需要多一次點擊。
-          initialZoom={17}/centerNorthOffsetKm={-0.1}:直接沿用
-          JiufenPage.tsx 的校準值(見該檔案對應 prop 的完整說明)——安平
-          古堡周邊 7 個景點分布範圍跟九份聚落相近(腹地小、景點密集),
-          實測(見上方截圖驗證)套用元件預設值(INITIAL_ZOOM=15,對京都
-          景點分布較開闊的情境校準)時景點分散在畫面各處、不夠聚焦,
-          拉近到 17 讓一進頁面就能看清安平老街周邊的密集標記,不需要
-          使用者自己手動放大。centerNorthOffsetKm 傳 -0.1 抵消元件預設
-          的往北偏移(該偏移是針對京都兩個主題點的中點校準),這裡只有
-          單一主題點(安平古堡),不需要「不偏袒任一邊」的置中考量,讓
-          初始中心落回安平古堡本身,理由同 JiufenPage.tsx。 */}
-      {/* MobileMapReveal:手機版先顯示安平古堡縮圖,點擊才真正掛載地圖
-          ——比照 JiufenPage.tsx/KyotoPage.tsx 已套用的同一套機制(見
-          MobileMapReveal.tsx 的完整說明),桌面版不受影響、直接渲染
-          children。photoUrl 見上方 ANPING_FORT_PHOTO_URL 的說明。 */}
-      <div className="tainan-map-intro" ref={mapIntroRef}>
-        <MobileMapReveal photoUrl={ANPING_FORT_PHOTO_URL} photoAlt="安平古堡">
-          <InteractiveExploreMap
-            city="台南"
-            showThemeToggle={false}
-            externalTheme={theme}
-            defaultOpenTheme="安平古堡"
-            initialZoom={17}
-            centerNorthOffsetKm={-0.1}
-          />
-        </MobileMapReveal>
-      </div>
+      {/* 2026-09:使用者要求「主題介紹頁的右上按鈕」跟首頁對齊大小,回報
+          「怎麼都沒改」後發現這四個城市頁原本各自維護一份獨立樣式,
+          完全沒有跟 HomePage.tsx/ProductPage.tsx 共用的 SiteNavButtons
+          對齊,這裡一併改用同一份共用元件(見 SiteNavButtons.tsx/
+          JiufenPage.tsx 的完整說明)。 */}
+      <SiteNavBrand pageLabel="台南・安平" />
+      <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
+      <SiteNavCta href="/app">立即開始</SiteNavCta>
 
       <header className="tainan-hero">
         <span className="tainan-hero-eyebrow">港口決定了這一切</span>
@@ -231,16 +195,14 @@ export function TainanPage() {
           潟湖地形帶來了荷蘭人的城堡，運河淤積又讓貿易重心轉移，最終在老街巷弄裡
           長出蜜餞、豆花與選物店交織的生活風土——這是一條地理、貿易、產業、人文交織的因果鏈。
         </p>
+        <ScrollHint />
       </header>
 
+      {/* 2026-09:使用者要求把開頭互動地圖從頁面最頂端搬到分站列表結束、
+          結尾 CTA 之前(見下方 .tainan-map-intro 掛載處的完整說明)——
+          「回到互動地圖」這顆進度點原本排在最前面,現在改排在最後面
+          (STOPS 之後),對齊地圖搬移後的新視覺順序。 */}
       <nav className="tainan-progress-rail" aria-label="站點進度">
-        <button
-          type="button"
-          className={`tainan-progress-dot${activeIndex === -1 ? ' is-active' : ''}`}
-          onClick={() => mapIntroRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-          aria-label="回到互動地圖"
-          title="回到互動地圖"
-        />
         {STOPS.map((stop, i) => (
           <button
             type="button"
@@ -251,6 +213,13 @@ export function TainanPage() {
             title={stop.name}
           />
         ))}
+        <button
+          type="button"
+          className={`tainan-progress-dot${activeIndex === -1 ? ' is-active' : ''}`}
+          onClick={() => mapIntroRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          aria-label="回到互動地圖"
+          title="回到互動地圖"
+        />
       </nav>
 
       <section className="tainan-stops">
@@ -284,6 +253,32 @@ export function TainanPage() {
           </article>
         ))}
       </section>
+
+      {/* 開頭互動地圖——2026-09:使用者要求把這個區塊從頁面最頂端搬到
+          這裡,分站列表結束、結尾 CTA 之前。同 JiufenPage.tsx 的說明,
+          傳 city="台南"。defaultOpenTheme="安平古堡":這個頁面目前只有
+          安平古堡一個主題點(isTheme: true),單一主題點時直接開好給
+          使用者看,不需要多一次點擊。initialZoom={17}/
+          centerNorthOffsetKm={-0.1}:安平古堡周邊 7 個景點分布範圍跟
+          九份聚落相近(腹地小、景點密集),拉近縮放層級並抵消共用預設的
+          往北偏移,讓初始中心落回安平古堡本身(校準理由同先前版本,見
+          git 歷史此區塊移動前的完整說明)。
+          MobileMapReveal:手機版先顯示安平古堡縮圖,點擊才真正掛載地圖
+          ——比照 JiufenPage.tsx/KyotoPage.tsx 已套用的同一套機制,桌面
+          版不受影響、直接渲染 children。photoUrl 見上方
+          ANPING_FORT_PHOTO_URL 的說明。 */}
+      <div className="tainan-map-intro" ref={mapIntroRef}>
+        <MobileMapReveal photoUrl={ANPING_FORT_PHOTO_URL} photoAlt="安平古堡">
+          <InteractiveExploreMap
+            city="台南"
+            showThemeToggle={false}
+            externalTheme={theme}
+            defaultOpenTheme="安平古堡"
+            initialZoom={17}
+            centerNorthOffsetKm={-0.1}
+          />
+        </MobileMapReveal>
+      </div>
 
       <section className="tainan-final-cta">
         <h2>把安平的故事，排進你的下一趟行程</h2>

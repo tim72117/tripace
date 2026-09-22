@@ -1,8 +1,15 @@
-/* thumb:手機版初始顯示的圓形地點縮圖——100dvh 撐滿整個螢幕高度、
-   內容在正中央(水平+垂直),讓它在畫面上有跟展開後的滿版地圖對等的
-   存在感,而不是跟著文件流卡在頁面某個自然高度的一小塊。width: 100vw
-   + margin-left 抵消 .page 左右 padding 的手法同 .expandedStage(見
-   下方),讓縮圖左右也貼齊螢幕邊緣、不受頁面版心寬度限制。
+/* thumb:手機版初始顯示的圓形地點縮圖。
+   2026-09:使用者要求把整個地圖 intro 區塊從頁面最頂端搬到分站列表
+   結束、結尾 CTA 之前(見各城市頁 xxxPage.tsx 掛載處的完整說明)後,
+   實測回報「畫面出不來」——原本這裡是 100dvh 撐滿整個螢幕高度,設計
+   前提是「這是使用者一進頁面看到的第一屏,要有存在感」,搬到內容流
+   中段之後,這個滿版高度反而變成擋在分站列表跟結尾 CTA 中間的一整
+   面空白/半路卡住的區塊,使用者往下捲會先卡在這一屏才能繼續看到
+   final CTA。改成內距撐開的自然高度(padding 而非 100dvh),縮圖跟著
+   內容流正常排列,不再假設自己是頁面的第一屏。
+   width: 100vw + margin-left 抵消 .page 左右 padding 的手法維持不變
+   (讓縮圖左右貼齊螢幕邊緣、不受頁面版心寬度限制,理由同 .expandedStage
+   的說明,這部分跟區塊改用一般高度無關,不需要調整)。
    aspect-ratio: 1 搭配 border-radius: 50% 確保任何來源圖片(不論原始
    長寬比)裁切後都是正圓。 */
 .thumb {
@@ -13,17 +20,29 @@
   justify-content: center;
   gap: 12px;
   width: 100vw;
-  height: 100dvh;
+  padding: 56px 0;
   margin-left: calc(-50vw + 50%);
   border: none;
   background: none;
   cursor: pointer;
   /* color: inherit——<button> 瀏覽器預設 color 是 ButtonText(通常是
      黑色),不會隨 .kyoto-page/.jiufen-page 深色模式切換的 --ink 變數
-     改變。沒有這行,底下 .scrollHint/.scrollHintBar 讀的 currentColor
-     會取到這個沒有繼承到的預設黑色,在深色背景下整段 SCROLL 提示文字
-     實質上不可見(暗色模式回報「往下捲的字也消失」的根因)。 */
+     改變。 */
   color: inherit;
+}
+/* 2026-09:使用者回報「還是一樣」,展開地圖後縮圖沒有消失、跟地圖同時
+   佔用垂直空間把地圖往下推——根因是 [hidden] 屬性的 UA 預設樣式
+   (display: none)跟這裡 .thumb { display: flex } 的 specificity 相同
+   (都是 0,1,0),瀏覽器判定同源樣式表裡後面出現的規則(這裡的
+   .thumb)蓋過瀏覽器內建的 [hidden] 規則,導致 MobileMapReveal.tsx 用
+   hidden={expanded} 隱藏縮圖時實際上沒有生效。這其實是既有 bug——
+   搬移地圖位置前,.thumb 是 100dvh 撐滿全螢幕、展開後的地圖疊在最上層
+   蓋住縮圖,肉眼看不出縮圖其實還在佔位;現在縮圖改成自然高度後,這個
+   一直存在的疊放問題才顯露出來。加上 &[hidden] 明確覆寫回
+   display: none,比對應的無屬性版本更晚出現、specificity 相同時排在
+   後面會生效(不需要 !important)。 */
+.thumb[hidden] {
+  display: none;
 }
 
 .thumb img {
@@ -48,36 +67,9 @@
   opacity: 0.7;
 }
 
-/* scrollHint:貼齊縮圖畫面底部的「向下捲動」提示——樣式對齊各城市頁
-   hero 區塊既有的 SCROLL 提示(見 MobileMapReveal.tsx 的說明),用
-   currentColor 而非寫死顏色,自然跟隨外層頁面(.kyoto-page/.jiufen-page)
-   設定的文字色。 */
-.scrollHint {
-  position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 12px;
-  letter-spacing: 0.2em;
-  color: currentColor;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  opacity: 0.75;
-}
-
-.scrollHintBar {
-  width: 1px;
-  height: 42px;
-  background: linear-gradient(currentColor, transparent);
-  animation: mobile-map-reveal-pulse-bar 2.2s ease-in-out infinite;
-}
-
-@keyframes mobile-map-reveal-pulse-bar {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
-}
+/* scrollHint/scrollHintBar——2026-09 已搬到共用元件 ScrollHint.tsx/
+   ScrollHint.module.css(見 MobileMapReveal.tsx 檔頭的完整說明),這裡
+   移除,不留死碼。 */
 
 /* expandedStage:展開後的滿版地圖容器——100dvh 直接以視窗高度撐開
    (動態視窗高度單位,排除行動瀏覽器網址列伸縮造成的跳動,KyotoPage/
@@ -92,11 +84,35 @@
    第一次出現時播放一次,hidden 屬性移除不會重播已播完的 animation),
    改成獨立的 .replay class,由元件端在每次展開時用 JS 強制重播(見
    下方說明)。 */
+/* 2026-09:使用者回報「打開地圖還是有問題」——展開後地圖尺寸/位置
+   不穩定,每次展開結果不一致。根因:原本 position: relative + width:
+   100vw/height: 100dvh + margin-left 負值技巧,讓這個容器留在文件流
+   裡,视覺位置依賴 MobileMapReveal.tsx 另一個 useEffect 用
+   body.style.position = 'fixed' + body.style.top = -${scrollY}px 把
+   整個 body 視覺挪回頂部對齊——這是兩段各自獨立的非同步機制(一個是
+   CSS 版面問題、一個是 JS 在 useEffect 裡動態改 body 樣式),彼此有
+   時序上的競態空間(尤其地圖搬到頁面中段之後,scrollY 在展開當下可能
+   是很深的值,且同時觸發 .replay 動畫的強制 reflow),容易在某些時機
+   點出現地圖尺寸/位置跟視窗對不上的情況。
+   改成 position: fixed + inset: 0,讓這個容器本身直接相對視窗定位、
+   完全脫離文件流——不管頁面捲動到哪裡、不管 .thumb 縮圖在文件流中的
+   實際位置為何,這個容器永遠精確貼齊視窗四個邊界,不再依賴「鎖住
+   body 再用負 top 位移」這個間接手法的視覺結果是否精確同步。鎖 body
+   捲動的 useEffect(見 MobileMapReveal.tsx)仍然保留——那是為了阻止
+   iOS Safari 的 rubber-band 觸底手勢穿透到底層頁面,跟這裡的視覺定位
+   是兩件不同的事,不能只留其中一個。 */
+/* z-index: 210——展開地圖是全螢幕沉浸體驗,要蓋過 SiteNavButtons.css
+   固定導覽列(品牌標記/日夜切換/CTA,z-index: 200,見該檔案的完整
+   說明),不能讓導覽列穿模疊在地圖上方。closeBtn(z-index: 34,見下方
+   說明)是這個容器的子元素,子層疊放脈絡(stacking context)只跟父層
+   自己的 z-index 比較一次,不需要子層數值也跟著蓋過 200——只要父層
+   .expandedStage 蓋過導覽列,子層自然跟著疊在最上層。 */
 .expandedStage {
-  position: relative;
+  position: fixed;
+  inset: 0;
+  z-index: 210;
   width: 100vw;
   height: 100dvh;
-  margin-left: calc(-50vw + 50%);
 }
 
 /* replay:clip-path 從中心圓形展開,呼應縮圖被點擊的那個瞬間——由

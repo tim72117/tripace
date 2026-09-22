@@ -21,8 +21,15 @@
   --card-shadow: 0 24px 60px -24px rgba(46, 32, 24, 0.4);
   /* --footer-accent:見 KyotoPage.css 對應規則的完整說明,CityPageFooter
      這個共用元件讀的中性變數名——台南用 --brick(磚紅)而非京都/九份的
-     --vermilion(朱紅),變數名稱不同但作用相同。 */
-  --footer-accent: var(--brick);
+     --vermilion(朱紅),變數名稱不同但作用相同。
+     2026-09:SiteNavButtons.css(品牌標記頁面標籤/CTA hover 強調色)也是
+     讀 --vermilion/--vermilion-soft 這組中性變數名,同樣的理由在這裡
+     再定義一次別名映射到 --brick/--brick-soft——這個頁面改用共用元件
+     (SiteNavBrand/SiteNavCta,見 TainanPage.tsx 掛載處的完整說明)後,
+     若不定義這兩個變數,共用 CSS 讀到的會是 undefined(fallback 成
+     瀏覽器預設,視覺上強調色完全失效),不是台南自己的磚紅色系。 */
+  --vermilion: var(--brick);
+  --vermilion-soft: var(--brick-soft);
 
   min-height: 100vh;
   background: var(--paper);
@@ -85,55 +92,9 @@
   color: inherit;
 }
 
-/* 品牌標記/日夜切換/CTA — 結構同 JiufenPage.css 對應區塊 */
-.tainan-page .tainan-brand-row {
-  position: fixed; left: 16px; top: 16px; z-index: 10;
-  display: flex; align-items: baseline; gap: 2px;
-}
-.tainan-page .tainan-brand-mark {
-  padding: 8px 4px 8px 0;
-  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
-  font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
-  color: var(--ink); text-decoration: none;
-  transition: opacity 0.2s ease;
-}
-.tainan-page .tainan-brand-mark:hover { opacity: 0.75; }
-.tainan-page .tainan-brand-page {
-  font-size: 14px; font-weight: 500;
-  color: var(--brick);
-}
-.tainan-page .tainan-brand-page::before {
-  content: '· ';
-  color: var(--line);
-}
-
-.tainan-theme-toggle {
-  position: fixed; right: 16px; top: 16px; z-index: 10;
-  width: 36px; height: 36px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 50%; border: 1px solid var(--line);
-  background: var(--paper); color: var(--ink);
-  cursor: pointer; box-shadow: var(--card-shadow);
-  transition: background 0.2s ease, color 0.2s ease;
-}
-.tainan-theme-toggle:hover { background: var(--paper-dim); }
-
-.tainan-page .tainan-app-cta {
-  position: fixed; right: 62px; top: 16px; z-index: 10;
-  display: flex; align-items: center;
-  height: 36px; padding: 0 18px;
-  border-radius: 999px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
-  /* 改用低透明度的頁面背景色(--paper),取代原本的 transparent——同
-     KyotoPage.css 對應規則的說明:position: fixed 疊在捲動內容上方,
-     低透明度維持可讀性,同時保留融入頁面的質感。 */
-  background: color-mix(in srgb, var(--paper) 85%, transparent); color: var(--ink); border: 1px solid var(--line);
-  text-decoration: none;
-  transition: border-color 0.2s ease, color 0.2s ease;
-}
-.tainan-page .tainan-app-cta:hover { border-color: var(--brick-soft); color: var(--brick); }
-@media (max-width: 900px) {
-  .tainan-page .tainan-app-cta { right: 62px; padding: 0 14px; font-size: 12px; }
-}
+/* 品牌標記/日夜切換/CTA——2026-09 已改用 SiteNavButtons.tsx/.css 的
+   共用元件,理由/說明見 JiufenPage.css 對應區塊,這裡不重複展開。強調色
+   映射(--vermilion → --brick)見上方 .tainan-page token 定義區塊。 */
 
 /* Hero */
 .tainan-hero {
@@ -344,13 +305,16 @@
   .tainan-progress-rail { display: none; }
 }
 
-/* tainan-map-intro — 結構/數值同 JiufenPage.css 對應區塊的完整說明 */
+/* tainan-map-intro — 結構/數值同 JiufenPage.css 對應區塊的完整說明。
+   2026-09:地圖區塊搬到分站列表之後(見 TainanPage.tsx 掛載處的完整
+   說明),不再緊鄰頂部固定 UI,上邊距從 88px 改回 48px(跟 JiufenPage.css
+   同步調整)。 */
 .tainan-map-intro {
-  --kiyomizu-page-padding: 88px 24px 48px;
+  --kiyomizu-page-padding: 48px 24px;
 }
 @media (min-width: 901px) {
   .tainan-map-intro {
-    --kiyomizu-page-padding: 88px 50px 48px 24px;
+    --kiyomizu-page-padding: 48px 50px 48px 24px;
   }
 }
 

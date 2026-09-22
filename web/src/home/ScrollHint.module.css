@@ -1,0 +1,30 @@
+/* ScrollHint:見 ScrollHint.tsx 開頭的完整說明。2026-09 從
+   MobileMapReveal.module.css 的 .scrollHint/.scrollHintBar 搬過來,
+   數值沿用原本版本,只有定位方式改變——原本是 position: absolute 貼在
+   圓形縮圖按鈕底部(該按鈕本身 100dvh 撐滿全螢幕,提示需要絕對定位
+   才能固定在畫面底部),現在改成一般文件流中的置中區塊(margin-top
+   撐開跟 hero 文字的間距,不再需要絕對定位,因為呼叫端會直接把這個
+   元件放在 hero 區塊該出現的位置,不是疊在另一個滿版容器上)。 */
+.scrollHint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 32px;
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  color: currentColor;
+  opacity: 0.75;
+}
+
+.scrollHintBar {
+  width: 1px;
+  height: 42px;
+  background: linear-gradient(currentColor, transparent);
+  animation: scroll-hint-pulse-bar 2.2s ease-in-out infinite;
+}
+
+@keyframes scroll-hint-pulse-bar {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}

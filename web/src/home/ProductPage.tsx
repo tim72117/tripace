@@ -3,13 +3,12 @@ import { Link } from 'react-router-dom';
 import {
   CalendarClock,
   Layers,
-  Moon,
-  Sun,
   Wand2,
 } from 'lucide-react';
 import { ThemePointDemo } from './ThemePointDemo';
 import { TimelineDemo } from './TimelineDemo';
 import { AutoPlanDemo } from './AutoPlanDemo';
+import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import './ProductPage.css';
 
 const FEATURES = [
@@ -62,27 +61,24 @@ export function ProductPage() {
 
   return (
     <div className="product-page" data-theme={theme ?? undefined}>
-      <nav className="product-nav">
-        <Link to="/" className="product-nav-brand">
-          Tripace
-        </Link>
-        <div className="product-nav-actions">
-          {/* /app 內建登入/註冊表單(未登入時顯示,見 PhoneContent.tsx 的
-              LoginCard/LoginForm),專案沒有獨立的 /login、/register 頁面,
-              故單一 CTA 直接指向 /app,不分登入/註冊兩種連結。 */}
-          <Link to="/app" className="product-nav-cta">
-            立即開始
-          </Link>
-          <button
-            type="button"
-            className="product-theme-toggle"
-            onClick={toggleTheme}
-            aria-label={dark ? '切換至淺色模式' : '切換至深色模式'}
-          >
-            {dark ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-        </div>
-      </nav>
+      {/* 2026-09:使用者要求「主題介紹頁的按鈕也對齊(首頁)」,幾輪來回
+          手動對齊數值後,使用者明確要求「都共用元件」「連定位一起改成
+          同一套邏輯」——原本這裡是 <nav className="product-nav"> 的
+          sticky nav bar,內用 flex 排列「立即開始」/日夜切換兩顆按鈕,
+          跟 HomePage.tsx 的 fixed 浮動疊層是兩種不同的版面結構。現在
+          整個拿掉 sticky nav bar,改用跟 HomePage.tsx 完全一致的固定
+          左上/右上角疊層(SiteNavBrand/SiteNavThemeToggle/SiteNavCta,
+          見 SiteNavButtons.tsx 的完整說明),兩個頁面的按鈕不只樣式
+          共用同一份 CSS,連版面結構本身都統一,不再需要為了對齊尺寸/
+          位置手動同步兩邊的規則。 */}
+      <SiteNavBrand />
+      <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
+      {/* /app 內建登入/註冊表單(未登入時顯示,見 PhoneContent.tsx 的
+          LoginCard/LoginForm),專案沒有獨立的 /login、/register 頁面,
+          故單一 CTA 直接指向 /app,不分登入/註冊兩種連結。這裡只有一顆
+          固定 CTA,不需要指定 slot(見 SiteNavCta 的 slot prop 說明,
+          省略時走預設 right,對齊 HomePage「登入」那顆的位置)。 */}
+      <SiteNavCta href="/app">立即開始</SiteNavCta>
 
       <header className="product-hero">
         <h1>把想去的地方，變成一份順暢的旅程</h1>

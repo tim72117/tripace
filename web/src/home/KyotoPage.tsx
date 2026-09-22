@@ -1,9 +1,10 @@
 import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { Moon, Sun } from 'lucide-react';
 import { InteractiveExploreMap } from './InteractiveExploreMap';
 import { MobileMapReveal } from './MobileMapReveal';
+import { ScrollHint } from './ScrollHint';
+import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { CityPageFooter } from './CityPageFooter';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { useScrollProgress } from '../hooks/useScrollProgress';
@@ -159,36 +160,17 @@ export function KyotoPage() {
           })}
         </script>
       </Helmet>
-      {/* 品牌列——結構/理由同 JiufenPage.tsx 對應區塊的完整說明,「・京都」
-          純文字標示目前頁面,不做成連結。 */}
-      <div className="kyoto-brand-row">
-        <Link to="/" className="kyoto-brand-mark">Tripace</Link>
-        <span className="kyoto-brand-page">京都 · 清水寺</span>
-      </div>
-      <button
-        type="button"
-        className="kyoto-theme-toggle"
-        onClick={toggleTheme}
-        aria-label={dark ? '切換至淺色模式' : '切換至深色模式'}
-      >
-        {dark ? <Sun size={16} strokeWidth={1.8} /> : <Moon size={16} strokeWidth={1.8} />}
-      </button>
-      <Link to="/app" className="kyoto-app-cta">立即開始</Link>
-
-      {/* 開頭互動地圖——同 JiufenPage.tsx 的說明,傳 city="京都"。
-          defaultOpenTheme 刻意不傳(維持 undefined):京都目前有清水寺、
-          八坂神社兩個平等並存的主題點(見 InteractiveExploreMap.tsx
-          defaultOpenTheme 該 prop 的完整說明與 HomePage.tsx 的既有理由)
-          ——這個頁面雖然不是首頁,但同樣是「兩個主題點並存、沒有明確
-          誰更優先」的情境(不像九份只有單一主題點),預先選定其中一個
-          仍然會暗示優先順序,故沿用首頁的既有判斷,不預設打開任何一個,
-          讓使用者自己點地圖決定先看哪一個。這是本次任務裡需要人工判斷
-          的模糊地帶之一,見最終報告的說明,使用者可事後調整。 */}
-      <div className="kyoto-map-intro" ref={mapIntroRef}>
-        <MobileMapReveal photoUrl={`${LANDING_ASSETS_BASE}/kyoto/n1.jpg`} photoAlt="清水寺">
-          <InteractiveExploreMap city="京都" showThemeToggle={false} externalTheme={theme} />
-        </MobileMapReveal>
-      </div>
+      {/* 2026-09:使用者要求「主題介紹頁的右上按鈕」跟首頁對齊大小,回報
+          「怎麼都沒改」後發現這四個城市頁原本各自維護一份獨立樣式,
+          完全沒有跟 HomePage.tsx/ProductPage.tsx 共用的 SiteNavButtons
+          對齊,這裡一併改用同一份共用元件(見 SiteNavButtons.tsx 的
+          完整說明)。pageLabel 只傳純頁面名稱(不含分隔符號「·」,那個
+          符號由 SiteNavBrand 的共用 CSS 用 ::before 自動加上,見
+          SiteNavButtons.css 的完整說明),原本這裡「京都 · 清水寺」
+          直接寫死在 JSX 文字裡,搬過來時拆掉手寫的分隔符號。 */}
+      <SiteNavBrand pageLabel="京都・清水寺" />
+      <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
+      <SiteNavCta href="/app">立即開始</SiteNavCta>
 
       <header className="kyoto-hero">
         <span className="kyoto-hero-eyebrow">地形決定了這一切</span>
@@ -198,18 +180,15 @@ export function KyotoPage() {
           參拜人潮踩出了產寧坂的坡道商店街，明治年間的土地政策把寺院境內地變成了圓山公園，
           而八坂神社門前的參拜人流，最終孕育出祇園的茶屋與藝妓文化。地質、信仰、商業、人文，是同一條因果鏈。
         </p>
+        <ScrollHint />
       </header>
 
-      {/* 進度指示——同 JiufenPage.tsx 的說明,第一個點對應開頭互動地圖區塊
-          (activeIndex 的特殊值 -1)。 */}
+      {/* 進度指示——同 JiufenPage.tsx 的說明。2026-09:使用者要求把開頭
+          互動地圖從頁面最頂端搬到分站列表結束、結尾 CTA 之前(見下方
+          .kyoto-map-intro 掛載處的完整說明)——「回到互動地圖」這顆
+          進度點原本排在最前面,現在改排在最後面(STOPS 之後),對齊
+          地圖搬移後的新視覺順序。 */}
       <nav className="kyoto-progress-rail" aria-label="站點進度">
-        <button
-          type="button"
-          className={`kyoto-progress-dot${activeIndex === -1 ? ' is-active' : ''}`}
-          onClick={() => mapIntroRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-          aria-label="回到互動地圖"
-          title="回到互動地圖"
-        />
         {STOPS.map((stop, i) => (
           <button
             key={stop.name}
@@ -220,6 +199,13 @@ export function KyotoPage() {
             title={stop.name}
           />
         ))}
+        <button
+          type="button"
+          className={`kyoto-progress-dot${activeIndex === -1 ? ' is-active' : ''}`}
+          onClick={() => mapIntroRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          aria-label="回到互動地圖"
+          title="回到互動地圖"
+        />
       </nav>
 
       <section className="kyoto-stops">
@@ -246,6 +232,22 @@ export function KyotoPage() {
           </article>
         ))}
       </section>
+
+      {/* 開頭互動地圖——2026-09:使用者要求把這個區塊從頁面最頂端搬到
+          這裡,分站列表結束、結尾 CTA 之前。同 JiufenPage.tsx 的說明,
+          傳 city="京都"。defaultOpenTheme 刻意不傳(維持 undefined):
+          京都目前有清水寺、八坂神社兩個平等並存的主題點(見
+          InteractiveExploreMap.tsx defaultOpenTheme 該 prop 的完整
+          說明與 HomePage.tsx 的既有理由)——這個頁面雖然不是首頁,但
+          同樣是「兩個主題點並存、沒有明確誰更優先」的情境(不像九份
+          只有單一主題點),預先選定其中一個仍然會暗示優先順序,故沿用
+          首頁的既有判斷,不預設打開任何一個,讓使用者自己點地圖決定
+          先看哪一個。 */}
+      <div className="kyoto-map-intro" ref={mapIntroRef}>
+        <MobileMapReveal photoUrl={`${LANDING_ASSETS_BASE}/kyoto/n1.jpg`} photoAlt="清水寺">
+          <InteractiveExploreMap city="京都" showThemeToggle={false} externalTheme={theme} />
+        </MobileMapReveal>
+      </div>
 
       <section className="kyoto-final-cta">
         <h2>這條路線，只是一個開始</h2>

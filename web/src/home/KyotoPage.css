@@ -88,57 +88,8 @@
   color: inherit;
 }
 
-/* 品牌標記/日夜間切換/CTA — 結構與理由同 JiufenPage.css 對應區塊的完整
-   說明,三者皆 fixed 定位、不隨頁面捲動。 */
-.kyoto-page .kyoto-brand-row {
-  position: fixed; left: 16px; top: 16px; z-index: 10;
-  display: flex; align-items: baseline; gap: 2px;
-}
-.kyoto-page .kyoto-brand-mark {
-  padding: 8px 4px 8px 0;
-  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
-  font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
-  color: var(--ink); text-decoration: none;
-  transition: opacity 0.2s ease;
-}
-.kyoto-page .kyoto-brand-mark:hover { opacity: 0.75; }
-.kyoto-page .kyoto-brand-page {
-  font-size: 14px; font-weight: 500;
-  color: var(--vermilion);
-}
-.kyoto-page .kyoto-brand-page::before {
-  content: '· ';
-  color: var(--line);
-}
-
-.kyoto-page .kyoto-theme-toggle {
-  position: fixed; right: 16px; top: 16px; z-index: 10;
-  width: 36px; height: 36px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 50%; border: 1px solid var(--line);
-  background: var(--paper); color: var(--ink);
-  cursor: pointer; box-shadow: var(--card-shadow);
-  transition: background 0.2s ease, color 0.2s ease;
-}
-.kyoto-page .kyoto-theme-toggle:hover { background: var(--paper-dim); }
-
-.kyoto-page .kyoto-app-cta {
-  position: fixed; right: 62px; top: 16px; z-index: 10;
-  display: flex; align-items: center;
-  height: 36px; padding: 0 18px;
-  border-radius: 999px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
-  /* 改用低透明度的頁面背景色(--paper),取代原本的 transparent——這是
-     position: fixed 疊在捲動內容上方的按鈕,transparent 底會讓底下經過
-     的文字/圖片透出來影響可讀性;低透明度(而非完全不透明的純色卡片)
-     在維持可讀性的同時,仍保留一點毛玻璃般融入頁面的質感。 */
-  background: color-mix(in srgb, var(--paper) 85%, transparent); color: var(--ink); border: 1px solid var(--line);
-  text-decoration: none;
-  transition: border-color 0.2s ease, color 0.2s ease;
-}
-.kyoto-page .kyoto-app-cta:hover { border-color: var(--vermilion-soft); color: var(--vermilion); }
-@media (max-width: 900px) {
-  .kyoto-page .kyoto-app-cta { right: 62px; padding: 0 14px; font-size: 12px; }
-}
+/* 品牌標記/日夜間切換/CTA——2026-09 已改用 SiteNavButtons.tsx/.css 的
+   共用元件,理由/說明見 JiufenPage.css 對應區塊,這裡不重複展開。 */
 
 /* Hero */
 .kyoto-page .kyoto-hero {
@@ -310,14 +261,19 @@
 }
 
 /* kyoto-map-intro — 同 JiufenPage.css 對應區塊的完整說明:覆寫
-   --kiyomizu-page-padding 避開頂部固定 UI,900px 以上桌面寬度加大右邊距
-   讓地圖右邊界跟進度點之間留白對稱。 */
+   --kiyomizu-page-padding,900px 以上桌面寬度加大右邊距讓地圖右邊界
+   跟進度點之間留白對稱。
+   2026-09 code review 抓到:地圖區塊已搬到分站列表之後(見
+   KyotoPage.tsx 掛載處的完整說明),不再緊鄰頂部固定 UI,原本 88px
+   的上邊距補償(用來避開頂部固定品牌列/按鈕)理由已經不成立——這裡
+   漏改,JiufenPage.css/TainanPage.css 同一次改動都已修正,這裡補上
+   同步改回 48px。 */
 .kyoto-page .kyoto-map-intro {
-  --kiyomizu-page-padding: 88px 24px 48px;
+  --kiyomizu-page-padding: 48px 24px;
 }
 @media (min-width: 901px) {
   .kyoto-page .kyoto-map-intro {
-    --kiyomizu-page-padding: 88px 50px 48px 24px;
+    --kiyomizu-page-padding: 48px 50px 48px 24px;
   }
 }
 
