@@ -1,7 +1,10 @@
 package api
 
 import (
+	"bufio"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"time"
 
@@ -22,6 +25,33 @@ type statusRecorder struct {
 func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
+}
+
+// Hijack 讓 statusRecorder 滿足 http.Hijacker 介面,把呼叫原封不動轉發給
+// 底層真正的 ResponseWriter——net/http 的 WebSocket upgrade(不論是
+// nhooyr.io/websocket 或任何走 http.Hijacker 的實作)需要拿到底層 TCP
+// 連線的讀寫控制權才能完成 101 Switching Protocols 交握。statusRecorder
+// 是自訂的 wrapper struct,預設不會自動滿足這個介面(Go 的 interface
+// 滿足是結構性的,wrapper 本身沒有 Hijack 方法就是沒有),沒有這個轉發
+// 方法時,任何試圖對 statusRecorder 做型別斷言 w.(http.Hijacker) 的
+// 呼叫都會失敗,導致所有經過 requestLogging 這層 middleware 的 WebSocket
+// 端點(含既有的 /v1/trips/{id}/ws,見 handleWS,以及新增的
+// /public/plan-sim/ws,見 handlePlanSimWS)在完成 upgrade 前就被擋下來,
+// 回應 501 Not Implemented——這是實測發現的問題,不是理論推測:新增
+// handlePlanSimWS 時第一次連線就踩到,回頭檢查發現 statusRecorder 這層
+// 從一開始就缺少這個轉發,推測既有的 handleWS 之所以沒被注意到同樣的
+// 問題,可能是測試環境較少對它做端對端的連線驗證。
+//
+// 底層 ResponseWriter 若本身不支援 hijack(例如某些測試用的
+// httptest.ResponseRecorder),回傳 net/http 標準的
+// ErrNotSupported——呼叫端(這裡是 websocket.Accept)本來就會處理這個
+// 錯誤,不需要在這裡做額外的降級處理。
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("statusRecorder: 底層 ResponseWriter 不支援 http.Hijacker: %w", http.ErrNotSupported)
+	}
+	return hijacker.Hijack()
 }
 
 // requestLogging 記錄每個請求的方法、路徑、狀態碼、耗時與呼叫者,同時

@@ -278,26 +278,44 @@ export function InteractiveExploreMap({
     return themes.map((attraction) => ({ attraction, nearby }))
   }, [attractions])
 
-  // initialCenter:兩個主題點的中點,不偏袒任一邊——attractions 尚未載入
-  // 完成(themePoints 為空)時回傳 undefined,對齊上方「center 延後一輪
-  // 才賦值」的既有迴避手法;只有一個主題點時直接用該點座標,不強行算
-  // 「中點」。算出中點後再往北(緯度增加)偏移
-  // INITIAL_CENTER_NORTH_OFFSET_KM,是使用者明確要求的初始畫面調整——
-  // 純中點置中時畫面感覺不如預期,北移一點讓初始視野的重心往上挪一些。
-  // restrictBounds/minZoom(見下方)也是拿這個已經偏移過的 initialCenter
-  // 去算,連帶一起往北挪了一點點——由於偏移量(0.1km)遠小於
-  // COMBINED_RESTRICT_RADIUS_KM(2km),兩個主題點仍完全落在偏移後的
-  // 可拖曳範圍內,不影響「兩個主題點都在可探索範圍內」這個既有前提,
-  // 只是整個範圍的中心跟著初始畫面一起微幅北移。 */
+  // initialCenter:預設是「同一城市底下所有主題點的中點,不偏袒任一邊」
+  // ——attractions 尚未載入完成(themePoints 為空)時回傳 undefined,對齊
+  // 上方「center 延後一輪才賦值」的既有迴避手法;只有一個主題點時直接用
+  // 該點座標,不強行算「中點」。這個「取中點」的假設是針對京都(清水寺/
+  // 八坂神社相距約 1.1km,同屬一個緊湊的步行探索範圍)校準出來的,對
+  // 距離較遠、彼此獨立的主題點組合(例如台南赤崁樓/安平古堡相距
+  // 5~6km,是台南市內兩個各自獨立的觀光區域,不是同一個可拖曳範圍)
+  // 完全不適用——2026-09 實測發現:TainanChikanPage.tsx 傳
+  // defaultOpenTheme="赤崁樓" 讓卡片正確自動打開赤崁樓,但地圖本身仍
+  // 用兩個主題點的中點置中,畫面顯示的是安平周邊,跟卡片內容完全脫節。
+  // 修法:defaultOpenTheme 有指定、且能在 themePoints 裡找到對應主題點
+  // 時,直接用那個主題點自己的座標當中心,不取平均——這對應「呼叫端已經
+  // 明確表示這頁只關心哪一個主題點」的情境(對齊上方 defaultOpenTheme
+  // 的完整說明:JiufenPage.tsx/TainanPage.tsx 單一主題點城市、以及像
+  // TainanChikanPage.tsx 這種同城市有多主題點但頁面本身只聚焦其中一個
+  // 的情境),取平均的邏輯只在沒有 defaultOpenTheme(例如 HomePage.tsx
+  // 京都兩點平等並存)時才會用到。
+  // 算出中心後再往北(緯度增加)偏移 INITIAL_CENTER_NORTH_OFFSET_KM,是
+  // 使用者明確要求的初始畫面調整——純中點置中時畫面感覺不如預期,北移
+  // 一點讓初始視野的重心往上挪一些;單一主題點時同樣套用這個偏移,維持
+  // 跟中點模式一致的視覺習慣。restrictBounds/minZoom(見下方)也是拿這個
+  // 已經偏移過的 initialCenter 去算,連帶一起往北挪了一點點——由於偏移量
+  // (0.1km)遠小於 COMBINED_RESTRICT_RADIUS_KM(2km),不影響「主題點
+  // 落在可探索範圍內」這個既有前提,只是整個範圍的中心跟著初始畫面一起
+  // 微幅北移。 */
   const DEFAULT_CENTER_NORTH_OFFSET_KM = 0.1
   const effectiveNorthOffsetKm = centerNorthOffsetKm ?? DEFAULT_CENTER_NORTH_OFFSET_KM
   const initialCenter = useMemo(() => {
     if (themePoints.length === 0) return undefined
-    const lat = themePoints.reduce((sum, t) => sum + t.attraction.lat, 0) / themePoints.length
-    const lng = themePoints.reduce((sum, t) => sum + t.attraction.lng, 0) / themePoints.length
+    const defaultTheme = defaultOpenTheme
+      ? themePoints.find((t) => t.attraction.name === defaultOpenTheme)
+      : undefined
+    const points = defaultTheme ? [defaultTheme] : themePoints
+    const lat = points.reduce((sum, t) => sum + t.attraction.lat, 0) / points.length
+    const lng = points.reduce((sum, t) => sum + t.attraction.lng, 0) / points.length
     return { lat: lat + effectiveNorthOffsetKm / KM_PER_DEG_LAT, lng }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [themePoints, effectiveNorthOffsetKm])
+  }, [themePoints, effectiveNorthOffsetKm, defaultOpenTheme])
 
   const [center, setCenter] = useState<{ lat: number; lng: number } | undefined>(undefined)
   useEffect(() => {

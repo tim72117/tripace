@@ -1563,6 +1563,12 @@ var publicPlaceDetailsAllowlist = map[string]bool{
 	// 商家。仍留在資料庫 attractions 表裡的同一筆記錄需另外清理(不是
 	// 這個 allowlist 能處理的範圍,見 store.DeleteAttraction 或對應的
 	// 資料庫維運操作)。
+
+	// 赤崁樓(AIPlanTimelinePage.tsx 的「模擬 AI 呼叫 tool 加入景點」
+	// 步驟——前端拿這個 place_id 呼叫 fetchPublicGeoPlaceDetails 取回
+	// 完整地點詳情再顯示,見該檔案的完整說明;地標本身建檔於 attractions
+	// 資料表,id=lmk_f1e80f8e7fdf,見 CLI attraction-add 的既有紀錄)。
+	"ChIJbYl7d2F2bjQRnFdvyMBuZfI": true, // 赤崁樓
 }
 
 // GET /public/geo/place-details?placeId={Google Place ID}

@@ -297,6 +297,10 @@ func (s *Server) Routes() http.Handler {
 	// 限制,不能直接比照這裡的寫法就假設安全。
 	mux.HandleFunc("GET /public/geo/place-details", s.handlePublicGeoPlaceDetails)
 	mux.HandleFunc("GET /public/geo/attractions", s.handlePublicGeoAttractions)
+	// GET /public/plan-sim/ws:模擬「AI 安排行程」推論輸出的 WebSocket
+	// 服務(見 plan_sim_ws.go 開頭的完整說明),供 AIPlanTimelinePage.tsx
+	// 展示原型使用,免登入、不含真實使用者資料。
+	mux.HandleFunc("GET /public/plan-sim/ws", s.handlePlanSimWS)
 
 	// internal — 供 CLI(cmd/cli)/自動化腳本操作資料,不走 /v1/* 那套
 	// requireOwner/requireEditor 行程層級的權限檢查,改由 internalAuth 要求

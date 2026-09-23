@@ -20,6 +20,7 @@ const ProductPage = lazy(() => import('./home/ProductPage').then((m) => ({ defau
 const JiufenPage = lazy(() => import('./home/JiufenPage').then((m) => ({ default: m.JiufenPage })))
 const KyotoPage = lazy(() => import('./home/KyotoPage').then((m) => ({ default: m.KyotoPage })))
 const TainanPage = lazy(() => import('./home/TainanPage').then((m) => ({ default: m.TainanPage })))
+const TainanChikanPage = lazy(() => import('./home/TainanChikanPage').then((m) => ({ default: m.TainanChikanPage })))
 const PrivacyPage = lazy(() => import('./home/PrivacyPage').then((m) => ({ default: m.PrivacyPage })))
 const TermsPage = lazy(() => import('./home/TermsPage').then((m) => ({ default: m.TermsPage })))
 const CliAuthPage = lazy(() => import('./home/CliAuthPage').then((m) => ({ default: m.CliAuthPage })))
@@ -28,6 +29,10 @@ const PublicViewScreen = lazy(() => import('./trip/PublicViewScreen').then((m) =
 const PacePage = lazy(() => import('./pace/PacePage').then((m) => ({ default: m.PacePage })))
 const PhoneContent = lazy(() => import('./PhoneContent').then((m) => ({ default: m.PhoneContent })))
 const NotFoundPage = lazy(() => import('./home/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
+// AIPlanTimelinePage:「AI 安排行程」時間軸展示原型(見該檔案開頭完整
+// 說明)——純前端假資料,獨立於 /app 之外的路由,不套用 DesktopLayout.tsx/
+// PhoneContent.tsx 那套 panelMode 機制。
+const AIPlanTimelinePage = lazy(() => import('./planning-demo/AIPlanTimelinePage').then((m) => ({ default: m.AIPlanTimelinePage })))
 
 // KeyboardShrinkGuard:/app 路由專用——鍵盤彈出時把根容器高度直接改成
 // visualViewport.height,取代先前試過的 transform: translateY(-offsetTop)
@@ -117,6 +122,18 @@ export function App() {
               貿易→淤積轉型→人文重生因果鏈的分段長頁,外殼架構對齊
               JiufenPage.tsx 模式(互動地圖+進度導覽點+分段長頁)。 */}
           <Route path="/tainan-anping" element={<TainanPage />} />
+          {/* /tainan-chikan-draft:赤崁文化園區「建築工法×職人技藝」混合
+              敘事試做頁,見 TainanChikanPage.tsx——比照 /plan-ai
+              (AIPlanTimelinePage.tsx)的既有慣例,純內部審閱用途,不接
+              真實資料庫地點/互動地圖,地點尚未建檔前先讓使用者看敘事
+              文案與版面效果。見 docs/research-tainan-chikan-craft-theme-2026-09.md
+              的完整研究說明。 */}
+          <Route path="/tainan-chikan-draft" element={<TainanChikanPage />} />
+          {/* /plan-ai:「AI 安排行程」時間軸展示原型,見
+              AIPlanTimelinePage.tsx——純前端假資料,不接真實 AI/後端,
+              獨立於 /app 之外(不套用 DesktopLayout.tsx/PhoneContent.tsx
+              的 panelMode 機制),供內部/使用者測試看功能雛形。 */}
+          <Route path="/plan-ai" element={<AIPlanTimelinePage />} />
           {/* 隱私權政策/服務條款——視覺語言對齊首頁(HomePage.tsx)的紙感和風
               風格,見 LegalPage.tsx。 */}
           <Route path="/privacy" element={<PrivacyPage />} />

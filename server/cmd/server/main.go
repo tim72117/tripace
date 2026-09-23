@@ -276,6 +276,12 @@ func main() {
 	// 連結頁面。同一個「新路徑要明確轉發、否則落到 SPA fallback」的陷阱,
 	// 見上面 /onagent/ 的說明。
 	mux.Handle("/public/geo/", srv.Routes())
+	// /public/plan-sim/ — GET /public/plan-sim/ws(見
+	// internal/api/plan_sim_ws.go 開頭說明),模擬「AI 安排行程」推論輸出
+	// 的 WebSocket 服務,供 AIPlanTimelinePage.tsx 展示原型使用。同上面
+	// /public/geo/ 的說明,明確轉發這個更深的前綴、不是整個 /public/,
+	// 避免連帶把 /public/{token} 分享頁也送進 srv.Routes()。
+	mux.Handle("/public/plan-sim/", srv.Routes())
 
 	// 管理後台(/admin/api/*)預設拆分成獨立的 cmd/adminserver binary/
 	// Cloud Run 服務(見 server/cmd/adminserver/main.go),那條部署路徑
