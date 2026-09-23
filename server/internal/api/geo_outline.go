@@ -12,6 +12,7 @@ import (
 	"github.com/tim72117/tripace/internal/apigateway"
 	"github.com/tim72117/tripace/internal/geo"
 	"github.com/tim72117/tripace/internal/pexels"
+	"gorm.io/gorm"
 )
 
 // hotelResponse 是 GET /internal/geo/attractions 與
@@ -337,6 +338,16 @@ func (s *Server) fetchNearbyHotels(ctx context.Context, client *geo.Client, lat,
 // Places 路徑的結果一律不帶 level(前端據此判斷全部顯示,不受縮放層級
 // 篩選——這批資料目前沒有分級資訊可用)。
 type attractionResponse struct {
+	// ID:只有走資料庫路徑(store.ListAttractionsByCity 等)才有值——即時
+	// 查 Google Places 的後備路徑(geo.District)沒有資料庫 id 的概念,固定
+	// 不帶。2026-09 新增,供 /plan-ai 的 search_attraction 工具只需要回傳
+	// 這個 id(而非完整 name/summary/photoUrl)給 LLM,插入行程時前端再用
+	// 這個 id 呼叫 GET /public/geo/attraction/{id}(見
+	// handlePublicGeoAttractionByID 的完整說明)取得完整資料——跟散策羅盤
+	// 「點選附近景點」(fetchPoiContent)的兩段式查詢(先用 attraction 本身
+	// 資料當底,有 placeId 才再查 Google 補強)走同一套邏輯,不是另外發明
+	// 一套。
+	ID               string  `json:"id,omitempty"`
 	Name             string  `json:"name"`
 	Lat              float64 `json:"lat"`
 	Lng              float64 `json:"lng"`
@@ -858,6 +869,7 @@ func (s *Server) listAttractionResponses(lat, lng, radiusMeters float64) ([]attr
 	attractions := make([]attractionResponse, 0, len(landmarks))
 	for _, l := range landmarks {
 		ar := attractionResponse{
+			ID:           l.ID,
 			Name:         l.Name,
 			Lat:          l.Lat,
 			Lng:          l.Lng,
@@ -1569,6 +1581,19 @@ var publicPlaceDetailsAllowlist = map[string]bool{
 	// 完整地點詳情再顯示,見該檔案的完整說明;地標本身建檔於 attractions
 	// 資料表,id=lmk_f1e80f8e7fdf,見 CLI attraction-add 的既有紀錄)。
 	"ChIJbYl7d2F2bjQRnFdvyMBuZfI": true, // 赤崁樓
+
+	// 定山溪(北海道賞楓試做頁,見上方 publicAttractionsCityAllowlist
+	// 的完整說明)。主題點原本是「二見吊橋」,後改為「定山溪溫泉」
+	// (2026-09,使用者要求主題點須是能概稱整個區域、普遍多人知道的
+	// 命名——單一景點如二見吊橋知名度不足以代表整個溫泉鄉),二見吊橋
+	// 降級為精選點,placeId 不變。
+	"ChIJcSObAyPSCl8RCQJvls9kVVU": true, // 定山溪溫泉(主題點)
+	"ChIJH3hLJRTTCl8R-T4DCRkDNxM": true, // 二見吊橋
+	"ChIJDW51fBjSCl8RMIw2GYXOnR4": true, // 定山源泉公園
+	"ChIJ8UjQxCLSCl8RvZLZ5_pkYIo": true, // 定山溪神社
+	"ChIJVVX2qhjSCl8RQf5zfOVkAag": true, // 岩戸觀音堂
+	"ChIJ29iDnBjSCl8RTL06P31o840": true, // 定山溪物產館(溫泉饅頭老店,店名 2026-09 修正簡化字為正體「溪」「產」)
+	"ChIJR_Q9Mu3TCl8ROhV9u_WOP0o": true, // Exclamation Bakery(山之風町園區,現烤麵包坊)
 }
 
 // GET /public/geo/place-details?placeId={Google Place ID}
@@ -1614,9 +1639,10 @@ func (s *Server) handlePublicGeoPlaceDetails(w http.ResponseWriter, r *http.Requ
 // 逐筆列舉 attraction ID 這麼細的授權粒度。之後若展示頁新增其他城市的
 // 固定示範資料,需要同步在這裡補上,不會自動生效。
 var publicAttractionsCityAllowlist = map[string]bool{
-	"京都": true,
-	"九份": true, // JiufenPage.tsx 開頭嵌入 KiyomizuDemoPage(參數化為 city prop)
-	"台南": true, // TainanPage.tsx 開頭嵌入 InteractiveExploreMap(參數化為 city prop)
+	"京都":  true,
+	"九份":  true, // JiufenPage.tsx 開頭嵌入 KiyomizuDemoPage(參數化為 city prop)
+	"台南":  true, // TainanPage.tsx 開頭嵌入 InteractiveExploreMap(參數化為 city prop)
+	"定山溪": true, // 北海道定山溪賞楓試做頁(見 docs/research-hokkaido-jozankei-autumn-theme-2026-09.md),同樣是 InteractiveExploreMap 嵌入
 }
 
 // handleGeoAttractionsByCity 是 GET /public/geo/attractions 的核心邏輯,
@@ -1638,6 +1664,7 @@ func (s *Server) handleGeoAttractionsByCity(city string) ([]attractionResponse, 
 	attractions := make([]attractionResponse, 0, len(landmarks))
 	for _, l := range landmarks {
 		ar := attractionResponse{
+			ID:           l.ID,
 			Name:         l.Name,
 			Lat:          l.Lat,
 			Lng:          l.Lng,
@@ -1686,6 +1713,256 @@ func (s *Server) handlePublicGeoAttractions(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"attractions": attractions})
+}
+
+// publicPlaceSearchEndpoint 是 Server.publicPlaceSearchLimiter 用的
+// RateLimiter key(見該欄位在 api.go Server struct 上的完整說明)——這裡
+// 不沿用 geo 套件內部 "places.searchText" 那個字串,是因為這個 key 保護
+// 的是「這支公開端點本身」的呼叫頻率,不是 Google API 那個 endpoint 分類
+// 概念,兩者刻意分開,即使實務上一次成功呼叫最終仍會觸發一次
+// "places.searchText" 的 Google API 呼叫。
+const publicPlaceSearchEndpoint = "public.placeSearch"
+
+// GET /public/geo/place-search?query={文字}
+//
+// 免登入版的通用地名文字查詢——供 /plan-ai(AIPlanTimelinePage.tsx 的
+// search_attraction 工具,見 attractionTools.ts 的完整說明)這類公開
+// 展示頁查詢任意地名取得座標,不限於資料庫裡已人工建檔的固定景點池。
+// 跟 handlePublicGeoAttractions(查整個城市清單)是互補而非取代的關係:
+// 那支端點只能查白名單城市裡已建檔的固定資料,這支端點能查任意地名,
+// 但只回傳最相關的第一筆結果(不像 handleGeoGeocode 那樣可能回傳多筆
+// 候選讓使用者手動挑選)——「查地名取得座標、再依座標算鄰近」這個流程
+// 只需要一個確定的錨點座標,不需要候選列表 UI。
+//
+// 刻意不重用 handleGeoGeocode(那支端點的 bias/restrict 兩階段判斷邏輯
+// 是為了登入後正式規劃地圖的搜尋框設計的,行為遠比這裡需要的複雜),
+// 改直接呼叫 geo.Client.Search 最簡單的單次查詢模式,固定 MaxResults:1
+// (只要最相關的一筆,不需要 Search 其餘 opts 如 LocationBias/
+// LocationRestriction)。
+//
+// 沒有掛 internalAuth,任何人都能呼叫——這支端點最終會觸發真實計費的
+// Google Text Search API 呼叫,故套用 publicPlaceSearchLimiter 做全域
+// 拒絕型限流(見該欄位的完整說明),把關順序是「先檢查限流,通過才真的
+// 呼叫 Google API」,被拒絕的請求完全不會產生任何外部 API 呼叫或費用。
+func (s *Server) handlePublicGeoPlaceSearch(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("query")
+	if query == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 query 查詢參數")
+		return
+	}
+
+	if !s.publicPlaceSearchLimiter.Allow(publicPlaceSearchEndpoint) {
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "查詢過於頻繁,請稍後再試")
+		return
+	}
+
+	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+	client := s.newGeoGeocodeClient(apiKey)
+	client.SetCache(s.photoCache)
+
+	// 逾時對齊 handleGeoGeocode 的單階段查詢成本(這裡只有一次 Search
+	// 呼叫,不像該 handler 的 bias 模式可能兩階段查詢,5 秒已足夠寬裕)。
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	ctx = geo.WithCaller(ctx, "handlePublicGeoPlaceSearch")
+	ctx = geo.WithPath(ctx, r.URL.Path)
+
+	// geo.Client.Search 查無結果時回傳 geo.ErrNotFound(不是空陣列+nil
+	// error,見該錯誤的定義處)——這是正常的「查無此地」情境,不是查詢
+	// 失敗,回應 200 + found:false 讓前端能區分「查詢本身出錯」(502)
+	// 與「查詢成功但沒有這個地方」(200,found:false)兩種不同語意,呼叫端
+	// (attractionTools.ts 的 search_attraction)才能據此決定接下來的行為
+	// (例如查無結果時提示使用者換個關鍵字,而非當成系統錯誤處理)。
+	// Region 固定 "tw"——這支端點目前唯一的呼叫端(AIPlanTimelinePage.tsx
+	// 的 search_attraction 工具)只服務台南行程情境,不帶任何地理偏向時
+	// 純文字查詢完全依賴 Google 對伺服器來源的地理判斷,實測發現查「安平
+	// 古堡」這類全台可能有同名或近似字號店家的查詢會命中完全不相關地區
+	// 的結果(例如台北的店家)——加上 regionCode 讓 Google 明確偏向台灣
+	// 地區的結果,是最低成本的修正,不需要額外引入 LocationBias 座標
+	// 偏向(那需要一個參考座標,這支端點的呼叫情境目前沒有「使用者已經
+	// 看著哪張地圖」這種既有上下文可以取用,見 handleGeoGeocode 的
+	// LocationBias 用法對比)。
+	places, err := client.Search(ctx, query, &geo.SearchOptions{MaxResults: 1, Region: "tw"})
+	if errors.Is(err, geo.ErrNotFound) {
+		writeJSON(w, http.StatusOK, map[string]any{"found": false})
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "search_failed", err.Error())
+		return
+	}
+	if len(places) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"found": false})
+		return
+	}
+
+	p := places[0]
+	writeJSON(w, http.StatusOK, map[string]any{
+		"found":   true,
+		"name":    p.Name,
+		"address": p.Address,
+		"lat":     p.Lat,
+		"lng":     p.Lng,
+		"placeId": p.PlaceID,
+	})
+}
+
+// GET /public/geo/attraction/{id}
+//
+// 免登入版、用資料庫 id 查單筆已建檔景點(store.GetAttraction)——供
+// /plan-ai 的 search_attraction/add_attraction 工具使用(見
+// attractionTools.ts 的完整說明):2026-09 使用者明確要求
+// 「search_attraction 不用完整資訊,LLM 只送 attraction id 就好,前端會
+// 用 attraction id 走點選附近景點那樣的流程」,對齊散策羅盤「點選附近
+// 景點」(useThemeAttractionSelection.ts 的 fetchPoiContent)的兩段式
+// 查詢:先用 attraction 本身資料(這支端點回傳的 name/summary/photoUrl)
+// 當底,呼叫端(AIPlanTimelinePage.tsx 的 insertAttractionAfter)再視
+// 這筆資料是否帶 placeId 決定要不要另外呼叫
+// GET /public/geo/place-details-any 查 Google 補強——不是這支端點自己
+// 做這個補強,職責分開:這支端點只單純查表,不含任何外部 API 呼叫,不受
+// 任何限流保護,因為查表不需要。
+//
+// id 不存在時回傳 404(不是 200+found:false)——跟 place-details-any 的
+// found:false 語意不同:那支端點查的是「這個 placeId 在 Google 那邊存不
+// 存在」,查無此地是正常的外部世界狀態;這支端點查的是「呼叫端傳來的 id
+// 有沒有對應到我們自己資料庫裡的一筆紀錄」,查無紀錄代表呼叫端傳了一個
+// 過期或錯誤的 id,是呼叫端該處理的錯誤情境,用標準 HTTP 404 語意更清楚。
+func (s *Server) handlePublicGeoAttractionByID(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少景點 id")
+		return
+	}
+
+	a, err := s.store.GetAttraction(id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		writeErr(w, http.StatusNotFound, "not_found", "查無這個景點")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", "查詢景點資料失敗")
+		return
+	}
+
+	resp := map[string]any{
+		"id":   a.ID,
+		"name": a.Name,
+		"lat":  a.Lat,
+		"lng":  a.Lng,
+	}
+	if a.Summary != nil {
+		resp["summary"] = *a.Summary
+	}
+	if a.PhotoURL != nil {
+		resp["photoUrl"] = *a.PhotoURL
+	}
+	if a.PlaceID != nil {
+		resp["placeId"] = *a.PlaceID
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// GET /public/geo/place-details-any?placeId={Google Place ID}
+//
+// 免登入版的地點詳情查詢——不受 publicPlaceDetailsAllowlist 限制(見該
+// 白名單的完整說明:那份清單是為固定展示頁(散策羅盤等)已知的一批
+// placeID 設計的),供 /plan-ai(AIPlanTimelinePage.tsx 的 add_attraction
+// 工具,見 attractionTools.ts 的完整說明)查詢任意 placeID 的名稱/地址/
+// 座標/簡介——因為 search_attraction 現在可以查任意地名(見
+// handlePublicGeoPlaceSearch),對應的 add_attraction 自然也需要能查
+// 任意 placeID,不能被限制在一份固定清單內。
+//
+// 使用者明確要求「add_attraction 不用送太多資訊,placeId 跟時間就可以,
+// 其他資訊由前端再做查詢」——這支端點就是那個「前端再做查詢」的後端
+// 支撐:LLM 只需要記住 search_attraction 回傳過的 placeId,不需要把
+// name/lat/lng/summary 這些欄位原封不動複製貼回 add_attraction 呼叫,
+// 避免座標抄錯或摘要被截斷這類資料重複導致的錯誤(見這次修正前的真實
+// log:同一批資料在兩次工具呼叫之間被完整複製一次)。
+//
+// 2026-09:優先查 attractions 表(見 store.GetAttractionByPlaceID 的完整
+// 說明)——已經人工建檔過的地點(place_id 命中,例如赤崁樓這類固定示範
+// 點)直接回傳既有的 Name/Summary/PhotoURL,完全不打 Google,不消耗
+// Google Places 配額、也不受 defaultRateLimiter 的全域限流影響。查無
+// 建檔紀錄時才 fallback 到真的呼叫 client.GetPlaceDetails(對應既有的
+// "places.get" Google API endpoint)——這是 search_attraction 可以查
+// 任意地名的必然結果,不可能所有使用者臨時提到的地點都事先建檔,這條
+// fallback 路徑因此自然受惠於既有的 defaultRateLimiter(見
+// geo.RateLimitConfig 的完整說明,cmd/server/main.go 預設 10 秒視窗內
+// 最多 1 次),不需要像 publicPlaceSearchLimiter 那樣另外建立一個獨立
+// RateLimiter 實例——這裡刻意跟正式登入使用者點地圖 POI
+// (handleGeoPlaceDetails)共用同一份全域限流額度,是經過評估的簡化
+// 取捨:/plan-ai 目前只是展示頁、流量規模小,共用額度的實務影響有限,
+// 不需要為了完全隔離兩者的呼叫來源而增加一個新的限流維度,日後若流量
+// 真的變大導致互相排擠,再評估是否要比照 publicPlaceSearchLimiter
+// 獨立出一份。
+//
+// 兩條路徑回應形狀刻意對齊(found/name/address/lat/lng/summary/
+// photoUrl)——attractions 表命中時額外帶上 photoUrl(建檔時存的真實
+// 照片,見 model.Attraction.PhotoURL 的完整說明),Google fallback
+// 路徑則維持原本不含照片(不重用 handleGeoPlaceDetails 一般模式,那支
+// 函式串接了漸進補圖決策、雙來源照片並列、IncrementPlaceClickCount 等
+// 多個步驟,是為登入後完整規劃體驗設計的,這裡的卡片目前只顯示純色
+// 縮圖,不需要這些複雜度)——前端 resolvePlaceForStep 對兩者一視同仁,
+// photoUrl 有值就用,沒有就維持純色縮圖佔位。
+func (s *Server) handlePublicGeoPlaceDetailsAny(w http.ResponseWriter, r *http.Request) {
+	placeID := r.URL.Query().Get("placeId")
+	if placeID == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 placeId 查詢參數")
+		return
+	}
+
+	if a, err := s.store.GetAttractionByPlaceID(placeID); err == nil {
+		resp := map[string]any{
+			"found":   true,
+			"name":    a.Name,
+			"address": a.CityName,
+			"lat":     a.Lat,
+			"lng":     a.Lng,
+		}
+		if a.Summary != nil {
+			resp["summary"] = *a.Summary
+		}
+		if a.PhotoURL != nil {
+			resp["photoUrl"] = *a.PhotoURL
+		}
+		writeJSON(w, http.StatusOK, resp)
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		writeErr(w, http.StatusInternalServerError, "internal_error", "查詢景點資料失敗")
+		return
+	}
+
+	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+	client := s.newGeoGeocodeClient(apiKey)
+	client.SetCache(s.photoCache)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	ctx = geo.WithCaller(ctx, "handlePublicGeoPlaceDetailsAny")
+	ctx = geo.WithPath(ctx, r.URL.Path)
+
+	details, err := client.GetPlaceDetails(ctx, placeID)
+	if errors.Is(err, geo.ErrNotFound) {
+		writeJSON(w, http.StatusOK, map[string]any{"found": false})
+		return
+	}
+	if errors.Is(err, apigateway.ErrRateLimited) {
+		writeErr(w, http.StatusTooManyRequests, "rate_limited", "查詢過於頻繁,請稍後再試")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "place_details_failed", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"found":   true,
+		"name":    details.Name,
+		"address": details.Address,
+		"lat":     details.Lat,
+		"lng":     details.Lng,
+		"summary": details.Summary,
+	})
 }
 
 // tryClaimPlaceDetailsInFlight 嘗試搶到「處理這個 placeID」的權利——用

@@ -215,6 +215,22 @@ func (s *Store) GetAttraction(id string) (model.Attraction, error) {
 	return toAttraction(r), nil
 }
 
+// GetAttractionByPlaceID 依 Google place_id 查單筆景點區域資料——供
+// handlePublicGeoPlaceDetailsAny(見該函式的完整說明)優先查詢:已經
+// 人工建檔過的地點(place_id 命中)直接回傳既有的 Name/Summary/PhotoURL,
+// 不需要為了查同一個地點反覆打 Google Places API 消耗配額與撞全域限流;
+// 查無紀錄時才 fallback 到真的呼叫 geo.Client.GetPlaceDetails,理由是
+// /plan-ai 的 search_attraction 仍需要能查任意地名,不能只侷限在已建檔
+// 的固定清單內。sql.ErrNoRows(透過 gorm.ErrRecordNotFound)是正常的
+// 「查無建檔紀錄」情境,呼叫端應該用 errors.Is 判斷、不當成異常記錄。
+func (s *Store) GetAttractionByPlaceID(placeID string) (model.Attraction, error) {
+	var r attractionRow
+	if err := s.db.Where("place_id = ?", placeID).First(&r).Error; err != nil {
+		return model.Attraction{}, err
+	}
+	return toAttraction(r), nil
+}
+
 // UpdateAttractionPhoto 更新一筆景點區域的照片(data: URI,見
 // geo.Client.PhotoDataURI)。只更新 photo_url 與 updated_at 兩欄,不動
 // 其餘欄位——這支方法專門服務 CLI 的 attraction-update-photo(重新透過

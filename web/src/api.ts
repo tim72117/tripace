@@ -372,6 +372,13 @@ export function geocodeEntry(cfg: ClientConfig, entryID: string) {
 // type),圖片資料直接內嵌在回應裡,可以直接當 <img src> 用,不需要
 // 額外拼接網址或發第二次請求。
 export interface GeoAttraction {
+  // id:資料庫路徑(model.Attraction.ID)才有值——即時查 Google Places 的
+  // 後備路徑(geo.District)沒有資料庫 id 概念,固定不帶。2026-09 新增,
+  // 供 /plan-ai 的 search_attraction/add_attraction 工具流程使用(見
+  // attractionTools.ts 的完整說明),前端可以用這個 id 呼叫
+  // GET /public/geo/attraction/{id} 取得完整資料,不需要中途攜帶
+  // name/summary/photoUrl/placeId 這些欄位。
+  id?: string
   name: string
   lat: number
   lng: number
@@ -694,6 +701,61 @@ export function fetchGeoPlaceDetails(cfg: ClientConfig, placeId: string) {
 // 把關——這裡不重複實作一份白名單邏輯,避免前後端兩份清單不同步。
 export function fetchPublicGeoPlaceDetails(cfg: ClientConfig, placeId: string) {
   return request<GeoPlaceDetails>(cfg, 'GET', `/public/geo/place-details?placeId=${encodeURIComponent(placeId)}`)
+}
+
+// GeoPublicPlaceSearchResult:fetchPublicGeoPlaceSearch 的回應形狀——對齊
+// 後端 handlePublicGeoPlaceSearch 的 JSON 輸出。found 為 false 時
+// name/address/lat/lng/placeId 皆不存在(查無此地,不是查詢失敗,見後端
+// handler 的完整說明:這種情況回應仍是 200)。
+export interface GeoPublicPlaceSearchResult {
+  found: boolean
+  name?: string
+  address?: string
+  lat?: number
+  lng?: number
+  placeId?: string
+}
+
+// fetchPublicGeoPlaceSearch:GET /public/geo/place-search(免登入版通用
+// 地名文字查詢,見後端 handlePublicGeoPlaceSearch 的完整說明)——供
+// /plan-ai(AIPlanTimelinePage.tsx 的 search_attraction 工具,見
+// attractionTools.ts)查詢任意地名取得座標,不限於資料庫裡已建檔的固定
+// 景點池。只回傳最相關的第一筆結果(found:true 時),不是候選列表——這支
+// 端點的用途是「取得一個確定的錨點座標」,不是給使用者手動挑選多筆候選
+// 的搜尋框。後端套用全域拒絕型限流(見該 handler 的完整說明,不分呼叫者
+// 共用同一個視窗),前端這裡不重複實作節流,查詢過於頻繁時直接讓後端的
+// 429 錯誤透過 request() 既有的錯誤處理路徑往上拋。
+export function fetchPublicGeoPlaceSearch(cfg: ClientConfig, query: string) {
+  return request<GeoPublicPlaceSearchResult>(cfg, 'GET', `/public/geo/place-search?query=${encodeURIComponent(query)}`)
+}
+
+// GeoPublicPlaceDetailsAnyResult:fetchPublicGeoPlaceDetailsAny 的回應
+// 形狀——對齊後端 handlePublicGeoPlaceDetailsAny 的 JSON 輸出。found 為
+// false 時其餘欄位皆不存在(查無此 placeId,不是查詢失敗)。
+//
+// 2026-09:photoUrl 只在後端優先查 attractions 表命中時才會有值(見該
+// handler 的完整說明——已建檔景點才有真實照片,fallback 到 Google
+// GetPlaceDetails 的查詢結果不含照片),前端使用時應視為選填欄位。
+export interface GeoPublicPlaceDetailsAnyResult {
+  found: boolean
+  name?: string
+  address?: string
+  lat?: number
+  lng?: number
+  summary?: string
+  photoUrl?: string
+}
+
+// fetchPublicGeoPlaceDetailsAny:GET /public/geo/place-details-any(免登入
+// 版、不受白名單限制的地點詳情查詢,見後端 handlePublicGeoPlaceDetailsAny
+// 的完整說明)——跟既有的 fetchPublicGeoPlaceDetails 差異在於後者只能查
+// publicPlaceDetailsAllowlist 裡固定收錄的那批 placeId(為散策羅盤等
+// 固定展示頁設計),這支函式可以查任意 placeId,供 /plan-ai 的
+// add_attraction 工具使用(見 attractionTools.ts 的完整說明:LLM 只需要
+// 記住 placeId,插入時由前端這裡重新查詢完整資料,不需要 LLM 在兩次
+// 工具呼叫之間原封不動複製貼上 name/lat/lng/summary)。
+export function fetchPublicGeoPlaceDetailsAny(cfg: ClientConfig, placeId: string) {
+  return request<GeoPublicPlaceDetailsAnyResult>(cfg, 'GET', `/public/geo/place-details-any?placeId=${encodeURIComponent(placeId)}`)
 }
 
 // fetchGeoPlacePhoto:GET /internal/geo/place-details 的 photoOnly=1 模式

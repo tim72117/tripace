@@ -1,11 +1,22 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { AgentBridge } from '@onagent/bridge'
-import { fetchPublicGeoPlaceDetails, type ClientConfig } from '../api'
+import { fetchPublicGeoPlaceDetailsAny, type ClientConfig } from '../api'
 import { BASE_URL } from '../AppCommon'
 import { getTheme } from '../theme'
 import { NativeMapBase, type MapHandle } from '../geo-planning/NativeMapBase'
 import { toAgentBridgeTools } from '../sdk-proposals/toAgentBridgeTools'
-import { attractionToolsList, type AttractionStepsCtx, type PlanStepLike } from './attractionTools'
+import { useSyncedState } from '../hooks/useSyncedState'
+import { createAttractionToolsList, type AttractionStepsCtx, type PlanStepLike } from './attractionTools'
+import {
+  createEmptyTimeline,
+  insertAfter,
+  removeNode,
+  toRenderList,
+  updateNode,
+  type PlanNode,
+  type PlanNodeData,
+  type PlanTimeline,
+} from './planTimeline'
 import styles from './AIPlanTimelinePage.module.css'
 
 // 台南安平區域的預設中心點——右上角小地圖初始顯示整個 Day 1 行程涵蓋的
@@ -29,27 +40,28 @@ const GUEST_CFG: ClientConfig = { baseURL: BASE_URL, token: null }
 // 資料流(2026-09 重構,取代原本純前端 setTimeout 排時序的版本):後端
 // server/internal/api/plan_sim_ws.go 的 GET /public/plan-sim/ws 模擬
 // 「AI 安排行程」推論過程逐步推播 action 訊息(新增景點/交通/注記/
-// 刪除某一步),前端(見下方 usePlanSimSocket/reducePlanAction)收到後
+// 刪除某一步),前端(見下方 usePlanSimSocket/planActionToInsert)收到後
 // 直接 dispatch 更新 steps 這個 state 陣列,畫面即時反應——這是使用者
 // 明確要求的「結構化前端結構,讓上面的元素可以被新增跟刪除,並反應在
 // 畫面上」「提供接口讓 agent 傳進來的訊息可以異動結構資料」的具體實作:
-// steps state + reducePlanAction 就是這個「接口」,只要來源送對格式的
-// action 訊息(不論是這支模擬 WS、之後真正接上的 LLM 推論,或甚至是
-// 手動測試時透過 devtools console 呼叫 dispatch),都能驅動同一套畫面
-// 更新邏輯,不需要為不同來源另外寫一份渲染程式碼。
+// steps state + planActionToInsert/insertAttractionAfter 就是這個
+// 「接口」,只要來源送對格式的 action 訊息(不論是這支模擬 WS、之後
+// 真正接上的 LLM 推論,或甚至是手動測試時透過 devtools console 呼叫
+// dispatch),都能驅動同一套畫面更新邏輯,不需要為不同來源另外寫一份
+// 渲染程式碼。
 //
 // add_stop 訊息若帶 placeId(見 PlanAction 型別的完整說明),代表「AI
-// 呼叫了查地點工具」——前端收到後用這個 id 呼叫
-// fetchPublicGeoPlaceDetails(GET /public/geo/place-details)取得真正的
-// 地點名稱/簡介/照片,這是「把 place_id 串到前端、前端用 id 呼叫端點
-// 顯示景點」這個需求的具體落地,不是後端直接把完整資料內嵌進訊息裡。
+// 呼叫了查地點工具」——插入後 insertAttractionAfter 內部用這個 id 呼叫
+// fetchPublicGeoPlaceDetailsAny(GET /public/geo/place-details-any)取得
+// 真正的地點名稱/簡介/照片,這是「把 place_id 串到前端、前端用 id 呼叫
+// 端點顯示景點」這個需求的具體落地,不是後端直接把完整資料內嵌進訊息裡。
 //
 // 目前是純模擬展示(見下方「模擬」相關說明),不接真實 AI/LLM——路由
 // /plan-ai(見 App.tsx),獨立於 /app 底下的正式導覽系統之外(不套用
 // DesktopLayout.tsx/PhoneContent.tsx 那套 panelMode 機制),因為這只是
 // 給團隊內部/使用者測試看的功能雛形,尚未有真正的資料流可以接。日後
 // 若要正式化,只需要把 usePlanSimSocket 換成真正的 agent 推論 WS 來源
-// (訊息格式維持一致),不需要動 reducePlanAction 或下方渲染邏輯。
+// (訊息格式維持一致),不需要動 planActionToInsert 或下方渲染邏輯。
 //
 // 視覺語言採用登入後正式 App 的 --ios-* token(base-ui.css),不是
 // home/ 底下城市介紹頁那套 --paper/--ink 紙感和風——這個頁面示範的是
@@ -58,64 +70,23 @@ const GUEST_CFG: ClientConfig = { baseURL: BASE_URL, token: null }
 // 而非 home/ 那套純記憶體的 useThemeToggle,是同一個理由的延伸——這裡
 // 展示的雖然還沒接真後端,但情境設定上就是登入後的畫面。
 
-type PlanStepType = 'section' | 'stop' | 'transit' | 'note'
-
-// PlanStep — steps state 陣列裡每一筆的形狀,對應時間軸上的一個節點。
-// 帶穩定的 id(不是陣列 index)——這是「可被新增/刪除」這個需求的
-// 前提:刪除要能精準定位到某一筆,用 index 定位在陣列中間插入/刪除後
-// 會位移、對應到錯的節點,必須用不隨陣列變動的穩定識別碼。
-interface PlanStep {
-  id: string
-  type: PlanStepType
-  // section
-  label?: string
-  // stop
-  time?: string
-  duration?: string
-  kind?: string
-  name?: string
-  desc?: string
-  thumbBg?: string
-  thumbIcon?: string
-  tags?: string[]
-  // stop 的即時查詢狀態——loading 表示 add_stop 訊息帶了 placeId、
-  // fetchPublicGeoPlaceDetails 還在查詢中(縮圖/敘事文字先用訊息本身的
-  // 假資料佔位);查完後 photoUrl/desc 會被真實資料覆蓋,loading 轉
-  // false。沒有 placeId 的 stop 這個欄位固定是 false,直接顯示假資料。
-  loading?: boolean
-  photoUrl?: string
-  // removing:這一筆已收到 remove_step,正在播放淡出動畫、還沒真的從
-  // steps 陣列移除(見 reducePlanAction 的完整說明)——渲染時套用淡出
-  // CSS class,動畫結束後由呼叫端(usePlanSimSocket 的 remove_step 分支)
-  // 延遲真正 filter 掉,不是收到訊息就立刻讓 DOM 節點瞬間消失。
-  removing?: boolean
-  // lat/lng:右上角固定小地圖用——點擊這張卡片時 panTo 到這個座標(見
-  // AIPlanTimelinePage 下方 MiniMap 相關邏輯的完整說明)。查到真實
-  // GeoPlaceDetails 後會被真實座標覆蓋(見 usePlanSimSocket 的
-  // updateStepById 呼叫),沒有 placeId 或查詢失敗時維持訊息本身帶的
-  // 展示座標(見後端 plan_sim_ws.go 的 Lat/Lng 欄位說明)。
-  lat?: number
-  lng?: number
-  // transit
-  icon?: string
-  mode?: string
-  minutes?: number
-  distance?: string
-  // note
-  color?: string
-  noteIcon?: string
-  text?: string
-}
+// PlanStep — 對外沿用的節點型別名稱(渲染邏輯/其餘函式仍稱呼它
+// PlanStep,對齊既有命名),實際上就是 planTimeline.ts 的 PlanNode——
+// 底層儲存已經改成 PlanTimeline(鏈結串列,見該檔案開頭的完整背景
+// 說明),不再是普通陣列。這裡只是型別別名,不重新宣告欄位。
+type PlanStep = PlanNode
 
 // PlanAction — 後端 GET /public/plan-sim/ws(或日後任何真正的 agent
 // 推論來源)推播的訊息形狀,對應 server/internal/api/plan_sim_ws.go 的
-// planAction struct(欄位一一對應,JSON key 相同)。reducePlanAction
-// 是這份協議的唯一消費點,新增/刪除的邏輯都收斂在這一個函式裡。
+// planAction struct(欄位一一對應,JSON key 相同)。planActionToInsert
+// 是新增類訊息的唯一轉換點,remove_step 的處理則直接寫在
+// usePlanSimSocket 的 ws.onmessage 裡(見該處說明)。
 interface PlanAction {
   // thinking:每一筆實際 action 送出前的「思考中」信號(見
   // plan_sim_ws.go 的完整說明),不帶任何額外欄位——前端收到時只用來
-  // 觸發/延續思考動畫(呼吸點+骨架卡),不對 steps 陣列做任何異動(見
-  // reducePlanAction 對這個 type 的處理)。
+  // 觸發/延續思考動畫(呼吸點+骨架卡),不對時間軸做任何異動(見
+  // ws.onmessage 對這個 type 的處理——提早 return,不呼叫
+  // planActionToInsert)。
   type: 'thinking' | 'add_section' | 'add_stop' | 'add_transit' | 'add_note' | 'remove_step' | 'done'
   label?: string
   id?: string
@@ -139,36 +110,45 @@ interface PlanAction {
   text?: string
   removedId?: string
   // afterId:插入位置——有值時插在該 id 對應節點的「後面」,而不是固定
-  // append 到陣列尾端(既有預設行為,省略這個欄位時維持不變)。這是給
+  // append 到時間軸尾端(既有預設行為,省略這個欄位時維持不變)。這是給
   // 「移除某個節點、緊接著插入一個新節點取代同一個時間槽」這種情境用
-  // 的(見 AIPlanTimelinePage 下方 removeWumiao 測試按鈕的完整說明)——
-  // 沒有這個欄位時,新節點只能永遠接在「目前已生成的最後一個節點」
-  // 後面,視覺順序會跟它實際代表的時間槽脫節。找不到對應 id 時(該節點
-  // 已經被移除、或根本不存在)退回 append 到尾端,不是拋錯或整個放棄
-  // 這次新增。
+  // 的(見 AIPlanTimelinePage 下方 removeWumiao 測試按鈕的完整說明)。
+  //
+  // 2026-09:找不到對應節點時的行為改成跟 onagent 路徑(add_attraction
+  // 的 anchorId)完全一致——直接讓 insertAttractionAfter 回傳
+  // anchor_not_found 錯誤,由呼叫端(見 usePlanSimSocket 的 ws.onmessage)
+  // 拋出例外。使用者明確要求「模擬的部分也完全走這個路徑,不要有
+  // 例外」:原本這裡有一套「找不到就退回 append 到最後一筆」的寬容
+  // 降級邏輯,是模擬腳本(plan_sim_ws.go)專屬的特例,現在拿掉——不管
+  // 資料來源是模擬腳本還是 LLM 呼叫工具,「插入位置的錨點找不到」一律
+  // 是需要被看見的錯誤,不是靜默吃掉繼續執行的正常情況(模擬腳本本身
+  // 若送出無效的 afterId,那是腳本自己的 bug,應該讓它在這裡明確
+  // 中斷、被發現,而不是悄悄插到錯的位置)。
   afterId?: string
 }
 
 const STEP_ADD_TYPES: ReadonlySet<PlanAction['type']> = new Set(['add_section', 'add_stop', 'add_transit', 'add_note'])
 
-// reducePlanAction — 把一則 PlanAction 套用到目前的 steps 陣列,回傳新
-// 陣列(不修改傳入的舊陣列,對齊 React state 更新的既有慣例)。純函式,
-// 不含任何非同步/副作用邏輯(placeId 查詢的非同步部分在呼叫端的
-// useEffect 處理,見 usePlanSimSocket 的完整說明),方便之後若要幫這裡
-// 補單元測試,不需要另外 mock WebSocket 或 API。
-function reducePlanAction(steps: PlanStep[], action: PlanAction): PlanStep[] {
-  if (action.type === 'remove_step') {
-    if (!action.removedId) return steps
-    // 先標記 removing、不直接 filter 掉——真正的移除由呼叫端(見
-    // usePlanSimSocket)在淡出動畫播完後,另外呼叫 pruneRemoved 完成
-    // (見該函式的完整說明)。這裡故意分成兩步,理由是這個函式本身是
-    // 同步純函式,不適合塞進「等動畫播完」這種帶時間的副作用邏輯。
-    return steps.map((s) => (s.id === action.removedId ? { ...s, removing: true } : s))
-  }
-  if (!STEP_ADD_TYPES.has(action.type)) return steps
-  const id = action.id ?? `${action.type}-${steps.length}`
-  const base: PlanStep = {
-    id,
+// planActionToInsert — 把一則新增類 PlanAction 轉成 insertAttractionAfter
+// 需要的 (anchorId, newId, data) 三元組,不實際執行插入——純函式,呼叫端
+// (usePlanSimSocket 的 ws.onmessage)拿到這三元組後統一呼叫
+// insertAttractionAfter 完成插入與驗證,理由見 PlanAction.afterId 的
+// 完整說明:模擬腳本與 onagent 對話兩條路徑現在共用同一個插入介面,
+// 不再各自實作一份。
+//
+// anchorId 的決定:afterId 有值時直接採用(找不到對應節點是否算錯誤,
+// 交給 insertAttractionAfter/insertAfter 判斷,這裡不做寬容降級,見
+// PlanAction.afterId 的完整說明);未帶 afterId 時退回「目前時間軸最後
+// 一個節點」,對齊模擬腳本固定劇本「新內容接在已生成內容之後」的預設
+// 語意——這不是寬容降級,是這個欄位本來的預設行為(action.afterId 是
+// 選填欄位,省略時的既有預設值本來就是「接在最後面」)。
+function planActionToInsert(
+  timeline: PlanTimeline,
+  action: PlanAction,
+): { anchorId: string | null; newId: string; data: PlanNodeData } | null {
+  if (!STEP_ADD_TYPES.has(action.type)) return null
+  const id = action.id ?? `${action.type}-${timeline.nodes.size}`
+  const data: PlanNodeData = {
     type: action.type === 'add_section' ? 'section' : action.type === 'add_stop' ? 'stop' : action.type === 'add_transit' ? 'transit' : 'note',
     label: action.label,
     time: action.time,
@@ -179,6 +159,7 @@ function reducePlanAction(steps: PlanStep[], action: PlanAction): PlanStep[] {
     thumbBg: action.thumbBg,
     thumbIcon: action.thumbIcon,
     tags: action.tags,
+    placeId: action.placeId,
     // loading:add_stop 訊息帶 placeId 時,這筆先以「查詢中」狀態掛進
     // 時間軸(縮圖/敘事文字用訊息本身的假資料佔位,見下方渲染邏輯),
     // 呼叫端(usePlanSimSocket)另外用這個 placeId 查完真實資料後,再
@@ -197,59 +178,56 @@ function reducePlanAction(steps: PlanStep[], action: PlanAction): PlanStep[] {
     noteIcon: action.noteIcon,
     text: action.text,
   }
-  // afterId 有值且找得到對應節點時,插在該節點後面,不是固定 append 到
-  // 尾端(見 PlanAction.afterId 的完整說明)。找不到時(id 不存在/已被
-  // 移除)退回 append,維持這個函式原本「找不到就別讓整個新增失敗」的
-  // 寬容處理原則,理由同 updateStepById/pruneRemoved 對「找不到對應 id」
-  // 的一貫處理方式。
-  if (action.afterId) {
-    const afterIdx = steps.findIndex((s) => s.id === action.afterId)
-    if (afterIdx !== -1) {
-      return [...steps.slice(0, afterIdx + 1), base, ...steps.slice(afterIdx + 1)]
-    }
-  }
-  return [...steps, base]
-}
-
-// updateStepById — 依 id 更新 steps 陣列裡的某一筆(合併 patch),找不到
-// 對應 id 時原樣返回——用於 placeId 查詢完成後,把真實地點資料補進
-// 先前用 loading 佔位掛進去的那筆 stop。
-function updateStepById(steps: PlanStep[], id: string, patch: Partial<PlanStep>): PlanStep[] {
-  return steps.map((s) => (s.id === id ? { ...s, ...patch } : s))
+  const renderedForAppend = toRenderList(timeline)
+  const lastId = renderedForAppend.length > 0 ? renderedForAppend[renderedForAppend.length - 1].id : null
+  const anchorId = action.afterId ?? lastId
+  return { anchorId, newId: id, data }
 }
 
 // REMOVE_FADE_MS — 淡出動畫時長,前端(.module.css 的 removingFade)與
 // 這裡的延遲時間必須一致:CSS 決定「看起來」的過渡時間,這個常數決定
-// 「動畫播完後多久真的把節點從陣列移除」,兩者對不上會出現「畫面還沒
+// 「動畫播完後多久真的把節點從時間軸移除」,兩者對不上會出現「畫面還沒
 // 淡完節點就消失」或「淡完了節點還占著版面空間」的落差。
 const REMOVE_FADE_MS = 320
 
-// pruneRemoved — 把已標記 removing 的節點真正從陣列移除,在淡出動畫
-// 播完後由呼叫端延遲呼叫(見 usePlanSimSocket/dispatch 的呼叫處)。
-function pruneRemoved(steps: PlanStep[], id: string): PlanStep[] {
-  return steps.filter((s) => s.id !== id)
-}
-
-// resolvePlaceForStep — add_stop 帶 placeId 時,呼叫
-// fetchPublicGeoPlaceDetails 查真實地點資料,查完後用 updateStepById
-// 補上(見 PlanStep.loading 的完整說明)。抽成共用函式,理由是這段邏輯
-// 原本只在 usePlanSimSocket 的 WS onmessage 分支出現,「移除後模擬插入
-// 新地點」這個測試按鈕的 add_stop 呼叫(見 dispatch 的呼叫處)需要一模
-// 一樣的行為——不論這則 add_stop 訊息來自模擬 WS 或 UI 測試按鈕,「有
-// placeId 就去查真實資料」都應該是同一套邏輯,不是各自兩份。
+// resolvePlaceForStep — add_stop 帶 placeId 時,呼叫傳入的查詢函式取得
+// 真實地點資料,查完後用 updateNode 補上(見 PlanNodeData.loading 的
+// 完整說明)。
+//
+// 2026-09:模擬 WS 路徑與 onagent 對話路徑現在唯一的呼叫點是
+// insertAttractionAfter 內部(見該函式的完整說明)——不管 placeId 來自
+// 固定腳本還是 LLM 呼叫工具,一律用 fetchPublicGeoPlaceDetailsAny(不受
+// 白名單限制)。fetchDetails 仍保留成參數(而非寫死呼叫這支函式),是
+// 讓這個函式本身維持跟具體端點解耦、方便測試,不代表目前還有兩個呼叫點
+// 各自傳不同的 fetchDetails。
+//
 // isCancelled:呼叫端傳入,查詢完成時若已經是「這次已不算數」的狀態
 // (例如 WS 連線已經斷線重建),就不寫回 state——理由同原本 WS 分支的
 // cancelled旗標。
 function resolvePlaceForStep(
   stepId: string,
   placeId: string,
-  setSteps: React.Dispatch<React.SetStateAction<PlanStep[]>>,
+  fetchDetails: (placeId: string) => Promise<{ found?: boolean; name?: string; summary?: string; photoUrl?: string; lat?: number; lng?: number }>,
+  setTimeline: React.Dispatch<React.SetStateAction<PlanTimeline>>,
   isCancelled: () => boolean,
 ) {
-  fetchPublicGeoPlaceDetails(GUEST_CFG, placeId)
+  fetchDetails(placeId)
     .then((details) => {
       if (isCancelled()) return
-      setSteps((prev) => updateStepById(prev, stepId, {
+      // found === false:查詢本身成功(HTTP 200),但這個 placeId 查無
+      // 資料(見 fetchPublicGeoPlaceDetailsAny 的完整說明,這是它跟
+      // fetchPublicGeoPlaceDetails 的行為差異——後者查無資料時是 HTTP
+      // 錯誤、會落進下面的 .catch,前者是正常回應)。found 欄位在
+      // fetchPublicGeoPlaceDetails 的回應形狀裡不存在(恆為
+      // undefined),故這裡用 `=== false` 明確排除、不誤判
+      // fetchPublicGeoPlaceDetails 的正常回應。兩種「查無/查詢失敗」
+      // 情境最終走向同一個退化處理:把 loading 轉 false,不留在「查詢
+      // 中」的狀態卡住,理由同下方 .catch 分支。
+      if (details.found === false) {
+        setTimeline((prev) => updateNode(prev, stepId, { loading: false }))
+        return
+      }
+      setTimeline((prev) => updateNode(prev, stepId, {
         loading: false,
         name: details.name || undefined,
         desc: details.summary || undefined,
@@ -263,7 +241,7 @@ function resolvePlaceForStep(
       // 查詢失敗(白名單外/網路問題)——把這一筆的 loading 轉 false,退回
       // 訊息本身帶的假資料(desc/thumbBg/thumbIcon 都還在,只是沒有真實
       // photoUrl),不留在「查詢中」的狀態卡住。
-      setSteps((prev) => updateStepById(prev, stepId, { loading: false }))
+      setTimeline((prev) => updateNode(prev, stepId, { loading: false }))
     })
 }
 
@@ -285,15 +263,31 @@ function resolvePlaceForStep(
 const PLAN_SIM_ENABLED = true
 
 // usePlanSimSocket — 連上模擬 AI 推論輸出的 WebSocket(見上方檔案開頭
-// 的完整說明),把收到的每則 PlanAction 依序 reduce 進 steps state;
-// add_stop 訊息帶 placeId 時,額外觸發 fetchPublicGeoPlaceDetails 非同步
-// 查詢,查完後用 updateStepById 補上真實資料。回傳 { steps, isGenerating,
-// restart },restart 用於「重播」按鈕——重新建立一個新的 WebSocket 連線
+// 的完整說明),把收到的每則 PlanAction 轉成插入操作、交給
+// insertAttractionAfter 統一處理(見該函式的完整說明);add_stop 訊息帶
+// placeId 時,insertAttractionAfter 內部會額外觸發
+// fetchPublicGeoPlaceDetailsAny 非同步查詢,查完後補上真實資料。回傳
+// { steps, isGenerating, restart },restart 用於「重播」按鈕——重新建立
+// 一個新的 WebSocket 連線
 // (後端每個連線各自從頭播放同一份固定腳本,見 plan_sim_ws.go 的完整
 // 說明),不是在前端重放已經收到的訊息紀錄。PLAN_SIM_ENABLED 為 false 時
 // (見該常數說明)整個連線 effect 提早 return,不建立任何 WebSocket。
 function usePlanSimSocket() {
-  const [steps, setSteps] = useState<PlanStep[]>([])
+  // timeline 改用 useSyncedState(見該 hook 開頭的完整背景說明)取代單純
+  // 的 useState——insertAttractionAfter(下方)呼叫來源是 AgentBridge 的
+  // 原生 WebSocket onmessage,完全在 React 事件系統之外,需要「commit
+  // 呼叫當下就同步拿到結果」這個保證,而不是仰賴 useState 的 updater
+  // 會同步執行(這個假設在這個呼叫場景下不成立,見該 hook 開頭引用的
+  // 真實踩坑記錄)。setTimeline 仍保留給不需要同步讀結果的異動(remove_step
+  // 標記 removing、resolvePlaceForStep 背景補資料),用回原生 setState
+  // 語意即可,不需要 commit 那一層。
+  const [timelineRef, timeline, commitTimeline] = useSyncedState<PlanTimeline>(createEmptyTimeline)
+  const setTimeline = useCallback((updater: PlanTimeline | ((prev: PlanTimeline) => PlanTimeline)) => {
+    commitTimeline((current) => ({
+      next: typeof updater === 'function' ? (updater as (prev: PlanTimeline) => PlanTimeline)(current) : updater,
+      result: undefined,
+    }))
+  }, [commitTimeline])
   const [isGenerating, setIsGenerating] = useState(PLAN_SIM_ENABLED)
   // generation:遞增觸發下方 effect 重新建立連線,理由與既有的「重播」
   // 機制一致(見先前版本 generation 欄位的完整說明:StrictMode 下用
@@ -309,9 +303,69 @@ function usePlanSimSocket() {
   // 是跨這個邊界仍能讀到最新值的唯一方式。
   const stopRef = useRef<{ ws: WebSocket; markCancelled: () => void } | null>(null)
 
+  // insertAttractionAfter — 這是使用者明確要求的「機制跟介面由行程
+  // 安排元件提供」的落地:不管是 add_attraction 工具(attractionTools.ts)
+  // 還是下方模擬 WS 腳本路徑(ws.onmessage),都不自己組節點、自己呼叫
+  // insertAfter,而是統一呼叫這裡暴露的介面,把 anchorId/節點資料交給
+  // planTimeline.ts 的 insertAfter 統一驗證與插入(時間是否落在合理
+  // 範圍、錨點是否存在,見該函式的完整說明)。這是使用者要求「模擬的
+  // 部分也完全走這個路徑,不要有例外」的直接體現——兩條路徑不再各自
+  // 維護一份插入邏輯,驗證失敗時的行為也完全一致(見下方呼叫端如何
+  // 處理 result.ok === false)。
+  //
+  // 用 commitTimeline(useSyncedState 提供,見該 hook 的完整背景說明)
+  // 取代手寫的「讀 ref → 算 → 寫 ref → setState」四步——這個 hook 就是
+  // 把這四步收斂成的固定寫法,存在的理由正是這裡先前踩過的真實 bug
+  // (add_attraction 曾經每次呼叫都以「Cannot read properties of
+  // undefined (reading 'ok')」失敗,根因是誤以為 setState(updater) 的
+  // updater 會同步執行)。compute 函式直接讀 current(保證是目前為止
+  // 所有已提交更新疊加後的最新 timeline)同步算出 insertAfter 的結果,
+  // 驗證失敗時不給 next(對應 useSyncedState 的「compute 不給 next 就不
+  // 寫入」語意),commitTimeline 保證回傳值就是這次呼叫當下算出的
+  // InsertAfterResult,不會是 undefined。
+  //
+  // id 由呼叫端決定並傳進來,這裡不重新生成——這個介面只負責「插入到
+  // 哪裡、驗不驗證得過」,不負責「這個節點該叫什麼 id」這種跟呼叫端
+  // 資料來源相關的細節(onagent 路徑用 agent-${attractionId}-
+  // ${Date.now()},模擬 WS 路徑沿用後端腳本給的 action.id)。
+  //
+  // 插入成功後,若這筆帶 placeId 且是 loading 佔位狀態(見
+  // attractionTools.ts addAttraction 的完整背景說明——LLM 只傳
+  // placeId,不等任何後端查詢完成就回覆成功),在這裡背景觸發
+  // fetchPublicGeoPlaceDetailsAny 補上完整資料,理由與寫法對稱既有的
+  // resolvePlaceForStep(模擬 WS 路徑原本自己觸發的同類邏輯,現在收斂
+  // 到這裡統一處理,兩條路徑不用各自記得要觸發)——差別只在這裡查的是
+  // 不受白名單限制的 place-details-any,且查詢完成後用 setTimeline
+  // (而非 commitTimeline)寫回,因為這個背景更新不需要任何呼叫端同步
+  // 拿到結果。
+  //
+  // 故意不 await 這個背景查詢、也不讓它影響 insertAttractionAfter 的
+  // 回傳值——插入本身只做本地鏈結運算,立即返回,不因為等待或觸發
+  // Google API 查詢而受限流影響,查詢延遲對使用者體感是卡片從佔位轉成
+  // 完整內容,不是整個呼叫失敗。
+  const insertAttractionAfter = useCallback(
+    (anchorId: string | null, newId: string, data: PlanNodeData): ReturnType<typeof insertAfter> => {
+      const result = commitTimeline<ReturnType<typeof insertAfter>>((current) => {
+        const inserted = insertAfter(current, anchorId, data, newId)
+        return inserted.ok ? { next: inserted.timeline, result: inserted } : { result: inserted }
+      })
+      if (result.ok && data.placeId && data.loading) {
+        resolvePlaceForStep(
+          newId,
+          data.placeId,
+          (placeId) => fetchPublicGeoPlaceDetailsAny(GUEST_CFG, placeId),
+          setTimeline,
+          () => false,
+        )
+      }
+      return result
+    },
+    [commitTimeline, setTimeline],
+  )
+
   useEffect(() => {
     if (!PLAN_SIM_ENABLED) return
-    setSteps([])
+    setTimeline(createEmptyTimeline())
     setIsGenerating(true)
     const wsURL = `${BASE_URL.replace(/^http/, 'ws')}/public/plan-sim/ws`
     const ws = new WebSocket(wsURL)
@@ -330,30 +384,40 @@ function usePlanSimSocket() {
         setIsGenerating(false)
         return
       }
-      // thinking:不異動 steps(reducePlanAction 對這個 type 本來就是
-      // no-op,這裡提早 return 純粹是省一次沒有意義的 setSteps 呼叫,
+      // thinking:不異動 steps(這裡提早 return 純粹是省一次沒有意義的
+      // setSteps 呼叫,
       // 語意上也更清楚——這則訊息唯一的作用是讓 isGenerating 維持
       // true、思考動畫(呼吸點+骨架卡)持續顯示,不需要對時間軸資料做
       // 任何事)。
       if (action.type === 'thinking') return
-      setSteps((prev) => reducePlanAction(prev, action))
-      // remove_step:reducePlanAction 只把對應節點標記 removing(觸發
-      // CSS 淡出),真正從陣列移除延遲到動畫播完後才做(見 pruneRemoved/
-      // REMOVE_FADE_MS 的完整說明)——不然節點會瞬間消失,看不到淡出
-      // 過程。
+      // remove_step:先標記 removing(觸發 CSS 淡出),真正從鏈結摘除
+      // 延遲到動畫播完後才做(見 removeNode/REMOVE_FADE_MS 的完整
+      // 說明)——不然節點會瞬間消失,看不到淡出過程。這段標記邏輯不透過
+      // insertAttractionAfter(那個介面只負責插入),直接用 setTimeline
+      // 呼叫 updateNode,理由同模擬路徑其餘非插入類異動(移除本來就不是
+      // 「機制跟介面由行程安排元件提供」這個要求要收斂的對象——那個要求
+      // 針對的是插入邏輯不能有兩份,移除邏輯只有這一條路徑,沒有重複可言)。
       if (action.type === 'remove_step' && action.removedId) {
         const removedId = action.removedId
+        setTimeline((prev) => updateNode(prev, removedId, { removing: true }))
         setTimeout(() => {
           if (cancelled) return
-          setSteps((prev) => pruneRemoved(prev, removedId))
+          setTimeline((prev) => removeNode(prev, removedId))
         }, REMOVE_FADE_MS)
+        return
       }
-      // add_stop 帶 placeId:額外查真實地點資料——這裡故意不 await,
-      // 讓這則訊息先以 loading 佔位卡的形式掛進畫面(見 reducePlanAction
-      // 的完整說明),查詢完成是獨立的非同步流程,不阻塞後續訊息的處理
-      // (WS 訊息仍會依序繼續進來,查詢結果好了才回頭更新對應那一筆)。
-      if (action.type === 'add_stop' && action.placeId && action.id) {
-        resolvePlaceForStep(action.id, action.placeId, setSteps, () => cancelled)
+      // 新增類 action:統一走 planActionToInsert + insertAttractionAfter
+      // (見兩者的完整說明)——不再有模擬路徑專屬的 insertAfter 呼叫或
+      // 「錨點找不到就退回 append 到最後一筆」的寬容降級,驗證失敗時
+      // 的行為跟 onagent 對話路徑完全一致:真的拋錯中斷,不是靜默放棄
+      // (使用者已確認選擇這個處理方式)。add_stop 帶 placeId 時的背景
+      // 反查已經內建在 insertAttractionAfter 內部,這裡不需要再自己
+      // 觸發一次 resolvePlaceForStep。
+      const toInsert = planActionToInsert(timelineRef.current, action)
+      if (!toInsert) return
+      const result = insertAttractionAfter(toInsert.anchorId, toInsert.newId, toInsert.data)
+      if (!result.ok) {
+        throw new Error(result.error.message)
       }
     }
     ws.onerror = () => {
@@ -393,8 +457,8 @@ function usePlanSimSocket() {
   // planSimTriggerActions)決定要不要、以及送出什麼樣的 action 訊息
   // 回來——前端測試按鈕不再自己組 PlanAction、直接改本地 steps state,
   // 而是純粹「請後端送出模擬信號」。真正的畫面更新完全走上方
-  // ws.onmessage 收到 action 訊息後的既有處理路徑(reducePlanAction/
-  // pruneRemoved/resolvePlaceForStep),跟腳本自動推播的訊息走同一套
+  // ws.onmessage 收到 action 訊息後的既有處理路徑(planActionToInsert/
+  // insertAttractionAfter/resolvePlaceForStep),跟腳本自動推播的訊息走同一套
   // 邏輯,沒有任何前端自行捏造資料的分支。連線還沒建立好或已經終止時
   // (stopRef.current 為 null)靜默忽略,不拋錯——理由同按鈕本身的
   // disabled 條件,呼叫端應該先用 wumiaoPresent 等旗標擋掉不合理的
@@ -405,16 +469,9 @@ function usePlanSimSocket() {
     ws.send(JSON.stringify({ trigger }))
   }, [])
 
-  // setSteps 本身也對外暴露——onagent 工具(見 attractionTools.ts 的
-  // add_attraction)需要能直接異動 steps 陣列。這是繼「模擬 WS 腳本」
-  // 「測試按鈕觸發後端信號」之後,第三條會改動 steps 的路徑,彼此完全
-  // 獨立(見 attractionTools.ts 檔頭對三者關係的說明)——onagent bridge
-  // 本身就是即時雙向的工具呼叫通道,不需要再包一層 WS action 訊息協議
-  // 去模擬同一件事,直接讓工具的 handle 呼叫這裡的 setSteps 是最直接的
-  // 做法,不是要跟既有兩條路徑搶著改同一份資料造成衝突——三者是「誰在
-  // 講話」不同(自動腳本/使用者點按鈕/使用者在對話框打字經 LLM 呼叫
-  // 工具),但都是同一份 steps state 的其中一種輸入來源,彼此不互斥。
-  return { steps, isGenerating, restart, sendTrigger, stop, setSteps }
+  const steps = toRenderList(timeline)
+
+  return { steps, timeline, isGenerating, restart, sendTrigger, stop, insertAttractionAfter }
 }
 
 // PLAN_AI_ONAGENT_APP_ID/PLAN_AI_ONAGENT_URL——/plan-ai 對話窗專用的
@@ -442,14 +499,18 @@ export type PlanAiChatStatus = 'connecting' | 'ready' | 'closed'
 // 差別只在這裡接的是 plan-ai-timeline 這個獨立 app、工具換成這個頁面
 // 專屬的兩個,而不是 trip_entry_* 那五個。
 //
-// getSteps/setSteps 用 ref 包一層(理由同 useOnagentChatBridge.ts 的
-// getAllBatchesRef/setAllBatchesRef 說明)——這兩個函式來自呼叫端
+// getSteps/insertAttraction 用 ref 包一層(理由同 useOnagentChatBridge.ts
+// 的 getAllBatchesRef/setAllBatchesRef 說明)——這兩個函式來自呼叫端
 // (AIPlanTimelinePage 主體)每次 render 產生的新閉包,若直接放進下面
 // useEffect 的依賴陣列,會導致每次重渲染都重新建立一次 WebSocket 連線,
 // 連線只應該依 apiKey 是否存在變化,不該因為呼叫端重新渲染就重連。
 function usePlanAiChatBridge(
   getSteps: () => PlanStepLike[],
-  setSteps: (updater: (prev: PlanStepLike[]) => PlanStepLike[]) => void,
+  insertAttraction: (
+    anchorId: string | null,
+    newId: string,
+    data: PlanNodeData,
+  ) => ReturnType<typeof insertAfter>,
 ) {
   const apiKey = import.meta.env.VITE_PLAN_AI_ONAGENT_APP_KEY as string | undefined
   const [status, setStatus] = useState<PlanAiChatStatus>('connecting')
@@ -464,23 +525,44 @@ function usePlanAiChatBridge(
   const [isThinking, setIsThinking] = useState(false)
   const bridgeRef = useRef<AgentBridge | null>(null)
   const getStepsRef = useRef(getSteps)
-  const setStepsRef = useRef(setSteps)
+  const insertAttractionRef = useRef(insertAttraction)
   useEffect(() => {
     getStepsRef.current = getSteps
-    setStepsRef.current = setSteps
+    insertAttractionRef.current = insertAttraction
   })
 
   useEffect(() => {
     if (!apiKey) return
+    // ctx.insertAttractionAfter 回傳型別是 Promise<...>(見
+    // AttractionStepsCtx 的完整說明),但 insertAttractionRef.current(...)
+    // 本身是同步函式——直接回傳同步值時,await 呼叫端(attractionTools.ts
+    // 的 addAttraction)拿到的仍然是正確的已 resolve 結果,不需要這裡
+    // 刻意包一層 Promise.resolve,JS 對「async 函式/Promise 型別位置
+    // 回傳非 Promise 值」本來就會自動裝箱。這裡把 planTimeline.ts
+    // InsertAfterResult 的 insertedId 欄位轉成 AttractionStepsCtx 期望
+    // 的 id 欄位名稱——兩邊型別故意用不同欄位名(insertedId vs id),
+    // 讓「這是插入操作的結果」跟「這是我拿到的新節點 id」在讀程式碼時
+    // 语意各自獨立,不是隨便找了同名欄位就當作互相相容。
+    //
+    // newId 用 `agent-${crypto.randomUUID()}` 生成——不像原本 add_attraction
+    // 自己組 id 時能拿到 attractionId(景點池固定 id)可用,這裡收到的
+    // step 只是已經組好的 stop 資料(Omit<PlanStepLike, 'id'>),不含
+    // attractionId 這個原始欄位,且不該依賴 step.name(景點名稱,含中文
+    // 字元、可能重複、不適合當 id 的一部分)這種業務資料組 id。
+    // randomUUID 保證唯一,不需要額外的時間戳記或業務欄位輔助。
     const ctx: AttractionStepsCtx = {
       getSteps: () => getStepsRef.current(),
-      setSteps: (updater) => setStepsRef.current(updater),
+      insertAttractionAfter: async (anchorId, step) => {
+        const newId = `agent-${crypto.randomUUID()}`
+        const result = insertAttractionRef.current(anchorId, newId, step)
+        return result.ok ? { ok: true, id: result.insertedId } : { ok: false, error: result.error }
+      },
     }
     const bridge = new AgentBridge({
       url: PLAN_AI_ONAGENT_WS_URL,
       appId: PLAN_AI_ONAGENT_APP_ID,
       apiKey,
-      tools: toAgentBridgeTools(attractionToolsList, ctx),
+      tools: toAgentBridgeTools(createAttractionToolsList(GUEST_CFG), ctx),
       onAssistantMessage: (text) => {
         setIsThinking(false)
         setMessages((prev) => [...prev, { id: `msg-${Date.now()}-${prev.length}`, text }])
@@ -523,7 +605,7 @@ export function AIPlanTimelinePage() {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const [following, setFollowing] = useState(true)
   const [showJumpPill, setShowJumpPill] = useState(false)
-  const { steps, isGenerating, restart, sendTrigger, stop, setSteps } = usePlanSimSocket()
+  const { steps, isGenerating, restart, sendTrigger, stop, insertAttractionAfter } = usePlanSimSocket()
   const stopCount = steps.filter((s) => s.type === 'stop').length
 
   // stepsRef——usePlanAiChatBridge 的 getSteps 需要讀到「當下最新」的
@@ -533,26 +615,25 @@ export function AIPlanTimelinePage() {
   const stepsRef = useRef(steps)
   useEffect(() => { stepsRef.current = steps }, [steps])
 
-  // getStepsForBridge/setStepsForBridge——把 usePlanSimSocket 提供的
-  // PlanStep[] state 轉接成 usePlanAiChatBridge 期望的 PlanStepLike[]
-  // 介面(見 attractionTools.ts 的 PlanStepLike 說明:結構化型別下,完整
-  // 的 PlanStep 物件本來就滿足 PlanStepLike 的較窄形狀,多出來的欄位在
-  // 讀取端被忽略;寫入端 add_attraction 產生的 newStep 只填了
-  // PlanStepLike 列出的欄位,其餘 PlanStep 才有的欄位(loading/removing/
-  // photoUrl 等)保持 undefined,對渲染邏輯而言等同「這個工具新增的站
-  // 目前沒有這些狀態」,行為正確)。
+  // getStepsForBridge——把 usePlanSimSocket 提供的 PlanStep[](即
+  // PlanNode[],見 planTimeline.ts)轉接成 usePlanAiChatBridge 期望的
+  // PlanStepLike[] 介面(見 attractionTools.ts 的 PlanStepLike 說明:
+  // 結構化型別下,完整的 PlanNode 物件本來就滿足 PlanStepLike 的較窄
+  // 形狀,多出來的欄位在讀取端被忽略)。insertAttractionAfter 本身已經
+  // 是 usePlanSimSocket 提供、簽章對齊 usePlanAiChatBridge 期望的介面
+  // (見該函式的完整說明),不需要像原本 setStepsForBridge 那樣另外包一層
+  // 轉接——這是使用者明確要求的「機制跟介面由行程安排元件提供」的直接
+  // 體現:元件提供的介面形狀,對話橋接層直接拿去用,不需要中間再插一層
+  // adapter。
   const getStepsForBridge = useCallback((): PlanStepLike[] => stepsRef.current, [])
-  const setStepsForBridge = useCallback((updater: (prev: PlanStepLike[]) => PlanStepLike[]) => {
-    setSteps((prev) => updater(prev) as PlanStep[])
-  }, [setSteps])
-  const planAiChat = usePlanAiChatBridge(getStepsForBridge, setStepsForBridge)
+  const planAiChat = usePlanAiChatBridge(getStepsForBridge, insertAttractionAfter)
   const [chatInput, setChatInput] = useState('')
 
   // mountedIdsRef——追蹤「已經播過進場動畫的節點 id」,用來正確判斷
   // 下方渲染迴圈裡的 justMounted。原本 justMounted 是用
   // `idx === steps.length - 1`(是不是陣列最後一個元素)判斷,這在
   // steps 只會 append 到尾端時沒問題,但「插入到中間」的節點(見
-  // PlanAction.afterId/reducePlanAction 的完整說明——例如測試按鈕
+  // PlanAction.afterId/planActionToInsert 的完整說明——例如測試按鈕
   // insert_anping_mazu 插在 note-1 之後,不是陣列最後一個)永遠不會是
   // 最後一個元素,導致完全沒有進場動畫(cardSlide/thumbPop/pillExpand/
   // anchorPop/noteFade 全部沒套上),這是實際發生過的 bug——使用者要求

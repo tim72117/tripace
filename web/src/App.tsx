@@ -21,6 +21,7 @@ const JiufenPage = lazy(() => import('./home/JiufenPage').then((m) => ({ default
 const KyotoPage = lazy(() => import('./home/KyotoPage').then((m) => ({ default: m.KyotoPage })))
 const TainanPage = lazy(() => import('./home/TainanPage').then((m) => ({ default: m.TainanPage })))
 const TainanChikanPage = lazy(() => import('./home/TainanChikanPage').then((m) => ({ default: m.TainanChikanPage })))
+const HokkaidoJozankeiPage = lazy(() => import('./home/HokkaidoJozankeiPage').then((m) => ({ default: m.HokkaidoJozankeiPage })))
 const PrivacyPage = lazy(() => import('./home/PrivacyPage').then((m) => ({ default: m.PrivacyPage })))
 const TermsPage = lazy(() => import('./home/TermsPage').then((m) => ({ default: m.TermsPage })))
 const CliAuthPage = lazy(() => import('./home/CliAuthPage').then((m) => ({ default: m.CliAuthPage })))
@@ -129,6 +130,14 @@ export function App() {
               文案與版面效果。見 docs/research-tainan-chikan-craft-theme-2026-09.md
               的完整研究說明。 */}
           <Route path="/tainan-chikan-draft" element={<TainanChikanPage />} />
+          {/* /hokkaido-jozankei-draft:北海道・定山溪賞楓主題頁骨架,見
+              HokkaidoJozankeiPage.tsx——比照 /tainan-chikan-draft 的
+              「試做頁」慣例(不接 Helmet SEO meta,純內部審閱用途)。
+              這次任務範圍縮小為只建地圖+頁面外殼骨架,不含 STOPS 捲動
+              敘事列表(之後補文案時再加回去)。見
+              docs/research-hokkaido-jozankei-autumn-theme-2026-09.md
+              的完整研究說明。 */}
+          <Route path="/hokkaido-jozankei-draft" element={<HokkaidoJozankeiPage />} />
           {/* /plan-ai:「AI 安排行程」時間軸展示原型,見
               AIPlanTimelinePage.tsx——純前端假資料,不接真實 AI/後端,
               獨立於 /app 之外(不套用 DesktopLayout.tsx/PhoneContent.tsx

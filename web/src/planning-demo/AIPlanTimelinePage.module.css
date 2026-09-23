@@ -133,7 +133,8 @@
 }
 
 /* removingFade:remove_step 觸發的淡出——收到訊息時先套這個 class(見
-   PlanStep.removing/reducePlanAction 的完整說明),320ms 後(對齊
+   PlanStep.removing/usePlanSimSocket 的 ws.onmessage 對 remove_step 的
+   處理),320ms 後(對齊
    AIPlanTimelinePage.tsx 的 REMOVE_FADE_MS 常數,兩邊數字必須一致)
    才真正從 steps 陣列移除、讓這個節點連同它佔用的版面空間一起消失。
    這裡只做透明度+輕微位移,不做高度塌縮動畫——時間軸卡片本身有充足

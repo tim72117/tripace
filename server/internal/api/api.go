@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tim72117/tripace/internal/apigateway"
 	"github.com/tim72117/tripace/internal/auth"
 	"github.com/tim72117/tripace/internal/geo"
 	"github.com/tim72117/tripace/internal/model"
@@ -106,6 +107,23 @@ type Server struct {
 	// 合併,但目前規模下這已經足夠攔下同一台伺服器內的重複查詢,跟原本
 	// singleflight 的既有侷限一致。
 	placeDetailsInFlight sync.Map
+
+	// publicPlaceSearchLimiter 保護 GET /public/geo/place-search(見
+	// handlePublicGeoPlaceSearch 的完整說明)——這支端點刻意不掛
+	// internalAuth,任何人都能呼叫,若不限流等同把它變成一個任何人都能
+	// 免費觸發 Google Text Search 計費呼叫的公開代理。跟 geo 套件的
+	// defaultRateLimiter(依 "places.get"/"places.photoMedia" 這類 Google
+	// API endpoint 分類,只在真正打 Google API 時透過 Gateway.Do 生效)
+	// 是刻意獨立的兩個機制——那組限流保護的是「不同呼叫來源共用同一個
+	// Google API 額度」,這裡要保護的是「這支特定的、無身份驗證的公開
+	// 端點本身不被任意呼叫者濫用觸發計費」,語意不同、且這支端點目前
+	// 呼叫的 geo.Client.Search 底層對應的 "places.searchText" endpoint
+	// 並未被 defaultRateLimiter 設定拒絕型限流(見 geo.RateLimitConfig
+	// 的完整說明,那裡刻意只涵蓋 places.get/photoMedia 兩者),不能依賴
+	// 那組機制間接擋下這支端點的濫用。全域共用同一個視窗(不分呼叫者/
+	// IP,這支端點沒有任何身份驗證可以用來細分),key 固定用一個字串,
+	// 視窗長度/次數在 New() 裡設定(見該處說明)。
+	publicPlaceSearchLimiter *apigateway.RateLimiter
 }
 
 func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID string) *Server {
@@ -118,17 +136,25 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 		log.Printf("!!! 建立 GCS photo uploader 失敗,景點照片將不會落地到 GCS,僅使用原始來源網址: %v", err)
 		uploader = &photostorage.Uploader{}
 	}
+	// publicPlaceSearchLimiter:固定 10 秒視窗內最多 1 次(比照
+	// geo.RateLimitConfig 給 "places.get" 的預設喳度,見
+	// cmd/server/main.go)——全域共用同一個 key("public.placeSearch"),
+	// 不分呼叫者,理由見這個欄位在 Server struct 上的完整說明。
+	publicPlaceSearchLimiter := apigateway.NewRateLimiter()
+	publicPlaceSearchLimiter.SetLimitForKey(publicPlaceSearchEndpoint, 10*time.Second, 1)
+
 	return &Server{
-		store:                 st,
-		signer:                signer,
-		hub:                   newHub(),
-		devMode:               devMode,
-		googleClientID:        googleClientID,
-		guestUser:             model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
-		photoCache:            storePhotoCache{store: st},
-		photoUploader:         uploader,
-		newGeoGeocodeClient:   geo.New,
-		newPlaceDetailsClient: geo.New,
+		store:                    st,
+		signer:                   signer,
+		hub:                      newHub(),
+		devMode:                  devMode,
+		googleClientID:           googleClientID,
+		guestUser:                model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
+		photoCache:               storePhotoCache{store: st},
+		photoUploader:            uploader,
+		newGeoGeocodeClient:      geo.New,
+		newPlaceDetailsClient:    geo.New,
+		publicPlaceSearchLimiter: publicPlaceSearchLimiter,
 	}
 }
 
@@ -297,6 +323,24 @@ func (s *Server) Routes() http.Handler {
 	// 限制,不能直接比照這裡的寫法就假設安全。
 	mux.HandleFunc("GET /public/geo/place-details", s.handlePublicGeoPlaceDetails)
 	mux.HandleFunc("GET /public/geo/attractions", s.handlePublicGeoAttractions)
+	// GET /public/geo/place-search:免登入版的通用地名文字查詢(見
+	// handlePublicGeoPlaceSearch 的完整說明)——不像上面兩支端點受城市/
+	// placeID 白名單限制範圍,而是靠 Server.publicPlaceSearchLimiter 做
+	// 全域拒絕型限流把關,因為這支端點可以查任意地名、沒有固定候選集合
+	// 可以列成白名單。
+	mux.HandleFunc("GET /public/geo/place-search", s.handlePublicGeoPlaceSearch)
+	// GET /public/geo/place-details-any:免登入版、不受白名單限制的地點
+	// 詳情查詢(見 handlePublicGeoPlaceDetailsAny 的完整說明)——跟上面
+	// /public/geo/place-details 的差異只在後者受 publicPlaceDetailsAllowlist
+	// 限制查詢範圍,這支端點可以查任意 placeID,搭配 place-search 可以查
+	// 任意地名的能力,兩者是同一批新增能力的一對。
+	mux.HandleFunc("GET /public/geo/place-details-any", s.handlePublicGeoPlaceDetailsAny)
+	// GET /public/geo/attraction/{id}:免登入版、用資料庫 id 查單筆已建檔
+	// 景點(見 handlePublicGeoAttractionByID 的完整說明)——供 /plan-ai 的
+	// add_attraction 工具(attractionTools.ts)插入行程時使用,對齊散策羅盤
+	// 「點選附近景點」(fetchPoiContent)先用 attraction 本身資料當底的
+	// 兩段式查詢邏輯,不需要每次都重新查詢 Google Place Details。
+	mux.HandleFunc("GET /public/geo/attraction/{id}", s.handlePublicGeoAttractionByID)
 	// GET /public/plan-sim/ws:模擬「AI 安排行程」推論輸出的 WebSocket
 	// 服務(見 plan_sim_ws.go 開頭的完整說明),供 AIPlanTimelinePage.tsx
 	// 展示原型使用,免登入、不含真實使用者資料。
