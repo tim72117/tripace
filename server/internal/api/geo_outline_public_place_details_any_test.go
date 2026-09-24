@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/tim72117/tripace/internal/auth"
 	"github.com/tim72117/tripace/internal/geo"
@@ -86,9 +87,12 @@ func TestHandlePublicGeoPlaceDetailsAny_NotInAllowlist_StillSucceeds(t *testing.
 	}
 }
 
-// Google fallback 路徑(attractions 表查無這個 placeId 時)刻意不回傳
-// 照片(見 handlePublicGeoPlaceDetailsAny 的完整說明,不重用漸進補圖/
-// 雙來源照片機制)——確認回應本身不會意外多出任何照片相關欄位。
+// Google fallback 路徑(attractions 表查無這個 placeId 時)只在
+// google_place_photos 表已有既有快取時才帶 photoUrl(見
+// handlePublicGeoPlaceDetailsAny 的完整說明——純讀快取,不觸發任何下載
+// 或漸進補圖決策)。這個測試場景完全沒有寫入過快取,確認回應正確地不會
+// 帶出這個欄位(不是漏寫,是真的沒有資料可帶),也確認不會意外多出
+// photoRefs 這種內部欄位。
 func TestHandlePublicGeoPlaceDetailsAny_NoPhotosField_ResponseOmitsPhotos(t *testing.T) {
 	fakeGateway := &fakePlaceDetailsGateway{detailsBody: placeDetailsJSON("測試地點", 3)}
 	s := newTestServerWithFakePlaceDetailsGeoGeocodeClient(t, fakeGateway)
@@ -113,11 +117,18 @@ func TestHandlePublicGeoPlaceDetailsAny_NoPhotosField_ResponseOmitsPhotos(t *tes
 }
 
 // TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_SkipsGoogleAndReturnsStoredData
-// 驗證 2026-09 新增的「優先查 attractions 表」路徑(見 handler 的完整
-// 說明):attractions 表已有這個 placeId 的建檔紀錄時,直接回傳存好的
-// Name/Summary/PhotoURL,完全不呼叫 fakeGateway——用「fakeGateway 沒設
-// detailsBody,若真的被呼叫會回傳空 body 導致解析失敗」這個手法間接
-// 證明 Google 完全沒被打到,不需要額外的呼叫次數計數器。
+// 驗證「優先查 attractions 表」路徑(見 handler 的完整說明):attractions
+// 表已有這個 placeId 的建檔紀錄時,直接回傳存好的 Name/Summary,完全不
+// 呼叫 fakeGateway——用「fakeGateway 沒設 detailsBody,若真的被呼叫會
+// 回傳空 body 導致解析失敗」這個手法間接證明 Google 完全沒被打到,不
+// 需要額外的呼叫次數計數器。
+//
+// 2026-09:photoUrl 不再測試會回傳 attraction.PhotoURL——使用者明確
+// 要求「不用回退」,這支端點現在只查 photo_assets(見
+// store.GetFreshPhotoAssetURL 的完整說明),查無就不帶 photoUrl 欄位,
+// 不論 attraction 本身是否存了 PhotoURL。這裡刻意仍在 seed 資料裡帶
+// PhotoURL 欄位,是為了確認「即使 attraction 有這個欄位,回應也不會
+// 誤用它」,不是遺留的無意義欄位。
 func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_SkipsGoogleAndReturnsStoredData(t *testing.T) {
 	fakeGateway := &fakePlaceDetailsGateway{}
 	s := newTestServerWithFakePlaceDetailsGeoGeocodeClient(t, fakeGateway)
@@ -146,16 +157,111 @@ func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_SkipsGoogleAndRet
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
 	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("failed to decode raw response: %v", err)
+	}
 	var body struct {
-		Found    bool   `json:"found"`
-		Name     string `json:"name"`
-		Summary  string `json:"summary"`
+		Found   bool   `json:"found"`
+		Name    string `json:"name"`
+		Summary string `json:"summary"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if !body.Found || body.Name != "已建檔景點" || body.Summary != "已建檔景點的簡介" {
+		t.Fatalf("unexpected response: %+v", body)
+	}
+	if _, ok := raw["photoUrl"]; ok {
+		t.Error("expected response to NOT include a photoUrl field when photo_assets has no record")
+	}
+}
+
+// TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_UsesPhotoAssetWhenPresent
+// 驗證 attractions 表命中時,若 photo_assets 已經有這個 place_id 的
+// 有效(未過期)紀錄,回應要帶上它的 GCSURL——這是目前唯一的正式照片
+// 來源(見 store.GetFreshPhotoAssetURL 的完整說明),不論 attraction 本身
+// 是否存了 PhotoURL 都一樣優先用 photo_assets。
+func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_UsesPhotoAssetWhenPresent(t *testing.T) {
+	fakeGateway := &fakePlaceDetailsGateway{}
+	s := newTestServerWithFakePlaceDetailsGeoGeocodeClient(t, fakeGateway)
+
+	placeID := "ChIJ_uses_photo_asset_test"
+	pexelsPhotoURL := "https://images.pexels.com/photos/example.jpg"
+	if _, err := s.store.CreateAttractionWithID(model.Attraction{
+		ID:       "lmk_uses_photo_asset_test",
+		Name:     "有 Pexels 建檔照但也有 photo_assets 紀錄的景點",
+		CityName: "台南",
+		Lat:      23.0,
+		Lng:      120.2,
+		Level:    2,
+		PhotoURL: &pexelsPhotoURL,
+		PlaceID:  &placeID,
+	}); err != nil {
+		t.Fatalf("failed to seed attraction: %v", err)
+	}
+	expiresAt := time.Now().Add(7 * 24 * time.Hour)
+	if err := s.store.UpsertPhotoAsset(model.PhotoAsset{
+		PlaceID:    placeID,
+		PhotoIndex: 0,
+		Usage:      "full",
+		Source:     "google",
+		GCSURL:     "https://storage.googleapis.com/test-bucket/real-photo.jpg",
+		FetchedAt:  time.Now(),
+		ExpiresAt:  &expiresAt,
+	}); err != nil {
+		t.Fatalf("failed to seed photo asset: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/public/geo/place-details-any?placeId="+placeID, nil)
+	rec := httptest.NewRecorder()
+	s.handlePublicGeoPlaceDetailsAny(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	var body struct {
 		PhotoURL string `json:"photoUrl"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	if !body.Found || body.Name != "已建檔景點" || body.Summary != "已建檔景點的簡介" || body.PhotoURL != photoURL {
+	if body.PhotoURL != "https://storage.googleapis.com/test-bucket/real-photo.jpg" {
+		t.Fatalf("expected photo_assets url to be used, got: %q", body.PhotoURL)
+	}
+}
+
+// TestHandlePublicGeoPlaceDetailsAny_GoogleFallbackWithCachedPhoto_IncludesPhotoURL
+// 驗證 2026-09 新增的「Google fallback 路徑讀 google_place_photos 既有
+// 快取」邏輯(見 handler 的完整說明)——attractions 表查無這個 placeId,
+// 但 google_place_photos 表已經有其他呼叫端(例如登入後的正式 POI 點擊
+// 查詢)留下的快取列時,這裡應該直接撿現成的第一張(photo_index 最小)
+// 補上 photoUrl,不需要另外呼叫 Google Photo Media。
+func TestHandlePublicGeoPlaceDetailsAny_GoogleFallbackWithCachedPhoto_IncludesPhotoURL(t *testing.T) {
+	fakeGateway := &fakePlaceDetailsGateway{detailsBody: placeDetailsJSON("有快取照片的地點", 0)}
+	s := newTestServerWithFakePlaceDetailsGeoGeocodeClient(t, fakeGateway)
+
+	placeID := "ChIJ_cached_photo_test"
+	if err := s.store.SetGooglePlacePhotos(placeID, []string{"https://example.com/cached-photo.jpg"}); err != nil {
+		t.Fatalf("failed to seed cached photo: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/public/geo/place-details-any?placeId="+placeID, nil)
+	rec := httptest.NewRecorder()
+	s.handlePublicGeoPlaceDetailsAny(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Found    bool   `json:"found"`
+		Name     string `json:"name"`
+		PhotoURL string `json:"photoUrl"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if !body.Found || body.Name != "有快取照片的地點" || body.PhotoURL != "https://example.com/cached-photo.jpg" {
 		t.Fatalf("unexpected response: %+v", body)
 	}
 }

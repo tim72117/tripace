@@ -87,6 +87,66 @@ func New(ctx context.Context, bucket string) (*Uploader, error) {
 // 因此中斷主要操作(建檔/更新照片)。
 var ErrNoBucket = fmt.Errorf("photostorage: 未設定 GCS bucket")
 
+// MemoryObjectStore 是 objectStore 的公開 in-memory 實作,供套件外的測試
+// (例如 internal/api 底下驗證 syncPhotoAssetInBackground/handleGeoPlaceDetails
+// 漸進補圖邏輯的測試)建立一個「upload 不需要真的連線 GCS」的 *Uploader
+// 使用,不需要各自重新實作一份 objectStore——跟 photostorage_test.go 內部
+// 的 fakeObjectStore 是同一種用途,差別只在這個版本刻意公開(exported),
+// 讓其他套件也能建構。
+//
+// 這裡不內建任何「過期」邏輯——GCS 物件本身沒有 photo_assets.expires_at
+// 這種應用層概念的對應機制,「過期」完全是呼叫端(store.UpsertPhotoAsset
+// 寫入的 expires_at 欄位)的職責。這個 mock 只負責忠實模擬「upload 成功
+// 後回傳一個可預期、可重現的 URL」這件事,過期時間的測試由呼叫端自行在
+// 呼叫 UpsertPhotoAsset 前後操縱 ExpiresAt 驗證,不需要 GCS 這層知道。
+type MemoryObjectStore struct {
+	// Written 記錄每次成功寫入的物件(key 是 objectName),供測試斷言
+	// 「這次上傳寫到了正確的物件路徑」。
+	Written map[string]bool
+	// WriteErr 讓測試模擬 GCS 端寫入失敗(例如驗證上傳失敗時
+	// syncPhotoAssetInBackground 不該寫入 photo_assets)。
+	WriteErr error
+}
+
+// NewMemoryObjectStore 建立一個空的 MemoryObjectStore。
+func NewMemoryObjectStore() *MemoryObjectStore {
+	return &MemoryObjectStore{Written: make(map[string]bool)}
+}
+
+func (m *MemoryObjectStore) writeObject(_ context.Context, objectName, _ string, r io.Reader) error {
+	if m.WriteErr != nil {
+		return m.WriteErr
+	}
+	if _, err := io.ReadAll(r); err != nil {
+		return err
+	}
+	m.Written[objectName] = true
+	return nil
+}
+
+func (m *MemoryObjectStore) deleteObject(_ context.Context, objectName string) error {
+	if _, ok := m.Written[objectName]; !ok {
+		return storage.ErrObjectNotExist
+	}
+	delete(m.Written, objectName)
+	return nil
+}
+
+// NewForTest 建立一個繞過 New()(不連線真的 GCS、不需要
+// GOOGLE_APPLICATION_CREDENTIALS 之類的環境設定)、以 store 為底層物件
+// 儲存實作的 *Uploader,供套件外的測試使用。參數型別固定為
+// *MemoryObjectStore(而非未匯出的 objectStore 介面)——套件外的呼叫端
+// 無法命名未匯出的介面型別,若這裡收未匯出介面,套件外只能透過「傳入一個
+// 剛好滿足該介面的值」這種隱式寫法呼叫,但無法自行宣告變數型別、也無法
+// 在自己的套件內寫輔助函式操作它;直接收具體的 *MemoryObjectStore 讓
+// 呼叫端可以正常宣告變數、傳遞、寫輔助函式。bucket 決定
+// Upload/UploadDataURI 回傳的公開 URL 前綴(對齊正式 New 建立的 Uploader
+// 行為),不能是空字串,否則等同呼叫 New("") 的 ErrNoBucket 降級情境,
+// 測試若要驗證那種情境應直接用 &Uploader{}(零值)而不是這支函式。
+func NewForTest(bucket string, store *MemoryObjectStore) *Uploader {
+	return &Uploader{bucket: bucket, store: store}
+}
+
 // downloadTimeout/uploadTimeout 分開設定,理由同 pexels.Client 對外部
 // 服務逐一設定合理逾時的既有慣例——下載對象是任意外部圖床(可能較慢),
 // 上傳對象是我方自己的 GCS(通常很快),不該共用同一個寬鬆逾時互相影響。

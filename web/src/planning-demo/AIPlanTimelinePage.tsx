@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { AgentBridge } from '@onagent/bridge'
-import { fetchPublicGeoPlaceDetailsAny, type ClientConfig } from '../api'
+import { fetchPublicGeoPlaceDetailsAny, fetchPublicGeoTransitEstimate, type ClientConfig } from '../api'
 import { BASE_URL } from '../AppCommon'
 import { getTheme } from '../theme'
 import { NativeMapBase, type MapHandle } from '../geo-planning/NativeMapBase'
@@ -98,6 +98,13 @@ interface PlanAction {
   thumbBg?: string
   thumbIcon?: string
   tags?: string[]
+  // placeId:有值時代表這一步「AI 用工具查真實地點資料」——見
+  // planActionToInsert 對這個欄位的轉換說明。2026-09 曾經一度改名成
+  // attractionId(資料庫景點區域 id),後來隨「回到 placeId」的整體重構
+  // (見 attractionTools.ts 檔頭「第四/五/六次重構」的完整說明)改回
+  // placeId,跟 onagent 對話路徑(attractionTools.ts 的 add_attraction)
+  // 統一用同一套單段 place-details-any 查詢邏輯(見
+  // resolveAttractionForStep 的完整說明),不再各自維護一份反查規則。
   placeId?: string
   lat?: number
   lng?: number
@@ -105,14 +112,22 @@ interface PlanAction {
   mode?: string
   minutes?: number
   distance?: string
-  color?: string
-  noteIcon?: string
+  // category——add_note 專用,備註分類字串(對齊 AIPlanTimelinePage.tsx
+  // 的 NOTE_STYLES 表,見該常數的完整說明)。2026-09 重構前這裡是
+  // color/noteIcon(視覺樣式直接由後端決定),使用者明確要求「備註寫在
+  // 景點的節點上」且分類→視覺樣式的對照權收斂在前端這一層(見
+  // planTimeline.ts NoteInfo 的完整說明)後,後端(plan_sim_ws.go)改成
+  // 送語意層級的 category,不再送 color/noteIcon。
+  category?: string
   text?: string
   removedId?: string
   // afterId:插入位置——有值時插在該 id 對應節點的「後面」,而不是固定
   // append 到時間軸尾端(既有預設行為,省略這個欄位時維持不變)。這是給
   // 「移除某個節點、緊接著插入一個新節點取代同一個時間槽」這種情境用
   // 的(見 AIPlanTimelinePage 下方 removeWumiao 測試按鈕的完整說明)。
+  // add_note 訊息(見下方 ws.onmessage 的完整說明)重用這個欄位表達
+  // 「要把備註寫在哪個既有節點身上」,語意上等同 attractionTools.ts
+  // AttractionStepsCtx.addNote 的 anchorId 參數。
   //
   // 2026-09:找不到對應節點時的行為改成跟 onagent 路徑(add_attraction
   // 的 anchorId)完全一致——直接讓 insertAttractionAfter 回傳
@@ -127,7 +142,13 @@ interface PlanAction {
   afterId?: string
 }
 
-const STEP_ADD_TYPES: ReadonlySet<PlanAction['type']> = new Set(['add_section', 'add_stop', 'add_transit', 'add_note'])
+// STEP_ADD_TYPES——需要走 planActionToInsert(插入新節點)的訊息型別。
+// 2026-09 重構(這次):'add_note' 移出這個集合——note 不再是插入到
+// 時間軸裡的獨立節點,改成掛在既有節點自己身上的欄位(見 planTimeline.ts
+// NoteInfo 的完整說明),ws.onmessage 改成另外特判這個型別、直接呼叫
+// setNoteForStop(見該處的完整說明),不再經過 planActionToInsert 這個
+// 「組出插入用三元組」的轉換路徑——沒有新節點被插入,自然不需要它。
+const STEP_ADD_TYPES: ReadonlySet<PlanAction['type']> = new Set(['add_section', 'add_stop'])
 
 // planActionToInsert — 把一則新增類 PlanAction 轉成 insertAttractionAfter
 // 需要的 (anchorId, newId, data) 三元組,不實際執行插入——純函式,呼叫端
@@ -135,6 +156,16 @@ const STEP_ADD_TYPES: ReadonlySet<PlanAction['type']> = new Set(['add_section', 
 // insertAttractionAfter 完成插入與驗證,理由見 PlanAction.afterId 的
 // 完整說明:模擬腳本與 onagent 對話兩條路徑現在共用同一個插入介面,
 // 不再各自實作一份。
+//
+// 'add_transit' 型別上仍保留在 PlanAction.type 聯集裡(對齊後端
+// plan_sim_ws.go 的 JSON 協定,理論上仍可能出現這個字串值),但不在
+// STEP_ADD_TYPES 內——2026-09 起交通卡不再是獨立的節點型別(見
+// planTimeline.ts TransitInfo 的完整說明,改掛在 stop 節點自己的
+// transitFromPrev 欄位上),沒有對應的節點型別可以承接這則訊息,收到就
+// 直接忽略(這裡的 !STEP_ADD_TYPES.has 判斷讓它自然落入 return null,
+// 不需要另外寫一個分支特判)。planSimScript 本身已經不會送出這個訊息
+// (見該變數的完整說明),這裡只是防禦性地不讓舊協定字串意外造成執行期
+// 錯誤。
 //
 // anchorId 的決定:afterId 有值時直接採用(找不到對應節點是否算錯誤,
 // 交給 insertAttractionAfter/insertAfter 判斷,這裡不做寬容降級,見
@@ -149,7 +180,7 @@ function planActionToInsert(
   if (!STEP_ADD_TYPES.has(action.type)) return null
   const id = action.id ?? `${action.type}-${timeline.nodes.size}`
   const data: PlanNodeData = {
-    type: action.type === 'add_section' ? 'section' : action.type === 'add_stop' ? 'stop' : action.type === 'add_transit' ? 'transit' : 'note',
+    type: action.type === 'add_section' ? 'section' : 'stop',
     label: action.label,
     time: action.time,
     duration: action.duration,
@@ -160,23 +191,17 @@ function planActionToInsert(
     thumbIcon: action.thumbIcon,
     tags: action.tags,
     placeId: action.placeId,
-    // loading:add_stop 訊息帶 placeId 時,這筆先以「查詢中」狀態掛進
-    // 時間軸(縮圖/敘事文字用訊息本身的假資料佔位,見下方渲染邏輯),
-    // 呼叫端(usePlanSimSocket)另外用這個 placeId 查完真實資料後,再
-    // dispatch 一次「更新」把 loading 轉 false、photoUrl/desc 換成
-    // 真實內容——這裡不是同步查完才 append,是「先掛佔位卡、查到再
-    // 補上」,才能忠實呈現「AI 呼叫工具查詢中」這個過程本身,而不是
-    // 讓使用者只看到查完的結果、跳過中間狀態。
+    // loading:add_stop 訊息帶 placeId 時,這筆先以「查詢中」狀態
+    // 掛進時間軸(縮圖/敘事文字用訊息本身的假資料佔位,見下方渲染邏輯),
+    // insertAttractionAfter 內部另外用這個 placeId 查完真實資料後
+    // (見 resolveAttractionForStep 的完整說明),再更新這筆節點把
+    // loading 轉 false、photoUrl/desc 換成真實內容——這裡不是同步查完
+    // 才 append,是「先掛佔位卡、查到再補上」,才能忠實呈現「AI 呼叫
+    // 工具查詢中」這個過程本身,而不是讓使用者只看到查完的結果、跳過
+    // 中間狀態。
     loading: action.type === 'add_stop' && !!action.placeId,
     lat: action.lat,
     lng: action.lng,
-    icon: action.icon,
-    mode: action.mode,
-    minutes: action.minutes,
-    distance: action.distance,
-    color: action.color,
-    noteIcon: action.noteIcon,
-    text: action.text,
   }
   const renderedForAppend = toRenderList(timeline)
   const lastId = renderedForAppend.length > 0 ? renderedForAppend[renderedForAppend.length - 1].id : null
@@ -190,77 +215,168 @@ function planActionToInsert(
 // 淡完節點就消失」或「淡完了節點還占著版面空間」的落差。
 const REMOVE_FADE_MS = 320
 
-// resolvePlaceForStep — add_stop 帶 placeId 時,呼叫傳入的查詢函式取得
-// 真實地點資料,查完後用 updateNode 補上(見 PlanNodeData.loading 的
-// 完整說明)。
+// resolveAttractionForStep — add_attraction 帶 placeId 時,單段查詢取得
+// 真實地點資料:呼叫 GET /public/geo/place-details-any(fetchPlaceDetails,
+// 見 handlePublicGeoPlaceDetailsAny 的完整說明)取得 name/summary/
+// photoUrl/lat/lng。
 //
-// 2026-09:模擬 WS 路徑與 onagent 對話路徑現在唯一的呼叫點是
-// insertAttractionAfter 內部(見該函式的完整說明)——不管 placeId 來自
-// 固定腳本還是 LLM 呼叫工具,一律用 fetchPublicGeoPlaceDetailsAny(不受
-// 白名單限制)。fetchDetails 仍保留成參數(而非寫死呼叫這支函式),是
-// 讓這個函式本身維持跟具體端點解耦、方便測試,不代表目前還有兩個呼叫點
-// 各自傳不同的 fetchDetails。
+// 2026-09 這是「回到 placeId」重構的一部分(見 attractionTools.ts 檔頭
+// 「第四/五/六次重構」的完整說明)——原本(短暫存在過)的兩段式查詢
+// (先查資料庫 attraction、若帶 place_id 再疊加查 Google 補強)已經不
+// 需要:place-details-any 端點內部本來就會優先查一次資料庫 attraction
+// (查得到就優先用資料庫資料,查不到才 fallback 查 Google),這支函式
+// 因此簡化成單一次查詢,不再需要 fetchAttraction 參數或任何「疊加」
+// 邏輯。
 //
 // isCancelled:呼叫端傳入,查詢完成時若已經是「這次已不算數」的狀態
-// (例如 WS 連線已經斷線重建),就不寫回 state——理由同原本 WS 分支的
-// cancelled旗標。
-function resolvePlaceForStep(
+// 就不寫回 state,理由同 resolvePlaceForStep 的同名參數。
+//
+// onSettled:2026-09 真實踩坑記錄——add_attraction(onagent 對話路徑)
+// 插入的佔位卡一開始不帶 lat/lng(座標要等這支函式查完才有,對比模擬
+// WS 腳本路徑 planActionToInsert 的固定資料本身就帶座標),若
+// maybeInsertTransitBefore(現已改名 refreshTransitForStop,見該函式的
+// 完整說明)的觸發判斷留在 insertAttractionAfter 插入當下同步檢查
+// data.lat/data.lng,onagent 路徑插入的節點必然沒有座標、判斷恆為
+// false,導致交通卡從未被觸發過——這裡改成在這次查詢完成(不論成功或
+// 失敗)之後才呼叫這個 callback,讓呼叫端(insertAttractionAfter)在
+// 這個時間點才觸發交通查詢。單段查詢下「查詢完成」就等同「座標定案」,
+// 不再需要區分「所有查詢動作都做完」這種多段情境。
+function resolveAttractionForStep(
   stepId: string,
   placeId: string,
-  fetchDetails: (placeId: string) => Promise<{ found?: boolean; name?: string; summary?: string; photoUrl?: string; lat?: number; lng?: number }>,
+  fetchPlaceDetails: (placeId: string) => Promise<{ found?: boolean; name?: string; summary?: string; photoUrl?: string; lat?: number; lng?: number; attractionId?: string }>,
   setTimeline: React.Dispatch<React.SetStateAction<PlanTimeline>>,
   isCancelled: () => boolean,
+  onSettled: (lat: number, lng: number) => void,
 ) {
-  fetchDetails(placeId)
+  fetchPlaceDetails(placeId)
     .then((details) => {
       if (isCancelled()) return
-      // found === false:查詢本身成功(HTTP 200),但這個 placeId 查無
-      // 資料(見 fetchPublicGeoPlaceDetailsAny 的完整說明,這是它跟
-      // fetchPublicGeoPlaceDetails 的行為差異——後者查無資料時是 HTTP
-      // 錯誤、會落進下面的 .catch,前者是正常回應)。found 欄位在
-      // fetchPublicGeoPlaceDetails 的回應形狀裡不存在(恆為
-      // undefined),故這裡用 `=== false` 明確排除、不誤判
-      // fetchPublicGeoPlaceDetails 的正常回應。兩種「查無/查詢失敗」
-      // 情境最終走向同一個退化處理:把 loading 轉 false,不留在「查詢
-      // 中」的狀態卡住,理由同下方 .catch 分支。
-      if (details.found === false) {
+      if (details.found === false || details.lat == null || details.lng == null) {
+        // 查無此地(理論上不該發生,placeId 應該總是有效——來自
+        // search_attraction 查到的候選或使用者剛查過的地名)——退回
+        // 訊息本身帶的假資料,不留在「查詢中」的狀態卡住,理由同
+        // resolvePlaceForStep 的同類分支。這裡沒有可用的座標,不呼叫
+        // onSettled——沒有座標就無從估算交通時間,理由同
+        // refreshTransitForStop 本身「沒有座標就清空」的既有判斷。
         setTimeline((prev) => updateNode(prev, stepId, { loading: false }))
         return
       }
       setTimeline((prev) => updateNode(prev, stepId, {
         loading: false,
-        name: details.name || undefined,
-        desc: details.summary || undefined,
+        name: details.name,
+        desc: details.summary,
         photoUrl: details.photoUrl,
         lat: details.lat,
         lng: details.lng,
+        placeId,
       }))
+      onSettled(details.lat, details.lng)
     })
     .catch(() => {
       if (isCancelled()) return
-      // 查詢失敗(白名單外/網路問題)——把這一筆的 loading 轉 false,退回
-      // 訊息本身帶的假資料(desc/thumbBg/thumbIcon 都還在,只是沒有真實
-      // photoUrl),不留在「查詢中」的狀態卡住。
       setTimeline((prev) => updateNode(prev, stepId, { loading: false }))
     })
 }
 
-// PLAN_SIM_ENABLED — 開關:是否連上 plan_sim_ws.go 那條模擬 WS 自動播放
-// 固定腳本。曾經短暫停用過(只保留 onagent 對話串接這條路徑),現在
-// 重新接上——後端已改成每筆實際 action 前都先送一則 thinking 訊號、
-// 停頓一下才送出實際內容(見 plan_sim_ws.go 的 sendWithThinking/
-// AIPlanTimelinePage 的 thinking 分支處理),不是簡化前那種訊息一來
-// 就直接是內容的版本。關閉時(设為 false):
-//   - usePlanSimSocket 的連線 effect 完全不建立 WebSocket(見下方判斷),
-//     steps 維持初始空陣列,由 onagent 對話動態新增。
-//   - isGenerating 初始值改為 false(而非模擬腳本情境下的預設 true)
-//     ——沒有腳本在自動播放,不該一開始就顯示「正在安排 Day 1…」這種
-//     暗示自動生成中的狀態,對話框應該立刻可用、等待使用者輸入。
-//   - restart(重播按鈕)/stop(終止按鈕)在關閉時呼叫仍是安全的
-//     no-op(stopRef.current 恆為 null),不需要額外的條件判斷去藏起
-//     這兩顆按鈕——見下方 UI 是否要隱藏「重播」則是另一個獨立的呈現
-//     決策,這裡只處理資料流本身。
-const PLAN_SIM_ENABLED = true
+// refreshTransitForStop — 重新計算 stopId 這個 stop 節點的
+// transitFromPrev(見 planTimeline.ts TransitInfo 的完整說明)。
+//
+// 2026-09 取代原本的 maybeInsertTransitBefore:原本交通卡是獨立插入
+// 鏈結的 'transit' 節點,靠鏈結位置隱含表達「這張卡屬於哪兩站」,移除
+// 中間站時會讓兩張舊交通卡黏在一起、都指向已經消失的站(見
+// planTimeline.ts TransitInfo 開頭引用的完整踩坑記錄)。改成資料直接掛
+// 在「到達站」(stopId 這一站)身上後,「這張交通卡屬於哪兩站」變成
+// stopId 本身與它目前的 prevId,關係顯式且唯一,不再需要另一個節點
+// 型別。
+//
+// 呼叫時機——任何造成 stopId 這一站「前一站」改變的操作之後都要呼叫:
+//   1. 插入新 stop 節點成功、座標定案時(原 maybeInsertTransitBefore 的
+//      觸發點)——呼叫 refreshTransitForStop(newId, ...)。
+//   2. 移除一個 stop 節點後,若它的 nextId 也是 stop——那一站的前一站
+//      變了(removeNode 已經同步清空它的 transitFromPrev,見該函式的
+//      完整說明),呼叫 refreshTransitForStop(nextId, ...) 重新查一次
+//      新的兩站之間的交通。
+//   3. 前一站座標更新時(resolveAttractionForStep 第二段 place 查詢
+//      覆蓋座標)——若這一站的 nextId 是 stop,它的 transitFromPrev 是
+//      基於舊座標算的,同樣需要重新查(使用者明確要求「當前一個站點有
+//      異動時,要觸發重新推估」)。
+//
+// 用 getTimeline()(而非讀取某個 React state)取得呼叫當下的最新鏈結,
+// 理由同原 maybeInsertTransitBefore 對 timelineRef.current 的既有說明:
+// 呼叫這個函式的時間點通常是 commitTimeline 已經完成之後,需要讀到最新
+// 結果,不能仰賴可能還沒 flush 的 React state。
+//
+// 前一站不是 stop(例如是 section/note,或沒有前一站)或沒有座標(反查
+// 地點資料尚未完成的 loading 中節點),直接把 transitFromPrev 清成
+// undefined,不查詢——沒有兩個明確座標就無從估算,不勉強留著一張資料
+// 不全的卡片或殘留舊資料。
+function refreshTransitForStop(
+  stopId: string,
+  setTimeline: React.Dispatch<React.SetStateAction<PlanTimeline>>,
+  getTimeline: () => PlanTimeline,
+) {
+  const timeline = getTimeline()
+  const stopNode = timeline.nodes.get(stopId)
+  if (!stopNode || stopNode.type !== 'stop' || stopNode.lat == null || stopNode.lng == null) return
+  const prevNode = stopNode.prevId != null ? timeline.nodes.get(stopNode.prevId) : null
+  if (!prevNode || prevNode.type !== 'stop' || prevNode.lat == null || prevNode.lng == null) {
+    setTimeline((prev) => updateNode(prev, stopId, { transitFromPrev: undefined }))
+    return
+  }
+
+  // 2026-09:先掛 loading:true 的佔位狀態再背景查詢,是使用者明確要求
+  // 「路程推估前端載入中要做一點動畫」的直接落地——後端加了
+  // 800~1500ms 的故意延遲(見 plan_sim_ws.go transitEstimateMinDelay/
+  // transitEstimateMaxDelay 的完整說明)讓查詢感更真實,若不先掛佔位,
+  // 使用者會看著站點卡片插入後有一段空白等待期,不知道系統正在做什麼
+  // ——這跟 stop 節點本身「先掛查詢中佔位卡、查完再補上真實資料」(見
+  // resolveAttractionForStep 的完整說明)是同一種使用者體感設計。
+  const prevId = prevNode.id
+  setTimeline((prev) => updateNode(prev, stopId, { transitFromPrev: { loading: true } }))
+
+  const from = { lat: prevNode.lat, lng: prevNode.lng }
+  const to = { lat: stopNode.lat, lng: stopNode.lng }
+  fetchPublicGeoTransitEstimate(GUEST_CFG, from, to)
+    .then((estimate) => {
+      setTimeline((prev) => {
+        // 這一站可能已經被使用者操作移除,或它的前一站在查詢期間又
+        // 再次變動(見上方呼叫時機第 2/3 點——若查詢期間又觸發了一次
+        // 新的 refreshTransitForStop,這次的結果已經過時),此時直接
+        // 放棄更新,理由同其餘背景查詢完成後的既有「重新確認節點仍
+        // 存在」慣例(見 resolveAttractionForStep 的完整說明)。
+        const current = prev.nodes.get(stopId)
+        if (!current || current.prevId !== prevId) return prev
+        return updateNode(prev, stopId, {
+          transitFromPrev: {
+            loading: false,
+            icon: estimate.icon,
+            mode: estimate.mode,
+            minutes: estimate.minutes,
+            distance: estimate.distance,
+          },
+        })
+      })
+    })
+    .catch(() => {
+      // 查詢失敗(網路問題)——清空 transitFromPrev,不留一張永遠轉圈的
+      // 交通卡卡住畫面。理由同其餘背景查詢失敗時的既有降級慣例:交通卡
+      // 是加值資訊,查不到就維持沒有這張卡的狀態,不阻塞或干擾主要的
+      // 行程安排流程。同樣先確認這一站與前一站的關係沒有在查詢期間變動
+      // 過,理由同上方 .then 分支。
+      setTimeline((prev) => {
+        const current = prev.nodes.get(stopId)
+        if (!current || current.prevId !== prevId) return prev
+        return updateNode(prev, stopId, { transitFromPrev: undefined })
+      })
+    })
+}
+
+// MINI_MAP_ENABLED — 右上角固定小地圖是否掛載(見下方渲染處的完整
+// 說明)。2026-09 暫時關閉:測試交通預估等新功能時,地圖本身持續發出的
+// 圖磚/Places 請求會混進網路面板,干擾排查目標請求,測試完成後應改回
+// true 恢復正常畫面。
+const MINI_MAP_ENABLED = false
 
 // usePlanSimSocket — 連上模擬 AI 推論輸出的 WebSocket(見上方檔案開頭
 // 的完整說明),把收到的每則 PlanAction 轉成插入操作、交給
@@ -270,9 +386,23 @@ const PLAN_SIM_ENABLED = true
 // { steps, isGenerating, restart },restart 用於「重播」按鈕——重新建立
 // 一個新的 WebSocket 連線
 // (後端每個連線各自從頭播放同一份固定腳本,見 plan_sim_ws.go 的完整
-// 說明),不是在前端重放已經收到的訊息紀錄。PLAN_SIM_ENABLED 為 false 時
-// (見該常數說明)整個連線 effect 提早 return,不建立任何 WebSocket。
-function usePlanSimSocket() {
+// 說明),不是在前端重放已經收到的訊息紀錄。
+//
+// simEnabled — 是否連上 plan_sim_ws.go 那條模擬 WS 自動播放固定腳本,
+// 由呼叫端(AIPlanTimelinePage 主體)傳入。2026-09 從原本寫死的
+// PLAN_SIM_ENABLED 模組層級常數改成參數——使用者明確要求「模擬的參數
+// 改成用介面上的按鈕切換」,不再需要改程式碼常數、重新建置才能切換模擬
+// 開關,改由畫面上一顆按鈕即時控制。false 時:
+//   - 下方連線 effect 提早 return,不建立任何 WebSocket,steps 維持
+//     初始空陣列,由 onagent 對話動態新增。
+//   - isGenerating 初始值為 false(而非模擬腳本情境下的預設 true)——
+//     沒有腳本在自動播放,不該一開始就顯示「正在安排 Day 1…」這種暗示
+//     自動生成中的狀態,對話框應該立刻可用、等待使用者輸入。
+//   - restart(重播按鈕)/stop(終止按鈕)在關閉時呼叫仍是安全的
+//     no-op(stopRef.current 恆為 null),不需要額外的條件判斷去藏起
+//     這兩顆按鈕——UI 是否要隱藏「重播」是另一個獨立的呈現決策,這裡只
+//     處理資料流本身。
+function usePlanSimSocket(simEnabled: boolean) {
   // timeline 改用 useSyncedState(見該 hook 開頭的完整背景說明)取代單純
   // 的 useState——insertAttractionAfter(下方)呼叫來源是 AgentBridge 的
   // 原生 WebSocket onmessage,完全在 React 事件系統之外,需要「commit
@@ -288,7 +418,7 @@ function usePlanSimSocket() {
       result: undefined,
     }))
   }, [commitTimeline])
-  const [isGenerating, setIsGenerating] = useState(PLAN_SIM_ENABLED)
+  const [isGenerating, setIsGenerating] = useState(simEnabled)
   // generation:遞增觸發下方 effect 重新建立連線,理由與既有的「重播」
   // 機制一致(見先前版本 generation 欄位的完整說明:StrictMode 下用
   // 穩定的 callback 直接操作跨渲染共享 ref 容易有競態,改用 state 驅動
@@ -350,21 +480,72 @@ function usePlanSimSocket() {
         return inserted.ok ? { next: inserted.timeline, result: inserted } : { result: inserted }
       })
       if (result.ok && data.placeId && data.loading) {
-        resolvePlaceForStep(
+        resolveAttractionForStep(
           newId,
           data.placeId,
           (placeId) => fetchPublicGeoPlaceDetailsAny(GUEST_CFG, placeId),
           setTimeline,
           () => false,
+          // onSettled——onagent 路徑插入的佔位卡一開始沒有座標(座標要
+          // 等這支函式查完才有),交通查詢要等查詢完成、座標確定之後
+          // 才觸發。refreshTransitForStop 自己會從 timeline 重新讀取
+          // 這個節點目前的座標,不需要 onSettled 傳入的 lat/lng(這裡
+          // 忽略,只借用它「查詢已完成」這個時機訊號)。
+          () => refreshTransitForStop(newId, setTimeline, () => timelineRef.current),
         )
+      } else if (result.ok && data.type === 'stop' && data.lat != null && data.lng != null) {
+        // 模擬 WS 腳本路徑(planActionToInsert)的固定資料本身就帶座標,
+        // 插入當下即可同步觸發,不需要等任何背景查詢——理由同上方
+        // onGotCoordinates 的完整說明,兩條路徑只是「座標何時可用」不同,
+        // 觸發交通查詢這件事本身沒有差異。
+        refreshTransitForStop(newId, setTimeline, () => timelineRef.current)
       }
       return result
     },
     [commitTimeline, setTimeline],
   )
 
+  // setNoteForStop — 把一則備註寫在某個既有節點自己身上(見 planTimeline.ts
+  // NoteInfo 的完整說明),不是插入新節點——使用者明確要求「備註寫在
+  // 景點的節點上」。用 commitTimeline(而非 setTimeline)取得跟
+  // insertAttractionAfter 一致的「呼叫當下同步拿到結果」保證,理由同該
+  // 函式的完整說明(呼叫來源同樣可能來自 AgentBridge 原生事件,完全在
+  // React 事件系統之外)。
+  //
+  // 參數命名 anchorId(而非原本的 stopId)——使用者明確要求「agent tool
+  // 發出的參數名稱保持一致,像是要附加在節點上的就要用 anchorId,不要
+  // 創造多餘的命名」:這裡跟 insertAttractionAfter 的 anchorId 是同一種
+  // 東西,都是「時間軸上某個既有節點的 id」,只是這裡是必填(不是
+  // string | null——沒有「插在最前面」這種語意,備註一定要有明確的
+  // 掛載對象),不因為語意細節不同就另外發明命名。
+  //
+  // 回傳型別對齊 insertAttractionAfter(ReturnType<typeof insertAfter>)
+  // ——沒有新節點被建立,insertedId 這裡填入被寫入備註的 anchorId 本身,
+  // 讓呼叫端(attractionTools.ts 的 add_note 工具)能用同一種「id 代表
+  // 這次操作影響了哪個節點」的語意回報給 LLM,不需要為了這個操作另外
+  // 發明一種結果形狀。anchorId 不是時間軸上既有節點時,回傳
+  // anchor_not_found(語意上就是「找不到指定的節點」,沿用既有的
+  // InsertAfterErrorCode,不需要為這裡另外新增一個錯誤代碼)。
+  const setNoteForStop = useCallback(
+    (anchorId: string, text: string, category: string | undefined): ReturnType<typeof insertAfter> => {
+      return commitTimeline<ReturnType<typeof insertAfter>>((current) => {
+        if (!current.nodes.has(anchorId)) {
+          return {
+            result: {
+              ok: false,
+              error: { code: 'anchor_not_found', message: `找不到 id 為 "${anchorId}" 的節點,無法在它身上寫入備註。` },
+            },
+          }
+        }
+        const next = updateNode(current, anchorId, { note: { text, category } })
+        return { next, result: { ok: true, timeline: next, insertedId: anchorId } }
+      })
+    },
+    [commitTimeline],
+  )
+
   useEffect(() => {
-    if (!PLAN_SIM_ENABLED) return
+    if (!simEnabled) return
     setTimeline(createEmptyTimeline())
     setIsGenerating(true)
     const wsURL = `${BASE_URL.replace(/^http/, 'ws')}/public/plan-sim/ws`
@@ -402,8 +583,31 @@ function usePlanSimSocket() {
         setTimeline((prev) => updateNode(prev, removedId, { removing: true }))
         setTimeout(() => {
           if (cancelled) return
+          // 移除前記下 nextId——removeNode 本身已經同步清空這個節點(若
+          // 是 stop)的 transitFromPrev(見該函式的完整說明),這裡摘除
+          // 後還要背景重新查一次「新的前一站→這一站」的交通,理由同
+          // refreshTransitForStop 開頭列出的呼叫時機第 2 點(使用者明確
+          // 要求「當前一個站點有異動時,要觸發重新推估」)。
+          const nextId = timelineRef.current.nodes.get(removedId)?.nextId
           setTimeline((prev) => removeNode(prev, removedId))
+          if (nextId != null) refreshTransitForStop(nextId, setTimeline, () => timelineRef.current)
         }, REMOVE_FADE_MS)
+        return
+      }
+      // add_note:不再插入新節點(見 STEP_ADD_TYPES 的完整說明,note 已
+      // 移出 planActionToInsert 的處理範圍),直接呼叫 setNoteForStop 把
+      // 備註寫在 action.afterId 指定的既有節點身上——語意對齊
+      // attractionTools.ts AttractionStepsCtx.addNote 的 anchorId 參數
+      // (見該介面的完整說明),afterId 缺漏時代表腳本本身沒有指定要
+      // 寫在哪個節點上,同 toInsert.anchorId 找不到節點的處理原則(使用者
+      // 明確要求「模擬的部分也完全走這個路徑,不要有例外」),讓
+      // setNoteForStop 因找不到節點而回傳 anchor_not_found、直接拋錯,
+      // 不做寬容降級。
+      if (action.type === 'add_note') {
+        const result = setNoteForStop(action.afterId ?? '', action.text ?? '', action.category)
+        if (!result.ok) {
+          throw new Error(result.error.message)
+        }
         return
       }
       // 新增類 action:統一走 planActionToInsert + insertAttractionAfter
@@ -432,7 +636,7 @@ function usePlanSimSocket() {
       // cleanup 誤清掉別人的 stopRef。
       if (stopRef.current?.ws === ws) stopRef.current = null
     }
-  }, [generation])
+  }, [generation, simEnabled])
 
   const restart = useCallback(() => { setGeneration((g) => g + 1) }, [])
 
@@ -471,7 +675,7 @@ function usePlanSimSocket() {
 
   const steps = toRenderList(timeline)
 
-  return { steps, timeline, isGenerating, restart, sendTrigger, stop, insertAttractionAfter }
+  return { steps, timeline, isGenerating, restart, sendTrigger, stop, insertAttractionAfter, setNoteForStop }
 }
 
 // PLAN_AI_ONAGENT_APP_ID/PLAN_AI_ONAGENT_URL——/plan-ai 對話窗專用的
@@ -488,6 +692,23 @@ const PLAN_AI_ONAGENT_APP_ID = 'plan-ai-timeline'
 const PLAN_AI_ONAGENT_WS_URL = (
   (import.meta.env.VITE_PLAN_AI_ONAGENT_URL as string | undefined) ?? 'http://localhost:8090'
 ).replace(/^http/, 'ws') + '/ws'
+
+// NOTE_STYLES — 備註分類 → 顏色/圖示的固定對照表。這是使用者明確要求
+// 兩層架構的直接體現:「排程元件提供操作資料的方法,LLM 的工具透過這些
+// 方法操作排程內的資料」——視覺樣式怎麼對應分類是行程安排元件自己的
+// 決定,不是 attractionTools.ts 的 add_note 工具該內建的邏輯(該工具現在
+// 只轉呼叫 addNoteToTimeline,不自己碰 color/noteIcon,見該工具的完整
+// 說明)。value 對齊 plan_sim_ws.go 既有模擬腳本示範的四種 note 用法
+// (note-reconsider 用 --ios-gray/✦ 表示「取捨考量」、note-1 用
+// --ios-sand/ⓘ 表示「一般提醒」、note-2 用 --ios-green/💰 表示「花費
+// 估算」、note-3 用 --ios-blue/☁︎ 表示「天氣考量」)。
+const NOTE_STYLES: Record<string, { color: string; noteIcon: string }> = {
+  consideration: { color: 'var(--ios-gray)', noteIcon: '✦' },
+  info: { color: 'var(--ios-sand)', noteIcon: 'ⓘ' },
+  cost: { color: 'var(--ios-green)', noteIcon: '💰' },
+  weather: { color: 'var(--ios-blue)', noteIcon: '☁︎' },
+}
+const DEFAULT_NOTE_CATEGORY = 'info'
 
 export type PlanAiChatStatus = 'connecting' | 'ready' | 'closed'
 
@@ -511,6 +732,7 @@ function usePlanAiChatBridge(
     newId: string,
     data: PlanNodeData,
   ) => ReturnType<typeof insertAfter>,
+  addNote: (anchorId: string, text: string, category: string | undefined) => ReturnType<typeof insertAfter>,
 ) {
   const apiKey = import.meta.env.VITE_PLAN_AI_ONAGENT_APP_KEY as string | undefined
   const [status, setStatus] = useState<PlanAiChatStatus>('connecting')
@@ -526,9 +748,11 @@ function usePlanAiChatBridge(
   const bridgeRef = useRef<AgentBridge | null>(null)
   const getStepsRef = useRef(getSteps)
   const insertAttractionRef = useRef(insertAttraction)
+  const addNoteRef = useRef(addNote)
   useEffect(() => {
     getStepsRef.current = getSteps
     insertAttractionRef.current = insertAttraction
+    addNoteRef.current = addNote
   })
 
   useEffect(() => {
@@ -555,6 +779,17 @@ function usePlanAiChatBridge(
       insertAttractionAfter: async (anchorId, step) => {
         const newId = `agent-${crypto.randomUUID()}`
         const result = insertAttractionRef.current(anchorId, newId, step)
+        return result.ok ? { ok: true, id: result.insertedId } : { ok: false, error: result.error }
+      },
+      // addNote——不像 insertAttractionAfter 那樣插入新節點,而是把備註
+      // 寫在 anchorId 指定的既有節點自己身上(見 planTimeline.ts NoteInfo
+      // 的完整說明)。這裡直接轉呼叫元件提供的語意層級方法
+      // (addNoteToTimeline,見該函式的完整說明——color/noteIcon 視覺
+      // 樣式對照收在那個方法內部,這裡只負責轉接同步回傳值成這個 ctx
+      // 介面期望的 Promise 形狀,同 insertAttractionAfter 轉接邏輯的
+      // 既有寫法)。
+      addNote: async (anchorId, text, category) => {
+        const result = addNoteRef.current(anchorId, text, category)
         return result.ok ? { ok: true, id: result.insertedId } : { ok: false, error: result.error }
       },
     }
@@ -605,7 +840,12 @@ export function AIPlanTimelinePage() {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const [following, setFollowing] = useState(true)
   const [showJumpPill, setShowJumpPill] = useState(false)
-  const { steps, isGenerating, restart, sendTrigger, stop, insertAttractionAfter } = usePlanSimSocket()
+  // simEnabled — 是否連上模擬 WS 自動播放固定腳本,由畫面上的切換按鈕
+  // 控制(見 usePlanSimSocket 的完整說明,2026-09 取代原本寫死的
+  // PLAN_SIM_ENABLED 常數)。初始值 false——對話框應該立刻可用、等待
+  // 使用者輸入,不預設進入模擬自動播放模式。
+  const [simEnabled, setSimEnabled] = useState(false)
+  const { steps, isGenerating, restart, sendTrigger, stop, insertAttractionAfter, setNoteForStop } = usePlanSimSocket(simEnabled)
   const stopCount = steps.filter((s) => s.type === 'stop').length
 
   // stepsRef——usePlanAiChatBridge 的 getSteps 需要讀到「當下最新」的
@@ -626,7 +866,36 @@ export function AIPlanTimelinePage() {
   // 體現:元件提供的介面形狀,對話橋接層直接拿去用,不需要中間再插一層
   // adapter。
   const getStepsForBridge = useCallback((): PlanStepLike[] => stepsRef.current, [])
-  const planAiChat = usePlanAiChatBridge(getStepsForBridge, insertAttractionAfter)
+
+  // addNoteToTimeline — 這個元件對外暴露的「把一則備註寫在既有節點上」
+  // 程式介面,對齊 addAttraction 的形狀(接受業務語意層級的參數,內部
+  // 轉呼叫 setNoteForStop、把結果轉成呼叫端關心的形狀)。這是使用者
+  // 明確要求的兩層架構的落地:排程元件(這裡)提供操作資料的方法,
+  // attractionTools.ts 的 add_note 工具透過 ctx.addNote 呼叫這個方法來
+  // 操作排程內的資料,不是 LLM 工具自己組 PlanNodeData 直接丟給底層的
+  // insertAttractionAfter/updateNode。
+  //
+  // 2026-09 重構(這次):使用者明確要求「備註寫在景點的節點上」——note
+  // 不再是插入到時間軸裡的獨立節點,改成掛在既有節點自己身上(見
+  // planTimeline.ts NoteInfo 的完整說明),因此不再需要 newId(新節點
+  // id)這個概念,只需要 anchorId(指向要寫入備註的既有節點,命名對齊
+  // add_attraction 的 anchorId——見 setNoteForStop 對這個命名決定的
+  // 完整說明)且改為必填——沒有「省略代表接在最新節點之後」這種預設值,
+  // 呼叫端必須明確指定要在哪個節點上寫備註。
+  //
+  // category 選填,未提供或不在 NOTE_STYLES 表列範圍內時 fallback 成
+  // DEFAULT_NOTE_CATEGORY——備註分類該對應什麼視覺樣式,完全由這個元件
+  // 自己的 NOTE_STYLES 對照表決定(見該常數的完整說明),呼叫端(不論是
+  // LLM 工具還是之後可能的其他呼叫端)只需要傳語意層級的分類字串。
+  const addNoteToTimeline = useCallback(
+    (anchorId: string, text: string, category?: string): ReturnType<typeof insertAfter> => {
+      const resolvedCategory = category && NOTE_STYLES[category] ? category : DEFAULT_NOTE_CATEGORY
+      return setNoteForStop(anchorId, text, resolvedCategory)
+    },
+    [setNoteForStop],
+  )
+
+  const planAiChat = usePlanAiChatBridge(getStepsForBridge, insertAttractionAfter, addNoteToTimeline)
   const [chatInput, setChatInput] = useState('')
 
   // mountedIdsRef——追蹤「已經播過進場動畫的節點 id」,用來正確判斷
@@ -763,7 +1032,7 @@ export function AIPlanTimelinePage() {
     restart()
   }, [restart])
 
-  // lastAiMessage/placeholder——PLAN_SIM_ENABLED 為 false 時 isGenerating
+  // lastAiMessage/placeholder——simEnabled 為 false 時 isGenerating
   // 恆為 false,但 stopCount 也可能是 0(還沒透過對話新增任何景點)——
   // 原本「好,Day 1 安排好了,共 0 站」這句話在這個情境下語意矛盾(沒有
   // 安排好任何東西,只是還沒開始),改成依 stopCount 是否為 0 分岔文案。
@@ -803,12 +1072,51 @@ export function AIPlanTimelinePage() {
               </>
             )}
           </div>
-          {/* 重播按鈕只在模擬後端有接上時才有意義——PLAN_SIM_ENABLED 為
-              false 時 restart() 呼叫的 usePlanSimSocket effect 提早
-              return,不會真的重新連線播放,留著這顆按鈕會讓使用者點了
-              沒反應,一併隱藏。 */}
-          {PLAN_SIM_ENABLED && (
+          {/* 切換模擬——2026-09 取代原本寫死的 PLAN_SIM_ENABLED 常數
+              (使用者明確要求「模擬的參數改成用介面上的按鈕切換」),
+              點擊直接翻轉 simEnabled state,usePlanSimSocket 的連線
+              effect 依此決定要不要連上模擬 WS(見該 hook 的完整說明)。
+              關閉時清空目前的 timeline/mountedIdsRef,理由同重播
+              (restartAndFollow)——避免切換模式時畫面殘留另一種模式
+              產生的節點,或誤判進場動畫已經播過。 */}
+          <button
+            type="button"
+            className={styles.replayBtn}
+            onClick={() => {
+              mountedIdsRef.current.clear()
+              setSimEnabled((v) => !v)
+            }}
+          >
+            {simEnabled ? '■ 關閉模擬' : '▶ 開啟模擬'}
+          </button>
+          {/* 重播按鈕只在模擬後端有接上時才有意義——simEnabled 為 false
+              時 restart() 呼叫的 usePlanSimSocket effect 提早 return,
+              不會真的重新連線播放,留著這顆按鈕會讓使用者點了沒反應,
+              一併隱藏。 */}
+          {simEnabled && (
             <button type="button" className={styles.replayBtn} onClick={restartAndFollow}>↻ 重播</button>
+          )}
+          {/* 下一步——2026-09 使用者明確要求「讓模擬不要自動全部播放,
+              我按下一步才送下一個」:後端 plan_sim_ws.go 的 playScript
+              現在送完一則實際 action 就卡住等待前端明確的
+              {"trigger":"next"} 請求(見該檔案 waitForNextStep 的完整
+              說明),這顆按鈕就是那個請求的唯一入口——每點一次只推進
+              一步,不是重新觸發整段腳本。從原本對話框下方的測試按鈕組
+              移到這裡(跟切換模擬/重播並列)——「下一步」是控制模擬
+              播放節奏的核心操作,跟其餘兩顆一次性測試按鈕(移除祀典
+              武廟/插入安平天后宮)性質不同,理當跟切換模擬/重播放在
+              一起。isGenerating 為 false(腳本已送出 done,或
+              simEnabled 為 false 從未開始)時停用——沒有下一步可推進,
+              繼續顯示可點擊狀態會誤導使用者。 */}
+          {simEnabled && (
+            <button
+              type="button"
+              className={styles.replayBtn}
+              onClick={() => sendTrigger('next')}
+              disabled={!isGenerating}
+            >
+              ⏭ 下一步
+            </button>
           )}
         </div>
       </header>
@@ -816,16 +1124,21 @@ export function AIPlanTimelinePage() {
       {/* 右上角固定小地圖——position: fixed(見 .module.css 的完整說明),
           不佔版面空間、不隨時間軸捲動。單一 NativeMapBase 實例,點擊
           stop 卡片時呼叫 panToStop 讓它 panTo+放大,不是每張卡片各自
-          掛一個地圖(效能考量,見上方 panToStop 的完整說明)。 */}
-      <div className={styles.miniMapWrap}>
-        <NativeMapBase
-          center={DEFAULT_MAP_CENTER}
-          zoom={DEFAULT_MAP_ZOOM}
-          theme={theme}
-          showZoomControl={false}
-          onHandleChange={handleMapHandleChange}
-        />
-      </div>
+          掛一個地圖(效能考量,見上方 panToStop 的完整說明)。
+          2026-09:暫時停用掛載(MINI_MAP_ENABLED=false,見該常數的完整
+          說明)——開發中測試交通預估等功能時,地圖本身的圖磚/Places
+          請求會混進網路面板,干擾排查,先關閉、測試完再打開。 */}
+      {MINI_MAP_ENABLED && (
+        <div className={styles.miniMapWrap}>
+          <NativeMapBase
+            center={DEFAULT_MAP_CENTER}
+            zoom={DEFAULT_MAP_ZOOM}
+            theme={theme}
+            showZoomControl={false}
+            onHandleChange={handleMapHandleChange}
+          />
+        </div>
+      )}
 
       <div className={styles.scroll} ref={scrollRef} onScroll={handleScroll}>
         <div className={styles.inner}>
@@ -856,106 +1169,130 @@ export function AIPlanTimelinePage() {
             }
 
             if (p.type === 'stop') {
+              // transitFromPrev(見 planTimeline.ts TransitInfo 的完整
+              // 說明)掛在到達站自己身上,不再是獨立插入鏈結的 'transit'
+              // 節點——渲染時在這張 stop 卡片「之前」多畫一列交通卡,
+              // key 加 "transit-" 前綴避免跟下面 stop 本身的 key(p.id)
+              // 衝突。沒有 transitFromPrev(第一站,或前一站不是帶座標的
+              // stop)時完全不畫這一列。
+              const transit = p.transitFromPrev
+              // note——這個節點自己的備註(見 planTimeline.ts NoteInfo 的
+              // 完整說明),不再是鏈結串列裡獨立插入的節點,改成掛在這張
+              // stop 卡片自己身上的欄位,渲染時在卡片之前多畫一列(保留
+              // 使用者原本熟悉的「左窄欄獨立一列」視覺,同交通卡列的作法
+              // ——只是資料來源從獨立節點換成 p.note)。中間欄補上貫穿
+              // 整行的軸線(.noteAxisLine),否則時間軸主軸線在這一列會
+              // 斷開(理由同交通卡列 .transitAxis 需要銜接軸線的說明)。
+              const note = p.note
+              const noteStyle = note ? NOTE_STYLES[note.category ?? ''] ?? NOTE_STYLES[DEFAULT_NOTE_CATEGORY] : null
               return (
-                <div key={p.id} data-tl-node className={`${styles.row} ${styles.stopRow} ${removingClass}`}>
-                  <div className={`${styles.stopTime} ${mountedClass}`}>
-                    <div className={styles.stopTimeText}>{p.time}</div>
-                  </div>
-                  <div className={styles.axisCol}>
-                    {idx > 0 && <div className={styles.axisLineAbove} />}
-                    {/* axisLineBelow 原本只在「還有下一個節點」時畫
-                        (idx < steps.length - 1),但這個節點是陣列最後
-                        一個、且仍在生成中(isGenerating)時,後面其實
-                        還接著呼吸點/骨架卡(.tipRow,見下方渲染邏輯)要
-                        銜接——只看陣列位置不看生成狀態,會讓「目前正在
-                        生成下一站」這個當下,最後一張卡片下方到呼吸點
-                        之間完全沒有任何軸線元素覆蓋,出現一大段斷裂
-                        (2026-09 實測:「大天后宮」卡片下方到呼吸點之間
-                        整段空白)。補上 isGenerating 這個條件,讓它在
-                        「還有下一個節點」或「正在生成中」任一成立時都
-                        畫出來。 */}
-                    {(idx < steps.length - 1 || isGenerating) && <div className={styles.axisLineBelow} />}
-                    <div className={`${styles.anchorDot} ${mountedClass} ${justMounted ? styles.anchorPop : ''}`} />
-                  </div>
-                  <div className={`${styles.stopCardWrap} ${mountedClass} ${justMounted ? styles.cardSlide : ''}`}>
-                    <div
-                      className={`${styles.stopCard} ${p.id === selectedStopId ? styles.stopCardSelected : ''}`}
-                      role={p.lat != null && p.lng != null ? 'button' : undefined}
-                      tabIndex={p.lat != null && p.lng != null ? 0 : undefined}
-                      onClick={() => panToStop(p)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') panToStop(p)
-                      }}
-                    >
-                      <div
-                        className={`${styles.stopThumb} ${justMounted ? styles.thumbPop : ''}`}
-                        style={{ background: p.photoUrl ? undefined : p.thumbBg }}
-                      >
-                        {p.loading ? (
-                          <span className={styles.thumbSpinner} aria-label="查詢地點資料中" />
-                        ) : p.photoUrl ? (
-                          <img src={p.photoUrl} alt={p.name} className={styles.stopThumbImg} />
-                        ) : p.thumbIcon}
-                      </div>
-                      <div className={styles.stopBody}>
-                        <div className={styles.stopMeta}>
-                          {p.duration} · {p.kind}
-                          {p.loading && <span className={styles.loadingTag}>查詢地點中…</span>}
-                        </div>
-                        <div className={styles.stopName}>{p.name}</div>
-                        <div className={styles.stopDesc}>{p.desc}</div>
-                        {p.tags && p.tags.length > 0 && (
-                          <div className={styles.stopTags}>
-                            {p.tags.map((tag) => (
-                              <span key={tag} className={styles.stopTag}>{tag}</span>
-                            ))}
+                <Fragment key={p.id}>
+                  {note && noteStyle && (
+                    <div className={`${styles.row} ${styles.noteRow}`}>
+                      <div className={`${styles.noteLeft} ${mountedClass} ${justMounted ? styles.noteFade : ''}`}>
+                        <div className={styles.noteInner}>
+                          <div className={styles.noteBar} style={{ background: noteStyle.color }} />
+                          <div className={styles.noteText}>
+                            <span style={{ marginRight: 4 }}>{noteStyle.noteIcon}</span>{note.text}
                           </div>
-                        )}
+                        </div>
+                      </div>
+                      <div className={styles.noteAxisCol}>
+                        <div className={styles.noteAxisLine} />
+                      </div>
+                      <div />
+                    </div>
+                  )}
+                  {transit && (
+                    <div className={`${styles.row} ${styles.transitRow}`}>
+                      <div />
+                      <div className={styles.transitAxis}>
+                        <div className={styles.transitDashAbove} />
+                        <div className={styles.transitDashBelow} />
+                        <div className={`${mountedClass} ${justMounted ? styles.pillExpand : ''} ${styles.transitPill}`}>
+                          {/* 查詢中(loading:true,見 refreshTransitForStop
+                              的完整說明)只顯示轉圈動畫,不顯示任何文字
+                              ——使用者明確要求「不要用文字用 icon」,重用
+                              stop 卡片查詢中狀態既有的 thumbSpinner 動畫,
+                              不另外設計一套。查詢完成後
+                              icon/mode/minutes/distance 才會有值,此時
+                              才換成正常的文字呈現。 */}
+                          {transit.loading ? (
+                            <span className={styles.thumbSpinner} aria-label="查詢交通資訊中" />
+                          ) : (
+                            <>
+                              <span>{transit.icon}</span>
+                              <span>{transit.mode} {transit.minutes} 分 · {transit.distance}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div />
+                    </div>
+                  )}
+                  <div data-tl-node className={`${styles.row} ${styles.stopRow} ${removingClass}`}>
+                    <div className={`${styles.stopTime} ${mountedClass}`}>
+                      <div className={styles.stopTimeText}>{p.time}</div>
+                    </div>
+                    <div className={styles.axisCol}>
+                      {idx > 0 && <div className={styles.axisLineAbove} />}
+                      {/* axisLineBelow 原本只在「還有下一個節點」時畫
+                          (idx < steps.length - 1),但這個節點是陣列最後
+                          一個、且仍在生成中(isGenerating)時,後面其實
+                          還接著呼吸點/骨架卡(.tipRow,見下方渲染邏輯)要
+                          銜接——只看陣列位置不看生成狀態,會讓「目前正在
+                          生成下一站」這個當下,最後一張卡片下方到呼吸點
+                          之間完全沒有任何軸線元素覆蓋,出現一大段斷裂
+                          (2026-09 實測:「大天后宮」卡片下方到呼吸點之間
+                          整段空白)。補上 isGenerating 這個條件,讓它在
+                          「還有下一個節點」或「正在生成中」任一成立時都
+                          畫出來。 */}
+                      {(idx < steps.length - 1 || isGenerating) && <div className={styles.axisLineBelow} />}
+                      <div className={`${styles.anchorDot} ${mountedClass} ${justMounted ? styles.anchorPop : ''}`} />
+                    </div>
+                    <div className={`${styles.stopCardWrap} ${mountedClass} ${justMounted ? styles.cardSlide : ''}`}>
+                      <div
+                        className={`${styles.stopCard} ${p.id === selectedStopId ? styles.stopCardSelected : ''}`}
+                        role={p.lat != null && p.lng != null ? 'button' : undefined}
+                        tabIndex={p.lat != null && p.lng != null ? 0 : undefined}
+                        onClick={() => panToStop(p)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') panToStop(p)
+                        }}
+                      >
+                        <div
+                          className={`${styles.stopThumb} ${justMounted ? styles.thumbPop : ''}`}
+                          style={{ background: p.photoUrl ? undefined : p.thumbBg }}
+                        >
+                          {p.loading ? (
+                            <span className={styles.thumbSpinner} aria-label="查詢地點資料中" />
+                          ) : p.photoUrl ? (
+                            <img src={p.photoUrl} alt={p.name} className={styles.stopThumbImg} />
+                          ) : p.thumbIcon}
+                        </div>
+                        <div className={styles.stopBody}>
+                          <div className={styles.stopMeta}>
+                            {p.duration} · {p.kind}
+                            {p.loading && <span className={styles.loadingTag}>查詢地點中…</span>}
+                          </div>
+                          <div className={styles.stopName}>{p.name}</div>
+                          <div className={styles.stopDesc}>{p.desc}</div>
+                          {p.tags && p.tags.length > 0 && (
+                            <div className={styles.stopTags}>
+                              {p.tags.map((tag) => (
+                                <span key={tag} className={styles.stopTag}>{tag}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                </Fragment>
               )
             }
 
-            if (p.type === 'transit') {
-              return (
-                <div key={p.id} className={`${styles.row} ${styles.transitRow} ${removingClass}`}>
-                  <div />
-                  <div className={styles.transitAxis}>
-                    <div className={styles.transitDashAbove} />
-                    <div className={styles.transitDashBelow} />
-                    <div className={`${mountedClass} ${justMounted ? styles.pillExpand : ''} ${styles.transitPill}`}>
-                      <span>{p.icon}</span>
-                      <span>{p.mode} {p.minutes} 分 · {p.distance}</span>
-                    </div>
-                  </div>
-                  <div />
-                </div>
-              )
-            }
-
-            // note——中間欄補上貫穿整行的軸線(.noteAxisLine),否則時間軸
-            // 主軸線在注記這一列會斷開(這一列原本中間/右欄都是空的
-            // <div />,沒有任何元素延續上下相鄰 stop/transit 列畫出的
-            // 軸線,造成視覺上斷裂——見 .module.css 的 .noteAxisLine 完整
-            // 說明)。
-            return (
-              <div key={p.id} className={`${styles.row} ${styles.noteRow} ${removingClass}`}>
-                <div className={`${styles.noteLeft} ${mountedClass} ${justMounted ? styles.noteFade : ''}`}>
-                  <div className={styles.noteInner}>
-                    <div className={styles.noteBar} style={{ background: p.color }} />
-                    <div className={styles.noteText}>
-                      <span style={{ marginRight: 4 }}>{p.noteIcon}</span>{p.text}
-                    </div>
-                  </div>
-                </div>
-                <div className={styles.noteAxisCol}>
-                  <div className={styles.noteAxisLine} />
-                </div>
-                <div />
-              </div>
-            )
+            return null
           })}
 
           {/* isGenerating(模擬 WS 腳本自動播放中)|| planAiChat.isThinking
@@ -1106,13 +1443,12 @@ export function AIPlanTimelinePage() {
               點一顆按鈕就自動連續做兩件事:「移除」只送移除請求,「插入」
               只送插入請求,兩者是各自獨立的使用者操作,用來手動驗證
               結構化資料可以被異動並即時反應在畫面上,不需要每次都等 WS
-              腳本播到對應位置。PLAN_SIM_ENABLED 為 false 時整組隱藏——
-              這兩顆按鈕靠 sendTrigger 對模擬 WS 連線送出請求,模擬後端
-              沒接上時它們恆為 no-op(disabled 條件 wumiaoPresent 也會
-              恆假,因為 steps 裡永遠不會出現 stop-wumiao 這個模擬腳本
-              專屬的 id),與其留著一排永遠按不動的按鈕當視覺雜訊,不如
-              直接藏起來。 */}
-          {PLAN_SIM_ENABLED && (
+              腳本播到對應位置。simEnabled 為 false 時整組隱藏——這兩顆
+              按鈕靠 sendTrigger 對模擬 WS 連線送出請求,模擬後端沒接上時
+              它們恆為 no-op(disabled 條件 wumiaoPresent 也會恆假,因為
+              steps 裡永遠不會出現 stop-wumiao 這個模擬腳本專屬的 id),
+              與其留著一排永遠按不動的按鈕當視覺雜訊,不如直接藏起來。 */}
+          {simEnabled && (
             <div className={styles.testBtnGroup}>
               <button
                 type="button"

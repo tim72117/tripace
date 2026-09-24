@@ -88,6 +88,30 @@ describe('insertAfter', () => {
     expect(result.error.code).toBe('anchor_not_found')
   })
 
+  // 2026-09 真實踩坑記錄:LLM 曾經連續把 search_attraction 回傳的
+  // attractionId(例如 "lmk_..." 這種景點候選 id)誤當成 anchorId 傳給
+  // add_attraction,原本的錯誤訊息只說「找不到這個 id」,沒有指出這是
+  // 「傳錯種類的 id」,導致 LLM 重試時又犯了同樣的錯——這個測試驗證
+  // 修正後的訊息會列出目前時間軸上實際可用的節點 id,並明確說明
+  // anchorId 不能是 attractionId,讓呼叫端能分辨出問題所在。
+  it('anchorId 找不到對應節點時,錯誤訊息列出目前可用的節點 id 並提示 anchorId 與 attractionId 的差異', () => {
+    const t1 = insertAfter(createEmptyTimeline(), null, stop('赤崁樓', '08:30'), 'n1')
+    if (!t1.ok) throw new Error('setup failed')
+    const result = insertAfter(t1.timeline, 'lmk_c78a4800ebd2', stop('祀典武廟', '09:00'), 'n2')
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.message).toContain('"n1"')
+    expect(result.error.message).toContain('赤崁樓')
+    expect(result.error.message).toContain('attractionId')
+  })
+
+  it('anchorId 找不到對應節點、且時間軸目前是空的,錯誤訊息提示可以省略 anchorId', () => {
+    const result = insertAfter(createEmptyTimeline(), 'lmk_c78a4800ebd2', stop('赤崁樓', '08:30'), 'n1')
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.message).toContain('是空的')
+  })
+
   it('time 格式不合法(非 "HH:MM")時回傳 invalid_time_format 錯誤', () => {
     const result = insertAfter(createEmptyTimeline(), null, stop('赤崁樓', '9:30am'), 'n1')
     expect(result.ok).toBe(false)
@@ -208,6 +232,32 @@ describe('insertAfter', () => {
     if (failResult.ok) return
     expect(failResult.error.code).toBe('time_out_of_range')
   })
+
+  it('插入到中間時,原本緊接在插入點後面的站點 transitFromPrev 被清空(它的前一站變了)', () => {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, stop('赤崁樓'), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+    const r2 = insertAfter(timeline, 'n1', stop('大天后宮'), 'n2')
+    if (!r2.ok) throw new Error('setup failed')
+    timeline = r2.timeline
+    // n2(大天后宮)手動掛一筆 transitFromPrev,模擬它跟 n1(赤崁樓)之間
+    // 已經查過交通資訊。
+    timeline = {
+      ...timeline,
+      nodes: new Map(timeline.nodes).set('n2', {
+        ...timeline.nodes.get('n2')!,
+        transitFromPrev: { icon: '🚶', mode: '步行', minutes: 5, distance: '300m' },
+      }),
+    }
+
+    const r3 = insertAfter(timeline, 'n1', stop('祀典武廟'), 'n3')
+    if (!r3.ok) throw new Error('setup failed')
+
+    // n2 現在的前一站變成 n3(祀典武廟),原本記錄的「跟赤崁樓之間」的
+    // 交通資訊不再對應正確的兩站,必須被清空。
+    expect(r3.timeline.nodes.get('n2')).toMatchObject({ prevId: 'n3', transitFromPrev: undefined })
+  })
 })
 
 describe('removeNode', () => {
@@ -249,6 +299,33 @@ describe('removeNode', () => {
     if (!t1.ok) throw new Error('setup failed')
     const result = removeNode(t1.timeline, 'not-exist')
     expect(toRenderList(result).map((n) => n.name)).toEqual(['赤崁樓'])
+  })
+
+  it('移除中間站點後,新的下一站 transitFromPrev 被清空(舊資料不再對應正確的兩站)', () => {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, stop('赤崁樓'), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+    const r2 = insertAfter(timeline, 'n1', stop('祀典武廟'), 'n2')
+    if (!r2.ok) throw new Error('setup failed')
+    timeline = r2.timeline
+    const r3 = insertAfter(timeline, 'n2', stop('大天后宮'), 'n3')
+    if (!r3.ok) throw new Error('setup failed')
+    timeline = r3.timeline
+    // n3(大天后宮)手動掛一筆 transitFromPrev,模擬它跟 n2(祀典武廟)
+    // 之間已經查過交通資訊。
+    timeline = {
+      ...timeline,
+      nodes: new Map(timeline.nodes).set('n3', {
+        ...timeline.nodes.get('n3')!,
+        transitFromPrev: { icon: '🚶', mode: '步行', minutes: 5, distance: '300m' },
+      }),
+    }
+
+    timeline = removeNode(timeline, 'n2')
+    // n3 現在的前一站變成 n1(赤崁樓),原本記錄的「跟祀典武廟之間」的
+    // 交通資訊不再對應正確的兩站,必須被清空。
+    expect(timeline.nodes.get('n3')).toMatchObject({ prevId: 'n1', transitFromPrev: undefined })
   })
 })
 

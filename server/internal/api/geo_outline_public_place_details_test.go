@@ -1,16 +1,26 @@
 package api
 
 // geo_outline_public_place_details_test.go 測 GET /public/geo/place-details
-// (handlePublicGeoPlaceDetails)的白名單把關本身——這支端點刻意不掛
-// internalAuth(見 api.go 路由註冊處的說明),供登入前的公開展示頁使用,
-// publicPlaceDetailsAllowlist 是唯一的濫用防護,故這裡只驗證「白名單
-// 之外一律拒絕、且不觸發任何下游查詢」與「白名單內的請求會被轉呼叫給
-// handleGeoPlaceDetails」——後者完整的查詢/快取/降級行為已經在
-// geo_outline_place_photo_progress_test.go 測過,這裡不重複驗證那些案例。
+// (handlePublicGeoPlaceDetails)——免登入版,供主題介紹頁(如
+// JiufenPage.tsx/TainanPage.tsx,見 InteractiveExploreMap.tsx 的呼叫端)
+// 查詢白名單內固定示範景點的完整資料。
+//
+// 2026-09:使用者明確要求「主題介紹應該有自己的路由,用簡化版的跟
+// plan-ai 用一樣的模式」——這支端點不再轉呼叫 handleGeoPlaceDetails
+// (正式登入功能共用、內建漸進補圖決策的核心函式),改成獨立的簡化
+// 實作:文字查 place_details_cache 快取(未命中才即時查一次 Google
+// 補文字),照片一律只查 photo_assets(不回退 google_place_photos/
+// pexels,見 handlePublicGeoPlaceDetails 的完整說明)。這裡測的範圍
+// 因此對齊 geo_outline_public_place_details_any_test.go 的既有模式
+// (白名單、快取命中、photo_assets 優先序),不再測「轉呼叫」行為。
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/tim72117/tripace/internal/model"
 )
 
 func TestHandlePublicGeoPlaceDetails_NotInAllowlist_Returns403(t *testing.T) {
@@ -30,9 +40,7 @@ func TestHandlePublicGeoPlaceDetails_EmptyPlaceID_Returns403(t *testing.T) {
 
 	// 沒帶 placeId 查詢參數——publicPlaceDetailsAllowlist[""] 查無此鍵,
 	// map 的零值判斷自然回傳 false,不需要另外特判空字串,但這裡明確測一次
-	// 確保這個邊界情況真的落在「拒絕」分支,不會意外通過白名單檢查後才在
-	// handleGeoPlaceDetails 內部才被攔下(那樣會變成 400 而非 403,語意
-	// 上代表白名單這層完全沒有生效)。
+	// 確保這個邊界情況真的落在「拒絕」分支。
 	req := httptest.NewRequest(http.MethodGet, "/public/geo/place-details", nil)
 	rec := httptest.NewRecorder()
 	s.handlePublicGeoPlaceDetails(rec, req)
@@ -42,43 +50,132 @@ func TestHandlePublicGeoPlaceDetails_EmptyPlaceID_Returns403(t *testing.T) {
 	}
 }
 
-func TestHandlePublicGeoPlaceDetails_StripsPhotoOnlyAndTextOnlyQueryParams(t *testing.T) {
+// TestHandlePublicGeoPlaceDetails_InAllowlist_UsesCachedTextDetails 驗證
+// 白名單內的 placeId,文字資料(name/address/lat/lng/summary)命中
+// place_details_cache 時直接回傳,不需要真的打 Google API——用「測試
+// 環境沒有網路/API key,若真的觸發即時查詢會失敗」這個前提間接證明
+// 快取命中路徑完全不依賴外部連線。
+func TestHandlePublicGeoPlaceDetails_InAllowlist_UsesCachedTextDetails(t *testing.T) {
 	s := newTestServer(t)
 
-	// 這支端點的文件註解宣稱「不支援 photoOnly/textOnly 這兩種輕量
-	// 模式」,但轉呼叫給 handleGeoPlaceDetails 前若沒有明確清掉這兩個
-	// query 參數,呼叫端只要自行在網址後面加上 &photoOnly=1 就能繞過這個
-	// 說明、實際觸發輕量模式(見 handlePublicGeoPlaceDetails 的完整
-	// 說明)。用一個不存在的 name 搭配 photoOnly=1 驗證:若沒有真的被
-	// 清掉,handleGeoPlaceDetails 的 photoOnly 分支會先檢查 name 是否
-	// 存在(見該函式對 photoOnly 分支的說明),缺少 name 時回 400
-	// invalid_input;若確實被清掉,請求會落到一般模式,不會出現這個
-	// 400。用這個行為差異間接驗證參數真的被移除,不需要直接檢查
-	// r.URL.RawQuery(該值在 handler 執行完後才能觀察,但這裡測的是
-	// handleGeoPlaceDetails 內部依 query 參數選擇的分支)。
-	req := httptest.NewRequest(http.MethodGet, "/public/geo/place-details?placeId=ChIJB_vchdMIAWARujTEUIZlr2I&photoOnly=1", nil)
+	placeID := "ChIJB_vchdMIAWARujTEUIZlr2I" // 清水寺,在白名單內
+	summary := "測試簡介"
+	if err := s.store.SetCachedPlaceDetails(placeID, "清水寺", "京都府京都市", 34.9948, 135.785, 4.5, &summary); err != nil {
+		t.Fatalf("failed to seed place_details_cache: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/public/geo/place-details?placeId="+placeID, nil)
 	rec := httptest.NewRecorder()
 	s.handlePublicGeoPlaceDetails(rec, req)
 
-	if rec.Code == http.StatusBadRequest {
-		t.Fatalf("photoOnly query param should have been stripped before forwarding, but got 400 (photoOnly 分支特有的錯誤): %s", rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Name    string `json:"name"`
+		Address string `json:"address"`
+		Summary string `json:"summary"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if body.Name != "清水寺" || body.Address != "京都府京都市" || body.Summary != summary {
+		t.Fatalf("unexpected response: %+v", body)
 	}
 }
 
-func TestHandlePublicGeoPlaceDetails_InAllowlist_ForwardsToHandleGeoPlaceDetails(t *testing.T) {
+// TestHandlePublicGeoPlaceDetails_NoCacheAndNoNetwork_ReturnsBadGateway 驗證
+// 文字資料未命中快取時,這支端點會嘗試即時查 Google——測試環境沒有
+// GOOGLE_PLACES_API_KEY/網路,預期得到 502(而不是 200 或吞掉錯誤靜默
+// 回傳空資料),確認未命中分支真的有嘗試查詢、且查詢失敗會誠實回報,
+// 不是靜默降級。
+func TestHandlePublicGeoPlaceDetails_NoCacheAndNoNetwork_ReturnsBadGateway(t *testing.T) {
 	s := newTestServer(t)
 
-	// 白名單內的 placeId(清水寺)——不 mock geo.Client 的 gateway,這次
-	// 請求會在 handleGeoPlaceDetails 內部嘗試真的打 Google API 並失敗
-	// (測試環境沒有網路/API key),但重點是驗證它有沒有被白名單擋下:
-	// 只要回應不是這支端點自己組的 403 place_not_allowed,就代表白名單
-	// 檢查通過、請求真的被轉呼叫給 handleGeoPlaceDetails 處理(不論該
-	// handler 最終回應什麼狀態碼)。
 	req := httptest.NewRequest(http.MethodGet, "/public/geo/place-details?placeId=ChIJB_vchdMIAWARujTEUIZlr2I", nil)
 	rec := httptest.NewRecorder()
 	s.handlePublicGeoPlaceDetails(rec, req)
 
-	if rec.Code == http.StatusForbidden {
-		t.Fatalf("placeId in allowlist should not be rejected by the allowlist check, got 403 (body: %s)", rec.Body.String())
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 when cache miss and no network available, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+// TestHandlePublicGeoPlaceDetails_UsesPhotoAssetsForPhotos 驗證照片一律
+// 只查 photo_assets(見 handlePublicGeoPlaceDetails 的完整說明)——有
+// 效期內的紀錄要組成 googlePhotoUrls 多圖清單、且 photoUrl 是第一張,
+// 不回退 google_place_photos/pexels。
+func TestHandlePublicGeoPlaceDetails_UsesPhotoAssetsForPhotos(t *testing.T) {
+	s := newTestServer(t)
+
+	placeID := "ChIJB_vchdMIAWARujTEUIZlr2I"
+	if err := s.store.SetCachedPlaceDetails(placeID, "清水寺", "京都府京都市", 34.9948, 135.785, 4.5, nil); err != nil {
+		t.Fatalf("failed to seed place_details_cache: %v", err)
+	}
+	expiresAt := time.Now().Add(7 * 24 * time.Hour)
+	for i, url := range []string{
+		"https://storage.googleapis.com/test-bucket/photo-0.jpg",
+		"https://storage.googleapis.com/test-bucket/photo-1.jpg",
+	} {
+		if err := s.store.UpsertPhotoAsset(model.PhotoAsset{
+			PlaceID: placeID, PhotoIndex: i, Usage: "full", Source: "google",
+			GCSURL: url, FetchedAt: time.Now(), ExpiresAt: &expiresAt,
+		}); err != nil {
+			t.Fatalf("failed to seed photo asset %d: %v", i, err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/public/geo/place-details?placeId="+placeID, nil)
+	rec := httptest.NewRecorder()
+	s.handlePublicGeoPlaceDetails(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		PhotoURL        string   `json:"photoUrl"`
+		GooglePhotoURLs []string `json:"googlePhotoUrls"`
+		PexelsPhotoURLs []string `json:"pexelsPhotoUrls"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if body.PhotoURL != "https://storage.googleapis.com/test-bucket/photo-0.jpg" {
+		t.Fatalf("expected first photo_assets url as photoUrl, got %q", body.PhotoURL)
+	}
+	if len(body.GooglePhotoURLs) != 2 {
+		t.Fatalf("expected 2 googlePhotoUrls, got %+v", body.GooglePhotoURLs)
+	}
+	if len(body.PexelsPhotoURLs) != 0 {
+		t.Fatalf("expected no pexelsPhotoUrls, got %+v", body.PexelsPhotoURLs)
+	}
+}
+
+// TestHandlePublicGeoPlaceDetails_NoPhotoAssets_OmitsPhotoFields 驗證
+// photo_assets 查無紀錄時,回應不會帶出任何照片欄位——不回退舊機制。
+func TestHandlePublicGeoPlaceDetails_NoPhotoAssets_OmitsPhotoFields(t *testing.T) {
+	s := newTestServer(t)
+
+	placeID := "ChIJB_vchdMIAWARujTEUIZlr2I"
+	if err := s.store.SetCachedPlaceDetails(placeID, "清水寺", "京都府京都市", 34.9948, 135.785, 4.5, nil); err != nil {
+		t.Fatalf("failed to seed place_details_cache: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/public/geo/place-details?placeId="+placeID, nil)
+	rec := httptest.NewRecorder()
+	s.handlePublicGeoPlaceDetails(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("failed to decode raw response: %v", err)
+	}
+	if _, ok := raw["photoUrl"]; ok {
+		t.Error("expected response to NOT include a photoUrl field")
+	}
+	if _, ok := raw["googlePhotoUrls"]; ok {
+		t.Error("expected response to NOT include a googlePhotoUrls field")
 	}
 }

@@ -729,6 +729,27 @@ export function fetchPublicGeoPlaceSearch(cfg: ClientConfig, query: string) {
   return request<GeoPublicPlaceSearchResult>(cfg, 'GET', `/public/geo/place-search?query=${encodeURIComponent(query)}`)
 }
 
+// GeoPublicAttractionSearchResult:fetchPublicGeoAttractionSearch 的回應
+// 形狀——對齊後端 handlePublicGeoAttractionSearch 的 JSON 輸出,重用
+// GeoAttraction(跟 fetchPublicGeoAttractions 共用同一個型別,見該介面的
+// 完整說明)。這支端點回傳的每一筆候選一律帶 placeId——不論資料庫候選
+// (attractions 表已建檔、有 place_id 的紀錄)或 Google Nearby Search
+// 補上的候選,兩者統一用同一個 placeId 欄位當識別碼,呼叫端不需要知道
+// 來源差異(見後端 handlePublicGeoAttractionSearch 的完整說明)。
+export interface GeoPublicAttractionSearchResult {
+  attractions: GeoAttraction[]
+}
+
+// fetchPublicGeoAttractionSearch:GET /public/geo/attraction-search(免
+// 登入版的鄰近景點候選查詢,見後端 handlePublicGeoAttractionSearch 的
+// 完整說明)——供 /plan-ai 的 search_attraction 工具使用:查詢某個座標
+// 附近的景點候選,資料庫候選不足 10 筆時後端會額外用 Google Nearby
+// Search 補上不重複的點。後端套用獨立的拒絕型限流(見該 handler 的
+// 完整說明),前端這裡不重複實作節流。
+export function fetchPublicGeoAttractionSearch(cfg: ClientConfig, lat: number, lng: number) {
+  return request<GeoPublicAttractionSearchResult>(cfg, 'GET', `/public/geo/attraction-search?lat=${lat}&lng=${lng}`)
+}
+
 // GeoPublicPlaceDetailsAnyResult:fetchPublicGeoPlaceDetailsAny 的回應
 // 形狀——對齊後端 handlePublicGeoPlaceDetailsAny 的 JSON 輸出。found 為
 // false 時其餘欄位皆不存在(查無此 placeId,不是查詢失敗)。
@@ -736,6 +757,11 @@ export function fetchPublicGeoPlaceSearch(cfg: ClientConfig, query: string) {
 // 2026-09:photoUrl 只在後端優先查 attractions 表命中時才會有值(見該
 // handler 的完整說明——已建檔景點才有真實照片,fallback 到 Google
 // GetPlaceDetails 的查詢結果不含照片),前端使用時應視為選填欄位。
+//
+// attractionId 同樣只在後端命中資料庫 attractions 表時才有值(見該
+// handler 的完整說明,使用者明確要求「place-details-any 查詢如果有
+// attraction 時要一併附上 attraction」)——Google fallback 路徑沒有
+// 對應的資料庫紀錄,固定不帶這個欄位。
 export interface GeoPublicPlaceDetailsAnyResult {
   found: boolean
   name?: string
@@ -744,6 +770,7 @@ export interface GeoPublicPlaceDetailsAnyResult {
   lng?: number
   summary?: string
   photoUrl?: string
+  attractionId?: string
 }
 
 // fetchPublicGeoPlaceDetailsAny:GET /public/geo/place-details-any(免登入
@@ -756,6 +783,67 @@ export interface GeoPublicPlaceDetailsAnyResult {
 // 工具呼叫之間原封不動複製貼上 name/lat/lng/summary)。
 export function fetchPublicGeoPlaceDetailsAny(cfg: ClientConfig, placeId: string) {
   return request<GeoPublicPlaceDetailsAnyResult>(cfg, 'GET', `/public/geo/place-details-any?placeId=${encodeURIComponent(placeId)}`)
+}
+
+// GeoPublicAttractionByIDResult:fetchPublicGeoAttractionByID 的回應形狀
+// ——對齊後端 handlePublicGeoAttractionByID 的 JSON 輸出。id 存在時一定
+// 查得到(這支端點查無資料時是 HTTP 404,見該 handler 的完整說明,不是
+// 回一個 found:false 的正常回應——由呼叫端的 .catch 處理查無這個 id 的
+// 情境),故不像 GeoPublicPlaceDetailsAnyResult 那樣需要一個 found 欄位。
+export interface GeoPublicAttractionByIDResult {
+  id: string
+  name: string
+  lat: number
+  lng: number
+  summary?: string
+  photoUrl?: string
+  placeId?: string
+}
+
+// fetchPublicGeoAttractionByID:GET /public/geo/attraction/{id}(免登入版,
+// 見後端 handlePublicGeoAttractionByID 的完整說明)——供 /plan-ai 的
+// search_attraction/add_attraction 工具流程使用:LLM 只需要記住
+// search_attraction 回傳過的 attraction id,插入行程時由前端這裡查
+// 資料庫既有紀錄取得完整資料(name/summary/photoUrl/placeId),對齊
+// 散策羅盤「點選附近景點」(fetchPoiContent)先用 attraction 本身資料
+// 當底的兩段式查詢邏輯。
+export function fetchPublicGeoAttractionByID(cfg: ClientConfig, id: string) {
+  return request<GeoPublicAttractionByIDResult>(cfg, 'GET', `/public/geo/attraction/${encodeURIComponent(id)}`)
+}
+
+// GeoPublicTransitEstimateResult:fetchPublicGeoTransitEstimate 的回應
+// 形狀——對齊後端 handlePublicGeoTransitEstimate 的 JSON 輸出,也對齊
+// PlanNodeData 的 transit 節點既有欄位(見 planTimeline.ts 的完整
+// 說明),呼叫端可以直接把這個結果塞進 transit 節點的資料。
+export interface GeoPublicTransitEstimateResult {
+  mode: string
+  icon: string
+  minutes: number
+  distance: string
+}
+
+// fetchPublicGeoTransitEstimate:GET /public/geo/transit-estimate(免登入
+// 版、兩點間交通方式/時間/距離的模擬預估,見後端
+// handlePublicGeoTransitEstimate 的完整說明)——2026-09 使用者明確要求
+// 「交通預估時間不要讓 AI 推論產生,而是建立兩個點時,前端自己將兩點
+// 送到後端,由後端預估時間」,這支函式就是那個「前端自己送」的落地:
+// 呼叫端(AIPlanTimelinePage.tsx insertAttractionAfter)在插入 stop
+// 節點且前面已有另一個 stop 節點時主動呼叫,不是 LLM 或任何推論路徑
+// 觸發的。mode 是選填參數,省略時由後端依直線距離自動決定一個預設值。
+export function fetchPublicGeoTransitEstimate(
+  cfg: ClientConfig,
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+  mode?: string,
+) {
+  const params = new URLSearchParams({
+    fromLat: String(from.lat),
+    fromLng: String(from.lng),
+    toLat: String(to.lat),
+    toLng: String(to.lng),
+  })
+  if (mode) params.set('mode', mode)
+  return request<GeoPublicTransitEstimateResult>(cfg, 'GET', `/public/geo/transit-estimate?${params.toString()}`)
 }
 
 // fetchGeoPlacePhoto:GET /internal/geo/place-details 的 photoOnly=1 模式

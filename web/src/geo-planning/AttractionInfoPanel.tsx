@@ -99,14 +99,21 @@ export function AttractionInfoPanel({
   // 圓點,跟清單篩選結果一致,不是清單篩了、地圖卻仍顯示全部精選點。
   onCategoryFilterChange?: (category: CuratedCategory | null) => void
 }) {
-  // placeDetails:attraction.placeId 有值時,補查一次「地點照片漸進補圖
-  // 機制」的雙來源照片(Google/Pexels,見 handleGeoPlaceDetails 的完整
-  // 說明)——不重新發明呼叫邏輯,直接沿用 PlacePanel/
-  // GeoOutlinePhoneInfoSheet 走的同一支 fetchGeoPlaceDetails 端點,取回
-  // 的 googlePhotoUrls/pexelsPhotoUrls 交給 PhotoCarousel 顯示,兩份清單
-  // 皆空(或查詢失敗、尚未查完)時 PhotoCarousel 的 fallbackUrl 機制會
-  // 自動退回 attraction.landmarkPhotoUrl 單張圖,這裡不需要另外處理
-  // 「查詢失敗怎麼辦」的分支。
+  // placeDetails:attraction.placeId 有值時,查一次「地點照片」的雙來源
+  // 照片(Google/Pexels,見 handleGeoPlaceDetails 的完整說明)——不重新
+  // 發明呼叫邏輯,直接沿用 PlacePanel/GeoOutlinePhoneInfoSheet 走的同一支
+  // fetchGeoPlaceDetails 端點,取回的 googlePhotoUrls/pexelsPhotoUrls
+  // 交給 PhotoCarousel 顯示。
+  //
+  // 2026-09 使用者明確要求「應該要跟點選附近景點一樣的流程」「不要再有
+  // 資料庫的回退步驟」——原本這裡兩份清單皆空(或查詢失敗、尚未查完)時
+  // 會靠 PhotoCarousel 的 fallbackUrl 機制退回 attraction.landmarkPhotoUrl
+  // (資料庫既有欄位)當墊底圖,現在拿掉這個 fallback(見下方 PhotoCarousel
+  // 呼叫處不再傳 fallbackUrl)——查詢中或查詢失敗一律顯示 placeholder,
+  // 不用資料庫舊圖墊底,理由是資料庫這份圖是建檔當下(甚至可能是
+  // Pexels 關鍵字比對的示意圖,見 CLI attraction-add 的完整說明)寫入的
+  // 快照,不保證跟即時查詢結果一致,兩者混用會讓使用者分不清楚看到的是
+  // 「即時查到的照片」還是「建檔時期的舊資料」。
   //
   // 用 placeId 而非整個 attraction 物件當 effect 依賴——nearby 清單點擊
   // 切換到另一個 attraction 時(見呼叫端 onSelectNearby 的說明)placeId
@@ -128,12 +135,12 @@ export function AttractionInfoPanel({
         if (!cancelled) setPlaceDetails(details)
       })
       .catch(() => {
-        // 查詢失敗不視為錯誤,維持 null——PhotoCarousel 的 fallbackUrl
-        // 會退回 landmarkPhotoUrl,理由同上方 effect 說明的整體策略。
-        // 公開展示頁若查到不在後端白名單內的 placeId(理論上不會發生,
-        // 因為展示頁固定資料本身就是白名單的來源,見
-        // fetchPublicGeoPlaceDetails 的完整說明)也會落到這裡,同樣靜默
-        // 退回單張 landmarkPhotoUrl,不特別區分錯誤原因。
+        // 查詢失敗不視為錯誤,維持 null——PhotoCarousel 沒有 fallbackUrl
+        // 可退,查詢失敗就是顯示 placeholder(見上方說明,使用者明確要求
+        // 不再用資料庫舊圖墊底)。公開展示頁若查到不在後端白名單內的
+        // placeId(理論上不會發生,因為展示頁固定資料本身就是白名單的
+        // 來源,見 fetchPublicGeoPlaceDetails 的完整說明)也會落到這裡,
+        // 同樣靜默顯示 placeholder,不特別區分錯誤原因。
       })
     return () => {
       cancelled = true

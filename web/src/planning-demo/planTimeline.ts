@@ -23,14 +23,68 @@
 // PlanNodeType — 對齊 AIPlanTimelinePage.tsx 既有的 PlanStepType,
 // 這裡不 import 那邊的型別(避免循環依賴,理由同 attractionTools.ts
 // 對 PlanStepLike 的說明),改宣告一個結構相容的版本。
-export type PlanNodeType = 'section' | 'stop' | 'transit' | 'note'
+//
+// 2026-09 重構:'note' 不再是獨立節點型別——比照 TransitInfo 併入
+// stop 節點(見該介面的完整說明)的同一個理由,備註改成掛在它所屬的
+// 節點自己身上的 note 欄位(見 NoteInfo 的完整說明),不再是鏈結串列裡
+// 跟 stop 平等的獨立節點。
+export type PlanNodeType = 'section' | 'stop'
+
+// TransitInfo — 掛在 stop 節點自己身上的「這一站跟前一站之間的交通
+// 資訊」,取代原本獨立的 'transit' 節點型別。
+//
+// 2026-09 重構動機:原本 transit 是鏈結串列裡跟 stop 平等的獨立節點,
+// 靠「鏈結位置上緊接在某個 stop 前面」這個隱含關係表達「這張交通卡屬於
+// 哪兩站」。使用者實際操作(移除中間站)會暴露這個設計的缺陷:removeNode
+// 只做「前後節點互相銜接」的純鏈結摘除,完全不知道「transit 節點」這種
+// 語意,移除 站A→交通卡AB→站B→交通卡BC→站C 中的站B後,會變成
+// 站A→交通卡AB→交通卡BC→站C——兩張交通卡黏在一起,且都是基於已經
+// 不存在的站B算出來的舊資料,沒有一張代表「站A→站C」。
+//
+// 改成資料直接掛在「到達站」(即後面那個 stop)身上後:
+//   - 移除一個 stop 節點時,交通資料跟著它一起消失,不會有「兩張交通卡
+//     黏在一起」這種不合法狀態——removeNode 完全不需要知道交通卡的存在。
+//   - 「這張交通卡屬於哪兩站」變成顯式的:就是這個 stop 節點與它目前的
+//     prevId 那一站,不再需要靠鏈結位置猜測、也不會有第三種節點類型
+//     混在 stop 之間打亂鏈結的單純性。
+//   - 任何造成「這個 stop 的前一站」改變的操作(插入新站、移除站、前一站
+//     座標更新)都對應到明確的「這個 stop 的 transitFromPrev 需要重新
+//     計算」時機,見 AIPlanTimelinePage.tsx 的 refreshTransitForStop。
+export interface TransitInfo {
+  loading?: boolean
+  icon?: string
+  mode?: string
+  minutes?: number
+  distance?: string
+}
+
+// NoteInfo — 掛在某個節點(目前只有 stop 會用到)自己身上的一則備註,
+// 說明「為什麼這樣安排」這類考量或建議。
+//
+// 2026-09 重構動機:原本 note 是鏈結串列裡跟 stop 平等的獨立節點,靠
+// 「鏈結位置緊接在某個 stop 旁邊」這個隱含關係表達「這則備註是在講
+// 哪一站」——但這個關係從未被顯式驗證或維護過,使用者明確要求「備註寫
+// 在景點的節點上」,改成資料直接掛在該景點節點身上後:
+//   - 備註跟它所描述的景點是同一筆資料的一部分,不會有「這則備註原本
+//     在講哪一站」需要靠鏈結位置猜測的問題(對稱 TransitInfo 從獨立
+//     'transit' 節點併入 stop.transitFromPrev 的同一個理由,見該介面的
+//     完整說明)。
+//   - 移除一個 stop 節點時,它的備註跟著一起消失,不會有「備註留在鏈結
+//     裡但已經沒有對應的景點卡片」這種孤兒資料——removeNode 完全不需要
+//     知道備註的存在,理由同 TransitInfo 的完整說明。
+//   - 一個節點目前只掛一則備註(不是陣列)——使用者明確要求單則,若同一
+//     景點需要不同時間點各自留一句話,那是之後才需要考慮的情境,目前
+//     不先做那層彈性。
+export interface NoteInfo {
+  text: string
+  category?: string
+}
 
 // PlanNodeData — 節點除了鏈結指標(prevId/nextId)以外的實際內容,涵蓋
 // AIPlanTimelinePage.tsx 原本 PlanStep 的全部展示欄位(含 loading/
 // removing/photoUrl 這類只在 stop 節點上有意義的 UI 呈現/非同步查詢
-// 狀態欄位)——這些欄位跟 icon/mode 只在 transit 節點上有意義是同一種
-// 性質(不同節點型別各自只用到欄位的子集),不需要為了「純資料 vs UI
-// 狀態」這條界線另外拆一層泛型,那樣只會讓 insertAfter/updateNode/
+// 狀態欄位)——不同節點型別各自只用到欄位的子集,不需要為了「純資料 vs
+// UI 狀態」這條界線另外拆一層泛型,那樣只會讓 insertAfter/updateNode/
 // toRenderList 都要重新宣告泛型參數,徒增複雜度卻沒有實質收益。
 export interface PlanNodeData {
   type: PlanNodeType
@@ -45,18 +99,23 @@ export interface PlanNodeData {
   thumbBg?: string
   thumbIcon?: string
   tags?: string[]
-  // placeId:Google Place ID,只有查詢/新增流程知道真實地點時才會有值
-  // (search_attraction/add_attraction 這條路徑,見 attractionTools.ts
-  // 的完整說明)——用來在插入節點之後,背景觸發
-  // fetchPublicGeoPlaceDetailsAny 補上完整資料(見
-  // AIPlanTimelinePage.tsx insertAttractionAfter 的完整說明)。模擬 WS
-  // 腳本路徑(planActionToInsert)也有一份同樣用途的 placeId 概念,見該處
-  // 的完整說明。
+  // placeId:Google Place ID——search_attraction/add_attraction 這條路徑
+  // (見 attractionTools.ts 檔頭「第四/五/六次重構」的完整說明)只知道
+  // 這個 id 時會有值,用來在插入節點之後背景觸發
+  // fetchPublicGeoPlaceDetailsAny 單段查詢真實地點資料(name/summary/
+  // photoUrl/lat/lng),見 AIPlanTimelinePage.tsx resolveAttractionForStep
+  // 的完整說明。該端點內部會優先查一次資料庫 attraction(查得到就優先
+  // 用資料庫資料,查不到才 fallback 查 Google),故不需要這個檔案自己
+  // 判斷「資料庫 vs Google」兩種來源、也不需要為 Google 補的候選另外
+  // 發明一種臨時 id 機制——不論候選來自資料庫還是 Google,一律用同一個
+  // placeId 當識別碼。模擬 WS 腳本路徑(planActionToInsert)也用同一個
+  // 欄位承接後端 plan_sim_ws.go 送出的 placeId,兩條路徑共用同一套
+  // 查詢邏輯。
   placeId?: string
-  // stop 的即時查詢狀態——loading 表示這筆帶了 placeId、正在查詢真實
-  // 地點資料中(縮圖/敘事文字先用假資料佔位);查完後 photoUrl/desc 會
-  // 被真實資料覆蓋,loading 轉 false。沒有 placeId 的 stop 這個欄位固定
-  // 是 false,直接顯示假資料。
+  // loading:表示這個 stop 帶了 placeId、正在查詢真實地點資料中(縮圖/
+  // 敘事文字先用假資料佔位);查完後 photoUrl/desc 會被真實資料覆蓋,
+  // loading 轉 false。沒有 placeId 的 stop 這個欄位固定是 false,直接
+  // 顯示假資料。
   loading?: boolean
   photoUrl?: string
   // removing:這一筆已收到移除指示,正在播放淡出動畫、還沒真的從鏈結
@@ -67,15 +126,14 @@ export interface PlanNodeData {
   // lat/lng:右上角固定小地圖用——點擊這張卡片時 panTo 到這個座標。
   lat?: number
   lng?: number
-  // transit
-  icon?: string
-  mode?: string
-  minutes?: number
-  distance?: string
-  // note
-  color?: string
-  noteIcon?: string
-  text?: string
+  // transitFromPrev:這個 stop 跟它目前的 prevId 那一站之間的交通資訊
+  // (見 TransitInfo 的完整說明)——只有 stop 節點會用到,沒有前一站
+  // (時間軸第一站)或前一站不是帶座標的 stop 時維持 undefined,不渲染
+  // 任何交通卡。
+  transitFromPrev?: TransitInfo
+  // note:這個節點自己的備註(見 NoteInfo 的完整說明)——undefined 代表
+  // 沒有備註,不是空字串這種「有欄位但沒內容」的表達方式。
+  note?: NoteInfo
 }
 
 export interface PlanNode extends PlanNodeData {
@@ -150,9 +208,8 @@ export type InsertAfterResult =
 
 // nearestStopTime — 從某個節點開始,沿著指定方向(prevId 或 nextId)
 // 走訪,找到第一個有 time 值的 stop 節點。跳過沒有時間概念的
-// section/transit/note——這些節點沒有 time 欄位,不能拿來當時間範圍
-// 比對的邊界,必須繼續往下一個找,直到遇到有時間的 stop 或鏈結到底
-// 為止。回傳完整節點(而非只回傳分鐘數)——使用者明確要求「有錯誤的
+// section——這種節點沒有 time 欄位,不能拿來當時間範圍比對的邊界,
+// 必須繼續往下一個找,直到遇到有時間的 stop 或鏈結到底為止。回傳完整節點(而非只回傳分鐘數)——使用者明確要求「有錯誤的
 // 時候要給明確的指引跟必要資訊,不能晚於/早於都要給予目前的值」,
 // 呼叫端(insertAfter 的錯誤訊息)需要節點的 id/name/time 才能組出
 // 「請用 XX(id)當錨點,它的時間是 YY」這種可操作的具體指引,只有分鐘數
@@ -222,12 +279,45 @@ function buildOutOfRangeMessage(
   return parts.join('')
 }
 
+// buildAnchorNotFoundMessage — anchor_not_found 錯誤的訊息組裝,供
+// insertAfter 使用。2026-09 真實踩坑記錄:LLM 呼叫 add_attraction 時,
+// 曾經連續把 attractionId(search_attraction 查到的景點候選 id,例如
+// "lmk_c78a4800ebd2")誤當成 anchorId(必須是時間軸上既有節點的 id,
+// 由先前呼叫 add_attraction 成功後回傳)傳入,重試時又換了另一個
+// attractionId 再犯同樣的錯——因為原本「找不到 id 為 "..." 的節點」
+// 這句訊息沒有指出「你傳的可能根本是另一種 id」這個真正的問題所在,
+// LLM 只會覺得「這個 id 打錯了」,而不是「這個欄位不該填 attraction
+// id」。這裡明確列出時間軸上目前實際存在、可以當 anchorId 的節點 id
+// 清單(含名稱方便對照),讓 LLM 能一眼比對出自己傳的值格式對不上任何
+// 一個(例如清單裡全是 "agent-..." 開頭,傳的卻是 "lmk_..."),進而
+// 意識到自己搞混了兩種 id 的用途,而不是繼續在同一種錯誤模式裡重試。
+function buildAnchorNotFoundMessage(timeline: PlanTimeline, anchorId: string): string {
+  const parts: string[] = [`找不到 id 為 "${anchorId}" 的節點,無法插入在它後面。`]
+
+  const rendered = toRenderList(timeline)
+  if (rendered.length === 0) {
+    parts.push('目前行程時間軸是空的,還沒有任何節點可以當 anchorId——若這是第一站,請省略 anchorId 或傳 null。')
+  } else {
+    const list = rendered
+      .filter((node) => node.type === 'stop')
+      .map((node) => `"${node.id}"(${node.name ?? '未命名'}）`)
+      .join('、')
+    parts.push(
+      `目前時間軸上可以當 anchorId 的節點 id 有:${list || '(無 stop 節點)'}。` +
+        ' anchorId 必須是這個清單裡的其中一個 id(某次 add_attraction 呼叫成功後回傳的 id),' +
+        ' 不是 search_attraction 回傳的 attractionId(attraction 候選 id),兩者是不同種類的 id,不能互相替代。',
+    )
+  }
+
+  return parts.join('')
+}
+
 // insertAfter — 在 anchorId 指定的節點後面插入一個新節點,anchorId 為
 // null 時插在整條時間軸最前面(成為新的 head)。
 //
-// 時間驗證(只在新節點是 stop 且帶了 time 時才驗證——section/transit/note
-// 沒有時間先後的概念,stop 沒填 time 則代表「還沒決定幾點」,同樣不驗證,
-// 對齊 attractionTools.ts 原本 time 為選填欄位的既有設計):新節點的
+// 時間驗證(只在新節點是 stop 且帶了 time 時才驗證——section 沒有時間
+// 先後的概念,stop 沒填 time 則代表「還沒決定幾點」,同樣不驗證,對齊
+// attractionTools.ts 原本 time 為選填欄位的既有設計):新節點的
 // time 必須落在「錨點往前找到的最近一個 stop 時間」與「錨點往後找到
 // 的最近一個 stop 時間」之間(含錨點自己,若錨點本身就是帶時間的
 // stop),超出這個範圍視為使用者/LLM 指定了一個跟目前行程順序矛盾的
@@ -241,7 +331,7 @@ export function insertAfter(
   newId: string,
 ): InsertAfterResult {
   if (anchorId !== null && !timeline.nodes.has(anchorId)) {
-    return { ok: false, error: { code: 'anchor_not_found', message: `找不到 id 為 "${anchorId}" 的節點,無法插入在它後面。` } }
+    return { ok: false, error: { code: 'anchor_not_found', message: buildAnchorNotFoundMessage(timeline, anchorId) } }
   }
 
   if (data.type === 'stop' && data.time) {
@@ -287,7 +377,14 @@ export function insertAfter(
   }
   if (nextId !== null) {
     const nextNode = nodes.get(nextId)
-    if (nextNode) nodes.set(nextId, { ...nextNode, prevId: newId })
+    if (nextNode) {
+      // nextNode 原本的 transitFromPrev(若有)是跟「插入前的 prevId」
+      // 之間的交通資訊——插入這個新節點後它的前一站變成 newNode,舊資料
+      // 不再對應正確的兩站,理由同 removeNode 對同一情境的處理(見該函式
+      // 的完整說明),這裡同樣只清空、不觸發查詢。
+      const clearedTransit = nextNode.type === 'stop' && newNode.type === 'stop' ? { transitFromPrev: undefined } : {}
+      nodes.set(nextId, { ...nextNode, prevId: newId, ...clearedTransit })
+    }
   }
 
   const headId = prevId === null ? newId : timeline.headId
@@ -298,6 +395,16 @@ export function insertAfter(
 // removeNode — 把某個節點從鏈結中摘除,前後節點直接互相銜接。找不到
 // 對應 id 時原樣返回(理由同既有 pruneRemoved/updateStepById 的一貫
 // 處理方式,呼叫端已經在別處判斷過節點是否存在,這裡不重複拋錯)。
+//
+// 若被移除的節點是 stop,且它的 nextId 也是 stop,那個 nextId 節點的
+// transitFromPrev(見 TransitInfo 的完整說明)這裡會被同步清空——它原本
+// 記錄的是「跟被移除的這一站」之間的交通資訊,移除後前一站已經變了
+// (變成被移除節點的 prevId,或沒有前一站),舊資料不再有效,不能留著
+// 顯示錯誤的距離/時間。這裡只負責清空(同步、純資料操作,不涉及任何
+// 網路查詢),要不要背景重新查一次新的交通資訊是呼叫端的職責(見
+// AIPlanTimelinePage.tsx refreshTransitForStop 的完整說明)——這裡刻意
+// 不觸發查詢,理由同 insertAfter 本身也不觸發交通查詢,鏈結資料層只管
+// 資料結構正確,不碰網路 I/O。
 export function removeNode(timeline: PlanTimeline, id: string): PlanTimeline {
   const node = timeline.nodes.get(id)
   if (!node) return timeline
@@ -311,7 +418,10 @@ export function removeNode(timeline: PlanTimeline, id: string): PlanTimeline {
   }
   if (node.nextId !== null) {
     const nextNode = nodes.get(node.nextId)
-    if (nextNode) nodes.set(node.nextId, { ...nextNode, prevId: node.prevId })
+    if (nextNode) {
+      const clearedTransit = nextNode.type === 'stop' && node.type === 'stop' ? { transitFromPrev: undefined } : {}
+      nodes.set(node.nextId, { ...nextNode, prevId: node.prevId, ...clearedTransit })
+    }
   }
 
   const headId = timeline.headId === id ? node.nextId : timeline.headId

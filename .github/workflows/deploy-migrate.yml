@@ -6,16 +6,22 @@ name: Build and Run Migrate Job
 # gcloud run jobs(執行完就結束、不留常駐 instance,見 Dockerfile.migrate
 # 的說明)。
 #
+# 2026-09:Dockerfile.migrate 已改指向 cmd/migrate-photo-assets(見該
+# 檔案的完整說明),不再是 cmd/cli——下方 cli_args 這個輸入欄位名稱是
+# 歷史命名,目前實際傳遞的是 cmd/migrate-photo-assets 的子命令與旗標
+# (例如 "migrate -dry-run" 或 "delete -place-id ChIJ..."),不是
+# cmd/cli 的參數。保留欄位名稱不改是為了不打斷既有的 workflow_dispatch
+# 呼叫慣例,實際語意以這裡的說明與 description 文字為準。
+#
 # 不設 push 觸發:這是一次性維運工具,不該每次 push 到 main 就重跑一次
-# 資料庫維運操作(即使 drop-legacy-columns 本身是冪等的,其他未來可能加
-# 進來的維運操作不一定冪等)。只能手動觸發(workflow_dispatch),且需要
-# 明確指定要執行的子命令與參數,避免誤觸發。
+# 資料庫/儲存維運操作。只能手動觸發(workflow_dispatch),且需要明確
+# 指定要執行的子命令與參數,避免誤觸發。
 
 on:
   workflow_dispatch:
     inputs:
       cli_args:
-        description: '要傳給 cmd/cli 的完整參數(例如: -db drop-legacy-columns)。留空則只執行備份、不建置/部署/執行 migrate job(搭配 backup_first 單獨測試或單獨備份用)'
+        description: '要傳給 cmd/migrate-photo-assets 的完整參數(例如: migrate -dry-run、delete -place-id ChIJ...)。留空則只執行備份、不建置/部署/執行 migrate job(搭配 backup_first 單獨測試或單獨備份用)'
         type: string
         required: false
       run_now:

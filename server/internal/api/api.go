@@ -124,6 +124,16 @@ type Server struct {
 	// IP,這支端點沒有任何身份驗證可以用來細分),key 固定用一個字串,
 	// 視窗長度/次數在 New() 裡設定(見該處說明)。
 	publicPlaceSearchLimiter *apigateway.RateLimiter
+
+	// nearbyAttractionSearchLimiter 保護 GET /public/geo/attraction-search
+	// (見 handlePublicGeoAttractionSearch 的完整說明)——理由與獨立性
+	// 考量跟 publicPlaceSearchLimiter 完全對稱(這支端點同樣不掛
+	// internalAuth、同樣可能觸發計費的 Google API 呼叫——這裡是 Nearby
+	// Search),故獨立成自己的 RateLimiter 實例,不與 publicPlaceSearchLimiter
+	// 共用同一個 key/視窗——兩支端點各自的呼叫頻率特性不同(一個是查
+	// 座標的文字搜尋,一個是補鄰近候選,合理呼叫節奏不必然相同),使用者
+	// 明確要求「這個端點加入獨立的請求數量限制」。
+	nearbyAttractionSearchLimiter *apigateway.RateLimiter
 }
 
 func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID string) *Server {
@@ -143,18 +153,25 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 	publicPlaceSearchLimiter := apigateway.NewRateLimiter()
 	publicPlaceSearchLimiter.SetLimitForKey(publicPlaceSearchEndpoint, 10*time.Second, 1)
 
+	// nearbyAttractionSearchLimiter:固定 10 秒視窗內最多 1 次——沿用
+	// publicPlaceSearchLimiter 同一組視窗參數(理由見該常數的完整說明,
+	// 兩支端點的呼叫成本風險量級相近),獨立的 key/實例。
+	nearbyAttractionSearchLimiter := apigateway.NewRateLimiter()
+	nearbyAttractionSearchLimiter.SetLimitForKey(nearbyAttractionSearchEndpoint, 10*time.Second, 1)
+
 	return &Server{
-		store:                    st,
-		signer:                   signer,
-		hub:                      newHub(),
-		devMode:                  devMode,
-		googleClientID:           googleClientID,
-		guestUser:                model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
-		photoCache:               storePhotoCache{store: st},
-		photoUploader:            uploader,
-		newGeoGeocodeClient:      geo.New,
-		newPlaceDetailsClient:    geo.New,
-		publicPlaceSearchLimiter: publicPlaceSearchLimiter,
+		store:                         st,
+		signer:                        signer,
+		hub:                           newHub(),
+		devMode:                       devMode,
+		googleClientID:                googleClientID,
+		guestUser:                     model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
+		photoCache:                    storePhotoCache{store: st},
+		photoUploader:                 uploader,
+		newGeoGeocodeClient:           geo.New,
+		newPlaceDetailsClient:         geo.New,
+		publicPlaceSearchLimiter:      publicPlaceSearchLimiter,
+		nearbyAttractionSearchLimiter: nearbyAttractionSearchLimiter,
 	}
 }
 
@@ -329,6 +346,12 @@ func (s *Server) Routes() http.Handler {
 	// 全域拒絕型限流把關,因為這支端點可以查任意地名、沒有固定候選集合
 	// 可以列成白名單。
 	mux.HandleFunc("GET /public/geo/place-search", s.handlePublicGeoPlaceSearch)
+	// GET /public/geo/attraction-search:免登入版的鄰近景點候選查詢(見
+	// handlePublicGeoAttractionSearch 的完整說明)——資料庫候選少於 10 筆
+	// 時額外用 Google Nearby Search 補上不重複的點,統一以 placeId 當
+	// 識別碼回傳,不論來源。靠 Server.nearbyAttractionSearchLimiter 做
+	// 獨立的全域拒絕型限流把關,理由同 publicPlaceSearchLimiter。
+	mux.HandleFunc("GET /public/geo/attraction-search", s.handlePublicGeoAttractionSearch)
 	// GET /public/geo/place-details-any:免登入版、不受白名單限制的地點
 	// 詳情查詢(見 handlePublicGeoPlaceDetailsAny 的完整說明)——跟上面
 	// /public/geo/place-details 的差異只在後者受 publicPlaceDetailsAllowlist
@@ -341,6 +364,14 @@ func (s *Server) Routes() http.Handler {
 	// 「點選附近景點」(fetchPoiContent)先用 attraction 本身資料當底的
 	// 兩段式查詢邏輯,不需要每次都重新查詢 Google Place Details。
 	mux.HandleFunc("GET /public/geo/attraction/{id}", s.handlePublicGeoAttractionByID)
+	// GET /public/geo/transit-estimate:兩點間交通方式/時間/距離的模擬
+	// 預估(見 handlePublicGeoTransitEstimate 的完整說明)——使用者明確
+	// 要求「交通預估時間不要讓 AI 推論產生,而是建立兩個點時,前端自己
+	// 將兩點送到後端,由後端預估時間」,這支端點是那個「後端預估」的
+	// 落地,目前用假邏輯(直線距離換算),之後要接真實路網 API 時只需要
+	// 替換這支端點內部的實作,不影響呼叫端(前端)的介面形狀。純本地
+	// 計算,不含任何外部 API 呼叫,不需要限流保護。
+	mux.HandleFunc("GET /public/geo/transit-estimate", s.handlePublicGeoTransitEstimate)
 	// GET /public/plan-sim/ws:模擬「AI 安排行程」推論輸出的 WebSocket
 	// 服務(見 plan_sim_ws.go 開頭的完整說明),供 AIPlanTimelinePage.tsx
 	// 展示原型使用,免登入、不含真實使用者資料。

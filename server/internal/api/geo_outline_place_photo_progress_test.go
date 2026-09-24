@@ -239,9 +239,58 @@ func TestHandleGeoPlaceDetails_CacheHit_NoTrigger_SkipsGoogleCall(t *testing.T) 
 	}
 }
 
+// placeDetailsProgressSnapshot 是 waitForGoogleTarget 回傳的最小快照——
+// store.placeDetailsCacheRow 是 store 套件內未匯出型別,這個測試檔案
+// (api 套件)無法命名它當函式回傳型別,故只取呼叫端實際關心的兩個欄位
+// 另外包一個本地 struct。
+type placeDetailsProgressSnapshot struct {
+	FetchedAt              time.Time
+	NewPhotoCount          int
+	GooglePhotoTargetCount int
+}
+
+// waitForGoogleTarget 輪詢 GetCachedPlaceDetails,直到
+// refreshGooglePlacePhotoInBackground(見該函式的完整說明,2026-09 起
+// 點擊節奏/時間觸發後的實際查詢改成背景 goroutine 執行,不再阻塞
+// handleGeoPlaceDetails 的回應)完成寫回,或逾時——這支 handler 拿到
+// HTTP 回應時不保證背景查詢已經完成,測試需要主動等待,不能假設請求一
+// 結束資料庫就已經是最終狀態。
+//
+// 用 fetched_at 是否晚於呼叫端傳入的 before(呼叫 f.get 之前的時間點)
+// 判斷背景查詢是否已完成,而非比對 google_photo_target_count 是否等於
+// 某個期待值——UpdatePlacePhotoProgress 每次背景查詢完成都會把
+// fetched_at 重置成現在(見該函式 touchFetchedAt 參數的說明),不論
+// target 這次有沒有變化都一定會更新,是唯一在所有測試情境(target 有變/
+// 沒變)下都能正確反映「這次背景查詢真的跑完了」的訊號;若改用
+// target 值本身當判斷依據,遇到「target 沒有變化」的情境(例如點擊節奏
+// 觸發但 Google 端照片數量沒變)會在背景查詢真正完成前就提早符合條件、
+// 誤判成已完成(這是實測踩到的真實 bug,故改用這個判斷方式)。
+func waitForGoogleTarget(t *testing.T, s *Server, placeID string, before time.Time) placeDetailsProgressSnapshot {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		row, ok, err := s.store.GetCachedPlaceDetails(placeID, 999999*time.Hour)
+		if err != nil {
+			t.Fatalf("GetCachedPlaceDetails failed: %v", err)
+		}
+		if ok && row.FetchedAt.After(before) {
+			return placeDetailsProgressSnapshot{FetchedAt: row.FetchedAt, NewPhotoCount: row.NewPhotoCount, GooglePhotoTargetCount: row.GooglePhotoTargetCount}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("等待背景查詢完成(fetched_at 更新)逾時: placeID=%s", placeID)
+	return placeDetailsProgressSnapshot{}
+}
+
 // TestHandleGeoPlaceDetails_CacheHit_ClickRhythmTriggers 對應快取命中、
 // 點擊節奏觸發的情境——驗證有呼叫 ListPlacePhotoRefs("places.get" +
 // field mask 只有 "photos"),且 fetched_at 有被更新成現在。
+//
+// 2026-09:點擊節奏觸發後的實際查詢改成背景執行(見
+// refreshGooglePlacePhotoInBackground 的完整說明),f.get 拿到的回應
+// body 這次不會帶新照片(仍是觸發前的舊快取內容)——這是刻意的行為
+// 改變,不是這個測試該驗證錯的地方。改成用 waitForGoogleTarget 輪詢
+// 資料庫最終狀態,驗證背景查詢確實有發生、確實有把結果寫回。
 func TestHandleGeoPlaceDetails_CacheHit_ClickRhythmTriggers(t *testing.T) {
 	const placeID = "place_cache_hit_click_triggers"
 	// Google 目前實際仍是 5 張(跟上次記錄的 target 相同,不因為 target
@@ -275,6 +324,16 @@ func TestHandleGeoPlaceDetails_CacheHit_ClickRhythmTriggers(t *testing.T) {
 		t.Fatalf("狀態碼 = %d,期待 200;body=%v", resp.StatusCode, body)
 	}
 
+	// google_photo_target_count 應該維持 5(target 沒變),new_photo_count
+	// 應該從 1 補到 2。
+	after := waitForGoogleTarget(t, f.server, placeID, before.FetchedAt)
+	if after.GooglePhotoTargetCount != 5 {
+		t.Errorf("google_photo_target_count 應該維持 5,實際 = %d", after.GooglePhotoTargetCount)
+	}
+	if after.NewPhotoCount != 2 {
+		t.Errorf("這次觸發應該補到第 2 張,new_photo_count 實際 = %d", after.NewPhotoCount)
+	}
+
 	foundPhotoRefsCall := false
 	for _, c := range gw.calls {
 		if c.endpoint == "places.get" && c.fieldMask == "photos" {
@@ -285,17 +344,9 @@ func TestHandleGeoPlaceDetails_CacheHit_ClickRhythmTriggers(t *testing.T) {
 		t.Fatalf("點擊節奏觸發時應該呼叫 ListPlacePhotoRefs,實際呼叫紀錄 = %v", gw.calls)
 	}
 
-	after, ok, err := f.server.store.GetCachedPlaceDetails(placeID, 24*time.Hour)
-	if err != nil || !ok {
-		t.Fatalf("GetCachedPlaceDetails (after) failed: ok=%v err=%v", ok, err)
-	}
-	if !after.FetchedAt.After(before.FetchedAt) {
-		t.Errorf("點擊節奏觸發後 fetched_at 應該被更新成現在,before=%v after=%v", before.FetchedAt, after.FetchedAt)
-	}
-
-	googlePhotos, _ := body["googlePhotoUrls"].([]any)
-	if len(googlePhotos) != 1 {
-		t.Errorf("這次觸發應該補到 1 張新照片,實際 googlePhotoUrls = %v", googlePhotos)
+	googlePhotoRows, _ := f.server.store.ListGooglePlacePhotos(placeID)
+	if len(googlePhotoRows) != 1 {
+		t.Errorf("這次觸發應該補到 1 張新照片,google_place_photos 實際 = %d 筆", len(googlePhotoRows))
 	}
 }
 
@@ -323,11 +374,27 @@ func TestHandleGeoPlaceDetails_CacheHit_TimeElapsedTriggers(t *testing.T) {
 		t.Fatalf("UpdatePlacePhotoProgress failed: %v", err)
 	}
 	// 把 fetched_at 改成 8 天前,超過 7 天的門檻。
-	f.server.store.SetPlaceDetailsFetchedAtForTest(t, placeID, time.Now().UTC().Add(-8*24*time.Hour))
+	staleFetchedAt := time.Now().UTC().Add(-8 * 24 * time.Hour)
+	f.server.store.SetPlaceDetailsFetchedAtForTest(t, placeID, staleFetchedAt)
 
 	resp, body := f.get(t, placeID)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("狀態碼 = %d,期待 200;body=%v", resp.StatusCode, body)
+	}
+
+	// target 沒有變動(還是 2 張),輪詢等待背景查詢完成(見
+	// waitForGoogleTarget 的完整說明,2026-09 起這段改成背景執行)。
+	after := waitForGoogleTarget(t, f.server, placeID, staleFetchedAt)
+	if time.Since(after.FetchedAt) > time.Hour {
+		t.Errorf("時間觸發後 fetched_at 應該被重置成現在,實際距今 = %v", time.Since(after.FetchedAt))
+	}
+	if after.GooglePhotoTargetCount != 2 {
+		t.Errorf("google_photo_target_count 應該維持 2,實際 = %d", after.GooglePhotoTargetCount)
+	}
+	// newPhotoCount 已追上 target,這次不該觸發實際下載——驗證 handler
+	// 有把「查過但沒有補圖」的結果正確寫回,不是誤判成有補圖。
+	if after.NewPhotoCount != 2 {
+		t.Errorf("target 未變動且已追上進度時不該補新照片,new_photo_count 實際 = %d", after.NewPhotoCount)
 	}
 
 	foundPhotoRefsCall := false
@@ -340,20 +407,9 @@ func TestHandleGeoPlaceDetails_CacheHit_TimeElapsedTriggers(t *testing.T) {
 		t.Fatalf("距離上次查詢已超過 7 天時應該觸發重新查詢 ListPlacePhotoRefs,實際呼叫紀錄 = %v", gw.calls)
 	}
 
-	after, ok, err := f.server.store.GetCachedPlaceDetails(placeID, 999999*time.Hour)
-	if err != nil || !ok {
-		t.Fatalf("GetCachedPlaceDetails (after) failed: ok=%v err=%v", ok, err)
-	}
-	if time.Since(after.FetchedAt) > time.Hour {
-		t.Errorf("時間觸發後 fetched_at 應該被重置成現在,實際距今 = %v", time.Since(after.FetchedAt))
-	}
-
-	// target 沒有變動(還是 2 張),newPhotoCount 已追上 target,這次不該
-	// 觸發實際下載——驗證 handler 有把「查過但沒有補圖」的結果正確寫回,
-	// 不是誤判成有補圖。
-	googlePhotos, _ := body["googlePhotoUrls"].([]any)
-	if len(googlePhotos) != 0 {
-		t.Errorf("target 未變動且已追上進度時不該補新照片,實際 googlePhotoUrls = %v", googlePhotos)
+	googlePhotoRows, _ := f.server.store.ListGooglePlacePhotos(placeID)
+	if len(googlePhotoRows) != 0 {
+		t.Errorf("target 未變動且已追上進度時不該補新照片,google_place_photos 實際 = %d 筆", len(googlePhotoRows))
 	}
 }
 
@@ -376,29 +432,29 @@ func TestHandleGeoPlaceDetails_CacheHit_TargetChanged_ResetsProgress(t *testing.
 	}
 	// 用時間觸發條件確保這次點擊一定會重新查詢(不依賴點擊節奏是否剛好
 	// 觸發,讓這個測試案例只專注在驗證 target 變動後的歸零行為)。
-	f.server.store.SetPlaceDetailsFetchedAtForTest(t, placeID, time.Now().UTC().Add(-8*24*time.Hour))
+	staleFetchedAt := time.Now().UTC().Add(-8 * 24 * time.Hour)
+	f.server.store.SetPlaceDetailsFetchedAtForTest(t, placeID, staleFetchedAt)
 
 	resp, body := f.get(t, placeID)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("狀態碼 = %d,期待 200;body=%v", resp.StatusCode, body)
 	}
 
-	row, ok, err := f.server.store.GetCachedPlaceDetails(placeID, 24*time.Hour)
-	if err != nil || !ok {
-		t.Fatalf("GetCachedPlaceDetails failed: ok=%v err=%v", ok, err)
-	}
-	if row.GooglePhotoTargetCount != 2 {
-		t.Errorf("google_photo_target_count 應該更新成這次查到的 2,實際 = %d", row.GooglePhotoTargetCount)
+	// 輪詢等待背景查詢完成(見 waitForGoogleTarget 的完整說明,2026-09
+	// 起這段改成背景執行)——target 從 5 變成 2。
+	after := waitForGoogleTarget(t, f.server, placeID, staleFetchedAt)
+	if after.GooglePhotoTargetCount != 2 {
+		t.Errorf("google_photo_target_count 應該更新成這次查到的 2,實際 = %d", after.GooglePhotoTargetCount)
 	}
 	// target 從 5 變成 2,resetPhotoProgressOnTargetChange 判斷為
 	// true,newPhotoCount 歸零後重新累積:這次點擊會立刻觸發補 index=0,
 	// 補完後 new_photo_count 應該是 1,不是延續舊的 3、也不是單純的 0。
-	if row.NewPhotoCount != 1 {
-		t.Errorf("new_photo_count 應該歸零後重新補到 1,實際 = %d", row.NewPhotoCount)
+	if after.NewPhotoCount != 1 {
+		t.Errorf("new_photo_count 應該歸零後重新補到 1,實際 = %d", after.NewPhotoCount)
 	}
 
-	googlePhotos, _ := body["googlePhotoUrls"].([]any)
-	if len(googlePhotos) != 1 {
-		t.Errorf("target 變動觸發 reset 後這次點擊應該補到 1 張新照片,實際 googlePhotoUrls = %v", googlePhotos)
+	googlePhotoRows, _ := f.server.store.ListGooglePlacePhotos(placeID)
+	if len(googlePhotoRows) != 1 {
+		t.Errorf("target 變動觸發 reset 後這次點擊應該補到 1 張新照片,google_place_photos 實際 = %d 筆", len(googlePhotoRows))
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/tim72117/tripace/internal/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -337,6 +338,205 @@ func (s *Store) SetPlacePexelsPhotos(placeID string, photoURLs, pageURLs []strin
 		}
 		return tx.Create(&rows).Error
 	})
+}
+
+// ListAllGooglePlacePhotos 回傳 google_place_photos 表目前所有紀錄——
+// 供一次性遷移腳本(cmd/migrate-photo-assets,見該檔案的完整說明)掃描
+// 全部既有的 Google 照片快取,逐筆判斷是否需要落地到 GCS。依
+// place_id/photo_index 排序只是讓輸出/log 順序穩定、方便人工核對進度,
+// 不影響遷移邏輯本身。
+//
+// filterPlaceID 非空時只回傳這一個 place_id 底下的紀錄(供正式環境第
+// 一次執行前先用小範圍驗證,見遷移工具 -place-id 旗標的完整說明);
+// 空字串回傳全部紀錄——回傳型別是這個套件的私有 row struct,呼叫端
+// (cmd/migrate-photo-assets,不同套件)因此無法自行組出額外的
+// WHERE 條件,過濾邏輯必須收在這個方法內部,不能留給呼叫端事後篩選。
+func (s *Store) ListAllGooglePlacePhotos(filterPlaceID string) ([]googlePlacePhotoRow, error) {
+	rows := make([]googlePlacePhotoRow, 0)
+	q := s.db.Order("place_id ASC, photo_index ASC")
+	if filterPlaceID != "" {
+		q = q.Where("place_id = ?", filterPlaceID)
+	}
+	if err := q.Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// ListAllCachedPhotos 回傳 photo_cache 表目前所有紀錄——理由同
+// ListAllGooglePlacePhotos(含 filterPlaceID 參數的完整說明),供同一支
+// 遷移腳本處理「地圖 POI 縮圖快取」這條情境(見 photoCacheRow 的完整
+// 說明,這張表額外多了 max_width_px 這個維度,對應
+// photoAssetRow.Usage 的 "thumb_{maxWidthPx}" 值)。
+func (s *Store) ListAllCachedPhotos(filterPlaceID string) ([]photoCacheRow, error) {
+	rows := make([]photoCacheRow, 0)
+	q := s.db.Order("place_id ASC, photo_index ASC, max_width_px ASC")
+	if filterPlaceID != "" {
+		q = q.Where("place_id = ?", filterPlaceID)
+	}
+	if err := q.Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// UpsertPhotoAsset 寫入或覆寫一筆 photo_assets 紀錄(見 photoAssetRow 的
+// 完整說明)——複合主鍵 (place_id, photo_index, usage) 衝突時整列覆寫
+// (含 fetched_at/expires_at),對齊這張表「重新遷移同一張圖時應該更新
+// 過期時間,不是保留舊值」的語意:每次執行遷移腳本都代表「現在」重新
+// 確認/落地這張圖,理當延續一個新的 7 天有效期,不是沿用上一次執行時
+// 算出的舊時間。呼叫端傳 model.PhotoAsset(對齊 CreateAttraction 等既有
+// 方法以 model 型別當公開介面、內部轉換成私有 row struct 的既有慣例,
+// 見 toAttraction 的完整說明)。
+//
+// FetchedAt/ExpiresAt 寫入前一律轉成 UTC(.UTC())——這是實測踩到的真實
+// bug 修正:SQLite 底層把 time.Time 存成不含時區資訊的 wall-clock 數字,
+// 若呼叫端傳入的是 local time(例如直接呼叫 time.Now(),在 UTC+8 環境
+// 會是 local 的時鐘數字),之後讀出來跟 now()(固定回傳 UTC,見 store.go
+// 的定義)比較時,兩者的「時鐘數字」實際上代表不同的絕對時刻,卻被當成
+// 同一個時區的數字直接比大小——在 UTC+8 環境下,一筆「1 小時前已過期」
+// 的 local time 寫入後,數字上仍然大於 UTC 的 now(),導致
+// ListFreshPhotoAssetURLsForPlace/GetFreshPhotoAssetURL 的
+// `expires_at > now()` 過期判斷失靈,已過期的紀錄仍被當成新鮮的回傳。
+// 統一在寫入前转成 UTC,確保這張表裡所有時間欄位都跟 now() 的假設一致。
+func (s *Store) UpsertPhotoAsset(in model.PhotoAsset) error {
+	row := photoAssetRow{
+		PlaceID:    in.PlaceID,
+		PhotoIndex: in.PhotoIndex,
+		Usage:      in.Usage,
+		Source:     in.Source,
+		GCSURL:     in.GCSURL,
+		FetchedAt:  in.FetchedAt.UTC(),
+	}
+	if in.ExpiresAt != nil {
+		expiresAtUTC := in.ExpiresAt.UTC()
+		row.ExpiresAt = &expiresAtUTC
+	}
+	return s.db.Save(&row).Error
+}
+
+// GetFreshPhotoAssetURL 依 place_id 查一張仍在有效期內(expires_at 為
+// NULL 或晚於現在)的 photo_assets 照片,優先挑 usage="full"、
+// photo_index 最小的那張(對齊既有 google_place_photos 「取第一張」的
+// 既有慣例,見 handlePublicGeoPlaceDetailsAny 的呼叫端說明)。ok 為
+// false 代表查無任何仍有效的紀錄(尚未遷移,或已遷移但全部過期),呼叫
+// 端應該退回其他照片來源,不是錯誤。
+//
+// 這支方法只回傳 GCSURL 這個字串(不像 GetPhotoAsset 回傳完整
+// model.PhotoAsset)——呼叫端(handlePublicGeoPlaceDetailsAny 的優先序
+// 判斷)只需要這一個值,不需要 Source/FetchedAt 等其餘欄位,保持介面
+// 精簡對齊實際使用需求。
+func (s *Store) GetFreshPhotoAssetURL(placeID string) (gcsURL string, ok bool, err error) {
+	var row photoAssetRow
+	err = s.db.
+		Where("place_id = ? AND (expires_at IS NULL OR expires_at > ?)", placeID, now()).
+		Order("CASE WHEN usage = 'full' THEN 0 ELSE 1 END, photo_index ASC").
+		First(&row).Error
+	if err == gorm.ErrRecordNotFound {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return row.GCSURL, true, nil
+}
+
+// ListFreshPhotoAssetURLs 是 GetFreshPhotoAssetURL 的批次版本——供一次
+// 回傳一批景點清單的呼叫端(handleGeoAttractions/listAttractionResponses/
+// handleGeoAttractionsByCity,見這幾個函式的完整說明)使用,避免對清單
+// 裡每一筆各自呼叫一次 GetFreshPhotoAssetURL 造成 N+1 查詢。
+//
+// 回傳 map[place_id]GCSURL,只包含查得到仍在有效期內紀錄的 place_id
+// (查無或已過期的 place_id 不會出現在這個 map 裡,呼叫端用
+// `url, ok := m[placeID]` 判斷)。同一個 place_id 若有多筆(不同
+// photo_index/usage),只保留 usage="full"、photo_index 最小的那筆
+// (理由同 GetFreshPhotoAssetURL 的既有排序規則)——用 Go 端迴圈依序
+// 覆寫實現,而不是在 SQL layer 用 DISTINCT ON(避免額外依賴 Postgres
+// 特定語法,這裡資料量對單次請求而言不大,不需要那個優化)。
+func (s *Store) ListFreshPhotoAssetURLs(placeIDs []string) (map[string]string, error) {
+	result := make(map[string]string, len(placeIDs))
+	if len(placeIDs) == 0 {
+		return result, nil
+	}
+	var rows []photoAssetRow
+	err := s.db.
+		Where("place_id IN ? AND (expires_at IS NULL OR expires_at > ?)", placeIDs, now()).
+		Order("place_id ASC, CASE WHEN usage = 'full' THEN 0 ELSE 1 END, photo_index ASC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if _, exists := result[row.PlaceID]; !exists {
+			result[row.PlaceID] = row.GCSURL
+		}
+	}
+	return result, nil
+}
+
+// ListFreshPhotoAssetURLsForPlace 回傳單一 place_id 底下、usage="full"
+// (原始尺寸,見 photoAssetRow.Usage 的完整說明,不含縮圖規格)、仍在
+// 有效期內的全部照片 URL,依 photo_index 由小到大排序——供需要多圖清單
+// 的呼叫端(例如主題介紹頁的地點卡 PhotoCarousel,對齊既有
+// google_place_photos 多圖並列顯示的體驗)使用,跟 GetFreshPhotoAssetURL
+// (只回傳一張)服務不同的顯示情境。
+func (s *Store) ListFreshPhotoAssetURLsForPlace(placeID string) ([]string, error) {
+	var rows []photoAssetRow
+	err := s.db.
+		Where("place_id = ? AND usage = 'full' AND (expires_at IS NULL OR expires_at > ?)", placeID, now()).
+		Order("photo_index ASC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	urls := make([]string, 0, len(rows))
+	for _, row := range rows {
+		urls = append(urls, row.GCSURL)
+	}
+	return urls, nil
+}
+
+// GetPhotoAsset 依 (place_id, photo_index, usage) 查單筆 photo_assets
+// 紀錄——供之後正式切換讀取邏輯改讀這張表時使用(目前尚未有任何呼叫端
+// 接上,見 photoAssetRow 檔頭「先寫好遷移腳本、之後才真的切換讀取路徑」
+// 的完整背景)。ok 為 false 代表查無這筆紀錄(尚未遷移,或原本就沒有這個
+// usage 規格),不是錯誤。
+func (s *Store) GetPhotoAsset(placeID string, photoIndex int, usage string) (asset model.PhotoAsset, ok bool, err error) {
+	var row photoAssetRow
+	err = s.db.Where("place_id = ? AND photo_index = ? AND usage = ?", placeID, photoIndex, usage).First(&row).Error
+	if err == gorm.ErrRecordNotFound {
+		return model.PhotoAsset{}, false, nil
+	}
+	if err != nil {
+		return model.PhotoAsset{}, false, err
+	}
+	return model.PhotoAsset{
+		PlaceID:    row.PlaceID,
+		PhotoIndex: row.PhotoIndex,
+		Usage:      row.Usage,
+		Source:     row.Source,
+		GCSURL:     row.GCSURL,
+		FetchedAt:  row.FetchedAt,
+		ExpiresAt:  row.ExpiresAt,
+	}, true, nil
+}
+
+// DeleteGooglePlacePhoto 刪除 google_place_photos 單一 (place_id,
+// photo_index) 列——供遷移腳本的刪除階段(cmd/migrate-photo-assets 的
+// delete 子命令,見該檔案的完整說明)在確認某一筆已經成功轉存進
+// photo_assets 後,把原表這一列徹底移除。刻意是逐列刪除(而非整個
+// place_id 一次刪光,對比 SetGooglePlacePhotos 的整批覆寫語意)——遷移
+// 腳本是逐筆核對「這筆轉存成功了嗎」才刪,不是「這個地點全部重新來
+// 一次」,兩種操作的顆粒度不同,不應該共用同一個刪除介面。
+func (s *Store) DeleteGooglePlacePhoto(placeID string, photoIndex int) error {
+	return s.db.Where("place_id = ? AND photo_index = ?", placeID, photoIndex).Delete(&googlePlacePhotoRow{}).Error
+}
+
+// DeleteCachedPhoto 刪除 photo_cache 單一 (place_id, photo_index,
+// max_width_px) 列——理由同 DeleteGooglePlacePhoto,供遷移腳本刪除階段
+// 使用。
+func (s *Store) DeleteCachedPhoto(placeID string, photoIndex, maxWidthPx int) error {
+	return s.db.Where("place_id = ? AND photo_index = ? AND max_width_px = ?", placeID, photoIndex, maxWidthPx).Delete(&photoCacheRow{}).Error
 }
 
 // LogAPIRequest 寫入一筆 API 請求記錄(見 apiRequestLogRow 的完整說明,
