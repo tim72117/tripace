@@ -136,13 +136,40 @@ jobs:
       # 只要之前任何一次完整 build+deploy 跑過,:latest 就會是那次的內容)。
       - name: Deploy to Cloud Run
         run: |
+          # 把 --update-env-vars/--update-secrets 各自要帶的清單拆成
+          # shell 變數、一行一項組裝——純粹是可讀性/之後增刪項目時
+          # diff 更乾淨的考量,傳給 gcloud 的實際值跟原本逗號串接寫死
+          # 在同一行完全等價,不影響部署行為本身。
+          ENV_VARS="DEV_MODE=false"
+          ENV_VARS="${ENV_VARS},SEED=false"
+          ENV_VARS="${ENV_VARS},GOOGLE_PLACES_GET_RATE_LIMIT_WINDOW_SEC=10"
+          ENV_VARS="${ENV_VARS},GOOGLE_PLACES_GET_RATE_LIMIT_MAX_CALLS=1"
+          ENV_VARS="${ENV_VARS},GOOGLE_PLACES_PHOTO_MEDIA_RATE_LIMIT_WINDOW_SEC=600"
+          ENV_VARS="${ENV_VARS},GOOGLE_PLACES_PHOTO_MEDIA_RATE_LIMIT_MAX_CALLS=1"
+
+          SECRETS="DATABASE_URL=DATABASE_URL:latest"
+          SECRETS="${SECRETS},JWT_SECRET=JWT_SECRET:latest"
+          SECRETS="${SECRETS},GOOGLE_PLACES_API_KEY=GOOGLE_PLACES_API_KEY:latest"
+          SECRETS="${SECRETS},PEXELS_API_KEY=PEXELS_API_KEY:latest"
+          SECRETS="${SECRETS},GOOGLE_OAUTH_CLIENT_ID=GOOGLE_OAUTH_CLIENT_ID:latest"
+          # GCS_PHOTO_BUCKET:2026-09 補上——主服務(photostorage.New,見
+          # server/internal/api/api.go 的 New() 建構子)一直需要這個
+          # 環境變數才能把漸進補圖機制下載到的新照片落地到 GCS/寫入
+          # photo_assets,先前這裡漏掛,導致正式環境的 GCS_PHOTO_BUCKET
+          # 一直是空字串,photostorage.New 回傳的是空殼 Uploader
+          # (bucket==""),任何新照片都無法落地,只有透過
+          # cmd/migrate-photo-assets 一次性遷移進 photo_assets 的舊
+          # 照片能顯示,之後所有需要「補圖」的地點永久補不上(實測發現
+          # 的真實 bug)。
+          SECRETS="${SECRETS},GCS_PHOTO_BUCKET=GCS_PHOTO_BUCKET:latest"
+
           gcloud run deploy ${{ env.CLOUD_RUN_SERVICE }} \
             --image=${{ env.IMAGE }}:${{ github.event.inputs.skip_build == 'true' && 'latest' || github.sha }} \
             --region=${{ env.CLOUD_RUN_REGION }} \
             --allow-unauthenticated \
             --add-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
-            --update-env-vars=DEV_MODE=false,SEED=false,GOOGLE_PLACES_GET_RATE_LIMIT_WINDOW_SEC=10,GOOGLE_PLACES_GET_RATE_LIMIT_MAX_CALLS=1,GOOGLE_PLACES_PHOTO_MEDIA_RATE_LIMIT_WINDOW_SEC=600,GOOGLE_PLACES_PHOTO_MEDIA_RATE_LIMIT_MAX_CALLS=1 \
-            --update-secrets=DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,GOOGLE_PLACES_API_KEY=GOOGLE_PLACES_API_KEY:latest,PEXELS_API_KEY=PEXELS_API_KEY:latest,GOOGLE_OAUTH_CLIENT_ID=GOOGLE_OAUTH_CLIENT_ID:latest \
+            --update-env-vars="${ENV_VARS}" \
+            --update-secrets="${SECRETS}" \
             --quiet
 
       - name: Show Cloud Run URL
