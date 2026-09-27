@@ -134,9 +134,13 @@ type Attraction struct {
 	PhotoURL     *string `json:"photoUrl,omitempty"`
 	// PlaceID 是這個景點區域對應的 Google Place ID,可為 nil——見
 	// store.attractionRow.PlaceID 的完整說明(並存策略、Google TOS 可
-	// 長期保存的依據)。有值時前端(AttractionInfoPanel.tsx)優先改打
-	// GET /internal/geo/place-details 取得漸進補圖機制的雙來源照片陣列,
-	// 取代/補強單一的 PhotoURL;沒有值時維持原本 PhotoURL 顯示。
+	// 長期保存的依據)。有值時前端(AttractionInfoPanel.tsx)打
+	// GET /internal/geo/place-details 取得漸進補圖機制的雙來源照片陣列;
+	// 2026-09 起 PhotoURL 已經不再是主題卡的有效 fallback(見該元件拿掉
+	// fallbackUrl 的變更),沒有值時主題卡顯示 placeholder,不會回退顯示
+	// PhotoURL——見 adminconsole.attraction_place_id_check.go 的
+	// 「Attractions missing place_id」核對清單,列出的正是這批 PlaceID
+	// 為空的景點。
 	PlaceID *string `json:"placeId,omitempty"`
 	// Category 是「附近景點」清單用的店家分類(散策羅盤用語,如
 	// 甜點/茶屋、餐廳、工藝、街景),可為 nil——取代前端原本

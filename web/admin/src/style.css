@@ -111,6 +111,18 @@ button.ghost {
   border-radius: 6px;
   margin: 0 1.5rem;
 }
+/* info.banner: 2026-09 加入,給非錯誤但需要提醒操作者留意的訊息用(例如
+   AttractionMissingPlaceIDTab 的 refetch 結果——寫入成功,但比對結果是否
+   正確仍需要人工核對,不是純粹的成功訊息)。跟 .error.banner 共用同一種
+   排版,只是邊框/文字顏色改用中性的 accent,不是紅色的錯誤色。 */
+.info.banner {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 6px;
+  margin: 0 1.5rem;
+  font-size: 0.85rem;
+}
 
 /* --- dashboard --- */
 .page {
@@ -203,8 +215,16 @@ button.ghost {
   stroke-dasharray: 3 3;
 }
 
+/* table-scroll: 2026-09 加上 max-height + overflow-y,理由是原本只有
+   overflow-x 時,橫向捲軸只出現在容器最底部——表格列數一多,使用者得先
+   垂直捲到最底下才找得到橫向捲軸,體感上「橫向捲軸很難操作」。加上
+   固定高度上限與獨立的垂直捲動後,容器本身變成一個固定大小的視窗,
+   兩個方向的捲軸都貼齊在這個視窗邊緣、隨時可見,不需要先捲到底部。
+   thead 搭配 position: sticky 讓表頭固定在視窗頂端,垂直捲動列表時
+   仍看得到欄位名稱,不會捲走。 */
 .table-scroll {
-  overflow-x: auto;
+  overflow: auto;
+  max-height: 70vh;
 }
 table {
   width: 100%;
@@ -222,6 +242,10 @@ th {
   color: var(--muted);
   font-weight: 500;
   font-size: 0.8rem;
+  position: sticky;
+  top: 0;
+  background: var(--bg, #fff);
+  z-index: 1;
 }
 td.over {
   color: var(--over);

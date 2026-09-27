@@ -48,10 +48,15 @@ import styles from './DesktopLayout.module.css'
 // PhoneScreens.tsx)互相 import 對方造成循環依賴。
 
 // NEARBY_ATTRACTION_LIMIT:AttractionInfoPanel「附近景點」清單最多顯示
-// 幾筆——見 handleSelectNearbyAttraction/nearbyAttractions 的說明,清單
-// 只是給使用者一個「順路可以看什麼」的線索,不是完整清單,故取一個畫面上
-// 一眼看得完的小數字。
-const NEARBY_ATTRACTION_LIMIT = 5
+// 幾筆——2026-09 使用者明確要求清單不設數量上限,改成完整列出這個主題
+// 底下所有精選點,跟地圖上 revealedAttractionNames 揭露的集合一致(見
+// 下方 revealedAttractionNames 的完整說明:兩者原本刻意允許不一致,清單
+// 只取前 N 筆、地圖全部顯示,但使用者體感上會覺得「地圖上明明看得到,
+// 清單卻沒列出來」,故改成兩者一致,不再各自有不同的裁切規則)。傳
+// Infinity 給 computeNearbyAttractions 的 limit 參數(見該函式與
+// geoNearbyAttractions.test.ts 已有的「不限制筆數」測試案例),等同不做
+// slice 裁切,只保留距離排序。
+const NEARBY_ATTRACTION_LIMIT = Infinity
 
 // 時間軸鏡像資料的初始值(尚未收到 ChatScreen 鏡像前,或未選擇旅程時使用)。
 const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
@@ -203,11 +208,14 @@ export function DesktopContent(props: ContentProps) {
     )
   }, [geoAttractions, geoAttractionContent])
   // revealedAttractionNames:目前應該在地圖上顯示的精選點名稱集合——
-  // nearbyAttractions 只是「附近景點」清單這個 UI 的資料(取 top N、
-  // 已排序),地圖上的揭露規則直接用同一批候選(不受 top N 限制,見
-  // useAttractionOverlays.ts 對這個 prop 的說明),讓地圖上看得到的點
-  // 跟清單顯示的點不需要嚴格一致——清單是「推薦你看這幾個」,地圖是
-  // 「這個主題底下有這些精選點存在」,兩者資料來源相同但呈現目的不同。
+  // nearbyAttractions 是「附近景點」清單這個 UI 的資料(已排序),地圖上
+  // 的揭露規則直接用同一批候選(見 useAttractionOverlays.ts 對這個 prop
+  // 的說明)。2026-09 以前這裡曾經是「清單只取前 N 筆、地圖全部顯示」的
+  // 刻意不一致設計(清單是「推薦你看這幾個」,地圖是「這個主題底下有
+  // 這些精選點存在」),但使用者體感上會覺得「地圖上明明看得到,清單卻
+  // 沒列出來」,故拿掉 NEARBY_ATTRACTION_LIMIT 的上限(見該常數的完整
+  // 說明),兩者現在資料來源相同、呈現內容也一致,只是排序方式各自獨立
+  // (清單依距離排序,地圖揭露不排序)。
   // useThemeAttractionSelection:主題卡開著時跟它並存/附掛的一組狀態
   // (poiContent/hoveredAttraction/categoryFilter)與對應的 reset/
   // infoCardStack('attraction'/'nearbyPlace' 兩筆)登記邏輯,抽成跟

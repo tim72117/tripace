@@ -34,12 +34,14 @@ import type { CuratedCategory } from './geoCuratedCategoryStub'
 //     互相獨立),硬接整支只會多出兩個沒人消費的死欄位。手機版只共用
 //     下方的 fetchPoiContent 這段查詢邏輯本身。
 //   - nearby 清單(nearbyAttractions/nearbyList)與 revealedAttractionNames
-//     ——兩邊的 pool 來源、slice 上限、null vs 空 Set 語意本來就刻意不同
-//     (正式版限制在地圖可視範圍查詢結果的前 5 筆,展示頁是固定城市查詢
-//     的全部非主題點),硬抽會需要 excludeSelf/limit/revealMode 這類旗標,
-//     反而讓呼叫端比原本的兩份各自 8-10 行 useMemo 更難讀。這兩塊沒有
-//     effect、沒有時序問題,不會像 reset effect 那樣「忘了寫就出 bug」,
-//     留在各自檔案更清楚。
+//     ——兩邊的 pool 來源、null vs 空 Set 語意本來就刻意不同(正式版是
+//     地圖可視範圍查詢結果,展示頁是固定城市查詢的全部非主題點;2026-09
+//     以前正式版還會額外 slice 前 5 筆,現已拿掉這個上限,見
+//     DesktopLayout.tsx NEARBY_ATTRACTION_LIMIT 的完整說明,兩邊現在都是
+//     不限筆數、只依距離排序),硬抽會需要 excludeSelf/revealMode 這類
+//     旗標,反而讓呼叫端比原本的兩份各自 8-10 行 useMemo 更難讀。這兩塊
+//     沒有 effect、沒有時序問題,不會像 reset effect 那樣「忘了寫就出
+//     bug」,留在各自檔案更清楚。
 //   - searchResults 登記/`geo.setGeocodeCandidates([])` 反向清空——正式
 //     版獨有(搜尋框),展示頁沒有這個第三方卡片。
 //   - shiftBy/attractionPanelRightPx——展示頁沒有對話小匡/飯店側欄。

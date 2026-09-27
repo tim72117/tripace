@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from './api'
-import type { ExternalServiceStatus, GeoAPICallStats, GeoRateLimit, PathRequestStats, PlaceDetailsZeroPhotoTarget, SchemaCheck, TimelineBucket, UserSummary } from './api'
+import type { AttractionMissingPlaceID, ExternalServiceStatus, GeoAPICallStats, GeoRateLimit, PathRequestStats, PlaceDetailsZeroPhotoTarget, RefetchAttractionPlaceIDResponse, SchemaCheck, TimelineBucket, UserSummary } from './api'
 import { TimelineChart } from './TimelineChart'
 
 export default function App() {
@@ -64,7 +64,7 @@ function Login({ onLoggedIn }: { onLoggedIn: (email: string) => void }) {
   )
 }
 
-type Tab = 'users' | 'external' | 'requests' | 'geo-api' | 'geo-rate-limits' | 'photo-target-check' | 'schema'
+type Tab = 'users' | 'external' | 'requests' | 'geo-api' | 'geo-rate-limits' | 'photo-target-check' | 'attraction-missing-place-id' | 'schema'
 
 function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOut: () => void }) {
   const [tab, setTab] = useState<Tab>('users')
@@ -108,6 +108,9 @@ function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOu
         <button className={tab === 'photo-target-check' ? 'tab active' : 'tab'} onClick={() => setTab('photo-target-check')}>
           Photo target=0 check
         </button>
+        <button className={tab === 'attraction-missing-place-id' ? 'tab active' : 'tab'} onClick={() => setTab('attraction-missing-place-id')}>
+          Attractions missing place_id
+        </button>
         <button className={tab === 'schema' ? 'tab active' : 'tab'} onClick={() => setTab('schema')}>
           Schema check
         </button>
@@ -119,6 +122,7 @@ function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOu
       {tab === 'geo-api' && <GeoAPIStatsTab onLoggedOut={onLoggedOut} />}
       {tab === 'geo-rate-limits' && <GeoRateLimitsTab onLoggedOut={onLoggedOut} />}
       {tab === 'photo-target-check' && <PhotoTargetZeroCheckTab onLoggedOut={onLoggedOut} />}
+      {tab === 'attraction-missing-place-id' && <AttractionMissingPlaceIDTab onLoggedOut={onLoggedOut} />}
       {tab === 'schema' && <SchemaCheckTab onLoggedOut={onLoggedOut} />}
     </div>
   )
@@ -613,6 +617,151 @@ function PhotoTargetZeroCheckTab({ onLoggedOut }: { onLoggedOut: () => void }) {
                       disabled={resettingPlaceId !== null && resettingPlaceId !== p.placeId}
                     >
                       {resettingPlaceId === p.placeId ? 'Resetting…' : 'Reset'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  )
+}
+
+// AttractionMissingPlaceIDTab: lists every attractions row where place_id
+// is NULL or empty. photo_url is no longer a valid photo source for the
+// theme card (the fallback was explicitly removed — see api.ts's doc
+// comment on AttractionMissingPlaceID) — every row here shows a
+// placeholder on the theme card regardless of hasStalePhotoUrl.
+//
+// "Refetch" (2026-09 added) is the admin-console equivalent of running
+// `tripace-cli attraction-set-place-id -id <id> -place "<name>"` by hand —
+// it searches Google Places for cityName+name and writes back the first
+// candidate's place_id automatically. It is NOT a "figure out which rows
+// need fixing" automation (that judgment call is still this list's whole
+// reason for existing) — it only collapses the "go look it up on Google
+// Maps, then run a CLI command" busywork into one click, for rows where
+// the operator already trusts a plain text search will find the right
+// place. The result banner shows what Google actually matched (name +
+// address) so the operator can sanity-check the write after the fact,
+// since this endpoint does no similarity check itself — a bad match is a
+// wrong place_id sitting in the database until someone re-corrects it by
+// hand (e.g. with -place-id) or refetches the row again with a better
+// match likely available.
+function AttractionMissingPlaceIDTab({ onLoggedOut }: { onLoggedOut: () => void }) {
+  const [attractions, setAttractions] = useState<AttractionMissingPlaceID[] | null>(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  // refetchingId: which row's Refetch button is mid-request, if any —
+  // disables just that row's button (not the whole table), same pattern as
+  // PhotoTargetZeroCheckTab's resettingPlaceId above.
+  const [refetchingId, setRefetchingId] = useState<string | null>(null)
+  const [refetchError, setRefetchError] = useState('')
+  const [refetchResult, setRefetchResult] = useState<RefetchAttractionPlaceIDResponse | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await api.attractionMissingPlaceIDCheck()
+      setAttractions(res.attractions)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onLoggedOut()
+        return
+      }
+      setError(err instanceof ApiError ? err.message : 'Failed to load')
+    } finally {
+      setLoading(false)
+    }
+  }, [onLoggedOut])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const handleRefetch = useCallback(
+    async (id: string) => {
+      setRefetchError('')
+      setRefetchResult(null)
+      setRefetchingId(id)
+      try {
+        const res = await api.refetchAttractionPlaceID(id)
+        setRefetchResult(res)
+        // Reload rather than just removing the row locally — a successful
+        // refetch moves place_id away from empty, so the row should
+        // disappear from this list, and reloading from the server is the
+        // simplest way to guarantee the displayed list matches what's
+        // actually in the database now (same reasoning as
+        // PhotoTargetZeroCheckTab's handleReset above).
+        await load()
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          onLoggedOut()
+          return
+        }
+        setRefetchError(err instanceof ApiError ? err.message : 'Failed to refetch')
+      } finally {
+        setRefetchingId(null)
+      }
+    },
+    [load, onLoggedOut],
+  )
+
+  return (
+    <>
+      {error && <div className="error banner">{error}</div>}
+      {refetchError && <div className="error banner">{refetchError}</div>}
+      {refetchResult && (
+        <div className="info banner">
+          Wrote place_id {refetchResult.placeId} for {refetchResult.id} — Google matched "{refetchResult.matchedName}"
+          at {refetchResult.matchedAddress}. Double-check this is really the same place.
+        </div>
+      )}
+
+      <section className="card">
+        <div className="section-head">
+          <h2>Attractions missing place_id</h2>
+          <button className="ghost" onClick={() => void load()} disabled={loading}>
+            {loading ? 'Loading…' : 'Refresh'}
+          </button>
+        </div>
+        <p className="muted">
+          Every attraction below has no Google Place ID on file — theme cards for these show a placeholder image,
+          since the old photo_url fallback was explicitly removed. "Has stale photo_url" only tells you whether the
+          database still carries an unused snapshot, not that the row is fine as-is. "Refetch" searches Google Places
+          for this attraction's city+name and writes back the first match's place_id — it does not verify the match
+          is correct, so check the result banner before trusting it.
+        </p>
+        {attractions !== null && <p className="muted">{attractions.length} attraction(s) currently missing place_id.</p>}
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>City</th>
+                <th>Is theme</th>
+                <th>Has stale photo_url</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {(attractions ?? []).map((a) => (
+                <tr key={a.id}>
+                  <td>{a.id}</td>
+                  <td>{a.name}</td>
+                  <td>{a.cityName}</td>
+                  <td>{a.isTheme ? 'yes' : 'no'}</td>
+                  <td>{a.hasStalePhotoUrl ? 'yes' : 'no'}</td>
+                  <td>
+                    <button
+                      className="ghost"
+                      onClick={() => void handleRefetch(a.id)}
+                      disabled={refetchingId !== null && refetchingId !== a.id}
+                    >
+                      {refetchingId === a.id ? 'Refetching…' : 'Refetch'}
                     </button>
                   </td>
                 </tr>

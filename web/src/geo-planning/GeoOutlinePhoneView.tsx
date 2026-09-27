@@ -89,9 +89,10 @@ import styles from './GeoOutlinePhoneView.module.css'
 //         GeoOutlinePhoneInfoSheet 內部的附近景點清單項目觸發 push,見
 //         下方 nearbyPoiContent 的完整說明。
 // NEARBY_ATTRACTION_LIMIT:「附近景點」清單最多顯示幾筆——對齊
-// DesktopLayout.tsx 同名常數的值(見該處說明),手機螢幕空間更有限,
-// 沒有理由列更多筆。
-const NEARBY_ATTRACTION_LIMIT = 5
+// DesktopLayout.tsx 同名常數的值(見該處說明):2026-09 使用者明確要求
+// 拿掉數量上限,清單改成完整列出這個主題底下所有精選點,跟地圖上實際
+// 揭露的集合一致,不再各自有不同的裁切規則。
+const NEARBY_ATTRACTION_LIMIT = Infinity
 
 type SheetEntry =
   | { type: 'list' }

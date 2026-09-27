@@ -41,6 +41,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /admin/api/geo-rate-limits", h.withAdmin(h.updateGeoRateLimit))
 	mux.HandleFunc("GET /admin/api/photo-target-zero-check", h.withAdmin(h.checkPhotoTargetZero))
 	mux.HandleFunc("POST /admin/api/photo-target-zero-check/reset", h.withAdmin(h.resetPhotoTarget))
+	mux.HandleFunc("GET /admin/api/attraction-missing-place-id-check", h.withAdmin(h.checkAttractionMissingPlaceID))
+	mux.HandleFunc("POST /admin/api/attraction-missing-place-id-check/refetch", h.withAdmin(h.refetchAttractionPlaceID))
 }
 
 // withAdmin 是每一條特權管理路由共用的關卡:解析管理員 session cookie,

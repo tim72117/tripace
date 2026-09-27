@@ -87,14 +87,17 @@ type attractionRow struct {
 	PhotoURL     *string `gorm:"column:photo_url"`
 	// PlaceID:對應這個景點區域的 Google Place ID,可為 NULL——人工建檔時
 	// 若沒有透過 -place/-place-id 指定(或建檔當下查無對應地點)就不會有
-	// 值。有值時前端優先改用「地點照片漸進補圖機制」(place_details_cache/
+	// 值。有值時前端改用「地點照片漸進補圖機制」(place_details_cache/
 	// google_place_photos/place_pexels_photos 三張表,見這幾個型別的完整
-	// 說明)取得的 Google/Pexels 雙來源照片陣列顯示,取代/補強單一的
-	// PhotoURL;沒有值時維持原本 PhotoURL 這條路徑不變。兩套機制刻意並存
-	// 而非一次性遷移——PhotoURL 是人工建檔當下落地存進 GCS 的單張快照,
-	// PlaceID 對應的漸進補圖結果會隨使用者點擊持續累積更新,兩者服務的
-	// 情境不同(見 docs/audit-place-photo-cost-control-2026-09.md 的完整
-	// 討論),沒有理由讓其中一套機制完全取代另一套。
+	// 說明)取得的 Google/Pexels 雙來源照片陣列顯示。2026-09 起 PhotoURL
+	// 已經不再是主題卡的有效 fallback(見 AttractionInfoPanel.tsx 拿掉
+	// fallbackUrl 的變更)——PlaceID 為 NULL 的景點,主題卡一律顯示
+	// placeholder,不會回退顯示 PhotoURL 這張建檔當下的靜態快照。這代表
+	// PlaceID 欄位事實上已經是主題卡取得照片的唯一路徑,PhotoURL 目前只
+	// 對建檔清單/CLI attraction-list 這類直接讀資料庫欄位的場景還有顯示
+	// 意義(見 adminconsole.attraction_place_id_check.go 的
+	// 「Attractions missing place_id」核對清單,可查出哪些景點區域的
+	// PlaceID 仍是 NULL)。
 	//
 	// place_id 本身是 Google 官方文件明確允許長期保存與展示的穩定識別碼
 	// (跟 photo resource name 那種禁止長期快取的欄位規則不同,見

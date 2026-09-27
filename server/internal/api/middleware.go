@@ -95,11 +95,27 @@ func internalAuth(signer *auth.Signer, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, err := auth.ParseBearer(r.Header.Get("Authorization"))
 		if err != nil {
-			http.Error(w, `{"error":"unauthorized","message":"缺少或格式錯誤的 Authorization: Bearer token"}`, http.StatusUnauthorized)
+			// 2026-09:原本用 http.Error 手寫
+			// {"error":"unauthorized","message":"..."}(error 是字串),
+			// 跟全站其餘端點一律透過 writeErr 產生的
+			// {"error":{"code":"...","message":"..."}}(error 是物件)
+			// 格式不一致——前端 api.ts 的 errBody?.error?.message 是
+			// 針對物件形狀寫的,對這種字串形狀的 error 欄位永遠讀不到
+			// message,顯示訊息會 fallback 成籠統的「HTTP 401」,使用者
+			// 完全看不到後端真正想表達的內容。改用 writeErr 統一格式。
+			writeErr(w, http.StatusUnauthorized, "unauthorized", "缺少或格式錯誤的 Authorization: Bearer token")
 			return
 		}
 		if _, err := signer.Verify(token); err != nil {
-			http.Error(w, `{"error":"unauthorized","message":"token 無效或過期,請先執行 tripace-cli login --web 登入"}`, http.StatusUnauthorized)
+			// 訊息原本寫死指向「請先執行 tripace-cli login --web
+			// 登入」,誤導性——這句提示只對 CLI 呼叫端有意義,但
+			// /internal/* 這組端點同時也被登入版前端直接呼叫(見本函式
+			// 開頭的完整說明:CLI 與一般使用者共用同一套 JWT 驗證),
+			// 一般使用者的瀏覽器 session 過期時看到這句話會被導向一個
+			// 他們不可能、也不該執行的 CLI 指令。改成不預設呼叫端身分
+			// 的中性措辭,前端可依此判斷「需要重新登入」並導回登入頁
+			// (見 web/src 對 401 的全域攔截)。
+			writeErr(w, http.StatusUnauthorized, "unauthorized", "登入已過期,請重新登入")
 			return
 		}
 		next.ServeHTTP(w, r)

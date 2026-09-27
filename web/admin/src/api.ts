@@ -164,6 +164,42 @@ export interface PhotoTargetZeroCheckResponse {
   places: PlaceDetailsZeroPhotoTarget[]
 }
 
+// One row of the "attractions missing Google Place ID" check (GET
+// /admin/api/attraction-missing-place-id-check). Mirrors
+// adminconsole.attractionMissingPlaceIDRow on the backend — every
+// attractions row where place_id is NULL or empty. photo_url is no longer
+// a valid photo source for the theme card (the fallback was explicitly
+// removed — see AttractionInfoPanel.tsx), so every row here shows a
+// placeholder on the theme card regardless of hasStalePhotoUrl. That field
+// only tells the operator whether the row still carries a stale, unused
+// snapshot in the database (true) or nothing at all (false) — it is not a
+// signal that the row is "fine as-is". The fix for any row here is adding
+// the correct Google Place ID, not restoring the photo_url fallback.
+export interface AttractionMissingPlaceID {
+  id: string
+  name: string
+  cityName: string
+  isTheme: boolean
+  hasStalePhotoUrl: boolean
+}
+
+export interface AttractionMissingPlaceIDResponse {
+  attractions: AttractionMissingPlaceID[]
+}
+
+// Response of POST /admin/api/attraction-missing-place-id-check/refetch.
+// Mirrors adminconsole.refetchAttractionPlaceIDResponse — matchedName/
+// matchedAddress are what Google actually returned for the first search
+// candidate, not this attraction's own name/cityName from the database.
+// The operator should eyeball these against the row before trusting the
+// write — this endpoint does no name/address similarity check itself.
+export interface RefetchAttractionPlaceIDResponse {
+  id: string
+  placeId: string
+  matchedName: string
+  matchedAddress: string
+}
+
 // Same resolution strategy as the main web app's api.ts BASE: an explicit
 // VITE_ADMIN_API_URL for local dev against a separately-running backend,
 // falling back to the serving origin (correct in production, where the
@@ -261,4 +297,17 @@ export const api = {
   // alone.
   resetPhotoTarget: (placeId: string): Promise<{ ok: boolean }> =>
     request('POST', '/admin/api/photo-target-zero-check/reset', { placeId }).then((r) => r.json()),
+
+  // Pure read of the attractions table — no external call, safe to call on
+  // page load / manual refresh.
+  attractionMissingPlaceIDCheck: (): Promise<AttractionMissingPlaceIDResponse> =>
+    request('GET', '/admin/api/attraction-missing-place-id-check').then((r) => r.json()),
+
+  // Real external call — hits Google Places Text Search once per click,
+  // then writes the first candidate's place_id straight to the database.
+  // Only call this on explicit operator action (the "Refetch" button),
+  // never automatically — see the backend handler's doc comment on why
+  // there's no automatic name/address matching.
+  refetchAttractionPlaceID: (id: string): Promise<RefetchAttractionPlaceIDResponse> =>
+    request('POST', '/admin/api/attraction-missing-place-id-check/refetch', { id }).then((r) => r.json()),
 }
