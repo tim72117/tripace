@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -1133,11 +1134,21 @@ func (s *Server) syncPhotoAssetInBackground(placeID string, photoIndex int, data
 		objectKey := "bg-" + googlePlacePhotoObjectKey(placeID, photoIndex)
 		gcsURL, err := s.photoUploader.UploadDataURI(ctx, objectKey, dataURI)
 		if err != nil {
+			// 2026-09:先前這裡完全靜默失敗——正式環境曾經因為
+			// GCS_PHOTO_BUCKET 未掛載(見 deploy-cloudrun.yml 的修正
+			// 說明)導致這個 Uploader 是空殼、每次上傳都回
+			// photostorage.ErrNoBucket,但 log 上完全看不出任何異常,
+			// 排查時只能從「photo_assets 一直是空的」這個間接症狀
+			// 反推,花了大量時間才定位到根因。補上一行 log,讓這類
+			// 落地失敗至少能在 Cloud Logging 被搜尋/告警,不是必須
+			// return err 給呼叫端(這仍是背景任務,呼叫端已經完成
+			// 回應,沒有地方可以回報)。
+			log.Printf("syncPhotoAssetInBackground: 上傳 GCS 失敗 place_id=%s photo_index=%d: %v", placeID, photoIndex, err)
 			return
 		}
 		now := time.Now()
 		expiresAt := now.Add(photoAssetExpiry)
-		_ = s.store.UpsertPhotoAsset(model.PhotoAsset{
+		if err := s.store.UpsertPhotoAsset(model.PhotoAsset{
 			PlaceID:    placeID,
 			PhotoIndex: photoIndex,
 			Usage:      "full",
@@ -1145,7 +1156,9 @@ func (s *Server) syncPhotoAssetInBackground(placeID string, photoIndex int, data
 			GCSURL:     gcsURL,
 			FetchedAt:  now,
 			ExpiresAt:  &expiresAt,
-		})
+		}); err != nil {
+			log.Printf("syncPhotoAssetInBackground: 寫入 photo_assets 失敗 place_id=%s photo_index=%d: %v", placeID, photoIndex, err)
+		}
 	}()
 }
 
@@ -1191,6 +1204,9 @@ func (s *Server) refreshGooglePlacePhotoInBackground(placeID, requestPath string
 		// 影響任何已經送出的 HTTP 回應)。
 		refs, refsErr := client.ListPlacePhotoRefs(pctx, placeID)
 		if refsErr != nil {
+			// 2026-09:先前這裡完全靜默失敗——見 syncPhotoAssetInBackground
+			// 對同一類問題的完整說明,補上 log 讓這類補圖失敗至少可觀測。
+			log.Printf("refreshGooglePlacePhotoInBackground: ListPlacePhotoRefs 失敗 place_id=%s: %v", placeID, refsErr)
 			return
 		}
 		currentGoogleTarget := len(refs)
@@ -1221,6 +1237,8 @@ func (s *Server) refreshGooglePlacePhotoInBackground(placeID, requestPath string
 				s.appendGooglePlacePhoto(placeID, s.landmarkPhotoURLFromDataURI(pctx, objectKey, photoURL))
 				s.syncPhotoAssetInBackground(placeID, indexToFetch, photoURL)
 				effectiveNewPhotoCount++
+			} else {
+				log.Printf("refreshGooglePlacePhotoInBackground: PhotoDataURIUnrestricted 失敗 place_id=%s index=%d: %v", placeID, indexToFetch, pErr)
 			}
 		}
 
@@ -2029,7 +2047,9 @@ func (s *Server) downloadGooglePlacePhotoInBackground(placeID, requestPath, phot
 			// else 分支(未觸發 shouldFetch)的說明——effectiveNewPhotoCount
 			// 維持不變(這張沒有真的補到),但 fetched_at/target 仍要更新,
 			// 讓下次點擊或 7 天時間觸發能重新嘗試,而不是被舊的 fetched_at
-			// 卡住。
+			// 卡住。2026-09 補上 log(見 syncPhotoAssetInBackground 對
+			// 同一類問題的完整說明),讓這類下載失敗至少可觀測。
+			log.Printf("downloadGooglePlacePhotoInBackground: PhotoDataURIUnrestricted 失敗 place_id=%s index=%d: %v", placeID, photoIndex, pErr)
 			_ = s.store.UpdatePlacePhotoProgress(placeID, effectiveNewPhotoCount, currentGoogleTarget, true)
 			return
 		}

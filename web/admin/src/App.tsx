@@ -502,18 +502,24 @@ function GeoRateLimitsTab({ onLoggedOut }: { onLoggedOut: () => void }) {
 // ambiguous by itself (see PlaceDetailsZeroPhotoTarget's doc comment in
 // api.ts): it's the legitimate steady state for "confirmed with Google,
 // genuinely no photos", but it's also exactly what a since-fixed deadlock
-// bug used to leave for places that were never actually confirmed. This
-// tab intentionally has no "fix" button — telling those two cases apart
-// requires an actual judgment call (e.g. looking the place up on Google
-// Maps), not something safe to automate from this list alone. An operator
-// who confirms a row is a stale pre-fix artifact fixes it by hand (reset
-// google_photo_target_count back to -1 directly in the database, or wait
-// for it to be reached by whatever cleanup script eventually runs) — this
-// page is purely a read-only worklist for that manual triage.
+// bug used to leave for places that were never actually confirmed. Telling
+// the two cases apart requires an actual judgment call (e.g. looking the
+// place up on Google Maps) — this tab won't do that for you. Once an
+// operator has made that call and confirmed a row is a stale pre-fix
+// artifact, the "Reset" button resets google_photo_target_count back to
+// -1 (and new_photo_count back to 0) via the backend's dedicated reset
+// endpoint (2026-09 added) — it does not fetch a photo itself, it only
+// clears the stuck state so the next real query re-confirms with Google.
 function PhotoTargetZeroCheckTab({ onLoggedOut }: { onLoggedOut: () => void }) {
   const [places, setPlaces] = useState<PlaceDetailsZeroPhotoTarget[] | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  // resettingPlaceId: which row's Reset button is mid-request, if any —
+  // disables just that row's button (not the whole table) so an operator
+  // resetting one place isn't blocked from also resetting a different one
+  // while the first request is still in flight.
+  const [resettingPlaceId, setResettingPlaceId] = useState<string | null>(null)
+  const [resetError, setResetError] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -536,9 +542,35 @@ function PhotoTargetZeroCheckTab({ onLoggedOut }: { onLoggedOut: () => void }) {
     void load()
   }, [load])
 
+  const handleReset = useCallback(
+    async (placeId: string) => {
+      setResetError('')
+      setResettingPlaceId(placeId)
+      try {
+        await api.resetPhotoTarget(placeId)
+        // Reload the list rather than just removing the row locally — a
+        // successful reset moves google_photo_target_count away from 0,
+        // so the row should disappear from this WHERE-target=0 view, and
+        // reloading from the server is the simplest way to guarantee the
+        // displayed list matches what's actually in the database now.
+        await load()
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          onLoggedOut()
+          return
+        }
+        setResetError(err instanceof ApiError ? err.message : 'Failed to reset')
+      } finally {
+        setResettingPlaceId(null)
+      }
+    },
+    [load, onLoggedOut],
+  )
+
   return (
     <>
       {error && <div className="error banner">{error}</div>}
+      {resetError && <div className="error banner">{resetError}</div>}
 
       <section className="card">
         <div className="section-head">
@@ -550,8 +582,8 @@ function PhotoTargetZeroCheckTab({ onLoggedOut }: { onLoggedOut: () => void }) {
         <p className="muted">
           Every place below has google_photo_target_count = 0 right now. That's the legitimate value for "confirmed —
           this place genuinely has no Google photos", but it's also what a since-fixed bug used to leave behind for
-          places that were never actually confirmed. Spot-check a row (e.g. on Google Maps) before assuming it's
-          correct — this list is a worklist, not a report of problems.
+          places that were never actually confirmed. Spot-check a row (e.g. on Google Maps) before resetting it —
+          Reset only clears the stuck state, it doesn't fetch a photo by itself.
         </p>
         {places !== null && <p className="muted">{places.length} place(s) currently at target=0.</p>}
         <div className="table-scroll">
@@ -560,8 +592,10 @@ function PhotoTargetZeroCheckTab({ onLoggedOut }: { onLoggedOut: () => void }) {
               <tr>
                 <th>Place ID</th>
                 <th>Name</th>
+                <th>Google photo target count</th>
                 <th>Click count</th>
                 <th>Last confirmed</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -569,8 +603,18 @@ function PhotoTargetZeroCheckTab({ onLoggedOut }: { onLoggedOut: () => void }) {
                 <tr key={p.placeId}>
                   <td>{p.placeId}</td>
                   <td>{p.name}</td>
+                  <td>{p.googlePhotoTargetCount}</td>
                   <td>{p.clickCount}</td>
                   <td>{new Date(p.fetchedAt).toLocaleString()}</td>
+                  <td>
+                    <button
+                      className="ghost"
+                      onClick={() => void handleReset(p.placeId)}
+                      disabled={resettingPlaceId !== null && resettingPlaceId !== p.placeId}
+                    >
+                      {resettingPlaceId === p.placeId ? 'Resetting…' : 'Reset'}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

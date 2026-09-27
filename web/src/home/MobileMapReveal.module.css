@@ -45,7 +45,67 @@
   display: none;
 }
 
+/* thumbGlow:圓形縮圖周邊的泛光——2026-09 使用者要求「加入周邊泛光」,
+   讓這顆縮圖在頁面中段(搬移後已不再是頁面第一屏,見上方 .thumb 的
+   完整說明)更醒目,視覺上呼應「這裡可以點」的引導語意。數值照抄
+   ThemePointDemo.module.css 的 .demoGlow(功能介紹頁假地圖示意動畫
+   的主題點光暈,同一套視覺語言)——圓形 radial-gradient 三段透明度
+   疊 blur(2px),但這裡尺寸放大到 220px(縮圖本身 148px,光暈需要
+   明顯溢出縮圖邊界才有「泛光」的觀感,而非貼著邊緣的一圈細光)。
+   用 color-mix 疊 currentColor(跟 .thumb 本身 color: inherit 一致的
+   做法,見上方說明),讓光暈顏色自然跟隨外層頁面的文字色,不需要額外
+   掛 app-theme-root 這組只有各城市頁面本身才有明確定義的 token。
+   2026-09:使用者初版做完後回報「沒有呼吸效果」——animation 本身確實
+   有在跑(Playwright 實測 opacity 0.5~0.85 週期浮動、getAnimations()
+   回報 playState running),問題是純透明度變化幅度疊在已經很淡的底色
+   上(22%/10% color-mix)肉眼幾乎看不出差異,尤其淺色模式下 currentColor
+   是深色文字色、整體對比度低。改成三處同時加大反差:(1) 底色濃度從
+   22%/10% 提高到 32%/16%,(2) 動畫同時加上 scale 縮放(0.92→1.08),
+   不只是透明度浮動,縮放本身的形變比純透明度變化更容易被肉眼捕捉到
+   「正在動」,(3) opacity 變化區間拉大到 0.35~1(原本 0.5~0.85 只有
+   0.35 的差距,現在有 0.65),三者疊加後呼吸感明顯許多。周期拉長到
+   3.2s(原 2.6s)讓縮放+透明度雙重變化的節奏不會顯得太趕。
+   同時修正一個定位偏移:.thumbGlow 原本直接相對 .thumb 置中,但
+   .thumb 是三個子項(泛光/圖片/提示文字)排排站的 flex 容器,
+   position: absolute + top/left: 50% 的置中基準是整個 .thumb 的
+   高度(含 <img> + gap + .thumbHint 提示文字總高度),不是 <img>
+   本身的中心點——實測(Playwright 量測兩者 bounding rect 中心座標)
+   確認泛光整個往下偏移了約 15px,肉眼看是泛光跟圖片沒有同心。改成
+   用獨立的 .thumbImageWrap(148px 正方形,跟圖片本身同尺寸)包住
+   泛光+圖片,兩者以這層 wrap 為唯一定位基準,不受 .thumbHint 提示
+   文字擠壓 .thumb 整體高度影響,一定同心。 */
+.thumbImageWrap {
+  position: relative;
+  width: 148px;
+  height: 148px;
+}
+
+.thumbGlow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 220px;
+  height: 220px;
+  margin: -110px 0 0 -110px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, currentColor 32%, transparent) 0%,
+    color-mix(in srgb, currentColor 16%, transparent) 45%,
+    transparent 72%
+  );
+  filter: blur(2px);
+  pointer-events: none;
+  animation: thumb-glow-breathe 3.2s ease-in-out infinite;
+}
+
+@keyframes thumb-glow-breathe {
+  0%, 100% { opacity: 0.35; transform: scale(0.92); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
 .thumb img {
+  position: relative;
   width: 148px;
   height: 148px;
   aspect-ratio: 1;
@@ -54,7 +114,10 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
   /* clip-path 展開動畫的起點——與 .expandedStage 進場時的 circle(0%)
      視覺呼應,縮圖本身雖然一直是完整圓形(不隨動畫變化),但用同一種
-     視覺語言(圓形、陰影)讓使用者感覺「點下去之後,就是這個圓長大」。 */
+     視覺語言(圓形、陰影)讓使用者感覺「點下去之後,就是這個圓長大」。
+     position: relative + z-index 確保疊在 .thumbGlow 之上(泛光在
+     圖片後方向外擴散,不能蓋住圖片本身)。 */
+  z-index: 1;
   transition: transform 0.2s ease;
 }
 

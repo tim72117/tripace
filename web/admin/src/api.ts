@@ -151,6 +151,12 @@ export interface PlaceDetailsZeroPhotoTarget {
   placeId: string
   name: string
   clickCount: number
+  // googlePhotoTargetCount: this list is already filtered to rows where
+  // this value is exactly 0 (see the backend query), so it's redundant
+  // information in principle — included anyway so the table shows exactly
+  // what the database currently holds rather than requiring the reader to
+  // infer it from "why this row is on this list" (2026-09 added).
+  googlePhotoTargetCount: number
   fetchedAt: string
 }
 
@@ -247,4 +253,12 @@ export const api = {
   // page load / manual refresh.
   photoTargetZeroCheck: (): Promise<PhotoTargetZeroCheckResponse> =>
     request('GET', '/admin/api/photo-target-zero-check').then((r) => r.json()),
+
+  // Resets one place's google_photo_target_count back to the -1 sentinel
+  // (see the backend handler's doc comment) — only meant to be called
+  // after an operator has manually confirmed a row on the target=0 list
+  // is a stale pre-fix artifact, not something to automate from the list
+  // alone.
+  resetPhotoTarget: (placeId: string): Promise<{ ok: boolean }> =>
+    request('POST', '/admin/api/photo-target-zero-check/reset', { placeId }).then((r) => r.json()),
 }

@@ -1390,7 +1390,14 @@ func (c *Client) downloadPhotoBytes(ctx context.Context, photoResourceName strin
 	// 額外處理。
 	resp, err := c.gateway.Do(ctx, req, "places.photoMedia", callerFromContext(ctx), pathFromContext(ctx))
 	if err != nil {
-		return "", fmt.Errorf("geo: photo fetch failed: %w", err)
+		// 2026-09:刻意不用 %w 包裝原始 err 往上傳——mediaURL 帶有
+		// c.apiKey,底層 transport 失敗(DNS/timeout/連線被拒等)時
+		// Go 標準庫回傳的 *url.Error.Error() 會把完整請求 URL(含
+		// key)原文包進錯誤字串。這個 error 最終會被呼叫鏈上游的
+		// log.Printf 印出(見 geo_outline.go 背景補圖流程的錯誤 log),
+		// 若原樣往上傳等於把 API key 寫進 log。這裡只回報錯誤種類,
+		// 不帶原始 err 的字串內容。
+		return "", fmt.Errorf("geo: photo fetch failed: request error (%T)", err)
 	}
 	defer resp.Body.Close()
 

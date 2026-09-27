@@ -129,7 +129,20 @@ export function MobileMapReveal({
         aria-label={`展開${photoAlt}互動地圖`}
         hidden={expanded}
       >
-        <img src={photoUrl} alt="" />
+        {/* thumbImageWrap:泛光+圖片的獨立定位容器,見
+            MobileMapReveal.module.css 對應規則的完整說明——.thumbGlow
+            需要相對「圖片本身的中心點」置中,不能直接相對 .thumb(那是
+            包含提示文字在內的整個 flex 容器,置中基準會偏移)。
+            thumbGlow 放在 <img> 之前(DOM 順序決定疊放,沒有 z-index
+            時後面的元素蓋在前面之上,這裡靠 CSS 明確的 z-index/
+            position: relative 保證圖片一定蓋在泛光之上,DOM 順序本身
+            不影響疊放結果,寫在前面純粹是慣例上「先畫背景光再畫主體」
+            的閱讀順序)。aria-hidden 排除輔助技術朗讀,這是純裝飾用途,
+            不帶語意內容。 */}
+        <span className={styles.thumbImageWrap}>
+          <span className={styles.thumbGlow} aria-hidden="true" />
+          <img src={photoUrl} alt="" />
+        </span>
         <span className={styles.thumbHint}>點一下探索地圖</span>
       </button>
       {/* expandedStage 無條件掛載(見上方元件開頭的完整說明),用 hidden

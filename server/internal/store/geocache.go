@@ -236,14 +236,40 @@ func (s *Store) UpdatePlacePhotoProgress(placeID string, newPhotoCount, googlePh
 		Updates(updates).Error
 }
 
+// PlaceDetailsCacheRowExists 回報 place_details_cache 裡是否存在這個
+// placeID 的紀錄(不考慮 maxAge/過期——單純的存在性檢查,跟
+// GetCachedPlaceDetails 刻意分開:那支函式的「找不到」同時涵蓋「真的沒有
+// 這筆」與「有但已過期」兩種情況,不適合借來做這裡需要的純存在性判斷)。
+// 目前唯一呼叫端是 adminconsole.resetPhotoTarget——對一個管理員手動輸入
+// 的 placeId 做重置前,先確認這筆紀錄真的存在,避免打錯字或針對從未被
+// 快取過的 placeId 呼叫 UpdatePlacePhotoProgress 時「WHERE 條件比對不到
+// 任何列、GORM 仍視為成功」而靜默回報操作成功,誤導管理員以為真的重置到
+// 了什麼。
+func (s *Store) PlaceDetailsCacheRowExists(placeID string) (bool, error) {
+	var count int64
+	err := s.db.Model(&placeDetailsCacheRow{}).
+		Where("place_id = ?", placeID).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 // PlaceDetailsZeroPhotoTarget 是 ListPlaceDetailsWithZeroPhotoTarget 單筆
 // 回應的形狀——只曝露後台管理介面需要顯示的欄位,不直接把
 // placeDetailsCacheRow 外流給呼叫端(見 store 層一貫慣例)。
 type PlaceDetailsZeroPhotoTarget struct {
-	PlaceID    string    `json:"placeId"`
-	Name       string    `json:"name"`
-	ClickCount int64     `json:"clickCount"`
-	FetchedAt  time.Time `json:"fetchedAt"`
+	PlaceID    string `json:"placeId"`
+	Name       string `json:"name"`
+	ClickCount int64  `json:"clickCount"`
+	// GooglePhotoTargetCount:這支查詢本身用 WHERE 限定只回傳這個欄位
+	// 恰好是 0 的紀錄(見查詢函式的完整說明),故這裡的值理論上恆為 0——
+	// 仍然明確帶出這個欄位(而非讓後台介面憑查詢條件本身推測),是刻意
+	// 選擇的可觀測性慣例:後台顯示的每一欄都該直接反映資料庫實際讀到
+	// 的值,不要求呼叫端從「為什麼會出現在這份清單裡」反推欄位內容。
+	GooglePhotoTargetCount int       `json:"googlePhotoTargetCount"`
+	FetchedAt              time.Time `json:"fetchedAt"`
 }
 
 // ListPlaceDetailsWithZeroPhotoTarget 回傳目前 google_photo_target_count
@@ -265,10 +291,11 @@ func (s *Store) ListPlaceDetailsWithZeroPhotoTarget() ([]PlaceDetailsZeroPhotoTa
 	out := make([]PlaceDetailsZeroPhotoTarget, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, PlaceDetailsZeroPhotoTarget{
-			PlaceID:    r.PlaceID,
-			Name:       r.Name,
-			ClickCount: r.ClickCount,
-			FetchedAt:  r.FetchedAt,
+			PlaceID:                r.PlaceID,
+			Name:                   r.Name,
+			ClickCount:             r.ClickCount,
+			GooglePhotoTargetCount: r.GooglePhotoTargetCount,
+			FetchedAt:              r.FetchedAt,
 		})
 	}
 	return out, nil
