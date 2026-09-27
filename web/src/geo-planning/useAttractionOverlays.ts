@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import type { GeoAttraction } from '../api'
+import type { ClientConfig, GeoAttraction } from '../api'
+import { fetchGeoPlaceDetails, fetchPublicGeoPlaceDetails } from '../api'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
 import {
   getAttractionOverlayClass,
@@ -27,6 +28,8 @@ export function useAttractionOverlays({
   onAttractionSelect,
   revealedAttractionNames,
   hoveredCuratedName,
+  cfg,
+  usePublicPlaceDetails,
 }: {
   mapRef: React.RefObject<google.maps.Map | null>
   mapReady: boolean
@@ -65,8 +68,29 @@ export function useAttractionOverlays({
   // 同一個欄位。
   revealedAttractionNames?: Set<string> | null
   hoveredCuratedName?: string | null
+  // cfg/usePublicPlaceDetails:查詢地圖上地標圖示照片用(見下方
+  // photoUrlCacheRef 的完整說明)——2026-09 使用者明確要求「不再使用
+  // landmarkPhotoUrl,如果有 place id 則使用 photo_assets 第一張圖」,
+  // 這兩個參數讓這個 hook 能跟 AttractionInfoPanel.tsx 走同一支端點
+  // (fetchGeoPlaceDetails/fetchPublicGeoPlaceDetails)、同一套
+  // cfg/usePublicPlaceDetails 判斷邏輯,不重新發明一份。usePublicPlaceDetails
+  // 語意與該元件同名 prop 完全一致:true 時改打免登入版(供沒有真正登入態
+  // 的公開展示頁使用,見 InteractiveExploreMap.tsx)。cfg 為 optional——
+  // 沒有傳入時(理論上不該發生,呼叫端應該一律傳)視同沒有任何地標會查詢
+  // 照片,全部顯示 placeholder,不拋錯。
+  cfg?: ClientConfig
+  usePublicPlaceDetails?: boolean
 }) {
   const overlaysRef = useRef<AttractionOverlayInstance[]>([])
+  // photoUrlCacheRef:placeId → 已查到的 photoUrl(或 undefined 代表查無/
+  // 失敗)的快取,跨越 filteredAttractions 重新渲染仍然保留——地圖上同
+  // 一批地標可能因為 selectedKey/candidateKeys 等其他狀態變動導致這個
+  // hook 重新執行,若不快取,每次都要重新打一次 place-details 會造成
+  // 大量重複、沒有必要的請求(尤其地圖上主題點數量可能有數十個)。
+  // 只在整個 hook 生命週期內存在(不隨 mapVersion 重建清空)——即使地圖
+  // 因 theme 改變重建,已經查過的照片網址不會過期到需要重新打一次
+  // 這麼快的程度,沿用舊快取即可。
+  const photoUrlCacheRef = useRef<Map<string, string | undefined>>(new Map())
 
   // filteredAttractions:主題點(isTheme===true)恆顯示,不受 zoom 影響
   // ——這點延續舊行為不變(舊版用 level===1 搭配 maxLevelForZoom 判斷,
@@ -136,6 +160,54 @@ export function useAttractionOverlays({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, mapVersion, filteredAttractions])
+
+  // 查詢地圖上地標圖示的實際照片(2026-09,使用者明確要求「不再使用
+  // landmarkPhotoUrl,如果有 place id 則使用 photo_assets 第一張圖」)
+  // ——對每個有 placeId 的地點,打 fetchGeoPlaceDetails/
+  // fetchPublicGeoPlaceDetails(跟 AttractionInfoPanel.tsx 點開詳情卡
+  // 走同一支端點/同一套 photo_assets 資料來源),查到後呼叫對應 overlay
+  // 的 setPhotoUrl 只更新圖片本身,不重建整組 overlay。沒有 placeId 的
+  // 地點(舊資料,尚未補上 place_id)固定顯示 placeholder,不查詢也不
+  // 退回任何舊表資料。
+  //
+  // 依賴陣列跟上方建 overlay 的 effect 完全相同(mapReady/mapVersion/
+  // filteredAttractions)——這個 effect 必須在 overlay 陣列剛建好、
+  // 且對應到同一輪 filteredAttractions 時才查詢,兩個 effect 依賴一致
+  // 才能保證 overlaysRef.current 與 filteredAttractions 的索引對應關係
+  // 沒有被中途其他重繪打斷(React 保證同一次 render 週期內,依賴相同的
+  // 多個 effect 會依原始程式碼順序依序執行,這裡緊接在建 overlay 的
+  // effect 之後,讀到的一定是剛建好的那一批 overlay)。
+  useEffect(() => {
+    if (!cfg) return
+    let cancelled = false
+    const fetcher = usePublicPlaceDetails ? fetchPublicGeoPlaceDetails : fetchGeoPlaceDetails
+    filteredAttractions.forEach((d, i) => {
+      const overlay = overlaysRef.current[i]
+      if (!overlay || !d.placeId) return
+      const placeId = d.placeId
+      const cache = photoUrlCacheRef.current
+      if (cache.has(placeId)) {
+        overlay.setPhotoUrl(cache.get(placeId))
+        return
+      }
+      fetcher(cfg, placeId)
+        .then((details) => {
+          if (cancelled) return
+          cache.set(placeId, details.photoUrl)
+          overlay.setPhotoUrl(details.photoUrl)
+        })
+        .catch(() => {
+          // 查詢失敗:比照 AttractionInfoPanel.tsx 的既有處理方式,不
+          // 特別區分錯誤原因,靜默維持 placeholder,不快取失敗結果——
+          // 失敗可能是暫時性的網路問題,下次這個 hook 重新執行時應該
+          // 再試一次,不該永久卡在「這個 placeId 已知查不到」的狀態。
+        })
+    })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, mapVersion, filteredAttractions, cfg, usePublicPlaceDetails])
 
   // 同步選取狀態:只切換既有 overlay 的 class,不重建 DOM(重建會讓光暈/
   // 照片的 fadeIn 動畫重播,側欄點擊選取時地圖上的地標會不必要地閃一下)。

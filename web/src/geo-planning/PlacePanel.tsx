@@ -31,11 +31,12 @@ import styles from './PlacePanel.module.css'
 export interface PlaceInfoContent {
   name: string
   photoUrl?: string
-  // googlePhotoUrls/pexelsPhotoUrls:目前只有「點擊地圖上 Google 原生 POI
-  // 圖標」這個來源(poiInfoContent,見 geoInfoContent.ts)會帶值——其餘
-  // 來源(地點清單/候選籃項目)只有單一 photoUrl,這兩個欄位維持
-  // undefined,PhotoCarousel 收到兩者皆空時會 fallback 回 photoUrl,行為
-  // 不受影響。顯示順序「先 Google 後 Pexels」,見 PhotoCarousel.tsx。
+  // googlePhotoUrls:目前只有「點擊地圖上 Google 原生 POI 圖標」這個
+  // 來源(poiInfoContent,見 geoInfoContent.ts)會帶值——其餘來源(地點
+  // 清單/候選籃項目)只有單一 photoUrl,這個欄位維持 undefined,
+  // PhotoCarousel 收到空清單時會 fallback 回 photoUrl,行為不受影響。
+  // 顯示邏輯見 PhotoCarousel.tsx。2026-09 已移除 Pexels 讀圖來源,照片
+  // 只會來自 Google。
   // placeId:2026-08 起,推薦地點(GeoPlace)不再帶 eager photoUrl(後端
   // 照片查詢改成背景預熱快取,見 server 端 handleGeoPlacesNearby 的
   // 說明),故這張卡片開啟時若 photoUrl 未知、但有 placeId,呼叫端
@@ -47,7 +48,6 @@ export interface PlaceInfoContent {
   // GeoOutlinePanel.tsx 的 selectedCandidate effect),不依賴這個欄位。
   placeId?: string
   googlePhotoUrls?: string[]
-  pexelsPhotoUrls?: string[]
   subtitle?: string
   summary?: string
   // attractionSummary:這個地點同時也是人工建檔的景點區域(GeoAttraction)
@@ -266,7 +266,6 @@ export function PlacePanel({
       <div className={styles.imageWrap}>
         <PhotoCarousel
           googlePhotoUrls={content.googlePhotoUrls}
-          pexelsPhotoUrls={content.pexelsPhotoUrls}
           fallbackUrl={content.photoUrl}
           alt={content.name}
         />

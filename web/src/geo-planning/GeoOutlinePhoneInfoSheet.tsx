@@ -294,8 +294,10 @@ export function GeoOutlinePhoneInfoSheet({
         if (!cancelled) setPlaceDetails(details)
       })
       .catch(() => {
-        // 查詢失敗不視為錯誤,維持 null——PhotoCarousel 的 fallbackUrl
-        // 會退回 landmarkPhotoUrl,理由同 AttractionInfoPanel.tsx。
+        // 查詢失敗不視為錯誤,維持 null——PhotoCarousel 沒有 fallbackUrl
+        // 可退,查詢失敗就是顯示 placeholder,理由同 AttractionInfoPanel.tsx
+        // (2026-09 使用者明確要求「不再使用 landmarkPhotoUrl」,不用
+        // 資料庫舊圖墊底)。
       })
     return () => {
       cancelled = true
@@ -317,15 +319,15 @@ export function GeoOutlinePhoneInfoSheet({
   if (!open) return null
 
   const name = attraction ? attraction.name : content!.name
-  // photoUrl/googlePhotoUrls/pexelsPhotoUrls:attraction(人工建檔景點)
-  // 有 placeId 時改用上方 placeDetails effect 查回的雙來源照片(見該
-  // effect 的完整說明),沒有 placeId 時維持只有單一 landmarkPhotoUrl——
-  // PhotoCarousel 收到兩份清單皆為 undefined(或查詢中/查無結果)時會
-  // fallback 回 photoUrl 顯示單張,理由同 AttractionInfoPanel.tsx/
-  // PlacePanel.tsx 的既有慣例。
-  const photoUrl = attraction ? attraction.landmarkPhotoUrl : content!.photoUrl
+  // photoUrl/googlePhotoUrls:attraction(人工建檔景點)一律改用上方
+  // placeDetails effect 查回的照片(見該 effect 的完整說明)——2026-09
+  // 使用者明確要求「完全不要使用 landmarkPhotoUrl」,沒有 placeId 或
+  // 查詢中/查無結果時 photoUrl 固定 undefined,PhotoCarousel 顯示
+  // placeholder,不回退任何舊表資料。content(PlaceInfoContent,飯店/
+  // 推薦地點等非 attraction 來源)不受影響,繼續用它自己的 photoUrl
+  // 欄位。2026-09 已移除 Pexels 讀圖來源,照片只會來自 Google。
+  const photoUrl = attraction ? undefined : content!.photoUrl
   const googlePhotoUrls = attraction ? (attractionPlaceId ? placeDetails?.googlePhotoUrls : undefined) : content!.googlePhotoUrls
-  const pexelsPhotoUrls = attraction ? (attractionPlaceId ? placeDetails?.pexelsPhotoUrls : undefined) : content!.pexelsPhotoUrls
   const subtitle = attraction
     ? attraction.landmarkName && attraction.landmarkName !== attraction.name
       ? attraction.landmarkName
@@ -434,7 +436,6 @@ export function GeoOutlinePhoneInfoSheet({
       <div className={`${styles.imageWrap}${isMobileSwipe ? ` ${styles.imageWrapSwipe}` : ''}`}>
         <PhotoCarousel
           googlePhotoUrls={googlePhotoUrls}
-          pexelsPhotoUrls={pexelsPhotoUrls}
           fallbackUrl={photoUrl}
           alt={name}
           onLayoutChange={setIsMobileSwipe}

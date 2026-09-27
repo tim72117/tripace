@@ -11,6 +11,7 @@ import (
 
 	"github.com/tim72117/tripace/internal/apigateway"
 	"github.com/tim72117/tripace/internal/geo"
+	"github.com/tim72117/tripace/internal/model"
 	"github.com/tim72117/tripace/internal/pexels"
 )
 
@@ -337,15 +338,14 @@ func (s *Server) fetchNearbyHotels(ctx context.Context, client *geo.Client, lat,
 // Places 路徑的結果一律不帶 level(前端據此判斷全部顯示,不受縮放層級
 // 篩選——這批資料目前沒有分級資訊可用)。
 type attractionResponse struct {
-	Name             string  `json:"name"`
-	Lat              float64 `json:"lat"`
-	Lng              float64 `json:"lng"`
-	PlaceCount       int     `json:"placeCount,omitempty"`
-	LandmarkPhotoURL string  `json:"landmarkPhotoUrl,omitempty"`
-	LandmarkName     string  `json:"landmarkName,omitempty"`
-	RadiusMeters     int     `json:"radiusMeters,omitempty"`
-	Summary          string  `json:"summary,omitempty"`
-	Level            int     `json:"level,omitempty"`
+	Name         string  `json:"name"`
+	Lat          float64 `json:"lat"`
+	Lng          float64 `json:"lng"`
+	PlaceCount   int     `json:"placeCount,omitempty"`
+	LandmarkName string  `json:"landmarkName,omitempty"`
+	RadiusMeters int     `json:"radiusMeters,omitempty"`
+	Summary      string  `json:"summary,omitempty"`
+	Level        int     `json:"level,omitempty"`
 	// IsTheme:見 model.Attraction.IsTheme 的完整說明。跟 Level 一樣只有
 	// 走資料庫路徑才有意義,故沒有用 omitempty——false 是合法值(代表
 	// 「這是精選點」),omitempty 會讓前端收到的 JSON 完全沒有這個欄位,
@@ -354,10 +354,10 @@ type attractionResponse struct {
 	// PlaceID:只有走 store.ListAttractionsByCity/ListAttractionsNearby
 	// 這條人工建檔資料路徑、且該筆 model.Attraction.PlaceID 有值時才會有
 	// 值——即時查 Google Places 的 toAttractionResponses 路徑(geo.District
-	// 沒有這個欄位)固定不帶。有值時前端(AttractionInfoPanel.tsx)優先
-	// 改打 GET /internal/geo/place-details 取得漸進補圖機制的雙來源照片,
-	// 取代/補強 LandmarkPhotoURL 這個單張欄位,見 model.Attraction.PlaceID
-	// 的完整說明。
+	// 沒有這個欄位)固定不帶。有值時前端(useAttractionOverlays.ts/
+	// AttractionInfoPanel.tsx)才會改打 GET /internal/geo/place-details
+	// 查詢 photo_assets 的實際照片,見 model.Attraction.PlaceID 的完整
+	// 說明。
 	PlaceID string `json:"placeId,omitempty"`
 	// Category:見 model.Attraction.Category 的完整說明。跟 PlaceID 一樣
 	// 只有走資料庫路徑、且該筆有設定值時才會有值,即時查 Google Places 的
@@ -403,27 +403,32 @@ func (s *Server) handleGeoAttractions(w http.ResponseWriter, r *http.Request) {
 	// 該資料集已清空、對應查表恆回傳 false,是死碼,已隨同移除(見
 	// CHANGELOG)。
 	var attractions []attractionResponse
+	// 2026-09:不再查/帶出 landmarkPhotoUrl(舊版曾一度改成批次查
+	// photo_assets 內容,對應的 store.ListFreshPhotoAssetURLs 已隨同
+	// 移除,但前端(geoAttractionOverlay.ts/useAttractionOverlays.ts)
+	// 已經確認完全不讀這個欄位——地圖圖示改成掛載時各自呼叫
+	// fetchGeoPlaceDetails 查詢即時內容,不再依賴這支列表端點內嵌照片,
+	// 見這兩個檔案的完整說明)——使用者明確要求「完全不要使用
+	// landmarkPhotoUrl」,故連
+	// 後端這一批查詢/組裝邏輯也一併移除,不留著算好卻沒人讀的欄位。
 	if landmarks, err := s.store.ListAttractionsByCity(city); err == nil && len(landmarks) > 0 {
-		for _, l := range landmarks {
+		for _, landmark := range landmarks {
 			ar := attractionResponse{
-				Name:         l.Name,
-				Lat:          l.Lat,
-				Lng:          l.Lng,
-				RadiusMeters: l.RadiusMeters,
-				Level:        l.Level,
-				IsTheme:      l.IsTheme,
+				Name:         landmark.Name,
+				Lat:          landmark.Lat,
+				Lng:          landmark.Lng,
+				RadiusMeters: landmark.RadiusMeters,
+				Level:        landmark.Level,
+				IsTheme:      landmark.IsTheme,
 			}
-			if l.Summary != nil {
-				ar.Summary = *l.Summary
+			if landmark.Summary != nil {
+				ar.Summary = *landmark.Summary
 			}
-			if l.PhotoURL != nil {
-				ar.LandmarkPhotoURL = *l.PhotoURL
+			if landmark.PlaceID != nil {
+				ar.PlaceID = *landmark.PlaceID
 			}
-			if l.PlaceID != nil {
-				ar.PlaceID = *l.PlaceID
-			}
-			if l.Category != nil {
-				ar.Category = *l.Category
+			if landmark.Category != nil {
+				ar.Category = *landmark.Category
 			}
 			attractions = append(attractions, ar)
 		}
@@ -482,18 +487,24 @@ func (s *Server) handleGeoAttractions(w http.ResponseWriter, r *http.Request) {
 // 見 geo.SearchCityAttractions)轉成統一的 attractionResponse 格式。這條路徑
 // 的資料沒有知名度分級,Level 固定為 0(json 的 omitempty 讓它不出現在
 // 回應裡)。
+// d.LandmarkPhotoURL(geo.District 這個即時查詢型別自帶的欄位)刻意不
+// 帶進 attractionResponse——2026-09 使用者明確要求「完全不要使用
+// landmarkPhotoUrl」,前端已經不讀這個回應欄位(見上方 attractionResponse
+// 拿掉 LandmarkPhotoURL 欄位處的完整說明)。這裡不動 geo.District 本身
+// 或 geo.SearchCityAttractions 內部是否仍會觸發 Google Photo Media
+// 下載這件事(那是即時查詢路徑本身的成本/行為,跟「這支端點的 JSON
+// 回應要不要帶這個欄位」是兩個獨立的問題,後者才是這裡要處理的範圍)。
 func toAttractionResponses(in []geo.District) []attractionResponse {
 	out := make([]attractionResponse, 0, len(in))
 	for _, d := range in {
 		out = append(out, attractionResponse{
-			Name:             d.Name,
-			Lat:              d.Lat,
-			Lng:              d.Lng,
-			PlaceCount:       d.PlaceCount,
-			LandmarkPhotoURL: d.LandmarkPhotoURL,
-			LandmarkName:     d.LandmarkName,
-			RadiusMeters:     d.RadiusMeters,
-			Summary:          d.Summary,
+			Name:         d.Name,
+			Lat:          d.Lat,
+			Lng:          d.Lng,
+			PlaceCount:   d.PlaceCount,
+			LandmarkName: d.LandmarkName,
+			RadiusMeters: d.RadiusMeters,
+			Summary:      d.Summary,
 		})
 	}
 	return out
@@ -855,27 +866,27 @@ func (s *Server) listAttractionResponses(lat, lng, radiusMeters float64) ([]attr
 	if err != nil {
 		return nil, err
 	}
+	// 2026-09:不再查/帶出 landmarkPhotoUrl,理由同 handleGeoAttractions
+	// 同一次修正的完整說明——前端已確認完全不讀這個欄位,連同批次查詢
+	// photo_assets 這段邏輯一併移除。
 	attractions := make([]attractionResponse, 0, len(landmarks))
-	for _, l := range landmarks {
+	for _, landmark := range landmarks {
 		ar := attractionResponse{
-			Name:         l.Name,
-			Lat:          l.Lat,
-			Lng:          l.Lng,
-			RadiusMeters: l.RadiusMeters,
-			Level:        l.Level,
-			IsTheme:      l.IsTheme,
+			Name:         landmark.Name,
+			Lat:          landmark.Lat,
+			Lng:          landmark.Lng,
+			RadiusMeters: landmark.RadiusMeters,
+			Level:        landmark.Level,
+			IsTheme:      landmark.IsTheme,
 		}
-		if l.Summary != nil {
-			ar.Summary = *l.Summary
+		if landmark.Summary != nil {
+			ar.Summary = *landmark.Summary
 		}
-		if l.PhotoURL != nil {
-			ar.LandmarkPhotoURL = *l.PhotoURL
+		if landmark.PlaceID != nil {
+			ar.PlaceID = *landmark.PlaceID
 		}
-		if l.PlaceID != nil {
-			ar.PlaceID = *l.PlaceID
-		}
-		if l.Category != nil {
-			ar.Category = *l.Category
+		if landmark.Category != nil {
+			ar.Category = *landmark.Category
 		}
 		attractions = append(attractions, ar)
 	}
@@ -965,16 +976,10 @@ func (s *Server) handleGeoAttractionsOnlyNearby(w http.ResponseWriter, r *http.R
 // placeDetailsResponse 是 GET /internal/geo/place-details 回應的單一地點
 // 詳細資訊格式,對齊 geo.PlaceDetails(見該型別的完整說明)。
 //
-// PhotoURL 是舊有單張欄位,photoOnly/textOnly 模式(見兩者對應的
-// photoOnlyResponse/textOnlyResponse)仍維持單張 Pexels-first fallback
-// Google 的既有行為,不受這次改動影響,故保留給那兩種模式使用。
-//
-// 一般模式(無 query 參數,對應「使用者點擊地圖上 Google 原生 POI」)
-// 改為 GooglePhotoURLs/PexelsPhotoURLs 兩份獨立清單同時並列——Google
-// 的圖排前面、Pexels 排後面(見前端 GeoInfoPanel 的顯示順序),不再是
-// Pexels-first 互斥選擇其中一種來源。PhotoURL 在這個模式下維持等於
-// 「兩份清單合併後的第一張」,供還沒改用新欄位的舊呼叫端過渡期間
-// 兼容(見下方一般模式組裝邏輯)。
+// 最終顯示的照片欄位一律由 applyPhotoAssetsAsSource(見該函式的完整
+// 說明)決定 photo_assets 目前的內容——PhotoURL 是 GooglePhotoURLs
+// 合併後的第一張,供還沒改用多圖欄位的舊呼叫端過渡期間兼容。2026-09
+// 移除 Pexels 讀圖來源後,照片只會來自 Google。
 type placeDetailsResponse struct {
 	Name            string   `json:"name"`
 	Address         string   `json:"address"`
@@ -984,7 +989,6 @@ type placeDetailsResponse struct {
 	Summary         string   `json:"summary,omitempty"`
 	PhotoURL        string   `json:"photoUrl,omitempty"`
 	GooglePhotoURLs []string `json:"googlePhotoUrls,omitempty"`
-	PexelsPhotoURLs []string `json:"pexelsPhotoUrls,omitempty"`
 }
 
 // GET /internal/geo/place-details?placeId={Google Place ID}
@@ -1089,6 +1093,231 @@ func (s *Server) landmarkPhotoURLFromDataURI(ctx context.Context, objectKey, dat
 	return uploaded
 }
 
+// photoAssetExpiry 是 syncPhotoAssetInBackground 寫入 photo_assets 時採用
+// 的有效期,對齊 cmd/migrate-photo-assets 遷移工具的既有門檻(7 天,見
+// photoAssetRow 的完整說明)——兩者是同一張表的兩種寫入來源(一次性遷移
+// vs. 這裡的持續背景補圖),理當共用同一個新鮮度承諾,不需要各自訂一個
+// 不同的數字。
+const photoAssetExpiry = 7 * 24 * time.Hour
+
+// syncPhotoAssetInBackground 把 handleGeoPlaceDetails 漸進補圖機制剛下載
+// 成功的一張 Google 照片(dataURI,尚未落地)另外背景上傳一份到
+// photo_assets——這張表是目前所有「顯示端」(handleGeoAttractions*/
+// handlePublicGeoPlaceDetails*)唯一會讀取的照片來源(見這幾支函式的
+// 完整說明,不回退 google_place_photos/attractions.photo_url),但寫入
+// photo_assets 目前只有 cmd/migrate-photo-assets 這支一次性遷移工具,沒有
+// 持續補齊的機制——過期(或從未遷移)的地點會一直查無照片,直到有人手動
+// 重跑遷移。這支函式讓「正式規劃體驗」既有的點擊節奏補圖(見
+// shouldAddGooglePlacePhoto 的完整說明)順便兼任這個持續補齊的角色:
+// 每次點擊節奏觸發、成功從 Google 拿到新照片時,額外異步寫一份到
+// photo_assets,讓熱門地點的照片自然而然不會過期太久。
+//
+// 刻意用獨立的 goroutine 執行、不回傳錯誤、不阻塞呼叫端——這是「顯示」
+// (呼叫端已經用這張 dataURI 組好 google_place_photos 的回應)之外的
+// 旁支任務,不該讓這次請求的回應時間多等一次 GCS 上傳;上傳/寫入失敗
+// 只代表 photo_assets 這次沒能刷新,不影響這次請求本身已經完成的回應,
+// 下次點擊節奏再次觸發時會重新嘗試。
+//
+// objectKey 使用獨立的 "bg-" 前綴(而非直接沿用 googlePlacePhotoObjectKey
+// 的 objectKey)——避免跟 landmarkPhotoURLFromDataURI 已經在用、寫入
+// google_place_photos 的物件路徑撞在一起互相覆寫;photo_assets 是完全
+// 獨立的一張表,理當有自己獨立的 GCS 物件路徑,不與舊資料源共用同一個
+// 物件。context 用 context.Background() 而非呼叫端的 r.Context()——
+// 理由同 tryClaimPlaceDetailsInFlight 呼叫端的既有慣例:這是背景任務,
+// 不該因為使用者提早關閉頁面、原始請求的 context 被取消,就連帶讓這次
+// 落地半途而廢。
+func (s *Server) syncPhotoAssetInBackground(placeID string, photoIndex int, dataURI string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		objectKey := "bg-" + googlePlacePhotoObjectKey(placeID, photoIndex)
+		gcsURL, err := s.photoUploader.UploadDataURI(ctx, objectKey, dataURI)
+		if err != nil {
+			return
+		}
+		now := time.Now()
+		expiresAt := now.Add(photoAssetExpiry)
+		_ = s.store.UpsertPhotoAsset(model.PhotoAsset{
+			PlaceID:    placeID,
+			PhotoIndex: photoIndex,
+			Usage:      "full",
+			Source:     "google",
+			GCSURL:     gcsURL,
+			FetchedAt:  now,
+			ExpiresAt:  &expiresAt,
+		})
+	}()
+}
+
+// refreshGooglePlacePhotoInBackground 是 handleGeoPlaceDetails 快取命中
+// 分支「點擊節奏/時間觸發」後,原本同步執行的漸進補圖確認流程——2026-09
+// 從同步搬到背景 goroutine 執行(見呼叫端的完整說明:使用者反映點擊
+// 詳情卡時仍會感受到明顯延遲,查證後發現只有 syncPhotoAssetInBackground
+// 那一小段(多寫一份到 photo_assets)是背景的,這裡包住的 ListPlacePhotoRefs
+// (Enterprise 級查詢)+ PhotoDataURIUnrestricted(下載一張完整圖片)+
+// landmarkPhotoURLFromDataURI(上傳 GCS)這一整串外部 I/O 仍然寫在
+// writeJSON 之前同步執行,才是真正拖慢請求的主因)。
+//
+// clickCount/newPhotoCount/previousGoogleTarget 由呼叫端在觸發判斷當下
+// 傳入(已經呼叫過 IncrementPlaceClickCount,原子遞增,不能重複呼叫或
+// 延後到背景才做——理由同呼叫端的完整說明,點擊次數紀錄要跟這次請求
+// 本身同步,不能因為背景 goroutine 的排程時機而漂移),這裡只負責後續
+// 「要不要真的向 Google 要新照片」的決策與實際下載/上傳,不重新讀取或
+// 重新遞增這幾個計數。
+//
+// 用 context.Background() 而非呼叫端的 r.Context()——理由同
+// syncPhotoAssetInBackground 的既有說明:這是背景任務,不該因為使用者
+// 提早關閉頁面、原始請求的 context 被取消,就連帶讓這次確認/補圖半途
+// 而廢。requestPath 只用於 geo.WithPath 記錄呼叫來源,不影響任何邏輯
+// 判斷。
+//
+// 這支函式執行完全不影響任何一次 HTTP 回應——呼叫端已經在它啟動這個
+// goroutine 之前就用現有資料寫出回應了,這裡的任何錯誤/慢速都只會延後
+// 下一次請求才看到新照片,不會讓目前這次請求變慢或失敗。
+func (s *Server) refreshGooglePlacePhotoInBackground(placeID, requestPath string, clickCount int64, newPhotoCount, previousGoogleTarget int) {
+	go func() {
+		apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+		client := s.newPlaceDetailsClient(apiKey)
+		pctx, pcancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer pcancel()
+		pctx = geo.WithCaller(pctx, "handleGeoPlaceDetails")
+		pctx = geo.WithPath(pctx, requestPath)
+
+		// ListPlacePhotoRefs 只查 photos 欄位長度(見該函式的完整說明),
+		// 但計費等級跟完整的 GetPlaceDetails 是同一級(Enterprise,見
+		// docs/refactor-place-photo-progressive-loading-2026-09.md 的
+		// 查證結果)——這裡查詢失敗直接放棄這次背景確認,下次點擊節奏
+		// 或時間觸發時會重新嘗試,不需要任何降級處理(這支函式本來就不
+		// 影響任何已經送出的 HTTP 回應)。
+		refs, refsErr := client.ListPlacePhotoRefs(pctx, placeID)
+		if refsErr != nil {
+			return
+		}
+		currentGoogleTarget := len(refs)
+		_, effectiveNewPhotoCount, shouldFetch, indexToFetch := decidePlacePhotoAction(
+			clickCount, newPhotoCount, previousGoogleTarget, currentGoogleTarget)
+
+		if shouldFetch && indexToFetch >= 0 && indexToFetch < len(refs) {
+			// decidePlacePhotoAction 回傳的 effectiveNewPhotoCount 是
+			// 「補圖前」的累積數(同時也是 indexToFetch 本身,見該函式的
+			// 完整說明)。只有這張真的下載成功時,才代表已經補到的張數
+			// 往前推進了一張,effectiveNewPhotoCount 才需要 +1——下載
+			// 失敗時維持原值不變,讓下次點擊(或下次時間觸發)重新嘗試
+			// 同一個 index,不因為這次失敗就跳過這張沒真正補到的照片。
+			// landmarkPhotoURLFromDataURI 的 objectKey 必須帶入
+			// indexToFetch(googlePlacePhotoObjectKey,見該函式的完整
+			// 說明)——避免同一 placeID 之後陸續補到的多張照片,全部覆寫
+			// 到同一個 GCS 物件。
+			//
+			// 這裡改用 PhotoDataURIUnrestricted(而非 PhotoDataURI)——
+			// 已經有 apigateway.RateLimiter(依 "places.photoMedia" 拒絕型
+			// 限流)+ Server.placeDetailsInFlight(同 placeID 併發丟棄)+
+			// 這裡本身的點擊節奏/24 小時快取三重機制頂著成本風險,不應該
+			// 再被 GOOGLE_PLACES_FETCH_PHOTOS 這個全域開關擋住(本機開發
+			// 預設關閉)——完整理由見 geo.Client.PhotoDataURIUnrestricted
+			// 的說明。
+			if photoURL, pErr := client.PhotoDataURIUnrestricted(pctx, placeID, refs[indexToFetch], 400); pErr == nil {
+				objectKey := googlePlacePhotoObjectKey(placeID, indexToFetch)
+				s.appendGooglePlacePhoto(placeID, s.landmarkPhotoURLFromDataURI(pctx, objectKey, photoURL))
+				s.syncPhotoAssetInBackground(placeID, indexToFetch, photoURL)
+				effectiveNewPhotoCount++
+			}
+		}
+
+		// 只要打過 ListPlacePhotoRefs(不論最後有沒有真的觸發
+		// shouldFetch),就要把 fetched_at 重置成現在(見
+		// UpdatePlacePhotoProgress 對 touchFetchedAt 參數的完整說明),
+		// 讓 7 天時間觸發條件重新從現在起算。
+		_ = s.store.UpdatePlacePhotoProgress(placeID, effectiveNewPhotoCount, currentGoogleTarget, true)
+	}()
+}
+
+// applyPhotoAssetsAsSource 用 photo_assets(見 store.ListFreshPhotoAssetURLsForPlace
+// 的完整說明)無條件決定 resp 最終要顯示給使用者看的照片欄位——
+// handleGeoPlaceDetails 的三個回傳點(快取命中分支、
+// buildDegradedPlaceDetailsResponse、fetchAndCachePlaceDetails)在呼叫
+// 這支函式之前,都各自需要從 google_place_photos 組出中繼變數(供
+// syncPhotoAssetInBackground 補圖節奏等既有邏輯使用),但那些中繼變數
+// 組出來的 GooglePhotoURLs/PhotoURL 不再是最終回應——這支函式呼叫後
+// 一律覆寫成 photo_assets 的內容,查無時清空,不留任何舊表資料。
+//
+// 2026-09 重構(原名 overrideWithPhotoAssets):使用者明確要求「應該要
+// 跟點選附近景點一樣的流程」「不要再有資料庫的回退步驟」——原本這裡
+// 查無 photo_assets 紀錄時會原封不動保留 resp 既有的(來自 google_
+// place_photos 舊表的)照片欄位,讓使用者仍然看到一張圖,但這正是使用者
+// 要拿掉的「資料庫回退」:舊表資料一旦被拿來顯示,使用者就分不清楚看到
+// 的是「即時查到的照片」還是「這張舊表殘留的過期內容」(真實案例:清除
+// photo_assets 後前端仍顯示圖片,查證發現是 google_place_photos 這張
+// 舊表在墊底)。現在查無 photo_assets 時明確清空成 nil/空字串,前端
+// 顯示 placeholder,不會再誤以為看到的是最新資料。
+func (s *Server) applyPhotoAssetsAsSource(resp *placeDetailsResponse, placeID string) {
+	photoURLs, err := s.store.ListFreshPhotoAssetURLsForPlace(placeID)
+	if err != nil || len(photoURLs) == 0 {
+		resp.GooglePhotoURLs = nil
+		resp.PhotoURL = ""
+		return
+	}
+	resp.GooglePhotoURLs = photoURLs
+	resp.PhotoURL = photoURLs[0]
+}
+
+// photoAssetsOnlyResponse 是 GET /internal/geo/place-photo-assets 的回應
+// 形狀——只有照片欄位,理由見該端點的完整說明。
+type photoAssetsOnlyResponse struct {
+	PhotoURL        string   `json:"photoUrl,omitempty"`
+	GooglePhotoURLs []string `json:"googlePhotoUrls,omitempty"`
+}
+
+// GET /internal/geo/place-photo-assets?placeId={Google Place ID}
+//
+// 純讀 photo_assets 目前狀態,不觸發任何點擊計數/漸進補圖決策——供前端
+// 「查完地點詳情發現沒有照片,原地重試幾次看背景補圖是否已經完成」這種
+// 情境使用(見 web/src/geo-planning/useThemeAttractionSelection.ts
+// fetchPoiContent 的 PHOTO_RETRY_* 完整說明)。
+//
+// 這支端點刻意跟 handleGeoPlaceDetails 完全分開,不是後者的一個查詢
+// 參數變形(對照 photoOnly=1 的 photoOnlyResponse——那條路徑快取未命中時
+// 甚至會先重打一次 Google Place Details 刷新文字快取,見
+// handleGeoPlaceDetails 該分支的完整說明,不是真正零副作用的純讀)。
+// 這裡只呼叫 applyPhotoAssetsAsSource 讀一次 photo_assets(單一
+// SELECT,見該函式的完整說明),不呼叫 IncrementPlaceClickCount、不呼叫
+// 任何 Google API、不觸發任何背景 goroutine——重試幾次都不會意外把
+// 漸進補圖節奏往前推、也不會被 apigateway.RateLimiter 的
+// places.photoMedia 限流計入(因為根本不會打到那支 API)。
+//
+// 查無 photo_assets 紀錄時(從未查過這個 placeID、或背景補圖仍在進行中
+// 尚未寫入)一律回傳兩個欄位皆空的 200,不是 404——這裡的語意是「目前
+// 沒有可顯示的照片」,不是「這個地點不存在」,呼叫端(fetchPoiContent)
+// 據此判斷要不要再排下一輪重試。
+func (s *Server) handleGeoPlacePhotoAssets(w http.ResponseWriter, r *http.Request) {
+	placeID := r.URL.Query().Get("placeId")
+	if placeID == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 placeId 查詢參數")
+		return
+	}
+	var resp placeDetailsResponse
+	s.applyPhotoAssetsAsSource(&resp, placeID)
+	writeJSON(w, http.StatusOK, photoAssetsOnlyResponse{
+		PhotoURL:        resp.PhotoURL,
+		GooglePhotoURLs: resp.GooglePhotoURLs,
+	})
+}
+
+// GET /public/geo/place-photo-assets?placeId={Google Place ID}
+//
+// handleGeoPlacePhotoAssets 的免登入版——授權機制對齊
+// handlePublicGeoPlaceDetails(必須是已建檔的 attraction 才放行,見該
+// 函式的完整說明),通過後直接委派給同一個 handler,不重寫第二份純讀
+// 邏輯。
+func (s *Server) handlePublicGeoPlacePhotoAssets(w http.ResponseWriter, r *http.Request) {
+	placeID := r.URL.Query().Get("placeId")
+	if _, err := s.store.GetAttractionByPlaceID(placeID); err != nil {
+		writeErr(w, http.StatusForbidden, "place_not_allowed", "這個 placeId 不是已建檔的景點,不允許公開查詢")
+		return
+	}
+	s.handleGeoPlacePhotoAssets(w, r)
+}
+
 // googlePlacePhotoObjectKey 組出漸進補圖機制專用的 GCS objectKey——
 // place-details/{placeID}{ext} 這個既有物件路徑格式(見
 // photostorage.UploadDataURI 的說明)原本假設「同一個 placeID 只對應
@@ -1167,12 +1396,9 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 	// 清單的成本太高。這個模式下:
 	//   1. 快取命中就沿用完整快取的 photoUrl 欄位(理由同一般模式,不重複
 	//      打任何外部 API);
-	//   2. 快取未命中時只試 Pexels(免費),用呼叫端傳入的 name 查詢
-	//      (清單本來就已經有 Text Search 查到的名稱,不需要為了拿名稱
-	//      再多打一次 Google Details),查無結果就回空,不 fallback
-	//      Google GetPlaceDetails/Photo Media——這是刻意的成本上限,
-	//      「只查圖像」代表只承擔 Pexels 這一種免費查詢的成本,不是
-	//      「換一種方式取得同樣完整的資料」。
+	//   2. 快取未命中時(2026-09 移除 Pexels 讀圖來源後)直接回空,不
+	//      fallback Google GetPlaceDetails/Photo Media——這是刻意的成本
+	//      上限,不為了補一張圖多付一次 Enterprise 級查詢的成本。
 	//   3. 不寫入 place_details_cache——這個模式下沒有 address/rating/
 	//      summary 等完整資料,寫入會讓快取列殘缺不全,之後真正需要完整
 	//      資訊時(使用者點選這筆候選,見 handleGeocodeCandidateSelect)
@@ -1184,7 +1410,7 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 	// 開啟資訊卡(此時 photoUrl 還沒有值,前端顯示佔位圖),不必等照片
 	// 查完才有畫面反應;照片另外並行呼叫 photoOnly 模式取得,查到後再
 	// 補上實際圖片。跟 photoOnly 對稱:快取未命中時完全跳過照片查詢
-	// (不打 Pexels/Google Photo Media),也不寫入快取(理由同 photoOnly
+	// (不打 Google Photo Media),也不寫入快取(理由同 photoOnly
 	// 分支的說明,這個模式沒有 photoUrl 可安全寫入完整快取列)。
 	textOnly := r.URL.Query().Get("textOnly") == "1"
 
@@ -1269,30 +1495,17 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// photoOnly 模式維持既有的單張 Pexels-first 邏輯(見
-		// photoOnlyResponse 的說明,不受這次雙來源改動影響)——只讀
-		// Pexels 表的第一張當單張欄位,快取未命中時單獨補一次 Pexels
-		// 查詢,不查 Google Places(理由同原本註解:這裡快取命中的整個
-		// 重點就是不打 Google)。
+		// photoOnly 模式——2026-09 移除 Pexels 讀圖來源:一律以 photo_assets
+		// (applyPhotoAssetsAsSource,見該函式的完整說明)決定要回應的
+		// PhotoURL,不再嘗試補查 Pexels。
 		if photoOnly {
-			pexelsPhotos, _ := s.store.ListPlacePexelsPhotos(placeID)
-			if len(pexelsPhotos) > 0 {
-				resp.PhotoURL = pexelsPhotos[0].PhotoURL
-			} else {
-				pexelsClient := pexels.New(os.Getenv("PEXELS_API_KEY"))
-				pctx, pcancel := context.WithTimeout(r.Context(), 5*time.Second)
-				if photo, ok, pErr := pexelsClient.Search(pctx, resp.Name); pErr == nil && ok {
-					resp.PhotoURL = s.landmarkPhotoURL(pctx, placeID, photo.ImageURL)
-					_ = s.store.SetPlacePexelsPhotos(placeID, []string{resp.PhotoURL}, []string{""})
-				}
-				pcancel()
-			}
+			s.applyPhotoAssetsAsSource(&resp, placeID)
 			writeJSON(w, http.StatusOK, photoOnlyResponse{PhotoURL: resp.PhotoURL})
 			return
 		}
 
-		// 一般模式快取命中:Google 與 Pexels 的照片各自從對應的表讀出、
-		// 同時並列回傳(見 placeDetailsResponse 的說明)。
+		// 一般模式快取命中:最終顯示的照片一律由 applyPhotoAssetsAsSource
+		// 決定 photo_assets 目前的內容(見該函式的完整說明)。
 		//
 		// 這裡是漸進補圖機制真正的核心判斷點——「點擊節奏 OR 時間」兩個
 		// 觸發條件任一為真時,才值得多付一次 Enterprise 級的 Google 查詢
@@ -1333,97 +1546,25 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 		clickTriggered := clickErr == nil && shouldAddGooglePlacePhoto(clickCount, newPhotoCount, previousGoogleTarget)
 		timeTriggered := time.Since(cached.FetchedAt) > placeDetailsTargetRecheckMaxAge
 
+		// 2026-09:點擊節奏/時間觸發後「真正向 Google 查詢+下載+上傳
+		// GCS」這整段改成背景執行(見 refreshGooglePlacePhotoInBackground
+		// 的完整說明)——使用者反映「點選附近景點時還是會延遲這麼久」,
+		// 查證後發現：這一輪稍早只把「額外多寫一份到 photo_assets」
+		// (syncPhotoAssetInBackground)做成背景,但真正耗時的主流程
+		// (ListPlacePhotoRefs 的 Enterprise 級查詢 + PhotoDataURIUnrestricted
+		// 下載一張完整圖片 + landmarkPhotoURLFromDataURI 上傳 GCS)仍然
+		// 寫在 writeJSON 之前同步執行,點擊節奏一旦觸發(尤其第一次點擊,
+		// previousGoogleTarget 為 sentinel -1 時必定觸發)使用者就要等這一
+		// 整串外部 I/O 做完才收到回應。故這裡不再等待,直接用下面讀出的
+		// 現有 google_place_photos 資料組這次的回應,新照片等背景
+		// goroutine 完成後才會反映在下一次請求。
 		if clickErr == nil && (clickTriggered || timeTriggered) {
-			apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
-			client := s.newPlaceDetailsClient(apiKey)
-			pctx, pcancel := context.WithTimeout(r.Context(), 10*time.Second)
-			pctx = geo.WithCaller(pctx, "handleGeoPlaceDetails")
-			pctx = geo.WithPath(pctx, r.URL.Path)
-
-			// ListPlacePhotoRefs 只查 photos 欄位長度(見該函式的完整
-			// 說明),但計費等級跟完整的 GetPlaceDetails 是同一級
-			// (Enterprise,見 docs/refactor-place-photo-progressive-loading-2026-09.md
-			// 的查證結果)——這裡查詢失敗不應該讓整個快取命中的回應
-			// 失敗,比照這支 handler 既有的「失敗就略過、繼續用現有
-			// 資料回應」慣例(見下方 fetchAndCachePlaceDetails 對單張
-			// 照片下載失敗的處理),吞掉錯誤、直接沿用快取現有的照片
-			// 清單。
-			refs, refsErr := client.ListPlacePhotoRefs(pctx, placeID)
-			if refsErr == nil {
-				currentGoogleTarget := len(refs)
-				_, effectiveNewPhotoCount, shouldFetch, indexToFetch := decidePlacePhotoAction(
-					clickCount, newPhotoCount, previousGoogleTarget, currentGoogleTarget)
-
-				if shouldFetch && indexToFetch >= 0 && indexToFetch < len(refs) {
-					// decidePlacePhotoAction 回傳的 effectiveNewPhotoCount
-					// 是「補圖前」的累積數(同時也是 indexToFetch 本身,
-					// 見該函式的完整說明)。只有這張真的下載成功時,才
-					// 代表已經補到的張數往前推進了一張,effectiveNewPhotoCount
-					// 才需要 +1——下載失敗時維持原值不變,讓下次點擊
-					// (或下次時間觸發)重新嘗試同一個 index,不因為這次
-					// 失敗就跳過這張沒真正補到的照片。
-					// landmarkPhotoURLFromDataURI 的 objectKey 必須帶入
-					// indexToFetch(googlePlacePhotoObjectKey,見該函式的
-					// 完整說明)——這支函式原本的呼叫端(fetchPhotosForCandidates/
-					// fetchNearbyHotels)每個 placeID 只存一張照片,用
-					// placeID 本身當 GCS 物件路徑沒有問題,但漸進補圖機制
-					// 下同一個 placeID 現在會依序累積多張照片,若仍只用
-					// placeID 當 objectKey,每次補圖都會覆寫到同一個 GCS
-					// 物件,導致 google_place_photos 表裡不同 photo_index
-					// 的紀錄全部指向同一張(最後上傳那張)實際圖片內容——
-					// 這是實測時發現的真實 bug,不是理論疑慮。
-					//
-					// 這裡改用 PhotoDataURIUnrestricted(而非 PhotoDataURI)——
-					// 這一段是「單點地點介紹」快取命中後觸發漸進補圖重新確認
-					// 的路徑,已經有 apigateway.RateLimiter(依 "places.photoMedia"
-					// 拒絕型限流)+ Server.placeDetailsInFlight(同 placeID
-					// 併發丟棄)+ 這裡本身的點擊節奏/24 小時快取三重機制頂著
-					// 成本風險,不應該再被 GOOGLE_PLACES_FETCH_PHOTOS 這個
-					// 全域開關擋住(本機開發預設關閉)——完整理由見
-					// geo.Client.PhotoDataURIUnrestricted 的說明。
-					if photoURL, pErr := client.PhotoDataURIUnrestricted(pctx, placeID, refs[indexToFetch], 400); pErr == nil {
-						objectKey := googlePlacePhotoObjectKey(placeID, indexToFetch)
-						resp.GooglePhotoURLs = s.appendGooglePlacePhoto(placeID, s.landmarkPhotoURLFromDataURI(pctx, objectKey, photoURL))
-						effectiveNewPhotoCount++
-					}
-				}
-
-				// 只要打過 ListPlacePhotoRefs(不論最後有沒有真的觸發
-				// shouldFetch),就要把 fetched_at 重置成現在(見
-				// UpdatePlacePhotoProgress 對 touchFetchedAt 參數的完整
-				// 說明),讓 7 天時間觸發條件重新從現在起算。
-				_ = s.store.UpdatePlacePhotoProgress(placeID, effectiveNewPhotoCount, currentGoogleTarget, true)
-			}
-			pcancel()
+			s.refreshGooglePlacePhotoInBackground(placeID, r.URL.Path, clickCount, newPhotoCount, previousGoogleTarget)
 		}
 
-		// Pexels 查詢邏輯已從「只在初次查詢時查一次」改成獨立於 Google
-		// 補圖節奏之外、每次點擊都各自判斷的同步機制(見 ensurePexelsPhotos
-		// 的完整說明)——這是稽核文件 docs/audit-place-photo-cost-control-2026-09.md
-		// R5 記錄的修法:原本快取命中分支完全沒有「Pexels 缺圖時補查」的
-		// 機制,跟 Google 端持續嘗試補圖/重新確認的節奏形成不對稱,一旦
-		// 初次查詢時 Pexels 查無結果(或像本次稽核實測操作一樣被清空),
-		// 這個地點就永久沒有 Pexels 照片可顯示。Pexels API 免費、不像
-		// Google Photo Media 有計費風險,不需要跟 Google 端一樣嚴格的
-		// 節流保護,每次發現是空的就直接嘗試補查一次是可接受的成本
-		// (使用者明確選擇「每次都重試,不特別標記查無結果」這個最簡單的
-		// 版本,不需要額外欄位記錄「已查過但確實沒有」的狀態)。
-		if resp.GooglePhotoURLs == nil {
-			googlePhotos, _ := s.store.ListGooglePlacePhotos(placeID)
-			for _, p := range googlePhotos {
-				resp.GooglePhotoURLs = append(resp.GooglePhotoURLs, p.PhotoURL)
-			}
-		}
-		pexelsPhotos, _ := s.store.ListPlacePexelsPhotos(placeID)
-		for _, p := range pexelsPhotos {
-			resp.PexelsPhotoURLs = append(resp.PexelsPhotoURLs, p.PhotoURL)
-		}
-		resp.PexelsPhotoURLs = s.ensurePexelsPhotos(r.Context(), placeID, cached.Name, resp.PexelsPhotoURLs, cached.NewPhotoCount > 0)
-		if len(resp.GooglePhotoURLs) > 0 {
-			resp.PhotoURL = resp.GooglePhotoURLs[0]
-		} else if len(resp.PexelsPhotoURLs) > 0 {
-			resp.PhotoURL = resp.PexelsPhotoURLs[0]
-		}
+		// 2026-09 移除 Pexels 讀圖來源——最終顯示給使用者看的照片欄位一律
+		// 由 applyPhotoAssetsAsSource 決定 photo_assets 目前的內容。
+		s.applyPhotoAssetsAsSource(&resp, placeID)
 		writeJSON(w, http.StatusOK, resp)
 		return
 	}
@@ -1451,28 +1592,27 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// photoOnly 模式、快取完全未命中(連 place_details_cache 的列都還
+	// 不存在,理由同上面 photoOnly 分支的說明)——2026-09 移除 Pexels 讀圖
+	// 來源後,這裡不再有低成本的補圖管道可查(不能打 Google Photo Media,
+	// 理由同這支 handler 一貫的成本控制設計),直接回空,交給呼叫端
+	// (GeoHotelSidebar.tsx 的延遲載入清單)顯示 placeholder,下一次查詢
+	// (例如使用者真的點選這筆候選、走一般模式)才有機會真正補上照片。
 	if photoOnly {
 		name := r.URL.Query().Get("name")
 		if name == "" {
 			writeErr(w, http.StatusBadRequest, "invalid_input", "photoOnly 模式缺少 name 查詢參數")
 			return
 		}
-		pexelsClient := pexels.New(os.Getenv("PEXELS_API_KEY"))
-		pctx, pcancel := context.WithTimeout(r.Context(), 5*time.Second)
-		defer pcancel()
-		resp := photoOnlyResponse{}
-		if photo, ok, pErr := pexelsClient.Search(pctx, name); pErr == nil && ok {
-			resp.PhotoURL = s.landmarkPhotoURL(pctx, placeID, photo.ImageURL)
-		}
-		writeJSON(w, http.StatusOK, resp)
+		writeJSON(w, http.StatusOK, photoOnlyResponse{})
 		return
 	}
 
 	// tryClaimPlaceDetailsInFlight 用 placeID 當 key,判斷這次請求是否
 	// 搶到「處理這個地點」的權利(見 Server.placeDetailsInFlight 與
 	// tryClaimPlaceDetailsInFlight 的完整說明)——搶到的請求(claimed
-	// 為 true)才會真正執行 fetchAndCachePlaceDetails(打 Google/Pexels、
-	// 寫入快取),沒搶到代表已經有其他並發請求正在處理同一個 placeID,
+	// 為 true)才會真正執行 fetchAndCachePlaceDetails(打 Google、寫入
+	// 快取),沒搶到代表已經有其他並發請求正在處理同一個 placeID,
 	// 這次直接視為「被丟棄」,不等待、不共享結果,改走下面的降級邏輯
 	// (讀現有快取,見 buildDegradedPlaceDetailsResponse)。
 	//
@@ -1511,86 +1651,57 @@ func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 	writeDegradedPlaceDetails(w, s.buildDegradedPlaceDetailsResponse(r.Context(), placeID))
 }
 
-// publicPlaceDetailsAllowlist:GET /public/geo/place-details 只允許查詢
-// 這份白名單裡的 placeID——這支端點刻意不掛 internalAuth(見 api.go 路由
-// 註冊處的說明),供登入前的公開展示頁(web/src/home/KiyomizuDemoPage.tsx)
-// 查詢清水寺周邊精選點的完整 Google Place Details(評分/雙來源照片)。
-// 沒有登入身分驗證的公開端點若不限制查詢範圍,等同把這支端點變成任何人
-// 都能免費呼叫的 Google Places 代理(handleGeoPlaceDetails 本身雖有
-// 24 小時快取,但快取只在同一個 placeID 重複查詢時生效,不同 placeID
-// 之間完全不受限),故白名單只收錄展示頁固定資料(kiyomizuDemoFixture.ts)
-// 實際會用到的那批 placeID——不在這份清單內的查詢一律拒絕,不會觸發任何
-// Google API 呼叫。之後若展示頁新增其他固定景點,需要同步在這裡補上
-// 對應的 placeID,不會自動生效。
-var publicPlaceDetailsAllowlist = map[string]bool{
-	"ChIJB_vchdMIAWARujTEUIZlr2I": true, // 清水寺
-	"ChIJqZsSA9AIAWARewnW_cioTog": true, // 二年坂
-	"ChIJr_gZonkIAWARB1xyACZNUKM": true, // 產寧坂・三年坂
-	"ChIJIcT4YMUIAWARSTUi4EEky7E": true, // 八坂の塔（法観寺）
-	"ChIJuU17z9oIAWARgMhsX3kqUSQ": true, // 高台寺
-	"ChIJXTW5ttEIAWAR1QKT_XL0Q5g": true, // 產寧坂聚落
-	"ChIJ7__4OtIIAWARkGI9aNZSJM0": true, // 忠僕茶屋
-	"ChIJnW0DdsUIAWAROy9GuxW9QVI": true, // %ARABICA 京都東山
-	"ChIJf-Xvv9EJAWAR9UlHbdVU3DA": true, // 京都茶寮 産寧坂店
-	"ChIJU7jlIdAIAWAR6rlZS3_YitI": true, // 奧丹 清水店
-	"ChIJXfyy6NEIAWARU9VgU0q6Owk": true, // 順正
-	"ChIJ8Vjv2dEIAWARKo8E1PyKMbQ": true, // 七味家本舖
-	"ChIJbYS509EIAWAREUzj6gl3jgk": true, // 松韻堂
-	"ChIJVVWBKdIIAWARu9g_YmWYZ5M": true, // 朝日堂
-
-	// 九份(JiufenPage.tsx 開頭嵌入 KiyomizuDemoPage,見上方
-	// publicAttractionsCityAllowlist 的完整說明)
-	"ChIJcZT7-hdFXTQR0qekplqCFV8": true, // 九份老街(主題點)
-	"ChIJvTQ487BaXTQRm-qTuFUFhcQ": true, // 小金瓜露頭
-	"EjpRaW5nYmlhbiBSZCwgUnVpZmFuZyBEaXN0cmljdCwgTmV3IFRhaXBlaSBDaXR5LCBUYWl3YW4gMjI0Ii4qLAoUChIJm7Juij1FXTQRVvd8PsllWyMSFAoSCXlnUwUYRV00EYQ7lYyDOrgp": true, // 輕便路(道路型地標,place_id 格式較長屬正常現象)
-	"ChIJi230vwRFXTQRc8Q3GycKrok": true, // 基隆山
-	"ChIJbzIi2RdFXTQRP-59mCj71DU": true, // 豎崎路
-	"ChIJIR7-nRdFXTQRcsrMwN-ne9o": true, // 昇平戲院
-	"ChIJ9653Kh5FXTQR1VWNys_RefA": true, // 新北市立黃金博物館
-	"ChIJsSYt4BdFXTQRquCsN8eG7BE": true, // 阿妹茶樓
-
-	// 台南・安平(TainanPage.tsx 開頭嵌入 InteractiveExploreMap,見上方
-	// publicAttractionsCityAllowlist 的完整說明)
-	"ChIJZ-TjeHN2bjQR8a3Jat0VHps": true, // 安平古堡(主題點)
-	"ChIJlynOByF3bjQR_IzNSlgH-Ss": true, // 安平樹屋
-	"ChIJARA06hx2bjQRJa_TnkL0x28": true, // 林永泰興蜜餞行
-	"ChIJC_GkyqjYbTQR8AlhjOqU_0w": true, // 同記安平豆花
-	"ChIJ853g2xx2bjQR5L6IGrV8DQU": true, // 義豐冬瓜茶
-	"ChIJkaF4DBt2bjQRG_fUZd1WsEM": true, // Meller墨樂咖啡
-	// 0343選物店(ChIJCzKLjwJ3bjQR7PnULJDx_w8)已下架:店已關閉,
-	// TainanPage.tsx STOPS 該站已改為神農街、之後再改為海山館(見該
-	// 檔案的完整說明),這裡同步移除,避免地圖上繼續顯示一個已關閉的
-	// 商家。仍留在資料庫 attractions 表裡的同一筆記錄需另外清理(不是
-	// 這個 allowlist 能處理的範圍,見 store.DeleteAttraction 或對應的
-	// 資料庫維運操作)。
-}
-
 // GET /public/geo/place-details?placeId={Google Place ID}
 //
-// 免登入版的 handleGeoPlaceDetails——供登入前的公開展示頁查詢固定示範
-// 景點的完整資料(見 publicPlaceDetailsAllowlist 的完整說明)。只做白名單
-// 檢查這一層額外把關,通過後轉呼叫既有的 handleGeoPlaceDetails(一般
-// 模式,不支援 photoOnly/textOnly 這兩種輕量模式——展示頁固定資料一次性
-// 查完整內容即可,不像正式搜尋清單有大量候選需要分階段延遲載入的成本
-// 考量),兩者共用同一套快取/降級/並發防護邏輯,不重新實作一份。
+// 免登入版、供登入前的公開展示頁(主題介紹頁,如 JiufenPage.tsx/
+// TainanPage.tsx/KiyomizuDemoPage.tsx,見 InteractiveExploreMap.tsx 的
+// 呼叫端)查詢固定示範景點的完整資料——只放行已建檔為 attraction 的
+// placeId(見下方 handlePublicGeoPlaceDetails 的授權機制說明,取代舊版
+// publicPlaceDetailsAllowlist 這份逐一手動維護的靜態白名單)。
 //
-// 轉呼叫前明確清掉請求上的 photoOnly/textOnly 這兩個 query 參數——
-// handleGeoPlaceDetails 本身是直接讀 r.URL.Query() 判斷要走哪個分支
-// (見該函式的完整說明),若不清掉,呼叫端在這支公開端點的網址後面自行
-// 加上 &photoOnly=1/&textOnly=1 就能繞過上面「不支援」的說明實際觸發
-// 輕量模式,讓程式行為跟這段註解宣稱的合約不一致(即使兩種輕量模式本身
-// 沒有額外的安全疑慮,allowlist 仍然檔著 placeId,但呼叫端不該有辦法
-// 觸發文件宣稱不存在的行為)。
+// 2026-09 重構:直接委派給 handleGeoPlaceDetails(登入後正式規劃功能用
+// 的核心邏輯),不再維護一份獨立、跟它漸漸失去同步的簡化實作(使用者
+// 明確要求「直接使用 /internal/geo/place-details 的流程元件」)。舊版
+// 曾經刻意寫成獨立簡化版,理由是「這支端點只需要一張圖,不需要
+// handleGeoPlaceDetails 內建的漸進補圖決策(點擊節奏/7 天時間觸發)這種
+// 服務正式規劃體驗的複雜度」——但這個取捨的代價是兩份邏輯各自演進,
+// 公開版永遠無法受益於登入版之後任何補圖機制的修正/優化(例如 7 天
+// 重新確認 target 等),且兩者都各自查同一張 photo_assets 表卻各寫一份
+// 幾乎相同的程式碼。改成直接呼叫同一個 handler 後,公開版與登入版的
+// 行為完全一致(含漸進補圖節奏等),差別只在授權層——這裡先做授權檢查,
+// 通過才放行呼叫。
+//
+// 授權機制:2026-09 從固定白名單(publicPlaceDetailsAllowlist,逐一手動
+// 列舉允許查詢的 placeID)改成「這個 placeID 必須是已建檔的 attraction
+// 才放行」(store.GetAttractionByPlaceID 查得到),不是拿掉授權改成任何
+// 人都能查任意 placeId。理由:固定白名單需要每新增一個展示用地點就手動
+// 加一行程式碼才會生效(見舊版 publicPlaceDetailsAllowlist 的完整說明:
+// 「之後若展示頁新增其他固定景點,需要同步在這裡補上對應的 placeID,
+// 不會自動生效」),而這支端點原本服務的場景(主題介紹頁的地圖圖示/
+// 詳情卡)本來就只會查已經人工建檔、掛在地圖上的 attraction——用資料庫
+// 裡「這筆有沒有建檔」本身當授權依據,取代維護一份逐筆列舉、容易忘記
+// 同步更新的靜態清單,新增景點只需要建檔(CLI attraction-add),不需要
+// 額外再手動維護這裡的白名單。查無 attraction 紀錄時視為不通過授權,
+// 回 403(維持跟舊版白名單未命中時相同的錯誤語意,不是 404——404 是
+// 「查了但地點不存在」,403 是「這個查詢請求不被允許」,這裡屬於後者:
+// 即使 Google Places 上真的有這個地點,只要沒有建檔就不放行)。
+// handleGeoPlaceDetails 本身不含任何授權判斷(授權原本就是外層
+// /internal/ mux 掛載時套用的 internalAuth middleware 負責的,見 api.go
+// 路由註冊處的說明,handler 函式本體從未依賴呼叫者是否通過 JWT 驗證),
+// 故可以在這裡做完授權檢查後直接呼叫它,不會意外繞過或重複套用任何
+// 授權邏輯。
+//
+// 點擊次數/漸進補圖節奏會被公開端點觸發(跟登入版共用同一份
+// place_details_cache 點擊計數),這是刻意接受的行為改變——理由同上述
+// 「不再維護兩份邏輯」的取捨,「必須是已建檔 attraction」這個授權條件
+// 已經限制了能被觸發的 placeId 範圍,不會被濫用成任意觸發計費查詢的
+// 入口。
 func (s *Server) handlePublicGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
 	placeID := r.URL.Query().Get("placeId")
-	if !publicPlaceDetailsAllowlist[placeID] {
-		writeErr(w, http.StatusForbidden, "place_not_allowed", "這個 placeId 不在公開查詢白名單內")
+	if _, err := s.store.GetAttractionByPlaceID(placeID); err != nil {
+		writeErr(w, http.StatusForbidden, "place_not_allowed", "這個 placeId 不是已建檔的景點,不允許公開查詢")
 		return
 	}
-	q := r.URL.Query()
-	q.Del("photoOnly")
-	q.Del("textOnly")
-	r.URL.RawQuery = q.Encode()
 	s.handleGeoPlaceDetails(w, r)
 }
 
@@ -1608,9 +1719,10 @@ func (s *Server) handlePublicGeoPlaceDetails(w http.ResponseWriter, r *http.Requ
 // 逐筆列舉 attraction ID 這麼細的授權粒度。之後若展示頁新增其他城市的
 // 固定示範資料,需要同步在這裡補上,不會自動生效。
 var publicAttractionsCityAllowlist = map[string]bool{
-	"京都": true,
-	"九份": true, // JiufenPage.tsx 開頭嵌入 KiyomizuDemoPage(參數化為 city prop)
-	"台南": true, // TainanPage.tsx 開頭嵌入 InteractiveExploreMap(參數化為 city prop)
+	"京都":  true,
+	"九份":  true, // JiufenPage.tsx 開頭嵌入 KiyomizuDemoPage(參數化為 city prop)
+	"台南":  true, // TainanPage.tsx 開頭嵌入 InteractiveExploreMap(參數化為 city prop)
+	"定山溪": true, // 北海道定山溪賞楓試做頁(見 docs/research-hokkaido-jozankei-autumn-theme-2026-09.md),同樣是 InteractiveExploreMap 嵌入
 }
 
 // handleGeoAttractionsByCity 是 GET /public/geo/attractions 的核心邏輯,
@@ -1629,27 +1741,27 @@ func (s *Server) handleGeoAttractionsByCity(city string) ([]attractionResponse, 
 	if err != nil {
 		return nil, err
 	}
+	// 2026-09:不再查/帶出 landmarkPhotoUrl,理由同 handleGeoAttractions
+	// 同一次修正的完整說明——前端已確認完全不讀這個欄位,連同批次查詢
+	// photo_assets 這段邏輯一併移除。
 	attractions := make([]attractionResponse, 0, len(landmarks))
-	for _, l := range landmarks {
+	for _, landmark := range landmarks {
 		ar := attractionResponse{
-			Name:         l.Name,
-			Lat:          l.Lat,
-			Lng:          l.Lng,
-			RadiusMeters: l.RadiusMeters,
-			Level:        l.Level,
-			IsTheme:      l.IsTheme,
+			Name:         landmark.Name,
+			Lat:          landmark.Lat,
+			Lng:          landmark.Lng,
+			RadiusMeters: landmark.RadiusMeters,
+			Level:        landmark.Level,
+			IsTheme:      landmark.IsTheme,
 		}
-		if l.Summary != nil {
-			ar.Summary = *l.Summary
+		if landmark.Summary != nil {
+			ar.Summary = *landmark.Summary
 		}
-		if l.PhotoURL != nil {
-			ar.LandmarkPhotoURL = *l.PhotoURL
+		if landmark.PlaceID != nil {
+			ar.PlaceID = *landmark.PlaceID
 		}
-		if l.PlaceID != nil {
-			ar.PlaceID = *l.PlaceID
-		}
-		if l.Category != nil {
-			ar.Category = *l.Category
+		if landmark.Category != nil {
+			ar.Category = *landmark.Category
 		}
 		attractions = append(attractions, ar)
 	}
@@ -1717,7 +1829,7 @@ func (s *Server) releasePlaceDetailsInFlight(placeID string) {
 //     0 等同不檢查是否過期——見該函式簽章,傳 0 代表任何存在的列都算
 //     命中)——降級情境下,舊資料好過完全沒有資料或直接回錯誤給使用者,
 //     這個地點過去查過的名稱/地址/評分/簡介仍然有參考價值。
-//  2. 若有快取列,一併讀 ListGooglePlacePhotos/ListPlacePexelsPhotos
+//  2. 若有快取列,一併用 applyPhotoAssetsAsSource 從 photo_assets
 //     補上照片欄位,格式對齊一般模式的 placeDetailsResponse(前端不需要
 //     額外處理「這是降級回應」的特殊格式)。
 //  3. 若完全沒有任何快取資料(這個 placeID 第一次被查詢、且剛好被丟棄
@@ -1754,68 +1866,11 @@ func (s *Server) buildDegradedPlaceDetailsResponse(ctx context.Context, placeID 
 		resp.Summary = *cached.Summary
 	}
 
-	if googlePhotos, gErr := s.store.ListGooglePlacePhotos(placeID); gErr == nil {
-		for _, p := range googlePhotos {
-			resp.GooglePhotoURLs = append(resp.GooglePhotoURLs, p.PhotoURL)
-		}
-	}
-	if pexelsPhotos, pErr := s.store.ListPlacePexelsPhotos(placeID); pErr == nil {
-		for _, p := range pexelsPhotos {
-			resp.PexelsPhotoURLs = append(resp.PexelsPhotoURLs, p.PhotoURL)
-		}
-	}
-	resp.PexelsPhotoURLs = s.ensurePexelsPhotos(ctx, placeID, resp.Name, resp.PexelsPhotoURLs, cached.NewPhotoCount > 0)
-	if len(resp.GooglePhotoURLs) > 0 {
-		resp.PhotoURL = resp.GooglePhotoURLs[0]
-	} else if len(resp.PexelsPhotoURLs) > 0 {
-		resp.PhotoURL = resp.PexelsPhotoURLs[0]
-	}
+	// 2026-09 移除 Pexels 讀圖來源——最終顯示給使用者看的照片欄位一律由
+	// applyPhotoAssetsAsSource 決定 photo_assets 目前的內容。
+	s.applyPhotoAssetsAsSource(&resp, placeID)
 
 	return resp
-}
-
-// ensurePexelsPhotos 是 Pexels 查詢從「只在初次查詢時查一次」抽出來的
-// 獨立同步機制——existing 是這次已經從快取讀到的 Pexels 照片清單,若
-// 為空「且」Google 那邊這次也沒有照片可顯示(hasGooglePhoto 為
-// false),才直接查一次 Pexels(用 name 當關鍵字)並整批寫回
-// place_pexels_photos,回傳這次查到(或原本已有)的清單。查詢失敗或
-// 查無結果時原樣回傳 existing(維持 nil/空),不視為錯誤——理由同這支
-// handler 既有的「照片是輔助欄位,失敗不影響整體回應」慣例。
-//
-// hasGooglePhoto 這個條件是使用者明確要求的:只要 Google 這邊已經有圖
-// 可以顯示,卡片就不會是空白的,Pexels 缺圖此時不影響使用者實際看到的
-// 畫面,不值得為了「補滿另一個來源」多打一次外部呼叫——只有兩個來源
-// 都沒有圖、卡片真的會顯示空白時,才有必要嘗試用 Pexels 補救。呼叫端
-// 傳入 cached.NewPhotoCount > 0(place_details_cache 本身就有追蹤的
-// 漸進補圖進度欄位,見 placeDetailsCacheRow 的完整說明),不是重新查
-// google_place_photos 表算筆數——兩者數值上應該一致(NewPhotoCount
-// 正是「目前已經漸進補到第幾張」,即已下載進這張表的實際筆數),但直接
-// 讀已經在手上的快取欄位語意更直接、也不需要額外一次查詢。
-//
-// 這支函式完全獨立於 Google 端的點擊節奏/7 天時間雙觸發之外,不共用
-// 任何節流狀態——Pexels API 免費,不需要跟 Google Photo Media 一樣
-// 嚴格的節流保護(見稽核文件 R5 的完整說明,使用者明確選擇「每次發現
-// 是空的就查」這個最簡單的版本,不特別區分「從未查過」與「查過但確實
-// 沒有結果」,故真的查無結果的地點會在之後每次點擊都重試——這是刻意
-// 接受的成本,不是遺漏)。
-//
-// name 為空字串時(例如降級回應完全沒有快取資料可用)直接回傳
-// existing,不嘗試查詢——沒有名稱就沒有關鍵字可以查,勉強查了也只會
-// 查到不相關的結果。
-func (s *Server) ensurePexelsPhotos(ctx context.Context, placeID, name string, existing []string, hasGooglePhoto bool) []string {
-	if len(existing) > 0 || name == "" || hasGooglePhoto {
-		return existing
-	}
-	pexelsClient := pexels.New(os.Getenv("PEXELS_API_KEY"))
-	pctx, pcancel := context.WithTimeout(ctx, 5*time.Second)
-	defer pcancel()
-	photo, ok, err := pexelsClient.Search(pctx, name)
-	if err != nil || !ok {
-		return existing
-	}
-	photoURL := s.landmarkPhotoURL(pctx, placeID, photo.ImageURL)
-	_ = s.store.SetPlacePexelsPhotos(placeID, []string{photoURL}, []string{photo.PageURL})
-	return []string{photoURL}
 }
 
 // writeDegradedPlaceDetails 把降級回應寫出——固定回 HTTP 200(不是錯誤
@@ -1828,14 +1883,13 @@ func writeDegradedPlaceDetails(w http.ResponseWriter, resp placeDetailsResponse)
 }
 
 // fetchAndCachePlaceDetails 是 handleGeoPlaceDetails 一般模式的實際查詢
-// 邏輯——查 Google Place Details、下載 Google 與 Pexels 照片、寫入快取,
-// 回傳組好的回應。抽成獨立函式是為了讓 singleflight.Do 能包住整段查詢+
-// 寫入過程(見呼叫端的說明),不是為了重用。
+// 邏輯——查 Google Place Details、下載 Google 照片、寫入快取,回傳組好
+// 的回應。抽成獨立函式是為了讓 singleflight.Do 能包住整段查詢+寫入過程
+// (見呼叫端的說明),不是為了重用。
 func (s *Server) fetchAndCachePlaceDetails(ctx context.Context, requestPath, placeID string) (placeDetailsResponse, error) {
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	client := s.newPlaceDetailsClient(apiKey)
 	client.SetCache(s.photoCache)
-	client.SetPexelsClient(pexels.New(os.Getenv("PEXELS_API_KEY")))
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	ctx = geo.WithCaller(ctx, "handleGeoPlaceDetails")
@@ -1874,10 +1928,6 @@ func (s *Server) fetchAndCachePlaceDetails(ctx context.Context, requestPath, pla
 	}
 	_ = s.store.SetCachedPlaceDetails(placeID, resp.Name, resp.Address, resp.Lat, resp.Lng, resp.Rating, summaryPtr)
 
-	// Google 與 Pexels 的照片同時並列顯示(見 placeDetailsResponse 的
-	// 說明),不再是「先試 Pexels,查無才 fallback Google」的互斥選擇——
-	// 兩邊各自獨立查詢、各自寫入對應的表,互不影響彼此的結果。
-	//
 	// Google 這邊改由 decidePlacePhotoAction 驅動,不再是「一次下載到
 	// maxPlaceDetailPhotos 上限」的舊寫法(該常數已移除)——這裡是這個
 	// 地點第一次被查詢的情境(走到這支函式代表 place_details_cache 快取
@@ -1901,73 +1951,98 @@ func (s *Server) fetchAndCachePlaceDetails(ctx context.Context, requestPath, pla
 	// photos[] 的完整清單,len(details.PhotoRefs) 直接就是
 	// currentGoogleTarget,不需要為了拿這個長度多打一次同等計費等級的
 	// Google 查詢。
+	// 2026-09:使用者明確要求「地圖上主題點/精選點也要跟點選附近景點
+	// 一樣的流程」(改成每個點都呼叫這支端點,見呼叫端 useAttractionOverlays.ts
+	// 的完整說明)——這代表快取未命中(第一次查詢某個 place)的情境會
+	// 遠比過去頻繁發生(過去只有使用者主動點擊才會觸發一次,現在地圖上
+	// 每個點一出現就各自觸發一次)。這裡原本把「向 Google 查 Photo Media
+	// 下載一張圖 + 上傳 GCS」整段寫在 writeJSON 之前同步執行,踩的正是
+	// refreshGooglePlacePhotoInBackground(快取命中分支)已經修過的同一種
+	// 問題——故比照那支函式的做法拆開:GetPlaceDetails(文字資訊,name/
+	// address/rating/summary)較輕量,維持同步,讓呼叫端能立即拿到文字
+	// 資料顯示;真正耗時的 Photo 下載+上傳 GCS 改成背景 goroutine(見
+	// downloadGooglePlacePhotoInBackground 的完整說明),這次回應不等
+	// 它完成,沒有照片可顯示時交給 applyPhotoAssetsAsSource 用現有(可能
+	// 是空的)photo_assets 資料決定回應內容(查無就清空,見該函式的
+	// 完整說明),下一次查詢才會看到新照片。
 	clickCount, newPhotoCount, previousGoogleTarget, _ := s.store.IncrementPlaceClickCount(placeID)
 	currentGoogleTarget := len(details.PhotoRefs)
 	_, effectiveNewPhotoCount, shouldFetch, indexToFetch := decidePlacePhotoAction(
 		clickCount, newPhotoCount, previousGoogleTarget, currentGoogleTarget)
 
 	if shouldFetch && indexToFetch >= 0 && indexToFetch < len(details.PhotoRefs) {
-		// 圖片下載失敗不影響整體查詢結果——只是這張沒有照片可顯示,
-		// 理由同 fetchNearbyHotels 等既有端點的處理方式,略過即可,
-		// 不中斷整支函式。這裡初次查詢的情境下,google_place_photos
-		// 底下這個 place_id 原本應該一張都還沒有,直接寫入這一張是對的
-		// (不需要走 appendGooglePlacePhoto 的「讀現有+追加」流程,那是
-		// 給快取命中後續補圖用的,見該 helper 的說明——但這裡呼叫它仍然
-		// 正確、只是現有清單必然是空的,統一呼叫同一支 helper 可以避免
-		// 兩處分別實作出不一致的行為)。
-		//
-		// decidePlacePhotoAction 回傳的 effectiveNewPhotoCount 是「補圖
-		// 前」的累積數(同時也是 indexToFetch 本身,見該函式的完整
-		// 說明:indexToFetch 就是 effectiveNewPhotoCount),只有這張真的
-		// 下載成功時,才代表「已經補到第幾張」的累積數往前推進了一張,
-		// 需要 +1 才是接下來要寫回 UpdatePlacePhotoProgress 的正確值
-		// ——若下載失敗,effectiveNewPhotoCount 維持不變,下次點擊會
-		// 再次嘗試同一個 index,不會因為這次失敗而跳過這張沒真正補到的
-		// 照片。
-		// objectKey 帶入 indexToFetch(googlePlacePhotoObjectKey,完整
-		// 說明見該函式與上方快取命中分支同一處的呼叫點註解)——避免同一
-		// placeID 之後陸續補到的多張照片,全部覆寫到同一個 GCS 物件。
-		//
-		// 這裡改用 PhotoDataURIUnrestricted(而非 PhotoDataURI)——這是
-		// fetchAndCachePlaceDetails 本身,即「單點地點介紹」初次查詢的
-		// 路徑,理由同上方快取命中分支同一處呼叫點的說明:已經有速率
-		// 限制 + 同 placeID 併發丟棄 + 快取三重機制頂著成本風險,不應該
-		// 再受 GOOGLE_PLACES_FETCH_PHOTOS 全域開關限制(完整理由見
-		// geo.Client.PhotoDataURIUnrestricted 的說明)。
-		if photoURL, pErr := client.PhotoDataURIUnrestricted(ctx, placeID, details.PhotoRefs[indexToFetch], 400); pErr == nil {
-			objectKey := googlePlacePhotoObjectKey(placeID, indexToFetch)
-			resp.GooglePhotoURLs = s.appendGooglePlacePhoto(placeID, s.landmarkPhotoURLFromDataURI(ctx, objectKey, photoURL))
-			effectiveNewPhotoCount++
-		}
+		s.downloadGooglePlacePhotoInBackground(placeID, requestPath, details.PhotoRefs[indexToFetch], indexToFetch, effectiveNewPhotoCount, currentGoogleTarget)
+	} else {
+		// 沒有觸發 shouldFetch(理論上初次查詢幾乎必定觸發,見下方函式
+		// 說明——previousGoogleTarget 為全新地點的 gorm 預設值 0 時視為
+		// target 改變,任意 clickCount 都會使分母變成 1、必定觸發)或
+		// 這個地點根本沒有任何 Google 照片(currentGoogleTarget 為 0)時,
+		// 仍要記錄這次已經查過 Google 的事實(touchFetchedAt),否則
+		// fetched_at 只被上面的 SetCachedPlaceDetails 更新過文字部分的
+		// 時間,7 天時間觸發條件(timeTriggered,見快取命中分支的完整
+		// 說明)會用一個「其實還沒真正確認過照片 target」的時間戳起算,
+		// 不影響正確性但會讓下次確認提前不必要地觸發。
+		_ = s.store.UpdatePlacePhotoProgress(placeID, effectiveNewPhotoCount, currentGoogleTarget, true)
 	}
 
-	var pexelsPageURLs []string
-	if client.PexelsClient() != nil {
-		if photo, ok, pErr := client.PexelsClient().Search(ctx, details.Name); pErr == nil && ok {
-			resp.PexelsPhotoURLs = append(resp.PexelsPhotoURLs, s.landmarkPhotoURL(ctx, placeID, photo.ImageURL))
-			pexelsPageURLs = append(pexelsPageURLs, photo.PageURL)
-		}
-	}
-	if len(resp.GooglePhotoURLs) > 0 {
-		resp.PhotoURL = resp.GooglePhotoURLs[0]
-	} else if len(resp.PexelsPhotoURLs) > 0 {
-		resp.PhotoURL = resp.PexelsPhotoURLs[0]
-	}
-
-	// 名稱/地址/座標/評分/簡介已經在上面呼叫 SetCachedPlaceDetails 寫入
-	// 過一次(理由見上方對呼叫順序的說明),這裡不需要重複寫入——這幾個
-	// 欄位在拿到 GetPlaceDetails 結果的當下就已經確定,不會因為後續的
-	// 照片查詢而改變。Pexels 照片查詢結果 SetPlacePexelsPhotos 內部是
-	// 整批覆寫(理由同 SetGooglePlacePhotos 的說明),初次查詢時
-	// place_pexels_photos 底下這個 place_id 原本就是空的,不需要額外的
-	// 讀現有+追加流程。UpdatePlacePhotoProgress 的 touchFetchedAt 傳
-	// true 是讓 fetched_at 反映「剛剛真的查過 Google」的事實(即使
-	// SetCachedPlaceDetails 已經寫過一次 fetched_at=now(),這裡的 now()
-	// 只會比那次稍晚一點點,不會造成矛盾)。
-	_ = s.store.SetPlacePexelsPhotos(placeID, resp.PexelsPhotoURLs, pexelsPageURLs)
-	_ = s.store.UpdatePlacePhotoProgress(placeID, effectiveNewPhotoCount, currentGoogleTarget, true)
+	// 2026-09 移除 Pexels 讀圖來源——這裡原本會同步查一次 Pexels、寫進
+	// place_pexels_photos(供之後點擊判斷 hasExistingPexelsPhoto/漸進補圖
+	// 節奏使用),但最終顯示給使用者看的照片欄位一律由 applyPhotoAssetsAsSource
+	// 決定,Pexels 這段查詢從未真正影響過回應內容,拿掉不改變任何使用者
+	// 可見行為。
+	s.applyPhotoAssetsAsSource(&resp, placeID)
 
 	return resp, nil
+}
+
+// downloadGooglePlacePhotoInBackground 是 fetchAndCachePlaceDetails(快取
+// 未命中/初次查詢路徑)的 Google 照片下載+上傳 GCS 動作——2026-09 從同步
+// 搬到背景 goroutine 執行,理由與寫法對稱 refreshGooglePlacePhotoInBackground
+// (快取命中分支的同一種背景化,見該函式的完整說明:這裡包住的
+// PhotoDataURIUnrestricted 下載一張完整圖片 + landmarkPhotoURLFromDataURI
+// 上傳 GCS 才是真正拖慢請求的主因)。
+//
+// photoRef/photoIndex/effectiveNewPhotoCount/currentGoogleTarget 由呼叫端
+// 在觸發判斷(decidePlacePhotoAction)當下算好傳入,這裡只負責下載/上傳/
+// 寫回,不重新判斷要不要補圖——理由同 refreshGooglePlacePhotoInBackground
+// 的同類參數說明。
+//
+// 用 context.Background() 而非呼叫端的 ctx——理由同
+// refreshGooglePlacePhotoInBackground/syncPhotoAssetInBackground 的一貫
+// 說明:背景任務不該因為原始請求提早結束就連帶中斷。
+//
+// 這支函式執行完全不影響這次 HTTP 回應——呼叫端已經在啟動這個 goroutine
+// 之前就用現有(可能還沒有這張新照片的)資料組好回應了,這裡的任何錯誤/
+// 慢速只會延後下一次查詢才看到新照片,不會讓目前這次請求變慢或失敗。
+func (s *Server) downloadGooglePlacePhotoInBackground(placeID, requestPath, photoRef string, photoIndex, effectiveNewPhotoCount, currentGoogleTarget int) {
+	go func() {
+		apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
+		client := s.newPlaceDetailsClient(apiKey)
+		pctx, pcancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer pcancel()
+		pctx = geo.WithCaller(pctx, "handleGeoPlaceDetails")
+		pctx = geo.WithPath(pctx, requestPath)
+
+		photoURL, pErr := client.PhotoDataURIUnrestricted(pctx, placeID, photoRef, 400)
+		if pErr != nil {
+			// 下載失敗:仍要記錄「已經查過 Google 這件事」,理由同呼叫端
+			// else 分支(未觸發 shouldFetch)的說明——effectiveNewPhotoCount
+			// 維持不變(這張沒有真的補到),但 fetched_at/target 仍要更新,
+			// 讓下次點擊或 7 天時間觸發能重新嘗試,而不是被舊的 fetched_at
+			// 卡住。
+			_ = s.store.UpdatePlacePhotoProgress(placeID, effectiveNewPhotoCount, currentGoogleTarget, true)
+			return
+		}
+		objectKey := googlePlacePhotoObjectKey(placeID, photoIndex)
+		// 初次查詢的情境下,google_place_photos 底下這個 place_id 原本
+		// 應該一張都還沒有,直接呼叫 appendGooglePlacePhoto 寫入這一張
+		// 是對的(該 helper 本身是「讀現有+追加」語意,現有清單必然是
+		// 空的,統一呼叫同一支 helper 可以避免這裡另外重複實作一份寫入
+		// 邏輯,理由同快取命中分支同一處呼叫點的說明)。
+		s.appendGooglePlacePhoto(placeID, s.landmarkPhotoURLFromDataURI(pctx, objectKey, photoURL))
+		s.syncPhotoAssetInBackground(placeID, photoIndex, photoURL)
+		_ = s.store.UpdatePlacePhotoProgress(placeID, effectiveNewPhotoCount+1, currentGoogleTarget, true)
+	}()
 }
 
 // shouldAddGooglePlacePhoto 決定這次點擊(handleGeoPlaceDetails 一般模式)

@@ -22,6 +22,7 @@ export type AttractionOverlayInstance = google.maps.OverlayView & {
   setSelected: (selected: boolean) => void
   setCandidate: (candidate: boolean) => void
   setHovered: (hovered: boolean) => void
+  setPhotoUrl: (photoUrl: string | undefined) => void
 }
 
 let AttractionOverlayClass:
@@ -52,6 +53,17 @@ export function getAttractionOverlayClass() {
     // useAttractionOverlays.ts 同步這個狀態的 effect。主題點永遠忽略這個
     // 欄位(建構時就已經是完整照片呈現,沒有「展開」的必要)。
     private hovered: boolean = false
+    // photoUrl:這個景點區域實際要顯示的照片網址,由呼叫端(見
+    // useAttractionOverlays.ts)查完 GET /internal(或 /public)/geo/
+    // place-details 後透過 setPhotoUrl 寫入——2026-09 使用者明確要求
+    // 「不再使用 landmarkPhotoUrl,如果有 place id 則使用 photo_assets
+    // 第一張圖」:這個欄位取代原本直接讀 attraction.landmarkPhotoUrl
+    // (後端資料庫欄位,建檔當下的舊快照,不受 photo_assets 過期/更新
+    // 機制影響)的做法,跟 AttractionInfoPanel.tsx 點開詳情卡後看到的
+    // 圖片改用同一套查詢流程與資料來源,不再各自為政。建構當下沒有
+    // placeId 的地點(舊資料,尚未補上 place_id)或還沒查完時維持
+    // undefined,顯示 placeholder,不落回任何舊表資料墊底。
+    private photoUrl: string | undefined = undefined
     // isTheme:主題點/精選點的分級,建構後不會再變動——見下方 onAdd() 對
     // 這個分級如何影響 markup 的完整說明。直接讀 GeoAttraction.isTheme
     // (後端 model.Attraction.IsTheme,見該欄位完整說明),不再用
@@ -129,8 +141,8 @@ export function getAttractionOverlayClass() {
         ? `
         ${this.isTheme ? '<div class="geo-attraction-glow"></div>' : ''}
         ${
-          this.attraction.landmarkPhotoUrl
-            ? `<img class="geo-attraction-landmark-photo" src="${this.attraction.landmarkPhotoUrl}" alt="${escapeHtml(this.attraction.landmarkName ?? this.attraction.name)}" loading="lazy" />`
+          this.photoUrl
+            ? `<img class="geo-attraction-landmark-photo" src="${this.photoUrl}" alt="${escapeHtml(this.attraction.landmarkName ?? this.attraction.name)}" loading="lazy" />`
             : `<div class="geo-attraction-landmark-placeholder"></div>`
         }
         <span class="geo-attraction-label">${escapeHtml(this.attraction.name)}</span>
@@ -218,6 +230,22 @@ export function getAttractionOverlayClass() {
       if (this.isTheme || this.hovered === hovered) return
       this.hovered = hovered
       this.div?.classList.toggle('geo-attraction-overlay-hovered', hovered)
+      this.renderContent()
+    }
+
+    // setPhotoUrl:查詢完成(或查無/失敗回傳 undefined)後由呼叫端寫入
+    // 實際要顯示的照片網址(見上方 photoUrl 欄位的完整說明)——值真的
+    // 改變時才重繪,理由同 setHovered:overlay 建構當下、查詢還沒回來
+    // 之前會先呼叫一次 setPhotoUrl(undefined)(見
+    // useAttractionOverlays.ts 的查詢 effect),此時 this.photoUrl 本來
+    // 就是 undefined,不該觸發一次沒有意義的重繪。只有在 showPhoto 為
+    // true(主題點,或精選點目前正被 hover)時,photoUrl 的變化才會真的
+    // 反映在畫面上,但這裡不做這層判斷——精選點未 hover 時呼叫這個方法
+    // 只是單純更新內部欄位、不重繪,之後真的被 hover 時 renderContent
+    // 自然會讀到最新值,不需要在這裡分成兩種情境處理。
+    setPhotoUrl(photoUrl: string | undefined) {
+      if (this.photoUrl === photoUrl) return
+      this.photoUrl = photoUrl
       this.renderContent()
     }
   }

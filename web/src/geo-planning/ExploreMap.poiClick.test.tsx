@@ -90,7 +90,6 @@ const placeDetails: GeoPlaceDetails = {
   lng: 135.76,
   photoUrl: 'https://example.com/photo.jpg',
   googlePhotoUrls: ['https://example.com/photo.jpg'],
-  pexelsPhotoUrls: [],
 }
 
 beforeEach(() => {

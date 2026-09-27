@@ -368,9 +368,6 @@ export function geocodeEntry(cfg: ClientConfig, entryID: string) {
 
 // 地理輪廓底圖(構想 6,見 docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)用:
 // 對齊 server 的 GET /internal/geo/attractions(handleGeoAttractions)。
-// landmarkPhotoUrl 若有值,是後端已編碼好的 data: URI(base64,含 MIME
-// type),圖片資料直接內嵌在回應裡,可以直接當 <img src> 用,不需要
-// 額外拼接網址或發第二次請求。
 export interface GeoAttraction {
   name: string
   lat: number
@@ -381,7 +378,6 @@ export interface GeoAttraction {
   // 不設這個欄位,JSON 回應裡不會出現這個 key,故這裡不能宣告成必定
   // 存在的 number,否則型別與實際執行期契約不符。
   placeCount?: number
-  landmarkPhotoUrl?: string
   landmarkName?: string
   // radiusMeters:只有走後端手動整理的觀光慣稱分區資料(如清邁的
   // 古城區/尼曼區,見 server/internal/geo/district_aliases.go)才會有
@@ -409,12 +405,10 @@ export interface GeoAttraction {
   // placeId:這個景點區域對應的 Google Place ID,只有走後端資料庫路徑
   // (人工建檔的 model.Attraction 有設定 place_id)才會有值——即時查
   // Google Places 的結果(toAttractionResponses/geo.District)沒有這個
-  // 欄位,固定不帶。有值時 AttractionInfoPanel.tsx 優先改打 GET
+  // 欄位,固定不帶。有值時 AttractionInfoPanel.tsx 打 GET
   // /internal/geo/place-details 取得「地點照片漸進補圖機制」的
-  // Google/Pexels 雙來源照片(見 fetchGeoPlaceDetails),取代/補強單一的
-  // landmarkPhotoUrl;沒有值時維持顯示 landmarkPhotoUrl 單張圖的既有
-  // 行為,兩套機制並存,不是互斥的一次性遷移(見後端
-  // model.Attraction.PlaceID 的完整說明)。
+  // Google/Pexels 雙來源照片(見 fetchGeoPlaceDetails);沒有值時不顯示
+  // 照片(見後端 model.Attraction.PlaceID 的完整說明)。
   placeId?: string
   // category:「附近景點」清單用的店家分類(甜點/茶屋、餐廳、工藝、
   // 街景,見後端 model.Attraction.Category 與前端 CuratedCategory 型別
@@ -436,8 +430,9 @@ export interface GeoHotel {
   lat: number
   lng: number
   primaryType: string
-  // photoUrl:後端已編碼好的 data: URI,理由同 GeoAttraction.landmarkPhotoUrl。
-  // 部分飯店在 Google 端沒有照片、或下載失敗時為 undefined。
+  // photoUrl:後端已編碼好的 data: URI(base64,含 MIME type),圖片資料
+  // 直接內嵌在回應裡,可以直接當 <img src> 用,不需要額外拼接網址或發
+  // 第二次請求。部分飯店在 Google 端沒有照片、或下載失敗時為 undefined。
   photoUrl?: string
 }
 
@@ -668,15 +663,14 @@ export interface GeoPlaceDetails {
   rating?: number
   summary?: string
   photoUrl?: string
-  // googlePhotoUrls/pexelsPhotoUrls:2026-08 起,一般模式(不帶 photoOnly/
-  // textOnly query 參數)的後端回應改成 Google/Pexels 兩種來源同時並列的
-  // 多圖清單(見 server 端 handleGeoPlaceDetails 的說明)——photoUrl 仍然
-  // 保留,是這兩份清單合併後的第一張(相容用,舊版前端/其餘沒有跟進多圖
-  // UI 的呼叫端可以繼續只看這個欄位)。顯示時這兩份清單要「先 Google 後
-  // Pexels」依序合併顯示,見 PhotoCarousel.tsx。photoOnly=1/textOnly=1
-  // 這兩種查詢模式維持舊格式不變,不會有這兩個欄位。
+  // googlePhotoUrls:2026-08 起,一般模式(不帶 photoOnly/textOnly query
+  // 參數)的後端回應改成多圖清單(見 server 端 handleGeoPlaceDetails 的
+  // 說明)——photoUrl 仍然保留,是這份清單的第一張(相容用,舊版前端/
+  // 其餘沒有跟進多圖 UI 的呼叫端可以繼續只看這個欄位)。顯示邏輯見
+  // PhotoCarousel.tsx。photoOnly=1/textOnly=1 這兩種查詢模式維持舊格式
+  // 不變,不會有這個欄位。2026-09 已移除 Pexels 讀圖來源,照片只會來自
+  // Google。
   googlePhotoUrls?: string[]
-  pexelsPhotoUrls?: string[]
 }
 
 export function fetchGeoPlaceDetails(cfg: ClientConfig, placeId: string) {
@@ -684,16 +678,47 @@ export function fetchGeoPlaceDetails(cfg: ClientConfig, placeId: string) {
 }
 
 // fetchPublicGeoPlaceDetails:GET /public/geo/place-details(免登入版,見
-// 後端 handlePublicGeoPlaceDetails/publicPlaceDetailsAllowlist 的完整
-// 說明)——供登入前的公開展示頁(web/src/home/InteractiveExploreMap.tsx)使用,
-// cfg.token 為 null 的訪客模式下,一般的 fetchGeoPlaceDetails 打
-// /internal/* 必定被 internalAuth 拒絕(401),這支端點走完全不同的
-// /public/* 路徑,不需要 Authorization header。只允許查詢後端白名單裡
-// 固定收錄的那批 placeId(展示頁固定資料實際會用到的清水寺周邊精選點),
-// 查詢白名單外的 placeId 會收到 403,不是這個函式自己判斷,由後端統一
-// 把關——這裡不重複實作一份白名單邏輯,避免前後端兩份清單不同步。
+// 後端 handlePublicGeoPlaceDetails 的完整說明)——供登入前的公開展示頁
+// (web/src/home/InteractiveExploreMap.tsx)使用,cfg.token 為 null 的
+// 訪客模式下,一般的 fetchGeoPlaceDetails 打 /internal/* 必定被
+// internalAuth 拒絕(401),這支端點走完全不同的 /public/* 路徑,不需要
+// Authorization header。只允許查詢已建檔為 attraction 的 placeId(見後端
+// handler 的授權機制說明),查詢範圍外的 placeId 會收到 403,不是這個
+// 函式自己判斷,由後端統一把關。
 export function fetchPublicGeoPlaceDetails(cfg: ClientConfig, placeId: string) {
   return request<GeoPlaceDetails>(cfg, 'GET', `/public/geo/place-details?placeId=${encodeURIComponent(placeId)}`)
+}
+
+// GeoPlacePhotoAssets:對齊 server 的 GET /internal(或 public)/geo/
+// place-photo-assets(handleGeoPlacePhotoAssets)——純讀 photo_assets 目前
+// 狀態,不觸發任何點擊計數/漸進補圖決策(見後端 handler 的完整說明)。
+// 供 useThemeAttractionSelection.ts fetchPoiContent 的「查完沒圖,原地
+// 重試幾次看背景補圖是否已經完成」情境使用,重試時不能再打
+// fetchGeoPlaceDetails/fetchPublicGeoPlaceDetails——那兩支端點每次呼叫
+// 都會觸發 IncrementPlaceClickCount,連續重試會重複推進漸進補圖節奏
+// (2026-09 使用者明確要求「重試時只能取圖,不能觸發補圖」)。
+export interface GeoPlacePhotoAssets {
+  photoUrl?: string
+  googlePhotoUrls?: string[]
+}
+
+export function fetchGeoPlacePhotoAssets(cfg: ClientConfig, placeId: string) {
+  return request<GeoPlacePhotoAssets>(
+    cfg,
+    'GET',
+    `/internal/geo/place-photo-assets?placeId=${encodeURIComponent(placeId)}`,
+  )
+}
+
+// fetchPublicGeoPlacePhotoAssets:fetchGeoPlacePhotoAssets 的免登入版,
+// 授權機制對齊 fetchPublicGeoPlaceDetails(見後端
+// handlePublicGeoPlacePhotoAssets 的完整說明)。
+export function fetchPublicGeoPlacePhotoAssets(cfg: ClientConfig, placeId: string) {
+  return request<GeoPlacePhotoAssets>(
+    cfg,
+    'GET',
+    `/public/geo/place-photo-assets?placeId=${encodeURIComponent(placeId)}`,
+  )
 }
 
 // fetchGeoPlacePhoto:GET /internal/geo/place-details 的 photoOnly=1 模式

@@ -6,16 +6,22 @@ name: Build and Run Migrate Job
 # gcloud run jobs(執行完就結束、不留常駐 instance,見 Dockerfile.migrate
 # 的說明)。
 #
+# 2026-09:Dockerfile.migrate 已改指向 cmd/migrate-photo-assets(見該
+# 檔案的完整說明),不再是 cmd/cli——下方 cli_args 這個輸入欄位名稱是
+# 歷史命名,目前實際傳遞的是 cmd/migrate-photo-assets 的子命令與旗標
+# (例如 "migrate -dry-run" 或 "delete -place-id ChIJ..."),不是
+# cmd/cli 的參數。保留欄位名稱不改是為了不打斷既有的 workflow_dispatch
+# 呼叫慣例,實際語意以這裡的說明與 description 文字為準。
+#
 # 不設 push 觸發:這是一次性維運工具,不該每次 push 到 main 就重跑一次
-# 資料庫維運操作(即使 drop-legacy-columns 本身是冪等的,其他未來可能加
-# 進來的維運操作不一定冪等)。只能手動觸發(workflow_dispatch),且需要
-# 明確指定要執行的子命令與參數,避免誤觸發。
+# 資料庫/儲存維運操作。只能手動觸發(workflow_dispatch),且需要明確
+# 指定要執行的子命令與參數,避免誤觸發。
 
 on:
   workflow_dispatch:
     inputs:
       cli_args:
-        description: '要傳給 cmd/cli 的完整參數(例如: -db drop-legacy-columns)。留空則只執行備份、不建置/部署/執行 migrate job(搭配 backup_first 單獨測試或單獨備份用)'
+        description: '要傳給 cmd/migrate-photo-assets 的完整參數(例如: migrate -dry-run、delete -place-id ChIJ...)。留空則只執行備份、不建置/部署/執行 migrate job(搭配 backup_first 單獨測試或單獨備份用)'
         type: string
         required: false
       run_now:
@@ -174,6 +180,17 @@ jobs:
       # gcloud run jobs deploy:第一次執行會建立 Job,之後執行是更新既有
       # Job 的定義(映像檔版本、指令參數)——跟 run jobs create 不同,
       # deploy 是「建立或更新」的冪等操作,不需要另外判斷 Job 存不存在。
+      # --update-secrets 這裡明確帶兩個 secret:DATABASE_URL(既有)與
+      # GCS_PHOTO_BUCKET(2026-09 新增,對齊 Dockerfile.migrate 改指向
+      # cmd/migrate-photo-assets 後的必要環境變數,見該指令 main.go 的
+      # 完整說明——留空時 migrate 子命令會直接 log.Fatal 終止)。這個
+      # secret 必須先在 Secret Manager 建立(值設為 GCS bucket 名稱,例如
+      # shuttle-tripace-photos),且執行這個 Job 的 service account
+      # (預設 340121279179-compute@developer.gserviceaccount.com,見
+      # gcloud run jobs describe 的 serviceAccountName)需要有
+      # roles/secretmanager.secretAccessor 權限才能在執行時讀到這個值,
+      # 這兩者都是一次性的手動設定,不是這支 workflow 每次執行都會做的
+      # 事——workflow 本身只負責把已存在的 secret 掛進 Job 定義。
       - name: Deploy/update Cloud Run Job
         if: ${{ inputs.cli_args != '' }}
         run: |
@@ -181,7 +198,7 @@ jobs:
             --image=${{ env.IMAGE }}:${{ github.sha }} \
             --region=${{ env.CLOUD_RUN_REGION }} \
             --set-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
-            --update-secrets=DATABASE_URL=DATABASE_URL:latest \
+            --update-secrets=DATABASE_URL=DATABASE_URL:latest,GCS_PHOTO_BUCKET=GCS_PHOTO_BUCKET:latest \
             --args="$(echo '${{ inputs.cli_args }}' | tr ' ' ',')" \
             --max-retries=0 \
             --task-timeout=300 \

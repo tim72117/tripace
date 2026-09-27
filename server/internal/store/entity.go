@@ -260,6 +260,51 @@ type placePexelsPhotoRow struct {
 
 func (placePexelsPhotoRow) TableName() string { return "place_pexels_photos" }
 
+// photoAssetRow — 2026-09 新增,全站共通的圖檔落地紀錄表。動機:
+// google_place_photos/photo_cache 兩張表目前實務上存的是完整 base64
+// data: URI(本機未設定 GCS_PHOTO_BUCKET 時,landmarkPhotoURLFromDataURI
+// 落地失敗降級保留原始 data URI,見該函式的完整說明——這是本機開發環境
+// 的實際現況,不是設計如此),資料庫因此背負不必要的儲存負擔,且違反
+// Google Maps Platform ToS 3.2.3(b) 對長期保存的精神(見 photoCacheRow
+// 的完整說明——雖然 data URI 本身不是 photo name,但把完整圖片內容
+// 無限期存在自家資料庫,同樣不是這批快取機制原本設計要做的事,應該
+// 落地成 GCS 物件,只在資料庫存一個會過期的參照)。
+//
+// 這張表統一用 PlaceID 當識別鍵(不分 google_place_photos/photo_cache/
+// 日後 attractions 各自的情境)——理由是 attractions 表本身已經存了
+// PlaceID(見 attractionRow.PlaceID 的完整說明),不需要另外發明
+// attraction_id 這種只服務單一情境的識別欄位,統一用 place_id 讓這張表
+// 可以同時服務所有跟 Google 地點相關的圖檔快取來源。
+//
+// Usage 區分同一個 PlaceID 底下的不同規格(而不是區分「這張圖服務哪個
+// 功能」)——例如 "full"(原始尺寸,對應 googlePlacePhotoRow 情境)、
+// "thumb_200"(200px 縮圖,對應 photoCacheRow 依 maxWidthPx 分列的情境)。
+// 同一個 (PlaceID, PhotoIndex) 底下可以有多筆不同 Usage 的紀錄,對應
+// 同一張原始照片被查詢過不同尺寸的情況。
+//
+// Source 記錄這張圖片的原始來源("google"/"pexels"),供之後需要依授權
+// 條款分開處理、或排查特定來源圖片時使用——理由同 placePexelsPhotoRow
+// 保留 PageURL 可追溯來源的既有慣例。
+//
+// ExpiresAt:2026-09 使用者明確要求「設定過期 1 週」——這批圖是從既有
+// base64 快取一次性遷移落地,不像 attractions.photo_url 那樣是人工
+// 建檔、預期長期存在的正式資產,過期後應視為「需要重新確認來源是否
+// 仍然有效」的暫存物件,而非永久保存;呼叫端讀取時應檢查這個欄位,
+// 過期則視為快取未命中,理由對齊 placeDetailsCacheMaxAge 等既有的
+// 快取新鮮度慣例。允許 NULL(不過期)是保留給日後其他情境使用的彈性,
+// 目前遷移腳本一律會帶入 fetched_at + 7 天的值。
+type photoAssetRow struct {
+	PlaceID    string     `gorm:"primaryKey;column:place_id"`
+	PhotoIndex int        `gorm:"primaryKey;column:photo_index"`
+	Usage      string     `gorm:"primaryKey;column:usage"`
+	Source     string     `gorm:"column:source;not null"`
+	GCSURL     string     `gorm:"column:gcs_url;not null"`
+	FetchedAt  time.Time  `gorm:"column:fetched_at;not null"`
+	ExpiresAt  *time.Time `gorm:"column:expires_at"`
+}
+
+func (photoAssetRow) TableName() string { return "photo_assets" }
+
 // apiRequestLogRow 記錄後端每一個 HTTP 請求(見 middleware.go 的
 // requestLogging)——method/path/狀態碼/耗時/呼叫者,供之後排查異常流量
 // (如本次要解決的 Photo Media 重複呼叫問題)、或觀察哪些端點被呼叫

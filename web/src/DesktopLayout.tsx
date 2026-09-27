@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { ApiCall, WsEvent } from './api'
-import { onApiCall, onWsEvent, fetchGeoPlaceDetails } from './api'
+import { onApiCall, onWsEvent, fetchGeoPlaceDetails, fetchGeoPlacePhotoAssets } from './api'
 import { ChatScreen } from './chat/ChatScreen'
 import type { DesktopTimelineMirror } from './chat/ChatScreen'
 import { MultiTrackTimeline, type TaskPlaceholder } from './timeline/Timeline'
@@ -236,6 +236,7 @@ export function DesktopContent(props: ContentProps) {
   } = useThemeAttractionSelection(
     geoAttractionContent,
     useCallback((placeId: string) => fetchGeoPlaceDetails(cfg, placeId), [cfg]),
+    useCallback((placeId: string) => fetchGeoPlacePhotoAssets(cfg, placeId), [cfg]),
     // extraAttractionPresent:geoInfoContent(PlacePanel)是同一個
     // geoSelection 互斥狀態機的另一個分支(見下方 geoSelectionCardPresent
     // 的完整說明,已搬到這裡與呼叫參數一併說明)——geoAttractionContent/

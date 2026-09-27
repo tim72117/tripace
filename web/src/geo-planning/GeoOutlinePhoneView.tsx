@@ -21,7 +21,7 @@ import { useSheetStack } from '../components/useSheetStack'
 import { computeNearbyAttractions } from './geoNearbyAttractions'
 import { fetchPoiContent } from './useThemeAttractionSelection'
 import { curatedCategoryOf, type CuratedCategory } from './geoCuratedCategoryStub'
-import { fetchGeoPlaceDetails } from '../api'
+import { fetchGeoPlaceDetails, fetchGeoPlacePhotoAssets } from '../api'
 import styles from './GeoOutlinePhoneView.module.css'
 
 // SheetEntry:2026-08 這次重構後,清單與資訊卡「該不該顯示」的真相來源
@@ -265,12 +265,27 @@ export function GeoOutlinePhoneView({
   // fetchPoiContent(useThemeAttractionSelection.ts 抽出的查詢/fallback
   // 邏輯,見該函式說明)取得內容,不重新發明一套查詢規則,對稱桌面版
   // DesktopLayout.tsx 的 handleSelectNearbyAttraction(直接就是
-  // useThemeAttractionSelection 回傳的 openPoiContent)。
+  // useThemeAttractionSelection 回傳的 openPoiContent)。用 onUpdate(第三
+  // 參數)而非等最終 Promise:第一次查詢完成就立刻顯示卡片內容 + push
+  // 開卡,之後若沒圖重試補到照片,只需要原地更新 setNearbyPoiContent,不
+  // 能再 push 第二次(用 hasOpenedRef 記住是否已經開過)。第四參數
+  // fetchGeoPlacePhotoAssets 是純讀端點,重試不會重複觸發
+  // fetchGeoPlaceDetails 背後的點擊計數/漸進補圖決策(見 fetchPoiContent
+  // 該參數的完整說明)。
   const handleSelectNearbyAttraction = useCallback((attraction: GeoAttraction) => {
-    fetchPoiContent(attraction, (placeId) => fetchGeoPlaceDetails(cfg, placeId)).then((content) => {
-      setNearbyPoiContent(content)
-      sheetStack.push({ type: 'nearby-place' })
-    })
+    let hasOpened = false
+    fetchPoiContent(
+      attraction,
+      (placeId) => fetchGeoPlaceDetails(cfg, placeId),
+      (content) => {
+        setNearbyPoiContent(content)
+        if (!hasOpened) {
+          hasOpened = true
+          sheetStack.push({ type: 'nearby-place' })
+        }
+      },
+      (placeId) => fetchGeoPlacePhotoAssets(cfg, placeId),
+    )
   }, [cfg, sheetStack])
   // infoSheetDraggingDown/infoSheetSnapIndex:資訊卡目前是否正在被使用者
   // 往下拖曳、以及目前停在哪一段——使用者明確要求「前一層比後層高時,

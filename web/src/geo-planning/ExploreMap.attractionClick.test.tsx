@@ -114,7 +114,6 @@ const placeDetails: GeoPlaceDetails = {
   lng: 135.76,
   photoUrl: 'https://example.com/photo.jpg',
   googlePhotoUrls: [],
-  pexelsPhotoUrls: [],
 }
 
 beforeEach(() => {
@@ -125,10 +124,19 @@ beforeEach(() => {
 })
 
 describe('ExploreMap handleAttractionClickRouted — 分岔 1:主題點(isTheme=true)', () => {
-  it('不論有沒有 placeId,一律直接呼叫 onAttractionSelect,不查 Google Place Details', async () => {
+  it('不論有沒有 placeId,一律直接呼叫 onAttractionSelect,點擊本身不額外查 Google Place Details', async () => {
     const theme = attraction({ name: '清水寺', lat: 1, lng: 1, isTheme: true, placeId: 'ChIJ有placeId' })
     const onAttractionSelect = vi.fn()
     const onAttractionOpenPlaceDetails = vi.fn()
+    // fetchGeoPlaceDetailsMock 需要一個可解析的回傳值——2026-09 起
+    // useAttractionOverlays.ts 的地標圖示照片查詢(見該檔案的完整說明:
+    // 「不再使用 landmarkPhotoUrl,如果有 place id 則使用 photo_assets
+    // 第一張圖」)在 attraction 掛載當下(不是點擊當下)就會對有 placeId
+    // 的地點呼叫這支函式,不設 mock 回傳值會讓那次呼叫的 .then() 對
+    // undefined 呼叫而拋出未捕捉例外。這條查詢跟這裡要驗證的「點擊路由
+    // 邏輯」(handleAttractionClickRouted)是完全獨立的兩件事,見下方
+    // 斷言改成比對呼叫次數而非「完全不呼叫」。
+    fetchGeoPlaceDetailsMock.mockResolvedValue(placeDetails)
     render(
       <ExploreMap
         cfg={cfg}
@@ -139,11 +147,18 @@ describe('ExploreMap handleAttractionClickRouted — 分岔 1:主題點(isTheme=
       />,
     )
     await waitFor(() => expect(clickHandlers.get('清水寺')).toBeDefined())
+    // 等地標圖示照片查詢(掛載時觸發,見上方說明)先完成一次,避免它跟
+    // 點擊後的呼叫次數混在一起難以區分先後。
+    await waitFor(() => expect(fetchGeoPlaceDetailsMock).toHaveBeenCalledTimes(1))
+    const callsBeforeClick = fetchGeoPlaceDetailsMock.mock.calls.length
 
     clickHandlers.get('清水寺')!(theme)
 
     expect(onAttractionSelect).toHaveBeenCalledWith(theme)
-    expect(fetchGeoPlaceDetailsMock).not.toHaveBeenCalled()
+    // 點擊本身(handleAttractionClickRouted 的主題點分岔)不該再額外
+    // 觸發一次查詢——呼叫次數維持在點擊前的數字,不是「完全零次」
+    // (掛載時的照片查詢已經算過一次)。
+    expect(fetchGeoPlaceDetailsMock.mock.calls.length).toBe(callsBeforeClick)
     expect(onAttractionOpenPlaceDetails).not.toHaveBeenCalled()
   })
 })

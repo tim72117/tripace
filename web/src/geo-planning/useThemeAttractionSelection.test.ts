@@ -114,7 +114,17 @@ describe('useThemeAttractionSelection', () => {
   })
 
   it('openPoiContent 有 placeId 時查 fetchPlaceDetails,成功後附加 attractionSummary', async () => {
-    const details: GeoPlaceDetails = { name: '忠僕茶屋', address: '清水寺境內', lat: 34.99, lng: 135.78, rating: 4.3 }
+    // photoUrl 給值,避免觸發 fetchPoiContent 的沒圖重試機制(見該函式
+    // PHOTO_RETRY_* 的完整說明)——這個測試只關心 attractionSummary 有沒有
+    // 正確附加,不是在測重試,給張圖讓它第一次查詢就直接 resolve。
+    const details: GeoPlaceDetails = {
+      name: '忠僕茶屋',
+      address: '清水寺境內',
+      lat: 34.99,
+      lng: 135.78,
+      rating: 4.3,
+      photoUrl: 'https://example.com/photo.jpg',
+    }
     const fetchPlaceDetails = vi.fn().mockResolvedValue(details)
     const { result } = renderHook(() => useThemeAttractionSelection('清水寺', fetchPlaceDetails))
 
@@ -173,14 +183,14 @@ describe('useThemeAttractionSelection', () => {
   it('extraAttractionPresent 為 true 時,即使 themeKey 是 null,attraction 仍登記為 present——涵蓋呼叫端 geoInfoContent(PlacePanel)這個額外分支(見該參數的完整說明)', () => {
     const fetchPlaceDetails = vi.fn()
     const { result } = renderHook(
-      ({ extra }) => useThemeAttractionSelection(null, fetchPlaceDetails, extra),
+      ({ extra }) => useThemeAttractionSelection(null, fetchPlaceDetails, undefined, extra),
       { initialProps: { extra: false } },
     )
 
     expect(result.current.infoCardStack.isPresent('attraction')).toBe(false)
 
     const { result: result2 } = renderHook(() =>
-      useThemeAttractionSelection(null, fetchPlaceDetails, true),
+      useThemeAttractionSelection(null, fetchPlaceDetails, undefined, true),
     )
     expect(result2.current.infoCardStack.isPresent('attraction')).toBe(true)
   })
@@ -189,7 +199,7 @@ describe('useThemeAttractionSelection', () => {
     const fetchPlaceDetails = vi.fn()
     const onAttractionPresent = vi.fn()
     const { rerender } = renderHook(
-      ({ themeKey }) => useThemeAttractionSelection(themeKey, fetchPlaceDetails, false, onAttractionPresent),
+      ({ themeKey }) => useThemeAttractionSelection(themeKey, fetchPlaceDetails, undefined, false, onAttractionPresent),
       { initialProps: { themeKey: null as string | null } },
     )
 
@@ -209,7 +219,16 @@ describe('useThemeAttractionSelection', () => {
 // 完整說明),故獨立驗證它的查詢/fallback 規則。
 describe('fetchPoiContent', () => {
   it('有 placeId 時查 fetchPlaceDetails,成功後附加 attractionSummary', async () => {
-    const details: GeoPlaceDetails = { name: '忠僕茶屋', address: '清水寺境內', lat: 34.99, lng: 135.78, rating: 4.3 }
+    // photoUrl 給值,避免觸發沒圖時的重試機制(見下方「沒有任何照片時」
+    // 那組測試)——這裡只關心 attractionSummary 有沒有附加。
+    const details: GeoPlaceDetails = {
+      name: '忠僕茶屋',
+      address: '清水寺境內',
+      lat: 34.99,
+      lng: 135.78,
+      rating: 4.3,
+      photoUrl: 'https://example.com/photo.jpg',
+    }
     const fetchPlaceDetails = vi.fn().mockResolvedValue(details)
 
     const content = await fetchPoiContent(attraction({ placeId: 'ChIJ123', summary: '百年茶屋' }), fetchPlaceDetails)
@@ -233,5 +252,130 @@ describe('fetchPoiContent', () => {
 
     expect(fetchPlaceDetails).not.toHaveBeenCalled()
     expect(content.name).toBe('忠僕茶屋')
+  })
+
+  // 沒有帶 fetchPhotoAssets 時,完全不重試——2026-09 使用者明確要求「重試
+  // 時只能取圖,不能觸發補圖」,fetchPlaceDetails 對應的後端每次呼叫都會
+  // 觸發點擊計數/漸進補圖決策,不是純讀,不能拿來當重試對象(見
+  // fetchPoiContent 上方 PHOTO_RETRY_* 的完整說明)。
+  it('沒有帶 fetchPhotoAssets 時,沒圖也不重試,只查一次 fetchPlaceDetails', async () => {
+    const noPhoto: GeoPlaceDetails = { name: '忠僕茶屋', address: '清水寺境內', lat: 34.99, lng: 135.78 }
+    const fetchPlaceDetails = vi.fn().mockResolvedValue(noPhoto)
+
+    const content = await fetchPoiContent(attraction({ placeId: 'ChIJ123' }), fetchPlaceDetails)
+
+    expect(fetchPlaceDetails).toHaveBeenCalledTimes(1)
+    expect(content.photoUrl).toBeUndefined()
+  })
+
+  // 帶 fetchPhotoAssets 時的重試機制——後端漸進補圖是背景 goroutine,這次
+  // 回應不保證帶圖(見 fetchPoiContent 上方 PHOTO_RETRY_* 的完整說明),
+  // 故這裡用假的計時器驗證「每隔 2 秒重查一次、最多重試 3 次、查到圖就
+  // 停止」的行為,且重試只呼叫 fetchPhotoAssets,不重複呼叫
+  // fetchPlaceDetails。
+  it('有 fetchPhotoAssets 時,沒圖每隔 2 秒重查一次,查到圖就停止重試,且不重複呼叫 fetchPlaceDetails', async () => {
+    vi.useFakeTimers()
+    try {
+      const noPhoto: GeoPlaceDetails = { name: '忠僕茶屋', address: '清水寺境內', lat: 34.99, lng: 135.78 }
+      const fetchPlaceDetails = vi.fn().mockResolvedValue(noPhoto)
+      const fetchPhotoAssets = vi
+        .fn()
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ photoUrl: 'https://example.com/photo.jpg' })
+
+      const onUpdate = vi.fn()
+      const contentPromise = fetchPoiContent(
+        attraction({ placeId: 'ChIJ123' }),
+        fetchPlaceDetails,
+        onUpdate,
+        fetchPhotoAssets,
+      )
+
+      // 第一次查詢(同步 microtask,不需要推進計時器)——沒圖,立刻透過
+      // onUpdate 顯示卡片(文字內容),不等重試。
+      await vi.advanceTimersByTimeAsync(0)
+      expect(fetchPlaceDetails).toHaveBeenCalledTimes(1)
+      expect(fetchPhotoAssets).not.toHaveBeenCalled()
+      expect(onUpdate).toHaveBeenCalledTimes(1)
+      expect(onUpdate.mock.calls[0][0].photoUrl).toBeUndefined()
+
+      // 等滿 2 秒觸發第一次重試(改打 fetchPhotoAssets,不是 fetchPlaceDetails)。
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(fetchPhotoAssets).toHaveBeenCalledTimes(1)
+      expect(fetchPlaceDetails).toHaveBeenCalledTimes(1)
+
+      // 仍沒圖,再等滿 2 秒觸發第二次重試,這次查到圖。
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(fetchPhotoAssets).toHaveBeenCalledTimes(2)
+
+      const content = await contentPromise
+      expect(content.photoUrl).toBe('https://example.com/photo.jpg')
+      expect(onUpdate).toHaveBeenCalledTimes(2)
+      // 查到圖後不應該再繼續重試,fetchPlaceDetails 全程只被呼叫一次。
+      await vi.advanceTimersByTimeAsync(10000)
+      expect(fetchPhotoAssets).toHaveBeenCalledTimes(2)
+      expect(fetchPlaceDetails).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('重試 3 次後仍沒有照片,維持顯示無圖內容(不再繼續重試,不觸發第 4 次補圖查詢)', async () => {
+    vi.useFakeTimers()
+    try {
+      const noPhoto: GeoPlaceDetails = { name: '忠僕茶屋', address: '清水寺境內', lat: 34.99, lng: 135.78 }
+      const fetchPlaceDetails = vi.fn().mockResolvedValue(noPhoto)
+      const fetchPhotoAssets = vi.fn().mockResolvedValue({})
+
+      const contentPromise = fetchPoiContent(
+        attraction({ placeId: 'ChIJ123' }),
+        fetchPlaceDetails,
+        undefined,
+        fetchPhotoAssets,
+      )
+
+      await vi.runAllTimersAsync()
+
+      const content = await contentPromise
+      // 首次查詢一次(fetchPlaceDetails)+ 最多重試 3 次(fetchPhotoAssets)。
+      expect(fetchPlaceDetails).toHaveBeenCalledTimes(1)
+      expect(fetchPhotoAssets).toHaveBeenCalledTimes(3)
+      expect(content.photoUrl).toBeUndefined()
+
+      // 用完重試次數後不再繼續等待/查詢。
+      await vi.advanceTimersByTimeAsync(10000)
+      expect(fetchPhotoAssets).toHaveBeenCalledTimes(3)
+      expect(fetchPlaceDetails).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('fetchPhotoAssets 單次查詢失敗時,視同這次沒查到圖,繼續剩餘重試次數', async () => {
+    vi.useFakeTimers()
+    try {
+      const noPhoto: GeoPlaceDetails = { name: '忠僕茶屋', address: '清水寺境內', lat: 34.99, lng: 135.78 }
+      const fetchPlaceDetails = vi.fn().mockResolvedValue(noPhoto)
+      const fetchPhotoAssets = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('network error'))
+        .mockResolvedValueOnce({ photoUrl: 'https://example.com/photo.jpg' })
+
+      const contentPromise = fetchPoiContent(
+        attraction({ placeId: 'ChIJ123' }),
+        fetchPlaceDetails,
+        undefined,
+        fetchPhotoAssets,
+      )
+
+      await vi.runAllTimersAsync()
+      const content = await contentPromise
+
+      expect(fetchPhotoAssets).toHaveBeenCalledTimes(2)
+      expect(content.photoUrl).toBe('https://example.com/photo.jpg')
+      expect(content.name).toBe('忠僕茶屋')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -296,6 +296,13 @@ func (s *Server) Routes() http.Handler {
 	// 路由群組,之後新增其他公開端點時應各自評估是否也需要類似的範圍
 	// 限制,不能直接比照這裡的寫法就假設安全。
 	mux.HandleFunc("GET /public/geo/place-details", s.handlePublicGeoPlaceDetails)
+	// GET /public/geo/place-photo-assets:handlePublicGeoPlacePhotoAssets
+	// 的免登入版(見該函式的完整說明)——純讀 photo_assets,不觸發點擊
+	// 計數/漸進補圖決策,供前端「查完沒圖,原地重試幾次」的情境使用
+	// (fetchPublicGeoPlacePhotoAssets),授權機制對齊上一行的
+	// place-details。2026-09:這支路由先前漏掛,導致該重試功能在正式
+	// 環境一律 404(handler 本身已實作/測試完成,只是沒有接上 mux)。
+	mux.HandleFunc("GET /public/geo/place-photo-assets", s.handlePublicGeoPlacePhotoAssets)
 	mux.HandleFunc("GET /public/geo/attractions", s.handlePublicGeoAttractions)
 
 	// internal — 供 CLI(cmd/cli)/自動化腳本操作資料,不走 /v1/* 那套
@@ -321,6 +328,10 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("GET /internal/geo/attractions/nearby-only", s.handleGeoAttractionsOnlyNearby)
 	internalMux.HandleFunc("GET /internal/geo/geocode", s.handleGeoGeocode)
 	internalMux.HandleFunc("GET /internal/geo/place-details", s.handleGeoPlaceDetails)
+	// GET /internal/geo/place-photo-assets:純讀 photo_assets,不觸發點擊
+	// 計數/漸進補圖決策(見 handleGeoPlacePhotoAssets 的完整說明)。
+	// 2026-09:同上一支公開版,先前漏掛路由,導致重試功能一律 404。
+	internalMux.HandleFunc("GET /internal/geo/place-photo-assets", s.handleGeoPlacePhotoAssets)
 
 	// maintenance — 只給 tripace-cli 這類維運工具用的端點,不是產品前端
 	// 會呼叫的路徑(見 maintenance.go 開頭對「核心」與「維運」端點分開的

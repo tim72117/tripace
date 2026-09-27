@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { GeoAttraction, GeoPlaceDetails } from '../api'
+import type { GeoAttraction, GeoPlaceDetails, GeoPlacePhotoAssets } from '../api'
 import { attractionToInfoContent, poiInfoContent } from './geoInfoContent'
 import type { PlaceInfoContent } from './PlacePanel'
 import { useInfoCardStack, useInfoCardStackSync, type InfoCardStack } from './useInfoCardStack'
@@ -48,6 +48,41 @@ import type { CuratedCategory } from './geoCuratedCategoryStub'
 //     展示頁刻意沒有互斥路徑(精選點一律走並存),這個分岔邏輯留在
 //     DesktopLayout.tsx,只是分岔的兩個分支都改呼叫這支 hook 回傳的
 //     setPoiContent。
+// PHOTO_RETRY_DELAY_MS/PHOTO_RETRY_MAX_ATTEMPTS:後端 handleGeoPlaceDetails
+// 的漸進補圖是背景 goroutine(見該函式的完整說明),這次查詢的回應不會
+// 等下載完成,新照片要等下一次查詢才看得到——若這次查回來三個照片欄位
+// (photoUrl/googlePhotoUrls/pexelsPhotoUrls)都是空的,很可能是背景補圖
+// 剛好還沒做完(尤其是這個 placeId 第一次被查詢的情況,見該函式說明「初次
+// 查詢幾乎必定觸發背景下載」),故在前端補一段「原地重查」:每隔 2 秒
+// 重新查一次目前的照片狀態,最多重試 3 次,查到任一張圖就停止。不是
+// 無限重試——重試次數用完後仍然沒圖,就維持顯示 placeholder(理由同
+// attractionToInfoContent 的「不回退任何舊表資料」設計,寧可暫時無圖也
+// 不假造資料),使用者可以手動重新開卡觸發下一輪查詢。
+//
+// 這段重試只針對「照片」,不影響卡片本身的顯示時機——見下方
+// fetchPoiContent 的 onUpdate 參數說明,卡片名稱/地址/簡介等文字內容
+// 第一次查詢完就交給呼叫端顯示,不會被這裡的重試拖慢。
+//
+// 重試不能重複呼叫 fetchPlaceDetails(2026-09 使用者明確要求「重試時
+// 只能取圖,不能觸發補圖」)——fetchGeoPlaceDetails/fetchPublicGeoPlaceDetails
+// 對應的後端 handleGeoPlaceDetails 每次呼叫都會執行
+// IncrementPlaceClickCount,連續重試會重複推進漸進補圖節奏判斷(見該
+// 函式 shouldAddGooglePlacePhoto 的完整說明),不是單純的唯讀查詢。故
+// 只有第一次查詢用 fetchPlaceDetails,之後的重試改呼叫下方
+// fetchPlaceDetails 的第三個參數 fetchPhotoAssets(對應後端
+// GET .../geo/place-photo-assets,純讀 photo_assets,不觸發任何點擊計數
+// /補圖決策,見該端點的完整說明)。
+const PHOTO_RETRY_DELAY_MS = 2000
+const PHOTO_RETRY_MAX_ATTEMPTS = 3
+
+function hasAnyPhoto(content: { photoUrl?: string; googlePhotoUrls?: string[] }): boolean {
+  return !!content.photoUrl || (content.googlePhotoUrls?.length ?? 0) > 0
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 // fetchPoiContent:「有 placeId 時查 fetchPlaceDetails,成功用
 // poiInfoContent(details)當主要內容、附加 attraction.summary;沒有
 // placeId 或查詢失敗時退回 attractionToInfoContent」這段查詢邏輯本身,
@@ -56,23 +91,77 @@ import type { CuratedCategory } from './geoCuratedCategoryStub'
 // 景點清單,push 一層新 sheet 顯示,見該檔案的完整說明)共用同一段查詢
 // /fallback 規則,不需要手機版也接整支 useThemeAttractionSelection
 // (手機版沒有 hoveredAttraction/infoCardStack 這兩個概念,見下方檔頭
-// 說明,硬接會多出死欄位)。回傳 Promise 而非直接 setState,由呼叫端
-// 決定內容要放進哪個 state(桌面版/展示頁是 poiContent,手機版是新的
-// sheet 對應的 state)。
+// 說明,硬接會多出死欄位)。
+//
+// 回傳 Promise(resolve 最終內容,含重試後的最新照片結果)供需要「最終
+// 結果」的呼叫端使用;第三個選填參數 onUpdate 則是「第一次查詢完成
+// (不論有沒有照片)立刻呼叫一次,之後每次重試查到新結果(不論有沒有
+// 照片)也會再呼叫」——2026-09 新增,用意是讓卡片本身(名稱/地址/簡介
+// 等文字)不被沒圖時的重試拖慢顯示時機:呼叫端應該用這個 callback 觸發
+// 「顯示卡片」,而不是等整個 Promise resolve,重試只補新的照片結果,不
+// 該延後卡片出現的時間點。呼叫端若同時需要在 onUpdate 第一次呼叫時做
+// 「開卡」這類只該發生一次的動作(例如 GeoOutlinePhoneView.tsx 的
+// sheetStack.push),自行用一個旗標判斷「這是不是第一次呼叫」,這支函式
+// 不假設呼叫端的用途。
+//
+// fetchPhotoAssets:第一次查詢沒有照片時,後續重試改呼叫這支函式(對應
+// GET .../geo/place-photo-assets,見上方 PHOTO_RETRY_* 的完整說明)而非
+// 再次呼叫 fetchPlaceDetails——呼叫端已經 bind 好 cfg 的純讀查詢函式,
+// 對稱 fetchPlaceDetails 參數:正式版傳
+// (placeId) => fetchGeoPlacePhotoAssets(cfg, placeId),展示頁傳
+// (placeId) => fetchPublicGeoPlacePhotoAssets(GUEST_CFG, placeId)。
 export function fetchPoiContent(
   attraction: GeoAttraction,
   fetchPlaceDetails: (placeId: string) => Promise<GeoPlaceDetails>,
+  onUpdate?: (content: PlaceInfoContent) => void,
+  fetchPhotoAssets?: (placeId: string) => Promise<GeoPlacePhotoAssets>,
 ): Promise<PlaceInfoContent> {
   if (!attraction.placeId) {
-    return Promise.resolve(attractionToInfoContent(attraction))
+    const content = attractionToInfoContent(attraction)
+    onUpdate?.(content)
+    return Promise.resolve(content)
   }
-  return fetchPlaceDetails(attraction.placeId)
+  const placeId = attraction.placeId
+
+  const retryWithPhotoAssetsOnly = (
+    remainingRetries: number,
+    base: PlaceInfoContent,
+  ): Promise<PlaceInfoContent> => {
+    if (remainingRetries <= 0 || !fetchPhotoAssets) return Promise.resolve(base)
+    return sleep(PHOTO_RETRY_DELAY_MS)
+      .then(() => fetchPhotoAssets(placeId))
+      .then((photoAssets) => {
+        if (!hasAnyPhoto(photoAssets)) {
+          return retryWithPhotoAssetsOnly(remainingRetries - 1, base)
+        }
+        const content: PlaceInfoContent = {
+          ...base,
+          photoUrl: photoAssets.photoUrl,
+          googlePhotoUrls: photoAssets.googlePhotoUrls,
+        }
+        onUpdate?.(content)
+        return content
+      })
+      // 純讀端點查詢失敗(網路問題等)時,視同這次沒查到圖,不中斷剩餘
+      // 重試次數,也不 fallback 回 attractionToInfoContent——base 本身
+      // (第一次查詢的文字內容)已經是有效內容,不該因為單次重試失敗就
+      // 整張卡片退回精簡版。
+      .catch(() => retryWithPhotoAssetsOnly(remainingRetries - 1, base))
+  }
+
+  return fetchPlaceDetails(placeId)
     .then((details) => {
       const content = poiInfoContent(details)
       content.attractionSummary = attraction.summary
+      onUpdate?.(content)
+      if (hasAnyPhoto(content)) return content
+      return retryWithPhotoAssetsOnly(PHOTO_RETRY_MAX_ATTEMPTS, content)
+    })
+    .catch(() => {
+      const content = attractionToInfoContent(attraction)
+      onUpdate?.(content)
       return content
     })
-    .catch(() => attractionToInfoContent(attraction))
 }
 
 export interface ThemeAttractionSelection {
@@ -113,6 +202,10 @@ export function useThemeAttractionSelection(
   // (placeId) => fetchGeoPlaceDetails(cfg, placeId),展示頁傳
   // (placeId) => fetchPublicGeoPlaceDetails(GUEST_CFG, placeId)。
   fetchPlaceDetails: (placeId: string) => Promise<GeoPlaceDetails>,
+  // fetchPhotoAssets:同樣由呼叫端 bind 好 cfg,見 fetchPoiContent 該參數
+  // 的完整說明——沒圖時的重試改打這支純讀端點,不會重複觸發
+  // fetchPlaceDetails 背後的點擊計數/漸進補圖決策。
+  fetchPhotoAssets?: (placeId: string) => Promise<GeoPlacePhotoAssets>,
   // extraAttractionPresent:'attraction' order 0 這個位置,除了 themeKey
   // 本身之外還有沒有其他分支也算「這個位置有卡片」——正式版
   // (DesktopLayout.tsx)的 geoInfoContent(PlacePanel)跟 geoAttractionContent
@@ -146,9 +239,13 @@ export function useThemeAttractionSelection(
   const [hoveredAttraction, setHoveredAttraction] = useState<GeoAttraction | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<CuratedCategory | null>(null)
 
+  // onUpdate 直接傳 setPoiContent——第一次呼叫(卡片文字內容查完)就立刻
+  // 顯示卡片,之後查到新照片(重試命中)再次呼叫時原地更新同一張卡片,不
+  // 需要額外判斷「這是不是第一次」,setPoiContent 本身冪等,重複設定同一
+  // 張卡片的內容沒有副作用(見 fetchPoiContent 的 onUpdate 完整說明)。
   const openPoiContent = useCallback((attraction: GeoAttraction) => {
-    fetchPoiContent(attraction, fetchPlaceDetails).then(setPoiContent)
-  }, [fetchPlaceDetails])
+    fetchPoiContent(attraction, fetchPlaceDetails, setPoiContent, fetchPhotoAssets)
+  }, [fetchPlaceDetails, fetchPhotoAssets])
 
   // 主題卡切換(themeKey 變動,含關閉整張主題卡回到 null)時一併清掉
   // poiContent/hoveredAttraction/categoryFilter——三者都是依附在目前

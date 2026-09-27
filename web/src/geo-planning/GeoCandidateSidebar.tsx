@@ -48,7 +48,7 @@ export { candidateEntryKind, candidateListKey, createEntryFromCandidate, dayGrou
 // 座標/地址/原本的分類 entryKind)讓它繼續顯示在「候選中」分組,不需要
 // 因為沒有原始 hotel/attraction/place 資料就被迫遺失照片以外的所有
 // 資訊。之所以沒有拿掉 entry 形狀改成硬塞回 hotel/attraction/place 其中
-// 一種:那三種形狀的專屬欄位(landmarkPhotoUrl/primaryType 等)在 entry
+// 一種:那三種形狀的專屬欄位(placeId/primaryType 等)在 entry
 // 資料裡從一開始就不存在(entries 資料表沒有存這些),假造一個不存在的
 // 來源分類反而失真——entry 形狀本身(名稱+地址+座標+entryKind)已經是
 // 這筆資料唯一誠實、可還原的樣貌。GeoCandidate 型別本身與 entryKind 欄位

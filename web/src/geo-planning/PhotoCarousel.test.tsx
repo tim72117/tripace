@@ -47,7 +47,7 @@ describe('PhotoCarousel — 0/1 張圖(桌面/手機共用同一種顯示,不受
     expect(container.querySelector('img')).toBeNull()
   })
 
-  it('googlePhotoUrls/pexelsPhotoUrls 皆空但有 fallbackUrl 時,顯示 fallbackUrl 這張圖,不顯示任何互動控制項', () => {
+  it('googlePhotoUrls 空但有 fallbackUrl 時,顯示 fallbackUrl 這張圖,不顯示任何互動控制項', () => {
     mockMatchMedia(false)
     render(<PhotoCarousel alt="測試地點" fallbackUrl="https://example.com/fallback.jpg" />)
 
@@ -73,8 +73,7 @@ describe('PhotoCarousel — 桌面版(2 張以上點擊縮圖開 Lightbox)', () 
     render(
       <PhotoCarousel
         alt="測試地點"
-        googlePhotoUrls={['https://example.com/g1.jpg']}
-        pexelsPhotoUrls={['https://example.com/p1.jpg']}
+        googlePhotoUrls={['https://example.com/g1.jpg', 'https://example.com/g2.jpg']}
       />,
     )
 
@@ -92,16 +91,15 @@ describe('PhotoCarousel — 桌面版(2 張以上點擊縮圖開 Lightbox)', () 
       <PhotoCarousel
         alt="測試地點"
         googlePhotoUrls={['https://example.com/g1.jpg', 'https://example.com/g2.jpg']}
-        pexelsPhotoUrls={['https://example.com/p1.jpg']}
       />,
     )
 
     await user.click(screen.getByRole('button'))
 
     const lightbox = screen.getByRole('dialog')
-    expect(within(lightbox).getByText('1 / 3')).not.toBeNull()
+    expect(within(lightbox).getByText('1 / 2')).not.toBeNull()
     await user.click(within(lightbox).getByRole('button', { name: '下一張照片' }))
-    expect(within(lightbox).getByText('2 / 3')).not.toBeNull()
+    expect(within(lightbox).getByText('2 / 2')).not.toBeNull()
 
     await user.click(within(lightbox).getByRole('button', { name: '關閉' }))
     expect(screen.queryByRole('dialog')).toBeNull()
@@ -109,32 +107,6 @@ describe('PhotoCarousel — 桌面版(2 張以上點擊縮圖開 Lightbox)', () 
     // 縮圖本身)。
     const img = screen.getByRole('img') as HTMLImageElement
     expect(img.src).toBe('https://example.com/g1.jpg')
-  })
-
-  it('合併順序永遠是「先 Google 後 Pexels」,不因傳入順序或陣列長度不同而改變', async () => {
-    mockMatchMedia(true)
-    const user = userEvent.setup()
-    render(
-      <PhotoCarousel
-        alt="測試地點"
-        googlePhotoUrls={['https://example.com/g1.jpg', 'https://example.com/g2.jpg']}
-        pexelsPhotoUrls={['https://example.com/p1.jpg']}
-      />,
-    )
-
-    await user.click(screen.getByRole('button'))
-    const lightbox = screen.getByRole('dialog')
-    expect(within(lightbox).getByText('1 / 3')).not.toBeNull()
-    let img = within(lightbox).getByRole('img') as HTMLImageElement
-    expect(img.src).toBe('https://example.com/g1.jpg')
-
-    await user.click(within(lightbox).getByRole('button', { name: '下一張照片' }))
-    img = within(lightbox).getByRole('img') as HTMLImageElement
-    expect(img.src).toBe('https://example.com/g2.jpg')
-
-    await user.click(within(lightbox).getByRole('button', { name: '下一張照片' }))
-    img = within(lightbox).getByRole('img') as HTMLImageElement
-    expect(img.src).toBe('https://example.com/p1.jpg')
   })
 })
 
@@ -144,15 +116,14 @@ describe('PhotoCarousel — 手機版(2 張以上橫向並排滑動列,無按鈕
     render(
       <PhotoCarousel
         alt="測試地點"
-        googlePhotoUrls={['https://example.com/g1.jpg']}
-        pexelsPhotoUrls={['https://example.com/p1.jpg']}
+        googlePhotoUrls={['https://example.com/g1.jpg', 'https://example.com/g2.jpg']}
       />,
     )
 
     const imgs = screen.getAllByRole('img') as HTMLImageElement[]
     expect(imgs).toHaveLength(2)
     expect(imgs[0].src).toBe('https://example.com/g1.jpg')
-    expect(imgs[1].src).toBe('https://example.com/p1.jpg')
+    expect(imgs[1].src).toBe('https://example.com/g2.jpg')
     expect(screen.queryByRole('button')).toBeNull()
     expect(screen.getByText('1 / 2')).not.toBeNull()
   })

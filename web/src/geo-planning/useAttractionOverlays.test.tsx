@@ -8,9 +8,9 @@
 // 記錄用的 FakeOverlay class,不觸碰真正的 Google Maps OverlayView/DOM
 // markup——那是 geoAttractionOverlay.ts 自己的職責,不在這個測試範圍內。
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook } from '@testing-library/react'
+import { renderHook, waitFor } from '@testing-library/react'
 import { useAttractionOverlays } from './useAttractionOverlays'
-import type { GeoAttraction } from '../api'
+import type { ClientConfig, GeoAttraction, GeoPlaceDetails } from '../api'
 
 type FakeOverlayCall = {
   attraction: GeoAttraction
@@ -28,6 +28,7 @@ class FakeOverlay {
   selectedHistory: boolean[] = []
   candidateHistory: boolean[] = []
   hoveredHistory: boolean[] = []
+  photoUrlHistory: (string | undefined)[] = []
   constructor(
     public attraction: GeoAttraction,
     position: { lat: number; lng: number },
@@ -50,11 +51,35 @@ class FakeOverlay {
   setHovered(hovered: boolean) {
     this.hoveredHistory.push(hovered)
   }
+  // setPhotoUrl:AttractionOverlayInstance 介面要求的方法(見
+  // geoAttractionOverlay.ts 的完整說明),先前這個 FakeOverlay 沒有實作
+  // 這個方法——任何一個測試若傳入 cfg 觸發照片查詢 effect,呼叫
+  // overlay.setPhotoUrl(...) 就會直接拋出執行期錯誤(不是編譯期,因為
+  // FakeOverlay 只是結構性地被當成 AttractionOverlayInstance 使用,沒有
+  // 靜態型別檢查會擋下這個缺漏)。補上這個方法,讓下方新增的照片查詢
+  // effect 測試組能真正跑起來。
+  setPhotoUrl(photoUrl: string | undefined) {
+    this.photoUrlHistory.push(photoUrl)
+  }
 }
 
 vi.mock('./geoAttractionOverlay', () => ({
   getAttractionOverlayClass: () => FakeOverlay,
 }))
+
+const fetchGeoPlaceDetailsMock = vi.fn<(...args: unknown[]) => Promise<GeoPlaceDetails>>()
+const fetchPublicGeoPlaceDetailsMock = vi.fn<(...args: unknown[]) => Promise<GeoPlaceDetails>>()
+
+vi.mock('../api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api')>()
+  return {
+    ...actual,
+    fetchGeoPlaceDetails: (...args: unknown[]) => fetchGeoPlaceDetailsMock(...args),
+    fetchPublicGeoPlaceDetails: (...args: unknown[]) => fetchPublicGeoPlaceDetailsMock(...args),
+  }
+})
+
+const fakeCfg = {} as ClientConfig
 
 // global.google.maps:hook 內用 new google.maps.LatLng(...)組座標——這裡
 // 補最小可用假實作。
@@ -79,6 +104,8 @@ function attraction(overrides: Partial<GeoAttraction> & { name: string; lat: num
 beforeEach(() => {
   constructedOverlays = []
   overlayInstances = []
+  fetchGeoPlaceDetailsMock.mockReset()
+  fetchPublicGeoPlaceDetailsMock.mockReset()
 })
 
 describe('useAttractionOverlays — filteredAttractions 分級規則', () => {
@@ -266,5 +293,126 @@ describe('useAttractionOverlays — 選取/候選籃/hover 狀態只更新既有
 
     expect(overlay.hoveredHistory).toContain(true)
     expect(constructedOverlays).toHaveLength(constructCountBefore)
+  })
+})
+
+// 查詢地圖上地標圖示的實際照片(見 hook 內該 useEffect 的完整說明)——
+// 2026-09 新增,使用者明確要求「不再使用 landmarkPhotoUrl,如果有
+// place id 則使用 photo_assets 第一張圖」。這裡驗證的重點放在觸發條件
+// (沒有 cfg/沒有 placeId 時完全不查詢)、cfg/usePublicPlaceDetails 切換
+// 對應到哪支 fetch 函式、查到結果後正確呼叫 setPhotoUrl、快取避免重複
+// 查詢、以及查詢失敗時靜默處理(不拋錯、不快取失敗結果)。
+describe('useAttractionOverlays — 查詢地標圖示照片(cfg/usePublicPlaceDetails)', () => {
+  it('沒有傳入 cfg 時,完全不查詢照片(即使景點有 placeId)', async () => {
+    const mapRef = { current: makeFakeMap() }
+    const a = attraction({ name: 'A', lat: 1, lng: 1, isTheme: true, placeId: 'place-1' })
+    renderHook(() =>
+      useAttractionOverlays({ mapRef, mapReady: true, attractions: [a] }),
+    )
+
+    await Promise.resolve()
+    expect(fetchGeoPlaceDetailsMock).not.toHaveBeenCalled()
+    expect(fetchPublicGeoPlaceDetailsMock).not.toHaveBeenCalled()
+  })
+
+  it('景點沒有 placeId 時,跳過查詢,overlay 維持沒有照片', async () => {
+    const mapRef = { current: makeFakeMap() }
+    const a = attraction({ name: 'A', lat: 1, lng: 1, isTheme: true })
+    renderHook(() =>
+      useAttractionOverlays({ mapRef, mapReady: true, attractions: [a], cfg: fakeCfg }),
+    )
+
+    await Promise.resolve()
+    expect(fetchGeoPlaceDetailsMock).not.toHaveBeenCalled()
+    expect(overlayInstances[0].photoUrlHistory).toHaveLength(0)
+  })
+
+  it('usePublicPlaceDetails 未傳(預設 false)時,打 fetchGeoPlaceDetails(登入版端點)', async () => {
+    fetchGeoPlaceDetailsMock.mockResolvedValue({
+      name: 'A', address: '', lat: 1, lng: 1, photoUrl: 'https://example.com/a.jpg',
+    })
+    const mapRef = { current: makeFakeMap() }
+    const a = attraction({ name: 'A', lat: 1, lng: 1, isTheme: true, placeId: 'place-1' })
+    renderHook(() =>
+      useAttractionOverlays({ mapRef, mapReady: true, attractions: [a], cfg: fakeCfg }),
+    )
+
+    await waitFor(() => expect(overlayInstances[0].photoUrlHistory).toContain('https://example.com/a.jpg'))
+    expect(fetchGeoPlaceDetailsMock).toHaveBeenCalledWith(fakeCfg, 'place-1')
+    expect(fetchPublicGeoPlaceDetailsMock).not.toHaveBeenCalled()
+  })
+
+  it('usePublicPlaceDetails=true 時,改打 fetchPublicGeoPlaceDetails(免登入版端點)', async () => {
+    fetchPublicGeoPlaceDetailsMock.mockResolvedValue({
+      name: 'A', address: '', lat: 1, lng: 1, photoUrl: 'https://example.com/a.jpg',
+    })
+    const mapRef = { current: makeFakeMap() }
+    const a = attraction({ name: 'A', lat: 1, lng: 1, isTheme: true, placeId: 'place-1' })
+    renderHook(() =>
+      useAttractionOverlays({
+        mapRef, mapReady: true, attractions: [a], cfg: fakeCfg, usePublicPlaceDetails: true,
+      }),
+    )
+
+    await waitFor(() => expect(overlayInstances[0].photoUrlHistory).toContain('https://example.com/a.jpg'))
+    expect(fetchPublicGeoPlaceDetailsMock).toHaveBeenCalledWith(fakeCfg, 'place-1')
+    expect(fetchGeoPlaceDetailsMock).not.toHaveBeenCalled()
+  })
+
+  it('同一個 placeId 查過一次後寫入快取,重新渲染(例如 selectedKey 變動)不重複查詢', async () => {
+    fetchGeoPlaceDetailsMock.mockResolvedValue({
+      name: 'A', address: '', lat: 1, lng: 1, photoUrl: 'https://example.com/a.jpg',
+    })
+    const mapRef = { current: makeFakeMap() }
+    const a = attraction({ name: 'A', lat: 1, lng: 1, isTheme: true, placeId: 'place-1' })
+    const attractions = [a]
+    const { rerender } = renderHook(
+      ({ selectedKey }: { selectedKey?: string | null }) =>
+        useAttractionOverlays({ mapRef, mapReady: true, attractions, cfg: fakeCfg, selectedKey }),
+      { initialProps: { selectedKey: undefined as string | null | undefined } },
+    )
+    await waitFor(() => expect(fetchGeoPlaceDetailsMock).toHaveBeenCalledTimes(1))
+
+    // filteredAttractions 沒有變(同一個陣列參照),但 selectedKey 變動會
+    // 觸發這個 hook 重新 render——照片查詢 effect 的依賴陣列雖然包含
+    // filteredAttractions(參照不變不會重新觸發整個 effect),這裡改用
+    // 直接呼叫 rerender 兩次確認快取真的生效,不是依賴 effect 沒有重新
+    // 執行這個間接證據。
+    rerender({ selectedKey: 'attraction:A:1:1' })
+    await Promise.resolve()
+
+    expect(fetchGeoPlaceDetailsMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('查詢失敗時,靜默處理(overlay 維持沒有照片,不拋出未捕捉的 rejection)', async () => {
+    fetchGeoPlaceDetailsMock.mockRejectedValue(new Error('network error'))
+    const mapRef = { current: makeFakeMap() }
+    const a = attraction({ name: 'A', lat: 1, lng: 1, isTheme: true, placeId: 'place-1' })
+    renderHook(() =>
+      useAttractionOverlays({ mapRef, mapReady: true, attractions: [a], cfg: fakeCfg }),
+    )
+
+    await waitFor(() => expect(fetchGeoPlaceDetailsMock).toHaveBeenCalledTimes(1))
+    // 沒有拋出的話這裡會自然往下走;額外確認 overlay 沒有被誤呼叫
+    // setPhotoUrl(undefined 以外的值都不該出現)。
+    expect(overlayInstances[0].photoUrlHistory).toHaveLength(0)
+  })
+
+  it('多個景點各自查詢自己的 placeId,互不干擾', async () => {
+    fetchGeoPlaceDetailsMock.mockImplementation((...args: unknown[]) => {
+      const placeId = args[1] as string
+      return Promise.resolve({ name: placeId, address: '', lat: 1, lng: 1, photoUrl: `https://example.com/${placeId}.jpg` })
+    })
+    const mapRef = { current: makeFakeMap() }
+    const a = attraction({ name: 'A', lat: 1, lng: 1, isTheme: true, placeId: 'place-a' })
+    const b = attraction({ name: 'B', lat: 2, lng: 2, isTheme: true, placeId: 'place-b' })
+    renderHook(() =>
+      useAttractionOverlays({ mapRef, mapReady: true, attractions: [a, b], cfg: fakeCfg }),
+    )
+
+    await waitFor(() => {
+      expect(overlayInstances[0].photoUrlHistory).toContain('https://example.com/place-a.jpg')
+      expect(overlayInstances[1].photoUrlHistory).toContain('https://example.com/place-b.jpg')
+    })
   })
 })

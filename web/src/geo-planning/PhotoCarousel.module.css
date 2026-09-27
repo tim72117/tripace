@@ -17,8 +17,35 @@
   display: block;
 }
 
+/* photoPlaceholder:沒有任何照片可顯示時的墊底底色——不區分「這個地點
+   本來就沒有照片」跟「照片還在背景查詢/重試中」(見 PhotoCarousel.tsx
+   呼叫處的完整說明),固定疊加一層緩慢的 shimmer 掃光動畫,讓使用者
+   感覺得到「這裡還在載入」,而不是一塊死板的純色色塊。background-size
+   遠大於容器本身,靠 background-position 位移做出掃光效果,不需要額外
+   的 DOM 節點或偽元素。*/
 .photoPlaceholder {
   background: linear-gradient(135deg, var(--ios-sand), var(--ios-gray));
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.35) 50%,
+    transparent 70%
+  ), linear-gradient(135deg, var(--ios-sand), var(--ios-gray));
+  background-size: 200% 100%, 100% 100%;
+  background-position: 200% 0, 0 0;
+  animation: photoPlaceholderShimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes photoPlaceholderShimmer {
+  to {
+    background-position: -50% 0, 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photoPlaceholder {
+    animation: none;
+  }
 }
 
 /* desktopTrigger:桌面版多圖時卡片內顯示的縮圖按鈕——外觀跟原本

@@ -1010,6 +1010,10 @@ export function ExploreMap({
     onAttractionSelect: handleAttractionClickRouted,
     revealedAttractionNames,
     hoveredCuratedName,
+    // cfg 傳入(不傳 usePublicPlaceDetails,預設 false)——這裡是登入後
+    // 正式功能,永遠打 fetchGeoPlaceDetails(/internal/geo/place-details),
+    // 理由同 AttractionInfoPanel.tsx 這個檔案內既有呼叫處的判斷邏輯。
+    cfg,
   })
   useSearchResultMarkers({
     mapRef,

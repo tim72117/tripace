@@ -185,3 +185,19 @@ type Entry struct {
 	Detail    map[string]any `json:"detail,omitempty"` // kind 專屬結構化欄位
 	CreatedAt time.Time      `json:"createdAt"`
 }
+
+// PhotoAsset 對應 store.photoAssetRow(見該型別的完整說明)——全站共通
+// 的圖檔落地紀錄,統一用 PlaceID 當識別鍵,Usage 區分同一張原始照片的
+// 不同規格(如 "full"/"thumb_200")。目前唯一的呼叫端是
+// cmd/migrate-photo-assets(一次性遷移工具,把 google_place_photos/
+// photo_cache 兩張表的 base64 內容落地到 GCS),之後若有正式讀取路徑
+// 改接這張表,會共用同一個型別。
+type PhotoAsset struct {
+	PlaceID    string
+	PhotoIndex int
+	Usage      string
+	Source     string
+	GCSURL     string
+	FetchedAt  time.Time
+	ExpiresAt  *time.Time
+}

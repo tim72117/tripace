@@ -13,9 +13,9 @@ const DIRECTION_LOCK_THRESHOLD_PX = 6
 
 // PhotoCarousel:PlacePanel.tsx 照片顯示區域的抽出元件——「點擊地圖上
 // Google 原生 POI 圖標」這個來源(poiInfoContent,見 geoInfoContent.ts)的
-// 後端回應改成 Google/Pexels 兩種來源並列的多圖清單(見 handleGeoPlaceDetails
-// 的說明),這個元件負責把兩份清單合併成一份「先 Google 後 Pexels」的
-// 顯示順序,並依照片數量與裝置類型分別呈現:
+// 後端回應是 Google 照片的多圖清單(見 handleGeoPlaceDetails 的說明,
+// 2026-09 已移除 Pexels 讀圖來源),這個元件依照片數量與裝置類型分別
+// 呈現:
 //   0 張:顯示 placeholder(沿用既有 .photoPlaceholder 樣式)。
 //   1 張:直接顯示單張 <img>,不顯示任何互動控制項——維持跟改版前完全
 //     一樣的單圖體驗,其餘來源(地點清單/候選籃項目,只有單一 photoUrl)
@@ -33,19 +33,17 @@ const DIRECTION_LOCK_THRESHOLD_PX = 6
 //       操作方式,手機版使用者不需要瞄準小按鈕。頁碼用圓點呈現(以
 //       IntersectionObserver 判斷目前捲動到哪一張最靠近可視範圍中心)。
 //
-// fallbackUrl:兩份清單合併結果為空時的相容 fallback——PlaceInfoContent.
+// fallbackUrl:googlePhotoUrls 清單為空時的相容 fallback——PlaceInfoContent.
 // photoUrl(見該型別的說明)本身可能是單一舊格式來源(地點清單/候選籃
 // 項目)的唯一照片,這個元件統一收斂「該顯示什麼」的判斷,呼叫端
 // (PlacePanel.tsx)不需要自己判斷要不要繞過這個元件直接畫 <img>。
 export function PhotoCarousel({
   googlePhotoUrls,
-  pexelsPhotoUrls,
   fallbackUrl,
   alt,
   onLayoutChange,
 }: {
   googlePhotoUrls?: string[]
-  pexelsPhotoUrls?: string[]
   fallbackUrl?: string
   alt: string
   // onLayoutChange:通知呼叫端目前是否渲染成「手機版多圖橫滑」
@@ -61,13 +59,11 @@ export function PhotoCarousel({
   // 機制,不傳這個 prop 即可。
   onLayoutChange?: (isMobileSwipe: boolean) => void
 }) {
-  // photos:Google 排前面、Pexels 排後面依序合併(需求明訂的顯示順序)。
-  // 兩份清單都沒有值時,退回 fallbackUrl 組成的單張清單——這是唯一會用到
-  // fallbackUrl 的分支,一旦 googlePhotoUrls/pexelsPhotoUrls 任一份有值,
-  // 就完全採用這兩份清單的結果,不會把 fallbackUrl 混進去(避免同一張圖
-  // 因為剛好也是 photoUrl 又被合併清單重複列出)。
-  const merged = [...(googlePhotoUrls ?? []), ...(pexelsPhotoUrls ?? [])]
-  const photos = merged.length > 0 ? merged : fallbackUrl ? [fallbackUrl] : []
+  // photos:googlePhotoUrls 沒有值時,退回 fallbackUrl 組成的單張清單——
+  // 這是唯一會用到 fallbackUrl 的分支,一旦 googlePhotoUrls 有值就完全
+  // 採用它,不會把 fallbackUrl 混進去(避免同一張圖因為剛好也是 photoUrl
+  // 又被清單重複列出)。
+  const photos = (googlePhotoUrls?.length ?? 0) > 0 ? googlePhotoUrls! : fallbackUrl ? [fallbackUrl] : []
 
   const isDesktop = useIsDesktop()
   const [lightboxOpen, setLightboxOpen] = useState(false)
@@ -83,6 +79,9 @@ export function PhotoCarousel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMobileSwipe])
 
+  // 目前沒有任何照片時,不區分「這個地點本來就沒有照片」跟「照片還在
+  // 背景查詢/重試中」——兩種情況顯示同一個帶載入動畫的 placeholder(見
+  // .photoPlaceholder 的完整說明),不額外接一個「是否查詢中」的旗標。
   if (photos.length === 0) {
     return (
       <div className={styles.wrap}>

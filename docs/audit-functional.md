@@ -305,9 +305,9 @@
 - **備註**：`docs/architecture-review-2026-07.md` 原文附有完整的 B-3 產品功能建議清單（iCal 匯出、地圖總覽、交通時間計算、全文檢索、推播通知、PWA、相片附件、費用分帳等 15 項），為避免重複記錄，此處不逐條複製，需要時請參照該文件的「B-3. 產品功能」章節（該文件本身已於本次稽核整理後標記為可移除的來源文件，內容已完整併入本檔案與 `docs/audit-security.md`，若日後需要查閱原文可從 git 歷史還原）。
 
 ### F10 ⚪ `geo_outline.go` 的 `attractionResponse` 仍用 `Landmark*` 命名，違反 terminology.md 統一用語規則
-- **位置**：`server/internal/api/geo_outline.go:89-91`（`LandmarkPhotoURL`/`LandmarkName` 欄位，JSON tag `landmarkPhotoUrl`/`landmarkName`）
-- **問題**：`docs/terminology.md` 規定正式用語統一為「景點區域」/`Attraction`，介面用語不應有同義詞變體；commit `3d8d300` 已在 `maintenance.go` 做過同一輪「landmark → attraction」改名清理，但同一 commit 觸及的 `geo_outline.go` 卻遺漏了這兩個欄位，且未被 `terminology.md` 已知的 `server/internal/geo/places.go` `District`/`Landmark` 待辦揭露涵蓋——屬於清理漏網之魚。
-- **現況（2026-08-16 複核）**：CONFIRMED，影響對外 JSON 欄位命名，前端/CLI 若依賴此欄位名稱需一併調整命名。
+- **位置**：`server/internal/api/geo_outline.go`（`LandmarkName` 欄位，JSON tag `landmarkName`）
+- **問題**：`docs/terminology.md` 規定正式用語統一為「景點區域」/`Attraction`，介面用語不應有同義詞變體；commit `3d8d300` 已在 `maintenance.go` 做過同一輪「landmark → attraction」改名清理，但同一 commit 觸及的 `geo_outline.go` 卻遺漏了這個欄位，且未被 `terminology.md` 已知的 `server/internal/geo/places.go` `District`/`Landmark` 待辦揭露涵蓋——屬於清理漏網之魚。
+- **現況（2026-09）**：`LandmarkPhotoURL` 欄位已隨主題卡/景點介紹卡取圖策略重構移除（前端不再讀取，改一律查 `photo_assets`），`LandmarkName` 欄位仍存在、命名問題本身未解決，本條目範圍縮小為只涵蓋 `LandmarkName`。
 
 ### F11 ⚪ `UpdateAttractionField` 白名單無法把 `summary` 清空為空字串
 - **位置**：`server/internal/api/maintenance.go:470`（`handleMaintenanceAttractionUpdateField`），CLI 端同步限制於 `server/cmd/cli/main.go:435`

@@ -24,6 +24,7 @@ server/tmp/
 # ---- 編譯產物 ----
 *.exe
 server/server
+server/migrate-photo-assets
 
 # tripace-cli skill 內建的預編譯執行檔(本機用,見
 # .claude/skills/tripace-cli/SKILL.md)——每台機器編譯出的二進位檔不同,

@@ -49,7 +49,6 @@ export function poiInfoContent(details: GeoPlaceDetails): PlaceInfoContent {
     name: details.name,
     photoUrl: details.photoUrl,
     googlePhotoUrls: details.googlePhotoUrls,
-    pexelsPhotoUrls: details.pexelsPhotoUrls,
     subtitle: details.address,
     summary: details.summary,
     badges: details.rating != null ? [`評分 ${details.rating.toFixed(1)}`] : [],
@@ -109,7 +108,16 @@ export function attractionBadges(attraction: GeoAttraction): string[] {
 export function attractionToInfoContent(attraction: GeoAttraction): PlaceInfoContent {
   return {
     name: attraction.name,
-    photoUrl: attraction.landmarkPhotoUrl,
+    // photoUrl 不再讀 attraction.landmarkPhotoUrl(2026-09 使用者明確
+    // 要求「完全不要使用 landmarkPhotoUrl」)——固定 undefined,有
+    // placeId 時交給 PlaceInfoContent.placeId 說明裡提到的既有機制
+    // (useGeoPlanningState.ts 的 infoContentPhotoFetch effect)自動呼叫
+    // fetchGeoPlacePhoto 補查,那支端點跟主題介紹卡(AttractionInfoPanel.tsx)
+    // 是同一套 photo_assets 資料來源(見後端 applyPhotoAssetsAsSource 的
+    // 完整說明),不是另外重新發明一條查詢路徑。沒有 placeId 的地點(舊
+    // 資料,尚未補上 place_id)固定顯示 placeholder,不回退任何舊表資料。
+    photoUrl: undefined,
+    placeId: attraction.placeId,
     subtitle: attraction.landmarkName && attraction.landmarkName !== attraction.name
       ? attraction.landmarkName
       : undefined,
