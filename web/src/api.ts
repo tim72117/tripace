@@ -46,18 +46,55 @@ export interface ClientConfig {
   token: string | null // Bearer token,可空(走訪客)
 }
 
+// createListenerSet:module-level 的 subscribe/emit 樣板——onApiCall/
+// onUnauthorized/onWsEvent 三處原本各自重複同一套「Set<fn> + subscribe
+// 回傳 unsubscribe + emit 迴圈呼叫」寫法,抽出來後三處共用同一份實作,
+// 之後要幫訂閱行為加上錯誤隔離、one-time 訂閱等邏輯只需要改這一處。
+function createListenerSet<Fn extends (...args: never[]) => void>() {
+  const listeners = new Set<Fn>()
+  return {
+    subscribe(fn: Fn): () => void {
+      listeners.add(fn)
+      return () => listeners.delete(fn)
+    },
+    emit(...args: Parameters<Fn>) {
+      for (const fn of listeners) fn(...args)
+    },
+  }
+}
+
 // 每筆 ApiCall 遞增 id;訂閱者(App)收到每次交易以累積 log。
 let callSeq = 0
 type Listener = (call: ApiCall) => void
-const listeners = new Set<Listener>()
+const apiCallListeners = createListenerSet<Listener>()
 
 export function onApiCall(fn: Listener): () => void {
-  listeners.add(fn)
-  return () => listeners.delete(fn)
+  return apiCallListeners.subscribe(fn)
 }
 
 function emit(call: ApiCall) {
-  for (const fn of listeners) fn(call)
+  apiCallListeners.emit(call)
+}
+
+// onUnauthorized:2026-09 加入——任何一次 request() 收到 401 時通知訂閱者
+// (useAppState.ts 的 onLogout),讓登入 token 過期/失效時能自動清空登入態
+// 並導回登入畫面,而不是讓使用者留在一個持續收到 401、畫面卻悄悄查詢失敗
+// 的頁面上,直到自己發現不對勁才手動登出。跟上面的 onApiCall 是同一種
+// module-level listener 模式,刻意分開兩個訂閱清單而非讓 App 自己在
+// onApiCall 的 callback 裡判斷 status===401——onApiCall 的訂閱者(debug
+// panel)只是被動記錄用途,不該混雜「觸發登出」這種有副作用的判斷邏輯;
+// 這裡改成 api.ts 自己在唯一一處丟出 401 ApiError 的地方主動通知,語意
+// 更直接。呼叫端(useAppState)會在收到通知時呼叫既有的 onLogout(),不是
+// 這裡自己清 localStorage——api.ts 不需要知道登入態實際存在哪裡。
+type UnauthorizedListener = () => void
+const unauthorizedListeners = createListenerSet<UnauthorizedListener>()
+
+export function onUnauthorized(fn: UnauthorizedListener): () => void {
+  return unauthorizedListeners.subscribe(fn)
+}
+
+function emitUnauthorized() {
+  unauthorizedListeners.emit()
 }
 
 // 一筆後端主動推送的 WebSocket 事件紀錄(entries_updated/ask_user/task_created/
@@ -74,11 +111,10 @@ export interface WsEvent {
 
 let wsEventSeq = 0
 type WsListener = (evt: WsEvent) => void
-const wsListeners = new Set<WsListener>()
+const wsListeners = createListenerSet<WsListener>()
 
 export function onWsEvent(fn: WsListener): () => void {
-  wsListeners.add(fn)
-  return () => wsListeners.delete(fn)
+  return wsListeners.subscribe(fn)
 }
 
 // emitWsEvent 供 ChatScreen 的 ws.onmessage 呼叫,把每則收到的原始訊息記一筆,
@@ -91,7 +127,7 @@ export function emitWsEvent(raw: Record<string, unknown>) {
     payload: raw,
     receivedAt: nowISO(),
   }
-  for (const fn of wsListeners) fn(evt)
+  wsListeners.emit(evt)
 }
 
 // 因為 scripts 環境不允許 Date.now(),但這是瀏覽器執行的 app(非 workflow script),
@@ -164,6 +200,13 @@ async function request<T>(
     const errBody = call.responseBody as APIErrorBody | null
     const msg =
       errBody?.error?.message ?? `HTTP ${res.status}`
+    // 只在「這次請求本來就帶著登入 token」時才視為「登入過期」而觸發
+    // 全域登出——cfg.token 為 null 的訪客請求收到 401(例如
+    // /v1/auth/apple 帳密錯誤、/v1/cli-auth/* 核准碼錯誤)本來就是預期
+    // 中的業務錯誤,不代表任何人的登入態失效,不該觸發登出。
+    if (res.status === 401 && cfg.token) {
+      emitUnauthorized()
+    }
     throw new ApiError(msg, call)
   }
 

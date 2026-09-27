@@ -91,6 +91,13 @@ export function CliAuthPage() {
         title="歡迎使用 Tripace"
         subtitle={<><strong>{cliName}</strong> 想要登入。請先登入或註冊帳號,才能核准這個請求。</>}
       >
+        {/* error 在這裡也要顯示——2026-09 發現的實際案例:approve() 若在
+            登入 token 剛好過期後才被呼叫,api.ts 的全域 401 攔截
+            (onUnauthorized)會立刻觸發登出、isGuest 同步變 true,render
+            會在走到下方 status==='ready' 的核准畫面之前先命中這個分支,
+            approve() catch 裡設的 error 完全不會被顯示,使用者只會看到
+            無聲跳回登入表單,不知道剛才發生了什麼事。 */}
+        <ErrorBanner msg={error} />
         <LoginForm baseURL={cfg.baseURL} onAuthed={onAuthed} pill />
       </LoginCard>
     )

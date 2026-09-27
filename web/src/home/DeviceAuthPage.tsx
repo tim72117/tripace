@@ -121,6 +121,12 @@ export function DeviceAuthPage() {
         title="歡迎使用 Tripace"
         subtitle={<><strong>{cliName}</strong> 想要登入。請先登入或註冊帳號,才能核准這個請求。</>}
       >
+        {/* error 在這裡也要顯示——理由同 CliAuthPage.tsx 對應分支的完整
+            說明:approve() 若在登入 token 剛好過期後才被呼叫,全域 401
+            攔截(api.ts onUnauthorized)會立刻觸發登出、isGuest 同步變
+            true,render 會在走到下方核准畫面之前先命中這個分支,approve()
+            catch 裡設的 error 完全不會被顯示。 */}
+        <ErrorBanner msg={error} />
         <LoginForm baseURL={cfg.baseURL} onAuthed={onAuthed} pill />
       </LoginCard>
     )
