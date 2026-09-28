@@ -159,3 +159,22 @@ export function tripEntryMarkerContent(selected: boolean, color: string): SVGEle
     '</svg>'
   return svgStringToElement(flagSvg)
 }
+
+// currentLocationMarkerContent:使用者目前位置的標記——2026-09 新增,
+// 沿用市場慣例的「藍色圓點」樣式(Google Maps/手機原生地圖的既有視覺
+// 語言,使用者一看就知道這是自己的位置),不是這個 codebase 自創的圖示
+// 語意,故顏色寫死藍色、不像 tripEntryMarkerContent 那樣讀取 --color-
+// accent——這顆點的顏色本身就是「使用者位置」的語意標籤,不該隨主題色
+// 改變到讓使用者認不出來。外圈半透明淡藍色光暈(呼應原生地圖的定位精度
+// 範圍視覺,這裡固定一個尺寸,不是真的依 GeolocationPosition.accuracy
+// 動態計算範圍——初始中心點這個情境不需要精確到那個程度)+ 白色描邊的
+// 實心藍點,純裝飾用途,不需要选中態(這顆點不能被使用者點選觸發任何
+// 互動,見 useCurrentLocationMarker.ts 的完整說明)。
+export function currentLocationMarkerContent(): SVGElement {
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">' +
+    '<circle cx="12" cy="12" r="11" fill="#4285F4" fill-opacity="0.18"/>' +
+    '<circle cx="12" cy="12" r="6" fill="#4285F4" stroke="#FFFFFF" stroke-width="2"/>' +
+    '</svg>'
+  return svgStringToElement(svg)
+}

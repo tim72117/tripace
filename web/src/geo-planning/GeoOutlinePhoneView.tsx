@@ -454,6 +454,7 @@ export function GeoOutlinePhoneView({
         <ExploreMap
           cfg={cfg}
           initialCenter={outlineMapState.initialCenter}
+          currentPosition={outlineMapState.currentPosition}
           tripEntries={outlineMapState.tripEntries}
           city={searchCity}
           onCityChange={setSearchCity}

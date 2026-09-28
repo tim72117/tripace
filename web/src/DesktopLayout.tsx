@@ -610,6 +610,7 @@ export function DesktopContent(props: ContentProps) {
                   <ExploreMap
                     cfg={cfg}
                     initialCenter={outlineMapState.initialCenter}
+                    currentPosition={outlineMapState.currentPosition}
                     tripEntries={outlineMapState.tripEntries}
                     city={geoSearchCity}
                     onCityChange={setGeoSearchCity}

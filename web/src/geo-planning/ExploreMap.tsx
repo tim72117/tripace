@@ -13,6 +13,7 @@ import { ensureOptionsSet, themeToColorScheme } from './googleMapsBootstrap'
 import { useAttractionOverlays } from './useAttractionOverlays'
 import { useSearchResultMarkers } from './useSearchResultMarkers'
 import { useTripEntryMarkers } from './useTripEntryMarkers'
+import { useCurrentLocationMarker } from './useCurrentLocationMarker'
 import styles from './ExploreMap.module.css'
 
 // 地理輪廓底圖(構想 6,見 docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)——桌面版。
@@ -90,6 +91,7 @@ function sameAttractionsContent(a: GeoAttraction[], b: GeoAttraction[]): boolean
 export function ExploreMap({
   cfg,
   initialCenter,
+  currentPosition = null,
   restrictBounds,
   tripEntries = [],
   city,
@@ -134,6 +136,17 @@ export function ExploreMap({
   // 座標的既有地點),這時退回寫死的預設值。物件代表確定要用這組座標
   // 當初始中心,直接建圖在那裡,一步到位、只查一次正確範圍的資料。
   initialCenter?: { lat: number; lng: number } | null
+  // currentPosition:2026-09 新增——只有 useGeoOutlineMapState.ts 的
+  // tryGetCurrentPosition 真的定位成功(旅程查無既有座標、且使用者同意
+  // 授權)時才會有值,用來畫一顆藍色圓點標示使用者目前位置(見
+  // useCurrentLocationMarker.ts 的完整說明)。跟 initialCenter 是完全
+  // 獨立的兩份資料(見該 state 在 useGeoOutlineMapState.ts 的宣告說明)
+  // ——initialCenter 立即同步決議、決定地圖何時能建立與建在哪,
+  // currentPosition 純粹是定位完成後才會有的疊加圖層資訊,不影響地圖
+  // 建立時機。undefined/null 都代表不畫這顆點,呼叫端不需要區分「還在
+  // 定位」與「確定沒有」——不像 initialCenter 那樣需要靠 undefined
+  // 阻擋地圖過早建立,這顆點只是錦上添花的疊加圖層,沒有就單純不畫。
+  currentPosition?: { lat: number; lng: number } | null
   // restrictBounds:限制使用者拖曳/縮放時能看到的地理範圍——目前唯一的
   // 呼叫端是 InteractiveExploreMap.tsx(見該檔案的完整說明,固定示範資料的
   // 展示頁,不希望使用者拖走看到空白區域)。只在建圖當下讀取一次(跟
@@ -1030,6 +1043,11 @@ export function ExploreMap({
     tripEntries,
     selectedKey,
     hoverKey,
+  })
+  useCurrentLocationMarker({
+    mapRef,
+    mapReady,
+    currentPosition,
   })
 
   // 點擊飯店/地點側欄(GeoHotelSidebar,渲染在整個介面最外側)的項目時,

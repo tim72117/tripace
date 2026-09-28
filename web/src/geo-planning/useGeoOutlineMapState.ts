@@ -3,6 +3,38 @@ import type { ClientConfig, GeoGeocodeCandidate, GeoPlaceText, GeoSearchResult, 
 import { fetchEntries, fetchGeoGeocode, fetchGeoPlacePhoto, fetchGeoPlaceText, geocodeCandidateToSearchResult } from '../api'
 import { useStableCallback } from '../hooks/useStableCallback'
 
+// GEOLOCATION_TIMEOUT_MS:向瀏覽器要求目前位置的逾時上限——這是地圖初始
+// 中心點的輔助功能,不是核心操作路徑,不該讓使用者等太久看不到地圖。
+const GEOLOCATION_TIMEOUT_MS = 5000
+
+// tryGetCurrentPosition:2026-09 新增——旅程還沒有任何帶座標的 entry
+// (tripCenter 原本會是 null,地圖退回寫死的東京座標)時,改成先嘗試問
+// 瀏覽器要目前位置,問得到就用使用者實際所在地當初始中心點,問不到(拒絕
+// 授權、瀏覽器不支援、逾時等)才維持原本退回東京座標的行為——這是純粹
+// 錦上添花的體驗改善,任何一種失敗都不該讓地圖打不開或卡住,故一律吞掉
+// error 回傳 null,不往上拋。只在真的查無旅程既有座標時才觸發(見下方
+// 呼叫端),不是每次進入規劃地圖都問,避免旅程已經有座標時還打擾使用者
+// 一次沒必要的授權詢問。
+function tryGetCurrentPosition(): Promise<{ lat: number; lng: number } | null> {
+  return new Promise((resolve) => {
+    if (!('geolocation' in navigator)) {
+      resolve(null)
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => resolve(null),
+      // maximumAge:允許瀏覽器/作業系統回傳「最近一次已經有的定位結果」,
+      // 不強制每次都重新定位——預設值是 0(必須全新定位),在室內/GPS
+      // 冷啟動較慢的裝置上更容易撞到 GEOLOCATION_TIMEOUT_MS 逾時,即使
+      // 作業系統其實握有幾秒前的可用座標。這裡允許用 1 分鐘內的舊結果,
+      // 换取更高機率在逾時前拿到座標——理由同 GEOLOCATION_TIMEOUT_MS 的
+      // 說明,這是錦上添花的體驗改善,能成功的次數越多越好。
+      { timeout: GEOLOCATION_TIMEOUT_MS, maximumAge: 60_000 },
+    )
+  })
+}
+
 // mapLocatedTripEntries:把 fetchEntries 查回的完整 Entry 清單篩出有座標的
 // 那批、轉成 GeoTripEntry 形狀——供下方「換旅程」與「補上日期後刷新」
 // 兩個 effect 共用同一份映射邏輯,避免其中一處修改欄位後忘記同步另一處。
@@ -74,6 +106,15 @@ export function useGeoOutlineMapState({
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null)
   const [panRequest, setPanRequest] = useState<{ lat: number; lng: number; level?: number; radiusMeters?: number; suppressQuery: boolean; onlyIfOutOfView?: boolean } | null>(null)
   const [tripCenter, setTripCenter] = useState<{ lat: number; lng: number } | null | undefined>(undefined)
+  // currentPosition:tryGetCurrentPosition 定位成功時的座標,供
+  // useCurrentLocationMarker.ts 畫藍點——跟 tripCenter 是完全獨立的兩份
+  // 資料,不是同一份資料的兩種呈現:tripCenter 決定 <ExploreMap> 的
+  // initialCenter(地圖建立當下的中心點,立即同步決議,不等定位結果,見
+  // 下方 tryLocateCurrentPosition 呼叫處的完整說明),currentPosition
+  // 只用來畫這顆點、並驅動定位成功後的 panTarget 平移,兩者的更新時機
+  // 完全不同步也是合理的(旅程有既有座標時 tripCenter 立即有值,
+  // currentPosition 維持 null 直到定位完成,兩者這段期間本來就不一致)。
+  const [currentPosition, setCurrentPosition] = useState<{ lat: number; lng: number } | null>(null)
   const [tripEntries, setTripEntries] = useState<GeoTripEntry[]>([])
 
   useEffect(() => {
@@ -157,13 +198,42 @@ export function useGeoOutlineMapState({
 
   useEffect(() => {
     setTripCenter(undefined)
+    setCurrentPosition(null)
     setTripEntries([])
     onTripEntriesChange?.([])
+    let cancelled = false
+    // tryLocateCurrentPosition:查無旅程既有座標(!tripID,或這個旅程一筆
+    // 帶座標的 entry 都沒有)時,額外試著問一次瀏覽器目前位置——2026-09
+    // 初版曾經直接把這個非同步結果餵給 setTripCenter,但 tripCenter 同時
+    // 也是 <ExploreMap> initialCenter 的來源,該元件的建圖 effect 有
+    // `if (initialCenter === undefined) return` 這道 guard(見該處的完整
+    // 說明:地圖要等呼叫端確定好初始中心才建立),等於讓「地圖何時能
+    // 建立」被綁在「瀏覽器定位何時回應」上——定位最長要等
+    // GEOLOCATION_TIMEOUT_MS(5 秒)或使用者遲遲不理會授權彈窗,這段
+    // 期間地圖完全不會出現,是嚴重的體驗回歸(這個 effect 原本的既有
+    // 假設就是 tripCenter 幾乎同步就能決議成 null,見建圖 effect 內
+    // 對這個 race 的既有註解)。故改回讓 tripCenter 立刻同步決議成 null
+    // (地圖立刻用東京座標建立,行為對齊改動前),定位改成不阻塞的背景
+    // 任務——真的定位成功時,透過既有的 panRequest 機制(對齊
+    // externalPanTarget 的 setPanRequest 用法)把已經建好的地圖平移過去,
+    // 同時寫入 currentPosition 供 useCurrentLocationMarker.ts 畫藍點。
+    // suppressQuery:true——理由同 tripCenter 用 entries 平均值當中心時
+    // 那次「一步到位查一次正確範圍」的既有設計初衷已經無法適用(地圖
+    // 已經用東京座標查過一次),這裡改用 suppressQuery 抑制平移後的額外
+    // 查詢,避免對東京座標查一次、平移後又對使用者實際位置再查一次,
+    // 造成重複、且第一次查到的東京資料使用者根本沒看到就被丟棄。
+    const tryLocateCurrentPosition = () => {
+      tryGetCurrentPosition().then((pos) => {
+        if (cancelled || !pos) return
+        setCurrentPosition(pos)
+        setPanRequest({ ...pos, suppressQuery: true })
+      })
+    }
     if (!tripID) {
       setTripCenter(null)
+      tryLocateCurrentPosition()
       return
     }
-    let cancelled = false
     fetchEntries(cfg, tripID)
       .then((entries) => {
         if (cancelled) return
@@ -172,6 +242,7 @@ export function useGeoOutlineMapState({
         onTripEntriesChange?.(mapped)
         if (mapped.length === 0) {
           setTripCenter(null)
+          tryLocateCurrentPosition()
           return
         }
         const latSum = mapped.reduce((sum, e) => sum + e.lat, 0)
@@ -179,7 +250,9 @@ export function useGeoOutlineMapState({
         setTripCenter({ lat: latSum / mapped.length, lng: lngSum / mapped.length })
       })
       .catch(() => {
-        if (!cancelled) setTripCenter(null)
+        if (cancelled) return
+        setTripCenter(null)
+        tryLocateCurrentPosition()
       })
     return () => {
       cancelled = true
@@ -236,6 +309,7 @@ export function useGeoOutlineMapState({
   return {
     // 直接對應 <ExploreMap> props,呼叫端原封不動接上。
     initialCenter: tripCenter,
+    currentPosition,
     tripEntries,
     searching: loading,
     searchError: err,
