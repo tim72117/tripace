@@ -30,3 +30,15 @@
   display: flex;
   flex-direction: column;
 }
+
+/* planScroll:手機版 AI 規劃(TripPlanPage)的捲動容器,放在對話 bottom
+   sheet 的 .body 裡——TripPlanPage 用 closest('main') 找捲動祖先。 */
+.planScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  display: flex;
+  flex-direction: column;
+}

@@ -36,6 +36,15 @@ export interface SiteNavBrandProps {
       安平」),標示目前在哪個城市頁,不是連結。HomePage/ProductPage 都
       不需要這個標籤(省略時只顯示「Tripace」)。 */
   pageLabel?: string
+  /** 2026-09 因應 plan-ai-sim 展示頁新增——該頁需要在品牌標記/頁面
+      標籤右邊接著顯示一顆「正在安排行程…」狀態藥丸,使用者明確要求
+      「不要放在功能列上，要放在台南兩日遊右邊」,即緊跟在 pageLabel
+      後面、同一個 fixed 定位的 .site-nav-brand-row 裡,而不是另外
+      獨立一個 fixed 容器疊在旁邊估算位置(先前的作法,座標是手動估算
+      品牌文字寬度,實際上容易跟文字重疊或留白不一致)。其餘沒有這個
+      需求的頁面(HomePage/ProductPage/城市介紹頁)省略此 prop,行為
+      不變。 */
+  extra?: ReactNode
 }
 
 /** 固定左上角的品牌標記(純文字「Tripace」,可選加上頁面標籤)。
@@ -43,18 +52,32 @@ export interface SiteNavBrandProps {
     <Link>,導致點擊觸發整頁瀏覽器重新載入(SPA 路由被繞過),而非
     client-side 路由切換——這幾個頁面原本(JiufenPage.tsx 等)都是用
     <Link to="/">,搬進共用元件時誤改成普通 <a>,已修正回 <Link>。 */
-export function SiteNavBrand({ href = '/', pageLabel }: SiteNavBrandProps) {
+export function SiteNavBrand({ href = '/', pageLabel, extra }: SiteNavBrandProps) {
   if (!pageLabel) {
+    // 2026-09 code review 抓到:這裡原本沒有 pageLabel 時直接 return,
+    // 完全忽略 extra prop——目前唯一傳 extra 的呼叫端(AIPlanTimelinePage.tsx)
+    // 剛好一定會帶 pageLabel 所以沒觸發,但只要未來有呼叫端只傳 extra、
+    // 不傳 pageLabel,內容就會被靜默吞掉且沒有任何錯誤提示。改成一併
+    // 檢查 extra,只要兩者都沒有才走純文字的最簡短路徑。
+    if (!extra) {
+      return (
+        <Link className="site-nav-brand" to={href}>
+          Tripace
+        </Link>
+      )
+    }
     return (
-      <Link className="site-nav-brand" to={href}>
-        Tripace
-      </Link>
+      <div className="site-nav-brand-row">
+        <Link className="site-nav-brand" to={href}>Tripace</Link>
+        {extra}
+      </div>
     )
   }
   return (
     <div className="site-nav-brand-row">
       <Link className="site-nav-brand" to={href}>Tripace</Link>
       <span className="site-nav-brand-page">{pageLabel}</span>
+      {extra}
     </div>
   )
 }

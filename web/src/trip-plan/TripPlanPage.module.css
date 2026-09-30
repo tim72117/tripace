@@ -65,23 +65,6 @@
   gap: 12px;
 }
 
-.headerLeft {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  flex: none;
-}
-
-.tripName {
-  /* 不覆寫 font-family——原型 plan-ai/AIPlanTimelinePage.tsx 用襯線字體
-     (ShipporiSerif/Noto Serif TC)當標題裝飾,但這個襯線字體在整個
-     /app 底下沒有任何一個正式元件使用,只出現在首頁/行銷頁;用 fable
-     審閱時發現這裡跟其餘正式功能頁面(pace/geo-planning/timeline)脫節
-     ——繼承 body 的無襯線字體,維持跟其餘 rail 分頁一致的觀感。 */
-  font-size: 20px;
-  font-weight: 600;
-}
-
 .headerRight {
   display: flex;
   align-items: center;
@@ -89,6 +72,11 @@
   overflow-x: auto;
   min-width: 0;
   scrollbar-width: none;
+  /* margin-left: auto——.headerLeft(行程名稱)已移除,見 TripPlanPage.tsx
+     的完整說明。.headerInner 維持 justify-content: space-between 沒有
+     另外調整(改動範圍最小,不影響其餘依賴這個屬性的排版假設),這裡
+     直接讓自己貼齊最右側。 */
+  margin-left: auto;
 }
 .headerRight::-webkit-scrollbar { display: none; }
 
@@ -199,7 +187,11 @@
   position: absolute;
   left: 0;
   top: -14px;
-  /* 不覆寫 font-family——理由同 .tripName 的完整說明。 */
+  /* 不覆寫 font-family——原型 plan-ai/AIPlanTimelinePage.tsx 用襯線
+     字體(ShipporiSerif/Noto Serif TC)當標題裝飾,但這個襯線字體在整個
+     /app 底下沒有任何一個正式元件使用,只出現在首頁/行銷頁;用 fable
+     審閱時發現這裡跟其餘正式功能頁面(pace/geo-planning/timeline)脫節
+     ——繼承 body 的無襯線字體,維持跟其餘 rail 分頁一致的觀感。 */
   font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -349,7 +341,7 @@
 .stopBody { min-width: 0; flex: 1; }
 .stopMeta { font-size: 12px; color: var(--ios-gray); letter-spacing: 0.02em; margin-bottom: 2px; }
 .loadingTag { margin-left: 6px; color: var(--ios-sand); }
-.stopName { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+.stopName { font-size: 17px; font-weight: 600; margin-bottom: 4px; overflow-wrap: break-word; }
 .stopDesc {
   font-size: 14px;
   color: var(--ios-gray);
@@ -385,10 +377,16 @@
    原本 top: 0; bottom: 0 只覆蓋列的內容區,跟前後相鄰列(另一則
    message、下一個 stop 的 noteRow/tipRow)之間的 margin 間隙完全沒有
    任何軸線元素銜接,連續多輪對話或訊息接著備註/呼吸點時,軸線會斷裂
-   11~20px 一段。 */
+   11~20px 一段。top 用 -20px(不是原本估算的 -4px)——再次用 fable
+   審閱時發現:上一列若是 section 分段標題(.sectionRow,margin
+   40px/20px),銜接處的間隙塌縮後是 20px,-4px 只夠蓋 4px,會留
+   16px 空白(該天第一則訊息接在分段標題後面就會出現)。改成 -20px
+   跟 .axisLineAbove 的既有基準一致,多覆蓋的一段會跟上一列 stop 的
+   .axisLineBelow 或普通 message/note 之間的線重疊,兩者都是不透明
+   實色線,重疊不會有視覺瑕疵。 */
 .messageAxisLine {
   position: absolute;
-  top: -4px;
+  top: -20px;
   bottom: -16px;
   width: 2px;
   background: var(--ios-sep);
@@ -529,7 +527,10 @@
 /* noteAxisCol/noteAxisLine:讓注記這一列的中間欄延續時間軸主軸線,不然
    軸線會在這一列斷開。top/bottom 延伸覆蓋 .noteRow 自己的 margin
    (4px/16px),理由同 .messageAxisLine 的完整說明——只填滿列本身高度
-   會讓軸線在相鄰列之間的 margin 間隙斷裂。 */
+   會讓軸線在相鄰列之間的 margin 間隙斷裂。top 用 -20px(不是原本
+   估算的 -4px),理由同 .messageAxisLine 的完整說明:上一列若是
+   section 分段標題,間隙塌縮後是 20px,-4px 只夠蓋 4px,該天第一站
+   帶備註時會在分段標題下方留 16px 沒有線的空白。 */
 .noteAxisCol {
   position: relative;
   display: flex;
@@ -537,7 +538,7 @@
 }
 .noteAxisLine {
   position: absolute;
-  top: -4px;
+  top: -20px;
   bottom: -16px;
   width: 2px;
   background: var(--ios-sep);
@@ -846,13 +847,76 @@
 
 /* ---------- responsive (phone) ---------- */
 
-@media (max-width: 640px) {
+/* 斷點用 767px(不是 640px)——這裡的手機版覆寫要涵蓋到 useIsDesktop
+   (hooks/useIsDesktop.ts)判定為手機版的整個寬度區間(< 768px)。原本
+   用 640px 時,768px 跟 640px 之間有一段落差:isDesktop 已經判定為
+   false(走這個元件的手機版三欄→兩欄邏輯),但寬度還沒進到 640px 這條
+   media query,.row 仍套用桌面版 136px 48px 1fr 三欄,窄視窗下第三欄
+   (卡片/訊息氣泡所在欄)被壓縮到只剩極窄空間,訊息文字逐字換行(使用者
+   在這個寬度區間實機回報過)。 */
+@media (max-width: 767px) {
   .row { grid-template-columns: 28px 1fr; }
   .stopTime { display: none; }
   .sectionBand { grid-column: 1 / span 2; }
-  .noteLeft { grid-column: 1 / span 2; justify-content: flex-start; padding-right: 0; }
+  .noteLeft { grid-column: 2; grid-row: 1; justify-content: flex-start; padding-right: 0; }
   .noteInner { flex-direction: row; text-align: left; max-width: none; }
   .stopCard { max-width: none; }
   .skeletonRow > :first-child { display: none; }
   .skeletonCard { max-width: none; }
+  /* tipRow(呼吸點列)的 DOM 是三個子 div(空 placeholder → .tipAxis →
+     空 placeholder,對齊桌面版三欄:呼吸點置中在中欄,左右留白)。手機
+     版兩欄(28px 1fr)下,第一個空 div 沒有 display:none 隱藏(不像
+     .stopRow 靠 .stopTime{display:none}讓可見子元素自然遞補、或
+     .skeletonRow 已經用 :first-child 隱藏),它仍佔第一格(28px),
+     .tipAxis 被推到第二格(1fr)——呼吸點因此偏移到卡片欄位、不再
+     對齊軸線該在的 28px 欄(使用者截圖回報「推論中的時間軸跑掉」,
+     骨架卡的虛線圓圈飄到卡片外側)。同樣隱藏第一個空 placeholder,
+     讓 .tipAxis 遞補到第一欄(跟其餘列的軸線欄對齊)。 */
+  .tipRow > :first-child { display: none; }
+  /* messageRow 的 DOM 是三個子 div(空 placeholder → .messageAxisCol →
+     .messageWrap,對齊桌面版 136px 48px 1fr 三欄)。原本這裡只把
+     grid-template-columns 改成兩欄(28px 1fr)、沒有調整欄位分配——
+     grid 只定義了兩條欄軌,第三個子元素(.messageWrap)沒有欄位可放,
+     被自動換行邏輯推到「下一行的第一欄」,套用第一欄的軌道寬度
+     (28px),而不是跟著擠進 1fr。這就是使用者截圖裡 DevTools 量到
+     .messageWrap computed width 只有 28px、文字被迫逐字換行的根因
+     (不是 media query 沒生效,兩個欄位覆寫都确实套用了,只是欄位配置
+     本身有誤)。改成明確用 grid-template-columns: 28px 0 1fr 保留三欄
+     結構(中間欄位收窄到 0,軸線改疊在第一欄裡),不依賴自動換行。 */
+  .messageRow { grid-template-columns: 28px 0 1fr; }
+  .messageAxisCol { grid-column: 1; }
+  .messageWrap { grid-column: 3; padding-left: 0; }
+  .messageBubble { max-width: none; }
+  /* noteRow 的 DOM 是三個子 div(.noteLeft → .noteAxisCol → 空
+     placeholder,對齊桌面版 136px 48px 1fr 三欄:注記靠右、軸線居中、
+     右側留白)。手機版兩欄(28px 1fr)下,若不明講每個子元素該落在
+     哪一欄,會被 grid 自動排列邏輯依 DOM 順序逐欄填入、滿了就換行——
+     跟 .messageRow 同一種 bug(見該處的完整說明)。這裡明確把軸線
+     (.noteAxisCol)釘在窄的第一欄(跟其餘列的軸線欄一致),注記內容
+     (.noteLeft)搬到第二欄(1fr,上面已改)撐滿可用寬度,不再用
+     span 撐滿兩欄再讓下一個元素自動換行的寫法。 */
+  .noteAxisCol { grid-column: 1; grid-row: 1; }
+  /* headerInner/.inner 的左右 padding 從 24px 收窄到 16px——手機面板
+     本身寬度已經比桌面窄很多(例如 iPhone SE 375px),24px 雙邊等於
+     先吃掉 48px,配上 28px 軸線欄跟卡片內距,右欄可用寬度會被壓得比
+     必要更窄。composer 的左右安全間距同步收窄(calc(100% - 32px)),
+     理由相同。 */
+  .headerInner { padding: 0 16px; }
+  .inner { padding: 0 16px 32px; }
+  .composer { width: calc(100% - 32px); }
+  /* stopTags/stopTag——窄寬度下多個 tag 容易被卡片寬度擠到換行,允許
+     wrap(桌面版 .stopTags 已經是 flex-wrap: wrap,這裡只是確保手機
+     版沒有被其他規則意外覆寫成 nowrap,顯式重申)。 */
+  .stopTags { flex-wrap: wrap; }
+  /* transitRow(交通轉乘列)的 DOM 是三個子 div(空 placeholder →
+     .transitAxis → 空 placeholder,對齊桌面版三欄:虛線+pill 置中在
+     中欄)。這個列先前完全沒有手機版覆寫——兩欄(28px 1fr)下,第一個
+     空 div 沒有 display:none 隱藏,仍佔第一格(28px),.transitAxis
+     被推到第二格(1fr,卡片欄)並在其中水平置中,虛線/pill 跑到卡片
+     欄正中間,軸線該在的第一欄整段 44px 完全沒有線(用 fable 審閱時
+     發現這是「note 列後面接軸線斷裂」的主因——note 後面接的正是
+     transitRow)。同樣隱藏第一個空 placeholder,讓 .transitAxis 遞補
+     到第一欄(跟其餘列的軸線欄對齊),理由同 .tipRow/.skeletonRow 的
+     完整說明。 */
+  .transitRow > :first-child { display: none; }
 }

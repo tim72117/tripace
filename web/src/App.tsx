@@ -28,6 +28,12 @@ const PublicViewScreen = lazy(() => import('./trip/PublicViewScreen').then((m) =
 const PacePage = lazy(() => import('./pace/PacePage').then((m) => ({ default: m.PacePage })))
 const PhoneContent = lazy(() => import('./PhoneContent').then((m) => ({ default: m.PhoneContent })))
 const NotFoundPage = lazy(() => import('./home/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
+// AIPlanTimelinePage(plan-ai-sim):獨立公開頁,從 plan-ai-sim 分支原封
+// 不動搬過來的「AI 安排行程」模擬展示原型(見 home/plan-ai-sim/ 目錄的
+// 完整說明)。固定接純前端假資料(attractionPool.ts),不需要登入、不
+// 依賴任何需要 token 的後端端點,故放進 home/ 底下跟其餘公開行銷頁同一
+// 層級,不是 /app 底下需要登入的正式功能。
+const PlanAiSimPage = lazy(() => import('./home/plan-ai-sim/AIPlanTimelinePage').then((m) => ({ default: m.AIPlanTimelinePage })))
 
 // KeyboardShrinkGuard:/app 路由專用——鍵盤彈出時把根容器高度直接改成
 // visualViewport.height,取代先前試過的 transform: translateY(-offsetTop)
@@ -121,6 +127,14 @@ export function App() {
               風格,見 LegalPage.tsx。 */}
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
+          {/* /plan-ai:「AI 安排行程」模擬展示獨立公開頁,見
+              home/plan-ai-sim/AIPlanTimelinePage.tsx 開頭的完整說明——
+              固定接純前端假資料,不需要登入,跟其餘公開行銷頁同一層級。
+              路由本身使用者明確要求改為 /plan-ai(原本是 /plan-ai-sim),
+              純粹是對外呈現的路徑改名,元件所在目錄
+              home/plan-ai-sim/ 與檔案內部命名(PlanAiSimPage 等)維持
+              不變,不做無謂的連動重新命名。 */}
+          <Route path="/plan-ai" element={<PlanAiSimPage />} />
           {/* /public/{token} 路徑:直接渲染公開分享頁。原本用正則
               /^\/public\/([^/]+)$/ 手動解析 token,改用 Route 的 :token
               路徑參數 + useParams() 取代。 */}

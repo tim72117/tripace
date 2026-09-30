@@ -36,6 +36,8 @@
     放在一起顯得突兀刺眼,收斂成 token 才能在深色模式下換成對比度足夠
     的版本(同 --ios-sand 收斂成 token 的理由)。 */
   --ios-ai-message-text: #5F5079; /* 對話訊息氣泡文字色(藕紫,深) */
+  --ios-glass-bg: rgba(245, 242, 237, 0.92); /* 地圖上毛玻璃浮動按鈕底色——
+    原本各檔案寫死淺色,深色模式下圖示色(--color-dark)變淺,淺底淺字看不清。 */
 }
 
 /* 登入後 App(PhoneContent.tsx/DesktopLayout.tsx 及底下畫面)的深色模式
@@ -77,6 +79,7 @@
     --ios-sand: #D9A97D;
     --ios-ai-message-bg: #2E2838;
     --ios-ai-message-text: #C9BEDD;
+    --ios-glass-bg: rgba(38, 33, 29, 0.88);
   }
   /* body 本身不是 .app-theme-root 的後代(是其祖先/兄弟,見 App.tsx 的
      DOM 結構說明),所以上面那組 --ios-bg 覆寫不會影響 body { background }
@@ -110,6 +113,7 @@
   --ios-sand: #D9A97D;
   --ios-ai-message-bg: #2E2838;
   --ios-ai-message-text: #C9BEDD;
+  --ios-glass-bg: rgba(38, 33, 29, 0.88);
 }
 /* 使用者手動選「夜間模式」時,同理覆寫 body 的 background——理由同上方
    media query 內的說明,:has() 守衛確保只在 body 內確實掛著

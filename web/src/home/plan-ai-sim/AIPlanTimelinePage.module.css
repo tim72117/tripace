@@ -1,0 +1,1030 @@
+/* AIPlanTimelinePage.module.css — 「AI 安排行程」時間軸展示原型的樣式。
+   走登入後正式 App 的 --ios-* token 系統(見 base-ui.css),不是 home/
+   底下城市介紹頁那套 --paper/--ink 紙感和風系統——這個頁面示範的是
+   正式產品功能的雛形,視覺語言理應跟正式 App 一致,而不是公開行銷頁。
+   --ios-sand(#C4956A/#D9A97D)在 base-ui.css 已經存在,直接沿用當作
+   「目前生成位置」的專屬色,不需要新增全域 token。
+   2026-09:額外補上 --paper/--paper-dim/--ink/--vermilion/
+   --vermilion-soft/--line/--card-shadow 這組 token——使用者明確要求
+   「上方功能列採用跟首頁一樣的漂浮按鈕」,直接沿用共用元件
+   home/SiteNavButtons.tsx,但該元件的樣式(SiteNavButtons.css)完全
+   依賴這組 home/ 城市介紹頁系統的 token(見該檔案開頭的說明:HomePage.css
+   /ProductPage.css 等根元素都定義了這組值,SiteNavButtons.css 直接讀,
+   不限定只能掛在特定 scope class 下)。這個頁面原本完全沒有定義這組
+   token,加上去讓 SiteNavButtons 能正確套色,不影響頁面其餘部分(仍然
+   全部用 --ios-* 系統),數值抄自 HomePage.css 的淺色/深色兩組定義,
+   保持跟首頁一致的視覺。 */
+
+.page {
+  width: 100%;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
+  overflow: hidden;
+  /* position: relative——.composer 改成漂浮膠囊後用 position: absolute
+     疊在時間軸內容上方(見該 class 的完整說明),需要一個 positioning
+     context,.page 本身是最外層、涵蓋 header 以下整個可視區域,是最
+     直接的定位基準。 */
+  position: relative;
+  --paper: #F7F3EC;
+  --paper-dim: #EFE9DC;
+  --ink: #2B2420;
+  --ink-soft: #5A5148;
+  --vermilion: #8B3A2F;
+  --vermilion-soft: #B85C4A;
+  --line: #C9BFA8;
+  --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+}
+.page:global([data-theme="dark"]),
+.page:global(.app-theme-root[data-theme="dark"]) {
+  --paper: #1C1815;
+  --paper-dim: #14110F;
+  --ink: #EDE6D8;
+  --ink-soft: #B8AD9C;
+  --vermilion: #D97A63;
+  --vermilion-soft: #E89A85;
+  --line: #443C34;
+  --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+}
+@media (prefers-color-scheme: dark) {
+  .page:global(:not([data-theme="light"])) {
+    --paper: #1C1815;
+    --paper-dim: #14110F;
+    --ink: #EDE6D8;
+    --ink-soft: #B8AD9C;
+    --vermilion: #D97A63;
+    --vermilion-soft: #E89A85;
+    --line: #443C34;
+    --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+  }
+}
+
+/* ---------- 頂部狀態藥丸(掛在 SiteNavBrand 的 extra 插槽裡) ----------
+   使用者明確要求「不要有上方的實際功能列了」,原本的 .header/
+   .headerLeft/.headerRight/.tripName(實體功能列容器)已整個移除——
+   頁面頂部現在只剩 home/SiteNavButtons.tsx 那組 fixed 漂浮按鈕
+   (SiteNavBrand/SiteNavThemeToggle/SiteNavCta)。.statusPill 現在是
+   SiteNavBrand 的 extra prop 內容,直接跟品牌文字/pageLabel 一起排在
+   同一個 fixed 定位的 .site-nav-brand-row 裡(見 SiteNavButtons.tsx),
+   不再需要自己的定位或捲動容器。 */
+
+.statusPill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ios-gray);
+  background: var(--ios-bg);
+  border: 1px solid var(--ios-sep);
+  border-radius: 999px;
+  padding: 6px 14px;
+  flex: none;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: none;
+}
+.statusDotGenerating { background: var(--ios-sand); animation: breathe 1.4s ease-in-out infinite; }
+.statusDotDone { background: var(--ios-green); }
+
+/* ---------- Timeline main area ---------- */
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  position: relative;
+  /* padding-top 72px——.header 移除後(見上方「頂部狀態藥丸」說明),
+     內容區直接貼齊 .page 頂端,會被 fixed 定位的 SiteNavBrand/
+     SiteNavThemeToggle/SiteNavCta 蓋住第一張卡片。這幾顆漂浮按鈕
+     統一是 top: 16px + height: 36px(見 SiteNavButtons.css),底部落在
+     約 52px 處,72px 留了一截視覺呼吸空間,不是貼著按鈕下緣。 */
+  padding: 72px 0 24px;
+  /* 底部多留一截,不被漂浮膠囊(.composer,position: absolute)蓋住最後
+     幾張卡片——膠囊本身高度約在 64px 上下(含 padding),128px 留了
+     充裕的緩衝空間讓使用者往下捲到底時最後一張卡片仍完全可見。 */
+  padding-bottom: 128px;
+}
+
+/* .inner/.row:版面比例採「左窄右寬」——先前版本是 760px 置中、三欄
+   1fr 80px 1fr 對稱切分,但卡片視覺全部落在軸線右側,左欄只有時間字/
+   注記文字,結果左邊約 40% 的寬度幾乎空白(見 Fable 截圖評估的問題 1)。
+   改成固定 136px 的左欄(時間字/注記)、48px 的中欄(軸線+圓點/交通
+   pill 的落點)、其餘全部給右欄卡片,整體 max-width 也從 760 縮到 640,
+   讓卡片在視覺重心上跟軸線更靠近、內容區不再被空白稀釋。136px 而不是
+   更窄,是為了讓注記文字(見後端腳本最長約 22 字)在左欄至少能排 8–9
+   個中文字一行,不至於變成一長條細柱。 */
+.inner {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 24px 40px;
+  position: relative;
+}
+
+/* emptyState——時間軸完全空白時的引導文字,置中呈現在主顯示區(見
+   AIPlanTimelinePage.tsx emptyStateMessage 的完整說明)。用
+   min-height 撐出一段跟「即將出現的第一張卡片」相近的垂直留白,不是
+   讓文字直接貼齊 .inner 頂端——空畫面時使用者的視線該落在畫面中段,
+   不是頂到 header 下方。 */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-height: 40vh;
+  justify-content: center;
+  text-align: center;
+  padding: 0 32px;
+}
+.emptyStateIcon {
+  font-size: 20px;
+  color: var(--ios-sand);
+}
+.emptyStateText {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ios-gray);
+  max-width: 360px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 136px 48px 1fr;
+  position: relative;
+}
+
+/* removingFade:remove_step 觸發的淡出——收到訊息時先套這個 class(見
+   PlanStep.removing/usePlanSimSocket 的 ws.onmessage 對 remove_step 的
+   處理),320ms 後(對齊
+   AIPlanTimelinePage.tsx 的 REMOVE_FADE_MS 常數,兩邊數字必須一致)
+   才真正從 steps 陣列移除、讓這個節點連同它佔用的版面空間一起消失。
+   這裡只做透明度+輕微位移,不做高度塌縮動畫——時間軸卡片本身有充足
+   的垂直間距,節點消失後上下項目的間距縮短一次,觀感上是可接受的
+   「收合」感,不需要額外算 max-height 動畫(grid row 做高度塌縮動畫
+   要清零多層 padding/margin 才能避免跳動,複雜度跟這裡想要的效果
+   不成比例)。pointer-events:none 避免動畫播放中還能點擊已經要被
+   移除的卡片。 */
+.removingFade {
+  opacity: 0;
+  transform: translateX(6px);
+  transition: opacity 0.32s ease, transform 0.32s ease;
+  pointer-events: none;
+}
+
+/* section header */
+.sectionRow {
+  align-items: center;
+  margin: 40px 0 20px;
+}
+.sectionBand {
+  grid-column: 1 / span 3;
+  height: 8px;
+  background: var(--ios-bg);
+  border-top: 1px solid var(--ios-sep);
+  border-bottom: 1px solid var(--ios-sep);
+  position: relative;
+}
+.sectionLabel {
+  position: absolute;
+  left: 0;
+  top: -14px;
+  font-family: 'ShipporiSerif', "Noto Serif TC", serif;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ios-gray);
+  background: var(--ios-bg);
+  padding-right: 10px;
+}
+
+/* stop row */
+/* align-items 從 start 改成 stretch——原本 .axisCol(中間欄,放
+   anchorDot/軸線)只有 start 對齊,容器高度只等於自己 content(anchorDot
+   12px+margin-top 10px),不會撐到跟旁邊卡片欄一樣高。.axisLineBelow
+   靠 bottom:-20px 這種固定負值往外延伸去接下一行的軸線,但「往外延伸
+   多少才會接上」取決於卡片實際高度(隨描述文字長度/tag 數量變動,不是
+   固定值)——.axisCol 容器沒有撐滿卡片高度時,-20px 完全不夠蓋住兩行
+   之間的空隙,造成軸線在卡片下方大片斷裂(2026-09 實測:赤崁樓卡片
+   到「步行 8 分」交通段之間斷開約 136px,即卡片實際高度)。改成
+   stretch 讓 .axisCol 自動撐滿跟卡片同高,.axisLineBelow 的 bottom
+   端點才會落在卡片底部附近,-20px 只需要蓋住 row 之間的既有間距即可。 */
+.stopRow {
+  align-items: stretch;
+  min-height: 40px;
+}
+.stopTime {
+  text-align: right;
+  padding-top: 14px;
+  padding-right: 12px;
+}
+.stopTimeText {
+  font-size: 13px;
+  font-family: ui-monospace, 'SF Mono', monospace;
+  color: var(--ios-gray);
+  font-variant-numeric: tabular-nums;
+}
+
+.axisCol {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+/* axisLineAbove/axisLineBelow 以圓點中心(16px = .anchorDot 的
+   margin-top 10px + 高度 12px 的一半)為界,不用整列高度的 50%:卡片
+   有縮圖和兩行說明時整列約 137px,50% 會落在圓點下方約 50px,第一個
+   節點(沒有 axisLineAbove 補位)圓點到線之間會斷一截。 */
+.axisLineAbove {
+  position: absolute;
+  top: -20px;
+  height: 36px;
+  width: 2px;
+  background: var(--ios-sep);
+}
+.axisLineBelow {
+  position: absolute;
+  top: 16px;
+  bottom: -20px;
+  width: 2px;
+  background: var(--ios-sep);
+}
+.anchorDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--ios-card);
+  border: 2px solid var(--ios-sand);
+  margin-top: 10px;
+  z-index: 2;
+}
+
+.stopCardWrap {
+  padding-left: 12px;
+  padding-bottom: 20px;
+}
+.stopCard {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 6px 16px -8px rgba(43, 36, 32, 0.14);
+  /* 460px:配合 .row 改成左窄右寬後右欄變寬(640 - 48 內距 - 136 - 48
+     = 408px 可用),卡片上限放寬到 460 讓它在右欄裡自然撐滿、不再像
+     先前 360px 那樣在寬欄中央留出一截空白;實際寬度仍由右欄本身限制。 */
+  max-width: 460px;
+  padding: 14px;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.stopCard:hover { border-color: var(--ios-sand); }
+.stopCard:focus-visible { outline: 2px solid var(--ios-sand); outline-offset: 2px; }
+/* stopCardSelected:目前小地圖 panTo 對準的那張卡片——用 accent 色邊框
+   標示「這是地圖正在顯示的位置」,不是純粹的 hover 效果。 */
+.stopCardSelected {
+  border-color: var(--ios-sand);
+  box-shadow: 0 0 0 2px var(--ios-sand), 0 6px 16px -8px rgba(43, 36, 32, 0.14);
+}
+.stopThumb {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  flex: none;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  line-height: 1;
+  background: var(--ios-bg);
+}
+.stopThumbImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* thumbSpinner:add_stop 帶 placeId、正在等 fetchPublicGeoPlaceDetails
+   查詢完成時的圓形縮圖佔位——單純的旋轉圈,不是完整的骨架屏,這個縮圖
+   本來就小(64px),骨架屏效果在這個尺寸下反而不明顯。 */
+.thumbSpinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid var(--ios-sep);
+  border-top-color: var(--ios-sand);
+  animation: thumbSpin 0.8s linear infinite;
+}
+@keyframes thumbSpin { to { transform: rotate(360deg); } }
+
+/* ---------- 右上角固定小地圖 ----------
+   position: fixed(不是 absolute)——不需要頁面本身是 relative 容器,
+   且視覺上就是要「浮在整個畫面右上角、不隨時間軸捲動、不佔用 flex
+   版面空間」,對齊使用者確認的「一直存在於右上角」需求(見
+   AIPlanTimelinePage.tsx 檔案開頭 MiniMap 相關說明)。z-index 給一個
+   明確值確保一定在最上層、不被時間軸卡片蓋住。 */
+.miniMapWrap {
+  position: fixed;
+  top: 72px;
+  right: 20px;
+  width: 220px;
+  height: 220px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--ios-sep);
+  z-index: 50;
+  background: var(--ios-card);
+}
+
+/* NativeMapBase 自帶 .wrap/.map 撐滿容器(見 ExploreMap.module.css),
+   這裡只需要讓外層固定尺寸即可,不需要額外覆寫內部樣式。*/
+.miniMapWrap :global(.wrap) {
+  width: 100%;
+  height: 100%;
+}
+
+.stopBody { min-width: 0; flex: 1; }
+.stopMeta { font-size: 12px; color: var(--ios-gray); letter-spacing: 0.02em; margin-bottom: 2px; }
+.loadingTag { margin-left: 6px; color: var(--ios-sand); }
+.stopName { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+.stopDesc {
+  font-size: 14px;
+  color: var(--ios-gray);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.stopTags { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.stopTag {
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--ios-bg);
+  border: 1px solid var(--ios-sep);
+  color: var(--ios-gray);
+}
+
+/* message row——LLM/使用者的對話訊息(見 planTimeline.ts PlanNodeType
+   的完整說明),時間軸上自己獨立的一列,不依附任何 stop 卡片。使用者
+   明確指出「他不是引言,是對話」,也明確否決過「放在 note 區」的方向
+   ——用對話氣泡樣式,跟 note(左側色條+文字,語意是行程備註)、stopCard
+   (景點卡本體)都刻意區隔開。中間欄補上貫穿整行的軸線(.messageAxisLine),
+   理由同 note/transit 列需要銜接軸線的說明。 */
+.messageRow {
+  min-height: 8px;
+  margin: 4px 0 16px;
+}
+.messageAxisCol {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+.messageAxisLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--ios-sep);
+}
+.messageWrap {
+  padding-left: 12px;
+  padding-bottom: 4px;
+}
+/* messageBubble——尖角朝左上、指向時間軸軸線的對話氣泡,藕紫色系
+   (跟既有橘色系的 note/--ios-sand accent 拉開,避免使用者誤認成行程
+   備註或「目前生成位置」焦點提示)。顏色走 --ios-ai-message-bg/
+   --ios-ai-message-text(base-ui.css 定義,隨明暗模式切換)——原本這裡
+   直接寫死 #F3EFFA/#5F5079,深色模式下會維持同一組淺色值不變、跟深色
+   卡片放在一起顯得突兀刺眼,收斂成 token 後才能在深色模式換成對比度
+   足夠的版本(見 base-ui.css 該 token 的完整說明)。 */
+.messageBubble {
+  position: relative;
+  max-width: 460px;
+  padding: 10px 14px;
+  border-radius: 4px 16px 16px 16px;
+  background: var(--ios-ai-message-bg);
+  color: var(--ios-ai-message-text);
+  font-size: 14px;
+  line-height: 1.55;
+  transition: opacity 0.25s ease, padding 0.25s ease, font-size 0.25s ease;
+}
+/* messageMarkdown——新鮮態用 ReactMarkdown 渲染 LLM 回覆文字(見
+   AIPlanTimelinePage.tsx 對 p.type === 'message' 的渲染說明),對齊
+   chat/MessageBubble.module.css 既有 .text.markdown 的收斂間距寫法,
+   顏色全部走 --ios-ai-message-text 或 --ios-* token,不重新寫死顏色。 */
+.messageMarkdown > :first-child { margin-top: 0; }
+.messageMarkdown > :last-child { margin-bottom: 0; }
+.messageMarkdown p { margin: 6px 0; }
+.messageMarkdown ul,
+.messageMarkdown ol { margin: 6px 0; padding-left: 20px; }
+.messageMarkdown li { margin: 2px 0; }
+.messageMarkdown code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  background: var(--ios-sep);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.messageMarkdown pre {
+  background: var(--ios-sep);
+  padding: 8px 10px;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.messageMarkdown pre code { background: none; padding: 0; }
+.messageMarkdown a { color: var(--ios-blue); }
+.messageMarkdown h1,
+.messageMarkdown h2,
+.messageMarkdown h3 {
+  font-size: 16px;
+  margin: 8px 0 4px;
+  color: var(--ios-ai-message-text);
+}
+/* messageBubbleStale——新的景點卡插入後(p.stale === true,由
+   staleOtherAgentMessages 統一標記),收合成一行淡化小字而非整段移除:
+   使用者仍能回頭掃到「當時說了什麼」,但不再搶當下的注意力(使用者
+   明確要求「淡化,不是合併進卡片,只是視覺上退場」)——它依然是時間軸
+   上自己獨立的節點,不會被刪除或併入任何 stop。 */
+.messageBubbleStale {
+  padding: 3px 12px;
+  font-size: 12px;
+  opacity: 0.6;
+  background: transparent;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+/* transit row */
+.transitRow {
+  align-items: center;
+  min-height: 44px;
+}
+.transitAxis {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 44px;
+}
+/* transitDash*:交通段的虛線改用 --ios-sand(先前跟停留點之間的實線
+   一樣用 --ios-sep),讓「實線=停留、虛線=移動」有色彩上的語意區分,
+   不只靠線型。但 sand 色飽和度高,直接滿版會搶過 .anchorDot 的存在感,
+   所以整條線降到 0.45 透明度、虛線密度也從 60% 降到 50%(每 8px 只畫
+   4px),視覺上是一條「淡淡的沙色虛線」,提示方向但不搶焦點。保留原本
+   linear-gradient + background-size 的 mask 技巧,只換底色/比例。 */
+.transitDashAbove,
+.transitDashBelow {
+  position: absolute;
+  width: 2px;
+  background-image: linear-gradient(var(--ios-sand) 50%, transparent 0%);
+  background-size: 2px 8px;
+  background-repeat: repeat-y;
+  opacity: 0.45;
+}
+.transitDashAbove { top: 0; bottom: 50%; }
+.transitDashBelow { top: 50%; bottom: 0; }
+/* transitPill:交通 pill 刻意降權——拿掉 1px 邊框、字級降到 12px,只留
+   --ios-active 淡底。先前它跟景點卡同樣是「灰字+邊框」,視覺層次太接近
+   (見 Fable 截圖評估的問題 5),使用者掃視時會被交通資訊分散注意力;
+   交通段是景點之間的連接資訊,不該跟景點卡本身有同樣份量。 */
+.transitPill {
+  z-index: 2;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--ios-active);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--ios-gray);
+}
+
+/* note row */
+.noteRow {
+  min-height: 8px;
+  margin: 4px 0 16px;
+}
+/* noteLeft/noteInner:注記落在 136px 的左窄欄(見 .row 說明),先前
+   240px 的 max-width 在這個寬度下已無意義,改為撐滿左欄(由欄寬本身
+   限制);padding-right 從 12 縮到 8,把有限的寬度多留給文字。 */
+.noteLeft {
+  display: flex;
+  gap: 8px;
+  padding-right: 8px;
+  justify-content: flex-end;
+}
+.noteInner {
+  max-width: none;
+  display: flex;
+  gap: 8px;
+  text-align: right;
+  flex-direction: row-reverse;
+}
+/* noteBar:色條由後端腳本透過 color prop 指定(sand/green/blue/gray,
+   見 AIPlanTimelinePage.tsx 渲染 note 的 style={{ background: p.color }}),
+   這裡不寫底色,只定寬度——升權的做法是把注記文字調深、變小,讓色條
+   相對更醒目,而不是加粗色條本身(3px 在左窄欄裡已經夠明顯)。 */
+.noteBar {
+  width: 3px;
+  border-radius: 999px;
+  flex: none;
+  align-self: stretch;
+}
+/* noteText:字級 14→13(左欄變窄,14px 一行只排得下 7 個中文字,換行
+   太碎),顏色從純 --ios-gray 改成 color-mix 往 --color-dark 靠 35%——
+   純灰在淺色底下跟景點卡的 desc 灰字幾乎同色,難以一眼分辨「這是 AI
+   的提醒」;稍微加深後配合旁邊的色條,提醒感更明確,但仍比景點名稱
+   (--color-dark 全色)淡一階,不搶主內容。深色模式下 --color-dark 是
+   淺色,color-mix 同樣往「更亮」靠,語意一致,不需另寫深色覆寫。 */
+.noteText {
+  font-size: 13px;
+  color: color-mix(in srgb, var(--ios-gray) 65%, var(--color-dark));
+  line-height: 1.5;
+}
+
+/* noteAxisCol/noteAxisLine:讓注記這一列的中間欄延續時間軸主軸線,不然
+   軸線會在這一列斷開(見 AIPlanTimelinePage.tsx 渲染 note 的完整說明)。
+   跟 .axisLineAbove/.axisLineBelow(stop 列用,見上方)是同一條視覺上的
+   實線,這裡簡化成單一 100% 高度的線段(不像 stop 列要分above/below
+   兩段以便讓 .anchorDot 疊在正中間)——note 列沒有圓點/pill 這種需要
+   軸線讓出中間空間的元素,直接貫穿整列高度即可。 */
+.noteAxisCol {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+.noteAxisLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--ios-sep);
+}
+
+/* ---------- generating tip(呼吸點 + 骨架卡預告) ----------
+   這一段的視覺原則是「越往下越不確定」:已完成的 .anchorDot 是實在的
+   空心圓框(sand 色 2px 邊框、card 底,那是已確定的最終狀態,不動);
+   往下的呼吸點軸線是從錨點「長」出來的漸層;再往下的骨架卡整體壓到
+   0.45 透明度、錨點位置只有一圈虛線圓——三個層次的存在感依序遞減,
+   使用者掃過去能感覺出「上面是定案、中間是進行中、下面是預告」。 */
+.tipRow { align-items: center; min-height: 40px; }
+.tipAxis { position: relative; display: flex; justify-content: center; }
+/* tipLineAbove:呼吸點上方那段軸線,從上一個錨點往下「延伸」到呼吸點。
+   先前是靜態漸層,沒有動態感;現在掛 growDown 動畫,用 transform:
+   scaleY 從 0 長到 1、transform-origin 釘在頂端,看起來就是線段從上一
+   個錨點的位置往下生長(用 transform 而非動 height,是為了不觸發
+   layout、也不會讓 .tipDot 的位置在動畫過程中跳動)。0.5s ease-out:
+   先快後慢,符合「伸出去然後停住」的物理直覺,比線性或 ease-in 更像
+   是在「抵達」而不是「彈出」。
+   要每次呼吸點換位置都重播,靠的是 AIPlanTimelinePage.tsx 給 tipRow
+   綁上「最後一個節點 id」的 key 讓 DOM 重掛(見該處的完整說明)——
+   純 CSS 這邊沒有辦法偵測「位置變了」,只能靠元素被重新建立。 */
+.tipLineAbove {
+  position: absolute;
+  top: -20px;
+  bottom: 50%;
+  width: 2px;
+  background: linear-gradient(var(--ios-sand), transparent);
+  transform-origin: top;
+  animation: growDown 0.5s ease-out;
+}
+.tipDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--ios-sand);
+  animation: breathe 1.4s ease-in-out infinite;
+}
+/* tipLineBelow:延伸到 .tipRow 自己這一列的底部(bottom: -20px,對齊
+   .axisLineAbove/.axisLineBelow 的既有寫法),不再用 bottom: -160px 這種
+   猜測骨架卡列實際高度的魔術數字去「穿透」下一列——那個寫法一旦骨架卡
+   實際高度跟猜測值不同就會斷裂或超出畫面(同步 trip-plan/
+   TripPlanPage.module.css 正式頁修過的「時間軸斷裂」bug)。骨架卡列
+   自己的 .skeletonAxisAbove 接手銜接到 .skeletonAnchor,兩段視覺上
+   連成一條線,但各自只負責自己所在列的範圍,不依賴跨列的絕對定位假設。
+   透明度從 0.7 降到 0.5,讓它跟骨架卡同屬「未定」的一層,明顯比上方
+   已完成段落的 --ios-sep 實線更淡。 */
+.tipLineBelow {
+  position: absolute;
+  top: 50%;
+  bottom: -20px;
+  width: 2px;
+  border-left: 2px dashed var(--ios-sep);
+  opacity: 0.5;
+}
+
+/* skeletonRow:骨架卡所在的那一列——沿用 .row/.stopRow 的三欄 grid,讓
+   縮排跟真實 stop 卡片完全一致(見 AIPlanTimelinePage.tsx 渲染骨架卡
+   的完整說明)。整列一起壓到 0.45 透明度(需求建議的 0.35–0.5 區間)
+   而不是只壓卡片:虛線錨點也要一起淡,才能跟上方實在的 .anchorDot 拉
+   開層次。skeletonFade 讓它跟 tipRow 一起重掛時淡入,避免軸線還在生長
+   卡片卻已經瞬間出現的不同步感;delay 0.25s 是等軸線長到一半以上才
+   開始浮現,順序上先有線、再有預告。pointer-events:none 避免 hover/
+   點擊誤命中——它不是內容。 */
+.skeletonRow {
+  opacity: 0.45;
+  pointer-events: none;
+  animation: skeletonFade 0.4s ease-out 0.25s backwards;
+}
+/* skeletonAxisAbove:從這一列頂部貫穿到 .skeletonAnchor 中點的虛線,
+   銜接上方 .tipRow 的 .tipLineBelow(見該規則的完整說明),讓兩段線在
+   視覺上連成一條完整貫穿呼吸點到骨架卡的軸線,不依賴任何跨列的絕對
+   定位假設(同步正式頁 trip-plan/TripPlanPage.module.css 的完整說明)。
+   top: 0(不是 -20px)——.tipLineBelow 已經從 .tipDot 中心(top: 50%)
+   延伸到 .tipRow 列底(bottom: -20px),這段視覺上已經涵蓋「呼吸點
+   中心→skeleton 列頂端」的範圍,這裡若也從 -20px 起算會跟
+   .tipLineBelow 的下半段重疊、疊合區出現相位錯開的視覺瑕疵。改成只
+   負責 skeleton 列自己範圍內、.tipLineBelow 還沒覆蓋到的那一段:從
+   這一列頂端(top: 0)到 .skeletonAnchor 中點。 */
+.skeletonAxisAbove {
+  position: absolute;
+  top: 0;
+  /* 16px = .skeletonAnchor 的 margin-top 10px + 自身高度 12px 的一半
+     6px,即這個虛線圓框的垂直中點。 */
+  height: 16px;
+  width: 2px;
+  border-left: 2px dashed var(--ios-sep);
+  opacity: 0.5;
+}
+/* skeletonAnchor:骨架卡列軸線上的「未定錨點」——跟 .anchorDot 同尺寸
+   同位置(12px、margin-top 10px),但改成 1.5px 虛線圓框、無底色,
+   跟已完成錨點的「實線圓框+card 底」形成明確對比:實線=已定案,
+   虛線=還在規劃。z-index 2 跟 .anchorDot 一樣,壓在穿過來的
+   .tipLineBelow 虛線之上。 */
+.skeletonAnchor {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 1.5px dashed var(--ios-sand);
+  margin-top: 10px;
+  z-index: 2;
+  background: var(--ios-bg);
+}
+/* skeletonCard:比照 .stopCard 的結構(flex、14px gap、16px 圓角、
+   1px 邊框、14px 內距、460px 上限),讓預告的輪廓跟即將出現的真卡片
+   對得上——差別只在內容物換成灰階區塊、拿掉陰影(陰影是「實體卡片」
+   的訊號,預告不該有)、邊框改虛線呼應「未定」。min-height 對齊一張
+   帶兩行描述+標籤列的真實卡片(約 64px 縮圖高 + 內距),避免真卡片
+   掛上來時版面高度跳一格。 */
+.skeletonCard {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  background: var(--ios-card);
+  border: 1px dashed var(--ios-sep);
+  border-radius: 16px;
+  max-width: 460px;
+  padding: 14px;
+  min-height: 92px;
+  box-sizing: border-box;
+}
+/* skeletonThumb:對應 .stopThumb 的 64px 圓形縮圖位置。 */
+.skeletonThumb {
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  flex: none;
+}
+.skeletonBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+/* skeletonLine:模擬文字的長條——三條寬度/高度各異,對應 .stopMeta
+   (12px 小字、短)、.stopName(17px 標題、中等)、.stopDesc(14px 描述、
+   最長)的真實比例,讓骨架看起來就是「一張卡的文字骨架」而不是三條等
+   長的灰槓。 */
+.skeletonLine {
+  border-radius: 6px;
+}
+.skeletonLineMeta { width: 34%; height: 10px; }
+.skeletonLineTitle { width: 58%; height: 15px; }
+.skeletonLineDesc { width: 88%; height: 12px; }
+
+/* shimmer:由左至右掃過的高光。底色用 --ios-sep(比 card 深一階的暖灰,
+   淺色/深色模式各自有值),高光用 color-mix 把 --ios-sep 往 --ios-card
+   拉 65%——淺色模式下是「灰槓上掃過一道近白的光」,深色模式下 --ios-sep
+   (#3A332C)比 --ios-card(#26211D)亮,混合後高光反而更接近較暗的
+   card 色……這在深色底下看起來會是「掃過一道陰影」而非高光,所以深色
+   模式另外覆寫成往 --ios-gray 拉,確保高光永遠比底色亮。
+   background-size 400% 搭配 position 從 100% 到 0:漸層寬度是元素的 4
+   倍、高光帶只佔其中 12%,位移一整輪剛好讓那道光完整掃過一次,不會
+   出現兩道光同時在畫面上。1.4s 跟 .tipDot 的 breathe 週期一致,兩者
+   節奏同步,不會互相打架。 */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--ios-sep) 25%,
+    color-mix(in srgb, var(--ios-sep) 35%, var(--ios-card)) 37%,
+    var(--ios-sep) 63%
+  );
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+/* 深色模式:base-ui.css 的深色 token 掛在 .app-theme-root 上(見
+   AIPlanTimelinePage.tsx 對這個 class 的說明),這裡用同樣兩組選擇器
+   (系統偏好 + 明確 data-theme="dark")覆寫高光色,理由見 .shimmer。 */
+:global(.app-theme-root[data-theme="dark"]) .shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--ios-sep) 25%,
+    color-mix(in srgb, var(--ios-sep) 55%, var(--ios-gray)) 37%,
+    var(--ios-sep) 63%
+  );
+}
+@media (prefers-color-scheme: dark) {
+  :global(.app-theme-root:not([data-theme="light"])) .shimmer {
+    background-image: linear-gradient(
+      90deg,
+      var(--ios-sep) 25%,
+      color-mix(in srgb, var(--ios-sep) 55%, var(--ios-gray)) 37%,
+      var(--ios-sep) 63%
+    );
+  }
+}
+
+.endMarker {
+  text-align: center;
+  padding-top: 20px;
+  font-size: 13px;
+  color: var(--ios-gray);
+}
+
+/* jump-to-latest */
+.jumpPillWrap {
+  position: absolute;
+  left: 50%;
+  bottom: 172px;
+  transform: translateX(-50%);
+  z-index: 10;
+}
+.jumpPill {
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--color-dark);
+  color: var(--ios-bg);
+  border: none;
+  border-radius: 999px;
+  padding: 8px 16px;
+  cursor: pointer;
+  box-shadow: 0 6px 16px -8px rgba(43, 36, 32, 0.14);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---------- Composer ---------- */
+
+/* composer——2026-09 從貼滿寬度、佔用 flex 版面一格的底部橫幅,改成
+   漂浮在時間軸內容上方的膠囊(使用者明確要求「對話輸入匡改成漂浮
+   膠囊」)。position: absolute 相對 .page(見該 class 新增的 position:
+   relative 說明)定位在畫面底部置中,四周留白讓下方的時間軸內容隱約
+   可見,不再是一道貫穿整個寬度、把畫面硬切成上下兩塊的實心橫幅。
+   .scroll 已經補上對應的 padding-bottom,確保捲到底時最後一張卡片
+   不會被這個膠囊蓋住。 */
+.composer {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 48px));
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 26px;
+  box-shadow: 0 12px 32px -12px rgba(43, 36, 32, 0.28);
+  padding: 10px 10px 10px 20px;
+}
+.composerInner { width: 100%; }
+/* 原本輸入框上方常駐一行狀態提示文字(.aiLine)——漂浮膠囊只有單行
+   高度的空間,常駐提示會讓膠囊變得太高、也不像「輸入框」該有的樣子。
+   時間軸完全空白時的引導文案改放進主顯示區(見 .emptyState 的完整
+   說明),其餘狀態靠 input 的 placeholder 傳達即可,composer 內不再
+   渲染任何獨立的狀態列。 */
+.inputRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.inputWrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background: transparent;
+  padding: 0 6px;
+  height: 44px;
+  min-width: 0;
+}
+.input {
+  border: none;
+  outline: none;
+  background: transparent;
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--color-dark);
+  font-family: inherit;
+  white-space: nowrap;
+}
+/* sendBtn——排程進行中固定顯示的箭頭送出鈕,排程結束後同一顆按鈕會
+   疊上 .composerCta(見該 class 的完整說明)展開成「立即使用」。
+   width/padding/border-radius/background/color 都寫在這裡當基準值,
+   讓 .composerCta 疊加時只需要覆寫真正改變的那幾個屬性,並且讓瀏覽器
+   知道要對哪些屬性做 transition(展開動畫,使用者明確要求「要有按鈕
+   展開動畫」——原本是條件渲染兩顆不同的按鈕元素,瞬間切換沒有動畫
+   可言,改成同一顆 <button> 疊加 class 才能讓 width 等屬性真的過渡)。 */
+.sendBtn {
+  /* width 用 max-width 而非 width 做展開動畫的基準——CSS 對 width: auto
+     無法計算出中間幀,transition 只會在動畫結束瞬間跳變,不會真的展開
+     (使用者明確要求「要有按鈕展開動畫」)。改成兩個具體 px 值之間的
+     max-width transition:未展開是 36px(跟原本的圓形寬度一致),
+     .composerCta 展開到 120px(比「立即使用」+ 左右 14px padding 的
+     實際寬度略寬,確保文字不會被裁到,寬度本身仍受內容撐開的實際大小
+     限制,不會因為 max-width 給大了就真的變成 120px 寬的空白按鈕)。 */
+  max-width: 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--color-dark);
+  color: var(--ios-bg);
+  border: none;
+  cursor: pointer;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  transition:
+    max-width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    padding 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 0.35s ease;
+}
+/* sendBtn:disabled——這個展示頁的送出鈕永遠是唯讀展示,固定停用(見
+   AIPlanTimelinePage.tsx 的完整說明:輸入框只播放假打字動畫,不接受
+   真的輸入),但先前完全沒有對應的視覺區分,按鈕看起來跟「可送出」
+   狀態一模一樣,容易讓訪客誤以為可以點擊。降低不透明度並改回預設
+   游標,明確傳達「這裡不能互動」。 */
+.sendBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* composerCta——排程結束後疊加在 .sendBtn 上、展開成「立即使用」的
+   終點樣式(見 AIPlanTimelinePage.tsx 的完整說明)。使用者試過「整個
+   膠囊縮成一顆按鈕」的版本後,改要求「保留膠囊輸入外框,送出按鈕部分
+   轉變為立即使用按鈕」,並要求「要有按鈕展開動畫」——膠囊外框
+   (.composer)維持原本完整寬度不變,只有這顆按鈕本身從 .sendBtn 固定
+   的 36px 圓形,用 width: auto + 文字「立即使用」自然撐開的寬度展開
+   (.sendBtn 已經宣告 width 的 transition,這裡改成 auto 會讓瀏覽器
+   算出目標寬度、平滑過渡過去,不是瞬間跳到新寬度)。底色改用主色
+   (--color-accent,對齊首頁 vermilion 硃紅,見 base-ui.css 的完整
+   說明),跟未展開時純功能性、固定停用的深色圓鈕區隔開來,傳達「這是
+   排完程後真正可以繼續的行動呼籲」。 */
+.composerCta {
+  max-width: 120px;
+  width: auto;
+  padding: 0 14px;
+  background: var(--color-accent);
+}
+/* ---------- animations ---------- */
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.45; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.25); }
+}
+@keyframes popIn {
+  0% { transform: scale(0); opacity: 0; }
+  60% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes cardIn {
+  0% { opacity: 0; transform: translateX(-12px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes expandX {
+  0% { transform: scaleX(0.6); opacity: 0; }
+  100% { transform: scaleX(1); opacity: 1; }
+}
+/* growDown:軸線從頂端往下生長(見 .tipLineAbove)。只動 transform,
+   不動 height/bottom,避免 layout 抖動。 */
+@keyframes growDown {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+/* shimmer:見 .shimmer——background-size 400% 時,position 從 100% 走到
+   0 剛好是高光帶由左至右完整掃過一次。 */
+@keyframes shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+/* skeletonFade:骨架卡列跟 tipRow 一起重掛時的淡入(見 .skeletonRow),
+   終點是 .skeletonRow 自己的 0.45,不是 1——動畫 to 的值故意不寫死
+   數字,讓它落回 class 本身的透明度,日後調整 .skeletonRow 的 opacity
+   不需要同步改這裡。 */
+@keyframes skeletonFade {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+.mountFadeIn { opacity: 1; animation: fadeIn 0.3s ease-out; }
+.anchorPop { animation: popIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.cardSlide { animation: cardIn 0.28s ease-out 0.15s backwards; }
+.thumbPop { animation: popIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s backwards; }
+.pillExpand { animation: expandX 0.22s ease-out; }
+.noteFade { animation: fadeIn 0.35s ease-out; }
+.endFade { animation: fadeIn 0.6s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .page * {
+    animation-duration: 0.01ms !important;
+    /* transition 也一併壓到近乎瞬間——膠囊收合(.composerCollapsed)
+       是用 transition 而非 animation 實作的,不加這一行減少動態偏好下
+       它仍會播完整的 0.45s 收縮。 */
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+  }
+}
+
+/* ---------- responsive (phone) ---------- */
+
+/* 手機版:桌機的三欄(136/48/1fr)改成兩欄 28px 1fr——隱藏左欄的時間
+   字(.stopTime),軸線直接靠左貼齊、卡片吃滿剩餘寬度。斷點用 767px
+   (不是 640px)——這裡的規則同步 trip-plan/TripPlanPage.module.css
+   正式頁在多輪實機測試中修過的幾個手機版 bug(見該檔案同一個 media
+   query 內各條規則的完整說明,這裡不重複展開):
+   - .tipRow/.messageRow/.transitRow 的 DOM 都是三個子 div(對齊桌面版
+     三欄),只改 grid-template-columns 成兩欄而不調整欄位分配,會被
+     grid 自動排列邏輯推到「下一行的第一欄」或擠壓成極窄欄——呼吸點
+     偏移到卡片欄、訊息文字被壓成逐字換行、交通卡軸線整段消失,這幾個
+     都是正式頁實機測試抓到的真實 bug,這裡原本沒有對應規則,同樣會
+     重現。
+   - .noteRow 同一種 bug,.noteAxisCol 沒有明講落在哪一欄會被自動排列
+     邏輯誤置。
+   - .header/.inner/.composer 在窄寬度(如 iPhone SE 375px)下的
+     padding/寬度也一併同步收窄(展示頁沒有正式頁那層 .headerInner
+     拆分)。 */
+@media (max-width: 767px) {
+  .row { grid-template-columns: 28px 1fr; }
+  .stopTime { display: none; }
+  .sectionBand { grid-column: 1 / span 2; }
+  .noteLeft { grid-column: 2; grid-row: 1; justify-content: flex-start; padding-right: 0; }
+  .noteInner { flex-direction: row; text-align: left; max-width: none; }
+  .stopCard { max-width: none; }
+  /* 骨架卡列的左欄佔位 <div /> 比照 .stopTime 一起隱藏,否則兩欄 grid
+     下它會吃掉 28px 那欄、把虛線錨點跟卡片整個往右擠一格。 */
+  .skeletonRow > :first-child { display: none; }
+  .skeletonCard { max-width: none; }
+  .tipRow > :first-child { display: none; }
+  .messageRow { grid-template-columns: 28px 0 1fr; }
+  .messageAxisCol { grid-column: 1; }
+  .messageWrap { grid-column: 3; padding-left: 0; }
+  .messageBubble { max-width: none; }
+  .noteAxisCol { grid-column: 1; grid-row: 1; }
+  .inner { padding: 0 16px 32px; }
+  .composer { width: calc(100% - 32px); }
+  .stopTags { flex-wrap: wrap; }
+  /* transitRow(交通轉乘列)的 DOM 是三個子 div(對齊桌面版三欄:虛線+
+     pill 置中在中欄),跟 .tipRow/.messageRow 同一種 bug——第一個空
+     placeholder 隱藏後,.transitAxis 遞補到第一欄(28px 窄軸線欄)。
+     .transitDashAbove/.transitDashBelow(虛線)跟 .transitPill(文字
+     pill)在桌面版都用 justify-content: center 定位,在窄欄裡 pill
+     內容遠比 28px 寬,置中會讓它向左右兩邊溢出、貼齊視窗最左緣,使用者
+     截圖回報「手機版的路程估算要往右邊移動」。改成 justify-content:
+     flex-start 只會讓虛線(原本沒設 left,水平位置依附 flex 排列)跟著
+     pill 一起偏移到最左邊,虛線就不再對齊其餘列的軸線中心——虛線與
+     pill 需要分開處理:虛線改用明確的 left: 13px(28px 軸線欄寬度的
+     一半,減掉虛線自身 2px 寬度的一半,對齊其餘列圓點/軸線的水平
+     中心),不再依賴 flex 的 justify-content 定位;.transitAxis 本身
+     改 flex-start,只影響 pill(唯一沒有自己明確定位、單純靠 flex
+     排列的子元素),讓 pill 從軸線位置往右延伸。 */
+  .transitAxis { justify-content: flex-start; }
+  .transitDashAbove,
+  .transitDashBelow {
+    left: 13px;
+  }
+  .transitRow > :first-child { display: none; }
+}

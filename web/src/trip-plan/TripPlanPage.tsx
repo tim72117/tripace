@@ -488,14 +488,14 @@ function usePlanAiChatBridge(
 // (attractionTools.ts)操作的是這個元件內部的 timeline state,不是
 // 後端的 trip_entry_* 資料,沒有「寫入哪一個真實行程」這個概念,使用者
 // 明確要求「plan ai 不需要 trip id」,不必先選定一趟旅程才能使用這個
-// 功能(呼叫端 DesktopRail.tsx 對應拿掉 requiresTrip)。行程名稱透過
-// 獨立的 tripName prop 傳入,呼叫端自己決定要不要顯示真實名稱,這個
-// 元件不負責用任何 id 去查名稱。
+// 功能(呼叫端 DesktopRail.tsx 對應拿掉 requiresTrip)。原本還有獨立的
+// tripName prop 顯示行程名稱/「未命名行程」,使用者明確要求不要顯示
+// (外層桌面版 rail、手機版 sheet 標頭已經各自有行程情境,這裡不需要
+// 再重複),連同 prop 一併移除,呼叫端不再傳入。
 export function TripPlanPage(props: {
   cfg: ClientConfig
-  tripName?: string | null
 }) {
-  const { cfg, tripName } = props
+  const { cfg } = props
   const theme = getTheme()
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const followingRef = useRef(true)
@@ -641,11 +641,6 @@ export function TripPlanPage(props: {
   const emptyStateMessage = '想去哪裡玩？跟我說說你的想法，我可以幫你查景點、安排行程。'
   const placeholder = planAiChat.isThinking ? '可以隨時打斷，例如：下午不要排太滿' : '想調整哪裡？'
 
-  // 行程名稱——正式功能不再有「台南安平兩日遊」這種寫死的展示假資料,
-  // 改用呼叫端傳入的真實行程名稱;拿不到(tripName 未提供或空字串)時
-  // 顯示通用預設文字,而不是留白或顯示原型的假資料。
-  const displayTripName = tripName && tripName.trim() ? tripName : '未命名行程'
-
   // app-theme-root——這裡刻意不掛載:/app 路由本身(App.tsx 的
   // <Route path="/app/:panelMode?">)外層已經透過 KeyboardShrinkGuard
   // 疊加了這個全域 class(見 App.tsx 該處的完整說明),深色模式 token
@@ -660,15 +655,19 @@ export function TripPlanPage(props: {
         {/* headerInner——2026-09 新增:改用 DesktopMain 的 unboundedScroll
             後(見 scrollToLatest 上方的完整說明),.page 不再被限制在
             860px 容器裡,.header 背景需要撐滿整個視窗寬度(視覺一致,
-            跟時間軸/漂浮膠囊所在的區域同寬同色),但內容(行程名稱/
-            狀態藥丸)仍要維持跟 .inner(時間軸內容)一樣的 640px 置中
-            對齊,不能讓文字貼到視窗最左最右——這層負責「背景滿版、
-            內容置中」的拆分,理由同 fable 審閱時發現 header 若整個
-            unbounded 卻不做這個拆分,左右兩側元素會懸空脫節的問題。 */}
+            跟時間軸/漂浮膠囊所在的區域同寬同色),但內容(狀態藥丸)
+            仍要維持跟 .inner(時間軸內容)一樣的 640px 置中對齊,不能讓
+            文字貼到視窗最左最右——這層負責「背景滿版、內容置中」的
+            拆分,理由同 fable 審閱時發現 header 若整個 unbounded 卻不做
+            這個拆分,左右兩側元素會懸空脫節的問題。原本這裡還有一個
+            .headerLeft 放行程名稱,使用者明確要求不顯示行程名稱/
+            「未命名行程」(外層桌面版 rail、手機版 sheet 標頭已經各自
+            有行程情境,這裡不需要再重複)——連同 tripName prop 一併
+            移除(見上方元件簽名的完整說明),.headerRight 改靠
+            margin-left: auto 頂到最右側,取代原本兩端對齊
+            (justify-content: space-between)靠左邊 .headerLeft 撐開的
+            版面。 */}
         <div className={styles.headerInner}>
-          <div className={styles.headerLeft}>
-            <span className={styles.tripName}>{displayTripName}</span>
-          </div>
           <div className={styles.headerRight}>
             <div className={styles.statusPill}>
               {planAiChat.isThinking ? (

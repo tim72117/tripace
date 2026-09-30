@@ -14,6 +14,12 @@ function stop(name: string, time?: string) {
   return { type: 'stop' as const, name, time }
 }
 
+// stopOnDay — 同上,額外帶 day 欄位,供「多天行程」測試使用(見
+// PlanNodeData.day 的完整說明)。
+function stopOnDay(name: string, time: string, day: number) {
+  return { type: 'stop' as const, name, time, day }
+}
+
 describe('insertAfter', () => {
   it('空的時間軸插入第一筆(anchorId 為 null),成為 head', () => {
     const empty = createEmptyTimeline()
@@ -258,6 +264,54 @@ describe('insertAfter', () => {
     // 交通資訊不再對應正確的兩站,必須被清空。
     expect(r3.timeline.nodes.get('n2')).toMatchObject({ prevId: 'n3', transitFromPrev: undefined })
   })
+
+  describe('day(多天行程)', () => {
+    it('day 不同時,新節點的時間可以早於前一站(不比較跨天的時間先後)', () => {
+      let timeline: PlanTimeline = createEmptyTimeline()
+      // day 1 最後一站到 23:00。
+      const r1 = insertAfter(timeline, null, stopOnDay('赤崁樓', '08:00', 1), 'n1')
+      if (!r1.ok) throw new Error('setup failed')
+      timeline = r1.timeline
+      const r2 = insertAfter(timeline, 'n1', stopOnDay('晚餐', '23:00', 1), 'n2')
+      if (!r2.ok) throw new Error('setup failed')
+      timeline = r2.timeline
+
+      // day 2 第一站是 09:00,遠早於 n2 的 23:00——若跨天也比較時間會
+      // 被判定 time_out_of_range,但 day 不同時不該比較,預期成功。
+      const result = insertAfter(timeline, 'n2', stopOnDay('孔廟', '09:00', 2), 'n3')
+      expect(result.ok).toBe(true)
+    })
+
+    it('省略 day 的節點視為第 1 天,跟明確傳 day: 1 行為一致', () => {
+      let timeline: PlanTimeline = createEmptyTimeline()
+      const r1 = insertAfter(timeline, null, stop('赤崁樓', '08:00'), 'n1')
+      if (!r1.ok) throw new Error('setup failed')
+      timeline = r1.timeline
+
+      // 省略 day 的新節點(視為 day 1)時間早於 n1,仍然要走同一天的
+      // 時間驗證,回傳 time_out_of_range。
+      const result = insertAfter(timeline, 'n1', stop('大天后宮', '07:00'), 'n2')
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.error.code).toBe('time_out_of_range')
+    })
+
+    it('同一天內時間驗證依然生效,不因為加了 day 欄位就整體失效', () => {
+      let timeline: PlanTimeline = createEmptyTimeline()
+      const r1 = insertAfter(timeline, null, stopOnDay('孔廟', '09:00', 2), 'n1')
+      if (!r1.ok) throw new Error('setup failed')
+      timeline = r1.timeline
+      const r2 = insertAfter(timeline, 'n1', stopOnDay('孔廟商圈', '10:00', 2), 'n2')
+      if (!r2.ok) throw new Error('setup failed')
+      timeline = r2.timeline
+
+      // 同樣是 day 2,08:00 早於 n1(09:00),應該失敗。
+      const result = insertAfter(timeline, 'n1', stopOnDay('台灣文學館', '08:00', 2), 'n3')
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.error.code).toBe('time_out_of_range')
+    })
+  })
 })
 
 describe('removeNode', () => {
@@ -348,5 +402,73 @@ describe('updateNode', () => {
 describe('toRenderList', () => {
   it('空時間軸回傳空陣列', () => {
     expect(toRenderList(createEmptyTimeline())).toEqual([])
+  })
+
+  it('day 不同的相鄰 stop 之間自動插入跨天分隔線(不需要呼叫端手動送 section)', () => {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, stopOnDay('赤崁樓', '08:00', 1), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+    const r2 = insertAfter(timeline, 'n1', stopOnDay('孔廟', '09:00', 2), 'n2')
+    if (!r2.ok) throw new Error('setup failed')
+    timeline = r2.timeline
+
+    const rendered = toRenderList(timeline)
+    expect(rendered.map((n) => ({ type: n.type, id: n.id, name: n.name }))).toEqual([
+      { type: 'stop', id: 'n1', name: '赤崁樓' },
+      { type: 'section', id: 'day-divider-2', name: undefined },
+      { type: 'stop', id: 'n2', name: '孔廟' },
+    ])
+  })
+
+  it('同一天內(day 相同或都省略)不插入任何分隔線', () => {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, stop('赤崁樓', '08:00'), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+    const r2 = insertAfter(timeline, 'n1', stop('祀典武廟', '09:00'), 'n2')
+    if (!r2.ok) throw new Error('setup failed')
+    timeline = r2.timeline
+
+    expect(toRenderList(timeline).map((n) => n.id)).toEqual(['n1', 'n2'])
+  })
+
+  it('連續三天的行程,依序插入 Day 2/Day 3 兩條分隔線', () => {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, stopOnDay('赤崁樓', '08:00', 1), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+    const r2 = insertAfter(timeline, 'n1', stopOnDay('孔廟', '09:00', 2), 'n2')
+    if (!r2.ok) throw new Error('setup failed')
+    timeline = r2.timeline
+    const r3 = insertAfter(timeline, 'n2', stopOnDay('安平古堡', '09:00', 3), 'n3')
+    if (!r3.ok) throw new Error('setup failed')
+    timeline = r3.timeline
+
+    const rendered = toRenderList(timeline)
+    expect(rendered.map((n) => n.id)).toEqual(['n1', 'day-divider-2', 'n2', 'day-divider-3', 'n3'])
+  })
+
+  it('day 非遞增(接在較後一天的站之後)也要插入分隔線,不能被靜默併入前一段', () => {
+    // 這是實際修過的 bug 的回歸測試:toRenderList 原本只在
+    // nodeDay > currentDay 時插入分隔線,day 變小(非遞增)的情況完全
+    // 不會插入、currentDay 也不會回退,該站會被誤渲染成前一天的一部分。
+    // insertAfter 本身不驗證跨天的先後順序(day 不同時直接跳過時間比較,
+    // 見 nearestStopNode 的完整說明),所以這種非遞增鏈結是合法可達的
+    // 狀態,不是只存在於理論上。
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, stopOnDay('赤崁樓', '08:00', 1), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+    const r2 = insertAfter(timeline, 'n1', stopOnDay('孔廟', '09:00', 2), 'n2')
+    if (!r2.ok) throw new Error('setup failed')
+    timeline = r2.timeline
+    // 刻意接在 day 2 的 n2 之後,卻插入一筆 day 1 的站。
+    const r3 = insertAfter(timeline, 'n2', stopOnDay('武廟愛玉', '10:00', 1), 'n3')
+    if (!r3.ok) throw new Error('setup failed')
+    timeline = r3.timeline
+
+    const rendered = toRenderList(timeline)
+    expect(rendered.map((n) => n.id)).toEqual(['n1', 'day-divider-2', 'n2', 'day-divider-1', 'n3'])
   })
 })

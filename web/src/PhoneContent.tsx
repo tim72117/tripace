@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Route, MessageSquareText } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { Route, Sparkles } from 'lucide-react'
 import { ChatScreen, type DesktopTimelineMirror } from './chat/ChatScreen'
 import { type ContentProps } from './AppCommon'
 import { useIsDesktop } from './hooks/useIsDesktop'
@@ -19,6 +19,9 @@ import { PhoneTabBar } from './PhoneTabBar'
 import { PhoneSideTools } from './PhoneSideTools'
 import type { Trip } from './trip/types'
 import styles from './PhoneContent.module.css'
+
+// TripPlanPage:「AI 規劃」正式功能頁——手機版底部列原本的「對話」換成它,lazy 載入理由同 DesktopLayout.tsx。
+const TripPlanPage = lazy(() => import('./trip-plan/TripPlanPage').then((m) => ({ default: m.TripPlanPage })))
 
 // 時間軸鏡像資料的初始值(尚未收到 ChatScreen 鏡像前,或未選擇旅程時使用)
 // ——跟 DesktopLayout.tsx 的 EMPTY_TIMELINE_MIRROR 同一份形狀,手機版這裡
@@ -175,8 +178,8 @@ export function PhoneContent(props: ContentProps) {
   // 對應的疊加層(使用者明確要求「規劃地圖常駐為主畫面,對話/配速表都
   // 改成疊加層」,不再是切換分頁模式,見上方 chatSheetOpen/paceSheetOpen
   // 的說明)。
-  const bottomTabs: { key: string; icon: typeof MessageSquareText; title: string; active: boolean; onClick: () => void }[] = [
-    { key: 'chat', icon: MessageSquareText, title: '對話', active: chatSheetOpen, onClick: () => setChatSheetOpen(true) },
+  const bottomTabs: { key: string; icon: typeof Sparkles; title: string; active: boolean; onClick: () => void; beta?: boolean }[] = [
+    { key: 'plan-ai', icon: Sparkles, title: 'AI 規劃', active: chatSheetOpen, onClick: () => setChatSheetOpen(true), beta: true },
   ]
   const sideTools: { key: string; icon: typeof Route; title: string; onClick: () => void }[] = [
     ...(PACE_ENABLED ? [{ key: 'pace', icon: Route, title: '路徑', onClick: () => setPaceSheetOpen(true) }] : []),
@@ -340,10 +343,22 @@ export function PhoneContent(props: ContentProps) {
         panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 36 }}
         showBackdrop={false}
         keepMounted
-        head={<SheetHead title={activeTrip?.name ?? 'Tripace'} onClose={() => setChatSheetOpen(false)} />}
+        head={<SheetHead title="AI 規劃" onClose={() => setChatSheetOpen(false)} />}
       >
-        {chatElement}
+        {
+          // AI 規劃取代對話:TripPlanPage 以最近的 <main> 當捲動容器
+          // (closest('main'),見該檔案 scrollToLatest 說明),這裡包一層
+          // 自己捲動的 <main> 對齊桌面版 DesktopMain。
+          <main className={styles.planScroll}>
+            <Suspense fallback={null}>
+              <TripPlanPage cfg={cfg} />
+            </Suspense>
+          </main>
+        }
       </PhoneBottomSheet>
+      {/* 對話換成 AI 規劃後 ChatScreen 仍隱藏掛載——時間軸抽屜的
+          timelineMirror 資料來源是它的 onTimelineData(見上方說明)。 */}
+      <div hidden>{chatElement}</div>
       {/* 配速表:同上方對話,改成滿版 PhoneBottomSheet 疊加層,由右側小圖示
           「路徑」按鈕開關(paceSheetOpen)。跟對話不同,PaceRouteMap 不需要
           永遠掛載+portal 投影這套機制(沒有 WebSocket 之類需要避免重連的

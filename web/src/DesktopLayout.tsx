@@ -602,7 +602,7 @@ export function DesktopContent(props: ContentProps) {
               // pace/geo-outline 的既有作法。不依附特定旅程(使用者明確
               // 要求「plan ai 不需要 trip id」),不接收 tripID,PANEL_REGISTRY
               // 也已拿掉 requiresTrip——不需要先選旅程就能使用這個功能。
-              <TripPlanPage cfg={cfg} tripName={activeTrip?.name ?? null} />
+              <TripPlanPage cfg={cfg} />
             )
           ) : (
             // main-replace 以外的所有情況(含 panelMode === null、'trips'/

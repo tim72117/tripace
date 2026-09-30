@@ -16,7 +16,7 @@ export function PhoneTabBar({
   tripsDrawerOpen,
   onOpenTrips,
 }: {
-  tabs: { key: string; icon: LucideIcon; title: string; active: boolean; onClick: () => void }[]
+  tabs: { key: string; icon: LucideIcon; title: string; active: boolean; onClick: () => void; beta?: boolean }[]
   tripsDrawerOpen: boolean
   onOpenTrips: () => void
 }) {
@@ -32,7 +32,7 @@ export function PhoneTabBar({
           <List size={20} strokeWidth={1.8} />
         </span>
       </button>
-      {tabs.map(({ key, icon: Icon, title, active, onClick }) => (
+      {tabs.map(({ key, icon: Icon, title, active, onClick, beta }) => (
         <button
           key={key}
           type="button"
@@ -42,6 +42,10 @@ export function PhoneTabBar({
         >
           <span className={`${styles.tabIcon}${active ? ` ${styles.tabIconActive}` : ''}`}>
             <Icon size={20} strokeWidth={1.8} />
+            {/* betaTag——視覺語言沿用 DesktopRail.module.css 的 .betaTag
+                (標示正式功能還在測試中),見 PhoneContent.tsx 'plan-ai'
+                項目的完整說明。 */}
+            {beta && <span className={styles.betaTag}>BETA</span>}
           </span>
         </button>
       ))}

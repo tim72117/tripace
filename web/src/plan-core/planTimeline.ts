@@ -118,6 +118,22 @@ export interface PlanNodeData {
   stale?: boolean
   // stop
   time?: string
+  // day——這個 stop 屬於行程的第幾天,1-based,省略時視為第 1 天(對齊
+  // 既有單日行程的呼叫端,不需要因為加了這個欄位就強制所有呼叫端補上
+  // day: 1)。2026-09 新增,理由:原本這個資料層只有一條扁平時間軸,
+  // time 是唯一的排序依據,且驗證邏輯要求整條時間軸嚴格遞增(見下方
+  // insertAfter 的完整說明)——多天行程若延續同一套邏輯,第二天只能從
+  // 「比前一天最後一站更晚」的時刻開始接續(例如前一天到 23:00,第二天
+  // 只能從 23:01 起跳),沒辦法讓每天各自從清晨重新開始,使用者明確
+  // 要求「排程元件加入日的概念」來解決這個限制。時間驗證(nearestStopNode)
+  // 改成只在同一個 day 範圍內找邊界、比較 time 先後,不同 day 之間不
+  // 比較時間值,讓每天都能各自用合理的一天時刻表(例如都從早上開始)。
+  // 節點在鏈結串列裡的先後順序仍然是唯一的顯示順序依據(day 並不是
+  // 另一層獨立的分組結構,只是這個 stop 節點自己的一個屬性)——同一天
+  // 的所有節點在鏈結上必須彼此相鄰,不支援「day 1 的兩段中間穿插一段
+  // day 2」這種交錯排列,呼叫端(attractionTools.ts/模擬腳本)自己保證
+  // 依日期順序插入,這裡不做額外校驗。
+  day?: number
   duration?: string
   kind?: string
   name?: string
@@ -177,21 +193,64 @@ export function createEmptyTimeline(): PlanTimeline {
   return { nodes: new Map(), headId: null }
 }
 
+// DAY_DIVIDER_ID_PREFIX — toRenderList 自動插入的跨天分隔線虛擬節點
+// id 前綴(見該函式的完整說明)。呼叫端(AIPlanTimelinePage.tsx/
+// TripPlanPage.tsx 的渲染邏輯)可以用這個前綴判斷某個節點是不是這種
+// 虛擬分隔線,而不是真的鏈結節點——例如點擊卡片、拖曳排序這類只該對
+// 真實節點生效的互動,不該誤把分隔線當成一般節點處理。
+export const DAY_DIVIDER_ID_PREFIX = 'day-divider-'
+
 // toRenderList — 沿著鏈結從 headId 走訪到底,產出供 JSX .map() 使用的
 // 陣列。這是唯一把鏈結「攤平」成陣列的地方,渲染層不該自己走訪 Map。
 // 孤兒節點(存在於 nodes 但走訪不到,理論上不該發生,insertAfter/
 // removeNode 都會維持鏈結完整性)不會出現在結果裡——防禦性地忽略,
 // 不是靜默吃掉真正的 bug:若鏈結真的斷裂,問題該在寫入路徑(insertAfter/
 // removeNode)本身被發現,不是在渲染這裡才表現成「某個節點憑空消失」。
+//
+// 2026-09 新增:自動插入跨天分隔線(使用者明確要求「跨天不用插入
+// section,排程元件自動新增分隔線」)——完全取代原本靠呼叫端手動送
+// 'section' 節點表達「上午/中午/下午」這種子分段的做法。走訪過程中,
+// 只要遇到下一個 stop 節點的 day(見 PlanNodeData.day 的完整說明,
+// 省略視為第 1 天)跟目前追蹤的「目前這天」不同,就在它前面插入一個
+// 虛擬分隔線節點,再把「目前這天」更新成它的 day——不只判斷「比較大」
+// (day 遞增),因為 insertAfter 並不保證鏈結上的 day 一定沿路遞增(見
+// insertAfter/nearestStopNode 的完整說明:day 不同時不比較 time 先後,
+// 不會擋下「day 1 的站接在 day 2 站之後」這種寫入),若只在遞增時插入
+// 分隔線,day 不遞增的那一站會被靜默併入前一段、完全沒有分隔線標示,
+// 且之後的追蹤狀態也不會修正回來——這是實際發現過的 bug,故改成只要
+// 不同就插入,涵蓋遞增與非遞增兩種情況。這個分隔線節點不存在於
+// timeline.nodes(不是真的鏈結節點,insertAfter/removeNode/updateNode
+// 完全不需要知道它的存在),只在這次 toRenderList 呼叫的回傳陣列裡
+// 產生,每次呼叫都重新計算,不會被快取或誤當成需要維護鏈結完整性的
+// 對象。id 用 `${DAY_DIVIDER_ID_PREFIX}${day}` 而非隨機值——同一個
+// day 邊界每次重新計算都得到同一個 id,呼叫端拿 id 當 React key 時
+// 不會因為每次都換一個新 id 而誤判成「舊分隔線移除、新分隔線插入」
+// 觸發不必要的重新掛載/進場動畫。只在遇到 stop 節點時比較 day——
+// section/message 節點沒有時間先後的概念,不影響「目前這天」的追蹤
+// (也不會被跳過插入分隔線,只是它們本身的 day 不列入比較)。
 export function toRenderList(timeline: PlanTimeline): PlanNode[] {
   const result: PlanNode[] = []
   let cursor = timeline.headId
   const visited = new Set<string>()
+  let currentDay = 1
   while (cursor !== null) {
     if (visited.has(cursor)) break // 防禦性:避免鏈結若不慎成環造成無限迴圈
     visited.add(cursor)
     const node = timeline.nodes.get(cursor)
     if (!node) break
+    if (node.type === 'stop') {
+      const nodeDay = normalizedDay(node.day)
+      if (nodeDay !== currentDay) {
+        result.push({
+          type: 'section',
+          label: `Day ${nodeDay}`,
+          id: `${DAY_DIVIDER_ID_PREFIX}${nodeDay}`,
+          prevId: null,
+          nextId: null,
+        })
+        currentDay = nodeDay
+      }
+    }
     result.push(node)
     cursor = node.nextId
   }
@@ -240,16 +299,29 @@ export type InsertAfterResult =
 // 呼叫端(insertAfter 的錯誤訊息)需要節點的 id/name/time 才能組出
 // 「請用 XX(id)當錨點,它的時間是 YY」這種可操作的具體指引,只有分鐘數
 // 無法組出這樣的訊息。
+// day 比較:省略視為第 1 天(見 PlanNodeData.day 的完整說明)。
+function normalizedDay(day: number | undefined): number {
+  return day ?? 1
+}
+
+// targetDay——只在跟新插入節點「同一天」的範圍內找邊界節點,跨天的
+// stop 不當作時間比較的邊界(見 PlanNodeData.day 的完整說明:day 不同
+// 時不比較 time 先後,讓每天可以各自從清晨重新開始)。走訪順序不變,
+// 只是多一個 day 是否相符的判斷——一旦走到不同天的節點就代表已經跨出
+// 「這一天」的範圍,直接視為找不到邊界(return null),不繼續往更遠的
+// 節點找(更遠的節點屬於別的天,不該被跨天拿來當邊界)。
 function nearestStopNode(
   timeline: PlanTimeline,
   startId: string | null,
   direction: 'prevId' | 'nextId',
+  targetDay: number,
 ): PlanNode | null {
   let cursor = startId
   while (cursor !== null) {
     const node = timeline.nodes.get(cursor)
     if (!node) return null
     if (node.type === 'stop' && node.time && isValidTimeFormat(node.time)) {
+      if (normalizedDay(node.day) !== targetDay) return null
       return node
     }
     cursor = node[direction]
@@ -365,11 +437,13 @@ export function insertAfter(
       return { ok: false, error: { code: 'invalid_time_format', message: `時間 "${data.time}" 格式不正確,必須是 "HH:MM"(24 小時制)。` } }
     }
     const newMinutes = timeToMinutes(data.time)
-    // 下界節點:錨點本身(若是帶時間的 stop)或往前找到的最近一個 stop。
-    const lowerNode = anchorId === null ? null : nearestStopNode(timeline, anchorId, 'prevId')
-    // 上界節點:錨點的下一個節點開始往後找到的最近一個 stop。
+    const targetDay = normalizedDay(data.day)
+    // 下界節點:錨點本身(若是帶時間的 stop)或往前找到的最近一個
+    // 同一天 stop(見 nearestStopNode 的完整說明)。
+    const lowerNode = anchorId === null ? null : nearestStopNode(timeline, anchorId, 'prevId', targetDay)
+    // 上界節點:錨點的下一個節點開始往後找到的最近一個同一天 stop。
     const anchorNextId = anchorId === null ? timeline.headId : (timeline.nodes.get(anchorId)?.nextId ?? null)
-    const upperNode = nearestStopNode(timeline, anchorNextId, 'nextId')
+    const upperNode = nearestStopNode(timeline, anchorNextId, 'nextId', targetDay)
     if (lowerNode !== null && newMinutes < timeToMinutes(lowerNode.time!)) {
       return {
         ok: false,
