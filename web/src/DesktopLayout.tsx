@@ -27,7 +27,6 @@ import { curatedCategoryOf } from './geo-planning/geoCuratedCategoryStub'
 import type { GeoAttraction, GeoPlaceDetails } from './api'
 import { type ContentProps } from './AppCommon'
 import { type PanelMode, isPanelMode, DEBUG_PANEL_ENABLED, PANEL_REGISTRY } from './DesktopShared'
-import { DemoPanelContent } from './demo/DemoPanelContent'
 import { RouteEditor } from './demo/RouteEditor'
 import { DesktopRail } from './DesktopRail'
 import { DesktopLayoutShell } from './DesktopLayoutShell'
@@ -42,7 +41,7 @@ import styles from './DesktopLayout.module.css'
 
 // DesktopLayout:桌面版(寬度 >= 768px)專屬佈局元件——左側邊欄(旅程列表 +
 // 使用者選單)+ 右側 ChatScreen 主要區塊,類似 Slack/Discord 的旅程側欄
-// 模式。PanelMode/DemoPanelContent/LangSelect/TokenDisplay/useTripsState
+// 模式。PanelMode/LangSelect/TokenDisplay/useTripsState
 // 這些「桌面/手機共用」的部分不在這裡,分別在 DesktopShared.tsx/
 // AppCommon.tsx——避免這裡跟手機版檔案(PhoneContent.tsx/PhoneNavDrawer.tsx/
 // PhoneScreens.tsx)互相 import 對方造成循環依賴。
@@ -576,14 +575,11 @@ export function DesktopContent(props: ContentProps) {
             </FloatingPanel>
           )}
           {panelSpec?.slot === 'main-replace' ? (
-            panelMode === 'demo-route-editor' ? (
-              // demo-route-editor 不透過 DemoPanelContent(見該常數在
-              // DesktopShared.tsx 的說明——只做桌面版,手機版 PhoneNavDrawer
-              // 不提供對應分頁),直接在這裡渲染。
-              <RouteEditor />
-            ) : (
-              <DemoPanelContent mode={panelMode as Exclude<PanelMode, 'trips' | 'timeline' | 'pace' | 'geo-outline' | 'demo-route-editor' | null>} />
-            )
+            // demo-route-editor 只做桌面版(手機版 PhoneNavDrawer 不提供
+            // 對應分頁),直接在這裡渲染。main-replace slot 目前只有這個
+            // 試做功能(原本還有 demo-onagent,經 DemoPanelContent 共用
+            // 邏輯渲染,已整個移除,含入口與實作)。
+            <RouteEditor />
           ) : (
             // main-replace 以外的所有情況(含 panelMode === null、'trips'/
             // 'timeline'/'pace'/'geo-outline'):主顯示固定是規劃地圖——

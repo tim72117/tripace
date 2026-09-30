@@ -1,7 +1,7 @@
 import { forwardRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
-  List, Layers, Radio, Activity, Route, BookOpen, PanelLeft,
+  List, Layers, Activity, Route, BookOpen, PanelLeft,
 } from 'lucide-react'
 import { Timeline } from 'lucide-react'
 import type { ClientConfig } from './api'
@@ -9,7 +9,7 @@ import type { User } from './user/types'
 import { DesktopUserMenu } from './user/DesktopUserMenu'
 import {
   type PanelMode, TIMELINE_ENABLED, PACE_ENABLED,
-  DEMO_ONAGENT_ENABLED, DEBUG_PANEL_ENABLED,
+  DEBUG_PANEL_ENABLED,
   DEMO_ROUTE_EDITOR_ENABLED, PANEL_REGISTRY,
 } from './DesktopShared'
 import styles from './DesktopRail.module.css'
@@ -141,23 +141,13 @@ export const DesktopRail = forwardRef<HTMLElement, DesktopRailProps>(function De
             {expanded && <span className={styles.btnLabel}>路徑</span>}
           </button>
         )}
-        {/* DEMO_*_ENABLED/DEBUG_PANEL_ENABLED:各自獨立的編譯時 feature flag
-            (見 DesktopShared.tsx 對這幾個常數的說明),取代原本綁在網址參數
-            ?demo 底下的單一 isDemo 開關——分隔線只在至少一項開啟時出現,
-            避免試做項目跟正式功能混在一起難以分辨。(原本還有推薦景點
-            卡片/橫滑兩顆試做按鈕,已整個移除,含入口與實作。) */}
-        {(DEMO_ONAGENT_ENABLED || DEBUG_PANEL_ENABLED) && (
+        {/* DEBUG_PANEL_ENABLED:編譯時 feature flag(見 DesktopShared.tsx
+            對這個常數的說明),取代原本綁在網址參數 ?demo 底下的單一
+            isDemo 開關——分隔線只在開啟時出現,避免試做項目跟正式功能
+            混在一起難以分辨。(原本還有 onagent 平台串接試做、推薦景點
+            卡片/橫滑三顆試做按鈕,已整個移除,含入口與實作。) */}
+        {DEBUG_PANEL_ENABLED && (
           <div className={styles.divider} />
-        )}
-        {DEMO_ONAGENT_ENABLED && (
-          <button
-            className={panelMode === 'demo-onagent' ? `${styles.btn} ${styles.btnDemo} ${styles.active}` : `${styles.btn} ${styles.btnDemo}`}
-            onClick={() => onSelect('demo-onagent')}
-            title="onagent 平台串接試做"
-          >
-            <Radio size={20} strokeWidth={1.8} />
-            {expanded && <span className={styles.btnLabel}>onagent 平台串接試做</span>}
-          </button>
         )}
         {DEBUG_PANEL_ENABLED && (
           <button
