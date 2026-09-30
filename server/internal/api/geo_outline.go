@@ -331,40 +331,8 @@ func (s *Server) fetchNearbyHotels(ctx context.Context, client *geo.Client, lat,
 	return hotels
 }
 
-// attractionResponse 是 GET /internal/geo/attractions 回應裡單筆景點區域
-// 的統一格式——不論資料來自 store.ListAttractionsByCity(人工建檔,見
-// model.Attraction)或 geo.SearchCityAttractions(即時查 Google Places 的
-// 後備資料),前端拿到的形狀一致,不需要依來源分別處理。Level 只有走
-// 資料庫路徑才會有值(1~5,見 model.Attraction 的完整說明);走 Google
-// Places 路徑的結果一律不帶 level(前端據此判斷全部顯示,不受縮放層級
-// 篩選——這批資料目前沒有分級資訊可用)。
-type attractionResponse struct {
-	Name         string  `json:"name"`
-	Lat          float64 `json:"lat"`
-	Lng          float64 `json:"lng"`
-	PlaceCount   int     `json:"placeCount,omitempty"`
-	LandmarkName string  `json:"landmarkName,omitempty"`
-	RadiusMeters int     `json:"radiusMeters,omitempty"`
-	Summary      string  `json:"summary,omitempty"`
-	Level        int     `json:"level,omitempty"`
-	// IsTheme:見 model.Attraction.IsTheme 的完整說明。跟 Level 一樣只有
-	// 走資料庫路徑才有意義,故沒有用 omitempty——false 是合法值(代表
-	// 「這是精選點」),omitempty 會讓前端收到的 JSON 完全沒有這個欄位,
-	// 跟「這筆資料來自沒有主題概念的 Google Places 後備路徑」混淆不清。
-	IsTheme bool `json:"isTheme"`
-	// PlaceID:只有走 store.ListAttractionsByCity/ListAttractionsNearby
-	// 這條人工建檔資料路徑、且該筆 model.Attraction.PlaceID 有值時才會有
-	// 值——即時查 Google Places 的 toAttractionResponses 路徑(geo.District
-	// 沒有這個欄位)固定不帶。有值時前端(useAttractionOverlays.ts/
-	// AttractionInfoPanel.tsx)才會改打 GET /internal/geo/place-details
-	// 查詢 photo_assets 的實際照片,見 model.Attraction.PlaceID 的完整
-	// 說明。
-	PlaceID string `json:"placeId,omitempty"`
-	// Category:見 model.Attraction.Category 的完整說明。跟 PlaceID 一樣
-	// 只有走資料庫路徑、且該筆有設定值時才會有值,即時查 Google Places 的
-	// 後備路徑沒有分類概念,固定不帶。
-	Category string `json:"category,omitempty"`
-}
+// attractionResponse(景點系統跨端點共用的回應格式)已搬到 geo_types.go
+// ——見該檔案開頭的完整說明。
 
 // GET /internal/geo/attractions?city={城市名稱}
 //
