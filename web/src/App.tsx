@@ -127,14 +127,17 @@ export function App() {
               風格,見 LegalPage.tsx。 */}
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
-          {/* /plan-ai:「AI 安排行程」模擬展示獨立公開頁,見
+          {/* /ai-plan:「AI 安排行程」模擬展示獨立公開頁,見
               home/plan-ai-sim/AIPlanTimelinePage.tsx 開頭的完整說明——
               固定接純前端假資料,不需要登入,跟其餘公開行銷頁同一層級。
-              路由本身使用者明確要求改為 /plan-ai(原本是 /plan-ai-sim),
-              純粹是對外呈現的路徑改名,元件所在目錄
-              home/plan-ai-sim/ 與檔案內部命名(PlanAiSimPage 等)維持
-              不變,不做無謂的連動重新命名。 */}
-          <Route path="/plan-ai" element={<PlanAiSimPage />} />
+              路由本身使用者明確要求改為 /ai-plan(先前是 /plan-ai,
+              /plan-ai-sim 之後),純粹是對外呈現的路徑改名,元件所在
+              目錄 home/plan-ai-sim/ 與檔案內部命名(PlanAiSimPage 等)
+              維持不變,不做無謂的連動重新命名。改路徑時務必同步更新
+              server/cmd/server/static.go 的 knownRoutePatterns——上次
+              新增 /plan-ai 忘了同步這份白名單,導致正式環境該路徑直接
+              404(即使前端路由本身定義正確),這是實際發生過的教訓。 */}
+          <Route path="/ai-plan" element={<PlanAiSimPage />} />
           {/* /public/{token} 路徑:直接渲染公開分享頁。原本用正則
               /^\/public\/([^/]+)$/ 手動解析 token,改用 Route 的 :token
               路徑參數 + useParams() 取代。 */}
