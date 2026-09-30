@@ -1,0 +1,43 @@
+# onagent 平台上 plan-ai-timeline app 的 list_itinerary tool 定義——見
+# search_attraction.yaml 開頭的完整說明(app 背景、新版 CLI 格式規則、
+# 為何拆成獨立檔案)。
+#
+# 2026-09 真實踩坑記錄(見 server/tmp/logs 底下實際對話紀錄):LLM 在
+# 完全不知道時間軸現況的情況下,單靠自己記住的對話上下文猜測某個節點
+# 的 anchorId 與其後一站的時間關係——一次真實案例裡,LLM 已經呼叫
+# add_attraction 插入「台南孔廟」(插在最前面,成為新的 head),但它不
+# 知道原本的 head「赤崁樓」因此變成孔廟的下一站,之後想在孔廟後面插入
+# 一個較晚的時間時,連續 4 次收到一模一樣的 time_out_of_range 錯誤,
+# 因為它沒有能力自己查詢「孔廟後面接的到底是哪一站」,只能不斷用同樣
+# 的參數重試。這個工具補上這個查詢現況的能力。
+#
+# 無參數(parameters.properties 為空物件)——這個工具不需要任何輸入,
+# 每次呼叫都回傳目前完整的時間軸現況。
+#
+# kind: query——LLM 需要看到查詢結果(現有節點清單)才能接著決定要用
+# 哪個 id 當 anchorId,不能是 action(fire-and-forget)。
+#
+# 推送(需要 onagent CLI,見 .claude/skills/onagent-cli-setup):
+#   onagent tool create -api <onagent 後端 URL> plan-ai-timeline server/tools/plan-ai/list_itinerary.yaml
+
+name: list_itinerary
+description: >-
+  查詢目前時間軸上已經排入的完整節點清單，依現有的實際順序回傳（不是
+  依對話裡提到的順序，也不含任何「第幾天」的分組——這個時間軸是一條
+  扁平的鏈結串列，沒有分日概念，若要維持「第幾天」的概念，你需要自己
+  從每個節點的 time 欄位或先前對話脈絡推斷）。每個節點包含 id（呼叫
+  add_attraction/add_note 時要用的 anchorId 就是這個值）、type
+  （section 或 stop）、time、name、label（section 節點的分段標題）、
+  note（這個節點身上的備註，若有）。
+
+  在以下情況呼叫這個工具，不要單靠對話記憶或猜測：
+  1. 呼叫 add_attraction 前，若不確定要接在哪個節點後面（尤其時間軸
+     上已經有多筆節點、或這輪對話已經進行一段時間時）。
+  2. 收到 anchor_not_found 或 time_out_of_range 錯誤後，先查一次現況
+     再決定下一步，不要用完全相同或憑空調整的參數反覆重試。
+  3. 使用者問「目前排了什麼」「現在的行程是什麼樣子」之類需要你回報
+     現況的問題時。
+kind: query
+parameters:
+  type: object
+  properties: {}

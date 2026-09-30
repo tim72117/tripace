@@ -13,9 +13,13 @@
 # apiKey)、PEXELS_API_KEY(後端地圖照片查詢的優先來源,見 geo_outline.go
 # 的 os.Getenv("PEXELS_API_KEY") 呼叫處)、GOOGLE_OAUTH_CLIENT_ID(前端
 # Google 登入 GSI 模式與後端 idtoken.Validate 共用的 OAuth 用戶端 ID,見
-# server/internal/auth/google.go)是六組獨立的金鑰/識別碼,不同用途、不同
-# 申請/輪替方式,互不影響。這支腳本目前是 Cloud Run(shuttle-045094509
-# 專案)唯一設定它們的地方,故一併整合進來,不另外開一支腳本。
+# server/internal/auth/google.go)、VITE_PLAN_AI_ONAGENT_APP_KEY(「AI
+# 規劃」功能專用的獨立 onagent app plan-ai-timeline 的 apiKey,見
+# web/src/trip-plan/TripPlanPage.tsx 的完整說明,跟 VITE_ONAGENT_APP_KEY
+# 是完全不同的兩個 app)是七組獨立的金鑰/識別碼,
+# 不同用途、不同申請/輪替方式,互不影響。這支腳本目前是 Cloud Run
+# (shuttle-045094509 專案)唯一設定它們的地方,故一併整合進來,不另外開
+# 一支腳本。
 #
 # PEXELS_API_KEY 跟 GOOGLE_MAPS_MAP_ID/VITE_ONAGENT_APP_KEY 一樣只支援
 # 貼上既有值(Pexels 沒有 gcloud 現場申請機制,不像 GOOGLE_PLACES_API_KEY/
@@ -50,6 +54,7 @@
 #   bash server/scripts/update-secret-manager.sh -onagent             # 只處理 VITE_ONAGENT_APP_KEY
 #   bash server/scripts/update-secret-manager.sh -pexels              # 只處理 PEXELS_API_KEY
 #   bash server/scripts/update-secret-manager.sh -oauth-client-id      # 只處理 GOOGLE_OAUTH_CLIENT_ID
+#   bash server/scripts/update-secret-manager.sh -plan-ai-onagent      # 只處理 VITE_PLAN_AI_ONAGENT_APP_KEY
 #   bash server/scripts/update-secret-manager.sh -cleanup-legacy-provider
 #       # 刪除已隨 want 移除而不再使用的 ANTHROPIC_API_KEY/GOOGLE_API_KEY
 #       # secret 容器(互動逐一確認,不影響上面四種一般用法)——刻意獨立成
@@ -74,6 +79,7 @@ print_usage() {
   -onagent                 只處理 VITE_ONAGENT_APP_KEY
   -pexels                  只處理 PEXELS_API_KEY
   -oauth-client-id         只處理 GOOGLE_OAUTH_CLIENT_ID
+  -plan-ai-onagent         只處理 VITE_PLAN_AI_ONAGENT_APP_KEY
   -cleanup-legacy-provider 刪除已隨 want 移除而不再使用的
                            ANTHROPIC_API_KEY/GOOGLE_API_KEY secret 容器
                            (互動逐一確認,不影響上面四種一般用法)
@@ -87,6 +93,7 @@ DO_MAP_ID=1
 DO_ONAGENT=1
 DO_PEXELS=1
 DO_OAUTH_CLIENT_ID=1
+DO_PLAN_AI_ONAGENT=1
 DO_CLEANUP_LEGACY_PROVIDER=0
 case "${1:-}" in
   -places)
@@ -95,6 +102,7 @@ case "${1:-}" in
     DO_ONAGENT=0
     DO_PEXELS=0
     DO_OAUTH_CLIENT_ID=0
+    DO_PLAN_AI_ONAGENT=0
     ;;
   -maps)
     DO_PLACES=0
@@ -102,6 +110,7 @@ case "${1:-}" in
     DO_ONAGENT=0
     DO_PEXELS=0
     DO_OAUTH_CLIENT_ID=0
+    DO_PLAN_AI_ONAGENT=0
     ;;
   -map-id)
     DO_PLACES=0
@@ -109,6 +118,7 @@ case "${1:-}" in
     DO_ONAGENT=0
     DO_PEXELS=0
     DO_OAUTH_CLIENT_ID=0
+    DO_PLAN_AI_ONAGENT=0
     ;;
   -onagent)
     DO_PLACES=0
@@ -116,6 +126,7 @@ case "${1:-}" in
     DO_MAP_ID=0
     DO_PEXELS=0
     DO_OAUTH_CLIENT_ID=0
+    DO_PLAN_AI_ONAGENT=0
     ;;
   -pexels)
     DO_PLACES=0
@@ -123,6 +134,7 @@ case "${1:-}" in
     DO_MAP_ID=0
     DO_ONAGENT=0
     DO_OAUTH_CLIENT_ID=0
+    DO_PLAN_AI_ONAGENT=0
     ;;
   -oauth-client-id)
     DO_PLACES=0
@@ -130,6 +142,15 @@ case "${1:-}" in
     DO_MAP_ID=0
     DO_ONAGENT=0
     DO_PEXELS=0
+    DO_PLAN_AI_ONAGENT=0
+    ;;
+  -plan-ai-onagent)
+    DO_PLACES=0
+    DO_MAPS=0
+    DO_MAP_ID=0
+    DO_ONAGENT=0
+    DO_PEXELS=0
+    DO_OAUTH_CLIENT_ID=0
     ;;
   -cleanup-legacy-provider)
     DO_PLACES=0
@@ -138,6 +159,7 @@ case "${1:-}" in
     DO_ONAGENT=0
     DO_PEXELS=0
     DO_OAUTH_CLIENT_ID=0
+    DO_PLAN_AI_ONAGENT=0
     DO_CLEANUP_LEGACY_PROVIDER=1
     ;;
   -h|--help)
@@ -447,7 +469,37 @@ if [[ "${DO_OAUTH_CLIENT_ID}" == "1" ]]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 6. 摘要 —— 只印出這次實際有跑過的類型，避免 -places/-maps/-onagent/-pexels/
+# 6. VITE_PLAN_AI_ONAGENT_APP_KEY —— 「AI 規劃」功能(/app/plan-ai,見
+#    web/src/trip-plan/TripPlanPage.tsx)專用的獨立 onagent app
+#    (plan-ai-timeline)的 apiKey,跟上面 VITE_ONAGENT_APP_KEY(tripace app)
+#    是完全不同的兩個 app、兩把互不相關的 key,見 TripPlanPage.tsx
+#    PLAN_AI_ONAGENT_APP_ID 的完整說明。透過 Dockerfile 的 web-build 階段
+#    以 --build-arg 編入前端 bundle(見 deploy-cloudrun.yml 的
+#    "Read plan-ai onagent app key from Secret Manager" step)。
+#
+#    這個 app 的 URL 2026-09 起不再有獨立的 VITE_PLAN_AI_ONAGENT_URL——
+#    共用上面 tripace app 的 VITE_ONAGENT_URL(deploy-cloudrun.yml 同一個
+#    --build-arg,固定值 https://onagent.shuttle.tools,不是機密,不進
+#    Secret Manager),這裡不處理。
+#
+#    只支援貼上既有值(理由同上方 VITE_ONAGENT_APP_KEY 段落——onagent
+#    平台的 apiKey 只能用 onagent CLI 另外核發,這支腳本沒有呼叫 onagent
+#    CLI 的能力)——要換 key 時,先對正式平台跑 `onagent key issue
+#    plan-ai-timeline -api https://onagent.shuttle.tools` 拿到明文,重發
+#    會讓舊 key 立刻失效,再回來這裡貼上。同時記得到 onagent 平台確認
+#    plan-ai-timeline app 的 Allowed origin 已設為正式站網域(`onagent app
+#    origin set plan-ai-timeline <正式站網域> -api
+#    https://onagent.shuttle.tools`)——未設定或設成別的網域會讓所有
+#    WebSocket 連線 fail-closed,即使 apiKey 正確也連不上。只在
+#    -plan-ai-onagent 或不帶參數(全部處理)時執行。
+# -----------------------------------------------------------------------------
+if [[ "${DO_PLAN_AI_ONAGENT}" == "1" ]]; then
+  upsert_secret "VITE_PLAN_AI_ONAGENT_APP_KEY" "VITE_PLAN_AI_ONAGENT_APP_KEY(onagent plan-ai-timeline app 的 apiKey,先跑 onagent key issue plan-ai-timeline -api https://onagent.shuttle.tools 取得)"
+  echo
+fi
+
+# -----------------------------------------------------------------------------
+# 7. 摘要 —— 只印出這次實際有跑過的類型，避免 -places/-maps/-onagent/-pexels/
 #    -oauth-client-id 單獨執行時印出沒處理過的項目。
 # -----------------------------------------------------------------------------
 echo "=============================================="
@@ -480,6 +532,12 @@ if [[ "${DO_OAUTH_CLIENT_ID}" == "1" ]]; then
   echo "   (secret: GOOGLE_OAUTH_CLIENT_ID，deploy-cloudrun.yml/"
   echo "    deploy-with-migration.yml 的 build 階段(--build-arg)與"
   echo "    --update-secrets 皆已接上，無需另外同步)"
+fi
+
+if [[ "${DO_PLAN_AI_ONAGENT}" == "1" ]]; then
+  echo "   (secret: VITE_PLAN_AI_ONAGENT_APP_KEY，deploy-cloudrun.yml 的"
+  echo "    build 階段(--build-arg)已接上，無需另外同步；這個 app 的 URL"
+  echo "    已不再獨立，共用 VITE_ONAGENT_URL，不進 Secret Manager)"
 fi
 
 echo

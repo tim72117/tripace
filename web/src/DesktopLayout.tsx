@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { lazy, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { ApiCall, WsEvent } from './api'
 import { onApiCall, onWsEvent, fetchGeoPlaceDetails, fetchGeoPlacePhotoAssets } from './api'
@@ -28,6 +28,11 @@ import type { GeoAttraction, GeoPlaceDetails } from './api'
 import { type ContentProps } from './AppCommon'
 import { type PanelMode, isPanelMode, DEBUG_PANEL_ENABLED, PANEL_REGISTRY } from './DesktopShared'
 import { RouteEditor } from './demo/RouteEditor'
+// TripPlanPage:「AI 規劃」正式功能頁面(見該檔案開頭的完整說明)——lazy
+// 載入,理由同 App.tsx 對其餘整頁級路由的既有做法:這個頁面串接 onagent
+// AgentBridge、地圖、markdown 渲染等較重的依賴,不是每個使用者都會點進
+// 這個 panelMode,不該拖累 /app 主 bundle 的初始載入體積。
+const TripPlanPage = lazy(() => import('./trip-plan/TripPlanPage').then((m) => ({ default: m.TripPlanPage })))
 import { DesktopRail } from './DesktopRail'
 import { DesktopLayoutShell } from './DesktopLayoutShell'
 import { DesktopMain } from './DesktopMain'
@@ -550,8 +555,17 @@ export function DesktopContent(props: ContentProps) {
         {/* unbounded:main-replace 以外的所有情況固定渲染 GeoOutlinePanel
             (見下方),故拿掉 860px 寬度上限——見 DesktopMain.tsx 對
             unbounded prop 的完整說明。不傳 unboundedScroll——地理規劃
-            輪廓底圖用 position:absolute 撐滿容器,不需要接手垂直捲動。 */}
-        <DesktopMain unbounded={panelSpec?.slot !== 'main-replace'}>
+            輪廓底圖用 position:absolute 撐滿容器,不需要接手垂直捲動。
+            plan-ai 也加進 unbounded/unboundedScroll:使用者實際回報
+            「捲軸的樣式跟位置,要貼在視窗」——先前讓 plan-ai 維持
+            860px 置中的預設(不 unbounded)時,捲動容器(.scroll)本身
+            被限制在內層 860px 容器裡,捲軸貼在內容區右緣、離視窗邊界
+            還有一段距離,不是貼齊視窗。改成外層(.main)撐滿視窗寬度、
+            接手捲動權(理由/寫法同 pace/PaceRouteMap 用 unboundedScroll
+            的既有作法),TripPlanPage 內部的 header/時間軸內容各自加了
+            一層 860px 置中容器維持視覺不變,只有捲動這件事發生在撐滿
+            視窗的外層。 */}
+        <DesktopMain unbounded={panelSpec?.slot !== 'main-replace' || panelMode === 'plan-ai'} unboundedScroll={panelMode === 'plan-ai'}>
           {geo.pickingDayKey && (
             // side="left" 只是借用左緣的 top/z-index/陰影等視覺語言,實際
             // 水平位置用 style.left 覆蓋——使用者明確要求候選卡並排顯示
@@ -575,11 +589,21 @@ export function DesktopContent(props: ContentProps) {
             </FloatingPanel>
           )}
           {panelSpec?.slot === 'main-replace' ? (
-            // demo-route-editor 只做桌面版(手機版 PhoneNavDrawer 不提供
-            // 對應分頁),直接在這裡渲染。main-replace slot 目前只有這個
-            // 試做功能(原本還有 demo-onagent,經 DemoPanelContent 共用
-            // 邏輯渲染,已整個移除,含入口與實作)。
-            <RouteEditor />
+            panelMode === 'demo-route-editor' ? (
+              // demo-route-editor 只做桌面版(手機版 PhoneNavDrawer 不
+              // 提供對應分頁),直接在這裡渲染。main-replace slot 目前
+              // 只有這個試做功能與下面的 plan-ai 兩種模式(原本還有
+              // demo-onagent,經 DemoPanelContent 共用邏輯渲染,已整個
+              // 移除,含入口與實作——這裡不再需要 else 分支)。
+              <RouteEditor />
+            ) : (
+              // plan-ai(AI 規劃,見 trip-plan/TripPlanPage.tsx 的完整
+              // 說明),正式功能,直接在這裡渲染,理由同 demo-route-editor/
+              // pace/geo-outline 的既有作法。不依附特定旅程(使用者明確
+              // 要求「plan ai 不需要 trip id」),不接收 tripID,PANEL_REGISTRY
+              // 也已拿掉 requiresTrip——不需要先選旅程就能使用這個功能。
+              <TripPlanPage cfg={cfg} tripName={activeTrip?.name ?? null} />
+            )
           ) : (
             // main-replace 以外的所有情況(含 panelMode === null、'trips'/
             // 'timeline'/'pace'/'geo-outline'):主顯示固定是規劃地圖——
@@ -790,7 +814,16 @@ export function DesktopContent(props: ContentProps) {
               title/onClose——GeoHotelSidebar 自己渲染頂部條(含標題文字+
               關閉按鈕,見該元件的說明),FloatingPanel 這裡只負責定位/
               陰影外殼。 */}
-          {geoHotelSidebarVisible && (
+          {/* panelSpec?.slot !== 'main-replace'——main-replace(目前
+              plan-ai/demo-route-editor)取代整個主顯示區,
+              底下沒有地圖可以讓這張清單疊在上面;不是重新引入上面註解
+              提到「已修復」的 panelMode === 'geo-outline' 那個 bug(那個
+              bug 是「只認一個特定 mode」,這裡排除的是「一整類完全沒有
+              地圖的 slot」,語意不同,geoHotelSidebarVisible 本身仍是唯一
+              的顯示條件來源)。用 fable 對 trip-plan/TripPlanPage.tsx 做
+              視覺審閱時發現:這張清單原本會疊在新頁面右側,變成孤兒
+              overlay。 */}
+          {geoHotelSidebarVisible && panelSpec?.slot !== 'main-replace' && (
             <FloatingPanel side="right" width={340} height="info">
               <GeoHotelSidebar
                 cfg={cfg}
@@ -852,7 +885,15 @@ export function DesktopContent(props: ContentProps) {
             className={[
               styles.chatPopover,
               geoHotelSidebarVisible ? styles.chatPopoverShifted : '',
-              chatPopoverOpen ? '' : styles.chatPopoverHidden,
+              // main-replace slot(目前只有 plan-ai/demo-route-editor)
+              // 取代整個主顯示區,底下沒有地圖可以讓
+              // 這張對話小匡疊在上面——理由同 geo-outline 模式才有意義
+              // 的 geoHotelSidebarVisible。用 fable 對 trip-plan/TripPlanPage.tsx
+              // 做視覺審閱時發現:這個 popover 原本只靠 chatPopoverOpen
+              // 決定顯示,不會因為切到 plan-ai 而自動隱藏,變成孤兒疊在
+              // 新頁面右側——加上這個判斷,不改動 chatPopoverOpen 本身
+              // (維持常駐掛載、不重建 WebSocket 連線的既有設計)。
+              (chatPopoverOpen && panelSpec?.slot !== 'main-replace') ? '' : styles.chatPopoverHidden,
             ].filter(Boolean).join(' ')}
             onClose={() => setChatPopoverOpen(false)}
           >

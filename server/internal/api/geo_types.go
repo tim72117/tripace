@@ -1,5 +1,7 @@
 package api
 
+import "github.com/tim72117/tripace/internal/model"
+
 // geo_types.go — 景點系統跨端點共用的基礎資料結構。
 //
 // 這裡只放「被多個 handler 檔案共同依賴、不屬於任何單一端點」的型別。
@@ -26,6 +28,13 @@ package api
 // Places 路徑的結果一律不帶 level(前端據此判斷全部顯示,不受縮放層級
 // 篩選——這批資料目前沒有分級資訊可用)。
 type attractionResponse struct {
+	// ID:只有走 store.ListAttractionsByCity/ListAttractionsNearby 這條
+	// 人工建檔資料路徑才會有值——即時查 Google Places 的 toAttractionResponses
+	// 路徑(geo.District 沒有這個欄位)固定不帶,同 PlaceID/Category 的既有
+	// 慣例。供 plan-ai 的 attraction-search 使用:LLM 只需要記住這個
+	// attractions 表的主鍵,之後用 attraction/{id} 端點重新查詢完整資料,
+	// 不需要在兩次工具呼叫之間原封不動複製貼上 name/lat/lng/summary。
+	ID           string  `json:"id,omitempty"`
 	Name         string  `json:"name"`
 	Lat          float64 `json:"lat"`
 	Lng          float64 `json:"lng"`
@@ -51,4 +60,47 @@ type attractionResponse struct {
 	// 只有走資料庫路徑、且該筆有設定值時才會有值,即時查 Google Places 的
 	// 後備路徑沒有分類概念,固定不帶。
 	Category string `json:"category,omitempty"`
+}
+
+// toAttractionResponse 把 model.Attraction(資料庫路徑的人工建檔紀錄)轉
+// 成統一的 attractionResponse 回應格式——2026-09 抽出來取代原本分散在
+// geo_outline.go(handleGeoAttractions/handleGeoAttractionsNearby/
+// handleGeoAttractionsOnlyNearby 三處)與 geo_plan_ai.go
+// (handlePublicGeoAttractionSearch)各自手刻的同一段欄位對應邏輯。
+//
+// 四個呼叫端手刻時欄位選取不完全一致(有的漏 ID、有的漏
+// RadiusMeters/Level),這裡刻意把 model.Attraction 有的欄位全部帶上
+// ——這是「資料庫紀錄轉成對外格式」這個轉換本身該有的完整行為,要不要
+// 用哪些欄位是呼叫端的事(attractionResponse 的對應 json tag 多半有
+// omitempty,呼叫端不讀的欄位在回應裡不會造成問題),不該讓轉換函式
+// 自己替呼叫端決定「這個情境應該省略哪些欄位」而漏東漏西——那正是
+// 這次要修的問題本身:手刻對應容易在新增呼叫端時忘記帶上某個欄位
+// (search_attraction 這條路徑就曾經因此漏掉 IsTheme 過濾,見
+// handlePublicGeoAttractionSearch 呼叫端自己的完整說明)。
+//
+// 不處理 toAttractionResponses(geo.District → attractionResponse)那條
+// 即時查 Google Places 的路徑——那批來源資料本來就沒有 ID/RadiusMeters/
+// Level/PlaceID/Category 這些只有資料庫紀錄才有的欄位,兩者轉換邏輯的
+// 出發點不同,硬併成同一個函式反而要塞一堆「這個來源沒有這個欄位」的
+// 條件判斷,不是真正的重複。
+func toAttractionResponse(a model.Attraction) attractionResponse {
+	ar := attractionResponse{
+		ID:           a.ID,
+		Name:         a.Name,
+		Lat:          a.Lat,
+		Lng:          a.Lng,
+		RadiusMeters: a.RadiusMeters,
+		Level:        a.Level,
+		IsTheme:      a.IsTheme,
+	}
+	if a.Summary != nil {
+		ar.Summary = *a.Summary
+	}
+	if a.PlaceID != nil {
+		ar.PlaceID = *a.PlaceID
+	}
+	if a.Category != nil {
+		ar.Category = *a.Category
+	}
+	return ar
 }

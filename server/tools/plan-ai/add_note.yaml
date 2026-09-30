@@ -1,0 +1,37 @@
+# onagent 平台上 plan-ai-timeline app 的 add_note tool 定義——見
+# search_attraction.yaml 開頭的完整說明(app 背景、新版 CLI 格式規則、
+# 為何拆成獨立檔案)。
+#
+# 推送(需要 onagent CLI,見 .claude/skills/onagent-cli-setup):
+#   onagent tool create -api <onagent 後端 URL> plan-ai-timeline server/tools/plan-ai/add_note.yaml
+
+name: add_note
+description: >-
+  把一則文字備註寫在時間軸上某個既有景點節點自己身上（不是插入新節點），
+  用來說明「為什麼這樣安排行程」——例如取捨考量、花費估算、天氣影響、
+  一般提醒。anchorId 必填，必須是先前某次 add_attraction 成功後回傳結果
+  裡的 id（不是 attractionId，也不是 Google Place ID——這三者是不同的
+  識別碼，不能互相替代）。備註一定要有明確的掛載對象，沒有「插在時間軸
+  最前面」這種語意。每個節點同時只能有一則備註，重複呼叫會覆蓋掉同一個
+  anchorId 先前寫入的備註。若回傳錯誤（anchorId 不是時間軸上既有節點的
+  id），錯誤訊息會直接告知，請確認 anchorId 來自先前某次 add_attraction
+  的回傳結果後重試，不要用完全相同的參數再呼叫一次。
+kind: query
+parameters:
+  type: object
+  properties:
+    anchorId:
+      type: string
+      description: 要把備註寫在哪個既有景點節點上——必須是先前某次 add_attraction 成功後回傳結果裡的 id。
+    category:
+      type: string
+      description: >-
+        備註分類，決定顯示的顏色與圖示。合法值：consideration（取捨
+        考量）、info（一般提醒）、cost（花費估算）、weather（天氣
+        考量）。省略時預設為 info。
+    text:
+      type: string
+      description: 備註內容本身，用自然語言簡短說明這樣安排的理由或提醒。
+  required:
+    - anchorId
+    - text

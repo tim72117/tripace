@@ -382,24 +382,7 @@ func (s *Server) handleGeoAttractions(w http.ResponseWriter, r *http.Request) {
 	// 後端這一批查詢/組裝邏輯也一併移除,不留著算好卻沒人讀的欄位。
 	if landmarks, err := s.store.ListAttractionsByCity(city); err == nil && len(landmarks) > 0 {
 		for _, landmark := range landmarks {
-			ar := attractionResponse{
-				Name:         landmark.Name,
-				Lat:          landmark.Lat,
-				Lng:          landmark.Lng,
-				RadiusMeters: landmark.RadiusMeters,
-				Level:        landmark.Level,
-				IsTheme:      landmark.IsTheme,
-			}
-			if landmark.Summary != nil {
-				ar.Summary = *landmark.Summary
-			}
-			if landmark.PlaceID != nil {
-				ar.PlaceID = *landmark.PlaceID
-			}
-			if landmark.Category != nil {
-				ar.Category = *landmark.Category
-			}
-			attractions = append(attractions, ar)
+			attractions = append(attractions, toAttractionResponse(landmark))
 		}
 	}
 
@@ -840,24 +823,7 @@ func (s *Server) listAttractionResponses(lat, lng, radiusMeters float64) ([]attr
 	// photo_assets 這段邏輯一併移除。
 	attractions := make([]attractionResponse, 0, len(landmarks))
 	for _, landmark := range landmarks {
-		ar := attractionResponse{
-			Name:         landmark.Name,
-			Lat:          landmark.Lat,
-			Lng:          landmark.Lng,
-			RadiusMeters: landmark.RadiusMeters,
-			Level:        landmark.Level,
-			IsTheme:      landmark.IsTheme,
-		}
-		if landmark.Summary != nil {
-			ar.Summary = *landmark.Summary
-		}
-		if landmark.PlaceID != nil {
-			ar.PlaceID = *landmark.PlaceID
-		}
-		if landmark.Category != nil {
-			ar.Category = *landmark.Category
-		}
-		attractions = append(attractions, ar)
+		attractions = append(attractions, toAttractionResponse(landmark))
 	}
 	return attractions, nil
 }
@@ -1732,24 +1698,7 @@ func (s *Server) handleGeoAttractionsByCity(city string) ([]attractionResponse, 
 	// photo_assets 這段邏輯一併移除。
 	attractions := make([]attractionResponse, 0, len(landmarks))
 	for _, landmark := range landmarks {
-		ar := attractionResponse{
-			Name:         landmark.Name,
-			Lat:          landmark.Lat,
-			Lng:          landmark.Lng,
-			RadiusMeters: landmark.RadiusMeters,
-			Level:        landmark.Level,
-			IsTheme:      landmark.IsTheme,
-		}
-		if landmark.Summary != nil {
-			ar.Summary = *landmark.Summary
-		}
-		if landmark.PlaceID != nil {
-			ar.PlaceID = *landmark.PlaceID
-		}
-		if landmark.Category != nil {
-			ar.Category = *landmark.Category
-		}
-		attractions = append(attractions, ar)
+		attractions = append(attractions, toAttractionResponse(landmark))
 	}
 	return attractions, nil
 }

@@ -27,6 +27,15 @@
     不跟隨夜間模式切換(使用者實測回報「夜間版 attraction 底圖上的點
     顏色有問題」),收斂成 token 後才能在深色模式下換成對比度足夠的
     版本。 */
+  --ios-ai-message-bg: #F3EFFA;   /* 對話訊息氣泡底色(藕紫,淡)——
+    /plan-ai(AIPlanTimelinePage.tsx)時間軸上獨立的 message 節點專用,
+    刻意跟 --ios-sand(景點/生成位置的橘色系)、note 的橘色系拉開,避免
+    使用者把「AI 說的話」誤認成行程備註或地點標記。原本這兩個值直接
+    寫死在 AIPlanTimelinePage.module.css 的 .messageBubble 裡,深色模式
+    下會維持同一組淺色值不變,跟深色卡片(--ios-card 深色版 #26211D)
+    放在一起顯得突兀刺眼,收斂成 token 才能在深色模式下換成對比度足夠
+    的版本(同 --ios-sand 收斂成 token 的理由)。 */
+  --ios-ai-message-text: #5F5079; /* 對話訊息氣泡文字色(藕紫,深) */
 }
 
 /* 登入後 App(PhoneContent.tsx/DesktopLayout.tsx 及底下畫面)的深色模式
@@ -66,6 +75,8 @@
     --ios-red-border: #5A342C;
     --btn-primary-disabled: #4A3E30;
     --ios-sand: #D9A97D;
+    --ios-ai-message-bg: #2E2838;
+    --ios-ai-message-text: #C9BEDD;
   }
   /* body 本身不是 .app-theme-root 的後代(是其祖先/兄弟,見 App.tsx 的
      DOM 結構說明),所以上面那組 --ios-bg 覆寫不會影響 body { background }
@@ -97,6 +108,8 @@
   --ios-red-border: #5A342C;
   --btn-primary-disabled: #4A3E30;
   --ios-sand: #D9A97D;
+  --ios-ai-message-bg: #2E2838;
+  --ios-ai-message-text: #C9BEDD;
 }
 /* 使用者手動選「夜間模式」時,同理覆寫 body 的 background——理由同上方
    media query 內的說明,:has() 守衛確保只在 body 內確實掛著

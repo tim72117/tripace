@@ -748,6 +748,52 @@ export function ExploreMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKey, initialCenter, theme])
 
+  // 容器尺寸變化時重新觸發 Google Maps 的 resize——上方建圖流程末尾那次
+  // requestAnimationFrame 只能補救「下一個畫格前尺寸就定案」的情況,補不了
+  // 「建圖之後容器尺寸才變化」的所有後續情境,Maps SDK 本身又不會主動監聽
+  // 容器 resize(見該處的完整說明:卡住後只是一片空白,不會拋錯、主控台也
+  // 不會有訊息)。
+  //
+  // 2026-09 真實案例:桌面版從 /app/plan-ai 切回 /app 時地圖不顯示——
+  // plan-ai 是 main-replace 版面(見 DesktopLayout.tsx panelSpec 的判斷),
+  // 離開時 <main> 這個 DOM 節點被 React reuse、只換掉 class
+  // (.unboundedScroll 被拿掉,見 DesktopMain.module.css),而 ExploreMap
+  // 在同一次 commit 重新掛載並立即建圖;此時瀏覽器可能還沒完成因 class
+  // 變更觸發的版面重算,地圖量到的是尚未定案(0 或舊值)的容器尺寸,之後
+  // 容器恢復正常高度時 Maps 不會自己重量,就永久停在空白狀態。
+  //
+  // 這個 observer 監聽的是實際的地圖容器(containerRef),不是任何祖先層
+  // ——真正決定 Maps 畫布尺寸的就是這個元素本身,監聽它最直接、也不會因為
+  // 祖先層某個不影響地圖的尺寸變化而做多餘的 resize。
+  //
+  // 依賴 mapReady:地圖還沒建好時沒有實例可以觸發 resize,建好之後才掛;
+  // 地圖因為 theme 改變而重建時 mapReady 會先轉 false 再轉 true(見建圖
+  // effect),這個 observer 也會跟著重新掛到新實例上,不會殘留監聽舊實例。
+  //
+  // 跳過尺寸為 0 的回報:元素被卸載/隱藏的當下 ResizeObserver 會回報
+  // 0x0,此時觸發 resize 只會讓 Maps 把畫布尺寸記成 0(正是要避免的狀態)
+  // ——等它恢復非 0 尺寸時的那次回報才是真正需要處理的。
+  useEffect(() => {
+    if (!mapReady) return
+    const el = containerRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect
+      if (!rect || rect.width === 0 || rect.height === 0) return
+      const map = mapRef.current
+      if (!map) return
+      // 先記住目前中心再 resize——resize 事件可能讓 Maps 的視覺中心跑掉
+      // (官方文件記載的既有行為,理由同建圖流程末尾那次 resize 後要重新
+      // setCenter)。這裡用「目前的中心」而非 initialCenter:使用者可能
+      // 已經拖曳/搜尋移動過地圖,拿建圖當下的初始座標會把畫面拉回原點。
+      const center = map.getCenter()
+      google.maps.event.trigger(map, 'resize')
+      if (center) map.setCenter(center)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [mapReady])
+
   // 2026-08:移除原本在這裡「依地圖可視範圍自動查詢景點區域」的 effect
   // (attractionsQueryTrigger 遞增驅動,跟拖曳/縮放的 idle 事件自動連動)
   // ——使用者明確要求縮放/移動地圖時不要自動重新查詢景點區域,一律改成

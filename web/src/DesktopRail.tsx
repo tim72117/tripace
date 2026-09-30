@@ -1,7 +1,7 @@
 import { forwardRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
-  List, Layers, Activity, Route, BookOpen, PanelLeft,
+  List, Layers, Activity, Route, BookOpen, PanelLeft, Sparkles,
 } from 'lucide-react'
 import { Timeline } from 'lucide-react'
 import type { ClientConfig } from './api'
@@ -141,6 +141,25 @@ export const DesktopRail = forwardRef<HTMLElement, DesktopRailProps>(function De
             {expanded && <span className={styles.btnLabel}>路徑</span>}
           </button>
         )}
+        {/* plan-ai(AI 規劃,見 trip-plan/TripPlanPage.tsx 的完整說明):
+            已不再有獨立 feature flag(同規劃地圖的既有先例——見
+            DesktopShared.tsx 對這件事的說明),按鈕永遠渲染,不再用條件式
+            包住。使用者明確要求「plan ai 不需要 trip id」——不依附特定
+            旅程,不需要先選定一趟旅程才能點進來,故不像 timeline 那樣有
+            requiresTrip/disabled 判斷。使用者明確要求「beta 是放在正式
+            頁面的功能列按鈕上」——這裡的 .betaTag 是這顆按鈕專屬的小
+            標籤,標示這個功能還在測試中,跟其餘已經穩定的正式按鈕
+            (旅程列表/規劃/時間軸/路徑)區隔開,不需要 title 提示就能
+            一眼看出。 */}
+        <button
+          className={panelMode === 'plan-ai' ? `${styles.btn} ${styles.active}` : styles.btn}
+          onClick={() => onSelect('plan-ai')}
+          title="AI 規劃(Beta)"
+        >
+          <Sparkles size={20} strokeWidth={1.8} />
+          {expanded && <span className={styles.btnLabel}>AI 規劃</span>}
+          <span className={styles.betaTag}>BETA</span>
+        </button>
         {/* DEBUG_PANEL_ENABLED:編譯時 feature flag(見 DesktopShared.tsx
             對這個常數的說明),取代原本綁在網址參數 ?demo 底下的單一
             isDemo 開關——分隔線只在開啟時出現,避免試做項目跟正式功能

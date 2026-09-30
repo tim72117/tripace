@@ -1,7 +1,7 @@
 /* AutoPlanDemo:見 AutoPlanDemo.tsx 開頭的完整說明。聊天輸入框
    (.chatInputWrap/.chatInput/.chatSendBtn/.caret/.aiLine/.aiLineIcon/
    .thinkingDots/.dot)整份沿用 NaturalQueryDemo.module.css 對應規則的
-   數值(該檔案已照抄自 planning-demo/AIPlanTimelinePage.module.css 的
+   數值(該檔案已照抄自 plan-ai/AIPlanTimelinePage.module.css 的
    .inputWrap/.input/.sendBtn/.aiLine/.aiLineIcon)——2026-09「自然語言
    查詢」改主題為「自動編排行程」,聊天輸入框這段視覺不變,只有下方
    時間軸(.timeline 以下)是全新設計,取代原本的 .resultList/.resultCard

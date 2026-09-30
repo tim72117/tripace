@@ -275,7 +275,18 @@ func main() {
 	// 那裡沒有對應 handler、Go 1.22+ mux 會回 404,反而打壞現有的分享
 	// 連結頁面。同一個「新路徑要明確轉發、否則落到 SPA fallback」的陷阱,
 	// 見上面 /onagent/ 的說明。
+	// 2026-09:這行現在服務的是主題介紹頁/訪客分享頁用的三支端點
+	// (place-details/place-photo-assets/attractions)。plan-ai 那批查詢
+	// 端點原本也走這個前綴,已改為需登入、搬到 /internal/geo/plan-ai/*
+	// (由上面第 258 行的 /internal/ 轉發涵蓋),**但這一行不可以跟著移除**
+	// ——主題介紹頁仍然依賴它,拿掉會讓那三支端點落進 SPA fallback
+	// (回 200 + index.html,前端把 HTML 當 JSON 解析失敗),是那種不會
+	// 出現明顯 404、很難追查的靜默故障。
 	mux.Handle("/public/geo/", srv.Routes())
+	// 原本這裡還有 /public/plan-sim/ 的轉發(模擬推論 WebSocket),該端點
+	// 已改為需登入並搬到 GET /internal/geo/plan-ai/sim-ws(見
+	// internal/api/plan_sim_demo.go 與 api.go 路由註冊處的完整說明),由
+	// 上面 /internal/ 的轉發涵蓋,不需要獨立一行。
 
 	// 管理後台(/admin/api/*)預設拆分成獨立的 cmd/adminserver binary/
 	// Cloud Run 服務(見 server/cmd/adminserver/main.go),那條部署路徑

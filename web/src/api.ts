@@ -412,6 +412,13 @@ export function geocodeEntry(cfg: ClientConfig, entryID: string) {
 // 地理輪廓底圖(構想 6,見 docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)用:
 // 對齊 server 的 GET /internal/geo/attractions(handleGeoAttractions)。
 export interface GeoAttraction {
+  // id:資料庫路徑(model.Attraction.ID)才有值——即時查 Google Places 的
+  // 後備路徑(geo.District)沒有資料庫 id 概念,固定不帶。2026-09 新增,
+  // 供 /plan-ai 的 search_attraction/add_attraction 工具流程使用(見
+  // attractionTools.ts 的完整說明),前端可以用這個 id 呼叫
+  // GET /internal/geo/plan-ai/attraction/{id} 取得完整資料,不需要中途攜帶
+  // name/summary/photoUrl/placeId 這些欄位。
+  id?: string
   name: string
   lat: number
   lng: number
@@ -762,6 +769,169 @@ export function fetchPublicGeoPlacePhotoAssets(cfg: ClientConfig, placeId: strin
     'GET',
     `/public/geo/place-photo-assets?placeId=${encodeURIComponent(placeId)}`,
   )
+}
+
+// GeoPlanAiPlaceSearchResult:fetchPlanAiPlaceSearch 的回應形狀——對齊
+// 後端 handlePublicGeoPlaceSearch 的 JSON 輸出。found 為 false 時
+// name/address/lat/lng/placeId 皆不存在(查無此地,不是查詢失敗,見後端
+// handler 的完整說明:這種情況回應仍是 200)。
+export interface GeoPlanAiPlaceSearchResult {
+  found: boolean
+  name?: string
+  address?: string
+  lat?: number
+  lng?: number
+  placeId?: string
+}
+
+// fetchPlanAiPlaceSearch:GET /internal/geo/plan-ai/place-search(需登入,通用
+// 地名文字查詢,見後端 handlePublicGeoPlaceSearch 的完整說明)——供
+// plan-core/attractionTools.ts 的 search_attraction 工具查詢任意地名取得
+// 座標,不限於資料庫裡已建檔的固定景點池。
+//
+// 2026-09:這批 fetchPlanAi* 端點原本掛在免登入的 /public/geo/* 底下,已
+// 改為需登入(搬到 /internal/geo/plan-ai/*)——任何訪客都能消耗 Google
+// Places 計費配額的曝險已關閉。**呼叫端必須傳有 token 的 cfg**:request()
+// 會在 cfg.token 有值時自動帶上 Authorization header(見該函式),傳
+// token: null 的訪客 cfg 會拿到 401。只回傳最相關的第一筆結果(found:true 時),不是候選列表——這支
+// 端點的用途是「取得一個確定的錨點座標」,不是給使用者手動挑選多筆候選
+// 的搜尋框。後端套用全域拒絕型限流(見該 handler 的完整說明,不分呼叫者
+// 共用同一個視窗),前端這裡不重複實作節流,查詢過於頻繁時直接讓後端的
+// 429 錯誤透過 request() 既有的錯誤處理路徑往上拋。
+export function fetchPlanAiPlaceSearch(cfg: ClientConfig, query: string) {
+  return request<GeoPlanAiPlaceSearchResult>(cfg, 'GET', `/internal/geo/plan-ai/place-search?query=${encodeURIComponent(query)}`)
+}
+
+// GeoPlanAiAttractionSearchResult:fetchPlanAiAttractionSearch 的回應
+// 形狀——對齊後端 handlePublicGeoAttractionSearch 的 JSON 輸出,重用
+// GeoAttraction(跟 fetchPublicGeoAttractions 共用同一個型別,見該介面的
+// 完整說明)。這支端點回傳的每一筆候選一律帶 placeId——不論資料庫候選
+// (attractions 表已建檔、有 place_id 的紀錄)或 Google Nearby Search
+// 補上的候選,兩者統一用同一個 placeId 欄位當識別碼,呼叫端不需要知道
+// 來源差異(見後端 handlePublicGeoAttractionSearch 的完整說明)。
+export interface GeoPlanAiAttractionSearchResult {
+  attractions: GeoAttraction[]
+}
+
+// fetchPlanAiAttractionSearch:GET /internal/geo/plan-ai/attraction-search(需
+// 登入版的鄰近景點候選查詢,見後端 handlePublicGeoAttractionSearch 的
+// 完整說明)——供 /plan-ai 的 search_attraction 工具使用:查詢某個座標
+// 附近的景點候選,資料庫候選不足 10 筆時後端會額外用 Google Nearby
+// Search 補上不重複的點。後端套用獨立的拒絕型限流(見該 handler 的
+// 完整說明),前端這裡不重複實作節流。
+//
+// types:選填、逗號分隔的地點類型清單(對應後端
+// allowedNearbyAttractionTypes 白名單,見該常數的完整說明),只影響
+// Google Nearby Search 補點那段是否依類型限縮搜尋範圍——資料庫候選
+// 不受這個參數篩選。省略或傳空陣列時不加這個查詢參數,行為與改動前
+// 完全一致(不限制類型)。
+// 需登入——理由與 cfg.token 的要求同 fetchPlanAiPlaceSearch 的完整說明
+// (2026-09 這批端點從免登入的 /public/geo/* 搬到 /internal/geo/plan-ai/*)。
+export function fetchPlanAiAttractionSearch(cfg: ClientConfig, lat: number, lng: number, types?: string[]) {
+  const typesQuery = types && types.length > 0 ? `&types=${encodeURIComponent(types.join(','))}` : ''
+  return request<GeoPlanAiAttractionSearchResult>(cfg, 'GET', `/internal/geo/plan-ai/attraction-search?lat=${lat}&lng=${lng}${typesQuery}`)
+}
+
+// GeoPlanAiPlaceDetailsAnyResult:fetchPlanAiPlaceDetailsAny 的回應
+// 形狀——對齊後端 handlePublicGeoPlaceDetailsAny 的 JSON 輸出。found 為
+// false 時其餘欄位皆不存在(查無此 placeId,不是查詢失敗)。
+//
+// 2026-09:photoUrl 只在後端優先查 attractions 表命中時才會有值(見該
+// handler 的完整說明——已建檔景點才有真實照片,fallback 到 Google
+// GetPlaceDetails 的查詢結果不含照片),前端使用時應視為選填欄位。
+//
+// attractionId 同樣只在後端命中資料庫 attractions 表時才有值(見該
+// handler 的完整說明,使用者明確要求「place-details-any 查詢如果有
+// attraction 時要一併附上 attraction」)——Google fallback 路徑沒有
+// 對應的資料庫紀錄,固定不帶這個欄位。
+export interface GeoPlanAiPlaceDetailsAnyResult {
+  found: boolean
+  name?: string
+  address?: string
+  lat?: number
+  lng?: number
+  summary?: string
+  photoUrl?: string
+  attractionId?: string
+}
+
+// fetchPlanAiPlaceDetailsAny:GET /internal/geo/plan-ai/place-details-any(需登入
+// 版、不受白名單限制的地點詳情查詢,見後端 handlePublicGeoPlaceDetailsAny
+// 的完整說明)——跟既有的 fetchPublicGeoPlaceDetails 差異在於後者只能查
+// publicPlaceDetailsAllowlist 裡固定收錄的那批 placeId(為散策羅盤等
+// 固定展示頁設計),這支函式可以查任意 placeId,供 /plan-ai 的
+// add_attraction 工具使用(見 attractionTools.ts 的完整說明:LLM 只需要
+// 記住 placeId,插入時由前端這裡重新查詢完整資料,不需要 LLM 在兩次
+// 工具呼叫之間原封不動複製貼上 name/lat/lng/summary)。
+// 需登入——理由與 cfg.token 的要求同 fetchPlanAiPlaceSearch 的完整說明
+// (2026-09 這批端點從免登入的 /public/geo/* 搬到 /internal/geo/plan-ai/*)。
+export function fetchPlanAiPlaceDetailsAny(cfg: ClientConfig, placeId: string) {
+  return request<GeoPlanAiPlaceDetailsAnyResult>(cfg, 'GET', `/internal/geo/plan-ai/place-details-any?placeId=${encodeURIComponent(placeId)}`)
+}
+
+// GeoPlanAiAttractionByIDResult:fetchPlanAiAttractionByID 的回應形狀
+// ——對齊後端 handlePublicGeoAttractionByID 的 JSON 輸出。id 存在時一定
+// 查得到(這支端點查無資料時是 HTTP 404,見該 handler 的完整說明,不是
+// 回一個 found:false 的正常回應——由呼叫端的 .catch 處理查無這個 id 的
+// 情境),故不像 GeoPlanAiPlaceDetailsAnyResult 那樣需要一個 found 欄位。
+export interface GeoPlanAiAttractionByIDResult {
+  id: string
+  name: string
+  lat: number
+  lng: number
+  summary?: string
+  photoUrl?: string
+  placeId?: string
+}
+
+// fetchPlanAiAttractionByID:GET /internal/geo/plan-ai/attraction/{id}(需登入,
+// 見後端 handlePublicGeoAttractionByID 的完整說明)——供 /plan-ai 的
+// search_attraction/add_attraction 工具流程使用:LLM 只需要記住
+// search_attraction 回傳過的 attraction id,插入行程時由前端這裡查
+// 資料庫既有紀錄取得完整資料(name/summary/photoUrl/placeId),對齊
+// 散策羅盤「點選附近景點」(fetchPoiContent)先用 attraction 本身資料
+// 當底的兩段式查詢邏輯。
+// 需登入——理由與 cfg.token 的要求同 fetchPlanAiPlaceSearch 的完整說明
+// (2026-09 這批端點從免登入的 /public/geo/* 搬到 /internal/geo/plan-ai/*)。
+export function fetchPlanAiAttractionByID(cfg: ClientConfig, id: string) {
+  return request<GeoPlanAiAttractionByIDResult>(cfg, 'GET', `/internal/geo/plan-ai/attraction/${encodeURIComponent(id)}`)
+}
+
+// GeoPlanAiTransitEstimateResult:fetchPlanAiTransitEstimate 的回應
+// 形狀——對齊後端 handlePublicGeoTransitEstimate 的 JSON 輸出,也對齊
+// PlanNodeData 的 transit 節點既有欄位(見 planTimeline.ts 的完整
+// 說明),呼叫端可以直接把這個結果塞進 transit 節點的資料。
+export interface GeoPlanAiTransitEstimateResult {
+  mode: string
+  icon: string
+  minutes: number
+  distance: string
+}
+
+// fetchPlanAiTransitEstimate:GET /internal/geo/plan-ai/transit-estimate(需登入
+// 版、兩點間交通方式/時間/距離的模擬預估,見後端
+// handlePublicGeoTransitEstimate 的完整說明)——2026-09 使用者明確要求
+// 「交通預估時間不要讓 AI 推論產生,而是建立兩個點時,前端自己將兩點
+// 送到後端,由後端預估時間」,這支函式就是那個「前端自己送」的落地:
+// 呼叫端(AIPlanTimelinePage.tsx insertAttractionAfter)在插入 stop
+// 節點且前面已有另一個 stop 節點時主動呼叫,不是 LLM 或任何推論路徑
+// 觸發的。mode 是選填參數,省略時由後端依直線距離自動決定一個預設值。
+// 需登入——理由與 cfg.token 的要求同 fetchPlanAiPlaceSearch 的完整說明
+// (2026-09 這批端點從免登入的 /public/geo/* 搬到 /internal/geo/plan-ai/*)。
+export function fetchPlanAiTransitEstimate(
+  cfg: ClientConfig,
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+  mode?: string,
+) {
+  const params = new URLSearchParams({
+    fromLat: String(from.lat),
+    fromLng: String(from.lng),
+    toLat: String(to.lat),
+    toLng: String(to.lng),
+  })
+  if (mode) params.set('mode', mode)
+  return request<GeoPlanAiTransitEstimateResult>(cfg, 'GET', `/internal/geo/plan-ai/transit-estimate?${params.toString()}`)
 }
 
 // fetchGeoPlacePhoto:GET /internal/geo/place-details 的 photoOnly=1 模式

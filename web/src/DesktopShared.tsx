@@ -7,16 +7,16 @@
 
 // PanelMode:桌面版 side panel 目前顯示的內容;null 代表收合(主區全寬)。
 // (原本還有 'demo-onagent'——「LLM 呼叫前端 tool」走 onagent 平台的
-// 試做,見 clienttools/OnagentBridgeDemo.tsx——已整個移除,含入口與
-// 實作,理由同 want 對話系統整套移除的既有做法——與 'demo-cards'——推薦
+// 試做,見 clienttools/OnagentBridgeDemo.tsx——與 'demo-cards'——推薦
 // 景點卡片試做,見 RecommendedPlacesList——與 'demo-map'——推薦景點
 // 地圖試做,見 RecommendedPlacesMap.tsx——與 'demo-row'——推薦景點
 // 橫滑試做,見 RecommendedPlacesRow——都已整個移除,含入口與實作。)
-// 'trips'/'timeline'/'pace'/'geo-outline':正式導覽項目,所有使用者都能在
-// rail 上看到(依各自的 *_ENABLED flag),渲染邏輯直接使用 DesktopTripList/
-// MultiTrackTimeline/PaceChart+PaceRouteMap、GeoCandidateSidebar/
-// GeoOutlinePanel,見 DesktopLayout.tsx / PhoneContent.tsx /
-// PhoneNavDrawer.tsx,不屬於這組共用的 demo 面板(DemoPanelContent)。
+// 'trips'/'timeline'/'pace'/'geo-outline'/'plan-ai':正式導覽項目,所有
+// 使用者都能在 rail 上看到(依各自的 *_ENABLED flag),渲染邏輯直接使用
+// DesktopTripList/MultiTrackTimeline/PaceChart+PaceRouteMap、
+// GeoCandidateSidebar/GeoOutlinePanel、trip-plan/TripPlanPage,見
+// DesktopLayout.tsx / PhoneContent.tsx / PhoneNavDrawer.tsx,不屬於這組
+// 共用的 demo 面板。
 // 'demo-route-editor':旅程分享/路徑編輯器試做(見 docs/ 同一輪討論的
 // 雜誌式編輯介面構想與 artifact mockup)——目前只做右側雜誌內容編輯區
 // (純前端假資料,不呼叫任何 API,見 RouteEditor.tsx 開頭的說明),左側
@@ -24,7 +24,7 @@
 // (DEMO_ROUTE_EDITOR_ENABLED,見下方),不是正式導覽項目——等資料結構
 // 定案、真的接上後端,才會比照 pace/geo-outline 升級成正式功能。
 export type PanelMode =
-  | 'trips' | 'timeline' | 'pace' | 'geo-outline'
+  | 'trips' | 'timeline' | 'pace' | 'geo-outline' | 'plan-ai'
   | 'demo-route-editor'
   | null
 
@@ -59,10 +59,16 @@ export const DEBUG_PANEL_ENABLED = import.meta.env.VITE_FEATURE_DEBUG_PANEL === 
 // 一套機制——預設關閉,只在明確設為字串 "true" 時才啟用。
 export const DEMO_ROUTE_EDITOR_ENABLED = import.meta.env.VITE_FEATURE_DEMO_ROUTE_EDITOR === 'true'
 
+// 「AI 規劃」(trip-plan/TripPlanPage.tsx)已不再有獨立的 feature flag
+// ——同 geo-outline 的既有先例(見上方說明),使用者明確要求不用 flag
+// 控制,它現在是核心功能,不該再能被部署環境變數關閉。原本的
+// PLAN_AI_ENABLED/VITE_FEATURE_PLAN_AI 已移除,PANEL_REGISTRY 的
+// 'plan-ai' 項目改成固定 enabled: true(見下方)。
+
 // PanelSlot/PanelSpec/PANEL_REGISTRY:每個 panelMode 的版面行為單一定義處
 // ——'float' 表示疊在 .desktop-main(地圖)上方的浮動卡片(不佔 flex 版面
-// 空間、不擠壓地圖寬度),'main-replace' 表示整個取代 .desktop-main(僅
-// demo-route-editor 這個預設關閉的試做功能維持這個舊行為)。
+// 空間、不擠壓地圖寬度),'main-replace' 表示整個取代 .desktop-main
+// (plan-ai 與預設關閉的 demo-route-editor 試做功能用這個 slot)。
 // width 只有 float 用到,決定浮動卡片寬度
 // (見 FloatingPanel.tsx)。requiresTrip 給 rail 按鈕
 // 的 disabled 判斷用(見 DesktopRail.tsx)。
@@ -87,6 +93,7 @@ export const PANEL_REGISTRY: Record<Exclude<PanelMode, null>, PanelSpec> = {
   timeline: { enabled: TIMELINE_ENABLED, slot: 'float', width: 380, requiresTrip: true },
   pace: { enabled: PACE_ENABLED, slot: 'float', width: 380 },
   'geo-outline': { enabled: true, slot: 'float', width: 380 },
+  'plan-ai': { enabled: true, slot: 'main-replace' },
   'demo-route-editor': { enabled: DEMO_ROUTE_EDITOR_ENABLED, slot: 'main-replace' },
 }
 
@@ -106,32 +113,19 @@ export function isPanelMode(v: string | undefined): v is Exclude<PanelMode, null
   return v != null && (PANEL_MODES as readonly string[]).includes(v)
 }
 
-// DemoPanelMode:PanelMode 扣掉 trips/timeline/pace/geo-outline/
-// demo-route-editor/null 之後只剩的 demo 面板——正式功能
-// (trips/timeline/pace/geo-outline)在桌面版是 side panel 的正式功能,
-// 手機版則是 PhoneNavDrawer(見該檔案)裡對應的分頁,兩邊各自處理,不算
-// 在這組共用的 demo 面板裡。demo-route-editor 雖然也是 demo-* 系列旗標
-// (見 DEMO_ROUTE_EDITOR_ENABLED),但只做桌面版(見路徑編輯器介面構想
-// 討論——手機先只做瀏覽別人的路徑,不做編輯),不透過這組手機/桌面共用
-// 的 DemoPanelContent 渲染,改在 DesktopLayout.tsx 的 <main> 分支裡直接
-// 特殊處理(同 pace/geo-outline 的作法),PhoneNavDrawer 不提供對應分頁。
-export type DemoPanelMode = Exclude<PanelMode, 'trips' | 'timeline' | 'pace' | 'geo-outline' | 'demo-route-editor' | null>
-
 // DrawerMode:手機版分頁列(PhoneTabBar.tsx 底部常駐 + PhoneSideTools.tsx
-// 右側小圖示)/主顯示區可切換到的模式——即 PanelMode 扣掉 null 與
+// 右側小圖示)/主顯示區可切換到的模式——即 PanelMode 扣掉 null、
 // demo-route-editor(該模式只有桌面版路徑編輯器試做才有實作,見
 // DEMO_ROUTE_EDITOR_ENABLED 的說明,手機版故意不支援,網址落在
-// /app/demo-route-editor 時 fallback 回 'geo-outline')。原本定義在
-// PhoneNavDrawer.tsx,搬到這裡與 PanelMode 收斂在同一份檔案,避免兩份
-// 值域各自維護、日後新增/移除模式時漏改其中一處。
-export type DrawerMode = Exclude<PanelMode, 'demo-route-editor' | null>
-
-// DemoPanelContent 函式本體已移到 demo/DemoPanelContent.tsx——demo-onagent
-// 是預設關閉的試做功能,不算正式桌面/手機共用邏輯,理由同 RouteEditor.tsx
-// 移到 demo/ 目錄。這裡的 DemoPanelMode 型別維持不動(從 PanelMode 衍生,
-// 被 PANEL_REGISTRY/isPanelMode 等正式邏輯依賴)。
+// /app/demo-route-editor 時 fallback 回 'geo-outline')、與 plan-ai
+// (2026-09 使用者明確要求「先處理桌面版就好」,手機版的畫面/入口還沒
+// 設計,暫時排除,等手機版真正實作時再拿掉這個排除;網址落在
+// /app/plan-ai 時同樣 fallback 回 'geo-outline',同 demo-route-editor
+// 的既有處理方式)。原本定義在 PhoneNavDrawer.tsx,搬到這裡與 PanelMode
+// 收斂在同一份檔案,避免兩份值域各自維護、日後新增/移除模式時漏改
+// 其中一處。
+export type DrawerMode = Exclude<PanelMode, 'demo-route-editor' | 'plan-ai' | null>
 
 // LangSelect/TokenDisplay 已移到 user/LangSelect.tsx、user/TokenDisplay.tsx
 // ——兩者都是設定畫面(SettingsDialog 桌面版/SettingsScreen 手機版)專用的
-// UI 小塊,不是桌面/手機共用的正式邏輯,理由同 DemoPanelContent/
-// RouteEditor 移到 demo/ 目錄。
+// UI 小塊,不是桌面/手機共用的正式邏輯,理由同 RouteEditor 移到 demo/ 目錄。

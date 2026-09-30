@@ -1,0 +1,125 @@
+# onagent 平台(https://github.com/tim72117/onagent)上 plan-ai-timeline app
+# 的 search_attraction tool 定義——這個 app 完全獨立於 tripace app(見
+# server/tools/onagent-tools.yaml 的完整說明)之外,服務對象是「AI 規劃」
+# 功能(/app/plan-ai,見 web/src/trip-plan/TripPlanPage.tsx),不是正式
+# 登入後 ChatScreen 的旅程記事助理。
+#
+# 2026-09:新版 onagent CLI(v0.7.1+)的 tool 指令樹改成
+# `onagent tool create <appId> <tool.yaml>`,**一份檔案只描述一個 tool**
+# (見 c:\www\my\agent\packages\claude-skill\skill\SKILL.md 的完整格式
+# 規則),不再是整批推送的 save-tools(舊版指令,已不存在)。這個目錄下的
+# 三份檔案(search_attraction.yaml/add_attraction.yaml/add_note.yaml)
+# 取代原本合併寫在單一 onagent-tools-plan-ai.yaml 裡的舊格式——那份舊
+# 檔案已刪除,不要再參考它的欄位結構(含它裡面每個 tool 的 returns 區塊:
+# 新版格式沒有這個欄位,tool 的回傳值形狀不需要事先宣告,handler 回傳
+# 什麼就原封不動餵回 LLM,見 SKILL.md「tool 檔案的精確格式」章節)。
+#
+# 這個工具是前端 ClientTool(見 web/src/plan-core/attractionTools.ts
+# 的完整實作),不是 BackendDispatch 型——onagent LLM 決定呼叫時,訊息會經
+# AgentBridge WebSocket 送回瀏覽器分頁,由 attractionTools.ts 定義的
+# handle 函式實際執行(呼叫公開端點查詢),不像 onagent-tools.yaml 裡的
+# recommend_nearby/geocode 那樣繞過瀏覽器直接在 onagent 伺服器端 dispatch。
+#
+# kind: query——LLM 需要看到查詢結果(找到的地點座標、附近候選清單)才能
+# 接著決定要不要推薦/呼叫 add_attraction,不能是 action(fire-and-forget)。
+#
+# 推送(需要 onagent CLI,見 .claude/skills/onagent-cli-setup):
+#   onagent tool create -api <onagent 後端 URL> plan-ai-timeline server/tools/plan-ai/search_attraction.yaml
+
+name: search_attraction
+description: >-
+  查詢一個地名，取得座標，並回傳附近的景點候選清單（含 placeId/name/
+  summary/category）——候選來源包含已人工建檔的正式資料，資料不足時後端
+  會自動用 Google Nearby Search 補上，兩者統一以 placeId 當識別碼，你
+  不需要判斷候選來自哪裡。要幫使用者加入行程時，先呼叫這個工具找到候選
+  的 placeId，再呼叫 add_attraction 並帶入該 placeId——不要自己編造
+  placeId 或跳過這一步直接呼叫 add_attraction。types 參數必填：明確指出
+  你想找的地點類型，即使使用者沒有指定偏好，也要依當下語境（用餐時段選
+  restaurant/cafe、單純觀光選 tourist_attraction 等）自行判斷一個合理的
+  類型組合，不要留空——不篩類型會讓候選夾雜跟使用者需求無關的地點。
+kind: query
+parameters:
+  type: object
+  properties:
+    query:
+      type: string
+      # 2026-09 真實踩坑記錄:原本這裡的 description 是「要查詢的地名
+      # 關鍵字，例如「安平古堡」「赤崁樓」。」——這句話只強調「地名」，
+      # 沒有點出這個字串會被直接送進 Google Places Text Search 取座標
+      # (見 attractionTools.ts createSearchAttraction 實際呼叫的
+      # fetchPublicGeoPlaceSearch → 後端 handlePublicGeoPlaceSearch，
+      # MaxResults:1，只取最相關的一筆結果)。結果 LLM 曾經傳過「台南
+      # 中西區景點」這種類別性描述語句當 query，這種模糊描述對 Text
+      # Search 而言不是一個可靠解析的地名，容易解析到不精準或無關的
+      # 地點，而不是使用者真正想問的錨點座標。改寫成下面這版，明確點出
+      # 「這是送進地理定位 API 的查詢字串」與「必須是具體地名/地址，
+      # 不是描述想找的景點類型」這兩件事，並用「必須/禁止」的對照句式
+      # 加強約束力，附上真實踩到的錯誤案例當反例。
+      description: >-
+        地點名稱或地址，會直接送進地圖服務做地理定位（Google Places
+        Text Search，只取最相關一筆），用來取得精準座標。
+
+        必須傳「具體地名或地址」，例如「安平古堡」「赤崁樓」「台南火車
+        站」。禁止傳「類別性描述」，例如「台南中西區景點」「適合親子的
+        地方」——這類字串無法被地理定位服務準確解析。
+
+        若使用者說的是一個籠統的區域或需求（例如「中西區」「想吃美食的
+        地方」），先自行選一個該區域內具體、知名的地標當查詢字串（例如
+        「台南中西區」或「赤崁樓」），查到座標後，回傳的 nearby 欄位就
+        是這個錨點附近的候選清單，不需要使用者先講出精確地名。若使用者
+        對想找的地點類型有明確偏好，改用 types 參數篩選，不要把類型
+        描述塞進這個 query 參數裡。
+    types:
+      type: array
+      # 2026-09:使用者明確要求「query 要給兩個參數，一個是取得定位點的
+      # 查詢文字，另一個是推薦景點的查詢文字」——這個參數是第二個查詢
+      # 文字的落地：query 只負責定位（送進地理定位 API 取座標），types
+      # 負責篩選這個座標附近要推薦哪些類型的候選（送進 Google Nearby
+      # Search 的 includedTypes，見後端 handlePublicGeoAttractionSearch/
+      # allowedNearbyAttractionTypes 的完整說明）。固定選單而非自由文字
+      # ——使用者明確要求「排幾個觀光會用到的類別讓 LLM 選」「用固定
+      # 選單讓 LLM 選」：Google Places 的地點類型本來就是官方固定字串
+      # （不是自由關鍵字比對），這裡只收錄旅遊規劃情境常用的子集，不是
+      # 開放 Google 官方將近 200 種類型全部給 LLM 選。可複選（陣列，
+      # OR 關係，符合其中任一類型就算命中）。
+      #
+      # 2026-09 改為必填：前端 parseSearchAttractionArgs（見
+      # attractionTools.ts）本來就容錯處理成永遠回傳陣列（缺省時退回空
+      # 陣列），程式碼不會因為這裡改必填而壞——這裡改的是 LLM 端的行為
+      # 要求：不篩類型時 Google Nearby Search 補點會混入任何類型的地點
+      # （加油站、便利商店、住宅區店家等），候選品質參差不齊，要求 LLM
+      # 每次都明確給出類型組合，逼它先判斷「使用者現在需要哪種地點」而
+      # 不是省略這個決策。
+      description: >-
+        想找的景點類型，必填、可複選。依當下語境自行判斷（使用者沒有
+        明確指定時也要選）：用餐時段或提到吃的選 restaurant/cafe/
+        bakery，單純觀光選 tourist_attraction/historical_landmark，
+        逛街選 shopping_mall/market 等。合法值：tourist_attraction
+        （觀光景點）、museum（博物館）、art_gallery（美術館/藝廊）、
+        park（公園）、place_of_worship（宗教場所，如廟宇/教堂）、
+        historical_landmark（歷史地標）、zoo（動物園）、amusement_park
+        （遊樂園）、restaurant（餐廳）、cafe（咖啡廳）、bakery（烘焙
+        坊）、bar（酒吧）、shopping_mall（購物中心）、market（市場）、
+        lodging（住宿）。只能傳這份清單裡的值，不要自己發明其他類型
+        字串，也不要傳空陣列。
+      items:
+        type: string
+        enum:
+          - tourist_attraction
+          - museum
+          - art_gallery
+          - park
+          - place_of_worship
+          - historical_landmark
+          - zoo
+          - amusement_park
+          - restaurant
+          - cafe
+          - bakery
+          - bar
+          - shopping_mall
+          - market
+          - lodging
+  required:
+    - query
+    - types

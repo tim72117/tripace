@@ -8,7 +8,7 @@ import styles from './AutoPlanDemo.module.css';
 // 動畫從「打字→找地點結果清單」換成「打字→系統自動生成時間軸行程」——
 // 前半段聊天輸入框仍沿用同一套視覺(打字動畫+送出鈕+AI 回覆行,見
 // NaturalQueryDemo.tsx 的完整說明,數值照抄自
-// web/src/planning-demo/AIPlanTimelinePage.module.css 的 .inputWrap/
+// web/src/plan-ai/AIPlanTimelinePage.module.css 的 .inputWrap/
 // .input/.sendBtn/.aiLine/.aiLineIcon),後半段結果呈現方式整個換掉:
 // 不再顯示「符合條件的結果清單卡」(那是「查詢找地點」的語意),改成
 // 顯示「系統自動排出的一份時間軸行程」(呼應「自動編排行程」這個新主題

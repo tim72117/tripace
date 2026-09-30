@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tim72117/tripace/internal/apigateway"
 	"github.com/tim72117/tripace/internal/auth"
 	"github.com/tim72117/tripace/internal/geo"
 	"github.com/tim72117/tripace/internal/model"
@@ -106,6 +107,45 @@ type Server struct {
 	// 合併,但目前規模下這已經足夠攔下同一台伺服器內的重複查詢,跟原本
 	// singleflight 的既有侷限一致。
 	placeDetailsInFlight sync.Map
+
+	// planAiRateLimiter 保護 GET /internal/geo/plan-ai/place-search 與
+	// GET /internal/geo/plan-ai/attraction-search(見
+	// handlePublicGeoPlaceSearch/handlePublicGeoAttractionSearch 的完整
+	// 說明)這兩支端點,各自用獨立的 key(publicPlaceSearchEndpoint/
+	// nearbyAttractionSearchEndpoint,見 geo_plan_ai.go)在同一個
+	// *apigateway.RateLimiter 實例上各開一組視窗(SetLimitForKey 本來就是
+	// 設計成單一實例管理多組彼此獨立的 key/視窗——見 apigateway 自己的
+	// 測試對 "places.get"/"places.photoMedia" 的既有用法),不需要為每支
+	// 端點各自建立一個 Server 欄位/RateLimiter 實例(2026-09 code review
+	// 發現:原本這裡是兩個獨立欄位/兩次 NewRateLimiter(),純粹是同一件
+	// 事重複刻了兩次樣板程式碼——兩支端點各自視窗長度/次數不同這件事,
+	// SetLimitForKey 的 per-key 設計本來就完全支援,不需要靠獨立實例才能
+	// 做到)。
+	//
+	// 2026-09:這兩支端點已搬到 internalAuth 底下(原本掛在 /public/geo/*
+	// 免登入),但限流**刻意保留**——現在的理由不是「防匿名訪客濫用」,而是
+	// **防 LLM 工具呼叫迴圈**:唯一呼叫端是 plan-core/attractionTools.ts
+	// 的 search_attraction 工具,由 LLM 自主決定何時呼叫、呼叫幾次。稽核
+	// 記錄過真實 log:LLM 撞到同一個錯誤後會反覆重試同一次查詢,沒有任何
+	// 前端節流能擋(重試決策發生在 LLM 端,不在前端)。少了這層拒絕型
+	// 限流,一次失控的重試迴圈就能在幾秒內打出數十次計費的 Google API
+	// 呼叫。**已登入不等於成本可控——額度是專案共用的,不是 per-user 的。**
+	//
+	// 跟 geo 套件的 defaultRateLimiter(依 "places.get"/"places.photoMedia"
+	// 這類 Google API endpoint 分類,只在真正打 Google API 時透過
+	// Gateway.Do 生效)是刻意獨立的機制——那組限流保護的是「不同呼叫來源
+	// 共用同一個 Google API 額度」,這裡要保護的是「這兩支特定端點不被
+	// 失控的呼叫節奏觸發大量計費」,語意不同;且這兩支端點呼叫的
+	// "places.searchText"/"places.searchNearby" endpoint 並未被
+	// defaultRateLimiter 設定拒絕型限流(見 geo.RateLimitConfig 的完整
+	// 說明,那裡刻意只涵蓋 places.get/photoMedia 兩者),不能依賴那組機制
+	// 間接擋下這裡的濫用。
+	//
+	// 全域共用同一個視窗、不分呼叫者——即使現在有身份可用,防的是單一
+	// 使用者自己的 LLM 迴圈,per-user 細分反而讓每個使用者各自擁有一整份
+	// 配額,與保護總額度的目的相反。兩個 key 各自的視窗長度/次數在 New()
+	// 裡設定(見該處說明)。
+	planAiRateLimiter *apigateway.RateLimiter
 }
 
 func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID string) *Server {
@@ -118,6 +158,27 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 		log.Printf("!!! 建立 GCS photo uploader 失敗,景點照片將不會落地到 GCS,僅使用原始來源網址: %v", err)
 		uploader = &photostorage.Uploader{}
 	}
+	// planAiRateLimiter:兩支 plan-ai 查詢端點各自的視窗長度/次數,見這個
+	// 欄位在 Server struct 上的完整說明(單一 RateLimiter 實例、各自
+	// 獨立的 key)。
+	//
+	// publicPlaceSearchEndpoint:固定 10 秒視窗內最多 1 次(比照
+	// geo.RateLimitConfig 給 "places.get" 的預設喳度,見
+	// cmd/server/main.go)——全域共用同一個 key,不分呼叫者。
+	//
+	// nearbyAttractionSearchEndpoint:0.5 秒視窗內最多 1 次——使用者明確
+	// 要求把視窗從原本沿用 publicPlaceSearchEndpoint 的 10 秒縮短成 0.5
+	// 秒(真實踩坑記錄:10 秒視窗下,/plan-ai 對話中連續幾次查詢很容易
+	// 撞上同一個視窗,導致後面的呼叫直接降級成只回傳資料庫候選、完全沒
+	// 機會觸發 Google Nearby Search 補點,見這支端點的完整說明——查
+	// 候選數量從預期的 10 筆掉到只剩資料庫本身查到的幾筆)。這代表這層
+	// 保護幾乎不再能防住短時間內重複觸發計費 API 的情況,是使用者評估
+	// 過後接受的取捨,不是這裡自行放寬的判斷——沿用「視窗內最多 1 次」
+	// 的既有限制邏輯本身不變,只是視窗長度縮短。
+	planAiRateLimiter := apigateway.NewRateLimiter()
+	planAiRateLimiter.SetLimitForKey(publicPlaceSearchEndpoint, 10*time.Second, 1)
+	planAiRateLimiter.SetLimitForKey(nearbyAttractionSearchEndpoint, 500*time.Millisecond, 1)
+
 	return &Server{
 		store:                 st,
 		signer:                signer,
@@ -129,6 +190,7 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 		photoUploader:         uploader,
 		newGeoGeocodeClient:   geo.New,
 		newPlaceDetailsClient: geo.New,
+		planAiRateLimiter:     planAiRateLimiter,
 	}
 }
 
@@ -289,12 +351,22 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/cli-auth/device/{userCode}", s.handleGetDeviceAuth)
 	mux.HandleFunc("POST /v1/cli-auth/device/{userCode}/approve", s.handleApproveDeviceAuth)
 
-	// public — 登入前的公開展示頁(web/src/home/KiyomizuDemoPage.tsx)專用,
-	// 刻意不掛 internalAuth(訪客沒有 JWT,見該頁面 GUEST_CFG 的完整說明)
-	// ——只有這一支端點,且有白名單限制查詢範圍(見
-	// publicPlaceDetailsAllowlist 的完整說明),不是一般性「免認證」的
-	// 路由群組,之後新增其他公開端點時應各自評估是否也需要類似的範圍
-	// 限制,不能直接比照這裡的寫法就假設安全。
+	// public — 登入前的公開展示頁(主題介紹頁,見
+	// web/src/home/InteractiveExploreMap.tsx)專用,刻意不掛 internalAuth
+	// (訪客沒有 JWT,見該元件 GUEST_CFG 的完整說明)。
+	//
+	// 目前是這三支(place-details/place-photo-assets/attractions),每一支
+	// 都有授權限制查詢範圍——前兩支要求 placeID 必須是已建檔的 attraction
+	// 才放行,attractions 則限制在城市白名單內(見
+	// publicAttractionsCityAllowlist 的完整說明)。這不是一般性「免認證」
+	// 的路由群組,新增其他公開端點時應各自評估是否也需要類似的範圍限制,
+	// 不能直接比照這裡的寫法就假設安全。
+	//
+	// 2026-09:原本這個群組還有 plan-ai 用的五支查詢端點(place-search/
+	// attraction-search/place-details-any/attraction/{id}/transit-estimate)
+	// ——那批沒有白名單可限制範圍(可以查任意地名/placeID),只靠拒絕型
+	// 限流把關,等於讓任何訪客都能消耗 Google Places 計費配額。已全部搬到
+	// 需登入的 /internal/geo/plan-ai/*(見下方 internalMux 的該區塊)。
 	mux.HandleFunc("GET /public/geo/place-details", s.handlePublicGeoPlaceDetails)
 	// GET /public/geo/place-photo-assets:handlePublicGeoPlacePhotoAssets
 	// 的免登入版(見該函式的完整說明)——純讀 photo_assets,不觸發點擊
@@ -304,6 +376,15 @@ func (s *Server) Routes() http.Handler {
 	// 環境一律 404(handler 本身已實作/測試完成,只是沒有接上 mux)。
 	mux.HandleFunc("GET /public/geo/place-photo-assets", s.handlePublicGeoPlacePhotoAssets)
 	mux.HandleFunc("GET /public/geo/attractions", s.handlePublicGeoAttractions)
+
+	// 註:AI 規劃時間軸的「模擬推論 WebSocket」(handlePlanSimWS)不在這個
+	// 分支上——它只服務試作原型(web/src/plan-ai/AIPlanTimelinePage.tsx),
+	// 不是正式功能(web/src/trip-plan/TripPlanPage.tsx)的一部分,正式功能
+	// 走真實 onagent 對話。那支端點與整個試作原型保存在 plan-ai-sim 分支,
+	// 之後若要一併上線,需要連同 plan_sim_demo.go 與 plan-ai/ 目錄一起接
+	// 回來,並在這裡補上路由註冊(它必須註冊在這個 mux 而非下方的
+	// internalMux——WebSocket 的 token 只能從 query string 帶,掛在
+	// internalAuth 底下會因為沒有 Authorization header 一律被打回 401)。
 
 	// internal — 供 CLI(cmd/cli)/自動化腳本操作資料,不走 /v1/* 那套
 	// requireOwner/requireEditor 行程層級的權限檢查,改由 internalAuth 要求
@@ -332,6 +413,27 @@ func (s *Server) Routes() http.Handler {
 	// 計數/漸進補圖決策(見 handleGeoPlacePhotoAssets 的完整說明)。
 	// 2026-09:同上一支公開版,先前漏掛路由,導致重試功能一律 404。
 	internalMux.HandleFunc("GET /internal/geo/place-photo-assets", s.handleGeoPlacePhotoAssets)
+
+	// plan-ai — AI 規劃行程功能專用的查詢端點(見 geo_plan_ai.go 開頭的
+	// 完整說明),同時服務正式功能(web/src/trip-plan/TripPlanPage.tsx)與
+	// 試作原型(web/src/plan-ai/AIPlanTimelinePage.tsx)——兩者共用
+	// web/src/plan-core/attractionTools.ts 這層 onagent 工具資料層,由它
+	// 呼叫這批端點。
+	//
+	// 獨立成 /internal/geo/plan-ai/* 子命名空間、不混進上面那批
+	// /internal/geo/* 核心端點,理由同 /internal/maintenance/* 的既有分法:
+	// 方便日後從請求統計(見 adminconsole 的 request-stats)一眼分辨流量
+	// 來源,也讓「這批是服務 LLM 工具呼叫」這件事從路徑就看得出來。
+	//
+	// 2026-09:這五支原本掛在免登入的 /public/geo/* 底下——它們不像主題
+	// 介紹頁那三支有城市/placeID 白名單可以限制查詢範圍(這批可以查任意
+	// 地名、任意 placeID),只靠拒絕型限流把關,等於任何訪客都能消耗
+	// Google Places 的計費配額。搬到 internalAuth 底下關掉這個曝險。
+	internalMux.HandleFunc("GET /internal/geo/plan-ai/place-search", s.handlePublicGeoPlaceSearch)
+	internalMux.HandleFunc("GET /internal/geo/plan-ai/attraction-search", s.handlePublicGeoAttractionSearch)
+	internalMux.HandleFunc("GET /internal/geo/plan-ai/place-details-any", s.handlePublicGeoPlaceDetailsAny)
+	internalMux.HandleFunc("GET /internal/geo/plan-ai/attraction/{id}", s.handlePublicGeoAttractionByID)
+	internalMux.HandleFunc("GET /internal/geo/plan-ai/transit-estimate", s.handlePublicGeoTransitEstimate)
 
 	// maintenance — 只給 tripace-cli 這類維運工具用的端點,不是產品前端
 	// 會呼叫的路徑(見 maintenance.go 開頭對「核心」與「維運」端點分開的

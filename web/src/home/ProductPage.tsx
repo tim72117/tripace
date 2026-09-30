@@ -134,7 +134,7 @@ export function ProductPage() {
                   渲染(2026-09 由「自然語言查詢」改主題,見 FEATURES
                   陣列該筆資料的完整說明)——模擬打出一句旅行需求文字、
                   送出後系統自動把候選景點依序排成一份時間軸行程的假
-                  動畫,聊天輸入框視覺沿用 planning-demo/
+                  動畫,聊天輸入框視覺沿用 plan-ai/
                   AIPlanTimelinePage.tsx 的樣式,時間軸呈現方式則另外
                   簡化設計,見 AutoPlanDemo.tsx 的完整說明。 */}
               {title === '主題景點' && <ThemePointDemo dark={dark} />}

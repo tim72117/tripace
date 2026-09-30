@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Route, Radio, MessageSquareText } from 'lucide-react'
+import { Route, MessageSquareText } from 'lucide-react'
 import { ChatScreen, type DesktopTimelineMirror } from './chat/ChatScreen'
 import { type ContentProps } from './AppCommon'
 import { useIsDesktop } from './hooks/useIsDesktop'
 import { useTripsState } from './hooks/useTripsState'
 import { LoginForm, LoginCard } from './home/LoginForm'
-import { TIMELINE_ENABLED, PACE_ENABLED, DEMO_ONAGENT_ENABLED } from './DesktopShared'
+import { TIMELINE_ENABLED, PACE_ENABLED } from './DesktopShared'
 import { DesktopContent } from './DesktopLayout'
 import { SettingsScreen } from './user/SettingsScreen'
 import { TripManageModal } from './trip/TripManageModal'
@@ -180,7 +180,6 @@ export function PhoneContent(props: ContentProps) {
   ]
   const sideTools: { key: string; icon: typeof Route; title: string; onClick: () => void }[] = [
     ...(PACE_ENABLED ? [{ key: 'pace', icon: Route, title: '路徑', onClick: () => setPaceSheetOpen(true) }] : []),
-    ...(DEMO_ONAGENT_ENABLED ? [{ key: 'demo-onagent', icon: Radio, title: 'onagent 串接', onClick: () => {} }] : []),
   ]
   // chatElement:ChatScreen 的唯一掛載點,固定用同一個 JSX 呼叫,直接放在
   // 下方對話疊加層 PhoneBottomSheet 的 children 裡(該元件傳

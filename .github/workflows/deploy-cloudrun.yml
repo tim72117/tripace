@@ -112,6 +112,24 @@ jobs:
           echo "::add-mask::$CLIENT_ID"
           echo "client_id=$CLIENT_ID" >> "$GITHUB_OUTPUT"
 
+      # onagent 平台上「AI 規劃」功能(/app/plan-ai)專用的獨立 app
+      # (plan-ai-timeline)的 apiKey，跟上面的 VITE_ONAGENT_APP_KEY
+      # (tripace app)是完全不同的兩個 app、兩把互不相關的 key，見
+      # web/src/trip-plan/TripPlanPage.tsx PLAN_AI_ONAGENT_APP_ID 的完整
+      # 說明。apiKey 只顯示一次、重發會讓舊 key 立刻失效，不支援現場申請，
+      # 只能貼上既有值寫入 Secret Manager(見
+      # server/scripts/update-secret-manager.sh 的 -plan-ai-onagent 選項)。
+      # 這個 app 的 URL 2026-09 起共用上面 tripace app 的 VITE_ONAGENT_URL
+      # (見下方 Build Docker image 步驟同一個 --build-arg)，不再有獨立的
+      # 環境變數/secret。
+      - name: Read plan-ai onagent app key from Secret Manager
+        if: github.event.inputs.skip_build != 'true'
+        id: plan_ai_onagent_key
+        run: |
+          KEY=$(gcloud secrets versions access latest --secret=VITE_PLAN_AI_ONAGENT_APP_KEY --project=${{ env.GCP_PROJECT_ID }})
+          echo "::add-mask::$KEY"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
       - name: Build Docker image
         if: github.event.inputs.skip_build != 'true'
         run: |
@@ -119,8 +137,9 @@ jobs:
             --build-arg VITE_GOOGLE_MAPS_API_KEY=${{ steps.maps_key.outputs.key }} \
             --build-arg VITE_GOOGLE_MAPS_MAP_ID=${{ steps.maps_map_id.outputs.map_id }} \
             --build-arg VITE_ONAGENT_APP_KEY=${{ steps.onagent_key.outputs.key }} \
-            --build-arg VITE_ONAGENT_URL=https://onagent.shuttle.tools \
+            --build-arg VITE_ONAGENT_URL="https://onagent.shuttle.tools" \
             --build-arg VITE_GOOGLE_OAUTH_CLIENT_ID=${{ steps.google_oauth_client_id.outputs.client_id }} \
+            --build-arg VITE_PLAN_AI_ONAGENT_APP_KEY=${{ steps.plan_ai_onagent_key.outputs.key }} \
             -t ${{ env.IMAGE }}:${{ github.sha }} \
             -t ${{ env.IMAGE }}:latest \
             .

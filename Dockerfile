@@ -52,6 +52,18 @@ ENV VITE_ONAGENT_URL=${VITE_ONAGENT_URL}
 # 同步 GitHub Secrets。由 deploy-cloudrun.yml 讀出後當 --build-arg 傳入。
 ARG VITE_GOOGLE_OAUTH_CLIENT_ID
 ENV VITE_GOOGLE_OAUTH_CLIENT_ID=${VITE_GOOGLE_OAUTH_CLIENT_ID}
+# VITE_PLAN_AI_ONAGENT_APP_KEY:「AI 規劃」功能(/app/plan-ai,見
+# web/src/trip-plan/TripPlanPage.tsx)專用的獨立 onagent app
+# (plan-ai-timeline)的 apiKey,跟上面 VITE_ONAGENT_APP_KEY(tripace app)
+# 是完全不同的兩個 app、兩把互不相關的 key,見 TripPlanPage.tsx
+# PLAN_AI_ONAGENT_APP_ID 的完整說明。放 Secret Manager,由
+# deploy-cloudrun.yml 讀出後當 --build-arg 傳入。
+#
+# 2026-09:這個 app 的 URL 不再有獨立的 VITE_PLAN_AI_ONAGENT_URL——使用者
+# 明確要求合併成同一個環境變數名稱,直接沿用上面的 VITE_ONAGENT_URL(兩個
+# onagent app 目前剛好指向同一個平台網址)。
+ARG VITE_PLAN_AI_ONAGENT_APP_KEY
+ENV VITE_PLAN_AI_ONAGENT_APP_KEY=${VITE_PLAN_AI_ONAGENT_APP_KEY}
 RUN npm run build
 
 # ---- 階段 1b:build admin 後台前端 ----

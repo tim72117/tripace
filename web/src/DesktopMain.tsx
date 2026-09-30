@@ -15,7 +15,7 @@ import styles from './DesktopMain.module.css'
 // pace/PacePage.tsx/trip/PublicViewScreen.tsx 的 PublicPaceDrawerMap),
 // 全部在渲染 <DesktopMain> 的當下就已經確定會不會放地圖類內容——
 // DesktopLayout.tsx 由 panelSpec?.slot === 'main-replace' 這個既有分支
-// 判斷式決定(main-replace 時渲染 RouteEditor/DemoPanelContent,不會有
+// 判斷式決定(main-replace 時渲染 RouteEditor/TripPlanPage,不會有
 // geo-outline-panel-wrap;其餘情況固定渲染 GeoOutlinePanel,一定有),
 // PacePage.tsx/PublicViewScreen.tsx 則是無條件固定渲染 PaceRouteMap。
 // 沒有任何一處是「渲染當下還不確定,要等巢狀路由/非同步資料才決定」的
