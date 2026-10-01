@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
+import { Bike, Car, Footprints } from 'lucide-react'
 import { useThemeToggle } from '../../hooks/useThemeToggle'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../SiteNavButtons'
 import { NativeMapBase, type MapHandle } from '../../geo-planning/NativeMapBase'
@@ -32,6 +33,22 @@ import styles from './AIPlanTimelinePage.module.css'
 const DEFAULT_MAP_CENTER = { lat: 23.001, lng: 120.182 }
 const DEFAULT_MAP_ZOOM = 13
 const SELECTED_MAP_ZOOM = 16
+
+// TRANSIT_MODE_ICONS——交通卡的圖示,使用者明確要求「不要用 emoji 要用
+// icon」,改成 lucide-react 的 SVG 元件,取代原本
+// planAiFakeDataSource.ts/api.ts 資料層回傳的 emoji 字元(🚶/🛵/🚗)。
+// 資料層的 icon 欄位本身維持不動(見 planAiDataSource.ts
+// PlanAiTransitEstimateResult 的完整說明:型別刻意對齊真後端回應結構,
+// 不該為了這裡的顯示需求去改資料層型別語意),改用已經存在、人類可讀
+// 的 mode 欄位(「步行」/「騎車」/「開車」)當 key 查這張表——falsy
+// fallback 用 Footprints,理由同下方渲染處的說明:交通模式目前只有
+// fakeTransitEstimate 回傳的這三種固定字串,不會有查無對應的情況,
+// fallback 純粹是型別安全考量,不代表真的會被用到。
+const TRANSIT_MODE_ICONS: Record<string, typeof Footprints> = {
+  '步行': Footprints,
+  '騎車': Bike,
+  '開車': Car,
+}
 
 // AIPlanTimelinePage — 「AI 安排行程」時間軸展示原型的正式頁面版本。
 // 原型先在 Artifact(Design Component 畫布)做過一輪,經 Fable 設計方案
@@ -696,6 +713,15 @@ const NOTE_STYLES: Record<string, { color: string; noteIcon: string }> = {
 }
 const DEFAULT_NOTE_CATEGORY = 'info'
 
+// isRecordMode——讀一次 ?recordMode=1(與 planSimFakeSource.ts
+// RECORD_DELAY_MS 讀的是同一個參數),不用 state/effect 包——這是純粹
+// 依網址決定的渲染分支,不是會隨時間變化的值,元件存活期間不會改變。
+// 宣告在元件外層,import 當下只算一次,不是每次 render 都重新 parse。
+function isRecordMode(): boolean {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get('recordMode') === '1'
+}
+
 export function AIPlanTimelinePage() {
   const { theme, dark, toggleTheme } = useThemeToggle()
   const navigate = useNavigate()
@@ -703,6 +729,17 @@ export function AIPlanTimelinePage() {
   const followingRef = useRef(true)
   const lastScrollTopRef = useRef(0)
   const [showJumpPill, setShowJumpPill] = useState(false)
+  // recordMode——錄製手機外框素材時(見 home/record/RecordAiPlanPage.tsx
+  // 的完整說明),整排頂部漂浮按鈕(SiteNavBrand 品牌名+狀態膠囊、
+  // SiteNavThemeToggle 日夜切換、「登入」「功能介紹」)會跟手機外框的
+  // 動態島裝飾疊在一起(實測發現的真實問題:這整排都是 fixed 定位
+  // 貼齊頁面最頂端,動態島也懸浮在同一個區域,全部擠成一團)。這整排
+  // 按鈕在「畫面裡只是一支正在展示的手機」這個情境下也沒有意義——
+  // 「登入」「功能介紹」點了會跳轉頁面但沒有人會真的點,品牌名/狀態
+  // 膠囊這類資訊在最終影片會改由錄製頁外部的字卡承擔(見廣告企劃對
+  // 「字卡」的設計),不需要網頁自己再疊一層。recordMode 下整排都不
+  // 渲染,讓動態島區域保持乾淨。
+  const recordMode = isRecordMode()
 
   // typedPrompt——輸入框的假打字動畫,展示「使用者輸入這句話,AI 據此
   // 安排行程」的敘事開場,呼應下方自動播放的劇本(planSimScript.ts 第
@@ -718,16 +755,34 @@ export function AIPlanTimelinePage() {
   const [promptTyped, setPromptTyped] = useState(false)
   useEffect(() => {
     const fullText = '幫我排台南兩天一夜的行程'
+    // typeSpeedMs/startDelayMs——網址 ?typeSpeedMs=/?startDelayMs= 可覆寫
+    // 打字速度(預設 90ms/字)與開場定格秒數(預設 0,立即開始打字)。
+    // 這是給 scripts/record/record-ai-plan.ts 這類自動化錄製腳本用的
+    // 參數(見廣告企劃對「開頭 3 秒要快速抓住觀眾」「15 秒剪輯版建議
+    // 60ms/字」的節奏建議),一般展示(無參數時)完全不受影響,維持原本
+    // 90ms/字、不定格的既有行為。理由同 planSimFakeSource.ts
+    // RECORD_DELAY_MS 的完整說明:錄製素材需要精確可調的節奏,不該
+    // 為了配合廣告剪輯去動一般展示頁的預設體驗。
+    const params = new URLSearchParams(window.location.search)
+    const typeSpeedMs = Number(params.get('typeSpeedMs')) || 90
+    const startDelayMs = Number(params.get('startDelayMs')) || 0
+
     let i = 0
-    const timer = setInterval(() => {
-      i += 1
-      setTypedPrompt(fullText.slice(0, i))
-      if (i >= fullText.length) {
-        clearInterval(timer)
-        setPromptTyped(true)
-      }
-    }, 90)
-    return () => clearInterval(timer)
+    let timer: ReturnType<typeof setInterval> | null = null
+    const startTimer = setTimeout(() => {
+      timer = setInterval(() => {
+        i += 1
+        setTypedPrompt(fullText.slice(0, i))
+        if (i >= fullText.length) {
+          if (timer) clearInterval(timer)
+          setPromptTyped(true)
+        }
+      }, typeSpeedMs)
+    }, startDelayMs)
+    return () => {
+      clearTimeout(startTimer)
+      if (timer) clearInterval(timer)
+    }
   }, [])
 
   // 這個頁面固定「打字動畫播完才開始安排」(見上方 promptTyped 的完整
@@ -754,7 +809,15 @@ export function AIPlanTimelinePage() {
   const [composerCollapsed, setComposerCollapsed] = useState(false)
   const wasGeneratingRef = useRef(false)
   useEffect(() => {
-    if (wasGeneratingRef.current && !isGenerating) setComposerCollapsed(true)
+    if (wasGeneratingRef.current && !isGenerating) {
+      setComposerCollapsed(true)
+      // data-plan-sim-done——腳本播放完成的訊號,掛在 <body> 上供外部
+      // 自動化腳本(Playwright 等)輪詢偵測,取代「固定等待 N 秒」這種
+      // 容易跟實際播放時長(腳本內容調整後可能變長/變短)脫節的做法。
+      // 只是一個無害的 DOM 屬性,不影響任何樣式/渲染行為,頁面本身完全
+      // 不依賴它。見 home/record/RecordAiPlanPage.tsx 的使用情境說明。
+      document.body.setAttribute('data-plan-sim-done', 'true')
+    }
     wasGeneratingRef.current = isGenerating
   }, [isGenerating])
 
@@ -873,33 +936,40 @@ export function AIPlanTimelinePage() {
           SiteNavButtons.css 的完整說明)。頁面本身不再有任何實體功能
           列(.header 已完全移除,使用者明確要求「不要有上方的實際功能
           列了」)。slot={2} 讓「功能介紹」往左讓開「登入」按鈕的寬度,
-          理由同 HomePage.tsx 的既有用法。 */}
-      <SiteNavBrand
-        pageLabel="台南兩日遊"
-        extra={
-          // statusPill——原本獨立用一個估算座標的 fixed 容器疊在
-          // SiteNavBrand 旁邊,使用者明確要求「不要放在功能列上，要放
-          // 在台南兩日遊右邊」,改用 SiteNavBrand 新增的 extra prop
-          // 直接插進同一個 .site-nav-brand-row 裡跟著 flex 排列,不需要
-          // 再手動估算/對齊座標。
-          <div className={styles.statusPill}>
-            {isGenerating ? (
-              <>
-                <span className={`${styles.statusDot} ${styles.statusDotGenerating}`} />
-                <span>正在安排行程…</span>
-              </>
-            ) : (
-              <>
-                <span className={`${styles.statusDot} ${styles.statusDotDone}`} />
-                <span>已安排 {stopCount} 站</span>
-              </>
-            )}
-          </div>
-        }
-      />
-      <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
-      <SiteNavCta href="/app">登入</SiteNavCta>
-      <SiteNavCta href="/product" variant="accent" slot={2}>功能介紹</SiteNavCta>
+          理由同 HomePage.tsx 的既有用法。
+          !recordMode——見 recordMode 宣告處的完整說明:手機外框錄製時
+          這整排會跟動態島裝飾疊在一起,且在「只是展示用」的情境下沒有
+          實際功能,整排不渲染。 */}
+      {!recordMode && (
+        <>
+          <SiteNavBrand
+            pageLabel="台南兩日遊"
+            extra={
+              // statusPill——原本獨立用一個估算座標的 fixed 容器疊在
+              // SiteNavBrand 旁邊,使用者明確要求「不要放在功能列上，要放
+              // 在台南兩日遊右邊」,改用 SiteNavBrand 新增的 extra prop
+              // 直接插進同一個 .site-nav-brand-row 裡跟著 flex 排列,不需要
+              // 再手動估算/對齊座標。
+              <div className={styles.statusPill}>
+                {isGenerating ? (
+                  <>
+                    <span className={`${styles.statusDot} ${styles.statusDotGenerating}`} />
+                    <span>正在安排行程…</span>
+                  </>
+                ) : (
+                  <>
+                    <span className={`${styles.statusDot} ${styles.statusDotDone}`} />
+                    <span>已安排 {stopCount} 站</span>
+                  </>
+                )}
+              </div>
+            }
+          />
+          <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
+          <SiteNavCta href="/app">登入</SiteNavCta>
+          <SiteNavCta href="/product" variant="accent" slot={2}>功能介紹</SiteNavCta>
+        </>
+      )}
 
       {/* 右上角固定小地圖——position: fixed(見 .module.css 的完整說明),
           不佔版面空間、不隨時間軸捲動。單一 NativeMapBase 實例,點擊
@@ -1013,8 +1083,18 @@ export function AIPlanTimelinePage() {
                             <span className={styles.thumbSpinner} aria-label="查詢交通資訊中" />
                           ) : (
                             <>
-                              <span>{transit.icon}</span>
-                              <span>{transit.mode} {transit.minutes} 分 · {transit.distance}</span>
+                              {(() => {
+                                const TransitIcon = (transit.mode && TRANSIT_MODE_ICONS[transit.mode]) || Footprints
+                                return <TransitIcon size={13} strokeWidth={2} aria-hidden="true" />
+                              })()}
+                              <span>
+                                {transit.mode} {transit.minutes} 分
+                                {/* transitSep——分隔點降權(見 Fable 模型
+                                    精緻化方案):跟文字同色同權重時顯得
+                                    偏硬,降到 50% 透明度更柔和。 */}
+                                <span className={styles.transitSep}>·</span>
+                                {transit.distance}
+                              </span>
                             </>
                           )}
                         </div>

@@ -1,0 +1,337 @@
+/* RecordAiPlanPage.module.css — 錄製工具頁的外殼樣式。這個頁面只有
+   開發者自己會看到,不走 home/ 行銷頁那套紙感和風、也不走正式 App 的
+   --ios-* token 系統,直接寫死中性的亮色工作台配色(使用者明確要求
+   「整體用亮色系」),理由是它的使用情境(準備螢幕錄製)跟任何品牌
+   視覺語言都無關,簡單耐看、不干擾判斷手機外框輪廓即可。 */
+
+.page {
+  /* height(不是 min-height)+ overflow: hidden——真正的根因(實測發現):
+     原本 min-height: 100vh 配合 .canvasOuter 的 max-height:
+     calc(100vh - 140px) 這個寫死估算值,假設控制列固定佔用 140px;但
+     控制列的按鈕隨功能增加(比例/節奏/背景色三組,內容多時會自動換行
+     成兩行以上),實際高度並不固定,140px 這個估算值過時後,整個
+     .page 的「控制列實際高度 + gap + 畫布高度」總和會超過視窗高度,
+     使用者看到的結果是整頁出現垂直捲軸、底部內容被裁切看不到。
+     改成 .page 本身鎖死在 100vh、overflow: hidden,.canvasOuter 改用
+     flex: 1 自動吃掉扣除控制列實際高度後的剩餘空間(見下方
+     .canvasOuter 的完整說明)——不管控制列實際換行成幾行,畫布永遠
+     精確填滿剩下的可視空間,不需要再手動猜一個像素數字。 */
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  padding: 24px;
+  background: #F2F0EC;
+  color: #2B2420;
+  font-family: -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+}
+
+/* .page 範圍內的 box-sizing: border-box reset——這個頁面刻意不引入
+   base-ui.css(見檔頭說明:獨立於任何既有樣式系統),沒有全域的同款
+   reset 可依賴。.phoneFrame/.phoneBezel 這類「指定固定像素尺寸 +
+   padding」的組合,在瀏覽器預設的 content-box 下 padding 會被加總在
+   指定尺寸之外,導致實際渲染尺寸比預期大、觸發內容溢出(實測發現的
+   真實問題,見 .phoneFrame/.phoneBezel 個別的完整說明)。這裡用
+   `.page :global(*)` 一次把整個頁面範圍內的元素都 reset,不需要在
+   每個新增的子元素規則裡各自補一行。 */
+.page :global(*) {
+  box-sizing: border-box;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #FFFFFF;
+  border: 1px solid #DCD7CE;
+  max-width: 100%;
+}
+
+.controlsLabel {
+  font-size: 0.8rem;
+  color: #6B6155;
+  font-weight: 600;
+}
+
+.controlsDivider {
+  width: 1px;
+  height: 20px;
+  background: #DCD7CE;
+  margin: 0 4px;
+}
+
+.controlsHint {
+  font-size: 0.75rem;
+  color: #8A8070;
+  margin-left: 8px;
+}
+
+.ratioBtn {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #2B2420;
+  background: #F2F0EC;
+  border: 1px solid #DCD7CE;
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.ratioBtn:hover {
+  background: #E6E2D8;
+}
+
+.ratioBtnActive {
+  background: #8B3A2F;
+  border-color: #8B3A2F;
+  color: #FFFFFF;
+}
+
+.colorPicker {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #DCD7CE;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+}
+
+/* canvasWrap——.canvasOuter 的外層包裝,負責吃掉 .page 扣除控制列後的
+   剩餘空間(flex: 1 + min-height: 0,取代先前寫死猜測控制列高度的
+   calc(100vh - 140px)——那個估算值在控制列隨功能增加換行變高後就會
+   失準,見 .page 的完整說明)。這一層本身不設 aspect-ratio,純粹是
+   「量出剩餘可用空間、再置中擺放 .canvasOuter」的容器,讓 .canvasOuter
+   能用百分比(100%)取得這個準確空間當高度上限。 */
+.canvasWrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* canvasOuter——實際要被螢幕錄製工具框住的範圍。aspect-ratio 由
+   RecordAiPlanPage.tsx 的 inline style 依目前選的比例動態設定。
+   真正的根因(實測發現):原本用「height 給明確值 + max-width 限制」
+   的寫法,height 是寫死的 calc(100vh - 140px),max-width 生效時只會
+   壓縮寬度、高度完全不跟著等比例縮小——這會打破 aspect-ratio 本身
+   的比例,實際渲染出來的畫布形狀跟選定的比例(例如 1:1)不一致(使用者
+   回報:選 1:1 卻顯示成修長的矩形);而 calc(100vh - 140px) 這個寫死
+   估算值本身又在控制列變高後失準,導致整個 .page 垂直溢出(使用者
+   回報:底部內容被裁切看不到)。
+   正確寫法:height 用 min(.canvasWrap 給的 100% 實際剩餘高度, 用寬度
+   上限反推出的對應高度) 兩者取小——瀏覽器會自動在「高度被剩餘空間
+   卡住」與「寬度被 100vw 卡住」兩種情境間,挑先頂到的那個限制,同時
+   aspect-ratio 在這整個過程中都維持精確比例,不會被單獨壓縮某一邊。
+   calc(100vw - 48px) 除以 aspect-ratio 數值轉成高度基準——inline
+   style 設定的 aspect-ratio 是 width/height 的比例字串(如
+   "1080 / 1080"),CSS 原生不支援直接拿它來做這種反推運算,改用 JS
+   算好比例數字當自訂屬性傳進來最乾淨(見 RecordAiPlanPage.tsx 的
+   --canvas-ratio 設定)。 */
+.canvasOuter {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: min(100%, calc((100vw - 48px) / var(--canvas-ratio)));
+  max-width: calc(100vw - 48px);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px #DCD7CE;
+}
+
+/* caption——疊在手機外框外側(背景留白區頂部)的字卡,見
+   RecordAiPlanPage.tsx useCaption 的完整說明。使用者明確要求「活潑
+   一點」,2026-10 經 Fable 模型評估兩輪調整後的設計:
+   - 定位改用 bottom: calc(50% + var(--phone-h) / 2 + 間距),不是原本
+     寫死的 top: 6%——手機外框在 .canvasOuter 裡永遠置中,頂緣位置
+     精確等於「畫布中心往上半個手機高度」,用這個算式才能讓字卡底部
+     跟手機頂緣永遠保持固定間距,不受比例切換(1:1/4:5/9:16)或手機
+     縮放倍率影響。原本的 top: 6% 經精算:1:1 比例下手機頂緣只距畫布
+     頂端 151.8px,字卡若换成兩行文字,底部會落在 137~187px,直接
+     蓋住手機外框頂緣與動態島,是真實的遮擋風險(見
+     RECORD_HOOK_STEPS 一類命名慣例旁的 PHONE_WIDTH/HEIGHT 說明,
+     1:1 的縮放值也同步從 0.92 降到 0.88 加大安全距離)。
+   - width: fit-content(max-width 84% 防止極長文字溢出)取代原本
+     left/right: 8% 的固定寬橫幅——固定寬在 1:1 比例下是手機寬度的
+     2.5 倍,一大片色塊壓在小手機上方,視覺份量蓋過產品本身。改成
+     貼合文字寬度後,紅色色塊縮小成「貼紙」感,份量感自然降到跟手機
+     相襯,不會喧賓奪主。
+   - 底色從磚紅(#B8402F→#8B3A2F)改成珊瑚橘紅(#E25A3C→#B8402F)——
+     原本的磚紅彩度/明度偏低,氣質沉穩成熟,適合行銷頁「紙感和風」的
+     強調色,但作為要彈跳進場的廣告字卡顯得不夠「活潑」;珊瑚橘紅
+     彩度更高、更暖,與手機內容的暖沙色(--ios-sand)呼應感更明顯,
+     仍是同一個品牌紅色系的延伸,不是另外發明的新色。
+   - inset box-shadow 加一圈淡白內圈,強化「貼紙」的實體感,也在
+     使用者把 bgColor 換成深色畫布時提供額外的輪廓分離度。
+   - text-shadow 做一圈極淡的黑色陰影,確保文字在任何底色(含更亮的
+     珊瑚紅)上都維持清晰邊界,不只依賴色塊本身的對比度。
+   - 微微傾斜(-2deg)打破對稱的工整感,搭配彈跳進場動畫
+     (captionPop,見下方 keyframes),是「活潑」的核心來源——嚴肅的
+     廣告字卡通常是正對、淡入淡出,刻意不對稱+有彈性的進場才會讓
+     畫面有生氣。
+   - position: absolute,不佔用 flex 版面空間,不會把手機外框往下推。
+     z-index 蓋過 .phoneFrame,確保字卡永遠在最上層;pointer-events:
+     none 避免攔截使用者對底下手機畫面的互動(例如手動觸發展示腳本
+     時誤點到字卡)。 */
+.caption {
+  position: absolute;
+  bottom: calc(50% + var(--phone-h) / 2 + 20px);
+  left: 0;
+  right: 0;
+  width: fit-content;
+  max-width: 84%;
+  margin: 0 auto;
+  z-index: 5;
+  text-align: center;
+  font-size: clamp(22px, 4.2vw, 34px);
+  font-weight: 800;
+  line-height: 1.3;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  background: linear-gradient(135deg, #E25A3C 0%, #B8402F 100%);
+  padding: 14px 22px;
+  border-radius: 20px;
+  box-shadow:
+    0 12px 28px -10px rgba(184, 64, 47, 0.45),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.28);
+  transform: rotate(-2deg);
+  animation: captionPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+}
+@keyframes captionPop {
+  0% {
+    opacity: 0;
+    transform: rotate(-2deg) scale(0.4) translateY(-12px);
+  }
+  60% {
+    opacity: 1;
+    transform: rotate(-2deg) scale(1.08) translateY(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(-2deg) scale(1) translateY(0);
+  }
+}
+/* captionCta——結尾行動呼籲字卡的反轉配色(2026-10 Fable 模型評估
+   建議):米白底(--paper 同色系 #F7F3EC)+ 硃砂字,跟前面一連串敘事
+   字卡(珊瑚紅底白字)形成明顯的語氣切換,觀眾滑到這句時會感覺到
+   「這句不一樣」,呼應它是整支影片唯一真正要求行動的一句,不只是在
+   描述功能。邊框用硃砂色描邊強化輪廓(米白底在同樣米白的畫布預設底色
+   上,少了珊瑚紅那種天然的圖地分離,需要邊框補回對比)。text-shadow
+   改回不需要(深色文字在淺色底上本來就有足夠對比,白色陰影反而會讓
+   邊緣模糊)。 */
+.captionCta {
+  color: #8B3A2F;
+  text-shadow: none;
+  background: #F7F3EC;
+  box-shadow:
+    0 12px 28px -10px rgba(139, 58, 47, 0.3),
+    inset 0 0 0 2px #B8402F;
+}
+
+/* phoneFrame——仿 iPhone 實機外觀的精緻版(對照使用者提供的參考圖
+   重做):鈦金屬灰邊框(不是純黑粗邊)、螢幕四角大圓角弧度、獨立浮空
+   的動態島(不是貼齊頂端的方形瀏海切口)、側邊按鈕細節。 */
+.phoneFrame {
+  /* box-sizing: border-box——這個頁面刻意不引入 base-ui.css(見檔頭
+     說明:獨立於任何既有樣式系統),沒有全域 * { box-sizing: border-box }
+     reset 可依賴。.phoneFrame 的 width/height 是 RecordAiPlanPage.tsx
+     算出的固定像素值(inline style),若維持瀏覽器預設的 content-box,
+     這裡的 padding 會被加總在指定尺寸之外,連帶撐大 .phoneBezel(見下方
+     width: 100%)的實際尺寸,導致整個手機外框比預期大、內容溢出產生
+     橫向捲軸(實測發現的真實問題)。明確寫在這裡,不依賴外部 reset。 */
+  box-sizing: border-box;
+  position: relative;
+  flex-shrink: 0;
+  border-radius: 54px;
+  /* 鈦金屬邊框質感:淺灰到中灰的微妙漸層,比純黑更接近參考圖的實機
+     金屬感,在亮色/深色畫布背景上都有清楚但不突兀的輪廓分離度。 */
+  background: linear-gradient(155deg, #E2E2E0 0%, #B8B8B4 12%, #8C8C88 50%, #B8B8B4 88%, #E2E2E0 100%);
+  padding: 3px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.08),
+    0 24px 60px -20px rgba(43, 36, 32, 0.35);
+}
+
+/* phoneBezel——邊框內緣的窄黑邊(真實 iPhone 的螢幕與金屬邊框之間有一圈
+   極窄的黑色膠條),讓 .phoneScreen(白色網頁內容)不會直接貼著金屬色
+   邊框,視覺上更接近真機的「螢幕被鑲嵌在殼裡」而不是「邊框疊在螢幕
+   上」。 */
+.phoneBezel {
+  box-sizing: border-box;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  border-radius: 51px;
+  padding: 2px;
+  overflow: hidden;
+}
+
+.phoneNotch {
+  /* 動態島——獨立的藥丸形狀、懸浮在螢幕頂端內側(不貼齊邊緣、不是
+     切掉螢幕一角的瀏海),對齊參考圖的現代 iPhone 造型。 */
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 34%;
+  max-width: 126px;
+  height: 32px;
+  background: #000;
+  border-radius: 999px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* phoneSideButtons——側邊按鈕的小凸起(音量鍵/電源鍵),純裝飾,強化
+   「這是一支實體手機」的第一眼辨識度。只做右側電源鍵與左側一對音量
+   鍵,不做到完全寫實(那需要更多細節反而分散注意力,這個頁面的主角
+   是螢幕裡的內容,外框只需要「一眼看出是手機」即可)。 */
+.phoneButtonPower {
+  position: absolute;
+  right: -3px;
+  top: 22%;
+  width: 3px;
+  height: 64px;
+  background: linear-gradient(90deg, #8C8C88, #B8B8B4);
+  border-radius: 0 3px 3px 0;
+}
+
+.phoneButtonVolumeUp {
+  position: absolute;
+  left: -3px;
+  top: 16%;
+  width: 3px;
+  height: 40px;
+  background: linear-gradient(90deg, #B8B8B4, #8C8C88);
+  border-radius: 3px 0 0 3px;
+}
+
+.phoneButtonVolumeDown {
+  position: absolute;
+  left: -3px;
+  top: 24%;
+  width: 3px;
+  height: 40px;
+  background: linear-gradient(90deg, #B8B8B4, #8C8C88);
+  border-radius: 3px 0 0 3px;
+}
+
+.phoneScreen {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+  background: #FFFFFF;
+  border-radius: 49px;
+}

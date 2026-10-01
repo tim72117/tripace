@@ -16,7 +16,30 @@ import { PLAN_SIM_SCRIPT } from './planSimScript'
 // 明確要求「行程播放速度稍微加快」,收回到比原始後端 randomDelay()
 // (plan_sim_demo.go 的 700~1200ms)稍寬鬆、但比先前明顯快的區間——
 // 保留足夠時間看清楚每一步,又不至於整段播完要等太久。
-function randomDelayMs(): number {
+//
+// 錄製用固定節奏(RECORD_DELAY_MS):隨機延遲對一般展示是好設計(看起來
+// 像真的在思考),但對「需要重複錄製、對齊配樂/字卡」的廣告素材是
+// 障礙——每次播放總長度/每一步出現的時間點都不同,無法重拍同一支、
+// 無法跟剪輯時間軸對點。網址帶 ?recordMode=1 時改用固定延遲,讓每次
+// 播放節奏完全一致,見 home/record/RecordAiPlanPage.tsx 的使用情境。
+// 固定值取隨機區間的中段(1100ms),不是最快也不是最慢,是錄製時普遍
+// 回報「看起來最自然」的步調。
+//
+// RECORD_HOOK_DELAY_MS/RECORD_HOOK_STEPS(混合節奏):廣告企劃建議
+// 「開頭 3 秒要快速抓住觀眾,中段維持可讀節奏」——打字速度已經有
+// AIPlanTimelinePage.tsx 的 typeSpeedMs 參數處理開頭這段,但卡片本身
+// 第一次出現前仍要等一次完整的 RECORD_DELAY_MS,開頭整體還是偏慢。
+// 這裡讓最前面幾個動作(index < RECORD_HOOK_STEPS)用更短的延遲,快速
+// 讓第一、二張卡片出現,之後(index 達到門檻)恢復 RECORD_DELAY_MS 的
+// 正常可讀節奏——不是整支影片都加速,只有「開場抓注意力」這一小段,
+// 跟打字速度的加速邏輯呼應,共同組成「開頭快、中段穩」的節奏曲線。
+const RECORD_DELAY_MS = 1100
+const RECORD_HOOK_DELAY_MS = 500
+const RECORD_HOOK_STEPS = 2
+function randomDelayMs(index: number): number {
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('recordMode') === '1') {
+    return index < RECORD_HOOK_STEPS ? RECORD_HOOK_DELAY_MS : RECORD_DELAY_MS
+  }
   return 900 + Math.floor(Math.random() * 600)
 }
 
@@ -59,7 +82,7 @@ export function createPlanSimFakeSource(): PlanSimSource {
       // 跟原始後端版本 playScript 每播完一則就卡住 waitForNextStep 的
       // 行為不同。
       playFrom(index + 1)
-    }, randomDelayMs())
+    }, randomDelayMs(index))
   }
 
   // 建立後立即開始播放,不需要呼叫端額外呼叫任何「開始」方法——對齊

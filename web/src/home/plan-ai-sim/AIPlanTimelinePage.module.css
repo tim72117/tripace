@@ -99,6 +99,25 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* overflow-x: hidden——.page 本身雖然是 overflow: hidden(見該規則
+     說明),但這層才是真正的捲動容器,沒有明確水平方向設定時瀏覽器預設
+     visible,內部內容任何短暫的寬度溢出(例如卡片進場動畫過程中的
+     transform、或手機外框這種窄容器下的版面計算邊界情況)都會在這一層
+     觸發水平捲軸(實測在手機外框錄製情境下發現的真實問題:螢幕底部
+     出現一條橫向捲軸把手)。明確設成 hidden,水平方向永遠不該捲動
+     ——這是一個垂直時間軸,不需要水平捲動能力。 */
+  overflow-x: hidden;
+  /* 隱藏可見的捲軸把手——真實手機 App(iOS/Android 原生捲動)的捲軸是
+     極細的半透明短桿,只在捲動當下短暫出現、停止後淡出,不是桌面瀏覽器
+     那種常駐顯示的粗灰色長條。這個頁面裝進手機外框錄製時(見
+     home/record/RecordAiPlanPage.tsx),桌面版 Chrome 的常駐捲軸會讓
+     畫面看起來不像真手機、容易穿幫(使用者明確指出這個問題)。
+     scrollbar-width: none 是 Firefox 的標準寫法;
+     ::-webkit-scrollbar { display: none } 涵蓋 Chrome/Edge/Safari——
+     兩者一起寫才能涵蓋這個專案實際會用到的瀏覽器。只隱藏捲軸視覺,
+     overflow-y: auto 本身不變,捲動功能完全不受影響,使用者依然能用
+     滑鼠滾輪/觸控/鍵盤正常捲動,只是看不到那條把手。 */
+  scrollbar-width: none;
   position: relative;
   /* padding-top 72px——.header 移除後(見上方「頂部狀態藥丸」說明),
      內容區直接貼齊 .page 頂端,會被 fixed 定位的 SiteNavBrand/
@@ -110,6 +129,9 @@
      幾張卡片——膠囊本身高度約在 64px 上下(含 padding),128px 留了
      充裕的緩衝空間讓使用者往下捲到底時最後一張卡片仍完全可見。 */
   padding-bottom: 128px;
+}
+.scroll::-webkit-scrollbar {
+  display: none;
 }
 
 /* .inner/.row:版面比例採「左窄右寬」——先前版本是 760px 置中、三欄
@@ -158,6 +180,21 @@
   display: grid;
   grid-template-columns: 136px 48px 1fr;
   position: relative;
+}
+/* .row 第三欄(1fr,裝卡片/訊息/交通膠囊本體)的 min-width: 0——這才是
+   橫向捲軸真正的根因(先前在 .scroll 加 overflow-x: hidden 只是蓋住
+   症狀,裁掉了實際溢出的內容,沒有解決溢出本身)。CSS Grid 的 1fr 軌道
+   預設隱含 min-width: auto,意思是「這個欄位絕不會縮小到比它內部子
+   元素的最小內容寬度更窄」——只要這一欄裡任何子元素(卡片的長標題/
+   簡介文字、交通膠囊的文字、對話氣泡)的最小內容寬度比欄位實際可用
+   空間大,整個 1fr 欄位就會被撐寬,連帶撐寬 .row/.inner/.scroll,在
+   手機外框這種窄容器下尤其明顯(可用寬度本來就比一般手機瀏覽器更窄)。
+   加上 min-width: 0 後,這一欄的子元素才能真正縮小配合容器寬度、靠
+   各自的 overflow/white-space/text-overflow 規則(.stopCard 的
+   max-width: none、.messageBubbleStale 的 text-overflow: ellipsis 等)
+   正確換行或截斷,而不是把欄位本身撐寬。 */
+.row > :last-child {
+  min-width: 0;
 }
 
 /* removingFade:remove_step 觸發的淡出——收到訊息時先套這個 class(見
@@ -419,6 +456,17 @@
   font-size: 14px;
   line-height: 1.55;
   transition: opacity 0.25s ease, padding 0.25s ease, font-size 0.25s ease;
+  /* overflow-wrap: break-word——真正的根因(先前 .row > :last-child 的
+     min-width: 0 修正了 grid 欄位本身被撐寬的問題,但這則訊息文字裡
+     混雜了英數字 token,如「08:30」:預設 word-break: normal 下,連續
+     的英數字元視為單一不可斷開的「word」,中文字元之間雖然可以自由
+     斷行,但遇到這種 token 時,若它前面沒有自然的斷行機會、容器剩餘
+     寬度不夠容納整個 token,瀏覽器會讓這個 token 完整溢出容器,而不是
+     提前換行——這才是手機外框窄容器下文字跑出邊框的真正原因,不是
+     grid 欄位寬度計算問題)。break-word 允許瀏覽器在容器放不下某個
+     不可斷開的 token 時,退而求其次地在任意字元處斷行,確保文字永遠
+     不會撐破容器。 */
+  overflow-wrap: break-word;
 }
 /* messageMarkdown——新鮮態用 ReactMarkdown 渲染 LLM 回覆文字(見
    AIPlanTimelinePage.tsx 對 p.type === 'message' 的渲染說明),對齊
@@ -485,7 +533,14 @@
    不只靠線型。但 sand 色飽和度高,直接滿版會搶過 .anchorDot 的存在感,
    所以整條線降到 0.45 透明度、虛線密度也從 60% 降到 50%(每 8px 只畫
    4px),視覺上是一條「淡淡的沙色虛線」,提示方向但不搶焦點。保留原本
-   linear-gradient + background-size 的 mask 技巧,只換底色/比例。 */
+   linear-gradient + background-size 的 mask 技巧,只換底色/比例。
+   2026-10(Fable 模型精緻化方案):上下各留 14px(膠囊半高 12px + 2px
+   呼吸),虛線不再直接頂到 .transitPill 新增的髮絲線邊緣(見下方
+   .transitPill 的完整說明),避免邊緣顯得擁擠。background-position 上段
+   錨 bottom、下段錨 top——repeat-y 預設從 top 鋪,貼近膠囊的那一截
+   「是線段還是空隙」原本完全看高度餘數、常常上下不對稱;錨點對齊後
+   貼近膠囊兩端永遠是實線段,交接處看起來是刻意設計過的,而不是被
+   膠囊硬生生蓋住。 */
 .transitDashAbove,
 .transitDashBelow {
   position: absolute;
@@ -495,23 +550,72 @@
   background-repeat: repeat-y;
   opacity: 0.45;
 }
-.transitDashAbove { top: 0; bottom: 50%; }
-.transitDashBelow { top: 50%; bottom: 0; }
-/* transitPill:交通 pill 刻意降權——拿掉 1px 邊框、字級降到 12px,只留
-   --ios-active 淡底。先前它跟景點卡同樣是「灰字+邊框」,視覺層次太接近
-   (見 Fable 截圖評估的問題 5),使用者掃視時會被交通資訊分散注意力;
-   交通段是景點之間的連接資訊,不該跟景點卡本身有同樣份量。 */
+.transitDashAbove { top: 0; bottom: calc(50% + 14px); background-position: bottom; }
+.transitDashBelow { top: calc(50% + 14px); bottom: 0; background-position: top; }
+/* transitPill:交通 pill 刻意降權——字級 12px、灰字,份量明確低於景點卡
+   (卡片有浮起陰影+實色邊框)。先前它跟景點卡同樣是「灰字+邊框」,視覺
+   層次太接近(見 Fable 截圖評估的問題 5),使用者掃視時會被交通資訊
+   分散注意力;交通段是景點之間的連接資訊,不該跟景點卡本身有同樣份量。
+   2026-10(Fable 模型精緻化方案):底色原本用 --ios-active(淺色值
+   #f5f5f7 是冷灰),在整頁暖紙色調裡是唯一偏藍的色塊,看起來像「借來的
+   元件」。改成 --ios-card 混 8% --ios-sand,色相跟上下的沙色虛線同系,
+   語意上「膠囊是這段移動路徑的註解」而非無關的灰色標籤。邊緣用 inset
+   box-shadow 畫 1px 半透明沙色髮絲線取代 border——不佔版面尺寸,深淺
+   模式都靠 color-mix 自動跟著 token 走,不需要另外寫一組深色覆寫值。
+   固定 min-height 24px + line-height:1,避免中文字型的 line-height
+   讓膠囊高度跟著浮動;loading 態的 18px thumbSpinner 也能對齊這個高度
+   不跳動。左右內距刻意不對稱(8px/10px)——圖示本身的 viewBox 四周有
+   留白,「圖示到左緣」會比「文字到右緣」視覺上更寬,左邊少 2px 才會
+   光學對稱。font-variant-numeric: tabular-nums 讓同一條時間軸上多個
+   膠囊的分鐘數/距離數字等寬對齊,是很便宜的精緻感來源。 */
 .transitPill {
   z-index: 2;
   white-space: nowrap;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: var(--ios-active);
+  gap: 5px;
+  min-height: 24px;
+  padding: 0 10px 0 8px;
   border-radius: 999px;
-  padding: 5px 12px;
+  background: color-mix(in srgb, var(--ios-sand) 8%, var(--ios-card));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--ios-sand) 28%, transparent),
+    0 1px 2px rgba(43, 36, 32, 0.06);
   font-size: 12px;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
   color: var(--ios-gray);
+}
+/* 圖示用 --ios-sand 當唯一的語意色點:面積只有 13px、飽和度低,足以
+   讓人掃視時辨識「這是交通段」,但不會跟景點卡的縮圖/標題搶注意力。
+   文字維持 --ios-gray,不跟著染色。 */
+.transitPill svg {
+  flex: none;
+  color: var(--ios-sand);
+  opacity: 0.9;
+}
+.transitSep {
+  opacity: 0.5;
+  margin: 0 4px;
+}
+/* 深色模式覆寫接觸陰影——淺色用的棕黑 rgba(43,36,32,0.06) 在深色卡片
+   底上幾乎看不見,改用純黑略高透明度。底色/髮絲線沿用 color-mix 的
+   token 混色,深色模式下 --ios-card/--ios-sand 本身已經是對應的深色
+   版本值(見本檔案開頭 :root 深色模式區塊),不需要另外覆寫。兩段式
+   選擇器(明確 data-theme="dark" + 系統偏好)對齊本檔案 .shimmer 既有
+   的寫法。 */
+:global(.app-theme-root[data-theme="dark"]) .transitPill {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--ios-sand) 28%, transparent),
+    0 1px 2px rgba(0, 0, 0, 0.28);
+}
+@media (prefers-color-scheme: dark) {
+  :global(.app-theme-root:not([data-theme="light"])) .transitPill {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--ios-sand) 28%, transparent),
+      0 1px 2px rgba(0, 0, 0, 0.28);
+  }
 }
 
 /* note row */
@@ -812,6 +916,15 @@
   border-radius: 26px;
   box-shadow: 0 12px 32px -12px rgba(43, 36, 32, 0.28);
   padding: 10px 10px 10px 20px;
+  /* z-index: 10——沒有明確值時,.scroll 內部的 .transitPill(z-index: 2)
+     會穿透蓋住這個漂浮膠囊(實測發現的真實問題:交通膠囊文字疊在輸入框
+     上面)。.composer 雖然 DOM 順序晚於 .scroll、理論上預設層級較高,
+     但兩者都是 .page 底下的 absolute 定位元素、彼此沒有建立明確的
+     stacking context 比較基準,子元素的 z-index:2 最終跟 .composer 的
+     隱含 z-index:auto 互相競爭時結果不穩定。給一個明確夠高的值,確保
+     這個常駐可互動的輸入膠囊永遠蓋在時間軸內容之上,不會被任何內容
+     元素的 z-index 意外蓋過。 */
+  z-index: 10;
 }
 .composerInner { width: 100%; }
 /* 原本輸入框上方常駐一行狀態提示文字(.aiLine)——漂浮膠囊只有單行
@@ -1003,6 +1116,14 @@
   .messageAxisCol { grid-column: 1; }
   .messageWrap { grid-column: 3; padding-left: 0; }
   .messageBubble { max-width: none; }
+  /* .messageBubbleStale 的 max-width: 320px(見該規則說明)在手機外框
+     這種比一般手機更窄的容器寬度下(實測發現的真實問題:錄製工具的
+     手機外框容器寬度可能遠小於 320px),比實際可視寬度更寬,
+     text-overflow: ellipsis 的截斷計算基準跟外層 grid 欄位實際可用
+     寬度不一致,視覺上看起來像文字被容器邊界硬切、完全沒有省略號,
+     而不是正確地在可視寬度內顯示「...」。改成 100% 跟著容器實際寬度
+     走,ellipsis 計算基準才會正確。 */
+  .messageBubbleStale { max-width: 100%; }
   .noteAxisCol { grid-column: 1; grid-row: 1; }
   .inner { padding: 0 16px 32px; }
   .composer { width: calc(100% - 32px); }

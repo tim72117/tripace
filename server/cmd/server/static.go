@@ -30,6 +30,7 @@ var knownRoutePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^/device$`),
 	regexp.MustCompile(`^/demo/pace$`),
 	regexp.MustCompile(`^/ai-plan$`),
+	regexp.MustCompile(`^/record/ai-plan$`),
 	regexp.MustCompile(`^/app(/[^/]+)?$`),
 }
 

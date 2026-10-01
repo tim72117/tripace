@@ -34,6 +34,13 @@ const NotFoundPage = lazy(() => import('./home/NotFoundPage').then((m) => ({ def
 // 依賴任何需要 token 的後端端點,故放進 home/ 底下跟其餘公開行銷頁同一
 // 層級,不是 /app 底下需要登入的正式功能。
 const PlanAiSimPage = lazy(() => import('./home/plan-ai-sim/AIPlanTimelinePage').then((m) => ({ default: m.AIPlanTimelinePage })))
+// RecordAiPlanPage:/ai-plan 展示動畫的錄製專用頁面(見 home/record/
+// RecordAiPlanPage.tsx 開頭的完整說明)——不是給一般使用者看的正式頁面,
+// 純粹是開發者準備螢幕錄製 Facebook 廣告素材時用的工具頁,把展示內容
+// 裝進一支虛擬手機外框裡。放在獨立的 /record/* 路徑下,跟其餘正式/
+// 行銷頁面明確區隔,日後若有其他頁面需要同樣的錄製外框,可以直接在
+// home/record/ 底下擴充,不需要散落在各個功能頁面各自處理。
+const RecordAiPlanPage = lazy(() => import('./home/record/RecordAiPlanPage').then((m) => ({ default: m.RecordAiPlanPage })))
 
 // KeyboardShrinkGuard:/app 路由專用——鍵盤彈出時把根容器高度直接改成
 // visualViewport.height,取代先前試過的 transform: translateY(-offsetTop)
@@ -138,6 +145,13 @@ export function App() {
               新增 /plan-ai 忘了同步這份白名單,導致正式環境該路徑直接
               404(即使前端路由本身定義正確),這是實際發生過的教訓。 */}
           <Route path="/ai-plan" element={<PlanAiSimPage />} />
+          {/* /record/ai-plan:/ai-plan 的錄製專用頁,見 home/record/
+              RecordAiPlanPage.tsx 開頭的完整說明——把展示內容裝進一支
+              虛擬手機外框,給開發者準備 Facebook 廣告素材用,不是給一般
+              使用者看的正式頁面。同樣需要同步更新
+              server/cmd/server/static.go 的 knownRoutePatterns,理由同
+              上方 /ai-plan 的教訓說明。 */}
+          <Route path="/record/ai-plan" element={<RecordAiPlanPage />} />
           {/* /public/{token} 路徑:直接渲染公開分享頁。原本用正則
               /^\/public\/([^/]+)$/ 手動解析 token,改用 Route 的 :token
               路徑參數 + useParams() 取代。 */}
