@@ -673,9 +673,19 @@ function usePlanSimSocket(start: boolean) {
 // 要求是「不要有例外」(見下方 add_note 分支的完整說明),劇本本身保證
 // category 合法,不需要呼叫端介入。
 
+// isRecordMode——?recordMode=1 時為錄製手機外框素材的情境(見
+// home/record/RecordAiPlanPage.tsx),純依網址決定,元件存活期間不變。
+function isRecordMode(): boolean {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get('recordMode') === '1'
+}
+
 export function AIPlanTimelinePage() {
   const { theme, dark, toggleTheme } = useThemeToggle()
   const navigate = useNavigate()
+  // recordMode 下整排頂部漂浮導覽不渲染:會跟手機外框的動態島疊在一起,
+  // 且在純展示情境沒有實際功能。
+  const recordMode = isRecordMode()
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const followingRef = useRef(true)
   const lastScrollTopRef = useRef(0)
@@ -695,16 +705,30 @@ export function AIPlanTimelinePage() {
   const [promptTyped, setPromptTyped] = useState(false)
   useEffect(() => {
     const fullText = '幫我排台南兩天一夜的行程'
+    // typeSpeedMs/startDelayMs——網址 ?typeSpeedMs=/?startDelayMs= 可覆寫
+    // 打字速度(預設 90ms/字)與開場定格毫秒數(預設 0)。給
+    // scripts/record/record-ai-plan.ts 這類錄製腳本控制節奏用,無參數時
+    // 維持原本行為。
+    const params = new URLSearchParams(window.location.search)
+    const typeSpeedMs = Number(params.get('typeSpeedMs')) || 90
+    const startDelayMs = Number(params.get('startDelayMs')) || 0
+
     let i = 0
-    const timer = setInterval(() => {
-      i += 1
-      setTypedPrompt(fullText.slice(0, i))
-      if (i >= fullText.length) {
-        clearInterval(timer)
-        setPromptTyped(true)
-      }
-    }, 90)
-    return () => clearInterval(timer)
+    let timer: ReturnType<typeof setInterval> | null = null
+    const startTimer = setTimeout(() => {
+      timer = setInterval(() => {
+        i += 1
+        setTypedPrompt(fullText.slice(0, i))
+        if (i >= fullText.length) {
+          if (timer) clearInterval(timer)
+          setPromptTyped(true)
+        }
+      }, typeSpeedMs)
+    }, startDelayMs)
+    return () => {
+      clearTimeout(startTimer)
+      if (timer) clearInterval(timer)
+    }
   }, [])
 
   // 這個頁面固定「打字動畫播完才開始安排」(見上方 promptTyped 的完整
@@ -743,7 +767,12 @@ export function AIPlanTimelinePage() {
   const [composerCollapsed, setComposerCollapsed] = useState(false)
   const wasGeneratingRef = useRef(false)
   useEffect(() => {
-    if (wasGeneratingRef.current && !isGenerating) setComposerCollapsed(true)
+    if (wasGeneratingRef.current && !isGenerating) {
+      setComposerCollapsed(true)
+      // data-plan-sim-done——播放完成訊號,供 Playwright 錄製腳本輪詢
+      // (見 home/record/RecordAiPlanPage.tsx),頁面本身不依賴它。
+      document.body.setAttribute('data-plan-sim-done', 'true')
+    }
     wasGeneratingRef.current = isGenerating
   }, [isGenerating])
 
@@ -880,32 +909,36 @@ export function AIPlanTimelinePage() {
           列(.header 已完全移除,使用者明確要求「不要有上方的實際功能
           列了」)。slot={2} 讓「功能介紹」往左讓開「登入」按鈕的寬度,
           理由同 HomePage.tsx 的既有用法。 */}
-      <SiteNavBrand
-        pageLabel="台南兩日遊"
-        extra={
-          // statusPill——原本獨立用一個估算座標的 fixed 容器疊在
-          // SiteNavBrand 旁邊,使用者明確要求「不要放在功能列上，要放
-          // 在台南兩日遊右邊」,改用 SiteNavBrand 新增的 extra prop
-          // 直接插進同一個 .site-nav-brand-row 裡跟著 flex 排列,不需要
-          // 再手動估算/對齊座標。
-          <div className={styles.statusPill}>
-            {isGenerating ? (
-              <>
-                <span className={`${styles.statusDot} ${styles.statusDotGenerating}`} />
-                <span>正在安排行程…</span>
-              </>
-            ) : (
-              <>
-                <span className={`${styles.statusDot} ${styles.statusDotDone}`} />
-                <span>已安排 {stopCount} 站</span>
-              </>
-            )}
-          </div>
-        }
-      />
-      <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
-      <SiteNavCta href="/app">登入</SiteNavCta>
-      <SiteNavCta href="/product" variant="accent" slot={2}>功能介紹</SiteNavCta>
+      {!recordMode && (
+        <>
+        <SiteNavBrand
+          pageLabel="台南兩日遊"
+          extra={
+            // statusPill——原本獨立用一個估算座標的 fixed 容器疊在
+            // SiteNavBrand 旁邊,使用者明確要求「不要放在功能列上，要放
+            // 在台南兩日遊右邊」,改用 SiteNavBrand 新增的 extra prop
+            // 直接插進同一個 .site-nav-brand-row 裡跟著 flex 排列,不需要
+            // 再手動估算/對齊座標。
+            <div className={styles.statusPill}>
+              {isGenerating ? (
+                <>
+                  <span className={`${styles.statusDot} ${styles.statusDotGenerating}`} />
+                  <span>正在安排行程…</span>
+                </>
+              ) : (
+                <>
+                  <span className={`${styles.statusDot} ${styles.statusDotDone}`} />
+                  <span>已安排 {stopCount} 站</span>
+                </>
+              )}
+            </div>
+          }
+        />
+        <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
+        <SiteNavCta href="/app">登入</SiteNavCta>
+        <SiteNavCta href="/product" variant="accent" slot={2}>功能介紹</SiteNavCta>
+        </>
+      )}
 
       <PlanTimelineView
         steps={steps}

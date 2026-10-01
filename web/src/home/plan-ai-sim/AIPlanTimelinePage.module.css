@@ -122,6 +122,10 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* 水平永不捲動;隱藏捲軸把手(手機外框錄製時桌面捲軸會穿幫),
+     捲動功能不受影響。 */
+  overflow-x: hidden;
+  scrollbar-width: none;
   /* padding-top 72px——.header 已移除(見上方「頂部狀態藥丸」說明),
      內容區直接貼齊 .page 頂端,會被 fixed 定位的 SiteNavBrand/
      SiteNavThemeToggle/SiteNavCta 蓋住第一張卡片。這幾顆漂浮按鈕統一
@@ -137,6 +141,7 @@
      充裕的緩衝空間讓使用者往下捲到底時最後一張卡片仍完全可見。 */
   padding-bottom: 128px;
 }
+.timelineScroll::-webkit-scrollbar { display: none; }
 
 /* timelineJumpPillWrap——疊加在 PlanTimelineView 自己的 .jumpPillWrap 上
    (透過 jumpPillWrapClassName prop),覆寫成跟拆分前一致的 absolute

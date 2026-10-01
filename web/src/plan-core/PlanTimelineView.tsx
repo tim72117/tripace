@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useState } from 'react'
 import type { MutableRefObject, Ref, ReactNode, UIEventHandler } from 'react'
 import ReactMarkdown from 'react-markdown'
+import { Bike, Car, Footprints } from 'lucide-react'
 import type { PlanNode } from './planTimeline'
 import styles from './PlanTimelineView.module.css'
 
@@ -111,6 +112,14 @@ export interface PlanTimelineViewProps {
 // PlanTimelineView — 純渲染元件,不持有自己的 state/effect(scroll 追蹤、
 // 429 重試、照片重試等邏輯仍留在呼叫端),只依賴傳入的 props 畫出時間軸
 // 與「回到最新」浮動按鈕。
+// TRANSIT_MODE_ICONS——交通 pill 用 lucide SVG 圖示取代資料層回傳的
+// emoji(icon 欄位不動,改用 mode 查表)。
+const TRANSIT_MODE_ICONS: Record<string, typeof Footprints> = {
+  '步行': Footprints,
+  '騎車': Bike,
+  '開車': Car,
+}
+
 export function PlanTimelineView({
   steps,
   isThinking,
@@ -241,8 +250,15 @@ export function PlanTimelineView({
                             <span className={styles.thumbSpinner} aria-label="查詢交通資訊中" />
                           ) : (
                             <>
-                              <span>{transit.icon}</span>
-                              <span>{transit.mode} {transit.minutes} 分 · {transit.distance}</span>
+                              {(() => {
+                                const TransitIcon = (transit.mode && TRANSIT_MODE_ICONS[transit.mode]) || Footprints
+                                return <TransitIcon size={13} strokeWidth={2} aria-hidden="true" />
+                              })()}
+                              <span>
+                                {transit.mode} {transit.minutes} 分
+                                <span className={styles.transitSep}>·</span>
+                                {transit.distance}
+                              </span>
                             </>
                           )}
                         </div>
