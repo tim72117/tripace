@@ -9,9 +9,21 @@ import { ThemePointDemo } from './ThemePointDemo';
 import { TimelineDemo } from './TimelineDemo';
 import { AutoPlanDemo } from './AutoPlanDemo';
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
+import { trackEvent } from '../analytics';
 import './ProductPage.css';
 
 const FEATURES = [
+  {
+    // 2026-09:「自動編排行程」改名為「AI編排行程」並移到第一個位置
+    // （使用者明確要求），同時拿掉原本的「即將推出」徽章——不再是未上線
+    // 的試做功能，比照另外兩張卡片的正式項目對待。icon 維持 Wand2
+    // (魔杖,「自動生成/一鍵搞定」語意),避免跟「時間軸排程」的
+    // CalendarClock(時鐘,強調時間刻度本身)、「主題景點」的 Layers
+    // (圖層堆疊,強調空間分層)撞語意。
+    icon: Wand2,
+    title: 'AI編排行程',
+    description: '描述你的旅行需求，系統自動把候選景點排成一份完整的每日時間軸行程。',
+  },
   {
     icon: Layers,
     title: '主題景點',
@@ -21,17 +33,6 @@ const FEATURES = [
     icon: CalendarClock,
     title: '時間軸排程',
     description: '把候選景點排入每天的時間軸，安排順序，一眼掌握整趟旅程的節奏。',
-  },
-  {
-    // 2026-09:「自然語言查詢」改主題為「自動編排行程」——icon 從
-    // MessageSquareText 換成 Wand2(魔杖,「自動生成/一鍵搞定」語意),
-    // 避免跟同一組卡片裡「時間軸排程」的 CalendarClock(時鐘,強調時間
-    // 刻度本身)、「主題景點」的 Layers(圖層堆疊,強調空間分層)撞語意
-    // ——這三個 icon 分別對應「自動生成」「時間排程」「空間分層」三種
-    // 不同的視覺隱喻,不會讓人混淆這三張卡片在講同一件事。
-    icon: Wand2,
-    title: '自動編排行程',
-    description: '描述你的旅行需求，系統自動把候選景點排成一份完整的每日時間軸行程。',
   },
 ] as const;
 
@@ -78,7 +79,7 @@ export function ProductPage() {
           故單一 CTA 直接指向 /app,不分登入/註冊兩種連結。這裡只有一顆
           固定 CTA,不需要指定 slot(見 SiteNavCta 的 slot prop 說明,
           省略時走預設 right,對齊 HomePage「登入」那顆的位置)。 */}
-      <SiteNavCta href="/app">立即開始</SiteNavCta>
+      <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'product', position: 'nav' })}>立即開始</SiteNavCta>
 
       <header className="product-hero">
         <h1>把想去的地方，變成一份順暢的旅程</h1>
@@ -87,8 +88,12 @@ export function ProductPage() {
           與旅伴協作、分享，輕鬆完成一趟旅行的規劃。
         </p>
         <div className="product-hero-actions">
-          <Link to="/app" className="product-btn-primary">
-            免費開始使用
+          <Link
+            to="/app"
+            className="product-btn-primary"
+            onClick={() => trackEvent('landing_cta_click', { page: 'product', position: 'hero' })}
+          >
+            開始使用
           </Link>
         </div>
       </header>
@@ -101,19 +106,7 @@ export function ProductPage() {
               <div className="product-feature-icon">
                 <Icon size={22} />
               </div>
-              <h3>
-                {title}
-                {/* product-feature-badge:「即將推出」提示——2026-09
-                    使用者要求只在「自動編排行程」卡片標題旁加這個小
-                    膠囊(這個功能還沒實際上線,跟另外兩張已上線的卡片
-                    區隔開),用 title 字串比對挑出這一張卡片,寫法同
-                    下方 ThemePointDemo/TimelineDemo/AutoPlanDemo 依
-                    title 決定要不要多渲染內容的既有慣例。樣式見
-                    ProductPage.css 的 .product-feature-badge。 */}
-                {title === '自動編排行程' && (
-                  <span className="product-feature-badge">即將推出</span>
-                )}
-              </h3>
+              <h3>{title}</h3>
               <p>{description}</p>
               {/* ThemePointDemo:只在「主題景點」這張卡片內渲染(見上方
                   FEATURES 陣列的 Layers icon 那筆)——文字說明「點開
@@ -130,16 +123,39 @@ export function ProductPage() {
                   TimelineDemo:同樣邏輯,只在「時間軸排程」卡片內渲染
                   ——地圖上依序點選候選景點、依序飛入右側時間軸時段格
                   的假動畫,見 TimelineDemo.tsx 的完整說明。
-                  AutoPlanDemo:同樣邏輯,只在「自動編排行程」卡片內
-                  渲染(2026-09 由「自然語言查詢」改主題,見 FEATURES
-                  陣列該筆資料的完整說明)——模擬打出一句旅行需求文字、
-                  送出後系統自動把候選景點依序排成一份時間軸行程的假
-                  動畫,聊天輸入框視覺沿用 plan-ai/
-                  AIPlanTimelinePage.tsx 的樣式,時間軸呈現方式則另外
-                  簡化設計,見 AutoPlanDemo.tsx 的完整說明。 */}
+                  AutoPlanDemo:同樣邏輯,只在「AI編排行程」卡片內渲染
+                  (2026-09 由「自動編排行程」改名,見 FEATURES 陣列該筆
+                  資料的完整說明)——模擬打出一句旅行需求文字、送出後
+                  系統自動把候選景點依序排成一份時間軸行程的假動畫,
+                  聊天輸入框視覺沿用 plan-ai/AIPlanTimelinePage.tsx 的
+                  樣式,時間軸呈現方式則另外簡化設計,見 AutoPlanDemo.tsx
+                  的完整說明。 */}
               {title === '主題景點' && <ThemePointDemo dark={dark} />}
               {title === '時間軸排程' && <TimelineDemo dark={dark} />}
-              {title === '自動編排行程' && <AutoPlanDemo dark={dark} />}
+              {title === 'AI編排行程' && (
+                <>
+                  <AutoPlanDemo dark={dark} />
+                  {/* 2026-09 使用者要求「AI編排行程」卡片加入按鈕,連到
+                      /ai-plan(見 App.tsx 的路由定義,PlanAiSimPage——
+                      「AI 安排行程」模擬展示獨立公開頁)。這是站內路由,
+                      不是外部網站(tripace.shuttle.tools 就是這個 repo
+                      自己的正式站網域,見 deploy-redirect.yml 的說明),
+                      故用相對路徑的站內 <Link>,不是完整網址的 <a>,
+                      同頁跳轉即可,不需要 target="_blank"。文案用
+                      「觀看展示」而非「立即試用」——這是一個展示頁,
+                      不是功能已經完整上線可直接使用,避免文案語氣暗示
+                      超出實際完成度。只在這張卡片渲染,同上方
+                      ThemePointDemo/TimelineDemo 依 title 字串決定是否
+                      多渲染內容的既有慣例。 */}
+                  <Link
+                    to="/ai-plan"
+                    className="product-feature-cta"
+                    onClick={() => trackEvent('landing_cta_click', { page: 'product', position: 'feature-ai-plan' })}
+                  >
+                    觀看展示
+                  </Link>
+                </>
+              )}
             </div>
           ))}
         </div>
@@ -148,8 +164,12 @@ export function ProductPage() {
       <section className="product-final-cta">
         <h2>準備好規劃下一趟旅程了嗎？</h2>
         <p>立即建立你的第一份旅程，體驗地圖探索與拖曳排程的便利。</p>
-        <Link to="/app" className="product-btn-primary">
-          免費開始使用
+        <Link
+          to="/app"
+          className="product-btn-primary"
+          onClick={() => trackEvent('landing_cta_click', { page: 'product', position: 'final' })}
+        >
+          開始使用
         </Link>
       </section>
 

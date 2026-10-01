@@ -8,6 +8,7 @@ import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { CityPageFooter } from './CityPageFooter';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { useScrollProgress } from '../hooks/useScrollProgress';
+import { trackEvent } from '../analytics';
 import './KyotoPage.css';
 
 // LANDING_ASSETS_BASE — 同 JiufenPage.tsx 的說明,同一個公開可讀 GCS
@@ -170,7 +171,7 @@ export function KyotoPage() {
           直接寫死在 JSX 文字裡,搬過來時拆掉手寫的分隔符號。 */}
       <SiteNavBrand pageLabel="京都・清水寺" />
       <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
-      <SiteNavCta href="/app">立即開始</SiteNavCta>
+      <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'kyoto', position: 'nav' })}>立即開始</SiteNavCta>
 
       <header className="kyoto-hero">
         <span className="kyoto-hero-eyebrow">地形決定了這一切</span>
@@ -252,7 +253,11 @@ export function KyotoPage() {
       <section className="kyoto-final-cta">
         <h2>這條路線，只是一個開始</h2>
         <p>每一個地方都有自己的地景、歷史與生活脈絡。探索，就是把這些點連成一條屬於你的路。</p>
-        <Link to="/app" className="kyoto-btn-primary">
+        <Link
+          to="/app"
+          className="kyoto-btn-primary"
+          onClick={() => trackEvent('landing_cta_click', { page: 'kyoto', position: 'final' })}
+        >
           規劃我的探索路線
         </Link>
       </section>

@@ -82,7 +82,10 @@
    按鈕/連結顏色規則(0,1,0)更高——即使按鈕規則寫在後面,實際渲染仍會被
    這裡的 color: inherit 蓋掉(CSS 的 specificity 優先於原始碼順序)。故
    凡是需要跟這條規則不同顏色的按鈕/連結,選擇器前面都要加 .product-page
-   把 specificity 拉高到至少 (0,2,0),不能只靠寫在後面。 */
+   把 specificity 拉高到至少 (0,2,0),不能只靠寫在後面。
+   (2026-09 真實踩坑記錄:.product-feature-cta 最初寫成單一 class,
+   color: #fff 沒有生效,文字被這裡的 inherit 蓋掉變成深色、在暗紅底上
+   看不清楚——加上 .product-page 前綴後才修好,見該規則的完整說明。) */
 .product-page a {
   color: inherit;
 }
@@ -214,28 +217,36 @@
 .product-feature-card h3 {
   font-size: 1.1rem;
   margin: 0 0 0.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 }
 
-/* product-feature-badge:標題旁的小膠囊標籤——2026-09 使用者要求在
-   「自動編排行程」卡片標題旁加「即將推出」提示,故 h3 改成 flex 容器
-   讓文字跟膠囊在同一行並排(見上方 h3 規則的 display: flex)。底色刻意
-   用 --vermilion(強調色)而非 --paper/--paper-dim(卡片本身底色),讓
-   這個標籤在視覺上跳出來、明確傳達「這是提示,不是功能標題的一部分」,
-   不會被誤認成標題文字的延伸。字級比標題小很多(0.7rem vs 1.1rem),
-   份量克制,不會搶過標題本身的視覺重心。 */
-.product-feature-badge {
-  display: inline-flex;
+/* product-feature-cta:卡片內嵌的 CTA——目前只有「AI編排行程」卡片用
+   (連到獨立部署的 AI 規劃展示頁,見 ProductPage.tsx 的呼叫處)。用
+   --vermilion 強調色而非 --ink 實心底,在卡片內部與整體頁面的主要
+   CTA(hero/final 的「開始使用」)視覺上有所區隔。
+   文字色刻意寫死 #fff 而非 var(--paper)——--paper 在深色模式下會變成
+   接近黑色(#1C1815,見上方 :root 深色模式區塊),跟同樣變亮的
+   --vermilion(#D97A63)搭在一起,文字對比不足、容易被誤認成「黑字」
+   (實測回報的問題)。按鈕底色在兩種模式下都是偏深的暖色系,白字在
+   淺色/深色模式下都有穩定的對比度,不需要再跟著模式切換。 */
+.product-page .product-feature-cta {
+  display: flex;
   align-items: center;
-  font-size: 0.7rem;
+  justify-content: center;
+  width: fit-content;
+  margin: 1rem auto 0;
+  font-size: 1rem;
   font-weight: 600;
-  color: var(--paper);
+  color: #fff;
   background: var(--vermilion);
-  padding: 0.2rem 0.65rem;
+  text-decoration: none;
+  padding: 0.85rem 1.75rem;
   border-radius: 999px;
-  white-space: nowrap;
+  box-shadow: var(--card-shadow);
+  transition: transform 0.2s ease;
+}
+
+.product-page .product-feature-cta:hover {
+  transform: translateY(-2px);
 }
 
 .product-feature-card p {

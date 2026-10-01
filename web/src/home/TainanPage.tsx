@@ -8,6 +8,7 @@ import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { CityPageFooter } from './CityPageFooter';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { useScrollProgress } from '../hooks/useScrollProgress';
+import { trackEvent } from '../analytics';
 import './TainanPage.css';
 
 // ANPING_FORT_PHOTO_URL:手機版地圖縮圖(見下方 MobileMapReveal)用的
@@ -186,7 +187,7 @@ export function TainanPage() {
           JiufenPage.tsx 的完整說明)。 */}
       <SiteNavBrand pageLabel="台南・安平" />
       <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
-      <SiteNavCta href="/app">立即開始</SiteNavCta>
+      <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'tainan', position: 'nav' })}>立即開始</SiteNavCta>
 
       <header className="tainan-hero">
         <span className="tainan-hero-eyebrow">港口決定了這一切</span>
@@ -283,8 +284,12 @@ export function TainanPage() {
       <section className="tainan-final-cta">
         <h2>把安平的故事，排進你的下一趟行程</h2>
         <p>在 Tripace 上探索景點、拖曳排入日程，規劃一趟屬於自己的台南港町之旅。</p>
-        <Link to="/app" className="tainan-btn-primary">
-          免費開始使用
+        <Link
+          to="/app"
+          className="tainan-btn-primary"
+          onClick={() => trackEvent('landing_cta_click', { page: 'tainan', position: 'final' })}
+        >
+          開始使用
         </Link>
       </section>
 

@@ -8,6 +8,7 @@ import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { CityPageFooter } from './CityPageFooter';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { useScrollProgress } from '../hooks/useScrollProgress';
+import { trackEvent } from '../analytics';
 import './JiufenPage.css';
 
 // SEO_TITLE/SEO_DESCRIPTION:這個頁面專屬的 <title>/<meta description>,
@@ -203,7 +204,7 @@ export function JiufenPage() {
           的 pageLabel prop 完整說明)。 */}
       <SiteNavBrand pageLabel="九份" />
       <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
-      <SiteNavCta href="/app">立即開始</SiteNavCta>
+      <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'jiufen', position: 'nav' })}>立即開始</SiteNavCta>
 
       <header className="jiufen-hero">
         <span className="jiufen-hero-eyebrow">地形決定了這一切</span>
@@ -318,8 +319,12 @@ export function JiufenPage() {
       <section className="jiufen-final-cta">
         <h2>把九份的故事，排進你的下一趟行程</h2>
         <p>在 Tripace 上探索景點、拖曳排入日程，規劃一趟屬於自己的東北角之旅。</p>
-        <Link to="/app" className="jiufen-btn-primary">
-          免費開始使用
+        <Link
+          to="/app"
+          className="jiufen-btn-primary"
+          onClick={() => trackEvent('landing_cta_click', { page: 'jiufen', position: 'final' })}
+        >
+          開始使用
         </Link>
       </section>
 
