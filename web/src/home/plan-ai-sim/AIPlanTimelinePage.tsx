@@ -772,9 +772,28 @@ export function AIPlanTimelinePage() {
       // data-plan-sim-done——播放完成訊號,供 Playwright 錄製腳本輪詢
       // (見 home/record/RecordAiPlanPage.tsx),頁面本身不依賴它。
       document.body.setAttribute('data-plan-sim-done', 'true')
+      // plan-sim-done postMessage——給 RecordAiPlanPage 切到 CTA 字卡的
+      // 信號,只在 recordMode 下送(一般展示頁沒有父層監聽)。
+      if (recordMode && typeof window !== 'undefined' && window.parent !== window) {
+        window.parent.postMessage({ source: 'ai-plan-sim', type: 'plan-sim-done' }, '*')
+      }
     }
     wasGeneratingRef.current = isGenerating
-  }, [isGenerating])
+  }, [isGenerating, recordMode])
+
+  // 推論信號廣播——recordMode 下每次有新 stop 加入,把 stop id 以
+  // postMessage 廣播給外層 RecordAiPlanPage,字卡時機改跟著劇本真實進度
+  // 走,不再憑寫死的毫秒數對齊。broadcastedIdsRef 避免同一 id 重複送。
+  const broadcastedIdsRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!recordMode || typeof window === 'undefined' || window.parent === window) return
+    for (const step of steps) {
+      if (step.type !== 'stop') continue
+      if (broadcastedIdsRef.current.has(step.id)) continue
+      broadcastedIdsRef.current.add(step.id)
+      window.parent.postMessage({ source: 'ai-plan-sim', type: 'stop-added', stopId: step.id }, '*')
+    }
+  }, [steps, recordMode])
 
   // mountedIdsRef——追蹤「已經播過進場動畫的節點 id」,用來正確判斷
   // 下方渲染迴圈裡的 justMounted。原本 justMounted 是用
@@ -892,7 +911,12 @@ export function AIPlanTimelinePage() {
   // data-theme 屬性值是什麼,這個頁面都只會顯示淺色 token。
   return (
     <>
-    <div className={`${styles.page} app-theme-root`} data-theme={theme ?? undefined}>
+    <div
+      className={`${styles.page} app-theme-root`}
+      // recordMode 下強制亮色:廣告素材的字卡配色/米白畫布是針對亮色設計,
+      // 不受系統深色偏好或 theme state 影響(recordMode 也不渲染日夜切換)。
+      data-theme={recordMode ? 'light' : theme ?? undefined}
+    >
       {/* StaticMapBackdrop——整頁的地圖底層。用 Maps Static API(一張
           PNG)而非 JS SDK,理由見該元件的完整說明:這是公開高流量的
           展示頁、地圖內容固定、零互動需求,Static 的圖片請求可以被
@@ -957,7 +981,9 @@ export function AIPlanTimelinePage() {
         jumpPillWrapClassName={styles.timelineJumpPillWrap}
       />
 
-      <div className={styles.composer}>
+      {/* 開場(打字中)輸入膠囊垂直置中,送出後滑到底部常駐位置,用
+          同一個 DOM 節點加 .composerStart modifier 做轉場。 */}
+      <div className={`${styles.composer} ${!promptTyped ? styles.composerStart : ''}`}>
         <div className={styles.composerInner}>
           {/* 輸入框是純展示用的假打字動畫(見 typedPrompt 的完整說明),
               不接受真的輸入、不會真的送出任何請求——這個頁面固定進頁就

@@ -183,7 +183,17 @@
   left: 50%;
   bottom: 20px;
   bottom: max(20px, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
+  /* translateY(0)——使用者明確要求「一開始文字輸入匡在中間，送出後
+     往下移動到目前位置」。bottom 錨點本身維持不變(固定 20px,不做
+     bottom↔top 這種 CSS 原生無法補間的屬性切換),改用額外疊加的
+     translateY 位移量做轉場:.composerStart(打字動畫進行中)疊加一個
+     負值(把膠囊從底部錨點往上推到螢幕中間),拿掉 .composerStart 後
+     位移歸零,膠囊就平滑滑回原本 bottom: 20px 定義的底部位置。
+     transition 只放在 .composer 本體(而非 .composerStart),這樣兩個
+     方向(加上 modifier/拿掉 modifier)都會套用同一條 transition,不
+     需要分別處理「進場」與「離場」兩種時機。 */
+  transform: translateX(-50%) translateY(0);
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
   width: min(560px, calc(100% - 48px));
   background: var(--ios-card);
   border: 1px solid var(--ios-sep);
@@ -199,6 +209,16 @@
      作為使用者操作入口,邏輯上必須保證永遠疊在時間軸內容最上層,補上
      明確比時間軸裡最高值(.jumpPillWrap 的 10)還高的 z-index。 */
   z-index: 20;
+}
+/* composerStart——開場時(打字動畫尚未播完,見 AIPlanTimelinePage.tsx
+   composer 的完整說明)的初始位置:膠囊從底部錨點(bottom: 20px)往上
+   疊加一段 translateY,視覺上落在螢幕垂直置中附近。這個偏移量用
+   calc(-50vh + 50%) 算出「螢幕中心」相對「底部錨點」的距離——
+   -50vh 把參考點移到視窗正中央,+50% 補回元素自身高度的一半(視窗
+   置中計算的標準公式),不是憑印象猜一個固定像素,在不同比例/裝置
+   高度下都會正確落在螢幕中間,不只是對著手機外框的高度抓感覺。 */
+.composerStart {
+  transform: translateX(-50%) translateY(calc(-50vh + 50%));
 }
 .composerInner { width: 100%; }
 /* 原本輸入框上方常駐一行狀態提示文字(.aiLine)——漂浮膠囊只有單行
