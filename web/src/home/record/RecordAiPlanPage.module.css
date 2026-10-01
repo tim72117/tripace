@@ -26,6 +26,30 @@
   background: #F2F0EC;
   color: #2B2420;
   font-family: -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+  /* --canvas-edge-gap——.canvasOuter 的尺寸公式(見該 class 的完整
+     說明)拿這個變數當「畫布跟 viewport 邊緣該留多少間距」的扣除量,
+     預設等於這裡的 24px padding × 2(.canvasWrap 左右各貼齊 .page
+     的 padding 邊界一次)。 */
+  --canvas-edge-gap: 48px;
+}
+/* pageHideControls——實際發生過的真實問題(2026-10,使用者實際檢查
+   錄製成品後回報「還是有畫布以外的區域」):只讓 RecordAiPlanPage.tsx
+   不渲染 .controls 並不夠——.page 本身的 24px padding 與
+   .canvasOuter 尺寸公式裡「扣除 48px(=2×24px)」的計算,原本就是故意
+   設計給「人工在瀏覽器裡操作,畫布周圍要留一點邊距方便看清楚範圍」
+   這個情境用的,即使控制列不渲染,這圈 padding 依然存在,畫布因此
+   永遠不可能真正撐滿到 viewport 邊緣,錄製出來的影片四周會殘留一圈
+   .page 背景色(#F2F0EC,跟常見的 bgColor 預設值 #F7F3EC 顏色太接近,
+   快速看過去容易被忽略,但實際比對像素值可以看出是兩種不同顏色,
+   代表畫布真的沒有撐滿)。hideControls=1 時(見 RecordAiPlanPage.tsx
+   hideControls 的完整說明,跟這個 modifier 綁同一個條件)連這圈
+   padding 也要歸零,--canvas-edge-gap 跟著歸零,.canvasOuter 的尺寸
+   公式扣除量變成 0,才能讓畫布真正等於整個 viewport,錄製邊界精確
+   等於畫布邊界。 */
+.pageHideControls {
+  padding: 0;
+  gap: 0;
+  --canvas-edge-gap: 0px;
 }
 
 /* .page 範圍內的 box-sizing: border-box reset——這個頁面刻意不引入
@@ -131,111 +155,238 @@
    上限反推出的對應高度) 兩者取小——瀏覽器會自動在「高度被剩餘空間
    卡住」與「寬度被 100vw 卡住」兩種情境間,挑先頂到的那個限制,同時
    aspect-ratio 在這整個過程中都維持精確比例,不會被單獨壓縮某一邊。
-   calc(100vw - 48px) 除以 aspect-ratio 數值轉成高度基準——inline
-   style 設定的 aspect-ratio 是 width/height 的比例字串(如
-   "1080 / 1080"),CSS 原生不支援直接拿它來做這種反推運算,改用 JS
-   算好比例數字當自訂屬性傳進來最乾淨(見 RecordAiPlanPage.tsx 的
-   --canvas-ratio 設定)。 */
+   calc(100vw - var(--canvas-edge-gap)) 除以 aspect-ratio 數值轉成
+   高度基準——inline style 設定的 aspect-ratio 是 width/height 的
+   比例字串(如 "1080 / 1080"),CSS 原生不支援直接拿它來做這種反推
+   運算,改用 JS 算好比例數字當自訂屬性傳進來最乾淨(見
+   RecordAiPlanPage.tsx 的 --canvas-ratio 設定)。--canvas-edge-gap
+   預設 48px(對齊 .page 的 24px padding×2),.pageHideControls 下歸零
+   (見該 class 的完整說明)——畫布跟 viewport 邊緣該留多少間距是
+   「人工操作 vs 自動化錄製」這兩種情境各自的需求,不是寫死在這裡的
+   單一數字。 */
 .canvasOuter {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: min(100%, calc((100vw - 48px) / var(--canvas-ratio)));
-  max-width: calc(100vw - 48px);
+  height: min(100%, calc((100vw - var(--canvas-edge-gap)) / var(--canvas-ratio)));
+  max-width: calc(100vw - var(--canvas-edge-gap));
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 0 0 1px #DCD7CE;
+  /* container-type: size——讓 .reelsSafeZoneOverlay(見該 class 的完整
+     說明)可以用 cqw(container query width)單位,使疊加層的字級/間距
+     跟著 .canvasOuter 實際渲染尺寸等比例縮放。.canvasOuter 本身的
+     height 用 min(100%, calc(...)) 動態算出(人工操作視窗縮放時會
+     連動變化),若疊加層用寫死的 px,視窗縮小時文字會相對顯得過大、
+     位置比例也會跑掉。 */
+  container-type: size;
+}
+/* pageHideControls 下 .canvasOuter 的圓角/描邊也要拿掉——這兩個裝飾
+   是給人工操作時方便肉眼辨識「這是畫布邊界範圍」用的視覺提示,跟
+   .pageHideControls 本身要解決的問題同源(見該 class 的完整說明):
+   畫布現在等於整個 viewport,四個角落若還帶圓角,angles 會露出
+   .page 的背景色,跟「畫布應該是錄製的完整邊界,不該看到邊界以外的
+   任何東西」這個設計意圖矛盾;1px 描邊同理是多餘的裝飾線,不該出現
+   在最終廣告素材裡。 */
+.pageHideControls .canvasOuter {
+  border-radius: 0;
+  box-shadow: none;
 }
 
-/* caption——疊在手機外框外側(背景留白區頂部)的字卡,見
-   RecordAiPlanPage.tsx useCaption 的完整說明。使用者明確要求「活潑
-   一點」,2026-10 經 Fable 模型評估兩輪調整後的設計:
-   - 定位改用 bottom: calc(50% + var(--phone-h) / 2 + 間距),不是原本
-     寫死的 top: 6%——手機外框在 .canvasOuter 裡永遠置中,頂緣位置
-     精確等於「畫布中心往上半個手機高度」,用這個算式才能讓字卡底部
-     跟手機頂緣永遠保持固定間距,不受比例切換(1:1/4:5/9:16)或手機
-     縮放倍率影響。原本的 top: 6% 經精算:1:1 比例下手機頂緣只距畫布
-     頂端 151.8px,字卡若换成兩行文字,底部會落在 137~187px,直接
-     蓋住手機外框頂緣與動態島,是真實的遮擋風險(見
-     RECORD_HOOK_STEPS 一類命名慣例旁的 PHONE_WIDTH/HEIGHT 說明,
-     1:1 的縮放值也同步從 0.92 降到 0.88 加大安全距離)。
-   - width: fit-content(max-width 84% 防止極長文字溢出)取代原本
-     left/right: 8% 的固定寬橫幅——固定寬在 1:1 比例下是手機寬度的
-     2.5 倍,一大片色塊壓在小手機上方,視覺份量蓋過產品本身。改成
-     貼合文字寬度後,紅色色塊縮小成「貼紙」感,份量感自然降到跟手機
-     相襯,不會喧賓奪主。
-   - 底色從磚紅(#B8402F→#8B3A2F)改成珊瑚橘紅(#E25A3C→#B8402F)——
-     原本的磚紅彩度/明度偏低,氣質沉穩成熟,適合行銷頁「紙感和風」的
-     強調色,但作為要彈跳進場的廣告字卡顯得不夠「活潑」;珊瑚橘紅
-     彩度更高、更暖,與手機內容的暖沙色(--ios-sand)呼應感更明顯,
-     仍是同一個品牌紅色系的延伸,不是另外發明的新色。
-   - inset box-shadow 加一圈淡白內圈,強化「貼紙」的實體感,也在
-     使用者把 bgColor 換成深色畫布時提供額外的輪廓分離度。
-   - text-shadow 做一圈極淡的黑色陰影,確保文字在任何底色(含更亮的
-     珊瑚紅)上都維持清晰邊界,不只依賴色塊本身的對比度。
-   - 微微傾斜(-2deg)打破對稱的工整感,搭配彈跳進場動畫
-     (captionPop,見下方 keyframes),是「活潑」的核心來源——嚴肅的
-     廣告字卡通常是正對、淡入淡出,刻意不對稱+有彈性的進場才會讓
-     畫面有生氣。
-   - position: absolute,不佔用 flex 版面空間,不會把手機外框往下推。
-     z-index 蓋過 .phoneFrame,確保字卡永遠在最上層;pointer-events:
-     none 避免攔截使用者對底下手機畫面的互動(例如手動觸發展示腳本
-     時誤點到字卡)。 */
+/* scaleWrap——見 RecordAiPlanPage.tsx useCanvasScale 的完整說明:裡面
+   的字卡+手機外框全部維持以 1080px(activeRatio.width/height)為基準
+   設計的絕對像素尺寸不變,整塊只靠 transform: scale() 縮小。
+   flex-shrink: 0——.scaleWrap 的 width/height 是固定 1080×1920 這類
+   設計基準尺寸(遠大於 .canvasOuter 實際渲染出來的大小),若不禁止
+   flex 壓縮,.canvasOuter(display: flex)會嘗試把它硬壓進可用空間,
+   破壞 scale() 計算的前提(scale 是額外疊加的視覺縮放,前提是
+   .scaleWrap 自身先維持原始設計尺寸不被 flex 系統另外改動)。多出來的
+   未縮放前佔位空間由 .canvasOuter 的 overflow: hidden 裁掉——裁掉的
+   只是「佔位框」,transform: scale() 預設以元素中心為原點縮放,視覺上
+   縮小後的實際內容仍落在 .canvasOuter(flex 置中)的正中央,不會因此
+   跑位。 */
+.scaleWrap {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* caption——疊在手機螢幕(iframe)內容之上的字卡,見 RecordAiPlanPage.tsx
+   Caption.anchor 的完整說明。
+   2026-10 設計歷程(供之後調整時參考,避免走回已驗證失敗的方向):
+   - 第一版固定貼在手機外框正上方置中——畫面單調,沒利用周圍留白。
+   - 第二版讓字卡疊在手機外框「外面」四個角落(外框與畫布邊緣之間的
+     留白區)——這個留白區本身很窄(手機已盡量放大,佔畫布寬度
+     75% 左右),字卡被迫跟著收小、擠在窄縫裡,使用者陸續回報「字
+     太小」「太邊邊」,甚至因為定位算式失誤被裁到畫布外看不見。
+   - 第三版改成疊在手機螢幕內、貼螢幕四個邊緣(上/右/下/左)輪流——
+     委託 Fable 模型研究廣告字卡排版慣例後,報告指出直式畫面下左右緣
+     辨識度低(字卡寬度遠大於可視寬度一半,貼左貼右視覺上難以分辨),
+     右緣還會撞上 Reels 互動直欄(讚/留言/分享,約佔畫布右側 120px),
+     四邊輪流的「找字成本」會累積成閱讀疲勞。改成只用「上緣(敘事)+
+     下緣(CTA)」兩個固定錨點,活潑感改由傾斜角度交替(top 稍微左傾,
+     bottom 稍微右傾)提供,不再靠換位置。
+   - 安全邊距:經過兩輪修正才找到實際準確的數字,記錄完整過程避免
+     之後又走回已經證明錯誤的估計值:
+     (1) 第一版引用 Fable 模型報告估計「底部約 420px」——使用者實際
+         發布一則 Reels 後肉眼檢查,發現底部字卡被播放介面的帳號名/
+         文案列整個蓋住,證明這個估計值嚴重低估。
+     (2) 第二版改查 Meta 官方公告的 2026 年 Reels 廣告素材規格,查到
+         「底部安全區約 670px(35%)」,但這其實是源自部落格文章的
+         二手估計值,不是 Meta 官方逐字稿——使用者後來提供一張自己
+         實際瀏覽 Reels 的手機截圖,直接在截圖上量測,發現底部帳號名/
+         文案列實際只佔約 10.4% 高度(不含額外彈出的留言輸入框,那不是
+         瀏覽 Reels 時的常駐 UI),35% 這個數字又高估了超過 3 倍。
+     (3) 最終改用這張真實截圖量測的數字:頂部約 13%(狀態列+搜尋/
+         選單圖示)、底部約 16%(多留一點緩衝,比純量測值 10.4% 寬裕)。
+         換算成「相對 .phoneFrame 自身高度」的百分比(見計算過程:
+         9:16 手機渲染後高度 1755.5px,頂緣距畫布頂端 82.2px,畫布
+         安全區扣掉這段留白,換算成 phoneFrame 高度的佔比約
+         top 13%/bottom 12.8%),.caption-top 維持 top: 14%(跟新數字
+         很接近,不需要再調),.caption-bottom 從曾經高估的 34% 下修到
+         18%(字卡可以比之前更靠近畫面中下段,不會離內容太遠)。
+     這個教訓:網路上查到的「安全區規格」文章經常是二手轉述甚至
+     純粹估算,涉及實際視覺呈現的數字,能用真實截圖量測驗證就不要
+     只信搜尋結果。
+   - 底色:原本試過半透明毛玻璃底,但使用者最終決定改回 Fable 模型
+     建議的「不透明度 ≥92% 實色塊」以確保在 App 各種底色畫面上都有
+     穩定對比,同時採用使用者提出的「可以混合不同顏色」方向——不是
+     所有敘事字卡都同一個顏色,改成三種同屬品牌紅色調性、但彩度/
+     明度有層次差異的實色塊依序輪替(見下方 .caption-colorway-1/-2/-3
+     與 RecordAiPlanPage.tsx COLORWAY_CYCLE 的完整說明),.caption
+     本體只保留共用的外觀骨架(字體/間距/陰影/進場動畫),不再自帶
+     任何顏色,顏色完全交給 colorway modifier class 決定。
+   - 水平位置:使用者明確要求「上面稍微往左，下面稍微往右」——不是
+     左右兩個版本的 anchor(那是先前「四邊輪流」已經驗證失敗的方向,
+     見上方的設計歷程),而是頂部字卡統一偏左、底部字卡統一偏右,
+     跟頂部/底部的傾斜方向(--caption-tilt)呼應,讓整體視覺有一種
+     「對角線」的動態感,比死板置中活潑,但又不像四邊輪流那樣每句
+     都要重新找位置。用 left/right(而非 margin)做偏移,搭配
+     max-width 留出足夠邊距,确保不會贴到螢幕邊缘或超出。
+   - 字級:2026-10 使用者明確要求「字卡不要縮小」——.caption 原本相對
+     .phoneFrame 定位,字級用固定 px,手機整體放大時(transform: scale
+     (phoneScale))字卡視覺大小會自動跟著等比例放大;但手機後來為了
+     避開 Reels 安全區而從 phoneScale 2.08 縮到約 1.6(見
+     REELS_PHONE_FIT 的完整說明),若字卡還是 .phoneFrame 的子元素,
+     視覺大小會跟著縮小約 23%。改成 .caption 直接是 .canvasOuter 的
+     子元素(見 RecordAiPlanPage.tsx 的 JSX 結構,不再放在 .phoneFrame
+     或 .scaleWrap 裡面),用 cqw(相對 .canvasOuter 自身容器尺寸,見
+     .canvasOuter 的 container-type: size 說明)取代固定 px——cqw 不受
+     phoneScale 或 canvasScale 任何一層縮放影響,只跟著 .canvasOuter
+     實際渲染尺寸等比例縮放,字卡視覺大小因此固定維持跟「phoneScale
+     2.08 年代」相同的比例(26px 字級 × 2.08 ≈ 54px 畫布像素,換算
+     5cqw,以此類推 padding/圓角),不再受手機縮放牽連。
+   - 位置:原本 top:14%/bottom:18%/left,right:-6% 是相對 .phoneFrame
+     算出來的,.caption 改成相對整個畫布(.canvasOuter)後,要重新换算
+     等效的畫布座標才能維持原本幾乎一樣的視覺位置:舊版 phoneScale
+     2.08 時,手機頂緣距畫布頂端 82.2px,字卡 top:14% 换算回畫布座標
+     約在 17.1% 處;字卡 bottom:18% 换算回畫布座標約距底部 20.7%。
+     這裡直接採用這兩個换算值(取整數留一點餘裕:top:17%/
+     bottom:21%),比新安全區邊界(top 13%/bottom 16%)多留 4-5
+     個百分點的緩衝,確保字卡本身也完全落在安全區之外,同時視覺位置
+     跟原本幾乎一致,不會因為手機變小而讓字卡位置顯得突兀。水平方向
+     (left/right 負值讓字卡貼齊或超出畫面中段)維持使用者先前要求的
+     「上面稍微往左，下面稍微往右」設計,但因為基準從手機寬度換成
+     畫布寬度,數值也要重新抓(手機現在只佔畫布寬度約 58%,原本
+     相對手機寬度的 -6% 偏移量套用在畫布寬度上會偏移過多)。
+   - position: absolute,相對 .canvasOuter 定位(見 RecordAiPlanPage.tsx
+     的 JSX 結構),z-index 蓋過 .scaleWrap(手機所在的那一層);
+     pointer-events: none 避免攔截使用者對底下 App 內容的互動。 */
 .caption {
   position: absolute;
-  bottom: calc(50% + var(--phone-h) / 2 + 20px);
-  left: 0;
-  right: 0;
   width: fit-content;
-  max-width: 84%;
-  margin: 0 auto;
+  max-width: 70%;
   z-index: 5;
   text-align: center;
-  font-size: clamp(22px, 4.2vw, 34px);
+  font-size: 5cqw;
   font-weight: 800;
-  line-height: 1.3;
+  line-height: 1.28;
+  padding: 2.5cqw 3.85cqw;
+  border-radius: 3.47cqw;
+  box-shadow: 0 12px 28px -8px rgba(43, 36, 32, 0.4);
+  animation: captionPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+}
+.caption-top {
+  top: 17%;
+  left: 8%;
+  right: auto;
+  --caption-tilt: -2deg;
+}
+.caption-bottom {
+  /* 見 .caption 本體說明的完整換算過程:21% 是舊版字卡視覺位置換算
+     回整個畫布座標的等效值,比新安全區底部邊界(16%)多留 5 個百分點
+     緩衝。 */
+  bottom: 21%;
+  right: 8%;
+  left: auto;
+  --caption-tilt: 2deg;
+}
+
+/* caption-colorway-1/-2/-3——敘事字卡的三組輪替底色(見
+   RecordAiPlanPage.tsx COLORWAY_CYCLE 的完整說明),同屬品牌紅色調性
+   但彩度/明度分層,確保互相輪替時仍是同一套視覺語言、不是隨便挑三個
+   不相干的顏色:
+   - colorway-1:珊瑚橘紅(#E25A3C→#B8402F 漸層)+ 白字,是最初版本的
+     主色,維持最高的視覺權重,通常用在開場/重點句。
+   - colorway-2:暖赭色(#C9875A→#9C6B3E 漸層)+ 米白字,彩度較低、
+     偏木質調性,呼應手機內容的暖沙色系(--ios-sand),提供中性過渡。
+   - colorway-3:深硃砂(#8B3A2F→#5C2620 漸層)+ 米白字,明度最低,
+     視覺上最沉穩,用在收束句前製造層次變化。
+   三組都用漸層(不是純色)保留原本「有質感」的設計語言,對比皆通過
+   WCAG AA(白/米白字對深色底 ≥ 4.5:1)。 */
+.caption-colorway-1 {
   color: #fff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   background: linear-gradient(135deg, #E25A3C 0%, #B8402F 100%);
-  padding: 14px 22px;
-  border-radius: 20px;
-  box-shadow:
-    0 12px 28px -10px rgba(184, 64, 47, 0.45),
-    inset 0 0 0 2px rgba(255, 255, 255, 0.28);
-  transform: rotate(-2deg);
-  animation: captionPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-  pointer-events: none;
+}
+.caption-colorway-2 {
+  color: #FDF8F0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  background: linear-gradient(135deg, #C9875A 0%, #9C6B3E 100%);
+}
+.caption-colorway-3 {
+  color: #FDF8F0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  background: linear-gradient(135deg, #8B3A2F 0%, #5C2620 100%);
 }
 @keyframes captionPop {
   0% {
     opacity: 0;
-    transform: rotate(-2deg) scale(0.4) translateY(-12px);
+    transform: rotate(var(--caption-tilt, -2deg)) scale(0.4) translateY(-12px);
   }
   60% {
     opacity: 1;
-    transform: rotate(-2deg) scale(1.08) translateY(2px);
+    transform: rotate(var(--caption-tilt, -2deg)) scale(1.08) translateY(2px);
   }
   100% {
     opacity: 1;
-    transform: rotate(-2deg) scale(1) translateY(0);
+    transform: rotate(var(--caption-tilt, -2deg)) scale(1) translateY(0);
   }
 }
+
 /* captionCta——結尾行動呼籲字卡的反轉配色(2026-10 Fable 模型評估
-   建議):米白底(--paper 同色系 #F7F3EC)+ 硃砂字,跟前面一連串敘事
-   字卡(珊瑚紅底白字)形成明顯的語氣切換,觀眾滑到這句時會感覺到
-   「這句不一樣」,呼應它是整支影片唯一真正要求行動的一句,不只是在
-   描述功能。邊框用硃砂色描邊強化輪廓(米白底在同樣米白的畫布預設底色
-   上,少了珊瑚紅那種天然的圖地分離,需要邊框補回對比)。text-shadow
-   改回不需要(深色文字在淺色底上本來就有足夠對比,白色陰影反而會讓
-   邊緣模糊)。 */
+   建議):米白底(--paper 同色系 #F7F3EC)+ 硃砂字,跟前面三組敘事字卡
+   輪替色(.caption-colorway-1/-2/-3,皆為深色實心底+淺色字)形成明顯
+   的語氣切換——敘事階段一路都是「深底淺字」,CTA 突然反轉成「淺底
+   深字」,觀眾會立刻注意到「這句不一樣」,呼應它是整支影片唯一真正
+   要求行動的一句。CTA 不套用任何 colorway class(見
+   RecordAiPlanPage.tsx caption 的 className 組合邏輯:isCta 時只加
+   .captionCta,不疊加 colorway),避免混進三組輪替色裡、反而看起來
+   只是第四種顏色而失去反轉的識別度。邊框用硃砂色描邊強化輪廓(米白底
+   在同樣米白的畫布/App 背景上,少了深色底那種天然的圖地分離,需要
+   邊框補回對比)。 */
 .captionCta {
   color: #8B3A2F;
   text-shadow: none;
   background: #F7F3EC;
+  border: 1.5px solid #B8402F;
   box-shadow:
     0 12px 28px -10px rgba(139, 58, 47, 0.3),
-    inset 0 0 0 2px #B8402F;
+    inset 0 0 0 2px rgba(255, 255, 255, 0.5);
 }
 
 /* phoneFrame——仿 iPhone 實機外觀的精緻版(對照使用者提供的參考圖
@@ -334,4 +485,100 @@
   display: block;
   background: #FFFFFF;
   border-radius: 49px;
+}
+
+/* reelsSafeZoneOverlay——使用者明確要求「在畫面中模擬真實會出現的
+   文字區」且「做顯眼一點」,方便調整字卡位置時一眼看出 Reels 實際會
+   疊加 UI 的範圍,見 RecordAiPlanPage.tsx showReelsSafeZone 的完整
+   說明。第一版只用幾個細描邊圖示模擬真實 UI 樣式,使用者實測後回報
+   「不夠顯眼」——改成直接用半斜線紋理的警示色色塊鋪滿整個不安全
+   區域(不是模擬 UI 長相,而是像工地警示帶那樣標示「這塊不能放」),
+   搭配大字文字標籤,犧牲一點「像不像真實 Reels 介面」的擬真度,換取
+   一眼辨識度,畢竟這層的目的是給製作者自己校對位置用,不是給觀眾看的
+   最終畫面。安全區比例取自 Meta 官方公布的 2026 年 Reels 廣告素材
+   規格(1080×1920 畫布):頂部約 270px(14%,帳號名/音樂標籤/贊助
+   標記)、底部約 670px(35%,文案/音樂軌)、右下角讚/留言/分享/
+   收藏直欄約佔右側 770px(40%)高、110px(約 10%)寬——這裡直接用
+   「相對 .canvasOuter 自身尺寸」的百分比定位,不是相對 .phoneFrame
+   (手機外框),因為 Reels 平台 UI 疊加的對象是整支影片畫布,不是畫布
+   裡的手機造型裝飾。position: absolute + inset: 0,鋪滿整個
+   .canvasOuter;pointer-events: none 確保不攔截任何互動,純視覺
+   預覽。 */
+.reelsSafeZoneOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  font-family: -apple-system, "PingFang TC", "Noto Sans TC", sans-serif;
+}
+
+/* reelsSafeZoneStripes——警示斜紋背景,三個區塊(top/bottom/rightRail)
+   共用同一組漸層定義,只是鋪的範圍不同——斜紋本身比純色塊更容易讓人
+   聯想到「警示/施工中」的視覺語彙,辨識度比單純半透明色塊更高。 */
+.reelsSafeZoneTop,
+.reelsSafeZoneBottom,
+.reelsSafeZoneRightRail {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(220, 38, 38, 0.38) 0px,
+    rgba(220, 38, 38, 0.38) 14px,
+    rgba(220, 38, 38, 0.22) 14px,
+    rgba(220, 38, 38, 0.22) 28px
+  );
+  border: 0.28cqw dashed rgba(220, 38, 38, 0.85);
+}
+
+/* 以下尺寸用 cqw(相對 .canvasOuter 容器寬度的百分比,見該 class
+   container-type: size 的完整說明)——.canvasOuter 在人工操作時會隨
+   瀏覽器視窗縮放,寫死 px 會讓疊加層文字/間距比例跟著跑掉。
+   2026-10 使用者提供一張真實 Reels 瀏覽截圖後實測修正:原本引用
+   WebSearch 查到的部落格文章估計值(頂部 14%/底部 35%)嚴重高估了
+   實際安全區——用那張截圖實際量測,底部帳號名/文案列只佔約 10.4%
+   高度(不含額外疊加的留言輸入框,那不是瀏覽 Reels 時的常駐 UI),
+   頂部狀態列+圖示列約佔 12.3%。改成頂部 13%、底部 16%(比純量測值
+   10.4% 多一點緩衝,但不再是原本誇張的 35%),右側互動按鈕欄起始
+   位置也同步從 60% 下修到 61%(對齊截圖裡讚按鈕的實際起始高度)。 */
+.reelsSafeZoneTop {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 13%;
+}
+.reelsSafeZoneBottom {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 16%;
+}
+.reelsSafeZoneRightRail {
+  top: 61%;
+  bottom: 0;
+  right: 0;
+  width: 10.2%;
+}
+
+.reelsSafeZoneLabel {
+  color: #fff;
+  font-weight: 800;
+  text-align: center;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  background: rgba(127, 29, 29, 0.75);
+  padding: 0.56cqw 1.11cqw;
+  border-radius: 0.74cqw;
+  white-space: nowrap;
+}
+.reelsSafeZoneTop .reelsSafeZoneLabel {
+  font-size: 2.04cqw;
+}
+.reelsSafeZoneBottom .reelsSafeZoneLabel {
+  font-size: 2.22cqw;
+}
+.reelsSafeZoneRightRail .reelsSafeZoneLabel {
+  font-size: 1.48cqw;
+  writing-mode: vertical-rl;
+  padding: 1.11cqw 0.56cqw;
 }

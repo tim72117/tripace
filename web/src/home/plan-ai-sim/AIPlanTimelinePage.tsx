@@ -817,9 +817,43 @@ export function AIPlanTimelinePage() {
       // 只是一個無害的 DOM 屬性,不影響任何樣式/渲染行為,頁面本身完全
       // 不依賴它。見 home/record/RecordAiPlanPage.tsx 的使用情境說明。
       document.body.setAttribute('data-plan-sim-done', 'true')
+      // plan-sim-done postMessage——見下方「推論信號廣播」區塊的完整
+      // 說明,給 RecordAiPlanPage.tsx 的 useCaption 當作切到 CTA 字卡
+      // 的信號,同 data-plan-sim-done 一樣只在 recordMode 下送(一般
+      // 展示頁沒有父層監聽)。
+      if (recordMode && typeof window !== 'undefined' && window.parent !== window) {
+        window.parent.postMessage({ source: 'ai-plan-sim', type: 'plan-sim-done' }, '*')
+      }
     }
     wasGeneratingRef.current = isGenerating
-  }, [isGenerating])
+  }, [isGenerating, recordMode])
+
+  // 推論信號廣播——使用者明確要求「可以使用推論的信號觸發字卡，編排
+  // 一下時機」:home/record/RecordAiPlanPage.tsx 原本是用字卡自己的
+  // setInterval,對照寫死的 atMs(毫秒數)猜「劇本大概播到第幾秒該出現
+  // 什麼內容」——這只是兩條完全獨立時間軸的巧合對齊,劇本內容/節奏
+  // 一旦調整,字卡時間點就會跟著跑掉,需要手動重新校正。改成這個頁面
+  // (iframe 內容本身)每次有新 stop 被加入時,透過 postMessage 把該
+  // stop 的 id 廣播出去,外層 RecordAiPlanPage.tsx 監聽後依 id 對照
+  // 表切換對應字卡——字卡時機從此跟著劇本真正的進度走,劇本內容調整
+  // 時只要照樣加入/移除 stop id,不需要重新量測/校正任何毫秒數。
+  // onlyInRecordMode(見下方)只在 recordMode 下才送,一般展示頁完全
+  // 沒有父層監聽這個訊息,送了也沒有作用,但保持跟這個頁面其餘
+  // recordMode 專屬邏輯(頂部導覽列隱藏、強制亮色等)一致的既有慣例
+  // ——多一個無人接收的 postMessage 不是錯誤,但既然沒有實際用途,
+  // 直接不送更乾淨。broadcastedIdsRef 避免同一個 stop id 被重複廣播
+  // (steps 陣列每次新增節點都會觸發這個 effect,已經廣播過的 id 不用
+  // 再送一次)。
+  const broadcastedIdsRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!recordMode || typeof window === 'undefined' || window.parent === window) return
+    for (const step of steps) {
+      if (step.type !== 'stop') continue
+      if (broadcastedIdsRef.current.has(step.id)) continue
+      broadcastedIdsRef.current.add(step.id)
+      window.parent.postMessage({ source: 'ai-plan-sim', type: 'stop-added', stopId: step.id }, '*')
+    }
+  }, [steps, recordMode])
 
   // mountedIdsRef——追蹤「已經播過進場動畫的節點 id」,用來正確判斷
   // 下方渲染迴圈裡的 justMounted。原本 justMounted 是用
@@ -927,7 +961,19 @@ export function AIPlanTimelinePage() {
   // App.tsx 的 /app 路由同樣疊加這個 class。少了它,無論系統偏好或
   // data-theme 屬性值是什麼,這個頁面都只會顯示淺色 token。
   return (
-    <div className={`${styles.page} app-theme-root`} data-theme={theme ?? undefined}>
+    <div
+      className={`${styles.page} app-theme-root`}
+      // recordMode 下強制 data-theme="light"(即使系統偏好是深色模式/
+      // 使用者曾手動切換過 theme state)——使用者明確要求「錄製/預覽
+      // 畫面要是亮色」,廣告素材的視覺語言(珊瑚紅字卡、米白畫布,見
+      // RecordAiPlanPage.module.css)是針對亮色版面設計的,若錄製機器
+      // 剛好是深色模式,畫面會變成暗色主題,跟外部字卡的配色衝突、也
+      // 不是這支廣告素材要呈現的樣子。recordMode 不受 toggleTheme 影響
+      // ——SiteNavThemeToggle 在 recordMode 下本來就不會渲染(見下方
+      // recordMode 宣告處的完整說明),不存在「錄製時還能手動切回深色」
+      // 的情境。
+      data-theme={recordMode ? 'light' : theme ?? undefined}
+    >
       {/* 上方漂浮按鈕——使用者明確要求「上方功能列採用跟首頁一樣的漂浮
           按鈕,要有功能介紹跟登入日夜間切換按鈕」,直接沿用
           home/SiteNavButtons.tsx 這份跨頁面共用元件(HomePage.tsx/
@@ -1283,7 +1329,16 @@ export function AIPlanTimelinePage() {
         </div>
       )}
 
-      <div className={styles.composer}>
+      {/* composer——使用者明確要求「一開始文字輸入匡在中間，送出後往下
+          移動到目前位置」:開場時(打字動畫進行中,promptTyped 尚未為
+          true)輸入膠囊垂直置中在螢幕上,模擬「使用者正在輸入」的焦點
+          情境;打完字視同送出的那一刻(promptTyped 變 true,見上方的
+          完整說明)膠囊才往下移動到底部常駐位置(.composer 原本的
+          bottom 定位)。用同一個 class 搭配 .composerStart modifier
+          做這個轉場(見 .module.css 的完整說明),不是條件渲染兩個不同
+          位置的元素——後者沒有過渡動畫,只是瞬間跳位,理由同
+          composerCta 展開動畫既有的「同一個 DOM 節點」設計慣例。 */}
+      <div className={`${styles.composer} ${!promptTyped ? styles.composerStart : ''}`}>
         <div className={styles.composerInner}>
           {/* 輸入框是純展示用的假打字動畫(見 typedPrompt 的完整說明),
               不接受真的輸入、不會真的送出任何請求——這個頁面固定進頁就
