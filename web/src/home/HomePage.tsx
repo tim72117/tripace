@@ -154,6 +154,17 @@ export function HomePage() {
               </span>
               <span className="destination-desc">港口地形、貿易與淤積轉型的故事，古堡、老街與老屋活化交織的散策路線</span>
             </a>
+            <a
+              className="destination-item"
+              href="/tainan-chikan"
+              onClick={() => trackEvent('landing_destination_click', { destination: '赤崁・府城' })}
+            >
+              <span className="destination-row">
+                <span className="destination-name">台灣 · 赤崁・府城</span>
+                <svg className="destination-arrow" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </span>
+              <span className="destination-desc">老地方的前世今生——歷史建築活化、住宿、景點與美食的兩日遊路線</span>
+            </a>
           </div>
         </div>
       </section>

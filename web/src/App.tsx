@@ -20,6 +20,7 @@ const ProductPage = lazy(() => import('./home/ProductPage').then((m) => ({ defau
 const JiufenPage = lazy(() => import('./home/JiufenPage').then((m) => ({ default: m.JiufenPage })))
 const KyotoPage = lazy(() => import('./home/KyotoPage').then((m) => ({ default: m.KyotoPage })))
 const TainanPage = lazy(() => import('./home/TainanPage').then((m) => ({ default: m.TainanPage })))
+const TainanChikanPage = lazy(() => import('./home/TainanChikanPage').then((m) => ({ default: m.TainanChikanPage })))
 const PrivacyPage = lazy(() => import('./home/PrivacyPage').then((m) => ({ default: m.PrivacyPage })))
 const TermsPage = lazy(() => import('./home/TermsPage').then((m) => ({ default: m.TermsPage })))
 const CliAuthPage = lazy(() => import('./home/CliAuthPage').then((m) => ({ default: m.CliAuthPage })))
@@ -123,6 +124,11 @@ export function App() {
               貿易→淤積轉型→人文重生因果鏈的分段長頁,外殼架構對齊
               JiufenPage.tsx 模式(互動地圖+進度導覽點+分段長頁)。 */}
           <Route path="/tainan-anping" element={<TainanPage />} />
+          {/* /tainan-chikan:赤崁・府城「老地方的前世今生」兩日遊介紹頁,見
+              TainanChikanPage.tsx——2026-10 從內部試做頁
+              (/tainan-chikan-draft)轉正,外殼架構對齊 JiufenPage.tsx 模式
+              (互動地圖+進度導覽點+分段長頁+Helmet SEO meta)。 */}
+          <Route path="/tainan-chikan" element={<TainanChikanPage />} />
           {/* 隱私權政策/服務條款——視覺語言對齊首頁(HomePage.tsx)的紙感和風
               風格,見 LegalPage.tsx。 */}
           <Route path="/privacy" element={<PrivacyPage />} />

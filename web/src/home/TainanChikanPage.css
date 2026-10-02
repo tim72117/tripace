@@ -92,16 +92,19 @@
    映射(--vermilion → --brick)見上方 .tainan-chikan-page token 定義
    區塊。 */
 
-/* Hero */
+/* Hero — 2026-10:使用者要求「把遊記架構直接搬進來」,對齊
+   docs/tainan-chikan-article-draft.html 的 .hero 結構(文章式開頭,
+   非整頁捲動敘事的置中大圖版面)。沿用既有 --paper/--ink/--brick 等
+   token,不重新配色。 */
 .tainan-chikan-hero {
-  position: relative;
-  max-width: 760px;
-  min-height: 70vh;
+  max-width: 960px;
   margin: 0 auto;
-  padding: 5rem 1.5rem 4rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+  /* padding-top 6rem(96px)——頁面頂部有 SiteNavBrand/SiteNavThemeToggle/
+     SiteNavCta 這排 fixed 定位的漂浮按鈕(top: 16px + height: 36px,
+     底部落在約 52px 處,見 SiteNavButtons.css),Hero 內容太貼近會顯得
+     擁擠(使用者回報「一開始不要太上面」)。對齊這個頁面下方
+     .tainan-chikan-map-intro 等區塊慣用的留白值,給足夠的呼吸空間。 */
+  padding: 6rem 1.5rem 4rem;
   text-align: center;
 }
 
@@ -115,6 +118,7 @@
 }
 
 .tainan-chikan-hero h1 {
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
   font-size: clamp(2rem, 5vw, 2.75rem);
   line-height: 1.4;
   margin: 0 0 1.25rem;
@@ -123,143 +127,285 @@
 .tainan-chikan-hero p {
   font-size: 1.05rem;
   color: var(--ink-soft);
-  max-width: 560px;
+  max-width: 640px;
   margin: 0 auto;
 }
 
-/* Stops — 整頁式捲動敘事:每站佔一個視窗高度、捲入視窗時文字淡入,保留
-   「跟著往下走」的節奏感,但照片維持有限尺寸的卡片(不做滿版背景鋪
-   照片)——文字放在照片下方,不疊加在照片上,故不需要暗角遮罩。不畫路徑
-   地圖/游標,不做 HomePage.tsx 那種 bloom 照片展開動畫。 */
+
+/* Route strip */
+.tainan-chikan-route-strip {
+  max-width: 960px;
+  margin: 2.5rem auto 1rem;
+  /* 外層 1.5rem 水平安全間距對齊 hero/stops/day-divider 的留白(使用者
+     回報手機版「全頁的內容與外邊容器的間距」不一致——這個區塊原本只有
+     容器自身的 padding、沒有對齊外側留白,窄螢幕時 max-width: 960px
+     小於可視寬度,會貼齊螢幕邊緣,跟其他有 1.5rem 留白的區塊不一致)。
+     用 width: calc 扣掉兩側留白,而不是直接加 margin,確保容器寬度還是
+     跟著 max-width 960px 的上限走,桌面寬螢幕下行為不變。 */
+  width: calc(100% - 3rem);
+  padding: 1.1rem 1.4rem;
+  background: var(--moss);
+  color: #fff;
+  border-radius: 16px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.tainan-chikan-route-strip--day2 {
+  margin-bottom: 3.5rem;
+  background: var(--brick-soft);
+}
+.tainan-chikan-route-label {
+  width: 100%;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  opacity: 0.9;
+  margin-bottom: 0.3rem;
+}
+.tainan-chikan-route-arrow { opacity: 0.65; font-weight: 400; }
+
+/* Day divider */
+.tainan-chikan-day-divider {
+  max-width: 960px;
+  margin: 3.5rem auto 2rem;
+  padding: 0 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.tainan-chikan-day-divider-line { flex: 1; height: 1px; background: var(--line); }
+.tainan-chikan-day-divider span {
+  font-family: 'ShipporiSerif', serif;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--brick);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+/* Stops — 2026-10:整段改成文章式圖文交錯版面(對齊文章版 .stop 結構),
+   取代原本「整頁捲動、每站佔滿一個視窗高度」的敘事設計——文章版是
+   正常文件流,讀者捲動速度自己決定,不強迫每站停留一整個螢幕高度。
+   淡入進場動畫(is-active 判斷)一併拿掉,理由同上:文章式閱讀不需要
+   這種展示型網站常見的捲動進場效果。 */
 .tainan-chikan-stops {
-  position: relative;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 1.5rem 4rem;
 }
 
 .tainan-chikan-stop {
-  min-height: 100vh;
+  margin-bottom: 6rem;
+  padding-top: 1.5rem;
+  border-top: 1px dashed var(--line);
+}
+.tainan-chikan-stop:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+/* Day 2 分隔線("Day 2"文字+左右裝飾線,見 .tainan-chikan-day-divider)
+   後面緊接的第一站——使用者回報「Day 2 下不要有格線」:分隔線本身已經
+   是視覺斷點,緊接著的站卡再疊一條 border-top 虛線會跟分隔線重複。
+   用 :has() 判斷這一站的外層 wrapper div 裡是否有 day-divider 同胞
+   元素,有的話拿掉這一站自己的頂部虛線與上方留白(分隔線自己的
+   margin 已經提供足夠間距,不需要再疊加 padding-top)。 */
+.tainan-chikan-stops > div:has(> .tainan-chikan-day-divider) > .tainan-chikan-stop {
+  border-top: none;
+  padding-top: 0;
+}
+
+.tainan-chikan-stop-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8rem;
+  margin-bottom: 0.6rem;
+}
+.tainan-chikan-stop-index {
+  font-family: 'ShipporiSerif', serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--paper);
+  background: var(--brick);
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 3rem 1.5rem;
+  flex: none;
 }
-
-/* tainan-chikan-stop-inner — 兩種版面,依各站照片方向擇一(見 STOPS 的 layout
-   欄位說明):
-   --stacked(預設,橫式照片用):圖在上、文字在下,垂直堆疊、置中對齊。
-   --side(直式照片用):左欄照片、右欄文字並排,避免直式照片把整段版面
-   撐得過高。 */
-.tainan-chikan-stop-inner {
-  width: 100%;
-  opacity: 0;
-  transform: translateY(24px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-.tainan-chikan-stop.is-active .tainan-chikan-stop-inner {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.tainan-chikan-stop-inner--stacked {
-  max-width: 640px;
-  margin: 0 auto;
-  text-align: center;
-}
-
-.tainan-chikan-stop-inner--side {
-  max-width: 1000px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2.5rem;
-  align-items: center;
-  text-align: left;
-}
-
-.tainan-chikan-stop-photo {
-  position: relative;
-  width: 100%;
-  max-height: 70vh;
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: var(--card-shadow);
-}
-.tainan-chikan-stop-inner--stacked .tainan-chikan-stop-photo {
-  margin: 0 auto 2rem;
-}
-
-/* 不裁切——依照片自身比例決定顯示高度(橫式/直式照片各自算出不同的
-   容器高度),取代先前固定 height + object-fit: cover 硬裁掉超出範圍的
-   部分。max-height 只是避免直式照片在小螢幕撐得過高,不是裁切用途。 */
-.tainan-chikan-stop-photo img {
-  width: 100%;
-  height: auto;
-  max-height: 70vh;
-  object-fit: contain;
-  display: block;
-}
-
-@media (max-width: 640px) {
-  .tainan-chikan-stop-inner--side {
-    grid-template-columns: 1fr;
-    text-align: center;
-  }
-  .tainan-chikan-stop-inner--side .tainan-chikan-stop-photo {
-    margin: 0 auto;
-  }
-}
-
-/* tainan-chikan-stop-credit — Pexels 使用條款要求標示攝影師署名,放在圖片右下角
-   半透明黑底條,深淺色模式下都維持同一組黑底/白字組合(疊在照片上的固定
-   深色條,不是頁面背景,不跟隨主題反轉)。 */
-.tainan-chikan-stop-credit {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  font-size: 0.68rem;
-  color: rgba(255, 255, 255, 0.85);
-  background: rgba(0, 0, 0, 0.45);
-  padding: 0.2rem 0.5rem;
-  border-top-left-radius: 8px;
-}
-
-.tainan-chikan-stop-meta {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 0.6rem;
-  margin-bottom: 0.6rem;
-}
-@media (max-width: 640px) {
-  .tainan-chikan-stop-meta { justify-content: center; }
-}
-
-.tainan-chikan-stop-index {
-  font-family: 'ShipporiSerif', serif;
-  font-weight: 700;
-  color: var(--brick);
-  font-size: 0.95rem;
-}
-
-.tainan-chikan-stop-kind {
-  font-size: 0.78rem;
-  color: var(--ink-soft);
-  background: var(--paper-dim);
-  border-radius: 999px;
-  padding: 0.15rem 0.6rem;
-}
-
 .tainan-chikan-stop h2 {
   font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
-  font-size: clamp(1.4rem, 3.5vw, 1.9rem);
+  font-size: clamp(1.3rem, 3.5vw, 1.7rem);
   color: var(--ink);
-  margin: 0 0 0.75rem;
+  margin: 0;
 }
 
-.tainan-chikan-stop p {
-  font-size: 0.95rem;
+/* max-width 限制(曾是 72ch)已移除——2026-10 使用者回報文字區跟下方
+   gallery 圖片寬度不一致(圖片滿版撐到容器 960px,文字卡在 72ch 約
+   500-600px,左右邊緣對不齊),改成跟圖片一樣滿版容器寬度,整段文章
+   左右邊緣對齊。 */
+.tainan-chikan-stop-body {
+  font-size: 1.05rem;
   line-height: 1.85;
   color: var(--ink-soft);
+  margin: 0 0 1rem;
+}
+.tainan-chikan-stop-blurb {
+  font-size: 1rem;
+  line-height: 1.8;
+  font-style: italic;
+  color: var(--ink-soft);
+  border-left: 3px solid var(--brick-soft);
+  padding-left: 0.9rem;
+  margin: 0 0 1rem;
+}
+
+/* 2026-10 使用者要求「主圖放大，多穿插一點小圖」——第一張照片(主圖)
+   橫跨整行、用更大的高度,其餘照片(小圖)用較密的小格排列在主圖下方,
+   取代原本「每張圖等大、auto-fit 平均分配」的版面。grid-column: 1/-1
+   只對 gallery 裡的第一個 figure 生效(:first-child),之後的小圖維持
+   auto-fit 多欄排列,視覺上形成「一張大的、一排小的」層次,不是齊頭
+   並進的相簿牆。 */
+.tainan-chikan-stop-gallery {
+  display: grid;
+  /* 2026-10 使用者回報「小圖太小」,接著要求「最多就一列兩格」——從
+     auto-fit(桌面寬度下可能塞到 3-4 欄,導致每張圖被壓得很小)改成
+     固定 2 欄,不論畫面多寬,小圖一列最多兩張,保證每張都夠大。 */
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.8rem;
+  margin: 1.2rem 0;
+}
+.tainan-chikan-stop-gallery figure { margin: 0; overflow: hidden; border-radius: 12px; }
+.tainan-chikan-stop-gallery figure:first-child {
+  grid-column: 1 / -1;
+}
+/* 圖片載入前的佔位——lazy loading 搭配真實照片(非向量小圖),網路慢時
+   會先看到一塊空白再「跳出」圖片,版面也會跟著跳動。用一道緩慢移動的
+   斜向漸層(呼應整頁米白紙感的兩個色階)當佔位動畫,圖片載入完成後
+   (img 本身不透明)會直接蓋過背景,不需要額外 JS 判斷載入狀態、也
+   不需要在圖片載入完成後手動停止動畫。 */
+.tainan-chikan-stop-gallery img {
+  width: 100%;
+  height: 320px;
+  object-fit: cover;
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+  display: block;
+  background: linear-gradient(110deg, var(--paper-dim) 8%, var(--paper) 18%, var(--paper-dim) 33%);
+  background-size: 200% 100%;
+  animation: tainan-chikan-img-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes tainan-chikan-img-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tainan-chikan-stop-gallery img { animation: none; }
+}
+/* 主圖(第一張)用更大的高度,跟下方小圖(320px)形成明顯的大小層次。 */
+.tainan-chikan-stop-gallery figure:first-child img {
+  height: 520px;
+}
+.tainan-chikan-stop-gallery--single img { height: 380px; }
+/* 圖說——2026-10 用 fable 模型評估後改版:原本是純置中灰色小字,懸在
+   圖片下方空白處,跟頁面其他地方(ShipporiSerif 襯線、磚紅細節)的
+   語彙脫節。改成「底片註記」風格:左對齊、襯線斜體、左側一道磚紅
+   短線當註記標線,把文字視覺上扣在照片下緣。用 grid 排版讓長句換行
+   時第二行對齊文字起點(不是靠 padding-left 硬算)。
+   2026-10 使用者要求「統一用主圖的字體大小」——原本主圖(figure:
+   first-child)字級略大、小圖較小,形成跟圖片本身大小一致的層次;
+   使用者回報不一致後,改成全部圖說統一用原本主圖的字級/標線寬度/
+   顏色,不再依圖片大小分級。 */
+.tainan-chikan-stop-gallery figcaption {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  column-gap: 0.55em;
+  margin-top: 0.7rem;
+  padding: 0 0.15rem;
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  font-style: italic;
+  font-size: clamp(0.82rem, 0.74rem + 0.35vw, 0.95rem);
+  line-height: 1.55;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+  text-align: left;
+}
+.tainan-chikan-stop-gallery figcaption::before {
+  content: '';
+  display: block;
+  width: 2.2em;
+  height: 1px;
+  background: var(--brick);
+  transform: translateY(-0.28em);
+}
+/* 手機版——2026-10 使用者回報「手機板面圖片不要兩張一列」,改成單欄
+   (桌面維持固定 2 欄,見上方 grid-template-columns 的完整說明)。圖片
+   高度統一拉到接近主圖的比例,不再分大小兩種高度(桌面版那種「一張大、
+   一排小」層次在單欄版面裡沒有意義,每張圖本來就各自佔一整列),圖說
+   字級維持跟桌面版一樣統一,不再另外調整。 */
+@media (max-width: 640px) {
+  .tainan-chikan-stop-gallery { grid-template-columns: 1fr; }
+  .tainan-chikan-stop-gallery figure { grid-column: 1 / -1; }
+  .tainan-chikan-stop-gallery img,
+  .tainan-chikan-stop-gallery figure:first-child img {
+    height: 240px;
+  }
+  .tainan-chikan-stop-gallery figcaption {
+    margin-top: 0.5rem;
+    line-height: 1.5;
+  }
+}
+
+/* 資訊框——2026-10 使用者回報「有點老派」,用 fable 模型評估後改版:
+   原本是框中框(卡片裡再畫一圈實線+填色),label/value 同字級沒有主從
+   層次。改成「手帳邊角的小筆記」:不封閉、靠磚紅細色條撐住左緣(語彙
+   同 .tainan-chikan-stop-blurb 的左色條),row 之間用虛線分隔(同
+   .tainan-chikan-day-divider 的 dashed 語彙),label 用襯線小字+加寬
+   字距當作欄名,value 用主文字色稍大一號,讓兩欄有明確的主從關係。 */
+.tainan-chikan-info-box {
+  margin: 1.4rem 0 0;
+  padding: 0.2rem 0 0.2rem 1.1rem;
+  border-left: 3px solid var(--brick-soft);
+  background: linear-gradient(90deg, var(--paper-dim) 0%, transparent 70%);
+  border-radius: 0 10px 10px 0;
+}
+.tainan-chikan-info-row {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.55rem 0;
+}
+.tainan-chikan-info-row + .tainan-chikan-info-row {
+  border-top: 1px dashed var(--line);
+}
+.tainan-chikan-info-row dt {
+  flex: none;
+  width: 4.5rem;
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--brick);
+  line-height: 1.6;
+}
+.tainan-chikan-info-row dd {
   margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--ink);
+  max-width: 48ch;
+}
+@media (max-width: 480px) {
+  .tainan-chikan-info-row {
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+  .tainan-chikan-info-row dt { width: auto; }
 }
 
 /* 進度指示——固定右側一排點,直接對齊 HomePage.css 的 .progress-rail/
@@ -423,3 +569,4 @@
    CityPageFooter.module.css 的完整說明),樣式改用 CSS Modules,不再需要
    這裡的 .tainan-chikan-footer-* 規則——上方 --footer-accent 變數定義是這個
    頁面唯一還需要提供給該共用元件的東西。 */
+

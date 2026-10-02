@@ -52,11 +52,13 @@ const LANDING_MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_LANDING_MAP_ID as string
 const FALLBACK_CENTER = { lat: 35.0007, lng: 135.7798 }
 
 // COMBINED_RESTRICT_RADIUS_KM:以兩個主題點的中點為圓心,東西南北四邊
-// 各 2km 的正方形範圍——理由同先前寫死版本的說明(兩主題點實際距離約
-// 1148m,各自離中點約 574m,落在這個範圍內;原本半徑 1km,使用者要求
-// 改為 2km,讓可拖曳範圍更大)。座標改成資料庫查來的動態值(見
-// computeRestrictBounds),不再是模組層級的寫死常數。
-const COMBINED_RESTRICT_RADIUS_KM = 2
+// 各 4km 的正方形範圍——理由同先前寫死版本的說明(兩主題點實際距離約
+// 1148m,各自離中點約 574m,落在這個範圍內;原本半徑 1km,先改為 2km,
+// 2026-10 使用者要求再放大一倍改為 4km,讓可拖曳範圍更大)。座標改成
+// 資料庫查來的動態值(見 computeRestrictBounds),不再是模組層級的
+// 寫死常數。這是全域共用設定,會同時影響所有使用這個元件的頁面
+// (九份/京都/台南安平/赤崁等),不是單一頁面的局部調整。
+const COMBINED_RESTRICT_RADIUS_KM = 4
 const KM_PER_DEG_LAT = 111
 
 // computeRestrictBounds:換算公式同 kiyomizuDemoFixture.ts/
