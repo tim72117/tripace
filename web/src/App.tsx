@@ -1,10 +1,45 @@
-import { lazy, Suspense, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
-import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useParams, useLocation } from 'react-router-dom'
 import { useAppState } from './hooks/useAppState'
 import { ErrorBoundary } from './ErrorBoundary'
 import { useKeyboardShrink } from './components/useKeyboardInset'
+import { trackEvent } from './analytics'
 import styles from './App.module.css'
+
+// PageViewTracker:SPA 路由切換時手動推送虛擬頁面瀏覽事件——這個專案是
+// React Router 的用戶端路由(BrowserRouter),換頁不會重新整理瀏覽器、
+// 也不會觸發完整的文件載入,GTM 容器預設的「頁面瀏覽」偵測只在最初的
+// 文件載入觸發一次,之後站內導覽(例如首頁→九份頁)完全不會再送出任何
+// 頁面瀏覽訊號給 GA4——這正是 GA4「瀏覽量(劃分依據:網頁標題與畫面
+// 名稱)」報表看不出各頁面差異的根因:不是標題沒設對,是壓根沒有事件
+// 告訴 GA4「使用者換頁了」。
+// 用 trackEvent('page_view', {...}) 推送(不是另外發明新事件名稱)——
+// page_view 是 GA4 的保留字,GTM 容器後台的 GA4 設定標籤的 History
+// Change/Custom Event trigger 通常直接抓這個事件名稱,不需要為了這個
+// 情境另外建一個「virtual_page_view」事件再多一層對應設定。
+// page_path/page_title/page_location 是 GA4 建議的頁面瀏覽欄位名稱
+// (對齊 gtag.js 自動收集時慣用的參數),GTM 容器把這三個設成 Data
+// Layer Variable 餵給 GA4 設定標籤即可,不需要額外改 index.html。
+// document.title 讀取包一層 setTimeout(0)——react-helmet-async 透過
+// 自己的 effect 更新 <title>,跟這裡的路由變化 effect 誰先誰後沒有
+// 嚴格保證,直接同步讀可能還拿到切換前的舊標題;延後一個 tick 讓
+// Helmet 的 effect 有機會先跑完,避免讀到的 page_title 跟實際網址
+// 對不上。
+function PageViewTracker() {
+  const location = useLocation()
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      trackEvent('page_view', {
+        page_path: location.pathname + location.search,
+        page_title: document.title,
+        page_location: window.location.href,
+      })
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [location.pathname, location.search])
+  return null
+}
 
 // 每條路由的頁面元件改用 React.lazy() 動態載入,取代原本的靜態 import——
 // 靜態 import 會讓 Vite 把所有路由元件塞進同一個模組圖,不管使用者當下
@@ -93,6 +128,11 @@ export function App() {
   const props = useAppState()
   return (
     <BrowserRouter>
+      {/* PageViewTracker 必須在 BrowserRouter 內部(useLocation 依賴 Router
+          context)、Routes 外層(不受單一路由的 Suspense/lazy 載入影響,
+          路徑一變就能立刻讀到新的 useLocation 值)。見該元件開頭的完整
+          說明。 */}
+      <PageViewTracker />
       {/* ErrorBoundary 包在最外層——任何路由元件 render/effect 拋出未捕捉的
           例外,都會落地成一個可重新整理的畫面,而不是讓 React 把整棵樹
           unmount 到空白(對 SEO 是嚴重問題,見 ErrorBoundary.tsx 開頭說明)。 */}
