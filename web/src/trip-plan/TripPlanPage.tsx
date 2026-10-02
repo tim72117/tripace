@@ -1,12 +1,12 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AgentBridge } from '@onagent/bridge'
-import { ApiError, fetchPlanAiPlaceDetailsAny, fetchPlanAiTransitEstimate, type ClientConfig } from '../api'
-import { getTheme } from '../theme'
-import { NativeMapBase, type MapHandle } from '../geo-planning/NativeMapBase'
+import { ApiError, fetchGeoPlacePhotoAssets, fetchPlanAiPlaceDetailsAny, fetchPlanAiTransitEstimate, type ClientConfig } from '../api'
+import { Lightbox } from '../geo-planning/PhotoCarousel'
+import { hasAnyPhoto, PHOTO_RETRY_DELAY_MS, PHOTO_RETRY_MAX_ATTEMPTS } from '../photoRetry'
 import { toAgentBridgeTools } from '../sdk-proposals/toAgentBridgeTools'
 import { useSyncedState } from '../hooks/useSyncedState'
 import { createAttractionToolsList, type AttractionStepsCtx, type PlanStepLike } from '../plan-core/attractionTools'
+import { PlanTimelineView } from '../plan-core/PlanTimelineView'
 import {
   createEmptyTimeline,
   insertAfter,
@@ -41,16 +41,6 @@ import styles from './TripPlanPage.module.css'
 // timeline 資料層本身先長出「屬於哪一天」的欄位與後端資料流,再回頭做
 // UI,不是先做一個沒有資料支撐的分頁殼子——這裡先用單一連續時間軸涵蓋
 // 整趟行程,是刻意的簡化取捨,不是遺漏。
-
-const DEFAULT_MAP_CENTER = { lat: 23.001, lng: 120.182 }
-const DEFAULT_MAP_ZOOM = 13
-const SELECTED_MAP_ZOOM = 16
-
-// MINI_MAP_ENABLED — 右上角固定小地圖是否掛載。跟原型一樣先暫時關閉
-// (見原型 AIPlanTimelinePage.tsx 同名常數的完整說明:地圖本身持續發出
-// 的圖磚/Places 請求會混進網路面板,干擾其餘功能的請求排查),正式收尾
-// 時應改回 true 恢復地圖顯示。
-const MINI_MAP_ENABLED = false
 
 // REMOVE_FADE_MS — 淡出動畫時長,必須跟 .module.css 的 .removingFade
 // 過渡時間一致(理由同原型同名常數的完整說明)。
@@ -93,6 +83,17 @@ function isRateLimitedError(err: unknown): boolean {
   return body?.error?.code === 'rate_limited'
 }
 
+// PHOTO_RETRY_DELAY_MS/PHOTO_RETRY_MAX_ATTEMPTS/hasAnyPhoto 改從
+// ../photoRetry 匯入(2026-10 code review 發現這裡跟地圖版
+// useThemeAttractionSelection.ts 的 retryWithPhotoAssetsOnly 重複定義
+// 同一套數值/判斷邏輯,見該模組檔頭的完整說明)——原本這裡的數值/理由
+// 完全對齊地圖版(使用者明確要求「AI 規劃版採用一樣的補圖,前端也用
+// 一樣的重試機制」:handlePublicGeoPlaceDetailsAny 也套用漸進補圖
+// 機制,第一次查詢若剛好觸發背景補圖、這次回應不會等下載完成,故補一段
+// 原地重查),現在改成真正共用同一份定義,不是各自複製後維持數值一致。
+// 重試迴圈本身(下方 retryPhotoOnly)仍留在這裡,不抽成共用函式,理由
+// 見 photoRetry.ts 檔頭說明。
+
 // resolveAttractionForStep — add_attraction 帶 placeId 時,查詢真實地點
 // 資料並寫回節點(單段查詢 GET /internal/geo/plan-ai/place-details-any,見原型
 // AIPlanTimelinePage.tsx 同名函式的完整說明,邏輯原封不動搬過來,額外
@@ -101,10 +102,19 @@ function isRateLimitedError(err: unknown): boolean {
 // onSettled——插入當下的佔位卡不帶 lat/lng(座標要等這支函式查完才有),
 // 交通卡查詢要等這裡查詢完成、座標確定之後才觸發,理由同原型同名函式的
 // 完整說明。
+//
+// fetchPhotoAssets——2026-10 新增,選填:查到資料但 photoUrl 為空時,
+// 進入跟地圖版 fetchPoiContent/retryWithPhotoAssetsOnly 完全一致的重試
+// 迴圈(見 PHOTO_RETRY_* 的完整說明),改呼叫這支純讀端點(對應後端
+// GET .../geo/place-photo-assets),不能重複呼叫 fetchPlaceDetails——
+// 後者每次呼叫都會觸發 IncrementPlaceClickCount,連續重試會重複推進
+// 漸進補圖的點擊節奏判斷,這是地圖版同樣的既有限制(見
+// useThemeAttractionSelection.ts 檔頭的完整說明)。省略這個參數時完全
+// 不重試,維持原本行為(例如未來若有呼叫端不需要這段重試)。
 function resolveAttractionForStep(
   stepId: string,
   placeId: string,
-  fetchPlaceDetails: (placeId: string) => Promise<{ found?: boolean; name?: string; summary?: string; photoUrl?: string; lat?: number; lng?: number; attractionId?: string }>,
+  fetchPlaceDetails: (placeId: string) => Promise<{ found?: boolean; name?: string; summary?: string; photoUrl?: string; googlePhotoUrls?: string[]; lat?: number; lng?: number; attractionId?: string }>,
   setTimeline: React.Dispatch<React.SetStateAction<PlanTimeline>>,
   isCancelled: () => boolean,
   onSettled: (lat: number, lng: number) => void,
@@ -112,7 +122,35 @@ function resolveAttractionForStep(
   // 重試那次結果如何(含再次被限流)都不再繼續重試,避免遇到持續限流的
   // 情況時無限延遲下去。
   isRetry = false,
+  fetchPhotoAssets?: (placeId: string) => Promise<{ photoUrl?: string; googlePhotoUrls?: string[] }>,
 ) {
+  // retryPhotoOnly——見上方 fetchPhotoAssets 參數的完整說明,遞迴重試
+  // 迴圈,只更新 photoUrl 欄位,不動節點其餘已經確定的資料(name/desc/
+  // lat/lng 等在第一次查詢就已經寫入,不該因為照片重試而重複覆寫或
+  // 退回舊值)。
+  function retryPhotoOnly(remainingRetries: number) {
+    if (remainingRetries <= 0 || !fetchPhotoAssets) return
+    window.setTimeout(() => {
+      if (isCancelled()) return
+      fetchPhotoAssets(placeId)
+        .then((assets) => {
+          if (isCancelled()) return
+          if (!hasAnyPhoto(assets)) {
+            retryPhotoOnly(remainingRetries - 1)
+            return
+          }
+          setTimeline((prev) => updateNode(prev, stepId, {
+            photoUrl: assets.photoUrl,
+            googlePhotoUrls: assets.googlePhotoUrls,
+          }))
+        })
+        // 純讀端點查詢失敗(網路問題等)時,視同這次沒查到圖,不中斷
+        // 剩餘重試次數,理由同地圖版 retryWithPhotoAssetsOnly 的完整
+        // 說明。
+        .catch(() => retryPhotoOnly(remainingRetries - 1))
+    }, PHOTO_RETRY_DELAY_MS)
+  }
+
   fetchPlaceDetails(placeId)
     .then((details) => {
       if (isCancelled()) return
@@ -128,11 +166,15 @@ function resolveAttractionForStep(
         name: details.name,
         desc: details.summary,
         photoUrl: details.photoUrl,
+        googlePhotoUrls: details.googlePhotoUrls,
         lat: details.lat,
         lng: details.lng,
         placeId,
       }))
       onSettled(details.lat, details.lng)
+      if (!hasAnyPhoto(details)) {
+        retryPhotoOnly(PHOTO_RETRY_MAX_ATTEMPTS)
+      }
     })
     .catch((err) => {
       if (isCancelled()) return
@@ -142,7 +184,7 @@ function resolveAttractionForStep(
         // 再次檢查),才真的觸發第二次查詢。
         window.setTimeout(() => {
           if (isCancelled()) return
-          resolveAttractionForStep(stepId, placeId, fetchPlaceDetails, setTimeline, isCancelled, onSettled, true)
+          resolveAttractionForStep(stepId, placeId, fetchPlaceDetails, setTimeline, isCancelled, onSettled, true, fetchPhotoAssets)
         }, RATE_LIMIT_RETRY_DELAY_MS)
         return
       }
@@ -266,6 +308,8 @@ function useTripPlanTimeline(cfg: ClientConfig) {
           // 已經沒有意義的節點多打一次 API、或寫入已卸載元件的 state。
           () => !mountedRef.current || !timelineRef.current.nodes.has(newId),
           () => refreshTransitForStop(newId, cfg, setTimeline, () => timelineRef.current),
+          false,
+          (placeId) => fetchGeoPlacePhotoAssets(cfg, placeId),
         )
       } else if (result.ok && data.type === 'stop' && data.lat != null && data.lng != null) {
         refreshTransitForStop(newId, cfg, setTimeline, () => timelineRef.current)
@@ -496,7 +540,6 @@ export function TripPlanPage(props: {
   cfg: ClientConfig
 }) {
   const { cfg } = props
-  const theme = getTheme()
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const followingRef = useRef(true)
   const lastScrollTopRef = useRef(0)
@@ -547,24 +590,21 @@ export function TripPlanPage(props: {
   // 正確觸發進場動畫。
   const mountedIdsRef = useRef<Set<string>>(new Set())
 
-  // ---------- 右上角固定小地圖 ----------
-  // 只掛載單一 NativeMapBase 實例,點擊任一張 stop 卡片時呼叫
-  // panTo + setZoom,理由同原型的完整說明(避免每張卡片各自掛一個地圖
-  // 造成效能負擔)。
-  const mapHandleRef = useRef<MapHandle | null>(null)
+  // selectedStopId——目前被點選、卡片套用 .stopCardSelected 高亮樣式的
+  // 站點。2026-10 移除右上角小地圖功能前,這個狀態同時也驅動小地圖
+  // panTo+放大(見 panToStop),拿掉地圖後這裡純粹只剩「點了哪張卡片」
+  // 的視覺回饋,不影響其餘行為。
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null)
 
-  const handleMapHandleChange = useCallback((handle: MapHandle) => {
-    mapHandleRef.current = handle
-  }, [])
+  // lightboxPhotos——2026-10 新增,比照地圖版景點介紹卡的多圖瀏覽需求
+  // (見 PhotoCarousel.tsx 的 Lightbox):點擊帶有多張 googlePhotoUrls 的
+  // 縮圖時開啟全螢幕瀏覽,null 代表未開啟。縮圖本身維持 64px 圓形版型
+  // 不變,只在點擊時另開這個全螢幕層,理由見下方縮圖 onClick 的完整說明。
+  const [lightboxPhotos, setLightboxPhotos] = useState<{ photos: string[]; alt: string } | null>(null)
 
   const panToStop = useCallback((step: PlanStep) => {
     if (step.lat == null || step.lng == null) return
     setSelectedStopId(step.id)
-    const map = mapHandleRef.current?.mapRef.current
-    if (!map) return
-    map.panTo({ lat: step.lat, lng: step.lng })
-    map.setZoom(SELECTED_MAP_ZOOM)
   }, [])
 
   // scrollToLatest — 對齊目前生成位置(呼吸點提示,或已生成完畢時的
@@ -650,6 +690,7 @@ export function TripPlanPage(props: {
   // 兩層 .app-theme-root,徒增混淆(兩層各自的 data-theme 屬性若不同步
   // 還可能出現不一致的深色模式判斷)。
   return (
+    <>
     <div className={styles.page}>
       <header className={styles.header}>
         {/* headerInner——2026-09 新增:改用 DesktopMain 的 unboundedScroll
@@ -686,252 +727,18 @@ export function TripPlanPage(props: {
         </div>
       </header>
 
-      {/* 右上角固定小地圖——position: fixed(見 .module.css 的完整說明),
-          不佔版面空間、不隨時間軸捲動。單一 NativeMapBase 實例,點擊
-          stop 卡片時呼叫 panToStop 讓它 panTo+放大(理由同上方
-          panToStop 的完整說明)。MINI_MAP_ENABLED 暫時關閉,理由同該
-          常數的完整說明。 */}
-      {MINI_MAP_ENABLED && (
-        <div className={styles.miniMapWrap}>
-          <NativeMapBase
-            center={DEFAULT_MAP_CENTER}
-            zoom={DEFAULT_MAP_ZOOM}
-            theme={theme}
-            showZoomControl={false}
-            onHandleChange={handleMapHandleChange}
-          />
-        </div>
-      )}
-
-      <div className={styles.scroll} ref={scrollRef}>
-        <div className={styles.inner}>
-          {/* emptyState——時間軸完全空白、也還沒開始生成時的引導文字,
-              理由同原型的完整說明。planAiChat.isThinking 為 true 時不
-              顯示——那個情況下面已經有呼吸點/骨架卡(.tipRow)傳達「正在
-              安排」的狀態,不需要空狀態文字跟生成動畫同時出現互相干擾。 */}
-          {steps.length === 0 && !planAiChat.isThinking && (
-            <div className={styles.emptyState}>
-              <span className={styles.emptyStateIcon}>✦</span>
-              <p className={styles.emptyStateText}>{emptyStateMessage}</p>
-            </div>
-          )}
-          {steps.map((p, idx) => {
-            // justMounted:這個節點是不是「第一次」出現在畫面上(理由同
-            // 原型的完整說明)——用 id 是否已經記錄過判斷,不是用陣列
-            // index,插入到中間的節點才能正確觸發進場動畫。
-            const justMounted = !mountedIdsRef.current.has(p.id)
-            if (justMounted) mountedIdsRef.current.add(p.id)
-            const mountedClass = styles.mountFadeIn
-            // removingClass:套在每個節點最外層的 .row 容器上,CSS 同時
-            // 做透明度淡出跟高度塌縮(理由同原型的完整說明)。
-            const removingClass = p.removing ? styles.removingFade : ''
-
-            if (p.type === 'section') {
-              return (
-                <div key={p.id} className={`${styles.row} ${styles.sectionRow} ${mountedClass} ${removingClass}`}>
-                  <div className={styles.sectionBand}>
-                    <span className={styles.sectionLabel}>{p.label}</span>
-                  </div>
-                </div>
-              )
-            }
-
-            if (p.type === 'stop') {
-              // transitFromPrev(見 planTimeline.ts TransitInfo 的完整
-              // 說明)掛在到達站自己身上——渲染時在這張 stop 卡片「之前」
-              // 多畫一列交通卡,key 加 "transit-" 前綴避免跟下面 stop
-              // 本身的 key(p.id)衝突。
-              const transit = p.transitFromPrev
-              // note——這個節點自己的備註(見 planTimeline.ts NoteInfo
-              // 的完整說明),掛在這張 stop 卡片自己身上的欄位,渲染時在
-              // 卡片之前多畫一列。
-              const note = p.note
-              const noteStyle = note ? NOTE_STYLES[note.category ?? ''] ?? NOTE_STYLES[DEFAULT_NOTE_CATEGORY] : null
-              return (
-                <Fragment key={p.id}>
-                  {note && noteStyle && (
-                    <div className={`${styles.row} ${styles.noteRow}`}>
-                      <div className={`${styles.noteLeft} ${mountedClass} ${justMounted ? styles.noteFade : ''}`}>
-                        <div className={styles.noteInner}>
-                          <div className={styles.noteBar} style={{ background: noteStyle.color }} />
-                          <div className={styles.noteText}>
-                            <span style={{ marginRight: 4 }}>{noteStyle.noteIcon}</span>{note.text}
-                          </div>
-                        </div>
-                      </div>
-                      <div className={styles.noteAxisCol}>
-                        <div className={styles.noteAxisLine} />
-                      </div>
-                      <div />
-                    </div>
-                  )}
-                  {transit && (
-                    <div className={`${styles.row} ${styles.transitRow}`}>
-                      <div />
-                      <div className={styles.transitAxis}>
-                        <div className={styles.transitDashAbove} />
-                        <div className={styles.transitDashBelow} />
-                        <div className={`${mountedClass} ${justMounted ? styles.pillExpand : ''} ${styles.transitPill}`}>
-                          {/* 查詢中(loading:true)只顯示轉圈動畫,不顯示
-                              任何文字,重用 stop 卡片查詢中狀態既有的
-                              thumbSpinner 動畫,理由同原型的完整說明。 */}
-                          {transit.loading ? (
-                            <span className={styles.thumbSpinner} aria-label="查詢交通資訊中" />
-                          ) : (
-                            <>
-                              <span>{transit.icon}</span>
-                              <span>{transit.mode} {transit.minutes} 分 · {transit.distance}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <div />
-                    </div>
-                  )}
-                  <div data-tl-node className={`${styles.row} ${styles.stopRow} ${removingClass}`}>
-                    <div className={`${styles.stopTime} ${mountedClass}`}>
-                      <div className={styles.stopTimeText}>{p.time}</div>
-                    </div>
-                    <div className={styles.axisCol}>
-                      {idx > 0 && <div className={styles.axisLineAbove} />}
-                      {/* axisLineBelow——「還有下一個節點」或「正在生成中」
-                          任一成立時都畫出來,理由同原型的完整說明(避免
-                          最後一張卡片下方到呼吸點之間出現斷裂)。 */}
-                      {(idx < steps.length - 1 || planAiChat.isThinking) && <div className={styles.axisLineBelow} />}
-                      <div className={`${styles.anchorDot} ${mountedClass} ${justMounted ? styles.anchorPop : ''}`} />
-                    </div>
-                    <div className={`${styles.stopCardWrap} ${mountedClass} ${justMounted ? styles.cardSlide : ''}`}>
-                      <div
-                        className={`${styles.stopCard} ${p.id === selectedStopId ? styles.stopCardSelected : ''}`}
-                        role={p.lat != null && p.lng != null ? 'button' : undefined}
-                        tabIndex={p.lat != null && p.lng != null ? 0 : undefined}
-                        onClick={() => panToStop(p)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') panToStop(p)
-                        }}
-                      >
-                        <div
-                          className={`${styles.stopThumb} ${justMounted ? styles.thumbPop : ''}`}
-                          style={{ background: p.photoUrl ? undefined : p.thumbBg }}
-                        >
-                          {p.loading ? (
-                            <span className={styles.thumbSpinner} aria-label="查詢地點資料中" />
-                          ) : p.photoUrl ? (
-                            <img src={p.photoUrl} alt={p.name} className={styles.stopThumbImg} />
-                          ) : p.thumbIcon}
-                        </div>
-                        <div className={styles.stopBody}>
-                          <div className={styles.stopMeta}>
-                            {p.duration} · {p.kind}
-                            {p.loading && <span className={styles.loadingTag}>查詢地點中…</span>}
-                          </div>
-                          <div className={styles.stopName}>{p.name}</div>
-                          <div className={styles.stopDesc}>{p.desc}</div>
-                          {p.tags && p.tags.length > 0 && (
-                            <div className={styles.stopTags}>
-                              {p.tags.map((tag) => (
-                                <span key={tag} className={styles.stopTag}>{tag}</span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </Fragment>
-              )
-            }
-
-            // message——LLM/使用者的對話訊息(見 planTimeline.ts
-            // PlanNodeType 的完整說明),時間軸上自己獨立的一列,不依附
-            // 任何 stop 卡片,理由同原型的完整說明。新的 stop 節點插入後
-            // (p.stale === true)收合成一行淡化的小字,不整個移除。
-            if (p.type === 'message') {
-              return (
-                <div key={p.id} className={`${styles.row} ${styles.messageRow} ${mountedClass} ${removingClass}`}>
-                  <div />
-                  <div className={styles.messageAxisCol}>
-                    <div className={styles.messageAxisLine} />
-                  </div>
-                  <div className={styles.messageWrap}>
-                    <div className={`${styles.messageBubble} ${p.stale ? styles.messageBubbleStale : ''}`}>
-                      {/* stale(收合淡化態)是單行省略號截斷的純文字——
-                          markdown 排版在那個高度/寬度下沒有意義。新鮮態
-                          才用 ReactMarkdown 渲染完整內容,理由同原型的
-                          完整說明。 */}
-                      {p.stale ? (
-                        p.text
-                      ) : (
-                        <div className={styles.messageMarkdown}>
-                          <ReactMarkdown>{p.text}</ReactMarkdown>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )
-            }
-
-            return null
-          })}
-
-          {/* planAiChat.isThinking——onagent 對話推論中(唯一的「AI 正在
-              做事」訊號來源,理由見上方檔案開頭的完整說明)。 */}
-          {planAiChat.isThinking ? (
-            // key 綁「目前最後一個節點的 id」,理由同原型的完整說明:讓
-            // 「最後一個節點變了」等同「呼吸點換了位置」,強制 React
-            // 卸掉舊的 tipRow 重新掛一個,CSS 動畫才會隨之重播。
-            <Fragment key={`tip-after-${steps.length > 0 ? steps[steps.length - 1].id : 'empty'}`}>
-              <div data-tl-tip className={`${styles.row} ${styles.tipRow}`}>
-                <div />
-                <div className={styles.tipAxis}>
-                  <div className={styles.tipLineAbove} />
-                  <div className={styles.tipDot} />
-                  <div className={styles.tipLineBelow} />
-                </div>
-                <div />
-              </div>
-              {/* 骨架卡——呼吸點下方的「即將出現的內容」預告,理由同原型
-                  的完整說明。只在已經有節點之後才顯示。 */}
-              {steps.length > 0 && (
-                <div aria-hidden="true" className={`${styles.row} ${styles.stopRow} ${styles.skeletonRow}`}>
-                  <div />
-                  <div className={styles.axisCol}>
-                    {/* skeletonAxisAbove——骨架卡列自己補一段貫穿到
-                        .skeletonAnchor 中點的虛線,不依賴上一列
-                        .tipLineBelow 用魔術數字(bottom: -160px)猜測骨架
-                        卡列高度往下穿透——那個寫法一旦骨架卡實際高度
-                        跟猜測值不同就會斷裂或超出(使用者實際回報過
-                        「時間軸斷裂」,卡片下方到呼吸點之間出現一段沒有
-                        任何軸線元素的空白)。理由同 .axisLineAbove 讓每一
-                        列自己負責自己範圍內的軸線銜接。 */}
-                    <div className={styles.skeletonAxisAbove} />
-                    <div className={styles.skeletonAnchor} />
-                  </div>
-                  <div className={styles.stopCardWrap}>
-                    <div className={styles.skeletonCard}>
-                      <div className={`${styles.skeletonThumb} ${styles.shimmer}`} />
-                      <div className={styles.skeletonBody}>
-                        <div className={`${styles.skeletonLine} ${styles.skeletonLineMeta} ${styles.shimmer}`} />
-                        <div className={`${styles.skeletonLine} ${styles.skeletonLineTitle} ${styles.shimmer}`} />
-                        <div className={`${styles.skeletonLine} ${styles.skeletonLineDesc} ${styles.shimmer}`} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </Fragment>
-          ) : steps.length > 0 ? (
-            <div className={`${styles.endMarker} ${styles.endFade}`}>── 目前安排到這裡 ──</div>
-          ) : null}
-        </div>
-      </div>
-
-      {showJumpPill && (
-        <div className={styles.jumpPillWrap}>
-          <button type="button" className={styles.jumpPill} onClick={jumpToLatest}>↓ 回到最新</button>
-        </div>
-      )}
+      <PlanTimelineView
+        steps={steps}
+        isThinking={planAiChat.isThinking}
+        emptyStateMessage={emptyStateMessage}
+        selectedStopId={selectedStopId}
+        showJumpPill={showJumpPill}
+        onJumpToLatest={jumpToLatest}
+        onPanToStop={panToStop}
+        onOpenPhotos={setLightboxPhotos}
+        mountedIdsRef={mountedIdsRef}
+        scrollRef={scrollRef}
+      />
 
       <div className={styles.composer}>
         <div className={styles.composerInner}>
@@ -975,5 +782,13 @@ export function TripPlanPage(props: {
         </div>
       </div>
     </div>
+    {lightboxPhotos && (
+      <Lightbox
+        photos={lightboxPhotos.photos}
+        alt={lightboxPhotos.alt}
+        onClose={() => setLightboxPhotos(null)}
+      />
+    )}
+    </>
   )
 }

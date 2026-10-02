@@ -14,6 +14,7 @@ package api
 // 是透過前者取得 client(比照 handlePublicGeoPlaceSearch 的既有模式)。
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -26,18 +27,31 @@ import (
 )
 
 // newTestServerWithFakePlaceDetailsGeoGeocodeClient 建一個 Server,把
-// newGeoGeocodeClient(不是 newPlaceDetailsClient)換成「內部 gateway 是
+// newGeoGeocodeClient 跟 newPlaceDetailsClient 都換成「內部 gateway 是
 // fakeGateway」的 geo.Client——handlePublicGeoPlaceDetailsAny 因此可以
 // 整支被驗證,不會真的打 Google API。
+//
+// 2026-10:原本只覆寫 newGeoGeocodeClient(handlePublicGeoPlaceDetailsAny
+// 自己的 Google fallback 分支曾經透過這個工廠建立 client)——套用跟
+// handleGeoPlaceDetails 一致的漸進補圖機制後(見該 handler 的完整
+// 說明),Google fallback 分支改成直接呼叫 fetchAndCachePlaceDetails
+// (地圖版快取未命中時用的同一段核心邏輯),而那支函式內部寫死透過
+// newPlaceDetailsClient 建立 client,不是 newGeoGeocodeClient——這裡
+// 若只覆寫前者,fetchAndCachePlaceDetails 會繞過假 gateway、真的打
+// Google API 導致測試失敗(實際踩到的真實問題:三個測試因此打到
+// 正式 Google Places API 回傳 400 API key 不合法)。改成兩個工廠都
+// 覆寫成同一個假 gateway,不管呼叫端走哪一個都不會真的打外部 API。
 func newTestServerWithFakePlaceDetailsGeoGeocodeClient(t *testing.T, fakeGateway *fakePlaceDetailsGateway) *Server {
 	t.Helper()
 	t.Setenv("GOOGLE_PLACES_API_KEY", "test-places-api-key")
 	st := store.OpenTest(t)
 	signer := auth.NewSigner("test-secret", 3600_000_000_000)
 	s := New(st, signer, true, "test-google-client-id")
-	s.newGeoGeocodeClient = func(apiKey string) *geo.Client {
+	fakeClientFactory := func(apiKey string) *geo.Client {
 		return geo.NewWithGateway(apiKey, fakeGateway)
 	}
+	s.newGeoGeocodeClient = fakeClientFactory
+	s.newPlaceDetailsClient = fakeClientFactory
 	return s
 }
 
@@ -116,12 +130,23 @@ func TestHandlePublicGeoPlaceDetailsAny_NoPhotosField_ResponseOmitsPhotos(t *tes
 	}
 }
 
-// TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_SkipsGoogleAndReturnsStoredData
+// TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_ReturnsStoredDataSynchronously
 // 驗證「優先查 attractions 表」路徑(見 handler 的完整說明):attractions
-// 表已有這個 placeId 的建檔紀錄時,直接回傳存好的 Name/Summary,完全不
-// 呼叫 fakeGateway——用「fakeGateway 沒設 detailsBody,若真的被呼叫會
-// 回傳空 body 導致解析失敗」這個手法間接證明 Google 完全沒被打到,不
-// 需要額外的呼叫次數計數器。
+// 表已有這個 placeId 的建檔紀錄時,這次 HTTP 回應直接回傳存好的
+// Name/Summary,不等待任何 Google 查詢完成才回應。
+//
+// 2026-10 改名(原名 *_SkipsGoogleAndReturnsStoredData):套用跟
+// handleGeoPlaceDetails 一致的漸進補圖機制後(見 handler 的完整
+// 說明),這條分支不再是「完全不打 Google」——這裡的 attraction
+// 對 place_details_cache 而言是全新的一列,previousGoogleTarget 必定
+// 是 sentinel -1,shouldAddGooglePlacePhoto 必定判定要觸發,背景會
+// 啟動 refreshGooglePlacePhotoInBackground 嘗試呼叫
+// fakeGateway.ListPlacePhotoRefs(這裡的 fakeGateway 沒設
+// detailsBody,背景呼叫會失敗、記一行 log,但不影響這次同步回應或
+// 測試斷言——這正是這次改動刻意接受的行為:已建檔分支從零成本
+// 變成也會觸發背景補圖嘗試,舊名稱「SkipsGoogle」已經不符合新行為,
+// 改名反映「這次 HTTP 回應仍然同步、不等 Google」這個真正被驗證的
+// 性質)。
 //
 // 2026-09:photoUrl 不再測試會回傳 attraction.PhotoURL——使用者明確
 // 要求「不用回退」,這支端點現在只查 photo_assets(見
@@ -129,7 +154,7 @@ func TestHandlePublicGeoPlaceDetailsAny_NoPhotosField_ResponseOmitsPhotos(t *tes
 // 不論 attraction 本身是否存了 PhotoURL。這裡刻意仍在 seed 資料裡帶
 // PhotoURL 欄位,是為了確認「即使 attraction 有這個欄位,回應也不會
 // 誤用它」,不是遺留的無意義欄位。
-func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_SkipsGoogleAndReturnsStoredData(t *testing.T) {
+func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_ReturnsStoredDataSynchronously(t *testing.T) {
 	fakeGateway := &fakePlaceDetailsGateway{}
 	s := newTestServerWithFakePlaceDetailsGeoGeocodeClient(t, fakeGateway)
 
@@ -231,6 +256,65 @@ func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_UsesPhotoAssetWhe
 	}
 }
 
+// TestHandlePublicGeoPlaceDetailsAny_MultiplePhotoAssets_ReturnsGooglePhotoUrls
+// 驗證 2026-10 新增的多圖瀏覽需求(使用者明確要求「ai plan 景點的照片
+// 比照景點介紹卡照片可以多張瀏覽」):photo_assets 底下同一個 place_id
+// 若有多筆有效紀錄,回應要把完整清單一併帶在 googlePhotoUrls,前端
+// PhotoCarousel 才有多圖可以瀏覽;photoUrl 則維持等於清單第一張,向後
+// 相容舊版只讀 photoUrl 的呼叫端。
+func TestHandlePublicGeoPlaceDetailsAny_MultiplePhotoAssets_ReturnsGooglePhotoUrls(t *testing.T) {
+	fakeGateway := &fakePlaceDetailsGateway{}
+	s := newTestServerWithFakePlaceDetailsGeoGeocodeClient(t, fakeGateway)
+
+	placeID := "ChIJ_multiple_photo_assets_test"
+	if _, err := s.store.CreateAttractionWithID(model.Attraction{
+		ID:       "lmk_multiple_photo_assets_test",
+		Name:     "有多張 photo_assets 紀錄的景點",
+		CityName: "台南",
+		Lat:      23.0,
+		Lng:      120.2,
+		Level:    2,
+		PlaceID:  &placeID,
+	}); err != nil {
+		t.Fatalf("failed to seed attraction: %v", err)
+	}
+	expiresAt := time.Now().Add(7 * 24 * time.Hour)
+	for i := 0; i < 3; i++ {
+		if err := s.store.UpsertPhotoAsset(model.PhotoAsset{
+			PlaceID:    placeID,
+			PhotoIndex: i,
+			Usage:      "full",
+			Source:     "google",
+			GCSURL:     fmt.Sprintf("https://storage.googleapis.com/test-bucket/photo-%d.jpg", i),
+			FetchedAt:  time.Now(),
+			ExpiresAt:  &expiresAt,
+		}); err != nil {
+			t.Fatalf("failed to seed photo asset %d: %v", i, err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/public/geo/place-details-any?placeId="+placeID, nil)
+	rec := httptest.NewRecorder()
+	s.handlePublicGeoPlaceDetailsAny(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		PhotoURL        string   `json:"photoUrl"`
+		GooglePhotoURLs []string `json:"googlePhotoUrls"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if body.PhotoURL != "https://storage.googleapis.com/test-bucket/photo-0.jpg" {
+		t.Fatalf("expected photoUrl to be first photo asset, got: %q", body.PhotoURL)
+	}
+	if len(body.GooglePhotoURLs) != 3 {
+		t.Fatalf("expected 3 googlePhotoUrls, got %d: %v", len(body.GooglePhotoURLs), body.GooglePhotoURLs)
+	}
+}
+
 // TestHandlePublicGeoPlaceDetailsAny_GoogleFallbackWithStalePhoto_OmitsPhotoURL
 // 驗證 2026-09 重構後的 Google fallback 路徑(attractions 表查無這個
 // placeId 時走的分支,見 handler 的完整說明)——這支端點原本會直接撿
@@ -269,5 +353,123 @@ func TestHandlePublicGeoPlaceDetailsAny_GoogleFallbackWithStalePhoto_OmitsPhotoU
 	}
 	if body.PhotoURL != "" {
 		t.Fatalf("photoUrl 不該退回 google_place_photos 的舊快取,got: %q", body.PhotoURL)
+	}
+}
+
+// TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_WritesPlaceDetailsCacheRow
+// 2026-10 新增:驗證已建檔 attraction 分支確實套用了跟 handleGeoPlaceDetails
+// 一致的漸進補圖機制(見 handler 的完整說明)——這條分支過去完全不碰
+// place_details_cache,這裡驗證呼叫後該表真的出現了這個 place_id 的
+// 一列,且 ClickCount 等於 1(呼叫一次 IncrementPlaceClickCount 的結果)。
+// 這是這次改動最核心的行為驗證:若這張表沒被寫入,代表
+// SetCachedPlaceDetails 沒被呼叫到,IncrementPlaceClickCount 只會拿到
+// 零值、漸進補圖永遠不會真正啟動。
+func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_WritesPlaceDetailsCacheRow(t *testing.T) {
+	fakeGateway := &fakePlaceDetailsGateway{}
+	s := newTestServerWithFakePlaceDetailsGeoGeocodeClient(t, fakeGateway)
+
+	placeID := "ChIJ_writes_cache_row_test"
+	if _, err := s.store.CreateAttractionWithID(model.Attraction{
+		ID:       "lmk_writes_cache_row_test",
+		Name:     "測試寫入快取列的景點",
+		CityName: "台南",
+		Lat:      23.0,
+		Lng:      120.2,
+		Level:    2,
+		PlaceID:  &placeID,
+	}); err != nil {
+		t.Fatalf("failed to seed attraction: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/public/geo/place-details-any?placeId="+placeID, nil)
+	rec := httptest.NewRecorder()
+	s.handlePublicGeoPlaceDetailsAny(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	row, ok, err := s.store.GetCachedPlaceDetails(placeID, 999999*time.Hour)
+	if err != nil {
+		t.Fatalf("GetCachedPlaceDetails failed: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected place_details_cache row to exist after calling handlePublicGeoPlaceDetailsAny on an attraction-backed placeId")
+	}
+	if row.ClickCount != 1 {
+		t.Fatalf("expected ClickCount=1 after first call, got %d", row.ClickCount)
+	}
+}
+
+// TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_WithinRecheckWindow_SkipsGoogleCall
+// 2026-10 code review 發現的測試覆蓋缺口:既有測試全部是「第一次查詢
+// 這個 placeId」的情境,google_photo_target_count 固定是 sentinel -1,
+// shouldAddGooglePlacePhoto 必定回傳 true——只驗證過「第一次查詢必定
+// 觸發」這條路徑,從未驗證過「已經確認過 target、且距離上次確認未滿
+// 7 天」時點擊節奏與時間都不該觸發的最常見穩態路徑。若日後
+// placeDetailsTargetRecheckMaxAge 常數或 SetCachedPlaceDetails 的
+// DoUpdates 欄位被改錯,導致這條路徑誤判成「該觸發」,不會有任何測試
+// 捕捉到這個回歸,會在正式環境悄悄推高 Google Photo API 配額用量。
+//
+// 比照地圖版同類測試 TestHandleGeoPlaceDetails_CacheHit_NoTrigger_SkipsGoogleCall
+// 的手法:先呼叫一次端點讓快取列建立,再用 UpdatePlacePhotoProgress
+// 手動把 google_photo_target_count 設成 0(代表上次已經跟 Google
+// 確認過、這個地點沒有照片可補,newPhotoCount(0) >= target(0) 恆為
+// 真,shouldAddGooglePlacePhoto 必定回傳 false,不論 click_count 多少
+// 都不會誤觸發)並 touchFetchedAt=true(讓 FetchedAt 重置成現在,確保
+// 時間觸發條件不成立),第二次查詢時斷言完全沒有呼叫 gateway。
+func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_WithinRecheckWindow_SkipsGoogleCall(t *testing.T) {
+	fakeGateway := &fakePlaceDetailsGateway{}
+	s := newTestServerWithFakePlaceDetailsGeoGeocodeClient(t, fakeGateway)
+
+	placeID := "ChIJ_within_recheck_window_test"
+	if _, err := s.store.CreateAttractionWithID(model.Attraction{
+		ID:       "lmk_within_recheck_window_test",
+		Name:     "測試 7 天內重查不觸發的景點",
+		CityName: "台南",
+		Lat:      23.0,
+		Lng:      120.2,
+		Level:    2,
+		PlaceID:  &placeID,
+	}); err != nil {
+		t.Fatalf("failed to seed attraction: %v", err)
+	}
+
+	// 直接用 store 層函式手動建好快取列,不透過 HTTP 呼叫觸發第一次
+	// 查詢——若改成先打一次端點讓 target=-1 的 sentinel 分支自然觸發
+	// 背景 goroutine,會在這裡清空 fakeGateway.calls 時跟那個尚未結束
+	// 的背景 goroutine 產生資料競爭(用 -race 實測踩到:
+	// fakePlaceDetailsGateway.Do 寫入 calls 的同時測試主線程在清空同一個
+	// 切片)。手動建列完全是同步的 DB 寫入,不會啟動任何背景查詢,乾淨
+	// 避開這個時序問題。
+	if err := s.store.SetCachedPlaceDetails(placeID, "測試 7 天內重查不觸發的景點", "台南", 23.0, 120.2, 0, nil); err != nil {
+		t.Fatalf("SetCachedPlaceDetails failed: %v", err)
+	}
+	// target 確定成 0(無照片可補)、並 touchFetchedAt=true 讓 FetchedAt
+	// 設為現在,模擬「已經確認過、且在 7 天重查窗口內」的穩態。
+	if err := s.store.UpdatePlacePhotoProgress(placeID, 0, 0, true); err != nil {
+		t.Fatalf("UpdatePlacePhotoProgress failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/public/geo/place-details-any?placeId="+placeID, nil)
+	rec := httptest.NewRecorder()
+	s.handlePublicGeoPlaceDetailsAny(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	if len(fakeGateway.calls) != 0 {
+		t.Fatalf("7 天重查窗口內、target 已確定為 0 時不該呼叫 Google API,實際打了 %d 次: %v", len(fakeGateway.calls), fakeGateway.calls)
+	}
+
+	row, ok, err := s.store.GetCachedPlaceDetails(placeID, 999999*time.Hour)
+	if err != nil {
+		t.Fatalf("GetCachedPlaceDetails failed: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected place_details_cache row to still exist")
+	}
+	if row.ClickCount != 1 {
+		t.Fatalf("expected ClickCount=1 after the handler's own IncrementPlaceClickCount call, got %d", row.ClickCount)
 	}
 }

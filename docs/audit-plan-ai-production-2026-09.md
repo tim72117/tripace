@@ -54,6 +54,22 @@
 
 **建議**：評估把 429/`rate_limited` 的重試邏輯上移到 `api.ts` 的 `request()` 內（例如可選的 retry policy 參數），讓所有呼叫端統一受益，不需要各自發明一套。
 
+### 8. 公開端點 `handlePublicGeoPlaceDetailsAny` 可被用來消耗 Google API 全域配額【已知取捨，列為風險提醒】
+
+`server/internal/api/geo_plan_ai.go`（`handlePublicGeoPlaceDetailsAny`，2026-10 加入漸進補圖機制）免登入即可呼叫。attraction 命中分支現在無條件寫入 `place_details_cache`：對任何「第一次被這個端點查到」的 placeId，`google_photo_target_count` 的 DB 預設值是 sentinel `-1`，`shouldAddGooglePlacePhoto` 對 target<0 無條件觸發，於是每個新 placeId 都會觸發一次背景 `refreshGooglePlacePhotoInBackground` 下載，跟已登入的地圖功能（`handleGeoPlaceDetails`）共用同一份全域每日 Google Photo Media 配額（`cmd/server/main.go` 的 `defaultRateLimiter`）。
+
+AI 規劃對話一次提議多個新景點，或有心人直接對這支公開端點打不同 placeId，都能連續觸發多次背景 Google API 呼叫，跟地圖功能搶配額。
+
+**現況**：這是使用者 2026-10 明確決策接受的取捨（「跟地圖版共用同一份全域 API 限流額度，不分開」），不是遺漏。記錄於此純粹是風險提醒——若未來觀測到地圖功能補圖變慢/配額提前用盡，這是第一個該查的嫌疑對象。目前不需要採取行動。
+
+### 9. attraction 命中分支付出 4～5 次循序 DB 往返，其中一次大致可省略
+
+`handlePublicGeoPlaceDetailsAny` 的 attraction 命中分支，每次請求依序執行：`SetCachedPlaceDetails`（寫入）→ `GetCachedPlaceDetails`（讀取，只為了拿 `FetchedAt` 判斷 7 天時間觸發條件）→ `IncrementPlaceClickCount`（UPDATE + SELECT）→ `ListFreshPhotoAssetURLsForPlace`（讀取，組 `googlePhotoUrls`）。這條分支在 2026-10 加入漸進補圖前是零寫入、只有一次讀取。
+
+`GetCachedPlaceDetails` 這次讀取大致是多餘的：`SetCachedPlaceDetails` 的 `OnConflict` 路徑已經證明該列存在，`click_count`/`new_photo_count`/`google_photo_target_count` 都已經由 `IncrementPlaceClickCount` 的回傳值取得——真正需要額外讀的只有 `FetchedAt` 這一個欄位。
+
+**建議**：讓 `IncrementPlaceClickCount`（或改用 `UPDATE ... RETURNING`）一併把 `fetched_at` 帶出來，省掉這一次往返。這個改動會牽動 `store` 層的函式簽名與既有呼叫端（地圖版 `handleGeoPlaceDetails` 可能也呼叫同一個函式），優先順序屬於效能優化而非正確性問題，是否動手取決於這條路徑的實際呼叫頻率是否已構成瓶頸。
+
 ## 已確認排除、不需處理的項目
 
 以下項目經過交叉驗證，確認是既有設計的合理取捨或已有註解說明理由，不建議修改：

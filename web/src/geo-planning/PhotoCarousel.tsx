@@ -297,8 +297,21 @@ function MobileSwipeStrip({ photos, alt }: { photos: string[]; alt: string }) {
 // 視窗置中,見這次修正前的截圖)。掛到 body 讓這個檢視層完全脫離卡片的
 // DOM 巢狀關係,不管呼叫端未來套在多深的容器裡,都能保證真正覆蓋整個
 // 視窗置中顯示,不用逐一排查每一層祖先有沒有踩到這個 CSS 限制。
-function Lightbox({ photos, alt, onClose }: { photos: string[]; alt: string; onClose: () => void }) {
+// 2026-10 改成 export:trip-plan 的時間軸縮圖卡片(TripPlanPage.tsx)需要
+// 比照地圖版的多圖瀏覽——但卡片本身是 64px 圓形小縮圖,套用整個
+// PhotoCarousel(含手機橫滑排版、desktopTrigger 按鈕樣式)會撐破圓形
+// 版型,故只重用這支全螢幕 Lightbox(桌機/手機都適用,原本就是鍵盤/點擊
+// 操作,不特別區分裝置),縮圖本身維持現有圓形版型,點擊時另外開啟它。
+export function Lightbox({ photos, alt, onClose }: { photos: string[]; alt: string; onClose: () => void }) {
   const [index, setIndex] = useState(0)
+
+  // photos 為空陣列時直接不渲染——這支元件現在是獨立 export 出去的
+  // 共用元件,呼叫端目前都只在 photoUrl 確定存在時才會開啟它,但這個
+  // 前提對 Lightbox 自己來說是隱性的,沒有任何型別層級的保證。少了這層
+  // 防護,goTo() 的 next % photos.length 會算出 NaN(0 取模),
+  // photos[NaN] 是 undefined,導致渲染出一個 src 為 undefined 的
+  // <img>,而不是安全地不顯示或自動關閉(2026-10 code review 發現)。
+  if (photos.length === 0) return null
 
   function goTo(next: number) {
     setIndex((next + photos.length) % photos.length)
@@ -335,29 +348,40 @@ function Lightbox({ photos, alt, onClose }: { photos: string[]; alt: string; onC
         alt={alt}
         onClick={(e) => e.stopPropagation()}
       />
-      <button
-        type="button"
-        className={`${styles.lightboxNavBtn} ${styles.lightboxNavBtnPrev}`}
-        onClick={(e) => {
-          e.stopPropagation()
-          goTo(index - 1)
-        }}
-        aria-label="上一張照片"
-      >
-        <ChevronLeft size={24} strokeWidth={2} />
-      </button>
-      <button
-        type="button"
-        className={`${styles.lightboxNavBtn} ${styles.lightboxNavBtnNext}`}
-        onClick={(e) => {
-          e.stopPropagation()
-          goTo(index + 1)
-        }}
-        aria-label="下一張照片"
-      >
-        <ChevronRight size={24} strokeWidth={2} />
-      </button>
-      <span className={styles.lightboxCounter}>{index + 1} / {photos.length}</span>
+      {/* 左右切換箭頭/頁碼只在有 2 張以上照片時才顯示——2026-10 這支
+          Lightbox 多了一個只有 1 張照片也會開啟的呼叫端(見上方 export
+          說明新增的 trip-plan 時間軸縮圖用法,使用者明確要求「一張的
+          時候也要」能點開放大看),1 張時沒有「上一張/下一張」可切換,
+          顯示這些控制項只會讓人誤以為還有更多照片。 */}
+      {photos.length > 1 && (
+        <>
+          <button
+            type="button"
+            className={`${styles.lightboxNavBtn} ${styles.lightboxNavBtnPrev}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              goTo(index - 1)
+            }}
+            aria-label="上一張照片"
+          >
+            <ChevronLeft size={24} strokeWidth={2} />
+          </button>
+          <button
+            type="button"
+            className={`${styles.lightboxNavBtn} ${styles.lightboxNavBtnNext}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              goTo(index + 1)
+            }}
+            aria-label="下一張照片"
+          >
+            <ChevronRight size={24} strokeWidth={2} />
+          </button>
+        </>
+      )}
+      {photos.length > 1 && (
+        <span className={styles.lightboxCounter}>{index + 1} / {photos.length}</span>
+      )}
     </div>,
     document.body,
   )

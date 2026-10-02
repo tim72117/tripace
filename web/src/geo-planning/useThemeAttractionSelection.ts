@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { GeoAttraction, GeoPlaceDetails, GeoPlacePhotoAssets } from '../api'
 import { attractionToInfoContent, poiInfoContent } from './geoInfoContent'
+import { hasAnyPhoto, PHOTO_RETRY_DELAY_MS, PHOTO_RETRY_MAX_ATTEMPTS } from '../photoRetry'
 import type { PlaceInfoContent } from './PlacePanel'
 import { useInfoCardStack, useInfoCardStackSync, type InfoCardStack } from './useInfoCardStack'
 import type { CuratedCategory } from './geoCuratedCategoryStub'
@@ -74,13 +75,13 @@ import type { CuratedCategory } from './geoCuratedCategoryStub'
 // fetchPlaceDetails 的第三個參數 fetchPhotoAssets(對應後端
 // GET .../geo/place-photo-assets,純讀 photo_assets,不觸發任何點擊計數
 // /補圖決策,見該端點的完整說明)。
-const PHOTO_RETRY_DELAY_MS = 2000
-const PHOTO_RETRY_MAX_ATTEMPTS = 3
-
-function hasAnyPhoto(content: { photoUrl?: string; googlePhotoUrls?: string[] }): boolean {
-  return !!content.photoUrl || (content.googlePhotoUrls?.length ?? 0) > 0
-}
-
+//
+// PHOTO_RETRY_DELAY_MS/PHOTO_RETRY_MAX_ATTEMPTS/hasAnyPhoto 改從
+// ../photoRetry 匯入(2026-10 code review 發現這裡跟
+// trip-plan/TripPlanPage.tsx 的 retryPhotoOnly 重複定義同一套數值/
+// 判斷邏輯,見該模組檔頭的完整說明)——重試迴圈本身(下方
+// retryWithPhotoAssetsOnly)仍留在這裡,不抽成共用函式,理由同樣見
+// photoRetry.ts 檔頭說明。
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }

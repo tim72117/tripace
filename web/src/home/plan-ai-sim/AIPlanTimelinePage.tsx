@@ -1,12 +1,12 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import ReactMarkdown from 'react-markdown'
 import { useThemeToggle } from '../../hooks/useThemeToggle'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../SiteNavButtons'
-import { NativeMapBase, type MapHandle } from '../../geo-planning/NativeMapBase'
 import { useSyncedState } from '../../hooks/useSyncedState'
 import { planAiFakeDataSource } from './planAiFakeDataSource'
 import { createPlanSimFakeSource } from './planSimFakeSource'
+import { PlanTimelineView } from '../../plan-core/PlanTimelineView'
+import { Lightbox } from '../../geo-planning/PhotoCarousel'
 // planTimeline.ts——共用的時間軸資料層(純函式,不碰 UI 或任何後端
 // 呼叫),直接 import plan-core/ 那份跟正式頁 trip-plan/TripPlanPage.tsx
 // 共用,不維護 home/plan-ai-sim/ 底下重複的一份。這個目錄原本有一份幾乎
@@ -25,13 +25,6 @@ import {
   type PlanTimeline,
 } from '../../plan-core/planTimeline'
 import styles from './AIPlanTimelinePage.module.css'
-
-// 台南市區的預設中心點——右上角小地圖初始顯示整個行程涵蓋的大致範圍
-// (赤崁樓/祀典武廟一帶到孔廟一帶的中點),還沒點過任何卡片時顯示這裡,
-// 而不是空白/未初始化狀態。
-const DEFAULT_MAP_CENTER = { lat: 23.001, lng: 120.182 }
-const DEFAULT_MAP_ZOOM = 13
-const SELECTED_MAP_ZOOM = 16
 
 // AIPlanTimelinePage — 「AI 安排行程」時間軸展示原型的正式頁面版本。
 // 原型先在 Artifact(Design Component 畫布)做過一輪,經 Fable 設計方案
@@ -411,12 +404,6 @@ function refreshTransitForStop(
     })
 }
 
-// MINI_MAP_ENABLED — 右上角固定小地圖是否掛載(見下方渲染處的完整
-// 說明)。2026-09 暫時關閉:測試交通預估等新功能時,地圖本身持續發出的
-// 圖磚/Places 請求會混進網路面板,干擾排查目標請求,測試完成後應改回
-// true 恢復正常畫面。
-const MINI_MAP_ENABLED = false
-
 // usePlanSimSocket — 連上模擬 AI 推論輸出的 WebSocket(見上方檔案開頭
 // 的完整說明),把收到的每則 PlanAction 轉成插入操作、交給
 // insertAttractionAfter 統一處理(見該函式的完整說明);add_stop 訊息帶
@@ -676,25 +663,14 @@ function usePlanSimSocket(start: boolean) {
   }
 }
 
-// NOTE_STYLES — 備註分類 → 顏色/圖示的固定對照表。這是使用者明確要求
-// 兩層架構的直接體現:「排程元件提供操作資料的方法,LLM 的工具透過這些
-// 方法操作排程內的資料」——視覺樣式怎麼對應分類是行程安排元件自己的
-// 決定,不是 attractionTools.ts 的 add_note 工具該內建的邏輯(該工具現在
-// 只轉呼叫 addNoteToTimeline,不自己碰 color/noteIcon,見該工具的完整
-// 說明)。value 對齊 plan_sim_ws.go 既有模擬腳本示範的用法(consideration
-// 用 --ios-gray/✦ 表示「取捨考量」、info 用 --ios-sand/ⓘ 表示「一般
-// 提醒」、weather 用 --ios-blue/☁︎ 表示「天氣考量」)。cost(💰「花費
-// 估算」)目前劇本沒有實際使用的備註,但對照表本身仍保留這個分類——
-// 使用者之前明確要求移除的是劇本裡「上午累計預估花費 $220」那一則
-// 備註本身,不是整個花費分類的視覺定義,之後若要再加花費相關備註可以
-// 直接沿用。
-const NOTE_STYLES: Record<string, { color: string; noteIcon: string }> = {
-  consideration: { color: 'var(--ios-gray)', noteIcon: '✦' },
-  info: { color: 'var(--ios-sand)', noteIcon: 'ⓘ' },
-  cost: { color: 'var(--ios-green)', noteIcon: '💰' },
-  weather: { color: 'var(--ios-blue)', noteIcon: '☁︎' },
-}
-const DEFAULT_NOTE_CATEGORY = 'info'
+// NOTE_STYLES/DEFAULT_NOTE_CATEGORY——2026-10 移除:備註分類→顏色/圖示
+// 的對照表現在收在 plan-core/PlanTimelineView.tsx 裡(改用該共用元件
+// 渲染時間軸後,這裡不再自己畫備註列,見該檔案同名常數的完整說明)。
+// action.category 仍直接原樣傳給 setNoteForStop,不在這裡做合法性
+// fallback——跟正式頁 TripPlanPage.tsx 的 addNoteToTimeline 不同,
+// 那裡會 fallback 成 DEFAULT_NOTE_CATEGORY,但使用者對模擬腳本的既有
+// 要求是「不要有例外」(見下方 add_note 分支的完整說明),劇本本身保證
+// category 合法,不需要呼叫端介入。
 
 export function AIPlanTimelinePage() {
   const { theme, dark, toggleTheme } = useThemeToggle()
@@ -778,30 +754,23 @@ export function AIPlanTimelinePage() {
   // 觸發移除/插入額外訊息(原始版本的 removeWumiao/insertAnpingMazu 與
   // 對應 UI 已一併移除,見 usePlanSimSocket 的完整說明)。
 
-  // ---------- 右上角固定小地圖 ----------
-  // 只掛載單一 NativeMapBase 實例(理由見使用者原始需求:「掛載地圖是不是
-  // 很吃資源且會變慢,所以我想說只掛載單一地圖」),點擊任一張 stop 卡片
-  // 時呼叫 mapRef.current.panTo + setZoom,而不是每張卡片各自掛一個地圖
-  // ——這裡選的是「固定側欄地圖」方案(使用者確認:「先做旁邊固定的地圖
-  // 好了」「一直存在於右上角,點卡片就 pan 過去+放大」),不是「地圖跟著
-  // 移動到被點的卡片旁邊」那個需要 Portal/DOM 搬移的方案(已明確擱置,
-  // 見對話討論——Google Maps SDK 沒有官方 API 能把建好的地圖實例搬到
-  // 別的 DOM 容器,只能重建,CSS 視覺位移則不需要搬移,直接維持固定位置
-  // 最單純)。
-  const mapHandleRef = useRef<MapHandle | null>(null)
+  // selectedStopId——目前被點選、卡片套用 .stopCardSelected 高亮樣式的
+  // 站點。2026-10 移除右上角小地圖功能前,這個狀態同時也驅動小地圖
+  // panTo+放大(見 panToStop),拿掉地圖後這裡純粹只剩「點了哪張卡片」
+  // 的視覺回饋,不影響其餘行為。
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null)
 
-  const handleMapHandleChange = useCallback((handle: MapHandle) => {
-    mapHandleRef.current = handle
-  }, [])
+  // lightboxPhotos——比照正式頁 TripPlanPage.tsx 的多圖瀏覽機制(見
+  // PlanTimelineView.tsx 的完整說明),改用該共用元件後這個 state 一併
+  // 需要。模擬腳本(planSimFakeSource.ts)目前沒有任何節點帶
+  // googlePhotoUrls,縮圖實際上不會出現多圖按鈕、onOpenPhotos 也就不會
+  // 被觸發,但 PlanTimelineView 的 props 介面要求提供這個 callback,故
+  // 仍需要這個 state 讓介面完整,不是只為了展示頁去改共用元件的介面。
+  const [lightboxPhotos, setLightboxPhotos] = useState<{ photos: string[]; alt: string } | null>(null)
 
   const panToStop = useCallback((step: PlanStep) => {
     if (step.lat == null || step.lng == null) return
     setSelectedStopId(step.id)
-    const map = mapHandleRef.current?.mapRef.current
-    if (!map) return
-    map.panTo({ lat: step.lat, lng: step.lng })
-    map.setZoom(SELECTED_MAP_ZOOM)
   }, [])
 
   // scrollToLatest — 直接捲到最底。.scroll 底部已留 128px 給漂浮膠囊,
@@ -819,13 +788,29 @@ export function AIPlanTimelinePage() {
     })
   }, [])
 
-  // 只在 steps 改變時跟隨,不把跟隨狀態放進依賴:否則使用者手動捲到底、
-  // 跟隨狀態從 false 翻成 true 的那一刻,這個 effect 也會被觸發去捲動。
+  // 在 steps 改變、或 isGenerating 改變時都要重新跟隨——不把跟隨狀態
+  // (followingRef)放進依賴,否則使用者手動捲到底、跟隨狀態從 false
+  // 翻成 true 的那一刻,這個 effect 也會被觸發去捲動。
+  //
+  // 2026-10 補上 isGenerating 依賴(使用者截圖回報「立即使用」按鈕
+  // 展開那一刻,composer 直接疊在時間軸中段內容上,不是停在底部)——
+  // 根因:固定劇本播完觸發的「done」事件只翻轉 isGenerating(true→
+  // false),不一定伴隨新的 steps 更新;而 isGenerating 翻 false 的
+  // 瞬間,PlanTimelineView 會整段拿掉呼吸點+骨架卡(見該元件
+  // isThinking 的渲染邏輯),讓 .timelineScroll 的內容高度瞬間變矮。
+  // 這個 effect 原本只監聽 steps,沒有偵測到這次「內容變矮但沒有新
+  // 節點」的變化,畫面因此停在生成途中最後一次捲動的位置,沒有跟著
+  // 內容收斂重新捲到底——composer 本身固定貼在 .page 底部 20px(見
+  // .composer 的完整說明),內容沒捲到底時,它就疊在當下停留位置的
+  // 中段內容上。正式頁 TripPlanPage.tsx 的 planAiChat.isThinking 由
+  // 真實 onagent 對話驅動,isThinking 翻 false 的時機點通常剛好伴隨
+  // 一次 steps 更新(例如最後一句 agent 訊息寫入時間軸),兩者同時
+  // 發生掩蓋了這個問題,但邏輯上同樣的風險存在,一併補上這個依賴。
   useEffect(() => {
     if (!followingRef.current) return
     if (steps.length === 0) return
     scrollToLatest()
-  }, [steps, scrollToLatest])
+  }, [steps, isGenerating, scrollToLatest])
 
   // 只有「使用者往上捲、且離底部超過 80px」才退出跟隨。程式觸發的平滑
   // 捲動(往下)與新節點撐高內容(scrollTop 不變)都不會讓它誤判成離開。
@@ -864,6 +849,7 @@ export function AIPlanTimelinePage() {
   // App.tsx 的 /app 路由同樣疊加這個 class。少了它,無論系統偏好或
   // data-theme 屬性值是什麼,這個頁面都只會顯示淺色 token。
   return (
+    <>
     <div className={`${styles.page} app-theme-root`} data-theme={theme ?? undefined}>
       {/* 上方漂浮按鈕——使用者明確要求「上方功能列採用跟首頁一樣的漂浮
           按鈕,要有功能介紹跟登入日夜間切換按鈕」,直接沿用
@@ -901,307 +887,22 @@ export function AIPlanTimelinePage() {
       <SiteNavCta href="/app">登入</SiteNavCta>
       <SiteNavCta href="/product" variant="accent" slot={2}>功能介紹</SiteNavCta>
 
-      {/* 右上角固定小地圖——position: fixed(見 .module.css 的完整說明),
-          不佔版面空間、不隨時間軸捲動。單一 NativeMapBase 實例,點擊
-          stop 卡片時呼叫 panToStop 讓它 panTo+放大,不是每張卡片各自
-          掛一個地圖(效能考量,見上方 panToStop 的完整說明)。
-          2026-09:暫時停用掛載(MINI_MAP_ENABLED=false,見該常數的完整
-          說明)——開發中測試交通預估等功能時,地圖本身的圖磚/Places
-          請求會混進網路面板,干擾排查,先關閉、測試完再打開。 */}
-      {MINI_MAP_ENABLED && (
-        <div className={styles.miniMapWrap}>
-          <NativeMapBase
-            center={DEFAULT_MAP_CENTER}
-            zoom={DEFAULT_MAP_ZOOM}
-            theme={theme}
-            showZoomControl={false}
-            onHandleChange={handleMapHandleChange}
-          />
-        </div>
-      )}
-
-      <div className={styles.scroll} ref={scrollRef} onScroll={handleScroll}>
-        <div className={styles.inner}>
-          {/* emptyState——時間軸完全空白、也還沒開始生成時的引導文字
-              (見 emptyStateMessage 的完整說明),使用者明確要求把它從
-              漂浮膠囊移到這個主顯示區置中呈現,而不是常駐在輸入框上方
-              佔一行。isGenerating 為 true 時不顯示——那個情況下面已經
-              有呼吸點/骨架卡(.tipRow)傳達「正在安排」的狀態,不需要
-              空狀態文字跟生成動畫同時出現互相干擾。 */}
-          {steps.length === 0 && !isGenerating && (
-            <div className={styles.emptyState}>
-              <span className={styles.emptyStateIcon}>✦</span>
-              <p className={styles.emptyStateText}>{emptyStateMessage}</p>
-            </div>
-          )}
-          {steps.map((p, idx) => {
-            // justMounted:這個節點是不是「第一次」出現在畫面上(見上方
-            // mountedIdsRef 的完整說明)——用 id 是否已經記錄過判斷,不是
-            // 用陣列 index,插入到中間的節點才能正確觸發進場動畫。渲染
-            // 當下就同步寫入 ref(不是等 useEffect),因為這個判斷結果
-            // 本身要在這一輪 render 就決定要不要套用動畫 class,寫入時機
-            // 跟讀取時機必須是同一輪。
-            const justMounted = !mountedIdsRef.current.has(p.id)
-            if (justMounted) mountedIdsRef.current.add(p.id)
-            const mountedClass = styles.mountFadeIn
-            // removingClass:套在每個節點最外層的 .row 容器上——CSS
-            // 同時做透明度淡出跟高度塌縮(見 .module.css 的 .removingFade
-            // 完整說明),讓移除的節點不是瞬間消失、下面的節點也是跟著
-            // 高度縮小一起往上滑,而不是版面突然跳一格。
-            const removingClass = p.removing ? styles.removingFade : ''
-
-            if (p.type === 'section') {
-              return (
-                <div key={p.id} className={`${styles.row} ${styles.sectionRow} ${mountedClass} ${removingClass}`}>
-                  <div className={styles.sectionBand}>
-                    <span className={styles.sectionLabel}>{p.label}</span>
-                  </div>
-                </div>
-              )
-            }
-
-            if (p.type === 'stop') {
-              // transitFromPrev(見 planTimeline.ts TransitInfo 的完整
-              // 說明)掛在到達站自己身上,不再是獨立插入鏈結的 'transit'
-              // 節點——渲染時在這張 stop 卡片「之前」多畫一列交通卡,
-              // key 加 "transit-" 前綴避免跟下面 stop 本身的 key(p.id)
-              // 衝突。沒有 transitFromPrev(第一站,或前一站不是帶座標的
-              // stop)時完全不畫這一列。
-              const transit = p.transitFromPrev
-              // note——這個節點自己的備註(見 planTimeline.ts NoteInfo 的
-              // 完整說明),不再是鏈結串列裡獨立插入的節點,改成掛在這張
-              // stop 卡片自己身上的欄位,渲染時在卡片之前多畫一列(保留
-              // 使用者原本熟悉的「左窄欄獨立一列」視覺,同交通卡列的作法
-              // ——只是資料來源從獨立節點換成 p.note)。中間欄補上貫穿
-              // 整行的軸線(.noteAxisLine),否則時間軸主軸線在這一列會
-              // 斷開(理由同交通卡列 .transitAxis 需要銜接軸線的說明)。
-              const note = p.note
-              const noteStyle = note ? NOTE_STYLES[note.category ?? ''] ?? NOTE_STYLES[DEFAULT_NOTE_CATEGORY] : null
-              return (
-                <Fragment key={p.id}>
-                  {note && noteStyle && (
-                    <div className={`${styles.row} ${styles.noteRow}`}>
-                      <div className={`${styles.noteLeft} ${mountedClass} ${justMounted ? styles.noteFade : ''}`}>
-                        <div className={styles.noteInner}>
-                          <div className={styles.noteBar} style={{ background: noteStyle.color }} />
-                          <div className={styles.noteText}>
-                            <span style={{ marginRight: 4 }}>{noteStyle.noteIcon}</span>{note.text}
-                          </div>
-                        </div>
-                      </div>
-                      <div className={styles.noteAxisCol}>
-                        <div className={styles.noteAxisLine} />
-                      </div>
-                      <div />
-                    </div>
-                  )}
-                  {transit && (
-                    <div className={`${styles.row} ${styles.transitRow}`}>
-                      <div />
-                      <div className={styles.transitAxis}>
-                        <div className={styles.transitDashAbove} />
-                        <div className={styles.transitDashBelow} />
-                        <div className={`${mountedClass} ${justMounted ? styles.pillExpand : ''} ${styles.transitPill}`}>
-                          {/* 查詢中(loading:true,見 refreshTransitForStop
-                              的完整說明)只顯示轉圈動畫,不顯示任何文字
-                              ——使用者明確要求「不要用文字用 icon」,重用
-                              stop 卡片查詢中狀態既有的 thumbSpinner 動畫,
-                              不另外設計一套。查詢完成後
-                              icon/mode/minutes/distance 才會有值,此時
-                              才換成正常的文字呈現。 */}
-                          {transit.loading ? (
-                            <span className={styles.thumbSpinner} aria-label="查詢交通資訊中" />
-                          ) : (
-                            <>
-                              <span>{transit.icon}</span>
-                              <span>{transit.mode} {transit.minutes} 分 · {transit.distance}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <div />
-                    </div>
-                  )}
-                  <div data-tl-node className={`${styles.row} ${styles.stopRow} ${removingClass}`}>
-                    <div className={`${styles.stopTime} ${mountedClass}`}>
-                      <div className={styles.stopTimeText}>{p.time}</div>
-                    </div>
-                    <div className={styles.axisCol}>
-                      {idx > 0 && <div className={styles.axisLineAbove} />}
-                      {/* axisLineBelow 原本只在「還有下一個節點」時畫
-                          (idx < steps.length - 1),但這個節點是陣列最後
-                          一個、且仍在生成中(isGenerating)時,後面其實
-                          還接著呼吸點/骨架卡(.tipRow,見下方渲染邏輯)要
-                          銜接——只看陣列位置不看生成狀態,會讓「目前正在
-                          生成下一站」這個當下,最後一張卡片下方到呼吸點
-                          之間完全沒有任何軸線元素覆蓋,出現一大段斷裂
-                          (2026-09 實測:「大天后宮」卡片下方到呼吸點之間
-                          整段空白)。補上 isGenerating 這個條件,讓它在
-                          「還有下一個節點」或「正在生成中」任一成立時都
-                          畫出來。 */}
-                      {(idx < steps.length - 1 || isGenerating) && <div className={styles.axisLineBelow} />}
-                      <div className={`${styles.anchorDot} ${mountedClass} ${justMounted ? styles.anchorPop : ''}`} />
-                    </div>
-                    <div className={`${styles.stopCardWrap} ${mountedClass} ${justMounted ? styles.cardSlide : ''}`}>
-                      <div
-                        className={`${styles.stopCard} ${p.id === selectedStopId ? styles.stopCardSelected : ''}`}
-                        role={p.lat != null && p.lng != null ? 'button' : undefined}
-                        tabIndex={p.lat != null && p.lng != null ? 0 : undefined}
-                        onClick={() => panToStop(p)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') panToStop(p)
-                        }}
-                      >
-                        <div
-                          className={`${styles.stopThumb} ${justMounted ? styles.thumbPop : ''}`}
-                          style={{ background: p.photoUrl ? undefined : p.thumbBg }}
-                        >
-                          {p.loading ? (
-                            <span className={styles.thumbSpinner} aria-label="查詢地點資料中" />
-                          ) : p.photoUrl ? (
-                            <img src={p.photoUrl} alt={p.name} className={styles.stopThumbImg} />
-                          ) : p.thumbIcon}
-                        </div>
-                        <div className={styles.stopBody}>
-                          <div className={styles.stopMeta}>
-                            {p.duration} · {p.kind}
-                            {p.loading && <span className={styles.loadingTag}>查詢地點中…</span>}
-                          </div>
-                          <div className={styles.stopName}>{p.name}</div>
-                          <div className={styles.stopDesc}>{p.desc}</div>
-                          {p.tags && p.tags.length > 0 && (
-                            <div className={styles.stopTags}>
-                              {p.tags.map((tag) => (
-                                <span key={tag} className={styles.stopTag}>{tag}</span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </Fragment>
-              )
-            }
-
-            // message——LLM/使用者的對話訊息(見 planTimeline.ts
-            // PlanNodeType 的完整說明),時間軸上自己獨立的一列,不依附
-            // 任何 stop 卡片。使用者明確指出「他不是引言,是對話」,也
-            // 明確否決過「放在 note 區」的方向——這裡用對話氣泡樣式
-            // (.messageBubble),視覺上跟 note(左側色條+文字,語意是
-            // 行程備註)、stopCard(景點卡本體)都刻意區隔開,讓使用者
-            // 一眼認出「這是 AI/我說的一句話」。新的 stop 節點插入後
-            // (p.stale === true,由 staleOtherAgentMessages 統一標記),
-            // 不整個移除,收合成一行淡化的小字——它依然是時間軸上自己
-            // 的節點,只是不再搶當下的注意力。
-            if (p.type === 'message') {
-              return (
-                <div key={p.id} className={`${styles.row} ${styles.messageRow} ${mountedClass} ${removingClass}`}>
-                  <div />
-                  <div className={styles.messageAxisCol}>
-                    <div className={styles.messageAxisLine} />
-                  </div>
-                  <div className={styles.messageWrap}>
-                    <div className={`${styles.messageBubble} ${p.stale ? styles.messageBubbleStale : ''}`}>
-                      {/* stale(收合淡化態)是單行省略號截斷的純文字——
-                          markdown 排版(換行、清單、粗體)在那個高度/寬度
-                          下沒有意義,維持純文字即可。新鮮態才用
-                          ReactMarkdown 渲染完整內容,對齊 chat/MessageBubble.tsx
-                          既有對 LLM 回覆文字的處理方式,不另外手刻一套
-                          markdown 解析。 */}
-                      {p.stale ? (
-                        p.text
-                      ) : (
-                        <div className={styles.messageMarkdown}>
-                          <ReactMarkdown>{p.text}</ReactMarkdown>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )
-            }
-
-            return null
-          })}
-
-          {/* isGenerating——固定劇本自動播放中(見 usePlanSimSocket 的
-              完整說明),true 時顯示思考動畫(呼吸點+骨架卡)。這個頁面
-              不再有 onagent 對話路徑,不需要額外的 isThinking 訊號來源。 */}
-          {isGenerating ? (
-            // key 綁「目前最後一個節點的 id」:tipRow 是 steps.map 之後的
-            // 固定兄弟元素,React 每次重渲染都會把它視為「同一個既有元素、
-            // 只是被往下推了一格」,DOM 節點不會重建——結果是掛在
-            // .tipLineAbove 上的軸線生長動畫(見 .module.css 的 growDown
-            // 說明)只會在頁面第一次出現呼吸點時播一次,之後每個新節點掛
-            // 上來、呼吸點移到新位置時完全沒有「從上一個錨點延伸下來」的
-            // 動態感。用 key 讓「最後一個節點變了」等同「呼吸點換了位置」,
-            // 強制 React 卸掉舊的 tipRow 重新掛一個,CSS animation 才會隨
-            // 之重播。這跟 mountedIdsRef 追蹤 justMounted 的機制是互補的:
-            // 那個負責「節點本身」的進場動畫,這裡負責「節點之後的預告區」
-            // 的重播——兩者都依賴 id、不依賴陣列 index,插入到中間的節點
-            // 不會改變最後一個 id,呼吸點位置也確實沒變,不該重播,行為
-            // 一致。骨架卡跟 tipRow 共用同一個 key 的 fragment,理由相同:
-            // 它是呼吸點的延伸,一起重掛才能跟軸線生長同步淡入。
-            <Fragment key={`tip-after-${steps.length > 0 ? steps[steps.length - 1].id : 'empty'}`}>
-              <div data-tl-tip className={`${styles.row} ${styles.tipRow}`}>
-                <div />
-                <div className={styles.tipAxis}>
-                  <div className={styles.tipLineAbove} />
-                  <div className={styles.tipDot} />
-                  <div className={styles.tipLineBelow} />
-                </div>
-                <div />
-              </div>
-              {/* 骨架卡——呼吸點下方的「即將出現的內容」預告(見 .module.css
-                  的 .skeletonRow/.skeletonCard 完整說明)。不對應任何真實
-                  PlanStep、沒有資料,純粹是視覺佔位:先前呼吸點下面是一整片
-                  空白,看起來像「已經結束」而不是「還在生成」。只在已經有
-                  節點之後才顯示——steps 還是空的(WS 剛連上、第一則訊息還
-                  沒到)時只有呼吸點,沒有「上一個錨點」可以延伸,骨架卡孤
-                  零零掛在最上面反而奇怪。沿用 .row/.stopRow/.axisCol/
-                  .stopCardWrap 既有 class 讓它落在跟真實 stop 卡片同一個
-                  右欄、同樣的縮排,只疊加 skeleton 專屬 modifier 調整外觀,
-                  不另建一套 grid。aria-hidden:對輔助技術而言這裡沒有任何
-                  內容,不該被朗讀成一個空卡片。 */}
-              {steps.length > 0 && (
-                <div aria-hidden="true" className={`${styles.row} ${styles.stopRow} ${styles.skeletonRow}`}>
-                  <div />
-                  <div className={styles.axisCol}>
-                    {/* skeletonAxisAbove——骨架卡列自己補一段貫穿到
-                        .skeletonAnchor 中點的虛線,銜接上方 .tipRow 的
-                        .tipLineBelow,兩段視覺上連成一條完整貫穿呼吸點到
-                        骨架卡的軸線,不依賴跨列的絕對定位假設(同步
-                        trip-plan/TripPlanPage.module.css 正式頁修過的
-                        「時間軸斷裂」bug——原本骨架卡列高度用魔術數字
-                        猜測,實際高度跟猜測值不同就會斷裂或超出)。 */}
-                    <div className={styles.skeletonAxisAbove} />
-                    <div className={styles.skeletonAnchor} />
-                  </div>
-                  <div className={styles.stopCardWrap}>
-                    <div className={styles.skeletonCard}>
-                      <div className={`${styles.skeletonThumb} ${styles.shimmer}`} />
-                      <div className={styles.skeletonBody}>
-                        <div className={`${styles.skeletonLine} ${styles.skeletonLineMeta} ${styles.shimmer}`} />
-                        <div className={`${styles.skeletonLine} ${styles.skeletonLineTitle} ${styles.shimmer}`} />
-                        <div className={`${styles.skeletonLine} ${styles.skeletonLineDesc} ${styles.shimmer}`} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </Fragment>
-          ) : steps.length > 0 ? (
-            <div className={`${styles.endMarker} ${styles.endFade}`}>── 行程結束 ──</div>
-          ) : null}
-        </div>
-      </div>
-
-      {showJumpPill && (
-        <div className={styles.jumpPillWrap}>
-          <button type="button" className={styles.jumpPill} onClick={jumpToLatest}>↓ 回到最新</button>
-        </div>
-      )}
+      <PlanTimelineView
+        steps={steps}
+        isThinking={isGenerating}
+        emptyStateMessage={emptyStateMessage}
+        endMarkerMessage="行程結束"
+        selectedStopId={selectedStopId}
+        showJumpPill={showJumpPill}
+        onJumpToLatest={jumpToLatest}
+        onPanToStop={panToStop}
+        onOpenPhotos={setLightboxPhotos}
+        mountedIdsRef={mountedIdsRef}
+        scrollRef={scrollRef}
+        onScroll={handleScroll}
+        scrollClassName={styles.timelineScroll}
+        jumpPillWrapClassName={styles.timelineJumpPillWrap}
+      />
 
       <div className={styles.composer}>
         <div className={styles.composerInner}>
@@ -1276,5 +977,13 @@ export function AIPlanTimelinePage() {
         </div>
       </div>
     </div>
+    {lightboxPhotos && (
+      <Lightbox
+        photos={lightboxPhotos.photos}
+        alt={lightboxPhotos.alt}
+        onClose={() => setLightboxPhotos(null)}
+      />
+    )}
+    </>
   )
 }

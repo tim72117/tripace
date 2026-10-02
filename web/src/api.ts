@@ -852,6 +852,10 @@ export interface GeoPlanAiPlaceDetailsAnyResult {
   lng?: number
   summary?: string
   photoUrl?: string
+  // googlePhotoUrls——2026-10 新增,比照地圖版 GeoPlaceDetails 多圖瀏覽
+  // 需求補上,photoUrl 等於這個清單的第一張,向後相容只讀 photoUrl 的
+  // 既有呼叫端。
+  googlePhotoUrls?: string[]
   attractionId?: string
 }
 

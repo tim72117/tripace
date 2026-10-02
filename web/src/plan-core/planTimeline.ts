@@ -160,6 +160,11 @@ export interface PlanNodeData {
   // 顯示假資料。
   loading?: boolean
   photoUrl?: string
+  // googlePhotoUrls——2026-10 新增,比照地圖版景點介紹卡的多圖瀏覽
+  // 需求(見 PhotoCarousel.tsx)。photoUrl 維持等於這個清單的第一張,
+  // UI 沒有多圖時(清單為空/未定義)仍用 photoUrl 當單圖/佔位圖來源,
+  // 向後相容。
+  googlePhotoUrls?: string[]
   // removing:這一筆已收到移除指示,正在播放淡出動畫、還沒真的從鏈結
   // 摘除(見 removeNode 的完整說明)——渲染時套用淡出 CSS class,動畫
   // 結束後由呼叫端延遲真正呼叫 removeNode,不是收到指示就立刻讓 DOM
