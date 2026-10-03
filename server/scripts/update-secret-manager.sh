@@ -9,14 +9,17 @@
 # GOOGLE_PLACES_API_KEY(後端 geocode/recommend_nearby 工具用)、
 # GOOGLE_MAPS_API_KEY(前端 Maps JavaScript API 用)、
 # GOOGLE_MAPS_MAP_ID(前端 GeoOutlineMap.tsx 的 AdvancedMarkerElement 要求
-# 的地圖樣式 ID)、VITE_ONAGENT_APP_KEY(前端 onagent 平台 tripace app 的
+# 的地圖樣式 ID)、GOOGLE_MAPS_LANDING_MAP_ID(前端 InteractiveExploreMap.tsx
+# 主題介紹頁地圖專用的 Cloud Style Map ID,所有原生 POI 標籤都關閉,見
+# docs/map-style/*-simple.json 樣式快照;未設定時該展示頁退回沿用
+# GOOGLE_MAPS_MAP_ID)、VITE_ONAGENT_APP_KEY(前端 onagent 平台 tripace app 的
 # apiKey)、PEXELS_API_KEY(後端地圖照片查詢的優先來源,見 geo_outline.go
 # 的 os.Getenv("PEXELS_API_KEY") 呼叫處)、GOOGLE_OAUTH_CLIENT_ID(前端
 # Google 登入 GSI 模式與後端 idtoken.Validate 共用的 OAuth 用戶端 ID,見
 # server/internal/auth/google.go)、VITE_PLAN_AI_ONAGENT_APP_KEY(「AI
 # 規劃」功能專用的獨立 onagent app plan-ai-timeline 的 apiKey,見
 # web/src/trip-plan/TripPlanPage.tsx 的完整說明,跟 VITE_ONAGENT_APP_KEY
-# 是完全不同的兩個 app)是七組獨立的金鑰/識別碼,
+# 是完全不同的兩個 app)是八組獨立的金鑰/識別碼,
 # 不同用途、不同申請/輪替方式,互不影響。這支腳本目前是 Cloud Run
 # (shuttle-045094509 專案)唯一設定它們的地方,故一併整合進來,不另外開
 # 一支腳本。
@@ -51,6 +54,7 @@
 #   bash server/scripts/update-secret-manager.sh -places              # 只處理 GOOGLE_PLACES_API_KEY
 #   bash server/scripts/update-secret-manager.sh -maps                # 只處理 GOOGLE_MAPS_API_KEY
 #   bash server/scripts/update-secret-manager.sh -map-id              # 只處理 GOOGLE_MAPS_MAP_ID
+#   bash server/scripts/update-secret-manager.sh -landing-map-id      # 只處理 GOOGLE_MAPS_LANDING_MAP_ID
 #   bash server/scripts/update-secret-manager.sh -onagent             # 只處理 VITE_ONAGENT_APP_KEY
 #   bash server/scripts/update-secret-manager.sh -pexels              # 只處理 PEXELS_API_KEY
 #   bash server/scripts/update-secret-manager.sh -oauth-client-id      # 只處理 GOOGLE_OAUTH_CLIENT_ID
@@ -76,6 +80,7 @@ print_usage() {
   -places                  只處理 GOOGLE_PLACES_API_KEY
   -maps                    只處理 GOOGLE_MAPS_API_KEY
   -map-id                  只處理 GOOGLE_MAPS_MAP_ID
+  -landing-map-id          只處理 GOOGLE_MAPS_LANDING_MAP_ID
   -onagent                 只處理 VITE_ONAGENT_APP_KEY
   -pexels                  只處理 PEXELS_API_KEY
   -oauth-client-id         只處理 GOOGLE_OAUTH_CLIENT_ID
@@ -90,6 +95,7 @@ EOF
 DO_PLACES=1
 DO_MAPS=1
 DO_MAP_ID=1
+DO_LANDING_MAP_ID=1
 DO_ONAGENT=1
 DO_PEXELS=1
 DO_OAUTH_CLIENT_ID=1
@@ -99,6 +105,7 @@ case "${1:-}" in
   -places)
     DO_MAPS=0
     DO_MAP_ID=0
+    DO_LANDING_MAP_ID=0
     DO_ONAGENT=0
     DO_PEXELS=0
     DO_OAUTH_CLIENT_ID=0
@@ -107,6 +114,7 @@ case "${1:-}" in
   -maps)
     DO_PLACES=0
     DO_MAP_ID=0
+    DO_LANDING_MAP_ID=0
     DO_ONAGENT=0
     DO_PEXELS=0
     DO_OAUTH_CLIENT_ID=0
@@ -115,6 +123,16 @@ case "${1:-}" in
   -map-id)
     DO_PLACES=0
     DO_MAPS=0
+    DO_LANDING_MAP_ID=0
+    DO_ONAGENT=0
+    DO_PEXELS=0
+    DO_OAUTH_CLIENT_ID=0
+    DO_PLAN_AI_ONAGENT=0
+    ;;
+  -landing-map-id)
+    DO_PLACES=0
+    DO_MAPS=0
+    DO_MAP_ID=0
     DO_ONAGENT=0
     DO_PEXELS=0
     DO_OAUTH_CLIENT_ID=0
@@ -124,6 +142,7 @@ case "${1:-}" in
     DO_PLACES=0
     DO_MAPS=0
     DO_MAP_ID=0
+    DO_LANDING_MAP_ID=0
     DO_PEXELS=0
     DO_OAUTH_CLIENT_ID=0
     DO_PLAN_AI_ONAGENT=0
@@ -132,6 +151,7 @@ case "${1:-}" in
     DO_PLACES=0
     DO_MAPS=0
     DO_MAP_ID=0
+    DO_LANDING_MAP_ID=0
     DO_ONAGENT=0
     DO_OAUTH_CLIENT_ID=0
     DO_PLAN_AI_ONAGENT=0
@@ -140,6 +160,7 @@ case "${1:-}" in
     DO_PLACES=0
     DO_MAPS=0
     DO_MAP_ID=0
+    DO_LANDING_MAP_ID=0
     DO_ONAGENT=0
     DO_PEXELS=0
     DO_PLAN_AI_ONAGENT=0
@@ -148,6 +169,7 @@ case "${1:-}" in
     DO_PLACES=0
     DO_MAPS=0
     DO_MAP_ID=0
+    DO_LANDING_MAP_ID=0
     DO_ONAGENT=0
     DO_PEXELS=0
     DO_OAUTH_CLIENT_ID=0
@@ -156,6 +178,7 @@ case "${1:-}" in
     DO_PLACES=0
     DO_MAPS=0
     DO_MAP_ID=0
+    DO_LANDING_MAP_ID=0
     DO_ONAGENT=0
     DO_PEXELS=0
     DO_OAUTH_CLIENT_ID=0
@@ -416,6 +439,28 @@ if [[ "${DO_MAP_ID}" == "1" ]]; then
 fi
 
 # -----------------------------------------------------------------------------
+# 4c. GOOGLE_MAPS_LANDING_MAP_ID —— 前端 InteractiveExploreMap.tsx(九份/
+#     京都/台南安平/赤崁・府城等主題介紹頁地圖)專用的 Cloud Style Map
+#     ID,所有 Google 原生 POI 標籤都關閉(見 docs/map-style/light-simple.json/
+#     dark-simple.json 樣式快照)。跟上面 GOOGLE_MAPS_MAP_ID 同樣道理,不是
+#     能用 gcloud 現場申請的值,只能到 Console 手動建立樣式後貼上既有值
+#     (走 upsert_secret,不支援現場建立選項)。透過 Dockerfile 的
+#     web-build 階段以 --build-arg 編入前端 bundle(見 deploy-cloudrun.yml/
+#     deploy-with-migration.yml 的 "Read Google Maps Landing Map ID from
+#     Secret Manager" step)。不是機密資料,放 Secret Manager 純粹是為了
+#     集中管理、換樣式不用改 workflow 檔案。未設定時 InteractiveExploreMap.tsx
+#     會自動退回沿用 GOOGLE_MAPS_MAP_ID(正式規劃功能同一份樣式,含完整
+#     原生 POI 標籤),不會讓地圖建立失敗——2026-10 補上這個 secret 之前,
+#     deploy-cloudrun.yml 沒有傳這個 build-arg,正式環境的主題介紹頁地圖
+#     從未真正套用過這份客製化樣式,一直是這個 fallback 狀態。只在
+#     -landing-map-id 或不帶參數(全部處理)時執行。
+# -----------------------------------------------------------------------------
+if [[ "${DO_LANDING_MAP_ID}" == "1" ]]; then
+  upsert_secret "GOOGLE_MAPS_LANDING_MAP_ID" "GOOGLE_MAPS_LANDING_MAP_ID(GCP Console → Maps Platform → Map Management 建立的主題介紹頁專用 Map Style ID)"
+  echo
+fi
+
+# -----------------------------------------------------------------------------
 # 5. VITE_ONAGENT_APP_KEY —— onagent 平台 tripace app 的 apiKey,前端
 #    OnagentBridgeDemo.tsx/useOnagentChatBridge.ts 讀取,透過 Dockerfile 的
 #    web-build 階段以 --build-arg 編入前端 bundle(見 deploy-cloudrun.yml
@@ -517,6 +562,10 @@ fi
 
 if [[ "${DO_MAP_ID}" == "1" ]]; then
   echo "   (secret: GOOGLE_MAPS_MAP_ID，deploy-cloudrun.yml build 階段讀取)"
+fi
+
+if [[ "${DO_LANDING_MAP_ID}" == "1" ]]; then
+  echo "   (secret: GOOGLE_MAPS_LANDING_MAP_ID，deploy-cloudrun.yml/deploy-with-migration.yml build 階段讀取)"
 fi
 
 if [[ "${DO_ONAGENT}" == "1" ]]; then

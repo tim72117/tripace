@@ -20,6 +20,9 @@
   /* --footer-accent:見 KyotoPage.css 對應規則的完整說明,CityPageFooter
      這個共用元件讀的中性變數名。 */
   --footer-accent: var(--vermilion);
+  /* --explore-accent:ExploreOtherCities.module.css 讀的中性變數名,
+     同 --footer-accent 的既有模式。 */
+  --explore-accent: var(--vermilion);
 
   min-height: 100vh;
   background: var(--paper);

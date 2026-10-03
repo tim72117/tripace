@@ -51,7 +51,7 @@ func newFakeServer(t *testing.T) (*httptest.Server, *capturedReq) {
 	return srv, got
 }
 
-// withToken 讓 loadToken() 讀得到一把假 token。
+// withToken 讓 loadToken(apiBase) 讀得到一把假 token。
 //
 // tokenPath() 走 os.UserConfigDir(),這個函式依平台分三種情況(見該函式
 // 的 doc):Windows 讀 %AppData%;Darwin 固定回傳 $HOME/Library/Application
@@ -63,7 +63,13 @@ func newFakeServer(t *testing.T) (*httptest.Server, *capturedReq) {
 // 覆蓋掉了開發者已經登入過的真實 token,見 sync_token_test.go 開頭
 // withSyncTokenDir 的同款修正。改用 setUserConfigDirEnv 統一依平台設定
 // 正確的環境變數。
-func withToken(t *testing.T, token string) {
+//
+// apiBase 參數:2026-10 token 改依 apiBase 分開存放(見 token.go 的完整
+// 說明)後,這裡必須跟真正呼叫 c.do() 時用的 apiBase(即 httpClient.base,
+// 呼叫端傳的 srv.URL)完全一致,寫入的 token 才會被同一個 httpClient 實例
+// 讀到——兩者不一致的話會各自對應到不同雜湊檔名,測試會在 loadToken 那步
+// 失敗。
+func withToken(t *testing.T, apiBase, token string) {
 	t.Helper()
 	dir := t.TempDir()
 	setUserConfigDirEnv(t, dir)
@@ -74,7 +80,7 @@ func withToken(t *testing.T, token string) {
 	// 這樣不管哪個平台、哪種環境變數對應關係,都一定寫到真正會被
 	// loadToken() 讀到的位置,也不需要重複一份「這個平台的路徑長怎樣」
 	// 的假設。
-	path, err := tokenPath()
+	path, err := tokenPath(apiBase)
 	if err != nil {
 		t.Fatalf("tokenPath: %v", err)
 	}
@@ -111,8 +117,8 @@ func setUserConfigDirEnv(t *testing.T, dir string) {
 }
 
 func TestHTTPClientListTrips(t *testing.T) {
-	withToken(t, "tok_test")
 	srv, got := newFakeServer(t)
+	withToken(t, srv.URL, "tok_test")
 
 	if _, err := newHTTPClient(srv.URL).listTrips(); err != nil {
 		t.Fatalf("listTrips: %v", err)
@@ -122,8 +128,8 @@ func TestHTTPClientListTrips(t *testing.T) {
 }
 
 func TestHTTPClientCreateTrip(t *testing.T) {
-	withToken(t, "tok_test")
 	srv, got := newFakeServer(t)
+	withToken(t, srv.URL, "tok_test")
 
 	if _, err := newHTTPClient(srv.URL).createTrip("花蓮三日"); err != nil {
 		t.Fatalf("createTrip: %v", err)
@@ -138,8 +144,8 @@ func TestHTTPClientCreateTrip(t *testing.T) {
 }
 
 func TestHTTPClientTripEntries(t *testing.T) {
-	withToken(t, "tok_test")
 	srv, got := newFakeServer(t)
+	withToken(t, srv.URL, "tok_test")
 
 	if _, err := newHTTPClient(srv.URL).tripEntries("tr_abc"); err != nil {
 		t.Fatalf("tripEntries: %v", err)
@@ -149,8 +155,8 @@ func TestHTTPClientTripEntries(t *testing.T) {
 }
 
 func TestHTTPClientRecord(t *testing.T) {
-	withToken(t, "tok_test")
 	srv, got := newFakeServer(t)
+	withToken(t, srv.URL, "tok_test")
 
 	_, err := newHTTPClient(srv.URL).record("tr_abc", "光復糖廠", "2026-03-01", "09:00", "2026-03-01", "10:30", "花蓮縣光復鄉")
 	if err != nil {
@@ -169,8 +175,8 @@ func TestHTTPClientRecord(t *testing.T) {
 }
 
 func TestHTTPClientUpdateEntry(t *testing.T) {
-	withToken(t, "tok_test")
 	srv, got := newFakeServer(t)
+	withToken(t, srv.URL, "tok_test")
 
 	err := newHTTPClient(srv.URL).updateEntry(tripsvc.UpdateEntryInput{
 		ID: "ent_1", Title: "光復糖廠", Kind: "activity",
@@ -197,8 +203,8 @@ func TestHTTPClientUpdateEntry(t *testing.T) {
 // 這條路徑。這裡曾經漏帶 Authorization header,所以 assertReq 對 auth 的檢查
 // 在這個 case 特別有意義。
 func TestHTTPClientSetEntryLatLng(t *testing.T) {
-	withToken(t, "tok_test")
 	srv, got := newFakeServer(t)
+	withToken(t, srv.URL, "tok_test")
 
 	if err := newHTTPClient(srv.URL).setEntryLatLng("ent_1", 23.6697, 121.4218); err != nil {
 		t.Fatalf("setEntryLatLng: %v", err)
@@ -211,8 +217,8 @@ func TestHTTPClientSetEntryLatLng(t *testing.T) {
 }
 
 func TestHTTPClientDeleteEntry(t *testing.T) {
-	withToken(t, "tok_test")
 	srv, got := newFakeServer(t)
+	withToken(t, srv.URL, "tok_test")
 
 	if err := newHTTPClient(srv.URL).deleteEntry("ent_1"); err != nil {
 		t.Fatalf("deleteEntry: %v", err)
@@ -222,8 +228,8 @@ func TestHTTPClientDeleteEntry(t *testing.T) {
 }
 
 func TestHTTPClientReset(t *testing.T) {
-	withToken(t, "tok_test")
 	srv, got := newFakeServer(t)
+	withToken(t, srv.URL, "tok_test")
 
 	if err := newHTTPClient(srv.URL).reset("tr_abc"); err != nil {
 		t.Fatalf("reset: %v", err)

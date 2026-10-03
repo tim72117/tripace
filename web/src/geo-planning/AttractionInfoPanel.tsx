@@ -74,7 +74,7 @@ export function AttractionInfoPanel({
   onSelectNearby?: (attraction: GeoAttraction) => void
   // onHoverNearby:滑鼠移入/移出清單項目時觸發(移出傳 null)——地圖上
   // 對應的精選點圓點會暫時升級成完整照片呈現(見
-  // useAttractionOverlays.ts 的 hoveredCuratedName/setHovered 完整說明),
+  // useAttractionOverlays.ts 的 hoveredCuratedId/setHovered 完整說明),
   // 讓使用者不用點擊就能先看一眼「這是哪裡」,滑開後地圖自動收回圓點。
   // 跟 onSelectNearby(點擊,開啟地點卡)是兩個獨立的互動:hover 是
   // 「順便看一眼」,click 才是「我要進一步看這個」的明確意圖。
@@ -323,7 +323,14 @@ export function AttractionInfoPanel({
                 const CategoryIcon = category ? CURATED_CATEGORY_ICONS[category] : null
                 return (
                   <button
-                    key={n.name}
+                    // key 優先用 n.id(資料庫路徑才有值,見 GeoAttraction.id
+                    // 的完整說明)——用 name 當 key 在資料庫出現同名但不同
+                    // id 的重複記錄時會撞 key(React 主控台實際警告過:
+                    // 「Encountered two children with the same key,
+                    // 祀典武廟」),改用 id 才是真正穩定且唯一的識別碼。
+                    // 即時查詢 Google Places 的候選沒有資料庫 id,才退回
+                    // name,維持原本行為。
+                    key={n.id ?? n.name}
                     type="button"
                     className={styles.nearbyItem}
                     onClick={() => onSelectNearby?.(n)}

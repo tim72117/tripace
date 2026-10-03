@@ -79,6 +79,21 @@ class FakeOverlay {
   setSelected() {}
   setCandidate() {}
   setHovered() {}
+  setPhotoUrl() {}
+  setHidden() {}
+  setLabelHidden() {}
+  getLabelEl() {
+    return null
+  }
+  getVisualEl() {
+    return null
+  }
+  getLabelPriority() {
+    return 0
+  }
+  isHidden() {
+    return false
+  }
 }
 
 vi.mock('./geoAttractionOverlay', () => ({

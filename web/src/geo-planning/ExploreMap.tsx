@@ -106,7 +106,7 @@ export function ExploreMap({
   onAttractionsChange,
   initialAttractions,
   revealedAttractionNames,
-  hoveredCuratedName,
+  hoveredCuratedId,
   onGeocodeCandidatesChange,
   onSearchStart,
   hideCategoryTags,
@@ -214,9 +214,9 @@ export function ExploreMap({
   // 應該在地圖上顯示的精選點名稱集合,由呼叫端(DesktopLayout.tsx)算好
   // 傳入,見該處與 useAttractionOverlays.ts 的完整說明。
   revealedAttractionNames?: Set<string> | null
-  // hoveredCuratedName:原封不動轉傳給 useAttractionOverlays——見該處對
+  // hoveredCuratedId:原封不動轉傳給 useAttractionOverlays——見該處對
   // 這個 prop 的完整說明。
-  hoveredCuratedName?: string | null
+  hoveredCuratedId?: string | null
   // onGeocodeCandidatesChange:地圖上方類別標籤(景點/飯店/餐廳)寫入
   // 搜尋框、觸發搜尋後,或「搜尋這個區域」按鈕按下後,runPlacesQuery
   // 查詢完成時觸發——這個元件原本自己用 useState 存一份 places,跟
@@ -1092,7 +1092,7 @@ export function ExploreMap({
     candidateKeys,
     onAttractionSelect: handleAttractionClickRouted,
     revealedAttractionNames,
-    hoveredCuratedName,
+    hoveredCuratedId,
     // cfg 傳入(不傳 usePublicPlaceDetails,預設 false)——這裡是登入後
     // 正式功能,永遠打 fetchGeoPlaceDetails(/internal/geo/place-details),
     // 理由同 AttractionInfoPanel.tsx 這個檔案內既有呼叫處的判斷邏輯。

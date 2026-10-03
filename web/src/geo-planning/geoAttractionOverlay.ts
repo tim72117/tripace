@@ -23,6 +23,24 @@ export type AttractionOverlayInstance = google.maps.OverlayView & {
   setCandidate: (candidate: boolean) => void
   setHovered: (hovered: boolean) => void
   setPhotoUrl: (photoUrl: string | undefined) => void
+  setHidden: (hidden: boolean) => void
+  // setLabelHidden/getLabelEl/getLabelPriority:標籤避讓機制(見
+  // useAttractionOverlays.ts 的 resolveLabelCollisions 完整說明)專用——
+  // 跟 setHidden 不同,這裡只隱藏標籤文字本身,圓點/縮圖維持可見可點擊,
+  // 使用者仍看得到「這裡有一個點」,只是暫時看不到名稱(密集區域縮放
+  // 放大後,或拖曳移開重疊的鄰居後,標籤會自動重新顯示)。
+  setLabelHidden: (hidden: boolean) => void
+  getLabelEl: () => HTMLElement | null
+  getVisualEl: () => HTMLElement | null
+  getLabelPriority: () => number
+  // isHidden:標籤避讓機制(resolveLabelCollisions)排除用——setHidden(true)
+  // 只是把 style.visibility 設成 hidden(見該方法完整說明,刻意不用
+  // display:none,因為 draw() 仍要持續更新 left/top),但 visibility:hidden
+  // 的元素 getBoundingClientRect() 仍會回傳實際尺寸、仍會占掉版面空間,
+  // 不像 display:none 那樣直接讓寬高歸零。碰撞偵測若不額外排除,手機版
+  // bottom sheet 開啟、主題點被 setHidden(true)收起期間,這個已經看不見
+  // 的主題點仍會被當成障礙物,擠掉周邊精選點原本該正常顯示的標籤。
+  isHidden: () => boolean
 }
 
 let AttractionOverlayClass:
@@ -70,6 +88,16 @@ export function getAttractionOverlayClass() {
     // level===1 推斷——level 數字分級已改為只服務 zoom 顯示門檻用途,跟
     // 「是否為主題」是兩個獨立語意,不應該再共用同一個數字欄位判斷。
     private readonly isTheme: boolean
+    // hidden:手機版 bottom sheet 開啟期間暫時隱藏這個 overlay(見
+    // setHidden 的完整說明)——跟 selected/candidate 一樣必須先存成欄位、
+    // 不能只在 div 已存在時才生效:onAdd() 是 Google Maps SDK 非同步才
+    // 呼叫(setMap() 之後下一個 frame 才真正建立 div),若呼叫端在
+    // setMap() 剛呼叫完、div 還沒建好的這段空窗期呼叫 setHidden(true),
+    // 當時 this.div 是 null,若不記住這個意圖,div 建好後只會依預設顯示
+    // 出來,呼叫端其實看不出這次呼叫「被吃掉了」(2026-10 實測踩過:
+    // 手機版點擊主題點時 overlay 剛好正在這段重建空窗期,setHidden 完全
+    // 無效,地圖上主題點沒有消失)。
+    private hidden: boolean = false
 
     constructor(
       private attraction: GeoAttraction,
@@ -98,10 +126,25 @@ export function getAttractionOverlayClass() {
       // 的 :global(.xxx) 選擇器一致,直接寫死字串。
       div.className = [
         'geo-attraction-overlay',
+        // geo-attraction-overlay-theme:2026-10 新增——主題點永遠顯示
+        // 完整照片(見下方 renderContent() 的 showPhoto 判斷),跟「被
+        // hover 暫時展開的精選點」共用完全相同的 markup
+        // (.geo-attraction-landmark-photo),CSS 原本無法單純用 class
+        // 區分兩者,主題點縮圖的 z-index 因此跟一般未展開精選點圓點
+        // 同層級(都是 2),只能看 DOM 順序決定誰蓋過誰——使用者實測
+        // 回報「主題點縮圖還是被小點覆蓋」,根因就是主題點身份完全沒有
+        // 反映在 CSS 層級裡。這個 class 建構時就固定(不像 selected/
+        // candidate/hovered 會隨使用者互動變動),讓 ExploreMap.module.css
+        // 能明確針對「主題點」給一個固定的、比一般精選點更高的 z-index
+        // (見該檔案 .geo-attraction-overlay-theme 的完整說明),不依賴
+        // hover/selected 等需要互動才會觸發的狀態。
+        this.isTheme && 'geo-attraction-overlay-theme',
         this.selected && 'geo-attraction-overlay-selected',
         this.candidate && 'geo-attraction-overlay-candidate',
       ].filter(Boolean).join(' ')
+      div.style.visibility = this.hidden ? 'hidden' : ''
       this.div = div
+      this.updateContainerZIndex()
       this.renderContent()
       const panes = this.getPanes()
       panes?.overlayMouseTarget.appendChild(div)
@@ -152,14 +195,20 @@ export function getAttractionOverlayClass() {
         <span class="geo-attraction-label">${escapeHtml(this.attraction.name)}</span>
       `
 
-      // 只在圓形地標圖/佔位圓/精選點圓點本身綁點擊(見 module.css 的
-      // pointer-events: auto 覆寫),不是整個 overlay 容器——光暈與標籤
-      // 文字仍不可點擊,維持「只召喚不強加」,只有具體可辨識的地標本身
-      // 才是可互動元素。點下去回報這個景點區域資料,由外層決定怎麼放大
-      // (見 ExploreMap.tsx 的 handleAttractionClick)。innerHTML 每次
-      // 重設都會拿掉舊的監聽器,故每次 renderContent() 都要重新綁定。
-      const clickTarget = this.div.querySelector('.geo-attraction-landmark-photo, .geo-attraction-landmark-placeholder, .geo-attraction-curated-dot')
-      if (clickTarget) {
+      // 在圓形地標圖/佔位圓/精選點圓點與文字標籤本身綁點擊(見 module.css
+      // 的 pointer-events: auto 覆寫),不是整個 overlay 容器——光暈仍
+      // 不可點擊(純裝飾,沒有對應的可辨識地標語意)。2026-10 使用者明確
+      // 要求文字標籤也要能點開(原本只有圖示/圓點可點,理由是「只召喚
+      // 不強加」,但使用者點擊習慣上會直接點文字,排除掉反而像沒反應),
+      // 故把 .geo-attraction-label 併入點擊目標,主題點/精選點皆適用。
+      // 點下去回報這個景點區域資料,由外層決定怎麼放大(見 ExploreMap.tsx
+      // 的 handleAttractionClick)。innerHTML 每次重設都會拿掉舊的監聽器,
+      // 故每次 renderContent() 都要重新綁定;querySelectorAll 回傳
+      // NodeList,要對每個 target 各自綁一次,不是單一 Element。
+      const clickTargets = this.div.querySelectorAll(
+        '.geo-attraction-landmark-photo, .geo-attraction-landmark-placeholder, .geo-attraction-curated-dot, .geo-attraction-label',
+      )
+      clickTargets.forEach((clickTarget) => {
         clickTarget.addEventListener('click', () => this.onClick(this.attraction))
         // 2026-08:原本這裡呼叫 google.maps.OverlayView.preventMapHitsAndGesturesFrom
         // (Google 官方文件建議讓自訂 OverlayView 內元素能可靠接收點擊的
@@ -183,6 +232,15 @@ export function getAttractionOverlayClass() {
         // Maps 內部監聽器掛在哪一層。
         clickTarget.addEventListener('mousedown', (e) => e.stopPropagation())
         clickTarget.addEventListener('touchstart', (e) => e.stopPropagation())
+      })
+
+      // renderContent() 每次都會整個重設 innerHTML,標籤是全新的 DOM
+      // 節點,若這個景點當下正因為標籤避讓機制而隱藏標籤(見 labelHidden
+      // 欄位),必須在這裡重新套用,否則重繪瞬間(例如 setHovered 切換
+      // 圓點→照片)會讓已隱藏的標籤意外重新冒出來一瞬間。
+      if (this.labelHidden) {
+        const label = this.getLabelEl()
+        if (label) label.style.visibility = 'hidden'
       }
     }
 
@@ -201,12 +259,100 @@ export function getAttractionOverlayClass() {
       this.div = null
     }
 
+    // getLabelEl:標籤避讓機制(見 useAttractionOverlays.ts 的
+    // resolveLabelCollisions)量測碰撞範圍用——每次 renderContent()
+    // 重設 innerHTML 都會產生全新的標籤節點,不能在建構時快取一次就
+    // 固定下來,故改成即時查詢,呼叫端自己決定多久查一次。
+    getLabelEl(): HTMLElement | null {
+      return this.div?.querySelector('.geo-attraction-label') ?? null
+    }
+
+    // getVisualEl:標籤避讓機制量測碰撞範圍用——2026-10 修正:原本碰撞
+    // 偵測只比對「標籤跟標籤」,沒有涵蓋「圓點/縮圖本身跟其他景點標籤」
+    // 的重疊(使用者實測回報「縮圖還是被文字標籤覆蓋」「也都還是被小點
+    // 蓋住」:某個精選點被 hover 展開成 56px 照片時,物理範圍變大,常常
+    // 跟旁邊未展開精選點的小圓點(或其標籤)重疊,但舊版判斷完全沒把這種
+    // 跨類型(縮圖↔標籤、縮圖↔縮圖)重疊納入考慮)。這裡回傳「整個可辨識
+    // 地標視覺」(圓形地標圖/佔位圓/精選點圓點,不含光暈——光暈本來就是
+    // 故意會跟鄰居重疊的裝飾效果,見該處完整說明,不需要也不該參與避讓),
+    // 呼叫端拿這個範圍跟其他景點的 getVisualEl()/getLabelEl() 一起比對,
+    // 只要有任何重疊就可能需要避讓,不分是撞到點還是撞到字。
+    getVisualEl(): HTMLElement | null {
+      return this.div?.querySelector(
+        '.geo-attraction-landmark-photo, .geo-attraction-landmark-placeholder, .geo-attraction-curated-dot',
+      ) ?? null
+    }
+
+    // setLabelHidden:標籤避讓機制偵測到跟其他景點標籤重疊、且這個景點
+    // 優先序較低時呼叫——只切 style.visibility,不影響圓點/縮圖本身的
+    // 顯示與可點擊性(理由同 setHidden 的說明:暫時收起、之後要能原樣
+    // 恢復,不走 onRemove 那條路徑)。每次 renderContent() 重建 innerHTML
+    // 後標籤節點是新的,必須重新套用這個狀態,故這裡也記成欄位,在
+    // renderContent() 結尾一併套用(見該方法結尾的呼叫)。
+    private labelHidden = false
+    setLabelHidden(hidden: boolean) {
+      this.labelHidden = hidden
+      const label = this.getLabelEl()
+      if (label) label.style.visibility = hidden ? 'hidden' : ''
+    }
+
+    // getLabelPriority:標籤避讓機制排序用——數字越大代表重疊時越優先
+    // 保留。主題點(isTheme)固定最高(100,散策羅盤的主角,不應該因為
+    // 精選點標籤密集而被犧牲);hovered/selected/candidate 次之(60,
+    // 使用者當下明確感興趣或已加入候選的,比單純路過的精選點重要);其餘
+    // 精選點最低(0),彼此之間重疊時目前不細分先後(見呼叫端排序的完整
+    // 說明,相同優先序時改用穩定的既有規則,例如陣列順序)。
+    // 2026-10 修正:優先序順序對調過一次——原本主題點(100)固定贏過
+    // hovered/selected/candidate(60),但這跟 ExploreMap.module.css 的
+    // z-index 語意(.geo-attraction-overlay-theme 固定 2.5,hovered 等
+    // 互動狀態固定 3,互動狀態贏過主題點)矛盾,兩套機制各自判斷出不同
+    // 的「誰該蓋過誰」會造成「JS 覺得這個標籤該顯示,但 CSS 層級卻讓
+    // 另一個縮圖疊在它上面」這種視覺與避讓結果對不上的情況。改成跟
+    // CSS 一致:使用者當下正在互動的精選點(hovered/selected/candidate)
+    // 優先序最高,主題點次之,其餘一般精選點最低——理由見
+    // ExploreMap.module.css .geo-attraction-overlay-theme 規則的完整
+    // 說明:主題點永遠是散策羅盤的主角,預設該蓋過一般精選點,但使用者
+    // 明確點開/hover 某個精選點時,那個精選點的即時回饋該優先顯示。
+    getLabelPriority(): number {
+      if (this.selected || this.hovered || this.candidate) return 100
+      if (this.isTheme) return 60
+      return 0
+    }
+
+    // updateContainerZIndex:2026-10 新增,修正一個比子層 z-index class
+    // 更根本的問題——.geo-attraction-overlay(每個景點 overlay 的根容器)
+    // 用 transform: translate(...)做置中定位(見 ExploreMap.module.css
+    // 該 class 的說明),而 transform 只要不是 none,就會強制讓這個元素
+    // 建立新的 stacking context,不管有沒有設定 z-index。這代表每個
+    // overlay 容器都是各自獨立的 stacking context,子層(縮圖/圓點/
+    // 標籤)原本設計的 10/20/30/40/50 分層,只在「同一個 overlay 容器
+    // 內部」(縮圖 vs 自己的標籤)有意義,完全無法跨到「另一個 attraction
+    // 的 overlay 容器」去比較——決定兩個不同景點誰的整組疊層蓋過誰的,
+    // 其實是它們各自的 overlay 容器(這一層)在共同父層 stacking context
+    // 裡的順序,而容器本身原本完全沒有設定 z-index(維持 auto),退回
+    // DOM 順序決勝負,跟子層精心設計的分層完全無關(使用者實測回報
+    // 「文學館的縮圖 z-index 50 卻被消防史料館的圓點 z-index 20 蓋住」,
+    // 根因就是這兩個 50/20 從未真正被拿來互相比較過)。
+    //
+    // 修法:容器本身也要有明確的 z-index,決定哪個景點的整組疊層該蓋過
+    // 哪個——優先序計算沿用 getLabelPriority() 同一套邏輯(hover/
+    // selected/candidate > 主題點 > 一般精選點),乘以 10 對齊子層
+    // 數值系統(子層最高用到 50),之後在容器內部才由子層的 10/20/30/
+    // 40/50 決定縮圖/圓點/標籤的相對順序——兩層 z-index 分工:這裡決定
+    // 「哪個景點」優先,子層決定「同一個景點內部」縮圖/圓點/標籤誰蓋過
+    // 誰,兩者互不衝突。
+    private updateContainerZIndex() {
+      if (!this.div) return
+      this.div.style.zIndex = String(this.getLabelPriority())
+    }
+
     // setSelected:選取狀態變動時只切換 class,不整個重建 overlay(避免
     // DOM 節點重新掛載造成光暈/照片的 fadeIn 動畫重播、閃爍)。
     setSelected(selected: boolean) {
       this.selected = selected
       if (!this.div) return
       this.div.classList.toggle('geo-attraction-overlay-selected', selected)
+      this.updateContainerZIndex()
     }
 
     // setCandidate:候選籃狀態變動時只切換 class,理由同 setSelected——
@@ -216,6 +362,7 @@ export function getAttractionOverlayClass() {
       this.candidate = candidate
       if (!this.div) return
       this.div.classList.toggle('geo-attraction-overlay-candidate', candidate)
+      this.updateContainerZIndex()
     }
 
     // setHovered:主題點永遠 no-op(見 isTheme 的說明,建構後已經是完整
@@ -230,6 +377,7 @@ export function getAttractionOverlayClass() {
       if (this.isTheme || this.hovered === hovered) return
       this.hovered = hovered
       this.div?.classList.toggle('geo-attraction-overlay-hovered', hovered)
+      this.updateContainerZIndex()
       this.renderContent()
     }
 
@@ -247,6 +395,30 @@ export function getAttractionOverlayClass() {
       if (this.photoUrl === photoUrl) return
       this.photoUrl = photoUrl
       this.renderContent()
+    }
+
+    // setHidden:手機版點開主題點的 bottom sheet 期間,暫時隱藏地圖上這個
+    // overlay 本身(見 useAttractionOverlays.ts 呼叫端說明)——只切
+    // style.visibility,不走 onRemove()/div=null 那條路徑,理由是這裡是
+    // 「暫時收起、之後要能原樣恢復」的情境,onRemove 是生命週期結束時的
+    // 一次性清理,重新呼叫 onAdd 會重建 DOM 並重播 fadeIn 動畫、閃爍。
+    // 用 visibility 而非 display:none,是因為 draw() 仍會持續被 Maps
+    // SDK 呼叫、持續更新 style.left/top,display:none 不影響這個計算但
+    // visibility:hidden 語意更準確表達「仍在版面上,只是不可見」,且兩者
+    // 都會一併移除點擊互動,不需要額外處理 pointer-events。
+    // 比照 setSelected/setCandidate:先存成 this.hidden 欄位,再檢查
+    // div 是否已存在——onAdd() 是 Google Maps SDK 非同步才呼叫,呼叫端
+    // 可能在 setMap() 剛執行完、div 還沒建好的空窗期就呼叫這個方法(見
+    // 上方 hidden 欄位的完整說明),若不記住這個意圖,div 建好時(onAdd
+    // 內已補上套用,見該處)就會遺漏這次呼叫。
+    setHidden(hidden: boolean) {
+      this.hidden = hidden
+      if (!this.div) return
+      this.div.style.visibility = hidden ? 'hidden' : ''
+    }
+
+    isHidden(): boolean {
+      return this.hidden
     }
   }
 

@@ -39,9 +39,9 @@ func (c *httpClient) do(method, path string, body any) (map[string]any, error) {
 	// 讀本機登入時存下的 token(見 token.go)。讀不到就代表還沒登入——
 	// 明確失敗、給出清楚的下一步,不要靜默送出沒有驗證的請求(那樣只會換來一個
 	// 難懂的 401,而且掩蓋了「其實只是還沒登入」這個真正原因)。
-	token, err := loadToken()
+	token, err := loadToken(c.base)
 	if err != nil {
-		return nil, fmt.Errorf("尚未登入,請先執行 `tripace-cli login --web` 登入: %w", err)
+		return nil, fmt.Errorf("尚未登入,請先針對 %s 執行 `tripace-cli login --web -api %s` 登入: %w", c.base, c.base, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := http.DefaultClient.Do(req)

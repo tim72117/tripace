@@ -17,12 +17,18 @@
    都能拖曳」(對齊 GeoOutlinePhoneListDrawer.tsx,使用者明確要求)的目標
    衝突,取捨後拿掉這個覆寫,簡介文字改靠 body 的 overflow-y: auto 處理
    捲動(理由同 components/PhoneBottomSheet.tsx 的 .body 說明)。 */
+/* padding-bottom:2026-10 修正(原本 12px)——這個值原本是「標頭(名稱/
+   副標/badges)跟底下 content 區塊」的間距,分類篩選 chip 列搬進 head
+   後(見該處完整說明)變成 head 最後一個子元素,這段 padding-bottom 疊加
+   content 自己的 padding-top:14px(見該 class 的說明),兩者相加 26px,
+   使用者實測回報「過濾標籤跟附近景點的間距還是太大」,故縮小到 4px,
+   跟 content 的 14px 疊加後更接近一般段落間距。 */
 .head {
   flex: 0 0 auto;
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 4px 16px 12px;
+  padding: 4px 16px 4px;
 }
 
 .headText {
@@ -146,19 +152,32 @@
   color: var(--ios-gray);
 }
 
-/* nearbySection/nearbyTitle:「附近景點」區塊——見 GeoOutlinePhoneInfoSheet.tsx
-   對 nearby prop 的完整說明,只有主題卡才會渲染這個區塊。跟桌面版
-   AttractionInfoPanel.module.css 的 .nearbySection 同一個概念,但這裡
-   是獨立的一份樣式(不共用桌面版那份),理由是觸控裝置的尺寸/互動回饋
-   規則本來就不同,見下方各 class 的說明。 */
-.nearbySection {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--ios-sep);
+/* placeAddress:精選點(content 分支)的地址——2026-10 使用者明確要求從
+   標頭搬到簡介下面(見 GeoOutlinePhoneInfoSheet.tsx 該處的完整說明)。
+   字級/顏色沿用原本在標頭時的 .subtitle 樣式,只是換了位置,視覺份量
+   不變。 */
+.placeAddress {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--ios-gray);
 }
 
+/* nearbyTitle:「附近景點」標題文字——見 GeoOutlinePhoneInfoSheet.tsx 對
+   nearby prop 的完整說明,只有主題卡才會渲染。
+   2026-10:原本外層包著 .nearbySection(margin-top + border-top 當作跟
+   標頭之間的視覺分隔)——分類篩選 chip 列搬到 head(標頭,見
+   GeoOutlinePhoneInfoSheet.tsx 該處的完整說明)後,這個包裝層已經沒有
+   任何樣式需要承載(格線按使用者要求移除;間距改交給 .content 本身的
+   padding-top+flex gap,見該 class 說明,疊加 .nearbySection 自己的
+   margin-top 曾經造成「間距太大」),故連同這個 wrapper div 一併移除,
+   .nearbyTitle/.nearbyList 直接變成 .content 的子元素。 */
+/* margin: 0——.nearbyTitle 是 .content(flex 容器,gap: 6px,見該 class
+   的說明)的子元素,跟前後兄弟元素的間距已經由 flex gap 負責;原本這裡
+   還加了 margin-bottom: 8px,flex gap 不會像一般區塊元素的上下 margin
+   那樣互相 collapse,兩者疊加變成下方多出 14px(8+6),使用者實測回報
+   「這行字上下都太多間距」,故拿掉,只靠 flex gap 統一間距節奏。 */
 .nearbyTitle {
-  margin: 0 0 8px;
+  margin: 0;
   font-size: 13px;
   font-weight: 700;
   color: var(--color-dark);
@@ -236,25 +255,59 @@
   background: var(--ios-sand);
 }
 
+/* nearbyList:2026-10 使用者明確要求改成橫向滑動(取代原本直向堆疊)
+   ——理由同上方 .nearbyCategoryChips 的橫向捲動寫法(overflow-x: auto +
+   -webkit-overflow-scrolling: touch + 隱藏原生捲軸),這裡不重複展開
+   說明。使用者已明確接受這個已知取捨:這個區域的觸控滑動不再冒泡成
+   sheet 本身的上下拖曳收合/展開手勢(跟 .head 的教訓相同,見該處完整
+   說明——任何子元素允許原生橫向/縱向捲動,瀏覽器就會把那塊區域的觸控
+   事件接管掉,不再派發給 React 的 onTouchMove),只有清單本身能橫滑,
+   其餘區域(標頭/圖片/簡介)維持可拖曳 sheet。 */
+/* scroll-snap-type: x proximity(而非 mandatory)——使用者要求「滑動的
+   項目會對齊左側」這個段落感,用原生 CSS Scroll Snap 實作(不用 JS 算
+   每次該停在哪個 offset,瀏覽器原生支援、手勢物理感更自然)。proximity
+   而非 mandatory:mandatory 會強制每次放手都吸附到最近的一張卡片,連
+   使用者只是想滑到清單中間稍微瀏覽、手指還沒放開前的中繼狀態也會被
+   拉扯;proximity 只在「放手位置已經很接近某張卡片的對齊點」時才吸附,
+   否則維持使用者手指實際停在的位置,是 MDN 建議給「希望有段落感但不
+   強制」情境的設定。 */
 .nearbyList {
   display: flex;
-  flex-direction: column;
   gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+
+.nearbyList::-webkit-scrollbar {
+  display: none;
 }
 
 /* nearbyItem:清單項目本身——44px 觸控高度下限(見 min-height,對齊
    iOS/Material Design 的觸控目標建議尺寸),取代桌面版靠 hover 提示可
    點的設計(桌面版 .nearbyItem 沒有這個尺寸限制,因為滑鼠游標精度遠高
    於手指觸控)。文字置左對齊,整塊都是按鈕(不是只有標題可點),觸控
-   範圍越大越不容易點錯。 */
+   範圍越大越不容易點錯。
+   2026-10:width 從 100%(直向堆疊時佔滿整行)改成固定寬度(橫向滑動
+   卡片,見上方 .nearbyList 的完整說明)——flex: 0 0 auto 避免被
+   .nearbyList 的 flex 容器壓縮寬度,200px 在手機螢幕上大約能一次看到
+   1.5~2 張卡片,提示使用者還有更多可以往右滑,不會看起來像剛好一張
+   卡片填滿畫面、誤以為沒有更多內容。scroll-snap-align: start 讓每張
+   卡片都是一個吸附對齊點,對齊容器(.nearbyList)的起始邊(也就是左側)
+   ——使用者明確要求「滑動的項目會對齊左側」,搭配 .nearbyList 的
+   scroll-snap-type 生效。 */
 .nearbyItem {
   min-height: 44px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  width: 100%;
+  flex: 0 0 auto;
+  width: 200px;
   padding: 10px 12px;
+  scroll-snap-align: start;
   border: none;
   border-radius: 10px;
   background: var(--ios-bg);

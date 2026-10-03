@@ -6,6 +6,7 @@ import { MobileMapReveal } from './MobileMapReveal';
 import { ScrollHint } from './ScrollHint';
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { CityPageFooter } from './CityPageFooter';
+import { ExploreOtherCities } from './ExploreOtherCities';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { useScrollProgress } from '../hooks/useScrollProgress';
 import { trackEvent } from '../analytics';
@@ -292,6 +293,8 @@ export function TainanPage() {
           開始使用
         </Link>
       </section>
+
+      <ExploreOtherCities currentSlug="tainan-anping" />
 
       <CityPageFooter />
     </div>

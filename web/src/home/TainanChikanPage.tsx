@@ -5,6 +5,7 @@ import { InteractiveExploreMap } from './InteractiveExploreMap';
 import { MobileMapReveal } from './MobileMapReveal';
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { CityPageFooter } from './CityPageFooter';
+import { ExploreOtherCities } from './ExploreOtherCities';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { useScrollProgress } from '../hooks/useScrollProgress';
 import { trackEvent } from '../analytics';
@@ -24,13 +25,17 @@ import './TainanChikanPage.css';
 // ——這是刻意的,兩個主題各自的主題點平等並存於同一張地圖,使用者
 // 可以點開任一個看它對應的精選點,不是這個頁面獨占的專屬地圖。
 //
-// 2026-10:地圖主題點錨點用現有資料庫已建檔的「赤崁樓」(實測確認本機
-// attractions 資料表台南只有「安平古堡」「赤崁樓」兩個 is_theme,沒有
-// 先前設想的「赤崁・府城」這個新主題點名稱)。defaultOpenTheme="赤崁樓"
-// 讓這個頁面一進來就先開好這個主題點(對齊 JiufenPage.tsx 單一主題點
-// 城市的既有慣例),不預先強制打開安平古堡。若之後要把主題點擴大成
-// 涵蓋赤崁樓+台南孔廟+神農街的「赤崁・府城」範圍,需要先在資料庫
-// 建檔這個新主題點,不是只改這裡的字串。
+// 2026-10 修正:這裡原本寫「地圖主題點錨點用現有資料庫已建檔的
+// 『赤崁樓』,因為當時實測確認本機 attractions 資料表台南只有
+// 『安平古堡』『赤崁樓』兩個 is_theme,沒有先前設想的『赤崁・府城』
+// 這個新主題點名稱」——這段描述已經過時:資料庫後來補建了「赤崁・
+// 府城」這個主題點,「赤崁樓」現在降級成它底下的一般精選點(isTheme
+// 為 false),不再是主題點本身。defaultOpenTheme="赤崁・府城" 讓這個
+// 頁面一進來就先開好這個主題點(對齊 JiufenPage.tsx 單一主題點城市的
+// 既有慣例),不預先強制打開安平古堡——傳「赤崁樓」雖然不會報錯,但
+// InteractiveExploreMap.tsx 的 defaultOpenTheme 自動開啟邏輯是用
+// name 在 themePoints(只含 isTheme 的項目)裡找對應項目,找不到就
+// 靜默不開啟任何卡片,使用者進頁面看到的會是沒有主題卡片的空地圖。
 //
 // SEO_TITLE/SEO_DESCRIPTION/SEO_URL:對齊 JiufenPage.tsx 的既有模式
 // (見該檔案同名常數的完整說明)——透過下方 <Helmet> 蓋掉 index.html
@@ -422,17 +427,18 @@ export function TainanChikanPage() {
           內,全美戲院/金得春捲/富盛號沿民族路/國華街步行可達,林百貨
           稍遠一點在中正路口,地圖上可以直接看出這個「廣場放射」型動線
           跟九份/京都那種單一坡道動線的差異。
-          defaultOpenTheme="赤崁樓":這個頁面只關心這個主題點,
-          一進頁面就先開好,不用使用者自己點(對齊 JiufenPage.tsx 單一
-          主題點城市的既有慣例)——即使同一次查詢也會查到安平古堡(見
-          檔案開頭的完整說明),地圖上兩個主題點都會顯示,但只有
-          赤崁樓預先展開。data-index="-1" 手寫在 JSX 上(不像其餘三頁完全
-          依賴 useScrollProgress hook 動態補上)——這是既有寫法,hook
-          掛載時會再次執行 setAttribute 覆蓋成同樣的值,冗餘但無害,
-          搬移位置不影響這個機制,故保留原樣不動。 */}
+          defaultOpenTheme="赤崁・府城"(2026-10 修正,原本誤寫「赤崁樓」
+          ——見檔案開頭的完整說明,赤崁樓已不是主題點本身):這個頁面只
+          關心這個主題點,一進頁面就先開好,不用使用者自己點(對齊
+          JiufenPage.tsx 單一主題點城市的既有慣例)——即使同一次查詢也
+          會查到安平古堡(見檔案開頭的完整說明),地圖上兩個主題點都會
+          顯示,但只有赤崁・府城預先展開。data-index="-1" 手寫在 JSX 上
+          (不像其餘三頁完全依賴 useScrollProgress hook 動態補上)——這是
+          既有寫法,hook 掛載時會再次執行 setAttribute 覆蓋成同樣的值,
+          冗餘但無害,搬移位置不影響這個機制,故保留原樣不動。 */}
       <div className="tainan-chikan-map-intro" ref={mapIntroRef} data-index="-1">
         <MobileMapReveal photoUrl={`${PHOTO_TAGGING_PREVIEW_BASE}/${STOPS[0].gallery[0].file}`} photoAlt="赤崁樓">
-          <InteractiveExploreMap city="台南" showThemeToggle={false} externalTheme={theme} defaultOpenTheme="赤崁樓" />
+          <InteractiveExploreMap city="台南" showThemeToggle={false} externalTheme={theme} defaultOpenTheme="赤崁・府城" />
         </MobileMapReveal>
       </div>
 
@@ -447,6 +453,8 @@ export function TainanChikanPage() {
           開始使用
         </Link>
       </section>
+
+      <ExploreOtherCities currentSlug="tainan-chikan" />
 
       <CityPageFooter />
     </div>

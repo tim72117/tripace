@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode, TouchEvent as ReactTouchEvent } from 'react'
 import { X } from 'lucide-react'
 import styles from './PhoneBottomSheet.module.css'
@@ -260,15 +260,94 @@ export function PhoneBottomSheet({
   const renderedChildren = keepMounted || open ? children : lastContentRef.current.children
 
   // stops:合併 minHeightPx(若有)與 snapPoints 成單一「離頂部距離 px」
-  // 陣列,由大到小排序(索引 0 展開最少、最後一項展開最多)——內部拖曳/
-  // 吸附邏輯統一用這份陣列運算,不用分別處理 minHeightPx 與 snapPoints
-  // 兩種來源。minHeightPx 是固定高度(不是離頂部距離),換算成「離頂部
-  // 距離」需要知道面板容器的實際高度,這裡用 panelRef 量測(見下方
-  // containerHeightRef);量測結果還沒進來前(尚未 mount)暫時當作 0,
-  // 只影響第一次渲染的極短暫瞬間,不影響實際互動。
-  const containerHeightRef = useRef(0)
-  const minHeightAsTop = minHeightPx != null ? Math.max(0, containerHeightRef.current - minHeightPx) : null
-  const stops = minHeightAsTop != null ? [...snapPoints, minHeightAsTop].sort((a, b) => b - a) : snapPoints
+  // 陣列,索引 0 固定是收合段(minHeightPx 換算出的最小展開段)、其餘依
+  // snapPoints 原始順序接續(由大到小排序的離頂部距離,見呼叫端
+  // SHEET_SNAP_POINTS 的說明)——內部拖曳/吸附邏輯統一用這份陣列運算,
+  // 不用分別處理 minHeightPx 與 snapPoints 兩種來源。minHeightPx 是固定
+  // 高度(不是離頂部距離),換算成「離頂部距離」需要知道面板可視範圍的
+  // 高度。
+  //
+  // 2026-10 修正(兩輪):
+  // 第一輪誤判原本的 containerHeightRef(useRef)問題出在「寫入 ref 不會
+  // 觸發 re-render」,改成 state + useLayoutEffect 量測 panelRef.current.
+  // parentElement.clientHeight。但實測仍然空白、且拖不動——根因其實更
+  // 根本:這個 sheet 的祖先容器(例如 InteractiveExploreMap.tsx 搭配
+  // MobileMapReveal.tsx 的手機版地圖,展開前整個地圖用 hidden/display:none
+  // 隱藏,主題卡卻在隱藏期間就已經 mount)量測當下 clientHeight 本來就是
+  // 0,不管用 ref 還是 state、useEffect 還是 useLayoutEffect,量到的都是
+  // 0,問題不在量測時機。
+  // 第二輪根因:(1)minHeightAsTop 算出 0 時,`[...snapPoints,
+  // minHeightAsTop].sort()` 把 0 排到陣列最前面沒錯,但 0 原本該代表
+  // 「完全展開」(離頂部距離為 0),不是「收合段」——sort 讓索引語意隨著
+  // 量測結果正確與否而翻轉,量測正確時 index 0 是收合段、量測失敗
+  // (clientHeight=0)時 index 0 卻變成最接近完全展開的位置,activeSnapIndex
+  // 這個數字本身沒有跟著重新映射,導致「同一個 0」在兩種情況下指向完全
+  // 相反的視覺意圖;(2)collapsed 判斷(isAtMinSnap)固定看 activeSnapIndex
+  // === 0,量測失敗時這個索引其實指向「展開最多」的高度,於是出現「面板
+  // 卡在接近滿版的高度,卻套用 collapsed 樣式隱藏內容」這種高度與樣式
+  // 對不上的矛盾;且因為這個位置已經是 stops 裡的最大值,拖曳的夾值
+  // (clamp)邏輯會把它當成上限,手勢往下拖完全無法移動面板。
+  //
+  // 修法(第二輪):改量 window.innerHeight(視窗高度,搭配下方 resize
+  // effect 保持最新)取代量測祖先容器的 clientHeight——這個 sheet
+  // 本身是 position: fixed(見呼叫端 panelStyle 的完整說明),定位基準
+  // 一開始就是視窗,不是任何祖先容器,window.innerHeight 不會受祖先
+  // 容器是否隱藏/尚未撐開影響,從掛載當下就是正確值,沒有「量測前」的
+  // 空窗期。同時不再用 sort 排序合併後的陣列,改成固定把 minHeightAsTop
+  // 放在索引 0、snapPoints 原始順序接續在後——索引語意永遠固定,不隨
+  // 數值大小洗牌,不會再出現語意翻轉的問題。
+  //
+  // 第三輪修正(code review 抓到):window.innerHeight 只對 position:
+  // fixed 的呼叫端(目前只有 GeoOutlinePhoneInfoSheet.tsx)才正確——其餘
+  // 傳 minHeightPx 的呼叫端(PhoneContent.tsx/
+  // GeoOutlinePhoneCandidateDrawer.tsx/GeoOutlinePhoneListDrawer.tsx/
+  // PhoneTimelineDrawer.tsx)panelStyle 都是 position: absolute,定位
+  // 基準是各自的 position: relative 祖先容器(例如 .mainArea),不是視窗
+  // ——這些容器的高度可能因為安全區域、上方固定列等因素而小於
+  // window.innerHeight,若整個方案固定改用視窗高度,minHeightAsTop 算出
+  // 的「離頂部距離」會對不上這些呼叫端的實際定位基準,收合段的實際像素
+  // 位置偏離容器範圍。
+  //
+  // 改成混合量測:用 useLayoutEffect 量 panelRef.current.parentElement
+  // 的 clientHeight(對 absolute 呼叫端是正確的祖先容器高度,對 fixed
+  // 呼叫端的父容器高度理論上也等於視窗高度,兩者在父容器已撐開時結果
+  // 一致),量到 0(代表容器目前不可見,見第一輪修正說明的空窗期問題)
+  // 時 fallback 用 window.innerHeight——這個 fallback 專門解決第一輪的
+  // bug(容器隱藏期間量不到正確高度),容器一旦真的撐開,下一次 open
+  // 變化或呼叫端重新渲染觸發的量測就會拿到正確的祖先容器高度,不會一直
+  // 停留在 fallback 值上(對 fixed 呼叫端而言,fallback 值本來就等於
+  // 正確答案,不會有「卡在錯誤值」的疑慮)。
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [containerHeight, setContainerHeight] = useState(() => window.innerHeight)
+  useLayoutEffect(() => {
+    if (!open) return
+    const measured = panelRef.current?.parentElement?.clientHeight ?? 0
+    setContainerHeight(measured > 0 ? measured : window.innerHeight)
+  }, [open])
+  useEffect(() => {
+    const onResize = () => {
+      const measured = panelRef.current?.parentElement?.clientHeight ?? 0
+      setContainerHeight(measured > 0 ? measured : window.innerHeight)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  // minHeightAsTop 額外 clamp 成不小於 snapPoints 裡的最大值(code review
+  // 抓到的邊界案例):下方拖曳/吸附邏輯(finishDrag/panelTop 等)全部假設
+  // stops 由大到小排列、stops[0] 是「展開最少」的那一段——固定把
+  // minHeightAsTop 放在索引 0(見上方完整說明,不再排序以保留固定索引
+  // 語意)這個設計的前提是「收合段離頂部的距離,理當比任何展開段都更
+  // 遠」,正常視窗高度下成立,但容器高度不足時(例如手機橫向模式,容器
+  // 可能只有 300 多 px)containerHeight - minHeightPx 可能小於
+  // snapPoints 裡的某個值(例如 SHEET_SNAP_POINTS 的 400),stops 變成
+  // [275, 400, 80]這種不是嚴格遞減的陣列,下方假設 stops[0] 是最大值/
+  // stops[length-1] 是最小值的程式碼全部會算錯(拖曳上限/下限顛倒、
+  // 吸附邏輯混亂)。clamp 下限保證 minHeightAsTop 不會小於其他段,維持
+  // stops 陣列的排序前提恆成立。
+  const minHeightAsTop = minHeightPx != null
+    ? Math.max(0, containerHeight - minHeightPx, ...snapPoints)
+    : null
+  const stops = minHeightAsTop != null ? [minHeightAsTop, ...snapPoints] : snapPoints
   const isSingleStop = stops.length <= 1
 
   // 拖曳手勢:startYRef 記錄手勢起點,dragOffset 是這次拖曳的即時位移
@@ -333,23 +412,6 @@ export function PhoneBottomSheet({
   }, [open])
 
   const currentTop = stops[activeSnapIndex] ?? stops[0] ?? 0
-
-  const panelRef = useRef<HTMLDivElement>(null)
-  // 只在「開啟」那一刻量測一次容器高度,不是每次 render 都重新讀取
-  // DOM——原本沒有依賴陣列,每次 render(含拖曳中的每一幀、entered 進場
-  // 動畫的每一次狀態變化)都會強制瀏覽器同步計算一次 layout 才能回傳
-  // clientHeight(layout thrashing),這個同步 reflow 剛好跟 sheet 自己
-  // 的 top/transform CSS transition 動畫同時發生,連帶讓同一個渲染批次
-  // 裡的地圖(GeoOutlinePhoneView 的 Google Maps 實例)也被迫重新計算
-  // 一次尺寸,視覺上出現地圖跟著偏移(使用者實測回報「對話滑出時還會
-  // 影響地圖」)。只有真的需要用到量測結果的情境(minHeightPx 存在時)
-  // 才需要它,且只需要在 open 變 true 的那一刻量一次即可,不需要隨拖曳
-  // 或動畫每一幀重算。
-  useEffect(() => {
-    if (open && panelRef.current) {
-      containerHeightRef.current = panelRef.current.parentElement?.clientHeight ?? window.innerHeight
-    }
-  }, [open])
 
   // atMaxExpansion:是否已經停在展開最多的那個段——這個狀態直接決定
   // .body 的 CSS overflow(見下方 bodyOverflow)是不是要交給瀏覽器原生

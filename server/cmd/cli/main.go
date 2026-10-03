@@ -680,7 +680,7 @@ func cmdAttractionUpdatePhoto(apiURL string, args []string) {
 // 更新用的通知,不是資料寫入本身,失敗不影響資料正確性,不值得讓呼叫端也
 // 跟著失敗或印出錯誤)。
 func notifyTrip(tripID, apiURL string) {
-	token, err := loadToken()
+	token, err := loadToken(apiURL)
 	if err != nil {
 		return
 	}

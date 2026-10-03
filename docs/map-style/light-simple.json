@@ -75,24 +75,6 @@
       }
     },
     {
-      "id": "pointOfInterest.landmark",
-      "label": {
-        "visible": true
-      }
-    },
-    {
-      "id": "pointOfInterest.recreation",
-      "label": {
-        "visible": true
-      }
-    },
-    {
-      "id": "pointOfInterest.entertainment",
-      "label": {
-        "visible": true
-      }
-    },
-    {
       "id": "political",
       "label": {
         "visible": false

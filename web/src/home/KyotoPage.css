@@ -26,6 +26,9 @@
      在下方明/暗兩份色票區塊各自重複寫死數值,--vermilion 本身已經隨
      data-theme/系統偏好切換,--footer-accent 自然跟著變。 */
   --footer-accent: var(--vermilion);
+  /* --explore-accent:ExploreOtherCities.module.css 讀的中性變數名,
+     同 --footer-accent 的既有模式。 */
+  --explore-accent: var(--vermilion);
 
   min-height: 100vh;
   background: var(--paper);

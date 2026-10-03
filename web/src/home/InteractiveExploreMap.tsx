@@ -29,14 +29,24 @@ const GUEST_CFG: ClientConfig = { baseURL: BASE_URL, token: null }
 // LANDING_MAP_ID:這個展示頁專用的 Cloud Style Map ID——正式規劃功能
 // (ExploreMap.tsx/GeoOutlinePhoneView.tsx 等)沒有傳 mapId 給
 // NativeMapBase,沿用預設的 VITE_GOOGLE_MAPS_MAP_ID;這個展示頁改用
-// VITE_GOOGLE_MAPS_LANDING_MAP_ID,對應不顯示餐廳/旅宿 POI 的樣式(見
-// docs/map-style/*-no-food-lodging.json 的樣式快照,原理是 pointOfInterest
-// 父層整批關閉標籤、只重新開啟 landmark/recreation/entertainment 三個
-// 子分類,不逐一命中餐廳/旅宿各自的 id)——這個城市介紹頁只想呈現地標/
-// 景點,不需要 Google 原生底圖的商家圖標干擾視覺焦點。環境變數未設定
-// 時 LANDING_MAP_ID 是 undefined,NativeMapBase 的 mapId prop 會自動
-// 退回 VITE_GOOGLE_MAPS_MAP_ID(見該檔案 mapId 的說明),不會讓地圖建立
-// 失敗。
+// VITE_GOOGLE_MAPS_LANDING_MAP_ID,對應完全不顯示任何 Google 原生 POI
+// 標籤的樣式(見 docs/map-style/*-simple.json 的樣式快照)——
+// 2026-10 使用者明確要求「所有的 POI 都關閉」,pointOfInterest 父層
+// 關閉標籤後不再重新開啟任何子分類(原本還留著 landmark/recreation/
+// entertainment 三類標籤,現已一併移除)。這個城市介紹頁只想呈現我們
+// 自建的主題點光暈,不需要 Google 原生底圖的任何商家/地標圖標干擾
+// 視覺焦點。
+//
+// 這份 JSON 只是 Google Cloud Console → Maps Platform → Map Management
+// 後台設定的快照記錄,repo 裡改這個檔案本身不會讓地圖實際變化——要讓
+// 新設定真正生效,需要登入 Console 找到 VITE_GOOGLE_MAPS_LANDING_MAP_ID
+// 對應的 Map Style,手動移除 pointOfInterest.landmark/recreation/
+// entertainment 這三條重新開啟標籤的規則,讓它們維持 pointOfInterest
+// 父層的 label.visible:false。
+//
+// 環境變數未設定時 LANDING_MAP_ID 是 undefined,NativeMapBase 的 mapId
+// prop 會自動退回 VITE_GOOGLE_MAPS_MAP_ID(見該檔案 mapId 的說明),不會
+// 讓地圖建立失敗。
 const LANDING_MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_LANDING_MAP_ID as string | undefined
 
 // FALLBACK_CENTER:資料尚未從 API 載入完成前的暫定地圖中心——只在第一次
@@ -122,7 +132,7 @@ const INITIAL_ZOOM = 15
 // 非京都的呼叫端,沒有另外新建一份重複元件。
 //
 // 2026-09:從「固定顯示單一主題點」改成「N 個主題點並存,點哪個顯示
-// 哪個」——見上方 THEME_POINTS/openThemeName 的說明,這是為了回答
+// 哪個」——見上方 THEME_POINTS/openThemeId 的說明,這是為了回答
 // 「八坂神社是否適合獨立成一個主題點」這個編輯判斷,需要直接看兩者
 // 放在同一張地圖上的實際效果,而非各自孤立展示。這個機制天生支援任意
 // 數量的主題點(themePoints 直接從 attractions.filter(isTheme) 算出),
@@ -177,14 +187,16 @@ export function InteractiveExploreMap({
   // defaultOpenTheme:attractions 從 API 查回來後,自動打開的主題點
   // 名稱——未傳(undefined,HomePage.tsx 沿用原行為)時維持「掛載時
   // 不預先開任何一張卡片,使用者要先點地圖上的主題點才會顯示」的既有
-  // 行為(見下方 openThemeName 的說明);傳值時,一旦 attractions 載入
+  // 行為(見下方 openThemeId 的說明);傳值時,一旦 attractions 載入
   // 完成且找得到對應名稱的主題點,就自動設定成打開狀態,不需要使用者
   // 自己點擊。JiufenPage.tsx 傳「九份老街」——這個頁面只有一個主題點,
   // 使用者一進頁面就先看到地圖是空的、要點一下才看得到內容,體驗上
   // 不如直接開好給他看;HomePage.tsx 京都有兩個主題點(清水寺/八坂
   // 神社)平等並存,預先選定其中一個反而暗示了優先順序(見
-  // openThemeName 說明的既有理由),故不套用這個行為,繼續維持
-  // undefined。
+  // openThemeId 說明的既有理由),故不套用這個行為,繼續維持
+  // undefined。這個 prop 本身維持是人類可讀名稱字串(呼叫端在原始碼裡
+  // 寫死的常數,寫程式當下不會知道資料庫 id),內部找到對應的 attraction
+  // 後才改記住它的 id(見下方 useEffect)。
   defaultOpenTheme,
   // initialZoom:地圖初始縮放層級——未傳(undefined)時退回模組層級的
   // INITIAL_ZOOM(15,見該常數完整說明),對齊原本唯一呼叫端(HomePage.tsx)
@@ -337,30 +349,37 @@ export function InteractiveExploreMap({
     [restrictBounds],
   )
 
-  // openThemeName:目前顯示哪個主題點的介紹卡——用名稱而非索引/物件參照
-  // 當 key,跟 ExploreMap 的 onAttractionSelect 回呼(見下方)拿到的
-  // GeoAttraction.name 直接比對,不需要額外維護一份 id 對照表。初始值
-  // null:掛載時不預先開任何一張卡片,使用者要先點地圖上的主題點才會
-  // 顯示——2026-09 起改掉原本「固定先顯示清水寺」的預設行為,理由是兩個
-  // 主題點現在平等並存(見上方 themePoints 的說明),預先選定其中一個
-  // 反而暗示了優先順序。
-  const [openThemeName, setOpenThemeName] = useState<string | null>(null)
-  const openTheme = themePoints.find((t) => t.attraction.name === openThemeName)
+  // openThemeId:目前顯示哪個主題點的介紹卡。
+  // 2026-10 修正(使用者明確要求):原本用 name(人類可讀名稱)當 key,
+  // 跟 ExploreMap 的 onAttractionSelect 回呼(見下方)拿到的
+  // GeoAttraction.name 直接比對——但 name 不保證全域唯一(先前已知現有
+  // 重複資料案例:資料庫裡同一個地點因為 sync 工具比對缺陷,出現過
+  // 新舊兩筆同名但 id 不同的記錄,見 CHANGELOG 相關條目),用 name 當
+  // 識別值有誤判「這是同一個主題點」的風險。改用 id(GeoAttraction.id,
+  // 人工建檔景點恆有值,見該欄位完整說明)——這是資料庫主鍵,保證唯一,
+  // 不會有同名誤判的疑慮。初始值 null:掛載時不預先開任何一張卡片,
+  // 使用者要先點地圖上的主題點才會顯示——2026-09 起改掉原本「固定先
+  // 顯示清水寺」的預設行為,理由是兩個主題點現在平等並存(見上方
+  // themePoints 的說明),預先選定其中一個反而暗示了優先順序。
+  const [openThemeId, setOpenThemeId] = useState<string | null>(null)
+  const openTheme = themePoints.find((t) => t.attraction.id != null && t.attraction.id === openThemeId)
 
-  // defaultOpenTheme 自動打開——見該 prop 的完整說明。用 useEffect(而非
-  // 直接當 useState 初始值)是因為 attractions 是非同步從 API 查回來的
-  // (見上方 fetchPublicGeoAttractions 的 useEffect),掛載當下
-  // themePoints 必然是空陣列,useState 初始值算不出正確結果;改成等
-  // themePoints 有內容後才判斷要不要自動打開。只在 openThemeName 還是
-  // 初始值 null 時才設定(見下方判斷式)——避免使用者手動點擊切換到
+  // defaultOpenTheme 自動打開——見該 prop 的完整說明(prop 本身仍是人類
+  // 可讀名稱字串,這裡找到對應的 attraction 後改記住它的 id)。用
+  // useEffect(而非直接當 useState 初始值)是因為 attractions 是非同步
+  // 從 API 查回來的(見上方 fetchPublicGeoAttractions 的 useEffect),
+  // 掛載當下 themePoints 必然是空陣列,useState 初始值算不出正確結果;
+  // 改成等 themePoints 有內容後才判斷要不要自動打開。只在 openThemeId
+  // 還是初始值 null 時才設定(見下方判斷式)——避免使用者手動點擊切換到
   // 另一個主題點或關閉卡片後,attractions 陣列若因故重新觸發這個
   // effect(理論上不會,city 不會變動,純粹防禦性寫法),又把使用者
   // 已經離開的預設主題點強制設回來。
   useEffect(() => {
     if (!defaultOpenTheme) return
-    if (openThemeName !== null) return
-    if (themePoints.some((t) => t.attraction.name === defaultOpenTheme)) {
-      setOpenThemeName(defaultOpenTheme)
+    if (openThemeId !== null) return
+    const match = themePoints.find((t) => t.attraction.name === defaultOpenTheme)
+    if (match?.attraction.id != null) {
+      setOpenThemeId(match.attraction.id)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultOpenTheme, themePoints])
@@ -370,7 +389,7 @@ export function InteractiveExploreMap({
   // infoCardStack 登記邏輯,抽成跟 DesktopLayout.tsx 共用的 hook(見該
   // 檔案的完整說明)——原本這裡是四份各自獨立手寫的 state,兩邊容易
   // 各自漏寫其中一個 reset effect(2026-09 實測踩過:展示頁漏了
-  // hoveredCuratedName/activeNearbyCategoryFilter 的 reset,導致切換
+  // hoveredCuratedId/activeNearbyCategoryFilter 的 reset,導致切換
   // 主題點時殘留舊狀態),抽出來後兩邊不可能再各自漏掉。fetchPlaceDetails
   // 傳 fetchPublicGeoPlaceDetails(訪客模式改用免登入公開端點,見該函式與
   // 後端 handlePublicGeoPlaceDetails 白名單的完整說明,這個展示頁固定
@@ -385,7 +404,7 @@ export function InteractiveExploreMap({
     setCategoryFilter: setActiveNearbyCategoryFilter,
     infoCardStack,
   } = useThemeAttractionSelection(
-    openThemeName,
+    openThemeId,
     useCallback((placeId: string) => fetchPublicGeoPlaceDetails(GUEST_CFG, placeId), []),
     useCallback((placeId: string) => fetchPublicGeoPlacePhotoAssets(GUEST_CFG, placeId), []),
   )
@@ -393,7 +412,7 @@ export function InteractiveExploreMap({
   // handleAttractionSelect:地圖上點擊任一地標時觸發(見 ExploreMap.tsx 的
   // onAttractionSelect prop 對這個角色的完整說明——useAttractionOverlays
   // 對主題點/非主題點一視同仁都會呼叫這個 callback,分流判斷要由呼叫端
-  // 自己做)。isTheme 為 true(這兩個主題點之一)時切換 openThemeName;
+  // 自己做)。isTheme 為 true(這兩個主題點之一)時切換 openThemeId;
   // 其餘(精選點)時開/換並存的 poiContent,對稱
   // DesktopLayout.tsx handleAttractionOpenPlaceDetails/
   // handleAttractionOpenPlaceWithoutGoogle 的並存行為,只是這裡固定不查
@@ -420,10 +439,13 @@ export function InteractiveExploreMap({
     // trackEvent:landing page 地圖互動追蹤(見 web/src/analytics.ts 的
     // 完整說明)——這是唯一的地圖點擊進入點(主題點/精選點都會經過這裡,
     // 見上方 useAttractionOverlays 的 onAttractionSelect),不需要在
-    // openPoiContent/setOpenThemeName 各自分開埋一次。
+    // openPoiContent/setOpenThemeId 各自分開埋一次。
     trackEvent('landing_map_attraction_click', { attraction_name: a.name, is_theme: a.isTheme })
     if (a.isTheme) {
-      setOpenThemeName(a.name)
+      // a.id 理論上恆有值(主題點固定來自人工建檔資料,見 openThemeId
+      // 宣告處的完整說明)——?? null 只是滿足型別(GeoAttraction.id 宣告
+      // 成 optional),不是預期會真的落到這個分支。
+      setOpenThemeId(a.id ?? null)
       return
     }
     openPoiContent(a)
@@ -461,6 +483,27 @@ export function InteractiveExploreMap({
     setMapHandle(handle)
   }, [])
 
+  // handleHoverNearby:接在 setHoveredAttraction 前面的包裝——2026-10
+  // 使用者明確要求「滑動到的點如果不在地圖可見範圍內,則移動到該點為
+  // 中心」,橫滑清單(GeoOutlinePhoneInfoSheet.tsx 的 onHoverNearby)滑到
+  // 地圖目前視角外的精選點時,使用者只看得到清單卡片、看不到地圖上同步
+  // 升級成照片呈現的那個點(地圖畫面裡根本沒有它),這組視覺連動等於
+  // 白做。用 google.maps.Map.getBounds().contains() 判斷該點座標是否在
+  // 目前可視範圍內,不在才呼叫 panTo——範圍內時維持原樣不移動地圖,避免
+  // 使用者滑動瀏覽清單時地圖毫無必要地跟著輕微漂移(只有真的需要才動,
+  // 這是「移動到可見」而非「每次都置中」)。
+  const handleHoverNearby = useCallback((a: GeoAttraction | null) => {
+    setHoveredAttraction(a)
+    if (!a) return
+    const map = mapHandle.mapRef.current
+    if (!map) return
+    const bounds = map.getBounds()
+    const position = { lat: a.lat, lng: a.lng }
+    if (bounds && !bounds.contains(position)) {
+      map.panTo(position)
+    }
+  }, [mapHandle.mapRef, setHoveredAttraction])
+
   useAttractionOverlays({
     mapRef: mapHandle.mapRef,
     mapReady: mapHandle.mapReady,
@@ -468,13 +511,17 @@ export function InteractiveExploreMap({
     attractions,
     revealedAttractionNames,
     onAttractionSelect: handleAttractionSelect,
-    hoveredCuratedName: hoveredAttraction?.name ?? null,
+    hoveredCuratedId: hoveredAttraction?.id ?? null,
     // GUEST_CFG/usePublicPlaceDetails=true——這是登入前的公開展示頁,
     // 打 fetchPublicGeoPlaceDetails(/public/geo/place-details),理由同
     // 這個檔案其餘呼叫端(AttractionInfoPanel/handleAttractionSelect
     // 附近的既有 fetchPublicGeoPlaceDetails 呼叫)一致的判斷邏輯。
     cfg: GUEST_CFG,
     usePublicPlaceDetails: true,
+    // 手機版 bottom sheet 開啟期間隱藏地圖上對應主題點的 overlay(見
+    // useAttractionOverlays.ts 的 hiddenAttractionId 完整說明)——桌面版
+    // 走 AttractionInfoPanel 並存顯示,不受影響,固定傳 null。
+    hiddenAttractionId: !isDesktop ? openThemeId : null,
   })
 
   return (
@@ -519,7 +566,7 @@ export function InteractiveExploreMap({
                 <AttractionInfoPanel
                   attraction={openTheme.attraction}
                   cfg={GUEST_CFG}
-                  onClose={() => setOpenThemeName(null)}
+                  onClose={() => setOpenThemeId(null)}
                   nearby={nearbyList}
                   // onSelectNearby:點擊「附近景點」清單項目——跟地圖上
                   // 直接點擊精選點地標(見 handleAttractionSelect)是同一個
@@ -528,7 +575,7 @@ export function InteractiveExploreMap({
                   // handleSelectNearbyAttraction 的行為(理由同該函式
                   // 說明)。
                   onSelectNearby={openPoiContent}
-                  onHoverNearby={setHoveredAttraction}
+                  onHoverNearby={handleHoverNearby}
                   onCategoryFilterChange={setActiveNearbyCategoryFilter}
                   usePublicPlaceDetails
                 />
@@ -571,10 +618,11 @@ export function InteractiveExploreMap({
                 content={null}
                 attraction={openTheme?.attraction ?? null}
                 cfg={GUEST_CFG}
-                onClose={() => setOpenThemeName(null)}
+                onClose={() => setOpenThemeId(null)}
                 usePublicPlaceDetails
                 nearby={nearbyList}
                 onSelectNearby={openPoiContent}
+                onHoverNearby={handleHoverNearby}
                 categoryFilter={activeNearbyCategoryFilter}
                 onCategoryFilterChange={setActiveNearbyCategoryFilter}
               />

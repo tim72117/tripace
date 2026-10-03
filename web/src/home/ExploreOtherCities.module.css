@@ -1,0 +1,97 @@
+/* ExploreOtherCities——沿用 CityPageFooter.module.css 的既有手法:讀取
+   呼叫端(各城市頁 .kyoto-page/.jiufen-page/.tainan-page/.tainan-chikan-page
+   作用域)已經定義好的中性 token 名稱(--paper/--ink/--ink-soft/--line/
+   --card-shadow),四頁這幾個變數名稱完全一致,不需要額外中性化。強調色
+   用 --explore-accent 這個專屬中性變數(同 --footer-accent 的既有模式),
+   呼叫端各自指向自己的強調色變數(--vermilion 或 --brick)。 */
+
+.section {
+  padding: 4rem 1.5rem 5rem;
+  border-top: 1px solid var(--line);
+}
+
+.inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.eyebrow {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: 0.5rem;
+}
+
+.title {
+  font-size: clamp(1.4rem, 2.6vw, 2rem);
+  margin: 0 0 2.5rem;
+  color: var(--ink);
+}
+
+/* 2026-10 使用者回饋「圖片太大」,改成卡片整體縮小——grid 欄位改用
+   minmax(0, 220px)+justify-content: center,讓每張卡片有一個明確的
+   寬度上限,不再隨容器寬度撐滿整個 1/3 版面,視覺上更緊緻、跟上方
+   eyebrow/title 的字級比例更協調。 */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 220px));
+  justify-content: center;
+  gap: 1.25rem;
+}
+
+@media (max-width: 860px) {
+  .grid {
+    grid-template-columns: minmax(0, 280px);
+    gap: 1rem;
+  }
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--paper);
+  box-shadow: var(--card-shadow);
+  transition: transform 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+}
+
+.card:hover .name {
+  color: var(--explore-accent);
+}
+
+.photo {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.75rem 0.85rem 1rem;
+}
+
+.name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+  transition: color 0.2s ease;
+}
+
+.desc {
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}

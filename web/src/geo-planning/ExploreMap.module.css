@@ -311,20 +311,28 @@
 /* attractionOverlay:OverlayView 疊層的根容器,position:absolute 由
    draw() 動態設定 left/top(投影像素座標),故這裡只負責視覺與內部排版。
    transform 把整組視覺置中在該座標點上(光暈重心對準實際重心座標)。
-   刻意不在這裡設定 z-index(維持 auto)——每個 .geo-attraction-overlay
-   都是掛在同一個 overlayMouseTarget pane 底下的獨立 sibling,若這裡設了
-   明確的 z-index(如先前的 1),position:absolute + z-index 的組合會讓
-   每個 overlay 各自形成獨立的 stacking context(CSS Stacking Context
-   規則),子層(點/標籤)的 z-index 只會在自己所屬的 stacking context
-   內部比較、無法跨到另一個 sibling overlay 去比——這正是使用者回報
-   「某個 attraction 的文字標籤蓋住另一個 attraction 的可點擊地標圖/
-   圓點」的根因:當時是整個 overlay(含標籤)一起蓋過另一個 overlay(含
-   地標圖),不是單一元素跨組疊放。保持 z-index: auto 讓子層直接被提升
-   到共同祖先(overlayMouseTarget pane)這個 stacking context 裡比較,
-   下方 .geo-attraction-landmark-photo 等「點」與 .geo-attraction-label
-   「標籤」各自的 z-index 才能真正做到全域分層——所有 attraction 的點
-   一律在所有 attraction 的標籤之上,不受哪個 overlay 先建立/DOM 順序
-   影響。 */
+   2026-10 第二次修正(實測踩過,推翻了這裡原本的假設):舊版註解認為
+   「刻意不設 z-index、維持 auto,就能讓子層的 z-index 全域比較」——
+   這個假設從一開始就不成立,因為上面這行 transform 本身(不論有沒有
+   設 z-index)就已經強制讓每個 .geo-attraction-overlay 各自建立獨立
+   stacking context(CSS 規範:position !== static 且 transform !== none
+   的元素恆建立新 stacking context,不需要額外設 z-index 這個條件)。
+   這代表下方 .geo-attraction-landmark-photo/.geo-attraction-curated-dot/
+   .geo-attraction-label 身上設的 10/20/30/40/50,從頭到尾都只在「同一個
+   overlay 容器內部」有意義(確保自己的縮圖蓋過自己的標籤),從未真正
+   跨到兄弟 overlay 去比較過——使用者實測回報「文學館縮圖的 computed
+   z-index 明明是 50,卻被消防史料館圓點的 z-index 20 蓋住」,兩個數值
+   因為分屬不同 stacking context,瀏覽器根本不會直接比較它們,決定兩個
+   不同景點的整組疊層誰蓋過誰的,其實是它們各自的 overlay 容器(這一層)
+   在共同父層 stacking context(overlayMouseTarget pane)裡的順序,而
+   容器本身當時完全沒設 z-index(auto),退回 DOM 順序決勝負,跟子層的
+   分層設計完全無關。
+   真正的修法在 geoAttractionOverlay.ts 的 updateContainerZIndex()——
+   容器本身现在有明確的 inline z-index(建構/selected/candidate/hovered
+   狀態變動時更新,算法跟 getLabelPriority() 同一套:hover/selected/
+   candidate > 主題點 > 一般精選點),決定「哪個景點」的整組疊層優先,
+   下方這些子層 z-index 則繼續負責「同一個景點內部」縮圖/圓點/標籤的
+   相對順序,兩層分工不衝突。 */
 :global(.geo-attraction-overlay) {
   position: absolute;
   transform: translate(-50%, -100%);
@@ -343,18 +351,58 @@
    是否落在該元素視覺範圍內,不受 pointer-events 影響(pointer-events
    只影響「誰是事件目標」,不影響「誰算被 hover」)。
    geo-attraction-overlay-hovered 則是另一個觸發來源:使用者滑鼠移到
-   AttractionInfoPanel「附近景點」清單項目時(見 setHovered 的完整說明),
-   游標實際上不在地圖上,無法靠 :hover 判斷,改由 JS 主動切這個 class。
-   兩者用同一組數值,語意上是同一件事的兩種觸發方式。標籤本身不需要
-   跟著拉高——標籤從來不需要蓋過其他 attraction 的點,只有「點」才有
-   互相遮擋、影響可點擊性的問題。 */
+   AttractionInfoPanel「附近景點」清單項目時,或手機版橫滑清單
+   IntersectionObserver 偵測到目前主要可見的卡片時(見
+   GeoOutlinePhoneInfoSheet.tsx onHoverNearby 的完整說明),游標實際上
+   不在地圖上,無法靠 :hover 判斷,改由 JS 主動切這個 class。兩者用同一
+   組數值,語意上是同一件事的兩種觸發方式。
+   2026-10 修正:原本這裡認為「標籤本身不需要跟著拉高——標籤從來不需要
+   蓋過其他 attraction 的點」,只拉高了縮圖/圓點本身——但手機版實測
+   回報「縮圖(連同底下的名稱標籤)被其他景點的圓點/縮圖蓋住」:精選點
+   密度較高的地圖上,被放大的照片縮圖(56px)物理範圍常常跟鄰近景點的
+   點/標籤重疊,標籤固定 z-index:1(見下方 .geo-attraction-label 的
+   完整說明)低於其他未展開精選點的圓點 z-index:2,導致「點蓋過點」的
+   問題解決了,但「其他點蓋過這個被展開的標籤」沒有一併處理。加入
+   .geo-attraction-label 後,hovered 狀態下整組(照片+標籤)一起拉到
+   同一層級,確保完整可讀,不會有縮圖清楚但名字被蓋住的半套結果。 */
+/* z-index: 50——使用者當下正在互動(hover/selected/candidate)的景點,
+   優先權最高,蓋過主題點固定層級(40)與一般縮圖/圓點/標籤(30/20/10)。
+   2026-10:這幾個數值原本是緊挨著基礎層級的 3,後來才發現 z-index 不
+   接受小數(見 .geo-attraction-landmark-photo/.geo-attraction-curated-dot
+   的完整說明),順勢一併改成跟其他層級一致的 10 倍數間隔。 */
 :global(.geo-attraction-overlay):hover :global(.geo-attraction-landmark-photo),
 :global(.geo-attraction-overlay):hover :global(.geo-attraction-landmark-placeholder),
 :global(.geo-attraction-overlay):hover :global(.geo-attraction-curated-dot),
 :global(.geo-attraction-overlay-hovered) :global(.geo-attraction-landmark-photo),
 :global(.geo-attraction-overlay-hovered) :global(.geo-attraction-landmark-placeholder),
 :global(.geo-attraction-overlay-hovered) :global(.geo-attraction-curated-dot) {
-  z-index: 3;
+  z-index: 50;
+}
+
+:global(.geo-attraction-overlay):hover :global(.geo-attraction-label),
+:global(.geo-attraction-overlay-hovered) :global(.geo-attraction-label) {
+  z-index: 50;
+}
+
+/* geo-attraction-overlay-theme:主題點固定身份標記(見 geoAttractionOverlay.ts
+   onAdd() 的完整說明),建構時就決定、不隨互動變動——主題點永遠顯示
+   完整照片(renderContent() 的 showPhoto 判斷),跟「被 hover 暫時展開
+   的精選點」共用完全相同的 markup,若不額外標記身份,CSS 無法區分兩者,
+   主題點縮圖的 z-index 會跟一般未展開精選點圓點同層級,只能看 DOM
+   順序決定誰蓋過誰(使用者實測回報「主題點縮圖還是被小點覆蓋」)。
+   給主題點一個比一般精選點更高、但比「使用者當下正在互動」的
+   hovered/selected/candidate(50)更低的固定層級(40,見下方
+   .geo-attraction-landmark-photo 的語意分層完整說明)——主題點永遠是
+   散策羅盤的主角,理當預設蓋過一般精選點,但使用者明確與某個精選點
+   互動時(hover/selected/candidate),那個精選點的即時回饋優先權還是
+   該贏過主題點本身(不這樣的話,使用者點開地圖上另一個精選點看附近
+   景點時,那個精選點反而會被主題點蓋住,體感上像沒反應)。
+   2026-10 第二次修正:原本寫 2.5(小數,CSS 不接受,見上方 photo/
+   curated-dot 完整說明),改成 40。 */
+:global(.geo-attraction-overlay-theme) :global(.geo-attraction-landmark-photo),
+:global(.geo-attraction-overlay-theme) :global(.geo-attraction-landmark-placeholder),
+:global(.geo-attraction-overlay-theme) :global(.geo-attraction-label) {
+  z-index: 40;
 }
 
 /* 光暈本體:radial-gradient 由中心沙棕色漸淡到透明,疊加 blur 讓邊緣柔化,
@@ -420,13 +468,25 @@
   animation: photoFadeIn 900ms ease-out;
   pointer-events: auto;
   cursor: pointer;
-  /* z-index: 2——見上方 .geo-attraction-overlay 的說明,父層刻意不建立
+  /* z-index: 3——見上方 .geo-attraction-overlay 的說明,父層刻意不建立
      stacking context,讓這裡的 z-index 能直接跟其他 attraction overlay
-     底下的同層元素比較(而非侷限在自己所屬的 overlay 內部)。這個數值
-     只需要比 .geo-attraction-label 的 1 高即可,確保「所有 attraction
-     的可點擊地標圖/圓點」一律蓋在「所有 attraction 的文字標籤」之上,
-     不會被其他景點的標籤擋住點擊。 */
-  z-index: 2;
+     底下的同層元素比較(而非侷限在自己所屬的 overlay 內部)。
+     2026-10 修正:原本是 2,跟 .geo-attraction-curated-dot(精選點
+     圓點)同層級——使用者實測回報兩個座標極度接近的精選點重疊時,
+     縮圖(有展開真實照片)反而被旁邊未展開的圓點蓋住一部分,根因是
+     兩者同分、純看 DOM 順序決定誰贏,等同隨機。改成 3(比圓點的 2 高、
+     比標籤的 1 更高),確保「所有縮圖一律蓋過所有圓點、所有圓點一律
+     蓋過所有標籤」這個固定的三層關係,不管兩個 attraction 誰先建構
+     誰後建構。
+     2026-10 第二次修正(實測踩過):z-index 不接受小數——曾經一度把
+     這三層的中間值寫成 1.5/2.5 想塞進整數層級之間,但 CSS 規範
+     z-index 只接受 <integer>,瀏覽器會把小數值整條宣告判定無效、
+     完全忽略、退回初始值 auto(DevTools Computed 面板查到的實際值
+     正是 auto,不是看起來生效的那個數字),等於這條規則從未真正套用
+     過。這裡改用 10 的倍數間隔(10/20/30/40)取代緊挨著的 1/2/3,
+     讓日後若需要在任兩層之間插入新的中間層級,還有足夠的整數空間
+     可以用,不會再被這個陷阱卡住。 */
+  z-index: 30;
 }
 
 /* 無照片時的佔位圓:同尺寸的柔和漸層色塊,維持版面一致,不留空洞。
@@ -441,8 +501,8 @@
   background: linear-gradient(135deg, var(--ios-sand), var(--ios-gray));
   border: 2px solid var(--ios-card);
   box-shadow: 0 2px 8px rgba(61, 53, 48, 0.18);
-  /* z-index: 2——理由同 .geo-attraction-landmark-photo 上方的說明。 */
-  z-index: 2;
+  /* z-index: 30——理由同 .geo-attraction-landmark-photo 上方的說明。 */
+  z-index: 30;
 }
 
 /* 精選點圓點(散策羅盤):geo-attraction-overlay.ts 對精選點(level 不是
@@ -465,8 +525,25 @@
   border: 2px solid var(--ios-card);
   box-shadow: 0 1px 4px rgba(61, 53, 48, 0.24);
   transition: transform 0.12s;
-  /* z-index: 2——理由同 .geo-attraction-landmark-photo 上方的說明。 */
-  z-index: 2;
+  /* z-index: 20——2026-10 修正(原本跟縮圖同為 2)。使用者實測回報兩個
+     座標極度接近(個位數公尺)的精選點重疊,「富盛號碗粿」的縮圖被鄰居
+     的圓點蓋住一部分——這種物理距離幾乎為 0 的極端密集情況,不做位置
+     推開(使用者明確要求維持原位),純靠圖層排序分高下:地圖上的縮圖
+     (不論是主題點恆常顯示,還是精選點被 hover/selected 展開)是「使用者
+     當下真正關注的焦點」,理應固定蓋過未展開的一般圓點,不該因為兩者
+     恰好同為 z-index:2、純粹看 DOM 順序決定誰贏(原本的結果等同隨機,
+     使用者這次踩到的剛好是圓點贏的那一輪)。比 .geo-attraction-label
+     的 1 高、比縮圖的 30 低,確保「所有縮圖一律蓋過所有圓點、所有圓點
+     一律蓋過所有標籤」這個固定的三層關係,不管兩個 attraction 誰先
+     建構誰後建構。
+     2026-10 第二次修正(實測踩過):原本寫 1.5 這個小數——z-index 不
+     接受小數,瀏覽器會把整條宣告判定無效、完全忽略、退回初始值 auto
+     (DevTools Computed 面板查到的實際值正是 auto),等於這條規則從未
+     真正套用過,圓點的 z-index 其實還停在舊的「跟縮圖同分、auto 不
+     參與比較」那個狀態,這正是這次 bug 一直沒修好的根因。改用整數
+     20(理由同 .geo-attraction-landmark-photo 的完整說明,10 的倍數
+     間隔保留日後插入中間層級的空間)。 */
+  z-index: 20;
 }
 
 :global(.geo-attraction-curated-dot):hover {
@@ -601,8 +678,13 @@
 
 /* 白話地名標籤:即現無延遲(構想 6 定案——標籤只是把既有地名貼回它
    本該在的位置,不算推薦,老手掃一眼也不覺得被擋),字級克制、
-   不用粗體搶戲。pointer-events: none 明確寫死,理由同 .geo-attraction-glow
-   ——不依賴從父層繼承推斷,標籤本身不該可互動。
+   不用粗體搶戲。
+   2026-10 修正:pointer-events 原本明確寫死 none(標籤本身不該可互動)
+   ——但使用者明確要求點文字也要能打開資訊卡(點擊習慣上會直接點文字,
+   不限圖示/圓點),改成 auto 並補 cursor: pointer,對應
+   geoAttractionOverlay.ts renderContent() 把 .geo-attraction-label 併入
+   clickTargets 查詢範圍的那次修改,兩邊是同一個需求的一體兩面(CSS 開放
+   互動 + JS 綁定監聽器),缺一不可。
    原本 background 直接寫死 rgba(253, 252, 250, 0.88)(卡片白的展開值),
    不跟隨夜間模式切換——夜間模式下這塊底色仍是接近全白,配上同樣沒切換
    深色的 color: var(--color-dark)(夜間模式下 --color-dark 會變成淺色文字)
@@ -622,18 +704,27 @@
   font-weight: 500;
   white-space: nowrap;
   box-shadow: 0 1px 4px rgba(61, 53, 48, 0.12);
-  pointer-events: none;
-  /* position: relative + z-index: 1——z-index 只對「非 static 定位」的
+  pointer-events: auto;
+  cursor: pointer;
+  /* position: relative + z-index: 10——z-index 只對「非 static 定位」的
      元素生效,標籤預設是 static(無 position),故需要補上 position 才能
-     讓下面的 z-index 真的產生效果。數值刻意比
-     .geo-attraction-landmark-photo/-placeholder/.geo-attraction-curated-dot
-     的 2 低一階(而非維持 auto)——見 .geo-attraction-overlay 的說明,
-     父層不再建立獨立 stacking context,所有 attraction 的標籤與點現在
-     共處同一個 stacking context,若標籤沒有明確給比點更低的 z-index,
-     跟其他 attraction 的點相遇時仍會落回 DOM 順序比較,可能重現「標籤
-     蓋過點」的問題;明確給 1(比點的 2 低)才能保證任何 attraction 的
-     標籤永遠不會蓋過任何 attraction 的點。 */
+     讓下面的 z-index 真的產生效果。數值刻意比圓點(20)/縮圖(30)低
+     (而非維持 auto)——見 .geo-attraction-overlay 的說明,父層不再建立
+     獨立 stacking context,所有 attraction 的標籤與點現在共處同一個
+     stacking context,若標籤沒有明確給比點更低的 z-index,跟其他
+     attraction 的點相遇時仍會落回 DOM 順序比較,可能重現「標籤蓋過點」
+     的問題;明確給比點更低的值才能保證任何 attraction 的標籤永遠不會
+     蓋過任何 attraction 的點。這是未展開(基本)狀態的數值——hovered
+     狀態下標籤會被 .geo-attraction-overlay-hovered 規則覆寫到 50,
+     主題點會被 .geo-attraction-overlay-theme 規則覆寫到 40,見兩處的
+     完整說明。
+     2026-10:原本是 1(比點的 2 低一階)——z-index 分層陸續擴充成
+     10/20/30/40/50 的 10 倍數間隔後(理由見
+     .geo-attraction-landmark-photo/.geo-attraction-curated-dot 的完整
+     說明:曾經在層級之間塞小數,但 z-index 不接受小數,瀏覽器會整條
+     忽略退回 auto),這裡的基礎值一併跟著改成 10,維持「標籤(10)<
+     圓點(20)<縮圖(30)」這個相對關係不變。 */
   position: relative;
-  z-index: 1;
+  z-index: 10;
 }
 

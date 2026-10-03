@@ -147,6 +147,16 @@ jobs:
           echo "::add-mask::$MAP_ID"
           echo "map_id=$MAP_ID" >> "$GITHUB_OUTPUT"
 
+      # 讀 GOOGLE_MAPS_LANDING_MAP_ID,主題介紹頁地圖(九份/京都/台南安平/
+      # 赤崁・府城)專用的 Cloud Style Map ID(對齊 deploy-cloudrun.yml 的
+      # 既有做法,見該檔案與 Dockerfile 的說明)。
+      - name: Read Google Maps Landing Map ID from Secret Manager
+        id: maps_landing_map_id
+        run: |
+          LANDING_MAP_ID=$(gcloud secrets versions access latest --secret=GOOGLE_MAPS_LANDING_MAP_ID --project=${{ env.GCP_PROJECT_ID }})
+          echo "::add-mask::$LANDING_MAP_ID"
+          echo "landing_map_id=$LANDING_MAP_ID" >> "$GITHUB_OUTPUT"
+
       # 讀 GOOGLE_OAUTH_CLIENT_ID,Google 登入(GSI 模式)用的 OAuth 用戶端
       # ID(對齊 deploy-cloudrun.yml 的既有做法,見該檔案與 Dockerfile 的
       # 說明)。
@@ -165,6 +175,7 @@ jobs:
           docker build \
             --build-arg VITE_GOOGLE_MAPS_API_KEY=${{ steps.maps_key.outputs.key }} \
             --build-arg VITE_GOOGLE_MAPS_MAP_ID=${{ steps.maps_map_id.outputs.map_id }} \
+            --build-arg VITE_GOOGLE_MAPS_LANDING_MAP_ID=${{ steps.maps_landing_map_id.outputs.landing_map_id }} \
             --build-arg VITE_GOOGLE_OAUTH_CLIENT_ID=${{ steps.google_oauth_client_id.outputs.client_id }} \
             -t ${{ env.SERVER_IMAGE }}:${{ github.sha }} \
             -t ${{ env.SERVER_IMAGE }}:latest \

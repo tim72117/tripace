@@ -30,6 +30,9 @@
      瀏覽器預設,視覺上強調色完全失效),不是台南自己的磚紅色系。 */
   --vermilion: var(--brick);
   --vermilion-soft: var(--brick-soft);
+  /* --explore-accent:ExploreOtherCities.module.css 讀的中性變數名,
+     同 --footer-accent 的既有模式(台南用 --brick)。 */
+  --explore-accent: var(--brick);
 
   min-height: 100vh;
   background: var(--paper);

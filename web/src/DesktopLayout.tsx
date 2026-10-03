@@ -666,7 +666,7 @@ export function DesktopContent(props: ContentProps) {
                     onAttractionSelect={geo.selectAttraction}
                     onAttractionsChange={setGeoAttractions}
                     revealedAttractionNames={revealedAttractionNames}
-                    hoveredCuratedName={hoveredNearbyAttraction?.name ?? null}
+                    hoveredCuratedId={hoveredNearbyAttraction?.id ?? null}
                     onSearchResultSelect={outlineMapState.onSearchResultSelect}
                     onPoiSelect={geo.selectPoi}
                     onAttractionOpenPlaceDetails={handleAttractionOpenPlaceDetails}

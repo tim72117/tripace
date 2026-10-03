@@ -33,6 +33,17 @@ ENV VITE_GOOGLE_MAPS_API_KEY=${VITE_GOOGLE_MAPS_API_KEY}
 # 直接用一般 build-arg 傳入。
 ARG VITE_GOOGLE_MAPS_MAP_ID
 ENV VITE_GOOGLE_MAPS_MAP_ID=${VITE_GOOGLE_MAPS_MAP_ID}
+# VITE_GOOGLE_MAPS_LANDING_MAP_ID:InteractiveExploreMap.tsx(九份/京都/
+# 台南安平/赤崁・府城等主題介紹頁地圖)專用的 Cloud Style Map ID,對應
+# docs/map-style/light-simple.json/dark-simple.json 這份「所有 POI 標籤
+# 都關閉」的樣式快照——理由同上面 VITE_GOOGLE_MAPS_MAP_ID,不是機密資料
+# 但集中放 Secret Manager 管理。2026-10 補上之前:deploy-cloudrun.yml
+# 沒有傳這個 build-arg,正式環境的這個環境變數永遠是 undefined,
+# NativeMapBase 的 mapId prop 會自動退回上面的 VITE_GOOGLE_MAPS_MAP_ID
+# (正式規劃功能同一份樣式,含完整原生 POI 標籤),代表正式環境的主題
+# 介紹頁地圖從未真正套用過這份客製化樣式。
+ARG VITE_GOOGLE_MAPS_LANDING_MAP_ID
+ENV VITE_GOOGLE_MAPS_LANDING_MAP_ID=${VITE_GOOGLE_MAPS_LANDING_MAP_ID}
 # VITE_ONAGENT_APP_KEY:onagent 平台(tripace app)的 apiKey,同上放 Secret
 # Manager,由 deploy-cloudrun.yml 讀出後當 --build-arg 傳入。
 # VITE_ONAGENT_URL:onagent 平台位址,不是機密(見 web/.env.production.local

@@ -587,9 +587,18 @@ export function GeoOutlinePhoneView({
             // 對 attraction 的說明)有意義,精選點(非主題點)地標打開的
             // 資訊卡沒有下一層附近景點,nearbyAttractions 本身在
             // geo.attractionContent 不是主題點時已經回傳空陣列(見該
-            // useMemo 的說明),這裡不需要額外判斷。onHoverNearby 刻意
-            // 不傳——觸控沒有 hover,見 GeoOutlinePhoneInfoSheet.tsx 對
-            // 這個 prop 的說明(手機版不支援)。
+            // useMemo 的說明),這裡不需要額外判斷。
+            //
+            // 2026-10:onHoverNearby 刻意不傳——這個 prop 現在改用 scroll
+            // 事件偵測橫滑清單目前主要可見的卡片(見
+            // GeoOutlinePhoneInfoSheet.tsx nearbyListNodeRef 那段 effect
+            // 的完整說明,不再是純滑鼠 hover 限定,觸控橫滑也會觸發),
+            // 使用者明確要求這個「橫滑時地圖顯示縮圖」的功能範圍只限
+            // 主題介紹頁的展示地圖(InteractiveExploreMap.tsx),不含這裡
+            // 的正式規劃功能地圖——要接上的話,需要把 hoveredCuratedId
+            // 這條既有狀態鏈(目前從 GeoOutlinePanel/ExploreMap 往下傳給
+            // useAttractionOverlays,這個手機版殼層本身未持有)往上追
+            // 一併串接,屬於後續若有需要再評估的範圍擴張,故暫不處理。
             nearby={nearbyAttractions}
             onSelectNearby={handleSelectNearbyAttraction}
             categoryFilter={categoryFilter}

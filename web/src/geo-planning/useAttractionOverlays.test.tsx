@@ -29,6 +29,7 @@ class FakeOverlay {
   candidateHistory: boolean[] = []
   hoveredHistory: boolean[] = []
   photoUrlHistory: (string | undefined)[] = []
+  hiddenHistory: boolean[] = []
   constructor(
     public attraction: GeoAttraction,
     position: { lat: number; lng: number },
@@ -61,6 +62,39 @@ class FakeOverlay {
   setPhotoUrl(photoUrl: string | undefined) {
     this.photoUrlHistory.push(photoUrl)
   }
+  // setHidden:比照上方 setPhotoUrl 的說明,AttractionOverlayInstance
+  // 介面要求的方法,缺漏會在呼叫 hiddenAttractionName 同步 effect 時
+  // 直接拋出執行期錯誤。hiddenState 真的記住最新值(不只是歷史記錄)
+  // ,供 isHidden() 回報——resolveLabelCollisions 會呼叫 isHidden() 排除
+  // 已經 setHidden(true) 收起的 overlay,若這裡固定回傳 false,無法驗證
+  // 該排除邏輯是否真的生效。
+  hiddenState = false
+  setHidden(hidden: boolean) {
+    this.hiddenState = hidden
+    this.hiddenHistory.push(hidden)
+  }
+  isHidden() {
+    return this.hiddenState
+  }
+  // setLabelHidden/getLabelEl/getVisualEl/getLabelPriority:
+  // AttractionOverlayInstance 介面要求的方法(標籤避讓機制用,見
+  // geoAttractionOverlay.ts 的完整說明)——getLabelEl/getVisualEl 固定
+  // 回傳 null(這個 FakeOverlay 不建立真正的 DOM,resolveLabelCollisions
+  // 遇到 null 會直接略過,不會對這個 fake 實例做任何碰撞判斷,不影響這份
+  // 測試既有的斷言)。
+  labelHiddenHistory: boolean[] = []
+  setLabelHidden(hidden: boolean) {
+    this.labelHiddenHistory.push(hidden)
+  }
+  getLabelEl() {
+    return null
+  }
+  getVisualEl() {
+    return null
+  }
+  getLabelPriority() {
+    return 0
+  }
 }
 
 vi.mock('./geoAttractionOverlay', () => ({
@@ -91,10 +125,16 @@ const fakeCfg = {} as ClientConfig
   },
 }
 
-// FakeMap:hook 目前不需要真的用到地圖實例的任何方法(見 mapRef 型別要求),
-// 空物件即可滿足型別。
+// FakeMap:hook 本身不需要用到地圖實例的大多數方法(見 mapRef 型別要求),
+// 但 2026-10 新增的標籤避讓機制(resolveLabelCollisions)會呼叫
+// map.addListener('idle'/'bounds_changed'/'zoom_changed', ...)——補一個
+// 最小可用的假實作,回傳帶 remove() 的物件(對齊 google.maps.MapsEventListener
+// 的介面,effect cleanup 會呼叫它),不實際觸發任何回呼(這份測試不驗證
+// 標籤避讓行為本身,只需要讓這個新 effect 不拋錯即可)。
 function makeFakeMap(): google.maps.Map {
-  return {} as unknown as google.maps.Map
+  return {
+    addListener: () => ({ remove: () => {} }),
+  } as unknown as google.maps.Map
 }
 
 function attraction(overrides: Partial<GeoAttraction> & { name: string; lat: number; lng: number }): GeoAttraction {
@@ -268,28 +308,28 @@ describe('useAttractionOverlays — 選取/候選籃/hover 狀態只更新既有
     expect(constructedOverlays).toHaveLength(constructCountBefore)
   })
 
-  it('hoveredCuratedName 變動時呼叫既有 overlay 的 setHovered,不觸發重建', () => {
+  it('hoveredCuratedId 變動時呼叫既有 overlay 的 setHovered,不觸發重建', () => {
     const mapRef = { current: makeFakeMap() }
-    const a = attraction({ name: '二年坂', lat: 1, lng: 1, isTheme: false, level: 2 })
+    const a = attraction({ id: 'lmk_nenzaka', name: '二年坂', lat: 1, lng: 1, isTheme: false, level: 2 })
     const attractions = [a]
     // revealedAttractionNames 同理也要提到外層固定——它也是
     // filteredAttractions useMemo 的依賴之一。
     const revealedAttractionNames = new Set(['二年坂'])
     const { rerender } = renderHook(
-      ({ hoveredCuratedName }: { hoveredCuratedName?: string | null }) =>
+      ({ hoveredCuratedId }: { hoveredCuratedId?: string | null }) =>
         useAttractionOverlays({
           mapRef,
           mapReady: true,
           attractions,
           revealedAttractionNames,
-          hoveredCuratedName,
+          hoveredCuratedId,
         }),
-      { initialProps: { hoveredCuratedName: undefined as string | null | undefined } },
+      { initialProps: { hoveredCuratedId: undefined as string | null | undefined } },
     )
     const overlay = overlayInstances[0]
     const constructCountBefore = constructedOverlays.length
 
-    rerender({ hoveredCuratedName: '二年坂' })
+    rerender({ hoveredCuratedId: 'lmk_nenzaka' })
 
     expect(overlay.hoveredHistory).toContain(true)
     expect(constructedOverlays).toHaveLength(constructCountBefore)

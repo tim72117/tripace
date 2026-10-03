@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useState } from 'react'
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { Check, Plus, X } from 'lucide-react'
 import type { ClientConfig, GeoAttraction, GeoPlaceDetails } from '../api'
 import { fetchGeoPlaceDetails, fetchPublicGeoPlaceDetails } from '../api'
@@ -113,6 +113,7 @@ export function GeoOutlinePhoneInfoSheet({
   usePublicPlaceDetails,
   nearby,
   onSelectNearby,
+  onHoverNearby,
   categoryFilter,
   onCategoryFilterChange,
 }: {
@@ -194,6 +195,19 @@ export function GeoOutlinePhoneInfoSheet({
   // 說明),對稱桌面版 onSelectNearby 的角色,但手機版是疊一層 sheet 而
   // 非開一張並存的側邊卡片。
   onSelectNearby?: (attraction: GeoAttraction) => void
+  // onHoverNearby:目前橫滑清單中「停留/捲動經過」的那一張卡片變動時
+  // 觸發(捲動到底、清單為空等情況傳 null)——對稱桌面版
+  // AttractionInfoPanel.tsx 的同名 prop(該處由滑鼠 onMouseEnter/
+  // onMouseLeave 觸發,見其完整說明),地圖上對應的精選點 overlay 會暫時
+  // 升級成完整照片呈現(見 geoAttractionOverlay.ts 的 setHovered)。手機版
+  // 沒有滑鼠 hover,2026-10 使用者明確要求「滑動停留的項目,與滑動中
+  // 通過段落點的項目,地圖中顯示縮圖」——判斷規則是「以左側為依據,滑過
+  // 卡片的 2/3 後就換下一個點」(見下方 nearbyListNodeRef 的完整說明,
+  // 用 scroll 事件量測每張卡片左邊緣位置,不是 IntersectionObserver 的
+  // 可視面積比例),不論是使用者手指還按著慢慢滑過、還是放開手指後最終
+  // 停在哪一張,只要捲動位置改變就會持續觸發,涵蓋「停留」與「通過」
+  // 兩種情境,不需要分開判斷。
+  onHoverNearby?: (attraction: GeoAttraction | null) => void
   // categoryFilter/onCategoryFilterChange:分類篩選——對稱桌面版
   // AttractionInfoPanel.tsx 的 activeCategoryFilter/onCategoryFilterChange,
   // 但這個元件不像桌面版那樣自己持有 activeCategoryFilter 這個 state
@@ -211,18 +225,75 @@ export function GeoOutlinePhoneInfoSheet({
   // 'closed'/'added' 兩態,不再持有「日期編輯區塊展開中」這個 UI 狀態
   // (那件事完全交給呼叫端的 sheetStack 決定,見上方元件說明)。
   const [addUi, dispatchAddUi] = useReducer(reduceAddCandidateUiState, initialAddCandidateUiState)
-  // activeSnapIndex:卡片高度狀態,對應 SHEET_SNAP_POINTS 三段式索引
-  // (0 = 最小/收合,1 = 中間,2 = 滿版/展開)——使用者明確要求卡片開啟
-  // 時的初始狀態是中間(不是滿版),每次換一張新卡片(content/attraction
-  // 變動)都重設回中間,不延續上一張卡片被拖曳到其他段的狀態(比照
-  // 下方 addUi 同一個 useEffect 依賴)。這個 state 語意上是純 UI 展示
-  // 位置,跟 addUi 涉及的候選加入行程資料流程性質不同,不收進同一個
-  // reducer——換卡片時兩者剛好都要重置,靠同一個 useEffect 觸發即可,
-  // 不代表它們是同一份狀態。
-  const [activeSnapIndex, setActiveSnapIndex] = useState(1)
+  // activeSnapIndex:卡片高度狀態,索引空間對應 PhoneBottomSheet.tsx 合併
+  // minHeightPx + SHEET_SNAP_POINTS 後的 stops 陣列(由大到小排序的離
+  // 頂部距離),不是 SHEET_SNAP_POINTS 常數本身的索引——這裡有傳
+  // minHeightPx(見下方 JSX 的 minHeightPx={SHEET_MIN_HEIGHT}),所以
+  // stops[0] 是 minHeightPx 換算出的收合段(最小段),stops[1] 才是
+  // SHEET_SNAP_POINTS[0]=400(中間段),stops[2] 是 SHEET_SNAP_POINTS[1]=80
+  // (滿版段)。2026-10:這個固定索引語意曾經是用「排序」間接保證,量測
+  // 失敗時(容器隱藏導致 clientHeight=0)會整個洗牌錯位,現已改成直接按
+  // 固定順序建構陣列、不再排序(見 PhoneBottomSheet.tsx stops 合併邏輯
+  // 的完整說明),索引語意永遠穩定。
+  //
+  // 使用者明確要求:主題點(attraction 有值)預設收合到最小段,精選點
+  // (attraction 為 null,靠 content 顯示)預設中間段——兩者在地圖上的
+  // 角色不同,主題點旁通常還有多個鄰近點可選,先縮到最小段讓地圖可見
+  // 範圍最大;精選點是使用者直接點選的單一地點,預設展開到中間段方便
+  // 馬上看到圖片與標頭。每次換一張新卡片(content/attraction 變動)都
+  // 重新套用這個預設,不延續上一張卡片被拖曳到其他段的狀態(比照下方
+  // addUi 同一個 useEffect 依賴)。
+  //
+  // 2026-10 修正:這裡原本寫 useState(1)/setActiveSnapIndex(1),對應
+  // stops 索引 1(中間段),兩種卡片不分——後來發現主題點跟精選點的
+  // 預期段位其實不同(見上方說明),改成依 attraction 是否有值分流。
+  //
+  // 2026-10 再次修正(使用者明確指出):原本用 useState(defaultSnapIndex)
+  // 設初始值、搭配下方 useEffect 在 content/attraction 變動時才修正——
+  // 但這個元件是常駐掛載(呼叫端如 InteractiveExploreMap.tsx 無條件渲染
+  // <GeoOutlinePhoneInfoSheet attraction={openTheme?.attraction ?? null}
+  // .../>,不會因為切換主題點而重新 mount),useState 的初始值只在第一次
+  // 掛載套用一次,之後每次切換卡片都是先用「上一張卡片的 activeSnapIndex
+  // 舊值」render 一輪,下一輪才被 useEffect 的 setActiveSnapIndex 修正過
+  // 來——這段落差先前沒被發現,只是恰好被 PhoneBottomSheet.tsx 的進場
+  // 動畫(entered 從 false 開始,面板先在畫面外)蓋住:只要是「重新開啟」
+  // 這張卡片(open 從 false 變 true),使用者本來就看不到第一幀。但這個
+  // 巧合只在 open 本身也跟著變動時成立——若使用者在卡片已經 open 且
+  // entered(面板已經在畫面上)時,直接點地圖上另一個主題點(open 全程
+  // 維持 true,只有 attraction 內容換掉),這段落差會被直接看見:卡片會
+  // 先閃一下舊的高度,下一輪 render 才跳到正確高度。
+  //
+  // 改成在 render 期間直接比對前一次的 content/attraction(React 官方
+  // 建議的「調整 state 時機」模式,而非透過 useEffect 事後修正)——
+  // 若本次 render 發現跟上一次記住的值不一致,在這次 render 內就同步
+  // 呼叫 setActiveSnapIndex,讓這次 render 直接產出正確結果重新跑一輪
+  // (React 會在提交前就處理完這次重新渲染,使用者不會看到任何中間態),
+  // 不需要等到 commit 後的 useEffect 才觸發下一輪。
+  //
+  // 2026-10 修正(實測踩過):「上一次的值」必須存在 state 裡,不能用
+  // useRef——React 18 StrictMode 下,同一個 fiber 的 render 會被刻意
+  // 重跑一次以檢測副作用(見 react-dom 的 renderWithHooks 雙重呼叫)。
+  // 若「上一次的值」存在 ref:第一次 render 發現不一致、把 ref 改寫成
+  // 新值並呼叫 setActiveSnapIndex,這個 render-phase update 在同一輪
+  // 重跑裡就被處理掉、不會留在 current 的 state queue;第二次 render
+  // 重新從 current 取 state(拿到的仍是舊值),但 ref 已經是新值了,
+  // if 判斷式不再成立,不會再呼叫一次 setActiveSnapIndex——最終 commit
+  // 出來的 activeSnapIndex 停在舊值(使用者實測回報「起始的主題點又變
+  // 中間段」,根因就是這裡:0 這個正確值在 StrictMode 第二輪 render 被
+  // 吃掉)。改用 useState 存「上一次的值」後,第二次 render 會重新從
+  // current 取得這個 state(不像 ref 是同一個可變物件、不受渲染輪次
+  // 影響),兩次 render 比對結果一致,不會再被 StrictMode 的重跑影響。
+  const [prevSelection, setPrevSelection] = useState({ content, attraction })
+  const [activeSnapIndex, setActiveSnapIndex] = useState(() => (attraction ? 0 : 1))
+  if (prevSelection.content !== content || prevSelection.attraction !== attraction) {
+    setPrevSelection({ content, attraction })
+    setActiveSnapIndex(attraction ? 0 : 1)
+  }
+  // addUi 的 reset 維持 useEffect——這是非同步的候選加入行程流程狀態
+  // (見上方 addUi 宣告處的說明),跟 activeSnapIndex 不同,沒有「初始
+  // render 就必須是對的值」這種視覺時序要求,保留原本的事後重置方式即可。
   useEffect(() => {
     dispatchAddUi({ type: 'reset' })
-    setActiveSnapIndex(1)
   }, [content, attraction])
 
   // isMobileSwipe:PhotoCarousel 目前是否渲染成手機版多圖橫滑軌道——
@@ -314,6 +385,107 @@ export function GeoOutlinePhoneInfoSheet({
     [nearby, categoryFilter],
   )
 
+  // nearbyListNodeRef/nearbyItemRefs:橫滑清單捲動時觸發 onHoverNearby
+  // (見該 prop 的完整說明)。
+  //
+  // 2026-10 修正:原本用 IntersectionObserver 比較所有卡片的交集比例
+  // (面積),取比例最高的一張——但使用者明確要求判斷規則是「以左側為
+  // 依據,滑過卡片的 2/3 後就換下一個點」,這是一個跟卡片左邊緣位置
+  // 直接掛鉤的明確規則,不是「哪張佔的可視面積比較大」這種間接推論
+  // (兩者在大多數情況下结果相近,但規則語意不同,邊界情況——例如兩張
+  // 卡片剛好各半可見時——行為沒有保證一致)。改用 scroll 事件 +
+  // getBoundingClientRect() 直接量測每張卡片左邊緣相對清單容器左邊界
+  // 的位置:「卡片左邊緣已經滑過容器左邊界、且滑過的距離超過卡片自身
+  // 寬度的 2/3」才視為「這張已經劃過去,換下一個」,否則維持目前這張
+  // 還算在顯示——用由右到左掃描、取第一張仍滿足「還沒滑過 2/3」的卡片
+  // (也就是最靠右側、但尚未被判定划过的那張),等同「目前主要显示的是
+  // 这一张」。
+  const nearbyListNodeRef = useRef<HTMLDivElement | null>(null)
+  const nearbyItemRefs = useRef<(HTMLButtonElement | null)[]>([])
+  useEffect(() => {
+    const root = nearbyListNodeRef.current
+    if (!root) return
+
+    function resolveActiveIndex() {
+      const rootRect = root!.getBoundingClientRect()
+      const items = nearbyItemRefs.current
+      // 2026-10 修正:原本「由後往前找,第一個滑過距離小於 2/3 寬度的就
+      // 回傳」——但還沒被滑到的卡片(清單右側、尚未進入可視範圍)
+      // rect.left 遠大於 rootRect.left,scrolledPast(= rootRect.left -
+      // rect.left)會是很大的負數,恆小於 rect.width*2/3,導致從最後一張
+      // 開始找,第一次檢查就命中、直接回傳清單最後一個索引——跟實際捲動
+      // 位置完全無關,等同恆回傳最後一張(使用者實測回報「滑動時中心點
+      // 一直跑到其他區域」,根因就是這裡算出的 index 其實是固定的)。
+      // 改成由前往後找:找到「左邊緣已經滑過容器左邊界、且滑過距離還沒
+      // 超過自身寬度 2/3」的第一張——卡片由左到右排列,捲動時左側卡片
+      // 的 scrolledPast 由大變小(尚未捲到時是負數,捲到時變正數、隨
+      // 繼續捲動持續增加),第一張「已經開始滑過去但還沒超過 2/3」的
+      // 卡片,就是目前主要顯示的那張;若所有卡片都還沒被滑過(清單在最
+      // 開頭),回傳第一張。
+      //
+      // 2026-10 第二次修正(code review 抓到):地圖容器在
+      // MobileMapReveal.tsx 展開前是 display:none,這個 sheet 本身可能
+      // 在那段期間就已經掛載(見呼叫端的完整說明),此時所有卡片的
+      // getBoundingClientRect() 寬高都是 0、rootRect 的 left 也跟每張
+      // 卡片的 left 一樣是 0,scrolledPast 恆為 0,0 < 0*(2/3)=0 不成立,
+      // 迴圈一樣找不到命中項、落到「回傳最後一張」這個 fallback,跟
+      // 上面要修的那個 bug 殊途同歸(使用者實測回報過這個症狀)。容器
+      // 尺寸是 0 時代表目前根本不可見,不該算出任何有意義的 index,回傳
+      // -1 讓呼叫端視為「沒有可顯示的卡片」。
+      if (rootRect.width === 0) return -1
+      for (let i = 0; i < items.length; i++) {
+        const el = items[i]
+        if (!el) continue
+        const rect = el.getBoundingClientRect()
+        if (rect.width === 0) continue
+        const scrolledPast = rootRect.left - rect.left
+        if (scrolledPast < rect.width * (2 / 3)) {
+          return i
+        }
+      }
+      return items.length > 0 ? items.length - 1 : -1
+    }
+
+    // rafId 節流——scroll 事件觸發頻率很高(拖曳中幾乎每個 frame 都會
+    // 觸發),resolveActiveIndex() 內的 getBoundingClientRect() 會強制
+    // 瀏覽器同步 reflow,直接在每次 scroll 事件裡都算一次會造成不必要的
+    // 效能成本,節流成每個 frame 最多算一次(理由同
+    // useAttractionOverlays.ts 的 resolveLabelCollisions)。
+    let rafId: number | null = null
+    function handleScroll() {
+      if (rafId != null) return
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        const idx = resolveActiveIndex()
+        onHoverNearby?.(idx !== -1 ? (filteredNearby[idx]?.attraction ?? null) : null)
+      })
+    }
+
+    handleScroll()
+    root.addEventListener('scroll', handleScroll, { passive: true })
+    // ResizeObserver:補上「容器從不可見(寬度 0)變成可見」這個時機點
+    // 重新計算一次——resolveActiveIndex() 在容器寬度為 0 時會直接回傳
+    // -1(見該處的完整說明),這個 sheet 若在 MobileMapReveal.tsx 的地圖
+    // 展開前就已經掛載,初次 handleScroll() 執行當下容器還是 0 寬度,
+    // 之後使用者點縮圖展開地圖,容器尺寸才變成正常值,但這段期間完全
+    // 沒有任何 scroll 事件發生(使用者還沒有滑動過這個清單),
+    // onHoverNearby 會一直停在 null、不會自動補上正確的 index,地圖上
+    // 不會顯示任何精選點的照片縮圖,直到使用者真的手動滑動一下清單
+    // 才會被動修正。改用 ResizeObserver 監看容器本身的尺寸變化,寬度
+    // 一旦變成非 0 就重新算一次,不需要依賴使用者先滑動。
+    const resizeObserver = new ResizeObserver(() => {
+      if (root.getBoundingClientRect().width > 0) handleScroll()
+    })
+    resizeObserver.observe(root)
+    return () => {
+      if (rafId != null) cancelAnimationFrame(rafId)
+      root.removeEventListener('scroll', handleScroll)
+      resizeObserver.disconnect()
+      onHoverNearby?.(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredNearby])
+
   const open = content != null || attraction != null
 
   if (!open) return null
@@ -394,12 +566,56 @@ export function GeoOutlinePhoneInfoSheet({
         <div className={styles.head}>
           <div className={styles.headText}>
             <h2 className={styles.name}>{name}</h2>
-            {subtitle && <span className={styles.subtitle}>{subtitle}</span>}
+            {/* subtitle 只在主題點(attraction 有值)時顯示在這裡——這種
+                情況下 subtitle 是 landmarkName(見上方該常數的完整說明,
+                跟地址無關),維持原本「名稱下方」的既有位置。精選點
+                (attraction 為 null,靠 content 顯示)的 subtitle 是地址
+                (見 geoInfoContent.ts 組裝 PlaceInfoContent 時的欄位來源),
+                2026-10 使用者明確要求搬到圖片下面(見下方 imageWrap 之後
+                的渲染處),不在這裡顯示,避免同一個 subtitle 欄位在兩種
+                卡片類型上語意不同、卻共用同一個渲染位置造成混淆。 */}
+            {attraction && subtitle && <span className={styles.subtitle}>{subtitle}</span>}
             {badges.length > 0 && (
               <div className={styles.metaRow}>
                 {badges.map((b) => (
                   <span key={b} className={styles.badge}>{b}</span>
                 ))}
+              </div>
+            )}
+            {/* nearbyCategoryChips:2026-10 使用者明確要求「主題點最小段時,
+                標頭下面緊接著附近景點的過濾標籤」——原本這組 chip 列跟
+                「附近景點」清單本身一起放在 content(可捲動內容區),卡片
+                收合到最小段時 content 整個被 .panelCollapsed 隱藏(見
+                components/PhoneBottomSheet.tsx 的說明),連帶讓 chip 列
+                也消失,使用者收合到最小段後完全看不到任何分類篩選入口。
+                搬進 head(標頭,不受收合影響、永遠顯示)後,即使卡片收合
+                到只剩標頭這條,使用者仍能直接點 chip 篩選,不需要先展開
+                卡片。渲染條件/內容本身不變,只是移動 JSX 位置——下方
+                content 裡的「附近景點」區塊不再重複渲染這組 chip,只保留
+                標題文字與清單本身。 */}
+            {nearby && nearby.length > 0 && nearbyCategoryPresent.size > 0 && (
+              <div className={styles.nearbyCategoryChips} role="listbox" aria-label="附近景點分類篩選">
+                {Array.from(nearbyCategoryPresent).map((category) => {
+                  const CategoryIcon = CURATED_CATEGORY_ICONS[category]
+                  const active = categoryFilter === category
+                  return (
+                    <button
+                      key={category}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      className={`${styles.nearbyCategoryChip}${active ? ` ${styles.nearbyCategoryChipActive}` : ''}`}
+                      onClick={() => onCategoryFilterChange?.(active ? null : category)}
+                    >
+                      <CategoryIcon size={13} strokeWidth={2} aria-hidden="true" />
+                      {CURATED_CATEGORY_LABELS[category]}
+                      <span
+                        className={`${styles.nearbyCategoryDot} ${CURATED_CATEGORY_MAP_CLASS[category]}`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -426,72 +642,36 @@ export function GeoOutlinePhoneInfoSheet({
         </div>
       }
     >
-      {/* imageWrap:placeholder/單張圖片情境維持左右留白+圓角(見
-          .imageWrap 的說明,使用者明確要求);isMobileSwipe 為 true
-          (手機版多圖橫滑)時改套 .imageWrapSwipe,拿掉留白與容器圓角,
-          讓橫滑軌道整體真正貼齊卡片外緣——使用者明確要求「有圖片的
-          邊邊軌道不能有空隙」。多圖情境下每張圖片各自的圓角+間距改由
-          PhotoCarousel 自己的 .swipeItem 逐張處理(像相簿卡片一張張
-          滑,同樣是使用者明確要求),不是這層容器的職責。 */}
-      <div className={`${styles.imageWrap}${isMobileSwipe ? ` ${styles.imageWrapSwipe}` : ''}`}>
-        <PhotoCarousel
-          googlePhotoUrls={googlePhotoUrls}
-          fallbackUrl={photoUrl}
-          alt={name}
-          onLayoutChange={setIsMobileSwipe}
-        />
-      </div>
       <div className={styles.content}>
-        {summary ? (
-          <p className={styles.summary}>{summary}</p>
-        ) : (
-          <p className={styles.summaryEmpty}>這個地點還沒有簡介資料。</p>
-        )}
-        {/* nearbySection:「附近景點」清單——只有主題卡(nearby 有值且非
-            空)才會顯示,理由見上方 nearby prop 的說明。分類篩選改用
-            橫向可捲動的 chip 列(使用者明確要求),取代桌面版
-            AttractionInfoPanel.tsx 的下拉選單——bottom sheet 空間有限,
-            下拉選單展開/收合的 popover 容易被截斷或蓋住清單本身,chip
-            列不需要展開狀態,一行就放得下。刻意不另外放一顆「全部」
-            chip(使用者明確要求)——分類本身是可取消的單選:點下去選中
-            某個分類,再點一次同一個已選中的 chip 就取消回到不篩選狀態,
-            不需要額外佔一個位置的「全部」按鈕表達「不篩選」這件事,見
-            下方 onClick 的 active 三元判斷。 */}
+        {/* 「附近景點」清單——只有主題卡(nearby 有值且非空)才會顯示,
+            理由見上方 nearby prop 的說明。分類篩選 chip 列本身已搬到
+            head(標頭,見該處的完整說明,2026-10 使用者明確要求「主題點
+            最小段時,標頭下面緊接著附近景點的過濾標籤」),這裡只保留
+            標題文字與清單本身,不重複渲染 chip——原本外層包的
+            .nearbySection wrapper div 已無樣式需要承載,一併移除(見
+            module.css 對應說明)。
+            2026-10 使用者明確要求手機版主題卡的順序改成「附近景點 →
+            照片 → 簡介」(原本是「照片 → 簡介 → 附近景點」),故這個
+            區塊搬到 content 最前面,PhotoCarousel(見下方 imageWrap)
+            次之,summary 移到最後面。 */}
         {nearby && nearby.length > 0 && (
-          <div className={styles.nearbySection}>
+          <>
             <p className={styles.nearbyTitle}>附近景點</p>
-            {nearbyCategoryPresent.size > 0 && (
-              <div className={styles.nearbyCategoryChips} role="listbox" aria-label="附近景點分類篩選">
-                {Array.from(nearbyCategoryPresent).map((category) => {
-                  const CategoryIcon = CURATED_CATEGORY_ICONS[category]
-                  const active = categoryFilter === category
-                  return (
-                    <button
-                      key={category}
-                      type="button"
-                      role="option"
-                      aria-selected={active}
-                      className={`${styles.nearbyCategoryChip}${active ? ` ${styles.nearbyCategoryChipActive}` : ''}`}
-                      onClick={() => onCategoryFilterChange?.(active ? null : category)}
-                    >
-                      <CategoryIcon size={13} strokeWidth={2} aria-hidden="true" />
-                      {CURATED_CATEGORY_LABELS[category]}
-                      <span
-                        className={`${styles.nearbyCategoryDot} ${CURATED_CATEGORY_MAP_CLASS[category]}`}
-                        aria-hidden="true"
-                      />
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-            <div className={styles.nearbyList}>
-              {filteredNearby.map(({ attraction: n, minutes }) => {
+            <div className={styles.nearbyList} ref={nearbyListNodeRef}>
+              {filteredNearby.map(({ attraction: n, minutes }, i) => {
                 const category = curatedCategoryOf(n.category)
                 const CategoryIcon = category ? CURATED_CATEGORY_ICONS[category] : null
                 return (
                   <button
-                    key={n.name}
+                    // key={n.id ?? n.name}:對齊桌面版 AttractionInfoPanel.tsx
+                    // 的同一處寫法(2026-10 code review 抓到不一致)——id
+                    // 優先,資料庫裡已知存在同名不同 id 的重複記錄案例
+                    // (見 CHANGELOG 相關條目),用 name 當 key 在這種情況下
+                    // 會撞 key、React 警告,也可能讓重複記錄之一的互動狀態
+                    // 被錯誤共用;name 只在真的沒有 id 時(理論上不該發生,
+                    // nearby 清單來源是人工建檔資料)當 fallback。
+                    key={n.id ?? n.name}
+                    ref={(el) => { nearbyItemRefs.current[i] = el }}
                     type="button"
                     className={styles.nearbyItem}
                     onClick={() => onSelectNearby?.(n)}
@@ -506,8 +686,35 @@ export function GeoOutlinePhoneInfoSheet({
                 )
               })}
             </div>
-          </div>
+          </>
         )}
+        {/* imageWrap:placeholder/單張圖片情境維持左右留白+圓角(見
+            .imageWrap 的說明,使用者明確要求);isMobileSwipe 為 true
+            (手機版多圖橫滑)時改套 .imageWrapSwipe,拿掉留白與容器圓角,
+            讓橫滑軌道整體真正貼齊卡片外緣——使用者明確要求「有圖片的
+            邊邊軌道不能有空隙」。多圖情境下每張圖片各自的圓角+間距改由
+            PhotoCarousel 自己的 .swipeItem 逐張處理(像相簿卡片一張張
+            滑,同樣是使用者明確要求),不是這層容器的職責。
+            2026-10 使用者明確要求手機版主題卡順序改成「附近景點 → 照片
+            → 簡介」,故照片搬到附近景點之後、簡介之前。 */}
+        <div className={`${styles.imageWrap}${isMobileSwipe ? ` ${styles.imageWrapSwipe}` : ''}`}>
+          <PhotoCarousel
+            googlePhotoUrls={googlePhotoUrls}
+            fallbackUrl={photoUrl}
+            alt={name}
+            onLayoutChange={setIsMobileSwipe}
+          />
+        </div>
+        {summary ? (
+          <p className={styles.summary}>{summary}</p>
+        ) : (
+          <p className={styles.summaryEmpty}>這個地點還沒有簡介資料。</p>
+        )}
+        {/* 精選點(attraction 為 null)的地址——2026-10 使用者明確要求從
+            標頭(名稱下方)搬到簡介下面。只有這個分支會顯示(主題點的
+            subtitle 是 landmarkName,仍維持在標頭,見上方 head 區塊的
+            完整說明)。 */}
+        {!attraction && subtitle && <p className={styles.placeAddress}>{subtitle}</p>}
       </div>
     </PhoneBottomSheet>
   )

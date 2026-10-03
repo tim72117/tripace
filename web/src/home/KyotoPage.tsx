@@ -6,6 +6,7 @@ import { MobileMapReveal } from './MobileMapReveal';
 import { ScrollHint } from './ScrollHint';
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { CityPageFooter } from './CityPageFooter';
+import { ExploreOtherCities } from './ExploreOtherCities';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { useScrollProgress } from '../hooks/useScrollProgress';
 import { trackEvent } from '../analytics';
@@ -261,6 +262,8 @@ export function KyotoPage() {
           規劃我的探索路線
         </Link>
       </section>
+
+      <ExploreOtherCities currentSlug="kyoto" />
 
       <CityPageFooter />
     </div>

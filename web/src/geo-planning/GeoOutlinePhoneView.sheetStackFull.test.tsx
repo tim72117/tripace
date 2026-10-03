@@ -52,6 +52,17 @@ class FakeIntersectionObserver {
 }
 ;(globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = FakeIntersectionObserver
 
+// GeoOutlinePhoneInfoSheet 的附近景點橫滑清單用 ResizeObserver 偵測
+// 容器從不可見變成可見(見該檔案 nearbyListNodeRef 那段 effect 的完整
+// 說明),jsdom 沒有原生實作——stub 一個最小假實作,理由同上方
+// FakeIntersectionObserver。
+class FakeResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+;(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = FakeResizeObserver
+
 let capturedOnSearchStart: (() => void) | undefined
 let capturedOnGeocodeCandidatesChange: ((candidates: GeoGeocodeCandidate[]) => void) | undefined
 let capturedOnAttractionSelect: ((a: GeoAttraction) => void) | undefined

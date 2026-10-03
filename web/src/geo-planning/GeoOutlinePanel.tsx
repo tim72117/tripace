@@ -87,7 +87,7 @@ export function GeoOutlinePanel({
   searchRightSlot,
   onAttractionsChange,
   revealedAttractionNames,
-  hoveredCuratedName,
+  hoveredCuratedId,
   onSearchResultsChange,
   onSearchStart,
   hideCategoryTags,
@@ -156,9 +156,9 @@ export function GeoOutlinePanel({
   // 是否已開啟某個主題點」算好傳入,見該處 revealedAttractionNames 的
   // 完整說明。null 代表目前沒有開啟任何主題,精選點一律不顯示。
   revealedAttractionNames?: Set<string> | null
-  // hoveredCuratedName:原封不動轉傳給 ExploreMap——見該處與
+  // hoveredCuratedId:原封不動轉傳給 ExploreMap——見該處與
   // useAttractionOverlays.ts 對這個 prop 的完整說明。
-  hoveredCuratedName?: string | null
+  hoveredCuratedId?: string | null
   // onSearchResultsChange:飯店/推薦地點/搜尋結果三種來源統一轉成
   // GeoSearchResult 合併後的搜尋結果清單,原封不動轉傳自 ExploreMap
   // 的同名 callback(見該元件的完整說明)——使用者要求這三者「同一份
@@ -600,7 +600,7 @@ export function GeoOutlinePanel({
           searchError={err}
           onAttractionsChange={onAttractionsChange}
           revealedAttractionNames={revealedAttractionNames}
-          hoveredCuratedName={hoveredCuratedName}
+          hoveredCuratedId={hoveredCuratedId}
           onSearchStart={onSearchStart}
           hideCategoryTags={hideCategoryTags}
           // onGeocodeCandidatesChange:類別標籤/「搜尋這個區域」按鈕觸發

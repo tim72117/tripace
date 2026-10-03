@@ -142,7 +142,7 @@ func runLoginWeb(apiBase, console string) error {
 		if res.err != nil {
 			return res.err
 		}
-		if err := saveToken(res.token); err != nil {
+		if err := saveToken(apiBase, res.token); err != nil {
 			return fmt.Errorf("儲存 token 失敗: %w", err)
 		}
 		fmt.Printf("登入成功,token 已儲存(標記為 %q)——之後的指令不會再要求登入。\n", name)
@@ -205,7 +205,7 @@ func runLoginDevice(apiBase, console string) error {
 		if !ok {
 			continue // 尚未核准,繼續輪詢
 		}
-		if err := saveToken(token); err != nil {
+		if err := saveToken(apiBase, token); err != nil {
 			return fmt.Errorf("儲存 token 失敗: %w", err)
 		}
 		fmt.Printf("登入成功,token 已儲存(標記為 %q)——之後的指令不會再要求登入。\n", name)
