@@ -146,7 +146,35 @@ type Server struct {
 	// 配額,與保護總額度的目的相反。兩個 key 各自的視窗長度/次數在 New()
 	// 裡設定(見該處說明)。
 	planAiRateLimiter *apigateway.RateLimiter
+
+	// geoQueryUserRateLimiter 保護一批會觸發 Google API 呼叫的查詢端點
+	// (見 geoQueryEndpointsWithUserThrottle 的完整說明),用 key =
+	// userID(s.userFor(r).ID)做「每個使用者」的節流——跟上面的
+	// planAiRateLimiter 刻意相反:那裡的全域共用是為了防「單一使用者的
+	// LLM 迴圈耗盡專案共用總額度」,這裡要防的是「單一使用者自己連點/
+	// 連續操作太快」,語意上本來就該各自獨立計算,不該讓使用者 A 的
+	// 操作頻率影響到使用者 B 還剩多少配額可用——per-user 在這裡才是
+	// 正確的粒度,不是重複發明同一件事。
+	//
+	// 2026-10 使用者明確要求「後端自己的端點,加上每秒的請求節流限制,
+	// 但是以個人為單位,預設 200 毫秒一次」——跟 planAiRateLimiter 共用
+	// apigateway.RateLimiter 這個元件,但刻意用獨立實例(不是同一個
+	// RateLimiter 開兩種 key 前綴混用),理由是兩者的 key 空間本質不同:
+	// planAiRateLimiter 的 key 是固定的少數幾個 endpoint 字串,這裡的
+	// key 是使用者 ID、數量隨使用者成長——混在同一個實例裡容易在未來
+	// 調整 planAiRateLimiter 邏輯時不小心牽動到這裡,分開更清楚。
+	//
+	// 已知限制:apigateway.RateLimiter 的 windows map 沒有過期清除機制
+	// (見該型別的完整說明,原本設計假設 key 數量少且固定)——key 改成
+	// per-user 後,使用者數量成長會讓這個 map 緩慢增長,目前規模下可
+	// 接受,日後若使用者數明顯增加需要重新評估是否要加上清掃機制。
+	geoQueryUserRateLimiter *apigateway.RateLimiter
 }
+
+// geoQueryUserThrottleInterval 是 geoQueryUserRateLimiter 預設的節流
+// 間隔——2026-10 使用者明確要求「預設 200 毫秒一次」,對應「每秒最多
+// 5 次」的呼叫頻率上限,套用在同一個使用者身上。
+const geoQueryUserThrottleInterval = 200 * time.Millisecond
 
 func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID string) *Server {
 	uploader, err := photostorage.New(context.Background(), os.Getenv("GCS_PHOTO_BUCKET"))
@@ -179,19 +207,87 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 	planAiRateLimiter.SetLimitForKey(publicPlaceSearchEndpoint, 10*time.Second, 1)
 	planAiRateLimiter.SetLimitForKey(nearbyAttractionSearchEndpoint, 500*time.Millisecond, 1)
 
+	// geoQueryUserRateLimiter:不在這裡預先呼叫 SetLimitForKey——key 是
+	// 使用者 ID,數量隨使用者登入而動態出現,不像 planAiRateLimiter 只有
+	// 兩個固定的 endpoint 字串可以在啟動時就設定好。改成每次請求時由
+	// throttleGeoQueryByUser(見該函式的完整說明)對當下的 userID 懶惰呼叫
+	// SetLimitForKey——RateLimiter.SetLimitForKey 用同一個 key 重複呼叫
+	// 只是覆寫成同一組規則,不會重置該 key 已經累積的視窗計數(見該方法
+	// 實作:只動 limits 表,不動 windows 表),所以每次請求都呼叫一次
+	// 不會錯誤地讓使用者每次都拿到全新配額。
+	geoQueryUserRateLimiter := apigateway.NewRateLimiter()
+
 	return &Server{
-		store:                 st,
-		signer:                signer,
-		hub:                   newHub(),
-		devMode:               devMode,
-		googleClientID:        googleClientID,
-		guestUser:             model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
-		photoCache:            storePhotoCache{store: st},
-		photoUploader:         uploader,
-		newGeoGeocodeClient:   geo.New,
-		newPlaceDetailsClient: geo.New,
-		planAiRateLimiter:     planAiRateLimiter,
+		store:                   st,
+		signer:                  signer,
+		hub:                     newHub(),
+		devMode:                 devMode,
+		googleClientID:          googleClientID,
+		guestUser:               model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
+		photoCache:              storePhotoCache{store: st},
+		photoUploader:           uploader,
+		newGeoGeocodeClient:     geo.New,
+		newPlaceDetailsClient:   geo.New,
+		planAiRateLimiter:       planAiRateLimiter,
+		geoQueryUserRateLimiter: geoQueryUserRateLimiter,
 	}
+}
+
+// throttleGeoQueryByUser 是一批會觸發 Google API 呼叫的查詢端點
+// (handleGeocodeEntry/handleGeoGeocode/handleGeoPlaceDetails/
+// handlePublicGeoPlaceSearch/handlePublicGeoAttractionSearch/
+// handlePublicGeoPlaceDetailsAny/handleMaintenanceGeocode)共用的
+// per-user 節流檢查——2026-10 使用者明確要求「後端自己的端點,加上每秒
+// 的請求節流限制,但是以個人為單位,預設 200 毫秒一次」。
+//
+// 不包含 handlePublicGeoTransitEstimate:這支端點目前是純本地計算
+// (haversine 直線距離+固定速度換算表,見該 handler 的完整說明),完全
+// 不含任何外部 API 呼叫,不屬於「會觸發 Google API 呼叫」這個套用範圍。
+//
+// handlePublicGeoAttractionSearch 疊加兩層彼此獨立的節流,刻意不是只有
+// 一層:這支端點原本就有自己的 nearbyAttractionSearchEndpoint 限流
+// (見該 handler 的完整說明),被擋下時走「降級」路徑——跳過打 Google
+// Nearby Search 補點,但仍正常回傳資料庫已查到的候選、回 200,不讓
+// 整個請求失敗(這層的設計目的是「這支端點內部,保護打 Google API
+// 那一小段邏輯」)。這裡新增的 per-user 節流則是完全獨立的另一層,
+// 擋下時直接回 429、不做任何降級(2026-10 使用者明確要求「per-user
+// 的限流還是要有,只是沒有回退」)——兩層節流的語意不同,不能互相取代:
+// 前者只決定「這次要不要打 Google API」,後者決定「這個使用者這次
+// 請求能不能被處理」,被 per-user 節流擋下的請求連資料庫查詢都不會
+// 執行,跟被 nearbyAttractionSearchEndpoint 擋下只省略 Google 呼叫是
+// 兩種不同範圍的拒絕。
+//
+// 回傳 true 代表這次請求可以繼續處理;回傳 false 代表已經寫好 429
+// 回應,呼叫端應該立刻 return,不再執行任何後續邏輯——用法比照既有的
+// planAiRateLimiter.Allow 呼叫慣例(見 geo_plan_ai.go 對該欄位的用法),
+// 每個 handler 開頭呼叫一行完成節流檢查,不做成 middleware:這批端點
+// 分散定義在 geo_outline.go/geo_plan_ai.go/maintenance.go 幾個檔案裡,
+// 在 handler 內顯式呼叫比在 middleware 層用路徑字串比對白名單更不容易
+// 因為拼字誤差漏保護或誤傷其他端點。
+//
+// key 用 s.userFor(r).ID(真實使用者的資料庫 ID,或訪客固定 ID
+// usr_me)——這批端點都掛在 internalAuth 底下,必須先帶合法簽章的 JWT
+// 才能走到 handler,userFor 退回訪客 usr_me 只會發生在「簽章有效但
+// 對應使用者已被資料庫刪除」這種極端邊界情況(見 userFromToken 的完整
+// 說明),多個這種異常請求共用同一份 200ms 配額是可接受的降級行為,
+// 不影響一般登入使用者——不需要為了這個邊緣情況額外用 token 字串本身
+// 當 key。
+//
+// 用 Allow 前才呼叫 SetLimitForKey(懶惰設定,每次請求都呼叫一次)而非
+// 在 New() 預先設定好——這個 limiter 的 key 空間是動態的使用者 ID 集合,
+// 不像 planAiRateLimiter 只有兩個固定的 endpoint 字串可以在啟動時一次
+// 設定好。SetLimitForKey 用同一個 key 重複呼叫只會覆寫規則本身(視窗
+// 長度、上限次數),不會重置該 key 已經累積的視窗計數(見該方法實作:
+// 只動 limits 表、不動 windows 表),所以這裡每次請求呼叫一次不會錯誤
+// 地讓使用者每次都拿到全新配額,是安全的用法。
+func (s *Server) throttleGeoQueryByUser(w http.ResponseWriter, r *http.Request) bool {
+	userID := s.userFor(r).ID
+	s.geoQueryUserRateLimiter.SetLimitForKey(userID, geoQueryUserThrottleInterval, 1)
+	if s.geoQueryUserRateLimiter.Allow(userID) {
+		return true
+	}
+	writeErr(w, http.StatusTooManyRequests, "rate_limited", "查詢過於頻繁,請稍後再試")
+	return false
 }
 
 // photoCacheMaxAge 是圖片快取視為新鮮的上限——超過這個天數,即使資料庫

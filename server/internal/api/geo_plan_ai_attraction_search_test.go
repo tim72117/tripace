@@ -103,9 +103,23 @@ func planAiTestToken(t *testing.T, s *Server) string {
 
 func getAttractionSearch(t *testing.T, s *Server, routes http.Handler, lat, lng float64) (*http.Response, map[string]any) {
 	t.Helper()
+	return getAttractionSearchAsUser(t, s, routes, lat, lng, planAiTestToken(t, s))
+}
+
+// getAttractionSearchAsUser 跟 getAttractionSearch 相同,但可以指定要帶
+// 哪一把 token(以哪個使用者身份發出請求)——2026-10 新增,供需要「用不同
+// 使用者身份連續呼叫」的測試使用:throttleGeoQueryByUser(見 api.go 的
+// 完整說明)用 userID 當 key,同一個使用者連續呼叫會在 200ms 內被這層
+// per-user 節流擋下,若測試想驗證的是 nearbyAttractionSearchEndpoint
+// 這個全域、不分使用者的既有限流邏輯(見
+// TestHandlePublicGeoAttractionSearch_RateLimited_KeepsDBResults),兩次
+// 呼叫必須用不同使用者身份,才能讓請求跳過 per-user 這一層、真正走到
+// 要驗證的那一層。
+func getAttractionSearchAsUser(t *testing.T, s *Server, routes http.Handler, lat, lng float64, token string) (*http.Response, map[string]any) {
+	t.Helper()
 	url := fmt.Sprintf("/internal/geo/plan-ai/attraction-search?lat=%g&lng=%g", lat, lng)
 	req := httptest.NewRequest(http.MethodGet, url, nil)
-	req.Header.Set("Authorization", "Bearer "+planAiTestToken(t, s))
+	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	routes.ServeHTTP(rec, req)
 	resp := rec.Result()
@@ -292,6 +306,16 @@ func TestHandlePublicGeoAttractionSearch_GoogleCallFails_KeepsDBResults(t *testi
 // 也不會真的打出第二次 Google API 呼叫。同時驗證這支端點的限流跟
 // publicPlaceSearchLimiter(保護另一支端點)是獨立的兩個實例,不互相
 // 共用視窗計數(使用者明確要求「這個端點加入獨立的請求數量限制」)。
+//
+// 2026-10 兩次呼叫改用不同使用者身份(getAttractionSearchAsUser)——
+// 這支端點現在疊加了 throttleGeoQueryByUser 這層 per-user 節流(見
+// api.go 該函式的完整說明:使用者明確要求「這些有收費的端點都是有
+// 兩層,per-user 的跟 api 端點上的」),用 userID 當 key、200ms 視窗,
+// 若兩次呼叫仍用同一個使用者身份,第二次請求會先被這層 per-user 節流
+// 擋下(直接 429、不降級),根本不會走到這支測試真正要驗證的
+// nearbyAttractionSearchEndpoint 降級邏輯。這支測試驗證的是後者(全域、
+// 不分使用者的既有限流),故讓兩次呼叫使用不同使用者身份跳過 per-user
+// 那層,個別配額互不影響,確保請求真正走到要驗證的那一層。
 func TestHandlePublicGeoAttractionSearch_RateLimited_KeepsDBResults(t *testing.T) {
 	dbPlaceID := "place_db_1"
 	fakeGateway := &fakeNearbySearchGateway{
@@ -305,8 +329,31 @@ func TestHandlePublicGeoAttractionSearch_RateLimited_KeepsDBResults(t *testing.T
 		t.Fatalf("CreateAttraction failed: %v", err)
 	}
 
-	// 第一次呼叫:限流視窗內的第一次,應該正常觸發 Google Nearby Search。
-	resp1, body1 := getAttractionSearch(t, s, routes, 23.0, 120.2)
+	// 必須真的把這兩個使用者寫進資料庫,簽出來的 token 才會被
+	// userFromToken 解析成兩個不同的使用者——store.OpenTest 建的是全新
+	// 空白資料庫,單純 signer.Sign 簽出的 token 即使簽章有效,
+	// FindUserByID 查不到對應使用者時一律退回 guestUser(見
+	// userFromToken 的完整說明),兩把不存在的 token 會被視為同一個
+	// usr_me,起不到「兩個不同使用者」的區隔效果,per-user 節流仍然會
+	// 把第二次呼叫擋下來。
+	if err := s.store.UpsertUser(model.User{ID: "usr_test_a", Name: "測試使用者A"}); err != nil {
+		t.Fatalf("UpsertUser(usr_test_a) failed: %v", err)
+	}
+	if err := s.store.UpsertUser(model.User{ID: "usr_test_b", Name: "測試使用者B"}); err != nil {
+		t.Fatalf("UpsertUser(usr_test_b) failed: %v", err)
+	}
+	userAToken, err := s.signer.Sign("usr_test_a", "測試使用者A")
+	if err != nil {
+		t.Fatalf("簽 token 失敗: %v", err)
+	}
+	userBToken, err := s.signer.Sign("usr_test_b", "測試使用者B")
+	if err != nil {
+		t.Fatalf("簽 token 失敗: %v", err)
+	}
+
+	// 第一次呼叫(使用者 A):限流視窗內的第一次,應該正常觸發 Google
+	// Nearby Search。
+	resp1, body1 := getAttractionSearchAsUser(t, s, routes, 23.0, 120.2, userAToken)
 	if resp1.StatusCode != http.StatusOK {
 		t.Fatalf("第一次呼叫狀態碼 = %d,期待 200;body=%v", resp1.StatusCode, body1)
 	}
@@ -318,9 +365,10 @@ func TestHandlePublicGeoAttractionSearch_RateLimited_KeepsDBResults(t *testing.T
 		t.Fatalf("第一次呼叫應該有 2 筆(1 筆資料庫 + 1 筆 Google 補上),實際 = %v", body1["attractions"])
 	}
 
-	// 第二次呼叫:同一個視窗內,nearbyAttractionSearchLimiter 應該拒絕
-	// 這次呼叫——不再打 Google API,但仍正常回傳資料庫候選。
-	resp2, body2 := getAttractionSearch(t, s, routes, 23.0, 120.2)
+	// 第二次呼叫(使用者 B,跳過 per-user 節流):同一個
+	// nearbyAttractionSearchLimiter 視窗內,應該拒絕這次呼叫——不再打
+	// Google API,但仍正常回傳資料庫候選。
+	resp2, body2 := getAttractionSearchAsUser(t, s, routes, 23.0, 120.2, userBToken)
 	if resp2.StatusCode != http.StatusOK {
 		t.Fatalf("第二次呼叫狀態碼 = %d,期待 200(限流拒絕不當作錯誤回應);body=%v", resp2.StatusCode, body2)
 	}

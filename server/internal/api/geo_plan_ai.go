@@ -72,6 +72,9 @@ const publicPlaceSearchEndpoint = "public.placeSearch"
 // 順序是「先檢查限流,通過才真的呼叫 Google API」,被拒絕的請求完全不會
 // 產生任何外部 API 呼叫或費用。
 func (s *Server) handlePublicGeoPlaceSearch(w http.ResponseWriter, r *http.Request) {
+	if !s.throttleGeoQueryByUser(w, r) {
+		return
+	}
 	query := r.URL.Query().Get("query")
 	if query == "" {
 		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 query 查詢參數")
@@ -221,6 +224,9 @@ const minNearbyAttractionResults = 10
 // planAiRateLimiter 做全域拒絕型限流(見該欄位的完整
 // 說明),把關順序是「先檢查限流,通過才真的呼叫 Google API」。
 func (s *Server) handlePublicGeoAttractionSearch(w http.ResponseWriter, r *http.Request) {
+	if !s.throttleGeoQueryByUser(w, r) {
+		return
+	}
 	lat, latErr := strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
 	lng, lngErr := strconv.ParseFloat(r.URL.Query().Get("lng"), 64)
 	if latErr != nil || lngErr != nil {
@@ -649,6 +655,9 @@ func (s *Server) handlePublicGeoTransitEstimate(w http.ResponseWriter, r *http.R
 // shouldAddGooglePlacePhoto + 7 天時間)決定要不要觸發
 // refreshGooglePlacePhotoInBackground。
 func (s *Server) handlePublicGeoPlaceDetailsAny(w http.ResponseWriter, r *http.Request) {
+	if !s.throttleGeoQueryByUser(w, r) {
+		return
+	}
 	placeID := r.URL.Query().Get("placeId")
 	if placeID == "" {
 		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 placeId 查詢參數")

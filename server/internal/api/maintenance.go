@@ -53,6 +53,9 @@ import (
 // 用 -region/-n 這些維運場景才需要的參數調整候選筆數與地區限定,是純
 // CLI 專用的維運工具。
 func (s *Server) handleMaintenanceGeocode(w http.ResponseWriter, r *http.Request) {
+	if !s.throttleGeoQueryByUser(w, r) {
+		return
+	}
 	place := r.URL.Query().Get("place")
 	if place == "" {
 		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 place 查詢參數")

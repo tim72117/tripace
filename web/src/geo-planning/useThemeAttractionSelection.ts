@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { GeoAttraction, GeoPlaceDetails, GeoPlacePhotoAssets } from '../api'
 import { attractionToInfoContent, poiInfoContent } from './geoInfoContent'
-import { hasAnyPhoto, PHOTO_RETRY_DELAY_MS, PHOTO_RETRY_MAX_ATTEMPTS } from '../photoRetry'
+import { fetchPlaceDetailsWithPhotoRetry } from '../photoRetry'
 import type { PlaceInfoContent } from './PlacePanel'
 import { useInfoCardStack, useInfoCardStackSync, type InfoCardStack } from './useInfoCardStack'
 import type { CuratedCategory } from './geoCuratedCategoryStub'
@@ -76,25 +76,24 @@ import type { CuratedCategory } from './geoCuratedCategoryStub'
 // GET .../geo/place-photo-assets,純讀 photo_assets,不觸發任何點擊計數
 // /補圖決策,見該端點的完整說明)。
 //
-// PHOTO_RETRY_DELAY_MS/PHOTO_RETRY_MAX_ATTEMPTS/hasAnyPhoto 改從
-// ../photoRetry 匯入(2026-10 code review 發現這裡跟
-// trip-plan/TripPlanPage.tsx 的 retryPhotoOnly 重複定義同一套數值/
-// 判斷邏輯,見該模組檔頭的完整說明)——重試迴圈本身(下方
-// retryWithPhotoAssetsOnly)仍留在這裡,不抽成共用函式,理由同樣見
-// photoRetry.ts 檔頭說明。
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-// fetchPoiContent:「有 placeId 時查 fetchPlaceDetails,成功用
-// poiInfoContent(details)當主要內容、附加 attraction.summary;沒有
-// placeId 或查詢失敗時退回 attractionToInfoContent」這段查詢邏輯本身,
-// 抽成不依賴 React state 的獨立函式——供這支 hook 的 openPoiContent
-// (桌面版/展示頁的並存地點卡)與 GeoOutlinePhoneView.tsx(手機版附近
-// 景點清單,push 一層新 sheet 顯示,見該檔案的完整說明)共用同一段查詢
-// /fallback 規則,不需要手機版也接整支 useThemeAttractionSelection
-// (手機版沒有 hoveredAttraction/infoCardStack 這兩個概念,見下方檔頭
-// 說明,硬接會多出死欄位)。
+// fetchPoiContent:「有 placeId 時查 fetchPlaceDetails(查完沒照片時
+// 原地重試幾次等背景補圖完成),成功用 poiInfoContent(details)當主要
+// 內容、附加 attraction.summary;沒有 placeId 或查詢失敗時退回
+// attractionToInfoContent」這段查詢邏輯本身,抽成不依賴 React state 的
+// 獨立函式——供這支 hook 的 openPoiContent(桌面版/展示頁的並存地點卡)
+// 與 GeoOutlinePhoneView.tsx(手機版附近景點清單,push 一層新 sheet
+// 顯示,見該檔案的完整說明)共用同一段查詢/fallback 規則,不需要手機版
+// 也接整支 useThemeAttractionSelection(手機版沒有 hoveredAttraction/
+// infoCardStack 這兩個概念,見下方檔頭說明,硬接會多出死欄位)。
+//
+// 2026-10:「查詳情+沒圖時重試」這段核心邏輯已經抽到 ../photoRetry 的
+// fetchPlaceDetailsWithPhotoRetry(見該函式的完整說明——code review
+// 發現 geo-planning/ExploreMap.tsx 有兩處點擊查詢完全沒有接上這套重試,
+// 查一次沒圖就永遠沒圖),這裡改成呼叫它,只保留「用 GeoAttraction 包一層
+// fallback/組 PlaceInfoContent」這段 fetchPoiContent 特有的部分——所有
+// 使用 placeId 查詢地點詳情的入口(主題卡/附近景點/原生 POI 點擊/非主題
+// 點地標點擊/AI 規劃卡片)現在共用同一套重試邏輯,不再各自維護一份或
+// 漏接。
 //
 // 回傳 Promise(resolve 最終內容,含重試後的最新照片結果)供需要「最終
 // 結果」的呼叫端使用;第三個選填參數 onUpdate 則是「第一次查詢完成
@@ -108,9 +107,8 @@ function sleep(ms: number): Promise<void> {
 // 不假設呼叫端的用途。
 //
 // fetchPhotoAssets:第一次查詢沒有照片時,後續重試改呼叫這支函式(對應
-// GET .../geo/place-photo-assets,見上方 PHOTO_RETRY_* 的完整說明)而非
-// 再次呼叫 fetchPlaceDetails——呼叫端已經 bind 好 cfg 的純讀查詢函式,
-// 對稱 fetchPlaceDetails 參數:正式版傳
+// GET .../geo/place-photo-assets)而非再次呼叫 fetchPlaceDetails——呼叫端
+// 已經 bind 好 cfg 的純讀查詢函式,對稱 fetchPlaceDetails 參數:正式版傳
 // (placeId) => fetchGeoPlacePhotoAssets(cfg, placeId),展示頁傳
 // (placeId) => fetchPublicGeoPlacePhotoAssets(GUEST_CFG, placeId)。
 export function fetchPoiContent(
@@ -126,40 +124,24 @@ export function fetchPoiContent(
   }
   const placeId = attraction.placeId
 
-  const retryWithPhotoAssetsOnly = (
-    remainingRetries: number,
-    base: PlaceInfoContent,
-  ): Promise<PlaceInfoContent> => {
-    if (remainingRetries <= 0 || !fetchPhotoAssets) return Promise.resolve(base)
-    return sleep(PHOTO_RETRY_DELAY_MS)
-      .then(() => fetchPhotoAssets(placeId))
-      .then((photoAssets) => {
-        if (!hasAnyPhoto(photoAssets)) {
-          return retryWithPhotoAssetsOnly(remainingRetries - 1, base)
-        }
-        const content: PlaceInfoContent = {
-          ...base,
-          photoUrl: photoAssets.photoUrl,
-          googlePhotoUrls: photoAssets.googlePhotoUrls,
-        }
-        onUpdate?.(content)
-        return content
-      })
-      // 純讀端點查詢失敗(網路問題等)時,視同這次沒查到圖,不中斷剩餘
-      // 重試次數,也不 fallback 回 attractionToInfoContent——base 本身
-      // (第一次查詢的文字內容)已經是有效內容,不該因為單次重試失敗就
-      // 整張卡片退回精簡版。
-      .catch(() => retryWithPhotoAssetsOnly(remainingRetries - 1, base))
+  // toContent——poiInfoContent(details) + 附加 attractionSummary 這組
+  // 轉換,onUpdate(每次查到新結果時)跟最終 resolve 值都需要同一份
+  // 結果,抽成區域函式避免兩處各自呼叫一次 poiInfoContent(2026-10 code
+  // review 發現的重複計算,見該函式目前仍是輕量純函式,只是兩處各自
+  // 呼叫容易在 poiInfoContent 日後變複雜時兩邊漏改不同步)。
+  const toContent = (details: GeoPlaceDetails): PlaceInfoContent => {
+    const content = poiInfoContent(details)
+    content.attractionSummary = attraction.summary
+    return content
   }
 
-  return fetchPlaceDetails(placeId)
-    .then((details) => {
-      const content = poiInfoContent(details)
-      content.attractionSummary = attraction.summary
-      onUpdate?.(content)
-      if (hasAnyPhoto(content)) return content
-      return retryWithPhotoAssetsOnly(PHOTO_RETRY_MAX_ATTEMPTS, content)
-    })
+  return fetchPlaceDetailsWithPhotoRetry(
+    placeId,
+    fetchPlaceDetails,
+    (details) => onUpdate?.(toContent(details)),
+    fetchPhotoAssets,
+  )
+    .then(toContent)
     .catch(() => {
       const content = attractionToInfoContent(attraction)
       onUpdate?.(content)

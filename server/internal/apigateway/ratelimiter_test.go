@@ -8,20 +8,30 @@ import (
 )
 
 // TestRateLimiter_AllowsUpToMaxCallsWithinWindow 驗證單一 key 在視窗內
-// 恰好只能被放行 maxCalls 次，超過就一律拒絕——循序呼叫，先確認
-// 最基本的計數行為正確，併發情境另見
-// TestRateLimiter_ConcurrentCallsNeverExceedLimit。
+// 恰好只能被放行 maxCalls 次，超過就一律拒絕——循序、不間斷地快速連續
+// 呼叫（不在呼叫之間插入任何等待），先確認最基本的計數行為正確，
+// 併發情境另見 TestRateLimiter_ConcurrentCallsNeverExceedLimit。
+//
+// 2026-10 改用 cmd/server/main.go 裡 places.get 實際套用的視窗/次數
+// （60 秒視窗、300 次上限）取代原本任意挑選的 3 次——讓這個測試案例
+// 直接對應產品的真實配置：固定視窗計數器只看「視窗內已經放行幾次」，
+// 不區分呼叫節奏是瞬間打完還是平均分散在整個視窗內（見 RateLimiter
+// 檔頭對這個特性的完整說明），所以這裡用「不間斷連續呼叫 300 次」
+// 驗證即可代表「60 秒內無論怎麼分佈打滿 300 次」這整類情境，不需要
+// 真的讓測試耗時 60 秒、模擬「一秒一次」的節奏。
 func TestRateLimiter_AllowsUpToMaxCallsWithinWindow(t *testing.T) {
 	rl := NewRateLimiter()
-	rl.SetLimitForKey("k", time.Minute, 3)
+	const window = 60 * time.Second
+	const maxCalls = 300
+	rl.SetLimitForKey("places.get", window, maxCalls)
 
-	for i := 0; i < 3; i++ {
-		if !rl.Allow("k") {
+	for i := 0; i < maxCalls; i++ {
+		if !rl.Allow("places.get") {
 			t.Fatalf("第 %d 次呼叫應被放行，卻被拒絕", i+1)
 		}
 	}
-	if rl.Allow("k") {
-		t.Fatal("第 4 次呼叫應被拒絕（已超過視窗內上限 3 次），卻被放行")
+	if rl.Allow("places.get") {
+		t.Fatalf("第 %d 次呼叫應被拒絕（已超過視窗內上限 %d 次），卻被放行", maxCalls+1, maxCalls)
 	}
 }
 

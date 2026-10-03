@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { importLibrary } from '@googlemaps/js-api-loader'
 import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoPlaceDetails, GeoSearchResult, GeoTripEntry } from '../api'
-import { fetchGeoAttractionsOnlyNearby, fetchGeoGeocode, fetchGeoPlaceDetails, geocodeCandidateToSearchResult } from '../api'
+import { fetchGeoAttractionsOnlyNearby, fetchGeoGeocode, fetchGeoPlaceDetails, fetchGeoPlacePhotoAssets, geocodeCandidateToSearchResult } from '../api'
+import { fetchPlaceDetailsWithPhotoRetry } from '../photoRetry'
 import { Compass, Hotel, Loader2, MapPin, Search, Sparkles, UtensilsCrossed } from 'lucide-react'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
 import { isSubmitEnter } from '../AppCommon'
@@ -698,14 +699,26 @@ export function ExploreMap({
         mapRef.current.addListener('click', (event: google.maps.IconMouseEvent) => {
           if (!event.placeId) return
           event.stop()
-          fetchGeoPlaceDetails(cfg, event.placeId)
-            .then((details) => {
+          const placeId = event.placeId
+          // 2026-10 code review 發現:這裡原本查一次就直接回報,完全沒有
+          // 接上 fetchPoiContent 既有的「查完沒照片,原地重試幾次等背景
+          // 補圖完成」機制(見 fetchPlaceDetailsWithPhotoRetry 的完整
+          // 說明)——改用它,讓直接點擊 Google 原生 POI 圖標這條路徑跟
+          // 主題卡/附近景點/AI 規劃卡片共用同一套重試邏輯,不再查一次沒圖
+          // 就永遠沒圖。onUpdate 讓卡片內容(名稱/地址等文字)立刻顯示,
+          // 不被後續的照片重試拖慢。
+          fetchPlaceDetailsWithPhotoRetry(
+            placeId,
+            (id) => fetchGeoPlaceDetails(cfg, id),
+            (details) => {
               if (onAttractionOpenPlaceDetailsRef.current) {
                 onAttractionOpenPlaceDetailsRef.current(details)
               } else {
                 onPoiSelectRef.current?.(details)
               }
-            })
+            },
+            (id) => fetchGeoPlacePhotoAssets(cfg, id),
+          )
             .catch(() => {})
         })
         setMapReady(true)
@@ -1035,14 +1048,25 @@ export function ExploreMap({
       return
     }
     if (d.placeId) {
-      fetchGeoPlaceDetails(cfg, d.placeId)
-        .then((details) => {
+      const placeId = d.placeId
+      // 2026-10 code review 發現:這裡原本也是查一次就直接回報,同樣
+      // 沒有接上照片重試機制(見上方原生 POI click listener 改動的完整
+      // 說明)——改用 fetchPlaceDetailsWithPhotoRetry,讓這條路徑(點擊
+      // 非主題點地標、查到 placeId 後打 Google Place Details)也共用
+      // 同一套重試邏輯。查詢失敗(.catch)的 fallback 行為不變,仍然
+      // 退回 onAttractionOpenPlaceWithoutGoogleRef/onAttractionSelectRef。
+      fetchPlaceDetailsWithPhotoRetry(
+        placeId,
+        (id) => fetchGeoPlaceDetails(cfg, id),
+        (details) => {
           if (onAttractionOpenPlaceDetailsRef.current) {
             onAttractionOpenPlaceDetailsRef.current(details, d)
           } else {
             onPoiSelectRef.current?.(details)
           }
-        })
+        },
+        (id) => fetchGeoPlacePhotoAssets(cfg, id),
+      )
         .catch(() => {
           if (onAttractionOpenPlaceWithoutGoogleRef.current) {
             onAttractionOpenPlaceWithoutGoogleRef.current(d)

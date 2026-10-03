@@ -582,6 +582,9 @@ func (s *Server) geoGeocodeCandidateResponses(places []geo.Place, apiKey string)
 }
 
 func (s *Server) handleGeoGeocode(w http.ResponseWriter, r *http.Request) {
+	if !s.throttleGeoQueryByUser(w, r) {
+		return
+	}
 	query := r.URL.Query().Get("query")
 	if query == "" {
 		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 query 查詢參數")
@@ -1336,6 +1339,9 @@ func (s *Server) appendGooglePlacePhoto(placeID, newPhotoURL string) []string {
 }
 
 func (s *Server) handleGeoPlaceDetails(w http.ResponseWriter, r *http.Request) {
+	if !s.throttleGeoQueryByUser(w, r) {
+		return
+	}
 	placeID := r.URL.Query().Get("placeId")
 	if placeID == "" {
 		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 placeId 查詢參數")

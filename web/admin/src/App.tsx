@@ -316,14 +316,29 @@ function ExternalServicesTab({ onLoggedOut }: { onLoggedOut: () => void }) {
 // says so next to the save button rather than implying an immediate effect.
 const DEFAULT_ENDPOINTS = ['places.get', 'places.photoMedia']
 
+// RPM_WINDOW_SEC — 2026-10 the user asked for this form to express the
+// window purely in "requests per minute" instead of separately editable
+// window/maxCalls fields. The backend API (store.GeoRateLimit.windowSec)
+// and the underlying apigateway.RateLimiter still support an arbitrary
+// window length per the server's own design — this form just always saves
+// a fixed 60-second window, since the server defaults (cmd/server/main.go)
+// are now 60s for both endpoints anyway. windowSec itself is no longer an
+// editable field; it's fixed to this constant on every save from this form.
+const RPM_WINDOW_SEC = 60
+
 // EditableRow mirrors GeoRateLimit's editable fields as strings (so a
 // partially-typed number field, including empty, is representable while
 // the user is still typing) plus the two read-only usage fields pulled
 // straight from the last successful load/save.
+//
+// windowSec is kept (read-only, not rendered as an input) purely so the
+// UI can warn when a loaded row's actual window isn't RPM_WINDOW_SEC —
+// see the "non-60s window" notice in the table. Saving from this form
+// always overwrites it to RPM_WINDOW_SEC regardless of what was loaded.
 interface EditableRow {
   endpoint: string
-  windowSec: string
-  maxCalls: string
+  windowSec: number
+  rpm: string
   dailyMax: string
   usedToday: number
   usedDay: string
@@ -332,8 +347,8 @@ interface EditableRow {
 function toEditableRow(limit: GeoRateLimit): EditableRow {
   return {
     endpoint: limit.endpoint,
-    windowSec: String(limit.windowSec),
-    maxCalls: String(limit.maxCalls),
+    windowSec: limit.windowSec,
+    rpm: String(limit.maxCalls),
     dailyMax: String(limit.dailyMax),
     usedToday: limit.usedToday,
     usedDay: limit.usedDay,
@@ -341,7 +356,7 @@ function toEditableRow(limit: GeoRateLimit): EditableRow {
 }
 
 function blankEditableRow(endpoint: string): EditableRow {
-  return { endpoint, windowSec: '', maxCalls: '', dailyMax: '0', usedToday: 0, usedDay: '' }
+  return { endpoint, windowSec: RPM_WINDOW_SEC, rpm: '', dailyMax: '0', usedToday: 0, usedDay: '' }
 }
 
 function GeoRateLimitsTab({ onLoggedOut }: { onLoggedOut: () => void }) {
@@ -387,21 +402,16 @@ function GeoRateLimitsTab({ onLoggedOut }: { onLoggedOut: () => void }) {
     void load()
   }, [load])
 
-  const updateField = (endpoint: string, field: 'windowSec' | 'maxCalls' | 'dailyMax', value: string) => {
+  const updateField = (endpoint: string, field: 'rpm' | 'dailyMax', value: string) => {
     setRows((prev) => (prev ?? []).map((r) => (r.endpoint === endpoint ? { ...r, [field]: value } : r)))
   }
 
   const save = async (row: EditableRow) => {
     setRowError(null)
-    const windowSec = Number(row.windowSec)
-    const maxCalls = Number(row.maxCalls)
+    const rpm = Number(row.rpm)
     const dailyMax = Number(row.dailyMax)
-    if (!Number.isFinite(windowSec) || windowSec <= 0) {
-      setRowError({ endpoint: row.endpoint, message: 'Window (sec) must be a positive number' })
-      return
-    }
-    if (!Number.isFinite(maxCalls) || maxCalls <= 0) {
-      setRowError({ endpoint: row.endpoint, message: 'Max calls must be a positive number' })
+    if (!Number.isFinite(rpm) || rpm <= 0) {
+      setRowError({ endpoint: row.endpoint, message: 'Requests/min must be a positive number' })
       return
     }
     if (!Number.isFinite(dailyMax) || dailyMax < 0) {
@@ -410,7 +420,10 @@ function GeoRateLimitsTab({ onLoggedOut }: { onLoggedOut: () => void }) {
     }
     setSavingEndpoint(row.endpoint)
     try {
-      const res = await api.updateGeoRateLimit({ endpoint: row.endpoint, windowSec, maxCalls, dailyMax })
+      // This form always saves a fixed 60-second window (RPM_WINDOW_SEC) —
+      // see that constant's comment. rpm becomes maxCalls directly since
+      // the window is exactly one minute.
+      const res = await api.updateGeoRateLimit({ endpoint: row.endpoint, windowSec: RPM_WINDOW_SEC, maxCalls: rpm, dailyMax })
       const byEndpoint = new Map(res.limits.map((l) => [l.endpoint, toEditableRow(l)]))
       setRows((prev) => (prev ?? []).map((r) => byEndpoint.get(r.endpoint) ?? r))
     } catch (err) {
@@ -437,15 +450,15 @@ function GeoRateLimitsTab({ onLoggedOut }: { onLoggedOut: () => void }) {
         </div>
         <p className="muted">
           Edits are picked up by the server within about 45 seconds, not instantly — the running process re-reads this
-          table on a background timer rather than applying every save immediately.
+          table on a background timer rather than applying every save immediately. Saving from this form always uses a
+          fixed 60-second window (requests/min), matching the server's own defaults.
         </p>
         <div className="table-scroll">
           <table>
             <thead>
               <tr>
                 <th>Endpoint</th>
-                <th>Window (sec)</th>
-                <th>Max calls / window</th>
+                <th>Requests/min (RPM)</th>
                 <th>Daily max (0 = unlimited)</th>
                 <th>Used today</th>
                 <th></th>
@@ -459,19 +472,23 @@ function GeoRateLimitsTab({ onLoggedOut }: { onLoggedOut: () => void }) {
                     <input
                       type="number"
                       min={1}
-                      value={r.windowSec}
-                      onChange={(e) => updateField(r.endpoint, 'windowSec', e.target.value)}
+                      value={r.rpm}
+                      onChange={(e) => updateField(r.endpoint, 'rpm', e.target.value)}
                       style={{ width: '6rem' }}
                     />
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      min={1}
-                      value={r.maxCalls}
-                      onChange={(e) => updateField(r.endpoint, 'maxCalls', e.target.value)}
-                      style={{ width: '6rem' }}
-                    />
+                    {/* The loaded row's actual window might not be 60s yet
+                        (e.g. a value set before this RPM-only form existed,
+                        or set through some other client) — the rpm number
+                        above would then misrepresent the real rate.
+                        Surfacing the raw window here instead of silently
+                        assuming 60s avoids the admin misjudging the actual
+                        limit; saving from this form will still overwrite it
+                        to a true 60s window regardless. */}
+                    {r.windowSec !== RPM_WINDOW_SEC && (
+                      <div className="muted" style={{ fontSize: '0.8em' }}>
+                        actual window: {r.windowSec}s (not 60s — saving will fix this)
+                      </div>
+                    )}
                   </td>
                   <td>
                     <input

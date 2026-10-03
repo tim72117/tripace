@@ -37,6 +37,9 @@ import (
 // 縣市都有時,「花蓮 大富火車站」比單查「大富火車站」更準確)——直接串接在
 // 查詢字串前面組成實際送給 Geocoding API 的查詢字串。
 func (s *Server) handleGeocodeEntry(w http.ResponseWriter, r *http.Request) {
+	if !s.throttleGeoQueryByUser(w, r) {
+		return
+	}
 	entryID := r.PathValue("id")
 
 	var body struct {

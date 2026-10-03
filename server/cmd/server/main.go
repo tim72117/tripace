@@ -69,17 +69,25 @@ func main() {
 	// 介紹」這條已評估過需要拒絕型限流保護的路徑,其餘 endpoint 目前
 	// 沒有同等急迫性,不需要跟著一起收緊。
 	//
-	// 兩個 endpoint 各自獨立的視窗長度與上限次數(不共用同一份視窗)——
-	// 地點照片下載是依張數計費、風險最高的一種呼叫,給它更長的視窗
-	// 搭配更少的次數(預設 10 分鐘視窗內最多 1 次);地點資訊查詢相對
-	// 便宜,給它較短的視窗(預設 10 秒視窗內最多 1 次)。這兩組預設值都
-	// 是刻意保守但不會擋到正常使用的量級——一般使用者操作(點擊地圖
-	// POI 觸發單點地點介紹)遠低於這個頻率,精確數字之後可以再依實際
-	// 觀察調整。
-	geoRateLimitPlaceGetWindowSec := flag.Int64("geo-rate-limit-place-get-window-sec", 10, "對 places.get(地點資訊查詢)限流的視窗長度(秒)")
-	geoRateLimitPlaceGetMaxCalls := flag.Int("geo-rate-limit-place-get-max-calls", 1, "對 places.get(地點資訊查詢)視窗內最多可放行的呼叫次數,超過直接拒絕")
-	geoRateLimitPhotoMediaWindowSec := flag.Int64("geo-rate-limit-photo-media-window-sec", 5, "對 places.photoMedia(地點照片下載,依張數計費)限流的視窗長度(秒)")
-	geoRateLimitPhotoMediaMaxCalls := flag.Int("geo-rate-limit-photo-media-max-calls", 1, "對 places.photoMedia(地點照片下載)視窗內最多可放行的呼叫次數,超過直接拒絕")
+	// 2026-10 使用者明確要求把這兩個 endpoint 的視窗單位從「秒」改成
+	// 「分鐘」:原本 10 秒/1 次、5 秒/1 次的視窗太短,AI 對話連續查詢多個
+	// 景點時容易在短短幾秒內就把額度用完、被固定視窗的邊界效應卡住
+	// (見 RateLimiter 檔頭對這個邊緣效應的完整說明)。兩個 endpoint 視窗
+	// 長度都改成 60 秒。
+	//
+	// places.get(地點資訊查詢)上限次數:使用者後續再次明確要求改成
+	// 「一分鐘 300 次」(比先前以「每秒 1 次」換算出的 60 次更寬鬆)——
+	// 地點資訊查詢相對便宜,這個數字已經足夠覆蓋正常使用情境下的連續
+	// 查詢節奏,仍保有「總量有上限」的核心防護目的。
+	//
+	// places.photoMedia(地點照片下載,依張數計費)維持以「每秒 1 次」
+	// 換算出的 60 秒視窗 60 次上限——使用者只明確要求調整 places.get 的
+	// 數字,photoMedia 風險較高(依張數計費),沒有要求跟著放寬,維持原本
+	// 換算結果。
+	geoRateLimitPlaceGetWindowSec := flag.Int64("geo-rate-limit-place-get-window-sec", 60, "對 places.get(地點資訊查詢)限流的視窗長度(秒)")
+	geoRateLimitPlaceGetMaxCalls := flag.Int("geo-rate-limit-place-get-max-calls", 300, "對 places.get(地點資訊查詢)視窗內最多可放行的呼叫次數,超過直接拒絕")
+	geoRateLimitPhotoMediaWindowSec := flag.Int64("geo-rate-limit-photo-media-window-sec", 60, "對 places.photoMedia(地點照片下載,依張數計費)限流的視窗長度(秒)")
+	geoRateLimitPhotoMediaMaxCalls := flag.Int("geo-rate-limit-photo-media-max-calls", 60, "對 places.photoMedia(地點照片下載)視窗內最多可放行的呼叫次數,超過直接拒絕")
 	geoRateLimitPhotoMediaDailyMax := flag.Int("geo-rate-limit-photo-media-daily-max", 100, "對 places.photoMedia(地點照片下載)每日總額度上限,0 表示不限制")
 	// geoFetchPhotos:要不要真的向 Google Photo Media API 下載照片(見
 	// geo.SetPhotosEnabled 的完整說明)。預設關閉——Photo Media 依張數
