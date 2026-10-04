@@ -12,11 +12,32 @@ import { useScrollProgress } from '../hooks/useScrollProgress';
 import { trackEvent } from '../analytics';
 import './JiufenPage.css';
 
-// SEO_TITLE/SEO_DESCRIPTION:這個頁面專屬的 <title>/<meta description>,
-// 透過下方 <Helmet> 蓋掉 index.html 裡首頁共用的預設值(見該檔案的完整
-// 說明)——搜尋引擎/社群分享預覽才能看到「九份」而非「Tripace 首頁」的
-// 標題與描述。文案沿用首頁「目的地」列表區塊(HomePage.tsx)跟
-// sitemap.xml 既有註解已經在用的同一句簡介,三處保持一致的措辭。
+// SEO_TITLE/SEO_DESCRIPTION/SEO_URL:這個頁面專屬的文案。
+// 2026-10 修正(兩輪):description/canonical/og:*/twitter:* 這幾個標籤
+// 原本也透過下方 <Helmet> 直接蓋掉 index.html 裡首頁共用的預設值——但
+// 實測(Search Console 即時測試工具的 HTML 分頁,看 Googlebot 真正渲染
+// 後拿到的內容)發現 react-helmet-async 不會移除 index.html 裡原有的
+// 靜態標籤,只會在旁邊追加一份自己管理的新標籤,導致 JS 渲染後 <head>
+// 同時存在兩個互相矛盾的 <link rel="canonical">(一個指向首頁、一個
+// 指向這個頁面),這本身是會讓 Google 直接忽略所有 canonical hint 的
+// 錯誤訊號。改成這幾個標籤改由 server/cmd/server/seo_meta.go 的
+// seoMetaByPath 統一輸出(唯一事實來源),不再經過下方 <Helmet> 宣告。
+//
+// 第二輪 code review 抓到:上一輪連 SEO_TITLE/<title> 也一併移除了,
+// 這是過度修正——react-helmet-async 對 <title> 的實作是直接改寫
+// document.title(單一值覆寫,不是像 meta/link 那樣用 DOM 插入新節點),
+// 本來就不會出現「index.html 的 <title> 殘留 + Helmet 插入第二個
+// <title>」這種重複衝突,只有 meta/link 標籤才有這個問題。拿掉
+// <title> 會讓 SPA 內部換頁(例如從這頁點 ExploreOtherCities 的連結
+// 連到京都頁)時分頁標題不會跟著更新、GA4 的 page_title 也會記錄成
+// 錯誤的值——Googlebot 每次都是整頁重新載入,不受影響,但實際使用者
+// 體感跟分析數據會受影響,故補回來。SEO_TITLE 現在只用於下方
+// <Helmet><title>,不再用於 meta/og/twitter(那些由 server 端輸出)。
+// SEO_DESCRIPTION/SEO_URL 仍用於下方 JSON-LD structured data(那個
+// server 端沒有處理,仍交給前端動態生成)。內容必須跟 seo_meta.go 的
+// seoMetaByPath["/jiufen"] 保持一致,修改其中一邊記得同步另一邊。
+// 文案沿用首頁「目的地」列表區塊(HomePage.tsx)跟 sitemap.xml 既有
+// 註解已經在用的同一句簡介,三處保持一致的措辭。
 const SEO_TITLE = '九份——礦業興衰與人文重生的山城故事 | Tripace'
 const SEO_DESCRIPTION = '從基隆山的地形限制，到金瓜石礦業的興衰，再到老街、茶樓與海景交錯的人文重生——跟著 Tripace 走一趟九份的散策路線，讀懂這座山城為何長成現在的樣子。'
 const SEO_URL = 'https://tripace.shuttle.tools/jiufen'
@@ -136,19 +157,15 @@ export function JiufenPage() {
   return (
     <div className="jiufen-page" data-theme={theme ?? undefined}>
       <Helmet>
-        <title>{SEO_TITLE}</title>
-        <meta name="description" content={SEO_DESCRIPTION} />
-        <link rel="canonical" href={SEO_URL} />
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content={SEO_URL} />
-        <meta property="og:title" content={SEO_TITLE} />
-        <meta property="og:description" content={SEO_DESCRIPTION} />
-        <meta property="og:image" content={`${LANDING_ASSETS_BASE}/jiufen/n0.jpg`} />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={SEO_TITLE} />
-        <meta name="twitter:description" content={SEO_DESCRIPTION} />
-        <meta name="twitter:image" content={`${LANDING_ASSETS_BASE}/jiufen/n0.jpg`} />
-        {/* JSON-LD 結構化資料——搜尋引擎（主要是 Google）讀這段來產生
+        {/* <title> 保留在這裡(見上方 SEO_TITLE 常數的完整說明)——
+            react-helmet-async 對 title 是直接覆寫 document.title,不會
+            跟 index.html 的靜態 <title> 重複/衝突,SPA 內部換頁時仍需要
+            它才能正確更新分頁標題。description/canonical/og 與 twitter
+            系列標籤已移除——這些是用 DOM 插入新節點、不會移除原有標籤,
+            改由 server/cmd/server/seo_meta.go 的 seoMetaByPath 統一輸出。
+            og:type/twitter:card 這兩個固定值(不隨頁面變化)本來就跟
+            index.html 的首頁預設值相同,直接沿用、不需要個別頁面覆寫。
+            JSON-LD 結構化資料——搜尋引擎（主要是 Google）讀這段來產生
             豐富搜尋結果（rich result，例如搜尋列表下方多顯示地點資訊、
             麵包屑導覽路徑），純粹是曝光/點閱率的加分項，不影響頁面本身
             的渲染或排序邏輯，錯了也不會讓頁面壞掉，故直接內嵌在
@@ -159,6 +176,7 @@ export function JiufenPage() {
             STOPS 陣列動態產生每個敘事段落對應的地標,讓搜尋引擎理解
             這個頁面實際涵蓋哪些具名地點(基隆山/豎崎路/昇平戲院等),
             而不是只從純文字內容猜測。 */}
+        <title>{SEO_TITLE}</title>
         <script type="application/ld+json">
           {JSON.stringify({
             '@context': 'https://schema.org',

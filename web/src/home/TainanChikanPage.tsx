@@ -13,7 +13,8 @@ import './TainanChikanPage.css';
 
 // TainanChikanPage — 赤崁・府城「老地方的前世今生」兩日遊介紹頁,外殼
 // 架構對齊 JiufenPage.tsx/KyotoPage.tsx/TainanPage.tsx 模式(互動地圖+
-// 進度導覽點+分段長頁+Helmet SEO meta)。2026-10 從內部試做頁
+// 進度導覽點+分段長頁+Helmet 管理 title 與 JSON-LD,其餘 SEO meta 見
+// 下方 SEO_TITLE/SEO_DESCRIPTION 的完整說明)。2026-10 從內部試做頁
 // (/tainan-chikan-draft)轉正成正式路由 /tainan-chikan——敘事主軸的
 // 沿革見下方 STOPS 的完整說明(最初是「建築工法×職人技藝」主題構想,
 // 後改版成現在的兩日遊遊記)。
@@ -38,9 +39,13 @@ import './TainanChikanPage.css';
 // 靜默不開啟任何卡片,使用者進頁面看到的會是沒有主題卡片的空地圖。
 //
 // SEO_TITLE/SEO_DESCRIPTION/SEO_URL:對齊 JiufenPage.tsx 的既有模式
-// (見該檔案同名常數的完整說明)——透過下方 <Helmet> 蓋掉 index.html
-// 裡首頁共用的預設值,搜尋引擎/社群分享預覽才能看到「赤崁・府城」而非
-// 「Tripace 首頁」的標題與描述。
+// (見該檔案同名常數的完整說明——2026-10 修正(兩輪):description/
+// canonical/og 與 twitter 系列標籤已改由 server 端 seoMetaByPath 統一
+// 輸出;第二輪 code review 抓到 SEO_TITLE/<title> 不該一併移除——
+// react-helmet-async 對 title 是直接覆寫 document.title,不會重複/
+// 衝突,故保留。SEO_DESCRIPTION/SEO_URL 仍用於下方 JSON-LD)。內容必須
+// 跟 seo_meta.go 的 seoMetaByPath["/tainan-chikan"] 保持一致,修改
+// 其中一邊記得同步另一邊。
 const SEO_TITLE = '赤崁・府城兩日遊——老地方的前世今生 | Tripace'
 const SEO_DESCRIPTION = '消防塔變史料館、州廳變文學館、老屋變民宿、百貨公司關了又重開——走一趟赤崁樓周邊，看台南這些老地方如何活成現在的樣子，兩天一夜的歷史建築活化路線。'
 const SEO_URL = 'https://tripace.shuttle.tools/tainan-chikan'
@@ -250,21 +255,19 @@ export function TainanChikanPage() {
   return (
     <div className="tainan-chikan-page" data-theme={theme ?? undefined}>
       <Helmet>
-        <title>{SEO_TITLE}</title>
-        <meta name="description" content={SEO_DESCRIPTION} />
-        <link rel="canonical" href={SEO_URL} />
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content={SEO_URL} />
-        <meta property="og:title" content={SEO_TITLE} />
-        <meta property="og:description" content={SEO_DESCRIPTION} />
-        <meta property="og:image" content={`${PHOTO_TAGGING_PREVIEW_BASE}/IMG_9812.webp`} />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={SEO_TITLE} />
-        <meta name="twitter:description" content={SEO_DESCRIPTION} />
-        <meta name="twitter:image" content={`${PHOTO_TAGGING_PREVIEW_BASE}/IMG_9812.webp`} />
-        {/* JSON-LD 結構化資料——對齊 JiufenPage.tsx 的既有模式(見該檔案
+        {/* <title> 保留在這裡——react-helmet-async 對 title 是直接覆寫
+            document.title,單一值覆寫不會重複/衝突,SPA 內部換頁時仍
+            需要它才能正確更新分頁標題。description/canonical/og 與
+            twitter 系列標籤則已移除——那些是用 DOM insert 新節點、不會
+            移除 index.html 原有的靜態標籤,兩份並存會互相矛盾(見上方
+            SEO_TITLE/SEO_DESCRIPTION 常數的完整說明),改由
+            server/cmd/server/seo_meta.go 的 seoMetaByPath 統一輸出。
+            og:type/twitter:card 這兩個固定值(不隨頁面變化)本來就跟
+            index.html 的首頁預設值相同,直接沿用、不需要個別頁面覆寫。
+            JSON-LD 結構化資料——對齊 JiufenPage.tsx 的既有模式(見該檔案
             對應區塊的完整說明),純粹是曝光/點閱率的加分項,不影響頁面
             本身的渲染或排序邏輯。 */}
+        <title>{SEO_TITLE}</title>
         <script type="application/ld+json">
           {JSON.stringify({
             '@context': 'https://schema.org',

@@ -21,8 +21,13 @@ import './KyotoPage.css';
 // GCS 這個路徑(僅搬遷 full 尺寸,thumb 版本沒有對應用途,未搬遷)。
 const LANDING_ASSETS_BASE = 'https://storage.googleapis.com/shuttle-tripace-web-assets/landing'
 
-// SEO_TITLE/SEO_DESCRIPTION——見 JiufenPage.tsx 對應常數的完整說明,同一
-// 套 <Helmet> 動態 meta 機制,文案對齊首頁「目的地」列表區塊的簡介。
+// SEO_TITLE/SEO_DESCRIPTION——見 JiufenPage.tsx 對應常數的完整說明
+// (2026-10 修正,兩輪:description/canonical/og 與 twitter 系列標籤已
+// 改由 server 端 seoMetaByPath 統一輸出;第二輪 code review 抓到
+// SEO_TITLE/<title> 不該一併移除——react-helmet-async 對 title 是直接
+// 覆寫 document.title,不會跟 index.html 的靜態 <title> 重複/衝突,
+// SPA 內部換頁時仍需要它才能正確更新分頁標題,故保留),文案對齊首頁
+// 「目的地」列表區塊的簡介。
 const SEO_TITLE = '京都・清水寺——地形、信仰與人文交織的東山散策 | Tripace'
 const SEO_DESCRIPTION = '從清水寺的懸崖地形，到八坂神社的參拜人潮，再到祇園花見小路的茶屋文化——跟著 Tripace 走一趟京都東山的散策路線，讀懂地質、信仰、商業與人文如何層層疊加成這座古都。'
 const SEO_URL = 'https://tripace.shuttle.tools/kyoto-kiyomizu'
@@ -115,21 +120,17 @@ export function KyotoPage() {
   return (
     <div className="kyoto-page" data-theme={theme ?? undefined}>
       <Helmet>
-        <title>{SEO_TITLE}</title>
-        <meta name="description" content={SEO_DESCRIPTION} />
-        <link rel="canonical" href={SEO_URL} />
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content={SEO_URL} />
-        <meta property="og:title" content={SEO_TITLE} />
-        <meta property="og:description" content={SEO_DESCRIPTION} />
-        <meta property="og:image" content={`${LANDING_ASSETS_BASE}/kyoto/n1.jpg`} />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={SEO_TITLE} />
-        <meta name="twitter:description" content={SEO_DESCRIPTION} />
-        <meta name="twitter:image" content={`${LANDING_ASSETS_BASE}/kyoto/n1.jpg`} />
-        {/* JSON-LD 結構化資料——見 JiufenPage.tsx 同一段落的完整說明,
+        {/* <title> 保留(見上方 SEO_TITLE 常數的完整說明)——
+            react-helmet-async 對 title 是直接覆寫 document.title,不會
+            重複/衝突。description/canonical/og 與 twitter 系列標籤已
+            移除——改由 server/cmd/server/seo_meta.go 的 seoMetaByPath
+            統一輸出。og:type/twitter:card 這兩個固定值(不隨頁面變化)
+            本來就跟 index.html 的首頁預設值相同,直接沿用、不需要個別
+            頁面覆寫。
+            JSON-LD 結構化資料——見 JiufenPage.tsx 同一段落的完整說明,
             這裡是同一套機制的京都版本,containsPlace 用 STOPS 陣列動態
             產生清水寺/八坂神社/祇園・花見小路等具名地標。 */}
+        <title>{SEO_TITLE}</title>
         <script type="application/ld+json">
           {JSON.stringify({
             '@context': 'https://schema.org',

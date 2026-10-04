@@ -2,6 +2,18 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.21.5 — 2026-10-04
+
+### 修正
+
+- 修正子頁面（九份/京都・清水寺/台南・安平/赤崁・府城）在 Google 等搜尋引擎索引時，`<title>`/`canonical`/`description`/OG 與 Twitter 分享卡片標籤全部錯誤指向首頁的問題——本站是純前端渲染的 SPA，所有路由原本共用同一份 `index.html`，搜尋引擎第一次抓取、JS 尚未執行時讀到的都是首頁內容，很可能是這些子頁面始終沒有被獨立收錄的根因之一。
+- 修正前端 `react-helmet-async` 動態改寫 `<head>` 時，不會移除 `index.html` 原有的靜態標籤、只會在旁邊追加一份，導致 JS 執行完成後同時存在兩個互相矛盾的 `canonical`（一個指向首頁、一個指向正確頁面）的問題——Google 官方文件記載多個互相矛盾的 canonical 會被直接忽略。改由 server 端統一輸出 `title`/`description`/`canonical`/`og:*`/`twitter:*`，作為唯一事實來源；四個子頁面的 React 元件僅保留 `<title>`（覆寫 `document.title` 不會重複/衝突）與 JSON-LD structured data，其餘重複宣告已移除。
+- 更新 `sitemap.xml` 中受影響四個子頁面的 `lastmod`。
+
+### 內部
+
+- `Dockerfile` 新增建置階段測試，驗證真實前端建置產物的 `index.html` 仍包含預期的 SEO 標籤片段；若比對目標找不到、或測試因拼字錯誤等原因沒有真正執行，建置會直接失敗，不會讓壞掉的 SEO 設定悄悄上線。
+
 ## v0.21.4 — 2026-10-04
 
 ### 新增

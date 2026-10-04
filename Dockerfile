@@ -106,6 +106,35 @@ RUN rm -rf /src/server/cmd/server/web/dist/* /src/server/cmd/server/webadmin/dis
 COPY --from=web-build /web/dist/. /src/server/cmd/server/web/dist/
 COPY --from=admin-build /webadmin/dist/. /src/server/cmd/server/webadmin/dist/
 
+# 這裡是整個 build 流程裡唯一真正拿到前端 build 產物(而非 checked-in
+# 的 placeholder index.html,見上方 rm -rf 的說明)的時間點——
+# seo_meta_test.go 的測試(驗證 applySEOMeta() 字串取代是否仍精確比對
+# web/dist/index.html,見該檔案的完整說明)在開發機/一般 CI 跑 go test
+# 時,讀到的永遠是 placeholder、全部被判定成「還沒 build」而 SKIP,從未
+# 真正驗證過;唯一能讓這組測試真正執行的地方就是這裡(真實 dist 已複製
+# 進 embed 目錄之後、go build 之前)。不在這裡跑,這組測試形同虛設——
+# index.html 格式只要改了(例如前端調整 meta 標籤縮排、Vite 版本升級
+# 改變輸出格式),這個字串取代邏輯會靜默失效(找不到比對目標就直接跳過,
+# 不報錯),卻完全不會被任何地方發現,直到真的重新去 curl 正式環境才會
+# 注意到。-run 只跑這組測試,不跑全部 server 測試套件(那些不需要依賴
+# 真實前端 build 產物,放在一般開發流程的 go test 裡執行即可,不需要
+# 綁在這個已經很長的 Docker build 階段)。
+#
+# 2026-10 code review 抓到:go test -run 的 pattern 對不到任何測試時
+# (例如測試改名、拼字打錯),只會印一行「no tests to run」並仍然以
+# exit code 0 結束,不會讓這個 RUN 步驟失敗——Docker build 會誤以為
+# 驗證通過,實際上這組測試完全沒有被執行過。兩道防線補上這個洞:
+# 1. 先用 go test -list 把 pattern 應該比對到的測試名稱列出來,用 grep
+#    -c 確認剛好對到 4 個(跟下面實際要跑的測試數量一致),對不到就讓
+#    這一步直接失敗,而不是等 go test 本身默默跳過。
+# 2. SEO_META_TEST_REQUIRE_REAL_BUILD=1 讓 readRealIndexHTML(見
+#    seo_meta_test.go)在這個階段原本該 skip 的情況(web/dist/index.html
+#    讀取失敗、或仍是 placeholder)直接判定測試失敗,而不是放行──這個
+#    階段理論上一定拿得到真實建置產物(見上方 COPY --from=web-build 的
+#    說明),不該出現 skip。
+RUN cd /src/server && test "$(go test ./cmd/server/ -list 'TestApplySEOMeta|TestStaticHandler' | grep -c '^Test')" = "4"
+RUN cd /src/server && SEO_META_TEST_REQUIRE_REAL_BUILD=1 go test ./cmd/server/ -run 'TestApplySEOMeta|TestStaticHandler' -v
+
 # 靜態編譯:關 CGO 產出不依賴 libc 的單一執行檔,可放進極小的 base image。
 RUN cd /src/server && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
     -o /out/server ./cmd/server

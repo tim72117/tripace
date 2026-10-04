@@ -10,10 +10,12 @@ import styles from './ExploreOtherCities.module.css'
 // 的值目前完全相同,重複一份字串常數的風險遠低於建立跨頁的匯出依賴。
 const LANDING_ASSETS_BASE = 'https://storage.googleapis.com/shuttle-tripace-web-assets/landing'
 
-// CityLink——「選一個地方，開始探索」卡片的最小資料形狀。photo 直接
-// 沿用各城市頁自己當作 og:image/代表圖使用的同一張圖(見呼叫端各自的
-// n0.jpg/n1.jpg 編號差異,四頁的檔名編號並未統一,故在 CITIES 常數裡
-// 各自寫好完整網址,不嘗試從 slug 推導檔名)。
+// CityLink——「選一個地方，開始探索」卡片的最小資料形狀。photo 沿用
+// 各城市頁的代表圖(2026-10 起 og:image 已改由 server 端
+// seoMetaByPath[path].image 統一輸出,不再是前端各頁自己宣告;這裡的
+// photo 只用於這個卡片本身的畫面呈現)。見呼叫端各自的 n0.jpg/n1.jpg
+// 編號差異,四頁的檔名編號並未統一,故在 CITIES 常數裡各自寫好完整
+// 網址,不嘗試從 slug 推導檔名。
 interface CityLink {
   slug: string
   path: string

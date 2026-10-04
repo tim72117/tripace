@@ -34,8 +34,17 @@ const ANPING_FORT_PHOTO_URL = 'https://storage.googleapis.com/shuttle-tripace-ph
 // 歷史編號、不重新排序的結果,不是遺漏。
 const LANDING_ASSETS_BASE = 'https://storage.googleapis.com/shuttle-tripace-web-assets/landing'
 
-// SEO_TITLE/SEO_DESCRIPTION — 見 JiufenPage.tsx 對應常數的完整說明,同一套
-// <Helmet> 動態 meta 機制。
+// SEO_TITLE/SEO_DESCRIPTION — 見 JiufenPage.tsx 對應常數的完整說明。
+// 2026-10 修正(兩輪):description/canonical/og 與 twitter 系列標籤已
+// 改由 server/cmd/server/seo_meta.go 的 seoMetaByPath 統一輸出(見該
+// 檔案開頭的完整說明:react-helmet-async 不會移除 index.html 裡原有的
+// 靜態標籤,只會在旁邊追加一份,導致 JS 渲染後同時存在兩個互相矛盾的
+// canonical);第二輪 code review 抓到 SEO_TITLE/<title> 不該一併
+// 移除——react-helmet-async 對 title 是直接覆寫 document.title,不會
+// 重複/衝突,SPA 內部換頁時仍需要它才能正確更新分頁標題,故保留。
+// SEO_DESCRIPTION/SEO_URL 仍用於下方 JSON-LD structured data(那個
+// server 端沒有處理,仍交給前端動態生成)。內容必須跟 seo_meta.go 的
+// seoMetaByPath["/tainan-anping"] 保持一致,修改其中一邊記得同步另一邊。
 const SEO_TITLE = '台南・安平——荷蘭城堡與老街風土交織的港町故事 | Tripace'
 const SEO_DESCRIPTION = '從熱蘭遮城的築城選址，到運河淤積後老街的重生，再到蜜餞、豆花、冬瓜茶交織的巷弄風土——跟著 Tripace 走一趟台南安平的散策路線，讀懂這座港町為何長成現在的樣子。'
 const SEO_URL = 'https://tripace.shuttle.tools/tainan-anping'
@@ -135,20 +144,20 @@ export function TainanPage() {
   return (
     <div className="tainan-page" data-theme={theme ?? undefined}>
       <Helmet>
+        {/* <title> 保留在這裡——react-helmet-async 對 title 是直接覆寫
+            document.title,單一值覆寫不會重複/衝突,SPA 內部換頁(例如從
+            首頁點進這頁)時仍需要它才能正確更新分頁標題與 GA4 等工具讀到
+            的頁面標題。description/canonical/og 與 twitter 系列標籤則已
+            移除——那些是用 DOM insert 新節點、不會移除 index.html 原有的
+            靜態標籤,兩份並存會互相矛盾(見上方 SEO_DESCRIPTION 常數的
+            完整說明),改由 server/cmd/server/seo_meta.go 的 seoMetaByPath
+            統一輸出。og:type/twitter:card 這兩個固定值(不隨頁面變化)
+            本來就跟 index.html 的首頁預設值相同,直接沿用、不需要個別
+            頁面覆寫。
+            JSON-LD 結構化資料 — 見 JiufenPage.tsx 同一段落的完整說明,
+            這裡是同一套機制的台南版本,server 端沒有處理,仍交給前端
+            動態生成。 */}
         <title>{SEO_TITLE}</title>
-        <meta name="description" content={SEO_DESCRIPTION} />
-        <link rel="canonical" href={SEO_URL} />
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content={SEO_URL} />
-        <meta property="og:title" content={SEO_TITLE} />
-        <meta property="og:description" content={SEO_DESCRIPTION} />
-        <meta property="og:image" content={`${LANDING_ASSETS_BASE}/tainan/n1.jpg`} />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={SEO_TITLE} />
-        <meta name="twitter:description" content={SEO_DESCRIPTION} />
-        <meta name="twitter:image" content={`${LANDING_ASSETS_BASE}/tainan/n1.jpg`} />
-        {/* JSON-LD 結構化資料 — 見 JiufenPage.tsx 同一段落的完整說明,這裡是
-            同一套機制的台南版本。 */}
         <script type="application/ld+json">
           {JSON.stringify({
             '@context': 'https://schema.org',

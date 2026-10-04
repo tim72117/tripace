@@ -22,15 +22,18 @@ if (import.meta.env.PROD) {
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     {/* HelmetProvider:讓 JiufenPage/KyotoPage 這類介紹頁能各自用
-        <Helmet> 宣告專屬的 title/description/OG/canonical(見這兩個檔案
-        的完整說明)——整站是純 client-side SPA,index.html 裡的這批 meta
-        標籤原本是所有路由共用的一份,搜尋引擎/社群分享 bot 看到的永遠是
-        首頁的標題與描述,不是實際瀏覽頁面的內容。react-helmet-async 在
-        client 端掛載後動態改寫 <head>,支援執行 JS 的爬蟲(Googlebot 等
-        現代爬蟲都會執行 JS)可以正確讀到每頁各自的 meta;不支援 JS 的
-        傳統爬蟲/純文字分享預覽仍會退回 index.html 的預設值,這是
-        client-side rendering 架構的已知限制,之後若要完全解決需要
-        SSR/預渲染,不在這次改動範圍內。 */}
+        <Helmet> 宣告專屬的 <title>(見這兩個檔案的完整說明)。
+        description/OG/canonical 這類 meta/link 標籤改由
+        server/cmd/server/seo_meta.go 的 seoMetaByPath 在 server 端
+        統一輸出為唯一事實來源(2026-10 修正)——react-helmet-async 對
+        這類標籤是用 DOM insert 新節點、不會移除 index.html 原有的
+        靜態標籤,若仍由前端宣告,JS 執行後會同時存在兩份互相矛盾的
+        宣告(例如兩個 canonical),Google 官方文件記載這種情況會直接
+        忽略所有 canonical hint。title 則不受影響,保留在 Helmet——
+        react-helmet-async 對 title 是直接覆寫 document.title,單一值
+        覆寫不會重複/衝突,SPA 內部換頁時仍需要它才能正確更新分頁標題。
+        不支援 JS 的傳統爬蟲/純文字分享預覽仍會退回 index.html 的
+        server 端輸出值(有對應路由時已是該頁正確值,見 seo_meta.go)。 */}
     <HelmetProvider>
       <App />
     </HelmetProvider>
