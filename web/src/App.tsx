@@ -85,6 +85,10 @@ const PublicViewScreen = lazy(() => import('./trip/PublicViewScreen').then((m) =
 const PacePage = lazy(() => import('./pace/PacePage').then((m) => ({ default: m.PacePage })))
 const PhoneContent = lazy(() => import('./PhoneContent').then((m) => ({ default: m.PhoneContent })))
 const NotFoundPage = lazy(() => import('./home/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
+// ScrollTimelineDemoPage:「文案隨捲動、左側時間軸漸進顯示錨點」互動機制
+// 的獨立示範頁,見該檔案開頭說明——內部驗證用假資料,比照 /demo/pace 的
+// 既有先例掛在 /demo/ 底下。
+const ScrollTimelineDemoPage = lazy(() => import('./home/ScrollTimelineDemoPage').then((m) => ({ default: m.ScrollTimelineDemoPage })))
 // AIPlanTimelinePage(plan-ai-sim):獨立公開頁,從 plan-ai-sim 分支原封
 // 不動搬過來的「AI 安排行程」模擬展示原型(見 home/plan-ai-sim/ 目錄的
 // 完整說明)。固定接純前端假資料(attractionPool.ts),不需要登入、不
@@ -261,6 +265,11 @@ export function App() {
               </div>
             }
           />
+          {/* /demo/scroll-timeline:「文案隨捲動、左側時間軸漸進顯示錨點」
+              互動機制的獨立示範頁,見 ScrollTimelineDemoPage.tsx 開頭說明——
+              固定假文案,跟 /demo/pace 一樣是內部驗證用的公開頁,不需要
+              登入。 */}
+          <Route path="/demo/scroll-timeline" element={<ScrollTimelineDemoPage />} />
           {/* /app 路徑:主要應用畫面本體(套 iPhone 外框,寬螢幕自動切桌面版佈局)。
               :panelMode 是選填的路徑參數(對應桌面版 side panel/手機版 demo 抽屜
               目前顯示的面板,見 DesktopLayout.tsx/PhoneContent.tsx),用 "?"

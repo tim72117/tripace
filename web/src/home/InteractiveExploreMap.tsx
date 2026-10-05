@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ClientConfig, GeoAttraction } from '../api'
 import { fetchPublicGeoAttractions, fetchPublicGeoPlaceDetails, fetchPublicGeoPlacePhotoAssets } from '../api'
 import { NativeMapBase, type MapHandle } from '../geo-planning/NativeMapBase'
@@ -198,6 +198,19 @@ export function InteractiveExploreMap({
   // 寫死的常數,寫程式當下不會知道資料庫 id),內部找到對應的 attraction
   // 後才改記住它的 id(見下方 useEffect)。
   defaultOpenTheme,
+  // focusedTheme:外部「受控」切換要聚焦哪個主題點的名稱——跟
+  // defaultOpenTheme 不同,defaultOpenTheme 只在 attractions 剛載入、
+  // openThemeId 還是初始值 null 時套用「一次」(見該 prop 完整說明,
+  // 套用後的 useEffect guard 不會再反應後續變化);這個 prop 則是每次
+  // 改成不同的名稱字串都會重新生效,切換 openThemeId 並把地圖中心
+  // panTo 過去。用途:呼叫端(ScrollTimeline.tsx,見該檔案開頭
+  // 完整說明)讓這個地圖元件從一開始就常駐掛載(只是用 CSS 隱藏,不是
+  // 條件渲染卸載),使用者捲動/點選切換到不同地點時,不需要整個重新
+  // mount 這個元件(重新建圖、重新打 API)就能把地圖「移」過去新的
+  // 地點——未傳(undefined,其餘既有呼叫端沿用原行為)時完全不影響
+  // 既有城市介紹頁,只有 defaultOpenTheme 的「一次性」自動展開行為
+  // 繼續運作。
+  focusedTheme,
   // initialZoom:地圖初始縮放層級——未傳(undefined)時退回模組層級的
   // INITIAL_ZOOM(15,見該常數完整說明),對齊原本唯一呼叫端(HomePage.tsx)
   // 不需要改動呼叫方式就能繼續運作。JiufenPage.tsx 傳更大的值(見該檔案
@@ -219,6 +232,7 @@ export function InteractiveExploreMap({
   city?: string
   externalTheme?: Theme
   defaultOpenTheme?: string
+  focusedTheme?: string
   initialZoom?: number
   centerNorthOffsetKm?: number
 } = {}) {
@@ -503,6 +517,27 @@ export function InteractiveExploreMap({
       map.panTo(position)
     }
   }, [mapHandle.mapRef, setHoveredAttraction])
+
+  // focusedTheme 受控切換——見該 prop 開頭的完整說明。用 ref 記住上一次
+  // 真正處理過的名稱,而非只靠 useEffect 的 deps 陣列判斷「有沒有變」,
+  // 是因為呼叫端可能重複傳入同一個名稱字串(例如使用者捲動離開又捲回
+  // 同一個錨點)——這時地圖已經在那個主題點上,不需要重新 setOpenThemeId/
+  // panTo 一次。themePoints 尚未載入完成(attractions 還沒查到)時先
+  // 不處理,等 themePoints 有內容的那次重新渲染會自然再跑一次這個
+  // effect(deps 包含 themePoints)。
+  const lastFocusedThemeRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!focusedTheme) return
+    if (focusedTheme === lastFocusedThemeRef.current) return
+    const match = themePoints.find((t) => t.attraction.name === focusedTheme)
+    if (!match || match.attraction.id == null) return
+    lastFocusedThemeRef.current = focusedTheme
+    setOpenThemeId(match.attraction.id)
+    const map = mapHandle.mapRef.current
+    if (map) {
+      map.panTo({ lat: match.attraction.lat, lng: match.attraction.lng })
+    }
+  }, [focusedTheme, themePoints, mapHandle.mapRef])
 
   useAttractionOverlays({
     mapRef: mapHandle.mapRef,

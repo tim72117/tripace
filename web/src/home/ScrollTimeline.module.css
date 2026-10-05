@@ -1,0 +1,245 @@
+/* ScrollTimeline——沿用 CityPageFooter.module.css/ExploreOtherCities.module.css
+   的既有手法(見該二檔案開頭說明):不在這個元件內重新定義
+   --paper/--ink/--ink-soft/--line,直接讀呼叫端頁面作用域已經定義好的
+   同名變數;強調色改用這個元件專屬的中性變數名 --timeline-accent(同
+   --footer-accent/--explore-accent 的既有模式),呼叫端自行指向自己
+   頁面的強調色(--vermilion 或 --brick)。 */
+
+.layout {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 640px) {
+  .layout {
+    grid-template-columns: 64px 1fr;
+    gap: 8px;
+  }
+}
+
+/* 左側時間軸——position: sticky 固定在視窗內,文案捲動時時間軸本身不動,
+   只有裡面渲染的節點隨目前錨點增減,造成「時間軸跟著捲動前進」的錯覺
+   (實際上是內容在變,不是時間軸容器在移動)。 */
+.timeline {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+}
+
+.timelineTrack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+
+/* timelineTrack::before:貫穿 3 個固定欄位(prev/current/next,見
+   ScrollTimeline.tsx 的完整說明)的垂直線段——線段用 top:0;bottom:0
+   直接撐滿 .timelineTrack 本身的完整高度(這個容器沒有額外 padding,
+   高度就是 3 個固定高度欄位 + gap 疊加而成,捲動時不會變動)。z-index
+   壓在圓點按鈕(.dot/.ghostDot 皆設 z-index:1)之下,讓線段看起來是
+   「從圓點底下穿過」,而非蓋在圓點上面;線段兩端略微超出首尾欄位的
+   圓心一小段屬預期內,反正會被疊在上方的圓形圖示蓋住。 */
+.timelineTrack::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  background: var(--line);
+  transform: translateX(-50%);
+  z-index: 0;
+}
+
+/* node:上一點/目前點/下一點 3 個固定欄位共用的外框——固定高度 48px
+   (對齊目前點的縮圖尺寸)並用 justify-content: center 把裡面的圓點
+   (不論是 10px 的素色小圓點,或 48px 的目前點縮圖)垂直置中。這 3 個
+   欄位本身在元件存活期間永遠掛載、永遠是同一個角色(.nodePrev 永遠是
+   上一點欄位、.nodeCurrent 永遠是目前點欄位),捲動只改變欄位裡裝的
+   是哪個錨點內容,欄位本身的數量/位置/尺寸都不會變,從根本上避免
+   捲動時多個節點同時尺寸變化+掛載卸載疊加造成的畫面閃動——
+   opacity/animation 只在元件整個掛載的當下播放一次進場動畫,不會因為
+   捲動而重播。 */
+.node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: nodeIn 0.4s ease forwards;
+}
+
+@keyframes nodeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* dot:可點擊的圓形按鈕——上一點/下一點欄位用的是這份預設樣式(純色
+   小圓點,不帶可見縮圖),目前點欄位(.nodeCurrent .dot,見下方)才放大
+   並露出實際地點縮圖。縮圖網址會預先用 Image() 物件在背景載入快取
+   (見 ScrollTimeline.tsx 的完整說明),捲到目前點欄位要換成下一張圖時
+   直接是瀏覽器快取命中,不會因為臨時才去抓圖、圖片載入期間畫面先空白
+   再彈出縮圖而出現閃動。用 <button> 而非 <div> 承載點擊行為,原生具備
+   focus/鍵盤可操作性,不需要額外補 role/tabIndex。 */
+.dot {
+  position: relative;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--line);
+  background-size: cover;
+  background-position: center;
+  border: 2px solid var(--paper);
+  box-shadow: 0 0 0 1px var(--line);
+  padding: 0;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.dot:hover {
+  transform: scale(1.06);
+}
+
+/* ghostDot:開頭/結尾佔位點專用的小圓點——沒有真正的上一點/下一點時
+   (捲到頭尾,或根本還沒有任何錨點註冊完成)用這個純裝飾、不可點擊的
+   小圓點佔住位置,視覺上刻意跟 .dot 的素色狀態長得一樣,只是不可點。 */
+.ghostDot {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--line);
+  border: 2px solid var(--paper);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+/* dotOpen:目前正展開地圖面板的那一個縮圖——用強調色外框跟 current
+   節點呼應,讓使用者清楚知道「現在開著的地圖是對應哪一個點」,即使它
+   不是目前捲動到的 current 節點(可以點開非 current 的鄰近點)。 */
+.dotOpen {
+  box-shadow: 0 0 0 2px var(--timeline-accent), 0 0 0 6px color-mix(in srgb, var(--timeline-accent) 22%, transparent);
+}
+
+/* nodeCurrent:目前點欄位——固定比兩側欄位大,視覺上是整條時間軸的
+   焦點,強調色外框標示「這是目前捲動到的段落」。 */
+.nodeCurrent .dot {
+  width: 48px;
+  height: 48px;
+  box-shadow: 0 0 0 2px var(--timeline-accent), 0 0 0 6px color-mix(in srgb, var(--timeline-accent) 18%, transparent);
+}
+
+/* copy 明確放進 grid 第 2 欄第 1 列——跟下方 .mapPanel 共用同一個
+   grid cell(同欄同列),地圖面板疊在文案上方時兩者才會對齊同寬、同一
+   個水平範圍,而非各自佔用額外空間撐寬版面。裡面直接渲染
+   <ScrollTimeline> 的 children(呼叫端自己寫的 <ScrollTimeline.Anchor>
+   序列),版面結構完全由呼叫端決定。 */
+.copy {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* mapPanel:點擊時間軸縮圖後「向右展開」的地圖面板——跟 .copy 共用
+   同一個 grid 欄,寬度因此自動跟文案欄同寬。position: sticky 讓它跟
+   左側時間軸一樣固定在視窗內的垂直位置,捲動文案時面板本身不會跟著
+   移動,行為對齊 .timeline 的既有模式。height 刻意給得不高(260px)
+   ——這是嵌入式的縮小地圖,不需要城市介紹頁滿版地圖那麼高的可視範圍。
+   這個元素(連同內部的 InteractiveExploreMap)一開始就常駐掛載,開關
+   狀態改用下方 .mapPanelHidden 這個 CSS class 切換,而不是條件渲染
+   整個卸載——見 ScrollTimeline.tsx 掛載處的完整說明。 */
+.mapPanel {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  position: sticky;
+  top: calc(50% - 130px);
+  height: 260px;
+  z-index: 5;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--card-shadow, 0 24px 48px -20px rgba(0, 0, 0, 0.45));
+  background: var(--paper);
+}
+
+/* mapPanelHidden:面板關閉時套用——用 visibility:hidden 而非
+   display:none,因為 display:none 的元素不會建立 layout box,會讓裡面
+   的 Google Map 容器尺寸在隱藏期間變成 0×0,地圖函式庫內部快取的容器
+   尺寸跟著跑掉,之後切回顯示時可能需要額外觸發 resize 才能正確鋪滿;
+   visibility:hidden 則保留版面尺寸只是不繪製也不接收互動事件,配合
+   pointer-events:none 確保隱藏時不會攔截底下文案區塊的點擊/捲動。 */
+.mapPanelHidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.mapPanelClose {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* mapPanelInner:實際掛載 InteractiveExploreMap 的容器——透過覆寫該
+   元件讀的 --kiyomizu-* CSS 變數(見 InteractiveExploreMap.module.css
+   .page/.stage 的完整說明),把原本城市介紹頁滿版/固定 680px 的地圖
+   容器壓縮成跟外層 .mapPanel 同高、同寬、無留白,而不是另外做一份
+   簡化地圖元件——地圖互動(主題點/精選點/縮放拖曳)完整保留。 */
+.mapPanelInner {
+  --kiyomizu-page-max-width: 100%;
+  --kiyomizu-page-padding: 0;
+  --kiyomizu-stage-height: 260px;
+  --kiyomizu-stage-radius: 0px;
+  --kiyomizu-stage-shadow: none;
+  width: 100%;
+  height: 100%;
+}
+
+/* stop:<ScrollTimeline.Anchor> 渲染出來的包裹元素——只負責「這是一個
+   錨點區塊」的間距/分隔線視覺,不預設內部文案結構(h2/p 之類的排版
+   交給呼叫端自己的 JSX 決定要不要用)。 */
+.stop {
+  min-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 48px 0;
+  border-top: 1px solid var(--line);
+}
+
+.stop:first-child {
+  border-top: none;
+}
+
+.stop h2 {
+  font-size: 22px;
+  margin: 0 0 16px;
+}
+
+.stop p {
+  color: var(--ink-soft);
+  margin: 0;
+  max-width: 54ch;
+}
