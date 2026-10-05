@@ -125,14 +125,16 @@ COPY --from=admin-build /webadmin/dist/. /src/server/cmd/server/webadmin/dist/
 # exit code 0 結束,不會讓這個 RUN 步驟失敗——Docker build 會誤以為
 # 驗證通過,實際上這組測試完全沒有被執行過。兩道防線補上這個洞:
 # 1. 先用 go test -list 把 pattern 應該比對到的測試名稱列出來,用 grep
-#    -c 確認剛好對到 4 個(跟下面實際要跑的測試數量一致),對不到就讓
-#    這一步直接失敗,而不是等 go test 本身默默跳過。
+#    -c 確認剛好對到 5 個(跟下面實際要跑的測試數量一致——2026-10 新增
+#    /product 專屬 SEO meta 後從 4 個增加到 5 個,新增/刪除測試時記得
+#    同步這個數字),對不到就讓這一步直接失敗,而不是等 go test 本身
+#    默默跳過。
 # 2. SEO_META_TEST_REQUIRE_REAL_BUILD=1 讓 readRealIndexHTML(見
 #    seo_meta_test.go)在這個階段原本該 skip 的情況(web/dist/index.html
 #    讀取失敗、或仍是 placeholder)直接判定測試失敗,而不是放行──這個
 #    階段理論上一定拿得到真實建置產物(見上方 COPY --from=web-build 的
 #    說明),不該出現 skip。
-RUN cd /src/server && test "$(go test ./cmd/server/ -list 'TestApplySEOMeta|TestStaticHandler' | grep -c '^Test')" = "4"
+RUN cd /src/server && test "$(go test ./cmd/server/ -list 'TestApplySEOMeta|TestStaticHandler' | grep -c '^Test')" = "5"
 RUN cd /src/server && SEO_META_TEST_REQUIRE_REAL_BUILD=1 go test ./cmd/server/ -run 'TestApplySEOMeta|TestStaticHandler' -v
 
 # 靜態編譯:關 CGO 產出不依賴 libc 的單一執行檔,可放進極小的 base image。

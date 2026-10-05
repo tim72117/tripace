@@ -322,11 +322,14 @@ export function useGeoPlanningState({
   const patchGeocodeCandidateText = useCallback((placeId: string, text: GeoPlaceText) => {
     // 文字通常先回來,用 poiInfoContent 的形狀升級成完整文字版本(名稱/
     // 地址/評分/簡介),但不動 photoUrl(可能還沒查完,也可能是另一支
-    // 請求已經先回來設好的值)。
+    // 請求已經先回來設好的值)——2026-10 起 GeoPlaceDetails/poiInfoContent
+    // 已經不帶 photoUrl(見該型別/函式的完整說明),這裡改成展開
+    // poiInfoContent 的結果後,再用 prev.photoUrl 覆寫回去,不用組一個
+    // GeoPlaceDetails 不再支援的欄位傳進去。
     dispatchGeoSelection({
       type: 'PATCH_INFO_CONTENT',
       patch: (prev) =>
-        prev.placeId !== placeId ? prev : { ...prev, ...poiInfoContent({ ...text, photoUrl: prev.photoUrl }) },
+        prev.placeId !== placeId ? prev : { ...prev, ...poiInfoContent(text), photoUrl: prev.photoUrl },
     })
   }, [])
   const patchGeocodeCandidatePhoto = useCallback((placeId: string, photoUrl: string | null) => {

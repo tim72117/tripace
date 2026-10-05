@@ -114,16 +114,16 @@ describe('useThemeAttractionSelection', () => {
   })
 
   it('openPoiContent 有 placeId 時查 fetchPlaceDetails,成功後附加 attractionSummary', async () => {
-    // photoUrl 給值,避免觸發 fetchPoiContent 的沒圖重試機制(見該函式
-    // PHOTO_RETRY_* 的完整說明)——這個測試只關心 attractionSummary 有沒有
-    // 正確附加,不是在測重試,給張圖讓它第一次查詢就直接 resolve。
+    // googlePhotoUrls 給值,避免觸發 fetchPoiContent 的沒圖重試機制(見該
+    // 函式 PHOTO_RETRY_* 的完整說明)——這個測試只關心 attractionSummary
+    // 有沒有正確附加,不是在測重試,給張圖讓它第一次查詢就直接 resolve。
     const details: GeoPlaceDetails = {
       name: '忠僕茶屋',
       address: '清水寺境內',
       lat: 34.99,
       lng: 135.78,
       rating: 4.3,
-      photoUrl: 'https://example.com/photo.jpg',
+      googlePhotoUrls: ['https://example.com/photo.jpg'],
     }
     const fetchPlaceDetails = vi.fn().mockResolvedValue(details)
     const { result } = renderHook(() => useThemeAttractionSelection('清水寺', fetchPlaceDetails))
@@ -219,15 +219,15 @@ describe('useThemeAttractionSelection', () => {
 // 完整說明),故獨立驗證它的查詢/fallback 規則。
 describe('fetchPoiContent', () => {
   it('有 placeId 時查 fetchPlaceDetails,成功後附加 attractionSummary', async () => {
-    // photoUrl 給值,避免觸發沒圖時的重試機制(見下方「沒有任何照片時」
-    // 那組測試)——這裡只關心 attractionSummary 有沒有附加。
+    // googlePhotoUrls 給值,避免觸發沒圖時的重試機制(見下方「沒有任何
+    // 照片時」那組測試)——這裡只關心 attractionSummary 有沒有附加。
     const details: GeoPlaceDetails = {
       name: '忠僕茶屋',
       address: '清水寺境內',
       lat: 34.99,
       lng: 135.78,
       rating: 4.3,
-      photoUrl: 'https://example.com/photo.jpg',
+      googlePhotoUrls: ['https://example.com/photo.jpg'],
     }
     const fetchPlaceDetails = vi.fn().mockResolvedValue(details)
 
@@ -265,7 +265,7 @@ describe('fetchPoiContent', () => {
     const content = await fetchPoiContent(attraction({ placeId: 'ChIJ123' }), fetchPlaceDetails)
 
     expect(fetchPlaceDetails).toHaveBeenCalledTimes(1)
-    expect(content.photoUrl).toBeUndefined()
+    expect(content.googlePhotoUrls).toBeUndefined()
   })
 
   // 帶 fetchPhotoAssets 時的重試機制——後端漸進補圖是背景 goroutine,這次
@@ -281,7 +281,7 @@ describe('fetchPoiContent', () => {
       const fetchPhotoAssets = vi
         .fn()
         .mockResolvedValueOnce({})
-        .mockResolvedValueOnce({ photoUrl: 'https://example.com/photo.jpg' })
+        .mockResolvedValueOnce({ googlePhotoUrls: ['https://example.com/photo.jpg'] })
 
       const onUpdate = vi.fn()
       const contentPromise = fetchPoiContent(
@@ -297,7 +297,7 @@ describe('fetchPoiContent', () => {
       expect(fetchPlaceDetails).toHaveBeenCalledTimes(1)
       expect(fetchPhotoAssets).not.toHaveBeenCalled()
       expect(onUpdate).toHaveBeenCalledTimes(1)
-      expect(onUpdate.mock.calls[0][0].photoUrl).toBeUndefined()
+      expect(onUpdate.mock.calls[0][0].googlePhotoUrls).toBeUndefined()
 
       // 等滿 2 秒觸發第一次重試(改打 fetchPhotoAssets,不是 fetchPlaceDetails)。
       await vi.advanceTimersByTimeAsync(2000)
@@ -309,7 +309,7 @@ describe('fetchPoiContent', () => {
       expect(fetchPhotoAssets).toHaveBeenCalledTimes(2)
 
       const content = await contentPromise
-      expect(content.photoUrl).toBe('https://example.com/photo.jpg')
+      expect(content.googlePhotoUrls).toEqual(['https://example.com/photo.jpg'])
       expect(onUpdate).toHaveBeenCalledTimes(2)
       // 查到圖後不應該再繼續重試,fetchPlaceDetails 全程只被呼叫一次。
       await vi.advanceTimersByTimeAsync(10000)
@@ -340,7 +340,7 @@ describe('fetchPoiContent', () => {
       // 首次查詢一次(fetchPlaceDetails)+ 最多重試 3 次(fetchPhotoAssets)。
       expect(fetchPlaceDetails).toHaveBeenCalledTimes(1)
       expect(fetchPhotoAssets).toHaveBeenCalledTimes(3)
-      expect(content.photoUrl).toBeUndefined()
+      expect(content.googlePhotoUrls).toBeUndefined()
 
       // 用完重試次數後不再繼續等待/查詢。
       await vi.advanceTimersByTimeAsync(10000)
@@ -359,7 +359,7 @@ describe('fetchPoiContent', () => {
       const fetchPhotoAssets = vi
         .fn()
         .mockRejectedValueOnce(new Error('network error'))
-        .mockResolvedValueOnce({ photoUrl: 'https://example.com/photo.jpg' })
+        .mockResolvedValueOnce({ googlePhotoUrls: ['https://example.com/photo.jpg'] })
 
       const contentPromise = fetchPoiContent(
         attraction({ placeId: 'ChIJ123' }),
@@ -372,7 +372,7 @@ describe('fetchPoiContent', () => {
       const content = await contentPromise
 
       expect(fetchPhotoAssets).toHaveBeenCalledTimes(2)
-      expect(content.photoUrl).toBe('https://example.com/photo.jpg')
+      expect(content.googlePhotoUrls).toEqual(['https://example.com/photo.jpg'])
       expect(content.name).toBe('忠僕茶屋')
     } finally {
       vi.useRealTimers()

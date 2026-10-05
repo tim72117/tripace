@@ -915,9 +915,17 @@ func (s *Server) handleGeoAttractionsOnlyNearby(w http.ResponseWriter, r *http.R
 // 詳細資訊格式,對齊 geo.PlaceDetails(見該型別的完整說明)。
 //
 // 最終顯示的照片欄位一律由 applyPhotoAssetsAsSource(見該函式的完整
-// 說明)決定 photo_assets 目前的內容——PhotoURL 是 GooglePhotoURLs
-// 合併後的第一張,供還沒改用多圖欄位的舊呼叫端過渡期間兼容。2026-09
-// 移除 Pexels 讀圖來源後,照片只會來自 Google。
+// 說明)決定 photo_assets 目前的內容。
+//
+// PhotoURL:2026-10 拿掉 json 標籤,不再出現在這支端點(一般模式)的
+// 回應裡——這個欄位原本是 GooglePhotoURLs 合併後的第一張,供還沒改用
+// 多圖欄位的舊呼叫端過渡期間兼容,但前端 useAttractionOverlays.ts/
+// AttractionInfoPanel.tsx 已經全部改讀 GooglePhotoURLs 清單判斷「有沒有
+// 圖」(見該檔案的完整說明),這個相容欄位已經沒有任何呼叫端在用,使用者
+// 明確要求後端不要再多傳這個重複資料。欄位本身(不帶 json 標籤)仍保留
+// 給 applyPhotoAssetsAsSource/photoOnlyResponse/photoAssetsOnlyResponse
+// 這些內部用途共用同一個 struct 賦值,不是真正刪除整個欄位,只是不再
+// 序列化進這支端點的 JSON 輸出。
 type placeDetailsResponse struct {
 	Name            string   `json:"name"`
 	Address         string   `json:"address"`
@@ -925,7 +933,7 @@ type placeDetailsResponse struct {
 	Lng             float64  `json:"lng"`
 	Rating          float64  `json:"rating,omitempty"`
 	Summary         string   `json:"summary,omitempty"`
-	PhotoURL        string   `json:"photoUrl,omitempty"`
+	PhotoURL        string   `json:"-"`
 	GooglePhotoURLs []string `json:"googlePhotoUrls,omitempty"`
 }
 
@@ -1217,9 +1225,11 @@ func (s *Server) applyPhotoAssetsAsSource(resp *placeDetailsResponse, placeID st
 }
 
 // photoAssetsOnlyResponse 是 GET /internal/geo/place-photo-assets 的回應
-// 形狀——只有照片欄位,理由見該端點的完整說明。
+// 形狀——只有照片欄位,理由見該端點的完整說明。2026-10 拿掉 PhotoURL,
+// 理由同 placeDetailsResponse 的完整說明:前端(useThemeAttractionSelection.ts/
+// photoRetry.ts)已經全部改讀 GooglePhotoURLs 清單,這個相容欄位已經
+// 沒有任何呼叫端在用。
 type photoAssetsOnlyResponse struct {
-	PhotoURL        string   `json:"photoUrl,omitempty"`
 	GooglePhotoURLs []string `json:"googlePhotoUrls,omitempty"`
 }
 
@@ -1253,7 +1263,6 @@ func (s *Server) handleGeoPlacePhotoAssets(w http.ResponseWriter, r *http.Reques
 	var resp placeDetailsResponse
 	s.applyPhotoAssetsAsSource(&resp, placeID)
 	writeJSON(w, http.StatusOK, photoAssetsOnlyResponse{
-		PhotoURL:        resp.PhotoURL,
 		GooglePhotoURLs: resp.GooglePhotoURLs,
 	})
 }

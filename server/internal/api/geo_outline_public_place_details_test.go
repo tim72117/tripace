@@ -123,9 +123,10 @@ func TestHandlePublicGeoPlaceDetails_NoCacheAndNoNetwork_ReturnsBadGateway(t *te
 // TestHandlePublicGeoPlaceDetails_UsesPhotoAssetsForPhotos 驗證照片一律
 // 只查 photo_assets(見 applyPhotoAssetsAsSource 的完整說明,
 // handleGeoPlaceDetails 與這支端點現在共用同一套邏輯)——有效期內的
-// 紀錄要組成 googlePhotoUrls 多圖清單、且 photoUrl 是第一張,不回退
-// google_place_photos(2026-09 已移除 Pexels 讀圖來源,回應不再有
-// pexelsPhotoUrls 欄位)。
+// 紀錄要組成 googlePhotoUrls 多圖清單,不回退 google_place_photos
+// (2026-09 已移除 Pexels 讀圖來源,回應不再有 pexelsPhotoUrls 欄位)。
+// 2026-10:photoUrl 欄位已整個從回應拿掉(見 placeDetailsResponse 的
+// 完整說明),這裡一併確認回應裡完全不出現這個 key。
 func TestHandlePublicGeoPlaceDetails_UsesPhotoAssetsForPhotos(t *testing.T) {
 	s := newTestServer(t)
 
@@ -155,27 +156,27 @@ func TestHandlePublicGeoPlaceDetails_UsesPhotoAssetsForPhotos(t *testing.T) {
 		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		PhotoURL        string   `json:"photoUrl"`
 		GooglePhotoURLs []string `json:"googlePhotoUrls"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	if body.PhotoURL != "https://storage.googleapis.com/test-bucket/photo-0.jpg" {
-		t.Fatalf("expected first photo_assets url as photoUrl, got %q", body.PhotoURL)
-	}
-	if len(body.GooglePhotoURLs) != 2 {
-		t.Fatalf("expected 2 googlePhotoUrls, got %+v", body.GooglePhotoURLs)
+	if len(body.GooglePhotoURLs) != 2 || body.GooglePhotoURLs[0] != "https://storage.googleapis.com/test-bucket/photo-0.jpg" {
+		t.Fatalf("expected 2 googlePhotoUrls with photo-0 first, got %+v", body.GooglePhotoURLs)
 	}
 	// 2026-09 已移除 Pexels 讀圖來源,回應本身不再有 pexelsPhotoUrls 這個
-	// JSON key——確認原始 body 不含這個欄位,而不是解碼到一個永遠不會被
-	// 填的型別欄位、驗證恆真的舊寫法。
+	// JSON key;2026-10 起 photoUrl 這個相容欄位也整個從回應拿掉(見
+	// placeDetailsResponse 的完整說明)——確認原始 body 都不含這兩個
+	// 欄位,而不是解碼到一個永遠不會被填的型別欄位、驗證恆真的舊寫法。
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
 		t.Fatalf("failed to decode raw response: %v", err)
 	}
 	if _, ok := raw["pexelsPhotoUrls"]; ok {
 		t.Error("expected response to NOT include a pexelsPhotoUrls field")
+	}
+	if _, ok := raw["photoUrl"]; ok {
+		t.Error("expected response to NOT include a photoUrl field")
 	}
 }
 

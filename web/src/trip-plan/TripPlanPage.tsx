@@ -139,8 +139,16 @@ function resolveAttractionForStep(
             retryPhotoOnly(remainingRetries - 1)
             return
           }
+          // 2026-10 code review 抓到的 bug 修正:後端 photoAssetsOnlyResponse
+          // 已經拿掉 photoUrl 欄位(見 server/internal/api/geo_outline.go
+          // 的完整說明),assets.photoUrl 現在永遠是 undefined——但
+          // PlanTimelineView.tsx 的縮圖顯示判斷式(p.photoUrl ? <img> :
+          // placeholder)只看這個欄位,沒有 fallback 到 googlePhotoUrls,
+          // 若這裡原樣寫入 undefined,即使重試真的查到了照片,縮圖仍會
+          // 永遠卡在 placeholder。改成從 googlePhotoUrls 清單第一張derive
+          // 出 photoUrl,不依賴後端已經不再提供的相容欄位。
           setTimeline((prev) => updateNode(prev, stepId, {
-            photoUrl: assets.photoUrl,
+            photoUrl: assets.googlePhotoUrls?.[0],
             googlePhotoUrls: assets.googlePhotoUrls,
           }))
         })

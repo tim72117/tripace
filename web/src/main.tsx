@@ -21,8 +21,8 @@ if (import.meta.env.PROD) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {/* HelmetProvider:讓 JiufenPage/KyotoPage 這類介紹頁能各自用
-        <Helmet> 宣告專屬的 <title>(見這兩個檔案的完整說明)。
+    {/* HelmetProvider:讓 JiufenPage/KyotoPage/ProductPage 這類介紹頁
+        能各自用 <Helmet> 宣告專屬的 <title>(見各檔案的完整說明)。
         description/OG/canonical 這類 meta/link 標籤改由
         server/cmd/server/seo_meta.go 的 seoMetaByPath 在 server 端
         統一輸出為唯一事實來源(2026-10 修正)——react-helmet-async 對

@@ -712,14 +712,20 @@ export interface GeoPlaceDetails {
   lng: number
   rating?: number
   summary?: string
-  photoUrl?: string
   // googlePhotoUrls:2026-08 起,一般模式(不帶 photoOnly/textOnly query
   // 參數)的後端回應改成多圖清單(見 server 端 handleGeoPlaceDetails 的
-  // 說明)——photoUrl 仍然保留,是這份清單的第一張(相容用,舊版前端/
-  // 其餘沒有跟進多圖 UI 的呼叫端可以繼續只看這個欄位)。顯示邏輯見
-  // PhotoCarousel.tsx。photoOnly=1/textOnly=1 這兩種查詢模式維持舊格式
-  // 不變,不會有這個欄位。2026-09 已移除 Pexels 讀圖來源,照片只會來自
-  // Google。
+  // 說明)。顯示邏輯見 PhotoCarousel.tsx(useAttractionOverlays.ts 的地圖
+  // 縮圖、AttractionInfoPanel.tsx 的介紹卡都只讀這個清單)。
+  //
+  // 2026-10 使用者明確要求「後端不要再傳 photoUrl 到前端」:原本這裡
+  // 還有一個 photoUrl?: string 欄位,是這份清單第一張的相容複寫,供
+  // 還沒跟進多圖 UI 的舊呼叫端使用——地圖版(useAttractionOverlays.ts/
+  // AttractionInfoPanel.tsx)已經全部改讀 googlePhotoUrls,這個欄位已經
+  // 沒有任何地圖版呼叫端在用,後端 placeDetailsResponse(見該型別完整
+  // 說明)已經拿掉這個欄位的 json 標籤,不會再序列化進回應,前端型別
+  // 同步拿掉。photoOnly=1/textOnly=1 這兩種查詢模式維持各自獨立的回應
+  // 形狀不變(photoOnlyResponse/textOnlyResponse,見後端說明),不受這次
+  // 影響。2026-09 已移除 Pexels 讀圖來源,照片只會來自 Google。
   googlePhotoUrls?: string[]
 }
 
@@ -747,8 +753,9 @@ export function fetchPublicGeoPlaceDetails(cfg: ClientConfig, placeId: string) {
 // fetchGeoPlaceDetails/fetchPublicGeoPlaceDetails——那兩支端點每次呼叫
 // 都會觸發 IncrementPlaceClickCount,連續重試會重複推進漸進補圖節奏
 // (2026-09 使用者明確要求「重試時只能取圖,不能觸發補圖」)。
+// 2026-10:拿掉 photoUrl?: string 欄位,理由同 GeoPlaceDetails 的完整
+// 說明——後端 photoAssetsOnlyResponse 已經不再序列化這個欄位。
 export interface GeoPlacePhotoAssets {
-  photoUrl?: string
   googlePhotoUrls?: string[]
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 import {
   CalendarClock,
   Layers,
@@ -11,6 +12,17 @@ import { AutoPlanDemo } from './AutoPlanDemo';
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { trackEvent } from '../analytics';
 import './ProductPage.css';
+
+// SEO_TITLE:2026-10 這個頁面補上專屬 SEO meta 之前,canonical 一直沿用
+// index.html 首頁的預設值,等同告訴 Google「這頁是首頁的重複內容」,
+// 導致 /product 無法被獨立索引(跟九份/京都/台南那四頁同一類根因問題,
+// 見 server/cmd/server/seo_meta.go 檔頭的完整說明)。description/
+// canonical/og:*/twitter:* 已改由該檔案的 seoMetaByPath["/product"]
+// 統一輸出;這裡只保留 <title>——react-helmet-async 對 title 是直接
+// 覆寫 document.title,不會重複/衝突,SPA 內部換頁時仍需要它才能正確
+// 更新分頁標題。內容必須跟 seoMetaByPath["/product"].title 保持一致,
+// 修改其中一邊記得同步另一邊。
+const SEO_TITLE = '功能介紹——AI編排行程、主題景點、時間軸排程 | Tripace'
 
 const FEATURES = [
   {
@@ -62,6 +74,9 @@ export function ProductPage() {
 
   return (
     <div className="product-page" data-theme={theme ?? undefined}>
+      <Helmet>
+        <title>{SEO_TITLE}</title>
+      </Helmet>
       {/* 2026-09:使用者要求「主題介紹頁的按鈕也對齊(首頁)」,幾輪來回
           手動對齊數值後,使用者明確要求「都共用元件」「連定位一起改成
           同一套邏輯」——原本這裡是 <nav className="product-nav"> 的

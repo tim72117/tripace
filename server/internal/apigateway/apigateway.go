@@ -86,13 +86,29 @@ type CallLogger interface {
 // Config 是 Gateway 的節流設定。
 type Config struct {
 	// MaxConcurrency 是同時可以在飛行中(已送出、尚未收到回應)的最大請求
-	// 數——超過這個數量的請求會排隊等待有空位才送出。至少為 1(<=0 時
-	// New 會夾成 1,總不能設定成完全不能發送請求)。
+	// 數——超過這個數量的請求會排隊等待有空位才送出。<=0 時 New 視為
+	// 「不限制併發」,完全不建立信號量佇列,所有通過 RateLimiter 檢查的
+	// 請求立即平行送出。
+	//
+	// 2026-10 之前 <=0 會被 New 夾成 1(等同強制排隊),2026-10 改成
+	// <=0 代表不限制——理由:使用者明確要求「改成每個對 google api 請求
+	// 都用獨立的進程執行,不使用排隊機制」,因為實測發現短時間內一批查詢
+	// (例如規劃地圖一次展開多個精選點、各自查地點照片)在
+	// MaxConcurrency=1 的排隊佇列裡,排在後面的請求會因為等待太久撞上
+	// 呼叫端的 context 逾時(實測 context deadline exceeded),但排隊
+	// 本身並不能真正防止總呼叫量/計費量無上限地累積——真正該負責「總量
+	// 有沒有超過安全上限」的,是下面的 RateLimiter(拒絕型、立即同步
+	// 回答,不讓呼叫端排隊等待逾時),故拿掉排隊這一層延遲,把「控制
+	// 頻率」的責任完全交給 RateLimiter。見 geo.ConfigureDefaultGatewayRateLimit
+	// 與 DefaultConfig 的對應說明。
 	MaxConcurrency int
 	// MinInterval 是連續兩次請求「送出」之間至少要間隔多久——這是全域的
 	// 節流閥,跟 MaxConcurrency 是兩個獨立的限制條件,兩者都必須滿足才能
-	// 送出下一個請求(見 Gateway.Do 的說明)。<=0 時 New 會夾成 0(不限制
-	// 間隔,只受 MaxConcurrency 限制)。
+	// 送出下一個請求(見 Gateway.Do 的說明)。<=0 時代表不限制間隔。
+	//
+	// 2026-10 同 MaxConcurrency 的理由一併改成預設不限制(見 DefaultConfig)
+	// ——排隊等待間隔到期與排隊等待併發名額是同一種「延後送出」的問題,
+	// 理由相同,不單獨保留其中一個。
 	MinInterval time.Duration
 
 	// RateLimiter 是選填的拒絕型限流器(見 RateLimiter 的完整說明)——
@@ -112,12 +128,21 @@ type Config struct {
 	DailyQuotaChecker DailyQuotaChecker
 }
 
-// DefaultConfig 是使用者確認過的預設值:同時最多 1 個請求在飛行中、
-// 連續請求至少間隔 2 秒(等於「每秒最多 0.5 次請求」)——這是相對保守的
-// 節流設定,目的是避免任何單一功能(例如地圖被高頻拖曳觸發的附近搜尋)
-// 短時間內對 Google API 發出大量請求,產生非預期的計費/額度消耗。
+// DefaultConfig 是使用者確認過的預設值:不限制併發、不限制送出間隔——
+// 排隊型節流(MaxConcurrency=1、MinInterval=2 秒)是這個套件原本的預設
+// 行為,但 2026-10 使用者明確要求移除:實測發現短時間內一批查詢(例如
+// 規劃地圖一次展開多個精選點、各自查地點照片)在這組保守設定下,排在
+// 佇列後面的請求會因為等待太久撞上呼叫端的 context 逾時(實測
+// context deadline exceeded 錯誤),使用者確認這個失敗模式不可接受,
+// 但同時明確要求「請求頻率還是一樣」——即仍要有總量上限保護,只是改用
+// 「超過上限立即拒絕」取代「超過上限延後排隊」。故這裡改成兩個欄位都
+// 不限制,總量控管責任完全交給 geo.ConfigureDefaultGatewayRateLimit
+// 設定的 RateLimiter(拒絕型、依 endpoint 個別設定視窗與上限,涵蓋
+// places.get/photoMedia/searchText/searchNearby 四個 endpoint,見該函式
+// 的完整說明)——呼叫端(cmd/server/main.go)對應的 CLI flag 預設值也已
+// 同步改成不限制,RateLimiter 才是四個 endpoint 現在唯一的節流防護。
 func DefaultConfig() Config {
-	return Config{MaxConcurrency: 1, MinInterval: 2 * time.Second}
+	return Config{MaxConcurrency: 0, MinInterval: 0}
 }
 
 // Gateway 是排隊/節流之後才轉發給底層 Doer 的請求派送器。零值不可用,
@@ -126,7 +151,7 @@ type Gateway struct {
 	doer   HTTPDoer
 	logger CallLogger
 
-	sem      chan struct{} // 併發數限制:容量等於 MaxConcurrency 的信號量
+	sem      chan struct{} // 併發數限制:容量等於 MaxConcurrency 的信號量;nil 代表不限制併發
 	interval time.Duration
 
 	mu       sync.Mutex // 保護 nextSlot,序列化「取得下一個可送出時間點」的判斷
@@ -139,21 +164,26 @@ type Gateway struct {
 }
 
 // New 建立 Gateway。logger 可傳 nil(不記錄)。
+//
+// cfg.MaxConcurrency<=0 代表不限制併發(見 Config.MaxConcurrency 的
+// 完整說明)——這裡刻意不建立 g.sem(維持 nil),Do 用 g.sem==nil 判斷
+// 要不要走佔用名額那段邏輯,不是建立一個「容量極大」的 channel 來模擬
+// 不限制,避免暗示這裡其實還有一個(只是很大的)上限。
 func New(doer HTTPDoer, cfg Config, logger CallLogger) *Gateway {
-	if cfg.MaxConcurrency <= 0 {
-		cfg.MaxConcurrency = 1
-	}
 	if cfg.MinInterval < 0 {
 		cfg.MinInterval = 0
 	}
-	return &Gateway{
+	g := &Gateway{
 		doer:              doer,
 		logger:            logger,
-		sem:               make(chan struct{}, cfg.MaxConcurrency),
 		interval:          cfg.MinInterval,
 		rateLimiter:       cfg.RateLimiter,
 		dailyQuotaChecker: cfg.DailyQuotaChecker,
 	}
+	if cfg.MaxConcurrency > 0 {
+		g.sem = make(chan struct{}, cfg.MaxConcurrency)
+	}
+	return g
 }
 
 // Do 派送一個請求,依序滿足兩個節流條件才會真正送出:
@@ -195,12 +225,16 @@ func (g *Gateway) Do(ctx context.Context, req *http.Request, endpoint, caller, p
 		// 說明,不擋下這次呼叫。
 	}
 
-	select {
-	case g.sem <- struct{}{}:
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	// g.sem==nil 代表 MaxConcurrency<=0(不限制併發,見 Config.MaxConcurrency
+	// 與 New 的說明),完全跳過佔用/釋出名額這段,不阻塞。
+	if g.sem != nil {
+		select {
+		case g.sem <- struct{}{}:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		defer func() { <-g.sem }()
 	}
-	defer func() { <-g.sem }()
 
 	if err := g.waitForSlot(ctx); err != nil {
 		return nil, err

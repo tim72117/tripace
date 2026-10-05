@@ -10,7 +10,7 @@
        （見 App.tsx 的路由註解），但 sitemap 一直沒有補上這條路徑。 -->
   <url>
     <loc>https://tripace.shuttle.tools/product</loc>
-    <lastmod>2026-09-22</lastmod>
+    <lastmod>2026-10-04</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>

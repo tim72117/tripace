@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { ClientConfig, GeoAttraction } from '../api'
-import { fetchGeoPlaceDetails, fetchPublicGeoPlaceDetails } from '../api'
+import { fetchGeoPlacePhotoAssets, fetchPublicGeoPlacePhotoAssets } from '../api'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
 import {
   getAttractionOverlayClass,
   type AttractionOverlayInstance,
 } from './geoAttractionOverlay'
 import { isMarkerCandidate, isMarkerSelected } from './geoMarkerSelection'
+import { fetchPlaceDetailsCached, getCachedPlaceDetails, updateCachedPlaceDetails } from './placeDetailsCache'
+import { fetchPlaceDetailsWithPhotoRetry } from '../photoRetry'
+
+// QUERY_STAGGER_MS:同一批精選點展開時,逐一發出地點照片查詢的間隔——
+// 比後端 per-user 節流間隔(server/internal/api/api.go 的
+// geoQueryUserThrottleInterval,目前 200ms)略寬,避免剛好卡在節流
+// 視窗邊界被同一批裡前一個請求擠掉而被 429 擋下。見下方查詢 effect
+// 的完整說明。
+const QUERY_STAGGER_MS = 250
 
 // useAttractionOverlays——從 ExploreMap.tsx 抽出來的景點區域光暈圖層。
 // 只讀 mapRef/mapReady/自己的資料(attractions)/selectedKey/hoverKey/
@@ -102,15 +111,6 @@ export function useAttractionOverlays({
   hiddenAttractionId?: string | null
 }) {
   const overlaysRef = useRef<AttractionOverlayInstance[]>([])
-  // photoUrlCacheRef:placeId → 已查到的 photoUrl(或 undefined 代表查無/
-  // 失敗)的快取,跨越 filteredAttractions 重新渲染仍然保留——地圖上同
-  // 一批地標可能因為 selectedKey/candidateKeys 等其他狀態變動導致這個
-  // hook 重新執行,若不快取,每次都要重新打一次 place-details 會造成
-  // 大量重複、沒有必要的請求(尤其地圖上主題點數量可能有數十個)。
-  // 只在整個 hook 生命週期內存在(不隨 mapVersion 重建清空)——即使地圖
-  // 因 theme 改變重建,已經查過的照片網址不會過期到需要重新打一次
-  // 這麼快的程度,沿用舊快取即可。
-  const photoUrlCacheRef = useRef<Map<string, string | undefined>>(new Map())
 
   // filteredAttractions:主題點(isTheme===true)恆顯示,不受 zoom 影響
   // ——這點延續舊行為不變(舊版用 level===1 搭配 maxLevelForZoom 判斷,
@@ -183,12 +183,14 @@ export function useAttractionOverlays({
 
   // 查詢地圖上地標圖示的實際照片(2026-09,使用者明確要求「不再使用
   // landmarkPhotoUrl,如果有 place id 則使用 photo_assets 第一張圖」)
-  // ——對每個有 placeId 的地點,打 fetchGeoPlaceDetails/
-  // fetchPublicGeoPlaceDetails(跟 AttractionInfoPanel.tsx 點開詳情卡
-  // 走同一支端點/同一套 photo_assets 資料來源),查到後呼叫對應 overlay
-  // 的 setPhotoUrl 只更新圖片本身,不重建整組 overlay。沒有 placeId 的
-  // 地點(舊資料,尚未補上 place_id)固定顯示 placeholder,不查詢也不
-  // 退回任何舊表資料。
+  // ——對每個有 placeId 的地點,透過 placeDetailsCache.ts 的
+  // fetchPlaceDetailsCached(跟 AttractionInfoPanel.tsx 點開詳情卡共用
+  // 同一份模組級快取,見該檔案開頭的完整說明)查詢,查到後呼叫對應
+  // overlay 的 setPhotoUrls(2026-10 改傳完整的 googlePhotoUrls 清單,
+  // 取代原本只傳單一 photoUrl 字串的做法,見 geoAttractionOverlay.ts
+  // 的完整說明)只更新圖片本身,不重建整組 overlay。沒有 placeId 的地點
+  // (舊資料,尚未補上 place_id)固定顯示 placeholder,不查詢也不退回
+  // 任何舊表資料。
   //
   // 依賴陣列跟上方建 overlay 的 effect 完全相同(mapReady/mapVersion/
   // filteredAttractions)——這個 effect 必須在 overlay 陣列剛建好、
@@ -197,34 +199,101 @@ export function useAttractionOverlays({
   // 沒有被中途其他重繪打斷(React 保證同一次 render 週期內,依賴相同的
   // 多個 effect 會依原始程式碼順序依序執行,這裡緊接在建 overlay 的
   // effect 之後,讀到的一定是剛建好的那一批 overlay)。
+  //
+  // 2026-10 使用者回報:一次展開一批精選點時,這裡原本對每個有 placeId
+  // 的地點完全同步、幾乎同時發出查詢,觸發後端 handleGeoPlaceDetails/
+  // handlePublicGeoPlaceDetailsAny 的 per-user 節流(見後端
+  // throttleGeoQueryByUser,預設 200ms 一次)——第一個請求通過後,
+  // 同一批裡其餘的全部被 429 擋下,整批精選點除了第一張幾乎都卡在
+  // placeholder。改成不在 forEach 裡立即呼叫,而是用遞增延遲
+  // (QUERY_STAGGER_MS × 排隊中已發出的查詢數)錯開每個請求的發出時機
+  // ,寬限值比後端節流間隔(200ms)略大,避免卡在边界被同一批裡前一個
+  // 請求擠掉。用 setTimeout 而非 Promise.all+順序 await——後者會讓
+  // 後面地點的照片等前面全部查完才一起顯示,使用者會先看到一段時間
+  // 全部都是 placeholder,再一次跳出一整批圖;setTimeout 讓每張圖各自
+  // 在排到的時間點獨立查詢、獨立更新,查到的圖會逐張陸續浮現。
+  // queuedCount 只對「真的會發出網路請求」的地點遞增(命中快取的直接
+  // 同步更新、沒有 placeId 的直接跳過),不浪費延遲額度在不需要節流的
+  // 項目上。
+  //
+  // 2026-10 再次修正:原本 photoUrlCacheRef 是這個 hook 自己的
+  // useRef,與 AttractionInfoPanel.tsx 各自獨立查詢、互不知情——使用者
+  // 點擊地圖上一個已經在查詢中(或剛查完)的精選點時,AttractionInfoPanel
+  // 會對同一個 placeId 再發一次請求,兩邊幾乎同時命中後端,仍然會撞上
+  // per-user 節流(2026-10 實測記錄的新一輪 rate_limited 錯誤,發生在
+  // 已經有 QUERY_STAGGER_MS 這層錯峰之後,證明問題不是同一批內部互撞,
+  // 而是這個 hook 跟 AttractionInfoPanel 兩個不同元件互撞)。改用
+  // placeDetailsCache.ts 的模組級快取取代這個 hook 自己的
+  // photoUrlCacheRef,讓兩邊共用同一份「已查到的結果」與「進行中的
+  // 請求」,從根源避免同一個 placeId 被兩個元件各自觸發查詢。
+  //
+  // 2026-10 使用者明確要求:主題點(d.isTheme)的照片查詢改套用跟
+  // AttractionInfoPanel.tsx/fetchPoiContent 一致的主動重試機制
+  // (fetchPlaceDetailsWithPhotoRetry,見 ../photoRetry.ts 的完整
+  // 說明:查無照片時每隔 PHOTO_RETRY_DELAY_MS 重查一次,最多
+  // PHOTO_RETRY_MAX_ATTEMPTS 次)——主題點是頁面一進來就恆顯示、使用者
+  // 幾乎必定會看到的視覺焦點,值得多花成本主動等待背景補圖完成。精選點
+  // (isTheme===false)刻意不套用:揭露一個主題時一次可能同時出現十幾個
+  // 精選點,若每個都各自跑三次重試,會疊加大量背景計時器與查詢成本,且
+  // 使用者當下可能根本沒在看那些還沒展開成照片的圓點——維持原本的單次
+  // 查詢、失敗靜默、等 effect 下次重新執行才再試的設計,不跟著套用。
+  // fetchPhotoAssets 只在 isTheme 為 true 時組出來傳給
+  // fetchPlaceDetailsWithPhotoRetry,該函式內部用「有沒有傳
+  // fetchPhotoAssets」決定要不要重試(見該函式的完整說明),精選點
+  // 傳 undefined 等同完全沿用改動前的單次查詢行為,不是兩套平行邏輯。
   useEffect(() => {
     if (!cfg) return
     let cancelled = false
-    const fetcher = usePublicPlaceDetails ? fetchPublicGeoPlaceDetails : fetchGeoPlaceDetails
+    const timers: ReturnType<typeof setTimeout>[] = []
+    let queuedCount = 0
     filteredAttractions.forEach((d, i) => {
       const overlay = overlaysRef.current[i]
       if (!overlay || !d.placeId) return
       const placeId = d.placeId
-      const cache = photoUrlCacheRef.current
-      if (cache.has(placeId)) {
-        overlay.setPhotoUrl(cache.get(placeId))
+      const cached = getCachedPlaceDetails(placeId)
+      if (cached) {
+        overlay.setPhotoUrls(cached.googlePhotoUrls)
         return
       }
-      fetcher(cfg, placeId)
-        .then((details) => {
+      const delay = queuedCount * QUERY_STAGGER_MS
+      queuedCount += 1
+      const fetchPhotoAssets = d.isTheme
+        ? (pid: string) =>
+            usePublicPlaceDetails
+              ? fetchPublicGeoPlacePhotoAssets(cfg, pid)
+              : fetchGeoPlacePhotoAssets(cfg, pid)
+        : undefined
+      timers.push(
+        setTimeout(() => {
           if (cancelled) return
-          cache.set(placeId, details.photoUrl)
-          overlay.setPhotoUrl(details.photoUrl)
-        })
-        .catch(() => {
-          // 查詢失敗:比照 AttractionInfoPanel.tsx 的既有處理方式,不
-          // 特別區分錯誤原因,靜默維持 placeholder,不快取失敗結果——
-          // 失敗可能是暫時性的網路問題,下次這個 hook 重新執行時應該
-          // 再試一次,不該永久卡在「這個 placeId 已知查不到」的狀態。
-        })
+          fetchPlaceDetailsWithPhotoRetry(
+            placeId,
+            (pid) => fetchPlaceDetailsCached(cfg, pid, usePublicPlaceDetails ?? false),
+            (details) => {
+              if (cancelled) return
+              overlay.setPhotoUrls(details.googlePhotoUrls)
+              // 2026-10 code review 抓到的 bug 修正:重試查到新照片時
+              // 一併寫回 placeDetailsCache 的共用快取(見該模組
+              // updateCachedPlaceDetails 的完整說明)——不然 resolvedCache
+              // 會永遠停留在第一次查詢、還沒補到圖的版本,使用者點開
+              // AttractionInfoPanel 詳情卡時會看到過期的無圖內容,即使
+              // 地圖縮圖其實已經補上了。
+              updateCachedPlaceDetails(placeId, details)
+            },
+            fetchPhotoAssets,
+          ).catch(() => {
+            // 查詢失敗:比照 AttractionInfoPanel.tsx 的既有處理方式,不
+            // 特別區分錯誤原因,靜默維持 placeholder——失敗結果不會被
+            // placeDetailsCache 快取(見該模組的完整說明),下次這個
+            // hook 重新執行時會再試一次,不會永久卡在「這個 placeId
+            // 已知查不到」的狀態。
+          })
+        }, delay),
+      )
     })
     return () => {
       cancelled = true
+      timers.forEach(clearTimeout)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, mapVersion, filteredAttractions, cfg, usePublicPlaceDetails])

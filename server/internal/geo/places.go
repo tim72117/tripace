@@ -71,17 +71,21 @@ func ConfigureDefaultGatewayDailyQuota(checker apigateway.DailyQuotaChecker) {
 	defaultGatewayConfig.DailyQuotaChecker = checker
 }
 
-// RateLimitConfig 是 ConfigureDefaultGatewayRateLimit 的參數——只涵蓋
-// "places.get"(地點資訊查詢)與 "places.photoMedia"(地點照片下載)這
-// 兩個 endpoint,理由見該函式的說明:這兩個是目前唯一評估過需要拒絕型
-// 限流保護的呼叫(對應「單點地點介紹」這條路徑,見
-// server/internal/api/geo_outline.go 的 handleGeoPlaceDetails 一般模式)。
-// "places.searchText"(城市搜尋/文字查詢)、"places.searchNearby"(附近
-// 景點/飯店查詢)等其餘 endpoint 刻意不套用這個 RateLimiter,繼續只受
-// Gateway 既有的排隊節流(MaxConcurrency/MinInterval)保護,不受這次改動
-// 影響——這幾個 endpoint 目前沒有像「單點地點介紹」那樣被評估出明確的
-// 拒絕型限流需求,不需要跟著一起被限流,避免不必要地收緊尚未出問題的
-// 呼叫路徑。
+// RateLimitConfig 是 ConfigureDefaultGatewayRateLimit 的參數。
+//
+// 2026-10 使用者明確要求:原本只涵蓋 "places.get"/"places.photoMedia"
+// 兩個 endpoint 的拒絕型限流,擴大到涵蓋全部四個會呼叫 Google Places
+// API 的 endpoint(含 "places.searchText"/"places.searchNearby")——
+// 同一輪改動把 Gateway 的排隊型節流(MaxConcurrency/MinInterval,見
+// apigateway.DefaultConfig 的完整說明)解除,原因是排隊節流在短時間內
+// 湧入一批查詢時(例如一次展開多個精選點各自查地點照片),會讓排在
+// 後面的請求因為排隊等待太久而撞上呼叫端的 context 逾時(實測
+// context deadline exceeded),但排隊機制本身並不能真正防止總呼叫量
+// 無上限地累積計費——改成完全交給 RateLimiter 這組「超過就立即拒絕,
+// 不排隊等待」的機制同時扮演「避免逾時」與「總量有上限」兩個角色,
+// 讓先前只有 places.get/photoMedia 兩個 endpoint 享有的保護,擴大到
+// 所有會觸發 Google API 計費呼叫的路徑,不留下沒有任何拒絕型防護、
+// 解除排隊節流後完全不受控的 endpoint。
 type RateLimitConfig struct {
 	// PlaceGetWindow/PlaceGetMaxCalls 是 "places.get"(地點資訊——對應
 	// geo.Client.GetPlaceDetails 與 ListPlacePhotoRefs,見
@@ -102,13 +106,46 @@ type RateLimitConfig struct {
 	// 次數多寡拉開差異。
 	PhotoMediaWindow   time.Duration
 	PhotoMediaMaxCalls int
+	// SearchTextWindow/SearchTextMaxCalls 是 "places.searchText"(城市/
+	// 文字搜尋,對應 geo.Client.SearchCityText 等以文字查地點的呼叫)的
+	// 視窗長度與視窗內上限次數。
+	//
+	// 2026-10 新增:這個 endpoint 先前完全沒有拒絕型限流保護,只靠
+	// Gateway 的排隊節流(MaxConcurrency/MinInterval)限制速率——排隊
+	// 節流解除後,若不補上這組規則,這個 endpoint 會變成四個 Google
+	// Places endpoint 裡唯一沒有總量上限的缺口。
+	SearchTextWindow   time.Duration
+	SearchTextMaxCalls int
+	// SearchNearbyWindow/SearchNearbyMaxCalls 是 "places.searchNearby"
+	// (附近景點/飯店查詢,對應 geo.Client.SearchNearby 等以座標查地點的
+	// 呼叫)的視窗長度與視窗內上限次數。理由同 SearchTextWindow 的說明。
+	SearchNearbyWindow   time.Duration
+	SearchNearbyMaxCalls int
+	// GeocodeWindow/GeocodeMaxCalls 是 "geocode"(對應 geo.Client.Geocode,
+	// server/internal/geo/geocode.go 第 55 行呼叫 gateway.Do 時寫死傳入
+	// "geocode")的視窗長度與視窗內上限次數。
+	//
+	// 2026-10 code review 抓到的缺口:這個 endpoint 從頭到尾都不在這四個
+	// (現在五個)key 的原始設計範圍內——2026-10 之前它雖然也沒有拒絕型
+	// 限流,但至少受 Gateway 的排隊節流(MaxConcurrency=1、MinInterval=2s
+	// 的舊預設值,見 apigateway.DefaultConfig 的完整說明)保底,一次只會
+	// 送出一個請求。使用者要求移除排隊節流、改由 RateLimiter 負責全部
+	// 總量防護後,"geocode" 這個 key 因為從未被 SetLimitForKey 設定過,
+	// 依 apigateway.RateLimiter.Allow 的設計(未設定的 key 一律直接放行,
+	// 見該方法的完整說明)變成完全沒有任何節流——等同把原本至少有的保底
+	// 保護整個拿掉,跟這次改動「RateLimiter 才是唯一節流防護」的意圖矛盾。
+	// 故補上第五個 key,跟其餘四個一視同仁。
+	GeocodeWindow   time.Duration
+	GeocodeMaxCalls int
 }
 
-// placeGetEndpoint/photoMediaEndpoint 是這兩個受限 endpoint 使用的字串,
-// 對齊 internal/geo/places.go 呼叫 gateway.Do 時實際傳入的字面值(見各自
-// 呼叫點)——ConfigureDefaultGatewayRateLimit 用這兩個常數對 RateLimiter
-// 設定專屬上限,程式碼裡只有這一處需要跟實際呼叫點的字面值保持一致,不
-// 需要這個套件對外公開一份「合法 endpoint 清單」這種更重的抽象。
+// placeGetEndpoint/photoMediaEndpoint/searchTextEndpoint/
+// searchNearbyEndpoint/geocodeEndpoint 是這五個受限 endpoint 使用的
+// 字串,對齊 internal/geo/places.go(geocodeEndpoint 對齊 geocode.go)
+// 呼叫 gateway.Do 時實際傳入的字面值(見各自呼叫點)——
+// ConfigureDefaultGatewayRateLimit 用這些常數對 RateLimiter 設定專屬
+// 上限,程式碼裡只有這一處需要跟實際呼叫點的字面值保持一致,不需要這個
+// 套件對外公開一份「合法 endpoint 清單」這種更重的抽象。
 //
 // placeGetEndpoint 同時對應 GetPlaceDetails(查名稱/地址/評分/簡介)與
 // ListPlacePhotoRefs(只查 photos[] 長度,用於漸進補圖判斷是否需要重新
@@ -131,8 +168,14 @@ type RateLimitConfig struct {
 //     歸進「地點資訊」(place.get)這組同時符合實際計費類別與現狀最小改動
 //     的原則,是合理且刻意的選擇,不是因為疏漏才維持共用。
 const (
-	placeGetEndpoint   = "places.get"
-	photoMediaEndpoint = "places.photoMedia"
+	placeGetEndpoint     = "places.get"
+	photoMediaEndpoint   = "places.photoMedia"
+	searchTextEndpoint   = "places.searchText"
+	searchNearbyEndpoint = "places.searchNearby"
+	// geocodeEndpoint:2026-10 新增,補上 RateLimitConfig.GeocodeWindow 的
+	// 完整說明裡提到的缺口——必須跟 geocode.go 第 55 行 gateway.Do 呼叫
+	// 時寫死傳入的字面值 "geocode" 完全一致,這裡只是把它提升成具名常數。
+	geocodeEndpoint = "geocode"
 )
 
 // ConfigureDefaultGatewayRateLimit 額外設定預設 Gateway 依 endpoint 拒絕
@@ -145,17 +188,25 @@ const (
 // 共用同一個 defaultGatewayConfig,由 defaultGateway 的 sync.Once 延遲
 // 建立)。
 //
-// 只對 placeGetEndpoint/photoMediaEndpoint 這兩個 key 設定規則(見
-// RateLimitConfig 的說明)——底層 apigateway.RateLimiter 的設計是「只有
-// 明確透過 SetLimitForKey 設定過的 key 才會被限流,其餘 key 一律直接
-// 放行」(見該型別的完整說明),故這裡不呼叫 SetLimitForKey 的其他
-// endpoint(如 "places.searchText"/"places.searchNearby")自然完全不受
-// 這個 RateLimiter 影響,繼續只受 Gateway 既有的排隊節流保護,不需要
-// 額外的判斷邏輯排除它們。
+// 對 placeGetEndpoint/photoMediaEndpoint/searchTextEndpoint/
+// searchNearbyEndpoint/geocodeEndpoint 這五個 key 都設定規則(見
+// RateLimitConfig 的說明)——底層 apigateway.RateLimiter 的設計是
+// 「只有明確透過 SetLimitForKey 設定過的 key 才會被限流,其餘 key 一律
+// 直接放行」(見該型別的完整說明),2026-10 之前只對前兩個 key 設定
+// 規則、刻意放行其餘,是因為當時 Gateway 的排隊節流
+// (MaxConcurrency/MinInterval)還在,對全部 endpoint 都有效。排隊節流
+// 解除後,若不跟著把所有會呼叫 gateway.Do 的 endpoint 都設上限流規則,
+// 沒設定過的 key 會變成完全沒有任何防護的缺口——這份清單第一輪只補了
+// searchText/searchNearby 兩個,code review 另外抓到 geocodeEndpoint
+// (geocode.go 呼叫 gateway.Do 時傳入的 "geocode")也是同一類缺口,
+// 這裡一併補上,故改成五個 key 都呼叫 SetLimitForKey。
 func ConfigureDefaultGatewayRateLimit(cfg RateLimitConfig) {
 	rl := apigateway.NewRateLimiter()
 	rl.SetLimitForKey(placeGetEndpoint, cfg.PlaceGetWindow, cfg.PlaceGetMaxCalls)
 	rl.SetLimitForKey(photoMediaEndpoint, cfg.PhotoMediaWindow, cfg.PhotoMediaMaxCalls)
+	rl.SetLimitForKey(searchTextEndpoint, cfg.SearchTextWindow, cfg.SearchTextMaxCalls)
+	rl.SetLimitForKey(searchNearbyEndpoint, cfg.SearchNearbyWindow, cfg.SearchNearbyMaxCalls)
+	rl.SetLimitForKey(geocodeEndpoint, cfg.GeocodeWindow, cfg.GeocodeMaxCalls)
 	defaultGatewayConfig.RateLimiter = rl
 	defaultRateLimiter = rl
 }
@@ -190,6 +241,9 @@ func UpdateDefaultGatewayRateLimit(cfg RateLimitConfig) {
 	}
 	defaultRateLimiter.SetLimitForKey(placeGetEndpoint, cfg.PlaceGetWindow, cfg.PlaceGetMaxCalls)
 	defaultRateLimiter.SetLimitForKey(photoMediaEndpoint, cfg.PhotoMediaWindow, cfg.PhotoMediaMaxCalls)
+	defaultRateLimiter.SetLimitForKey(searchTextEndpoint, cfg.SearchTextWindow, cfg.SearchTextMaxCalls)
+	defaultRateLimiter.SetLimitForKey(searchNearbyEndpoint, cfg.SearchNearbyWindow, cfg.SearchNearbyMaxCalls)
+	defaultRateLimiter.SetLimitForKey(geocodeEndpoint, cfg.GeocodeWindow, cfg.GeocodeMaxCalls)
 }
 
 // photosEnabled 是全域開關,控制要不要真的向 Google Photo Media API

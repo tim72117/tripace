@@ -183,18 +183,49 @@ func TestApplySEOMeta_AllFourCityPagesHaveDistinctCanonical(t *testing.T) {
 	}
 }
 
-// 首頁本身、/product、/privacy、/terms 這幾個路徑不在 seoMetaByPath 裡
-// (見該變數的完整說明——/product/privacy/terms 本來就沒有自己的 Helmet
-// SEO meta,首頁的內容就是 index.html 的原始值),applySEOMeta 應該原樣
-// 傳回、不做任何取代。
+// 首頁本身、/privacy、/terms 這幾個路徑不在 seoMetaByPath 裡(見該變數
+// 的完整說明——/privacy/terms 本來就沒有自己的 Helmet SEO meta,首頁的
+// 內容就是 index.html 的原始值),applySEOMeta 應該原樣傳回、不做任何
+// 取代。/product 2026-10 已補上專屬 SEO meta(見 seoMetaByPath 的完整
+// 說明),故不在這份清單裡,改由下面 TestApplySEOMeta_ProductPageHasOwnSEOMeta
+// 驗證。
 func TestApplySEOMeta_UnknownRouteReturnsUnchanged(t *testing.T) {
 	html := readRealIndexHTML(t)
 
-	for _, p := range []string{"/", "/product", "/privacy", "/terms", "/app", "/some-unknown-path"} {
+	for _, p := range []string{"/", "/privacy", "/terms", "/app", "/some-unknown-path"} {
 		out := applySEOMeta(html, p)
 		if string(out) != string(html) {
 			t.Errorf("路徑 %s 不在 seoMetaByPath 裡,applySEOMeta 不該修改內容,但輸出跟原始內容不同", p)
 		}
+	}
+}
+
+// /product 沒有自己的代表圖(seoMetaByPath["/product"].image 是空字串),
+// 驗證 applySEOMeta 對這種情況的 fallback 行為:canonical/title 換成
+// /product 自己的值,但 og:image/twitter:image 仍沿用 defaultImage,
+// 不會被取代成空字串(見 applySEOMeta 對 image 變數的完整說明——空字串
+// 比沿用首頁的圖更糟,社群分享會完全沒有預覽圖)。
+func TestApplySEOMeta_ProductPageHasOwnSEOMetaButFallsBackToDefaultImage(t *testing.T) {
+	html := readRealIndexHTML(t)
+
+	out := string(applySEOMeta(html, "/product"))
+
+	wantCanonical := `<link rel="canonical" href="https://tripace.shuttle.tools/product" />`
+	if !strings.Contains(out, wantCanonical) {
+		t.Errorf("/product 的輸出沒有包含自己的 canonical:%q", wantCanonical)
+	}
+	if strings.Contains(out, `<link rel="canonical" href="https://tripace.shuttle.tools/" />`) {
+		t.Error("/product 的輸出仍包含指向首頁的 canonical,取代沒有生效")
+	}
+
+	if !strings.Contains(out, `<meta property="og:image" content="`+defaultImage+`" />`) {
+		t.Error("/product 沒有自己的代表圖,og:image 應該沿用 defaultImage,但輸出沒有包含")
+	}
+	if !strings.Contains(out, `<meta name="twitter:image" content="`+defaultImage+`" />`) {
+		t.Error("/product 沒有自己的代表圖,twitter:image 應該沿用 defaultImage,但輸出沒有包含")
+	}
+	if strings.Contains(out, `content=""`) {
+		t.Error("/product 的輸出裡出現空的 content 屬性,image 的空字串 fallback 沒有生效")
 	}
 }
 

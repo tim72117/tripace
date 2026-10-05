@@ -38,9 +38,15 @@ import (
 // structured data,不再用於這幾個標籤)保持一致,修改其中一邊時記得
 // 檢查另一邊。
 //
-// /product、/privacy、/terms 這三個 sitemap 裡的路由本身在前端就沒有
-// 用 Helmet 設定自己的 SEO meta(沿用首頁預設值,是既有且刻意的狀態,
-// 不是這次要修的問題範圍),故這份對照表不包含它們。
+// /privacy、/terms 這兩個 sitemap 裡的路由本身在前端就沒有用 Helmet
+// 設定自己的 SEO meta(沿用首頁預設值,是既有且刻意的狀態,不是這次要
+// 修的問題範圍),故這份對照表不包含它們。
+//
+// /product 原本也屬於上述情況,但使用者確認這個頁面的內容(功能介紹)
+// 跟首頁不同,canonical 指向首頁會讓 Google 把它當成首頁的重複內容,
+// 不會被獨立索引——跟四個城市頁同一類問題,故 2026-10 一併補上。
+// /product 沒有自己的代表圖,image 留空字串,表示沿用 defaultImage
+// (見 applySEOMeta 對空字串的 fallback 處理)。
 
 type seoMeta struct {
 	title       string
@@ -73,6 +79,12 @@ var seoMetaByPath = map[string]seoMeta{
 		description: "消防塔變史料館、州廳變文學館、老屋變民宿、百貨公司關了又重開——走一趟赤崁樓周邊，看台南這些老地方如何活成現在的樣子，兩天一夜的歷史建築活化路線。",
 		canonical:   "https://tripace.shuttle.tools/tainan-chikan",
 		image:       "https://storage.googleapis.com/shuttle-tripace-photos/review/tainan-chikan/IMG_9812.webp",
+	},
+	"/product": {
+		title:       "功能介紹——AI編排行程、主題景點、時間軸排程 | Tripace",
+		description: "描述你的旅行需求，AI 自動把候選景點排成每日時間軸；點開主題點看周邊精選店家與景點；把候選景點拖進時間軸，一眼掌握整趟旅程的節奏。看看 Tripace 怎麼幫你規劃一趟行程。",
+		canonical:   "https://tripace.shuttle.tools/product",
+		image:       "",
 	},
 }
 
@@ -176,9 +188,9 @@ func checkIndexHTMLHasAllSEOTargets(html []byte) error {
 
 // applySEOMeta 依請求路徑,把 index.html 內容裡寫死的首頁 title/
 // description/canonical/image 取代成該路由自己的值——找不到對應路由
-// (不在 seoMetaByPath 裡,例如首頁本身、/product、/privacy、/terms,
-// 或任何其餘 SPA fallback 路由)時原樣傳回,不做任何取代,沿用
-// index.html 原本的首頁預設內容(這是既有且正確的行為,不是遺漏)。
+// (不在 seoMetaByPath 裡,例如首頁本身、/privacy、/terms,或任何其餘
+// SPA fallback 路由)時原樣傳回,不做任何取代,沿用 index.html 原本的
+// 首頁預設內容(這是既有且正確的行為,不是遺漏)。
 // 每個目標字串都用 strings.Replace(...,1)(限制取代一次),不是
 // ReplaceAll——這份清單裡的字串設計上本來就只該在 index.html 出現
 // 一次,限制次數是額外的保險,避免未來不小心在別處重複出現同樣文字時
@@ -187,6 +199,14 @@ func applySEOMeta(html []byte, path string) []byte {
 	meta, ok := seoMetaByPath[path]
 	if !ok {
 		return html
+	}
+
+	// image 留空字串(例如 /product,見 seoMetaByPath 的完整說明)時沿用
+	// defaultImage,不把 og:image/twitter:image 取代成空字串——沒有圖
+	// 比沿用首頁的圖更糟(社群分享會完全沒有預覽圖)。
+	image := meta.image
+	if image == "" {
+		image = defaultImage
 	}
 
 	s := string(html)
@@ -221,7 +241,7 @@ func applySEOMeta(html []byte, path string) []byte {
       content="`+meta.description+`"
     />`,
 		1)
-	s = strings.Replace(s, `<meta property="og:image" content="`+defaultImage+`" />`, `<meta property="og:image" content="`+meta.image+`" />`, 1)
+	s = strings.Replace(s, `<meta property="og:image" content="`+defaultImage+`" />`, `<meta property="og:image" content="`+image+`" />`, 1)
 
 	s = strings.Replace(s, `<meta name="twitter:title" content="`+defaultTitle+`" />`, `<meta name="twitter:title" content="`+meta.title+`" />`, 1)
 	s = strings.Replace(s,
@@ -234,7 +254,7 @@ func applySEOMeta(html []byte, path string) []byte {
       content="`+meta.description+`"
     />`,
 		1)
-	s = strings.Replace(s, `<meta name="twitter:image" content="`+defaultImage+`" />`, `<meta name="twitter:image" content="`+meta.image+`" />`, 1)
+	s = strings.Replace(s, `<meta name="twitter:image" content="`+defaultImage+`" />`, `<meta name="twitter:image" content="`+image+`" />`, 1)
 
 	return []byte(s)
 }

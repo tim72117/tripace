@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import type { ClientConfig, GeoAttraction, GeoPlaceDetails } from '../api'
-import { fetchGeoPlaceDetails, fetchPublicGeoPlaceDetails } from '../api'
 import { attractionBadges } from './geoInfoContent'
+import { fetchPlaceDetailsCached, getCachedPlaceDetails } from './placeDetailsCache'
 import {
   curatedCategoryOf,
   CURATED_CATEGORY_ICONS,
@@ -101,9 +101,23 @@ export function AttractionInfoPanel({
 }) {
   // placeDetails:attraction.placeId 有值時,查一次「地點照片」的雙來源
   // 照片(Google/Pexels,見 handleGeoPlaceDetails 的完整說明)——不重新
-  // 發明呼叫邏輯,直接沿用 PlacePanel/GeoOutlinePhoneInfoSheet 走的同一支
-  // fetchGeoPlaceDetails 端點,取回的 googlePhotoUrls/pexelsPhotoUrls
-  // 交給 PhotoCarousel 顯示。
+  // 發明呼叫邏輯,透過 placeDetailsCache.ts 的 fetchPlaceDetailsCached
+  // 走同一支底層端點(fetchGeoPlaceDetails/fetchPublicGeoPlaceDetails),
+  // 取回的 googlePhotoUrls/pexelsPhotoUrls 交給 PhotoCarousel 顯示。
+  //
+  // 2026-10 改用 fetchPlaceDetailsCached 取代直接呼叫
+  // fetchGeoPlaceDetails/fetchPublicGeoPlaceDetails——理由見
+  // placeDetailsCache.ts 開頭的完整說明:這個元件與
+  // useAttractionOverlays.ts(地圖上的景點縮圖)原本各自獨立查詢同一個
+  // placeId,互不知情,使用者點擊地圖上已顯示 overlay 的精選點時,兩邊
+  // 幾乎同時發出請求,撞上後端 per-user 節流而有一邊被拒(2026-10 實測
+  // 記錄)。改用共用快取後,若 overlay 那邊已經查過或正在查,這裡直接
+  // 複用同一份結果/同一個 in-flight Promise,不再另外發送請求。
+  //
+  // 初始值改用 getCachedPlaceDetails 同步讀一次(而非一律從 null 開始)
+  // ——若 overlay 那邊已經查完並存入快取,一開啟詳情卡就能立刻顯示完整
+  // 照片輪播,不需要等這裡的 effect 跑完才從 placeholder 換成真正的圖,
+  // 這是共用快取額外帶來的使用者可感知的改善,不只是減少請求數。
   //
   // 2026-09 使用者明確要求「應該要跟點選附近景點一樣的流程」「不要再有
   // 資料庫的回退步驟」——原本這裡兩份清單皆空(或查詢失敗、尚未查完)時
@@ -124,13 +138,14 @@ export function AttractionInfoPanel({
   // useGeoPlanningState.ts 的 infoContentPhotoFetch effect 一貫的競態
   // 保護寫法。
   const placeId = attraction?.placeId
-  const [placeDetails, setPlaceDetails] = useState<GeoPlaceDetails | null>(null)
+  const [placeDetails, setPlaceDetails] = useState<GeoPlaceDetails | null>(
+    () => (placeId ? getCachedPlaceDetails(placeId) ?? null : null),
+  )
   useEffect(() => {
-    setPlaceDetails(null)
+    setPlaceDetails(placeId ? getCachedPlaceDetails(placeId) ?? null : null)
     if (!placeId) return
     let cancelled = false
-    const fetcher = usePublicPlaceDetails ? fetchPublicGeoPlaceDetails : fetchGeoPlaceDetails
-    fetcher(cfg, placeId)
+    fetchPlaceDetailsCached(cfg, placeId, usePublicPlaceDetails ?? false)
       .then((details) => {
         if (!cancelled) setPlaceDetails(details)
       })

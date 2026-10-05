@@ -2,6 +2,29 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.22.0 — 2026-10-05
+
+### 破壞性變更
+
+- `GET /internal(或 public)/geo/place-details`（一般模式）與 `GET /internal(或 public)/geo/place-photo-assets` 兩支 API 回應，移除 `photoUrl` 相容欄位——這個欄位原本是 `googlePhotoUrls` 清單第一張的複寫，供還沒改用多圖 UI 的舊呼叫端使用，前端已全面改讀 `googlePhotoUrls`，故不再序列化進回應。`photoOnly=1`/`textOnly=1` 這兩種查詢模式的回應形狀不受影響。任何外部直接呼叫這兩支 API 並讀取 `photoUrl` 欄位的呼叫端，需要改讀 `googlePhotoUrls[0]`。
+
+### 新增
+
+- `/product` 功能介紹頁補上專屬 SEO meta（title/description/canonical），修正原本 canonical 沿用首頁預設值、導致無法被 Google 獨立索引的問題。
+- 地圖上主題點（isTheme）的照片查詢新增主動重試機制：查無照片時每隔 2 秒重查一次、最多 3 次，跟點開詳情卡時的既有重試邏輯一致；精選點維持單次查詢、失敗靜默，避免一次揭露大量精選點時疊加過多背景重試。
+- Google Places/Geocoding API 的拒絕型限流（RateLimiter）新增涵蓋 `places.searchText`、`places.searchNearby`、`geocode` 三個先前只靠排隊節流保護的 endpoint；後台管理介面「Google API rate limits」頁面同步可管理。
+
+### 變更
+
+- Google Places/Geocoding API 的排隊型節流（Gateway 的 `MaxConcurrency`/`MinInterval`）預設改為不限制——短時間一批查詢在舊的排隊機制下容易讓排在後面的請求等待逾時，總量防護責任改由拒絕型 RateLimiter 統一負責。
+
+### 修正
+
+- 修正地圖上主題點/精選點的縮圖判斷「有沒有圖」改用 `googlePhotoUrls` 陣列長度，不再依賴即將移除的 `photoUrl` 欄位。
+- 修正主題點照片重試查到新照片後，共用快取（`placeDetailsCache`）沒有同步更新的問題——先前查到新照片只會更新地圖縮圖，使用者點開詳情卡時仍會看到查詢剛觸發時的舊快取（無照片），且沒有任何機制會自動修正。
+- 修正 AI 規劃版行程時間軸的照片重試機制：因為 `place-photo-assets` 回應不再帶 `photoUrl`，重試邏輯改成從 `googlePhotoUrls` 第一張衍生，避免即使背景補圖完成、縮圖仍永遠卡在沒有照片的狀態。
+- 修正 Geocoding API（`geo.Client.Geocode`，供地址轉座標使用）在上述排隊節流解除後完全沒有任何節流保護的缺口——先前排隊節流解除時只把四個 Places endpoint 納入新的拒絕型限流，遺漏了共用同一個 Gateway 的 geocode 呼叫路徑。
+
 ## v0.21.5 — 2026-10-04
 
 ### 修正

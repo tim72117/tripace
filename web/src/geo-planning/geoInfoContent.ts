@@ -38,16 +38,21 @@ export function searchResultInfoContent(r: GeoSearchResult): PlaceInfoContent {
 //
 // candidate.photoUrl:GeoCandidate 的 place 分支已經跟著
 // GeoGeocodeCandidate 拿掉 photoUrl、改成 placeId(見該型別的說明)——但這裡的資料
-// 來源是 GeoPlaceDetails(handleGeoPlaceDetails,POI 點擊查詢,不受這次
-// 背景化重構影響,仍同步回傳完整 photoUrl),且這支查詢本身沒有回傳
-// placeId 讓候選籃形狀可以承接,故候選籃項目這裡不帶 photoUrl(候選籃
-// UI 目前也沒有為 place 分支顯示候選卡片縮圖的路徑,僅供加入候選/寫入
-// entry 使用,不影響任何畫面呈現)。頂層的 PlaceInfoContent.photoUrl 仍然
-// 完整帶入,資訊卡本身的照片顯示不受影響。
+// 來源是 GeoPlaceDetails(handleGeoPlaceDetails,POI 點擊查詢),且這支
+// 查詢本身沒有回傳 placeId 讓候選籃形狀可以承接,故候選籃項目這裡不帶
+// photoUrl(候選籃 UI 目前也沒有為 place 分支顯示候選卡片縮圖的路徑,
+// 僅供加入候選/寫入 entry 使用,不影響任何畫面呈現)。
+//
+// 2026-10:GeoPlaceDetails 已經拿掉 photoUrl 欄位(見該型別的完整
+// 說明,後端不再傳這個相容欄位),這裡不再把 details.photoUrl 往下帶
+// ——PlaceInfoContent.photoUrl 這個頂層欄位仍保留(供 GeoSearchResult
+// 等只有單張圖的來源使用,見 PlacePanel.tsx 的完整說明),只是這個函式
+// 的資料來源(GeoPlaceDetails)已經沒有這個值可帶,資訊卡的照片顯示
+// 改由 googlePhotoUrls 清單負責(PhotoCarousel.tsx 收到空的 fallbackUrl
+// 時不受影響)。
 export function poiInfoContent(details: GeoPlaceDetails): PlaceInfoContent {
   return {
     name: details.name,
-    photoUrl: details.photoUrl,
     googlePhotoUrls: details.googlePhotoUrls,
     subtitle: details.address,
     summary: details.summary,

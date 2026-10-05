@@ -45,35 +45,43 @@ func main() {
 	// 設定,只是讓 cmd/server 多一個「可選掛載」的能力)。
 	admin := flag.Bool("admin", false, "是否一併掛載管理後台路由(/admin/*),與獨立部署的 cmd/adminserver 二選一或並存")
 	// geoMaxConcurrency/geoMinIntervalMs:對 Google Places/Geocoding API
-	// 的節流設定(見 internal/apigateway 的說明),整個 process 共用一份
-	// 額度,不是每個請求各自的限制。預設值(併發 1、間隔 2 秒)是刻意保守
-	// 的選擇,避免任何單一功能(如地圖被高頻拖曳觸發的附近搜尋)短時間內
-	// 對 Google API 發出大量請求,產生非預期的計費/額度消耗——這正是
-	// 這個節流元件存在的理由。
-	geoMaxConcurrency := flag.Int("geo-max-concurrency", apigateway.DefaultConfig().MaxConcurrency, "對 Google Places/Geocoding API 同時可以在飛行中的最大請求數")
-	geoMinIntervalMs := flag.Int64("geo-min-interval-ms", apigateway.DefaultConfig().MinInterval.Milliseconds(), "對 Google Places/Geocoding API 連續請求之間至少間隔多少毫秒")
-	// geoRateLimit*:對 Google Places 的 "places.get"(地點資訊——
-	// GetPlaceDetails/ListPlacePhotoRefs)與 "places.photoMedia"(地點
-	// 照片——PhotoDataURI,依張數計費的圖片下載)這兩個 endpoint 分別
+	// 的排隊型節流設定(見 internal/apigateway 的說明),整個 process 共用
+	// 一份額度,不是每個請求各自的限制。
+	//
+	// 2026-10 使用者明確要求移除這組排隊機制,預設值改成不限制(見
+	// apigateway.DefaultConfig 的完整說明:實測這組排隊在短時間一批查詢
+	// 湧入時,會讓排在後面的請求等待逾時,但排隊本身又不能真正防止總量
+	// 無上限累積)——保留這兩個 flag/環境變數是為了不破壞既有部署設定的
+	// 相容性與偵錯彈性(例如懷疑某次事故與併發暴衝有關時,可以臨時調
+	// 緊),但預設不再啟用排隊,總量控管責任完全交給下面的拒絕型
+	// RateLimiter(geoRateLimit* 這組參數)。
+	geoMaxConcurrency := flag.Int("geo-max-concurrency", apigateway.DefaultConfig().MaxConcurrency, "對 Google Places/Geocoding API 同時可以在飛行中的最大請求數,<=0 表示不限制(預設)")
+	geoMinIntervalMs := flag.Int64("geo-min-interval-ms", apigateway.DefaultConfig().MinInterval.Milliseconds(), "對 Google Places/Geocoding API 連續請求之間至少間隔多少毫秒,<=0 表示不限制(預設)")
+	// geoRateLimit*:對 Google Places/Geocoding API 五個 endpoint 分別
 	// 設定的拒絕型限流(見 apigateway.RateLimiter、geo.RateLimitConfig
-	// 的完整說明)——跟上面 geoMaxConcurrency/geoMinIntervalMs 是完全
-	// 不同的機制:那組參數只是「排隊,最終還是會送出」,不設總量上限;
-	// 這裡才是真正「超過就拒絕」的總量上限,目的是防止惡意或異常流量
-	// 長時間持續發送、最終累積無上限的計費呼叫(見
+	// 的完整說明)——"places.get"(地點資訊——GetPlaceDetails/
+	// ListPlacePhotoRefs)、"places.photoMedia"(地點照片——
+	// PhotoDataURI,依張數計費的圖片下載)、"places.searchText"(城市/
+	// 文字搜尋)、"places.searchNearby"(附近景點/飯店查詢)、"geocode"
+	// (地址轉座標,見 geo.Client.Geocode)。跟上面
+	// geoMaxConcurrency/geoMinIntervalMs 是完全不同的機制:那組參數
+	// (2026-10 起預設不限制)是「排隊,最終還是會送出」;這裡才是真正
+	// 「超過就拒絕」的總量上限,目的是防止惡意或異常流量長時間持續
+	// 發送、最終累積無上限的計費呼叫(見
 	// docs/audit-place-photo-cost-control-2026-09.md 的 R1 風險項目)。
 	//
-	// 只涵蓋這兩個 endpoint——"places.searchText"(城市搜尋)/
-	// "places.searchNearby"(附近景點/飯店查詢)等其餘 endpoint 不套用
-	// 這個拒絕型限流,繼續只受上面 Gateway 的排隊節流保護,理由見
-	// geo.RateLimitConfig 的完整說明:這兩個 endpoint 對應「單點地點
-	// 介紹」這條已評估過需要拒絕型限流保護的路徑,其餘 endpoint 目前
-	// 沒有同等急迫性,不需要跟著一起收緊。
+	// 2026-10 之前只有 places.get/places.photoMedia 兩個 endpoint 套用
+	// 這組拒絕型限流,其餘 endpoint 只靠上面的排隊節流保護。使用者明確
+	// 要求移除排隊節流後,若不讓其餘 endpoint 也納入拒絕型限流,會變成
+	// 完全沒有任何總量上限的缺口,故先把 geoRateLimitFallback 擴充成
+	// searchText/searchNearby 都有對應設定;code review 另外抓到
+	// geocode 也遺漏在這波擴充之外,之後一併補上第五個 endpoint(見下方)。
 	//
-	// 2026-10 使用者明確要求把這兩個 endpoint 的視窗單位從「秒」改成
-	// 「分鐘」:原本 10 秒/1 次、5 秒/1 次的視窗太短,AI 對話連續查詢多個
-	// 景點時容易在短短幾秒內就把額度用完、被固定視窗的邊界效應卡住
-	// (見 RateLimiter 檔頭對這個邊緣效應的完整說明)。兩個 endpoint 視窗
-	// 長度都改成 60 秒。
+	// 2026-10 使用者明確要求把 places.get/photoMedia 這兩個 endpoint 的
+	// 視窗單位從「秒」改成「分鐘」:原本 10 秒/1 次、5 秒/1 次的視窗太短,
+	// AI 對話連續查詢多個景點時容易在短短幾秒內就把額度用完、被固定
+	// 視窗的邊界效應卡住(見 RateLimiter 檔頭對這個邊緣效應的完整說明)。
+	// 兩個 endpoint 視窗長度都改成 60 秒。
 	//
 	// places.get(地點資訊查詢)上限次數:使用者後續再次明確要求改成
 	// 「一分鐘 300 次」(比先前以「每秒 1 次」換算出的 60 次更寬鬆)——
@@ -84,11 +92,29 @@ func main() {
 	// 換算出的 60 秒視窗 60 次上限——使用者只明確要求調整 places.get 的
 	// 數字,photoMedia 風險較高(依張數計費),沒有要求跟著放寬,維持原本
 	// 換算結果。
+	//
+	// places.searchText/places.searchNearby:新納入保護,預設值比
+	// places.get 更保守(60 秒視窗 120 次)——這兩個 endpoint 對應的是
+	// 城市搜尋/附近景點查詢,正常使用節奏比單點地點資訊查詢更稀疏,先用
+	// 比 places.get 寬鬆但比 photoMedia 寬鬆的中間值起步,待有實際流量
+	// 數據後可再經由後台管理介面調整,不需要重啟 process。
 	geoRateLimitPlaceGetWindowSec := flag.Int64("geo-rate-limit-place-get-window-sec", 60, "對 places.get(地點資訊查詢)限流的視窗長度(秒)")
 	geoRateLimitPlaceGetMaxCalls := flag.Int("geo-rate-limit-place-get-max-calls", 300, "對 places.get(地點資訊查詢)視窗內最多可放行的呼叫次數,超過直接拒絕")
 	geoRateLimitPhotoMediaWindowSec := flag.Int64("geo-rate-limit-photo-media-window-sec", 60, "對 places.photoMedia(地點照片下載,依張數計費)限流的視窗長度(秒)")
 	geoRateLimitPhotoMediaMaxCalls := flag.Int("geo-rate-limit-photo-media-max-calls", 60, "對 places.photoMedia(地點照片下載)視窗內最多可放行的呼叫次數,超過直接拒絕")
 	geoRateLimitPhotoMediaDailyMax := flag.Int("geo-rate-limit-photo-media-daily-max", 100, "對 places.photoMedia(地點照片下載)每日總額度上限,0 表示不限制")
+	geoRateLimitSearchTextWindowSec := flag.Int64("geo-rate-limit-search-text-window-sec", 60, "對 places.searchText(城市/文字搜尋)限流的視窗長度(秒)")
+	geoRateLimitSearchTextMaxCalls := flag.Int("geo-rate-limit-search-text-max-calls", 120, "對 places.searchText(城市/文字搜尋)視窗內最多可放行的呼叫次數,超過直接拒絕")
+	geoRateLimitSearchNearbyWindowSec := flag.Int64("geo-rate-limit-search-nearby-window-sec", 60, "對 places.searchNearby(附近景點/飯店查詢)限流的視窗長度(秒)")
+	geoRateLimitSearchNearbyMaxCalls := flag.Int("geo-rate-limit-search-nearby-max-calls", 120, "對 places.searchNearby(附近景點/飯店查詢)視窗內最多可放行的呼叫次數,超過直接拒絕")
+	// geoRateLimitGeocode*:2026-10 code review 抓到的缺口——geocode(見
+	// server/internal/geo/geocode.go 第 55 行)在排隊節流解除前至少受
+	// Gateway 的 MaxConcurrency/MinInterval 保底,解除後若不補上拒絕型
+	// 限流規則,會變成唯一完全不受節流的 Google API 呼叫路徑。預設值
+	// 比照 searchText/searchNearby,視窗 60 秒、上限 120 次,待有實際
+	// 流量數據後可再經由後台管理介面調整。
+	geoRateLimitGeocodeWindowSec := flag.Int64("geo-rate-limit-geocode-window-sec", 60, "對 geocode(地址轉座標)限流的視窗長度(秒)")
+	geoRateLimitGeocodeMaxCalls := flag.Int("geo-rate-limit-geocode-max-calls", 120, "對 geocode(地址轉座標)視窗內最多可放行的呼叫次數,超過直接拒絕")
 	// geoFetchPhotos:要不要真的向 Google Photo Media API 下載照片(見
 	// geo.SetPhotosEnabled 的完整說明)。預設關閉——Photo Media 依張數
 	// 計費,這是刻意保守的預設值,需要明確透過這個 flag 或下方的
@@ -159,6 +185,36 @@ func main() {
 			*geoRateLimitPhotoMediaDailyMax = parsed
 		}
 	}
+	if v := os.Getenv("GOOGLE_PLACES_SEARCH_TEXT_RATE_LIMIT_WINDOW_SEC"); v != "" {
+		if parsed, perr := strconv.ParseInt(v, 10, 64); perr == nil {
+			*geoRateLimitSearchTextWindowSec = parsed
+		}
+	}
+	if v := os.Getenv("GOOGLE_PLACES_SEARCH_TEXT_RATE_LIMIT_MAX_CALLS"); v != "" {
+		if parsed, perr := strconv.Atoi(v); perr == nil {
+			*geoRateLimitSearchTextMaxCalls = parsed
+		}
+	}
+	if v := os.Getenv("GOOGLE_PLACES_SEARCH_NEARBY_RATE_LIMIT_WINDOW_SEC"); v != "" {
+		if parsed, perr := strconv.ParseInt(v, 10, 64); perr == nil {
+			*geoRateLimitSearchNearbyWindowSec = parsed
+		}
+	}
+	if v := os.Getenv("GOOGLE_PLACES_SEARCH_NEARBY_RATE_LIMIT_MAX_CALLS"); v != "" {
+		if parsed, perr := strconv.Atoi(v); perr == nil {
+			*geoRateLimitSearchNearbyMaxCalls = parsed
+		}
+	}
+	if v := os.Getenv("GOOGLE_PLACES_GEOCODE_RATE_LIMIT_WINDOW_SEC"); v != "" {
+		if parsed, perr := strconv.ParseInt(v, 10, 64); perr == nil {
+			*geoRateLimitGeocodeWindowSec = parsed
+		}
+	}
+	if v := os.Getenv("GOOGLE_PLACES_GEOCODE_RATE_LIMIT_MAX_CALLS"); v != "" {
+		if parsed, perr := strconv.Atoi(v); perr == nil {
+			*geoRateLimitGeocodeMaxCalls = parsed
+		}
+	}
 
 	// geoRateLimitPlaceGetMaxCalls/geoRateLimitPhotoMediaMaxCalls 必須是
 	// 正整數才有意義——apigateway.RateLimiter.SetLimitForKey 把
@@ -176,6 +232,15 @@ func main() {
 	}
 	if *geoRateLimitPhotoMediaMaxCalls <= 0 {
 		log.Fatalf("geo-rate-limit-photo-media-max-calls 必須是正整數，收到 %d", *geoRateLimitPhotoMediaMaxCalls)
+	}
+	if *geoRateLimitSearchTextMaxCalls <= 0 {
+		log.Fatalf("geo-rate-limit-search-text-max-calls 必須是正整數，收到 %d", *geoRateLimitSearchTextMaxCalls)
+	}
+	if *geoRateLimitSearchNearbyMaxCalls <= 0 {
+		log.Fatalf("geo-rate-limit-search-nearby-max-calls 必須是正整數，收到 %d", *geoRateLimitSearchNearbyMaxCalls)
+	}
+	if *geoRateLimitGeocodeMaxCalls <= 0 {
+		log.Fatalf("geo-rate-limit-geocode-max-calls 必須是正整數，收到 %d", *geoRateLimitGeocodeMaxCalls)
 	}
 
 	// DATABASE_URL(postgres://…,正式環境為 Cloud SQL)優先;未設時退回 -db 的 SQLite。
@@ -204,17 +269,24 @@ func main() {
 	// seed 進資料庫(見下方 seedGeoRateLimitsIfEmpty),讓後台管理介面
 	// 一開啟就能看到目前實際生效的規則可編輯,而不是空白表格。
 	geoRateLimitFallback := geo.RateLimitConfig{
-		PlaceGetWindow:     time.Duration(*geoRateLimitPlaceGetWindowSec) * time.Second,
-		PlaceGetMaxCalls:   *geoRateLimitPlaceGetMaxCalls,
-		PhotoMediaWindow:   time.Duration(*geoRateLimitPhotoMediaWindowSec) * time.Second,
-		PhotoMediaMaxCalls: *geoRateLimitPhotoMediaMaxCalls,
+		PlaceGetWindow:       time.Duration(*geoRateLimitPlaceGetWindowSec) * time.Second,
+		PlaceGetMaxCalls:     *geoRateLimitPlaceGetMaxCalls,
+		PhotoMediaWindow:     time.Duration(*geoRateLimitPhotoMediaWindowSec) * time.Second,
+		PhotoMediaMaxCalls:   *geoRateLimitPhotoMediaMaxCalls,
+		SearchTextWindow:     time.Duration(*geoRateLimitSearchTextWindowSec) * time.Second,
+		SearchTextMaxCalls:   *geoRateLimitSearchTextMaxCalls,
+		SearchNearbyWindow:   time.Duration(*geoRateLimitSearchNearbyWindowSec) * time.Second,
+		SearchNearbyMaxCalls: *geoRateLimitSearchNearbyMaxCalls,
+		GeocodeWindow:        time.Duration(*geoRateLimitGeocodeWindowSec) * time.Second,
+		GeocodeMaxCalls:      *geoRateLimitGeocodeMaxCalls,
 	}
-	// 只對 places.get/places.photoMedia 兩個 endpoint 的拒絕型限流(見
-	// geoRateLimitPlaceGet*/geoRateLimitPhotoMedia* 的說明)——必須同樣
-	// 在任何 geo.New() 呼叫之前設定,理由與上面 ConfigureDefaultGateway
-	// 相同。這裡先用啟動參數值建立,緊接著 seedGeoRateLimitsIfEmpty/
-	// applyGeoRateLimitsFromStore 會視資料庫內容決定要不要覆蓋成資料庫
-	// 儲存的值(見兩者的完整說明)。
+	// 對五個 endpoint(places.get/photoMedia/searchText/searchNearby/
+	// geocode)的拒絕型限流(見 geoRateLimitPlaceGet*/geoRateLimitPhotoMedia*/
+	// geoRateLimitSearchText*/geoRateLimitSearchNearby*/geoRateLimitGeocode*
+	// 的說明)——必須同樣在任何 geo.New() 呼叫之前設定,理由與上面
+	// ConfigureDefaultGateway 相同。這裡先用啟動參數值建立,緊接著
+	// seedGeoRateLimitsIfEmpty/applyGeoRateLimitsFromStore 會視資料庫
+	// 內容決定要不要覆蓋成資料庫儲存的值(見兩者的完整說明)。
 	geo.ConfigureDefaultGatewayRateLimit(geoRateLimitFallback)
 	// 每日額度檢查器(見 storeGeoDailyQuotaChecker 的完整說明)——同樣
 	// 必須在任何 geo.New() 呼叫之前設定。

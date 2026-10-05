@@ -303,18 +303,30 @@ function ExternalServicesTab({ onLoggedOut }: { onLoggedOut: () => void }) {
   )
 }
 
-// GeoRateLimitsTab: edits the "places.get" / "places.photoMedia" rows of
+// GeoRateLimitsTab: edits the "places.get" / "places.photoMedia" /
+// "places.searchText" / "places.searchNearby" / "geocode" rows of
 // server/internal/store/geo_rate_limits.go. An endpoint with no row yet
 // (nothing saved through this form, or a fresh deployment before
 // cmd/server's startup seed runs) shows a blank editable row seeded from
 // DEFAULT_ENDPOINTS below rather than nothing — the admin shouldn't need to
 // already know the endpoint's exact string to create its first row.
 //
+// 2026-10: places.searchText/searchNearby added alongside the existing two
+// — the user asked to remove the Gateway's queueing throttle
+// (MaxConcurrency/MinInterval, see internal/apigateway.DefaultConfig) in
+// favor of the reject-style RateLimiter carrying all rate protection, which
+// means every Google Places endpoint needs a RateLimiter rule now, not just
+// the two that already had one. Code review later caught that "geocode"
+// (server/internal/geo/geocode.go) was missed by that same sweep — it used
+// to be backstopped by the Gateway's queueing default too, and lost that
+// protection the same way. Added here so this tab covers every endpoint
+// that now depends solely on the RateLimiter, not just the four Places ones.
+//
 // Saved edits don't apply instantly: cmd/server reads this table on a
 // background timer (~45s, see geoRateLimitRefreshInterval in
 // server/cmd/server/geo_rate_limit.go), not on every request — this tab
 // says so next to the save button rather than implying an immediate effect.
-const DEFAULT_ENDPOINTS = ['places.get', 'places.photoMedia']
+const DEFAULT_ENDPOINTS = ['places.get', 'places.photoMedia', 'places.searchText', 'places.searchNearby', 'geocode']
 
 // RPM_WINDOW_SEC — 2026-10 the user asked for this form to express the
 // window purely in "requests per minute" instead of separately editable

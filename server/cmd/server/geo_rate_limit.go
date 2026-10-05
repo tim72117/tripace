@@ -56,17 +56,25 @@ var _ apigateway.DailyQuotaChecker = storeGeoDailyQuotaChecker{}
 // 高頻變動的設定)已經足夠即時,不需要做成可設定項。
 const geoRateLimitRefreshInterval = 45 * time.Second
 
-// seedGeoRateLimitsIfEmpty 在 process 啟動時,對 "places.get"/
-// "places.photoMedia" 兩個 endpoint 各自檢查資料庫是否已有資料列——
-// 沒有的話,用啟動參數(fallback)讀到的值(加上這裡額外指定的
-// photoMediaDailyMax)寫入一筆,讓後台管理介面第一次開啟時就能看到
-// 目前實際生效的規則可編輯,而不是空白表格。已經有資料列的 endpoint
-// 完全不動(見 UpsertGeoRateLimit 的完整說明:這裡呼叫的是同一支
-// upsert,但只在「先前沒有列」時才呼叫,不是每次啟動都覆蓋),避免每次
-// 重啟都用啟動參數蓋掉後台已經儲存過的自訂設定。
+// seedGeoRateLimitsIfEmpty 在 process 啟動時,對五個 endpoint
+// ("places.get"/"places.photoMedia"/"places.searchText"/
+// "places.searchNearby"/"geocode")各自檢查資料庫是否已有資料列——沒有
+// 的話,用啟動參數(fallback)讀到的值(加上這裡額外指定的
+// photoMediaDailyMax)寫入一筆,讓後台管理介面第一次開啟時就能看到目前
+// 實際生效的規則可編輯,而不是空白表格。已經有資料列的 endpoint 完全
+// 不動(見 UpsertGeoRateLimit 的完整說明:這裡呼叫的是同一支 upsert,
+// 但只在「先前沒有列」時才呼叫,不是每次啟動都覆蓋),避免每次重啟都用
+// 啟動參數蓋掉後台已經儲存過的自訂設定。
 //
-// "places.get" 沒有對應的每日額度啟動參數(這次只對 photoMedia 新增
-// 每日額度,見 main.go 的完整說明),故 dailyMax 固定傳 0(不限制)。
+// 2026-10 新增 places.searchText/searchNearby 兩個 endpoint 的 seed——
+// 理由同 main.go geoRateLimitFallback 的說明:排隊節流解除後,這兩個
+// endpoint 若沒有拒絕型限流規則可套用,會是完全沒有總量上限防護的
+// 缺口。code review 另外抓到 geocode(server/internal/geo/geocode.go)
+// 也是同一類缺口,這裡一併補上 seed。
+//
+// "places.get"/"searchText"/"searchNearby"/"geocode" 都沒有對應的每日
+// 額度啟動參數(目前只對 photoMedia 設計每日額度,見 main.go 的完整
+// 說明),故 dailyMax 固定傳 0(不限制)。
 func seedGeoRateLimitsIfEmpty(st *store.Store, fallback geo.RateLimitConfig, photoMediaDailyMax int) {
 	existing, err := st.ListGeoRateLimits()
 	if err != nil {
@@ -86,6 +94,21 @@ func seedGeoRateLimitsIfEmpty(st *store.Store, fallback geo.RateLimitConfig, pho
 	if !seeded["places.photoMedia"] {
 		if err := st.UpsertGeoRateLimit("places.photoMedia", int(fallback.PhotoMediaWindow/time.Second), fallback.PhotoMediaMaxCalls, photoMediaDailyMax); err != nil {
 			log.Printf("geo rate limit 初始化 places.photoMedia 失敗: %v", err)
+		}
+	}
+	if !seeded["places.searchText"] {
+		if err := st.UpsertGeoRateLimit("places.searchText", int(fallback.SearchTextWindow/time.Second), fallback.SearchTextMaxCalls, 0); err != nil {
+			log.Printf("geo rate limit 初始化 places.searchText 失敗: %v", err)
+		}
+	}
+	if !seeded["places.searchNearby"] {
+		if err := st.UpsertGeoRateLimit("places.searchNearby", int(fallback.SearchNearbyWindow/time.Second), fallback.SearchNearbyMaxCalls, 0); err != nil {
+			log.Printf("geo rate limit 初始化 places.searchNearby 失敗: %v", err)
+		}
+	}
+	if !seeded["geocode"] {
+		if err := st.UpsertGeoRateLimit("geocode", int(fallback.GeocodeWindow/time.Second), fallback.GeocodeMaxCalls, 0); err != nil {
+			log.Printf("geo rate limit 初始化 geocode 失敗: %v", err)
 		}
 	}
 }
@@ -115,13 +138,14 @@ func startGeoRateLimitRefreshLoop(st *store.Store, interval time.Duration, fallb
 	}()
 }
 
-// applyGeoRateLimitsFromStore 讀一次 geo_rate_limits 表,把
-// "places.get"/"places.photoMedia" 兩個 key 目前的 WindowSec/MaxCalls
-// 套用到預設 Gateway 的 RateLimiter——資料庫裡沒有某個 key 的資料列時
-// (例如全新環境、後台管理介面尚未儲存過任何設定),該 key 退回呼叫端
-// 傳入的 fallback 值(啟動時的 flag/環境變數預設值,見 main.go 呼叫端的
-// 說明),不是「該 key 不受限流」——這是刻意的:讓「後台從未設定過」
-// 這個狀態等同「維持啟動參數」,而非意外把原本設定好的保護關掉。
+// applyGeoRateLimitsFromStore 讀一次 geo_rate_limits 表,把五個 key
+// ("places.get"/"places.photoMedia"/"places.searchText"/
+// "places.searchNearby"/"geocode")目前的 WindowSec/MaxCalls 套用到
+// 預設 Gateway 的 RateLimiter——資料庫裡沒有某個 key 的資料列時(例如
+// 全新環境、後台管理介面尚未儲存過任何設定),該 key 退回呼叫端傳入的
+// fallback 值(啟動時的 flag/環境變數預設值,見 main.go 呼叫端的說明),
+// 不是「該 key 不受限流」——這是刻意的:讓「後台從未設定過」這個狀態
+// 等同「維持啟動參數」,而非意外把原本設定好的保護關掉。
 func applyGeoRateLimitsFromStore(st *store.Store, fallback geo.RateLimitConfig) {
 	rows, err := st.ListGeoRateLimits()
 	if err != nil {
@@ -138,6 +162,15 @@ func applyGeoRateLimitsFromStore(st *store.Store, fallback geo.RateLimitConfig) 
 		case "places.photoMedia":
 			cfg.PhotoMediaWindow = time.Duration(r.WindowSec) * time.Second
 			cfg.PhotoMediaMaxCalls = r.MaxCalls
+		case "places.searchText":
+			cfg.SearchTextWindow = time.Duration(r.WindowSec) * time.Second
+			cfg.SearchTextMaxCalls = r.MaxCalls
+		case "places.searchNearby":
+			cfg.SearchNearbyWindow = time.Duration(r.WindowSec) * time.Second
+			cfg.SearchNearbyMaxCalls = r.MaxCalls
+		case "geocode":
+			cfg.GeocodeWindow = time.Duration(r.WindowSec) * time.Second
+			cfg.GeocodeMaxCalls = r.MaxCalls
 		}
 	}
 	geo.UpdateDefaultGatewayRateLimit(cfg)

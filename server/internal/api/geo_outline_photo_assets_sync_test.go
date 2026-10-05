@@ -128,12 +128,14 @@ func TestHandleGeoPlaceDetails_PhotoAssetFresh_OverridesResponse(t *testing.T) {
 		t.Fatalf("這個測試不該觸發任何 Google API 呼叫,實際打了 %d 次: %v", len(gw.calls), gw.calls)
 	}
 
-	if got, _ := body["photoUrl"].(string); got != "https://storage.googleapis.com/test-bucket/place-details/fresh.jpg" {
-		t.Errorf("photoUrl = %q,期待優先採用 photo_assets 的內容", got)
-	}
+	// 2026-10:photoUrl 欄位已從回應拿掉(見 placeDetailsResponse 的完整
+	// 說明),只驗證 googlePhotoUrls 是否優先採用 photo_assets 的內容。
 	googlePhotos, _ := body["googlePhotoUrls"].([]any)
 	if len(googlePhotos) != 1 || googlePhotos[0] != "https://storage.googleapis.com/test-bucket/place-details/fresh.jpg" {
 		t.Errorf("googlePhotoUrls = %v,期待只有 photo_assets 那一筆", googlePhotos)
+	}
+	if _, ok := body["photoUrl"]; ok {
+		t.Error("回應裡不該再出現 photoUrl 欄位(見 placeDetailsResponse 的完整說明)")
 	}
 }
 
@@ -181,7 +183,12 @@ func TestHandleGeoPlaceDetails_PhotoAssetExpired_ClearsPhotoWithoutFallback(t *t
 		t.Fatalf("狀態碼 = %d,期待 200;body=%v", resp.StatusCode, body)
 	}
 
-	if got, _ := body["photoUrl"].(string); got != "" {
-		t.Errorf("photoUrl = %q,期待清空為空字串(photo_assets 已過期,不回退 google_place_photos)", got)
+	// 2026-10:photoUrl 欄位已從回應拿掉(見 placeDetailsResponse 的完整
+	// 說明),改驗證 googlePhotoUrls 清空、且回應裡完全不出現這個欄位。
+	if googlePhotos, _ := body["googlePhotoUrls"].([]any); len(googlePhotos) != 0 {
+		t.Errorf("googlePhotoUrls = %v,期待清空(photo_assets 已過期,不回退 google_place_photos)", googlePhotos)
+	}
+	if _, ok := body["photoUrl"]; ok {
+		t.Error("回應裡不該再出現 photoUrl 欄位(見 placeDetailsResponse 的完整說明)")
 	}
 }

@@ -26,8 +26,13 @@
 export const PHOTO_RETRY_DELAY_MS = 2000
 export const PHOTO_RETRY_MAX_ATTEMPTS = 3
 
-export function hasAnyPhoto(content: { photoUrl?: string; googlePhotoUrls?: string[] }): boolean {
-  return !!content.photoUrl || (content.googlePhotoUrls?.length ?? 0) > 0
+// 2026-10:判斷依據改成只看 googlePhotoUrls 清單長度,不再檢查 photoUrl
+// ——那個欄位是 googlePhotoUrls 第一張的相容複寫,後端已經不再對一般
+// 查詢回應序列化這個欄位(見 server/internal/api/geo_outline.go
+// placeDetailsResponse 的完整說明),這裡沿用它只是多一個永遠不會比
+// googlePhotoUrls 更準確的判斷來源。
+export function hasAnyPhoto(content: { googlePhotoUrls?: string[] }): boolean {
+  return (content.googlePhotoUrls?.length ?? 0) > 0
 }
 
 function sleep(ms: number): Promise<void> {
@@ -64,11 +69,11 @@ function sleep(ms: number): Promise<void> {
 // fetchPlaceDetails——理由同 fetchPoiContent 的完整說明,連續重試會
 // 重複推進漸進補圖的點擊節奏判斷。省略這個參數時完全不重試,查一次就
 // resolve,對稱 fetchPoiContent 既有的選填設計。
-export function fetchPlaceDetailsWithPhotoRetry<T extends { photoUrl?: string; googlePhotoUrls?: string[] }>(
+export function fetchPlaceDetailsWithPhotoRetry<T extends { googlePhotoUrls?: string[] }>(
   placeId: string,
   fetchPlaceDetails: (placeId: string) => Promise<T>,
   onUpdate?: (details: T) => void,
-  fetchPhotoAssets?: (placeId: string) => Promise<{ photoUrl?: string; googlePhotoUrls?: string[] }>,
+  fetchPhotoAssets?: (placeId: string) => Promise<{ googlePhotoUrls?: string[] }>,
 ): Promise<T> {
   const retryWithPhotoAssetsOnly = (remainingRetries: number, base: T): Promise<T> => {
     if (remainingRetries <= 0 || !fetchPhotoAssets) return Promise.resolve(base)
@@ -78,7 +83,7 @@ export function fetchPlaceDetailsWithPhotoRetry<T extends { photoUrl?: string; g
         if (!hasAnyPhoto(photoAssets)) {
           return retryWithPhotoAssetsOnly(remainingRetries - 1, base)
         }
-        const details: T = { ...base, photoUrl: photoAssets.photoUrl, googlePhotoUrls: photoAssets.googlePhotoUrls }
+        const details: T = { ...base, googlePhotoUrls: photoAssets.googlePhotoUrls }
         onUpdate?.(details)
         return details
       })
