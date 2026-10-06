@@ -19,6 +19,15 @@
 # ---- 階段 1:build 主前端 ----
 FROM node:22-alpine AS web-build
 WORKDIR /web
+# npm 升級到 12.2.0:node:22-alpine 內建的 npm(10.9.x)的 arborist 依賴解析器
+# 在這個專案目前的依賴樹(新增 @vitejs/devtools-* 系列套件後)會直接拋出
+# `Cannot read properties of null (reading 'edgesOut')` 而整個安裝失敗
+# (npm 本身的 bug,不是這個專案的依賴設定錯誤)。這是 2026-10 修
+# package-lock.json 跟 Docker build 內 npm ci 失敗那次順便排查到的——本機
+# lock file 也必須用同一個 npm 12.2.0 重新產生(不能沿用舊版 npm 產生的
+# lock file 格式),兩邊版本須保持一致,否則會出現另一種「舊版 npm 讀新版
+# lock file 時 optionalDependencies 平台判斷錯亂」的 EBADPLATFORM 錯誤。
+RUN npm install -g npm@12.2.0
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
