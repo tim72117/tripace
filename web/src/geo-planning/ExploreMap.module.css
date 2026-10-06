@@ -550,6 +550,68 @@
   transform: scale(1.15);
 }
 
+/* geo-attraction-focused-pin:2026-10 新增(第二版,取代原本的素色小圓點
+   .geo-attraction-focused-dot)——ScrollTimeline.tsx 嵌入式小地圖「聚焦
+   錨點剛好對應到地圖上既有精選點」時,該精選點改畫的深紅色淚滴形圖釘
+   SVG(見 geoAttractionOverlay.ts renderFocusedPin() 的完整說明,幾何與
+   取色都在那裡,這裡只管版面盒、層級、三態的 transform 與進場動畫)。
+   畫布固定 24x32,selected 的落地環畫在畫布外(overflow: visible),三態
+   layout box 完全相同、尖端不會跳位。display: block 避免 inline SVG 的
+   基線空隙影響標籤間距。z-index 用跟 curated-dot 相同的 20(同是「點」
+   層級);focused 狀態下容器本身已由 updateContainerZIndex() 拉到最高
+   優先序,這裡不需要再疊高。pointer-events: auto 覆寫父層
+   .geo-attraction-overlay 的 none,理由同 .geo-attraction-curated-dot。
+   transform-origin 固定在底邊正中(尖端):hover 放大與進場落下都以尖端
+   為軸,尖端始終釘在同一個座標上。drop-shadow 用 filter 而非 box-shadow
+   ——後者畫的是矩形盒陰影,淚滴形輪廓只有 filter 才能貼合。 */
+:global(.geo-attraction-focused-pin) {
+  position: relative;
+  display: block;
+  width: 24px;
+  height: 32px;
+  overflow: visible;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 20;
+  transform-origin: 50% 100%;
+  filter: drop-shadow(0 2px 3px rgba(61, 53, 48, 0.32));
+  transition: transform 0.12s, filter 0.12s;
+}
+
+/* hover 態:以尖端為軸微放大、陰影略深——對齊 .geo-attraction-curated-dot:hover
+   的 scale(1.15) 回饋尺度,圖釘本體較大故縮小倍率。 */
+:global(.geo-attraction-focused-pin-hover) {
+  transform: scale(1.1);
+  filter: drop-shadow(0 3px 5px rgba(61, 53, 48, 0.4));
+}
+
+/* selected 態:靜態外觀全部由 SVG 內部的落地環表達(見 renderFocusedPin),
+   這裡刻意不再放大——「釘住」是沉穩的、不該比「滑過」更張揚。 */
+:global(.geo-attraction-focused-pin-selected) {
+  transform: none;
+}
+
+/* 進場:圖釘從上方落下、落定——只在 setFocused(true) 後第一次渲染才掛上
+   這個 class(見 geoAttractionOverlay.ts focusedPinEntrancePending 的
+   說明),hover/selected 切換不重播。動畫結束後停在各態自己的
+   transform(animation 不用 forwards,fill-mode 結束後讓位給上方
+   hover/selected 規則)。 */
+:global(.geo-attraction-focused-pin-enter) {
+  animation: focusedPinDrop 260ms cubic-bezier(0.2, 0.7, 0.3, 1.2);
+}
+
+@keyframes focusedPinDrop {
+  from { opacity: 0; transform: translateY(-10px) scale(0.85); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* reduced-motion:不播落下、不做 hover 放大過渡,圖釘直接以靜態外觀出現
+   ——三態仍靠落地環/陰影深淺區分,不是半套狀態。 */
+@media (prefers-reduced-motion: reduce) {
+  :global(.geo-attraction-focused-pin) { transition: none; }
+  :global(.geo-attraction-focused-pin-enter) { animation: none; }
+}
+
 /* geo-attraction-curated-dot-{tea,restaurant,craft,street}:店家分類配色
    (見 geoCuratedCategoryStub.ts 的完整說明——目前是前端寫死的原型對照表,
    不是真正的資料欄位)。只覆寫 background,尺寸/邊框/陰影/hover 動畫都
@@ -595,6 +657,83 @@
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+/* geo-attraction-landmark-ghost / geo-attraction-glow-fading:2026-10 新增
+   ——主題點照片「收起」(setThemePhotoCollapsed(true),僅 ScrollTimeline
+   開 themePhotoOnlyWhenFocused 時才會發生)的淡出幽靈,見
+   geoAttractionOverlay.ts captureThemePhotoGhosts()/mountThemePhotoGhosts()
+   的完整說明。renderContent() 同步把 DOM 換成小圓點之後,這兩個純裝飾
+   節點被塞回容器最前面,在原位淡出、動畫結束後由 JS 移除。
+   幽靈照片刻意不沿用 .geo-attraction-landmark-photo(那是 JS 查詢契約
+   class,見 TS 端說明),故圓形/邊框/陰影在這裡重複一份。
+   定位:容器是 flex column、底邊錨定座標;收起後第一個 flex 子項是 14px
+   圓點,圓點底邊 = 容器頂 + 14px,照片收起前的底邊也在同一條線上
+   (都是緊貼標籤上方)。幽靈改成絕對定位脫離 flex 流(圓點/標籤版面跟
+   沒有幽靈時完全相同),top:14px 再用 margin-top:-56px 往上推整個高度,
+   底邊就跟新圓點底邊重合;不用 transform 做置中/位移,留給縮小動畫用,
+   transform-origin 放在底邊正中,讓照片朝圓點的位置縮小消失——是
+   photoFadeIn(scale 0.85 → 1)的倒放,收起/展開讀起來是同一組動作。
+   z-index 30 比圓點(20)高:淡出期間照片仍蓋在圓點之上,圓點在它底下
+   逐漸透出。animation-fill-mode: forwards 讓動畫結束到 JS 移除節點之間
+   的那一兩個 frame 停在透明,不會閃回不透明。
+   時長 240ms 跟 geoAttractionOverlay.ts 的 THEME_PHOTO_FADE_OUT_MS
+   (setTimeout 保底)對應,兩邊要一起改。 */
+:global(.geo-attraction-landmark-ghost) {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  width: 56px;
+  height: 56px;
+  margin-top: -56px;
+  margin-left: -28px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--ios-card);
+  box-shadow: 0 2px 8px rgba(61, 53, 48, 0.18);
+  pointer-events: none;
+  z-index: 30;
+  transform-origin: 50% 100%;
+  animation: landmarkGhostFadeOut 240ms ease-out forwards;
+}
+
+:global(.geo-attraction-landmark-ghost-placeholder) {
+  background: linear-gradient(135deg, var(--ios-sand), var(--ios-gray));
+}
+
+@keyframes landmarkGhostFadeOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+}
+
+/* 光暈的幽靈沿用 .geo-attraction-glow 本身的外觀與定位(bottom:-20px 相對
+   容器底邊,容器變矮不影響它的位置),只把 glowFadeIn 進場動畫換成淡出;
+   選擇器特異度相同、宣告在後,故覆寫得掉基底的 animation。
+   transform 不動(glowFadeIn 的 keyframes 內含 translateX(-50%) 置中,這裡
+   只動 opacity,基底規則的 transform: translateX(-50%) 持續生效)。 */
+:global(.geo-attraction-glow-fading) {
+  animation: glowFadeOut 240ms ease-out forwards;
+}
+
+@keyframes glowFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* reduced-motion:JS 端(captureThemePhotoGhosts)在該模式下根本不會產生
+   幽靈,照片瞬間消失;這裡是動畫播到一半系統設定才切換、或 matchMedia
+   不可用時的保底——直接不顯示,節點之後仍由 JS 的 setTimeout 清掉。 */
+@media (prefers-reduced-motion: reduce) {
+  :global(.geo-attraction-landmark-ghost),
+  :global(.geo-attraction-glow-fading) {
+    display: none;
   }
 }
 

@@ -28,6 +28,11 @@
   /* --explore-accent:ExploreOtherCities.module.css 讀的中性變數名,
      同 --footer-accent 的既有模式。 */
   --explore-accent: var(--brick);
+  /* --timeline-accent:ScrollTimeline.module.css 讀的中性變數名,同
+     --footer-accent/--explore-accent 的既有模式——只需要在這裡定義
+     一次,--brick 本身已經在 dark/light 三處區塊各自覆寫過,var()
+     是在使用當下才解析,不需要跟著重複三份。 */
+  --timeline-accent: var(--brick);
 
   min-height: 100vh;
   background: var(--paper);
@@ -193,31 +198,30 @@
    取代原本「整頁捲動、每站佔滿一個視窗高度」的敘事設計——文章版是
    正常文件流,讀者捲動速度自己決定,不強迫每站停留一整個螢幕高度。
    淡入進場動畫(is-active 判斷)一併拿掉,理由同上:文章式閱讀不需要
-   這種展示型網站常見的捲動進場效果。 */
+   這種展示型網站常見的捲動進場效果。
+   2026-10 ScrollTimeline 試做:這個區塊現在包著 <ScrollTimeline>(見
+   TainanChikanPage.tsx 掛載處的完整說明),不再是單純的 <section>
+   包一串 <article>——.tainan-chikan-stops 這個 class 改掛在
+   <ScrollTimeline> 外層的包裹 div 上,純粹提供原本就有的 960px 閱讀寬度
+   /置中/留白,不管裡面實際結構是什麼。 */
 .tainan-chikan-stops {
   max-width: 960px;
   margin: 0 auto;
   padding: 0 1.5rem 4rem;
 }
 
+/* .tainan-chikan-stop:每一站的實際內容容器——原本自己負責跟上一站的
+   分隔視覺(margin-bottom/border-top 虛線),2026-10 改成巢狀在
+   ScrollTimeline.module.css 的 .stop 包裹元素裡面(見 ScrollTimeline.tsx
+   的 ScrollTimelineAnchor),那層外殼本身已經提供 48px 上下留白 + 實線
+   分隔線(含 :first-child 時不畫線的既有規則),故這裡拿掉重複的
+   margin-bottom/padding-top/border-top,避免兩層分隔線疊在一起。
+   已知限制:原本「Day 2 分隔線後緊接的第一站不畫自己的分隔線」那條
+   :has() 規則,因為外層 .stop 的分隔線類別名稱是 CSS module 產生的
+   雜湊 class(這份全域 CSS 選不到),暫時無法對齊,Day 分隔線下方可能
+   會多一條外層 .stop 自帶的實線分隔線,屬於這次試做已知的小瑕疵。 */
 .tainan-chikan-stop {
-  margin-bottom: 6rem;
-  padding-top: 1.5rem;
-  border-top: 1px dashed var(--line);
-}
-.tainan-chikan-stop:first-child {
-  border-top: none;
-  padding-top: 0;
-}
-/* Day 2 分隔線("Day 2"文字+左右裝飾線,見 .tainan-chikan-day-divider)
-   後面緊接的第一站——使用者回報「Day 2 下不要有格線」:分隔線本身已經
-   是視覺斷點,緊接著的站卡再疊一條 border-top 虛線會跟分隔線重複。
-   用 :has() 判斷這一站的外層 wrapper div 裡是否有 day-divider 同胞
-   元素,有的話拿掉這一站自己的頂部虛線與上方留白(分隔線自己的
-   margin 已經提供足夠間距,不需要再疊加 padding-top)。 */
-.tainan-chikan-stops > div:has(> .tainan-chikan-day-divider) > .tainan-chikan-stop {
-  border-top: none;
-  padding-top: 0;
+  margin-bottom: 0;
 }
 
 .tainan-chikan-stop-head {

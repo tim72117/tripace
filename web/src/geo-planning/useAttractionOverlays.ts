@@ -40,6 +40,9 @@ export function useAttractionOverlays({
   cfg,
   usePublicPlaceDetails,
   hiddenAttractionId,
+  focusedAttractionId,
+  themePhotoOnlyWhenFocused,
+  focusedThemeId,
 }: {
   mapRef: React.RefObject<google.maps.Map | null>
   mapReady: boolean
@@ -109,6 +112,31 @@ export function useAttractionOverlays({
   // (AttractionInfoPanel 並存顯示,不走 bottom sheet)呼叫端固定傳
   // null/undefined,不受影響。
   hiddenAttractionId?: string | null
+  // focusedAttractionId:2026-10 新增,ScrollTimeline.tsx 嵌入式小地圖
+  // 專用——目前捲動時間軸聚焦的錨點,若座標剛好對應到地圖上某個既有
+  // 精選點(見 InteractiveExploreMap.tsx 的 focusedAttractionId 推導),
+  // 傳那個精選點的 id,對應 overlay 會改畫「素色小圓點」造型(見
+  // geoAttractionOverlay.ts 的 focused 欄位/setFocused 完整說明)。
+  // 跟 selectedKey 驅動的 setSelected 是完全獨立的兩個狀態,互不覆寫。
+  // 未傳/null(DesktopLayout.tsx 等所有既有呼叫端)時全部 overlay 的
+  // focused 維持 false,渲染行為完全不變。用 id 比對理由同
+  // hiddenAttractionId/hoveredCuratedId(name 不保證全域唯一)。
+  focusedAttractionId?: string | null
+  // themePhotoOnlyWhenFocused/focusedThemeId:2026-10 新增,ScrollTimeline.tsx
+  // 嵌入式小地圖專用的 opt-in 開關——主題點(isTheme===true)預設恆顯示
+  // 圓形照片光暈(所有既有呼叫端依賴的行為);themePhotoOnlyWhenFocused
+  // 為 true 時改成「只有 id 等於 focusedThemeId(目前時間軸聚焦的主題
+  // 點,見 InteractiveExploreMap.tsx 的 focusedThemeMatched 推導)的那顆
+  // 才顯示照片,其餘主題點退化成素色小圓點(hover 時仍可臨時升級成
+  // 照片)」,見 geoAttractionOverlay.ts 的 themePhotoCollapsed/
+  // setThemePhotoCollapsed 完整說明。
+  // 未傳/false(DesktopLayout.tsx 與九份/京都/台南/首頁等所有既有呼叫端)
+  // 時,下方同步 effect 對每顆 overlay 一律 setThemePhotoCollapsed(false)
+  // ——該方法對「值沒變」提早跳出,等同從未呼叫,主題點恆顯示照片的既有
+  // 行為一字不變。focusedThemeId 只在開關為 true 時才有意義;用 id 比對
+  // 理由同 hiddenAttractionId/focusedAttractionId(name 不保證全域唯一)。
+  themePhotoOnlyWhenFocused?: boolean
+  focusedThemeId?: string | null
 }) {
   const overlaysRef = useRef<AttractionOverlayInstance[]>([])
 
@@ -350,6 +378,38 @@ export function useAttractionOverlays({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hiddenAttractionId, filteredAttractions, mapReady, mapVersion])
 
+  // 同步 ScrollTimeline 聚焦狀態(見 focusedAttractionId prop 說明):只
+  // 呼叫既有 overlay 的 setFocused,不重建整批 overlay。setFocused 內部
+  // 對 isTheme 的 no-op 與值未變的提早跳出,確保主題點與非目標精選點
+  // 不會被無謂重繪。依賴陣列比照 hiddenAttractionId 那個 effect 補上
+  // mapReady/mapVersion——focusedAttractionId 很可能在地圖尚未就緒
+  // (面板第一次開啟、attractions 剛查回來)時就已經有值,若只依賴
+  // focusedAttractionId/filteredAttractions,overlay 建好後這個 effect
+  // 不會重新執行,聚焦造型就永久遺漏。
+  useEffect(() => {
+    overlaysRef.current.forEach((o, i) => {
+      const d = filteredAttractions[i]
+      if (d) o.setFocused(d.id != null && d.id === focusedAttractionId)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedAttractionId, filteredAttractions, mapReady, mapVersion])
+
+  // 同步主題點「照片收起」狀態(見 themePhotoOnlyWhenFocused/focusedThemeId
+  // prop 說明):只呼叫既有 overlay 的 setThemePhotoCollapsed,不重建整批
+  // overlay。開關關閉時一律傳 false,setThemePhotoCollapsed 對精選點與
+  // 值未變的提早跳出,確保既有呼叫端不會被無謂重繪。依賴陣列比照
+  // focusedAttractionId 那個 effect 補上 mapReady/mapVersion,理由相同:
+  // focusedThemeId 很可能在地圖尚未就緒時就已經有值。
+  useEffect(() => {
+    overlaysRef.current.forEach((o, i) => {
+      const d = filteredAttractions[i]
+      if (!d) return
+      const collapsed = !!themePhotoOnlyWhenFocused && d.isTheme && !(d.id != null && d.id === focusedThemeId)
+      o.setThemePhotoCollapsed(collapsed)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themePhotoOnlyWhenFocused, focusedThemeId, filteredAttractions, mapReady, mapVersion])
+
   // resolveLabelCollisions:標籤避讓機制——2026-10 使用者實測回報「兩個
   // 景點標籤文字重疊」,之後再回報「縮圖還是被文字標籤覆蓋」「也都還是
   // 被小點蓋住」。我們自建的這套 HTML OverlayView 標籤沒有 Google 原生
@@ -457,6 +517,6 @@ export function useAttractionOverlays({
       listeners.forEach((l) => l.remove())
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, mapVersion, filteredAttractions, selectedKey, hoverKey, candidateKeysToken, hoveredCuratedId])
+  }, [mapReady, mapVersion, filteredAttractions, selectedKey, hoverKey, candidateKeysToken, hoveredCuratedId, focusedAttractionId, themePhotoOnlyWhenFocused, focusedThemeId])
 
 }

@@ -1,13 +1,10 @@
-import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { InteractiveExploreMap } from './InteractiveExploreMap';
-import { MobileMapReveal } from './MobileMapReveal';
+import { ScrollTimeline } from './ScrollTimeline';
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { CityPageFooter } from './CityPageFooter';
 import { ExploreOtherCities } from './ExploreOtherCities';
 import { useThemeToggle } from '../hooks/useThemeToggle';
-import { useScrollProgress } from '../hooks/useScrollProgress';
 import { trackEvent } from '../analytics';
 import './TainanChikanPage.css';
 
@@ -89,6 +86,14 @@ const STOPS = [
     day: 1,
     kind: '前世今生',
     name: '赤崁樓',
+    // center:2026-10 新增,見 ScrollTimeline.Anchor 的 center prop 完整
+    // 說明——這一站本身就是資料庫裡的主題點(theme="赤崁樓"),理論上不
+    // 需要 center 也能正確移動地圖中心(theme 比對優先於 center),這裡
+    // 仍然填上是為了讓 8 站的資料形狀一致,不差一站特別省略;真正發揮
+    // 作用的是底下其餘 7 站(它們不是主題點,theme 比對不到任何東西,
+    // 要靠 center 才能移動地圖)。座標取自本機 attractions 資料庫的
+    // 「赤崁樓」記錄。
+    center: { lat: 22.997477999999997, lng: 120.2025433 },
     desc: '這裡原本是 1653 年荷蘭人蓋的普羅民遮城，地基是當時的荷式磚造結構。後來清朝人在上面重建了海神廟跟文昌閣，變成現在看到的閩南式閣樓。腳下踩的是荷蘭地基，上面是清代建築，走一圈還滿有意思的。',
     blurb: '兩個完全不同年代的東西疊在一起，逛的時候可以留意一下地基跟上面建築的差別。',
     gallery: [
@@ -105,6 +110,9 @@ const STOPS = [
     day: 1,
     kind: '前世今生',
     name: '武廟愛玉',
+    // 座標取自資料庫「祀典武廟」記錄(愛玉攤就在廟埕旁,直接沿用該廟
+    // 座標,不另外精確到攤位門口)。
+    center: { lat: 22.9965989, lng: 120.2021754 },
     desc: '祀典武廟旁邊有一攤手洗愛玉，檸檬味酸酸甜甜的。從赤崁樓走過來剛好，逛完流一身汗，坐下來吃一碗冰涼愛玉很舒服。',
     blurb: '手洗愛玉要把籽洗出膠質才會凝結，看起來簡單其實急不得。',
     // 2026-10 使用者要求「主圖放大,多穿插一點小圖」——這站目前只有
@@ -125,6 +133,9 @@ const STOPS = [
     day: 1,
     kind: '前世今生',
     name: '神農街',
+    // 不在 attractions 資料庫裡,座標是用 CLI geocode 工具查 Google
+    // Places 拿到的真實座標(非手動猜測)。
+    center: { lat: 22.9975171, lng: 120.19649489999999 },
     desc: '這裡以前是五條港時期的商業街，現在改成一間間小店，但木造街屋的樣子還留著。晚上整條街掛滿彩色燈籠，老屋被照得暖暖的，難怪大家都愛來拍照。第一天走到這裡，用這個夜景收尾剛剛好，再往前走幾步就是今晚住的天下南隅。',
     blurb: '假日人潮確實不少，想拍空景幾乎不可能，但這種熱鬧感反而才是神農街的味道。',
     gallery: [
@@ -144,6 +155,10 @@ const STOPS = [
     day: 1,
     kind: '住宿',
     name: '天下南隅',
+    // 不在 attractions 資料庫裡,座標是用 CLI geocode 工具查 Google
+    // Places 拿到的真實座標(查詢關鍵字「天下南隅 台南」,比對到
+    // 「Provintia Hotel 天下南隅」)。
+    center: { lat: 22.9993737, lng: 120.203621 },
     desc: '這棟樓 1985 年就開了，以前是台南數一數二的高級商務旅館，據說兩任總統都住過，頂樓那間圓頂西餐廳更是不少台南人的兒時回憶。後來歇業荒廢了好一陣子，2020 年開始整修，花了三年重新設計，2023 年底才以「天下南隅」這個新名字重新開張，把 40 年的老屋氣味留著，又加了點現代感。逛完神農街夜景，剛好可以在這過夜。公共區有個開放式廚房，不是房間裡那種小廚具，可以自己煮點東西；大廳整面書牆配上垂掛的藍白布幔，坐在這裡翻書發呆一下午也不會膩。',
     gallery: [
       { file: 'IMG_9810.webp', alt: '大廳書牆與閱讀區', caption: '大廳書牆與閱讀座位區，天花板垂掛藍白布幔裝置' },
@@ -161,6 +176,9 @@ const STOPS = [
     day: 2,
     kind: '前世今生',
     name: '台南市消防史料館',
+    // 不在 attractions 資料庫裡,座標是用 CLI geocode 工具查 Google
+    // Places 拿到的真實座標。
+    center: { lat: 22.992480999999998, lng: 120.20425849999998 },
     desc: '這棟紅磚建築以前是台南合同廳舍消防塔，在地人習慣叫它「火見樓」，現在改成消防史料館，很適合帶小孩來。裡面有古董手拉幫浦車、復古消防吉普車可以看，還有消防服著裝體驗、滑桿體驗區，小朋友可以實際穿上裝備、背上氧氣瓶道具玩消防員負重體驗、摸摸看真的消防車，不是只能隔著玻璃看展示品。',
     blurb: '這站根本是小孩的主場，光是體驗區就能玩上一陣子，大人也看得很開心。',
     gallery: [
@@ -183,6 +201,9 @@ const STOPS = [
     day: 2,
     kind: '前世今生',
     name: '國立臺灣文學館',
+    // 不在 attractions 資料庫裡,座標是用 CLI geocode 工具查 Google
+    // Places 拿到的真實座標。
+    center: { lat: 22.9918527, lng: 120.2044791 },
     desc: '這裡以前是台南州廳，老建築的紅磚拱廊整個保留下來，後面又加蓋了一個現代化的圓弧量體，新舊兩種建築語彙就這樣接在一起，走進中庭會先看到老牆、再看到玻璃天花板採光罩，反差感很明顯但不違和。館內有台灣文學發展的常設展，免費參觀，天氣太熱的時候很適合躲進來吹冷氣順便看展。',
     blurb: '紅磚拱廊配現代採光罩這種新舊混搭，比起單純看老建築或單純看新建築，反而更好拍。',
     gallery: [
@@ -203,6 +224,8 @@ const STOPS = [
     day: 2,
     kind: '前世今生',
     name: '林百貨',
+    // 座標取自資料庫「林百貨」記錄。
+    center: { lat: 22.9917925, lng: 120.2025232 },
     desc: '1932 年開幕，是台南第一間百貨公司，戰後荒廢了幾十年，2014 年才整修重新開幕。轉角立面跟排列整齊的圓窗還是當年的樣子，頂樓還留著神社遺跡。逛完文學館過來剛好，可以上頂樓露台吹吹風、隨意逛逛買點東西，順便吃碗豆花。',
     blurb: '頂樓露台掛滿裝飾燈串，坐在騎樓下休息，看得到旁邊街道，逛到一半需要喘口氣的話很適合。',
     gallery: [
@@ -226,6 +249,9 @@ const STOPS = [
     // 商圈,理由是商圈本來就是孔廟外圍的延伸,動線上也是同一次停留,
     // 沒有必要拆成兩個卡片。gallery 合併原本兩站的照片(孔廟本體 4 張
     // + 商圈 2 張),info 合併成單一資訊框。
+    // 不在 attractions 資料庫裡,座標是用 CLI geocode 工具查 Google
+    // Places 拿到的真實座標(查詢關鍵字「台南孔廟」)。
+    center: { lat: 22.9905296, lng: 120.2040401 },
     desc: '紅牆大門上掛著「全臺首學」的匾額，1665 年就建了，是全台第一座孔廟。院落裡老樹枝葉很茂密，泮池的水面會倒映出對面建築的屋脊，傍晚去特別安靜。孔廟外圍這一帶是台南人熟悉的商圈，石造牌坊是入口地標，從林百貨走過來不遠，氣氛介於觀光跟日常之間。',
     blurb: '原本想排海安路，但那天週一多數店休，改來孔廟商圈這一帶逛——牌坊進去也有不少小店，氣氛差不多。',
     gallery: [
@@ -246,11 +272,6 @@ const STOPS = [
 
 export function TainanChikanPage() {
   const { theme, dark, toggleTheme } = useThemeToggle();
-  // mapIntroRef 對齊 JiufenPage.tsx/KyotoPage.tsx 的既有命名——現在真的
-  // 掛了互動地圖區塊(見下方),不再是觀察 hero 本身,activeIndex 的 -1
-  // 特殊值對應地圖容器。
-  const mapIntroRef = useRef<HTMLDivElement | null>(null);
-  const { activeIndex, stopRefs } = useScrollProgress(STOPS.length, mapIntroRef);
 
   return (
     <div className="tainan-chikan-page" data-theme={theme ?? undefined}>
@@ -339,39 +360,33 @@ export function TainanChikanPage() {
         消防史料館 <span className="tainan-chikan-route-arrow">→</span> 文學館 <span className="tainan-chikan-route-arrow">→</span> 林百貨 <span className="tainan-chikan-route-arrow">→</span> 台南孔廟・孔廟商圈
       </div>
 
-      {/* 2026-09:使用者要求把開頭互動地圖從頁面最頂端搬到分站列表結束、
-          結尾 CTA 之前(見下方 .tainan-chikan-map-intro 掛載處的完整
-          說明)——「回到互動地圖」這顆進度點原本排在最前面,現在改排在
-          最後面(STOPS 之後),對齊地圖搬移後的新視覺順序。 */}
-      <nav className="tainan-chikan-progress-rail" aria-label="站點進度">
-        {STOPS.map((stop, i) => (
-          <button
-            key={stop.name}
-            type="button"
-            className={`tainan-chikan-progress-dot${i === activeIndex ? ' is-active' : ''}`}
-            onClick={() => stopRefs.current[i]?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-            aria-label={`跳到「${stop.name}」`}
-            title={stop.name}
-          />
-        ))}
-        <button
-          type="button"
-          className={`tainan-chikan-progress-dot${activeIndex === -1 ? ' is-active' : ''}`}
-          onClick={() => mapIntroRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-          aria-label="回到互動地圖"
-          title="回到互動地圖"
-        />
-      </nav>
-
-      {/* 2026-10:整段改成文章版的「圖文交錯站點卡」結構(對齊
-          docs/tainan-chikan-article-draft.html 的 .stop/.stop-gallery/
-          .info-box),取代原本只有單張 photo+單段 desc 的小卡片版面。
-          Day 2 分隔線插在 stop.day 從 1 變成 2 的交界處(i > 0 且
-          前一筆 day 不同),只出現一次,不是每站都判斷顯示。
-          stopRefs/data-index 掛載邏輯維持不變,進度點導覽
-          (.tainan-chikan-progress-rail)跟互動地圖搬移機制都不受這次
-          版面重構影響。 */}
-      <section className="tainan-chikan-stops">
+      {/* 2026-10 試做:套用 ScrollTimeline(見該元件開頭的完整說明)取代
+          原本「獨立進度點 nav + 分站列表 + 頁尾固定地圖區塊」三段各自
+          獨立的結構——改成左側時間軸縮圖 + 右側可展開的嵌入式小地圖,
+          隨捲動同步移動,文案本身完全不變(圖文交錯站點卡/blurb/
+          gallery/info-box 全部原樣保留,只是外層從 <section> 換成
+          <ScrollTimeline>,每一站從純 <article> 包一層
+          <ScrollTimeline.Anchor>)。useScrollProgress/mapIntroRef/
+          stopRefs/MobileMapReveal 這整套捲動追蹤+地圖顯示機制因此不再
+          需要,已從檔案開頭的 import 移除。
+          theme 只在 stop.name 是「赤崁樓」那一站才填——這個 worktree
+          本機資料庫目前查到的台南主題點(isTheme=true)是「赤崁樓」,不是
+          檔案開頭沿革註解提到的「赤崁・府城」(本機這份本地 Postgres 的
+          seed 資料跟那段註解描述的遷移後狀態對不上,推測是不同資料庫
+          實例/未套用同一批遷移,之後要正式套用到部署環境記得重新核對
+          實際主題點名稱)。其餘 7 站都不是資料庫裡的主題點(甚至 5 站
+          根本不在資料庫裡),theme 比對不到東西,改用 center(見
+          ScrollTimeline.tsx 的 center prop 完整說明)直接指定座標——
+          已在資料庫的 3 站(赤崁樓/武廟愛玉/林百貨)座標取自 attractions
+          資料庫記錄,不在資料庫的 5 站(神農街/天下南隅/消防史料館/
+          文學館/孔廟)座標是用 CLI geocode 工具實際查 Google Places
+          拿到的真實座標(每一站 STOPS 項目旁都有各自的座標來源註解),
+          不是憑印象猜的。
+          thumb 用每一站 gallery 的第一張照片,跟原本 MobileMapReveal
+          只取 STOPS[0] 第一張圖的既有慣例一致,只是現在每一站都各自
+          有自己的縮圖(而非只有進入地圖區塊前那一張)。 */}
+      <div className="tainan-chikan-stops">
+      <ScrollTimeline city="台南" defaultOpenTheme="赤崁樓">
         {STOPS.map((stop, i) => {
           const prevDay = i > 0 ? STOPS[i - 1].day : stop.day
           const showDayDivider = i > 0 && stop.day !== prevDay
@@ -384,65 +399,48 @@ export function TainanChikanPage() {
                   <div className="tainan-chikan-day-divider-line" />
                 </div>
               )}
-              <article
-                className="tainan-chikan-stop"
-                data-index={i}
-                ref={(el) => { stopRefs.current[i] = el; }}
+              <ScrollTimeline.Anchor
+                id={stop.name}
+                thumb={`${PHOTO_TAGGING_PREVIEW_BASE}/${stop.gallery[0].file}`}
+                theme={stop.name === '赤崁樓' ? '赤崁樓' : undefined}
+                center={stop.center}
+                label={stop.name}
               >
-                <div className="tainan-chikan-stop-head">
-                  <span className="tainan-chikan-stop-index">{stop.index}</span>
-                  <h2>{stop.name}</h2>
-                </div>
-                <p className="tainan-chikan-stop-body">{stop.desc}</p>
-                {'blurb' in stop && stop.blurb && (
-                  <p className="tainan-chikan-stop-blurb">{stop.blurb}</p>
-                )}
-                <div className={`tainan-chikan-stop-gallery${stop.gallery.length === 1 ? ' tainan-chikan-stop-gallery--single' : ''}`}>
-                  {stop.gallery.map((photo) => (
-                    <figure key={photo.file}>
-                      <img
-                        src={`${PHOTO_TAGGING_PREVIEW_BASE}/${photo.file}`}
-                        alt={photo.alt}
-                        loading="lazy"
-                      />
-                      <figcaption>{photo.caption}</figcaption>
-                    </figure>
-                  ))}
-                </div>
-                <dl className="tainan-chikan-info-box">
-                  {stop.info.map(([label, value]) => (
-                    <div className="tainan-chikan-info-row" key={label}>
-                      <dt>{label}</dt>
-                      <dd>{value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </article>
+                <article className="tainan-chikan-stop">
+                  <div className="tainan-chikan-stop-head">
+                    <span className="tainan-chikan-stop-index">{stop.index}</span>
+                    <h2>{stop.name}</h2>
+                  </div>
+                  <p className="tainan-chikan-stop-body">{stop.desc}</p>
+                  {'blurb' in stop && stop.blurb && (
+                    <p className="tainan-chikan-stop-blurb">{stop.blurb}</p>
+                  )}
+                  <div className={`tainan-chikan-stop-gallery${stop.gallery.length === 1 ? ' tainan-chikan-stop-gallery--single' : ''}`}>
+                    {stop.gallery.map((photo) => (
+                      <figure key={photo.file}>
+                        <img
+                          src={`${PHOTO_TAGGING_PREVIEW_BASE}/${photo.file}`}
+                          alt={photo.alt}
+                          loading="lazy"
+                        />
+                        <figcaption>{photo.caption}</figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                  <dl className="tainan-chikan-info-box">
+                    {stop.info.map(([label, value]) => (
+                      <div className="tainan-chikan-info-row" key={label}>
+                        <dt>{label}</dt>
+                        <dd>{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </article>
+              </ScrollTimeline.Anchor>
             </div>
           )
         })}
-      </section>
-
-      {/* 互動地圖——2026-09:使用者要求把這個區塊從頁面最頂端搬到這裡,
-          分站列表結束、結尾 CTA 之前。讓你可以直接看這 7 個地點(赤崁樓/
-          祀典武廟/祀典大天后宮/全美戲院/金得春捲/富盛號碗粿/林百貨)
-          的實際地理分佈——三座國定古蹟(赤崁樓/武廟/大天后宮)在百公尺
-          內,全美戲院/金得春捲/富盛號沿民族路/國華街步行可達,林百貨
-          稍遠一點在中正路口,地圖上可以直接看出這個「廣場放射」型動線
-          跟九份/京都那種單一坡道動線的差異。
-          defaultOpenTheme="赤崁・府城"(2026-10 修正,原本誤寫「赤崁樓」
-          ——見檔案開頭的完整說明,赤崁樓已不是主題點本身):這個頁面只
-          關心這個主題點,一進頁面就先開好,不用使用者自己點(對齊
-          JiufenPage.tsx 單一主題點城市的既有慣例)——即使同一次查詢也
-          會查到安平古堡(見檔案開頭的完整說明),地圖上兩個主題點都會
-          顯示,但只有赤崁・府城預先展開。data-index="-1" 手寫在 JSX 上
-          (不像其餘三頁完全依賴 useScrollProgress hook 動態補上)——這是
-          既有寫法,hook 掛載時會再次執行 setAttribute 覆蓋成同樣的值,
-          冗餘但無害,搬移位置不影響這個機制,故保留原樣不動。 */}
-      <div className="tainan-chikan-map-intro" ref={mapIntroRef} data-index="-1">
-        <MobileMapReveal photoUrl={`${PHOTO_TAGGING_PREVIEW_BASE}/${STOPS[0].gallery[0].file}`} photoAlt="赤崁樓">
-          <InteractiveExploreMap city="台南" showThemeToggle={false} externalTheme={theme} defaultOpenTheme="赤崁・府城" />
-        </MobileMapReveal>
+      </ScrollTimeline>
       </div>
 
       <section className="tainan-chikan-final-cta">

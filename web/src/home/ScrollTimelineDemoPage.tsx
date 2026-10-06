@@ -2,11 +2,15 @@ import { Helmet } from 'react-helmet-async';
 import { ScrollTimeline } from './ScrollTimeline';
 import './ScrollTimelineDemoPage.css';
 
-// THUMB_BASE:時間軸圓形縮圖直接借用九份介紹頁(JiufenPage.tsx)既有的
+// THUMB_BASE:時間軸圓形縮圖直接借用京都介紹頁(KyotoPage.tsx)既有的
 // landing 圖片素材(同一個公開 GCS bucket)——這是示範頁,不需要另外準備
 // 一組專屬縮圖,沿用已經在用的素材即可驗證「縮圖+點擊展開地圖」這個互動
-// 本身。
-const THUMB_BASE = 'https://storage.googleapis.com/shuttle-tripace-web-assets/landing/jiufen';
+// 本身。改用京都(而非原本的九份)是因為要示範「捲動切換錨點時地圖中心
+// 跟著移動」這個效果,九份資料庫裡目前只有一個主題點(九份老街),不管
+// 捲到哪個假錨點、地圖都只會停在同一個點,看不出中心點移動的效果;京都
+// 有兩個真正的主題點(清水寺/八坂神社,見下方各錨點的 theme prop),才能
+// 示範出中心點真的會隨錨點切換。
+const THUMB_BASE = 'https://storage.googleapis.com/shuttle-tripace-web-assets/landing/kyoto';
 
 // ScrollTimelineDemoPage:ScrollTimeline(見該檔案開頭說明)這個共用
 // compound component 的其中一個呼叫端——這裡用假文案示範「文案自由
@@ -38,29 +42,33 @@ export function ScrollTimelineDemoPage() {
       </header>
 
       <div className="std-page-body">
-        <ScrollTimeline city="九份" defaultOpenTheme="九份老街">
-          <ScrollTimeline.Anchor id="stop-0" thumb={`${THUMB_BASE}/n0.jpg`} label="第一站的假標題">
-            <h2>第一站的假標題</h2>
+        {/* defaultOpenTheme="清水寺"——沒個別指定 theme 的錨點會退回這個值,
+            這裡用不到(每個錨點都有自己的 theme),純粹示範這個 prop 的
+            存在,呼應其他正式城市頁(JiufenPage.tsx 等)只有單一主題點、
+            不需要逐一填 theme 的簡化寫法。 */}
+        <ScrollTimeline city="京都" defaultOpenTheme="清水寺">
+          <ScrollTimeline.Anchor id="stop-0" thumb={`${THUMB_BASE}/n1.jpg`} theme="清水寺" label="清水寺篇・起點">
+            <h2>清水寺篇・起點</h2>
             <p>這是第一段示範文案，用來測試捲動進入這個錨點時，左側時間軸會不會正確只顯示「目前點」加上它的下一點（此時還沒有上一點）。文字長度刻意拉長一些，確保捲動的距離足夠讓 IntersectionObserver 有機會觸發，而不是一進頁面就同時看到兩個錨點都在可視範圍內。</p>
           </ScrollTimeline.Anchor>
 
-          <ScrollTimeline.Anchor id="stop-1" thumb={`${THUMB_BASE}/n1.jpg`} label="第二站的假標題">
-            <h2>第二站的假標題</h2>
-            <p>捲到這一段時，時間軸應該會滑動一格：上一點（起點）退到視窗左側、目前點（這一段）置中強調、下一點先預告但淡化顯示。這段文案同樣刻意拉長，模擬真實文案一個段落的閱讀長度，確保使用者停留在這個區塊的時間足夠觀察到時間軸的變化。</p>
+          <ScrollTimeline.Anchor id="stop-1" thumb={`${THUMB_BASE}/n2.jpg`} theme="清水寺" label="清水寺篇・續">
+            <h2>清水寺篇・續</h2>
+            <p>捲到這一段時，時間軸應該會滑動一格：上一點（起點）退到視窗左側、目前點（這一段）置中強調、下一點先預告但淡化顯示。這一段跟上一段共用同一個主題點（清水寺），用來驗證「同一個地點的相鄰錨點」不該讓地圖中心無意義地抖動——地圖應該維持原地不動，只有換到不同主題點時才會真的移動。</p>
           </ScrollTimeline.Anchor>
 
-          <ScrollTimeline.Anchor id="stop-2" thumb={`${THUMB_BASE}/n2.jpg`} label="第三站的假標題">
-            <h2>第三站的假標題</h2>
-            <p>這是中間的段落，上下都有鄰居錨點，用來驗證 3 點視窗規則在「非頭尾」情況下是否正常運作——時間軸應該同時看到上一點、目前點、下一點三者，而更早或更晚的點都不該出現在畫面上。</p>
+          <ScrollTimeline.Anchor id="stop-2" thumb={`${THUMB_BASE}/n4.jpg`} theme="八坂神社" label="八坂神社篇">
+            <h2>八坂神社篇</h2>
+            <p>這是中間的段落，換成「八坂神社」這個不同的主題點——捲到這裡時，如果地圖面板是開著的，應該會看到地圖中心從清水寺平移到八坂神社，驗證「捲動切換錨點時地圖中心跟著即時移動」這個效果是否正常運作。</p>
           </ScrollTimeline.Anchor>
 
-          <ScrollTimeline.Anchor id="stop-3" thumb={`${THUMB_BASE}/n3.jpg`} label="第四站的假標題">
-            <h2>第四站的假標題</h2>
-            <p>倒數第二段，用來驗證視窗往後滑動時，前面的點是否正確地被隱藏，而不是單純疊加上去。文案長度維持跟其他段落接近，避免因為段落長短差異太大而讓觀察錨點的時間點變得不一致。</p>
+          <ScrollTimeline.Anchor id="stop-3" thumb={`${THUMB_BASE}/n5.jpg`} theme="八坂神社" label="八坂神社篇・續">
+            <h2>八坂神社篇・續</h2>
+            <p>倒數第二段，同樣對應八坂神社，用來驗證視窗往後滑動時，前面的點是否正確地被隱藏，而不是單純疊加上去。文案長度維持跟其他段落接近，避免因為段落長短差異太大而讓觀察錨點的時間點變得不一致。</p>
           </ScrollTimeline.Anchor>
 
-          <ScrollTimeline.Anchor id="stop-4" thumb={`${THUMB_BASE}/n4.jpg`} label="第五站的假標題">
-            <h2>第五站的假標題</h2>
+          <ScrollTimeline.Anchor id="stop-4" thumb={`${THUMB_BASE}/n6.jpg`} theme="八坂神社" label="終點">
+            <h2>終點</h2>
             <p>最後一段，用來驗證捲到最尾端時，時間軸只剩「上一點 + 目前點」（沒有下一點），視窗不會因為缺少下一點而出錯或留白過多。</p>
           </ScrollTimeline.Anchor>
         </ScrollTimeline>

@@ -85,6 +85,15 @@
   border-top: 1px solid var(--ios-sep);
 }
 
+/* nearbySectionOnly:精簡模式(AttractionInfoPanel nearbyOnly prop,見
+   該 prop 的完整說明)——清單是卡片裡唯一的內容,上面沒有簡介可以「分隔」,
+   拿掉原本接在簡介底下用的上方間距與分隔線,標題直接貼齊卡片內距。 */
+.nearbySectionOnly {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
 /* nearbyHeaderRow:「附近景點」標題與分類下拉膠囊同一行,標題靠左、
    膠囊靠右——取代原本標題獨立一行、下拉膠囊另起一行的排版,收斂垂直
    空間。 */

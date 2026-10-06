@@ -74,14 +74,19 @@ const KM_PER_DEG_LAT = 111
 // computeRestrictBounds:換算公式同 kiyomizuDemoFixture.ts/
 // yasakaDemoFixture.ts 原本 RESTRICT_BOUNDS 的簡化經緯度換算(緯度 1 度
 // 約 111km,經度在這個緯度約 111km*cos(緯度)),精度對這種城市尺度的
-// 固定展示範圍已經足夠。
-function computeRestrictBounds(center: { lat: number; lng: number }): google.maps.LatLngBoundsLiteral {
+// 固定展示範圍已經足夠。radiusKm 參數化(2026-10,見下方 restrictRadiusKm
+// prop 的完整說明)——未傳時退回 COMBINED_RESTRICT_RADIUS_KM 這個既有
+// 全域預設值,呼叫端不需要逐一改傳參數。
+function computeRestrictBounds(
+  center: { lat: number; lng: number },
+  radiusKm: number = COMBINED_RESTRICT_RADIUS_KM,
+): google.maps.LatLngBoundsLiteral {
   const kmPerDegLng = 111 * Math.cos((center.lat * Math.PI) / 180)
   return {
-    north: center.lat + COMBINED_RESTRICT_RADIUS_KM / KM_PER_DEG_LAT,
-    south: center.lat - COMBINED_RESTRICT_RADIUS_KM / KM_PER_DEG_LAT,
-    east: center.lng + COMBINED_RESTRICT_RADIUS_KM / kmPerDegLng,
-    west: center.lng - COMBINED_RESTRICT_RADIUS_KM / kmPerDegLng,
+    north: center.lat + radiusKm / KM_PER_DEG_LAT,
+    south: center.lat - radiusKm / KM_PER_DEG_LAT,
+    east: center.lng + radiusKm / kmPerDegLng,
+    west: center.lng - radiusKm / kmPerDegLng,
   }
 }
 
@@ -211,6 +216,69 @@ export function InteractiveExploreMap({
   // 既有城市介紹頁,只有 defaultOpenTheme 的「一次性」自動展開行為
   // 繼續運作。
   focusedTheme,
+  // focusedCenter:外部「受控」切換要聚焦的原始座標——跟 focusedTheme
+  // 的差異是不經過主題點名稱比對,直接拿座標 panTo。2026-10 追加:這個
+  // 座標若剛好對應到地圖上某個既有精選點,該精選點會改畫「素色小圓點」
+  // 聚焦造型(見下方 focusedAttractionId 的完整說明),呼叫端不需要額外
+  // 傳任何 prop。用途:
+  // ScrollTimeline.tsx 的某些錨點對應的地點根本不是資料庫裡的主題點
+  // (甚至不在資料庫裡,例如純文案提到的街區/住宿地點),這種情況下
+  // focusedTheme 比對不到任何主題點、什麼都不會發生,呼叫端改傳這個
+  // prop 直接指定座標。同一次渲染若 focusedTheme 剛好比對到真正的
+  // 主題點,以 focusedTheme 優先(連帶的開卡/揭露附近景點效果只有真正
+  // 主題點才有意義),focusedCenter 會被忽略,不會同時 panTo 兩個不同
+  // 地方;只有 focusedTheme 沒有值、或比對不到任何主題點時,才會改用
+  // focusedCenter。未傳(undefined,其餘既有呼叫端沿用原行為)時完全
+  // 不影響既有城市介紹頁。
+  focusedCenter,
+  // openCardOnFocus:focusedTheme 受控切換時,除了把地圖中心 panTo 到
+  // 該主題點之外,是否連帶打開它的主題點介紹卡(桌機 AttractionInfoPanel/
+  // 手機 GeoOutlinePhoneInfoSheet,卡片裡才有「附近景點」清單)。未傳/
+  // false 時只移動中心、不碰 openThemeId;true 時連帶 setOpenThemeId。
+  // ScrollTimeline.tsx 的嵌入式小地圖面板開著時傳 true、關著時傳 false
+  // (搭配下方 themeCardNearbyOnly 讓開出來的卡片只露出附近景點清單)。
+  // 從 true 變回 false(面板關閉)時主動把卡片收起來,否則卡片會殘留在
+  // 被 CSS 隱藏的面板裡,下次面板一露出就帶著上一次的卡片。只跟
+  // focusedTheme 搭配使用,其餘既有呼叫端(JiufenPage.tsx 等)兩者都
+  // 不傳,完全不受影響。
+  openCardOnFocus,
+  // themeCardNearbyOnly:true 時桌機版主題卡(AttractionInfoPanel)改用
+  // 精簡模式,只顯示「附近景點」清單、不顯示照片/名稱/簡介(見該元件
+  // nearbyOnly prop 的完整說明)——2026-10 使用者對 ScrollTimeline.tsx
+  // 嵌入式小地圖的要求:「地圖移動到該主題點時,開啟主題點顯示附近景點,
+  // 但是不要開啟主題點介紹卡」。這是「這個地圖實例的主題卡長什麼樣」的
+  // 整體設定,不只作用在 focusedTheme 觸發的那一次開卡:使用者直接點
+  // 地圖上的主題點時也一樣只看到精簡清單,260px 高的小面板本來就塞不下
+  // 完整卡片,兩條開卡路徑長相一致比較不突兀。手機版
+  // GeoOutlinePhoneInfoSheet 目前不支援精簡模式(它的 snap 段位/標頭
+  // 結構跟名稱/照片綁得更緊),手機寬度下仍顯示完整 sheet——這個嵌入式
+  // 面板以桌機瀏覽為主,先不處理。未傳/false 維持完整卡片,正式城市頁
+  // 不受影響。
+  themeCardNearbyOnly,
+  // disableThemeCardOnMapClick:true 時,直接點擊地圖上的主題點圖標
+  // (handleAttractionSelect 的 isTheme 分支)不會打開任何介紹卡,單純
+  // 沒有反應。2026-10 使用者明確要求:ScrollTimeline.tsx 的嵌入式小地圖
+  // 完全不要顯示主題點介紹卡——先前已經做到「focusedTheme 受控聚焦時
+  // 不開卡」(見 openCardOnFocus 的完整說明),但那只管住「捲動/點擊
+  // 時間軸錨點」這條路徑,使用者如果直接在 260px 小地圖上手動點主題點
+  // 圖標本身,還是會走 handleAttractionSelect 這條獨立路徑開卡,沒被
+  // 前面那些控制項管到。這個 prop 補上這個漏洞,讓「這個地圖實例完全
+  // 不顯示主題卡」這個決定在所有觸發路徑上保持一致。未傳/false 維持
+  // 既有行為,九份/京都/台南等正式城市頁(使用者仍然需要能點主題點看
+  // 介紹卡)完全不受影響。
+  disableThemeCardOnMapClick,
+  // revealNearbyOnFocus:focusedTheme 聚焦的主題點,要不要連帶在地圖上
+  // 揭露它的「附近景點」小圓點標記(即使 openCardOnFocus 是 false、卡片
+  // 沒有打開)。2026-10 使用者明確要求:「地圖」模式(ScrollTimeline.tsx
+  // 只移動中心、不開卡片的那顆按鈕)下,地圖本身的附近景點小點也要顯示
+  // 出來——原本 revealedAttractionNames(見下方)只依 openTheme(卡片是否
+  // 打開)決定要不要揭露,導致卡片沒開時地圖上完全看不到任何精選點標記。
+  // 這個 prop 讓揭露邏輯改成「卡片開著就用卡片的主題點,否則(這個 prop
+  // 為 true 時)改用 focusedTheme 比對到的主題點」,兩者互斥、不衝突
+  // ——卡片開著時揭露範圍本來就該跟著卡片走,不受這個 prop 影響。未傳/
+  // false 時完全不影響既有行為(九份/京都/台南等正式城市頁不傳這個
+  // prop,維持「只有打開卡片才揭露精選點」的既有規則)。
+  revealNearbyOnFocus,
   // initialZoom:地圖初始縮放層級——未傳(undefined)時退回模組層級的
   // INITIAL_ZOOM(15,見該常數完整說明),對齊原本唯一呼叫端(HomePage.tsx)
   // 不需要改動呼叫方式就能繼續運作。JiufenPage.tsx 傳更大的值(見該檔案
@@ -227,14 +295,53 @@ export function InteractiveExploreMap({
   // 額外要求「中心點往下(南)100 公尺」,故傳 -0.1 抵消掉共用的預設北偏,
   // 讓九份的初始中心落回九份老街本身(未偏移的原始座標)。
   centerNorthOffsetKm,
+  // restrictRadiusKm:可拖曳範圍的半徑(公里)——未傳(undefined)時退回
+  // 模組層級的 COMBINED_RESTRICT_RADIUS_KM(4km,見該常數完整說明),
+  // 九份/京都/台南等正式城市頁都不傳,行為完全不變。2026-10 新增,供
+  // ScrollTimeline.tsx 這類呼叫端視情境調整——例如 TainanChikanPage.tsx
+  // 這種同城市有兩個主題點但相距 5~6km 的情境,固定 4km 半徑配合「以
+  // 目前錨點為中心」(見上方 initialCenter/focusedTheme 的完整說明)可能
+  // 剛好能看到、也可能太緊繃,讓呼叫端自己視頁面景點分布決定要放寬還是
+  // 收緊,不強制套用對齊京都(主題點相距約 1.1km)校準出來的固定值。
+  restrictRadiusKm,
+  // showZoomControl:要不要顯示 Google Maps 內建的 +/- 縮放按鈕——未傳
+  // (undefined)時退回下方「桌機顯示、手機隱藏」的既有判斷(見
+  // <NativeMapBase showZoomControl> 呼叫處的完整說明),九份/京都/台南等
+  // 正式城市頁的滿版地圖都不傳,行為完全不變。ScrollTimeline.tsx 的嵌入式
+  // 小地圖面板(260px 高)明確傳 false:那個面板的用途是「瞥一眼大概位置」,
+  // 方形的原生縮放鈕組貼在右下角、又要跟右上角的關閉鈕共存,在這麼小的
+  // 面板裡顯得擁擠突兀(2026-10 使用者截圖回報);滾輪/雙指縮放
+  // (gestureHandling: 'greedy')仍然可用,關掉按鈕不等於關掉縮放。
+  showZoomControl,
+  // themePhotoOnlyWhenFocused:2026-10 新增的 opt-in 開關——主題點預設
+  // 「不管有沒有被聚焦,恆顯示圓形照片光暈」(九份/京都/台南/首頁等所有
+  // 既有呼叫端依賴的行為);true 時改成「只有 focusedTheme 比對到的那個
+  // 主題點才顯示圓形照片,其餘主題點退化成跟一般精選點一樣的素色小圓點
+  // (hover 仍可臨時升級成照片)」。使用者對 ScrollTimeline.tsx 嵌入式
+  // 小地圖的要求:「主題點只有在主題點的苗點才顯示圓形圖,其他時候顯示
+  // 小圓點」——捲到別的錨點時,沒人在看的主題點不該繼續用 56px 照片圓
+  // 搶走目前錨點的視覺焦點。實作見 useAttractionOverlays.ts 的
+  // themePhotoOnlyWhenFocused/focusedThemeId 與 geoAttractionOverlay.ts
+  // 的 setThemePhotoCollapsed。未傳/false 時一字不變:下方傳給 hook 的
+  // 開關為 false,hook 對每顆 overlay 的 setThemePhotoCollapsed(false)
+  // 是 no-op,正式城市頁的主題點繼續恆顯示照片。
+  themePhotoOnlyWhenFocused,
 }: {
   showThemeToggle?: boolean
   city?: string
   externalTheme?: Theme
   defaultOpenTheme?: string
   focusedTheme?: string
+  focusedCenter?: { lat: number; lng: number }
+  openCardOnFocus?: boolean
+  themeCardNearbyOnly?: boolean
+  disableThemeCardOnMapClick?: boolean
+  revealNearbyOnFocus?: boolean
   initialZoom?: number
   centerNorthOffsetKm?: number
+  restrictRadiusKm?: number
+  showZoomControl?: boolean
+  themePhotoOnlyWhenFocused?: boolean
 } = {}) {
   // theme 初始值:showThemeToggle 為 false(嵌入首頁,沒有按鈕可以手動
   // 切換)時,直接讀一次系統的 prefers-color-scheme 決定初始深淺色,
@@ -333,17 +440,42 @@ export function InteractiveExploreMap({
   // 微幅北移。 */
   const DEFAULT_CENTER_NORTH_OFFSET_KM = 0.1
   const effectiveNorthOffsetKm = centerNorthOffsetKm ?? DEFAULT_CENTER_NORTH_OFFSET_KM
+  // 2026-10 使用者明確要求:「第一次開啟地圖時,要以目前苗點(錨點)為
+  // 中心」——ScrollTimeline.tsx 這類呼叫端不傳 defaultOpenTheme(刻意
+  // 避免觸發自動開卡,見該元件掛載處的完整說明),原本這裡找不到
+  // defaultOpenTheme 對應的主題點,就會退回「同城市全部主題點的中點」
+  // (見上方大段說明)——對 TainanChikanPage.tsx 這種同城市有兩個主題點
+  // 但相距好幾公里的情境,使用者第一次點開地圖面板時,看到的會是兩個
+  // 主題點之間的中點,不是他正在讀的那個錨點。改成優先用 focusedTheme
+  // (目前捲動/點擊聚焦的主題點,見該 prop 完整說明)找對應主題點,找不到
+  // (例如面板還沒開過、focusedTheme 是 undefined)才退回 defaultOpenTheme
+  // 的既有邏輯——面板一開啟,focusedTheme 立刻有值,這裡會優先用它算出
+  // 單點中心,不再取多點平均,「第一次開啟就以目前錨點為中心」因此成立。
+  // 其餘既有呼叫端(JiufenPage.tsx 等)不傳 focusedTheme,這個新增的
+  // 優先序完全不影響它們原本只看 defaultOpenTheme 的行為。
+  // 2026-10 再補一層:focusedTheme 比對不到任何主題點(例如這個錨點根本
+  // 不是主題點,見 focusedCenter prop 的完整說明)時,退而求其次直接用
+  // focusedCenter 的原始座標當單點中心——理由同上,第一次開啟地圖也要
+  // 以目前錨點(即使它不是主題點)為中心,不要退回多點平均。只有
+  // focusedTheme/defaultOpenTheme 都比對不到、focusedCenter 也沒有值時,
+  // 才真的走最後的多點平均邏輯。
   const initialCenter = useMemo(() => {
     if (themePoints.length === 0) return undefined
-    const defaultTheme = defaultOpenTheme
-      ? themePoints.find((t) => t.attraction.name === defaultOpenTheme)
+    const preferredThemeName = focusedTheme ?? defaultOpenTheme
+    const defaultTheme = preferredThemeName
+      ? themePoints.find((t) => t.attraction.name === preferredThemeName)
       : undefined
-    const points = defaultTheme ? [defaultTheme] : themePoints
-    const lat = points.reduce((sum, t) => sum + t.attraction.lat, 0) / points.length
-    const lng = points.reduce((sum, t) => sum + t.attraction.lng, 0) / points.length
+    const basePoint = defaultTheme
+      ? { lat: defaultTheme.attraction.lat, lng: defaultTheme.attraction.lng }
+      : focusedCenter
+    if (basePoint) {
+      return { lat: basePoint.lat + effectiveNorthOffsetKm / KM_PER_DEG_LAT, lng: basePoint.lng }
+    }
+    const lat = themePoints.reduce((sum, t) => sum + t.attraction.lat, 0) / themePoints.length
+    const lng = themePoints.reduce((sum, t) => sum + t.attraction.lng, 0) / themePoints.length
     return { lat: lat + effectiveNorthOffsetKm / KM_PER_DEG_LAT, lng }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [themePoints, effectiveNorthOffsetKm, defaultOpenTheme])
+  }, [themePoints, effectiveNorthOffsetKm, defaultOpenTheme, focusedTheme, focusedCenter])
 
   const [center, setCenter] = useState<{ lat: number; lng: number } | undefined>(undefined)
   useEffect(() => {
@@ -355,8 +487,8 @@ export function InteractiveExploreMap({
   // initialCenter 動態算——initialCenter 尚未確定時退回 FALLBACK_CENTER,
   // 只影響地圖容器完全空白時的暫定範圍,不影響資料載入完成後的最終效果。
   const restrictBounds = useMemo(
-    () => computeRestrictBounds(initialCenter ?? FALLBACK_CENTER),
-    [initialCenter],
+    () => computeRestrictBounds(initialCenter ?? FALLBACK_CENTER, restrictRadiusKm),
+    [initialCenter, restrictRadiusKm],
   )
   const minZoom = useMemo(
     () => zoomToFitBounds(restrictBounds, MAP_WIDTH_PX_ESTIMATE, MAP_HEIGHT_PX_ESTIMATE),
@@ -456,6 +588,10 @@ export function InteractiveExploreMap({
     // openPoiContent/setOpenThemeId 各自分開埋一次。
     trackEvent('landing_map_attraction_click', { attraction_name: a.name, is_theme: a.isTheme })
     if (a.isTheme) {
+      // disableThemeCardOnMapClick 時,直接點地圖上的主題點圖標完全沒有
+      // 反應——見該 prop 完整說明,這是「這個地圖實例不顯示主題卡」這個
+      // 決定在使用者手動點圖標這條路徑上的對應處理。
+      if (disableThemeCardOnMapClick) return
       // a.id 理論上恆有值(主題點固定來自人工建檔資料,見 openThemeId
       // 宣告處的完整說明)——?? null 只是滿足型別(GeoAttraction.id 宣告
       // 成 optional),不是預期會真的落到這個分支。
@@ -463,7 +599,7 @@ export function InteractiveExploreMap({
       return
     }
     openPoiContent(a)
-  }, [openPoiContent])
+  }, [openPoiContent, disableThemeCardOnMapClick])
 
   const nearbyList = useMemo(
     () => (openTheme ? computeNearbyAttractions(openTheme.attraction, openTheme.nearby, Infinity) : []),
@@ -476,15 +612,32 @@ export function InteractiveExploreMap({
   // 時是空集合,地圖上不顯示任何精選點標記。先前這裡固定用兩組精選點
   // 名稱的聯集(ALL_REVEALED),一進頁面地圖上就會顯示全部精選點,跟正式
   // 功能「先點主題點才揭露」的行為不一致,已改成依 openTheme 動態計算。
+  // 2026-10 使用者明確要求:ScrollTimeline.tsx 的嵌入式小地圖「不管苗點
+  // (錨點)在哪,都要顯示附近景點的小點」——不想再侷限於「只有比對到
+  // 某個主題點時才揭露那個主題點底下的精選點」這個規則,包括 center
+  // 類型的錨點(完全比對不到任何主題點,見 focusedCenter prop 的完整
+  // 說明)也要看到附近景點標記。這個城市目前的資料模型本來就是「全部
+  // 非主題點通通算進每一個主題點的 nearby」(見 themePoints 的完整
+  // 說明,同一份清單不管挑哪個主題點都一樣),故 revealNearbyOnFocus 為
+  // true 時直接改用 attractions.filter(!isTheme) 取代原本「只有比對到
+  // 某個 focusedThemePoint 才揭露」的邏輯——效果等價(同一份清單)但不再
+  // 依賴比對是否成功,真正做到「不管苗點在哪都顯示」。openTheme(卡片
+  // 開著)時仍優先用卡片自己的主題點+分類篩選,跟卡片顯示範圍保持一致;
+  // 其餘既有呼叫端不傳 revealNearbyOnFocus,行為跟修改前完全一致。
   const revealedAttractionNames = useMemo(() => {
-    if (!openTheme) return new Set<string>()
-    if (!activeNearbyCategoryFilter) return new Set(openTheme.nearby.map((a) => a.name))
-    return new Set(
-      openTheme.nearby
-        .filter((a) => curatedCategoryOf(a.category) === activeNearbyCategoryFilter)
-        .map((a) => a.name),
-    )
-  }, [openTheme, activeNearbyCategoryFilter])
+    if (openTheme) {
+      if (!activeNearbyCategoryFilter) return new Set(openTheme.nearby.map((a) => a.name))
+      return new Set(
+        openTheme.nearby
+          .filter((a) => curatedCategoryOf(a.category) === activeNearbyCategoryFilter)
+          .map((a) => a.name),
+      )
+    }
+    if (revealNearbyOnFocus) {
+      return new Set(attractions.filter((a) => !a.isTheme).map((a) => a.name))
+    }
+    return new Set<string>()
+  }, [openTheme, activeNearbyCategoryFilter, revealNearbyOnFocus, attractions])
 
   // mapHandle:NativeMapBase 只做原生建圖(見該檔案開頭的完整說明),不
   // 內建任何 overlay/marker——這個展示頁需要的唯一附掛行為是主題/精選點
@@ -521,23 +674,117 @@ export function InteractiveExploreMap({
   // focusedTheme 受控切換——見該 prop 開頭的完整說明。用 ref 記住上一次
   // 真正處理過的名稱,而非只靠 useEffect 的 deps 陣列判斷「有沒有變」,
   // 是因為呼叫端可能重複傳入同一個名稱字串(例如使用者捲動離開又捲回
-  // 同一個錨點)——這時地圖已經在那個主題點上,不需要重新 setOpenThemeId/
-  // panTo 一次。themePoints 尚未載入完成(attractions 還沒查到)時先
-  // 不處理,等 themePoints 有內容的那次重新渲染會自然再跑一次這個
-  // effect(deps 包含 themePoints)。
+  // 同一個錨點)——這時地圖已經在那個主題點上,不需要重新 panTo 一次。
+  // themePoints 尚未載入完成(attractions 還沒查到)時先不處理,等
+  // themePoints 有內容的那次重新渲染會自然再跑一次這個 effect(deps
+  // 包含 themePoints)。
+  //
+  // 開卡與否交給 openCardOnFocus 決定(見該 prop 說明):只在 true 時
+  // setOpenThemeId,而且不受「名稱沒變」的 ref guard 限制——使用者可能
+  // 關掉面板再重開同一個主題點(名稱沒變,但卡片已被下方的 true→false
+  // effect 收掉),這時卡片要從沒開變成開。panTo 仍只在名稱真的變了才做。
+  // focusedThemeMatched:這一輪 focusedTheme 是否真的比對到一個主題點
+  // ——下面的 focusedCenter effect 需要知道這件事,才能正確判斷「要不要
+  // 退而求其次改用 focusedCenter」(見該 prop 開頭完整說明:focusedTheme
+  // 比對到主題點時優先,focusedCenter 要被忽略)。純衍生值,不是 hook,
+  // 每次渲染重新算一次即可,不需要額外狀態。
+  // focusedThemePoint:focusedTheme 比對到的主題點本身——focusedThemeMatched
+  // 由它衍生(語意不變),2026-10 另外供 focusedThemeId(見下方
+  // useAttractionOverlays 呼叫處)取 id 用,沿用同一個比對式、不重新發明。
+  const focusedThemePoint = focusedTheme ? themePoints.find((t) => t.attraction.name === focusedTheme) : undefined
+  const focusedThemeMatched = !!focusedThemePoint
   const lastFocusedThemeRef = useRef<string | undefined>(undefined)
   useEffect(() => {
     if (!focusedTheme) return
-    if (focusedTheme === lastFocusedThemeRef.current) return
     const match = themePoints.find((t) => t.attraction.name === focusedTheme)
     if (!match || match.attraction.id == null) return
-    lastFocusedThemeRef.current = focusedTheme
-    setOpenThemeId(match.attraction.id)
+    if (focusedTheme !== lastFocusedThemeRef.current) {
+      lastFocusedThemeRef.current = focusedTheme
+      const map = mapHandle.mapRef.current
+      if (map) {
+        map.panTo({ lat: match.attraction.lat, lng: match.attraction.lng })
+      }
+    }
+    if (openCardOnFocus) {
+      setOpenThemeId(match.attraction.id)
+    }
+  }, [focusedTheme, openCardOnFocus, themePoints, mapHandle.mapRef])
+
+  // focusedCenter 受控切換——見該 prop 開頭的完整說明:只在 focusedTheme
+  // 沒有值、或比對不到任何主題點時才生效(focusedThemeMatched 為
+  // false),避免跟上面那個 effect 同時把地圖 panTo 到兩個不同的地方。
+  // 用 ref 記住上一次真正處理過的座標(以 "lat,lng" 字串比對,座標是
+  // 數字,直接放進 deps 陣列每次都是新的物件參照,useEffect 會誤判成
+  // 每次都變動),理由同 lastFocusedThemeRef——避免呼叫端重複傳入同一個
+  // 座標時重複 panTo。
+  const lastFocusedCenterKeyRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!focusedCenter || focusedThemeMatched) return
+    const key = `${focusedCenter.lat},${focusedCenter.lng}`
+    if (key === lastFocusedCenterKeyRef.current) return
+    lastFocusedCenterKeyRef.current = key
     const map = mapHandle.mapRef.current
     if (map) {
-      map.panTo({ lat: match.attraction.lat, lng: match.attraction.lng })
+      map.panTo(focusedCenter)
     }
-  }, [focusedTheme, themePoints, mapHandle.mapRef])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedCenter?.lat, focusedCenter?.lng, focusedThemeMatched, mapHandle.mapRef])
+
+  // focusedAttractionId:2026-10 新增——focusedCenter 指定的座標若剛好
+  // 跟地圖上某個「精選點」(isTheme===false)的座標相同,把那個精選點的
+  // id 交給 useAttractionOverlays 的 focusedAttractionId(見該 prop 與
+  // geoAttractionOverlay.ts 的 focused 欄位完整說明),讓它改畫「素色
+  // 小圓點」造型,表達「這一顆就是時間軸正在講的那一站」。使用者需求:
+  // 「苗點在精選點時,該點要變成(素色小圓點)圖標」——ScrollTimeline.tsx
+  // 的錨點用 center prop 直接指定座標時(見該檔案 AnchorMeta.center 的
+  // 說明),呼叫端寫的是從資料庫複製出來的同一組數字,這裡用座標反查
+  // 就能對應回資料庫裡的那筆精選點,不需要呼叫端另外傳 id。
+  //
+  // 設計決定:不另開一個 flag prop,直接由 focusedCenter 有值就自動嘗試
+  // 比對——focusedCenter 本身就是 2026-10 才為 ScrollTimeline 新增的
+  // optional prop,九份/京都/台南等正式城市頁從不傳它,這裡恆為 null,
+  // 既有呼叫端零影響;多一個 flag 只會讓 ScrollTimeline 必須記得同時傳
+  // 兩個 prop,沒有降低任何風險。focusedTheme 已比對到主題點時跳過
+  // (以 theme 優先,對齊 focusedCenter prop 的既有優先序;主題點本來就
+  // 不走 focused 造型,setFocused 對 isTheme 是 no-op)。
+  //
+  // 比對寬容度:lat/lng 各自誤差 FOCUS_MATCH_EPSILON_DEG(0.0001 度,
+  // 約 11 公尺)以內視為同一點,不用 === 直接比——座標是浮點數,呼叫端
+  // 雖然是複製貼上同一組數字,但未來若有人手動改了小數末位、或 API
+  // 回傳的數值經過序列化精度變化,嚴格相等會悄悄失效而沒有任何提示。
+  // 同時命中多個(資料庫裡座標極接近的重複記錄,先前已知有這種案例)
+  // 時取距離最近的那一個。只比對精選點,主題點直接略過。
+  const FOCUS_MATCH_EPSILON_DEG = 0.0001
+  const focusedAttractionId = useMemo(() => {
+    if (!focusedCenter || focusedThemeMatched) return null
+    let best: GeoAttraction | null = null
+    let bestDist = Infinity
+    for (const a of attractions) {
+      if (a.isTheme || a.id == null) continue
+      const dLat = Math.abs(a.lat - focusedCenter.lat)
+      const dLng = Math.abs(a.lng - focusedCenter.lng)
+      if (dLat > FOCUS_MATCH_EPSILON_DEG || dLng > FOCUS_MATCH_EPSILON_DEG) continue
+      const dist = dLat * dLat + dLng * dLng
+      if (dist < bestDist) {
+        bestDist = dist
+        best = a
+      }
+    }
+    return best?.id ?? null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedCenter?.lat, focusedCenter?.lng, focusedThemeMatched, attractions])
+
+  // openCardOnFocus 從 true 退回 false 時收掉卡片——理由見該 prop 說明。
+  // 用 ref 比對「上一次的值」只在真正的 true→false 邊緣觸發,首次掛載
+  // (undefined)或一直是 false 的既有呼叫端完全不會動到 openThemeId。
+  const prevOpenCardOnFocusRef = useRef(openCardOnFocus)
+  useEffect(() => {
+    const wasOpen = prevOpenCardOnFocusRef.current
+    prevOpenCardOnFocusRef.current = openCardOnFocus
+    if (wasOpen && !openCardOnFocus) {
+      setOpenThemeId(null)
+    }
+  }, [openCardOnFocus])
 
   useAttractionOverlays({
     mapRef: mapHandle.mapRef,
@@ -557,6 +804,20 @@ export function InteractiveExploreMap({
     // useAttractionOverlays.ts 的 hiddenAttractionId 完整說明)——桌面版
     // 走 AttractionInfoPanel 並存顯示,不受影響,固定傳 null。
     hiddenAttractionId: !isDesktop ? openThemeId : null,
+    // focusedAttractionId:見上方推導處的完整說明——只有 focusedCenter
+    // 有值(ScrollTimeline.tsx)且座標對應到既有精選點時才有值,其餘
+    // 呼叫端恆為 null,useAttractionOverlays 對 null 的處理就是全部
+    // setFocused(false),等同既有行為。
+    focusedAttractionId,
+    // themePhotoOnlyWhenFocused/focusedThemeId:見該 prop 開頭的完整說明
+    // ——只有 ScrollTimeline.tsx 開啟;其餘呼叫端開關為 undefined,hook
+    // 內部等同全部 setThemePhotoCollapsed(false)(no-op),主題點恆顯示
+    // 照片的既有行為不變。focusedThemeId 直接沿用 focusedThemePoint(跟
+    // focusedThemeMatched 同一個比對式),不另外發明一套「主題點是否被
+    // 聚焦」的判斷;只在開關開著時才傳,關著時固定 null,避免既有呼叫端
+    // 多一個會變動的依賴值觸發 hook 內部 effect(即使是 no-op)。
+    themePhotoOnlyWhenFocused,
+    focusedThemeId: themePhotoOnlyWhenFocused ? (focusedThemePoint?.attraction.id ?? null) : null,
   })
 
   return (
@@ -577,8 +838,10 @@ export function InteractiveExploreMap({
           // 手勢優先(gestureHandling: 'greedy',見 NativeMapBase.tsx 建圖
           // options 的完整說明),縮放按鈕在小螢幕上會佔用寶貴的畫面空間
           // 又不是唯一的縮放手段,桌面版(isDesktop)保留是因為滑鼠使用者
-          // 沒有觸控手勢可用,按鈕是主要的縮放入口。
-          showZoomControl={isDesktop}
+          // 沒有觸控手勢可用,按鈕是主要的縮放入口。呼叫端明確傳了
+          // showZoomControl 時以呼叫端為準(見該 prop 說明),未傳才套
+          // 這個桌機/手機的預設判斷。
+          showZoomControl={showZoomControl ?? isDesktop}
           // theme 跟隨上面的 ThemeToggle 選擇——NativeMapBase 的 theme prop
           // 決定 Google Maps 建圖時的 colorScheme(見該檔案 themeToColorScheme
           // 的完整說明),不跟著切換的話,使用者手動選了「夜間模式」但
@@ -613,6 +876,7 @@ export function InteractiveExploreMap({
                   onHoverNearby={handleHoverNearby}
                   onCategoryFilterChange={setActiveNearbyCategoryFilter}
                   usePublicPlaceDetails
+                  nearbyOnly={themeCardNearbyOnly}
                 />
               )}
               {poiContent && (

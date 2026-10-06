@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { List as ListIcon, Search as SearchIcon } from 'lucide-react';
 import { InteractiveExploreMap } from './InteractiveExploreMap';
 import styles from './ScrollTimeline.module.css';
 
@@ -39,11 +40,50 @@ import styles from './ScrollTimeline.module.css';
 // 是地圖開關按鈕 aria-label 用的簡短可讀文字(選填,未填退回 id 本身
 // ——Anchor 的 children 是自由排版的 JSX,不保證抽得出一句話當文字
 // 描述,故不強制要求)。
+// center:2026-10 新增——這個錨點對應地圖要移動到的原始座標,不透過
+// theme(主題點名稱比對)。使用者明確要求「地圖隨錨點移動中心點」,但
+// theme 只能指向資料庫裡 isTheme=true 的主題點,無法指向一般精選點
+// (例如祀典武廟/林百貨這類已建檔但非主題點的地標)或根本不在資料庫裡
+// 的地點(例如神農街、天下南隅);center 讓呼叫端直接提供任意座標當
+// 這個錨點的地圖中心,繞過主題點比對。theme 跟 center 可以並存於不同
+// 錨點(同一頁面裡,指向真正主題點的錨點用 theme 以取得開卡/揭露附近
+// 景點等完整效果;指向其他地點的錨點用 center 只單純移動視角),但同一
+// 個錨點不建議兩者都填——同時填時 theme 優先(見
+// InteractiveExploreMap.tsx 的完整說明),center 會被忽略。
 interface AnchorMeta {
   id: string
   thumb: string
   theme?: string
+  center?: { lat: number; lng: number }
   label?: string
+}
+
+// PanelMode:右側面板目前以哪種模式開著——'map' 是「地圖」按鈕,只把
+// 小地圖中心移到該錨點對應的主題點、不彈出任何卡片;'nearby' 是「附近
+// 景點」按鈕,除了移中心之外連帶顯示該主題點的「附近景點」清單(不顯示
+// 完整介紹卡——照片/名稱/簡介,只露出清單本身,見 InteractiveExploreMap
+// 的 themeCardNearbyOnly prop 說明)。
+// 2026-10:這兩個模式曾一度被合併成單一按鈕(「附近景點」+放大鏡圖示),
+// 使用者明確要求改回兩顆各自獨立的按鈕,保留分開的語意。
+type PanelMode = 'map' | 'nearby'
+
+// SHOW_NEARBY_LIST_BUTTON:2026-10 使用者要求先隱藏「附近景點」這顆按鈕
+// (暫時收起來,不是刪除功能)——'nearby' 這個模式/openCardOnFocus/
+// themeCardNearbyOnly 的完整機制都保留不動,只是 UI 上先不讓使用者點
+// 得到,之後要重新顯示只需要把這個常數改回 true,不需要重寫任何邏輯。
+// 關閉時 modeGroup 只剩「地圖」一段,高度跟著用 .nodeCurrentSolo 調整
+// (見下方按鈕組渲染處跟 CSS module 的說明),避免按鈕組留下只有單一
+// 段落卻還保留兩段高度的空白。
+const SHOW_NEARBY_LIST_BUTTON = false
+
+// PanelState:面板「開著」時的完整描述——id 是哪個錨點、mode 是哪種模式;
+// null 表示關著。合成一個物件而非兩個獨立 state,是因為兩者永遠一起
+// 變動(開/關/切錨點/切模式都要同時決定兩個值),拆開反而要在每個
+// setter 呼叫處小心同步,也會出現「id 有值但 mode 是 null」這種不合法的
+// 中間狀態。
+interface PanelState {
+  id: string
+  mode: PanelMode
 }
 
 interface ScrollTimelineContextValue {
@@ -53,7 +93,7 @@ interface ScrollTimelineContextValue {
   order: string[]
   active: number
   openAnchorId: string | null
-  toggleAnchor: (id: string) => void
+  toggleAnchor: (id: string, mode?: PanelMode) => void
 }
 
 const ScrollTimelineContext = createContext<ScrollTimelineContextValue | null>(null);
@@ -76,10 +116,17 @@ export function ScrollTimeline({
   // 時的共用退回值——單一主題城市頁(例如九份只有「九份老街」一個主題
   // 點)不需要每個錨點都重複填同一個名稱。
   defaultOpenTheme,
+  // mapRestrictRadiusKm:直接透傳給 InteractiveExploreMap 的
+  // restrictRadiusKm prop(見該元件開頭完整說明)——未傳時退回該元件
+  // 自己的預設值(4km)。2026-10 新增,讓套用這個元件的頁面(例如同城市
+  // 有多個主題點、彼此距離較遠的 TainanChikanPage.tsx)可以視實際景點
+  // 分布調整嵌入式小地圖的可拖曳範圍,不被固定寫死的全域預設值綁住。
+  mapRestrictRadiusKm,
 }: {
   children: ReactNode
   city: string
   defaultOpenTheme?: string
+  mapRestrictRadiusKm?: number
 }) {
   // order:已註冊錨點的 id,依註冊順序排列——React 對同層 children 的
   // mount effect 會依 JSX 書寫順序(文件順序)依序觸發,故只要呼叫端把
@@ -146,25 +193,39 @@ export function ScrollTimeline({
     return () => observer.disconnect();
   }, [order]);
 
-  // openAnchorId:目前被點開地圖的錨點 id(null 表示沒有任何一個打開)
-  // ——用 id 而非單純布林值,因為任一時刻最多只能有一個地圖面板打開
-  // (點開另一個縮圖時直接切換過去,不會同時疊出兩個面板),id 本身就
-  // 足夠表達「目前是哪一個」,不需要額外的陣列/索引狀態。
-  const [openAnchorId, setOpenAnchorId] = useState<string | null>(null);
-  const toggleAnchor = useCallback((id: string) => {
-    setOpenAnchorId((prev) => (prev === id ? null : id));
+  // panel:目前面板狀態(見 PanelState 說明;null 表示關著)——任一時刻
+  // 最多只能有一個面板打開(點開另一個錨點時直接切換過去,不會同時疊出
+  // 兩個面板),所以單一物件就足夠表達「目前是哪一個、以什麼模式」。
+  //
+  // toggleAnchor 的規則:
+  // - 傳入的 mode 省略時(縮圖按鈕/上下點小圓點)沿用目前開著的模式,
+  //   面板關著則預設 'map'——點縮圖只是「把面板叫出來/收起來」,不應
+  //   偷偷改變使用者先前選的模式。
+  // - 同一個錨點 + 同一個模式再按一次 → 關閉(對稱「地圖」/「附近景點」
+  //   按鈕的 toggle 行為)。
+  // - 同一個錨點但不同模式 → 只切換模式,面板不會先關再開(使用者看到的
+  //   是卡片出現/消失,地圖中心不動)。
+  // - 不同錨點 → 切過去,模式照傳入值(省略則沿用)。
+  const [panel, setPanel] = useState<PanelState | null>(null);
+  const openAnchorId = panel?.id ?? null;
+  const toggleAnchor = useCallback((id: string, mode?: PanelMode) => {
+    setPanel((prev) => {
+      const nextMode = mode ?? prev?.mode ?? 'map';
+      if (prev && prev.id === id && prev.mode === nextMode) return null;
+      return { id, mode: nextMode };
+    });
   }, []);
 
-  // 地圖開著時,捲動切換目前錨點要即時跟著移動中心點——只要面板目前是
-  // 開著的(prev !== null),active 一變就把 openAnchorId 同步成目前捲動
-  // 到的錨點 id,讓下方 focusedTheme 跟著重新計算、地圖自己 panTo 過去。
-  // 面板關著時(prev === null)維持不動,不會因為使用者捲動文案就自己
-  // 把地圖打開。
+  // 面板開著時,捲動切換目前錨點要即時跟著移動中心點——只要面板目前是
+  // 開著的(prev !== null),active 一變就把 id 同步成目前捲動到的錨點
+  // id(模式維持不變),讓下方 focusedTheme 跟著重新計算、地圖自己 panTo
+  // 過去。面板關著時(prev === null)維持不動,不會因為使用者捲動文案就
+  // 自己把地圖打開。
   const currentId = order[active];
   useEffect(() => {
-    setOpenAnchorId((prev) => {
-      if (prev === null) return prev;
-      return currentId ?? prev;
+    setPanel((prev) => {
+      if (prev === null || currentId === undefined || prev.id === currentId) return prev;
+      return { id: currentId, mode: prev.mode };
     });
   }, [currentId]);
 
@@ -196,7 +257,26 @@ export function ScrollTimeline({
   const nextId = active < order.length - 1 ? order[active + 1] : null;
   const currentMeta = currentId ? metaRef.current.get(currentId) : undefined;
   const openMeta = openAnchorId ? metaRef.current.get(openAnchorId) : undefined;
-  const focusedTheme = openMeta?.theme ?? defaultOpenTheme;
+  // focusedTheme:目前開著的錨點指定的主題點名稱——defaultOpenTheme 這個
+  // 共用退回值,只在這個錨點「完全沒有填 theme、也沒有填 center」時才
+  // 套用(例如單一主題城市頁,所有錨點都不individually 指定,整頁共用
+  // 同一個退回值,見該 prop 原本的設計意圖)。2026-10 修正(重要):原本
+  // 這裡無條件 `openMeta?.theme ?? defaultOpenTheme`,導致有填 center
+  // 但沒填 theme 的錨點(例如 TainanChikanPage.tsx 的武廟愛玉/神農街等
+  // 7 站)一樣會落回 defaultOpenTheme(通常指向頁面唯一的主題點),這個
+  // 回退值會在 InteractiveExploreMap 裡比對成功、整個蓋過下方
+  // focusedCenter,導致地圖永遠黏在 defaultOpenTheme 那個點、7 站的
+  // center 座標形同虛設,「地圖隨錨點移動」在這種混用 theme/center 的
+  // 頁面上完全不會發生。修法:這個錨點只要填了 center,就不再退回
+  // defaultOpenTheme(即使它沒填 theme),把決定權完全交給 focusedCenter。
+  const focusedTheme = openMeta?.theme ?? (openMeta?.center ? undefined : defaultOpenTheme);
+  // focusedCenter:目前開著的錨點若沒有填 theme(或 theme 比對不到主題點)
+  // 時的備援——直接把錨點自己的原始座標交給 InteractiveExploreMap 的
+  // focusedCenter prop(見該 prop 完整說明),讓地圖單純移動視角,不觸發
+  // 開卡/附近景點揭露(那些效果只有真正的主題點才有)。openMeta 沒有
+  // theme 時才傳,避免跟 focusedTheme 同時生效造成混淆(兩者同時有值時
+  // InteractiveExploreMap 內部以 theme 優先)。
+  const focusedCenter = openMeta && !openMeta.theme ? openMeta.center : undefined;
 
   const renderSideDot = (id: string | null) => {
     const meta = id ? metaRef.current.get(id) : undefined;
@@ -214,6 +294,32 @@ export function ScrollTimeline({
   };
 
   const isCurrentOpen = currentId === openAnchorId && currentId !== undefined;
+  const currentMode: PanelMode | null = isCurrentOpen && panel ? panel.mode : null;
+
+  // renderModeButton:按鈕組裡的一段——'map'/'nearby' 兩段共用同一套
+  // 標記(圖示 + 文字 + aria),只差 mode/圖示/文字,抽成函式避免兩份
+  // JSX 各自改到不同步。aria-pressed 表達「這一段目前是否為啟用中的
+  // 模式」,比 aria-expanded 更貼近分段式按鈕的語意(展開/收合的是整個
+  // 面板,個別段落是「選中/未選中」)。
+  const renderModeButton = (mode: PanelMode, icon: ReactNode, text: string) => {
+    if (!currentMeta || !currentId) return null;
+    const pressed = currentMode === mode;
+    const name = currentMeta.label ?? currentId;
+    const target = mode === 'map' ? '地圖' : '附近景點清單';
+    return (
+      <button
+        type="button"
+        className={`${styles.modeButton} ${pressed ? styles.modeButtonActive : ''}`}
+        onClick={() => toggleAnchor(currentId, mode)}
+        aria-pressed={pressed}
+        aria-label={`${pressed ? '關閉' : '展開'}「${name}」的${target}`}
+        title={text}
+      >
+        {icon}
+        <span className={styles.modeButtonLabel}>{text}</span>
+      </button>
+    );
+  };
 
   return (
     <ScrollTimelineContext.Provider value={ctxValue}>
@@ -227,16 +333,43 @@ export function ScrollTimeline({
                 變化。還沒有任何錨點註冊完成(currentMeta undefined,例如
                 首次渲染的那一瞬間)時先不渲染按鈕,避免背景圖网址是
                 undefined。 */}
-            <div className={`${styles.node} ${styles.nodeCurrent}`}>
+            <div className={`${styles.node} ${styles.nodeCurrent} ${SHOW_NEARBY_LIST_BUTTON ? '' : styles.nodeCurrentSolo}`}>
               {currentMeta && currentId && (
-                <button
-                  type="button"
-                  className={`${styles.dot} ${isCurrentOpen ? styles.dotOpen : ''}`}
-                  style={{ backgroundImage: `url(${currentMeta.thumb})` }}
-                  onClick={() => toggleAnchor(currentId)}
-                  aria-expanded={isCurrentOpen}
-                  aria-label={`${isCurrentOpen ? '關閉' : '展開'}「${currentMeta.label ?? currentId}」的地圖`}
-                />
+                <div className={styles.currentDotWrap}>
+                  <button
+                    type="button"
+                    className={`${styles.dot} ${isCurrentOpen ? styles.dotOpen : ''}`}
+                    style={{ backgroundImage: `url(${currentMeta.thumb})` }}
+                    onClick={() => toggleAnchor(currentId)}
+                    aria-expanded={isCurrentOpen}
+                    aria-label={`${isCurrentOpen ? '關閉' : '展開'}「${currentMeta.label ?? currentId}」的地圖`}
+                  />
+                  {/* modeGroup——放在目前點縮圖正下方的直排分段式按鈕組
+                      (segmented control):上段「地圖」(放大鏡圖示,使用者
+                      明確要求)、下段「附近景點」(清單圖示)。兩個動作開的
+                      是同一個右側面板,差別只在深度(只移中心 vs 連帶顯示
+                      附近景點清單,見檔案開頭 InteractiveExploreMap 掛載處
+                      的 openCardOnFocus/themeCardNearbyOnly 說明),語意上
+                      是「同一個面板的兩種模式」而非兩個不相干的功能,所以
+                      用共用外框把它們框成一組、啟用中的那段填滿強調色,
+                      而不是兩顆各自獨立的膠囊——獨立膠囊會讓人以為能同時
+                      按亮兩個。直排而非左右並排,是因為時間軸欄位只有
+                      96px 寬,兩段各自帶圖示+文字橫排塞不下,直排每段可以
+                      保有完整文字。跟縮圖按鈕是獨立的 <button>(HTML 不
+                      允許巢狀互動元素),縮圖按鈕不帶 mode 呼叫
+                      toggleAnchor,沿用目前模式。role="group" + aria-label
+                      讓讀屏器知道這兩顆是一組。SHOW_NEARBY_LIST_BUTTON 為
+                      false 時(見該常數說明)只渲染「地圖」一段——分隔線
+                      (.modeButton + .modeButton)是用相鄰兄弟選擇器畫的,
+                      只剩一個子元素時自動不會畫出來,不需要額外處理;
+                      外框高度則靠父層 .nodeCurrentSolo 調整(見上方
+                      .node 容器)。 */}
+                  <div className={styles.modeGroup} role="group" aria-label={`「${currentMeta.label ?? currentId}」的面板模式`}>
+                    {renderModeButton('map', <SearchIcon size={14} strokeWidth={2.25} aria-hidden="true" />, '地圖')}
+                    {SHOW_NEARBY_LIST_BUTTON &&
+                      renderModeButton('nearby', <ListIcon size={14} strokeWidth={2.25} aria-hidden="true" />, '附近景點')}
+                  </div>
+                </div>
               )}
             </div>
 
@@ -257,13 +390,69 @@ export function ScrollTimeline({
           <button
             type="button"
             className={styles.mapPanelClose}
-            onClick={() => setOpenAnchorId(null)}
+            onClick={() => setPanel(null)}
             aria-label="關閉地圖"
           >
             ×
           </button>
           <div className={styles.mapPanelInner}>
-            <InteractiveExploreMap city={city} showThemeToggle={false} defaultOpenTheme={defaultOpenTheme} focusedTheme={focusedTheme} />
+            {/* 刻意不傳 defaultOpenTheme 給 InteractiveExploreMap——那個
+                prop 是該元件自己的「資料載入完成就自動開卡一次」機制,
+                完全不受 openCardOnFocus 控制,一旦傳入,地圖只要載入完成
+                就會透過這條獨立路徑自動開卡,面板關著時卡片會先開在被
+                CSS 隱藏的面板裡。這個嵌入式小地圖要不要開卡,一律只透過
+                openCardOnFocus 這個受控管道決定(見該 prop 說明),不借用
+                defaultOpenTheme 的自動開卡行為——defaultOpenTheme 只在
+                這個檔案內部用來算 focusedTheme 的退回值(見上方
+                focusedTheme 的說明)。
+                openCardOnFocus 只在 'nearby' 模式為 true——'map' 模式與
+                面板關著時都是 false,InteractiveExploreMap 會在
+                true→false 時自己把卡片收起來(見該 prop 說明);
+                themeCardNearbyOnly 讓開出來的卡片只露出「附近景點」清單,
+                不顯示照片/名稱/簡介(見該 prop 說明)。
+                disableThemeCardOnMapClick:使用者明確要求這個嵌入式小
+                地圖完全不顯示主題點介紹卡——上面幾個 prop 管得住「捲動
+                /點時間軸錨點」這條路徑,但使用者也可能直接在小地圖上
+                手動點主題點圖標本身,那條路徑(handleAttractionSelect)
+                是獨立的,不受 openCardOnFocus 控制,這個 prop 補上這個
+                漏洞(見該 prop 完整說明)。
+                revealNearbyOnFocus 傳「面板是否開著」(不分 map/nearby
+                模式)——使用者明確要求「不管苗點(錨點)在哪,都要顯示
+                附近景點的小點」,地圖本身的附近景點標記不該侷限於比對到
+                某個特定主題點才揭露(見該 prop 完整說明)。
+                聚焦精選點的素色小圓點(2026-10,使用者要求「苗點在精選點
+                時,該點要變成(素色小圓點)圖標」):不需要額外 prop——
+                InteractiveExploreMap 收到 focusedCenter 後會自己拿座標去
+                比對 attractions 裡的精選點(誤差 0.0001 度內),命中的那
+                顆改畫聚焦造型(見該檔案 focusedAttractionId 的完整說明)。
+                呼叫端只要確保錨點的 center 座標跟資料庫記錄一致(例如
+                TainanChikanPage.tsx 的祀典武廟/林百貨直接複製資料庫座標)
+                就會自動生效;不在資料庫裡的錨點(神農街等)地圖上本來就
+                沒有對應標記,單純移動視角,不會憑空多出一顆點。
+                (2026-10 第二版:聚焦造型改成深紅色淚滴圖釘,見
+                geoAttractionOverlay.ts renderFocusedPin。)
+                themePhotoOnlyWhenFocused(2026-10,使用者要求「主題點只有
+                在主題點的苗點才顯示圓形圖,其他時候顯示小圓點」):只有
+                目前錨點指定的主題點(focusedTheme 比對到的那顆)顯示圓形
+                照片,其餘主題點退化成素色小圓點——捲到別的錨點時,沒人在
+                看的主題點不該繼續用大照片圓搶焦點。這是 opt-in,正式城市
+                頁不傳,主題點維持恆顯示照片(見該 prop 完整說明)。 */}
+            <InteractiveExploreMap
+              themePhotoOnlyWhenFocused
+              city={city}
+              showThemeToggle={false}
+              focusedTheme={focusedTheme}
+              focusedCenter={focusedCenter}
+              openCardOnFocus={panel?.mode === 'nearby'}
+              themeCardNearbyOnly
+              disableThemeCardOnMapClick
+              revealNearbyOnFocus={panel !== null}
+              restrictRadiusKm={mapRestrictRadiusKm}
+              // 關掉 Google 原生的 +/- 縮放鈕——260px 高的小面板裡,方形
+              // 按鈕組貼右下角跟右上角的關閉鈕擠在一起很突兀;這個面板
+              // 只是讓人瞥一眼位置,滾輪/雙指縮放仍可用(見該 prop 說明)。
+              showZoomControl={false}
+            />
           </div>
         </div>
 
@@ -282,22 +471,24 @@ function ScrollTimelineAnchor({
   id,
   thumb,
   theme,
+  center,
   label,
   children,
 }: {
   id: string
   thumb: string
   theme?: string
+  center?: { lat: number; lng: number }
   label?: string
   children: ReactNode
 }) {
   const ctx = useScrollTimelineContext('Anchor');
 
   useEffect(() => {
-    ctx.register({ id, thumb, theme, label });
+    ctx.register({ id, thumb, theme, center, label });
     return () => ctx.unregister(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, thumb, theme, label]);
+  }, [id, thumb, theme, center?.lat, center?.lng, label]);
 
   return (
     <section ref={(el) => ctx.setNode(id, el)} className={styles.stop}>

@@ -13,9 +13,71 @@
 
 ---
 
-## 最新掃描結果（2026-08-16）
+## 最新掃描結果（2026-10-06）
 
-**掃描方法**：6 個平行 finder agent（後端 attractionsync/photostorage/pexels、API/trip/entry 邏輯、前端 trip/clienttools/geo-planning、移除行為與跨檔案 trace、cleanup 角度、altitude/慣例角度）掃出約 20 個候選項目，再以 4 個獨立 verifier agent 對最強候選重新讀原始碼、逐一對抗式覆核。以下為本次**首次發現**且經驗證存活的功能類項目。
+**掃描方法**：對 `wip/scroll-timeline-demo` 分支（新增 ScrollTimeline compound component、InteractiveExploreMap 嵌入式小地圖整合、TainanChikanPage 套用）執行 8 個平行 finder agent（正確性逐行掃描、已移除行為稽核、重複實作、效率、簡化、抽象層級/慣例、CLAUDE.md 慣例核對、跨檔案 trace），再以獨立 verifier agent 對候選重新讀原始碼對抗式覆核。以下為本次**首次發現**且經驗證存活的功能類項目。
+
+### F42 🟠 面板停留在 'nearby' 模式時捲動到無 theme 的錨點，舊主題卡不會收掉
+- **位置**：`web/src/home/ScrollTimeline.tsx:225`（捲動同步 effect）、`web/src/home/InteractiveExploreMap.tsx:697-699`（`focusedTheme` 受控 effect 的 `if (!focusedTheme) return` 提前退出，未對稱收掉 `openThemeId`）
+- **問題**：捲動同步 effect 只把 `panel.id` 換成目前錨點，`mode` 原樣保留；若面板正開在 `'nearby'` 模式、使用者捲到一個只有 `center`（沒有 `theme`）的錨點，`openCardOnFocus` 仍是 `true`，但 `focusedTheme` 變成 `undefined`，`InteractiveExploreMap` 的受控 effect 在 `focusedTheme` 為假值時直接 `return`，從未呼叫 `setOpenThemeId(null)` 收卡。
+- **觸發情境**：在 `TainanChikanPage.tsx` 開啟「附近景點」面板於「赤崁樓」（有 `theme`），再捲動到「武廟愛玉」（只有 `center`）——地圖已經平移到武廟愛玉，但介紹卡仍顯示赤崁樓的附近景點清單，卡片與地圖內容不同步。目前因 `SHOW_NEARBY_LIST_BUTTON=false` 暫時沒有 UI 入口能進入 `'nearby'` 模式而處於休眠狀態，但這顆按鈕一旦重新開啟會立即重現。
+- **驗證狀態**：CONFIRMED（多個獨立 verifier agent 重讀程式碼確認觸發鏈）。
+- **建議修法**：捲動同步 effect 換錨點時，若新錨點沒有對應的 `theme`，連帶把 `mode` 降級為 `'map'`；或在 `InteractiveExploreMap` 的受控 effect 裡補上「`focusedTheme` 變成假值時主動收卡」的對稱邏輯。
+
+### F43 🟠 套用 ScrollTimeline 後，手機版地圖從「點了才載入」退化成「進頁面就無條件載入」
+- **位置**：`web/src/home/TainanChikanPage.tsx:389`（移除 `MobileMapReveal` 包裹，改用 `ScrollTimeline`）
+- **問題**：原本 `MobileMapReveal` 讓手機版地圖（Google Maps SDK + attractions API 查詢）延遲到使用者點擊縮圖才真的掛載；`ScrollTimeline.tsx` 的 `.mapPanel`／`InteractiveExploreMap` 一開始就常駐掛載，只用 CSS `visibility:hidden` 隱藏，整個檔案沒有任何 `isDesktop`/`useIsDesktop` 判斷。
+- **觸發情境**：手機（<768px）訪客開啟 `/tainan-chikan`，不管有沒有展開地圖面板，一律立即載入 Google Maps SDK、觸發一次 attractions API 查詢——重新引入 `MobileMapReveal` 當初要避免的載入成本，跟同層的 `TainanPage.tsx`/`KyotoPage.tsx`/`JiufenPage.tsx` 行為不一致。
+- **驗證狀態**：CONFIRMED。
+- **建議修法**：`ScrollTimeline` 補上手機版延遲掛載的等效機制（例如沿用 `useIsDesktop` 判斷，手機版先顯示靜態縮圖、使用者互動後才真正掛載 `InteractiveExploreMap`），或在 `TainanChikanPage.tsx` 層面針對手機版另外處理。
+
+### F44 🟡 進度點導覽（跳到任一站/跳回地圖）被拿掉，沒有替代方案
+- **位置**：`web/src/home/TainanChikanPage.tsx:389`（移除 `.tainan-chikan-progress-rail` 與 `useScrollProgress`）
+- **問題**：原本的進度點 nav 可以 `scrollIntoView` 直接跳到任一站或跳回地圖區塊；`ScrollTimeline.tsx` 的時間軸縮圖/模式按鈕只會呼叫 `toggleAnchor` 開關地圖面板，整個檔案沒有任何 `scrollIntoView` 或等效跳轉機制。
+- **觸發情境**：使用者原本可以點進度點直接跳到第 6 站，改版後只能手動捲動整頁才能到達。
+- **驗證狀態**：CONFIRMED。
+- **建議修法**：在 `ScrollTimeline`（或呼叫端）補上「點縮圖跳轉捲動位置」的功能，不只是開關地圖面板。
+
+### F45 🟡 `theme` 比對失敗時不會退回 `center`，兩者混用的錨點有單點失效風險
+- **位置**：`web/src/home/TainanChikanPage.tsx:405`（「赤崁樓」錨點同時填 `theme="赤崁樓"` 與 `center`）、`web/src/home/ScrollTimeline.tsx:272`（`focusedTheme`/`focusedCenter` 推導邏輯）
+- **問題**：只要 `openMeta.theme` 非空字串，`focusedCenter` 就直接被設成 `undefined`，不管 `theme` 字串最終有沒有在 `InteractiveExploreMap` 裡比對到真正的主題點。`TainanChikanPage.tsx` 檔案開頭的註解已自承：本機資料庫目前的主題點名稱是「赤崁樓」，但正式/部署環境可能已遷移成「赤崁・府城」（赤崁樓降級為一般精選點）。
+- **觸發情境**：若部署環境真的套用了那次更名遷移、此處 `theme="赤崁樓"` 忘記同步更新，`themePoints.find` 會比對失敗，但因為 `theme` 非空已經讓 `focusedCenter` 被壓成 `undefined`，地圖對這個錨點完全不會移動——即使座標其實已經寫在同一筆資料的 `center` 欄位裡、本可以直接拿來用。
+- **驗證狀態**：CONFIRMED。
+- **建議修法**：`focusedTheme`/`focusedCenter` 的決策改成「`theme` 有填且真的比對到主題點」才判定為 theme 模式，比對失敗時改退回使用 `center`（若有提供），而不是單純以「`theme` 欄位是否非空」決定。
+
+### F46 🟡 `ScrollTimeline.tsx` 重造一份 IntersectionObserver 版「目前捲動區段」邏輯，未重用既有的 `useScrollProgress`
+- **位置**：`web/src/home/ScrollTimeline.tsx:173`、對照 `web/src/hooks/useScrollProgress.ts`
+- **問題**：`useScrollProgress` 當初就是為了讓 JiufenPage/KyotoPage/TainanPage 不用各自重寫一份幾乎相同的 IntersectionObserver「找出目前捲動到哪個區段」邏輯而抽出來的共用 hook；`ScrollTimeline.tsx` 改用自己手刻的 rootMargin 窄帶版本（`TainanChikanPage.tsx` 的 diff 也因此拿掉了原本的 `useScrollProgress` 呼叫）。
+- **觸發情境**：日後任何一邊對 threshold/rootMargin 調校或補上邊界案例修正（例如 `useScrollProgress` 已有的「`IntersectionObserver` 不存在時的降級」），另一邊不會跟著更新，兩份邏輯會逐漸走樣。
+- **驗證狀態**：CONFIRMED。
+- **建議修法**：評估讓 `ScrollTimeline` 改用/擴充 `useScrollProgress`，或至少把兩者的核心判斷邏輯抽成同一個底層函式共用。
+
+### F47 ⚪ `revealedAttractionNames` 變動時，地圖標記整批銷毀重建，而非差異更新
+- **位置**：`web/src/geo-planning/useAttractionOverlays.ts:189`（overlay 建立 effect，依 `filteredAttractions` 陣列參照變動觸發）
+- **問題**：`filteredAttractions` 只要參照改變（例如揭露範圍從一個主題點換成另一個），effect 就對所有既有 overlay 呼叫 `setMap(null)`、再對新的 `filteredAttractions` 整批 `new OverlayClass(...)`，沒有針對「仍然存在於新舊兩份清單」的項目做差異重用。
+- **觸發情境**：在景點數量較多的城市，每次揭露範圍變動（捲動切換主題/精選點聚焦）都會重新配置數十個 DOM 節點、重新綁定每個節點的 click/mousedown/touchstart 監聽器，而非只處理真正新增/移除的項目。
+- **驗證狀態**：CONFIRMED。
+- **建議修法**：改成依 id 做差異比對，只新增/移除真正變動的 overlay，其餘沿用既有實例並只更新需要變動的屬性（如 `setFocused`/`setSelected`）。
+
+### F48 ⚪ `SHOW_NEARBY_LIST_BUTTON=false` 讓整條 `'nearby'` 模式成為跨兩個檔案的死碼
+- **位置**：`web/src/home/ScrollTimeline.tsx:77`（常數定義）、連動 `openCardOnFocus`/`themeCardNearbyOnly` 在 `web/src/home/InteractiveExploreMap.tsx` 的對應分支
+- **問題**：唯一會傳入 `'nearby'` 字面值的呼叫點（`renderModeButton('nearby', ...)`）整個被 `SHOW_NEARBY_LIST_BUTTON &&` 擋住；旗標為 `false` 時，`PanelMode` 的 `'nearby'` 分支、`openCardOnFocus`/`themeCardNearbyOnly` 的串接、以及對應 JSX 全部無法被執行到，但程式碼仍完整留在兩個檔案裡。
+- **觸發情境**：非功能性缺陷，屬於可維護性問題——之後任何人要理解/修改 ScrollTimeline 的面板模式邏輯，都得先追蹤這個旗標才知道有一半的分支目前是死碼（包含 F42 這個目前休眠中的 bug）。
+- **驗證狀態**：CONFIRMED。
+- **建議修法**：若短期內不會重新開啟「附近景點」按鈕，考慮先移除 `'nearby'` 模式的完整分支，待未來真的要做時再重新加回；若近期會重新啟用，則應儘快處理 F42，讓死碼不會帶著未修的 bug 一起被喚醒。
+
+### F49 ⚪ `InteractiveExploreMap` 為單一呼叫端（ScrollTimeline）新增五個各自獨立的 opt-in boolean/字串 prop，缺乏統一的「嵌入模式」抽象
+- **位置**：`web/src/home/InteractiveExploreMap.tsx:234` 附近（`openCardOnFocus`、`themeCardNearbyOnly`、`disableThemeCardOnMapClick`、`revealNearbyOnFocus`、`themePhotoOnlyWhenFocused`）
+- **問題**：這五個 prop 全部只有 `ScrollTimeline.tsx` 會傳入，`JiufenPage.tsx`/`KyotoPage.tsx`/`TainanPage.tsx` 一個都沒用到；每次 ScrollTimeline 這邊冒出一個新的「這個嵌入情境不要做 X」需求，就新增一個獨立的布林 prop 處理，而非收斂成單一的嵌入模式設定物件。
+- **觸發情境**：非立即性缺陷，但 `disableThemeCardOnMapClick` 的存在本身就是個警訊——它是為了補上 `openCardOnFocus`/`focusedTheme` 管不到「直接點地圖上的主題點圖標」這條路徑而額外新增的,下一個開卡入口（例如鍵盤導覽、deep link）很可能重蹈覆轍、繞過這整組旗標。
+- **驗證狀態**：CONFIRMED。
+- **建議修法**：評估收斂成單一 `embedded`/`focusMode` 設定物件（例如 `{ cardMode: 'full' | 'nearbyOnly' | 'disabled', revealAlways: boolean, themePhotoOnlyWhenFocused: boolean }`），所有開卡/揭露入口統一讀這個設定，而不是逐一新增平行旗標。
+
+---
+
+## 進行中的發現（依嚴重度排序）
+
+*（以下為既有稽核文件記錄過、本次尚未逐一重新複核的項目，來源已於各項標註）*
 
 ### F1 🟠 GCS 舊照片先刪除、後寫 DB，DB 失敗時照片變成孤兒引用
 - **位置**：`server/internal/api/maintenance.go:169-186`（`handleMaintenanceAttractionUpdatePhoto`）
@@ -73,12 +135,6 @@
 - **觸發情境**：使用者快速點擊「景點」再點「餐廳」，若「景點」的請求晚於「餐廳」回應才 resolve，畫面會顯示景點清單/地圖標記，但分類標籤 UI 顯示的是「餐廳」被選取，兩者不一致。
 - **驗證狀態**：CONFIRMED（獨立 agent 重讀程式碼確認無任何取消/序號機制）。
 - **建議修法**：加入 AbortController 或請求序號比對，`.then` 內先確認仍是最新請求才 `setPlaces`。
-
----
-
-## 進行中的發現（依嚴重度排序）
-
-*（以下為既有稽核文件記錄過、本次尚未逐一重新複核的項目，來源已於各項標註）*
 
 ### F12 🟠 `-retry` 是空殼旗標，續傳邏輯在正式路徑上是死碼
 - **位置**：`server/cmd/cli/attraction_sync.go:361`、`server/internal/attractionsync/handshake.go`、`server/internal/attractionsync/push.go`

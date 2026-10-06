@@ -53,6 +53,21 @@ class FakeOverlay {
   setHovered(hovered: boolean) {
     this.hoveredHistory.push(hovered)
   }
+  // setFocused:2026-10 新增的 ScrollTimeline 聚焦狀態(見
+  // geoAttractionOverlay.ts 的 focused 欄位說明),理由同下方 setPhotoUrls
+  // ——介面要求的方法,缺漏會在 focusedAttractionId 同步 effect 執行時
+  // 直接拋出執行期錯誤。
+  focusedHistory: boolean[] = []
+  setFocused(focused: boolean) {
+    this.focusedHistory.push(focused)
+  }
+  // setThemePhotoCollapsed:2026-10 新增的主題點「照片收起」狀態(見
+  // geoAttractionOverlay.ts 的 themePhotoCollapsed 欄位說明),理由同
+  // setFocused——介面要求的方法,缺漏會在同步 effect 執行時拋錯。
+  themePhotoCollapsedHistory: boolean[] = []
+  setThemePhotoCollapsed(collapsed: boolean) {
+    this.themePhotoCollapsedHistory.push(collapsed)
+  }
   // setPhotoUrls:AttractionOverlayInstance 介面要求的方法(見
   // geoAttractionOverlay.ts 的完整說明),先前這個 FakeOverlay 沒有實作
   // 這個方法——任何一個測試若傳入 cfg 觸發照片查詢 effect,呼叫
@@ -352,6 +367,106 @@ describe('useAttractionOverlays — 選取/候選籃/hover 狀態只更新既有
 
     expect(overlay.hoveredHistory).toContain(true)
     expect(constructedOverlays).toHaveLength(constructCountBefore)
+  })
+
+  // focusedAttractionId(2026-10 新增,ScrollTimeline 聚焦精選點的素色
+  // 小圓點造型,見 hook 內該 prop 的完整說明):比照 hoveredCuratedId——
+  // 只呼叫既有 overlay 的 setFocused、不重建;命中 id 的那顆收到 true,
+  // 其餘收到 false;未傳(既有呼叫端)時從頭到尾不會有任何 true,且完全
+  // 不碰 setSelected(跟 selected 是獨立狀態,這是本次最高風險項)。
+  it('focusedAttractionId 變動時只對命中 id 的 overlay setFocused(true),不觸發重建、不碰 setSelected', () => {
+    const mapRef = { current: makeFakeMap() }
+    const a = attraction({ id: 'lmk_a', name: 'A', lat: 1, lng: 1, isTheme: false, level: 2 })
+    const b = attraction({ id: 'lmk_b', name: 'B', lat: 2, lng: 2, isTheme: false, level: 2 })
+    const attractions = [a, b]
+    const revealedAttractionNames = new Set(['A', 'B'])
+    const { rerender } = renderHook(
+      ({ focusedAttractionId }: { focusedAttractionId?: string | null }) =>
+        useAttractionOverlays({
+          mapRef,
+          mapReady: true,
+          attractions,
+          revealedAttractionNames,
+          focusedAttractionId,
+        }),
+      { initialProps: { focusedAttractionId: undefined as string | null | undefined } },
+    )
+    const [overlayA, overlayB] = overlayInstances
+    const last = (xs: boolean[]) => xs[xs.length - 1]
+    const constructCountBefore = constructedOverlays.length
+    const selectedCallsBefore = overlayA.selectedHistory.length + overlayB.selectedHistory.length
+    // 未傳時:全部只收到 false,沒有任何 true。
+    expect(overlayA.focusedHistory).not.toContain(true)
+    expect(overlayB.focusedHistory).not.toContain(true)
+
+    rerender({ focusedAttractionId: 'lmk_a' })
+
+    expect(last(overlayA.focusedHistory)).toBe(true)
+    expect(last(overlayB.focusedHistory)).toBe(false)
+    expect(constructedOverlays).toHaveLength(constructCountBefore)
+    expect(overlayA.selectedHistory.length + overlayB.selectedHistory.length).toBe(selectedCallsBefore)
+
+    rerender({ focusedAttractionId: null })
+
+    expect(last(overlayA.focusedHistory)).toBe(false)
+    expect(last(overlayB.focusedHistory)).toBe(false)
+  })
+
+  // themePhotoOnlyWhenFocused/focusedThemeId(2026-10 新增,ScrollTimeline
+  // 「主題點只有被聚焦時才顯示圓形照片」的 opt-in 開關,見 hook 內該
+  // prop 的完整說明):開關未傳(所有既有呼叫端)時,每顆 overlay 從頭到尾
+  // 只會收到 setThemePhotoCollapsed(false)——這是本次最高風險項,正式
+  // 城市頁的主題點必須維持恆顯示照片;開關開著時,只有「不是
+  // focusedThemeId」的主題點收到 true,被聚焦的主題點與精選點恆 false;
+  // 不觸發重建、不碰 setSelected/setFocused。
+  it('themePhotoOnlyWhenFocused 未傳時主題點只收到 setThemePhotoCollapsed(false);開啟時只有非聚焦主題點收到 true', () => {
+    const mapRef = { current: makeFakeMap() }
+    const t1 = attraction({ id: 'lmk_t1', name: 'T1', lat: 1, lng: 1, isTheme: true, level: 1 })
+    const t2 = attraction({ id: 'lmk_t2', name: 'T2', lat: 2, lng: 2, isTheme: true, level: 1 })
+    const c = attraction({ id: 'lmk_c', name: 'C', lat: 3, lng: 3, isTheme: false, level: 2 })
+    const attractions = [t1, t2, c]
+    const revealedAttractionNames = new Set(['C'])
+    type Props = { themePhotoOnlyWhenFocused?: boolean; focusedThemeId?: string | null }
+    const { rerender } = renderHook(
+      ({ themePhotoOnlyWhenFocused, focusedThemeId }: Props) =>
+        useAttractionOverlays({
+          mapRef,
+          mapReady: true,
+          attractions,
+          revealedAttractionNames,
+          themePhotoOnlyWhenFocused,
+          focusedThemeId,
+        }),
+      { initialProps: {} as Props },
+    )
+    const [overlayT1, overlayT2, overlayC] = overlayInstances
+    const last = (xs: boolean[]) => xs[xs.length - 1]
+    const constructCountBefore = constructedOverlays.length
+    // 未傳時:全部只收到 false,沒有任何 true(既有行為:主題點恆顯示照片)。
+    expect(overlayT1.themePhotoCollapsedHistory).not.toContain(true)
+    expect(overlayT2.themePhotoCollapsedHistory).not.toContain(true)
+    expect(overlayC.themePhotoCollapsedHistory).not.toContain(true)
+
+    rerender({ themePhotoOnlyWhenFocused: true, focusedThemeId: 'lmk_t1' })
+
+    expect(last(overlayT1.themePhotoCollapsedHistory)).toBe(false)
+    expect(last(overlayT2.themePhotoCollapsedHistory)).toBe(true)
+    expect(last(overlayC.themePhotoCollapsedHistory)).toBe(false)
+    expect(constructedOverlays).toHaveLength(constructCountBefore)
+    expect(overlayT1.focusedHistory).not.toContain(true)
+    expect(overlayT2.focusedHistory).not.toContain(true)
+
+    // 聚焦切到 T2:T1 收起、T2 展開。
+    rerender({ themePhotoOnlyWhenFocused: true, focusedThemeId: 'lmk_t2' })
+    expect(last(overlayT1.themePhotoCollapsedHistory)).toBe(true)
+    expect(last(overlayT2.themePhotoCollapsedHistory)).toBe(false)
+
+    // 開關開著但沒有任何主題點被聚焦(錨點走 focusedCenter 的精選點):
+    // 所有主題點都收起。
+    rerender({ themePhotoOnlyWhenFocused: true, focusedThemeId: null })
+    expect(last(overlayT1.themePhotoCollapsedHistory)).toBe(true)
+    expect(last(overlayT2.themePhotoCollapsedHistory)).toBe(true)
+    expect(last(overlayC.themePhotoCollapsedHistory)).toBe(false)
   })
 })
 

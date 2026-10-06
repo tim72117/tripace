@@ -22,6 +22,15 @@ export type AttractionOverlayInstance = google.maps.OverlayView & {
   setSelected: (selected: boolean) => void
   setCandidate: (candidate: boolean) => void
   setHovered: (hovered: boolean) => void
+  // setFocused:2026-10 新增,ScrollTimeline.tsx 嵌入式小地圖專用(見
+  // 下方 focused 欄位的完整說明)——跟 setSelected 是完全獨立的兩個狀態,
+  // 不共用、不覆寫。
+  setFocused: (focused: boolean) => void
+  // setThemePhotoCollapsed:2026-10 新增,同樣是 ScrollTimeline.tsx 嵌入式
+  // 小地圖專用(見下方 themePhotoCollapsed 欄位的完整說明)——主題點
+  // 「目前不是時間軸聚焦的那個主題」時退化成素色小圓點。精選點永遠
+  // no-op;既有呼叫端從不呼叫,預設 false 時渲染邏輯一字不變。
+  setThemePhotoCollapsed: (collapsed: boolean) => void
   setPhotoUrls: (photoUrls: string[] | undefined) => void
   setHidden: (hidden: boolean) => void
   // setLabelHidden/getLabelEl/getLabelPriority:標籤避讓機制(見
@@ -42,6 +51,13 @@ export type AttractionOverlayInstance = google.maps.OverlayView & {
   // 的主題點仍會被當成障礙物,擠掉周邊精選點原本該正常顯示的標籤。
   isHidden: () => boolean
 }
+
+// THEME_PHOTO_FADE_OUT_MS:主題點照片收起時幽靈複本的淡出時長(見
+// setThemePhotoCollapsed/mountThemePhotoGhosts)——只拿來當 animationend
+// 沒觸發時的 setTimeout 保底基準,實際動畫時長定義在 ExploreMap.module.css
+// 的 .geo-attraction-landmark-ghost/.geo-attraction-glow-fading,兩邊要
+// 一起改(這裡只要 >= CSS 的值即可,略大無妨)。
+const THEME_PHOTO_FADE_OUT_MS = 240
 
 let AttractionOverlayClass:
   | (new (
@@ -71,6 +87,48 @@ export function getAttractionOverlayClass() {
     // useAttractionOverlays.ts 同步這個狀態的 effect。主題點永遠忽略這個
     // 欄位(建構時就已經是完整照片呈現,沒有「展開」的必要)。
     private hovered: boolean = false
+    // focused:2026-10 新增,僅精選點(isTheme===false)使用——「這個精選點
+    // 目前是 ScrollTimeline.tsx 捲動時間軸聚焦的那個錨點」(錨點的 center
+    // 座標剛好跟這個精選點座標相同,見 InteractiveExploreMap.tsx 的
+    // focusedAttractionId 推導)。true 時整個標記改用「深紅色淚滴形圖釘」
+    // 造型(見 renderContent() 的 renderFocusedPin 分支),取代預設的
+    // 分類色圓點/hover 展開照片。(2026-10 第二版:原本是素色小圓點+
+    // 靶心三態,使用者附截圖明確要求改成經典地圖大頭針——上圓下尖、
+    // 圓心挖一個白色小孔——的樣式。)
+    //
+    // 刻意是一個跟 selected 完全獨立的新欄位,不重用 selected:selected
+    // 是全站共用的「側欄目前選中哪個候選景點」語意(DesktopLayout.tsx
+    // 正式行程規劃功能在用),若把 selected && !isTheme 的視覺直接改成
+    // 這套圖釘,正式功能的候選景點選取視覺會跟著變,是不能接受的副作用。
+    // focused 只是「要不要切換成圖釘造型」的開關;切換之後圖釘本身的
+    // base/hover/selected 三態,仍沿用既有的 hovered/selected 兩個布林值
+    // 決定(見 renderFocusedPin()),不另外發明一套狀態。預設 false,除了
+    // ScrollTimeline 這條路徑以外的所有呼叫端(九份/京都/台南正式城市頁、
+    // DesktopLayout.tsx)從不呼叫 setFocused,渲染邏輯完全維持原樣。
+    private focused: boolean = false
+    // focusedPinEntrancePending:下一次 renderFocusedPin() 要不要播「圖釘
+    // 落下」進場動畫——只在 setFocused(true) 時立起(含 onAdd 之前的空窗
+    // 期:div 建好時 onAdd → renderContent 會消耗掉它),第一次畫出圖釘
+    // 時消耗歸零。理由:renderContent() 每次都整個重設 innerHTML,動畫
+    // 會從頭播,若不記住「已經進場過」,hover/selected 切換、setPhotoUrls
+    // 等其他原因觸發的重繪都會讓圖釘再掉一次;進場動畫的語意是「這一站
+    // 剛被時間軸點到」,只該在聚焦切換到這顆點的那一刻播一次。
+    private focusedPinEntrancePending: boolean = false
+    // themePhotoCollapsed:2026-10 新增,僅主題點(isTheme===true)使用——
+    // 「這個主題點目前不是 ScrollTimeline.tsx 時間軸聚焦的那個主題」
+    // (見 useAttractionOverlays.ts 的 themePhotoOnlyWhenFocused/
+    // focusedThemeId 完整說明)。true 時主題點不再恆顯示圓形照片光暈,
+    // 退化成跟一般未 hover 精選點完全相同的素色小圓點
+    // (.geo-attraction-curated-dot,含分類配色),只有被 hover 時才臨時
+    // 升級成照片(對齊精選點「hover 臨時升級成照片」的既有慣例,見
+    // renderContent() 的 showPhoto 判斷)。
+    //
+    // 這是純 opt-in 的新行為:預設 false,只有 InteractiveExploreMap.tsx
+    // 開了 themePhotoOnlyWhenFocused prop(目前僅 ScrollTimeline.tsx 開)
+    // 才會透過 setThemePhotoCollapsed 寫成 true。九份/京都/台南/首頁/
+    // DesktopLayout.tsx 等所有既有呼叫端從不呼叫,主題點繼續維持
+    // 「恆顯示圓形照片」的既有行為,一個字都不變。
+    private themePhotoCollapsed: boolean = false
     // photoUrls:這個景點區域實際要顯示的照片清單,由呼叫端(見
     // useAttractionOverlays.ts)查完 GET /internal(或 /public)/geo/
     // place-details 後透過 setPhotoUrls 寫入(GeoPlaceDetails.googlePhotoUrls,
@@ -151,6 +209,10 @@ export function getAttractionOverlayClass() {
         this.isTheme && 'geo-attraction-overlay-theme',
         this.selected && 'geo-attraction-overlay-selected',
         this.candidate && 'geo-attraction-overlay-candidate',
+        // geo-attraction-overlay-focused:見 focused 欄位說明——跟 hidden
+        // 一樣要先存欄位、div 建好時再補套用(setFocused 可能在 onAdd
+        // 之前的空窗期就被呼叫)。
+        this.focused && !this.isTheme && 'geo-attraction-overlay-focused',
       ].filter(Boolean).join(' ')
       div.style.visibility = this.hidden ? 'hidden' : ''
       this.div = div
@@ -180,7 +242,25 @@ export function getAttractionOverlayClass() {
     // 不會像「所有 overlay 依賴陣列變動」那樣大量重繪。
     private renderContent() {
       if (!this.div) return
-      const showPhoto = this.isTheme || this.hovered
+      // focused 且為精選點:整個標記換成淚滴圖釘造型(見 focused 欄位
+      // 與 renderFocusedPin 的完整說明)。放在最前面提早分流,下方既有的
+      // 圓點/照片渲染邏輯對 focused===false(所有既有呼叫端)完全不變。
+      if (this.focused && !this.isTheme) {
+        this.renderFocusedPin()
+        this.bindClickTargets()
+        this.reapplyLabelHidden()
+        return
+      }
+      // showPhoto:主題點恆顯示照片、精選點只在 hover 時顯示——這是所有
+      // 既有呼叫端依賴的規則。2026-10 補上 themePhotoCollapsed(見該欄位
+      // 說明,純 opt-in,預設 false):被收起的主題點改成跟精選點同一套
+      // 「只有 hover 才顯示照片」規則。themePhotoCollapsed 為 false 時
+      // 整條判斷式等價於原本的 this.isTheme || this.hovered。
+      // showGlow:光暈只給「完整狀態的主題點」——被收起的主題點 hover
+      // 時臨時升級成照片,比照精選點 hover(不含光暈,理由見 setHovered
+      // 說明),它此刻的角色就是「暫時被看一眼的衛星」而非主角。
+      const showPhoto = (this.isTheme && !this.themePhotoCollapsed) || this.hovered
+      const showGlow = this.isTheme && !this.themePhotoCollapsed
       // 圓點分類配色:見 geoCuratedCategoryStub.ts 的完整說明——優先讀
       // 後端 category 欄位,查無對應分類時圓點退回基底 class
       // (ExploreMap.module.css 的 --ios-sand 預設色),不額外附加
@@ -192,7 +272,7 @@ export function getAttractionOverlayClass() {
       ].filter(Boolean).join(' ')
       this.div.innerHTML = showPhoto
         ? `
-        ${this.isTheme ? '<div class="geo-attraction-glow"></div>' : ''}
+        ${showGlow ? '<div class="geo-attraction-glow"></div>' : ''}
         ${
           this.photoUrls && this.photoUrls.length > 0
             ? `<img class="geo-attraction-landmark-photo" src="${this.photoUrls[0]}" alt="${escapeHtml(this.attraction.landmarkName ?? this.attraction.name)}" loading="lazy" />`
@@ -205,18 +285,93 @@ export function getAttractionOverlayClass() {
         <span class="geo-attraction-label">${escapeHtml(this.attraction.name)}</span>
       `
 
-      // 在圓形地標圖/佔位圓/精選點圓點與文字標籤本身綁點擊(見 module.css
-      // 的 pointer-events: auto 覆寫),不是整個 overlay 容器——光暈仍
-      // 不可點擊(純裝飾,沒有對應的可辨識地標語意)。2026-10 使用者明確
-      // 要求文字標籤也要能點開(原本只有圖示/圓點可點,理由是「只召喚
-      // 不強加」,但使用者點擊習慣上會直接點文字,排除掉反而像沒反應),
-      // 故把 .geo-attraction-label 併入點擊目標,主題點/精選點皆適用。
-      // 點下去回報這個景點區域資料,由外層決定怎麼放大(見 ExploreMap.tsx
-      // 的 handleAttractionClick)。innerHTML 每次重設都會拿掉舊的監聽器,
-      // 故每次 renderContent() 都要重新綁定;querySelectorAll 回傳
-      // NodeList,要對每個 target 各自綁一次,不是單一 Element。
+      this.bindClickTargets()
+      this.reapplyLabelHidden()
+    }
+
+    // renderFocusedPin:2026-10 新增(第二版,取代原本的素色小圓點+靶心
+    // 三態)——ScrollTimeline.tsx 嵌入式小地圖「聚焦錨點剛好對應到地圖上
+    // 既有精選點」時,那個精選點改畫的深紅色淚滴形圖釘:上半部實心圓、
+    // 下半部收尖指向地面,圓心挖一個卡片白小孔(經典地圖大頭針,使用者
+    // 附截圖明確指定這個樣式)。造型本身跟圓點/照片圓完全不同族,存在感
+    // 已經足夠表達「這一顆是時間軸正在講的那一站」,三態只做輕量層次、
+    // 不再疊光暈/漣漪那套:
+    //   - base:圖釘本體 + 中心孔。
+    //   - hover:同一支圖釘,CSS 以尖端為軸微放大(見 module.css 的
+    //     .geo-attraction-focused-pin-hover),表達「滑過」。
+    //   - selected:圖釘尖端下方多一圈扁橢圓「落地環」(accent 描邊),
+    //     表達「釘住了」;中心孔不變。跟 hover 用不同維度(放大 vs 落地環)
+    //     而非色相區分——地圖上「換色 = 換類別」是既有語言(分類圓點配色)。
+    //     selected 優先於 hover:已經錨定的東西不該因滑鼠經過而變。
+    //
+    // 畫布固定 24x32(viewBox 同),落地環畫在畫布外(overflow visible):
+    // 三種狀態 layout box 完全相同,.geo-attraction-overlay 用
+    // translate(-50%,-100%) 以整組視覺置中/底部錨定座標,若畫布尺寸隨
+    // 狀態變化,尖端會跟著跳位。圖釘尖端落在畫布底邊正中(12,31),即
+    // 原本 14px 圓點底邊的位置——跟鄰居圓點/照片圓用同一套「視覺底邊貼
+    // 座標、標籤掛在下方」的版面規則,不另外為圖釘重算錨點。
+    //
+    // 取色:不寫死色碼,直接用 inline style 讀 CSS 變數——--color-accent
+    // (圖釘本體;base-ui.css 定義為硃紅 #8B3A2F、對齊城市頁的
+    // --vermilion,深淺色模式各自有值,正是截圖那種深紅/磚紅色調,不需要
+    // 另立 token)、--ios-card(中心孔/描邊,對齊既有圓點的 border 色,在
+    // 深色底圖上才有對比)。SVG presentation attribute(fill="...")不接受
+    // var(),必須寫在 style 屬性裡才會解析 CSS 變數;透明度另外用
+    // stroke-opacity attribute 表達(token 值不能進 rgba())。
+    //
+    // 進場動畫(.geo-attraction-focused-pin-enter,@keyframes 與
+    // prefers-reduced-motion 退化定義在 ExploreMap.module.css 的 :global
+    // 區塊)只在 setFocused(true) 後的第一次渲染掛上(見
+    // focusedPinEntrancePending 欄位說明)——圖釘從上方落下、落定,是
+    // 「時間軸剛點到這一站」的一次性回饋;hover/selected 切換或其他原因
+    // 的重繪不重播。
+    private renderFocusedPin() {
+      if (!this.div) return
+      const state: 'base' | 'hover' | 'selected' = this.selected ? 'selected' : this.hovered ? 'hover' : 'base'
+      const entering = this.focusedPinEntrancePending
+      this.focusedPinEntrancePending = false
+      const accent = 'var(--color-accent)'
+      const card = 'var(--ios-card)'
+      const svgClass = [
+        'geo-attraction-focused-pin',
+        state === 'hover' && 'geo-attraction-focused-pin-hover',
+        state === 'selected' && 'geo-attraction-focused-pin-selected',
+        entering && 'geo-attraction-focused-pin-enter',
+      ].filter(Boolean).join(' ')
+      // 落地環:只在 selected 畫,放在圖釘本體之前(DOM 順序在下層),
+      // 尖端壓在環的正中央。環的視覺是「圖釘釘進地面的那一圈」,扁橢圓
+      // 模擬透視。
+      const groundRing = state === 'selected'
+        ? `<ellipse cx="12" cy="31" rx="7" ry="2.6" fill="none" stroke-width="1.5" stroke-opacity="0.55" style="stroke:${accent}"/>`
+        : ''
+      // 圖釘本體路徑:圓心 (12,11) 半徑 10,兩側以貝茲曲線收到尖端 (12,31)。
+      const pinPath =
+        'M12 31 C12 31 2 18.5 2 11 A10 10 0 1 1 22 11 C22 18.5 12 31 12 31 Z'
+      this.div.innerHTML = `
+        <svg class="${svgClass}" xmlns="http://www.w3.org/2000/svg" width="24" height="32" viewBox="0 0 24 32" overflow="visible" style="overflow:visible">
+          ${groundRing}
+          <path d="${pinPath}" stroke-width="1.5" stroke-linejoin="round" style="fill:${accent};stroke:${card}"/>
+          <circle cx="12" cy="11" r="4" style="fill:${card}"/>
+        </svg>
+        <span class="geo-attraction-label">${escapeHtml(this.attraction.name)}</span>
+      `
+    }
+
+    // bindClickTargets:在圓形地標圖/佔位圓/精選點圓點/focused 圖釘與
+    // 文字標籤本身綁點擊(見 module.css 的 pointer-events: auto 覆寫),
+    // 不是整個 overlay 容器——光暈仍不可點擊(純裝飾,沒有對應的可辨識
+    // 地標語意)。2026-10 使用者明確要求文字標籤也要能點開(原本只有
+    // 圖示/圓點可點,理由是「只召喚不強加」,但使用者點擊習慣上會直接點
+    // 文字,排除掉反而像沒反應),故把 .geo-attraction-label 併入點擊目標,
+    // 主題點/精選點皆適用。點下去回報這個景點區域資料,由外層決定怎麼
+    // 放大(見 ExploreMap.tsx 的 handleAttractionClick)。innerHTML 每次
+    // 重設都會拿掉舊的監聽器,故每次 renderContent() 都要重新綁定;
+    // querySelectorAll 回傳 NodeList,要對每個 target 各自綁一次,不是
+    // 單一 Element。
+    private bindClickTargets() {
+      if (!this.div) return
       const clickTargets = this.div.querySelectorAll(
-        '.geo-attraction-landmark-photo, .geo-attraction-landmark-placeholder, .geo-attraction-curated-dot, .geo-attraction-label',
+        '.geo-attraction-landmark-photo, .geo-attraction-landmark-placeholder, .geo-attraction-curated-dot, .geo-attraction-focused-pin, .geo-attraction-label',
       )
       clickTargets.forEach((clickTarget) => {
         clickTarget.addEventListener('click', () => this.onClick(this.attraction))
@@ -243,11 +398,13 @@ export function getAttractionOverlayClass() {
         clickTarget.addEventListener('mousedown', (e) => e.stopPropagation())
         clickTarget.addEventListener('touchstart', (e) => e.stopPropagation())
       })
+    }
 
-      // renderContent() 每次都會整個重設 innerHTML,標籤是全新的 DOM
-      // 節點,若這個景點當下正因為標籤避讓機制而隱藏標籤(見 labelHidden
-      // 欄位),必須在這裡重新套用,否則重繪瞬間(例如 setHovered 切換
-      // 圓點→照片)會讓已隱藏的標籤意外重新冒出來一瞬間。
+    // reapplyLabelHidden:renderContent() 每次都會整個重設 innerHTML,
+    // 標籤是全新的 DOM 節點,若這個景點當下正因為標籤避讓機制而隱藏標籤
+    // (見 labelHidden 欄位),必須重新套用,否則重繪瞬間(例如 setHovered
+    // 切換圓點→照片)會讓已隱藏的標籤意外重新冒出來一瞬間。
+    private reapplyLabelHidden() {
       if (this.labelHidden) {
         const label = this.getLabelEl()
         if (label) label.style.visibility = 'hidden'
@@ -289,7 +446,7 @@ export function getAttractionOverlayClass() {
     // 只要有任何重疊就可能需要避讓,不分是撞到點還是撞到字。
     getVisualEl(): HTMLElement | null {
       return this.div?.querySelector(
-        '.geo-attraction-landmark-photo, .geo-attraction-landmark-placeholder, .geo-attraction-curated-dot',
+        '.geo-attraction-landmark-photo, .geo-attraction-landmark-placeholder, .geo-attraction-curated-dot, .geo-attraction-focused-pin',
       ) ?? null
     }
 
@@ -323,8 +480,11 @@ export function getAttractionOverlayClass() {
     // ExploreMap.module.css .geo-attraction-overlay-theme 規則的完整
     // 說明:主題點永遠是散策羅盤的主角,預設該蓋過一般精選點,但使用者
     // 明確點開/hover 某個精選點時,那個精選點的即時回饋該優先顯示。
+    // 2026-10:focused(ScrollTimeline 聚焦的精選點,見 focused 欄位說明)
+    // 併入最高優先序——它是「時間軸正在講的那一站」,標籤不該被鄰居擠掉;
+    // 既有呼叫端 focused 恆為 false,這條判斷對它們不產生任何影響。
     getLabelPriority(): number {
-      if (this.selected || this.hovered || this.candidate) return 100
+      if (this.selected || this.hovered || this.candidate || (this.focused && !this.isTheme)) return 100
       if (this.isTheme) return 60
       return 0
     }
@@ -383,12 +543,147 @@ export function getAttractionOverlayClass() {
     // geo-attraction-overlay-hovered class(見 module.css 的完整說明)
     // 把整組地標拉到最上層——這個觸發來源(附近景點清單 hover)游標實際
     // 不在地圖上,無法靠 CSS :hover 判斷,必須用 JS 主動切 class。
+    //
+    // 2026-10 補充:themePhotoCollapsed(見該欄位說明,純 opt-in)為 true
+    // 的主題點此刻長得跟精選點一樣是小圓點,hover 要能像精選點一樣臨時
+    // 升級成照片,故 no-op 條件從「isTheme」收窄成「isTheme 且尚未被
+    // 收起」。既有呼叫端 themePhotoCollapsed 恆為 false,對它們而言這條
+    // 判斷跟原本的 isTheme no-op 完全等價(欄位、class、z-index、重繪
+    // 一樣都不碰)。
     setHovered(hovered: boolean) {
-      if (this.isTheme || this.hovered === hovered) return
+      if ((this.isTheme && !this.themePhotoCollapsed) || this.hovered === hovered) return
       this.hovered = hovered
       this.div?.classList.toggle('geo-attraction-overlay-hovered', hovered)
       this.updateContainerZIndex()
       this.renderContent()
+    }
+
+    // setFocused:2026-10 新增(見 focused 欄位的完整說明)——主題點永遠
+    // no-op(主題點恆顯示照片光暈,沒有「換成小圓點」這回事),值沒有真的
+    // 改變時提早跳出。切換 geo-attraction-overlay-focused class 讓
+    // ExploreMap.module.css 能針對這個狀態調整層級,並重繪 innerHTML
+    // (小圓點 SVG 跟既有圓點/照片是不同 DOM 結構,不是切 class 能表達的
+    // 差異,理由同 setHovered)。比照 setHidden,先存欄位再檢查 div 是否
+    // 存在——呼叫端可能在 onAdd() 之前的空窗期就呼叫,div 建好時 onAdd
+    // 會自行補套用 class 並 renderContent()。
+    setFocused(focused: boolean) {
+      if (this.isTheme || this.focused === focused) return
+      this.focused = focused
+      // 進入聚焦時立起進場旗標,由接下來第一次 renderFocusedPin() 消耗
+      // (div 尚未建好時由 onAdd → renderContent 消耗),見該欄位說明。
+      this.focusedPinEntrancePending = focused
+      if (!this.div) return
+      this.div.classList.toggle('geo-attraction-overlay-focused', focused)
+      this.updateContainerZIndex()
+      this.renderContent()
+    }
+
+    // setThemePhotoCollapsed:2026-10 新增(見 themePhotoCollapsed 欄位的
+    // 完整說明)——精選點永遠 no-op(它本來就是小圓點,沒有「收起照片」
+    // 這回事),值沒有真的改變時提早跳出(既有呼叫端從不呼叫;即使被
+    // 呼叫 false 也會在這裡跳出,不觸發任何重繪)。收起/展開是圓點↔照片
+    // 兩種 DOM 結構的切換,必須重繪 innerHTML(理由同 setHovered)。比照
+    // setHidden/setFocused,先存欄位再檢查 div 是否存在——呼叫端可能在
+    // onAdd() 之前的空窗期就呼叫,div 建好時 onAdd 會自行 renderContent()。
+    //
+    // 收起時若這個主題點正處於 hovered(被收起前不可能,因為完整主題點
+    // 的 setHovered 是 no-op;但展開→收起→hover→展開→收起這種序列下,
+    // hovered 欄位可能殘留 true),展開期間 setHovered(false) 會因為
+    // 「完整主題點 no-op」而被擋掉,hovered 殘留到下次收起就會誤顯示照片
+    // ——故展開(collapsed=false)時一併把 hovered 歸零並拿掉 hovered
+    // class,確保完整主題點的狀態跟從未被 hover 過完全一致。
+    //
+    // 收起(collapsed=true)時的淡出:使用者要求「主題點消失時用淡出」——
+    // 但 renderContent() 是整個重設 innerHTML,照片節點會瞬間消失。這裡
+    // 不改成延遲重繪(那會讓 renderContent 變非同步,破壞所有「呼叫後
+    // DOM 立即更新完畢」的既有假設,例如 getVisualEl/getLabelEl 的標籤
+    // 避讓量測、bindClickTargets 的綁定時機),而是 crossfade:先在重繪
+    // 「之前」把目前畫面上的照片/光暈做成純裝飾的幽靈複本(見
+    // captureThemePhotoGhosts),照常同步重繪成小圓點,再把幽靈塞回
+    // 容器讓 CSS 在原位淡出、動畫結束後自行移除(見 mountThemePhotoGhosts)。
+    // 圓點、標籤、點擊綁定在 renderContent 回傳的當下就已經是最終狀態。
+    // 這條分支只有 isTheme && collapsed=true 才會走到,既有呼叫端
+    // (themePhotoCollapsed 恆 false)永遠不會產生幽靈節點。
+    setThemePhotoCollapsed(collapsed: boolean) {
+      if (!this.isTheme || this.themePhotoCollapsed === collapsed) return
+      const ghosts = collapsed ? this.captureThemePhotoGhosts() : []
+      this.themePhotoCollapsed = collapsed
+      if (!collapsed && this.hovered) {
+        this.hovered = false
+        this.div?.classList.remove('geo-attraction-overlay-hovered')
+      }
+      if (!this.div) return
+      this.updateContainerZIndex()
+      this.renderContent()
+      this.mountThemePhotoGhosts(ghosts)
+    }
+
+    // captureThemePhotoGhosts:主題點照片收起前,依目前 DOM 上的光暈/
+    // 照片/佔位圓各做一份「幽靈」複本,供 renderContent 重繪之後塞回去
+    // 原位淡出。必須在 themePhotoCollapsed 改值、innerHTML 重寫之前呼叫
+    // (之後 DOM 上就只剩小圓點了)。
+    //
+    // 幽靈刻意不沿用 .geo-attraction-landmark-photo/-placeholder 這兩個
+    // class,改用獨立的 .geo-attraction-landmark-ghost:那兩個 class 是
+    // getVisualEl()/bindClickTargets() 的查詢契約(見各該方法),若幽靈
+    // 也掛同樣的 class,標籤避讓會把一個正在消失的 56px 圓當成實際障礙物
+    // 量測、候選徽章 ::after 與 photoFadeIn 進場動畫也會誤套到幽靈身上。
+    // 光暈沒有這層契約(JS 從不查詢它、本來就 pointer-events:none),直接
+    // 沿用 .geo-attraction-glow 的外觀,只疊一個 -fading modifier 把進場
+    // 動畫換成淡出。所有幽靈都是純裝飾:pointer-events:none(CSS),不綁
+    // 任何事件。
+    //
+    // prefers-reduced-motion:直接不產生幽靈,照片瞬間消失(比照
+    // focused 圖釘進場動畫在該模式下退化成靜態的做法);CSS 端另有
+    // display:none 的保底,涵蓋動畫播到一半系統設定才切換的情況。
+    private captureThemePhotoGhosts(): HTMLElement[] {
+      if (!this.div) return []
+      if (
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ) {
+        return []
+      }
+      const ghosts: HTMLElement[] = []
+      const glow = this.div.querySelector('.geo-attraction-glow')
+      if (glow) {
+        const ghost = document.createElement('div')
+        ghost.className = 'geo-attraction-glow geo-attraction-glow-fading'
+        ghosts.push(ghost)
+      }
+      const photo = this.div.querySelector<HTMLImageElement>('.geo-attraction-landmark-photo')
+      if (photo) {
+        const ghost = document.createElement('img')
+        ghost.className = 'geo-attraction-landmark-ghost'
+        ghost.src = photo.src
+        ghost.alt = ''
+        ghosts.push(ghost)
+      } else if (this.div.querySelector('.geo-attraction-landmark-placeholder')) {
+        const ghost = document.createElement('div')
+        ghost.className = 'geo-attraction-landmark-ghost geo-attraction-landmark-ghost-placeholder'
+        ghosts.push(ghost)
+      }
+      return ghosts
+    }
+
+    // mountThemePhotoGhosts:把 captureThemePhotoGhosts 做好的幽靈塞回
+    // 容器最前面(DOM 順序在圓點/標籤之前;幽靈全是絕對定位,不占
+    // flex 版面,圓點/標籤的位置跟沒有幽靈時完全相同),淡出動畫
+    // (ExploreMap.module.css 的 landmarkGhostFadeOut/glowFadeOut)結束
+    // 後自行移除。animationend 之外另用固定時長的 setTimeout 保底——
+    // 動畫被中途打斷(例如分頁切到背景、或 CSS 被覆寫成 none)時事件
+    // 不會觸發,幽靈不能因此永遠留在 DOM 上。期間若有其他原因觸發
+    // renderContent()(hover 升級、setPhotoUrls),innerHTML 重寫會直接
+    // 把幽靈一併清掉,淡出提前結束;之後 remove() 對已脫離 DOM 的節點
+    // 是 no-op,不需要額外追蹤計時器。
+    private mountThemePhotoGhosts(ghosts: HTMLElement[]) {
+      if (!this.div || ghosts.length === 0) return
+      this.div.prepend(...ghosts)
+      for (const ghost of ghosts) {
+        const dispose = () => ghost.remove()
+        ghost.addEventListener('animationend', dispose, { once: true })
+        window.setTimeout(dispose, THEME_PHOTO_FADE_OUT_MS + 100)
+      }
     }
 
     // setPhotoUrls:查詢完成(或查無/失敗回傳 undefined)後由呼叫端寫入

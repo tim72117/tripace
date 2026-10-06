@@ -20,13 +20,26 @@
 
 /* 左側時間軸——position: sticky 固定在視窗內,文案捲動時時間軸本身不動,
    只有裡面渲染的節點隨目前錨點增減,造成「時間軸跟著捲動前進」的錯覺
-   (實際上是內容在變,不是時間軸容器在移動)。 */
+   (實際上是內容在變,不是時間軸容器在移動)。
+   height:100vh 刻意保留(不能拿掉)——sticky 元素只能在「自己的生成框」
+   範圍內黏住,100vh 這個高度確保這個框永遠跟視窗一樣高,sticky 才能在
+   整段捲動過程中持續貼住,不會在捲到某個位置時突然失去依附、被母層
+   (.layout 的 grid row,跟很長的 .copy 文案同高)邊界卡住而跑出視窗。
+   2026-10 使用者明確要求往上移動、不要遮蔽主視覺區,且回報過「往上捲時
+   時間軸跑到視窗外面」——原本的修法是直接拿掉 height:100vh 改用固定
+   top 偏移,這正是問題根源:拿掉 100vh 後,.timeline 的框只剩內容本身
+   的高度(~300px),sticky 可依附的範圍跟著縮水,捲到特定位置時框的
+   邊界被捲過去,元件就跟著消失。正確做法是保留 100vh 這個「夠高的框」
+   不動,改用 align-items: flex-start + padding-top 把內容在這個框內
+   往上貼,而不是靠置中(align-items:center)把內容固定在框的正中央
+   (也就是視窗正中央)。 */
 .timeline {
   position: sticky;
   top: 0;
   height: 100vh;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  padding-top: 96px;
 }
 
 .timelineTrack {
@@ -140,6 +153,143 @@
   box-shadow: 0 0 0 2px var(--timeline-accent), 0 0 0 6px color-mix(in srgb, var(--timeline-accent) 18%, transparent);
 }
 
+/* nodeCurrent 欄位本身要比兩側高——縮圖 48px + 間距 6px + 下方的分段式
+   按鈕組(兩段各 28px + 上下 1px 外框 = 58px)疊起來的固定高度 112px。
+   跟 .node 一樣是常數,不隨捲動變化,不會引入尺寸抖動。 */
+.nodeCurrent {
+  height: 112px;
+}
+
+/* nodeCurrentSolo:SHOW_NEARBY_LIST_BUTTON 為 false 時套用(見
+   ScrollTimeline.tsx 該常數的說明)——按鈕組只剩「地圖」一段,高度從
+   兩段的 58px 縮成一段的 30px(28px 內容 + 上下 1px 外框),欄位總高度
+   跟著從 112px 收成 84px(48 縮圖 + 6 間距 + 30),避免只顯示一顆按鈕
+   卻還留著容納兩顆的空白。之後要重新顯示「附近景點」按鈕,把
+   SHOW_NEARBY_LIST_BUTTON 改回 true 即可自動恢復 112px,不需要同時
+   手動改這裡。 */
+.nodeCurrentSolo {
+  height: 84px;
+}
+
+/* currentDotWrap:目前點縮圖 + 按鈕的直排容器——縮圖在上、按鈕在下,
+   兩者各自佔有自己的版面位置(不是疊在縮圖角落),按鈕才有獨立、可操作
+   的份量,而不是像一枚貼在縮圖邊上的狀態徽章。 */
+.currentDotWrap {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+/* modeGroup:縮圖正下方的按鈕外框——圓角 + 投影 + 紙色底 + 強調色描邊,
+   看起來是一個可操作的控制項;裡面目前只有「附近景點」一段(.modeButton)。
+   保留「外框 + 段落」這層結構(而不是把樣式全部合併到按鈕上),是因為
+   這組原本是「地圖/附近景點」兩段的分段式按鈕(segmented control),
+   2026-10 兩個動作整併成一個之後只剩一段;若之後要再加第二種模式,
+   直接多渲染一段 .modeButton 即可(分隔線用相鄰兄弟選擇器畫,單段時
+   自動不出現)。跟 .dot 一樣 z-index 壓在時間軸線段之上,線段從背後
+   穿過。overflow: hidden 讓啟用段的實色底被外框圓角裁切,不會從圓角
+   露出直角。 */
+.modeGroup {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  flex-direction: column;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--timeline-accent) 55%, var(--line));
+  background: var(--paper);
+  overflow: hidden;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.12),
+    0 3px 8px color-mix(in srgb, var(--timeline-accent) 18%, transparent);
+}
+
+/* modeButton:按鈕組裡的一段——圖示 + 文字,靠左對齊(多段時各段的
+   圖示才會排成一直線)。預設是安靜的紙色底 + 墨色字,只用 hover 的淡
+   強調色底提示可按;啟用中(.modeButtonActive,面板開著)才填滿強調色,
+   視覺上「現在是開著的」一目了然。不做 hover 抬起的位移——段落擠在同一
+   個外框裡,個別位移會撕裂外框。 */
+.modeButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 84px;
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.modeButton + .modeButton {
+  border-top: 1px solid color-mix(in srgb, var(--timeline-accent) 35%, var(--line));
+}
+
+.modeButton:hover {
+  background: color-mix(in srgb, var(--timeline-accent) 12%, var(--paper));
+  color: var(--timeline-accent);
+}
+
+/* focus ring 畫在段落內側(負的 offset),外框 overflow:hidden 才不會把
+   畫在外側的 outline 裁掉。 */
+.modeButton:focus-visible {
+  outline: 2px solid var(--timeline-accent);
+  outline-offset: -2px;
+}
+
+.modeButtonLabel {
+  display: inline-block;
+}
+
+/* modeButtonActive:面板目前開著——填滿強調色、紙色字,跟 .dotOpen
+   的強調色外框同一個色票邏輯;再按一次就關閉面板(見 .tsx toggleAnchor
+   的規則)。 */
+.modeButtonActive,
+.modeButtonActive:hover {
+  background: var(--timeline-accent);
+  color: var(--paper);
+}
+
+/* 手機版時間軸欄位只有 64px 寬,放不下圖示 + 文字;整組退化成 32px 寬
+   的純圖示直排(每段 30px 高,維持好按的觸控尺寸),但仍保有共用外框、
+   分隔線、啟用段填色這些「一組/選中」的特徵,aria-label 仍完整描述動作,
+   無障礙語意不受影響。欄位高度 = 48 + 6 + (30×2 + 2) = 116px。 */
+@media (max-width: 640px) {
+  .nodeCurrent {
+    height: 116px;
+  }
+
+  /* 放在 .nodeCurrent 的行動版規則之後(同特異度選擇器,後出現的在
+     層疊中勝出)——SHOW_NEARBY_LIST_BUTTON 為 false 時(見 .tsx 該常數
+     /.nodeCurrentSolo 的完整說明)手機版也要縮成單段按鈕的高度:
+     48 縮圖 + 6 間距 + 32(單段純圖示圓鈕的高度,見下方 .modeButton
+     規則)= 86px。 */
+  .nodeCurrentSolo {
+    height: 86px;
+  }
+
+  .modeButton {
+    width: 32px;
+    height: 30px;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+  }
+
+  .modeButtonLabel {
+    display: none;
+  }
+}
+
 /* copy 明確放進 grid 第 2 欄第 1 列——跟下方 .mapPanel 共用同一個
    grid cell(同欄同列),地圖面板疊在文案上方時兩者才會對齊同寬、同一
    個水平範圍,而非各自佔用額外空間撐寬版面。裡面直接渲染
@@ -159,19 +309,50 @@
    ——這是嵌入式的縮小地圖,不需要城市介紹頁滿版地圖那麼高的可視範圍。
    這個元素(連同內部的 InteractiveExploreMap)一開始就常駐掛載,開關
    狀態改用下方 .mapPanelHidden 這個 CSS class 切換,而不是條件渲染
-   整個卸載——見 ScrollTimeline.tsx 掛載處的完整說明。 */
+   整個卸載——見 ScrollTimeline.tsx 掛載處的完整說明。
+   top 改成跟 .timeline 同樣的固定偏移量(96px,理由見該規則的完整
+   說明)——原本用 calc(50%-130px) 把面板垂直置中在整個視窗,呼應
+   .timeline 當時也是置中;.timeline 改成貼齊視窗上緣附近後,這裡要
+   跟著調整,兩者才會繼續維持視覺對齊(縮圖跟地圖面板同一條水平線),
+   不會一個在畫面中央、一個在畫面上方而對不齊。 */
 .mapPanel {
   grid-column: 2;
   grid-row: 1;
   align-self: start;
   position: sticky;
-  top: calc(50% - 130px);
+  top: 96px;
   height: 260px;
   z-index: 5;
   border-radius: 16px;
   overflow: hidden;
-  box-shadow: var(--card-shadow, 0 24px 48px -20px rgba(0, 0, 0, 0.45));
+  /* 陰影拆成兩層:貼邊的短陰影(0 1px 2px)負責讓面板在紙色背景上
+     「微微浮起」的邊緣感,大範圍的投影沿用 --card-shadow 的既有慣例。
+     單靠一層遠投影在淺色紙面上幾乎看不到面板邊界——地圖底圖本身也是
+     米白/淺灰,跟 --paper 對比太低(2026-10 使用者截圖回報面板範圍不
+     明確),邊界主要交給下方 ::after 的髮線環處理,陰影只是輔助。 */
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    var(--card-shadow, 0 24px 48px -20px rgba(0, 0, 0, 0.45));
   background: var(--paper);
+}
+
+/* mapPanel::after:疊在地圖最上層的 1px 髮線環——用 inset box-shadow
+   而非 border,理由有二:(1) border 會把 260px 的面板撐高 2px(或得改
+   box-sizing 再去扣 .mapPanelInner 的高度),inset shadow 完全不佔版面;
+   (2) border 畫在地圖「外面」,inset 環畫在地圖「邊緣上」,線條剛好壓在
+   地圖圖磚與紙色交界處,淺色底圖再怎麼接近 --paper 也會被這條線切開。
+   顏色用呼叫端定義的 --line(跟 .stop 分隔線同一條色),不自己另訂顏色。
+   pointer-events:none 讓這層純裝飾不攔截地圖拖曳/點擊;z-index 低於
+   .mapPanelClose(10),關閉鈕仍在最上面。border-radius:inherit 跟外層
+   圓角對齊,環不會在四角露出方形。 */
+.mapPanel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--line);
+  pointer-events: none;
+  z-index: 6;
 }
 
 /* mapPanelHidden:面板關閉時套用——用 visibility:hidden 而非
@@ -199,7 +380,12 @@
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  /* 外圈 1px --line 髮線跟 .mapPanel::after 的面板邊框同一條色——關閉
+     鈕跟面板用同一種「紙色底+髮線」語彙,看起來是同一組元件,而不是
+     一顆憑空浮在地圖上的白點。 */
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 /* mapPanelInner:實際掛載 InteractiveExploreMap 的容器——透過覆寫該
@@ -213,6 +399,14 @@
   --kiyomizu-stage-height: 260px;
   --kiyomizu-stage-radius: 0px;
   --kiyomizu-stage-shadow: none;
+  /* --desktop-info-card-top:地圖右緣浮動卡片(DesktopInfoCard.module.css
+     .panel,這裡是 AttractionInfoPanel 的「附近景點」精簡模式,見
+     InteractiveExploreMap themeCardNearbyOnly 的說明)的頂部偏移——預設
+     64px 是正式 App 地圖上方那排搜尋框/標籤列要避讓的距離,這個面板
+     沒有那排 UI,但右上角有自己的 .mapPanelClose(top 8px + 28px 高 =
+     36px);卡片頂部要落在它下方,卡片自己的關閉鍵才不會跟面板關閉鍵
+     疊在同一個角落。44px = 36px + 8px 呼吸間距。 */
+  --desktop-info-card-top: 44px;
   width: 100%;
   height: 100%;
 }

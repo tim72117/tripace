@@ -104,6 +104,8 @@ class FakeOverlay {
   setSelected() {}
   setCandidate() {}
   setHovered() {}
+  setFocused() {}
+  setThemePhotoCollapsed() {}
   setPhotoUrls() {}
   setHidden() {}
   setLabelHidden() {}

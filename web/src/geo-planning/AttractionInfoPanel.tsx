@@ -48,6 +48,7 @@ export function AttractionInfoPanel({
   onHoverNearby,
   usePublicPlaceDetails,
   onCategoryFilterChange,
+  nearbyOnly,
 }: {
   attraction: GeoAttraction | null
   // cfg:attraction.placeId 有值時,用來呼叫 fetchGeoPlaceDetails 補查
@@ -98,6 +99,20 @@ export function AttractionInfoPanel({
   // 篩選條件,使用者選「甜點/茶屋」時,地圖上應該只看得到甜點/茶屋類的
   // 圓點,跟清單篩選結果一致,不是清單篩了、地圖卻仍顯示全部精選點。
   onCategoryFilterChange?: (category: CuratedCategory | null) => void
+  // nearbyOnly:true 時只渲染「附近景點」清單區塊(含分類下拉),不渲染
+  // 照片輪播/名稱/badges/簡介——2026-10 ScrollTimeline.tsx 的嵌入式小
+  // 地圖面板(260px 高)需要「地圖中心移到主題點時,顯示它的附近景點、
+  // 但不要彈出整張介紹卡」:附近景點清單目前只存在於這張卡片內部(跟
+  // 照片/簡介綁在同一個 openThemeId 開關上),與其在呼叫端另外重做一份
+  // 清單 UI + 分類篩選 + hover/click 連動,不如讓這張卡片支援「只露出
+  // 清單」的精簡模式,資料流(nearby/onSelectNearby/onHoverNearby/
+  // onCategoryFilterChange)完全沿用,地圖上的精選點圓點揭露/篩選同步
+  // 也不需要任何額外接線。精簡模式下 nearby 為空時整張卡片不渲染(回傳
+  // null)——卡片裡只剩一個「附近景點」標題卻沒有任何項目沒有意義,理由
+  // 同下方 nearby.length > 0 的既有判斷。另外精簡模式用不到照片,跳過
+  // placeDetails 查詢,不白打一次 place-details 端點。預設 false(或不傳)
+  // 維持完整卡片,其餘呼叫端(DesktopLayout.tsx/正式城市頁)完全不受影響。
+  nearbyOnly?: boolean
 }) {
   // placeDetails:attraction.placeId 有值時,查一次「地點照片」的雙來源
   // 照片(Google/Pexels,見 handleGeoPlaceDetails 的完整說明)——不重新
@@ -143,7 +158,9 @@ export function AttractionInfoPanel({
   )
   useEffect(() => {
     setPlaceDetails(placeId ? getCachedPlaceDetails(placeId) ?? null : null)
-    if (!placeId) return
+    // nearbyOnly 時不查——精簡模式沒有照片輪播,查了也用不到(見該 prop
+    // 的說明)。
+    if (!placeId || nearbyOnly) return
     let cancelled = false
     fetchPlaceDetailsCached(cfg, placeId, usePublicPlaceDetails ?? false)
       .then((details) => {
@@ -160,7 +177,7 @@ export function AttractionInfoPanel({
     return () => {
       cancelled = true
     }
-  }, [cfg, placeId, usePublicPlaceDetails])
+  }, [cfg, placeId, usePublicPlaceDetails, nearbyOnly])
 
   // activeCategoryFilter:「附近景點」清單上方分類下拉選單目前選中的
   // 分類——null 代表不篩選(顯示全部)。attraction 切換(nearby 清單整批
@@ -216,8 +233,151 @@ export function AttractionInfoPanel({
   )
 
   if (!attraction) return null
+  // 精簡模式(nearbyOnly,見該 prop 說明)沒有清單可顯示時整張卡不渲染。
+  const hasNearby = !!nearby && nearby.length > 0
+  if (nearbyOnly && !hasNearby) return null
 
   const badges = attractionBadges(attraction)
+
+  // nearbySection:「附近景點」區塊——完整卡片與精簡模式(nearbyOnly)
+  // 共用同一份 JSX,先抽成變數,兩種模式只差「上面有沒有照片/名稱/簡介」,
+  // 不複製一份清單標記出來各自維護。精簡模式下多套一個 .nearbySectionOnly
+  // 拿掉原本「接在簡介底下」用的上方分隔線/間距(見 CSS module 說明)。
+  const nearbySection = hasNearby && (
+    <div className={`${styles.nearbySection}${nearbyOnly ? ` ${styles.nearbySectionOnly}` : ''}`}>
+      <div className={styles.nearbyHeaderRow}>
+        <p className={styles.nearbyTitle}>附近景點</p>
+        {nearbyCategoryPresent.size > 0 && (
+          <div className={styles.nearbyCategoryDropdown} ref={categoryDropdownRef}>
+          <button
+            type="button"
+            className={styles.nearbyCategoryTag}
+            aria-haspopup="listbox"
+            aria-expanded={categoryDropdownOpen}
+            onClick={() => setCategoryDropdownOpen((v) => !v)}
+          >
+            {activeCategoryFilter ? (
+              <>
+                {(() => {
+                  const ActiveIcon = CURATED_CATEGORY_ICONS[activeCategoryFilter]
+                  return (
+                    <ActiveIcon
+                      size={13}
+                      strokeWidth={2}
+                      aria-hidden="true"
+                    />
+                  )
+                })()}
+                {CURATED_CATEGORY_LABELS[activeCategoryFilter]}
+                <span
+                  className={`${styles.nearbyCategoryDot} ${CURATED_CATEGORY_MAP_CLASS[activeCategoryFilter]}`}
+                  aria-hidden="true"
+                />
+              </>
+            ) : '全部分類'}
+            <ChevronDown
+              size={13}
+              strokeWidth={2}
+              aria-hidden="true"
+              className={`${styles.nearbyCategoryDropdownChevron}${categoryDropdownOpen ? ` ${styles.nearbyCategoryDropdownChevronOpen}` : ''}`}
+            />
+          </button>
+          {categoryDropdownOpen && (
+            <div className={styles.nearbyCategoryDropdownMenu} role="listbox">
+              <button
+                type="button"
+                role="option"
+                aria-selected={activeCategoryFilter === null}
+                className={`${styles.nearbyCategoryDropdownItem}${activeCategoryFilter === null ? ` ${styles.nearbyCategoryDropdownItemActive}` : ''}`}
+                onClick={() => {
+                  setActiveCategoryFilter(null)
+                  setCategoryDropdownOpen(false)
+                }}
+              >
+                全部分類
+              </button>
+              {Array.from(nearbyCategoryPresent).map((category) => {
+                const CategoryIcon = CURATED_CATEGORY_ICONS[category]
+                const active = activeCategoryFilter === category
+                return (
+                  <button
+                    key={category}
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    className={`${styles.nearbyCategoryDropdownItem}${active ? ` ${styles.nearbyCategoryDropdownItemActive}` : ''}`}
+                    onClick={() => {
+                      setActiveCategoryFilter(category)
+                      setCategoryDropdownOpen(false)
+                    }}
+                  >
+                    <CategoryIcon
+                      size={13}
+                      strokeWidth={2}
+                      aria-hidden="true"
+                    />
+                    <span className={styles.nearbyCategoryDropdownItemLabel}>
+                      {CURATED_CATEGORY_LABELS[category]}
+                    </span>
+                    <span
+                      className={`${styles.nearbyCategoryDot} ${CURATED_CATEGORY_MAP_CLASS[category]}`}
+                      aria-hidden="true"
+                    />
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          </div>
+        )}
+      </div>
+      <div className={styles.nearbyList}>
+        {filteredNearby.map(({ attraction: n, minutes }) => {
+          const category = curatedCategoryOf(n.category)
+          const CategoryIcon = category ? CURATED_CATEGORY_ICONS[category] : null
+          return (
+            <button
+              // key 優先用 n.id(資料庫路徑才有值,見 GeoAttraction.id
+              // 的完整說明)——用 name 當 key 在資料庫出現同名但不同
+              // id 的重複記錄時會撞 key(React 主控台實際警告過:
+              // 「Encountered two children with the same key,
+              // 祀典武廟」),改用 id 才是真正穩定且唯一的識別碼。
+              // 即時查詢 Google Places 的候選沒有資料庫 id,才退回
+              // name,維持原本行為。
+              key={n.id ?? n.name}
+              type="button"
+              className={styles.nearbyItem}
+              onClick={() => onSelectNearby?.(n)}
+              onMouseEnter={() => onHoverNearby?.(n)}
+              onMouseLeave={() => onHoverNearby?.(null)}
+            >
+              <div className={styles.nearbyItemHead}>
+                {CategoryIcon && (
+                  <CategoryIcon
+                    size={13}
+                    strokeWidth={2}
+                    className={styles.nearbyCategoryIcon}
+                    aria-label={CURATED_CATEGORY_LABELS[category!]}
+                  />
+                )}
+                <span className={styles.nearbyName}>{n.name}</span>
+                <span className={styles.nearbyMinutes}>約 {minutes} 分</span>
+              </div>
+              {n.summary && <p className={styles.nearbySummary}>{n.summary}</p>}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+
+  if (nearbyOnly) {
+    return (
+      <DesktopInfoCard onClose={onClose} shiftBy={shiftBy}>
+        <div className={styles.content}>{nearbySection}</div>
+      </DesktopInfoCard>
+    )
+  }
 
   return (
     <DesktopInfoCard onClose={onClose} shiftBy={shiftBy}>
@@ -244,133 +404,7 @@ export function AttractionInfoPanel({
         ) : (
           <p className={styles.summaryEmpty}>這個地點還沒有簡介資料。</p>
         )}
-        {nearby && nearby.length > 0 && (
-          <div className={styles.nearbySection}>
-            <div className={styles.nearbyHeaderRow}>
-              <p className={styles.nearbyTitle}>附近景點</p>
-              {nearbyCategoryPresent.size > 0 && (
-                <div className={styles.nearbyCategoryDropdown} ref={categoryDropdownRef}>
-                <button
-                  type="button"
-                  className={styles.nearbyCategoryTag}
-                  aria-haspopup="listbox"
-                  aria-expanded={categoryDropdownOpen}
-                  onClick={() => setCategoryDropdownOpen((v) => !v)}
-                >
-                  {activeCategoryFilter ? (
-                    <>
-                      {(() => {
-                        const ActiveIcon = CURATED_CATEGORY_ICONS[activeCategoryFilter]
-                        return (
-                          <ActiveIcon
-                            size={13}
-                            strokeWidth={2}
-                            aria-hidden="true"
-                          />
-                        )
-                      })()}
-                      {CURATED_CATEGORY_LABELS[activeCategoryFilter]}
-                      <span
-                        className={`${styles.nearbyCategoryDot} ${CURATED_CATEGORY_MAP_CLASS[activeCategoryFilter]}`}
-                        aria-hidden="true"
-                      />
-                    </>
-                  ) : '全部分類'}
-                  <ChevronDown
-                    size={13}
-                    strokeWidth={2}
-                    aria-hidden="true"
-                    className={`${styles.nearbyCategoryDropdownChevron}${categoryDropdownOpen ? ` ${styles.nearbyCategoryDropdownChevronOpen}` : ''}`}
-                  />
-                </button>
-                {categoryDropdownOpen && (
-                  <div className={styles.nearbyCategoryDropdownMenu} role="listbox">
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={activeCategoryFilter === null}
-                      className={`${styles.nearbyCategoryDropdownItem}${activeCategoryFilter === null ? ` ${styles.nearbyCategoryDropdownItemActive}` : ''}`}
-                      onClick={() => {
-                        setActiveCategoryFilter(null)
-                        setCategoryDropdownOpen(false)
-                      }}
-                    >
-                      全部分類
-                    </button>
-                    {Array.from(nearbyCategoryPresent).map((category) => {
-                      const CategoryIcon = CURATED_CATEGORY_ICONS[category]
-                      const active = activeCategoryFilter === category
-                      return (
-                        <button
-                          key={category}
-                          type="button"
-                          role="option"
-                          aria-selected={active}
-                          className={`${styles.nearbyCategoryDropdownItem}${active ? ` ${styles.nearbyCategoryDropdownItemActive}` : ''}`}
-                          onClick={() => {
-                            setActiveCategoryFilter(category)
-                            setCategoryDropdownOpen(false)
-                          }}
-                        >
-                          <CategoryIcon
-                            size={13}
-                            strokeWidth={2}
-                            aria-hidden="true"
-                          />
-                          <span className={styles.nearbyCategoryDropdownItemLabel}>
-                            {CURATED_CATEGORY_LABELS[category]}
-                          </span>
-                          <span
-                            className={`${styles.nearbyCategoryDot} ${CURATED_CATEGORY_MAP_CLASS[category]}`}
-                            aria-hidden="true"
-                          />
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-                </div>
-              )}
-            </div>
-            <div className={styles.nearbyList}>
-              {filteredNearby.map(({ attraction: n, minutes }) => {
-                const category = curatedCategoryOf(n.category)
-                const CategoryIcon = category ? CURATED_CATEGORY_ICONS[category] : null
-                return (
-                  <button
-                    // key 優先用 n.id(資料庫路徑才有值,見 GeoAttraction.id
-                    // 的完整說明)——用 name 當 key 在資料庫出現同名但不同
-                    // id 的重複記錄時會撞 key(React 主控台實際警告過:
-                    // 「Encountered two children with the same key,
-                    // 祀典武廟」),改用 id 才是真正穩定且唯一的識別碼。
-                    // 即時查詢 Google Places 的候選沒有資料庫 id,才退回
-                    // name,維持原本行為。
-                    key={n.id ?? n.name}
-                    type="button"
-                    className={styles.nearbyItem}
-                    onClick={() => onSelectNearby?.(n)}
-                    onMouseEnter={() => onHoverNearby?.(n)}
-                    onMouseLeave={() => onHoverNearby?.(null)}
-                  >
-                    <div className={styles.nearbyItemHead}>
-                      {CategoryIcon && (
-                        <CategoryIcon
-                          size={13}
-                          strokeWidth={2}
-                          className={styles.nearbyCategoryIcon}
-                          aria-label={CURATED_CATEGORY_LABELS[category!]}
-                        />
-                      )}
-                      <span className={styles.nearbyName}>{n.name}</span>
-                      <span className={styles.nearbyMinutes}>約 {minutes} 分</span>
-                    </div>
-                    {n.summary && <p className={styles.nearbySummary}>{n.summary}</p>}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
+        {nearbySection}
       </div>
     </DesktopInfoCard>
   )
