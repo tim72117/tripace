@@ -41,6 +41,27 @@ function PageViewTracker() {
   return null
 }
 
+// ScrollRestoration:切換路由(路徑改變)時把捲動位置重置回頂部——
+// React Router 的用戶端路由預設不會這麼做(跟整頁重新整理不同,瀏覽器
+// 原生的「換頁回到頂部」行為這裡完全不會發生),2026-10 使用者回報:
+// 主題介紹頁捲到最底部後,透過頁內連結切到另一個主題介紹頁(例如
+// 九份→京都),新頁面會直接從「捲動到底」的位置開始顯示,而不是從頭。
+// 只依賴 location.pathname(不含 search/hash)——同一頁面內只是 query
+// string 變化(例如地圖互動產生的狀態)或錨點跳轉(#section)不該被這裡
+// 打斷,只有真正換了一個頁面路徑才需要重置捲動位置。
+//
+// 用 window.scrollTo 而非 window.scrollTo({behavior: 'smooth'})——換頁
+// 當下應該讓使用者直接看到新頁面最上方的內容,平滑捲動反而會讓使用者
+// 先看到一段從舊頁面殘留位置捲回頂部的過場動畫,不是預期的「跳過去」
+// 體驗。
+function ScrollRestoration() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [pathname])
+  return null
+}
+
 // 每條路由的頁面元件改用 React.lazy() 動態載入,取代原本的靜態 import——
 // 靜態 import 會讓 Vite 把所有路由元件塞進同一個模組圖,不管使用者當下
 // 訪問哪一條路徑,瀏覽器都會抓到全部頁面元件各自的程式碼(在 HomePage.tsx
@@ -128,11 +149,12 @@ export function App() {
   const props = useAppState()
   return (
     <BrowserRouter>
-      {/* PageViewTracker 必須在 BrowserRouter 內部(useLocation 依賴 Router
-          context)、Routes 外層(不受單一路由的 Suspense/lazy 載入影響,
-          路徑一變就能立刻讀到新的 useLocation 值)。見該元件開頭的完整
-          說明。 */}
+      {/* PageViewTracker/ScrollRestoration 必須在 BrowserRouter 內部
+          (useLocation 依賴 Router context)、Routes 外層(不受單一路由的
+          Suspense/lazy 載入影響,路徑一變就能立刻讀到新的 useLocation
+          值)。見各自元件開頭的完整說明。 */}
       <PageViewTracker />
+      <ScrollRestoration />
       {/* ErrorBoundary 包在最外層——任何路由元件 render/effect 拋出未捕捉的
           例外,都會落地成一個可重新整理的畫面,而不是讓 React 把整棵樹
           unmount 到空白(對 SEO 是嚴重問題,見 ErrorBoundary.tsx 開頭說明)。 */}

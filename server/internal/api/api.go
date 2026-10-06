@@ -182,10 +182,15 @@ type Server struct {
 	geoQueryUserRateLimiter *apigateway.RateLimiter
 }
 
-// geoQueryUserThrottleInterval 是 geoQueryUserRateLimiter 預設的節流
-// 間隔——2026-10 使用者明確要求「預設 200 毫秒一次」,對應「每秒最多
-// 5 次」的呼叫頻率上限,套用在同一個使用者身上。
-const geoQueryUserThrottleInterval = 200 * time.Millisecond
+// geoQueryUserThrottleWindow/geoQueryUserThrottleMaxCalls 是
+// geoQueryUserRateLimiter 預設的節流規則——2026-10 使用者明確要求「預設
+// 200 毫秒一次」,對應「每秒最多 5 次」的呼叫頻率上限,套用在同一個
+// 使用者身上。2026-10 再次要求統一改用「每分鐘」表示(對齊
+// geo.RateLimitConfig 的 places.get/photoMedia 兩個 endpoint 同一輪
+// 改動,見 cmd/server/main.go 的完整說明)——只是換算單位,實際速率不變:
+// 200ms 一次等效於 60 秒視窗內最多 300 次(60s / 0.2s = 300)。
+const geoQueryUserThrottleWindow = 60 * time.Second
+const geoQueryUserThrottleMaxCalls = 300
 
 func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID string) *Server {
 	uploader, err := photostorage.New(context.Background(), os.Getenv("GCS_PHOTO_BUCKET"))
@@ -294,7 +299,7 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 // 地讓使用者每次都拿到全新配額,是安全的用法。
 func (s *Server) throttleGeoQueryByUser(w http.ResponseWriter, r *http.Request) bool {
 	userID := s.userFor(r).ID
-	s.geoQueryUserRateLimiter.SetLimitForKey(userID, geoQueryUserThrottleInterval, 1)
+	s.geoQueryUserRateLimiter.SetLimitForKey(userID, geoQueryUserThrottleWindow, geoQueryUserThrottleMaxCalls)
 	if s.geoQueryUserRateLimiter.Allow(userID) {
 		return true
 	}
