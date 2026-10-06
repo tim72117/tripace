@@ -39,8 +39,6 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin/api/schema-check", h.withAdmin(h.checkSchema))
 	mux.HandleFunc("GET /admin/api/geo-rate-limits", h.withAdmin(h.listGeoRateLimits))
 	mux.HandleFunc("PUT /admin/api/geo-rate-limits", h.withAdmin(h.updateGeoRateLimit))
-	mux.HandleFunc("GET /admin/api/photo-target-zero-check", h.withAdmin(h.checkPhotoTargetZero))
-	mux.HandleFunc("POST /admin/api/photo-target-zero-check/reset", h.withAdmin(h.resetPhotoTarget))
 	mux.HandleFunc("GET /admin/api/attraction-missing-place-id-check", h.withAdmin(h.checkAttractionMissingPlaceID))
 	mux.HandleFunc("POST /admin/api/attraction-missing-place-id-check/refetch", h.withAdmin(h.refetchAttractionPlaceID))
 }

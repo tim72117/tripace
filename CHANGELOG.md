@@ -2,6 +2,26 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.23.0 — 2026-10-06
+
+### 破壞性變更
+
+- **`attractions.photo_url` 資料庫欄位本身已實際 `DROP COLUMN`**（連同 `place_details_cache.new_photo_count`/`google_photo_target_count`），不只是 v0.22.0 移除的 API 回應相容欄位——這是兩個不同層級的東西：v0.22.0 移除的是 `GET /internal/geo/place-details` 等 API 回應裡的 `photoUrl` 複寫欄位，這次移除的是 `model.Attraction.PhotoURL` 這個 Go struct 欄位與對應的 DB column 本身。新增一次性維運工具 `cmd/migrate-drop-photo-url`（搭配 `Dockerfile.migrate-drop-photo-url`、Cloud Run Job 部署流程）執行這個不可逆的 schema 變更。
+- `store.Store.IncrementPlaceClickCount` 回傳值簡化為 `(clickCount int64, err error)`（原本還回傳 `newPhotoCount`/`googlePhotoTargetCount`，隨兩個欄位一併移除）；`store.Store.CreateAppleUser`/`CreateGoogleUser` 新增必填的 `email` 參數——呼叫端需要同步更新,舊呼叫碼無法編譯通過。
+- `POST /internal/maintenance/attractions/{id}/update-photo` 不再支援 `source: "pexels"`，改以查詢到的 Google Place 照片寫入 `photo_assets` 表（不再寫回已移除的 `photo_url` 欄位）；`POST /internal/maintenance/attractions` 建檔不再接受任何照片相關輸入，不再自動查 Pexels 補圖。
+- **CLI（`server/cmd/cli`）指令語法整體改成「資源 動詞」兩段式**，所有舊指令字串全部失效（例如 `list-trips` → `trip list`、`attraction-add` → `attraction add`、`attraction-update-photo` → `attraction photo-update` 且移除 `-source` 旗標、改用 `-place-id`）。完整對照見 `tripace-cli` skill 文件。
+- 後台管理介面移除「Photo target zero check」整頁功能（`GET`/`POST /admin/api/photo-target-zero-check*`、對應前端 Tab 與 API client 方法），改用新的 CLI 查詢指令 `attraction query -status no-google-photo` 取代。
+
+### 新增
+
+- CLI 新增 `attraction query -status no-google-photo [-city]`，查詢「有 place_id 但還沒有 Google 照片」的景點清單，對應新路由 `GET /internal/maintenance/attractions/query`。
+- 修正 Apple/Google 登入建立的使用者 `email` 欄位永遠是 `NULL` 的既存問題：建立帳號時補寫入 `email`，既有帳號重新登入時自動 backfill（`store.BackfillUserEmailIfMissing`）。
+- `attraction photo-update` 新增 `place_id` 來源優先序（請求帶的 `-place-id` > 該地標既有登記的 place_id > 查詢命中的結果），讓「補照片」與「補 place_id」兩件事脫鉤，不再互相耦合。
+
+### 修正
+
+- `server/.env.example` 的 `GCS_PHOTO_BUCKET` 本機開發預設值改成獨立的 `-dev` bucket，避免本機測試寫入正式環境的 `photo_assets`。
+
 ## v0.22.0 — 2026-10-05
 
 ### 破壞性變更

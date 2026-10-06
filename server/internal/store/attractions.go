@@ -26,7 +26,6 @@ func toAttraction(r attractionRow) model.Attraction {
 		IsTheme:      r.IsTheme,
 		RadiusMeters: r.RadiusMeters,
 		Summary:      r.Summary,
-		PhotoURL:     r.PhotoURL,
 		PlaceID:      r.PlaceID,
 		Category:     r.Category,
 		UpdatedAt:    r.UpdatedAt,
@@ -47,7 +46,6 @@ func (s *Store) CreateAttraction(in model.Attraction) (model.Attraction, error) 
 		IsTheme:      in.IsTheme,
 		RadiusMeters: in.RadiusMeters,
 		Summary:      in.Summary,
-		PhotoURL:     in.PhotoURL,
 		PlaceID:      in.PlaceID,
 		Category:     in.Category,
 		CreatedAt:    now(),
@@ -78,7 +76,6 @@ func (s *Store) CreateAttractionWithID(in model.Attraction) (model.Attraction, e
 		IsTheme:      in.IsTheme,
 		RadiusMeters: in.RadiusMeters,
 		Summary:      in.Summary,
-		PhotoURL:     in.PhotoURL,
 		PlaceID:      in.PlaceID,
 		Category:     in.Category,
 		CreatedAt:    now(),
@@ -93,7 +90,7 @@ func (s *Store) CreateAttractionWithID(in model.Attraction) (model.Attraction, e
 // UpdateAttractionFields 用來源方版本覆蓋目的方既有記錄的全部比對
 // 欄位(見 attractionsync.CompareFields 的欄位清單)——同步機制的「兩邊
 // 都有、內容不同」情境用來源方版本覆蓋目的方,不是欄位級局部更新,
-// 因此一次覆蓋全部比對欄位,不像 UpdateAttractionPhoto 只動單一欄位。
+// 因此一次覆蓋全部比對欄位,不像 UpdateAttractionCoords 只動單一欄位。
 //
 // 刻意不含 PlaceID:attractionsync.compareFieldSpecs 目前只定義 8 個比對
 // 欄位,PlaceID 尚未列入(見該檔案的完整說明,新增比對欄位只需要改那
@@ -114,7 +111,6 @@ func (s *Store) UpdateAttractionFields(in model.Attraction) error {
 			"is_theme":      in.IsTheme,
 			"radius_meters": in.RadiusMeters,
 			"summary":       in.Summary,
-			"photo_url":     in.PhotoURL,
 			"updated_at":    now(),
 		}).Error
 }
@@ -186,7 +182,7 @@ func (s *Store) ListAttractionsNearby(lat, lng, radiusMeters float64) ([]model.A
 }
 
 // ListAttractionCities 回傳目前資料庫裡已經有景點區域資料的城市名稱清單
-// (去重、依名稱排序)——供 CLI 的 attraction-cities 子命令列出「已建檔
+// (去重、依名稱排序)——供 CLI 的 attraction cities 指令列出「已建檔
 // 哪些城市」,不需要另外用其他方式查詢有沒有資料。
 func (s *Store) ListAttractionCities() ([]string, error) {
 	var cities []string
@@ -197,6 +193,43 @@ func (s *Store) ListAttractionCities() ([]string, error) {
 		return nil, err
 	}
 	return cities, nil
+}
+
+// ListAttractionsMissingGooglePhoto 回傳有登記 place_id、但 photo_assets
+// 裡完全沒有仍在有效期內紀錄的景點區域——供 CLI 的
+// attraction query -status no-google-photo 指令使用(見該指令完整
+// 說明)。只檢查「有 place_id」的地標:沒有 place_id 的地標本來就不可能
+// 出現在 photo_assets 裡(該表用 place_id 當主鍵,見 photoAssetRow 的
+// 完整說明),這種情況屬於另一個獨立問題(缺 place_id,見
+// internal/adminconsole/attraction_place_id_check.go 的既有核對工具),
+// 不該混進這份清單——避免同一筆資料同時出現在兩份不同問題的清單裡,
+// 讓操作者誤以為「補了照片就解決」,實際上根本原因是沒有 place_id 可以
+// 拿去查照片。
+//
+// 用 LEFT JOIN + WHERE photo_assets.place_id IS NULL 一次查出結果,不是
+// 先 ListAllAttractions 再逐筆呼叫 GetFreshPhotoAssetURL——後者是 N+1
+// 查詢,地標數量成長後效能會線性變差;這裡是人工維運查詢,資料量不大,
+// 但既然一次 SQL 就能做到,沒有理由刻意繞遠路。cityName 篩選是選填的
+// WHERE 條件,空字串代表不篩選,查全部城市——對齊 ListAttractionsByCity
+// 「cityName 必填」的既有慣例不同,這裡刻意讓它選填,因為核對範圍小的
+// 時候(例如剛建檔一批新城市)更可能想先看全部,不想每個城市分開查一次。
+func (s *Store) ListAttractionsMissingGooglePhoto(cityName string) ([]model.Attraction, error) {
+	q := s.db.Model(&attractionRow{}).
+		Joins("LEFT JOIN photo_assets ON photo_assets.place_id = attractions.place_id AND (photo_assets.expires_at IS NULL OR photo_assets.expires_at > ?)", now()).
+		Where("attractions.place_id IS NOT NULL AND attractions.place_id != ''").
+		Where("photo_assets.place_id IS NULL")
+	if cityName != "" {
+		q = q.Where("attractions.city_name = ?", cityName)
+	}
+	var rows []attractionRow
+	if err := q.Order("attractions.level ASC, attractions.created_at ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]model.Attraction, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, toAttraction(r))
+	}
+	return out, nil
 }
 
 // DeleteAttraction 刪除一筆景點區域資料。
@@ -217,7 +250,7 @@ func (s *Store) GetAttraction(id string) (model.Attraction, error) {
 
 // GetAttractionByPlaceID 依 Google place_id 查單筆景點區域資料——供
 // handlePublicGeoPlaceDetailsAny(見該函式的完整說明)優先查詢:已經
-// 人工建檔過的地點(place_id 命中)直接回傳既有的 Name/Summary/PhotoURL,
+// 人工建檔過的地點(place_id 命中)直接回傳既有的 Name/Summary,
 // 不需要為了查同一個地點反覆打 Google Places API 消耗配額與撞全域限流;
 // 查無紀錄時才 fallback 到真的呼叫 geo.Client.GetPlaceDetails,理由是
 // /plan-ai 的 search_attraction 仍需要能查任意地名,不能只侷限在已建檔
@@ -231,25 +264,14 @@ func (s *Store) GetAttractionByPlaceID(placeID string) (model.Attraction, error)
 	return toAttraction(r), nil
 }
 
-// UpdateAttractionPhoto 更新一筆景點區域的照片(data: URI,見
-// geo.Client.PhotoDataURI)。只更新 photo_url 與 updated_at 兩欄,不動
-// 其餘欄位——這支方法專門服務 CLI 的 attraction-update-photo(重新透過
-// Google Places 抓圖後回寫),不是通用的景點區域編輯入口。
-func (s *Store) UpdateAttractionPhoto(id, photoURL string) error {
-	return s.db.Model(&attractionRow{}).
-		Where("id = ?", id).
-		Updates(map[string]any{"photo_url": photoURL, "updated_at": now()}).Error
-}
-
 // UpdateAttractionPlaceID 更新一筆景點區域對應的 Google place_id。只更新
 // place_id 與 updated_at 兩欄,不動其餘欄位——這支方法專門服務 CLI 的
 // attraction-set-place-id 指令(見 handleMaintenanceAttractionUpdatePlaceID
 // 的完整說明),讓既有已建檔的 attraction(建檔當下沒有透過 -place/
 // -place-id 帶入 place_id)也能事後補上,開始使用「地點照片漸進補圖
-// 機制」。placeID 允許傳空字串(清空既有值,回到只用 PhotoURL 的舊行為)
-// ——不像 UpdateAttractionCoords/UpdateAttractionPhoto 那些欄位「清空」
-// 沒有實際意義,place_id 清空是使用者可能主動想要的操作(例如發現先前
-// 綁錯了 place_id)。
+// 機制」。placeID 允許傳空字串(清空既有值)——這裡允許清空單純是
+// place_id 本身可能需要被清除重綁(例如發現先前綁錯了 place_id),不像
+// UpdateAttractionCoords 那些欄位「清空」沒有實際意義。
 func (s *Store) UpdateAttractionPlaceID(id, placeID string) error {
 	var value any
 	if placeID != "" {
@@ -262,8 +284,8 @@ func (s *Store) UpdateAttractionPlaceID(id, placeID string) error {
 
 // UpdateAttractionCoords 更新一筆景點區域的座標。只更新 lat/lng/
 // updated_at 三欄,不動其餘欄位——這支方法專門服務 CLI 的
-// attraction-update 指令,修正建檔時輸入錯誤的座標,不需要像
-// UpdateAttractionPhoto 那樣重新查詢外部服務,單純覆蓋兩個數值欄位。
+// attraction-update 指令,修正建檔時輸入錯誤的座標,不需要重新查詢
+// 外部服務,單純覆蓋兩個數值欄位。
 func (s *Store) UpdateAttractionCoords(id string, lat, lng float64) error {
 	return s.db.Model(&attractionRow{}).
 		Where("id = ?", id).
@@ -288,12 +310,10 @@ func (s *Store) UpdateAttractionTheme(id string, isTheme bool) error {
 // attractionUpdatableFields 是 UpdateAttractionField 允許寫入的欄位白
 // 名單——key 是對外(CLI -field 參數/API field 欄位)使用的名稱,value 是
 // 資料庫實際的欄位名。只收字串型欄位:lat/lng 需要同時更新兩個數字
-// 欄位、且有 geocode 查詢邏輯,photo_url 有專屬的「重新查詢外部服務」
-// endpoint(attraction-update-photo),兩者都不適合塞進這個通用的單欄位
-// 字串更新機制,維持原本各自獨立的 UpdateAttractionCoords/
-// UpdateAttractionPhoto。新增可更新的字串欄位只需要在這裡加一行,不需要
-// 像 name/summary 原本那樣各自新增一支 store method + API handler +
-// CLI flag。
+// 欄位、且有 geocode 查詢邏輯,不適合塞進這個通用的單欄位字串更新機制,
+// 維持獨立的 UpdateAttractionCoords。新增可更新的字串欄位只需要在這裡
+// 加一行,不需要像 name/summary 原本那樣各自新增一支 store method +
+// API handler + CLI flag。
 var attractionUpdatableFields = map[string]string{
 	"name":     "name",
 	"summary":  "summary",

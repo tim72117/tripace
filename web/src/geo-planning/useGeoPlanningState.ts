@@ -370,7 +370,7 @@ export function useGeoPlanningState({
         if (cancelled) return
         dispatchGeoSelection({
           type: 'PATCH_INFO_CONTENT',
-          patch: (prev) => (prev.placeId !== placeId ? prev : { ...prev, photoUrl: result.photoUrl ?? undefined }),
+          patch: (prev) => (prev.placeId !== placeId ? prev : { ...prev, photoUrl: result.googlePhotoUrls?.[0] ?? undefined }),
         })
       })
       .catch(() => {

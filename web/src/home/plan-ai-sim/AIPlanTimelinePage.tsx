@@ -264,7 +264,7 @@ const REMOVE_FADE_MS = 320
 function resolveAttractionForStep(
   stepId: string,
   placeId: string,
-  fetchPlaceDetails: (placeId: string) => Promise<{ found?: boolean; name?: string; summary?: string; photoUrl?: string; lat?: number; lng?: number; attractionId?: string }>,
+  fetchPlaceDetails: (placeId: string) => Promise<{ found?: boolean; name?: string; summary?: string; googlePhotoUrls?: string[]; lat?: number; lng?: number; attractionId?: string }>,
   setTimeline: React.Dispatch<React.SetStateAction<PlanTimeline>>,
   isCancelled: () => boolean,
   onSettled: (lat: number, lng: number) => void,
@@ -286,7 +286,7 @@ function resolveAttractionForStep(
         loading: false,
         name: details.name,
         desc: details.summary,
-        photoUrl: details.photoUrl,
+        googlePhotoUrls: details.googlePhotoUrls,
         lat: details.lat,
         lng: details.lng,
         placeId,

@@ -227,20 +227,19 @@ export function useAttractionOverlays({
   // photoUrlCacheRef,讓兩邊共用同一份「已查到的結果」與「進行中的
   // 請求」,從根源避免同一個 placeId 被兩個元件各自觸發查詢。
   //
-  // 2026-10 使用者明確要求:主題點(d.isTheme)的照片查詢改套用跟
-  // AttractionInfoPanel.tsx/fetchPoiContent 一致的主動重試機制
-  // (fetchPlaceDetailsWithPhotoRetry,見 ../photoRetry.ts 的完整
-  // 說明:查無照片時每隔 PHOTO_RETRY_DELAY_MS 重查一次,最多
-  // PHOTO_RETRY_MAX_ATTEMPTS 次)——主題點是頁面一進來就恆顯示、使用者
-  // 幾乎必定會看到的視覺焦點,值得多花成本主動等待背景補圖完成。精選點
-  // (isTheme===false)刻意不套用:揭露一個主題時一次可能同時出現十幾個
-  // 精選點,若每個都各自跑三次重試,會疊加大量背景計時器與查詢成本,且
-  // 使用者當下可能根本沒在看那些還沒展開成照片的圓點——維持原本的單次
-  // 查詢、失敗靜默、等 effect 下次重新執行才再試的設計,不跟著套用。
-  // fetchPhotoAssets 只在 isTheme 為 true 時組出來傳給
+  // 2026-10 使用者明確要求:地圖上所有地標圖示(主題點+精選點)的照片
+  // 查詢都套用跟 AttractionInfoPanel.tsx/fetchPoiContent 一致的主動
+  // 重試機制(fetchPlaceDetailsWithPhotoRetry,見 ../photoRetry.ts 的
+  // 完整說明:查無照片時每隔 PHOTO_RETRY_DELAY_MS 重查一次,最多
+  // PHOTO_RETRY_MAX_ATTEMPTS 次)。原本只有主題點套用、精選點刻意排除
+  // (理由是揭露一個主題時一次可能同時出現十幾個精選點,疊加大量背景
+  // 計時器與查詢成本)——使用者要求改成兩者一致後,靠 QUERY_STAGGER_MS
+  // 錯峰(見上方說明)分散首次查詢的發出時機,重試仍可能同時疊加多個
+  // 計時器,但這是使用者明確要的體驗(精選點展開時也該盡量等到真正的
+  // 照片,不要永遠卡在 placeholder)。
+  // fetchPhotoAssets 現在對所有有 placeId 的地點一律組出來傳給
   // fetchPlaceDetailsWithPhotoRetry,該函式內部用「有沒有傳
-  // fetchPhotoAssets」決定要不要重試(見該函式的完整說明),精選點
-  // 傳 undefined 等同完全沿用改動前的單次查詢行為,不是兩套平行邏輯。
+  // fetchPhotoAssets」決定要不要重試(見該函式的完整說明)。
   useEffect(() => {
     if (!cfg) return
     let cancelled = false
@@ -257,12 +256,10 @@ export function useAttractionOverlays({
       }
       const delay = queuedCount * QUERY_STAGGER_MS
       queuedCount += 1
-      const fetchPhotoAssets = d.isTheme
-        ? (pid: string) =>
-            usePublicPlaceDetails
-              ? fetchPublicGeoPlacePhotoAssets(cfg, pid)
-              : fetchGeoPlacePhotoAssets(cfg, pid)
-        : undefined
+      const fetchPhotoAssets = (pid: string) =>
+        usePublicPlaceDetails
+          ? fetchPublicGeoPlacePhotoAssets(cfg, pid)
+          : fetchGeoPlacePhotoAssets(cfg, pid)
       timers.push(
         setTimeout(() => {
           if (cancelled) return

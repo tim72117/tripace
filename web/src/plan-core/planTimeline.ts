@@ -94,8 +94,8 @@ export interface NoteInfo {
 
 // PlanNodeData — 節點除了鏈結指標(prevId/nextId)以外的實際內容,涵蓋
 // AIPlanTimelinePage.tsx 原本 PlanStep 的全部展示欄位(含 loading/
-// removing/photoUrl 這類只在 stop 節點上有意義的 UI 呈現/非同步查詢
-// 狀態欄位)——不同節點型別各自只用到欄位的子集,不需要為了「純資料 vs
+// removing/googlePhotoUrls 這類只在 stop 節點上有意義的 UI 呈現/非同步
+// 查詢狀態欄位)——不同節點型別各自只用到欄位的子集,不需要為了「純資料 vs
 // UI 狀態」這條界線另外拆一層泛型,那樣只會讓 insertAfter/updateNode/
 // toRenderList 都要重新宣告泛型參數,徒增複雜度卻沒有實質收益。
 export interface PlanNodeData {
@@ -145,25 +145,23 @@ export interface PlanNodeData {
   // (見 attractionTools.ts 檔頭「第四/五/六次重構」的完整說明)只知道
   // 這個 id 時會有值,用來在插入節點之後背景觸發
   // fetchPlanAiPlaceDetailsAny 單段查詢真實地點資料(name/summary/
-  // photoUrl/lat/lng),見 AIPlanTimelinePage.tsx resolveAttractionForStep
-  // 的完整說明。該端點內部會優先查一次資料庫 attraction(查得到就優先
-  // 用資料庫資料,查不到才 fallback 查 Google),故不需要這個檔案自己
-  // 判斷「資料庫 vs Google」兩種來源、也不需要為 Google 補的候選另外
-  // 發明一種臨時 id 機制——不論候選來自資料庫還是 Google,一律用同一個
-  // placeId 當識別碼。模擬 WS 腳本路徑(planActionToInsert)也用同一個
-  // 欄位承接模擬 WS 腳本(plan-ai-sim 分支)送出的 placeId,兩條路徑共用同一套
-  // 查詢邏輯。
+  // googlePhotoUrls/lat/lng),見 AIPlanTimelinePage.tsx
+  // resolveAttractionForStep 的完整說明。該端點內部會優先查一次資料庫
+  // attraction(查得到就優先用資料庫資料,查不到才 fallback 查
+  // Google),故不需要這個檔案自己判斷「資料庫 vs Google」兩種來源、也
+  // 不需要為 Google 補的候選另外發明一種臨時 id 機制——不論候選來自
+  // 資料庫還是 Google,一律用同一個 placeId 當識別碼。模擬 WS 腳本路徑
+  // (planActionToInsert)也用同一個欄位承接模擬 WS 腳本(plan-ai-sim
+  // 分支)送出的 placeId,兩條路徑共用同一套查詢邏輯。
   placeId?: string
   // loading:表示這個 stop 帶了 placeId、正在查詢真實地點資料中(縮圖/
-  // 敘事文字先用假資料佔位);查完後 photoUrl/desc 會被真實資料覆蓋,
-  // loading 轉 false。沒有 placeId 的 stop 這個欄位固定是 false,直接
-  // 顯示假資料。
+  // 敘事文字先用假資料佔位);查完後 googlePhotoUrls/desc 會被真實資料
+  // 覆蓋,loading 轉 false。沒有 placeId 的 stop 這個欄位固定是 false,
+  // 直接顯示假資料。
   loading?: boolean
-  photoUrl?: string
-  // googlePhotoUrls——2026-10 新增,比照地圖版景點介紹卡的多圖瀏覽
-  // 需求(見 PhotoCarousel.tsx)。photoUrl 維持等於這個清單的第一張,
-  // UI 沒有多圖時(清單為空/未定義)仍用 photoUrl 當單圖/佔位圖來源,
-  // 向後相容。
+  // googlePhotoUrls:比照地圖版景點介紹卡的多圖瀏覽需求(見
+  // PhotoCarousel.tsx)。UI 縮圖固定只顯示第一張,Lightbox 放大瀏覽時
+  // 才看得到完整清單。
   googlePhotoUrls?: string[]
   // removing:這一筆已收到移除指示,正在播放淡出動畫、還沒真的從鏈結
   // 摘除(見 removeNode 的完整說明)——渲染時套用淡出 CSS class,動畫

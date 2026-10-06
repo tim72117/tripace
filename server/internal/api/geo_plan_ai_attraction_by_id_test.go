@@ -53,17 +53,15 @@ func TestHandlePublicGeoAttractionByID_NotFound_Returns404(t *testing.T) {
 // 回傳的欄位對齊 store.GetAttraction 存的資料,包含選填欄位(summary/
 // placeId)都正確帶出。
 //
-// 2026-09:不再測試會回傳 attraction.PhotoURL——使用者明確要求前端
-// 不該再取用這個欄位可能存的 Pexels 示意圖網址,這支端點的 photoUrl
-// 現在只查 photo_assets(見 handlePublicGeoAttractionByID 的完整
-// 說明),沒有 photo_assets 紀錄時就不帶這個欄位,即使 attraction 本身
-// 存了 PhotoURL 也一樣。這裡刻意仍在 seed 資料裡帶 PhotoURL,是為了
-// 確認「即使 attraction 有這個欄位,回應也不會誤用它」。
+// 2026-10:attractions.photo_url 這個相容欄位已經連同 model.Attraction
+// 的 Go struct 欄位本身一併移除(見 cmd/migrate-drop-photo-url 的完整
+// 說明)——這支端點的 googlePhotoUrls 只查 photo_assets(見
+// handlePublicGeoAttractionByID 的完整說明),沒有 photo_assets 紀錄時
+// 就不帶這個欄位。
 func TestHandlePublicGeoAttractionByID_Found_ReturnsStoredFields(t *testing.T) {
 	s := newTestServerForAttractionByID(t)
 
 	summary := "測試景點簡介"
-	photoURL := "https://example.com/attraction-photo.jpg"
 	placeID := "ChIJ_attraction_by_id_test"
 	if _, err := s.store.CreateAttractionWithID(model.Attraction{
 		ID:       "lmk_attraction_by_id_test",
@@ -73,7 +71,6 @@ func TestHandlePublicGeoAttractionByID_Found_ReturnsStoredFields(t *testing.T) {
 		Lng:      120.2,
 		Level:    2,
 		Summary:  &summary,
-		PhotoURL: &photoURL,
 		PlaceID:  &placeID,
 	}); err != nil {
 		t.Fatalf("failed to seed attraction: %v", err)
@@ -104,13 +101,14 @@ func TestHandlePublicGeoAttractionByID_Found_ReturnsStoredFields(t *testing.T) {
 		body.PlaceID != placeID {
 		t.Fatalf("unexpected response: %+v", body)
 	}
-	if _, ok := raw["photoUrl"]; ok {
-		t.Error("expected response to NOT include a photoUrl field when photo_assets has no record")
+	if _, ok := raw["googlePhotoUrls"]; ok {
+		t.Error("expected response to NOT include a googlePhotoUrls field when photo_assets has no record")
 	}
 }
 
 // TestHandlePublicGeoAttractionByID_HasFreshPhotoAsset_ReturnsGCSURL 驗證
-// photo_assets 有這個 place_id 的有效紀錄時,photoUrl 帶的是它的 GCSURL。
+// photo_assets 有這個 place_id 的有效紀錄時,googlePhotoUrls 帶的是它的
+// GCSURL。
 func TestHandlePublicGeoAttractionByID_HasFreshPhotoAsset_ReturnsGCSURL(t *testing.T) {
 	s := newTestServerForAttractionByID(t)
 
@@ -148,13 +146,13 @@ func TestHandlePublicGeoAttractionByID_HasFreshPhotoAsset_ReturnsGCSURL(t *testi
 		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		PhotoURL string `json:"photoUrl"`
+		GooglePhotoURLs []string `json:"googlePhotoUrls"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	if body.PhotoURL != "https://storage.googleapis.com/test-bucket/real-photo.jpg" {
-		t.Fatalf("expected photo_assets url to be used, got: %q", body.PhotoURL)
+	if len(body.GooglePhotoURLs) != 1 || body.GooglePhotoURLs[0] != "https://storage.googleapis.com/test-bucket/real-photo.jpg" {
+		t.Fatalf("expected photo_assets url to be used, got: %+v", body.GooglePhotoURLs)
 	}
 }
 

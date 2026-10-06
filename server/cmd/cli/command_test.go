@@ -119,7 +119,7 @@ func captureOutput(t *testing.T, fn func()) map[string]any {
 
 func TestCmdListTrips(t *testing.T) {
 	c := &fakeClient{result: map[string]any{"trips": []any{}}}
-	got := captureOutput(t, func() { cmdListTrips(c) })
+	got := captureOutput(t, func() { cmdTripList(c) })
 
 	if !c.listTripsCalled {
 		t.Error("沒有呼叫 client.listTrips")
@@ -132,7 +132,7 @@ func TestCmdListTrips(t *testing.T) {
 func TestCmdCreateTrip(t *testing.T) {
 	c := &fakeClient{result: map[string]any{"id": "tr_abc"}}
 	got := captureOutput(t, func() {
-		cmdCreateTrip(c, []string{"-name", "花蓮三日"})
+		cmdTripCreate(c, []string{"-name", "花蓮三日"})
 	})
 
 	if c.createTripName != "花蓮三日" {
@@ -233,7 +233,7 @@ func TestCmdTripEntries(t *testing.T) {
 func TestCmdReset(t *testing.T) {
 	c := &fakeClient{}
 	got := captureOutput(t, func() {
-		cmdReset(c, []string{"-trip", "tr_abc"})
+		cmdTripReset(c, []string{"-trip", "tr_abc"})
 	})
 
 	if c.resetTrip != "tr_abc" {

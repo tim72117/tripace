@@ -131,14 +131,14 @@ type Attraction struct {
 	// 要不要在地圖上疊加範圍圓圈。
 	RadiusMeters int     `json:"radiusMeters,omitempty"`
 	Summary      *string `json:"summary,omitempty"`
-	PhotoURL     *string `json:"photoUrl,omitempty"`
 	// PlaceID 是這個景點區域對應的 Google Place ID,可為 nil——見
 	// store.attractionRow.PlaceID 的完整說明(並存策略、Google TOS 可
 	// 長期保存的依據)。有值時前端(AttractionInfoPanel.tsx)打
 	// GET /internal/geo/place-details 取得漸進補圖機制的雙來源照片陣列;
-	// 2026-09 起 PhotoURL 已經不再是主題卡的有效 fallback(見該元件拿掉
-	// fallbackUrl 的變更),沒有值時主題卡顯示 placeholder,不會回退顯示
-	// PhotoURL——見 adminconsole.attraction_place_id_check.go 的
+	// 2026-10 已徹底移除 PhotoURL 這個相容欄位(資料庫 photo_url 欄位
+	// 本身也已經 DROP COLUMN,見 cmd/migrate-drop-photo-url 的完整說明)
+	// ——沒有 PlaceID 時主題卡顯示 placeholder,不會回退顯示任何靜態
+	// 快照。見 adminconsole.attraction_place_id_check.go 的
 	// 「Attractions missing place_id」核對清單,列出的正是這批 PlaceID
 	// 為空的景點。
 	PlaceID *string `json:"placeId,omitempty"`
@@ -147,15 +147,15 @@ type Attraction struct {
 	// web/src/geo-planning/geoCuratedCategoryStub.ts 那張純前端寫死的
 	// name→分類對照表(NAME_TO_CURATED_CATEGORY,只涵蓋已手動填過的
 	// 少數店家,新建檔的景點不會自動有分類、名稱沒填進那張表就沒有圖示,
-	// 這正是「附近景點有些沒有 icon」的根因)。空字串比照 Summary/PhotoURL
-	// 既有慣例視為未設定,不強制所有景點都要有分類——只有「附近景點」
-	// 清單裡的店家/地標適用這四類語彙,主題點本身、街景類的大範圍地標
-	// 不一定適用。合法值由前端 CuratedCategory 型別定義(tea/restaurant/
-	// craft/street),後端刻意不驗證列舉值,理由同其餘自由字串欄位
-	// (name/summary)的既有慣例,不在這層加白名單檢查。
+	// 這正是「附近景點有些沒有 icon」的根因)。空字串比照 Summary 既有
+	// 慣例視為未設定,不強制所有景點都要有分類——只有「附近景點」清單裡
+	// 的店家/地標適用這四類語彙,主題點本身、街景類的大範圍地標不一定
+	// 適用。合法值由前端 CuratedCategory 型別定義(tea/restaurant/craft/
+	// street),後端刻意不驗證列舉值,理由同其餘自由字串欄位(name/
+	// summary)的既有慣例,不在這層加白名單檢查。
 	Category *string `json:"category,omitempty"`
 	// UpdatedAt 是這筆資料最後一次寫入的時間(建立或透過
-	// UpdateAttractionPhoto 等方式更新)——目前只單純曝露出來供人工核對
+	// UpdateAttractionField 等方式更新)——目前只單純曝露出來供人工核對
 	// 哪些資料較舊,尚未實作自動過期判斷/自動重新整理。
 	UpdatedAt time.Time `json:"updatedAt"`
 }

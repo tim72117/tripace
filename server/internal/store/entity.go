@@ -84,20 +84,15 @@ type attractionRow struct {
 	IsTheme      bool    `gorm:"column:is_theme;not null;default:false"`
 	RadiusMeters int     `gorm:"column:radius_meters;not null;default:0"`
 	Summary      *string `gorm:"column:summary"`
-	PhotoURL     *string `gorm:"column:photo_url"`
 	// PlaceID:對應這個景點區域的 Google Place ID,可為 NULL——人工建檔時
 	// 若沒有透過 -place/-place-id 指定(或建檔當下查無對應地點)就不會有
 	// 值。有值時前端改用「地點照片漸進補圖機制」(place_details_cache/
 	// google_place_photos/place_pexels_photos 三張表,見這幾個型別的完整
-	// 說明)取得的 Google/Pexels 雙來源照片陣列顯示。2026-09 起 PhotoURL
-	// 已經不再是主題卡的有效 fallback(見 AttractionInfoPanel.tsx 拿掉
-	// fallbackUrl 的變更)——PlaceID 為 NULL 的景點,主題卡一律顯示
-	// placeholder,不會回退顯示 PhotoURL 這張建檔當下的靜態快照。這代表
-	// PlaceID 欄位事實上已經是主題卡取得照片的唯一路徑,PhotoURL 目前只
-	// 對建檔清單/CLI attraction-list 這類直接讀資料庫欄位的場景還有顯示
-	// 意義(見 adminconsole.attraction_place_id_check.go 的
-	// 「Attractions missing place_id」核對清單,可查出哪些景點區域的
-	// PlaceID 仍是 NULL)。
+	// 說明)取得的 Google/Pexels 雙來源照片陣列顯示。2026-10 徹底移除
+	// PhotoURL 這個相容欄位(資料庫 photo_url 欄位本身也已經 DROP COLUMN,
+	// 見 cmd/migrate-drop-photo-url 的完整說明)——PlaceID 為 NULL 的
+	// 景點,主題卡一律顯示 placeholder,不會回退顯示任何靜態快照。這代表
+	// PlaceID 欄位事實上已經是主題卡取得照片的唯一路徑。
 	//
 	// place_id 本身是 Google 官方文件明確允許長期保存與展示的穩定識別碼
 	// (跟 photo resource name 那種禁止長期快取的欄位規則不同,見
@@ -174,51 +169,29 @@ func (pexelsPhotoCacheRow) TableName() string { return "pexels_photo_cache" }
 // 直接吃快取,不重新打 Place Details API。PhotoURL 存的是已經轉換好的
 // data: URI(圖片本身也走 photoCacheRow 快取,這裡直接存最終結果,快取
 // 命中時不需要再組一次轉換邏輯)。
-// ClickCount/GooglePhotoTargetCount/NewPhotoCount 三欄支援「漸進補圖」
-// 機制(見 server/internal/api/geo_outline.go 的 shouldAddGooglePlacePhoto/
-// resetPhotoProgressOnTargetChange 兩支純函式的完整規格)：
 //
-//   - ClickCount:這個地點被點擊的累積總次數,只增不減、永遠不歸零——
-//     即使 GooglePhotoTargetCount 中途變動導致 NewPhotoCount 被重置,
-//     點擊次數本身仍是一路累加的歷史事實,不隨補圖進度重置而重置。
-//   - GooglePhotoTargetCount:上次查詢 Google 時 photos[] 陣列的實際
-//     長度——用來偵測「這次查到的張數跟上次不一樣」(resetPhotoProgressOnTargetChange
-//     的輸入),不是「這個地點理論上有幾張圖」的固定值,會隨每次查詢
-//     覆寫。**預設值是 -1,不是 0**——2026-09 修正一個實測到的死鎖
-//     bug(順正/清水順正 Okabe家 這筆資料是實際案例:初次查詢當下
-//     Google 剛好回傳空的 photos[],target 被寫成合法值 0 之後,
-//     shouldAddGooglePlacePhoto 的 newPhotoCount(0) >= googlePhotoTargetCount(0)
-//     恆為 true,永遠不再觸發 ListPlacePhotoRefs 重新確認,即使 Google
-//     之後真的補上了照片也永遠不會被發現)。-1 代表「這個地點從未真正
-//     跟 Google 確認過 photos[] 長度」,跟 0(已確認過、當下真的是 0
-//     張)在語意上是兩種不同狀態,不能用同一個值表示——shouldAddGooglePlacePhoto
-//     必須先特判這個 sentinel、無條件觸發第一次確認,才能跳出「target
-//     卡在 0 之後永遠沒有機會重新驗證」的迴圈。
-//   - NewPhotoCount:目前已經漸進補到第幾張(0-based 累積數,不是
-//     photo_index)——即 shouldAddGooglePlacePhoto 的 newPhotoCount
-//     參數,每次觸發補圖後 +1,target 變動時可能被歸零重置。
+// ClickCount:這個地點被點擊/查詢的累積總次數,只增不減、永遠不歸零
+// ——供 server/internal/api/geo_outline.go 的 photoCapForClickCount/
+// decidePlacePhotoRefreshIndex 判斷補圖節奏(點擊越多次,允許補到的
+// 照片張數上限越高,見該函式的完整規格)。
 //
-// ClickCount/NewPhotoCount 給預設值 0(gorm default),GooglePhotoTargetCount
-// 給預設值 -1(見上方說明)——這三欄都對應「這個地點第一次被查詢/點擊」
-// 的初始狀態,新增欄位時既有的舊資料列也會因為 AutoMigrate 的
-// ALTER TABLE ADD COLUMN 而自動補上對應預設值,不需要額外的資料回填;
-// 但 AutoMigrate 只在「新增這個欄位」當下套用一次性的 DEFAULT,不會
-// 回頭修正已經因為這個 bug 而卡在合法值 0 的既有資料列(見
-// docs 或 CHANGELOG 記錄的一次性資料修復,若需要讓既有卡住的資料列
-// 重新有機會被確認,需要另外執行一次性的資料修復,把這些列的
-// google_photo_target_count 從 0 改回 -1)。
+// 2026-10:移除 GooglePhotoTargetCount/NewPhotoCount 兩欄(連同資料庫
+// 欄位本身,見 cmd/migrate-drop-photo-url 的完整說明)——舊版漸進補圖
+// 機制(shouldAddGooglePlacePhoto/resetPhotoProgressOnTargetChange)靠
+// 這兩個計數器決定要不要補圖,但「已補張數追上目標值」後即使
+// photo_assets 裡的照片已經過期也永遠不會重新觸發(清水寺是實際踩到
+// 的案例),新機制改成直接查 photo_assets 的新鮮度狀態
+// (decidePlacePhotoRefreshIndex 的 fresh 參數),不再需要這兩個計數器。
 type placeDetailsCacheRow struct {
-	PlaceID                string    `gorm:"primaryKey;column:place_id"`
-	Name                   string    `gorm:"column:name;not null"`
-	Address                string    `gorm:"column:address"`
-	Lat                    float64   `gorm:"column:lat;not null"`
-	Lng                    float64   `gorm:"column:lng;not null"`
-	Rating                 float64   `gorm:"column:rating"`
-	Summary                *string   `gorm:"column:summary"`
-	FetchedAt              time.Time `gorm:"column:fetched_at;not null"`
-	ClickCount             int64     `gorm:"column:click_count;not null;default:0"`
-	GooglePhotoTargetCount int       `gorm:"column:google_photo_target_count;not null;default:-1"`
-	NewPhotoCount          int       `gorm:"column:new_photo_count;not null;default:0"`
+	PlaceID    string    `gorm:"primaryKey;column:place_id"`
+	Name       string    `gorm:"column:name;not null"`
+	Address    string    `gorm:"column:address"`
+	Lat        float64   `gorm:"column:lat;not null"`
+	Lng        float64   `gorm:"column:lng;not null"`
+	Rating     float64   `gorm:"column:rating"`
+	Summary    *string   `gorm:"column:summary"`
+	FetchedAt  time.Time `gorm:"column:fetched_at;not null"`
+	ClickCount int64     `gorm:"column:click_count;not null;default:0"`
 }
 
 func (placeDetailsCacheRow) TableName() string { return "place_details_cache" }

@@ -114,23 +114,30 @@ func (c *httpClient) reset(tripID string) error {
 }
 
 // attractionUpdatePhoto 對齊 POST /internal/maintenance/attractions/{id}/
-// update-photo(見 server/internal/api/maintenance.go)。source 未帶時
-// 後端預設用 "google"。
-func (c *httpClient) attractionUpdatePhoto(id, query, source string) (any, error) {
+// update-photo(見 server/internal/api/maintenance.go)。固定走 Google
+// Places 查詢——2026-10 已移除 Pexels 來源這個選項。
+//
+// placeID:2026-10 新增,選填——明確指定這次要寫入 photo_assets 的
+// place_id,不依賴這筆地標是否已經透過 attraction set-place-id 登記過
+// place_id(見後端 handler 開頭「2026-10 再次修正」的完整說明:「補圖」
+// 跟「補 place_id」是兩個獨立操作,使用者明確要求分離,不該互相要求
+// 對方先完成)。留空時後端依序退回地標資料庫裡原本登記的 place_id、
+// 或這次查詢意外命中的 place_id。
+func (c *httpClient) attractionUpdatePhoto(id, query, placeID string) (any, error) {
 	body := map[string]any{}
 	if query != "" {
 		body["query"] = query
 	}
-	if source != "" {
-		body["source"] = source
+	if placeID != "" {
+		body["placeId"] = placeID
 	}
 	return c.do("POST", "/internal/maintenance/attractions/"+id+"/update-photo", body)
 }
 
 // attractionAdd/attractionList/attractionCities/attractionDelete 對齊
 // POST/GET/DELETE /internal/maintenance/attractions(見
-// server/internal/api/maintenance.go)。PhotoURL 未帶時由後端自動查
-// Pexels 補上(見 handleMaintenanceAttractionAdd)。
+// server/internal/api/maintenance.go)。CLI 不提供 -photo-url 旗標,
+// 建檔不帶照片(見 handleMaintenanceAttractionAdd)。
 func (c *httpClient) attractionAdd(in model.Attraction) (any, error) {
 	return c.do("POST", "/internal/maintenance/attractions", in)
 }
@@ -141,6 +148,19 @@ func (c *httpClient) attractionList(city string) (any, error) {
 
 func (c *httpClient) attractionCities() (any, error) {
 	return c.do("GET", "/internal/maintenance/attractions/cities", nil)
+}
+
+// attractionQuery 對齊 GET /internal/maintenance/attractions/query(見
+// server/internal/api/maintenance.go 的 handleMaintenanceAttractionQuery)
+// ——通用的景點區域狀態查詢,status 挑選要查哪種狀態(目前只有
+// "no-google-photo"),city 選填,空字串代表不篩選城市。
+func (c *httpClient) attractionQuery(status, city string) (any, error) {
+	q := url.Values{}
+	q.Set("status", status)
+	if city != "" {
+		q.Set("city", city)
+	}
+	return c.do("GET", "/internal/maintenance/attractions/query?"+q.Encode(), nil)
 }
 
 func (c *httpClient) attractionDelete(id string) error {

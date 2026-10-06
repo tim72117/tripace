@@ -22,8 +22,8 @@ import type {
 // docs/research-tainan-chikan-craft-theme-2026-09.md 與另一分支
 // TainanChikanPage.tsx 的照片景點標注審閱結果),只涵蓋使用者明確確認
 // 過對應關係的 id;其餘 attractionPool.ts 條目沒有實拍照片可用,
-// fakePlaceDetails 對它們維持原本不給 photoUrl 的行為(呼叫端 fallback
-// 顯示 thumbBg/thumbIcon 佔位)。圖片改放公開讀取的 GCS 目錄
+// fakePlaceDetails 對它們維持原本不給 googlePhotoUrls 的行為(呼叫端
+// fallback 顯示 thumbBg/thumbIcon 佔位)。圖片改放公開讀取的 GCS 目錄
 // gs://shuttle-tripace-photos/plan-ai-sim/(使用者明確要求「用到的圖片
 // 先上傳到 gcs 新目錄」),不再是 Vite 本地打包資源——原本
 // ./photos/*.jpg 這份本機複本(來源是
@@ -59,14 +59,16 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
 
 // fakePlaceDetails — add_attraction 插入後的背景反查:用 placeId(即
 // attractionPool.ts 的 id)精確查找完整資料。查無結果時 found:false,
-// 行為對齊真後端 fetchPlanAiPlaceDetailsAny。photoUrl 只在 REAL_PHOTOS
-// 表裡有對應項目時才給(見該常數的完整說明)——其餘假資料池條目仍用
-// thumbBg/thumbIcon(CSS 漸層+emoji)當縮圖,呼叫端(AIPlanTimelinePage.tsx)
-// 在沒有 photoUrl 時本來就會 fallback 顯示 thumbIcon,不需要另外處理。
+// 行為對齊真後端 fetchPlanAiPlaceDetailsAny。googlePhotoUrls 只在
+// REAL_PHOTOS 表裡有對應項目時才給(見該常數的完整說明)——其餘假資料
+// 池條目仍用 thumbBg/thumbIcon(CSS 漸層+emoji)當縮圖,呼叫端
+// (AIPlanTimelinePage.tsx)在沒有 googlePhotoUrls 時本來就會 fallback
+// 顯示 thumbIcon,不需要另外處理。
 async function fakePlaceDetails(placeId: string): Promise<PlanAiPlaceDetailsResult> {
   const hit = getAttractionById(placeId)
   if (!hit) return { found: false }
-  return { found: true, name: hit.name, summary: hit.desc, lat: hit.lat, lng: hit.lng, photoUrl: REAL_PHOTOS[placeId] }
+  const photo = REAL_PHOTOS[placeId]
+  return { found: true, name: hit.name, summary: hit.desc, lat: hit.lat, lng: hit.lng, googlePhotoUrls: photo ? [photo] : undefined }
 }
 
 // fakeTransitEstimate — 用 haversineKm 抓直線距離,依距離門檻挑一個

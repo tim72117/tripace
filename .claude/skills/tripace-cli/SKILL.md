@@ -14,7 +14,7 @@ description: 用 tripace 自己的 CLI 工具(server/cmd/cli)透過 HTTP 存取 
 優先使用這個內建執行檔，不需要每次都重新 `go run` 編譯。呼叫時直接用完整路徑：
 
 ```bash
-/Users/caitingyu/Documents/tripace/.claude/skills/tripace-cli/bin/tripace-cli-darwin-arm64 list-trips
+/Users/caitingyu/Documents/tripace/.claude/skills/tripace-cli/bin/tripace-cli-darwin-arm64 trip list
 ```
 
 **執行檔是某一個時間點的快照，`server/cmd/cli` 原始碼有更新（新增子命令、改參數）之後這個執行檔不會自動同步**——若懷疑執行檔行為跟目前原始碼對不上（例如這份文件提到的子命令執行檔不認得），用下方「備援：go run 現場編譯」重新驗證，並考慮重新編譯覆蓋這個執行檔（`cd server && GOWORK=off GOOS=darwin GOARCH=arm64 go build -o ../.claude/skills/tripace-cli/bin/tripace-cli-darwin-arm64 ./cmd/cli`）。
@@ -25,13 +25,13 @@ description: 用 tripace 自己的 CLI 工具(server/cmd/cli)透過 HTTP 存取 
 
 **注意：本機執行需要 `GOWORK=off`**（`server` 目前未列在根目錄 `go.work` 的 workspace 模組清單裡，直接 `go run ./cmd/cli` 會報 `directory cmd\cli is contained in a module that is not one of the workspace modules`；不要執行 `go work use .` 加回去，這是刻意保持獨立模組的設定），例如 `GOWORK=off go run ./cmd/cli list-trips`。
 
-> 以下與後續章節為了簡潔，一律直接寫 `tripace-cli list-trips`、`tripace-cli create-trip` 等指令；實際執行時請替換成上面判斷出來的內建執行檔完整路徑，或備援方案的 `GOWORK=off go run ./cmd/cli`。
+> 以下與後續章節為了簡潔，一律直接寫 `tripace-cli trip list`、`tripace-cli trip create` 等指令；實際執行時請替換成上面判斷出來的內建執行檔完整路徑，或備援方案的 `GOWORK=off go run ./cmd/cli`。
 
 **CLI 現在一律走 HTTP。原本的 `-db` 直連 PostgreSQL 模式（繞過 server 的認證與業務邏輯層）已整個移除**——所有操作都經過 server 的 HTTP API，維運性質的操作（景點區域人工建檔等）歸在 `/internal/maintenance/*` 命名空間，跟一般使用者流量、產品核心端點分開，方便從請求統計分辨流量來源。
 
 ## 前置：登入
 
-除了 `create-trip` 以外，其餘子命令都是 `/internal/*` 路由，需要先登入拿到 JWT（`geocode` 原本不需要登入、直接在 CLI 本機用 `GOOGLE_PLACES_API_KEY` 打 Google，現已改走後端的 `/internal/maintenance/geocode`，跟其餘子命令一樣需要先登入）：
+除了 `trip create` 以外，其餘子命令都是 `/internal/*` 路由，需要先登入拿到 JWT（`geocode` 原本不需要登入、直接在 CLI 本機用 `GOOGLE_PLACES_API_KEY` 打 Google，現已改走後端的 `/internal/maintenance/geocode`，跟其餘子命令一樣需要先登入）：
 
 ```bash
 tripace-cli login --web
@@ -49,32 +49,32 @@ tripace-cli login --web -console http://localhost:5173
 
 ## 常用子命令
 
-所有輸出皆為 JSON，方便直接解析。以下是 `--help` 目前印出的實際子命令（頻道/channel 已全面改名為行程/trip；早期版本的 `--help` 用過 `record`/`update-entry`/`list-channels`/`create-channel`/`-channel` 這些已淘汰名稱，若看到別處文件或記憶提到它們，一律換成下方對應的 trip 版本）。
+所有輸出皆為 JSON，方便直接解析。2026-10 起指令語法改成「資源 動詞」兩段式（例如 `trip list`、`attraction add`），取代舊的扁平命名（`list-trips`、`attraction-add` 這類已全部失效，若看到別處文件或記憶提到它們，一律換成下方對應的新版）。以下是 `--help`/`help <資源>` 目前印出的實際子命令：
 
 ```bash
 # 列出所有行程
-tripace-cli list-trips
+tripace-cli trip list
 
 # 建立行程（唯一不需要登入的寫入操作，用 /v1/trips，owner 是登入身分）
-tripace-cli create-trip -name "行程名稱"
+tripace-cli trip create -name "行程名稱"
 
 # 列出某行程底下所有 entry
-tripace-cli trip-entries -trip trip_xxx
+tripace-cli trip entries -trip trip_xxx
 
 # 新增 entry
-tripace-cli entry-add -trip trip_xxx -title "文字" \
+tripace-cli entry add -trip trip_xxx -title "文字" \
   [-start 'YYYY-MM-DD'] [-start-time 'HH:MM'] [-end ...] [-end-time ...] [-location ...]
 
 # 更新 entry（只需帶要改的欄位）
-tripace-cli entry-update -entry ent_xxx \
+tripace-cli entry update -entry ent_xxx \
   [-title ...] [-start ...] [-end ...] [-location ...] [-note ...] \
   [-kind stay|flight|activity|note|car|restaurant|ticket] [-detail '{"json":"字串"}']
 
 # 刪除 entry
-tripace-cli entry-delete -entry ent_xxx
+tripace-cli entry delete -entry ent_xxx
 
 # 清空行程所有 entries（危險操作，會實際刪除資料，執行前務必跟使用者確認）
-tripace-cli reset -trip trip_xxx
+tripace-cli trip reset -trip trip_xxx
 
 # 手動觸發即時推播通知（一般不需要主動呼叫，server 端已自動廣播）
 tripace-cli notify -trip trip_xxx
@@ -83,51 +83,60 @@ tripace-cli notify -trip trip_xxx
 tripace-cli geocode -place "地點名稱" [-region tw] [-n 3] [-entry ent_xxx]
 
 # 新增景點區域資料（地理輪廓底圖用）；-lat/-lng 與 -place 二擇一，
-# -place 會先查該地名座標（取第一筆候選）再建檔，不需要自己先查好經緯度；
-# -photo-url 未帶時後端會自動查 Pexels 補一張示意圖
-tripace-cli attraction-add -name "古城區" -city "台南" -lat 22.99 -lng 120.20 -level 3
-tripace-cli attraction-add -name "清水寺" -city "京都" -place "清水寺 京都" -region jp -level 4
+# -place 會先查該地名座標（取第一筆候選）再建檔，不需要自己先查好經緯度
+tripace-cli attraction add -name "古城區" -city "台南" -lat 22.99 -lng 120.20 -level 3
+tripace-cli attraction add -name "清水寺" -city "京都" -place "清水寺 京都" -region jp -level 4
 
 # 列出指定城市的所有景點區域資料
-tripace-cli attraction-list -city "台南"
+tripace-cli attraction list -city "台南"
 
 # 列出目前已有景點區域資料的城市清單
-tripace-cli attraction-cities
+tripace-cli attraction cities
 
-# 刪除一筆景點區域資料；若 photo_url 是我方 GCS 物件會一併刪除該圖片
-# （非 GCS 的外部連結不受影響，安全 no-op）
-GOWORK=off go run ./cmd/cli attraction-delete -id lmk_xxx
+# 查詢有 place_id 但還沒有 Google 照片的景點（可選 -city 限定城市）
+GOWORK=off go run ./cmd/cli attraction query -status no-google-photo [-city "台南"]
+
+# 刪除一筆景點區域資料
+GOWORK=off go run ./cmd/cli attraction delete -id lmk_xxx
 
 # 修正一筆景點區域資料的座標和/或單一字串欄位（建檔時輸入錯誤時用）；
 # -lat/-lng、-place（改查該地名座標，取第一筆候選）、-field/-value（兩者
 # 須一起提供；-field 目前開放 name、summary）三者可任選一項或多項一起
 # 帶，只要至少帶了一項就會動作
-GOWORK=off go run ./cmd/cli attraction-update -id lmk_xxx -lat 22.99 -lng 120.20
-GOWORK=off go run ./cmd/cli attraction-update -id lmk_xxx -place "安平古堡" -region tw
-GOWORK=off go run ./cmd/cli attraction-update -id lmk_xxx -field name -value "新名稱"
+GOWORK=off go run ./cmd/cli attraction update -id lmk_xxx -lat 22.99 -lng 120.20
+GOWORK=off go run ./cmd/cli attraction update -id lmk_xxx -place "安平古堡" -region tw
+GOWORK=off go run ./cmd/cli attraction update -id lmk_xxx -field name -value "新名稱"
 
-# 重新透過 Google Places 查詢一次地標圖片並回寫
-GOWORK=off go run ./cmd/cli attraction-update-photo -id lmk_xxx
+# 設定/修正一筆景點區域資料的 Google Place ID
+GOWORK=off go run ./cmd/cli attraction set-place-id -id lmk_xxx -place-id ChIJxxxxxxxx
+GOWORK=off go run ./cmd/cli attraction set-place-id -id lmk_xxx -place "安平古堡" -region tw
+
+# 設定/取消是否為主題點
+GOWORK=off go run ./cmd/cli attraction set-theme -id lmk_xxx -theme=true
+
+# 重新透過 Google Places 查詢一次地標照片並回寫(存進 photo_assets，不再
+# 寫回已移除的 attractions.photo_url 欄位)；-place-id 可覆寫查詢用的
+# place_id，-query 可覆寫查詢關鍵字
+GOWORK=off go run ./cmd/cli attraction photo-update -id lmk_xxx
 
 # 授權本機 server 對另一台 server（target）做景點資料同步——走瀏覽器核准
 # 流程換一把 JWT，交給本機 server 自行保管（不是存在 CLI），之後同步都
 # 由本機 server 主動發起，CLI 不再經手這把 token
-GOWORK=off go run ./cmd/cli attraction-sync-setup -target https://tripace.shuttle.tools
+GOWORK=off go run ./cmd/cli attraction sync-setup -target https://tripace.shuttle.tools
 
 # 把本機景點資料同步到 target（-direction push）或反過來從 target 同步
 # 進本機（-direction pull）；預設 dry-run 只顯示差異報告，加 -apply 才會
 # 真正寫入；預設不刪除只存在於目的方的記錄，加 -allow-delete 才會刪除；
 # -retry 強制從目的方最新狀態重新查詢斷點並續傳
-GOWORK=off go run ./cmd/cli attraction-sync -direction push
-GOWORK=off go run ./cmd/cli attraction-sync -direction push -apply
-GOWORK=off go run ./cmd/cli attraction-sync -direction pull -apply -allow-delete
+GOWORK=off go run ./cmd/cli attraction sync -direction push
+GOWORK=off go run ./cmd/cli attraction sync -direction push -apply
+GOWORK=off go run ./cmd/cli attraction sync -direction pull -apply -allow-delete
 ```
 
 `entry-add`/`entry-update` 的 `-kind` 若填 `stay`，代表這筆是住宿（飯店）項目；`-location` 填地址或飯店名稱、`-detail` 可帶額外 JSON（例如飯店資訊）。飯店本身沒有獨立的「加入行程」子命令——飯店資料是即時透過 Google Places 查詢（見 `server/internal/geo/places.go`），流程是先用 `geocode` 或前端地圖找到飯店名稱/座標，再用 `entry-add -kind stay` 把它記成一筆行程項目。
 
 ## 已知限制
 
-- `reset`/`entry-delete`/`attraction-delete` 都是真的會刪除資料的操作，執行前要跟使用者確認範圍（哪個行程/哪個 entry/哪個地標），不要在不確定的情況下對正式環境資料執行。
-- `/internal/maintenance/*`（`geocode`、`attraction-*`、`attractions/{id}/update-photo` 的底層端點）是刻意跟 `/internal/geo/*` 分開命名空間的維運專用端點，前端產品本身不會呼叫這批路徑，只有 CLI 會用到。
-- 景點照片（`attraction-add` 未帶 `-photo-url` 時的 Pexels 自動配圖、或使用者手動指定的 `-photo-url`）建檔/換圖時會下載後落地存進 GCS（`GCS_PHOTO_BUCKET` 環境變數），不直接引用外部圖床連結；`attraction-delete`／換圖時會連帶清理舊的 GCS 物件（非本 bucket 的外部連結安全 no-op）。
-- `attraction-add` 未帶 `-photo-url` 時會自動打 Pexels Search API 查一張示意圖補上（見 `server/internal/pexels`）——這不是該地點的真實照片，只是關鍵字比對到的示意圖；需要 `PEXELS_API_KEY` 環境變數，未設定時靜默略過照片查詢，不影響其餘欄位建檔。
+- `trip reset`/`entry delete`/`attraction delete` 都是真的會刪除資料的操作，執行前要跟使用者確認範圍（哪個行程/哪個 entry/哪個地標），不要在不確定的情況下對正式環境資料執行。
+- `/internal/maintenance/*`（`geocode`、`attractions*`、`attractions/{id}/update-photo` 的底層端點）是刻意跟 `/internal/geo/*` 分開命名空間的維運專用端點，前端產品本身不會呼叫這批路徑，只有 CLI 會用到。
+- 景點已不再有 `photo_url` 這個 DB 欄位/建檔旗標（2026-10 已 DROP COLUMN）、也不再支援 Pexels 自動配圖或使用者手動指定圖片網址；`attraction add` 建檔時不帶任何照片相關輸入，照片一律透過 `attraction photo-update` 另外觸發 Google Places 查詢，查到的圖片存進 `photo_assets` 表並落地存進 GCS（`GCS_PHOTO_BUCKET` 環境變數），不直接引用外部圖床連結。

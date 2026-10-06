@@ -1,12 +1,12 @@
 package api
 
 // geo_outline_photo_assets_sync_test.go 測 handleGeoPlaceDetails(正式登入
-// 功能用的「單點地點介紹」端點)漸進補圖機制觸發後,是否正確把新照片
-// 背景同步一份到 photo_assets(見 syncPhotoAssetInBackground 的完整
-// 說明),以及顯示時是否無條件以 photo_assets 的內容決定回應(查到就用、
-// 查無/過期就清空,不回退 google_place_photos/place_pexels_photos 這兩張
-// 舊表——見 applyPhotoAssetsAsSource 的完整說明,2026-09 起這是所有端點
-// 統一遵循的規則,不再有「正式端點才給回退」的例外)。
+// 功能用的「單點地點介紹」端點)補圖節奏觸發後,是否正確把新照片背景
+// 寫入 photo_assets(見 backgroundFillPlacePhoto 的完整說明),以及顯示
+// 時是否無條件以 photo_assets 的內容決定回應(查到就用、查無/過期就
+// 清空,不回退 google_place_photos/place_pexels_photos 這兩張舊表——見
+// applyPhotoAssetsAsSource 的完整說明,統一遵循的規則,不再有「正式
+// 端點才給回退」的例外)。
 //
 // 測試風格延續 geo_outline_place_photo_progress_test.go 的
 // newPlaceDetailsFixture 模式,額外把 s.photoUploader 換成
@@ -96,17 +96,6 @@ func TestHandleGeoPlaceDetails_PhotoAssetFresh_OverridesResponse(t *testing.T) {
 	if err := f.server.store.SetGooglePlacePhotos(placeID, []string{"https://storage.googleapis.com/old-bucket/stale.jpg"}); err != nil {
 		t.Fatalf("SetGooglePlacePhotos failed: %v", err)
 	}
-	// 讓點擊節奏/時間都不觸發,確保這次請求完全不打 Google API,單純驗證
-	// 顯示時的覆蓋邏輯。
-	for i := 0; i < 3; i++ {
-		if _, _, _, err := f.server.store.IncrementPlaceClickCount(placeID); err != nil {
-			t.Fatalf("IncrementPlaceClickCount failed: %v", err)
-		}
-	}
-	if err := f.server.store.UpdatePlacePhotoProgress(placeID, 2, 5, false); err != nil {
-		t.Fatalf("UpdatePlacePhotoProgress failed: %v", err)
-	}
-
 	expiresAt := time.Now().Add(24 * time.Hour)
 	if err := f.server.store.UpsertPhotoAsset(model.PhotoAsset{
 		PlaceID:    placeID,
@@ -156,15 +145,6 @@ func TestHandleGeoPlaceDetails_PhotoAssetExpired_ClearsPhotoWithoutFallback(t *t
 	if err := f.server.store.SetGooglePlacePhotos(placeID, []string{"https://storage.googleapis.com/old-bucket/still-good.jpg"}); err != nil {
 		t.Fatalf("SetGooglePlacePhotos failed: %v", err)
 	}
-	for i := 0; i < 3; i++ {
-		if _, _, _, err := f.server.store.IncrementPlaceClickCount(placeID); err != nil {
-			t.Fatalf("IncrementPlaceClickCount failed: %v", err)
-		}
-	}
-	if err := f.server.store.UpdatePlacePhotoProgress(placeID, 2, 5, false); err != nil {
-		t.Fatalf("UpdatePlacePhotoProgress failed: %v", err)
-	}
-
 	expiredAt := time.Now().Add(-time.Hour)
 	if err := f.server.store.UpsertPhotoAsset(model.PhotoAsset{
 		PlaceID:    placeID,

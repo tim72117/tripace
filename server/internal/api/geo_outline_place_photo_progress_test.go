@@ -1,25 +1,41 @@
 package api
 
 // geo_outline_place_photo_progress_test.go 測 GET /internal/geo/place-details
-// (handleGeoPlaceDetails)一般模式的漸進補圖主流程串接——驗證
-// IncrementPlaceClickCount/decidePlacePhotoAction/UpdatePlacePhotoProgress
+// (handleGeoPlaceDetails)一般模式的補圖主流程串接——驗證
+// IncrementPlaceClickCount/photoCapForClickCount/decidePlacePhotoRefreshIndex
 // 是否真的被 handler 正確串起來(純函式本身的邏輯已經在
-// geo_place_photos_progress_test.go/geo_place_photo_action_test.go 驗證過,
-// 這裡不重複測那些案例,只驗證 handler 有沒有正確呼叫這些元件、正確把
-// 決策結果寫回資料庫)。
+// geo_place_photo_refresh_test.go 驗證過,這裡不重複測那些案例,只驗證
+// handler 有沒有正確呼叫這些元件、正確把決策結果寫回 photo_assets、
+// 正確回報 photoRefreshPending 旗標)。
+//
+// 2026-10 新補圖節奏(取代舊的 shouldAddGooglePlacePhoto/
+// resetPhotoProgressOnTargetChange/decidePlacePhotoAction,見
+// geo_place_photo_refresh_test.go 檔頭的完整說明)——三條路徑:
+//
+//  1. 快取未命中:同步呼叫 GetPlaceDetails(拿文字資料+PhotoRefs)寫入
+//     place_details_cache,用本地 photo_assets 新鮮度判斷這次要不要
+//     補圖,先回傳(body 帶 photoRefreshPending),背景非同步下載該
+//     index 的照片(不需要再打一次 Google,PhotoRefs 已經拿到了)。
+//  2. 快取命中、判斷不需要補圖:完全不打任何 Google API(零成本),
+//     直接回傳 photoRefreshPending=false。
+//  3. 快取命中、判斷需要補圖:先回傳 photoRefreshPending=true,背景
+//     非同步呼叫 GetPlaceDetails(不是舊的窄 ListPlacePhotoRefs——
+//     同一個 Enterprise 計費等級,但順便更新 place_details_cache 的
+//     文字欄位)拿到 PhotoRefs 後下載該 index 照片。
+//
+// 不再有「點擊節奏」或「7 天時間」這兩個獨立觸發條件——新機制「過期
+// 即視為需要補」已經涵蓋原本時間觸發想解決的問題(照片會過期,需要
+// 有人重新確認),不需要額外的時間節流規則。
 //
 // 測試風格參考 geo_outline_geocode_test.go 的
 // fakeSearchTextGateway/newTestServerWithFakeGeoGateway 模式(見該檔案
-// 開頭的完整說明)。這裡的假 gateway 需要同時處理三種 endpoint:
+// 開頭的完整說明)。這裡的假 gateway 需要處理兩種 endpoint:
 //
-//   - "places.get" 且 field mask 是完整的 placeDetailsFieldMask
-//     (含 displayName 等文字欄位):對應 geo.Client.GetPlaceDetails,
-//     只有快取未命中(初次查詢)時會走到。
-//   - "places.get" 且 field mask 只有 "photos":對應
-//     geo.Client.ListPlacePhotoRefs——這支函式跟 GetPlaceDetails 共用
-//     同一個 endpoint 字串(見 places.go 的說明),必須用 field mask
-//     內容區分兩者實際要的是完整資料還是只要 photos 陣列,呼叫順序不
-//     保證能區分(理論上這支測試只會在快取命中分支呼叫到這個變體)。
+//   - "places.get":對應 geo.Client.GetPlaceDetails——2026-10 新節奏下
+//     快取未命中與快取命中需要補圖這兩條路徑都呼叫這支(field mask
+//     都是完整的 placeDetailsFieldMask,不再有只查 "photos" 的窄
+//     ListPlacePhotoRefs 變體,見檔頭的完整說明),故 fakeGateway 不需要
+//     再依 field mask 內容區分兩種回應,固定回傳 detailsBody 即可。
 //   - "places.photoMedia":對應 geo.Client.PhotoDataURI(內部呼叫
 //     downloadPhotoBytes)下載單張照片位元組。
 import (
@@ -34,6 +50,8 @@ import (
 
 	"github.com/tim72117/tripace/internal/auth"
 	"github.com/tim72117/tripace/internal/geo"
+	"github.com/tim72117/tripace/internal/model"
+	"github.com/tim72117/tripace/internal/photostorage"
 	"github.com/tim72117/tripace/internal/store"
 )
 
@@ -47,19 +65,16 @@ type placeDetailsGatewayCall struct {
 // fakePlaceDetailsGateway 滿足 geo 套件內部未匯出的 requestDoer 介面
 // (見 fakeSearchTextGateway 的說明,Go 隱式介面滿足規則)。
 //
-//   - detailsBody:GetPlaceDetails(完整 field mask)該回傳的假 JSON,
-//     模擬 Google 目前這個地點的 photos[] 完整清單。
-//   - photoRefsBody:ListPlacePhotoRefs(field mask 只有 "photos")該
-//     回傳的假 JSON——通常跟 detailsBody 的 photos[] 是同一份資料,但
-//     測試裡故意允許各自獨立指定,才能驗證「target 變動」這類情境
-//     (快取命中分支重新查到的張數跟上次不同)。
+//   - detailsBody:GetPlaceDetails 該回傳的假 JSON,模擬 Google 目前這個
+//     地點的 photos[] 完整清單——2026-10 新節奏下,快取未命中與快取
+//     命中需要補圖這兩條路徑都是呼叫這支、回傳同一種格式,不再需要
+//     像舊版 photoRefsBody 那樣另外準備一份窄 field mask 的回應。
 //   - photoMediaEnabled:對應 geo.SetPhotosEnabled(true) 的全域開關,
 //     這個套件層級開關預設 false,測試需要真的驗證下載流程時必須手動
 //     開啟(見 newPlaceDetailsFixture 的說明)。
 type fakePlaceDetailsGateway struct {
-	detailsBody   string
-	photoRefsBody string
-	calls         []placeDetailsGatewayCall
+	detailsBody string
+	calls       []placeDetailsGatewayCall
 }
 
 func (g *fakePlaceDetailsGateway) Do(ctx context.Context, req *http.Request, endpoint, caller, path string) (*http.Response, error) {
@@ -68,11 +83,6 @@ func (g *fakePlaceDetailsGateway) Do(ctx context.Context, req *http.Request, end
 
 	switch endpoint {
 	case "places.get":
-		if fieldMask == "photos" {
-			// ListPlacePhotoRefs——只要 photos 陣列。
-			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader([]byte(g.photoRefsBody)))}, nil
-		}
-		// GetPlaceDetails——完整資料。
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader([]byte(g.detailsBody)))}, nil
 	case "places.photoMedia":
 		// downloadPhotoBytes 直接讀 response body 當圖片位元組使用(見
@@ -83,9 +93,8 @@ func (g *fakePlaceDetailsGateway) Do(ctx context.Context, req *http.Request, end
 	}
 }
 
-// placeDetailsJSON 組一份 Place Details / ListPlacePhotoRefs 都能共用的
-// 假回應 body——photoCount 張照片,每張 resource name 依序編號,方便
-// 測試斷言下載的是第幾張。
+// placeDetailsJSON 組一份 Place Details 假回應 body——photoCount 張
+// 照片,每張 resource name 依序編號,方便測試斷言下載的是第幾張。
 func placeDetailsJSON(name string, photoCount int) string {
 	type photo struct {
 		Name string `json:"name"`
@@ -138,6 +147,13 @@ func newPlaceDetailsFixture(t *testing.T, fakeGateway *fakePlaceDetailsGateway) 
 	s.newPlaceDetailsClient = func(apiKey string) *geo.Client {
 		return geo.NewWithGateway(apiKey, fakeGateway)
 	}
+	// backgroundFillPlacePhoto(2026-10 新補圖節奏)寫入 photo_assets 前
+	// 一定要先成功上傳 GCS(不像舊版 landmarkPhotoURLFromDataURI 那樣
+	// upload 失敗還能退回原始 dataURI 當 fallback),故這裡必須換成能
+	// 真的「成功」的假 Uploader,否則所有背景補圖測試都會卡在
+	// ErrNoBucket、photo_assets 永遠寫不進去——理由同
+	// geo_outline_photo_assets_sync_test.go 既有的 fixture 設定。
+	s.photoUploader = photostorage.NewForTest("test-bucket", photostorage.NewMemoryObjectStore())
 
 	user, err := s.store.CreatePasswordUser("usr_geo_photo", "地點照片測試員", "#8C7B6A", "geo-photo@example.com", "hash")
 	if err != nil {
@@ -164,22 +180,49 @@ func (f *placeDetailsFixture) get(t *testing.T, placeID string) (*http.Response,
 	return resp, body
 }
 
-// TestHandleGeoPlaceDetails_CacheMiss_DownloadsOnlyOnePhoto 對應快取未命中
-// (初次查詢)的情境——驗證最終只下載了 1 張 Google 照片(不是舊邏輯的
-// 最多 5 張),且 click_count/new_photo_count/google_photo_target_count
-// 依 decidePlacePhotoAction 的規則正確寫入(初次查詢：previousGoogleTarget
-// 傳 0,任意 clickCount 都會觸發 shouldFetch,補 index=0)。
-//
-// 2026-09 重構後,Google Photo Media 下載+上傳 GCS 改成背景 goroutine
-// (見 downloadGooglePlacePhotoInBackground 的完整說明),HTTP 回應本身
-// 不等它完成——這次回應的 googlePhotoUrls 因此預期是空的(見
-// applyPhotoAssetsAsSource,查無 photo_assets 時清空,不會等背景寫入),
-// 要驗證「確實補到了 1 張」得像 waitForPhotoAsset 一樣輪詢等背景完成,
-// 而不是直接看這次同步回應的內容。
-func TestHandleGeoPlaceDetails_CacheMiss_DownloadsOnlyOnePhoto(t *testing.T) {
+// placeDetailsFieldMaskForTest 對齊 geo.Client.GetPlaceDetails 實際使用的
+// field mask(該常數未匯出,geo 套件外部無法直接引用,見該檔案
+// placeDetailsFieldMask 的定義)——這裡只是把字面值抄一份供測試斷言
+// 「背景補圖呼叫的是完整 GetPlaceDetails,不是只查 photos 的窄 field
+// mask」,字面值變動時這裡要跟著同步更新。
+const placeDetailsFieldMaskForTest = "displayName,formattedAddress,location,rating,photos,editorialSummary"
+
+// writeFreshPhotoAsset 直接寫入一筆「現在仍在有效期內」的 photo_assets
+// 紀錄,供測試準備「這個 index 目前是新鮮的」這個前置狀態,不需要真的
+// 走一次補圖流程。
+func writeFreshPhotoAsset(t *testing.T, s *Server, placeID string, photoIndex int) {
+	t.Helper()
+	expiresAt := time.Now().Add(7 * 24 * time.Hour)
+	if err := s.store.UpsertPhotoAsset(model.PhotoAsset{
+		PlaceID: placeID, PhotoIndex: photoIndex, Usage: "full", Source: "google",
+		GCSURL:    "https://storage.googleapis.com/test-bucket/fresh.jpg",
+		FetchedAt: time.Now(), ExpiresAt: &expiresAt,
+	}); err != nil {
+		t.Fatalf("writeFreshPhotoAsset: UpsertPhotoAsset failed: %v", err)
+	}
+}
+
+// writeExpiredPhotoAsset 直接寫入一筆已經過期的 photo_assets 紀錄,供
+// 測試準備「這個 index 存在但已過期,該被換新」這個前置狀態。
+func writeExpiredPhotoAsset(t *testing.T, s *Server, placeID string, photoIndex int) {
+	t.Helper()
+	expiresAt := time.Now().Add(-time.Hour)
+	if err := s.store.UpsertPhotoAsset(model.PhotoAsset{
+		PlaceID: placeID, PhotoIndex: photoIndex, Usage: "full", Source: "google",
+		GCSURL:    "https://storage.googleapis.com/test-bucket/expired.jpg",
+		FetchedAt: time.Now().Add(-8 * 24 * time.Hour), ExpiresAt: &expiresAt,
+	}); err != nil {
+		t.Fatalf("writeExpiredPhotoAsset: UpsertPhotoAsset failed: %v", err)
+	}
+}
+
+// TestHandleGeoPlaceDetails_CacheMiss_RespondsPendingAndDownloadsFirstPhoto
+// 對應路徑 1(快取未命中):驗證同步回應不帶照片、photoRefreshPending
+// 為 true,背景完成後 photo_assets 有 index=0 這一筆。
+func TestHandleGeoPlaceDetails_CacheMiss_RespondsPendingAndDownloadsFirstPhoto(t *testing.T) {
 	const placeID = "place_first_visit"
-	// Google 這個地點目前實際有 3 張照片(currentGoogleTarget=3),但初次
-	// 查詢應該只下載第一張,不是一次下載到 3 張或舊邏輯的上限 5 張。
+	// Google 這個地點目前實際有 3 張照片,但初次查詢應該只下載第一張
+	// (photoCapForClickCount(1)==1,見 geo_place_photo_refresh_test.go)。
 	gw := &fakePlaceDetailsGateway{detailsBody: placeDetailsJSON("測試地點", 3)}
 	f := newPlaceDetailsFixture(t, gw)
 
@@ -190,294 +233,163 @@ func TestHandleGeoPlaceDetails_CacheMiss_DownloadsOnlyOnePhoto(t *testing.T) {
 
 	googlePhotos, _ := body["googlePhotoUrls"].([]any)
 	if len(googlePhotos) != 0 {
-		t.Fatalf("這次同步回應不該帶照片(Google 下載已改背景執行),實際 = %d 張(%v)", len(googlePhotos), googlePhotos)
+		t.Fatalf("這次同步回應不該帶照片(下載已改背景執行),實際 = %d 張(%v)", len(googlePhotos), googlePhotos)
+	}
+	pending, _ := body["photoRefreshPending"].(bool)
+	if !pending {
+		t.Error("快取未命中且觸發補圖時,photoRefreshPending 應該是 true")
 	}
 
-	// 背景 goroutine 完成後才會真的補到第 1 張,輪詢等待,理由同
-	// waitForPhotoAsset。第一次呼叫先用 := 讓 Go 從 GetCachedPlaceDetails
-	// 推導出 row/ok/err 的型別(placeDetailsCacheRow 是 store 套件內未
-	// 匯出的型別,這裡不能明確寫出型別名稱),迴圈內後續呼叫改用 = 賦值
-	// 到同一組變數。
-	deadline := time.Now().Add(2 * time.Second)
-	row, ok, err := f.server.store.GetCachedPlaceDetails(placeID, 24*time.Hour)
-	if err != nil {
-		t.Fatalf("GetCachedPlaceDetails failed: %v", err)
-	}
-	for !(ok && row.NewPhotoCount >= 1) && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-		row, ok, err = f.server.store.GetCachedPlaceDetails(placeID, 24*time.Hour)
-		if err != nil {
-			t.Fatalf("GetCachedPlaceDetails failed: %v", err)
-		}
-	}
-	if !ok {
-		t.Fatalf("GetCachedPlaceDetails: ok=%v", ok)
-	}
-	if row.ClickCount != 1 {
-		t.Errorf("click_count = %d, want 1", row.ClickCount)
-	}
-	if row.NewPhotoCount != 1 {
-		t.Fatalf("new_photo_count = %d, want 1(背景下載逾時仍未補到第 1 張)", row.NewPhotoCount)
-	}
-	if row.GooglePhotoTargetCount != 3 {
-		t.Errorf("google_photo_target_count = %d, want 3", row.GooglePhotoTargetCount)
-	}
-
-	googlePhotoRows, _ := f.server.store.ListGooglePlacePhotos(placeID)
-	if len(googlePhotoRows) != 1 {
-		t.Errorf("google_place_photos 應該只有 1 筆,實際 = %d", len(googlePhotoRows))
+	asset := waitForPhotoAsset(t, f.server, placeID, 0)
+	if asset.GCSURL == "" {
+		t.Error("背景補圖完成後 GCSURL 不該是空字串")
 	}
 }
 
-// TestHandleGeoPlaceDetails_CacheHit_NoTrigger_SkipsGoogleCall 對應快取
-// 命中、點擊節奏未觸發、時間也未過期的最常見路徑——驗證完全沒有呼叫
-// gateway(len(gw.calls) == 0),直接回傳快取現有資料,維持零成本。
-func TestHandleGeoPlaceDetails_CacheHit_NoTrigger_SkipsGoogleCall(t *testing.T) {
+// TestHandleGeoPlaceDetails_CacheHit_NothingStaleWithinCap_SkipsGoogleCall
+// 對應路徑 2(快取命中、不需要補圖):cap 範圍內已經全部新鮮,完全不該
+// 打任何 Google API(零成本路徑),photoRefreshPending 回傳 false。
+func TestHandleGeoPlaceDetails_CacheHit_NothingStaleWithinCap_SkipsGoogleCall(t *testing.T) {
 	const placeID = "place_cache_hit_no_trigger"
 	gw := &fakePlaceDetailsGateway{}
 	f := newPlaceDetailsFixture(t, gw)
 
-	// 手動準備一筆快取:google_photo_target_count=5、new_photo_count=2,
-	// 且 click_count 目前是 3(下一次點擊會變成 4)。
-	// shouldAddGooglePlacePhoto(4, 2, 5):newPhotoCount+1=3,3*3=9,
-	// 4 % 9 != 0,不觸發——刻意挑選這組數字確保點擊節奏不會誤觸發。
 	if err := f.server.store.SetCachedPlaceDetails(placeID, "已快取地點", "已快取地址", 35.0, 135.76, 4.2, nil); err != nil {
 		t.Fatalf("SetCachedPlaceDetails failed: %v", err)
 	}
-	for i := 0; i < 3; i++ {
-		if _, _, _, err := f.server.store.IncrementPlaceClickCount(placeID); err != nil {
+	// 墊 9 次點擊(click_count 之後會變成 10 次之前都是 cap=1,見
+	// photoCapForClickCount)——這裡刻意停在 9,讓接下來 f.get 這次點擊
+	// 累積到 click_count=10(cap 從 1 變成 2),但 index=0 已經是新鮮
+	// 紀錄,index=1 這個新名額本來會觸發——為了單純驗證「零觸發」這個
+	// 分支,改停在 click_count=8(這次點擊後為 9,cap 仍是 1),只需要
+	// index=0 新鮮即可。
+	for i := 0; i < 8; i++ {
+		if _, err := f.server.store.IncrementPlaceClickCount(placeID); err != nil {
 			t.Fatalf("IncrementPlaceClickCount failed: %v", err)
 		}
 	}
-	if err := f.server.store.UpdatePlacePhotoProgress(placeID, 2, 5, false); err != nil {
-		t.Fatalf("UpdatePlacePhotoProgress failed: %v", err)
-	}
+	writeFreshPhotoAsset(t, f.server, placeID, 0)
 
 	resp, body := f.get(t, placeID)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("狀態碼 = %d,期待 200;body=%v", resp.StatusCode, body)
 	}
 	if len(gw.calls) != 0 {
-		t.Fatalf("點擊節奏與時間都未觸發時不該呼叫任何 Google API,實際打了 %d 次: %v", len(gw.calls), gw.calls)
+		t.Fatalf("cap 範圍內已全部新鮮時不該呼叫任何 Google API,實際打了 %d 次: %v", len(gw.calls), gw.calls)
+	}
+	pending, hasPending := body["photoRefreshPending"].(bool)
+	if !hasPending || pending {
+		t.Errorf("不需要補圖時 photoRefreshPending 應該是 false,實際 = %v(存在=%v)", pending, hasPending)
 	}
 }
 
-// placeDetailsProgressSnapshot 是 waitForGoogleTarget 回傳的最小快照——
-// store.placeDetailsCacheRow 是 store 套件內未匯出型別,這個測試檔案
-// (api 套件)無法命名它當函式回傳型別,故只取呼叫端實際關心的兩個欄位
-// 另外包一個本地 struct。
-type placeDetailsProgressSnapshot struct {
-	FetchedAt              time.Time
-	NewPhotoCount          int
-	GooglePhotoTargetCount int
-}
-
-// waitForGoogleTarget 輪詢 GetCachedPlaceDetails,直到
-// refreshGooglePlacePhotoInBackground(見該函式的完整說明,2026-09 起
-// 點擊節奏/時間觸發後的實際查詢改成背景 goroutine 執行,不再阻塞
-// handleGeoPlaceDetails 的回應)完成寫回,或逾時——這支 handler 拿到
-// HTTP 回應時不保證背景查詢已經完成,測試需要主動等待,不能假設請求一
-// 結束資料庫就已經是最終狀態。
-//
-// 用 fetched_at 是否晚於呼叫端傳入的 before(呼叫 f.get 之前的時間點)
-// 判斷背景查詢是否已完成,而非比對 google_photo_target_count 是否等於
-// 某個期待值——UpdatePlacePhotoProgress 每次背景查詢完成都會把
-// fetched_at 重置成現在(見該函式 touchFetchedAt 參數的說明),不論
-// target 這次有沒有變化都一定會更新,是唯一在所有測試情境(target 有變/
-// 沒變)下都能正確反映「這次背景查詢真的跑完了」的訊號;若改用
-// target 值本身當判斷依據,遇到「target 沒有變化」的情境(例如點擊節奏
-// 觸發但 Google 端照片數量沒變)會在背景查詢真正完成前就提早符合條件、
-// 誤判成已完成(這是實測踩到的真實 bug,故改用這個判斷方式)。
-func waitForGoogleTarget(t *testing.T, s *Server, placeID string, before time.Time) placeDetailsProgressSnapshot {
-	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		row, ok, err := s.store.GetCachedPlaceDetails(placeID, 999999*time.Hour)
-		if err != nil {
-			t.Fatalf("GetCachedPlaceDetails failed: %v", err)
-		}
-		if ok && row.FetchedAt.After(before) {
-			return placeDetailsProgressSnapshot{FetchedAt: row.FetchedAt, NewPhotoCount: row.NewPhotoCount, GooglePhotoTargetCount: row.GooglePhotoTargetCount}
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("等待背景查詢完成(fetched_at 更新)逾時: placeID=%s", placeID)
-	return placeDetailsProgressSnapshot{}
-}
-
-// TestHandleGeoPlaceDetails_CacheHit_ClickRhythmTriggers 對應快取命中、
-// 點擊節奏觸發的情境——驗證有呼叫 ListPlacePhotoRefs("places.get" +
-// field mask 只有 "photos"),且 fetched_at 有被更新成現在。
-//
-// 2026-09:點擊節奏觸發後的實際查詢改成背景執行(見
-// refreshGooglePlacePhotoInBackground 的完整說明),f.get 拿到的回應
-// body 這次不會帶新照片(仍是觸發前的舊快取內容)——這是刻意的行為
-// 改變,不是這個測試該驗證錯的地方。改成用 waitForGoogleTarget 輪詢
-// 資料庫最終狀態,驗證背景查詢確實有發生、確實有把結果寫回。
-func TestHandleGeoPlaceDetails_CacheHit_ClickRhythmTriggers(t *testing.T) {
-	const placeID = "place_cache_hit_click_triggers"
-	// Google 目前實際仍是 5 張(跟上次記錄的 target 相同,不因為 target
-	// 變動而觸發,單純由點擊節奏觸發)。
-	gw := &fakePlaceDetailsGateway{photoRefsBody: placeDetailsJSON("", 5)}
+// TestHandleGeoPlaceDetails_CacheHit_CapGrowsOpensNewSlot_TriggersRefresh
+// 對應路徑 3(快取命中、需要補圖)其中一種成因:click_count 跨過 10 這
+// 個邊界,cap 從 1 變成 2,多出來的名額(index=1)觸發背景補圖——驗證
+// 背景呼叫的是完整的 GetPlaceDetails(field mask 含 displayName 等
+// 文字欄位,不是舊版窄 field mask 的 ListPlacePhotoRefs),且
+// place_details_cache 的文字欄位有被一併更新。
+func TestHandleGeoPlaceDetails_CacheHit_CapGrowsOpensNewSlot_TriggersRefresh(t *testing.T) {
+	const placeID = "place_cache_hit_cap_grows"
+	gw := &fakePlaceDetailsGateway{detailsBody: placeDetailsJSON("重新查到的名稱", 5)}
 	f := newPlaceDetailsFixture(t, gw)
 
-	if err := f.server.store.SetCachedPlaceDetails(placeID, "已快取地點", "已快取地址", 35.0, 135.76, 4.2, nil); err != nil {
+	if err := f.server.store.SetCachedPlaceDetails(placeID, "舊名稱", "舊地址", 35.0, 135.76, 4.2, nil); err != nil {
 		t.Fatalf("SetCachedPlaceDetails failed: %v", err)
 	}
-	// newPhotoCount=1、googlePhotoTargetCount=5:shouldAddGooglePlacePhoto
-	// 分母是 (1+1)^2=4,點擊次數是 4 的倍數時觸發。先點 3 次墊到
-	// click_count=3,這次點擊(第 4 次)會觸發。
-	for i := 0; i < 3; i++ {
-		if _, _, _, err := f.server.store.IncrementPlaceClickCount(placeID); err != nil {
+	// 墊到 click_count=9,這次 f.get 會讓 click_count 變成 10(cap 從
+	// photoCapForClickCount(9)=1 變成 photoCapForClickCount(10)=2)。
+	for i := 0; i < 9; i++ {
+		if _, err := f.server.store.IncrementPlaceClickCount(placeID); err != nil {
 			t.Fatalf("IncrementPlaceClickCount failed: %v", err)
 		}
 	}
-	if err := f.server.store.UpdatePlacePhotoProgress(placeID, 1, 5, false); err != nil {
-		t.Fatalf("UpdatePlacePhotoProgress failed: %v", err)
-	}
-
-	before, ok, err := f.server.store.GetCachedPlaceDetails(placeID, 24*time.Hour)
-	if err != nil || !ok {
-		t.Fatalf("GetCachedPlaceDetails (before) failed: ok=%v err=%v", ok, err)
-	}
-	time.Sleep(2 * time.Millisecond)
+	writeFreshPhotoAsset(t, f.server, placeID, 0)
 
 	resp, body := f.get(t, placeID)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("狀態碼 = %d,期待 200;body=%v", resp.StatusCode, body)
 	}
-
-	// google_photo_target_count 應該維持 5(target 沒變),new_photo_count
-	// 應該從 1 補到 2。
-	after := waitForGoogleTarget(t, f.server, placeID, before.FetchedAt)
-	if after.GooglePhotoTargetCount != 5 {
-		t.Errorf("google_photo_target_count 應該維持 5,實際 = %d", after.GooglePhotoTargetCount)
-	}
-	if after.NewPhotoCount != 2 {
-		t.Errorf("這次觸發應該補到第 2 張,new_photo_count 實際 = %d", after.NewPhotoCount)
+	pending, _ := body["photoRefreshPending"].(bool)
+	if !pending {
+		t.Error("cap 擴大開出新名額時,photoRefreshPending 應該是 true")
 	}
 
-	foundPhotoRefsCall := false
+	asset := waitForPhotoAsset(t, f.server, placeID, 1)
+	if asset.GCSURL == "" {
+		t.Error("背景補圖完成後 index=1 的 GCSURL 不該是空字串")
+	}
+
+	foundFullDetailsCall := false
 	for _, c := range gw.calls {
-		if c.endpoint == "places.get" && c.fieldMask == "photos" {
-			foundPhotoRefsCall = true
+		if c.endpoint == "places.get" && c.fieldMask == placeDetailsFieldMaskForTest {
+			foundFullDetailsCall = true
 		}
 	}
-	if !foundPhotoRefsCall {
-		t.Fatalf("點擊節奏觸發時應該呼叫 ListPlacePhotoRefs,實際呼叫紀錄 = %v", gw.calls)
+	if !foundFullDetailsCall {
+		t.Fatalf("背景補圖應該呼叫完整 field mask 的 GetPlaceDetails(field mask=%q),實際呼叫紀錄 = %v", placeDetailsFieldMaskForTest, gw.calls)
 	}
 
-	googlePhotoRows, _ := f.server.store.ListGooglePlacePhotos(placeID)
-	if len(googlePhotoRows) != 1 {
-		t.Errorf("這次觸發應該補到 1 張新照片,google_place_photos 實際 = %d 筆", len(googlePhotoRows))
+	// 背景的 GetPlaceDetails 順便更新了 place_details_cache 的文字欄位
+	// (見 handleGeoPlaceDetails 路徑 3 的完整說明:同一次查詢同時扮演
+	// 「補圖」與「刷新文字快取」兩個角色,不需要再靠獨立的 24 小時
+	// textStale 機制另外重查一次)。
+	deadline := time.Now().Add(2 * time.Second)
+	row, ok, err := f.server.store.GetCachedPlaceDetails(placeID, 999999*time.Hour)
+	for (err == nil && ok && row.Name != "重新查到的名稱") && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+		row, ok, err = f.server.store.GetCachedPlaceDetails(placeID, 999999*time.Hour)
+	}
+	if err != nil {
+		t.Fatalf("GetCachedPlaceDetails failed: %v", err)
+	}
+	if !ok || row.Name != "重新查到的名稱" {
+		t.Errorf("place_details_cache 的 name 應該被背景查詢更新成「重新查到的名稱」,實際 = %q(ok=%v)", row.Name, ok)
 	}
 }
 
-// TestHandleGeoPlaceDetails_CacheHit_TimeElapsedTriggers 對應快取命中、
-// 點擊節奏未觸發、但距離上次真正查過 Google 已經超過
-// placeDetailsTargetRecheckMaxAge(7 天)的情境——即使點擊節奏沒觸發,
-// 也應該觸發重新查詢。
-func TestHandleGeoPlaceDetails_CacheHit_TimeElapsedTriggers(t *testing.T) {
-	const placeID = "place_cache_hit_time_triggers"
-	// Google 目前實際仍是 2 張(跟上次記錄的 target 相同,不因為 target
-	// 變動而觸發,單純由時間觸發——若這裡跟 UpdatePlacePhotoProgress 寫入
-	// 的 target 對不上,decidePlacePhotoAction 會誤判成 target 變動,
-	// 干擾這個測試案例想單獨驗證的「純粹時間觸發」情境)。
-	gw := &fakePlaceDetailsGateway{photoRefsBody: placeDetailsJSON("", 2)}
+// TestHandleGeoPlaceDetails_CacheHit_ExpiredPhotoWithinCap_TriggersRefresh
+// 對應路徑 3 的另一種成因、也是 2026-10 診斷清水寺照片全數過期卻沒有
+// 觸發補圖那次要修正的核心案例:cap 範圍內有一張已過期的照片,即使
+// click_count 沒有跨過任何 cap 邊界,也該觸發補圖換掉它。
+func TestHandleGeoPlaceDetails_CacheHit_ExpiredPhotoWithinCap_TriggersRefresh(t *testing.T) {
+	const placeID = "place_cache_hit_expired_photo"
+	gw := &fakePlaceDetailsGateway{detailsBody: placeDetailsJSON("", 1)}
 	f := newPlaceDetailsFixture(t, gw)
 
 	if err := f.server.store.SetCachedPlaceDetails(placeID, "已快取地點", "已快取地址", 35.0, 135.76, 4.2, nil); err != nil {
 		t.Fatalf("SetCachedPlaceDetails failed: %v", err)
 	}
-	// newPhotoCount 已經追上 googlePhotoTargetCount(2/2)——依
-	// shouldAddGooglePlacePhoto 的規則,newPhotoCount >= googlePhotoTargetCount
-	// 時恆為 false,點擊節奏不可能觸發,確保這個測試案例驗證的是純粹的
-	// 時間觸發、不是點擊節奏碰巧也觸發。
-	if err := f.server.store.UpdatePlacePhotoProgress(placeID, 2, 2, false); err != nil {
-		t.Fatalf("UpdatePlacePhotoProgress failed: %v", err)
-	}
-	// 把 fetched_at 改成 8 天前,超過 7 天的門檻。
-	staleFetchedAt := time.Now().UTC().Add(-8 * 24 * time.Hour)
-	f.server.store.SetPlaceDetailsFetchedAtForTest(t, placeID, staleFetchedAt)
-
-	resp, body := f.get(t, placeID)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("狀態碼 = %d,期待 200;body=%v", resp.StatusCode, body)
-	}
-
-	// target 沒有變動(還是 2 張),輪詢等待背景查詢完成(見
-	// waitForGoogleTarget 的完整說明,2026-09 起這段改成背景執行)。
-	after := waitForGoogleTarget(t, f.server, placeID, staleFetchedAt)
-	if time.Since(after.FetchedAt) > time.Hour {
-		t.Errorf("時間觸發後 fetched_at 應該被重置成現在,實際距今 = %v", time.Since(after.FetchedAt))
-	}
-	if after.GooglePhotoTargetCount != 2 {
-		t.Errorf("google_photo_target_count 應該維持 2,實際 = %d", after.GooglePhotoTargetCount)
-	}
-	// newPhotoCount 已追上 target,這次不該觸發實際下載——驗證 handler
-	// 有把「查過但沒有補圖」的結果正確寫回,不是誤判成有補圖。
-	if after.NewPhotoCount != 2 {
-		t.Errorf("target 未變動且已追上進度時不該補新照片,new_photo_count 實際 = %d", after.NewPhotoCount)
-	}
-
-	foundPhotoRefsCall := false
-	for _, c := range gw.calls {
-		if c.endpoint == "places.get" && c.fieldMask == "photos" {
-			foundPhotoRefsCall = true
+	for i := 0; i < 8; i++ {
+		if _, err := f.server.store.IncrementPlaceClickCount(placeID); err != nil {
+			t.Fatalf("IncrementPlaceClickCount failed: %v", err)
 		}
 	}
-	if !foundPhotoRefsCall {
-		t.Fatalf("距離上次查詢已超過 7 天時應該觸發重新查詢 ListPlacePhotoRefs,實際呼叫紀錄 = %v", gw.calls)
-	}
-
-	googlePhotoRows, _ := f.server.store.ListGooglePlacePhotos(placeID)
-	if len(googlePhotoRows) != 0 {
-		t.Errorf("target 未變動且已追上進度時不該補新照片,google_place_photos 實際 = %d 筆", len(googlePhotoRows))
-	}
-}
-
-// TestHandleGeoPlaceDetails_CacheHit_TargetChanged_ResetsProgress 對應
-// target 變動時 new_photo_count 正確歸零重新累積的情境——
-// decidePlacePhotoAction 這支純函式本身的歸零規則已經在
-// geo_place_photo_action_test.go 驗證過,這裡只驗證 handler 有沒有把這個
-// 決策結果正確寫回資料庫(不是重複測純函式邏輯本身)。
-func TestHandleGeoPlaceDetails_CacheHit_TargetChanged_ResetsProgress(t *testing.T) {
-	const placeID = "place_cache_hit_target_changed"
-	// Google 現在只剩 2 張(比上次記錄的 5 張少,店家可能刪除了照片)。
-	gw := &fakePlaceDetailsGateway{photoRefsBody: placeDetailsJSON("", 2)}
-	f := newPlaceDetailsFixture(t, gw)
-
-	if err := f.server.store.SetCachedPlaceDetails(placeID, "已快取地點", "已快取地址", 35.0, 135.76, 4.2, nil); err != nil {
-		t.Fatalf("SetCachedPlaceDetails failed: %v", err)
-	}
-	if err := f.server.store.UpdatePlacePhotoProgress(placeID, 3, 5, false); err != nil {
-		t.Fatalf("UpdatePlacePhotoProgress failed: %v", err)
-	}
-	// 用時間觸發條件確保這次點擊一定會重新查詢(不依賴點擊節奏是否剛好
-	// 觸發,讓這個測試案例只專注在驗證 target 變動後的歸零行為)。
-	staleFetchedAt := time.Now().UTC().Add(-8 * 24 * time.Hour)
-	f.server.store.SetPlaceDetailsFetchedAtForTest(t, placeID, staleFetchedAt)
+	// index=0 存在,但已經過期——cap=1(click_count 這次點擊後是 9)時,
+	// 這是 cap 範圍內唯一的 index,過期就該觸發補圖換掉它。
+	writeExpiredPhotoAsset(t, f.server, placeID, 0)
 
 	resp, body := f.get(t, placeID)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("狀態碼 = %d,期待 200;body=%v", resp.StatusCode, body)
 	}
-
-	// 輪詢等待背景查詢完成(見 waitForGoogleTarget 的完整說明,2026-09
-	// 起這段改成背景執行)——target 從 5 變成 2。
-	after := waitForGoogleTarget(t, f.server, placeID, staleFetchedAt)
-	if after.GooglePhotoTargetCount != 2 {
-		t.Errorf("google_photo_target_count 應該更新成這次查到的 2,實際 = %d", after.GooglePhotoTargetCount)
-	}
-	// target 從 5 變成 2,resetPhotoProgressOnTargetChange 判斷為
-	// true,newPhotoCount 歸零後重新累積:這次點擊會立刻觸發補 index=0,
-	// 補完後 new_photo_count 應該是 1,不是延續舊的 3、也不是單純的 0。
-	if after.NewPhotoCount != 1 {
-		t.Errorf("new_photo_count 應該歸零後重新補到 1,實際 = %d", after.NewPhotoCount)
+	pending, _ := body["photoRefreshPending"].(bool)
+	if !pending {
+		t.Error("cap 範圍內有過期照片時,photoRefreshPending 應該是 true")
 	}
 
-	googlePhotoRows, _ := f.server.store.ListGooglePlacePhotos(placeID)
-	if len(googlePhotoRows) != 1 {
-		t.Errorf("target 變動觸發 reset 後這次點擊應該補到 1 張新照片,google_place_photos 實際 = %d 筆", len(googlePhotoRows))
+	// 等待背景把 index=0 換成新鮮紀錄(FetchedAt 比呼叫前新)。
+	before := time.Now()
+	deadline := before.Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		asset, ok, err := f.server.store.GetPhotoAsset(placeID, 0, "full")
+		if err != nil {
+			t.Fatalf("GetPhotoAsset failed: %v", err)
+		}
+		if ok && asset.FetchedAt.After(before.Add(-time.Second)) && asset.ExpiresAt != nil && asset.ExpiresAt.After(time.Now()) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
+	t.Fatal("等待過期照片被背景換成新鮮紀錄逾時")
 }

@@ -45,6 +45,25 @@ func (s *Store) FindUserByGoogleSub(sub string) (model.User, error) {
 	return toUser(r), nil
 }
 
+// BackfillUserEmailIfMissing 補齊既有使用者缺失的 email——只在資料庫目前
+// email 為 NULL 且這次傳入的 email 非空字串時才真的更新,否則是 no-op。
+// 2026-10 新增:修 CreateAppleUser/CreateGoogleUser 曾經建立使用者卻沒寫入
+// email 的 bug(見兩者的完整說明)時,刻意選擇「不處理現有資料」(不寫一次性
+// 批次腳本回補舊資料),改成讓既有使用者下次透過 Apple/Google 重新登入時,
+// 由呼叫端(handleAppleAuth/handleGoogleAuth)在找到既有使用者後呼叫這裡,
+// 順便用這次驗證拿到的 email 自然補齊——不需要額外維護一支獨立維運腳本,
+// 使用者本來就會定期重新登入(token 過期後),資料會隨著正常使用逐步修復。
+// 只在「目前是 NULL」時才更新,避免覆寫使用者可能已經透過其他管道(例如
+// 帳密註冊合併帳號)設定好的正確 email。
+func (s *Store) BackfillUserEmailIfMissing(id, email string) error {
+	if email == "" {
+		return nil
+	}
+	return s.db.Model(&userRow{}).
+		Where("id = ? AND email IS NULL", id).
+		Update("email", email).Error
+}
+
 // GetUserEmail 依使用者 ID 取 email(私密資料,供自己的帳號端點);無 email 回空字串。
 func (s *Store) GetUserEmail(id string) (string, error) {
 	var r userRow
@@ -74,9 +93,16 @@ func (s *Store) FindUserByID(id string) (model.User, error) {
 	return toUser(r), nil
 }
 
-// CreateAppleUser 建立一個由 Apple 登入而來的使用者。
-func (s *Store) CreateAppleUser(id, name, avatarColor, appleSub string) (model.User, error) {
-	r := userRow{ID: id, Name: name, AvatarColor: avatarColor, AppleSub: strPtr(appleSub)}
+// CreateAppleUser 建立一個由 Apple 登入而來的使用者。email 是 Apple 身分驗證
+// 回傳的信箱(可能為空字串,見 auth.VerifyAppleToken 的說明——Apple 只在使用者
+// 第一次授權該 App 時才會附帶 email,之後的登入可能拿不到),空字串時
+// strPtr 回傳 nil,行為與未設定一致,不會寫入空字串當作「有 email」。
+// 2026-10 修正:原本這裡完全沒有寫入 email 欄位,導致 Apple 登入建立的使用者
+// email 永遠是 NULL——issueToken 回應裡看似有 email,其實是從驗證過的身分
+// token 現榨出來直接塞進那次 response,從未真正落地存進資料庫,下次登入
+// (GET /v1/me)查詢就讀不到,管理後台使用者列表也因此一片空白。
+func (s *Store) CreateAppleUser(id, name, avatarColor, appleSub, email string) (model.User, error) {
+	r := userRow{ID: id, Name: name, AvatarColor: avatarColor, AppleSub: strPtr(appleSub), Email: strPtr(email)}
 	if err := s.db.Create(&r).Error; err != nil {
 		return model.User{}, err
 	}
@@ -101,9 +127,12 @@ func (s *Store) FindUserByEmail(email string) (model.User, string, error) {
 	return toUser(r), hash, nil
 }
 
-// CreateGoogleUser 建立一個由 Google 登入而來的使用者。
-func (s *Store) CreateGoogleUser(id, name, avatarColor, googleSub string) (model.User, error) {
-	r := userRow{ID: id, Name: name, AvatarColor: avatarColor, GoogleSub: strPtr(googleSub)}
+// CreateGoogleUser 建立一個由 Google 登入而來的使用者。email 是 Google 身分
+// 驗證回傳的信箱——理由與 CreateAppleUser 的 email 參數完全相同(見該函式
+// 2026-10 修正的完整說明),這裡同樣補上,不再讓 Google 登入建立的使用者
+// email 欄位永遠是 NULL。
+func (s *Store) CreateGoogleUser(id, name, avatarColor, googleSub, email string) (model.User, error) {
+	r := userRow{ID: id, Name: name, AvatarColor: avatarColor, GoogleSub: strPtr(googleSub), Email: strPtr(email)}
 	if err := s.db.Create(&r).Error; err != nil {
 		return model.User{}, err
 	}

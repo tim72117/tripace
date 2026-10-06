@@ -50,8 +50,8 @@ func NeedsSync(source, lastKnownDest FreshnessProbe) bool {
 }
 
 // LiteRecord 是第一層清單比對用的最小欄位集合——只含 ID+UpdatedAt，
-// 不含 Name/Summary/PhotoURL 等完整欄位，用來壓低「要不要繼續比對」
-// 判斷本身的傳輸成本。
+// 不含 Name/Summary 等完整欄位，用來壓低「要不要繼續比對」判斷本身的
+// 傳輸成本。
 type LiteRecord struct {
 	ID        string
 	UpdatedAt time.Time
@@ -111,6 +111,12 @@ type FieldDiff struct {
 // UpdatedAt 刻意不在這個清單裡：GORM 的 UPDATE 會無條件更新 UpdatedAt，
 // 不保證欄位值真的不同，不能拿來判斷內容是否變更（見設計文件「一、
 // 比對模型」）。
+//
+// PhotoURL 不在這份比對清單裡——attractions.photo_url 這個相容欄位
+// 已經連同資料庫欄位本身徹底移除（見 cmd/migrate-drop-photo-url 的
+// 完整說明），comparison 自然不需要再處理它。photo_assets 本身不在
+// 這個同步機制涵蓋範圍內（見 docs/ATTRACTION_SYNC_DESIGN.md），這次
+// 不處理。
 var compareFieldSpecs = []struct {
 	name string
 	get  func(model.Attraction) string
@@ -123,7 +129,6 @@ var compareFieldSpecs = []struct {
 	{"IsTheme", func(a model.Attraction) string { return strconv.FormatBool(a.IsTheme) }},
 	{"RadiusMeters", func(a model.Attraction) string { return strconv.Itoa(a.RadiusMeters) }},
 	{"Summary", func(a model.Attraction) string { return derefStr(a.Summary) }},
-	{"PhotoURL", func(a model.Attraction) string { return derefStr(a.PhotoURL) }},
 }
 
 func derefStr(p *string) string {
@@ -135,8 +140,8 @@ func derefStr(p *string) string {
 
 // CompareFields 比對兩筆記錄的內容欄位（見 compareFieldSpecs），
 // 回傳有差異的欄位清單。欄位順序固定依 compareFieldSpecs 的宣告順序，
-// 方便測試斷言與呈現時的穩定性。nil 對非 nil 的 *string 欄位（Summary/
-// PhotoURL）視為與空字串比較，能正確判定為「不同」。
+// 方便測試斷言與呈現時的穩定性。nil 對非 nil 的 *string 欄位（Summary）
+// 視為與空字串比較，能正確判定為「不同」。
 func CompareFields(a, b model.Attraction) []FieldDiff {
 	var diffs []FieldDiff
 	for _, spec := range compareFieldSpecs {

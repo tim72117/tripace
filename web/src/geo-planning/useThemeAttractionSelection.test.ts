@@ -276,7 +276,13 @@ describe('fetchPoiContent', () => {
   it('有 fetchPhotoAssets 時,沒圖每隔 2 秒重查一次,查到圖就停止重試,且不重複呼叫 fetchPlaceDetails', async () => {
     vi.useFakeTimers()
     try {
-      const noPhoto: GeoPlaceDetails = { name: '忠僕茶屋', address: '清水寺境內', lat: 34.99, lng: 135.78 }
+      const noPhoto: GeoPlaceDetails = {
+        name: '忠僕茶屋',
+        address: '清水寺境內',
+        lat: 34.99,
+        lng: 135.78,
+        photoRefreshPending: true,
+      }
       const fetchPlaceDetails = vi.fn().mockResolvedValue(noPhoto)
       const fetchPhotoAssets = vi
         .fn()
@@ -323,7 +329,13 @@ describe('fetchPoiContent', () => {
   it('重試 3 次後仍沒有照片,維持顯示無圖內容(不再繼續重試,不觸發第 4 次補圖查詢)', async () => {
     vi.useFakeTimers()
     try {
-      const noPhoto: GeoPlaceDetails = { name: '忠僕茶屋', address: '清水寺境內', lat: 34.99, lng: 135.78 }
+      const noPhoto: GeoPlaceDetails = {
+        name: '忠僕茶屋',
+        address: '清水寺境內',
+        lat: 34.99,
+        lng: 135.78,
+        photoRefreshPending: true,
+      }
       const fetchPlaceDetails = vi.fn().mockResolvedValue(noPhoto)
       const fetchPhotoAssets = vi.fn().mockResolvedValue({})
 
@@ -354,7 +366,13 @@ describe('fetchPoiContent', () => {
   it('fetchPhotoAssets 單次查詢失敗時,視同這次沒查到圖,繼續剩餘重試次數', async () => {
     vi.useFakeTimers()
     try {
-      const noPhoto: GeoPlaceDetails = { name: '忠僕茶屋', address: '清水寺境內', lat: 34.99, lng: 135.78 }
+      const noPhoto: GeoPlaceDetails = {
+        name: '忠僕茶屋',
+        address: '清水寺境內',
+        lat: 34.99,
+        lng: 135.78,
+        photoRefreshPending: true,
+      }
       const fetchPlaceDetails = vi.fn().mockResolvedValue(noPhoto)
       const fetchPhotoAssets = vi
         .fn()

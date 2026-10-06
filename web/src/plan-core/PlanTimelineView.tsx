@@ -222,11 +222,11 @@ export function PlanTimelineView({
                       >
                         <div
                           className={`${styles.stopThumb} ${justMounted ? styles.thumbPop : ''}`}
-                          style={{ background: p.photoUrl ? undefined : p.thumbBg }}
+                          style={{ background: p.googlePhotoUrls?.length ? undefined : p.thumbBg }}
                         >
                           {p.loading ? (
                             <span className={styles.thumbSpinner} aria-label="查詢地點資料中" />
-                          ) : p.photoUrl ? (
+                          ) : p.googlePhotoUrls?.length ? (
                             // 縮圖本身維持只顯示第一張(64px 圓形版型)。
                             // 只要有照片就能點擊開啟全螢幕 Lightbox 放大
                             // 瀏覽——即使只有 1 張,使用者明確要求「一張
@@ -244,18 +244,17 @@ export function PlanTimelineView({
                               className={styles.stopThumbPhotoBtn}
                               onClick={(e) => {
                                 e.stopPropagation()
-                                const photos = p.googlePhotoUrls?.length ? p.googlePhotoUrls : [p.photoUrl!]
-                                onOpenPhotos({ photos, alt: p.name ?? '' })
+                                onOpenPhotos({ photos: p.googlePhotoUrls!, alt: p.name ?? '' })
                               }}
                               aria-label={
-                                (p.googlePhotoUrls?.length ?? 0) > 1
+                                p.googlePhotoUrls!.length > 1
                                   ? `瀏覽 ${p.googlePhotoUrls!.length} 張照片`
                                   : '放大檢視照片'
                               }
                             >
-                              <img src={p.photoUrl} alt={p.name} className={styles.stopThumbImg} />
-                              {(p.googlePhotoUrls?.length ?? 0) > 1 && (
-                                <span className={styles.stopThumbPhotoCount}>{p.googlePhotoUrls!.length}</span>
+                              <img src={p.googlePhotoUrls[0]} alt={p.name} className={styles.stopThumbImg} />
+                              {p.googlePhotoUrls.length > 1 && (
+                                <span className={styles.stopThumbPhotoCount}>{p.googlePhotoUrls.length}</span>
                               )}
                             </button>
                           ) : p.thumbIcon}

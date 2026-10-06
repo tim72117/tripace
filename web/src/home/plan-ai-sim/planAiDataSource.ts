@@ -27,7 +27,7 @@ export interface PlanAiPlaceDetailsResult {
   lat?: number
   lng?: number
   summary?: string
-  photoUrl?: string
+  googlePhotoUrls?: string[]
 }
 
 export interface PlanAiTransitEstimateResult {

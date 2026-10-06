@@ -68,7 +68,15 @@ func (s *Server) handleAppleAuth(w http.ResponseWriter, r *http.Request) {
 		if name == "" {
 			name = "Apple 使用者"
 		}
-		user, err = s.store.CreateAppleUser("usr_"+newID(), name, "#8C7B6A", identity.Sub)
+		user, err = s.store.CreateAppleUser("usr_"+newID(), name, "#8C7B6A", identity.Sub, identity.Email)
+	} else if err == nil {
+		// 既有使用者重新登入——補齊先前(修這個 bug 之前)建立時沒寫入的
+		// email,見 BackfillUserEmailIfMissing 的完整說明。no-op 若資料庫
+		// 裡已經有 email 或這次沒拿到 email。
+		if bfErr := s.store.BackfillUserEmailIfMissing(user.ID, identity.Email); bfErr != nil {
+			writeErr(w, http.StatusInternalServerError, "user_failed", bfErr.Error())
+			return
+		}
 	}
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "user_failed", err.Error())
@@ -138,8 +146,16 @@ func (s *Server) handleGoogleAuth(w http.ResponseWriter, r *http.Request) {
 			if name == "" {
 				name = "Google 使用者"
 			}
-			user, err = s.store.CreateGoogleUser("usr_"+newID(), name, "#8C7B6A", identity.Sub)
+			user, err = s.store.CreateGoogleUser("usr_"+newID(), name, "#8C7B6A", identity.Sub, identity.Email)
 			isNewUser = true
+		}
+	} else if err == nil {
+		// 既有使用者(google_sub 直接命中,不是上面的 email 合併分支)重新
+		// 登入——補齊先前建立時沒寫入的 email,理由同 handleAppleAuth 對應
+		// 分支的說明。
+		if bfErr := s.store.BackfillUserEmailIfMissing(user.ID, identity.Email); bfErr != nil {
+			writeErr(w, http.StatusInternalServerError, "user_failed", bfErr.Error())
+			return
 		}
 	}
 	if err != nil {

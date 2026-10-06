@@ -69,7 +69,24 @@ function sleep(ms: number): Promise<void> {
 // fetchPlaceDetails——理由同 fetchPoiContent 的完整說明,連續重試會
 // 重複推進漸進補圖的點擊節奏判斷。省略這個參數時完全不重試,查一次就
 // resolve,對稱 fetchPoiContent 既有的選填設計。
-export function fetchPlaceDetailsWithPhotoRetry<T extends { googlePhotoUrls?: string[] }>(
+//
+// 2026-10 使用者明確要求「全部都用旗標判斷」:啟動重試迴圈的判斷依據
+// 改成 details.photoRefreshPending(後端這次查詢是否真的觸發了背景
+// 補圖,見 GeoPlaceDetails.photoRefreshPending 的完整說明),取代原本
+// 的「查無照片就重試」(!hasAnyPhoto(details))——後端新補圖節奏下,
+// cap 範圍內已經全部新鮮或單純沒有觸發補圖時,即使這次回應沒有照片
+// (例如這個地點 Google 端本來就沒有照片),重試也注定不會有結果,
+// 只是白白發送最多 3 次沒意義的查詢。photoRefreshPending 未定義時
+// (例如呼叫端傳入的 T 不是最新型別、或後端舊版回應)视為 false,不
+// 啟動重試,是比「盲重試」更安全的預設值。
+//
+// 重試迴圈本身(retryWithPhotoAssetsOnly)內部判斷「這次 fetchPhotoAssets
+// 查到了嗎」仍然用 hasAnyPhoto——這是不同的問題:fetchPhotoAssets 是
+// 純讀 photo_assets,沒有、也不需要 photoRefreshPending 這種「有沒有
+// 觸發查詢」的概念,單純檢查這次讀到的結果裡有沒有照片即可。
+export function fetchPlaceDetailsWithPhotoRetry<
+  T extends { googlePhotoUrls?: string[]; photoRefreshPending?: boolean },
+>(
   placeId: string,
   fetchPlaceDetails: (placeId: string) => Promise<T>,
   onUpdate?: (details: T) => void,
@@ -95,7 +112,7 @@ export function fetchPlaceDetailsWithPhotoRetry<T extends { googlePhotoUrls?: st
 
   return fetchPlaceDetails(placeId).then((details) => {
     onUpdate?.(details)
-    if (hasAnyPhoto(details)) return details
+    if (!details.photoRefreshPending) return details
     return retryWithPhotoAssetsOnly(PHOTO_RETRY_MAX_ATTEMPTS, details)
   })
 }

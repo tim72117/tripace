@@ -64,13 +64,24 @@ type Server struct {
 
 	// newPlaceDetailsClient 建立 handleGeoPlaceDetails 一般模式(fetchAndCachePlaceDetails)
 	// 專用的 geo.Client——預設 geo.New(真的打 Google Places API)。理由與
-	// newGeoGeocodeClient 相同:這支 handler 內部串接了漸進補圖決策
-	// (decidePlacePhotoAction)、IncrementPlaceClickCount、
-	// UpdatePlacePhotoProgress 等多個步驟,需要能在測試裡完整驗證整條
-	// 鏈路(而不只是各自獨立的純函式/store 方法),同時不能真的打 Google
-	// API。測試用 newTestServerWithFakePlaceDetailsGateway 把這個欄位換成
-	// 回傳「內部 gateway 是假實作」的 client。
+	// newGeoGeocodeClient 相同:這支 handler 內部串接了補圖節奏決策
+	// (decidePlacePhotoRefreshIndex)、IncrementPlaceClickCount 等多個
+	// 步驟,需要能在測試裡完整驗證整條鏈路(而不只是各自獨立的純函式/
+	// store 方法),同時不能真的打 Google API。測試用
+	// newTestServerWithFakePlaceDetailsGateway 把這個欄位換成回傳
+	// 「內部 gateway 是假實作」的 client。
 	newPlaceDetailsClient func(apiKey string) *geo.Client
+
+	// newMaintenancePhotoClient 建立 handleMaintenanceAttractionUpdatePhoto
+	// (tripace-cli attraction photo-update 對應的後端 endpoint)專用的
+	// geo.Client——預設 geo.New(真的打 Google Places API)。理由與
+	// newPlaceDetailsClient 相同:2026-10 這支 handler 新增「place_id
+	// 優先序」邏輯(body.PlaceID > 地標既有登記的 place_id > 查詢命中的
+	// place.PlaceID,見該 handler 的完整說明),需要能在測試裡驗證整條
+	// 查詢+寫入鏈路,不能真的打 Google API。測試用
+	// newTestServerWithFakeMaintenancePhotoGateway 把這個欄位換成回傳
+	// 「內部 gateway 是假實作」的 client。
+	newMaintenancePhotoClient func(apiKey string) *geo.Client
 
 	// placeDetailsInFlight 標記目前哪些 placeID 正在執行
 	// fetchAndCachePlaceDetails(handleGeoPlaceDetails 一般模式的實際查詢
@@ -218,18 +229,19 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 	geoQueryUserRateLimiter := apigateway.NewRateLimiter()
 
 	return &Server{
-		store:                   st,
-		signer:                  signer,
-		hub:                     newHub(),
-		devMode:                 devMode,
-		googleClientID:          googleClientID,
-		guestUser:               model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
-		photoCache:              storePhotoCache{store: st},
-		photoUploader:           uploader,
-		newGeoGeocodeClient:     geo.New,
-		newPlaceDetailsClient:   geo.New,
-		planAiRateLimiter:       planAiRateLimiter,
-		geoQueryUserRateLimiter: geoQueryUserRateLimiter,
+		store:                     st,
+		signer:                    signer,
+		hub:                       newHub(),
+		devMode:                   devMode,
+		googleClientID:            googleClientID,
+		guestUser:                 model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
+		photoCache:                storePhotoCache{store: st},
+		photoUploader:             uploader,
+		newGeoGeocodeClient:       geo.New,
+		newPlaceDetailsClient:     geo.New,
+		newMaintenancePhotoClient: geo.New,
+		planAiRateLimiter:         planAiRateLimiter,
+		geoQueryUserRateLimiter:   geoQueryUserRateLimiter,
 	}
 }
 
@@ -541,6 +553,7 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("POST /internal/maintenance/attractions", s.handleMaintenanceAttractionAdd)
 	internalMux.HandleFunc("GET /internal/maintenance/attractions", s.handleMaintenanceAttractionList)
 	internalMux.HandleFunc("GET /internal/maintenance/attractions/cities", s.handleMaintenanceAttractionCities)
+	internalMux.HandleFunc("GET /internal/maintenance/attractions/query", s.handleMaintenanceAttractionQuery)
 	internalMux.HandleFunc("DELETE /internal/maintenance/attractions/{id}", s.handleMaintenanceAttractionDelete)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/coords", s.handleMaintenanceAttractionUpdateCoords)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/field", s.handleMaintenanceAttractionUpdateField)

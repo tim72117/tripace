@@ -727,6 +727,14 @@ export interface GeoPlaceDetails {
   // 形狀不變(photoOnlyResponse/textOnlyResponse,見後端說明),不受這次
   // 影響。2026-09 已移除 Pexels 讀圖來源,照片只會來自 Google。
   googlePhotoUrls?: string[]
+  // photoRefreshPending:2026-10 新增,對齊後端 placeDetailsResponse 同名
+  // 欄位的完整說明——這次查詢有沒有觸發背景補圖。photoRetry.ts 的
+  // fetchPlaceDetailsWithPhotoRetry 用這個欄位決定要不要啟動重試迴圈,
+  // 取代原本「查無照片就重試」的盲重試判斷(見該函式的完整說明:後端
+  // 沒觸發補圖時重試注定沒有結果,只是白白發送最多 3 次沒意義的
+  // 查詢)。photoOnly=1/textOnly=1 這兩種查詢模式的回應形狀不含這個
+  // 欄位,不受影響。
+  photoRefreshPending?: boolean
 }
 
 export function fetchGeoPlaceDetails(cfg: ClientConfig, placeId: string) {
@@ -843,9 +851,10 @@ export function fetchPlanAiAttractionSearch(cfg: ClientConfig, lat: number, lng:
 // 形狀——對齊後端 handlePublicGeoPlaceDetailsAny 的 JSON 輸出。found 為
 // false 時其餘欄位皆不存在(查無此 placeId,不是查詢失敗)。
 //
-// 2026-09:photoUrl 只在後端優先查 attractions 表命中時才會有值(見該
-// handler 的完整說明——已建檔景點才有真實照片,fallback 到 Google
-// GetPlaceDetails 的查詢結果不含照片),前端使用時應視為選填欄位。
+// googlePhotoUrls 只在後端查 photo_assets 有值時才會有(見該 handler 的
+// 完整說明——已建檔景點才有真實照片,fallback 到 Google GetPlaceDetails
+// 的查詢結果不含照片),前端使用時應視為選填欄位。2026-10 徹底移除
+// photoUrl 相容欄位,一律改讀這份清單。
 //
 // attractionId 同樣只在後端命中資料庫 attractions 表時才有值(見該
 // handler 的完整說明,使用者明確要求「place-details-any 查詢如果有
@@ -858,12 +867,14 @@ export interface GeoPlanAiPlaceDetailsAnyResult {
   lat?: number
   lng?: number
   summary?: string
-  photoUrl?: string
-  // googlePhotoUrls——2026-10 新增,比照地圖版 GeoPlaceDetails 多圖瀏覽
-  // 需求補上,photoUrl 等於這個清單的第一張,向後相容只讀 photoUrl 的
-  // 既有呼叫端。
   googlePhotoUrls?: string[]
   attractionId?: string
+  // photoRefreshPending:對齊後端 handlePublicGeoPlaceDetailsAny 的完整
+  // 說明(兩條分支——已建檔 attraction 命中/Google fallback——都會回傳
+  // 這個欄位)。用途與 GeoPlaceDetails.photoRefreshPending 相同,見該
+  // 欄位的完整說明:讓 TripPlanPage.tsx 的 resolveAttractionForStep 只在
+  // 後端真的觸發補圖時才啟動重試,不盲目重試。
+  photoRefreshPending?: boolean
 }
 
 // fetchPlanAiPlaceDetailsAny:GET /internal/geo/plan-ai/place-details-any(需登入
@@ -891,7 +902,7 @@ export interface GeoPlanAiAttractionByIDResult {
   lat: number
   lng: number
   summary?: string
-  photoUrl?: string
+  googlePhotoUrls?: string[]
   placeId?: string
 }
 
@@ -899,9 +910,9 @@ export interface GeoPlanAiAttractionByIDResult {
 // 見後端 handlePublicGeoAttractionByID 的完整說明)——供 /plan-ai 的
 // search_attraction/add_attraction 工具流程使用:LLM 只需要記住
 // search_attraction 回傳過的 attraction id,插入行程時由前端這裡查
-// 資料庫既有紀錄取得完整資料(name/summary/photoUrl/placeId),對齊
-// 散策羅盤「點選附近景點」(fetchPoiContent)先用 attraction 本身資料
-// 當底的兩段式查詢邏輯。
+// 資料庫既有紀錄取得完整資料(name/summary/googlePhotoUrls/placeId),
+// 對齊散策羅盤「點選附近景點」(fetchPoiContent)先用 attraction 本身
+// 資料當底的兩段式查詢邏輯。2026-10 徹底移除 photoUrl 相容欄位。
 // 需登入——理由與 cfg.token 的要求同 fetchPlanAiPlaceSearch 的完整說明
 // (2026-09 這批端點從免登入的 /public/geo/* 搬到 /internal/geo/plan-ai/*)。
 export function fetchPlanAiAttractionByID(cfg: ClientConfig, id: string) {
@@ -955,8 +966,11 @@ export function fetchPlanAiTransitEstimate(
 // 清單最多 20 筆,適合逐一延遲觸發。name 是清單本身已經有的候選名稱
 // (來自 fetchGeoGeocode 的 Text Search 結果),快取未命中時後端拿去查
 // Pexels,不需要為了拿名稱多打一次 Google Details。
+// 2026-10 徹底移除 photoUrl 相容欄位:後端 photoOnlyResponse 改成跟其餘
+// 端點一致的 googlePhotoUrls 多圖清單(即使這個模式目前仍只會有最多一
+// 張),呼叫端自行取第一張當單張縮圖用。
 export function fetchGeoPlacePhoto(cfg: ClientConfig, placeId: string, name: string) {
-  return request<{ photoUrl?: string }>(
+  return request<{ googlePhotoUrls?: string[] }>(
     cfg,
     'GET',
     `/internal/geo/place-details?placeId=${encodeURIComponent(placeId)}&photoOnly=1&name=${encodeURIComponent(name)}`,
@@ -964,14 +978,14 @@ export function fetchGeoPlacePhoto(cfg: ClientConfig, placeId: string, name: str
 }
 
 // GeoPlaceText:fetchGeoPlaceText 的回應形狀——GeoPlaceDetails 扣掉
-// photoUrl,理由見該函式的說明。
-export type GeoPlaceText = Omit<GeoPlaceDetails, 'photoUrl'>
+// googlePhotoUrls/photoRefreshPending,理由見該函式的說明。
+export type GeoPlaceText = Omit<GeoPlaceDetails, 'googlePhotoUrls' | 'photoRefreshPending'>
 
 // fetchGeoPlaceText:GET /internal/geo/place-details 的 textOnly=1 模式
 // (見後端 handleGeoPlaceDetails 的說明)——只查/回傳文字資訊(名稱/
 // 地址/評分/簡介),不含照片,供 GeoOutlinePanel.tsx 的
 // handleGeocodeCandidateSelect 使用:使用者點選候選後,先打這支立即
-// 拿到文字資訊開啟資訊卡(此時沒有 photoUrl,前端顯示佔位圖),不必
+// 拿到文字資訊開啟資訊卡(此時沒有照片,前端顯示佔位圖),不必
 // 等照片查完才有畫面反應;照片另外並行呼叫 fetchGeoPlacePhoto 取得,
 // 查到後再補上實際圖片——兩支請求平行發出,不互相等待。跟 photoOnly
 // 對稱:快取未命中時完全跳過照片查詢,成本比完整查詢低。

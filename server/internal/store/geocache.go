@@ -122,20 +122,16 @@ func (s *Store) GetCachedPlaceDetails(placeID string, maxAge time.Duration) (row
 // 同時並列顯示,不是互斥的單一選擇,故從這張表拆出、各自獨立管理)。
 //
 // 用 Model(...).Where(...).Clauses(clause.OnConflict{...}).Create(&row)
-// 而非直接 db.Save(&row)——2026-09 修正一個實測到的真實 bug:原本用
-// db.Save(&row) 整列覆寫,呼叫端(fetchAndCachePlaceDetails)每次拿到新的
-// GetPlaceDetails 結果都會呼叫這支函式,而這支函式的參數列完全不含
-// ClickCount/GooglePhotoTargetCount/NewPhotoCount 三欄(那是漸進補圖
-// 機制的獨立狀態,見 placeDetailsCacheRow 的完整說明),row 這幾欄只能是
-// Go 零值——Save 對已存在的主鍵是整列 UPDATE,會把這三欄也覆寫回零值,
-// 導致 GooglePhotoTargetCount 每次都被重置回 0(而非保留 sentinel -1
-// 或既有的漸進補圖進度),又剛好落在 shouldAddGooglePlacePhoto 的死鎖
-// 值上(見該欄位與函式的完整說明)。改用 OnConflict DoUpdates 明確列出
-// 只更新這幾欄(name/address/lat/lng/rating/summary/fetched_at),
-// click_count/google_photo_target_count/new_photo_count 完全不在
-// DoUpdates 清單內,新插入時交由資料庫欄位的 DEFAULT 決定初始值
-// (GooglePhotoTargetCount 的 DEFAULT 是 -1,見該欄位說明),已存在時則
-// 完全不動,保留漸進補圖機制自己累積的進度。
+// 而非直接 db.Save(&row)——原本用 db.Save(&row) 整列覆寫,呼叫端
+// (fetchAndCachePlaceDetails)每次拿到新的 GetPlaceDetails 結果都會
+// 呼叫這支函式,而這支函式的參數列完全不含 ClickCount 欄(那是補圖
+// 節奏機制的獨立狀態,見 placeDetailsCacheRow 的完整說明),row 這欄
+// 只能是 Go 零值——Save 對已存在的主鍵是整列 UPDATE,會把這欄也覆寫
+// 回零值,導致每次查詢都把累積的點擊次數洗掉重算。改用 OnConflict
+// DoUpdates 明確列出只更新這幾欄(name/address/lat/lng/rating/summary/
+// fetched_at),click_count 完全不在 DoUpdates 清單內,新插入時交由
+// 資料庫欄位的 DEFAULT(0)決定初始值,已存在時則完全不動,保留補圖
+// 節奏機制自己累積的點擊次數。
 func (s *Store) SetCachedPlaceDetails(placeID, name, address string, lat, lng, rating float64, summary *string) error {
 	row := placeDetailsCacheRow{
 		PlaceID:   placeID,
@@ -154,9 +150,8 @@ func (s *Store) SetCachedPlaceDetails(placeID, name, address string, lat, lng, r
 }
 
 // IncrementPlaceClickCount 對 place_id 的 click_count 做原子性 +1,並
-// 回傳遞增後的 click_count、以及目前的 new_photo_count/google_photo_target_count
-// (供呼叫端接著餵給 shouldAddGooglePlacePhoto/resetPhotoProgressOnTargetChange
-// 兩支純函式判斷這次點擊要不要觸發漸進補圖)。
+// 回傳遞增後的 click_count(供呼叫端餵給 photoCapForClickCount/
+// decidePlacePhotoRefreshIndex 判斷這次點擊要不要觸發補圖)。
 //
 // 用 GORM 的 Model().Update() 產生單一 UPDATE place_details_cache
 // SET click_count = click_count + 1 WHERE place_id = ? 語句——遞增
@@ -167,138 +162,34 @@ func (s *Store) SetCachedPlaceDetails(placeID, name, address string, lat, lng, r
 // Postgres/SQLite 兩種 dialector 都支援這個語法,不需要另外分支處理。
 //
 // 遞增後緊接著用同一個 s.db(非另開 transaction)以 First 讀回整列——
-// 這裡沒有用交易包住「UPDATE + 讀回」兩步驟:SQLite/Postgres 的單一
-// UPDATE 陳述式本身已經是原子的(click_count 的加法不會漏算),讀回
-// 這一步只是要把 UPDATE 之後「當下」的 new_photo_count/
-// google_photo_target_count 一併取回給呼叫端,即使讀回前後又有其他
-// 併發點擊把這兩欄改動,也只是讓呼叫端拿到「稍舊一點」的補圖進度快照
-// ——反映在下一次點擊的判斷裡即可,不影響 click_count 本身的正確性,
-// 不需要為此提高一致性等級、犧牲併發吞吐。
+// SQLite/Postgres 的單一 UPDATE 陳述式本身已經是原子的(click_count
+// 的加法不會漏算),這裡讀回只是要把遞增後「當下」的值取回給呼叫端。
 //
 // place_id 在 place_details_cache 裡還不存在時(這個地點第一次被查詢,
 // 還沒走過 SetCachedPlaceDetails 寫入這一列),UPDATE 會影響 0 列、
 // 不報錯;這裡比照 GetCachedPlaceDetails 對「查無資料」的處理慣例
-// (回傳 ok=false/零值,不當作 error),回傳 clickCount=0, newPhotoCount=0,
-// googlePhotoTargetCount=0, err=nil——呼叫端本來就只會在快取未命中時
-// 才走一般查詢流程,那時候才會第一次呼叫 SetCachedPlaceDetails 寫入
-// 這一列,所以「查不到」在這個函式是預期中的正常情況,不是異常。
-func (s *Store) IncrementPlaceClickCount(placeID string) (clickCount int64, newPhotoCount int, googlePhotoTargetCount int, err error) {
+// (回傳 ok=false/零值,不當作 error),回傳 clickCount=0, err=nil——
+// 呼叫端本來就只會在快取未命中時才走一般查詢流程,那時候才會第一次
+// 呼叫 SetCachedPlaceDetails 寫入這一列,所以「查不到」在這個函式是
+// 預期中的正常情況,不是異常。
+func (s *Store) IncrementPlaceClickCount(placeID string) (clickCount int64, err error) {
 	result := s.db.Model(&placeDetailsCacheRow{}).
 		Where("place_id = ?", placeID).
 		Update("click_count", gorm.Expr("click_count + 1"))
 	if result.Error != nil {
-		return 0, 0, 0, result.Error
+		return 0, result.Error
 	}
 	if result.RowsAffected == 0 {
 		// place_id 尚未存在於 place_details_cache——這是第一次查詢這個
 		// 地點,還沒有任何一列可以遞增,交由呼叫端走一般查詢流程。
-		return 0, 0, 0, nil
+		return 0, nil
 	}
 
 	var row placeDetailsCacheRow
 	if err := s.db.Where("place_id = ?", placeID).First(&row).Error; err != nil {
-		return 0, 0, 0, err
+		return 0, err
 	}
-	return row.ClickCount, row.NewPhotoCount, row.GooglePhotoTargetCount, nil
-}
-
-// UpdatePlacePhotoProgress 更新這個 place_id 的 new_photo_count/
-// google_photo_target_count 兩欄——呼叫端在觸發(或判斷不觸發)漸進
-// 補圖之後,把最新進度寫回時使用。
-//
-// 用 Model(...).Where(...).Updates(map[...]) 做部分欄位更新,不是
-// Save(&row) 整列覆寫——Save 會用呼叫端手上這個 struct 的所有欄位
-// (含零值)覆蓋整列,若呼叫端沒有先把 click_count/name/address 等
-// 其他欄位也填好,會被誤寫成零值/空字串,清空既有資料。這裡只關心
-// 這兩欄(加上下面說明的 fetched_at),用欄位白名單(map)明確只更新
-// 這幾欄,其餘欄位(click_count、name、address...)完全不受影響。
-//
-// touchFetchedAt 控制是否同時把 fetched_at 更新成現在(見
-// server/internal/api/geo_outline.go 的 handleGeoPlaceDetails 快取命中
-// 分支對「點擊節奏 OR 時間」雙觸發條件的完整說明)——只要這次呼叫端
-// 實際打過 geo.Client.ListPlacePhotoRefs/GetPlaceDetails 去跟 Google
-// 確認過目前的 photos[] 長度(不論最後有沒有真的觸發補圖下載),就該傳
-// true,讓「距離上次真正查過 Google 已經超過 7 天」這個時間觸發條件
-// 重新從現在起算,避免同一個已經確認過的地點在接下來 7 天內因為時間
-// 條件被重複觸發。完全沒有觸發任何查詢(點擊節奏跟時間都未觸發)的
-// 路徑不應該呼叫這支函式,或應傳 false——這種情況下 fetched_at 理應
-// 維持原值不動。
-func (s *Store) UpdatePlacePhotoProgress(placeID string, newPhotoCount, googlePhotoTargetCount int, touchFetchedAt bool) error {
-	updates := map[string]interface{}{
-		"new_photo_count":           newPhotoCount,
-		"google_photo_target_count": googlePhotoTargetCount,
-	}
-	if touchFetchedAt {
-		updates["fetched_at"] = now()
-	}
-	return s.db.Model(&placeDetailsCacheRow{}).
-		Where("place_id = ?", placeID).
-		Updates(updates).Error
-}
-
-// PlaceDetailsCacheRowExists 回報 place_details_cache 裡是否存在這個
-// placeID 的紀錄(不考慮 maxAge/過期——單純的存在性檢查,跟
-// GetCachedPlaceDetails 刻意分開:那支函式的「找不到」同時涵蓋「真的沒有
-// 這筆」與「有但已過期」兩種情況,不適合借來做這裡需要的純存在性判斷)。
-// 目前唯一呼叫端是 adminconsole.resetPhotoTarget——對一個管理員手動輸入
-// 的 placeId 做重置前,先確認這筆紀錄真的存在,避免打錯字或針對從未被
-// 快取過的 placeId 呼叫 UpdatePlacePhotoProgress 時「WHERE 條件比對不到
-// 任何列、GORM 仍視為成功」而靜默回報操作成功,誤導管理員以為真的重置到
-// 了什麼。
-func (s *Store) PlaceDetailsCacheRowExists(placeID string) (bool, error) {
-	var count int64
-	err := s.db.Model(&placeDetailsCacheRow{}).
-		Where("place_id = ?", placeID).
-		Count(&count).Error
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
-}
-
-// PlaceDetailsZeroPhotoTarget 是 ListPlaceDetailsWithZeroPhotoTarget 單筆
-// 回應的形狀——只曝露後台管理介面需要顯示的欄位,不直接把
-// placeDetailsCacheRow 外流給呼叫端(見 store 層一貫慣例)。
-type PlaceDetailsZeroPhotoTarget struct {
-	PlaceID    string `json:"placeId"`
-	Name       string `json:"name"`
-	ClickCount int64  `json:"clickCount"`
-	// GooglePhotoTargetCount:這支查詢本身用 WHERE 限定只回傳這個欄位
-	// 恰好是 0 的紀錄(見查詢函式的完整說明),故這裡的值理論上恆為 0——
-	// 仍然明確帶出這個欄位(而非讓後台介面憑查詢條件本身推測),是刻意
-	// 選擇的可觀測性慣例:後台顯示的每一欄都該直接反映資料庫實際讀到
-	// 的值,不要求呼叫端從「為什麼會出現在這份清單裡」反推欄位內容。
-	GooglePhotoTargetCount int       `json:"googlePhotoTargetCount"`
-	FetchedAt              time.Time `json:"fetchedAt"`
-}
-
-// ListPlaceDetailsWithZeroPhotoTarget 回傳目前 google_photo_target_count
-// 恰好是 0 的全部地點——供後台管理介面核對「這個 0 是已確認過、真的沒有
-// Google 照片的合法值,還是 2026-09 修正前那個死鎖 bug 遺留的舊資料」
-// (見 placeDetailsCacheRow.GooglePhotoTargetCount 與
-// shouldAddGooglePlacePhoto 的完整說明:sentinel -1 才代表「尚未確認
-// 過」,0 現在是合法的已確認終態,但修復上線前寫入的舊資料仍然可能是
-// 卡住的死鎖值,無法只憑這個欄位本身的值分辨,需要人工核對)。純唯讀
-// 查詢,不做任何修改——要不要把某筆資料重置回 -1 讓它重新有機會被
-// Google 確認,是後台操作者看完這份清單後的人工判斷,這支函式不擅自
-// 決定。依 click_count 由高到低排序:點擊數越高的地點,「使用者其實
-// 常看到這個地點卻拿不到 Google 照片」影響越大,排在前面優先核對。
-func (s *Store) ListPlaceDetailsWithZeroPhotoTarget() ([]PlaceDetailsZeroPhotoTarget, error) {
-	var rows []placeDetailsCacheRow
-	if err := s.db.Where("google_photo_target_count = 0").Order("click_count DESC").Find(&rows).Error; err != nil {
-		return nil, err
-	}
-	out := make([]PlaceDetailsZeroPhotoTarget, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, PlaceDetailsZeroPhotoTarget{
-			PlaceID:                r.PlaceID,
-			Name:                   r.Name,
-			ClickCount:             r.ClickCount,
-			GooglePhotoTargetCount: r.GooglePhotoTargetCount,
-			FetchedAt:              r.FetchedAt,
-		})
-	}
-	return out, nil
+	return row.ClickCount, nil
 }
 
 // ListGooglePlacePhotos 回傳該地點目前已落地的 Google Places 照片清單,

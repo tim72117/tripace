@@ -1,7 +1,7 @@
 package main
 
-// attraction_sync.go 實作 attraction-sync-setup / attraction-sync 兩個
-// 子命令（見 docs/ATTRACTION_SYNC_DESIGN.md「五、CLI 指令介面」）。
+// attraction_sync.go 實作 attraction sync-setup / attraction sync 兩個
+// 子指令（見 docs/ATTRACTION_SYNC_DESIGN.md「五、CLI 指令介面」）。
 //
 // 依設計文件「三、架構」：CLI 只負責觸發指令、顯示結果，不直接呼叫兩邊
 // 的 API，也不執行任何比對邏輯——比對與資料搬運邏輯放在本機 server
@@ -111,32 +111,32 @@ func (c *httpClient) attractionSync(direction string, allowDelete, apply, retry 
 }
 
 func cmdAttractionSyncSetup(c client, args []string) {
-	fs := flag.NewFlagSet("attraction-sync-setup", flag.ExitOnError)
+	fs := flag.NewFlagSet("attraction sync-setup", flag.ExitOnError)
 	target := fs.String("target", "", "正式站 API 網址（必填）")
 	_ = fs.Parse(args)
 	if *target == "" {
-		fatal("attraction-sync-setup 需要 -target")
+		fatal("attraction sync-setup 需要 -target")
 	}
 	res, err := c.attractionSyncSetup(*target)
 	if err != nil {
-		fatal("attraction-sync-setup: %v", err)
+		fatal("attraction sync-setup: %v", err)
 	}
 	output(res)
 }
 
 func cmdAttractionSync(c client, args []string) {
-	fs := flag.NewFlagSet("attraction-sync", flag.ExitOnError)
+	fs := flag.NewFlagSet("attraction sync", flag.ExitOnError)
 	direction := fs.String("direction", "", "push 或 pull（必填）")
 	allowDelete := fs.Bool("allow-delete", false, "允許刪除只存在於目的方的記錄（預設不刪除，保留）")
 	apply := fs.Bool("apply", false, "真正執行寫入（預設 dry-run，只顯示差異報告）")
 	retry := fs.Bool("retry", false, "強制從目的方最新狀態重新查詢斷點並續傳")
 	_ = fs.Parse(args)
 	if *direction != "push" && *direction != "pull" {
-		fatal("attraction-sync 需要 -direction push 或 -direction pull")
+		fatal("attraction sync 需要 -direction push 或 -direction pull")
 	}
 	res, err := c.attractionSync(*direction, *allowDelete, *apply, *retry)
 	if err != nil {
-		fatal("attraction-sync: %v", err)
+		fatal("attraction sync: %v", err)
 	}
 	output(res)
 }

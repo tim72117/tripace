@@ -480,13 +480,14 @@ describe('useAttractionOverlays — 查詢地標圖示照片(cfg/usePublicPlaceD
 
   // 2026-10 使用者明確要求:主題點(isTheme===true)查無照片時,改套用跟
   // AttractionInfoPanel.tsx/fetchPoiContent 一致的主動重試機制(見查詢
-  // effect 開頭的完整說明)——精選點刻意不套用,維持查一次、失敗/查無圖
-  // 就靜默的既有行為,避免揭露一整批精選點時疊加大量背景重試。
+  // effect 開頭的完整說明)。原本精選點刻意不套用,後來使用者再度明確
+  // 要求「精選點 overlay 也重試」,改成所有地標圖示一視同仁(見下方
+  // 精選點測試)。
   it('主題點查無照片時,改用 fetchGeoPlacePhotoAssets 主動重試,查到圖後停止', async () => {
     vi.useFakeTimers()
     try {
       fetchGeoPlaceDetailsMock.mockResolvedValue({
-        name: 'A', address: '', lat: 1, lng: 1, googlePhotoUrls: [],
+        name: 'A', address: '', lat: 1, lng: 1, googlePhotoUrls: [], photoRefreshPending: true,
       })
       fetchGeoPlacePhotoAssetsMock
         .mockResolvedValueOnce({})
@@ -521,12 +522,15 @@ describe('useAttractionOverlays — 查詢地標圖示照片(cfg/usePublicPlaceD
     }
   })
 
-  it('精選點(isTheme=false)查無照片時,不會呼叫 fetchGeoPlacePhotoAssets 重試', async () => {
+  it('精選點(isTheme=false)查無照片時,也改用 fetchGeoPlacePhotoAssets 主動重試,查到圖後停止', async () => {
     vi.useFakeTimers()
     try {
       fetchGeoPlaceDetailsMock.mockResolvedValue({
-        name: 'B', address: '', lat: 2, lng: 2, googlePhotoUrls: [],
+        name: 'B', address: '', lat: 2, lng: 2, googlePhotoUrls: [], photoRefreshPending: true,
       })
+      fetchGeoPlacePhotoAssetsMock
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ googlePhotoUrls: ['https://example.com/curated.jpg'] })
 
       const mapRef = { current: makeFakeMap() }
       const b = attraction({ name: 'B', lat: 2, lng: 2, isTheme: false, placeId: 'place-curated' })
@@ -536,11 +540,21 @@ describe('useAttractionOverlays — 查詢地標圖示照片(cfg/usePublicPlaceD
 
       await vi.advanceTimersByTimeAsync(0)
       expect(fetchGeoPlaceDetailsMock).toHaveBeenCalledTimes(1)
+      expect(fetchGeoPlacePhotoAssetsMock).not.toHaveBeenCalled()
       expect(overlayInstances[0].photoUrlsHistory).toContainEqual([])
 
-      // 精選點沒有 fetchPhotoAssets,即使時間經過也不該觸發任何重試查詢。
+      // 等滿重試延遲,第一次重試仍沒圖。
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(fetchGeoPlacePhotoAssetsMock).toHaveBeenCalledTimes(1)
+
+      // 第二次重試查到圖。
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(fetchGeoPlacePhotoAssetsMock).toHaveBeenCalledTimes(2)
+      expect(overlayInstances[0].photoUrlsHistory).toContainEqual(['https://example.com/curated.jpg'])
+
+      // 查到圖後不再繼續重試,fetchGeoPlaceDetails 全程只查一次。
       await vi.advanceTimersByTimeAsync(10000)
-      expect(fetchGeoPlacePhotoAssetsMock).not.toHaveBeenCalled()
+      expect(fetchGeoPlacePhotoAssetsMock).toHaveBeenCalledTimes(2)
       expect(fetchGeoPlaceDetailsMock).toHaveBeenCalledTimes(1)
     } finally {
       vi.useRealTimers()

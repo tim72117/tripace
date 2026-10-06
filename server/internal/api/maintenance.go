@@ -30,7 +30,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -39,7 +38,6 @@ import (
 
 	"github.com/tim72117/tripace/internal/geo"
 	"github.com/tim72117/tripace/internal/model"
-	"github.com/tim72117/tripace/internal/pexels"
 )
 
 // GET /internal/maintenance/geocode?place={地名}&region={國碼,選填}&n={候選筆數,選填}
@@ -94,23 +92,43 @@ func (s *Server) handleMaintenanceGeocode(w http.ResponseWriter, r *http.Request
 }
 
 // POST /internal/maintenance/attractions/{id}/update-photo
-// Body(選填): { "query": "自訂查詢字串", "source": "google"|"pexels" }
+// Body(選填): { "query": "自訂查詢字串", "placeId": "手動指定要寫入 photo_assets 的 key" }
 //
-// 重新查詢一次該地標的圖片並回寫到資料庫。query 未帶時,用該地標既有的
-// CityName+Name 組成預設查詢字串。查無圖片時回傳明確錯誤,不靜默略過
-// ——這是使用者主動觸發的單筆操作,呼叫端需要知道這次操作到底有沒有
-// 真的取到圖。
+// 重新查詢一次該地標的圖片,寫入 photo_assets(規劃地圖/AI Plan 實際
+// 顯示照片時唯一會讀取的來源,見 applyPhotoAssetsAsSource/
+// handlePublicGeoPlaceDetailsAny 的完整說明)。query 未帶時,用該地標
+// 既有的 CityName+Name 組成預設查詢字串。查無圖片時回傳明確錯誤,不
+// 靜默略過——這是使用者主動觸發的單筆操作,呼叫端需要知道這次操作到底
+// 有沒有真的取到圖。
 //
-// source 未帶時預設 "google"(對齊改動前的既有行為,不影響任何既有呼叫
-// 端);"pexels" 改走 internal/pexels 查詢示意圖(不是該地點的真實照片,
-// 見該套件開頭的定位說明),查到後立刻下載並上傳 GCS(見
-// updateAttractionPhotoFromPexels 的完整說明),不直接把 Pexels 原始
-// 連結存進資料庫——理由同 handleMaintenanceAttractionAdd 的說明,外部
-// 圖床連結的長期可用性不受我方控制。Google 來源已經是 data: URI(見
-// updateAttractionPhotoFromGoogle),不經過這道落地手續。兩種來源的
-// 底層資料形狀不同(Google 是 data: URI、Pexels 落地後是 GCS 網址),但
-// 都透過同一個 UpdateAttractionPhoto 寫回 attractions.photo_url——那個
-// 欄位本身就是不透明字串,前端 <img src> 直接用,不需要额外分辨來源。
+// 固定走 Google Places 查詢(見 updateAttractionPhotoFromGoogle),回傳
+// data: URI——2026-10 使用者明確要求移除 Pexels 來源這個選項(非該
+// 地點的真實照片,只是關鍵字比對到的示意圖),這支端點不再接受 source
+// 參數挑選來源。
+//
+// 2026-10:不再更新 attractions.photo_url——使用者明確指出這個欄位
+// 已經不再被任何顯示路徑讀取(見 model.Attraction.PhotoURL 的完整
+// 說明:2026-09 起規劃地圖/AI Plan 都已改成只讀 photo_assets,不回退
+// 讀 photo_url),繼續寫入只會讓這個死欄位看起來像仍在維護、誤導之後
+// 的人。
+//
+// 2026-10 再次修正(code review 抓到的耦合問題):原本這支端點要求
+// 這筆地標必須已經透過 attraction set-place-id 登記過 place_id,沒有
+// 就直接 400 拒絕——等於把「補照片」跟「補 place_id」這兩個邏輯上
+// 獨立的操作綁死,想幫一筆還沒登記 place_id 的地標補圖,得先跑完全
+// 不相干的另一個指令。使用者明確要求「place 與 photo 就分離」:這支
+// 端點改成 place_id 的來源依優先序決定,不再強制要求資料庫裡已經有值:
+//  1. body.PlaceID(呼叫端這次明確帶入的——對齊 attraction set-place-id
+//     -place-id 的既有慣例,信任呼叫端輸入,不重新查詢驗證)
+//  2. lm.PlaceID(這筆地標資料庫裡原本就登記的,沿用改動前的行為)
+//  3. 都沒有時,退回用這次 Google 查詢(query)意外命中的
+//     place.PlaceID——這是「只想補圖、根本不在乎/不需要這筆地標的
+//     attractions.place_id 欄位有沒有值」這個情境下唯一還能取得的
+//     key,不要求呼叫端為了補圖還得先手動查好 place_id。
+//
+// 三者都查無值(理論上不會發生,Google 查詢結果一定有 PlaceID,除非
+// 整個查詢失敗,那會在更早的 photoURL/err 判斷就回傳)時,就只是純粹
+// 走到第 3 條用查詢結果本身的 PlaceID,不會真的沒有值可用。
 func (s *Server) handleMaintenanceAttractionUpdatePhoto(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -118,12 +136,12 @@ func (s *Server) handleMaintenanceAttractionUpdatePhoto(w http.ResponseWriter, r
 		return
 	}
 
-	// body 整段可省略(query/source 皆選填),故不用 decode() helper——那個
-	// helper 對完全空的 request body 會直接判定失敗,這裡改成盡力解析、
-	// 解析不出來就當作沒帶,交給下面的預設值邏輯處理。
+	// body 整段可省略(query/placeId 皆選填),故不用 decode() helper——
+	// 那個 helper 對完全空的 request body 會直接判定失敗,這裡改成盡力
+	// 解析、解析不出來就當作沒帶,交給下面的預設值邏輯處理。
 	var body struct {
-		Query  string `json:"query"`
-		Source string `json:"source"`
+		Query   string `json:"query"`
+		PlaceID string `json:"placeId"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
@@ -137,21 +155,7 @@ func (s *Server) handleMaintenanceAttractionUpdatePhoto(w http.ResponseWriter, r
 		query = lm.CityName + " " + lm.Name
 	}
 
-	source := body.Source
-	if source == "" {
-		source = "google"
-	}
-
-	var photoURL string
-	switch source {
-	case "google":
-		photoURL, err = s.updateAttractionPhotoFromGoogle(r.Context(), query)
-	case "pexels":
-		photoURL, err = s.updateAttractionPhotoFromPexels(r.Context(), id, query)
-	default:
-		writeErr(w, http.StatusBadRequest, "invalid_input", "source 須為 google 或 pexels")
-		return
-	}
+	photoURL, place, err := s.updateAttractionPhotoFromGoogle(r.Context(), query)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, "search_failed", err.Error())
 		return
@@ -161,36 +165,45 @@ func (s *Server) handleMaintenanceAttractionUpdatePhoto(w http.ResponseWriter, r
 		return
 	}
 
-	// 換圖前先清理舊的 GCS 物件(若舊值確實是我方 GCS 物件、且跟新值不同)
-	// ——理由同 handleMaintenanceAttractionDelete 清理 GCS 物件的說明,
-	// 避免換圖後 bucket 裡留下再也沒有任何資料庫記錄指向的孤兒檔案。
-	// s.photoUploader.Delete 內部已經會判斷 lm.PhotoURL 是否真的屬於這個
-	// bucket(非 GCS 的外部連結安全 no-op),這裡只需要額外排除「新舊
-	// 相同」的情況(-source pexels 重新查到同一張圖時,物件名不變,不該
-	// 先刪再蓋,以免中間有極短暫的視窗讀不到圖)。失敗只記錄 warning、
-	// 不阻擋這次換圖操作——理由同 attraction-delete 的既有降級慣例。
-	if lm.PhotoURL != nil && *lm.PhotoURL != photoURL {
-		if err := s.photoUploader.Delete(r.Context(), *lm.PhotoURL); err != nil {
-			log.Printf("清理景點 %s 的舊 GCS 照片失敗(不阻擋換圖操作): %v", id, err)
-		}
+	// placeID 優先序:body.PlaceID(呼叫端這次明確指定) > lm.PlaceID
+	// (資料庫裡原本登記的) > place.PlaceID(這次查詢意外命中的)——見上方
+	// 函式說明的完整理由。
+	placeID := body.PlaceID
+	if placeID == "" && lm.PlaceID != nil {
+		placeID = *lm.PlaceID
+	}
+	if placeID == "" {
+		placeID = place.PlaceID
 	}
 
-	if err := s.store.UpdateAttractionPhoto(id, photoURL); err != nil {
-		writeErr(w, http.StatusInternalServerError, "internal_error", "寫入資料庫失敗: "+err.Error())
+	objectKey := "maintenance-" + placeID
+	gcsURL, err := s.photoUploader.UploadDataURI(r.Context(), objectKey, photoURL)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "upload_failed", "上傳照片到 GCS 失敗: "+err.Error())
+		return
+	}
+
+	now := time.Now()
+	expiresAt := now.Add(photoAssetExpiry)
+	if err := s.store.UpsertPhotoAsset(model.PhotoAsset{
+		PlaceID:    placeID,
+		PhotoIndex: 0,
+		Usage:      "full",
+		Source:     "google",
+		GCSURL:     gcsURL,
+		FetchedAt:  now,
+		ExpiresAt:  &expiresAt,
+	}); err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", "寫入 photo_assets 失敗: "+err.Error())
 		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"id":     id,
-		"query":  query,
-		"source": source,
-		// 只回報是否成功與圖片長度,不把完整 data URI(Google 來源可能數十
-		// KB 的 base64 字串)塞進回應——CLI 輸出是給人看的,理由同原本
-		// dbClient 版本的說明。Pexels 來源落地後是 GCS 網址,長度不具參考
-		// 意義,但沿用同一個欄位維持回應形狀一致,不需要呼叫端依 source
-		// 分岔解析邏輯。
-		"photoLength": len(photoURL),
-		"status":      "updated",
+		"id":      id,
+		"placeId": placeID,
+		"query":   query,
+		"gcsUrl":  gcsURL,
+		"status":  "updated",
 	})
 }
 
@@ -201,9 +214,14 @@ func (s *Server) handleMaintenanceAttractionUpdatePhoto(w http.ResponseWriter, r
 // 快取 photo resource name(見 store.photoCacheRow 的完整說明),data:
 // URI 本身已經是這個限制下的落地策略,且已經過 s.photoCache 快取,不需要
 // 再疊加一層 GCS 落地。
-func (s *Server) updateAttractionPhotoFromGoogle(ctx context.Context, query string) (string, error) {
+//
+// 2026-10:額外回傳查詢命中的 geo.Place(不只是 photoURL)——呼叫端
+// (handleMaintenanceAttractionUpdatePhoto)在這筆地標沒有登記 place_id、
+// 呼叫端這次也沒有明確指定 placeId 時,需要這裡查到的 place.PlaceID
+// 當 photo_assets 的 key,見該函式開頭「2026-10 再次修正」的完整說明。
+func (s *Server) updateAttractionPhotoFromGoogle(ctx context.Context, query string) (string, geo.Place, error) {
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
-	client := geo.New(apiKey)
+	client := s.newMaintenancePhotoClient(apiKey)
 	client.SetCache(s.photoCache)
 	gctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
@@ -215,74 +233,31 @@ func (s *Server) updateAttractionPhotoFromGoogle(ctx context.Context, query stri
 
 	place, photoRef, _, _, err := client.SearchLandmarkWithPhoto(gctx, query)
 	if err != nil {
-		return "", fmt.Errorf("查詢「%s」失敗: %w", query, err)
+		return "", geo.Place{}, fmt.Errorf("查詢「%s」失敗: %w", query, err)
 	}
 	if photoRef == "" {
-		return "", nil
+		return "", place, nil
 	}
 
 	photoURL, err := client.PhotoDataURI(gctx, place.PlaceID, photoRef, 400)
 	if err != nil {
-		return "", fmt.Errorf("下載照片失敗: %w", err)
+		return "", geo.Place{}, fmt.Errorf("下載照片失敗: %w", err)
 	}
-	return photoURL, nil
-}
-
-// updateAttractionPhotoFromPexels 走 internal/pexels 查詢一張示意圖(見
-// fetchPexelsPhotoURL 的既有邏輯,這裡改成回傳 error 而非靜默降級——
-// 這支端點是使用者主動觸發的單筆操作,查詢失敗需要明確回報,跟
-// handleMaintenanceAttractionAdd 建檔時「照片是輔助欄位,失敗不擋整個
-// 操作」的降級語意不同)。
-//
-// 查到 Pexels 圖片網址後,立刻透過 s.photoUploader 下載並上傳 GCS,回傳
-// GCS 公開 URL 而非 Pexels 原始連結——理由同 handleMaintenanceAttractionAdd
-// 的說明。GCS 上傳失敗(含未設定 GCS_PHOTO_BUCKET 的 ErrNoBucket)時
-// 退回 Pexels 原始連結,不讓這支已知會被使用者主動呼叫、預期明確回報
-// 成功與否的端點,因為落地失敗而整個操作失敗——落地是加分項,不是這支
-// 端點存在的核心目的(核心目的是「查到一張可用的圖」)。
-func (s *Server) updateAttractionPhotoFromPexels(ctx context.Context, id, query string) (string, error) {
-	apiKey := os.Getenv("PEXELS_API_KEY")
-	client := pexels.New(apiKey)
-	pctx, cancel := context.WithTimeout(ctx, 8*time.Second)
-	defer cancel()
-
-	photo, ok, err := client.Search(pctx, query)
-	if err != nil {
-		return "", fmt.Errorf("查詢「%s」失敗: %w", query, err)
-	}
-	if !ok {
-		return "", nil
-	}
-
-	if gcsURL, err := s.photoUploader.Upload(ctx, id, photo.ImageURL); err == nil {
-		return gcsURL, nil
-	}
-	return photo.ImageURL, nil
+	return photoURL, place, nil
 }
 
 // POST /internal/maintenance/attractions
 // Body: model.Attraction 的 JSON 形狀(name/cityName/lat/lng/level 必填,
-// radiusMeters/summary/photoUrl 選填)。
+// radiusMeters/summary 選填)。
 //
 // 對齊 tripace-cli 原本 attraction-add 子命令(-db 模式)的行為(見
 // cmd/cli/db.go 移除前的 dbClient.attractionAdd):人工建檔一筆景點區域
 // 資料。搬進後端後,不再直連資料庫,理由同本檔案開頭的說明。
 //
-// PhotoURL 未帶時,自動打 Pexels Search API 查一張示意圖補上(用
-// cityName+name 組成查詢字串)——這不是「該地點的真實照片」,只是關鍵字
-// 比對到的示意圖(見 internal/pexels 開頭的定位說明),查無結果或未設定
-// PEXELS_API_KEY 時不視為錯誤,直接建檔成 PhotoURL 為空,不阻擋整個
-// 新增操作——照片只是輔助顯示用途,不是這筆資料的必要欄位。
-//
-// 不論 PhotoURL 是使用者明確帶入(如貼一個 Google/Pexels 圖片網址)還是
-// 上面這段自動查到的 Pexels 結果,最終存進資料庫前都會先下載並上傳到
-// GCS(見 s.photoUploader),資料庫存的是我方 GCS 的公開 URL,不是原始
-// 外部連結——兩種來源都不受我方控制其長期可用性(圖被刪除、服務下線、
-// URL 改版),既然這筆資料是人工建檔、預期長期存在的內容,不該有一半
-// 落地一半沒有的不一致。落地邏輯需要 attraction 的 id 當 GCS 物件路徑,
-// 故必須先呼叫 CreateAttraction 拿到 id,才能落地,不是建檔前就地下載。
-// 落地失敗(含未設定 GCS_PHOTO_BUCKET)時保留原始外部連結,不讓這個
-// 加分項的失敗回頭讓已經成功的建檔操作報錯。
+// 不接受任何照片網址輸入(見下方 PhotoURL 相容欄位移除的完整說明)——
+// 建檔時不自動補任何示意圖,之後要補照片用 tripace-cli 的
+// attraction photo-update(見 handleMaintenanceAttractionUpdatePhoto
+// 的完整說明)。
 func (s *Server) handleMaintenanceAttractionAdd(w http.ResponseWriter, r *http.Request) {
 	var in model.Attraction
 	if !decode(w, r, &in) {
@@ -293,57 +268,17 @@ func (s *Server) handleMaintenanceAttractionAdd(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	if in.PhotoURL == nil || strings.TrimSpace(*in.PhotoURL) == "" {
-		query := in.CityName + " " + in.Name
-		if photoURL := s.fetchPexelsPhotoURL(r.Context(), query); photoURL != "" {
-			in.PhotoURL = &photoURL
-		}
-	}
-
+	// attractions.photo_url 這個相容欄位已經連同資料庫欄位本身徹底移除
+	// (見 cmd/migrate-drop-photo-url 的完整說明),建檔請求不再接受任何
+	// 照片網址輸入。之後要補照片一律用 attraction photo-update(需要
+	// 這筆地標先有 place_id),不透過建檔時夾帶照片網址。
 	res, err := s.store.CreateAttraction(in)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "create_failed", err.Error())
 		return
 	}
 
-	// data: URI(base64 內嵌圖片)不落地——理由同
-	// updateAttractionPhotoFromGoogle 的說明,這種格式本身已經是落地
-	// 策略,且不是一個可以下載的網址,photostorage.Upload 對它一定會
-	// 下載失敗。目前 fetchPexelsPhotoURL 只會回傳一般 http 網址,不會
-	// 觸發這個分支,但使用者可能透過 -photo-url 手動帶入 data: URI
-	// (例如日後接上 Google 來源的建檔流程),提前排除、跟 update-photo
-	// 的既有規則保持一致,不依賴 Upload 失敗後的降級恰好覆蓋這個情境。
-	if res.PhotoURL != nil && strings.TrimSpace(*res.PhotoURL) != "" && !strings.HasPrefix(*res.PhotoURL, "data:") {
-		if gcsURL, err := s.photoUploader.Upload(r.Context(), res.ID, *res.PhotoURL); err == nil {
-			if err := s.store.UpdateAttractionPhoto(res.ID, gcsURL); err == nil {
-				res.PhotoURL = &gcsURL
-			}
-		}
-	}
-
 	writeJSON(w, http.StatusCreated, res)
-}
-
-// fetchPexelsPhotoURL 查詢一張 Pexels 示意圖的圖片網址,查無結果、未設定
-// PEXELS_API_KEY、或呼叫失敗時一律回傳空字串——這是刻意的靜默降級(同
-// handleMaintenanceAttractionAdd 的說明:照片是輔助欄位,不該讓 Pexels
-// 查詢失敗擋下整個建檔操作),呼叫端不需要另外處理 error。
-//
-// 這裡是一次性建檔操作,不接 internal/store 的 GetCachedPexelsPhoto/
-// SetCachedPexelsPhoto 快取(那套快取元件與底層儲存留給另一個尚未實作的
-// 功能——使用者瀏覽景點時系統即時查詢示意圖——共用,兩者存放的圖片來源
-// 與存取元件相同,但這裡的呼叫時機、頻率都不需要透過快取層。
-func (s *Server) fetchPexelsPhotoURL(ctx context.Context, query string) string {
-	apiKey := os.Getenv("PEXELS_API_KEY")
-	client := pexels.New(apiKey)
-	pctx, cancel := context.WithTimeout(ctx, 8*time.Second)
-	defer cancel()
-
-	photo, ok, err := client.Search(pctx, query)
-	if err != nil || !ok {
-		return ""
-	}
-	return photo.ImageURL
 }
 
 // GET /internal/maintenance/attractions?city={城市名}
@@ -377,30 +312,56 @@ func (s *Server) handleMaintenanceAttractionCities(w http.ResponseWriter, r *htt
 	writeJSON(w, http.StatusOK, map[string]any{"cities": cities})
 }
 
+// GET /internal/maintenance/attractions/query?status={狀態名}&city={城市名,選填}
+//
+// 通用的景點區域「狀態」查詢入口——供 tripace-cli 的
+// attraction query -status <狀態名> 指令使用(見該指令的完整說明)。
+// 2026-10 新增,目前只支援一種 status 值("no-google-photo"),刻意設計
+// 成通用入口(用 status 字串挑選查詢邏輯,而非每種狀態各自開一支獨立
+// 端點)——之後要再加其他「核對範圍」查詢(例如之前就有、走 admin 網頁
+// 獨立端點的「缺 place_id」查詢,見
+// internal/adminconsole/attraction_place_id_check.go)時,只需要在這支
+// handler 的 switch 多加一個 case,不需要讓 CLI 再多學一支新端點網址。
+// status 不在已知清單時回 400,不是靜默回空陣列——呼叫端需要明確知道
+// 「這個狀態名打錯了」還是「這個狀態確實查無結果」兩種情況的差異。
+func (s *Server) handleMaintenanceAttractionQuery(w http.ResponseWriter, r *http.Request) {
+	status := r.URL.Query().Get("status")
+	city := r.URL.Query().Get("city")
+
+	var attractions []model.Attraction
+	var err error
+	switch status {
+	case "no-google-photo":
+		attractions, err = s.store.ListAttractionsMissingGooglePhoto(city)
+	case "":
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 status 查詢參數")
+		return
+	default:
+		writeErr(w, http.StatusBadRequest, "invalid_input", "未知的 status "+status+"(目前僅支援 no-google-photo)")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": status, "city": city, "attractions": attractions})
+}
+
 // DELETE /internal/maintenance/attractions/{id}
 //
 // 對齊 tripace-cli 原本 attraction-delete 子命令(-db 模式)的行為(見
 // cmd/cli/db.go 移除前的 dbClient.attractionDelete)。
 //
-// 刪除資料庫記錄前,先查出這筆的 photo_url,若是我方 GCS 的物件(見
-// s.photoUploader.Delete 的判斷邏輯——只有真的屬於這個 bucket 的 URL
-// 才會發出刪除請求),一併清掉對應的 GCS 物件,避免刪除景點後 bucket
-// 裡留下再也沒有任何資料庫記錄指向的孤兒檔案。GCS 刪除失敗只記錄
-// warning、不阻擋資料庫記錄的刪除——理由同 photostorage 落地失敗時的
-// 既有降級慣例:清理照片是這個操作的加分項,不是核心目的(核心目的是
-// 刪除這筆景點區域資料),不該讓一個次要步驟的失敗擋下使用者明確要求
-// 的刪除操作。
+// attractions.photo_url 這個相容欄位已經連同資料庫欄位本身徹底移除
+// (見 cmd/migrate-drop-photo-url 的完整說明)——刪除這筆景點區域資料
+// 前不再需要額外清理 GCS 上的對應照片物件(該欄位從未真的落地圖片到
+// 這支端點管得到的物件路徑,見 handleMaintenanceAttractionAdd 的完整
+// 說明)。
 func (s *Server) handleMaintenanceAttractionDelete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
 		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少景點 ID")
 		return
-	}
-
-	if a, err := s.store.GetAttraction(id); err == nil && a.PhotoURL != nil {
-		if err := s.photoUploader.Delete(r.Context(), *a.PhotoURL); err != nil {
-			log.Printf("刪除景點 %s 的 GCS 照片失敗(不阻擋刪除操作): %v", id, err)
-		}
 	}
 
 	if err := s.store.DeleteAttraction(id); err != nil {

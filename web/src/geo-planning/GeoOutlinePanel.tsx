@@ -467,7 +467,7 @@ export function GeoOutlinePanel({
     fetchGeoPlacePhoto(cfg, placeId, name)
       .then((result) => {
         if (cancelled) return
-        onGeocodeCandidatePhoto?.(placeId, result.photoUrl ?? null)
+        onGeocodeCandidatePhoto?.(placeId, result.googlePhotoUrls?.[0] ?? null)
       })
       .catch(() => {})
     return () => {

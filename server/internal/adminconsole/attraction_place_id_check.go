@@ -1,13 +1,11 @@
 // 「Attraction 缺少 Google Place ID 核對」(GET /admin/api/
 // attraction-missing-place-id-check)——列出 attractions 表裡
-// place_id 為 NULL 或空字串的全部景點。store.attractionRow.PlaceID 的
-// 註解仍記載著「PlaceID 為空時維持 PhotoURL 這條 fallback 路徑」的舊
-// 設計,但 photo_url 已經明確不再是主題卡的有效圖片來源(見
-// AttractionInfoPanel.tsx:2026-09 拿掉 fallbackUrl 的變更)——這代表
-// 這份清單裡的地點,不論資料庫裡有沒有 photo_url,主題卡實際上都只會
-// 顯示 placeholder,沒有真正能顯示的圖片。列出來讓後台操作者知道範圍,
-// 對應的修法是替這些景點補上正確的 Google Place ID,不是繼續依賴
-// photo_url。
+// place_id 為 NULL 或空字串的全部景點。這份清單裡的地點,主題卡實際上
+// 都只會顯示 placeholder,沒有真正能顯示的圖片(2026-10 起
+// attractions.photo_url 這個相容欄位已經連同資料庫欄位本身一併移除,
+// 見 cmd/migrate-drop-photo-url 的完整說明,連「資料庫裡還留著一張不會
+// 被使用的舊快照」這種中繼狀態都不存在了)。列出來讓後台操作者知道範圍,
+// 對應的修法是替這些景點補上正確的 Google Place ID。
 //
 // GET 端點本身純唯讀,只負責列出範圍。POST .../refetch(見下方
 // refetchAttractionPlaceID)是後續加上的「一鍵重查」動作——用景點既有的
@@ -40,13 +38,6 @@ type attractionMissingPlaceIDRow struct {
 	Name     string `json:"name"`
 	CityName string `json:"cityName"`
 	IsTheme  bool   `json:"isTheme"`
-	// HasStalePhotoURL:這個景點的 photo_url 欄位是否有值——命名刻意
-	// 強調「stale」:photo_url 已經明確不再是主題卡的有效圖片來源(見
-	// 本檔案開頭的完整說明),這裡帶出這個欄位不是說「這筆資料還有救」,
-	// 而是讓後台操作者分辨兩種情況——true 代表資料庫裡還留著一張不會
-	// 被使用的舊快照(該補的是 place_id,不是照抄這張舊圖);false 代表
-	// 連這張都沒有,主題卡百分之百顯示 placeholder。
-	HasStalePhotoURL bool `json:"hasStalePhotoUrl"`
 }
 
 type attractionMissingPlaceIDResponse struct {
@@ -65,11 +56,10 @@ func (h *Handler) checkAttractionMissingPlaceID(w http.ResponseWriter, r *http.R
 			continue
 		}
 		out = append(out, attractionMissingPlaceIDRow{
-			ID:               a.ID,
-			Name:             a.Name,
-			CityName:         a.CityName,
-			IsTheme:          a.IsTheme,
-			HasStalePhotoURL: a.PhotoURL != nil && *a.PhotoURL != "",
+			ID:       a.ID,
+			Name:     a.Name,
+			CityName: a.CityName,
+			IsTheme:  a.IsTheme,
 		})
 	}
 	writeJSON(w, http.StatusOK, attractionMissingPlaceIDResponse{Attractions: out})

@@ -129,7 +129,7 @@ func TestDiffLite_EmptyBothSides(t *testing.T) {
 // ---- 第二層：完整欄位比對 ----
 
 // FieldDiff 是單筆記錄的欄位級差異——供 dry-run 報告顯示「哪個欄位不同」
-// (見設計文件的 dry-run 報告範例："Summary 不同、PhotoURL 不同")。
+// (見設計文件的 dry-run 報告範例："Summary 不同")。
 func TestCompareFields_Identical(t *testing.T) {
 	a := attr("lmk_1", "清水寺", ts("2026-08-01T00:00:00Z"))
 	b := attr("lmk_1", "清水寺", ts("2026-08-05T00:00:00Z")) // UpdatedAt 不同，但不參與內容比對
@@ -155,14 +155,12 @@ func TestCompareFields_UpdatedAtNeverCounted(t *testing.T) {
 func TestCompareFields_DetectsFieldChanges(t *testing.T) {
 	a := attr("lmk_1", "清水寺", ts("2026-08-01T00:00:00Z"))
 	a.Summary = strPtr("原始介紹")
-	a.PhotoURL = strPtr("https://example.com/old.jpg")
 
 	b := a
 	b.Summary = strPtr("更新後的介紹")
-	b.PhotoURL = strPtr("https://example.com/new.jpg")
 
 	diffs := CompareFields(a, b)
-	wantFields := map[string]bool{"Summary": true, "PhotoURL": true}
+	wantFields := map[string]bool{"Summary": true}
 	if len(diffs) != len(wantFields) {
 		t.Fatalf("差異欄位數 = %d，預期 %d（%v）", len(diffs), len(wantFields), diffs)
 	}
@@ -173,22 +171,8 @@ func TestCompareFields_DetectsFieldChanges(t *testing.T) {
 	}
 }
 
-func TestCompareFields_PhotoURLParticipates(t *testing.T) {
-	// 明確覆蓋設計文件的決策：「PhotoURL 雖然常是自動查詢帶入的，仍一視
-	// 同仁納入比對」——不因為它常是自動填入的就被排除在比對範圍外。
-	a := attr("lmk_1", "清水寺", ts("2026-08-01T00:00:00Z"))
-	a.PhotoURL = strPtr("https://example.com/a.jpg")
-	b := a
-	b.PhotoURL = strPtr("https://example.com/b.jpg")
-
-	diffs := CompareFields(a, b)
-	if len(diffs) != 1 || diffs[0].Field != "PhotoURL" {
-		t.Errorf("CompareFields = %v，預期只有 PhotoURL 一項差異", diffs)
-	}
-}
-
 func TestCompareFields_NilVsNonNilSummary(t *testing.T) {
-	// Summary/PhotoURL 是 *string（可能是 nil）——nil 對非 nil 也要能
+	// Summary 是 *string（可能是 nil）——nil 對非 nil 也要能
 	// 正確判定為「不同」，不能直接對指標做比較或在解參考時 panic。
 	a := attr("lmk_1", "清水寺", ts("2026-08-01T00:00:00Z"))
 	a.Summary = nil

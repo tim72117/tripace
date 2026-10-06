@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from './api'
-import type { AttractionMissingPlaceID, ExternalServiceStatus, GeoAPICallStats, GeoRateLimit, PathRequestStats, PlaceDetailsZeroPhotoTarget, RefetchAttractionPlaceIDResponse, SchemaCheck, TimelineBucket, UserSummary } from './api'
+import type { AttractionMissingPlaceID, ExternalServiceStatus, GeoAPICallStats, GeoRateLimit, PathRequestStats, RefetchAttractionPlaceIDResponse, SchemaCheck, TimelineBucket, UserSummary } from './api'
 import { TimelineChart } from './TimelineChart'
 
 export default function App() {
@@ -64,7 +64,7 @@ function Login({ onLoggedIn }: { onLoggedIn: (email: string) => void }) {
   )
 }
 
-type Tab = 'users' | 'external' | 'requests' | 'geo-api' | 'geo-rate-limits' | 'photo-target-check' | 'attraction-missing-place-id' | 'schema'
+type Tab = 'users' | 'external' | 'requests' | 'geo-api' | 'geo-rate-limits' | 'attraction-missing-place-id' | 'schema'
 
 function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOut: () => void }) {
   const [tab, setTab] = useState<Tab>('users')
@@ -105,9 +105,6 @@ function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOu
         <button className={tab === 'geo-rate-limits' ? 'tab active' : 'tab'} onClick={() => setTab('geo-rate-limits')}>
           Google API rate limits
         </button>
-        <button className={tab === 'photo-target-check' ? 'tab active' : 'tab'} onClick={() => setTab('photo-target-check')}>
-          Photo target=0 check
-        </button>
         <button className={tab === 'attraction-missing-place-id' ? 'tab active' : 'tab'} onClick={() => setTab('attraction-missing-place-id')}>
           Attractions missing place_id
         </button>
@@ -121,7 +118,6 @@ function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOu
       {tab === 'requests' && <RequestStatsTab onLoggedOut={onLoggedOut} />}
       {tab === 'geo-api' && <GeoAPIStatsTab onLoggedOut={onLoggedOut} />}
       {tab === 'geo-rate-limits' && <GeoRateLimitsTab onLoggedOut={onLoggedOut} />}
-      {tab === 'photo-target-check' && <PhotoTargetZeroCheckTab onLoggedOut={onLoggedOut} />}
       {tab === 'attraction-missing-place-id' && <AttractionMissingPlaceIDTab onLoggedOut={onLoggedOut} />}
       {tab === 'schema' && <SchemaCheckTab onLoggedOut={onLoggedOut} />}
     </div>
@@ -530,142 +526,14 @@ function GeoRateLimitsTab({ onLoggedOut }: { onLoggedOut: () => void }) {
   )
 }
 
-// PhotoTargetZeroCheckTab: lists every place_details_cache row where
-// google_photo_target_count is exactly 0 right now. That value is
-// ambiguous by itself (see PlaceDetailsZeroPhotoTarget's doc comment in
-// api.ts): it's the legitimate steady state for "confirmed with Google,
-// genuinely no photos", but it's also exactly what a since-fixed deadlock
-// bug used to leave for places that were never actually confirmed. Telling
-// the two cases apart requires an actual judgment call (e.g. looking the
-// place up on Google Maps) — this tab won't do that for you. Once an
-// operator has made that call and confirmed a row is a stale pre-fix
-// artifact, the "Reset" button resets google_photo_target_count back to
-// -1 (and new_photo_count back to 0) via the backend's dedicated reset
-// endpoint (2026-09 added) — it does not fetch a photo itself, it only
-// clears the stuck state so the next real query re-confirms with Google.
-function PhotoTargetZeroCheckTab({ onLoggedOut }: { onLoggedOut: () => void }) {
-  const [places, setPlaces] = useState<PlaceDetailsZeroPhotoTarget[] | null>(null)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
-  // resettingPlaceId: which row's Reset button is mid-request, if any —
-  // disables just that row's button (not the whole table) so an operator
-  // resetting one place isn't blocked from also resetting a different one
-  // while the first request is still in flight.
-  const [resettingPlaceId, setResettingPlaceId] = useState<string | null>(null)
-  const [resetError, setResetError] = useState('')
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const res = await api.photoTargetZeroCheck()
-      setPlaces(res.places)
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        onLoggedOut()
-        return
-      }
-      setError(err instanceof ApiError ? err.message : 'Failed to load')
-    } finally {
-      setLoading(false)
-    }
-  }, [onLoggedOut])
-
-  useEffect(() => {
-    void load()
-  }, [load])
-
-  const handleReset = useCallback(
-    async (placeId: string) => {
-      setResetError('')
-      setResettingPlaceId(placeId)
-      try {
-        await api.resetPhotoTarget(placeId)
-        // Reload the list rather than just removing the row locally — a
-        // successful reset moves google_photo_target_count away from 0,
-        // so the row should disappear from this WHERE-target=0 view, and
-        // reloading from the server is the simplest way to guarantee the
-        // displayed list matches what's actually in the database now.
-        await load()
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 401) {
-          onLoggedOut()
-          return
-        }
-        setResetError(err instanceof ApiError ? err.message : 'Failed to reset')
-      } finally {
-        setResettingPlaceId(null)
-      }
-    },
-    [load, onLoggedOut],
-  )
-
-  return (
-    <>
-      {error && <div className="error banner">{error}</div>}
-      {resetError && <div className="error banner">{resetError}</div>}
-
-      <section className="card">
-        <div className="section-head">
-          <h2>Photo target=0 check</h2>
-          <button className="ghost" onClick={() => void load()} disabled={loading}>
-            {loading ? 'Loading…' : 'Refresh'}
-          </button>
-        </div>
-        <p className="muted">
-          Every place below has google_photo_target_count = 0 right now. That's the legitimate value for "confirmed —
-          this place genuinely has no Google photos", but it's also what a since-fixed bug used to leave behind for
-          places that were never actually confirmed. Spot-check a row (e.g. on Google Maps) before resetting it —
-          Reset only clears the stuck state, it doesn't fetch a photo by itself.
-        </p>
-        {places !== null && <p className="muted">{places.length} place(s) currently at target=0.</p>}
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Place ID</th>
-                <th>Name</th>
-                <th>Google photo target count</th>
-                <th>Click count</th>
-                <th>Last confirmed</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(places ?? []).map((p) => (
-                <tr key={p.placeId}>
-                  <td>{p.placeId}</td>
-                  <td>{p.name}</td>
-                  <td>{p.googlePhotoTargetCount}</td>
-                  <td>{p.clickCount}</td>
-                  <td>{new Date(p.fetchedAt).toLocaleString()}</td>
-                  <td>
-                    <button
-                      className="ghost"
-                      onClick={() => void handleReset(p.placeId)}
-                      disabled={resettingPlaceId !== null && resettingPlaceId !== p.placeId}
-                    >
-                      {resettingPlaceId === p.placeId ? 'Resetting…' : 'Reset'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </>
-  )
-}
-
 // AttractionMissingPlaceIDTab: lists every attractions row where place_id
-// is NULL or empty. photo_url is no longer a valid photo source for the
-// theme card (the fallback was explicitly removed — see api.ts's doc
-// comment on AttractionMissingPlaceID) — every row here shows a
-// placeholder on the theme card regardless of hasStalePhotoUrl.
+// is NULL or empty — every row here shows a placeholder on the theme card
+// (2026-10: the attractions.photo_url compat field — and the database
+// column itself — has been fully removed, see api.ts's doc comment on
+// AttractionMissingPlaceID).
 //
 // "Refetch" (2026-09 added) is the admin-console equivalent of running
-// `tripace-cli attraction-set-place-id -id <id> -place "<name>"` by hand —
+// `tripace-cli attraction set-place-id -id <id> -place "<name>"` by hand —
 // it searches Google Places for cityName+name and writes back the first
 // candidate's place_id automatically. It is NOT a "figure out which rows
 // need fixing" automation (that judgment call is still this list's whole
@@ -683,8 +551,7 @@ function AttractionMissingPlaceIDTab({ onLoggedOut }: { onLoggedOut: () => void 
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   // refetchingId: which row's Refetch button is mid-request, if any —
-  // disables just that row's button (not the whole table), same pattern as
-  // PhotoTargetZeroCheckTab's resettingPlaceId above.
+  // disables just that row's button (not the whole table).
   const [refetchingId, setRefetchingId] = useState<string | null>(null)
   const [refetchError, setRefetchError] = useState('')
   const [refetchResult, setRefetchResult] = useState<RefetchAttractionPlaceIDResponse | null>(null)
@@ -722,8 +589,7 @@ function AttractionMissingPlaceIDTab({ onLoggedOut }: { onLoggedOut: () => void 
         // refetch moves place_id away from empty, so the row should
         // disappear from this list, and reloading from the server is the
         // simplest way to guarantee the displayed list matches what's
-        // actually in the database now (same reasoning as
-        // PhotoTargetZeroCheckTab's handleReset above).
+        // actually in the database now.
         await load()
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
@@ -757,11 +623,9 @@ function AttractionMissingPlaceIDTab({ onLoggedOut }: { onLoggedOut: () => void 
           </button>
         </div>
         <p className="muted">
-          Every attraction below has no Google Place ID on file — theme cards for these show a placeholder image,
-          since the old photo_url fallback was explicitly removed. "Has stale photo_url" only tells you whether the
-          database still carries an unused snapshot, not that the row is fine as-is. "Refetch" searches Google Places
-          for this attraction's city+name and writes back the first match's place_id — it does not verify the match
-          is correct, so check the result banner before trusting it.
+          Every attraction below has no Google Place ID on file — theme cards for these show a placeholder image.
+          "Refetch" searches Google Places for this attraction's city+name and writes back the first match's
+          place_id — it does not verify the match is correct, so check the result banner before trusting it.
         </p>
         {attractions !== null && <p className="muted">{attractions.length} attraction(s) currently missing place_id.</p>}
         <div className="table-scroll">
@@ -772,7 +636,6 @@ function AttractionMissingPlaceIDTab({ onLoggedOut }: { onLoggedOut: () => void 
                 <th>Name</th>
                 <th>City</th>
                 <th>Is theme</th>
-                <th>Has stale photo_url</th>
                 <th></th>
               </tr>
             </thead>
@@ -783,7 +646,6 @@ function AttractionMissingPlaceIDTab({ onLoggedOut }: { onLoggedOut: () => void 
                   <td>{a.name}</td>
                   <td>{a.cityName}</td>
                   <td>{a.isTheme ? 'yes' : 'no'}</td>
-                  <td>{a.hasStalePhotoUrl ? 'yes' : 'no'}</td>
                   <td>
                     <button
                       className="ghost"

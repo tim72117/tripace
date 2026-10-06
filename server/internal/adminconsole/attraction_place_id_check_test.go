@@ -39,7 +39,6 @@ func TestAttractionMissingPlaceIDCheck_ReturnsOnlyMissingPlaceID(t *testing.T) {
 	st := newTestStore(t)
 
 	placeID := "ChIJfakeplaceid"
-	photoURL := "https://storage.googleapis.com/example/photo.jpg"
 
 	// has-place-id:有 place_id,不該出現在結果裡。
 	if _, err := st.CreateAttraction(model.Attraction{
@@ -48,19 +47,19 @@ func TestAttractionMissingPlaceIDCheck_ReturnsOnlyMissingPlaceID(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreateAttraction failed: %v", err)
 	}
-	// missing-place-id-with-photo:place_id 為 nil,但有 photo_url——
-	// 應該出現在結果裡,且 hasStalePhotoUrl 為 true。
+	// missing-place-id-is-theme:place_id 為 nil、IsTheme 為 true——
+	// 應該出現在結果裡。
 	if _, err := st.CreateAttraction(model.Attraction{
-		Name: "缺地點ID但有快照", CityName: "京都", Lat: 35, Lng: 135,
-		IsTheme: true, PhotoURL: &photoURL,
+		Name: "缺地點ID的主題點", CityName: "京都", Lat: 35, Lng: 135,
+		IsTheme: true,
 	}); err != nil {
 		t.Fatalf("CreateAttraction failed: %v", err)
 	}
 	// missing-place-id-empty-string:place_id 是空字串(而非 nil)——
-	// 同樣視為缺少,應該出現在結果裡,且 hasStalePhotoUrl 為 false。
+	// 同樣視為缺少,應該出現在結果裡。
 	emptyPlaceID := ""
 	if _, err := st.CreateAttraction(model.Attraction{
-		Name: "缺地點ID也沒快照", CityName: "台北", Lat: 25, Lng: 121,
+		Name: "缺地點ID也非主題點", CityName: "台北", Lat: 25, Lng: 121,
 		PlaceID: &emptyPlaceID,
 	}); err != nil {
 		t.Fatalf("CreateAttraction failed: %v", err)
@@ -112,22 +111,15 @@ func TestAttractionMissingPlaceIDCheck_ReturnsOnlyMissingPlaceID(t *testing.T) {
 	for _, a := range got.Attractions {
 		byName[a.Name] = a
 	}
-	withPhoto, ok := byName["缺地點ID但有快照"]
+	isThemeRow, ok := byName["缺地點ID的主題點"]
 	if !ok {
-		t.Fatalf("expected 缺地點ID但有快照 in results, got %+v", got.Attractions)
+		t.Fatalf("expected 缺地點ID的主題點 in results, got %+v", got.Attractions)
 	}
-	if !withPhoto.HasStalePhotoURL {
-		t.Fatalf("expected HasStalePhotoURL=true for 缺地點ID但有快照, got %+v", withPhoto)
+	if !isThemeRow.IsTheme {
+		t.Fatalf("expected IsTheme=true for 缺地點ID的主題點, got %+v", isThemeRow)
 	}
-	if !withPhoto.IsTheme {
-		t.Fatalf("expected IsTheme=true for 缺地點ID但有快照, got %+v", withPhoto)
-	}
-	withoutPhoto, ok := byName["缺地點ID也沒快照"]
-	if !ok {
-		t.Fatalf("expected 缺地點ID也沒快照 in results, got %+v", got.Attractions)
-	}
-	if withoutPhoto.HasStalePhotoURL {
-		t.Fatalf("expected HasStalePhotoURL=false for 缺地點ID也沒快照, got %+v", withoutPhoto)
+	if _, ok := byName["缺地點ID也非主題點"]; !ok {
+		t.Fatalf("expected 缺地點ID也非主題點 in results, got %+v", got.Attractions)
 	}
 	if _, ok := byName["有地點ID的景點"]; ok {
 		t.Fatalf("attraction with place_id should not appear in results, got %+v", got.Attractions)

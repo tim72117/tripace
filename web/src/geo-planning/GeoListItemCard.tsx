@@ -92,7 +92,7 @@ export function GeoListItemCard({
         // IntersectionObserver 既有用法。
         observer.disconnect()
         fetchGeoPlacePhoto(cfg, pid, name)
-          .then((result) => onPhotoLoaded(pid, result.photoUrl ?? null))
+          .then((result) => onPhotoLoaded(pid, result.googlePhotoUrls?.[0] ?? null))
           .catch(() => onPhotoLoaded(pid, null))
       },
       // rootMargin 讓查詢提前一點觸發(捲動到剛好看到一半時圖片已經在

@@ -102,11 +102,10 @@ func TestHandlePublicGeoPlaceDetailsAny_NotAttraction_StillSucceeds(t *testing.T
 }
 
 // Google fallback 路徑(attractions 表查無這個 placeId 時)只在
-// google_place_photos 表已有既有快取時才帶 photoUrl(見
-// handlePublicGeoPlaceDetailsAny 的完整說明——純讀快取,不觸發任何下載
-// 或漸進補圖決策)。這個測試場景完全沒有寫入過快取,確認回應正確地不會
-// 帶出這個欄位(不是漏寫,是真的沒有資料可帶),也確認不會意外多出
-// photoRefs 這種內部欄位。
+// photo_assets 已有有效紀錄時才帶 googlePhotoUrls(見
+// handlePublicGeoPlaceDetailsAny 的完整說明)。這個測試場景完全沒有寫入
+// 過任何照片紀錄,確認回應正確地不會帶出這個欄位(不是漏寫,是真的沒有
+// 資料可帶),也確認不會意外多出 photoRefs 這種內部欄位。
 func TestHandlePublicGeoPlaceDetailsAny_NoPhotosField_ResponseOmitsPhotos(t *testing.T) {
 	fakeGateway := &fakePlaceDetailsGateway{detailsBody: placeDetailsJSON("測試地點", 3)}
 	s := newTestServerWithFakePlaceDetailsGeoGeocodeClient(t, fakeGateway)
@@ -122,8 +121,8 @@ func TestHandlePublicGeoPlaceDetailsAny_NoPhotosField_ResponseOmitsPhotos(t *tes
 	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
 		t.Fatalf("failed to decode raw response: %v", err)
 	}
-	if _, ok := raw["photoUrl"]; ok {
-		t.Error("expected response to NOT include a photoUrl field")
+	if _, ok := raw["googlePhotoUrls"]; ok {
+		t.Error("expected response to NOT include a googlePhotoUrls field")
 	}
 	if _, ok := raw["photoRefs"]; ok {
 		t.Error("expected response to NOT include a photoRefs field")
@@ -136,31 +135,27 @@ func TestHandlePublicGeoPlaceDetailsAny_NoPhotosField_ResponseOmitsPhotos(t *tes
 // Name/Summary,不等待任何 Google 查詢完成才回應。
 //
 // 2026-10 改名(原名 *_SkipsGoogleAndReturnsStoredData):套用跟
-// handleGeoPlaceDetails 一致的漸進補圖機制後(見 handler 的完整
-// 說明),這條分支不再是「完全不打 Google」——這裡的 attraction
-// 對 place_details_cache 而言是全新的一列,previousGoogleTarget 必定
-// 是 sentinel -1,shouldAddGooglePlacePhoto 必定判定要觸發,背景會
-// 啟動 refreshGooglePlacePhotoInBackground 嘗試呼叫
-// fakeGateway.ListPlacePhotoRefs(這裡的 fakeGateway 沒設
-// detailsBody,背景呼叫會失敗、記一行 log,但不影響這次同步回應或
-// 測試斷言——這正是這次改動刻意接受的行為:已建檔分支從零成本
-// 變成也會觸發背景補圖嘗試,舊名稱「SkipsGoogle」已經不符合新行為,
-// 改名反映「這次 HTTP 回應仍然同步、不等 Google」這個真正被驗證的
-// 性質)。
+// handleGeoPlaceDetails 一致的補圖節奏(photoCapForClickCount/
+// decidePlacePhotoRefreshIndex,見 handler 的完整說明)後,這條分支
+// 不再是「完全不打 Google」——這裡的 attraction 第一次被查詢,
+// photo_assets 查無任何新鮮紀錄,decidePlacePhotoRefreshIndex 必定
+// 判定要觸發,背景會啟動 backgroundFillPlacePhoto 嘗試呼叫
+// fakeGateway.GetPlaceDetails(這裡的 fakeGateway 沒設 detailsBody,
+// 背景呼叫會失敗、記一行 log,但不影響這次同步回應或測試斷言——這正是
+// 這次改動刻意接受的行為:已建檔分支從零成本變成也會觸發背景補圖
+// 嘗試,舊名稱「SkipsGoogle」已經不符合新行為,改名反映「這次 HTTP
+// 回應仍然同步、不等 Google」這個真正被驗證的性質)。
 //
-// 2026-09:photoUrl 不再測試會回傳 attraction.PhotoURL——使用者明確
-// 要求「不用回退」,這支端點現在只查 photo_assets(見
-// store.GetFreshPhotoAssetURL 的完整說明),查無就不帶 photoUrl 欄位,
-// 不論 attraction 本身是否存了 PhotoURL。這裡刻意仍在 seed 資料裡帶
-// PhotoURL 欄位,是為了確認「即使 attraction 有這個欄位,回應也不會
-// 誤用它」,不是遺留的無意義欄位。
+// attractions.PhotoURL 這個相容欄位已經連同資料庫欄位本身徹底移除
+// (見 cmd/migrate-drop-photo-url 的完整說明)——這支端點只查
+// photo_assets(見 store.ListFreshPhotoAssetURLsForPlace 的完整說明),
+// 查無就不帶 googlePhotoUrls 欄位。
 func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_ReturnsStoredDataSynchronously(t *testing.T) {
 	fakeGateway := &fakePlaceDetailsGateway{}
 	s := newTestServerWithFakePlaceDetailsGeoGeocodeClient(t, fakeGateway)
 
 	placeID := "ChIJ_attraction_record_test"
 	summary := "已建檔景點的簡介"
-	photoURL := "https://example.com/photo.jpg"
 	if _, err := s.store.CreateAttractionWithID(model.Attraction{
 		ID:       "lmk_test_place_details_any",
 		Name:     "已建檔景點",
@@ -169,7 +164,6 @@ func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_ReturnsStoredData
 		Lng:      120.2,
 		Level:    2,
 		Summary:  &summary,
-		PhotoURL: &photoURL,
 		PlaceID:  &placeID,
 	}); err != nil {
 		t.Fatalf("failed to seed attraction: %v", err)
@@ -197,30 +191,27 @@ func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_ReturnsStoredData
 	if !body.Found || body.Name != "已建檔景點" || body.Summary != "已建檔景點的簡介" {
 		t.Fatalf("unexpected response: %+v", body)
 	}
-	if _, ok := raw["photoUrl"]; ok {
-		t.Error("expected response to NOT include a photoUrl field when photo_assets has no record")
+	if _, ok := raw["googlePhotoUrls"]; ok {
+		t.Error("expected response to NOT include a googlePhotoUrls field when photo_assets has no record")
 	}
 }
 
 // TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_UsesPhotoAssetWhenPresent
 // 驗證 attractions 表命中時,若 photo_assets 已經有這個 place_id 的
 // 有效(未過期)紀錄,回應要帶上它的 GCSURL——這是目前唯一的正式照片
-// 來源(見 store.GetFreshPhotoAssetURL 的完整說明),不論 attraction 本身
-// 是否存了 PhotoURL 都一樣優先用 photo_assets。
+// 來源(見 store.GetFreshPhotoAssetURL 的完整說明)。
 func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_UsesPhotoAssetWhenPresent(t *testing.T) {
 	fakeGateway := &fakePlaceDetailsGateway{}
 	s := newTestServerWithFakePlaceDetailsGeoGeocodeClient(t, fakeGateway)
 
 	placeID := "ChIJ_uses_photo_asset_test"
-	pexelsPhotoURL := "https://images.pexels.com/photos/example.jpg"
 	if _, err := s.store.CreateAttractionWithID(model.Attraction{
 		ID:       "lmk_uses_photo_asset_test",
-		Name:     "有 Pexels 建檔照但也有 photo_assets 紀錄的景點",
+		Name:     "有 photo_assets 紀錄的景點",
 		CityName: "台南",
 		Lat:      23.0,
 		Lng:      120.2,
 		Level:    2,
-		PhotoURL: &pexelsPhotoURL,
 		PlaceID:  &placeID,
 	}); err != nil {
 		t.Fatalf("failed to seed attraction: %v", err)
@@ -246,22 +237,21 @@ func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_UsesPhotoAssetWhe
 		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		PhotoURL string `json:"photoUrl"`
+		GooglePhotoURLs []string `json:"googlePhotoUrls"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	if body.PhotoURL != "https://storage.googleapis.com/test-bucket/real-photo.jpg" {
-		t.Fatalf("expected photo_assets url to be used, got: %q", body.PhotoURL)
+	if len(body.GooglePhotoURLs) != 1 || body.GooglePhotoURLs[0] != "https://storage.googleapis.com/test-bucket/real-photo.jpg" {
+		t.Fatalf("expected photo_assets url to be used, got: %+v", body.GooglePhotoURLs)
 	}
 }
 
 // TestHandlePublicGeoPlaceDetailsAny_MultiplePhotoAssets_ReturnsGooglePhotoUrls
-// 驗證 2026-10 新增的多圖瀏覽需求(使用者明確要求「ai plan 景點的照片
-// 比照景點介紹卡照片可以多張瀏覽」):photo_assets 底下同一個 place_id
-// 若有多筆有效紀錄,回應要把完整清單一併帶在 googlePhotoUrls,前端
-// PhotoCarousel 才有多圖可以瀏覽;photoUrl 則維持等於清單第一張,向後
-// 相容舊版只讀 photoUrl 的呼叫端。
+// 驗證多圖瀏覽需求(使用者明確要求「ai plan 景點的照片比照景點介紹卡
+// 照片可以多張瀏覽」):photo_assets 底下同一個 place_id 若有多筆有效
+// 紀錄,回應要把完整清單一併帶在 googlePhotoUrls,前端 PhotoCarousel
+// 才有多圖可以瀏覽。
 func TestHandlePublicGeoPlaceDetailsAny_MultiplePhotoAssets_ReturnsGooglePhotoUrls(t *testing.T) {
 	fakeGateway := &fakePlaceDetailsGateway{}
 	s := newTestServerWithFakePlaceDetailsGeoGeocodeClient(t, fakeGateway)
@@ -301,27 +291,21 @@ func TestHandlePublicGeoPlaceDetailsAny_MultiplePhotoAssets_ReturnsGooglePhotoUr
 		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		PhotoURL        string   `json:"photoUrl"`
 		GooglePhotoURLs []string `json:"googlePhotoUrls"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	if body.PhotoURL != "https://storage.googleapis.com/test-bucket/photo-0.jpg" {
-		t.Fatalf("expected photoUrl to be first photo asset, got: %q", body.PhotoURL)
-	}
-	if len(body.GooglePhotoURLs) != 3 {
-		t.Fatalf("expected 3 googlePhotoUrls, got %d: %v", len(body.GooglePhotoURLs), body.GooglePhotoURLs)
+	if len(body.GooglePhotoURLs) != 3 || body.GooglePhotoURLs[0] != "https://storage.googleapis.com/test-bucket/photo-0.jpg" {
+		t.Fatalf("expected 3 googlePhotoUrls starting with photo-0, got %d: %v", len(body.GooglePhotoURLs), body.GooglePhotoURLs)
 	}
 }
 
 // TestHandlePublicGeoPlaceDetailsAny_GoogleFallbackWithStalePhoto_OmitsPhotoURL
-// 驗證 2026-09 重構後的 Google fallback 路徑(attractions 表查無這個
-// placeId 時走的分支,見 handler 的完整說明)——這支端點原本會直接撿
-// google_place_photos 表現成的第一筆快取當 photoUrl,使用者明確要求
-// 「不用回退」拿掉這條路徑後,只信任 photo_assets(GetFreshPhotoAssetURL)。
-// google_place_photos 表即使已經有其他呼叫端留下的快取列,這裡也不該
-// 讀取它,查無 photo_assets 時回應乾脆不帶 photoUrl 這個欄位。
+// 驗證 Google fallback 路徑(attractions 表查無這個 placeId 時走的分支,
+// 見 handler 的完整說明)只信任 photo_assets(ListFreshPhotoAssetURLsForPlace)
+// ——google_place_photos 表即使已經有其他呼叫端留下的快取列,這裡也不該
+// 讀取它,查無 photo_assets 時回應乾脆不帶 googlePhotoUrls 這個欄位。
 func TestHandlePublicGeoPlaceDetailsAny_GoogleFallbackWithStalePhoto_OmitsPhotoURL(t *testing.T) {
 	fakeGateway := &fakePlaceDetailsGateway{detailsBody: placeDetailsJSON("有快取照片的地點", 0)}
 	s := newTestServerWithFakePlaceDetailsGeoGeocodeClient(t, fakeGateway)
@@ -341,9 +325,9 @@ func TestHandlePublicGeoPlaceDetailsAny_GoogleFallbackWithStalePhoto_OmitsPhotoU
 		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		Found    bool   `json:"found"`
-		Name     string `json:"name"`
-		PhotoURL string `json:"photoUrl"`
+		Found           bool     `json:"found"`
+		Name            string   `json:"name"`
+		GooglePhotoURLs []string `json:"googlePhotoUrls"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
@@ -351,8 +335,8 @@ func TestHandlePublicGeoPlaceDetailsAny_GoogleFallbackWithStalePhoto_OmitsPhotoU
 	if !body.Found || body.Name != "有快取照片的地點" {
 		t.Fatalf("unexpected response: %+v", body)
 	}
-	if body.PhotoURL != "" {
-		t.Fatalf("photoUrl 不該退回 google_place_photos 的舊快取,got: %q", body.PhotoURL)
+	if len(body.GooglePhotoURLs) != 0 {
+		t.Fatalf("googlePhotoUrls 不該退回 google_place_photos 的舊快取,got: %v", body.GooglePhotoURLs)
 	}
 }
 
@@ -401,31 +385,31 @@ func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_WritesPlaceDetail
 	}
 }
 
-// TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_WithinRecheckWindow_SkipsGoogleCall
+// TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_PhotoAlreadyFresh_SkipsGoogleCall
 // 2026-10 code review 發現的測試覆蓋缺口:既有測試全部是「第一次查詢
-// 這個 placeId」的情境,google_photo_target_count 固定是 sentinel -1,
-// shouldAddGooglePlacePhoto 必定回傳 true——只驗證過「第一次查詢必定
-// 觸發」這條路徑,從未驗證過「已經確認過 target、且距離上次確認未滿
-// 7 天」時點擊節奏與時間都不該觸發的最常見穩態路徑。若日後
-// placeDetailsTargetRecheckMaxAge 常數或 SetCachedPlaceDetails 的
-// DoUpdates 欄位被改錯,導致這條路徑誤判成「該觸發」,不會有任何測試
-// 捕捉到這個回歸,會在正式環境悄悄推高 Google Photo API 配額用量。
+// 這個 placeId、本地完全沒有任何 photo_assets 紀錄」的情境,
+// decidePlacePhotoRefreshIndex 必定回傳 shouldFetch=true——只驗證過
+// 「該觸發」這條路徑,從未驗證過「cap 範圍內已經有新鮮照片」時不該
+// 觸發的最常見穩態路徑。若日後 photoCapForClickCount/
+// decidePlacePhotoRefreshIndex 被改錯,導致這條路徑誤判成「該觸發」,
+// 不會有任何測試捕捉到這個回歸,會在正式環境悄悄推高 Google Photo
+// API 配額用量。
 //
-// 比照地圖版同類測試 TestHandleGeoPlaceDetails_CacheHit_NoTrigger_SkipsGoogleCall
-// 的手法:先呼叫一次端點讓快取列建立,再用 UpdatePlacePhotoProgress
-// 手動把 google_photo_target_count 設成 0(代表上次已經跟 Google
-// 確認過、這個地點沒有照片可補,newPhotoCount(0) >= target(0) 恆為
-// 真,shouldAddGooglePlacePhoto 必定回傳 false,不論 click_count 多少
-// 都不會誤觸發)並 touchFetchedAt=true(讓 FetchedAt 重置成現在,確保
-// 時間觸發條件不成立),第二次查詢時斷言完全沒有呼叫 gateway。
-func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_WithinRecheckWindow_SkipsGoogleCall(t *testing.T) {
+// 2026-10 改寫(原本測的是舊機制「google_photo_target_count 手動設成
+// 0」這個已經不存在的概念,見 decidePlacePhotoRefreshIndex 的完整
+// 說明:新機制只看 photo_assets 的新鮮度,不再看任何計數器)——改成
+// 直接寫一筆新鮮的 photo_assets 紀錄(writeFreshPhotoAsset,見
+// geo_outline_place_photo_progress_test.go 的完整說明)模擬「cap
+// 範圍內(click_count<10 時 cap=1)index=0 已經是新鮮照片」的穩態,
+// 斷言完全沒有呼叫 gateway。
+func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_PhotoAlreadyFresh_SkipsGoogleCall(t *testing.T) {
 	fakeGateway := &fakePlaceDetailsGateway{}
 	s := newTestServerWithFakePlaceDetailsGeoGeocodeClient(t, fakeGateway)
 
-	placeID := "ChIJ_within_recheck_window_test"
+	placeID := "ChIJ_photo_already_fresh_test"
 	if _, err := s.store.CreateAttractionWithID(model.Attraction{
-		ID:       "lmk_within_recheck_window_test",
-		Name:     "測試 7 天內重查不觸發的景點",
+		ID:       "lmk_photo_already_fresh_test",
+		Name:     "測試照片已新鮮不觸發的景點",
 		CityName: "台南",
 		Lat:      23.0,
 		Lng:      120.2,
@@ -436,20 +420,17 @@ func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_WithinRecheckWind
 	}
 
 	// 直接用 store 層函式手動建好快取列,不透過 HTTP 呼叫觸發第一次
-	// 查詢——若改成先打一次端點讓 target=-1 的 sentinel 分支自然觸發
-	// 背景 goroutine,會在這裡清空 fakeGateway.calls 時跟那個尚未結束
-	// 的背景 goroutine 產生資料競爭(用 -race 實測踩到:
-	// fakePlaceDetailsGateway.Do 寫入 calls 的同時測試主線程在清空同一個
-	// 切片)。手動建列完全是同步的 DB 寫入,不會啟動任何背景查詢,乾淨
-	// 避開這個時序問題。
-	if err := s.store.SetCachedPlaceDetails(placeID, "測試 7 天內重查不觸發的景點", "台南", 23.0, 120.2, 0, nil); err != nil {
+	// 查詢——若改成先打一次端點讓第一次查詢自然觸發背景 goroutine,
+	// 會在這裡清空 fakeGateway.calls 時跟那個尚未結束的背景 goroutine
+	// 產生資料競爭(用 -race 實測踩到:fakePlaceDetailsGateway.Do 寫入
+	// calls 的同時測試主線程在清空同一個切片)。手動建列完全是同步的
+	// DB 寫入,不會啟動任何背景查詢,乾淨避開這個時序問題。
+	if err := s.store.SetCachedPlaceDetails(placeID, "測試照片已新鮮不觸發的景點", "台南", 23.0, 120.2, 0, nil); err != nil {
 		t.Fatalf("SetCachedPlaceDetails failed: %v", err)
 	}
-	// target 確定成 0(無照片可補)、並 touchFetchedAt=true 讓 FetchedAt
-	// 設為現在,模擬「已經確認過、且在 7 天重查窗口內」的穩態。
-	if err := s.store.UpdatePlacePhotoProgress(placeID, 0, 0, true); err != nil {
-		t.Fatalf("UpdatePlacePhotoProgress failed: %v", err)
-	}
+	// cap(click_count<10)=1,index=0 已經是新鮮紀錄——decidePlacePhotoRefreshIndex
+	// 掃描 [0,1) 範圍會發現全部新鮮,不觸發。
+	writeFreshPhotoAsset(t, s, placeID, 0)
 
 	req := httptest.NewRequest(http.MethodGet, "/public/geo/place-details-any?placeId="+placeID, nil)
 	rec := httptest.NewRecorder()
@@ -459,7 +440,7 @@ func TestHandlePublicGeoPlaceDetailsAny_AttractionRecordExists_WithinRecheckWind
 		t.Fatalf("expected 200, got %d (body: %s)", rec.Code, rec.Body.String())
 	}
 	if len(fakeGateway.calls) != 0 {
-		t.Fatalf("7 天重查窗口內、target 已確定為 0 時不該呼叫 Google API,實際打了 %d 次: %v", len(fakeGateway.calls), fakeGateway.calls)
+		t.Fatalf("cap 範圍內照片已新鮮時不該呼叫 Google API,實際打了 %d 次: %v", len(fakeGateway.calls), fakeGateway.calls)
 	}
 
 	row, ok, err := s.store.GetCachedPlaceDetails(placeID, 999999*time.Hour)

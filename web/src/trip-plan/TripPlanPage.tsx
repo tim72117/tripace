@@ -103,9 +103,9 @@ function isRateLimitedError(err: unknown): boolean {
 // 交通卡查詢要等這裡查詢完成、座標確定之後才觸發,理由同原型同名函式的
 // 完整說明。
 //
-// fetchPhotoAssets——2026-10 新增,選填:查到資料但 photoUrl 為空時,
-// 進入跟地圖版 fetchPoiContent/retryWithPhotoAssetsOnly 完全一致的重試
-// 迴圈(見 PHOTO_RETRY_* 的完整說明),改呼叫這支純讀端點(對應後端
+// fetchPhotoAssets——選填:查到資料但 googlePhotoUrls 為空時,進入跟
+// 地圖版 fetchPoiContent/retryWithPhotoAssetsOnly 完全一致的重試迴圈
+// (見 PHOTO_RETRY_* 的完整說明),改呼叫這支純讀端點(對應後端
 // GET .../geo/place-photo-assets),不能重複呼叫 fetchPlaceDetails——
 // 後者每次呼叫都會觸發 IncrementPlaceClickCount,連續重試會重複推進
 // 漸進補圖的點擊節奏判斷,這是地圖版同樣的既有限制(見
@@ -114,7 +114,7 @@ function isRateLimitedError(err: unknown): boolean {
 function resolveAttractionForStep(
   stepId: string,
   placeId: string,
-  fetchPlaceDetails: (placeId: string) => Promise<{ found?: boolean; name?: string; summary?: string; photoUrl?: string; googlePhotoUrls?: string[]; lat?: number; lng?: number; attractionId?: string }>,
+  fetchPlaceDetails: (placeId: string) => Promise<{ found?: boolean; name?: string; summary?: string; googlePhotoUrls?: string[]; lat?: number; lng?: number; attractionId?: string; photoRefreshPending?: boolean }>,
   setTimeline: React.Dispatch<React.SetStateAction<PlanTimeline>>,
   isCancelled: () => boolean,
   onSettled: (lat: number, lng: number) => void,
@@ -122,12 +122,12 @@ function resolveAttractionForStep(
   // 重試那次結果如何(含再次被限流)都不再繼續重試,避免遇到持續限流的
   // 情況時無限延遲下去。
   isRetry = false,
-  fetchPhotoAssets?: (placeId: string) => Promise<{ photoUrl?: string; googlePhotoUrls?: string[] }>,
+  fetchPhotoAssets?: (placeId: string) => Promise<{ googlePhotoUrls?: string[] }>,
 ) {
   // retryPhotoOnly——見上方 fetchPhotoAssets 參數的完整說明,遞迴重試
-  // 迴圈,只更新 photoUrl 欄位,不動節點其餘已經確定的資料(name/desc/
-  // lat/lng 等在第一次查詢就已經寫入,不該因為照片重試而重複覆寫或
-  // 退回舊值)。
+  // 迴圈,只更新 googlePhotoUrls 欄位,不動節點其餘已經確定的資料
+  // (name/desc/lat/lng 等在第一次查詢就已經寫入,不該因為照片重試而
+  // 重複覆寫或退回舊值)。
   function retryPhotoOnly(remainingRetries: number) {
     if (remainingRetries <= 0 || !fetchPhotoAssets) return
     window.setTimeout(() => {
@@ -139,16 +139,7 @@ function resolveAttractionForStep(
             retryPhotoOnly(remainingRetries - 1)
             return
           }
-          // 2026-10 code review 抓到的 bug 修正:後端 photoAssetsOnlyResponse
-          // 已經拿掉 photoUrl 欄位(見 server/internal/api/geo_outline.go
-          // 的完整說明),assets.photoUrl 現在永遠是 undefined——但
-          // PlanTimelineView.tsx 的縮圖顯示判斷式(p.photoUrl ? <img> :
-          // placeholder)只看這個欄位,沒有 fallback 到 googlePhotoUrls,
-          // 若這裡原樣寫入 undefined,即使重試真的查到了照片,縮圖仍會
-          // 永遠卡在 placeholder。改成從 googlePhotoUrls 清單第一張derive
-          // 出 photoUrl,不依賴後端已經不再提供的相容欄位。
           setTimeline((prev) => updateNode(prev, stepId, {
-            photoUrl: assets.googlePhotoUrls?.[0],
             googlePhotoUrls: assets.googlePhotoUrls,
           }))
         })
@@ -173,14 +164,19 @@ function resolveAttractionForStep(
         loading: false,
         name: details.name,
         desc: details.summary,
-        photoUrl: details.photoUrl,
         googlePhotoUrls: details.googlePhotoUrls,
         lat: details.lat,
         lng: details.lng,
         placeId,
       }))
       onSettled(details.lat, details.lng)
-      if (!hasAnyPhoto(details)) {
+      // 2026-10 使用者明確要求「全部都用旗標判斷」:改用
+      // details.photoRefreshPending(後端這次查詢是否真的觸發了背景
+      // 補圖)取代原本的「查無照片就重試」(!hasAnyPhoto(details)),
+      // 理由同 photoRetry.ts fetchPlaceDetailsWithPhotoRetry 的完整
+      // 說明——沒有觸發補圖時重試注定沒有結果,只是白白發送最多 3 次
+      // 沒意義的查詢。
+      if (details.photoRefreshPending) {
         retryPhotoOnly(PHOTO_RETRY_MAX_ATTEMPTS)
       }
     })

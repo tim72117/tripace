@@ -133,54 +133,19 @@ export interface GeoRateLimitsResponse {
   limits: GeoRateLimit[]
 }
 
-// One row of the "Google photo target=0 check" (GET /admin/api/
-// photo-target-zero-check). Mirrors store.PlaceDetailsZeroPhotoTarget on
-// the backend (server/internal/store/geocache.go) — every place_details_
-// cache row where google_photo_target_count is exactly 0 right now. This
-// value is ambiguous on its own: it's the legitimate steady state for "we
-// confirmed with Google and this place genuinely has no photos", but it's
-// also exactly what a since-fixed deadlock bug (see
-// shouldAddGooglePlacePhoto on the backend) used to leave behind for
-// places that were NEVER actually confirmed. There's no way to tell the
-// two apart from the stored value alone — this list exists so an operator
-// can spot-check entries (e.g. look the place up on Google Maps) and, if a
-// row turns out to be a stale pre-fix artifact, fix it by hand (the admin
-// console doesn't expose a "reset" action here on purpose — see the
-// GeoPhotoTargetZeroCheckTab component comment).
-export interface PlaceDetailsZeroPhotoTarget {
-  placeId: string
-  name: string
-  clickCount: number
-  // googlePhotoTargetCount: this list is already filtered to rows where
-  // this value is exactly 0 (see the backend query), so it's redundant
-  // information in principle — included anyway so the table shows exactly
-  // what the database currently holds rather than requiring the reader to
-  // infer it from "why this row is on this list" (2026-09 added).
-  googlePhotoTargetCount: number
-  fetchedAt: string
-}
-
-export interface PhotoTargetZeroCheckResponse {
-  places: PlaceDetailsZeroPhotoTarget[]
-}
-
 // One row of the "attractions missing Google Place ID" check (GET
 // /admin/api/attraction-missing-place-id-check). Mirrors
 // adminconsole.attractionMissingPlaceIDRow on the backend — every
-// attractions row where place_id is NULL or empty. photo_url is no longer
-// a valid photo source for the theme card (the fallback was explicitly
-// removed — see AttractionInfoPanel.tsx), so every row here shows a
-// placeholder on the theme card regardless of hasStalePhotoUrl. That field
-// only tells the operator whether the row still carries a stale, unused
-// snapshot in the database (true) or nothing at all (false) — it is not a
-// signal that the row is "fine as-is". The fix for any row here is adding
-// the correct Google Place ID, not restoring the photo_url fallback.
+// attractions row where place_id is NULL or empty. Every row here shows a
+// placeholder on the theme card (2026-10: the attractions.photo_url
+// compat field — and the database column itself — has been fully removed,
+// see cmd/migrate-drop-photo-url). The fix for any row here is adding the
+// correct Google Place ID.
 export interface AttractionMissingPlaceID {
   id: string
   name: string
   cityName: string
   isTheme: boolean
-  hasStalePhotoUrl: boolean
 }
 
 export interface AttractionMissingPlaceIDResponse {
@@ -284,19 +249,6 @@ export const api = {
   // response instead of re-fetching.
   updateGeoRateLimit: (limit: { endpoint: string; windowSec: number; maxCalls: number; dailyMax: number }): Promise<GeoRateLimitsResponse> =>
     request('PUT', '/admin/api/geo-rate-limits', limit).then((r) => r.json()),
-
-  // Pure read of place_details_cache — no external call, safe to call on
-  // page load / manual refresh.
-  photoTargetZeroCheck: (): Promise<PhotoTargetZeroCheckResponse> =>
-    request('GET', '/admin/api/photo-target-zero-check').then((r) => r.json()),
-
-  // Resets one place's google_photo_target_count back to the -1 sentinel
-  // (see the backend handler's doc comment) — only meant to be called
-  // after an operator has manually confirmed a row on the target=0 list
-  // is a stale pre-fix artifact, not something to automate from the list
-  // alone.
-  resetPhotoTarget: (placeId: string): Promise<{ ok: boolean }> =>
-    request('POST', '/admin/api/photo-target-zero-check/reset', { placeId }).then((r) => r.json()),
 
   // Pure read of the attractions table — no external call, safe to call on
   // page load / manual refresh.

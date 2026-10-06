@@ -1,7 +1,7 @@
 package main
 
-// attraction_sync_test.go 定義 attraction-sync / attraction-sync-setup
-// 兩個子命令的旗標解析行為（見 docs/ATTRACTION_SYNC_DESIGN.md「五、CLI
+// attraction_sync_test.go 定義 attraction sync / attraction sync-setup
+// 兩個子指令的旗標解析行為（見 docs/ATTRACTION_SYNC_DESIGN.md「五、CLI
 // 指令介面」）。比照 command_test.go 的模式：用 fakeClient 斷言「命令列
 // 參數是否被正確翻譯成 client 呼叫」，不在這裡測 client 實作本身打的
 // HTTP 對不對（那是 http_test.go 的職責）。
@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-// fakeSyncClient 擴充 fakeClient，記錄 attraction-sync 系列方法收到的參數。
+// fakeSyncClient 擴充 fakeClient，記錄 attraction sync 系列方法收到的參數。
 // 獨立成一個型別（內嵌 fakeClient）而非直接改 fakeClient 本身，避免
 // command_test.go 既有測試需要跟著補齊新欄位的初始化。
 type fakeSyncClient struct {

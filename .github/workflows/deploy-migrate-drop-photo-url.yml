@@ -1,0 +1,180 @@
+name: Build and Run Migrate-Drop-Photo-URL Job
+
+# 這支 workflow 建置 tripace-migrate-drop-photo-url 這個 Cloud Run Job 的
+# 映像檔、更新 Job 定義,並(可選)立即執行一次——完整對齊
+# deploy-migrate.yml(cmd/migrate-photo-assets)的既有模式,差異只在編譯
+# 目標換成 cmd/migrate-drop-photo-url(見該目錄 main.go 開頭註解)、不需要
+# GCS_PHOTO_BUCKET 這個環境變數(這支工具只直連 DATABASE_URL,不碰 GCS)。
+#
+# cmd/migrate-drop-photo-url 執行的是真正不可逆的 schema 變更(ALTER
+# TABLE attractions DROP COLUMN photo_url),故這支 workflow 保留跟
+# deploy-migrate.yml 一致的「先備份、再建置部署」流程,且 backup_first
+# 預設勾選——不像搬移照片資料那樣有「先驗證搬移成功再刪除」的緩衝,這次
+# 動作一旦執行完全沒有回頭路,只能靠備份還原。
+#
+# 不設 push 觸發:這是一次性維運工具,不該每次 push 到 main 就重跑一次
+# 資料庫結構異動。只能手動觸發(workflow_dispatch),且需要明確指定要
+# 執行的旗標,避免誤觸發。
+
+on:
+  workflow_dispatch:
+    inputs:
+      cli_args:
+        description: '要傳給 cmd/migrate-drop-photo-url 的旗標(例如: -dry-run,留空代表不加任何旗標、真正執行 DROP COLUMN)。留空整個欄位本身仍會建置/部署/執行(跟 deploy-migrate.yml 不同,這支工具沒有「什麼都不做」的子命令可省略),請務必先用 -dry-run 跑過一次確認'
+        type: string
+        required: false
+        default: '-dry-run'
+      run_now:
+        description: '建置/更新 Job 定義後是否立即執行一次'
+        type: boolean
+        default: true
+      backup_first:
+        description: '先用 gcloud sql export 備份一份到 GCS(這是不可逆的 schema 變更,強烈建議保持勾選,尤其是不帶 -dry-run 的正式執行)'
+        type: boolean
+        default: true
+
+env:
+  GCP_PROJECT_ID: "shuttle-045094509"
+  CLOUD_RUN_REGION: "asia-east1"
+  JOB_NAME: "tripace-migrate-drop-photo-url"
+  IMAGE: "asia-east1-docker.pkg.dev/shuttle-045094509/cloud-run-source-deploy/tripace-migrate-drop-photo-url"
+  CLOUDSQL_INSTANCE: "onagent-prod:asia-east1:onagent-db"
+  CLOUDSQL_INSTANCE_ID: "onagent-db" # gcloud sql export/instances 系列指令只吃 instance 短名,不含 project:region 前綴
+  # onagent-db 這個 Cloud SQL 實例本身是建在 onagent-prod 專案下(跟這支
+  # workflow 主要操作的 shuttle-045094509 是不同專案,只是共用同一個
+  # WIF 服務帳號有跨專案權限)——理由同 deploy-migrate.yml 的既有說明。
+  CLOUDSQL_PROJECT_ID: "onagent-prod"
+  BACKUP_BUCKET: "tripace-db-backups"
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      # 從 Secret Manager 讀出正式站的 DATABASE_URL,解析出資料庫名稱——
+      # 理由與做法完全對齊 deploy-migrate.yml 的既有說明。
+      - name: Resolve database name from DATABASE_URL secret
+        if: ${{ inputs.backup_first }}
+        id: resolve-db
+        run: |
+          set -euo pipefail
+          DSN="$(gcloud secrets versions access latest --secret=DATABASE_URL --project=${{ env.GCP_PROJECT_ID }})"
+
+          DSN_NO_QUERY="${DSN%%\?*}"
+          DB_NAME="${DSN_NO_QUERY##*/}"
+
+          if [ -z "$DB_NAME" ]; then
+            echo "::error::無法從 DATABASE_URL 解析出資料庫名稱,DSN 格式可能不符預期,請確認 Secret Manager 內的 DATABASE_URL 內容。"
+            exit 1
+          fi
+
+          echo "db_name=${DB_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure GCS bucket for DB backups exists
+        if: ${{ inputs.backup_first }}
+        run: |
+          set -euo pipefail
+          if gcloud storage buckets describe "gs://${{ env.BACKUP_BUCKET }}" --project=${{ env.GCP_PROJECT_ID }} >/dev/null 2>&1; then
+            echo "Bucket gs://${{ env.BACKUP_BUCKET }} 已存在,略過建立。"
+          else
+            echo "Bucket gs://${{ env.BACKUP_BUCKET }} 不存在,建立中..."
+            gcloud storage buckets create "gs://${{ env.BACKUP_BUCKET }}" \
+              --project=${{ env.GCP_PROJECT_ID }} \
+              --location=${{ env.CLOUD_RUN_REGION }}
+          fi
+
+      - name: Grant Cloud SQL service account write access to backup bucket
+        if: ${{ inputs.backup_first }}
+        run: |
+          set -euo pipefail
+          SQL_SA="$(gcloud sql instances describe ${{ env.CLOUDSQL_INSTANCE_ID }} \
+            --project=${{ env.CLOUDSQL_PROJECT_ID }} \
+            --format='value(serviceAccountEmailAddress)')"
+
+          if [ -z "$SQL_SA" ]; then
+            echo "::error::無法取得 Cloud SQL 實例 ${{ env.CLOUDSQL_INSTANCE_ID }} 的服務帳號 email。"
+            exit 1
+          fi
+
+          gcloud storage buckets add-iam-policy-binding "gs://${{ env.BACKUP_BUCKET }}" \
+            --member="serviceAccount:${SQL_SA}" \
+            --role="roles/storage.objectAdmin"
+
+      - name: Backup Cloud SQL database before migration
+        if: ${{ inputs.backup_first }}
+        id: backup
+        run: |
+          set -euo pipefail
+          TIMESTAMP="$(date -u +%Y%m%d_%H%M%S)"
+          BACKUP_URI="gs://${{ env.BACKUP_BUCKET }}/tripace-backup-drop-photo-url-${TIMESTAMP}.sql"
+
+          gcloud sql export sql ${{ env.CLOUDSQL_INSTANCE_ID }} "${BACKUP_URI}" \
+            --project=${{ env.CLOUDSQL_PROJECT_ID }} \
+            --database=${{ steps.resolve-db.outputs.db_name }}
+
+          echo "backup_uri=${BACKUP_URI}" >> "$GITHUB_OUTPUT"
+          echo "備份完成: ${BACKUP_URI}"
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker asia-east1-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f Dockerfile.migrate-drop-photo-url \
+            -t ${{ env.IMAGE }}:${{ github.sha }} \
+            -t ${{ env.IMAGE }}:latest \
+            .
+
+      - name: Push image
+        run: |
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+          docker push ${{ env.IMAGE }}:latest
+
+      # gcloud run jobs deploy:第一次執行會建立 Job,之後執行是更新既有
+      # Job 的定義(映像檔版本、指令參數)。只需要 DATABASE_URL 這一個
+      # secret——這支工具不碰 GCS,不需要 GCS_PHOTO_BUCKET。
+      - name: Deploy/update Cloud Run Job
+        run: |
+          gcloud run jobs deploy ${{ env.JOB_NAME }} \
+            --image=${{ env.IMAGE }}:${{ github.sha }} \
+            --region=${{ env.CLOUD_RUN_REGION }} \
+            --set-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
+            --update-secrets=DATABASE_URL=DATABASE_URL:latest \
+            --args="$(echo '${{ inputs.cli_args }}' | tr ' ' ',')" \
+            --max-retries=0 \
+            --task-timeout=300 \
+            --quiet
+
+      - name: Execute Job now
+        if: ${{ inputs.run_now }}
+        run: |
+          gcloud run jobs execute ${{ env.JOB_NAME }} \
+            --region=${{ env.CLOUD_RUN_REGION }} \
+            --wait \
+            --quiet
+
+      - name: Show execution logs link
+        if: ${{ inputs.run_now }}
+        run: |
+          echo "### Migrate-Drop-Photo-URL Job 執行完成" >> "$GITHUB_STEP_SUMMARY"
+          echo "參數: \`${{ inputs.cli_args }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "查看完整 log:" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://console.cloud.google.com/run/jobs/details/${{ env.CLOUD_RUN_REGION }}/${{ env.JOB_NAME }}/executions?project=${{ env.GCP_PROJECT_ID }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Show backup location in summary
+        if: ${{ inputs.backup_first }}
+        run: |
+          echo "備份檔案位置: \`${{ steps.backup.outputs.backup_uri }}\`" >> "$GITHUB_STEP_SUMMARY"

@@ -69,8 +69,8 @@ import type { CuratedCategory } from './geoCuratedCategoryStub'
 // 重試不能重複呼叫 fetchPlaceDetails(2026-09 使用者明確要求「重試時
 // 只能取圖,不能觸發補圖」)——fetchGeoPlaceDetails/fetchPublicGeoPlaceDetails
 // 對應的後端 handleGeoPlaceDetails 每次呼叫都會執行
-// IncrementPlaceClickCount,連續重試會重複推進漸進補圖節奏判斷(見該
-// 函式 shouldAddGooglePlacePhoto 的完整說明),不是單純的唯讀查詢。故
+// IncrementPlaceClickCount,連續重試會重複推進補圖節奏判斷(見
+// decidePlacePhotoRefreshIndex 的完整說明),不是單純的唯讀查詢。故
 // 只有第一次查詢用 fetchPlaceDetails,之後的重試改呼叫下方
 // fetchPlaceDetails 的第三個參數 fetchPhotoAssets(對應後端
 // GET .../geo/place-photo-assets,純讀 photo_assets,不觸發任何點擊計數
