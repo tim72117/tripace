@@ -2,6 +2,27 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.24.0 — 2026-10-06
+
+### 新增
+
+- 新增 `ScrollTimeline` compound component（`<ScrollTimeline>`/`<ScrollTimeline.Anchor>`）：文案隨捲動、左側時間軸漸進顯示錨點、右側可展開嵌入式小地圖的互動機制，取代原本單純的資料驅動寫法，讓呼叫端可以自由排版文案、只在想標記的地方插入錨點。`<ScrollTimeline.Anchor>` 支援 `theme`（指向資料庫主題點，取得開卡/附近景點揭露等完整效果）或 `center`（直接指定任意座標，單純移動地圖視角）兩種定位方式。
+- `InteractiveExploreMap` 新增一組 opt-in prop（`focusedTheme`/`focusedCenter`/`openCardOnFocus`/`themeCardNearbyOnly`/`disableThemeCardOnMapClick`/`revealNearbyOnFocus`/`themePhotoOnlyWhenFocused`/`restrictRadiusKm`/`showZoomControl`），讓嵌入式地圖情境可以受控切換聚焦點、控制主題卡是否顯示/以精簡模式顯示、調整可拖曳範圍——皆為新增且預設關閉，九份/京都/台南等既有城市頁呼叫方式與行為完全不變。
+- 地圖上的精選點標記新增獨立的 `focused` 視覺狀態（深紅色淚滴圖釘，與既有的候選景點 `selected` 狀態完全獨立、互不干擾），供 `ScrollTimeline` 聚焦到某個精選點時套用；主題點新增可選的「只有被聚焦時才顯示圓形照片、其餘時候退化成小圓點」行為（`themePhotoOnlyWhenFocused`），照片收起時有淡出轉場。
+- `/demo/scroll-timeline` 新增 ScrollTimeline 互動示範頁（假資料）。
+- `/tainan-chikan`（赤崁・府城介紹頁）套用 `ScrollTimeline`，取代原本「獨立進度點 nav + 分站列表 + 頁尾固定地圖區塊」三段各自獨立的結構。
+
+### 修正
+
+- `geoQueryUserRateLimiter` 的預設節流規則改以「每分鐘次數」表示（`200ms/1次` → `60秒/300次`，換算等效，實際速率不變），對齊同一輪 `places.get`/`photoMedia` 兩個 endpoint 的分鐘表示法；補上連續請求放行/拒絕邊界與多使用者配額互不影響的測試。
+- 新增路由層級的 `ScrollRestoration`：修正主題介紹頁捲到最底部後切換到另一頁，新頁面仍停留在底部（未捲回頂部）的問題。
+
+### 已知問題（詳見 `docs/audit-functional.md` F42-F49）
+
+- 🟠 `ScrollTimeline` 面板停留在「附近景點」模式時捲動到沒有 `theme` 的錨點，舊主題卡不會收掉（目前因「附近景點」按鈕被暫時隱藏而休眠，尚未修復）。
+- 🟠 套用 `ScrollTimeline` 後，`/tainan-chikan` 手機版地圖從「點了才載入」退化成「進頁面就無條件載入」，尚未修復。
+- 🟡 `/tainan-chikan` 原本的進度點跳轉導覽（跳到任一站/跳回地圖）被移除、未提供替代方案。
+
 ## v0.23.0 — 2026-10-06
 
 ### 破壞性變更
