@@ -431,6 +431,12 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/public/{token}", s.handlePublicView)
 	mux.HandleFunc("POST /v1/public/{token}/compute-route", s.handlePublicComputeRoute)
 
+	// 主題介紹頁(theme_page.go)公開讀取——城市主題介紹頁(九份/京都/
+	// 台南等)本身的頁面會打這支,無需登入,只回傳 status=published 的
+	// 內容(見 handlePublicThemePage 的完整說明)。管理端點(新增/編輯/
+	// 發布)在下面 internalMux 區塊,走 /internal/maintenance/theme-pages/*。
+	mux.HandleFunc("GET /v1/theme-pages/{slug}", s.handlePublicThemePage)
+
 	// PaceRouteMap(web/src/PaceRouteMap.tsx,UI 試做用)展示頁的固定路線資料,
 	// 不需要登入(展示頁本身不需要身分),見 pace_route.go 的說明。
 	mux.HandleFunc("GET /v1/demo/pace-route", s.handlePaceRoute)
@@ -559,6 +565,14 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/field", s.handleMaintenanceAttractionUpdateField)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/place-id", s.handleMaintenanceAttractionUpdatePlaceID)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/theme", s.handleMaintenanceAttractionUpdateTheme)
+	// 主題介紹頁管理端點(theme_page.go)——只給 tripace-cli theme-page
+	// 系列指令用,公開讀取在上面 mux 區塊的 /v1/theme-pages/{slug}。
+	internalMux.HandleFunc("POST /internal/maintenance/theme-pages", s.handleMaintenanceThemePageCreate)
+	internalMux.HandleFunc("GET /internal/maintenance/theme-pages", s.handleMaintenanceThemePageList)
+	internalMux.HandleFunc("GET /internal/maintenance/theme-pages/{slug}", s.handleMaintenanceThemePageGet)
+	internalMux.HandleFunc("PUT /internal/maintenance/theme-pages/{slug}", s.handleMaintenanceThemePageUpdate)
+	internalMux.HandleFunc("PATCH /internal/maintenance/theme-pages/{slug}/publish", s.handleMaintenanceThemePagePublish)
+	internalMux.HandleFunc("DELETE /internal/maintenance/theme-pages/{slug}", s.handleMaintenanceThemePageDelete)
 	// 景點資料同步機制新增的端點(見 attraction_sync.go、
 	// docs/ATTRACTION_SYNC_DESIGN.md)——專門服務
 	// server/internal/attractionsync 套件的三層比對 + 交握式傳輸,不是

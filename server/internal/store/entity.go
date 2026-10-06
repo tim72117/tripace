@@ -112,6 +112,35 @@ type attractionRow struct {
 
 func (attractionRow) TableName() string { return "attractions" }
 
+// themePageRow 是主題介紹頁的規格化內容(見 docs/
+// refactor-theme-page-content-cms-plan-2026-10.md、
+// web/src/themepage/types.ts 的 ThemePageContent)——九份/京都/台南等
+// 城市主題介紹頁,原本整篇文案都是手寫在各自的 .tsx 檔案裡,這張表讓
+// 管理者改成透過 CLI 編輯、存進資料庫,前端改成打 API 讀取內容渲染。
+//
+// Content 存整份 ThemePageContent JSON(version/title/blocks/...),
+// 用法對齊既有 entryRow.Detail 的 `serializer:json` 先例(見該欄位),
+// 不是另外拆成多個欄位或子表——blocks 本身是順序敏感的扁平聯集陣列
+// (paragraph/image/gallery/stop 四種 kind,見 ThemePageBlock 的完整
+// 說明),拆表會需要額外的排序欄位與多次查詢才能還原陣列順序,JSON
+// 欄位整份存取、整份覆寫更貼合「CLI get 一份 JSON、編輯、set 整份
+// 寫回」的操作模式。型別用 string 而非 map[string]any——內容本身
+// 是前端定義的 TypeScript 型別(ThemePageContent),後端只負責原樣
+// 存取轉發,不需要在 Go 端重新定義一份對應的巢狀 struct 來解析每個
+// Block kind 的欄位,也避免序列化/反序列化時 Go map 不保證欄位順序
+// 導致 JSON 字串 diff 困難。
+type themePageRow struct {
+	ID        string    `gorm:"primaryKey;column:id"`
+	Slug      string    `gorm:"column:slug;not null;uniqueIndex"`
+	Content   string    `gorm:"column:content;not null"`
+	Status    string    `gorm:"column:status;not null;default:draft"`
+	UpdatedBy string    `gorm:"column:updated_by"`
+	CreatedAt time.Time `gorm:"column:created_at;not null"`
+	UpdatedAt time.Time `gorm:"column:updated_at;not null"`
+}
+
+func (themePageRow) TableName() string { return "theme_pages" }
+
 // photoCacheRow 快取 Google Places Photo Media API 已下載過的圖片(見
 // server/internal/geo/places.go 的 fetchPhotoAsDataURI)——同一個地點
 // (place id + 寬度組合)重複被查詢時直接吃快取,不重新打 Photo Media

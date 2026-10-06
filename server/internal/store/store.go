@@ -19,6 +19,11 @@ import (
 // ErrNotFound 是 store 層統一的「查無資料」錯誤。
 var ErrNotFound = errors.New("not found")
 
+// ErrAlreadyExists 是 store 層統一的「違反唯一性限制,該筆資料已存在」
+// 錯誤——見 CreateThemePage 的完整說明,用於需要事先判斷「這個鍵已經
+// 用過」而非讓底層 driver 專屬錯誤字串直接往外傳的建立操作。
+var ErrAlreadyExists = errors.New("already exists")
+
 type Store struct {
 	db *gorm.DB
 
@@ -52,7 +57,7 @@ func Open(dsn string) (*Store, error) {
 	// 明顯的警示 log 後繼續,讓 server 降級啟動;只有實際用到未同步欄位的功能
 	// 才會在被呼叫到時出錯,這是可接受的降級行為。
 	migrationOK := true
-	if err := db.AutoMigrate(&userRow{}, &tripRow{}, &entryRow{}, &memberLink{}, &publicLinkRow{}, &adminUserRow{}, &adminSessionRow{}, &cliAuthSessionRow{}, &attractionRow{}, &photoCacheRow{}, &placeDetailsCacheRow{}, &googlePlacePhotoRow{}, &placePexelsPhotoRow{}, &pexelsPhotoCacheRow{}, &photoAssetRow{}, &apiRequestLogRow{}, &geoAPICallLogRow{}, &geoRateLimitRow{}); err != nil {
+	if err := db.AutoMigrate(&userRow{}, &tripRow{}, &entryRow{}, &memberLink{}, &publicLinkRow{}, &adminUserRow{}, &adminSessionRow{}, &cliAuthSessionRow{}, &attractionRow{}, &themePageRow{}, &photoCacheRow{}, &placeDetailsCacheRow{}, &googlePlacePhotoRow{}, &placePexelsPhotoRow{}, &pexelsPhotoCacheRow{}, &photoAssetRow{}, &apiRequestLogRow{}, &geoAPICallLogRow{}, &geoRateLimitRow{}); err != nil {
 		log.Printf("!!! AutoMigrate 失敗,資料庫 schema 可能未同步,部分功能可能異常或無法使用,請盡快檢查: %v", err)
 		migrationOK = false
 	}

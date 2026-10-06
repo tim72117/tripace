@@ -70,6 +70,12 @@ const NotFoundPage = lazy(() => import('./home/NotFoundPage').then((m) => ({ def
 // 依賴任何需要 token 的後端端點,故放進 home/ 底下跟其餘公開行銷頁同一
 // 層級,不是 /app 底下需要登入的正式功能。
 const PlanAiSimPage = lazy(() => import('./home/plan-ai-sim/AIPlanTimelinePage').then((m) => ({ default: m.AIPlanTimelinePage })))
+// ThemePageDemoPage:主題介紹頁內容規格化試做——驗證 docs/
+// refactor-theme-page-content-cms-plan-2026-10.md 的 ThemePageContent
+// 規格(見 web/src/themepage/types.ts)能否從序列化 JSON 原樣還原
+// TainanChikanPage.tsx 現有排版,純前端假資料(sampleTainanChikan.ts),
+// 不碰資料庫/CLI/API,見該目錄說明。
+const ThemePageDemoPage = lazy(() => import('./themepage/ThemePageDemoPage').then((m) => ({ default: m.ThemePageDemoPage })))
 
 // KeyboardShrinkGuard:/app 路由專用——鍵盤彈出時把根容器高度直接改成
 // visualViewport.height,取代先前試過的 transform: translateY(-offsetTop)
@@ -184,6 +190,9 @@ export function App() {
               新增 /plan-ai 忘了同步這份白名單,導致正式環境該路徑直接
               404(即使前端路由本身定義正確),這是實際發生過的教訓。 */}
           <Route path="/ai-plan" element={<PlanAiSimPage />} />
+          {/* /demo/theme-page:主題介紹頁內容規格化試做,見
+              ThemePageDemoPage.tsx 開頭說明。 */}
+          <Route path="/demo/theme-page" element={<ThemePageDemoPage />} />
           {/* /public/{token} 路徑:直接渲染公開分享頁。原本用正則
               /^\/public\/([^/]+)$/ 手動解析 token,改用 Route 的 :token
               路徑參數 + useParams() 取代。 */}

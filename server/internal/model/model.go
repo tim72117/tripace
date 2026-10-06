@@ -160,6 +160,30 @@ type Attraction struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// ThemePage 是主題介紹頁的規格化內容(見 docs/
+// refactor-theme-page-content-cms-plan-2026-10.md、
+// web/src/themepage/types.ts 的 ThemePageContent)——九份/京都/台南等
+// 城市主題介紹頁原本整篇文案手寫在各自的 .tsx 檔案裡,這個模型讓內容
+// 改成透過 CLI 編輯、存進資料庫,前端打 API 讀取渲染。
+//
+// Content 是整份 ThemePageContent JSON 的原始字串,後端刻意不解析成
+// 對應的巢狀 Go struct——內容格式由前端 TypeScript 定義
+// (ThemePageContent/ThemePageBlock 聯集型別),後端只負責存取轉發
+// (CLI 寫入時原樣存、API 讀取時原樣吐出),不需要為每個 Block kind
+// 在 Go 端重複定義一份對應型別。json:"-" 搭配 MarshalJSON/UnmarshalJSON
+// (見 model_theme_page.go)讓 API 回應時 Content 內容是巢狀 JSON 物件,
+// 不是雙重編碼後的轉義字串——前端收到的 JSON 要能直接
+// JSON.parse 出 ThemePageContent 形狀,不需要再解析一層字串。
+type ThemePage struct {
+	ID        string    `json:"id"`
+	Slug      string    `json:"slug"`
+	Content   string    `json:"-"`
+	Status    string    `json:"status"`
+	UpdatedBy string    `json:"updatedBy,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 // Entry 是主體:LLM 處理訊息後產出的「事件/條目」,承載所有結構化結果。
 // 可獨立存在,並可關聯多則來源訊息(多對多)。
 type Entry struct {

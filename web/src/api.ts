@@ -1172,3 +1172,20 @@ export function fetchPublicView(baseURL: string, token: string) {
     })
 }
 
+// fetchPublicThemePage:GET /v1/theme-pages/{slug}(免登入,見後端
+// handlePublicThemePage/theme_page.go 的完整說明)——供主題介紹頁
+// (web/src/themepage/ThemePageDemoPage.tsx 試做,之後正式頁面會接上
+// 同一支)讀取已發布的規格化內容。只回傳 status=published 的頁面,
+// 草稿一律 404(ApiError),對齊公開端點不應曝露未發布內容的設計。
+//
+// 回應形狀用 unknown 而非後端 model.ThemePage(後端沒有對應的前端
+// 型別匯出)——實際內容形狀由呼叫端依 web/src/themepage/types.ts 的
+// ThemePageContent 自行斷言,api.ts 不耦合那個模組的型別定義。
+export function fetchPublicThemePage(cfg: ClientConfig, slug: string) {
+  return request<{ id: string; slug: string; content: unknown; status: string; updatedAt: string }>(
+    cfg,
+    'GET',
+    `/v1/theme-pages/${encodeURIComponent(slug)}`,
+  )
+}
+

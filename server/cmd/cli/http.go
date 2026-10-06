@@ -201,3 +201,41 @@ func (c *httpClient) attractionUpdatePlaceID(id, placeID string) (any, error) {
 func (c *httpClient) attractionUpdateTheme(id string, isTheme bool) (any, error) {
 	return c.do("PATCH", "/internal/maintenance/attractions/"+id+"/theme", map[string]any{"isTheme": isTheme})
 }
+
+// themePageCreate/List/Get/Update/Publish/Delete 對齊
+// POST/GET/PUT/PATCH/DELETE /internal/maintenance/theme-pages(見
+// server/internal/api/theme_page.go)。content 收 map[string]any(已經
+// 解析過的 JSON 物件,不是字串)——跟 do() 把 request body 整個
+// json.Marshal 一次送出的既有慣例一致,呼叫端(main.go 的
+// cmdThemePage*)負責把 -content-file 讀到的 JSON 文字先
+// json.Unmarshal 成 map,不在這裡做字串轉換。
+func (c *httpClient) themePageCreate(slug string, content map[string]any, updatedBy string) (any, error) {
+	return c.do("POST", "/internal/maintenance/theme-pages", map[string]any{
+		"slug": slug, "content": content, "updatedBy": updatedBy,
+	})
+}
+
+func (c *httpClient) themePageList() (any, error) {
+	return c.do("GET", "/internal/maintenance/theme-pages", nil)
+}
+
+func (c *httpClient) themePageGet(slug string) (any, error) {
+	return c.do("GET", "/internal/maintenance/theme-pages/"+url.PathEscape(slug), nil)
+}
+
+func (c *httpClient) themePageUpdate(slug string, content map[string]any, updatedBy string) (any, error) {
+	return c.do("PUT", "/internal/maintenance/theme-pages/"+url.PathEscape(slug), map[string]any{
+		"content": content, "updatedBy": updatedBy,
+	})
+}
+
+func (c *httpClient) themePagePublish(slug string, published bool) (any, error) {
+	return c.do("PATCH", "/internal/maintenance/theme-pages/"+url.PathEscape(slug)+"/publish", map[string]any{
+		"published": published,
+	})
+}
+
+func (c *httpClient) themePageDelete(slug string) error {
+	_, err := c.do("DELETE", "/internal/maintenance/theme-pages/"+url.PathEscape(slug), nil)
+	return err
+}

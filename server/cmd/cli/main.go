@@ -142,6 +142,23 @@ func buildResources(c *httpClient, apiURL string) []resource {
 				{verb: "sync", run: func(args []string) { cmdAttractionSync(c, args) }, usage: "tripace-cli attraction sync -direction push|pull [-allow-delete] [-apply] [-retry]"},
 			},
 		},
+		{
+			// theme-page:主題介紹頁內容管理(見 docs/
+			// refactor-theme-page-content-cms-plan-2026-10.md、
+			// server/internal/api/theme_page.go)——九份/京都/台南等城市
+			// 主題介紹頁,原本整篇文案手寫在各自的 .tsx 檔案裡,改成透過
+			// 這組指令編輯、存進資料庫,前端打 API 讀取內容渲染。
+			name: "theme-page",
+			commands: []resourceCommand{
+				{verb: "add", run: func(args []string) { cmdThemePageAdd(c, args) }, usage: "tripace-cli theme-page add -slug 文字 (-content JSON | -content-file 路徑)"},
+				{verb: "list", run: func(args []string) { cmdThemePageList(c) }, usage: "tripace-cli theme-page list"},
+				{verb: "get", run: func(args []string) { cmdThemePageGet(c, args) }, usage: "tripace-cli theme-page get -slug 文字"},
+				{verb: "set", run: func(args []string) { cmdThemePageSet(c, args) }, usage: "tripace-cli theme-page set -slug 文字 (-content JSON | -content-file 路徑)"},
+				{verb: "publish", run: func(args []string) { cmdThemePagePublish(c, args, true) }, usage: "tripace-cli theme-page publish -slug 文字"},
+				{verb: "unpublish", run: func(args []string) { cmdThemePagePublish(c, args, false) }, usage: "tripace-cli theme-page unpublish -slug 文字"},
+				{verb: "delete", run: func(args []string) { cmdThemePageDelete(c, args) }, usage: "tripace-cli theme-page delete -slug 文字"},
+			},
+		},
 	}
 }
 
@@ -801,6 +818,141 @@ func cmdAttractionUpdatePhoto(apiURL string, args []string) {
 		fatal("attraction photo-update: %v", err)
 	}
 	output(res)
+}
+
+// loadThemePageContent 從 -content(JSON 字串)或 -content-file(檔案
+// 路徑)讀出主題介紹頁內容,解析成 map[string]any——兩者二擇一,刻意
+// 都支援是因為 ThemePageContent 內容通常很長(見 docs/
+// refactor-theme-page-content-cms-plan-2026-10.md 的規劃說明),整份
+// 塞進 shell 參數字串容易被殼層引號/轉義規則搞壞,-content-file 讓
+// 使用者可以先在編輯器裡寫好一份 JSON 檔案再交給 CLI,-content 仍保留
+// 給簡短內容或腳本化呼叫用。
+func loadThemePageContent(content, contentFile string) map[string]any {
+	if content == "" && contentFile == "" {
+		fatal("需要 -content 或 -content-file 其中一個")
+	}
+	if content != "" && contentFile != "" {
+		fatal("-content 與 -content-file 只能二選一")
+	}
+	raw := []byte(content)
+	if contentFile != "" {
+		b, err := os.ReadFile(contentFile)
+		if err != nil {
+			fatal("讀取 -content-file 失敗: %v", err)
+		}
+		raw = b
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		fatal("content 必須是合法 JSON: %v", err)
+	}
+	return m
+}
+
+// cmdThemePageAdd 新增一筆主題介紹頁內容(初始狀態為 draft,見
+// store.CreateThemePage 的完整說明)。走 POST
+// /internal/maintenance/theme-pages。
+func cmdThemePageAdd(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("theme-page add", flag.ExitOnError)
+	slug := fs.String("slug", "", "路由 slug（必填），例如 tainan-chikan")
+	content := fs.String("content", "", "完整 ThemePageContent JSON 字串（與 -content-file 二選一）")
+	contentFile := fs.String("content-file", "", "完整 ThemePageContent JSON 檔案路徑（與 -content 二選一）")
+	updatedBy := fs.String("updated-by", "", "操作者識別（選填）")
+	_ = fs.Parse(args)
+	if *slug == "" {
+		fatal("theme-page add 需要 -slug")
+	}
+	m := loadThemePageContent(*content, *contentFile)
+	res, err := c.themePageCreate(*slug, m, *updatedBy)
+	if err != nil {
+		fatal("theme-page add: %v", err)
+	}
+	output(res)
+}
+
+// cmdThemePageList 列出全部主題介紹頁(含 draft)。走 GET
+// /internal/maintenance/theme-pages。
+func cmdThemePageList(c *httpClient) {
+	res, err := c.themePageList()
+	if err != nil {
+		fatal("theme-page list: %v", err)
+	}
+	output(res)
+}
+
+// cmdThemePageGet 查詢單一主題介紹頁目前的內容(含 draft,管理端點不
+// 區分發布狀態)——供「get 一份、本機編輯、set 整份寫回」的操作流程
+// 使用(見 store.UpdateThemePageContent 的完整說明)。走 GET
+// /internal/maintenance/theme-pages/{slug}。
+func cmdThemePageGet(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("theme-page get", flag.ExitOnError)
+	slug := fs.String("slug", "", "路由 slug（必填）")
+	_ = fs.Parse(args)
+	if *slug == "" {
+		fatal("theme-page get 需要 -slug")
+	}
+	res, err := c.themePageGet(*slug)
+	if err != nil {
+		fatal("theme-page get: %v", err)
+	}
+	output(res)
+}
+
+// cmdThemePageSet 整份覆寫一筆既有主題介紹頁的內容——不動發布狀態
+// (見 store.UpdateThemePageContent 的完整說明,改發布狀態要用
+// theme-page publish/unpublish)。走 PUT
+// /internal/maintenance/theme-pages/{slug}。
+func cmdThemePageSet(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("theme-page set", flag.ExitOnError)
+	slug := fs.String("slug", "", "路由 slug（必填）")
+	content := fs.String("content", "", "完整 ThemePageContent JSON 字串（與 -content-file 二選一）")
+	contentFile := fs.String("content-file", "", "完整 ThemePageContent JSON 檔案路徑（與 -content 二選一）")
+	updatedBy := fs.String("updated-by", "", "操作者識別（選填）")
+	_ = fs.Parse(args)
+	if *slug == "" {
+		fatal("theme-page set 需要 -slug")
+	}
+	m := loadThemePageContent(*content, *contentFile)
+	if _, err := c.themePageUpdate(*slug, m, *updatedBy); err != nil {
+		fatal("theme-page set: %v", err)
+	}
+	output(map[string]string{"updated": *slug})
+}
+
+// cmdThemePagePublish 切換發布狀態——publish 設為 "published",
+// unpublish 設回 "draft"(見 handleMaintenanceThemePagePublish 的完整
+// 說明)。走 PATCH /internal/maintenance/theme-pages/{slug}/publish。
+func cmdThemePagePublish(c *httpClient, args []string, published bool) {
+	label := "theme-page publish"
+	if !published {
+		label = "theme-page unpublish"
+	}
+	fs := flag.NewFlagSet(label, flag.ExitOnError)
+	slug := fs.String("slug", "", "路由 slug（必填）")
+	_ = fs.Parse(args)
+	if *slug == "" {
+		fatal("%s 需要 -slug", label)
+	}
+	res, err := c.themePagePublish(*slug, published)
+	if err != nil {
+		fatal("%s: %v", label, err)
+	}
+	output(res)
+}
+
+// cmdThemePageDelete 刪除一筆主題介紹頁內容。走 DELETE
+// /internal/maintenance/theme-pages/{slug}。
+func cmdThemePageDelete(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("theme-page delete", flag.ExitOnError)
+	slug := fs.String("slug", "", "路由 slug（必填）")
+	_ = fs.Parse(args)
+	if *slug == "" {
+		fatal("theme-page delete 需要 -slug")
+	}
+	if err := c.themePageDelete(*slug); err != nil {
+		fatal("theme-page delete: %v", err)
+	}
+	output(map[string]string{"deleted": *slug})
 }
 
 // notifyTrip 直接用 http.Post(不經 httpClient.do),故 /internal/* 現在
