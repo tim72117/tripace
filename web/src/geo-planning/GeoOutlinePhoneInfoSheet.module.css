@@ -39,6 +39,12 @@
   gap: 2px;
 }
 
+/* closeBtn:2026-10 修正——原本底色/字色(var(--ios-bg)/var(--ios-gray))
+   跟其餘 bottom sheet 共用的 SheetHead(components/PhoneBottomSheet.tsx)
+   的 .closeBtn 不一致,使用者明確要求統一樣式,改成跟那份一樣的
+   var(--ios-sep)/var(--color-dark)。這裡不能直接改用 SheetHead
+   元件本身——這個抽屜的 head 結構不同(名稱/副標/badges + 加入行程
+   按鈕,見上方 head 的說明),只能保持自己刻 JSX,但視覺值對齊。 */
 .closeBtn {
   flex: 0 0 auto;
   width: 28px;
@@ -48,8 +54,8 @@
   justify-content: center;
   border: none;
   border-radius: 50%;
-  background: var(--ios-bg);
-  color: var(--ios-gray);
+  background: var(--ios-sep);
+  color: var(--color-dark);
   cursor: pointer;
 }
 

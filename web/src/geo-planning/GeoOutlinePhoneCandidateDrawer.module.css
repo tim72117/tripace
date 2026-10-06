@@ -54,173 +54,21 @@
   line-height: 1.6;
 }
 
-.section + .section {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--ios-sep);
-}
-
-.sectionHead {
-  padding: 0 4px 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--ios-gray);
-  letter-spacing: 0.02em;
-}
-
-/* candidateCard:「候選中」卡片——本體(名稱+分類圖示)+「加入」+「移除」
-   兩顆按鈕橫向並排,展開時下方接一段日期選擇區(.scheduleRow)。 */
-.candidateCard {
-  display: flex;
-  flex-direction: column;
-  border-radius: 10px;
-  background: var(--ios-card);
-  margin-bottom: 6px;
-  overflow: hidden;
-}
-
-.candidateTopRow {
-  display: flex;
-  align-items: center;
-}
-
-.candidateCardBody {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 6px 9px 8px;
-  cursor: pointer;
-}
-
-.itemPin {
-  flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: var(--ios-sep);
-  color: var(--color-accent);
-}
-
-.itemName {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
-  color: var(--color-dark);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.addBtn,
-.removeBtn {
-  flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 50%;
-  background: none;
-  color: var(--ios-gray);
-  cursor: pointer;
-  margin-right: 4px;
-}
-
-.removeBtn {
-  font-size: 16px;
-  line-height: 1;
-  margin-right: 6px;
-}
-
-.addBtn:active,
-.removeBtn:active {
-  background: var(--ios-sep);
-}
-
-.scheduleRow {
-  padding: 0 10px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.scheduleChips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.scheduleChip {
-  padding: 5px 10px;
-  border: none;
-  border-radius: 999px;
-  background: var(--ios-sep);
-  color: var(--color-dark);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.scheduleChip:disabled {
-  opacity: 0.5;
-}
-
-.scheduleInputRow {
-  display: flex;
-  gap: 8px;
-}
-
-.scheduleInput {
-  flex: 1;
-  min-width: 0;
-  padding: 6px 8px;
-  border: 1px solid var(--ios-sep);
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--color-dark);
-  background: var(--ios-card);
-}
-
-.scheduleConfirmBtn {
-  flex: 0 0 auto;
-  padding: 6px 14px;
-  border: none;
-  border-radius: 8px;
-  background: var(--color-accent);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.scheduleConfirmBtn:disabled {
-  opacity: 0.5;
-}
-
-.scheduleErr {
-  font-size: 12px;
-  color: var(--ios-red);
-}
-
 /* day/dayHead/dayCard*:「已排入行程」分組——視覺語言比照桌面版
    GeoCandidateSidebar.module.css 的同名規則(日層架:標題列日期+安排數,
    卡片是圓形分類 pin + 名稱 + 靠右時刻的緊湊橫列),拿掉拖曳相關樣式
    (手機版不支援拖曳排期,見元件開頭說明)。 */
+/* 2026-10 修正:原本 10px 偏窄,使用者要求項目容器內間距放大——天與天
+   之間、日期標頭與下方項目卡片之間都加大。 */
 .day + .day {
-  margin-top: 10px;
+  margin-top: 16px;
 }
 
 .dayHead {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  padding: 0 4px 6px;
+  padding: 0 4px 10px;
 }
 
 .dayDate {
@@ -234,61 +82,94 @@
   color: var(--ios-gray);
 }
 
-.dayCard {
+/* 2026-10 修正:DayEntryCard 改用共用元件 ListItemCard(理由見
+   GeoOutlinePhoneCandidateDrawer.tsx 該元件改動的完整說明:使用者明確
+   要求行程項目的樣式跟搜尋結果清單一致)——以下 item 開頭這組 class
+   直接對齊 GeoOutlinePhoneListDrawer.module.css 同名 class 的定義,
+   保持兩份清單視覺一致;.returnBtn(已移除的「返回候選」按鈕)同時一併
+   刪除,不再使用。.removeBtn(「移除」按鈕)的定義見本檔案下方。 */
+.item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 6px 8px 8px;
+  gap: 4px;
+  padding: 4px;
   border-radius: 10px;
-  background: var(--ios-card);
-  margin-bottom: 6px;
 }
 
-.dayCardBody {
+.itemBody {
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px;
+  border-radius: 8px;
   cursor: pointer;
 }
 
-.dayCardPin {
-  flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
+/* itemPin:2026-10 修正——原本用灰色素色方塊佔位(.itemPhotoPlaceholder),
+   使用者要求改用圖示,改成跟桌面版 GeoCandidateSidebar.module.css 的
+   .dayCardPin 同一套圓形分類圖示底色,視覺語意對齊(見
+   GeoOutlinePhoneCandidateDrawer.tsx DayEntryCard 的完整說明)。 */
+.itemPin {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: 10px;
   background: var(--ios-sep);
   color: var(--color-accent);
 }
 
-.dayCardName {
-  flex: 1;
+.itemInfo {
   min-width: 0;
-  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.itemName {
+  font-size: 15px;
+  font-weight: 600;
   color: var(--color-dark);
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.dayCardTime {
-  flex: 0 0 auto;
-  font-size: 11px;
+.itemAddress {
+  font-size: 12px;
   color: var(--ios-gray);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.returnBtn {
+/* removeBtn:「移除」按鈕(DayEntryCard 的 trailing 插槽,見
+   GeoOutlinePhoneCandidateDrawer.tsx 的說明)。2026-10 修正:原本的定義
+   只存在於已刪除的「候選中」卡片死碼區塊裡,清掉那段死碼時連帶漏刪了
+   這顆仍在使用的按鈕樣式,導致「移除」按鈕變成完全沒有樣式的裸元素
+   ——在這裡補回來,視覺上比照同檔案其餘圓形圖示按鈕(.itemPin 同尺寸)。 */
+.removeBtn {
   flex: 0 0 auto;
-  padding: 4px 8px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: none;
-  border-radius: 6px;
-  background: var(--ios-sep);
-  color: var(--color-accent);
-  font-size: 11px;
-  font-weight: 600;
+  border-radius: 50%;
+  background: none;
+  color: var(--ios-gray);
+  font-size: 18px;
+  line-height: 1;
   cursor: pointer;
+}
+
+.removeBtn:active {
+  background: var(--ios-sep);
+  color: var(--ios-red);
 }

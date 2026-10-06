@@ -3,7 +3,8 @@ import { Plus } from 'lucide-react'
 import type { ClientConfig, GeoSearchResult } from '../api'
 import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
 import { type GeoCandidate, dayGroupLabel, searchResultToCandidate, useCandidateDatePicker } from './geoCandidateHelpers'
-import { GeoListItemCard } from './GeoListItemCard'
+import { fetchGeoPlacePhoto } from '../api'
+import { ListItemCard, PhotoLeading } from '../components/ListItemCard'
 import { PhoneBottomSheet, PHONE_BOTTOM_SHEET_EXIT_MS, SheetHead } from '../components/PhoneBottomSheet'
 import styles from './GeoOutlinePhoneListDrawer.module.css'
 
@@ -199,6 +200,14 @@ export function GeoOutlinePhoneListDrawer({
   // GeoHotelSidebar.tsx 的同名 state(2026-08 起不分 kind、只要有
   // placeId 就共用同一份快取)。
   const [lazyPhotos, setLazyPhotos] = useState<Record<string, string | null>>({})
+  // handleLoadPhoto:ListItemCard 的 onLoadPhoto——理由同桌面版
+  // GeoHotelSidebar.tsx 的同名函式(ListItemCard 從 geo-planning 抽成
+  // 全專案通用元件後,查詢邏輯改由呼叫端負責)。
+  const handleLoadPhoto = (placeId: string) => {
+    fetchGeoPlacePhoto(cfg, placeId, results.find((r) => r.placeId === placeId)?.name ?? '')
+      .then((result) => setLazyPhotos((prev) => ({ ...prev, [placeId]: result.googlePhotoUrls?.[0] ?? null })))
+      .catch(() => setLazyPhotos((prev) => ({ ...prev, [placeId]: null })))
+  }
   // activeSnapIndex:這個抽屜自己的吸附段落狀態,初始為展開(索引 1)——
   // 理由同 GeoOutlinePhoneInfoSheet.tsx 的同名 state,每次重新開啟都重設
   // 回展開,不延續上次被拖曳收合的狀態。
@@ -258,21 +267,25 @@ export function GeoOutlinePhoneListDrawer({
           results.map((r) => {
             const key = geoItemKey(r.kind, r)
             return (
-              <GeoListItemCard
+              <ListItemCard
                 key={key}
-                cfg={cfg}
                 name={r.name}
                 address={r.address}
-                photoUrl={r.placeId ? lazyPhotos[r.placeId] : r.photoUrl}
-                placeId={r.placeId}
-                onPhotoLoaded={(placeId, url) => {
-                  setLazyPhotos((prev) => ({ ...prev, [placeId]: url }))
-                }}
+                leading={
+                  <PhotoLeading
+                    name={r.name}
+                    photoUrl={r.placeId ? lazyPhotos[r.placeId] : r.photoUrl}
+                    loadKey={r.placeId}
+                    onLoadPhoto={handleLoadPhoto}
+                    photoClassName={styles.itemPhoto}
+                    placeholderClassName={styles.itemPhotoPlaceholder}
+                  />
+                }
                 selected={selectedKey === key}
                 onSelect={() => onSelect(r)}
                 styles={styles}
-                badgeSlot={candidateKeys.has(key) && <span className={styles.inCandidateBadge}>已加入候選</span>}
-                addSlot={
+                badge={candidateKeys.has(key) && <span className={styles.inCandidateBadge}>已加入候選</span>}
+                trailing={
                   r.kind !== 'geocode' && (
                     <ItemAddButton
                       cfg={cfg}

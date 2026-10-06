@@ -16,12 +16,14 @@ import { geoSelectionReducer, GEO_SELECTION_NONE, type GeoPanTarget } from './ge
 // 兩邊各自實作一份形狀高度相似的 state/handler(geoSelection reducer、
 // candidateKeys/addGeoCandidate/removeGeoCandidate/geoScheduledDates 的
 // useMemo/useCallback、onTripEntriesChange 的候選籃合併邏輯、
-// handleScheduleCandidate/handleReturnToCandidate/handleRemoveCandidate),
-// 曾經因為各自維護而出現不一致(例如 onReturnToCandidate 一邊用穩定 id
-// 比對、另一邊用物件參照比對;handleScheduleCandidate/
-// handleReturnToCandidate/handleRemoveCandidate 都只有 console.error
-// 前綴字串不同)。收斂到這裡統一實作,兩邊呼叫同一份邏輯,之後只需要改
-// 一處。
+// handleScheduleCandidate/handleRemoveCandidate),曾經因為各自維護而
+// 出現不一致(例如 handleScheduleCandidate/handleRemoveCandidate 只有
+// console.error 前綴字串不同)。收斂到這裡統一實作,兩邊呼叫同一份
+// 邏輯,之後只需要改一處。
+//
+// 2026-10 修正:移除 onReturnToCandidate/handleReturnToCandidate(「返回
+// 候選」功能)——使用者明確要求拿掉這個操作,連同桌面版/手機版對應的
+// UI 按鈕一併移除。
 //
 // 平台差異的處理方式:這個 hook 回傳「聯集」——桌面版才用得到的部分
 // (pickingDayKey/onlyGeoCandidate/draggingCandidate/geoHoverKey,見各自
@@ -144,34 +146,6 @@ export function useGeoPlanningState({
       return [...keptCandidates, ...freshEntries]
     })
   }, [])
-
-  // onReturnToCandidate:候選籃「已排入行程」項目按「返回候選」——用
-  // 穩定的 id 比對(而非物件參照相等),理由:呼叫端傳入的候選物件不一定
-  // 是目前 candidates 陣列裡當下那個物件的同一參照(例如經過展開/複製),
-  // 物件參照比對在這種情況下會靜默失敗、選中項目不會真的返回候選——這
-  // 是先前手機版 GeoOutlinePhoneCandidateDrawer 用 `p === c` 比對時的
-  // 實際風險,統一改用跟桌面版一致的 id 比對後不再有這個問題。
-  const onReturnToCandidate = useCallback((c: GeoCandidate & { kind: 'entry' }) => {
-    setCandidates((prev) =>
-      prev.map((p) => (p.kind === 'entry' && p.id === c.id ? { ...p, inTrip: false } : p)),
-    )
-  }, [])
-
-  // handleReturnToCandidate:「返回候選」按鈕觸發——先呼叫 api.deleteEntry
-  // 真的把後端那筆 entry 刪除(不像 removeCandidate 只從前端候選籃清單
-  // 移除、後端資料仍在),成功後呼叫 onReturnToCandidate 把這個物件的
-  // inTrip 改成 false、繼續留在 candidates 裡。刪除失敗不彈錯誤訊息打斷
-  // 瀏覽,理由同其餘拖放/日期寫入失敗的既有處理方式,印 console 供除錯
-  // 即可,使用者可以再按一次重試。logTag 參數化,理由同
-  // handleScheduleCandidate。
-  const handleReturnToCandidate = useCallback(async (c: GeoCandidate & { kind: 'entry' }, logTag: string) => {
-    try {
-      await deleteEntry(cfg, c.id)
-      onReturnToCandidate(c)
-    } catch (err) {
-      console.error(`[${logTag}] 返回候選失敗:`, err)
-    }
-  }, [cfg, onReturnToCandidate])
 
   // handleRemoveCandidate:「×」按鈕觸發——真正已排入行程的項目
   // (kind==='entry' && inTrip===true)點「×」時,要先呼叫 api.deleteEntry
@@ -402,29 +376,17 @@ export function useGeoPlanningState({
     dispatchGeoSelection({ type: 'CLEAR' })
   }, [])
 
-  // pickingDayKey/onlyCandidates/draggingCandidate:桌面版第二張浮動側欄
-  // (AddFromCandidateSidebar)專用的中介 state——手機版候選籃合併成
-  // 單一抽屜元件,「候選中」清單直接由抽屜元件自己用 candidates prop
-  // 篩出,不需要這些,呼叫端不解構即可(見本檔案開頭「平台差異的處理
-  // 方式」的說明)。
-  const [pickingDayKey, setPickingDayKey] = useState<string | null>(null)
-  const onlyCandidates = useMemo(
-    () => candidates.filter((c) => !(c.kind === 'entry' && c.inTrip)),
-    [candidates],
-  )
+  // draggingCandidate:桌面版拖放改期功能用的中介 state——拖的是「已
+  // 排入行程」的卡片,放開目標是日期分組,見 GeoCandidateSidebar.tsx
+  // handleDropOnDay 的完整說明。
+  //
+  // 2026-10 修正:原本這裡還有 pickingDayKey/onlyCandidates/
+  // handlePickFromCandidate 三個供桌面版第二張浮動側欄
+  // (AddFromCandidateSidebar,「從候選加入」彈出的候選匡)使用的中介
+  // state/函式——使用者明確要求移除整套候選籃候選中清單與候選匡流程,
+  // AddFromCandidateSidebar.tsx 本身已經整個刪除,這三者連帶也已移除,
+  // 不再是死碼。
   const [draggingCandidate, setDraggingCandidate] = useState<GeoCandidate | null>(null)
-  const handlePickFromCandidate = useCallback(async (c: GeoCandidate) => {
-    if (!pickingDayKey || !tripID) return
-    try {
-      await createEntryFromCandidate(cfg, tripID, c, pickingDayKey)
-      setCandidates((prev) =>
-        prev.filter((p) => !(p.kind === c.kind && p.name === c.name && p.lat === c.lat && p.lng === c.lng)),
-      )
-      setRefetchTripEntriesTrigger((n) => n + 1)
-    } catch (err) {
-      console.error('[useGeoPlanningState] 從候選加入失敗:', err)
-    }
-  }, [pickingDayKey, tripID, cfg])
 
   return {
     // 選取狀態
@@ -453,8 +415,6 @@ export function useGeoPlanningState({
     removeCandidate,
     scheduledDates,
     onTripEntriesChange,
-    onReturnToCandidate,
-    handleReturnToCandidate,
     handleRemoveCandidate,
     handleScheduleCandidate,
     selectCandidateFromBasket,
@@ -474,12 +434,8 @@ export function useGeoPlanningState({
     // 行程 entry 重新查詢觸發
     refetchTripEntriesTrigger,
     setRefetchTripEntriesTrigger,
-    // 第二側欄相關(僅桌面版使用)
-    pickingDayKey,
-    setPickingDayKey,
-    onlyCandidates,
+    // 拖放改期相關(僅桌面版使用)
     draggingCandidate,
     setDraggingCandidate,
-    handlePickFromCandidate,
   }
 }

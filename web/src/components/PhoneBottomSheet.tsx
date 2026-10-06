@@ -6,12 +6,14 @@ import styles from './PhoneBottomSheet.module.css'
 // SheetHead:標準 head slot 內容(標題文字 + 關閉鈕),供呼叫端直接帶入
 // PhoneBottomSheet 的 head prop——使用者明確要求「用相同樣式的 head」,
 // 原本 geo-planning/GeoOutlinePhoneListDrawer.tsx、
-// timeline/PhoneTimelineDrawer.tsx 各自在呼叫端重複刻一份同樣結構的
-// JSX(標題 span + X 圖示關閉鈕),收斂成這個元件,往後新增一個 bottom
-// sheet 只需要帶 title/onClose 兩個 prop。不是所有呼叫端都適用這個標準
-// 結構——trip/PhoneTripsDrawer.tsx 目前不帶 head、
+// timeline/PhoneTimelineDrawer.tsx、trip/PhoneTripsDrawer.tsx
+// 各自在呼叫端重複刻一份同樣結構的 JSX(或完全不帶 head、只能靠拖曳
+// 關閉),收斂成這個元件,往後新增一個 bottom sheet 只需要帶
+// title/onClose 兩個 prop。不是所有呼叫端都適用這個標準結構——
 // geo-planning/GeoOutlinePhoneInfoSheet.tsx 的 head 內容結構不同(名稱/
-// 副標/badges/加入行程按鈕),繼續自己組裝,不勉強套用這個元件。
+// 副標/badges/加入行程按鈕),繼續自己組裝 JSX,但 .closeBtn 視覺值
+// (尺寸/底色/字色)仍對齊這裡,使用者明確要求「統一 bottom sheet 關閉
+// 按鈕樣式」,不自己另外發明一套配色(見該檔案 .module.css 的說明)。
 export function SheetHead({ title, onClose }: { title: string; onClose: () => void }) {
   return (
     <div className={styles.head}>
@@ -474,13 +476,13 @@ export function PhoneBottomSheet({
   // 在這裡主動擋),改交給跟 .panel 共用的同一套 draggingRef/dragOffset
   // 拖曳邏輯,行為與「非最頂段時直接拖曳」完全一致。
   const bodyDragHandoffRef = useRef(false)
-  function bodyOnTouchStart(e: ReactTouchEvent) {
+  function bodyOnTouchStart(e: TouchEvent) {
     if (!atMaxExpansion) return
     startYRef.current = e.touches[0].clientY
     startTopRef.current = currentTop
     bodyDragHandoffRef.current = false
   }
-  function bodyOnTouchMove(e: ReactTouchEvent) {
+  function bodyOnTouchMove(e: TouchEvent) {
     if (!atMaxExpansion || startYRef.current === null) return
     const body = bodyRef.current
     const delta = e.touches[0].clientY - startYRef.current
@@ -513,6 +515,38 @@ export function PhoneBottomSheet({
     bodyDragHandoffRef.current = false
     finishDrag()
   }
+
+  // 2026-10 修正:原本 bodyOnTouchStart/Move/End 透過 JSX 的
+  // onTouchStart/onTouchMove/onTouchEnd 綁定——React 17+ 替
+  // touchstart/touchmove(以及 wheel)這幾種事件的原生 DOM 監聽器預設
+  // 加上 passive: true(配合瀏覽器建議的捲動效能優化),但 bodyOnTouchMove
+  // 內的 e.preventDefault()(攔截「已捲到頂、繼續往下拖」交接給 sheet
+  // 拖曳的情境,見上方完整說明)在 passive listener 裡完全不會生效,
+  // 瀏覽器只會在 console 噴
+  // 「Unable to preventDefault inside passive event listener invocation」
+  // 警告,不會真的擋掉原生捲動——使用者實測回報「移動地圖時會卡著」,
+  // 排查發現這個警告被連續觸發,根因就在這裡:瀏覽器以為可以放心在
+  // 合成器執行緒提早處理捲動,實際上卻一直被這個(失效的)
+  // preventDefault 嘗試同步介入,兩者的假設互相矛盾,造成明顯卡頓。
+  // 改成 useEffect 手動呼叫原生 addEventListener 並明確傳
+  // { passive: false },讓瀏覽器確實知道這個監聽器可能呼叫
+  // preventDefault,改用主執行緒同步處理,不要提早樂觀假設。
+  // atMaxExpansion/isSingleStop 等依賴值變動時整組重新綁定——這三個
+  // handler 邏輯輕量,重新綁定的成本可忽略,比用 ref 包住每個易變值
+  // 簡單直接,不需要額外維護一層 ref 同步。
+  useEffect(() => {
+    const body = bodyRef.current
+    if (!body) return
+    body.addEventListener('touchstart', bodyOnTouchStart, { passive: true })
+    body.addEventListener('touchmove', bodyOnTouchMove, { passive: false })
+    body.addEventListener('touchend', bodyOnTouchEnd, { passive: true })
+    return () => {
+      body.removeEventListener('touchstart', bodyOnTouchStart)
+      body.removeEventListener('touchmove', bodyOnTouchMove)
+      body.removeEventListener('touchend', bodyOnTouchEnd)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [atMaxExpansion, isSingleStop])
 
   // finishDrag:onTouchEnd 的共用收尾邏輯——.panel 的 onTouchEnd 與
   // .body 的 bodyOnTouchEnd 都需要同一套「鬆手後依 dragOffset 決定吸附
@@ -690,16 +724,17 @@ export function PhoneBottomSheet({
             轉圈動畫取代 children——讓呼叫端可以先把面板打開(例如使用者
             按下某個會觸發非同步查詢的入口),資料還沒回來前先顯示這個,
             不用自己在每個 children 裡各刻一份 loading 畫面(見上方
-            loading prop 的說明)。bodyScrollable/onTouch*:只在展開最多
-            的那個段疊加(見上方 atMaxExpansion/bodyOnTouchStart 等的
-            說明),交給真正的原生捲動,不影響其餘段落維持 overflow:
-            hidden、完全不接收觸控事件的預設行為。 */}
+            loading prop 的說明)。bodyScrollable:只在展開最多的那個段
+            疊加(見上方 atMaxExpansion 的說明),交給真正的原生捲動,不
+            影響其餘段落維持 overflow: hidden、完全不接收觸控事件的
+            預設行為。觸控事件改在上方 useEffect 用原生 addEventListener
+            綁定(見該處對 passive: false 的完整說明),不再透過 JSX 的
+            onTouchStart/onTouchMove/onTouchEnd——兩者只能擇一,留著
+            JSX 版本會變成同一個事件被 React 合成事件與原生監聽器各綁
+            一次,重複觸發。 */}
         <div
           className={`${styles.body}${atMaxExpansion ? ` ${styles.bodyScrollable}` : ''}`}
           ref={bodyRef}
-          onTouchStart={bodyOnTouchStart}
-          onTouchMove={bodyOnTouchMove}
-          onTouchEnd={bodyOnTouchEnd}
         >
           {loading ? <div className={styles.spinner} aria-label="載入中" /> : renderedChildren}
         </div>

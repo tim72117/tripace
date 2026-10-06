@@ -165,7 +165,8 @@
 }
 
 .title {
-  font-size: 15px;
+  /* 2026-10 修正:原本 15px 偏小,使用者要求放大——調整到 18px。 */
+  font-size: 18px;
   font-weight: 700;
   color: var(--color-dark);
 }

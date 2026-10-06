@@ -37,7 +37,7 @@ description: 用 tripace 自己的 CLI 工具(server/cmd/cli)透過 HTTP 存取 
 tripace-cli login --web
 ```
 
-會開瀏覽器走核准流程，成功後 token 存在 `os.UserConfigDir()/tripace/token`（macOS/Linux 是 `~/.config/tripace/token`），之後的指令會自動帶上，不需要重新登入。這個 token 快取跟執行檔無關（不管用內建執行檔還是 `go run` 現場編譯都讀寫同一個路徑），不需要為了登入狀態重新編譯或切換執行方式。
+會開瀏覽器走核准流程，成功後 token 依 `-api` 指定的 host 分開存放（對 host URL 做 SHA256 雜湊當檔名），存在 `os.UserConfigDir()/tripace/<雜湊檔名>`（macOS/Linux 是 `~/.config/tripace/`），不同 host（例如本機 `http://localhost:8080` 與正式機）登入狀態互不覆蓋，之後對同一個 host 的指令會自動帶上對應的 token，不需要重新登入。這個 token 快取跟執行檔無關（不管用內建執行檔還是 `go run` 現場編譯都讀寫同一組路徑），不需要為了登入狀態重新編譯或切換執行方式。
 
 本機另外跑 Vite dev server（`:5173`）、而 server 走 `:8080` 時，可以加 `-console http://localhost:5173` 讓核准頁面走有熱重載的 dev server：
 

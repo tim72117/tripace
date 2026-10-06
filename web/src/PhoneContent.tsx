@@ -1,5 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
-import { Route, Sparkles } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Compass, ListPlus, Route, Sparkles } from 'lucide-react'
 import { ChatScreen, type DesktopTimelineMirror } from './chat/ChatScreen'
 import { type ContentProps } from './AppCommon'
 import { useIsDesktop } from './hooks/useIsDesktop'
@@ -100,6 +100,48 @@ export function PhoneContent(props: ContentProps) {
   // 桌面版使用,見 App.tsx)。
   const [chatSheetOpen, setChatSheetOpen] = useState(false)
   const [paceSheetOpen, setPaceSheetOpen] = useState(false)
+  // exploreActive/exploreTrigger:2026-10「探索」標籤從疊在地圖左上角
+  // 搬到底部常駐功能列(使用者明確要求),這兩個 state 是這個元件與
+  // GeoOutlinePhoneView.tsx 之間的橋接——exploreActive 是 ExploreMap.tsx
+  // 內部 activeCategory 選取狀態的單向回報(是否等於 EXPLORE_CATEGORY,
+  // 見 GeoOutlinePhoneView.tsx onActiveCategoryChange 轉接處的完整
+  // 說明),只用來決定 PhoneTabBar 這顆按鈕的 active 視覺,這個元件
+  // 不反過來指定它;exploreTrigger 是遞增計數器,每次按下按鈕就遞增,
+  // 讓 GeoOutlinePhoneView → ExploreMap 收到變化後觸發一次探索標籤的
+  // 點擊(開啟或取消,邏輯仍在 ExploreMap 內部的 handleCategoryClick,
+  // 這裡只負責送出觸發訊號),對齊 GeoOutlinePhoneInfoSheet.tsx
+  // addFlashTrigger 的既有設計慣例。
+  const [exploreActive, setExploreActive] = useState(false)
+  const [exploreTrigger, setExploreTrigger] = useState(0)
+  // candidateDrawerOpen/candidateDrawerTrigger:2026-10「行程」按鈕從
+  // 疊在地圖左下角的浮動按鈕群組搬到底部常駐功能列(使用者明確要求,
+  // 跟「旅程」交換位置),這兩個 state 的橋接方式對齊上面
+  // exploreActive/exploreTrigger 的既有模式——candidateDrawerOpen 是
+  // GeoOutlinePhoneView.tsx 內部候選籃抽屜開關狀態的單向回報(那個元件
+  // 內部還有「加入候選後自動打開抽屜」的既有邏輯,開關狀態本身不提升
+  // 出來,只回報目前是否開啟,供這顆按鈕顯示 active 視覺);
+  // candidateDrawerTrigger 是遞增計數器,按下按鈕就遞增,讓
+  // GeoOutlinePhoneView.tsx 收到變化後打開抽屜。
+  const [candidateDrawerOpen, setCandidateDrawerOpen] = useState(false)
+  const [candidateDrawerTrigger, setCandidateDrawerTrigger] = useState(0)
+  // pendingRestoreTripsRef:2026-10 修正——原本「行程抽屜關閉時重新開啟
+  // 清單」是無條件觸發(只要曾經開過行程抽屜,之後任何一次關閉都會
+  // 彈回清單),code review 抓到這樣會導致使用者永遠無法單純關掉兩層
+  // sheet 回到地圖(按 X 關行程→立刻被彈回清單→還要再關一次清單),
+  // 體感像卡住。改成只在「這次打開行程抽屜是因為剛在清單裡選定了
+  // 旅程」(見下方 selectTrip)這個情境,才在使用者關閉行程抽屜時回彈
+  // 清單——其餘情況(使用者自己按行程按鈕打開、或行程內項目收合/復原
+  // 的 activeSnapIndex 互動)關閉時單純回地圖,不自動開任何東西。用
+  // ref 而非 state,因為這個值只在 candidateDrawerOpen 的 effect 裡
+  // 讀取/消耗一次,不需要參與渲染。
+  const pendingRestoreTripsRef = useRef(false)
+  useEffect(() => {
+    if (candidateDrawerOpen) return
+    if (pendingRestoreTripsRef.current) {
+      pendingRestoreTripsRef.current = false
+      setTripsDrawerOpen(true)
+    }
+  }, [candidateDrawerOpen])
   // chatSnapIndex:對話疊加層自己的吸附段落狀態——使用者明確要求「對話
   // 也要可縮到最底」,比照地點清單/地點資訊卡(GeoOutlinePhoneListDrawer.tsx/
   // GeoOutlinePhoneInfoSheet.tsx 的同名 state),索引 0 是收合段
@@ -114,12 +156,26 @@ export function PhoneContent(props: ContentProps) {
   const onOpenTrips = () => {
     setTripsDrawerOpen((v) => !v)
   }
-  // selectTrip:切換使用中的旅程,並關閉獨立旅程抽屜——不自動跳轉到其他
-  // 畫面,選完旅程後留在使用者原本所在的畫面(規劃地圖/對話/配速表疊加層)
-  // 即可,不需要強制帶去別的內容模式。
+  // selectTrip:切換使用中的旅程,並關閉獨立旅程抽屜。
+  //
+  // 2026-10 修正:使用者明確要求「選完清單後就開啟行程」——選定旅程後
+  // 緊接著觸發 candidateDrawerTrigger 打開候選籃/行程抽屜,不需要使用者
+  // 再按一次「行程」按鈕;同時標記 pendingRestoreTripsRef(見上方該 ref
+  // 的完整說明),這樣使用者之後關閉這次打開的行程抽屜時才會自動彈回
+  // 清單,形成「選清單→開行程→關行程→回清單」的來回循環。
+  //
+  // code review 修正:原本不分 t 是否已經是目前的 activeTrip,一律觸發
+  // candidateDrawerTrigger——使用者在清單裡重複點選同一個已選定的旅程
+  // (例如單純想收起清單回地圖),也會被無條件導去重新打開行程抽屜。
+  // 改成只有真的切換到不同旅程時才觸發這整套「打開行程+標記待回彈」的
+  // 連動,重複點同一個旅程單純關閉清單,不節外生枝。
   const selectTrip = (t: Trip) => {
+    const isSameTrip = t.id === activeTrip?.id
     setActiveTrip(t)
     setTripsDrawerOpen(false)
+    if (isSameTrip) return
+    pendingRestoreTripsRef.current = true
+    setCandidateDrawerTrigger((n) => n + 1)
   }
 
   // useTripsState 提升到這裡頂層常駐呼叫(不只在抽屜開啟時才掛載)——
@@ -178,8 +234,36 @@ export function PhoneContent(props: ContentProps) {
   // 對應的疊加層(使用者明確要求「規劃地圖常駐為主畫面,對話/配速表都
   // 改成疊加層」,不再是切換分頁模式,見上方 chatSheetOpen/paceSheetOpen
   // 的說明)。
+  // 2026-10 修正:「行程」「旅程」兩顆按鈕合併成同一個群組功能,統一
+  // 命名——整體概念叫「行程」,原本的「旅程」(切換/選擇不同旅程的清單,
+  // PhoneTripsDrawer)在命名上改稱「行程的清單」,畫面上簡稱「清單」。
+  // 底部功能列現在只顯示一顆「行程」按鈕,不再有獨立的「旅程」/「清單」
+  // 入口——兩個 bottom sheet(候選籃/行程抽屜、PhoneTripsDrawer)都還在,
+  // 只是互動方式改變:按下「行程」時,若使用者還沒選擇清單(activeTrip
+  // 為空),先開啟清單讓使用者選;已經選了清單,才真正開啟行程抽屜本身
+  // (候選籃/本次行程已排定的地點清單)。
+  //
+  // handleOpenTrip:activeTrip 為空代表還沒選擇清單,這時候開啟候選籃/
+  // 行程抽屜沒有意義(沒有 tripID,GeoOutlinePhoneView.tsx 內部的
+  // handleAddCandidate 等流程本來就會因為缺少 tripID 而無法真正寫入
+  // entry),改成呼叫 onOpenTrips 開啟清單,引導使用者先選,比直接打開
+  // 一個「看起來能操作、實際上沒有清單可以排入」的空抽屜更符合使用者
+  // 預期。有 activeTrip 時才真正觸發候選籃/行程抽屜。
+  const handleOpenTrip = () => {
+    if (!activeTrip) {
+      onOpenTrips()
+      return
+    }
+    setCandidateDrawerTrigger((n) => n + 1)
+  }
   const bottomTabs: { key: string; icon: typeof Sparkles; title: string; active: boolean; onClick: () => void; beta?: boolean }[] = [
-    { key: 'plan-ai', icon: Sparkles, title: 'AI 規劃', active: chatSheetOpen, onClick: () => setChatSheetOpen(true), beta: true },
+    // active:候選籃/行程抽屜、清單抽屜任一個開啟,這顆按鈕都顯示為
+    // 啟用狀態——使用者只看到一顆「行程」入口,不需要分辨目前到底是哪
+    // 一層 sheet 開著,只要「行程」這個概念相關的畫面正在顯示,按鈕就該
+    // 亮著。
+    { key: 'trip', icon: ListPlus, title: '行程', active: candidateDrawerOpen || tripsDrawerOpen, onClick: handleOpenTrip },
+    { key: 'explore', icon: Compass, title: '探索', active: exploreActive, onClick: () => setExploreTrigger((n) => n + 1) },
+    { key: 'plan-ai', icon: Sparkles, title: '規劃', active: chatSheetOpen, onClick: () => setChatSheetOpen(true), beta: true },
   ]
   const sideTools: { key: string; icon: typeof Route; title: string; onClick: () => void }[] = [
     ...(PACE_ENABLED ? [{ key: 'pace', icon: Route, title: '路徑', onClick: () => setPaceSheetOpen(true) }] : []),
@@ -231,17 +315,19 @@ export function PhoneContent(props: ContentProps) {
           onOpenTimeline={TIMELINE_ENABLED ? () => setTimelineDrawerOpen(true) : undefined}
           onOpenTrips={() => setTripsDrawerOpen(true)}
           theme={props.theme}
+          exploreTrigger={exploreTrigger}
+          onExploreActiveChange={setExploreActive}
+          candidateDrawerTrigger={candidateDrawerTrigger}
+          onCandidateDrawerActiveChange={setCandidateDrawerOpen}
         />
         {/* PhoneSideTools:右側下方路徑+demo-* 小圖示,跨所有主畫面模式
             共用(不是規劃地圖專屬),見該元件開頭說明。 */}
         <PhoneSideTools tools={sideTools} />
-        {/* PhoneTabBar:底部常駐導覽列(旅程/對話),取代原本要開
-            PhoneNavDrawer 抽屜才看得到的分頁列,見該元件開頭說明。 */}
-        <PhoneTabBar
-          tabs={bottomTabs}
-          tripsDrawerOpen={tripsDrawerOpen}
-          onOpenTrips={onOpenTrips}
-        />
+        {/* PhoneTabBar:底部常駐導覽列(行程/旅程/探索/AI 規劃),取代原本
+            要開 PhoneNavDrawer 抽屜才看得到的分頁列,見該元件開頭說明。
+            tripsDrawerOpen/onOpenTrips 現在是 bottomTabs 陣列裡的「旅程」
+            項目(見上方該陣列的完整說明),不再是這個元件的獨立 prop。 */}
+        <PhoneTabBar tabs={bottomTabs} />
         {/* 旅程列表獨立抽屜,由底部常駐列的「旅程」按鈕開關(onOpenTrips)。
             onManage 對齊桌面版 DesktopTripList.tsx,開啟合併後的
             TripManageModal(分享連結/成員/開啟時自動進入),見下方渲染。
@@ -343,7 +429,7 @@ export function PhoneContent(props: ContentProps) {
         panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 36 }}
         showBackdrop={false}
         keepMounted
-        head={<SheetHead title="AI 規劃" onClose={() => setChatSheetOpen(false)} />}
+        head={<SheetHead title="規劃" onClose={() => setChatSheetOpen(false)} />}
       >
         {
           // AI 規劃取代對話:TripPlanPage 以最近的 <main> 當捲動容器

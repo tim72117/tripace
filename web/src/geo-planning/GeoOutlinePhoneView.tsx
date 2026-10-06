@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
-import { ListPlus, Timeline } from 'lucide-react'
+import { Timeline } from 'lucide-react'
 import type { ClientConfig, GeoAttraction } from '../api'
 import type { Trip } from '../trip/types'
 import type { User } from '../user/types'
 import type { Theme } from '../theme'
 import { Avatar } from '../AppCommon'
-import { ExploreMap } from './ExploreMap'
+import { ExploreMap, EXPLORE_CATEGORY } from './ExploreMap'
 import { useGeoOutlineMapState } from './useGeoOutlineMapState'
 import outlineMapStyles from './GeoOutlinePanel.module.css'
 import { useGeoPlanningState } from './useGeoPlanningState'
@@ -154,6 +154,10 @@ export function GeoOutlinePhoneView({
   onOpenTimeline,
   onOpenTrips,
   theme,
+  exploreTrigger,
+  onExploreActiveChange,
+  candidateDrawerTrigger,
+  onCandidateDrawerActiveChange,
 }: {
   cfg: ClientConfig
   tripID?: string | null
@@ -186,6 +190,29 @@ export function GeoOutlinePhoneView({
   // ExploreMap.tsx 對這個 prop 的完整說明。這個元件本身不消費 theme,
   // 純轉傳。
   theme?: Theme
+  // exploreTrigger/onExploreActiveChange:2026-10「探索」標籤從疊在地圖
+  // 左上角的類別標籤列搬到 PhoneTabBar.tsx 底部常駐功能列(使用者明確
+  // 要求),這個元件因此不再自己持有探索的開關邏輯,改成單純轉傳——
+  // exploreTrigger 原封不動轉給下方 <ExploreMap> 的同名 prop(每次遞增
+  // 觸發一次點擊,見該 prop 的完整說明),onActiveCategoryChange 收到的
+  // 選中類別往上轉成布林值(是否等於 EXPLORE_CATEGORY)回報給
+  // PhoneContent.tsx,供 PhoneTabBar 的「探索」按鈕顯示 active 視覺。
+  exploreTrigger?: number
+  onExploreActiveChange?: (active: boolean) => void
+  // candidateDrawerTrigger:2026-10「行程」抽屜的開關按鈕從疊在地圖
+  // 左下角的浮動按鈕群組(.candidateGroup)搬到 PhoneTabBar.tsx 底部常駐
+  // 功能列(使用者明確要求,跟「旅程」按鈕交換位置),底部功能列跟這個
+  // 元件是分開掛載的 sibling(見 PhoneContent.tsx 的版面結構),無法直接
+  // 呼叫這裡的 setCandidateDrawerOpen——用遞增計數器(對齊 exploreTrigger
+  // 同一套既有慣例)讓外部觸發開啟。candidateDrawerOpen 這個 state 本身
+  // 仍留在這個元件內部管理(不提升出去),因為「加入候選後自動打開抽屜」
+  // 的既有邏輯(見 handleAddCandidate)需要直接呼叫 setCandidateDrawerOpen,
+  // 外部觸發只是多一個「打開」的入口,不取代原本的開關機制。
+  candidateDrawerTrigger?: number
+  // onCandidateDrawerActiveChange:candidateDrawerOpen 的單向回報——供
+  // PhoneTabBar 的「行程」按鈕顯示 active 視覺,理由同
+  // onExploreActiveChange。
+  onCandidateDrawerActiveChange?: (active: boolean) => void
 }) {
   const [searchCity, setSearchCity] = useState('')
   const [searchTrigger, setSearchTrigger] = useState(0)
@@ -239,6 +266,30 @@ export function GeoOutlinePhoneView({
   // GeoOutlinePhoneCandidateDrawer.module.css 的 .panelFlash。
   const [candidateDrawerOpen, setCandidateDrawerOpen] = useState(false)
   const [candidateFlashTrigger, setCandidateFlashTrigger] = useState(0)
+  // candidateDrawerRestoreTrigger:2026-10 新增——使用者明確要求「關閉
+  // 地點後,行程要復原」:點行程項目時行程抽屜只收合不關閉(見
+  // GeoOutlinePhoneCandidateDrawer.tsx restoreTrigger prop 的完整
+  // 說明),接著開啟的地點資訊卡被關掉時,這裡遞增這個計數器通知抽屜
+  // 自己展開回來。在資訊卡 onClose(下方)遞增,不分辨資訊卡是不是真的
+  // 從候選籃點進來——抽屜本來就是展開狀態時,內部 setActiveSnapIndex(1)
+  // 是 no-op,不會有副作用,不需要額外判斷來源。
+  const [candidateDrawerRestoreTrigger, setCandidateDrawerRestoreTrigger] = useState(0)
+
+  // candidateDrawerTrigger 變動時打開抽屜(見該 prop 的完整說明)——對齊
+  // GeoOutlinePhoneInfoSheet.tsx addFlashTrigger 的既有慣例寫法:初次
+  // 渲染(candidateDrawerTrigger 為 undefined 或 0)不觸發,只在真正遞增
+  // 時才打開。
+  useEffect(() => {
+    if (!candidateDrawerTrigger) return
+    setCandidateDrawerOpen(true)
+  }, [candidateDrawerTrigger])
+
+  // candidateDrawerOpen 變動時往外回報(見 onCandidateDrawerActiveChange
+  // prop 的完整說明)——供 PhoneTabBar 的「行程」按鈕顯示 active 視覺。
+  useEffect(() => {
+    onCandidateDrawerActiveChange?.(candidateDrawerOpen)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidateDrawerOpen])
 
   // listLoading:清單查詢中動畫旗標(見上方元件說明的 FE8 修法)——單純
   // 布林值,由三個查詢入口在查詢開始時設 true,查詢結果回來時設 false,
@@ -423,15 +474,12 @@ export function GeoOutlinePhoneView({
   return (
     <div className={styles.wrap}>
       <div className={styles.candidateGroup}>
-        <button
-          type="button"
-          className={styles.candidateBtn}
-          onClick={() => setCandidateDrawerOpen(true)}
-          title="候選籃"
-        >
-          <ListPlus size={20} strokeWidth={1.8} />
-          {geo.candidates.length > 0 && <span className={styles.candidateBadge}>{geo.candidates.length}</span>}
-        </button>
+        {/* 2026-10 修正:原本這裡的「候選籃」按鈕(開啟行程抽屜)已搬到
+            PhoneTabBar.tsx 底部常駐功能列(使用者明確要求,跟「旅程」
+            按鈕交換位置),不再疊在地圖左下角——候選籃抽屜的開關狀態
+            (candidateDrawerOpen)與自動開啟邏輯(handleAddCandidate)
+            仍留在這個元件內部,只是觸發入口改用 candidateDrawerTrigger
+            prop(見該 prop 的完整說明)。 */}
         {onOpenTimeline && (
           <button
             type="button"
@@ -491,6 +539,9 @@ export function GeoOutlinePhoneView({
             sheetStack.push({ type: 'list' })
           }}
           hideCategoryTags={categoryTagsState.hidden}
+          hideExploreTag
+          exploreTrigger={exploreTrigger}
+          onActiveCategoryChange={(category) => onExploreActiveChange?.(category === EXPLORE_CATEGORY)}
           showZoomControl={false}
           searchRightSlot={
             <button type="button" className={styles.avatarBtn} onClick={onOpenSettings} title="設定">
@@ -565,8 +616,14 @@ export function GeoOutlinePhoneView({
               // 成立,不需要特別處理。geo.clearSelection() 清空
               // infoContent/attractionContent 本身(內容清空),兩者合
               // 起來才是「資訊卡真正消失」的完整動作。
+              //
+              // 2026-10 修正:使用者明確要求「關閉地點後,行程要復原」
+              // ——遞增 candidateDrawerRestoreTrigger,通知行程抽屜(若
+              // 先前因為點了裡面的項目而收合到最下面)自動展開回來,見該
+              // state 的完整說明。
               sheetStack.pop()
               geo.clearSelection()
+              setCandidateDrawerRestoreTrigger((n) => n + 1)
             }}
             onAddCandidate={handleAddCandidate}
             // onOpenDatePicker:候選沒有排定日期時觸發(見
@@ -651,23 +708,26 @@ export function GeoOutlinePhoneView({
         isTopmost={sheetStack.top?.type === 'date-calendar'}
       />
       <GeoOutlinePhoneCandidateDrawer
-        cfg={cfg}
-        tripID={tripID}
         open={candidateDrawerOpen}
         onClose={() => setCandidateDrawerOpen(false)}
         candidates={geo.candidates}
-        scheduledDates={geo.scheduledDates}
         onRemove={(c) => geo.handleRemoveCandidate(c, 'GeoOutlinePhoneCandidateDrawer')}
         onSelect={(c) => {
           // 候選籃選取候選項目——跟點地圖 marker 一樣是非清單來源的入口,
           // 用 replace 不用 push(理由見上方 onAttractionSelect 等的說明)。
+          //
+          // 2026-10 修正:使用者明確要求「點選行程內的項目時不要關閉
+          // 行程,而是縮到最下面就好」——原本這裡會呼叫
+          // setCandidateDrawerOpen(false)真的關閉抽屜(open 變 false),
+          // GeoOutlinePhoneCandidateDrawer.tsx 內部新增的「點項目只收合
+          // 不關閉」邏輯(activeSnapIndex)因此被外層的 open=false 蓋過,
+          // 完全沒生效——拿掉這行,行程抽屜改成只靠它自己內部的收合段
+          // 處理,open 本身在這個互動裡不再改變。
           geo.selectCandidateFromBasket(c)
-          setCandidateDrawerOpen(false)
           sheetStack.replace({ type: 'info' })
         }}
-        onReturnToCandidate={(c) => geo.handleReturnToCandidate(c, 'GeoOutlinePhoneCandidateDrawer')}
-        onScheduled={() => geo.setRefetchTripEntriesTrigger((n) => n + 1)}
         flashTrigger={candidateFlashTrigger}
+        restoreTrigger={candidateDrawerRestoreTrigger}
       />
       <GeoOutlinePhoneListDrawer
         cfg={cfg}

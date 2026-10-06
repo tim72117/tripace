@@ -3,7 +3,8 @@ import { Plus } from 'lucide-react'
 import type { ClientConfig, GeoSearchResult } from '../api'
 import { type GeoCandidate } from './GeoCandidateSidebar'
 import { searchResultToCandidate, useCandidateDatePicker } from './geoCandidateHelpers'
-import { GeoListItemCard } from './GeoListItemCard'
+import { fetchGeoPlacePhoto } from '../api'
+import { ListItemCard, PhotoLeading } from '../components/ListItemCard'
 import { PanelHead } from '../components/PanelHead'
 import styles from './GeoHotelSidebar.module.css'
 
@@ -190,16 +191,26 @@ export function GeoHotelSidebar({
   onClose?: () => void
 }) {
   const isEmpty = results.length === 0
-  // lazyPhotos:依 placeId 延遲載入的照片快取(見 GeoListItemCard 的
+  // lazyPhotos:依 placeId 延遲載入的照片快取(見 ListItemCard 的
   // 說明)——原本只有 geocode(搜尋結果)會用到,2026-08 起 place(附近
   // 推薦地點,見 api.ts GeoPlace.placeId 的說明)也改成同一套延遲查詢,
   // 故泛化成不分 kind、只要有 placeId 就共用同一份快取。key 是
-  // placeId——存在這裡(而非每個 GeoListItemCard 各自記憶)是因為清單
+  // placeId——存在這裡(而非每個 ListItemCard 各自記憶)是因為清單
   // 重新渲染(hover/選取狀態變化)不該讓已經查過的照片消失重查,且同一個
   // placeId 若因為使用者上下捲動導致項目重新 mount,也不該重複觸發查詢。
   // value 為 undefined 代表還沒查過,null 代表查過但沒有照片,string
   // 代表查到的照片網址。
   const [lazyPhotos, setLazyPhotos] = useState<Record<string, string | null>>({})
+
+  // handleLoadPhoto:ListItemCard 的 onLoadPhoto——2026-10 ListItemCard
+  // 從 geo-planning 抽成全專案通用元件後,不再認識 ClientConfig/
+  // fetchGeoPlacePhoto 這些 geo-planning 專屬的型別與 API,查詢本身改由
+  // 呼叫端(這裡)負責,查完寫回上面的 lazyPhotos 快取。
+  const handleLoadPhoto = (placeId: string) => {
+    fetchGeoPlacePhoto(cfg, placeId, results.find((r) => r.placeId === placeId)?.name ?? '')
+      .then((result) => setLazyPhotos((prev) => ({ ...prev, [placeId]: result.googlePhotoUrls?.[0] ?? null })))
+      .catch(() => setLazyPhotos((prev) => ({ ...prev, [placeId]: null })))
+  }
 
   return (
     <aside className={styles.sidebar}>
@@ -213,21 +224,25 @@ export function GeoHotelSidebar({
           results.map((r) => {
             const key = geoItemKey(r.kind, r)
             return (
-              <GeoListItemCard
+              <ListItemCard
                 key={key}
-                cfg={cfg}
                 name={r.name}
                 address={r.address}
-                photoUrl={r.placeId ? lazyPhotos[r.placeId] : r.photoUrl}
-                placeId={r.placeId}
-                onPhotoLoaded={(placeId, url) => {
-                  setLazyPhotos((prev) => ({ ...prev, [placeId]: url }))
-                }}
+                leading={
+                  <PhotoLeading
+                    name={r.name}
+                    photoUrl={r.placeId ? lazyPhotos[r.placeId] : r.photoUrl}
+                    loadKey={r.placeId}
+                    onLoadPhoto={handleLoadPhoto}
+                    photoClassName={styles.itemPhoto}
+                    placeholderClassName={styles.itemPhotoPlaceholder}
+                  />
+                }
                 selected={selectedKey === key}
                 onSelect={() => onSelect?.(r)}
                 onHoverChange={(hovering) => onHover?.(hovering ? key : null)}
                 styles={styles}
-                addSlot={
+                trailing={
                   r.kind !== 'geocode' && (
                     <AddCandidateButton
                       cfg={cfg}

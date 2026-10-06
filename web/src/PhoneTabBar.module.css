@@ -37,13 +37,35 @@
   flex: 1 1 0;
   height: 64px;
   display: flex;
+  /* 2026-10 修正:新增 icon 下方文字標籤——排列方向從橫向置中改成直向
+     (icon 在上、文字在下),見下方 .tabLabel。 */
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 2px;
   border: none;
   background: none;
-  color: var(--ios-gray);
-  opacity: 0.75;
+  /* 2026-10 修正:原本 color: var(--ios-gray)(暖灰 #9E9488/深色模式
+     #8A8072)搭配 opacity: 0.75,使用者回報整排未選中的按鈕看起來太暗
+     不夠清楚——改用 --color-dark(深棕/深色模式下是淺杏色 #EDE6D8,見
+     base-ui.css)取代偏灰的 --ios-gray,文字本身的顏色更銳利清楚,
+     opacity 另外調到 0.68 做「未選中」的視覺降階,跟下方
+     .tabIconActive(opacity: 1 + 主色 + 陰影)的選中態仍保留足夠對比,
+     兩種狀態不會混淆。 */
+  color: var(--color-dark);
+  opacity: 0.68;
   cursor: pointer;
+}
+
+/* tabLabel:icon 下方的文字標籤——字級刻意偏小(10px),避免跟上方 icon
+   爭奪視覺焦點,同時 4 個字左右的標籤名稱(旅程/行程/AI 規劃)在 64px
+   高度內仍有餘裕。顏色繼承自 .tab(inherit),跟著 icon 一起在未選中/
+   選中兩態之間變化,不需要額外疊加 active class。 */
+.tabLabel {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  color: inherit;
 }
 
 /* tabIcon:包住 icon 本身的內層圓形,陰影(見下方 tabIconActive)只圍繞

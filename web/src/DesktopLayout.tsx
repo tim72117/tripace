@@ -15,7 +15,6 @@ import { useInfoCardStackSync } from './geo-planning/useInfoCardStack'
 import { useThemeAttractionSelection } from './geo-planning/useThemeAttractionSelection'
 import { GeoCandidateSidebar, type GeoCandidate } from './geo-planning/GeoCandidateSidebar'
 import { createEntryFromCandidate } from './geo-planning/geoCandidateHelpers'
-import { AddFromCandidateSidebar, dayGroupLabel } from './geo-planning/AddFromCandidateSidebar'
 import { ExploreMap } from './geo-planning/ExploreMap'
 import { useGeoOutlineMapState } from './geo-planning/useGeoOutlineMapState'
 import outlineMapStyles from './geo-planning/GeoOutlinePanel.module.css'
@@ -483,15 +482,6 @@ export function DesktopContent(props: ContentProps) {
     setTimelineMirror(EMPTY_TIMELINE_MIRROR)
   }, [activeTrip?.id])
 
-  // 離開規劃分頁或切換旅程時收起第二側欄——pickingDayKey 記的是「已排入
-  // 行程」某一天的日期字串,離開 geo-outline 或換了旅程後,這個日期分組
-  // 可能已經不存在(或屬於別的旅程),繼續開著會讓使用者選到的候選建立
-  // 到一個已經看不到脈絡的日期,故一併清空。
-  useEffect(() => {
-    geo.setPickingDayKey(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panelMode, activeTrip?.id])
-
   const onTimelineData = useCallback((data: DesktopTimelineMirror) => {
     setTimelineMirror(data)
   }, [])
@@ -566,28 +556,6 @@ export function DesktopContent(props: ContentProps) {
             一層 860px 置中容器維持視覺不變,只有捲動這件事發生在撐滿
             視窗的外層。 */}
         <DesktopMain unbounded={panelSpec?.slot !== 'main-replace' || panelMode === 'plan-ai'} unboundedScroll={panelMode === 'plan-ai'}>
-          {geo.pickingDayKey && (
-            // side="left" 只是借用左緣的 top/z-index/陰影等視覺語言,實際
-            // 水平位置用 style.left 覆蓋——使用者明確要求候選卡並排顯示
-            // 在行程欄(GeoCandidateSidebar,geo-outline 模式寬度固定
-            // 380px,見 PANEL_REGISTRY)右側,不是取代它。12(行程欄左緣
-            // 間距)+ 380(行程欄寬度)+ 12(兩卡之間的間距)= 404px。
-            // pickingDayKey 只在 panelMode === 'geo-outline' 時才可能有值
-            // (見 handlePickFromCandidate 的觸發來源),故這裡不需要依
-            // panelMode 動態換算寬度,直接寫死對應這個模式的寬度即可。
-            <FloatingPanel side="left" width={272} style={{ left: 404 }}>
-              <AddFromCandidateSidebar
-                dayLabel={dayGroupLabel(geo.pickingDayKey)}
-                candidates={geo.onlyCandidates}
-                onRemove={(c) => geo.handleRemoveCandidate(c, 'AddFromCandidateSidebar')}
-                onPick={geo.handlePickFromCandidate}
-                onHover={geo.setHoverKey}
-                onDragStart={geo.setDraggingCandidate}
-                onDragEnd={() => geo.setDraggingCandidate(null)}
-                onClose={() => geo.setPickingDayKey(null)}
-              />
-            </FloatingPanel>
-          )}
           {panelSpec?.slot === 'main-replace' ? (
             panelMode === 'demo-route-editor' ? (
               // demo-route-editor 只做桌面版(手機版 PhoneNavDrawer 不
@@ -728,15 +696,15 @@ export function DesktopContent(props: ContentProps) {
           {/* panelMode 浮動卡片:trips/timeline/pace/geo-outline 這四種正式
               功能的內容(見 PANEL_REGISTRY 的 slot: 'float'),疊在地圖左緣
               上方,不佔用 flex 版面空間、不推擠地圖——沿用跟
-              AddFromCandidateSidebar/GeoHotelSidebar 一致的 FloatingPanel
-              外殼。不傳 title——四種內容元件(DesktopTripList/
-              MultiTrackTimeline/PaceChart/GeoCandidateSidebar)各自 header
-              排版不同,不逐一加專屬標題,FloatingPanel 只在右上角疊加共用
-              的關閉按鈕,導回 /app 收起卡片(同再點一次 rail 圖示的行為)。
-              pickingDayKey 有值時,AddFromCandidateSidebar(見下方)改成
-              並排顯示在這張卡片右側,不再互斥——使用者明確要求「候選要
-              出現在行程右邊,不是替換」,兩張卡同時可見,不需要先關掉
-              候選卡才能看到行程欄剩餘內容。 */}
+              GeoHotelSidebar 一致的 FloatingPanel 外殼。不傳 title——四種
+              內容元件(DesktopTripList/MultiTrackTimeline/PaceChart/
+              GeoCandidateSidebar)各自 header 排版不同,不逐一加專屬標題,
+              FloatingPanel 只在右上角疊加共用的關閉按鈕,導回 /app 收起
+              卡片(同再點一次 rail 圖示的行為)。
+              2026-10 修正:原本這裡還提到 pickingDayKey 有值時
+              AddFromCandidateSidebar 並排顯示在這張卡片右側——候選籃
+              候選中清單與候選匡流程已整個移除,AddFromCandidateSidebar.tsx
+              本身也已刪除,這段「兩張卡並排」的行為不再存在。 */}
           {panelSpec?.slot === 'float' && (
             <FloatingPanel side="left" width={panelSpec.width ?? 380} onClose={() => navigate('/app')}>
               {panelMode === 'trips' ? (
@@ -791,10 +759,8 @@ export function DesktopContent(props: ContentProps) {
                   onSelect={geo.selectCandidateFromBasket}
                   onHover={geo.setHoverKey}
                   onDatesAssigned={() => geo.setRefetchTripEntriesTrigger((n) => n + 1)}
-                  onReturnToCandidate={(c) => geo.handleReturnToCandidate(c, 'GeoCandidateSidebar')}
                   draggingCandidate={geo.draggingCandidate}
                   onDraggingCandidateChange={geo.setDraggingCandidate}
-                  onPickFromCandidate={geo.setPickingDayKey}
                   flashTrigger={geoCandidateFlashTrigger}
                 />
               ) : null}

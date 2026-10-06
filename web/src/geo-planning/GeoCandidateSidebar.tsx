@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ListPlus, Undo2 } from 'lucide-react'
 import * as api from '../api'
 import type { ClientConfig } from '../api'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
@@ -67,7 +66,6 @@ function DayEntryCard({
   onHover,
   onDragStart,
   onDragEnd,
-  onReturnToCandidate,
 }: {
   c: GeoCandidate & { kind: 'entry' }
   onRemove?: (candidate: GeoCandidate) => void
@@ -80,14 +78,6 @@ function DayEntryCard({
   // 資訊。
   onDragStart?: (c: GeoCandidate & { kind: 'entry' }) => void
   onDragEnd?: () => void
-  // onReturnToCandidate:「返回候選」按鈕觸發(只在 inTrip===true 時
-  // 顯示,見下方 render 條件)——把這筆真正已排入行程的 entry 退回候選籃
-  // (見 useGeoPlanningState.ts 的 handleReturnToCandidate 完整說明:真的
-  // 刪除後端那筆 entry,本地保留內容並標記 inTrip:false)。跟既有的
-  // 「×」(onRemove)語意不同,不互相取代:onRemove 只從前端候選籃清單
-  // 移除、不動後端資料(換行程/重新查詢時舊行為仍會讓它重新出現);這顆
-  // 新按鈕才是「真的讓這筆項目不再算入行程」的操作。
-  onReturnToCandidate?: (candidate: GeoCandidate & { kind: 'entry'; inTrip: true }) => void
 }) {
   return (
     <div
@@ -114,16 +104,6 @@ function DayEntryCard({
         <span className={styles.dayCardName}>{c.name}</span>
         {c.startTime && <span className={styles.dayCardTime}>{c.startTime}</span>}
       </div>
-      {c.inTrip && (
-        <button
-          type="button"
-          className={styles.returnToCandidateBtn}
-          onClick={() => onReturnToCandidate?.(c as GeoCandidate & { kind: 'entry'; inTrip: true })}
-          title="返回候選"
-        >
-          <Undo2 size={13} strokeWidth={2} />
-        </button>
-      )}
       <button
         type="button"
         className={styles.removeBtn}
@@ -209,8 +189,6 @@ export function GeoCandidateSidebar({
   onSelect,
   onHover,
   onDatesAssigned,
-  onReturnToCandidate,
-  onPickFromCandidate,
   draggingCandidate,
   onDraggingCandidateChange,
   flashTrigger,
@@ -232,19 +210,6 @@ export function GeoCandidateSidebar({
   // 只能請呼叫端重新查詢真正的資料來源,讓補了日期的項目在下一次渲染
   // 自然移到正確的日期分組。
   onDatesAssigned?: () => void
-  // onReturnToCandidate:「返回候選」按鈕(見 DayEntryCard 的說明)成功
-  // 刪除後端 entry 後觸發,通知呼叫端(DesktopLayout.tsx)把這個物件的
-  // inTrip 改成 false、留在 geoCandidates 裡——這個元件不持有
-  // geoCandidates state,無法自己改,只能請上游代為更新(同
-  // onDatesAssigned 既有的模式)。
-  onReturnToCandidate?: (candidate: GeoCandidate & { kind: 'entry'; inTrip: true }) => void
-  // onPickFromCandidate:某一天 dayHead 的「從候選加入」按鈕按下時觸發,
-  // 帶上該天的 dayKey——這個元件不再自己持有「目前是為哪一天開啟第二
-  // 側欄」的狀態(pickingDayKey 已提升到 DesktopLayout.tsx,因為第二側欄
-  // 是絕對定位疊在 main 之上的獨立元件(AddFromCandidateSidebar,見該
-  // 檔案的說明),只能由共同的父層中介才能同時控制兩者),這裡只負責回報
-  // 使用者按了哪一天的按鈕。
-  onPickFromCandidate?: (dayKey: string) => void
   // draggingCandidate/onDraggingCandidateChange:目前正在拖曳的候選卡片
   // ——原本是這個元件內部的 state,提升到 DesktopLayout.tsx 是因為「候選
   // 中」清單已經搬進第二側欄(AddFromCandidateSidebar,使用者明確要求),
@@ -441,12 +406,14 @@ export function GeoCandidateSidebar({
     onDatesAssigned?.()
   }
 
-  // onRemove/onReturnToCandidate 現在直接是 useGeoPlanningState.ts 的
-  // handleRemoveCandidate/handleReturnToCandidate(已內建 api.deleteEntry
-  // 呼叫與錯誤處理,不在這個檔案裡重複實作一份,見該 hook 的說明;
-  // DesktopLayout.tsx 呼叫端傳入時已綁好自己的 logTag)——這個元件維持
-  // 單純受控呈現層,不再需要本地包一層 handleReturnToCandidate/
+  // onRemove 現在直接是 useGeoPlanningState.ts 的 handleRemoveCandidate
+  // (已內建 api.deleteEntry 呼叫與錯誤處理,不在這個檔案裡重複實作一份,
+  // 見該 hook 的說明;DesktopLayout.tsx 呼叫端傳入時已綁好自己的
+  // logTag)——這個元件維持單純受控呈現層,不再需要本地包一層
   // handleRemove。
+  //
+  // 2026-10 修正:移除「返回候選」按鈕與 onReturnToCandidate——使用者
+  // 明確要求拿掉這個操作。
 
   // handleCreateEntryFromCandidate:拖曳純候選(飯店/景點/推薦地點,或
   // 按過「返回候選」、inTrip===false 的 entry 形狀候選)放進某一天時
@@ -633,15 +600,6 @@ export function GeoCandidateSidebar({
                             <div className={styles.dayHead}>
                               <span className={styles.dayDate}>{dayGroupLabel(dayKey)}</span>
                               <span className={styles.dayStatus}>無安排</span>
-                              <button
-                                type="button"
-                                className={styles.addFromCandidateBtn}
-                                onClick={() => onPickFromCandidate?.(dayKey)}
-                                title="從候選加入"
-                              >
-                                <ListPlus size={13} strokeWidth={2} />
-                                從候選加入
-                              </button>
                             </div>
                             <div
                               className={`${styles.dayBody} ${styles.dayBodyEmpty}${dragOverDay === dayKey ? ` ${styles.dayBodyDragOver}` : ''}`}
@@ -660,15 +618,6 @@ export function GeoCandidateSidebar({
                     <div className={styles.dayHead}>
                       <span className={styles.dayDate}>{dayGroupLabel(dayKey)}</span>
                       <span className={styles.dayStatus}>{dayEntries.length} 個安排</span>
-                      <button
-                        type="button"
-                        className={styles.addFromCandidateBtn}
-                        onClick={() => onPickFromCandidate?.(dayKey)}
-                        title="從候選加入"
-                      >
-                        <ListPlus size={13} strokeWidth={2} />
-                        從候選加入
-                      </button>
                     </div>
                     <div
                       className={`${styles.dayBody}${dragOverDay === dayKey ? ` ${styles.dayBodyDragOver}` : ''}`}
@@ -685,7 +634,6 @@ export function GeoCandidateSidebar({
                           onHover={onHover}
                           onDragStart={onDraggingCandidateChange}
                           onDragEnd={() => { onDraggingCandidateChange(null); setDragOverDay(null) }}
-                          onReturnToCandidate={onReturnToCandidate}
                         />
                       ))}
                     </div>
@@ -721,7 +669,6 @@ export function GeoCandidateSidebar({
                           onHover={onHover}
                           onDragStart={onDraggingCandidateChange}
                           onDragEnd={() => { onDraggingCandidateChange(null); setDragOverDay(null) }}
-                          onReturnToCandidate={onReturnToCandidate}
                         />
                       ))}
                     </div>

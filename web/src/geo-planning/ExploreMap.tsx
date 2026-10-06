@@ -73,7 +73,11 @@ const SEARCH_BOX_CATEGORY_LABELS: Record<string, string> = {
 // 資料庫),CATEGORY_TAGS 三顆標籤現在統一觸發城市搜尋框查詢(見
 // SEARCH_BOX_CATEGORY_LABELS 的說明),兩者互動語意已經分道揚鑣,活躍態
 // 判斷式(activeCategory === EXPLORE_CATEGORY)之後只服務探索標籤本身。
-const EXPLORE_CATEGORY = 'attraction'
+// export:讓外部呼叫端(2026-10 起是 GeoOutlinePhoneView.tsx,見
+// exploreTrigger/hideExploreTag 兩個 prop 的完整說明)能透過
+// onActiveCategoryChange 回報的字串值判斷「目前選中的是不是探索」,
+// 不需要自己重新寫死一份跟這裡容易漂移的字串常數。
+export const EXPLORE_CATEGORY = 'attraction'
 
 // themeToColorScheme/ensureOptionsSet:已抽到 googleMapsBootstrap.ts
 // 共用(NativeMapBase.tsx 也需要完全相同的邏輯,原本兩邊各自維護一份
@@ -111,6 +115,8 @@ export function ExploreMap({
   onSearchStart,
   hideCategoryTags,
   onActiveCategoryChange,
+  exploreTrigger,
+  hideExploreTag,
   onAttractionSelect,
   onSearchResultSelect,
   onPoiSelect,
@@ -259,6 +265,24 @@ export function ExploreMap({
   // 「附近推薦」),這個回報讓側欄不必自己猜測 geocodeCandidates 陣列
   // 內容屬於哪個類別。
   onActiveCategoryChange?: (category: string | null) => void
+  // exploreTrigger:讓呼叫端從外部觸發「探索」標籤的點擊(開/關同一套
+  // activeCategory===EXPLORE_CATEGORY 選取/取消機制,見 handleCategoryClick
+  // 的完整說明)——2026-10 手機版「探索」按鈕搬到 PhoneTabBar.tsx 常駐
+  // 底部功能列後(使用者明確要求,不再疊在地圖左上角的類別標籤列),
+  // PhoneTabBar 跟這個元件是分開掛載的 sibling(見 PhoneContent.tsx 的
+  // 版面結構),無法直接呼叫這個元件內部的 handleCategoryClick,只能靠
+  // props 傳遞觸發訊號。用遞增計數器(而非布林值)是因為使用者可能連續
+  // 點按鈕,計數器遞增保證每次點擊都會被下方 useEffect 偵測到,不會有
+  // 「布林值從 true 又設回 true」不觸發 effect 的邊界問題(對齊
+  // GeoOutlinePhoneInfoSheet.tsx addFlashTrigger 的既有設計慣例)。真正
+  // 的選取狀態仍由這個元件的 activeCategory state 持有、透過
+  // onActiveCategoryChange 回報,不是把狀態提升出去——呼叫端只需要知道
+  // 「目前是否選中探索」(用來決定 PhoneTabBar 按鈕的 active 視覺),不需要
+  // 也不應該反過來直接指定這個元件的內部 state。
+  exploreTrigger?: number
+  // hideExploreTag:隱藏疊在地圖左上角的「探索」標籤——見上方
+  // exploreTrigger 的完整說明與這顆按鈕 JSX 旁的註解。
+  hideExploreTag?: boolean
   // onAttractionSelect:使用者直接點擊地圖上的地標圖示時觸發(而非透過
   // 側欄清單),把該項目往上回報——側欄(GeoHotelSidebar)要能同步標記
   // 選取狀態、切換到對應分頁並顯示該項目的介紹(見 DesktopLayout.tsx 的
@@ -907,6 +931,25 @@ export function ExploreMap({
   // 區域」)共用同一份查詢邏輯——2026-08 起地圖拖曳/縮放不再自動觸發這支
   // 查詢(見下方「搜尋這個區域」按鈕與 idle 監聽器的說明),只有這兩個
   // 明確的使用者動作才會呼叫。
+  // 2026-10 修正:query-succeeded/query-failed 補上 setAreaSearch——
+  // 原本這支函式完全不碰 areaSearch 狀態機,靠呼叫端(handleSearchThisArea)
+  // 自己在呼叫前後收尾。但使用者實測回報「點探索→移動地圖→搜尋這個
+  // 區域→再移動地圖→再搜尋這個區域,會卡在剛剛的畫面」,追查發現根因:
+  // handleSearchThisArea 無條件 dispatch 'search-pressed'(areaDirty 變
+  // false,按鈕從畫面消失,見下方按鈕的渲染條件)後,若搜尋框是空字串
+  // (使用者是透過「探索」標籤而非城市搜尋,city 天生是空的——見
+  // handleSearchThisArea 下方的說明,這是已知且刻意支援的情境)——
+  // runPlacesQuery 開頭的 `if (!query.trim()) return` 會直接提早返回,
+  // 從未進入 .then()/.catch(),永遠不會 dispatch 'query-succeeded'/
+  // 'query-failed',areaDirty 因此卡在 false、再也沒有機制讓按鈕重新
+  // 出現(除非剛好又被下一次地圖拖曳的 map-idle 事件救回來,這也是為何
+  // 使用者操作序列裡「再移動地圖」看起來一度恢復正常,但下一次點擊
+  // 搜尋這個區域又重蹈覆轍)。
+  // 改成這支函式自己負責完整的查詢生命週期收尾,不再假設呼叫端
+  // (runPlacesQuery 或其他路徑)一定會補上對應的 succeeded/failed
+  // ——探索這條路徑如果是唯一真正執行的查詢(city 為空時,見下方
+  // handleSearchThisArea 的條件判斷),就必須由它自己來關閉 searching
+  // 狀態、決定 areaDirty 最終該是 true 還是 false。
   const runExploreQuery = useCallback(() => {
     if (!mapRef.current) return
     const center = mapRef.current.getCenter()
@@ -916,10 +959,13 @@ export function ExploreMap({
       .then((result) => {
         setAttractions((prev) => (sameAttractionsContent(prev, result.attractions) ? prev : result.attractions))
         onAttractionsChange?.(result.attractions)
+        setAreaSearch((s) => reduceAreaSearchState(s, { type: 'query-succeeded' }))
       })
       .catch(() => {
         // 查詢失敗不視為致命錯誤——維持上一次查到的內容即可,理由同這個
-        // 檔案其餘查詢失敗處理的一貫慣例。
+        // 檔案其餘查詢失敗處理的一貫慣例,但仍要讓 areaDirty 重設回
+        // true,提供重試入口(理由同 runPlacesQuery 對應分支的說明)。
+        setAreaSearch((s) => reduceAreaSearchState(s, { type: 'query-failed' }))
       })
   }, [cfg, zoom, onAttractionsChange])
 
@@ -960,6 +1006,28 @@ export function ExploreMap({
     runExploreQuery()
   }, [activeCategory, onActiveCategoryChange, runExploreQuery, runPlacesQuery, onAttractionsChange, onCityChange])
 
+  // handleCategoryClickRef:handleCategoryClick 每次 render 都因為依賴
+  // activeCategory 而重新產生——下方 exploreTrigger 的 useEffect 故意
+  // 只依賴 [exploreTrigger](不能把 handleCategoryClick 放進依賴陣列,
+  // 那樣每次 activeCategory 改變、這個 effect 就會重新執行一次,等同
+  // exploreTrigger 沒變也會誤觸發點擊),若直接在 effect 內閉包參照
+  // handleCategoryClick,抓到的會是 effect 上一次建立時的舊版本(stale
+  // closure)——用 ref 存最新版本,在 effect 真正執行的當下永遠讀到最新
+  // 的 activeCategory/handleCategoryClick,不受這個 effect 自己的
+  // 依賴陣列限制。
+  const handleCategoryClickRef = useRef(handleCategoryClick)
+  handleCategoryClickRef.current = handleCategoryClick
+
+  // exploreTrigger 變動時觸發探索標籤的點擊(見該 prop 的完整說明)——
+  // 對齊 GeoOutlinePhoneInfoSheet.tsx addFlashTrigger 的既有慣例寫法:
+  // 初次渲染(exploreTrigger 為 undefined 或 0)不觸發,只在真正遞增時
+  // 才呼叫。handleCategoryClick 本身已經是這個元件唯一的「點擊探索
+  // 標籤」入口,這裡不重新實作一份選取/取消邏輯,只是換一個觸發來源。
+  useEffect(() => {
+    if (!exploreTrigger) return
+    handleCategoryClickRef.current(EXPLORE_CATEGORY)
+  }, [exploreTrigger])
+
   // 2026-08:移除原本在這裡「觀察 searchResults 變動、統一往上回報
   // onSearchResultsChange」的 useEffect(含 searchResultsMountedRef 這個
   // 跳過掛載時第一次執行的補丁)——這是 level-triggered 設計,任何寫入
@@ -993,12 +1061,22 @@ export function ExploreMap({
   // 的說明。探索標籤選中時(EXPLORE_CATEGORY)額外呼叫 runExploreQuery
   // 一併刷新景點區域圖層,對齊改動前的既有行為——這條查詢免費,不因為
   // 新增了 places 查詢就跳過。
+  // 2026-10 修正:原本無條件呼叫 runPlacesQuery(trimmedCity, ...),
+  // trimmedCity 為空字串時(見上方按鈕渲染條件的說明:探索標籤選中但
+  // 搜尋框是空的,這是刻意支援的情境)runPlacesQuery 開頭的
+  // `if (!query.trim()) return` 會直接提早返回,從未進入
+  // .then()/.catch(),永遠不會收尾 areaSearch 狀態機(見 runExploreQuery
+  // 這次一併修正的完整說明)。改成只在真的有搜尋框文字時才呼叫
+  // runPlacesQuery——探索這條路徑的收尾完全交給 runExploreQuery 自己
+  // 負責,兩條查詢各自對 areaSearch 的狀態轉換負完整責任,不再依賴
+  // "總有一條路徑會呼叫 query-succeeded/failed" 這種隱性假設。
   const handleSearchThisArea = useCallback(() => {
     setAreaSearch((s) => reduceAreaSearchState(s, { type: 'search-pressed' }))
     if (activeCategory === EXPLORE_CATEGORY) {
       runExploreQuery()
     }
     const trimmedCity = (city ?? '').trim()
+    if (!trimmedCity) return
     const matchedCategory = Object.entries(SEARCH_BOX_CATEGORY_LABELS).find(
       ([, label]) => label === trimmedCity,
     )?.[0]
@@ -1224,16 +1302,24 @@ export function ExploreMap({
               陣列、獨立渲染這顆按鈕。使用者明確要求標籤列不需要顯示已選取
               的視覺狀態(2026-08)——activeCategory 這個 state 本身及其
               開關/取消查詢的互動邏輯保留不動(見 handleCategoryClick),
-              只是不再用 aria-pressed 呈現選取樣式。 */}
-          <button
-            type="button"
-            className={styles.categoryTag}
-            onClick={() => handleCategoryClick(EXPLORE_CATEGORY)}
-            title="探索"
-          >
-            <Compass size={14} aria-hidden="true" />
-            探索
-          </button>
+              只是不再用 aria-pressed 呈現選取樣式。
+              2026-10:手機版「探索」改搬到 PhoneTabBar.tsx 底部常駐功能列
+              (使用者明確要求,見上方 exploreTrigger prop 的完整說明),
+              不再疊在地圖左上角——hideExploreTag 由呼叫端(手機版
+              GeoOutlinePhoneView.tsx)傳 true 隱藏這顆按鈕,桌面版沒有
+              底部功能列可以搬過去,未傳(桌面版既有呼叫方式)時維持顯示
+              在這裡,行為不變。 */}
+          {!hideExploreTag && (
+            <button
+              type="button"
+              className={styles.categoryTag}
+              onClick={() => handleCategoryClick(EXPLORE_CATEGORY)}
+              title="探索"
+            >
+              <Compass size={14} aria-hidden="true" />
+              探索
+            </button>
+          )}
         </div>
       )}
       {/* 城市搜尋框:跟候選籃側欄(GeoCandidateSidebar)裡原本就有的同一個

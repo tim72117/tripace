@@ -61,6 +61,8 @@
 **FE13 🟡 候選籃遊離在 sheetStack 之外，且自帶第二套日期選擇 UI**
 `GeoOutlinePhoneView.tsx:174, 469-487`、`GeoOutlinePhoneCandidateDrawer.tsx:49-140`。(1) `candidateDrawerOpen` 是獨立 useState，破壞了 `SheetEntry` 註解宣稱的「任何時刻該顯示哪些 sheet 只需看 sheetStack」不變量；(2) 資訊卡路徑的選日期已改成 `date-picker`/`date-calendar` 兩層 sheet，候選籃的 `CandidateRow` 仍是 inline chips + `<input type="date">`——同一個 App 兩套選日期 UI。修法：候選籃納入 `SheetEntry`、「加入」改走同一組日期 sheet。範圍：中。
 
+**（2026-10 更新：隨候選籃候選中清單移除，此問題已不再適用，候選籃抽屜現在只顯示已排入行程項目，加入行程統一走資訊卡的日期選擇 sheet）**
+
 **FE14 🟡 `PhoneBottomSheet` 量測時序的隱性依賴（潛在 bug）**
 `components/PhoneBottomSheet.tsx:269-271, 348-352, 468`。`containerHeightRef` 在 `useEffect([open])` 量測，但 `stops` 在 render 階段讀它——open 轉 true 的那次 render 算出的收合段位置是錯的（`minHeightAsTop = 0`），目前靠 `entered` 的 rAF 觸發下一輪 render 才修正、且那一幀 panel 還在畫面外所以看不出來。**這是對進場動畫實作細節的隱性依賴**，拿掉 `entered` 或改同步進場就會爆。同源：`finishDrag` 的 `stops.indexOf(startTopRef.current)` 在量測值中途改變時回傳 -1、靜默落到索引 0。修法：量測改存 state（`useLayoutEffect` + `setContainerHeight`）。範圍：小。
 
@@ -182,7 +184,7 @@
 - **地圖容器尺寸撐開時機**：依賴父層 flex 層層撐開，首繪 reflow 期間建圖可能讀到非最終尺寸，SDK 事後 resize 校正產生一次可感知跳動——可用 ResizeObserver 或固定高度佔位改善。
 - **過期註解**：`pace/PaceMap.css:2` 仍提及已移除的 `RecommendedPlacesMap.tsx`。
 - **`.rp-modal-body` 缺 `touch-action`**：繼承到 `none` 時手機上長清單可能捲不動；且繞過了 `ScrollArea.tsx` 訂下的「捲動容器收斂單一元件」慣例。
-- **`useGeoPlanningState.ts` 檔頭「已知歷史問題」註解**未補記候選籃刪除/返回候選重複已收斂一事（避免下次稽核重新發現）。
+- **`useGeoPlanningState.ts` 檔頭「已知歷史問題」註解**未補記候選中清單與返回候選功能已於 2026-10 整個移除一事（不只是當年「收斂重複」，而是候選中清單、「從候選加入」按鈕、`onReturnToCandidate`/`handleReturnToCandidate` 整套都已拔除；避免下次稽核重新發現）。
 
 **現況（2026-08-25～28 發現，尚未逐項複核）**。
 
@@ -198,7 +200,7 @@
 - ✅ **ChatScreen 遺留除錯紅標籤（z-index 9999）**——2026-08-28 稽核發現，2026-08-30 複核確認已移除（全專案已 grep 不到 `9999`，`useKeyboardInset.ts` 僅存正式邏輯）。
 - ✅ **手機版規劃地圖條件式掛載導致首開閃動**——`GeoOutlinePhoneView` 隨分頁切換整個卸載重掛、Google Maps 每次重跑建圖流程。已改為常駐主畫面（commit b9edc6e），並經 in-app 導航實測確認元件跨分頁切換不再 remount。
 - ✅ **四個手機版抽屜拖曳手勢逐字重複**——已抽 `hooks/useDragToClose.ts` 收斂，後續再演進為 `components/PhoneBottomSheet.tsx` 共用容器（含三段式吸附）。
-- ✅ **候選籃「返回候選」/「刪除已排入行程」錯誤處理兩檔重複**——已收斂進 `useGeoPlanningState.ts` 的 `handleReturnToCandidate`/`handleRemoveCandidate`（logTag 參數化，比照 `handleScheduleCandidate` 先例）。
+- ✅ **候選籃「返回候選」/「刪除已排入行程」錯誤處理兩檔重複**——已收斂進 `useGeoPlanningState.ts` 的 `handleReturnToCandidate`/`handleRemoveCandidate`（logTag 參數化，比照 `handleScheduleCandidate` 先例）。**（2026-10 更新：`onReturnToCandidate`/`handleReturnToCandidate` 已隨候選籃候選中清單/返回候選功能整個移除，不只是當年那次收斂重複的狀態，目前只剩 `handleRemoveCandidate`。）**
 - ✅ **PhoneTabBar 被 bottom sheet 蓋住**——z-index 疊層順序問題，底部導覽列提升至 35 修復；後續多層 sheet 堆疊框架又將「清單/資訊卡刻意蓋過導覽列」改為新的預期行為（見各 sheet 的 panelStyle 註解）。
 - ✅ **ChatScreen Portal 投影目標切換競態**——`chatParkingNode` 常駐備援容器機制驗證有效；其後架構再演進為 keepMounted children（commit f6a6f66），Portal 機制已整體移除。
 - ✅ **`:global(.citySearch)` 選擇器從未生效**——Vite CSS Modules 雜湊命名使 `:global()` 完整 token 比對失敗，改用 `[class*='_citySearch_']` 屬性子字串選擇器（前後底線界定 token 邊界）修復。

@@ -154,10 +154,10 @@ export const DesktopRail = forwardRef<HTMLElement, DesktopRailProps>(function De
         <button
           className={panelMode === 'plan-ai' ? `${styles.btn} ${styles.active}` : styles.btn}
           onClick={() => onSelect('plan-ai')}
-          title="AI 規劃(Beta)"
+          title="規劃(Beta)"
         >
           <Sparkles size={20} strokeWidth={1.8} />
-          {expanded && <span className={styles.btnLabel}>AI 規劃</span>}
+          {expanded && <span className={styles.btnLabel}>規劃</span>}
           <span className={styles.betaTag}>BETA</span>
         </button>
         {/* DEBUG_PANEL_ENABLED:編譯時 feature flag(見 DesktopShared.tsx

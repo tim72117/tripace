@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ListPlus } from 'lucide-react'
-import type { ClientConfig } from '../api'
 import {
   type GeoCandidate,
   NO_DATE_GROUP,
@@ -8,243 +6,148 @@ import {
   dayGroupKey,
   dayGroupLabel,
   entryKindIcon,
-  useCandidateDatePicker,
 } from './geoCandidateHelpers'
 import { PhoneBottomSheet, PHONE_BOTTOM_SHEET_EXIT_MS, SheetHead } from '../components/PhoneBottomSheet'
+import { ListItemCard } from '../components/ListItemCard'
 import styles from './GeoOutlinePhoneCandidateDrawer.module.css'
 
-// GeoOutlinePhoneCandidateDrawer:手機版候選籃——第二階段新增,第四階段
-// (這次)改用共用容器 components/PhoneBottomSheet.tsx,從下方彈出
-// (bottom sheet),取代原本「從右側滑入」的獨立側邊抽屜實作——使用者
-// 明確要求「改成從下方滑入(跟地點清單等其他手機版抽屜一致)」,統一成
-// 跟 GeoOutlinePhoneListDrawer.tsx/GeoOutlinePhoneInfoSheet.tsx 一致的
-// bottom sheet 視覺語言,不再是本檔案獨立維護一份 useDragToClose(axis:
-// 'x')側滑手勢。桌面版是兩張並排的浮動側欄(GeoCandidateSidebar「已排入
-// 行程」日層架 + AddFromCandidateSidebar「候選中」清單,見兩檔案的
-// 說明),手機螢幕放不下並排兩塊,這裡合併成一份 sheet:上半部是「候選中」
-// 清單(尚未排進任何一天),下半部依日期分組列出「已排入行程」。
+// GeoOutlinePhoneCandidateDrawer:手機版「行程」抽屜——從下方彈出
+// (bottom sheet,共用容器 components/PhoneBottomSheet.tsx),依日期分組
+// 列出已排入行程的項目。
 //
-// 不像桌面版那樣支援拖曳排期(HTML5 drag events 在觸控裝置上沒有對應
-// 手勢,且拖曳排期本來就是滑鼠/大螢幕才好操作的細緻動作)——手機版排期
-// 一律透過「候選中」卡片本體的「加入」按鈕,展開日期選擇 UI(同
-// GeoOutlinePhoneInfoSheet.tsx 的日期選擇邏輯,見該檔案),不提供拖放。
-// 已排入行程的卡片同樣不支援拖曳改期,只提供「返回候選」/「移除」。
+// 2026-10 修正:原本這裡還有「候選中」(尚未排進任何一天的候選)清單與
+// 「返回候選」/「從候選加入」兩個操作——使用者明確要求移除整套候選籃
+// 暫存/候選匡流程(含桌面版 AddFromCandidateSidebar),這個抽屜現在只
+// 剩單純顯示「已排入行程」項目,不再有候選中清單、不再支援返回候選。
+// 加入行程改成「選地點→直接選日期→加入時間軸」,不經過候選籃中介。
 //
-// 純邏輯(分組/建立 entry/型別)完全複用 geoCandidateHelpers.ts,與桌面版
+// 不支援拖曳改期(HTML5 drag events 在觸控裝置上沒有對應手勢)——只提供
+// 「移除」。
+//
+// 純邏輯(分組/型別)複用 geoCandidateHelpers.ts,與桌面版
 // GeoCandidateSidebar.tsx 共用同一份,不重新實作——這個檔案只負責手機版
 // 排版與觸控手勢(現在完全交給 PhoneBottomSheet,見下方)。
 //
-// SHEET_MIN_HEIGHT/SHEET_SNAP_POINTS:單段開關(只有一個 snapPoint,沒有
-// minHeightPx)——比照原本「開/關」兩態,只是方向從右側改下方。候選籃是
-// 使用者「打開看一下候選/排期、關掉繼續操作地圖」的短暫互動(點候選卡片
-// 會直接關閉抽屜並開資訊卡,見下方 onSelect 呼叫端 GeoOutlinePhoneView.tsx
-// 的用法),不像地點清單(GeoOutlinePhoneListDrawer.tsx)是「邊看地圖邊
-// 持續瀏覽清單」的情境,不需要多段吸附(收合到只剩標頭/中間展開/滿版三態)
-// ——單段開關以「離頂部固定距離」表達,足以覆蓋候選籃內容(候選中清單+
-// 已排入行程依日期分組),過長時交給 PhoneBottomSheet 的 .body 統一捲動。
-// 若之後候選籃內容經常長到需要分段瀏覽,可仿照 GeoOutlinePhoneListDrawer.tsx
-// 加上 minHeightPx 改成多段。
-const SHEET_SNAP_POINTS = [80]
-
-// CandidateRow:「候選中」卡片——比照桌面版 AddFromCandidateSidebar.tsx
-// 的 CandidateRow 視覺語言(緊湊橫列:分類圖示 + 名稱),但互動改成手機版
-// 慣例:點卡片本體展開/收合這張卡片自己的日期選擇區(inline,不是另開
-// 浮動選單),不做拖曳。
-function CandidateRow({
-  cfg,
-  tripID,
-  c,
-  scheduledDates,
-  onRemove,
-  onSelect,
-  onScheduled,
-}: {
-  cfg: ClientConfig
-  tripID?: string | null
-  c: GeoCandidate
-  scheduledDates: string[]
-  onRemove: (candidate: GeoCandidate) => void
-  onSelect: (candidate: GeoCandidate) => void
-  onScheduled: () => void
-}) {
-  const [expanded, setExpanded] = useState(false)
-  const [dateValue, setDateValue] = useState('')
-  const { saving, err, handlePick } = useCandidateDatePicker({
-    cfg,
-    tripID,
-    getCandidate: () => c,
-    onScheduled: () => {
-      onScheduled()
-      onRemove(c)
-      setExpanded(false)
-    },
-  })
-
-  const Icon = entryKindIcon(c.kind === 'entry' ? c.entryKind : undefined)
-
-  return (
-    <div className={styles.candidateCard}>
-      <div className={styles.candidateTopRow}>
-        <div
-          role="button"
-          tabIndex={0}
-          className={styles.candidateCardBody}
-          onClick={() => onSelect(c)}
-          onKeyDown={(e) => { if (e.key === 'Enter') onSelect(c) }}
-        >
-          <span className={styles.itemPin}>
-            <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
-          </span>
-          <span className={styles.itemName}>{c.name}</span>
-        </div>
-        <button
-          type="button"
-          className={styles.addBtn}
-          onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v) }}
-          title="加入行程"
-        >
-          <ListPlus size={14} strokeWidth={2} />
-        </button>
-        <button
-          type="button"
-          className={styles.removeBtn}
-          onClick={(e) => { e.stopPropagation(); onRemove(c) }}
-          title="移除候選"
-        >
-          ×
-        </button>
-      </div>
-      {expanded && (
-        <div className={styles.scheduleRow} onClick={(e) => e.stopPropagation()}>
-          {scheduledDates.length > 0 && (
-            <div className={styles.scheduleChips}>
-              {scheduledDates.map((date) => (
-                <button
-                  key={date}
-                  type="button"
-                  className={styles.scheduleChip}
-                  disabled={saving}
-                  onClick={() => handlePick(date)}
-                >
-                  {dayGroupLabel(date)}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className={styles.scheduleInputRow}>
-            <input
-              type="date"
-              className={styles.scheduleInput}
-              value={dateValue}
-              onChange={(e) => setDateValue(e.target.value)}
-            />
-            <button
-              type="button"
-              className={styles.scheduleConfirmBtn}
-              disabled={!dateValue || saving}
-              onClick={() => handlePick(dateValue)}
-            >
-              {saving ? '加入中…' : '確定'}
-            </button>
-          </div>
-          {err && <div className={styles.scheduleErr}>{err}</div>}
-        </div>
-      )}
-    </div>
-  )
-}
+// SHEET_SNAP_POINTS/SHEET_MIN_HEIGHT:兩段式(展開/收合),取代原本只有
+// 一個 snapPoint 的「開/關」兩態。
+//
+// 2026-10 修正:使用者明確要求「點選行程內的項目時不要關閉行程,而是
+// 縮到最下面就好」——原本點項目卡片(見下方 onSelect)會直接關閉整個
+// 抽屜(open 變 false)並開資訊卡,資訊卡關閉後行程抽屜不會自動回來;
+// 改成點項目時只切到收合段(SHEET_MIN_HEIGHT,只露出標頭這一條),不動
+// open 本身,行程抽屜仍在背景保持開啟,資訊卡關閉後使用者可以直接把它
+// 拖回展開段繼續看,不需要重新從底部列按「行程」才能叫回來。
+const SHEET_MIN_HEIGHT = 80
+const SHEET_SNAP_POINTS = [320]
 
 // DayEntryCard:「已排入行程」日層架卡片——比照桌面版 GeoCandidateSidebar.tsx
-// 的同名元件,拿掉拖曳(理由見上方檔案說明),只保留點擊開資訊欄/返回候選/
-// 移除三個互動。
+// 的同名元件,拿掉拖曳(理由見上方檔案說明),只保留點擊開資訊欄/移除兩個
+// 互動。
+// DayEntryCard:2026-10 改用全專案通用元件 ListItemCard(原本是
+// geo-planning 專屬的 GeoListItemCard,已抽成通用元件,見
+// components/ListItemCard.tsx 的完整說明)——使用者明確要求行程項目的
+// 樣式跟搜尋結果清單(GeoOutlinePhoneListDrawer.tsx)一致(卡片大小/
+// 圓角/留白/字級比例,含照片/佔位圖的版面配置),不再是原本獨立的
+// 「圓形分類圖示 + 名稱 + 時間」緊湊橫列。
+//
+// 行程 entry(GeoTripEntry)目前沒有存 placeId/photoUrl(後端寫入 entry
+// 時沒有保留這兩個欄位,見 api.ts GeoTripEntry 的完整說明),一律沒有
+// 真實照片可顯示——2026-10 修正:原本 leading 放灰色素色佔位方塊,
+// 使用者要求改用圖示,改成跟桌面版 GeoCandidateSidebar.tsx 的
+// DayEntryCard 同一套 entryKindIcon(entry.entryKind 對應
+// stay/activity/restaurant 等分類,見 geoCandidateHelpers.ts 的完整
+// 說明)圓形圖示,讓手機版跟桌面版看到同一筆 entry 時圖示語意一致。
+// startTime 原本是獨立顯示的時刻(舊版 .dayCardTime),改放進 address
+// 欄位(ListItemCard 的第二行文字),沒有 startTime 時這個欄位不顯示。
+// 「移除」按鈕沒有對應的共用插槽語意(ListItemCard 的 addSlot 原本是給
+// 「加入候選」按鈕用),這裡借用同一個插槽位置放「移除」,視覺上卡片
+// 右側維持一個可互動按鈕的版面,不需要另外在元件外面加一層容器。
 function DayEntryCard({
   c,
   onRemove,
   onSelect,
-  onReturnToCandidate,
 }: {
   c: GeoCandidate & { kind: 'entry' }
   onRemove: (candidate: GeoCandidate) => void
   onSelect: (candidate: GeoCandidate) => void
-  onReturnToCandidate: (candidate: GeoCandidate & { kind: 'entry'; inTrip: true }) => void
 }) {
   const Icon = entryKindIcon(c.entryKind)
   return (
-    <div className={styles.dayCard}>
-      <div
-        role="button"
-        tabIndex={0}
-        className={styles.dayCardBody}
-        onClick={() => onSelect(c)}
-        onKeyDown={(e) => { if (e.key === 'Enter') onSelect(c) }}
-      >
-        <span className={styles.dayCardPin}>
-          <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
+    <ListItemCard
+      name={c.name}
+      address={c.startTime ?? undefined}
+      leading={
+        <span className={styles.itemPin}>
+          <Icon size={18} strokeWidth={1.8} aria-hidden="true" />
         </span>
-        <span className={styles.dayCardName}>{c.name}</span>
-        {c.startTime && <span className={styles.dayCardTime}>{c.startTime}</span>}
-      </div>
-      {c.inTrip && (
+      }
+      selected={false}
+      onSelect={() => onSelect(c)}
+      styles={styles}
+      trailing={
         <button
           type="button"
-          className={styles.returnBtn}
-          onClick={() => onReturnToCandidate(c as GeoCandidate & { kind: 'entry'; inTrip: true })}
-          title="返回候選"
+          className={styles.removeBtn}
+          onClick={() => onRemove(c)}
+          title="移除"
         >
-          返回候選
+          ×
         </button>
-      )}
-      <button
-        type="button"
-        className={styles.removeBtn}
-        onClick={() => onRemove(c)}
-        title="移除"
-      >
-        ×
-      </button>
-    </div>
+      }
+    />
   )
 }
 
 export function GeoOutlinePhoneCandidateDrawer({
-  cfg,
-  tripID,
   open,
   onClose,
   candidates,
-  scheduledDates,
   onRemove,
   onSelect,
-  onReturnToCandidate,
-  onScheduled,
   flashTrigger,
+  restoreTrigger,
 }: {
-  cfg: ClientConfig
-  tripID?: string | null
   open: boolean
   onClose: () => void
   candidates: GeoCandidate[]
-  // scheduledDates:行程本身目前已排定的日期清單——理由同桌面版
-  // DesktopLayout.tsx 的 geoScheduledDates,由呼叫端算好傳入。
-  scheduledDates: string[]
-  // onRemove/onReturnToCandidate:直接是 useGeoPlanningState.ts 的
-  // handleRemoveCandidate/handleReturnToCandidate(已內建 api.deleteEntry
-  // 呼叫與錯誤處理,不在這個檔案裡重複實作一份,見該 hook 的說明)——呼叫
-  // 端(GeoOutlinePhoneView.tsx)傳入時各自帶上自己的 logTag。
+  // onRemove:直接是 useGeoPlanningState.ts 的 handleRemoveCandidate
+  // (已內建 api.deleteEntry 呼叫與錯誤處理,不在這個檔案裡重複實作一份,
+  // 見該 hook 的說明)——呼叫端(GeoOutlinePhoneView.tsx)傳入時帶上自己
+  // 的 logTag。
   onRemove: (candidate: GeoCandidate) => void
-  // onSelect:點卡片本體(候選中/已排入行程皆同)——把該候選轉成資訊卡
-  // 內容並開啟 GeoOutlinePhoneInfoSheet,理由同桌面版 selectGeoCandidate。
+  // onSelect:點卡片本體(已排入行程項目)——把該候選轉成資訊卡內容並
+  // 開啟 GeoOutlinePhoneInfoSheet,理由同桌面版 selectGeoCandidate。
+  // 這個檔案自己另外處理「收合抽屜」(見下方 activeSnapIndex),onSelect
+  // 本身不再負責關閉行程抽屜。
   onSelect: (candidate: GeoCandidate) => void
-  onReturnToCandidate: (candidate: GeoCandidate & { kind: 'entry'; inTrip: true }) => void
-  // onScheduled:候選被排進某一天成功後觸發(不論來自哪張卡片的日期選擇
-  // UI)——通知呼叫端重新查詢 tripEntries,理由同桌面版 onDatesAssigned。
-  onScheduled: () => void
   flashTrigger?: number
+  // restoreTrigger:2026-10 新增——使用者明確要求「關閉地點後,行程要
+  // 復原」:點行程項目收合這個抽屜、開啟地點資訊卡(見下方 onSelect)
+  // 之後,使用者把資訊卡關掉時,行程抽屜要自動展開回來,不需要使用者
+  // 自己手動拖。這個抽屜本身不知道資訊卡何時關閉(那是
+  // GeoOutlinePhoneView.tsx 的 sheetStack 概念),故用遞增計數器讓外部
+  // 通知「該復原展開了」,對齊 candidateDrawerTrigger 等既有的觸發器
+  // 慣例寫法。
+  restoreTrigger?: number
 }) {
-  // onlyCandidate/inTrip:同桌面版 GeoCandidateSidebar.tsx/DesktopLayout.tsx
-  // 的篩選規則——kind==='entry' && inTrip===true 是「已排入行程」,其餘
-  // 是「候選中」。
-  const onlyCandidate = useMemo(() => candidates.filter((c) => !(c.kind === 'entry' && c.inTrip)), [candidates])
+  // activeSnapIndex:受控吸附段落——預設展開(索引 1,對應
+  // SHEET_SNAP_POINTS[0]),每次重新開啟都重設回展開,不延續上次的收合
+  // 狀態(理由同 GeoOutlinePhoneListDrawer.tsx 的同名 state)。點項目卡片
+  // 時收合到索引 0(SHEET_MIN_HEIGHT,只露出標頭),不呼叫 onClose——見
+  // 上方 SHEET_SNAP_POINTS 的完整說明。
+  const [activeSnapIndex, setActiveSnapIndex] = useState(1)
+  useEffect(() => {
+    if (open) setActiveSnapIndex(1)
+  }, [open])
+  // restoreTrigger 變動時展開回索引 1(見該 prop 的完整說明)——對齊
+  // candidateDrawerTrigger 的既有慣例寫法:初次渲染(undefined 或 0)
+  // 不觸發,只在真正遞增時才展開。
+  useEffect(() => {
+    if (!restoreTrigger) return
+    setActiveSnapIndex(1)
+  }, [restoreTrigger])
+  // inTrip:同桌面版 GeoCandidateSidebar.tsx/DesktopLayout.tsx 的篩選
+  // 規則——kind==='entry' && inTrip===true 是「已排入行程」。
   const inTrip = useMemo(
     () => candidates.filter((c): c is GeoCandidate & { kind: 'entry'; inTrip: true } => c.kind === 'entry' && c.inTrip),
     [candidates],
@@ -277,6 +180,9 @@ export function GeoOutlinePhoneCandidateDrawer({
       open={open}
       onClose={onClose}
       snapPoints={SHEET_SNAP_POINTS}
+      minHeightPx={SHEET_MIN_HEIGHT}
+      activeSnapIndex={activeSnapIndex}
+      onSnapIndexChange={setActiveSnapIndex}
       // showBackdrop:false——比照 GeoOutlinePhoneInfoSheet.tsx/
       // GeoOutlinePhoneListDrawer.tsx 的用法,使用者要求候選籃出現時地圖
       // 不要被遮罩變暗,背景地圖保持可見可互動(候選籃打開時使用者仍可能
@@ -295,35 +201,17 @@ export function GeoOutlinePhoneCandidateDrawer({
       // 自然疊在上層,不會出現互相穿透看不到內容的情況。
       panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 36 }}
       panelClassName={flashing ? styles.panelFlash : undefined}
-      head={<SheetHead title="候選籃" onClose={onClose} />}
+      head={<SheetHead title="行程" onClose={onClose} />}
     >
       <div className={styles.list}>
         {candidates.length === 0 ? (
           <div className={styles.empty}>
-            地圖上點飯店/景點/地點,資訊卡裡按「加入候選」把想去的丟進來。
+            地圖上點飯店/景點/地點,資訊卡裡按「加入行程」把想去的丟進來。
           </div>
         ) : (
           <>
-            {onlyCandidate.length > 0 && (
-              <div className={styles.section}>
-                <div className={styles.sectionHead}>候選中</div>
-                {onlyCandidate.map((c) => (
-                  <CandidateRow
-                    key={candidateListKey(c)}
-                    cfg={cfg}
-                    tripID={tripID}
-                    c={c}
-                    scheduledDates={scheduledDates}
-                    onRemove={onRemove}
-                    onSelect={onSelect}
-                    onScheduled={onScheduled}
-                  />
-                ))}
-              </div>
-            )}
             {inTripByDay.length > 0 && (
               <div className={styles.section}>
-                <div className={styles.sectionHead}>已排入行程</div>
                 {inTripByDay.map(([dayKey, dayEntries]) => (
                   <div key={dayKey} className={styles.day}>
                     <div className={styles.dayHead}>
@@ -335,8 +223,10 @@ export function GeoOutlinePhoneCandidateDrawer({
                         key={candidateListKey(c)}
                         c={c}
                         onRemove={onRemove}
-                        onSelect={onSelect}
-                        onReturnToCandidate={onReturnToCandidate}
+                        onSelect={(candidate) => {
+                          setActiveSnapIndex(0)
+                          onSelect(candidate)
+                        }}
                       />
                     ))}
                   </div>

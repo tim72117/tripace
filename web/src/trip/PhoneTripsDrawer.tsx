@@ -1,7 +1,7 @@
-import { Plus, MapPin, Settings } from 'lucide-react'
+import { Plus, Luggage, Settings } from 'lucide-react'
 import type { Trip } from './types'
 import { ErrorBanner } from '../AppCommon'
-import { PhoneBottomSheet } from '../components/PhoneBottomSheet'
+import { PhoneBottomSheet, SheetHead } from '../components/PhoneBottomSheet'
 import { ScrollArea } from '../components/ScrollArea'
 import { NewTripComposer } from './NewTripComposer'
 import styles from './PhoneTripsDrawer.module.css'
@@ -65,20 +65,28 @@ export function PhoneTripsDrawer({
       snapPoints={[SHEET_TOP]}
       panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: 33 }}
       showBackdrop={false}
+      // head:原本沒有標頭,只能靠下滑手勢關閉——使用者明確要求清單
+      // sheet 要有關閉按鈕,比照其餘 bottom sheet(行程/設定/對話)一律
+      // 用共用的 SheetHead(標題+右上角關閉鈕),不自己另外拼版面。
+      head={<SheetHead title="清單" onClose={onClose} />}
     >
       <ScrollArea>
         <ErrorBanner msg={err} />
         {trips.length === 0 && !err && (
           <div className="empty">
-            {loading ? '載入中…' : '沒有旅程。按下方「新增旅程」建立一個。'}
+            {loading ? '載入中…' : '沒有清單。按下方「新增清單」建立一個。'}
           </div>
         )}
         <ul className={styles.tripList}>
-          {/* 新增旅程:跟下面實際的旅程項目共用同一套 .tripItem 樣式
-              (借來瀏覽/新增旅程的是同一個工具畫面,視覺上該是同一組清單
+          {/* 新增清單:跟下面實際的旅程項目共用同一套 .tripItem 樣式
+              (借來瀏覽/新增的是同一個工具畫面,視覺上該是同一組清單
               的一份子,不是另一顆突兀的強調色橫幅按鈕),只把大頭貼換成
               「＋」圖示徽章區分。點擊後這個項目原地換成輸入框(composer),
-              下面既有旅程清單維持可見、可捲動,不會像原本整塊消失。 */}
+              下面既有清單維持可見、可捲動,不會像原本整塊消失。
+              2026-10 修正:使用者要求畫面文字統一改用「清單」(按鈕/空
+              狀態提示),底層資料仍是 Trip,變數/型別命名不動——這只是
+              這個抽屜(已改名「清單」)裡的顯示字樣跟著統一,桌面版
+              DesktopTripList.tsx 仍叫「旅程列表」,不在這次改名範圍內。 */}
           <li>
             {creating ? (
               <NewTripComposer
@@ -96,7 +104,7 @@ export function PhoneTripsDrawer({
                   <Plus size={18} strokeWidth={1.8} />
                 </div>
                 <div className={styles.tripGrow}>
-                  <div className={styles.tripName}>新增旅程</div>
+                  <div className={styles.tripName}>新增清單</div>
                 </div>
               </button>
             )}
@@ -109,8 +117,12 @@ export function PhoneTripsDrawer({
                   className={styles.tripItemOpen}
                   onClick={() => onSelectTrip(t)}
                 >
+                  {/* 2026-10 修正:原本用 MapPin(單一地點意象),使用者
+                      明確指出清單裡每一項代表的是「一趟旅程」的概念,不是
+                      單一目的地,改用 Luggage(行李箱,旅程/旅行的慣用
+                      意象)。 */}
                   <div className={styles.newTripIcon}>
-                    <MapPin size={18} strokeWidth={1.8} />
+                    <Luggage size={18} strokeWidth={1.8} />
                   </div>
                   <div className={styles.tripGrow}>
                     <div className={styles.tripName}>{t.name}</div>
@@ -125,7 +137,7 @@ export function PhoneTripsDrawer({
                   type="button"
                   className={styles.tripItemAction}
                   onClick={() => onManage(t)}
-                  title="旅程設定"
+                  title="清單設定"
                 >
                   <Settings size={15} strokeWidth={1.8} />
                 </button>

@@ -2,6 +2,18 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.24.2 — 2026-10-06
+
+### 修正
+
+- Dockerfile 的 `web-build` 階段在 `npm ci` 之前新增 `npm install -g npm@12.2.0`，修正 node:22-alpine 內建 npm 版本在 `npm ci` 時的依賴解析 bug 導致 web-build 階段失敗的問題。
+
+## v0.24.1 — 2026-10-06
+
+### 修正
+
+- 重新產生 `package-lock.json`（以 npm 12.2.0、在 linux/amd64 平台），修正 Docker build 內 `npm ci` 失敗的問題。
+
 ## v0.24.0 — 2026-10-06
 
 ### 新增
