@@ -10,6 +10,7 @@ import { ExploreOtherCities } from './ExploreOtherCities';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { useScrollProgress } from '../hooks/useScrollProgress';
 import { trackEvent } from '../analytics';
+import { SITE_SEO_BASE_URL } from '../AppCommon';
 import './KyotoPage.css';
 
 // LANDING_ASSETS_BASE — 同 JiufenPage.tsx 的說明,同一個公開可讀 GCS
@@ -30,7 +31,7 @@ const LANDING_ASSETS_BASE = 'https://storage.googleapis.com/shuttle-tripace-web-
 // 「目的地」列表區塊的簡介。
 const SEO_TITLE = '京都・清水寺——地形、信仰與人文交織的東山散策 | Tripace'
 const SEO_DESCRIPTION = '從清水寺的懸崖地形，到八坂神社的參拜人潮，再到祇園花見小路的茶屋文化——跟著 Tripace 走一趟京都東山的散策路線，讀懂地質、信仰、商業與人文如何層層疊加成這座古都。'
-const SEO_URL = 'https://tripace.shuttle.tools/kyoto-kiyomizu'
+const SEO_URL = `${SITE_SEO_BASE_URL}/kyoto-kiyomizu`
 
 // STOPS — 文案逐字照搬 HomePage.tsx 的 STOPS 陣列(京都東山探索路線的
 // 8 個停靠點介紹文字),不重寫/不改編任何一句話,理由見本檔案的任務
@@ -157,7 +158,7 @@ export function KyotoPage() {
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Tripace', item: 'https://tripace.shuttle.tools/' },
+              { '@type': 'ListItem', position: 1, name: 'Tripace', item: `${SITE_SEO_BASE_URL}/` },
               { '@type': 'ListItem', position: 2, name: '京都・清水寺', item: SEO_URL },
             ],
           })}

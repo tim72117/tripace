@@ -84,6 +84,16 @@ ENV VITE_GOOGLE_OAUTH_CLIENT_ID=${VITE_GOOGLE_OAUTH_CLIENT_ID}
 # onagent app 目前剛好指向同一個平台網址)。
 ARG VITE_PLAN_AI_ONAGENT_APP_KEY
 ENV VITE_PLAN_AI_ONAGENT_APP_KEY=${VITE_PLAN_AI_ONAGENT_APP_KEY}
+# VITE_SITE_BASE_URL:這個網站對外公開的正式網域(目前 tripace.io),供
+# AppCommon.tsx 的 SITE_SEO_BASE_URL 常數使用,四個城市介紹頁的 SEO_URL/
+# JSON-LD breadcrumb 組網址用——不是機密,理由同上面 VITE_ONAGENT_URL,
+# 直接用 build-arg 傳入,不走 Secret Manager。對應後端
+# cmd/server/seo_meta.go 的 SITE_BASE_URL 環境變數(同一個網域值,但那是
+# Go 執行期讀的系統環境變數,這裡是 Vite 建置期寫死進 bundle 的變數,
+# 兩套機制各自獨立,只是刻意對應同一個值,由 deploy-cloudrun.yml 統一
+# 維護,不要只改其中一處)。
+ARG VITE_SITE_BASE_URL
+ENV VITE_SITE_BASE_URL=${VITE_SITE_BASE_URL}
 RUN npm run build
 
 # ---- 階段 1b:build admin 後台前端 ----

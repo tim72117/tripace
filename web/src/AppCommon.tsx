@@ -21,6 +21,23 @@ import styles from './AppCommon.module.css'
 // 未設時退回目前頁面 origin(production 前後端同源部署)。
 export const BASE_URL: string =
   import.meta.env.VITE_API_BASE || `${window.location.protocol}//${window.location.host}`
+
+// SITE_SEO_BASE_URL:正式對外網域(目前 tripace.io),給四個城市介紹頁
+// (JiufenPage/KyotoPage/TainanPage/TainanChikanPage)的 SEO_URL 常數跟
+// JSON-LD breadcrumb 的 item 欄位組網址用——這幾處原本直接寫死完整的
+// https://tripace.io/... 字串,換網域(例如過去從 tripace.shuttle.tools
+// 換成 tripace.io)時得在一堆檔案裡做大範圍字串取代。改成由這個常數
+// 統一組出來,網域字串只存在於環境變數這一個地方。
+// 不能沿用 BASE_URL——BASE_URL 是「API 呼叫目標」(可能指向不同 host 的
+// 後端),這裡要的是「這個網站對外公開的 origin」,語意不同,刻意分開
+// 兩個常數,不要混用。
+// 對應 server 端 server/.env.example 的 SITE_BASE_URL
+// 環境變數(同一個網域,但那是 Go 執行期讀的環境變數,跟這裡 Vite
+// 建置期讀的 VITE_ 前綴變數是兩套不相關的環境變數機制,只是刻意選了
+// 對應的命名,方便對照)。未設定時 fallback 回 https://tripace.io,與
+// server 端的預設值保持一致。結尾不帶斜線,用到的地方自己補上
+// (跟下方組 URL 的寫法保持一致)。
+export const SITE_SEO_BASE_URL: string = import.meta.env.VITE_SITE_BASE_URL || 'https://tripace.io'
 // 默認旅程 ID (用戶設定的「開啟時自動進入」)
 export const LS_DEFAULT_TRIP = 'tripace.defaultTripID'
 

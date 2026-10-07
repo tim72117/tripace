@@ -2,6 +2,14 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.25.1 — 2026-10-07
+
+### 新增
+
+- 新網域 `tripace.io` 上線，過渡期與既有 `tripace.shuttle.tools` 並存運作，兩者皆指向同一個 Cloud Run 服務（DNS ALIAS 記錄、domain-mapping、SSL 憑證皆已設定完成）。
+- SEO 網域（canonical/og:url/og:image/twitter:image 與四個城市頁面的 JSON-LD breadcrumb）改用環境變數驅動，不再分散寫死在多個檔案：後端新增 `SITE_BASE_URL`（`cmd/server/seo_meta.go`），前端新增 `VITE_SITE_BASE_URL`（`AppCommon.tsx` 匯出 `SITE_SEO_BASE_URL`），兩者預設 fallback 皆為 `https://tripace.io`。`SITE_BASE_URL` 只透過 CD 部署流程（Cloud Run 系統環境變數）設定，不支援本機 `.env` 檔案（套件層級變數初始化早於 `.env` 載入，寫在 `.env` 不會生效，故 `server/.env.example` 不再列出這個變數）；`Dockerfile`/`deploy-cloudrun.yml` 已補上對應的 `--build-arg`/`--update-env-vars`。
+- `web/public/sitemap.xml`、`robots.txt` 改指向 `tripace.io`（維持手寫，不走環境變數）。
+
 ## v0.25.0 — 2026-10-07
 
 ### 破壞性變更

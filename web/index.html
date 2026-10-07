@@ -56,7 +56,27 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover"
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="canonical" href="https://tripace.shuttle.tools/" />
+    <!-- 下面這份 canonical/og:url/og:image/twitter:image 寫死的網域
+         (https://tripace.io)是「預設值/placeholder」,不是真正的單一
+         事實來源——真正的事實來源是 server 端環境變數 SITE_BASE_URL
+         (見 server/cmd/server/seo_meta.go 的 siteBaseURL()/
+         defaultCanonical/defaultImage)。cmd/server 的 staticHandler
+         回應每個請求時,會把這裡的值跟 siteBaseURL() 組出來的值做字串
+         完全比對,找到就取代成該路由自己的 SEO meta(見 applySEOMeta/
+         checkIndexHTMLHasAllSEOTargets 的完整說明)。
+
+         這裡故意不用 Vite 的 %VITE_XXX% 建置期字串注入(例如
+         %VITE_SITE_BASE_URL%)——那個機制只會在「vite build 這一次」
+         把值寫進 dist/index.html,之後這份靜態檔案就定型了;而
+         上述字串比對取代是在「每次 HTTP 請求進來時」用當下環境變數
+         跑一次,同一個 build 產物可以在不同環境(本機/預發布/正式)
+         讀到不同的 SITE_BASE_URL 而不必重新 build。兩個機制功能重疊、
+         事實來源不該有兩個,故留在這裡的值只當作需要跟 Go 端逐字比對
+         的 placeholder,改網域時只需要改 SITE_BASE_URL 環境變數(見
+         server/.env.example),不需要同步改這份檔案——除非連這份
+         placeholder 本身的字串格式都要變,那種情況才需要跟著改這裡,
+         並同步更新 seo_meta.go 的 defaultCanonical/defaultImage。 -->
+    <link rel="canonical" href="https://tripace.io/" />
 
     <!-- PWA: 加到主畫面用的標準設定(manifest link 由 vite-plugin-pwa 建置時自動注入)。 -->
     <meta name="theme-color" content="#C4956A" />
@@ -73,14 +93,14 @@
     />
 
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://tripace.shuttle.tools/" />
+    <meta property="og:url" content="https://tripace.io/" />
     <meta property="og:title" content="Tripace — 從探索到行程，深入走訪一個想去的地方" />
     <meta
       property="og:description"
       content="在地圖上探索飯店、景點與餐廳，把喜歡的先丟進候選籃，再拖進日層架排成一趟行程。不只是到過，而是真正讀懂一個地方——與同行的人一起編輯、分享。"
     />
     <meta property="og:locale" content="zh_TW" />
-    <meta property="og:image" content="https://tripace.shuttle.tools/og-image.png" />
+    <meta property="og:image" content="https://tripace.io/og-image.png" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Tripace — 從探索到行程，深入走訪一個想去的地方" />
@@ -88,7 +108,7 @@
       name="twitter:description"
       content="在地圖上探索飯店、景點與餐廳，把喜歡的先丟進候選籃，再拖進日層架排成一趟行程。不只是到過，而是真正讀懂一個地方——與同行的人一起編輯、分享。"
     />
-    <meta name="twitter:image" content="https://tripace.shuttle.tools/og-image.png" />
+    <meta name="twitter:image" content="https://tripace.io/og-image.png" />
   </head>
   <body>
     <!-- Google Tag Manager (noscript) -->

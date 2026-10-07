@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -55,38 +56,84 @@ type seoMeta struct {
 	image       string
 }
 
-var seoMetaByPath = map[string]seoMeta{
-	"/jiufen": {
-		title:       "九份——礦業興衰與人文重生的山城故事 | Tripace",
-		description: "從基隆山的地形限制，到金瓜石礦業的興衰，再到老街、茶樓與海景交錯的人文重生——跟著 Tripace 走一趟九份的散策路線，讀懂這座山城為何長成現在的樣子。",
-		canonical:   "https://tripace.shuttle.tools/jiufen",
-		image:       "https://storage.googleapis.com/shuttle-tripace-web-assets/landing/jiufen/n0.jpg",
-	},
-	"/kyoto-kiyomizu": {
-		title:       "京都・清水寺——地形、信仰與人文交織的東山散策 | Tripace",
-		description: "從清水寺的懸崖地形，到八坂神社的參拜人潮，再到祇園花見小路的茶屋文化——跟著 Tripace 走一趟京都東山的散策路線，讀懂地質、信仰、商業與人文如何層層疊加成這座古都。",
-		canonical:   "https://tripace.shuttle.tools/kyoto-kiyomizu",
-		image:       "https://storage.googleapis.com/shuttle-tripace-web-assets/landing/kyoto/n1.jpg",
-	},
-	"/tainan-anping": {
-		title:       "台南・安平——荷蘭城堡與老街風土交織的港町故事 | Tripace",
-		description: "從熱蘭遮城的築城選址，到運河淤積後老街的重生，再到蜜餞、豆花、冬瓜茶交織的巷弄風土——跟著 Tripace 走一趟台南安平的散策路線，讀懂這座港町為何長成現在的樣子。",
-		canonical:   "https://tripace.shuttle.tools/tainan-anping",
-		image:       "https://storage.googleapis.com/shuttle-tripace-web-assets/landing/tainan/n1.jpg",
-	},
-	"/tainan-chikan": {
-		title:       "赤崁・府城兩日遊——老地方的前世今生 | Tripace",
-		description: "消防塔變史料館、州廳變文學館、老屋變民宿、百貨公司關了又重開——走一趟赤崁樓周邊，看台南這些老地方如何活成現在的樣子，兩天一夜的歷史建築活化路線。",
-		canonical:   "https://tripace.shuttle.tools/tainan-chikan",
-		image:       "https://storage.googleapis.com/shuttle-tripace-photos/review/tainan-chikan/IMG_9812.webp",
-	},
-	"/product": {
-		title:       "功能介紹——AI編排行程、主題景點、時間軸排程 | Tripace",
-		description: "描述你的旅行需求，AI 自動把候選景點排成每日時間軸；點開主題點看周邊精選店家與景點；把候選景點拖進時間軸，一眼掌握整趟旅程的節奏。看看 Tripace 怎麼幫你規劃一趟行程。",
-		canonical:   "https://tripace.shuttle.tools/product",
-		image:       "",
-	},
+// siteBaseURL 回傳這個網站目前的正式網域(不含結尾斜線,例如
+// "https://tripace.io")——讀環境變數 SITE_BASE_URL(見 server/.env.example
+// 的說明),未設定時 fallback 回目前的正式網域 tripace.io。這個站過渡期
+// 與舊網域 tripace.shuttle.tools 並存(見 cmd/server/main.go 的
+// canonicalDomain/withLegacyDomainRedirect、cmd/redirectserver 的
+// targetOrigin——那兩處是處理「舊網域請求轉址」的獨立邏輯,跟這裡「SEO
+// meta 裡該填哪個網域」是兩個不同的問題,故沒有共用這個函式),SEO 相關
+// 的 canonical/og:url/og:image 等欄位全部呼叫這個函式組出完整網址,網域
+// 字串只在這一個地方維護,不再分散寫死在 seoMetaByPath/defaultCanonical/
+// defaultImage 裡。
+//
+// 設計上用 fallback 預設值而非強制要求必須設定:本機開發/CI 跑這個套件
+// 的測試時通常不會特地設這個環境變數,fallback 回正式網域(而非留空或
+// panic)可以讓這些情境下組出來的網址仍然是合法、有意義的值,也跟
+// web/index.html 裡 checked-in 的預設值(見下方 defaultCanonical 等
+// 常數的完整說明,必須跟這裡的 fallback 一致才能被字串取代機制比對到)
+// 保持一致。
+//
+// 讀到的值會去掉結尾的 "/"(容忍使用者在 .env 裡多打或少打這個斜線),
+// 統一由呼叫端自己決定要不要補上。
+func siteBaseURL() string {
+	v := strings.TrimSuffix(os.Getenv("SITE_BASE_URL"), "/")
+	if v == "" {
+		return "https://tripace.io"
+	}
+	return v
 }
+
+func buildSeoMetaByPath(baseURL string) map[string]seoMeta {
+	return map[string]seoMeta{
+		"/jiufen": {
+			title:       "九份——礦業興衰與人文重生的山城故事 | Tripace",
+			description: "從基隆山的地形限制，到金瓜石礦業的興衰，再到老街、茶樓與海景交錯的人文重生——跟著 Tripace 走一趟九份的散策路線，讀懂這座山城為何長成現在的樣子。",
+			canonical:   baseURL + "/jiufen",
+			image:       "https://storage.googleapis.com/shuttle-tripace-web-assets/landing/jiufen/n0.jpg",
+		},
+		"/kyoto-kiyomizu": {
+			title:       "京都・清水寺——地形、信仰與人文交織的東山散策 | Tripace",
+			description: "從清水寺的懸崖地形，到八坂神社的參拜人潮，再到祇園花見小路的茶屋文化——跟著 Tripace 走一趟京都東山的散策路線，讀懂地質、信仰、商業與人文如何層層疊加成這座古都。",
+			canonical:   baseURL + "/kyoto-kiyomizu",
+			image:       "https://storage.googleapis.com/shuttle-tripace-web-assets/landing/kyoto/n1.jpg",
+		},
+		"/tainan-anping": {
+			title:       "台南・安平——荷蘭城堡與老街風土交織的港町故事 | Tripace",
+			description: "從熱蘭遮城的築城選址，到運河淤積後老街的重生，再到蜜餞、豆花、冬瓜茶交織的巷弄風土——跟著 Tripace 走一趟台南安平的散策路線，讀懂這座港町為何長成現在的樣子。",
+			canonical:   baseURL + "/tainan-anping",
+			image:       "https://storage.googleapis.com/shuttle-tripace-web-assets/landing/tainan/n1.jpg",
+		},
+		"/tainan-chikan": {
+			title:       "赤崁・府城兩日遊——老地方的前世今生 | Tripace",
+			description: "消防塔變史料館、州廳變文學館、老屋變民宿、百貨公司關了又重開——走一趟赤崁樓周邊，看台南這些老地方如何活成現在的樣子，兩天一夜的歷史建築活化路線。",
+			canonical:   baseURL + "/tainan-chikan",
+			image:       "https://storage.googleapis.com/shuttle-tripace-photos/review/tainan-chikan/IMG_9812.webp",
+		},
+		"/product": {
+			title:       "功能介紹——AI編排行程、主題景點、時間軸排程 | Tripace",
+			description: "描述你的旅行需求，AI 自動把候選景點排成每日時間軸；點開主題點看周邊精選店家與景點；把候選景點拖進時間軸，一眼掌握整趟旅程的節奏。看看 Tripace 怎麼幫你規劃一趟行程。",
+			canonical:   baseURL + "/product",
+			image:       "",
+		},
+	}
+}
+
+// seoMetaByPath 在套件初始化時用當下的環境變數組好一次——跟先前寫死的
+// map literal 比,行為上唯一的差異是 canonical 網域來自 siteBaseURL(),
+// 其餘呼叫端(applySEOMeta/測試)用法完全不變。seo_meta_test.go 若要測試
+// 不同的 SITE_BASE_URL 設定,可直接呼叫 buildSeoMetaByPath(自訂 baseURL)
+// 而不必依賴套件初始化時機。
+//
+// 2026-10 使用者明確要求 SITE_BASE_URL 只透過 CD 部署流程設定(Cloud Run
+// --update-env-vars,屬於系統環境變數,process 啟動前就存在於 OS 環境),
+// 不支援/不需要考慮透過本機 .env 檔案設定這條路徑——這代表套件層級
+// 變數初始化(早於 main() 內的 godotenv.Load())跟環境變數實際可用的
+// 時間點不會有衝突,維持最簡單的套件層級 var 寫法即可,不需要額外的
+// initSEOMeta() 明確呼叫步驟。若未來改變決策、需要支援 .env 設定,
+// 要搭配把這裡改回 main() 內明確初始化的寫法,否則 .env 裡設定的值
+// 讀不到(見 git blame 這段註解曾經的版本,保留過一次這樣的實作)。
+var seoMetaByPath = buildSeoMetaByPath(siteBaseURL())
 
 // defaultTitle/defaultDescription/defaultOGTwitterDescription/
 // defaultImage:index.html 裡寫死的首頁原始值——applySEOMeta 用它們當
@@ -108,8 +155,20 @@ const (
 	defaultTitle                = "Tripace — 從探索到行程，深入走訪一個想去的地方"
 	defaultDescription          = "Tripace 幫你在地圖上探索飯店、景點與餐廳，把喜歡的先丟進候選籃，再拖進日層架排成一趟行程。不只是到過，而是真正讀懂一個地方——與同行的人一起編輯、分享。"
 	defaultOGTwitterDescription = "在地圖上探索飯店、景點與餐廳，把喜歡的先丟進候選籃，再拖進日層架排成一趟行程。不只是到過，而是真正讀懂一個地方——與同行的人一起編輯、分享。"
-	defaultCanonical            = "https://tripace.shuttle.tools/"
-	defaultImage                = "https://tripace.shuttle.tools/og-image.png"
+)
+
+// defaultCanonical/defaultImage 原本是寫死的 const(值固定是
+// "https://tripace.io/"、"https://tripace.io/og-image.png")。改成套件
+// 初始化時用 siteBaseURL() 組出來的 var——網域字串不再在這裡重複寫死
+// 一次,跟 seoMetaByPath 共用同一個環境變數來源。index.html 裡
+// checked-in 的首頁預設值(見下方 seoReplaceTargets/applySEOMeta 的字串
+// 比對機制)必須跟這裡 siteBaseURL() 的 fallback 值(未設定 SITE_BASE_URL
+// 時的 "https://tripace.io")逐字一致,否則字串比對會找不到目標、靜默
+// 不生效——這組常數改名為 var 後仍維持跟先前完全相同的值,不影響這個
+// 對應關係。
+var (
+	defaultCanonical = siteBaseURL() + "/"
+	defaultImage     = siteBaseURL() + "/og-image.png"
 )
 
 // placeholderIndexHTML 是 checked-in 的 web/dist/index.html 在還沒跑過

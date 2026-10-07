@@ -153,6 +153,7 @@ jobs:
             --build-arg VITE_ONAGENT_URL="https://onagent.shuttle.tools" \
             --build-arg VITE_GOOGLE_OAUTH_CLIENT_ID=${{ steps.google_oauth_client_id.outputs.client_id }} \
             --build-arg VITE_PLAN_AI_ONAGENT_APP_KEY=${{ steps.plan_ai_onagent_key.outputs.key }} \
+            --build-arg VITE_SITE_BASE_URL="https://tripace.io" \
             -t ${{ env.IMAGE }}:${{ github.sha }} \
             -t ${{ env.IMAGE }}:latest \
             .
@@ -178,6 +179,14 @@ jobs:
           ENV_VARS="${ENV_VARS},GOOGLE_PLACES_GET_RATE_LIMIT_MAX_CALLS=1"
           ENV_VARS="${ENV_VARS},GOOGLE_PLACES_PHOTO_MEDIA_RATE_LIMIT_WINDOW_SEC=600"
           ENV_VARS="${ENV_VARS},GOOGLE_PLACES_PHOTO_MEDIA_RATE_LIMIT_MAX_CALLS=1"
+          # SITE_BASE_URL:這個站目前對外的正式網域,供
+          # cmd/server/seo_meta.go 組 canonical/og:url/og:image/
+          # twitter:image 等 SEO meta 用(見該檔案 siteBaseURL() 的完整
+          # 說明)。這是系統環境變數(Cloud Run 平台在 container 啟動前就
+          # 注入到 OS 環境),不是 .env 檔案,不受套件層級變數初始化時機
+          # 影響,能被正確讀到——2026-10 使用者明確決定這個變數只透過這裡
+          # (CD 部署流程)設定,不支援/不需要考慮本機 .env 檔案這條路徑。
+          ENV_VARS="${ENV_VARS},SITE_BASE_URL=https://tripace.io"
 
           SECRETS="DATABASE_URL=DATABASE_URL:latest"
           SECRETS="${SECRETS},JWT_SECRET=JWT_SECRET:latest"

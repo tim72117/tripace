@@ -76,6 +76,37 @@ func TestCheckIndexHTMLHasAllSEOTargets_DuplicateTargetReturnsError(t *testing.T
 	}
 }
 
+// siteBaseURL()/defaultCanonical/defaultImage/套件層級的 seoMetaByPath
+// 都是在 package 初始化時算好一次的值(var,不是函式呼叫時才讀環境
+// 變數),所以在個別測試裡用 t.Setenv("SITE_BASE_URL", ...) 不會影響到
+// 它們——test binary 啟動時 init 早就跑過了。要測試「SITE_BASE_URL 真的
+// 會改變組出來的網址」這個行為,必須直接呼叫 siteBaseURL()/
+// buildSeoMetaByPath(自訂 baseURL),不能依賴套件層級變數的初始化時機。
+func TestSiteBaseURL_UsesEnvVarAndTrimsTrailingSlash(t *testing.T) {
+	t.Setenv("SITE_BASE_URL", "https://example.test/")
+	if got := siteBaseURL(); got != "https://example.test" {
+		t.Errorf("siteBaseURL() = %q,預期去掉結尾斜線後的 %q", got, "https://example.test")
+	}
+}
+
+func TestSiteBaseURL_FallsBackToTripaceIOWhenUnset(t *testing.T) {
+	t.Setenv("SITE_BASE_URL", "")
+	if got := siteBaseURL(); got != "https://tripace.io" {
+		t.Errorf("siteBaseURL() 未設定時 = %q,預期 fallback 到 %q", got, "https://tripace.io")
+	}
+}
+
+func TestBuildSeoMetaByPath_UsesGivenBaseURL(t *testing.T) {
+	meta := buildSeoMetaByPath("https://example.test")
+	m, ok := meta["/jiufen"]
+	if !ok {
+		t.Fatal("buildSeoMetaByPath 的結果缺少 /jiufen")
+	}
+	if want := "https://example.test/jiufen"; m.canonical != want {
+		t.Errorf("/jiufen 的 canonical = %q,預期 %q", m.canonical, want)
+	}
+}
+
 func TestApplySEOMeta_KnownRouteReplacesTitleDescriptionCanonical(t *testing.T) {
 	html := readRealIndexHTML(t)
 
@@ -89,11 +120,11 @@ func TestApplySEOMeta_KnownRouteReplacesTitleDescriptionCanonical(t *testing.T) 
 		t.Error("輸出仍包含首頁的 <title>,取代沒有生效")
 	}
 
-	wantCanonical := `<link rel="canonical" href="https://tripace.shuttle.tools/jiufen" />`
+	wantCanonical := `<link rel="canonical" href="https://tripace.io/jiufen" />`
 	if !strings.Contains(out, wantCanonical) {
 		t.Errorf("輸出沒有包含九份頁正確的 canonical:%q", wantCanonical)
 	}
-	if strings.Contains(out, `<link rel="canonical" href="https://tripace.shuttle.tools/" />`) {
+	if strings.Contains(out, `<link rel="canonical" href="https://tripace.io/" />`) {
 		t.Error("輸出仍包含指向首頁的 canonical,這正是要修的 bug")
 	}
 
@@ -128,7 +159,7 @@ func TestApplySEOMeta_KnownRouteReplacesTitleDescriptionCanonical(t *testing.T) 
 	// 有換成九份頁的值,不是只改了 <title> 卻漏掉其他標籤(這組標籤的用字
 	// 跟 defaultTitle/defaultCanonical/defaultImage 完全相同,比較容易
 	// 因為複製貼上疏漏其中一處)。
-	if !strings.Contains(out, `<meta property="og:url" content="https://tripace.shuttle.tools/jiufen" />`) {
+	if !strings.Contains(out, `<meta property="og:url" content="https://tripace.io/jiufen" />`) {
 		t.Error("og:url 沒有換成九份頁的網址")
 	}
 	if !strings.Contains(out, `<meta property="og:title" content="`+wantTitle+`" />`) {
@@ -144,7 +175,7 @@ func TestApplySEOMeta_KnownRouteReplacesTitleDescriptionCanonical(t *testing.T) 
 	if !strings.Contains(out, `<meta name="twitter:image" content="`+wantImage+`" />`) {
 		t.Error("twitter:image 沒有換成九份頁的圖片")
 	}
-	if strings.Contains(out, `content="https://tripace.shuttle.tools/og-image.png"`) {
+	if strings.Contains(out, `content="https://tripace.io/og-image.png"`) {
 		t.Error("輸出仍包含首頁的 og-image.png,image 取代沒有生效")
 	}
 }
@@ -172,7 +203,7 @@ func TestApplySEOMeta_AllFourCityPagesHaveDistinctCanonical(t *testing.T) {
 	seen := map[string]bool{}
 	for _, p := range paths {
 		out := string(applySEOMeta(html, p))
-		wantCanonical := `<link rel="canonical" href="https://tripace.shuttle.tools` + p + `" />`
+		wantCanonical := `<link rel="canonical" href="https://tripace.io` + p + `" />`
 		if !strings.Contains(out, wantCanonical) {
 			t.Errorf("路徑 %s 的輸出沒有包含正確的 canonical:%q", p, wantCanonical)
 		}
@@ -210,11 +241,11 @@ func TestApplySEOMeta_ProductPageHasOwnSEOMetaButFallsBackToDefaultImage(t *test
 
 	out := string(applySEOMeta(html, "/product"))
 
-	wantCanonical := `<link rel="canonical" href="https://tripace.shuttle.tools/product" />`
+	wantCanonical := `<link rel="canonical" href="https://tripace.io/product" />`
 	if !strings.Contains(out, wantCanonical) {
 		t.Errorf("/product 的輸出沒有包含自己的 canonical:%q", wantCanonical)
 	}
-	if strings.Contains(out, `<link rel="canonical" href="https://tripace.shuttle.tools/" />`) {
+	if strings.Contains(out, `<link rel="canonical" href="https://tripace.io/" />`) {
 		t.Error("/product 的輸出仍包含指向首頁的 canonical,取代沒有生效")
 	}
 
@@ -261,7 +292,7 @@ func TestStaticHandler_ServesCorrectSEOMetaOverHTTP(t *testing.T) {
 		t.Fatalf("讀取 body: %v", err)
 	}
 	s := string(body)
-	if !strings.Contains(s, `<link rel="canonical" href="https://tripace.shuttle.tools/jiufen" />`) {
+	if !strings.Contains(s, `<link rel="canonical" href="https://tripace.io/jiufen" />`) {
 		t.Error("透過真實 HTTP 請求 /jiufen,回應內容沒有正確的 canonical")
 	}
 }

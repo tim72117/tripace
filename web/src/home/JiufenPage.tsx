@@ -10,6 +10,7 @@ import { ExploreOtherCities } from './ExploreOtherCities';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { useScrollProgress } from '../hooks/useScrollProgress';
 import { trackEvent } from '../analytics';
+import { SITE_SEO_BASE_URL } from '../AppCommon';
 import './JiufenPage.css';
 
 // SEO_TITLE/SEO_DESCRIPTION/SEO_URL:這個頁面專屬的文案。
@@ -40,7 +41,7 @@ import './JiufenPage.css';
 // 註解已經在用的同一句簡介,三處保持一致的措辭。
 const SEO_TITLE = '九份——礦業興衰與人文重生的山城故事 | Tripace'
 const SEO_DESCRIPTION = '從基隆山的地形限制，到金瓜石礦業的興衰，再到老街、茶樓與海景交錯的人文重生——跟著 Tripace 走一趟九份的散策路線，讀懂這座山城為何長成現在的樣子。'
-const SEO_URL = 'https://tripace.shuttle.tools/jiufen'
+const SEO_URL = `${SITE_SEO_BASE_URL}/jiufen`
 
 // LANDING_ASSETS_BASE:landing page 系列頁面(目前只有這裡)用的靜態圖片
 // GCS bucket——跟後端存 attraction 照片的 GCS_PHOTO_BUCKET
@@ -206,7 +207,7 @@ export function JiufenPage() {
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Tripace', item: 'https://tripace.shuttle.tools/' },
+              { '@type': 'ListItem', position: 1, name: 'Tripace', item: `${SITE_SEO_BASE_URL}/` },
               { '@type': 'ListItem', position: 2, name: '九份', item: SEO_URL },
             ],
           })}

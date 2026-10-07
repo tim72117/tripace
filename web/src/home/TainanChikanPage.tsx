@@ -6,6 +6,7 @@ import { CityPageFooter } from './CityPageFooter';
 import { ExploreOtherCities } from './ExploreOtherCities';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { trackEvent } from '../analytics';
+import { SITE_SEO_BASE_URL } from '../AppCommon';
 import './TainanChikanPage.css';
 
 // TainanChikanPage — 赤崁・府城「老地方的前世今生」兩日遊介紹頁,外殼
@@ -45,7 +46,7 @@ import './TainanChikanPage.css';
 // 其中一邊記得同步另一邊。
 const SEO_TITLE = '赤崁・府城兩日遊——老地方的前世今生 | Tripace'
 const SEO_DESCRIPTION = '消防塔變史料館、州廳變文學館、老屋變民宿、百貨公司關了又重開——走一趟赤崁樓周邊，看台南這些老地方如何活成現在的樣子，兩天一夜的歷史建築活化路線。'
-const SEO_URL = 'https://tripace.shuttle.tools/tainan-chikan'
+const SEO_URL = `${SITE_SEO_BASE_URL}/tainan-chikan`
 
 // PHOTO_TAGGING_PREVIEW_BASE:STOPS 的 gallery 圖片來源——這批照片是
 // 2026-09 使用者實地拍攝、透過 tools/img2webp 批次轉檔後上傳到
@@ -315,7 +316,7 @@ export function TainanChikanPage() {
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Tripace', item: 'https://tripace.shuttle.tools/' },
+              { '@type': 'ListItem', position: 1, name: 'Tripace', item: `${SITE_SEO_BASE_URL}/` },
               { '@type': 'ListItem', position: 2, name: '赤崁・府城', item: SEO_URL },
             ],
           })}

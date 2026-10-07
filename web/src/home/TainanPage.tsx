@@ -10,6 +10,7 @@ import { ExploreOtherCities } from './ExploreOtherCities';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { useScrollProgress } from '../hooks/useScrollProgress';
 import { trackEvent } from '../analytics';
+import { SITE_SEO_BASE_URL } from '../AppCommon';
 import './TainanPage.css';
 
 // ANPING_FORT_PHOTO_URL:手機版地圖縮圖(見下方 MobileMapReveal)用的
@@ -47,7 +48,7 @@ const LANDING_ASSETS_BASE = 'https://storage.googleapis.com/shuttle-tripace-web-
 // seoMetaByPath["/tainan-anping"] 保持一致,修改其中一邊記得同步另一邊。
 const SEO_TITLE = '台南・安平——荷蘭城堡與老街風土交織的港町故事 | Tripace'
 const SEO_DESCRIPTION = '從熱蘭遮城的築城選址，到運河淤積後老街的重生，再到蜜餞、豆花、冬瓜茶交織的巷弄風土——跟著 Tripace 走一趟台南安平的散策路線，讀懂這座港町為何長成現在的樣子。'
-const SEO_URL = 'https://tripace.shuttle.tools/tainan-anping'
+const SEO_URL = `${SITE_SEO_BASE_URL}/tainan-anping`
 
 // STOPS — 目前 6 筆,其中 5 筆(安平古堡/運河淤積轉折/安平樹屋/延平街
 // 老街/海山館)取自資料庫已建檔的 attraction 資料(見 server/internal/
@@ -184,7 +185,7 @@ export function TainanPage() {
             '@context': 'https://schema.org',
             '@type': 'BreadcrumbList',
             itemListElement: [
-              { '@type': 'ListItem', position: 1, name: 'Tripace', item: 'https://tripace.shuttle.tools/' },
+              { '@type': 'ListItem', position: 1, name: 'Tripace', item: `${SITE_SEO_BASE_URL}/` },
               { '@type': 'ListItem', position: 2, name: '台南・安平', item: SEO_URL },
             ],
           })}
