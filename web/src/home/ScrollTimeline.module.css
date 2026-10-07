@@ -5,18 +5,58 @@
    --footer-accent/--explore-accent 的既有模式),呼叫端自行指向自己
    頁面的強調色(--vermilion 或 --brick)。 */
 
-/* root:2026-10 新增的最外層包裹——.mapPanelWrap 搬出 .layout 的 grid
-   結構後(見該 class 的完整說明),需要一個 position:relative 的祖先
-   當作 position:absolute 定位的參照基準。只負責提供這個定位 context,
-   不影響任何版面尺寸計算(沒有 padding/margin/width 等屬性)。 */
+/* root:2026-10 新增的最外層包裹,.layout 與 .mapPanelWrap 是它的兩個
+   子元素(平行關係,.mapPanelWrap 不再是 .layout 的 grid item)。
+   2026-10(第二版,fable 研究後修正):原本用 position:relative 當
+   position:absolute 的定位參照,但這條路線的代價是 .mapPanelWrap 失去
+   position:sticky 的「捲動時黏在視窗上方」效果(詳見該 class 的完整
+   說明)。改成單欄 grid(grid-template-columns: 1fr),讓 .layout 跟
+   .mapPanelWrap 疊在同一個 grid area(grid-area: 1 / 1)——這樣
+   .mapPanelWrap 的 containing block 是這個 1fr 欄位的完整寬度(= .root
+   全寬),不再是 .layout 內部窄的第 2 欄,.mapPanelWrap 本身才能改回
+   position:sticky 正常運作,同時用 margin(而非 left/right/width)
+   畫出視覺上「對齊第 2 欄」的位置。
+   根因(fable 以 Playwright 在 Chromium/WebKit/Firefox 三引擎實測
+   確認,CSS Positioned Layout 3 §3.4 sticky-pos 規範佐證):
+   position:sticky 元素的 left/right/width 不是「位移」,是「黏住時
+   不能超出 containing block 的約束」——sticky 元素若是 grid item,
+   它的 containing block 就是自己的 grid area(CSS Grid 1 §6.1),
+   套用 left:50%;width:100vw;margin-left:-50vw 這組給 position:relative
+   設計的經典 breakout 寫法,瀏覽器會把盒子推到黏住範圍內最大值就停住,
+   撞到 grid area 右界卡住——這正是先前「只有左側改到」的真正原因,
+   跟「grid item 的 width 被軌道數值鉗制」無關(width:100vw 本身其實
+   有正確生效,只是 sticky 的黏住約束把盒子推回小範圍)。改用 margin
+   才能真正移動盒子本身的位置/尺寸(CSS Positioned Layout 3 §3.3:
+   relative/sticky 位移不影響其他非子孫盒子,只有 margin 這類會真正
+   改變盒子尺寸計算的屬性才能做 breakout)。
+   --timeline-top-offset:時間軸/地圖面板共用的頂部留白,.timeline 跟
+   .mapPanelWrap 都要讀同一個值(見兩者各自的完整說明)才會維持視覺
+   對齊,不要各自寫死一份數字。桌面版 96px;手機版(見下方 640px
+   斷點)使用者要求「再往上移、貼近上方固定導覽列(SiteNavButtons.css
+   的 .site-nav-brand-row 等,top:16px + 36px 高,底部約在 52px)但不能
+   超出導覽列本身的高度」——縮到 64px(= 52px 導覽列底部 + 12px 呼吸
+   間距)。定義在 .root 上(最外層共同祖先),讓兩個子元素都能用
+   var(--timeline-top-offset) 讀到同一份值。 */
 .root {
-  position: relative;
+  --timeline-top-offset: 96px;
+  display: grid;
+  grid-template-columns: 1fr;
 }
 
-/* padding-left:2026-10 使用者要求時間軸左側(跟頁面/外層容器左緣之間)
+@media (max-width: 640px) {
+  .root {
+    --timeline-top-offset: 64px;
+  }
+}
+
+/* grid-area: 1 / 1:讓 .layout 跟 .mapPanelWrap(見 .root 的完整說明)
+   疊在 .root 這個外層單欄 grid 的同一格,.layout 自己仍是巢狀的兩欄
+   grid(96px/64px 時間軸欄 + 1fr 文案欄),兩層 grid 互不影響。
+   padding-left:2026-10 使用者要求時間軸左側(跟頁面/外層容器左緣之間)
    加大間距——時間軸原本貼齊 .layout 容器左緣,視覺上太擠。只加左側
    (不動右側/上下),不影響欄寬/gap 既有的版面計算。 */
 .layout {
+  grid-area: 1 / 1;
   display: grid;
   grid-template-columns: 96px 1fr;
   gap: 24px;
@@ -24,10 +64,14 @@
 }
 
 @media (max-width: 640px) {
+  /* padding-left:2026-10 使用者要求手機版時間軸再靠左一點,從 16px
+     縮小到 8px——跟著 .mapPanelWrap 手機版 margin-left 算式(見該 class
+     640px 斷點的說明)同步改動,否則地圖面板收合時的停駐位置會跟時間軸
+     欄位對不齊。 */
   .layout {
     grid-template-columns: 64px 1fr;
     gap: 8px;
-    padding-left: 16px;
+    padding-left: 8px;
   }
 }
 
@@ -58,7 +102,7 @@
   z-index: 10;
   display: flex;
   align-items: flex-start;
-  padding-top: 96px;
+  padding-top: var(--timeline-top-offset);
 }
 
 .timelineTrack {
@@ -372,43 +416,61 @@
    container-type: inline-size(2026-10 展開動畫改成外框長寬時加的):
    讓這層成為容器查詢的尺寸容器,裡面的 .mapPanelBody 才能用 100cqw
    取得「wrap 的最終全寬」,在 .mapPanel 外框寬度動畫進行中仍維持
-   固定尺寸(見 .mapPanelBody 的說明)。這層寬度由 grid 欄位/
-   .mapPanelOpen 的 calc 決定、不依賴內容,套用 inline-size 包含不會
-   改變任何版面結果。
+   固定尺寸(見 .mapPanelBody 的說明)。這層寬度由 margin/
+   .mapPanelOpen 決定、不依賴內容,套用 inline-size 包含不會改變任何
+   版面結果。
    --map-panel-grow-start:外框展開動畫的起始寬度 = 第 1 欄(時間軸
    欄位)的寬度,讓起始的窄條剛好罩在時間軸縮圖正下方、以圓點為中心;
    手機版在下方 640px 斷點覆寫成 64px。
+   2026-10:height/padding-top 原本寫死 96px,改成讀 .root 定義的
+   --timeline-top-offset(見該 class 的完整說明)——使用者要求手機版
+   時間軸/地圖面板的頂部留白要縮小、更貼近上方固定導覽列但不能超出
+   導覽列本身的高度,這個變數在 640px 斷點下被覆寫成 64px,.timeline
+   讀同一個變數,兩者才會繼續維持視覺對齊。
    高度算式維持 260px(= .mapPanel 本身的高度)——「地圖上方加一點
    空間」那次嘗試曾一度把這裡改成 276px,已依使用者回報一併還原。
-   2026-10:從 grid item(grid-column:2/grid-row:1/align-self:start)
-   改成 position:absolute,相對 .root(見該 class 的說明)定位——使用者
-   要求手機版地圖面板左右貼齊視窗滿版,但 grid item 的 sticky 定位,
-   left/right 的參照基準是自己的 grid area、不是視窗,不管用什麼
-   breakout 寫法都無法真正突破格子邊界(只有負 margin 造成的位移不受
-   此限,這也是先前「只有左側改到」的根因,完整分析見 ScrollTimeline.tsx
-   掛載處的說明)。改成 absolute 後,left 直接用 calc 算出「原本第 2
-   欄的起始位置」(= 第 1 欄寬度 96px + gap 24px + .layout 的
-   padding-left 32px = 152px,手機版對應 64+8+16=88px,見下方 640px
-   斷點覆寫),right:0 貼齊 .root 右緣(對齊原本 1fr 撐滿到底的效果),
-   桌面版視覺位置跟改動前完全一致。
-   position:absolute(而非 sticky)是刻意的——sticky 元素的黏住效果
-   需要仰賴「自己在文件流裡有一段夠長的原始佔位高度」,.mapPanelWrap
-   原本是 .layout 的 grid item 時,跟 .copy(文案欄)共用同一個 grid
-   row,天然有文案等長的佔位高度;搬出 grid、變成 .root 的 absolute
-   子元素後,不再跟文案共用任何版面關係,改用 absolute 固定在
-   top:96px(見下方)反而更單純直接——面板本來就只需要「停在螢幕上緣
-   附近」,不需要真的跟著捲動黏住(原本 sticky 的用途只是防止被捲動
-   帶走,固定定位一樣能達成同樣的視覺效果,且不受 grid item 那條特殊
-   規則限制)。 */
+   2026-10(第三版,fable 研究後修正):中間曾一度改成 position:absolute
+   相對 .root 定位,換取手機版「左右貼齊視窗滿版」的效果,但代價是
+   失去 sticky 的「捲動時黏在視窗上方」效果(固定 top:96px,捲動時
+   直接被頁面帶著一起往上捲走消失)。改回 position:sticky,靠 .root
+   改成單欄 grid、.mapPanelWrap 跟 .layout 疊在同一個 grid area(見
+   .root/.layout 的完整說明)讓這裡的 containing block 變成 .root 全寬,
+   不再是 .layout 內部窄的第 2 欄,sticky + margin 的組合就能兼顧兩者:
+   sticky 元素的 left/right 是「黏住時不能超出 containing block 的
+   約束」而非真正的位移(CSS Positioned Layout 3 §3.4),用這兩個屬性
+   做 breakout 只會被約束夾住(這正是先前「只有左側改到」的真正原因,
+   不是「grid item 的 width 被軌道鉗制」);改用 margin-left 才是真正
+   移動盒子本身的位置,不受這條約束限制(§3.3:relative/sticky 的位移
+   不影響其他非子孫盒子,只有 margin 這類會真正改變盒子尺寸計算的
+   屬性才能做 breakout)。
+   grid-area: 1/1 讓這層疊在跟 .layout 同一格;align-self: start 是
+   必要的——疊在 grid 格子裡預設會被 stretch 到整列高(= 文案總高度),
+   跟 containing block 同高就沒有可以「黏住移動」的空間,sticky 視覺
+   上會變成完全不動;.timeline 當初要 height:100vh 才能正常黏住,
+   根因也是同一件事(避免被 stretch,不是「生成框要夠高」本身)。
+   margin-left 取代原本的 left,算出跟桌面版改動前一致的視覺位置
+   (= 第 1 欄寬度 96px + gap 24px + .layout 的 padding-left 32px =
+   152px,手機版對應 64+8+16=88px,見下方 640px 斷點覆寫);不再需要
+   right:0,拿掉 margin 後盒子自然撐滿 grid area 剩餘寬度到右緣,效果
+   跟原本 right:0 相同。
+   box-sizing: border-box——讓 height: calc(260px + 96px) 這個數字真正
+   代表「含 padding-top 的總高度」,.mapPanel(260px)剛好吃滿扣除
+   padding 後的 content box,不會溢出也不會不足。.timeline 沒有這個
+   屬性、是 height:100vh(content box)+ padding-top 疊加在外,兩者
+   算法不同但視覺結果一致,這裡刻意選 border-box 是因為「總高度等於
+   內容高度加頂部留白」這個算式用 border-box 表達起來更直接。 */
 .mapPanelWrap {
   --map-panel-grow-start: 96px;
-  position: absolute;
-  left: calc(96px + 24px + 32px);
-  right: 0;
-  top: 96px;
-  height: 260px;
+  grid-area: 1 / 1;
+  align-self: start;
+  position: sticky;
+  top: 0;
+  margin-left: calc(96px + 24px + 32px);
+  height: calc(260px + var(--timeline-top-offset));
+  padding-top: var(--timeline-top-offset);
   z-index: 5;
   container-type: inline-size;
+  box-sizing: border-box;
 }
 
 /* 2026-10:使用者回報地圖面板的圓角邊緣直接貼著旁邊的時間軸圓點/按鈕,
@@ -590,36 +652,80 @@
 }
 
 @media (max-width: 640px) {
-  /* 2026-10:使用者要求手機版地圖面板左右兩邊直接貼齊視窗寬度(滿版),
-     不只是蓋過時間軸欄位——原本 margin-left:-72px/width:calc(100% + 72px)
-     只能讓面板左緣貢齊 .layout 容器的左緣,但 .layout 本身還有
-     padding-left:16px,外層 .tainan-chikan-stops 也還有左右 padding
-     (1.5rem),面板左右兩側實際上還留著這幾層容器的留白,不是真正貼齊
-     視窗邊緣。
-     第一版用 left:50%; width:100vw; margin-left:-50vw 這組經典
-     breakout 寫法,但 .mapPanelWrap 本身是 CSS Grid 的 grid item
-     (grid-column:2),使用者回報「只有改到左側」——grid item 的
-     width 會被所屬軌道的尺寸計算覆蓋/鉗制,width:100vw 這個絕對值
-     在 grid 版面脈絡下沒有如預期完全生效,只有 left:50%/margin-left
-     造成的左緣偏移看得出效果,右緣仍然停在原本軌道右界。
-     改用 left:0; right:0; width:auto 這組寫法——不透過 width 指定
-     絕對寬度(讓它繼續受 grid 軌道影響也沒關係),改用 left/right 兩個
-     方向各自鎖定到 viewport 座標系的 0(sticky/relative 定位context
-     下,left:0/right:0 都是相對最近的 containing block,也就是視窗
-     本身,因為中間沒有其他 position:relative 的祖先);瀏覽器會自動
-     算出「從左緣 0 到右緣 0」之間的寬度,不受 grid 軌道寬度的 width
-     鉗制影響,左右兩側都能確實貼齊視窗邊緣。 */
-  .mapPanelOpen {
-    left: 0;
-    right: 0;
-    width: auto;
-    margin-left: 0;
-  }
-
+  /* 2026-10(第三版,fable 研究後修正):使用者要求手機版地圖面板左右
+     兩邊直接貼齊視窗寬度(滿版),不只是蓋過時間軸欄位。
+     前兩版嘗試跟各自的失敗原因:
+     (1) left:50%;width:100vw;margin-left:-50vw 這組給 position:relative
+         設計的經典 breakout 寫法,套在當時是 grid item 的 .mapPanelWrap
+         上,只有左側改到。
+     (2) 改成 left:0;right:0;width:auto,原本以為「sticky 的 left/right
+         是相對視窗算」,但實測並非如此。
+     fable 以 Playwright 在 Chromium/WebKit/Firefox 三引擎實測、並對照
+     CSS Positioned Layout 3 §3.4 規範確認根因:sticky 元素的
+     left/right/width 不是真正的「位移」,是「黏住時不能超出 containing
+     block」的約束——不管哪一版寫法,瀏覽器都會把盒子推到黏住範圍內的
+     邊界就停住,撞到 containing block(此時是 .mapPanelWrap 自己的
+     grid area)的邊界卡住,這才是「只有左側改到」的真正原因,跟
+     「grid item 的 width 被軌道數值鉗制」無關。
+     唯一能真正移動 sticky 盒子本身位置/尺寸、不受這條約束限制的是
+     margin(§3.3:relative/sticky 的位移不影響其他非子孫盒子,只有
+     margin 這類會真正改變盒子尺寸計算的屬性才能做 breakout)——改用
+     margin-inline: calc(50% - 50vw) 這組常見 full-bleed 手法:50%
+     是盒子自己寬度的一半,50vw 是視窗寬度的一半,只要 .root 本身在
+     視窗內水平置中(外層 .tainan-chikan-stops 的 max-width + margin:
+     0 auto + 左右對稱的 1.5rem padding,見該檔案的說明),這組負
+     margin 就能把盒子左右兩側同時推到視窗邊緣,不依賴中間任何一層
+     容器的寬度計算,也不會被 sticky 的黏住約束夾住。 */
   /* 手機版第 1 欄是 64px,外框展開動畫的起始窄條寬度跟著改成 64px
-     (見 .mapPanelWrap 的 --map-panel-grow-start 說明)。 */
+     (見 .mapPanelWrap 的 --map-panel-grow-start 說明)。margin-left
+     同步改成手機版欄寬算式(64px 欄寬 + 8px gap + 8px .layout
+     padding-left = 80px,2026-10 使用者要求時間軸再靠左,.layout
+     padding-left 從 16px 改成 8px 後這裡跟著重算)——面板收合、停駐在
+     窄條狀態時的位置要對齊手機版縮小後的時間軸欄位,不能沿用桌面版的
+     152px。
+     這段規則(.mapPanelWrap)必須寫在下面 .mapPanelOpen 規則「之前」
+     ——展開時 DOM 上同一個元素會同時帶 mapPanelWrap/mapPanelOpen 兩個
+     class,兩者都是單一 class 選擇器、特異度相同,CSS 層疊規則下
+     margin-left 由原始碼「後寫的規則」勝出;若這段寫在 .mapPanelOpen
+     後面,會反過來蓋掉展開時該生效的 calc(50% - 50vw)
+     (實測踩到過這個順序坑:Playwright 量到展開後 margin-left 仍是
+     這裡的 80px,不是預期的滿版負值)。 */
   .mapPanelWrap {
     --map-panel-grow-start: 64px;
+    margin-left: calc(64px + 8px + 8px);
+  }
+
+  /* 2026-10(第三版,fable 研究後修正):使用者要求手機版地圖面板左右
+     兩邊直接貼齊視窗寬度(滿版),不只是蓋過時間軸欄位。
+     前兩版嘗試跟各自的失敗原因:
+     (1) left:50%;width:100vw;margin-left:-50vw 這組給 position:relative
+         設計的經典 breakout 寫法,套在當時是 grid item 的 .mapPanelWrap
+         上,只有左側改到。
+     (2) 改成 left:0;right:0;width:auto,原本以為「sticky 的 left/right
+         是相對視窗算」,但實測並非如此。
+     fable 以 Playwright 在 Chromium/WebKit/Firefox 三引擎實測、並對照
+     CSS Positioned Layout 3 §3.4 規範確認根因:sticky 元素的
+     left/right/width 不是真正的「位移」,是「黏住時不能超出 containing
+     block」的約束——不管哪一版寫法,瀏覽器都會把盒子推到黏住範圍內的
+     邊界就停住,撞到 containing block(此時是 .mapPanelWrap 自己的
+     grid area)的邊界卡住,這才是「只有左側改到」的真正原因,跟
+     「grid item 的 width 被軌道數值鉗制」無關。
+     唯一能真正移動 sticky 盒子本身位置/尺寸、不受這條約束限制的是
+     margin(§3.3:relative/sticky 的位移不影響其他非子孫盒子,只有
+     margin 這類會真正改變盒子尺寸計算的屬性才能做 breakout)——改用
+     margin-inline: calc(50% - 50vw) 這組常見 full-bleed 手法:50%
+     是盒子自己寬度的一半,50vw 是視窗寬度的一半,只要 .root 本身在
+     視窗內水平置中(外層 .tainan-chikan-stops 的 max-width + margin:
+     0 auto + 左右對稱的 1.5rem padding,見該檔案的說明),這組負
+     margin 就能把盒子左右兩側同時推到視窗邊緣,不依賴中間任何一層
+     容器的寬度計算,也不會被 sticky 的黏住約束夾住。 */
+  .mapPanelOpen {
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    /* 覆寫桌面版 width:calc(100% + 120px)——手機版改用 margin-inline
+       直接撐到視窗邊緣,不再需要搭配 width 補償,殘留桌面版的 width
+       會跟這裡的 margin 疊加算出錯誤寬度。 */
+    width: auto;
   }
 }
 

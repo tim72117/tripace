@@ -377,11 +377,14 @@ export function ScrollTimeline({
 
   return (
     <ScrollTimelineContext.Provider value={ctxValue}>
-      {/* 2026-10 新增的最外層包裹——.mapPanelWrap 搬出 .layout 的 grid
-          結構後(見該元素下方的完整說明),需要一個 position:relative
-          的祖先當作 position:absolute 定位的參照基準,才能在桌面版
-          繼續對齊「視覺上在文案欄右側」的位置(.layout 本身退回純粹的
-          版面容器身分,不再負責地圖面板的定位)。 */}
+      {/* 2026-10 新增的最外層包裹——.root 是單欄 grid,.layout 跟
+          .mapPanelWrap(見該元素下方的完整說明)是疊在同一個 grid area
+          的兩個平行子元素。2026-10(第二版,fable 研究後修正):原本
+          這裡是純 position:relative 容器,當 .mapPanelWrap 的
+          position:absolute 定位參照;改成單欄 grid 疊層後,
+          .mapPanelWrap 才能改回 position:sticky 正常運作(沒有
+          containing block 被 grid 窄欄夾住的問題),詳見 CSS module
+          .root/.mapPanelWrap 的完整說明。 */}
       <div className={styles.root}>
       <div className={styles.layout}>
         <aside className={styles.timeline}>
@@ -458,27 +461,32 @@ export function ScrollTimeline({
         <main className={styles.copy}>{children}</main>
       </div>
 
-      {/* 地圖面板——2026-10 從 .layout 內部搬到這裡(.layout 外面,跟它
-          變成平行兄弟),不再是 .layout 的 grid item。
-          根因(使用者回報「手機版地圖改成左右兩邊寬度與視窗同寬」,但
-          margin-left 的 breakout 寫法「只有改到左側」生效):CSS Grid
-          規範裡,grid item 若自己是 position:sticky,它的 left/right 等
-          定位屬性參照基準是「自己被分配到的那個 grid area」,不是整個
-          頁面或視窗——不管套用 left:50%;width:100vw;margin-left:-50vw
-          還是 left:0;right:0;width:auto,寬度都會被鉗制在 grid 軌道
-          可用空間內,只有靠負 margin 推出去的位移(不受軌道寬度約束)
-          看得出效果,這正是「只有左側改到」的真正原因。
-          搬出 grid 之後,.mapPanelWrap 不再受這條規則限制,手機版的
-          breakout CSS(left:50%;width:100vw;margin-left:-50vw,見 CSS
-          module .mapPanelOpen 的 640px 斷點)才能真正一路突破
-          .tainan-chikan-stops(max-width:960px)這類外層容器的寬度限制,
-          左右兩側確實貼齊視窗邊緣——.tainan-chikan-page/.tainan-chikan-stops
-          這類外層容器都是 position:static,breakout 路徑上沒有任何
-          position:relative/absolute 的祖先會截斷它。
-          sticky 的垂直黏住行為(top:0,見 .mapPanelWrap 的完整說明)
-          不受影響——sticky 的黏住範圍是看它自己的生成框(文件流裡的
-          原始位置/高度),跟它是不是 grid item 無關,只有水平方向的
-          left/right 定位才受 grid item 這條特殊規則約束。 */}
+      {/* 地圖面板——.layout 外面的平行兄弟,不是 .layout 的 grid item,
+          但跟 .layout 一起疊在 .root 這個外層單欄 grid 的同一個 grid
+          area(見 .root 的完整說明)。
+          2026-10(第三版,fable 研究後修正)根因回顧:手機版要「地圖
+          展開時左右貼齊視窗滿版」,中間試過兩版都失敗——
+          (1) .mapPanelWrap 還是 .layout 的 grid item 時,用
+              left:50%;width:100vw;margin-left:-50vw 這組 breakout 寫法,
+              只有左側改到。
+          (2) 一度誤判成「grid item 的 width 被軌道鉗制」,改成
+              position:absolute 相對 .root 定位解決滿版問題,但代價是
+              .mapPanelWrap 失去 sticky 的黏住效果,捲動文案時面板會
+              直接被帶走捲出視窗。
+          fable 以 Playwright 在 Chromium/WebKit/Firefox 三引擎實測、
+          對照 CSS Positioned Layout 3 §3.4 規範找到真正根因:
+          position:sticky 元素的 left/right/width 不是「位移」,是
+          「黏住時不能超出 containing block」的約束,套在 sticky 元素上
+          不管哪種寫法都只會被推到 containing block 邊界卡住,跟
+          grid item 身分本身無關(真正相關的是 grid item 的 containing
+          block 範圍,也就是自己的 grid area)。能真正移動盒子本身
+          位置/尺寸、不受這條約束限制的只有 margin。
+          現在的解法:.root 改成單欄 grid,.mapPanelWrap 跟 .layout
+          疊在同一格,.mapPanelWrap 的 containing block 因此變成 .root
+          全寬,改回 position:sticky 正常運作;桌面版用 margin-left 對齊
+          第 2 欄起點,手機版展開時用 margin-inline:calc(50% - 50vw)
+          這組 full-bleed 手法真正貼齊視窗邊緣(見 CSS module
+          .mapPanelWrap/.mapPanelOpen 的完整說明)。 */}
       <div
         className={`${styles.mapPanelWrap} ${openAnchorId ? styles.mapPanelOpen : styles.mapPanelHidden}`}
         aria-hidden={!openAnchorId}
