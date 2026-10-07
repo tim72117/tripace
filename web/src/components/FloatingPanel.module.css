@@ -2,9 +2,9 @@
    floating-panel- 前綴——import 時已經有明確的命名空間。
 
    取代原本各自獨立定義的 DesktopLayout.module.css 的 .panel/.left/
-   .right/.close/.chatPopover、GeoHotelSidebar.module.css/
-   AddFromCandidateSidebar.module.css 各自的 .head/.title/.closeBtn——
-   同一套視覺語言只定義一次,呼叫端不再各自組一份幾乎一樣的 CSS。 */
+   .right/.close/.chatPopover,以及各側欄 module.css 各自的
+   .head/.title/.closeBtn——同一套視覺語言只定義一次,呼叫端不再各自
+   組一份幾乎一樣的 CSS。 */
 
 .panel {
   position: absolute;

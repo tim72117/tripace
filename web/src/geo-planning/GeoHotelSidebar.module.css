@@ -1,9 +1,8 @@
 /* sidebar:寬度/絕對定位由外層 FloatingPanel(side="right",見
    ../FloatingPanel.tsx 與 DesktopLayout.tsx 的呼叫處)控制,漂浮在主顯示
    右緣之上——這裡只負責填滿外層容器與內部排版,不再自己決定寬度/定位
-   方式,也不設 border-left(理由同 AddFromCandidateSidebar.module.css 的
-   .sidebar:已改用圓角+陰影暗示「漂浮在主顯示上方」,不需要邊框分隔
-   線)。 */
+   方式,也不設 border-left:已改用圓角+陰影暗示「漂浮在主顯示上方」,
+   不需要邊框分隔線。 */
 .sidebar {
   height: 100%;
   background: var(--ios-card);

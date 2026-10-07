@@ -1,5 +1,5 @@
 /* PhoneTripsDrawer.tsx 專屬樣式(CSS Modules)。由下往上彈出的 bottom
-   sheet(使用者要求「旅程由下方往上彈出」,原本是左側滑入抽屜)——外殻
+   sheet(使用者要求「清單由下方往上彈出」,原本是左側滑入抽屜)——外殻
    (backdrop/panel/dragHandle)已改用共用容器
    components/PhoneBottomSheet.tsx,這裡只保留清單本身的樣式。 */
 
@@ -16,7 +16,7 @@
    (開啟/管理),單一 button 裝不下第二顆可點區域。tripItemOpen 是原本
    .tripItem 的按鈕部分(佔滿剩餘寬度),tripItemAction 是新增的「管理」
    齒輪按鈕,對齊桌面版 DesktopTripList.tsx 的 onManage(見該檔案說明:
-   分享/成員/開啟時自動進入合併成 TripManageModal,入口統一收在旅程
+   分享/成員/開啟時自動進入合併成 TripManageModal,入口統一收在清單
    項目上)。 */
 .tripItem {
   width: 100%;
@@ -26,7 +26,7 @@
   padding: 4px;
   border: none;
   border-radius: 8px;
-  /* 「新增旅程」項目目前仍渲染成單一 <button>(見 PhoneTripsDrawer.tsx
+  /* 「新增清單」項目目前仍渲染成單一 <button>(見 PhoneTripsDrawer.tsx
      creating===false 分支),沒有明確設定 background 就會落回瀏覽器對
      <button> 的原生預設樣式(系統灰 rgb(239,239,239))——淺色模式下這個
      灰色跟周圍的暖白背景接近,不明顯,但深色模式下完全不會跟著

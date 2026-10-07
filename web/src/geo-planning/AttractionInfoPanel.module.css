@@ -72,8 +72,8 @@
    nearbyCategoryIcon/nearbyName/nearbyMinutes:散策羅盤「附近景點」
    清單——列出目前地圖可視範圍內離這個錨點最近的精選點,點擊後開啟該
    精選點自己的「地點」卡片(見 AttractionInfoPanel.tsx onSelectNearby
-   的完整說明)。刻意用細分隔線的列表而非卡片(GeoListItemCard 那種縮圖
-   卡片形式),理由是這裡只需要快速掃視「分類+名稱+分鐘數」做選擇,不需要
+   的完整說明)。刻意用細分隔線的列表而非卡片(components/ListItemCard.tsx
+   那種縮圖卡片形式),理由是這裡只需要快速掃視「分類+名稱+分鐘數」做選擇,不需要
    縮圖——縮圖需要額外的 landmarkPhotoUrl 查詢/版面空間,對「挑一個要看
    關聯的候選」這個任務是干擾而非幫助。 */
 .nearbySection {

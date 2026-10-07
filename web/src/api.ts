@@ -520,8 +520,8 @@ export function fetchPublicGeoAttractions(cfg: ClientConfig, city: string) {
 //
 // 2026-08 起這支端點的照片查詢改成後端背景執行(見 server 端
 // handleGeoGeocode 的說明),回應不再帶 photoUrl 欄位——前端一律改成
-// GeoListItemCard 依 placeId 觸發的延遲查詢(fetchGeoPlacePhoto,捲進
-// 可視範圍才查),原本這裡的 photoUrl 只是「前幾筆候選的即時預覽」,
+// components/ListItemCard.tsx 依 placeId 觸發的延遲查詢(fetchGeoPlacePhoto,
+// 捲進可視範圍才查),原本這裡的 photoUrl 只是「前幾筆候選的即時預覽」,
 // 已確認目前渲染路徑實際上都是走 placeId 延遲查詢(見
 // GeoHotelSidebar.tsx/GeoOutlinePhoneListDrawer.tsx),移除這個欄位不影響
 // 任何畫面顯示。
@@ -648,10 +648,10 @@ export function fetchGeoAttractionsOnlyNearby(cfg: ClientConfig, lat: number, ln
 //
 // 欄位全部盡量共用、只有各自來源才有的欄位設為 optional——photoUrl 只有
 // hotel(GeoHotel,查詢完成時就同步帶照片,見該型別的說明)會有值;
-// placeId 則是 geocode 與 place 兩種來源都有(兩者都靠 GeoListItemCard
-// 依 placeId 觸發的延遲查詢取得照片,不再依賴任何欄位帶著現成的
-// photoUrl);category 只有 place 會有值(對應地圖上方類別標籤,見
-// GeoGeocodeCandidate.category 的完整說明)。
+// placeId 則是 geocode 與 place 兩種來源都有(兩者都靠
+// components/ListItemCard.tsx 依 placeId 觸發的延遲查詢取得照片,不再
+// 依賴任何欄位帶著現成的 photoUrl);category 只有 place 會有值(對應
+// 地圖上方類別標籤,見 GeoGeocodeCandidate.category 的完整說明)。
 export interface GeoSearchResult {
   kind: 'hotel' | 'place' | 'geocode'
   name: string

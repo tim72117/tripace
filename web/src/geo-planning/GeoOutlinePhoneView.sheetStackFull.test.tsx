@@ -42,8 +42,8 @@ function advancePastExitAnimation() {
   })
 }
 
-// GeoListItemCard 用 IntersectionObserver 做延遲載入圖片(見該檔案),
-// jsdom 沒有原生實作——stub 一個最小假實作,理由同
+// components/ListItemCard.tsx 用 IntersectionObserver 做延遲載入圖片
+// (見該檔案),jsdom 沒有原生實作——stub 一個最小假實作,理由同
 // GeoOutlinePhoneView.sheetStack.test.tsx。
 class FakeIntersectionObserver {
   observe() {}

@@ -1,5 +1,4 @@
-/* PanelHead.tsx 專屬樣式(CSS Modules)。取代原本各自重複定義的
-   GeoHotelSidebar.module.css/AddFromCandidateSidebar.module.css 的
+/* PanelHead.tsx 專屬樣式(CSS Modules)。取代原本各側欄各自重複定義的
    .head/.title/.closeBtn,以及原本的全域 class .desktop-sidebar-head/
    .desktop-sidebar-title——同一套標題列視覺語言只定義一次。 */
 .head {

@@ -1,8 +1,8 @@
 // geoCandidateHelpers:候選籃(GeoCandidateSidebar.tsx)相關的純函式與型別
 // 定義,不含任何 React JSX——從 GeoCandidateSidebar.tsx 抽出,理由是這批
 // 型別/函式被多個檔案廣泛引用(DesktopLayout.tsx、GeoHotelSidebar.tsx、
-// PlacePanel.tsx、AddFromCandidateSidebar.tsx),讓這些呼叫端只依賴這批
-// 純邏輯時,不需要把整支候選籃 UI 元件檔案一起拉進 bundle 依賴圖。
+// PlacePanel.tsx),讓這些呼叫端只依賴這批純邏輯時,不需要把整支候選籃
+// UI 元件檔案一起拉進 bundle 依賴圖。
 // GeoCandidateSidebar.tsx 本身也從這裡 re-import 使用,行為與抽出前完全
 // 一致,只是定義位置搬動。
 import { useState } from 'react'
@@ -78,8 +78,8 @@ export function searchResultToCandidate(r: Exclude<GeoSearchResult, { kind: 'geo
   }
   // place:GeoGeocodeCandidate 不帶 photoUrl(見該型別的說明,改成
   // placeId 供延遲查詢),候選籃項目的照片顯示已經跟著改用 placeId(見
-  // GeoHotelSidebar.tsx 卡片的「+」按鈕候選預覽,同樣走 GeoListItemCard
-  // 的延遲載入邏輯)。
+  // GeoHotelSidebar.tsx 卡片的「+」按鈕候選預覽,同樣走
+  // components/ListItemCard.tsx 的延遲載入邏輯)。
   return { kind: 'place', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', category: r.category, placeId: r.placeId }
 }
 

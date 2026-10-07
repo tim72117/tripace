@@ -6,9 +6,9 @@ import { ScrollArea } from '../components/ScrollArea'
 import { NewTripComposer } from './NewTripComposer'
 import styles from './PhoneTripsDrawer.module.css'
 
-// PhoneTripsDrawer:旅程列表獨立抽屜,由下往上彈出(bottom sheet),由
-// PhoneContent.tsx 的「旅程」入口(底部常駐列/空狀態按鈕,見該檔案的
-// tripsDrawerOpen state)開關,只有一種內容:瀏覽/新增旅程。
+// PhoneTripsDrawer:清單列表獨立抽屜,由下往上彈出(bottom sheet),由
+// PhoneContent.tsx 的「清單」入口(底部常駐列/空狀態按鈕,見該檔案的
+// tripsDrawerOpen state)開關,只有一種內容:瀏覽/新增清單。
 //
 // 外殼(backdrop/panel/dragHandle)與拖曳關閉手勢(向下拖超過門檻關閉)
 // 改用共用容器 PhoneBottomSheet,視覺語言對齊一般 App 常見的底部彈出
@@ -53,7 +53,7 @@ export function PhoneTripsDrawer({
   onSelectTrip: (t: Trip) => void
   // onManage:「管理」按鈕觸發,開啟 TripManageModal(分享連結/成員/
   // 開啟時自動進入,見該檔案的說明)——對齊桌面版 DesktopTripList.tsx
-  // 的 onManage,分享/成員/開啟時自動進入這幾個功能統一收到旅程項目上,
+  // 的 onManage,分享/成員/開啟時自動進入這幾個功能統一收到清單項目上,
   // 跟桌面版同一套心智模型。
   onManage: (t: Trip) => void
   onClose: () => void

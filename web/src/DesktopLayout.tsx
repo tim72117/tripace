@@ -701,10 +701,8 @@ export function DesktopContent(props: ContentProps) {
               GeoCandidateSidebar)各自 header 排版不同,不逐一加專屬標題,
               FloatingPanel 只在右上角疊加共用的關閉按鈕,導回 /app 收起
               卡片(同再點一次 rail 圖示的行為)。
-              2026-10 修正:原本這裡還提到 pickingDayKey 有值時
-              AddFromCandidateSidebar 並排顯示在這張卡片右側——候選籃
-              候選中清單與候選匡流程已整個移除,AddFromCandidateSidebar.tsx
-              本身也已刪除,這段「兩張卡並排」的行為不再存在。 */}
+              候選籃候選中清單與候選匡流程已整個移除,不會再有第二張卡片
+              並排顯示在這張卡片右側的情況。 */}
           {panelSpec?.slot === 'float' && (
             <FloatingPanel side="left" width={panelSpec.width ?? 380} onClose={() => navigate('/app')}>
               {panelMode === 'trips' ? (

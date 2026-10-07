@@ -211,14 +211,12 @@ export function GeoCandidateSidebar({
   // 自然移到正確的日期分組。
   onDatesAssigned?: () => void
   // draggingCandidate/onDraggingCandidateChange:目前正在拖曳的候選卡片
-  // ——原本是這個元件內部的 state,提升到 DesktopLayout.tsx 是因為「候選
-  // 中」清單已經搬進第二側欄(AddFromCandidateSidebar,使用者明確要求),
-  // 拖曳現在會跨元件:起點在第二側欄的候選卡片,放開目標是這個元件底下
-  // 的日期分組 .dayBody。兩個分開掛載的 sibling 只能靠共同的父層持有
-  // 這份 state 才能互相溝通「現在正在拖哪一張」。dragOverDay(滑鼠懸停在
-  // 哪個日期分組上)不需要跨元件,仍是這個元件自己的內部 state(見下方)
-  // ——那份狀態只影響這個元件自己畫出的 .dayBody 樣式,不需要讓第二側欄
-  // 知道。
+  // ——state 持有在 DesktopLayout.tsx(透過 useGeoPlanningState.ts),不是
+  // 這個元件自己的內部 state,因為拖放改期的起點與放開目標都在這個元件
+  // 畫出的「已排入行程」卡片/日期分組之間,由父層持有才能在重新渲染之間
+  // 正確追蹤「現在正在拖哪一張」。dragOverDay(滑鼠懸停在哪個日期分組上)
+  // 不需要跨元件,仍是這個元件自己的內部 state(見下方)——那份狀態只
+  // 影響這個元件自己畫出的 .dayBody 樣式。
   draggingCandidate: GeoCandidate | null
   onDraggingCandidateChange: (c: GeoCandidate | null) => void
   // flashTrigger:PlacePanel 複合按鈕右半邊(見該元件 onAddAndReveal 的
@@ -235,10 +233,9 @@ export function GeoCandidateSidebar({
   // 已排入行程:kind === 'entry' && inTrip === true 是行程本身已有座標的
   // 既有內容(進入規劃分頁時自動帶入,見上方型別註解),不是使用者用「+」
   // 手動加入的——這批天然就等於「已排入行程」。其餘情況(hotel/
-  // attraction/place,或按過「返回候選」、kind==='entry' 但
-  // inTrip===false 的項目)是候選中,已搬到第二側欄
-  // (AddFromCandidateSidebar,使用者明確要求),這個元件不再顯示,故不
-  // 需要在這裡算出對應的篩選結果。
+  // attraction/place,或 kind==='entry' 但 inTrip===false 的項目)是候選
+  // 中——候選籃候選中清單與候選匡流程已整個移除,這個元件不再顯示這些
+  // 項目,故不需要在這裡算出對應的篩選結果。
   const inTrip = candidates.filter((c): c is GeoCandidate & { kind: 'entry'; inTrip: true } => c.kind === 'entry' && c.inTrip)
 
   // inTripByDay:「已排入行程」依 start 日期分組、日期升冪排序,未排定

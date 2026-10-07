@@ -108,19 +108,16 @@ type SheetEntry =
 // 負責手機版排版與候選籃資料流。
 //
 // 候選籃 UI 選用「從右側滑入的抽屜」(GeoOutlinePhoneCandidateDrawer),
-// 不是再開一層 bottom sheet——理由見該元件開頭的說明:手機螢幕放不下
-// 桌面版並排的兩張側欄(GeoCandidateSidebar+AddFromCandidateSidebar),
-// 抽屜可以佔滿畫面高度,比 bottom sheet(必須跟地圖並存可見、高度受限
-// 60vh)更適合放得下「候選中」+「已排入行程日層架」兩段內容。地圖固定
-// 不動的底層 + 側邊滑入抽屜,對齊 pace/PacePhoneSwipe.tsx 的既有先例。
+// 不是再開一層 bottom sheet——理由見該元件開頭的說明:抽屜可以佔滿畫面
+// 高度,比 bottom sheet(必須跟地圖並存可見、高度受限 60vh)更適合放得下
+// 「已排入行程」日層架內容。地圖固定不動的底層 + 側邊滑入抽屜,對齊
+// pace/PacePhoneSwipe.tsx 的既有先例。
 //
 // 候選籃相關 state 對照桌面版 DesktopLayout.tsx 的同名 geo* state,只是
-// 拿掉桌面版「兩個獨立浮動側欄」才需要的中介 state(pickingDayKey/
-// onlyGeoCandidate/draggingCandidate——手機版候選籃合併成一個抽屜元件,
-// 「候選中」清單直接由抽屜元件自己用 candidates prop 篩出,不需要呼叫端
-// 另外算一份;不支援拖曳排期,見 GeoOutlinePhoneCandidateDrawer.tsx 的
-// 說明)。純邏輯(GeoCandidate 型別/分組/建立 entry)完全複用
-// geoCandidateHelpers.ts,與桌面版共用同一份,不重新實作。
+// 拿掉桌面版才需要的中介 state draggingCandidate(手機版不支援拖曳排期,
+// 見 GeoOutlinePhoneCandidateDrawer.tsx 的說明)。純邏輯(GeoCandidate
+// 型別/分組/建立 entry)完全複用 geoCandidateHelpers.ts,與桌面版共用
+// 同一份,不重新實作。
 //
 // 第三階段新增「飯店/推薦地點」清單(GeoOutlinePhoneListDrawer)——同樣是
 // 從一側滑入的抽屜,選左側(候選籃已佔用右側滑入語意,見
@@ -286,6 +283,11 @@ export function GeoOutlinePhoneView({
 
   // candidateDrawerOpen 變動時往外回報(見 onCandidateDrawerActiveChange
   // prop 的完整說明)——供 PhoneTabBar 的「行程」按鈕顯示 active 視覺。
+  // 依賴陣列刻意只放 candidateDrawerOpen、不放 onCandidateDrawerActiveChange:
+  // 這個 callback 必須是穩定參照(目前呼叫端傳入的是 setCandidateDrawerOpen
+  // 這個 setter)。若日後改傳每次 render 都重建的箭頭函式,這裡會變成
+  // stale closure(回報到舊的 callback),且不會有任何編譯或執行期錯誤
+  // 提示——修改呼叫端時請留意維持穩定參照,或改用 ref 包一層。
   useEffect(() => {
     onCandidateDrawerActiveChange?.(candidateDrawerOpen)
     // eslint-disable-next-line react-hooks/exhaustive-deps

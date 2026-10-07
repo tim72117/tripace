@@ -28,9 +28,9 @@ import { GeoOutlinePhoneView } from './GeoOutlinePhoneView'
 import type { ClientConfig, GeoGeocodeCandidate, GeoSearchResult } from '../api'
 import type { User } from '../user/types'
 
-// GeoListItemCard 用 IntersectionObserver 做延遲載入圖片(見該檔案),
-// jsdom 沒有原生實作——stub 一個最小假實作,這個測試不驗證圖片載入
-// 行為,只需要讓 mount 不噴錯即可。
+// components/ListItemCard.tsx 用 IntersectionObserver 做延遲載入圖片
+// (見該檔案),jsdom 沒有原生實作——stub 一個最小假實作,這個測試不
+// 驗證圖片載入行為,只需要讓 mount 不噴錯即可。
 class FakeIntersectionObserver {
   observe() {}
   unobserve() {}

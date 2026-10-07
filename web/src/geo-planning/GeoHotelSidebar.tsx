@@ -181,13 +181,11 @@ export function GeoHotelSidebar({
   // 傳 null)——由 DesktopLayout.tsx 中介,驅動地圖上對應 marker 暫時顯示
   // 選取樣式(見 ExploreMap.tsx 的 hoverKey prop 說明)。
   onHover?: (key: GeoSelectedKey) => void
-  // onClose:頂部標題列的關閉按鈕觸發——使用者明確要求跟候選籃側欄
-  // (AddFromCandidateSidebar)一樣的頂部條樣式(標題文字+關閉按鈕),
-  // 原本這個側欄的關閉按鈕由呼叫端(DesktopLayout.tsx)在外層容器額外
-  // 疊加、沒有標題文字搭配,這次改成側欄自己渲染完整的頂部條,呼叫端
-  // 只需要傳這個 callback,不用再自己管理按鈕定位/樣式。未接這個 prop
-  // 時不顯示頂部條(理論上不該發生,這個側欄目前唯一的呼叫端
-  // DesktopLayout.tsx 一定會傳)。
+  // onClose:頂部標題列的關閉按鈕觸發——頂部條樣式(標題文字+關閉按鈕)
+  // 統一由 PanelHead.tsx 提供(見該元件的完整說明),這個側欄自己渲染
+  // 完整的頂部條,呼叫端只需要傳這個 callback,不用再自己管理按鈕定位/
+  // 樣式。未接這個 prop 時不顯示頂部條(理論上不該發生,這個側欄目前
+  // 唯一的呼叫端 DesktopLayout.tsx 一定會傳)。
   onClose?: () => void
 }) {
   const isEmpty = results.length === 0

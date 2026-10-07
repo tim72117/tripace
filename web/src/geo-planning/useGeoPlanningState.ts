@@ -26,13 +26,12 @@ import { geoSelectionReducer, GEO_SELECTION_NONE, type GeoPanTarget } from './ge
 // UI 按鈕一併移除。
 //
 // 平台差異的處理方式:這個 hook 回傳「聯集」——桌面版才用得到的部分
-// (pickingDayKey/onlyGeoCandidate/draggingCandidate/geoHoverKey,見各自
-// 欄位的說明,理由是桌面版有第二張浮動側欄 AddFromCandidateSidebar、
-// 手機版候選籃合併成單一抽屜元件不需要這些中介 state)手機版呼叫端
-// 單純不解構、不使用即可,不需要在這個 hook 內部用 platform 參數做條件
-// 判斷——那樣反而會讓這個 hook 內部長出兩條分支邏輯,增加閱讀與測試
-// 的心智負擔,不如讓「回傳值裡有哪些東西」直接反映「支援哪些功能」,
-// 呼叫端各自取用自己要的子集合。
+// (draggingCandidate/geoHoverKey,見各自欄位的說明,理由是桌面版支援
+// 側欄項目 hover 高亮與拖放改期,手機版候選籃合併成單一抽屜元件不需要
+// 這些中介 state)手機版呼叫端單純不解構、不使用即可,不需要在這個
+// hook 內部用 platform 參數做條件判斷——那樣反而會讓這個 hook 內部長出
+// 兩條分支邏輯,增加閱讀與測試的心智負擔,不如讓「回傳值裡有哪些東西」
+// 直接反映「支援哪些功能」,呼叫端各自取用自己要的子集合。
 //
 // onSelectGeocodeCandidate 的統一決策:桌面版原本走
 // geoGeocodeCandidateSelect 中介 state,讓 GeoOutlinePanel 內部重新執行
@@ -317,9 +316,9 @@ export function useGeoPlanningState({
   // 照片延遲補查——這支查詢不帶 eager photoUrl(後端照片查詢改成背景
   // 預熱快取,見 server 端 handleGeoPlacesNearby 的說明),這張卡片
   // (PlacePanel/GeoOutlinePhoneInfoSheet)本身是純展示元件、沒有
-  // IntersectionObserver 延遲載入機制(不像 GeoListItemCard,理由是資訊
-  // 卡一開啟就整張可見,不需要捲動觸發的節流),故改在這裡用 useEffect
-  // 主動補查一次。
+  // IntersectionObserver 延遲載入機制(不像 components/ListItemCard.tsx,
+  // 理由是資訊卡一開啟就整張可見,不需要捲動觸發的節流),故改在這裡用
+  // useEffect 主動補查一次。
   //
   // 條件:content.placeId 有值(見 PlaceInfoContent.placeId 的完整說明,
   // 只有 place 來源才有)且 photoUrl 目前是 undefined(還沒查過)。用

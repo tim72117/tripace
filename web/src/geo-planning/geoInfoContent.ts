@@ -103,9 +103,9 @@ export function attractionBadges(attraction: GeoAttraction): string[] {
 // UI 入口會建構它,這是第一個真正產生 attraction 候選的入口。
 //
 // 已知缺口:若使用者按的是「加入候選並顯示候選籃」(不選日期,直接進候選
-// 籃「候選中」分組),GeoCandidateSidebar/AddFromCandidateSidebar 目前沒有
-// 渲染 kind==='attraction' 候選卡片的分支(型別排除,見 candidateInfoContent
-// 下方的說明)——這條路徑目前只保證「選日期排入行程」(onSchedule →
+// 籃「候選中」分組),GeoCandidateSidebar 目前沒有渲染 kind==='attraction'
+// 候選卡片的分支(型別排除,見 candidateInfoContent 下方的說明)——這條
+// 路徑目前只保證「選日期排入行程」(onSchedule →
 // createEntryFromCandidate → 寫入真正的 entry,寫入後會以
 // kind:'entry'/inTrip:true 的形狀重新出現,走的是完全支援的既有分支)
 // 沒有問題,直接進候選籃這個次要按鈕的畫面呈現尚未補上,留待之後需要時
@@ -133,8 +133,8 @@ export function attractionToInfoContent(attraction: GeoAttraction): PlaceInfoCon
 }
 
 // candidateInfoContent:候選籃項目本體被點擊時開資訊卡(桌面版
-// GeoCandidateSidebar/AddFromCandidateSidebar、手機版候選籃抽屜共用)
-// ——candidate 欄位刻意不帶(undefined),因為這個項目已經在候選籃裡,
+// GeoCandidateSidebar、手機版候選籃抽屜共用)——candidate 欄位刻意不帶
+// (undefined),因為這個項目已經在候選籃裡,
 // PlacePanel/GeoOutlinePhoneInfoSheet 不需要再顯示一次「加入候選」
 // 按鈕(理由同 PlaceInfoContent.candidate 欄位的 optional 設計)。候選籃
 // 目前仍不會出現 kind==='attraction' 的「候選中」項目進到這個函式——
