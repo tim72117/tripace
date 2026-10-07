@@ -2,6 +2,23 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.25.0 — 2026-10-07
+
+### 破壞性變更
+
+- **候選籃「候選中清單」與「從候選加入」候選匡整個移除**：`web/src/geo-planning/AddFromCandidateSidebar.tsx`（含 `.module.css`）整個刪除，桌面版/手機版候選籃（`GeoCandidateSidebar.tsx`、`GeoOutlinePhoneCandidateDrawer.tsx`）都只保留「已排入行程」顯示與拖放改期；加入行程改成「選地點 → 直接選日期 → 加入時間軸」單一流程，不再有「加到候選 → 再從候選加入」兩段式操作。`onReturnToCandidate`/`handleReturnToCandidate`/`pickingDayKey`/`onlyCandidates`/`handlePickFromCandidate` 等相關 state/callback 一併移除，呼叫端需同步更新。
+- **`GeoListItemCard` 移除，改為全專案通用的 `components/ListItemCard.tsx`**：原本耦合 `ClientConfig`/`fetchGeoPlacePhoto` 的查詢邏輯下放到各呼叫端自行維護，改以 `leading`/`trailing`/`badge` 插槽組裝；`web/src/geo-planning/GeoListItemCard.tsx` 已刪除，任何直接匯入這個檔案的程式碼需要改用新元件。
+
+### 新增
+
+- 手機版底部功能列重組：「探索」「行程」搬到底部常駐列，AI 規劃改名「規劃」；旅程清單（`PhoneTripsDrawer`）與行程抽屜（`GeoOutlinePhoneCandidateDrawer`）合併成一組雙向連動的 bottom sheet（選清單自動開行程、行程關閉視情境回彈清單、點行程項目收合不關閉、關地點資訊卡後行程自動復原展開）。
+- 行程/清單項目圖示從灰色佔位或 `MapPin` 換成語意化圖示（`entryKindIcon`/`Luggage`），統一所有手機版 bottom sheet 的關閉按鈕視覺樣式。
+- `PhoneTripsDrawer` 文案「新增旅程」→「新增清單」，補上關閉按鈕。
+
+### 修正
+
+- `docs/audit-trip-list-merge-2026-10.md` 審查文件列出的 3 項延後問題全數補完並刪除該文件：`GeoOutlinePhoneView.tsx` 的 `onCandidateDrawerActiveChange` 補上穩定參照提醒註解；`useGeoPlanningState.ts` 頂部過時的平台差異說明（仍提及已移除的 `pickingDayKey`/`onlyGeoCandidate`）更新為目前實際狀態；全專案多處殘留的已刪除檔名（`AddFromCandidateSidebar`/`GeoListItemCard`）註解改指向現存元件，`PhoneTripsDrawer` 殘留的「旅程」舊用語統一為「清單」。純文件/註解修正，不含邏輯變動。
+
 ## v0.24.2 — 2026-10-06
 
 ### 修正
