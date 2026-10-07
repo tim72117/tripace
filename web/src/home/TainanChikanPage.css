@@ -454,7 +454,7 @@
 }
 
 /* tainan-chikan-map-intro:包住開頭互動地圖(InteractiveExploreMap)的容器,見
-   JiufenPage.tsx 該處的完整說明——用來覆寫 --kiyomizu-page-padding
+   JiufenPage.tsx 該處的完整說明——用來覆寫 --explore-map-page-padding
    (預設 48px 24px,見 InteractiveExploreMap.module.css 的說明:這組
    padding 直接決定 .stage 地圖容器的實際可視寬度/大小,不是外層留白)。
    2026-09 code review 抓到:地圖區塊已搬到分站列表之後(見
@@ -477,11 +477,11 @@
    900px 以下維持預設值(見下方 media query 還原),進度點在該寬度
    已經直接隱藏,不需要再幫地圖縮小尺寸。 */
 .tainan-chikan-map-intro {
-  --kiyomizu-page-padding: 48px 24px;
+  --explore-map-page-padding: 48px 24px;
 }
 @media (min-width: 901px) {
   .tainan-chikan-map-intro {
-    --kiyomizu-page-padding: 48px 50px 48px 24px;
+    --explore-map-page-padding: 48px 50px 48px 24px;
   }
 }
 

@@ -12,9 +12,9 @@
      縮成 0,地圖跟著變寬度 0、整頁看起來一片空白——這是實際重現過的
      bug,加回明確寬度即可修正,理由同上述分析。 */
   width: 100%;
-  max-width: var(--kiyomizu-page-max-width, 1920px);
+  max-width: var(--explore-map-page-max-width, 1920px);
   margin: 0 auto;
-  padding: var(--kiyomizu-page-padding, 48px 24px);
+  padding: var(--explore-map-page-padding, 48px 24px);
 }
 
 /* toggleRow:ThemeToggle 靠右對齊,置於地圖容器上方——「右上」的相對
@@ -28,9 +28,9 @@
 
 /* stage:非滿版地圖容器——固定高度 + position:relative,見
    InteractiveExploreMap.tsx 對這層容器用途的完整說明。高度/圓角/陰影都改讀
-   CSS 變數(--kiyomizu-stage-height 預設 680px,即獨立路由
-   /demo/kiyomizu 原本固定寫死的值;--kiyomizu-stage-radius/
-   --kiyomizu-stage-shadow 預設維持原本卡片視覺)——讓外層呼叫端
+   CSS 變數(--explore-map-stage-height 預設 680px,即獨立路由
+   /demo/kiyomizu 原本固定寫死的值;--explore-map-stage-radius/
+   --explore-map-stage-shadow 預設維持原本卡片視覺)——讓外層呼叫端
    (HomePage.tsx 把這個元件嵌入首頁,見 HomePage.css 的 .map-expand
    完整說明)可以在不改這個元件本身任何程式碼的前提下,由外往內覆寫
    這幾個變數,把地圖容器的真實 layout 尺寸(不是 transform: scale()
@@ -44,8 +44,8 @@
 .stage {
   position: relative;
   width: 100%;
-  height: var(--kiyomizu-stage-height, 680px);
-  border-radius: var(--kiyomizu-stage-radius, 16px);
+  height: var(--explore-map-stage-height, 680px);
+  border-radius: var(--explore-map-stage-radius, 16px);
   overflow: hidden;
-  box-shadow: var(--kiyomizu-stage-shadow, 0 4px 20px rgba(0, 0, 0, 0.12));
+  box-shadow: var(--explore-map-stage-shadow, 0 4px 20px rgba(0, 0, 0, 0.12));
 }

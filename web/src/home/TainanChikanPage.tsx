@@ -24,17 +24,22 @@ import './TainanChikanPage.css';
 // ——這是刻意的,兩個主題各自的主題點平等並存於同一張地圖,使用者
 // 可以點開任一個看它對應的精選點,不是這個頁面獨占的專屬地圖。
 //
-// 2026-10 修正:這裡原本寫「地圖主題點錨點用現有資料庫已建檔的
-// 『赤崁樓』,因為當時實測確認本機 attractions 資料表台南只有
-// 『安平古堡』『赤崁樓』兩個 is_theme,沒有先前設想的『赤崁・府城』
-// 這個新主題點名稱」——這段描述已經過時:資料庫後來補建了「赤崁・
-// 府城」這個主題點,「赤崁樓」現在降級成它底下的一般精選點(isTheme
-// 為 false),不再是主題點本身。defaultOpenTheme="赤崁・府城" 讓這個
-// 頁面一進來就先開好這個主題點(對齊 JiufenPage.tsx 單一主題點城市的
-// 既有慣例),不預先強制打開安平古堡——傳「赤崁樓」雖然不會報錯,但
-// InteractiveExploreMap.tsx 的 defaultOpenTheme 自動開啟邏輯是用
-// name 在 themePoints(只含 isTheme 的項目)裡找對應項目,找不到就
-// 靜默不開啟任何卡片,使用者進頁面看到的會是沒有主題卡片的空地圖。
+// defaultOpenTheme="赤崁・府城":2026-10 再次複查確認的最終現況——
+// 正式機(tripace.io)已經把台南的主題點重構成「赤崁・府城」
+// (isTheme=true,座標 22.994175, 120.201026,涵蓋整個歷史城區)+
+// 「安平古堡」(isTheme=true)兩個,「赤崁樓」本身降級成「赤崁・府城」
+// 底下的一般精選點(isTheme=false)。本機原本還停留在「赤崁樓」是
+// 主題點的舊狀態(前兩版這裡的註解各自依照當時查到的本機現況寫,一次
+// 寫對、一次寫反,都已經過時),已用 `attraction sync -direction pull`
+// 把本機同步成跟正式機一致,並刪除本機殘留的舊版赤崁樓記錄。
+// 寫這個值主要是維持資料正確性(傳一個資料庫裡不存在的名稱,
+// InteractiveExploreMap.tsx 會靜默找不到、不開任何卡片)、以及未來
+// 若有某一站改回用 theme 而非 center 時的備援退回值——目前底下 8 站
+// 全部用 center 定位(見 ScrollTimeline.Anchor 的 center 完整說明),
+// 没有任何一站填 theme,所以 ScrollTimeline.tsx 的 focusedTheme 運算式
+// 實際上永遠不會真的退回到這個值(openMeta.center 存在就直接短路成
+// undefined,不會進到 defaultOpenTheme 分支),這個 prop 目前對這個
+// 頁面是「寫了但不會被用到」的狀態,不是生效中的主要邏輯路徑。
 //
 // SEO_TITLE/SEO_DESCRIPTION/SEO_URL:對齊 JiufenPage.tsx 的既有模式
 // (見該檔案同名常數的完整說明——2026-10 修正(兩輪):description/
@@ -88,12 +93,14 @@ const STOPS = [
     kind: '前世今生',
     name: '赤崁樓',
     // center:2026-10 新增,見 ScrollTimeline.Anchor 的 center prop 完整
-    // 說明——這一站本身就是資料庫裡的主題點(theme="赤崁樓"),理論上不
-    // 需要 center 也能正確移動地圖中心(theme 比對優先於 center),這裡
-    // 仍然填上是為了讓 8 站的資料形狀一致,不差一站特別省略;真正發揮
-    // 作用的是底下其餘 7 站(它們不是主題點,theme 比對不到任何東西,
-    // 要靠 center 才能移動地圖)。座標取自本機 attractions 資料庫的
-    // 「赤崁樓」記錄。
+    // 說明——這一站(以及底下其餘 7 站)靠 center 移動地圖中心,不是
+    // theme(主題點比對),因為台南的主題點重構後是「赤崁・府城」這個
+    // 涵蓋整個歷史城區的概念性主題點(座標 22.994175, 120.201026),
+    // 「赤崁樓」本身已降級成底下的一般精選點(isTheme=false,見檔案
+    // 開頭 defaultOpenTheme 的完整說明),不再是可以用 theme 比對的
+    // 主題點。這一站的 center 座標取自 attractions 資料庫的「赤崁樓」
+    // 記錄本身(跟主題點「赤崁・府城」的座標不同,是這棟建築實際的
+    // 地理位置)。
     center: { lat: 22.997477999999997, lng: 120.2025433 },
     desc: '這裡原本是 1653 年荷蘭人蓋的普羅民遮城，地基是當時的荷式磚造結構。後來清朝人在上面重建了海神廟跟文昌閣，變成現在看到的閩南式閣樓。腳下踩的是荷蘭地基，上面是清代建築，走一圈還滿有意思的。',
     blurb: '兩個完全不同年代的東西疊在一起，逛的時候可以留意一下地基跟上面建築的差別。',
@@ -387,7 +394,7 @@ export function TainanChikanPage() {
           只取 STOPS[0] 第一張圖的既有慣例一致,只是現在每一站都各自
           有自己的縮圖(而非只有進入地圖區塊前那一張)。 */}
       <div className="tainan-chikan-stops">
-      <ScrollTimeline city="台南" defaultOpenTheme="赤崁樓">
+      <ScrollTimeline city="台南" defaultOpenTheme="赤崁・府城">
         {STOPS.map((stop, i) => {
           const prevDay = i > 0 ? STOPS[i - 1].day : stop.day
           const showDayDivider = i > 0 && stop.day !== prevDay
@@ -400,10 +407,15 @@ export function TainanChikanPage() {
                   <div className="tainan-chikan-day-divider-line" />
                 </div>
               )}
+              {/* theme prop 不再填——8 站沒有一站本身是資料庫裡的
+                  isTheme=true 主題點(台南的主題點是概念性的「赤崁・
+                  府城」,涵蓋整個歷史城區,不對應任何單一站點),全部
+                  靠 center 移動地圖中心,theme 比對不到時自動退回
+                  <ScrollTimeline defaultOpenTheme="赤崁・府城">
+                  這個共用退回值(見該元件的 focusedTheme 完整說明)。 */}
               <ScrollTimeline.Anchor
                 id={stop.name}
                 thumb={`${PHOTO_TAGGING_PREVIEW_BASE}/${stop.gallery[0].file}`}
-                theme={stop.name === '赤崁樓' ? '赤崁樓' : undefined}
                 center={stop.center}
                 label={stop.name}
               >

@@ -313,11 +313,11 @@
    說明),不再緊鄰頂部固定 UI,上邊距從 88px 改回 48px(跟 JiufenPage.css
    同步調整)。 */
 .tainan-map-intro {
-  --kiyomizu-page-padding: 48px 24px;
+  --explore-map-page-padding: 48px 24px;
 }
 @media (min-width: 901px) {
   .tainan-map-intro {
-    --kiyomizu-page-padding: 48px 50px 48px 24px;
+    --explore-map-page-padding: 48px 50px 48px 24px;
   }
 }
 

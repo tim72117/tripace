@@ -264,7 +264,7 @@
 }
 
 /* kyoto-map-intro — 同 JiufenPage.css 對應區塊的完整說明:覆寫
-   --kiyomizu-page-padding,900px 以上桌面寬度加大右邊距讓地圖右邊界
+   --explore-map-page-padding,900px 以上桌面寬度加大右邊距讓地圖右邊界
    跟進度點之間留白對稱。
    2026-09 code review 抓到:地圖區塊已搬到分站列表之後(見
    KyotoPage.tsx 掛載處的完整說明),不再緊鄰頂部固定 UI,原本 88px
@@ -272,11 +272,11 @@
    漏改,JiufenPage.css/TainanPage.css 同一次改動都已修正,這裡補上
    同步改回 48px。 */
 .kyoto-page .kyoto-map-intro {
-  --kiyomizu-page-padding: 48px 24px;
+  --explore-map-page-padding: 48px 24px;
 }
 @media (min-width: 901px) {
   .kyoto-page .kyoto-map-intro {
-    --kiyomizu-page-padding: 48px 50px 48px 24px;
+    --explore-map-page-padding: 48px 50px 48px 24px;
   }
 }
 

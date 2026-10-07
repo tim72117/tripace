@@ -307,7 +307,7 @@ export function JiufenPage() {
           已經有自己的日夜切換鈕(.jiufen-theme-toggle,上方
           toggleTheme),不需要 InteractiveExploreMap 內建的第二顆重複
           按鈕。
-          外層 div 用 .jiufen-map-intro 覆寫 --kiyomizu-page-padding
+          外層 div 用 .jiufen-map-intro 覆寫 --explore-map-page-padding
           (預設 48px 24px,見 InteractiveExploreMap.module.css 的說明)
           ——原本這裡有額外加大的上邊距(88px)讓地圖容器避開頂部
           position: fixed 的品牌標記/切換鈕/CTA(該區塊之前放在頁面最

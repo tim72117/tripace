@@ -216,6 +216,60 @@ export function ScrollTimeline({
     });
   }, []);
 
+  // growReady:2026-10(第三版)——地圖面板的展開動畫改成「外框本身長
+  // 寬」:.mapPanel 從時間軸欄位寬度的窄條(.mapPanelGrowStart)用 CSS
+  // animation(.mapPanelGrowing,見 CSS module @keyframes mapPanelGrow)
+  // 長到全寬,圓角/陰影/髮線環全部跟著外框一起移動;裡面的地圖+關閉鈕
+  // 裝在絕對定位、寬度鎖在最終全寬(100cqw)的 .mapPanelBody 裡,外框
+  // 長寬過程中內容尺寸完全不變,只是被外框的 overflow:hidden 逐步露出。
+  //
+  // 前一版是「外框瞬間以最終尺寸出現、只有內部疊的一層紙色遮罩
+  // (.mapPanelReveal)用 clip-path 收合」,使用者回報「邊框一開始就打開,
+  // 然後才出現一個縮合的效果,邊框都沒動」——外框跟內容是兩段不同步的
+  // 動作,視覺上割裂。改成外框長寬後,整個面板(含邊界)就是同一個展開
+  // 事件,也不再需要遮罩層。
+  //
+  // 為什麼仍然要一個 state 而不是純 CSS(.mapPanelOpen .mapPanel 直接掛
+  // animation):.mapPanelWrap 從 visibility:hidden 切成可見跟 animation
+  // 開始播放若落在同一個 frame,部分瀏覽器會直接跳到動畫終點(前一版
+  // revealReady 的既有發現)。所以開啟的第一個 commit 先套
+  // .mapPanelGrowStart(停在窄條起始狀態,不播動畫),下一個
+  // requestAnimationFrame 再切成 .mapPanelGrowing 讓 animation 從頭播。
+  //
+  // 這個 state 跟更早那版 isOpening 的差別(當時卡死造成地圖整片空白的
+  // 回歸根因):raf 的 id 存在 ref 裡,只在「面板關閉」或「元件卸載」時
+  // 才取消,不在 effect cleanup 無條件取消——否則 openAnchorId 從 A 切到
+  // B(捲動時面板跟著換錨點,見下方同步 effect)的 cleanup 會取消掉那個
+  // 「把 growReady 設成 true」的回呼,新一輪又因為 wasOpen 已是 true 不
+  // 再排程,面板就永久停在窄條狀態。切換錨點(開→開)不動 growReady、
+  // class 不變,animation 不重播,維持「捲動時地圖不閃動」的既有行為;
+  // 關閉時 growReady 立刻回到 false、wrap 同一個 commit 切成
+  // visibility:hidden,整個面板(外框+內容)一起瞬間消失,不會有殘影。
+  const prevOpenRef = useRef<string | null>(null);
+  const growRafRef = useRef<number | null>(null);
+  const [growReady, setGrowReady] = useState(false);
+  useEffect(() => {
+    const wasOpen = prevOpenRef.current !== null;
+    prevOpenRef.current = openAnchorId;
+    if (openAnchorId === null) {
+      if (growRafRef.current !== null) {
+        cancelAnimationFrame(growRafRef.current);
+        growRafRef.current = null;
+      }
+      setGrowReady(false);
+      return;
+    }
+    if (wasOpen) return;
+    setGrowReady(false);
+    growRafRef.current = requestAnimationFrame(() => {
+      growRafRef.current = null;
+      setGrowReady(true);
+    });
+  }, [openAnchorId]);
+  useEffect(() => () => {
+    if (growRafRef.current !== null) cancelAnimationFrame(growRafRef.current);
+  }, []);
+
   // 面板開著時,捲動切換目前錨點要即時跟著移動中心點——只要面板目前是
   // 開著的(prev !== null),active 一變就把 id 同步成目前捲動到的錨點
   // id(模式維持不變),讓下方 focusedTheme 跟著重新計算、地圖自己 panTo
@@ -323,6 +377,12 @@ export function ScrollTimeline({
 
   return (
     <ScrollTimelineContext.Provider value={ctxValue}>
+      {/* 2026-10 新增的最外層包裹——.mapPanelWrap 搬出 .layout 的 grid
+          結構後(見該元素下方的完整說明),需要一個 position:relative
+          的祖先當作 position:absolute 定位的參照基準,才能在桌面版
+          繼續對齊「視覺上在文案欄右側」的位置(.layout 本身退回純粹的
+          版面容器身分,不再負責地圖面板的定位)。 */}
+      <div className={styles.root}>
       <div className={styles.layout}>
         <aside className={styles.timeline}>
           <div className={styles.timelineTrack}>
@@ -364,7 +424,25 @@ export function ScrollTimeline({
                       只剩一個子元素時自動不會畫出來,不需要額外處理;
                       外框高度則靠父層 .nodeCurrentSolo 調整(見上方
                       .node 容器)。 */}
-                  <div className={styles.modeGroup} role="group" aria-label={`「${currentMeta.label ?? currentId}」的面板模式`}>
+                  {/* 2026-10:地圖面板展開時(openAnchorId 有值,不限於
+                      目前這個錨點是否正是開著的那個)隱藏這顆膠囊狀按鈕
+                      組——使用者明確要求展開地圖時把它收起來,展開中的
+                      面板本身已經有獨立的 .mapPanelClose 關閉鈕可以收合,
+                      不需要這顆按鈕繼續佔用時間軸縮圖下方的空間。
+                      用 visibility(見 CSS module .modeGroupHidden)而非
+                      條件渲染整個卸載——使用者明確提醒「不要讓旁邊的
+                      元素改變大小跟位置」:.modeGroup 消失會讓
+                      .currentDotWrap 少一個 flex 子元素、整體高度縮小,
+                      父層 .nodeCurrent 的 justify-content:center 會把
+                      縮圖重新置中,縮圖的垂直位置就會跟著跳動。
+                      visibility:hidden 保留原本的版面佔位,縮圖位置不受
+                      影響;關閉面板後(openAnchorId 為 null)自動恢復
+                      顯示。 */}
+                  <div
+                    className={`${styles.modeGroup} ${openAnchorId ? styles.modeGroupHidden : ''}`}
+                    role="group"
+                    aria-label={`「${currentMeta.label ?? currentId}」的面板模式`}
+                  >
                     {renderModeButton('map', <SearchIcon size={14} strokeWidth={2.25} aria-hidden="true" />, '地圖')}
                     {SHOW_NEARBY_LIST_BUTTON &&
                       renderModeButton('nearby', <ListIcon size={14} strokeWidth={2.25} aria-hidden="true" />, '附近景點')}
@@ -377,86 +455,117 @@ export function ScrollTimeline({
           </div>
         </aside>
 
-        {/* 地圖面板——跟 .copy 共用同一個 grid 欄(見 CSS module 的
-            grid-column 設定),視覺上「從時間軸向右展開」,寬度跟文案欄
-            同寬。position: sticky 讓它在捲動時跟時間軸一樣固定在視窗內
-            的垂直位置,不隨文案捲動跑走。這個元素(連同內部的
-            InteractiveExploreMap)一開始就常駐掛載,開關狀態用
-            .mapPanelHidden 這個 CSS class 切換,而不是條件渲染整個卸載
-            ——每次點開地圖才 mount 等於每次都重新建一次 Google Map
-            實例、重新打一次查詢 API,開銷不小;常駐掛載後切換錨點只是
-            改變 focusedTheme prop,地圖元件自己把視角移過去。 */}
-        <div className={`${styles.mapPanel} ${openAnchorId ? '' : styles.mapPanelHidden}`} aria-hidden={!openAnchorId}>
-          <button
-            type="button"
-            className={styles.mapPanelClose}
-            onClick={() => setPanel(null)}
-            aria-label="關閉地圖"
-          >
-            ×
-          </button>
-          <div className={styles.mapPanelInner}>
-            {/* 刻意不傳 defaultOpenTheme 給 InteractiveExploreMap——那個
-                prop 是該元件自己的「資料載入完成就自動開卡一次」機制,
-                完全不受 openCardOnFocus 控制,一旦傳入,地圖只要載入完成
-                就會透過這條獨立路徑自動開卡,面板關著時卡片會先開在被
-                CSS 隱藏的面板裡。這個嵌入式小地圖要不要開卡,一律只透過
-                openCardOnFocus 這個受控管道決定(見該 prop 說明),不借用
-                defaultOpenTheme 的自動開卡行為——defaultOpenTheme 只在
-                這個檔案內部用來算 focusedTheme 的退回值(見上方
-                focusedTheme 的說明)。
-                openCardOnFocus 只在 'nearby' 模式為 true——'map' 模式與
-                面板關著時都是 false,InteractiveExploreMap 會在
-                true→false 時自己把卡片收起來(見該 prop 說明);
-                themeCardNearbyOnly 讓開出來的卡片只露出「附近景點」清單,
-                不顯示照片/名稱/簡介(見該 prop 說明)。
-                disableThemeCardOnMapClick:使用者明確要求這個嵌入式小
-                地圖完全不顯示主題點介紹卡——上面幾個 prop 管得住「捲動
-                /點時間軸錨點」這條路徑,但使用者也可能直接在小地圖上
-                手動點主題點圖標本身,那條路徑(handleAttractionSelect)
-                是獨立的,不受 openCardOnFocus 控制,這個 prop 補上這個
-                漏洞(見該 prop 完整說明)。
-                revealNearbyOnFocus 傳「面板是否開著」(不分 map/nearby
-                模式)——使用者明確要求「不管苗點(錨點)在哪,都要顯示
-                附近景點的小點」,地圖本身的附近景點標記不該侷限於比對到
-                某個特定主題點才揭露(見該 prop 完整說明)。
-                聚焦精選點的素色小圓點(2026-10,使用者要求「苗點在精選點
-                時,該點要變成(素色小圓點)圖標」):不需要額外 prop——
-                InteractiveExploreMap 收到 focusedCenter 後會自己拿座標去
-                比對 attractions 裡的精選點(誤差 0.0001 度內),命中的那
-                顆改畫聚焦造型(見該檔案 focusedAttractionId 的完整說明)。
-                呼叫端只要確保錨點的 center 座標跟資料庫記錄一致(例如
-                TainanChikanPage.tsx 的祀典武廟/林百貨直接複製資料庫座標)
-                就會自動生效;不在資料庫裡的錨點(神農街等)地圖上本來就
-                沒有對應標記,單純移動視角,不會憑空多出一顆點。
-                (2026-10 第二版:聚焦造型改成深紅色淚滴圖釘,見
-                geoAttractionOverlay.ts renderFocusedPin。)
-                themePhotoOnlyWhenFocused(2026-10,使用者要求「主題點只有
-                在主題點的苗點才顯示圓形圖,其他時候顯示小圓點」):只有
-                目前錨點指定的主題點(focusedTheme 比對到的那顆)顯示圓形
-                照片,其餘主題點退化成素色小圓點——捲到別的錨點時,沒人在
-                看的主題點不該繼續用大照片圓搶焦點。這是 opt-in,正式城市
-                頁不傳,主題點維持恆顯示照片(見該 prop 完整說明)。 */}
-            <InteractiveExploreMap
-              themePhotoOnlyWhenFocused
-              city={city}
-              showThemeToggle={false}
-              focusedTheme={focusedTheme}
-              focusedCenter={focusedCenter}
-              openCardOnFocus={panel?.mode === 'nearby'}
-              themeCardNearbyOnly
-              disableThemeCardOnMapClick
-              revealNearbyOnFocus={panel !== null}
-              restrictRadiusKm={mapRestrictRadiusKm}
-              // 關掉 Google 原生的 +/- 縮放鈕——260px 高的小面板裡,方形
-              // 按鈕組貼右下角跟右上角的關閉鈕擠在一起很突兀;這個面板
-              // 只是讓人瞥一眼位置,滾輪/雙指縮放仍可用(見該 prop 說明)。
-              showZoomControl={false}
-            />
+        <main className={styles.copy}>{children}</main>
+      </div>
+
+      {/* 地圖面板——2026-10 從 .layout 內部搬到這裡(.layout 外面,跟它
+          變成平行兄弟),不再是 .layout 的 grid item。
+          根因(使用者回報「手機版地圖改成左右兩邊寬度與視窗同寬」,但
+          margin-left 的 breakout 寫法「只有改到左側」生效):CSS Grid
+          規範裡,grid item 若自己是 position:sticky,它的 left/right 等
+          定位屬性參照基準是「自己被分配到的那個 grid area」,不是整個
+          頁面或視窗——不管套用 left:50%;width:100vw;margin-left:-50vw
+          還是 left:0;right:0;width:auto,寬度都會被鉗制在 grid 軌道
+          可用空間內,只有靠負 margin 推出去的位移(不受軌道寬度約束)
+          看得出效果,這正是「只有左側改到」的真正原因。
+          搬出 grid 之後,.mapPanelWrap 不再受這條規則限制,手機版的
+          breakout CSS(left:50%;width:100vw;margin-left:-50vw,見 CSS
+          module .mapPanelOpen 的 640px 斷點)才能真正一路突破
+          .tainan-chikan-stops(max-width:960px)這類外層容器的寬度限制,
+          左右兩側確實貼齊視窗邊緣——.tainan-chikan-page/.tainan-chikan-stops
+          這類外層容器都是 position:static,breakout 路徑上沒有任何
+          position:relative/absolute 的祖先會截斷它。
+          sticky 的垂直黏住行為(top:0,見 .mapPanelWrap 的完整說明)
+          不受影響——sticky 的黏住範圍是看它自己的生成框(文件流裡的
+          原始位置/高度),跟它是不是 grid item 無關,只有水平方向的
+          left/right 定位才受 grid item 這條特殊規則約束。 */}
+      <div
+        className={`${styles.mapPanelWrap} ${openAnchorId ? styles.mapPanelOpen : styles.mapPanelHidden}`}
+        aria-hidden={!openAnchorId}
+      >
+        <div
+          className={`${styles.mapPanel} ${
+            openAnchorId ? (growReady ? styles.mapPanelGrowing : styles.mapPanelGrowStart) : ''
+          }`}
+        >
+          {/* mapPanelBody——地圖 + 關閉鈕的容器,絕對定位、寬度鎖在
+              wrap 的最終全寬(100cqw,見 CSS module 該 class 的說明):
+              外框 .mapPanel 長寬的過程中,這層的尺寸自始至終不變,
+              Google Map 容器不會收到任何 resize,內容只是被外框的
+              overflow:hidden 從時間軸那一側逐步露出;關閉鈕也因此
+              一直停在最終位置,等外框長到那裡才被露出來,不會跟著
+              外框右緣一路滑過去。 */}
+          <div className={styles.mapPanelBody}>
+            <button
+              type="button"
+              className={styles.mapPanelClose}
+              onClick={() => setPanel(null)}
+              aria-label="關閉地圖"
+            >
+              ×
+            </button>
+            <div className={styles.mapPanelInner}>
+              {/* 刻意不傳 defaultOpenTheme 給 InteractiveExploreMap——那個
+                  prop 是該元件自己的「資料載入完成就自動開卡一次」機制,
+                  完全不受 openCardOnFocus 控制,一旦傳入,地圖只要載入完成
+                  就會透過這條獨立路徑自動開卡,面板關著時卡片會先開在被
+                  CSS 隱藏的面板裡。這個嵌入式小地圖要不要開卡,一律只透過
+                  openCardOnFocus 這個受控管道決定(見該 prop 說明),不借用
+                  defaultOpenTheme 的自動開卡行為——defaultOpenTheme 只在
+                  這個檔案內部用來算 focusedTheme 的退回值(見上方
+                  focusedTheme 的說明)。
+                  openCardOnFocus 只在 'nearby' 模式為 true——'map' 模式與
+                  面板關著時都是 false,InteractiveExploreMap 會在
+                  true→false 時自己把卡片收起來(見該 prop 說明);
+                  themeCardNearbyOnly 讓開出來的卡片只露出「附近景點」清單,
+                  不顯示照片/名稱/簡介(見該 prop 說明)。
+                  disableThemeCardOnMapClick:使用者明確要求這個嵌入式小
+                  地圖完全不顯示主題點介紹卡——上面幾個 prop 管得住「捲動
+                  /點時間軸錨點」這條路徑,但使用者也可能直接在小地圖上
+                  手動點主題點圖標本身,那條路徑(handleAttractionSelect)
+                  是獨立的,不受 openCardOnFocus 控制,這個 prop 補上這個
+                  漏洞(見該 prop 完整說明)。
+                  revealNearbyOnFocus 傳「面板是否開著」(不分 map/nearby
+                  模式)——使用者明確要求「不管苗點(錨點)在哪,都要顯示
+                  附近景點的小點」,地圖本身的附近景點標記不該侷限於比對到
+                  某個特定主題點才揭露(見該 prop 完整說明)。
+                  聚焦精選點的素色小圓點(2026-10,使用者要求「苗點在精選點
+                  時,該點要變成(素色小圓點)圖標」):不需要額外 prop——
+                  InteractiveExploreMap 收到 focusedCenter 後會自己拿座標去
+                  比對 attractions 裡的精選點(誤差 0.0001 度內),命中的那
+                  顆改畫聚焦造型(見該檔案 focusedAttractionId 的完整說明)。
+                  呼叫端只要確保錨點的 center 座標跟資料庫記錄一致(例如
+                  TainanChikanPage.tsx 的祀典武廟/林百貨直接複製資料庫座標)
+                  就會自動生效;不在資料庫裡的錨點(神農街等)地圖上本來就
+                  沒有對應標記,單純移動視角,不會憑空多出一顆點。
+                  (2026-10 第二版:聚焦造型改成深紅色淚滴圖釘,見
+                  geoAttractionOverlay.ts renderFocusedPin。)
+                  themePhotoOnlyWhenFocused(2026-10,使用者要求「主題點只有
+                  在主題點的苗點才顯示圓形圖,其他時候顯示小圓點」):只有
+                  目前錨點指定的主題點(focusedTheme 比對到的那顆)顯示圓形
+                  照片,其餘主題點退化成素色小圓點——捲到別的錨點時,沒人在
+                  看的主題點不該繼續用大照片圓搶焦點。這是 opt-in,正式城市
+                  頁不傳,主題點維持恆顯示照片(見該 prop 完整說明)。 */}
+              <InteractiveExploreMap
+                themePhotoOnlyWhenFocused
+                city={city}
+                showThemeToggle={false}
+                focusedTheme={focusedTheme}
+                focusedCenter={focusedCenter}
+                openCardOnFocus={panel?.mode === 'nearby'}
+                themeCardNearbyOnly
+                disableThemeCardOnMapClick
+                revealNearbyOnFocus={panel !== null}
+                restrictRadiusKm={mapRestrictRadiusKm}
+                // 關掉 Google 原生的 +/- 縮放鈕——260px 高的小面板裡,方形
+                // 按鈕組貼右下角跟右上角的關閉鈕擠在一起很突兀;這個面板
+                // 只是讓人瞥一眼位置,滾輪/雙指縮放仍可用(見該 prop 說明)。
+                showZoomControl={false}
+              />
+            </div>
           </div>
         </div>
-
-        <main className={styles.copy}>{children}</main>
+      </div>
       </div>
     </ScrollTimelineContext.Provider>
   );

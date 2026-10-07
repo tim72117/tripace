@@ -137,7 +137,7 @@
 /* expandedStage:展開後的滿版地圖容器——100dvh 直接以視窗高度撐開
    (動態視窗高度單位,排除行動瀏覽器網址列伸縮造成的跳動,KyotoPage/
    JiufenPage 是純文件流頁面,沒有固定高度的 flex-shell 祖先可以撐滿,
-   見元件說明)。margin-left 抵消頁面左右 padding(--kiyomizu-page-
+   見元件說明)。margin-left 抵消頁面左右 padding(--explore-map-page-
    padding),讓地圖真正貼齊螢幕邊緣——.page 本身的 padding 仍保留給
    其餘手機版非地圖內容使用,只有這個容器需要滿版,故在這裡單獨用負
    margin 撐出邊界,不去改整個 .page 的 padding(那樣會連帶影響同一個
@@ -218,11 +218,11 @@
   cursor: pointer;
 }
 
-/* InteractiveExploreMap.module.css 的 .page/.stage 讀 --kiyomizu-*
+/* InteractiveExploreMap.module.css 的 .page/.stage 讀 --explore-map-*
    CSS 變數決定尺寸(見該檔案 .page/.stage 的完整說明)——.stage 用
-   height: var(--kiyomizu-stage-height, 680px),但 CSS 的百分比高度要
+   height: var(--explore-map-stage-height, 680px),但 CSS 的百分比高度要
    相對「父層已定義的高度」才生效:.page 本身只有 padding、沒有明確
-   height,若只改 --kiyomizu-stage-height: 100%,.page 沒有高度可繼承,
+   height,若只改 --explore-map-stage-height: 100%,.page 沒有高度可繼承,
    .stage 的 100% 等同 auto(無效),地圖會退回內容自然高度、只佔上半部
    一小塊(實測踩過的 bug)。改用屬性選擇器(:global,因為 .page/.stage
    是 InteractiveExploreMap.module.css 雜湊出來的 class,這個檔案沒有
@@ -230,15 +230,15 @@
    慣例)直接給 .page 明確 height: 100%(相對 .expandedStage 的
    100dvh),高度鏈才能一路傳到 .stage。.page 的 padding 歸零(這個
    容器本身已經是「只有地圖」的獨立滿版區塊,不需要卡片式內距),
-   --kiyomizu-stage-height 改吃滿 .page 的 100%,圓角/陰影也一併拿掉,
+   --explore-map-stage-height 改吃滿 .page 的 100%,圓角/陰影也一併拿掉,
    呈現貼齊螢幕邊緣的全螢幕地圖觀感。 */
 .expandedStage :global([class*='_page_']) {
   height: 100%;
   padding: 0;
   max-width: none;
-  --kiyomizu-stage-height: 100%;
-  --kiyomizu-stage-radius: 0px;
-  --kiyomizu-stage-shadow: none;
+  --explore-map-stage-height: 100%;
+  --explore-map-stage-radius: 0px;
+  --explore-map-stage-shadow: none;
 }
 
 @keyframes reveal-circle {

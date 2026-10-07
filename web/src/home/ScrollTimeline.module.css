@@ -5,16 +5,29 @@
    --footer-accent/--explore-accent 的既有模式),呼叫端自行指向自己
    頁面的強調色(--vermilion 或 --brick)。 */
 
+/* root:2026-10 新增的最外層包裹——.mapPanelWrap 搬出 .layout 的 grid
+   結構後(見該 class 的完整說明),需要一個 position:relative 的祖先
+   當作 position:absolute 定位的參照基準。只負責提供這個定位 context,
+   不影響任何版面尺寸計算(沒有 padding/margin/width 等屬性)。 */
+.root {
+  position: relative;
+}
+
+/* padding-left:2026-10 使用者要求時間軸左側(跟頁面/外層容器左緣之間)
+   加大間距——時間軸原本貼齊 .layout 容器左緣,視覺上太擠。只加左側
+   (不動右側/上下),不影響欄寬/gap 既有的版面計算。 */
 .layout {
   display: grid;
   grid-template-columns: 96px 1fr;
   gap: 24px;
+  padding-left: 32px;
 }
 
 @media (max-width: 640px) {
   .layout {
     grid-template-columns: 64px 1fr;
     gap: 8px;
+    padding-left: 16px;
   }
 }
 
@@ -33,10 +46,16 @@
    不動,改用 align-items: flex-start + padding-top 把內容在這個框內
    往上貼,而不是靠置中(align-items:center)把內容固定在框的正中央
    (也就是視窗正中央)。 */
+/* z-index:10 高於 .mapPanel(5)——2026-10 新增「地圖開啟時向左擴張、
+   蓋到時間軸欄位上方」的效果(見 .mapPanelOpen 說明)後,時間軸的欄位
+   必須疊在地圖面板之上,否則擴張出來的地圖會蓋住圓點/按鈕,使用者
+   點不到已經開著的時間軸控制項。position:sticky 元素仍遵守 z-index
+   層疊規則,不需要額外改 position。 */
 .timeline {
   position: sticky;
   top: 0;
   height: 100vh;
+  z-index: 10;
   display: flex;
   align-items: flex-start;
   padding-top: 96px;
@@ -55,13 +74,20 @@
    直接撐滿 .timelineTrack 本身的完整高度(這個容器沒有額外 padding,
    高度就是 3 個固定高度欄位 + gap 疊加而成,捲動時不會變動)。z-index
    壓在圓點按鈕(.dot/.ghostDot 皆設 z-index:1)之下,讓線段看起來是
-   「從圓點底下穿過」,而非蓋在圓點上面;線段兩端略微超出首尾欄位的
-   圓心一小段屬預期內,反正會被疊在上方的圓形圖示蓋住。 */
+   「從圓點底下穿過」,而非蓋在圓點上面。
+   2026-10:上下兩端各內縮 24px(原本 top:0/bottom:0 貫穿整個容器,
+   兩端會超出首尾圓點圓心一小段,靠疊在上方的圓形圖示蓋住裁掉多餘的
+   部分)——但 .timeline 的 z-index(10)比 .mapPanel 高,地圖展開往左
+   擴張蓋到時間軸欄位上方時,這段超出的線反而疊在地圖外框之上,穿出
+   地圖的圓角邊框、跟外框線條打架(使用者截圖回報「時間軸的線碰到
+   上方邊框了」)。改成 top/bottom 各留 24px 內縮,讓線段兩端穩穩縮在
+   首尾圓點的圓心範圍內,不再超出 .timelineTrack 容器之外一絲一毫,
+   地圖無論是否展開都不會被這條線蓋到。 */
 .timelineTrack::before {
   content: '';
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: 24px;
+  bottom: 24px;
   left: 50%;
   width: 2px;
   background: var(--line);
@@ -205,6 +231,17 @@
     0 3px 8px color-mix(in srgb, var(--timeline-accent) 18%, transparent);
 }
 
+/* modeGroupHidden:2026-10 地圖面板展開時套用——用 visibility:hidden
+   (同 .mapPanelHidden 的既有手法)而非條件渲染卸載,保留原本的版面
+   佔位,避免 .currentDotWrap 少一個 flex 子元素導致縮圖被父層
+   .nodeCurrent 的 justify-content:center 重新置中、垂直位置跳動
+   (使用者明確提醒過不要讓旁邊元素改變大小跟位置)。pointer-events:none
+   確保隱藏時不會吃掉點擊,底下實際上也沒有其他元素需要接住這個點擊。 */
+.modeGroupHidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* modeButton:按鈕組裡的一段——圖示 + 文字,靠左對齊(多段時各段的
    圖示才會排成一直線)。預設是安靜的紙色底 + 墨色字,只用 hover 的淡
    強調色底提示可按;啟用中(.modeButtonActive,面板開著)才填滿強調色,
@@ -315,57 +352,283 @@
    .timeline 當時也是置中;.timeline 改成貼齊視窗上緣附近後,這裡要
    跟著調整,兩者才會繼續維持視覺對齊(縮圖跟地圖面板同一條水平線),
    不會一個在畫面中央、一個在畫面上方而對不齊。 */
-.mapPanel {
-  grid-column: 2;
-  grid-row: 1;
-  align-self: start;
-  position: sticky;
+/* mapPanelWrap:2026-10 新增的 sticky 外框,包著純視覺用的 .mapPanel。
+   使用者回報捲到最頂端(第一個錨點)時,地圖面板位置會跟其他捲動位置
+   不一致(往上跳)。根因跟 .timeline 當初那次「往上捲時跑到視窗外面」
+   是同一類問題的另一面——sticky 元素在「尚未開始黏住」的最初那段
+   捲動距離,渲染在自己文件流的原始位置,不是 top 設定的偏移位置;
+   原本 .mapPanel 本身直接 `position:sticky; top:96px`,在還沒捲動超過
+   96px 的這段區間,面板的原始流位置貼齊 grid row 頂端(0px),跟
+   .timeline 同一時間已經透過 height:100vh + padding-top:96px 強制
+   顯示在 96px 位置,兩者在頁首這段期間對不齊,造成視覺跳動。
+   修法比照 .timeline 的既有手法,但拆成兩層而不是直接加
+   padding-top——如果 padding 直接加在 .mapPanel 本身,它的
+   border-radius/box-shadow/overflow:hidden 會把 padding 區域一起包進
+   視覺框,變成地圖上方多一截紙色空白。拆出 .mapPanelWrap 專門負責
+   sticky 定位跟高度/padding 的版面計算(top:0、高度 = 260px 內容 +
+   96px 頂部留白、padding-top:96px 把內容往下貼到跟 .timeline 一致
+   的位置),.mapPanel 維持單純的視覺框,尺寸正好是 260px,不含任何
+   留白,圓角/陰影/髮線環不會被撐開或露出空白區塊。
+   container-type: inline-size(2026-10 展開動畫改成外框長寬時加的):
+   讓這層成為容器查詢的尺寸容器,裡面的 .mapPanelBody 才能用 100cqw
+   取得「wrap 的最終全寬」,在 .mapPanel 外框寬度動畫進行中仍維持
+   固定尺寸(見 .mapPanelBody 的說明)。這層寬度由 grid 欄位/
+   .mapPanelOpen 的 calc 決定、不依賴內容,套用 inline-size 包含不會
+   改變任何版面結果。
+   --map-panel-grow-start:外框展開動畫的起始寬度 = 第 1 欄(時間軸
+   欄位)的寬度,讓起始的窄條剛好罩在時間軸縮圖正下方、以圓點為中心;
+   手機版在下方 640px 斷點覆寫成 64px。
+   高度算式維持 260px(= .mapPanel 本身的高度)——「地圖上方加一點
+   空間」那次嘗試曾一度把這裡改成 276px,已依使用者回報一併還原。
+   2026-10:從 grid item(grid-column:2/grid-row:1/align-self:start)
+   改成 position:absolute,相對 .root(見該 class 的說明)定位——使用者
+   要求手機版地圖面板左右貼齊視窗滿版,但 grid item 的 sticky 定位,
+   left/right 的參照基準是自己的 grid area、不是視窗,不管用什麼
+   breakout 寫法都無法真正突破格子邊界(只有負 margin 造成的位移不受
+   此限,這也是先前「只有左側改到」的根因,完整分析見 ScrollTimeline.tsx
+   掛載處的說明)。改成 absolute 後,left 直接用 calc 算出「原本第 2
+   欄的起始位置」(= 第 1 欄寬度 96px + gap 24px + .layout 的
+   padding-left 32px = 152px,手機版對應 64+8+16=88px,見下方 640px
+   斷點覆寫),right:0 貼齊 .root 右緣(對齊原本 1fr 撐滿到底的效果),
+   桌面版視覺位置跟改動前完全一致。
+   position:absolute(而非 sticky)是刻意的——sticky 元素的黏住效果
+   需要仰賴「自己在文件流裡有一段夠長的原始佔位高度」,.mapPanelWrap
+   原本是 .layout 的 grid item 時,跟 .copy(文案欄)共用同一個 grid
+   row,天然有文案等長的佔位高度;搬出 grid、變成 .root 的 absolute
+   子元素後,不再跟文案共用任何版面關係,改用 absolute 固定在
+   top:96px(見下方)反而更單純直接——面板本來就只需要「停在螢幕上緣
+   附近」,不需要真的跟著捲動黏住(原本 sticky 的用途只是防止被捲動
+   帶走,固定定位一樣能達成同樣的視覺效果,且不受 grid item 那條特殊
+   規則限制)。 */
+.mapPanelWrap {
+  --map-panel-grow-start: 96px;
+  position: absolute;
+  left: calc(96px + 24px + 32px);
+  right: 0;
   top: 96px;
   height: 260px;
   z-index: 5;
-  border-radius: 16px;
+  container-type: inline-size;
+}
+
+/* 2026-10:使用者回報地圖面板的圓角邊緣直接貼著旁邊的時間軸圓點/按鈕,
+   沒有呼吸間距,視覺很擠。padding 加在 .mapPanel 本身(而非只調整
+   .mapPanelWrap 的版面計算)——這樣 .mapPanelInner(實際地圖)會自動
+   縮進,圓角/陰影/髮線環仍包著完整的 260px 外框比例,只是地圖內容跟
+   外框四周多了留白,不是整個面板縮小。
+   展開動畫(2026-10 第三版)畫在 .mapPanel 外框本身的 width 上(見下方
+   .mapPanelGrowStart/.mapPanelGrowing/@keyframes mapPanelGrow):左緣
+   固定貼齊 wrap 左緣(= .layout 容器左緣,時間軸那一側),寬度從時間軸
+   欄位寬度的窄條長到全寬,這個 class 自己的圓角/描邊/陰影跟 ::after
+   髮線環全部跟著外框一起長出來。前一版把動畫做在內部疊的紙色遮罩
+   (clip-path 收合)上,外框則瞬間以最終尺寸出現,使用者回報「邊框一
+   開始就打開、裡面才縮合、邊框都沒動」——外框跟內容是兩段不同步的
+   動作。改成外框長寬後,內容(地圖+關閉鈕)搬進寬度鎖死在最終全寬的
+   .mapPanelBody,只被這層的 overflow:hidden 逐步露出,地圖本身不會
+   被裁掉、也不會被 resize。 */
+/* 2026-10 邊框樣式重整(使用者截圖回報「邊框樣式有問題」):
+   (1) 圓角改成同心——外框半徑必須等於「內環半徑 + 內縮量」(10px + 14px
+       = 24px),兩圈圓角的圓心才會重合;原本外框 16px、內環 10px 卻內縮
+       14px,內環相對外框顯得「太胖」,角落看起來不協調。
+   (2) 外框補一圈 1px 描邊,顏色沿用 .modeGroup(旁邊「地圖」按鈕外框)
+       同一條磚紅混髮線的公式——面板底色跟頁面底色同是 --paper,原本
+       只靠遠投影撐邊界,在淺色紙面上幾乎看不見(既有抱怨);描邊帶一點
+       強調色,也讓面板跟按鈕、.dotOpen 的磚紅外框讀起來是同一組元件。
+   (3) 底色改用 --map-panel-bg:在 --paper 上疊極淡(4%)強調色,面板
+       跟頁面紙面之間多一層「襯紙」的分別,不靠寫死色碼。
+   (4) 陰影:貼邊短陰影維持,中距離再加一層淡磚紅暈影(同 .modeGroup
+       的手法,只是範圍放大),遠投影沿用 --card-shadow 既有慣例。 */
+/* 2026-10:使用者要求試試看「最外側加一層 20px 的半透明邊框」——用
+   box-shadow 疊一層 spread:20px 的半透明暈邊(0 0 0 20px),不是描邊
+   (描邊不能這麼寬,視覺上會變成實色色塊而不是邊框的感覺;box-shadow
+   的 spread 可以做出「由面板邊界往外暈開一圈」的效果,且不佔版面空間、
+   不影響 .mapPanel 的 width/height,.mapPanelGrowStart/Growing 的寬度
+   動畫數字不用跟著重算)。疊在原本 1px 描邊的外側(box-shadow 清單順序
+   由內而外畫),原本的 1px 實邊維持不透明,負責「清楚的邊界線」;20px
+   暈邊負責「柔化邊界、讓面板從紙面上浮起來」的氛圍效果,兩者分工。 */
+/* 2026-10:使用者要求移除外框跟地圖內容之間那圈留白(原本的
+   padding:14px)——看看拿掉之後的效果,地圖直接撐滿整個外框範圍。
+   .mapPanelBody 的補償 padding、.mapPanelInner 的 --explore-map-stage-height
+   跟著同步拿掉/改回 260px(見該二處的說明),三處原本是同一組數字一起
+   變動,現在一起改回「無留白」版本。 */
+/* 2026-10:「地圖上方加一點空間」這個嘗試(padding-top:16px + height
+   276px)已依使用者回報移除——留白一直殘留在畫面上、沒有如預期消失,
+   使用者多次反映看到這段空隙,索性拿掉,地圖直接貼齊外框頂緣,不留
+   任何上方留白。 */
+.mapPanel {
+  --map-panel-bg: color-mix(in srgb, var(--timeline-accent) 4%, var(--paper));
+  position: relative;
+  height: 260px;
+  box-sizing: border-box;
+  border-radius: 24px;
   overflow: hidden;
-  /* 陰影拆成兩層:貼邊的短陰影(0 1px 2px)負責讓面板在紙色背景上
-     「微微浮起」的邊緣感,大範圍的投影沿用 --card-shadow 的既有慣例。
-     單靠一層遠投影在淺色紙面上幾乎看不到面板邊界——地圖底圖本身也是
-     米白/淺灰,跟 --paper 對比太低(2026-10 使用者截圖回報面板範圍不
-     明確),邊界主要交給下方 ::after 的髮線環處理,陰影只是輔助。 */
+  /* 2026-10:20px 暈邊改成真正的光暈(blur)而非實心環——原本
+     `0 0 0 20px rgba(…)` 是純 spread、沒有 blur,邊界是銳利的環狀色塊;
+     改成 `0 0 20px 4px rgba(…)`(blur-radius 20px + 小量 spread 4px 讓
+     發散有基礎厚度)之後,邊緣會柔化成漸層擴散的光暈,而不是一圈等寬的
+     實色帶。 */
   box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--timeline-accent) 55%, var(--line)),
+    0 0 20px 4px rgba(0, 0, 0, 0.1),
     0 1px 2px rgba(0, 0, 0, 0.08),
+    0 6px 18px -6px color-mix(in srgb, var(--timeline-accent) 22%, transparent),
     var(--card-shadow, 0 24px 48px -20px rgba(0, 0, 0, 0.45));
-  background: var(--paper);
+  background: var(--map-panel-bg);
 }
 
-/* mapPanel::after:疊在地圖最上層的 1px 髮線環——用 inset box-shadow
-   而非 border,理由有二:(1) border 會把 260px 的面板撐高 2px(或得改
-   box-sizing 再去扣 .mapPanelInner 的高度),inset shadow 完全不佔版面;
-   (2) border 畫在地圖「外面」,inset 環畫在地圖「邊緣上」,線條剛好壓在
-   地圖圖磚與紙色交界處,淺色底圖再怎麼接近 --paper 也會被這條線切開。
-   顏色用呼叫端定義的 --line(跟 .stop 分隔線同一條色),不自己另訂顏色。
-   pointer-events:none 讓這層純裝飾不攔截地圖拖曳/點擊;z-index 低於
-   .mapPanelClose(10),關閉鈕仍在最上面。border-radius:inherit 跟外層
-   圓角對齊,環不會在四角露出方形。 */
-.mapPanel::after {
-  content: '';
+/* mapPanelBody:地圖 + 關閉鈕的容器——絕對定位貼齊 .mapPanel 左上角,
+   寬度不是跟著 .mapPanel(動畫中會變)而是用 100cqw 鎖在外層
+   .mapPanelWrap(容器查詢尺寸容器,見該 class)的最終全寬;高度 100%
+   = .mapPanel 的 260px。外框長寬的整段過程中這層尺寸自始至終不變:
+   Google Map 容器不會收到任何 resize,關閉鈕一直停在最終位置,內容只是
+   被 .mapPanel 的 overflow:hidden 從左側逐步露出。padding 14px 跟
+   .mapPanel 自己的 padding 同值(絕對定位的子元素不吃父層 padding,
+   要自己補),讓 .mapPanelInner 的實際範圍跟 ::after 髮線環(inset 14px)
+   維持原本的對齊。不支援 cqw 的舊瀏覽器會落回前一行的 width:100%,
+   內容跟著外框一起變寬——動畫期間地圖會短暫 resize,但最終狀態正確。
+   不設 z-index(不建立層疊脈絡),裡面 .mapPanelClose 的 z-index:10 才
+   能繼續跟 .mapPanel::after(6)在同一個層疊脈絡裡比較、壓在髮線環之上。
+   2026-10:padding 拿掉(見 .mapPanel 開頭的說明)——.mapPanel 本身不再
+   留白,這裡的補償 padding 也要同步移除,否則地圖內容會比外框範圍小
+   一圈,等於留白又用另一種方式跑回來。「地圖上方加一點空間」那次
+   嘗試(top:16px + height:calc(100% - 16px))也已經一併還原,
+   .mapPanelBody 重新貼滿 .mapPanel 的完整範圍,不留任何偏移。 */
+.mapPanelBody {
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  box-shadow: inset 0 0 0 1px var(--line);
-  pointer-events: none;
-  z-index: 6;
+  top: 0;
+  left: 0;
+  width: 100%;
+  width: 100cqw;
+  height: 100%;
+  box-sizing: border-box;
 }
 
-/* mapPanelHidden:面板關閉時套用——用 visibility:hidden 而非
-   display:none,因為 display:none 的元素不會建立 layout box,會讓裡面
-   的 Google Map 容器尺寸在隱藏期間變成 0×0,地圖函式庫內部快取的容器
-   尺寸跟著跑掉,之後切回顯示時可能需要額外觸發 resize 才能正確鋪滿;
-   visibility:hidden 則保留版面尺寸只是不繪製也不接收互動事件,配合
-   pointer-events:none 確保隱藏時不會攔截底下文案區塊的點擊/捲動。 */
+/* mapPanelGrowStart / mapPanelGrowing:外框展開動畫的兩個階段(套在
+   .mapPanel 上,由 ScrollTimeline.tsx 的 growReady state 切換,見該處的
+   完整說明)。開啟的第一個 commit 先套 GrowStart——停在起始狀態(時間
+   軸欄位寬度的窄條、透明),不播動畫;下一個 frame 換成 Growing 讓
+   animation 從頭播到全寬並停在終點(forwards)。這樣外框第一次被繪製
+   出來時就已經是窄條,不會先以最終尺寸閃一下。起始寬度用 wrap 定義的
+   --map-panel-grow-start,手機版會自動跟著斷點覆寫。
+   只動 width、不動 margin-left:左緣固定在時間軸那一側,只有右緣往右
+   推——是「變寬」,不是「整塊平移」,所以不會讀成「從畫面右側滑進來」
+   (使用者明確不要的效果)。 */
+.mapPanelGrowStart {
+  width: var(--map-panel-grow-start);
+  opacity: 0;
+}
+
+.mapPanelGrowing {
+  animation: mapPanelGrow 0.46s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+/* 寬度從窄條長到 100%;opacity 在前 30% 就升到 1,讓窄條是「浮現後
+   立刻開始長」而不是突然蹦出來,但不拖慢整體展開節奏。width 動畫會
+   每個 frame 重排 .mapPanel,但它的子元素只有尺寸固定的 .mapPanelBody
+   跟 ::after,重排成本極低,地圖 DOM 完全不受影響。 */
+@keyframes mapPanelGrow {
+  from {
+    width: var(--map-panel-grow-start);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    width: 100%;
+    opacity: 1;
+  }
+}
+
+/* 使用者偏好減少動態效果時直接不播展開動畫——兩個階段都直接停在
+   全寬、不透明的最終狀態,面板直接出現。 */
+@media (prefers-reduced-motion: reduce) {
+  .mapPanelGrowStart {
+    width: auto;
+    opacity: 1;
+  }
+
+  .mapPanelGrowing {
+    animation: none;
+  }
+}
+
+/* 2026-10:使用者要求移除地圖內容邊緣那圈髮線環(原本的 .mapPanel::after
+   inset 14px 1px 髮線 + 內陰影)——看看拿掉之後的效果,地圖內容跟外框
+   的留白(.mapPanel 的 14px padding)不受影響,只是地圖邊緣跟留白之間
+   不再有一條獨立的分界線。 */
+
+/* mapPanelHidden:面板關閉時套用(套在 .mapPanelWrap 上)——用
+   visibility:hidden 而非 display:none,因為 display:none 的元素不會
+   建立 layout box,會讓裡面的 Google Map 容器尺寸在隱藏期間變成 0×0,
+   地圖函式庫內部快取的容器尺寸跟著跑掉,之後切回顯示時可能需要額外
+   觸發 resize 才能正確鋪滿;visibility:hidden 則保留版面尺寸只是不
+   繪製也不接收互動事件,配合 pointer-events:none 確保隱藏時不會攔截
+   底下文案區塊的點擊/捲動。 */
 .mapPanelHidden {
   visibility: hidden;
   pointer-events: none;
 }
 
+/* mapPanelOpen:2026-10 新增,套在 .mapPanelWrap 上——地圖面板開啟時
+   往左擴張,蓋到時間軸所在的欄位上方(時間軸本身位置不變,只是疊在
+   地圖之上,見 .timeline z-index 的說明)。用負的 margin-left 把面板
+   的左緣往左推出自己的 grid cell(第 2 欄),推出的距離正好是第 1 欄
+   寬度(96px/手機版 64px)+ .layout 的 gap(24px/手機版 8px),於是
+   面板左緣貢齊 .layout 整個容器的左緣,視覺上「跨欄覆蓋」;width 用
+   calc 加回同樣的量補償 margin-left 吃掉的寬度,面板右緣仍對齊原本
+   欄2的右緣,不會因為加了負 margin 而整體右移或變窄。
+   刻意不加 transition——使用者明確要求「地圖開啟時位置要固定,不要
+   從右側移動過來」,開合是直接切換(搭配 .mapPanelHidden 用
+   visibility 瞬間顯隱,常駐掛載不卸載),不做滑入/展開的位移動畫,
+   避免看起來像地圖從右邊滑過來。只在開啟時套用(跟 .mapPanelHidden
+   的開關機制一致,元素本身常駐掛載不卸載),關閉時面板收回原本欄位
+   內,不佔用時間軸上方的視覺空間。 */
+.mapPanelOpen {
+  margin-left: -120px;
+  width: calc(100% + 120px);
+}
+
+@media (max-width: 640px) {
+  /* 2026-10:使用者要求手機版地圖面板左右兩邊直接貼齊視窗寬度(滿版),
+     不只是蓋過時間軸欄位——原本 margin-left:-72px/width:calc(100% + 72px)
+     只能讓面板左緣貢齊 .layout 容器的左緣,但 .layout 本身還有
+     padding-left:16px,外層 .tainan-chikan-stops 也還有左右 padding
+     (1.5rem),面板左右兩側實際上還留著這幾層容器的留白,不是真正貼齊
+     視窗邊緣。
+     第一版用 left:50%; width:100vw; margin-left:-50vw 這組經典
+     breakout 寫法,但 .mapPanelWrap 本身是 CSS Grid 的 grid item
+     (grid-column:2),使用者回報「只有改到左側」——grid item 的
+     width 會被所屬軌道的尺寸計算覆蓋/鉗制,width:100vw 這個絕對值
+     在 grid 版面脈絡下沒有如預期完全生效,只有 left:50%/margin-left
+     造成的左緣偏移看得出效果,右緣仍然停在原本軌道右界。
+     改用 left:0; right:0; width:auto 這組寫法——不透過 width 指定
+     絕對寬度(讓它繼續受 grid 軌道影響也沒關係),改用 left/right 兩個
+     方向各自鎖定到 viewport 座標系的 0(sticky/relative 定位context
+     下,left:0/right:0 都是相對最近的 containing block,也就是視窗
+     本身,因為中間沒有其他 position:relative 的祖先);瀏覽器會自動
+     算出「從左緣 0 到右緣 0」之間的寬度,不受 grid 軌道寬度的 width
+     鉗制影響,左右兩側都能確實貼齊視窗邊緣。 */
+  .mapPanelOpen {
+    left: 0;
+    right: 0;
+    width: auto;
+    margin-left: 0;
+  }
+
+  /* 手機版第 1 欄是 64px,外框展開動畫的起始窄條寬度跟著改成 64px
+     (見 .mapPanelWrap 的 --map-panel-grow-start 說明)。 */
+  .mapPanelWrap {
+    --map-panel-grow-start: 64px;
+  }
+}
+
+/* mapPanelClose:2026-10 .mapPanel 拿掉 14px padding 後(見該 class
+   開頭的說明),地圖內容直接撐滿外框,原本因應留白帶算出來的 22px
+   (padding 14px + 8px)不再適用,改回貼齊外框邊緣的 8px 偏移。
+   外觀跟 .mapPanel 外框、.modeGroup 用同一套語彙:紙色底 + 磚紅混
+   髮線的描邊 + 淡磚紅暈影;hover/啟用時填滿強調色、紙色字,跟
+   .modeButtonActive 的邏輯一致,整組時間軸控制項才像同一家人。 */
 .mapPanelClose {
   position: absolute;
   top: 8px;
@@ -380,25 +643,51 @@
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
-  /* 外圈 1px --line 髮線跟 .mapPanel::after 的面板邊框同一條色——關閉
-     鈕跟面板用同一種「紙色底+髮線」語彙,看起來是同一組元件,而不是
-     一顆憑空浮在地圖上的白點。 */
   box-shadow:
-    0 0 0 1px var(--line),
-    0 2px 8px rgba(0, 0, 0, 0.2);
+    0 0 0 1px color-mix(in srgb, var(--timeline-accent) 55%, var(--line)),
+    0 1px 2px rgba(0, 0, 0, 0.12),
+    0 3px 8px color-mix(in srgb, var(--timeline-accent) 18%, transparent);
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.mapPanelClose:hover {
+  background: var(--timeline-accent);
+  color: var(--paper);
+}
+
+.mapPanelClose:active {
+  transform: scale(0.94);
+}
+
+.mapPanelClose:focus-visible {
+  outline: 2px solid var(--timeline-accent);
+  outline-offset: 2px;
 }
 
 /* mapPanelInner:實際掛載 InteractiveExploreMap 的容器——透過覆寫該
-   元件讀的 --kiyomizu-* CSS 變數(見 InteractiveExploreMap.module.css
+   元件讀的 --explore-map-* CSS 變數(見 InteractiveExploreMap.module.css
    .page/.stage 的完整說明),把原本城市介紹頁滿版/固定 680px 的地圖
    容器壓縮成跟外層 .mapPanel 同高、同寬、無留白,而不是另外做一份
    簡化地圖元件——地圖互動(主題點/精選點/縮放拖曳)完整保留。 */
+/* --explore-map-stage-height:2026-10(修正版)——.mapPanelBody 現在是用
+   top:16px + height:calc(100% - 16px) 讓自己的 box 整個往下偏移、
+   收縮(見該 class「地圖上方加一點空間」的說明,取代了先前試過的
+   padding-top 做法),.mapPanelBody 自己的高度已經正好是 260px(276px
+   的 .mapPanel 扣掉 16px 偏移),.mapPanelInner 的 height:100% 跟著是
+   260px,不需要再額外扣一次 16px——之前這裡誤把舊版(padding-top 做法)
+   算出的 244px 留著沒改,造成地圖本身比容器矮了 16px、下方多出一截
+   空隙(使用者截圖回報「上下都有空間」的根因:上面是故意加的,下面是
+   這個殘留的舊數字多扣出來的)。改回 260px,跟 .mapPanelBody 的實際
+   高度一致,地圖貼齊底部不再有多餘留白。--explore-map-stage-radius 維持
+   0——地圖內容直接撐到 .mapPanel 的外框邊緣,圓角交給外框的 24px
+   (overflow:hidden 會把地圖直角裁成外框的圓角),地圖本身不需要再有
+   自己的圓角。 */
 .mapPanelInner {
-  --kiyomizu-page-max-width: 100%;
-  --kiyomizu-page-padding: 0;
-  --kiyomizu-stage-height: 260px;
-  --kiyomizu-stage-radius: 0px;
-  --kiyomizu-stage-shadow: none;
+  --explore-map-page-max-width: 100%;
+  --explore-map-page-padding: 0;
+  --explore-map-stage-height: 260px;
+  --explore-map-stage-radius: 0px;
+  --explore-map-stage-shadow: none;
   /* --desktop-info-card-top:地圖右緣浮動卡片(DesktopInfoCard.module.css
      .panel,這裡是 AttractionInfoPanel 的「附近景點」精簡模式,見
      InteractiveExploreMap themeCardNearbyOnly 的說明)的頂部偏移——預設
