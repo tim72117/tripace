@@ -399,11 +399,20 @@ func main() {
 }
 
 // 舊網域(遷移前)與正式網域(遷移後)。整個服務原掛在 legacyDomain,現遷移到
-// canonicalDomain(各自獨立的 Cloud Run 服務,非同服務雙網域)。集中定義成
-// 具名常數,未來若再換網域只需改這兩處,不必到 withLegacyDomainRedirect 內部找字串。
+// canonicalDomain(同一個 Cloud Run 服務,雙網域 domain-mapping,見
+// gcloud run domain-mappings list 的實際設定)。集中定義成具名常數,未來
+// 若再換網域只需改這兩處,不必到 withLegacyDomainRedirect 內部找字串。
+//
+// 2026-10 使用者明確要求把更早期的舊網域 app.shuttle.tools 轉址支援整個
+// 移除(含獨立的 cmd/redirectserver binary、Dockerfile.redirect、
+// .github/workflows/deploy-redirect.yml 與對應的 tripace-redirect Cloud
+// Run 服務一併下線)——這裡的 legacyDomain/canonicalDomain 改成處理
+// 新一輪的網域遷移:tripace.shuttle.tools(先前的正式網域)→ tripace.io
+// (現在的正式網域),機制與原本處理 app.shuttle.tools 完全相同,只是
+// 兩個常數的值換成這次要轉址的網域,不是新發明一套邏輯。
 const (
-	legacyDomain    = "app.shuttle.tools"
-	canonicalDomain = "tripace.shuttle.tools"
+	legacyDomain    = "tripace.shuttle.tools"
+	canonicalDomain = "tripace.io"
 )
 
 // withLegacyDomainRedirect 包在最外層(所有路由,含 /v1、/internal、/admin、

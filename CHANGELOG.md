@@ -2,6 +2,13 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.25.2 — 2026-10-07
+
+### 變更
+
+- 舊網域 `tripace.shuttle.tools` 改為整站 301 永久轉址到現在的正式網域 `tripace.io`（`cmd/server/main.go` 的 `withLegacyDomainRedirect`，沿用原本處理 `app.shuttle.tools` → `tripace.shuttle.tools` 的同一套機制，只是轉址目標換成這一輪的網域遷移）——不再是過渡期並存，透過舊網域存取的使用者/搜尋引擎索引會被導到新網域。
+- 移除更早期處理 `app.shuttle.tools` 舊網域轉址用的獨立服務：`server/cmd/redirectserver`、`Dockerfile.redirect`、`.github/workflows/deploy-redirect.yml` 一併刪除；正式環境對應的 Cloud Run 服務 `tripace-redirect` 與 `app.shuttle.tools` 的 domain-mapping 經確認皆已不存在，不需額外清理。
+
 ## v0.25.1 — 2026-10-07
 
 ### 新增

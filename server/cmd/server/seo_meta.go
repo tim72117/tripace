@@ -58,14 +58,16 @@ type seoMeta struct {
 
 // siteBaseURL 回傳這個網站目前的正式網域(不含結尾斜線,例如
 // "https://tripace.io")——讀環境變數 SITE_BASE_URL(見 server/.env.example
-// 的說明),未設定時 fallback 回目前的正式網域 tripace.io。這個站過渡期
-// 與舊網域 tripace.shuttle.tools 並存(見 cmd/server/main.go 的
-// canonicalDomain/withLegacyDomainRedirect、cmd/redirectserver 的
-// targetOrigin——那兩處是處理「舊網域請求轉址」的獨立邏輯,跟這裡「SEO
-// meta 裡該填哪個網域」是兩個不同的問題,故沒有共用這個函式),SEO 相關
-// 的 canonical/og:url/og:image 等欄位全部呼叫這個函式組出完整網址,網域
-// 字串只在這一個地方維護,不再分散寫死在 seoMetaByPath/defaultCanonical/
-// defaultImage 裡。
+// 的說明),未設定時 fallback 回目前的正式網域 tripace.io。
+//
+// 2026-10:舊網域 tripace.shuttle.tools 已不再並存,改成跟更早的
+// app.shuttle.tools 一樣,整站 301 轉址到現在的正式網域(見
+// cmd/server/main.go 的 canonicalDomain/withLegacyDomainRedirect;獨立的
+// cmd/redirectserver binary 已隨這次整併一併移除,不再需要額外一支服務
+// 處理舊網域轉址)——跟這裡「SEO meta 裡該填哪個網域」仍是兩個不同的
+// 問題,故沒有共用這個函式,SEO 相關的 canonical/og:url/og:image 等欄位
+// 全部呼叫這個函式組出完整網址,網域字串只在這一個地方維護,不再分散
+// 寫死在 seoMetaByPath/defaultCanonical/defaultImage 裡。
 //
 // 設計上用 fallback 預設值而非強制要求必須設定:本機開發/CI 跑這個套件
 // 的測試時通常不會特地設這個環境變數,fallback 回正式網域(而非留空或
