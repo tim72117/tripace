@@ -1,9 +1,16 @@
-/* ScrollTimeline——沿用 CityPageFooter.module.css/ExploreOtherCities.module.css
-   的既有手法(見該二檔案開頭說明):不在這個元件內重新定義
-   --paper/--ink/--ink-soft/--line,直接讀呼叫端頁面作用域已經定義好的
-   同名變數;強調色改用這個元件專屬的中性變數名 --timeline-accent(同
-   --footer-accent/--explore-accent 的既有模式),呼叫端自行指向自己
-   頁面的強調色(--vermilion 或 --brick)。 */
+/* ScrollTimeline——中性色(--paper/--ink/--ink-soft/--line)沿用
+   CityPageFooter.module.css/ExploreOtherCities.module.css 的既有手法
+   (見該二檔案開頭說明):不在這個元件內重新定義,直接讀呼叫端頁面
+   作用域已經定義好的同名變數。
+   強調色(--timeline-accent,這份檔案裡所有 var(--timeline-accent) 的
+   地方)2026-10 改成由 ScrollTimeline.tsx 的必填 accentColor prop
+   透過 inline style 注入(見該檔案 accentColor 完整說明),不再要求
+   呼叫端頁面的 CSS 自己定義同名變數——原本的模式(呼叫端 CSS 自訂
+   --timeline-accent,同 --footer-accent/--explore-accent 的既有模式)
+   曾經在套用到九份/京都頁時被漏寫,CSS 的 var() 找不到變數不會報錯、
+   只會安靜 fallback 成 initial,肉眼比對了好幾輪才抓到地圖面板邊框
+   顏色不對。改成 TypeScript 必填 prop 後,呼叫端忘記傳會是編譯期
+   錯誤,這個元件本身仍然不需要知道呼叫端內部怎麼命名顏色 token。 */
 
 /* root:2026-10 新增的最外層包裹,.layout 與 .mapPanelWrap 是它的兩個
    子元素(平行關係,.mapPanelWrap 不再是 .layout 的 grid item)。
@@ -31,14 +38,30 @@
    改變盒子尺寸計算的屬性才能做 breakout)。
    --timeline-top-offset:時間軸/地圖面板共用的頂部留白,.timeline 跟
    .mapPanelWrap 都要讀同一個值(見兩者各自的完整說明)才會維持視覺
-   對齊,不要各自寫死一份數字。桌面版 96px;手機版(見下方 640px
-   斷點)使用者要求「再往上移、貼近上方固定導覽列(SiteNavButtons.css
-   的 .site-nav-brand-row 等,top:16px + 36px 高,底部約在 52px)但不能
+   對齊,不要各自寫死一份數字。手機版(見下方 640px 斷點)使用者要求過
+   「再往上移、貼近上方固定導覽列(SiteNavButtons.css 的
+   .site-nav-brand-row 等,top:16px + 36px 高,底部約在 52px)但不能
    超出導覽列本身的高度」——縮到 64px(= 52px 導覽列底部 + 12px 呼吸
-   間距)。定義在 .root 上(最外層共同祖先),讓兩個子元素都能用
-   var(--timeline-top-offset) 讀到同一份值。 */
+   間距),這個是手機版的下限,不再往上縮。
+   桌面版 2026-10(第九輪):使用者要求「時間軸縮圖+地圖面板整組往上
+   移動一點」——這兩者的垂直位置都是透過同一個 padding-top:
+   var(--timeline-top-offset) 往下推開(.timeline 第 98 行、
+   .mapPanelWrap 第 462 行附近),縮小這個變數會讓兩者一起等量往上移,
+   相對關係不變(時間軸仍貼地圖頂部,兩者仍同步捲動),改這裡一處就
+   同時影響两者,不需要分開調整。中幅調整:96px → 64px(少移 32px,
+   使用者確認的幅度)。手機版維持 64px 不變(已經是先前確認過的下限,
+   不再往上縮)。 */
+/* --timeline-layout-padding-left(2026-10 code review 後補,定義在
+   .root 而非 .layout 本身):.mapPanelWrap 需要讀到這個值去算
+   .mapPanelOpen 的 margin-left/width(見該規則完整說明),但
+   .mapPanelWrap 跟 .layout 是 .root 底下的兄弟節點(平行關係,見
+   .root 開頭說明),不是 .layout 的子孫——CSS 自訂屬性靠 DOM
+   繼承往下傳遞,定義在 .layout 身上傳不到它的兄弟節點,必須定義在
+   兩者共同的祖先 .root 才能讓 .layout(用來設 padding-left 本尊)跟
+   .mapPanelWrap(用來算 margin-left/width)同時讀到同一份值。 */
 .root {
-  --timeline-top-offset: 96px;
+  --timeline-top-offset: 64px;
+  --timeline-layout-padding-left: 32px;
   display: grid;
   grid-template-columns: 1fr;
 }
@@ -54,13 +77,20 @@
    grid(96px/64px 時間軸欄 + 1fr 文案欄),兩層 grid 互不影響。
    padding-left:2026-10 使用者要求時間軸左側(跟頁面/外層容器左緣之間)
    加大間距——時間軸原本貼齊 .layout 容器左緣,視覺上太擠。只加左側
-   (不動右側/上下),不影響欄寬/gap 既有的版面計算。 */
+   (不動右側/上下),不影響欄寬/gap 既有的版面計算。
+   --timeline-layout-padding-left:把這個 padding-left 的數字抽成自訂
+   屬性,fallback 維持原本的 32px(視覺零差異),定義處在 .root(見該
+   規則說明「為什麼定義在 .root 而非這裡」)。原因:.mapPanelOpen 的
+   margin-left/width 算式(見該規則完整說明的「第八輪」推導)直接
+   引用了這個 32px 當分量之一,原本兩處是各自寫死的數字,這裡改了
+   不會自動連動到 .mapPanelOpen,改成自訂屬性後 .mapPanelOpen 直接
+   calc() 讀這個變數,兩處才是真正綁定、不會各自改各自走鐘。 */
 .layout {
   grid-area: 1 / 1;
   display: grid;
   grid-template-columns: 96px 1fr;
   gap: 24px;
-  padding-left: 32px;
+  padding-left: var(--timeline-layout-padding-left, 32px);
 }
 
 @media (max-width: 640px) {
@@ -465,12 +495,44 @@
   align-self: start;
   position: sticky;
   top: 0;
-  margin-left: calc(96px + 24px + 32px);
-  height: calc(260px + var(--timeline-top-offset));
+  /* 2026-10 code review 抓到:這裡原本寫死 calc(96px + 24px + 32px),
+     最後一個加數(32px)其實就是 .layout 的 padding-left,跟下方
+     .mapPanelOpen 的 margin-left/width(見該處完整說明)引用的是同一個
+     數字,但 .mapPanelOpen 已經改用 var(--timeline-layout-padding-left,
+     32px) 讀,這裡卻還是寫死字面值 32px——目前因為這個變數從未被
+     覆寫而巧合一致,但如果 --timeline-layout-padding-left 以後被改動
+     (例如新增斷點或頁面變體),這裡會悄悄跟 .layout 的實際 padding-left
+     失步,重新引入當初導入這個自訂屬性想避免的那類同步問題。改成讀
+     同一個變數,前兩個加數(96px 時間軸欄寬、24px .layout 的 gap)維持
+     寫死——這次 review 只確認 padding-left 這一個數字有被抽成變數,
+     沒有要求把欄寬/gap 也變數化,不擴大這次修正的範圍。 */
+  margin-left: calc(96px + 24px + var(--timeline-layout-padding-left, 32px));
+  /* 2026-10(fable 背景研究 + Playwright 實測後修正):使用者回報
+     「拉到最底下時間軸會自己往上滑,跟地圖分離」。根因不是這層
+     「太矮太早用完」(我原本的假設方向),而是相反:sticky 元素被
+     containing block 底部推走的時機 = 容器底 − 自身高度,高度越
+     小這個門檻反而越晚到達。真正問題是這層(原本 260px 左右)跟
+     .timeline(height:100vh)兩者高度不同,導致各自被推走的捲動量
+     不同步(.timeline 在 rootBottom-100vh 處就被推走,這層要到
+     rootBottom-260px 左右才被推走,中間這段差值期間兩者分離)。
+     fable 用 Playwright 在 1280×800 視窗實測:修正前分離量最終達
+     diff=444px(與理論值 800-356 吻合);改成跟 .timeline 同樣的
+     100vh 後,從捲動起點到捲到底,.timelineTrack 與 .mapPanel 的
+     y 座標全程 diff=0,完全同步。.mapPanel 本身固定 260px,不會被
+     這層變高拉伸(見下方 align-self:start 與 .mapPanel 自身尺寸)。 */
+  height: 100vh;
   padding-top: var(--timeline-top-offset);
   z-index: 5;
   container-type: inline-size;
   box-sizing: border-box;
+  /* 這層變成 100vh 後,大半區域是看不見的空框(.mapPanel 只佔其中
+     260px 高),若不處理会疊在下方文案上攔截點擊/選取。此層整體
+     放行(none),實際可見、需要互動的地圖面板由 .mapPanel 自己
+     開回(auto)——fable 用 document.elementFromPoint 實測面板
+     內部/關閉鈕/面板下方文案都正確命中預期元素。順帶修掉一個既有
+     但沒人發現的問題:改前的 356px 高度裡,padding-top(96px)區域
+     其實已經疊在文案上方攔截點擊,只是沒人注意到。 */
+  pointer-events: none;
 }
 
 /* 2026-10:使用者回報地圖面板的圓角邊緣直接貼著旁邊的時間軸圓點/按鈕,
@@ -524,6 +586,10 @@
   box-sizing: border-box;
   border-radius: 24px;
   overflow: hidden;
+  /* 2026-10:.mapPanelWrap 改成 height:100vh 後整層對 pointer-events
+     放行(none,見該處說明),這裡是實際可見、需要互動的面板本體,
+     要自己開回來接收點擊/hover。 */
+  pointer-events: auto;
   /* 2026-10:20px 暈邊改成真正的光暈(blur)而非實心環——原本
      `0 0 0 20px rgba(…)` 是純 spread、沒有 blur,邊界是銳利的環狀色塊;
      改成 `0 0 20px 4px rgba(…)`(blur-radius 20px + 小量 spread 4px 讓
@@ -635,20 +701,114 @@
 /* mapPanelOpen:2026-10 新增,套在 .mapPanelWrap 上——地圖面板開啟時
    往左擴張,蓋到時間軸所在的欄位上方(時間軸本身位置不變,只是疊在
    地圖之上,見 .timeline z-index 的說明)。用負的 margin-left 把面板
-   的左緣往左推出自己的 grid cell(第 2 欄),推出的距離正好是第 1 欄
-   寬度(96px/手機版 64px)+ .layout 的 gap(24px/手機版 8px),於是
-   面板左緣貢齊 .layout 整個容器的左緣,視覺上「跨欄覆蓋」;width 用
-   calc 加回同樣的量補償 margin-left 吃掉的寬度,面板右緣仍對齊原本
-   欄2的右緣,不會因為加了負 margin 而整體右移或變窄。
-   刻意不加 transition——使用者明確要求「地圖開啟時位置要固定,不要
-   從右側移動過來」,開合是直接切換(搭配 .mapPanelHidden 用
-   visibility 瞬間顯隱,常駐掛載不卸載),不做滑入/展開的位移動畫,
-   避免看起來像地圖從右邊滑過來。只在開啟時套用(跟 .mapPanelHidden
-   的開關機制一致,元素本身常駐掛載不卸載),關閉時面板收回原本欄位
-   內,不佔用時間軸上方的視覺空間。 */
+   的左緣往左推,理想狀況下完全抵消 .mapPanelWrap 基礎規則的
+   margin-left:calc(96px + 24px + 32px)(第 1 欄寬度 + .layout 的 gap
+   + .layout 的 padding-left,見該規則的完整說明),讓面板左緣回到
+   grid area(= .root)本身的左緣,視覺上「跨欄覆蓋」;width 用 calc
+   加回同樣的量補償 margin-left 吃掉的寬度,面板右緣仍對齊原本欄 2
+   的右緣,不會因為加了負 margin 而整體右移或變窄。
+   2026-10 code review 修正(第一輪,算式本身的 bug):原本這裡寫死
+   -120px,註解寫「推出的距離正好是第 1 欄寬度(96px)+ gap(24px)」
+   ——這段計算漏算了 .layout 自己的 padding-left(32px),96+24=120,
+   但基礎規則的完整算式是 96+24+32=152,-120px 只抵消了其中 120,
+   少抵消的 32px 讓面板左緣一直比預期偏右 32px。
+   2026-10 code review 修正(第二輪,更深層的根因,Playwright 實測
+   找到):光把 -120px 改成完整抵消的 -152px 並沒有解決問題,反而讓
+   情況更明顯——.tainan-chikan-stops(見該檔案)有 max-width:960px,
+   視窗寬度 ≤ 960px 時 .root 觸頂、不再隨視窗變寬,此時 .root 距視窗
+   左緣固定剩 24px(= .tainan-chikan-stops 的 padding)。不管 margin-left
+   抵消量是 -120px 還是完整的 -152px,只要這個值的絕對值大於「.root
+   此刻距視窗左緣的實際距離」,面板左緣的計算結果就會是負值、探出
+   視窗左側(使用者截圖回報「赤崁樓時間軸位置跑掉」,實測複現在
+   641~960px 這段視窗寬度區間)——這不是「算錯一個數字」,是這個
+   展開效果從設計上就沒考慮過 .root 本身可能因為 max-width 觸頂而
+   「沒有這麼多空間讓面板往左探出去」。
+   2026-10 code review 修正(第三輪,推翻第二輪的修法):第二輪曾經
+   試過 max(基礎值的負值, -100%) 想做「不超出 .root 左緣」的夾限,
+   以為 -100% 代表「.root 此刻距視窗左緣的剩餘空間」——這個理解
+   從根本上不成立,Playwright 複測後確認完全沒有效果:CSS margin
+   的百分比基準是元素自身 containing block 的寬度,.mapPanelWrap 的
+   containing block 就是 .root 本身(grid-area:1/1 疊在同一格),
+   -100% 等於 -1 倍 .root 的寬度(觸頂時約 -912px),遠比 -152px 更負,
+   max() 永遠選出 -152px(較不負的那個),等於這個夾限從未生效過,
+   跟直接寫死 -152px 的結果一模一樣——這不是語法錯誤,是對 CSS
+   百分比語意的錯誤假設,實測前光憑理論推導看不出問題。
+   2026-10(第六輪,使用者截圖回報視覺仍不對 + 範圍擴大到全部寬版):
+   前五輪的 85vw + margin:auto 版本雖然把 .mapPanelWrap 這個盒子本身
+   在「整個視窗寬度」置中算對了(Playwright 量測 900px 下 x=67.5,
+   left/right 對稱),但使用者截圖指出視覺上仍然明顯偏左、右側留白
+   沒用到——根因是「視窗置中」漏算了左側疊著的時間軸欄位(96px 欄寬
+   + 24px gap + 32px .layout padding-left = 152px):時間軸疊在地圖
+   面板左側上方,是整個視覺群組不可拆分的一部分,但置中算式只把地圖
+   這個盒子自己置中於整個視窗,没有把時間軸佔用的 152px 從「可置中
+   空間」裡扣掉,於是看起來像「地圖往右移了一點,但還不夠,左邊仍有
+   時間軸墊著、右邊空出一塊沒人用」。
+   正確算法(第六輪):置中基準改成「扣掉時間軸佔用的 152px 後的剩餘
+   空間」,地圖在這個剩餘空間裡取 85% 寬度並置中,而不是在整個視窗
+   寬度裡取 85%。這一輪 Playwright 複測確實讓「地圖面板自己」左右
+   對稱置中,但後續用新寫的 Playwright 測試(tests/e2e-scroll-
+   timeline-map-panel.spec.ts)精確量測時間軸/地圖面板兩者的矩形
+   交集,發現時間軸(x:[56,152])跟地圖面板(x:[228.5,823.5])中間
+   空了 76.5px、完全没有重疊——這個「置中」讓地圖完全跟時間軸分離、
+   變成「並排」,不是使用者要的「時間軸疊在地圖裡面」。
+   2026-10(第八輪,推翻第六/七輪,改回參考最初 HEAD 版本的簡單設計):
+   使用者明確釐清因果關係:「時間軸的位置是固定的(配合內文排版),
+   地圖左邊要依照時間軸的位置調整寬度到剛好包覆時間軸,同時右側也要
+   對稱」——時間軸是因,地圖尺寸是果,不是兩者各自獨立去談「置中」。
+   最初 HEAD 版本(往前追溯這次 2026-10 連續多輪修正之前最後一次
+   commit)其實已經抓到這個因果方向的精神,只是數值/用途不同:
+     .mapPanelOpen { margin-left: -120px; width: calc(100% + 120px); }
+   這版用「固定數字」的 margin-left/width,不嘗試用 calc 去湊「視窗
+   寬度比例置中」,所以不會像第二到第七輪一樣反覆踩到「margin 的
+   百分比基準是 containing block(.root)寬度,不是視窗寬度」這個
+   坑——借用這個簡單性,但數字改成使用者這次要的「包覆 + 留間隙」
+   規格(不是完全貼齊蓋滿):
+     時間軸左緣相對 .root 的座標 = .layout 的 padding-left = 32px
+     地圖左緣(= margin-left)= 時間軸左緣 - 間隙(16px,沿用站內
+       卡片常見留白慣例) = 32 - 16 = 16px
+     寬度置中反推:margin-left + width/2 = 50%(相對 .root 置中)
+       → width = 100% - 2 * margin-left = 100% - 32px
+   這裡刻意不用 vw 或混合 calc 去追求「視窗寬度比例」——使用者已
+   確認接受「簡單優先」,.root 觸頂(≤960px)時地圖右緣會隨視窗縮小
+   更接近視窗右側(不再是固定比例的留白),這是已知、使用者接受的
+   取捨,不是遺漏。
+   驗證(900px 視窗,.root 此時 x=24 w=852):margin-left=16px,
+   width=852-32=820px;地圖左緣(相對視窗)=24+16=40,右緣=
+   40+820=860,右側留白=900-860=40,左側留白(地圖左緣到視窗左緣)
+   =40,左右相等;時間軸左緣(相對視窗)=24+32=56,地圖左緣(40)到
+   時間軸左緣(56)的間隙=16px,符合規格。
+   同時這輪確認:這個「包覆時間軸 + 置中」設計套用到全部 >640px
+   寬度(不再只是 641~960px 觸頂區間),取代桌面寬版(>960px)原本
+   「負 margin 往左覆蓋時間軸、右緣貼齊原欄位」的舊設計——
+   641~960px 跟 >960px 共用同一套算式,不再分成兩種模型。
+   .timeline(時間軸本體)完全不動——它仍在 .layout 的 grid 第 1 欄,
+   z-index(10)比這裡的地圖面板(5)高,視覺上自然疊在地圖左側
+   上方,使用者明確要求過「時間軸不要動位置」。
+   --map-panel-open-gutter(2026-10 code review 後補):原本 margin-left
+   寫死的 16px,是「.layout 的 padding-left(32px)− 間隙(16px)」這個
+   推導算出來的結果,但只把算完的答案(16px)寫死進去,没有把算式本身
+   留在程式碼裡——.layout 的 padding-left 已經改成 --timeline-layout-
+   padding-left 自訂屬性(見該規則說明),這裡的 margin-left/width 改用
+   calc() 直接讀這個變數,連動 .layout 以後若改了 padding-left,這裡
+   會自動跟著變,不需要兩處手動同步重算。「間隙」(16px,地圖左緣到
+   時間軸左緣的留白,沿用站內卡片常見留白慣例,不是 .layout 的 gap:
+   24px,兩者是不同語意的數字,只是剛好都是整數)抽成
+   --map-panel-open-gutter 這個獨立自訂屬性,語意跟來源都留在變數名稱
+   上,不再是算式裡一個沒有名字的裸數字。
+   width 算式同理從「寫死的 100% - 32px」改成「100% - 2 * margin-left」
+   的 calc 版本,直接複用上面同一個 margin-left 算式(而非另外重複
+   抄一次 32px/16px),避免兩處各自硬編碼同一個值卻各自維護。
+   fallback 數字(32px/16px)維持跟改動前完全一致,這段改動是純粹的
+   「把已經手算好的答案換成會自動重算的公式」,不改變任何渲染結果。 */
 .mapPanelOpen {
-  margin-left: -120px;
-  width: calc(100% + 120px);
+  /* 2026-10 code review 抓到:這裡原本還有 left:auto; right:auto;
+     transform:none; 三行,是第六/七輪(已放棄的 vw/margin:auto 置中
+     方案)留下的重置殘留——.mapPanelWrap 本身是 position:sticky 加
+     margin-left 定位(見該規則完整說明),從未設定過 left/right/
+     transform,這三行沒有任何對應要覆寫的宣告,是無效的死碼,移除。 */
+  --map-panel-open-gutter: 16px;
+  margin-left: calc(var(--timeline-layout-padding-left, 32px) - var(--map-panel-open-gutter, 16px));
+  width: calc(100% - 2 * (var(--timeline-layout-padding-left, 32px) - var(--map-panel-open-gutter, 16px)));
 }
 
 @media (max-width: 640px) {

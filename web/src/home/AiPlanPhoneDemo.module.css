@@ -1,0 +1,81 @@
+/* PhoneMockup:見 AiPlanPhoneDemo.tsx 的完整說明。數值照抄
+   record/RecordAiPlanPage.module.css 的 .phoneFrame 系列。 */
+
+/* holder 的寬高是縮放後的視覺尺寸(inline style),佔住正確的版面空間;
+   手機本體以 top left 為原點縮放。 */
+.holder {
+  display: block;
+  cursor: pointer;
+  margin: 1.25rem auto 0;
+  max-width: 100%;
+}
+
+.phoneFrame {
+  box-sizing: border-box;
+  position: relative;
+  transform-origin: top left;
+  border-radius: 54px;
+  background: linear-gradient(155deg, #E2E2E0 0%, #B8B8B4 12%, #8C8C88 50%, #B8B8B4 88%, #E2E2E0 100%);
+  padding: 3px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.08),
+    0 24px 60px -20px rgba(43, 36, 32, 0.35);
+}
+
+.bezel {
+  box-sizing: border-box;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  border-radius: 51px;
+  padding: 2px;
+  overflow: hidden;
+}
+
+.notch {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 34%;
+  max-width: 126px;
+  height: 32px;
+  background: #000;
+  border-radius: 999px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.buttonPower {
+  position: absolute;
+  right: -3px;
+  top: 22%;
+  width: 3px;
+  height: 64px;
+  background: linear-gradient(90deg, #8C8C88, #B8B8B4);
+  border-radius: 0 3px 3px 0;
+}
+
+.buttonVolumeUp,
+.buttonVolumeDown {
+  position: absolute;
+  left: -3px;
+  width: 3px;
+  height: 40px;
+  background: linear-gradient(90deg, #B8B8B4, #8C8C88);
+  border-radius: 3px 0 0 3px;
+}
+.buttonVolumeUp { top: 16%; }
+.buttonVolumeDown { top: 24%; }
+
+.screen {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+  background: #FFFFFF;
+  border-radius: 49px;
+  overflow: hidden;
+  pointer-events: none;
+}

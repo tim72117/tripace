@@ -1,9 +1,11 @@
-/* ExploreOtherCities——沿用 CityPageFooter.module.css 的既有手法:讀取
-   呼叫端(各城市頁 .kyoto-page/.jiufen-page/.tainan-page/.tainan-chikan-page
-   作用域)已經定義好的中性 token 名稱(--paper/--ink/--ink-soft/--line/
-   --card-shadow),四頁這幾個變數名稱完全一致,不需要額外中性化。強調色
-   用 --explore-accent 這個專屬中性變數(同 --footer-accent 的既有模式),
-   呼叫端各自指向自己的強調色變數(--vermilion 或 --brick)。 */
+/* ExploreOtherCities——中性 token(--paper/--ink/--ink-soft/--line/
+   --card-shadow)沿用 CityPageFooter.module.css 的既有手法:讀取呼叫端
+   (各城市頁 .kyoto-page/.jiufen-page/.tainan-page/.tainan-chikan-page
+   作用域)已經定義好的同名變數,這幾個名稱站內所有頁面一致,不需要額外
+   中性化。強調色用 --explore-accent 這個專屬中性變數,2026-10 改由
+   ExploreOtherCities.tsx 的必填 accentColor prop 透過 inline style
+   注入(見該檔案 accentColor 的完整說明),不再要求呼叫端頁面的 CSS
+   自己定義同名變數。 */
 
 .section {
   padding: 4rem 1.5rem 5rem;

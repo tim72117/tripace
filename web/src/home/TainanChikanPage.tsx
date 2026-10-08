@@ -8,6 +8,7 @@ import { useThemeToggle } from '../hooks/useThemeToggle';
 import { trackEvent } from '../analytics';
 import { SITE_SEO_BASE_URL } from '../AppCommon';
 import './TainanChikanPage.css';
+import './ScrollTimelineContainer.css';
 
 // TainanChikanPage — 赤崁・府城「老地方的前世今生」兩日遊介紹頁,外殼
 // 架構對齊 JiufenPage.tsx/KyotoPage.tsx/TainanPage.tsx 模式(互動地圖+
@@ -86,6 +87,12 @@ const PHOTO_TAGGING_PREVIEW_BASE = 'https://storage.googleapis.com/shuttle-tripa
 //   天下南隅維持「住宿」——這是功能性標記(標示這站是過夜地點),
 //   不是敘事分類,不需要跟著改。index/layout('stacked'/'side' 交替)
 //   沿用既有命名。
+// ROUTE_STOPS:頁首路線時間軸的站名,兩天連成同一條(順序對應 STOPS)。
+const ROUTE_STOPS = [
+  '赤崁樓', '武廟愛玉', '神農街', '天下南隅（入住）',
+  '消防史料館', '文學館', '林百貨', '台南孔廟・孔廟商圈',
+]
+
 const STOPS = [
   {
     index: '壱',
@@ -105,7 +112,7 @@ const STOPS = [
     desc: '這裡原本是 1653 年荷蘭人蓋的普羅民遮城，地基是當時的荷式磚造結構。後來清朝人在上面重建了海神廟跟文昌閣，變成現在看到的閩南式閣樓。腳下踩的是荷蘭地基，上面是清代建築，走一圈還滿有意思的。',
     blurb: '兩個完全不同年代的東西疊在一起，逛的時候可以留意一下地基跟上面建築的差別。',
     gallery: [
-      { file: 'IMG_9812.webp', alt: '赤崁樓紅牆藍簷迴廊', caption: '紅牆藍簷的迴廊，石柱林立，屋簷雕花清晰可見' },
+      { file: 'IMG_9812.webp', alt: '赤崁樓紅牆藍簷迴廊', caption: '紅牆配藍色屋簷，走在迴廊裡隨手拍都好看，屋簷的雕花也很細' },
     ],
     info: [
       ['建議停留', '約 45–60 分鐘'],
@@ -128,7 +135,7 @@ const STOPS = [
     // 可補,維持單張。見 .tainan-chikan-stop-gallery--single 的樣式
     // (單張圖時走不同的高度規則,不是主圖/小圖版面)。
     gallery: [
-      { file: 'IMG_9813.webp', alt: '武廟愛玉店面招牌', caption: '店面招牌清楚寫著「武廟愛玉」，攤位擺著手作商品' },
+      { file: 'IMG_9813.webp', alt: '武廟愛玉店面招牌', caption: '看到「武廟愛玉」的招牌就是這間，旁邊攤位還有賣手作小東西' },
     ],
     info: [
       ['位置', '祀典武廟廟埕旁'],
@@ -147,10 +154,10 @@ const STOPS = [
     desc: '這裡以前是五條港時期的商業街，現在改成一間間小店，但木造街屋的樣子還留著。晚上整條街掛滿彩色燈籠，老屋被照得暖暖的，難怪大家都愛來拍照。第一天走到這裡，用這個夜景收尾剛剛好，再往前走幾步就是今晚住的天下南隅。',
     blurb: '假日人潮確實不少，想拍空景幾乎不可能，但這種熱鬧感反而才是神農街的味道。',
     gallery: [
-      { file: 'IMG_9817.webp', alt: '神農街夜間燈籠街景', caption: '夜間街景，木造街屋兩側掛滿彩色燈籠' },
-      { file: 'IMG_9826.webp', alt: '青花瓷磚老屋外牆', caption: '青花瓷磚裝飾的老屋外牆，門口掛著一排造型燈籠' },
-      { file: 'IMG_9823.webp', alt: '轉角店面夜景', caption: '轉角店面夜景，二樓陽台掛著一排燈籠，路人坐在店外休息' },
-      { file: 'IMG_9824.webp', alt: '夜間人潮擁擠的街道', caption: '夜間人潮擁擠的街道，兩側店家燈籠與招牌燈火通明' },
+      { file: 'IMG_9817.webp', alt: '神農街夜間燈籠街景' },
+      { file: 'IMG_9826.webp', alt: '青花瓷磚老屋外牆' },
+      { file: 'IMG_9823.webp', alt: '轉角店面夜景' },
+      { file: 'IMG_9824.webp', alt: '夜間人潮擁擠的街道' },
     ],
     info: [
       ['建議停留', '約 40–60 分鐘'],
@@ -169,9 +176,9 @@ const STOPS = [
     center: { lat: 22.9993737, lng: 120.203621 },
     desc: '這棟樓 1985 年就開了，以前是台南數一數二的高級商務旅館，據說兩任總統都住過，頂樓那間圓頂西餐廳更是不少台南人的兒時回憶。後來歇業荒廢了好一陣子，2020 年開始整修，花了三年重新設計，2023 年底才以「天下南隅」這個新名字重新開張，把 40 年的老屋氣味留著，又加了點現代感。逛完神農街夜景，剛好可以在這過夜。公共區有個開放式廚房，不是房間裡那種小廚具，可以自己煮點東西；大廳整面書牆配上垂掛的藍白布幔，坐在這裡翻書發呆一下午也不會膩。',
     gallery: [
-      { file: 'IMG_9810.webp', alt: '大廳書牆與閱讀區', caption: '大廳書牆與閱讀座位區，天花板垂掛藍白布幔裝置' },
-      { file: 'IMG_9809.webp', alt: '公共廚房中島', caption: '公共空間的廚房中島與起居區，冰箱旁立著一把吉他' },
-      { file: 'IMG_9811.webp', alt: '大廳圓桌與時鐘', caption: '同一大廳的另一角度，圓桌旁掛著兩座時鐘與圓形畫框' },
+      { file: 'IMG_9810.webp', alt: '大廳書牆與閱讀區' },
+      { file: 'IMG_9809.webp', alt: '公共廚房中島' },
+      { file: 'IMG_9811.webp', alt: '大廳圓桌與時鐘' },
     ],
     info: [
       ['位置', '台南市中西區（步行可達神農街）'],
@@ -191,12 +198,12 @@ const STOPS = [
     blurb: '這站根本是小孩的主場，光是體驗區就能玩上一陣子，大人也看得很開心。',
     gallery: [
       { file: 'IMG_9833.webp', alt: '消防員模型沿滑桿下滑', caption: '挑高空間裡消防員人形模型正沿著紅色滑桿往下滑' },
-      { file: 'IMG_9838.webp', alt: '消防服著裝承重體驗', caption: '「消防服著裝承重體驗」展示區，掛著實際消防衣與安全帽' },
+      { file: 'IMG_9838.webp', alt: '消防服著裝承重體驗' },
       { file: 'IMG_9839.webp', alt: '兒童體驗區消防員負重體驗', caption: '兒童體驗區，小朋友背著氧氣瓶道具進行消防員負重體驗' },
-      { file: 'IMG_9831.webp', alt: '復古消防吉普車', caption: '館內陳列的復古紅色消防吉普車，車身保存完整' },
+      { file: 'IMG_9831.webp', alt: '復古消防吉普車' },
       { file: 'IMG_9843.webp', alt: '消防塔近景', caption: '消防塔（火見樓）近景，旁邊道路上停著消防車' },
-      { file: 'IMG_9828.webp', alt: '建築構造展板', caption: '建築構造展板，標示「火見樓」「旗杆」等建築部位名稱' },
-      { file: 'IMG_9864.webp', alt: '消防塔夜景', caption: '夜景，消防塔樓體打上暖黃燈光' },
+      { file: 'IMG_9828.webp', alt: '建築構造展板', caption: '展板有標出火見樓、旗杆這些建築部位的名稱' },
+      { file: 'IMG_9864.webp', alt: '消防塔夜景' },
     ],
     info: [
       ['建議停留', '約 30–40 分鐘'],
@@ -216,9 +223,9 @@ const STOPS = [
     blurb: '紅磚拱廊配現代採光罩這種新舊混搭，比起單純看老建築或單純看新建築，反而更好拍。',
     gallery: [
       { file: 'IMG_9848.webp', alt: '新舊建築交界的長廊', caption: '長廊空間，紅磚拱門與現代化天花板採光罩並存' },
-      { file: 'IMG_9845.webp', alt: '挑高中庭新舊並存', caption: '挑高中庭，紅磚拱廊與現代圓弧量體建築並存' },
-      { file: 'IMG_9849.webp', alt: '文學館紅磚立面', caption: '建築外觀，紅磚立面搭配拱窗，門前種植高聳的棕櫚樹' },
-      { file: 'IMG_9846.webp', alt: '室內紅磚牆面與閱讀區', caption: '室內紅磚牆面與白色圓柱，旁邊擺著兒童繪本閱讀區' },
+      { file: 'IMG_9845.webp', alt: '挑高中庭新舊並存' },
+      { file: 'IMG_9849.webp', alt: '文學館紅磚立面' },
+      { file: 'IMG_9846.webp', alt: '室內紅磚牆面與閱讀區' },
       { file: 'IMG_9852.webp', alt: '州廳建築模型', caption: '館內陳列的建築模型，還原原台南州廳的紅磚屋頂全貌' },
     ],
     info: [
@@ -235,11 +242,11 @@ const STOPS = [
     // 座標取自資料庫「林百貨」記錄。
     center: { lat: 22.9917925, lng: 120.2025232 },
     desc: '1932 年開幕，是台南第一間百貨公司，戰後荒廢了幾十年，2014 年才整修重新開幕。轉角立面跟排列整齊的圓窗還是當年的樣子，頂樓還留著神社遺跡。逛完文學館過來剛好，可以上頂樓露台吹吹風、隨意逛逛買點東西，順便吃碗豆花。',
-    blurb: '頂樓露台掛滿裝飾燈串，坐在騎樓下休息，看得到旁邊街道，逛到一半需要喘口氣的話很適合。',
+    blurb: '進去可以留意幾個老設計：用指針顯示樓層的舊式電梯、轉角立面整排圓窗，還有頂樓留下來的神社遺跡。',
     gallery: [
-      { file: 'IMG_9854.webp', alt: '林百貨轉角外觀', caption: '轉角建築外觀，裝飾藝術風格立面、圓窗排列整齊' },
-      { file: 'IMG_9855.webp', alt: '頂樓露台裝飾燈串', caption: '頂樓露台，掛滿裝飾燈串，遊客在騎樓下的座位區休憩' },
-      { file: 'IMG_9856.webp', alt: '山海豆花', caption: '頂樓山海豆花——粉圓、豆類與碎冰的組合' },
+      { file: 'IMG_9854.webp', alt: '林百貨轉角外觀' },
+      { file: 'IMG_9855.webp', alt: '頂樓露台裝飾燈串', caption: '頂樓露台的牆面還留著二戰空襲的彈孔痕跡' },
+      { file: 'IMG_9856.webp', alt: '山海豆花', caption: '頂樓的山海豆花' },
     ],
     info: [
       ['建議停留', '約 45 分鐘（含頂樓豆花）'],
@@ -263,12 +270,12 @@ const STOPS = [
     desc: '紅牆大門上掛著「全臺首學」的匾額，1665 年就建了，是全台第一座孔廟。院落裡老樹枝葉很茂密，泮池的水面會倒映出對面建築的屋脊，傍晚去特別安靜。孔廟外圍這一帶是台南人熟悉的商圈，石造牌坊是入口地標，從林百貨走過來不遠，氣氛介於觀光跟日常之間。',
     blurb: '原本想排海安路，但那天週一多數店休，改來孔廟商圈這一帶逛——牌坊進去也有不少小店，氣氛差不多。',
     gallery: [
-      { file: 'IMG_9857.webp', alt: '全臺首學匾額', caption: '紅牆大門，匾額清楚寫著「全臺首學」' },
-      { file: 'IMG_9862.webp', alt: '泮池水景', caption: '泮池水景，倒映著對岸紅牆建築的屋脊剪影' },
-      { file: 'IMG_9859.webp', alt: '院落景觀', caption: '院落景觀，紅牆廟宇建築掩映在老樹枝葉之間' },
-      { file: 'IMG_9860.webp', alt: '傍晚院落與草坪', caption: '傍晚院落，老樹樹冠下可見紅牆廟宇建築群與草坪' },
+      { file: 'IMG_9857.webp', alt: '全臺首學匾額', caption: '孔廟同時也是學校，當時廟跟學校設在一起（廟學合一），不只祭祀，也是府城最早培養人才的地方' },
+      { file: 'IMG_9862.webp', alt: '泮池水景' },
+      { file: 'IMG_9859.webp', alt: '院落景觀' },
+      { file: 'IMG_9860.webp', alt: '傍晚院落與草坪' },
       { file: 'IMG_9858.webp', alt: '孔廟商圈石造牌坊', caption: '石造牌坊入口，通往傍晚燈火漸亮的商店街道' },
-      { file: 'IMG_9863.webp', alt: '石造牌坊近景', caption: '石造牌坊近景，傍晚時分，牌坊後方隱約可見紅牆建築' },
+      { file: 'IMG_9863.webp', alt: '石造牌坊近景' },
     ],
     info: [
       ['建議停留', '約 1 小時（含孔廟與周邊商圈）'],
@@ -337,6 +344,14 @@ export function TainanChikanPage() {
       <SiteNavBrand pageLabel="赤崁・府城" />
       <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
       <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'tainan-chikan', position: 'nav' })}>立即開始</SiteNavCta>
+      <SiteNavCta
+        href="/product"
+        variant="accent"
+        slot="2-wide"
+        onClick={() => trackEvent('landing_feature_intro_click', { page: 'tainan-chikan' })}
+      >
+        功能介紹
+      </SiteNavCta>
 
       {/* 2026-10:使用者要求「把遊記架構直接搬進來」——Hero 文案換成兩日遊
           遊記版本(對齊 docs/tainan-chikan-article-draft.html 的
@@ -359,13 +374,16 @@ export function TainanChikanPage() {
         </p>
       </header>
 
-      <div className="tainan-chikan-route-strip">
-        <span className="tainan-chikan-route-label">Day 1：赤崁樓 → 武廟愛玉 → 神農街 → 天下南隅（入住）</span>
-        赤崁樓 <span className="tainan-chikan-route-arrow">→</span> 武廟愛玉 <span className="tainan-chikan-route-arrow">→</span> 神農街 <span className="tainan-chikan-route-arrow">→</span> 天下南隅
-      </div>
-      <div className="tainan-chikan-route-strip tainan-chikan-route-strip--day2">
-        <span className="tainan-chikan-route-label">Day 2：消防史料館 → 文學館 → 林百貨 → 台南孔廟・孔廟商圈</span>
-        消防史料館 <span className="tainan-chikan-route-arrow">→</span> 文學館 <span className="tainan-chikan-route-arrow">→</span> 林百貨 <span className="tainan-chikan-route-arrow">→</span> 台南孔廟・孔廟商圈
+      {/* 兩日路線:一條橫向時間軸(圓點串線,站名在下方),取代原本的色塊路線條。 */}
+      <div className="tainan-chikan-route">
+        <ol className="tainan-chikan-route-steps">
+          {ROUTE_STOPS.map((name) => (
+            <li key={name} className="tainan-chikan-route-step">
+              <span className="tainan-chikan-route-dot" />
+              <span className="tainan-chikan-route-name">{name}</span>
+            </li>
+          ))}
+        </ol>
       </div>
 
       {/* 2026-10 試做:套用 ScrollTimeline(見該元件開頭的完整說明)取代
@@ -393,8 +411,8 @@ export function TainanChikanPage() {
           thumb 用每一站 gallery 的第一張照片,跟原本 MobileMapReveal
           只取 STOPS[0] 第一張圖的既有慣例一致,只是現在每一站都各自
           有自己的縮圖(而非只有進入地圖區塊前那一張)。 */}
-      <div className="tainan-chikan-stops">
-      <ScrollTimeline city="台南" defaultOpenTheme="赤崁・府城">
+      <div className="tainan-chikan-stops scroll-timeline-container">
+      <ScrollTimeline city="台南" accentColor="var(--brick)" defaultOpenTheme="赤崁・府城">
         {STOPS.map((stop, i) => {
           const prevDay = i > 0 ? STOPS[i - 1].day : stop.day
           const showDayDivider = i > 0 && stop.day !== prevDay
@@ -436,7 +454,7 @@ export function TainanChikanPage() {
                           alt={photo.alt}
                           loading="lazy"
                         />
-                        <figcaption>{photo.caption}</figcaption>
+                        {'caption' in photo && <figcaption>{photo.caption}</figcaption>}
                       </figure>
                     ))}
                   </div>
@@ -468,9 +486,9 @@ export function TainanChikanPage() {
         </Link>
       </section>
 
-      <ExploreOtherCities currentSlug="tainan-chikan" />
+      <ExploreOtherCities currentSlug="tainan-chikan" accentColor="var(--brick)" />
 
-      <CityPageFooter />
+      <CityPageFooter accentColor="var(--brick)" />
     </div>
   );
 }

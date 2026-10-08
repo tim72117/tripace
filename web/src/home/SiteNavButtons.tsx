@@ -125,8 +125,15 @@ export interface SiteNavCtaProps {
       同一層,:nth-of-type(N) 算的是「同標籤名的第 N 個元素」,不是
       「第 N 個 SiteNavCta」,容易在增減其他固定元素時悄悄選錯目標;
       明確的 slot prop 不受 DOM 結構影響。省略時走預設 right(單一
-      CTA 頁面,例如 ProductPage 只有一顆立即開始,不需要指定)。 */
-  slot?: 2 | 3
+      CTA 頁面,例如 ProductPage 只有一顆立即開始,不需要指定)。
+      2026-10 新增 '2-wide':四個城市介紹頁(Jiufen/Kyoto/Tainan/
+      TainanChikan)的第一顆固定 CTA 文字是「立即開始」(4 字,實測
+      93.95px),比 HomePage 的「登入」(2 字,66.6px)寬得多,直接用
+      數字 2 會套用到以「登入」寬度算出的 .site-nav-cta-slot-2
+      (141px),讓「功能介紹」跟「立即開始」間距不足甚至重疊——
+      '2-wide' 對應 .site-nav-cta-slot-2-wide(168px,見 SiteNavButtons.css
+      該 class 的完整說明),用「立即開始」的實測寬度重新校準。 */
+  slot?: 2 | 3 | '2-wide'
   onClick?: () => void
   target?: string
   rel?: string
@@ -141,6 +148,8 @@ export function SiteNavCta({ href, children, variant = 'default', slot, onClick,
   const classNames = ['site-nav-cta']
   if (variant === 'accent') classNames.push('site-nav-cta-accent')
   if (slot) classNames.push(`site-nav-cta-slot-${slot}`)
+  // slot 是 '2-wide' 時上面這行會產生 "site-nav-cta-slot-2-wide",跟
+  // SiteNavButtons.css 定義的 class 名稱一致,不需要額外特判。
   return (
     <Link className={classNames.join(' ')} to={href} onClick={onClick} target={target} rel={rel}>
       {children}

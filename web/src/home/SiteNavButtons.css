@@ -146,15 +146,40 @@
 }
 
 /* site-nav-cta-slot-N:第二/三顆固定 CTA 的 right 偏移(見
-   SiteNavButtons.tsx 的 slot prop 完整說明)——slot-2 是目前唯一用到
-   的情境(HomePage 的「功能介紹」,往左讓開第一顆「登入」CTA 的寬度+
-   間距):62px(登入自己的 right)+66.6px(登入實際渲染寬度,
-   Playwright getBoundingClientRect 實測)+12px(間距)≈140.6px,取
-   整數 141px。slot-3 目前沒有頁面用到,先保留同一套計算邏輯的擴充
-   位置(若未來某頁固定按鈕排到第三顆,不需要重新設計偏移規則,只要
-   量出前兩顆的實際寬度加總即可),值待實際需要時再校準。 */
+   SiteNavButtons.tsx 的 slot prop 完整說明)——slot-2 是 HomePage 的
+   「功能介紹」往左讓開第一顆「登入」CTA 的寬度+間距:62px(登入自己的
+   right)+66.6px(登入實際渲染寬度,Playwright getBoundingClientRect
+   實測)+12px(間距)≈140.6px,取整數 141px。slot-3 目前沒有頁面用到,
+   先保留同一套計算邏輯的擴充位置(若未來某頁固定按鈕排到第三顆,不
+   需要重新設計偏移規則,只要量出前兩顆的實際寬度加總即可),值待實際
+   需要時再校準。 */
 .site-nav-cta-slot-2 {
   right: 141px;
+}
+
+/* site-nav-cta-slot-2-wide:2026-10 新增——四個城市介紹頁(Jiufen/
+   Kyoto/Tainan/TainanChikan)也加上「功能介紹」第二顆 CTA(對齊
+   HomePage 的既有模式),但這四頁第一顆固定 CTA 文字是「立即開始」
+   (4 個字)而非 HomePage 的「登入」(2 個字),實際渲染寬度不同
+   (Playwright 實測 93.95px,不是 slot-2 算式用的 66.6px),不能直接
+   套用 slot-2 的 141px——會讓「功能介紹」跟「立即開始」間距不足甚至
+   重疊。另開一個專屬 class 而非覆寫共用的 slot-2,因為 HomePage 仍在
+   使用 slot-2 搭配「登入」按鈕,改動 slot-2 的數值會連動破壞 HomePage。
+   62px(第一顆自己的 right)+93.95px(「立即開始」實測寬度)+12px
+   (間距)≈167.95,取整數 168px。
+   已知限制(2026-10 code review 提出,刻意不處理):168px/151px(見下方
+   900px 斷點覆寫)是這次一次性 Playwright 量測「立即開始」四個字在
+   目前字型/字重下的寬度後,手動算出來寫死的常數,沒有跟按鈕文字內容
+   連動——如果四頁裡任何一頁的「立即開始」文案、字型或字重以後改變,
+   這個偏移量不會自動跟著重算,需要重新量測手動更新。這裡沒有做成
+   「讀取 DOM 實際寬度再動態算偏移」的版本,是因為四個城市頁的這顆
+   按鈕目前文案完全一致、字型也共用同一份(SiteNavButtons.css 本身),
+   變動機率低;真的要做成完全不會過期的版本,得改用 JS(例如用 ref
+   量测渲染後的實際寬度,寫回 inline style 的 right),對一個純版面
+   間距數字而言複雜度不成比例,屬於已知、可接受的維護風險,不是
+   遺漏。 */
+.site-nav-cta-slot-2-wide {
+  right: 168px;
 }
 
 /* 2026-09 code review 抓到:抽成共用元件時遺漏了 HomePage.css/
@@ -175,5 +200,11 @@
   }
   .site-nav-cta-slot-2 {
     right: 132px;
+  }
+  /* slot-2-wide 窄螢幕版——同上方桌面版的理由,這裡用「立即開始」在
+     900px 以下縮小字級/padding 後的實測寬度(76.97px)重新估算:
+     62px+76.97px+12px≈150.97,取整數 151px。 */
+  .site-nav-cta-slot-2-wide {
+    right: 151px;
   }
 }

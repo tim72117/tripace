@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { List as ListIcon, Search as SearchIcon } from 'lucide-react';
 import { InteractiveExploreMap } from './InteractiveExploreMap';
 import styles from './ScrollTimeline.module.css';
+import type { AccentColorProp } from './accentColor';
 
 // ScrollTimeline:「文案隨捲動、左側時間軸漸進顯示錨點、點縮圖向右展開
 // 地圖」這整套互動機制的共用元件——改成 compound components 模式
@@ -27,11 +28,14 @@ import styles from './ScrollTimeline.module.css';
 // 的說明),這是 compound components 模式本來就有的特性,不是這次改寫
 // 的缺陷。
 //
-// 色票沿用 CityPageFooter.module.css/ExploreOtherCities.module.css 的
-// 既有手法(見該二檔案開頭說明):不在這個元件內重新定義 --paper/--ink/
-// --ink-soft/--line,直接讀呼叫端頁面作用域(各城市頁 .xxx-page class)
-// 已經定義好的同名變數;強調色改用這個元件專屬的中性變數名
-// --timeline-accent(同 --footer-accent/--explore-accent 的既有模式)。
+// 色票:中性色(--paper/--ink/--ink-soft/--line)沿用 CityPageFooter.
+// module.css/ExploreOtherCities.module.css 的既有手法(見該二檔案開頭
+// 說明)——不在這個元件內重新定義,直接讀呼叫端頁面作用域(各城市頁
+// .xxx-page class)已經定義好的同名變數,這幾個顏色站內所有頁面共用
+// 同一套命名,不會各自取不同名字,漏寫的機會很低,維持原本模式。
+// 強調色改用必填的 accentColor prop(見 accentColor.ts 的完整說明)
+// 而非讀 CSS 變數——這是跟中性色唯一不同的地方,因為強調色是每個
+// 城市頁各自不同的值。
 
 // AnchorMeta:Context 登記簿裡每個錨點存的中繼資料——id 是穩定識別碼
 // (呼叫端自訂,註冊/反註冊/IntersectionObserver 比對整個靠它),thumb
@@ -112,6 +116,10 @@ export function ScrollTimeline({
   // 的 city prop(見該元件開頭說明),對應後端 publicAttractionsCityAllowlist
   // 白名單裡的其中一個值。
   city,
+  // accentColor:必填——這個元件的強調色(時間軸圓點、地圖面板外框/
+  // 陰影等多處用到,見 ScrollTimeline.module.css 裡所有
+  // var(--timeline-accent) 的地方)。完整說明見 accentColor.ts。
+  accentColor,
   // defaultOpenTheme:沒有在個別 <ScrollTimeline.Anchor theme="..."> 指定
   // 時的共用退回值——單一主題城市頁(例如九份只有「九份老街」一個主題
   // 點)不需要每個錨點都重複填同一個名稱。
@@ -125,6 +133,7 @@ export function ScrollTimeline({
 }: {
   children: ReactNode
   city: string
+  accentColor: AccentColorProp
   defaultOpenTheme?: string
   mapRestrictRadiusKm?: number
 }) {
@@ -385,7 +394,12 @@ export function ScrollTimeline({
           .mapPanelWrap 才能改回 position:sticky 正常運作(沒有
           containing block 被 grid 窄欄夾住的問題),詳見 CSS module
           .root/.mapPanelWrap 的完整說明。 */}
-      <div className={styles.root}>
+      {/* accentColor 透過 inline style 寫進 --timeline-accent,取代原本
+          「呼叫端 CSS 自行定義同名變數」的隱性約定(見上方 accentColor
+          prop 的完整說明)——CSS Custom Properties 可以直接當 inline
+          style 的屬性名稱使用,React 的型別定義不預先知道這些動態
+          名稱,故需要 as React.CSSProperties 繞過型別檢查。 */}
+      <div className={styles.root} style={{ '--timeline-accent': accentColor } as CSSProperties}>
       <div className={styles.layout}>
         <aside className={styles.timeline}>
           <div className={styles.timelineTrack}>

@@ -1,6 +1,8 @@
+import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { trackEvent } from '../analytics'
 import styles from './ExploreOtherCities.module.css'
+import type { AccentColorProp } from './accentColor'
 
 // LANDING_ASSETS_BASE——城市介紹頁共用的 CDN 資源根目錄(見
 // JiufenPage.tsx/KyotoPage.tsx/TainanPage.tsx 各自檔頭對這個常數的完整
@@ -84,16 +86,21 @@ const CITIES: CityLink[] = [
 // 卡片)使用者明確要求這裡改顯示「精選景點」,比「更多目的地」更貼合
 // 「從功能介紹頁推薦去哪裡玩」的情境(不是「你已經在看一個城市,換一個
 // 看看」的語境),故只讓這一個呼叫端覆寫,其餘四頁不受影響。
+// accentColor:必填,卡片 hover 時城市名稱顏色用這個強調色(對應
+// ExploreOtherCities.module.css 的 --explore-accent)。完整說明見
+// accentColor.ts。
 export function ExploreOtherCities({
   currentSlug,
   eyebrow = '更多目的地',
+  accentColor,
 }: {
   currentSlug: CityLink['slug']
   eyebrow?: string
+  accentColor: AccentColorProp
 }) {
   const others = CITIES.filter((c) => c.slug !== currentSlug)
   return (
-    <section className={styles.section}>
+    <section className={styles.section} style={{ '--explore-accent': accentColor } as CSSProperties}>
       <div className={styles.inner}>
         <div className={styles.eyebrow}>{eyebrow}</div>
         <h2 className={styles.title}>選一個地方，開始探索</h2>

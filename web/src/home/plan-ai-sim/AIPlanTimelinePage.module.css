@@ -36,6 +36,11 @@
    scrollClassName prop,呼叫端各自疊加自己需要的樣式——這裡的
    .timelineScroll 就是補給展示頁的那份。 */
 
+/* pageEmbedded:被當 iframe 嵌進其他頁面時(見 AIPlanTimelinePage 的
+   isEmbedded),內部捲動區隱藏捲軸把手,捲動功能不受影響。 */
+.pageEmbedded .timelineScroll { scrollbar-width: none; }
+.pageEmbedded .timelineScroll::-webkit-scrollbar { display: none; }
+
 .page {
   width: 100%;
   height: 100dvh;
@@ -82,14 +87,19 @@
   }
 }
 
-/* ---------- 頂部狀態藥丸(掛在 SiteNavBrand 的 extra 插槽裡) ----------
+/* ---------- 狀態藥丸(已安排幾站/正在安排行程) ----------
    使用者明確要求「不要有上方的實際功能列了」,原本的 .header/
    .headerLeft/.headerRight/.tripName(實體功能列容器)已整個移除——
    頁面頂部現在只剩 home/SiteNavButtons.tsx 那組 fixed 漂浮按鈕
-   (SiteNavBrand/SiteNavThemeToggle/SiteNavCta)。.statusPill 現在是
-   SiteNavBrand 的 extra prop 內容,直接跟品牌文字/pageLabel 一起排在
-   同一個 fixed 定位的 .site-nav-brand-row 裡(見 SiteNavButtons.tsx),
-   不再需要自己的定位或捲動容器。 */
+   (SiteNavBrand/SiteNavThemeToggle/SiteNavCta)。
+   2026-10(第二輪,位置再次調整):.statusPill 第一輪原本掛在
+   SiteNavBrand 的 extra prop 裡,跟品牌文字/pageLabel 一起排在同一個
+   fixed 定位的 .site-nav-brand-row 裡。使用者這輪要求「放到輸入匡的
+   前面」——改成放進 .composer 的 .inputRow 最前面(輸入框膠囊內部最
+   左側,跟輸入框/送出鈕同一排,見 AIPlanTimelinePage.tsx 該處的完整
+   說明)。.statusPill 本身是 display:flex + flex:none,直接搬進
+   .inputRow 這個 flex 容器照樣正確排列,不需要調整自身樣式,只是
+   render 位置從 SiteNavBrand 的 extra 換成 .inputRow 的子元素。 */
 
 .statusPill {
   display: flex;
@@ -112,6 +122,42 @@
 }
 .statusDotGenerating { background: var(--ios-sand); animation: breathe 1.4s ease-in-out infinite; }
 .statusDotDone { background: var(--ios-green); }
+
+/* timelinePanel——2026-10 使用者要求「將 /ai-plan 時間軸放到右側」,
+   且明確要求「只有桌面版」套用,手機版維持原本滿版置中的版式不變。
+   桌面斷點(min-width:768px,跟下方手機斷點 767px 互斥,兩者合起來
+   涵蓋所有寬度):固定寬度 560px 的側欄,position:absolute 貼齊 .page
+   右緣、上下撐滿,讓左側 StaticMapBackdrop(整頁的地圖底層,position:
+   absolute + pointer-events:none)完全露出不被時間軸內容遮擋——視覺
+   語言從「時間軸置中疊在地圖正中央」改成「左地圖/右資訊欄」。
+   這層需要自己的 position:relative,取代原本 composer/jumpPillWrap
+   相對 .page 計算位置的定位基準(見下方兩者的完整說明:現在要相對這個
+   側欄本身置中,不是整個視窗寬度置中)。
+   2026-10 修正:第一版給了實色背景(--ios-bg)+ 朝左的陰影,想強調
+   「這是一塊獨立面板」——使用者回報「不要有底,跟剛剛一樣的浮空
+   效果」:原本(改動前)時間軸是直接疊在地圖上、沒有自己的背景色/
+   陰影分界,卡片本身(PlanTimelineView 的 .stopCard 等)才各自有自己
+   的卡片底色,地圖從卡片與卡片之間的留白透出來——這次只是把這整塊
+   內容整體搬到右側,不應該連帶改變「浮空疊在地圖上」這個既有視覺
+   語言,變成一塊不透明的實色側欄。拿掉 background/box-shadow,這個
+   容器現在純粹只負責定位(固定寬度+貼右+上下撐滿),不產生任何視覺
+   上的底色或陰影,地圖在整個側欄範圍內都繼續透出來,跟改動前同一種
+   「浮空」觀感。
+   手機版(max-width:767px)不套用——見下方 responsive 區塊,.timelinePanel
+   在窄螢幕退回 .page 的一般 flex 子項,寬度撐滿、不再是 absolute 側欄,
+   PlanTimelineView 自己的 .inner(max-width:640px; margin:0 auto)
+   繼續負責窄螢幕下的置中呈現,跟改動前完全一致。 */
+@media (min-width: 768px) {
+  .timelinePanel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 560px;
+    display: flex;
+    flex-direction: column;
+  }
+}
 
 /* ---------- 時間軸捲動容器覆寫(見檔案開頭的完整說明) ----------
    疊加在 PlanTimelineView 自己的 .scroll 上(透過 scrollClassName
@@ -162,6 +208,20 @@
   bottom: 172px;
   transform: translateX(-50%);
   height: auto;
+}
+
+/* timelineEndMarker——疊加在 PlanTimelineView 自己的 .endMarker 上
+   (透過 endMarkerClassName prop,見該元件該 prop 的完整說明)。共用
+   元件的 .endMarker 用 --ios-gray(淺灰色)文字,在正式頁(/app)疊在
+   純色頁面背景上沒有問題,但這個展示頁的時間軸整段浮在 StaticMapBackdrop
+   地圖底圖之上(見 .timelineScroll 的完整說明)——使用者回報「行程
+   結束」這行字顯示不清楚:地圖紋理當背景、文字本身又淡,對比度不足,
+   不能直接改共用元件的 .endMarker(會連動影響正式頁)。加一層文字
+   陰影提高可讀性,不改變文字顏色本身——陰影比改顏色更穩妥,因為地圖
+   底下深淺不一(道路/水域/街廓的亮度差很大),固定改成某一種顏色在
+   某些區域可能反而更不清楚,陰影能在亮暗兩種底色下都加強文字邊界。 */
+.timelineEndMarker {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 0 1px rgba(0, 0, 0, 0.3);
 }
 
 /* ---------- Composer ---------- */
@@ -324,4 +384,19 @@
 
 @media (max-width: 767px) {
   .composer { width: calc(100% - 32px); }
+  /* timelinePanel 手機版退回——使用者明確要求「只有桌面版」套用右側
+     欄位版式(見該 class 桌面斷點的完整說明)。這裡不是「什麼都不寫」
+     就自然退回:.timelinePanel 現在是 .page(flex-direction:column)
+     裡的一個 flex 子項,需要明確的 flex:1 才能吃滿剩餘高度,PlanTimelineView
+     內部 .timelineScroll 的捲動機制才有正確的容器高度可以依據——不給
+     這個宣告,裸 div 預設 flex:0 1 auto,高度只會被內容撐開,在固定
+     height:100dvh 的 .page 裡會跟原本「沒有這層包裝」時的捲動行為
+     不一致。min-height:0 是 flex 子項常見的捲動容器前提(子項預設
+     min-height:auto 不會小於內容,少這行可能無法正確收縮/捲動)。 */
+  .timelinePanel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
 }

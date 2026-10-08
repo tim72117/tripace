@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { ThemePointDemo } from './ThemePointDemo';
 import { TimelineDemo } from './TimelineDemo';
-import { AutoPlanDemo } from './AutoPlanDemo';
+import { AiPlanPhoneDemo } from './AiPlanPhoneDemo';
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { ExploreOtherCities } from './ExploreOtherCities';
 import { trackEvent } from '../analytics';
@@ -139,38 +139,17 @@ export function ProductPage() {
                   TimelineDemo:同樣邏輯,只在「時間軸排程」卡片內渲染
                   ——地圖上依序點選候選景點、依序飛入右側時間軸時段格
                   的假動畫,見 TimelineDemo.tsx 的完整說明。
-                  AutoPlanDemo:同樣邏輯,只在「AI編排行程」卡片內渲染
-                  (2026-09 由「自動編排行程」改名,見 FEATURES 陣列該筆
-                  資料的完整說明)——模擬打出一句旅行需求文字、送出後
-                  系統自動把候選景點依序排成一份時間軸行程的假動畫,
-                  聊天輸入框視覺沿用 plan-ai/AIPlanTimelinePage.tsx 的
-                  樣式,時間軸呈現方式則另外簡化設計,見 AutoPlanDemo.tsx
-                  的完整說明。 */}
+                  AiPlanPhoneDemo:同樣邏輯,只在「AI編排行程」卡片內渲染
+                  ——模擬手機外框內直接跑 /ai-plan 展示頁(embedded 模式),
+                  見 AiPlanPhoneDemo.tsx 的完整說明。 */}
               {title === '主題景點' && <ThemePointDemo dark={dark} />}
               {title === '時間軸排程' && <TimelineDemo dark={dark} />}
+              {/* 點整支手機連到 /ai-plan 完整展示(站內路由,故用 <Link>,見
+                  AiPlanPhoneDemo.tsx)。取代原本的「觀看展示」按鈕。 */}
               {title === 'AI編排行程' && (
-                <>
-                  <AutoPlanDemo dark={dark} />
-                  {/* 2026-09 使用者要求「AI編排行程」卡片加入按鈕,連到
-                      /ai-plan(見 App.tsx 的路由定義,PlanAiSimPage——
-                      「AI 安排行程」模擬展示獨立公開頁)。這是站內路由,
-                      不是外部網站(tripace.shuttle.tools 就是這個 repo
-                      自己的正式站網域,見 deploy-redirect.yml 的說明),
-                      故用相對路徑的站內 <Link>,不是完整網址的 <a>,
-                      同頁跳轉即可,不需要 target="_blank"。文案用
-                      「觀看展示」而非「立即試用」——這是一個展示頁,
-                      不是功能已經完整上線可直接使用,避免文案語氣暗示
-                      超出實際完成度。只在這張卡片渲染,同上方
-                      ThemePointDemo/TimelineDemo 依 title 字串決定是否
-                      多渲染內容的既有慣例。 */}
-                  <Link
-                    to="/ai-plan"
-                    className="product-feature-cta"
-                    onClick={() => trackEvent('landing_cta_click', { page: 'product', position: 'feature-ai-plan' })}
-                  >
-                    觀看展示
-                  </Link>
-                </>
+                <AiPlanPhoneDemo
+                  onClick={() => trackEvent('landing_cta_click', { page: 'product', position: 'feature-ai-plan' })}
+                />
               )}
             </div>
           ))}
@@ -198,7 +177,7 @@ export function ProductPage() {
           明確要求這裡的小標文字跟其餘四頁預設的「更多目的地」不同,
           更貼合「從功能介紹頁推薦去哪裡玩」的情境(見 ExploreOtherCities.tsx
           該 prop 的完整說明)。 */}
-      <ExploreOtherCities currentSlug="product" eyebrow="精選景點" />
+      <ExploreOtherCities currentSlug="product" eyebrow="精選景點" accentColor="var(--vermilion)" />
 
       {/* footer——結構、文案對齊 HomePage.tsx 的 .kyoto-footer(品牌名、
           Copyright 列、法律/導覽連結、onagent 背書連結),只是 class 前綴

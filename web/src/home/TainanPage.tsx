@@ -9,6 +9,7 @@ import { useThemeToggle } from '../hooks/useThemeToggle';
 import { trackEvent } from '../analytics';
 import { SITE_SEO_BASE_URL } from '../AppCommon';
 import './TainanPage.css';
+import './ScrollTimelineContainer.css';
 
 // LANDING_ASSETS_BASE:見 JiufenPage.tsx 對應常數的完整說明,同一個公開
 // 可讀 GCS bucket(shuttle-tripace-web-assets),landing/{城市 slug}/
@@ -219,6 +220,14 @@ export function TainanPage() {
       <SiteNavBrand pageLabel="台南・安平" />
       <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
       <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'tainan', position: 'nav' })}>立即開始</SiteNavCta>
+      <SiteNavCta
+        href="/product"
+        variant="accent"
+        slot="2-wide"
+        onClick={() => trackEvent('landing_feature_intro_click', { page: 'tainan' })}
+      >
+        功能介紹
+      </SiteNavCta>
 
       <header className="tainan-hero">
         <span className="tainan-hero-eyebrow">港口決定了這一切</span>
@@ -252,8 +261,8 @@ export function TainanPage() {
           不傳。thumb 用每一站的 photo(跟原本 MobileMapReveal 只取
           ANPING_FORT_PHOTO_URL 單一縮圖的既有慣例相比,現在每一站都
           各自有自己的時間軸縮圖)。 */}
-      <div className="tainan-stops">
-      <ScrollTimeline city="台南" defaultOpenTheme="安平古堡">
+      <div className="tainan-stops scroll-timeline-container">
+      <ScrollTimeline city="台南" accentColor="var(--brick)" defaultOpenTheme="安平古堡">
         {STOPS.map((stop) => (
           <ScrollTimeline.Anchor
             key={stop.name}
@@ -301,9 +310,9 @@ export function TainanPage() {
         </Link>
       </section>
 
-      <ExploreOtherCities currentSlug="tainan-anping" />
+      <ExploreOtherCities currentSlug="tainan-anping" accentColor="var(--brick)" />
 
-      <CityPageFooter />
+      <CityPageFooter accentColor="var(--brick)" />
     </div>
   );
 }

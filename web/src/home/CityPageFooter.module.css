@@ -1,7 +1,8 @@
-/* --footer-accent:hover 顏色讀這個中性變數,呼叫端(各城市頁的
-   .kyoto-page/.jiufen-page/.tainan-page 作用域)需各自定義指向自己的
-   強調色(見 CityPageFooter.tsx 開頭的完整說明)。--ink/--ink-soft/
-   --line 三個 token 名稱三個城市頁目前一致,直接沿用,不用另外中性化。 */
+/* --footer-accent:hover 顏色讀這個中性變數,2026-10 改由
+   CityPageFooter.tsx 的必填 accentColor prop 透過 inline style 注入
+   (見該檔案 accentColor 的完整說明),不再要求呼叫端頁面的 CSS 自己
+   定義同名變數。--ink/--ink-soft/--line 三個 token 名稱三個城市頁
+   目前一致,直接沿用,不用另外中性化。 */
 .footer {
   display: flex;
   flex-direction: column;

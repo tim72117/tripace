@@ -21,14 +21,15 @@
   --moss: #5C6B57;
   --line: #C9BFA8;
   --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
-  /* --footer-accent:CityPageFooter.module.css 讀的中性變數名,指向這個
-     頁面自己的強調色(--vermilion)——只需定義一次、引用既有 token,不用
-     在下方明/暗兩份色票區塊各自重複寫死數值,--vermilion 本身已經隨
-     data-theme/系統偏好切換,--footer-accent 自然跟著變。 */
-  --footer-accent: var(--vermilion);
-  /* --explore-accent:ExploreOtherCities.module.css 讀的中性變數名,
-     同 --footer-accent 的既有模式。 */
-  --explore-accent: var(--vermilion);
+  /* 2026-10:原本這裡還有 --footer-accent/--explore-accent/
+     --timeline-accent 三份映射,分別給 CityPageFooter/ExploreOtherCities/
+     ScrollTimeline 三個共用元件讀——這套「呼叫端 CSS 自行定義同名變數」
+     的隱性約定曾經在套用 ScrollTimeline 到這頁時被漏寫過一次(肉眼比對
+     才發現地圖面板邊框顏色不對)。三個元件已統一改成透過必填的
+     accentColor TypeScript prop 傳遞(見 KyotoPage.tsx 呼叫處、以及
+     CityPageFooter.tsx/ExploreOtherCities.tsx/ScrollTimeline.tsx 各自
+     accentColor prop 的完整說明),不再需要這裡定義任何同名 CSS 變數,
+     故三者一併移除。 */
 
   min-height: 100vh;
   background: var(--paper);
@@ -129,23 +130,35 @@
   margin: 0 auto;
 }
 
-/* Stops — 整頁式捲動敘事,外殼結構(每站佔一個視窗高度、IntersectionObserver
-   驅動進場)對齊 JiufenPage.css,但字級/間距刻意改成對齊 HomePage.css
-   的 .stop-kicker/.stop-index/.stop-kind/.stop-name/.stop-desc 既有數值
-   (見各規則旁的原始出處),不是 Jiufen 自己的版面數字——這是使用者
-   明確要求的「跟首頁視覺一致」,兩邊只有進退場觸發機制不同(Jiufen 用
-   IntersectionObserver 的 is-active,首頁用逐幀 rAF 算出的 text-in/
-   in-hold),字級/間距/顏色 token 用法完全比照。 */
-.kyoto-page .kyoto-stops {
-  position: relative;
-}
-
+/* Stops — 2026-10 套用 ScrollTimeline(見 KyotoPage.tsx 掛載處的完整
+   說明)取代原本「獨立進度點 nav + 分站列表 + 頁尾固定地圖區塊」三段
+   各自獨立的結構,改成左側時間軸縮圖 + 右側可展開的嵌入式小地圖。
+   做法對齊 TainanPage.css 對應區塊的既有改法(見該檔案該處的完整
+   說明)——.kyoto-stops 這個 class 改掛在 <ScrollTimeline> 外層的
+   包裹 div 上,純粹提供置中閱讀寬度/留白,不管裡面實際結構是什麼;
+   .kyoto-stop 不再是「每站佔滿一個視窗高度、靠 IntersectionObserver
+   切 is-active class 驅動淡入進場」的展示型捲動設計(原本的
+   min-height:100vh/opacity 0.15→1 進場動畫整段拿掉)——這整套進場
+   動畫原本靠 useScrollProgress 這個 hook 計算 is-active,該 hook 已
+   隨這次改造移除,若保留這段 CSS、沒有任何東西再切上 is-active,文案
+   會永遠卡在 opacity:0.15 的半透明狀態,故一併拿掉,改成正常文件流的
+   文章式版面——外層 ScrollTimeline.module.css 的 .stop 包裹元素已經
+   提供留白+分隔線,這裡不需要重複。
+   .kyoto-stop-photo/.kyoto-stop-meta/.kyoto-stop h2/p 等實際視覺樣式
+   (字級/間距/顏色,對齊 HomePage.css 既有數值,見各規則旁原始出處)
+   完全不變,只動上面這兩個容器的版面機制。 */
+/* kyoto-stops:2026-10 code review 修正——這裡原本跟 .kyoto-stop-inner
+   用了同一個數字(640px),把「整個外殼容器寬度」跟「內部卡片文字欄
+   寬度」搞混了:.kyoto-stops 是掛在 <ScrollTimeline> 外層包裹 div 上
+   的容器(見 KyotoPage.tsx 掛載處的說明),要給時間軸欄位(96px)+ gap
+   (24px)+ 文案欄留夠空間,640px 太窄,Playwright 實測確認 .root
+   (ScrollTimeline 的最外層 grid)被壓縮到只剩 592px,時間軸/文案欄
+   嚴重擠壓,跟赤崁/台南安平/九份三個同樣套用 ScrollTimeline 的頁面
+   (.xxx-stops 都是 960px)不一致。改成 960px,四個頁面維持一致的
+   閱讀寬度版面;.kyoto-stop-inner 的 640px 維持不變(那是內部卡片
+   文字欄本身的寬度,兩者语意不同,不該用同一個數字)。 */
 .kyoto-page .kyoto-stop {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3rem 1.5rem;
+  margin-bottom: 0;
 }
 
 .kyoto-page .kyoto-stop-inner {
@@ -153,13 +166,6 @@
   max-width: 640px;
   margin: 0 auto;
   text-align: center;
-  opacity: 0.15;
-  transform: translateY(24px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-.kyoto-page .kyoto-stop.is-active .kyoto-stop-inner {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 .kyoto-page .kyoto-stop-photo {
@@ -233,80 +239,16 @@
   margin: 0;
 }
 
-/* 進度指示——對齊 HomePage.css 的 .progress-rail/.progress-dot 數值,
-   理由同 JiufenPage.css 對應區塊的完整說明。 */
-.kyoto-page .kyoto-progress-rail {
-  position: fixed;
-  right: 22px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: var(--z-progress, 20);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.kyoto-page .kyoto-progress-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  border: none;
-  padding: 0;
-  background: var(--line);
-  cursor: pointer;
-  transition: background 0.3s ease, transform 0.3s ease;
-}
-.kyoto-page .kyoto-progress-dot.is-active {
-  background: var(--vermilion);
-  transform: scale(1.6);
-}
-@media (max-width: 900px) {
-  .kyoto-page .kyoto-progress-rail { display: none; }
-}
-
-/* kyoto-map-intro — 同 JiufenPage.css 對應區塊的完整說明:覆寫
-   --explore-map-page-padding,900px 以上桌面寬度加大右邊距讓地圖右邊界
-   跟進度點之間留白對稱。
-   2026-09 code review 抓到:地圖區塊已搬到分站列表之後(見
-   KyotoPage.tsx 掛載處的完整說明),不再緊鄰頂部固定 UI,原本 88px
-   的上邊距補償(用來避開頂部固定品牌列/按鈕)理由已經不成立——這裡
-   漏改,JiufenPage.css/TainanPage.css 同一次改動都已修正,這裡補上
-   同步改回 48px。 */
-.kyoto-page .kyoto-map-intro {
-  --explore-map-page-padding: 48px 24px;
-}
-@media (min-width: 901px) {
-  .kyoto-page .kyoto-map-intro {
-    --explore-map-page-padding: 48px 50px 48px 24px;
-  }
-}
-
-/* 同 JiufenPage.css 對應區塊的完整說明:四邊窄幅 mask-image 淡出,
-   讓地圖內容在容器邊界自然透出頁面背景色。900px 以下(手機版)改
-   --fade-size: 0——淡出頻寬歸零,下方 mask-image 公式本身不用跟著
-   改,兩段線性漸層的中間段(#000 到 #000)直接頂到 0%/100%,等同沒有
-   遮罩,手機版地圖邊緣維持清晰直角,不再淡化。 */
-.kyoto-page .kyoto-map-intro [class*="stage"] {
-  --fade-size: 10px;
-  -webkit-mask-image:
-    linear-gradient(to right, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent),
-    linear-gradient(to bottom, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent);
-  mask-image:
-    linear-gradient(to right, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent),
-    linear-gradient(to bottom, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent);
-  -webkit-mask-composite: source-in;
-  mask-composite: intersect;
-}
-@media (max-width: 900px) {
-  .kyoto-page .kyoto-map-intro [class*="stage"] {
-    --fade-size: 0px;
-  }
-}
-
-/* 同 JiufenPage.css 對應區塊的完整說明:這個頁面的地圖沒有正式 App 那排
-   城市搜尋框/類別標籤列,卡片頂部不需要留給那排 UI 的空間。 */
-.kyoto-page .kyoto-map-intro [class*="panel"] {
-  --desktop-info-card-top: 16px;
-}
+/* 2026-10 套用 ScrollTimeline(見 ScrollTimeline.tsx/ScrollTimeline.module.css
+   的完整說明)取代原本「獨立進度點 nav + 分站列表 + 頁尾固定地圖區塊」
+   三段各自獨立的結構——原本這裡的 .kyoto-progress-rail/.kyoto-progress-dot
+   (獨立進度點導覽列)與 .kyoto-map-intro(開頭互動地圖容器,含
+   --explore-map-page-padding 覆寫/四邊 mask-image 淡出/卡片頂部留白
+   調整)三組規則已全數移除——左側時間軸與嵌入式小地圖的外觀改由
+   ScrollTimeline.module.css 統一負責,不再需要這個檔案自己維護對應樣式。
+   跟 TainanPage.css 的改造模式一致,.kyoto-stops 容器本身、
+   .kyoto-stop/.kyoto-stop-inner/.kyoto-stop-photo 等站點視覺樣式完全
+   不變(見下方對應規則)。 */
 
 /* Final CTA */
 .kyoto-page .kyoto-final-cta {

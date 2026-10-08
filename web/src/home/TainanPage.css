@@ -19,29 +19,28 @@
   --tide: #3E6E63;
   --line: #DCC7A3;
   --card-shadow: 0 24px 60px -24px rgba(46, 32, 24, 0.4);
-  /* --footer-accent:見 KyotoPage.css 對應規則的完整說明,CityPageFooter
-     這個共用元件讀的中性變數名——台南用 --brick(磚紅)而非京都/九份的
-     --vermilion(朱紅),變數名稱不同但作用相同。
-     2026-09:SiteNavButtons.css(品牌標記頁面標籤/CTA hover 強調色)也是
-     讀 --vermilion/--vermilion-soft 這組中性變數名,同樣的理由在這裡
-     再定義一次別名映射到 --brick/--brick-soft——這個頁面改用共用元件
+  /* 2026-09:SiteNavButtons.css(品牌標記頁面標籤/CTA hover 強調色)讀
+     --vermilion/--vermilion-soft 這組中性變數名,這個頁面改用共用元件
      (SiteNavBrand/SiteNavCta,見 TainanPage.tsx 掛載處的完整說明)後,
      若不定義這兩個變數,共用 CSS 讀到的會是 undefined(fallback 成
-     瀏覽器預設,視覺上強調色完全失效),不是台南自己的磚紅色系。 */
+     瀏覽器預設,視覺上強調色完全失效),不是台南自己的磚紅色系,故在
+     這裡定義別名映射到 --brick/--brick-soft。 */
   --vermilion: var(--brick);
   --vermilion-soft: var(--brick-soft);
-  /* --explore-accent:ExploreOtherCities.module.css 讀的中性變數名,
-     同 --footer-accent 的既有模式(台南用 --brick)。 */
-  --explore-accent: var(--brick);
-  /* --timeline-accent:2026-10 新增,ScrollTimeline.module.css 讀的中性
-     變數名,同 --footer-accent/--explore-accent 的既有模式——這個頁面
-     改套用 ScrollTimeline(見 TainanPage.tsx 掛載處的完整說明)後,時間
-     軸目前點外框、地圖面板邊框/陰影、active 狀態強調色都依賴這個變數,
-     沒定義的話會解析不到值,強調色完全失效(對齊 TainanChikanPage.css
-     已經定義過這個變數的既有做法)。只需要在這裡定義一次,--brick 本身
-     已經在 dark/light 三處區塊各自覆寫過,var() 是在使用當下才解析,
-     不需要跟著重複三份。 */
-  --timeline-accent: var(--brick);
+  /* 2026-10:原本這裡還有 --footer-accent/--explore-accent/
+     --timeline-accent 三份映射,分別給 CityPageFooter/ExploreOtherCities/
+     ScrollTimeline 三個共用元件讀。這三者已統一改成透過必填的
+     accentColor TypeScript prop 傳遞(見 TainanPage.tsx 呼叫處、以及
+     CityPageFooter.tsx/ExploreOtherCities.tsx/ScrollTimeline.tsx 各自
+     accentColor prop 的完整說明),不再需要這裡定義任何同名 CSS 變數,
+     故三者一併移除。
+     附帶發現:這裡原本其實從未真正定義過 --footer-accent(只有一段
+     說明它的註解,沒有對應的賦值陳述式)——這代表 <CityPageFooter />
+     在這個頁面的 hover 強調色,從套用那個共用元件以來就一直 fallback
+     到 initial(從未真正顯示磚紅色),比這次對話先發現的九份/京都
+     地圖邊框顏色問題更早、更隱蔽,從未被肉眼注意到過。這次改成必填
+     TypeScript prop(見 TainanPage.tsx 呼叫處已補上
+     accentColor="var(--brick)")順帶修正了這個問題。 */
 
   min-height: 100vh;
   background: var(--paper);
@@ -153,12 +152,6 @@
    設計(min-height:100vh/opacity 進場動畫整段拿掉),改成正常文件流的
    文章式版面,外層 ScrollTimeline.module.css 的 .stop 包裹元素已經
    提供 48px 上下留白+分隔線,這裡不需要重複。 */
-.tainan-stops {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 0 1.5rem 4rem;
-}
-
 .tainan-stop {
   margin-bottom: 0;
 }

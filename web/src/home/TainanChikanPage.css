@@ -17,22 +17,18 @@
   --moss: #5C6B57;
   --line: #C9BFA8;
   --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
-  /* --footer-accent:見 KyotoPage.css 對應規則的完整說明,CityPageFooter
-     這個共用元件讀的中性變數名。
-     2026-09:SiteNavButtons.css 也是讀 --vermilion/--vermilion-soft 這組
+  /* 2026-09:SiteNavButtons.css 讀 --vermilion/--vermilion-soft 這組
      中性變數名,同樣理由在這裡定義別名映射到 --brick/--brick-soft——見
      TainanPage.css 對應規則的完整說明,這裡不重複展開。 */
-  --footer-accent: var(--brick);
   --vermilion: var(--brick);
   --vermilion-soft: var(--brick-soft);
-  /* --explore-accent:ExploreOtherCities.module.css 讀的中性變數名,
-     同 --footer-accent 的既有模式。 */
-  --explore-accent: var(--brick);
-  /* --timeline-accent:ScrollTimeline.module.css 讀的中性變數名,同
-     --footer-accent/--explore-accent 的既有模式——只需要在這裡定義
-     一次,--brick 本身已經在 dark/light 三處區塊各自覆寫過,var()
-     是在使用當下才解析,不需要跟著重複三份。 */
-  --timeline-accent: var(--brick);
+  /* 2026-10:原本這裡還有 --footer-accent/--explore-accent/
+     --timeline-accent 三份映射,分別給 CityPageFooter/ExploreOtherCities/
+     ScrollTimeline 三個共用元件讀。這三者已統一改成透過必填的
+     accentColor TypeScript prop 傳遞(見 TainanChikanPage.tsx 呼叫處、
+     以及 CityPageFooter.tsx/ExploreOtherCities.tsx/ScrollTimeline.tsx
+     各自 accentColor prop 的完整說明),不再需要這裡定義任何同名 CSS
+     變數,故三者一併移除。 */
 
   min-height: 100vh;
   background: var(--paper);
@@ -140,40 +136,54 @@
 }
 
 
-/* Route strip */
-.tainan-chikan-route-strip {
+/* Route timeline:兩日路線連成一條的橫向時間軸。圓點串在同一條細線上,站名在
+   圓點下方;窄螢幕時整列可橫向捲動,避免站名擠成一團。 */
+.tainan-chikan-route {
   max-width: 960px;
-  margin: 2.5rem auto 1rem;
-  /* 外層 1.5rem 水平安全間距對齊 hero/stops/day-divider 的留白(使用者
-     回報手機版「全頁的內容與外邊容器的間距」不一致——這個區塊原本只有
-     容器自身的 padding、沒有對齊外側留白,窄螢幕時 max-width: 960px
-     小於可視寬度,會貼齊螢幕邊緣,跟其他有 1.5rem 留白的區塊不一致)。
-     用 width: calc 扣掉兩側留白,而不是直接加 margin,確保容器寬度還是
-     跟著 max-width 960px 的上限走,桌面寬螢幕下行為不變。 */
+  margin: 2.5rem auto 3rem;
+  /* 外層 1.5rem 水平安全間距對齊 hero/stops/day-divider 的留白。 */
   width: calc(100% - 3rem);
-  padding: 1.1rem 1.4rem;
-  background: var(--moss);
-  color: #fff;
-  border-radius: 16px;
-  font-size: 0.9rem;
-  font-weight: 600;
+}
+.tainan-chikan-route-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0.25rem;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.tainan-chikan-route-strip--day2 {
-  margin-bottom: 3.5rem;
-  background: var(--brick-soft);
-}
-.tainan-chikan-route-label {
-  width: 100%;
+.tainan-chikan-route-steps::-webkit-scrollbar { display: none; }
+.tainan-chikan-route-step {
+  position: relative;
+  flex: 1 0 5.5rem;
+  padding-top: 1.1rem;
   font-size: 0.75rem;
-  letter-spacing: 0.06em;
-  opacity: 0.9;
-  margin-bottom: 0.3rem;
+  font-weight: 400;
+  color: var(--ink-soft);
+  line-height: 1.4;
 }
-.tainan-chikan-route-arrow { opacity: 0.65; font-weight: 400; }
+/* 連接線:從這站圓點延伸到下一站(最後一站不畫)。 */
+.tainan-chikan-route-step:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  top: 0.2rem;
+  left: 0.4rem;
+  right: -0.4rem;
+  height: 1px;
+  background: var(--line);
+}
+.tainan-chikan-route-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--brick-soft);
+  opacity: 0.7;
+  z-index: 1;
+}
+.tainan-chikan-route-name { display: block; padding-right: 0.5rem; }
 
 /* Day divider */
 .tainan-chikan-day-divider {
@@ -204,12 +214,6 @@
    包一串 <article>——.tainan-chikan-stops 這個 class 改掛在
    <ScrollTimeline> 外層的包裹 div 上,純粹提供原本就有的 960px 閱讀寬度
    /置中/留白,不管裡面實際結構是什麼。 */
-.tainan-chikan-stops {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 0 1.5rem 4rem;
-}
-
 /* .tainan-chikan-stop:每一站的實際內容容器——原本自己負責跟上一站的
    分隔視覺(margin-bottom/border-top 虛線),2026-10 改成巢狀在
    ScrollTimeline.module.css 的 .stop 包裹元素裡面(見 ScrollTimeline.tsx
@@ -413,126 +417,6 @@
     gap: 0.2rem;
   }
   .tainan-chikan-info-row dt { width: auto; }
-}
-
-/* 進度指示——固定右側一排點,直接對齊 HomePage.css 的 .progress-rail/
-   .progress-dot 數值(常駐畫面角落、z-index 拉高、手機版直接隱藏,顏色
-   用 --line/--brick token)——第一個點對應開頭的互動地圖區塊
-   (activeIndex 的特殊值 -1,見 JiufenPage.tsx 該按鈕的完整說明),樣式
-   跟其餘 8 個站點點完全相同,不做任何外觀特例(2026-09 曾經一度做成
-   獨立的大顆圖示按鈕,實測回報「樣式要跟首頁一致」,故收斂回同一份
-   規則,不重複維護一套相似但獨立的樣式)。手機版隱藏(見下方 media
-   query)理由同首頁:手機螢幕寬度有限,固定在畫面角落的一排點持續
-   佔用空間,容易跟捲動內容(站點照片/開頭互動地圖)的邊緣打架,桌面版
-   才有足夠餘裕讓這排點常駐存在又不跟任何內容衝突。 */
-.tainan-chikan-progress-rail {
-  position: fixed;
-  right: 22px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: var(--z-progress, 20);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.tainan-chikan-progress-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  border: none;
-  padding: 0;
-  background: var(--line);
-  cursor: pointer;
-  transition: background 0.3s ease, transform 0.3s ease;
-}
-.tainan-chikan-progress-dot.is-active {
-  background: var(--brick);
-  transform: scale(1.6);
-}
-@media (max-width: 900px) {
-  .tainan-chikan-progress-rail { display: none; }
-}
-
-/* tainan-chikan-map-intro:包住開頭互動地圖(InteractiveExploreMap)的容器,見
-   JiufenPage.tsx 該處的完整說明——用來覆寫 --explore-map-page-padding
-   (預設 48px 24px,見 InteractiveExploreMap.module.css 的說明:這組
-   padding 直接決定 .stage 地圖容器的實際可視寬度/大小,不是外層留白)。
-   2026-09 code review 抓到:地圖區塊已搬到分站列表之後(見
-   TainanChikanPage.tsx 掛載處的完整說明),不再緊鄰頂部固定 UI,原本
-   88px 的上邊距補償(用來避開頂部固定品牌列/按鈕,舊註解提到的
-   .tainan-chikan-brand-row/.tainan-chikan-theme-toggle/
-   .tainan-chikan-app-cta 這幾個 class 本身也已經因為改用
-   SiteNavButtons 共用元件而不存在)理由已經不成立——這裡漏改,
-   JiufenPage.css/TainanPage.css 同一次改動都已修正,這裡補上同步改回
-   48px。
-   右邊距在 900px 以上桌面寬度加大到 50px——直接縮小地圖本身的可視
-   寬度,讓地圖右邊界往內縮,不是在外層疊加 margin 把整個容器推開
-   (先前用 margin-right 這種「地圖大小不變、外面留白」的做法是繞路,
-   使用者明確要求「調整地圖大小」)。數值算法:「地圖與小點的間距」要
-   等於「小點與視窗右緣的間距」——後者是 .tainan-chikan-progress-rail 的
-   right: 22px,加上點本身寬度 6px(.tainan-chikan-progress-dot)得到點的
-   最左緣離視窗右緣 28px;地圖右邊界的 padding 直接設成同樣的 22px
-   間距概念換算成的 50px(=28px 點的位置 + 22px 間距),讓兩段間距
-   實測相等(見該檔案驗證腳本量到 mapToDotGap === dotToWindowGap)。
-   900px 以下維持預設值(見下方 media query 還原),進度點在該寬度
-   已經直接隱藏,不需要再幫地圖縮小尺寸。 */
-.tainan-chikan-map-intro {
-  --explore-map-page-padding: 48px 24px;
-}
-@media (min-width: 901px) {
-  .tainan-chikan-map-intro {
-    --explore-map-page-padding: 48px 50px 48px 24px;
-  }
-}
-
-/* tainan-chikan-map-intro 底下的 .stage(InteractiveExploreMap.module.css,CSS
-   Modules 雜湊 class,這裡用屬性選擇器命中,只作用在這個頁面的作用域
-   下,不動共用元件本身)——用 mask-image 沿著矩形四邊各自加一道窄幅
-   線性漸層,讓地圖內容(Google Maps 圖磚)在容器邊界處自然透出底下的
-   頁面背景色,而不是生硬的直角裁切。只套用在這個頁面(見上方需求範圍
-   的確認),不動 InteractiveExploreMap.module.css 本身,故 HomePage.tsx
-   沿用同一個元件時不受影響。
-   2026-09:原本用單一 radial-gradient(橢圓)做這件事,實測有兩個問題
-   ——(1) 橢圓範圍抓太大,淡出強度往中心蔓延太多,不是「貼著邊框」的
-   效果;(2) .stage 內部的浮動主題卡片(AttractionInfoPanel,見
-   InteractiveExploreMap.tsx 的 children)是 .stage 的子元素,遮罩套在
-   .stage 整體上連卡片右邊界都被淡出了。改成四道各自獨立的窄幅
-   linear-gradient(每道只往內淡出 fadeSize 這一小段距離,遠離邊框的
-   大片中央區域維持完全不透明)並用 mask-composite: intersect 疊加
-   ——這樣淡出範圍精確侷限在四邊各自的窄帶內,主題卡片只要不是貼著
-   .stage 最外緣的 fadeSize 範圍擺放(它本身有自己的 padding/margin,
-   實際測試確認不會落在這個窄帶內),自然不會被這道遮罩影響,不需要
-   額外排除卡片的 DOM 節點。四個角落因為兩個方向的漸層在該處疊加,
-   會比純邊中段更暗一點,這是刻意的(角落本來就該比邊中央淡出得更多,
-   矩形四角同時鄰接兩條邊界),不是需要修正的瑕疵。 */
-.tainan-chikan-map-intro [class*="stage"] {
-  --fade-size: 10px;
-  -webkit-mask-image:
-    linear-gradient(to right, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent),
-    linear-gradient(to bottom, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent);
-  mask-image:
-    linear-gradient(to right, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent),
-    linear-gradient(to bottom, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent);
-  -webkit-mask-composite: source-in;
-  mask-composite: intersect;
-}
-/* 900px 以下(手機版)不淡化——同 KyotoPage.css 對應區塊的完整說明,
-   --fade-size 歸零即可,不用另外改上方 mask-image 公式。 */
-@media (max-width: 900px) {
-  .tainan-chikan-map-intro [class*="stage"] {
-    --fade-size: 0px;
-  }
-}
-
-/* tainan-chikan-map-intro 作用域下覆寫 DesktopInfoCard.module.css 的
-   --desktop-info-card-top(見該檔案 .panel 的完整說明)——這個頁面的
-   地圖(NativeMapBase.tsx)沒有正式 App 那排城市搜尋框/類別標籤列,
-   卡片頂部不需要留給那排 UI 的 64px 空間,改成跟右邊/底邊一致的
-   16px,讓卡片四邊間距均勻貼合地圖容器。用屬性選擇器命中
-   DesktopInfoCard.module.css 雜湊出來的 .panel class,只作用在這個
-   頁面,不動共用元件的預設值。 */
-.tainan-chikan-map-intro [class*="panel"] {
-  --desktop-info-card-top: 16px;
 }
 
 /* Final CTA */

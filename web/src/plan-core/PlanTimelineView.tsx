@@ -37,6 +37,20 @@ export interface PlanTimelineViewProps {
   steps: PlanNode[]
   isThinking: boolean
   emptyStateMessage: string
+  // hideEmptyState——選填,預設 false。2026-10 /ai-plan 展示頁使用者
+  // 要求「移除還沒開始對話的空畫面」:時間軸完全空白、isThinking 還是
+  // false 的那段期間(這個展示頁是打字動畫播完才把 isThinking 的來源
+  // isGenerating 設成 true,見 AIPlanTimelinePage.tsx 的完整說明,這段
+  // 空窗期不是一閃即逝,使用者看得到完整的引導文字畫面),希望這段
+  // 期間時間軸主顯示區保持空白,不要出現引導文字。
+  // 不能直接把 isThinking 傳 true 代替(治標不治本的捷徑):isThinking
+  // 除了控制 emptyState 顯示與否,還控制 axisLineBelow(最後一張卡片
+  // 下方的軸線是否延伸,見該處完整說明)——恆傳 true 會讓排程結束後
+  // 軸線仍多畫一段,跟 endMarker 同時出現時產生額外的視覺瑕疵,這是
+  // isThinking 真正的語意(「AI 正在做事」),不該為了隱藏一個不相干的
+  // 文字區塊而汙染它。改成獨立的 hideEmptyState prop,只影響
+  // .emptyState 這一處渲染,不影響 isThinking 的其他既有用途。
+  hideEmptyState?: boolean
   // endMarkerMessage——選填,生成結束後顯示在時間軸底部的文案,預設
   // 「目前安排到這裡」(對齊正式頁 TripPlanPage.tsx 開放式、可持續對話
   // 調整行程的語意)。展示頁 AIPlanTimelinePage.tsx 原本固定顯示
@@ -106,6 +120,17 @@ export interface PlanTimelineViewProps {
   // 內容跟外觀由呼叫端決定,維持「這個元件不知道自己在哪種容器裡」的
   // 既有設計慣例(同 scrollClassName/jumpPillWrapClassName)。
   jumpPillContent?: ReactNode
+  // endMarkerClassName——選填,疊加在這個元件自己的 .endMarker 上。跟
+  // scrollClassName/jumpPillWrapClassName 同一種需要的理由:2026-10
+  // /ai-plan 展示頁(AIPlanTimelinePage.tsx)讀者回報「── 行程結束 ──」
+  // 文字顯示不清楚——.endMarker 用共用 token(--ios-gray)的淺灰色文字,
+  // 在展示頁疊在地圖背景上方(見 AIPlanTimelinePage.module.css 的
+  // .timelineScroll 說明,這裡整個時間軸浮在 StaticMapBackdrop 之上)
+  // 時,地圖紋理當背景、文字本身又淡,對比度不足。正式頁(/app)的
+  // .endMarker 疊在純色頁面背景上,同樣的顏色沒有這個問題,不能直接
+  // 改 .endMarker 本身(會連動影響正式頁)。疊加這個 class 讓展示頁
+  // 自己覆寫顏色/加文字陰影提高對比,不影響共用元件的基礎樣式。
+  endMarkerClassName?: string
 }
 
 // PlanTimelineView — 純渲染元件,不持有自己的 state/effect(scroll 追蹤、
@@ -115,6 +140,7 @@ export function PlanTimelineView({
   steps,
   isThinking,
   emptyStateMessage,
+  hideEmptyState = false,
   endMarkerMessage = '目前安排到這裡',
   selectedStopId,
   showJumpPill,
@@ -129,6 +155,7 @@ export function PlanTimelineView({
   jumpPillWrapClassName,
   jumpPillClassName,
   jumpPillContent,
+  endMarkerClassName,
 }: PlanTimelineViewProps) {
   // failedPhotoUrls——載入失敗(404/403/過期/網路錯誤)的照片 URL 集合。
   //
@@ -165,7 +192,7 @@ export function PlanTimelineView({
               isThinking 為 true 時不顯示——那個情況下面已經有呼吸點/
               骨架卡(.tipRow)傳達「正在安排」的狀態,不需要空狀態文字跟
               生成動畫同時出現互相干擾。 */}
-          {steps.length === 0 && !isThinking && (
+          {steps.length === 0 && !isThinking && !hideEmptyState && (
             <div className={styles.emptyState}>
               <span className={styles.emptyStateIcon}>✦</span>
               <p className={styles.emptyStateText}>{emptyStateMessage}</p>
@@ -428,7 +455,7 @@ export function PlanTimelineView({
               )}
             </Fragment>
           ) : steps.length > 0 ? (
-            <div className={`${styles.endMarker} ${styles.endFade}`}>── {endMarkerMessage} ──</div>
+            <div className={`${styles.endMarker} ${styles.endFade} ${endMarkerClassName ?? ''}`}>── {endMarkerMessage} ──</div>
           ) : null}
         </div>
       </div>

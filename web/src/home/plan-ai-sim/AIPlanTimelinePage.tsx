@@ -673,7 +673,19 @@ function usePlanSimSocket(start: boolean) {
 // 要求是「不要有例外」(見下方 add_note 分支的完整說明),劇本本身保證
 // category 合法,不需要呼叫端介入。
 
+// isEmbedded——網址帶 ?embedded=1 時,代表這頁被當成 iframe 嵌進其他頁面
+// (例如功能介紹頁的手機外框,見 home/AiPlanPhoneDemo.tsx):不渲染頂部漂浮
+// 導覽(fixed 定位的一排按鈕會跟外框的動態島疊在一起)並隱藏捲軸把手。
+// 用 iframe 而非直接嵌入元件,是因為版面的手機版斷點是 @media
+// (max-width: 767px),只看視窗寬度——iframe 有獨立 viewport,手機外框內
+// 才會吃到跟真實手機一模一樣的版面。預設行為(無參數)完全不變。
+function isEmbedded(): boolean {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get('embedded') === '1'
+}
+
 export function AIPlanTimelinePage() {
+  const embedded = isEmbedded()
   const { theme, dark, toggleTheme } = useThemeToggle()
   const navigate = useNavigate()
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -851,10 +863,14 @@ export function AIPlanTimelinePage() {
   // emptyStateMessage——2026-09:漂浮膠囊(.composer,見該 class 的完整
   // 說明)只留 input 本身,不再常駐顯示一行狀態提示文字。原本「生成中/
   // 已安排 N 站/想去哪裡玩」三種文案裡,只有「時間軸完全空白」這一句
-  // 使用者明確要求改放進主顯示區(.scroll/.inner)當空狀態引導文字——
-  // 其餘兩種狀態已經有畫面上別的提示(header 的 .statusPill、input 的
-  // placeholder),不需要再額外佔一行常駐文字重複表達同樣的意思。
-  const emptyStateMessage = '想去哪裡玩？跟我說說你的想法，我可以幫你查景點、安排行程。'
+  // 使用者明確要求改放進主顯示區(.scroll/.inner)當空狀態引導文字。
+  // 2026-10:使用者進一步要求「移除還沒開始對話的空畫面」,改用
+  // PlanTimelineView 的 hideEmptyState prop 整段隱藏這塊區域(見該
+  // prop 的完整說明)——PlanTimelineViewProps.emptyStateMessage 目前
+  // 仍是必填 string(共用元件型別未變,/app 正式頁仍然需要這個文案),
+  // 傳一個空字串滿足型別即可,反正 hideEmptyState 為 true 時這段文字
+  // 根本不會被渲染,不需要保留原本那句引導文案的字串常數。
+  const emptyStateMessage = ''
 
   // app-theme-root:base-ui.css 的深色模式規則掛在這個全域 class 上
   // (.app-theme-root:not([data-theme="light"]) 搭配
@@ -863,7 +879,10 @@ export function AIPlanTimelinePage() {
   // data-theme 屬性值是什麼,這個頁面都只會顯示淺色 token。
   return (
     <>
-    <div className={`${styles.page} app-theme-root`} data-theme={theme ?? undefined}>
+    <div
+      className={`${styles.page} ${embedded ? styles.pageEmbedded : ''} app-theme-root`}
+      data-theme={theme ?? undefined}
+    >
       {/* StaticMapBackdrop——整頁的地圖底層。用 Maps Static API(一張
           PNG)而非 JS SDK,理由見該元件的完整說明:這是公開高流量的
           展示頁、地圖內容固定、零互動需求,Static 的圖片請求可以被
@@ -880,37 +899,39 @@ export function AIPlanTimelinePage() {
           列(.header 已完全移除,使用者明確要求「不要有上方的實際功能
           列了」)。slot={2} 讓「功能介紹」往左讓開「登入」按鈕的寬度,
           理由同 HomePage.tsx 的既有用法。 */}
-      <SiteNavBrand
-        pageLabel="台南兩日遊"
-        extra={
-          // statusPill——原本獨立用一個估算座標的 fixed 容器疊在
-          // SiteNavBrand 旁邊,使用者明確要求「不要放在功能列上，要放
-          // 在台南兩日遊右邊」,改用 SiteNavBrand 新增的 extra prop
-          // 直接插進同一個 .site-nav-brand-row 裡跟著 flex 排列,不需要
-          // 再手動估算/對齊座標。
-          <div className={styles.statusPill}>
-            {isGenerating ? (
-              <>
-                <span className={`${styles.statusDot} ${styles.statusDotGenerating}`} />
-                <span>正在安排行程…</span>
-              </>
-            ) : (
-              <>
-                <span className={`${styles.statusDot} ${styles.statusDotDone}`} />
-                <span>已安排 {stopCount} 站</span>
-              </>
-            )}
-          </div>
-        }
-      />
-      <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
-      <SiteNavCta href="/app">登入</SiteNavCta>
-      <SiteNavCta href="/product" variant="accent" slot={2}>功能介紹</SiteNavCta>
+      {!embedded && (
+        <>
+        {/* statusPill(已安排幾站)2026-10 從這裡移到 .composer 的
+            .inputRow 最前面(見下方該處的完整說明)——使用者先前要求
+            「不要放在功能列上，要放在台南兩日遊右邊」,這次進一步要求
+            移到輸入匡前面,SiteNavBrand 不再需要帶 extra prop。 */}
+        <SiteNavBrand pageLabel="台南兩日遊" />
+        <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
+        <SiteNavCta href="/app">登入</SiteNavCta>
+        <SiteNavCta href="/product" variant="accent" slot={2}>功能介紹</SiteNavCta>
+        </>
+      )}
 
+      {/* timelinePanel——2026-10 使用者要求「將 /ai-plan 時間軸放到
+          右側」:原本 PlanTimelineView 直接是 .page 的 flex 子項,
+          時間軸內容靠 PlanTimelineView.module.css 自己的 .inner
+          (max-width:640px; margin:0 auto)在整個視窗寬度置中,蓋住地圖
+          正中央。改成固定寬度(560px)、貼齊視窗右緣的側欄容器——地圖
+          (StaticMapBackdrop)因此左側完全露出不被內容遮擋,視覺語言
+          改成「左地圖/右資訊欄」。這層需要 position:relative,取代
+          原本掛在 .page 身上、給 jumpPillWrap 置中計算用的定位基準
+          (見 .timelinePanel/.timelineJumpPillWrap 的完整說明:
+          jumpPillWrap 現在要相對這個側欄本身置中,不是整個 .page)。
+          composer(輸入膠囊)刻意「不」包進這個側欄——使用者明確要求
+          「輸入匡位置不要動」,維持原本相對整個 .page 水平置中、固定
+          貼在視窗底部的位置,不跟著時間軸一起搬到右側,見下方 composer
+          仍在 .timelinePanel 外層、直接是 .page 子元素的結構。 */}
+      <div className={styles.timelinePanel}>
       <PlanTimelineView
         steps={steps}
         isThinking={isGenerating}
         emptyStateMessage={emptyStateMessage}
+        hideEmptyState
         endMarkerMessage="行程結束"
         selectedStopId={selectedStopId}
         showJumpPill={showJumpPill}
@@ -922,7 +943,9 @@ export function AIPlanTimelinePage() {
         onScroll={handleScroll}
         scrollClassName={styles.timelineScroll}
         jumpPillWrapClassName={styles.timelineJumpPillWrap}
+        endMarkerClassName={styles.timelineEndMarker}
       />
+      </div>
 
       <div className={styles.composer}>
         <div className={styles.composerInner}>
@@ -944,6 +967,26 @@ export function AIPlanTimelinePage() {
               的假展示語意),展開後 aria-label 换成"立即使用",不再
               disabled(理由見下方 composerCta 完整說明)。 */}
           <div className={styles.inputRow}>
+            {/* statusPill(已安排幾站)2026-10 從頂部 SiteNavBrand 旁邊
+                移到這裡——使用者明確要求「放到輸入匡的前面」,具體是指
+                輸入框膠囊內部最左側,跟輸入框/送出鈕同一排。.statusPill
+                本身已經是 display:flex + flex:none(見 .module.css),
+                直接搬進這個 flex 容器的第一個位置就能正確排列,
+                .inputWrap 的 flex:1 繼續佔滿剩餘空間,不需要額外樣式
+                調整。 */}
+            <div className={styles.statusPill}>
+              {isGenerating ? (
+                <>
+                  <span className={`${styles.statusDot} ${styles.statusDotGenerating}`} />
+                  <span>正在安排行程…</span>
+                </>
+              ) : (
+                <>
+                  <span className={`${styles.statusDot} ${styles.statusDotDone}`} />
+                  <span>已安排 {stopCount} 站</span>
+                </>
+              )}
+            </div>
             <div className={styles.inputWrap}>
               <input
                 type="text"

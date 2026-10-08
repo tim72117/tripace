@@ -1,17 +1,15 @@
-import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { InteractiveExploreMap } from './InteractiveExploreMap';
-import { MobileMapReveal } from './MobileMapReveal';
+import { ScrollTimeline } from './ScrollTimeline';
 import { ScrollHint } from './ScrollHint';
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { CityPageFooter } from './CityPageFooter';
 import { ExploreOtherCities } from './ExploreOtherCities';
 import { useThemeToggle } from '../hooks/useThemeToggle';
-import { useScrollProgress } from '../hooks/useScrollProgress';
 import { trackEvent } from '../analytics';
 import { SITE_SEO_BASE_URL } from '../AppCommon';
 import './JiufenPage.css';
+import './ScrollTimelineContainer.css';
 
 // SEO_TITLE/SEO_DESCRIPTION/SEO_URL:這個頁面專屬的文案。
 // 2026-10 修正(兩輪):description/canonical/og:*/twitter:* 這幾個標籤
@@ -145,15 +143,15 @@ const STOPS = [
   },
 ] as const;
 
-// activeIndex/stopRefs/mapIntroRef 的捲動進度邏輯已抽到 useScrollProgress
-// (見 src/hooks/useScrollProgress.ts 的完整說明)——原本這裡有一份約
-// 25 行逐字說明「-1 是開頭互動地圖區塊的專屬哨兵值」「threshold 0.5
-// 避免進度點跳來跳去」等細節,現在集中寫在該 hook 檔案裡,不重複貼在
-// 三個城市頁各自的檔案。
+// 2026-10 套用 ScrollTimeline(見該元件開頭的完整說明,改造範本是
+// TainanPage.tsx/TainanChikanPage.tsx 的既有改造模式)取代原本
+// 「獨立進度點 nav + 分站列表 + 頁尾固定地圖」三段各自獨立的結構——
+// activeIndex/stopRefs/mapIntroRef 這整套 useScrollProgress 捲動進度
+// 追蹤機制(連同開頭互動地圖 MobileMapReveal+InteractiveExploreMap)
+// 因此不再需要,已從上方 import 移除(useScrollProgress hook 本身仍留著
+// 給 KyotoPage.tsx 使用,不要誤刪該檔案)。
 export function JiufenPage() {
   const { theme, dark, toggleTheme } = useThemeToggle();
-  const mapIntroRef = useRef<HTMLDivElement | null>(null);
-  const { activeIndex, stopRefs } = useScrollProgress(STOPS.length, mapIntroRef);
 
   return (
     <div className="jiufen-page" data-theme={theme ?? undefined}>
@@ -225,6 +223,14 @@ export function JiufenPage() {
       <SiteNavBrand pageLabel="九份" />
       <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
       <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'jiufen', position: 'nav' })}>立即開始</SiteNavCta>
+      <SiteNavCta
+        href="/product"
+        variant="accent"
+        slot="2-wide"
+        onClick={() => trackEvent('landing_feature_intro_click', { page: 'jiufen' })}
+      >
+        功能介紹
+      </SiteNavCta>
 
       <header className="jiufen-hero">
         <span className="jiufen-hero-eyebrow">地形決定了這一切</span>
@@ -242,98 +248,59 @@ export function JiufenPage() {
         <ScrollHint />
       </header>
 
-      {/* 進度指示——固定右側,捲動敘事本身不畫路徑地圖或游標,純粹用 9 個點
-          呈現目前捲動到第幾個區塊。點擊可直接跳到對應區塊,不必一路捲
-          過去。2026-09:使用者要求把開頭互動地圖從頁面最頂端搬到分站
-          列表結束、結尾 CTA 之前(見下方 .jiufen-map-intro 掛載處的
-          完整說明)——「回到互動地圖」這顆進度點原本排在最前面(對應
-          地圖當時在頁面最頂端的視覺順序),現在改排在最後面(STOPS 之
-          後),對齊地圖搬移後的新視覺順序,使用者從進度列點下去的體感
-          方向(往下捲到最後)才會跟頁面實際排列一致。activeIndex 的
-          特殊值 -1(見上方 IntersectionObserver 的完整說明)本身不受
-          這次排列順序調整影響,純粹是 CSS 渲染順序(這顆 button 在
-          JSX 裡寫在後面)。 */}
-      <nav className="jiufen-progress-rail" aria-label="站點進度">
-        {STOPS.map((stop, i) => (
-          <button
+      {/* 2026-10 套用 ScrollTimeline(見該元件開頭的完整說明)取代原本
+          「獨立進度點 nav + 分站列表 + 頁尾固定地圖區塊」三段各自獨立的
+          結構——改成左側時間軸縮圖 + 右側可展開的嵌入式小地圖,隨捲動
+          同步移動,文案本身完全不變(stop-inner/photo/meta/index/kind
+          全部原樣保留,只是外層從 <section> 換成 <ScrollTimeline>,
+          每一站從純 <article> 包一層 <ScrollTimeline.Anchor>)。
+          useScrollProgress/mapIntroRef/stopRefs/MobileMapReveal 這整套
+          捲動追蹤+地圖顯示機制因此不再需要,已從檔案開頭的 import 移除
+          (做法對齊 TainanPage.tsx/TainanChikanPage.tsx 的既有改造模式)。
+          defaultOpenTheme="九份老街":這個頁面唯一的主題點(對應原本
+          InteractiveExploreMap 同樣只傳一個 defaultOpenTheme 的既有
+          行為),當成共用退回值;theme/center prop 都不逐站填——8 站
+          全部不是資料庫裡的獨立主題點,也沒有確切查證過的個別座標,
+          跟 TainanPage.tsx(6 站各自有 center)/TainanChikanPage.tsx
+          (8 站各自有 center)的多站各自定位情境不同,九份是最簡單的
+          單一主題點情境,直接靠 defaultOpenTheme 這個共用退回值運作
+          即可,不畫蛇添足幫每一站加 center 座標。
+          initialZoom={17}/centerNorthOffsetKm={-0.1} 這兩個原本傳給
+          InteractiveExploreMap 的校準 prop,ScrollTimeline 目前沒有
+          對應的透傳介面(只有 mapRestrictRadiusKm 控制可拖曳範圍)——
+          嵌入式小地圖本身只有 260px 高,這兩個原本針對「滿版大地圖」
+          校準的參數不再適用,故省略不傳(同 TainanPage.tsx 這段註解的
+          說明)。thumb 用每一站的 photo(跟原本 MobileMapReveal 只取
+          n0.jpg 單一縮圖的既有慣例相比,現在每一站都各自有自己的時間軸
+          縮圖)。 */}
+      <div className="jiufen-stops scroll-timeline-container">
+      <ScrollTimeline city="九份" accentColor="var(--vermilion)" defaultOpenTheme="九份老街">
+        {STOPS.map((stop) => (
+          <ScrollTimeline.Anchor
             key={stop.name}
-            type="button"
-            className={`jiufen-progress-dot${i === activeIndex ? ' is-active' : ''}`}
-            onClick={() => stopRefs.current[i]?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-            aria-label={`跳到「${stop.name}」`}
-            title={stop.name}
-          />
-        ))}
-        <button
-          type="button"
-          className={`jiufen-progress-dot${activeIndex === -1 ? ' is-active' : ''}`}
-          onClick={() => mapIntroRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-          aria-label="回到互動地圖"
-          title="回到互動地圖"
-        />
-      </nav>
-
-      <section className="jiufen-stops">
-        {STOPS.map((stop, i) => (
-          <article
-            className="jiufen-stop"
-            key={stop.name}
-            data-index={i}
-            ref={(el) => { stopRefs.current[i] = el; }}
+            id={stop.name}
+            thumb={stop.photo}
+            label={stop.name}
           >
-            <div className={`jiufen-stop-inner jiufen-stop-inner--${stop.layout}`}>
-              <div className="jiufen-stop-photo">
-                <img src={stop.photo} alt={stop.name} loading="lazy" />
-                <span className="jiufen-stop-credit">Photo: {stop.credit}</span>
-              </div>
-              <div className="jiufen-stop-text">
-                <div className="jiufen-stop-meta">
-                  <span className="jiufen-stop-index">{stop.index}</span>
-                  <span className="jiufen-stop-kind">{stop.kind}</span>
+            <article className="jiufen-stop">
+              <div className={`jiufen-stop-inner jiufen-stop-inner--${stop.layout}`}>
+                <div className="jiufen-stop-photo">
+                  <img src={stop.photo} alt={stop.name} loading="lazy" />
+                  <span className="jiufen-stop-credit">Photo: {stop.credit}</span>
                 </div>
-                <h2>{stop.name}</h2>
-                <p>{stop.desc}</p>
+                <div className="jiufen-stop-text">
+                  <div className="jiufen-stop-meta">
+                    <span className="jiufen-stop-index">{stop.index}</span>
+                    <span className="jiufen-stop-kind">{stop.kind}</span>
+                  </div>
+                  <h2>{stop.name}</h2>
+                  <p>{stop.desc}</p>
+                </div>
               </div>
-            </div>
-          </article>
+            </article>
+          </ScrollTimeline.Anchor>
         ))}
-      </section>
-
-      {/* 開頭互動地圖——2026-09:使用者要求把這個區塊從頁面最頂端(hero
-          標題之前)搬到這裡,分站列表結束、結尾 CTA 之前。跟首頁
-          (HomePage.tsx)同一個元件(InteractiveExploreMap,已參數化成
-          city prop,見該檔案開頭的完整說明),傳 city="九份"直接沿用,
-          不是另外複製一份重複邏輯。showThemeToggle 傳 false:這個頁面
-          已經有自己的日夜切換鈕(.jiufen-theme-toggle,上方
-          toggleTheme),不需要 InteractiveExploreMap 內建的第二顆重複
-          按鈕。
-          外層 div 用 .jiufen-map-intro 覆寫 --explore-map-page-padding
-          (預設 48px 24px,見 InteractiveExploreMap.module.css 的說明)
-          ——原本這裡有額外加大的上邊距(88px)讓地圖容器避開頂部
-          position: fixed 的品牌標記/切換鈕/CTA(該區塊之前放在頁面最
-          頂端會被蓋住),搬到這個新位置後不再緊鄰頂部固定 UI,這個
-          補償上邊距的理由已經不成立,已在 JiufenPage.css 對應規則改回
-          正常間距(見該處完整說明)。改用具名 class(而非直接 inline
-          style)是因為手機版還需要額外加大右側 padding(見
-          JiufenPage.css 該 class 的 media query),inline style 沒辦法
-          寫 media query。
-          externalTheme 傳這個頁面自己的 theme state(見上方
-          .jiufen-theme-toggle 的 toggleTheme)——InteractiveExploreMap
-          原本假設 showThemeToggle=false 的呼叫端沒有自己的切換鈕、只
-          需要掛載時讀一次系統偏好即可,但這個頁面確實有獨立的手動切換
-          鈕,若不傳這個 prop,使用者按下切換鈕後頁面背景會換色但地圖
-          底圖不會跟著換。
-          defaultOpenTheme="九份老街":這個頁面只有一個主題點,使用者
-          一進頁面就先看到地圖是空的、要點一下地圖才看得到內容,體驗
-          上不如直接開好給他看。
-          initialZoom={17}/centerNorthOffsetKm={-0.1}:九份聚落腹地小、
-          景點彼此距離近,拉近縮放層級並抵消共用預設的往北偏移,讓九份
-          的初始中心落回九份老街本身(校準理由同先前版本,見 git 歷史
-          此區塊移動前的完整說明)。 */}
-      <div className="jiufen-map-intro" ref={mapIntroRef}>
-        <MobileMapReveal photoUrl={`${LANDING_ASSETS_BASE}/jiufen/n0.jpg`} photoAlt="九份老街">
-          <InteractiveExploreMap city="九份" showThemeToggle={false} externalTheme={theme} defaultOpenTheme="九份老街" initialZoom={17} centerNorthOffsetKm={-0.1} />
-        </MobileMapReveal>
+      </ScrollTimeline>
       </div>
 
       <section className="jiufen-final-cta">
@@ -348,9 +315,9 @@ export function JiufenPage() {
         </Link>
       </section>
 
-      <ExploreOtherCities currentSlug="jiufen" />
+      <ExploreOtherCities currentSlug="jiufen" accentColor="var(--vermilion)" />
 
-      <CityPageFooter />
+      <CityPageFooter accentColor="var(--vermilion)" />
     </div>
   );
 }

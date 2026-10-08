@@ -20,11 +20,12 @@
   --moss: #5C6B57;
   --line: #C9BFA8;
   --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
-  /* --explore-accent:2026-10 新增,ExploreOtherCities.module.css 讀的
-     中性變數名(同 JiufenPage.css/KyotoPage.css 對應規則的既有模式)
-     ——這個頁面底部新增「精選景點」卡片區塊(見 ProductPage.tsx 掛載處
-     的完整說明)需要這個變數才有強調色可用,沿用本頁既有的 --vermilion。 */
-  --explore-accent: var(--vermilion);
+  /* 2026-10:原本這裡還有一份 --explore-accent 映射給 ExploreOtherCities.
+     module.css 讀——已改成透過
+     <ExploreOtherCities accentColor="var(--vermilion)"> 這個必填
+     TypeScript prop 傳遞(見 ProductPage.tsx 呼叫處、以及
+     ExploreOtherCities.tsx accentColor 的完整說明),不再需要這裡定義
+     同名 CSS 變數,故移除。 */
 
   min-height: 100vh;
   background: var(--paper);

@@ -72,22 +72,30 @@
 }
 .sectionBand {
   grid-column: 1 / span 3;
-  height: 8px;
-  background: var(--ios-bg);
-  border-top: 1px solid var(--ios-sep);
-  border-bottom: 1px solid var(--ios-sep);
-  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
+/* 標籤做成膠囊(有自己的底色與邊框),後面接一條 1px 細線填滿剩餘寬度。
+   舊版是 8px 厚的色帶、標籤壓在色帶上緣,疊在地圖底圖上時整條變成
+   突兀的深色粗條,標籤與色帶的邊界也對不齊。 */
 .sectionLabel {
-  position: absolute;
-  left: 0;
-  top: -14px;
+  flex: none;
   font-size: 12px;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ios-gray);
-  background: var(--ios-bg);
-  padding-right: 10px;
+  color: var(--color-dark);
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 999px;
+  padding: 3px 12px;
+}
+.sectionBand::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--ios-sep);
 }
 
 /* stop row */
@@ -397,7 +405,7 @@
 }
 .noteText {
   font-size: 13px;
-  color: color-mix(in srgb, var(--ios-gray) 65%, var(--color-dark));
+  color: color-mix(in srgb, var(--ios-gray) 25%, var(--color-dark));
   line-height: 1.5;
 }
 

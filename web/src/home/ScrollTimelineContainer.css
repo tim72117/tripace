@@ -1,0 +1,21 @@
+/* scroll-timeline-container:2026-10 新增,code review 抓到四個城市頁
+   (JiufenPage.css/KyotoPage.css/TainanPage.css/TainanChikanPage.css)
+   各自重複定義一份完全相同的 ScrollTimeline 外層容器版面數值(max-width:
+   960px; margin:0 auto; padding:0 1.5rem 4rem),只是 class 名稱各自
+   不同(.jiufen-stops/.kyoto-stops/.tainan-stops/.tainan-chikan-stops)
+   ——這次對話中京都頁曾經把這個數值誤寫成 640px(應為 960px),正是
+   分散維護容易出錯的實例。
+
+   ScrollTimeline.module.css 是 CSS Modules(class 名稱編譯時雜湊),四個
+   城市頁各自的 .css 是純 CSS(非 CSS Modules)、用一般 import 載入,
+   無法讓 CSS Modules 的 class 被純 CSS 檔案「繼承」/選中,所以收不進
+   ScrollTimeline.module.css 共用。改成在這裡用一個獨立、非 CSS Modules
+   的共用檔案定義中性 class 名稱,四個頁面的 .tsx 各自 import 這份檔案
+   一次,並在原本的外層 <div> className 並列加上這個 class,四個頁面
+   各自 .css 檔案裡原本重複的 max-width/margin/padding 規則移除、只保留
+   原本的 class 名稱本身(供其他地方沿用)。 */
+.scroll-timeline-container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 1.5rem 4rem;
+}

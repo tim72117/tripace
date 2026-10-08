@@ -17,12 +17,15 @@
   --moss: #5C6B57;
   --line: #C9BFA8;
   --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
-  /* --footer-accent:見 KyotoPage.css 對應規則的完整說明,CityPageFooter
-     這個共用元件讀的中性變數名。 */
-  --footer-accent: var(--vermilion);
-  /* --explore-accent:ExploreOtherCities.module.css 讀的中性變數名,
-     同 --footer-accent 的既有模式。 */
-  --explore-accent: var(--vermilion);
+  /* 2026-10:原本這裡還有 --footer-accent/--explore-accent/
+     --timeline-accent 三份映射,分別給 CityPageFooter/ExploreOtherCities/
+     ScrollTimeline 三個共用元件讀——這套「呼叫端 CSS 自行定義同名變數」
+     的隱性約定曾經在套用 ScrollTimeline 到這頁時被漏寫過一次(肉眼比對
+     才發現地圖面板邊框顏色不對)。三個元件已統一改成透過必填的
+     accentColor TypeScript prop 傳遞(見 JiufenPage.tsx 呼叫處、以及
+     CityPageFooter.tsx/ExploreOtherCities.tsx/ScrollTimeline.tsx 各自
+     accentColor prop 的完整說明),不再需要這裡定義任何同名 CSS 變數,
+     故三者一併移除。 */
 
   min-height: 100vh;
   background: var(--paper);
@@ -130,32 +133,50 @@
    「跟著往下走」的節奏感,但照片維持有限尺寸的卡片(不做滿版背景鋪
    照片)——文字放在照片下方,不疊加在照片上,故不需要暗角遮罩。不畫路徑
    地圖/游標,不做 HomePage.tsx 那種 bloom 照片展開動畫。 */
+/* jiufen-stops:2026-10 修正(實際 bug,參照 TainanChikanPage.css 的
+   .tainan-chikan-stops 補上)——這個 class 現在掛在 <ScrollTimeline>
+   外層的包裹 div 上(見 JiufenPage.tsx 掛載處的說明),純粹提供
+   960px 閱讀寬度/置中/留白,不管裡面實際結構是什麼。原本只有
+   position:relative,完全沒有 max-width/margin/padding——這代表
+   .root(ScrollTimeline 的最外層單欄 grid)直接撐滿整個視窗寬度,
+   時間軸貼齊螢幕最左緣,跟赤崁/台南安平/京都三個同樣套用
+   ScrollTimeline 的頁面版面比例完全不一致(使用者回報「九份時間軸
+   位置跑掉了,參考赤崁」,Playwright 實測確認 .root 寬度直接等於
+   視窗寬度,其餘三頁都有 960px 上限 + 置中)。補上跟赤崁頁完全相同
+   的數值,四個頁面維持一致的閱讀寬度版面。 */
 .jiufen-stops {
   position: relative;
 }
 
+/* jiufen-stop:2026-10 修正——原本的 min-height:100vh + flex 置中是
+   舊版「每站佔滿一個視窗高度、強制捲動距離」的版面設計,搭配已經
+   移除的 is-active 淡入動畫(見 .jiufen-stop-inner 的完整說明)一起
+   使用。套用 ScrollTimeline 後,每一站的間距/分隔線已經由共用元件
+   本身的 .stop(見 ScrollTimeline.module.css)負責,不需要這裡再
+   強制撐出一個視窗高度——比照赤崁頁(.tainan-chikan-stop 現在只剩
+   margin-bottom:0)清掉這組舊設計,讓內容用自然高度排列,不再是
+   「捲一段空白才會出現下一站」的版面節奏。 */
 .jiufen-stop {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3rem 1.5rem;
+  margin-bottom: 0;
 }
 
 /* jiufen-stop-inner — 兩種版面,依各站照片方向擇一(見 STOPS 的 layout
    欄位說明):
    --stacked(預設,橫式照片用):圖在上、文字在下,垂直堆疊、置中對齊。
    --side(直式照片用):左欄照片、右欄文字並排,避免直式照片把整段版面
-   撐得過高。 */
+   撐得過高。
+   2026-10 修正(實際 bug):原本這裡還有一組「捲到視窗內才淡入」的
+   opacity/transform 動畫,靠 .jiufen-stop.is-active 這個 class 觸發
+   顯示——這個 class 是舊版 useScrollProgress(IntersectionObserver)
+   機制的產物,套用 ScrollTimeline 改造時那套機制已經整個移除(見
+   JiufenPage.tsx 改造說明),但這段依賴它的 CSS 規則殘留下來沒清掉。
+   結果是 .jiufen-stop-inner 永遠停在初始的 opacity:0,不會再有任何
+   東西把 is-active 這個 class 加上去——這不是「維持原樣正常運作」,
+   是整段內容(含照片跟文字)變成永久透明的死碼狀態,使用者回報「九份
+   的圖沒有出現」正是這個根因。拿掉這組失效的淡入效果,內容直接
+   可見,比照 TainanPage.css 同一次改造的既有做法。 */
 .jiufen-stop-inner {
   width: 100%;
-  opacity: 0;
-  transform: translateY(24px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-.jiufen-stop.is-active .jiufen-stop-inner {
-  opacity: 1;
-  transform: translateY(0);
 }
 
 .jiufen-stop-inner--stacked {
@@ -261,124 +282,14 @@
   margin: 0;
 }
 
-/* 進度指示——固定右側一排點,直接對齊 HomePage.css 的 .progress-rail/
-   .progress-dot 數值(常駐畫面角落、z-index 拉高、手機版直接隱藏,顏色
-   用 --line/--vermilion token)——第一個點對應開頭的互動地圖區塊
-   (activeIndex 的特殊值 -1,見 JiufenPage.tsx 該按鈕的完整說明),樣式
-   跟其餘 8 個站點點完全相同,不做任何外觀特例(2026-09 曾經一度做成
-   獨立的大顆圖示按鈕,實測回報「樣式要跟首頁一致」,故收斂回同一份
-   規則,不重複維護一套相似但獨立的樣式)。手機版隱藏(見下方 media
-   query)理由同首頁:手機螢幕寬度有限,固定在畫面角落的一排點持續
-   佔用空間,容易跟捲動內容(站點照片/開頭互動地圖)的邊緣打架,桌面版
-   才有足夠餘裕讓這排點常駐存在又不跟任何內容衝突。 */
-.jiufen-progress-rail {
-  position: fixed;
-  right: 22px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: var(--z-progress, 20);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.jiufen-progress-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  border: none;
-  padding: 0;
-  background: var(--line);
-  cursor: pointer;
-  transition: background 0.3s ease, transform 0.3s ease;
-}
-.jiufen-progress-dot.is-active {
-  background: var(--vermilion);
-  transform: scale(1.6);
-}
-@media (max-width: 900px) {
-  .jiufen-progress-rail { display: none; }
-}
-
-/* jiufen-map-intro:包住開頭互動地圖(InteractiveExploreMap)的容器,見
-   JiufenPage.tsx 該處的完整說明——用來覆寫 --explore-map-page-padding
-   (預設 48px 24px,見 InteractiveExploreMap.module.css 的說明:這組
-   padding 直接決定 .stage 地圖容器的實際可視寬度/大小,不是外層留白)。
-   2026-09:使用者要求把這個區塊從頁面最頂端搬到分站列表結束、結尾
-   CTA 之前——原本上邊距是 88px(避開頂部 position: fixed 的
-   .jiufen-brand-row/.jiufen-theme-toggle/.jiufen-app-cta,該區塊之前
-   放在頁面最頂端會被蓋住),搬到新位置後不再緊鄰頂部固定 UI,這個
-   補償上邊距的理由已經不成立,改回跟預設值一致的 48px(維持跟上方
-   .jiufen-stops 之間一致的區塊間距節奏,不需要額外留白)。
-   右邊距在 900px 以上桌面寬度加大到 50px——直接縮小地圖本身的可視
-   寬度,讓地圖右邊界往內縮,不是在外層疊加 margin 把整個容器推開
-   (先前用 margin-right 這種「地圖大小不變、外面留白」的做法是繞路,
-   使用者明確要求「調整地圖大小」)。數值算法:「地圖與小點的間距」要
-   等於「小點與視窗右緣的間距」——後者是 .jiufen-progress-rail 的
-   right: 22px,加上點本身寬度 6px(.jiufen-progress-dot)得到點的
-   最左緣離視窗右緣 28px;地圖右邊界的 padding 直接設成同樣的 22px
-   間距概念換算成的 50px(=28px 點的位置 + 22px 間距),讓兩段間距
-   實測相等(見該檔案驗證腳本量到 mapToDotGap === dotToWindowGap)。
-   這個右邊距邏輯跟地圖搬移位置無關,搬移後仍然成立,不需要調整。
-   900px 以下維持預設值(見下方 media query 還原),進度點在該寬度
-   已經直接隱藏,不需要再幫地圖縮小尺寸。 */
-.jiufen-map-intro {
-  --explore-map-page-padding: 48px 24px;
-}
-@media (min-width: 901px) {
-  .jiufen-map-intro {
-    --explore-map-page-padding: 48px 50px 48px 24px;
-  }
-}
-
-/* jiufen-map-intro 底下的 .stage(InteractiveExploreMap.module.css,CSS
-   Modules 雜湊 class,這裡用屬性選擇器命中,只作用在這個頁面的作用域
-   下,不動共用元件本身)——用 mask-image 沿著矩形四邊各自加一道窄幅
-   線性漸層,讓地圖內容(Google Maps 圖磚)在容器邊界處自然透出底下的
-   頁面背景色,而不是生硬的直角裁切。只套用在這個頁面(見上方需求範圍
-   的確認),不動 InteractiveExploreMap.module.css 本身,故 HomePage.tsx
-   沿用同一個元件時不受影響。
-   2026-09:原本用單一 radial-gradient(橢圓)做這件事,實測有兩個問題
-   ——(1) 橢圓範圍抓太大,淡出強度往中心蔓延太多,不是「貼著邊框」的
-   效果;(2) .stage 內部的浮動主題卡片(AttractionInfoPanel,見
-   InteractiveExploreMap.tsx 的 children)是 .stage 的子元素,遮罩套在
-   .stage 整體上連卡片右邊界都被淡出了。改成四道各自獨立的窄幅
-   linear-gradient(每道只往內淡出 fadeSize 這一小段距離,遠離邊框的
-   大片中央區域維持完全不透明)並用 mask-composite: intersect 疊加
-   ——這樣淡出範圍精確侷限在四邊各自的窄帶內,主題卡片只要不是貼著
-   .stage 最外緣的 fadeSize 範圍擺放(它本身有自己的 padding/margin,
-   實際測試確認不會落在這個窄帶內),自然不會被這道遮罩影響,不需要
-   額外排除卡片的 DOM 節點。四個角落因為兩個方向的漸層在該處疊加,
-   會比純邊中段更暗一點,這是刻意的(角落本來就該比邊中央淡出得更多,
-   矩形四角同時鄰接兩條邊界),不是需要修正的瑕疵。 */
-.jiufen-map-intro [class*="stage"] {
-  --fade-size: 10px;
-  -webkit-mask-image:
-    linear-gradient(to right, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent),
-    linear-gradient(to bottom, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent);
-  mask-image:
-    linear-gradient(to right, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent),
-    linear-gradient(to bottom, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent);
-  -webkit-mask-composite: source-in;
-  mask-composite: intersect;
-}
-/* 900px 以下(手機版)不淡化——同 KyotoPage.css 對應區塊的完整說明,
-   --fade-size 歸零即可,不用另外改上方 mask-image 公式。 */
-@media (max-width: 900px) {
-  .jiufen-map-intro [class*="stage"] {
-    --fade-size: 0px;
-  }
-}
-
-/* jiufen-map-intro 作用域下覆寫 DesktopInfoCard.module.css 的
-   --desktop-info-card-top(見該檔案 .panel 的完整說明)——這個頁面的
-   地圖(NativeMapBase.tsx)沒有正式 App 那排城市搜尋框/類別標籤列,
-   卡片頂部不需要留給那排 UI 的 64px 空間,改成跟右邊/底邊一致的
-   16px,讓卡片四邊間距均勻貼合地圖容器。用屬性選擇器命中
-   DesktopInfoCard.module.css 雜湊出來的 .panel class,只作用在這個
-   頁面,不動共用元件的預設值。 */
-.jiufen-map-intro [class*="panel"] {
-  --desktop-info-card-top: 16px;
-}
+/* 2026-10 套用 ScrollTimeline(見 JiufenPage.tsx 掛載處的完整說明)後,
+   原本的「獨立進度點 nav(.jiufen-progress-rail/.jiufen-progress-dot)
+   + 開頭互動地圖容器(.jiufen-map-intro,連同裡面覆寫
+   InteractiveExploreMap/DesktopInfoCard 雜湊 class 的遮罩/卡片間距
+   規則)」這兩段死碼已整組移除——新結構裡地圖改成嵌入在 ScrollTimeline
+   左側時間軸裡(樣式見 ScrollTimeline.module.css,這個共用元件自己
+   管理,不需要呼叫端頁面各自覆寫),這裡不再需要任何對應規則(比對
+   TainanPage.css 同一次改造移除的規則範圍)。 */
 
 /* Final CTA */
 .jiufen-final-cta {
