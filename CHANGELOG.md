@@ -2,6 +2,25 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.27.1 — 2026-10-09
+
+### 新增
+
+- **九份／京都／台南安平／赤崁四個城市介紹頁的固定導覽列加上「功能介紹」CTA 按鈕**，對齊 `HomePage` 既有模式，連到 `/product`。`SiteNavCta` 新增 `slot="2-wide"` 變體，處理這四頁第一顆按鈕文字「立即開始」比 `HomePage` 的「登入」寬、無法直接套用既有 `slot={2}` 偏移量的問題。
+
+### 變更
+
+- **`CityPageFooter`／`ExploreOtherCities`／`ScrollTimeline` 三個共用元件改用必填的 `accentColor` prop**（經新增的 `accentColor.ts` 提供的 `AccentColorProp` 型別統一管理），取代原本「呼叫端 CSS 自行定義同名變數」的隱性契約。舊模式沒有任何編譯期或執行期檢查，曾經導致九份／京都頁遺漏 `--timeline-accent`（地圖面板邊框顏色跑掉）、台南安平頁更是從未定義過 `--footer-accent`（頁尾 hover 顏色一直失效而未被察覺）；改成必填 prop 後，呼叫端忘記傳值會在編譯期直接報錯。
+- **`ScrollTimeline` 地圖面板的定位邏輯改成「左緣包覆時間軸、右緣反推置中於視窗」**，取代先前「扣除時間軸寬度後置中」的方案（會讓地圖與時間軸在視覺上分離、留白不對稱）。相關定位算式一併改成讀取共用的 `--timeline-layout-padding-left` 自訂屬性，避免日後版面微調時兩處規則各自失步。
+- 四個城市頁的 `ScrollTimeline` 外層容器版面數值（`max-width`／`margin`／`padding`）收進新增的 `ScrollTimelineContainer.css` 共用，不再四頁各自重複定義同一組數字。
+
+### 修正
+
+- **`/ai-plan` 展示頁地圖黑底回歸**：`StaticMapBackdrop` 的 `object-position` 曾經改成 `calc()` 精確公式，想解決超寬螢幕下視覺焦點偏移的已知限制，但這個 `calc()` 混合百分比／像素的寫法在實際瀏覽器渲染時會讓地圖右側大片區域變成純黑色塊（瀏覽器接受這個語法、卻無法正確渲染），已撤銷改回原本的百分比估算寫法。
+- `/ai-plan` 展示頁「── 行程結束 ──」文字在地圖背景上對比度不足、不易閱讀，`PlanTimelineView` 新增選填的 `endMarkerClassName` prop 讓展示頁疊加文字陰影提升可讀性，不影響 `/app` 正式頁的既有樣式。
+- `/ai-plan` 展示頁「已安排幾站」狀態膠囊從頂部品牌列移到輸入匡最前面；新增 `PlanTimelineView` 的選填 `hideEmptyState` prop，移除對話尚未開始前的空狀態引導文字，同樣不影響 `/app` 正式頁行為。
+- 赤崁頁清除套用 `ScrollTimeline` 前遺留的舊版面死碼（進度指示點、互動地圖開頭容器相關樣式）——其餘三個城市頁在同一次改造時已清除，唯獨這頁殘留約 120 行未使用的 CSS。
+
 ## v0.27.0 — 2026-10-08
 
 ### 新增
