@@ -30,6 +30,7 @@
 - **觸發情境**：手機（<768px）訪客開啟 `/tainan-chikan`，不管有沒有展開地圖面板，一律立即載入 Google Maps SDK、觸發一次 attractions API 查詢——重新引入 `MobileMapReveal` 當初要避免的載入成本，跟同層的 `TainanPage.tsx`/`KyotoPage.tsx`/`JiufenPage.tsx` 行為不一致。
 - **驗證狀態**：CONFIRMED。
 - **建議修法**：`ScrollTimeline` 補上手機版延遲掛載的等效機制（例如沿用 `useIsDesktop` 判斷，手機版先顯示靜態縮圖、使用者互動後才真正掛載 `InteractiveExploreMap`），或在 `TainanChikanPage.tsx` 層面針對手機版另外處理。
+- **現況（2026-10-08 複核）**：`TainanPage.tsx`（台南安平頁）也已改套用 `ScrollTimeline`（原本的 `MobileMapReveal` 包裹連同 `useScrollProgress` 一併移除），同一個問題現在同時影響 `/tainan-chikan` 與 `/tainan-anping` 兩個路由；原敘述「跟同層的 `TainanPage.tsx` 行為不一致」已過時——`TainanPage.tsx` 現在跟 `TainanChikanPage.tsx` 行為一致（都無條件載入），不一致的對照組只剩尚未套用 `ScrollTimeline` 的 `KyotoPage.tsx`/`JiufenPage.tsx`。`ScrollTimeline` 本身仍未補上延遲掛載機制，問題尚未修復。
 
 ### F44 🟡 進度點導覽（跳到任一站/跳回地圖）被拿掉，沒有替代方案
 - **位置**：`web/src/home/TainanChikanPage.tsx:389`（移除 `.tainan-chikan-progress-rail` 與 `useScrollProgress`）
@@ -72,6 +73,7 @@
 - **觸發情境**：非立即性缺陷，但 `disableThemeCardOnMapClick` 的存在本身就是個警訊——它是為了補上 `openCardOnFocus`/`focusedTheme` 管不到「直接點地圖上的主題點圖標」這條路徑而額外新增的,下一個開卡入口（例如鍵盤導覽、deep link）很可能重蹈覆轍、繞過這整組旗標。
 - **驗證狀態**：CONFIRMED。
 - **建議修法**：評估收斂成單一 `embedded`/`focusMode` 設定物件（例如 `{ cardMode: 'full' | 'nearbyOnly' | 'disabled', revealAlways: boolean, themePhotoOnlyWhenFocused: boolean }`），所有開卡/揭露入口統一讀這個設定，而不是逐一新增平行旗標。
+- **現況（2026-10-08 複核）**：`TainanPage.tsx` 已改套用 `ScrollTimeline`，原敘述「`JiufenPage.tsx`/`KyotoPage.tsx`/`TainanPage.tsx` 一個都沒用到」已過時——這五個 prop 現在透過 `ScrollTimeline` 間接傳給 `TainanPage.tsx` 底下的 `InteractiveExploreMap` 呼叫，唯一尚未用到的只剩 `JiufenPage.tsx`/`KyotoPage.tsx`。問題本身（缺乏統一的嵌入模式抽象）未修復，多一個呼叫端使用反而讓這組零散 prop 的維護成本更明顯。
 
 ---
 

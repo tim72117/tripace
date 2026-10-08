@@ -78,12 +78,24 @@ const CITIES: CityLink[] = [
 // 文字列表的呈現方式,只沿用它的文案與標題。
 //
 // currentSlug:排除目前這一頁自己,不會列出「點了等於沒換頁」的卡片。
-export function ExploreOtherCities({ currentSlug }: { currentSlug: CityLink['slug'] }) {
+// eyebrow:2026-10 新增的可選 prop,小標文字預設「更多目的地」——四個
+// 城市介紹頁沿用這個預設值,不需要逐一傳參;ProductPage.tsx(功能介紹頁,
+// 不在 CITIES 清單裡,currentSlug 傳一個不存在的 slug 即可顯示全部四張
+// 卡片)使用者明確要求這裡改顯示「精選景點」,比「更多目的地」更貼合
+// 「從功能介紹頁推薦去哪裡玩」的情境(不是「你已經在看一個城市,換一個
+// 看看」的語境),故只讓這一個呼叫端覆寫,其餘四頁不受影響。
+export function ExploreOtherCities({
+  currentSlug,
+  eyebrow = '更多目的地',
+}: {
+  currentSlug: CityLink['slug']
+  eyebrow?: string
+}) {
   const others = CITIES.filter((c) => c.slug !== currentSlug)
   return (
     <section className={styles.section}>
       <div className={styles.inner}>
-        <div className={styles.eyebrow}>更多目的地</div>
+        <div className={styles.eyebrow}>{eyebrow}</div>
         <h2 className={styles.title}>選一個地方，開始探索</h2>
         <div className={styles.grid}>
           {others.map((city) => (

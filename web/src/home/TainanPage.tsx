@@ -1,26 +1,14 @@
-import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { InteractiveExploreMap } from './InteractiveExploreMap';
-import { MobileMapReveal } from './MobileMapReveal';
+import { ScrollTimeline } from './ScrollTimeline';
 import { ScrollHint } from './ScrollHint';
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { CityPageFooter } from './CityPageFooter';
 import { ExploreOtherCities } from './ExploreOtherCities';
 import { useThemeToggle } from '../hooks/useThemeToggle';
-import { useScrollProgress } from '../hooks/useScrollProgress';
 import { trackEvent } from '../analytics';
 import { SITE_SEO_BASE_URL } from '../AppCommon';
 import './TainanPage.css';
-
-// ANPING_FORT_PHOTO_URL:手機版地圖縮圖(見下方 MobileMapReveal)用的
-// 安平古堡照片——借用資料庫裡安平古堡這筆 attraction 已有的 GCS 照片
-// (shuttle-tripace-photos bucket,後端漸進補圖機制落地的實景照,見
-// server/internal/store/attractions.go UpdateAttractionPhoto 的說明),
-// 跟下方 LANDING_ASSETS_BASE(landing page 專用素材 bucket)是不同來源
-// ——手機版縮圖維持沿用這張既有的實景照,不強制跟下方 STOPS[0] 的
-// Wikimedia 素材統一,避免縮圖跟展開後的地圖景點卡出現不一致的落差。
-const ANPING_FORT_PHOTO_URL = 'https://storage.googleapis.com/shuttle-tripace-photos/attractions/lmk_f6269a0e607d.jpeg'
 
 // LANDING_ASSETS_BASE:見 JiufenPage.tsx 對應常數的完整說明,同一個公開
 // 可讀 GCS bucket(shuttle-tripace-web-assets),landing/{城市 slug}/
@@ -67,10 +55,23 @@ const SEO_URL = `${SITE_SEO_BASE_URL}/tainan-anping`
 // 顯式標可選,TypeScript 會因為現在剛好每一站都有 photo 而把該分支收窄
 // 成 never、觸發型別錯誤(未來新增沒有照片的站點時,這個退回分支要能
 // 繼續正常運作,不是死路徑)。
+//
+// center:2026-10 套用 ScrollTimeline 新增(見 ScrollTimeline.Anchor 的
+// center prop 完整說明,用法比照 TainanChikanPage.tsx STOPS 的既有
+// 模式)——這個頁面只有「安平古堡」是資料庫裡的主題點(isTheme=true),
+// 其餘 5 站都不是,全部靠 center 直接指定座標移動地圖中心,不透過
+// theme 比對。已在 attractions 資料庫的 4 站(安平古堡/安平樹屋/延平街
+// /海山館——延平街沒有單獨建檔,座標取自 CLI geocode 實查;安平古堡/
+// 安平樹屋座標取自資料庫記錄本身)+ 不在資料庫的 2 站(億載金城/運河
+// 淤積與港口機能轉移——運河淤積是抽象轉折敘事沒有單一地標,座標取
+// 「安平運河公園」代表港區淤積後的實際地理範圍)座標皆為 2026-10
+// 用 CLI geocode 工具實查 Google Places 拿到的真實座標,不是憑印象
+// 猜測。
 const STOPS: {
   index: string
   kind: string
   name: string
+  center: { lat: number; lng: number }
   desc: string
   layout: 'stacked'
   photo?: string
@@ -80,6 +81,8 @@ const STOPS: {
     index: '壱',
     kind: '地理',
     name: '安平古堡（熱蘭遮城）',
+    // 座標取自資料庫「安平古堡」記錄(isTheme=true 的主題點本身)。
+    center: { lat: 23.0015093, lng: 120.1606244 },
     desc: '1624年荷蘭東印度公司選址於此構築熱蘭遮城——台江內海的潟湖地形提供了天然良港，讓這裡成為全台最早的對外貿易據點。城堡本身是整條敘事的起點：先有港口，才有之後所有的聚落與商業發展。',
     layout: 'stacked',
     photo: `${LANDING_ASSETS_BASE}/tainan/n1.jpg`,
@@ -89,6 +92,10 @@ const STOPS: {
     index: '弐',
     kind: '防務',
     name: '億載金城（二鯤鯓砲臺）',
+    // 不在 attractions 資料庫裡,座標是用 CLI geocode 工具查 Google
+    // Places 拿到的真實座標(查詢關鍵字「億載金城 台南」,比對到
+    // 「二鯤鯓砲臺(億載金城)」)。
+    center: { lat: 22.987883, lng: 120.159255 },
     desc: '1874年牡丹社事件後，清廷派沈葆楨來台籌辦海防，1876年建成全台第一座西式砲臺——法國工程師設計、以熱蘭遮城磚材混合洋式紅磚砌成，配備英國阿姆斯壯大砲。安平在失去港口地位之前，最後一次以軍事要地之姿站上歷史舞台。',
     layout: 'stacked',
     photo: `${LANDING_ASSETS_BASE}/tainan/n8.jpg`,
@@ -98,6 +105,11 @@ const STOPS: {
     index: '参',
     kind: '轉折',
     name: '運河淤積與港口機能轉移',
+    // 這一站是抽象的地質/產業轉折敘事,沒有對應單一地標——座標取「安平
+    // 運河公園」(CLI geocode 查詢關鍵字「安平運河 台南」),代表淤積後
+    // 港區機能轉移的實際地理範圍,比照赤崁頁「神農街」這類無單一地標
+    // 站點的處理方式(用代表性地標座標,不是精確對應某棟建築)。
+    center: { lat: 22.997428, lng: 120.1757359 },
     desc: '19世紀末台江內海逐漸淤積成陸，安平失去了深水港的地位，商業重心轉往台南市區——地質變遷直接改寫了這座聚落的角色，從貿易門戶轉為以老街生活機能為主的地方。',
     layout: 'stacked',
     photo: `${LANDING_ASSETS_BASE}/tainan/n2.jpg`,
@@ -107,6 +119,8 @@ const STOPS: {
     index: '四',
     kind: '人文',
     name: '安平樹屋',
+    // 座標取自資料庫「安平樹屋」記錄。
+    center: { lat: 23.0038453, lng: 120.1598012 },
     desc: '老榕樹盤根錯節包覆廢棄倉庫建築，是港口機能外移後閒置空間被自然重新接管的具體見證——樹根與磚牆纏繞的樣貌，成了安平歷史軸線上最直觀的時間痕跡。',
     layout: 'stacked',
     photo: `${LANDING_ASSETS_BASE}/tainan/n3.jpg`,
@@ -116,6 +130,11 @@ const STOPS: {
     index: '伍',
     kind: '產業',
     name: '延平街與老街商業群聚',
+    // 延平街本身不在 attractions 資料庫裡(資料庫只建檔了林永泰興蜜餞行
+    // /同記安平豆花/義豐冬瓜茶這幾家老店個別記錄,沒有「延平街」這條街
+    // 本身的記錄),座標是用 CLI geocode 工具查 Google Places 拿到的
+    // 真實座標(查詢關鍵字「延平街 安平 台南」)。
+    center: { lat: 23.0005548, lng: 120.1632351 },
     desc: '港口貿易帶來的人潮與財富，在老街兩側沉澱成百年老店群聚——林永泰興蜜餞行、同記安平豆花、義豐冬瓜茶，各自傳承數代，是安平從貿易港口轉型為生活聚落後，商業活動留下的具體痕跡。',
     layout: 'stacked',
     photo: `${LANDING_ASSETS_BASE}/tainan/n4.jpg`,
@@ -125,6 +144,9 @@ const STOPS: {
     index: '陸',
     kind: '重生',
     name: '海山館',
+    // 不在 attractions 資料庫裡,座標是用 CLI geocode 工具查 Google
+    // Places 拿到的真實座標(查詢關鍵字「海山館 台南」)。
+    center: { lat: 23.0014144, lng: 120.1626313 },
     desc: '清代福州海壇鎮標水師班兵會館，安平五館中唯一留存至今的一座——曾一度荒廢、轉為民宅，1975年由市府收購整建，現今開放參觀並展售文創商品，是安平巷弄裡另一種「老屋找到新角色」的具體見證，跟運河淤積後整座聚落的轉型軌跡一脈相承。',
     layout: 'stacked',
     photo: `${LANDING_ASSETS_BASE}/tainan/n7.jpg`,
@@ -132,15 +154,13 @@ const STOPS: {
   },
 ]
 
-// TainanPage — 比照 JiufenPage.tsx 的頁面外殼架構(品牌列/日夜切換/進度
-// 導覽點/開頭互動地圖+捲動敘事區塊+結尾 CTA+頁尾),class 名稱前綴改
-// jiufen- → tainan-。跟 JiufenPage.tsx 一樣只有單一主題點(安平古堡),
-// 故沿用同一套 defaultOpenTheme/單站點捲動進度邏輯(見 useScrollProgress
-// 的完整說明),不像 KyotoPage.tsx 需要處理兩個平等並存的主題點。
+// TainanPage — 比照 JiufenPage.tsx 的頁面外殼架構(品牌列/日夜切換/
+// ScrollTimeline 左側時間軸+嵌入式地圖/結尾 CTA+頁尾),class 名稱前綴
+// 改 jiufen- → tainan-。跟 JiufenPage.tsx 一樣只有單一主題點(安平
+// 古堡),故沿用同一套 defaultOpenTheme 退回值邏輯(見下方 ScrollTimeline
+// 掛載處的完整說明),不像 KyotoPage.tsx 需要處理兩個平等並存的主題點。
 export function TainanPage() {
   const { theme, dark, toggleTheme } = useThemeToggle();
-  const mapIntroRef = useRef<HTMLDivElement | null>(null);
-  const { activeIndex, stopRefs } = useScrollProgress(STOPS.length, mapIntroRef);
 
   return (
     <div className="tainan-page" data-theme={theme ?? undefined}>
@@ -210,86 +230,63 @@ export function TainanPage() {
         <ScrollHint />
       </header>
 
-      {/* 2026-09:使用者要求把開頭互動地圖從頁面最頂端搬到分站列表結束、
-          結尾 CTA 之前(見下方 .tainan-map-intro 掛載處的完整說明)——
-          「回到互動地圖」這顆進度點原本排在最前面,現在改排在最後面
-          (STOPS 之後),對齊地圖搬移後的新視覺順序。 */}
-      <nav className="tainan-progress-rail" aria-label="站點進度">
-        {STOPS.map((stop, i) => (
-          <button
-            type="button"
+      {/* 2026-10 套用 ScrollTimeline(見該元件開頭的完整說明)取代原本
+          「獨立進度點 nav + 分站列表 + 頁尾固定地圖區塊」三段各自獨立的
+          結構——改成左側時間軸縮圖 + 右側可展開的嵌入式小地圖,隨捲動
+          同步移動,文案本身完全不變(stop-inner/photo/meta/index/kind
+          全部原樣保留,只是外層從 <section> 換成 <ScrollTimeline>,
+          每一站從純 <article> 包一層 <ScrollTimeline.Anchor>)。
+          useScrollProgress/mapIntroRef/stopRefs/MobileMapReveal 這整套
+          捲動追蹤+地圖顯示機制因此不再需要,已從檔案開頭的 import 移除
+          (做法對齊 TainanChikanPage.tsx 的既有改造模式)。
+          defaultOpenTheme="安平古堡":這個頁面唯一的主題點
+          (isTheme=true),當成共用退回值;theme prop 不逐站填——6 站裡
+          只有安平古堡本身是主題點,其餘 5 站(億載金城/運河淤積/安平
+          樹屋/延平街/海山館)theme 比對不到東西,全部改用 center(見
+          STOPS 陣列各站旁的座標來源註解)直接指定座標移動地圖中心。
+          initialZoom/centerNorthOffsetKm 這兩個原本傳給
+          InteractiveExploreMap 的校準 prop,ScrollTimeline 目前沒有
+          對應的透傳介面(只有 mapRestrictRadiusKm 控制可拖曳範圍)——
+          嵌入式小地圖本身只有 260px 高,縮放層級由地圖元件自己的預設值
+          決定,這兩個原本針對「滿版大地圖」校準的參數不再適用,故省略
+          不傳。thumb 用每一站的 photo(跟原本 MobileMapReveal 只取
+          ANPING_FORT_PHOTO_URL 單一縮圖的既有慣例相比,現在每一站都
+          各自有自己的時間軸縮圖)。 */}
+      <div className="tainan-stops">
+      <ScrollTimeline city="台南" defaultOpenTheme="安平古堡">
+        {STOPS.map((stop) => (
+          <ScrollTimeline.Anchor
             key={stop.name}
-            className={`tainan-progress-dot${i === activeIndex ? ' is-active' : ''}`}
-            onClick={() => stopRefs.current[i]?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-            aria-label={`跳到「${stop.name}」`}
-            title={stop.name}
-          />
-        ))}
-        <button
-          type="button"
-          className={`tainan-progress-dot${activeIndex === -1 ? ' is-active' : ''}`}
-          onClick={() => mapIntroRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-          aria-label="回到互動地圖"
-          title="回到互動地圖"
-        />
-      </nav>
-
-      <section className="tainan-stops">
-        {STOPS.map((stop, i) => (
-          <article
-            className="tainan-stop"
-            key={stop.name}
-            data-index={i}
-            ref={(el) => { stopRefs.current[i] = el; }}
+            id={stop.name}
+            thumb={stop.photo ?? ''}
+            center={stop.center}
+            label={stop.name}
           >
-            <div className={`tainan-stop-inner tainan-stop-inner--${stop.layout}`}>
-              <div className="tainan-stop-photo">
-                {'photo' in stop ? (
-                  <>
-                    <img src={stop.photo} alt={stop.name} loading="lazy" />
-                    <span className="tainan-stop-credit">Photo: {stop.credit}</span>
-                  </>
-                ) : (
-                  <span className="tainan-stop-photo-label">{stop.name}</span>
-                )}
-              </div>
-              <div className="tainan-stop-text">
-                <div className="tainan-stop-meta">
-                  <span className="tainan-stop-index">{stop.index}</span>
-                  <span className="tainan-stop-kind">{stop.kind}</span>
+            <article className="tainan-stop">
+              <div className={`tainan-stop-inner tainan-stop-inner--${stop.layout}`}>
+                <div className="tainan-stop-photo">
+                  {'photo' in stop ? (
+                    <>
+                      <img src={stop.photo} alt={stop.name} loading="lazy" />
+                      <span className="tainan-stop-credit">Photo: {stop.credit}</span>
+                    </>
+                  ) : (
+                    <span className="tainan-stop-photo-label">{stop.name}</span>
+                  )}
                 </div>
-                <h2>{stop.name}</h2>
-                <p>{stop.desc}</p>
+                <div className="tainan-stop-text">
+                  <div className="tainan-stop-meta">
+                    <span className="tainan-stop-index">{stop.index}</span>
+                    <span className="tainan-stop-kind">{stop.kind}</span>
+                  </div>
+                  <h2>{stop.name}</h2>
+                  <p>{stop.desc}</p>
+                </div>
               </div>
-            </div>
-          </article>
+            </article>
+          </ScrollTimeline.Anchor>
         ))}
-      </section>
-
-      {/* 開頭互動地圖——2026-09:使用者要求把這個區塊從頁面最頂端搬到
-          這裡,分站列表結束、結尾 CTA 之前。同 JiufenPage.tsx 的說明,
-          傳 city="台南"。defaultOpenTheme="安平古堡":這個頁面目前只有
-          安平古堡一個主題點(isTheme: true),單一主題點時直接開好給
-          使用者看,不需要多一次點擊。initialZoom={17}/
-          centerNorthOffsetKm={-0.1}:安平古堡周邊 7 個景點分布範圍跟
-          九份聚落相近(腹地小、景點密集),拉近縮放層級並抵消共用預設的
-          往北偏移,讓初始中心落回安平古堡本身(校準理由同先前版本,見
-          git 歷史此區塊移動前的完整說明)。
-          MobileMapReveal:手機版先顯示安平古堡縮圖,點擊才真正掛載地圖
-          ——比照 JiufenPage.tsx/KyotoPage.tsx 已套用的同一套機制,桌面
-          版不受影響、直接渲染 children。photoUrl 見上方
-          ANPING_FORT_PHOTO_URL 的說明。 */}
-      <div className="tainan-map-intro" ref={mapIntroRef}>
-        <MobileMapReveal photoUrl={ANPING_FORT_PHOTO_URL} photoAlt="安平古堡">
-          <InteractiveExploreMap
-            city="台南"
-            showThemeToggle={false}
-            externalTheme={theme}
-            defaultOpenTheme="安平古堡"
-            initialZoom={17}
-            centerNorthOffsetKm={-0.1}
-          />
-        </MobileMapReveal>
+      </ScrollTimeline>
       </div>
 
       <section className="tainan-final-cta">

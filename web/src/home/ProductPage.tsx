@@ -10,6 +10,7 @@ import { ThemePointDemo } from './ThemePointDemo';
 import { TimelineDemo } from './TimelineDemo';
 import { AutoPlanDemo } from './AutoPlanDemo';
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
+import { ExploreOtherCities } from './ExploreOtherCities';
 import { trackEvent } from '../analytics';
 import './ProductPage.css';
 
@@ -187,6 +188,17 @@ export function ProductPage() {
           開始使用
         </Link>
       </section>
+
+      {/* 2026-10 使用者要求在功能介紹頁最下面(結尾 CTA 之後、頁尾之前,
+          位置對齊九份/京都/台南/赤崁四個城市頁的既有慣例)加入「更多
+          目的地」卡片區塊,讓看完功能介紹的使用者能順勢點進城市介紹頁。
+          currentSlug 傳一個不在 ExploreOtherCities 內部 CITIES 清單裡
+          的值("product")——這個頁面本身不是城市頁,不需要排除任何一張
+          卡片,四個城市頁的卡片會全部顯示。eyebrow="精選景點":使用者
+          明確要求這裡的小標文字跟其餘四頁預設的「更多目的地」不同,
+          更貼合「從功能介紹頁推薦去哪裡玩」的情境(見 ExploreOtherCities.tsx
+          該 prop 的完整說明)。 */}
+      <ExploreOtherCities currentSlug="product" eyebrow="精選景點" />
 
       {/* footer——結構、文案對齊 HomePage.tsx 的 .kyoto-footer(品牌名、
           Copyright 列、法律/導覽連結、onagent 背書連結),只是 class 前綴

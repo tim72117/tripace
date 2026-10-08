@@ -33,6 +33,15 @@
   /* --explore-accent:ExploreOtherCities.module.css 讀的中性變數名,
      同 --footer-accent 的既有模式(台南用 --brick)。 */
   --explore-accent: var(--brick);
+  /* --timeline-accent:2026-10 新增,ScrollTimeline.module.css 讀的中性
+     變數名,同 --footer-accent/--explore-accent 的既有模式——這個頁面
+     改套用 ScrollTimeline(見 TainanPage.tsx 掛載處的完整說明)後,時間
+     軸目前點外框、地圖面板邊框/陰影、active 狀態強調色都依賴這個變數,
+     沒定義的話會解析不到值,強調色完全失效(對齊 TainanChikanPage.css
+     已經定義過這個變數的既有做法)。只需要在這裡定義一次,--brick 本身
+     已經在 dark/light 三處區塊各自覆寫過,var() 是在使用當下才解析,
+     不需要跟著重複三份。 */
+  --timeline-accent: var(--brick);
 
   min-height: 100vh;
   background: var(--paper);
@@ -134,28 +143,24 @@
   margin: 0 auto;
 }
 
-/* Stops */
+/* Stops — 2026-10 套用 ScrollTimeline(見 TainanPage.tsx 掛載處的完整
+   說明):取代原本「獨立進度點 nav + 分站列表 + 頁尾固定地圖區塊」三段
+   各自獨立的結構,改成左側時間軸縮圖 + 右側可展開的嵌入式小地圖。
+   做法對齊 TainanChikanPage.css 對應區塊的既有改法(見該檔案該處的
+   完整說明)——.tainan-stops 這個 class 改掛在 <ScrollTimeline> 外層
+   的包裹 div 上,純粹提供置中閱讀寬度/留白,不管裡面實際結構是什麼;
+   .tainan-stop 不再是「每站佔滿一個視窗高度、淡入進場」的展示型捲動
+   設計(min-height:100vh/opacity 進場動畫整段拿掉),改成正常文件流的
+   文章式版面,外層 ScrollTimeline.module.css 的 .stop 包裹元素已經
+   提供 48px 上下留白+分隔線,這裡不需要重複。 */
 .tainan-stops {
-  position: relative;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 1.5rem 4rem;
 }
 
 .tainan-stop {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3rem 1.5rem;
-}
-
-.tainan-stop-inner {
-  width: 100%;
-  opacity: 0;
-  transform: translateY(24px);
-  transition: opacity 0.6s ease, transform 0.6s ease;
-}
-.tainan-stop.is-active .tainan-stop-inner {
-  opacity: 1;
-  transform: translateY(0);
+  margin-bottom: 0;
 }
 
 .tainan-stop-inner--stacked {
@@ -279,68 +284,12 @@
   margin: 0;
 }
 
-/* 進度指示 — 結構同 JiufenPage.css */
-.tainan-progress-rail {
-  position: fixed;
-  right: 22px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: var(--z-progress, 20);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.tainan-progress-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  border: none;
-  padding: 0;
-  background: var(--line);
-  cursor: pointer;
-  transition: background 0.3s ease, transform 0.3s ease;
-}
-.tainan-progress-dot.is-active {
-  background: var(--brick);
-  transform: scale(1.6);
-}
-@media (max-width: 900px) {
-  .tainan-progress-rail { display: none; }
-}
-
-/* tainan-map-intro — 結構/數值同 JiufenPage.css 對應區塊的完整說明。
-   2026-09:地圖區塊搬到分站列表之後(見 TainanPage.tsx 掛載處的完整
-   說明),不再緊鄰頂部固定 UI,上邊距從 88px 改回 48px(跟 JiufenPage.css
-   同步調整)。 */
-.tainan-map-intro {
-  --explore-map-page-padding: 48px 24px;
-}
-@media (min-width: 901px) {
-  .tainan-map-intro {
-    --explore-map-page-padding: 48px 50px 48px 24px;
-  }
-}
-
-.tainan-map-intro [class*="stage"] {
-  --fade-size: 10px;
-  -webkit-mask-image:
-    linear-gradient(to right, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent),
-    linear-gradient(to bottom, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent);
-  mask-image:
-    linear-gradient(to right, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent),
-    linear-gradient(to bottom, transparent, #000 var(--fade-size), #000 calc(100% - var(--fade-size)), transparent);
-  -webkit-mask-composite: source-in;
-  mask-composite: intersect;
-}
-@media (max-width: 900px) {
-  .tainan-map-intro [class*="stage"] {
-    --fade-size: 0px;
-  }
-}
-
-.tainan-map-intro [class*="panel"] {
-  --desktop-info-card-top: 16px;
-}
+/* 2026-10:.tainan-progress-rail/.tainan-progress-dot(獨立進度點 nav)
+   跟 .tainan-map-intro(頁尾固定地圖區塊,含淡出遮罩/資訊卡偏移等樣式)
+   已隨 ScrollTimeline 改造移除——這兩段視覺效果都是為原本「獨立進度點
+   + 滿版大地圖」結構設計的,ScrollTimeline 改用左側時間軸縮圖 + 可
+   展開的嵌入式小地圖取代,不再需要(對齊 TainanChikanPage.css 改造時
+   拿掉對應區塊的既有做法)。 */
 
 /* Final CTA */
 .tainan-final-cta {
