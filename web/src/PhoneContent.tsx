@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Helmet } from 'react-helmet-async'
 import { Compass, ListPlus, Route, Sparkles } from 'lucide-react'
 import { ChatScreen, type DesktopTimelineMirror } from './chat/ChatScreen'
 import { type ContentProps } from './AppCommon'
@@ -217,16 +218,41 @@ export function PhoneContent(props: ContentProps) {
   // PaceRouteMap 的 onEntrySaved 呼叫。
   const [_savedEntry, setSavedEntry] = useState<{ id: string; lat: number; lng: number } | null>(null)
 
+  // titleHelmet:2026-10 新增——/app 這個登入後正式功能頁原本沒有自己的
+  // <title>,SPA 內部換頁(例如從其他頁面透過前端路由導到 /app)後瀏覽器
+  // 分頁標題仍停留在 index.html 的靜態標題,仿照其餘城市頁(JiufenPage.tsx
+  // 等)既有的 react-helmet-async 模式補上,用它直接覆寫 document.title。
+  // 這次先固定寫死這個值,不跟著左側 Rail 切換的功能分頁(旅程列表/規劃/
+  // 時間軸/路徑/AI 規劃)動態變化。
+  // 下方三個 return 分支(訪客登入卡片/桌面版/手機版主畫面)都是這個元件
+  // 真正會渲染畫面的路徑,但 <Helmet> 本身不依賴分支的其他內容,抽成這裡
+  // 單一一份 JSX 常數,三處都直接引用同一份,不再各自重複宣告同樣的
+  // <title> 標籤(2026-10 code review 抓到:原本三處各自複製貼上一份完全
+  // 相同的區塊,日後要改標題邏輯得同步改三處,容易漏改)。
+  const titleHelmet = (
+    <Helmet>
+      <title>Tripace | 規劃</title>
+    </Helmet>
+  )
+
   if (props.isGuest) {
     return (
-      <LoginCard title="歡迎使用 Tripace" subtitle="請先登入或註冊帳號,才能查看與使用旅程功能。">
-        <LoginForm baseURL={cfg.baseURL} onAuthed={props.onAuthed} pill />
-      </LoginCard>
+      <>
+        {titleHelmet}
+        <LoginCard title="歡迎使用 Tripace" subtitle="請先登入或註冊帳號,才能查看與使用旅程功能。">
+          <LoginForm baseURL={cfg.baseURL} onAuthed={props.onAuthed} pill />
+        </LoginCard>
+      </>
     )
   }
 
   if (isDesktop) {
-    return <DesktopContent {...props} />
+    return (
+      <>
+        {titleHelmet}
+        <DesktopContent {...props} />
+      </>
+    )
   }
 
   // bottomTabs/sideTools:底部常駐列(PhoneTabBar.tsx)/右側小圖示群組
@@ -296,6 +322,7 @@ export function PhoneContent(props: ContentProps) {
 
   return (
     <>
+      {titleHelmet}
       {/* 主顯示區容器:flex 屬性延續原本 .web-app 直接排列這些內容時的
           版面(撐滿剩餘高度、內部再各自 flex column 排 navbar/內容/
           輸入列)。 */}
