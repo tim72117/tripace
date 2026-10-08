@@ -1,0 +1,114 @@
+/* StaticMapBackdrop.module.css — /ai-plan 展示頁的整頁地圖背景樣式。
+   見 StaticMapBackdrop.tsx 對「為什麼用 Static Maps 而非 JS SDK」的
+   完整說明。 */
+
+/* backdrop——鋪滿 .page(它是 position: relative,見
+   AIPlanTimelinePage.module.css)。z-index: 0 配合上層內容的 z-index: 1,
+   確保時間軸/輸入框/浮動按鈕都疊在地圖之上。
+   pointer-events: none——這是純裝飾層,不吃任何點擊:使用者點到地圖
+   區域時,事件要穿透到底下真正該接的元素(例如時間軸的空白處)。 */
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* 圖片載入前的底色,跟 .page 的 --ios-bg 同系,避免白閃。 */
+  background: var(--paper, #F7F3EC);
+}
+
+.image {
+  width: 100%;
+  height: 100%;
+  /* object-fit: cover——Static Maps 回傳固定的正方形(見 tsx 的 SIZE
+     說明),用 cover 讓它在各種視窗比例下都鋪滿且不變形,多餘的部分
+     裁掉。object-position 偏上:時間軸內容集中在畫面中上部,讓地圖
+     的視覺重心跟著往上對齊。 */
+  object-fit: cover;
+  object-position: center 40%;
+  display: block;
+  /* 載入完成才淡入(見 .imageLoaded),避免圖片突然跳出來。 */
+  opacity: 0;
+  transition: opacity 600ms ease-out;
+}
+
+.imageLoaded {
+  opacity: 1;
+}
+
+/* scrim——壓在地圖與內容之間的半透明遮罩。
+   地圖即使已經降了彩度(見 tsx 的 MAP_STYLE),直接讓卡片文字壓在上面
+   仍然不好讀;這層把對比拉回來,又保留足夠的輪廓讓使用者看得出底下
+   是一張地圖。
+   用 --paper(頁面自己的暖白紙感 token,定義在 .page)而非固定白色,
+   深色模式下 .page 會換掉這個值,遮罩跟著變,不需要另外寫一份。 */
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--paper, #F7F3EC);
+  /* 0.55——使用者回報 0.82 時「地圖太淡了」。這個值讓街廓紋理真的看得
+     出來,同時仍把對比壓到足以讓上層卡片的文字好讀。時間軸卡片本身是
+     不透明的實心底(見 PlanTimelineView.module.css),文字並不直接壓在
+     地圖上,所以遮罩可以比「文字直接疊在圖上」的情境淡得多。 */
+  opacity: 0.55;
+}
+
+/* 手機版:視窗更窄,時間軸卡片幾乎佔滿寬度,地圖露出的比例本來就低,
+   遮罩可以淡一點,讓僅存的那點地圖紋理不至於完全看不見。 */
+@media (max-width: 767px) {
+  .scrim {
+    opacity: 0.62;
+  }
+}
+
+/* prefers-reduced-motion:關掉淡入,直接顯示——對齊專案其餘動畫的
+   既有處理方式。 */
+@media (prefers-reduced-motion: reduce) {
+  .image {
+    transition: none;
+  }
+}
+
+/* marker——站點圖標,用 HTML 疊在地圖上(理由見 tsx 的完整說明:避免
+   每多一站就是一次新的 Static Map 請求)。
+
+   視覺沿用 /app 正式功能的小圓點 base 態(geo-planning/mapMarkers.ts 的
+   planStopMarkerContent):13px 直徑、accent 色、2px 白邊。展示頁與正式
+   功能共用同一套視覺語彙,不自創一種。
+
+   left/top 由 tsx 以 Web Mercator 投影算出百分比後 inline 指定;
+   translate(-50%, -50%) 讓圓心(而非左上角)對準座標。
+
+   z-index: 1——要疊在 .scrim(無 z-index,但在 DOM 順序上更早)之上,
+   否則圓點會被遮罩一起壓淡,失去「這是標記」的辨識度。 */
+.marker {
+  position: absolute;
+  z-index: 1;
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  border-radius: 50%;
+  background: var(--vermilion, #8B3A2F);
+  box-shadow: 0 0 0 2px #FDFCFA;
+  transform: translate(-50%, -50%);
+  /* 進場:新的一站被排進時間軸時淡入並從小放大,呼應正式功能那邊
+     marker 的進場感。 */
+  animation: markerIn 420ms cubic-bezier(0.2, 0.6, 0.3, 1) backwards;
+}
+
+@keyframes markerIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marker {
+    animation: none;
+  }
+}

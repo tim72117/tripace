@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useThemeToggle } from '../../hooks/useThemeToggle'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../SiteNavButtons'
@@ -24,6 +24,7 @@ import {
   type PlanNodeData,
   type PlanTimeline,
 } from '../../plan-core/planTimeline'
+import { StaticMapBackdrop, type PlotStop } from './StaticMapBackdrop'
 import styles from './AIPlanTimelinePage.module.css'
 
 // AIPlanTimelinePage — 「AI 安排行程」時間軸展示原型的正式頁面版本。
@@ -712,6 +713,18 @@ export function AIPlanTimelinePage() {
   // addNoteToTimeline 橋接函式,使用者明確要求這個頁面的輸入框改為
   // 純展示、不接受真的輸入,整條 onagent 對話路徑已一併移除。
   const { steps, isGenerating } = usePlanSimSocket(promptTyped)
+
+  // mapStops——要畫在底圖上的站點。只取 type==='stop' 且已經有座標的
+  // 節點:section(AI 的敘述文字)本來就不是地點。腳本的站點是逐步送
+  // 進來的,還沒送到的自然不在清單裡——地圖上的圓點因此會隨著時間軸
+  // 一站一站長出來(見 StaticMapBackdrop 的 .marker 進場動畫)。
+  const mapStops = useMemo<PlotStop[]>(
+    () =>
+      steps
+        .filter((s) => s.type === 'stop' && s.lat != null && s.lng != null)
+        .map((s) => ({ id: s.id, lat: s.lat!, lng: s.lng! })),
+    [steps],
+  )
   const stopCount = steps.filter((s) => s.type === 'stop').length
 
   // composerCollapsed——排程結束後,漂浮輸入膠囊(.composer)裡原本的
@@ -851,6 +864,13 @@ export function AIPlanTimelinePage() {
   return (
     <>
     <div className={`${styles.page} app-theme-root`} data-theme={theme ?? undefined}>
+      {/* StaticMapBackdrop——整頁的地圖底層。用 Maps Static API(一張
+          PNG)而非 JS SDK,理由見該元件的完整說明:這是公開高流量的
+          展示頁、地圖內容固定、零互動需求,Static 的圖片請求可以被
+          CDN/瀏覽器快取,而 Dynamic Maps 每次建圖實例都計費一次。
+          它是 position:absolute + pointer-events:none 的裝飾層,不影響
+          下面任何內容的版面與互動。 */}
+      <StaticMapBackdrop stops={mapStops} />
       {/* 上方漂浮按鈕——使用者明確要求「上方功能列採用跟首頁一樣的漂浮
           按鈕,要有功能介紹跟登入日夜間切換按鈕」,直接沿用
           home/SiteNavButtons.tsx 這份跨頁面共用元件(HomePage.tsx/
