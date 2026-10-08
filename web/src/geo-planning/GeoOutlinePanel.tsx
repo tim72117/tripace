@@ -5,6 +5,7 @@ import { fetchEntries, fetchGeoGeocode, fetchGeoPlacePhoto, fetchGeoPlaceText, g
 import { useStableCallback } from '../hooks/useStableCallback'
 import type { Theme } from '../theme'
 import { ExploreMap } from './ExploreMap'
+import type { GeoPanTarget } from './geoSelection'
 import type { GeoSelectedKey } from './GeoHotelSidebar'
 import styles from './GeoOutlinePanel.module.css'
 
@@ -215,7 +216,10 @@ export function GeoOutlinePanel({
   // 理由同下方 handleGeocodeCandidateSelect 的呼叫時機——每次點擊呼叫端
   // 都會建立新物件參照,即使連續點同一筆候選也能觸發。
   externalGeocodeCandidateSelect?: GeoSearchResult | null
-  panTarget?: { lat: number; lng: number; level?: number; radiusMeters?: number; onlyIfOutOfView?: boolean } | null
+  // GeoPanTarget(geoSelection.ts)——改用共用型別,理由同
+  // useGeoOutlineMapState 的同名 prop(行內各宣告一份正是該型別註解
+  // 警告過的漂移來源)。level 不在共用型別裡,單獨列出。
+  panTarget?: (GeoPanTarget & { level?: number }) | null
   selectedKey?: GeoSelectedKey
   // candidateKeys/hoverKey:原封不動轉傳給 ExploreMap——理由同
   // selectedKey,見 ExploreMap.tsx 對這兩個 prop 的完整說明。
@@ -571,6 +575,11 @@ export function GeoOutlinePanel({
   const externalLevel = externalPanTarget?.level
   const externalRadiusMeters = externalPanTarget?.radiusMeters
   const externalOnlyIfOutOfView = externalPanTarget?.onlyIfOutOfView
+  // externalNonce:呼叫端要求「同一個座標再移動一次」時,其餘純量都沒變,
+  // 只有這個值會換——見 GeoPanTarget 對這個欄位的完整說明。這裡與
+  // useGeoOutlineMapState 的同名 effect 是同一套邏輯的兩份實作(桌面版/
+  // 手機版各一),兩邊要一起改。
+  const externalNonce = externalPanTarget?.nonce
   useEffect(() => {
     if (externalLat == null || externalLng == null) return
     setPanRequest({
@@ -581,7 +590,7 @@ export function GeoOutlinePanel({
       suppressQuery: true,
       onlyIfOutOfView: externalOnlyIfOutOfView,
     })
-  }, [externalLat, externalLng, externalLevel, externalRadiusMeters, externalOnlyIfOutOfView])
+  }, [externalLat, externalLng, externalLevel, externalRadiusMeters, externalOnlyIfOutOfView, externalNonce])
 
   return (
     <div className={styles.wrap}>

@@ -368,7 +368,11 @@ export function useGeoPlanningState({
       key: c.kind === 'entry' ? null : geoItemKey(c.kind, c),
       content: candidateInfoContent(c),
     })
-    setPanTarget({ lat: c.lat, lng: c.lng })
+    // nonce:點清單項目是明確的使用者動作,連續點同一項(例如中間手動
+    // 拖曳過地圖、想回到原位)每次都該移動。少了它的話座標沒變、消費端
+    // 的 effect 依賴全都沒變,地圖不會動——見 GeoPanTarget 對這個欄位的
+    // 完整說明。
+    setPanTarget({ lat: c.lat, lng: c.lng, nonce: Date.now() })
   }, [])
 
   const clearSelection = useCallback(() => {

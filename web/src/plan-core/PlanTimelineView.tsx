@@ -1,5 +1,5 @@
-import { Fragment } from 'react'
-import type { MutableRefObject, Ref, UIEventHandler } from 'react'
+import { Fragment, useCallback, useState } from 'react'
+import type { MutableRefObject, Ref, ReactNode, UIEventHandler } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { PlanNode } from './planTimeline'
 import styles from './PlanTimelineView.module.css'
@@ -49,6 +49,10 @@ export interface PlanTimelineViewProps {
   showJumpPill: boolean
   onJumpToLatest: () => void
   onPanToStop: (step: PlanNode) => void
+  // onHoverStop——滑鼠移入/移出站點卡時回報是哪一站(移出時傳 null),
+  // 2026-10 新增:使用者明確要求「滑鼠移動到介紹卡時,地圖圓加強顯示」。
+  // 選填——/ai-plan 展示頁等沒有地圖的使用情境不需要這個回報。
+  onHoverStop?: (id: string | null) => void
   onOpenPhotos: (photos: { photos: string[]; alt: string }) => void
   // mountedIdsRef——追蹤「已經播過進場動畫的節點 id」,呼叫端
   // (TripPlanPage.tsx)擁有這個 ref 的生命週期,這裡只負責讀寫其內容,
@@ -90,6 +94,18 @@ export interface PlanTimelineViewProps {
   // class 比照原本的寫法(position:absolute 相對 .page 置中定位),不
   // 依賴 sticky。
   jumpPillWrapClassName?: string
+  // jumpPillClassName——選填,疊加在按鈕本身(.jumpPill)上。2026-10
+  // 新增:正式頁對話小匡(compact)使用者要求「太扁太寬,且要用 icon
+  // 不要用文字的箭頭」——小匡只有 440px 寬,文字膠囊(padding:8px 16px
+  // + 「↓ 回到最新」五個字)比例上太寬太扁;全頁版維持原本的文字膠囊,
+  // 不需要跟著改。
+  jumpPillClassName?: string
+  // jumpPillContent——選填,覆寫按鈕內部內容(預設「↓ 回到最新」文字)。
+  // 跟 jumpPillClassName 搭配使用:小匡版傳一個只有 icon 的 ReactNode,
+  // 不重新定義另一顆按鈕元件——這個元件仍然只有一個 <button>,只是
+  // 內容跟外觀由呼叫端決定,維持「這個元件不知道自己在哪種容器裡」的
+  // 既有設計慣例(同 scrollClassName/jumpPillWrapClassName)。
+  jumpPillContent?: ReactNode
 }
 
 // PlanTimelineView — 純渲染元件,不持有自己的 state/effect(scroll 追蹤、
@@ -104,13 +120,43 @@ export function PlanTimelineView({
   showJumpPill,
   onJumpToLatest,
   onPanToStop,
+  onHoverStop,
   onOpenPhotos,
   mountedIdsRef,
   scrollRef,
   onScroll,
   scrollClassName,
   jumpPillWrapClassName,
+  jumpPillClassName,
+  jumpPillContent,
 }: PlanTimelineViewProps) {
+  // failedPhotoUrls——載入失敗(404/403/過期/網路錯誤)的照片 URL 集合。
+  //
+  // 2026-10 使用者實際回報:縮圖位置出現破圖 icon 疊著 alt 文字(例如
+  // 「全美戲院」四個字擠在 64px 圓形縮圖裡),而不是乾淨的佔位。原因是
+  // 這裡的 <img> 沒有 onError——googlePhotoUrls 有值就一律渲染 <img>,
+  // URL 本身載入失敗時瀏覽器顯示的就是那個破圖樣式;更糟的是
+  // .stopThumb 的 thumbBg 底色在「有 googlePhotoUrls」時被判斷式關掉
+  // (見下方 style),所以連底色都沒有,破圖直接疊在透明背景上。
+  //
+  // photo_assets 的 7 天過期機制(見後端 photoAssetExpiry)讓這不是罕見
+  // 邊界情況:節點是持久化的(planTimelineStorage.ts),時間軸可以存在
+  // 遠比 7 天更久,舊節點裡的 URL 失效是預期中會發生的事。
+  //
+  // 用 URL 字串(而非節點 id)當 key——同一張照片可能出現在多個節點,
+  // 失敗一次就不需要在其他節點重試;節點 id 則會因為重新插入而改變。
+  const [failedPhotoUrls, setFailedPhotoUrls] = useState<ReadonlySet<string>>(() => new Set())
+  const markPhotoFailed = useCallback((url: string) => {
+    setFailedPhotoUrls((prev) => {
+      // 已經記錄過就回傳原本的 Set——onError 可能因為重新渲染而重複觸發,
+      // 每次都產生新 Set 會造成不必要的重渲染迴圈。
+      if (prev.has(url)) return prev
+      const next = new Set(prev)
+      next.add(url)
+      return next
+    })
+  }, [])
+
   return (
     <>
       <div className={`${styles.scroll} ${scrollClassName ?? ''}`} ref={scrollRef} onScroll={onScroll}>
@@ -135,6 +181,12 @@ export function PlanTimelineView({
             // removingClass:套在每個節點最外層的 .row 容器上,CSS 同時
             // 做透明度淡出跟高度塌縮。
             const removingClass = p.removing ? styles.removingFade : ''
+            // usablePhotos——濾掉已知載入失敗的 URL(見 failedPhotoUrls
+            // 的完整說明)。整組都失敗時長度為 0,縮圖的判斷式自然退回
+            // thumbIcon + thumbBg 佔位,跟「這個地點本來就沒有照片」是
+            // 同一條路徑,不需要額外的錯誤樣式。Lightbox 收到的也是這份
+            // 濾過的清單,不會點開後翻到破圖。
+            const usablePhotos = p.googlePhotoUrls?.filter((u) => !failedPhotoUrls.has(u)) ?? []
 
             if (p.type === 'section') {
               return (
@@ -219,14 +271,24 @@ export function PlanTimelineView({
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') onPanToStop(p)
                         }}
+                        // onMouseEnter/Leave——地圖上對應的圓點加強顯示
+                        // (見 onHoverStop 的完整說明)。onFocus/onBlur
+                        // 一併接上:這張卡片在有座標時是 tabIndex=0 的可
+                        // 聚焦元素,鍵盤使用者 Tab 到這裡時應該得到跟滑鼠
+                        // 懸停一樣的回饋,不是只有滑鼠使用者看得到地圖
+                        // 在哪一顆點上。
+                        onMouseEnter={() => onHoverStop?.(p.id)}
+                        onMouseLeave={() => onHoverStop?.(null)}
+                        onFocus={() => onHoverStop?.(p.id)}
+                        onBlur={() => onHoverStop?.(null)}
                       >
                         <div
                           className={`${styles.stopThumb} ${justMounted ? styles.thumbPop : ''}`}
-                          style={{ background: p.googlePhotoUrls?.length ? undefined : p.thumbBg }}
+                          style={{ background: usablePhotos.length ? undefined : p.thumbBg }}
                         >
                           {p.loading ? (
                             <span className={styles.thumbSpinner} aria-label="查詢地點資料中" />
-                          ) : p.googlePhotoUrls?.length ? (
+                          ) : usablePhotos.length ? (
                             // 縮圖本身維持只顯示第一張(64px 圓形版型)。
                             // 只要有照片就能點擊開啟全螢幕 Lightbox 放大
                             // 瀏覽——即使只有 1 張,使用者明確要求「一張
@@ -244,17 +306,27 @@ export function PlanTimelineView({
                               className={styles.stopThumbPhotoBtn}
                               onClick={(e) => {
                                 e.stopPropagation()
-                                onOpenPhotos({ photos: p.googlePhotoUrls!, alt: p.name ?? '' })
+                                onOpenPhotos({ photos: usablePhotos, alt: p.name ?? '' })
                               }}
                               aria-label={
-                                p.googlePhotoUrls!.length > 1
-                                  ? `瀏覽 ${p.googlePhotoUrls!.length} 張照片`
+                                usablePhotos.length > 1
+                                  ? `瀏覽 ${usablePhotos.length} 張照片`
                                   : '放大檢視照片'
                               }
                             >
-                              <img src={p.googlePhotoUrls[0]} alt={p.name} className={styles.stopThumbImg} />
-                              {p.googlePhotoUrls.length > 1 && (
-                                <span className={styles.stopThumbPhotoCount}>{p.googlePhotoUrls.length}</span>
+                              {/* onError——載入失敗時把這個 URL 記進
+                                  failedPhotoUrls(見該 state 的完整說明),
+                                  下次渲染 usablePhotos 就會濾掉它;整組都
+                                  失敗時整張縮圖退回 thumbIcon + thumbBg
+                                  佔位,不是破圖疊 alt 文字。 */}
+                              <img
+                                src={usablePhotos[0]}
+                                alt={p.name}
+                                className={styles.stopThumbImg}
+                                onError={() => markPhotoFailed(usablePhotos[0])}
+                              />
+                              {usablePhotos.length > 1 && (
+                                <span className={styles.stopThumbPhotoCount}>{usablePhotos.length}</span>
                               )}
                             </button>
                           ) : p.thumbIcon}
@@ -363,7 +435,14 @@ export function PlanTimelineView({
 
       {showJumpPill && (
         <div className={`${styles.jumpPillWrap} ${jumpPillWrapClassName ?? ''}`}>
-          <button type="button" className={styles.jumpPill} onClick={onJumpToLatest}>↓ 回到最新</button>
+          <button
+            type="button"
+            className={`${styles.jumpPill} ${jumpPillClassName ?? ''}`}
+            onClick={onJumpToLatest}
+            aria-label="回到最新"
+          >
+            {jumpPillContent ?? '↓ 回到最新'}
+          </button>
         </div>
       )}
     </>

@@ -25,7 +25,7 @@
 // 定案、真的接上後端,才會比照 pace/geo-outline 升級成正式功能。
 export type PanelMode =
   | 'trips' | 'timeline' | 'pace' | 'geo-outline' | 'plan-ai'
-  | 'demo-route-editor'
+  | 'demo-route-editor' | 'demo-chat'
   | null
 
 // 規劃地圖(geo-outline)已不再有獨立的 feature flag——使用者明確要求
@@ -58,6 +58,20 @@ export const DEBUG_PANEL_ENABLED = import.meta.env.VITE_FEATURE_DEBUG_PANEL === 
 // DEMO_ROUTE_EDITOR_ENABLED:路徑編輯器試做的開關,同上面幾個 DEMO_*
 // 一套機制——預設關閉,只在明確設為字串 "true" 時才啟用。
 export const DEMO_ROUTE_EDITOR_ENABLED = import.meta.env.VITE_FEATURE_DEMO_ROUTE_EDITOR === 'true'
+
+// DEMO_CHAT_ENABLED — 舊版對話框(chat/ChatScreen.tsx,走 tripace onagent
+// app 的 trip_entry_* 工具、以批次表格呈現結果)的試做分頁開關。
+//
+// 2026-10:地圖規劃的對話視窗改成渲染 AI 規劃時間軸
+// (trip-plan/TripPlanPage.tsx,走 plan-ai-timeline app)之後,舊的
+// ChatScreen 失去原本的入口——使用者明確要求「舊的對話框移動到 demo
+// 分頁」,不是刪除:那套 trip_entry_* 工具鏈(新增/查詢/更新/刪除行程
+// 條目、批次表格 UI)是另一種仍有參考價值的互動模式,保留成試做分頁
+// 讓它仍可被開啟驗證,但不佔用正式導覽項目。
+//
+// 同其餘 DEMO_*/TIMELINE_*/PACE_* flag 的既有慣例:預設關閉,只在明確
+// 設為字串 "true" 時才啟用。
+export const DEMO_CHAT_ENABLED = import.meta.env.VITE_FEATURE_DEMO_CHAT === 'true'
 
 // 「AI 規劃」(trip-plan/TripPlanPage.tsx)已不再有獨立的 feature flag
 // ——同 geo-outline 的既有先例(見上方說明),使用者明確要求不用 flag
@@ -95,6 +109,10 @@ export const PANEL_REGISTRY: Record<Exclude<PanelMode, null>, PanelSpec> = {
   'geo-outline': { enabled: true, slot: 'float', width: 380 },
   'plan-ai': { enabled: true, slot: 'main-replace' },
   'demo-route-editor': { enabled: DEMO_ROUTE_EDITOR_ENABLED, slot: 'main-replace' },
+  // demo-chat 用 main-replace(而非 float):ChatScreen 是一整個完整的
+  // 對話畫面(訊息流+輸入框+批次表格),不是疊在地圖上的小卡片,版面
+  // 需求跟 demo-route-editor 同一類。
+  'demo-chat': { enabled: DEMO_CHAT_ENABLED, slot: 'main-replace' },
 }
 
 // PANEL_MODES:PanelMode 扣掉 null 之後的合法字串值列表——給 isPanelMode()
@@ -124,7 +142,10 @@ export function isPanelMode(v: string | undefined): v is Exclude<PanelMode, null
 // 的既有處理方式)。原本定義在 PhoneNavDrawer.tsx,搬到這裡與 PanelMode
 // 收斂在同一份檔案,避免兩份值域各自維護、日後新增/移除模式時漏改
 // 其中一處。
-export type DrawerMode = Exclude<PanelMode, 'demo-route-editor' | 'plan-ai' | null>
+// demo-chat 同樣排除:它是桌面版專屬的試做分頁(見 DEMO_CHAT_ENABLED 的
+// 完整說明),手機版的對話入口是底部分頁列開啟的疊加層,不走 drawer 的
+// 分頁切換機制,理由同 demo-route-editor。
+export type DrawerMode = Exclude<PanelMode, 'demo-route-editor' | 'demo-chat' | 'plan-ai' | null>
 
 // LangSelect/TokenDisplay 已移到 user/LangSelect.tsx、user/TokenDisplay.tsx
 // ——兩者都是設定畫面(SettingsDialog 桌面版/SettingsScreen 手機版)專用的

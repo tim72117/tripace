@@ -20,3 +20,7 @@ playwright-report
 # 每次重錄都會覆寫,檔案也不小,是要直接上傳到 Facebook/Instagram 的
 # 廣告素材,不是原始碼,不應提交進版控。
 scripts/record/output
+
+# dev server 的輸出轉存檔(背景執行 vite 時 > vite-dev.log 產生)——
+# 每次重跑都會覆寫,只是本機除錯用的即時日誌,不應提交進版控。
+vite-dev.log

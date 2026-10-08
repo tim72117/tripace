@@ -33,79 +33,167 @@
   flex-direction: column;
   background: var(--ios-bg);
   color: var(--color-dark);
-  /* position: relative——.composer 用 position: absolute 疊在時間軸內容
-     上方(見該 class 的完整說明),需要一個 positioning context。 */
+}
+
+/* compact:放進對話浮動小匡(DesktopLayout.tsx 的 chat-popover)時疊加
+   的 modifier。
+   上面 .page 的 min-height:100% + 自然高度 + 不管 overflow,成立的前提
+   是「外層有人接手捲動」——/app/plan-ai 那條路徑由 DesktopMain 的
+   unboundedScroll 負責(見上方註解)。但小匡這個情境沒有任何祖先在管
+   捲動,而 FloatingPanel 的 .panel 是 overflow:hidden,結果是內容一路
+   往下撐、超出的部分直接被裁掉,完全捲不動(使用者實際回報「上下滾動
+   的卷軸沒有作用」)。
+   這裡改回「自己就是固定高度的 flex 容器」:height:100% 讓它剛好填滿
+   小匡(不是 min-height,那會讓它被內容撐長回到原本的問題),
+   min-height:0 讓底下的 .compactScroll 能正確縮小並產生捲動
+   (flex 子元素預設 min-height:auto 不會小於內容,少這行捲動一樣不會
+   發生)。
+   position: relative——2026-10 新增,當 .compactJumpPillWrap(見下方)
+   position:absolute 的定位參照。 */
+.compact {
+  height: 100%;
+  min-height: 0;
   position: relative;
 }
 
-/* ---------- Header ---------- */
-
-.header {
-  /* position: sticky; top: 0——改用 unboundedScroll 後,捲動權在外層
-     .main,.header 只是 .page 這個 flex column 裡普通的流動內容,不會
-     像先前(獨立捲動容器 + 固定視窗高)那樣天然固定在頂端。用 fable
-     審閱時發現:時間軸一長,行程名稱與「正在安排/已安排 N 站」狀態
-     藥丸(使用者判斷 AI 是否還在工作的常駐指示)會直接被捲出畫面。
-     z-index 6——高於 .composer(sticky, z-index 5),確保捲動時 header
-     疊在膠囊之上,不會被蓋住。 */
-  position: sticky;
-  top: 0;
-  z-index: 6;
-  flex: none;
-  height: 56px;
-  border-bottom: 1px solid var(--ios-sep);
-  background: var(--ios-card);
+/* compactScroll:疊加在 PlanTimelineView 自己的 .scroll 上(透過該元件
+   的 scrollClassName prop),讓它在 compact 模式下真正接手垂直捲動。
+   明確鎖 overflow-x:hidden——只設 overflow-y 會讓水平軸也變成 auto
+   (規範預設行為),內容稍微超寬就能左右拖曳。
+   scrollbar-width/scrollbar-color/::-webkit-scrollbar*:使用者回報小匡
+   的捲軸太粗——瀏覽器原生捲軸(通常 15-17px)在只有 440px 寬的小匡裡
+   比例失調。改用細捲軸,視覺語言沿用桌面版同類浮動卡片的既有慣例
+   (geo-planning/DesktopInfoCard.module.css 的 .body,同樣是「疊在地圖
+   上方的固定寬度浮動卡片 + 內部捲動」情境),不是這次重新發明一套:
+   scrollbar-width:thin 是 Firefox 的標準屬性,webkit 系(Chrome/Safari/
+   Edge)要另外用 ::-webkit-scrollbar 系列偽元素,兩者都要寫才能涵蓋
+   主流瀏覽器。只隱藏視覺上的粗細、改細既有配色,不是隱藏捲軸本身
+   (跟手機版 ScrollArea.module.css 完全隱藏捲軸的做法不同——桌面版
+   使用者習慣看到捲軸存在來判斷「還有更多內容」,只是這裡嫌它太粗)。 */
+.compactScroll {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ios-gray) transparent;
 }
-
-/* headerInner——背景(.header)撐滿視窗寬度,內容維持跟時間軸內容一樣的
-   640px 置中對齊,理由見 TripPlanPage.tsx 對這個 class 的完整說明。 */
-.headerInner {
-  height: 100%;
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 0 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.compactScroll::-webkit-scrollbar {
+  width: 6px;
 }
-
-.headerRight {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  overflow-x: auto;
-  min-width: 0;
-  scrollbar-width: none;
-  /* margin-left: auto——.headerLeft(行程名稱)已移除,見 TripPlanPage.tsx
-     的完整說明。.headerInner 維持 justify-content: space-between 沒有
-     另外調整(改動範圍最小,不影響其餘依賴這個屬性的排版假設),這裡
-     直接讓自己貼齊最右側。 */
-  margin-left: auto;
+.compactScroll::-webkit-scrollbar-track {
+  background: transparent;
 }
-.headerRight::-webkit-scrollbar { display: none; }
-
-.statusPill {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--ios-gray);
-  background: var(--ios-bg);
-  border: 1px solid var(--ios-sep);
+.compactScroll::-webkit-scrollbar-thumb {
+  background-color: var(--ios-gray);
   border-radius: 999px;
-  padding: 6px 14px;
-  flex: none;
+}
+.compactScroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-dark);
 }
 
-.statusDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  flex: none;
+/* compactJumpPillWrap:疊加在 PlanTimelineView 自己的 .jumpPillWrap 上
+   (透過該元件的 jumpPillWrapClassName prop)——使用者截圖回報「回到
+   最新」按鈕卡在時間軸卡片中間、樣式跑掉。
+   根因(第一輪):.jumpPillWrap 預設用 position:sticky(相對「最近的
+   捲動祖先」貼齊,見 PlanTimelineView.module.css 該 class 的完整
+   說明),這個假設只在全頁版成立。compact 模式下,.jumpPillWrap 的
+   父層是 .compact,sticky 往上爬會先撞到 FloatingPanel 的 .panel
+   (overflow:hidden——即使使用者不能手動捲動它,CSS 規範上仍算一個
+   scroll container),bottom:98px 變成相對這個不相干的容器計算,
+   按鈕因此被定位到完全錯誤的位置。(2026-10 code review 修正:這個
+   檔案先前的註解誤寫成「compact 模式下 DOM 樹裡完全沒有 <main>
+   祖先」——實際上 FloatingPanel 是 DesktopMain 的子孫,是有 <main>
+   祖先的,只是那個 <main> 不是接手捲動的那個/scroll 事件不會冒泡
+   到它身上,跟 sticky 往上爬撞到 .panel 導致位置算錯是兩回事,這裡
+   更正敘述,不影響下面的修法與結論。)
+   根因(第二輪,code review 發現的真正阻斷性錯誤):第一版選擇器用
+   :global(.jumpPillWrap).compactJumpPillWrap 想做「跨 CSS Modules
+   檔案的組合選擇器」,意圖是讓兩個 class 一起命中、特異度相加、
+   不依賴載入順序——但這個寫法完全不成立:.jumpPillWrap 是
+   PlanTimelineView.module.css 的 local class,編譯後的真實 DOM
+   class 名稱是雜湊過的(例如 _jumpPillWrap_18y8j_570),不是字面上
+   的 jumpPillWrap;:global(.jumpPillWrap) 要求 DOM 元素帶有字面上
+   的 jumpPillWrap 這個 class,但 DOM 裡從來沒有這個 class,選擇器
+   永遠選不到任何東西。這代表第一輪到這裡為止調整的所有數值
+   (bottom:68px→80px、height 覆寫與否)全部從未真正生效過,小匡
+   裡的按鈕全程仍是原始的 position:sticky;bottom:98px,這正是幾輪
+   截圖來回「改了數字但畫面沒變」的真正原因。
+   正確修法:不跨檔案選取,只用這份檔案自己的 local class
+   (.compact .compactJumpPillWrap),靠祖先選擇器疊加提高特異度
+   (0,2,0,0,高於任何單一 class 的 0,1,0,0),.compact 本來就是
+   .compactJumpPillWrap 的真實祖先,語意上也站得住腳,不需要
+   :global()。 */
+.compact .compactJumpPillWrap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* bottom:見 .compact .composer 的完整說明——composer 實際高度是
+     66px(border 1 + padding 10 + .inputWrap 44px + padding 10 +
+     border 1),不是先前註解誤算的 56px。.composer 原本(修正前)
+     還會意外繼承全頁版 .composer 規則的 bottom: max(20px, safe-area)
+     這個位移(因為只改了 position 沒清掉 bottom),已經在
+     .compact .composer 加上 bottom: auto 清除——composer 視覺頂端
+     距 .compact 底部現在單純是 margin-bottom 12 + 高度 66 = 78px。
+     要讓這個 wrap 的底部落在 composer 視覺頂端再往上 12px(呼吸
+     間距,對齊全頁版「停在輸入膠囊上方 12px 處」的既有設計意圖)處,
+     需要 78 + 12 = 90px。 */
+  bottom: 90px;
 }
-.statusDotGenerating { background: var(--ios-sand); animation: breathe 1.4s ease-in-out infinite; }
-.statusDotDone { background: var(--ios-green); }
+
+/* compactJumpPill:疊加在 PlanTimelineView 的 .jumpPill 按鈕本身上
+   (透過該元件的 jumpPillClassName prop,配合 jumpPillContent 換成
+   icon+文字的內容,見 TripPlanPage.tsx 呼叫處的完整說明)。同樣不用
+   :global() 跨檔案選取(理由見上方 .compactJumpPillWrap 的完整
+   說明),只用這份檔案自己的 local class 靠祖先選擇器提高特異度。
+   只加大 padding 解決「字跟外匡沒有間距」,保留 .jumpPill 原本的
+   深色實心膠囊語言(跟時間軸上其餘功能性膠囊如「步行 11 分」視覺
+   一致),不改背景色/深色模式——使用者明確說「重點是間距」,不需要
+   連視覺語言都整套換成地圖上 .categoryTag 那種毛玻璃卡片。
+   2026-10 修正歷程:曾經一度加大到 10px 28px,當時的前提是
+   .jumpPillWrap 的 flex stretch 把按鈕高度壓成只剩 padding-top +
+   padding-bottom(見 PlanTimelineView.module.css .jumpPillWrap 的
+   align-items: flex-start 完整說明——這才是真正的根因,不是 padding
+   沒生效),上下看起來幾乎是 0,只能靠加大左右撐出一點膠囊感。根因
+   修好、按鈕用內容撐出真正高度(fable 用 Playwright 實測確認
+   128×38px)後,28px 左右配上下實測 11px 比例嚴重失衡(2.5 倍,视觉
+   上是一條被拉長的長條),改回 18px(約 1.8 倍,跟全頁版 .jumpPill
+   的 8px/16px=2 倍比例相近),視覺上才跟全頁版的膠囊比例一致。 */
+.compact .compactJumpPill {
+  padding: 10px 18px;
+}
+
+/* compact 模式下的 .composer:改掉 position:sticky。
+   sticky + bottom 需要一個「捲動中的祖先」當參考才有意義——整頁模式下
+   那是外層 DesktopMain(unboundedScroll),輸入框會黏在視窗底部。但
+   compact 模式的捲動容器是 .compactScroll,而 .composer 是 .page 的
+   直接子元素、位在那個捲動容器「外面」,sticky 失去參考對象,行為不
+   直覺。改成單純的 flex:none——它本來就該是固定在底部、不參與捲動、
+   也不被壓縮的那一列,用 flex 語意直接表達,不依賴 sticky 的副作用。
+   2026-10 code review 修正:這裡先前重複宣告了兩次 position(static
+   後又 relative,relative 生效、static 是死碼——已刪除),而且只改了
+   position,沒有把基礎 .composer 規則(見上方)繼承來的
+   bottom: max(20px, env(safe-area-inset-bottom)) 一併清掉。
+   position 從 sticky 換成 relative 後,這個殘留的 bottom 仍然生效
+   ——relative 定位下 bottom 代表「從元素原本該在的位置再往上偏移」,
+   讓 composer 的視覺位置比 flex 版面算出來的位置又往上推了 20px,
+   這個隱性偏移是「回到最新」按鈕 bottom 數值一直對不準的根因之一
+   (見 .compactJumpPillWrap 的完整說明)。明確加回 bottom: auto 清除
+   這個繼承值,.compact 模式下的 .composer 現在完全只靠 flex 版面
+   (margin-bottom + flex:none)決定位置,不受任何殘留的定位偏移影響。
+   position: relative 本身仍需要保留——.composer 用 position: absolute
+   疊在時間軸內容上方(見 .composer 基礎規則的完整說明),需要一個
+   positioning context。 */
+.compact .composer {
+  position: relative;
+  bottom: auto;
+  flex: none;
+  margin-bottom: 12px;
+}
+
+/* Header 相關樣式(.header/.headerInner/.headerRight/.statusPill/
+   .statusDot*)已整個移除,原因見 TripPlanPage.tsx 對應位置的說明。 */
 
 /* ---------- Composer ---------- */
 
@@ -165,12 +253,11 @@
   justify-content: center;
 }
 
-/* ---------- animations ---------- */
+/* ---------- animations ----------
 
-@keyframes breathe {
-  0%, 100% { opacity: 0.45; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.25); }
-}
+   @keyframes breathe 已移除——唯一的使用者是 header 狀態藥丸的
+   .statusDotGenerating,隨 header 一併刪除(見上方說明)。時間軸自己的
+   呼吸點動畫定義在 plan-core/PlanTimelineView.module.css,不受影響。 */
 
 @media (prefers-reduced-motion: reduce) {
   .page * { animation-duration: 0.01ms !important; }
@@ -181,9 +268,7 @@
 /* 斷點用 767px(不是 640px)——涵蓋到 useIsDesktop(hooks/useIsDesktop.ts)
    判定為手機版的整個寬度區間(< 768px)。 */
 @media (max-width: 767px) {
-  /* headerInner 的左右 padding 從 24px 收窄到 16px——手機面板本身寬度
-     已經比桌面窄很多(例如 iPhone SE 375px)。composer 的左右安全間距
-     同步收窄(calc(100% - 32px)),理由相同。 */
-  .headerInner { padding: 0 16px; }
+  /* composer 的左右安全間距收窄——手機面板本身寬度已經比桌面窄很多
+     (例如 iPhone SE 375px)。 */
   .composer { width: calc(100% - 32px); }
 }

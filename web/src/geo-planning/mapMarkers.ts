@@ -160,6 +160,126 @@ export function tripEntryMarkerContent(selected: boolean, color: string): SVGEle
   return svgStringToElement(flagSvg)
 }
 
+// PlanStopMarkerState:規劃站點小圓點的視覺狀態。三態而非 boolean 的
+// 完整理由見下方 planStopMarkerContent 對 state 參數的說明。
+export type PlanStopMarkerState = 'base' | 'hover' | 'selected'
+
+// planStopMarkerContent:AI 規劃時間軸上已安排站點的標記——2026-10 新增
+// (使用者明確要求「開啟對話若是有安排景點,地圖上出現小圓點」)。
+//
+// 刻意做成「小圓點」而不是沿用 tripEntryMarkerContent 的旗子:這兩種點
+// 的語意不同,同時出現在地圖上時要能一眼分辨——
+//   - 旗子(tripEntry):已經寫進資料庫、屬於某趟旅程的正式行程項目。
+//   - 小圓點(planStop):AI 規劃草稿裡的站點,還沒有落進任何旅程
+//     (見 planTimelineStorage.ts 的說明,這份時間軸刻意不跟 trip 綁定)。
+// 尺寸也刻意比旗子小(14/18 對 24/30):草稿點的視覺重量應該低於正式
+// 行程點,不該在地圖上搶過它們。
+//
+// color 由呼叫端傳入的理由同 tripEntryMarkerContent(純函式沒有 DOM
+// 存取權,不能自己讀 --color-* 這類依主題變化的 CSS 變數)。
+//
+// state——三態而非 selected 布林:selectedStopId 與 hoverStopId 是兩個
+// 獨立的 state,點選 A 之後把滑鼠掃到 B,兩顆會同時強調,必須分辨得出
+// 哪顆才是自己點選的。故不沿用 geoMarkerSelection.ts isMarkerSelected
+// 那套把 selectedKey/hoverKey 收斂成單一布林值的做法。四種邏輯組合對應
+// 三種視覺(selected 優先,見 usePlanStopMarkers 的對應規則),「selected
+// 且同時 hover」落在 'selected'——已經錨定的東西不該因為滑鼠經過而變。
+//
+// selected 與 hover 的差異只在兩個同向維度:外環墨濃度(selected 實、
+// hover 虛)與光暈擴散(hover 大而濃、selected 收斂),疊成「收束 vs
+// 散開」,對應「錨定 vs 掃過」。靶心幾何、漣漪、畫布 footprint 共用。
+// 刻意不用色相區分——地圖上「換色 = 換類別」是既有語言(森綠=飯店、
+// 靛藍=地點、紫=搜尋候選),hover 換色會被讀成另一種東西。
+//
+// 強調態之所以同時動結構(靶心)、對比(光暈)、運動(漣漪)三者,是
+// 因為這個 hover 的觸發源是「滑鼠在時間軸卡片上」——使用者此刻注視的是
+// 卡片,marker 落在周邊視野,而周邊視野對尺寸細節幾乎無感、對面積與
+// 運動敏感。單靠放大(前一版的做法)在那裡察覺不到。
+//
+// 基礎狀態維持 13px 單色點:草稿點的視覺重量仍應低於 tripEntry 的 24px
+// 旗子(已寫進資料庫的正式行程),加重的只有強調態。
+//
+// 畫布固定 14x14 + overflow visible,環與光暈畫在畫布外:三種狀態的
+// layout box 完全相同——AdvancedMarkerElement 以 content 底部中央錨定
+// 座標,畫布尺寸若隨狀態改變,圓心會跟著跳位(tripEntry 旗子 24→30 就
+// 有這個問題,是既有慣例但這裡順手避掉)。
+export function planStopMarkerContent(
+  state: PlanStopMarkerState,
+  color: string,
+  // entering——這顆 marker 是不是「剛從 base 進入強調態」。只有 true 才
+  // 播光暈進場與一次性漣漪。
+  //
+  // 存在的理由是一個實際會發生的問題:桌機最常見的路徑是「滑鼠停在卡片
+  // 上(hover)再點下去(selected)」,改成三態之後這會換掉 content,而
+  // AdvancedMarkerElement 每次指派 content 都會重建元素、讓動畫從頭播
+  // ——等於每次點擊都多擴散一次漣漪。漣漪的語意是「有東西剛獲得注意」,
+  // 不是「狀態變了」,故強調態之間的切換(hover↔selected)只換靜態外觀,
+  // 由外環從虛轉實本身提供點擊的確認感。
+  //
+  // 光暈的進場縮放也一併受控:hover→selected 時若讓光暈再 pop 一次,
+  // 點擊會感覺像「重新進場」而不是「落定」。
+  entering = true,
+): SVGElement {
+  const head =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14" overflow="visible" style="overflow:visible">'
+  if (state === 'base') {
+    return svgStringToElement(
+      head + '<circle cx="7" cy="7" r="5.5" fill="' + color + '" stroke="#FDFCFA" stroke-width="2"/></svg>',
+    )
+  }
+  // ringOpacity——hover 與 selected 唯一的差異(見上方對這個選擇的完整
+  // 說明)。
+  //
+  // 0.3 是下限,不再往低調:這個外環很細(2.5 的 stroke 在 14px 畫布上
+  // 實際約 1.5px),而深色模式的 accent 是 #D97A63 這種較淺的暖色,再低
+  // 整圈會被白色間隙環吃掉而消失——hover 就退化成「只有光暈沒有環」,
+  // 變成兩套結構而不是同一套語言的濃淡差異。
+  //
+  // 細線的濃淡在這個尺寸下能表達的差異有限,故由光暈分擔另一半
+  // (見下方 haloRadius/haloOpacity)。
+  const ringOpacity = state === 'selected' ? 1 : 0.3
+  // 光暈:hover 更大(r 17→21,直徑 34→42px)且更濃(0.16→0.22),
+  // selected 維持原本收斂的樣子。方向刻意跟環相反——hover 是「一團散開
+  // 的注意力」,selected 是「一個收束的定點」。
+  const haloRadius = state === 'selected' ? 17 : 21
+  const haloOpacity = state === 'selected' ? 0.16 : 0.22
+  // .ps-halo/.ps-ripple 這兩個 class 的動畫定義在 ExploreMap.module.css
+  // 的 :global 區塊(含 prefers-reduced-motion 的退化),不內嵌 <style>
+  // 進這段 SVG——理由見該處的完整說明(內嵌會讓每顆強調態 marker 都往
+  // document 注入一份重複的 @keyframes)。
+  //
+  // 漣漪只播一次(forwards 停在 opacity 0)而不是無限循環:'selected'
+  // 會長時間停留(點了卡片之後就錨在那裡),一顆永遠在動的點會持續搶
+  // 注意力,跟「草稿點視覺重量低於正式行程」的原則衝突,也跟專案其他
+  // 動畫(都是一次性進場或 loading 指示)的語感不同。
+  //
+  // AdvancedMarkerElement 每次替換 content 都會重建元素、動畫從頭播——
+  // 這個特性正好就是「hover 進來時播一次擴散」想要的行為(但也因此
+  // 需要 usePlanStopMarkers 那側避免無謂的重複替換,見該檔案的說明)。
+  const svg =
+    head +
+    // 柔光暈(selected 直徑 34px / hover 42px,見上方 haloRadius):跟
+    // .geo-attraction-glow 同一套語彙。用
+    // fill-opacity 而非 color-mix——color 是呼叫端解析好的 hex 字串,
+    // 不能進 CSS 色彩函式。
+    // entering=false 時連 .ps-halo 的 class 都不給:強調態之間的切換要是
+    // 純「剪接」(只有環的濃度變、沒有任何位移),見 entering 參數的說明。
+    '<circle ' + (entering ? 'class="ps-halo" ' : '') + 'cx="7" cy="7" r="' + haloRadius + '" fill="' + color + '" fill-opacity="' + haloOpacity + '"/>' +
+    // 漣漪:從 18px 擴散到約 46px 後消失。只在 entering 時才放進 DOM。
+    (entering
+      ? '<circle class="ps-ripple" cx="7" cy="7" r="9" fill="none" stroke="' + color + '" stroke-width="2"/>'
+      : '') +
+    // 靶心三圈(accent 外環 / 白色間隙環 / 彩色核心)——沿用 hotel 選中態
+    // 與 .geo-attraction-overlay-selected 的既有結構,白色間隙環被 accent
+    // 外環夾住,在淺色底圖上才真正形成對比(舊版的白邊直接貼著底圖,
+    // 等於看不見)。
+    '<circle cx="7" cy="7" r="10.75" fill="none" stroke="' + color + '" stroke-width="2.5" stroke-opacity="' + ringOpacity + '"/>' +
+    '<circle cx="7" cy="7" r="8" fill="none" stroke="#FDFCFA" stroke-width="3"/>' +
+    '<circle cx="7" cy="7" r="6.5" fill="' + color + '"/>' +
+    '</svg>'
+  return svgStringToElement(svg)
+}
+
 // currentLocationMarkerContent:使用者目前位置的標記——2026-09 新增,
 // 沿用市場慣例的「藍色圓點」樣式(Google Maps/手機原生地圖的既有視覺
 // 語言,使用者一看就知道這是自己的位置),不是這個 codebase 自創的圖示

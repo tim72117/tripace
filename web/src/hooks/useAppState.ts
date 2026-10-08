@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { onUnauthorized, type ClientConfig } from '../api'
 import type { Trip } from '../trip/types'
 import type { User } from '../user/types'
@@ -101,7 +101,23 @@ export function useAppState() {
     setThemeState(t)
   }, [])
 
-  const cfg: ClientConfig = { baseURL: BASE_URL, token }
+  // useMemo——cfg 的 identity 必須只在 token 真的變動時才改變。這個物件
+  // 會被往下傳給整個 App 的所有消費端,其中有些把它放進 useEffect 的依賴
+  // 陣列(例如 trip-plan/TripPlanPage.tsx 的 usePlanAiChatBridge,用
+  // [apiKey, cfg] 決定要不要重建 onagent WebSocket 連線)。
+  //
+  // 2026-10 修正一個實際發生的 bug:原本這裡是每次 render 都重新產生一個
+  // 新物件(`const cfg = { baseURL, token }`),而 useAppState 是全 app 最
+  // 上層的狀態——任何一次 state 更新(地圖移動、資料載入、任何互動)都會
+  // 讓 cfg 換一個新 identity,進而讓下游那個 effect 判定「依賴變了」,
+  // cleanup 關掉剛建立的 WebSocket、再開一條新的。實際觀察到單一頁面
+  // 累積出 9 條連線,而且規劃結果完全寫不進時間軸:送出 prompt 後 agent
+  // 還在推論,連線就已經被下一次 render 關閉,工具呼叫打回來時那條連線
+  // 已經不存在,畫面因此永遠停在「正在安排」且一片空白。
+  //
+  // baseURL 是模組常數(BASE_URL),不隨 render 變化,故依賴陣列只需要
+  // token。
+  const cfg: ClientConfig = useMemo(() => ({ baseURL: BASE_URL, token }), [token])
   const effectiveUser = user ?? GUEST_USER
 
   return {

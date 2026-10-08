@@ -1,10 +1,9 @@
-import { lazy, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { ApiCall, WsEvent } from './api'
 import { onApiCall, onWsEvent, fetchGeoPlaceDetails, fetchGeoPlacePhotoAssets } from './api'
 import { ChatScreen } from './chat/ChatScreen'
-import type { DesktopTimelineMirror } from './chat/ChatScreen'
-import { MultiTrackTimeline, type TaskPlaceholder } from './timeline/Timeline'
+import { MultiTrackTimeline } from './timeline/Timeline'
 import { PaceChart } from './pace/PaceChart'
 import { DemoPanel } from './demo/DemoPanel'
 import { GeoHotelSidebar } from './geo-planning/GeoHotelSidebar'
@@ -17,6 +16,7 @@ import { GeoCandidateSidebar, type GeoCandidate } from './geo-planning/GeoCandid
 import { createEntryFromCandidate } from './geo-planning/geoCandidateHelpers'
 import { ExploreMap } from './geo-planning/ExploreMap'
 import { useGeoOutlineMapState } from './geo-planning/useGeoOutlineMapState'
+import { useTripEntriesMirror } from './hooks/useTripEntriesMirror'
 import outlineMapStyles from './geo-planning/GeoOutlinePanel.module.css'
 import { useGeoPlanningState } from './geo-planning/useGeoPlanningState'
 import { computeNearbyAttractions } from './geo-planning/geoNearbyAttractions'
@@ -61,13 +61,26 @@ import styles from './DesktopLayout.module.css'
 // slice 裁切,只保留距離排序。
 const NEARBY_ATTRACTION_LIMIT = Infinity
 
-// 時間軸鏡像資料的初始值(尚未收到 ChatScreen 鏡像前,或未選擇旅程時使用)。
-const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
-  entries: [],
-  updatingEntryIDs: new Set<string>(),
-  taskPlaceholders: [] as TaskPlaceholder[],
-  refetchEntries: () => {},
-}
+// CHAT_POPOVER_WIDTH:對話浮動小匡的寬度。
+//
+// 2026-10 從 340 加寬到 440:這張小匡的內容已經從 ChatScreen(純訊息流,
+// 窄版完全夠用)換成 TripPlanPage(AI 規劃時間軸,見該檔案的完整說明),
+// 而時間軸的版面有一批不隨容器縮放的固定成本——左側時間欄(「10:00」)、
+// 軸線與圓點、站點卡片左側 64px 圓形縮圖、各層間距——在 340px 下把卡片
+// 右側的文字區擠到只剩幾十 px,實測站點名稱被壓成一字一行的直書
+// (「林」「百」「貨」),卡片右緣還會超出小匡被裁掉。
+//
+// 這個數值刻意不再跟 GeoHotelSidebar/地點介紹卡/搜尋框那組「統一 340px」
+// 對齊(見 DesktopLayout.module.css .chatPopover/.chatPopoverShifted 的
+// 完整說明:那組寬度是為了讓這幾張浮動卡片視覺上成一套)——那套統一是
+// 建立在「它們裝的都是同一類輕量資訊」這個前提上,時間軸不屬於那一類。
+// 用一致的寬度換取內容可讀性不成立,故這裡接受視覺上不再等寬。
+//
+// 這只是緩解不是根治:固定成本的擠壓在更窄的視窗下依然會發生,真正的
+// 解法是讓 PlanTimelineView 依「容器寬度」(container query,而非目前
+// 那個看視窗寬度、在小匡裡永遠不會觸發的 767px media query)切換成
+// 窄版版型。先加寬驗證其餘功能,之後再處理。
+const CHAT_POPOVER_WIDTH = 440
 
 // hotelInfoContent/placeInfoContent/poiInfoContent/candidateInfoContent/
 // geocodeCandidateInfoContent 已抽到 geo-planning/geoInfoContent.ts,
@@ -116,6 +129,44 @@ export function DesktopContent(props: ContentProps) {
   // 開關——沒有常駐對話欄,ChatScreen 只在這個小匡開啟時才掛載(見下方
   // render 邏輯),這是使用者存取對話功能的唯一入口。
   const [chatPopoverOpen, setChatPopoverOpen] = useState(false)
+  // planStops/selectedPlanStopId/hoverPlanStopId:對話小匡裡 AI 規劃時間軸
+  // 已安排的站點(2026-10 新增,使用者明確要求「開啟對話若是有安排景點,
+  // 地圖上出現小圓點」)。時間軸資料住在 TripPlanPage 裡,而地圖是它的
+  // 兄弟節點,故由 TripPlanPage 透過三個回調上報到這一層,再往下傳給
+  // ExploreMap。
+  //
+  // selectedPlanStopId 是其中的例外:它不只是鏡射,而是地圖與時間軸共用的
+  // 唯一事實來源(TripPlanPage 收它當受控 prop)——先前兩邊各存一份、只有
+  // 子→父單向同步,製造出「點地圖圓點改父層、再點同一張卡片卻回不去」的
+  // 死結,見 TripPlanPage 對這個 prop 的完整說明。
+  //
+  // 三個 setter 直接當回調傳下去——TripPlanPage 內部已用 useStableCallback
+  // 隔離,回調的 identity 不進任何依賴陣列,傳什麼都安全(同檔案
+  // onPanToStop 傳的就是 inline 箭頭函式)。這裡直接傳 setter 只是剛好
+  // 夠用,不是必要條件。
+  //
+  // 小匡「關閉」時 TripPlanPage 並沒有卸載——FloatingPanel 是常駐掛載、
+  // 只用 display:none 隱藏(見下方該元件的完整說明,為的是不要每次開關
+  // 都重建 WebSocket 連線)。所以這三個 state 在小匡隱藏期間仍會持續
+  // 更新,而且 hover 還收不到「滑鼠離開」事件(被 display:none 隱藏的
+  // 元素不產生 onMouseLeave),值會一直停在最後懸停的那一站。
+  //
+  // 因此下方傳給 ExploreMap 時一律用 chatPopoverVisible 遮蔽(使用者確認
+  // 「只在小匡開啟時顯示」),而不是加清除 effect:那樣會讓「關閉小匡」
+  // 多出一次不必要的 state 寫入與重渲染,重新開啟時還要等 TripPlanPage
+  // 重新回報才會出現圓點,中間有一瞬間的空窗。
+  const [planStops, setPlanStops] = useState<{ id: string; lat: number; lng: number; name?: string }[]>([])
+  const [selectedPlanStopId, setSelectedPlanStopId] = useState<string | null>(null)
+  // hoverPlanStopId:滑鼠正懸停在哪一張站點卡上(2026-10 新增,使用者
+  // 明確要求「滑鼠移動到介紹卡時,地圖圓加強顯示」)。命名用 hover* 而非
+  // hovered*,對齊 ExploreMap 既有的 hoverKey。
+  //
+  // 跟 selectedPlanStopId 分開存而不是合併成單一「強調中的 id」:兩者的
+  // 生命週期不同(hover 移出就消失,選取會留著),合併會讓「滑過另一張卡
+  // 再移開」把先前點選的高亮一併清掉。地圖那側也不把兩者收斂成同一種
+  // 視覺——selected 與 hover 的強調樣式刻意有差異(外環墨濃度、光暈大小),
+  // 見 planStopMarkerContent 對 state 參數的完整說明。
+  const [hoverPlanStopId, setHoverPlanStopId] = useState<string | null>(null)
   // pendingSchedule:使用者在還沒選定旅程時,對某個候選按了日期選擇(見
   // PlacePanel 的 onSchedule)——原本這個情境下 geo.handleScheduleCandidate
   // 內部的 tripID guard 會直接靜默 no-op,浮動匡正常關閉卻完全沒有任何
@@ -450,11 +501,22 @@ export function DesktopContent(props: ContentProps) {
     selectedCandidate: geo.selectedCandidate,
     setSelectedCandidate: geo.setSelectedCandidate,
   })
-  // timelineMirror:ChatScreen 透過 desktopChat.onTimelineData 鏡像過來的時間軸資料
-  // (entries/updatingEntryIDs/taskPlaceholders/refetchEntries)。ChatScreen 是這份
-  // 資料唯一的擁有者(它的 WS 連線即時維護這些 state),這裡只是接住鏡像後轉交給
-  // side panel 的 MultiTrackTimeline,不可以自己另外 fetch 或開第二條 WS。
-  const [timelineMirror, setTimelineMirror] = useState<DesktopTimelineMirror>(EMPTY_TIMELINE_MIRROR)
+  // timelineMirror:時間軸側欄(panelMode === 'timeline' 的 MultiTrackTimeline)
+  // 需要的行程條目資料。
+  //
+  // 2026-10:改用 useTripEntriesMirror 自己撈(見該 hook 的完整說明)——
+  // 原本這份資料是 ChatScreen 透過 desktopChat.onTimelineData 鏡像過來的,
+  // 但對話小匡的內容已經換成 TripPlanPage(AI 規劃時間軸),ChatScreen 不
+  // 再常駐掛載,側欄不能再依賴「對話剛好有掛載且剛好撈過」這件事。使用者
+  // 確認「讓它自己撈資料,不再依賴對話」。
+  //
+  // isOwner 判斷沿用搬移前 ChatScreen 內 load() 的既有條件(非擁有者
+  // api.fetchEntries 會失敗,不如一開始就不打)。
+  const timelineMirror = useTripEntriesMirror(
+    cfg,
+    activeTrip?.id ?? null,
+    activeTrip ? activeTrip.ownerID === props.user.id : false,
+  )
   const todayRef = useRef<HTMLDivElement>(null as unknown as HTMLDivElement)
 
   // showDebugPanel/calls/wsEvents:原本 DebugApp.tsx(?debug 獨立工作台)裡的
@@ -476,25 +538,47 @@ export function DesktopContent(props: ContentProps) {
   // 字串比對。
   const panelSpec = panelMode ? PANEL_REGISTRY[panelMode] : undefined
 
-  // 切換旅程時,先清空鏡像資料,避免新旅程的 ChatScreen 還沒送出第一次鏡像前,
-  // side panel 短暫顯示上一個旅程的時間軸內容。
-  useEffect(() => {
-    setTimelineMirror(EMPTY_TIMELINE_MIRROR)
-  }, [activeTrip?.id])
+  // desktopMainRef:2026-10 新增——TripPlanPage 全頁版(/app/plan-ai)的
+  // 「回到最新」機制(自動捲到底/跟隨捲動判斷/按鈕顯示,見該元件
+  // scrollContainerRef prop 的完整說明)需要抓到真正接手捲動的那個
+  // DOM 節點(DesktopMain 的 <main>,見該元件 unboundedScroll 的說明)。
+  // 原本用 scrollRef.current?.closest('main') 從內部往上爬著找,這只
+  // 對「捲動容器就是某個 <main> 祖先」的情境成立——地圖規劃對話小匡
+  // (compact 模式)的捲動容器是小匡內部的 .compactScroll,DOM 樹裡
+  // 完全沒有 <main> 祖先(DesktopLayout.tsx/FloatingPanel.tsx 都沒有
+  // 這個標籤),closest('main') 永遠回傳 null,導致小匡版「回到最新」
+  // 整套機制(自動捲到底、跟隨判斷、按鈕顯示)完全失效,使用者從頭到
+  // 尾看不到這顆按鈕(code review 時發現的實際 bug,不是臆測)。
+  // 改成由呼叫端明確傳入「真正的捲動容器」ref,不再靠 closest 猜——
+  // 全頁版傳這個 mainRef(見下方掛到 <DesktopMain ref={desktopMainRef}>
+  // 的用法),小匡版不傳,元件內部 fallback 用 .compactScroll 自己的
+  // scrollRef,兩條路徑各自對應自己真正的捲動容器。
+  const desktopMainRef = useRef<HTMLElement>(null)
 
-  const onTimelineData = useCallback((data: DesktopTimelineMirror) => {
-    setTimelineMirror(data)
-  }, [])
-  // desktopChat:傳給 ChatScreen 的物件必須記憶化(useMemo),不能直接在 JSX
-  // 寫 desktopChat={{ onTimelineData }} 物件字面量——那樣每次 DesktopContent
-  // 重新渲染都會建立一個新參照,即使 onTimelineData 本身(已用 useCallback
-  // 包過)沒變。ChatScreen 內鏡像時間軸資料的 useEffect 依賴陣列裡有整個
-  // desktopChat 物件,參照每次都不同會讓該 effect 每次渲染都重新執行 →
-  // 呼叫 onTimelineData → setTimelineMirror → 觸發本元件重新渲染 → 產生新的
-  // desktopChat 物件 → 無窮迴圈(實測會直接跳出 React 的
-  // "Maximum update depth exceeded" 警告)。用 useMemo 讓這個物件只在
-  // onTimelineData 真的變動時才換參照,打斷這個迴圈。
-  const desktopChat = useMemo(() => ({ onTimelineData }), [onTimelineData])
+  // chatPopoverVisible:對話小匡此刻實際上看不看得見。小匡本身的
+  // display:none 判斷與「地圖上的規劃站點小圓點要不要顯示」共用這一個
+  // 變數——兩者必須永遠一致(圓點是小匡內容的延伸,小匡看不見時圓點就是
+  // 孤兒),各自寫一次判斷遲早會漂移。
+  //
+  // 單看 chatPopoverOpen 不夠:切到 main-replace 的分頁(plan-ai/
+  // demo-route-editor)時小匡會被隱藏,但 chatPopoverOpen 本身維持 true
+  // ——那是刻意的(見下方 FloatingPanel 的完整說明:常駐掛載、不重建
+  // WebSocket 連線),所以「開啟」與「看得見」在這裡不是同一件事。
+  const chatPopoverVisible = chatPopoverOpen && panelSpec?.slot !== 'main-replace'
+
+  // 2026-10 squash rebase 修正:這裡原本還有兩段死碼——
+  // (1) onTimelineData/desktopChat(useCallback+useMemo 包的
+  //     { onTimelineData } 物件,原本傳給 ChatScreen 讓它鏡像時間軸
+  //     資料回來,搭配一個已不存在的 setTimelineMirror setter)——
+  //     timelineMirror 現在改用 useTripEntriesMirror 自己撈(見上方
+  //     該 hook 呼叫處的完整說明,使用者確認「讓它自己撈資料,不再依賴
+  //     對話」),ChatScreen 也不再常駐掛載,這整套鏡像機制已經失效,
+  //     下方渲染 ChatScreen 處也已經不再傳 desktopChat prop。
+  // (2) 一段「離開規劃分頁或切換旅程時收起第二側欄」的 effect(呼叫
+  //     geo.setPickingDayKey(null))——候選籃候選中清單/候選匡整套
+  //     機制已經移除(見 useGeoPlanningState.ts 的完整說明),
+  //     pickingDayKey/setPickingDayKey 已不存在,這段邏輯連帶失效。
+  // 兩段都是直接刪除,不是遺漏。
 
   // infoPanelShiftBy:PlacePanel/AttractionInfoPanel 右緣需要避開的東西
   // ——原本還包含 GeoHotelSidebar(飯店清單)這個分支('hotel'),但搜尋
@@ -555,22 +639,38 @@ export function DesktopContent(props: ContentProps) {
             的既有作法),TripPlanPage 內部的 header/時間軸內容各自加了
             一層 860px 置中容器維持視覺不變,只有捲動這件事發生在撐滿
             視窗的外層。 */}
-        <DesktopMain unbounded={panelSpec?.slot !== 'main-replace' || panelMode === 'plan-ai'} unboundedScroll={panelMode === 'plan-ai'}>
+        <DesktopMain ref={desktopMainRef} unbounded={panelSpec?.slot !== 'main-replace' || panelMode === 'plan-ai'} unboundedScroll={panelMode === 'plan-ai'}>
           {panelSpec?.slot === 'main-replace' ? (
             panelMode === 'demo-route-editor' ? (
               // demo-route-editor 只做桌面版(手機版 PhoneNavDrawer 不
               // 提供對應分頁),直接在這裡渲染。main-replace slot 目前
-              // 只有這個試做功能與下面的 plan-ai 兩種模式(原本還有
-              // demo-onagent,經 DemoPanelContent 共用邏輯渲染,已整個
-              // 移除,含入口與實作——這裡不再需要 else 分支)。
+              // 有這個試做功能、下面的 demo-chat 與 plan-ai 三種模式
+              // (原本還有 demo-onagent,經 DemoPanelContent 共用邏輯
+              // 渲染,已整個移除,含入口與實作)。
               <RouteEditor />
+            ) : panelMode === 'demo-chat' ? (
+              // demo-chat:舊版對話框(走 tripace app 的 trip_entry_*
+              // 工具)——地圖規劃的對話視窗 2026-10 改成渲染 AI 規劃
+              // 時間軸之後,這套保留成試做分頁,見 DesktopShared.tsx
+              // DEMO_CHAT_ENABLED 的完整說明。
+              //
+              // 這裡不再傳 desktopChat:時間軸側欄的資料來源已經改成
+              // useTripEntriesMirror 自己撈(見該 hook 的完整說明),
+              // 不再依賴 ChatScreen 鏡像過來,兩者脫鉤。
+              <ChatScreen
+                key={activeTrip?.id ?? 'no-trip'}
+                cfg={cfg}
+                trip={activeTrip ?? undefined}
+                user={props.user}
+                onBack={() => setActiveTrip(null)}
+              />
             ) : (
               // plan-ai(AI 規劃,見 trip-plan/TripPlanPage.tsx 的完整
               // 說明),正式功能,直接在這裡渲染,理由同 demo-route-editor/
               // pace/geo-outline 的既有作法。不依附特定旅程(使用者明確
               // 要求「plan ai 不需要 trip id」),不接收 tripID,PANEL_REGISTRY
               // 也已拿掉 requiresTrip——不需要先選旅程就能使用這個功能。
-              <TripPlanPage cfg={cfg} />
+              <TripPlanPage cfg={cfg} scrollContainerRef={desktopMainRef} />
             )
           ) : (
             // main-replace 以外的所有情況(含 panelMode === null、'trips'/
@@ -600,6 +700,23 @@ export function DesktopContent(props: ContentProps) {
                     initialCenter={outlineMapState.initialCenter}
                     currentPosition={outlineMapState.currentPosition}
                     tripEntries={outlineMapState.tripEntries}
+                    // planStops:只在對話小匡開啟時才傳(使用者確認「只在
+                    // 小匡開啟時顯示」)——小匡關閉時傳空陣列,圖層自己會
+                    // 把 marker 清掉,不需要額外的清除邏輯。
+                    // onPlanStopClick 讓點地圖圓點回頭選中對應的時間軸卡片
+                    // (selectedPlanStopId 是兩邊共用的唯一事實來源,見上方
+                    // 該 state 的說明),跟「點卡片 → 地圖移動過去」互為
+                    // 反向操作。
+                    planStops={chatPopoverVisible ? planStops : []}
+                    // selected/hover 同樣遮蔽:小匡隱藏時 TripPlanPage 仍然
+                    // 掛載、state 不會歸零,hover 更是連「移出」事件都收不到
+                    // (被 display:none 隱藏的元素不產生 onMouseLeave),值會
+                    // 停在最後懸停的那一站。目前 planStops 為空時圖層本來就
+                    // 沒有 marker 可套用,這兩行是明確表達意圖、不依賴那個
+                    // 間接保證。
+                    selectedPlanStopId={chatPopoverVisible ? selectedPlanStopId : null}
+                    hoverPlanStopId={chatPopoverVisible ? hoverPlanStopId : null}
+                    onPlanStopClick={setSelectedPlanStopId}
                     city={geoSearchCity}
                     onCityChange={setGeoSearchCity}
                     onSearch={() => {
@@ -739,7 +856,7 @@ export function DesktopContent(props: ContentProps) {
                         updatingIDs={timelineMirror.updatingEntryIDs}
                         taskPlaceholders={timelineMirror.taskPlaceholders}
                         cfg={activeTrip.ownerID === props.user.id ? cfg : undefined}
-                        onEntryUpdated={timelineMirror.refetchEntries}
+                        onEntryUpdated={timelineMirror.refetch}
                       />
                     )}
                   </div>
@@ -829,22 +946,33 @@ export function DesktopContent(props: ContentProps) {
           )}
           {/* chat-popover:對話浮動小匡,由地圖右上角城市搜尋框旁的 AI
               按鈕觸發(見 ExploreMap.tsx 的 onOpenChat),疊在搜尋框
-              正下方——沒有常駐對話欄,這是使用者存取 ChatScreen 的唯一
-              入口(見 chatPopoverOpen 宣告處的說明)。
+              正下方——沒有常駐對話欄,這是使用者存取對話的唯一入口
+              (見 chatPopoverOpen 宣告處的說明)。
               FloatingPanel 永遠掛載,只用 .chatPopoverHidden(display:
               none)隱藏——使用者明確要求桌面版也改成常駐掛載,對齊手機版
               PhoneContent.tsx 的 chatElement/chatPortalTarget 同一套「永遠
-              掛載、只切換顯示」設計,避免小匡每次開關都讓 ChatScreen 卸載
-              重掛、WebSocket 重新連線(原本 {chatPopoverOpen && (...)}
-              這種條件渲染,關閉就等於解除掛載)。沒有 activeTrip 時仍掛載
-              ChatScreen(trip 不傳,見該元件 trip prop 的說明)——使用者
-              不需要先選/建立旅程就能開始對話,不再顯示空狀態擋板。key 用
-              activeTrip?.id ?? 'no-trip',確保「無旅程對話」跟「某個旅程
-              的對話」是各自獨立的掛載週期(避免沿用前一個旅程殘留的
-              WebSocket/訊息 state)。 */}
+              掛載、只切換顯示」設計,避免小匡每次開關都讓內容卸載重掛、
+              WebSocket 重新連線(原本 {chatPopoverOpen && (...)} 這種
+              條件渲染,關閉就等於解除掛載)。
+
+              2026-10:內容從 ChatScreen(走 tripace app 的 trip_entry_*
+              工具、批次表格 UI)換成 TripPlanPage(AI 規劃時間軸,走
+              plan-ai-timeline app)——使用者明確要求「將 ai plan 的規劃
+              時間軸功能加到地圖規劃的對話功能內」「對話內的工具不需要
+              了,直接使用 ai plan 的 app 及工具」。舊的 ChatScreen 不是
+              刪除,搬到 demo-chat 試做分頁保留(見 DesktopShared.tsx
+              DEMO_CHAT_ENABLED 的完整說明)。
+
+              TripPlanPage 不需要 trip(使用者明確要求「plan ai 不需要
+              trip id」),也不需要 key={activeTrip?.id}——它的時間軸是
+              跨行程的單一份資料,存在 localStorage(見
+              plan-core/planTimelineStorage.ts 的完整說明:使用者確認
+              「不要跟 trip 有關聯」「共用同一份,兩處看到一樣的內容」),
+              切換旅程不該讓它重新掛載、清掉正在進行的規劃。這也表示
+              /app/plan-ai 與這張小匡看到的是同一條時間軸。 */}
           <FloatingPanel
             side="right"
-            width={340}
+            width={CHAT_POPOVER_WIDTH}
             title="對話"
             className={[
               styles.chatPopover,
@@ -857,18 +985,71 @@ export function DesktopContent(props: ContentProps) {
               // 決定顯示,不會因為切到 plan-ai 而自動隱藏,變成孤兒疊在
               // 新頁面右側——加上這個判斷,不改動 chatPopoverOpen 本身
               // (維持常駐掛載、不重建 WebSocket 連線的既有設計)。
-              (chatPopoverOpen && panelSpec?.slot !== 'main-replace') ? '' : styles.chatPopoverHidden,
+              chatPopoverVisible ? '' : styles.chatPopoverHidden,
             ].filter(Boolean).join(' ')}
             onClose={() => setChatPopoverOpen(false)}
           >
-            <ChatScreen
-              key={activeTrip?.id ?? 'no-trip'}
-              cfg={cfg}
-              trip={activeTrip ?? undefined}
-              user={props.user}
-              onBack={() => setActiveTrip(null)}
-              desktopChat={desktopChat}
-            />
+            {/* 局部 Suspense:TripPlanPage 是 lazy 載入的(見上方宣告),
+                而這張小匡「永遠掛載、只用 display:none 隱藏」(見
+                .chatPopoverHidden 的說明)——代表它的 chunk 會在進
+                /app 的當下就開始載入。若只靠 App.tsx 最外層那個包住整個
+                <Routes> 的 Suspense,整個 /app 畫面(含地圖)會被這個
+                chunk 擋住、等它載完才渲染,是明顯的體驗回歸(原本
+                TripPlanPage 只有切到 /app/plan-ai 時才載入)。包一層
+                自己的 Suspense 讓它的載入只影響這張小匡內部。
+                fallback 給 null:小匡預設是關閉(display:none)狀態,
+                載入期間使用者看不到任何東西,不需要骨架畫面。 */}
+            <Suspense fallback={null}>
+              {/* compact:這張小匡沒有任何祖先在管捲動,且 FloatingPanel
+                  的 .panel 是 overflow:hidden——必須讓 TripPlanPage 自己
+                  變成固定高度容器、由時間軸區塊接手捲動,否則內容會被
+                  裁掉且完全捲不動。見該元件 compact prop 的完整說明。 */}
+              {/* onPanToStop:點擊時間軸的站點卡,把地圖平移到該站。
+                  走既有的 geo.setPanTarget(宣告式 panTarget prop,見
+                  ExploreMap.tsx 該 prop 的完整說明),跟搜尋框查到城市、
+                  側欄點擊飯店/景點走的是同一條路徑,不另外開一套地圖
+                  操作介面。
+
+                  不帶 level/radiusMeters——那兩個是「移動並調整縮放到
+                  足以顯示某個範圍」用的(搜尋城市、點景點區域),這裡
+                  是單一座標點,純平移即可,不該在使用者已經調好的縮放
+                  層級上再自作主張改變它。
+
+                  不帶 onlyIfOutOfView——使用者明確點了這張卡,就是要把
+                  地圖對準這一站,即使它已經在可視範圍內也應該置中,不是
+                  「剛好看得到就不動」。
+
+                  不帶 suppressQuery——不是漏掉:走 geo.setPanTarget 這條
+                  路徑的目標在 useGeoOutlineMapState 轉成 panRequest 時
+                  一律被設成 suppressQuery: true(見該處 externalPanTarget
+                  的 effect),呼叫端帶不帶都一樣。而點時間軸卡片本來就
+                  屬於「對齊看清楚一個已知項目」(見 ExploreMap.tsx 該參數
+                  的完整說明),抑制查詢正是想要的行為。
+
+                  帶 nonce——消費端的 effect 依賴是拆開的純量,少了它的話
+                  「點卡片 A → 手動拖曳地圖 → 再點卡片 A」會因為座標沒變
+                  而完全不觸發,地圖不動(見 GeoPanTarget 對這個欄位的
+                  完整說明)。點卡片是明確的使用者動作,每次都該有反應。 */}
+              <TripPlanPage
+                cfg={cfg}
+                compact
+                // visible:這張小匡是常駐掛載、用 display:none 隱藏的,
+                // 元件不會因為關閉而卸載。傳入可見狀態讓它在重新顯示時
+                // 把 /app/plan-ai 全頁版這期間寫入的規劃內容讀回來——
+                // 兩份實例共用同一份 localStorage,見 TripPlanPage 對這個
+                // prop 與 revRef 的完整說明。
+                visible={chatPopoverVisible}
+                onPanToStop={(stop) => geo.setPanTarget({ lat: stop.lat, lng: stop.lng, nonce: Date.now() })}
+                onStopsChange={setPlanStops}
+                // selectedStopId 受控:這一份是地圖與時間軸共用的唯一事實
+                // 來源(見 TripPlanPage 對這兩個 prop 的完整說明),點卡片
+                // 與點地圖圓點都寫同一個 state,不可能出現兩邊各自高亮
+                // 不同站的情形。
+                selectedStopId={selectedPlanStopId}
+                onSelectedStopChange={setSelectedPlanStopId}
+                onHoverStopChange={setHoverPlanStopId}
+              />
+            </Suspense>
           </FloatingPanel>
         </DesktopMain>
         {DEBUG_PANEL_ENABLED && showDebugPanel && (

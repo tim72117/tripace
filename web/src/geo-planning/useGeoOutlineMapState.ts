@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ClientConfig, GeoGeocodeCandidate, GeoPlaceText, GeoSearchResult, GeoTripEntry } from '../api'
 import { fetchEntries, fetchGeoGeocode, fetchGeoPlacePhoto, fetchGeoPlaceText, geocodeCandidateToSearchResult } from '../api'
 import { useStableCallback } from '../hooks/useStableCallback'
+import type { GeoPanTarget } from './geoSelection'
 
 // GEOLOCATION_TIMEOUT_MS:向瀏覽器要求目前位置的逾時上限——這是地圖初始
 // 中心點的輔助功能,不是核心操作路徑,不該讓使用者等太久看不到地圖。
@@ -93,7 +94,12 @@ export function useGeoOutlineMapState({
   onGeocodeCandidatePhoto?: (placeId: string, photoUrl: string | null) => void
   onTripEntriesChange?: (entries: GeoTripEntry[]) => void
   externalGeocodeCandidateSelect?: GeoSearchResult | null
-  panTarget?: { lat: number; lng: number; level?: number; radiusMeters?: number; onlyIfOutOfView?: boolean } | null
+  // GeoPanTarget(geoSelection.ts)——2026-10 改用共用型別,不再在這裡
+  // 行內宣告一份:那正是該型別註解警告過的「各自宣告一次、新增欄位時
+  // 漏改一邊」,而且已經真的發生過(level 在這裡有、共用型別沒有;
+  // nonce 加在共用型別時這裡又漏了)。level 不在 GeoPanTarget 裡,
+  // 單獨列出來。
+  panTarget?: (GeoPanTarget & { level?: number }) | null
   searchTrigger?: number
   refetchTripEntriesTrigger?: number
   geocodeCandidates: GeoGeocodeCandidate[]
@@ -282,6 +288,10 @@ export function useGeoOutlineMapState({
   const externalLevel = externalPanTarget?.level
   const externalRadiusMeters = externalPanTarget?.radiusMeters
   const externalOnlyIfOutOfView = externalPanTarget?.onlyIfOutOfView
+  // externalNonce 一併進依賴:呼叫端要求「同一個座標再移動一次」時,
+  // 其餘純量都沒變,只有這個值會換(見 GeoPanTarget 對這個欄位的完整
+  // 說明)。不帶 nonce 的呼叫端行為不變。
+  const externalNonce = externalPanTarget?.nonce
   useEffect(() => {
     if (externalLat == null || externalLng == null) return
     setPanRequest({
@@ -292,7 +302,7 @@ export function useGeoOutlineMapState({
       suppressQuery: true,
       onlyIfOutOfView: externalOnlyIfOutOfView,
     })
-  }, [externalLat, externalLng, externalLevel, externalRadiusMeters, externalOnlyIfOutOfView])
+  }, [externalLat, externalLng, externalLevel, externalRadiusMeters, externalOnlyIfOutOfView, externalNonce])
 
   // handleGeocodeCandidatesChange:類別標籤/「搜尋這個區域」按鈕觸發的
   // 查詢完成時,ExploreMap.tsx 透過這個 callback 通知這裡更新

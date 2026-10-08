@@ -83,9 +83,28 @@ export const GEO_SELECTION_NONE: GeoSelection = { kind: 'none' }
 //
 // onlyIfOutOfView:見 ExploreMap.tsx 對這個欄位的完整說明——true 時
 // 先檢查該座標是否已經在可視範圍內,在範圍內就跳過這次移動。
+//
+// 刻意沒有 suppressQuery(ExploreMap 的 panTarget prop 有這個欄位):走
+// 這個型別的目標在 useGeoOutlineMapState/GeoOutlinePanel 轉成內部
+// panRequest 時一律被設成 suppressQuery: true——「從外部指定一個已知座標
+// 要對齊過去」這個語意本身就不該觸發「搜尋這個區域」。加上這個欄位只會
+// 讓呼叫端以為自己能控制它,實際上會被覆寫。
+// nonce:讓「使用者又做了一次同樣的動作」能被區分出來。消費端
+// (useGeoOutlineMapState/GeoOutlinePanel)的 effect 依賴是拆開的純量
+// (lat/lng/level/... ,刻意不用物件 identity,避免每次 render 重新觸發),
+// 所以同一個座標連續設定兩次時所有依賴都沒變、effect 不重跑、地圖不動。
+//
+// 實際會踩到的情境:點時間軸卡片 A(地圖移過去)→ 手動拖曳地圖到別處 →
+// 再點卡片 A 想回去,地圖不動。這跟「選取狀態用 effect 上報」踩過的是
+// 同一類錯誤——值驅動的機制表達不了「使用者又點了一次」這種事件語意。
+//
+// 呼叫端每次送出都給一個新值(Date.now() 或遞增計數)即可;不帶則維持
+// 原本的行為(同座標不重複移動),對「程式自動定位」那類呼叫端來說那
+// 反而是想要的。
 export type GeoPanTarget = {
   lat: number
   lng: number
   radiusMeters?: number
   onlyIfOutOfView?: boolean
+  nonce?: number
 }

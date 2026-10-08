@@ -45,8 +45,11 @@ export interface DesktopMainProps {
   className?: string
 }
 
-// forwardRef——比照 ScrollArea.tsx/Button.tsx 既有慣例保留轉發能力,目前
-// 沒有呼叫端需要,但沒有理由讓這個共用元件成為擋住未來需求的瓶頸。
+// forwardRef——比照 ScrollArea.tsx/Button.tsx 既有慣例保留轉發能力。
+// 2026-10:DesktopLayout.tsx 現在會用到這個 ref(desktopMainRef,傳給
+// TripPlanPage 的 scrollContainerRef prop,讓全頁版「回到最新」機制
+// 量測/監聽真正捲動的 <main>,見該檔案的完整說明)——這裡原本的註解
+// 寫著「目前沒有呼叫端需要」已經過時,更新為反映實際使用情況。
 export const DesktopMain = forwardRef<HTMLElement, DesktopMainProps>(function DesktopMain(
   { children, unbounded, unboundedScroll, className },
   ref,

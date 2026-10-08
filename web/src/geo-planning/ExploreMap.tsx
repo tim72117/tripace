@@ -14,6 +14,7 @@ import { ensureOptionsSet, themeToColorScheme } from './googleMapsBootstrap'
 import { useAttractionOverlays } from './useAttractionOverlays'
 import { useSearchResultMarkers } from './useSearchResultMarkers'
 import { useTripEntryMarkers } from './useTripEntryMarkers'
+import { usePlanStopMarkers, type PlanStopMarker } from './usePlanStopMarkers'
 import { useCurrentLocationMarker } from './useCurrentLocationMarker'
 import styles from './ExploreMap.module.css'
 
@@ -99,6 +100,10 @@ export function ExploreMap({
   currentPosition = null,
   restrictBounds,
   tripEntries = [],
+  planStops = [],
+  selectedPlanStopId,
+  hoverPlanStopId,
+  onPlanStopClick,
   city,
   onCityChange,
   onSearch,
@@ -169,6 +174,25 @@ export function ExploreMap({
   // 定位而已。跟 hotels/places 不同,這批資料不是「以地圖範圍為準」
   // 查詢的結果,是旅程本身固定的內容,換旅程才會變。
   tripEntries?: GeoTripEntry[]
+  // planStops:AI 規劃時間軸上已安排的站點(2026-10 新增,使用者明確
+  // 要求「開啟對話若是有安排景點,地圖上出現小圓點」)——畫成小圓點,
+  // 跟 tripEntries 的旗子刻意區分:那是已經寫進資料庫的正式行程項目,
+  // 這是還沒落進任何旅程的規劃草稿(見 planStopMarkerContent 與
+  // planTimelineStorage.ts 的完整說明)。
+  //
+  // 預設空陣列——地圖在對話小匡關閉時(以及手機版、展示頁等其他使用
+  // 情境)不需要這個圖層,呼叫端不傳就等於沒有這批點。
+  planStops?: PlanStopMarker[]
+  // selectedPlanStopId/onPlanStopClick:規劃站點的選取同步與反向點擊。
+  // 前者讓地圖上的圓點跟時間軸卡片的高亮一致,後者讓點地圖圓點能回頭
+  // 選中對應卡片——兩者共同構成「卡片 ↔ 地圖」的雙向對應。
+  selectedPlanStopId?: string | null
+  // hoverPlanStopId:滑鼠正懸停在哪一張時間軸站點卡上。跟 selectedPlanStopId
+  // 同一套靶心語彙,但刻意有差異(hover 的外環更虛、光暈更擴散),用來
+  // 分辨「暫時掃過」與「主動錨定」——見 planStopMarkerContent 對 state
+  // 參數的完整說明。兩者同時指向同一顆時 selected 優先。
+  hoverPlanStopId?: string | null
+  onPlanStopClick?: (id: string) => void
   // city/onCityChange/onSearch/searching/searchError:城市搜尋框,顯示在
   // 地圖上方類別標籤列旁邊(見下方 JSX)——跟 GeoCandidateSidebar 側欄裡
   // 原本就有的同一組搜尋框(見該元件的 city/onCityChange/onSearch prop)
@@ -1191,6 +1215,14 @@ export function ExploreMap({
     tripEntries,
     selectedKey,
     hoverKey,
+  })
+  usePlanStopMarkers({
+    mapRef,
+    mapReady,
+    stops: planStops,
+    selectedStopId: selectedPlanStopId,
+    hoverStopId: hoverPlanStopId,
+    onStopClick: onPlanStopClick,
   })
   useCurrentLocationMarker({
     mapRef,

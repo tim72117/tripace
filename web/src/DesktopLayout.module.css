@@ -68,6 +68,15 @@
   bottom: 16px;
   box-shadow: 0 8px 28px rgba(61, 53, 48, 0.22);
   border: 1px solid rgba(255, 255, 255, 0.4);
+  /* max-width 保護:width 由 FloatingPanel 以 inline style 寫死(見
+     DesktopLayout.tsx 的 CHAT_POPOVER_WIDTH——2026-10 為了容納 AI 規劃
+     時間軸從 340 加寬到 440),inline style 本身沒有任何視窗寬度的防護。
+     窄視窗(或 .chatPopoverShifted 把它往左推 364px 之後)可能讓這張
+     小匡左緣頂到甚至超出左側 rail。這行讓它在空間不足時自動收窄,
+     calc 扣掉的是右側 16px + 左側預留 80px(rail 寬度與間隙)。
+     inline style 的 width 優先權高於這裡的 width,但 max-width 仍會
+     正常生效壓過它——這正是用 max-width 而非 width 的原因。 */
+  max-width: calc(100vw - 96px);
 }
 
 /* chatPopoverShifted:搜尋結果側欄(GeoHotelSidebar,見 FloatingPanel.tsx
@@ -81,6 +90,10 @@
    在 geoHotelSidebarVisible 為 true 時額外疊加這個 class。 */
 .chatPopoverShifted {
   right: 364px;
+  /* 這個狀態下小匡已經被往左推 364px,可用空間比 .chatPopover 的預設
+     位置少了那麼多——max-width 要跟著扣掉,否則窄視窗下仍會頂到/超出
+     左側 rail(.chatPopover 的 calc 只扣了預設位置的右側 16px)。 */
+  max-width: calc(100vw - 444px);
 }
 
 /* chatPopoverHidden:對話小匡關閉時,FloatingPanel 仍然掛載(見

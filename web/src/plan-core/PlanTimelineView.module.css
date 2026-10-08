@@ -566,13 +566,29 @@
 /* jump-to-latest——sticky 相對捲動容器(.main)貼齊。height: 0 讓它不佔
    版面:否則按鈕出現/消失時內容高度會多/少約 37px,捲在底部時畫面會
    跟著跳動。按鈕本身用 translateY(-100%) 往上移出這個 0 高的錨點,
-   停在輸入膠囊(貼底 20px、高約 66px)上方 12px 處。 */
+   停在輸入膠囊(貼底 20px、高約 66px)上方 12px 處。
+   align-items: flex-start——2026-10 修正(fable 用 Playwright 實測
+   揪出的真正根因):.jumpPillWrap 是 display:flex 容器,.jumpPill
+   是它唯一的 flex item,align-items 預設值 normal 對 flex item
+   等同 stretch,把按鈕的高度硬拉伸成容器的 cross size,也就是
+   height:0——border-box 下 height 不能小於 padding 總和,按鈕因此
+   被壓成只剩「padding-top + padding-bottom」的高度(全頁版實測只有
+   16px,compact 版實測只有 20px),文字跟 icon 全部溢出擠進 padding
+   區域,只靠 align-items:center(這是 .jumpPill 自己的,管的是
+   內容在被壓扁的盒子裡怎麼置中,不是整個盒子的高度)撐著沒有真的
+   跑出外框。這正是使用者反應「DevTools 顯示 padding 數字正確,但
+   畫面上完全看不出間距感」的真正原因——不是 padding 沒生效,是
+   padding 生效的那個盒子本身被壓扁了。改成 flex-start 讓
+   .jumpPill 用自己的內容撐出真正的高度,不再被容器的 0 高度拉伸;
+   .jumpPill 本身已經用 translateY(-100%) 往上位移,撐高後仍會完整
+   落在 wrap 的上方,不需要連帶調整 bottom 數值。 */
 .jumpPillWrap {
   position: sticky;
   bottom: 98px;
   height: 0;
   display: flex;
   justify-content: center;
+  align-items: flex-start;
   z-index: 10;
 }
 .jumpPill {

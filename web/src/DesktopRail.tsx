@@ -1,7 +1,7 @@
 import { forwardRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
-  List, Layers, Activity, Route, BookOpen, PanelLeft, Sparkles,
+  List, Layers, Activity, Route, BookOpen, PanelLeft, Sparkles, MessageSquareText,
 } from 'lucide-react'
 import { Timeline } from 'lucide-react'
 import type { ClientConfig } from './api'
@@ -10,7 +10,7 @@ import { DesktopUserMenu } from './user/DesktopUserMenu'
 import {
   type PanelMode, TIMELINE_ENABLED, PACE_ENABLED,
   DEBUG_PANEL_ENABLED,
-  DEMO_ROUTE_EDITOR_ENABLED, PANEL_REGISTRY,
+  DEMO_ROUTE_EDITOR_ENABLED, DEMO_CHAT_ENABLED, PANEL_REGISTRY,
 } from './DesktopShared'
 import styles from './DesktopRail.module.css'
 
@@ -186,6 +186,20 @@ export const DesktopRail = forwardRef<HTMLElement, DesktopRailProps>(function De
           >
             <BookOpen size={20} strokeWidth={1.8} />
             {expanded && <span className={styles.btnLabel}>路徑編輯器(試做)</span>}
+          </button>
+        )}
+        {/* demo-chat:舊版對話框(走 tripace app 的 trip_entry_* 工具,
+            以批次表格呈現結果)——地圖規劃的對話視窗改成 AI 規劃時間軸
+            之後,這套保留成試做分頁,見 DesktopShared.tsx
+            DEMO_CHAT_ENABLED 的完整說明。 */}
+        {DEMO_CHAT_ENABLED && (
+          <button
+            className={panelMode === 'demo-chat' ? `${styles.btn} ${styles.btnDemo} ${styles.active}` : `${styles.btn} ${styles.btnDemo}`}
+            onClick={() => onSelect('demo-chat')}
+            title="舊版對話框(試做)"
+          >
+            <MessageSquareText size={20} strokeWidth={1.8} />
+            {expanded && <span className={styles.btnLabel}>舊版對話框(試做)</span>}
           </button>
         )}
       </div>

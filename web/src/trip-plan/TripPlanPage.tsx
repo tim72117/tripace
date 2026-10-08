@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDown } from 'lucide-react'
 import { AgentBridge } from '@onagent/bridge'
 import { ApiError, fetchGeoPlacePhotoAssets, fetchPlanAiPlaceDetailsAny, fetchPlanAiTransitEstimate, type ClientConfig } from '../api'
 import { Lightbox } from '../geo-planning/PhotoCarousel'
 import { hasAnyPhoto, PHOTO_RETRY_DELAY_MS, PHOTO_RETRY_MAX_ATTEMPTS } from '../photoRetry'
 import { toAgentBridgeTools } from '../sdk-proposals/toAgentBridgeTools'
+import { useStableCallback } from '../hooks/useStableCallback'
 import { useSyncedState } from '../hooks/useSyncedState'
 import { createAttractionToolsList, type AttractionStepsCtx, type PlanStepLike } from '../plan-core/attractionTools'
 import { PlanTimelineView } from '../plan-core/PlanTimelineView'
 import {
-  createEmptyTimeline,
   insertAfter,
   removeNode,
   staleOtherAgentMessages,
@@ -18,6 +19,7 @@ import {
   type PlanNodeData,
   type PlanTimeline,
 } from '../plan-core/planTimeline'
+import { loadTimelineWithRev, readRev, saveTimeline } from '../plan-core/planTimelineStorage'
 import styles from './TripPlanPage.module.css'
 
 // TripPlanPage — 「AI 安排行程」正式功能頁面,對應 /app 底下的正式導覽
@@ -264,7 +266,96 @@ function refreshTransitForStop(
 // 的原生事件,完全在 React 事件系統之外,需要「commit 呼叫當下就同步
 // 拿到結果」這個保證。
 function useTripPlanTimeline(cfg: ClientConfig) {
-  const [timelineRef, timeline, commitTimeline] = useSyncedState<PlanTimeline>(createEmptyTimeline)
+  // 初值改成 loadTimeline(見 plan-core/planTimelineStorage.ts 的完整
+  // 說明)——2026-10 使用者明確要求規劃內容要持久化到前端。useSyncedState
+  // 接受 lazy initializer,直接傳函式參照即可(只在第一次掛載時執行一次,
+  // 不會每次 render 都讀一次 localStorage)。沒存過/資料損毀時 loadTimeline
+  // 自己會回傳空時間軸,行為跟原本的 createEmptyTimeline 一致。
+  // 初始內容與版次用同一次讀取取得(loadTimelineWithRev),不是分別呼叫
+  // loadTimeline() 與 readRev()——後者是兩次獨立的 localStorage 讀取,
+  // 理論上另一實例可在兩者之間寫入,於是讀到「舊 timeline + 新 rev」,
+  // 這份實例會誤判自己最新、下次寫入直接覆蓋。見該函式的完整說明。
+  //
+  // 用 ref 保存初值:Strict Mode 會雙重 render,放進 useState/useRef 的
+  // initializer 參數會被求值兩次(第二次的結果丟棄),這裡讓它確實只讀
+  // 一次。
+  const initialRef = useRef<{ timeline: PlanTimeline; rev: number } | null>(null)
+  if (initialRef.current === null) initialRef.current = loadTimelineWithRev()
+  const [timelineRef, timeline, rawCommitTimeline] = useSyncedState<PlanTimeline>(initialRef.current.timeline)
+
+  // revRef——這個實例手上這份 timeline 對應的持久化版次(見
+  // planTimelineStorage.ts 的 PersistedTimeline.rev)。
+  //
+  // 存在的理由:TripPlanPage 會同時有兩份實例掛載——地圖對話小匡是常駐
+  // 掛載的(FloatingPanel 只用 display:none 隱藏,為的是不重建 WebSocket
+  // 連線),而切到 /app/plan-ai 時全頁版也會掛上來。兩份各自在掛載當下
+  // 讀一次 localStorage 之後就不再重讀,於是:在全頁版規劃完切回地圖,
+  // 小匡那份仍是掛載時的舊內容(常常是空的),它下一次寫入就會把剛剛
+  // 規劃好的內容整個蓋掉——實際會遺失使用者資料。
+  //
+  // 用版次而非 storage 事件:storage 事件只在「其他分頁」觸發,同一個
+  // 分頁內的兩份實例互相寫入是收不到的,正好不涵蓋這個情境。
+  const revRef = useRef(initialRef.current.rev)
+
+  // commitTimeline——包一層 rawCommitTimeline,在每次「真的有寫入」時
+  // 順手存檔。選在這一層攔截而非各個呼叫端自己記得存,理由:時間軸的
+  // 所有異動(insertAttractionAfter/setNoteForStop/removeStep/背景查詢
+  // 回填 resolveAttractionForStep、refreshTransitForStop 等)最終都經過
+  // 這個函式,是唯一能涵蓋全部寫入路徑的單一攔截點——漏接任何一條都會
+  // 出現「畫面有、重整後不見」的不一致。
+  //
+  // 只在 next !== undefined(compute 真的要求寫入)時存檔:insertAfter
+  // 驗證失敗那類「算完發現不該寫」的呼叫不會給 next(見 useSyncedState
+  // 的完整說明),那種情況 state 沒變,不需要重複存一份一樣的內容。
+  //
+  // 不動 useSyncedState 本身——那是多處共用的通用 hook,把持久化塞進去
+  // 會讓所有使用者都背上這個跟它無關的職責。
+  // resyncFromStorage——把另一份實例寫入的較新內容讀回來,並讓版次跟上。
+  //
+  // 兩個呼叫時機:(a) commitTimeline 寫入前(確保以最新內容為基準計算);
+  // (b) 小匡從隱藏轉為可見時(純顯示的情境沒有寫入可攔截——小匡被
+  // display:none 隱藏期間使用者在全頁版規劃了幾站,重新顯示時畫面會
+  // 一直停在舊內容)。
+  //
+  // 用 rawCommitTimeline 而非 commitTimeline:這裡的語意是「把磁碟內容
+  // 讀進記憶體」,不是「產生新內容」。走 commitTimeline 會把剛讀回來的
+  // 東西原封不動寫回去並讓 rev +1,害另一份實例無端判定自己過期、觸發
+  // 一次無意義的重讀,兩份實例可能互相推高版次。
+  const resyncFromStorage = useCallback(() => {
+    const diskRev = readRev()
+    if (diskRev <= revRef.current) return
+    const { timeline: fresh, rev } = loadTimelineWithRev()
+    revRef.current = rev
+    rawCommitTimeline<void>(() => ({ next: fresh, result: undefined }))
+  }, [rawCommitTimeline])
+
+  const commitTimeline = useCallback(
+    <R,>(compute: (current: PlanTimeline) => { next?: PlanTimeline; result: R }): R => {
+      // 寫入前先無條件追上磁碟——跟 resyncFromStorage 走同一條路徑,只是
+      // 這裡的觸發時機是「即將寫入」。這樣下面的 current 保證已經是最新,
+      // 不需要在 compute 內部分「用自己的還是用磁碟的」兩種 base。
+      resyncFromStorage()
+      return rawCommitTimeline<R>((current) => {
+        const outcome = compute(current)
+        if (outcome.next !== undefined) {
+          const saved = saveTimeline(outcome.next, revRef.current)
+          if (saved === null) {
+            // 存檔失敗(配額/無痕/localStorage 被停用)。刻意不推進 state:
+            // 若讓記憶體套用這次異動而磁碟沒有,版次會宣稱「我跟磁碟一致」,
+            // 實際上記憶體多了一筆沒存到的內容——之後另一個實例寫入時,
+            // 這份會以它為基準重算,那筆異動就靜默消失了。寧可這次操作
+            // 看起來沒生效(使用者會重試),也不要製造一個會在實例間
+            // 互相抹掉內容的不一致狀態。
+            return { result: outcome.result }
+          }
+          revRef.current = saved
+        }
+        return outcome
+      })
+    },
+    [rawCommitTimeline, resyncFromStorage],
+  )
+
   const setTimeline = useCallback((updater: PlanTimeline | ((prev: PlanTimeline) => PlanTimeline)) => {
     commitTimeline((current) => ({
       next: typeof updater === 'function' ? (updater as (prev: PlanTimeline) => PlanTimeline)(current) : updater,
@@ -375,6 +466,7 @@ function useTripPlanTimeline(cfg: ClientConfig) {
     insertAttractionAfter,
     setNoteForStop,
     removeStep,
+    resyncFromStorage,
   }
 }
 
@@ -542,15 +634,117 @@ function usePlanAiChatBridge(
 // 再重複),連同 prop 一併移除,呼叫端不再傳入。
 export function TripPlanPage(props: {
   cfg: ClientConfig
+  // compact——2026-10 新增:這個元件現在有兩個使用情境,版面需求不同。
+  //   - /app/plan-ai(預設,compact 省略):整頁顯示,捲動權在外層
+  //     DesktopMain(unboundedScroll),.page 自己是自然高度。
+  //   - 地圖規劃的對話浮動小匡(compact):沒有任何祖先在管捲動,且
+  //     FloatingPanel 的 .panel 是 overflow:hidden——.page 必須自己變成
+  //     固定高度的 flex 容器、讓時間軸區塊接手捲動,否則內容會一路往下
+  //     撐、超出的部分被裁掉且完全捲不動(使用者實際回報的 bug)。
+  // 用明確的 prop 而非偵測容器尺寸:呼叫端在渲染當下就知道自己把這個
+  // 元件放進哪種容器,不需要執行期量測,理由同 DesktopMain 的 unbounded
+  // prop 取代原本 :has() 被動偵測的既有決定。
+  compact?: boolean
+  // visible——這個實例此刻在畫面上看不看得見。只有 compact(對話小匡)
+  // 需要傳:那張小匡是常駐掛載、用 display:none 隱藏的,元件不會因為
+  // 「關閉」而卸載,所以無從用掛載時機去重讀持久化內容。
+  //
+  // 從隱藏轉為可見時,把另一份實例(/app/plan-ai 全頁版)在這期間寫入的
+  // 內容讀回來——否則小匡會一直顯示它掛載當下的舊時間軸(見
+  // useTripPlanTimeline 的 resyncFromStorage 與 revRef 的完整說明)。
+  // 省略時視為永遠可見,維持原本行為(全頁版靠掛載/卸載就足夠)。
+  visible?: boolean
+  // scrollContainerRef——2026-10 新增:真正接手捲動的 DOM 節點,取代原本
+  // 用 scrollRef.current?.closest('main') 從內部往上爬著猜的做法(見
+  // scrollToLatest/handleScroll 的完整說明)。
+  //   - /app/plan-ai 全頁:呼叫端傳入指向 DesktopMain(<main>)的 ref,
+  //     捲動權在那個撐滿視窗的外層容器(unboundedScroll)。
+  //   - 地圖規劃的對話小匡(compact):不傳——元件內部的 scrollRef
+  //     (指向 .scroll,compact 模式下疊加 .compactScroll 接手捲動)本身
+  //     就是真正的捲動容器,fallback 用它自己。
+  // 選填且不要求呼叫端一定要配 compact 傳——兩者語意不同,compact 決定
+  // 版面/樣式,scrollContainerRef 單純告知「量測與監聽事件要對著哪個
+  // 節點」,理論上未來若有第三種容器情境,兩者可以獨立變化。
+  scrollContainerRef?: React.RefObject<HTMLElement | null>
+  // onPanToStop——2026-10 新增:點擊站點卡時,把該站的座標交給呼叫端,
+  // 讓外層的地圖移動過去。
+  //
+  // 為什麼是選填、而且由呼叫端決定怎麼移動:這個元件本身沒有地圖
+  // (/app/plan-ai 全頁的右上角小地圖已移除,見下方 panToStop 的說明),
+  // 兩個使用情境對「點了卡片之後該發生什麼」的答案不同——
+  //   - /app/plan-ai 全頁:沒有地圖可移動,省略這個 prop,行為維持原樣
+  //     (只做卡片高亮)。
+  //   - 地圖規劃的對話小匡:外面就是整張地圖,傳入後點卡片會把地圖
+  //     平移到該站(見 DesktopLayout.tsx 傳入時的完整說明)。
+  // 元件自己不 import 任何地圖模組,維持「時間軸就只是時間軸」,不因為
+  // 其中一個使用情境多了地圖就把地圖依賴帶進所有情境。
+  onPanToStop?: (stop: { lat: number; lng: number }) => void
+  // onStopsChange——2026-10 新增:時間軸上「已經查到座標」的站點清單有
+  // 變動時回報給呼叫端,讓外層的地圖畫出對應的小圓點(使用者明確要求
+  // 「開啟對話若是有安排景點,地圖上出現小圓點」)。
+  //
+  // 選填,理由同 onPanToStop:/app/plan-ai 全頁沒有地圖,省略即可。
+  //
+  // 注意這個元件在對話小匡裡是常駐掛載的(FloatingPanel 只用 display:none
+  // 隱藏,見 DesktopLayout.tsx 對那個設計的完整說明——為的是避免每次開關
+  // 都重建 WebSocket 連線)。所以小匡「關閉」期間這裡仍會持續回報(AI 還
+  // 在串流、背景座標回填都會讓清單變動),呼叫端收到的 state 也不會歸零。
+  // 圓點要不要顯示因此完全由呼叫端決定(見 DesktopLayout.tsx 傳給
+  // ExploreMap 時的顯示判斷),這個元件不負責那件事。
+  //
+  // 這些回調不需要穩定的 identity:元件內部已用 useStableCallback 隔離
+  // (見下方 reportStops 與 selectStop),呼叫端的函式參照不會進任何
+  // 依賴陣列,傳 inline 箭頭函式是安全的。
+  onStopsChange?: (stops: { id: string; lat: number; lng: number; name?: string }[]) => void
+  // selectedStopId/onSelectedStopChange——目前選中哪一站。三種合法組合:
+  //   - 兩個都傳:受控。以 selectedStopId 為準,元件自己不存狀態,每次
+  //     使用者點選都呼叫 onSelectedStopChange(地圖對話小匡用這個)。
+  //   - 兩個都不傳:非受控,元件用內部 state 自理(/app/plan-ai 全頁)。
+  //   - 只傳 onSelectedStopChange:非受控但通知呼叫端——元件自己管狀態,
+  //     呼叫端只是想知道。語意同 <input onChange> 不給 value。
+  // (只傳 selectedStopId 不傳 callback 也能跑,但那樣使用者點了沒人處理,
+  //  畫面不會有任何反應,實務上沒有意義。)
+  //
+  // selectedStopId 傳 null 仍算受控——null 是「沒有選任何一站」的合法值,
+  // 判斷用 !== undefined 而不是 != null。
+  //
+  // 2026-10 從「元件自己管理 + 單向上報」改成受控:原本的寫法讓呼叫端
+  // (DesktopLayout)另外存一份 selectedPlanStopId 給地圖用,兩份之間只有
+  // 子→父的單向同步,而地圖那側點圓點時是直接寫父層那份——製造出一個
+  // 回不來的狀態:
+  //   點卡片 A(兩份都 A)→ 點地圖圓點 B(父=B、子仍 A,畫面同時兩個
+  //   選中)→ 再點卡片 A:setSelectedStopId('A') 本身正常執行,但子元件
+  //   的值本來就是 'A',React bail out、上報 effect 的依賴沒變、不重跑,
+  //   父層永遠停在 B。
+  // 這個情境與受控/非受控兩種模式的行為都有回歸測試覆蓋,見同資料夾的
+  // selectedStopSync.test.tsx。受控之後只有一份事實來源,地圖與卡片不可能
+  // 不同步,「點圓點 → 卡片高亮」也自然成立(原本那條路徑是斷的)。
+  //
+  // /app/plan-ai 全頁不傳這兩個 prop,走內部 state,行為與先前相同。
+  selectedStopId?: string | null
+  onSelectedStopChange?: (id: string | null) => void
+  // onHoverStopChange——滑鼠移到站點卡上時回報(移出傳 null),讓地圖把
+  // 對應的小圓點加強顯示。不存成這個元件自己的 state 再上報:hover 狀態
+  // 在這裡沒有任何用途(卡片本身的 hover 樣式由 CSS :hover 處理,不需要
+  // 經過 React),純粹是轉發給呼叫端,多存一份只會造成不必要的重渲染。
+  //
+  // 注意:這個回調直接接到 PlanTimelineView 的 onHoverStop,「滑鼠離開」
+  // 以外的任何方式讓卡片消失都不會補送一次 null——元素被 display:none
+  // 隱藏(小匡關閉時就是這樣,見上方 onStopsChange 的說明)不產生
+  // onMouseLeave。呼叫端若把它存成 state,需要自己處理這個殘留。
+  onHoverStopChange?: (id: string | null) => void
 }) {
-  const { cfg } = props
+  const {
+    cfg, compact, visible = true, scrollContainerRef, onPanToStop, onStopsChange,
+    selectedStopId: controlledSelectedStopId, onSelectedStopChange,
+    onHoverStopChange,
+  } = props
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const followingRef = useRef(true)
   const lastScrollTopRef = useRef(0)
   const [showJumpPill, setShowJumpPill] = useState(false)
 
-  const { steps, timelineRef, insertAttractionAfter, setNoteForStop } = useTripPlanTimeline(cfg)
-  const stopCount = steps.filter((s) => s.type === 'stop').length
+  const { steps, timelineRef, insertAttractionAfter, setNoteForStop, resyncFromStorage } = useTripPlanTimeline(cfg)
 
   // getStepsForBridge——usePlanAiChatBridge 的 getSteps 需要讀到「當下
   // 最新」的節點清單,不能綁死成某一次 render 時的閉包。
@@ -595,33 +789,147 @@ export function TripPlanPage(props: {
   const mountedIdsRef = useRef<Set<string>>(new Set())
 
   // selectedStopId——目前被點選、卡片套用 .stopCardSelected 高亮樣式的
-  // 站點。2026-10 移除右上角小地圖功能前,這個狀態同時也驅動小地圖
-  // panTo+放大(見 panToStop),拿掉地圖後這裡純粹只剩「點了哪張卡片」
-  // 的視覺回饋,不影響其餘行為。
-  const [selectedStopId, setSelectedStopId] = useState<string | null>(null)
+  // 站點。
+  //
+  // 受控/非受控雙模式(見上方 props 對這兩個欄位的完整說明):呼叫端傳了
+  // selectedStopId 就以它為準(地圖對話小匡,狀態住在 DesktopLayout,
+  // 地圖與時間軸共用同一份),沒傳就用這個內部 state(/app/plan-ai 全頁)。
+  //
+  // 這個狀態現在同時驅動地圖上對應小圓點的強調樣式——2026-10 之前曾經
+  // 短暫只剩「點了哪張卡片」的視覺回饋(右上角小地圖移除後),現在它又
+  // 有了地圖這個消費端,只是地圖不再是這個元件自己的。
+  const [internalSelectedStopId, setInternalSelectedStopId] = useState<string | null>(null)
+  const isSelectionControlled = controlledSelectedStopId !== undefined
+  const selectedStopId = isSelectionControlled ? controlledSelectedStopId : internalSelectedStopId
+  // selectStop——統一的寫入口。受控模式下只通知呼叫端(不碰內部 state,
+  // 避免兩份值在模式切換時殘留不一致);非受控模式下寫內部 state,並且
+  // 仍然通知呼叫端(呼叫端可能只想知道、不想接管)。
+  // useStableCallback:理由同下方 reportStops——呼叫端傳 inline 箭頭函式
+  // 時,這個函式的 identity 不該跟著變(它會進 panToStop 的 useCallback
+  // 依賴,再往下傳給 PlanTimelineView)。
+  const selectStop = useStableCallback((id: string | null) => {
+    if (!isSelectionControlled) setInternalSelectedStopId(id)
+    onSelectedStopChange?.(id)
+  })
+
+  // mapStops——回報給外層地圖畫小圓點的站點清單(見 onStopsChange 參數的
+  // 完整說明)。
+  //
+  // 只取 type === 'stop' 且已經有座標的節點:section(AI 的敘述文字)
+  // 本來就不是地點,而查詢中的 stop 佔位卡要等 resolveAttractionForStep
+  // 查完才有 lat/lng,在那之前畫不出來——濾在這裡而不是讓地圖那側判斷,
+  // 是因為「哪些節點還沒查到座標」屬於時間軸自己的狀態,不該外流給
+  // 只負責畫點的圖層(見 usePlanStopMarkers 對 PlanStopMarker.lat/lng
+  // 必填的說明)。
+  const mapStops = useMemo(
+    () =>
+      steps
+        .filter((s) => s.type === 'stop' && s.lat != null && s.lng != null)
+        .map((s) => ({ id: s.id, lat: s.lat!, lng: s.lng!, name: s.name })),
+    [steps],
+  )
+
+  // 把站點清單往上報。這一個必須走 useEffect(不像選取狀態改成事件驅動,
+  // 見下方說明):站點可能由多條路徑變動(agent 的 add_attraction、背景
+  // 查詢回填座標、使用者移除節點、重整後從 localStorage 恢復),是資料
+  // 變動而非單一使用者動作,沒有一個「事件」可以掛。
+  //
+  // useStableCallback 包一層,讓依賴陣列只剩真正的資料(mapStops)——呼叫端
+  // 若傳 inline 箭頭函式(DesktopLayout 這個檔案的既有風格就是這樣寫,
+  // 例如 onPanToStop),每次 render 的新 identity 會讓 effect 重跑 →
+  // setState → 父層 render → 又是新 identity,形成無窮迴圈。包過之後
+  // 呼叫端傳什麼都安全,不需要依賴「恰好傳了 setState」這個隱性契約。
+  const reportStops = useStableCallback((stops: typeof mapStops) => { onStopsChange?.(stops) })
+  useEffect(() => {
+    reportStops(mapStops)
+  }, [mapStops, reportStops])
+
+  // 選取狀態不走 useEffect 上報(站點清單那個仍然走,見上方說明)——
+  // 改在 selectStop 裡直接通知。原本用 effect 依賴 [selectedStopId] 上報,
+  // 那正是「點卡片 A → 點地圖圓點 B → 再點卡片 A 回不去」那個 bug 的
+  // 成因:值沒變就不觸發,而外部可能已經把呼叫端那份改掉了。事件驅動的
+  // 通知沒有這個問題——使用者每點一次就通知一次,不管值變不變。
 
   // lightboxPhotos——2026-10 新增,比照地圖版景點介紹卡的多圖瀏覽需求
   // (見 PhotoCarousel.tsx 的 Lightbox):點擊帶有多張 googlePhotoUrls 的
   // 縮圖時開啟全螢幕瀏覽,null 代表未開啟。縮圖本身維持 64px 圓形版型
   // 不變,只在點擊時另開這個全螢幕層,理由見下方縮圖 onClick 的完整說明。
+  // visible 從 false 轉 true 時重讀持久化內容——見 visible prop 與
+  // useTripPlanTimeline 的 resyncFromStorage 的完整說明。依賴只有 visible:
+  // resyncFromStorage 自己會先比對版次,沒有更新就直接 return,重複呼叫
+  // 無副作用。
+  useEffect(() => {
+    if (visible) resyncFromStorage()
+  }, [visible, resyncFromStorage])
+
   const [lightboxPhotos, setLightboxPhotos] = useState<{ photos: string[]; alt: string } | null>(null)
 
+  // panToStop——點擊站點卡:高亮該卡片,並(呼叫端有提供 onPanToStop 時)
+  // 請外層把地圖移動到這一站。
+  //
+  // 2026-10:原本這裡只做選取——/app/plan-ai 全頁右上角的小地圖移除後,
+  // 「pan」這個動作就沒有對象了,函式名稱留著但實際上不再移動任何東西。
+  // 現在這個元件嵌進地圖規劃的對話小匡,外面就是整張地圖,名稱重新名實
+  // 相符:座標交給呼叫端,由它決定怎麼移動(見 onPanToStop 參數的完整
+  // 說明)。
+  //
+  // 沒有座標的節點直接 return、連高亮都不做——維持既有行為:查詢中的
+  // 佔位卡(lat/lng 要等 resolveAttractionForStep 查完才有)點了不該有
+  // 任何反應,不是高亮一張還不知道在哪裡的卡片。
   const panToStop = useCallback((step: PlanStep) => {
     if (step.lat == null || step.lng == null) return
-    setSelectedStopId(step.id)
-  }, [])
+    selectStop(step.id)
+    onPanToStop?.({ lat: step.lat, lng: step.lng })
+  }, [onPanToStop, selectStop])
+
+  // getScroller——「回到最新」整套機制(自動捲到底/跟隨判斷/事件監聽)
+  // 共用的捲動容器取得函式。
+  //
+  // 2026-10 修正(code review 發現的實際 bug):原本三處(scrollToLatest/
+  // handleScroll/下方掛原生事件監聽器的 effect)各自寫
+  // scrollRef.current?.closest('main'),從 scrollRef(指向 .scroll,見
+  // 下方)往上爬,靠「找到的 <main> 就是真正在捲動的那個」這個假設找
+  // 捲動容器——這個假設只在 /app/plan-ai 全頁成立。
+  // (2026-10 code review 二次修正:這裡原本誤寫成「地圖規劃的對話
+  // 小匡完全沒有 <main> 祖先,closest('main') 永遠回傳 null」——
+  // 實際上 FloatingPanel 是 DesktopMain 的子孫,DOM 樹裡確實有
+  // <main> 祖先,closest('main') 抓得到它,不是回傳 null。真正的
+  // 問題是那個 <main> 的 unboundedScroll 只在 panelMode==='plan-ai'
+  // 時才為 true,對話小匡存在的其餘 panelMode 下,這個 <main> 不會
+  // 真正接手捲動、scroll 事件不會在它身上觸發——closest('main') 抓到
+  // 的是「存在但錯的」捲動容器,不是抓不到。結論跟修法不變:這組
+  // 機制(自動捲到底、跟隨判斷、按鈕顯示)在小匡裡一樣會失效,只是
+  // 失效的具體原因不是「找不到 main」,而是「找到的 main 不會動」。)
+  // 改成優先讀呼叫端傳入的 scrollContainerRef(見該 prop 的完整說明):
+  // 全頁版傳 DesktopMain 的 <main> ref,小匡版不傳、fallback 用
+  // scrollRef.current 本身(compact 模式下就是真正接手捲動的
+  // .compactScroll,見該 class 的完整說明)——兩條路徑各自對應自己
+  // 真正的捲動容器,不再靠 closest 猜。
+  //
+  // scrollContainerRef?.current ?? scrollRef.current——code review 時
+  // 曾經認為這種 nullish coalescing 寫法有「React 尚未完成 commit、
+  // .current 還是初始值 null 的極短暫窗口會被誤判」的風險,改寫成
+  // scrollContainerRef !== undefined ? ... : ... 這種看 prop 存不存在
+  // 的寫法。後來請 Opus 複查:兩種寫法實際上等價——ref 在 commit 的
+  // layout 階段就掛好,早於所有 effect 執行,這個「窗口」根本不存在;
+  // 就算真的命中那個窗口,兩種寫法的結果都是「fallback 到
+  // scrollRef.current」,不會造成任何錯誤行為。保留 ?? 這個更簡短
+  // 的寫法,不需要額外的 !== undefined 分支——這裡不是「哪種寫法更
+  // 安全」的問題,是同一件事的兩種等價表達,選簡短的那個。
+  //
+  // 型別層面上這裡沒有強制「compact 為 false 時必須傳
+  // scrollContainerRef」(props 物件欄位很多,改成 discriminated
+  // union 會讓每個欄位都要在兩個分支各寫一次,改動成本不成比例)——
+  // 目前只有 DesktopLayout.tsx 兩處呼叫,全頁版已經正確傳入,若之後
+  // 新增第三個呼叫端忘記傳,後果是悄悄 fallback 到 .scroll(不會捲動
+  // 的那個),不是編譯期錯誤,屬於已知、可接受的設計取捨,留意即可。
+  const getScroller = useCallback((): HTMLElement | null => {
+    return scrollContainerRef?.current ?? scrollRef.current
+  }, [scrollContainerRef])
 
   // scrollToLatest — 對齊目前生成位置(呼吸點提示,或已生成完畢時的
   // 最後一個節點),理由同原型的完整說明。
   //
-  // 2026-09:真正的捲動容器不再是 scrollRef 指向的 .scroll 本身——改用
-  // DesktopMain 的 unboundedScroll 後(見 DesktopLayout.tsx 對 plan-ai
-  // 傳入這兩個 prop 的完整說明,理由是使用者回報「捲軸要貼在視窗」),
-  // 捲動權收到外層 <main>(DesktopMain.tsx 渲染出的原生 HTML 標籤,
-  // 用標籤選取而不是 CSS Modules 的雜湊 class 名稱,不會因為樣式檔
-  // 調整而跟著失效),.scroll 只是流動的內容區塊。用 closest('main')
-  // 從 scrollRef(仍指向 .scroll,方便量測節點位置)往上找到這個真正
-  // 會捲動的祖先元素。
   // 直接捲到最底,不再用「目標節點頂端距視窗底 160px」的舊算法:那是
   // 輸入膠囊還是 absolute、不佔版面時的設計,改成 sticky 佔版面後,那個
   // 位置比真正的底部高約 100px,捲到底會被拉回去。最新的節點/呼吸點
@@ -629,12 +937,12 @@ export function TripPlanPage(props: {
   const scrollToLatest = useCallback(() => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        const scroller = scrollRef.current?.closest('main')
+        const scroller = getScroller()
         if (!scroller) return
         scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' })
       })
     })
-  }, [])
+  }, [getScroller])
 
   // 只在 steps 改變時跟隨,不把跟隨狀態放進依賴:否則使用者手動捲到底、
   // 跟隨狀態從 false 翻成 true 的那一刻,這個 effect 也會被觸發去捲動。
@@ -647,7 +955,7 @@ export function TripPlanPage(props: {
   // 只有「使用者往上捲、且離底部超過 80px」才退出跟隨。程式觸發的平滑
   // 捲動(往下)與新節點撐高內容(scrollTop 不變)都不會讓它誤判成離開。
   const handleScroll = useCallback(() => {
-    const scroller = scrollRef.current?.closest('main')
+    const scroller = getScroller()
     if (!scroller) return
     const { scrollTop, scrollHeight, clientHeight } = scroller
     const distFromBottom = scrollHeight - scrollTop - clientHeight
@@ -659,17 +967,18 @@ export function TripPlanPage(props: {
     if (nowFollowing === followingRef.current) return
     followingRef.current = nowFollowing
     setShowJumpPill(!nowFollowing && planAiChat.isThinking)
-  }, [planAiChat.isThinking])
+  }, [getScroller, planAiChat.isThinking])
 
-  // 2026-09:捲動事件現在發生在外層 <main>(見 scrollToLatest 的完整
-  // 說明),不是 .scroll 本身——JSX 沒辦法直接在父層元件渲染的 <main>
-  // 上掛 onScroll,改用 effect 手動加/移除原生事件監聽器。
+  // 捲動事件發生在 getScroller() 回傳的容器上,不是 .scroll 本身(全頁版
+  // 是外層 <main>,小匡版是 .compactScroll 自己——見 getScroller 的完整
+  // 說明)。JSX 沒辦法直接在父層元件渲染的 <main> 上掛 onScroll,兩種
+  // 情況都統一改用 effect 手動加/移除原生事件監聽器,邏輯一致不分支。
   useEffect(() => {
-    const scroller = scrollRef.current?.closest('main')
+    const scroller = getScroller()
     if (!scroller) return
     scroller.addEventListener('scroll', handleScroll)
     return () => scroller.removeEventListener('scroll', handleScroll)
-  }, [handleScroll])
+  }, [getScroller, handleScroll])
 
   const jumpToLatest = useCallback(() => {
     followingRef.current = true
@@ -695,42 +1004,20 @@ export function TripPlanPage(props: {
   // 還可能出現不一致的深色模式判斷)。
   return (
     <>
-    <div className={styles.page}>
-      <header className={styles.header}>
-        {/* headerInner——2026-09 新增:改用 DesktopMain 的 unboundedScroll
-            後(見 scrollToLatest 上方的完整說明),.page 不再被限制在
-            860px 容器裡,.header 背景需要撐滿整個視窗寬度(視覺一致,
-            跟時間軸/漂浮膠囊所在的區域同寬同色),但內容(狀態藥丸)
-            仍要維持跟 .inner(時間軸內容)一樣的 640px 置中對齊,不能讓
-            文字貼到視窗最左最右——這層負責「背景滿版、內容置中」的
-            拆分,理由同 fable 審閱時發現 header 若整個 unbounded 卻不做
-            這個拆分,左右兩側元素會懸空脫節的問題。原本這裡還有一個
-            .headerLeft 放行程名稱,使用者明確要求不顯示行程名稱/
-            「未命名行程」(外層桌面版 rail、手機版 sheet 標頭已經各自
-            有行程情境,這裡不需要再重複)——連同 tripName prop 一併
-            移除(見上方元件簽名的完整說明),.headerRight 改靠
-            margin-left: auto 頂到最右側,取代原本兩端對齊
-            (justify-content: space-between)靠左邊 .headerLeft 撐開的
-            版面。 */}
-        <div className={styles.headerInner}>
-          <div className={styles.headerRight}>
-            <div className={styles.statusPill}>
-              {planAiChat.isThinking ? (
-                <>
-                  <span className={`${styles.statusDot} ${styles.statusDotGenerating}`} />
-                  <span>正在安排行程…</span>
-                </>
-              ) : (
-                <>
-                  <span className={`${styles.statusDot} ${styles.statusDotDone}`} />
-                  <span>已安排 {stopCount} 站</span>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </header>
-
+    <div className={compact ? `${styles.page} ${styles.compact}` : styles.page}>
+      {/* 2026-10 整個 header 已移除(使用者明確要求「原本安排幾站的工具列
+          移除」)。它最後只剩一顆狀態藥丸,而藥丸裡的兩種內容都已經失去
+          存在理由:
+            - 「已安排 N 站」:站數在時間軸上一目了然,重複報一次數字。
+            - 「正在安排行程…」:時間軸底部本來就有骨架卡與呼吸點在表達
+              同一件事,且那個表達出現在「正在生成的位置」,比固定在頂端的
+              一行字更精準。
+          原本 header 還放過行程名稱(tripName),更早之前已另外移除——
+          外層桌面版 rail、手機版 sheet 標頭各自已有行程情境。至此這一列
+          沒有任何內容,整個拿掉而不是留一條空的 56px 橫槓。
+          .header/.headerInner/.headerRight/.statusPill/.statusDot* 等樣式
+          一併從 TripPlanPage.module.css 移除(展示頁 home/plan-ai-sim/
+          有自己獨立的一份,不受影響)。 */}
       <PlanTimelineView
         steps={steps}
         isThinking={planAiChat.isThinking}
@@ -739,9 +1026,29 @@ export function TripPlanPage(props: {
         showJumpPill={showJumpPill}
         onJumpToLatest={jumpToLatest}
         onPanToStop={panToStop}
+        onHoverStop={onHoverStopChange}
         onOpenPhotos={setLightboxPhotos}
         mountedIdsRef={mountedIdsRef}
         scrollRef={scrollRef}
+        // compact 模式下讓時間軸區塊自己接手捲動(見 .compactScroll 的
+        // 完整說明)——整頁模式維持不傳,捲動權留在外層 DesktopMain。
+        scrollClassName={compact ? styles.compactScroll : undefined}
+        // compact 模式下改用 absolute 定位覆寫共用元件預設的 sticky
+        // (見 .compactJumpPillWrap 的完整說明:sticky 在小匡裡會黏錯
+        // 容器,導致「回到最新」按鈕位置跑掉)——整頁模式維持不傳,
+        // 沿用共用元件本身 sticky 相對 <main> 貼齊的既有行為。
+        jumpPillWrapClassName={compact ? styles.compactJumpPillWrap : undefined}
+        // compact 模式下按鈕本身也要覆寫——使用者先要求「太扁太寬,
+        // 且要用 icon 不要用文字的箭頭」,後又要求「要有文字跟icon」
+        // (兩者都要,不是純 icon)。改成 icon+文字的縮小版膠囊(見
+        // .compactJumpPill 的完整說明),全頁版維持原樣不受影響。
+        jumpPillClassName={compact ? styles.compactJumpPill : undefined}
+        jumpPillContent={compact ? (
+          <>
+            <ArrowDown size={14} strokeWidth={2.2} />
+            回到最新
+          </>
+        ) : undefined}
       />
 
       <div className={styles.composer}>

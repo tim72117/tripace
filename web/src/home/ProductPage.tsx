@@ -34,7 +34,7 @@ const FEATURES = [
     // (圖層堆疊,強調空間分層)撞語意。
     icon: Wand2,
     title: 'AI編排行程',
-    description: '描述你的旅行需求，系統自動把候選景點排成一份完整的每日時間軸行程。',
+    description: '描述你的旅行需求，AI 自動把景點排成一份完整的每日時間軸行程。',
   },
   {
     icon: Layers,
@@ -44,7 +44,7 @@ const FEATURES = [
   {
     icon: CalendarClock,
     title: '時間軸排程',
-    description: '把候選景點排入每天的時間軸，安排順序，一眼掌握整趟旅程的節奏。',
+    description: '把景點排入每天的時間軸，安排順序，一眼掌握整趟旅程的節奏。',
   },
 ] as const;
 

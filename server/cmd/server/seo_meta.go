@@ -114,7 +114,7 @@ func buildSeoMetaByPath(baseURL string) map[string]seoMeta {
 		},
 		"/product": {
 			title:       "功能介紹——AI編排行程、主題景點、時間軸排程 | Tripace",
-			description: "描述你的旅行需求，AI 自動把候選景點排成每日時間軸；點開主題點看周邊精選店家與景點；把候選景點拖進時間軸，一眼掌握整趟旅程的節奏。看看 Tripace 怎麼幫你規劃一趟行程。",
+			description: "描述你的旅行需求，AI 自動把景點排成每日時間軸；點開主題點看周邊精選店家與景點；再用對話隨時微調，一眼掌握整趟旅程的節奏。看看 Tripace 怎麼幫你規劃一趟行程。",
 			canonical:   baseURL + "/product",
 			image:       "",
 		},
@@ -154,9 +154,9 @@ var seoMetaByPath = buildSeoMetaByPath(siteBaseURL())
 // 依賴——但也因此要靠這層檢查補上「這個簡化假設不再成立時務必讓人
 // 知道」這一環,不能只靠程式碼審查全靠人眼發現。
 const (
-	defaultTitle                = "Tripace — 從探索到行程，深入走訪一個想去的地方"
-	defaultDescription          = "Tripace 幫你在地圖上探索飯店、景點與餐廳，把喜歡的先丟進候選籃，再拖進日層架排成一趟行程。不只是到過，而是真正讀懂一個地方——與同行的人一起編輯、分享。"
-	defaultOGTwitterDescription = "在地圖上探索飯店、景點與餐廳，把喜歡的先丟進候選籃，再拖進日層架排成一趟行程。不只是到過，而是真正讀懂一個地方——與同行的人一起編輯、分享。"
+	defaultTitle                = "Tripace — AI 編排行程，深入走訪一個想去的地方"
+	defaultDescription          = "Tripace 讓你描述想要的旅行，AI 就把景點排成一份完整的每日時間軸行程。在地圖上探索主題景點與周邊店家，再用對話隨時微調。不只是到過，而是真正讀懂一個地方——與同行的人一起編輯、分享。"
+	defaultOGTwitterDescription = "描述想要的旅行，AI 就把景點排成一份完整的每日時間軸行程。在地圖上探索主題景點與周邊店家，再用對話隨時微調。不只是到過，而是真正讀懂一個地方——與同行的人一起編輯、分享。"
 )
 
 // defaultCanonical/defaultImage 原本是寫死的 const(值固定是

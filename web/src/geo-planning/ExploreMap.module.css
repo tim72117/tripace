@@ -868,3 +868,48 @@
   z-index: 10;
 }
 
+
+/* ---------- 規劃站點 marker(planStopMarkerContent)的動畫 ----------
+
+   2026-10:這兩組 keyframes 與 class 服務的是 mapMarkers.ts
+   planStopMarkerContent 產生的 SVG(AI 規劃時間軸站點的小圓點強調態)。
+
+   放在這裡而不是內嵌進那段 SVG 字串裡:inline SVG 的 <style> 其 CSSOM
+   會掛進 document 的樣式表清單、selector 與 @keyframes 名稱都在全域
+   命名空間,等於每顆強調態 marker 都往 document 注入一份重複的定義
+   (多顆同時 hover/selected 時會有 N 份一樣的 @keyframes)。改走這裡的
+   :global 只定義一次,SVG 那側只掛 class——這也是 geo-planning/ 既有的
+   做法(見上方 .geo-attraction-glow 與 geoAttractionOverlay.ts)。
+
+   用 :global 而非一般 CSS Modules class:那些 SVG 是純字串拼接後交給
+   DOMParser 的,拿不到 CSS Modules 編譯出的雜湊類名。前綴 ps- 保留
+   (planStop),避免這兩個全域名稱跟其他地方撞名。 */
+
+:global(.ps-halo) {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: psHaloIn 180ms ease-out;
+}
+
+:global(.ps-ripple) {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: psRipple 650ms cubic-bezier(0.2, 0.6, 0.3, 1) forwards;
+}
+
+@keyframes psHaloIn {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes psRipple {
+  from { transform: scale(1); opacity: 0.8; }
+  to { transform: scale(2.6); opacity: 0; }
+}
+
+/* 漣漪在 reduced-motion 下完全隱藏、光暈直接顯示(不播進場縮放),
+   退化成純靜態的靶心+光暈,不是半套狀態。 */
+@media (prefers-reduced-motion: reduce) {
+  :global(.ps-ripple) { animation: none; opacity: 0; }
+  :global(.ps-halo) { animation: none; }
+}
