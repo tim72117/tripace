@@ -2,6 +2,29 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.26.0 — 2026-10-08
+
+### 新增
+
+- **地圖規劃的對話小匡改用 AI 規劃時間軸**，取代原本走 `trip_entry_*` 工具的 ChatScreen（舊對話框移到 demo 分頁保留）。`/app` 的對話小匡與 `/app/plan-ai` 全頁版共用同一份規劃內容。
+- **時間軸持久化**（`web/src/plan-core/planTimelineStorage.ts`）：寫進 localStorage，重整後規劃內容與 AI 已排的站點都還在。`PlanTimeline.nodes` 是 `Map`，而 `JSON.stringify` 對 Map 會輸出 `{}` 並靜默丟失全部內容，故自訂序列化；刻意不跟 trip 綁定（跨行程的單一草稿）。
+- **地圖顯示 AI 規劃的站點小圓點**（`web/src/geo-planning/usePlanStopMarkers.ts`）：與 `tripEntry` 的旗子刻意區分——旗子是已寫進資料庫的正式行程項目，圓點是還沒落進任何旅程的規劃草稿，尺寸也更小。強調態（選取／hover）用靶心＋光暈＋一次性漣漪，兩者再以外環墨濃度與光暈擴散區分「錨定 vs 掃過」。
+- **時間軸卡片與地圖雙向連動**：點卡片把地圖平移到該站並高亮圓點、滑鼠移到卡片時圓點加強顯示、點地圖圓點回頭高亮對應卡片。
+
+### 修正
+
+- **onagent WebSocket 反覆重建**：`useAppState` 的 `cfg` 每次 render 都是新物件，而下游 `usePlanAiChatBridge` 用它當 effect 依賴——任何一次 state 更新都會 cleanup 再開一條新連線，實際觀察到單一頁面累積出 9 條。連帶造成規劃結果寫不進時間軸（agent 還在推論，連線就被下一次 render 關閉）。改用 `useMemo` 只在 `token` 變動時換 identity。
+- **兩份時間軸實例互相覆蓋**：`TripPlanPage` 會同時掛載兩份（常駐的對話小匡 + 切到 `/app/plan-ai` 的全頁版），共用同一個 localStorage key 卻各自只在掛載時讀一次。在全頁版規劃完切回地圖，小匡那份舊內容（常是空的）下一次寫入就把剛規劃好的全部蓋掉。加入版次（`rev`）機制：寫入前先追上磁碟內容再計算；存檔失敗回傳 `null` 且不推進 state——若讓記憶體套用而磁碟沒有，版次會謊稱一致，之後會被另一實例靜默抹掉，且 `revRef` 一旦高於磁碟版次，「我是否過期」的判斷將永遠為 false，機制等同失效。
+- **選取狀態回不去**：`selectedStopId` 原本在 `TripPlanPage` 與 `DesktopLayout` 各存一份、只有子→父單向上報，而點地圖圓點是直接寫父層那份。「點卡片 A → 點地圖圓點 B → 再點卡片 A」時，`setSelectedStopId('A')` 因值未變而被 React bail out、上報 effect 不重跑，地圖永遠停在 B。改為受控的單一事實來源，並把上報從 effect 改成事件驅動（每次點擊都通知，不看值變不變）。
+- **景點縮圖載入失敗顯示破圖**：`photo_assets` 有 7 天過期，而時間軸是持久化的、可以存在更久，舊節點的 URL 失效是預期中的事。縮圖 `<img>` 補上 `onError`，整組失敗時退回 `thumbIcon` + 底色佔位，Lightbox 也不會翻到破圖。
+- **地圖圓點被蓋住**：marker 建立時未帶 `zIndex`，而同步 effect 在狀態未變時會提早 return，導致重建後強調中的圓點 `zIndex` 停在預設值。
+- **連點同一個目標地圖不動**：`panTarget` 的消費端依賴拆開的純量（lat/lng/…），同一座標連續設定兩次時所有依賴都沒變。加入選填的 `nonce`，讓「使用者又點了一次」這個事件語意能被表達。
+
+### 變更
+
+- **SEO 產品定位更新**（首頁與 `/product`）：不再描述已經不是主線操作的「候選籃 → 日層架」流程，改以 AI 編排行程為主軸。前後端兩份（`web/index.html` 與 `cmd/server/seo_meta.go`）必須逐字一致——SSR 的 `applySEOMeta` 是用 `strings.Replace` 原文比對後替換，差一個字就會靜默失效、爬蟲拿到首頁預設文案。
+- 移除 `TripPlanPage` 的 header 工具列：最後只剩一顆狀態藥丸，而站數在時間軸上一目了然、「正在安排」由底部骨架卡在生成的位置本身表達，比固定在頂端的一行字更精準。
+
 ## v0.25.2 — 2026-10-07
 
 ### 變更
