@@ -1,5 +1,4 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
 import type { ApiCall, WsEvent } from './api'
 import { onApiCall, onWsEvent, fetchGeoPlaceDetails, fetchGeoPlacePhotoAssets } from './api'
 import { ChatScreen } from './chat/ChatScreen'
@@ -25,7 +24,7 @@ import { reduceCategoryTagsState, initialCategoryTagsState } from './geo-plannin
 import { curatedCategoryOf } from './geo-planning/geoCuratedCategoryStub'
 import type { GeoAttraction, GeoPlaceDetails } from './api'
 import { type ContentProps } from './AppCommon'
-import { type PanelMode, isPanelMode, DEBUG_PANEL_ENABLED, PANEL_REGISTRY } from './DesktopShared'
+import { type PanelMode, DEBUG_PANEL_ENABLED, PANEL_REGISTRY } from './DesktopShared'
 import { RouteEditor } from './demo/RouteEditor'
 // TripPlanPage:「AI 規劃」正式功能頁面(見該檔案開頭的完整說明)——lazy
 // 載入,理由同 App.tsx 對其餘整頁級路由的既有做法:這個頁面串接 onagent
@@ -104,27 +103,25 @@ export function DesktopContent(props: ContentProps) {
   // 提升到這一層渲染(理由同上方 settingsOpen 的說明:避免被 272px 寬的
   // 浮動卡片裁切)。
   const [manageTrip, setManageTrip] = useState<Trip | null>(null)
-  // panelMode:rail/side panel 的狀態改由網址驅動(/app/:panelMode,見 App.tsx),
-  // 不再是這一層自己的 useState——這樣瀏覽器上一頁/下一頁、重新整理、分享連結
-  // 都能還原到對應的 side panel/main 畫面。navigate 的部分見下方 setPanelMode。
+  // panelMode:rail/side panel 目前展開哪個面板——2026-10(第二輪,使用者
+  // 明確要求「展開側欄不需要變更路由」,推翻第一輪的網址驅動設計):原本
+  // 這裡改由網址驅動(/app/:panelMode,見 App.tsx 當時的路由定義),目的
+  // 是讓瀏覽器上一頁/下一頁、重新整理、分享連結都能還原到對應的 side
+  // panel/main 畫面。改回純粹的 useState,不再綁路由——/app 路由參數本身
+  // 已經整段移除(見 App.tsx 的完整說明),現在側欄展開/收合純粹是這個
+  // 元件自己的 UI 狀態,重新整理/分享連結/瀏覽器上一頁下一頁都會回到收合
+  // 狀態,這是使用者已確認接受的行為變化,不是遺漏。
   //
-  // 「收合」(panelMode === null)現在直接對應 /app 無參數本身,不再需要
-  // 獨立的路徑片段(先前用過 /app/none)——側欄收合時主顯示區改直接呈現
-  // 規劃地圖(見下方 activeTrip 分支的說明),不再是空畫面,所以「一進 App
-  // 預設落地的網址」跟「側欄收合」可以是同一個狀態,不需要分開表示法。
-  // 網址帶了不合法的 panelMode 字串(不在 PanelMode 列表)時,同樣視為
-  // 收合——理由同上,收合狀態本身已經有明確畫面可看(地圖),不需要再
-  // fallback 到旅程列表當「看得懂的畫面」。
-  const { panelMode: panelModeParam } = useParams<{ panelMode?: string }>()
-  const panelMode: PanelMode =
-    panelModeParam == null ? null : isPanelMode(panelModeParam) ? panelModeParam : null
-  const navigate = useNavigate()
-  // setPanelMode:取代原本的 useState setter,改成 navigate 到對應路徑。
-  // 再點一次目前啟用中的圖示會收合 panel,導向 /app(無參數,見上方
-  // panelMode 的說明)。
+  // 「收合」(panelMode === null)對應主顯示區直接呈現規劃地圖(見下方
+  // activeTrip 分支的說明),不是空畫面,所以初始值直接給 null 即可,不
+  // 需要額外處理「網址帶了不合法字串」這類情境(本來就是處理網址輸入的
+  // 防呆,state 不會有這個問題)。
+  const [panelMode, setPanelModeState] = useState<PanelMode>(null)
+  // setPanelMode:再點一次目前啟用中的圖示會收合 panel(切回 null),同
+  // 第一輪網址驅動版本的既有行為,只是改成直接設定 state 而非 navigate。
   const setPanelMode = useCallback((mode: Exclude<PanelMode, null>) => {
-    navigate(panelMode === mode ? '/app' : `/app/${mode}`)
-  }, [navigate, panelMode])
+    setPanelModeState((prev) => (prev === mode ? null : mode))
+  }, [])
   // chatPopoverOpen:地圖右上角城市搜尋框旁 AI 按鈕觸發的對話浮動小匡
   // 開關——沒有常駐對話欄,ChatScreen 只在這個小匡開啟時才掛載(見下方
   // render 邏輯),這是使用者存取對話功能的唯一入口。
@@ -426,15 +423,17 @@ export function DesktopContent(props: ContentProps) {
     // 過的 bug。改成沒有 activeTrip 時先記住這筆候選+日期(pendingSchedule)
     // 再開啟旅程列表浮動卡(同點 rail「旅程列表」按鈕),使用者選定旅程
     // 後(見下方 DesktopTripList 的 onOpen)自動補寫進去,不需要使用者
-    // 回頭重新走一次「加入行程」流程。刻意直接呼叫 navigate,不透過
-    // setPanelMode——trips 是 float 面板,可能跟 PlacePanel 同時顯示
-    // (例如使用者原本就開著旅程列表、又點了地圖上的地點),此時 panelMode
-    // 已經是 'trips',setPanelMode('trips') 的 toggle 邏輯(再點一次同個
-    // mode 會收合)反而會把它關掉,是實際發生過的 bug——跟下方 onSchedule
-    // 成功寫入分支刻意改用 navigate 而非 setPanelMode 的理由完全相同。
+    // 回頭重新走一次「加入行程」流程。刻意直接呼叫 setPanelModeState,
+    // 不透過 setPanelMode——trips 是 float 面板,可能跟 PlacePanel 同時
+    // 顯示(例如使用者原本就開著旅程列表、又點了地圖上的地點),此時
+    // panelMode 已經是 'trips',setPanelMode('trips') 的 toggle 邏輯
+    // (再點一次同個 mode 會收合)反而會把它關掉,是實際發生過的 bug
+    // ——跟下方 onSchedule 成功寫入分支刻意繞過 setPanelMode 的理由
+    // 完全相同。2026-10:panelMode 改回本地 state 後,這裡從原本的
+    // navigate('/app/trips') 改成直接設定 state,行為不變。
     if (!activeTrip) {
       setPendingSchedule({ candidate: c, date })
-      navigate('/app/trips')
+      setPanelModeState('trips')
       return
     }
     geo.handleScheduleCandidate(c, date, 'DesktopLayout')
@@ -444,16 +443,18 @@ export function DesktopContent(props: ContentProps) {
     // 項目,不用自己再點一次 rail「規劃」按鈕才看得到。跟
     // addGeoCandidateAndReveal 不同的是:onSchedule 這條路徑不像複合
     // 按鈕只在 panelMode === 'geo-outline' 時才能被按到,PlacePanel
-    // 在任何 panelMode 下都可能顯示,故這裡額外導向 /app/geo-outline
+    // 在任何 panelMode 下都可能顯示,故這裡額外強制設成 'geo-outline'
     // 確保行程欄真的有掛載,flashTrigger 才有作用(欄位沒掛載時單純遞增
-    // 計數器不會有任何視覺效果)。刻意直接呼叫 navigate,不透過
+    // 計數器不會有任何視覺效果)。刻意直接呼叫 setPanelModeState,不透過
     // setPanelMode——setPanelMode 對「目前已經是這個 mode」的情況會
     // toggle 收合(見該函式的說明,是給 rail 按鈕「再點一次收合」這個
     // 互動設計的),若使用者本來就開著行程欄再呼叫 setPanelMode('geo-outline')
-    // 反而會把它關掉,這是實際發生過的 bug。
-    navigate('/app/geo-outline')
+    // 反而會把它關掉,這是實際發生過的 bug。2026-10:panelMode 改回本地
+    // state 後,這裡從原本的 navigate('/app/geo-outline') 改成直接設定
+    // state,行為不變。
+    setPanelModeState('geo-outline')
     setGeoCandidateFlashTrigger((n) => n + 1)
-  }, [activeTrip, geo, navigate])
+  }, [activeTrip, geo])
   // geoSearchCity/geoSearchTrigger:城市搜尋欄的狀態,UI 渲染在
   // ExploreMap.tsx(地圖左上角類別標籤列旁),查詢邏輯留在
   // GeoOutlinePanel.tsx(見該檔案的說明)——兩者是分開掛載的 sibling,
@@ -816,12 +817,14 @@ export function DesktopContent(props: ContentProps) {
               GeoHotelSidebar 一致的 FloatingPanel 外殼。不傳 title——四種
               內容元件(DesktopTripList/MultiTrackTimeline/PaceChart/
               GeoCandidateSidebar)各自 header 排版不同,不逐一加專屬標題,
-              FloatingPanel 只在右上角疊加共用的關閉按鈕,導回 /app 收起
-              卡片(同再點一次 rail 圖示的行為)。
+              FloatingPanel 只在右上角疊加共用的關閉按鈕,收起卡片(同
+              再點一次 rail 圖示的行為;2026-10 panelMode 改回本地 state
+              後,這裡從原本的 navigate('/app') 改成直接把 state 設回
+              null,行為不變)。
               候選籃候選中清單與候選匡流程已整個移除,不會再有第二張卡片
               並排顯示在這張卡片右側的情況。 */}
           {panelSpec?.slot === 'float' && (
-            <FloatingPanel side="left" width={panelSpec.width ?? 380} onClose={() => navigate('/app')}>
+            <FloatingPanel side="left" width={panelSpec.width ?? 380} onClose={() => setPanelModeState(null)}>
               {panelMode === 'trips' ? (
                 <DesktopTripList
                   cfg={cfg}
@@ -836,8 +839,11 @@ export function DesktopContent(props: ContentProps) {
                     // 卡回到預設畫面」的行為,否則使用者選完旅程後畫面
                     // 直接收合,完全看不到剛才那筆候選有沒有加成功。
                     // pendingSchedule 補寫本身由下方 useEffect 依賴
-                    // activeTrip?.id 觸發,這裡只負責導覽,不重複寫入。
-                    navigate(pendingSchedule ? '/app/geo-outline' : '/app')
+                    // activeTrip?.id 觸發,這裡只負責切換 panelMode,不
+                    // 重複寫入。2026-10:panelMode 改回本地 state 後,
+                    // 這裡從原本的 navigate(...) 改成直接設定 state,
+                    // 行為不變。
+                    setPanelModeState(pendingSchedule ? 'geo-outline' : null)
                   }}
                   onManage={setManageTrip}
                 />

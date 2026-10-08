@@ -262,9 +262,15 @@ export function App() {
             }
           />
           {/* /app 路徑:主要應用畫面本體(套 iPhone 外框,寬螢幕自動切桌面版佈局)。
-              :panelMode 是選填的路徑參數(對應桌面版 side panel/手機版 demo 抽屜
-              目前顯示的面板,見 DesktopLayout.tsx/PhoneContent.tsx),用 "?"
-              後綴讓 /app(無參數)跟 /app/:panelMode 共用同一個 element。
+              2026-10:原本這裡是 /app/:panelMode? 選填路徑參數,桌面版 side
+              panel 展開哪個面板(旅程列表/規劃/時間軸/路徑/AI 規劃)由網址
+              驅動,讓重新整理/瀏覽器上一頁下一頁/分享連結都能還原到對應
+              面板。使用者明確要求「展開側欄不需要變更路由」——改回純本地
+              UI state(見 DesktopLayout.tsx 的 panelMode state 完整說明),
+              側欄展開狀態不再反映在網址上,這條路徑參數不再需要,整段移除
+              只保留 /app 本身。這是刻意的行為取捨:重新整理、分享
+              /app/timeline 這類連結、瀏覽器上一頁下一頁,現在都不再能還原
+              展開中的面板(一律收合),使用者已確認接受這個後果。
               額外疊加全域 class app-theme-root(見 base-ui.css 深色模式 token
               區塊)——.webApp 是 CSS Modules 雜湊 class,base-ui.css 這種全域
               樣式表無法直接選取它,需要這個穩定的全域 class 名稱當掛載點。
@@ -272,7 +278,26 @@ export function App() {
               淺色偏好,見 theme.ts),null 時不掛屬性交給 CSS 的
               prefers-color-scheme media query 處理「跟隨系統」。 */}
           <Route
-            path="/app/:panelMode?"
+            path="/app"
+            element={
+              <KeyboardShrinkGuard className={`${styles.webApp} app-theme-root`} dataTheme={props.theme ?? undefined}>
+                <PhoneContent {...props} />
+              </KeyboardShrinkGuard>
+            }
+          />
+          {/* 2026-10 code review 抓到:/app/:panelMode? 這條路徑參數整段
+              移除後,先前分享/加入書籤的舊深連結(/app/trips、
+              /app/geo-outline、/app/timeline、/app/pace、/app/plan-ai)
+              不會再落在 /app 收合,而是直接命中下方的 catch-all,顯示
+              NotFoundPage——跟上面註解宣稱的「一律收合」不符,比收合更
+              嚴重(是真正的 404,不是看得懂的收合畫面)。
+              這裡補回一條只接受單層路徑片段的相容路由,忽略
+              panelMode 參數本身(不會把它傳給 PhoneContent,
+              DesktopLayout.tsx 的 panelMode state 初始值固定是
+              null/收合),純粹讓這批舊網址繼續落在跟 /app 本身一樣的
+              畫面,不再是 404。元素內容跟上面 /app 那條路由完全相同。 */}
+          <Route
+            path="/app/:legacyPanelMode"
             element={
               <KeyboardShrinkGuard className={`${styles.webApp} app-theme-root`} dataTheme={props.theme ?? undefined}>
                 <PhoneContent {...props} />

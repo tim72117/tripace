@@ -115,33 +115,23 @@ export const PANEL_REGISTRY: Record<Exclude<PanelMode, null>, PanelSpec> = {
   'demo-chat': { enabled: DEMO_CHAT_ENABLED, slot: 'main-replace' },
 }
 
-// PANEL_MODES:PanelMode 扣掉 null 之後的合法字串值列表——給 isPanelMode()
-// 在執行期驗證用(型別系統只在編譯期擋得住,URL 路徑參數是使用者可任意
-// 輸入的字串,需要執行期白名單檢查)。從 PANEL_REGISTRY 衍生,不再手動
-// 條列——新增/移除模式只需要改上面那張表。
-const PANEL_MODES = (Object.keys(PANEL_REGISTRY) as Exclude<PanelMode, null>[])
-  .filter((m) => PANEL_REGISTRY[m].enabled)
-
-// isPanelMode:驗證 URL 路徑參數(/app/:panelMode,見 App.tsx)是不是合法的
-// PanelMode 字串。使用者可能手動輸入或分享一個帶著錯字/過期參數的網址
-// (例如改名前的 'demo-pace' 或亂打的字串),這種不合法輸入不能直接當作
-// PanelMode 使用,否則後面 panelMode === 'xxx' 的判斷全部落空、side panel
-// 卡在一個「看起來選了某個 rail 按鈕、實際上什麼都不顯示」的中間態。
-export function isPanelMode(v: string | undefined): v is Exclude<PanelMode, null> {
-  return v != null && (PANEL_MODES as readonly string[]).includes(v)
-}
+// isPanelMode/PANEL_MODES(驗證 URL 路徑參數 /app/:panelMode 是否合法)
+// 2026-10 隨這段路徑參數本身一併移除——使用者明確要求「展開側欄不需要
+// 變更路由」,panelMode 改回純本地 UI state(見 DesktopLayout.tsx 的完整
+// 說明),不再有網址輸入需要驗證,這兩個輔助定義失去存在理由,一併刪除
+// 而非留著當死碼。
 
 // DrawerMode:手機版分頁列(PhoneTabBar.tsx 底部常駐 + PhoneSideTools.tsx
 // 右側小圖示)/主顯示區可切換到的模式——即 PanelMode 扣掉 null、
 // demo-route-editor(該模式只有桌面版路徑編輯器試做才有實作,見
-// DEMO_ROUTE_EDITOR_ENABLED 的說明,手機版故意不支援,網址落在
-// /app/demo-route-editor 時 fallback 回 'geo-outline')、與 plan-ai
+// DEMO_ROUTE_EDITOR_ENABLED 的說明,手機版故意不支援)、與 plan-ai
 // (2026-09 使用者明確要求「先處理桌面版就好」,手機版的畫面/入口還沒
-// 設計,暫時排除,等手機版真正實作時再拿掉這個排除;網址落在
-// /app/plan-ai 時同樣 fallback 回 'geo-outline',同 demo-route-editor
-// 的既有處理方式)。原本定義在 PhoneNavDrawer.tsx,搬到這裡與 PanelMode
-// 收斂在同一份檔案,避免兩份值域各自維護、日後新增/移除模式時漏改
-// 其中一處。
+// 設計,暫時排除,等手機版真正實作時再拿掉這個排除)。原本定義在
+// PhoneNavDrawer.tsx,搬到這裡與 PanelMode 收斂在同一份檔案,避免兩份
+// 值域各自維護、日後新增/移除模式時漏改其中一處。
+// （2026-10 補註:桌面版 panelMode 已改回純本地 state,不再有
+// /app/:panelMode 路徑參數可供「網址落在某個模式時 fallback」這件事,
+// 這段排除邏輯本身只跟手機版分頁列實際支援哪些模式有關,與路由無涉。）
 // demo-chat 同樣排除:它是桌面版專屬的試做分頁(見 DEMO_CHAT_ENABLED 的
 // 完整說明),手機版的對話入口是底部分頁列開啟的疊加層,不走 drawer 的
 // 分頁切換機制,理由同 demo-route-editor。
