@@ -387,7 +387,7 @@ export function RecordAiPlanPage() {
   // 區」,方便調整字卡位置(.caption-top/-bottom,見 .module.css 的
   // 完整說明)時直接對照 Reels 實際會疊加 UI 的範圍,不需要每次都另外
   // 截圖、用 Python 疊加模擬圖才能驗證位置——那是一次性的驗證方式,
-  // 这裡做成頁面本身的可開關預覽層,之後調整字卡位置時能即時看到
+  // 這裡做成頁面本身的可開關預覽層,之後調整字卡位置時能即時看到
   // 效果。只做視覺預覽,不影響任何版面计算或實際錄製輸出(見下方
   // ReelsSafeZoneOverlay 的完整說明,pointer-events: none 且預設關閉)。
   const [showReelsSafeZone, setShowReelsSafeZone] = useState(false)
