@@ -21,10 +21,19 @@ export interface Profile {
   email: string
 }
 
-// Me 是登入後的自己:公開身分 + 私密資料。GET /v1/me 回傳此結構。
+// PlanTier 是訂閱方案代號,對應後端 model.PlanTier——"free"(免費版)或
+// "fan"(粉絲專案版)。見 web/src/plan-subscription/ 底下的完整說明
+// (方案機制第一階段:只建置方案定義跟訂閱介面,不做任何功能限制)。
+export type PlanTier = 'free' | 'fan'
+
+// Me 是登入後的自己:公開身分 + 私密資料 + 目前的訂閱方案代號。
+// GET /v1/me、login/register/apple/google 皆回傳此結構(planTier 隨同
+// 既有欄位一起回傳,前端不需要額外呼叫一支新 API 才能知道自己是什麼
+// 方案——見後端 model.Me 的完整設計說明)。
 export interface Me {
   user: User
   profile: Profile
+  planTier: PlanTier
 }
 
 // login / register / apple 的回應:Me + token。
@@ -32,6 +41,7 @@ export interface AuthResponse {
   token: string
   user: User
   profile: Profile
+  planTier: PlanTier
   // isNewUser:這次驗證是否剛建立了一筆新帳號(見後端 issueToken 的完整
   // 說明)——login/register 兩種方式必然是確定值(login 恆 false、
   // register 恆 true),Google/Apple 第三方登入才需要靠這個欄位分辨
