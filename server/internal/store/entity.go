@@ -13,6 +13,19 @@ type userRow struct {
 	GoogleSub    *string `gorm:"column:google_sub;uniqueIndex"` // 可為 NULL
 	Email        *string `gorm:"column:email;uniqueIndex"`      // 可為 NULL
 	PasswordHash *string `gorm:"column:password_hash"`          // 可為 NULL
+	// Plan 是這個使用者目前的訂閱方案代號(model.PlanTier 的字串值,如
+	// "free"/"fan")——見 model/plan.go 開頭「方案定義寫死在程式碼常數」
+	// 的設計說明,這裡只存「使用者屬於哪個代號」,代號對應的實際權益
+	// (額度等)由 model.PlanFor 查表取得,不存在這張表裡。
+	//
+	// default:'free':GORM AutoMigrate 加這個欄位到既有的 users 表時,
+	// 既有資料列(原本沒有 plan 欄位的使用者)會因為資料庫層級的
+	// DEFAULT 約束被動補上 'free',不需要另外寫一次性 backfill 腳本。
+	// 讀取端(toUser/toMe)仍額外對空字串 fallback 成 free(見 toPlanTier
+	// 的完整說明)——多一層保險,涵蓋「DEFAULT 約束在某些資料庫設定下
+	// 沒有實際生效」或「用其他工具直接寫入空字串」這類邊界情況,不假設
+	// 資料庫一定如預期運作。
+	Plan string `gorm:"column:plan;not null;default:'free'"`
 
 	// 多對多:此使用者參與的行程(透過 members 中介表)。
 	Trips []tripRow `gorm:"many2many:members;joinForeignKey:user_id;joinReferences:trip_id"`

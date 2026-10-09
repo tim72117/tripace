@@ -123,6 +123,18 @@ const PhotoManagerPage = lazy(() => import('./blog/PhotoManagerPage').then((m) =
 // 骨架圖+範例文字,不依賴任何真實照片或後端資料。純開發工具,不是
 // 產品功能,不加進任何站內導覽連結。
 const LayoutGalleryPage = lazy(() => import('./blog/LayoutGalleryPage').then((m) => ({ default: m.LayoutGalleryPage })))
+// PlanSubscriptionRoute(/plan)/FanClaimRoute(/fan/:code):訂閱方案機制
+// 第一階段新增的登入後頁面,見 plan-subscription/ 目錄開頭的完整說明。
+// 是獨立路由(不掛在 /app 面板系統底下),故
+// lazy() 動態載入,不讓公開首頁/行銷頁的載入體積被這批登入後才用得到的
+// 程式碼拖累。
+const PlanSubscriptionRoute = lazy(() =>
+  import('./plan-subscription/PlanSubscriptionRoute').then((m) => ({ default: m.PlanSubscriptionRoute })),
+)
+const FanClaimRoute = lazy(() =>
+  import('./plan-subscription/FanClaimRoute').then((m) => ({ default: m.FanClaimRoute })),
+)
+
 // KeyboardShrinkGuard:/app 路由專用——鍵盤彈出時把根容器高度直接改成
 // visualViewport.height,取代先前試過的 transform: translateY(-offsetTop)
 // 反向抵銷做法。
@@ -341,6 +353,19 @@ export function App() {
               </div>
             }
           />
+          {/* /plan 路徑:訂閱方案頁面(訂閱方案機制第一階段,見
+              plan-subscription/PlanSubscriptionRoute.tsx 開頭的完整說明)
+              ——登入後才可見,訪客造訪時內嵌登入表單,不導向 /app 或顯示
+              錯誤。刻意不放在首頁或任何公開行銷頁上(使用者明確要求首頁
+              不該出現任何訂閱 CTA)。server/cmd/server/static.go 的
+              knownRoutePatterns 已同步新增。 */}
+          <Route path="/plan" element={<PlanSubscriptionRoute />} />
+          {/* /fan/:code 路徑:粉絲專案連結的核發頁面(見
+              plan-subscription/FanClaimRoute.tsx 開頭的完整說明)——
+              已登入造訪時自動呼叫 claim-fan API,訪客造訪時內嵌登入表單、
+              登入後自動繼續核發流程。server/cmd/server/static.go 的
+              knownRoutePatterns 已同步新增。 */}
+          <Route path="/fan/:code" element={<FanClaimRoute />} />
           {/* /app 路徑:主要應用畫面本體(套 iPhone 外框,寬螢幕自動切桌面版佈局)。
               2026-10:原本這裡是 /app/:panelMode? 選填路徑參數,桌面版 side
               panel 展開哪個面板(旅程列表/規劃/時間軸/路徑/AI 規劃)由網址

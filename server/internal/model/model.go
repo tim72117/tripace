@@ -60,9 +60,18 @@ type Profile struct {
 
 // Me 代表登入後的自己:公開身分(user)+ 私密資料(profile)。
 // /me、login、register、apple 回傳此結構。
+//
+// PlanTier 放在 Me 而不是 User:User 是「公開身分」,到處會被複用來顯示
+// 別人的身分(成員列表、訊息作者等,見 User 型別的註解),方案是使用者
+// 自己的私密/帳務資訊,不該在這些「顯示別人」的情境裡被夾帶曝露出去
+// (理由與 Profile.Email 只放在 Me、不放在 User 完全一致)。這樣設計也讓
+// 前端不需要額外呼叫一支新 API 才能知道自己是什麼方案——
+// /v1/me、login、register、apple、google 這些既有端點回傳的 Me 結構
+// 本來就會帶著 PlanTier,前端登入後立刻就拿得到。
 type Me struct {
-	User    User    `json:"user"`
-	Profile Profile `json:"profile"`
+	User     User     `json:"user"`
+	Profile  Profile  `json:"profile"`
+	PlanTier PlanTier `json:"planTier"`
 }
 
 // PresentedEntry 是查詢回答附帶、要展示給使用者的結構化條目。

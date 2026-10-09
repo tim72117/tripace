@@ -53,6 +53,8 @@ var knownRoutePatterns = []*regexp.Regexp{
 	// 自行判斷 isGuest 顯示登入表單),故訪客直接造訪這個網址時,前端
 	// router 本身仍要能接手渲染,不能被這裡擋成 404。
 	regexp.MustCompile(`^/blog/photos$`),
+	regexp.MustCompile(`^/plan$`),
+	regexp.MustCompile(`^/fan/[^/]+$`),
 	regexp.MustCompile(`^/app(/[^/]+)?$`),
 	// /dev/layouts:開發用的版型目錄頁(2026-10 新增,見
 	// web/src/blog/LayoutGalleryPage.tsx 的完整說明)——陳列
