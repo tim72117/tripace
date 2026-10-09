@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ChevronDown, X } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Sparkles, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import type { ClientConfig } from '../api'
 import * as api from '../api'
 import type { User } from './types'
@@ -65,6 +66,17 @@ export function SettingsDialog({
         <div className="rp-modal-body">
           <div className="section-title">目前登入</div>
           <ListRow icon={<Avatar user={user} />} title={user.name} subtitle={email || user.id} />
+          {/* 訂閱方案頁面入口——理由同手機版 SettingsScreen.tsx 的對應
+              說明,登入後使用者需要有地方找到這個頁面。onClose 關閉這個
+              dialog 再導頁,否則切換路由後 dialog 仍疊在畫面上。 */}
+          <Link to="/plan" style={{ textDecoration: 'none', color: 'inherit' }} onClick={onClose}>
+            <ListRow
+              icon={<Sparkles size={20} strokeWidth={1.5} color="var(--ios-gray)" />}
+              title="訂閱方案"
+              subtitle="查看目前方案與額度說明"
+              trailing={<ChevronLeft size={16} strokeWidth={1.5} color="#c7c7cc" style={{ transform: 'rotate(180deg)' }} />}
+            />
+          </Link>
           <div className="section-title">LLM 回答語言</div>
           <FormField label="助理回答(assist/語意查詢)使用的語言,不影響介面文字">
             <LangSelect

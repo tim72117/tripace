@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, Sparkles } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import type { ClientConfig } from '../api'
 import type { User } from './types'
 import type { AssistLang } from '../assistLang'
@@ -64,6 +65,19 @@ export function SettingsScreen({
           <>
             <div className="section-title">目前登入</div>
             <ListRow icon={<Avatar user={user} />} title={user.name} subtitle={email || user.id} />
+            {/* 訂閱方案頁面入口——訂閱方案機制第一階段(見
+                plan-subscription/PlanSubscriptionPage.tsx 開頭的完整
+                說明),登入後使用者需要有地方找到這個頁面,不是只能手動
+                打網址。放在「目前登入」區塊底下、登出列上方,是登入後
+                使用者第一個會看的帳號相關設定區域。 */}
+            <Link to="/plan" style={{ textDecoration: 'none', color: 'inherit' }}>
+              <ListRow
+                icon={<Sparkles size={20} strokeWidth={1.5} color="var(--ios-gray)" />}
+                title="訂閱方案"
+                subtitle="查看目前方案與額度說明"
+                trailing={<ChevronLeft size={16} strokeWidth={1.5} color="#c7c7cc" style={{ transform: 'rotate(180deg)' }} />}
+              />
+            </Link>
             <ListRow
               title="登出"
               titleColor="var(--ios-red)"

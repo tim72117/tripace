@@ -12,6 +12,16 @@ func toUser(r userRow) model.User {
 	return model.User{ID: r.ID, Name: r.Name, AvatarColor: r.AvatarColor}
 }
 
+// toPlanTier 把 userRow.Plan 轉成 model.PlanTier,空字串(理論上不該發生,
+// 見 userRow.Plan 欄位 default:'free' 的說明,這裡是多一層保險)一律視為
+// 免費版,不讓呼叫端需要處理「方案是空字串」這種無意義的中介狀態。
+func toPlanTier(plan string) model.PlanTier {
+	if plan == "" {
+		return model.DefaultPlanTier
+	}
+	return model.PlanTier(plan)
+}
+
 func strPtr(s string) *string {
 	if s == "" {
 		return nil

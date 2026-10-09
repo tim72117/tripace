@@ -255,10 +255,18 @@ func (s *Server) issueToken(w http.ResponseWriter, user model.User, email string
 		writeErr(w, http.StatusInternalServerError, "sign_failed", err.Error())
 		return
 	}
+	// PlanTier 查詢失敗(理論上不該發生,user 剛剛才從資料庫查出/建立)
+	// 不該讓整個登入流程失敗——fallback 回預設方案,讓使用者至少能完成
+	// 登入,下一次呼叫 GET /internal/plan/me 時還有機會查到正確值。
+	planTier, err := s.store.GetUserPlanTier(user.ID)
+	if err != nil {
+		planTier = model.DefaultPlanTier
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token":     token,
 		"user":      user,
 		"profile":   model.Profile{Email: email},
+		"planTier":  planTier,
 		"isNewUser": isNewUser,
 	})
 }
@@ -284,8 +292,15 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email, _ := s.store.GetUserEmail(claims.Sub)
+	// PlanTier 查詢失敗 fallback 回預設方案——理由同 issueToken 的
+	// 對應處理,不讓 /v1/me 因為這個次要欄位查詢失敗而整支回 500。
+	planTier, err := s.store.GetUserPlanTier(claims.Sub)
+	if err != nil {
+		planTier = model.DefaultPlanTier
+	}
 	writeJSON(w, http.StatusOK, model.Me{
-		User:    user,
-		Profile: model.Profile{Email: email},
+		User:     user,
+		Profile:  model.Profile{Email: email},
+		PlanTier: planTier,
 	})
 }

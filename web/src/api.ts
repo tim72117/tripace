@@ -4,7 +4,7 @@
 
 import type { Entry } from './types'
 import type { Trip } from './trip/types'
-import type { AuthResponse, TripRole, Me, Member } from './user/types'
+import type { AuthResponse, TripRole, Me, Member, PlanTier } from './user/types'
 import type { TripEntry } from './clienttools/tripEntryTools'
 
 // 後端統一錯誤格式:{ "error": { "code", "message" } }——純 API 層錯誤
@@ -995,6 +995,50 @@ export function postPlanAiChatReply(cfg: ClientConfig, conversationID: string, m
     messageID,
     content,
   })
+}
+
+// Plan:單一方案的定義(名稱、月額度)——對齊後端 model.Plan(見
+// server/internal/model/plan.go 開頭的完整設計說明:方案定義寫死在後端
+// 程式碼常數,前端不重複定義一份,一律從 API 回應取得)。
+export interface Plan {
+  tier: PlanTier
+  name: string
+  // monthlyAIRequests:每月可呼叫 AI 規劃對話(POST /internal/plan-ai/chat)
+  // 的次數上限,<= 0 代表不限制。這個階段(訂閱方案機制第一階段)純粹
+  // 顯示用,後端完全沒有依這個數字攔截任何請求,見後端 plan.go 開頭的
+  // 任務範圍說明——前端這裡顯示的「每月 N 次」只是告知使用者方案內容,
+  // 不代表畫面上有任何「已用 X/N 次」這種即時用量(那會是沒有扣額度機制
+  // 支撐的誤導性假資料)。
+  monthlyAIRequests: number
+}
+
+// PlanMeResult:GET /internal/plan/me 的回應形狀——對齊後端
+// planMeResponse(見 server/internal/api/plan.go)。
+export interface PlanMeResult {
+  currentTier: PlanTier
+  currentPlan: Plan
+  // plans:目前定義的全部方案,供「訂閱方案」頁面列出兩個方案的名稱與
+  // 額度說明,不需要前端自己另外維護一份方案清單。
+  plans: Plan[]
+}
+
+// fetchMyPlan:GET /internal/plan/me(需登入,見後端 handleGetMyPlan 的
+// 完整說明)——查詢目前使用者的方案資訊,供「訂閱方案」頁面
+// (plan-subscription/PlanSubscriptionPage.tsx)顯示「目前方案」與兩個
+// 方案各自的名稱/額度說明。
+export function fetchMyPlan(cfg: ClientConfig) {
+  return request<PlanMeResult>(cfg, 'GET', '/internal/plan/me')
+}
+
+// claimFanPlan:POST /internal/plan/claim-fan(需登入,見後端
+// handleClaimFanPlan 的完整說明)——使用者造訪 /fan/<code> 這條路由時,
+// 用網址裡的 code 呼叫這支端點,code 與伺服器端環境變數
+// FAN_PLAN_CLAIM_CODE 吻合就把使用者的方案標記成粉絲專案版(一次性核發,
+// 不經金流)。成功回傳更新後的方案資訊(格式同 fetchMyPlan),呼叫端
+// (plan-subscription/FanClaimRoute.tsx)可以直接拿來顯示「已升級為粉絲
+// 專案」,不需要再呼叫一次 fetchMyPlan。
+export function claimFanPlan(cfg: ClientConfig, code: string) {
+  return request<PlanMeResult>(cfg, 'POST', '/internal/plan/claim-fan', { code })
 }
 
 // fetchGeoPlacePhoto:GET /internal/geo/place-details 的 photoOnly=1 模式

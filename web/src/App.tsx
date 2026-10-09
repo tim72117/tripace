@@ -92,6 +92,17 @@ const NotFoundPage = lazy(() => import('./home/NotFoundPage').then((m) => ({ def
 // 層級,不是 /app 底下需要登入的正式功能。
 const TripPlanRoute = lazy(() => import('./trip-plan/TripPlanRoute').then((m) => ({ default: m.TripPlanRoute })))
 const PlanAiSimPage = lazy(() => import('./home/plan-ai-sim/AIPlanTimelinePage').then((m) => ({ default: m.AIPlanTimelinePage })))
+// PlanSubscriptionRoute(/plan)/FanClaimRoute(/fan/:code):訂閱方案機制
+// 第一階段新增的登入後頁面,見 plan-subscription/ 目錄開頭的完整說明。
+// 跟 TripPlanRoute 一樣是獨立路由(不掛在 /app 面板系統底下),故同樣
+// lazy() 動態載入,不讓公開首頁/行銷頁的載入體積被這批登入後才用得到的
+// 程式碼拖累。
+const PlanSubscriptionRoute = lazy(() =>
+  import('./plan-subscription/PlanSubscriptionRoute').then((m) => ({ default: m.PlanSubscriptionRoute })),
+)
+const FanClaimRoute = lazy(() =>
+  import('./plan-subscription/FanClaimRoute').then((m) => ({ default: m.FanClaimRoute })),
+)
 
 // KeyboardShrinkGuard:/app 路由專用——鍵盤彈出時把根容器高度直接改成
 // visualViewport.height,取代先前試過的 transform: translateY(-offsetTop)
@@ -267,6 +278,19 @@ export function App() {
               trip-plan/TripPlanRoute.tsx。server/cmd/server/static.go 的
               knownRoutePatterns 已同步新增。 */}
           <Route path="/trip-plan" element={<TripPlanRoute />} />
+          {/* /plan 路徑:訂閱方案頁面(訂閱方案機制第一階段,見
+              plan-subscription/PlanSubscriptionRoute.tsx 開頭的完整說明)
+              ——登入後才可見,訪客造訪時內嵌登入表單,不導向 /app 或顯示
+              錯誤。刻意不放在首頁或任何公開行銷頁上(使用者明確要求首頁
+              不該出現任何訂閱 CTA)。server/cmd/server/static.go 的
+              knownRoutePatterns 已同步新增。 */}
+          <Route path="/plan" element={<PlanSubscriptionRoute />} />
+          {/* /fan/:code 路徑:粉絲專案連結的核發頁面(見
+              plan-subscription/FanClaimRoute.tsx 開頭的完整說明)——
+              已登入造訪時自動呼叫 claim-fan API,訪客造訪時內嵌登入表單、
+              登入後自動繼續核發流程。server/cmd/server/static.go 的
+              knownRoutePatterns 已同步新增。 */}
+          <Route path="/fan/:code" element={<FanClaimRoute />} />
           {/* 舊網址 /app/plan-ai 已搬到 /trip-plan:轉址保留書籤與外部連結。
               React Router 依特異度排序,靜態路徑本來就優先於下方
               /app/:legacyPanelMode 這個相容路由,放在它前面只是明確表達意圖。 */}

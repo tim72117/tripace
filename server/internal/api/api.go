@@ -575,6 +575,8 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("GET /internal/geo/plan-ai/transit-estimate", s.handlePublicGeoTransitEstimate)
 	internalMux.HandleFunc("POST /internal/plan-ai/chat", s.handlePlanAiChat)
 	internalMux.HandleFunc("POST /internal/plan-ai/chat/reply", s.handlePlanAiChatReply)
+	internalMux.HandleFunc("GET /internal/plan/me", s.handleGetMyPlan)
+	internalMux.HandleFunc("POST /internal/plan/claim-fan", s.handleClaimFanPlan)
 
 	// maintenance — 只給 tripace-cli 這類維運工具用的端點,不是產品前端
 	// 會呼叫的路徑(見 maintenance.go 開頭對「核心」與「維運」端點分開的
