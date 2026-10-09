@@ -288,7 +288,7 @@ function useTripPlanTimeline(cfg: ClientConfig) {
   //
   // 存在的理由:TripPlanPage 會同時有兩份實例掛載——地圖對話小匡是常駐
   // 掛載的(FloatingPanel 只用 display:none 隱藏,為的是不重建 WebSocket
-  // 連線),而切到 /app/plan-ai 時全頁版也會掛上來。兩份各自在掛載當下
+  // 連線),而切到 /trip-plan 時全頁版也會掛上來。兩份各自在掛載當下
   // 讀一次 localStorage 之後就不再重讀,於是:在全頁版規劃完切回地圖,
   // 小匡那份仍是掛載時的舊內容(常常是空的),它下一次寫入就會把剛剛
   // 規劃好的內容整個蓋掉——實際會遺失使用者資料。
@@ -635,7 +635,7 @@ function usePlanAiChatBridge(
 export function TripPlanPage(props: {
   cfg: ClientConfig
   // compact——2026-10 新增:這個元件現在有兩個使用情境,版面需求不同。
-  //   - /app/plan-ai(預設,compact 省略):整頁顯示,捲動權在外層
+  //   - /trip-plan(預設,compact 省略):整頁顯示,捲動權在外層
   //     DesktopMain(unboundedScroll),.page 自己是自然高度。
   //   - 地圖規劃的對話浮動小匡(compact):沒有任何祖先在管捲動,且
   //     FloatingPanel 的 .panel 是 overflow:hidden——.page 必須自己變成
@@ -649,7 +649,7 @@ export function TripPlanPage(props: {
   // 需要傳:那張小匡是常駐掛載、用 display:none 隱藏的,元件不會因為
   // 「關閉」而卸載,所以無從用掛載時機去重讀持久化內容。
   //
-  // 從隱藏轉為可見時,把另一份實例(/app/plan-ai 全頁版)在這期間寫入的
+  // 從隱藏轉為可見時,把另一份實例(/trip-plan 全頁版)在這期間寫入的
   // 內容讀回來——否則小匡會一直顯示它掛載當下的舊時間軸(見
   // useTripPlanTimeline 的 resyncFromStorage 與 revRef 的完整說明)。
   // 省略時視為永遠可見,維持原本行為(全頁版靠掛載/卸載就足夠)。
@@ -657,7 +657,7 @@ export function TripPlanPage(props: {
   // scrollContainerRef——2026-10 新增:真正接手捲動的 DOM 節點,取代原本
   // 用 scrollRef.current?.closest('main') 從內部往上爬著猜的做法(見
   // scrollToLatest/handleScroll 的完整說明)。
-  //   - /app/plan-ai 全頁:呼叫端傳入指向 DesktopMain(<main>)的 ref,
+  //   - /trip-plan 全頁:呼叫端傳入指向 DesktopMain(<main>)的 ref,
   //     捲動權在那個撐滿視窗的外層容器(unboundedScroll)。
   //   - 地圖規劃的對話小匡(compact):不傳——元件內部的 scrollRef
   //     (指向 .scroll,compact 模式下疊加 .compactScroll 接手捲動)本身
@@ -670,9 +670,9 @@ export function TripPlanPage(props: {
   // 讓外層的地圖移動過去。
   //
   // 為什麼是選填、而且由呼叫端決定怎麼移動:這個元件本身沒有地圖
-  // (/app/plan-ai 全頁的右上角小地圖已移除,見下方 panToStop 的說明),
+  // (/trip-plan 全頁的右上角小地圖已移除,見下方 panToStop 的說明),
   // 兩個使用情境對「點了卡片之後該發生什麼」的答案不同——
-  //   - /app/plan-ai 全頁:沒有地圖可移動,省略這個 prop,行為維持原樣
+  //   - /trip-plan 全頁:沒有地圖可移動,省略這個 prop,行為維持原樣
   //     (只做卡片高亮)。
   //   - 地圖規劃的對話小匡:外面就是整張地圖,傳入後點卡片會把地圖
   //     平移到該站(見 DesktopLayout.tsx 傳入時的完整說明)。
@@ -683,7 +683,7 @@ export function TripPlanPage(props: {
   // 變動時回報給呼叫端,讓外層的地圖畫出對應的小圓點(使用者明確要求
   // 「開啟對話若是有安排景點,地圖上出現小圓點」)。
   //
-  // 選填,理由同 onPanToStop:/app/plan-ai 全頁沒有地圖,省略即可。
+  // 選填,理由同 onPanToStop:/trip-plan 全頁沒有地圖,省略即可。
   //
   // 注意這個元件在對話小匡裡是常駐掛載的(FloatingPanel 只用 display:none
   // 隱藏,見 DesktopLayout.tsx 對那個設計的完整說明——為的是避免每次開關
@@ -699,7 +699,7 @@ export function TripPlanPage(props: {
   // selectedStopId/onSelectedStopChange——目前選中哪一站。三種合法組合:
   //   - 兩個都傳:受控。以 selectedStopId 為準,元件自己不存狀態,每次
   //     使用者點選都呼叫 onSelectedStopChange(地圖對話小匡用這個)。
-  //   - 兩個都不傳:非受控,元件用內部 state 自理(/app/plan-ai 全頁)。
+  //   - 兩個都不傳:非受控,元件用內部 state 自理(/trip-plan 全頁)。
   //   - 只傳 onSelectedStopChange:非受控但通知呼叫端——元件自己管狀態,
   //     呼叫端只是想知道。語意同 <input onChange> 不給 value。
   // (只傳 selectedStopId 不傳 callback 也能跑,但那樣使用者點了沒人處理,
@@ -720,7 +720,7 @@ export function TripPlanPage(props: {
   // selectedStopSync.test.tsx。受控之後只有一份事實來源,地圖與卡片不可能
   // 不同步,「點圓點 → 卡片高亮」也自然成立(原本那條路徑是斷的)。
   //
-  // /app/plan-ai 全頁不傳這兩個 prop,走內部 state,行為與先前相同。
+  // /trip-plan 全頁不傳這兩個 prop,走內部 state,行為與先前相同。
   selectedStopId?: string | null
   onSelectedStopChange?: (id: string | null) => void
   // onHoverStopChange——滑鼠移到站點卡上時回報(移出傳 null),讓地圖把
@@ -793,7 +793,7 @@ export function TripPlanPage(props: {
   //
   // 受控/非受控雙模式(見上方 props 對這兩個欄位的完整說明):呼叫端傳了
   // selectedStopId 就以它為準(地圖對話小匡,狀態住在 DesktopLayout,
-  // 地圖與時間軸共用同一份),沒傳就用這個內部 state(/app/plan-ai 全頁)。
+  // 地圖與時間軸共用同一份),沒傳就用這個內部 state(/trip-plan 全頁)。
   //
   // 這個狀態現在同時驅動地圖上對應小圓點的強調樣式——2026-10 之前曾經
   // 短暫只剩「點了哪張卡片」的視覺回饋(右上角小地圖移除後),現在它又
@@ -867,7 +867,7 @@ export function TripPlanPage(props: {
   // panToStop——點擊站點卡:高亮該卡片,並(呼叫端有提供 onPanToStop 時)
   // 請外層把地圖移動到這一站。
   //
-  // 2026-10:原本這裡只做選取——/app/plan-ai 全頁右上角的小地圖移除後,
+  // 2026-10:原本這裡只做選取——/trip-plan 全頁右上角的小地圖移除後,
   // 「pan」這個動作就沒有對象了,函式名稱留著但實際上不再移動任何東西。
   // 現在這個元件嵌進地圖規劃的對話小匡,外面就是整張地圖,名稱重新名實
   // 相符:座標交給呼叫端,由它決定怎麼移動(見 onPanToStop 參數的完整
@@ -889,7 +889,7 @@ export function TripPlanPage(props: {
   // handleScroll/下方掛原生事件監聽器的 effect)各自寫
   // scrollRef.current?.closest('main'),從 scrollRef(指向 .scroll,見
   // 下方)往上爬,靠「找到的 <main> 就是真正在捲動的那個」這個假設找
-  // 捲動容器——這個假設只在 /app/plan-ai 全頁成立。
+  // 捲動容器——這個假設只在 /trip-plan 全頁成立。
   // (2026-10 code review 二次修正:這裡原本誤寫成「地圖規劃的對話
   // 小匡完全沒有 <main> 祖先,closest('main') 永遠回傳 null」——
   // 實際上 FloatingPanel 是 DesktopMain 的子孫,DOM 樹裡確實有

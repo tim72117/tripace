@@ -94,31 +94,6 @@
   border-radius: 0 2px 2px 0;
   background: var(--color-accent);
 }
-/* betaTag——見 DesktopRail.tsx plan-ai 按鈕的完整說明,標示這個正式
-   功能還在測試中。用 position: absolute 疊在按鈕角落,不佔用 .btn 的
-   flex 排版空間(收合態是純 icon 的 48px 方按鈕,沒有多餘空間可以塞
-   一個文字標籤進 flex 排版裡)。收合時貼在右上角、展開時貼在按鈕最
-   右側,兩種狀態各自需要不同的定位基準,故分開寫規則而非共用一組
-   絕對定位數值。 */
-.betaTag {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--ios-bg);
-  background: var(--ios-sand);
-  border-radius: 999px;
-  padding: 1px 4px;
-  line-height: 1.3;
-  pointer-events: none;
-}
-.rail.expanded .btn .betaTag {
-  position: static;
-  margin-left: auto;
-}
-
 /* 試做用導覽項目(?demo）與正式功能的視覺區隔:一條細分隔線,
    按鈕本身圖示顏色也偏淡一階,一眼可辨識是實驗性質、非正式功能。 */
 .divider {

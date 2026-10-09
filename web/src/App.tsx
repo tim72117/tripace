@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
-import { BrowserRouter, Routes, Route, useParams, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom'
 import { useAppState } from './hooks/useAppState'
 import { ErrorBoundary } from './ErrorBoundary'
 import { useKeyboardShrink } from './components/useKeyboardInset'
@@ -90,6 +90,7 @@ const NotFoundPage = lazy(() => import('./home/NotFoundPage').then((m) => ({ def
 // 完整說明)。固定接純前端假資料(attractionPool.ts),不需要登入、不
 // 依賴任何需要 token 的後端端點,故放進 home/ 底下跟其餘公開行銷頁同一
 // 層級,不是 /app 底下需要登入的正式功能。
+const TripPlanRoute = lazy(() => import('./trip-plan/TripPlanRoute').then((m) => ({ default: m.TripPlanRoute })))
 const PlanAiSimPage = lazy(() => import('./home/plan-ai-sim/AIPlanTimelinePage').then((m) => ({ default: m.AIPlanTimelinePage })))
 
 // KeyboardShrinkGuard:/app 路由專用——鍵盤彈出時把根容器高度直接改成
@@ -261,6 +262,15 @@ export function App() {
               </div>
             }
           />
+          {/* /trip-plan 路徑:登入後的 AI 規劃,獨立頁面(原 /app/plan-ai)。
+              外殼自己管深色模式與捲動、訪客時內嵌登入表單,見
+              trip-plan/TripPlanRoute.tsx。server/cmd/server/static.go 的
+              knownRoutePatterns 已同步新增。 */}
+          <Route path="/trip-plan" element={<TripPlanRoute />} />
+          {/* 舊網址 /app/plan-ai 已搬到 /trip-plan:轉址保留書籤與外部連結。
+              React Router 依特異度排序,靜態路徑本來就優先於 /app/:panelMode?
+              這個動態參數路由,放在它前面只是明確表達意圖。 */}
+          <Route path="/app/plan-ai" element={<Navigate to="/trip-plan" replace />} />
           {/* /app 路徑:主要應用畫面本體(套 iPhone 外框,寬螢幕自動切桌面版佈局)。
               :panelMode 是選填的路徑參數(對應桌面版 side panel/手機版 demo 抽屜
               目前顯示的面板,見 DesktopLayout.tsx/PhoneContent.tsx),用 "?"
