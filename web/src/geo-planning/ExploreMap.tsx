@@ -1373,10 +1373,15 @@ export function ExploreMap({
               type="button"
               className={styles.citySearchAiBtn}
               onClick={onOpenChat}
-              title="開啟對話"
-              aria-label="開啟對話"
+              title="開啟對話(Beta)"
+              aria-label="開啟對話(Beta)"
             >
               <Sparkles size={16} aria-hidden="true" />
+              {/* betaTag:同 DesktopRail.tsx plan-ai 按鈕的既有先例,標示
+                  這個功能還在測試中——使用者明確要求「beta 是放在正式
+                  頁面的功能列按鈕上」,這顆是規劃地圖上另一個常駐入口,
+                  同一套標示規則。 */}
+              <span className={styles.citySearchAiBtnBetaTag}>BETA</span>
             </button>
           )}
           <input

@@ -539,30 +539,13 @@ export function DesktopContent(props: ContentProps) {
   // 字串比對。
   const panelSpec = panelMode ? PANEL_REGISTRY[panelMode] : undefined
 
-  // desktopMainRef:2026-10 新增——TripPlanPage 全頁版(/app/plan-ai)的
-  // 「回到最新」機制(自動捲到底/跟隨捲動判斷/按鈕顯示,見該元件
-  // scrollContainerRef prop 的完整說明)需要抓到真正接手捲動的那個
-  // DOM 節點(DesktopMain 的 <main>,見該元件 unboundedScroll 的說明)。
-  // 原本用 scrollRef.current?.closest('main') 從內部往上爬著找,這只
-  // 對「捲動容器就是某個 <main> 祖先」的情境成立——地圖規劃對話小匡
-  // (compact 模式)的捲動容器是小匡內部的 .compactScroll,DOM 樹裡
-  // 完全沒有 <main> 祖先(DesktopLayout.tsx/FloatingPanel.tsx 都沒有
-  // 這個標籤),closest('main') 永遠回傳 null,導致小匡版「回到最新」
-  // 整套機制(自動捲到底、跟隨判斷、按鈕顯示)完全失效,使用者從頭到
-  // 尾看不到這顆按鈕(code review 時發現的實際 bug,不是臆測)。
-  // 改成由呼叫端明確傳入「真正的捲動容器」ref,不再靠 closest 猜——
-  // 全頁版傳這個 mainRef(見下方掛到 <DesktopMain ref={desktopMainRef}>
-  // 的用法),小匡版不傳,元件內部 fallback 用 .compactScroll 自己的
-  // scrollRef,兩條路徑各自對應自己真正的捲動容器。
-  const desktopMainRef = useRef<HTMLElement>(null)
-
   // chatPopoverVisible:對話小匡此刻實際上看不看得見。小匡本身的
   // display:none 判斷與「地圖上的規劃站點小圓點要不要顯示」共用這一個
   // 變數——兩者必須永遠一致(圓點是小匡內容的延伸,小匡看不見時圓點就是
   // 孤兒),各自寫一次判斷遲早會漂移。
   //
-  // 單看 chatPopoverOpen 不夠:切到 main-replace 的分頁(plan-ai/
-  // demo-route-editor)時小匡會被隱藏,但 chatPopoverOpen 本身維持 true
+  // 單看 chatPopoverOpen 不夠:切到 main-replace 的分頁(demo-route-editor/
+  // demo-chat)時小匡會被隱藏,但 chatPopoverOpen 本身維持 true
   // ——那是刻意的(見下方 FloatingPanel 的完整說明:常駐掛載、不重建
   // WebSocket 連線),所以「開啟」與「看得見」在這裡不是同一件事。
   const chatPopoverVisible = chatPopoverOpen && panelSpec?.slot !== 'main-replace'
@@ -630,22 +613,13 @@ export function DesktopContent(props: ContentProps) {
         {/* unbounded:main-replace 以外的所有情況固定渲染 GeoOutlinePanel
             (見下方),故拿掉 860px 寬度上限——見 DesktopMain.tsx 對
             unbounded prop 的完整說明。不傳 unboundedScroll——地理規劃
-            輪廓底圖用 position:absolute 撐滿容器,不需要接手垂直捲動。
-            plan-ai 也加進 unbounded/unboundedScroll:使用者實際回報
-            「捲軸的樣式跟位置,要貼在視窗」——先前讓 plan-ai 維持
-            860px 置中的預設(不 unbounded)時,捲動容器(.scroll)本身
-            被限制在內層 860px 容器裡,捲軸貼在內容區右緣、離視窗邊界
-            還有一段距離,不是貼齊視窗。改成外層(.main)撐滿視窗寬度、
-            接手捲動權(理由/寫法同 pace/PaceRouteMap 用 unboundedScroll
-            的既有作法),TripPlanPage 內部的 header/時間軸內容各自加了
-            一層 860px 置中容器維持視覺不變,只有捲動這件事發生在撐滿
-            視窗的外層。 */}
-        <DesktopMain ref={desktopMainRef} unbounded={panelSpec?.slot !== 'main-replace' || panelMode === 'plan-ai'} unboundedScroll={panelMode === 'plan-ai'}>
+            輪廓底圖用 position:absolute 撐滿容器,不需要接手垂直捲動。 */}
+        <DesktopMain unbounded={panelSpec?.slot !== 'main-replace'}>
           {panelSpec?.slot === 'main-replace' ? (
             panelMode === 'demo-route-editor' ? (
               // demo-route-editor 只做桌面版(手機版 PhoneNavDrawer 不
               // 提供對應分頁),直接在這裡渲染。main-replace slot 目前
-              // 有這個試做功能、下面的 demo-chat 與 plan-ai 三種模式
+              // 有這個試做功能與下面的 demo-chat 兩種模式
               // (原本還有 demo-onagent,經 DemoPanelContent 共用邏輯
               // 渲染,已整個移除,含入口與實作)。
               <RouteEditor />
@@ -665,14 +639,7 @@ export function DesktopContent(props: ContentProps) {
                 user={props.user}
                 onBack={() => setActiveTrip(null)}
               />
-            ) : (
-              // plan-ai(AI 規劃,見 trip-plan/TripPlanPage.tsx 的完整
-              // 說明),正式功能,直接在這裡渲染,理由同 demo-route-editor/
-              // pace/geo-outline 的既有作法。不依附特定旅程(使用者明確
-              // 要求「plan ai 不需要 trip id」),不接收 tripID,PANEL_REGISTRY
-              // 也已拿掉 requiresTrip——不需要先選旅程就能使用這個功能。
-              <TripPlanPage cfg={cfg} scrollContainerRef={desktopMainRef} />
-            )
+            ) : null
           ) : (
             // main-replace 以外的所有情況(含 panelMode === null、'trips'/
             // 'timeline'/'pace'/'geo-outline'):主顯示固定是規劃地圖——
