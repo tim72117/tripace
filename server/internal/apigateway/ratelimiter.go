@@ -57,7 +57,32 @@ type RateLimiter struct {
 
 	mu      sync.Mutex
 	windows map[string]*rateWindow
+
+	// sweepCounter 搭配 sweepEveryNCalls 讓 Allow 每隔固定呼叫次數順便做
+	// 一次過期視窗清除(見 maybeSweepLocked 的完整說明)——不是每次 Allow
+	// 都掃,那會讓高頻呼叫路徑(如 geoQueryUserRateLimiter/
+	// planAiChatRateLimiter 這類以使用者 ID 為 key、key 數量會隨使用者數
+	// 線性增長的情境)每次都多一次全表掃描的成本;用次數節流讓平均攤銷
+	// 成本可忽略,同時仍保證 windows map 不會無上限增長。
+	sweepCounter uint64
 }
+
+// sweepEveryNCalls——見 sweepCounter 的完整說明。選 1000 純粹是「遠高於
+// 多數呼叫路徑的即時反應需求、又不會讓記憶體在兩次清除之間累積太久」的
+// 經驗值,不是精算出來的最佳值。
+const sweepEveryNCalls = 1000
+
+// idleWindowTTL——maybeSweepLocked 清除一個 key 的最低門檻(實際門檻是
+// max(idleWindowTTL, limit.window),見該方法的完整說明——若某個 key 的
+// 視窗長度本身設定得比這個常數還長,門檻會跟著拉高,不會單純固定用這個
+// 常數,避免誤刪仍在計數中的活躍視窗)。超過門檻沒有再被 Allow 重置過的
+// key,視為已經不再活躍(例如使用者流失、對話已結束),從 windows map
+// 移除,讓記憶體用量跟「目前仍活躍的 key 數量」成正比,而不是跟「歷史上
+// 出現過的 key 總數」成正比——後者在 key 是使用者 ID 這類情境下(見
+// geoQueryUserRateLimiter/planAiChatRateLimiter 的完整說明)會隨使用者
+// 總數無上限增長,是這個元件原本的已知限制。選 1 小時是「遠長於目前所有
+// 呼叫端內建設定的視窗長度(多在秒到分鐘等級)」的保守值。
+const idleWindowTTL = time.Hour
 
 // rateLimit 是單一 key 的限流規則——window 是這個 key 的速率視窗長度,
 // maxCalls 是這個視窗內最多可以放行的次數。
@@ -135,13 +160,15 @@ func (rl *RateLimiter) Allow(key string) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
+	now := rl.now()
+	rl.maybeSweepLocked(now)
+
 	limit, limited := rl.limits[key]
 	if !limited {
 		// 這個 key 沒有設定過限流規則,不受這個 RateLimiter 管轄,直接放行。
 		return true
 	}
 
-	now := rl.now()
 	w, ok := rl.windows[key]
 	if !ok || now.Sub(w.windowStart) >= limit.window {
 		// 這個 key 第一次被呼叫、或目前視窗已經過期——開一個新視窗,
@@ -155,4 +182,46 @@ func (rl *RateLimiter) Allow(key string) bool {
 	}
 	w.count++
 	return true
+}
+
+// maybeSweepLocked 每隔 sweepEveryNCalls 次 Allow 呼叫,清除一次已經閒置
+// 超過門檻的視窗狀態(見 sweepCounter/idleWindowTTL 的完整說明)。呼叫時
+// 必須已持有 rl.mu(方法名以 Locked 結尾標示這個前提,對齊本檔案其餘
+// 私有方法的既有命名慣例)。
+//
+// 這是這個元件原本「windows map 沒有過期清除機制」的已知限制的修正——
+// 對 key 是固定少數 endpoint 字串的呼叫端(如 planAiRateLimiter)影響
+// 可忽略,但對 key 是使用者 ID 的呼叫端(geoQueryUserRateLimiter/
+// planAiChatRateLimiter)而言,過去這個 map 只會隨歷史上出現過的不同
+// 使用者數量單調增長,即使使用者早已不再活躍,其視窗狀態也永遠不會被
+// 回收。
+//
+// 每個 key 實際的清除門檻是 max(idleWindowTTL, limit.window)(見下方
+// threshold 的計算),不是單純固定用 idleWindowTTL——w.windowStart 只在
+// 視窗「被重置」時更新(見 Allow 的說明),不是「這個 key 最後一次被呼叫
+// 的時間」:只要這個 key 仍在目前視窗內持續被呼叫,windowStart 就完全
+// 不會前進。若某個 key 的 limit.window 本身被設定成大於等於
+// idleWindowTTL(例如後台管理介面可執行期調整 geoQueryUserRateLimiter
+// 底層 key 的視窗秒數,見 geo_rate_limits.go,程式碼沒有限制上限),
+// 單純比較 idleWindowTTL 會把一個仍在計數中、持續活躍的視窗誤判成
+// 「閒置」而提早清除,等於讓它的限流在視窗走完前被重置歸零,變相繞過
+// 原本設定的上限——而不是這個清除機制原本想解決的「使用者早已不再
+// 活躍」情境。改成參照 limit.window 就不會有這個誤判:只有當距離
+// windowStart 的時間已經超過「這個 key 自己的視窗長度」才有可能是真正
+// 閒置(因為活躍中的 key 視窗本身就會先自然重置,重置會刷新
+// windowStart),再疊加 idleWindowTTL 當作額外的保守緩衝。
+func (rl *RateLimiter) maybeSweepLocked(now time.Time) {
+	rl.sweepCounter++
+	if rl.sweepCounter%sweepEveryNCalls != 0 {
+		return
+	}
+	for key, w := range rl.windows {
+		threshold := idleWindowTTL
+		if limit, ok := rl.limits[key]; ok && limit.window > threshold {
+			threshold = limit.window
+		}
+		if now.Sub(w.windowStart) >= threshold {
+			delete(rl.windows, key)
+		}
+	}
 }

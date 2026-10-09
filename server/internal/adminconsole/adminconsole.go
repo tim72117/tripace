@@ -35,6 +35,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin/api/users", h.withAdmin(h.listUsers))
 	mux.HandleFunc("GET /admin/api/health/external", h.withAdmin(h.listExternalHealth))
 	mux.HandleFunc("GET /admin/api/request-stats", h.withAdmin(h.listRequestStats))
+	mux.HandleFunc("GET /admin/api/plan-ai-chat-logs", h.withAdmin(h.listPlanAiChatLogs))
 	mux.HandleFunc("GET /admin/api/geo-api-stats", h.withAdmin(h.listGeoAPIStats))
 	mux.HandleFunc("GET /admin/api/schema-check", h.withAdmin(h.checkSchema))
 	mux.HandleFunc("GET /admin/api/geo-rate-limits", h.withAdmin(h.listGeoRateLimits))

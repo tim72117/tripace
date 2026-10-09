@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from './api'
-import type { AttractionMissingPlaceID, ExternalServiceStatus, GeoAPICallStats, GeoRateLimit, PathRequestStats, RefetchAttractionPlaceIDResponse, SchemaCheck, TimelineBucket, UserSummary } from './api'
+import type { AttractionMissingPlaceID, ExternalServiceStatus, GeoAPICallStats, GeoRateLimit, PathRequestStats, PlanAiChatLogEntry, RefetchAttractionPlaceIDResponse, SchemaCheck, TimelineBucket, UserSummary } from './api'
 import { TimelineChart } from './TimelineChart'
 
 export default function App() {
@@ -64,7 +64,7 @@ function Login({ onLoggedIn }: { onLoggedIn: (email: string) => void }) {
   )
 }
 
-type Tab = 'users' | 'external' | 'requests' | 'geo-api' | 'geo-rate-limits' | 'attraction-missing-place-id' | 'schema'
+type Tab = 'users' | 'external' | 'requests' | 'geo-api' | 'geo-rate-limits' | 'attraction-missing-place-id' | 'schema' | 'plan-ai-chat-logs'
 
 function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOut: () => void }) {
   const [tab, setTab] = useState<Tab>('users')
@@ -111,6 +111,9 @@ function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOu
         <button className={tab === 'schema' ? 'tab active' : 'tab'} onClick={() => setTab('schema')}>
           Schema check
         </button>
+        <button className={tab === 'plan-ai-chat-logs' ? 'tab active' : 'tab'} onClick={() => setTab('plan-ai-chat-logs')}>
+          AI 規劃對話
+        </button>
       </nav>
 
       {tab === 'users' && <UsersTab onLoggedOut={onLoggedOut} />}
@@ -120,6 +123,7 @@ function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOu
       {tab === 'geo-rate-limits' && <GeoRateLimitsTab onLoggedOut={onLoggedOut} />}
       {tab === 'attraction-missing-place-id' && <AttractionMissingPlaceIDTab onLoggedOut={onLoggedOut} />}
       {tab === 'schema' && <SchemaCheckTab onLoggedOut={onLoggedOut} />}
+      {tab === 'plan-ai-chat-logs' && <PlanAiChatLogsTab onLoggedOut={onLoggedOut} />}
     </div>
   )
 }
@@ -999,6 +1003,160 @@ function GeoAPIStatsTab({ onLoggedOut }: { onLoggedOut: () => void }) {
               {loading && calls === null && (
                 <tr>
                   <td colSpan={6} className="muted center-cell">
+                    Loading…
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  )
+}
+
+// AI 規劃對話訊息記錄(GET /admin/api/plan-ai-chat-logs)。顯示所有使用者的
+// 所有 /trip-plan AI 規劃對話訊息,依時間降冪排序(最新在前)——是一張
+// 列出全部訊息的表格(類似 log 瀏覽器),不是先選使用者才看單一對話。
+//
+// LIMIT_OPTIONS 比照 RequestStatsTab/GeoAPIStatsTab 的 HOURS_OPTIONS 做法:
+// 固定選項,跟後端 listPlanAiChatLogs 的上限(1000)對齊,不需要前端自行
+// 驗證輸入值。
+const LIMIT_OPTIONS = [50, 200, 1000] as const
+
+// ROLE_LABEL 讓 user/assistant 兩種角色用不同顏色的標籤區分——顏色本身沿用
+// style.css 既有的 status-ok/status-error 色系(藍/綠語意不嚴格對應,這裡
+// 只是借用已有的視覺樣式,不是在描述請求成功/失敗)。
+const ROLE_LABEL: Record<string, string> = {
+  user: '使用者',
+  assistant: 'AI',
+}
+
+// CONTENT_PREVIEW_LENGTH:超過這個長度的訊息內容,表格裡只顯示截斷版本
+// +「展開」按鈕——訊息內容可能是很長的一段規劃文字,不截斷會把表格撐爆
+// 版面(尤其這張表沒有固定欄寬設計,長文字會讓其他欄位被擠到看不見)。
+const CONTENT_PREVIEW_LENGTH = 120
+
+function PlanAiChatLogsTab({ onLoggedOut }: { onLoggedOut: () => void }) {
+  const [limit, setLimit] = useState<number>(200)
+  const [total, setTotal] = useState<number | null>(null)
+  const [messages, setMessages] = useState<PlanAiChatLogEntry[]>([])
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  // expandedIds: 哪些訊息目前顯示全文而非截斷版本(可能同時展開多筆)。
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await api.listPlanAiChatLogs(limit)
+      setTotal(res.total)
+      setMessages(res.messages)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onLoggedOut()
+        return
+      }
+      setError(err instanceof ApiError ? err.message : 'Failed to load')
+    } finally {
+      setLoading(false)
+    }
+  }, [limit, onLoggedOut])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const toggleExpanded = (id: number) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  return (
+    <>
+      <section className="stats">
+        <div className="stat card">
+          <div className="stat-num">{total ?? '—'}</div>
+          <div className="stat-label">目前顯示訊息數</div>
+        </div>
+      </section>
+
+      {error && <div className="error banner">{error}</div>}
+
+      <section className="card">
+        <div className="section-head">
+          <h2>AI 規劃對話訊息</h2>
+          <div className="row-actions">
+            <select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
+              {LIMIT_OPTIONS.map((l) => (
+                <option key={l} value={l}>
+                  最近 {l} 筆
+                </option>
+              ))}
+            </select>
+            <button className="ghost" onClick={() => void load()} disabled={loading}>
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+        </div>
+        <p className="muted">所有使用者的 AI 規劃對話訊息,依時間新到舊排序。內容過長時自動截斷,點擊「展開」看全文。</p>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>時間</th>
+                <th>使用者</th>
+                <th>角色</th>
+                <th>內容</th>
+              </tr>
+            </thead>
+            <tbody>
+              {messages.map((m) => {
+                const expanded = expandedIds.has(m.id)
+                const isLong = m.content.length > CONTENT_PREVIEW_LENGTH
+                const shown = expanded || !isLong ? m.content : `${m.content.slice(0, CONTENT_PREVIEW_LENGTH)}…`
+                return (
+                  <tr key={m.id}>
+                    <td className="muted" style={{ whiteSpace: 'nowrap' }}>
+                      {new Date(m.createdAt).toLocaleString()}
+                    </td>
+                    <td className="muted">{m.userEmail || m.userID}</td>
+                    <td>
+                      <span className={`status-dot ${m.role === 'assistant' ? 'status-ok' : 'status-skipped'}`} />
+                      {ROLE_LABEL[m.role] ?? m.role}
+                    </td>
+                    <td style={{ whiteSpace: 'pre-wrap', maxWidth: '36rem' }}>
+                      {shown}
+                      {isLong && (
+                        <>
+                          {' '}
+                          <button className="ghost" onClick={() => toggleExpanded(m.id)}>
+                            {expanded ? '收合' : '展開'}
+                          </button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+              {messages.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={4} className="muted center-cell">
+                    尚無任何 AI 規劃對話訊息。
+                  </td>
+                </tr>
+              )}
+              {loading && messages.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="muted center-cell">
                     Loading…
                   </td>
                 </tr>

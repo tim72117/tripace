@@ -605,7 +605,14 @@ function usePlanSimSocket(start: boolean) {
           // refreshTransitForStop 開頭列出的呼叫時機第 2 點(使用者明確
           // 要求「當前一個站點有異動時,要觸發重新推估」)。
           const nextId = timelineRef.current.nodes.get(removedId)?.nextId
-          setTimeline((prev) => removeNode(prev, removedId))
+          // removeNode 現在回傳結構化結果(見該函式/RemoveNodeResult 的
+          // 完整說明,這份原型檔案本身不受那次異動影響,純粹配合新的
+          // 回傳型別簽名)——找不到節點或已被移除時原樣保留 prev,不是
+          // 行為變更。
+          setTimeline((prev) => {
+            const result = removeNode(prev, removedId)
+            return result.ok ? result.timeline : prev
+          })
           if (nextId != null) refreshTransitForStop(nextId, setTimeline, () => timelineRef.current)
         }, REMOVE_FADE_MS)
         return

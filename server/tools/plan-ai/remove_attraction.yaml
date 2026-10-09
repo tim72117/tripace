@@ -1,0 +1,25 @@
+# onagent 平台上 plan-ai-timeline app 的 remove_attraction tool 定義——見
+# search_attraction.yaml 開頭的完整說明(app 背景、新版 CLI 格式規則、
+# 為何拆成獨立檔案)。
+#
+# 推送(需要 onagent CLI,見 .claude/skills/onagent-cli-setup):
+#   onagent tool create -api <onagent 後端 URL> plan-ai-timeline server/tools/plan-ai/remove_attraction.yaml
+
+name: remove_attraction
+description: >-
+  把一個已經排入行程時間軸的景點移除。id 必須是先前某次 add_attraction
+  成功後回傳結果裡的 id 欄位，或 list_itinerary 查詢結果清單裡每個節點
+  的 id 欄位——不是 placeId，這兩者是不同的識別碼，不能互相替代。若不
+  確定要移除哪一站的 id，先呼叫 list_itinerary 查詢目前時間軸現況再
+  決定。若傳入的 id 目前不是時間軸上的既有節點（例如已經被移除過、或
+  id 打錯），會回傳錯誤告知找不到該節點，請改用 list_itinerary 查詢
+  現況後，以實際存在的 id 重試，不要用完全相同的參數再呼叫一次。
+kind: query
+parameters:
+  type: object
+  properties:
+    id:
+      type: string
+      description: 要移除的景點節點 id（必須是先前某次 add_attraction 成功後回傳的 id，或 list_itinerary 查詢結果裡的 id；不是 placeId）。
+  required:
+    - id

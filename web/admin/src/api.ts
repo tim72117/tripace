@@ -165,6 +165,27 @@ export interface RefetchAttractionPlaceIDResponse {
   matchedAddress: string
 }
 
+// One row of the AI 規劃對話訊息記錄(GET /admin/api/plan-ai-chat-logs)。
+// Mirrors adminconsole.planAiChatLogEntry on the backend (server/internal/
+// adminconsole/plan_ai_chat_logs.go) — every message across every user's
+// /trip-plan AI 規劃對話, newest first. userEmail is looked up server-side
+// via Store.ListUsers() and may be an empty string if the user account no
+// longer exists; the UI falls back to showing userID in that case.
+export interface PlanAiChatLogEntry {
+  id: number
+  userID: string
+  userEmail: string
+  conversationID: string
+  role: 'user' | 'assistant' | string
+  content: string
+  createdAt: string
+}
+
+export interface PlanAiChatLogsResponse {
+  total: number
+  messages: PlanAiChatLogEntry[]
+}
+
 // Same resolution strategy as the main web app's api.ts BASE: an explicit
 // VITE_ADMIN_API_URL for local dev against a separately-running backend,
 // falling back to the serving origin (correct in production, where the
@@ -262,4 +283,11 @@ export const api = {
   // there's no automatic name/address matching.
   refetchAttractionPlaceID: (id: string): Promise<RefetchAttractionPlaceIDResponse> =>
     request('POST', '/admin/api/attraction-missing-place-id-check/refetch', { id }).then((r) => r.json()),
+
+  // Reads from plan_ai_chat_messages (server/internal/store/plan_ai_chat.go
+  // writes one row per user/assistant message in /trip-plan's AI 規劃對話)
+  // — pure read, no external call. limit defaults to the backend's own
+  // default (200, see listPlanAiChatLogs's comment) when omitted.
+  listPlanAiChatLogs: (limit?: number): Promise<PlanAiChatLogsResponse> =>
+    request('GET', `/admin/api/plan-ai-chat-logs${limit ? `?limit=${limit}` : ''}`).then((r) => r.json()),
 }

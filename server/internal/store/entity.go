@@ -327,6 +327,23 @@ type geoAPICallLogRow struct {
 
 func (geoAPICallLogRow) TableName() string { return "geo_api_call_logs" }
 
+// planAiChatMessageRow 對應 model.PlanAiChatMessage(見該型別的完整
+// 說明)——AI 規劃對話的單一訊息記錄,只關聯 UserID,刻意不綁 TripID。
+// ID 用自增主鍵(對齊 apiRequestLogRow/geoAPICallLogRow 等既有 log 風格
+// 資料表的慣例),ConversationID/UserID 各自加索引供
+// handlePlanAiChat/handlePlanAiChatReply 查詢「這個 conversationID 底下
+// 的訊息」與「這個使用者這次請求的節流」使用。
+type planAiChatMessageRow struct {
+	ID             int64     `gorm:"primaryKey;autoIncrement;column:id"`
+	UserID         string    `gorm:"column:user_id;not null;index"`
+	ConversationID string    `gorm:"column:conversation_id;not null;index"`
+	Role           string    `gorm:"column:role;not null"`
+	Content        string    `gorm:"column:content;not null"`
+	CreatedAt      time.Time `gorm:"column:created_at;not null;index"`
+}
+
+func (planAiChatMessageRow) TableName() string { return "plan_ai_chat_messages" }
+
 // publicLinkRow 是行程公開分享連結，一個行程最多一條。
 type publicLinkRow struct {
 	ID        string `gorm:"primaryKey;column:id"`

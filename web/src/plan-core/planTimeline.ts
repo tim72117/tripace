@@ -495,9 +495,33 @@ export function insertAfter(
   return { ok: true, timeline: { nodes, headId }, insertedId: newId }
 }
 
-// removeNode — 把某個節點從鏈結中摘除,前後節點直接互相銜接。找不到
-// 對應 id 時原樣返回(理由同既有 pruneRemoved/updateStepById 的一貫
-// 處理方式,呼叫端已經在別處判斷過節點是否存在,這裡不重複拋錯)。
+// RemoveNodeResult — removeNode 的結構化回傳值,對齊 insertAfter 的既有
+// 設計(InsertAfterResult):呼叫端(ctx.removeStep,見 TripPlanPage.tsx
+// 的完整說明)不需要自己另外用 timeline.nodes.has(id) 猜測節點是否存在再
+// 決定要不要呼叫——那樣的外部檢查看不到 removing:true 這種「存在但正在
+// 淡出動畫、邏輯上已經視為移除中」的中間狀態,會讓同一個 id 在動畫播放
+// 期間(見 removing 欄位/REMOVE_FADE_MS 的完整說明)被重複接受移除指令。
+// 讓 removeNode 自己同時判斷「不存在」與「已經在移除中」兩種情況並回傳
+// 結構化錯誤,這個判斷收斂回資料層本身,呼叫端只需要看回傳值。
+export type RemoveNodeErrorCode = 'anchor_not_found' | 'already_removing'
+
+export interface RemoveNodeError {
+  code: RemoveNodeErrorCode
+  message: string
+}
+
+export type RemoveNodeResult =
+  | { ok: true; timeline: PlanTimeline }
+  | { ok: false; error: RemoveNodeError }
+
+// removeNode — 把某個節點從鏈結中摘除,前後節點直接互相銜接。
+//
+// 找不到對應 id,或該節點已經標記 removing(動畫播放中,還沒真的從鏈結
+// 摘除,見 removing 欄位的完整說明)時回傳結構化錯誤而非原樣返回
+// timeline——後者會讓呼叫端誤以為「移除成功了」(見上方 RemoveNodeResult
+// 的完整說明),尤其是 onagent 工具呼叫這種「呼叫端需要明確知道成功與否
+// 才能回報給 LLM」的情境,靜默原樣返回會讓同一個 id 的第二次移除指令
+// 被誤判成功。
 //
 // 若被移除的節點是 stop,且它的 nextId 也是 stop,那個 nextId 節點的
 // transitFromPrev(見 TransitInfo 的完整說明)這裡會被同步清空——它原本
@@ -508,9 +532,17 @@ export function insertAfter(
 // AIPlanTimelinePage.tsx refreshTransitForStop 的完整說明)——這裡刻意
 // 不觸發查詢,理由同 insertAfter 本身也不觸發交通查詢,鏈結資料層只管
 // 資料結構正確,不碰網路 I/O。
-export function removeNode(timeline: PlanTimeline, id: string): PlanTimeline {
+export function removeNode(timeline: PlanTimeline, id: string): RemoveNodeResult {
   const node = timeline.nodes.get(id)
-  if (!node) return timeline
+  if (!node) {
+    return { ok: false, error: { code: 'anchor_not_found', message: `找不到 id 為 "${id}" 的節點,無法移除。` } }
+  }
+  if (node.removing) {
+    return {
+      ok: false,
+      error: { code: 'already_removing', message: `id 為 "${id}" 的節點已經在移除中,不需要重複移除。` },
+    }
+  }
 
   const nodes = new Map(timeline.nodes)
   nodes.delete(id)
@@ -529,7 +561,7 @@ export function removeNode(timeline: PlanTimeline, id: string): PlanTimeline {
 
   const headId = timeline.headId === id ? node.nextId : timeline.headId
 
-  return { nodes, headId }
+  return { ok: true, timeline: { nodes, headId } }
 }
 
 // updateNode — 依 id 合併更新某個節點的資料欄位,不動它的鏈結位置

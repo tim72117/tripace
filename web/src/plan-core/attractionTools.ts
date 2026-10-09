@@ -116,6 +116,25 @@ import type { InsertAfterError } from './planTimeline'
 // 只傳語意層級的 category 字串,不需要知道視覺樣式怎麼對照。回傳值不再
 // 是新節點 id(沒有新節點被建立),而是被寫入備註的那個 anchorId 本身,
 // 方便 LLM 確認操作對象。
+// removeStep——讓 remove_attraction 工具能把時間軸上某個既有節點摘除。
+// 跟 insertAttractionAfter/addNote 一樣是語意層級的方法,由行程安排元件
+// (TripPlanPage.tsx 的 useTripPlanTimeline)提供,這個工具檔案不自己碰
+// 鏈結細節。
+//
+// 2026-10 新增:底層 removeStep(TripPlanPage.tsx)原本是給 UI 之後接新
+// 入口預留的能力,本身是 fire-and-forget(無回傳值,也不檢查 id 是否
+// 存在——直接呼叫 removeNode,對不存在的 id 這個純函式本身會原樣返回、
+// 靜默不做事,見 planTimeline.ts removeNode 的完整說明)。但工具呼叫
+// 這一層需要能分辨「id 不存在」這種呼叫方式錯誤,回報清楚的錯誤訊息
+// 給 LLM(對齊 addNote 對 anchor_not_found 的既有處理慣例),不能讓
+// LLM 以為移除成功、但實際上什麼都沒發生。故這個方法的回傳型別複用
+// InsertAfterError(沿用既有的 anchor_not_found 錯誤碼——「要操作的
+// 節點 id 不存在」是同一種語意,不需要為 remove 另外發明一個錯誤碼),
+// 呼叫端(TripPlanPage.tsx)在真的呼叫 removeStep 之前,要先自行檢查
+// timelineRef.current.nodes.has(id),不存在就回傳 ok:false,存在才
+// 觸發 removeStep 並立即回傳 ok:true——不等待 REMOVE_FADE_MS 淡出動畫
+// 播完,因為 LLM 只需要知道「移除指令已受理」,不需要、也不該等待純
+// 視覺動畫結束才收到工具回應。
 export interface AttractionStepsCtx {
   getSteps: () => PlanStepLike[]
   insertAttractionAfter: (
@@ -127,6 +146,9 @@ export interface AttractionStepsCtx {
     text: string,
     category: string | undefined,
   ) => Promise<{ ok: true; id: string } | { ok: false; error: InsertAfterError }>
+  removeStep: (
+    id: string,
+  ) => Promise<{ ok: true } | { ok: false; error: InsertAfterError }>
 }
 
 // PlanStepLike — 這個檔案不 import AIPlanTimelinePage.tsx 的 PlanStep
@@ -481,6 +503,44 @@ export const addNote: ClientTool<AttractionStepsCtx> = defineTool(
   },
 )
 
+// RemoveAttractionArgs/parseRemoveAttractionArgs — remove_attraction 的
+// args 型別與 runtime 驗證,對齊 remove_attraction.yaml。id 必填——這個
+// id 跟 add_attraction 回傳、list_itinerary 查詢結果裡每個節點的 id 是
+// 同一種識別碼(時間軸節點 id),不是 placeId,理由同 AddNoteArgs.anchorId
+// 的既有說明(命名不同是因為語意不同:這裡代表「要整個移除的目標節點」,
+// 不是「接在誰後面/附加在誰身上」),但指向的都是同一份節點 id 空間。
+interface RemoveAttractionArgs {
+  id: string
+}
+function parseRemoveAttractionArgs(raw: unknown): RemoveAttractionArgs {
+  const r = (raw ?? {}) as Record<string, unknown>
+  return { id: typeof r.id === 'string' ? r.id : '' }
+}
+
+// removeAttraction — 新增工具:讓 LLM 能把時間軸上某一站整個移除(對齊
+// 使用者需求「刪除已經排入時間軸的景點」)。id 缺漏時直接 throw(同其餘
+// 工具對必填參數缺漏的既有處理慣例)。ctx.removeStep 回傳 ok:false 時
+// (anchor_not_found,id 不是時間軸上既有節點的 id)同樣直接 throw,把
+// 人類可讀錯誤訊息原樣帶出去——不讓 LLM 誤以為移除已經生效。
+//
+// 立即回傳(不等待 REMOVE_FADE_MS 淡出動畫播完)——見
+// AttractionStepsCtx.removeStep 的完整說明,LLM 只需要知道移除指令已經
+// 受理,不需要、也不該等待純視覺動畫結束。
+export const removeAttraction: ClientTool<AttractionStepsCtx> = defineTool(
+  'remove_attraction',
+  parseRemoveAttractionArgs,
+  async (args, ctx) => {
+    if (!args.id) {
+      throw new Error('缺少 id,請提供要移除的景點節點 id(add_attraction 回傳的 id,或 list_itinerary 查詢結果裡的 id)。')
+    }
+    const result = await ctx.removeStep(args.id)
+    if (!result.ok) {
+      throw new Error(result.error.message)
+    }
+    return { id: args.id, removed: true }
+  },
+)
+
 // listItinerary — 新增工具:讓 LLM 能查詢目前時間軸上已經排入的完整
 // 節點清單(依現有順序,含每個 stop 的 id/time/name/note)。
 //
@@ -531,16 +591,18 @@ export const listItinerary: ClientTool<AttractionStepsCtx> = defineTool(
 // 工具,對齊 tools/index.ts 的 defaultClientTools 既有慣例。
 // search_attraction 需要 cfg(ClientConfig)才能建立,
 // add_attraction/add_note/list_itinerary(已不再/從不直接打 API)不
-// 需要——這裡仍維持工廠函式的形狀,是為了讓兩個呼叫端
-// (trip-plan/TripPlanPage.tsx 正式功能、plan-ai/AIPlanTimelinePage.tsx
-// 試作原型)統一用同一種方式取得完整工具清單,不需要知道各工具是否需要
-// cfg 這種實作細節。
+// 需要——這裡仍維持工廠函式的形狀,是為了讓呼叫端統一用同一種方式取得
+// 完整工具清單,不需要知道各工具是否需要 cfg 這種實作細節。
+//
+// 唯一呼叫端是 trip-plan/TripPlanPage.tsx(正式功能)——home/plan-ai-sim/
+// AIPlanTimelinePage.tsx(展示原型,使用者明確要求不要修改那份檔案,見
+// TripPlanPage.tsx 檔頭的完整說明)完全沒有引用這個函式,不是第二個
+// 呼叫端,不要被下面「2026-09」這則歷史註解誤導。
 //
 // 2026-09:**cfg 必須帶有效的登入 token**——這批工具呼叫的後端端點已從
 // 免登入的 /public/geo/* 搬到需登入的 /internal/geo/plan-ai/*(見
 // api.ts 的 fetchPlanAi* 系列與後端 geo_plan_ai.go 的完整說明),傳
-// token: null 的訪客 cfg 會讓每次工具呼叫都拿到 401。兩個呼叫端都必須
-// 傳登入態的 cfg,不再有任何免登入路徑。
+// token: null 的訪客 cfg 會讓每次工具呼叫都拿到 401。
 export function createAttractionToolsList(cfg: ClientConfig): ClientTool<AttractionStepsCtx>[] {
-  return [createSearchAttraction(cfg), addAttraction, addNote, listItinerary]
+  return [createSearchAttraction(cfg), addAttraction, addNote, removeAttraction, listItinerary]
 }

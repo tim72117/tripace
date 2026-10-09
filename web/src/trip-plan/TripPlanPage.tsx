@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown } from 'lucide-react'
 import { AgentBridge } from '@onagent/bridge'
-import { ApiError, fetchGeoPlacePhotoAssets, fetchPlanAiPlaceDetailsAny, fetchPlanAiTransitEstimate, type ClientConfig } from '../api'
+import { ApiError, fetchGeoPlacePhotoAssets, fetchPlanAiPlaceDetailsAny, fetchPlanAiTransitEstimate, postPlanAiChat, postPlanAiChatReply, type ClientConfig } from '../api'
 import { Lightbox } from '../geo-planning/PhotoCarousel'
 import { hasAnyPhoto, PHOTO_RETRY_DELAY_MS, PHOTO_RETRY_MAX_ATTEMPTS } from '../photoRetry'
 import { toAgentBridgeTools } from '../sdk-proposals/toAgentBridgeTools'
@@ -436,17 +436,31 @@ function useTripPlanTimeline(cfg: ClientConfig) {
 
   // removeStep — 移除一個節點,先標記 removing 觸發 CSS 淡出動畫,真正
   // 從鏈結摘除延遲到動畫播完後才做(理由同原型 REMOVE_FADE_MS 的完整
-  // 說明)。正式功能目前沒有任何 UI 入口會呼叫這個函式(原型的兩顆測試
-  // 按鈕已經整個拿掉),先保留這個能力給 onagent 之後若要加上「移除某一
-  // 站」的工具時使用——時間軸資料層本來就支援這個操作,不需要等加新
-  // 工具時才回頭補。
-  const removeStep = useCallback((removedId: string) => {
+  // 說明)。正式功能目前沒有任何 UI 入口會直接呼叫這個函式(原型的兩顆
+  // 測試按鈕已經整個拿掉),給 onagent 的 remove_attraction 工具使用
+  // (見 ctx.removeStep 的完整說明)。
+  //
+  // 回傳值:true 代表這次呼叫真的有觸發移除(節點存在且尚未在移除中),
+  // false 代表節點不存在或已經 removing:true——呼叫端(ctx.removeStep)
+  // 據此判斷要不要回報成功給 LLM,不再自己用 getSteps().some() 另外猜測
+  // 一次(那樣的外部檢查看不到 removing:true 這個中間狀態,見
+  // removeNode/RemoveNodeResult 的完整說明)。這裡呼叫 removeNode 純粹是
+  // 為了借用它的「是否存在/是否已在移除中」判斷,實際摘除鏈結的動作仍在
+  // 下方 setTimeout 裡才真正發生——這裡只先標記 removing,不把 removeNode
+  // 回傳的 timeline 拿來用。
+  const removeStep = useCallback((removedId: string): boolean => {
+    const check = removeNode(timelineRef.current, removedId)
+    if (!check.ok) return false
     setTimeline((prev) => updateNode(prev, removedId, { removing: true }))
     setTimeout(() => {
       const nextId = timelineRef.current.nodes.get(removedId)?.nextId
-      setTimeline((prev) => removeNode(prev, removedId))
+      setTimeline((prev) => {
+        const result = removeNode(prev, removedId)
+        return result.ok ? result.timeline : prev
+      })
       if (nextId != null) refreshTransitForStop(nextId, cfg, setTimeline, () => timelineRef.current)
     }, REMOVE_FADE_MS)
+    return true
   }, [cfg, setTimeline, timelineRef])
 
   // useMemo——toRenderList 每次呼叫都回傳新陣列(見 planTimeline.ts 的
@@ -526,6 +540,7 @@ function usePlanAiChatBridge(
     data: PlanNodeData,
   ) => ReturnType<typeof insertAfter>,
   addNote: (anchorId: string, text: string, category: string | undefined) => ReturnType<typeof insertAfter>,
+  removeStep: (removedId: string) => boolean,
 ) {
   const apiKey = import.meta.env.VITE_PLAN_AI_ONAGENT_APP_KEY as string | undefined
   const [status, setStatus] = useState<PlanAiChatStatus>('connecting')
@@ -533,15 +548,52 @@ function usePlanAiChatBridge(
   // onAssistantMessage 或 onError 為止轉回 false,接給呼吸點/骨架卡那組
   // 思考動畫用(理由同原型的完整說明)。
   const [isThinking, setIsThinking] = useState(false)
+  // isThinkingRef——sendPrompt(useCallback,依賴陣列只有 [cfg])需要讀到
+  // isThinking 的「當下最新值」來擋併發送出,但不能把 isThinking 放進
+  // 依賴陣列(那會讓每次 isThinking 變動都重建 sendPrompt 這個函式參照,
+  // 牽連呼叫端的 effect/記憶化),改用 ref 代替。
+  //
+  // 每個設定 isThinking state 的地方(sendPrompt/onAssistantMessage/
+  // onError)都「同步」一併寫入 isThinkingRef.current,不依賴下面這個
+  // useEffect 去鏡射——state 更新到 effect 真正執行之間有 React 排程/
+  // commit 的真實時間差,若只靠 effect 更新 ref,這個時間差就是併發保護
+  // 可以被繞過的窗口(兩次幾乎同時的 sendPrompt 呼叫都可能在 ref 還沒
+  // 追上前讀到舊值、雙雙通過守門)。這個 effect 只是補一道保險(例如萬一
+  // 之後有新增的狀態轉換路徑漏寫同步賦值),不是這個 ref 的主要更新
+  // 來源。
+  const isThinkingRef = useRef(false)
+  useEffect(() => {
+    isThinkingRef.current = isThinking
+  }, [isThinking])
   const bridgeRef = useRef<AgentBridge | null>(null)
   const getStepsRef = useRef(getSteps)
   const insertAttractionRef = useRef(insertAttraction)
   const addNoteRef = useRef(addNote)
+  const removeStepRef = useRef(removeStep)
   useEffect(() => {
     getStepsRef.current = getSteps
     insertAttractionRef.current = insertAttraction
     addNoteRef.current = addNote
+    removeStepRef.current = removeStep
   })
+
+  // conversationIDRef——這個對話在整個 TripPlanPage 掛載期間延用同一個
+  // conversationID:第一次呼叫 postPlanAiChat 時不帶 conversationID,後端
+  // 生成一個新的並透過回應帶回,這裡記下來,之後每次送訊息都帶著同一個,
+  // 不會每次都被當成開新對話。用 ref 而非 state——這個值不需要觸發重渲染,
+  // 純粹給 sendPrompt 讀寫。
+  const conversationIDRef = useRef<string | undefined>(undefined)
+
+  // pendingChatRef——追蹤「已經呼叫過 postPlanAiChat、轉發給 onagent、但
+  // 還沒收到 onagent 回覆」的訊息 messageID,用一個 FIFO 佇列而非單一值
+  // (理論上現在併發已經被 sendPrompt/isThinkingRef 擋住,任何時刻這個
+  // 佇列最多只會有一筆,見 sendPrompt 的完整說明——仍保留陣列型態而非
+  // 單一值,是為了在未來萬一又放寬併發限制時,不需要重新設計這個佇列的
+  // 資料結構)。只存 messageID,不重複存 conversationID——同一個 bridge
+  // 實例終身只對應同一個 conversationID(見 conversationIDRef 的完整
+  // 說明),每筆佇列項目各自存一份沒有額外資訊,直接共用
+  // conversationIDRef.current 即可。
+  const pendingChatRef = useRef<number[]>([])
 
   useEffect(() => {
     // urlMissing——見 PLAN_AI_ONAGENT_WS_URL 的完整說明:URL 缺失時不再
@@ -563,6 +615,24 @@ function usePlanAiChatBridge(
         const result = addNoteRef.current(anchorId, text, category)
         return result.ok ? { ok: true, id: result.insertedId } : { ok: false, error: result.error }
       },
+      // removeStep——見 AttractionStepsCtx.removeStep 的完整說明:底層
+      // removeStep(useTripPlanTimeline)現在回傳 boolean(見該函式的完整
+      // 說明),內部用 removeNode 的結構化結果同時判斷「id 不存在」與
+      // 「id 已經在移除中(removing:true,淡出動畫播放期間)」兩種情況,
+      // 這裡不再自己用 getStepsRef().some() 另外猜測一次——舊寫法只檢查
+      // 「是否還是時間軸上的既有節點」,看不到 removing:true 這個中間
+      // 狀態,導致動畫播放期間對同一 id 重複呼叫 remove_attraction 都會
+      // 誤判成功(見 removeNode/RemoveNodeResult 的完整說明)。
+      removeStep: async (id) => {
+        const removed = removeStepRef.current(id)
+        if (!removed) {
+          return {
+            ok: false,
+            error: { code: 'anchor_not_found', message: `找不到 id 為 "${id}" 的節點,無法移除(可能不存在,或正在移除中)。` },
+          }
+        }
+        return { ok: true }
+      },
     }
     const bridge = new AgentBridge({
       url: PLAN_AI_ONAGENT_WS_URL,
@@ -573,14 +643,38 @@ function usePlanAiChatBridge(
       // planTimeline.ts PlanNodeType 的完整說明),不是附屬在某個景點卡上
       // 的引言,對齊原型的既有設計(理由見該處的完整說明)。
       onAssistantMessage: (text) => {
+        isThinkingRef.current = false
         setIsThinking(false)
         const steps = getStepsRef.current()
         const lastId = steps.length > 0 ? steps[steps.length - 1].id : null
         const newId = `agent-msg-${crypto.randomUUID()}`
         insertAttractionRef.current(lastId, newId, { type: 'message', text })
+
+        // postPlanAiChatReply——fire-and-forget:把 onagent 這則回覆存檔。
+        // 不 await、不讓失敗影響上面已經完成的訊息顯示邏輯,只在失敗時
+        // console.warn(見 postPlanAiChatReply 的完整說明)。
+        // 從 pendingChatRef 佇列取出最早一筆 messageID(與 sendPrompt 成功
+        // 時 push 的順序一致,理由見 pendingChatRef 的完整說明)——
+        // conversationID 直接用 conversationIDRef.current(整個 bridge
+        // 實例終身只有一個,不需要跟著佇列項目各自記錄,見 pendingChatRef
+        // 的完整說明)。若佇列是空的(理論上不該發生,但保險起見判斷一下,
+        // 例如 postPlanAiChat 失敗後仍收到 onagent 回覆這種邊界狀況),
+        // 就不呼叫這支端點。
+        const messageID = pendingChatRef.current.shift()
+        if (messageID !== undefined && conversationIDRef.current) {
+          postPlanAiChatReply(cfg, conversationIDRef.current, messageID, text).catch((err) => {
+            console.warn('postPlanAiChatReply 失敗(不影響對話顯示):', err)
+          })
+        }
       },
       onError: (err) => {
+        isThinkingRef.current = false
         setIsThinking(false)
+        // 跟 onAssistantMessage 一樣要 shift 掉佇列最早一筆——bridge
+        // 回呼錯誤代表這次 prompt() 不會再有 assistant_message 進來,
+        // 若不清掉,這筆 pending 會永遠卡在佇列最前面,後續每一則真正
+        // 收到的回覆都會錯位配對到它(見 pendingChatRef 的完整說明)。
+        pendingChatRef.current.shift()
         const steps = getStepsRef.current()
         const lastId = steps.length > 0 ? steps[steps.length - 1].id : null
         const newId = `agent-msg-${crypto.randomUUID()}`
@@ -600,11 +694,61 @@ function usePlanAiChatBridge(
     }
   }, [apiKey, cfg])
 
-  const sendPrompt = useCallback((text: string) => {
-    if (!text.trim() || !bridgeRef.current) return
+  // sendPrompt——送出訊息前先呼叫自家後端 postPlanAiChat(見該函式與
+  // server/internal/api/plan_ai_chat.go 的完整說明):後端驗證、
+  // rate-limit、存記錄,回傳正規化後的 content。只有這一步成功,才把
+  // 「後端回傳的 content」(不是使用者原始輸入)轉發給 onagent——這一步
+  // 失敗(429 rate_limited/400 content_too_long 等)時不轉發,改用跟
+  // onError 相同的機制(插入一則 message 節點)顯示錯誤,讓使用者看到
+  // 合理的提示,不是靜默吞掉或讓對話卡住。
+  //
+  // 並發保護:isThinking 期間直接拒絕新的 sendPrompt(呼叫端的 input/
+  // button 也會在 isThinking 時 disabled,這裡是第二層防線,理由同——
+  // pendingChatRef 的 FIFO 配對完全依賴「任何時刻最多一筆 pending」這個
+  // 前提才成立。AgentBridge 的 onAssistantMessage 回呼協議本身不帶
+  // request id(無法得知某個回覆對應哪一次 prompt() 呼叫),一旦允許並發
+  // 送出,只要兩則訊息的 onagent 處理時間不同導致回覆抵達順序跟送出順序
+  // 不一致,shift() 就會取出錯誤配對,把 A 訊息的回覆存成 B 訊息的回覆。
+  // 與其在協議層面補 request id(改動範圍涉及 onagent 平台本身,不是這次
+  // 範圍能做的),更務實的做法是從源頭擋住並發,讓佇列最多只有一筆。
+  // 回傳值(boolean):true 代表已成功送到後端並轉發給 onagent,呼叫端
+  // (下方 onSubmit)據此決定要不要清空輸入框——失敗時回 false,呼叫端
+  // 保留使用者原本打的文字,不會因為後端拒絕(429/400)或網路錯誤而憑空
+  // 消失、需要重打一次。
+  const sendPrompt = useCallback(async (text: string) => {
+    const trimmed = text.trim()
+    if (!trimmed || !bridgeRef.current || isThinkingRef.current) return false
+    // isThinkingRef.current 在這裡同步設成 true,不只靠下面的 setIsThinking
+    // 觸發 useEffect 鏡射——state 更新到 effect 真正執行之間有 React
+    // 排程/commit 的真實時間差,若只靠 effect 更新 ref,這個時間差就是
+    // 併發保護可以被繞過的窗口(兩次幾乎同時的呼叫都會在 ref 還沒追上前
+    // 讀到舊值、雙雙通過上面的判斷),等於併發保護本身又重新引入了它原本
+    // 要避免的時序依賴。同步寫入才是真正對時序不敏感的第二層防線。
+    isThinkingRef.current = true
     setIsThinking(true)
-    bridgeRef.current.prompt(text)
-  }, [])
+    try {
+      const result = await postPlanAiChat(cfg, trimmed, conversationIDRef.current)
+      conversationIDRef.current = result.conversationID
+      pendingChatRef.current.push(result.messageID)
+      bridgeRef.current?.prompt(result.content)
+      return true
+    } catch (err) {
+      isThinkingRef.current = false
+      setIsThinking(false)
+      const steps = getStepsRef.current()
+      const lastId = steps.length > 0 ? steps[steps.length - 1].id : null
+      const newId = `agent-msg-${crypto.randomUUID()}`
+      // 錯誤文案:ApiError.message 本身就是後端已經給好的繁體中文訊息
+      // (例如 rate_limited→「訊息送得太快了,請稍後再試」、
+      // content_too_long→「訊息內容過長,最多 500 字」,見
+      // handlePlanAiChat 的完整說明),直接顯示即可,不需要自己依 code
+      // 重新組文案;非 ApiError(連線層級失敗,例如網路斷線)才用通用的
+      // 連線錯誤措辭,對齊既有 onError 的措辭風格。
+      const errText = err instanceof ApiError ? err.message : '(訊息送出失敗,請檢查網路連線後再試一次)'
+      insertAttractionRef.current(lastId, newId, { type: 'message', text: errText })
+      return false
+    }
+  }, [cfg])
 
   return {
     apiKeyMissing: !apiKey,
@@ -744,7 +888,7 @@ export function TripPlanPage(props: {
   const lastScrollTopRef = useRef(0)
   const [showJumpPill, setShowJumpPill] = useState(false)
 
-  const { steps, timelineRef, insertAttractionAfter, setNoteForStop, resyncFromStorage } = useTripPlanTimeline(cfg)
+  const { steps, timelineRef, insertAttractionAfter, setNoteForStop, removeStep, resyncFromStorage } = useTripPlanTimeline(cfg)
 
   // getStepsForBridge——usePlanAiChatBridge 的 getSteps 需要讀到「當下
   // 最新」的節點清單,不能綁死成某一次 render 時的閉包。
@@ -780,7 +924,7 @@ export function TripPlanPage(props: {
     [setNoteForStop],
   )
 
-  const planAiChat = usePlanAiChatBridge(cfg, getStepsForBridge, insertAttractionAfter, addNoteToTimeline)
+  const planAiChat = usePlanAiChatBridge(cfg, getStepsForBridge, insertAttractionAfter, addNoteToTimeline, removeStep)
   const [chatInput, setChatInput] = useState('')
 
   // mountedIdsRef——追蹤「已經播過進場動畫的節點 id」,理由同原型的完整
@@ -992,7 +1136,12 @@ export function TripPlanPage(props: {
   // 的模擬腳本生成中狀態)在這裡不存在——正式功能只有 onagent 對話一種
   // 「AI 正在做事」的訊號來源,即 planAiChat.isThinking。
   const emptyStateMessage = '想去哪裡玩？跟我說說你的想法，我可以幫你查景點、安排行程。'
-  const placeholder = planAiChat.isThinking ? '可以隨時打斷，例如：下午不要排太滿' : '想調整哪裡？'
+  // isThinking 期間鎖定輸入框(見下方 input/button 的 disabled 與
+  // sendPrompt 的完整說明:pendingChatRef 的 FIFO 配對依賴「任何時刻最多
+  // 一筆 pending」才成立,AgentBridge 的回呼協議本身不帶 requestId,
+  // 允許並發送出會讓佇列配對錯位),文案對齊這個限制,不再鼓勵「隨時
+  // 打斷」。
+  const placeholder = planAiChat.isThinking ? 'AI 思考中，請稍候…' : '想調整哪裡？'
 
   // app-theme-root——這裡刻意不掛載:/app 路由本身(App.tsx 的
   // <Route path="/app/:panelMode?">)外層已經透過 KeyboardShrinkGuard
@@ -1057,9 +1206,17 @@ export function TripPlanPage(props: {
             className={styles.inputRow}
             onSubmit={(e) => {
               e.preventDefault()
-              if (!chatInput.trim()) return
-              planAiChat.sendPrompt(chatInput)
-              setChatInput('')
+              // isThinking 時直接不處理(即使按鈕已 disabled,form 仍可能
+              // 被 Enter 鍵觸發 submit,這裡是跟按鈕 disabled 對齊的第二
+              // 道防線,理由同 sendPrompt 內部的併發保護說明)。
+              if (!chatInput.trim() || planAiChat.isThinking) return
+              // 等 sendPrompt 的結果決定要不要清空輸入框(見該函式回傳值
+              // 的完整說明)——不再送出後立刻同步清空,避免後端拒絕
+              // (429/400)或網路錯誤時使用者剛打的文字憑空消失。
+              const text = chatInput
+              void planAiChat.sendPrompt(text).then((sent) => {
+                if (sent) setChatInput('')
+              })
             }}
           >
             <div className={styles.inputWrap}>
@@ -1082,8 +1239,16 @@ export function TripPlanPage(props: {
             {/* 正式功能不再有模擬腳本的生成中/終止狀態(原型的「終止」按鈕
                 整個拿掉,見檔案開頭的完整說明)——送出鈕固定送出對話框
                 文字,onagent 對話本身沒有使用者主動中斷推論的需求(工具
-                呼叫通常很快完成,不像模擬腳本會長時間持續推播)。 */}
-            <button type="submit" aria-label="送出" className={styles.sendBtn} disabled={planAiChat.apiKeyMissing || planAiChat.urlMissing}>
+                呼叫通常很快完成,不像模擬腳本會長時間持續推播)。
+                isThinking 時額外 disabled(見 sendPrompt 的完整說明):
+                UI 層級擋住並發送出,是 sendPrompt 內部併發保護之外的
+                第一層防線,避免使用者在等待回覆時又點一次送出。 */}
+            <button
+              type="submit"
+              aria-label="送出"
+              className={styles.sendBtn}
+              disabled={planAiChat.apiKeyMissing || planAiChat.urlMissing || planAiChat.isThinking}
+            >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ios-bg)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="19" x2="12" y2="5" />
                 <polyline points="5 12 12 5 19 12" />

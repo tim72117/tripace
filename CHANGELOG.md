@@ -2,6 +2,25 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.29.0 — 2026-10-09
+
+### 破壞性變更
+
+- **`web/src/plan-core/planTimeline.ts` 的 `removeNode` 改回傳結構化結果**：原本回傳值是 `PlanTimeline`（找不到對應 id 時原樣返回該參數，呼叫端無從分辨成功或失敗），改成 `RemoveNodeResult`（`{ ok: true; timeline } | { ok: false; error: { code: 'anchor_not_found' | 'already_removing'; message } }`），對齊既有 `insertAfter`/`InsertAfterResult` 的設計。新增 `already_removing` 錯誤碼：節點已標記 `removing: true`（淡出動畫播放中、尚未真正從鏈結摘除）時呼叫，也視為失敗而非靜默成功——修正原本「動畫播放期間對同一 id 重複呼叫會被誤判成功」的問題。呼叫端（`TripPlanPage.tsx`、`home/plan-ai-sim/AIPlanTimelinePage.tsx`）均已同步改用新回傳型別。
+- **`web/src/plan-core/attractionTools.ts` 的 `AttractionStepsCtx` 介面新增必填方法 `removeStep`**：任何既有實作這個介面的呼叫端，若未補上這個方法會編譯失敗。
+
+### 新增
+
+- **AI 規劃對話的「刪除已排入景點」能力**：新增 onagent 工具 `remove_attraction`（`server/tools/plan-ai/remove_attraction.yaml`），讓對話能把時間軸上某個既有節點整個移除——底層 `removeStep`（`useTripPlanTimeline`）原本就為此預留，這次補上工具層串接。
+- **AI 規劃對話改為「先送自家後端再轉發 onagent」模式**：新增 `POST /internal/plan-ai/chat`／`POST /internal/plan-ai/chat/reply` 兩支後端端點（`server/internal/api/plan_ai_chat.go`），對應新增的 `plan_ai_chat_messages` 資料表（`server/internal/model/model.go`、`server/internal/store/plan_ai_chat.go`）：使用者送出的訊息先經後端驗證、per-user rate-limit（`planAiChatRateLimiter`，預設 60 秒 10 次，估計值）、存檔，才轉發給 onagent；onagent 的回覆也會回存。記錄只關聯 `userID`，刻意不綁 `tripID`（延續同一次頁面掛載期間的 `conversationID`，重新整理會開新對話）。前端 `web/src/api.ts` 新增對應的 `postPlanAiChat`/`postPlanAiChatReply`。
+- **Admin 後台新增「AI 規劃對話」分頁**：顯示所有使用者送出的 AI 規劃對話訊息（依時間排序），讀取來源就是上述新增的 `plan_ai_chat_messages` 表，新增 `GET /admin/api/plan-ai-chat-logs` 端點（`server/internal/adminconsole/plan_ai_chat_logs.go`）。
+
+### 修正
+
+- **AI 規劃對話 `pendingChatRef` 的 FIFO 配對可能錯位**：`AgentBridge` 的 `assistant_message` 回呼協議本身不帶 `requestId`，若使用者在等待回覆時又送出下一則訊息，回覆到達順序與送出順序不一致時，原本的 FIFO 佇列會把錯誤的回覆內容存成另一則訊息的回覆。改成在等待回覆（`isThinking`）期間禁止送出下一則訊息（UI 與邏輯層各自擋一次），並修正 `onError` 時未清空佇列導致後續永久錯位的問題。
+- **AI 規劃對話輸入框在送出結果回來前就被清空**：若後端拒絕（429 rate-limited／400 內容過長）或網路錯誤，原本輸入框已經被同步清空、使用者打的文字永久遺失；改成等送出結果回來才決定是否清空。
+- **`apigateway.RateLimiter` 的 `windows` map 新增惰性過期清除機制**：原本以使用者 ID 為 key 的限流元件（`geoQueryUserRateLimiter`、`planAiChatRateLimiter`）不會回收不再活躍使用者的視窗狀態，隨歷史上出現過的使用者數量單調增長；新增 `maybeSweepLocked`，每隔 1000 次 `Allow` 呼叫清除一次閒置視窗，門檻取 `max(1 小時, 該 key 的視窗長度)`，避免視窗長度本身設定得較長的 key 被誤判成閒置而提早清空重算。
+
 ## v0.28.0 — 2026-10-09
 
 ### 破壞性變更

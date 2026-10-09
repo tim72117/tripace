@@ -956,6 +956,47 @@ export function fetchPlanAiTransitEstimate(
   return request<GeoPlanAiTransitEstimateResult>(cfg, 'GET', `/internal/geo/plan-ai/transit-estimate?${params.toString()}`)
 }
 
+// PlanAiChatResult:POST /internal/plan-ai/chat 的回應形狀——對齊後端
+// planAiChatResponse(見 server/internal/api/plan_ai_chat.go)。content 是
+// 後端正規化(trim)後的內容,呼叫端(usePlanAiChatBridge)後續把這個值
+// 轉發給 onagent,不是使用者原始輸入。
+export interface PlanAiChatResult {
+  conversationID: string
+  messageID: number
+  content: string
+}
+
+// postPlanAiChat:POST /internal/plan-ai/chat(需登入,見後端
+// handlePlanAiChat 的完整說明)——使用者在 TripPlanPage 對話框送出訊息前
+// 的第一站:後端驗證身分、per-user rate-limit、驗證並正規化內容、存一筆
+// role="user" 記錄。conversationID 選填,沒有就視為開新對話,由後端生成
+// 並透過回應帶回;呼叫端(usePlanAiChatBridge)須記住回應裡的
+// conversationID,之後每次送訊息都帶著同一個,維持同一個對話。
+//
+// 失敗(429 rate_limited/400 content_too_long 等)透過既有的 ApiError 往上
+// 拋,呼叫端據 err.message(後端已經給好繁體中文文案,見該 handler 的完整
+// 說明)顯示錯誤,不應該呼叫 bridge.prompt(...) 轉發給 onagent。
+export function postPlanAiChat(cfg: ClientConfig, content: string, conversationID?: string) {
+  return request<PlanAiChatResult>(cfg, 'POST', '/internal/plan-ai/chat', {
+    conversationID: conversationID ?? '',
+    content,
+  })
+}
+
+// postPlanAiChatReply:POST /internal/plan-ai/chat/reply(需登入,見後端
+// handlePlanAiChatReply 的完整說明)——onagent 回覆後,把回覆存檔成
+// role="assistant" 記錄。messageID 必須是 postPlanAiChat 回傳過、屬於同一
+// 個 conversationID 的既有記錄,否則後端回 404。呼叫端(usePlanAiChatBridge
+// 的 onAssistantMessage)把這支呼叫當成 fire-and-forget:不等待、失敗不
+// 影響使用者看到的對話內容,只在失敗時 console.warn。
+export function postPlanAiChatReply(cfg: ClientConfig, conversationID: string, messageID: number, content: string) {
+  return request<{ ok: boolean }>(cfg, 'POST', '/internal/plan-ai/chat/reply', {
+    conversationID,
+    messageID,
+    content,
+  })
+}
+
 // fetchGeoPlacePhoto:GET /internal/geo/place-details 的 photoOnly=1 模式
 // (見後端 handleGeoPlaceDetails 的說明)——只查/回傳照片,不含 name/
 // address/rating/summary,供 GeoHotelSidebar.tsx 搜尋結果清單的延遲載入

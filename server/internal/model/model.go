@@ -190,6 +190,26 @@ type Entry struct {
 	CreatedAt time.Time      `json:"createdAt"`
 }
 
+// PlanAiChatMessage 是 AI 規劃對話(/app 的 TripPlanPage.tsx)的單一訊息
+// 記錄——跟 Message(team 協作行程的訊息,多人可見、綁定 TripID)不同,
+// 這是單一使用者跟 AI 之間的私人問答記錄,只關聯 UserID,刻意不綁
+// TripID:AI 規劃本身不依附特定旅程(見 TripPlanPage.tsx 裡
+// usePlanAiChatBridge 附近「不接 tripID」的既有註解)。
+//
+// ConversationID 由前端在開新對話時產生、往後沿用同一個值(見
+// handlePlanAiChat 的完整說明:沒帶 conversationID 視為開新對話),不是
+// 這張表的主鍵——同一個 ConversationID 底下有多筆 Role 交替的訊息。
+// ID 才是這張表的主鍵,對齊 apiRequestLogRow/geoAPICallLogRow 等既有
+// log 風格資料表的自增主鍵慣例(見 store.entity.go 的完整說明)。
+type PlanAiChatMessage struct {
+	ID             int64     `json:"id"`
+	UserID         string    `json:"userID"`
+	ConversationID string    `json:"conversationID"`
+	Role           string    `json:"role"` // "user" | "assistant"
+	Content        string    `json:"content"`
+	CreatedAt      time.Time `json:"createdAt"`
+}
+
 // PhotoAsset 對應 store.photoAssetRow(見該型別的完整說明)——全站共通
 // 的圖檔落地紀錄,統一用 PlaceID 當識別鍵,Usage 區分同一張原始照片的
 // 不同規格(如 "full"/"thumb_200")。目前唯一的呼叫端是

@@ -175,11 +175,21 @@ type Server struct {
 	// key 是使用者 ID、數量隨使用者成長——混在同一個實例裡容易在未來
 	// 調整 planAiRateLimiter 邏輯時不小心牽動到這裡,分開更清楚。
 	//
-	// 已知限制:apigateway.RateLimiter 的 windows map 沒有過期清除機制
-	// (見該型別的完整說明,原本設計假設 key 數量少且固定)——key 改成
-	// per-user 後,使用者數量成長會讓這個 map 緩慢增長,目前規模下可
-	// 接受,日後若使用者數明顯增加需要重新評估是否要加上清掃機制。
+	// apigateway.RateLimiter 內部已有惰性過期清除機制(見該型別
+	// maybeSweepLocked 的完整說明),key 改成 per-user 後,不活躍使用者
+	// 的視窗狀態會在閒置超過 idleWindowTTL 後被自動回收,不會隨歷史上
+	// 出現過的使用者總數無上限增長。
 	geoQueryUserRateLimiter *apigateway.RateLimiter
+
+	// planAiChatRateLimiter 保護 POST /internal/plan-ai/chat(見
+	// plan_ai_chat.go 的完整說明),用 key = s.userFor(r).ID 做 per-user
+	// 節流——跟 geoQueryUserRateLimiter 共用同一個元件(apigateway.
+	// RateLimiter)但刻意用獨立實例,不混用同一份 key 空間:AI 規劃對話
+	// 跟地圖查詢是不同的資源,不該互相排擠彼此的配額(例如使用者在地圖上
+	// 連續操作用掉 geoQueryUserRateLimiter 的額度,不該連帶影響這個使用者
+	// 還能不能送出下一則 AI 對話訊息,反之亦然)。限制值見
+	// planAiChatRateLimitWindow/planAiChatRateLimitMaxCalls 的完整說明。
+	planAiChatRateLimiter *apigateway.RateLimiter
 }
 
 // geoQueryUserThrottleWindow/geoQueryUserThrottleMaxCalls 是
@@ -191,6 +201,15 @@ type Server struct {
 // 200ms 一次等效於 60 秒視窗內最多 300 次(60s / 0.2s = 300)。
 const geoQueryUserThrottleWindow = 60 * time.Second
 const geoQueryUserThrottleMaxCalls = 300
+
+// planAiChatRateLimitWindow/planAiChatRateLimitMaxCalls 是
+// planAiChatRateLimiter 預設的節流規則——待確認的估計值:先抓「每分鐘
+// 最多 10 則訊息」,比照使用者一般打字/思考的速度上限,留了不少餘裕給
+// 正常使用情境(例如連續追問好幾個問題),同時擋住整個對話被腳本/重試
+// 迴圈瞬間灌爆的情況。這組數字沒有實際使用量數據支撐,只是合理推測,
+// 日後應依 plan_ai_chat_messages 表的實際寫入頻率重新評估調整。
+const planAiChatRateLimitWindow = 60 * time.Second
+const planAiChatRateLimitMaxCalls = 10
 
 func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID string) *Server {
 	uploader, err := photostorage.New(context.Background(), os.Getenv("GCS_PHOTO_BUCKET"))
@@ -233,6 +252,12 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 	// 不會錯誤地讓使用者每次都拿到全新配額。
 	geoQueryUserRateLimiter := apigateway.NewRateLimiter()
 
+	// planAiChatRateLimiter:跟 geoQueryUserRateLimiter 一樣,key 是動態的
+	// 使用者 ID 集合,不在這裡預先呼叫 SetLimitForKey——改由
+	// handlePlanAiChat 每次請求時懶惰呼叫(理由同
+	// geoQueryUserRateLimiter 的完整說明)。
+	planAiChatRateLimiter := apigateway.NewRateLimiter()
+
 	return &Server{
 		store:                     st,
 		signer:                    signer,
@@ -247,6 +272,7 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 		newMaintenancePhotoClient: geo.New,
 		planAiRateLimiter:         planAiRateLimiter,
 		geoQueryUserRateLimiter:   geoQueryUserRateLimiter,
+		planAiChatRateLimiter:     planAiChatRateLimiter,
 	}
 }
 
@@ -547,6 +573,8 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("GET /internal/geo/plan-ai/place-details-any", s.handlePublicGeoPlaceDetailsAny)
 	internalMux.HandleFunc("GET /internal/geo/plan-ai/attraction/{id}", s.handlePublicGeoAttractionByID)
 	internalMux.HandleFunc("GET /internal/geo/plan-ai/transit-estimate", s.handlePublicGeoTransitEstimate)
+	internalMux.HandleFunc("POST /internal/plan-ai/chat", s.handlePlanAiChat)
+	internalMux.HandleFunc("POST /internal/plan-ai/chat/reply", s.handlePlanAiChatReply)
 
 	// maintenance — 只給 tripace-cli 這類維運工具用的端點,不是產品前端
 	// 會呼叫的路徑(見 maintenance.go 開頭對「核心」與「維運」端點分開的

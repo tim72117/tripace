@@ -327,7 +327,9 @@ describe('removeNode', () => {
     if (!r3.ok) throw new Error('setup failed')
     timeline = r3.timeline
 
-    timeline = removeNode(timeline, 'n2')
+    const removed = removeNode(timeline, 'n2')
+    if (!removed.ok) throw new Error('remove failed')
+    timeline = removed.timeline
     expect(toRenderList(timeline).map((n) => n.name)).toEqual(['赤崁樓', '大天后宮'])
     expect(timeline.nodes.get('n1')).toMatchObject({ nextId: 'n3' })
     expect(timeline.nodes.get('n3')).toMatchObject({ prevId: 'n1' })
@@ -343,16 +345,35 @@ describe('removeNode', () => {
     if (!r2.ok) throw new Error('setup failed')
     timeline = r2.timeline
 
-    timeline = removeNode(timeline, 'n1')
+    const removed = removeNode(timeline, 'n1')
+    if (!removed.ok) throw new Error('remove failed')
+    timeline = removed.timeline
     expect(timeline.headId).toBe('n2')
     expect(toRenderList(timeline).map((n) => n.name)).toEqual(['祀典武廟'])
   })
 
-  it('移除不存在的 id 時原樣返回', () => {
+  it('移除不存在的 id 時回傳 anchor_not_found 結構化錯誤', () => {
     const t1 = insertAfter(createEmptyTimeline(), null, stop('赤崁樓'), 'n1')
     if (!t1.ok) throw new Error('setup failed')
     const result = removeNode(t1.timeline, 'not-exist')
-    expect(toRenderList(result).map((n) => n.name)).toEqual(['赤崁樓'])
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.code).toBe('anchor_not_found')
+  })
+
+  it('移除已標記 removing:true 的節點時回傳 already_removing 結構化錯誤', () => {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, stop('赤崁樓'), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+    timeline = updateNode(timeline, 'n1', { removing: true })
+
+    const result = removeNode(timeline, 'n1')
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.code).toBe('already_removing')
+    // 原本的節點仍在(真正摘除延遲到動畫播完,這裡只驗證沒有被誤摘除)。
+    expect(timeline.nodes.has('n1')).toBe(true)
   })
 
   it('移除中間站點後,新的下一站 transitFromPrev 被清空(舊資料不再對應正確的兩站)', () => {
@@ -376,7 +397,9 @@ describe('removeNode', () => {
       }),
     }
 
-    timeline = removeNode(timeline, 'n2')
+    const removed = removeNode(timeline, 'n2')
+    if (!removed.ok) throw new Error('remove failed')
+    timeline = removed.timeline
     // n3 現在的前一站變成 n1(赤崁樓),原本記錄的「跟祀典武廟之間」的
     // 交通資訊不再對應正確的兩站,必須被清空。
     expect(timeline.nodes.get('n3')).toMatchObject({ prevId: 'n1', transitFromPrev: undefined })

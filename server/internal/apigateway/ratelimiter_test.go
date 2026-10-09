@@ -188,6 +188,80 @@ func TestRateLimiter_ConcurrentCallsNeverExceedLimit(t *testing.T) {
 // key 的獨立性——多個 goroutine 同時打兩個不同的 key，各自的放行次數
 // 應該分別精準等於各自的上限，不會互相干擾（例如誤用同一把鎖卻共用同一
 // 個計數器之類的實作錯誤，會讓兩個 key 的放行總數混在一起算）。
+// TestRateLimiter_SweepRemovesIdleKeys 驗證 maybeSweepLocked 會把閒置
+// 超過 idleWindowTTL 的 key 從 windows map 移除——閒置期間過後,這個 key
+// 的視窗狀態消失,下一次 Allow 視為全新視窗重新計數(用滿額度後,中間
+// 完全不呼叫、純粹讓時間前進超過 idleWindowTTL,之後第 1 次呼叫應被
+// 放行,證明視窗狀態確實被清掉而非只是重置計數——跟
+// TestRateLimiter_WindowResetsAfterExpiry 的差異是:這裡在閒置期間完全
+// 沒有呼叫 Allow,純粹靠達到 sweepEveryNCalls 次數門檻時的被動清除,不是
+// 視窗長度 limit.window 本身的自然過期判斷)。
+func TestRateLimiter_SweepRemovesIdleKeys(t *testing.T) {
+	rl := NewRateLimiter()
+	rl.SetLimitForKey("k", time.Minute, 1)
+	current := time.Unix(0, 0)
+	rl.now = func() time.Time { return current }
+
+	if !rl.Allow("k") {
+		t.Fatal("第 1 次呼叫應被放行")
+	}
+
+	// 時間前進超過 idleWindowTTL(1 小時),讓 "k" 的視窗狀態變成
+	// 「閒置」,但不呼叫 Allow(不能靠視窗自然過期判斷,見上方說明)。
+	current = current.Add(idleWindowTTL + time.Minute)
+
+	// 用其他呼叫把 sweepCounter 推到下一次 sweepEveryNCalls 的倍數,
+	// 觸發一次掃描——這些呼叫用不同的、從未設定過限流規則的 key,
+	// 不會影響 "k" 本身的視窗狀態。
+	for i := 0; i < sweepEveryNCalls; i++ {
+		rl.Allow("unrelated-key")
+	}
+
+	rl.mu.Lock()
+	_, stillPresent := rl.windows["k"]
+	rl.mu.Unlock()
+	if stillPresent {
+		t.Fatal("閒置超過 idleWindowTTL 後,\"k\" 的視窗狀態應該已被清除,卻仍存在")
+	}
+}
+
+// TestRateLimiter_SweepDoesNotRemoveActiveKeyWithLongWindow 驗證當某個
+// key 的視窗長度(limit.window)本身大於等於 idleWindowTTL 時,即使距離
+// windowStart 已經超過 idleWindowTTL,只要還沒超過這個 key 自己的視窗
+// 長度,maybeSweepLocked 不會把它當成閒置清除——這是子代理 code review
+// 發現的問題(CONFIRMED-2):若只用固定的 idleWindowTTL 當門檻、不參照
+// limit.window,會把一個視窗長度本身就很長、仍在計數中的活躍 key 誤判成
+// 閒置並提早清除,等於讓它的限流在視窗走完前被重置歸零,變相繞過原本
+// 設定的上限。
+func TestRateLimiter_SweepDoesNotRemoveActiveKeyWithLongWindow(t *testing.T) {
+	rl := NewRateLimiter()
+	const longWindow = idleWindowTTL + time.Hour
+	rl.SetLimitForKey("k", longWindow, 1)
+	current := time.Unix(0, 0)
+	rl.now = func() time.Time { return current }
+
+	if !rl.Allow("k") {
+		t.Fatal("第 1 次呼叫應被放行")
+	}
+	if rl.Allow("k") {
+		t.Fatal("第 2 次呼叫應被拒絕(已用滿額度)")
+	}
+
+	// 時間前進超過 idleWindowTTL,但還沒超過 "k" 自己的視窗長度
+	// (longWindow)——這個視窗仍在計數中,不該被當成閒置清除。
+	current = current.Add(idleWindowTTL + time.Minute)
+	for i := 0; i < sweepEveryNCalls; i++ {
+		rl.Allow("unrelated-key")
+	}
+
+	// 若視窗狀態被誤刪,下一次呼叫會被當成全新視窗重新計數、重新放行;
+	// 若清除邏輯正確參照了 limit.window,視窗仍在原本的額度耗盡狀態,
+	// 這次呼叫應該仍被拒絕。
+	if rl.Allow("k") {
+		t.Fatal("視窗長度本身超過 idleWindowTTL 時,仍在原視窗內的 key 不應被誤判成閒置、提早清除並重新放行")
+	}
+}
+
 func TestRateLimiter_ConcurrentCallsAcrossDifferentKeys(t *testing.T) {
 	rl := NewRateLimiter()
 	rl.SetLimitForKey("places.get", time.Minute, 5)
