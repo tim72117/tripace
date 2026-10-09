@@ -2,6 +2,13 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.28.0 — 2026-10-09
+
+### 破壞性變更
+
+- **桌面版 side panel（旅程列表／規劃／時間軸／路徑）展開與收合改回純本地 UI 狀態，不再綁定網址**：原本 `panelMode` 由 `/app/:panelMode` 網址驅動，讓重新整理、瀏覽器上一頁下一頁、分享連結都能還原到對應面板；改成 `DesktopLayout.tsx` 自己的 `useState` 後，這個能力不再存在——重新整理、分享 `/app/timeline` 這類連結、瀏覽器上一頁下一頁，現在都只會落在收合狀態。`/app/:panelMode?` 路由整段移除，`isPanelMode`/`PANEL_MODES`（驗證 URL 路徑參數合法性的輔助函式）隨之移除。為了不讓先前分享／加入書籤的舊深連結（`/app/trips`、`/app/geo-outline` 等）命中 404，補回一條只接受單層路徑片段的相容路由 `/app/:legacyPanelMode`，渲染跟 `/app` 完全相同的內容、忽略參數本身。
+- **AI 規劃改為獨立路由 `/trip-plan`，移除 `/app/plan-ai` 面板**：`PanelMode` 型別移除 `'plan-ai'` 成員，`PANEL_REGISTRY`／`DrawerMode` 同步移除對應項目，桌面版 Rail 的「規劃」按鈕與 `.betaTag` 入口整個拿掉。新增 `trip-plan/TripPlanRoute.tsx` 作為 `/trip-plan` 的頁面外殼（自己管深色模式 token 與捲動容器，不依賴 `/app` 底下的版面機制；訪客內嵌登入卡片，登入後顯示 `TripPlanPage` 本體），後端 `static.go` 路由白名單同步新增 `/trip-plan`。舊網址 `/app/plan-ai` 轉址到 `/trip-plan`，保留外部連結與書籤相容性。地圖右上角對話小匡（含站點小圓點與雙向連動）維持不變，與 `/trip-plan` 並存；手機版底部「規劃」sheet 不受影響。
+
 ## v0.27.2 — 2026-10-09
 
 ### 修正

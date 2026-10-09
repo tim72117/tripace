@@ -117,7 +117,7 @@ describe('selectedStopId 受控模式(地圖對話小匡)', () => {
   })
 })
 
-describe('selectedStopId 非受控模式(/app/plan-ai 全頁)', () => {
+describe('selectedStopId 非受控模式(/trip-plan 全頁)', () => {
   it('不傳 selectedStopId 時用內部 state,點卡片正常切換', () => {
     const { getByTestId } = render(<SelectableTimeline />)
     expect(getByTestId('selected').textContent).toBe('none')

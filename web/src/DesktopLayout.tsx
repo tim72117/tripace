@@ -942,7 +942,9 @@ export function DesktopContent(props: ContentProps) {
               plan-core/planTimelineStorage.ts 的完整說明:使用者確認
               「不要跟 trip 有關聯」「共用同一份,兩處看到一樣的內容」),
               切換旅程不該讓它重新掛載、清掉正在進行的規劃。這也表示
-              /app/plan-ai 與這張小匡看到的是同一條時間軸。 */}
+              /trip-plan(2026-10 已從 /app/plan-ai 搬成獨立路由,見
+              trip-plan/TripPlanRoute.tsx)與這張小匡看到的是同一條
+              時間軸。 */}
           <FloatingPanel
             side="right"
             width={CHAT_POPOVER_WIDTH}
@@ -950,8 +952,9 @@ export function DesktopContent(props: ContentProps) {
             className={[
               styles.chatPopover,
               geoHotelSidebarVisible ? styles.chatPopoverShifted : '',
-              // main-replace slot(目前只有 plan-ai/demo-route-editor)
-              // 取代整個主顯示區,底下沒有地圖可以讓
+              // main-replace slot(目前只有 demo-route-editor/demo-chat,
+              // 見 DesktopShared.tsx 的 PANEL_REGISTRY)取代整個主顯示區,
+              // 底下沒有地圖可以讓
               // 這張對話小匡疊在上面——理由同 geo-outline 模式才有意義
               // 的 geoHotelSidebarVisible。用 fable 對 trip-plan/TripPlanPage.tsx
               // 做視覺審閱時發現:這個 popover 原本只靠 chatPopoverOpen
@@ -1008,7 +1011,7 @@ export function DesktopContent(props: ContentProps) {
                 compact
                 // visible:這張小匡是常駐掛載、用 display:none 隱藏的,
                 // 元件不會因為關閉而卸載。傳入可見狀態讓它在重新顯示時
-                // 把 /app/plan-ai 全頁版這期間寫入的規劃內容讀回來——
+                // 把 /trip-plan 全頁版這期間寫入的規劃內容讀回來——
                 // 兩份實例共用同一份 localStorage,見 TripPlanPage 對這個
                 // prop 與 revRef 的完整說明。
                 visible={chatPopoverVisible}
