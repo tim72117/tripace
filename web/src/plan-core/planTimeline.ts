@@ -277,6 +277,18 @@ function timeToMinutes(time: string): number {
   return h * 60 + m
 }
 
+// minutesToTime — timeToMinutes 的反向轉換,把當日分鐘數轉回 "HH:MM"
+// 字串。對齊 PLAN_TIME_PATTERN 的既有格式(24 小時制、固定兩位數補零)。
+// export 給 PlanTimelineView.tsx 的拖拉互動用(見 getTimeDragBounds/
+// anchorDot 拖拉的完整說明):拖拉手勢算出的中間值是分鐘數,寫回節點的
+// time 欄位前要轉回字串。minutes 由呼叫端保證落在 0~1439(拖拉互動
+// clamp 過,不會超出一天範圍),這裡不另外做邊界檢查。
+export function minutesToTime(minutes: number): string {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
 // InsertAfterError — insertAfter 失敗時的結構化錯誤,呼叫端(attractionTools.ts
 // 的 add_attraction)用 code 判斷要組成什麼樣的訊息丟給 LLM,不需要
 // 自己 parse 一段人類可讀字串猜測失敗原因。
@@ -413,6 +425,49 @@ function buildAnchorNotFoundMessage(timeline: PlanTimeline, anchorId: string): s
   return parts.join('')
 }
 
+// TimeDragBounds — getTimeDragBounds 的回傳值,拖拉互動(見
+// PlanTimelineView.tsx anchorDot 的完整說明:使用者明確要求「時間軸的
+// 小圓點可以拖拉,上下拉動時調整時間」)用這組上下限把拖拉即時 clamp 在
+// 合法範圍內,不需要每次拖拉都呼叫一次驗證再處理失敗——跟 insertAfter
+// 的時間驗證共用同一份「錨點前一個/後一個有時間的 stop」判斷邏輯
+// (nearestStopNode),確保拖拉能到達的範圍跟其他時間驗證路徑(新增
+// 景點時的 time_out_of_range)語意一致,不會出現「拖拉允許的範圍」跟
+// 「其他地方驗證的範圍」兩套標準互相矛盾的情況。
+//
+// minMinutes/maxMinutes 是當日分鐘數(0~1439,見 timeToMinutes 的完整
+// 說明),null 代表那一端沒有限制(該方向走到鏈結底/頭都沒找到同一天
+// 的其他 stop)。呼叫端拖拉時應該把 minMinutes/maxMinutes 轉回
+// "HH:MM" 字串寫回節點,不要直接把分鐘數存進 PlanNodeData.time
+// (那個欄位的既有格式是字串,見 PLAN_TIME_PATTERN 的完整說明)。
+export interface TimeDragBounds {
+  minMinutes: number | null
+  maxMinutes: number | null
+}
+
+// getTimeDragBounds — 算出 stopId 這個節點拖拉調整時間時合法的範圍。
+// 下界:這個節點往前找到的最近一個同一天 stop 的時間;上界:往後找到
+// 的最近一個同一天 stop 的時間——跟 insertAfter 用 nearestStopNode 算
+// lowerNode/upperNode 是同一套邏輯,差別只在這裡是「對既有節點自己」
+// 算範圍(排除自己,從 prevId/nextId 開始找),insertAfter 是「對準備
+// 插入的新錨點位置」算範圍(從 anchorId 本身/anchorId 的 nextId 開始
+// 找)。
+//
+// 找不到這個 id(理論上不該發生,呼叫端只會對畫面上正在渲染的既有
+// 節點啟動拖拉)或這個節點不是 stop 時,回傳兩端都是 null(不限制)
+// ——這不是一個會被呈現給使用者的錯誤情況,單純是防禦性的保守預設值,
+// 不值得為了這種邊界情況設計結構化錯誤回傳。
+export function getTimeDragBounds(timeline: PlanTimeline, stopId: string): TimeDragBounds {
+  const node = timeline.nodes.get(stopId)
+  if (!node || node.type !== 'stop') return { minMinutes: null, maxMinutes: null }
+  const targetDay = normalizedDay(node.day)
+  const lowerNode = nearestStopNode(timeline, node.prevId, 'prevId', targetDay)
+  const upperNode = nearestStopNode(timeline, node.nextId, 'nextId', targetDay)
+  return {
+    minMinutes: lowerNode ? timeToMinutes(lowerNode.time!) : null,
+    maxMinutes: upperNode ? timeToMinutes(upperNode.time!) : null,
+  }
+}
+
 // insertAfter — 在 anchorId 指定的節點後面插入一個新節點,anchorId 為
 // null 時插在整條時間軸最前面(成為新的 head)。
 //
@@ -532,12 +587,30 @@ export type RemoveNodeResult =
 // AIPlanTimelinePage.tsx refreshTransitForStop 的完整說明)——這裡刻意
 // 不觸發查詢,理由同 insertAfter 本身也不觸發交通查詢,鏈結資料層只管
 // 資料結構正確,不碰網路 I/O。
-export function removeNode(timeline: PlanTimeline, id: string): RemoveNodeResult {
+//
+// opts.allowRemoving——選填,預設 false。true 時跳過「已標記 removing
+// 時回傳 already_removing」這項檢查,直接執行摘除。這是修正一個實際
+// 發生過的 regression:useTripPlanTimeline 的 removeStep(見該函式的
+// 完整說明)本身是兩段式設計——先用 removeNode 的唯讀檢查判斷「能不能
+// 開始移除」,再標記 removing:true 觸發淡出動畫,320ms 後的 setTimeout
+// 才呼叫 removeNode 做「真正的摘除」。這第二次呼叫看到的節點必然已經
+// 是 removing:true(上一步剛標記的),若不加這個旗標,already_removing
+// 檢查會誤判這次合法的「完成移除」呼叫為重複移除而拒絕,導致節點永遠
+// 卡在 removing:true、淡出動畫播完後不會真的從鏈結摘除(卡片空間繼續
+// 佔位,前後節點的軸線也接不起來,因為鏈結結構沒有真正更新)。外部呼叫
+// (ctx.removeStep 的唯讀檢查、onagent 工具呼叫)必須維持不帶這個旗標
+// (預設 false)的嚴格行為,否則會喪失「動畫播放期間擋下重複呼叫」這項
+// 原本要修的正確性保護(見本型別/RemoveNodeResult 檔頭的完整說明)。
+export function removeNode(
+  timeline: PlanTimeline,
+  id: string,
+  opts?: { allowRemoving?: boolean },
+): RemoveNodeResult {
   const node = timeline.nodes.get(id)
   if (!node) {
     return { ok: false, error: { code: 'anchor_not_found', message: `找不到 id 為 "${id}" 的節點,無法移除。` } }
   }
-  if (node.removing) {
+  if (node.removing && !opts?.allowRemoving) {
     return {
       ok: false,
       error: { code: 'already_removing', message: `id 為 "${id}" 的節點已經在移除中,不需要重複移除。` },

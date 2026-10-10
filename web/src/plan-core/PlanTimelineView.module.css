@@ -12,11 +12,19 @@
 
 /* scroll——流動的內容區塊本身(不是獨立捲動容器,捲動權在外層 .main,
    見 TripPlanPage.module.css 原本 .scroll 規則的完整說明,行為設計
-   不變,只是連同 JSX 一起搬到這個元件自己的 CSS module)。 */
+   不變,只是連同 JSX 一起搬到這個元件自己的 CSS module)。
+   container-type: inline-size(2026-10 使用者明確確認:手機斷點改用
+   容器查詢,見下方 responsive 區塊開頭的完整說明)——讓這層成為容器
+   查詢的尺寸容器,下面 @container (max-width: 767px) 的規則依這層的
+   實際寬度切換,不是依瀏覽器視窗寬度。既有呼叫端(TripPlanPage.tsx/
+   AIPlanTimelinePage.tsx 透過 scrollClassName 疊加 .compactScroll/
+   .timelineScroll 等)的寬度決定方式不變,這裡只是多宣告這個元素本身
+   是一個尺寸容器,不影響它原有的版面行為。 */
 .scroll {
   flex: 1 1 auto;
   position: relative;
   padding: 40px 0 24px;
+  container-type: inline-size;
 }
 
 /* .inner/.row:版面比例「左窄右寬」——136px 左欄(時間字/注記)、48px
@@ -116,6 +124,13 @@
   color: var(--ios-gray);
   font-variant-numeric: tabular-nums;
 }
+/* stopTimeDragging——拖拉 anchorDot 調整時間時(見 PlanTimelineView.tsx
+   DragState 的完整說明),即時預覽的時間數字改用強調色,給使用者明確的
+   回饋「這個數字現在正跟著手勢變動,不是靜態顯示」。 */
+.stopTimeDragging {
+  color: var(--ios-sand);
+  font-weight: 600;
+}
 
 .axisCol {
   position: relative;
@@ -149,12 +164,47 @@
   margin-top: 10px;
   z-index: 2;
 }
+/* anchorDotDraggable——只在呼叫端真的傳入 getStopTimeDragBounds/
+   onDragStopTime 時才加這個 class(見該處 onPointerDown 的完整說明),
+   /ai-plan 展示頁沒傳這兩個 prop 就不會有這個 class、維持原本完全
+   靜態的外觀。用加大透明熱區(::before 偽元素,視覺上圓點大小不變,
+   只是互動範圍變大)解決 12x12px 原始尺寸太小、不利拖拉操作的問題;
+   cursor:grab 給使用者「這裡可以拖」的視覺提示。 */
+.anchorDotDraggable {
+  position: relative;
+  cursor: grab;
+  touch-action: none;
+  /* pointer-events:auto——2026-10 新增:home/AiPlanPhoneDemo.module.css
+     的小展示框(.screen)整個是 pointer-events:none(使用者明確定調
+     「小展示不做互動」,但拖拉調整時間功能要維持),子孫元素預設會
+     繼承這個限制、不接收任何指標事件。明確覆寫成 auto,讓拖拉手把
+     本身(這個 class)仍能正常接收 pointerdown/pointermove,不受那層
+     父層限制影響——卡片本身與其他元素沒有這個覆寫,依然維持穿透、
+     不可點擊。 */
+  pointer-events: auto;
+}
+.anchorDotDraggable::before {
+  content: '';
+  position: absolute;
+  inset: -10px;
+}
+/* anchorDotDragging——transform(位移+放大)刻意不寫在這裡,改由
+   PlanTimelineView.tsx 的 inline style 套用(見 dragTranslateY 的完整
+   說明)——拖拉中的位移量是動態算出來的數字,CSS class 沒有地方放這個
+   變動值,寫在這裡反而會變成「inline style 一定會覆蓋、永遠不會真正
+   生效」的死碼。 */
+.anchorDotDragging {
+  cursor: grabbing;
+  border-color: var(--ios-blue);
+  transition: none;
+}
 
 .stopCardWrap {
   padding-left: 12px;
   padding-bottom: 20px;
 }
 .stopCard {
+  position: relative;
   display: flex;
   gap: 14px;
   align-items: flex-start;
@@ -223,6 +273,43 @@
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
+/* stopRemoveBtn——卡片右上角的刪除按鈕(見 PlanTimelineView.tsx
+   onRemoveStop prop 的完整說明)。預設淡化顯示(低存在感,避免跟
+   stopThumbPhotoCount/stopTags 這類資訊性角標搶視覺焦點),hover/focus
+   整張卡片時才轉為完全不透明、底色轉紅——對齊「刪除是危險操作,平時
+   不搶眼,操作意圖明確時才提醒」的既有設計慣例(同其餘 destructive
+   action 的做法)。 */
+.stopRemoveBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--ios-bg);
+  color: var(--ios-gray);
+  font-size: 11px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.stopCard:hover .stopRemoveBtn,
+.stopRemoveBtn:focus-visible {
+  opacity: 1;
+}
+.stopRemoveBtn:hover,
+.stopRemoveBtn:focus-visible {
+  background: #fde8e8;
+  color: #c0392b;
+  opacity: 1;
+}
+
 /* thumbSpinner:查詢中的圓形縮圖佔位。 */
 .thumbSpinner {
   width: 18px;
@@ -665,8 +752,21 @@
 /* ---------- responsive (phone) ---------- */
 
 /* 斷點用 767px(不是 640px)——這裡的手機版覆寫要涵蓋到 useIsDesktop
-   (hooks/useIsDesktop.ts)判定為手機版的整個寬度區間(< 768px)。 */
-@media (max-width: 767px) {
+   (hooks/useIsDesktop.ts)判定為手機版的整個寬度區間(< 768px)。
+   2026-10 從 @media (max-width: 767px) 改成 @container——使用者明確
+   要求功能介紹頁的手機展示框(AiPlanPhoneDemoScreen.tsx)要能正確顯示
+   手機版版面,但那個展示框是用 transform:scale() 縮小嵌入桌面寬螢幕
+   頁面的固定尺寸容器,不是瀏覽器真正縮窄視窗,@media 只看瀏覽器視窗
+   寬度,縮放後仍會判定成桌面寬度、套用桌面版三欄佈局,跟手機外框的
+   形狀衝突。改成 @container 依 .scroll(見上方 container-type 的完整
+   說明)這個元素自己的實際寬度判斷,不受外層頁面視窗寬度影響——
+   正式頁面(/app、/trip-plan 等)的 .scroll 寬度本來就等於視窗可用
+   寬度(scrollClassName 疊加的 .compactScroll/.timelineScroll 等只調整
+   overflow/padding,不改變寬度決定方式),在真正縮窄瀏覽器視窗時
+   .scroll 的容器寬度本身也會跟著變窄,行為應該與原本 @media 的判斷
+   結果一致,這是本次修正刻意沿用同一個 767px 數字、不引入新斷點值的
+   原因。 */
+@container (max-width: 767px) {
   .row { grid-template-columns: 28px 1fr; }
   .stopTime { display: none; }
   .sectionBand { grid-column: 1 / span 2; }

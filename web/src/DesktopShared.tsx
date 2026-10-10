@@ -44,6 +44,16 @@ export type PanelMode =
 export const TIMELINE_ENABLED = import.meta.env.VITE_FEATURE_TIMELINE === 'true'
 export const PACE_ENABLED = import.meta.env.VITE_FEATURE_PACE === 'true'
 
+// TIME_DRAG_ENABLED——時間軸小圓點拖拉調整時間的開關(plan-core/
+// PlanTimelineView.tsx anchorDot 的拖拉手勢,見該檔案 DragState 的完整
+// 說明)。同 TIMELINE_ENABLED/PACE_ENABLED 一套編譯時 feature flag
+// 機制,預設關閉,只在明確設為字串 "true" 時才啟用——使用者明確要求
+// 「前端使用 feature flag 控制功能開啟,控制時間拉動功能」,即使這個
+// 功能本身已經實作完成、不是試做階段的功能,仍沿用既有慣例的「預設
+// 關閉」方向(而非「預設開啟、需要時關閉」),保持所有 feature flag
+// 開關方向一致,不需要呼叫端記住「這個特別相反」。
+export const TIME_DRAG_ENABLED = import.meta.env.VITE_FEATURE_TIME_DRAG === 'true'
+
 // DEBUG_PANEL_ENABLED:原本綁在網址參數 ?demo(見 main.tsx 的 isDemo)
 // 底下的試做用導覽項目(API/WS 狀態除錯面板),改成跟 TIMELINE_ENABLED/
 // PACE_ENABLED 同一種編譯時 feature flag 機制——各自獨立開關而非沿用單一

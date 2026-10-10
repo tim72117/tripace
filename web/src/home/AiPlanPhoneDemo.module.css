@@ -72,10 +72,19 @@
 .screen {
   width: 100%;
   height: 100%;
-  border: none;
   display: block;
   background: #FFFFFF;
   border-radius: 49px;
   overflow: hidden;
+  /* 2026-10 使用者明確定調「小展示不做互動,大展示除了 AI 對話外都要
+     對齊功能」——曾經一度移除這裡的 pointer-events:none 讓地點卡片可以
+     被點擊/hover(呈現選取/hover 視覺),但這個方向已經撤銷,恢復這個
+     展示畫面(AiPlanPhoneDemoScreen)本身不可互動,點擊事件穿透到外層
+     的 <Link>(見 AiPlanPhoneDemo.tsx 的完整說明)。
+     拖拉調整時間功能(TIME_DRAG_ENABLED)不受這次撤銷影響——那是使用者
+     明確要求保留的既有功能,見 PlanTimelineView.module.css 的
+     .anchorDotDraggable 針對這個情境明確覆寫 pointer-events:auto,讓
+     拖拉手把本身仍能接收指標事件,不受這裡父層 pointer-events:none
+     影響。 */
   pointer-events: none;
 }

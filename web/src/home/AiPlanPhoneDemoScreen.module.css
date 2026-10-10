@@ -1,0 +1,157 @@
+/* AiPlanPhoneDemoScreen.module.css — 功能介紹頁手機展示框內容的樣式
+   (方案 B,見 AiPlanPhoneDemoScreen.tsx 檔頭的完整說明)。
+
+   整份樣式刻意不含任何 @media 斷點——這個元件固定只給
+   AiPlanPhoneDemo.tsx 那個寫死 390×844 CSS 尺寸的手機外框使用,版面
+   永遠是「手機版」,不需要依視窗寬度切換規則。*/
+
+.screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ios-bg, #1C1815);
+  color: var(--color-dark, #2B2420);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
+}
+
+.mapBackdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* 這張圖本身不可互動——整個展示框的點擊事件由外層
+     AiPlanPhoneDemo.tsx 的 <Link> 接收(該元件的 .screen 本身也是
+     pointer-events:none,見其完整說明),這裡加上保險不影響結果,但
+     表達意圖更清楚:這張圖不該被期待能響應任何互動。 */
+  pointer-events: none;
+}
+
+/* scrim——壓在地圖與時間軸之間的半透明遮罩,理由同原本
+   StaticMapBackdrop.module.css 的 .scrim:地圖降了彩度仍然不夠安靜,
+   直接讓卡片文字壓在上面不好讀,這層把對比拉回來。
+   用 --ios-bg(跟 .screen 背景色同一個全域 token,base-ui.css 淺色/
+   深色模式都有定義,見該檔案的完整說明)——先前誤用了一個只在
+   AIPlanTimelinePage.module.css 的 .page 自己定義、未對外提供的
+   --paper token(非全域 token),fallback 值固定是深色,導致明確要求
+   「跟著系統偏好切換明暗」後,淺色模式下這層遮罩仍然是深色、對比度
+   完全錯誤的 bug。 */
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--ios-bg, #1C1815);
+  opacity: 0.55;
+}
+
+.timelineWrap {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+/* timelineScroll——疊加在 PlanTimelineView 自己的 .scroll 上,見該
+   prop 的完整說明:這個展示框是固定尺寸容器(不是撐滿瀏覽器視窗的
+   .page),需要自己接手捲動,不能依賴外層 <main> 提供捲動容器。 */
+.timelineScroll {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding-bottom: 72px;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.timelineScroll::-webkit-scrollbar {
+  display: none;
+}
+
+.statusPill {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ios-gray, #8A8072);
+  background: var(--ios-card, #26211D);
+  border: 1px solid var(--ios-sep, #3A332C);
+  border-radius: 999px;
+  padding: 5px 12px;
+}
+
+.statusDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex: none;
+}
+.statusDotGenerating {
+  background: var(--ios-sand, #D9A97D);
+  animation: breathe 1.4s ease-in-out infinite;
+}
+.statusDotDone {
+  background: var(--ios-green, #7FA06F);
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.45; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.25); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .statusDotGenerating {
+    animation: none;
+  }
+}
+
+/* demoStopCard 系列——renderStopCard 插槽的放大版地點卡(見
+   AiPlanPhoneDemoScreen.tsx renderDemoStopCard 的完整說明)。版型對齊
+   PlanTimelineView.module.css 的 .stopCard(縮圖+文字兩欄橫排),縮圖
+   88px/標題 20px 比正式頁預設的 64px/17px 明顯放大,其餘(背景色/
+   邊框/圓角/陰影)沿用同一套 --ios-* token,視覺語言一致,不是另起
+   一套配色。 */
+.demoStopCard {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  background: var(--ios-card, #26211D);
+  border: 1px solid var(--ios-sep, #3A332C);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 6px 16px -8px rgba(61, 53, 48, 0.14);
+}
+.demoStopThumb {
+  width: 88px;
+  height: 88px;
+  border-radius: 999px;
+  flex: none;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34px;
+  background: var(--ios-bg, #1C1815);
+}
+.demoStopThumbImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.demoStopBody {
+  min-width: 0;
+  flex: 1;
+}
+.demoStopMeta {
+  font-size: 13px;
+  color: var(--ios-gray, #8A8072);
+  letter-spacing: 0.02em;
+  margin-bottom: 4px;
+}
+.demoStopName {
+  font-size: 20px;
+  font-weight: 600;
+  overflow-wrap: break-word;
+}

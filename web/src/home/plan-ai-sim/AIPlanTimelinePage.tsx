@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { TIME_DRAG_ENABLED } from '../../DesktopShared'
 import { useThemeToggle } from '../../hooks/useThemeToggle'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../SiteNavButtons'
 import { useSyncedState } from '../../hooks/useSyncedState'
@@ -15,6 +16,7 @@ import { Lightbox } from '../../geo-planning/PhotoCarousel'
 // 帶進來的重複檔案。
 import {
   createEmptyTimeline,
+  getTimeDragBounds,
   insertAfter,
   removeNode,
   staleOtherAgentMessages,
@@ -24,8 +26,28 @@ import {
   type PlanNodeData,
   type PlanTimeline,
 } from '../../plan-core/planTimeline'
-import { StaticMapBackdrop, type PlotStop } from './StaticMapBackdrop'
+import { NativeMapBase, type MapHandle } from '../../geo-planning/NativeMapBase'
+import { usePlanStopMarkers, type PlanStopMarker } from '../../geo-planning/usePlanStopMarkers'
 import styles from './AIPlanTimelinePage.module.css'
+
+// LANDING_MAP_ID——主題介紹頁(home/InteractiveExploreMap.tsx)同名常數的
+// 複製,不是 import 自那個檔案:兩邊都只是各自讀同一個環境變數
+// VITE_GOOGLE_MAPS_LANDING_MAP_ID 的值,該檔案也沒有匯出這個常數,
+// 讓這個純展示頁依賴另一個不相關頁面的模組內部細節不划算,直接各自
+// 宣告一行比跨檔案耦合更乾淨。2026-10 使用者明確要求「/ai-plan 則用
+// 主題介紹頁的地圖」,從 StaticMapBackdrop(Static Maps API 靜態圖)
+// 換成這裡的 NativeMapBase(Maps JavaScript API 真實互動地圖),樣式
+// 套用同一個 Cloud Style Map ID,視覺與主題介紹頁一致、且允許使用者
+// 縮放/拖曳(使用者明確要求「允許互動,跟主題介紹頁一致的體驗」)。
+const LANDING_MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_LANDING_MAP_ID as string | undefined
+
+// CENTER/ZOOM——地圖初始中心與縮放層級,數值沿用原本 StaticMapBackdrop.tsx
+// 同名常數(對準「赤崁・府城」這個主題點所在的老城區,範圍涵蓋展示腳本
+// planSimScript.ts 全部 14 個站點,詳細取捨理由見該檔案保留下來的完整
+// 說明——StaticMapBackdrop.tsx 本身已不再是這個頁面的地圖來源,但常數
+// 選值的理由仍然適用,故原樣沿用數字而非重新調整構圖)。
+const CENTER = { lat: 22.9975, lng: 120.1900 }
+const ZOOM = 14
 
 // AIPlanTimelinePage — 「AI 安排行程」時間軸展示原型的正式頁面版本。
 // 原型先在 Artifact(Design Component 畫布)做過一輪,經 Fable 設計方案
@@ -424,7 +446,13 @@ function refreshTransitForStop(
 // 播放劇本要等這個動作發生後才開始,不是一進頁面兩件事同時跑,不然會
 // 看起來像是行程在使用者話都還沒打完就自己生成了。false 時 effect
 // 提早 return,不建立 PlanSimSource,steps 維持空陣列。
-function usePlanSimSocket(start: boolean) {
+// export——供 AiPlanPhoneDemoScreen.tsx(2026-10 新增,見該檔案檔頭的
+// 完整說明:功能介紹頁的手機展示框改成直接嵌入一個寫死手機版面的獨立
+// 元件,不再透過 iframe 嵌入這個頁面本身)共用同一套劇本模擬邏輯,不
+// 需要複製貼上一份——這個 hook 內部只呼叫同檔案的私有輔助函式
+// (planActionToInsert/resolveAttractionForStep/refreshTransitForStop
+// 等),這些函式不需要跟著一起 export,JS 模組內部呼叫不受影響。
+export function usePlanSimSocket(start: boolean) {
   // timeline 改用 useSyncedState(見該 hook 開頭的完整背景說明)取代單純
   // 的 useState——insertAttractionAfter(下方)呼叫來源是 AgentBridge 的
   // 原生 WebSocket onmessage,完全在 React 事件系統之外,需要「commit
@@ -440,6 +468,21 @@ function usePlanSimSocket(start: boolean) {
       result: undefined,
     }))
   }, [commitTimeline])
+
+  // dragStopTime——時間軸小圓點拖拉調整時間(使用者明確要求「時間軸的
+  // 小圓點可以拖拉,上下拉動時調整時間,半小時為刻度」,原本只在正式頁
+  // trip-plan/TripPlanPage.tsx 實作,這份展示原型檔案刻意沒有跟進——
+  // 使用者後續明確要求「解除之前不改的限制」,把這個互動能力補到展示頁
+  // 也能體驗)。寫法對齊 TripPlanPage.tsx 同名函式的設計,差異只在這份
+  // 檔案沒有 cfg/後端呼叫,refreshTransitForStop 的簽名少一個參數(見
+  // 該函式在這個檔案的完整說明)。
+  const dragStopTime = useCallback((stopId: string, newTime: string): boolean => {
+    const node = timelineRef.current.nodes.get(stopId)
+    if (!node || node.type !== 'stop') return false
+    setTimeline((prev) => updateNode(prev, stopId, { time: newTime }))
+    refreshTransitForStop(stopId, setTimeline, () => timelineRef.current)
+    return true
+  }, [setTimeline, timelineRef])
   // isGenerating 初始值為 false——要等 start 變 true(打字動畫播完、
   // 視同「使用者送出」)才開始安排,見上方 usePlanSimSocket 的完整說明。
   const [isGenerating, setIsGenerating] = useState(false)
@@ -608,9 +651,15 @@ function usePlanSimSocket(start: boolean) {
           // removeNode 現在回傳結構化結果(見該函式/RemoveNodeResult 的
           // 完整說明,這份原型檔案本身不受那次異動影響,純粹配合新的
           // 回傳型別簽名)——找不到節點或已被移除時原樣保留 prev,不是
-          // 行為變更。
+          // 行為變更。allowRemoving:true 是必要的:這裡呼叫的節點必然
+          // 是上面那行剛標記的 removing:true,是這個兩段式流程「完成
+          // 移除」的第二步,不帶這個旗標會被新版 removeNode 的
+          // already_removing 檢查誤判成重複移除而拒絕,導致節點永遠
+          // 卡在 removing:true 佔位不消失(見 removeNode
+          // opts.allowRemoving 的完整說明,這是曾經實際發生過的
+          // regression)。
           setTimeline((prev) => {
-            const result = removeNode(prev, removedId)
+            const result = removeNode(prev, removedId, { allowRemoving: true })
             return result.ok ? result.timeline : prev
           })
           if (nextId != null) refreshTransitForStop(nextId, setTimeline, () => timelineRef.current)
@@ -665,9 +714,11 @@ function usePlanSimSocket(start: boolean) {
   return {
     steps,
     timeline,
+    timelineRef,
     isGenerating,
     insertAttractionAfter,
     setNoteForStop,
+    dragStopTime,
   }
 }
 
@@ -731,20 +782,74 @@ export function AIPlanTimelinePage() {
   // usePlanAiChatBridge(接真實 onagent 對話)與對應的 getStepsForBridge/
   // addNoteToTimeline 橋接函式,使用者明確要求這個頁面的輸入框改為
   // 純展示、不接受真的輸入,整條 onagent 對話路徑已一併移除。
-  const { steps, isGenerating } = usePlanSimSocket(promptTyped)
+  const { steps, isGenerating, timelineRef, dragStopTime } = usePlanSimSocket(promptTyped)
 
-  // mapStops——要畫在底圖上的站點。只取 type==='stop' 且已經有座標的
+  // mapStops——要畫在地圖上的站點。只取 type==='stop' 且已經有座標的
   // 節點:section(AI 的敘述文字)本來就不是地點。腳本的站點是逐步送
   // 進來的,還沒送到的自然不在清單裡——地圖上的圓點因此會隨著時間軸
-  // 一站一站長出來(見 StaticMapBackdrop 的 .marker 進場動畫)。
-  const mapStops = useMemo<PlotStop[]>(
+  // 一站一站長出來(見 usePlanStopMarkers 既有的進場動畫)。帶 name
+  // (跟原本 PlotStop 只有 id/lat/lng 不同)——usePlanStopMarkers 拿它
+  // 當 marker 的原生 title(滑鼠停在圓點上的 tooltip),見該 hook
+  // PlanStopMarker 的完整說明。
+  const mapStops = useMemo<PlanStopMarker[]>(
     () =>
       steps
         .filter((s) => s.type === 'stop' && s.lat != null && s.lng != null)
-        .map((s) => ({ id: s.id, lat: s.lat!, lng: s.lng! })),
+        .map((s) => ({ id: s.id, lat: s.lat!, lng: s.lng!, name: s.name })),
     [steps],
   )
   const stopCount = steps.filter((s) => s.type === 'stop').length
+
+  // mapHandle——NativeMapBase 建圖完成後回報上來的控制代碼,見該元件
+  // onHandleChange 的完整說明。usePlanStopMarkers 需要 mapRef/mapReady
+  // 才能把站點 marker 掛到這個地圖實例上。
+  const [mapHandle, setMapHandle] = useState<MapHandle>({ mapRef: { current: null }, mapReady: false, mapVersion: 0 })
+  const handleMapHandleChange = useCallback((handle: MapHandle) => {
+    setMapHandle(handle)
+  }, [])
+
+  // selectedStopId——目前被點選、卡片套用 .stopCardSelected 高亮樣式的
+  // 站點。2026-10 移除右上角小地圖功能前,這個狀態同時也驅動小地圖
+  // panTo+放大(見 panToStop),拿掉地圖後這裡純粹只剩「點了哪張卡片」
+  // 的視覺回饋,不影響其餘行為。2026-10 地圖換成真實互動地圖
+  // (NativeMapBase)後,這個 state 重新驅動地圖圓點強調(見下方
+  // usePlanStopMarkers 呼叫處),回到原本「選取會連動地圖」的語意,
+  // 只是不做 pan/放大(panToStop 維持不變,只設定這個 state)。
+  const [selectedStopId, setSelectedStopId] = useState<string | null>(null)
+
+  // hoverStopId——滑鼠正懸停在哪一張時間軸卡片上。2026-10 新增,對齊
+  // 正式功能頁 DesktopLayout.tsx 的 hoverPlanStopId 既有模式(見該檔案
+  // 同名 state 的完整說明)——這個展示頁先前只接了「點選」
+  // (selectedStopId),卡片 hover 完全沒有對應的 state 可以更新,
+  // usePlanStopMarkers 本身早就支援 hoverStopId 這個參數(見該 hook 的
+  // 完整說明),只是這個頁面沒有建立對應的 state 餵給它,圓點因此完全
+  // 是靜態的。跟 selectedStopId 分開存、不合併成單一「強調中的 id」,
+  // 理由同 DesktopLayout.tsx hoverPlanStopId 的完整說明:兩者生命週期
+  // 不同(hover 移出就消失,選取會留著),合併會讓「滑過另一張卡再移開」
+  // 把先前點選的高亮一併清掉。
+  //
+  // 這裡只對齊「點選」跟「hover」這兩項(使用者明確要求「先不用全部
+  // 對齊,先對齊點選跟 hover」),不跟進 DesktopLayout.tsx 的
+  // hoverTransitPair(交通膠囊 hover 連線跨兩站的對齊)——那是另一個
+  // 對齊項目,故下方 usePlanStopMarkers 呼叫處不傳 hoverTransitPair,
+  // 讓它退回只看 hoverStopId 的既有預設行為(見該 hook 對這個參數的
+  // 完整說明)。
+  const [hoverStopId, setHoverStopId] = useState<string | null>(null)
+
+  usePlanStopMarkers({
+    mapRef: mapHandle.mapRef,
+    mapReady: mapHandle.mapReady,
+    stops: mapStops,
+    // selectedStopId/hoverStopId——讓地圖圓點跟著時間軸卡片的點選/hover
+    // 一起強調,對齊正式功能頁 DesktopLayout.tsx 呼叫 usePlanStopMarkers
+    // 時的既有模式(完整傳入這兩個參數)。
+    selectedStopId: selectedStopId,
+    hoverStopId: hoverStopId,
+    // onStopClick——點擊地圖上的圓點時反向高亮對應的時間軸卡片,這是
+    // 雙向連動的另一半,對齊 DesktopLayout.tsx 的
+    // onPlanStopClick={setSelectedPlanStopId} 同樣的模式。
+    onStopClick: (id) => setSelectedStopId(id),
+  })
 
   // composerCollapsed——排程結束後,漂浮輸入膠囊(.composer)裡原本的
   // 箭頭送出鈕(.sendBtn)切換成「立即使用」行動呼籲按鈕(.composerCta)。
@@ -785,12 +890,6 @@ export function AIPlanTimelinePage() {
   // 這個頁面固定進頁就自動播放一次固定劇本到底,不需要測試按鈕手動
   // 觸發移除/插入額外訊息(原始版本的 removeWumiao/insertAnpingMazu 與
   // 對應 UI 已一併移除,見 usePlanSimSocket 的完整說明)。
-
-  // selectedStopId——目前被點選、卡片套用 .stopCardSelected 高亮樣式的
-  // 站點。2026-10 移除右上角小地圖功能前,這個狀態同時也驅動小地圖
-  // panTo+放大(見 panToStop),拿掉地圖後這裡純粹只剩「點了哪張卡片」
-  // 的視覺回饋,不影響其餘行為。
-  const [selectedStopId, setSelectedStopId] = useState<string | null>(null)
 
   // lightboxPhotos——比照正式頁 TripPlanPage.tsx 的多圖瀏覽機制(見
   // PlanTimelineView.tsx 的完整說明),改用該共用元件後這個 state 一併
@@ -890,13 +989,27 @@ export function AIPlanTimelinePage() {
       className={`${styles.page} ${embedded ? styles.pageEmbedded : ''} app-theme-root`}
       data-theme={theme ?? undefined}
     >
-      {/* StaticMapBackdrop——整頁的地圖底層。用 Maps Static API(一張
-          PNG)而非 JS SDK,理由見該元件的完整說明:這是公開高流量的
-          展示頁、地圖內容固定、零互動需求,Static 的圖片請求可以被
-          CDN/瀏覽器快取,而 Dynamic Maps 每次建圖實例都計費一次。
-          它是 position:absolute + pointer-events:none 的裝飾層,不影響
-          下面任何內容的版面與互動。 */}
-      <StaticMapBackdrop stops={mapStops} />
+      {/* NativeMapBase——整頁的地圖底層,2026-10 從 StaticMapBackdrop
+          (Static Maps API 靜態圖)換成這個真實互動地圖(使用者明確要求
+          「/ai-plan 則用主題介紹頁的地圖」「换成真實互動地圖」「允許
+          互動,跟主題介紹頁一致的體驗」)。外層 .mapBackdrop 是
+          position:absolute 撐滿 .page 的容器(NativeMapBase 本身的
+          .wrap/.map 是 width/height:100%,需要一個有明確定位的父層才能
+          撐滿背景,理由同 ExploreMap.tsx 一貫的用法),取代原本
+          StaticMapBackdrop 元件自帶 position:absolute 的 .backdrop。
+          mapId 用跟主題介紹頁相同的 Cloud Style(LANDING_MAP_ID,關閉
+          全部 POI 標籤),視覺語言一致。不再是 pointer-events:none——
+          使用者明確要求允許縮放/拖曳,這個限制已經移除,時間軸側欄
+          (.timelinePanel)本身有自己的 z-index 疊在地圖之上,兩者的
+          互動範圍不會互相干擾。 */}
+      <div className={styles.mapBackdrop}>
+        <NativeMapBase
+          center={CENTER}
+          zoom={ZOOM}
+          mapId={LANDING_MAP_ID}
+          onHandleChange={handleMapHandleChange}
+        />
+      </div>
       {/* 上方漂浮按鈕——使用者明確要求「上方功能列採用跟首頁一樣的漂浮
           按鈕,要有功能介紹跟登入日夜間切換按鈕」,直接沿用
           home/SiteNavButtons.tsx 這份跨頁面共用元件(HomePage.tsx/
@@ -941,9 +1054,19 @@ export function AIPlanTimelinePage() {
         hideEmptyState
         endMarkerMessage="行程結束"
         selectedStopId={selectedStopId}
+        // onHoverStop——卡片 hover/移出時更新 hoverStopId,讓地圖圓點能
+        // 跟著 hover 強調(見上方 hoverStopId state 的完整說明)。
+        onHoverStop={setHoverStopId}
         showJumpPill={showJumpPill}
         onJumpToLatest={jumpToLatest}
         onPanToStop={panToStop}
+        // getStopTimeDragBounds/onDragStopTime——見 dragStopTime 的完整
+        // 說明。這兩個 prop 同時存在才會啟用拖拉手勢(見
+        // PlanTimelineView.tsx handlePointerDown 開頭的判斷)。
+        // TIME_DRAG_ENABLED——feature flag(見 DesktopShared.tsx 同名
+        // 常數的完整說明),關閉時兩個 prop 都不傳。
+        getStopTimeDragBounds={TIME_DRAG_ENABLED ? (stopId) => getTimeDragBounds(timelineRef.current, stopId) : undefined}
+        onDragStopTime={TIME_DRAG_ENABLED ? dragStopTime : undefined}
         onOpenPhotos={setLightboxPhotos}
         mountedIdsRef={mountedIdsRef}
         scrollRef={scrollRef}

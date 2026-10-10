@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   createEmptyTimeline,
+  getTimeDragBounds,
   insertAfter,
+  minutesToTime,
   removeNode,
   toRenderList,
   updateNode,
@@ -376,6 +378,30 @@ describe('removeNode', () => {
     expect(timeline.nodes.has('n1')).toBe(true)
   })
 
+  it('opts.allowRemoving:true 時,已標記 removing:true 的節點仍能被真正摘除', () => {
+    // 這是 removeStep(TripPlanPage.tsx/AIPlanTimelinePage.tsx 都有同一套
+    // 兩段式流程,見這兩處呼叫端的完整說明)「完成移除」那一步的真實使用
+    // 情境:先標記 removing:true 觸發淡出動畫,動畫播完後用
+    // allowRemoving:true 呼叫 removeNode 做真正的摘除——這個旗標曾經
+    // 漏掉,導致 already_removing 檢查誤判這次合法呼叫,節點永遠卡在
+    // removing:true 不會真的消失(實際發生過的 regression,見
+    // RemoveNodeResult/removeNode opts.allowRemoving 的完整說明)。
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, stop('赤崁樓'), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+    const r2 = insertAfter(timeline, 'n1', stop('祀典武廟'), 'n2')
+    if (!r2.ok) throw new Error('setup failed')
+    timeline = r2.timeline
+    timeline = updateNode(timeline, 'n1', { removing: true })
+
+    const result = removeNode(timeline, 'n1', { allowRemoving: true })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.timeline.nodes.has('n1')).toBe(false)
+    expect(result.timeline.headId).toBe('n2')
+  })
+
   it('移除中間站點後,新的下一站 transitFromPrev 被清空(舊資料不再對應正確的兩站)', () => {
     let timeline: PlanTimeline = createEmptyTimeline()
     const r1 = insertAfter(timeline, null, stop('赤崁樓'), 'n1')
@@ -493,5 +519,91 @@ describe('toRenderList', () => {
 
     const rendered = toRenderList(timeline)
     expect(rendered.map((n) => n.id)).toEqual(['n1', 'day-divider-2', 'n2', 'day-divider-1', 'n3'])
+  })
+})
+
+describe('minutesToTime', () => {
+  it('把當日分鐘數轉回 "HH:MM" 字串,固定兩位數補零', () => {
+    expect(minutesToTime(0)).toBe('00:00')
+    expect(minutesToTime(9 * 60 + 5)).toBe('09:05')
+    expect(minutesToTime(23 * 60 + 59)).toBe('23:59')
+  })
+})
+
+describe('getTimeDragBounds', () => {
+  // 這組測試對應使用者明確要求的「時間軸的小圓點可以拖拉,上下拉動時
+  // 調整時間」功能——getTimeDragBounds 算出的範圍是 PlanTimelineView.tsx
+  // 拖拉手勢即時 clamp 用的依據,範圍算錯會讓使用者能拖出跟 insertAfter
+  // 驗證邏輯矛盾的時間(例如拖出比前一站還早的時間卻沒被擋下)。
+  it('中間節點:下界是前一站時間,上界是後一站時間', () => {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, stop('赤崁樓', '09:00'), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+    const r2 = insertAfter(timeline, 'n1', stop('祀典武廟', '10:00'), 'n2')
+    if (!r2.ok) throw new Error('setup failed')
+    timeline = r2.timeline
+    const r3 = insertAfter(timeline, 'n2', stop('大天后宮', '11:00'), 'n3')
+    if (!r3.ok) throw new Error('setup failed')
+    timeline = r3.timeline
+
+    const bounds = getTimeDragBounds(timeline, 'n2')
+    expect(bounds).toEqual({ minMinutes: 9 * 60, maxMinutes: 11 * 60 })
+  })
+
+  it('第一個節點:下界不限(null),上界是下一站時間', () => {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, stop('赤崁樓', '09:00'), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+    const r2 = insertAfter(timeline, 'n1', stop('祀典武廟', '10:00'), 'n2')
+    if (!r2.ok) throw new Error('setup failed')
+    timeline = r2.timeline
+
+    const bounds = getTimeDragBounds(timeline, 'n1')
+    expect(bounds).toEqual({ minMinutes: null, maxMinutes: 10 * 60 })
+  })
+
+  it('最後一個節點:上界不限(null),下界是前一站時間', () => {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, stop('赤崁樓', '09:00'), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+    const r2 = insertAfter(timeline, 'n1', stop('祀典武廟', '10:00'), 'n2')
+    if (!r2.ok) throw new Error('setup failed')
+    timeline = r2.timeline
+
+    const bounds = getTimeDragBounds(timeline, 'n2')
+    expect(bounds).toEqual({ minMinutes: 9 * 60, maxMinutes: null })
+  })
+
+  it('唯一節點:上下界都不限', () => {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, stop('赤崁樓', '09:00'), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+
+    const bounds = getTimeDragBounds(timeline, 'n1')
+    expect(bounds).toEqual({ minMinutes: null, maxMinutes: null })
+  })
+
+  it('跨天:只在同一天的範圍內找邊界,不同天的前後站不當作限制', () => {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, stopOnDay('赤崁樓', '20:00', 1), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+    const r2 = insertAfter(timeline, 'n1', stopOnDay('祀典武廟', '09:00', 2), 'n2')
+    if (!r2.ok) throw new Error('setup failed')
+    timeline = r2.timeline
+
+    // n2 是第 2 天唯一的站,即使 n1(第 1 天 20:00)在鏈結上緊接在它
+    // 前面,也不該被當成下界(不同天不比較時間先後)。
+    const bounds = getTimeDragBounds(timeline, 'n2')
+    expect(bounds).toEqual({ minMinutes: null, maxMinutes: null })
+  })
+
+  it('找不到對應 id 或節點不是 stop 時,回傳上下界都不限的保守預設值', () => {
+    const timeline = createEmptyTimeline()
+    expect(getTimeDragBounds(timeline, 'not-exist')).toEqual({ minMinutes: null, maxMinutes: null })
   })
 })
