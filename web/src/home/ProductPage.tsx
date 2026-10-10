@@ -140,8 +140,9 @@ export function ProductPage() {
                   ——地圖上依序點選候選景點、依序飛入右側時間軸時段格
                   的假動畫,見 TimelineDemo.tsx 的完整說明。
                   AiPlanPhoneDemo:同樣邏輯,只在「AI編排行程」卡片內渲染
-                  ——模擬手機外框內直接跑 /ai-plan 展示頁(embedded 模式),
-                  見 AiPlanPhoneDemo.tsx 的完整說明。 */}
+                  ——模擬手機外框內顯示固定手機版面的展示畫面
+                  (AiPlanPhoneDemoScreen,不用 iframe),見 AiPlanPhoneDemo.tsx
+                  的完整說明。 */}
               {title === '主題景點' && <ThemePointDemo dark={dark} />}
               {title === '時間軸排程' && <TimelineDemo dark={dark} />}
               {/* 點整支手機連到 /ai-plan 完整展示(站內路由,故用 <Link>,見

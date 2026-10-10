@@ -2,6 +2,24 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.29.1 — 2026-10-10
+
+### 新增
+
+- **時間軸小圓點拖拉調整時間（預設關閉）**：`PlanTimelineView` 新增選填 props `getStopTimeDragBounds`／`onDragStopTime`，拖動站點小圓點可每 18px 前進／後退 30 分鐘，邊界由新增的 `getTimeDragBounds(timeline, stopId)`（`web/src/plan-core/planTimeline.ts`）依同一天前後站點的時間算出；同檔新增 `minutesToTime`、`TimeDragBounds`。以編譯時 feature flag `TIME_DRAG_ENABLED`（`VITE_FEATURE_TIME_DRAG`，見 `web/src/DesktopShared.tsx`、`web/.env.example`）控制，未設為字串 `"true"` 時完全不啟用。
+- **`PlanTimelineView` 的地點卡可替換**：新增選填 `renderStopCard` 插槽與 `StopCardRenderContext` 型別，呼叫端可自行渲染地點卡內容而不修改共用元件的 `.stopCard` 樣式；另新增選填 props `onRemoveStop`、`onHoverTransit`。皆為選填，既有呼叫端不受影響。
+- `removeNode` 新增選填第三參數 `opts?: { allowRemoving?: boolean }`，預設行為不變。
+
+### 變更
+
+- **功能介紹頁「AI編排行程」手機小展示改為直接渲染 `AiPlanPhoneDemoScreen`**（新增，`web/src/home/AiPlanPhoneDemoScreen.tsx`）：固定 390×844 手機版面、不依賴 `@media` 斷點、使用靜態圖片地圖（`web/src/home/assets/ai-plan-demo-map.png`）加模擬時間軸、本身不可互動，點擊整支手機仍連到 `/ai-plan`。取代原本的 `<iframe src="/ai-plan?embedded=1">`，省掉獨立 document 與網路請求。`/ai-plan` 的 `?embedded=1` 參數目前沒有呼叫端，保留作為日後整頁嵌入的入口。
+- **`/ai-plan` 展示頁地圖由 Static Maps 圖片換成 `NativeMapBase` 真實互動地圖**，站點以 `usePlanStopMarkers` 畫圓點；`usePlanSimSocket` 改為匯出，供小展示重用。
+
+### 清理
+
+- 移除不再有任何引用的 `web/src/home/plan-ai-sim/StaticMapBackdrop.tsx`／`.module.css`；順手更新註解中仍把它當成現況的描述。
+- 本版**沒有破壞性變更**：所有新增符號與參數皆為選填或新增，被移除的 `StaticMapBackdrop` 只在 `plan-ai-sim/` 內部使用。
+
 ## v0.29.0 — 2026-10-09
 
 ### 破壞性變更

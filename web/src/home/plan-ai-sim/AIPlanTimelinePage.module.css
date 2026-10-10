@@ -139,8 +139,7 @@
    且明確要求「只有桌面版」套用,手機版維持原本滿版置中的版式不變。
    桌面斷點(min-width:768px,跟下方手機斷點 767px 互斥,兩者合起來
    涵蓋所有寬度):固定寬度 560px 的側欄,position:absolute 貼齊 .page
-   右緣、上下撐滿,讓左側 StaticMapBackdrop(整頁的地圖底層,position:
-   absolute + pointer-events:none)完全露出不被時間軸內容遮擋——視覺
+   右緣、上下撐滿,讓左側地圖(NativeMapBase 整頁的地圖底層,見 .mapBackdrop)完全露出不被時間軸內容遮擋——視覺
    語言從「時間軸置中疊在地圖正中央」改成「左地圖/右資訊欄」。
    這層需要自己的 position:relative,取代原本 composer/jumpPillWrap
    相對 .page 計算位置的定位基準(見下方兩者的完整說明:現在要相對這個
@@ -225,8 +224,7 @@
 /* timelineEndMarker——疊加在 PlanTimelineView 自己的 .endMarker 上
    (透過 endMarkerClassName prop,見該元件該 prop 的完整說明)。共用
    元件的 .endMarker 用 --ios-gray(淺灰色)文字,在正式頁(/app)疊在
-   純色頁面背景上沒有問題,但這個展示頁的時間軸整段浮在 StaticMapBackdrop
-   地圖底圖之上(見 .timelineScroll 的完整說明)——使用者回報「行程
+   純色頁面背景上沒有問題,但這個展示頁的時間軸整段浮在地圖底圖之上(見 .timelineScroll 的完整說明)——使用者回報「行程
    結束」這行字顯示不清楚:地圖紋理當背景、文字本身又淡,對比度不足,
    不能直接改共用元件的 .endMarker(會連動影響正式頁)。加一層文字
    陰影提高可讀性,不改變文字顏色本身——陰影比改顏色更穩妥,因為地圖

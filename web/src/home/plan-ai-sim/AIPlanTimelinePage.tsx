@@ -731,12 +731,12 @@ export function usePlanSimSocket(start: boolean) {
 // 要求是「不要有例外」(見下方 add_note 分支的完整說明),劇本本身保證
 // category 合法,不需要呼叫端介入。
 
-// isEmbedded——網址帶 ?embedded=1 時,代表這頁被當成 iframe 嵌進其他頁面
-// (例如功能介紹頁的手機外框,見 home/AiPlanPhoneDemo.tsx):不渲染頂部漂浮
-// 導覽(fixed 定位的一排按鈕會跟外框的動態島疊在一起)並隱藏捲軸把手。
-// 用 iframe 而非直接嵌入元件,是因為版面的手機版斷點是 @media
-// (max-width: 767px),只看視窗寬度——iframe 有獨立 viewport,手機外框內
-// 才會吃到跟真實手機一模一樣的版面。預設行為(無參數)完全不變。
+// isEmbedded——網址帶 ?embedded=1 時,代表這頁被當成 iframe 嵌進其他頁面:
+// 不渲染頂部漂浮導覽(fixed 定位的一排按鈕會跟外框的動態島疊在一起)並
+// 隱藏捲軸把手。預設行為(無參數)完全不變。
+// 2026-10:功能介紹頁的手機小展示已改用 AiPlanPhoneDemoScreen 直接渲染
+// (見 home/AiPlanPhoneDemo.tsx),不再 iframe 這一頁,目前沒有呼叫端
+// 使用這個參數;保留作為日後需要把本頁整頁嵌進其他版面時的入口。
 function isEmbedded(): boolean {
   if (typeof window === 'undefined') return false
   return new URLSearchParams(window.location.search).get('embedded') === '1'
@@ -1037,7 +1037,7 @@ export function AIPlanTimelinePage() {
           時間軸內容靠 PlanTimelineView.module.css 自己的 .inner
           (max-width:640px; margin:0 auto)在整個視窗寬度置中,蓋住地圖
           正中央。改成固定寬度(560px)、貼齊視窗右緣的側欄容器——地圖
-          (StaticMapBackdrop)因此左側完全露出不被內容遮擋,視覺語言
+          (NativeMapBase)因此左側完全露出不被內容遮擋,視覺語言
           改成「左地圖/右資訊欄」。這層需要 position:relative,取代
           原本掛在 .page 身上、給 jumpPillWrap 置中計算用的定位基準
           (見 .timelinePanel/.timelineJumpPillWrap 的完整說明:

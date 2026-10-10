@@ -284,7 +284,7 @@ export interface PlanTimelineViewProps {
   // /ai-plan 展示頁(AIPlanTimelinePage.tsx)讀者回報「── 行程結束 ──」
   // 文字顯示不清楚——.endMarker 用共用 token(--ios-gray)的淺灰色文字,
   // 在展示頁疊在地圖背景上方(見 AIPlanTimelinePage.module.css 的
-  // .timelineScroll 說明,這裡整個時間軸浮在 StaticMapBackdrop 之上)
+  // .timelineScroll 說明,這裡整個時間軸浮在地圖底圖之上)
   // 時,地圖紋理當背景、文字本身又淡,對比度不足。正式頁(/app)的
   // .endMarker 疊在純色頁面背景上,同樣的顏色沒有這個問題,不能直接
   // 改 .endMarker 本身(會連動影響正式頁)。疊加這個 class 讓展示頁
