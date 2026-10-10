@@ -1,8 +1,8 @@
-// GeoOutlinePhoneView 的「加入行程」日期選擇流程——2026-08 把原本內嵌在
-// GeoOutlinePhoneInfoSheet.tsx `.dateEdit` 區塊裡的日期選擇 UI,拆成兩層
-// 獨立的 bottom sheet(GeoOutlinePhoneDatePickerSheet/
-// GeoOutlinePhoneDateCalendarSheet,由 sheetStack 管理,見
-// GeoOutlinePhoneView.tsx 開頭 SheetEntry 型別的完整說明)之後新增的行為
+// PlanPhoneView 的「加入行程」日期選擇流程——2026-08 把原本內嵌在
+// PlanPhoneInfoSheet.tsx `.dateEdit` 區塊裡的日期選擇 UI,拆成兩層
+// 獨立的 bottom sheet(PlanPhoneDatePickerSheet/
+// PlanPhoneDateCalendarSheet,由 sheetStack 管理,見
+// PlanPhoneView.tsx 開頭 SheetEntry 型別的完整說明)之後新增的行為
 // 路徑:
 //   1. 候選沒有排定日期、行程本身也沒有排定日期(scheduledDates 為空)——
 //      「加入行程」直接開日曆 sheet,跳過日期清單 sheet。
@@ -12,7 +12,7 @@
 //      日曆 sheet 選定日期後兩層都關閉。
 //   4. 加入成功後打勾提示(Check icon)不論走哪條路徑都正常運作。
 //
-// mock 掉 ExploreMap(理由同其餘 GeoOutlinePhoneView.*.test.tsx——這批
+// mock 掉 ExploreMap(理由同其餘 PlanPhoneView.*.test.tsx——這批
 // 測試不驗證地圖/查詢本身怎麼運作),直接暴露 onSearchResultSelect 讓
 // 測試手動選中一個候選。GeoOutlinePanel.tsx 已退役(見
 // useGeoOutlineMapState.ts 的完整說明),onSearchResultSelect 現在是
@@ -36,7 +36,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { GeoOutlinePhoneView } from './GeoOutlinePhoneView'
+import { PlanPhoneView } from './PlanPhoneView'
 import type { ClientConfig, GeoSearchResult } from '../api'
 import type { User } from '../user/types'
 
@@ -62,8 +62,8 @@ vi.mock('./ExploreMap', () => ({
     children?: React.ReactNode
   }) => {
     capturedOnSearchResultSelect = props.onSearchResultSelect
-    // children(GeoOutlinePhoneInfoSheet)改掛入 ExploreMap 後(見
-    // GeoOutlinePhoneView.tsx 的完整說明),這個 mock 必須真的渲染
+    // children(PlanPhoneInfoSheet)改掛入 ExploreMap 後(見
+    // PlanPhoneView.tsx 的完整說明),這個 mock 必須真的渲染
     // children,否則資訊卡永遠不會出現在測試的 DOM 樹裡。
     return props.children ?? null
   },
@@ -89,7 +89,7 @@ const fakeResult: GeoSearchResult = {
 
 function renderView() {
   return render(
-    <GeoOutlinePhoneView
+    <PlanPhoneView
       cfg={cfg}
       tripID="trip_1"
       activeTrip={{ id: 'trip_1', name: '測試旅程' } as never}
@@ -137,7 +137,7 @@ function pickThisMonthDay(): { year: number; month: number; day: number } {
   return { year: now.getFullYear(), month: now.getMonth() + 1, day }
 }
 
-describe('GeoOutlinePhoneView：加入行程的日期選擇 sheet 流程', () => {
+describe('PlanPhoneView：加入行程的日期選擇 sheet 流程', () => {
   beforeEach(() => {
     recordEntryMock.mockClear()
     setEntryLatLngMock.mockClear()
@@ -171,11 +171,17 @@ describe('GeoOutlinePhoneView：加入行程的日期選擇 sheet 流程', () =>
     await pickCalendarDate(u, year, month, day)
 
     // closeAll() 讓日曆 sheet(以及原本就不存在的日期清單 sheet)一起
-    // 關閉,只剩資訊卡。
-    expect(sheetPanels(container)).toHaveLength(1)
+    // 關閉,只剩資訊卡——退場動畫有 exitDurationMs(見
+    // components/PhoneBottomSheet.tsx PHONE_BOTTOM_SHEET_EXIT_MS 的完整
+    // 說明)延遲真正卸載,open 變 false 後節點不會立刻從 DOM 消失(先
+    // position 移到畫面外,過一小段時間才真正拔除),故需要 waitFor 等
+    // 退場動畫跑完,不能緊接著同步斷言——這是本次 code review 發現的
+    // 實際測試缺陷:原本同步斷言,偶爾(取決於動畫完成的時機)會抓到還在
+    // 退場過程中、尚未真正卸載的額外節點而誤判失敗。
+    await waitFor(() => expect(sheetPanels(container)).toHaveLength(1))
 
     // 打勾提示:「加入行程」按鈕變成「已加入」(title/aria-label 屬性由
-    // GeoOutlinePhoneInfoSheet.tsx 的 addUi.mode==='added' 決定)。
+    // PlanPhoneInfoSheet.tsx 的 addUi.mode==='added' 決定)。
     const addBtn = screen.getByRole('button', { name: '已加入' }) as HTMLButtonElement
     expect(addBtn.disabled).toBe(true)
 
@@ -208,8 +214,9 @@ describe('GeoOutlinePhoneView：加入行程的日期選擇 sheet 流程', () =>
     // 點既有日期項目(9/5,dayGroupLabel 格式化結果)。
     await u.click(screen.getByRole('button', { name: '9/5' }))
 
-    // 兩層 sheet 都關閉(sheetStack.closeAll()),只剩資訊卡。
-    expect(sheetPanels(container)).toHaveLength(1)
+    // 兩層 sheet 都關閉(sheetStack.closeAll()),只剩資訊卡——需要
+    // waitFor 等退場動畫跑完,理由同上一個測試案例的完整說明。
+    await waitFor(() => expect(sheetPanels(container)).toHaveLength(1))
     expect(screen.getByRole('button', { name: '已加入' })).not.toBeNull()
     expect(recordEntryMock).toHaveBeenCalledTimes(1)
   })
@@ -237,8 +244,11 @@ describe('GeoOutlinePhoneView：加入行程的日期選擇 sheet 流程', () =>
     const { year, month, day } = pickThisMonthDay()
     await pickCalendarDate(u, year, month, day)
 
-    // closeAll() 一次收掉整段日期選擇流程,只剩資訊卡。
-    expect(sheetPanels(container)).toHaveLength(1)
+    // closeAll() 一次收掉整段日期選擇流程,只剩資訊卡——需要 waitFor
+    // 等退場動畫跑完,理由同第一個測試案例的完整說明。這裡原本要收掉
+    // 兩層(日期清單 sheet + 日曆 sheet),兩者都在退場動畫期間,更容易
+    // 誤判成功已有的節點數還沒歸零。
+    await waitFor(() => expect(sheetPanels(container)).toHaveLength(1))
     expect(screen.getByRole('button', { name: '已加入' })).not.toBeNull()
   })
 })

@@ -1,4 +1,4 @@
-/* GeoOutlinePhoneDatePickerSheet.tsx 專屬樣式(CSS Modules)。外殼
+/* PlanPhoneDatePickerSheet.tsx 專屬樣式(CSS Modules)。外殼
    (backdrop/panel/dragHandle/head)已改用共用容器
    components/PhoneBottomSheet.tsx,這裡只保留內容區塊本身的樣式。
    .body 直接就是 PhoneBottomSheet.tsx 傳入的 children 容器(.body,見
@@ -41,7 +41,7 @@
 }
 
 /* otherDateBtn:「其他日期」——點下去疊上日曆 sheet
-   (GeoOutlinePhoneDateCalendarSheet.tsx)。維持獨立的強調色實心按鈕
+   (PlanPhoneDateCalendarSheet.tsx)。維持獨立的強調色實心按鈕
    (不是清單項目之一),區分「這是另一種輸入方式」的入口,跟清單裡逐項
    點選既有日期的互動語意不同——理由同改版前 chips 排列時的既有設計,
    只是排版跟著清單本身從橫向改成獨立一顆置頂/置底按鈕。 */

@@ -11,18 +11,18 @@ import outlineMapStyles from './GeoOutlinePanel.module.css'
 import { useGeoPlanningState } from './useGeoPlanningState'
 import type { GeoCandidate } from './geoCandidateHelpers'
 import type { PlaceInfoContent } from './PlacePanel'
-import { GeoOutlinePhoneInfoSheet } from './GeoOutlinePhoneInfoSheet'
-import { GeoOutlinePhoneDatePickerSheet } from './GeoOutlinePhoneDatePickerSheet'
-import { GeoOutlinePhoneDateCalendarSheet } from './GeoOutlinePhoneDateCalendarSheet'
-import { GeoOutlinePhoneCandidateDrawer } from './GeoOutlinePhoneCandidateDrawer'
-import { GeoOutlinePhoneListDrawer } from './GeoOutlinePhoneListDrawer'
+import { PlanPhoneInfoSheet } from './PlanPhoneInfoSheet'
+import { PlanPhoneDatePickerSheet } from './PlanPhoneDatePickerSheet'
+import { PlanPhoneDateCalendarSheet } from './PlanPhoneDateCalendarSheet'
+import { PlanPhoneTripListDrawer } from './PlanPhoneTripListDrawer'
+import { PlanPhoneListDrawer } from './PlanPhoneListDrawer'
 import { reduceCategoryTagsState, initialCategoryTagsState } from './geoCategoryTagsState'
 import { useSheetStack } from '../components/useSheetStack'
 import { computeNearbyAttractions } from './geoNearbyAttractions'
 import { fetchPoiContent } from './useThemeAttractionSelection'
 import { curatedCategoryOf, type CuratedCategory } from './geoCuratedCategoryStub'
 import { fetchGeoPlaceDetails, fetchGeoPlacePhotoAssets } from '../api'
-import styles from './GeoOutlinePhoneView.module.css'
+import styles from './PlanPhoneView.module.css'
 
 // SheetEntry:2026-08 這次重構後,清單與資訊卡「該不該顯示」的真相來源
 // 全部收斂進這個堆疊——不再有獨立的清單開關 state 或 geo.infoContent
@@ -38,20 +38,20 @@ import styles from './GeoOutlinePhoneView.module.css'
 // 收斂成單一堆疊後,任何時刻畫面上該顯示哪些 sheet,只需要看
 // sheetStack.stack 就能百分之百確定,不需要額外交叉比對另一個 state。
 //
-// 'list'  地點清單抽屜(GeoOutlinePhoneListDrawer)——由三個查詢入口
+// 'list'  地點清單抽屜(PlanPhoneListDrawer)——由三個查詢入口
 //         (onSearch/onSearchStart)push 進堆疊,結果回來後依筆數決定
 //         維持不動或被 replace 成 'info'(唯一解,見下方 onSearchResultsChange
 //         的說明),使用者手動關閉或重新搜尋時透過 closeAll 清空。
-// 'info'  資訊卡(GeoOutlinePhoneInfoSheet)——由「點清單項目」push(在
+// 'info'  資訊卡(PlanPhoneInfoSheet)——由「點清單項目」push(在
 //         清單之上多疊一層,關閉後 pop 回清單);由「點地圖 marker/
 //         城市搜尋唯一解/候選籃選取」這幾個非清單來源的入口 replace
 //         (換掉堆疊頂端,不增加深度——見下方各入口的說明,理由是這些
 //         入口彼此互斥,連續觸發應該直接換內容,不該無限疊層,也對齊
 //         使用者確認過的既有行為:連續點不同 marker 不需要按兩次關閉鍵)。
-// 'date-picker'   日期清單 sheet(GeoOutlinePhoneDatePickerSheet)——
+// 'date-picker'   日期清單 sheet(PlanPhoneDatePickerSheet)——
 //         2026-08 新增,取代舊版資訊卡內部展開的 `.dateEdit` 區塊。由
 //         資訊卡「加入行程」icon 按鈕觸發(候選沒有排定日期時,見下方
-//         GeoOutlinePhoneInfoSheet 的 onOpenDatePicker 接線),疊在資訊卡
+//         PlanPhoneInfoSheet 的 onOpenDatePicker 接線),疊在資訊卡
 //         之上——只有在行程本身已有排定日期(geo.scheduledDates 非空)
 //         時才會 push 這一層;完全沒有排定日期時直接跳過,push
 //         'date-calendar'(見下方)。顯示既有日期的縱向清單讓使用者快速
@@ -65,7 +65,7 @@ import styles from './GeoOutlinePhoneView.module.css'
 //         'info' 從 'list' pop 回去、'list' 本身還有事可做的情境不同),
 //         但資訊卡本身不該被一併收掉。使用者主動關閉(拖到底/按關閉鈕)
 //         則只 pop 這一層,回到資訊卡。
-// 'date-calendar' 日曆 sheet(GeoOutlinePhoneDateCalendarSheet)——2026-08
+// 'date-calendar' 日曆 sheet(PlanPhoneDateCalendarSheet)——2026-08
 //         新增,取代舊版 `.dateEdit` 區塊裡的 <input type="date"> +
 //         確定按鈕(現改用 DatePickerPopover 月曆格線 UI,對齊桌面版
 //         PlacePanel.tsx 的既有升級,點選日期格子即視為確定)。兩條
@@ -73,12 +73,12 @@ import styles from './GeoOutlinePhoneView.module.css'
 //         由資訊卡直接 push(跳過 'date-picker',見上方說明);(2)
 //         'date-picker' 的「其他日期」按鈕 push,疊在 'date-picker' 之上,
 //         此時堆疊深度達到三層(list 可能也在最底層,見下方
-//         GeoOutlinePhoneInfoSheet 呼叫處的完整堆疊組合說明)。點選日期
+//         PlanPhoneInfoSheet 呼叫處的完整堆疊組合說明)。點選日期
 //         (onConfirm)完成排入後,同樣用 popDateSheets() 只收掉頂端的
 //         日期選擇層(不論底下疊的是 'info' 直接疊上來、還是還多疊了
 //         一層 'date-picker'),回到資訊卡;使用者主動關閉則只 pop 這
 //         一層。
-// 'nearby-place'  附近景點的地點卡(GeoOutlinePhoneInfoSheet,重用同一個
+// 'nearby-place'  附近景點的地點卡(PlanPhoneInfoSheet,重用同一個
 //         元件,見下方渲染處的完整說明)——2026-09 新增,對齊桌面版
 //         AttractionInfoPanel.tsx「附近景點」清單點項目後並存顯示地點卡
 //         的功能。手機版沒有桌面版並排疊放的空間,改用 push 疊一層新
@@ -86,7 +86,7 @@ import styles from './GeoOutlinePhoneView.module.css'
 //         'date-picker'/'date-calendar' 疊在 'info' 之上),不是 replace
 //         掉主題卡——這樣使用者關閉這張地點卡後能回到原本的主題卡跟
 //         附近景點清單,而不是直接回到地圖(那樣等於清單白點了)。由
-//         GeoOutlinePhoneInfoSheet 內部的附近景點清單項目觸發 push,見
+//         PlanPhoneInfoSheet 內部的附近景點清單項目觸發 push,見
 //         下方 nearbyPoiContent 的完整說明。
 // NEARBY_ATTRACTION_LIMIT:「附近景點」清單最多顯示幾筆——對齊
 // DesktopLayout.tsx 同名常數的值(見該處說明):2026-09 使用者明確要求
@@ -101,33 +101,43 @@ type SheetEntry =
   | { type: 'date-picker' }
   | { type: 'date-calendar' }
 
-// GeoOutlinePhoneView:手機版規劃地圖(geo-outline)主容器。第一階段是
+// PlanPhoneView:手機版規劃地圖(geo-outline)主容器。第一階段是
 // 地圖瀏覽 + 唯讀資訊卡;第二階段(這次)新增候選籃——讓使用者能把地圖上
 // 瀏覽到的飯店/景點/地點加入候選籃,並排入行程的某一天。地圖引擎
 // (GeoOutlinePanel/ExploreMap)與桌面版共用同一份,平台無關,這裡只
 // 負責手機版排版與候選籃資料流。
 //
-// 候選籃 UI 選用「從右側滑入的抽屜」(GeoOutlinePhoneCandidateDrawer),
-// 不是再開一層 bottom sheet——理由見該元件開頭的說明:抽屜可以佔滿畫面
-// 高度,比 bottom sheet(必須跟地圖並存可見、高度受限 60vh)更適合放得下
-// 「已排入行程」日層架內容。地圖固定不動的底層 + 側邊滑入抽屜,對齊
-// pace/PacePhoneSwipe.tsx 的既有先例。
+// 2026-10 改名(原檔名 GeoOutlinePhoneView,使用者明確要求「有動到的
+// 檔案就繼續剛剛檔案重新命名的事」):GeoOutline 這個前綴已經與產品語意
+// (「規劃」)不符(見 PlanPhoneTripListDrawer.tsx 檔頭的完整說明,那是
+// 這一輪改名最早的範例),這個檔案是這次 z-index 整理順便一併處理的
+// GeoOutlinePhone* 系列檔案之一。其餘未被這次改動觸及的 GeoOutlinePhone*
+// 檔案(例如 GeoOutlinePanel.tsx/useGeoOutlineMapState.ts)仍維持原名,
+// 之後有需要改動時再陸續調整,不在這次範圍內一次全部處理。
 //
-// 候選籃相關 state 對照桌面版 DesktopLayout.tsx 的同名 geo* state,只是
-// 拿掉桌面版才需要的中介 state draggingCandidate(手機版不支援拖曳排期,
-// 見 GeoOutlinePhoneCandidateDrawer.tsx 的說明)。純邏輯(GeoCandidate
+// 「行程」清單 UI 選用「從右側滑入的抽屜」(PlanPhoneTripListDrawer,
+// 2026-10 改名,原檔名 GeoOutlinePhoneCandidateDrawer,見該元件檔頭的
+// 完整說明——這個抽屜已經不處理候選籃暫存概念,只單純顯示已排入行程的
+// 項目),不是再開一層 bottom sheet——理由見該元件開頭的說明:抽屜可以
+// 佔滿畫面高度,比 bottom sheet(必須跟地圖並存可見、高度受限 60vh)更
+// 適合放得下「已排入行程」日層架內容。地圖固定不動的底層 + 側邊滑入
+// 抽屜,對齊 pace/PacePhoneSwipe.tsx 的既有先例。
+//
+// 行程清單相關 state 對照桌面版 DesktopLayout.tsx 的同名 geo* state,
+// 只是拿掉桌面版才需要的中介 state draggingCandidate(手機版不支援拖曳
+// 排期,見 PlanPhoneTripListDrawer.tsx 的說明)。純邏輯(GeoCandidate
 // 型別/分組/建立 entry)完全複用 geoCandidateHelpers.ts,與桌面版共用
 // 同一份,不重新實作。
 //
-// 第三階段新增「飯店/推薦地點」清單(GeoOutlinePhoneListDrawer)——同樣是
+// 第三階段新增「飯店/推薦地點」清單(PlanPhoneListDrawer)——同樣是
 // 從一側滑入的抽屜,選左側(候選籃已佔用右側滑入語意,見
-// GeoOutlinePhoneListDrawer.tsx 的說明)。資料來源對照桌面版
+// PlanPhoneListDrawer.tsx 的說明)。資料來源對照桌面版
 // DesktopLayout.tsx 的 geo.searchResults——GeoOutlinePanel 本來就已經
 // 把 onSearchResultsChange 轉傳給 ExploreMap(第一、二階段的
 // 手機版容器沒有接這個 callback,地圖仍會查詢,只是查到的結果沒有
 // 清單可以顯示,這次補上)。清單合併顯示飯店/推薦地點/搜尋結果,不分頁
 // 切換——對齊桌面版 GeoHotelSidebar.tsx 現行的合併清單設計,原本這裡
-// 分成 hotels/places 兩個 tab 的設計已移除(見 GeoOutlinePhoneListDrawer.tsx
+// 分成 hotels/places 兩個 tab 的設計已移除(見 PlanPhoneListDrawer.tsx
 // 的說明)。
 //
 // 2026-08:移除獨立的「飯店/推薦地點」手動開啟按鈕(原本的 .listBtn,
@@ -142,7 +152,7 @@ type SheetEntry =
 // 一次,同一條業務規則活在兩處、reducer 那份完全不生效)——已降級回單純
 // 的 useState<boolean>,不再需要 reducer 這層間接。
 
-export function GeoOutlinePhoneView({
+export function PlanPhoneView({
   cfg,
   tripID,
   activeTrip,
@@ -153,8 +163,8 @@ export function GeoOutlinePhoneView({
   theme,
   exploreTrigger,
   onExploreActiveChange,
-  candidateDrawerTrigger,
-  onCandidateDrawerActiveChange,
+  tripListDrawerTrigger,
+  onTripListDrawerActiveChange,
 }: {
   cfg: ClientConfig
   tripID?: string | null
@@ -166,13 +176,14 @@ export function GeoOutlinePhoneView({
   // onOpenTimeline:左下角「時間軸」按鈕觸發,由 PhoneContent.tsx 傳入
   // (呼叫 setDrawerMode('timeline')切換主畫面)——這個元件本身不管全域
   // drawerMode 導航,只負責觸發。使用者要求「時間軸放左側」,原本是
-  // PhoneTabBar.tsx 底部常駐三分頁之一,改成規劃地圖專屬、併入候選籃/
-  // 清單所在的 candidateGroup(見下方 JSX)——時間軸入口從此只在規劃
-  // 地圖畫面才看得到,已與使用者確認其他主畫面(配速表/對話)不再需要
-  // 直接切到時間軸的入口。
+  // PhoneTabBar.tsx 底部常駐三分頁之一,改成規劃地圖專屬、併入行程清單/
+  // 地點清單所在的 candidateGroup(見下方 JSX,這個 CSS class 名稱不在
+  // 這次改名範圍內,維持原樣)——時間軸入口從此只在規劃地圖畫面才看得到,
+  // 已與使用者確認其他主畫面(配速表/對話)不再需要直接切到時間軸的
+  // 入口。
   onOpenTimeline?: () => void
   onOpenSettings: () => void
-  // onOpenTrips:候選籃「加入行程」流程裡,使用者還沒選定任何旅程
+  // onOpenTrips:加入行程流程裡,使用者還沒選定任何旅程
   // (activeTrip 為空,見上方 activeTrip 的說明——這個畫面本身允許不選
   // 旅程就瀏覽)時觸發,由呼叫端(PhoneContent.tsx)切到旅程列表分頁,
   // 引導使用者先選一個旅程。原本沒有這個 prop 時,geo.handleScheduleCandidate
@@ -196,20 +207,25 @@ export function GeoOutlinePhoneView({
   // PhoneContent.tsx,供 PhoneTabBar 的「探索」按鈕顯示 active 視覺。
   exploreTrigger?: number
   onExploreActiveChange?: (active: boolean) => void
-  // candidateDrawerTrigger:2026-10「行程」抽屜的開關按鈕從疊在地圖
+  // tripListDrawerTrigger:2026-10「行程」抽屜的開關按鈕從疊在地圖
   // 左下角的浮動按鈕群組(.candidateGroup)搬到 PhoneTabBar.tsx 底部常駐
   // 功能列(使用者明確要求,跟「旅程」按鈕交換位置),底部功能列跟這個
   // 元件是分開掛載的 sibling(見 PhoneContent.tsx 的版面結構),無法直接
-  // 呼叫這裡的 setCandidateDrawerOpen——用遞增計數器(對齊 exploreTrigger
-  // 同一套既有慣例)讓外部觸發開啟。candidateDrawerOpen 這個 state 本身
-  // 仍留在這個元件內部管理(不提升出去),因為「加入候選後自動打開抽屜」
-  // 的既有邏輯(見 handleAddCandidate)需要直接呼叫 setCandidateDrawerOpen,
+  // 呼叫這裡的 setTripListDrawerOpen——用遞增計數器(對齊 exploreTrigger
+  // 同一套既有慣例)讓外部觸發開啟。tripListDrawerOpen 這個 state 本身
+  // 仍留在這個元件內部管理(不提升出去),因為「加入行程後自動打開抽屜」
+  // 的既有邏輯(見 handleAddCandidate)需要直接呼叫 setTripListDrawerOpen,
   // 外部觸發只是多一個「打開」的入口,不取代原本的開關機制。
-  candidateDrawerTrigger?: number
-  // onCandidateDrawerActiveChange:candidateDrawerOpen 的單向回報——供
+  //
+  // 2026-10 改名(使用者明確要求「候選的命名也要一起改」):原名
+  // candidateDrawerTrigger,這個 prop 對應的抽屜(PlanPhoneTripListDrawer,
+  // 原檔名 GeoOutlinePhoneCandidateDrawer)已經不處理候選籃概念,改用
+  // tripList 這個反映實際內容(已排入行程的清單)的詞。
+  tripListDrawerTrigger?: number
+  // onTripListDrawerActiveChange:tripListDrawerOpen 的單向回報——供
   // PhoneTabBar 的「行程」按鈕顯示 active 視覺,理由同
   // onExploreActiveChange。
-  onCandidateDrawerActiveChange?: (active: boolean) => void
+  onTripListDrawerActiveChange?: (active: boolean) => void
 }) {
   const [searchCity, setSearchCity] = useState('')
   const [searchTrigger, setSearchTrigger] = useState(0)
@@ -258,40 +274,45 @@ export function GeoOutlinePhoneView({
   // 之後)的完整說明。
   const [nearbyPoiContent, setNearbyPoiContent] = useState<PlaceInfoContent | null>(null)
 
-  // candidateDrawerOpen/candidateFlashTrigger:候選籃抽屜開關與「剛加入
+  // tripListDrawerOpen/tripListFlashTrigger:行程清單抽屜開關與「剛加入
   // 東西了」的短暫提示——理由同桌面版 geoCandidateFlashTrigger,見
-  // GeoOutlinePhoneCandidateDrawer.module.css 的 .panelFlash。
-  const [candidateDrawerOpen, setCandidateDrawerOpen] = useState(false)
-  const [candidateFlashTrigger, setCandidateFlashTrigger] = useState(0)
-  // candidateDrawerRestoreTrigger:2026-10 新增——使用者明確要求「關閉
+  // PlanPhoneTripListDrawer.module.css 的 .panelFlash。
+  //
+  // 2026-10 改名(使用者明確要求「候選的命名也要一起改」):這組 state
+  // 原名 candidateDrawerOpen/candidateFlashTrigger/
+  // candidateDrawerRestoreTrigger,對應的抽屜(PlanPhoneTripListDrawer)
+  // 已經不處理候選籃概念,改用 tripList 反映實際內容。
+  const [tripListDrawerOpen, setTripListDrawerOpen] = useState(false)
+  const [tripListFlashTrigger, setTripListFlashTrigger] = useState(0)
+  // tripListDrawerRestoreTrigger:2026-10 新增——使用者明確要求「關閉
   // 地點後,行程要復原」:點行程項目時行程抽屜只收合不關閉(見
-  // GeoOutlinePhoneCandidateDrawer.tsx restoreTrigger prop 的完整
+  // PlanPhoneTripListDrawer.tsx restoreTrigger prop 的完整
   // 說明),接著開啟的地點資訊卡被關掉時,這裡遞增這個計數器通知抽屜
   // 自己展開回來。在資訊卡 onClose(下方)遞增,不分辨資訊卡是不是真的
   // 從候選籃點進來——抽屜本來就是展開狀態時,內部 setActiveSnapIndex(1)
   // 是 no-op,不會有副作用,不需要額外判斷來源。
-  const [candidateDrawerRestoreTrigger, setCandidateDrawerRestoreTrigger] = useState(0)
+  const [tripListDrawerRestoreTrigger, setTripListDrawerRestoreTrigger] = useState(0)
 
-  // candidateDrawerTrigger 變動時打開抽屜(見該 prop 的完整說明)——對齊
-  // GeoOutlinePhoneInfoSheet.tsx addFlashTrigger 的既有慣例寫法:初次
-  // 渲染(candidateDrawerTrigger 為 undefined 或 0)不觸發,只在真正遞增
+  // tripListDrawerTrigger 變動時打開抽屜(見該 prop 的完整說明)——對齊
+  // PlanPhoneInfoSheet.tsx addFlashTrigger 的既有慣例寫法:初次
+  // 渲染(tripListDrawerTrigger 為 undefined 或 0)不觸發,只在真正遞增
   // 時才打開。
   useEffect(() => {
-    if (!candidateDrawerTrigger) return
-    setCandidateDrawerOpen(true)
-  }, [candidateDrawerTrigger])
+    if (!tripListDrawerTrigger) return
+    setTripListDrawerOpen(true)
+  }, [tripListDrawerTrigger])
 
-  // candidateDrawerOpen 變動時往外回報(見 onCandidateDrawerActiveChange
+  // tripListDrawerOpen 變動時往外回報(見 onTripListDrawerActiveChange
   // prop 的完整說明)——供 PhoneTabBar 的「行程」按鈕顯示 active 視覺。
-  // 依賴陣列刻意只放 candidateDrawerOpen、不放 onCandidateDrawerActiveChange:
-  // 這個 callback 必須是穩定參照(目前呼叫端傳入的是 setCandidateDrawerOpen
+  // 依賴陣列刻意只放 tripListDrawerOpen、不放 onTripListDrawerActiveChange:
+  // 這個 callback 必須是穩定參照(目前呼叫端傳入的是 setTripListDrawerOpen
   // 這個 setter)。若日後改傳每次 render 都重建的箭頭函式,這裡會變成
   // stale closure(回報到舊的 callback),且不會有任何編譯或執行期錯誤
   // 提示——修改呼叫端時請留意維持穩定參照,或改用 ref 包一層。
   useEffect(() => {
-    onCandidateDrawerActiveChange?.(candidateDrawerOpen)
+    onTripListDrawerActiveChange?.(tripListDrawerOpen)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidateDrawerOpen])
+  }, [tripListDrawerOpen])
 
   // listLoading:清單查詢中動畫旗標(見上方元件說明的 FE8 修法)——單純
   // 布林值,由三個查詢入口在查詢開始時設 true,查詢結果回來時設 false,
@@ -352,18 +373,18 @@ export function GeoOutlinePhoneView({
   // 只有資訊卡是疊在清單上面(sheetStack.top?.type === 'info',即清單
   // 本身也在畫面上)這個情境才有意義——資訊卡若是由其他入口(點 marker、
   // 城市搜尋單一候選)打開、清單根本沒有疊在下面,這個訊號也不會造成
-  // 任何影響(下方傳給 GeoOutlinePhoneListDrawer 的 forceCollapsed 只在
+  // 任何影響(下方傳給 PlanPhoneListDrawer 的 forceCollapsed 只在
   // 清單本身確實開啟時才有渲染出來的 sheet 可以被強制收合)。
   const [infoSheetDraggingDown, setInfoSheetDraggingDown] = useState(false)
   const [infoSheetSnapIndex, setInfoSheetSnapIndex] = useState(1)
   // addFlashTrigger:候選透過日期清單/日曆 sheet 成功排入某天後遞增,
-  // 通知 GeoOutlinePhoneInfoSheet 觸發「已加入」短暫打勾提示(見該檔案
+  // 通知 PlanPhoneInfoSheet 觸發「已加入」短暫打勾提示(見該檔案
   // addFlashTrigger prop 的完整說明)——「候選已有日期,按下加入行程直接
-  // 算成功」這條路徑不經過這個計數器,那是 GeoOutlinePhoneInfoSheet.tsx
+  // 算成功」這條路徑不經過這個計數器,那是 PlanPhoneInfoSheet.tsx
   // 內部自己知道候選已有日期、自己 dispatch 的既有行為(見該檔案
   // handleAddClick),完全發生在那個元件內部、不涉及這一層,不需要繞經
   // 這裡的計數器。這裡的計數器只負責「選定日期」這個動作發生在
-  // GeoOutlinePhoneView.tsx(而非資訊卡內部)的那兩條路徑——資訊卡本身
+  // PlanPhoneView.tsx(而非資訊卡內部)的那兩條路徑——資訊卡本身
   // 已經不知道使用者透過哪個 sheet、選了哪一天,只能被動接收這個訊號。
   const [addFlashTrigger, setAddFlashTrigger] = useState(0)
   // handleScheduleFromDateSheet:日期清單 sheet(onPickDate)/日曆 sheet
@@ -412,21 +433,21 @@ export function GeoOutlinePhoneView({
       onOpenTrips()
       return
     }
-    geo.handleScheduleCandidate(candidate, date, 'GeoOutlinePhoneView')
+    geo.handleScheduleCandidate(candidate, date, 'PlanPhoneView')
     setAddFlashTrigger((n) => n + 1)
     popDateSheets()
   }, [geo, activeTrip, onOpenTrips, popDateSheets])
   // handleAddCandidateAndReveal:資訊卡「加入候選」按鈕(候選已有排定
-  // 日期,直接加入)成功後順便打開候選籃抽屜給使用者看——手機版沒有
+  // 日期,直接加入)成功後順便打開行程清單抽屜給使用者看——手機版沒有
   // 桌面版「側欄本來就常駐展開」的前提(側欄本身可收合,見
-  // candidateDrawerOpen),故這裡不像桌面版分成 onAddCandidate/
+  // tripListDrawerOpen),故這裡不像桌面版分成 onAddCandidate/
   // onAddAndReveal 兩顆按鈕,加入候選這個單一動作統一都順便打開抽屜、
   // 觸發一次 flash 提示,讓使用者確實看到剛加的項目,不需要使用者自己
-  // 再多按一次「候選籃」圖示才看得到結果。
+  // 再多按一次「行程」圖示才看得到結果。
   const handleAddCandidate = useCallback((c: GeoCandidate) => {
     geo.addCandidate(c)
-    setCandidateDrawerOpen(true)
-    setCandidateFlashTrigger((n) => n + 1)
+    setTripListDrawerOpen(true)
+    setTripListFlashTrigger((n) => n + 1)
   }, [geo])
 
   // outlineMapState:原本 GeoOutlinePanel.tsx 內部持有的城市搜尋/旅程座標
@@ -478,9 +499,9 @@ export function GeoOutlinePhoneView({
       <div className={styles.candidateGroup}>
         {/* 2026-10 修正:原本這裡的「候選籃」按鈕(開啟行程抽屜)已搬到
             PhoneTabBar.tsx 底部常駐功能列(使用者明確要求,跟「旅程」
-            按鈕交換位置),不再疊在地圖左下角——候選籃抽屜的開關狀態
-            (candidateDrawerOpen)與自動開啟邏輯(handleAddCandidate)
-            仍留在這個元件內部,只是觸發入口改用 candidateDrawerTrigger
+            按鈕交換位置),不再疊在地圖左下角——行程抽屜的開關狀態
+            (tripListDrawerOpen)與自動開啟邏輯(handleAddCandidate)
+            仍留在這個元件內部,只是觸發入口改用 tripListDrawerTrigger
             prop(見該 prop 的完整說明)。 */}
         {onOpenTimeline && (
           <button
@@ -583,20 +604,20 @@ export function GeoOutlinePhoneView({
           geocodeCandidates={outlineMapState.geocodeCandidates}
           theme={theme}
         >
-          {/* GeoOutlinePhoneInfoSheet 改用 children 掛入 ExploreMap——對齊
+          {/* PlanPhoneInfoSheet 改用 children 掛入 ExploreMap——對齊
               DesktopLayout.tsx/InteractiveExploreMap.tsx 的組合方式(見兩者
               ExploreMap/NativeMapBase 的 children 說明):這張資訊卡不是
               掛在地圖元件上的東西(地圖建立方式跟卡片無關),但語意上
               統一表達成「這些是附掛在這個地圖上的浮動 UI」,三個平台
               (桌機/手機/展示頁)用同一種掛入慣例,不是各自平行的兄弟
-              元件。GeoOutlinePhoneDatePickerSheet/
-              GeoOutlinePhoneDateCalendarSheet/GeoOutlinePhoneCandidateDrawer/
-              GeoOutlinePhoneListDrawer 這四個維持在地圖外層(不是浮動疊在
+              元件。PlanPhoneDatePickerSheet/
+              PlanPhoneDateCalendarSheet/PlanPhoneTripListDrawer/
+              PlanPhoneListDrawer 這四個維持在地圖外層(不是浮動疊在
               地圖上的卡片,是從螢幕底部滑入的 sheet/抽屜,定位基準是整個
               畫面而非地圖容器,跟桌機版的 GeoCandidateSidebar 等側欄同一
               類,不屬於這次「地圖上的浮動卡片」統一範圍)。 */}
-          <GeoOutlinePhoneInfoSheet
-            // content/attraction:GeoOutlinePhoneInfoSheet 元件本身的職責
+          <PlanPhoneInfoSheet
+            // content/attraction:PlanPhoneInfoSheet 元件本身的職責
             // 只是「有內容就顯示」(content!=null || attraction!=null),
             // 不知道也不該知道 sheetStack 這個更上層的堆疊概念(職責邊界
             // 維持不動,見這次重構的說明)——「該不該顯示」現在由呼叫端
@@ -620,16 +641,16 @@ export function GeoOutlinePhoneView({
               // 起來才是「資訊卡真正消失」的完整動作。
               //
               // 2026-10 修正:使用者明確要求「關閉地點後,行程要復原」
-              // ——遞增 candidateDrawerRestoreTrigger,通知行程抽屜(若
+              // ——遞增 tripListDrawerRestoreTrigger,通知行程抽屜(若
               // 先前因為點了裡面的項目而收合到最下面)自動展開回來,見該
               // state 的完整說明。
               sheetStack.pop()
               geo.clearSelection()
-              setCandidateDrawerRestoreTrigger((n) => n + 1)
+              setTripListDrawerRestoreTrigger((n) => n + 1)
             }}
             onAddCandidate={handleAddCandidate}
             // onOpenDatePicker:候選沒有排定日期時觸發(見
-            // GeoOutlinePhoneInfoSheet.tsx handleAddClick 的說明)——依
+            // PlanPhoneInfoSheet.tsx handleAddClick 的說明)——依
             // geo.scheduledDates 是否為空決定 push 哪一層:非空時先顯示
             // 日期清單 sheet 讓使用者快速挑既有日期,完全沒有排定日期時
             // 直接跳過清單、開日曆 sheet(空清單沒有任何 chip 可選,見
@@ -642,7 +663,7 @@ export function GeoOutlinePhoneView({
             addFlashTrigger={addFlashTrigger}
             // nearby/onSelectNearby/categoryFilter/onCategoryFilterChange:
             // 「附近景點」清單(見上方 nearbyAttractions/categoryFilter 的
-            // 完整說明)——只有主題卡(見 GeoOutlinePhoneInfoSheet.tsx
+            // 完整說明)——只有主題卡(見 PlanPhoneInfoSheet.tsx
             // 對 attraction 的說明)有意義,精選點(非主題點)地標打開的
             // 資訊卡沒有下一層附近景點,nearbyAttractions 本身在
             // geo.attractionContent 不是主題點時已經回傳空陣列(見該
@@ -650,7 +671,7 @@ export function GeoOutlinePhoneView({
             //
             // 2026-10:onHoverNearby 刻意不傳——這個 prop 現在改用 scroll
             // 事件偵測橫滑清單目前主要可見的卡片(見
-            // GeoOutlinePhoneInfoSheet.tsx nearbyListNodeRef 那段 effect
+            // PlanPhoneInfoSheet.tsx nearbyListNodeRef 那段 effect
             // 的完整說明,不再是純滑鼠 hover 限定,觸控橫滑也會觸發),
             // 使用者明確要求這個「橫滑時地圖顯示縮圖」的功能範圍只限
             // 主題介紹頁的展示地圖(InteractiveExploreMap.tsx),不含這裡
@@ -664,7 +685,7 @@ export function GeoOutlinePhoneView({
             onCategoryFilterChange={setCategoryFilter}
           />
           {/* nearby-place:附近景點清單點擊項目後開啟的地點卡——重用同一個
-              GeoOutlinePhoneInfoSheet 元件(對稱桌面版 AttractionInfoPanel/
+              PlanPhoneInfoSheet 元件(對稱桌面版 AttractionInfoPanel/
               PlacePanel 都是各自獨立元件、但手機版沒有第二種卡片元件可用
               的現況,見上方 SheetEntry 'nearby-place' 的完整說明),content
               傳 nearbyPoiContent(attraction 傳 null,這張卡片內容已經是
@@ -677,7 +698,7 @@ export function GeoOutlinePhoneView({
               足夠(只移除頂層的 'nearby-place',底下的 'info' 自動露出);
               用 closeAll() 反而會誤連同主題卡一起關掉,故仍是 pop()。 */}
           {sheetStack.stack.some((e) => e.type === 'nearby-place') && (
-            <GeoOutlinePhoneInfoSheet
+            <PlanPhoneInfoSheet
               content={nearbyPoiContent}
               attraction={null}
               cfg={cfg}
@@ -694,7 +715,7 @@ export function GeoOutlinePhoneView({
           )}
         </ExploreMap>
       </div>
-      <GeoOutlinePhoneDatePickerSheet
+      <PlanPhoneDatePickerSheet
         open={sheetStack.stack.some((e) => e.type === 'date-picker')}
         scheduledDates={geo.scheduledDates}
         onPickDate={handleScheduleFromDateSheet}
@@ -703,35 +724,35 @@ export function GeoOutlinePhoneView({
         isTopmost={sheetStack.top?.type === 'date-picker'}
         stackOffsetPx={sheetStack.top?.type === 'date-calendar' ? 16 : 0}
       />
-      <GeoOutlinePhoneDateCalendarSheet
+      <PlanPhoneDateCalendarSheet
         open={sheetStack.stack.some((e) => e.type === 'date-calendar')}
         onConfirm={handleScheduleFromDateSheet}
         onClose={() => sheetStack.pop()}
         isTopmost={sheetStack.top?.type === 'date-calendar'}
       />
-      <GeoOutlinePhoneCandidateDrawer
-        open={candidateDrawerOpen}
-        onClose={() => setCandidateDrawerOpen(false)}
+      <PlanPhoneTripListDrawer
+        open={tripListDrawerOpen}
+        onClose={() => setTripListDrawerOpen(false)}
         candidates={geo.candidates}
-        onRemove={(c) => geo.handleRemoveCandidate(c, 'GeoOutlinePhoneCandidateDrawer')}
+        onRemove={(c) => geo.handleRemoveCandidate(c, 'PlanPhoneTripListDrawer')}
         onSelect={(c) => {
           // 候選籃選取候選項目——跟點地圖 marker 一樣是非清單來源的入口,
           // 用 replace 不用 push(理由見上方 onAttractionSelect 等的說明)。
           //
           // 2026-10 修正:使用者明確要求「點選行程內的項目時不要關閉
           // 行程,而是縮到最下面就好」——原本這裡會呼叫
-          // setCandidateDrawerOpen(false)真的關閉抽屜(open 變 false),
-          // GeoOutlinePhoneCandidateDrawer.tsx 內部新增的「點項目只收合
+          // setTripListDrawerOpen(false)真的關閉抽屜(open 變 false),
+          // PlanPhoneTripListDrawer.tsx 內部新增的「點項目只收合
           // 不關閉」邏輯(activeSnapIndex)因此被外層的 open=false 蓋過,
           // 完全沒生效——拿掉這行,行程抽屜改成只靠它自己內部的收合段
           // 處理,open 本身在這個互動裡不再改變。
           geo.selectCandidateFromBasket(c)
           sheetStack.replace({ type: 'info' })
         }}
-        flashTrigger={candidateFlashTrigger}
-        restoreTrigger={candidateDrawerRestoreTrigger}
+        flashTrigger={tripListFlashTrigger}
+        restoreTrigger={tripListDrawerRestoreTrigger}
       />
-      <GeoOutlinePhoneListDrawer
+      <PlanPhoneListDrawer
         cfg={cfg}
         tripID={tripID}
         // open:從 sheetStack 衍生——堆疊裡任何位置(不限頂層)存在

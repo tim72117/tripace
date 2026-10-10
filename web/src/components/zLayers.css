@@ -1,0 +1,26 @@
+/* zLayers.css——2026-10 新增(code review 發現的設計缺口):
+   components/zLayers.ts 的 TAB_BAR 常數原本只是「給 TypeScript 讀者看」
+   的複製值,PhoneTabBar.module.css 的 .bar 本身仍寫死 z-index: 35,
+   兩邊數值只靠人工保持一致,沒有任何機制防止未來改動其中一邊卻忘了
+   同步另一邊(zLayers.ts 原本的註解也承認這點,見該檔案 TAB_BAR 的
+   完整說明)。
+
+   CSS Modules 沒有原生機制讓 .module.css 直接讀 zLayers.ts 這份
+   TypeScript 常數(需要額外的建置工具支援,例如 CSS Modules 的
+   :export,這個專案目前沒有這套機制,見 zLayers.ts 的完整說明)——但
+   CSS 自訂屬性(custom property)本身就能跨檔案共用,不需要額外建置
+   工具:這裡集中定義一份「CSS 端的 z-index 唯一真理來源」,
+   PhoneTabBar.module.css 改成用 var(--z-tab-bar) 讀取,不再自己寫死
+   數字;main.tsx 全域 import 一次(比照 base-ui.css 的既有模式),任何
+   會用到這些層級的 .module.css 都能直接 var() 引用,不需要重複 import
+   這份檔案。
+
+   這份檔案解決的只是「CSS 端彼此之間」的數值漂移——TypeScript 端的
+   Z_LAYERS.TAB_BAR 仍然是獨立維護的複製值(JS/TS 無法在執行期讀取 CSS
+   自訂屬性的值來初始化一個編譯期常數),兩邊仍需要人工保持一致,但至少
+   消除了「CSS 檔案之間互相寫死數字各自為政」這一半的問題。 */
+:root {
+  /* --z-tab-bar:對應 components/zLayers.ts 的 Z_LAYERS.TAB_BAR——兩邊
+     數值需要保持一致,目前都是 35。 */
+  --z-tab-bar: 35;
+}

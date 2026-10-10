@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { DesktopTimelineMirror } from '../chat/ChatScreen'
 import type { ClientConfig } from '../api'
 import { MultiTrackTimeline } from './Timeline'
-import { PhoneBottomSheet, SheetHead } from '../components/PhoneBottomSheet'
-import { ScrollArea } from '../components/ScrollArea'
+import { StandaloneSheet, SheetBody, SheetHead } from '../components/PhoneBottomSheet'
+import { Z_LAYERS } from '../components/zLayers'
 
 // PhoneTimelineDrawer:手機版時間軸,由下往上彈出(bottom sheet)——使用者
 // 要求「時間軸不用獨立路由」,原本是底部常駐 PhoneTabBar.tsx 的一個分頁
@@ -35,6 +35,10 @@ const SHEET_TOP = 200
 // 元件說明。TODO(使用者稍後決定合理數值):暫時估算。
 const SHEET_MIN_HEIGHT = 100
 const SHEET_BOTTOM = 'calc(64px + env(safe-area-inset-bottom, 0px))'
+// CONTENT_PADDING_STYLE——見下方 SheetBody 呼叫處的完整說明,補上原本
+// ScrollArea 提供的內距(對齊 base-ui.css .screen-body 的既有數值,
+// 左右 12px、底部 16px、頂部 0)。
+const CONTENT_PADDING_STYLE = { padding: '0 12px 16px' }
 
 export function PhoneTimelineDrawer({
   open,
@@ -74,33 +78,52 @@ export function PhoneTimelineDrawer({
   }, [open, timelineMirror.entries])
 
   return (
-    <PhoneBottomSheet
+    <StandaloneSheet
       open={open}
       onClose={onClose}
       snapPoints={[SHEET_TOP]}
       minHeightPx={SHEET_MIN_HEIGHT}
       activeSnapIndex={snapIndex}
       onSnapIndexChange={setSnapIndex}
-      panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: 13 }}
+      // zIndex 改引用 Z_LAYERS.BELOW_TAB_BAR_2(2026-10,見 zLayers.ts
+      // 的完整說明,取代原本寫死的 13)——被 BELOW_TAB_BAR_1(旅程清單,
+      // trip/PhoneTripsDrawer.tsx)跟功能列本身都蓋住。
+      panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: Z_LAYERS.BELOW_TAB_BAR_2 }}
       showBackdrop={false}
       head={<SheetHead title={tripName} onClose={onClose} />}
     >
+      {/* SheetBody 取代原本的 ScrollArea——理由見該元件 forwardRef 的
+          完整說明:ScrollArea 固定 overflow-y:auto,跟 SheetBody 內部
+          「未到頂段 overflow:hidden、到頂才 auto」的拖拉交接切換邏輯
+          衝突,改成 SheetBody 自己當捲動容器,原本掛在 ScrollArea 上的
+          bodyRef(供下方 useEffect 自動捲到「今天」那一列)直接轉掛到
+          這裡。
+          CONTENT_PADDING_STYLE——ScrollArea 原本帶 padding: 0 12px 16px
+          (見該元件 module.css 的完整說明),SheetBody/.bodyScrollable
+          本身不提供 padding(對齊 geo-planning/GeoOutlinePhoneListDrawer.tsx
+          等既有呼叫端的慣例:「捲動改由外層 .body 統一負責,內容自己的
+          padding 留在內容層」,見該檔案 .list 的說明),這裡用 inline
+          style 補上同樣的內距,避免拿掉 ScrollArea 後內容貼齊螢幕邊緣的
+          視覺回歸——這個檔案沒有自己的 CSS Module,inline style 是目前
+          侵入最小的做法。 */}
       {timelineMirror.entries.length === 0 ? (
-        <ScrollArea>
-          <div className="empty">尚無行程內容。</div>
-        </ScrollArea>
+        <SheetBody>
+          <div className="empty" style={CONTENT_PADDING_STYLE}>尚無行程內容。</div>
+        </SheetBody>
       ) : (
-        <ScrollArea ref={bodyRef}>
-          <MultiTrackTimeline
-            entries={timelineMirror.entries}
-            todayRef={todayRef}
-            updatingIDs={timelineMirror.updatingEntryIDs}
-            taskPlaceholders={timelineMirror.taskPlaceholders}
-            cfg={editCfg}
-            onEntryUpdated={timelineMirror.refetchEntries}
-          />
-        </ScrollArea>
+        <SheetBody ref={bodyRef}>
+          <div style={CONTENT_PADDING_STYLE}>
+            <MultiTrackTimeline
+              entries={timelineMirror.entries}
+              todayRef={todayRef}
+              updatingIDs={timelineMirror.updatingEntryIDs}
+              taskPlaceholders={timelineMirror.taskPlaceholders}
+              cfg={editCfg}
+              onEntryUpdated={timelineMirror.refetchEntries}
+            />
+          </div>
+        </SheetBody>
       )}
-    </PhoneBottomSheet>
+    </StandaloneSheet>
   )
 }

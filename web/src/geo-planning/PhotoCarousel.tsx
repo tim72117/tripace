@@ -1,15 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import type { TouchEvent as ReactTouchEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useIsDesktop } from '../hooks/useIsDesktop'
+import { useSwipeDirectionLock } from '../hooks/useSwipeDirectionLock'
 import styles from './PhotoCarousel.module.css'
-
-// DIRECTION_LOCK_THRESHOLD_PX:MobileSwipeStrip 方向鎖定判斷前的最小
-// 位移門檻(見該處 touchStateRef 的完整說明)——手指剛觸碰螢幕時幾乎不
-// 會是完全靜止的直線移動,幾像素內的雜訊位移不該被當成方向判斷依據,
-// 等位移量明確超過這個門檻才判斷「這次手勢主要是水平還是垂直」。
-const DIRECTION_LOCK_THRESHOLD_PX = 6
 
 // PhotoCarousel:PlacePanel.tsx 照片顯示區域的抽出元件——「點擊地圖上
 // Google 原生 POI 圖標」這個來源(poiInfoContent,見 geoInfoContent.ts)的
@@ -133,46 +127,14 @@ function MobileSwipeStrip({ photos, alt }: { photos: string[]; alt: string }) {
   // 目前共用同一批原生觸控事件——PhoneBottomSheet 的 onTouchStart/Move/
   // End 是掛在 .panel 上的 React 合成事件,靠事件冒泡接收,若這裡完全
   // 不處理,手指按在照片上開始滑動時,事件會冒泡上去同時觸發卡片拖曳,
-  // 使用者實測回報希望「左右滑動照片時鎖住上下拖動」。做法:記錄觸控
-  // 起點,第一次明顯位移(超過 DIRECTION_LOCK_THRESHOLD_PX,避免手指
-  // 幾乎沒動就被雜訊誤判方向)時比較水平/垂直位移量決定方向,水平為主
-  // 就鎖定成「這次手勢屬於橫滑」,之後同一輪觸控(直到 touchend)的
-  // 所有事件都呼叫 stopPropagation() 擋掉冒泡,不讓 PhoneBottomSheet
-  // 收到;垂直為主則完全不攔截,讓事件正常冒泡給卡片處理拖曳——一旦
-  // 鎖定方向,中途不會再改變(常見的方向鎖行為,避免使用者滑動路徑
-  // 微幅斜向時方向判斷來回跳動、手感忽鎖忽放)。
-  const touchStateRef = useRef<{ startX: number; startY: number; locked: 'swipe' | 'drag' | null } | null>(null)
-
-  function onTouchStart(e: ReactTouchEvent) {
-    const touch = e.touches[0]
-    touchStateRef.current = { startX: touch.clientX, startY: touch.clientY, locked: null }
-  }
-
-  function onTouchMove(e: ReactTouchEvent) {
-    const state = touchStateRef.current
-    if (!state) return
-    const touch = e.touches[0]
-    const dx = touch.clientX - state.startX
-    const dy = touch.clientY - state.startY
-
-    if (state.locked === null) {
-      if (Math.abs(dx) < DIRECTION_LOCK_THRESHOLD_PX && Math.abs(dy) < DIRECTION_LOCK_THRESHOLD_PX) {
-        return
-      }
-      state.locked = Math.abs(dx) > Math.abs(dy) ? 'swipe' : 'drag'
-    }
-
-    if (state.locked === 'swipe') {
-      e.stopPropagation()
-    }
-  }
-
-  function onTouchEnd(e: ReactTouchEvent) {
-    if (touchStateRef.current?.locked === 'swipe') {
-      e.stopPropagation()
-    }
-    touchStateRef.current = null
-  }
+  // 使用者實測回報希望「左右滑動照片時鎖住上下拖動」。
+  //
+  // 2026-10 改用共用 hook hooks/useSwipeDirectionLock.ts(見該檔案的
+  // 完整說明,移植自 react-native-gesture-handler 的方向鎖定概念)取代
+  // 原本寫在這裡的一份位移閾值+方向比例判斷——判斷邏輯不變(水平為主
+  // 鎖定後 stopPropagation() 擋冒泡,垂直為主完全不攔截),只是抽成可
+  // 被其他元件複用的通用邏輯,不再是這個檔案專屬的實作細節。
+  const { onTouchStart, onTouchMove, onTouchEnd } = useSwipeDirectionLock('horizontal')
 
   // observerRef:目前掛載中的 IntersectionObserver 實例——registerObserver
   // 改回傳 void(不是 cleanup 函式)是因為專案的 React 版本是 18.3.1(見

@@ -14,12 +14,18 @@
   left: 0;
   right: 0;
   bottom: 0;
-  /* z-index 35:高於 trip/PhoneTripsDrawer.module.css 的 .backdrop(32)/
-     .panel(33)——底部常駐列在任何情況下都該疊在最上層、保持可見可點,
-     不該被任何浮動內容蓋住(使用者回報「功能列被遮住了」,先把疊層順序
-     錯開排除掉 z-index 造成的可能性,而不是繼續在 bottom 定位數值上
-     猜測)。 */
-  z-index: 35;
+  /* z-index:高於 trip/PhoneTripsDrawer.tsx 的 Z_LAYERS.BELOW_TAB_BAR_1(33)/
+     timeline/PhoneTimelineDrawer.tsx 的 Z_LAYERS.BELOW_TAB_BAR_2(13)——
+     底部常駐列在任何情況下都該疊在最上層、保持可見可點,不該被任何浮動
+     內容蓋住(使用者回報「功能列被遮住了」,先把疊層順序錯開排除掉
+     z-index 造成的可能性,而不是繼續在 bottom 定位數值上猜測)。
+     2026-10 改用 var(--z-tab-bar)(見 components/zLayers.css 的完整
+     說明,code review 發現這裡原本寫死 35,跟 zLayers.ts 的
+     Z_LAYERS.TAB_BAR 只靠人工保持同步、沒有任何機制防止兩邊漂移)——
+     取代原本寫死的數字 35,數值本身不變,但 CSS 端未來若需要調整這個
+     層級,只需要改 zLayers.css 這一處,不用再找散落在各 .module.css
+     裡的裸數字。 */
+  z-index: var(--z-tab-bar);
   display: flex;
   background: var(--ios-card);
   border-top: 1px solid var(--ios-sep);

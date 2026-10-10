@@ -1,19 +1,19 @@
-// GeoOutlinePhoneView 的「地點清單 → 資訊卡」sheet 堆疊行為——驗證
+// PlanPhoneView 的「地點清單 → 資訊卡」sheet 堆疊行為——驗證
 // useSheetStack.ts 開頭描述的那個真實 bug 已修復:點清單項目打開資訊卡
 // 後,清單不再被關閉(只是退到背景、套用 isTopmost=false 的退縮視覺),
 // 關閉資訊卡時清單會自動重新變回可互動的頂層,不需要使用者重新觸發
 // 搜尋才能再看到清單。
 //
-// mock 掉 ExploreMap(理由同 GeoOutlinePhoneView.listDrawer.test.tsx
+// mock 掉 ExploreMap(理由同 PlanPhoneView.listDrawer.test.tsx
 // ——這個測試不驗證地圖/查詢本身,只驗證清單/資訊卡兩個 sheet 之間的
 // 堆疊互動),直接暴露 onSearchStart/onSearchResultSelect 讓測試手動
 // 觸發清單打開,並用一個假的 GeoSearchResult 觸發
 // selectSearchResultFromList 開啟資訊卡。GeoOutlinePanel.tsx 已退役
-// (見 useGeoOutlineMapState.ts 的完整說明),GeoOutlinePhoneView.tsx
+// (見 useGeoOutlineMapState.ts 的完整說明),PlanPhoneView.tsx
 // 現在直接使用 ExploreMap,故改成 mock 這個模組;
 // onSearchResultsChange/setGeocodeCandidates 這兩個原本由
 // GeoOutlinePanel 提供的 prop,現在是 useGeoOutlineMapState 內部消化,
-// 這裡改成直接呼叫 geo 的 setGeocodeCandidates(透過 GeoOutlinePhoneView
+// 這裡改成直接呼叫 geo 的 setGeocodeCandidates(透過 PlanPhoneView
 // 傳給 hook 的同一個函式)搭配捕捉 ExploreMap 收到的 onSearchStart/
 // onSearchResultSelect 來重現相同的測試情境。
 //
@@ -24,7 +24,7 @@
 // isTopmost prop 的說明)。
 import { describe, it, expect, vi } from 'vitest'
 import { render, act } from '@testing-library/react'
-import { GeoOutlinePhoneView } from './GeoOutlinePhoneView'
+import { PlanPhoneView } from './PlanPhoneView'
 import type { ClientConfig, GeoGeocodeCandidate, GeoSearchResult } from '../api'
 import type { User } from '../user/types'
 
@@ -42,7 +42,7 @@ let capturedOnSearchStart: (() => void) | undefined
 let capturedOnGeocodeCandidatesChange: ((candidates: GeoGeocodeCandidate[]) => void) | undefined
 let capturedOnSearchResultSelect: ((r: GeoSearchResult) => void) | undefined
 
-// geo.searchResults(GeoOutlinePhoneListDrawer 的 results prop 來源)
+// geo.searchResults(PlanPhoneListDrawer 的 results prop 來源)
 // 2026-08 起改成從 geo.geocodeCandidates 衍生(見 useGeoPlanningState.ts
 // 的說明)——GeoOutlinePanel.tsx 退役後(見 useGeoOutlineMapState.ts 的
 // 完整說明),setGeocodeCandidates 這個 setter 已經不再是任何元件的
@@ -66,8 +66,8 @@ vi.mock('./ExploreMap', () => ({
     capturedOnSearchStart = props.onSearchStart
     capturedOnGeocodeCandidatesChange = props.onGeocodeCandidatesChange
     capturedOnSearchResultSelect = props.onSearchResultSelect
-    // children(GeoOutlinePhoneInfoSheet)改掛入 ExploreMap 後(見
-    // GeoOutlinePhoneView.tsx 的完整說明),這個 mock 必須真的渲染
+    // children(PlanPhoneInfoSheet)改掛入 ExploreMap 後(見
+    // PlanPhoneView.tsx 的完整說明),這個 mock 必須真的渲染
     // children,否則資訊卡永遠不會出現在測試的 DOM 樹裡——對齊
     // DesktopLayout.tsx/InteractiveExploreMap.tsx 對應測試 mock ExploreMap/
     // NativeMapBase 時的既有慣例。
@@ -111,7 +111,7 @@ const fakeCandidate2: GeoGeocodeCandidate = {
 
 function renderView() {
   return render(
-    <GeoOutlinePhoneView
+    <PlanPhoneView
       cfg={cfg}
       tripID="trip_1"
       activeTrip={null}
@@ -126,13 +126,13 @@ function sheetPanels(container: HTMLElement) {
   return Array.from(container.querySelectorAll('[data-testid="phone-bottom-sheet"]'))
 }
 
-describe('GeoOutlinePhoneView：地點清單與資訊卡的 sheet 堆疊', () => {
+describe('PlanPhoneView：地點清單與資訊卡的 sheet 堆疊', () => {
   it('點清單項目打開資訊卡後，清單仍維持掛載（只是退到背景），不會被關閉', () => {
     const { container } = renderView()
 
     // 先讓清單打開——2026-08 sheetStack 重構後,清單「開啟」這件事本身
     // 由查詢入口(onSearchStart/onSearch)在查詢開始的當下 push
-    // {type:'list'} 進堆疊(見 GeoOutlinePhoneView.tsx 的說明),不再是
+    // {type:'list'} 進堆疊(見 PlanPhoneView.tsx 的說明),不再是
     // onSearchResultsChange 回來才「打開」——這裡先呼叫 onSearchStart
     // 重現真實呼叫順序,再呼叫 onGeocodeCandidatesChange(兩筆,確認不是
     // 唯一解)寫入 geocodeCandidates(清單資料實際來源)並連帶觸發內部的
@@ -143,9 +143,9 @@ describe('GeoOutlinePhoneView：地點清單與資訊卡的 sheet 堆疊', () =>
     })
     expect(sheetPanels(container)).toHaveLength(1)
 
-    // 點清單項目——GeoOutlinePhoneListDrawer 的 onSelect 呼叫
+    // 點清單項目——PlanPhoneListDrawer 的 onSelect 呼叫
     // geo.selectSearchResultFromList,底層走 onSearchResultSelect 這條
-    // callback 觸發 geo.infoContent 賦值,連帶讓 GeoOutlinePhoneInfoSheet
+    // callback 觸發 geo.infoContent 賦值,連帶讓 PlanPhoneInfoSheet
     // open。
     act(() => capturedOnSearchResultSelect!(fakeResult))
 

@@ -144,31 +144,91 @@
   overflow-y: auto;
   touch-action: pan-y;
   overscroll-behavior-y: contain;
+  /* scrollbar-width/::-webkit-scrollbar——2026-10 補上(使用者明確要求
+     「SheetBody 取代 ScrollArea」後發現的視覺落差):components/
+     ScrollArea.tsx 原本就有隱藏捲軸視覺(手機版 App 觀感,不要出現桌面
+     瀏覽器那種捲軸滑塊),.bodyScrollable 原本沒有這組規則——
+     timeline/PhoneTimelineDrawer.tsx 改用 SheetBody 取代 ScrollArea 後
+     (理由見 SheetBody forwardRef 的完整說明),這裡若不補上,捲動到
+     真的需要捲軸的內容時會重新冒出桌面風格捲軸。不影響既有行為,只是
+     補齊這個共用容器本來就該有、先前因為沒有呼叫端真的需要捲動長內容
+     而沒被發現缺漏的規則。 */
+  scrollbar-width: none;
+  /* -webkit-overflow-scrolling: touch——2026-10 補上(code review 發現
+     的回歸,見 trip/PhoneTripsDrawer.tsx 改用 SheetBody 取代 ScrollArea
+     那次改動的說明):components/ScrollArea.module.css 的 .scrollArea
+     原本就帶這個屬性(iOS Safari 的慣性捲動,沒有它舊版 iOS Safari
+     捲動會頓挫、不流暢,見該檔案的完整說明),.bodyScrollable 當初補
+     scrollbar 規則時漏看了這一條,同樣屬於「這個共用容器本來就該有」
+     的規則,補在這裡讓所有用 SheetBody 的呼叫端一併受益,不是只修單一
+     呼叫端。 */
+  -webkit-overflow-scrolling: touch;
+}
+.bodyScrollable::-webkit-scrollbar {
+  display: none;
 }
 
-/* head/title/closeBtn:標準 head slot 內容樣式(標題文字 + 關閉鈕),供
-   PhoneBottomSheet.tsx 匯出的 SheetHead 元件使用——原本
-   geo-planning/GeoOutlinePhoneListDrawer.module.css、
+/* head/titleArea/headActions/closeBtn:標準 head slot 版面骨架(左側
+   標題區 + 右側動作列),供 PhoneBottomSheet.tsx 匯出的 SheetHead 元件
+   使用——原本 geo-planning/GeoOutlinePhoneListDrawer.module.css、
    timeline/PhoneTimelineDrawer.module.css 各自定義同一組樣式,使用者
    明確要求「用相同樣式的 head」,收斂成這裡一份共用定義,不繼續讓每個
-   呼叫端各自複製貼上。不是所有呼叫端都用這組標準樣式(例如
-   trip/PhoneTripsDrawer.tsx 目前不帶 head、
-   GeoOutlinePhoneInfoSheet.tsx 的 head 內容結構不同,兩者都不受影響,
-   繼續用自己的樣式)。 */
+   呼叫端各自複製貼上。
+   2026-10 擴充(使用者明確要求「SheetHead 內可以自行放置 button,但是
+   layout 要共用,像是業界 UI 套件那樣的設計模式」):原本只收純文字
+   標題(.title,<span>)的結構,擴充成 .titleArea(<div>,見
+   PhoneBottomSheet.tsx SheetHead 的完整說明:title prop 放寬成
+   ReactNode,可以放多行複合內容如名稱+副標+badges)與 .headActions
+   (關閉鈕 + 選填的 actions 插槽同一排的 wrapper)。
+   align-items 從 center 改成 flex-start——.titleArea 現在可能是多行
+   內容(名稱/副標/badges/chip 列疊在一起,見
+   GeoOutlinePhoneInfoSheet.tsx 的實際用法),垂直置中對多行內容會讓
+   .headActions 的關閉鈕卡在內容中段,改成從頂部對齊,單行標題時視覺
+   差異可忽略(仍有 padding-top 4px 維持跟內容的間距觀感)。
+   不是所有呼叫端都用這組標準樣式(例如 trip/PhoneTripsDrawer.tsx
+   目前不帶 head),不受影響。 */
 .head {
   flex: 0 0 auto;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   padding: 4px 14px 10px;
   border-bottom: 1px solid var(--ios-sep);
 }
 
+.titleArea {
+  /* min-width: 0——flex item 預設的 min-width:auto 會讓內容(尤其是
+     GeoOutlinePhoneInfoSheet.tsx 的長名稱/badges)撐開寬度、把
+     .headActions 擠出可視範圍,改成 0 讓它能正常隨容器寬度換行/截斷。 */
+  min-width: 0;
+  flex: 1;
+}
+
+/* .title——純文字標題的既有樣式。SheetHead(PhoneBottomSheet.tsx)內部
+   用 typeof title === 'string' 判斷,字串時自動包一層套用這個 class,
+   維持既有六個呼叫端原本的視覺不變;title 是自訂 JSX(例如
+   GeoOutlinePhoneInfoSheet.tsx 的名稱+副標+badges 複合結構)時不會套用
+   這個 class,排版交給呼叫端自己決定,避免單一文字樣式覆蓋掉整段
+   複合內容。 */
 .title {
   /* 2026-10 修正:原本 15px 偏小,使用者要求放大——調整到 18px。 */
   font-size: 18px;
   font-weight: 700;
   color: var(--color-dark);
+}
+
+.headActions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* 2026-10 使用者明確要求「關閉按鈕要稍微往左邊移」——.head 是
+     justify-content: space-between,這排動作列原本貼齊 .head 右側
+     padding(14px)的邊界,加一點 margin-right 讓整排(含關閉鈕)離右緣
+     再留一點空隙,不要貼死在邊界上。改到 .headActions 身上(而非單獨
+     加在 .closeBtn)——有 actions 插槽內容時,應該是整排動作列一起
+     往左留白,不是只有關閉鈕自己偏移、actions 卻還貼齊邊界。 */
+  margin-right: 6px;
 }
 
 .closeBtn {

@@ -192,6 +192,20 @@
   margin-bottom: 12px;
 }
 
+/* .compact .input:手機版對話輸入框文字放大(使用者明確要求「對話的
+   輸入匡內文字要放大,跟上方搜尋匡一致」)——基礎 .input 規則(見下方
+   「Composer」區塊)是桌面/手機共用的 14px,這裡只在 compact 模式下
+   覆寫,不影響桌面版全頁 /trip-plan 路由的輸入框字級。16px 對齊手機版
+   規劃地圖搜尋框的字級(geo-planning/PlanPhoneView.module.css 的
+   [class*='_citySearchInput_'] 規則,同樣是 16px——該處註解提到的
+   「index.html 鎖定縮放後 16px 的臨界值」同樣適用於這裡:iOS Safari
+   對 font-size 小於 16px 的 input/textarea 聚焦時會自動放大整個頁面
+   畫面,16px 剛好是不觸發這個自動縮放行為的臨界值,放大到這個字級
+   同時解決「文字太小」與「聚焦時畫面意外被放大」兩個問題)。 */
+.compact .input {
+  font-size: 16px;
+}
+
 /* Header 相關樣式(.header/.headerInner/.headerRight/.statusPill/
    .statusDot*)已整個移除,原因見 TripPlanPage.tsx 對應位置的說明。 */
 

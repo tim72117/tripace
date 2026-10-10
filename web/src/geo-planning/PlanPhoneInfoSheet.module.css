@@ -1,11 +1,14 @@
-/* GeoOutlinePhoneInfoSheet.tsx 專屬樣式(CSS Modules)。外殼
+/* PlanPhoneInfoSheet.tsx 專屬樣式(CSS Modules)。外殼
    (backdrop/panel/dragHandle)已改用共用容器
-   components/PhoneBottomSheet.tsx(mode="snap"),定位樣式
-   (position/z-index/bottom/background)透過 panelStyle/backdropStyle
-   傳入(見該檔案呼叫端的說明),這裡只保留 head/內容區塊本身的樣式。 */
+   components/PhoneBottomSheet.tsx 的具名工廠元件 StandaloneSheet(見該
+   檔案的說明;原本曾經用字串 mode="snap" 這類參數區分拖曳語意,現在已經
+   改成 snapPoints/minHeightPx 兩個數值參數決定段落,不再有 mode 這個
+   prop),定位樣式(position/z-index/bottom/background)透過
+   panelStyle/backdropStyle 傳入(見該檔案呼叫端的說明),這裡只保留
+   head/內容區塊本身的樣式。 */
 
 /* head:標頭區塊(名稱/副標/badges + 加入行程 icon 按鈕 + 關閉按鈕),見
-   GeoOutlinePhoneInfoSheet.tsx 的說明——使用者明確要求放在圖片上方,
+   PlanPhoneInfoSheet.tsx 的說明——使用者明確要求放在圖片上方,
    原本圖片滿版貼齊卡片邊緣、關閉按鈕疊在圖片右上角的做法已移除。
    headText 用 min-width: 0 讓長名稱能正確被右側兩顆按鈕(flex: 0 0 auto)
    擠壓省略,不會把按鈕推出可視範圍。不覆寫 touch-action(維持繼承共用
@@ -14,7 +17,7 @@
    處理,不再派發給 React 的 onTouchMove,導致整張卡片絕大部分面積
    (標頭/圖片/內容)完全無法觸發拖曳收合/展開手勢,只剩下拖曳把手那一
    小條還能拖(使用者實測回報「介紹卡變成不能拉動了」)——跟「整張卡片
-   都能拖曳」(對齊 GeoOutlinePhoneListDrawer.tsx,使用者明確要求)的目標
+   都能拖曳」(對齊 PlanPhoneListDrawer.tsx,使用者明確要求)的目標
    衝突,取捨後拿掉這個覆寫,簡介文字改靠 body 的 overflow-y: auto 處理
    捲動(理由同 components/PhoneBottomSheet.tsx 的 .body 說明)。 */
 /* padding-bottom:2026-10 修正(原本 12px)——這個值原本是「標頭(名稱/
@@ -93,7 +96,7 @@
 }
 
 /* imageWrapSwipe:isMobileSwipe 為 true(PhotoCarousel 目前渲染成手機版
-   多圖橫滑軌道,見 GeoOutlinePhoneInfoSheet.tsx 的 onLayoutChange 說明)
+   多圖橫滑軌道,見 PlanPhoneInfoSheet.tsx 的 onLayoutChange 說明)
    時疊加的 modifier,覆寫 .imageWrap 拿掉左右留白與容器圓角——使用者
    明確要求「有圖片的邊邊軌道不能有空隙」,固定 16px padding 套用到
    多圖橫滑軌道上時,會讓整條軌道跟卡片外緣之間多出一圈間隙,不是真正
@@ -159,7 +162,7 @@
 }
 
 /* placeAddress:精選點(content 分支)的地址——2026-10 使用者明確要求從
-   標頭搬到簡介下面(見 GeoOutlinePhoneInfoSheet.tsx 該處的完整說明)。
+   標頭搬到簡介下面(見 PlanPhoneInfoSheet.tsx 該處的完整說明)。
    字級/顏色沿用原本在標頭時的 .subtitle 樣式,只是換了位置,視覺份量
    不變。 */
 .placeAddress {
@@ -168,11 +171,11 @@
   color: var(--ios-gray);
 }
 
-/* nearbyTitle:「附近景點」標題文字——見 GeoOutlinePhoneInfoSheet.tsx 對
+/* nearbyTitle:「附近景點」標題文字——見 PlanPhoneInfoSheet.tsx 對
    nearby prop 的完整說明,只有主題卡才會渲染。
    2026-10:原本外層包著 .nearbySection(margin-top + border-top 當作跟
    標頭之間的視覺分隔)——分類篩選 chip 列搬到 head(標頭,見
-   GeoOutlinePhoneInfoSheet.tsx 該處的完整說明)後,這個包裝層已經沒有
+   PlanPhoneInfoSheet.tsx 該處的完整說明)後,這個包裝層已經沒有
    任何樣式需要承載(格線按使用者要求移除;間距改交給 .content 本身的
    padding-top+flex gap,見該 class 說明,疊加 .nearbySection 自己的
    margin-top 曾經造成「間距太大」),故連同這個 wrapper div 一併移除,
@@ -190,7 +193,7 @@
 }
 
 /* nearbyCategoryChips:分類篩選——橫向可捲動的 chip 列,取代桌面版的
-   下拉選單(使用者明確要求,見 GeoOutlinePhoneInfoSheet.tsx 的完整
+   下拉選單(使用者明確要求,見 PlanPhoneInfoSheet.tsx 的完整
    說明:bottom sheet 空間有限,下拉選單的展開/收合 popover 容易被截斷
    或蓋住清單本身,chip 列不需要展開狀態,一行就放得下)。
    overflow-x: auto + white-space: nowrap 讓分類數量超過可視寬度時可以

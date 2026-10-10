@@ -2,6 +2,46 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.30.0 — 2026-10-11
+
+手機版 bottom sheet 體系的大規模重構：收斂「拉動時反應不一致」的問題，統一用具名工廠元件與具名常數管理原本散落各處的行為差異與 z-index 魔法數字，並修正多個實際回報的手勢/拖曳 bug。
+
+### 破壞性變更
+
+- **`web/src/components/PhoneBottomSheet.tsx` 的 `PhoneBottomSheetProps` 移除 `loading`**：原本 `loading=true` 時由 `PhoneBottomSheet` 本身顯示置中轉圈動畫取代 `.body` 內容，改成新增的 `SheetBody` compound component 自己的 `loading` prop（`<SheetBody loading={...}>`）。理由：重構後 `PhoneBottomSheet` 不再固定渲染 `.body` div（見下方 `SheetBody` 說明），`loading` 這個機制只對「有可捲動內容」的 `SheetBody` 有意義。既有唯一呼叫端（`geo-planning/PlanPhoneListDrawer.tsx`）已同步改用新寫法。
+- **`web/src/geo-planning/PlanPhoneDatePickerSheet.tsx`／`PlanPhoneDateCalendarSheet.tsx` 的 `isTopmost` 從選填改為必填**：原本選填＋內部用 `?? true` 補預設值，等於在 `StackedSheet`（見下方）刻意把 `isTopmost` 設計成必填、防止被意外忽略的保護之外，又重新開了一個後門（code review 發現）。既有唯一呼叫端（`PlanPhoneView.tsx`）本來就一直有明確傳值，不受影響。
+- **6 個手機版元件檔案改名**（`git mv` 保留歷史，匯出的函式名稱同步改變，僅改名不改簽名）：
+  - `GeoOutlinePhoneView` → `PlanPhoneView`
+  - `GeoOutlinePhoneListDrawer` → `PlanPhoneListDrawer`
+  - `GeoOutlinePhoneInfoSheet` → `PlanPhoneInfoSheet`
+  - `GeoOutlinePhoneDatePickerSheet` → `PlanPhoneDatePickerSheet`
+  - `GeoOutlinePhoneDateCalendarSheet` → `PlanPhoneDateCalendarSheet`
+  - `GeoOutlinePhoneCandidateDrawer` → `PlanPhoneTripListDrawer`（延續前一版已開始的改名，此次一併完成最後 5 個檔案；已知範圍限制：仍有未直接改動的檔案裡的註解提及舊名字，未擴大範圍清理）
+
+### 新增
+
+- **`SheetHead`／`StandaloneSheet`／`StackedSheet`／`PersistentSheet`／`SheetBody`**（`web/src/components/PhoneBottomSheet.tsx`）：
+  - `SheetHead` 的 `title` 從 `string` 放寬成 `ReactNode`，新增選填 `actions` 插槽（渲染在關閉鈕左邊）——既有純字串呼叫端不受影響。
+  - 新增三個具名工廠元件（Compound Component 模式）取代呼叫端各自決定 `exitDurationMs`/`isTopmost`/`keepMounted` 組合的舊寫法：`StandaloneSheet`（獨立開關，不屬於堆疊）、`StackedSheet`（`useSheetStack` 多層堆疊的一員，`isTopmost` 必填）、`PersistentSheet`（children 需要永遠留在 React 樹上，例如需要維持 WebSocket 連線的 `ChatScreen`）。
+  - 新增 `SheetBody` compound component：把原本隱含在 `PhoneBottomSheet` 內部、無條件套用在 children 外層的「捲到頂才能往下拖收合」交接邏輯，改成呼叫端自己在 JSX 裡宣告 `<SheetBody>` 才套用，不宣告就是普通內容；支援 `forwardRef` 取得內部捲動容器 DOM 節點做程式化捲動。
+- **`web/src/components/zLayers.ts`／`zLayers.css`**：新增具名 z-index 常數（`Z_LAYERS`、`PLAN_SHEET_STACK`、`PLAN_SHEET_BACKDROP`）取代散落 8 處的裸數字 z-index；`zLayers.css` 額外用 CSS 自訂屬性 `--z-tab-bar` 讓 `PhoneTabBar.module.css` 不再寫死數字，消除 CSS 檔案之間各自維護相同數值卻可能漂移不同步的問題（TypeScript 端的 `Z_LAYERS.TAB_BAR` 仍是獨立複製值，CSS Modules 無跨語言常數共用機制）。
+- **`web/src/hooks/useSwipeDirectionLock.ts`**：把原本寫死在 `geo-planning/PhotoCarousel.tsx` 的「位移閾值＋水平/垂直比例判定＋鎖定後 stopPropagation()」手勢仲裁邏輯抽成通用 hook，供任何「橫向手勢需要跟外層縱向拖曳仲裁」的元件複用；`PhotoCarousel.tsx` 已改用此 hook，行為不變。
+
+### 修正
+
+- **行程清單／地點資訊卡拉動內容到頂時 bottom sheet 不會縮小**：`finishDrag()` 原本用 `stops.indexOf(startTopRef.current)` 從數值反查手勢起點索引，這是脆弱的精確浮點數比對（`stops[0]` 隨 `containerHeight` 動態換算，resize 時可能有極小數值差異導致 `indexOf` 找不到而回傳 -1）。改成手勢開始當下直接記錄索引本身（`startIndexRef`），不再反查。
+- **拉動內容到頂、sheet 開始縮合瞬間畫面抖動／突然縮一大段**：`SheetBody` 的拖曳交接判斷原本用「從 touchstart 算起」的位移量，若手指在內容未捲到頂前已經滑動一段距離（被原生捲動吃掉），交接瞬間會把這段「原生捲動已消耗的位移」一併套用到 sheet 的拖曳位移上，造成視覺跳動。改成交接那一刻重設位移基準，從 0 重新累積。
+- **手機版對話小匡捲動容器依賴 `closest('main')` 標籤名稱猜測**：原本 `TripPlanPage` 內部用 `closest('main')` 往上找捲動祖先，`SheetBody` 取代原本的 `<main>` 包裝後找不到。改用 `TripPlanPage` 既有但手機版未使用的 `scrollContainerRef` prop，呼叫端明確傳入 DOM ref，不再依賴任何標籤名稱猜測。
+- **`PhoneContent.tsx` 設定頁／配速表遺漏套用具名工廠元件**：仍直接呼叫 `PhoneBottomSheet` 而非 `StandaloneSheet`，已補上（code review 發現）。
+- **`trip/PhoneTripsDrawer.tsx` 改用 `SheetBody` 取代 `ScrollArea` 後遺漏補償樣式**（code review 發現）：原本 `ScrollArea` 帶的 `padding: 0 12px 16px`、iOS `-webkit-overflow-scrolling: touch` 慣性捲動未補回，導致內容貼齊面板邊緣、舊版 iOS Safari 捲動頓挫。`-webkit-overflow-scrolling: touch` 補進共用的 `.bodyScrollable`（所有 `SheetBody` 呼叫端受益），padding 比照 `PhoneTimelineDrawer.tsx` 用呼叫端自訂 `CONTENT_PADDING_STYLE` 補回。
+- **對話氣泡「想去哪裡」定位拉不準**：根因是 `.citySearchAiBtnAnchor` 缺少 `display: inline-flex`，依賴瀏覽器隱性 flex-item 行為。
+- **手機版對話輸入框文字偏小**：`trip-plan/TripPlanPage.module.css` 新增 `.compact .input { font-size: 16px }`，只影響手機版對話小匡，對齊搜尋框字級；不影響桌面版 `/trip-plan` 全頁路由（維持 14px）。
+
+### 清理
+
+- 移除 `PhoneContent.module.css` 的死碼 `.planScroll`（原本配合 `closest('main')` 的 `<main>` 包裝，該包裝已移除，CSS 規則隨之不再被引用）。
+- 修正 2 處過時註解（`PlanPhoneInfoSheet.module.css`/`.tsx`、`PlanPhoneListDrawer.module.css` 仍提及已不存在的 `mode="snap"` 字串參數，現已改成 `snapPoints`/`minHeightPx` 數值參數）。
+
 ## v0.29.1 — 2026-10-10
 
 ### 新增

@@ -1,29 +1,278 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createContext, forwardRef, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode, TouchEvent as ReactTouchEvent } from 'react'
 import { X } from 'lucide-react'
 import styles from './PhoneBottomSheet.module.css'
 
-// SheetHead:標準 head slot 內容(標題文字 + 關閉鈕),供呼叫端直接帶入
-// PhoneBottomSheet 的 head prop——使用者明確要求「用相同樣式的 head」,
-// 原本 geo-planning/GeoOutlinePhoneListDrawer.tsx、
+// SheetHead:標準 head slot 版面骨架(左側標題區 + 右側動作列 + 關閉鈕),
+// 供呼叫端直接帶入 PhoneBottomSheet 的 head prop——使用者明確要求「用
+// 相同樣式的 head」,原本 geo-planning/GeoOutlinePhoneListDrawer.tsx、
 // timeline/PhoneTimelineDrawer.tsx、trip/PhoneTripsDrawer.tsx
 // 各自在呼叫端重複刻一份同樣結構的 JSX(或完全不帶 head、只能靠拖曳
 // 關閉),收斂成這個元件,往後新增一個 bottom sheet 只需要帶
-// title/onClose 兩個 prop。不是所有呼叫端都適用這個標準結構——
-// geo-planning/GeoOutlinePhoneInfoSheet.tsx 的 head 內容結構不同(名稱/
-// 副標/badges/加入行程按鈕),繼續自己組裝 JSX,但 .closeBtn 視覺值
-// (尺寸/底色/字色)仍對齊這裡,使用者明確要求「統一 bottom sheet 關閉
-// 按鈕樣式」,不自己另外發明一套配色(見該檔案 .module.css 的說明)。
-export function SheetHead({ title, onClose }: { title: string; onClose: () => void }) {
+// title/onClose 兩個 prop。
+//
+// 2026-10 擴充(使用者明確要求「SheetHead 內可以自行放置 button,但是
+// layout 要共用,像是業界 UI 套件那樣的設計模式」,對齊
+// components/FloatingPanel.tsx/PanelHead.tsx 的 headerAction 插槽同一套
+// 設計思路):
+//   - title 從 string 放寬成 ReactNode——左側標題區不再侷限於一行純
+//     文字,可以放副標題、badges、分類篩選 chip 列等任意內容(見
+//     geo-planning/GeoOutlinePhoneInfoSheet.tsx 的實際需求:名稱+副標+
+//     badges+chips 這種多行複合結構)。純字串呼叫端(其餘六個既有呼叫
+//     端)不需要改動既有呼叫方式——下方用 typeof title === 'string'
+//     判斷,字串時自動包一層 .title(既有的 18px/700 字級樣式),維持
+//     這六個呼叫端原本的視覺不變;傳入非字串(自訂 JSX)時,不強制套用
+//     這份文字樣式——呼叫端此時通常是整段複合結構(標題+副標+badges),
+//     套上單一文字樣式反而不合適,排版完全交給呼叫端自己決定。
+//   - 新增 actions 插槽:選填 ReactNode,渲染在關閉鈕左邊(同一排動作
+//     列),只在呼叫端有傳入時才渲染對應的 wrapper——這讓
+//     GeoOutlinePhoneInfoSheet.tsx 的「加入行程」icon 按鈕這類額外動作
+//     可以沿用這份共用骨架,不需要整個放棄 SheetHead、自己重新刻一份
+//     只為了多塞一顆按鈕。
+// 這兩個擴充讓原本「head 內容結構不同」就必須整個繞開共用元件的呼叫端
+// (GeoOutlinePhoneInfoSheet.tsx)也能改用 SheetHead,統一 layout(間距/
+// 對齊方式/關閉鈕位置)同時保留放置任意內容的彈性——呼叫端只需要決定
+// 「標題區放什麼」「要不要加額外動作」,不需要重新刻一份 .head/.closeBtn
+// 骨架。
+export function SheetHead({
+  title,
+  actions,
+  onClose,
+}: {
+  title: ReactNode
+  // actions——選填,渲染在關閉鈕左邊的額外動作(例如「加入行程」icon
+  // 按鈕)。沒有傳入時這個位置完全不佔版面,不影響既有呼叫端的版面。
+  actions?: ReactNode
+  onClose: () => void
+}) {
   return (
     <div className={styles.head}>
-      <span className={styles.title}>{title}</span>
-      <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
-        <X size={16} strokeWidth={2} />
-      </button>
+      <div className={styles.titleArea}>
+        {typeof title === 'string' ? <span className={styles.title}>{title}</span> : title}
+      </div>
+      <div className={styles.headActions}>
+        {actions}
+        <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
+          <X size={16} strokeWidth={2} />
+        </button>
+      </div>
     </div>
   )
 }
+
+// SheetBodyContext/SheetBody——2026-10 新增(使用者明確要求「要類似
+// Vaul/react-modal-sheet 那種具名元件表達捲動/拖拉交接,而不是散落在
+// 樣式/隱含邏輯裡」):原本「捲到頂繼續往下拖要能收合 sheet」這整套交接
+// 判斷(atMaxExpansion/scrollTop/bodyDragHandoffRef)完全藏在
+// PhoneBottomSheet 內部,無條件套用在 children 外層那個固定的 .body
+// div 上——呼叫端的 JSX 完全看不出「這塊內容會不會參與拖拉交接」,只能
+// 翻這個檔案的實作細節才知道規則,這正是使用者回報「好幾個 bottom
+// sheet,拉動時的反應都不一樣」的根本原因之一:呼叫端沒有宣告的能力,
+// 要嘛整塊 children 都被套用同一套規則,要嘛得去改共用元件本身。
+//
+// 改成 SheetBody 具名子元件(業界常見的 Compound Component 模式,
+// 對照 react-modal-sheet 的 <Sheet.Scroller>、Radix UI 用具名子元件取代
+// 一長串 boolean prop 的設計思路):呼叫端在 children 裡明確寫
+// `<SheetBody>...</SheetBody>` 才會套用「捲到頂可以往下拖收合」這個
+// 行為,不寫就是普通內容、不參與任何拖拉交接判斷。PhoneBottomSheet 不再
+// 自動幫 children 包一層 .body,呼叫端自己決定要不要用、放在哪裡。
+//
+// SheetBody 需要讀取/寫入的狀態(atMaxExpansion、draggingRef、
+// startYRef/startTopRef/startIndexRef、dragOffset、finishDrag)都是
+// PhoneBottomSheet 內部私有的拖曳狀態,不透過一般 props 往下傳(那樣
+// 呼叫端又要手動轉接一堆內部實作細節,等於換湯不換藥)——改用 React
+// Context,PhoneBottomSheet 是唯一的 Provider,SheetBody 是唯一合法的
+// Consumer,中間不會有第三方誤用這個 context 的疑慮(沒有對外匯出
+// useContext hook,只匯出 SheetBody 這個元件本身)。
+interface SheetBodyContextValue {
+  atMaxExpansion: boolean
+  isSingleStop: boolean
+  draggingRef: React.MutableRefObject<boolean>
+  startYRef: React.MutableRefObject<number | null>
+  startTopRef: React.MutableRefObject<number>
+  startIndexRef: React.MutableRefObject<number>
+  // currentTop/activeSnapIndex 用函式讀取(而非直接放值)——這兩個值
+  // 每次 render 都可能改變,SheetBody 的事件處理常式用原生
+  // addEventListener 綁定(理由同原本 bodyOnTouchMove 的完整說明:
+  // React 17+ 的 passive listener 預設值問題),不是每次 render 都重新
+  // 綁定,若直接把當下這一輪的值放進 context 物件,處理常式閉包住的會是
+  // 綁定當下那一輪的舊值(stale closure)。改成傳函式,事件觸發當下呼叫
+  // 才能讀到最新值——這個函式本身每次 render 都重新建立沒關係,因為
+  // SheetBody 不需要靠它觸發重新綁定 effect(只在觸控事件發生當下呼叫,
+  // 不放進任何依賴陣列)。
+  getCurrentTop: () => number
+  // getMaxIndex——atMaxExpansion 成立時,這次交接的起點索引固定是
+  // stops.length - 1(展開最多的那個段,見 PhoneBottomSheet 內部
+  // atMaxExpansion 的完整說明)。SheetBody 自己不知道 stops 陣列長度,
+  // 用函式讀取理由同 getCurrentTop(避免 stale closure)。
+  getMaxIndex: () => number
+  setDragOffset: (value: number) => void
+  finishDrag: () => void
+  // registerBodyRef——把 SheetBody 自己管理的 bodyRef 回報給
+  // PhoneBottomSheet,讓它的 onTouchStart(head/拖曳把手那組)能判斷
+  // 「事件起點是否落在 body 內部」(見下方 PhoneBottomSheet onTouchStart
+  // 的完整說明,這是原本 bodyRef 要解決的同一個問題,只是現在 bodyRef
+  // 的擁有者換成 SheetBody 自己)。
+  registerBodyRef: (el: HTMLDivElement | null) => void
+}
+const SheetBodyContext = createContext<SheetBodyContextValue | null>(null)
+
+// SheetBody——宣告「這塊內容是可捲動、且捲到頂時可以往下拖交接給 sheet
+// 收合」的具名插槽。對齊 react-modal-sheet 的 <Sheet.Scroller>:呼叫端
+// 只需要知道「這是放可捲動內容的地方」,不需要知道任何 scrollTop/
+// touch-action 的實作細節。必須渲染在 PhoneBottomSheet 的 children 裡
+// 才能拿到 context(見下方 useContext 的 guard),用法:
+//   <PhoneBottomSheet ...>
+//     <SheetBody>{長內容,例如清單/捲動區域}</SheetBody>
+//   </PhoneBottomSheet>
+// 不需要用 SheetBody 包起來的情境(例如內容本身固定高度、不需要捲動,
+// 像是一個簡短的表單):children 直接放普通內容即可,不會被任何拖拉
+// 交接邏輯影響,也不會收合到最小段時被隱藏(見下方 PhoneBottomSheet
+// 對「停在最小段只顯示 head」這個行為的完整說明——目前只有用了
+// SheetBody 的內容才會被隱藏,普通內容會持續顯示,呼叫端若需要「收合時
+// 隱藏」的行為,應該用 SheetBody 包住)。
+export interface SheetBodyProps {
+  children: ReactNode
+  // loading——true 時顯示置中轉圈動畫取代 children(搬自原本
+  // PhoneBottomSheetProps.loading,見 StandaloneSheet 等呼叫端的完整
+  // 說明:這個機制只對「有內容可以載入」的 SheetBody 有意義,其餘不需要
+  // 捲動/交接行為的普通內容不會用到,收斂到這裡而非留在
+  // PhoneBottomSheetProps 上)。讓呼叫端可以先把面板打開(例如使用者
+  // 按下某個會觸發非同步查詢的入口),資料還沒回來前先顯示這個,不用
+  // 自己在每個 children 裡各刻一份 loading 畫面。省略則不顯示,照常
+  // 渲染 children(預設行為不變)。
+  loading?: boolean
+}
+
+// forwardRef——2026-10 新增:使用者指出至少 timeline/PhoneTimelineDrawer.tsx
+// 這類呼叫端需要拿到內部捲動容器的 DOM 節點做程式化捲動(開啟時自動
+// 捲到「今天」那一列,見該檔案的完整說明)——原本直接用 <ScrollArea
+// ref={bodyRef}> 達成,但 ScrollArea 自己固定 overflow-y: auto(見該
+// 元件的完整說明:「捲動本身」跟 PhoneBottomSheet 的拖拉交接開關是刻意
+// 分開的兩個概念),若在 SheetBody 外面疊一層 ScrollArea,會跟 SheetBody
+// 內部「未到頂段 overflow:hidden、到頂才 auto」的切換邏輯衝突(兩層
+// overflow 容器互相干擾,拖拉交接判斷可能錯亂)。改成讓 SheetBody 自己
+// 透過 forwardRef 暴露內部捲動容器的 ref,取代 ScrollArea 的角色——
+// 呼叫端原本掛在 ScrollArea 上的 ref 直接掛到 SheetBody 上即可,不需要
+// 額外再包一層捲動容器。
+export const SheetBody = forwardRef<HTMLDivElement, SheetBodyProps>(function SheetBody(
+  { children, loading = false },
+  forwardedRef,
+) {
+  const ctx = useContext(SheetBodyContext)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  // bodyDragHandoffRef:同一塊內容自己的「這次手勢是否已經交接給 sheet
+  // 拖曳」旗標——理由同原本 PhoneBottomSheet.tsx 內部版本的完整說明:
+  // 已經交接過就固定繼續拖曳,避免手勢中途因為 scrollTop 讀值時機不同
+  // 又跳回捲動判斷。
+  const bodyDragHandoffRef = useRef(false)
+
+  // useImperativeHandle——把內部 bodyRef 這份「唯一真正的 DOM 節點」
+  // 暴露給呼叫端的 forwardedRef,讓外部可以做 scrollTo 之類的程式化
+  // 捲動控制(見上方 forwardRef 的完整說明)。依賴陣列空——bodyRef.current
+  // 本身是 ref 物件,不需要隨 render 重新建立這個 handle。
+  useImperativeHandle(forwardedRef, () => bodyRef.current as HTMLDivElement, [])
+
+  // setBodyRef——同時寫入自己的 bodyRef(供下方 touch 事件讀 scrollTop)
+  // 與回報給父層(見 registerBodyRef 的完整說明)。用 callback ref 而非
+  // 兩個 useEffect 分別處理,確保兩邊永遠同步、不會有時序落差。
+  function setBodyRef(el: HTMLDivElement | null) {
+    ;(bodyRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+    ctx?.registerBodyRef(el)
+  }
+
+  if (!ctx) {
+    // 防禦性處理:理論上不該發生(呼叫端照文件用法一定在
+    // PhoneBottomSheet 的 children 裡),但沒有 context 時不該整頁壞掉
+    // ——退化成單純渲染 children,不接任何拖拉交接邏輯,比丟出例外更
+    // 安全(呼叫端若真的誤用,頂多是少了收合手勢,不是整個畫面白屏)。
+    return <div className={styles.body} ref={setBodyRef}>{children}</div>
+  }
+
+  const {
+    atMaxExpansion, isSingleStop, draggingRef, startYRef, startTopRef, startIndexRef,
+    getCurrentTop, getMaxIndex, setDragOffset, finishDrag,
+  } = ctx
+
+  function onTouchStart(e: TouchEvent) {
+    if (!atMaxExpansion) return
+    startYRef.current = e.touches[0].clientY
+    startTopRef.current = getCurrentTop()
+    // startIndexRef——這個交接只在 atMaxExpansion(已經停在 stops 陣列
+    // 最後一個索引,見 PhoneBottomSheet 的完整說明)才會觸發,起點索引
+    // 固定是 stops.length - 1,用 getMaxIndex() 取得這個值(見該 context
+    // 欄位的完整說明),確保 finishDrag 讀到的 startIndexRef 永遠反映
+    // 這次手勢真正的起點,不會殘留上一次 head 拖曳寫入的舊值。
+    startIndexRef.current = getMaxIndex()
+    bodyDragHandoffRef.current = false
+  }
+  function onTouchMove(e: TouchEvent) {
+    if (!atMaxExpansion || startYRef.current === null) return
+    const body = bodyRef.current
+    const clientY = e.touches[0].clientY
+    const delta = clientY - startYRef.current
+
+    if (!bodyDragHandoffRef.current) {
+      if (draggingRef.current) {
+        bodyDragHandoffRef.current = true
+      } else if (delta > 0 && (!body || body.scrollTop <= 0)) {
+        bodyDragHandoffRef.current = true
+        draggingRef.current = true
+        // startYRef 重新鎖定到「交接發生當下」的座標——2026-10 修正
+        // 實際回報的 bug(「拉動到頂端、sheet 開始縮合時會突然縮一大段,
+        // 造成畫面抖動」):delta 原本是從 touchstart(手指一開始按下)
+        // 的座標算起,但交接之所以會「延後」到這個分支才發生,正是因為
+        // 剛才那段位移(scrollTop > 0 的期間)整段都被原生捲動吃掉了,
+        // 完全沒有反映在 sheet 的 dragOffset 上——交接當下 delta 其實是
+        // 「原生捲動吃掉的位移 + 剛才那一瞬間真正該交給 sheet 的位移」
+        // 兩段加總,下方 setDragOffset(delta) 會直接把這個虛高的累積值
+        // 套用上去,sheet 瞬間跳到「好像已經被拖了一大段」的位置。改成
+        // 交接這一刻重設 startYRef 為目前的 clientY,讓 dragOffset 從
+        // 這一刻開始重新從 0 累積,不把原生捲動已經消耗掉的那段距離
+        // 算進 sheet 的拖曳位移裡。
+        startYRef.current = clientY
+        setDragOffset(0)
+        return
+      } else {
+        return
+      }
+    }
+
+    if (!draggingRef.current) return
+    e.preventDefault()
+    const handoffDelta = clientY - startYRef.current
+    setDragOffset(isSingleStop ? Math.max(0, handoffDelta) : handoffDelta)
+  }
+  function onTouchEnd() {
+    if (!draggingRef.current) return
+    draggingRef.current = false
+    bodyDragHandoffRef.current = false
+    finishDrag()
+  }
+
+  useEffect(() => {
+    const body = bodyRef.current
+    if (!body) return
+    body.addEventListener('touchstart', onTouchStart, { passive: true })
+    body.addEventListener('touchmove', onTouchMove, { passive: false })
+    body.addEventListener('touchend', onTouchEnd, { passive: true })
+    return () => {
+      body.removeEventListener('touchstart', onTouchStart)
+      body.removeEventListener('touchmove', onTouchMove)
+      body.removeEventListener('touchend', onTouchEnd)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [atMaxExpansion, isSingleStop])
+
+  return (
+    <div
+      className={`${styles.body}${atMaxExpansion ? ` ${styles.bodyScrollable}` : ''}`}
+      ref={setBodyRef}
+    >
+      {loading ? <div className={styles.spinner} aria-label="載入中" /> : children}
+    </div>
+  )
+})
 
 // SHEET_EASE/SHEET_DURATION:放開手指後的「回彈到位」動畫曲線/時長——
 // 參考 Vaul(react bottom sheet 函式庫)的 TRANSITIONS 設定
@@ -139,13 +388,6 @@ export interface PhoneBottomSheetProps {
   showBackdrop?: boolean
   panelClassName?: string
   exitDurationMs?: number
-  // loading:true 時 body 區塊顯示置中轉圈動畫取代 children,head 仍正常
-  // 顯示——讓呼叫端自己決定「資料還在抓、但使用者已經觸發開啟」這種情境
-  // 要不要先把面板打開再補資料,還是等資料回來才開(兩種用法都支援:傳
-  // open=true 搭配 loading=true 就是前者,等資料回來前都不傳 open=true
-  // 就是後者),這個元件本身不規定任何一種流程。省略則不顯示,body 照常
-  // 渲染 children(預設行為不變)。
-  loading?: boolean
   // keepMounted:true 時 shouldRender 恆為 true,不論 open 值為何,不走
   // exitDurationMs 那套「延遲一段時間後才卸載」的邏輯——children 永遠
   // 留在 DOM 上,open 變 false 只用 translateY 位移到畫面外隱藏,不會被
@@ -201,7 +443,6 @@ export function PhoneBottomSheet({
   showBackdrop = true,
   panelClassName,
   exitDurationMs,
-  loading = false,
   keepMounted = false,
   isTopmost = true,
   stackOffsetPx = 0,
@@ -358,22 +599,37 @@ export function PhoneBottomSheet({
   // 起始距離 - 位移(手指往上拉,距離變小,面板展開更多)。
   const startYRef = useRef<number | null>(null)
   const startTopRef = useRef(0)
+  // startIndexRef:2026-10 新增(修正實際回報的 bug:「拉動內容到頂時
+  // sheet 不會縮小/拉動時視窗變小但不會吸附到下一段」)——finishDrag
+  // 原本用 stops.indexOf(startTopRef.current) 從數值反查手勢起點的索引,
+  // 這是脆弱的精確浮點數比對:stops[0](minHeightAsTop)是從
+  // containerHeight(見該 state 的完整說明)動態算出來的值,而
+  // containerHeight 會在 resize 事件(例如行動瀏覽器網址列伸縮、虛擬
+  // 鍵盤開合)時重新量測、可能產生極小的數值差異。若這次拖曳手勢
+  // 進行中(bodyOnTouchStart 記下 startTopRef.current 之後、
+  // finishDrag 執行之前)剛好發生一次這類 resize、使 stops 陣列重新
+  // 計算出跟手勢開始當下不完全相等的新陣列,indexOf 會找不到完全相等
+  // 的數值而回傳 -1,導致 finishDrag 的吸附判斷整個算錯(收合/展開方向
+  // 顛倒,或固定停在某個不正確的索引)——這解釋了「拖曳視覺有跟手,放開
+  // 卻沒有吸附到正確段落」這類症狀。改成手勢開始當下就直接記錄索引本身
+  // (bodyOnTouchStart/onTouchStart 當時的 activeSnapIndex),finishDrag
+  // 直接讀這個索引,不再需要從可能已經漂移的數值反查,徹底避免這類浮動
+  // 比對失敗。
+  const startIndexRef = useRef(0)
   const draggingRef = useRef(false)
   const [dragOffset, setDragOffset] = useState(0)
 
-  // bodyRef:.body 是否接收原生捲動由 CSS overflow 屬性直接切換(見下方
-  // bodyOverflow),不是 JS 攔截 touch 事件模擬——曾經嘗試用 JS 手動改
-  // scrollTop 模擬捲動(搭配 .panel/.body 都設 touch-action: none 擋掉
-  // 原生行為),但使用者實測(含真實手機,不是只有 DevTools 模擬)回報
-  // 「sheet 拖曳跟清單捲動兩者會同時被觸發」——touch-action: none 只能
-  // 降低瀏覽器接管的機率,無法保證瀏覽器完全不會在某些情境下仍嘗試原生
-  // 捲動這個 overflow 容器,兩套手勢系統(JS 模擬 + 瀏覽器原生)在同一個
-  // DOM 節點上互搶,沒有辦法做到真正互斥。改成完全不用 JS 模擬,情境
-  // 未到最頂段時直接把 .body 設成 overflow: hidden(內容在 DOM 層級就
-  // 不可能被捲動,不需要依賴 touch-action 去「勸阻」瀏覽器),到了最頂段
-  // 才切回 overflow-y: auto 交給瀏覽器原生捲動——兩態互斥且由瀏覽器自己
-  // 保證,不會再有兩套邏輯同時搶一次觸控手勢的問題。
-  const bodyRef = useRef<HTMLDivElement>(null)
+  // bodyElRef:SheetBody(若呼叫端有用,見該元件的完整說明)透過
+  // registerBodyRef 回報過來的 DOM 節點——這裡只需要知道它存不存在、
+  // 範圍涵不涵蓋事件目標(見下方 onTouchStart 的 bodyElRef.current?.
+  // contains 判斷),不需要知道它內部 overflow/scrollTop 的實作細節,
+  // 那些交給 SheetBody 自己管理(.body/.bodyScrollable 這組 CSS 切換
+  // 以及 scrollTop 判斷的完整理由,已經搬到 SheetBody 裡)。children 沒
+  // 用 SheetBody 包住時,registerBodyRef 永遠不會被呼叫,bodyElRef 恆為
+  // null,下方的 contains 判斷自然恆為 false——不影響這類呼叫端原本
+  // 「整塊 children 都能被頭部手勢直接拖動」的行為(没有 SheetBody 就
+  // 没有交接判斷,直接走 head 那組 onTouchStart)。
+  const bodyElRef = useRef<HTMLDivElement | null>(null)
 
   // hasOpenedRef:是否曾經真正 open 過——keepMounted 的呼叫端(如
   // PhoneContent.tsx 的對話疊加層)首次掛載時 open 就是 false,這個元件
@@ -437,13 +693,17 @@ export function PhoneBottomSheet({
   // 關閉」——正是這個交接機制沒有生效、原生手勢又搶走事件的結果。
   const atMaxExpansion = isSingleStop || activeSnapIndex === stops.length - 1
   function onTouchStart(e: ReactTouchEvent) {
-    // 事件起點若落在 .body 內部,交給 bodyOnTouchStart 判斷(見下方)——
-    // 這裡只處理起點在 .body 之外的情況(拖曳把手/標頭),不能無差別用
-    // atMaxExpansion 擋掉整個 .panel,那樣會連帶讓單段模式的拖曳把手
-    // 也失效(冒泡上來的事件一樣會被這裡擋住)。
-    if (atMaxExpansion && bodyRef.current?.contains(e.target as Node)) return
+    // 事件起點若落在 SheetBody 管理的節點內,交給它自己的 onTouchStart/
+    // Move/End 判斷(見該元件的完整說明)——這裡只處理起點在那塊範圍
+    // 之外的情況(拖曳把手/標頭/未使用 SheetBody 的普通內容),不能無
+    // 差別用 atMaxExpansion 擋掉整個 .panel,那樣會連帶讓單段模式的
+    // 拖曳把手也失效(冒泡上來的事件一樣會被這裡擋住)。沒有使用
+    // SheetBody 的呼叫端,bodyElRef.current 恆為 null,這個判斷恆為
+    // false,行為等同「整塊 children 都能被這裡直接拖動」。
+    if (atMaxExpansion && bodyElRef.current?.contains(e.target as Node)) return
     startYRef.current = e.touches[0].clientY
     startTopRef.current = currentTop
+    startIndexRef.current = activeSnapIndex
     draggingRef.current = true
   }
   function onTouchMove(e: ReactTouchEvent) {
@@ -465,93 +725,10 @@ export function PhoneBottomSheet({
     finishDrag()
   }
 
-  // bodyOnTouchStart/Move/End:只在展開最多的那個段掛在 .body 上(見下方
-  // JSX),負責「已經捲到清單最上面(scrollTop <= 0)時,繼續往下拖要能
-  // 收合 sheet」這個交接——使用者明確要求「捲動到頂時,sheet 又可以往下
-  // 拉動」。平常(scrollTop > 0,或往上拖看更多內容)完全不介入,讓
-  // .body 的 overflow-y: auto 走真正的原生捲動(見上方 atMaxExpansion
-  // 的說明,不用 JS 模擬)。一旦偵測到「起點就在頂部且往下拖」,呼叫
-  // preventDefault() 擋掉這次手勢接下來的原生捲動(這個節點此時
-  // touch-action 是預設的 auto,不像 .panel 那樣整段禁用原生手勢,才需要
-  // 在這裡主動擋),改交給跟 .panel 共用的同一套 draggingRef/dragOffset
-  // 拖曳邏輯,行為與「非最頂段時直接拖曳」完全一致。
-  const bodyDragHandoffRef = useRef(false)
-  function bodyOnTouchStart(e: TouchEvent) {
-    if (!atMaxExpansion) return
-    startYRef.current = e.touches[0].clientY
-    startTopRef.current = currentTop
-    bodyDragHandoffRef.current = false
-  }
-  function bodyOnTouchMove(e: TouchEvent) {
-    if (!atMaxExpansion || startYRef.current === null) return
-    const body = bodyRef.current
-    const delta = e.touches[0].clientY - startYRef.current
-
-    if (!bodyDragHandoffRef.current) {
-      if (draggingRef.current) {
-        // 已經交接過、正在拖 sheet——後續的移動事件不再重新判斷,固定
-        // 繼續拖曳(避免手勢中途因為 scrollTop 讀值時機不同又跳回捲動)。
-        bodyDragHandoffRef.current = true
-      } else if (delta > 0 && (!body || body.scrollTop <= 0)) {
-        // 起點就在頂部(或還沒有真正捲動過)且往下拖——交接給 sheet 拖曳。
-        bodyDragHandoffRef.current = true
-        draggingRef.current = true
-      } else {
-        // 其餘情況(還沒捲到頂、或往上拖看更多內容)交給原生捲動,不介入。
-        return
-      }
-    }
-
-    if (!draggingRef.current) return
-    e.preventDefault()
-    // 單段模式只能往下拖(比照 onTouchMove 的 isSingleStop 分支)——交接
-    // 條件本身已限制 delta > 0 才會交接,但交接後使用者可能中途把手指
-    // 往上推回去,這裡同樣要夾住下限,避免面板被往上推超出原位置。
-    setDragOffset(isSingleStop ? Math.max(0, delta) : delta)
-  }
-  function bodyOnTouchEnd() {
-    if (!draggingRef.current) return
-    draggingRef.current = false
-    bodyDragHandoffRef.current = false
-    finishDrag()
-  }
-
-  // 2026-10 修正:原本 bodyOnTouchStart/Move/End 透過 JSX 的
-  // onTouchStart/onTouchMove/onTouchEnd 綁定——React 17+ 替
-  // touchstart/touchmove(以及 wheel)這幾種事件的原生 DOM 監聽器預設
-  // 加上 passive: true(配合瀏覽器建議的捲動效能優化),但 bodyOnTouchMove
-  // 內的 e.preventDefault()(攔截「已捲到頂、繼續往下拖」交接給 sheet
-  // 拖曳的情境,見上方完整說明)在 passive listener 裡完全不會生效,
-  // 瀏覽器只會在 console 噴
-  // 「Unable to preventDefault inside passive event listener invocation」
-  // 警告,不會真的擋掉原生捲動——使用者實測回報「移動地圖時會卡著」,
-  // 排查發現這個警告被連續觸發,根因就在這裡:瀏覽器以為可以放心在
-  // 合成器執行緒提早處理捲動,實際上卻一直被這個(失效的)
-  // preventDefault 嘗試同步介入,兩者的假設互相矛盾,造成明顯卡頓。
-  // 改成 useEffect 手動呼叫原生 addEventListener 並明確傳
-  // { passive: false },讓瀏覽器確實知道這個監聽器可能呼叫
-  // preventDefault,改用主執行緒同步處理,不要提早樂觀假設。
-  // atMaxExpansion/isSingleStop 等依賴值變動時整組重新綁定——這三個
-  // handler 邏輯輕量,重新綁定的成本可忽略,比用 ref 包住每個易變值
-  // 簡單直接,不需要額外維護一層 ref 同步。
-  useEffect(() => {
-    const body = bodyRef.current
-    if (!body) return
-    body.addEventListener('touchstart', bodyOnTouchStart, { passive: true })
-    body.addEventListener('touchmove', bodyOnTouchMove, { passive: false })
-    body.addEventListener('touchend', bodyOnTouchEnd, { passive: true })
-    return () => {
-      body.removeEventListener('touchstart', bodyOnTouchStart)
-      body.removeEventListener('touchmove', bodyOnTouchMove)
-      body.removeEventListener('touchend', bodyOnTouchEnd)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [atMaxExpansion, isSingleStop])
-
-  // finishDrag:onTouchEnd 的共用收尾邏輯——.panel 的 onTouchEnd 與
-  // .body 的 bodyOnTouchEnd 都需要同一套「鬆手後依 dragOffset 決定吸附
-  // 到哪一段(或單段模式時是否觸發 onClose)」判斷,抽出來避免兩處各自
-  // 重複一份。
+  // finishDrag:onTouchEnd 的共用收尾邏輯——這裡的 onTouchEnd 與
+  // SheetBody 自己的 onTouchEnd(透過 context 呼叫)都需要同一套「鬆手後
+  // 依 dragOffset 決定吸附到哪一段(或單段模式時是否觸發 onClose)」
+  // 判斷,抽出來避免兩處各自重複一份。
   function finishDrag() {
     if (isSingleStop) {
       if (dragOffset > SNAP_TOLERANCE_PX) onClose()
@@ -561,7 +738,13 @@ export function PhoneBottomSheet({
       const maxTop = stops[0]
       const rawTop = startTopRef.current + dragOffset
       const clampedTop = Math.min(maxTop, Math.max(minTop, rawTop))
-      const startIndex = stops.indexOf(startTopRef.current)
+      // startIndex——直接讀取手勢開始當下記錄的索引(startIndexRef,見該
+      // ref 宣告處的完整說明),不再用 stops.indexOf(startTopRef.current)
+      // 從數值反查:那是脆弱的精確浮點數比對,stops[0] 會隨 containerHeight
+      // 的 resize 重新量測而變動,手勢進行中若剛好發生一次這類 resize,
+      // indexOf 會找不到完全相等的值而回傳 -1,讓後續吸附方向判斷整個
+      // 算錯。
+      const startIndex = startIndexRef.current
 
       // 吸附規則(使用者明確要求的設計,非 Vaul 的距離最近判斷)——
       // dragOffset > 0 代表往下拖(面板頂部離螢幕頂部的距離變大,展開
@@ -719,26 +902,109 @@ export function PhoneBottomSheet({
           <div className={styles.dragHandleBar} />
         </div>
         {renderedHead}
-        {/* body:停在最小段時隱藏(單段模式不適用,見上方 .panelCollapsed
-            的 CSS 說明),其餘情況永遠顯示。loading 為 true 時顯示置中
-            轉圈動畫取代 children——讓呼叫端可以先把面板打開(例如使用者
-            按下某個會觸發非同步查詢的入口),資料還沒回來前先顯示這個,
-            不用自己在每個 children 裡各刻一份 loading 畫面(見上方
-            loading prop 的說明)。bodyScrollable:只在展開最多的那個段
-            疊加(見上方 atMaxExpansion 的說明),交給真正的原生捲動,不
-            影響其餘段落維持 overflow: hidden、完全不接收觸控事件的
-            預設行為。觸控事件改在上方 useEffect 用原生 addEventListener
-            綁定(見該處對 passive: false 的完整說明),不再透過 JSX 的
-            onTouchStart/onTouchMove/onTouchEnd——兩者只能擇一,留著
-            JSX 版本會變成同一個事件被 React 合成事件與原生監聽器各綁
-            一次,重複觸發。 */}
-        <div
-          className={`${styles.body}${atMaxExpansion ? ` ${styles.bodyScrollable}` : ''}`}
-          ref={bodyRef}
+        {/* SheetBodyContext.Provider——把這個元件內部的拖曳狀態暴露給
+            children 裡可能有的 <SheetBody>(見該元件與 context 的完整
+            說明)。直接渲染 renderedChildren,不再像原本那樣固定包一層
+            .body div——呼叫端若用了 SheetBody,它自己會渲染 .body(含
+            atMaxExpansion 時疊加 .bodyScrollable,交給真正的原生捲動,
+            見該元件的完整說明);若呼叫端沒有使用 SheetBody(內容不需要
+            捲動/拖拉交接,例如簡短表單),renderedChildren 原樣渲染,不會
+            被任何 .body 相關的 CSS(含 .panelCollapsed .body 的收合
+            隱藏規則)影響——這類內容在收合到最小段時會繼續顯示,這是
+            刻意的差異化行為(見 SheetBody 開頭的完整說明):只有宣告成
+            可捲動內容的 SheetBody 才有「收合時隱藏」的語意,固定內容
+            不需要、也不該被收合邏輯影響。 */}
+        <SheetBodyContext.Provider
+          value={{
+            atMaxExpansion,
+            isSingleStop,
+            draggingRef,
+            startYRef,
+            startTopRef,
+            startIndexRef,
+            getCurrentTop: () => currentTop,
+            getMaxIndex: () => stops.length - 1,
+            setDragOffset,
+            finishDrag,
+            registerBodyRef: (el) => { bodyElRef.current = el },
+          }}
         >
-          {loading ? <div className={styles.spinner} aria-label="載入中" /> : renderedChildren}
-        </div>
+          {renderedChildren}
+        </SheetBodyContext.Provider>
       </div>
     </>
   )
+}
+
+// StandaloneSheet/StackedSheet/PersistentSheet——2026-10 新增:使用者
+// 明確指出「目前有好幾個 bottom sheet,但是拉動時的反應都不一樣」,問
+// 業界有什麼管理這類不一致的設計模式。盤點現有十個呼叫端後發現:
+// exitDurationMs/isTopmost/keepMounted 這幾個選填 prop 的傳法分成三種
+// 彼此互斥、各自合理的固定組合(不是遺漏,也不該用「全部必填」強迫
+// 呼叫端假裝都一樣),改用具名工廠元件(Compound Component 模式,業界
+// 常見做法,例如 Radix UI/Headless UI 用具名子元件取代一長串 boolean
+// prop)收斂這三種組合——往後新增 bottom sheet 只需要判斷自己屬於哪一類
+// 掛載方式、挑對應的具名元件,不可能漏傳某個該有的 prop(因為對應的
+// 選項根本不存在於該元件的介面上),也不會誤用不屬於這個情境的 prop。
+//
+// 三種情境的判斷依據(對應下方三個元件):
+//   1. 這個 PhoneBottomSheet 本身會不會因為 open 變 false 而被呼叫端
+//      從 React 樹整個拔掉(條件式掛載,例如 `{open && <PhoneBottomSheet
+//      .../>}`,或是雖然 PhoneBottomSheet 本身常駐但 children 是條件式
+//      卸載)?──如果是,需要 exitDurationMs 讓退場滑出動畫有機會播完
+//      才真正卸載,見該 prop 原始的完整說明。
+//   2. 這個 sheet 有沒有需要維持連線/內部 state、不能被卸載(例如
+//      WebSocket)?──如果是,用 keepMounted,children 永遠是 React 子孫
+//      不會被拔掉,連 exitDurationMs 都不需要(沒有卸載這回事)。
+//   3. 這個 sheet 是不是 useSheetStack 多層堆疊裡的一員(可能被壓在
+//      下層)?──如果是,需要 isTopmost(必填,見下方說明)決定要不要
+//      停用手勢、套用退縮視覺。
+// 這三點兩兩互斥(目前十個呼叫端沒有同時符合兩種以上的情況),故設計成
+// 三個平行的具名元件,而非可疊加的 mixin/flag。
+
+// StandaloneSheet——最常見的情況:獨立開關的 sheet,不屬於任何堆疊,也
+// 不需要保持連線。固定帶 exitDurationMs(見上方 PHONE_BOTTOM_SHEET_EXIT_MS
+// 常數)——不論呼叫端本身是常駐掛載還是條件式掛載都安全:常駐掛載時這個
+// prop 不會被用到(shouldRender 邏輯只在真的因為 open=false 且非
+// keepMounted 時才會用上 exitDurationMs 的延遲,見上方 shouldRender 的
+// 完整說明),條件式掛載時則確實需要它才能播完退場動畫。
+// onDraggingDownChange 保留在這個介面上(不像 isTopmost/stackOffsetPx
+// 被排除)——盤點時發現 GeoOutlinePhoneInfoSheet.tsx 雖然不屬於堆疊
+// (不傳 isTopmost),但仍需要這個 prop 回報「正在往下拖」給
+// GeoOutlinePhoneView.tsx,讓它連動下層的 GeoOutlinePhoneListDrawer 縮小
+// (見該 prop 原始的完整說明)——「是否在堆疊裡」跟「要不要回報拖曳狀態」
+// 是兩件獨立的事,不該因為共用同一顆具名元件就被迫綁在一起。
+// 對應現有呼叫端:設定頁/配速面板/PhoneTripsDrawer/PhoneTimelineDrawer
+// (常駐掛載)、GeoOutlinePhoneInfoSheet/PlanPhoneTripListDrawer(children
+// 條件式卸載或本身條件式掛載)。
+export function StandaloneSheet(
+  props: Omit<PhoneBottomSheetProps, 'exitDurationMs' | 'keepMounted' | 'isTopmost' | 'stackOffsetPx'>,
+) {
+  return <PhoneBottomSheet {...props} exitDurationMs={PHONE_BOTTOM_SHEET_EXIT_MS} />
+}
+
+// StackedSheet——useSheetStack 多層堆疊管理裡的一員(見
+// components/useSheetStack.ts),可能被壓在堆疊下層、需要退縮視覺並
+// 停用手勢。isTopmost 刻意設計成必填(不給預設值)——這是跟 StandaloneSheet
+// 最主要的差異所在,呼叫端必須明確從 sheetStack 算出目前是不是頂層,
+// 不能像 PhoneBottomSheet 本身那樣讓它預設為 true 而被無意間忽略。
+// 同樣固定帶 exitDurationMs,理由同 StandaloneSheet。
+// 對應現有呼叫端:GeoOutlinePhoneDateCalendarSheet/GeoOutlinePhoneListDrawer/
+// GeoOutlinePhoneDatePickerSheet。
+export function StackedSheet(
+  props: Omit<PhoneBottomSheetProps, 'exitDurationMs' | 'keepMounted' | 'isTopmost'> & { isTopmost: boolean },
+) {
+  return <PhoneBottomSheet {...props} exitDurationMs={PHONE_BOTTOM_SHEET_EXIT_MS} />
+}
+
+// PersistentSheet——children 需要永遠留在 React 樹上、不能被卸載的情境
+// (例如 ChatScreen 的 WebSocket 連線,見 keepMounted prop 原始的完整
+// 說明)。固定帶 keepMounted,不接受 exitDurationMs——keepMounted 時
+// shouldRender 恆為 true,不會真的卸載,exitDurationMs 的延遲邏輯永遠
+// 不會被用到,乾脆不讓呼叫端傳入以免誤會這裡也有退場延遲可以調。
+// 對應現有呼叫端:對話小匡(PhoneContent.tsx 的 chatSheetOpen)。
+export function PersistentSheet(
+  props: Omit<PhoneBottomSheetProps, 'exitDurationMs' | 'keepMounted' | 'isTopmost' | 'stackOffsetPx' | 'onDraggingDownChange'>,
+) {
+  return <PhoneBottomSheet {...props} keepMounted />
 }

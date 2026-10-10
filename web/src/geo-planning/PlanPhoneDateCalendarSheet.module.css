@@ -1,4 +1,4 @@
-/* GeoOutlinePhoneDateCalendarSheet.tsx 專屬樣式(CSS Modules)。外殼
+/* PlanPhoneDateCalendarSheet.tsx 專屬樣式(CSS Modules)。外殼
    (backdrop/panel/dragHandle/head)已改用共用容器
    components/PhoneBottomSheet.tsx,內容本身是 DatePickerPopover
    (react-day-picker 月曆格線 UI,見 DatePickerPopover.module.css 的

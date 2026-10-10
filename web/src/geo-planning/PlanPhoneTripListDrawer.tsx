@@ -7,13 +7,23 @@ import {
   dayGroupLabel,
   entryKindIcon,
 } from './geoCandidateHelpers'
-import { PhoneBottomSheet, PHONE_BOTTOM_SHEET_EXIT_MS, SheetHead } from '../components/PhoneBottomSheet'
+import { StandaloneSheet, SheetBody, SheetHead } from '../components/PhoneBottomSheet'
+import { Z_LAYERS } from '../components/zLayers'
 import { ListItemCard } from '../components/ListItemCard'
-import styles from './GeoOutlinePhoneCandidateDrawer.module.css'
+import styles from './PlanPhoneTripListDrawer.module.css'
 
-// GeoOutlinePhoneCandidateDrawer:手機版「行程」抽屜——從下方彈出
+// PlanPhoneTripListDrawer:手機版「行程」抽屜——從下方彈出
 // (bottom sheet,共用容器 components/PhoneBottomSheet.tsx),依日期分組
 // 列出已排入行程的項目。
+//
+// 2026-10 改名(原檔名 GeoOutlinePhoneCandidateDrawer,使用者明確要求
+// 「候選的命名也要一起改」):這個元件已經不再處理「候選」這個概念(見
+// 下方 2026-10 修正的完整說明,候選籃暫存流程已經移除),繼續叫
+// XxxCandidateDrawer 容易誤導成「這是候選籃」。新檔名拿掉 GeoOutline
+// 這個前綴(使用者明確表示這整個功能現在對使用者而言是「規劃」,
+// GeoOutline 已經與產品語意不符),改用 Plan 前綴——其餘 19 個
+// GeoOutlinePhone* 檔案這次先不動,使用者明確表示「其他先不改,注記之後
+// 會陸續調整」,這個檔案是第一個按新命名方向調整的範例。
 //
 // 2026-10 修正:原本這裡還有「候選中」(尚未排進任何一天的候選)清單與
 // 「返回候選」/「從候選加入」兩個操作——使用者明確要求移除整套候選籃
@@ -26,7 +36,15 @@ import styles from './GeoOutlinePhoneCandidateDrawer.module.css'
 //
 // 純邏輯(分組/型別)複用 geoCandidateHelpers.ts,與桌面版
 // GeoCandidateSidebar.tsx 共用同一份,不重新實作——這個檔案只負責手機版
-// 排版與觸控手勢(現在完全交給 PhoneBottomSheet,見下方)。
+// 排版與觸控手勢(現在完全交給 StandaloneSheet,見下方)。
+//
+// 2026-10 改用 StandaloneSheet(取代直接呼叫 PhoneBottomSheet +
+// 手動傳 exitDurationMs)——使用者指出「好幾個 bottom sheet 拉動反應
+// 不一樣」,盤點後發現 exitDurationMs/isTopmost/keepMounted 這組 prop
+// 的傳法分成三種彼此互斥的固定組合,改用具名工廠元件(見
+// components/PhoneBottomSheet.tsx StandaloneSheet/StackedSheet/
+// PersistentSheet 的完整說明)收斂,這個抽屜屬於「本身不在堆疊裡、不需要
+// 保持連線」的 StandaloneSheet 情境。
 //
 // SHEET_SNAP_POINTS/SHEET_MIN_HEIGHT:兩段式(展開/收合),取代原本只有
 // 一個 snapPoint 的「開/關」兩態。
@@ -46,7 +64,8 @@ const SHEET_SNAP_POINTS = [320]
 // DayEntryCard:2026-10 改用全專案通用元件 ListItemCard(原本是
 // geo-planning 專屬的 GeoListItemCard,已抽成通用元件,見
 // components/ListItemCard.tsx 的完整說明)——使用者明確要求行程項目的
-// 樣式跟搜尋結果清單(GeoOutlinePhoneListDrawer.tsx)一致(卡片大小/
+// 樣式跟搜尋結果清單(GeoOutlinePhoneListDrawer.tsx,2026-10 改名範圍
+// 僅限這個檔案,該檔案維持舊名不變)一致(卡片大小/
 // 圓角/留白/字級比例,含照片/佔位圖的版面配置),不再是原本獨立的
 // 「圓形分類圖示 + 名稱 + 時間」緊湊橫列。
 //
@@ -98,7 +117,7 @@ function DayEntryCard({
   )
 }
 
-export function GeoOutlinePhoneCandidateDrawer({
+export function PlanPhoneTripListDrawer({
   open,
   onClose,
   candidates,
@@ -126,8 +145,8 @@ export function GeoOutlinePhoneCandidateDrawer({
   // 之後,使用者把資訊卡關掉時,行程抽屜要自動展開回來,不需要使用者
   // 自己手動拖。這個抽屜本身不知道資訊卡何時關閉(那是
   // GeoOutlinePhoneView.tsx 的 sheetStack 概念),故用遞增計數器讓外部
-  // 通知「該復原展開了」,對齊 candidateDrawerTrigger 等既有的觸發器
-  // 慣例寫法。
+  // 通知「該復原展開了」,對齊 tripListDrawerTrigger(GeoOutlinePhoneView.tsx)
+  // 等既有的觸發器慣例寫法。
   restoreTrigger?: number
 }) {
   // activeSnapIndex:受控吸附段落——預設展開(索引 1,對應
@@ -140,7 +159,7 @@ export function GeoOutlinePhoneCandidateDrawer({
     if (open) setActiveSnapIndex(1)
   }, [open])
   // restoreTrigger 變動時展開回索引 1(見該 prop 的完整說明)——對齊
-  // candidateDrawerTrigger 的既有慣例寫法:初次渲染(undefined 或 0)
+  // tripListDrawerTrigger 的既有慣例寫法:初次渲染(undefined 或 0)
   // 不觸發,只在真正遞增時才展開。
   useEffect(() => {
     if (!restoreTrigger) return
@@ -176,7 +195,7 @@ export function GeoOutlinePhoneCandidateDrawer({
   }, [flashTrigger])
 
   return (
-    <PhoneBottomSheet
+    <StandaloneSheet
       open={open}
       onClose={onClose}
       snapPoints={SHEET_SNAP_POINTS}
@@ -189,20 +208,20 @@ export function GeoOutlinePhoneCandidateDrawer({
       // 想操作地圖比對位置)——這是延續原本透明 backdrop 的既有行為,不是
       // 這次重構新引入的決策。
       showBackdrop={false}
-      exitDurationMs={PHONE_BOTTOM_SHEET_EXIT_MS}
-      // panelStyle:bottom: 0、zIndex: 36——比照 GeoOutlinePhoneListDrawer.tsx/
-      // GeoOutlinePhoneInfoSheet.tsx 的慣例,蓋住底部常駐導覽列
-      // PhoneTabBar.tsx(z-index: 35)。候選籃與地點清單雖然理論上互不
-      // 依賴各自的 open state(GeoOutlinePhoneView.tsx 各自獨立
+      // panelStyle:bottom: 0、zIndex 改引用 Z_LAYERS.ABOVE_TAB_BAR
+      // (2026-10,見 zLayers.ts 的完整說明,取代原本寫死的 36)——蓋住
+      // 底部常駐導覽列 PhoneTabBar.tsx。候選籃與地點清單雖然理論上互不
+      // 依賴各自的 open state(PlanPhoneView.tsx 各自獨立
       // useState,沒有互斥開關),但兩者都是「點按鈕才開,開啟後通常會先
-      // 關掉才做下一步」的短暫操作,採用同一個 z-index 慣例、讓兩者都能
+      // 關掉才做下一步」的短暫操作,採用同一個層級、讓兩者都能
       // 蓋住導覽列即可,不需要額外設計互斥邏輯或分開層級——真的同時觸發
       // 開啟時(少見的操作順序),後開啟的那個在 DOM 順序中排在後面,
       // 自然疊在上層,不會出現互相穿透看不到內容的情況。
-      panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 36 }}
+      panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: Z_LAYERS.ABOVE_TAB_BAR }}
       panelClassName={flashing ? styles.panelFlash : undefined}
       head={<SheetHead title="行程" onClose={onClose} />}
     >
+      <SheetBody>
       <div className={styles.list}>
         {candidates.length === 0 ? (
           <div className={styles.empty}>
@@ -236,6 +255,7 @@ export function GeoOutlinePhoneCandidateDrawer({
           </>
         )}
       </div>
-    </PhoneBottomSheet>
+      </SheetBody>
+    </StandaloneSheet>
   )
 }

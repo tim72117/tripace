@@ -20,7 +20,7 @@
   padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
 }
 
-/* avatarBtn:使用者頭像——取代拿掉的 MainNavBar(見 GeoOutlinePhoneView.
+/* avatarBtn:使用者頭像——取代拿掉的 MainNavBar(見 PlanPhoneView.
    tsx 的說明)。透過 ExploreMap.tsx 的 searchRightSlot prop 真正
    渲染在搜尋框(.citySearch)的 DOM 結構內部,是它自己的 flexbox 子
    元素(使用者要求「頭像放到搜尋框內的最右側」)——不再用絕對定位疊加

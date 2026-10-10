@@ -1,4 +1,5 @@
-/* GeoOutlinePhoneCandidateDrawer.tsx 專屬樣式(CSS Modules)。由下往上
+/* PlanPhoneTripListDrawer.tsx 專屬樣式(CSS Modules,2026-10 改名,原檔名
+   GeoOutlinePhoneCandidateDrawer.tsx,見該元件檔頭的完整說明)。由下往上
    彈出的 bottom sheet,外殼(backdrop/panel/dragHandle)與拖曳手勢已改用
    共用容器 components/PhoneBottomSheet.tsx——該元件的 .panel 基礎樣式
    (背景/圓角/陰影/touch-action)已經涵蓋這裡原本的視覺設定,不需要再
@@ -16,7 +17,7 @@
    GeoCandidateSidebar.module.css 的 .panelFlash/panelFlashPulse,行為
    完全一致,只是換一個 CSS Module 檔案(手機版元件不 import 桌面版的
    .module.css)。透過 PhoneBottomSheet 的 panelClassName prop 疊加到
-   它的 .panel 上(見 GeoOutlinePhoneCandidateDrawer.tsx 的用法)。 */
+   它的 .panel 上(見 PlanPhoneTripListDrawer.tsx 的用法)。 */
 .panelFlash {
   animation: panelFlashPulse 0.9s ease-out;
 }
@@ -83,7 +84,7 @@
 }
 
 /* 2026-10 修正:DayEntryCard 改用共用元件 ListItemCard(理由見
-   GeoOutlinePhoneCandidateDrawer.tsx 該元件改動的完整說明:使用者明確
+   PlanPhoneTripListDrawer.tsx 該元件改動的完整說明:使用者明確
    要求行程項目的樣式跟搜尋結果清單一致)——以下 item 開頭這組 class
    直接對齊 GeoOutlinePhoneListDrawer.module.css 同名 class 的定義,
    保持兩份清單視覺一致;.returnBtn(已移除的「返回候選」按鈕)同時一併
@@ -111,7 +112,7 @@
 /* itemPin:2026-10 修正——原本用灰色素色方塊佔位(.itemPhotoPlaceholder),
    使用者要求改用圖示,改成跟桌面版 GeoCandidateSidebar.module.css 的
    .dayCardPin 同一套圓形分類圖示底色,視覺語意對齊(見
-   GeoOutlinePhoneCandidateDrawer.tsx DayEntryCard 的完整說明)。 */
+   PlanPhoneTripListDrawer.tsx DayEntryCard 的完整說明)。 */
 .itemPin {
   flex: 0 0 44px;
   width: 44px;
@@ -149,7 +150,7 @@
 }
 
 /* removeBtn:「移除」按鈕(DayEntryCard 的 trailing 插槽,見
-   GeoOutlinePhoneCandidateDrawer.tsx 的說明)。2026-10 修正:原本的定義
+   PlanPhoneTripListDrawer.tsx 的說明)。2026-10 修正:原本的定義
    只存在於已刪除的「候選中」卡片死碼區塊裡,清掉那段死碼時連帶漏刪了
    這顆仍在使用的按鈕樣式,導致「移除」按鈕變成完全沒有樣式的裸元素
    ——在這裡補回來,視覺上比照同檔案其餘圓形圖示按鈕(.itemPin 同尺寸)。 */

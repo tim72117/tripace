@@ -4,6 +4,7 @@ import { HelmetProvider } from 'react-helmet-async'
 import { registerSW } from 'virtual:pwa-register'
 import { App } from './App'
 import './base-ui.css'
+import './components/zLayers.css'
 
 // registerSW:vite-plugin-pwa 只在 build 時產生 service worker(dist/sw.js)
 // 與 registerType: 'autoUpdate' 設定(見 vite.config.ts),並不會自動幫

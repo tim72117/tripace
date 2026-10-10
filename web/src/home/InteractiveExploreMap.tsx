@@ -4,7 +4,7 @@ import { fetchPublicGeoAttractions, fetchPublicGeoPlaceDetails, fetchPublicGeoPl
 import { NativeMapBase, type MapHandle } from '../geo-planning/NativeMapBase'
 import { useAttractionOverlays } from '../geo-planning/useAttractionOverlays'
 import { AttractionInfoPanel } from '../geo-planning/AttractionInfoPanel'
-import { GeoOutlinePhoneInfoSheet } from '../geo-planning/GeoOutlinePhoneInfoSheet'
+import { PlanPhoneInfoSheet } from '../geo-planning/PlanPhoneInfoSheet'
 import { PlacePanel } from '../geo-planning/PlacePanel'
 import { useIsDesktop } from '../hooks/useIsDesktop'
 import { stackedInfoCardRightPx } from '../geo-planning/DesktopInfoCard'
@@ -233,7 +233,7 @@ export function InteractiveExploreMap({
   focusedCenter,
   // openCardOnFocus:focusedTheme 受控切換時,除了把地圖中心 panTo 到
   // 該主題點之外,是否連帶打開它的主題點介紹卡(桌機 AttractionInfoPanel/
-  // 手機 GeoOutlinePhoneInfoSheet,卡片裡才有「附近景點」清單)。未傳/
+  // 手機 PlanPhoneInfoSheet,卡片裡才有「附近景點」清單)。未傳/
   // false 時只移動中心、不碰 openThemeId;true 時連帶 setOpenThemeId。
   // ScrollTimeline.tsx 的嵌入式小地圖面板開著時傳 true、關著時傳 false
   // (搭配下方 themeCardNearbyOnly 讓開出來的卡片只露出附近景點清單)。
@@ -250,7 +250,7 @@ export function InteractiveExploreMap({
   // 整體設定,不只作用在 focusedTheme 觸發的那一次開卡:使用者直接點
   // 地圖上的主題點時也一樣只看到精簡清單,260px 高的小面板本來就塞不下
   // 完整卡片,兩條開卡路徑長相一致比較不突兀。手機版
-  // GeoOutlinePhoneInfoSheet 目前不支援精簡模式(它的 snap 段位/標頭
+  // PlanPhoneInfoSheet 目前不支援精簡模式(它的 snap 段位/標頭
   // 結構跟名稱/照片綁得更緊),手機寬度下仍顯示完整 sheet——這個嵌入式
   // 面板以桌機瀏覽為主,先不處理。未傳/false 維持完整卡片,正式城市頁
   // 不受影響。
@@ -363,11 +363,11 @@ export function InteractiveExploreMap({
   // isDesktop:寬度 >= 768px(見 useIsDesktop.ts 的完整說明,跟正式功能
   // 桌面/手機版分流用的同一個斷點跟同一支 hook)——決定主題卡要用桌面版
   // 的 AttractionInfoPanel(絕對定位疊在地圖右緣的浮動卡片)還是手機版
-  // 的 GeoOutlinePhoneInfoSheet(從畫面下方滑入的 bottom sheet)。這個
+  // 的 PlanPhoneInfoSheet(從畫面下方滑入的 bottom sheet)。這個
   // 展示頁先前固定只用桌面版卡片,手機瀏覽器開啟時版面/觸控體驗跟正式
   // 功能手機版不一致,現在跟 DesktopLayout.tsx/GeoOutlinePhoneView.tsx
   // 一樣依螢幕寬度切換,兩邊共用同一套 useThemeAttractionSelection 狀態
-  // (見下方),只是渲染成哪個元件不同。GeoOutlinePhoneInfoSheet 已支援
+  // (見下方),只是渲染成哪個元件不同。PlanPhoneInfoSheet 已支援
   // nearby/onSelectNearby/categoryFilter(見該元件的完整說明),手機版
   // 現在也接上「附近景點」清單,跟正式功能手機版行為一致——兩者掛入的
   // 是同一個元件,差別只在呼叫端傳不傳這幾個 prop,不是各自維護一份
@@ -568,7 +568,7 @@ export function InteractiveExploreMap({
   // CSS 直接疊在主題卡預留位置,沒有主題卡開著時也不影響版面,理由見
   // InteractiveExploreMap.module.css 的說明)。
   // handleRequireAuth:公開展示頁「加入行程」的登入導轉(見 PlacePanel.tsx/
-  // GeoOutlinePhoneInfoSheet.tsx requireAuth prop 的完整說明)——訪客沒有
+  // PlanPhoneInfoSheet.tsx requireAuth prop 的完整說明)——訪客沒有
   // 候選籃/行程可以真的寫入,原本這裡完全不傳 onAddCandidate/onSchedule,
   // 導致按鈕點下去展開日曆/選單、選完後整個操作靜默失效。改成導向 /app
   // (全站既有的登入/進入 App 路由,見 HomePage.tsx/JiufenPage.tsx/
@@ -652,7 +652,7 @@ export function InteractiveExploreMap({
 
   // handleHoverNearby:接在 setHoveredAttraction 前面的包裝——2026-10
   // 使用者明確要求「滑動到的點如果不在地圖可見範圍內,則移動到該點為
-  // 中心」,橫滑清單(GeoOutlinePhoneInfoSheet.tsx 的 onHoverNearby)滑到
+  // 中心」,橫滑清單(PlanPhoneInfoSheet.tsx 的 onHoverNearby)滑到
   // 地圖目前視角外的精選點時,使用者只看得到清單卡片、看不到地圖上同步
   // 升級成照片呈現的那個點(地圖畫面裡根本沒有它),這組視覺連動等於
   // 白做。用 google.maps.Map.getBounds().contains() 判斷該點座標是否在
@@ -850,7 +850,7 @@ export function InteractiveExploreMap({
           mapId={LANDING_MAP_ID}
           onHandleChange={handleMapHandleChange}
         >
-          {/* AttractionInfoPanel/GeoOutlinePhoneInfoSheet(主題卡,依
+          {/* AttractionInfoPanel/PlanPhoneInfoSheet(主題卡,依
               isDesktop 二選一)、PlacePanel(點「附近景點」開的地點卡,
               桌面版限定,見下方說明)都改用 children 掛入
               NativeMapBase——對齊 DesktopLayout.tsx/GeoOutlinePhoneView.tsx
@@ -902,7 +902,7 @@ export function InteractiveExploreMap({
             </>
           ) : (
             <>
-              {/* 手機版主題卡:改用 GeoOutlinePhoneInfoSheet(從畫面下方
+              {/* 手機版主題卡:改用 PlanPhoneInfoSheet(從畫面下方
                   滑入的 bottom sheet,見該元件開頭完整說明)——attraction
                   傳主題點本身,content 固定傳 null(這個展示頁沒有「附近
                   景點」以外的獨立地點卡來源,不像 GeoOutlinePhoneView.tsx
@@ -913,7 +913,7 @@ export function InteractiveExploreMap({
                   useThemeAttractionSelection 的說明),只是呈現成觸控版的
                   chip 列+清單。usePublicPlaceDetails 對稱桌面版的
                   AttractionInfoPanel 用法。 */}
-              <GeoOutlinePhoneInfoSheet
+              <PlanPhoneInfoSheet
                 content={null}
                 attraction={openTheme?.attraction ?? null}
                 cfg={GUEST_CFG}
@@ -926,7 +926,7 @@ export function InteractiveExploreMap({
                 onCategoryFilterChange={setActiveNearbyCategoryFilter}
               />
               {/* 手機版精選點地點卡:點「附近景點」清單項目後開啟——重用
-                  同一個 GeoOutlinePhoneInfoSheet 元件疊在主題卡上面(對齊
+                  同一個 PlanPhoneInfoSheet 元件疊在主題卡上面(對齊
                   GeoOutlinePhoneView.tsx 'nearby-place' sheet 疊在 'info'
                   之上的模式,見該檔案 SheetEntry 的完整說明),content 傳
                   poiContent(useThemeAttractionSelection 已經查好/組裝完成
@@ -935,7 +935,7 @@ export function InteractiveExploreMap({
                   改用「poiContent 是否有值」直接當渲染條件——效果等價:
                   兩者都是「有沒有東西可以顯示這張卡片」當唯一真相來源。 */}
               {poiContent && (
-                <GeoOutlinePhoneInfoSheet
+                <PlanPhoneInfoSheet
                   content={poiContent}
                   attraction={null}
                   cfg={GUEST_CFG}

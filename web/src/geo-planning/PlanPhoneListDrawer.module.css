@@ -1,7 +1,10 @@
-/* GeoOutlinePhoneListDrawer.tsx 專屬樣式(CSS Modules)。由下往上彈出的
+/* PlanPhoneListDrawer.tsx 專屬樣式(CSS Modules)。由下往上彈出的
    bottom sheet,外殼(backdrop/panel/dragHandle)與拖曳手勢已改用共用
-   容器 components/PhoneBottomSheet.tsx(mode="snap",見該元件的說明)——
-   該元件的 .panel 基礎樣式(背景/圓角/陰影)已經涵蓋這裡原本的視覺設定,
+   容器 components/PhoneBottomSheet.tsx 的具名工廠元件 StackedSheet
+   (見該檔案的說明;原本曾經用字串 mode="snap" 這類參數區分拖曳語意,
+   現在已經改成 snapPoints/minHeightPx 兩個數值參數決定段落,不再有
+   mode 這個 prop)——該元件的 .panel 基礎樣式(背景/圓角/陰影)已經
+   涵蓋這裡原本的視覺設定,
    不需要再疊加一份,故這裡不再定義 .panel。head(標題+關閉鈕)也改用該
    元件匯出的 SheetHead 共用元件(見其說明),這裡同樣不再定義
    .head/.title/.closeBtn。分頁列/清單項目視覺語言比照桌面版
@@ -158,7 +161,7 @@
   white-space: nowrap;
 }
 
-/* inCandidateBadge:已加入候選籃的小標籤——見 GeoOutlinePhoneListDrawer.tsx
+/* inCandidateBadge:已加入候選籃的小標籤——見 PlanPhoneListDrawer.tsx
    candidateKeys prop 的說明。放在 itemBody 與「+」按鈕之間,窄直排文字,
    不佔太多橫向空間(清單項目本身已經很緊湊)。 */
 .inCandidateBadge {
@@ -174,9 +177,10 @@
 
 /* addWrap/addBtn/addPanel/dateChips/dateChip/dateInputRow/dateInput/
    dateConfirmBtn/skipBtn/err:「+」按鈕與 inline 展開的日期選擇區——比照
-   GeoOutlinePhoneCandidateDrawer.module.css 的 .scheduleRow 系列,原地
+   geo-planning/PlanPhoneTripListDrawer.module.css(2026-10 改名,原檔名
+   GeoOutlinePhoneCandidateDrawer.module.css)的 .scheduleRow 系列,原地
    展開而非桌面版 GeoHotelSidebar.module.css 的絕對定位彈出層(理由見
-   GeoOutlinePhoneListDrawer.tsx 開頭的說明)。 */
+   PlanPhoneListDrawer.tsx 開頭的說明)。 */
 .addWrap {
   flex: 0 0 auto;
 }

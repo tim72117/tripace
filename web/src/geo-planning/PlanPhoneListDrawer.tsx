@@ -5,12 +5,16 @@ import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
 import { type GeoCandidate, dayGroupLabel, searchResultToCandidate, useCandidateDatePicker } from './geoCandidateHelpers'
 import { fetchGeoPlacePhoto } from '../api'
 import { ListItemCard, PhotoLeading } from '../components/ListItemCard'
-import { PhoneBottomSheet, PHONE_BOTTOM_SHEET_EXIT_MS, SheetHead } from '../components/PhoneBottomSheet'
-import styles from './GeoOutlinePhoneListDrawer.module.css'
+import { StackedSheet, SheetBody, SheetHead } from '../components/PhoneBottomSheet'
+import { PLAN_SHEET_STACK } from '../components/zLayers'
+import styles from './PlanPhoneListDrawer.module.css'
 
-// GeoOutlinePhoneListDrawer:手機版「飯店/推薦地點/搜尋結果」清單——第三
+// PlanPhoneListDrawer:手機版「飯店/推薦地點/搜尋結果」清單——第三
 // 階段新增,由下往上彈出(bottom sheet)——使用者要求「地點清單跟旅程
 // 清單一樣從下方彈出」,視覺語言與拖曳關閉手勢對齊
+//
+// 2026-10 改名(原檔名 GeoOutlinePhoneListDrawer,見 PlanPhoneView.tsx
+// 檔頭的完整說明)。
 // trip/PhoneTripsDrawer.tsx(同一套 bottom sheet 模式:垂直拖曳關閉、
 // 貼齊底部常駐列上緣、上緣圓角、拖曳把手)。
 //
@@ -32,22 +36,22 @@ import styles from './GeoOutlinePhoneListDrawer.module.css'
 // GeoSearchResult 的說明),不顯示這顆按鈕。
 //
 // 點擊卡片本體(非「+」)——比照桌面版 onSelect,把該項目往上回報,由
-// GeoOutlinePhoneView.tsx 中介觸發移動地圖、同步 selectedKey 高亮對應
-// marker,並開啟資訊卡(複用既有的 GeoOutlinePhoneInfoSheet,不在這個
+// PlanPhoneView.tsx 中介觸發移動地圖、同步 selectedKey 高亮對應
+// marker,並開啟資訊卡(複用既有的 PlanPhoneInfoSheet,不在這個
 // 抽屜內部重複刻一份資訊卡 UI)。
 // SHEET_MIN_HEIGHT/SHEET_SNAP_POINTS:這個抽屜專屬的三段式吸附(使用者
 // 明確要求「地點清單改成三層」,原本只有收合+一個展開段共兩層)——跟
-// GeoOutlinePhoneInfoSheet.tsx 的三段式是各自獨立的段落組合,共用容器
+// PlanPhoneInfoSheet.tsx 的三段式是各自獨立的段落組合,共用容器
 // components/PhoneBottomSheet.tsx 本身就是為了讓不同呼叫端各自帶一組
 // 段落參數而設計,不是全站共用同一組段落(見該元件的說明)。
 // SHEET_MIN_HEIGHT:收合狀態的固定高度,只顯示標頭(標題+關閉鈕)——
-// 理由同 GeoOutlinePhoneInfoSheet.tsx 的 SHEET_MIN_HEIGHT。TODO(使用者
+// 理由同 PlanPhoneInfoSheet.tsx 的 SHEET_MIN_HEIGHT。TODO(使用者
 // 稍後決定合理數值):暫時估算。
 // SHEET_SNAP_POINTS(由大到小排序,數值越小展開越多):
 // [0] 中間狀態:可看清單內容,離頂部距離比照
-//     GeoOutlinePhoneInfoSheet.tsx 三段式的中間值。TODO(使用者稍後
+//     PlanPhoneInfoSheet.tsx 三段式的中間值。TODO(使用者稍後
 //     決定合理數值):暫時估算。
-// [1] 滿版狀態:離頂部距離比照 GeoOutlinePhoneInfoSheet.tsx 三段式的
+// [1] 滿版狀態:離頂部距離比照 PlanPhoneInfoSheet.tsx 三段式的
 //     滿版值。TODO(使用者稍後決定合理數值):暫時估算。
 const SHEET_MIN_HEIGHT = 100
 const SHEET_SNAP_POINTS = [400, 80]
@@ -139,7 +143,7 @@ function ItemAddButton({
   )
 }
 
-export function GeoOutlinePhoneListDrawer({
+export function PlanPhoneListDrawer({
   cfg,
   tripID,
   open,
@@ -160,7 +164,7 @@ export function GeoOutlinePhoneListDrawer({
   open: boolean
   onClose: () => void
   // results:飯店/推薦地點/搜尋結果三種來源合併後的單一清單(見 api.ts
-  // GeoSearchResult 的完整說明),由 GeoOutlinePhoneView.tsx 透過
+  // GeoSearchResult 的完整說明),由 PlanPhoneView.tsx 透過
   // useGeoPlanningState 中介——取代原本各自獨立的 hotels/places/
   // geocodeCandidates 三個 prop。
   results: GeoSearchResult[]
@@ -170,7 +174,7 @@ export function GeoOutlinePhoneListDrawer({
   // 使用者滑清單時能一眼看出哪些已經加過,不需要另外開候選籃核對。仍然
   // 允許重複按「+」再加一次(不擋開,理由同桌面版 AddCandidateButton 沒有
   // 針對重複加入做防呆——addGeoCandidate 呼叫端本身已用「名稱+座標」去重,
-  // 見 GeoOutlinePhoneView.tsx 的 addGeoCandidate)。
+  // 見 PlanPhoneView.tsx 的 addGeoCandidate)。
   candidateKeys: Set<string>
   scheduledDates: string[]
   onSelect: (result: GeoSearchResult) => void
@@ -178,18 +182,18 @@ export function GeoOutlinePhoneListDrawer({
   onCandidateCreated: () => void
   // loading:搜尋觸發後、結果還沒回來前顯示置中轉圈動畫——使用者明確
   // 要求「搜尋時要先開啟地點清單並顯示載入中」,呼叫端
-  // (GeoOutlinePhoneView.tsx)在觸發搜尋的同一刻就開啟這個抽屜
+  // (PlanPhoneView.tsx)在觸發搜尋的同一刻就開啟這個抽屜
   // (setListDrawerOpen(true))並傳 true,不用等查詢結果回來才開啟清單。
   // 轉傳給 PhoneBottomSheet 的 loading prop,見該元件的說明。
   loading?: boolean
   // isTopmost:點清單項目後資訊卡疊上來時傳 false——轉傳給
   // PhoneBottomSheet,套用退縮視覺並停用拖曳手勢(見 useSheetStack.ts
-  // 與 GeoOutlinePhoneView.tsx 的 sheetStack 說明)。預設 true,不影響
+  // 與 PlanPhoneView.tsx 的 sheetStack 說明)。預設 true,不影響
   // 清單單獨開啟(沒有資訊卡疊加)時的既有行為。
   isTopmost?: boolean
   // forceCollapsed:true 時強制縮到最小段(索引 0,只顯示標頭)——使用者
   // 明確要求「前一層比後層高時,往下拉後層也要跟著往下」,由
-  // GeoOutlinePhoneView.tsx 依資訊卡(疊在這個清單上面的那一層)的
+  // PlanPhoneView.tsx 依資訊卡(疊在這個清單上面的那一層)的
   // onDraggingDownChange 訊號設定。true→false(資訊卡停止往下拖,見
   // 下方 useEffect)時恢復成使用者原本停留的段落,不是每次都重設回展開
   // (使用者可能原本就把清單拖到收合過,不該因為上層曾經往下拖一下就
@@ -209,7 +213,7 @@ export function GeoOutlinePhoneListDrawer({
       .catch(() => setLazyPhotos((prev) => ({ ...prev, [placeId]: null })))
   }
   // activeSnapIndex:這個抽屜自己的吸附段落狀態,初始為展開(索引 1)——
-  // 理由同 GeoOutlinePhoneInfoSheet.tsx 的同名 state,每次重新開啟都重設
+  // 理由同 PlanPhoneInfoSheet.tsx 的同名 state,每次重新開啟都重設
   // 回展開,不延續上次被拖曳收合的狀態。
   const [activeSnapIndex, setActiveSnapIndex] = useState(1)
   useEffect(() => {
@@ -237,7 +241,7 @@ export function GeoOutlinePhoneListDrawer({
   const isEmpty = results.length === 0
 
   return (
-    <PhoneBottomSheet
+    <StackedSheet
       open={open}
       onClose={onClose}
       snapPoints={SHEET_SNAP_POINTS}
@@ -245,19 +249,19 @@ export function GeoOutlinePhoneListDrawer({
       activeSnapIndex={activeSnapIndex}
       onSnapIndexChange={setActiveSnapIndex}
       showBackdrop={false}
-      exitDurationMs={PHONE_BOTTOM_SHEET_EXIT_MS}
-      // panelStyle:bottom: 0、zIndex 36——使用者明確要求清單要蓋住底部
-      // 常駐導覽列 PhoneTabBar.tsx(z-index: 35),不是貼齊它的上緣讓開
-      // 空間(原本的 bottom 算式跟 z-index: 13 都只適合「清單在導覽列之上
-      // 但不遮住它」的版面,實測遮住了導覽列的可點擊區域,理由同
-      // GeoOutlinePhoneInfoSheet.tsx 的 panelStyle 說明——該元件用的就是
-      // bottom: 0、zIndex: 36,這裡改成一致)。
-      panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 36 }}
+      // panelStyle:bottom: 0——使用者明確要求清單要蓋住底部常駐導覽列
+      // PhoneTabBar.tsx,不是貼齊它的上緣讓開空間(原本的 bottom 算式
+      // 只適合「清單在導覽列之上但不遮住它」的版面,實測遮住了導覽列的
+      // 可點擊區域)。zIndex 改引用 PLAN_SHEET_STACK.list(2026-10,使用者
+      // 明確要求「用設計模式管理元件間的 z-index 關聯性,而非裸數字」,
+      // 見 zLayers.ts 的完整說明)——這個清單是 PlanPhoneView.tsx 加入
+      // 行程流程堆疊裡固定的最底層,取代原本寫死的 36。
+      panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: PLAN_SHEET_STACK.list }}
       head={<SheetHead title="地點" onClose={onClose} />}
-      loading={loading}
       isTopmost={isTopmost}
       stackOffsetPx={16}
     >
+      <SheetBody loading={loading}>
       <div className={styles.list}>
         {isEmpty ? (
           <div className={styles.empty}>
@@ -302,6 +306,7 @@ export function GeoOutlinePhoneListDrawer({
           })
         )}
       </div>
-    </PhoneBottomSheet>
+      </SheetBody>
+    </StackedSheet>
   )
 }

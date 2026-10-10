@@ -1,8 +1,8 @@
 import { Plus, Luggage, Settings } from 'lucide-react'
 import type { Trip } from './types'
 import { ErrorBanner } from '../AppCommon'
-import { PhoneBottomSheet, SheetHead } from '../components/PhoneBottomSheet'
-import { ScrollArea } from '../components/ScrollArea'
+import { StandaloneSheet, SheetBody, SheetHead } from '../components/PhoneBottomSheet'
+import { Z_LAYERS } from '../components/zLayers'
 import { NewTripComposer } from './NewTripComposer'
 import styles from './PhoneTripsDrawer.module.css'
 
@@ -24,6 +24,18 @@ import styles from './PhoneTripsDrawer.module.css'
 // 編譯通過與行為大致對齊原本 maxHeightVh=70 的視覺比例。
 const SHEET_TOP = 200
 const SHEET_BOTTOM = 'calc(64px + env(safe-area-inset-bottom, 0px))'
+// CONTENT_PADDING_STYLE——2026-10 補上(code review 發現的回歸):這個
+// 檔案原本用 ScrollArea 取代成 SheetBody 時(理由見該元件 forwardRef
+// 的完整說明),漏了補回 ScrollArea 原本帶的內距(見
+// components/ScrollArea.module.css 的完整說明:左右 12px、底部 16px、
+// 頂部 0)——ErrorBanner 與清單為空時的提示文字直接是 SheetBody 的子
+// 元素,不在 .tripList(自己有 8px 均勻內距,跟原本 ScrollArea 的規格
+// 不同)範圍內,少了這層內距會貼齊面板左右邊緣。對齊
+// timeline/PhoneTimelineDrawer.tsx 同一次改動的做法:用 inline style
+// 補在 SheetBody 外層,而非把 padding 內建回 SheetBody/.bodyScrollable
+// 本身(不同呼叫端的 padding 需求本來就可能不同,這是 SheetBody 刻意
+// 不內建 padding 的設計,見該元件的完整說明)。
+const CONTENT_PADDING_STYLE = { padding: '0 12px 16px' }
 
 export function PhoneTripsDrawer({
   open,
@@ -59,93 +71,102 @@ export function PhoneTripsDrawer({
   onClose: () => void
 }) {
   return (
-    <PhoneBottomSheet
+    <StandaloneSheet
       open={open}
       onClose={onClose}
       snapPoints={[SHEET_TOP]}
-      panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: 33 }}
+      // zIndex 改引用 Z_LAYERS.BELOW_TAB_BAR_1(2026-10,見 zLayers.ts
+      // 的完整說明,取代原本寫死的 33)——疊在 BELOW_TAB_BAR_2(時間軸,
+      // timeline/PhoneTimelineDrawer.tsx)之上,但仍被功能列本身蓋住。
+      panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: SHEET_BOTTOM, zIndex: Z_LAYERS.BELOW_TAB_BAR_1 }}
       showBackdrop={false}
       // head:原本沒有標頭,只能靠下滑手勢關閉——使用者明確要求清單
       // sheet 要有關閉按鈕,比照其餘 bottom sheet(行程/設定/對話)一律
       // 用共用的 SheetHead(標題+右上角關閉鈕),不自己另外拼版面。
       head={<SheetHead title="清單" onClose={onClose} />}
     >
-      <ScrollArea>
-        <ErrorBanner msg={err} />
-        {trips.length === 0 && !err && (
-          <div className="empty">
-            {loading ? '載入中…' : '沒有清單。按下方「新增清單」建立一個。'}
-          </div>
-        )}
-        <ul className={styles.tripList}>
-          {/* 新增清單:跟下面實際的旅程項目共用同一套 .tripItem 樣式
-              (借來瀏覽/新增的是同一個工具畫面,視覺上該是同一組清單
-              的一份子,不是另一顆突兀的強調色橫幅按鈕),只把大頭貼換成
-              「＋」圖示徽章區分。點擊後這個項目原地換成輸入框(composer),
-              下面既有清單維持可見、可捲動,不會像原本整塊消失。
-              2026-10 修正:使用者要求畫面文字統一改用「清單」(按鈕/空
-              狀態提示),底層資料仍是 Trip,變數/型別命名不動——這只是
-              這個抽屜(已改名「清單」)裡的顯示字樣跟著統一,桌面版
-              DesktopTripList.tsx 仍叫「旅程列表」,不在這次改名範圍內。 */}
-          <li>
-            {creating ? (
-              <NewTripComposer
-                value={newName}
-                onChange={setNewName}
-                onSubmit={submitCreate}
-                onCancel={() => {
-                  setCreating(false)
-                  setNewName('')
-                }}
-              />
-            ) : (
-              <button type="button" className={styles.tripItem} onClick={() => setCreating(true)}>
-                <div className={styles.newTripIcon}>
-                  <Plus size={18} strokeWidth={1.8} />
-                </div>
-                <div className={styles.tripGrow}>
-                  <div className={styles.tripName}>新增清單</div>
-                </div>
-              </button>
-            )}
-          </li>
-          {trips.map((t) => (
-            <li key={t.id}>
-              <div className={`${styles.tripItem}${t.id === activeTripID ? ` ${styles.tripItemActive}` : ''}`}>
-                <button
-                  type="button"
-                  className={styles.tripItemOpen}
-                  onClick={() => onSelectTrip(t)}
-                >
-                  {/* 2026-10 修正:原本用 MapPin(單一地點意象),使用者
-                      明確指出清單裡每一項代表的是「一趟旅程」的概念,不是
-                      單一目的地,改用 Luggage(行李箱,旅程/旅行的慣用
-                      意象)。 */}
+      {/* SheetBody 取代原本的 ScrollArea——理由見該元件 forwardRef 的
+          完整說明。單段模式(只有一個 snapPoint)下 atMaxExpansion 恆為
+          true(見 PhoneBottomSheet 內部 isSingleStop 的說明),這份清單
+          本來就需要能原生捲動、捲到頂才能繼續往下拖關閉的交接行為。 */}
+      <SheetBody>
+        <div style={CONTENT_PADDING_STYLE}>
+          <ErrorBanner msg={err} />
+          {trips.length === 0 && !err && (
+            <div className="empty">
+              {loading ? '載入中…' : '沒有清單。按下方「新增清單」建立一個。'}
+            </div>
+          )}
+          <ul className={styles.tripList}>
+            {/* 新增清單:跟下面實際的旅程項目共用同一套 .tripItem 樣式
+                (借來瀏覽/新增的是同一個工具畫面,視覺上該是同一組清單
+                的一份子,不是另一顆突兀的強調色橫幅按鈕),只把大頭貼換成
+                「＋」圖示徽章區分。點擊後這個項目原地換成輸入框(composer),
+                下面既有清單維持可見、可捲動,不會像原本整塊消失。
+                2026-10 修正:使用者要求畫面文字統一改用「清單」(按鈕/空
+                狀態提示),底層資料仍是 Trip,變數/型別命名不動——這只是
+                這個抽屜(已改名「清單」)裡的顯示字樣跟著統一,桌面版
+                DesktopTripList.tsx 仍叫「旅程列表」,不在這次改名範圍內。 */}
+            <li>
+              {creating ? (
+                <NewTripComposer
+                  value={newName}
+                  onChange={setNewName}
+                  onSubmit={submitCreate}
+                  onCancel={() => {
+                    setCreating(false)
+                    setNewName('')
+                  }}
+                />
+              ) : (
+                <button type="button" className={styles.tripItem} onClick={() => setCreating(true)}>
                   <div className={styles.newTripIcon}>
-                    <Luggage size={18} strokeWidth={1.8} />
+                    <Plus size={18} strokeWidth={1.8} />
                   </div>
                   <div className={styles.tripGrow}>
-                    <div className={styles.tripName}>{t.name}</div>
-                    <div className={styles.tripSub}>
-                      {t.lastMessagePreview ?? '尚無訊息'} · {t.memberCount} 人
-                    </div>
+                    <div className={styles.tripName}>新增清單</div>
                   </div>
                 </button>
-                {/* 管理:對齊桌面版 DesktopTripList.tsx 的 itemAction,
-                    見上方 onManage 說明。 */}
-                <button
-                  type="button"
-                  className={styles.tripItemAction}
-                  onClick={() => onManage(t)}
-                  title="清單設定"
-                >
-                  <Settings size={15} strokeWidth={1.8} />
-                </button>
-              </div>
+              )}
             </li>
-          ))}
-        </ul>
-      </ScrollArea>
-    </PhoneBottomSheet>
+            {trips.map((t) => (
+              <li key={t.id}>
+                <div className={`${styles.tripItem}${t.id === activeTripID ? ` ${styles.tripItemActive}` : ''}`}>
+                  <button
+                    type="button"
+                    className={styles.tripItemOpen}
+                    onClick={() => onSelectTrip(t)}
+                  >
+                    {/* 2026-10 修正:原本用 MapPin(單一地點意象),使用者
+                        明確指出清單裡每一項代表的是「一趟旅程」的概念,不是
+                        單一目的地,改用 Luggage(行李箱,旅程/旅行的慣用
+                        意象)。 */}
+                    <div className={styles.newTripIcon}>
+                      <Luggage size={18} strokeWidth={1.8} />
+                    </div>
+                    <div className={styles.tripGrow}>
+                      <div className={styles.tripName}>{t.name}</div>
+                      <div className={styles.tripSub}>
+                        {t.lastMessagePreview ?? '尚無訊息'} · {t.memberCount} 人
+                      </div>
+                    </div>
+                  </button>
+                  {/* 管理:對齊桌面版 DesktopTripList.tsx 的 itemAction,
+                      見上方 onManage 說明。 */}
+                  <button
+                    type="button"
+                    className={styles.tripItemAction}
+                    onClick={() => onManage(t)}
+                    title="清單設定"
+                  >
+                    <Settings size={15} strokeWidth={1.8} />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </SheetBody>
+    </StandaloneSheet>
   )
 }

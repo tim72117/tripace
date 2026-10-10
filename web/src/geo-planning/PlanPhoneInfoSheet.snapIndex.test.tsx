@@ -1,4 +1,4 @@
-// GeoOutlinePhoneInfoSheet 的 activeSnapIndex 初始化分流——2026-10 使用者
+// PlanPhoneInfoSheet 的 activeSnapIndex 初始化分流——2026-10 使用者
 // 明確要求「主題點預設最小段,精選點預設中間段」(見該 state 宣告旁的完整
 // 說明)。這個元件在 InteractiveExploreMap.tsx 裡被兩種不同「路徑」共用
 // 同一個實例:使用者點擊地圖上的主題點、以及頁面載入時透過
@@ -19,7 +19,7 @@
 import { StrictMode } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import { GeoOutlinePhoneInfoSheet } from './GeoOutlinePhoneInfoSheet'
+import { PlanPhoneInfoSheet } from './PlanPhoneInfoSheet'
 import phoneBottomSheetStyles from '../components/PhoneBottomSheet.module.css'
 import type { ClientConfig, GeoAttraction } from '../api'
 import type { PlaceInfoContent } from './PlacePanel'
@@ -62,7 +62,7 @@ class FakeIntersectionObserver {
 }
 vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
 // ResizeObserver:附近景點橫滑清單用它偵測容器從不可見變成可見(見
-// GeoOutlinePhoneInfoSheet.tsx nearbyListNodeRef 那段 effect 的完整
+// PlanPhoneInfoSheet.tsx nearbyListNodeRef 那段 effect 的完整
 // 說明),jsdom 同樣沒有實作,補最小可用假實作。
 class FakeResizeObserver {
   observe = vi.fn()
@@ -104,10 +104,10 @@ beforeEach(() => {
   fetchPublicGeoPlaceDetailsMock.mockReset()
 })
 
-describe('GeoOutlinePhoneInfoSheet — activeSnapIndex 初始化(不同路徑進來的段落)', () => {
+describe('PlanPhoneInfoSheet — activeSnapIndex 初始化(不同路徑進來的段落)', () => {
   it('主題點路徑(attraction 有值,對應點擊主題點/defaultOpenTheme 自動開啟兩種來源)一開啟預設最小段', async () => {
     renderStrict(
-      <GeoOutlinePhoneInfoSheet
+      <PlanPhoneInfoSheet
         content={null}
         attraction={themeAttraction()}
         cfg={cfg}
@@ -120,7 +120,7 @@ describe('GeoOutlinePhoneInfoSheet — activeSnapIndex 初始化(不同路徑進
 
   it('精選點路徑(content 有值,attraction 為 null)一開啟預設中間段,不是最小段', async () => {
     renderStrict(
-      <GeoOutlinePhoneInfoSheet
+      <PlanPhoneInfoSheet
         content={poiContent()}
         attraction={null}
         cfg={cfg}
@@ -133,7 +133,7 @@ describe('GeoOutlinePhoneInfoSheet — activeSnapIndex 初始化(不同路徑進
 
   it('同一個掛載中的元件換成另一張主題卡(attraction 名稱變動)時,重新套用最小段,不延續前一張卡片的狀態', async () => {
     const { rerender } = renderStrict(
-      <GeoOutlinePhoneInfoSheet
+      <PlanPhoneInfoSheet
         content={null}
         attraction={themeAttraction({ name: '清水寺' })}
         cfg={cfg}
@@ -145,7 +145,7 @@ describe('GeoOutlinePhoneInfoSheet — activeSnapIndex 初始化(不同路徑進
 
     rerender(
       <StrictMode>
-        <GeoOutlinePhoneInfoSheet
+        <PlanPhoneInfoSheet
           content={null}
           attraction={themeAttraction({ name: '八坂神社' })}
           cfg={cfg}
@@ -158,7 +158,7 @@ describe('GeoOutlinePhoneInfoSheet — activeSnapIndex 初始化(不同路徑進
 
   it('同一個掛載中的元件從主題卡換成精選點卡(attraction 變 null、改傳 content)時,改套用中間段', async () => {
     const { rerender } = renderStrict(
-      <GeoOutlinePhoneInfoSheet
+      <PlanPhoneInfoSheet
         content={null}
         attraction={themeAttraction()}
         cfg={cfg}
@@ -170,7 +170,7 @@ describe('GeoOutlinePhoneInfoSheet — activeSnapIndex 初始化(不同路徑進
 
     rerender(
       <StrictMode>
-        <GeoOutlinePhoneInfoSheet
+        <PlanPhoneInfoSheet
           content={poiContent()}
           attraction={null}
           cfg={cfg}

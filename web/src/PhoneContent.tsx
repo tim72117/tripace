@@ -12,10 +12,11 @@ import { SettingsScreen } from './user/SettingsScreen'
 import { TripManageModal } from './trip/TripManageModal'
 import { PaceRouteMap, type SelectedEntry } from './pace/PaceRouteMap'
 import type { Checkpoint } from './pace/PaceChart'
-import { GeoOutlinePhoneView } from './geo-planning/GeoOutlinePhoneView'
+import { PlanPhoneView } from './geo-planning/PlanPhoneView'
 import { PhoneTripsDrawer } from './trip/PhoneTripsDrawer'
 import { PhoneTimelineDrawer } from './timeline/PhoneTimelineDrawer'
-import { PhoneBottomSheet, SheetHead } from './components/PhoneBottomSheet'
+import { StandaloneSheet, PersistentSheet, SheetBody, SheetHead } from './components/PhoneBottomSheet'
+import { Z_LAYERS } from './components/zLayers'
 import { PhoneTabBar } from './PhoneTabBar'
 import { PhoneSideTools } from './PhoneSideTools'
 import type { Trip } from './trip/types'
@@ -114,17 +115,23 @@ export function PhoneContent(props: ContentProps) {
   // addFlashTrigger 的既有設計慣例。
   const [exploreActive, setExploreActive] = useState(false)
   const [exploreTrigger, setExploreTrigger] = useState(0)
-  // candidateDrawerOpen/candidateDrawerTrigger:2026-10「行程」按鈕從
+  // tripListDrawerOpen/tripListDrawerTrigger:2026-10「行程」按鈕從
   // 疊在地圖左下角的浮動按鈕群組搬到底部常駐功能列(使用者明確要求,
   // 跟「旅程」交換位置),這兩個 state 的橋接方式對齊上面
-  // exploreActive/exploreTrigger 的既有模式——candidateDrawerOpen 是
-  // GeoOutlinePhoneView.tsx 內部候選籃抽屜開關狀態的單向回報(那個元件
+  // exploreActive/exploreTrigger 的既有模式——tripListDrawerOpen 是
+  // GeoOutlinePhoneView.tsx 內部行程清單抽屜開關狀態的單向回報(那個元件
   // 內部還有「加入候選後自動打開抽屜」的既有邏輯,開關狀態本身不提升
   // 出來,只回報目前是否開啟,供這顆按鈕顯示 active 視覺);
-  // candidateDrawerTrigger 是遞增計數器,按下按鈕就遞增,讓
+  // tripListDrawerTrigger 是遞增計數器,按下按鈕就遞增,讓
   // GeoOutlinePhoneView.tsx 收到變化後打開抽屜。
-  const [candidateDrawerOpen, setCandidateDrawerOpen] = useState(false)
-  const [candidateDrawerTrigger, setCandidateDrawerTrigger] = useState(0)
+  //
+  // 2026-10 改名(使用者明確要求「候選的命名也要一起改」):這組 state
+  // 原名 tripListDrawerOpen/tripListDrawerTrigger,對應的抽屜
+  // (geo-planning/PlanPhoneTripListDrawer.tsx,原檔名
+  // GeoOutlinePhoneCandidateDrawer.tsx)已經不處理候選籃概念,改用
+  // tripList 反映實際內容。
+  const [tripListDrawerOpen, setTripListDrawerOpen] = useState(false)
+  const [tripListDrawerTrigger, setTripListDrawerTrigger] = useState(0)
   // pendingRestoreTripsRef:2026-10 修正——原本「行程抽屜關閉時重新開啟
   // 清單」是無條件觸發(只要曾經開過行程抽屜,之後任何一次關閉都會
   // 彈回清單),code review 抓到這樣會導致使用者永遠無法單純關掉兩層
@@ -133,22 +140,27 @@ export function PhoneContent(props: ContentProps) {
   // 旅程」(見下方 selectTrip)這個情境,才在使用者關閉行程抽屜時回彈
   // 清單——其餘情況(使用者自己按行程按鈕打開、或行程內項目收合/復原
   // 的 activeSnapIndex 互動)關閉時單純回地圖,不自動開任何東西。用
-  // ref 而非 state,因為這個值只在 candidateDrawerOpen 的 effect 裡
+  // ref 而非 state,因為這個值只在 tripListDrawerOpen 的 effect 裡
   // 讀取/消耗一次,不需要參與渲染。
   const pendingRestoreTripsRef = useRef(false)
   useEffect(() => {
-    if (candidateDrawerOpen) return
+    if (tripListDrawerOpen) return
     if (pendingRestoreTripsRef.current) {
       pendingRestoreTripsRef.current = false
       setTripsDrawerOpen(true)
     }
-  }, [candidateDrawerOpen])
+  }, [tripListDrawerOpen])
   // chatSnapIndex:對話疊加層自己的吸附段落狀態——使用者明確要求「對話
   // 也要可縮到最底」,比照地點清單/地點資訊卡(GeoOutlinePhoneListDrawer.tsx/
   // GeoOutlinePhoneInfoSheet.tsx 的同名 state),索引 0 是收合段
   // (CHAT_SHEET_MIN_HEIGHT),索引 1 是展開段(CHAT_SHEET_TOP)。初始為
   // 展開,每次重新開啟都重設回展開,不延續上次被拖曳收合的狀態。
   const [chatSnapIndex, setChatSnapIndex] = useState(1)
+  // chatScrollRef——2026-10 新增:對話疊加層(PersistentSheet 包著的
+  // TripPlanPage)真正的捲動容器 DOM 節點,見下方 JSX 的完整說明——
+  // 取代原本靠 closest('main') 猜測的脆弱做法,直接同時掛在 SheetBody
+  // 上、也傳給 TripPlanPage 的 scrollContainerRef,兩邊指向同一個節點。
+  const chatScrollRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     if (chatSheetOpen) setChatSnapIndex(1)
   }, [chatSheetOpen])
@@ -160,13 +172,13 @@ export function PhoneContent(props: ContentProps) {
   // selectTrip:切換使用中的旅程,並關閉獨立旅程抽屜。
   //
   // 2026-10 修正:使用者明確要求「選完清單後就開啟行程」——選定旅程後
-  // 緊接著觸發 candidateDrawerTrigger 打開候選籃/行程抽屜,不需要使用者
+  // 緊接著觸發 tripListDrawerTrigger 打開行程清單抽屜,不需要使用者
   // 再按一次「行程」按鈕;同時標記 pendingRestoreTripsRef(見上方該 ref
   // 的完整說明),這樣使用者之後關閉這次打開的行程抽屜時才會自動彈回
   // 清單,形成「選清單→開行程→關行程→回清單」的來回循環。
   //
   // code review 修正:原本不分 t 是否已經是目前的 activeTrip,一律觸發
-  // candidateDrawerTrigger——使用者在清單裡重複點選同一個已選定的旅程
+  // tripListDrawerTrigger——使用者在清單裡重複點選同一個已選定的旅程
   // (例如單純想收起清單回地圖),也會被無條件導去重新打開行程抽屜。
   // 改成只有真的切換到不同旅程時才觸發這整套「打開行程+標記待回彈」的
   // 連動,重複點同一個旅程單純關閉清單,不節外生枝。
@@ -176,7 +188,7 @@ export function PhoneContent(props: ContentProps) {
     setTripsDrawerOpen(false)
     if (isSameTrip) return
     pendingRestoreTripsRef.current = true
-    setCandidateDrawerTrigger((n) => n + 1)
+    setTripListDrawerTrigger((n) => n + 1)
   }
 
   // useTripsState 提升到這裡頂層常駐呼叫(不只在抽屜開啟時才掛載)——
@@ -280,14 +292,14 @@ export function PhoneContent(props: ContentProps) {
       onOpenTrips()
       return
     }
-    setCandidateDrawerTrigger((n) => n + 1)
+    setTripListDrawerTrigger((n) => n + 1)
   }
   const bottomTabs: { key: string; icon: typeof Sparkles; title: string; active: boolean; onClick: () => void; beta?: boolean }[] = [
     // active:候選籃/行程抽屜、清單抽屜任一個開啟,這顆按鈕都顯示為
     // 啟用狀態——使用者只看到一顆「行程」入口,不需要分辨目前到底是哪
     // 一層 sheet 開著,只要「行程」這個概念相關的畫面正在顯示,按鈕就該
     // 亮著。
-    { key: 'trip', icon: ListPlus, title: '行程', active: candidateDrawerOpen || tripsDrawerOpen, onClick: handleOpenTrip },
+    { key: 'trip', icon: ListPlus, title: '行程', active: tripListDrawerOpen || tripsDrawerOpen, onClick: handleOpenTrip },
     { key: 'explore', icon: Compass, title: '探索', active: exploreActive, onClick: () => setExploreTrigger((n) => n + 1) },
     { key: 'plan-ai', icon: Sparkles, title: '規劃', active: chatSheetOpen, onClick: () => setChatSheetOpen(true), beta: true },
   ]
@@ -333,7 +345,7 @@ export function PhoneContent(props: ContentProps) {
             (DesktopLayout.tsx)。搜尋框/使用者頭像/候選籃按鈕由
             GeoOutlinePhoneView 自己疊在地圖上方。activeTrip 供候選籃
             「加入行程」判斷是否已選定旅程使用。 */}
-        <GeoOutlinePhoneView
+        <PlanPhoneView
           cfg={cfg}
           tripID={activeTrip?.id ?? null}
           activeTrip={activeTrip}
@@ -344,8 +356,8 @@ export function PhoneContent(props: ContentProps) {
           theme={props.theme}
           exploreTrigger={exploreTrigger}
           onExploreActiveChange={setExploreActive}
-          candidateDrawerTrigger={candidateDrawerTrigger}
-          onCandidateDrawerActiveChange={setCandidateDrawerOpen}
+          tripListDrawerTrigger={tripListDrawerTrigger}
+          onTripListDrawerActiveChange={setTripListDrawerOpen}
         />
         {/* PhoneSideTools:右側下方路徑+demo-* 小圖示,跨所有主畫面模式
             共用(不是規劃地圖專屬),見該元件開頭說明。 */}
@@ -395,21 +407,22 @@ export function PhoneContent(props: ContentProps) {
           editCfg={activeTrip && activeTrip.ownerID === props.user.id ? cfg : undefined}
         />
       </div>
-      {/* 設定頁:改用共用容器 components/PhoneBottomSheet.tsx
-          (mode="slide-close"),對齊 trip/PhoneTripsDrawer.tsx 的既有用法
-          (使用者明確要求改成一般高度、可下滑關閉的 bottom sheet,不再是
-          滿版全螢幕滑入)。bottom: 0、zIndex: 36——使用者明確要求開啟時
-          不要被底部常駐導覽列 PhoneTabBar.tsx(z-index: 35)蓋住,不是貼齊
-          它的上緣讓開空間,理由同 geo-planning/GeoOutlinePhoneListDrawer.tsx
-          的 panelStyle 說明。showBackdrop={false}——使用者明確要求完全
-          不要遮罩,點外部不關閉,只能靠 head 的關閉鈕或下滑手勢關閉。
+      {/* 設定頁:改用具名工廠元件 StandaloneSheet(2026-10,見
+          components/PhoneBottomSheet.tsx 的完整說明)——獨立開關、不屬於
+          任何堆疊,對齊 trip/PhoneTripsDrawer.tsx 的既有用法(使用者明確
+          要求改成一般高度、可下滑關閉的 bottom sheet,不再是滿版全螢幕
+          滑入)。bottom: 0、zIndex 改引用 Z_LAYERS.ABOVE_TAB_BAR(2026-10,
+          見 zLayers.ts 的完整說明,取代原本寫死的 36)——使用者明確要求
+          開啟時不要被底部常駐導覽列 PhoneTabBar.tsx 蓋住,不是貼齊它的
+          上緣讓開空間。showBackdrop={false}——使用者明確要求完全不要
+          遮罩,點外部不關閉,只能靠 head 的關閉鈕或下滑手勢關閉。
           head 改用共用的 SheetHead(標題+關閉鈕標準樣式),不再自己拼
           navbar class,理由見該元件的說明。 */}
-      <PhoneBottomSheet
+      <StandaloneSheet
         open={inSettings}
         onClose={() => setInSettings(false)}
         snapPoints={[SETTINGS_SHEET_TOP]}
-        panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 36 }}
+        panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: Z_LAYERS.ABOVE_TAB_BAR }}
         showBackdrop={false}
         head={<SheetHead title="設定" onClose={() => setInSettings(false)} />}
       >
@@ -423,14 +436,15 @@ export function PhoneContent(props: ContentProps) {
           theme={props.theme}
           setTheme={props.setTheme}
         />
-      </PhoneBottomSheet>
+      </StandaloneSheet>
       {/* 對話:改成跟地點清單/設定頁一樣的滿版 PhoneBottomSheet 疊加層,由
           底部常駐列「對話」按鈕開關(chatSheetOpen,見上方說明)——使用者
           明確要求「規劃地圖常駐為主畫面,對話變疊加層」,取代原本「分頁
           決定主顯示內容」的版型。maxHeightVh 設 92——比其餘 bottom sheet
           (70)更高,貼近桌面版 chat-popover 幾乎滿版的視覺比例,對話輸入/
           訊息列表需要的垂直空間本來就比清單類內容多。bottom: 0、
-          zIndex: 36、showBackdrop={false}——理由同設定頁。
+          zIndex(Z_LAYERS.ABOVE_TAB_BAR)、showBackdrop={false}——理由同
+          設定頁。
           keepMounted——ChatScreen 直接放在 children 裡(不再透過 React
           Portal 投影),用 keepMounted 讓 PhoneBottomSheet 即使
           chatSheetOpen 為 false 也不卸載 children,避免每次關閉對話都
@@ -446,42 +460,49 @@ export function PhoneContent(props: ContentProps) {
           觸控事件正常運作,原本用來解決「投影目標過早卸載導致地圖抽動」
           的 exitDurationMs/chatSheetSettled 雙層延遲機制也一併不再需要
           ——children 從不卸載,沒有卸載時機的問題可言。 */}
-      <PhoneBottomSheet
+      <PersistentSheet
         open={chatSheetOpen}
         onClose={() => setChatSheetOpen(false)}
         snapPoints={[CHAT_SHEET_TOP]}
         minHeightPx={CHAT_SHEET_MIN_HEIGHT}
         activeSnapIndex={chatSnapIndex}
         onSnapIndexChange={setChatSnapIndex}
-        panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 36 }}
+        panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: Z_LAYERS.ABOVE_TAB_BAR }}
         showBackdrop={false}
-        keepMounted
         head={<SheetHead title="規劃" onClose={() => setChatSheetOpen(false)} />}
       >
-        {
-          // AI 規劃取代對話:TripPlanPage 以最近的 <main> 當捲動容器
-          // (closest('main'),見該檔案 scrollToLatest 說明),這裡包一層
-          // 自己捲動的 <main> 對齊桌面版 DesktopMain。
-          <main className={styles.planScroll}>
-            <Suspense fallback={null}>
-              <TripPlanPage cfg={cfg} />
-            </Suspense>
-          </main>
-        }
-      </PhoneBottomSheet>
+        {/* 2026-10 根本解法(使用者明確要求「不能對應到別的嗎」「根本的
+            解決」):原本這裡包一層 <main className={styles.planScroll}>
+            純粹是為了配合 TripPlanPage 內部用 closest('main') 往上爬找
+            捲動容器的舊寫法(見該檔案 scrollContainerRef prop 的完整
+            說明)——這個做法依賴「外層剛好有一個 <main> 標籤」這個脆弱
+            的隱性假設,換成 SheetBody(渲染出來是 <div>,不是 <main>)
+            就會找不到。TripPlanPage 其實已經支援 scrollContainerRef
+            prop(對齊 /trip-plan 全頁 TripPlanRoute.tsx 的既有用法),
+            讓呼叫端直接把捲動容器的 DOM ref 傳進去,不需要依賴任何標籤
+            名稱猜測——這裡比照同樣的模式:chatScrollRef 掛在 SheetBody
+            上(透過其 forwardRef,見該元件的完整說明),同一個 ref 傳給
+            TripPlanPage 的 scrollContainerRef,徹底不依賴 closest('main')
+            這條路徑,不只是換一個標籤名稱繼續猜。 */}
+        <SheetBody ref={chatScrollRef}>
+          <Suspense fallback={null}>
+            <TripPlanPage cfg={cfg} scrollContainerRef={chatScrollRef} />
+          </Suspense>
+        </SheetBody>
+      </PersistentSheet>
       {/* 對話換成 AI 規劃後 ChatScreen 仍隱藏掛載——時間軸抽屜的
           timelineMirror 資料來源是它的 onTimelineData(見上方說明)。 */}
       <div hidden>{chatElement}</div>
-      {/* 配速表:同上方對話,改成滿版 PhoneBottomSheet 疊加層,由右側小圖示
-          「路徑」按鈕開關(paceSheetOpen)。跟對話不同,PaceRouteMap 不需要
-          永遠掛載+portal 投影這套機制(沒有 WebSocket 之類需要避免重連的
-          成本),sheet 關閉時直接卸載,開啟時才掛載,維持原本條件式掛載的
-          既有行為。 */}
-      <PhoneBottomSheet
+      {/* 配速表:同上方設定頁,改用具名工廠元件 StandaloneSheet(2026-10)
+          渲染滿版疊加層,由右側小圖示「路徑」按鈕開關(paceSheetOpen)。跟
+          對話不同,PaceRouteMap 不需要永遠掛載+portal 投影這套機制(沒有
+          WebSocket 之類需要避免重連的成本),sheet 關閉時直接卸載,開啟時
+          才掛載,維持原本條件式掛載的既有行為。 */}
+      <StandaloneSheet
         open={paceSheetOpen}
         onClose={() => setPaceSheetOpen(false)}
         snapPoints={[CHAT_SHEET_TOP]}
-        panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 36 }}
+        panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: Z_LAYERS.ABOVE_TAB_BAR }}
         showBackdrop={false}
         head={<SheetHead title={activeTrip?.name ?? 'Tripace'} onClose={() => setPaceSheetOpen(false)} />}
       >
@@ -493,7 +514,7 @@ export function PhoneContent(props: ContentProps) {
             onEntrySaved={setSavedEntry}
           />
         )}
-      </PhoneBottomSheet>
+      </StandaloneSheet>
       {/* manageTrip:旅程管理彈窗,對齊桌面版 DesktopLayout.tsx 的同名
           渲染邏輯——用 base-ui.css 既有的 .rp-modal*(置中卡片彈窗骨架)
           包住,TripManageModal 本身用 .rp-modal-head/.rp-modal-body

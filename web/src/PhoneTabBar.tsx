@@ -14,8 +14,8 @@ import styles from './PhoneTabBar.module.css'
 // 傳 boolean,不再需要比對「目前選中哪個 mode」。
 // 2026-10 修正:
 // 1. 「旅程」原本寫死排在最前面、不經過 tabs 陣列——使用者要求把
-//    「行程」(開啟候選籃抽屜,見 GeoOutlinePhoneView.tsx 的
-//    candidateDrawerTrigger)搬進底部功能列、跟「旅程」交換位置,兩者
+//    「行程」(開啟行程清單抽屜,見 GeoOutlinePhoneView.tsx 的
+//    tripListDrawerTrigger)搬進底部功能列、跟「旅程」交換位置,兩者
 //    現在都改成普通 tabs 陣列項目,順序由呼叫端(PhoneContent.tsx)的
 //    陣列順序決定,不再有「旅程永遠第一個」的特殊待遇。
 // 2. icon 下方加入文字標籤——原本只有圖示,使用者要求補上文字,.tab 的
