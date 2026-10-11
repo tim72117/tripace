@@ -2,6 +2,29 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.30.2 — 2026-10-11
+
+延續 v0.30.1 的 bottom sheet 體系調整：手機版規劃地圖 UX 微調、修正地圖點擊穿透 bug，以及一項 code review 抓到的重複實作。本版無破壞性變更。
+
+### 變更
+
+- **手機版規劃地圖的「設定頁」「規劃」「配速表」三個 bottom sheet，最大展開段從離頂部 60px 改成 12px，貼齊搜尋框上緣，改成蓋住搜尋框**（使用者明確要求「我要改成要蓋住」「貼齊搜尋匡上緣」）。
+- **「規劃」對話疊加層從兩段（收合/展開）改成三段式（收合/中段/最大展開）**，比照地點清單/地點資訊卡的既有三段式設計（`PhoneContent.tsx` 新增 `CHAT_SHEET_SNAP_POINTS`）。
+- **所有「中間段」的離頂部距離統一成 320px**：三段式 sheet（規劃小匡/地點清單/地點資訊卡）的中段，以及兩段式 sheet（旅程清單/時間軸，展開段本身語意上是「中間」位置而非貼頂的最大展開）的展開段，原本分別是 400px/200px，這次一併統一成 320px。
+
+### 修正
+
+- **地圖上的主題點／精選點縮圖圓圈，點選時會同時觸發底下的 Google 原生 POI**：根因是 `geoAttractionOverlay.ts` 的 click 監聽只對 `mousedown`/`touchstart` 呼叫 `stopPropagation()`（為了保留滑鼠滾輪縮放功能），唯獨沒有擋住 `click` 本身的冒泡——我們自建的 DOM click 處理會正確觸發，但事件繼續冒泡到地圖容器，被 Google Maps SDK 自己的事件委派依座標解讀成底層 POI 的點擊，兩套獨立事件系統同時觸發。補上 `click` 監聽的 `stopPropagation()`，不影響原本保留的 `wheel` 縮放行為。
+- **`PhoneBottomSheet.tsx` 的 `containerHeight` 重複實作了同一輪新增的 `hooks/useElementHeight.ts`**（code review Reuse 角度發現）：原本手刻一份「掛載時量 `clientHeight` + `window resize` 時重量」的邏輯，改用 `useElementHeight`（`ResizeObserver` 持續監聽任何尺寸變化來源，不只是 `window resize` 事件）量測這個 sheet 的定位祖先容器真實高度。`panelRef` 改成 callback ref 形式，確保量測父容器的 `containerRef` 能跟 `panelRef` 的掛載同一輪 commit 完成賦值。
+
+### 已知限制（尚未修正）
+
+- `PhoneBottomSheet.tsx` 的 `panelBottomPx`（用 `getComputedStyle` 讀取 `panelStyle.bottom` 的真實 px 值，供收合段高度計算使用）只在 sheet 的 `open` 狀態切換或 `window resize` 時重新量測。若 sheet 已經開啟期間，`panelStyle.bottom` 背後依賴的 CSS 自訂屬性（例如 `--tab-bar-height`）獨立變化（不伴隨 `window resize` 事件，例如 `PhoneTabBar` 因內容或字級變化改變自身高度），`panelBottomPx` 不會重新量測、停留舊值，收合段可視高度可能重新出現 v0.30.1 已修復的壓縮症狀，只是觸發窗口變窄許多。沒有瀏覽器原生 API 可以直接訂閱 CSS 自訂屬性變化（`ResizeObserver` 只能偵測元素尺寸變化，而 CSS 變數改變時 `.panel` 自身尺寸不一定跟著變，只有位置變），這個邊界情況評估後續再處理。
+
+### 測試
+
+- 新增 `geoAttractionOverlay.clickTargets.test.ts` 的回歸測試，驗證點擊縮圖/圓點/標籤後 click 事件不會繼續冒泡到外層容器。
+
 ## v0.30.1 — 2026-10-11
 
 延續 v0.30.0 的 bottom sheet 重構：補上功能列高度的動態量測機制，並修正多輪實機測試與 code review 抓到的 bug。本版無破壞性變更。

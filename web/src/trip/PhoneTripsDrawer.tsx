@@ -20,9 +20,12 @@ import styles from './PhoneTripsDrawer.module.css'
 //
 // SHEET_TOP:面板頂部離這個定位祖先頂端的距離(px)——PhoneBottomSheet
 // 改成用「離頂部距離」而非「高度百分比」決定展開程度(見該元件的說明,
-// 適應不同裝置高度)。TODO(使用者稍後決定合理數值):暫時估算,先讓
-// 編譯通過與行為大致對齊原本 maxHeightVh=70 的視覺比例。
-const SHEET_TOP = 200
+// 適應不同裝置高度)。這個檔案是兩段模式(收合/展開),展開段本身不是
+// 貼頂的最大展開,語意上是「中間」位置——2026-10 使用者明確要求「只有
+// 兩段的、位置在中間的也算」,從原本的 200 改成 320,跟地點清單/地點
+// 資訊卡/「規劃」小匡的中段統一(見 PhoneContent.tsx
+// CHAT_SHEET_SNAP_POINTS 的完整說明)。
+const SHEET_TOP = 320
 // SHEET_BOTTOM:2026-10 改用 var(--tab-bar-height)(使用者明確要求「有
 // 辦法確保 bottom sheet 如果是在功能列後面,標頭不會被遮蔽,也不用功能
 // 列改動高度就要重新確認」「我要穩定根本的處理方式」,見

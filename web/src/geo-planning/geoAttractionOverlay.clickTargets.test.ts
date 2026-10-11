@@ -114,4 +114,31 @@ describe('geoAttractionOverlay — 點擊目標範圍(圖示/圓點 + 文字標�
 
     expect(onClick).not.toHaveBeenCalled()
   })
+
+  // 2026-10 新增(使用者實機回報「地圖上的主題點縮圖圓圈,點選的時候
+  // 不能觸發按到底下的 POI」):click 事件冒泡到地圖容器時,會被
+  // Google Maps SDK 自己的事件委派依座標解讀成底層 POI 的點擊,一併
+  // 觸發 ExploreMap.tsx 的 map.addListener('click', ...)——這跟我們
+  // 自建 DOM 元素的 click 監聽是兩套獨立事件系統,只要 click 事件繼續
+  // 往上冒泡,不管我們自己的 onClick 有沒有正確觸發,底層 POI 的點擊
+  // 判斷都還是會一併發生。這裡驗證的是「DOM 事件冒泡有沒有被正確
+  // 擋住」這件事本身(不是驗證 Google Maps SDK 的行為,那是真實瀏覽器
+  // /SDK 內部機制,jsdom 測不到)——用一個外層監聽器模擬地圖容器,
+  // 確認點擊縮圖/圓點/標籤後,這個外層監聽器完全不會被觸發。
+  it('點擊縮圖/圓點/標籤後,click 事件不會繼續冒泡到外層容器(避免誤觸底下的 Google 原生 POI)', () => {
+    const curated = attraction({ name: '二年坂', isTheme: false })
+    const onClick = vi.fn()
+    const overlay = mountOverlay(curated, onClick)
+    const div = getDiv(overlay)
+    const outerContainer = div.parentElement!
+    const outerClickSpy = vi.fn()
+    outerContainer.addEventListener('click', outerClickSpy)
+
+    const dot = div.querySelector('.geo-attraction-curated-dot') as HTMLElement
+    expect(dot).toBeTruthy()
+    dot.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    expect(onClick).toHaveBeenCalledWith(curated)
+    expect(outerClickSpy).not.toHaveBeenCalled()
+  })
 })

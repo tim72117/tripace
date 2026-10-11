@@ -48,13 +48,14 @@ import styles from './PlanPhoneListDrawer.module.css'
 // 理由同 PlanPhoneInfoSheet.tsx 的 SHEET_MIN_HEIGHT。TODO(使用者
 // 稍後決定合理數值):暫時估算。
 // SHEET_SNAP_POINTS(由大到小排序,數值越小展開越多):
-// [0] 中間狀態:可看清單內容,離頂部距離比照
-//     PlanPhoneInfoSheet.tsx 三段式的中間值。TODO(使用者稍後
-//     決定合理數值):暫時估算。
+// [0] 中間狀態:可看清單內容,離頂部距離 320px(2026-10 使用者明確
+//     要求「中間段統一離頂320px」,原本是 400,跟 PlanPhoneInfoSheet.tsx/
+//     PhoneContent.tsx 的「規劃」小匡一併從 400 改成 320,統一三個
+//     有中段的 sheet 的中段高度)。
 // [1] 滿版狀態:離頂部距離比照 PlanPhoneInfoSheet.tsx 三段式的
 //     滿版值。TODO(使用者稍後決定合理數值):暫時估算。
 const SHEET_MIN_HEIGHT = 100
-const SHEET_SNAP_POINTS = [400, 80]
+const SHEET_SNAP_POINTS = [320, 80]
 
 function ItemAddButton({
   cfg,

@@ -1,6 +1,7 @@
 import { createContext, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode, TouchEvent as ReactTouchEvent } from 'react'
 import { X } from 'lucide-react'
+import { useElementHeight } from '../hooks/useElementHeight'
 import { useStableCallback } from '../hooks/useStableCallback'
 import styles from './PhoneBottomSheet.module.css'
 
@@ -623,8 +624,44 @@ export function PhoneBottomSheet({
   // 變化或呼叫端重新渲染觸發的量測就會拿到正確的祖先容器高度,不會一直
   // 停留在 fallback 值上(對 fixed 呼叫端而言,fallback 值本來就等於
   // 正確答案,不會有「卡在錯誤值」的疑慮)。
+  //
+  // 第四輪修正(code review 發現這套手刻邏輯跟同一輪新增的
+  // hooks/useElementHeight.ts 是重複實作):上面這段「用
+  // useLayoutEffect + window resize listener 手動量 clientHeight」的
+  // 做法已經整段移除,改用 useElementHeight(見下方 containerRef 的
+  // 完整說明)——第三輪解決的「混合量測、0 時 fallback 視窗高度」這些
+  // 設計意圖都保留,只是改用 ResizeObserver 驅動,不再手刻一份
+  // window resize 監聽。
   const panelRef = useRef<HTMLDivElement>(null)
-  const [containerHeight, setContainerHeight] = useState(() => window.innerHeight)
+  // containerRef——2026-10 code review 修正(Reuse 角度發現:
+  // containerHeight 原本手刻一份「掛載時量 + window resize 時重量」的
+  // 邏輯,跟同一輪新增的 hooks/useElementHeight.ts 是同一類問題的兩套
+  // 重複實作)。改用 useElementHeight 量測這個 sheet 的定位祖先容器
+  // (panelRef.current.parentElement)真實高度——ResizeObserver 天生
+  // 持續監聽任何尺寸變化來源(不只是 window resize 事件),取代原本只能
+  // 偵測「視窗尺寸改變」這一種情境的做法。
+  //
+  // containerRef 需要跟 panelRef 的掛載同一輪 commit 完成賦值,
+  // useElementHeight 的 useEffect 才能在第一次執行時就讀到正確的
+  // ref.current(理由同 PhoneContent.tsx 的 tabBarRef:直接掛在
+  // forwardRef 上、跟隨 React commit phase 同步賦值,不是事後才由某個
+  // effect 去設置——後者會因為 useElementHeight 的依賴陣列是穩定的
+  // ref 物件本身,第一次執行時讀到 null 就不會再重新 observe)。改成
+  // callback ref 形式的 setPanelRef,在賦值 panelRef.current 的同一個
+  // 時機點,一併把 el.parentElement 寫進 containerRef.current,兩者
+  // 保證同步,不會有時序落差。
+  const containerRef = useRef<HTMLElement | null>(null)
+  function setPanelRef(el: HTMLDivElement | null) {
+    ;(panelRef as React.MutableRefObject<HTMLDivElement | null>).current = el
+    containerRef.current = el?.parentElement ?? null
+  }
+  // measuredContainerHeight:useElementHeight 量到的父容器真實高度——
+  // 初始值 0(ResizeObserver 回呼前的空窗期,見該 hook 的完整說明),
+  // 這裡額外 fallback 回 window.innerHeight(理由同原本手刻版本:0
+  // 代表容器目前不可見/尚未撐開,此時用視窗高度至少是一個合理的近似
+  // 值,不會让後續的 minHeightAsTop 計算直接算出負值或 0)。
+  const measuredContainerHeight = useElementHeight(containerRef)
+  const containerHeight = measuredContainerHeight > 0 ? measuredContainerHeight : window.innerHeight
   // panelBottomPx:2026-10 新增(code review 抓到的根因,使用者實機截圖
   // 回報「旅程清單/行程清單收合段被壓縮成 35px,預期 80-100px」)——
   // 下方 minHeightAsTop 的計算公式(containerHeight - minHeightPx)原本
@@ -645,10 +682,22 @@ export function PhoneBottomSheet({
   // 的座標假設,在容器高度不足的邊界情況下反而可能誤套用到展開段,見
   // code review 的完整說明)。
   const [panelBottomPx, setPanelBottomPx] = useState(0)
+  // measure:只負責量 panelBottomPx(getComputedStyle 讀 bottom 的真實
+  // px 值)——containerHeight 已經改用 useElementHeight(見上方
+  // containerRef 的完整說明),不再需要這裡手動量測。
+  //
+  // 2026-10 code review 待辦(Angle A/Angle C 交叉發現,尚未修正):
+  // 這裡的重新量測時機只在 open 切換或 window resize 時觸發,sheet
+  // 已經開啟期間若 panelStyle.bottom 背後的 CSS 自訂屬性(例如
+  // --tab-bar-height)獨立變化(不伴隨 window resize 事件,例如
+  // PhoneTabBar 因內容/字級變化改變自身高度),panelBottomPx 不會
+  // 重新量測,停留舊值——ResizeObserver 無法直接監聽 CSS 自訂屬性
+  // 變化(它只能偵測元素尺寸變化,而 --tab-bar-height 改變時
+  // .panel 自己的尺寸不一定跟著變,只有位置變),沒有瀏覽器原生 API
+  // 可以直接訂閱 CSS 變數變化——使用者已確認這個邊界情況「晚點
+  // 處理」,先維持目前這組量測時機,不在這裡動手修。
   const measure = useCallback(() => {
     const el = panelRef.current
-    const parentMeasured = el?.parentElement?.clientHeight ?? 0
-    setContainerHeight(parentMeasured > 0 ? parentMeasured : window.innerHeight)
     // getComputedStyle(el).bottom——只有在 el 已經掛載且套用了
     // panelStyle 之後才讀得到正確值;parseFloat 對 "64px" 這類字串
     // 取數值部分,對 "auto"(例如呼叫端沒設 bottom)會得到 NaN,
@@ -961,7 +1010,7 @@ export function PhoneBottomSheet({
         <div className={styles.backdrop} style={backdropStyle} onClick={onClose} aria-hidden="true" />
       )}
       <div
-        ref={panelRef}
+        ref={setPanelRef}
         data-testid="phone-bottom-sheet"
         className={`${styles.panel}${panelClassName ? ` ${panelClassName}` : ''}${!isSingleStop && isAtMinSnap ? ` ${styles.panelCollapsed}` : ''}${isTopmost ? '' : ` ${styles.panelStacked}`}`}
         style={{

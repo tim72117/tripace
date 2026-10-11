@@ -374,7 +374,28 @@ export function getAttractionOverlayClass() {
         '.geo-attraction-landmark-photo, .geo-attraction-landmark-placeholder, .geo-attraction-curated-dot, .geo-attraction-focused-pin, .geo-attraction-label',
       )
       clickTargets.forEach((clickTarget) => {
-        clickTarget.addEventListener('click', () => this.onClick(this.attraction))
+        clickTarget.addEventListener('click', (e) => {
+          // 2026-10 修正實際回報的 bug(「地圖上的主題點縮圖圓圈,點選的
+          // 時候不能觸發按到底下的 POI」):原本這裡的 click 監聽沒有呼叫
+          // stopPropagation(),下方 2026-08 的註解當時推論「click 監聽器
+          // 掛在同一個元素上,不受這裡的 stopPropagation 影響,一定會
+          // 觸發」——這個推論只對了一半:我們自己的 click handler 確實
+          // 會觸發(this.onClick 這行從來沒有不執行過),但沒有考慮到
+          // click 事件本身還是會繼續冒泡到地圖容器,而 Google Maps SDK
+          // 會在地圖容器上用它自己的事件委派,依點擊座標解讀出底層瓦片/
+          // Google 原生 POI 圖示的點擊,觸發 ExploreMap.tsx 的
+          // map.addListener('click', ...)——這跟我們自建 DOM 元素的
+          // click 監聽是兩套完全獨立的事件系統(前者是 Google Maps SDK
+          // 自己判讀座標對應到哪個底層 feature,不是標準 DOM 事件冒泡),
+          // 沒有停止冒泡的話,兩邊的 click handler 都會觸發,造成點了
+          // 主題點縮圖卻同時彈出底下 POI 資訊卡的現象。
+          // stopPropagation() 這裡只停止 DOM 事件往上冒泡到地圖容器,
+          // 不影響 this.onClick 本身的執行(呼叫順序上 this.onClick 在
+          // stopPropagation 之前就已經執行,即使中途丟例外也不影響這裡
+          // 已經呼叫過 stopPropagation 這件事)。
+          e.stopPropagation()
+          this.onClick(this.attraction)
+        })
         // 2026-08:原本這裡呼叫 google.maps.OverlayView.preventMapHitsAndGesturesFrom
         // (Google 官方文件建議讓自訂 OverlayView 內元素能可靠接收點擊的
         // 做法)——但官方文件同時記載這個 API 連 wheel(滑鼠滾輪)事件都會
@@ -389,12 +410,13 @@ export function getAttractionOverlayClass() {
         // 改用更保守的做法:不整批攔截,只針對「拖曳手勢誤判吃掉 click」
         // 這個原始問題本身動手——真正會被 Maps 內部拖曳偵測誤判的是
         // mousedown/touchstart(滑鼠按下/觸控開始,拖曳判定從這裡起算),
-        // 不是 wheel,也不是 click 本身(click 監聽器掛在同一個元素上,
-        // 不受這裡的 stopPropagation 影響,一定會觸發)。只擋這兩個事件
-        // 冒泡到地圖,讓 wheel 完全不被觸碰、維持 100% 原生瀏覽器事件
-        // (真正的 isTrusted: true 事件,不依賴合成事件是否被 Maps 內部
-        // 邏輯接受),縮放位置自然正確,不需要自己重新推導投影數學或猜測
-        // Maps 內部監聽器掛在哪一層。
+        // 不是 wheel。只擋這兩個事件冒泡到地圖,讓 wheel 完全不被觸碰、
+        // 維持 100% 原生瀏覽器事件(真正的 isTrusted: true 事件,不依賴
+        // 合成事件是否被 Maps 內部邏輯接受),縮放位置自然正確,不需要
+        // 自己重新推導投影數學或猜測 Maps 內部監聽器掛在哪一層。
+        // (click 本身的 stopPropagation 改放進上面的 click 監聽器裡,
+        // 理由見上方的完整說明——這裡的 mousedown/touchstart 跟 click
+        // 是三個獨立註冊的監聽器,各自處理各自要擋的事件類型。)
         clickTarget.addEventListener('mousedown', (e) => e.stopPropagation())
         clickTarget.addEventListener('touchstart', (e) => e.stopPropagation())
       })

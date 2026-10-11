@@ -41,16 +41,36 @@ const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
 
 // 設定頁 bottom sheet 面板頂部離定位祖先頂端的距離(px)——見
 // components/PhoneBottomSheet.tsx 的說明,定位數值(bottom/z-index)見
-// 下方 PhoneBottomSheet 呼叫處的說明。使用者已確認改成 60(跟對話/配速表
-// 的 CHAT_SHEET_TOP 同一個展開高度)。
-const SETTINGS_SHEET_TOP = 60
+// 下方 PhoneBottomSheet 呼叫處的說明。
+// 2026-10 從 60 改成 12(使用者明確要求「所有有最高段的都剛好把搜尋匡
+// 蓋住」「我要改成要蓋住」「貼齊搜尋匡上緣」):規劃地圖的搜尋框
+// (geo-planning/PlanPhoneView.module.css 的 .citySearch,top:12px、
+// height:48px,範圍是離頂部 12px~60px)原本整個留在 60px 這個展開高度
+// 的上方,使用者這次要求最大展開段要整個蓋過搜尋框,改成貼齊它的上緣
+// (12px),不再只貼齊下緣。
+const SETTINGS_SHEET_TOP = 12
 // SETTINGS_SHEET_MIN_HEIGHT:設定頁收合段的固定高度(px)——2026-10 新增
 // (使用者明確要求「除了選單類的，其他都加入最小段」),跟 CHAT_SHEET_MIN_HEIGHT
 // 同值,理由同該常數的完整說明。
 const SETTINGS_SHEET_MIN_HEIGHT = 100
 // 對話/配速表 bottom sheet 的離頂部距離(px)——比設定頁/地點清單更高
-// (數值更小),理由見下方對話 PhoneBottomSheet 呼叫處的說明。
-const CHAT_SHEET_TOP = 60
+// (數值更小),理由見下方對話 PhoneBottomSheet 呼叫處的說明。配速表
+// 維持單一展開值(單段模式),見下方 PACE_SHEET_MIN_HEIGHT 的說明。
+// 2026-10 從 60 改成 12,理由同上方 SETTINGS_SHEET_TOP 的完整說明。
+const CHAT_SHEET_TOP = 12
+// CHAT_SHEET_SNAP_POINTS:「規劃」對話疊加層的三段式吸附——2026-10
+// 新增(使用者明確要求「規劃匡改成 3 段」),由二段(收合/展開)改成
+// 三段(收合/中段/最大展開),比照地點清單(PlanPhoneListDrawer.tsx)/
+// 地點資訊卡(PlanPhoneInfoSheet.tsx)的既有三段式設計——中段離頂部
+// 320px(2026-10 使用者明確要求「中間段統一離頂320px」,三個有中段的
+// sheet 一併從原本的 400 改成 320,見另外兩處的完整說明),最大展開
+// 沿用 CHAT_SHEET_TOP(2026-10 改成 12px,蓋過搜尋框,見該常數的完整
+// 說明)。索引 0 是收合段(CHAT_SHEET_MIN_HEIGHT,只顯示標頭)、索引 1
+// 是中段、索引 2 是最大展開,見下方 chatSnapIndex 的完整說明。獨立
+// 新增這個常數陣列,不直接改 CHAT_SHEET_TOP 本身——配速表疊加層
+// (見下方 paceSheetOpen 呼叫處)仍然共用 CHAT_SHEET_TOP 這個數值、
+// 但維持單段模式,不該被這次只給「規劃」小匡做的三段式調整意外波及。
+const CHAT_SHEET_SNAP_POINTS = [320, CHAT_SHEET_TOP]
 // CHAT_SHEET_MIN_HEIGHT:對話疊加層收合段的固定高度(px)——使用者明確
 // 要求「對話也要可縮到最底」,比照地點清單/地點資訊卡,新增可拖曳收合到
 // 只顯示標頭的最小段,不再只能整個滑出關閉。理由/算法見
@@ -175,11 +195,17 @@ export function PhoneContent(props: ContentProps) {
     }
   }, [tripListDrawerOpen])
   // chatSnapIndex:對話疊加層自己的吸附段落狀態——使用者明確要求「對話
-  // 也要可縮到最底」,比照地點清單/地點資訊卡(GeoOutlinePhoneListDrawer.tsx/
-  // GeoOutlinePhoneInfoSheet.tsx 的同名 state),索引 0 是收合段
-  // (CHAT_SHEET_MIN_HEIGHT),索引 1 是展開段(CHAT_SHEET_TOP)。初始為
-  // 展開,每次重新開啟都重設回展開,不延續上次被拖曳收合的狀態。
-  const [chatSnapIndex, setChatSnapIndex] = useState(1)
+  // 也要可縮到最底」,比照地點清單/地點資訊卡(PlanPhoneListDrawer.tsx/
+  // PlanPhoneInfoSheet.tsx 的同名 state),索引 0 是收合段
+  // (CHAT_SHEET_MIN_HEIGHT)。
+  // 2026-10 改成三段式(使用者明確要求「規劃匡改成 3 段」,見
+  // CHAT_SHEET_SNAP_POINTS 的完整說明):索引 1 是中段(離頂 320px),
+  // 索引 2 才是最大展開段(CHAT_SHEET_TOP,近乎滿版)——初始值跟著從
+  // 1 改成 2,維持「每次重新開啟都展開到最大」的既有行為(原本二段式
+  // 唯一的展開段剛好是索引 1,改成三段後最大展開段的索引跟著位移,若
+  // 這裡沒有同步改,重新開啟時會停在新的中段而非最大展開,不是預期
+  // 行為)。每次重新開啟都重設回最大展開,不延續上次被拖曳收合的狀態。
+  const [chatSnapIndex, setChatSnapIndex] = useState(2)
   // settingsSnapIndex/paceSnapIndex:2026-10 新增(使用者明確要求「除了
   // 選單類的，其他都加入最小段」)——設定頁/配速表原本是單段模式(往下拖
   // 到底直接 onClose),改成跟對話疊加層同一套兩段式吸附(索引 0 是收合段
@@ -195,7 +221,7 @@ export function PhoneContent(props: ContentProps) {
     if (paceSheetOpen) setPaceSnapIndex(1)
   }, [paceSheetOpen])
   useEffect(() => {
-    if (chatSheetOpen) setChatSnapIndex(1)
+    if (chatSheetOpen) setChatSnapIndex(2)
   }, [chatSheetOpen])
   // onOpenTrips:底部常駐列「旅程」按鈕——開啟獨立的旅程抽屜
   // (PhoneTripsDrawer.tsx),已開啟時再點一次視為收合(toggle)。
@@ -519,7 +545,7 @@ export function PhoneContent(props: ContentProps) {
       <PersistentSheet
         open={chatSheetOpen}
         onClose={() => setChatSheetOpen(false)}
-        snapPoints={[CHAT_SHEET_TOP]}
+        snapPoints={CHAT_SHEET_SNAP_POINTS}
         minHeightPx={CHAT_SHEET_MIN_HEIGHT}
         activeSnapIndex={chatSnapIndex}
         onSnapIndexChange={setChatSnapIndex}

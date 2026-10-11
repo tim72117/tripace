@@ -35,11 +35,14 @@ const ADDED_HINT_MS = 1200
 // SHEET_SNAP_POINTS:
 // [0] 中間狀態:能看到圖片+標頭,簡介文字部分被截斷(卡片高度不夠完整
 //     顯示,使用者可以再往上拉到 SHEET_SNAP_POINTS[1] 或靠 .body 的
-//     overflow-y: auto 捲動看更多)。
+//     overflow-y: auto 捲動看更多)。離頂部距離 320px(2026-10 使用者
+//     明確要求「中間段統一離頂320px」,原本是 400,跟
+//     PlanPhoneListDrawer.tsx/PhoneContent.tsx 的「規劃」小匡一併從
+//     400 改成 320)。
 // [1] 滿版/展開狀態:完整內容,離頂部距離比索引 0 更小(展開更多)。
 // TODO(使用者稍後決定合理數值):暫時估算。
 const SHEET_MIN_HEIGHT = 100
-const SHEET_SNAP_POINTS = [400, 80]
+const SHEET_SNAP_POINTS = [320, 80]
 
 // PlanPhoneInfoSheet:手機版規劃地圖資訊卡,從畫面下方滑入蓋住下
 // 半部——桌面版對應的 PlacePanel/AttractionInfoPanel 是絕對定位疊在
@@ -238,7 +241,7 @@ export function PlanPhoneInfoSheet({
   // 頂部距離),不是 SHEET_SNAP_POINTS 常數本身的索引——這裡有傳
   // minHeightPx(見下方 JSX 的 minHeightPx={SHEET_MIN_HEIGHT}),所以
   // stops[0] 是 minHeightPx 換算出的收合段(最小段),stops[1] 才是
-  // SHEET_SNAP_POINTS[0]=400(中間段),stops[2] 是 SHEET_SNAP_POINTS[1]=80
+  // SHEET_SNAP_POINTS[0]=320(中間段),stops[2] 是 SHEET_SNAP_POINTS[1]=80
   // (滿版段)。2026-10:這個固定索引語意曾經是用「排序」間接保證,量測
   // 失敗時(容器隱藏導致 clientHeight=0)會整個洗牌錯位,現已改成直接按
   // 固定順序建構陣列、不再排序(見 PhoneBottomSheet.tsx stops 合併邏輯

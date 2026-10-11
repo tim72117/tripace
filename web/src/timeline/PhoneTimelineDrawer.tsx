@@ -28,9 +28,12 @@ import { Z_LAYERS } from '../components/zLayers'
 // 保留這個收合功能。
 //
 // SHEET_TOP:面板頂部離定位祖先頂端的距離(px)——見
-// components/PhoneBottomSheet.tsx 的說明。TODO(使用者稍後決定合理
-// 數值):暫時估算。
-const SHEET_TOP = 200
+// components/PhoneBottomSheet.tsx 的說明。這個檔案是兩段模式(收合/
+// 展開),展開段本身不是貼頂的最大展開,語意上是「中間」位置——2026-10
+// 使用者明確要求「只有兩段的、位置在中間的也算」,從原本的 200 改成
+// 320,跟地點清單/地點資訊卡/「規劃」小匡的中段統一(見
+// PhoneContent.tsx CHAT_SHEET_SNAP_POINTS 的完整說明)。
+const SHEET_TOP = 320
 // SHEET_MIN_HEIGHT:收合段的固定高度(px,只顯示標頭)——理由見上方
 // 元件說明。TODO(使用者稍後決定合理數值):暫時估算。
 const SHEET_MIN_HEIGHT = 100
