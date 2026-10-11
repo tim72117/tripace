@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tim72117/tripace/internal/adminauth"
 	"github.com/tim72117/tripace/internal/store"
 )
 
@@ -27,7 +26,7 @@ type geoAPIStatsResponse struct {
 
 // listGeoAPIStats 讀 ?hours= 查詢參數決定統計範圍,規則同 listRequestStats
 // (預設 24 小時,最大 168 小時/7 天)。
-func (h *Handler) listGeoAPIStats(w http.ResponseWriter, r *http.Request, _ *adminauth.Admin) {
+func (h *Handler) listGeoAPIStats(w http.ResponseWriter, r *http.Request, _ *Admin) {
 	const defaultHours = 24
 	const maxHours = 168
 
@@ -45,7 +44,7 @@ func (h *Handler) listGeoAPIStats(w http.ResponseWriter, r *http.Request, _ *adm
 
 	calls, err := h.Store.GeoAPICallStatsSince(since)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
 	if calls == nil {
@@ -54,7 +53,7 @@ func (h *Handler) listGeoAPIStats(w http.ResponseWriter, r *http.Request, _ *adm
 
 	timeline, err := h.Store.GeoAPICallStatsTimeline(since)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
 	if timeline == nil {

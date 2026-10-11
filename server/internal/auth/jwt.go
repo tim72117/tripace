@@ -9,9 +9,40 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 )
+
+// DefaultDevJWTSecret 是本機開發/測試用的 JWT 簽章金鑰預設值——刻意不是
+// 隨機產生的強密鑰,因為本機開發環境不需要這個保護,方便重啟後仍能驗證
+// 先前簽出的 token。正式環境必須透過 JWT_SECRET 環境變數覆寫(見
+// ResolveSecretFromEnv),不應該依賴這個預設值。
+const DefaultDevJWTSecret = "dev-secret-change-me"
+
+// ResolveSecretFromEnv 決定 JWT 簽章金鑰的最終值:環境變數 JWT_SECRET 有
+// 設定時採用該值,否則退回 DefaultDevJWTSecret。
+//
+// 這支函式抽出來的理由(2026-10,code review 發現的維護性問題)
+// ——cmd/server/main.go 跟 cmd/adminserver/main.go 這兩支各自獨立部署的
+// binary 必須使用完全相同的 JWT secret 才能互相驗證對方簽發的 token
+// (admin 後台消費的是 cmd/server 簽的 JWT,見
+// cmd/adminserver/main.go 開頭的完整說明),原本兩邊各自重複寫一次
+// 「讀環境變數、預設值是 dev-secret-change-me」的邏輯,只靠程式碼註解
+// 提醒要保持同步——這裡抽成一個共用函式,兩個 main.go 都呼叫這支,之後
+// 要調整預設值或讀取邏輯只需要改一個地方,不會出現「改了一邊、忘記改
+// 另一邊」的風險。
+//
+// 放在 internal/auth 套件(而非各自 cmd/ 底下另開一個共用檔案)的理由:
+// 這支函式的輸出本來就是直接餵給本套件的 NewSigner 使用,邏輯上屬於
+// 「JWT 簽章金鑰怎麼決定」這個套件已經在管的職責範圍,cmd/server 與
+// cmd/adminserver 原本就都已經 import 這個套件,不需要新增任何依賴。
+func ResolveSecretFromEnv() string {
+	if s := os.Getenv("JWT_SECRET"); s != "" {
+		return s
+	}
+	return DefaultDevJWTSecret
+}
 
 var (
 	ErrInvalidToken = errors.New("invalid token")

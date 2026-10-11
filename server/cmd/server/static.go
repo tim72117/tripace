@@ -31,8 +31,27 @@ var knownRoutePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^/device$`),
 	regexp.MustCompile(`^/demo/pace$`),
 	regexp.MustCompile(`^/ai-plan$`),
+	// /u/:handle/:slug:部落客發文正式頁面(2026-10,見 web/src/App.tsx
+	// 對應路由與 web/src/blog/BlogArticlePage.tsx 的完整說明)——取代原本
+	// 固定的 /demo/theme-page demo 路徑。
+	regexp.MustCompile(`^/u/[^/]+/[^/]+$`),
+	// /blog/photos:部落客圖片管理頁(2026-10 新增,見
+	// web/src/blog/PhotoManagerPage.tsx 的完整說明)——需要登入才能實際
+	// 使用,但路由本身跟 /trip-plan 等既有頁面一樣不攔截訪客(頁面內部
+	// 自行判斷 isGuest 顯示登入表單),故訪客直接造訪這個網址時,前端
+	// router 本身仍要能接手渲染,不能被這裡擋成 404。
+	regexp.MustCompile(`^/blog/photos$`),
 	regexp.MustCompile(`^/trip-plan$`),
 	regexp.MustCompile(`^/app(/[^/]+)?$`),
+	// showcase-demo/*——2026-10 新增,見 web/src/App.tsx 對應路由的完整
+	// 說明(docs/brainstorm/2026-10-product-direction-brainstorm.md
+	// 六項產品構想的雛形試做,純供內部查看,不對外曝光連結)。
+	regexp.MustCompile(`^/showcase-demo$`),
+	regexp.MustCompile(`^/showcase-demo/itinerary-showcase$`),
+	regexp.MustCompile(`^/showcase-demo/component-conventions$`),
+	regexp.MustCompile(`^/showcase-demo/planning-modes$`),
+	regexp.MustCompile(`^/showcase-demo/itinerary-checkup$`),
+	regexp.MustCompile(`^/showcase-demo/post-composer$`),
 }
 
 func isKnownRoute(path string) bool {

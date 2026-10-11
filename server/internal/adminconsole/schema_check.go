@@ -10,7 +10,6 @@ package adminconsole
 import (
 	"net/http"
 
-	"github.com/tim72117/tripace/internal/adminauth"
 	"github.com/tim72117/tripace/internal/store"
 )
 
@@ -22,10 +21,10 @@ type schemaCheckResponse struct {
 	Tables []store.SchemaCheck `json:"tables"`
 }
 
-func (h *Handler) checkSchema(w http.ResponseWriter, r *http.Request, _ *adminauth.Admin) {
+func (h *Handler) checkSchema(w http.ResponseWriter, r *http.Request, _ *Admin) {
 	checks, err := h.Store.CheckSchema()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
 	ok := true

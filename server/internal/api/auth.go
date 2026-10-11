@@ -38,6 +38,48 @@ func (s *Server) userFromToken(token string) model.User {
 	return s.guestUser
 }
 
+// requireRealUser 回傳 s.userFor(r) 解析出的使用者,並額外判斷這是不是
+// 「真的對應資料庫裡一筆使用者紀錄」的身份,而不是 userFor/userFromToken
+// 內部靜默降級後的 s.guestUser。
+//
+// 背景(2026-10,code review 發現的身份衝突漏洞):掛在 internalAuth 底下
+// 的端點(/internal/*)只驗 JWT 簽章合法,不代表 claims.Sub 對應的使用者
+// 還存在於資料庫——userFor/userFromToken 在「簽章有效但使用者已被刪除」
+// 時會回退成共用的 s.guestUser(ID 固定 "usr_me")。如果呼叫端(例如
+// resolveContentPageOwnerID 在非 official 模式)直接拿 s.userFor(r).ID
+// 當 ownerID 使用,兩個「使用者已被刪除、但簽發給他們的 JWT 還沒過期」
+// 的請求,會被當成同一個 ownerID 處理——一個已刪除使用者的殘留 token,
+// 就能讀寫/刪除另一個已刪除使用者殘留 token 建立的資料,形成身份衝突。
+//
+// 這跟「-official 旗標那個已修過的權限提升漏洞」是同一類問題:身份解析
+// 失敗時沒有正確拒絕,而是悄悄降級成一個共用身份、讓呼叫端誤以為拿到的
+// 是獨立的真實使用者。requireRealUser 把這個判斷收斂成一個共用 helper,
+// 所有「這裡的操作必須綁定一個真實存在、各自獨立的使用者」的端點
+// (resolveContentPageOwnerID 非 official 模式、blog_photo.go、
+// blog_profile.go)都呼叫這裡,而不是各自重複寫 u.ID == s.guestUser.ID
+// 這段比對邏輯。
+//
+// ok 為 false 時代表這個請求解析出的身份其實是訪客(回退結果),呼叫端
+// 應該視為權限不足(通常回 401 未登入,比照這些端點既有的 isGuestUser
+// 檢查慣例),不能讓它悄悄共用訪客 ID 繼續操作。
+//
+// 與 isGuestUser(見 plan_ai_chat.go)判斷邏輯等價(都是比對
+// u.ID == s.guestUser.ID)——blog_photo.go、blog_profile.go 這兩個同樣
+// 只開放真實登入使用者使用的端點,原本就各自呼叫 s.userFor(r) 後接著用
+// isGuestUser 擋掉訪客回退結果,已經正確處理了「使用者已刪除、JWT 仍
+// 合法」這個情境,不需要跟著改寫成呼叫這支函式;這裡提供
+// requireRealUser 是讓 resolveContentPageOwnerID 這類「需要同時取得
+// user 與 ok 兩個值」的呼叫端有一個對稱、語意明確的共用寫法可用,新增
+// 的「必須是真實使用者」檢查都建議改用這支,不要各自重新發明一次
+// u.ID == s.guestUser.ID 的比對。
+func (s *Server) requireRealUser(r *http.Request) (model.User, bool) {
+	u := s.userFor(r)
+	if s.isGuestUser(u) {
+		return model.User{}, false
+	}
+	return u, true
+}
+
 // POST /v1/auth/apple
 // Body: { "identityToken": "...", "fullName": "可選,首次登入時帶入" }
 // 驗證 Apple identity token → 建立或查出使用者 → 簽自家 JWT 回傳。

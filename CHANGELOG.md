@@ -2,6 +2,46 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.31.0 — 2026-10-12
+
+新增多使用者部落格發文功能（路由 `/u/:handle/:slug`，含圖片上傳/焦點編輯），並把原本的「主題介紹頁」CMS 試做（`theme_pages`）正式轉型為通用的 `content_pages`，由同一套 CLI/API 透過 `-official` 旗標切換「部落客發文」與「官方城市介紹頁」兩種身份模式。同時把 admin 後台從獨立密碼/cookie 系統整個移除，改成與一般使用者共用 JWT、以 email 白名單判斷權限。**本版含多項破壞性變更**，詳見下方清單。
+
+### 新增
+
+- **部落格發文平台**：新增 `blog_profiles`（handle/頭像）、`uploaded_photos`+`photo_variants`（圖片上傳與多尺寸縮圖）兩組資料表與對應 store/API/CLI。
+  - CLI 新增 `content-page`（`add`/`get`/`set`/`list`/`publish`/`unpublish`/`delete` 七個動詞）、`blog-profile`（`set`/`get`）兩組指令。
+  - API 新增 `server/internal/api/blog_photo.go`（上傳 URL 簽發、完成回報、重試、設定焦點、刪除）、`blog_profile.go`（profile 查詢/upsert）。
+  - 前端新增 `web/src/blog/` 目錄：`BlogArticlePage.tsx`（文章頁，含商標/登入按鈕/footer）、`PhotoManagerPage.tsx`（圖片管理頁，含商標/主題切換/已登入返回按鈕）、`PhotoFocalEditor.tsx`（拖曳設定圖片焦點）、`BlogProfileSettings.tsx`（handle/頭像設定表單），路由 `/u/:handle/:slug`、`/blog/photos`。
+- **`server/internal/photoupload/`**：新增圖片直傳套件，前端透過 GCS pre-signed URL 直接 PUT 上傳（不經過 server），完成後由背景 goroutine（對齊既有 `photo_assets` 的 `backgroundFillPlacePhoto` 慣例）產生縮圖/大圖兩種尺寸變體。
+- **`server/internal/adminidentity/`**：新增 `IsAdminEmail(email, adminBootstrapEmail string) bool` 共用套件，供 `internal/api`、`internal/adminconsole` 共同使用，避免白名單比對邏輯各自重複實作。
+- **`auth.ResolveSecretFromEnv()`/`auth.DefaultDevJWTSecret`**：共用 JWT secret 解析邏輯，讓 `cmd/server`、`cmd/adminserver` 共用同一份 `JWT_SECRET` 設定來源。
+- **`server/internal/api/auth.go` 新增 `requireRealUser`**：判斷 `userFor(r)` 回傳的使用者是否為訪客回退結果，避免部落格發文情境悄悄共用訪客身份。
+
+### 變更（破壞性）
+
+- **`theme_pages` 表與相關符號全面改名為 `content_pages`**：`themePageRow`→`contentPageRow`、`ThemePage`→`ContentPage`、CLI `theme-page`→`content-page`、ID 前綴 `thp_`→`cpg_`。所有 store 方法簽名新增 `ownerID` 參數（`CreateContentPage`/`GetContentPageBySlug`/`ListContentPages`/`UpdateContentPageContent`/`SetContentPageStatus`/`DeleteContentPage`），slug 唯一性範圍從「全域」改為「同一 ownerID 之內」（`ux_theme_pages_owner_slug`→`ux_content_pages_owner_slug` 複合唯一索引）。公開讀取路徑改為 `/v1/content-pages/{slug}`。
+- **CLI `content-page` 指令預設行為翻轉**：不加 `-official` 旗標時，CLI 自動以登入者自己的身份當 ownerID（部落格發文情境）；加 `-official` 才是舊行為（ownerID 固定為空字串，服務官方城市介紹頁）。**編寫城市介紹頁的既有腳本/操作流程都需要補上 `-official` 旗標**，否則會被當成一般使用者的個人部落格文章寫入。
+- **Admin 後台登入機制整個替換**：不再有獨立的 `admin_session` cookie、帳密登入；改成使用者透過一般登入流程（`/v1/auth/login`）取得 JWT 後，由 `withAdmin` 中介層比對使用者 email 是否等於 `ADMIN_BOOTSTRAP_EMAIL` 環境變數白名單值（大小寫不敏感），fail-closed（環境變數未設定視為無人有權限）。`adminconsole.NewHandler` 簽名改為接受 `Signer *auth.Signer`、`Store *store.Store`、`AdminBootstrapEmail string`。`cmd/adminserver` 現在需要與 `cmd/server` 共用同一組 `JWT_SECRET` 才能驗證 token。
+- **官方城市介紹頁編寫權限收斂為 admin 專屬**：`-official` 模式下，API 會要求呼叫者 email 落在 `ADMIN_BOOTSTRAP_EMAIL` 白名單內，不再是任何登入使用者都能寫入官方頁面。
+
+### 移除（破壞性）
+
+- `server/internal/adminauth/` 套件（含測試）整個移除。
+- `server/cmd/adminpasswd/` 工具整個移除。
+- `admin_users`/`admin_sessions` 兩張表（對應的 `server/internal/store/admin_entity.go`）移除。
+- `server/scripts/set-admin-bootstrap-secrets.sh`、`.github/workflows/reset-admin-password.yml` 移除（配合舊帳密系統的輔助腳本/workflow，已失效）。
+- `ADMIN_BOOTSTRAP_PASSWORD` 環境變數移除，`.github/workflows/deploy-admin.yml` 的 `--update-secrets` 同步移除該項、新增 `JWT_SECRET`。
+
+### 修正
+
+- Code review 兩輪共 16 項發現全數修正，包含兩項安全性問題：`-official` 旗標權限提升（見上方「官方城市介紹頁編寫權限收斂」）、訪客身份與一般使用者身份衝突風險（`requireRealUser`）；其餘涵蓋背景 goroutine panic 防護、資料一致性/併發（GORM `TranslateError: true` + `gorm.ErrDuplicatedKey` 取代字串解析）、程式碼品質與重複實作清理。
+- `docs/routing-architecture.md`：修正 Admin 身份驗證機制描述（原本停留在已移除的 session cookie 機制），並補齊 `/admin/api/*` 完整路由表（原文件只列 4 條且含已移除的 login/logout，現補齊為實際的 11 條路由）。
+
+### 已知限制
+
+- Admin JWT 目前沒有獨立的撤銷機制（依附在一般使用者的 30 天 JWT 上），token 外洩時只能靠轉動 `JWT_SECRET`（會波及全站使用者）或縮短 JWT 有效期補救，評估後判斷暫不值得為此改動 schema。
+- `BlogArticlePage.tsx` 的作者資訊呈現方式（`FAKE_AUTHOR` 假資料 + 三種候選排版）尚未定案，待方案選定後一併調整。
+
 ## v0.30.2 — 2026-10-11
 
 延續 v0.30.1 的 bottom sheet 體系調整：手機版規劃地圖 UX 微調、修正地圖點擊穿透 bug，以及一項 code review 抓到的重複實作。本版無破壞性變更。

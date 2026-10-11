@@ -142,6 +142,53 @@ func buildResources(c *httpClient, apiURL string) []resource {
 				{verb: "sync", run: func(args []string) { cmdAttractionSync(c, args) }, usage: "tripace-cli attraction sync -direction push|pull [-allow-delete] [-apply] [-retry]"},
 			},
 		},
+		{
+			// content-page:主題介紹頁/部落格文章內容管理(見 docs/
+			// refactor-theme-page-content-cms-plan-2026-10.md、
+			// server/internal/api/content_page.go)——九份/京都/台南等
+			// 城市主題介紹頁,原本整篇文案手寫在各自的 .tsx 檔案裡,改成
+			// 透過這組指令編輯、存進資料庫,前端打 API 讀取內容渲染;
+			// 2026-10 起同一組指令也承載部落客發文,資源名稱從
+			// theme-page 改成 content-page,對齊後端型別/表名一起改名
+			// (見 model.ContentPage/store.contentPageRow 的完整說明)。
+			//
+			// -official 旗標(2026-10 新增,破壞性變更,見各 cmdContentPage*
+			// 函式開頭的完整說明)——預設(不加這個旗標)現在是「使用者
+			// 自己的身份」:ownerID 由後端從登入者的 JWT 解析,用於部落格
+			// 發文;加了 -official 才是維持改動前的行為,ownerID 固定
+			// 空字串,服務城市介紹頁等官方內容。**之後編寫城市介紹頁都要
+			// 記得加 -official 旗標**,這是使用者明確確認過的刻意設計,
+			// 不是疏漏。
+			//
+			// -official 需要管理員權限(2026-10 新增,修正 code review
+			// 發現的權限提升漏洞,見 server/internal/api/content_page.go
+			// resolveContentPageOwnerID 的完整說明):登入者的 email 必須
+			// 等於後端 ADMIN_BOOTSTRAP_EMAIL 環境變數設定的值,否則這個
+			// 旗標會被後端拒絕(403),不是任何已登入使用者都能用——原本
+			// 這裡完全沒有這層檢查,任何登入者都能編輯/刪除官方內容。
+			name: "content-page",
+			commands: []resourceCommand{
+				{verb: "add", run: func(args []string) { cmdContentPageAdd(c, args) }, usage: "tripace-cli content-page add -slug 文字 (-content JSON | -content-file 路徑) [-official]"},
+				{verb: "list", run: func(args []string) { cmdContentPageList(c) }, usage: "tripace-cli content-page list"},
+				{verb: "get", run: func(args []string) { cmdContentPageGet(c, args) }, usage: "tripace-cli content-page get -slug 文字 [-official]"},
+				{verb: "set", run: func(args []string) { cmdContentPageSet(c, args) }, usage: "tripace-cli content-page set -slug 文字 (-content JSON | -content-file 路徑) [-official]"},
+				{verb: "publish", run: func(args []string) { cmdContentPagePublish(c, args, true) }, usage: "tripace-cli content-page publish -slug 文字 [-official]"},
+				{verb: "unpublish", run: func(args []string) { cmdContentPagePublish(c, args, false) }, usage: "tripace-cli content-page unpublish -slug 文字 [-official]"},
+				{verb: "delete", run: func(args []string) { cmdContentPageDelete(c, args) }, usage: "tripace-cli content-page delete -slug 文字 [-official]"},
+			},
+		},
+		{
+			// blog-profile:「部落客公開身份」設定(handle + 頭像網址,見
+			// server/internal/api/blog_profile.go)——用登入者自己的 JWT
+			// 身份(s.userFor(r)解析),不需要也不支援指定任意 ownerID,
+			// 跟 content-page 的 -official 身份切換不是同一回事:這組
+			// 指令永遠只操作「目前登入者自己」的 profile。
+			name: "blog-profile",
+			commands: []resourceCommand{
+				{verb: "set", run: func(args []string) { cmdBlogProfileSet(c, args) }, usage: "tripace-cli blog-profile set -handle 文字 [-avatar-url https://...]"},
+				{verb: "get", run: func(args []string) { cmdBlogProfileGet(c) }, usage: "tripace-cli blog-profile get"},
+			},
+		},
 	}
 }
 
@@ -799,6 +846,198 @@ func cmdAttractionUpdatePhoto(apiURL string, args []string) {
 	res, err := newHTTPClient(apiURL).attractionUpdatePhoto(*id, *query, *placeID)
 	if err != nil {
 		fatal("attraction photo-update: %v", err)
+	}
+	output(res)
+}
+
+// loadContentPageContent 從 -content(JSON 字串)或 -content-file(檔案
+// 路徑)讀出主題介紹頁內容,解析成 map[string]any——兩者二擇一,刻意
+// 都支援是因為 ThemePageContent 內容通常很長(見 docs/
+// refactor-theme-page-content-cms-plan-2026-10.md 的規劃說明),整份
+// 塞進 shell 參數字串容易被殼層引號/轉義規則搞壞,-content-file 讓
+// 使用者可以先在編輯器裡寫好一份 JSON 檔案再交給 CLI,-content 仍保留
+// 給簡短內容或腳本化呼叫用。
+func loadContentPageContent(content, contentFile string) map[string]any {
+	if content == "" && contentFile == "" {
+		fatal("需要 -content 或 -content-file 其中一個")
+	}
+	if content != "" && contentFile != "" {
+		fatal("-content 與 -content-file 只能二選一")
+	}
+	raw := []byte(content)
+	if contentFile != "" {
+		b, err := os.ReadFile(contentFile)
+		if err != nil {
+			fatal("讀取 -content-file 失敗: %v", err)
+		}
+		raw = b
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		fatal("content 必須是合法 JSON: %v", err)
+	}
+	return m
+}
+
+// cmdContentPageAdd 新增一筆主題介紹頁/部落格文章內容(初始狀態為
+// draft,見 store.CreateContentPage 的完整說明)。走 POST
+// /internal/maintenance/content-pages。
+//
+// -official 旗標(2026-10 新增,破壞性變更)——預設(不加這個旗標)
+// ownerID 由後端從目前登入者的 JWT 解析出 UserID,寫入的是「自己的」
+// 部落格文章;加了 -official,ownerID 固定空字串,等同改動前的唯一
+// 行為,寫入的是城市介紹頁等官方內容共用的「系統帳號」命名空間。
+// **之後編寫城市介紹頁(九份/京都/台南等)都要記得加 -official 旗標**
+// ——這是使用者明確確認過的刻意設計決策,不是預設值選錯或遺漏。
+func cmdContentPageAdd(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("content-page add", flag.ExitOnError)
+	slug := fs.String("slug", "", "路由 slug（必填），例如 tainan-chikan")
+	content := fs.String("content", "", "完整 ThemePageContent JSON 字串（與 -content-file 二選一）")
+	contentFile := fs.String("content-file", "", "完整 ThemePageContent JSON 檔案路徑（與 -content 二選一）")
+	updatedBy := fs.String("updated-by", "", "操作者識別（選填）")
+	official := fs.Bool("official", false, "官方/系統帳號命名空間（城市介紹頁等既有內容用）；不加時預設寫入目前登入者自己的部落格文章身份")
+	_ = fs.Parse(args)
+	if *slug == "" {
+		fatal("content-page add 需要 -slug")
+	}
+	m := loadContentPageContent(*content, *contentFile)
+	res, err := c.contentPageCreate(*slug, m, *updatedBy, *official)
+	if err != nil {
+		fatal("content-page add: %v", err)
+	}
+	output(res)
+}
+
+// cmdContentPageList 列出全部主題介紹頁/部落格文章(含 draft,不分
+// ownerID)。走 GET /internal/maintenance/content-pages——這支不支援
+// -official,理由見 httpClient.contentPageList 的完整說明:列出全部
+// 本來就不分身份,一次就能看到所有人建過的頁面。
+func cmdContentPageList(c *httpClient) {
+	res, err := c.contentPageList()
+	if err != nil {
+		fatal("content-page list: %v", err)
+	}
+	output(res)
+}
+
+// cmdContentPageGet 查詢單一主題介紹頁/部落格文章目前的內容(含
+// draft,管理端點不區分發布狀態)——供「get 一份、本機編輯、set 整份
+// 寫回」的操作流程使用(見 store.UpdateContentPageContent 的完整
+// 說明)。走 GET /internal/maintenance/content-pages/{slug}。
+//
+// -official 旗標語意同 cmdContentPageAdd 的完整說明——查詢城市介紹頁
+// 記得加 -official,否則預設查的是登入者自己的部落格文章命名空間。
+func cmdContentPageGet(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("content-page get", flag.ExitOnError)
+	slug := fs.String("slug", "", "路由 slug（必填）")
+	official := fs.Bool("official", false, "官方/系統帳號命名空間（城市介紹頁等既有內容用）；不加時預設查詢目前登入者自己的部落格文章身份")
+	_ = fs.Parse(args)
+	if *slug == "" {
+		fatal("content-page get 需要 -slug")
+	}
+	res, err := c.contentPageGet(*slug, *official)
+	if err != nil {
+		fatal("content-page get: %v", err)
+	}
+	output(res)
+}
+
+// cmdContentPageSet 整份覆寫一筆既有主題介紹頁/部落格文章的內容——
+// 不動發布狀態(見 store.UpdateContentPageContent 的完整說明,改發布
+// 狀態要用 content-page publish/unpublish)。走 PUT
+// /internal/maintenance/content-pages/{slug}。
+//
+// -official 旗標語意同 cmdContentPageAdd 的完整說明——編輯城市介紹頁
+// 記得加 -official,否則預設改的是登入者自己的部落格文章命名空間。
+func cmdContentPageSet(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("content-page set", flag.ExitOnError)
+	slug := fs.String("slug", "", "路由 slug（必填）")
+	content := fs.String("content", "", "完整 ThemePageContent JSON 字串（與 -content-file 二選一）")
+	contentFile := fs.String("content-file", "", "完整 ThemePageContent JSON 檔案路徑（與 -content 二選一）")
+	updatedBy := fs.String("updated-by", "", "操作者識別（選填）")
+	official := fs.Bool("official", false, "官方/系統帳號命名空間（城市介紹頁等既有內容用）；不加時預設寫入目前登入者自己的部落格文章身份")
+	_ = fs.Parse(args)
+	if *slug == "" {
+		fatal("content-page set 需要 -slug")
+	}
+	m := loadContentPageContent(*content, *contentFile)
+	if _, err := c.contentPageUpdate(*slug, m, *updatedBy, *official); err != nil {
+		fatal("content-page set: %v", err)
+	}
+	output(map[string]string{"updated": *slug})
+}
+
+// cmdContentPagePublish 切換發布狀態——publish 設為 "published",
+// unpublish 設回 "draft"(見 handleMaintenanceContentPagePublish 的
+// 完整說明)。走 PATCH /internal/maintenance/content-pages/{slug}/publish。
+//
+// -official 旗標語意同 cmdContentPageAdd 的完整說明——發布/取消發布
+// 城市介紹頁記得加 -official,否則預設動的是登入者自己的部落格文章
+// 命名空間。
+func cmdContentPagePublish(c *httpClient, args []string, published bool) {
+	label := "content-page publish"
+	if !published {
+		label = "content-page unpublish"
+	}
+	fs := flag.NewFlagSet(label, flag.ExitOnError)
+	slug := fs.String("slug", "", "路由 slug（必填）")
+	official := fs.Bool("official", false, "官方/系統帳號命名空間（城市介紹頁等既有內容用）；不加時預設動的是目前登入者自己的部落格文章身份")
+	_ = fs.Parse(args)
+	if *slug == "" {
+		fatal("%s 需要 -slug", label)
+	}
+	res, err := c.contentPagePublish(*slug, published, *official)
+	if err != nil {
+		fatal("%s: %v", label, err)
+	}
+	output(res)
+}
+
+// cmdContentPageDelete 刪除一筆主題介紹頁/部落格文章內容。走 DELETE
+// /internal/maintenance/content-pages/{slug}。
+//
+// -official 旗標語意同 cmdContentPageAdd 的完整說明——刪除城市介紹頁
+// 記得加 -official,否則預設刪的是登入者自己的部落格文章命名空間。
+func cmdContentPageDelete(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("content-page delete", flag.ExitOnError)
+	slug := fs.String("slug", "", "路由 slug（必填）")
+	official := fs.Bool("official", false, "官方/系統帳號命名空間（城市介紹頁等既有內容用）；不加時預設刪除目前登入者自己的部落格文章身份")
+	_ = fs.Parse(args)
+	if *slug == "" {
+		fatal("content-page delete 需要 -slug")
+	}
+	if err := c.contentPageDelete(*slug, *official); err != nil {
+		fatal("content-page delete: %v", err)
+	}
+	output(map[string]string{"deleted": *slug})
+}
+
+// cmdBlogProfileSet 設定或更新登入者自己的部落客公開身份(upsert,見
+// server/internal/api/blog_profile.go 開頭的完整說明)。走 POST
+// /v1/blog/profile。-avatar-url 選填,留空時沿用/建立一筆無頭像設定
+// (後端 avatarUrl 本身就是選填欄位)。
+func cmdBlogProfileSet(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("blog-profile set", flag.ExitOnError)
+	handle := fs.String("handle", "", "部落客公開 handle(必填),只能是英數字、底線或連字符")
+	avatarURL := fs.String("avatar-url", "", "頭像網址（選填）")
+	_ = fs.Parse(args)
+	if *handle == "" {
+		fatal("blog-profile set 需要 -handle")
+	}
+	res, err := c.blogProfileSet(*handle, *avatarURL)
+	if err != nil {
+		fatal("blog-profile set: %v", err)
+	}
+	output(res)
+}
+
+// cmdBlogProfileGet 查詢登入者自己目前的部落客公開身份設定。走 GET
+// /v1/blog/profile——尚未設定過時後端回 404,err 會是非 nil,交由
+// fatal 印出清楚的錯誤訊息(對齊其餘 cmd* 函式對查詢失敗的既有處理)。
+func cmdBlogProfileGet(c *httpClient) {
+	res, err := c.blogProfileGet()
+	if err != nil {
+		fatal("blog-profile get: %v", err)
 	}
 	output(res)
 }

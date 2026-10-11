@@ -1,10 +1,45 @@
 // Client for the backend's /admin/api/* endpoints (server/internal/
-// adminconsole). Auth is a SEPARATE session cookie from the regular user
-// system (server/internal/adminauth, cookie "admin_session"): every call
-// sends credentials: 'include', and the backend's CORS layer echoes the
-// request Origin for /admin/* (cmd/server/main.go withAdminCORS) so a
-// credentialed cross-origin response is accepted. A 401 means the admin
-// session is missing/expired; callers drop back to the login screen.
+// adminconsole). Auth is no longer a separate admin session system — it
+// consumes the SAME JWT as the regular user system (signed by the one
+// internal/auth.Signer shared with /v1, /internal), gated by an email
+// allowlist (ADMIN_BOOTSTRAP_EMAIL) checked server-side. This client stores
+// that JWT in localStorage (TOKEN_STORAGE_KEY below) and sends it as
+// `Authorization: Bearer <token>` on every call — no cookies, no
+// credentials: 'include'. A 401 means the token is missing/expired/invalid,
+// or the signed-in user's email isn't on the allowlist; callers drop back
+// to the login screen either way (this client can't tell those apart, by
+// design — see the backend's withAdmin fail-closed behavior).
+
+const TOKEN_STORAGE_KEY = 'tripace_admin_token'
+
+// getToken/setToken/clearToken wrap localStorage access in try/catch —
+// some environments (private browsing, blocked site data) can throw on
+// access, and this is a per-browser convenience store, not a reliable one;
+// a missing/unreadable token just means "show the login screen".
+export function getToken(): string | null {
+  try {
+    return window.localStorage.getItem(TOKEN_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function setToken(token: string): void {
+  try {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, token)
+  } catch {
+    // Best-effort — if storage is unavailable, the user will just be asked
+    // to log in again on next load.
+  }
+}
+
+export function clearToken(): void {
+  try {
+    window.localStorage.removeItem(TOKEN_STORAGE_KEY)
+  } catch {
+    // no-op, see setToken's comment
+  }
+}
 
 export interface AdminUser {
   email: string
@@ -201,29 +236,77 @@ export class ApiError extends Error {
 }
 
 async function request(method: string, path: string, body?: unknown): Promise<Response> {
+  const headers: Record<string, string> = {}
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  const token = getToken()
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
   let res: Response
   try {
     res = await fetch(`${BASE}${path}`, {
       method,
-      credentials: 'include',
-      headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+      headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     })
   } catch {
     throw new ApiError(0, `Cannot reach the backend at ${BASE}. Is it running?`)
   }
   if (!res.ok) {
+    // Error bodies are now structured JSON — { error: { code, message } } —
+    // mirroring internal/api's writeErr shape (see server/internal/
+    // adminconsole/adminconsole.go's own writeErr, added so this package's
+    // error responses match internal/api's convention instead of the
+    // plain-text http.Error bodies this used to send). Parse defensively:
+    // fall back to raw text / statusText if the body isn't valid JSON or
+    // doesn't have the expected shape, so a malformed/legacy error body
+    // still surfaces *something* readable instead of throwing here.
     const text = (await res.text()).trim()
-    throw new ApiError(res.status, text || res.statusText)
+    let message = text || res.statusText
+    if (text) {
+      try {
+        const parsed = JSON.parse(text) as { error?: { message?: string } }
+        if (parsed?.error?.message) {
+          message = parsed.error.message
+        }
+      } catch {
+        // Not JSON — keep the raw text as the message (e.g. an upstream
+        // proxy error page, or a future endpoint that hasn't adopted the
+        // structured shape yet).
+      }
+    }
+    throw new ApiError(res.status, message)
   }
   return res
 }
 
-export const api = {
-  login: (email: string, password: string): Promise<AdminUser> =>
-    request('POST', '/admin/api/login', { email, password }).then((r) => r.json()),
+// loginResponse mirrors the relevant subset of model.Me's JSON shape
+// returned by POST /v1/auth/login (server/internal/api/auth.go
+// handleLogin -> issueToken) — { token, user, profile, isNewUser }. This
+// admin console only needs the token (to store) and the profile's email
+// (to display); it ignores the rest.
+interface loginResponse {
+  token: string
+  profile: { email: string }
+}
 
-  logout: (): Promise<void> => request('POST', '/admin/api/logout').then(() => undefined),
+export const api = {
+  // Logs in through the SAME general-user endpoint as the main app
+  // (POST /v1/auth/login, not an admin-specific one — there is no admin-
+  // specific login anymore). Any registered user can authenticate this
+  // way; whether they can actually use the admin console afterwards is
+  // decided server-side per call, by the ADMIN_BOOTSTRAP_EMAIL allowlist
+  // check inside withAdmin — a successful login here does not by itself
+  // mean admin access.
+  login: async (email: string, password: string): Promise<AdminUser> => {
+    const res = await request('POST', '/v1/auth/login', { email, password })
+    const body: loginResponse = await res.json()
+    setToken(body.token)
+    return { email: body.profile.email }
+  },
+
+  logout: (): void => {
+    clearToken()
+  },
 
   me: (): Promise<AdminUser> => request('GET', '/admin/api/me').then((r) => r.json()),
 

@@ -201,3 +201,77 @@ func (c *httpClient) attractionUpdatePlaceID(id, placeID string) (any, error) {
 func (c *httpClient) attractionUpdateTheme(id string, isTheme bool) (any, error) {
 	return c.do("PATCH", "/internal/maintenance/attractions/"+id+"/theme", map[string]any{"isTheme": isTheme})
 }
+
+// contentPageCreate/List/Get/Update/Publish/Delete 對齊
+// POST/GET/PUT/PATCH/DELETE /internal/maintenance/content-pages(見
+// server/internal/api/content_page.go)。content 收 map[string]any(已經
+// 解析過的 JSON 物件,不是字串)——跟 do() 把 request body 整個
+// json.Marshal 一次送出的既有慣例一致,呼叫端(main.go 的
+// cmdContentPage*)負責把 -content-file 讀到的 JSON 文字先
+// json.Unmarshal 成 map,不在這裡做字串轉換。
+//
+// official 參數(2026-10 新增)對齊後端 content_page.go 的 ownerID 身份
+// 切換設計:true 時讓後端用空字串當 ownerID(官方/城市介紹頁命名空間),
+// false 時讓後端用登入者自己的 UserID(部落格發文)。有 request body 的
+// 動詞(create/update/publish)把 official 放進 body(跟 content/
+// updatedBy 等既有參數一起送出,理由見 content_page.go 開頭的完整
+// 說明);沒有 body 的動詞(get/delete 是 GET/DELETE)改放進 query
+// string 的 official=true 參數,由後端 handler 讀取(見
+// handleMaintenanceContentPageGet/Delete)。list 不需要 official——
+// ListContentPages 本來就是「列出全部,不分 ownerID」的既有語意,見
+// 後端 handleMaintenanceContentPageList 的完整說明。
+func (c *httpClient) contentPageCreate(slug string, content map[string]any, updatedBy string, official bool) (any, error) {
+	return c.do("POST", "/internal/maintenance/content-pages", map[string]any{
+		"slug": slug, "content": content, "updatedBy": updatedBy, "official": official,
+	})
+}
+
+func (c *httpClient) contentPageList() (any, error) {
+	return c.do("GET", "/internal/maintenance/content-pages", nil)
+}
+
+func (c *httpClient) contentPageGet(slug string, official bool) (any, error) {
+	path := "/internal/maintenance/content-pages/" + url.PathEscape(slug)
+	if official {
+		path += "?official=true"
+	}
+	return c.do("GET", path, nil)
+}
+
+func (c *httpClient) contentPageUpdate(slug string, content map[string]any, updatedBy string, official bool) (any, error) {
+	return c.do("PUT", "/internal/maintenance/content-pages/"+url.PathEscape(slug), map[string]any{
+		"content": content, "updatedBy": updatedBy, "official": official,
+	})
+}
+
+func (c *httpClient) contentPagePublish(slug string, published, official bool) (any, error) {
+	return c.do("PATCH", "/internal/maintenance/content-pages/"+url.PathEscape(slug)+"/publish", map[string]any{
+		"published": published, "official": official,
+	})
+}
+
+func (c *httpClient) contentPageDelete(slug string, official bool) error {
+	path := "/internal/maintenance/content-pages/" + url.PathEscape(slug)
+	if official {
+		path += "?official=true"
+	}
+	_, err := c.do("DELETE", path, nil)
+	return err
+}
+
+// blogProfileSet/blogProfileGet 對齊 POST/GET /v1/blog/profile(見
+// server/internal/api/blog_profile.go)——身份完全來自呼叫端的 JWT
+// (s.userFor(r)),不需要像 content-page 系列那樣額外帶 ownerID/official
+// 參數,CLI 這裡單純把使用者輸入原樣轉發即可。avatarUrl 即使是空字串
+// 也照常帶進 body——後端收到空字串視為「不設定頭像」,不是「保留原值
+// 不動」(整份覆寫語意,對齊 content-page set 的「整份覆寫」既有慣例,
+// 見 handleBlogProfileSet 的完整說明)。
+func (c *httpClient) blogProfileSet(handle, avatarURL string) (any, error) {
+	return c.do("POST", "/v1/blog/profile", map[string]any{
+		"handle": handle, "avatarUrl": avatarURL,
+	})
+}
+
+func (c *httpClient) blogProfileGet() (any, error) {
+	return c.do("GET", "/v1/blog/profile", nil)
+}

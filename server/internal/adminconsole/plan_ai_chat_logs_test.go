@@ -1,26 +1,25 @@
 package adminconsole
 
 // plan_ai_chat_logs_test.go 測 GET /admin/api/plan-ai-chat-logs(見
-// listPlanAiChatLogs 的完整說明)。跟 attraction_place_id_check_test.go
-// 共用同一套「開一個真的 httptest.Server + 登入取得 session cookie」測試
-// 手法。
+// listPlanAiChatLogs 的完整說明)。跟其餘 adminconsole 測試共用同一套
+// 「開一個真的 httptest.Server + 用一般使用者 JWT(email 在白名單)當
+// 管理員」測試手法。
 
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
-	"github.com/tim72117/tripace/internal/adminauth"
+	"github.com/tim72117/tripace/internal/auth"
 	"github.com/tim72117/tripace/internal/model"
+	"github.com/tim72117/tripace/internal/store"
 )
 
 func TestPlanAiChatLogs_UnauthenticatedRequestIsRejected(t *testing.T) {
 	st := newTestStore(t)
-	auth := adminauth.New(st, false)
-	h := NewHandler(auth, st)
+	signer := testSigner()
+	h := NewHandler(signer, st, "admin@example.com")
 	mux := http.NewServeMux()
 	h.Register(mux)
 	srv := httptest.NewServer(mux)
@@ -36,30 +35,12 @@ func TestPlanAiChatLogs_UnauthenticatedRequestIsRejected(t *testing.T) {
 	}
 }
 
-// adminLoggedInClient 登入一個新建的管理員帳號,回傳帶有有效 session cookie
-// 的 http.Client,供後續 authed 呼叫使用。
-func adminLoggedInClient(t *testing.T, srv *httptest.Server, auth *adminauth.Store) *http.Client {
+// adminLoggedInClient 建立一個 email 在白名單裡的使用者、簽發對應 JWT,
+// 回傳一個每次請求自動帶上該 JWT 的 http.Client。
+func adminLoggedInClient(t *testing.T, st *store.Store, signer *auth.Signer, email string) *http.Client {
 	t.Helper()
-	const email = "plan-ai-chat-logs-test@example.com"
-	const password = "supersecret123"
-	if _, err := auth.Bootstrap(email, password); err != nil {
-		t.Fatalf("bootstrap: %v", err)
-	}
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		t.Fatalf("cookie jar: %v", err)
-	}
-	client := &http.Client{Jar: jar}
-	resp, err := client.Post(srv.URL+"/admin/api/login", "application/json",
-		strings.NewReader(`{"email":"`+email+`","password":"`+password+`"}`))
-	if err != nil {
-		t.Fatalf("login: %v", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("login = %d, want 200", resp.StatusCode)
-	}
-	return client
+	token := newAdminTestUser(t, st, signer, email)
+	return &http.Client{Transport: bearerTransport{token: token, base: http.DefaultTransport}}
 }
 
 func TestPlanAiChatLogs_ReturnsMessagesNewestFirstWithUserEmail(t *testing.T) {
@@ -79,14 +60,15 @@ func TestPlanAiChatLogs_ReturnsMessagesNewestFirstWithUserEmail(t *testing.T) {
 		t.Fatalf("insert msg2: %v", err)
 	}
 
-	auth := adminauth.New(st, false)
-	h := NewHandler(auth, st)
+	const adminEmail = "plan-ai-chat-logs-test@example.com"
+	signer := testSigner()
+	h := NewHandler(signer, st, adminEmail)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	client := adminLoggedInClient(t, srv, auth)
+	client := adminLoggedInClient(t, st, signer, adminEmail)
 
 	resp, err := client.Get(srv.URL + "/admin/api/plan-ai-chat-logs")
 	if err != nil {
@@ -131,14 +113,15 @@ func TestPlanAiChatLogs_LimitCapsReturnedCount(t *testing.T) {
 		}
 	}
 
-	auth := adminauth.New(st, false)
-	h := NewHandler(auth, st)
+	const adminEmail = "plan-ai-chat-logs-limit-test@example.com"
+	signer := testSigner()
+	h := NewHandler(signer, st, adminEmail)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	client := adminLoggedInClient(t, srv, auth)
+	client := adminLoggedInClient(t, st, signer, adminEmail)
 
 	resp, err := client.Get(srv.URL + "/admin/api/plan-ai-chat-logs?limit=2")
 	if err != nil {

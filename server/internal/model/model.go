@@ -160,6 +160,87 @@ type Attraction struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// BlogProfile 是「部落客公開身份」設定(見 store.blogProfileRow 的
+// 完整說明)——讓使用者用人類可讀的 handle(而非內部 UserID)公開發文。
+type BlogProfile struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"userId"`
+	Handle    string    `json:"handle"`
+	AvatarURL string    `json:"avatarUrl,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// UploadedPhoto 對應 store.uploadedPhotoRow(見該型別的完整說明)——
+// 使用者上傳圖片(部落客發文用)的原圖記錄。Variants 掛載該原圖已經
+// 產生出來的所有衍生尺寸版本(見 PhotoVariant),一次查詢
+// (store.GetUploadedPhoto/ListUploadedPhotosByOwner)就把原圖與衍生
+// 版本一起組好回傳,呼叫端不需要再另外查一次 photo_variants。
+//
+// FocalX/FocalY/Width/Height 用指標型別——對齊 entity 層
+// uploadedPhotoRow 的可為 NULL 設計(選填的裁切焦點、可能尚未解析完成
+// 的原圖尺寸),nil 代表「尚未設定/尚未知道」,不是 0 這種容易跟合法
+// 數值混淆的魔術值。
+type UploadedPhoto struct {
+	ID          string         `json:"id"`
+	OwnerID     string         `json:"ownerId"`
+	OriginalURL string         `json:"originalUrl"`
+	Status      string         `json:"status"` // "pending" | "ready" | "failed"
+	FocalX      *float64       `json:"focalX,omitempty"`
+	FocalY      *float64       `json:"focalY,omitempty"`
+	Width       *int           `json:"width,omitempty"`
+	Height      *int           `json:"height,omitempty"`
+	Variants    []PhotoVariant `json:"variants,omitempty"`
+	CreatedAt   time.Time      `json:"createdAt"`
+	UpdatedAt   time.Time      `json:"updatedAt"`
+}
+
+// PhotoVariant 對應 store.photoVariantRow(見該型別的完整說明)——
+// 原圖的其中一種尺寸衍生版本("thumbnail"/"large")。
+type PhotoVariant struct {
+	ID        string    `json:"id"`
+	PhotoID   string    `json:"photoId"`
+	Kind      string    `json:"kind"` // "thumbnail" | "large"
+	URL       string    `json:"url"`
+	Width     int       `json:"width"`
+	Height    int       `json:"height"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// ContentPage 是主題介紹頁/部落格文章的規格化內容(見 docs/
+// refactor-theme-page-content-cms-plan-2026-10.md、
+// web/src/blog/types.ts 的 ThemePageContent)——九份/京都/台南等
+// 城市主題介紹頁原本整篇文案手寫在各自的 .tsx 檔案裡,這個模型讓內容
+// 改成透過 CLI 編輯、存進資料庫,前端打 API 讀取渲染;2026-10 起同一
+// 個模型也承載部落客發文(見 BlogProfile 的完整說明)。型別名從原本
+// 只反映城市介紹頁用途的 ThemePage 改成更通用的 ContentPage,理由
+// 同 store.contentPageRow 的完整說明:這張表/這個模型現在同時服務
+// 兩種用途,命名不該只停留在其中一種。
+//
+// Content 是整份 ThemePageContent JSON 的原始字串,後端刻意不解析成
+// 對應的巢狀 Go struct——內容格式由前端 TypeScript 定義
+// (ThemePageContent/ThemePageBlock 聯集型別),後端只負責存取轉發
+// (CLI 寫入時原樣存、API 讀取時原樣吐出),不需要為每個 Block kind
+// 在 Go 端重複定義一份對應型別。json:"-" 搭配 MarshalJSON/UnmarshalJSON
+// (見 model_content_page.go)讓 API 回應時 Content 內容是巢狀 JSON 物件,
+// 不是雙重編碼後的轉義字串——前端收到的 JSON 要能直接
+// JSON.parse 出 ThemePageContent 形狀,不需要再解析一層字串。
+//
+// OwnerID(2026-10 新增,見 store.contentPageRow.OwnerID 的完整說明)——
+// 選填,空字串代表沒有作者概念的既有內容(城市介紹頁);部落客發文時
+// 是該使用者的 UserID。json 加 omitempty——既有城市介紹頁的內容不該
+// 在 API 回應裡多一個空字串欄位,維持跟改動前一致的回應形狀。
+type ContentPage struct {
+	ID        string    `json:"id"`
+	OwnerID   string    `json:"ownerId,omitempty"`
+	Slug      string    `json:"slug"`
+	Content   string    `json:"-"`
+	Status    string    `json:"status"`
+	UpdatedBy string    `json:"updatedBy,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 // Entry 是主體:LLM 處理訊息後產出的「事件/條目」,承載所有結構化結果。
 // 可獨立存在,並可關聯多則來源訊息(多對多)。
 type Entry struct {

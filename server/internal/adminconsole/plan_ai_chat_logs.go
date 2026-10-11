@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/tim72117/tripace/internal/adminauth"
 	"github.com/tim72117/tripace/internal/model"
 )
 
@@ -46,7 +45,7 @@ type planAiChatLogsResponse struct {
 // 量級下(見 UsersTab 同樣沒有分頁)一次性撈全部是可接受的作法。查無對應
 // 使用者(帳號後來被刪除等情況)時 UserEmail 留空字串,前端顯示時退回顯示
 // UserID,不視為錯誤。
-func (h *Handler) listPlanAiChatLogs(w http.ResponseWriter, r *http.Request, _ *adminauth.Admin) {
+func (h *Handler) listPlanAiChatLogs(w http.ResponseWriter, r *http.Request, _ *Admin) {
 	const defaultLimit = 200
 	const maxLimit = 1000
 
@@ -62,7 +61,7 @@ func (h *Handler) listPlanAiChatLogs(w http.ResponseWriter, r *http.Request, _ *
 
 	messages, err := h.Store.ListPlanAiChatMessages(limit)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
 	// 不需要再對 messages 做 nil 檢查——store.ListPlanAiChatMessages 內部

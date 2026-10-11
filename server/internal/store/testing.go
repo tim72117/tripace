@@ -2,8 +2,8 @@ package store
 
 // testing.go 提供給測試用的 store 建構 helper。
 //
-// 放在正式檔案(不是 _test.go)是因為 internal/api、internal/adminauth、
-// internal/adminconsole 這些 package 的測試也需要它——Go 的 _test.go 只在
+// 放在正式檔案(不是 _test.go)是因為 internal/api、internal/adminconsole
+// 這些 package 的測試也需要它——Go 的 _test.go 只在
 // 自己 package 內可見,跨 package 用不到。這裡沒有引入任何測試專用相依
 // (testing 只出現在參數型別上),不會被連進正式 binary 的執行路徑。
 
@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // memDBCounter 供 OpenTest 產生互不重複的記憶體資料庫名稱。
@@ -46,5 +47,28 @@ func OpenTest(t *testing.T) *Store {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	return s
+}
+
+// TestSetUploadedPhotoCreatedAt 直接覆寫一筆原圖記錄的 CreatedAt——供
+// internal/api 的測試(見 blog_photo_test.go 的「惰性清理」測試)模擬
+// 「這筆記錄是很久以前建立的」情境,不需要真的等待
+// uploadedPhotoPendingTimeout(1 小時)那麼長的時間。放在這個檔案而非
+// uploaded_photos.go——理由同本檔開頭說明:這是測試專用 helper,不是
+// 正式業務邏輯會呼叫的方法,混在正式 CRUD 檔案裡容易讓人誤以為是
+// 生產程式碼路徑的一部分。
+// 用 UpdateColumn(而非 Update/Updates)——GORM 對欄位名稱恰好是
+// CreatedAt/UpdatedAt 的欄位有特殊處理,一般的 Update/Updates 會略過
+// 呼叫端明確帶入的 CreatedAt 值、仍然沿用既有值(這是 GORM 自動管理
+// 建立時間慣例的一部分);UpdateColumn 系列方法會跳過這層自動管理,
+// 忠實寫入呼叫端指定的值,這裡需要的正是這個行為。
+func (s *Store) TestSetUploadedPhotoCreatedAt(id string, createdAt time.Time) error {
+	res := s.db.Model(&uploadedPhotoRow{}).Where("id = ?", id).UpdateColumn("created_at", createdAt)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 

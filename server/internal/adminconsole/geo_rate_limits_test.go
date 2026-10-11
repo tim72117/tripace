@@ -1,63 +1,56 @@
 package adminconsole
 
 // geo_rate_limits_test.go 測 GET/PUT /admin/api/geo-rate-limits(見
-// listGeoRateLimits/updateGeoRateLimit 的完整說明)。跟
-// adminconsole_test.go 的 TestAdminAPIEndToEnd 共用同一套「開一個真的
-// httptest.Server + 登入取得 session cookie」的測試手法,獨立成專屬檔案
-// 而非塞進那個泛用 e2e 測試,理由同該檔案一貫的組織慣例:各功能領域
-// 各自一個測試檔案。
+// listGeoRateLimits/updateGeoRateLimit 的完整說明)。跟其餘 adminconsole
+// 測試共用同一套「開一個真的 httptest.Server + 用一般使用者 JWT(email 在
+// 白名單)當管理員」的測試手法。
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/tim72117/tripace/internal/adminauth"
 )
 
-// newAuthedGeoRateLimitTestClient 開一支測試 server、登入一個管理員帳號,
-// 回傳已帶有合法 session cookie 的 client 與 server URL——供本檔案每個
-// 測試各自呼叫,避免重複這段固定的登入樣板。
+// newAuthedGeoRateLimitTestClient 開一支測試 server、建立一個 email 在白
+// 名單裡的使用者並簽發對應 JWT,回傳一個會自動帶上 Authorization header
+// 的 http.Client 與 server URL——供本檔案每個測試各自呼叫,避免重複這段
+// 固定的樣板。
 func newAuthedGeoRateLimitTestClient(t *testing.T) (*http.Client, string) {
 	t.Helper()
 	st := newTestStore(t)
 	const email = "geo-rate-limit-test@example.com"
-	const password = "supersecret123"
+	signer := testSigner()
+	token := newAdminTestUser(t, st, signer, email)
 
-	auth := adminauth.New(st, false)
-	if _, err := auth.Bootstrap(email, password); err != nil {
-		t.Fatalf("bootstrap: %v", err)
-	}
-
-	h := NewHandler(auth, st)
+	h := NewHandler(signer, st, email)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		t.Fatalf("cookie jar: %v", err)
-	}
-	client := &http.Client{Jar: jar}
-	resp, err := client.Post(srv.URL+"/admin/api/login", "application/json",
-		strings.NewReader(`{"email":"`+email+`","password":"`+password+`"}`))
-	if err != nil {
-		t.Fatalf("login: %v", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("login = %d, want 200", resp.StatusCode)
-	}
+	client := &http.Client{Transport: bearerTransport{token: token, base: http.DefaultTransport}}
 	return client, srv.URL
+}
+
+// bearerTransport 在每個請求自動加上 Authorization: Bearer <token>——取代
+// 原本依賴 cookie jar 自動夾帶 session cookie 的測試手法,改成 JWT 架構下
+// 的等價做法。
+type bearerTransport struct {
+	token string
+	base  http.RoundTripper
+}
+
+func (t bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
+	req.Header.Set("Authorization", "Bearer "+t.token)
+	return t.base.RoundTrip(req)
 }
 
 func TestGeoRateLimits_UnauthenticatedRequestsAreRejected(t *testing.T) {
 	st := newTestStore(t)
-	auth := adminauth.New(st, false)
-	h := NewHandler(auth, st)
+	signer := testSigner()
+	h := NewHandler(signer, st, "admin@example.com")
 	mux := http.NewServeMux()
 	h.Register(mux)
 	srv := httptest.NewServer(mux)

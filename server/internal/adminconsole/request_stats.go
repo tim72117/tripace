@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/tim72117/tripace/internal/adminauth"
 	"github.com/tim72117/tripace/internal/store"
 )
 
@@ -31,7 +30,7 @@ type requestStatsResponse struct {
 // listRequestStats 讀 ?hours= 查詢參數決定統計範圍(預設 24 小時,最大
 // 168 小時/7 天——這張表隨流量持續累積,不限制範圍的話單次查詢可能掃描
 // 大量歷史資料,拖慢管理後台頁面載入)。
-func (h *Handler) listRequestStats(w http.ResponseWriter, r *http.Request, _ *adminauth.Admin) {
+func (h *Handler) listRequestStats(w http.ResponseWriter, r *http.Request, _ *Admin) {
 	const defaultHours = 24
 	const maxHours = 168
 
@@ -49,7 +48,7 @@ func (h *Handler) listRequestStats(w http.ResponseWriter, r *http.Request, _ *ad
 
 	paths, err := h.Store.RequestStatsSince(since)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
 	if paths == nil {
@@ -58,13 +57,13 @@ func (h *Handler) listRequestStats(w http.ResponseWriter, r *http.Request, _ *ad
 
 	total, errorCount, err := h.Store.RequestStatsTotal(since)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
 
 	timeline, err := h.Store.RequestStatsTimeline(since)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
 	if timeline == nil {

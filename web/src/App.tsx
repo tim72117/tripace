@@ -92,6 +92,32 @@ const NotFoundPage = lazy(() => import('./home/NotFoundPage').then((m) => ({ def
 // 層級,不是 /app 底下需要登入的正式功能。
 const TripPlanRoute = lazy(() => import('./trip-plan/TripPlanRoute').then((m) => ({ default: m.TripPlanRoute })))
 const PlanAiSimPage = lazy(() => import('./home/plan-ai-sim/AIPlanTimelinePage').then((m) => ({ default: m.AIPlanTimelinePage })))
+// BlogArticlePage:部落客發文正式頁面(2026-10 從主題介紹頁內容規格化
+// 試做轉正,見 docs/brainstorm/2026-10-product-direction-brainstorm.md
+// 構想五「發文工具產品線」的完整說明;原始規格設計見 docs/
+// refactor-theme-page-content-cms-plan-2026-10.md 的 ThemePageContent,
+// 見 web/src/blog/types.ts)——2026-10 改成依路由路徑參數(作者
+// handle + 文章 slug)渲染對應文章,見下方 /u/:handle/:slug 路由與
+// BlogArticleRoute 的完整說明。元件本身改吃 handle/slug 兩個 props,
+// 路由層面的參數解析交給 BlogArticleRoute 負責,不在元件內部呼叫
+// useParams()。
+const BlogArticlePage = lazy(() => import('./blog/BlogArticlePage').then((m) => ({ default: m.BlogArticlePage })))
+// PhotoManagerPage:/blog/photos 路由,部落客管理自己上傳過的圖片、設定
+// 裁切焦點(見該檔案開頭的完整說明)——後端上傳/焦點 API 見
+// server/internal/api/blog_photo.go,與 BlogArticlePage 同屬「部落格
+// 發文」功能,但這是獨立的圖片管理頁,不涉及文章內容渲染。
+const PhotoManagerPage = lazy(() => import('./blog/PhotoManagerPage').then((m) => ({ default: m.PhotoManagerPage })))
+// showcase-demo/*——2026-10 新增:docs/brainstorm/2026-10-product-direction-brainstorm.md
+// 六項產品構想的雛形試做(使用者明確要求「開始試做雛形」「直接試做」
+// 「你全權處理試做，不用問細節」),純供內部查看,不在首頁/導覽列任何
+// 地方連結,只能直接輸入網址進入,假資料,沒有真實後端串接——跟 /ai-plan
+// 同一層級(公開可訪問但不公開曝光的純前端展示頁)。
+const ShowcaseDemoIndex = lazy(() => import('./showcase-demo/ShowcaseDemoIndex').then((m) => ({ default: m.ShowcaseDemoIndex })))
+const ItineraryShowcasePage = lazy(() => import('./showcase-demo/ItineraryShowcasePage').then((m) => ({ default: m.ItineraryShowcasePage })))
+const ComponentConventionsPage = lazy(() => import('./showcase-demo/ComponentConventionsPage').then((m) => ({ default: m.ComponentConventionsPage })))
+const PlanningModesPage = lazy(() => import('./showcase-demo/PlanningModesPage').then((m) => ({ default: m.PlanningModesPage })))
+const ItineraryCheckupPage = lazy(() => import('./showcase-demo/ItineraryCheckupPage').then((m) => ({ default: m.ItineraryCheckupPage })))
+const PostComposerPage = lazy(() => import('./showcase-demo/PostComposerPage').then((m) => ({ default: m.PostComposerPage })))
 
 // KeyboardShrinkGuard:/app 路由專用——鍵盤彈出時把根容器高度直接改成
 // visualViewport.height,取代先前試過的 transform: translateY(-offsetTop)
@@ -207,6 +233,34 @@ export function App() {
               新增 /plan-ai 忘了同步這份白名單,導致正式環境該路徑直接
               404(即使前端路由本身定義正確),這是實際發生過的教訓。 */}
           <Route path="/ai-plan" element={<PlanAiSimPage />} />
+          {/* /u/:handle/:slug:部落客發文正式頁面(2026-10,見
+              BlogArticlePage.tsx 開頭說明)——不再是固定讀單一 slug 的
+              demo 路徑,改依網址路徑參數(作者 handle + 文章 slug)渲染
+              對應文章。用 BlogArticleRoute(仿照下方 PublicTokenRoute
+              的既有模式)取出 :handle/:slug 兩個路徑參數,轉交給
+              BlogArticlePage。 */}
+          <Route path="/u/:handle/:slug" element={<BlogArticleRoute />} />
+          {/* /blog/photos:部落客上傳圖片管理頁(見 blog/PhotoManagerPage.tsx
+              開頭的完整說明)——需登入,比照 /trip-plan(TripPlanRoute)的
+              既有模式:訪客可到達這個網址,頁面內自己用 useAppState() 判斷
+              isGuest 並內嵌登入表單,不是擋下或導轉。這個專案沒有
+              <RequireAuth> 這類包裝元件的先例,沿用這個既有做法。務必記得
+              同步 server/cmd/server/static.go 的 knownRoutePatterns(見
+              /ai-plan 路由註解提過的教訓),這次任務限制不得修改 server/
+              目錄,故這份白名單同步留給後續處理,目前這條路徑在正式環境
+              會被導去 index.html 以外的 404 分支,需另外跟進。 */}
+          <Route path="/blog/photos" element={<PhotoManagerPage />} />
+          {/* showcase-demo/*——2026-10 新增,見上方 lazy import 的完整
+              說明。同樣務必記得同步 server/cmd/server/static.go 的
+              knownRoutePatterns(上次新增 /plan-ai 忘了同步導致正式環境
+              404 的教訓,見上方 /ai-plan 路由的註解)——這幾條路由已經
+              一併同步。 */}
+          <Route path="/showcase-demo" element={<ShowcaseDemoIndex />} />
+          <Route path="/showcase-demo/itinerary-showcase" element={<ItineraryShowcasePage />} />
+          <Route path="/showcase-demo/component-conventions" element={<ComponentConventionsPage />} />
+          <Route path="/showcase-demo/planning-modes" element={<PlanningModesPage />} />
+          <Route path="/showcase-demo/itinerary-checkup" element={<ItineraryCheckupPage />} />
+          <Route path="/showcase-demo/post-composer" element={<PostComposerPage />} />
           {/* /public/{token} 路徑:直接渲染公開分享頁。原本用正則
               /^\/public\/([^/]+)$/ 手動解析 token,改用 Route 的 :token
               路徑參數 + useParams() 取代。 */}
@@ -336,4 +390,15 @@ export function App() {
 function PublicTokenRoute() {
   const { token } = useParams<{ token: string }>()
   return <PublicViewScreen token={token ?? ''} />
+}
+
+// BlogArticleRoute:仿照上方 PublicTokenRoute 的既有模式——用 useParams()
+// 取出 /u/:handle/:slug 兩個路徑參數轉交給 BlogArticlePage。獨立成這個
+// 小元件同樣是因為 useParams() 是 hook,必須在 Route 的 element 底下
+// (Router context 內)呼叫。useParams() 的型別允許 handle/slug 回傳
+// undefined(即使路由命中時理論上一定有值),用 ?? '' 處理這個型別上的
+// 邊界情況,寫法對齊 PublicTokenRoute 的既有慣例。
+function BlogArticleRoute() {
+  const { handle, slug } = useParams<{ handle: string; slug: string }>()
+  return <BlogArticlePage handle={handle ?? ''} slug={slug ?? ''} />
 }

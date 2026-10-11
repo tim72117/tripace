@@ -20,6 +20,7 @@ import (
 	"github.com/tim72117/tripace/internal/model"
 	"github.com/tim72117/tripace/internal/onagenttools"
 	"github.com/tim72117/tripace/internal/photostorage"
+	"github.com/tim72117/tripace/internal/photoupload"
 	"github.com/tim72117/tripace/internal/store"
 	"github.com/tim72117/tripace/internal/tripsvc"
 )
@@ -37,6 +38,17 @@ type Server struct {
 	// 未登入時的預設使用者(維持可跳過登入的體驗)。
 	guestUser model.User
 
+	// adminBootstrapEmail:見 resolveContentPageOwnerID 的完整說明——
+	// content-page 的 official 模式(ownerID="",對應九份/京都/台南等
+	// 城市介紹頁共用的系統帳號命名空間)只有這個 email 對應的使用者能
+	// 使用,跟 internal/adminconsole.Handler.AdminBootstrapEmail 讀的是
+	// 同一個環境變數值(ADMIN_BOOTSTRAP_EMAIL),但這裡獨立持有一份——
+	// internal/api 跟 internal/adminconsole 是兩個互不相依的套件,各自
+	// 的 Server/Handler 建構時各自從環境變數讀一次,不透過共用全域變數
+	// 或額外的套件間依賴傳遞這個值,保持兩個套件原本就互相獨立的既有
+	// 結構。
+	adminBootstrapEmail string
+
 	// photoCache 實作 geo.PhotoCache,由 s.store 提供的圖片快取表(見
 	// store.GetCachedPhoto/SetCachedPhoto)支撐——geo_outline.go 裡建立
 	// geo.Client 的地方會呼叫 client.SetCache(s.photoCache) 接上這層快取,
@@ -50,6 +62,18 @@ type Server struct {
 	// bucket 為空字串的 Uploader,Upload 呼叫會直接回傳 ErrNoBucket,
 	// 呼叫端據此降級(維持原始外部連結,不阻擋建檔/更新操作)。
 	photoUploader *photostorage.Uploader
+
+	// blogPhotoUploader 簽發使用者上傳部落格配圖用的 pre-signed URL、
+	// 下載/上傳/刪除 GCS 上的原圖與衍生版本,見 internal/photoupload 的
+	// 完整說明與 blog_photo.go 的呼叫端。跟上面的 photoUploader
+	// (photostorage.Uploader)刻意是兩個獨立欄位、各自對應獨立的
+	// bucket 環境變數(BLOG_PHOTO_UPLOAD_BUCKET vs GCS_PHOTO_BUCKET)
+	// ——兩者服務的是完全不同性質的圖片(使用者原創上傳 vs. 系統落地
+	// 的外部照片快取),見 internal/photoupload 套件開頭「為什麼獨立
+	// 成新套件」的完整說明。bucket 未設定時 photoupload.New 回傳一個
+	// bucket 為空字串的 SignedUploader,各方法呼叫會直接回傳
+	// photoupload.ErrNoBucket,呼叫端(blog_photo.go)據此降級回應。
+	blogPhotoUploader *photoupload.SignedUploader
 
 	// newGeoGeocodeClient 建立 handleGeoGeocode 專用的 geo.Client——預設
 	// geo.New(真的打 Google Places API,見該函式)。只有這支 handler 透過
@@ -221,6 +245,16 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 		log.Printf("!!! 建立 GCS photo uploader 失敗,景點照片將不會落地到 GCS,僅使用原始來源網址: %v", err)
 		uploader = &photostorage.Uploader{}
 	}
+
+	// blogPhotoUploader:使用者上傳部落格配圖用,見 Server struct 該欄位
+	// 的完整說明。失敗時的降級理由同上面 photostorage.New 的既有慣例
+	// ——這是輔助功能,不該讓整個 server 起不來。
+	blogPhotoUploader, err := photoupload.New(context.Background(), os.Getenv("BLOG_PHOTO_UPLOAD_BUCKET"), os.Getenv("GCS_SERVICE_ACCOUNT_EMAIL"))
+	if err != nil {
+		log.Printf("!!! 建立使用者上傳圖片用的 GCS uploader 失敗,部落格配圖上傳功能將不可用: %v", err)
+		blogPhotoUploader = &photoupload.SignedUploader{}
+	}
+
 	// planAiRateLimiter:兩支 plan-ai 查詢端點各自的視窗長度/次數,見這個
 	// 欄位在 Server struct 上的完整說明(單一 RateLimiter 實例、各自
 	// 獨立的 key)。
@@ -265,8 +299,10 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 		devMode:                   devMode,
 		googleClientID:            googleClientID,
 		guestUser:                 model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
+		adminBootstrapEmail:       os.Getenv("ADMIN_BOOTSTRAP_EMAIL"),
 		photoCache:                storePhotoCache{store: st},
 		photoUploader:             uploader,
+		blogPhotoUploader:         blogPhotoUploader,
 		newGeoGeocodeClient:       geo.New,
 		newPlaceDetailsClient:     geo.New,
 		newMaintenancePhotoClient: geo.New,
@@ -462,6 +498,39 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/public/{token}", s.handlePublicView)
 	mux.HandleFunc("POST /v1/public/{token}/compute-route", s.handlePublicComputeRoute)
 
+	// 主題介紹頁(content_page.go)公開讀取——城市主題介紹頁(九份/京都/
+	// 台南等)本身的頁面會打這支,無需登入,只回傳 status=published 的
+	// 內容(見 handlePublicContentPage 的完整說明)。管理端點(新增/編輯/
+	// 發布)在下面 internalMux 區塊,走 /internal/maintenance/content-pages/*。
+	mux.HandleFunc("GET /v1/content-pages/{slug}", s.handlePublicContentPage)
+
+	// 部落格文章(content_page.go 的 handlePublicBlogArticle)公開讀取——
+	// 跟上面 /v1/content-pages/{slug} 同一種「無需登入、只回已發布內容」
+	// 的端點,但多了 handle→UserID 的解析這一步:部落格文章的 slug
+	// 命名空間是「每個使用者各自的」,URL 上只有人類可讀的 handle,
+	// 需要先查 blog_profiles 把 handle 解析成 UserID,才能查到正確的
+	// 那一篇文章(見 handlePublicBlogArticle 的完整說明)。
+	mux.HandleFunc("GET /v1/blog/{handle}/{slug}", s.handlePublicBlogArticle)
+
+	// 使用者上傳部落格配圖(blog_photo.go 的完整說明)——需要登入的一般
+	// 功能,掛在 /v1/*(不是 /internal/*,那個命名空間專給 CLI 維運
+	// 端點用,見 blog_photo.go 開頭的完整說明)。路徑刻意用
+	// /v1/blog/photos/*(而非 /v1/blog/{handle}/photos/*)——這批端點
+	// 操作的是「目前登入者自己的圖片」,身分完全來自 JWT(s.userFor),
+	// 不需要也不該讓呼叫端在網址上指定 handle(那是給公開讀取端點用的
+	// 人類可讀識別字,操作自己的資源不需要繞這一層)。
+	mux.HandleFunc("POST /v1/blog/photos/upload-url", s.handleBlogPhotoUploadURL)
+	mux.HandleFunc("GET /v1/blog/photos", s.handleBlogPhotoList)
+	mux.HandleFunc("POST /v1/blog/photos/{photoId}/complete", s.handleBlogPhotoComplete)
+	mux.HandleFunc("POST /v1/blog/photos/{photoId}/retry", s.handleBlogPhotoRetry)
+	mux.HandleFunc("PATCH /v1/blog/photos/{photoId}/focal", s.handleBlogPhotoFocal)
+	mux.HandleFunc("DELETE /v1/blog/photos/{photoId}", s.handleBlogPhotoDelete)
+
+	// 部落客公開身份設定(blog_profile.go 的完整說明)——查詢/設定登入者
+	// 自己的 handle + 頭像網址,同樣需要登入、掛在 /v1/*。
+	mux.HandleFunc("GET /v1/blog/profile", s.handleBlogProfileGet)
+	mux.HandleFunc("POST /v1/blog/profile", s.handleBlogProfileSet)
+
 	// PaceRouteMap(web/src/PaceRouteMap.tsx,UI 試做用)展示頁的固定路線資料,
 	// 不需要登入(展示頁本身不需要身分),見 pace_route.go 的說明。
 	mux.HandleFunc("GET /v1/demo/pace-route", s.handlePaceRoute)
@@ -592,6 +661,17 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/field", s.handleMaintenanceAttractionUpdateField)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/place-id", s.handleMaintenanceAttractionUpdatePlaceID)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/theme", s.handleMaintenanceAttractionUpdateTheme)
+	// 主題介紹頁/部落格文章管理端點(content_page.go)——只給 tripace-cli
+	// content-page 系列指令用,公開讀取在上面 mux 區塊的
+	// /v1/content-pages/{slug}。這組端點依請求是否標示 official 決定
+	// ownerID 用空字串(官方/城市介紹頁)還是登入者自己的 UserID(部落格
+	// 發文),見 content_page.go 開頭 ownerID 身份切換的完整說明。
+	internalMux.HandleFunc("POST /internal/maintenance/content-pages", s.handleMaintenanceContentPageCreate)
+	internalMux.HandleFunc("GET /internal/maintenance/content-pages", s.handleMaintenanceContentPageList)
+	internalMux.HandleFunc("GET /internal/maintenance/content-pages/{slug}", s.handleMaintenanceContentPageGet)
+	internalMux.HandleFunc("PUT /internal/maintenance/content-pages/{slug}", s.handleMaintenanceContentPageUpdate)
+	internalMux.HandleFunc("PATCH /internal/maintenance/content-pages/{slug}/publish", s.handleMaintenanceContentPagePublish)
+	internalMux.HandleFunc("DELETE /internal/maintenance/content-pages/{slug}", s.handleMaintenanceContentPageDelete)
 	// 景點資料同步機制新增的端點(見 attraction_sync.go、
 	// docs/ATTRACTION_SYNC_DESIGN.md)——專門服務
 	// server/internal/attractionsync 套件的三層比對 + 交握式傳輸,不是

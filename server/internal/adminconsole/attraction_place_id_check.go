@@ -26,7 +26,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/tim72117/tripace/internal/adminauth"
 	"github.com/tim72117/tripace/internal/geo"
 )
 
@@ -44,10 +43,10 @@ type attractionMissingPlaceIDResponse struct {
 	Attractions []attractionMissingPlaceIDRow `json:"attractions"`
 }
 
-func (h *Handler) checkAttractionMissingPlaceID(w http.ResponseWriter, r *http.Request, _ *adminauth.Admin) {
+func (h *Handler) checkAttractionMissingPlaceID(w http.ResponseWriter, r *http.Request, _ *Admin) {
 	attractions, err := h.Store.ListAllAttractions()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
 	out := make([]attractionMissingPlaceIDRow, 0)
@@ -88,20 +87,20 @@ type refetchAttractionPlaceIDResponse struct {
 // CLI 指令的步驟),取第一筆候選的 place_id 直接寫回。查無候選、或候選
 // 沒有 place_id 時回錯誤,不靜默略過或清空既有值——這是操作者主動觸發
 // 的單筆操作,需要明確知道這次到底有沒有真的補到。
-func (h *Handler) refetchAttractionPlaceID(w http.ResponseWriter, r *http.Request, _ *adminauth.Admin) {
+func (h *Handler) refetchAttractionPlaceID(w http.ResponseWriter, r *http.Request, _ *Admin) {
 	var req refetchAttractionPlaceIDRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		writeErr(w, http.StatusBadRequest, "invalid_input", "invalid request body")
 		return
 	}
 	if req.ID == "" {
-		http.Error(w, "id is required", http.StatusBadRequest)
+		writeErr(w, http.StatusBadRequest, "invalid_input", "id is required")
 		return
 	}
 
 	attraction, err := h.Store.GetAttraction(req.ID)
 	if err != nil {
-		http.Error(w, "找不到景點 "+req.ID, http.StatusNotFound)
+		writeErr(w, http.StatusNotFound, "not_found", "找不到景點 "+req.ID)
 		return
 	}
 
@@ -116,20 +115,20 @@ func (h *Handler) refetchAttractionPlaceID(w http.ResponseWriter, r *http.Reques
 	places, err := client.Search(ctx, query, &geo.SearchOptions{MaxResults: 1})
 	if err != nil {
 		if err == geo.ErrNotFound {
-			http.Error(w, "查無「"+query+"」相關地點", http.StatusNotFound)
+			writeErr(w, http.StatusNotFound, "not_found", "查無「"+query+"」相關地點")
 			return
 		}
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		writeErr(w, http.StatusBadGateway, "upstream_failed", err.Error())
 		return
 	}
 	if len(places) == 0 || places[0].PlaceID == "" {
-		http.Error(w, "「"+query+"」查到的候選地點沒有 place_id", http.StatusNotFound)
+		writeErr(w, http.StatusNotFound, "not_found", "「"+query+"」查到的候選地點沒有 place_id")
 		return
 	}
 	match := places[0]
 
 	if err := h.Store.UpdateAttractionPlaceID(req.ID, match.PlaceID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
 

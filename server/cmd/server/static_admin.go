@@ -57,12 +57,16 @@ func adminStaticHandler() http.Handler {
 	})
 }
 
-// withAdminCORS 複製自 cmd/adminserver/main.go 的同名函式——管理 SPA
-// 需要帶 credentials: 'include'(admin_session cookie),必須回傳精確的
-// Origin(不能用 "*")並開啟 Allow-Credentials,這跟一般 /v1、/internal
-// 路由用的 cors middleware(見 internal/api/middleware.go,固定放行 "*"、
-// 不帶 credentials)是兩種不同的 CORS 政策,故只包在 /admin/ 這個路由
-// 前綴上,不影響其餘路由。
+// withAdminCORS 複製自 cmd/adminserver/main.go 的同名函式。管理 SPA
+// 改成消費一般使用者的 JWT(見 adminconsole.Handler.withAdmin 的完整
+// 說明),不再用 cookie——改成 localStorage 存 token、每次 fetch 帶
+// Authorization: Bearer 標頭,故這裡的 Allow-Headers 要放行 Authorization
+// (原本只有 Content-Type,只夠應付舊版 cookie-based 流程)。Allow-
+// Credentials 保留不影響——瀏覽器的 CORS 檢查只看 Origin/Headers 是否
+// 放行,不要求移除 credentials 相關標頭才能放行 Authorization header,
+// 跟一般 /v1、/internal 路由用的 cors middleware(見 internal/api/
+// middleware.go,固定放行 "*"、不帶 credentials)仍是兩種不同的 CORS
+// 政策,只包在 /admin/ 這個路由前綴上,不影響其餘路由。
 func withAdminCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if origin := r.Header.Get("Origin"); origin != "" {
@@ -71,7 +75,7 @@ func withAdminCORS(next http.Handler) http.Handler {
 		}
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		w.Header().Set("Access-Control-Max-Age", "86400")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

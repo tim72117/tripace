@@ -112,6 +112,181 @@ type attractionRow struct {
 
 func (attractionRow) TableName() string { return "attractions" }
 
+// blogProfileRow 是「部落客公開身份」設定——2026-10 新增,見 docs/
+// brainstorm/2026-10-product-direction-brainstorm.md 構想五「發文工具
+// 產品線」的完整說明:讓使用者可以用一個人類可讀、URL 安全的 handle
+// (例如 "tim72117")發表文章(content_pages,見該 entity 的完整說明),
+// 而不是把內部隨機 UserID(usr_xxx 格式,見 userRow)直接曝露在公開
+// 網址裡。
+//
+// 獨立成新表、不是在 userRow 上加欄位——理由:
+//   - 不是每個使用者都會開部落格,這是「使用者」概念底下的一個選擇性
+//     子身份(opt-in),加進 userRow 會讓完全不相關的使用情境(單純用
+//     行程規劃功能、從未發過文)也背負這些欄位。
+//   - handle 允許之後改名(使用者要求「user_id 穩定、不因改 handle
+//     而變」,見 contentPageRow.OwnerID 的完整說明)——獨立表讓「使用者
+//     身份」(userRow,穩定)跟「公開發文身份」(這張表,handle 可能
+//     被使用者自己修改)的生命週期清楚分開,不會把「這個 ID 會不會變」
+//     這種不同穩定性保證的欄位混在同一張表裡。
+//
+// UserID 設 uniqueIndex——目前設計是「一個使用者只能有一組部落客設定」
+// (一對一),不支援一個使用者開多個部落格身份;Handle 也是
+// uniqueIndex——這是整個系統裡唯一、拿來組 URL(/u/{handle}/{slug})
+// 的識別字,不可重複。
+type blogProfileRow struct {
+	ID        string    `gorm:"primaryKey;column:id"`
+	UserID    string    `gorm:"column:user_id;not null;uniqueIndex"`
+	Handle    string    `gorm:"column:handle;not null;uniqueIndex"`
+	AvatarURL string    `gorm:"column:avatar_url"`
+	CreatedAt time.Time `gorm:"column:created_at;not null"`
+	UpdatedAt time.Time `gorm:"column:updated_at;not null"`
+}
+
+func (blogProfileRow) TableName() string { return "blog_profiles" }
+
+// uploadedPhotoRow 是「使用者上傳圖片」(部落客發文用)的原圖記錄——
+// 2026-10 新增,見 docs/brainstorm/2026-10-product-direction-brainstorm.md
+// 構想五「發文工具產品線」:使用者寫部落格文章(content_pages,見
+// contentPageRow 的完整說明)時,自行上傳的圖片先落地成原圖記錄,之後
+// 再非同步產生縮圖/內文大圖等衍生版本(見 photoVariantRow)。
+//
+// 獨立成新表、不跟既有 photoAssetRow 共用——兩者語意完全不同:
+// photoAssetRow 是「Google 地點照片」的落地快取(主鍵是 PlaceID+
+// PhotoIndex+Usage,服務的是景點照片快取情境,見該型別的完整說明),
+// 這張表是「使用者自己上傳的原創圖片」,沒有 PlaceID 可以掛,也沒有
+// 「同一張圖查詢過不同尺寸快取」這種快取語意——這裡每張圖都是使用者
+// 主動上傳的單一事件,不是查詢觸發的快取填補,混在同一張表只會讓
+// PlaceID 這個欄位出現「使用者上傳圖片根本沒有 PlaceID」的尷尬空值,
+// 也混淆兩種完全不同的生命週期(快取可以被動過期重查,使用者上傳的
+// 原圖不能說丟就丟)。
+//
+// OwnerID 建索引——供之後「網頁上部落客管理自己上傳過的圖片」頁面
+// (ListUploadedPhotosByOwner)查詢「這個使用者上傳過哪些圖」使用。
+//
+// OriginalURL 是原圖在 GCS 的完整網址——這裡只定義欄位跟寫入方法,
+// 實際簽發 pre-signed URL、接收上傳內容寫入這個欄位的 API 邏輯還在
+// 跟使用者討論設計,之後另外派工(見本次任務範圍限制)。
+//
+// Status 用裸字串而非型別化 enum("pending"/"ready"/"failed")——對齊
+// 這個專案「後端用字串存列舉值,不另外定義型別」的既有慣例(例如
+// contentPageRow.Status 也是用裸字串 "draft"/"published")。預設
+// "pending":圖片上傳完成、衍生尺寸(photoVariantRow)還沒處理完的
+// 初始狀態,轉成 "ready" 或 "failed" 是之後非同步圖片處理 goroutine
+// 的職責,這次任務只負責定義狀態欄位跟 SetUploadedPhotoStatus 寫入
+// 方法,不實作真正觸發轉換的處理邏輯。
+//
+// FocalX/FocalY 可為 NULL——這兩個欄位是選填的裁切焦點座標(0~1
+// 相對值,對應 web/src/blog/types.ts 的 FocalPoint)。使用者上傳完圖片
+// 不會馬上就設定裁切焦點,網頁上的裁切編輯器是之後才讓使用者操作的
+// 步驟;沒設定時前端渲染端預期會 fallback 成置中裁切,這跟
+// FocalPoint「可省略,省略時以置中裁切處理」的既有語意完全對應,只是
+// 這裡是把同一套「可省略」語意存進資料庫層,用 *float64 表達「尚未
+// 設定」而非用 0,0 這種容易跟「使用者真的選了左上角」混淆的魔術值。
+//
+// 焦點刻意綁在這張表(原圖)上,而不是綁在「文章引用」那一層——這是
+// 已經確認過的設計決策:同一張圖通常只會被一篇文章用到,全部引用
+// 共用同一個焦點即可,不需要再設計一套「依引用情境各自設定焦點」的
+// 更複雜機制(那種機制要另外開一張「引用」中介表,且目前沒有實際
+// 使用情境需要同一張圖在不同文章裡用不同焦點裁切)。
+//
+// Width/Height 可為 NULL——原圖上傳當下,如果像素寬高還沒解析完成
+// (解析本身也是之後非同步處理階段的工作,不在本次任務範圍),就先
+// 留空;不像 photoVariantRow 的 Width/Height 是「衍生版本產生時就
+// 必然知道的明確尺寸」,不需要 nullable。
+type uploadedPhotoRow struct {
+	ID          string    `gorm:"primaryKey;column:id"`
+	OwnerID     string    `gorm:"column:owner_id;not null;index"`
+	OriginalURL string    `gorm:"column:original_url;not null"`
+	Status      string    `gorm:"column:status;not null;default:pending"`
+	FocalX      *float64  `gorm:"column:focal_x"` // 可為 NULL,見上方型別說明
+	FocalY      *float64  `gorm:"column:focal_y"` // 可為 NULL,同上
+	Width       *int      `gorm:"column:width"`   // 可為 NULL,解析完成前未知
+	Height      *int      `gorm:"column:height"`  // 可為 NULL,同上
+	CreatedAt   time.Time `gorm:"column:created_at;not null"`
+	UpdatedAt   time.Time `gorm:"column:updated_at;not null"`
+}
+
+func (uploadedPhotoRow) TableName() string { return "uploaded_photos" }
+
+// photoVariantRow 是原圖(uploadedPhotoRow)的各種尺寸衍生版本——同一張
+// 原圖經過非同步處理後,會產生多個固定用途的尺寸版本(目前預期
+// "thumbnail" 縮圖、"large" 內文大圖兩種),供前端依顯示情境(列表縮圖
+// vs 文章內文大圖)直接選用對應尺寸的圖,不需要每次顯示都用原圖現場
+// 縮放。
+//
+// Kind 用裸字串而非型別化 enum——對齊這個專案「後端用字串存列舉值,
+// 不另外定義型別」的既有慣例(同 uploadedPhotoRow.Status 的說明,也
+// 同 contentPageRow.Status 用裸字串 "draft"/"published" 的先例)。
+//
+// PhotoID 建索引——查詢入口固定是「這張原圖底下的所有衍生版本」(見
+// GetUploadedPhoto 的完整說明)。
+//
+// 複合唯一索引 ux_photo_variants_photo_id_kind(PhotoID, Kind)——同一張
+// 原圖的同一種尺寸只會有一筆記錄,不該重複產生;命名比照
+// contentPageRow 複合索引 ux_content_pages_owner_slug 的既有命名規則
+// (ux_<table>_<欄位1>_<欄位2>)。
+//
+// Width/Height 不像 uploadedPhotoRow 那樣可為 NULL——衍生版本是處理
+// 完成後才會寫入的記錄,寫入當下必然已經知道實際像素寬高,不存在
+// 「暫時未知」的中間狀態。
+type photoVariantRow struct {
+	ID        string    `gorm:"primaryKey;column:id"`
+	PhotoID   string    `gorm:"column:photo_id;not null;index;uniqueIndex:ux_photo_variants_photo_id_kind,priority:1"`
+	Kind      string    `gorm:"column:kind;not null;uniqueIndex:ux_photo_variants_photo_id_kind,priority:2"`
+	URL       string    `gorm:"column:url;not null"`
+	Width     int       `gorm:"column:width;not null"`
+	Height    int       `gorm:"column:height;not null"`
+	CreatedAt time.Time `gorm:"column:created_at;not null"`
+}
+
+func (photoVariantRow) TableName() string { return "photo_variants" }
+
+// contentPageRow 是主題介紹頁/部落格文章的規格化內容(見 docs/
+// refactor-theme-page-content-cms-plan-2026-10.md、
+// web/src/blog/types.ts 的 ThemePageContent)——九份/京都/台南等城市
+// 主題介紹頁,原本整篇文案都是手寫在各自的 .tsx 檔案裡,這張表讓
+// 管理者改成透過 CLI 編輯、存進資料庫,前端改成打 API 讀取內容渲染;
+// 2026-10 起同一張表也承載部落客發文(見 blogProfileRow 的完整說明)。
+// 這張表同時服務兩種用途(官方城市介紹頁、使用者自己的部落格文章),
+// 表名/型別名從原本只反映前者的 theme_pages/themePageRow 改成更通用的
+// content_pages/contentPageRow,理由即此——命名跟上實際涵蓋的範圍,
+// 不是只剩歷史包袱的舊稱呼。
+//
+// Content 存整份 ThemePageContent JSON(version/title/blocks/...),
+// 用法對齊既有 entryRow.Detail 的 `serializer:json` 先例(見該欄位),
+// 不是另外拆成多個欄位或子表——blocks 本身是順序敏感的扁平聯集陣列
+// (paragraph/image/gallery/stop 四種 kind,見 ThemePageBlock 的完整
+// 說明),拆表會需要額外的排序欄位與多次查詢才能還原陣列順序,JSON
+// 欄位整份存取、整份覆寫更貼合「CLI get 一份 JSON、編輯、set 整份
+// 寫回」的操作模式。型別用 string 而非 map[string]any——內容本身
+// 是前端定義的 TypeScript 型別(ThemePageContent),後端只負責原樣
+// 存取轉發,不需要在 Go 端重新定義一份對應的巢狀 struct 來解析每個
+// Block kind 的欄位,也避免序列化/反序列化時 Go map 不保證欄位順序
+// 導致 JSON 字串 diff 困難。
+//
+// OwnerID(2026-10 新增)——選填,見構想五的完整說明:九份/京都/台南
+// 等既有城市介紹頁沒有「作者」概念,OwnerID 留空字串;部落客發文時
+// 填入該使用者的 UserID(usr_xxx,不是 handle——見 blogProfileRow 的
+// 完整說明,handle 可能被使用者改名,UserID 穩定不變)。Slug 的唯一性
+// 範圍從原本「全域唯一」改成「同一個 OwnerID 之內唯一」(見下方
+// uniqueIndex 標籤與複合索引 ux_content_pages_owner_slug),允許不同
+// 使用者各自使用相同的 slug(例如兩個人都寫一篇 slug="tainan-chikan"
+// 的文章,只要 OwnerID 不同就不衝突);原本沒有 OwnerID 概念的既有
+// 內容(城市介紹頁)視為 OwnerID="" 這個共用的「系統帳號」命名空間,
+// 彼此之間仍然互斥、不能重複 slug,跟改動前的全域唯一行為一致。
+type contentPageRow struct {
+	ID        string    `gorm:"primaryKey;column:id"`
+	OwnerID   string    `gorm:"column:owner_id;not null;default:'';uniqueIndex:ux_content_pages_owner_slug"`
+	Slug      string    `gorm:"column:slug;not null;uniqueIndex:ux_content_pages_owner_slug"`
+	Content   string    `gorm:"column:content;not null"`
+	Status    string    `gorm:"column:status;not null;default:draft"`
+	UpdatedBy string    `gorm:"column:updated_by"`
+	CreatedAt time.Time `gorm:"column:created_at;not null"`
+	UpdatedAt time.Time `gorm:"column:updated_at;not null"`
+}
+
+func (contentPageRow) TableName() string { return "content_pages" }
+
 // photoCacheRow 快取 Google Places Photo Media API 已下載過的圖片(見
 // server/internal/geo/places.go 的 fetchPhotoAsDataURI)——同一個地點
 // (place id + 寬度組合)重複被查詢時直接吃快取,不重新打 Photo Media

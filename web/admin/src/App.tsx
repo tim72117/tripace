@@ -7,8 +7,11 @@ export default function App() {
   const [me, setMe] = useState<string | null>(null)
   const [checking, setChecking] = useState(true)
 
-  // On load, see if an admin session cookie is already valid — skips the
-  // login screen on refresh. A 401 just means "show login", not an error.
+  // On load, see if a stored JWT (localStorage, see api.ts) is still valid
+  // and belongs to an allowlisted admin email — skips the login screen on
+  // refresh. A 401 here covers several indistinguishable cases (no token,
+  // expired token, or a valid token for a user not on the admin allowlist)
+  // and just means "show login", not an error.
   useEffect(() => {
     api
       .me()
@@ -22,6 +25,13 @@ export default function App() {
   return <Dashboard adminEmail={me} onLoggedOut={() => setMe(null)} />
 }
 
+// Login signs in through the regular user system's email/password endpoint
+// (POST /v1/auth/login — see api.ts's login()) — there is no admin-specific
+// account/password anymore. Whether the signed-in user can actually use the
+// admin console is decided server-side (the ADMIN_BOOTSTRAP_EMAIL allowlist
+// check inside withAdmin); a user whose email isn't on that list will log
+// in here successfully but then get a 401 on every /admin/api/* call, which
+// App's me() check below bounces back to this screen.
 function Login({ onLoggedIn }: { onLoggedIn: (email: string) => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -46,7 +56,9 @@ function Login({ onLoggedIn }: { onLoggedIn: (email: string) => void }) {
     <div className="center">
       <form className="card login" onSubmit={submit}>
         <h1>Tripace admin</h1>
-        <p className="muted">Operator sign-in. Separate from developer accounts.</p>
+        <p className="muted">
+          Sign in with your regular Tripace account. Admin access is granted separately, by email allowlist.
+        </p>
         <label>
           Email
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus required />
@@ -69,12 +81,9 @@ type Tab = 'users' | 'external' | 'requests' | 'geo-api' | 'geo-rate-limits' | '
 function Dashboard({ adminEmail, onLoggedOut }: { adminEmail: string; onLoggedOut: () => void }) {
   const [tab, setTab] = useState<Tab>('users')
 
-  const logout = async () => {
-    try {
-      await api.logout()
-    } finally {
-      onLoggedOut()
-    }
+  const logout = () => {
+    api.logout()
+    onLoggedOut()
   }
 
   return (

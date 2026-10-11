@@ -2,24 +2,22 @@ package adminconsole
 
 // attraction_place_id_check_test.go 測 GET /admin/api/
 // attraction-missing-place-id-check(見 checkAttractionMissingPlaceID
-// 的完整說明)。跟 photo_target_check_test.go 共用同一套「開一個真的
-// httptest.Server + 登入取得 session cookie」測試手法。
+// 的完整說明)。跟其餘 adminconsole 測試共用同一套「開一個真的
+// httptest.Server + 用一般使用者 JWT(email 在白名單)當管理員」測試手法。
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/tim72117/tripace/internal/adminauth"
 	"github.com/tim72117/tripace/internal/model"
 )
 
 func TestAttractionMissingPlaceIDCheck_UnauthenticatedRequestIsRejected(t *testing.T) {
 	st := newTestStore(t)
-	auth := adminauth.New(st, false)
-	h := NewHandler(auth, st)
+	signer := testSigner()
+	h := NewHandler(signer, st, "admin@example.com")
 	mux := http.NewServeMux()
 	h.Register(mux)
 	srv := httptest.NewServer(mux)
@@ -66,33 +64,21 @@ func TestAttractionMissingPlaceIDCheck_ReturnsOnlyMissingPlaceID(t *testing.T) {
 	}
 
 	const email = "attraction-place-id-check-test@example.com"
-	const password = "supersecret123"
-	auth := adminauth.New(st, false)
-	if _, err := auth.Bootstrap(email, password); err != nil {
-		t.Fatalf("bootstrap: %v", err)
-	}
-	h := NewHandler(auth, st)
+	signer := testSigner()
+	token := newAdminTestUser(t, st, signer, email)
+
+	h := NewHandler(signer, st, email)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	jar, err := cookiejar.New(nil)
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/admin/api/attraction-missing-place-id-check", nil)
 	if err != nil {
-		t.Fatalf("cookie jar: %v", err)
+		t.Fatalf("new request: %v", err)
 	}
-	client := &http.Client{Jar: jar}
-	loginResp, err := client.Post(srv.URL+"/admin/api/login", "application/json",
-		strings.NewReader(`{"email":"`+email+`","password":"`+password+`"}`))
-	if err != nil {
-		t.Fatalf("login: %v", err)
-	}
-	loginResp.Body.Close()
-	if loginResp.StatusCode != http.StatusOK {
-		t.Fatalf("login = %d, want 200", loginResp.StatusCode)
-	}
-
-	resp, err := client.Get(srv.URL + "/admin/api/attraction-missing-place-id-check")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -134,8 +120,8 @@ func TestAttractionMissingPlaceIDCheck_ReturnsOnlyMissingPlaceID(t *testing.T) {
 // handler 特有的測試缺口。
 func TestRefetchAttractionPlaceID_UnauthenticatedRequestIsRejected(t *testing.T) {
 	st := newTestStore(t)
-	auth := adminauth.New(st, false)
-	h := NewHandler(auth, st)
+	signer := testSigner()
+	h := NewHandler(signer, st, "admin@example.com")
 	mux := http.NewServeMux()
 	h.Register(mux)
 	srv := httptest.NewServer(mux)
@@ -155,31 +141,22 @@ func TestRefetchAttractionPlaceID_UnauthenticatedRequestIsRejected(t *testing.T)
 func TestRefetchAttractionPlaceID_MissingIDReturns400(t *testing.T) {
 	st := newTestStore(t)
 	const email = "refetch-place-id-missing-id@example.com"
-	const password = "supersecret123"
-	auth := adminauth.New(st, false)
-	if _, err := auth.Bootstrap(email, password); err != nil {
-		t.Fatalf("bootstrap: %v", err)
-	}
-	h := NewHandler(auth, st)
+	signer := testSigner()
+	token := newAdminTestUser(t, st, signer, email)
+
+	h := NewHandler(signer, st, email)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	jar, err := cookiejar.New(nil)
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/admin/api/attraction-missing-place-id-check/refetch", strings.NewReader(`{"id":""}`))
 	if err != nil {
-		t.Fatalf("cookie jar: %v", err)
+		t.Fatalf("new request: %v", err)
 	}
-	client := &http.Client{Jar: jar}
-	loginResp, err := client.Post(srv.URL+"/admin/api/login", "application/json",
-		strings.NewReader(`{"email":"`+email+`","password":"`+password+`"}`))
-	if err != nil {
-		t.Fatalf("login: %v", err)
-	}
-	loginResp.Body.Close()
-
-	resp, err := client.Post(srv.URL+"/admin/api/attraction-missing-place-id-check/refetch", "application/json",
-		strings.NewReader(`{"id":""}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST: %v", err)
 	}
@@ -192,33 +169,24 @@ func TestRefetchAttractionPlaceID_MissingIDReturns400(t *testing.T) {
 func TestRefetchAttractionPlaceID_UnknownIDReturns404(t *testing.T) {
 	st := newTestStore(t)
 	const email = "refetch-place-id-unknown-id@example.com"
-	const password = "supersecret123"
-	auth := adminauth.New(st, false)
-	if _, err := auth.Bootstrap(email, password); err != nil {
-		t.Fatalf("bootstrap: %v", err)
-	}
-	h := NewHandler(auth, st)
+	signer := testSigner()
+	token := newAdminTestUser(t, st, signer, email)
+
+	h := NewHandler(signer, st, email)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		t.Fatalf("cookie jar: %v", err)
-	}
-	client := &http.Client{Jar: jar}
-	loginResp, err := client.Post(srv.URL+"/admin/api/login", "application/json",
-		strings.NewReader(`{"email":"`+email+`","password":"`+password+`"}`))
-	if err != nil {
-		t.Fatalf("login: %v", err)
-	}
-	loginResp.Body.Close()
-
 	// lmk_does_not_exist 從未被 CreateAttraction 建立過——GetAttraction
 	// 應該直接回錯誤,不會走到後面真的打 Google Places API 的邏輯。
-	resp, err := client.Post(srv.URL+"/admin/api/attraction-missing-place-id-check/refetch", "application/json",
-		strings.NewReader(`{"id":"lmk_does_not_exist"}`))
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/admin/api/attraction-missing-place-id-check/refetch", strings.NewReader(`{"id":"lmk_does_not_exist"}`))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST: %v", err)
 	}

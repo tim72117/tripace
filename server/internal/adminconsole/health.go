@@ -25,7 +25,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tim72117/tripace/internal/adminauth"
 )
 
 // 單項檢查的逾時,以及整體檢查(所有項目併發跑完)的逾時。個別檢查逾時只影響
@@ -53,7 +52,7 @@ type healthCheck struct {
 
 // listExternalHealth 回傳 GET /admin/api/health/external:併發執行所有已知
 // 外部服務的健康檢查,單項逾時 perCheckTimeout,整體不超過 overallTimeout。
-func (h *Handler) listExternalHealth(w http.ResponseWriter, r *http.Request, _ *adminauth.Admin) {
+func (h *Handler) listExternalHealth(w http.ResponseWriter, r *http.Request, _ *Admin) {
 	checks := []healthCheck{
 		{name: "PostgreSQL / SQLite 資料庫", kind: "db", run: h.checkDatabase},
 		{name: "Google Places API", kind: "places", run: checkPlaces},

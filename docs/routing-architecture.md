@@ -13,8 +13,8 @@ Web(`web/src`)、Admin SPA(`web/admin`)四個前端各自呼叫哪些端點、
 └──────┬──────┘     └──────┬──────┘     └──────┬───────┘
        │  /v1/*  (登入驗證,requireOwner/Editor/Member)  │
        └──────────────────┬──────────────────┘         │
-                           │                    /admin/api/*(session cookie)
-                           ▼                             │
+                           │              /admin/api/*(JWT,同 /v1/*
+                           ▼               auth.Signer + email 白名單)   │
                     ┌─────────────┐                      │
                     │  server/    │◄─────────────────────┘
                     │  internal/  │
@@ -34,8 +34,11 @@ Web(`web/src`)、Admin SPA(`web/admin`)四個前端各自呼叫哪些端點、
 middleware 要求 `Authorization: Bearer` 帶一把有效的 JWT(見下方「安全邊界」)
 ——與 `/v1/*` 一般使用者同一套 `auth.Signer`,CLI 端透過
 `tripace-cli login --web` 走瀏覽器核准流程換發。`/admin/api/*` 是第三組,
-只給獨立部署的管理後台 SPA 用,走 session cookie 驗證,跟前兩組完全不共用
-handler、不共用 store 存取層以外的任何程式碼。
+只給獨立部署的管理後台 SPA 用——2026-10 起改成跟前兩組共用同一套
+`auth.Signer`(JWT Bearer token),額外多一層 email 白名單檢查
+(`internal/adminidentity.IsAdminEmail` 比對 `ADMIN_BOOTSTRAP_EMAIL`),
+不再是獨立的 session cookie 機制(見第五節「完全獨立、不共用」的完整
+說明)。不共用 handler、不共用 store 存取層以外的任何程式碼。
 
 ## 二、`/v1/*` 完整路由表(iOS App + Web 共用)
 
@@ -134,12 +137,24 @@ onagent LLM 決定呼叫 BackendDispatch 型工具時,onagent 伺服器直接 PO
 `adminconsole.NewHandler` 完全不會被呼叫、`/admin/*` 完全不會被注冊
 (`cmd/server/main.go`)。
 
+沒有獨立的 login/logout 端點——2026-10 起 admin 身份直接沿用一般使用者
+透過 `/v1/auth/*` 登入換到的 JWT(見第五節的完整說明),Admin SPA 自己
+的登入表單只是呼叫一般登入端點拿 token,不是打這裡的某支 admin 專屬
+端點。
+
 | 方法 | 路徑 | Handler | 權限檢查 |
 |---|---|---|---|
-| POST | /admin/api/login | login | 無(登入端點本身,帳密驗證) |
-| POST | /admin/api/logout | logout | session cookie |
-| GET | /admin/api/me | withAdmin(me) | session cookie |
-| GET | /admin/api/users | withAdmin(listUsers) | session cookie |
+| GET | /admin/api/me | withAdmin(me) | JWT + email 白名單 |
+| GET | /admin/api/users | withAdmin(listUsers) | JWT + email 白名單 |
+| GET | /admin/api/health/external | withAdmin(listExternalHealth) | JWT + email 白名單 |
+| GET | /admin/api/request-stats | withAdmin(listRequestStats) | JWT + email 白名單 |
+| GET | /admin/api/plan-ai-chat-logs | withAdmin(listPlanAiChatLogs) | JWT + email 白名單 |
+| GET | /admin/api/geo-api-stats | withAdmin(listGeoAPIStats) | JWT + email 白名單 |
+| GET | /admin/api/schema-check | withAdmin(checkSchema) | JWT + email 白名單 |
+| GET | /admin/api/geo-rate-limits | withAdmin(listGeoRateLimits) | JWT + email 白名單 |
+| PUT | /admin/api/geo-rate-limits | withAdmin(updateGeoRateLimit) | JWT + email 白名單 |
+| GET | /admin/api/attraction-missing-place-id-check | withAdmin(checkAttractionMissingPlaceID) | JWT + email 白名單 |
+| POST | /admin/api/attraction-missing-place-id-check/refetch | withAdmin(refetchAttractionPlaceID) | JWT + email 白名單 |
 
 `/admin/*` 額外套一層獨立的 CORS 處理(`withAdminCORS`,`main.go`),因為
 Admin SPA 是跨網域呼叫並帶 cookie(`credentials: 'include'`),不能沿用
@@ -172,13 +187,24 @@ Admin SPA 是跨網域呼叫並帶 cookie(`credentials: 'include'`),不能沿用
 檢查,任何知道 entryID/tripID 的呼叫者都能繞過 `/v1/*` 版本的權限檢查
 直接達到同樣效果。
 
-### 完全獨立、不共用(Admin 那組)
+### 共用一般使用者身份、多一層白名單(Admin 那組)
 
-`adminconsole`/`adminauth` 兩個 package 有自己的 session 機制
-(`admin_session` cookie)、自己的使用者資料模型查詢邏輯,跟 `/v1/*`/
-`/internal/*` 用的 `auth.Signer`(JWT Bearer token)是兩套完全不同的驗證
-機制,不共用 `requireOwner`/`requireEditor`/`requireMember`,也不共用
-`Hub.Broadcast`(Admin SPA 目前沒有即時通知需求)。
+`adminconsole` package(2026-10 起,原本獨立的 `adminauth` 套件、
+`admin_users`/`admin_sessions` 兩張表、`admin_session` cookie 機制已整個
+移除)現在改成跟 `/v1/*`/`/internal/*` 共用同一套 `auth.Signer`(JWT
+Bearer token)身份驗證——`withAdmin` 中介層解析 Authorization header、
+驗證簽章、查出對應使用者,再用 `internal/adminidentity.IsAdminEmail`
+比對這個使用者的 email 是否等於 `ADMIN_BOOTSTRAP_EMAIL` 環境變數設定的
+白名單值(大小寫不敏感)。符合白名單才放行,不符合或環境變數未設定一律
+401(fail-closed)。
+
+這代表 admin 權限不再有獨立的登入/登出、可從資料庫撤銷的 session——
+依附在一般使用者的 30 天 JWT 上,token 外洩時只能靠轉動 `JWT_SECRET`
+(會波及全站使用者)或縮短 JWT 有效期補救,沒有單獨撤銷單一 token 的
+機制(見 `adminconsole.go` 的 `withAdmin` 開頭註解的完整說明)。仍然不共用
+`requireOwner`/`requireEditor`/`requireMember`(那些是行程成員權限檢查,
+跟「是不是 admin」是不同維度的授權),也不共用 `Hub.Broadcast`(Admin SPA
+目前沒有即時通知需求)。
 
 ## 六、安全邊界
 

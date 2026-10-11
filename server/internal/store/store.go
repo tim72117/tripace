@@ -19,6 +19,11 @@ import (
 // ErrNotFound 是 store 層統一的「查無資料」錯誤。
 var ErrNotFound = errors.New("not found")
 
+// ErrAlreadyExists 是 store 層統一的「違反唯一性限制,該筆資料已存在」
+// 錯誤——見 CreateContentPage 的完整說明,用於需要事先判斷「這個鍵已經
+// 用過」而非讓底層 driver 專屬錯誤字串直接往外傳的建立操作。
+var ErrAlreadyExists = errors.New("already exists")
+
 type Store struct {
 	db *gorm.DB
 
@@ -35,6 +40,18 @@ type Store struct {
 func Open(dsn string) (*Store, error) {
 	db, err := gorm.Open(dialector(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
+		// TranslateError: true 讓 GORM 把 driver 專屬的「違反唯一約束」
+		// 錯誤,統一轉換成跨 driver 一致的 gorm.ErrDuplicatedKey(見
+		// isUniqueConstraintViolation 的完整說明)——這是解決「先查後建
+		// 無法防止併發 race condition」問題的關鍵前提:gorm.io/driver/
+		// postgres 與 github.com/glebarez/sqlite 兩個 driver 都各自實作了
+		// gorm.ErrorTranslator 介面(分別依 PostgreSQL error code 23505、
+		// SQLite 的 SQLITE_CONSTRAINT_UNIQUE/PRIMARYKEY 轉換),不需要我們
+		// 自己解析 driver 專屬的錯誤字串格式(那正是 CreateContentPage
+		// 註解裡提到「不可靠」的作法)。開啟這個選項不影響既有的
+		// gorm.ErrRecordNotFound 判斷——兩者是不同的錯誤轉換情境,互不
+		// 干擾。
+		TranslateError: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
@@ -51,8 +68,14 @@ func Open(dsn string) (*Store, error) {
 	// 完全不相關的功能(登入、查行程列表等)也會一起無法使用。故改成記錄一則
 	// 明顯的警示 log 後繼續,讓 server 降級啟動;只有實際用到未同步欄位的功能
 	// 才會在被呼叫到時出錯,這是可接受的降級行為。
+	// contentPageRow 的 Slug uniqueIndex 2026-10 從單欄位改成帶 name 的
+	// 複合索引 ux_content_pages_owner_slug(見該 struct 的完整說明:slug
+	// 唯一性範圍從「全域」改成「同一個 owner_id 之內」)——這張表從未
+	// 進入 main、正式環境未部署過,不存在「既有資料庫殘留舊索引」需要
+	// 處理的情境,AutoMigrate 建的新表從一開始就是正確的複合索引,不需要
+	// 額外的舊索引清理邏輯。
 	migrationOK := true
-	if err := db.AutoMigrate(&userRow{}, &tripRow{}, &entryRow{}, &memberLink{}, &publicLinkRow{}, &adminUserRow{}, &adminSessionRow{}, &cliAuthSessionRow{}, &attractionRow{}, &photoCacheRow{}, &placeDetailsCacheRow{}, &googlePlacePhotoRow{}, &placePexelsPhotoRow{}, &pexelsPhotoCacheRow{}, &photoAssetRow{}, &apiRequestLogRow{}, &geoAPICallLogRow{}, &geoRateLimitRow{}, &planAiChatMessageRow{}); err != nil {
+	if err := db.AutoMigrate(&userRow{}, &tripRow{}, &entryRow{}, &memberLink{}, &publicLinkRow{}, &cliAuthSessionRow{}, &attractionRow{}, &contentPageRow{}, &blogProfileRow{}, &uploadedPhotoRow{}, &photoVariantRow{}, &photoCacheRow{}, &placeDetailsCacheRow{}, &googlePlacePhotoRow{}, &placePexelsPhotoRow{}, &pexelsPhotoCacheRow{}, &photoAssetRow{}, &apiRequestLogRow{}, &geoAPICallLogRow{}, &geoRateLimitRow{}, &planAiChatMessageRow{}); err != nil {
 		log.Printf("!!! AutoMigrate 失敗,資料庫 schema 可能未同步,部分功能可能異常或無法使用,請盡快檢查: %v", err)
 		migrationOK = false
 	}
@@ -89,3 +112,20 @@ func (s *Store) Ping(ctx context.Context) error {
 
 // now 統一回傳 UTC 時間。
 func now() time.Time { return time.Now().UTC() }
+
+// isUniqueConstraintViolation 判斷一個來自寫入呼叫(Create/Updates)的
+// 錯誤,是不是「違反唯一約束」——供 CreateContentPage/CreateBlogProfile/
+// UpdateBlogProfile 在「先查後建/先查後改」之外,對最終寫入本身也做一層
+// race-safe 的保護(見這幾個方法呼叫處的完整說明:先查後建無法防止兩個
+// 併發請求都通過檢查、最終其中一個撞上資料庫唯一索引的情境)。
+//
+// 比對方式是 errors.Is(err, gorm.ErrDuplicatedKey)——這個錯誤值由 GORM
+// 的 TranslateError 機制(見 Open() 的 gorm.Config 說明)依 driver 各自
+// 的結構化錯誤型別轉換而來(postgres driver 比對 *pgconn.PgError.Code、
+// sqlite driver 比對 *sqlite3.Error.Code()),不是解析 Error() 字串內容
+// ——這是型別斷言等級的可靠度,跨 SQLite/Postgres 一致,維持了
+// CreateContentPage 原本註解提到「不依賴解析 driver 專屬錯誤字串」這個
+// 設計理由,同時解決了「先查後建」本身解決不了的併發問題。
+func isUniqueConstraintViolation(err error) bool {
+	return errors.Is(err, gorm.ErrDuplicatedKey)
+}

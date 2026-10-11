@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tim72117/tripace/internal/adminauth"
 	"github.com/tim72117/tripace/internal/adminconsole"
 	"github.com/tim72117/tripace/internal/api"
 	"github.com/tim72117/tripace/internal/apigateway"
@@ -34,11 +33,11 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8080", "HTTP 監聽位址")
 	dbPath := flag.String("db", "tripace.db", "DB 連線:SQLite 檔案路徑,或 DATABASE_URL 未設時的後備")
 	seed := flag.Bool("seed", true, "資料庫為空時寫入示範資料")
-	jwtSecret := flag.String("jwt-secret", "dev-secret-change-me", "JWT 簽章金鑰")
+	jwtSecret := flag.String("jwt-secret", auth.DefaultDevJWTSecret, "JWT 簽章金鑰")
 	devMode := flag.Bool("dev", true, "開發模式:Apple token 不驗簽章")
 	// admin:是否在這支 binary 裡一併掛載管理後台路由(/admin/*)——低耦合
 	// 的「可選合併」開關,見 static_admin.go 開頭的說明。預設關閉,維持
-	// 這支主服務 binary 原本不含 adminauth/adminconsole 依賴的既有行為;
+	// 這支主服務 binary 原本不含 adminconsole 依賴的既有行為;
 	// 需要合併部署時才透過這個 flag 或下方的 ADMIN_ENABLED 環境變數開啟。
 	// 這與 cmd/adminserver 那支獨立 binary 完全無關,兩者可以同時存在、
 	// 各自獨立部署,不互相影響(這次刻意不變動 cmd/adminserver 與其部署
@@ -135,6 +134,15 @@ func main() {
 	if p := os.Getenv("PORT"); p != "" {
 		*addr = ":" + p
 	}
+	// JWT_SECRET 環境變數有設時覆寫 flag 預設值——與 cmd/adminserver 共用
+	// 同一套「讀環境變數、預設值是 auth.DefaultDevJWTSecret」邏輯(見
+	// auth.ResolveSecretFromEnv 的完整說明:cmd/server 跟 cmd/adminserver
+	// 必須使用完全相同的 JWT secret 才能互相驗證對方簽發的 token)。這裡
+	// 刻意不直接整段改呼叫 auth.ResolveSecretFromEnv()取代——這支 main.go
+	// 允許 -jwt-secret flag 在「沒有 JWT_SECRET 環境變數」時仍能本機覆寫
+	// 預設值(cmd/adminserver 沒有對應的 flag,只走環境變數),保留這個
+	// flag 覆寫路徑,只是讓預設值常數跟環境變數讀取規則與
+	// ResolveSecretFromEnv 保持一致。
 	if s := os.Getenv("JWT_SECRET"); s != "" {
 		*jwtSecret = s
 	}
@@ -324,6 +332,25 @@ func main() {
 		log.Printf("GOOGLE_OAUTH_CLIENT_ID 未設定,Google 登入功能停用(POST /v1/auth/google 一律回 401)")
 	}
 
+	// ADMIN_BOOTSTRAP_EMAIL 啟動期檢查(2026-10,code review 發現的維運
+	// 體驗問題)——api.New() 內部會直接讀這個環境變數(見 internal/api/
+	// api.go 的 Server.adminBootstrapEmail 欄位),用於
+	// resolveContentPageOwnerID 的 official 模式白名單判斷,這件事跟下面
+	// `-admin`/ADMIN_ENABLED 這個「要不要在這支 binary 裡一併掛載管理
+	// 後台路由」的開關完全無關——即使沒有合併掛載 /admin/*,這個環境
+	// 變數空白仍然代表 content-page official 模式(城市介紹頁等官方內容
+	// 的管理)永遠回 403,不是只有 /admin/* 這一條路徑受影響。原本只有
+	// `*admin` 分支內才會印警告(且訊息只提到 /admin/* 未設定管理權限的
+	// 情境),這裡在呼叫 api.New() 之前補上一則不論 `-admin` 是否開啟都會
+	// 印出的明確警告,訊息直接點名「所有 content-page official 端點都會
+	// 回 403」,讓維運者不需要先搞懂 `-admin` 旗標邏輯也能定位問題——
+	// 不中斷啟動(對齊「輔助功能可以降級、不影響核心功能」的既有慣例,
+	// 比照上面 GOOGLE_OAUTH_CLIENT_ID 未設定時的既有降級模式:官方內容
+	// 管理是輔助性的維運功能,不影響行程規劃、部落格發文等核心功能)。
+	if os.Getenv("ADMIN_BOOTSTRAP_EMAIL") == "" {
+		log.Printf("!!! ADMIN_BOOTSTRAP_EMAIL 未設定:所有 content-page official 模式端點(城市介紹頁等官方內容管理)會永遠回 403,/admin/* 管理後台(若有合併掛載)所有端點也會永遠回 401。如果這是預期外的情況,請檢查 ADMIN_BOOTSTRAP_EMAIL 環境變數是否正確設定——其餘核心功能(行程規劃、部落格發文等)不受影響")
+	}
+
 	signer := auth.NewSigner(*jwtSecret, 30*24*time.Hour)
 	srv := api.New(st, signer, *devMode, googleClientID)
 
@@ -375,19 +402,26 @@ func main() {
 	// 也能一併掛載管理後台路由,供想合併成單一部署單位的情境使用——
 	// 兩種部署方式可以並存,不是互斥的。
 	if *admin {
-		adminAuth := adminauth.New(st, !*devMode)
-		if created, err := adminAuth.Bootstrap(os.Getenv("ADMIN_BOOTSTRAP_EMAIL"), os.Getenv("ADMIN_BOOTSTRAP_PASSWORD")); err != nil {
-			log.Printf("admin bootstrap: %v", err)
-		} else if created {
-			log.Printf("已建立管理員帳號 %s", os.Getenv("ADMIN_BOOTSTRAP_EMAIL"))
-		}
+		// 管理後台的身分驗證改成消費一般使用者的 JWT(跟 /v1、/internal
+		// 共用同一把 signer),用 email 白名單(ADMIN_BOOTSTRAP_EMAIL)
+		// 決定誰有管理權限——不再有獨立的管理員帳號/密碼/session,見
+		// adminconsole.Handler.withAdmin 的完整說明。
+		adminBootstrapEmail := os.Getenv("ADMIN_BOOTSTRAP_EMAIL")
 		adminMux := http.NewServeMux()
-		adminconsole.NewHandler(adminAuth, st).Register(adminMux)
+		adminconsole.NewHandler(signer, st, adminBootstrapEmail).Register(adminMux)
 		adminMux.Handle("/admin/", adminStaticHandler())
 		// 只有 /admin/* 這個前綴套用 withAdminCORS(credentials 政策跟
 		// 一般 /v1、/internal 路由不同,見該函式的說明),不影響其餘路由。
 		mux.Handle("/admin/", withAdminCORS(adminMux))
-		log.Printf("管理後台已合併掛載於這支 binary(/admin/*,目前管理員帳號數: %d)", adminAuth.Count())
+		if adminBootstrapEmail == "" {
+			// 空白時的完整警告已經在上面(呼叫 api.New() 之前)統一印過
+			// 一次,這裡不重複印整段訊息,只補充「這支 binary 這次啟動確實
+			// 合併掛載了 /admin/*」這個額外事實,方便從 log 判斷是哪一種
+			// 部署型態。
+			log.Printf("管理後台已合併掛載於這支 binary(/admin/*),但 ADMIN_BOOTSTRAP_EMAIL 未設定,任何人都無法通過管理權限檢查")
+		} else {
+			log.Printf("管理後台已合併掛載於這支 binary(/admin/*,管理權限 email 白名單: %s)", adminBootstrapEmail)
+		}
 	}
 
 	mux.Handle("/", staticHandler())

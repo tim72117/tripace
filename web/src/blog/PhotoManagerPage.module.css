@@ -1,0 +1,150 @@
+/* PhotoManagerPage——外殼版面對齊 trip-plan/TripPlanRoute.module.css
+   (同一種「獨立路由頁面,自己管深色模式 token+捲動容器」的既有模式,見
+   TripPlanRoute.tsx 開頭的完整說明),不重新發明一套版面語言。 */
+
+.root {
+  /* SiteNavButtons.css 依賴的中性變數名(--paper/--paper-dim/--ink/
+     --ink-soft/--line/--vermilion/--vermilion-soft/--card-shadow)——
+     這個頁面本來走 app-theme-root 的 --ios-*/--color-* 那組深色模式
+     token(見 base-ui.css 開頭說明),跟城市介紹頁/BlogArticlePage 用的
+     --paper/--ink 這組完全是兩個獨立體系,SiteNavButtons.css 讀不到。
+     比照 TainanChikanPage.css/KyotoPage.css 等既有頁面「定義一個中性
+     變數名映射到自己頁面色票」的既有慣例,在這裡補上映射,而不是修改
+     SiteNavButtons.css 本身或額外 import 另一份 CSS 變數定義。 */
+  --paper: var(--ios-bg);
+  --paper-dim: var(--ios-sep);
+  --ink: var(--color-dark);
+  --ink-soft: var(--ios-gray);
+  --line: var(--ios-sep);
+  --vermilion: var(--color-accent);
+  --vermilion-soft: var(--ios-sand);
+  --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+
+  min-height: 100dvh;
+  position: relative; /* 讓 .rp-modal-backdrop 的 position: absolute 以這裡為基準 */
+  overflow-y: auto;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 20px;
+  background: var(--ios-bg);
+  border-bottom: 1px solid var(--ios-sep);
+}
+.brand {
+  font-weight: 700;
+  font-size: 16px;
+  color: inherit;
+  text-decoration: none;
+}
+.title {
+  font-size: 13px;
+  color: var(--ios-gray);
+}
+
+.body {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.hiddenFileInput {
+  display: none;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+}
+.cardClickable {
+  cursor: pointer;
+}
+.cardClickable:hover {
+  border-color: var(--ios-blue, #3478f6);
+}
+
+.thumbWrap {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  background: var(--ios-sep);
+}
+.thumbImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.overlayError {
+  background: rgba(120, 0, 0, 0.45);
+}
+.overlayText {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  gap: 8px;
+}
+.statusText {
+  font-size: 12px;
+  color: var(--ios-gray);
+}
+.retryBtn,
+.deleteBtn {
+  border: none;
+  background: none;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.retryBtn {
+  color: var(--ios-blue, #3478f6);
+}
+.deleteBtn {
+  color: var(--ios-red, #d9534f);
+  margin-left: auto;
+}
+.retryBtn:hover,
+.deleteBtn:hover {
+  background: var(--ios-sep);
+}

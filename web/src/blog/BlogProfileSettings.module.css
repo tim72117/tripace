@@ -1,0 +1,54 @@
+/* BlogProfileSettings——版面語言對齊同目錄 PhotoManagerPage.module.css
+   (卡片化區塊、ios- 系列 CSS 變數),插入在圖片管理頁最上方的獨立
+   區塊,不共用既有的 .card/.grid 等 class(語意不同:這是表單,不是
+   縮圖卡片網格)。 */
+
+.section {
+  max-width: 480px;
+  margin: 0 0 28px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+}
+
+.heading {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.savedBanner {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(52, 199, 89, 0.15);
+  color: #1f8a3c;
+  font-size: 13px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.label {
+  font-size: 12px;
+  color: var(--ios-gray);
+}
+
+.input {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--ios-sep);
+  background: var(--ios-bg);
+  color: inherit;
+  font-size: 14px;
+}

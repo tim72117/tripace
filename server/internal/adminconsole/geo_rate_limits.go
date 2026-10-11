@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/tim72117/tripace/internal/adminauth"
 	"github.com/tim72117/tripace/internal/store"
 )
 
@@ -24,10 +23,10 @@ type geoRateLimitsResponse struct {
 }
 
 // listGeoRateLimits 回傳資料庫裡目前已設定的全部限流規則。
-func (h *Handler) listGeoRateLimits(w http.ResponseWriter, r *http.Request, _ *adminauth.Admin) {
+func (h *Handler) listGeoRateLimits(w http.ResponseWriter, r *http.Request, _ *Admin) {
 	limits, err := h.Store.ListGeoRateLimits()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
 	if limits == nil {
@@ -59,33 +58,33 @@ type updateGeoRateLimitRequest struct {
 // 既有慣例不做列舉白名單檢查,cmd/server 的 applyGeoRateLimitsFromStore
 // 只認得這兩個字串,寫入其他字串的資料列會被忽略、不會造成任何錯誤,
 // 只是不會生效。
-func (h *Handler) updateGeoRateLimit(w http.ResponseWriter, r *http.Request, _ *adminauth.Admin) {
+func (h *Handler) updateGeoRateLimit(w http.ResponseWriter, r *http.Request, _ *Admin) {
 	var req updateGeoRateLimitRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		writeErr(w, http.StatusBadRequest, "invalid_input", "invalid JSON body")
 		return
 	}
 	if req.Endpoint == "" {
-		http.Error(w, "endpoint is required", http.StatusBadRequest)
+		writeErr(w, http.StatusBadRequest, "invalid_input", "endpoint is required")
 		return
 	}
 	if req.WindowSec <= 0 {
-		http.Error(w, "windowSec must be a positive integer", http.StatusBadRequest)
+		writeErr(w, http.StatusBadRequest, "invalid_input", "windowSec must be a positive integer")
 		return
 	}
 	if req.MaxCalls <= 0 {
-		http.Error(w, "maxCalls must be a positive integer", http.StatusBadRequest)
+		writeErr(w, http.StatusBadRequest, "invalid_input", "maxCalls must be a positive integer")
 		return
 	}
 
 	if err := h.Store.UpsertGeoRateLimit(req.Endpoint, req.WindowSec, req.MaxCalls, req.DailyMax); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
 
 	limits, err := h.Store.ListGeoRateLimits()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, geoRateLimitsResponse{Limits: limits})

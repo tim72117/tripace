@@ -1213,3 +1213,185 @@ export function fetchPublicView(baseURL: string, token: string) {
     })
 }
 
+// fetchPublicThemePage:GET /v1/content-pages/{slug}(免登入,見後端
+// handlePublicContentPage/content_page.go 的完整說明)——後端路徑/型別
+// 2026-10 從 theme-pages/ThemePage 改名為 content-pages/ContentPage
+// (見 server/internal/model.ContentPage 的完整說明:這張表/這組端點
+// 現在同時服務城市介紹頁與部落客發文,命名不該只停留在前者),這支
+// 前端函式沿用呼叫端既有名稱不變,只同步後端路徑。供部落客發文頁面
+// (web/src/blog/BlogArticlePage.tsx,2026-10 從主題介紹頁試做轉正,見
+// docs/brainstorm/2026-10-product-direction-brainstorm.md 構想五)
+// 讀取已發布的規格化內容。只回傳 status=published 的頁面,草稿一律
+// 404(ApiError),對齊公開端點不應曝露未發布內容的設計。
+//
+// 回應形狀用 unknown 而非後端 model.ContentPage(後端沒有對應的前端
+// 型別匯出)——實際內容形狀由呼叫端依 web/src/blog/types.ts 的
+// ThemePageContent 自行斷言,api.ts 不耦合那個模組的型別定義。
+export function fetchPublicThemePage(cfg: ClientConfig, slug: string) {
+  return request<{ id: string; slug: string; content: unknown; status: string; updatedAt: string }>(
+    cfg,
+    'GET',
+    `/v1/content-pages/${encodeURIComponent(slug)}`,
+  )
+}
+
+// fetchPublicBlogArticle:GET /v1/blog/{handle}/{slug}(免登入,供部落客
+// 發文正式頁面 web/src/blog/BlogArticlePage.tsx 使用)——與上面的
+// fetchPublicThemePage 差異在於查詢鍵多了一層「作者 handle」:
+// fetchPublicThemePage 對應的 /v1/content-pages/{slug} 是給既有「城市介紹
+// 頁」用的單一全域 slug 命名空間,不分作者;這支端點改成依「作者 handle +
+// 該作者底下的文章 slug」兩段式查詢,因為部落客發文場景裡不同作者可能
+// 各自取用同樣的 slug(例如兩人都寫一篇 slug 叫 day1 的文章),不能再用
+// 單一全域 slug 命名空間區分。
+//
+// 回應形狀比照 fetchPublicThemePage,多一個 ownerId?: string 欄位——對齊
+// 後端 model.ContentPage 新增的 OwnerID 欄位(json tag 為 ownerId,omitempty),
+// 選填是因為舊資料/尚未指定作者的頁面不會有這個欄位。content 同樣用
+// unknown,形狀由呼叫端依 web/src/blog/types.ts 的 ThemePageContent 自行
+// 斷言。
+export function fetchPublicBlogArticle(cfg: ClientConfig, handle: string, slug: string) {
+  return request<{ id: string; slug: string; content: unknown; status: string; updatedAt: string; ownerId?: string }>(
+    cfg,
+    'GET',
+    `/v1/blog/${encodeURIComponent(handle)}/${encodeURIComponent(slug)}`,
+  )
+}
+
+// ---- 部落客上傳圖片管理(/blog/photos 頁面用,見 web/src/blog/PhotoManagerPage.tsx)。
+// 對齊後端 server/internal/api/blog_photo.go 的完整說明——這批端點全部
+// 需要登入(非訪客),呼叫端必須傳帶真實 JWT 的 ClientConfig,不是
+// GUEST_CFG,否則一律收到 401。 ----
+
+// PhotoVariant:對齊後端 model.PhotoVariant 的 JSON 形狀——原圖的其中一種
+// 尺寸衍生版本("thumbnail"/"large")。
+export interface PhotoVariant {
+  id: string
+  photoId: string
+  kind: string // "thumbnail" | "large"
+  url: string
+  width: number
+  height: number
+  createdAt: string
+}
+
+// UploadedPhoto:對齊後端 model.UploadedPhoto 的 JSON 形狀——使用者上傳
+// 圖片(部落格發文用)的原圖記錄,含已完成的衍生版本清單。focalX/focalY/
+// width/height 選填(後端用指標型別+omitempty,見該型別完整說明:nil
+// 代表「尚未設定/尚未知道」)。
+export interface UploadedPhoto {
+  id: string
+  ownerId: string
+  originalUrl: string
+  status: string // "pending" | "ready" | "failed"
+  focalX?: number
+  focalY?: number
+  width?: number
+  height?: number
+  variants?: PhotoVariant[]
+  createdAt: string
+  updatedAt: string
+}
+
+// fetchMyUploadedPhotos:GET /v1/blog/photos——列出目前登入者自己上傳過
+// 的所有圖片(見後端 handleBlogPhotoList 的完整說明:查詢前會先做一次
+// 惰性清理,校正卡在過期 pending 狀態的記錄)。
+export function fetchMyUploadedPhotos(cfg: ClientConfig) {
+  return request<{ photos: UploadedPhoto[] }>(cfg, 'GET', '/v1/blog/photos').then(
+    (r) => r.photos,
+  )
+}
+
+// createPhotoUploadURL:POST /v1/blog/photos/upload-url——建立一筆 pending
+// 狀態的原圖記錄,同時簽出讓瀏覽器端可以直接 PUT 上傳原圖的 pre-signed
+// URL(見後端 handleBlogPhotoUploadURL 的完整說明)。呼叫端拿到 uploadUrl
+// 後,直接用瀏覽器原生 fetch PUT 給 GCS,不經過我方 server 轉傳一次完整
+// 的圖片位元組;拿到 publicUrl 則是這張原圖之後的公開存取網址。
+export function createPhotoUploadURL(cfg: ClientConfig, contentType: string) {
+  return request<{ photoId: string; uploadUrl: string; publicUrl: string }>(
+    cfg,
+    'POST',
+    '/v1/blog/photos/upload-url',
+    { contentType },
+  )
+}
+
+// completePhotoUpload:POST /v1/blog/photos/{photoId}/complete——通知後端
+// 原圖已經上傳完成,觸發背景處理(下載原圖、產生 thumbnail/large 兩種
+// 衍生版本)。立即回應 "processing",不等背景處理完成(見後端
+// handleBlogPhotoComplete 的完整說明)。
+export function completePhotoUpload(cfg: ClientConfig, photoId: string) {
+  return request<{ status: string }>(
+    cfg,
+    'POST',
+    `/v1/blog/photos/${encodeURIComponent(photoId)}/complete`,
+  )
+}
+
+// retryPhotoProcessing:POST /v1/blog/photos/{photoId}/retry——針對處理
+// 失敗(status === "failed")的圖片記錄,重新觸發跟 complete 相同的背景
+// 處理邏輯(見後端 handleBlogPhotoRetry 的完整說明)。
+export function retryPhotoProcessing(cfg: ClientConfig, photoId: string) {
+  return request<{ status: string }>(
+    cfg,
+    'POST',
+    `/v1/blog/photos/${encodeURIComponent(photoId)}/retry`,
+  )
+}
+
+// setPhotoFocal:PATCH /v1/blog/photos/{photoId}/focal——更新這張原圖的
+// 裁切焦點(0~1 相對座標,見後端 handleBlogPhotoFocal 的完整說明)。這個
+// 焦點是圖片本身的屬性,跟 web/src/blog/types.ts 的 FocalPoint(文章內容
+// ImageBlock/GalleryBlock 的 focal 欄位)是同一套座標系統,但這裡編輯的
+// 是「原圖本身的焦點」,把焦點接回文章內容渲染是之後的整合工作,不在
+// 這支函式的職責範圍內。
+export function setPhotoFocal(cfg: ClientConfig, photoId: string, focalX: number, focalY: number) {
+  return request<{ status: string }>(
+    cfg,
+    'PATCH',
+    `/v1/blog/photos/${encodeURIComponent(photoId)}/focal`,
+    { focalX, focalY },
+  )
+}
+
+// deleteUploadedPhoto:DELETE /v1/blog/photos/{photoId}——刪除一張圖
+// (GCS 物件 + 資料庫記錄,見後端 handleBlogPhotoDelete 的完整說明)。
+export function deleteUploadedPhoto(cfg: ClientConfig, photoId: string) {
+  return request<{ status: string }>(
+    cfg,
+    'DELETE',
+    `/v1/blog/photos/${encodeURIComponent(photoId)}`,
+  )
+}
+
+// BlogProfile:對齊後端 model.BlogProfile 的 JSON 形狀——「部落客公開
+// 身份」設定(handle + 頭像網址,見後端 store.blogProfileRow 的完整
+// 說明)。avatarUrl 選填(後端用 omitempty)。
+export interface BlogProfile {
+  id: string
+  userId: string
+  handle: string
+  avatarUrl?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// fetchMyBlogProfile:GET /v1/blog/profile——查詢登入者自己的部落客
+// 設定(見後端 handleBlogProfileGet 的完整說明)。尚未設定過時後端回
+// 404,這裡讓 ApiError 原樣往上拋,呼叫端(BlogProfileSettings)用
+// try/catch 判斷 404 時顯示空白表單,不是把「尚未設定」包裝成某種
+// 特殊回傳值——跟這個專案其餘「查無資料」端點的既有慣例一致(例如
+// fetchGeoPlaceDetails 查無資料時同樣直接讓錯誤往上拋)。
+export function fetchMyBlogProfile(cfg: ClientConfig) {
+  return request<BlogProfile>(cfg, 'GET', '/v1/blog/profile')
+}
+
+// setMyBlogProfile:POST /v1/blog/profile——設定或更新登入者自己的
+// 部落客身份(upsert 語意,見後端 handleBlogProfileSet 的完整說明)。
+// avatarUrl 選填,省略時後端視為「不設定頭像」。
+export function setMyBlogProfile(cfg: ClientConfig, handle: string, avatarUrl?: string) {
+  return request<BlogProfile>(cfg, 'POST', '/v1/blog/profile', {
+    handle,
+    avatarUrl: avatarUrl ?? '',
+  })
+}
+
