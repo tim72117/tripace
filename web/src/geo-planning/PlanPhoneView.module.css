@@ -14,10 +14,19 @@
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
-  /* 底部留白避免地圖被 PhoneTabBar.tsx 底部常駐列(64px 高 + safe-area)
-     蓋住——PhoneTabBar 是 position: absolute 掛在 .mainArea(PhoneContent.
-     module.css)上,不佔 flex 版面空間,故由地圖容器主動讓出對應高度。 */
-  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  /* 底部留白避免地圖被 PhoneTabBar.tsx 底部常駐列蓋住——PhoneTabBar 是
+     position: absolute 掛在 .mainArea(PhoneContent.module.css)上,不佔
+     flex 版面空間,故由地圖容器主動讓出對應高度。
+     2026-10 改用 var(--tab-bar-height)(使用者明確要求「有辦法確保
+     bottom sheet 如果是在功能列後面,標頭不會被遮蔽,也不用功能列改動
+     高度就要重新確認」,見 hooks/useElementHeight.ts 的完整說明)——
+     取代原本寫死的 64px,這個 CSS 自訂屬性由 .mainArea 容器提供,值是
+     用 ResizeObserver 即時量出的 PhoneTabBar.tsx 真實高度。不疊加
+     env(safe-area-inset-bottom)(code review 發現的回歸修正,見
+     trip/PhoneTripsDrawer.tsx 的 SHEET_BOTTOM 完整說明):
+     var(--tab-bar-height) 量到的是 .bar 完整外框高度,本身已經內含
+     safe-area,重複疊加會讓避讓距離算錯。 */
+  padding-bottom: var(--tab-bar-height);
 }
 
 /* avatarBtn:使用者頭像——取代拿掉的 MainNavBar(見 PlanPhoneView.
@@ -46,11 +55,14 @@
    跟 PhoneSideTools.module.css 的 .tools(右側下方 demo/路徑小圖示群組)
    同一套定位邏輯與間距數值(bottom 貼近底部常駐列上方、垂直堆疊、
    8px 間距)——使用者要求「候選欄、景點清單按鈕放在左下角,是跟 demo
-   的按鈕一樣、只是在左邊」,不是自己另外算一組 top 座標。 */
+   的按鈕一樣、只是在左邊」,不是自己另外算一組 top 座標。
+   2026-10 改用 var(--tab-bar-height)(這一處是先前 ResizeObserver 改動
+   時漏掉、code review 時補查全檔案才發現的缺口,理由跟不疊加
+   env(safe-area-inset-bottom)的原因都同 .wrap 的完整說明)。 */
 .candidateGroup {
   position: absolute;
   left: 16px;
-  bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 16px);
+  bottom: calc(var(--tab-bar-height) + 16px);
   z-index: 3;
   display: flex;
   flex-direction: column;

@@ -1,5 +1,6 @@
-import { forwardRef } from 'react'
+import { forwardRef, useEffect } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
+import { useIsInsideSheetBody } from './PhoneBottomSheet'
 import styles from './ScrollArea.module.css'
 
 // ScrollArea:「內容區塊需要垂直捲動、但要禁用縮放/水平手勢」這個行為的
@@ -43,6 +44,48 @@ export const ScrollArea = forwardRef<HTMLDivElement, ScrollAreaProps>(function S
   { children, className, style },
   ref,
 ) {
+  // insideSheetBody——2026-10 新增(使用者明確要求「業界會在元件內規範
+  // 上層元件要有什麼規範才能正確運作的這種規範模式嗎」,對齊 Radix UI
+  // 等函式庫「元件掛載時主動檢查自己期待的環境條件是否成立,不成立就
+  // 警告」的做法):ScrollArea 跟 components/PhoneBottomSheet.tsx 都各自
+  // 是「這個 DOM 節點 overflow/touch-action 該怎麼設」的唯一真理來源
+  // (見上方檔頭的完整說明),若 ScrollArea 被渲染在任何
+  // PhoneBottomSheet/StandaloneSheet/StackedSheet/PersistentSheet 的
+  // children 範圍內(不限於有沒有額外用 <SheetBody> 標籤包——
+  // SheetBodyContext.Provider 本來就包住整個 renderedChildren,見
+  // PhoneBottomSheet.tsx 980-996 行),都可能跟外層 bottom sheet 的拖曳
+  // 手勢互搶觸控事件,出現兩種風險之一:
+  //   1) 若呼叫端有用 <SheetBody> 包,會疊出兩層各自宣告
+  //      overflow-y/touch-action 的捲動容器——SheetBody 外層的
+  //      overscroll-behavior-y: contain(見 PhoneBottomSheet.module.css
+  //      .bodyScrollable 的完整說明:專門用來擋掉「捲到頂觸發拖拉交接
+  //      時,瀏覽器原生彈性回彈動畫可能已經搶先播放」這個視覺衝突)防護
+  //      不到真正承載捲動的內層 ScrollArea,等於防護形同虛設。
+  //   2) 若沒有用 <SheetBody> 包,ScrollArea 自己的 touch-action: pan-y
+  //      仍然可能讓瀏覽器原生捲動介入,跟外層 head 那組(標頭/拖曳把手)
+  //      的拖曳手勢判斷互搶事件。
+  // 這不是假設性風險——user/SettingsScreen.tsx 就是目前真實存在的案例
+  // (包在 StandaloneSheet 的 SheetBody 裡,內部又自己包一層 ScrollArea,
+  // 屬於情境 1)。
+  //
+  // useIsInsideSheetBody()(PhoneBottomSheet.tsx 匯出的唯一用途就是這個
+  // 偵測,不洩漏任何 SheetBodyContext 內部實作細節)偵測到這個情況時,
+  // 只在開發模式(import.meta.env.DEV)主動丟出明確警告,指向正確做法
+  // ——生產環境不中斷渲染、不影響使用者,只是不會主動被提醒;這點對齊
+  // Radix UI/React Aria 的慣例(開發期攔截、生產環境靜默)。
+  const insideSheetBody = useIsInsideSheetBody()
+  useEffect(() => {
+    if (insideSheetBody && import.meta.env.DEV) {
+      console.warn(
+        '[ScrollArea] 偵測到這個元件被渲染在 bottom sheet(components/PhoneBottomSheet.tsx 的 ' +
+          'StandaloneSheet/StackedSheet/PersistentSheet)的內容範圍裡——這個捲動容器可能跟外層 ' +
+          'bottom sheet 的拖曳手勢互搶觸控事件,捲到頂觸發拖拉交接時可能出現瀏覽器原生彈性回彈動畫跟 ' +
+          '拖曳手勢衝突的視覺問題。正確做法:改用 PhoneBottomSheet.tsx 匯出的 <SheetBody> 元件本身 ' +
+          '當捲動容器,它已經處理好捲動/拖拉交接的仲裁邏輯,不需要(也不該)再疊加這個 ScrollArea。',
+      )
+    }
+  }, [insideSheetBody])
+
   return (
     <div
       ref={ref}

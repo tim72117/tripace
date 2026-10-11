@@ -2,6 +2,30 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.30.1 — 2026-10-11
+
+延續 v0.30.0 的 bottom sheet 重構：補上功能列高度的動態量測機制，並修正多輪實機測試與 code review 抓到的 bug。本版無破壞性變更。
+
+### 新增
+
+- **`web/src/hooks/useElementHeight.ts`**：用 `ResizeObserver` 即時量測任意 DOM 元素的真實高度，取代原本手機版底部常駐功能列（`PhoneTabBar`）高度散落 5 處各自寫死 `64px` 複製貼上的做法。`PhoneTabBar.tsx` 改成 `forwardRef`，`PhoneContent.tsx` 用量到的高度寫入 `.mainArea` 的 CSS 自訂屬性 `--tab-bar-height`，`PhoneTripsDrawer.tsx`/`PhoneTimelineDrawer.tsx`/`PhoneSideTools.module.css`/`PlanPhoneView.module.css`（2 處）全部改用 `var(--tab-bar-height)`。功能列之後若改版面（文案、字級、padding）不需要回頭修改任何依賴它的程式碼。
+- **`web/src/components/PhoneBottomSheet.tsx` 新增匯出 `useIsInsideSheetBody()`**：讓 `ScrollArea` 等共用捲動元件能偵測自己是否被渲染在 `SheetBody` 管轄的子樹裡，偵測到就在開發模式主動 `console.warn`（對齊 Radix UI「元件掛載時主動檢查環境條件」的慣例）——`SheetBody` 內部疊加另一層自己管 `overflow`/`touch-action` 的捲動容器，會讓外層的拖拉交接判斷/`overscroll-behavior` 防護失效。
+
+### 修正
+
+- **旅程清單／行程清單收合到最小段時，可視高度被壓縮成實際的 35px（預期 80–100px），標頭文字被底部功能列遮住一部分**：根因是 `PhoneBottomSheet.tsx` 的 `minHeightAsTop` 計算公式隱含假設 `panelStyle.bottom` 恆為 0，但這兩個呼叫端的 `bottom` 其實是 `var(--tab-bar-height)`（非 0，用來避開功能列），可視高度因此變成 `minHeightPx - tabBarHeight`。改用 `getComputedStyle(panelRef.current).bottom` 讀取瀏覽器實際解析後的 `bottom` px 值（涵蓋呼叫端傳入數字/`calc()`/`var()` 任意格式），讓計算公式對任何 `bottom` 值恆成立，而非只在輸出層對收合段這一個特例疊加 `height` 補丁（曾經的第一版修法，在容器高度不足的邊界情況下可能誤套用到展開段，已移除）。
+- **手機版「規劃」對話小匡：捲動內容還沒拉到頂、sheet 就被判定可以收合**：根因是 `PhoneContent.tsx` 把 `SheetBody` 自己的 DOM 節點（`chatScrollRef`）誤傳給 `TripPlanPage` 的 `scrollContainerRef` 當成「真正的捲動容器」，但 `compact` 模式下真正承載捲動的是 `TripPlanPage` 內部的 `.compactScroll`，兩者是不同節點——`SheetBody` 的拖拉交接判斷因此讀到一個 scrollTop 永遠停留在初始值的錯誤節點，誤判「已經捲到頂」。移除這個誤傳的 `scrollContainerRef`，讓 `TripPlanPage` 在 `compact` 模式下使用它自己正確指向 `.compactScroll` 的 `scrollRef`；同時移除 `chatScrollRef` 這個已經沒有用途的死 ref。
+- **手機版「規劃」對話小匡輸入框字體沒有放大**：`PhoneContent.tsx` 呼叫 `<TripPlanPage>` 時漏掉 `compact` prop，導致 `TripPlanPage.module.css` 的 `.compact .input` 字級規則（放大到 16px 對齊搜尋框）、`.compactScroll`（真正捲動容器）、`.compact .compactJumpPillWrap`（「回到最新」按鈕定位）全部從未套用，一併補上。
+- **`SettingsScreen.tsx` 內部巢狀 `ScrollArea`**：`PhoneContent.tsx` 已經用 `SheetBody` 包住 `SettingsScreen`，但其內部又自己包一層 `ScrollArea`，形成兩層各自管理捲動的容器（跟上述對話小匡是同一種誤用模式的另一個實例）——移除內部的 `ScrollArea`，改用 inline style 補回原本的內距。
+- **`PhoneBottomSheet.tsx` 的 `SheetBody` touch 事件處理常式重複實作了既有的 `hooks/useStableCallback.ts`**：第一版手刻了一個 `latestHandlersRef` 物件包三個 handler，改用既有的 `useStableCallback` 分別包三個 handler，行為不變（既有的 `PhoneBottomSheet.dragHandoff.test.tsx` 13 項測試驗證替換後 stale closure 修復依然正確）。
+
+### 測試
+
+- 新增 `PhoneBottomSheet.dragHandoff.test.tsx`（13 項）：第一份真正驗證「觸控拖曳手勢」JS 邏輯的測試，涵蓋收合段/中間段/最大展開段 × 標頭/body × 往上/往下的完整矩陣。
+- 新增 `PhoneBottomSheet.collapsedHeight.test.tsx`（3 項）：驗證收合段高度在 `panelStyle.bottom` 非 0 時仍精確等於 `minHeightPx`，含容器高度不足的 clamp 邊界情況。
+- 新增 `ScrollArea.sheetBodyWarning.test.tsx`（3 項）：驗證 `useIsInsideSheetBody()` 開發期警告機制。
+- 新增 `useElementHeight.test.tsx`（3 項）：驗證 hook 介面行為（無 `ResizeObserver` 環境防禦、`observe`/`disconnect` 生命週期、callback 正確更新）。
+
 ## v0.30.0 — 2026-10-11
 
 手機版 bottom sheet 體系的大規模重構：收斂「拉動時反應不一致」的問題，統一用具名工廠元件與具名常數管理原本散落各處的行為差異與 z-index 魔法數字，並修正多個實際回報的手勢/拖曳 bug。

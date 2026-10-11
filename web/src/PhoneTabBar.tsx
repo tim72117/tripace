@@ -1,3 +1,4 @@
+import { forwardRef } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import styles from './PhoneTabBar.module.css'
 
@@ -21,13 +22,17 @@ import styles from './PhoneTabBar.module.css'
 // 2. icon 下方加入文字標籤——原本只有圖示,使用者要求補上文字,.tab 的
 //    排列方向改成直向(icon 在上、文字在下),見 PhoneTabBar.module.css
 //    的 .tab/.tabLabel。
-export function PhoneTabBar({
-  tabs,
-}: {
+// forwardRef——2026-10 新增(使用者明確要求「有辦法確保 bottom sheet
+// 如果是在功能列後面,標頭不會被遮蔽,也不用功能列改動高度就要重新
+// 確認」):讓呼叫端(PhoneContent.tsx)能掛 ref 在這個 <nav> 上,搭配
+// hooks/useElementHeight.ts 的 ResizeObserver 量出真實高度,取代目前
+// 散落各處把這裡的 .tab 高度(64px)當作寫死數字複製貼上的做法——見該
+// hook 的完整說明。
+export const PhoneTabBar = forwardRef<HTMLElement, {
   tabs: { key: string; icon: LucideIcon; title: string; active: boolean; onClick: () => void; beta?: boolean }[]
-}) {
+}>(function PhoneTabBar({ tabs }, ref) {
   return (
-    <nav className={styles.bar}>
+    <nav className={styles.bar} ref={ref}>
       {tabs.map(({ key, icon: Icon, title, active, onClick, beta }) => (
         <button
           key={key}
@@ -48,4 +53,4 @@ export function PhoneTabBar({
       ))}
     </nav>
   )
-}
+})

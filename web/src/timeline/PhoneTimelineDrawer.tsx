@@ -34,7 +34,14 @@ const SHEET_TOP = 200
 // SHEET_MIN_HEIGHT:收合段的固定高度(px,只顯示標頭)——理由見上方
 // 元件說明。TODO(使用者稍後決定合理數值):暫時估算。
 const SHEET_MIN_HEIGHT = 100
-const SHEET_BOTTOM = 'calc(64px + env(safe-area-inset-bottom, 0px))'
+// SHEET_BOTTOM:2026-10 改用 var(--tab-bar-height),理由見
+// trip/PhoneTripsDrawer.tsx 同名常數的完整說明(取代原本寫死的
+// 64px,改讀 PhoneContent.tsx 用 ResizeObserver 即時量出的真實
+// PhoneTabBar.tsx 高度)——不疊加 env(safe-area-inset-bottom),理由同樣
+// 見該檔案的完整說明:tabBarHeight 量到的是 .bar 完整外框高度,本身已經
+// 內含 safe-area,重複疊加過一次會讓收合段可視高度被壓成負值,造成
+// 標頭被裁切的回歸。
+const SHEET_BOTTOM = 'var(--tab-bar-height)'
 // CONTENT_PADDING_STYLE——見下方 SheetBody 呼叫處的完整說明,補上原本
 // ScrollArea 提供的內距(對齊 base-ui.css .screen-body 的既有數值,
 // 左右 12px、底部 16px、頂部 0)。

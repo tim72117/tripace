@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Plus, Luggage, Settings } from 'lucide-react'
 import type { Trip } from './types'
 import { ErrorBanner } from '../AppCommon'
@@ -14,16 +15,44 @@ import styles from './PhoneTripsDrawer.module.css'
 // 改用共用容器 PhoneBottomSheet,視覺語言對齊一般 App 常見的底部彈出
 // 選單(使用者要求「行程由下方往上彈出」,原本是左側滑入抽屜)。z-index/
 // bottom 定位維持原本數值,透過 panelStyle/backdropStyle 傳入——貼齊
-// 底部常駐列(PhoneTabBar.tsx)上緣,不是螢幕最底部,bottom 值等於
-// PhoneTabBar.module.css 的 .bar 高度(64px + safe-area),兩處數值需要
-// 保持一致,PhoneTabBar 的高度公式之後若調整這裡要一併改。
+// 底部常駐列(PhoneTabBar.tsx)上緣,不是螢幕最底部,見下方 SHEET_BOTTOM
+// 的完整說明。
 //
 // SHEET_TOP:面板頂部離這個定位祖先頂端的距離(px)——PhoneBottomSheet
 // 改成用「離頂部距離」而非「高度百分比」決定展開程度(見該元件的說明,
 // 適應不同裝置高度)。TODO(使用者稍後決定合理數值):暫時估算,先讓
 // 編譯通過與行為大致對齊原本 maxHeightVh=70 的視覺比例。
 const SHEET_TOP = 200
-const SHEET_BOTTOM = 'calc(64px + env(safe-area-inset-bottom, 0px))'
+// SHEET_BOTTOM:2026-10 改用 var(--tab-bar-height)(使用者明確要求「有
+// 辦法確保 bottom sheet 如果是在功能列後面,標頭不會被遮蔽,也不用功能
+// 列改動高度就要重新確認」「我要穩定根本的處理方式」,見
+// hooks/useElementHeight.ts 的完整說明)——取代原本寫死的 64px,這個
+// CSS 自訂屬性由 PhoneContent.tsx 用 ResizeObserver 即時量出
+// PhoneTabBar.tsx 的真實高度並寫在這個元件的定位祖先(.mainArea)上,
+// PhoneTabBar 之後不管怎麼改版面(加一行文案、換字級、調整 padding)
+// 都不需要回頭修改這裡,不再是兩個檔案各自寫一份數字、靠人工同步。
+//
+// 不再額外疊加 env(safe-area-inset-bottom, 0px)(2026-10 修正實際回報
+// 的回歸:「標頭被功能列遮住一部分」)——原本寫死 64px 時,這個字面值
+// 刻意只代表 PhoneTabBar.module.css 的 .tab 高度本身(不含 safe-area),
+// 所以才需要在這裡另外加一次 safe-area 湊出 .bar 的完整高度。但
+// ResizeObserver 量到的 tabBarHeight 是 .bar(見 PhoneTabBar.tsx 的
+// forwardRef 掛的位置)這個完整 <nav> 元素的 getBoundingClientRect()/
+// borderBoxSize,這個數值天生已經內含 .bar 自己的
+// padding-bottom: env(safe-area-inset-bottom)(見 PhoneTabBar.module.css
+// 的 .bar 規則)——若這裡繼續疊加一次,會讓 safe-area 被算兩遍,
+// bottom 值比正確值多出一整份 safe-area 高度(有 home indicator 的
+// iPhone 上約 30 多 px),導致 PhoneBottomSheet.tsx 的收合段高度公式
+// (minHeightAsTop = containerHeight - minHeightPx,完全沒有把 bottom
+// 這個值納入計算)算出的可視高度被壓成負值,標頭被 .panel 的
+// overflow: hidden 裁掉一截。
+const SHEET_BOTTOM = 'var(--tab-bar-height)'
+// SHEET_MIN_HEIGHT:收合段的固定高度(px)——2026-10 新增(使用者明確
+// 要求「除了選單類的，其他都加入最小段」),這個檔案原本是單段模式
+// (往下拖到底直接 onClose),改成兩段式吸附,理由/算法見
+// components/PhoneBottomSheet.tsx 的 minHeightPx 說明,數值對齊其餘
+// 多段模式 sheet 的既有慣例(100px)。
+const SHEET_MIN_HEIGHT = 100
 // CONTENT_PADDING_STYLE——2026-10 補上(code review 發現的回歸):這個
 // 檔案原本用 ScrollArea 取代成 SheetBody 時(理由見該元件 forwardRef
 // 的完整說明),漏了補回 ScrollArea 原本帶的內距(見
@@ -70,11 +99,23 @@ export function PhoneTripsDrawer({
   onManage: (t: Trip) => void
   onClose: () => void
 }) {
+  // snapIndex:收合/展開的吸附段落狀態——2026-10 新增,理由同上方
+  // SHEET_MIN_HEIGHT 的完整說明。初始為展開(索引 1),每次重新開啟都
+  // 重設回展開,不延續上次被拖曳收合的狀態,對齊其餘多段模式 bottom
+  // sheet(timeline/PhoneTimelineDrawer.tsx 的同名 state)的既有慣例。
+  const [snapIndex, setSnapIndex] = useState(1)
+  useEffect(() => {
+    if (open) setSnapIndex(1)
+  }, [open])
+
   return (
     <StandaloneSheet
       open={open}
       onClose={onClose}
       snapPoints={[SHEET_TOP]}
+      minHeightPx={SHEET_MIN_HEIGHT}
+      activeSnapIndex={snapIndex}
+      onSnapIndexChange={setSnapIndex}
       // zIndex 改引用 Z_LAYERS.BELOW_TAB_BAR_1(2026-10,見 zLayers.ts
       // 的完整說明,取代原本寫死的 33)——疊在 BELOW_TAB_BAR_2(時間軸,
       // timeline/PhoneTimelineDrawer.tsx)之上,但仍被功能列本身蓋住。

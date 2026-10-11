@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { Compass, ListPlus, Route, Sparkles } from 'lucide-react'
 import { ChatScreen, type DesktopTimelineMirror } from './chat/ChatScreen'
@@ -17,6 +18,7 @@ import { PhoneTripsDrawer } from './trip/PhoneTripsDrawer'
 import { PhoneTimelineDrawer } from './timeline/PhoneTimelineDrawer'
 import { StandaloneSheet, PersistentSheet, SheetBody, SheetHead } from './components/PhoneBottomSheet'
 import { Z_LAYERS } from './components/zLayers'
+import { useElementHeight } from './hooks/useElementHeight'
 import { PhoneTabBar } from './PhoneTabBar'
 import { PhoneSideTools } from './PhoneSideTools'
 import type { Trip } from './trip/types'
@@ -42,17 +44,26 @@ const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
 // 下方 PhoneBottomSheet 呼叫處的說明。使用者已確認改成 60(跟對話/配速表
 // 的 CHAT_SHEET_TOP 同一個展開高度)。
 const SETTINGS_SHEET_TOP = 60
+// SETTINGS_SHEET_MIN_HEIGHT:設定頁收合段的固定高度(px)——2026-10 新增
+// (使用者明確要求「除了選單類的，其他都加入最小段」),跟 CHAT_SHEET_MIN_HEIGHT
+// 同值,理由同該常數的完整說明。
+const SETTINGS_SHEET_MIN_HEIGHT = 100
 // 對話/配速表 bottom sheet 的離頂部距離(px)——比設定頁/地點清單更高
 // (數值更小),理由見下方對話 PhoneBottomSheet 呼叫處的說明。
 const CHAT_SHEET_TOP = 60
 // CHAT_SHEET_MIN_HEIGHT:對話疊加層收合段的固定高度(px)——使用者明確
 // 要求「對話也要可縮到最底」,比照地點清單/地點資訊卡,新增可拖曳收合到
 // 只顯示標頭的最小段,不再只能整個滑出關閉。理由/算法見
-// components/PhoneBottomSheet.tsx 的 minHeightPx 說明。配速表疊加層不
-// 套用(維持單段,見下方 paceSheetOpen 的 PhoneBottomSheet 呼叫處)——
-// 配速表是地圖類內容,收合成只剩標頭列的用途不大,使用者這次明確只提到
-// 「對話」。
+// components/PhoneBottomSheet.tsx 的 minHeightPx 說明。
+//
+// 2026-10 補充:配速表疊加層原本不套用(維持單段)——當初使用者只明確
+// 提到「對話」,配速表是地圖類內容,收合成只剩標頭列的用途當時評估不大。
+// 這次使用者進一步要求「除了選單類的，其他都加入最小段」,配速表不屬於
+// 選單類(日期選單/日曆才是),一併補上最小段,見下方 PACE_SHEET_MIN_HEIGHT。
 const CHAT_SHEET_MIN_HEIGHT = 100
+// PACE_SHEET_MIN_HEIGHT:配速表疊加層收合段的固定高度(px)——2026-10
+// 新增,理由見上方 CHAT_SHEET_MIN_HEIGHT 的補充說明。
+const PACE_SHEET_MIN_HEIGHT = 100
 
 // PhoneContent:手機版(寬度 < 768px)主要應用狀態切換器——登入畫面/桌面版
 // 導轉/聊天室/設定,見 App.tsx App() 的 /app 路由分支。
@@ -72,6 +83,19 @@ const CHAT_SHEET_MIN_HEIGHT = 100
 // 「分頁決定主顯示內容」的版型。
 export function PhoneContent(props: ContentProps) {
   const { cfg, activeTrip, setActiveTrip } = props
+  // tabBarRef/tabBarHeight——2026-10 新增(使用者明確要求「有辦法確保
+  // bottom sheet 如果是在功能列後面,標頭不會被遮蔽,也不用功能列改動
+  // 高度就要重新確認」「我要穩定根本的處理方式」):取代底下
+  // PhoneTripsDrawer.tsx/PhoneTimelineDrawer.tsx/PhoneSideTools.module.css/
+  // PlanPhoneView.module.css 各自把 PhoneTabBar.module.css 的 .tab 高度
+  // (64px)寫死複製貼上的做法——用 hooks/useElementHeight.ts 的
+  // ResizeObserver 量出 PhoneTabBar 的真實高度,寫進 .mainArea 的 CSS
+  // 自訂屬性 --tab-bar-height(見下方 JSX 的 style),所有需要避開功能列
+  // 的 CSS/inline style 改用 var(--tab-bar-height) 取代寫死的 64px——
+  // 這個變數的值是瀏覽器量出來的事實,不是任何人手動維護的數字,
+  // PhoneTabBar 之後不管怎麼改版面都不需要回頭檢查依賴它的程式碼。
+  const tabBarRef = useRef<HTMLElement>(null)
+  const tabBarHeight = useElementHeight(tabBarRef)
   const [inSettings, setInSettings] = useState(false)
   // manageTrip:旅程管理彈窗(分享連結/成員/開啟時自動進入,見
   // TripManageModal.tsx)——對齊桌面版 DesktopLayout.tsx 的同名 state,
@@ -156,11 +180,20 @@ export function PhoneContent(props: ContentProps) {
   // (CHAT_SHEET_MIN_HEIGHT),索引 1 是展開段(CHAT_SHEET_TOP)。初始為
   // 展開,每次重新開啟都重設回展開,不延續上次被拖曳收合的狀態。
   const [chatSnapIndex, setChatSnapIndex] = useState(1)
-  // chatScrollRef——2026-10 新增:對話疊加層(PersistentSheet 包著的
-  // TripPlanPage)真正的捲動容器 DOM 節點,見下方 JSX 的完整說明——
-  // 取代原本靠 closest('main') 猜測的脆弱做法,直接同時掛在 SheetBody
-  // 上、也傳給 TripPlanPage 的 scrollContainerRef,兩邊指向同一個節點。
-  const chatScrollRef = useRef<HTMLDivElement | null>(null)
+  // settingsSnapIndex/paceSnapIndex:2026-10 新增(使用者明確要求「除了
+  // 選單類的，其他都加入最小段」)——設定頁/配速表原本是單段模式(往下拖
+  // 到底直接 onClose),改成跟對話疊加層同一套兩段式吸附(索引 0 是收合段
+  // SETTINGS_SHEET_MIN_HEIGHT/PACE_SHEET_MIN_HEIGHT,索引 1 是展開段)。
+  // 日期選單/日曆(PlanPhoneDatePickerSheet.tsx/PlanPhoneDateCalendarSheet.tsx)
+  // 是選單性質,排除在這次調整範圍外,維持單段往下拖到底關閉。
+  const [settingsSnapIndex, setSettingsSnapIndex] = useState(1)
+  useEffect(() => {
+    if (inSettings) setSettingsSnapIndex(1)
+  }, [inSettings])
+  const [paceSnapIndex, setPaceSnapIndex] = useState(1)
+  useEffect(() => {
+    if (paceSheetOpen) setPaceSnapIndex(1)
+  }, [paceSheetOpen])
   useEffect(() => {
     if (chatSheetOpen) setChatSnapIndex(1)
   }, [chatSheetOpen])
@@ -337,8 +370,17 @@ export function PhoneContent(props: ContentProps) {
       {titleHelmet}
       {/* 主顯示區容器:flex 屬性延續原本 .web-app 直接排列這些內容時的
           版面(撐滿剩餘高度、內部再各自 flex column 排 navbar/內容/
-          輸入列)。 */}
-      <div className={styles.mainArea}>
+          輸入列)。
+          --tab-bar-height——2026-10 新增,見上方 tabBarRef/tabBarHeight
+          的完整說明。寫在這個容器(PhoneTabBar 跟所有需要避開它的
+          bottom sheet 共用的定位祖先 .mainArea)上,CSS 自訂屬性會
+          沿著 DOM 樹往下繼承,子孫元素(含各個 .module.css 檔案跟
+          inline style)都能直接 var(--tab-bar-height) 讀到同一份真實
+          數值。初始量測結果是 0(ResizeObserver 要等第一次 layout 完成
+          才會回報,見該 hook 的完整說明)——這極短暫的空窗期間所有依賴
+          這個變數的元件會暫時算成「功能列不存在」,實務上只有一個
+          frame 的落差,肉眼看不出來,不需要額外的 loading 態處理。 */}
+      <div className={styles.mainArea} style={{ '--tab-bar-height': `${tabBarHeight}px` } as CSSProperties}>
         {/* 規劃地圖:唯一常駐的主畫面(使用者明確要求,見上方
             chatSheetOpen/paceSheetOpen 的說明),不再隨分頁切換卸載重掛
             ——理由同對齊桌面版 GeoOutlinePanel 永遠掛載的既有模式
@@ -366,7 +408,7 @@ export function PhoneContent(props: ContentProps) {
             要開 PhoneNavDrawer 抽屜才看得到的分頁列,見該元件開頭說明。
             tripsDrawerOpen/onOpenTrips 現在是 bottomTabs 陣列裡的「旅程」
             項目(見上方該陣列的完整說明),不再是這個元件的獨立 prop。 */}
-        <PhoneTabBar tabs={bottomTabs} />
+        <PhoneTabBar ref={tabBarRef} tabs={bottomTabs} />
         {/* 旅程列表獨立抽屜,由底部常駐列的「旅程」按鈕開關(onOpenTrips)。
             onManage 對齊桌面版 DesktopTripList.tsx,開啟合併後的
             TripManageModal(分享連結/成員/開啟時自動進入),見下方渲染。
@@ -417,25 +459,39 @@ export function PhoneContent(props: ContentProps) {
           上緣讓開空間。showBackdrop={false}——使用者明確要求完全不要
           遮罩,點外部不關閉,只能靠 head 的關閉鈕或下滑手勢關閉。
           head 改用共用的 SheetHead(標題+關閉鈕標準樣式),不再自己拼
-          navbar class,理由見該元件的說明。 */}
+          navbar class,理由見該元件的說明。
+          2026-10 新增 minHeightPx/activeSnapIndex/onSnapIndexChange
+          (使用者明確要求「除了選單類的，其他都加入最小段」)——原本是
+          單段模式(往下拖到底直接 onClose),改成跟對話疊加層同一套
+          兩段式吸附,見上方 settingsSnapIndex 的完整說明。 */}
       <StandaloneSheet
         open={inSettings}
         onClose={() => setInSettings(false)}
         snapPoints={[SETTINGS_SHEET_TOP]}
+        minHeightPx={SETTINGS_SHEET_MIN_HEIGHT}
+        activeSnapIndex={settingsSnapIndex}
+        onSnapIndexChange={setSettingsSnapIndex}
         panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: Z_LAYERS.ABOVE_TAB_BAR }}
         showBackdrop={false}
         head={<SheetHead title="設定" onClose={() => setInSettings(false)} />}
       >
-        <SettingsScreen
-          cfg={props.cfg}
-          user={props.user}
-          email={props.email}
-          isGuest={props.isGuest}
-          onAuthed={props.onAuthed}
-          onLogout={() => { props.onLogout(); setInSettings(false) }}
-          theme={props.theme}
-          setTheme={props.setTheme}
-        />
+        {/* SheetBody 包住——新增最小段後,收合時要讓內容正確隱藏(見該
+            元件的完整說明:只有用 SheetBody 包住的內容才會在收合段隱藏,
+            沒包住的普通內容會持續顯示),對齊其餘多段模式 sheet 的既有
+            用法。SettingsScreen 本身內容不長,不需要捲動交接,但仍然要
+            包這一層才能享有「收合時隱藏」這個行為。 */}
+        <SheetBody>
+          <SettingsScreen
+            cfg={props.cfg}
+            user={props.user}
+            email={props.email}
+            isGuest={props.isGuest}
+            onAuthed={props.onAuthed}
+            onLogout={() => { props.onLogout(); setInSettings(false) }}
+            theme={props.theme}
+            setTheme={props.setTheme}
+          />
+        </SheetBody>
       </StandaloneSheet>
       {/* 對話:改成跟地點清單/設定頁一樣的滿版 PhoneBottomSheet 疊加層,由
           底部常駐列「對話」按鈕開關(chatSheetOpen,見上方說明)——使用者
@@ -471,22 +527,59 @@ export function PhoneContent(props: ContentProps) {
         showBackdrop={false}
         head={<SheetHead title="規劃" onClose={() => setChatSheetOpen(false)} />}
       >
-        {/* 2026-10 根本解法(使用者明確要求「不能對應到別的嗎」「根本的
-            解決」):原本這裡包一層 <main className={styles.planScroll}>
+        {/* 2026-10 第一輪根本解法(使用者明確要求「不能對應到別的嗎」
+            「根本的解決」):原本這裡包一層 <main className={styles.planScroll}>
             純粹是為了配合 TripPlanPage 內部用 closest('main') 往上爬找
             捲動容器的舊寫法(見該檔案 scrollContainerRef prop 的完整
             說明)——這個做法依賴「外層剛好有一個 <main> 標籤」這個脆弱
             的隱性假設,換成 SheetBody(渲染出來是 <div>,不是 <main>)
-            就會找不到。TripPlanPage 其實已經支援 scrollContainerRef
-            prop(對齊 /trip-plan 全頁 TripPlanRoute.tsx 的既有用法),
-            讓呼叫端直接把捲動容器的 DOM ref 傳進去,不需要依賴任何標籤
-            名稱猜測——這裡比照同樣的模式:chatScrollRef 掛在 SheetBody
-            上(透過其 forwardRef,見該元件的完整說明),同一個 ref 傳給
-            TripPlanPage 的 scrollContainerRef,徹底不依賴 closest('main')
-            這條路徑,不只是換一個標籤名稱繼續猜。 */}
-        <SheetBody ref={chatScrollRef}>
+            就會找不到。當時改成掛一個 ref 在 SheetBody 上、傳給
+            TripPlanPage 的 scrollContainerRef。
+            2026-10 第二輪修正(code review 發現這個修法從一開始就建立
+            在錯誤的前提上,使用者實機回報「對話內容還沒拉到頂的時候,
+            sheet 就往下縮小了」):傳進 scrollContainerRef 的那個 ref,
+            指向的是 SheetBody 自己的 .body(透過其 forwardRef 暴露的
+            內部 bodyRef),不是 TripPlanPage 在 compact 模式下真正用來
+            捲動的 .compactScroll(見 TripPlanPage.tsx getScroller 的
+            完整說明:compact 模式下,呼叫端「不傳 scrollContainerRef」
+            時才會 fallback 用它自己的 scrollRef,也就是
+            .compactScroll)。這代表 TripPlanPage 內部所有讀取「捲動
+            進度」的邏輯(scrollToLatest/jumpPill 顯示判斷等)全部讀到
+            的是 SheetBody 的 .body,一個從未真正捲動、scrollTop 永遠
+            停留在初始值的節點——同時 SheetBody 自己的拖拉交接判斷
+            (body.scrollTop<=0 才交接,見該元件 onTouchMove 的完整
+            說明)用的也是同一個 bodyRef,於是不管使用者在
+            .compactScroll 裡把時間軸內容捲到哪,SheetBody 讀到的
+            scrollTop 永遠是 0(或接近 0),每次往下拖都立刻判定「已經
+            捲到頂」,立刻交接給 sheet 收合——這才是「內容還沒拉到頂
+            就縮小」的真正根因:兩個不同的 DOM 節點被誤當成同一個捲動
+            容器在用。
+            正確修法:不傳 scrollContainerRef,讓 TripPlanPage 在
+            compact 模式下用它自己的 scrollRef(真正指向
+            .compactScroll)——這樣 SheetBody 的 body.scrollTop(交接
+            判斷用)繼續正確反映「SheetBody 這層本身有沒有被捲動過」
+            (目前這裡沒有另外的內容會在 SheetBody 這層捲動,維持
+            scrollTop 恆為 0、恆可交接的行為不變),TripPlanPage 內部
+            的捲動進度判斷則讀到正確的 .compactScroll,兩者不再互相
+            冒用。原本掛在 SheetBody 上、曾經被誤用的那個 ref
+            (chatScrollRef)已整個移除——code review 指出「保留它只是
+            為了元件介面一致性」這個理由不成立,其餘 StandaloneSheet
+            呼叫端(設定頁/配速表)的 SheetBody 本來就沒有傳 ref,「不
+            傳」才是目前的常態,繼續留著一個沒人讀取的死 ref 只會讓
+            日後的人誤以為它有被使用、或誤以為是刻意預留而繼續仿照
+            同模式新增更多死 ref。 */}
+        <SheetBody>
           <Suspense fallback={null}>
-            <TripPlanPage cfg={cfg} scrollContainerRef={chatScrollRef} />
+            {/* compact——2026-10 修正實際回報的回歸(「規劃的對話輸入匡,
+                字體沒有改成跟搜尋匡一樣大」):這裡原本完全沒有傳這個
+                prop,導致 TripPlanPage.module.css 的 .compact .input
+                規則(放大輸入框字級到 16px,對齊搜尋框)從未套用,输入框
+                一直停留在基礎 .input 規則的 14px。對齊桌面版
+                DesktopLayout.tsx 對話浮動小匡的既有用法(同樣是疊加層
+                情境,見該處呼叫的完整說明),手機版這張對話小匡同樣屬於
+                「沒有任何祖先在管捲動」的疊加層情境,理當傳 compact,
+                這裡補上,不是新增行為,是補回原本就該有的 prop。 */}
+            <TripPlanPage cfg={cfg} compact />
           </Suspense>
         </SheetBody>
       </PersistentSheet>
@@ -497,22 +590,32 @@ export function PhoneContent(props: ContentProps) {
           渲染滿版疊加層,由右側小圖示「路徑」按鈕開關(paceSheetOpen)。跟
           對話不同,PaceRouteMap 不需要永遠掛載+portal 投影這套機制(沒有
           WebSocket 之類需要避免重連的成本),sheet 關閉時直接卸載,開啟時
-          才掛載,維持原本條件式掛載的既有行為。 */}
+          才掛載,維持原本條件式掛載的既有行為。
+          2026-10 新增 minHeightPx/activeSnapIndex/onSnapIndexChange
+          (使用者明確要求「除了選單類的，其他都加入最小段」),理由同
+          設定頁、見上方 paceSnapIndex 的完整說明——原本評估配速表是
+          地圖類內容、收合用途不大而不套用,這次使用者明確要求除選單類
+          外全部加入,一併補上。 */}
       <StandaloneSheet
         open={paceSheetOpen}
         onClose={() => setPaceSheetOpen(false)}
         snapPoints={[CHAT_SHEET_TOP]}
+        minHeightPx={PACE_SHEET_MIN_HEIGHT}
+        activeSnapIndex={paceSnapIndex}
+        onSnapIndexChange={setPaceSnapIndex}
         panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: Z_LAYERS.ABOVE_TAB_BAR }}
         showBackdrop={false}
         head={<SheetHead title={activeTrip?.name ?? 'Tripace'} onClose={() => setPaceSheetOpen(false)} />}
       >
         {paceSheetOpen && (
-          <PaceRouteMap
-            checkpoints={paceCheckpoints}
-            selectedEntry={selectedEntry}
-            onSelectedEntryDone={() => setSelectedEntry(null)}
-            onEntrySaved={setSavedEntry}
-          />
+          <SheetBody>
+            <PaceRouteMap
+              checkpoints={paceCheckpoints}
+              selectedEntry={selectedEntry}
+              onSelectedEntryDone={() => setSelectedEntry(null)}
+              onEntrySaved={setSavedEntry}
+            />
+          </SheetBody>
         )}
       </StandaloneSheet>
       {/* manageTrip:旅程管理彈窗,對齊桌面版 DesktopLayout.tsx 的同名

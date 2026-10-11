@@ -9,7 +9,6 @@ import { Avatar } from '../AppCommon'
 import { LoginForm } from '../home/LoginForm'
 import { LangSelect } from './LangSelect'
 import { ThemeToggle } from './ThemeToggle'
-import { ScrollArea } from '../components/ScrollArea'
 import { FormField } from '../components/FormField'
 import { ListRow } from '../components/ListRow'
 
@@ -22,15 +21,32 @@ import { ListRow } from '../components/ListRow'
 // 見該檔案開頭的說明。
 //
 // 不再自己渲染 navbar(標題+返回箭頭)——外殼改由呼叫端
-// (PhoneContent.tsx)用共用容器 components/PhoneBottomSheet.tsx
-// (mode="slide-close")包住,標題/關閉鈕交給該元件的 head slot,理由同
-// trip/PhoneTripsDrawer.tsx(同一套 bottom sheet 模式,不在內容元件裡
+// (PhoneContent.tsx)用共用容器 components/PhoneBottomSheet.tsx 的具名
+// 工廠元件 StandaloneSheet 包住,標題/關閉鈕交給該元件的 head slot,理由
+// 同 trip/PhoneTripsDrawer.tsx(同一套 bottom sheet 模式,不在內容元件裡
 // 重複刻一份標頭),onBack prop 因此移除(關閉改由 PhoneBottomSheet 的
 // onClose 負責,拖曳下滑或點 head 的關閉鈕皆可觸發)。
 //
 // API Token/後端連線網址/健康檢查/說明區塊已移除(使用者明確要求——這些
 // 是給開發除錯用的資訊,不是一般使用者會用到的設定項目,cfg 因此只剩
 // LoginForm 需要的 baseURL 還在用)。
+//
+// 2026-10 移除這個元件原本自己包的 <ScrollArea>(code review 發現的
+// 巢狀誤用):PhoneContent.tsx 呼叫這個元件時,外層已經用
+// StandaloneSheet 的 <SheetBody> 包住(見該處呼叫的完整說明),
+// SettingsScreen 內部又自己包一層 ScrollArea,形成兩層各自管理
+// overflow/touch-action 的捲動容器——這正是
+// components/ScrollArea.tsx 新增的 useIsInsideSheetBody() 開發期警告
+// (見該元件的完整說明)要攔的情境,也是「對話內容還沒拉到頂就被判定
+// 可以收合」那個 bug 的同一種巢狀結構,只是這裡尚未真正觸發視覺異常
+// (因為設定頁用 StandaloneSheet 而非 PersistentSheet,沒有複雜的
+// scrollContainerRef 轉接),但巢狀本身仍是潛在風險,一併修正。
+// CONTENT_PADDING_STYLE 補回原本 ScrollArea 帶的內距(見
+// components/ScrollArea.module.css 的完整說明:左右 12px、底部 16px、
+// 頂部 0),對齊 trip/PhoneTripsDrawer.tsx/timeline/PhoneTimelineDrawer.tsx
+// 同一次改動的既有做法。
+const CONTENT_PADDING_STYLE = { padding: '0 12px 16px' }
+
 export function SettingsScreen({
   cfg,
   user,
@@ -53,7 +69,7 @@ export function SettingsScreen({
   const [assistLang, setAssistLang] = useState<AssistLang>(() => getAssistLang())
 
   return (
-      <ScrollArea>
+      <div style={CONTENT_PADDING_STYLE}>
         {isGuest ? (
           <>
             <div className="section-title">目前身分</div>
@@ -90,6 +106,6 @@ export function SettingsScreen({
         <FormField label="介面深色/淺色模式,「跟隨系統」會依裝置設定自動切換">
           <ThemeToggle value={theme} onChange={setTheme} />
         </FormField>
-      </ScrollArea>
+      </div>
   )
 }

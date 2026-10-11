@@ -1,6 +1,7 @@
-import { createContext, forwardRef, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
+import { createContext, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode, TouchEvent as ReactTouchEvent } from 'react'
 import { X } from 'lucide-react'
+import { useStableCallback } from '../hooks/useStableCallback'
 import styles from './PhoneBottomSheet.module.css'
 
 // SheetHead:標準 head slot 版面骨架(左側標題區 + 右側動作列 + 關閉鈕),
@@ -116,6 +117,28 @@ interface SheetBodyContextValue {
   registerBodyRef: (el: HTMLDivElement | null) => void
 }
 const SheetBodyContext = createContext<SheetBodyContextValue | null>(null)
+
+// useIsInsideSheetBody——2026-10 新增(使用者明確要求「業界會在元件內
+// 規範上層元件要有什麼規範才能正確運作的這種規範模式嗎」「目前有哪些
+// 元件適合這種規範」,盤點後確認 SheetBody↔ScrollArea 這組關係是目前
+// 唯一真正適合投資這個模式的候選,見下方 ScrollArea.tsx 實際使用處的
+// 完整說明):對外匯出的唯一用途是讓其他共用元件(目前只有 ScrollArea)
+// 能偵測「自己是不是被渲染在 SheetBody 管轄的子樹裡」,藉此在開發模式
+// 主動警告「這裡不該疊加兩層各自管理 overflow/touch-action 的捲動
+// 容器」(對齊 Radix UI 的做法:元件掛載時主動檢查自己期待的環境條件
+// 是否成立,不成立就在 console 警告,而不是放著讓使用者自己去讀文件/
+// 猜測、或是等實機測試才發現視覺衝突——這個專案已經踩過一次真實案例,
+// 見 user/SettingsScreen.tsx 的 ScrollArea 用法)。
+//
+// 刻意不直接匯出 SheetBodyContext 本身,只匯出這個回傳單一布林值的
+// hook——外部元件不需要、也不該知道 SheetBodyContext 內部有哪些欄位
+// (atMaxExpansion/draggingRef 等都是 PhoneBottomSheet/SheetBody 之間
+// 的私有實作細節,見該 interface 的完整說明),只需要回答「我在不在
+// SheetBody 管轄範圍內」這一個問題,避免外部誤用/讀取不該讀的內部
+// 狀態。
+export function useIsInsideSheetBody(): boolean {
+  return useContext(SheetBodyContext) !== null
+}
 
 // SheetBody——宣告「這塊內容是可捲動、且捲到頂時可以往下拖交接給 sheet
 // 收合」的具名插槽。對齊 react-modal-sheet 的 <Sheet.Scroller>:呼叫端
@@ -250,22 +273,62 @@ export const SheetBody = forwardRef<HTMLDivElement, SheetBodyProps>(function She
     finishDrag()
   }
 
+  // stableOnTouchStart/Move/End——2026-10 修正實測回報的 bug(「拉動
+  // body 不管哪一段、往上往下都完全沒反應」,經 fireEvent 測試套件
+  // PhoneBottomSheet.dragHandoff.test.tsx 證實是 stale closure,不是
+  // CSS/原生手勢競態):下方 addEventListener 原本直接綁定
+  // onTouchStart/onTouchMove/onTouchEnd 這三個函式,而 useEffect 的
+  // 依賴陣列只有 [atMaxExpansion, isSingleStop]——這兩個值在同一輪拖曳
+  // 過程中通常不會變,導致 addEventListener 上真正掛著的,永遠是手勢
+  // 開始那一刻(effect 上次真正重新執行時)的舊版 onTouchEnd,它閉包住的
+  // finishDrag(來自 ctx,每次父元件 PhoneBottomSheet re-render 都重新
+  // 產生、閉包著當下最新的 dragOffset)也是那一輪的舊版本——鬆手時
+  // finishDrag() 讀到的 dragOffset 因此永遠停留在手勢剛開始(通常是 0)
+  // 的值,落在 SNAP_TOLERANCE_PX 容忍帶內,判斷永遠是「彈回原本的
+  // 段」,表現出來就是「不管怎麼拖都沒反應」。
+  //
+  // 2026-10 code review 修正:第一版手刻了一個 latestHandlersRef 物件
+  // 包三個 handler,重造了 hooks/useStableCallback.ts 已經解決的同一個
+  // 問題(該 hook 的 docstring 明講「不需要每個消費端各自重寫一份
+  // xxxRef = useRef(xxx); xxxRef.current = xxx 的樣板」)——改用這支
+  // 既有 hook,分別包三個 handler:回傳一個參照永遠不變、內部永遠執行
+  // 最新版本邏輯的穩定函式,addEventListener 只需要綁定一次(依賴陣列
+  // 固定空),不需要因為 atMaxExpansion/isSingleStop 等狀態改變而重新
+  // 綁定/解綁。
+  const stableOnTouchStart = useStableCallback(onTouchStart)
+  const stableOnTouchMove = useStableCallback(onTouchMove)
+  const stableOnTouchEnd = useStableCallback(onTouchEnd)
+
   useEffect(() => {
     const body = bodyRef.current
     if (!body) return
-    body.addEventListener('touchstart', onTouchStart, { passive: true })
-    body.addEventListener('touchmove', onTouchMove, { passive: false })
-    body.addEventListener('touchend', onTouchEnd, { passive: true })
+    body.addEventListener('touchstart', stableOnTouchStart, { passive: true })
+    body.addEventListener('touchmove', stableOnTouchMove, { passive: false })
+    body.addEventListener('touchend', stableOnTouchEnd, { passive: true })
     return () => {
-      body.removeEventListener('touchstart', onTouchStart)
-      body.removeEventListener('touchmove', onTouchMove)
-      body.removeEventListener('touchend', onTouchEnd)
+      body.removeEventListener('touchstart', stableOnTouchStart)
+      body.removeEventListener('touchmove', stableOnTouchMove)
+      body.removeEventListener('touchend', stableOnTouchEnd)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [atMaxExpansion, isSingleStop])
+    // 依賴陣列只在 bodyRef.current 這個 DOM 節點本身改變時才需要重新
+    // 綁定(例如 SheetBody 卸載/重新掛載)——stableOnTouchStart 等三個
+    // 穩定函式參照本身恆定不變(useStableCallback 的設計保證),不需要
+    // 也不應該在 atMaxExpansion/isSingleStop 或任何其他 state 改變時
+    // 重新 add/removeEventListener,那樣做不但無助於解決 stale closure
+    // (治標不治本,只是把重新綁定的時機點從「幾乎不變」換成「更頻繁但
+    // 仍不保證涵蓋每一輪 render」),還會在拖曳過程中產生不必要的
+    // remove/add 開銷。
+  }, [stableOnTouchStart, stableOnTouchMove, stableOnTouchEnd])
 
   return (
     <div
+      // data-testid——2026-10 新增,讓測試能穩定抓到這個節點觸發真實的
+      // touch 事件(fireEvent.touchStart/touchMove/touchEnd),不需要靠
+      // CSS Modules 雜湊過的 class 名稱或 DOM 結構(排除 head/dragHandle
+      // 後拿剩下子節點)這類脆弱的定位方式——見
+      // PhoneBottomSheet.dragHandoff.test.tsx 的完整說明。不影響任何
+      // 現有邏輯/樣式。
+      data-testid="sheet-body"
       className={`${styles.body}${atMaxExpansion ? ` ${styles.bodyScrollable}` : ''}`}
       ref={setBodyRef}
     >
@@ -562,33 +625,60 @@ export function PhoneBottomSheet({
   // 正確答案,不會有「卡在錯誤值」的疑慮)。
   const panelRef = useRef<HTMLDivElement>(null)
   const [containerHeight, setContainerHeight] = useState(() => window.innerHeight)
+  // panelBottomPx:2026-10 新增(code review 抓到的根因,使用者實機截圖
+  // 回報「旅程清單/行程清單收合段被壓縮成 35px,預期 80-100px」)——
+  // 下方 minHeightAsTop 的計算公式(containerHeight - minHeightPx)原本
+  // 隱含假設 panelStyle.bottom 恆為 0(也就是面板貼齊容器底部),但
+  // trip/PhoneTripsDrawer.tsx/timeline/PhoneTimelineDrawer.tsx 這類
+  // 呼叫端的 bottom 其實是 var(--tab-bar-height)(非 0,用來避開底部
+  // 常駐功能列),導致算出來的可視高度變成
+  // minHeightPx - panelBottomPx,不是設計意圖的 minHeightPx。
+  //
+  // panelStyle 是不透明的 CSSProperties(呼叫端可能傳數字、字串、
+  // calc()/var() 等任意 CSS 表達式),這個元件無法在 JS 端靜態解析
+  // panelStyle.bottom 真正等於多少 px——改用 getComputedStyle 讀取
+  // .panel 這個 DOM 節點的 computed style,瀏覽器會把 var()/calc() 都
+  // 解析成固定的 px 字串(例如 "64px"),不管呼叫端寫的是什麼格式,量到
+  // 的永遠是瀏覽器實際套用的真實值,讓下面的計算公式對任何 bottom 值
+  // 恆成立,而不是像先前那樣只能在輸出層對「收合段」這個特例額外疊加
+  // height 補救(那個修法沒有修正 containerHeight/minHeightAsTop 本身
+  // 的座標假設,在容器高度不足的邊界情況下反而可能誤套用到展開段,見
+  // code review 的完整說明)。
+  const [panelBottomPx, setPanelBottomPx] = useState(0)
+  const measure = useCallback(() => {
+    const el = panelRef.current
+    const parentMeasured = el?.parentElement?.clientHeight ?? 0
+    setContainerHeight(parentMeasured > 0 ? parentMeasured : window.innerHeight)
+    // getComputedStyle(el).bottom——只有在 el 已經掛載且套用了
+    // panelStyle 之後才讀得到正確值;parseFloat 對 "64px" 這類字串
+    // 取數值部分,對 "auto"(例如呼叫端沒設 bottom)會得到 NaN,
+    // 用 Number.isFinite 檔掉,fallback 回 0(等同假設 bottom:0,維持
+    // 這個元件原本的預設行為)。
+    const computedBottom = el ? parseFloat(getComputedStyle(el).bottom) : 0
+    setPanelBottomPx(Number.isFinite(computedBottom) ? computedBottom : 0)
+  }, [])
   useLayoutEffect(() => {
     if (!open) return
-    const measured = panelRef.current?.parentElement?.clientHeight ?? 0
-    setContainerHeight(measured > 0 ? measured : window.innerHeight)
-  }, [open])
+    measure()
+  }, [open, measure])
   useEffect(() => {
-    const onResize = () => {
-      const measured = panelRef.current?.parentElement?.clientHeight ?? 0
-      setContainerHeight(measured > 0 ? measured : window.innerHeight)
-    }
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [measure])
   // minHeightAsTop 額外 clamp 成不小於 snapPoints 裡的最大值(code review
   // 抓到的邊界案例):下方拖曳/吸附邏輯(finishDrag/panelTop 等)全部假設
   // stops 由大到小排列、stops[0] 是「展開最少」的那一段——固定把
   // minHeightAsTop 放在索引 0(見上方完整說明,不再排序以保留固定索引
   // 語意)這個設計的前提是「收合段離頂部的距離,理當比任何展開段都更
   // 遠」,正常視窗高度下成立,但容器高度不足時(例如手機橫向模式,容器
-  // 可能只有 300 多 px)containerHeight - minHeightPx 可能小於
-  // snapPoints 裡的某個值(例如 SHEET_SNAP_POINTS 的 400),stops 變成
-  // [275, 400, 80]這種不是嚴格遞減的陣列,下方假設 stops[0] 是最大值/
-  // stops[length-1] 是最小值的程式碼全部會算錯(拖曳上限/下限顛倒、
-  // 吸附邏輯混亂)。clamp 下限保證 minHeightAsTop 不會小於其他段,維持
-  // stops 陣列的排序前提恆成立。
+  // 可能只有 300 多 px)containerHeight - minHeightPx - panelBottomPx
+  // 可能小於 snapPoints 裡的某個值(例如 SHEET_SNAP_POINTS 的 400),
+  // stops 變成 [275, 400, 80]這種不是嚴格遞減的陣列,下方假設 stops[0]
+  // 是最大值/stops[length-1] 是最小值的程式碼全部會算錯(拖曳上限/
+  // 下限顛倒、吸附邏輯混亂)。clamp 下限保證 minHeightAsTop 不會小於
+  // 其他段,維持 stops 陣列的排序前提恆成立。
   const minHeightAsTop = minHeightPx != null
-    ? Math.max(0, containerHeight - minHeightPx, ...snapPoints)
+    ? Math.max(0, containerHeight - minHeightPx - panelBottomPx, ...snapPoints)
     : null
   const stops = minHeightAsTop != null ? [minHeightAsTop, ...snapPoints] : snapPoints
   const isSingleStop = stops.length <= 1
