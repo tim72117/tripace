@@ -199,7 +199,7 @@ func buildResources(c *httpClient, apiURL string) []resource {
 			// 其餘動詞各自對應單一後端端點。
 			name: "blog-photo",
 			commands: []resourceCommand{
-				{verb: "upload", run: func(args []string) { cmdBlogPhotoUpload(c, args) }, usage: "tripace-cli blog-photo upload -file 路徑 -content-type image/jpeg"},
+				{verb: "upload", run: func(args []string) { cmdBlogPhotoUpload(c, args) }, usage: "tripace-cli blog-photo upload -file 路徑 -content-type image/jpeg [-skip-process]"},
 				{verb: "list", run: func(args []string) { cmdBlogPhotoList(c) }, usage: "tripace-cli blog-photo list"},
 				{verb: "retry", run: func(args []string) { cmdBlogPhotoRetry(c, args) }, usage: "tripace-cli blog-photo retry -id 文字"},
 				{verb: "focal", run: func(args []string) { cmdBlogPhotoFocal(c, args) }, usage: "tripace-cli blog-photo focal -id 文字 -x 0.5 -y 0.5"},
@@ -1064,10 +1064,19 @@ func cmdBlogProfileGet(c *httpClient) {
 // URL→PUT 檔案),對應前端 PhotoManagerPage 實際發生的兩次獨立 API
 // 呼叫+一次 GCS 直傳。-content-type 不自動偵測(避免引入額外依賴或
 // 猜錯導致 GCS 簽章驗證失敗),要求呼叫端明確指定。
+//
+// -skip-process(2026-10 新增,實測正式環境批次上傳時發現的真實問題:
+// Cloud Run 預設只在處理 HTTP 請求期間分配 CPU,complete 觸發的背景
+// goroutine 在回應送出後幾乎拿不到 CPU,30 秒逾時內處理不完,短時間
+// 連續上傳多張更會疊加成 OOM。有這個旗標時只做步驟 1-2(簽發
+// URL→PUT 檔案),不呼叫 complete,讓呼叫端自行控制觸發背景處理的
+// 時間點與節奏——例如全部原圖上傳完後,再用 `blog-photo retry` 逐張、
+// 間隔幾秒觸發處理,避開一次性大量觸發的資源競爭)。
 func cmdBlogPhotoUpload(c *httpClient, args []string) {
 	fs := flag.NewFlagSet("blog-photo upload", flag.ExitOnError)
 	file := fs.String("file", "", "本機圖片檔案路徑（必填）")
 	contentType := fs.String("content-type", "", "圖片 MIME type（必填，例如 image/jpeg、image/png）")
+	skipProcess := fs.Bool("skip-process", false, "只上傳原圖(簽發 URL+PUT 檔案),不觸發背景處理(resize/產生縮圖);之後要處理時可用 `blog-photo retry -id` 逐張手動觸發")
 	_ = fs.Parse(args)
 	if *file == "" {
 		fatal("blog-photo upload 需要 -file")
@@ -1092,6 +1101,11 @@ func cmdBlogPhotoUpload(c *httpClient, args []string) {
 
 	if err := blogPhotoPutFile(uploadURL, *contentType, *file); err != nil {
 		fatal("blog-photo upload: 上傳檔案失敗(photoId=%s,這筆記錄已建立但原圖從未真正寫入,不再需要的話可用 `blog-photo delete -id %s` 清除): %v", photoID, photoID, err)
+	}
+
+	if *skipProcess {
+		output(map[string]string{"photoId": photoID, "status": "uploaded_pending_process"})
+		return
 	}
 
 	res, err := c.blogPhotoComplete(photoID)
