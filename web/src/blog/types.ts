@@ -87,7 +87,6 @@ export type ImageWidth = 'column' | 'wide' | 'full'
  *  渲染端應忽略這個欄位(全寬圖沒有繞排的意義)。 */
 export type ImageFloat = 'none' | 'left' | 'right'
 
-/** 一般文字段落——最基本的 Block kind,任何文章都可以只用這一種。 */
 /** 段落樣式變體——具名樣式,不是資料裡存具體字級/字重數值(對齊本檔
  *  開頭說明第 7 點「具名主題」的既有設計哲學:CLI 編輯者只選語意化的
  *  變體名稱,實際視覺數值(字級/字重/顏色/間距)交給 CSS 端的
