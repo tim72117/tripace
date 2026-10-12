@@ -2,6 +2,15 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.32.1 — 2026-10-12
+
+修正 v0.32.0 的疏漏:只刪除了安裝 service worker 的程式碼,沒有處理已經裝在訪客瀏覽器裡的舊版 service worker。無破壞性變更。
+
+### 修正
+
+- **已造訪過本站、瀏覽器裡還殘留舊版 service worker 的訪客,在 v0.32.0 部署後仍然命中同一個 bug**（實機回報:「還是一樣第一次都是舊的」）。根因:v0.32.0 移除了 `vite-plugin-pwa` 跟它的 `registerSW`/`autoUpdate` 機制,但這代表舊 service worker 賴以「偵測到新版本就自動更新/卸載」的機制本身也一起消失了——沒有新版本可以比對,舊 service worker 會原地繼續運作、永遠不會自然消失,持續把這批訪客的導航請求攔截回填舊版 `index.html`。
+  - `web/src/main.tsx` 新增:應用啟動時呼叫 `navigator.serviceWorker.getRegistrations()` 找出任何殘留的 service worker 並 `unregister()`,同時清掉 `Cache Storage` 裡殘留的 precache 內容,讓這批訪客下一次導航（通常是下一次換頁或重新整理）回到乾淨狀態。best-effort,不支援 service worker API 或卸載失敗都不影響應用本身啟動。
+
 ## v0.32.0 — 2026-10-12
 
 整個移除 PWA/service worker 支援。**本版含破壞性變更**。
