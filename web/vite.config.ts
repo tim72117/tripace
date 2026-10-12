@@ -1,98 +1,27 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { VitePWA } from 'vite-plugin-pwa'
 
 // 開發伺服器設定。預設跑在 5173,透過 CORS 直接打 Go server(預設 :8080)。
 // 後端位址在 UI 的設定列可改,不寫死在這裡。
+//
+// PWA/service worker 支援已於 2026-10 整個移除(原本用 vite-plugin-pwa,
+// 見 git 歷史)——根因是實測發現的真實 bug:「view-source 看京都清水寺
+// 頁的 meta 永遠是首頁的,要重新整理/無痕模式都一樣」。這個專案所有
+// 路徑共用同一份 index.html,不同路徑的 SEO meta(title/og:title/
+// canonical 等)是伺服器端(cmd/server/seo_meta.go)依請求路徑即時改寫
+// placeholder 產生的,每個路徑理應拿到不同內容。但 service worker 的
+// navigateFallback 預設行為是「任何導航請求一律回填 precache 住的那份
+// index.html,不再問伺服器」——這跟「每個路徑都要拿到不同動態內容」的
+// SEO meta 機制直接衝突,導致訪客(含無痕模式,因為 service worker 一樣
+// 會在無痕視窗裡註冊/攔截,無痕只影響 cookie/localStorage,不影響
+// service worker)看到的一直是最早被 precache 住的那份路徑版本的 meta。
+// 曾經試過用 navigateFallbackDenylist 一一排除需要動態內容的路徑,但
+// 每新增一個公開頁面都要記得同步更新這份名單,否則會重現同一個 bug
+// (已有過一次因忘記同步新路徑而差點重現的教訓),判斷這個維護負擔與
+// 風險不值得換取「加到主畫面/離線開啟外殼」這個次要功能,改為整個
+// 移除——不再有任何 service worker 被註冊,所有請求一律直接打伺服器。
 export default defineConfig({
-  plugins: [
-    react(),
-    // PWA 設定:僅供手機「加到主畫面」使用的標準安裝設定,刻意保守、
-    // 不做離線優先重寫。這個 App 有即時聊天/WebSocket 功能跟真實資料 API,
-    // service worker 只 precache 建置產物本身(JS/CSS/HTML/icons),
-    // 讓 App 外殼可以離線開啟——絕對不快取任何 API 回應或 WebSocket 連線,
-    // 所以刻意不寫 workbox.runtimeCaching 規則(完全不設定 runtimeCaching
-    // 就是最安全的做法,寧可少快取也不要誤快取到即時資料)。
-    VitePWA({
-      registerType: 'autoUpdate',
-      // devOptions.enabled:vite-plugin-pwa 預設只在正式 build(npm run
-      // build 產出的 dist/)才會注入 manifest link/啟用 service worker,
-      // dev server(:5173)預設完全不啟用——這個專案的本機測試/除錯全程
-      // 都是直接用 dev server(見這個 session 反覆用 :5173 測試的慣例),
-      // 不開這個選項的話,Chrome DevTools 在 dev server 底下永遠會顯示
-      // 「no Manifest detected」,不是設定壞掉,是預設就沒開。
-      //
-      // 2026-08 暫時關閉(enabled: false):排查手機版 iOS 鍵盤彈出問題時,
-      // 使用者連續多輪回報「不管怎麼改都沒有任何差異」——即使是幾乎不需要
-      // JS、重新整理就該立刻生效的 index.html meta tag 改動也一樣沒反應,
-      // 高度懷疑是這裡的 dev-mode service worker 把 index.html/JS 快取住,
-      // 導致手機端(透過 VITE_API_BASE 指向的區網位址存取)拿到的一直是
-      // 舊版本,不是程式邏輯本身的問題。先關閉排除這個變因,確認是否為
-      // 快取造成的假象;若排查完成、確認不是快取問題,記得改回 true
-      // (不開的話 Chrome DevTools 在 dev server 底下會顯示「no Manifest
-      // detected」,見上方說明,只是不影響功能本身)。
-      devOptions: {
-        enabled: false,
-        type: 'module',
-      },
-      manifest: {
-        name: 'Tripace',
-        short_name: 'Tripace',
-        lang: 'zh-Hant',
-        description:
-          'Tripace 讓你用自然語言記錄行程，AI 自動整理成事項、時間與地點，排上時間軸、歸成一趟行程，還能和同行的人一起編輯、免登入分享。',
-        start_url: '/app',
-        scope: '/',
-        display: 'standalone',
-        background_color: '#F5F2ED',
-        theme_color: '#C4956A',
-        icons: [
-          {
-            src: '/pwa-192x192.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'any',
-          },
-          {
-            src: '/pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any',
-          },
-          {
-            src: '/pwa-maskable-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable',
-          },
-        ],
-      },
-      workbox: {
-        // 只 precache 靜態建置產物,不設定任何 runtimeCaching 規則。
-        // 動態端點(/v1/*、/internal/*、WebSocket /v1/trips/*/ws)
-        // 一律不經過 service worker 快取,永遠直接打網路。
-        globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
-        // navigateFallback 預設會把所有瀏覽器導航請求(網址列輸入、
-        // reload,即 mode=navigate)一律導回快取的 index.html,不分
-        // 路徑/副檔名——這會導致直接開 /robots.txt、/sitemap.xml 這種
-        // 非 HTML 靜態檔也被攔截成 SPA 外殼,而不是真正的檔案內容。
-        // 明確排除這兩個路徑,讓它們照常打到伺服器拿實際檔案。
-        //
-        // /admin(/.*)?:管理後台是完全獨立的另一個 SPA(web/admin,見
-        // static_admin.go 開頭說明),ADMIN_ENABLED 開啟時可同源掛在主服務
-        // 的 /admin/ 底下——這支 service worker 是主應用(web/)自己 build
-        // 出來的,只 precache 主應用自己的 index.html,對 /admin/* 這個
-        // 網址完全不知情(不在它的建置產物範圍內)。若不排除,直接訪問
-        // /admin 或重新整理該頁面時,navigateFallback 一律攔截導航請求、
-        // 回填主應用的 index.html,而主應用的 React Router 沒有 /admin
-        // 路由,最終落到 NotFoundPage(404)——這是實際發生過的回報
-        // (「admin 會被 PWA 影響變成 404」),不是 adminserver 或
-        // static_admin.go 本身的問題,根因在這支主應用的 service worker
-        // 攔截了不屬於它的路徑。
-        navigateFallbackDenylist: [/^\/robots\.txt$/, /^\/sitemap\.xml$/, /^\/admin(\/.*)?$/],
-      },
-    }),
-  ],
+  plugins: [react()],
   server: {
     port: 5173,
     host: true,

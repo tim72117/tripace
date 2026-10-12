@@ -2,6 +2,17 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.32.0 — 2026-10-12
+
+整個移除 PWA/service worker 支援。**本版含破壞性變更**。
+
+### 移除（破壞性）
+
+- **`vite-plugin-pwa` 整個移除**：實測發現的真實 bug——`view-source:https://tripace.io/kyoto-kiyomizu` 看到的 `<title>`/`og:title`/`canonical` 等 meta 永遠是首頁的版本，要重新整理、甚至無痕模式都一樣。根因：這個專案所有路徑共用同一份 `index.html`，不同路徑的 SEO meta 是伺服器端（`cmd/server/seo_meta.go`）依請求路徑即時改寫 placeholder 產生的，每個路徑理應拿到不同內容；但 service worker 的 `navigateFallback` 預設行為是「任何導航請求一律回填 precache 住的那份 `index.html`，不再問伺服器」，與此直接衝突——訪客看到的一直是最早被 precache 住的那份路徑版本的 meta（無痕模式一樣會重現，因為 service worker 的註冊/攔截不受無痕模式的 cookie/localStorage 隔離影響）。
+  - 曾評估改用 `navigateFallbackDenylist` 排除需要動態內容的路徑，但這代表每新增一個公開頁面都要記得同步更新這份名單，否則會重現同一個 bug，判斷這個維護負擔與風險不值得換取「加到主畫面/離線開啟外殼」這個次要功能，改為整個移除。
+  - 移除範圍：`web/vite.config.ts` 的 `VitePWA` 外掛設定、`web/src/main.tsx` 的 `registerSW` 呼叫、`web/src/vite-env.d.ts` 的型別參照、`web/index.html` 的 PWA 專屬 meta/link（`theme-color`、`apple-mobile-web-app-*`、`apple-touch-icon`）、`public/pwa-*.png` 圖示檔案、`package.json` 的 `vite-plugin-pwa` 依賴。
+  - **影響**：這個網站不再能「加到手機主畫面」，也不再支援離線開啟 App 外殼。所有頁面的靜態資源一律直接打伺服器，不再有任何 service worker 快取層。
+
 ## v0.31.2 — 2026-10-12
 
 正式環境端到端驗證部落格圖片上傳功能時發現該功能一直處於未啟用狀態，補上缺漏的部署設定；同時補上 CLI 的 `blog-photo` 指令組（先前只有 API，CLI 沒有對應操作指令）。無破壞性變更。
