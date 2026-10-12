@@ -1091,7 +1091,7 @@ func cmdBlogPhotoUpload(c *httpClient, args []string) {
 	}
 
 	if err := blogPhotoPutFile(uploadURL, *contentType, *file); err != nil {
-		fatal("blog-photo upload: 上傳檔案失敗(photoId=%s): %v", photoID, err)
+		fatal("blog-photo upload: 上傳檔案失敗(photoId=%s,這筆記錄已建立但原圖從未真正寫入,不再需要的話可用 `blog-photo delete -id %s` 清除): %v", photoID, photoID, err)
 	}
 
 	res, err := c.blogPhotoComplete(photoID)
@@ -1136,6 +1136,22 @@ func cmdBlogPhotoFocal(c *httpClient, args []string) {
 	_ = fs.Parse(args)
 	if *id == "" {
 		fatal("blog-photo focal 需要 -id")
+	}
+	// -x/-y 預設值 0 剛好也是合法的焦點座標(左上角),不能用「是否等於
+	// 預設值」判斷使用者是否真的有帶這兩個參數,改用 fs.Visit 檢查
+	// 這兩個 flag 有沒有真的出現在 args 裡,避免使用者忘記帶時悄悄送出
+	// 一組看似合法、但其實未經使用者確認的 (0, 0) 座標。
+	xSet, ySet := false, false
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "x":
+			xSet = true
+		case "y":
+			ySet = true
+		}
+	})
+	if !xSet || !ySet {
+		fatal("blog-photo focal 需要同時帶 -x 與 -y")
 	}
 	res, err := c.blogPhotoFocal(*id, *x, *y)
 	if err != nil {

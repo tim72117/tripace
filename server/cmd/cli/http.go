@@ -316,7 +316,7 @@ func (c *httpClient) blogPhotoDelete(photoID string) error {
 // 不是走 c.do(),理由:pre-signed URL 本身已經在簽章裡編碼了授權資訊
 // (GCS IAM Credentials API SignBlob),不需要、也不應該額外帶我方的
 // Authorization: Bearer JWT header(GCS 看不懂、也不需要這個 header);
-// c.do() 強制加 JWT header 的設計是給打我方 /internal//v1 API 用的,
+// c.do() 強制加 JWT header 的設計是給打我方 /internal/、/v1 API 用的,
 // 這裡上傳目的地是 GCS,是完全不同的對象。Content-Type 必須與
 // blogPhotoUploadURL 簽發時傳入的 contentType 一致,否則 GCS 會拒絕
 // (pre-signed URL 的簽章通常綁定了 Content-Type)。
