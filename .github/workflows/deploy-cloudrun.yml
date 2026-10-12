@@ -203,6 +203,22 @@ jobs:
           # 照片能顯示,之後所有需要「補圖」的地點永久補不上(實測發現
           # 的真實 bug)。
           SECRETS="${SECRETS},GCS_PHOTO_BUCKET=GCS_PHOTO_BUCKET:latest"
+          # BLOG_PHOTO_UPLOAD_BUCKET/GCS_SERVICE_ACCOUNT_EMAIL:2026-10
+          # 部落格發文功能(internal/photoupload.New,見
+          # server/internal/api/api.go 的 New() 建構子)需要的兩個設定,
+          # 先前這裡漏掛,導致正式環境圖片上傳端點一直回應
+          # upload_disabled(實測發現的真實 bug,同類型問題同
+          # GCS_PHOTO_BUCKET 上方的註解)。bucket 沿用既有
+          # photo_assets/photostorage 共用的同一個 bucket
+          # (shuttle-tripace-photos);GCS_SERVICE_ACCOUNT_EMAIL 填
+          # Cloud Run 服務本身執行用的 service account
+          # (340121279179-compute@developer.gserviceaccount.com)——
+          # photoupload 用這個 email 呼叫 IAM Credentials API 的
+          # SignBlob 簽發 pre-signed URL,該 SA 需要對自己有
+          # roles/iam.serviceAccountTokenCreator(已手動設定)才能
+          # 成功自簽。
+          SECRETS="${SECRETS},BLOG_PHOTO_UPLOAD_BUCKET=BLOG_PHOTO_UPLOAD_BUCKET:latest"
+          SECRETS="${SECRETS},GCS_SERVICE_ACCOUNT_EMAIL=GCS_SERVICE_ACCOUNT_EMAIL:latest"
 
           gcloud run deploy ${{ env.CLOUD_RUN_SERVICE }} \
             --image=${{ env.IMAGE }}:${{ github.event.inputs.skip_build == 'true' && 'latest' || github.sha }} \

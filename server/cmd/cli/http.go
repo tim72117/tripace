@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 
 	"github.com/tim72117/tripace/internal/model"
 	"github.com/tim72117/tripace/internal/tripsvc"
@@ -274,4 +275,69 @@ func (c *httpClient) blogProfileSet(handle, avatarURL string) (any, error) {
 
 func (c *httpClient) blogProfileGet() (any, error) {
 	return c.do("GET", "/v1/blog/profile", nil)
+}
+
+// blogPhotoUploadURL/Complete/Retry/List/Focal/Delete 對齊
+// POST/GET/PATCH/DELETE /v1/blog/photos(見
+// server/internal/api/blog_photo.go)。這組指令刻意不走
+// /internal/maintenance/*——跟 content-page 系列不同,圖片上傳本來就是
+// 一般登入使用者在網頁上編輯文章時會呼叫的功能,身份固定是「登入者
+// 自己」,不支援、也不需要 content-page 系列的 -official 身份切換。
+func (c *httpClient) blogPhotoUploadURL(contentType string) (any, error) {
+	return c.do("POST", "/v1/blog/photos/upload-url", map[string]any{
+		"contentType": contentType,
+	})
+}
+
+func (c *httpClient) blogPhotoComplete(photoID string) (any, error) {
+	return c.do("POST", "/v1/blog/photos/"+url.PathEscape(photoID)+"/complete", nil)
+}
+
+func (c *httpClient) blogPhotoRetry(photoID string) (any, error) {
+	return c.do("POST", "/v1/blog/photos/"+url.PathEscape(photoID)+"/retry", nil)
+}
+
+func (c *httpClient) blogPhotoList() (any, error) {
+	return c.do("GET", "/v1/blog/photos", nil)
+}
+
+func (c *httpClient) blogPhotoFocal(photoID string, focalX, focalY float64) (any, error) {
+	return c.do("PATCH", "/v1/blog/photos/"+url.PathEscape(photoID)+"/focal", map[string]any{
+		"focalX": focalX, "focalY": focalY,
+	})
+}
+
+func (c *httpClient) blogPhotoDelete(photoID string) error {
+	_, err := c.do("DELETE", "/v1/blog/photos/"+url.PathEscape(photoID), nil)
+	return err
+}
+
+// blogPhotoPutFile 把本機檔案直接 PUT 到 pre-signed URL(uploadUrl)——
+// 不是走 c.do(),理由:pre-signed URL 本身已經在簽章裡編碼了授權資訊
+// (GCS IAM Credentials API SignBlob),不需要、也不應該額外帶我方的
+// Authorization: Bearer JWT header(GCS 看不懂、也不需要這個 header);
+// c.do() 強制加 JWT header 的設計是給打我方 /internal//v1 API 用的,
+// 這裡上傳目的地是 GCS,是完全不同的對象。Content-Type 必須與
+// blogPhotoUploadURL 簽發時傳入的 contentType 一致,否則 GCS 會拒絕
+// (pre-signed URL 的簽章通常綁定了 Content-Type)。
+func blogPhotoPutFile(uploadURL, contentType, filePath string) error {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("讀取檔案失敗: %w", err)
+	}
+	req, err := http.NewRequest(http.MethodPut, uploadURL, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", contentType)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("上傳失敗,GCS 回應 %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
 }

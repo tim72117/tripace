@@ -2,6 +2,22 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.31.2 — 2026-10-12
+
+正式環境端到端驗證部落格圖片上傳功能時發現該功能一直處於未啟用狀態，補上缺漏的部署設定；同時補上 CLI 的 `blog-photo` 指令組（先前只有 API，CLI 沒有對應操作指令）。無破壞性變更。
+
+### 新增
+
+- **CLI `blog-photo` 指令組**：`upload`（複合動詞，依序簽發 pre-signed URL→PUT 上傳本機檔案→回報完成）、`list`、`retry`、`focal`、`delete`，對齊 `server/internal/api/blog_photo.go` 的全部端點。身份固定是登入者自己，不支援 `-official`（跟 `blog-profile` 系列一致）。
+
+### 修正
+
+- **正式環境的圖片上傳功能一直處於未啟用狀態**：`internal/photoupload.New` 需要的 `BLOG_PHOTO_UPLOAD_BUCKET`、`GCS_SERVICE_ACCOUNT_EMAIL` 兩個環境變數，`v0.31.0` 開發部落格發文功能時沒有同步補進 `.github/workflows/deploy-cloudrun.yml`，導致正式環境的 `/v1/blog/photos/upload-url` 端點一直回應 `503 upload_disabled`（端到端驗證時發現的真實 bug）。已補上：
+  - 新增 Secret Manager 秘密 `BLOG_PHOTO_UPLOAD_BUCKET`（沿用既有 `photo_assets`/`photostorage` 共用的 `shuttle-tripace-photos` bucket）、`GCS_SERVICE_ACCOUNT_EMAIL`（填 Cloud Run 服務本身執行用的 service account）。
+  - 該 service account 補上對自己的 `roles/iam.serviceAccountTokenCreator`（`photoupload` 透過 IAM Credentials API 的 `SignBlob` 簽發 pre-signed URL 需要這個權限才能自簽）。
+  - `deploy-cloudrun.yml` 的 `--update-secrets` 掛上這兩個新 secret。
+- **`Dockerfile.admin` 的過時註解**：提到已於 `v0.31.0` 移除的 `internal/adminauth` 套件，改成描述現行的 `internal/auth.Signer`（JWT）+email 白名單機制。
+
 ## v0.31.1 — 2026-10-12
 
 修正 v0.31.0 的部署失敗問題，無功能變動、無破壞性變更。

@@ -189,6 +189,23 @@ func buildResources(c *httpClient, apiURL string) []resource {
 				{verb: "get", run: func(args []string) { cmdBlogProfileGet(c) }, usage: "tripace-cli blog-profile get"},
 			},
 		},
+		{
+			// blog-photo:部落格配圖上傳與管理(見
+			// server/internal/api/blog_photo.go 開頭的完整說明)。身份
+			// 固定是登入者自己,跟 blog-profile 一樣不支援 -official。
+			// upload 是這組指令裡唯一一個組合了「簽發 pre-signed
+			// URL→直接 PUT 檔案→回報完成」三個步驟的複合動詞(對應
+			// 前端 PhotoManagerPage 實際發生的三次獨立 API 呼叫),
+			// 其餘動詞各自對應單一後端端點。
+			name: "blog-photo",
+			commands: []resourceCommand{
+				{verb: "upload", run: func(args []string) { cmdBlogPhotoUpload(c, args) }, usage: "tripace-cli blog-photo upload -file 路徑 -content-type image/jpeg"},
+				{verb: "list", run: func(args []string) { cmdBlogPhotoList(c) }, usage: "tripace-cli blog-photo list"},
+				{verb: "retry", run: func(args []string) { cmdBlogPhotoRetry(c, args) }, usage: "tripace-cli blog-photo retry -id 文字"},
+				{verb: "focal", run: func(args []string) { cmdBlogPhotoFocal(c, args) }, usage: "tripace-cli blog-photo focal -id 文字 -x 0.5 -y 0.5"},
+				{verb: "delete", run: func(args []string) { cmdBlogPhotoDelete(c, args) }, usage: "tripace-cli blog-photo delete -id 文字"},
+			},
+		},
 	}
 }
 
@@ -1040,6 +1057,106 @@ func cmdBlogProfileGet(c *httpClient) {
 		fatal("blog-profile get: %v", err)
 	}
 	output(res)
+}
+
+// cmdBlogPhotoUpload 是「上傳一張本機圖片」的複合動詞,依序完成
+// server/internal/api/blog_photo.go 開頭說明的步驟 1-2(簽發 pre-signed
+// URL→PUT 檔案),對應前端 PhotoManagerPage 實際發生的兩次獨立 API
+// 呼叫+一次 GCS 直傳。-content-type 不自動偵測(避免引入額外依賴或
+// 猜錯導致 GCS 簽章驗證失敗),要求呼叫端明確指定。
+func cmdBlogPhotoUpload(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("blog-photo upload", flag.ExitOnError)
+	file := fs.String("file", "", "本機圖片檔案路徑（必填）")
+	contentType := fs.String("content-type", "", "圖片 MIME type（必填，例如 image/jpeg、image/png）")
+	_ = fs.Parse(args)
+	if *file == "" {
+		fatal("blog-photo upload 需要 -file")
+	}
+	if *contentType == "" {
+		fatal("blog-photo upload 需要 -content-type")
+	}
+
+	signed, err := c.blogPhotoUploadURL(*contentType)
+	if err != nil {
+		fatal("blog-photo upload: 簽發 upload URL 失敗: %v", err)
+	}
+	m, ok := signed.(map[string]any)
+	if !ok {
+		fatal("blog-photo upload: 預期的回應格式不符: %#v", signed)
+	}
+	photoID, _ := m["photoId"].(string)
+	uploadURL, _ := m["uploadUrl"].(string)
+	if photoID == "" || uploadURL == "" {
+		fatal("blog-photo upload: 回應缺少 photoId 或 uploadUrl: %#v", m)
+	}
+
+	if err := blogPhotoPutFile(uploadURL, *contentType, *file); err != nil {
+		fatal("blog-photo upload: 上傳檔案失敗(photoId=%s): %v", photoID, err)
+	}
+
+	res, err := c.blogPhotoComplete(photoID)
+	if err != nil {
+		fatal("blog-photo upload: 回報完成失敗(photoId=%s,檔案已上傳但背景處理可能未觸發,可用 `blog-photo retry -id %s` 重試): %v", photoID, photoID, err)
+	}
+	output(res)
+}
+
+// cmdBlogPhotoList 列出登入者自己上傳過的所有圖片。走 GET /v1/blog/photos。
+func cmdBlogPhotoList(c *httpClient) {
+	res, err := c.blogPhotoList()
+	if err != nil {
+		fatal("blog-photo list: %v", err)
+	}
+	output(res)
+}
+
+// cmdBlogPhotoRetry 針對處理失敗的原圖重新觸發背景處理。走 POST
+// /v1/blog/photos/{photoId}/retry。
+func cmdBlogPhotoRetry(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("blog-photo retry", flag.ExitOnError)
+	id := fs.String("id", "", "圖片 ID（必填）")
+	_ = fs.Parse(args)
+	if *id == "" {
+		fatal("blog-photo retry 需要 -id")
+	}
+	res, err := c.blogPhotoRetry(*id)
+	if err != nil {
+		fatal("blog-photo retry: %v", err)
+	}
+	output(res)
+}
+
+// cmdBlogPhotoFocal 設定裁切焦點(0~1 之間的相對座標)。走 PATCH
+// /v1/blog/photos/{photoId}/focal。
+func cmdBlogPhotoFocal(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("blog-photo focal", flag.ExitOnError)
+	id := fs.String("id", "", "圖片 ID（必填）")
+	x := fs.Float64("x", 0, "焦點 X 座標（0~1 之間，必填）")
+	y := fs.Float64("y", 0, "焦點 Y 座標（0~1 之間，必填）")
+	_ = fs.Parse(args)
+	if *id == "" {
+		fatal("blog-photo focal 需要 -id")
+	}
+	res, err := c.blogPhotoFocal(*id, *x, *y)
+	if err != nil {
+		fatal("blog-photo focal: %v", err)
+	}
+	output(res)
+}
+
+// cmdBlogPhotoDelete 刪除一張圖片(資料庫記錄+GCS 物件)。走 DELETE
+// /v1/blog/photos/{photoId}。
+func cmdBlogPhotoDelete(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("blog-photo delete", flag.ExitOnError)
+	id := fs.String("id", "", "圖片 ID（必填）")
+	_ = fs.Parse(args)
+	if *id == "" {
+		fatal("blog-photo delete 需要 -id")
+	}
+	if err := c.blogPhotoDelete(*id); err != nil {
+		fatal("blog-photo delete: %v", err)
+	}
+	output(map[string]string{"deleted": *id})
 }
 
 // notifyTrip 直接用 http.Post(不經 httpClient.do),故 /internal/* 現在
