@@ -2,6 +2,15 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.31.1 — 2026-10-12
+
+修正 v0.31.0 的部署失敗問題，無功能變動、無破壞性變更。
+
+### 修正
+
+- **`web/src/App.tsx` 誤混入尚未提交的 `showcase-demo/*` 路由引用**：v0.31.0 的 commit 把 `App.tsx` 一起提交時，連帶帶入了本該留在工作目錄、尚未提交的 `showcase-demo/*` lazy import 與路由，導致遠端 build 因找不到 `web/src/showcase-demo/` 目錄而失敗（`TS2307`）。已整段移除，`showcase-demo` 之後準備好了再另外提交。
+- **`PhotoManagerPage.module.css` 的多行註解被提前關閉**：註解內容 `--ios-*/--color-*` 裡的 `*/` 被 postcss 誤判為註解結束符，提前結束整段多行註解，導致後續文字被當成裸露 CSS 宣告解析而建置失敗（`Unknown word token`）。改成 `--ios-* / --color-*` 加空格避開。
+
 ## v0.31.0 — 2026-10-12
 
 新增多使用者部落格發文功能（路由 `/u/:handle/:slug`，含圖片上傳/焦點編輯），並把原本的「主題介紹頁」CMS 試做（`theme_pages`）正式轉型為通用的 `content_pages`，由同一套 CLI/API 透過 `-official` 旗標切換「部落客發文」與「官方城市介紹頁」兩種身份模式。同時把 admin 後台從獨立密碼/cookie 系統整個移除，改成與一般使用者共用 JWT、以 email 白名單判斷權限。**本版含多項破壞性變更**，詳見下方清單。
