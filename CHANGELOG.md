@@ -2,6 +2,20 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.32.2 — 2026-10-12
+
+補齊「進入 app / 開啟展示畫面」入口按鈕的 GA 埋點缺口、部落格文章新增段落樣式變體、`/ai-plan` 展示頁補上獨立 SEO meta。無破壞性變更。
+
+### 新增
+
+- **部落格文章段落樣式變體（`ParagraphVariant`）**：`web/src/blog/types.ts` 的 `ParagraphBlock` 新增選填欄位 `variant?: 'heading' | 'emphasis' | 'quote' | 'caption'`——對齊既有「具名樣式」設計哲學，CLI 編輯者只選語意化變體名稱，實際視覺數值（字級/字重/顏色/間距）交給 `web/src/blog/BlogArticle.css` 的 `[data-variant]` 規則決定。省略時維持改動前的既有外觀。
+- **`/ai-plan`（AI 安排行程模擬展示頁）補上獨立 SEO title/description/canonical**：`server/cmd/server/seo_meta.go` 的 `seoMetaByPath` 對照表新增這個路徑的條目，避免 Googlebot 初次抓取時 canonical 指向首頁、被當成首頁的重複內容。沿用首頁預設代表圖（跟 `/product` 的既有處理方式一致）。
+
+### 修正
+
+- **「進入 app」/「開啟展示畫面」入口按鈕的 GA 埋點缺口**：`HomePage.tsx`、`BlogArticlePage.tsx`、`PhotoManagerPage.tsx`、`AIPlanTimelinePage.tsx` 的登入/返回應用/功能介紹按鈕原本漏埋 `trackEvent`，九份/京都/台南安平/赤崁・府城/功能介紹頁都有埋、這幾個頁面卻沒有，補上後統一用既有事件名稱（`landing_cta_click`/`landing_feature_intro_click`）並補上 `page`/`position` 區分來源。
+- **`web/src/blog/types.ts` 殘留的重複 doc comment**：前一版新增 `ParagraphVariant` 時，`ParagraphBlock` 上方留下一行重複的「一般文字段落」註解，修正為單一份。
+
 ## v0.32.1 — 2026-10-12
 
 修正 v0.32.0 的疏漏:只刪除了安裝 service worker 的程式碼,沒有處理已經裝在訪客瀏覽器裡的舊版 service worker。無破壞性變更。
