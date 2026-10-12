@@ -118,6 +118,12 @@ func buildSeoMetaByPath(baseURL string) map[string]seoMeta {
 			canonical:   baseURL + "/product",
 			image:       "",
 		},
+		"/ai-plan": {
+			title:       "AI 安排行程模擬——輸入需求，看時間軸怎麼排出來 | Tripace",
+			description: "輸入想去的地方與天數，看 AI 怎麼即時把景點排進每日時間軸，交通方式與停留時間自動補上。這是 Tripace AI 規劃行程功能的互動模擬，實際體驗不需要登入。",
+			canonical:   baseURL + "/ai-plan",
+			image:       "",
+		},
 	}
 }
 
