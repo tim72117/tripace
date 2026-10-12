@@ -107,17 +107,6 @@ const BlogArticlePage = lazy(() => import('./blog/BlogArticlePage').then((m) => 
 // server/internal/api/blog_photo.go,與 BlogArticlePage 同屬「部落格
 // 發文」功能,但這是獨立的圖片管理頁,不涉及文章內容渲染。
 const PhotoManagerPage = lazy(() => import('./blog/PhotoManagerPage').then((m) => ({ default: m.PhotoManagerPage })))
-// showcase-demo/*——2026-10 新增:docs/brainstorm/2026-10-product-direction-brainstorm.md
-// 六項產品構想的雛形試做(使用者明確要求「開始試做雛形」「直接試做」
-// 「你全權處理試做，不用問細節」),純供內部查看,不在首頁/導覽列任何
-// 地方連結,只能直接輸入網址進入,假資料,沒有真實後端串接——跟 /ai-plan
-// 同一層級(公開可訪問但不公開曝光的純前端展示頁)。
-const ShowcaseDemoIndex = lazy(() => import('./showcase-demo/ShowcaseDemoIndex').then((m) => ({ default: m.ShowcaseDemoIndex })))
-const ItineraryShowcasePage = lazy(() => import('./showcase-demo/ItineraryShowcasePage').then((m) => ({ default: m.ItineraryShowcasePage })))
-const ComponentConventionsPage = lazy(() => import('./showcase-demo/ComponentConventionsPage').then((m) => ({ default: m.ComponentConventionsPage })))
-const PlanningModesPage = lazy(() => import('./showcase-demo/PlanningModesPage').then((m) => ({ default: m.PlanningModesPage })))
-const ItineraryCheckupPage = lazy(() => import('./showcase-demo/ItineraryCheckupPage').then((m) => ({ default: m.ItineraryCheckupPage })))
-const PostComposerPage = lazy(() => import('./showcase-demo/PostComposerPage').then((m) => ({ default: m.PostComposerPage })))
 
 // KeyboardShrinkGuard:/app 路由專用——鍵盤彈出時把根容器高度直接改成
 // visualViewport.height,取代先前試過的 transform: translateY(-offsetTop)
@@ -250,17 +239,6 @@ export function App() {
               目錄,故這份白名單同步留給後續處理,目前這條路徑在正式環境
               會被導去 index.html 以外的 404 分支,需另外跟進。 */}
           <Route path="/blog/photos" element={<PhotoManagerPage />} />
-          {/* showcase-demo/*——2026-10 新增,見上方 lazy import 的完整
-              說明。同樣務必記得同步 server/cmd/server/static.go 的
-              knownRoutePatterns(上次新增 /plan-ai 忘了同步導致正式環境
-              404 的教訓,見上方 /ai-plan 路由的註解)——這幾條路由已經
-              一併同步。 */}
-          <Route path="/showcase-demo" element={<ShowcaseDemoIndex />} />
-          <Route path="/showcase-demo/itinerary-showcase" element={<ItineraryShowcasePage />} />
-          <Route path="/showcase-demo/component-conventions" element={<ComponentConventionsPage />} />
-          <Route path="/showcase-demo/planning-modes" element={<PlanningModesPage />} />
-          <Route path="/showcase-demo/itinerary-checkup" element={<ItineraryCheckupPage />} />
-          <Route path="/showcase-demo/post-composer" element={<PostComposerPage />} />
           {/* /public/{token} 路徑:直接渲染公開分享頁。原本用正則
               /^\/public\/([^/]+)$/ 手動解析 token,改用 Route 的 :token
               路徑參數 + useParams() 取代。 */}

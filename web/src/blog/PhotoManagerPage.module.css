@@ -5,7 +5,7 @@
 .root {
   /* SiteNavButtons.css 依賴的中性變數名(--paper/--paper-dim/--ink/
      --ink-soft/--line/--vermilion/--vermilion-soft/--card-shadow)——
-     這個頁面本來走 app-theme-root 的 --ios-*/--color-* 那組深色模式
+     這個頁面本來走 app-theme-root 的 --ios-* / --color-* 那組深色模式
      token(見 base-ui.css 開頭說明),跟城市介紹頁/BlogArticlePage 用的
      --paper/--ink 這組完全是兩個獨立體系,SiteNavButtons.css 讀不到。
      比照 TainanChikanPage.css/KyotoPage.css 等既有頁面「定義一個中性
