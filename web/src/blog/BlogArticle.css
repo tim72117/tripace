@@ -266,13 +266,10 @@
   margin: 0 auto;
 }
 
-/* 作者資訊——2026-10 暫時試做三種位置比較(見 BlogArticlePage.tsx
-   FAKE_AUTHOR/renderAuthorInline/renderAuthorBelowLede/renderAuthorCard
-   的完整說明),之後選定方案後會刪掉沒被選中的那兩組規則。
-   .theme-page-demo-author 是方案一/二共用的小型版面(頭像+名字+日期
-   一行),.theme-page-demo-author-card 是方案三的獨立大卡片(頭像更大
-   +簡介),兩者刻意分開定義,不共用 class,避免之後刪除時牽動到另一個
-   還在使用的方案。 */
+/* 作者資訊——標題+導言下方,頭像+名字+日期一行(見 BlogArticlePage.tsx
+   FAKE_AUTHOR/renderAuthorBelowLede 的完整說明)。試做階段曾比較過
+   另外兩種位置(eyebrow 上方、文章結尾的獨立卡片),已移除,見 git
+   歷史。 */
 .theme-page-demo-author {
   /* 2026-10 修正:原本 inline-flex 不會強制獨立成一行,跟同為 inline
      的 .theme-page-demo-hero-eyebrow 擠在同一行並排(使用者截圖回報
@@ -284,9 +281,6 @@
   gap: 0.5rem;
   font-size: 0.9rem;
   color: var(--ink-soft);
-}
-.theme-page-demo-author--inline {
-  margin-bottom: 1rem;
 }
 .theme-page-demo-author--below-lede {
   margin-top: 1.5rem;
@@ -307,40 +301,6 @@
 }
 .theme-page-demo-author-date {
   font-variant-numeric: tabular-nums;
-}
-
-.theme-page-demo-author-card {
-  max-width: 960px;
-  margin: 0 auto 3rem;
-  padding: 1.25rem 1.5rem;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  background: var(--paper-dim);
-  /* 2026-10 修正:深色模式下 --paper-dim(#14110F)跟頁面主背景
-     --paper(#1C1815)對比很弱,卡片看起來融進背景、不夠突出(使用者
-     截圖回報「排版好一點」)。補一圈細邊框 + 柔和陰影,讓卡片在任何
-     主題下都明顯從背景浮出來,不依賴底色本身的對比。 */
-  border: 1px solid var(--line);
-  box-shadow: var(--card-shadow);
-  border-radius: 16px;
-}
-.theme-page-demo-author-card-avatar {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex: none;
-}
-.theme-page-demo-author-card-name {
-  font-weight: 700;
-  color: var(--ink);
-  margin-bottom: 0.25rem;
-}
-.theme-page-demo-author-card-bio {
-  font-size: 0.9rem;
-  color: var(--ink-soft);
-  margin: 0;
 }
 
 

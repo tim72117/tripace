@@ -179,6 +179,44 @@ func (s *Store) ListUploadedPhotosByOwner(ownerID string) ([]model.UploadedPhoto
 	if err := s.db.Where("owner_id = ?", ownerID).Order("created_at DESC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
+	return s.attachPhotoVariants(rows)
+}
+
+// ListUploadedPhotosByIDs 依一批 ID 查出對應的原圖記錄(含衍生版本)
+// ——供公開端點(見 handlePublicBlogPhotosByIDs)把文章內容裡引用的
+// photoId 展開成實際可顯示的 URL 使用。查不到的 ID 直接略過、不報錯
+// (對齊 GetUploadedPhoto 對「單筆查無」的既有處理哲學:呼叫端可能
+// 傳入一個已經被刪除的舊 photoId,這種情況下該圖片在文章裡顯示不出來
+// 是合理的降級結果,不該讓整批查詢因為其中一個 ID 失效就整個失敗)。
+// 空輸入直接回傳空結果,不觸發查詢——避免 IN () 這種空集合查詢在
+// 不同資料庫 driver 下的邊界行為差異。
+//
+// 這支方法只依 ID 查詢,不檢查圖片目前的 Status、也不檢查是否被任何
+// 已發布文章引用——呼叫端(handlePublicBlogPhotosByIDs)必須自己做這層
+// 授權檢查,不能把這份查詢結果直接當成「可公開顯示」的清單(見該
+// handler 的完整說明:只回傳 ready 狀態、且被已發布文章引用的那些)。
+func (s *Store) ListUploadedPhotosByIDs(ids []string) ([]model.UploadedPhoto, error) {
+	if len(ids) == 0 {
+		return []model.UploadedPhoto{}, nil
+	}
+	var rows []uploadedPhotoRow
+	if err := s.db.Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return s.attachPhotoVariants(rows)
+}
+
+// attachPhotoVariants 是 ListUploadedPhotosByOwner/ListUploadedPhotosByIDs
+// 共用的「批次查衍生版本、記憶體組裝」尾段(2026-10 抽出,原本兩份各自
+// 逐行重複同一套邏輯,改動時容易漏改其中一處造成行為分岔)。
+//
+// 刻意不像 GetUploadedPhoto 那樣對每一筆各自呼叫
+// listPhotoVariantsByPhotoID——那是單筆查詢,只需要一次額外查詢,不存在
+// 效能疑慮;這裡是多筆查詢,對每一筆都各自查一次 photo_variants 會是
+// N+1 次查詢,改成「先撈出所有 uploaded_photo 的 ID,再用 WHERE photo_id
+// IN (...) 一次查出所有相關的 photo_variants,在記憶體裡依 PhotoID
+// 分組組裝」,把 1+N 次查詢降成固定的 2 次查詢,不受筆數影響。
+func (s *Store) attachPhotoVariants(rows []uploadedPhotoRow) ([]model.UploadedPhoto, error) {
 	if len(rows) == 0 {
 		return []model.UploadedPhoto{}, nil
 	}

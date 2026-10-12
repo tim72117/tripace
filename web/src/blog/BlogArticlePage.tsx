@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { BASE_URL } from '../AppCommon'
-import { fetchPublicBlogArticle, type ClientConfig } from '../api'
+import { ApiError, fetchPublicBlogArticle, fetchPublicBlogPhotosByIDs, type ClientConfig, type PublicUploadedPhoto } from '../api'
+import { NotFoundPage } from '../home/NotFoundPage'
 import { useThemeToggle } from '../hooks/useThemeToggle'
 import { useScrollProgress } from '../hooks/useScrollProgress'
 import { ScrollTimeline } from '../home/ScrollTimeline'
@@ -17,6 +18,79 @@ import './BlogArticle.css'
 // 傳 null(走訪客)。baseURL 沿用 AppCommon.tsx 的 BASE_URL(建置時
 // VITE_API_BASE,或退回目前頁面 origin)。
 const GUEST_CFG: ClientConfig = { baseURL: BASE_URL, token: null }
+
+// photoMap:photoId → PublicUploadedPhoto 的對照表,供
+// renderImageBlock/renderGalleryBlock 把 ImageBlock.photoId/
+// GalleryBlock.items[].photoId(見 types.ts 的完整說明:2026-10 從直接
+// 存路徑字串改成存這個穩定識別碼)解析成實際可顯示的圖片網址。
+//
+// 當參數一路往下傳(renderBlock/StopCard/renderImageBlock/
+// renderGalleryBlock/renderScrollTimelineGroup),不是用 React Context
+// ——原本考慮過用 Context 省去逐層改簽章的麻煩,但 renderImageBlock/
+// renderGalleryBlock 是小寫開頭的一般函式(直接被呼叫
+// renderImageBlock(x),不是當成 JSX 元件掛載),在這種函式裡呼叫
+// useContext 違反 React Hooks 規則(Hook 只能在真正的 function
+// component 或自訂 hook 內呼叫),故改成讓最上層的 BlogArticlePage 查
+// 好 photoMap 後,一路當參數往下傳,每一層都是單純的參數傳遞,不是在
+// 非 hook 情境下違規使用 Hook。
+
+// collectPhotoIds:掃描整份 content.blocks(含巢狀在 StopBlock.media 裡
+// 的 image/gallery),收集所有出現過的 photoId,供掛載時一次性批次查詢
+// (fetchPublicBlogPhotosByIDs)用。只掃描會真正出現在 ImageBlock/
+// GalleryBlock 裡的這兩種 kind,其餘 kind(paragraph/stop 本身/
+// scroll-timeline-*)不含 photoId,略過。
+function collectPhotoIds(blocks: ThemePageBlock[]): string[] {
+  const ids = new Set<string>()
+  function visit(list: Array<ImageBlock | GalleryBlock>) {
+    for (const b of list) {
+      if (b.kind === 'image') ids.add(b.photoId)
+      else for (const item of b.items) ids.add(item.photoId)
+    }
+  }
+  const imagesAndGalleries = blocks.filter((b): b is ImageBlock | GalleryBlock => b.kind === 'image' || b.kind === 'gallery')
+  visit(imagesAndGalleries)
+  for (const b of blocks) {
+    if (b.kind === 'stop') visit(b.media)
+  }
+  return Array.from(ids)
+}
+
+// resolvePhotoURL:依 photoId 從 PhotoMapContext 查出實際可顯示的圖片
+// 網址——優先用 "large" 衍生版本(文章內文大圖),查無 large 時退回原圖
+// (見 uploadedPhotoRow.OriginalURL 的完整說明:衍生版本是背景非同步
+// 產生的,剛上傳完成、還沒處理完的圖片只有原圖可用,這是合理的降級,
+// 不是錯誤狀態)。
+//
+// photoId 在對照表裡查不到時,退回舊式的 photoUrl(file) 固定路徑拼接
+// ——這是為了相容 sampleTainanChikan.ts 那份純展示用的常數資料(API
+// 失敗時的 fallback 內容,見本檔開頭 BlogArticlePage 的完整說明):那
+// 份資料本來就不是真實的 uploaded_photos 記錄,photoId 欄位存的其實是
+// 固定 GCS bucket 下的檔名字串(例如 "IMG_9812.webp"),不會出現在批次
+// 查詢回來的 photoMap 裡,刻意讓這個 fallback 兼容兩種來源,不需要
+// 另外用一個欄位或旗標區分「這是真的 photoId 還是舊式檔名」。
+function resolvePhotoURL(photoMap: Map<string, PublicUploadedPhoto>, photoId: string): string {
+  const photo = photoMap.get(photoId)
+  if (!photo) return photoUrl(photoId)
+  const large = photo.variants?.find((v) => v.kind === 'large')
+  return large?.url ?? photo.originalUrl
+}
+
+// resolvePhotoFocal:依 photoId 查出裁切焦點——優先用
+// ImageBlock/GalleryBlock 自己當時在 CLI/編輯器裡指定的 focal(見
+// types.ts FocalPoint 的完整說明),查無則退回這張圖在 uploaded_photos
+// 表上設定的全域焦點(PhotoFocalEditor.tsx 讓使用者拖曳設定的那組值)。
+// 兩者都沒有時回傳 undefined,沿用 objectPositionFor 既有的「置中裁切」
+// 預設行為。
+function resolvePhotoFocal(
+  photoMap: Map<string, PublicUploadedPhoto>,
+  photoId: string,
+  blockFocal: { x: number; y: number } | undefined,
+): { x: number; y: number } | undefined {
+  if (blockFocal) return blockFocal
+  const photo = photoMap.get(photoId)
+  if (photo?.focalX != null && photo?.focalY != null) return { x: photo.focalX, y: photo.focalY }
+  return undefined
+}
 
 // BlogArticlePage:部落客發文正式頁面——驗證 docs/
 // refactor-theme-page-content-cms-plan-2026-10.md 定的 ThemePageContent
@@ -38,36 +112,21 @@ function photoUrl(file: string) {
   return `${PHOTO_BASE}/${file}`
 }
 
-// FAKE_AUTHOR——2026-10 暫時假資料(使用者要求「先把三種位置都放進去
-// 比較」):後端 theme_pages 表目前沒有 owner/userId/作者頭像等欄位
-// (見 docs/brainstorm/2026-10-product-direction-brainstorm.md 構想五
-// 的完整說明,這批功能排在後端 userId 欄位與查詢改造之後才會真的接上
-// 真實資料),這裡只是讓三種版面位置有內容可以渲染比較,之後要接真實
-// 作者資料時,整個换成從 content(或後端回應)讀取真正欄位即可,三個
-// renderAuthorXxx 函式本身不需要大改,只是資料來源從這個假常數換成
-// 真實欄位。
+// FAKE_AUTHOR——2026-10 暫時假資料:後端 theme_pages 表目前沒有
+// owner/userId/作者頭像等欄位(見 docs/brainstorm/2026-10-product-
+// direction-brainstorm.md 構想五的完整說明,這批功能排在後端 userId
+// 欄位與查詢改造之後才會真的接上真實資料),之後要接真實作者資料時,
+// 整個换成從 content(或後端回應)讀取真正欄位即可,renderAuthorBelowLede
+// 本身不需要大改,只是資料來源從這個假常數換成真實欄位。
 const FAKE_AUTHOR = {
   name: 'tim72117',
   avatarUrl: 'https://storage.googleapis.com/shuttle-tripace-photos/review/tainan-chikan/IMG_9812.webp',
-  bio: '喜歡到處走走拍照，把走過的路線整理成文章分享給大家。',
   publishedAt: '2026-10-12',
 }
 
-// renderAuthorInline——方案一:Hero eyebrow 上方,小圓形頭像+作者名+
-// 發布日期一行,對齊 Medium 的慣例(讀者進頁第一眼先看到作者身份)。
-function renderAuthorInline() {
-  return (
-    <div className="theme-page-demo-author theme-page-demo-author--inline">
-      <img className="theme-page-demo-author-avatar" src={FAKE_AUTHOR.avatarUrl} alt={FAKE_AUTHOR.name} />
-      <span className="theme-page-demo-author-name">{FAKE_AUTHOR.name}</span>
-      <span className="theme-page-demo-author-sep">·</span>
-      <time className="theme-page-demo-author-date">{FAKE_AUTHOR.publishedAt}</time>
-    </div>
-  )
-}
-
-// renderAuthorBelowLede——方案二:導言(lede)下方,同樣是頭像+作者名+
-// 發布日期一行,只是位置延後到標題/導言讀完之後,讓讀者先專注內容本身。
+// renderAuthorBelowLede:標題+導言(lede)下方,頭像+作者名+發布日期
+// 一行,讓讀者先專注標題與導言,再看到作者身份。試做階段曾比較過另外
+// 兩種位置(eyebrow 上方、文章結尾的獨立卡片),已移除,見 git 歷史。
 function renderAuthorBelowLede() {
   return (
     <div className="theme-page-demo-author theme-page-demo-author--below-lede">
@@ -75,20 +134,6 @@ function renderAuthorBelowLede() {
       <span className="theme-page-demo-author-name">{FAKE_AUTHOR.name}</span>
       <span className="theme-page-demo-author-sep">·</span>
       <time className="theme-page-demo-author-date">{FAKE_AUTHOR.publishedAt}</time>
-    </div>
-  )
-}
-
-// renderAuthorCard——方案三:獨立作者卡片,放在文章內文結尾,頭像更大
-// 一些、附上簡介(bio),類似部落格常見的「關於作者」區塊。
-function renderAuthorCard() {
-  return (
-    <div className="theme-page-demo-author-card">
-      <img className="theme-page-demo-author-card-avatar" src={FAKE_AUTHOR.avatarUrl} alt={FAKE_AUTHOR.name} />
-      <div className="theme-page-demo-author-card-body">
-        <div className="theme-page-demo-author-card-name">{FAKE_AUTHOR.name}</div>
-        <p className="theme-page-demo-author-card-bio">{FAKE_AUTHOR.bio}</p>
-      </div>
     </div>
   )
 }
@@ -117,15 +162,23 @@ function objectPositionFor(focal?: { x: number; y: number }): string | undefined
 // renderImageBlock/renderGalleryBlock:image/gallery 這兩種 kind 同時
 // 出現在頂層 blocks 與 StopBlock.media 裡(見 types.ts,media 複用同一組
 // 型別),抽成獨立函式讓兩處呼叫同一份渲染邏輯,不需要各自重寫一次。
-function renderImageBlock(block: ImageBlock) {
+//
+// photoMap 當參數傳入,不是透過 useContext 讀取——這兩個函式是小寫
+// 開頭的一般函式(直接被呼叫 renderImageBlock(x),不是當成
+// <RenderImageBlock /> JSX 元件掛載),在這種函式裡呼叫 Hook 違反
+// React Hooks 規則(Hook 只能在真正的 function component 或自訂 hook
+// 內呼叫)。改成讓最上層(BlogArticlePage 本身)用 useContext 讀一次,
+// 一路當參數往下傳,雖然多了幾個函式簽章要改,但每一層都仍是單純的
+// 參數傳遞,不是在非 hook 情境下違規使用 Hook。
+function renderImageBlock(block: ImageBlock, photoMap: Map<string, PublicUploadedPhoto>) {
   return (
     <div key={block.id} className="theme-page-demo-stop-gallery theme-page-demo-stop-gallery--single">
       <figure>
         <img
-          src={photoUrl(block.file)}
+          src={resolvePhotoURL(photoMap, block.photoId)}
           alt={block.alt}
           loading="lazy"
-          style={{ objectPosition: objectPositionFor(block.focal) }}
+          style={{ objectPosition: objectPositionFor(resolvePhotoFocal(photoMap, block.photoId, block.focal)) }}
         />
         {block.caption && <figcaption>{block.caption}</figcaption>}
       </figure>
@@ -133,16 +186,16 @@ function renderImageBlock(block: ImageBlock) {
   )
 }
 
-function renderGalleryBlock(block: GalleryBlock) {
+function renderGalleryBlock(block: GalleryBlock, photoMap: Map<string, PublicUploadedPhoto>) {
   return (
     <div key={block.id} className="theme-page-demo-stop-gallery">
       {block.items.map((photo) => (
-        <figure key={photo.file}>
+        <figure key={photo.photoId}>
           <img
-            src={photoUrl(photo.file)}
+            src={resolvePhotoURL(photoMap, photo.photoId)}
             alt={photo.alt}
             loading="lazy"
-            style={{ objectPosition: objectPositionFor(photo.focal) }}
+            style={{ objectPosition: objectPositionFor(resolvePhotoFocal(photoMap, photo.photoId, photo.focal)) }}
           />
           {photo.caption && <figcaption>{photo.caption}</figcaption>}
         </figure>
@@ -151,7 +204,7 @@ function renderGalleryBlock(block: GalleryBlock) {
   )
 }
 
-function StopCard({ block, index }: { block: StopBlock; index: number }) {
+function StopCard({ block, index, photoMap }: { block: StopBlock; index: number; photoMap: Map<string, PublicUploadedPhoto> }) {
   return (
     <article className="theme-page-demo-stop" data-index={index}>
       <div className="theme-page-demo-stop-head">
@@ -160,7 +213,7 @@ function StopCard({ block, index }: { block: StopBlock; index: number }) {
       </div>
       <p className="theme-page-demo-stop-body">{block.desc}</p>
       {block.blurb && <p className="theme-page-demo-stop-blurb">{block.blurb}</p>}
-      {block.media.map((m) => (m.kind === 'image' ? renderImageBlock(m) : renderGalleryBlock(m)))}
+      {block.media.map((m) => (m.kind === 'image' ? renderImageBlock(m, photoMap) : renderGalleryBlock(m, photoMap)))}
       {block.info && block.info.length > 0 && (
         <dl className="theme-page-demo-info-box">
           {block.info.map(([label, value]) => (
@@ -182,7 +235,7 @@ function StopCard({ block, index }: { block: StopBlock; index: number }) {
 // 三種標記不會被傳進這支函式——它們在渲染前已經被 groupScrollTimelineBlocks
 // 收斂成 ScrollTimelineGroup,改由 renderScrollTimelineGroup 處理,見該
 // 函式的完整說明。
-function renderBlock(block: ThemePageBlock, index: number) {
+function renderBlock(block: ThemePageBlock, index: number, photoMap: Map<string, PublicUploadedPhoto>) {
   switch (block.kind) {
     case 'paragraph':
       // data-variant(非 className 拼接)對齊 data-palette/data-theme 的
@@ -192,11 +245,11 @@ function renderBlock(block: ThemePageBlock, index: number) {
       // 外觀,不需要額外判斷。
       return <p key={block.id} className="theme-page-demo-paragraph" data-variant={block.variant}>{block.text}</p>
     case 'image':
-      return renderImageBlock(block)
+      return renderImageBlock(block, photoMap)
     case 'gallery':
-      return renderGalleryBlock(block)
+      return renderGalleryBlock(block, photoMap)
     case 'stop':
-      return <StopCard key={block.id} block={block} index={index} />
+      return <StopCard key={block.id} block={block} index={index} photoMap={photoMap} />
     default:
       return null
   }
@@ -223,7 +276,7 @@ function renderBlock(block: ThemePageBlock, index: number) {
 // 說明。每個錨點的 content 陣列,遞迴呼叫 renderBlock 渲染(這裡不會
 // 再遇到 scroll-timeline-* kind,因為 groupScrollTimelineBlocks 已經
 // 把它們從一般 block 流程裡抽走,不會被收進某個 anchor 的 content)。
-function renderScrollTimelineGroup(group: ScrollTimelineGroup, key: string) {
+function renderScrollTimelineGroup(group: ScrollTimelineGroup, key: string, photoMap: Map<string, PublicUploadedPhoto>) {
   const { start, anchors } = group
   if (anchors.length === 0) return null
   return (
@@ -243,20 +296,30 @@ function renderScrollTimelineGroup(group: ScrollTimelineGroup, key: string) {
           center={meta.center}
           label={meta.label}
         >
-          {content.map((b, i) => renderBlock(b, i))}
+          {content.map((b, i) => renderBlock(b, i, photoMap))}
         </ScrollTimeline.Anchor>
       ))}
     </ScrollTimeline>
   )
 }
 
-// FetchState:三態——'loading' 剛掛載還沒拿到回應;'api' 成功拿到後端
-// 已發布的內容;'fallback' 打 API 失敗(server 沒開、該 slug 還沒
-// publish、404 等)時退回 sampleTainanChikan 常數,讓這個試做頁在沒有
-// 後端可用時仍能預覽排版效果,不會整頁空白。
+// FetchState:四態——'loading' 剛掛載還沒拿到回應;'api' 成功拿到後端
+// 已發布的內容;'not-found' 後端明確回 404(該 handle/slug 查無已發布
+// 文章),渲染真正的 404 畫面,不冒充成任何其他文章的內容;'fallback'
+// 其他失敗(server 沒開、網路錯誤、200 但內容形狀不對)時退回
+// sampleTainanChikan 常數,讓這個頁面原本「展示排版效果」的既有用途
+// (後端尚未就緒時仍能預覽)繼續成立。
+//
+// 2026-10 修正:這個頁面轉正前是固定讀單一 demo slug 的試做版本,任何
+// 失敗(包含 404)一律退回 sample 常數是合理的——那時沒有「查無特定
+// 文章」這個情境,只有「後端有沒有準備好」。轉正成依路徑參數讀取任意
+// 作者/文章後,404 代表「這篇文章真的不存在」,此時顯示另一篇文章
+// (赤崁)的完整內容會讓使用者誤以為查到了真實存在的文章,是錯誤的
+// 使用者體驗,必須跟「後端真的掛了」分開處理。
 type FetchState =
   | { kind: 'loading' }
   | { kind: 'api'; content: ThemePageContent }
+  | { kind: 'not-found' }
   | { kind: 'fallback'; reason: string }
 
 // isThemePageContentShape:最小的執行期結構檢查——只驗證會被這個檔案
@@ -300,6 +363,10 @@ export function BlogArticlePage({ handle, slug }: { handle: string; slug: string
       })
       .catch((err) => {
         if (cancelled) return
+        if (err instanceof ApiError && err.call.status === 404) {
+          setState({ kind: 'not-found' })
+          return
+        }
         setState({ kind: 'fallback', reason: err instanceof Error ? err.message : String(err) })
       })
     return () => { cancelled = true }
@@ -309,6 +376,52 @@ export function BlogArticlePage({ handle, slug }: { handle: string; slug: string
   const mapIntroRef = useRef<HTMLDivElement | null>(null)
   const { blocks } = content
   useScrollProgress(blocks.length, mapIntroRef)
+
+  // photoMap:content.blocks 裡所有出現過的 photoId,批次展開成實際
+  // 可顯示的圖片資訊(見 collectPhotoIds/fetchPublicBlogPhotosByIDs 的
+  // 完整說明)。只在 state.kind === 'api'(真正拿到後端內容)時才查詢
+  // ——沒有用 useMemo 快取 collectPhotoIds 的結果,因為這份收集本身很
+  // 便宜(linear scan 一次 blocks)。
+  //
+  // 2026-10 code review 修正:原本依賴陣列只放 [blocks],在 'loading'
+  // 與 'fallback' 狀態下 content 會是 sampleTainanChikan 常數(見上方
+  // content 的三元運算式),此時 blocks 裡的 photoId 其實是
+  // sampleTainanChikan.ts 的假檔名字串(例如 "IMG_9812.webp"),從來
+  // 不會在 uploaded_photos 查到任何結果——但 effect 仍會無條件對真實
+  // 後端 /public/blog/photos 發出一次查詢,保證查無結果,是一次單純的
+  // 浪費(元件掛載時 state 預設是 'loading',幾乎每次載入文章都會打到
+  // 這次多餘的請求)。改成多檢查 state.kind,'api' 以外的狀態都不觸發
+  // 查詢、維持空 Map。
+  const [photoMap, setPhotoMap] = useState<Map<string, PublicUploadedPhoto>>(new Map())
+  useEffect(() => {
+    if (state.kind !== 'api') return
+    let cancelled = false
+    const ids = collectPhotoIds(blocks)
+    fetchPublicBlogPhotosByIDs(GUEST_CFG, ids)
+      .then((res) => {
+        if (cancelled) return
+        setPhotoMap(new Map(res.photos.map((p) => [p.id, p])))
+      })
+      .catch((err) => {
+        if (cancelled) return
+        // 查詢失敗不視為錯誤——resolvePhotoURL 對查不到的 photoId 有
+        // 自己的降級行為(退回舊式路徑拼接,見該函式的完整說明),這裡
+        // 維持空 Map 即可,不需要另外顯示錯誤畫面擋住整篇文章。但至少
+        // 留一行 console.warn(2026-10 code review 修正:原本完全靜默
+        // 吞掉,後端持續性失敗時,所有真實 photoId 會全部退回
+        // photoUrl(photoId) 這個舊式路徑拼接出一個必定無效的網址,畫面
+        // 上只看到破圖、console 乾淨,完全沒有線索指出問題出在查詢
+        // 失敗而非圖片本身不存在)。
+        console.warn('[BlogArticlePage] fetchPublicBlogPhotosByIDs 失敗,圖片將顯示為降級狀態:', err)
+      })
+    return () => { cancelled = true }
+  }, [state.kind, blocks])
+
+  // not-found 直接渲染真正的 404 畫面,不走下面的 content 渲染邏輯
+  // ——見上方 FetchState 的完整說明。放在所有 Hook 呼叫之後才 early
+  // return,維持 Hook 呼叫順序在每次渲染都一致(React Hooks 規則:
+  // Hook 不能被條件式跳過)。
+  if (state.kind === 'not-found') return <NotFoundPage />
 
   return (
     <div className="theme-page-demo-page" data-theme={theme ?? undefined} data-palette={content.palette}>
@@ -320,8 +433,6 @@ export function BlogArticlePage({ handle, slug }: { handle: string; slug: string
       <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
       <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'blog-article', position: 'nav' })}>登入</SiteNavCta>
       <header className="theme-page-demo-hero">
-        {/* 方案一:eyebrow 上方——見 renderAuthorInline 的完整說明。 */}
-        {renderAuthorInline()}
         {content.eyebrow && <span className="theme-page-demo-hero-eyebrow">{content.eyebrow}</span>}
         <h1>
           {content.title.split('\n').map((line, i) => (
@@ -332,15 +443,12 @@ export function BlogArticlePage({ handle, slug }: { handle: string; slug: string
           ))}
         </h1>
         {content.lede && <p>{content.lede}</p>}
-        {/* 方案二:導言下方——見 renderAuthorBelowLede 的完整說明。 */}
+        {/* 作者資訊:標題+導言下方,頭像+作者名+發布日期一行——見
+            renderAuthorBelowLede 的完整說明。試做階段曾同時比較三種
+            位置方案(eyebrow 上方/導言下方/獨立卡片),這裡保留的是
+            導言下方這個,讓讀者先專注標題與導言,再看到作者身份。 */}
         {renderAuthorBelowLede()}
       </header>
-
-      {/* 方案三:獨立作者卡片,文章內文結尾——見 renderAuthorCard 的
-          完整說明。這裡先放在時間軸/內文 section 之前(文章最開頭),
-          方便跟方案一/二同時在同一頁比較;之後選定方案時這裡的位置
-          會跟著調整(例如移到 section 結尾)。 */}
-      {renderAuthorCard()}
 
       <section className="theme-page-demo-stops">
         {/* renderItems:groupScrollTimelineBlocks 把扁平 blocks 陣列轉成
@@ -352,7 +460,7 @@ export function BlogArticlePage({ handle, slug }: { handle: string; slug: string
             「相鄰兩個 stop 的 day 是否不同」這件事不需要知道分組結果。 */}
         {groupScrollTimelineBlocks(blocks).map((item) => {
           if (item.type === 'scroll-timeline') {
-            return renderScrollTimelineGroup(item.group, item.key)
+            return renderScrollTimelineGroup(item.group, item.key, photoMap)
           }
           const { block, index: i } = item
           // Day 分隔線只在相鄰兩個 stop 區塊的 day 不同時插入——非 stop
@@ -376,7 +484,7 @@ export function BlogArticlePage({ handle, slug }: { handle: string; slug: string
                   <div className="theme-page-demo-day-divider-line" />
                 </div>
               )}
-              {renderBlock(block, i)}
+              {renderBlock(block, i, photoMap)}
             </div>
           )
         })}

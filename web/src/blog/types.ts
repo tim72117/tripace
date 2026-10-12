@@ -119,11 +119,22 @@ export interface ParagraphBlock {
 }
 
 /** 單圖區塊——取代最初試做版本把出血/繞排擠在同一個 align 欄位的設計
- *  (見本檔開頭說明第 2 點)。 */
+ *  (見本檔開頭說明第 2 點)。
+ *
+ *  2026-10 修正:photoId 取代原本的 file(圖檔路徑字串)——file 當初是
+ *  直接拼接固定路徑前綴+檔名(見 BlogArticlePage.tsx 舊版 photoUrl()
+ *  的寫法),圖片一旦被使用者重新上傳替換,舊路徑就直接失效,文章內容
+ *  跟實際檔案位置脫鉤,業界常見做法(WordPress attachment ID、Sanity
+ *  Portable Text asset reference)都是在內容裡存不會變動的穩定識別碼,
+ *  渲染時才解析成當下有效的實際網址。photoId 對應後端
+ *  uploaded_photos.id(見 server/internal/store/entity.go
+ *  uploadedPhotoRow 的完整說明),前端渲染文章時透過
+ *  fetchPublicBlogPhotosByIDs(api.ts)批次展開成實際網址,不在內容
+ *  JSON 裡直接存任何路徑/網址字串。 */
 export interface ImageBlock {
   id: string
   kind: 'image'
-  file: string
+  photoId: string
   alt: string
   caption?: string
   width: ImageWidth
@@ -134,11 +145,12 @@ export interface ImageBlock {
 
 /** 多圖群組區塊——顯式群組,取代「靠張數隱式判斷版面」的舊邏輯(見本檔
  *  開頭說明第 2 點)。items 上限建議 2~4 張,對齊 Medium/Ghost 刻意訂
- *  低張數上限、避免排版失控的慣例。 */
+ *  低張數上限、避免排版失控的慣例。items[].photoId 同 ImageBlock.photoId
+ *  的完整說明,2026-10 同一輪修正從 file 改名。 */
 export interface GalleryBlock {
   id: string
   kind: 'gallery'
-  items: Array<{ file: string; alt: string; caption?: string; focal?: FocalPoint }>
+  items: Array<{ photoId: string; alt: string; caption?: string; focal?: FocalPoint }>
   layout: 'grid' | 'row'
   /** 整組圖片共用的說明文字,跟單張 caption 分開(對齊 Ghost gallery
    *  card 在「整組」層級才有 caption 的設計)。 */

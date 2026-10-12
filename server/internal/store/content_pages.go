@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"strings"
 
 	"github.com/tim72117/tripace/internal/model"
 	"gorm.io/gorm"
@@ -123,6 +124,43 @@ func (s *Store) ListContentPages() ([]model.ContentPage, error) {
 		out = append(out, toContentPage(r))
 	}
 	return out, nil
+}
+
+// FilterPhotoIDsReferencedByPublishedContent 從給定的 photoId 清單裡
+// 篩出「目前至少被一篇 status='published' 文章的 content 引用」的那些
+// ——供 handlePublicBlogPhotosByIDs 做授權檢查用(見該 handler 的完整
+// 說明)。
+//
+// Content 欄位刻意是不透明的 JSON 字串(見 contentPageRow 的完整
+// 說明,後端不解析 ThemePageContent 內部結構),這裡延續同一個原則,
+// 不把 content 反序列化成結構再逐一走訪 blocks 比對 photoId,改用
+// SQL LIKE 直接對字串做子字串比對——photoId 固定是 "upf_" + 12 碼
+// hex(見 newUploadedPhotoID),不含任何萬用字元特殊符號,也不會是
+// 另一個 photoId 的子字串,字串比對不會有誤判風險。這個查詢規模是
+// 「整個站台目前已發布的文章數」,不是依 owner 篩選過的小範圍,但
+// 預期這批文章量體遠小於需要分頁處理的程度,一次性全表掃描在目前
+// 規模下是合理的簡單實作;若未來文章量成長到有效能疑慮,可以考慮
+// 改成在 publish 時把引用的 photoId 清單另存一張關聯表。
+func (s *Store) FilterPhotoIDsReferencedByPublishedContent(ids []string) ([]string, error) {
+	if len(ids) == 0 {
+		return []string{}, nil
+	}
+
+	var rows []contentPageRow
+	if err := s.db.Where("status = ?", "published").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	referenced := make([]string, 0, len(ids))
+	for _, id := range ids {
+		for _, r := range rows {
+			if strings.Contains(r.Content, id) {
+				referenced = append(referenced, id)
+				break
+			}
+		}
+	}
+	return referenced, nil
 }
 
 // UpdateContentPageContent 覆寫一筆主題介紹頁/部落格文章的整份內容

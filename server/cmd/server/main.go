@@ -394,6 +394,16 @@ func main() {
 	// 已改為需登入並搬到 GET /internal/geo/plan-ai/sim-ws(見
 	// internal/api/plan_sim_demo.go 與 api.go 路由註冊處的完整說明),由
 	// 上面 /internal/ 的轉發涵蓋,不需要獨立一行。
+	// /public/blog/(見 internal/api/blog_photo.go
+	// handlePublicBlogPhotosByIDs 的完整說明)——部落格文章公開讀取時,
+	// 把內容裡存的 photoId 批次展開成實際圖片網址用。2026-10 code
+	// review 時實測發現:這支端點原本完全沒有被轉發到這裡,所有請求都
+	// 落到下面的 SPA fallback(staticHandler,回 200 + 前端 index.html),
+	// 而不是這支 handler——正是 /public/geo/ 這段註解提過的同一個陷阱
+	// (新增 /public/* 路由忘記同步這裡,正式環境會靜默故障,不是顯眼的
+	// 404)。補上這行,刻意只轉發 /public/blog/ 這個更深的前綴,理由同
+	// /public/geo/:不影響 /public/{token} 的 SPA fallback 路由。
+	mux.Handle("/public/blog/", srv.Routes())
 
 	// 管理後台(/admin/api/*)預設拆分成獨立的 cmd/adminserver binary/
 	// Cloud Run 服務(見 server/cmd/adminserver/main.go),那條部署路徑

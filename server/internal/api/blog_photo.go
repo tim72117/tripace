@@ -35,6 +35,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/tim72117/tripace/internal/model"
@@ -386,4 +387,116 @@ func (s *Server) handleBlogPhotoFocal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+// publicUploadedPhoto 是 handlePublicBlogPhotosByIDs 的回應形狀——刻意
+// 不直接序列化 model.UploadedPhoto(那個形狀含 OwnerID,這支端點不驗證
+// 任何身分、任何人帶 photoId 就能查,不該連帶洩漏這張圖屬於哪個使用者
+// 帳號)。只保留前端把文章內容裡的 photoId 展開成實際可顯示圖片所需
+// 的最小欄位集合:原圖網址、裁切焦點、衍生版本網址。
+type publicUploadedPhoto struct {
+	ID          string               `json:"id"`
+	OriginalURL string               `json:"originalUrl"`
+	FocalX      *float64             `json:"focalX,omitempty"`
+	FocalY      *float64             `json:"focalY,omitempty"`
+	Variants    []publicPhotoVariant `json:"variants,omitempty"`
+}
+
+// publicPhotoVariant 同 publicUploadedPhoto 的理由——只留前端選用對應
+// 尺寸圖片需要的欄位,不含 PhotoID(呼叫端已經知道自己查的是哪個
+// photoId,不需要在每個 variant 裡重複回傳同一個值)、CreatedAt(公開
+// 展示用途不需要)。
+type publicPhotoVariant struct {
+	Kind   string `json:"kind"` // "thumbnail" | "large"
+	URL    string `json:"url"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
+func toPublicUploadedPhoto(p model.UploadedPhoto) publicUploadedPhoto {
+	variants := make([]publicPhotoVariant, 0, len(p.Variants))
+	for _, v := range p.Variants {
+		variants = append(variants, publicPhotoVariant{Kind: v.Kind, URL: v.URL, Width: v.Width, Height: v.Height})
+	}
+	return publicUploadedPhoto{
+		ID:          p.ID,
+		OriginalURL: p.OriginalURL,
+		FocalX:      p.FocalX,
+		FocalY:      p.FocalY,
+		Variants:    variants,
+	}
+}
+
+// handlePublicBlogPhotosByIDs 處理 GET /public/blog/photos?ids=a,b,c
+// ——依一批 photoId 批次查出可公開顯示的圖片資訊,供前端把已發布文章
+// 內容(ThemePageContent 的 ImageBlock.photoId/GalleryBlock.items[].photoId,
+// 見 web/src/blog/types.ts)裡存的穩定識別碼,展開成實際可渲染的圖片
+// 網址。
+//
+// 這支端點刻意獨立於 /v1/blog/photos 系列之外、掛在 /public/* 命名
+// 空間、不檢查任何登入身分——文章一旦發布(handlePublicBlogArticle
+// 只回傳 status=="published" 的內容)本來就是任何訪客都能看到裡面
+// 引用的圖片,圖片網址本身不是機密;要求訪客端渲染文章前還得先登入
+// 才能把 photoId 換成可顯示的網址,會讓公開文章讀取流程整個卡住。這跟
+// /v1/blog/photos 系列端點(登入者管理自己上傳過的圖片庫,含草稿/
+// 未發布圖片,必須驗證身分)服務的是完全不同的情境,不應該合併成同一支
+// 端點用參數切換行為。
+//
+// 2026-10 code review 修正:雖然不檢查登入身分,但必須檢查查詢者是否
+// 「有權看到這張圖」——原本的實作只要 photoId 存在於 uploaded_photos
+// 表就無條件回傳,等於任何人只要知道一個 photoId(例如從某處洩漏、或
+// 純粹猜測 "upf_" + hex 格式),就能拿到任何使用者草稿文章配圖的永久
+// 有效 GCS 公開網址,等同可以枚舉任意使用者尚未公開、甚至永遠不會公開
+// 的圖片。改成先用 FilterPhotoIDsReferencedByPublishedContent 篩掉
+// 「目前沒有被任何已發布文章引用」的 ID,只對通過篩選的 ID 繼續查詢
+// 圖片資訊——未發布/已刪除文章引用的圖片,或從未被任何文章引用過的
+// 圖片,都視為查無此圖,跟 ID 本身不存在走同一條降級路徑(見下方)。
+//
+// 同時只回傳 Status=="ready" 的圖片——pending(背景處理尚未完成)或
+// failed(處理失敗)的記錄雖然 OriginalURL 欄位本身有值,但這張圖片
+// 還沒確認是「使用者真正想公開呈現的最終版本」,不應該讓訪客提前看到
+// 處理中的中繼狀態。
+//
+// 查無對應記錄的 ID 直接略過——文章裡引用了一個已經被刪除的 photoId
+// 時,該圖片在渲染結果裡就是不存在,前端據此呈現「圖片已移除」之類的
+// 降級畫面,不是這支端點該處理的責任。
+func (s *Server) handlePublicBlogPhotosByIDs(w http.ResponseWriter, r *http.Request) {
+	idsParam := r.URL.Query().Get("ids")
+	if idsParam == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"photos": []publicUploadedPhoto{}})
+		return
+	}
+
+	rawIDs := strings.Split(idsParam, ",")
+	ids := make([]string, 0, len(rawIDs))
+	seen := make(map[string]bool, len(rawIDs))
+	for _, id := range rawIDs {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+
+	allowedIDs, err := s.store.FilterPhotoIDsReferencedByPublishedContent(ids)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
+		return
+	}
+
+	photos, err := s.store.ListUploadedPhotosByIDs(allowedIDs)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
+		return
+	}
+
+	out := make([]publicUploadedPhoto, 0, len(photos))
+	for _, p := range photos {
+		if p.Status != "ready" {
+			continue
+		}
+		out = append(out, toPublicUploadedPhoto(p))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"photos": out})
 }

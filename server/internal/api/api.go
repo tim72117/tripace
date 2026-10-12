@@ -512,6 +512,14 @@ func (s *Server) Routes() http.Handler {
 	// 那一篇文章(見 handlePublicBlogArticle 的完整說明)。
 	mux.HandleFunc("GET /v1/blog/{handle}/{slug}", s.handlePublicBlogArticle)
 
+	// 依一批 photoId 批次查出可公開顯示的圖片資訊(blog_photo.go 的
+	// handlePublicBlogPhotosByIDs 完整說明)——供前端把已發布文章內容裡
+	// 存的 photoId 穩定識別碼展開成實際圖片網址。刻意掛在 /public/*
+	// (而非上面的 /v1/blog/{handle}/{slug} 旁邊),不檢查登入身分:這是
+	// 讀取公開已發布內容的延伸,跟下面需要登入的 /v1/blog/photos/* 系列
+	// (使用者管理自己的圖片庫,含草稿/未發布圖片)服務情境完全不同。
+	mux.HandleFunc("GET /public/blog/photos", s.handlePublicBlogPhotosByIDs)
+
 	// 使用者上傳部落格配圖(blog_photo.go 的完整說明)——需要登入的一般
 	// 功能,掛在 /v1/*(不是 /internal/*,那個命名空間專給 CLI 維運
 	// 端點用,見 blog_photo.go 開頭的完整說明)。路徑刻意用

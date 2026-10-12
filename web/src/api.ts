@@ -1257,6 +1257,41 @@ export function fetchPublicBlogArticle(cfg: ClientConfig, handle: string, slug: 
   )
 }
 
+// PublicPhotoVariant/PublicUploadedPhoto:對齊後端
+// server/internal/api/blog_photo.go 的 publicPhotoVariant/
+// publicUploadedPhoto 回應形狀——刻意是比上面 PhotoVariant/UploadedPhoto
+// 更精簡的子集(沒有 ownerId/status/createdAt/updatedAt 等欄位),因為
+// 這組型別服務的是 fetchPublicBlogPhotosByIDs 這支免登入端點,後端本來
+// 就只回傳「展開 photoId 成可顯示圖片」所需的最小欄位,不是省略前端
+// 自己挑欄位,兩邊型別定義要對應一致。
+export interface PublicPhotoVariant {
+  kind: string // "thumbnail" | "large"
+  url: string
+  width: number
+  height: number
+}
+
+export interface PublicUploadedPhoto {
+  id: string
+  originalUrl: string
+  focalX?: number
+  focalY?: number
+  variants?: PublicPhotoVariant[]
+}
+
+// fetchPublicBlogPhotosByIDs:GET /public/blog/photos?ids=a,b,c(免登入)
+// ——供 BlogArticlePage.tsx 渲染文章前,把內容裡 ImageBlock.photoId/
+// GalleryBlock.items[].photoId(見 web/src/blog/types.ts 的完整說明:
+// 2026-10 從直接存路徑字串改成存這個穩定識別碼)批次展開成實際可顯示
+// 的圖片網址。ids 為空陣列時不發送請求、直接回傳空陣列——對齊後端
+// 查無對應 ID 時「略過、不報錯」的降級哲學,呼叫端不需要為了「這篇
+// 文章剛好沒有任何圖片」這種常見情況特別處理錯誤。
+export function fetchPublicBlogPhotosByIDs(cfg: ClientConfig, ids: string[]) {
+  if (ids.length === 0) return Promise.resolve({ photos: [] as PublicUploadedPhoto[] })
+  const query = encodeURIComponent(ids.join(','))
+  return request<{ photos: PublicUploadedPhoto[] }>(cfg, 'GET', `/public/blog/photos?ids=${query}`)
+}
+
 // ---- 部落客上傳圖片管理(/blog/photos 頁面用,見 web/src/blog/PhotoManagerPage.tsx)。
 // 對齊後端 server/internal/api/blog_photo.go 的完整說明——這批端點全部
 // 需要登入(非訪客),呼叫端必須傳帶真實 JWT 的 ClientConfig,不是

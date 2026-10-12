@@ -477,6 +477,76 @@ func publicURLToObjectName(t *testing.T, publicURL string) string {
 	return publicURL[len(prefix):]
 }
 
+// TestPublicBlogPhotosByIDs_只回傳已發布文章引用且ready的圖片 驗證
+// 2026-10 code review 修正的核心授權邏輯(見 handlePublicBlogPhotosByIDs
+// 的完整說明):這支端點不檢查登入身分,但必須只回傳「目前被已發布
+// 文章引用、且處理完成(status=="ready")」的圖片,否則任何人只要知道
+// 一個 photoId 就能拿到其他使用者草稿配圖的永久有效網址,或看到還在
+// 處理中/失敗的中繼狀態圖片。
+func TestPublicBlogPhotosByIDs_只回傳已發布文章引用且ready的圖片(t *testing.T) {
+	f := newBlogPhotoFixture(t)
+
+	// 一張已處理完成、被已發布文章引用的圖片——應該通過。
+	readyPhoto, err := f.srv.store.CreateUploadedPhoto(f.userID, "https://example.com/ready.jpg")
+	if err != nil {
+		t.Fatalf("CreateUploadedPhoto(ready): %v", err)
+	}
+	if err := f.srv.store.SetUploadedPhotoStatus(readyPhoto.ID, "ready"); err != nil {
+		t.Fatalf("SetUploadedPhotoStatus(ready): %v", err)
+	}
+	if _, err := f.srv.store.CreateContentPage(f.userID, "published-with-photo",
+		`{"title":"t","blocks":[{"id":"p1","kind":"image","photoId":"`+readyPhoto.ID+`"}]}`, f.userID); err != nil {
+		t.Fatalf("CreateContentPage: %v", err)
+	}
+	if err := f.srv.store.SetContentPageStatus(f.userID, "published-with-photo", "published"); err != nil {
+		t.Fatalf("SetContentPageStatus(published): %v", err)
+	}
+
+	// 一張同樣 ready、但只被草稿文章引用的圖片——不應該通過。
+	draftPhoto, err := f.srv.store.CreateUploadedPhoto(f.userID, "https://example.com/draft.jpg")
+	if err != nil {
+		t.Fatalf("CreateUploadedPhoto(draft): %v", err)
+	}
+	if err := f.srv.store.SetUploadedPhotoStatus(draftPhoto.ID, "ready"); err != nil {
+		t.Fatalf("SetUploadedPhotoStatus(draft, ready): %v", err)
+	}
+	if _, err := f.srv.store.CreateContentPage(f.userID, "draft-with-photo",
+		`{"title":"t","blocks":[{"id":"p1","kind":"image","photoId":"`+draftPhoto.ID+`"}]}`, f.userID); err != nil {
+		t.Fatalf("CreateContentPage(draft): %v", err)
+	}
+	// 刻意不發布這篇。
+
+	// 一張被已發布文章引用、但還在處理中(pending)的圖片——不應該通過
+	// (見 handlePublicBlogPhotosByIDs 對 Status 的完整說明)。
+	pendingPhoto, err := f.srv.store.CreateUploadedPhoto(f.userID, "https://example.com/pending.jpg")
+	if err != nil {
+		t.Fatalf("CreateUploadedPhoto(pending): %v", err)
+	}
+	// 刻意不呼叫 SetUploadedPhotoStatus,維持建立時的預設 "pending"。
+	if _, err := f.srv.store.CreateContentPage(f.userID, "published-with-pending-photo",
+		`{"title":"t","blocks":[{"id":"p1","kind":"image","photoId":"`+pendingPhoto.ID+`"}]}`, f.userID); err != nil {
+		t.Fatalf("CreateContentPage(pending): %v", err)
+	}
+	if err := f.srv.store.SetContentPageStatus(f.userID, "published-with-pending-photo", "published"); err != nil {
+		t.Fatalf("SetContentPageStatus(pending article, published): %v", err)
+	}
+
+	ids := readyPhoto.ID + "," + draftPhoto.ID + "," + pendingPhoto.ID + ",upf_doesnotexist"
+	got := f.doNoAuth(t, "GET", "/public/blog/photos?ids="+ids, nil, http.StatusOK)
+
+	photos, ok := got["photos"].([]any)
+	if !ok {
+		t.Fatalf("回應格式不符預期: %+v", got)
+	}
+	if len(photos) != 1 {
+		t.Fatalf("應該只回傳 1 張圖片(已發布文章引用且 ready),got %d: %+v", len(photos), photos)
+	}
+	first, ok := photos[0].(map[string]any)
+	if !ok || first["id"] != readyPhoto.ID {
+		t.Fatalf("回傳的圖片應該是 readyPhoto(%s),got %+v", readyPhoto.ID, photos[0])
+	}
+}
+
 // waitForPhotoStatus 輪詢等待背景處理 goroutine 把 Status 改成
 // wantStatus——背景處理沒有提供同步完成訊號給測試,用短輪詢是這個
 // 專案裡驗證背景任務最終結果的既有務實做法(理由同其餘背景任務測試
