@@ -88,10 +88,35 @@ export type ImageWidth = 'column' | 'wide' | 'full'
 export type ImageFloat = 'none' | 'left' | 'right'
 
 /** 一般文字段落——最基本的 Block kind,任何文章都可以只用這一種。 */
+/** 段落樣式變體——具名樣式,不是資料裡存具體字級/字重數值(對齊本檔
+ *  開頭說明第 7 點「具名主題」的既有設計哲學:CLI 編輯者只選語意化的
+ *  變體名稱,實際視覺數值(字級/字重/顏色/間距)交給 CSS 端的
+ *  [data-variant] 規則決定,之後要整體調整某種變體的呈現方式,只改
+ *  CSS,不需要回頭改任何已存的內容資料)。
+ *
+ *  - 'heading':小標題感,用在想把一段文字當成區段標題/轉折點的場合
+ *    (不是真正的 <h2>,仍是同一篇文章扁平敘事裡的一段,只是視覺上更
+ *    醒目,對齊赤崁·府城那篇手寫版(TainanChikanPage.tsx)的
+ *    tainan-chikan-stop-head/h2 視覺慣例)。
+ *  - 'emphasis':重點強調,字級/字重略為放大,用在想讓讀者多停留一下
+ *    的關鍵句子,對齊赤崁·府城那篇的 tainan-chikan-stop-blurb 視覺
+ *    慣例(但那裡字重是減弱的斜體語氣,這裡刻意是加強,語意不同,
+ *    不要混淆)。
+ *  - 'quote':引言樣式,用在摘錄的話、店家招牌文字、或想特別標出的
+ *    一句話。
+ *  - 'caption':小字說明,用在補充性質、不是正文重點的文字(例如
+ *    價位資訊、營業時間這類輔助細節)。
+ *  - 省略(undefined):一般內文,對應改動前的既有外觀,維持向後相容。
+ */
+export type ParagraphVariant = 'heading' | 'emphasis' | 'quote' | 'caption'
+
+/** 一般文字段落——最基本的 Block kind,任何文章都可以只用這一種。 */
 export interface ParagraphBlock {
   id: string
   kind: 'paragraph'
   text: string
+  /** 選填的樣式變體,見 ParagraphVariant 的完整說明。省略時是一般內文。 */
+  variant?: ParagraphVariant
 }
 
 /** 單圖區塊——取代最初試做版本把出血/繞排擠在同一個 align 欄位的設計

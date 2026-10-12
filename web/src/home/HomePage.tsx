@@ -65,7 +65,7 @@ export function HomePage() {
         dark={isCurrentlyDark(theme)}
         onToggle={() => setTheme((t) => (isCurrentlyDark(t) ? 'light' : 'dark'))}
       />
-      <SiteNavCta href="/app">登入</SiteNavCta>
+      <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'home', position: 'nav' })}>登入</SiteNavCta>
       <SiteNavCta
         href="/product"
         variant="accent"

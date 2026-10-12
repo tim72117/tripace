@@ -476,6 +476,61 @@
   margin: 0 0 1rem;
 }
 
+/* 段落樣式變體(ParagraphBlock.variant,見 types.ts ParagraphVariant 的
+   完整說明)——用 [data-variant="xxx"] 屬性選擇器而非各自獨立的
+   className,對齊本檔 data-palette/data-theme 的既有「具名變體決定
+   視覺數值」慣例。省略 variant 時這個屬性不存在,下面四條規則都不會
+   命中,維持一般內文(.theme-page-demo-paragraph 本身沒有額外樣式,
+   沿用繼承自 .theme-page-demo-page 的基礎字體設定)。 */
+
+/* heading:小標題感,用 ShipporiSerif 襯線字體呼應 h2(見上方
+   .theme-page-demo-stop h2)的字體選擇,但字級比真正的 h2 小一截——
+   這是一段扁平敘事裡的「轉折點」,不是另立一層標題階層。 */
+.theme-page-demo-paragraph[data-variant="heading"] {
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--ink);
+  margin: 1.8rem 0 0.9rem;
+}
+
+/* emphasis:重點強調,字級/字重放大(跟 .theme-page-demo-stop-blurb 的
+   「語氣補充、斜體減弱」刻意相反——這裡是要讀者多停留一下的關鍵句,
+   見 types.ts ParagraphVariant 的完整說明)。 */
+.theme-page-demo-paragraph[data-variant="emphasis"] {
+  font-size: 1.2rem;
+  font-weight: 600;
+  line-height: 1.75;
+  color: var(--ink);
+  margin: 0 0 1rem;
+}
+
+/* quote:引言樣式,視覺上借用 .theme-page-demo-stop-blurb 的
+   border-left + 斜體手法(同一篇文章裡兩者語意不同,但視覺語彙一致,
+   讀者容易辨認「這是被摘錄出來的一句話」),差異是字級更大、置中,
+   更接近傳統引言排版。 */
+.theme-page-demo-paragraph[data-variant="quote"] {
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  font-size: 1.25rem;
+  font-style: italic;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  border-left: 3px solid var(--brick-soft);
+  padding-left: 1.1rem;
+  margin: 1.5rem 0;
+}
+
+/* caption:小字說明,用在輔助性質、非正文重點的文字(例如價位/營業
+   時間)——字級縮小、顏色更淡,視覺權重刻意低於一般內文。 */
+.theme-page-demo-paragraph[data-variant="caption"] {
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+  opacity: 0.85;
+  margin: 0 0 1rem;
+}
+
 /* 2026-10 使用者要求「主圖放大，多穿插一點小圖」——第一張照片(主圖)
    橫跨整行、用更大的高度,其餘照片(小圖)用較密的小格排列在主圖下方,
    取代原本「每張圖等大、auto-fit 平均分配」的版面。grid-column: 1/-1

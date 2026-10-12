@@ -5,6 +5,7 @@ import { useThemeToggle } from '../hooks/useThemeToggle'
 import { useScrollProgress } from '../hooks/useScrollProgress'
 import { ScrollTimeline } from '../home/ScrollTimeline'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../home/SiteNavButtons'
+import { trackEvent } from '../analytics'
 import { CityPageFooter } from '../home/CityPageFooter'
 import { sampleTainanChikan } from './sampleTainanChikan'
 import { groupScrollTimelineBlocks, type ScrollTimelineGroup } from './scrollTimelineGrouping'
@@ -184,7 +185,12 @@ function StopCard({ block, index }: { block: StopBlock; index: number }) {
 function renderBlock(block: ThemePageBlock, index: number) {
   switch (block.kind) {
     case 'paragraph':
-      return <p key={block.id} className="theme-page-demo-paragraph">{block.text}</p>
+      // data-variant(非 className 拼接)對齊 data-palette/data-theme 的
+      // 既有「具名變體交給 CSS 端決定視覺數值」慣例(見 types.ts
+      // ParagraphVariant 的完整說明)。省略時屬性不存在,CSS 選擇器
+      // [data-variant="xxx"] 自然不會命中任何規則,維持改動前的既有
+      // 外觀,不需要額外判斷。
+      return <p key={block.id} className="theme-page-demo-paragraph" data-variant={block.variant}>{block.text}</p>
     case 'image':
       return renderImageBlock(block)
     case 'gallery':
@@ -312,7 +318,7 @@ export function BlogArticlePage({ handle, slug }: { handle: string; slug: string
           不比照城市介紹頁那種「九份」「赤崁・府城」式的頁面標籤)。 */}
       <SiteNavBrand />
       <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
-      <SiteNavCta href="/app">登入</SiteNavCta>
+      <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'blog-article', position: 'nav' })}>登入</SiteNavCta>
       <header className="theme-page-demo-hero">
         {/* 方案一:eyebrow 上方——見 renderAuthorInline 的完整說明。 */}
         {renderAuthorInline()}

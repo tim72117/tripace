@@ -9,6 +9,7 @@ import { Button } from '../components/Button'
 import { PhotoFocalEditor } from './PhotoFocalEditor'
 import { photoDisplayStatus, canEditFocal, objectPositionFor, type FocalPoint } from './photoFocalMath'
 import { BlogProfileSettings } from './BlogProfileSettings'
+import { trackEvent } from '../analytics'
 import styles from './PhotoManagerPage.module.css'
 
 // PhotoManagerPage——/blog/photos 路由的頁面外殼,仿照 trip-plan/TripPlanRoute.tsx
@@ -78,7 +79,7 @@ export function PhotoManagerPage() {
           .header 保留純粹的頁面標題列角色(「我的圖片」)。 */}
       <SiteNavBrand />
       <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
-      <SiteNavCta href="/app">返回應用</SiteNavCta>
+      <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'photo-manager', position: 'nav' })}>返回應用</SiteNavCta>
       <header className={styles.header}>
         <span className={styles.title}>我的圖片</span>
       </header>

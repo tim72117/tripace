@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { TIME_DRAG_ENABLED } from '../../DesktopShared'
 import { useThemeToggle } from '../../hooks/useThemeToggle'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../SiteNavButtons'
+import { trackEvent } from '../../analytics'
 import { useSyncedState } from '../../hooks/useSyncedState'
 import { planAiFakeDataSource } from './planAiFakeDataSource'
 import { createPlanSimFakeSource } from './planSimFakeSource'
@@ -1027,8 +1028,8 @@ export function AIPlanTimelinePage() {
             移到輸入匡前面,SiteNavBrand 不再需要帶 extra prop。 */}
         <SiteNavBrand pageLabel="台南兩日遊" />
         <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
-        <SiteNavCta href="/app">登入</SiteNavCta>
-        <SiteNavCta href="/product" variant="accent" slot={2}>功能介紹</SiteNavCta>
+        <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'plan-ai-sim', position: 'nav' })}>登入</SiteNavCta>
+        <SiteNavCta href="/product" variant="accent" slot={2} onClick={() => trackEvent('landing_feature_intro_click', { page: 'plan-ai-sim' })}>功能介紹</SiteNavCta>
         </>
       )}
 
