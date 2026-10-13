@@ -2,6 +2,14 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.33.1 — 2026-10-14
+
+修正 v0.33.0 部署失敗。無破壞性變更。
+
+### 修正
+
+- **`Dockerfile` 的 SEO meta 測試數量健全性檢查過時，導致 v0.33.0 Docker build 階段直接失敗**：v0.33.0 新增部落格文章動態 SEO meta（`blogArticleSEOMeta`，`/u/{handle}/{slug}` 路徑，含 `og:image` 優先用 `heroPhotoId`、退回 `heroStandalonePhotoId` 的測試）相關測試後，`TestApplySEOMeta|TestStaticHandler` 這組 pattern 比對到的測試數量從 5 個增加到 9 個，但 `Dockerfile` 裡 `go test -list` 的數量檢查沒有同步更新，造成這道健全性檢查判定失敗、整個部署中止。已更新為正確的 9，並在真實建置產物下重新驗證全部 9 個測試皆通過。
+
 ## v0.33.0 — 2026-10-14
 
 部落格發文功能大幅擴充（照片標注/評分、EXIF 轉正、多種單圖/多圖版型、Hero 圖、日夜模式建議值、SEO meta 動態注入）、CLI 新增同步處理旗標、移除部落格文章的假資料 fallback、首頁新增部落格文章入口。**本版含破壞性變更。**
