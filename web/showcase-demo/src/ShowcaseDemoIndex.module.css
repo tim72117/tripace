@@ -1,0 +1,72 @@
+/* ShowcaseDemoIndex.tsx 專屬樣式(CSS Modules)。這是
+   docs/brainstorm/2026-10-product-direction-brainstorm.md 六項構想的
+   雛形試做入口頁——只給內部查看用,不是正式對外頁面,視覺簡潔即可,不需要
+   比照 HomePage.tsx 那套紙感視覺語言做到位。 */
+.page {
+  min-height: 100vh;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  padding: 32px 20px 80px;
+}
+.inner {
+  max-width: 720px;
+  margin: 0 auto;
+}
+.heading {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.subheading {
+  font-size: 14px;
+  color: var(--ios-gray);
+  margin: 0 0 28px;
+  line-height: 1.6;
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.item {
+  display: block;
+  padding: 16px 18px;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease;
+}
+.item:hover {
+  border-color: var(--color-accent);
+}
+.itemTitle {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.itemStatus {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ios-active);
+  color: var(--ios-gray);
+}
+.itemStatusReady {
+  background: color-mix(in srgb, var(--ios-green) 15%, transparent);
+  color: var(--ios-green);
+}
+.itemDesc {
+  font-size: 13px;
+  color: var(--ios-gray);
+  margin: 0;
+  line-height: 1.5;
+}

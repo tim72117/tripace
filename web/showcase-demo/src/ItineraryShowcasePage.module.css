@@ -1,0 +1,250 @@
+/* ItineraryShowcasePage.tsx 專屬樣式(CSS Modules)。構想一的雛形——
+   卡片牆 + 分類篩選 + 唯讀時間軸預覽彈窗。 */
+.page {
+  min-height: 100vh;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  padding: 32px 20px 80px;
+}
+.inner {
+  max-width: 960px;
+  margin: 0 auto;
+}
+.back {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--ios-gray);
+  text-decoration: none;
+  margin-bottom: 16px;
+}
+.back:hover {
+  color: var(--color-accent);
+}
+.heading {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.subheading {
+  font-size: 13px;
+  color: var(--ios-gray);
+  margin: 0 0 20px;
+}
+
+/* filterBar:分類篩選 chips——對齊文件「依地區/天數/旅遊類型分類篩選」
+   的延伸方案。 */
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.filterChip {
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--ios-sep);
+  background: var(--ios-card);
+  color: var(--color-dark);
+  cursor: pointer;
+}
+.filterChipActive {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+.card {
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 14px;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+.cardCover {
+  font-size: 40px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 12%, transparent), transparent);
+}
+.cardBody {
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+.cardTitle {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+}
+.cardMeta {
+  font-size: 12px;
+  color: var(--ios-gray);
+}
+.cardSummary {
+  font-size: 13px;
+  color: var(--color-dark);
+  line-height: 1.5;
+  margin: 2px 0 6px;
+  flex: 1;
+}
+.cardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--ios-gray);
+}
+.cardTags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ios-active);
+  color: var(--ios-gray);
+}
+
+/* modal:唯讀時間軸預覽彈窗——對齊文件「點進去可以看到完整的時間軸預覽
+   （唯讀），底部有『套用這個行程』或『用這個當起點跟 AI 聊』的 CTA」。 */
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+}
+.modalCard {
+  background: var(--ios-card);
+  border-radius: 16px;
+  max-width: 520px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 24px;
+}
+.modalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.modalTitle {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+.modalClose {
+  border: none;
+  background: var(--ios-active);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--color-dark);
+  flex: 0 0 auto;
+}
+.modalMeta {
+  font-size: 12px;
+  color: var(--ios-gray);
+  margin-bottom: 16px;
+}
+.timeline {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.timelineItem {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  border-left: 2px solid var(--ios-sep);
+  padding-left: 16px;
+  margin-left: 6px;
+  position: relative;
+}
+.timelineItem::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 16px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+.timelineTime {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-accent);
+  flex: 0 0 72px;
+}
+.timelineBody {
+  flex: 1;
+}
+.timelineName {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 2px;
+}
+.timelineNote {
+  font-size: 12px;
+  color: var(--ios-gray);
+  margin: 0;
+  line-height: 1.5;
+}
+.modalActions {
+  display: flex;
+  gap: 8px;
+}
+.modalActionPrimary {
+  flex: 1;
+  padding: 10px;
+  border-radius: 10px;
+  border: none;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.modalActionSecondary {
+  flex: 1;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--ios-sep);
+  background: transparent;
+  color: var(--color-dark);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}

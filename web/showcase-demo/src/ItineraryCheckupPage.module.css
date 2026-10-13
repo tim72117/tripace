@@ -1,0 +1,171 @@
+/* ItineraryCheckupPage.tsx 專屬樣式(CSS Modules)。構想四的雛形——
+   行程健檢:假時間軸列表 + 警示卡片並排顯示。 */
+.page {
+  min-height: 100vh;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  padding: 32px 20px 80px;
+}
+.inner {
+  max-width: 860px;
+  margin: 0 auto;
+}
+.back {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--ios-gray);
+  text-decoration: none;
+  margin-bottom: 16px;
+}
+.back:hover {
+  color: var(--color-accent);
+}
+.heading {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.subheading {
+  font-size: 13px;
+  color: var(--ios-gray);
+  margin: 0 0 20px;
+  line-height: 1.6;
+}
+.summaryBar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.summaryPill {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+}
+.summaryPillWarning {
+  color: var(--ios-red);
+}
+.summaryPillInfo {
+  color: var(--ios-blue);
+}
+
+.timeline {
+  list-style: none;
+  margin: 0 0 28px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.timelineItem {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+  border-left: 2px solid var(--ios-sep);
+  padding-left: 16px;
+  margin-left: 6px;
+  position: relative;
+}
+.timelineItemIssue {
+  border-left-color: var(--ios-red);
+}
+.timelineItem::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 16px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ios-sep);
+}
+.timelineItemIssue::before {
+  background: var(--ios-red);
+}
+.timelineTime {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-accent);
+  flex: 0 0 90px;
+}
+.timelineBody {
+  flex: 1;
+}
+.timelineName {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+.timelineBadges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.badgeMeal {
+  background: var(--ios-active);
+  color: var(--ios-gray);
+}
+
+.issueSection {
+  margin-top: 4px;
+}
+.issueSectionTitle {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 12px;
+}
+.issueList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.issueCard {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--ios-sep);
+  background: var(--ios-card);
+}
+.issueCardWarning {
+  border-color: color-mix(in srgb, var(--ios-red) 40%, var(--ios-sep));
+  background: color-mix(in srgb, var(--ios-red) 6%, var(--ios-card));
+}
+.issueIcon {
+  flex: 0 0 auto;
+  font-size: 16px;
+}
+.issueBody {
+  flex: 1;
+}
+.issueType {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ios-gray);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 0 0 2px;
+}
+.issueMessage {
+  font-size: 13px;
+  margin: 0;
+  line-height: 1.5;
+}
+.emptyIssues {
+  font-size: 13px;
+  color: var(--ios-green);
+  padding: 16px;
+  text-align: center;
+  background: color-mix(in srgb, var(--ios-green) 8%, var(--ios-card));
+  border-radius: 10px;
+}

@@ -1,0 +1,161 @@
+/* AdSystemPage.tsx 專屬樣式(CSS Modules)。構想六的雛形——贊助卡片在
+   三個候選版位的視覺示意 + 關鍵決策摘要。版面骨架(.page/.inner/.back/
+   .heading/.subheading)對齊其他構想雛形頁(如 ItineraryShowcasePage)
+   的既有慣例,不另外發明一套。 */
+.page {
+  min-height: 100vh;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  padding: 32px 20px 80px;
+}
+.inner {
+  max-width: 720px;
+  margin: 0 auto;
+}
+.back {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--ios-gray);
+  text-decoration: none;
+  margin-bottom: 16px;
+}
+.back:hover {
+  color: var(--color-accent);
+}
+.heading {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.subheading {
+  font-size: 13px;
+  color: var(--ios-gray);
+  line-height: 1.6;
+  margin: 0 0 28px;
+}
+
+.placementList {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  margin-bottom: 40px;
+}
+
+.placementBlock {
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 14px;
+  padding: 18px;
+}
+
+.placementMeta {
+  margin-bottom: 14px;
+}
+.placementPage {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 2px;
+}
+.placementPosition {
+  font-size: 12px;
+  color: var(--ios-gray);
+  margin: 0;
+}
+
+/* sponsoredCard——贊助卡片本身,視覺語言對齊 ItineraryShowcasePage 的
+   .card(圓角+色塊封面+內文排列),但額外加上 .sponsoredLabel 贊助標示、
+   用 --accent CSS 變數讓三個版位各自示意不同的色調強調(對應真實系統
+   裡不同廣告主/版位可能有各自的視覺識別),不是隨意配色。 */
+.sponsoredCard {
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+  background: var(--ios-bg);
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.sponsoredCover {
+  flex: 0 0 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34px;
+  background: color-mix(in srgb, var(--accent, var(--color-accent)) 16%, transparent);
+}
+.sponsoredBody {
+  flex: 1;
+  padding: 14px 16px 14px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sponsoredLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent, var(--color-accent));
+  letter-spacing: 0.02em;
+}
+.sponsoredTitle {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+}
+.sponsoredDesc {
+  font-size: 13px;
+  color: var(--ios-gray);
+  line-height: 1.5;
+  margin: 0 0 6px;
+}
+.sponsoredCta {
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent, var(--color-accent));
+  color: #fff;
+  /* disabled——雛形沒有真實 landing page 可導去,純視覺展示,不是互動
+     死路(看起來像按鈕但點了沒反應更容易誤導)。 */
+  opacity: 0.85;
+  cursor: not-allowed;
+}
+
+.sectionHeading {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.sectionSub {
+  font-size: 12.5px;
+  color: var(--ios-gray);
+  line-height: 1.6;
+  margin: 0 0 16px;
+}
+
+.decisionList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.decisionItem {
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.decisionQ {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.decisionA {
+  font-size: 12.5px;
+  color: var(--ios-gray);
+  line-height: 1.6;
+  margin: 0;
+}

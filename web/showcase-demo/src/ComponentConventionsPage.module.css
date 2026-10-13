@@ -1,0 +1,91 @@
+/* ComponentConventionsPage.tsx 專屬樣式(CSS Modules)。構想二的雛形
+   ——對齊文件「元件庫文件化」延伸方案:統一元件後,整理一份內部的
+   「手勢型元件使用規範」。 */
+.page {
+  min-height: 100vh;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  padding: 32px 20px 80px;
+}
+.inner {
+  max-width: 760px;
+  margin: 0 auto;
+}
+.back {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--ios-gray);
+  text-decoration: none;
+  margin-bottom: 16px;
+}
+.back:hover {
+  color: var(--color-accent);
+}
+.heading {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.subheading {
+  font-size: 13px;
+  color: var(--ios-gray);
+  margin: 0 0 24px;
+  line-height: 1.6;
+}
+.section {
+  margin-bottom: 28px;
+}
+.sectionTitle {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ios-sep);
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.table th,
+.table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--ios-sep);
+  vertical-align: top;
+}
+.table th {
+  color: var(--ios-gray);
+  font-weight: 600;
+  font-size: 12px;
+}
+.code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--ios-active);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.checklistItem {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.checklistDone {
+  color: var(--ios-green);
+  flex: 0 0 auto;
+}
+.checklistTodo {
+  color: var(--ios-gray);
+  flex: 0 0 auto;
+}

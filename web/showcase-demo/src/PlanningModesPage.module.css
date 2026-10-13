@@ -1,0 +1,191 @@
+/* PlanningModesPage.tsx 專屬樣式(CSS Modules)。構想三的雛形——
+   九份型(亮點地圖)vs 赤崁型(時間軸列表)並排對照,同一組維度資料決定
+   呈現模式。 */
+.page {
+  min-height: 100vh;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  padding: 32px 20px 80px;
+}
+.inner {
+  max-width: 980px;
+  margin: 0 auto;
+}
+.back {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--ios-gray);
+  text-decoration: none;
+  margin-bottom: 16px;
+}
+.back:hover {
+  color: var(--color-accent);
+}
+.heading {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.subheading {
+  font-size: 13px;
+  color: var(--ios-gray);
+  margin: 0 0 24px;
+  line-height: 1.6;
+}
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 32px;
+}
+@media (max-width: 700px) {
+  .pair {
+    grid-template-columns: 1fr;
+  }
+}
+.panel {
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 14px;
+  padding: 18px;
+}
+.panelHeader {
+  margin-bottom: 12px;
+}
+.panelTitle {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.dims {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dimTag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ios-active);
+  color: var(--ios-gray);
+}
+.modeLabel {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  margin-top: 8px;
+}
+.modeLabelMap {
+  background: color-mix(in srgb, var(--ios-green) 15%, transparent);
+  color: var(--ios-green);
+}
+.modeLabelTimeline {
+  background: color-mix(in srgb, var(--ios-blue) 18%, transparent);
+  color: var(--ios-blue);
+}
+
+/* highlight-map 呈現:亮點清單,無精確時間,只有順序+步行時間+推薦理由。 */
+.highlightList {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.highlightItem {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.highlightIndex {
+  flex: 0 0 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.highlightBody {
+  flex: 1;
+}
+.highlightName {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 2px;
+}
+.highlightMeta {
+  font-size: 11px;
+  color: var(--ios-gray);
+  margin: 0 0 4px;
+}
+.highlightReason {
+  font-size: 12px;
+  color: var(--color-dark);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* timeline-list 呈現:精確時刻的時間軸,對齊 ItineraryShowcasePage 的
+   .timeline 樣式語言,但獨立定義避免跨檔案耦合。 */
+.timelineList {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.timelineItem {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+  border-left: 2px solid var(--ios-sep);
+  padding-left: 14px;
+  margin-left: 4px;
+  position: relative;
+}
+.timelineItem::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 14px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ios-blue);
+}
+.timelineTime {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ios-blue);
+  flex: 0 0 56px;
+}
+.timelineBody {
+  flex: 1;
+}
+.timelineName {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 2px;
+}
+.timelineReason {
+  font-size: 12px;
+  color: var(--ios-gray);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.note {
+  font-size: 12px;
+  color: var(--ios-gray);
+  line-height: 1.6;
+  background: var(--ios-active);
+  border-radius: 10px;
+  padding: 12px 14px;
+}

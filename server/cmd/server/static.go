@@ -43,15 +43,6 @@ var knownRoutePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^/blog/photos$`),
 	regexp.MustCompile(`^/trip-plan$`),
 	regexp.MustCompile(`^/app(/[^/]+)?$`),
-	// showcase-demo/*——2026-10 新增,見 web/src/App.tsx 對應路由的完整
-	// 說明(docs/brainstorm/2026-10-product-direction-brainstorm.md
-	// 六項產品構想的雛形試做,純供內部查看,不對外曝光連結)。
-	regexp.MustCompile(`^/showcase-demo$`),
-	regexp.MustCompile(`^/showcase-demo/itinerary-showcase$`),
-	regexp.MustCompile(`^/showcase-demo/component-conventions$`),
-	regexp.MustCompile(`^/showcase-demo/planning-modes$`),
-	regexp.MustCompile(`^/showcase-demo/itinerary-checkup$`),
-	regexp.MustCompile(`^/showcase-demo/post-composer$`),
 }
 
 func isKnownRoute(path string) bool {
