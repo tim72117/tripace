@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+
+	"github.com/tim72117/tripace/internal/store"
 )
 
 //go:embed web/dist
@@ -43,6 +45,12 @@ var knownRoutePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^/blog/photos$`),
 	regexp.MustCompile(`^/trip-plan$`),
 	regexp.MustCompile(`^/app(/[^/]+)?$`),
+	// /dev/layouts:開發用的版型目錄頁(2026-10 新增,見
+	// web/src/blog/LayoutGalleryPage.tsx 的完整說明)——陳列
+	// BlogArticle.css 支援的所有版型,骨架圖+範例文字,純開發工具,不是
+	// 產品功能,但路由本身仍走正常 SPA 入口,需要在這裡註冊才能在正式
+	// 環境直接重新整理這個網址而不被誤判成 404。
+	regexp.MustCompile(`^/dev/layouts$`),
 }
 
 func isKnownRoute(path string) bool {
@@ -71,7 +79,16 @@ func isKnownRoute(path string) bool {
 // Content-Length/寫入 body,沒有介入點可以在它寫出前修改內容。只有這個
 // SPA fallback 分支改動,檔案直接命中的那個分支(真正的靜態資源,如 JS/
 // CSS/圖片)維持原樣交給 FileServer,不需要也不該套用這段替換邏輯。
-func staticHandler() http.Handler {
+//
+// st(2026-10 新增)——部落格文章的 SEO meta(title/description/
+// canonical)不像城市介紹頁那樣能窮舉進固定的 seoMetaByPath 對照表,
+// 每篇文章的路徑跟內容都不同、數量會持續成長,必須在請求當下查資料庫
+// 才能組出對應的值(見 seo_meta.go blogArticleSEOMeta 的完整說明)。
+// main.go 呼叫端傳入已經開好的 *store.Store(跟其餘 API handler 共用
+// 同一個連線,不另外開一條)。允許傳 nil(測試情境,見
+// seo_meta_test.go)——applySEOMeta 對 nil store 會直接跳過部落格文章
+// 這條查詢路徑,不會 panic。
+func staticHandler(st *store.Store) http.Handler {
 	sub, err := fs.Sub(webDist, "web/dist")
 	if err != nil {
 		panic(err)
@@ -118,7 +135,7 @@ func staticHandler() http.Handler {
 		if !isKnownRoute(r.URL.Path) {
 			w.WriteHeader(http.StatusNotFound)
 		}
-		body := applySEOMeta(indexHTML, r.URL.Path)
+		body := applySEOMeta(indexHTML, r.URL.Path, st)
 		w.Write(body)
 	})
 }

@@ -41,6 +41,8 @@ func toUploadedPhoto(r uploadedPhotoRow) model.UploadedPhoto {
 		FocalY:      r.FocalY,
 		Width:       r.Width,
 		Height:      r.Height,
+		Note:        r.Note,
+		Rating:      r.Rating,
 		CreatedAt:   r.CreatedAt,
 		UpdatedAt:   r.UpdatedAt,
 	}
@@ -64,12 +66,18 @@ func toPhotoVariant(r photoVariantRow) model.PhotoVariant {
 // 一律留空(NULL):焦點要等使用者之後在裁切編輯器裡設定(見
 // SetUploadedPhotoFocal),寬高要等之後的圖片解析階段才會知道,兩者
 // 都不是這個建立時間點能提供的資訊。
-func (s *Store) CreateUploadedPhoto(ownerID, originalURL string) (model.UploadedPhoto, error) {
+//
+// note 是選填的上傳當下備註(見 model.UploadedPhoto.Note 的完整
+// 說明)——呼叫端(cmdBlogPhotoUpload)可以在上傳同時順手標記這張圖
+// 實際拍的是什麼,不需要事後再呼叫一次 SetUploadedPhotoNote;傳空
+// 字串代表不設定,不是刻意清空(這個時間點本來就還沒有舊值可清)。
+func (s *Store) CreateUploadedPhoto(ownerID, originalURL, note string) (model.UploadedPhoto, error) {
 	r := uploadedPhotoRow{
 		ID:          newUploadedPhotoID(),
 		OwnerID:     ownerID,
 		OriginalURL: originalURL,
 		Status:      "pending",
+		Note:        note,
 		CreatedAt:   now(),
 		UpdatedAt:   now(),
 	}
@@ -252,6 +260,43 @@ func (s *Store) SetUploadedPhotoFocal(id string, focalX, focalY float64) error {
 	res := s.db.Model(&uploadedPhotoRow{}).
 		Where("id = ?", id).
 		Updates(map[string]any{"focal_x": focalX, "focal_y": focalY, "updated_at": now()})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetUploadedPhotoNote 更新一張原圖的備註(見 model.UploadedPhoto.Note
+// 的完整說明)——供上傳當下沒有順手標記、或想事後修改標注內容時單獨
+// 呼叫(見 cmdBlogPhotoNote)。允許傳空字串清空既有備註,不像
+// SetUploadedPhotoFocal 的 focalX/focalY 有 0~1 範圍檢查——備註是自由
+// 文字,沒有格式限制。RowsAffected 檢查慣例同 SetUploadedPhotoFocal。
+func (s *Store) SetUploadedPhotoNote(id, note string) error {
+	res := s.db.Model(&uploadedPhotoRow{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"note": note, "updated_at": now()})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetUploadedPhotoRating 更新一張原圖的品質評分(見
+// model.UploadedPhoto.Rating 的完整說明)——rating 傳 nil 代表清空既有
+// 評分(回到「尚未評分」狀態),這裡不做值域檢查(1~3 的範圍檢查由呼叫端
+// handleBlogPhotoRating 負責,對齊 handleBlogPhotoFocal 檢查 focalX/
+// focalY 範圍的既有分工:store 層只負責寫入,輸入驗證是 API handler 的
+// 責任)。RowsAffected 檢查慣例同 SetUploadedPhotoFocal。
+func (s *Store) SetUploadedPhotoRating(id string, rating *int) error {
+	res := s.db.Model(&uploadedPhotoRow{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"rating": rating, "updated_at": now()})
 	if res.Error != nil {
 		return res.Error
 	}

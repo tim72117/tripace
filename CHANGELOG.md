@@ -2,6 +2,40 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.33.0 — 2026-10-14
+
+部落格發文功能大幅擴充（照片標注/評分、EXIF 轉正、多種單圖/多圖版型、Hero 圖、日夜模式建議值、SEO meta 動態注入）、CLI 新增同步處理旗標、移除部落格文章的假資料 fallback、首頁新增部落格文章入口。**本版含破壞性變更。**
+
+### 破壞性變更
+
+- **`ImageBlock`/`GalleryBlock.items[]` 的 `file` 欄位改名為 `photoId`**：文章內容裡的圖片改用後端 `uploaded_photos.id` 這個穩定識別碼取代直接存路徑字串，換圖/重新上傳後路徑不再失效。渲染端完全不認得 `file`，既有內容若未同步改名，圖片會顯示不出來。對應後端新增 `GET /public/blog/photos?ids=...` 批次展開 photoId 成實際網址（僅回傳被已發布文章引用且 `status=="ready"` 的圖片，避免被用來枚舉其他使用者的草稿配圖）。
+- **`store.CreateUploadedPhoto` 新增必填參數**：簽名從 `CreateUploadedPhoto(ownerID, originalURL string)` 改為 `CreateUploadedPhoto(ownerID, originalURL, note string)`，支援上傳當下順手標記照片內容。既有呼叫端需要補上第三個參數才能編譯通過。
+
+### 新增
+
+- **照片標注（note）與品質評分（rating）**：`uploaded_photos` 表新增 `note`/`rating` 欄位，CLI 全線打通（`blog-photo upload -note`、`blog-photo note -id`、`blog-photo rating -id -rating 1~3`），評分用於未來 AI 編排/人工判斷主圖的依據。
+- **EXIF Orientation 轉正**：`photoupload.DecodeImage` 新增讀取並套用 EXIF Orientation 標籤（標準 8 種值），解決手機直拍照片上傳後方向跑掉的問題，對齊 Google Photos/Cloudinary 等業界做法。
+- **CLI 多選上傳**：`PhotoManagerPage.tsx` 的檔案選擇改為支援 `multiple`，逐一依序上傳並顯示進度。
+- **照片管理介面縮圖不裁切預覽**：`PhotoManagerPage.module.css` 縮圖從固定正方形裁切改為 `max-height` + `object-fit: contain`，完整顯示原圖比例方便判斷方向/內容。
+- **焦點編輯器改為拖曳固定比例裁切框**：`PhotoFocalEditor.tsx` 從「點擊設定單一焦點」改為「拖曳框選」，裁切框比例與文章實際顯示的裁切比例精確一致（直式對齊 `1/1.5`），移除原本顯示裁切比例不一致、易誤導判斷的「預覽(裁切效果)」區塊，彈窗寬度加大方便精細操作。
+- **單圖多種版型**：`ImageBlock` 新增 `width`（`column`/`wide`/`full`，欄寬/外擴/全寬出血）、`float`（文繞排方向）、`orientation`（直式/橫式比例）、`overlayText`（文字疊在圖片上，適合短句且不依賴文字長度的收尾照片，取代文繞排配短段落效果不佳的情境）。
+- **多圖群組新版型**：`GalleryBlock.layout` 新增 `row`（密集小圖，適合照片數量多的站點）、`split`（固定 3 張的左直右兩橫拼貼版面）。
+- **文章 Hero 大圖**：`ThemePageContent` 新增 `heroPhotoId`（全寬背景圖，文字疊在上面）、`heroStandalonePhotoId`（標題下方獨立定場大圖），兩者可同時使用不同照片。
+- **文章建議日夜間模式**：`ThemePageContent.preferredTheme`，讀者首次進入且尚未手動切換過主題時套用建議值，不強制鎖定。
+- **部落格文章伺服器端動態 SEO meta 注入**：`server/cmd/server/seo_meta.go` 新增 `/u/{handle}/{slug}` 路徑的動態查詢——每篇已發布文章在伺服器端注入自己的 `title`/`description`/`canonical`，`og:image`/`twitter:image` 優先使用 `heroPhotoId`、查無則退回 `heroStandalonePhotoId` 對應的照片，都沒有才用站台預設圖。草稿文章不會被注入（避免索引到未公開內容的預覽）。
+- **CLI 同步處理旗標**：`blog-photo upload -sync`/`blog-photo retry -sync`，讓伺服器端在這次 HTTP 請求處理期間同步完成圖片處理（不丟進背景 goroutine）——根因是 Cloud Run 只在處理 HTTP 請求期間分配 CPU，背景處理容易因 CPU 被收回而卡住/逾時，同步模式讓呼叫端多等一次 round trip 換取處理期間確實有 CPU 可用，並能直接從回應得知處理是否成功。
+- **開發用版型目錄頁**：新增 `/dev/layouts`（`web/src/blog/LayoutGalleryPage.tsx`），陳列 `BlogArticle.css` 目前支援的所有版型，骨架圖+範例文字，不依賴真實照片或後端資料，純開發工具不加入站內導覽。
+- **首頁新增部落格文章入口**：目的地清單新增「台灣．九份夜遊記」項目，連到已發布的部落格文章，標上「旅遊雜記」分類標籤與其餘城市介紹頁區隔。
+
+### 修正
+
+- **部落格文章完全移除假資料 fallback**：`BlogArticlePage.tsx` 原本在 API 失敗（非 404，例如網路錯誤、API 回應形狀不對）時會顯示 `sampleTainanChikan`（赤崁．府城展示內容），讀者會誤以為查到了一篇真實存在但內容錯誤的文章；文章載入中（`loading` 狀態）同樣會先借用這份假資料渲染出完整頁面，造成「任何文章一開始都先閃一下赤崁畫面」的體驗問題。`FetchState` 簡化為三態（`loading`/`api`/`not-found`），所有失敗情境與載入中都不再冒充任何文章內容，`loading` 顯示獨立的載入中畫面，其餘一律顯示 `NotFoundPage`。整個 `sampleTainanChikan.ts` 檔案已刪除。
+- **EXIF Orientation 5、7 轉換邏輯顛倒**：`rotateImage` 原本 `case 5` 用 `rotate90(flipH(img))`、`case 7` 用 `rotate90(flipV(img))`，實際算出的結果互相對調（已用 Pillow 逐像素比對驗證），造成這兩種 EXIF 值的照片上傳後鏡像+錯誤旋轉 180 度。
+- **焦點編輯器在特定比例下完全無法互動**：原圖寬高比恰好等於目標裁切比例（`dragAxis === 'none'`，框已貼合整張原圖）時，拖曳/點擊沒有任何反應，容易誤以為功能故障；新增提示文字告知「已經是最佳位置，不需要調整」，並在圖片載入時用既有的 `cropOffsetFromFocal` 反函式校正 focal 到目前幾何下的合法值，避免舊資料在新版編輯器開啟時位置跳變。
+- **`GalleryBlock.layout: "split"` 缺少張數防呆**：`items` 長度不是 3 張時，渲染端現在會退回 `grid` 版面並印出 `console.warn`（含 photoId 清單方便定位），不再任由版面悄悄跑掉。
+- **`/blog/photos`、`/dev/layouts` 路由未同步進 `server/cmd/server/static.go` 的 `knownRoutePatterns`**：正式環境直接重新整理這兩個網址原本會被誤判為非法路徑，已補上。
+- **彈窗定位 bug**：`.rp-modal-backdrop` 原本用 `position: absolute`，在可捲動容器內開啟彈窗時會相對完整內容高度定位、而非目前可視範圍，改為 `position: fixed`。
+
 ## v0.32.2 — 2026-10-12
 
 補齊「進入 app / 開啟展示畫面」入口按鈕的 GA 埋點缺口、部落格文章新增段落樣式變體、`/ai-plan` 展示頁補上獨立 SEO meta。無破壞性變更。

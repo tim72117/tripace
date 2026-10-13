@@ -283,18 +283,38 @@ func (c *httpClient) blogProfileGet() (any, error) {
 // /internal/maintenance/*——跟 content-page 系列不同,圖片上傳本來就是
 // 一般登入使用者在網頁上編輯文章時會呼叫的功能,身份固定是「登入者
 // 自己」,不支援、也不需要 content-page 系列的 -official 身份切換。
-func (c *httpClient) blogPhotoUploadURL(contentType string) (any, error) {
+// note 是選填的上傳當下備註(見 server/internal/api/blog_photo.go
+// handleBlogPhotoUploadURL 的完整說明),空字串代表不設定。
+func (c *httpClient) blogPhotoUploadURL(contentType, note string) (any, error) {
 	return c.do("POST", "/v1/blog/photos/upload-url", map[string]any{
 		"contentType": contentType,
+		"note":        note,
 	})
 }
 
-func (c *httpClient) blogPhotoComplete(photoID string) (any, error) {
-	return c.do("POST", "/v1/blog/photos/"+url.PathEscape(photoID)+"/complete", nil)
+// sync(2026-10 新增,見 server/internal/api/blog_photo.go
+// handleBlogPhotoTriggerProcessing 的完整說明)——true 時帶
+// ?sync=true,讓 server 端同步(在這次 HTTP 請求處理期間)完成圖片
+// 處理再回應,不是丟進背景 goroutine 立即回應 "processing"。根因是
+// Cloud Run 只在處理 HTTP 請求期間分配 CPU,背景處理容易因為 CPU
+// 被收回而卡住/逾時——CLI 的 -sync 旗標(見 main.go
+// cmdBlogPhotoUpload/cmdBlogPhotoRetry 的完整說明)讓呼叫端可以選擇
+// 多等一次 round trip,換取處理期間確實有 CPU 可用、也能直接從 HTTP
+// 狀態碼知道這次處理是否成功,不需要再額外呼叫 list/get 確認。
+func (c *httpClient) blogPhotoComplete(photoID string, sync bool) (any, error) {
+	path := "/v1/blog/photos/" + url.PathEscape(photoID) + "/complete"
+	if sync {
+		path += "?sync=true"
+	}
+	return c.do("POST", path, nil)
 }
 
-func (c *httpClient) blogPhotoRetry(photoID string) (any, error) {
-	return c.do("POST", "/v1/blog/photos/"+url.PathEscape(photoID)+"/retry", nil)
+func (c *httpClient) blogPhotoRetry(photoID string, sync bool) (any, error) {
+	path := "/v1/blog/photos/" + url.PathEscape(photoID) + "/retry"
+	if sync {
+		path += "?sync=true"
+	}
+	return c.do("POST", path, nil)
 }
 
 func (c *httpClient) blogPhotoList() (any, error) {
@@ -304,6 +324,20 @@ func (c *httpClient) blogPhotoList() (any, error) {
 func (c *httpClient) blogPhotoFocal(photoID string, focalX, focalY float64) (any, error) {
 	return c.do("PATCH", "/v1/blog/photos/"+url.PathEscape(photoID)+"/focal", map[string]any{
 		"focalX": focalX, "focalY": focalY,
+	})
+}
+
+func (c *httpClient) blogPhotoNote(photoID, note string) (any, error) {
+	return c.do("PATCH", "/v1/blog/photos/"+url.PathEscape(photoID)+"/note", map[string]any{
+		"note": note,
+	})
+}
+
+// rating 用 *int——nil 代表清空既有評分(對應 JSON {"rating":null}),
+// 理由同後端 handleBlogPhotoRating 的完整說明。
+func (c *httpClient) blogPhotoRating(photoID string, rating *int) (any, error) {
+	return c.do("PATCH", "/v1/blog/photos/"+url.PathEscape(photoID)+"/rating", map[string]any{
+		"rating": rating,
 	})
 }
 

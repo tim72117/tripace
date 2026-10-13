@@ -55,6 +55,12 @@ const photoProcessingTimeout = 30 * time.Second
 // handleBlogPhotoUploadURL 處理 POST /v1/blog/photos/upload-url——
 // 建立一筆 pending 狀態的原圖記錄,同時簽出讓使用者瀏覽器端可以直接
 // PUT 上傳原圖的 pre-signed URL。
+//
+// 選填的 note 欄位(見 model.UploadedPhoto.Note 的完整說明)讓呼叫端
+// 可以在上傳當下順手標記這張圖實際拍的是什麼——不需要事後再呼叫一次
+// PATCH .../note(見 handleBlogPhotoNote),對批次上傳一次大量照片的
+// 情境(例如 cmdBlogPhotoUpload 搭配 -skip-process 逐張上傳)特別有
+// 幫助:上傳當下通常還記得每張圖是什麼,事後只剩隨機檔名反而認不出來。
 func (s *Server) handleBlogPhotoUploadURL(w http.ResponseWriter, r *http.Request) {
 	user := s.userFor(r)
 	if s.isGuestUser(user) {
@@ -64,6 +70,7 @@ func (s *Server) handleBlogPhotoUploadURL(w http.ResponseWriter, r *http.Request
 
 	var body struct {
 		ContentType string `json:"contentType"`
+		Note        string `json:"note"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -88,7 +95,7 @@ func (s *Server) handleBlogPhotoUploadURL(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	photo, err := s.store.CreateUploadedPhoto(user.ID, signed.PublicURL)
+	photo, err := s.store.CreateUploadedPhoto(user.ID, signed.PublicURL, body.Note)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "create_failed", err.Error())
 		return
@@ -102,16 +109,17 @@ func (s *Server) handleBlogPhotoUploadURL(w http.ResponseWriter, r *http.Request
 }
 
 // handleBlogPhotoComplete 處理 POST /v1/blog/photos/{photoId}/complete
-// ——使用者端確認原圖已經上傳完成,觸發背景處理(下載+resize+寫入
-// variants+更新 Status)。立即回應,不等背景處理完成(對齊
-// backgroundFillPlacePhoto 的既有「背景任務不阻塞 HTTP 回應」模式)。
+// ——使用者端確認原圖已經上傳完成,觸發處理(下載+resize+寫入
+// variants+更新 Status)。預設立即回應,不等處理完成(對齊
+// backgroundFillPlacePhoto 的既有「背景任務不阻塞 HTTP 回應」模式)——
+// 除非帶 ?sync=true,見 handleBlogPhotoTriggerProcessing 的完整說明。
 func (s *Server) handleBlogPhotoComplete(w http.ResponseWriter, r *http.Request) {
 	s.handleBlogPhotoTriggerProcessing(w, r)
 }
 
 // handleBlogPhotoRetry 處理 POST /v1/blog/photos/{photoId}/retry——
-// 跟 complete 共用同一套「驗證權限 + 觸發背景處理」邏輯(見任務規格:
-// 這兩支端點背後的背景處理邏輯應該共用同一個函式,不要重複寫兩次)。
+// 跟 complete 共用同一套「驗證權限 + 觸發處理」邏輯(見任務規格:
+// 這兩支端點背後的處理邏輯應該共用同一個函式,不要重複寫兩次)。
 // 刻意不額外檢查「目前 Status 是否真的是 failed」才允許重試——重新
 // 處理一張已經是 ready 狀態的圖片雖然多餘,但不是危險操作(resize
 // 邏輯本身是幂等的,重新產生一樣內容的 variant 只是覆寫掉舊的 GCS
@@ -122,8 +130,29 @@ func (s *Server) handleBlogPhotoRetry(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleBlogPhotoTriggerProcessing 是 complete/retry 兩支端點共用的
-// handler 本體——驗證 photoId 屬於目前登入者,觸發背景處理,立即回應
-// "processing"。
+// handler 本體——驗證 photoId 屬於目前登入者,觸發處理。
+//
+// ?sync=true(2026-10 新增,CLI tripace-cli blog-photo upload/retry 的
+// -sync 旗標會帶這個查詢參數,見 cmd/cli/main.go 對應指令的完整
+// 說明)——使用者明確要求的根因:Cloud Run 預設只在處理 HTTP 請求
+// 期間才分配 CPU(見 runPhotoProcessingInBackground 的完整說明),但
+// 原本這裡固定用 go func() 把圖片處理丟進背景 goroutine、立即回應
+// "processing",使得實際耗費 CPU 的解碼/縮放工作發生在 HTTP 回應
+// 已經送出、Cloud Run 可能已經收回 CPU 分配之後,導致處理卡住或
+// 逾時失敗——這正是先前 PhotoManagerPage.tsx 多檔上傳需要刻意序列化
+// (見該檔案 handleFileSelected 的完整說明)、CLI 需要
+// -skip-process/逐張上傳這些折衷做法的根本原因,而非真正解法。
+// sync=true 時改成在這支 handler 內同步呼叫 processUploadedPhoto(不
+// 經過 goroutine),讓實際運算發生在「正在處理這個 HTTP 請求」的
+// 期間,Cloud Run 保證這段時間有 CPU 可用——代價是呼叫端要多等一次
+// round trip 的處理時間(CLI 逐張上傳模式下本來就是序列執行,這個
+// 代價可以接受;前端網頁上傳介面目前仍用非同步模式,不受這個新增
+// 選項影響,因為前端呼叫 complete 時不會帶這個查詢參數)。
+//
+// 處理失敗時(sync 模式)回傳 500 並在 body 附上實際錯誤訊息,而不是
+// 比照背景模式只寫入 DB 的 failed 狀態、HTTP 層面仍回 200——呼叫端
+// 既然選擇同步等待,就該透過 HTTP 狀態碼立即知道這次處理是否成功,
+// 不需要再額外呼叫一次 list/get 才能確認。
 func (s *Server) handleBlogPhotoTriggerProcessing(w http.ResponseWriter, r *http.Request) {
 	user := s.userFor(r)
 	if s.isGuestUser(user) {
@@ -134,6 +163,25 @@ func (s *Server) handleBlogPhotoTriggerProcessing(w http.ResponseWriter, r *http
 	photoID := r.PathValue("photoId")
 	photo, ok := s.loadOwnedUploadedPhoto(w, r, photoID, user.ID)
 	if !ok {
+		return
+	}
+
+	if r.URL.Query().Get("sync") == "true" {
+		ctx, cancel := context.WithTimeout(r.Context(), photoProcessingTimeout)
+		defer cancel()
+		if err := s.processUploadedPhoto(ctx, photo); err != nil {
+			log.Printf("handleBlogPhotoTriggerProcessing: 同步處理失敗 photoId=%s: %v", photo.ID, err)
+			if serr := s.store.SetUploadedPhotoStatus(photo.ID, "failed"); serr != nil {
+				log.Printf("handleBlogPhotoTriggerProcessing: 寫入 failed 狀態失敗 photoId=%s: %v", photo.ID, serr)
+			}
+			writeErr(w, http.StatusInternalServerError, "process_failed", err.Error())
+			return
+		}
+		if err := s.store.SetUploadedPhotoStatus(photo.ID, "ready"); err != nil {
+			writeErr(w, http.StatusInternalServerError, "status_update_failed", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 		return
 	}
 
@@ -378,6 +426,87 @@ func (s *Server) handleBlogPhotoFocal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.SetUploadedPhotoFocal(photo.ID, body.FocalX, body.FocalY); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "not_found", "找不到這張圖片")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+// handleBlogPhotoNote 處理 PATCH /v1/blog/photos/{photoId}/note——驗證
+// OwnerID 吻合後,更新備註(見 model.UploadedPhoto.Note 的完整說明)。
+// 跟 handleBlogPhotoFocal 同樣的「驗證擁有者→更新單一欄位」結構,但
+// 不做值域檢查(自由文字,允許空字串清空既有備註)——這是給上傳當下
+// 沒有順手標記、或想事後修改標注內容的情境用(見 cmdBlogPhotoNote)。
+func (s *Server) handleBlogPhotoNote(w http.ResponseWriter, r *http.Request) {
+	user := s.userFor(r)
+	if s.isGuestUser(user) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized", "請先登入")
+		return
+	}
+
+	photoID := r.PathValue("photoId")
+	photo, ok := s.loadOwnedUploadedPhoto(w, r, photoID, user.ID)
+	if !ok {
+		return
+	}
+
+	var body struct {
+		Note string `json:"note"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+
+	if err := s.store.SetUploadedPhotoNote(photo.ID, body.Note); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "not_found", "找不到這張圖片")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+// handleBlogPhotoRating 處理 PATCH /v1/blog/photos/{photoId}/rating——
+// 驗證 OwnerID 吻合後,更新品質評分(見 model.UploadedPhoto.Rating 的
+// 完整說明)。body.Rating 用 *int(而非 int)接收——JSON 的 {"rating":null}
+// 要能跟 {"rating":2} 區分開來,前者代表清空既有評分,後者代表設成 2 分,
+// 如果用裸 int 接收,未帶欄位/帶 null/帶 0 三種輸入在解碼後會變得無法
+// 區分(都是 Go 的零值 0),但 0 不是合法評分值,容易把「清空」誤判成
+// 「使用者刻意輸入了不合法的 0」。non-nil 時檢查值域 1~3,nil 直接放行
+// (代表清空,不需要值域檢查)。
+func (s *Server) handleBlogPhotoRating(w http.ResponseWriter, r *http.Request) {
+	user := s.userFor(r)
+	if s.isGuestUser(user) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized", "請先登入")
+		return
+	}
+
+	photoID := r.PathValue("photoId")
+	photo, ok := s.loadOwnedUploadedPhoto(w, r, photoID, user.ID)
+	if !ok {
+		return
+	}
+
+	var body struct {
+		Rating *int `json:"rating"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if body.Rating != nil && (*body.Rating < 1 || *body.Rating > 3) {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "rating 必須是 1~3 之間的整數,或 null 代表清空評分")
+		return
+	}
+
+	if err := s.store.SetUploadedPhotoRating(photo.ID, body.Rating); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeErr(w, http.StatusNotFound, "not_found", "找不到這張圖片")
 			return

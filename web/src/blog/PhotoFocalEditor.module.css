@@ -1,6 +1,9 @@
 /* PhotoFocalEditor:置中卡片彈窗(.rp-modal-head/.rp-modal-body)內部的
    內容樣式——骨架本身沿用 base-ui.css 既有的 .rp-modal* 全域規則,這裡
-   只定義焦點編輯器特有的版面(原圖+圓點標記、預覽框)。 */
+   只定義焦點編輯器特有的版面(原圖+拖曳裁切框)。
+   2026-10 移除「預覽(裁切效果)」區塊(使用者回報「為什麼預覽還在」,
+   明確要求整個移除,不只是修正比例)——上方拖曳框本身已經是裁切範圍
+   的視覺呈現,不需要下方再疊一層獨立的裁切後縮圖預覽。 */
 
 .hint {
   padding: 12px 16px 4px;
@@ -8,56 +11,57 @@
   color: var(--ios-gray);
 }
 
-/* imageArea:原圖容器——相對定位,讓裡面的 .focalDot 用絕對座標疊加。
-   touch-action: none 避免手機上拖曳標記點時觸發瀏覽器原生的捲動/縮放
-   手勢,干擾 pointermove 的焦點更新。 */
+/* imageArea:外層置中容器——純版面用(margin/置中),實際量測拖動範圍
+   跟疊加裁切框的基準是裡面的 .imageWrap,不是這一層。 */
 .imageArea {
-  position: relative;
   margin: 8px 16px;
+  display: flex;
+  justify-content: center;
+  background: var(--ios-sep);
   border-radius: 12px;
   overflow: hidden;
-  cursor: crosshair;
+}
+
+/* imageWrap:貼合原圖實際渲染尺寸的容器——display: inline-block 讓寬度
+   跟著 <img> 的實際顯示寬度收縮(而非撐滿父層 100%),確保這層容器的
+   getBoundingClientRect() 永遠等於圖片本身的顯示範圍,.cropBox 疊加在
+   這層上的 left/top/width/height 百分比才會跟圖片內容對齊——即使
+   .originalImage 的 max-height 讓圖片比容器矮(object-fit: contain
+   留白),這層也只會貼合圖片實際佔用的尺寸,不含留白區域。
+   touch-action: none 避免手機上拖曳方框時觸發瀏覽器原生的捲動/縮放
+   手勢,干擾 pointermove 的焦點更新。 */
+.imageWrap {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+  cursor: grab;
   touch-action: none;
   user-select: none;
-  background: var(--ios-sep);
 }
 
+/* max-height 2026-10 從 60vh 加大到 78vh——使用者回報裁切畫面太小,
+   拖曳框時精細定位不容易。78vh 而非更高的數字,是留一點空間給操作
+   按鈕,避免整個彈窗需要捲動才看得到儲存按鈕。 */
 .originalImage {
   display: block;
-  width: 100%;
+  max-width: 100%;
+  max-height: 78vh;
+  width: auto;
   height: auto;
-  max-height: 60vh;
-  object-fit: contain;
   pointer-events: none;
 }
 
-/* focalDot:目前選擇的焦點位置視覺標記——用 left/top 百分比對齊容器,
-   transform 置中點本身(而非讓點的左上角對齊座標)。 */
-.focalDot {
+/* cropBox:裁切框——box-shadow 疊一層大範圍半透明黑色陰影(spread 用
+   100vmax 保證蓋滿任意容器尺寸),讓框「外」的區域暗化,框「內」保持
+   清晰,直接點出「這個範圍會被保留」,不需要額外疊 4 個遮罩 div。 */
+.cropBox {
   position: absolute;
-  width: 20px;
-  height: 20px;
-  margin-left: -10px;
-  margin-top: -10px;
-  border-radius: 50%;
-  border: 3px solid #fff;
-  background: rgba(255, 70, 70, 0.9);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 0 0 100vmax rgba(0, 0, 0, 0.55);
   pointer-events: none;
-}
-
-.previewBox {
-  margin: 4px 16px 16px;
-  border-radius: 12px;
-  overflow: hidden;
-  aspect-ratio: 1 / 1;
-  background: var(--ios-sep);
-}
-
-.previewImage {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 
 .actionRow {

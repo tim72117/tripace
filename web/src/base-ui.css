@@ -209,8 +209,19 @@ pre {
    已移除(推薦景點改成掛在觸發它的訊息底下顯示,見 ChatScreen.tsx
    MessageBubble),但這組樣式繼續由桌面版「設定」dialog(SettingsDialog)
    與旅程列表的分享/成員彈窗(DesktopLayout.tsx)沿用,故保留。 ---- */
+/* position: fixed(2026-10 修正,原為 absolute)——absolute 時 inset: 0
+   是相對最近的 position: relative 祖先元素的「完整內容高度」,不是
+   瀏覽器可視範圍。PhotoManagerPage.module.css 的 .root 本身是
+   position: relative + overflow-y: auto 的獨立捲動容器(見該檔案開頭
+   完整說明),使用者往下捲動照片清單、點擊某張圖彈出這個 modal 時,
+   背景遮罩鋪的是整個清單的完整高度,彈窗置中位置落在清單中點,不是
+   使用者目前視線所在的可視範圍內,體感是「彈窗跑到別的地方」。改成
+   fixed 讓它永遠相對瀏覽器視窗定位,不受任何捲動容器的內容高度影響,
+   這是彈窗的標準做法,不影響其他既有呼叫端(DesktopLayout/
+   PhoneContent/SettingsDialog)的視覺效果——那些情境下 body 本身是
+   一般的 document 捲動,fixed 跟原本的 absolute 行為一致。 */
 .rp-modal-backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: 70;
   display: flex;

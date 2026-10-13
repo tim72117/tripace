@@ -169,8 +169,28 @@
   font-family: 'ShipporiSerif', "Noto Serif TC", serif;
   font-size: clamp(18px, 2.2vw, 20px); font-weight: 600;
   transition: color 0.2s ease;
+  display: inline-flex; align-items: center; gap: 10px;
 }
 .kyoto-bloom .destination-item:hover .destination-name { color: var(--vermilion); }
+
+/* destination-tag(2026-10 新增)——「旅遊雜記」分類標記,見 HomePage.tsx
+   對應 JSX 的完整說明:跟其餘純城市介紹頁項目不同,這項連到一篇實際
+   的部落格遊記(BlogArticlePage.tsx),用膠囊形狀的小標籤跟
+   destination-name 區隔開,不套用父層 ShipporiSerif 襯線字體/粗體
+   (標籤是輔助性的分類提示,不是標題本身,用無襯線字體降低視覺權重)。
+   hover 時不隨 destination-name 變色(見上方 .destination-item:hover
+   .destination-name),保持標籤本身的底色/邊框顏色固定,避免整行變色時
+   標籤也跟著變成同色而失去區隔作用。 */
+.kyoto-bloom .destination-tag {
+  font-family: -apple-system, "PingFang TC", "Noto Sans TC", sans-serif;
+  font-size: 11px; font-weight: 600;
+  color: var(--vermilion);
+  background: color-mix(in srgb, var(--vermilion) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vermilion) 35%, transparent);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
 
 /* destination-desc:獨立第二行,不跟名稱擠同一行搶寬度——孤字換行、
    兩列高度不一致的問題(見 Fable 視覺診斷)不會發生,簡介本身有足夠

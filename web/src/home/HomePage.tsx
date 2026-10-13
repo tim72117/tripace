@@ -165,6 +165,28 @@ export function HomePage() {
               </span>
               <span className="destination-desc">老地方的前世今生——歷史建築活化、住宿、景點與美食的兩日遊路線</span>
             </a>
+            {/* 旅遊雜記(2026-10 新增)——跟上面四項不同:上面是城市
+                介紹頁(InteractiveExploreMap 式的互動探索體驗),這項
+                連到實際發生過的一趟遊記(BlogArticlePage.tsx,部落格
+                文章正式路徑 /u/{handle}/{slug},見 App.tsx 對應路由的
+                完整說明)。用 destination-tag 標出「旅遊雜記」分類,
+                跟其餘純目的地項目視覺上區分,不是另開一個獨立清單
+                ——目前只有這一篇已發布(night-jiufen),之後有更多篇才
+                考慮要不要拆出獨立的文章列表區塊。 */}
+            <a
+              className="destination-item"
+              href="/u/tim72117/night-jiufen"
+              onClick={() => trackEvent('landing_destination_click', { destination: '九份夜遊記' })}
+            >
+              <span className="destination-row">
+                <span className="destination-name">
+                  台灣 · 九份夜遊記
+                  <span className="destination-tag">旅遊雜記</span>
+                </span>
+                <svg className="destination-arrow" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </span>
+              <span className="destination-desc">帶孩子的九份夜晚散步——基山街小吃、豎崎路燈籠石階、阿妹茶樓喝茶，一趟實際走過的夜遊紀錄</span>
+            </a>
           </div>
         </div>
       </section>

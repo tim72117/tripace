@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { BASE_URL } from '../AppCommon'
-import { ApiError, fetchPublicBlogArticle, fetchPublicBlogPhotosByIDs, type ClientConfig, type PublicUploadedPhoto } from '../api'
+import { fetchPublicBlogArticle, fetchPublicBlogPhotosByIDs, type ClientConfig, type PublicUploadedPhoto } from '../api'
 import { NotFoundPage } from '../home/NotFoundPage'
 import { useThemeToggle } from '../hooks/useThemeToggle'
 import { useScrollProgress } from '../hooks/useScrollProgress'
@@ -8,7 +8,6 @@ import { ScrollTimeline } from '../home/ScrollTimeline'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../home/SiteNavButtons'
 import { trackEvent } from '../analytics'
 import { CityPageFooter } from '../home/CityPageFooter'
-import { sampleTainanChikan } from './sampleTainanChikan'
 import { groupScrollTimelineBlocks, type ScrollTimelineGroup } from './scrollTimelineGrouping'
 import type { GalleryBlock, ImageBlock, StopBlock, ThemePageBlock, ThemePageContent } from './types'
 import './BlogArticle.css'
@@ -39,8 +38,14 @@ const GUEST_CFG: ClientConfig = { baseURL: BASE_URL, token: null }
 // (fetchPublicBlogPhotosByIDs)用。只掃描會真正出現在 ImageBlock/
 // GalleryBlock 裡的這兩種 kind,其餘 kind(paragraph/stop 本身/
 // scroll-timeline-*)不含 photoId,略過。
-function collectPhotoIds(blocks: ThemePageBlock[]): string[] {
+// heroPhotoId/heroStandalonePhotoId(選填)——2026-10 新增兩種 Hero
+// 圖呈現後,這兩個 photoId 也要一併批次查詢,不然 resolvePhotoURL 對它們
+// 永遠查不到 photoMap 裡的資料(見 ThemePageContent.heroPhotoId/
+// heroStandalonePhotoId 的完整說明)。
+function collectPhotoIds(blocks: ThemePageBlock[], heroPhotoId?: string, heroStandalonePhotoId?: string): string[] {
   const ids = new Set<string>()
+  if (heroPhotoId) ids.add(heroPhotoId)
+  if (heroStandalonePhotoId) ids.add(heroStandalonePhotoId)
   function visit(list: Array<ImageBlock | GalleryBlock>) {
     for (const b of list) {
       if (b.kind === 'image') ids.add(b.photoId)
@@ -62,12 +67,10 @@ function collectPhotoIds(blocks: ThemePageBlock[]): string[] {
 // 不是錯誤狀態)。
 //
 // photoId 在對照表裡查不到時,退回舊式的 photoUrl(file) 固定路徑拼接
-// ——這是為了相容 sampleTainanChikan.ts 那份純展示用的常數資料(API
-// 失敗時的 fallback 內容,見本檔開頭 BlogArticlePage 的完整說明):那
-// 份資料本來就不是真實的 uploaded_photos 記錄,photoId 欄位存的其實是
-// 固定 GCS bucket 下的檔名字串(例如 "IMG_9812.webp"),不會出現在批次
-// 查詢回來的 photoMap 裡,刻意讓這個 fallback 兼容兩種來源,不需要
-// 另外用一個欄位或旗標區分「這是真的 photoId 還是舊式檔名」。
+// ——2026-10 移除 sampleTainanChikan.ts 這份展示用假資料(fallback)後,
+// 正常情況下不該再出現 photoId 查無結果的情況,保留這個降級路徑只是
+// 避免極端情況(例如 photoMap 還沒載入完成、或照片剛好被刪除)下直接
+// 顯示破圖連結,不是為了相容任何已知的假資料格式。
 function resolvePhotoURL(photoMap: Map<string, PublicUploadedPhoto>, photoId: string): string {
   const photo = photoMap.get(photoId)
   if (!photo) return photoUrl(photoId)
@@ -92,13 +95,19 @@ function resolvePhotoFocal(
   return undefined
 }
 
-// BlogArticlePage:部落客發文正式頁面——驗證 docs/
-// refactor-theme-page-content-cms-plan-2026-10.md 定的 ThemePageContent
-// 規格(見 types.ts)是否能從扁平 blocks 陣列還原排版。資料實際來源是
-// 依 props 傳入的 handle/slug,呼叫 fetchPublicBlogArticle(見 api.ts)向
-// 後端查詢對應作者、對應文章的已發布內容;API 失敗(含尚未 publish、
-// 後端端點尚未就緒等情況)退回 sampleTainanChikan 常數,讓頁面在沒有
-// 真實資料時仍能展示排版效果(見下方 FetchState 的完整說明)。
+// BlogArticlePage:部落客發文正式頁面——資料來源是依 props 傳入的
+// handle/slug,呼叫 fetchPublicBlogArticle(見 api.ts)向後端查詢對應
+// 作者、對應文章的已發布內容(見下方 FetchState 的完整說明)。
+//
+// 2026-10 移除假資料 fallback(使用者明確要求「部落格頁不要做
+// fallback」,根因:API 失敗時原本會顯示 sampleTainanChikan 這份
+// 寫死的赤崁．府城展示內容,讀者會誤以為查到了一篇真實存在但內容
+// 錯誤的文章,而不是意識到載入失敗——這在這個頁面還是「驗證排版能否
+// 從扁平 blocks 陣列還原」的試做版本時是合理的設計(那時沒有「查無
+// 特定文章」這個情境,只需要確保有東西可以展示排版效果),但轉正成
+// 讀取任意作者/文章的正式產品頁面後,這個設計本身就是錯的——任何失敗
+// (404、網路錯誤、API 回應形狀不對)現在都統一顯示 NotFoundPage,
+// 不再嘗試用假內容撐住頁面)。
 //
 // 樣式沿用 TainanChikanPage.css 整份複製改名(BlogArticle.css,
 // class 前綴 tainan-chikan- → theme-page-demo-,保留原試做階段的 class
@@ -170,14 +179,52 @@ function objectPositionFor(focal?: { x: number; y: number }): string | undefined
 // 內呼叫)。改成讓最上層(BlogArticlePage 本身)用 useContext 讀一次,
 // 一路當參數往下傳,雖然多了幾個函式簽章要改,但每一層都仍是單純的
 // 參數傳遞,不是在非 hook 情境下違規使用 Hook。
+// width/float(2026-10 接線——types.ts 定義這兩個欄位已久,但渲染端
+// 從未真正讀取套用,是死欄位。這裡補上 data-width/data-float 屬性,
+// 讓 BlogArticle.css 能依這兩個值套用對應排版:
+//   - width="wide"/"full":全寬出血呈現,float 強制視為 none(見
+//     ImageFloat 型別註解:全寬圖沒有繞排意義),CSS 端用
+//     [data-width="wide"]/[data-width="full"] 覆寫跳出 .stop-gallery
+//     的容器寬度限制。
+//   - width="column"(預設)+ float="left"/"right":文繞排——圖靠一側,
+//     後續文字段落繞到另一側的空白處。只在這個組合下才輸出
+//     data-float,避免 wide/full 搭配非 none 的 float 值時(語意上
+//     float 已失效)仍渲染出一個其實不生效的 data-float 屬性,造成
+//     CSS 選擇器意外命中。
+// overlayText(2026-10 新增,見 types.ts ImageBlock.overlayText 的完整
+// 說明)——有設定時,整個區塊改走疊字版面(data-overlay="true"),不走
+// 原本的 figure+figcaption 結構:圖片當滿版背景,文字疊在上面,不是
+// 「圖片配下方圖說」。有 overlayText 時忽略 width/float(疊字版面本身
+// 就是一種獨立的出血大圖呈現,跟繞排/欄寬檔位是互斥的選擇,不疊加
+// 套用)。
 function renderImageBlock(block: ImageBlock, photoMap: Map<string, PublicUploadedPhoto>) {
+  if (block.overlayText) {
+    return (
+      <div key={block.id} className="theme-page-demo-image-overlay">
+        <img
+          src={resolvePhotoURL(photoMap, block.photoId)}
+          alt={block.alt}
+          loading="lazy"
+          style={{ objectPosition: objectPositionFor(resolvePhotoFocal(photoMap, block.photoId, block.focal)) }}
+        />
+        <p className="theme-page-demo-image-overlay-text">{block.overlayText}</p>
+      </div>
+    )
+  }
+  const dataFloat = block.width === 'column' && block.float !== 'none' ? block.float : undefined
   return (
-    <div key={block.id} className="theme-page-demo-stop-gallery theme-page-demo-stop-gallery--single">
+    <div
+      key={block.id}
+      className="theme-page-demo-stop-gallery theme-page-demo-stop-gallery--single"
+      data-width={block.width !== 'column' ? block.width : undefined}
+      data-float={dataFloat}
+    >
       <figure>
         <img
           src={resolvePhotoURL(photoMap, block.photoId)}
           alt={block.alt}
           loading="lazy"
+          data-orientation={block.orientation}
           style={{ objectPosition: objectPositionFor(resolvePhotoFocal(photoMap, block.photoId, block.focal)) }}
         />
         {block.caption && <figcaption>{block.caption}</figcaption>}
@@ -186,15 +233,42 @@ function renderImageBlock(block: ImageBlock, photoMap: Map<string, PublicUploade
   )
 }
 
+// layout(2026-10 接線——types.ts 定義已久,但渲染端從未讀取,是死欄位。
+// 'row' 用來處理「段落圖片很多」的情境,見 BlogArticle.css
+// [data-layout="row"] 規則的完整說明:取消主圖大小分層、一列排更多張,
+// 整組照片統一縮小,避免張數多的站點把版面拉得很長。
+// 'split'(2026-10 新增)——固定 3 張的「左直右兩橫堆疊」拼貼版面,見
+// types.ts GalleryBlock.layout 的完整說明(items 順序對應固定位置,
+// 不是自動判斷)。'grid'(預設/省略)維持既有「第一張大圖+其餘固定
+// 2 欄小圖」版面,不受這次改動影響。
+//
+// effectiveLayout(2026-10 code review 修正)——types.ts 原本的註解坦承
+// 「items 長度不是 3 張時,渲染端行為未定義(目前沒有防呆)」,
+// TypeScript 編譯期無法攔截陣列長度錯誤,錯誤只會在頁面上以版面跑掉
+// (CSS nth-child 選到的格位缺圖或溢出)的形式出現,難以定位是哪篇文章
+// 哪個 block 寫錯。這裡補上執行期防呆:'split' 但張數不是 3 張時,
+// 退回 'grid'(現有、對任意張數都安全的版面),並印一行 console.warn
+// 方便之後追查是哪個 photoId 組合寫錯了張數。 */
 function renderGalleryBlock(block: GalleryBlock, photoMap: Map<string, PublicUploadedPhoto>) {
+  const effectiveLayout = block.layout === 'split' && block.items.length !== 3 ? 'grid' : block.layout
+  if (block.layout === 'split' && block.items.length !== 3) {
+    console.warn(
+      `[BlogArticlePage] gallery block ${block.id} 用了 layout:'split' 但 items 有 ${block.items.length} 張(需要剛好 3 張),已退回 grid 版面。photoIds: ${block.items.map((i) => i.photoId).join(', ')}`,
+    )
+  }
   return (
-    <div key={block.id} className="theme-page-demo-stop-gallery">
+    <div
+      key={block.id}
+      className="theme-page-demo-stop-gallery"
+      data-layout={effectiveLayout === 'grid' ? undefined : effectiveLayout}
+    >
       {block.items.map((photo) => (
         <figure key={photo.photoId}>
           <img
             src={resolvePhotoURL(photoMap, photo.photoId)}
             alt={photo.alt}
             loading="lazy"
+            data-orientation={photo.orientation}
             style={{ objectPosition: objectPositionFor(resolvePhotoFocal(photoMap, photo.photoId, photo.focal)) }}
           />
           {photo.caption && <figcaption>{photo.caption}</figcaption>}
@@ -303,24 +377,44 @@ function renderScrollTimelineGroup(group: ScrollTimelineGroup, key: string, phot
   )
 }
 
-// FetchState:四態——'loading' 剛掛載還沒拿到回應;'api' 成功拿到後端
-// 已發布的內容;'not-found' 後端明確回 404(該 handle/slug 查無已發布
-// 文章),渲染真正的 404 畫面,不冒充成任何其他文章的內容;'fallback'
-// 其他失敗(server 沒開、網路錯誤、200 但內容形狀不對)時退回
-// sampleTainanChikan 常數,讓這個頁面原本「展示排版效果」的既有用途
-// (後端尚未就緒時仍能預覽)繼續成立。
+// FetchState:三態——'loading' 剛掛載還沒拿到回應,渲染一個簡單的
+// 載入中畫面;'api' 成功拿到後端已發布的內容;'not-found' 查無這篇
+// 文章或任何其他失敗(404、網路錯誤、200 但內容形狀不對)統一視為
+// 「這裡沒有內容可顯示」,渲染 NotFoundPage。
 //
-// 2026-10 修正:這個頁面轉正前是固定讀單一 demo slug 的試做版本,任何
-// 失敗(包含 404)一律退回 sample 常數是合理的——那時沒有「查無特定
-// 文章」這個情境,只有「後端有沒有準備好」。轉正成依路徑參數讀取任意
-// 作者/文章後,404 代表「這篇文章真的不存在」,此時顯示另一篇文章
-// (赤崁)的完整內容會讓使用者誤以為查到了真實存在的文章,是錯誤的
-// 使用者體驗,必須跟「後端真的掛了」分開處理。
+// 2026-10 移除原本的 'fallback' 狀態(見上方 BlogArticlePage 的完整
+// 說明)——原本區分 'not-found'(明確 404)跟 'fallback'(其他失敗,
+// 退回 sampleTainanChikan 假資料)兩種狀態,是為了在假資料還存在時
+// 保留「後端真的掛了」跟「這篇文章不存在」的語意差異。假資料移除後,
+// 這兩種失敗情境面對讀者的正確處理方式其實相同(都該告知「這裡看不到
+// 內容」,不該顯示任何文章),不需要再分開維護兩種 state、兩套渲染
+// 邏輯。
 type FetchState =
   | { kind: 'loading' }
   | { kind: 'api'; content: ThemePageContent }
   | { kind: 'not-found' }
-  | { kind: 'fallback'; reason: string }
+
+// EMPTY_CONTENT(2026-10 取代原本的 sampleTainanChikan 假資料)——
+// state.kind !== 'api' 時給 content 變數的最小化佔位值,只填滿型別要求
+// 的必填欄位(version/slug/title/blocks),不含任何看起來像真實文章的
+// 文字內容。見 BlogArticlePage 內 content 變數賦值處的完整說明:這個
+// 值只是讓後續 hook 呼叫有東西可以安全存取,最終一定會被
+// LoadingPlaceholder/NotFoundPage 的 early return 蓋掉,不會真的被
+// 渲染給讀者看到。
+const EMPTY_CONTENT: ThemePageContent = { version: 1, slug: '', title: '', status: 'draft', blocks: [] }
+
+// LoadingPlaceholder:文章內容還在等待後端回應時的過渡畫面(2026-10
+// 新增,取代原本借用 sampleTainanChikan 撐出完整假文章頁面的做法)。
+// 純文字置中,不嘗試模擬任何 Hero/排版結構——這個狀態通常只會短暫
+// 出現(一次 API round trip 的時間),不需要骨架屏等更精緻的呈現,
+// 保持最簡單、不含任何可能被誤認成真實內容的文字。
+function LoadingPlaceholder() {
+  return (
+    <div className="theme-page-demo-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+      <p style={{ color: 'var(--ink-soft, #5A5148)' }}>載入中…</p>
+    </div>
+  )
+}
 
 // isThemePageContentShape:最小的執行期結構檢查——只驗證會被這個檔案
 // 直接存取的欄位(title 是字串、blocks 是陣列),不逐一檢查每個 Block
@@ -330,8 +424,8 @@ type FetchState =
 // content,或未來的 schema 不一致),會在渲染時直接對 undefined 呼叫
 // .length/.split() 拋錯——此時 HTTP 狀態是 200,fetchPublicThemePage
 // 的 Promise 會 resolve 而非 reject,.catch() 永遠不會被觸發,FetchState
-// 設計的「失敗退回 fallback」機制就完全失效。這裡在 resolve 分支裡
-// 自己做最小驗證,驗證失敗時手動轉成 fallback 狀態,讓這個防線真正
+// 設計的「失敗退回 not-found」機制就完全失效。這裡在 resolve 分支裡
+// 自己做最小驗證,驗證失敗時手動轉成 not-found 狀態,讓這個防線真正
 // 涵蓋「HTTP 成功但內容形狀不對」的情況,不只是「HTTP 失敗」。
 function isThemePageContentShape(v: unknown): v is ThemePageContent {
   if (typeof v !== 'object' || v === null) return false
@@ -340,39 +434,69 @@ function isThemePageContentShape(v: unknown): v is ThemePageContent {
 }
 
 export function BlogArticlePage({ handle, slug }: { handle: string; slug: string }) {
-  const { theme, dark, toggleTheme } = useThemeToggle()
+  const { theme, dark, toggleTheme, setTheme } = useThemeToggle()
   const [state, setState] = useState<FetchState>({ kind: 'loading' })
 
   // 掛載時打一次 GET /v1/blog/{handle}/{slug}(見 api.ts
   // fetchPublicBlogArticle 的完整說明),依路由傳入的作者 handle + 文章
-  // slug 讀取對應的已發布內容。失敗(包含 404,例如還沒 publish、後端
-  // 端點尚未就緒,或 200 但內容形狀不對,見上方 isThemePageContentShape
-  // 的完整說明)一律退回常數資料,見上方 FetchState 的完整說明,不讓
-  // 使用者看到空白頁或錯誤畫面。handle/slug 變動時(例如同一元件在
-  // 不同路由參數下重新掛載)重新查詢。
+  // slug 讀取對應的已發布內容。任何失敗(404、網路錯誤、或 200 但
+  // 內容形狀不對,見上方 isThemePageContentShape 的完整說明)一律歸為
+  // 'not-found'(見上方 FetchState 的完整說明,2026-10 移除假資料
+  // fallback 後,這些失敗情境不再區分處理)。handle/slug 變動時(例如
+  // 同一元件在不同路由參數下重新掛載)重新查詢。
   useEffect(() => {
     let cancelled = false
     fetchPublicBlogArticle(GUEST_CFG, handle, slug)
       .then((res) => {
         if (cancelled) return
         if (!isThemePageContentShape(res.content)) {
-          setState({ kind: 'fallback', reason: 'API 回應的 content 形狀不符 ThemePageContent（缺少 title/blocks）' })
+          setState({ kind: 'not-found' })
           return
         }
         setState({ kind: 'api', content: res.content })
       })
       .catch((err) => {
         if (cancelled) return
-        if (err instanceof ApiError && err.call.status === 404) {
-          setState({ kind: 'not-found' })
-          return
-        }
-        setState({ kind: 'fallback', reason: err instanceof Error ? err.message : String(err) })
+        // ApiError 以外的例外(理論上不該出現,request() 內部已把所有
+        // 失敗包裝成 ApiError,見 api.ts 的完整說明)仍歸為 'not-found'
+        // ——不再嘗試區分 404 跟其他失敗原因,兩者面對讀者的正確處理
+        // 方式相同(見上方 FetchState 的完整說明)。err 本身不需要保留
+        // 在 state 裡,但仍留一行 console.error,方便開發時從瀏覽器
+        // console 看出這次載入失敗的實際原因(例如網路錯誤、CORS、
+        // API 回應格式跑掉),不是完全靜默吞掉。
+        console.error('[BlogArticlePage] fetchPublicBlogArticle 失敗:', err)
+        setState({ kind: 'not-found' })
       })
     return () => { cancelled = true }
   }, [handle, slug])
 
-  const content = state.kind === 'api' ? state.content : sampleTainanChikan
+  // content 佔位值(2026-10 改成最小化的空物件,取代原本的
+  // sampleTainanChikan 假資料)——只在 state.kind !== 'api' 時被後面的
+  // hook(useScrollProgress 等)存取,此時元件最終會 early return
+  // 渲染 LoadingPlaceholder/NotFoundPage(見下方),不會真的渲染這個
+  // 佔位 content 的任何欄位,存在的唯一目的是讓 hook 呼叫順序在每次
+  // render 都保持一致(React Hooks 規則),不是要給使用者看到的內容。
+  const content: ThemePageContent = state.kind === 'api' ? state.content : EMPTY_CONTENT
+
+  // 套用 content.preferredTheme(見 ThemePageContent.preferredTheme 的
+  // 完整說明)——只在真正拿到後端內容(state.kind === 'api')、有指定
+  // 建議值、且讀者目前的 theme 仍是 null(代表還沒手動切換過)時才
+  // 套用。theme !== null 時代表讀者已經手動選過自己的偏好(不論是在
+  // 這篇文章裡切換、或是從別處帶著既有偏好進來——這個 hook 的 state
+  // 只存在記憶體,實務上通常是前者),不該被這篇文章的建議值覆寫掉。
+  // 依賴陣列只放 content.preferredTheme/state.kind,不放 theme——
+  // 刻意只在「這兩個值變化」時重新判斷是否要套用,不是每次 theme
+  // 改變都重新跑一次這個 effect(那樣會在讀者手動切換的當下,因為
+  // theme 變化觸發 effect 重跑,但此時條件判斷 theme !== null 已經
+  // 擋下,不會真的誤套用,只是沒必要的重跑,加上 theme 不放依賴陣列
+  // 可以避免這個無意義的重跑)。
+  useEffect(() => {
+    if (state.kind !== 'api') return
+    if (!content.preferredTheme) return
+    setTheme((prev) => (prev === null ? content.preferredTheme! : prev))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content.preferredTheme, state.kind])
+
   const mapIntroRef = useRef<HTMLDivElement | null>(null)
   const { blocks } = content
   useScrollProgress(blocks.length, mapIntroRef)
@@ -384,19 +508,17 @@ export function BlogArticlePage({ handle, slug }: { handle: string; slug: string
   // 便宜(linear scan 一次 blocks)。
   //
   // 2026-10 code review 修正:原本依賴陣列只放 [blocks],在 'loading'
-  // 與 'fallback' 狀態下 content 會是 sampleTainanChikan 常數(見上方
-  // content 的三元運算式),此時 blocks 裡的 photoId 其實是
-  // sampleTainanChikan.ts 的假檔名字串(例如 "IMG_9812.webp"),從來
-  // 不會在 uploaded_photos 查到任何結果——但 effect 仍會無條件對真實
-  // 後端 /public/blog/photos 發出一次查詢,保證查無結果,是一次單純的
-  // 浪費(元件掛載時 state 預設是 'loading',幾乎每次載入文章都會打到
-  // 這次多餘的請求)。改成多檢查 state.kind,'api' 以外的狀態都不觸發
-  // 查詢、維持空 Map。
+  // 狀態下 content 是空的 EMPTY_CONTENT(見上方 content 的三元運算式),
+  // blocks 是空陣列——effect 本身對空陣列執行雖然無害(collectPhotoIds
+  // 回傳空集合,fetchPublicBlogPhotosByIDs 查詢空集合),但仍是一次
+  // 無意義的請求(元件掛載時 state 預設是 'loading',幾乎每次載入文章
+  // 都會先打到這次空查詢)。改成多檢查 state.kind,'api' 以外的狀態都
+  // 不觸發查詢、維持空 Map。
   const [photoMap, setPhotoMap] = useState<Map<string, PublicUploadedPhoto>>(new Map())
   useEffect(() => {
     if (state.kind !== 'api') return
     let cancelled = false
-    const ids = collectPhotoIds(blocks)
+    const ids = collectPhotoIds(blocks, content.heroPhotoId, content.heroStandalonePhotoId)
     fetchPublicBlogPhotosByIDs(GUEST_CFG, ids)
       .then((res) => {
         if (cancelled) return
@@ -415,12 +537,21 @@ export function BlogArticlePage({ handle, slug }: { handle: string; slug: string
         console.warn('[BlogArticlePage] fetchPublicBlogPhotosByIDs 失敗,圖片將顯示為降級狀態:', err)
       })
     return () => { cancelled = true }
-  }, [state.kind, blocks])
+  }, [state.kind, blocks, content.heroPhotoId, content.heroStandalonePhotoId])
 
-  // not-found 直接渲染真正的 404 畫面,不走下面的 content 渲染邏輯
-  // ——見上方 FetchState 的完整說明。放在所有 Hook 呼叫之後才 early
-  // return,維持 Hook 呼叫順序在每次渲染都一致(React Hooks 規則:
-  // Hook 不能被條件式跳過)。
+  // loading/not-found 都不走下面完整的 content 渲染邏輯,放在所有
+  // Hook 呼叫之後才 early return,維持 Hook 呼叫順序在每次 render 都
+  // 一致(React Hooks 規則:Hook 不能被條件式跳過)。
+  //
+  // loading(2026-10 新增,取代原本借用 sampleTainanChikan 撐出完整
+  // 假文章頁面的做法,見 BlogArticlePage 開頭的完整說明)——使用者
+  // 實機回報「介面載入中時都會先顯示赤崁」,根因就是這裡原本沒有
+  // loading 的 early return,元件在 API 回應抵達前會直接拿
+  // sampleTainanChikan 渲染出一個看起來完整的赤崁文章頁。改成渲染
+  // LoadingPlaceholder(純文字置中,不含任何特定文章的內容)。
+  if (state.kind === 'loading') return <LoadingPlaceholder />
+  // not-found:查無這篇文章、或任何其他失敗(見上方 FetchState 的
+  // 完整說明),渲染真正的 404 畫面,不冒充成任何文章的內容。
   if (state.kind === 'not-found') return <NotFoundPage />
 
   return (
@@ -432,23 +563,50 @@ export function BlogArticlePage({ handle, slug }: { handle: string; slug: string
       <SiteNavBrand />
       <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
       <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'blog-article', position: 'nav' })}>登入</SiteNavCta>
-      <header className="theme-page-demo-hero">
-        {content.eyebrow && <span className="theme-page-demo-hero-eyebrow">{content.eyebrow}</span>}
-        <h1>
-          {content.title.split('\n').map((line, i) => (
-            <span key={i}>
-              {i > 0 && <br />}
-              {line}
-            </span>
-          ))}
-        </h1>
-        {content.lede && <p>{content.lede}</p>}
-        {/* 作者資訊:標題+導言下方,頭像+作者名+發布日期一行——見
-            renderAuthorBelowLede 的完整說明。試做階段曾同時比較三種
-            位置方案(eyebrow 上方/導言下方/獨立卡片),這裡保留的是
-            導言下方這個,讓讀者先專注標題與導言,再看到作者身份。 */}
-        {renderAuthorBelowLede()}
+      {/* heroPhotoId(2026-10 新增,見 types.ts ThemePageContent.heroPhotoId
+          的完整說明)——有設定時,Hero 整塊疊在全寬背景圖上(data-hero-photo
+          切換 BlogArticle.css 對應樣式:深色漸層遮罩+白色文字),沒有設定
+          時維持原本的純文字置中版面,兩種版面共用同一份 JSX 結構,只靠
+          這個屬性切換視覺,不是另外寫一份重複的 header。 */}
+      <header className="theme-page-demo-hero" data-hero-photo={content.heroPhotoId ? 'true' : undefined}>
+        {content.heroPhotoId && (
+          <img
+            className="theme-page-demo-hero-bg"
+            src={resolvePhotoURL(photoMap, content.heroPhotoId)}
+            alt=""
+            aria-hidden="true"
+          />
+        )}
+        <div className="theme-page-demo-hero-content">
+          {content.eyebrow && <span className="theme-page-demo-hero-eyebrow">{content.eyebrow}</span>}
+          <h1>
+            {content.title.split('\n').map((line, i) => (
+              <span key={i}>
+                {i > 0 && <br />}
+                {line}
+              </span>
+            ))}
+          </h1>
+          {content.lede && <p>{content.lede}</p>}
+          {/* 作者資訊:標題+導言下方,頭像+作者名+發布日期一行——見
+              renderAuthorBelowLede 的完整說明。試做階段曾同時比較三種
+              位置方案(eyebrow 上方/導言下方/獨立卡片),這裡保留的是
+              導言下方這個,讓讀者先專注標題與導言,再看到作者身份。 */}
+          {renderAuthorBelowLede()}
+        </div>
       </header>
+
+      {/* heroStandalonePhotoId(2026-10 新增,使用者要求「兩個都做看看」
+          比較後,進一步要求兩種呈現各自用不同照片——改用獨立欄位,不再
+          共用 heroPhotoId,見 types.ts 該欄位的完整說明):標題區塊下方
+          再放一張獨立全幅大圖,不是背景疊字,是文章開頭的「代表照」,
+          呼應傳統遊記開頭放一張定場照片的版面。目前先讓兩種呈現同時
+          存在方便比較,之後確定要留哪一種再移除另一種。 */}
+      {content.heroStandalonePhotoId && (
+        <div className="theme-page-demo-hero-standalone">
+          <img src={resolvePhotoURL(photoMap, content.heroStandalonePhotoId)} alt={content.title} />
+        </div>
+      )}
 
       <section className="theme-page-demo-stops">
         {/* renderItems:groupScrollTimelineBlocks 把扁平 blocks 陣列轉成

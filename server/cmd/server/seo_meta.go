@@ -1,9 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
+
+	"github.com/tim72117/tripace/internal/model"
+	"github.com/tim72117/tripace/internal/store"
 )
 
 // seo_meta.go 修正一個 SEO 問題:這個站是純客戶端渲染的 SPA,所有路由
@@ -253,17 +258,160 @@ func checkIndexHTMLHasAllSEOTargets(html []byte) error {
 	return nil
 }
 
+// blogArticlePathPattern 匹配部落格文章正式頁面的路徑——對齊
+// static.go knownRoutePatterns 的 `^/u/[^/]+/[^/]+$` 與 App.tsx 的
+// <Route path="/u/:handle/:slug">,用具名捕獲群組直接取出 handle/slug,
+// 不需要額外呼叫 strings.Split 再手動處理陣列長度。
+var blogArticlePathPattern = regexp.MustCompile(`^/u/(?P<handle>[^/]+)/(?P<slug>[^/]+)$`)
+
+// blogArticleContentFields 只取 ThemePageContent(web/src/blog/types.ts)
+// 裡這次需要的五個欄位——title/eyebrow/lede/heroPhotoId/
+// heroStandalonePhotoId,其餘 blocks 等欄位這裡用不到,不需要完整
+// 解析。json 欄位名稱必須跟 types.ts 的 ThemePageContent 介面逐字
+// 一致(無自訂序列化名稱),否則會靜默解析成空字串而非報錯
+// (encoding/json 對 struct 找不到對應欄位時不會報錯,只是該欄位維持
+// 零值)。
+type blogArticleContentFields struct {
+	Title                 string `json:"title"`
+	Eyebrow               string `json:"eyebrow"`
+	Lede                  string `json:"lede"`
+	HeroPhotoID           string `json:"heroPhotoId"`
+	HeroStandalonePhotoID string `json:"heroStandalonePhotoId"`
+}
+
+// blogArticleSEOMeta 依 (handle, slug) 查詢這篇已發布部落格文章的內容,
+// 組出對應的 seoMeta——跟 seoMetaByPath 那份固定路徑對照表不同,部落格
+// 文章數量會持續成長、路徑是動態的 /u/{handle}/{slug},不可能窮舉進
+// 靜態 map,必須在請求當下查資料庫。
+//
+// 查詢邏輯完全比照 internal/api/content_page.go
+// handlePublicBlogArticle:先用 handle 解析出作者 UserID,再用
+// (UserID, slug) 查文章,且要求 status 恰好是 "published"——草稿或
+// 不存在的文章一律當作「這裡沒有對應的 SEO meta」處理(回傳 ok=false),
+// 呼叫端(applySEOMeta)此時應該維持 index.html 原本的首頁預設內容,
+// 不是試圖為不存在/未發布的文章生成誤導性的 meta 標籤(搜尋引擎不該
+// 索引到還沒公開的草稿內容的標題/描述預覽)。
+//
+// description 的挑選順序:優先用 lede(文章導言,通常是專門為讀者寫的
+// 摘要性文字,語意上最貼近 SEO description 的用途);lede 留空時退回
+// eyebrow(副標籤,通常也是簡短的語意標籤,雖然不是完整摘要但至少比
+// 完全空白的 description 好);兩者都沒有時用 title 本身(確保
+// description 不會是空字串——空字串的 <meta name="description"> 比
+// 沿用首頁預設值更糟,等於明確告訴搜尋引擎「這頁沒有摘要」)。
+//
+// image(2026-10 新增)——使用者明確要求「og:image 要用頁面 hero 圖」:
+// 優先用 heroPhotoId(背景疊字版 Hero,見 types.ts
+// ThemePageContent.heroPhotoId 的完整說明),查無時退回
+// heroStandalonePhotoId(標題下方定場大圖版 Hero,見該欄位的完整
+// 說明)——兩者都是「這篇文章的代表圖」,heroPhotoId 語意上更像傳統
+// 的單一代表圖(整個 Hero 區塊的背景),優先順位更高;
+// heroStandalonePhotoId 則是在沒有背景圖版本時,退而求其次用同樣
+// 具代表性的定場照片,比完全沒有圖好。查到 photoId 後,查
+// uploaded_photos 表拿這張圖的實際網址,優先用 "large" 衍生版本
+// (社群分享預覽圖通常會被縮放顯示,large 已經是縮放過、檔案大小合理
+// 的版本,不需要給原圖這種可能數 MB 的檔案),查無 large 時退回原圖
+// 本身(剛上傳完成、背景處理還沒跑完的圖片只有原圖可用,見
+// BlogArticlePage.tsx resolvePhotoURL 對同一種情境的既有處理邏輯,
+// 這裡沿用同樣的 fallback 順序)。兩個 photoId 都沒有設定、或查詢
+// 失敗時,image 留空字串,呼叫端(applySEOMeta)的既有 fallback 邏輯
+// 會接手(沒有自己的圖時沿用 defaultImage,不會被取代成空字串,見該
+// 函式對 image 變數的完整說明)。
+func blogArticleSEOMeta(st *store.Store, baseURL, handle, slug string) (seoMeta, bool) {
+	profile, err := st.GetBlogProfileByHandle(handle)
+	if err != nil {
+		return seoMeta{}, false
+	}
+	page, err := st.GetContentPageBySlug(profile.UserID, slug)
+	if err != nil || page.Status != "published" {
+		return seoMeta{}, false
+	}
+	var fields blogArticleContentFields
+	// Content 解析失敗(理論上不該發生,CreateContentPage/
+	// UpdateContentPageContent 寫入前都驗證過是合法 JSON object,見
+	// internal/api/content_page.go isJSONObject)時,fields 維持零值,
+	// 下面的 title/description 都會是空字串——比照
+	// applySEOMeta 對 title 的既有處理方式,讓 strings.Replace
+	// 换成空字串而非直接 panic 或擋下整個頁面渲染,寧可 SEO meta 退化
+	// 成空字串也不要讓這個邊界情況影響到文章內容本身的正常顯示。
+	_ = json.Unmarshal([]byte(page.Content), &fields)
+
+	title := fields.Title
+	if title != "" {
+		title += " | Tripace"
+	}
+	description := fields.Lede
+	if description == "" {
+		description = fields.Eyebrow
+	}
+	if description == "" {
+		description = fields.Title
+	}
+	image := ""
+	heroPhotoID := fields.HeroPhotoID
+	if heroPhotoID == "" {
+		heroPhotoID = fields.HeroStandalonePhotoID
+	}
+	if heroPhotoID != "" {
+		if photo, err := st.GetUploadedPhoto(heroPhotoID); err == nil {
+			image = heroPhotoImageURL(photo)
+		}
+	}
+	return seoMeta{
+		title:       title,
+		description: description,
+		canonical:   baseURL + "/u/" + handle + "/" + slug,
+		image:       image,
+	}, true
+}
+
+// heroPhotoImageURL 從一筆 UploadedPhoto 選出最適合當 og:image/
+// twitter:image 的網址——見 blogArticleSEOMeta 對 image 欄位的完整
+// 說明(優先 large,查無則退回原圖)。獨立成函式方便單元測試覆蓋
+// variants 清單裡有/沒有 large 版本的兩種情況,不需要透過完整的
+// blogArticleSEOMeta(得先建立 Store、使用者、文章等一整套測試資料)
+// 才能測到這段挑選邏輯本身。
+func heroPhotoImageURL(photo model.UploadedPhoto) string {
+	for _, v := range photo.Variants {
+		if v.Kind == "large" {
+			return v.URL
+		}
+	}
+	return photo.OriginalURL
+}
+
 // applySEOMeta 依請求路徑,把 index.html 內容裡寫死的首頁 title/
-// description/canonical/image 取代成該路由自己的值——找不到對應路由
-// (不在 seoMetaByPath 裡,例如首頁本身、/privacy、/terms,或任何其餘
-// SPA fallback 路由)時原樣傳回,不做任何取代,沿用 index.html 原本的
-// 首頁預設內容(這是既有且正確的行為,不是遺漏)。
+// description/canonical/image 取代成該路由自己的值。
+//
+// 兩種路由各自決定對應的 seoMeta:
+//   - 固定路徑(seoMetaByPath,城市介紹頁/功能介紹等)直接查表。
+//   - /u/{handle}/{slug} 部落格文章(2026-10 新增)動態查資料庫,見
+//     blogArticleSEOMeta 的完整說明——每篇文章都要注入自己的
+//     title/description/canonical,不能像固定路徑那樣窮舉進靜態表。
+//
+// 兩種都找不到對應資料時(不在 seoMetaByPath 裡,也不符合部落格文章
+// 路徑規則、或符合規則但查無已發布文章,例如首頁本身、/privacy、
+// /terms,或任何其餘 SPA fallback 路由)原樣傳回,不做任何取代,沿用
+// index.html 原本的首頁預設內容(這是既有且正確的行為,不是遺漏)。
 // 每個目標字串都用 strings.Replace(...,1)(限制取代一次),不是
 // ReplaceAll——這份清單裡的字串設計上本來就只該在 index.html 出現
 // 一次,限制次數是額外的保險,避免未來不小心在別處重複出現同樣文字時
 // 被誤取代。
-func applySEOMeta(html []byte, path string) []byte {
+func applySEOMeta(html []byte, path string, st *store.Store) []byte {
 	meta, ok := seoMetaByPath[path]
+	if !ok {
+		// st 可能是 nil(例如測試情境,見 seo_meta_test.go 既有呼叫端
+		// 不想每個案例都額外組一個 Store)——在呼叫 blogArticleSEOMeta
+		// 之前先擋掉,避免對 nil pointer 呼叫方法時 panic。
+		if st != nil {
+			if m := blogArticlePathPattern.FindStringSubmatch(path); m != nil {
+				handle := m[blogArticlePathPattern.SubexpIndex("handle")]
+				slug := m[blogArticlePathPattern.SubexpIndex("slug")]
+				if blogMeta, found := blogArticleSEOMeta(st, siteBaseURL(), handle, slug); found {
+					meta, ok = blogMeta, true
+				}
+			}
+		}
+	}
 	if !ok {
 		return html
 	}

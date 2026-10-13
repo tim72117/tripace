@@ -32,6 +32,7 @@ import (
 	_ "image/png"
 	_ "golang.org/x/image/webp"
 
+	"github.com/rwcarlsen/goexif/exif"
 	"golang.org/x/image/draw"
 )
 
@@ -67,13 +68,149 @@ type DecodedImage struct {
 // 僅作為錯誤訊息的輔助資訊,實際解碼派送交給 image.Decode 依檔案本身
 // 的魔術位元組自動判斷格式(比起只信任呼叫端宣告的 Content-Type 更
 // 可靠,使用者端瀏覽器回報的 MIME type 不一定準確)。
+//
+// 2026-10 修正(業界標準做法,對齊 Google Photos/Cloudinary 等圖片服務
+// 的既有慣例):手機拍照(尤其直拍)寫入的 JPEG,感測器本身的像素矩陣
+// 方向是固定的,實際顯示方向由另外寫入的 EXIF Orientation 標籤決定——
+// 瀏覽器的 <img> 標籤會自動讀這個標籤即時校正顯示,但 image.Decode 只
+// 解析像素本身,完全不理會這個標籤,之前的做法是直接拿這份「尚未校正」
+// 的像素矩陣去 resize/輸出,導致手機直拍的縮圖/裁切焦點全部跟著歪掉
+// (image/jpeg 的 Encode 也不會寫回 EXIF,下游沒有機會事後校正)。
+//
+// 解法是在這裡(最前端的解碼階段)就讀取 Orientation 並把像素矩陣轉正
+// ——之後的 scaleToFit/裁切焦點計算/輸出,都在這份「已校正」的矩陣上
+// 操作,不需要讓每一層下游各自處理方向問題。讀不到 EXIF(非 JPEG 來源、
+// 或檔案本身就沒有這個區塊,例如 PNG/webp 或桌機截圖)時視為
+// orientation=1(無需旋轉),不視為錯誤——這是絕大多數非手機拍攝圖片的
+// 正常情況。
 func DecodeImage(data []byte, contentType string) (DecodedImage, error) {
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return DecodedImage{}, fmt.Errorf("解析圖片失敗(contentType=%s): %w", contentType, err)
 	}
+	img = applyEXIFOrientation(img, data)
 	bounds := img.Bounds()
 	return DecodedImage{Img: img, Width: bounds.Dx(), Height: bounds.Dy()}, nil
+}
+
+// applyEXIFOrientation 讀取 data 裡的 EXIF Orientation 標籤,把 img 轉成
+// 「照片應該被看到的方向」——標準 EXIF Orientation 定義 8 種值(見
+// rotateImage 的完整說明),這裡只需要讀值、轉譯成對應的轉正動作。
+//
+// EXIF 解析失敗(exif.Decode 回傳 error)時原樣回傳 img,不中斷整個
+// 處理流程——找不到 EXIF 區塊是絕大多數情況下的正常結果(見本函式
+// 呼叫端 DecodeImage 的完整說明),不應該讓這種常態情況變成上傳失敗。
+func applyEXIFOrientation(img image.Image, data []byte) image.Image {
+	x, err := exif.Decode(bytes.NewReader(data))
+	if err != nil {
+		return img
+	}
+	tag, err := x.Get(exif.Orientation)
+	if err != nil {
+		return img
+	}
+	orientation, err := tag.Int(0)
+	if err != nil {
+		return img
+	}
+	return rotateImage(img, orientation)
+}
+
+// rotateImage 依標準 EXIF Orientation 值(1~8,見
+// https://exiftool.org/TagNames/EXIF.html#Orientation 的官方定義)把
+// img 轉成正確顯示方向。1 代表本來就是正的,直接回傳不複製,避免無謂
+// 的記憶體配置;其餘 7 種值都需要重新配置一塊畫布、逐像素搬移——這些
+// 全部是 90° 整數倍的轉置/鏡像運算(座標軸交換,不涉及插值),運算量
+// 跟後續的 CatmullRom 縮放相比可忽略不計。
+//
+// 未知值(理論上不會出現,EXIF 規範只定義 1~8)比照「讀不到 EXIF」的
+// 既有降級邏輯,原樣回傳不旋轉——保守地不對不認得的值做任何假設。
+func rotateImage(img image.Image, orientation int) image.Image {
+	switch orientation {
+	case 1:
+		return img
+	case 2:
+		return flipH(img)
+	case 3:
+		return rotate180(img)
+	case 4:
+		return flipV(img)
+	case 5:
+		// transpose(沿主對角線翻轉)——2026-10 code review 修正:原本寫
+		// rotate90(flipH(img)),實際算出的是 transverse(副對角線翻轉,
+		// 7 的正確結果),跟 5 應有的 transpose 結果左右顛倒。已用
+		// Pillow(Image.TRANSPOSE)逐像素比對驗證修正後的版本正確。
+		return rotate90(flipV(img))
+	case 6:
+		return rotate90(img)
+	case 7:
+		// transverse(沿副對角線翻轉)——同上,原本寫 rotate90(flipV(img))
+		// 實際算出的是 5 的 transpose 結果,已對調修正。
+		return rotate90(flipH(img))
+	case 8:
+		return rotate270(img)
+	default:
+		return img
+	}
+}
+
+// flipH/flipV/rotate90/rotate180/rotate270 是 rotateImage 用到的 5 種
+// 基本幾何變換——都是單純的座標軸交換/反轉,直接用 image.NewRGBA 配
+// 一塊新畫布、逐像素搬過去,不透過 golang.org/x/image/draw(那個套件
+// 設計給縮放用,這裡不需要任何插值,直接整數座標映射即可)。
+func flipH(img image.Image) image.Image {
+	b := img.Bounds()
+	dst := image.NewRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			dst.Set(b.Max.X-1-x, y-b.Min.Y, img.At(x, y))
+		}
+	}
+	return dst
+}
+
+func flipV(img image.Image) image.Image {
+	b := img.Bounds()
+	dst := image.NewRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			dst.Set(x-b.Min.X, b.Max.Y-1-y, img.At(x, y))
+		}
+	}
+	return dst
+}
+
+func rotate90(img image.Image) image.Image {
+	b := img.Bounds()
+	dst := image.NewRGBA(image.Rect(0, 0, b.Dy(), b.Dx()))
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			dst.Set(b.Max.Y-1-y, x-b.Min.X, img.At(x, y))
+		}
+	}
+	return dst
+}
+
+func rotate180(img image.Image) image.Image {
+	b := img.Bounds()
+	dst := image.NewRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			dst.Set(b.Max.X-1-x, b.Max.Y-1-y, img.At(x, y))
+		}
+	}
+	return dst
+}
+
+func rotate270(img image.Image) image.Image {
+	b := img.Bounds()
+	dst := image.NewRGBA(image.Rect(0, 0, b.Dy(), b.Dx()))
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			dst.Set(y-b.Min.Y, b.Max.X-1-x, img.At(x, y))
+		}
+	}
+	return dst
 }
 
 // GeneratedVariant 是縮放完成的單一衍生版本——Kind/Width/Height/Data

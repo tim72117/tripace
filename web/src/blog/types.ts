@@ -87,6 +87,23 @@ export type ImageWidth = 'column' | 'wide' | 'full'
  *  渲染端應忽略這個欄位(全寬圖沒有繞排的意義)。 */
 export type ImageFloat = 'none' | 'left' | 'right'
 
+/** 圖片顯示方向——2026-10 新增:BlogArticle.css 原本全部 gallery/單圖
+ *  規則固定套用橫式 aspect-ratio(1.4~1.6:1,見該檔案的完整說明),不論
+ *  原圖本身是橫是直,一律被 object-fit: cover 裁切成橫式比例。混合
+ *  直式原圖(手機直拍的人像/巷弄構圖)的 gallery 因此失真明顯——直式
+ *  照片的主體(通常是縱向的構圖重心)被硬裁成橫的,即使搭配 focal 調整
+ *  裁切位置,畫面整體形狀仍跟原始構圖意圖不符。
+ *
+ *  'landscape'(省略時的預設值)維持既有橫式比例,向後相容現有內容;
+ *  'portrait' 讓渲染端改套用直式比例(見 BlogArticle.css
+ *  [data-orientation="portrait"] 規則)。寫文章時依照這張圖實際的原始
+ *  長寬比(可從 CLI `blog-photo list` 回應的 variants[].width/height
+ *  判斷,height > width 即為直式)手動標注,不是系統自動判斷——同一個
+ *  gallery 裡常常混合橫直式照片(例如同一條巷弄裡有橫拍的建築遠景、
+ *  也有直拍的行人/巷弄縱深構圖),需要逐張指定,不能用整個區塊共用
+ *  一個值。 */
+export type ImageOrientation = 'landscape' | 'portrait'
+
 /** 段落樣式變體——具名樣式,不是資料裡存具體字級/字重數值(對齊本檔
  *  開頭說明第 7 點「具名主題」的既有設計哲學:CLI 編輯者只選語意化的
  *  變體名稱,實際視覺數值(字級/字重/顏色/間距)交給 CSS 端的
@@ -141,6 +158,28 @@ export interface ImageBlock {
   /** 只在 width='column' 時有意義,其餘情況由渲染端忽略此欄位。 */
   float: ImageFloat
   focal?: FocalPoint
+  /** 選填,見 ImageOrientation 的完整說明。省略時等同 'landscape'
+   *  (既有橫式比例),向後相容既有內容。 */
+  orientation?: ImageOrientation
+  /** 疊在圖片上的文字(2026-10 新增)——跟 caption(圖片下方的小字圖說)
+   *  是不同用途、刻意分開的欄位,不是同一件事的兩種寫法:caption 是
+   *  「補充說明這張圖是什麼」,這裡是「這段文字本身就是內容,只是用
+   *  圖片當視覺背景呈現」,對應 BlogArticle.css 的疊字卡片樣式(深色
+   *  漸層遮罩+白色文字,呼應 Hero 背景圖的既有做法,見 .theme-page-
+   *  demo-hero[data-hero-photo] 規則的完整說明)。
+   *
+   *  挑選依據(2026-10 使用者實機回報「文繞排配短段落效果很差,撐不滿
+   *  圖片高度、底下一片空白」後,新增這個欄位當替代方案):文繞排
+   *  (width:'column' + float)需要緊接其後的文字段落夠長,才能讓文字
+   *  持續繞在圖片旁(至少繞滿圖片的視覺高度,抓一個概略門檻:至少
+   *  100~150 字,實際門檻依圖片比例/欄寬調整,沒有精確公式)。文字量
+   *  不夠長時(例如本身只是一句話、一段短收尾感想),不要用 float,
+   *  改用這個欄位讓圖文本來就疊在一起顯示,不依賴「文字夠長到撐滿
+   *  圖片」這個前提。
+   *  省略時維持原本的版面(不疊字),圖片下方若有 caption 則顯示 caption
+   *  ,两者可以共存但目前還沒有同時使用的實例,渲染端的呈現細節(是否
+   *  互相遮擋)屆時再處理。 */
+  overlayText?: string
 }
 
 /** 多圖群組區塊——顯式群組,取代「靠張數隱式判斷版面」的舊邏輯(見本檔
@@ -150,8 +189,29 @@ export interface ImageBlock {
 export interface GalleryBlock {
   id: string
   kind: 'gallery'
-  items: Array<{ photoId: string; alt: string; caption?: string; focal?: FocalPoint }>
-  layout: 'grid' | 'row'
+  items: Array<{
+    photoId: string
+    alt: string
+    caption?: string
+    focal?: FocalPoint
+    /** 選填,見 ImageOrientation 的完整說明——逐張指定,同一個 gallery
+     *  裡常混合橫直式照片。省略時等同 'landscape'。 */
+    orientation?: ImageOrientation
+  }>
+  /** 'grid'(預設):第一張大圖+其餘固定 2 欄小圖。'row':取消大小分層,
+   *  統一縮小、密集多欄排列(見 BlogArticle.css [data-layout="row"]
+   *  規則的完整說明,適合 ≥5 張的站點)。
+   *  'split'(2026-10 新增):固定 3 張的非對稱拼貼——左側一張直式大圖,
+   *  右側兩張橫式圖上下堆疊(雜誌常見的拼貼版面)。items 依陣列順序
+   *  對應固定位置:items[0] 是左側直式大圖,items[1]/items[2] 是右側
+   *  由上到下的兩張橫式圖,不是隨排版自動決定——寫入內容時需按這個
+   *  順序排列,渲染端(BlogArticle.css [data-layout="split"])依
+   *  nth-child 選到固定位置,不是依 orientation 欄位自動判斷哪張該放
+   *  左邊。items 長度不是 3 張時,渲染端會退回 'grid' 版面並印
+   *  console.warn(2026-10 code review 修正,見 renderGalleryBlock 的
+   *  完整說明)——寫入前仍應自行確保張數正確,這個防呆只是避免版面
+   *  悄悄跑掉、方便事後排查,不是鼓勵依賴它。 */
+  layout: 'grid' | 'row' | 'split'
   /** 整組圖片共用的說明文字,跟單張 caption 分開(對齊 Ghost gallery
    *  card 在「整組」層級才有 caption 的設計)。 */
   caption?: string
@@ -319,6 +379,31 @@ export interface ThemePageContent {
   eyebrow?: string
   /** Hero 介紹段落(對應既有 <header> 裡的 <p>),可省略。 */
   lede?: string
+  /** Hero 全寬背景圖(2026-10 新增)——可省略,省略時 Hero 維持原本的
+   *  純文字排版(無背景圖)。跟 ImageBlock.photoId 同一套引用方式
+   *  (穩定識別碼,見該欄位的完整說明),不直接存網址。挑選依據見
+   *  model.UploadedPhoto.Rating 的完整說明:評 3 分(最高)的照片
+   *  適合選來當這裡的 Hero 大圖,但這個欄位本身不限制一定要用高分
+   *  照片,純粹是挑選時的參考依據,不是強制規則。這張圖固定以
+   *  object-fit: cover 滿版鋪底,不支援自訂裁切焦點(不像
+   *  ImageBlock/GalleryBlock 的 focal)——Hero 區塊的文案版面本身
+   *  已經要求置中對齊,裁切偏移需求相對低,目前先用最簡單的實作,
+   *  真的有裁切不理想的情況再回頭加 focal。 */
+  heroPhotoId?: string
+  /** Hero 下方獨立定場大圖(2026-10 新增,跟 heroPhotoId 是兩種不同的
+   *  呈現方式並存試做——見 BlogArticlePage.tsx 對應 JSX 的完整說明)。
+   *  可省略,省略時不顯示這個區塊。跟 heroPhotoId 一樣是穩定識別碼,
+   *  可以跟 heroPhotoId 用同一張或不同張照片,兩者互不影響。 */
+  heroStandalonePhotoId?: string
+  /** 建議的日夜間模式(2026-10 新增)——可省略,省略時維持既有行為
+   *  (跟隨讀者系統偏好或之前手動切換過的選擇)。這只是「預設值」,
+   *  不是強制鎖定:讀者進入這篇文章時,若自己還沒手動切換過(見
+   *  useThemeToggle 的 theme state,null 代表尚未手動切換),套用這裡
+   *  指定的模式;讀者按下既有的 SiteNavThemeToggle 仍可自由切換,
+   *  這個欄位只影響「初次進入時」的預設顯示,不影響之後的互動。用途
+   *  例如夜景主題的文章(像九份夜遊)用深色配色展示效果更好,但不該
+   *  強迫所有讀者都看深色,只是替大多數人設一個更合適的起點。 */
+  preferredTheme?: 'dark' | 'light'
   /** 風格基調,可省略(見本檔開頭說明第 7 點與 ThemePagePalette)。 */
   palette?: ThemePagePalette
   /** 內容區塊陣列,順序即渲染順序——見本檔開頭說明第 1 點。 */

@@ -199,10 +199,12 @@ func buildResources(c *httpClient, apiURL string) []resource {
 			// 其餘動詞各自對應單一後端端點。
 			name: "blog-photo",
 			commands: []resourceCommand{
-				{verb: "upload", run: func(args []string) { cmdBlogPhotoUpload(c, args) }, usage: "tripace-cli blog-photo upload -file 路徑 -content-type image/jpeg [-skip-process]"},
+				{verb: "upload", run: func(args []string) { cmdBlogPhotoUpload(c, args) }, usage: "tripace-cli blog-photo upload -file 路徑 -content-type image/jpeg [-skip-process] [-sync] [-note 文字]"},
 				{verb: "list", run: func(args []string) { cmdBlogPhotoList(c) }, usage: "tripace-cli blog-photo list"},
-				{verb: "retry", run: func(args []string) { cmdBlogPhotoRetry(c, args) }, usage: "tripace-cli blog-photo retry -id 文字"},
+				{verb: "retry", run: func(args []string) { cmdBlogPhotoRetry(c, args) }, usage: "tripace-cli blog-photo retry -id 文字 [-sync]"},
 				{verb: "focal", run: func(args []string) { cmdBlogPhotoFocal(c, args) }, usage: "tripace-cli blog-photo focal -id 文字 -x 0.5 -y 0.5"},
+				{verb: "note", run: func(args []string) { cmdBlogPhotoNote(c, args) }, usage: "tripace-cli blog-photo note -id 文字 -note 文字"},
+				{verb: "rating", run: func(args []string) { cmdBlogPhotoRating(c, args) }, usage: "tripace-cli blog-photo rating -id 文字 -rating 1~3(0 清空)"},
 				{verb: "delete", run: func(args []string) { cmdBlogPhotoDelete(c, args) }, usage: "tripace-cli blog-photo delete -id 文字"},
 			},
 		},
@@ -1076,7 +1078,9 @@ func cmdBlogPhotoUpload(c *httpClient, args []string) {
 	fs := flag.NewFlagSet("blog-photo upload", flag.ExitOnError)
 	file := fs.String("file", "", "本機圖片檔案路徑（必填）")
 	contentType := fs.String("content-type", "", "圖片 MIME type（必填，例如 image/jpeg、image/png）")
-	skipProcess := fs.Bool("skip-process", false, "只上傳原圖(簽發 URL+PUT 檔案),不觸發背景處理(resize/產生縮圖);之後要處理時可用 `blog-photo retry -id` 逐張手動觸發")
+	skipProcess := fs.Bool("skip-process", false, "只上傳原圖(簽發 URL+PUT 檔案),不觸發處理(resize/產生縮圖);之後要處理時可用 `blog-photo retry -id` 逐張手動觸發")
+	sync := fs.Bool("sync", false, "讓伺服器端在這次請求處理期間同步完成圖片處理(見 blog_photo.go handleBlogPhotoTriggerProcessing 的完整說明),不是丟進背景處理——根因是 Cloud Run 只在處理 HTTP 請求期間分配 CPU,背景處理容易因 CPU 被收回而卡住/逾時;加這個旗標讓 CLI 多等一次 round trip,換取處理期間確實有 CPU 可用、且能直接從回應知道這次處理是否成功。跟 -skip-process 互斥(skip-process 時完全不觸發處理,sync 無意義)")
+	note := fs.String("note", "", "選填,上傳當下順手標記這張圖實際拍的是什麼(例如「基山街入口」),之後查詢列表或配圖時方便辨認;也可以之後用 `blog-photo note -id` 單獨補/改")
 	_ = fs.Parse(args)
 	if *file == "" {
 		fatal("blog-photo upload 需要 -file")
@@ -1085,7 +1089,7 @@ func cmdBlogPhotoUpload(c *httpClient, args []string) {
 		fatal("blog-photo upload 需要 -content-type")
 	}
 
-	signed, err := c.blogPhotoUploadURL(*contentType)
+	signed, err := c.blogPhotoUploadURL(*contentType, *note)
 	if err != nil {
 		fatal("blog-photo upload: 簽發 upload URL 失敗: %v", err)
 	}
@@ -1108,9 +1112,9 @@ func cmdBlogPhotoUpload(c *httpClient, args []string) {
 		return
 	}
 
-	res, err := c.blogPhotoComplete(photoID)
+	res, err := c.blogPhotoComplete(photoID, *sync)
 	if err != nil {
-		fatal("blog-photo upload: 回報完成失敗(photoId=%s,檔案已上傳但背景處理可能未觸發,可用 `blog-photo retry -id %s` 重試): %v", photoID, photoID, err)
+		fatal("blog-photo upload: 回報完成失敗(photoId=%s,檔案已上傳但處理可能未觸發,可用 `blog-photo retry -id %s` 重試): %v", photoID, photoID, err)
 	}
 	output(res)
 }
@@ -1124,16 +1128,17 @@ func cmdBlogPhotoList(c *httpClient) {
 	output(res)
 }
 
-// cmdBlogPhotoRetry 針對處理失敗的原圖重新觸發背景處理。走 POST
+// cmdBlogPhotoRetry 針對處理失敗的原圖重新觸發處理。走 POST
 // /v1/blog/photos/{photoId}/retry。
 func cmdBlogPhotoRetry(c *httpClient, args []string) {
 	fs := flag.NewFlagSet("blog-photo retry", flag.ExitOnError)
 	id := fs.String("id", "", "圖片 ID（必填）")
+	sync := fs.Bool("sync", false, "同步處理,見 `blog-photo upload -sync` 的完整說明")
 	_ = fs.Parse(args)
 	if *id == "" {
 		fatal("blog-photo retry 需要 -id")
 	}
-	res, err := c.blogPhotoRetry(*id)
+	res, err := c.blogPhotoRetry(*id, *sync)
 	if err != nil {
 		fatal("blog-photo retry: %v", err)
 	}
@@ -1170,6 +1175,56 @@ func cmdBlogPhotoFocal(c *httpClient, args []string) {
 	res, err := c.blogPhotoFocal(*id, *x, *y)
 	if err != nil {
 		fatal("blog-photo focal: %v", err)
+	}
+	output(res)
+}
+
+// cmdBlogPhotoNote 單獨設定/修改一張已上傳圖片的備註(見
+// model.UploadedPhoto.Note 的完整說明)。走 PATCH
+// /v1/blog/photos/{photoId}/note。跟上傳時的 -note(cmdBlogPhotoUpload)
+// 是同一個欄位,這裡是給「上傳當下沒標記」或「想事後修改」的情境用,
+// -note 允許傳空字串清空既有備註(不像 blog-photo focal 的 -x/-y 需要
+// 用 fs.Visit 判斷是否真的有帶——空字串本身就是合法輸入,不需要額外
+// 判斷「有沒有帶」)。
+func cmdBlogPhotoNote(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("blog-photo note", flag.ExitOnError)
+	id := fs.String("id", "", "圖片 ID（必填）")
+	note := fs.String("note", "", "備註內容,留空代表清空既有備註")
+	_ = fs.Parse(args)
+	if *id == "" {
+		fatal("blog-photo note 需要 -id")
+	}
+	res, err := c.blogPhotoNote(*id, *note)
+	if err != nil {
+		fatal("blog-photo note: %v", err)
+	}
+	output(res)
+}
+
+// cmdBlogPhotoRating 設定/清空一張已上傳圖片的品質評分(見
+// model.UploadedPhoto.Rating 的完整說明)。走 PATCH
+// /v1/blog/photos/{photoId}/rating。-rating 用 0 代表清空既有評分
+// (回到「尚未評分」狀態)——1~3 才是合法分數,0 本身沒有評分意義,
+// 拿來當「清空」的語意標記不會跟任何合法輸入混淆,不需要像
+// blog-photo focal 的 -x/-y 那樣額外用 fs.Visit 判斷有沒有帶旗標。
+func cmdBlogPhotoRating(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("blog-photo rating", flag.ExitOnError)
+	id := fs.String("id", "", "圖片 ID（必填）")
+	rating := fs.Int("rating", 0, "品質評分 1~3(3 分最適合當主圖,1 分適合合併成小圖),0 代表清空既有評分")
+	_ = fs.Parse(args)
+	if *id == "" {
+		fatal("blog-photo rating 需要 -id")
+	}
+	if *rating < 0 || *rating > 3 {
+		fatal("blog-photo rating 的 -rating 必須是 0~3(0 代表清空)")
+	}
+	var ratingPtr *int
+	if *rating != 0 {
+		ratingPtr = rating
+	}
+	res, err := c.blogPhotoRating(*id, ratingPtr)
+	if err != nil {
+		fatal("blog-photo rating: %v", err)
 	}
 	output(res)
 }

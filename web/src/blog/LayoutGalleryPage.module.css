@@ -1,0 +1,54 @@
+/* LayoutGalleryPage:開發用版型目錄頁的外層樣式——只負責頁面骨架
+   (標題、章節間距、說明文字),每個版型範例本身用 BlogArticle.css 既有
+   的 class,不在這裡重複定義視覺樣式(避免兩邊維護出不一致的版本)。 */
+
+.page {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 6rem;
+  font-family: -apple-system, "PingFang TC", "Noto Sans TC", sans-serif;
+  color: #2b2b28;
+  background: #faf8f3;
+}
+
+.pageHeader {
+  margin-bottom: 3rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid #2b2b28;
+}
+.pageHeader h1 {
+  font-size: 1.8rem;
+  margin: 0 0 0.6rem;
+}
+.pageHeader p {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #666;
+  max-width: 640px;
+}
+
+.section {
+  margin-bottom: 3.5rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px dashed #ccc;
+}
+.sectionTitle {
+  font-size: 1.15rem;
+  margin: 0 0 0.4rem;
+}
+.sectionNote {
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: #777;
+  max-width: 760px;
+  margin: 0 0 1.2rem;
+}
+.sectionBody {
+  /* 讓 BlogArticle.css 裡依賴 .theme-page-demo-stops 寬度/padding 的
+     負 margin 出血技巧(wide/full/overlay)有一個相對基準容器,不是
+     直接貼齊 .page 的滿版寬度——跟真實文章頁的 .theme-page-demo-stops
+     角色相同,只是這裡用 section 自己的 padding 當替代。 */
+  position: relative;
+  padding: 0 1.5rem;
+  overflow: hidden;
+}

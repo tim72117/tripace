@@ -21,7 +21,7 @@
   --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
 
   min-height: 100dvh;
-  position: relative; /* 讓 .rp-modal-backdrop 的 position: absolute 以這裡為基準 */
+  position: relative;
   overflow-y: auto;
   background: var(--ios-bg);
   color: var(--color-dark);
@@ -88,15 +88,26 @@
   border-color: var(--ios-blue, #3478f6);
 }
 
+/* thumbWrap:2026-10 從固定 1:1 正方形+object-fit:cover 改成不裁切——
+   這個頁面是管理介面,使用者需要看到照片實際完整內容來判斷場景/
+   品質/是否要標記 orientation(見 blog-article-content skill 裡
+   orientation 欄位的完整說明:直式照片在文章頁面會被裁切,管理介面
+   若也裁切掉原圖的一部分,使用者反而看不出這張圖「原本」是什麼
+   比例、該不該標成 portrait)。改成 max-height 限高(避免極端長寬比
+   的照片把卡片撐得過高、破壞 grid 版面整齊度),寬度隨圖片比例自動
+   變化,搭配 .thumbImage 的 object-fit: contain。 */
 .thumbWrap {
   position: relative;
-  aspect-ratio: 1 / 1;
+  max-height: 280px;
   background: var(--ios-sep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .thumbImage {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  max-height: 280px;
+  object-fit: contain;
   display: block;
 }
 
@@ -115,6 +126,63 @@
   color: #fff;
   font-size: 13px;
   font-weight: 600;
+}
+
+/* meta:photoId + 標注(note)區塊——放在縮圖跟 cardFooter(狀態/操作
+   按鈕)之間,純資訊呈現,不可互動。photoId 用等寬字體+可選取,方便
+   直接複製貼到 CLI 指令或 content JSON 裡,不需要先截圖再手打。 */
+.meta {
+  padding: 6px 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.photoId {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--ios-gray);
+  user-select: all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* rating:1~3 顆星的品質評分列(見 PhotoManagerPage.tsx handleRatingChange
+   的完整說明)。三顆星橫排,星星本身用 lucide-react 的 Star 圖示,選中
+   (aria-pressed=true)時用 fill 實心、未選中空心——不另外疊 hover 高亮
+   動畫,保持跟卡片其餘小字資訊一致的低調呈現,評分本身是給自己編排
+   文章用的內部標注,不是給訪客看的裝飾性 UI 元件。 */
+.rating {
+  display: flex;
+  gap: 2px;
+  margin: 2px 0;
+}
+.ratingStar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  padding: 1px;
+  cursor: pointer;
+  color: var(--ios-sand, var(--color-accent));
+  border-radius: 4px;
+}
+.ratingStar:hover {
+  background: var(--ios-sep);
+}
+.note {
+  font-size: 12px;
+  color: var(--color-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.noteEmpty {
+  font-size: 12px;
+  color: var(--ios-gray);
+  font-style: italic;
 }
 
 .cardFooter {
@@ -147,4 +215,15 @@
 .retryBtn:hover,
 .deleteBtn:hover {
   background: var(--ios-sep);
+}
+
+/* focalModal:PhotoFocalEditor 專用的彈窗寬度覆寫——全域 .rp-modal
+   (base-ui.css)寫死 max-width: 420px,是給分享/成員彈窗這種清單型
+   小彈窗設計的窄寬度。焦點編輯器的核心操作是「看清楚原圖、精準拖拉
+   裁切框」,420px 寬在桌面瀏覽器下把橫式照片壓得很小,使用者要求
+   「設定焦點的圖放大一點」——不能直接改全域 .rp-modal(會動到其他
+   沿用同一骨架的彈窗),改成這裡疊加一個更寬的 max-width,只影響
+   這個彈窗。 */
+.focalModal {
+  max-width: 920px;
 }

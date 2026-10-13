@@ -107,7 +107,11 @@ const BlogArticlePage = lazy(() => import('./blog/BlogArticlePage').then((m) => 
 // server/internal/api/blog_photo.go,與 BlogArticlePage 同屬「部落格
 // 發文」功能,但這是獨立的圖片管理頁,不涉及文章內容渲染。
 const PhotoManagerPage = lazy(() => import('./blog/PhotoManagerPage').then((m) => ({ default: m.PhotoManagerPage })))
-
+// LayoutGalleryPage:/dev/layouts 路由,開發用的版型目錄頁(2026-10 新增,
+// 見該檔案開頭的完整說明)——陳列 BlogArticle.css 目前支援的所有版型,
+// 骨架圖+範例文字,不依賴任何真實照片或後端資料。純開發工具,不是
+// 產品功能,不加進任何站內導覽連結。
+const LayoutGalleryPage = lazy(() => import('./blog/LayoutGalleryPage').then((m) => ({ default: m.LayoutGalleryPage })))
 // KeyboardShrinkGuard:/app 路由專用——鍵盤彈出時把根容器高度直接改成
 // visualViewport.height,取代先前試過的 transform: translateY(-offsetTop)
 // 反向抵銷做法。
@@ -235,10 +239,15 @@ export function App() {
               isGuest 並內嵌登入表單,不是擋下或導轉。這個專案沒有
               <RequireAuth> 這類包裝元件的先例,沿用這個既有做法。務必記得
               同步 server/cmd/server/static.go 的 knownRoutePatterns(見
-              /ai-plan 路由註解提過的教訓),這次任務限制不得修改 server/
-              目錄,故這份白名單同步留給後續處理,目前這條路徑在正式環境
-              會被導去 index.html 以外的 404 分支,需另外跟進。 */}
+              /ai-plan 路由註解提過的教訓)——2026-10 補上這份同步(先前
+              一度遺漏,留在後續處理)。 */}
           <Route path="/blog/photos" element={<PhotoManagerPage />} />
+          {/* /dev/layouts:開發用版型目錄頁(2026-10 新增,見
+              blog/LayoutGalleryPage.tsx 開頭的完整說明)——陳列
+              BlogArticle.css 支援的所有版型,骨架圖+範例文字,不依賴任何
+              真實照片或後端資料。純開發工具,不加進任何站內導覽連結,
+              只能直接輸入網址訪問。 */}
+          <Route path="/dev/layouts" element={<LayoutGalleryPage />} />
           {/* /public/{token} 路徑:直接渲染公開分享頁。原本用正則
               /^\/public\/([^/]+)$/ 手動解析 token,改用 Route 的 :token
               路徑參數 + useParams() 取代。 */}

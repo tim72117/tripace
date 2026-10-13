@@ -243,6 +243,76 @@
   text-align: center;
 }
 
+/* data-hero-photo="true"(2026-10 新增,見 BlogArticlePage.tsx 對應
+   JSX 的完整說明)——有設定 heroPhotoId 時,Hero 整塊改成全寬背景圖,
+   max-width 的置中限制在這個情境下不適用(圖要滿版出血,不是跟內文
+   同寬),改由內層 .theme-page-demo-hero-content 承接原本的文字置中
+   寬度限制。 */
+.theme-page-demo-hero[data-hero-photo="true"] {
+  max-width: none;
+  position: relative;
+  overflow: hidden;
+  padding: 8rem 1.5rem 5rem;
+  color: #fff;
+}
+.theme-page-demo-hero-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+/* 深色漸層遮罩(2026-10)——直接疊在背景圖上(::after 而非另一個
+   img/div),純 CSS 不需要額外 DOM 節點。由下往上更暗,確保文字(置於
+   版面底部的標題/導言區)對比度足夠,同時讓圖片頂部保留較多可視細節,
+   不是整張圖均勻壓暗。 */
+.theme-page-demo-hero[data-hero-photo="true"]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0.55) 60%, rgba(0, 0, 0, 0.75) 100%);
+}
+.theme-page-demo-hero-content {
+  position: relative;
+  z-index: 2;
+  max-width: 960px;
+  margin: 0 auto;
+}
+.theme-page-demo-hero[data-hero-photo="true"] .theme-page-demo-hero-eyebrow {
+  color: #fff;
+}
+.theme-page-demo-hero[data-hero-photo="true"] p {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* hero-standalone(2026-10 新增,使用者要求「兩個都做看看」比較用)——
+   標題區塊下方的獨立定場大圖,呼應傳統遊記開頭放一張代表照的版面,
+   跟上面的背景圖+疊字是兩種不同呈現方式,先並存方便比較。 */
+.theme-page-demo-hero-standalone {
+  max-width: 960px;
+  margin: 0 auto 3rem;
+  padding: 0 1.5rem;
+}
+.theme-page-demo-hero-standalone img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1.8 / 1;
+  object-fit: cover;
+  border-radius: 16px;
+  box-shadow: var(--card-shadow);
+}
+@media (max-width: 640px) {
+  .theme-page-demo-hero[data-hero-photo="true"] {
+    padding: 6.5rem 1.2rem 3.5rem;
+  }
+  .theme-page-demo-hero-standalone img {
+    aspect-ratio: 1.3 / 1;
+    border-radius: 12px;
+  }
+}
+
 .theme-page-demo-hero-eyebrow {
   display: inline-block;
   font-size: 0.85rem;
@@ -363,16 +433,27 @@
    正常文件流,讀者捲動速度自己決定,不強迫每站停留一整個螢幕高度。
    淡入進場動畫(is-active 判斷)一併拿掉,理由同上:文章式閱讀不需要
    這種展示型網站常見的捲動進場效果。 */
+/* overflow: hidden(2026-10 新增)——見下方 data-float="left"/"right"
+   文繞排規則的 clearfix 完整說明。這裡原本只在 .theme-page-demo-stop
+   (站點卡片)加了這個清除浮動,漏了這一層——使用者實機回報 float 圖片
+   直接撐滿到頁尾、版面整個跑掉,根因就是繞排圖插在頂層段落之間
+   (ParagraphBlock 之間,不在任何 .theme-page-demo-stop 內)時,它真正
+   的父容器是這一層,不是 .theme-page-demo-stop,沒有清除浮動的話
+   float 元素會飄出正常文件流,高度不受任何容器約束。兩層都要清除,
+   因為 ImageBlock+float 可能出現在頂層(緊鄰其他頂層 block)或站點
+   卡片內(StopBlock.media 裡),是兩種不同的父容器情境。 */
 .theme-page-demo-stops {
   max-width: 960px;
   margin: 0 auto;
   padding: 0 1.5rem 4rem;
+  overflow: hidden;
 }
 
 .theme-page-demo-stop {
   margin-bottom: 6rem;
   padding-top: 1.5rem;
   border-top: 1px dashed var(--line);
+  overflow: hidden;
 }
 .theme-page-demo-stop:first-child {
   border-top: none;
@@ -569,6 +650,296 @@
    呼應單圖是整站唯一一張照片、適合給它比併排小圖更完整的呈現空間
    (而非更扁)。 */
 .theme-page-demo-stop-gallery--single img { aspect-ratio: 1.4 / 1; }
+
+/* 直式照片(data-orientation="portrait",見 types.ts ImageOrientation
+   的完整說明)——上面三條規則(小圖 1.5:1、主圖 1.6:1、單圖 1.4:1)都是
+   橫式比例,對直式原圖(手機直拍的人像/巷弄構圖)會裁掉過多畫面、
+   整體形狀也跟原始構圖意圖不符。這裡用屬性選擇器覆寫,選擇器寫在
+   上面三條規則之後(CSS 層疊順序,同特異度時後寫的生效)。
+   2026-10 修正(使用者實機回報 upf_9a3f15e5d2ac「比例不對、像被拉伸」):
+   這裡原本寫死 0.8:1,跟 PhotoFocalEditor(photoFocalMath.ts
+   cropBoxGeometry)實際算給使用者拖拉確認的直式裁切框比例
+   (1 / TARGET_CROP_RATIO = 1/1.5 ≈ 0.667:1)是兩個不同數字——
+   使用者在編輯器裡看到、拖拉確認的框,跟文章實際顯示裁切的框對不上,
+   造成「設定了卻沒有照設定顯示」的落差(cropBoxGeometry 當初的設計
+   註解也明講「刻意不跟文章版面的實際裁切框綁死」,但使用者體感上
+   無法接受這個落差,改成兩邊統一)。改用同一個比例後,編輯器裡看到
+   的裁切範圍就是文章最終呈現的裁切範圍,不再有獨立的第二套數字。
+   小圖/主圖/單圖統一用同一個直式比例,不像橫式那樣分三種不同扁度
+   ——直式照片在這幾種版位的呈現需求差異不大(都是「保留完整縱向
+   構圖」優先於「跟橫式小圖維持同一種大小層次」),不需要比照橫式
+   再分三種直式比例徒增維護負擔。 */
+.theme-page-demo-stop-gallery img[data-orientation="portrait"],
+.theme-page-demo-stop-gallery figure:first-child img[data-orientation="portrait"],
+.theme-page-demo-stop-gallery--single img[data-orientation="portrait"] {
+  aspect-ratio: 1 / 1.5;
+  /* max-height(2026-10 新增):width: 100% 搭配 aspect-ratio 時,圖片
+     高度完全由容器寬度決定——單圖(--single)在寬版面下容器可能撐到
+     800px+,0.8:1 換算高度破千 px,遠超過使用者當下的瀏覽器可視高度,
+     需要捲很多頁才能看完一張圖。限制最長邊不超過視窗高度的 85%
+     (留一點邊界,不要剛好頂滿整個螢幕、上下文完全看不到)。
+     width 從上面繼承的 100% 改成 auto、搭配 margin: 0 auto 置中——
+     只設 max-height 而不改 width 的話,寬度仍然是容器的 100%,當
+     max-height 真正把高度壓下來時,aspect-ratio 會被打破(寬度沒跟著
+     縮小),圖片視覺上被壓扁變形。width: auto 讓瀏覽器改用「先決定
+     高度(受 max-height 限制)、寬度跟著 aspect-ratio 反推」的計算
+     順序,整體等比例縮小,不會變形;圖片本身因此可能窄於容器寬度,
+     用 margin: 0 auto 保持置中,不會貼邊。 */
+  width: auto;
+  max-height: 85vh;
+  margin: 0 auto;
+}
+
+/* data-layout="row"(2026-10 接線,見 BlogArticlePage.tsx renderGalleryBlock
+   的完整說明)——使用者回報「段落圖片很多的做成小圖看看」:照片數量多的
+   站點(例如阿妹茶樓 6 張)用原本「第一張大圖+其餘 2 欄小圖」的版面,
+   整個 gallery 會被第一張大圖拉得很長,張數一多更明顯。這裡取消主圖
+   大小分層(:first-child 不再 grid-column: 1/-1 跨欄、不再套用更寬的
+   1.6:1 比例),改成全部照片統一用更密的固定 3 欄小尺寸排列,讓張數多
+   的站點整體版面更緊湊,不是靠拉長捲動距離呈現。
+   選擇器特異度需要蓋過上面 figure:first-child 的規則,這裡沿用同樣的
+   「兩個 class 組合」特異度(.theme-page-demo-stop-gallery[data-layout=
+   "row"] figure:first-child),不用 !important。 */
+.theme-page-demo-stop-gallery[data-layout="row"] {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+.theme-page-demo-stop-gallery[data-layout="row"] figure:first-child {
+  grid-column: auto;
+}
+.theme-page-demo-stop-gallery[data-layout="row"] img,
+.theme-page-demo-stop-gallery[data-layout="row"] figure:first-child img {
+  aspect-ratio: 1 / 1;
+}
+/* 直式照片在 row 版面裡跟橫式統一用同一個方形比例,不再套用上方
+   [data-orientation="portrait"] 的 1/1.5 瘦長比例與 max-height:85vh
+   ——row 版面的設計目的就是「小而密」,直式照片若維持瘦長比例,會在
+   3 欄密集排列裡顯得特別突兀、高度也遠超過同列其他方形小圖,破壞
+   row 版面「整齊網格」的視覺目的。特異度需要蓋過上面
+   [data-orientation="portrait"] 那組規則(同樣是屬性選擇器+element,
+   寫在它們之後即可)。 */
+.theme-page-demo-stop-gallery[data-layout="row"] img[data-orientation="portrait"],
+.theme-page-demo-stop-gallery[data-layout="row"] figure:first-child img[data-orientation="portrait"] {
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  max-height: none;
+  margin: 0;
+}
+
+/* data-layout="split"(2026-10 接線,見 BlogArticlePage.tsx
+   renderGalleryBlock 與 types.ts GalleryBlock.layout 的完整說明)——
+   固定 3 張的非對稱拼貼:左側一張直式大圖、右側兩張橫式圖上下堆疊,
+   雜誌常見的拼貼版面。items 順序對應固定位置(items[0] 左、items[1]/
+   items[2] 右上右下),這裡用 nth-child 選到固定位置,不是依
+   data-orientation 自動判斷——寫入內容時順序要正確,渲染端不會自動
+   調整。
+   grid-template-columns 用 1.15fr 1fr(左欄略寬於右欄)——左側是單張
+   直式大圖,視覺上需要比右側兩張橫圖堆疊的欄位更寬一些才站得住腳,
+   完全對半(1fr 1fr)會讓左側大圖顯得侷促。grid-template-rows: 1fr 1fr
+   搭配左圖 grid-row: span 2,讓左圖高度精確等於右側兩張圖疊起來的
+   總高度(含 gap),不是用 aspect-ratio 概略换算,兩欄底部能對齊。 */
+.theme-page-demo-stop-gallery[data-layout="split"] {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 0.8rem;
+}
+.theme-page-demo-stop-gallery[data-layout="split"] figure:nth-child(1) {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+.theme-page-demo-stop-gallery[data-layout="split"] figure:nth-child(2) {
+  grid-column: 2;
+  grid-row: 1;
+}
+.theme-page-demo-stop-gallery[data-layout="split"] figure:nth-child(3) {
+  grid-column: 2;
+  grid-row: 2;
+}
+/* 三張圖統一用 height: 100% + object-fit: cover 填滿各自的 grid cell
+   ——不用 aspect-ratio(固定比例在這裡會跟 grid-row: span 2 算出來的
+   實際高度衝突,兩者同時存在時,瀏覽器無法讓圖片既符合 aspect-ratio
+   又精確填滿 grid 分配的高度)。左圖理論上是直式、右側兩張理論上是
+   橫式,但這裡不用 [data-orientation] 篩選強制套用——split 版面的
+   設計前提就是「固定位置固定方向」,方向判斷交給編排時选對照片,
+   不是靠 CSS 再二次校正。 */
+.theme-page-demo-stop-gallery[data-layout="split"] img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+@media (max-width: 640px) {
+  /* 窄螢幕下 1.15fr/1fr 雙欄會把每張圖壓得太窄——比照 row 版面手機版
+     的既有做法,窄螢幕放棄並排,三張圖改單欄依序堆疊,各自用固定
+     aspect-ratio(不再靠 grid-row: span 2 撐高度,因為單欄下已經沒有
+     「跟右側疊圖等高」這個需求)。 */
+  .theme-page-demo-stop-gallery[data-layout="split"] {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+  }
+  .theme-page-demo-stop-gallery[data-layout="split"] figure:nth-child(1),
+  .theme-page-demo-stop-gallery[data-layout="split"] figure:nth-child(2),
+  .theme-page-demo-stop-gallery[data-layout="split"] figure:nth-child(3) {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .theme-page-demo-stop-gallery[data-layout="split"] img {
+    height: auto;
+    aspect-ratio: 1.37 / 1;
+  }
+}
+
+/* data-width="wide"/"full"(2026-10 接線,見 BlogArticlePage.tsx
+   renderImageBlock 的完整說明)——單圖「出血」呈現,讓圖片比一般內文
+   欄寬更寬、更有存在感,適合整站代表性的單張照片。
+   寬度用「相對容器放大」而非 100vw——文章容器(.theme-page-demo-stops)
+   有時會被 home/ScrollTimeline.tsx 包進較窄的 .copy 欄位(見本檔開頭
+   .theme-page-demo-stop-gallery img 規則的完整說明),用 100vw 真正
+   撐滿瀏覽器視窗寬度,在那個窄容器情境下會直接跨出容器、蓋到旁邊的
+   時間軸內容。改成用負 margin 把圖片「相對目前容器寬度」放大,不論
+   容器當下實際多寬(960px 全寬或 ScrollTimeline 縮窄後的版本),出血
+   幅度都是該容器寬度的固定比例,不會跨出容器本身。
+   wide 用負 margin 打平 .theme-page-demo-stops 的左右 padding(1.5rem,
+   見該規則的完整說明),等同撐滿到容器邊緣;full 在 wide 的基礎上
+   再額外放大 15%,比 wide 更有出血感,但仍是相對容器的比例、不是
+   絕對視窗寬度。 */
+.theme-page-demo-stop-gallery[data-width="wide"] {
+  margin-left: -1.5rem;
+  margin-right: -1.5rem;
+}
+.theme-page-demo-stop-gallery[data-width="full"] {
+  margin-left: calc(-1.5rem - 7.5%);
+  margin-right: calc(-1.5rem - 7.5%);
+}
+.theme-page-demo-stop-gallery[data-width="wide"] figure,
+.theme-page-demo-stop-gallery[data-width="full"] figure {
+  border-radius: 0;
+}
+.theme-page-demo-stop-gallery[data-width="wide"] img,
+.theme-page-demo-stop-gallery[data-width="full"] img {
+  aspect-ratio: 2.2 / 1;
+}
+
+/* data-float="left"/"right"(2026-10 接線)——文繞排:只在
+   width="column"(預設,未出血)時渲染端才會輸出這個屬性(見
+   BlogArticlePage.tsx dataFloat 的完整說明,wide/full 沒有繞排意義)。
+   圖片靠一側、縮小到容器寬度的約 45%,後續的 .theme-page-demo-stop-
+   body/.theme-page-demo-stop-blurb 段落文字繞到另一側的空白處——
+   float 是這裡唯一可行的作法(grid/flex 無法讓「後面任意數量的文字
+   段落」自動繞到圖片旁邊,float 是 CSS 裡少數仍保留這種排版能力的
+   屬性)。shape-outside 省略(維持矩形繞排,不沿圖片實際內容的不規則
+   邊界繞,保持簡單)。 */
+.theme-page-demo-stop-gallery[data-float="left"],
+.theme-page-demo-stop-gallery[data-float="right"] {
+  width: 45%;
+  margin-top: 0.3rem;
+  margin-bottom: 1rem;
+}
+.theme-page-demo-stop-gallery[data-float="left"] {
+  float: left;
+  margin-right: 1.5rem;
+}
+.theme-page-demo-stop-gallery[data-float="right"] {
+  float: right;
+  margin-left: 1.5rem;
+}
+/* 繞排圖片本身用單圖(非 wide/full)原本的 1.4:1 比例,不需要額外覆寫
+   ——這裡只調整外層容器的寬度與浮動方向,圖片本身的 aspect-ratio 沿用
+   .theme-page-demo-stop-gallery--single img 既有規則。clearfix 見
+   .theme-page-demo-stop 規則開頭的完整說明(overflow: hidden 建立
+   BFC 清除浮動),不在這裡重複定義。 */
+@media (max-width: 900px) {
+  /* 窄螢幕下 45% 寬度的繞排圖會把文字擠成過窄的幾個字一行,可讀性
+     變差——比照 Medium/Ghost 常見做法,窄螢幕放棄繞排,圖片佔滿寬度、
+     段落接續在下方,不強行維持繞排版面。 */
+  .theme-page-demo-stop-gallery[data-float="left"],
+  .theme-page-demo-stop-gallery[data-float="right"] {
+    float: none;
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+  }
+}
+
+/* theme-page-demo-image-overlay(2026-10 新增,見 types.ts
+   ImageBlock.overlayText 的完整說明)——文繞排(data-float)的替代方案:
+   使用者實機回報「短段落配文繞排,文字撐不滿圖片高度、底下一片空白」
+   後,改成讓文字直接疊在圖片上(呼應 Hero 背景圖 data-hero-photo 的
+   既有疊字手法,見該規則的完整說明),不依賴「文字要夠長」這個前提
+   ——文字多短都能疊,圖文視覺重量統一,不會有各自占一塊互不相關的
+   問題。
+   2026-10 修正(使用者回報「結尾圖不要出血」):原本用負 margin
+   (-1.5rem)打平 .theme-page-demo-stops 的左右 padding 做出血呈現,
+   跟 data-width="wide"/"full" 是同一種手法。使用者不要這個出血效果,
+   改成貼齊內文欄寬(跟 width:'column' 單圖一樣,不打破容器邊界)——
+   疊字版面本身是獨立 class、不共用 data-width 那套邏輯(見
+   renderImageBlock 的完整說明:overlayText 存在時忽略 width/float),
+   這裡拿掉負 margin 即可,不需要額外接上 data-width。 */
+/* max-width 2026-10 從 100%(撐滿整個內文欄寬)改成 520px——使用者
+   實機回報「太大張」:疊字版面原本設計意圖是輔助性的氛圍收尾圖,不是
+   主要視覺焦點,滿版欄寬+高比例(1.1:1)讓它看起來比單圖版型(.theme-
+   page-demo-stop-gallery--single)還要搶眼,比例上不合理。縮小到
+   520px 並置中(margin: 2.5rem auto),讓它維持「小而有氛圍感」的
+   定位,不再是撐滿版面的大圖。 */
+.theme-page-demo-image-overlay {
+  position: relative;
+  max-width: 520px;
+  margin: 2.5rem auto;
+  overflow: hidden;
+  border-radius: 12px;
+}
+.theme-page-demo-image-overlay img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1.1 / 1;
+  object-fit: cover;
+}
+/* 直式原圖用更高的比例——疊字版面的圖片本身是氛圍背景,不像一般
+   gallery 單圖需要盡量貼近原始比例保留構圖細節,這裡統一用固定比例
+   即可,不需要比照 [data-orientation="portrait"] 那套精細換算。 */
+.theme-page-demo-image-overlay img[data-orientation="portrait"] {
+  aspect-ratio: 0.85 / 1;
+}
+/* 底部漸層遮罩+疊字——用 ::after 疊一層由下往上變暗的漸層,確保文字
+   對比度足夠,理由同 .theme-page-demo-hero[data-hero-photo]::after
+   的完整說明,這裡遮罩範圍只佔下半部(漸層起點 40%)而非整張圖都壓暗
+   ,保留圖片上半部更多可視細節(疊字版面的圖通常構圖重心在文字會
+   出現的下方,不是整張臉都要遮)。 */
+.theme-page-demo-image-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 40%, rgba(0, 0, 0, 0.75) 100%);
+  pointer-events: none;
+}
+.theme-page-demo-image-overlay-text {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  padding: 1.5rem 2rem 2rem;
+  font-family: 'ShipporiSerif', -apple-system, "Hiragino Mincho ProN", "Noto Serif JP", serif;
+  font-size: clamp(1.05rem, 0.95rem + 0.4vw, 1.3rem);
+  line-height: 1.75;
+  color: #fff;
+  text-align: center;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+@media (max-width: 640px) {
+  /* 手機螢幕寬度本身常小於 520px,桌面版的 max-width:520px 這時已經
+     等同滿版,不需要額外覆寫——這裡只需要調整 margin(維持置中,改用
+     auto 保持跟桌面版一致)跟內距。 */
+  .theme-page-demo-image-overlay {
+    margin: 2rem auto;
+  }
+  .theme-page-demo-image-overlay-text {
+    padding: 1.2rem 1.2rem 1.5rem;
+  }
+}
+
 /* 圖說——2026-10 用 fable 模型評估後改版:原本是純置中灰色小字,懸在
    圖片下方空白處,跟頁面其他地方(ShipporiSerif 襯線、磚紅細節)的
    語彙脫節。改成「底片註記」風格:左對齊、襯線斜體、左側一道磚紅
@@ -619,9 +990,34 @@
   .theme-page-demo-stop-gallery figure:first-child img {
     aspect-ratio: 1.37 / 1;
   }
+  /* 直式照片手機版覆寫——理由同桌面版 [data-orientation="portrait"]
+     規則的完整說明(含 2026-10 改成跟 PhotoFocalEditor 裁切框比例
+     1/1.5 一致的修正),手機版單欄排版不分大小圖,直接統一覆寫。 */
+  .theme-page-demo-stop-gallery img[data-orientation="portrait"],
+  .theme-page-demo-stop-gallery figure:first-child img[data-orientation="portrait"] {
+    aspect-ratio: 1 / 1.5;
+  }
   .theme-page-demo-stop-gallery figcaption {
     margin-top: 0.5rem;
     line-height: 1.5;
+  }
+  /* data-layout="row" 手機版覆寫——2026-10 新增,必須寫在這個手機版
+     媒體查詢區塊「之後」(檔案順序決定層疊勝負,同特異度時後寫的生效)
+     ,否則會被上面 .theme-page-demo-stop-gallery { grid-template-
+     columns: 1fr } 這條通用手機版規則蓋掉,row 版面在手機上會錯誤
+     變回單欄。row 版面在手機上維持 2 欄(不是單欄),比桌面版 3 欄
+     窄一點,但仍保留「小圖密集排列」的視覺目的。 */
+  .theme-page-demo-stop-gallery[data-layout="row"] {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .theme-page-demo-stop-gallery[data-layout="row"] figure {
+    grid-column: auto;
+  }
+  .theme-page-demo-stop-gallery[data-layout="row"] img,
+  .theme-page-demo-stop-gallery[data-layout="row"] figure:first-child img,
+  .theme-page-demo-stop-gallery[data-layout="row"] img[data-orientation="portrait"],
+  .theme-page-demo-stop-gallery[data-layout="row"] figure:first-child img[data-orientation="portrait"] {
+    aspect-ratio: 1 / 1;
   }
 }
 

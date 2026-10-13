@@ -202,8 +202,19 @@ type uploadedPhotoRow struct {
 	FocalY      *float64  `gorm:"column:focal_y"` // 可為 NULL,同上
 	Width       *int      `gorm:"column:width"`   // 可為 NULL,解析完成前未知
 	Height      *int      `gorm:"column:height"`  // 可為 NULL,同上
-	CreatedAt   time.Time `gorm:"column:created_at;not null"`
-	UpdatedAt   time.Time `gorm:"column:updated_at;not null"`
+	// Note 用 not null default '' 而非 *string——見 model.UploadedPhoto.Note
+	// 的完整說明,這是純文字備註,跟 Status 等欄位同樣用「空字串代表未設定」
+	// 的既有慣例(對照 contentPageRow.Status 用裸字串的既有說明),不需要
+	// 分辨「NULL」跟「空字串」兩種狀態。
+	Note string `gorm:"column:note;not null;default:''"`
+	// Rating 用 *int(可為 NULL)而非 Note 那種「空字串代表未設定」的
+	// 慣例——見 model.UploadedPhoto.Rating 的完整說明:評分合法值是
+	// 1~3,0 不是合法評分值但也不是明確的「未評分」語意(容易跟「使用者
+	// 刻意評 0 分」混淆),用 nil 明確區分「從未評分」與「評過分」兩種
+	// 狀態,比照 FocalX/FocalY 用指標型別的既有慣例。
+	Rating    *int      `gorm:"column:rating"`
+	CreatedAt time.Time `gorm:"column:created_at;not null"`
+	UpdatedAt time.Time `gorm:"column:updated_at;not null"`
 }
 
 func (uploadedPhotoRow) TableName() string { return "uploaded_photos" }

@@ -532,6 +532,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /v1/blog/photos/{photoId}/complete", s.handleBlogPhotoComplete)
 	mux.HandleFunc("POST /v1/blog/photos/{photoId}/retry", s.handleBlogPhotoRetry)
 	mux.HandleFunc("PATCH /v1/blog/photos/{photoId}/focal", s.handleBlogPhotoFocal)
+	mux.HandleFunc("PATCH /v1/blog/photos/{photoId}/note", s.handleBlogPhotoNote)
+	mux.HandleFunc("PATCH /v1/blog/photos/{photoId}/rating", s.handleBlogPhotoRating)
 	mux.HandleFunc("DELETE /v1/blog/photos/{photoId}", s.handleBlogPhotoDelete)
 
 	// 部落客公開身份設定(blog_profile.go 的完整說明)——查詢/設定登入者

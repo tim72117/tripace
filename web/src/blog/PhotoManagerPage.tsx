@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Star } from 'lucide-react'
 import { useAppState } from '../hooks/useAppState'
 import { LoginForm, LoginCard } from '../home/LoginForm'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../home/SiteNavButtons'
@@ -101,6 +102,11 @@ function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  // uploadProgress:多選上傳時目前第幾張/總共幾張——null 代表沒有正在
+  // 進行中的批次上傳。見 handleFileSelected 的完整說明:逐一依序上傳
+  // (不是並行),這個狀態用來讓按鈕文字顯示進度,而不是單純的「上傳中」
+  // 四個字(多張時完全看不出目前卡在哪)。
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null)
   const [editingPhoto, setEditingPhoto] = useState<UploadedPhoto | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -154,48 +160,75 @@ function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
     [cfg],
   )
 
+  // uploadOneFile:單一檔案的上傳流程本體(簽發 pre-signed URL→PUT→
+  // complete→樂觀插入列表→觸發輪詢)——從 handleFileSelected 抽出,讓
+  // 多選上傳(逐一呼叫這支函式)跟單選上傳共用同一套邏輯,不重複寫。
+  // 失敗時拋出 error,呼叫端(handleFileSelected)決定要不要中斷整批。
+  async function uploadOneFile(file: File) {
+    const { photoId, uploadUrl, publicUrl } = await api.createPhotoUploadURL(cfg, file.type)
+
+    const putRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type },
+      body: file,
+    })
+    if (!putRes.ok) {
+      throw new Error(`上傳到儲存空間失敗(HTTP ${putRes.status}）`)
+    }
+
+    await api.completePhotoUpload(cfg, photoId)
+
+    // 樂觀地把這張圖以 pending 狀態插入列表,讓使用者立刻看到回饋,不用
+    // 等下一次輪詢/手動重新整理才出現在畫面上。
+    const now = new Date().toISOString()
+    setPhotos((prev) => [
+      {
+        id: photoId,
+        ownerId: '',
+        originalUrl: publicUrl,
+        status: 'pending',
+        variants: [],
+        createdAt: now,
+        updatedAt: now,
+      },
+      ...prev,
+    ])
+
+    pollUntilSettled(photoId, POLLING_MAX_ATTEMPTS)
+  }
+
+  // handleFileSelected:多選上傳入口——逐一依序上傳(不是 Promise.all
+  // 並行),理由對齊 CLI blog-photo upload -skip-process 開頭說明的
+  // 既有教訓:Cloud Run 預設只在處理 HTTP 請求期間分配 CPU,短時間內
+  // 平行觸發大量背景處理(每張上傳完成後端都會另外起一個背景 goroutine
+  // 做 resize)容易疊加成資源競爭甚至 OOM,逐一上傳讓每一張的背景處理
+  // 有機會在下一張開始前先完成一部分。其中一張失敗不中斷整批——累積
+  // 失敗訊息,讓使用者看到「幾張成功、哪幾張失敗」,不是選了 10 張結果
+  // 第 3 張失敗就讓後面 7 張全部不上傳。
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = '' // 允許連續選同一個檔案觸發 onChange
-    if (!file) return
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = '' // 允許連續選同樣的檔案觸發 onChange
+    if (files.length === 0) return
 
     setUploading(true)
     setErr(null)
+    const failures: string[] = []
     try {
-      const { photoId, uploadUrl, publicUrl } = await api.createPhotoUploadURL(cfg, file.type)
-
-      const putRes = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': file.type },
-        body: file,
-      })
-      if (!putRes.ok) {
-        throw new Error(`上傳到儲存空間失敗(HTTP ${putRes.status}）`)
+      for (let i = 0; i < files.length; i++) {
+        setUploadProgress({ done: i, total: files.length })
+        try {
+          await uploadOneFile(files[i])
+        } catch (e) {
+          failures.push(`${files[i].name}: ${errMsg(e)}`)
+        }
       }
-
-      await api.completePhotoUpload(cfg, photoId)
-
-      // 樂觀地把這張圖以 pending 狀態插入列表,讓使用者立刻看到回饋,不用
-      // 等下一次輪詢/手動重新整理才出現在畫面上。
-      const now = new Date().toISOString()
-      setPhotos((prev) => [
-        {
-          id: photoId,
-          ownerId: '',
-          originalUrl: publicUrl,
-          status: 'pending',
-          variants: [],
-          createdAt: now,
-          updatedAt: now,
-        },
-        ...prev,
-      ])
-
-      pollUntilSettled(photoId, POLLING_MAX_ATTEMPTS)
-    } catch (e) {
-      setErr(errMsg(e))
+      setUploadProgress({ done: files.length, total: files.length })
+      if (failures.length > 0) {
+        setErr(`部分圖片上傳失敗(${failures.length}/${files.length}):${failures.join('；')}`)
+      }
     } finally {
       setUploading(false)
+      setUploadProgress(null)
     }
   }
 
@@ -222,6 +255,29 @@ function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
     }
   }
 
+  // handleRatingChange:點星星設定評分——再點一次目前已選中的那顆星會
+  // 清空評分(傳 null),而不是重複設成同樣的分數,讓使用者不需要額外
+  // 的「清除」按鈕就能把一張圖打回「尚未評分」狀態。
+  //
+  // 2026-10 code review 修正:這裡原本的註解寫「樂觀更新本地 state,
+  // 失敗時用 reload 校正」,但跟下面實際程式碼對不上——setPhotos 本來
+  // 就寫在 await api.setPhotoRating 成功之後才執行(不是樂觀更新),
+  // 失敗時 catch 只 setErr,本地 state 完全沒被更動過,不需要回滾也
+  // 沒有「看起來存成功、其實沒生效」的問題。修正這段過時描述,避免
+  // 之後維護者誤信註解、以為這裡真的有樂觀更新邏輯要維護。
+  async function handleRatingChange(photo: UploadedPhoto, rating: number) {
+    const next = photo.rating === rating ? null : rating
+    setErr(null)
+    try {
+      await api.setPhotoRating(cfg, photo.id, next)
+      setPhotos((prev) =>
+        prev.map((p) => (p.id === photo.id ? { ...p, rating: next ?? undefined } : p)),
+      )
+    } catch (e) {
+      setErr(errMsg(e))
+    }
+  }
+
   function handlePhotoClick(photo: UploadedPhoto) {
     if (!canEditFocal(photo.status)) return
     setEditingPhoto(photo)
@@ -241,12 +297,17 @@ function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
 
       <div className={styles.toolbar}>
         <Button variant="primary" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-          {uploading ? '上傳中…' : '上傳圖片'}
+          {uploadProgress
+            ? `上傳中…(${uploadProgress.done}/${uploadProgress.total})`
+            : uploading
+              ? '上傳中…'
+              : '上傳圖片'}
         </Button>
         <input
           ref={fileInputRef}
           type="file"
           accept="image/*"
+          multiple
           className={styles.hiddenFileInput}
           onChange={handleFileSelected}
         />
@@ -265,6 +326,7 @@ function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
               onClick={() => handlePhotoClick(photo)}
               onRetry={() => handleRetry(photo.id)}
               onDelete={() => handleDelete(photo.id)}
+              onRatingChange={(rating) => handleRatingChange(photo, rating)}
             />
           ))}
         </div>
@@ -272,7 +334,7 @@ function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
 
       {editingPhoto && (
         <div className="rp-modal-backdrop" onClick={() => setEditingPhoto(null)}>
-          <div className="rp-modal" onClick={(e) => e.stopPropagation()}>
+          <div className={`rp-modal ${styles.focalModal}`} onClick={(e) => e.stopPropagation()}>
             <PhotoFocalEditor
               cfg={cfg}
               photo={editingPhoto}
@@ -293,11 +355,13 @@ function PhotoCard({
   onClick,
   onRetry,
   onDelete,
+  onRatingChange,
 }: {
   photo: UploadedPhoto
   onClick: () => void
   onRetry: () => void
   onDelete: () => void
+  onRatingChange: (rating: number) => void
 }) {
   const status = photoDisplayStatus(photo.status)
   const thumbnail = photo.variants?.find((v) => v.kind === 'thumbnail')
@@ -328,6 +392,38 @@ function PhotoCard({
           <div className={`${styles.overlay} ${styles.overlayError}`}>
             <span className={styles.overlayText}>處理失敗</span>
           </div>
+        )}
+      </div>
+      <div className={styles.meta} onClick={(e) => e.stopPropagation()}>
+        <span className={styles.photoId}>{photo.id}</span>
+        {/* 品質評分——1~3 顆星,給自己編排文章時參考(3 分適合當 gallery
+            主圖,1 分適合合併成陪襯小圖,見 api.ts setPhotoRating 的
+            完整說明)。再點一次目前已選中的那顆星會清空評分,見
+            handleRatingChange 的完整說明。pending/failed 狀態的圖片也
+            能評分(不像焦點編輯器限制只有 ready 才能點,評分純粹是
+            文字/數值標注,不需要縮圖/variants 就緒)。 */}
+        <div className={styles.rating} title="品質評分(再點一次可清除)">
+          {[1, 2, 3].map((n) => (
+            <button
+              key={n}
+              type="button"
+              className={styles.ratingStar}
+              onClick={() => onRatingChange(n)}
+              aria-label={`評 ${n} 星`}
+              aria-pressed={photo.rating != null && photo.rating >= n}
+            >
+              <Star
+                size={14}
+                strokeWidth={1.8}
+                fill={photo.rating != null && photo.rating >= n ? 'currentColor' : 'none'}
+              />
+            </button>
+          ))}
+        </div>
+        {photo.note ? (
+          <span className={styles.note} title={photo.note}>{photo.note}</span>
+        ) : (
+          <span className={styles.noteEmpty}>未標注</span>
         )}
       </div>
       <div className={styles.cardFooter}>

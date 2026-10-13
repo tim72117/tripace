@@ -190,9 +190,24 @@ type UploadedPhoto struct {
 	FocalY      *float64       `json:"focalY,omitempty"`
 	Width       *int           `json:"width,omitempty"`
 	Height      *int           `json:"height,omitempty"`
-	Variants    []PhotoVariant `json:"variants,omitempty"`
-	CreatedAt   time.Time      `json:"createdAt"`
-	UpdatedAt   time.Time      `json:"updatedAt"`
+	// Note 是給管理者自己看的備註(例如「基山街入口」),純文字、可為
+	// 空——跟 ImageBlock.alt(讀屏器/SEO 用)是兩回事,這裡不會出現在
+	// 任何公開渲染結果裡,只在 CLI/管理介面查詢列表時顯示,方便事後
+	// 從一批隨機檔名的照片裡認出每張實際拍的是什麼,再決定要引用到
+	// 文章哪個段落(見 cmdBlogPhotoUpload/cmdBlogPhotoNote 的完整
+	// 說明)。
+	Note string `json:"note,omitempty"`
+	// Rating 是使用者自己標注的照片品質評分(1~3,3 分最高)——不是給
+	// 公開讀者看的評論分數,純粹是給編排文章時參考的內部依據:高分
+	// (3)適合當 gallery 主圖/單圖呈現的焦點照片,低分(1)適合合併
+	// 進多圖群組裡當陪襯小圖。目前是人工標注,日後若接 AI 輔助編排
+	// (依照片品質自動建議 gallery 主圖/排列方式),這個欄位就是現成
+	// 可用的排序依據,不需要臨時重新設計一套評分機制。nil 代表尚未
+	// 評分,見 store.uploadedPhotoRow.Rating 的完整說明。
+	Rating    *int           `json:"rating,omitempty"`
+	Variants  []PhotoVariant `json:"variants,omitempty"`
+	CreatedAt time.Time      `json:"createdAt"`
+	UpdatedAt time.Time      `json:"updatedAt"`
 }
 
 // PhotoVariant 對應 store.photoVariantRow(見該型別的完整說明)——

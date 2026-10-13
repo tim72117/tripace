@@ -434,7 +434,7 @@ func main() {
 		}
 	}
 
-	mux.Handle("/", staticHandler())
+	mux.Handle("/", staticHandler(st))
 
 	log.Printf("Tripace server 監聽 %s,DB=%s", *addr, dbKind)
 	if err := http.ListenAndServe(*addr, withLegacyDomainRedirect(mux)); err != nil {

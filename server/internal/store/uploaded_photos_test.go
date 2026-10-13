@@ -12,7 +12,7 @@ import (
 func TestCreateUploadedPhotoInitialState(t *testing.T) {
 	s := newTestStore(t)
 
-	photo, err := s.CreateUploadedPhoto("usr_owner1", "https://storage.googleapis.com/bucket/original.jpg")
+	photo, err := s.CreateUploadedPhoto("usr_owner1", "https://storage.googleapis.com/bucket/original.jpg", "")
 	if err != nil {
 		t.Fatalf("CreateUploadedPhoto: %v", err)
 	}
@@ -33,6 +33,30 @@ func TestCreateUploadedPhotoInitialState(t *testing.T) {
 	}
 }
 
+// TestCreateUploadedPhotoWithNote 驗證建立時帶入的 note 能正確寫入並
+// 讀回——對照 TestCreateUploadedPhotoInitialState 驗證空字串的情境,
+// 這裡驗證非空值的情境(見 CreateUploadedPhoto 的完整說明:note 是
+// 選填的上傳當下備註)。
+func TestCreateUploadedPhotoWithNote(t *testing.T) {
+	s := newTestStore(t)
+
+	photo, err := s.CreateUploadedPhoto("usr_owner1", "https://example.com/a.jpg", "基山街入口")
+	if err != nil {
+		t.Fatalf("CreateUploadedPhoto: %v", err)
+	}
+	if photo.Note != "基山街入口" {
+		t.Fatalf("Note = %q, want %q", photo.Note, "基山街入口")
+	}
+
+	got, err := s.GetUploadedPhoto(photo.ID)
+	if err != nil {
+		t.Fatalf("GetUploadedPhoto: %v", err)
+	}
+	if got.Note != "基山街入口" {
+		t.Fatalf("GetUploadedPhoto 後 Note = %q, want %q", got.Note, "基山街入口")
+	}
+}
+
 // TestGetUploadedPhotoNotFound 驗證查詢不存在的 ID 回傳 ErrNotFound。
 func TestGetUploadedPhotoNotFound(t *testing.T) {
 	s := newTestStore(t)
@@ -47,7 +71,7 @@ func TestGetUploadedPhotoNotFound(t *testing.T) {
 func TestSetUploadedPhotoFocal(t *testing.T) {
 	s := newTestStore(t)
 
-	photo, err := s.CreateUploadedPhoto("usr_owner1", "https://example.com/a.jpg")
+	photo, err := s.CreateUploadedPhoto("usr_owner1", "https://example.com/a.jpg", "")
 	if err != nil {
 		t.Fatalf("CreateUploadedPhoto: %v", err)
 	}
@@ -78,12 +102,111 @@ func TestSetUploadedPhotoFocalNotFound(t *testing.T) {
 	}
 }
 
+// TestSetUploadedPhotoNote 驗證設定備註後,再次查詢能正確讀回;也驗證
+// 傳空字串能清空既有備註(見 SetUploadedPhotoNote 的完整說明:跟
+// SetUploadedPhotoFocal 不同,這裡沒有值域限制,空字串是合法輸入)。
+func TestSetUploadedPhotoNote(t *testing.T) {
+	s := newTestStore(t)
+
+	photo, err := s.CreateUploadedPhoto("usr_owner1", "https://example.com/a.jpg", "")
+	if err != nil {
+		t.Fatalf("CreateUploadedPhoto: %v", err)
+	}
+
+	if err := s.SetUploadedPhotoNote(photo.ID, "魚丸湯特寫"); err != nil {
+		t.Fatalf("SetUploadedPhotoNote: %v", err)
+	}
+	got, err := s.GetUploadedPhoto(photo.ID)
+	if err != nil {
+		t.Fatalf("GetUploadedPhoto: %v", err)
+	}
+	if got.Note != "魚丸湯特寫" {
+		t.Fatalf("Note = %q, want %q", got.Note, "魚丸湯特寫")
+	}
+
+	if err := s.SetUploadedPhotoNote(photo.ID, ""); err != nil {
+		t.Fatalf("SetUploadedPhotoNote(清空): %v", err)
+	}
+	got, err = s.GetUploadedPhoto(photo.ID)
+	if err != nil {
+		t.Fatalf("GetUploadedPhoto: %v", err)
+	}
+	if got.Note != "" {
+		t.Fatalf("清空後 Note = %q, want 空字串", got.Note)
+	}
+}
+
+// TestSetUploadedPhotoNoteNotFound 驗證對不存在的 ID 設定備註回傳
+// ErrNotFound。
+func TestSetUploadedPhotoNoteNotFound(t *testing.T) {
+	s := newTestStore(t)
+
+	err := s.SetUploadedPhotoNote("upf_does_not_exist", "文字")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("SetUploadedPhotoNote 不存在的 ID: err = %v, want ErrNotFound", err)
+	}
+}
+
+// TestSetUploadedPhotoRating 驗證設定評分後能正確讀回,也驗證傳 nil
+// 能清空既有評分——後者是這支方法特別需要驗證的行為(見
+// SetUploadedPhotoRating 的完整說明):GORM 的 Updates(map[string]any)
+// 在值是一個「內容為 nil 的 *int 變數」時是否真的寫入 SQL NULL,而不是
+// 被誤判成「這個欄位不出現在 map 裡所以略過」,沒有實測不能假設兩種
+// 情境行為一致。
+func TestSetUploadedPhotoRating(t *testing.T) {
+	s := newTestStore(t)
+
+	photo, err := s.CreateUploadedPhoto("usr_owner1", "https://example.com/a.jpg", "")
+	if err != nil {
+		t.Fatalf("CreateUploadedPhoto: %v", err)
+	}
+	if photo.Rating != nil {
+		t.Fatalf("建立時 Rating 應為 nil,實際 = %v", photo.Rating)
+	}
+
+	rating := 3
+	if err := s.SetUploadedPhotoRating(photo.ID, &rating); err != nil {
+		t.Fatalf("SetUploadedPhotoRating: %v", err)
+	}
+	got, err := s.GetUploadedPhoto(photo.ID)
+	if err != nil {
+		t.Fatalf("GetUploadedPhoto: %v", err)
+	}
+	if got.Rating == nil || *got.Rating != 3 {
+		t.Fatalf("Rating = %v, want 3", got.Rating)
+	}
+
+	// 傳 nil 應清空既有評分,回到「尚未評分」狀態。
+	if err := s.SetUploadedPhotoRating(photo.ID, nil); err != nil {
+		t.Fatalf("SetUploadedPhotoRating(清空): %v", err)
+	}
+	got, err = s.GetUploadedPhoto(photo.ID)
+	if err != nil {
+		t.Fatalf("GetUploadedPhoto: %v", err)
+	}
+	if got.Rating != nil {
+		t.Fatalf("清空後 Rating 應為 nil,實際 = %v", got.Rating)
+	}
+}
+
+// TestSetUploadedPhotoRatingNotFound 驗證對不存在的 ID 設定評分回傳
+// ErrNotFound。
+func TestSetUploadedPhotoRatingNotFound(t *testing.T) {
+	s := newTestStore(t)
+
+	rating := 2
+	err := s.SetUploadedPhotoRating("upf_does_not_exist", &rating)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("SetUploadedPhotoRating 不存在的 ID: err = %v, want ErrNotFound", err)
+	}
+}
+
 // TestSetUploadedPhotoStatus 驗證更新處理狀態後能正確讀回,
 // 對不存在的 ID 回傳 ErrNotFound。
 func TestSetUploadedPhotoStatus(t *testing.T) {
 	s := newTestStore(t)
 
-	photo, err := s.CreateUploadedPhoto("usr_owner1", "https://example.com/a.jpg")
+	photo, err := s.CreateUploadedPhoto("usr_owner1", "https://example.com/a.jpg", "")
 	if err != nil {
 		t.Fatalf("CreateUploadedPhoto: %v", err)
 	}
@@ -109,7 +232,7 @@ func TestSetUploadedPhotoStatus(t *testing.T) {
 func TestCreatePhotoVariantAndFetch(t *testing.T) {
 	s := newTestStore(t)
 
-	photo, err := s.CreateUploadedPhoto("usr_owner1", "https://example.com/a.jpg")
+	photo, err := s.CreateUploadedPhoto("usr_owner1", "https://example.com/a.jpg", "")
 	if err != nil {
 		t.Fatalf("CreateUploadedPhoto: %v", err)
 	}
@@ -143,7 +266,7 @@ func TestCreatePhotoVariantAndFetch(t *testing.T) {
 func TestCreatePhotoVariantDuplicateKind(t *testing.T) {
 	s := newTestStore(t)
 
-	photo, err := s.CreateUploadedPhoto("usr_owner1", "https://example.com/a.jpg")
+	photo, err := s.CreateUploadedPhoto("usr_owner1", "https://example.com/a.jpg", "")
 	if err != nil {
 		t.Fatalf("CreateUploadedPhoto: %v", err)
 	}
@@ -162,15 +285,15 @@ func TestCreatePhotoVariantDuplicateKind(t *testing.T) {
 func TestListUploadedPhotosByOwner(t *testing.T) {
 	s := newTestStore(t)
 
-	p1, err := s.CreateUploadedPhoto("usr_owner1", "https://example.com/1.jpg")
+	p1, err := s.CreateUploadedPhoto("usr_owner1", "https://example.com/1.jpg", "")
 	if err != nil {
 		t.Fatalf("CreateUploadedPhoto p1: %v", err)
 	}
-	p2, err := s.CreateUploadedPhoto("usr_owner1", "https://example.com/2.jpg")
+	p2, err := s.CreateUploadedPhoto("usr_owner1", "https://example.com/2.jpg", "")
 	if err != nil {
 		t.Fatalf("CreateUploadedPhoto p2: %v", err)
 	}
-	if _, err := s.CreateUploadedPhoto("usr_owner2", "https://example.com/other.jpg"); err != nil {
+	if _, err := s.CreateUploadedPhoto("usr_owner2", "https://example.com/other.jpg", ""); err != nil {
 		t.Fatalf("CreateUploadedPhoto (other owner): %v", err)
 	}
 

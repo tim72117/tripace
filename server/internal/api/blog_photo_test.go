@@ -167,7 +167,7 @@ func TestBlogPhotoComplete_不屬於自己的photoId回傳權限錯誤(t *testin
 	f := newBlogPhotoFixture(t)
 
 	// 用 store 直接建一筆屬於另一個使用者的原圖記錄。
-	otherPhoto, err := f.srv.store.CreateUploadedPhoto("usr_someone_else", "https://storage.googleapis.com/test-bucket/user-uploads/usr_someone_else/abc.jpg")
+	otherPhoto, err := f.srv.store.CreateUploadedPhoto("usr_someone_else", "https://storage.googleapis.com/test-bucket/user-uploads/usr_someone_else/abc.jpg", "")
 	if err != nil {
 		t.Fatalf("CreateUploadedPhoto: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestBlogPhotoRetry_未登入被拒絕(t *testing.T) {
 func TestBlogPhotoRetry_不屬於自己的photoId回傳權限錯誤(t *testing.T) {
 	f := newBlogPhotoFixture(t)
 
-	otherPhoto, err := f.srv.store.CreateUploadedPhoto("usr_someone_else", "https://storage.googleapis.com/test-bucket/user-uploads/usr_someone_else/abc.jpg")
+	otherPhoto, err := f.srv.store.CreateUploadedPhoto("usr_someone_else", "https://storage.googleapis.com/test-bucket/user-uploads/usr_someone_else/abc.jpg", "")
 	if err != nil {
 		t.Fatalf("CreateUploadedPhoto: %v", err)
 	}
@@ -298,6 +298,132 @@ func TestBlogPhotoFocal_成功更新(t *testing.T) {
 	if photo.FocalY == nil || *photo.FocalY != 0.7 {
 		t.Fatalf("FocalY 未正確更新,got %v", photo.FocalY)
 	}
+}
+
+// TestBlogPhotoUploadURL_帶note建立時直接寫入 驗證 upload-url 端點的
+// 選填 note 參數(見 handleBlogPhotoUploadURL 完整說明)能在建立當下
+// 直接寫入,不需要事後再呼叫一次 note 端點。
+func TestBlogPhotoUploadURL_帶note建立時直接寫入(t *testing.T) {
+	f := newBlogPhotoFixture(t)
+
+	got := f.do(t, "POST", "/v1/blog/photos/upload-url", map[string]any{"contentType": "image/jpeg", "note": "基山街入口"}, http.StatusOK)
+	photoID := got["photoId"].(string)
+
+	photo, err := f.srv.store.GetUploadedPhoto(photoID)
+	if err != nil {
+		t.Fatalf("GetUploadedPhoto: %v", err)
+	}
+	if photo.Note != "基山街入口" {
+		t.Fatalf("Note 未正確寫入,got %q", photo.Note)
+	}
+}
+
+// TestBlogPhotoNote_成功更新與清空 驗證 note 端點能單獨設定備註、
+// 以及傳空字串能清空既有備註(見 handleBlogPhotoNote/SetUploadedPhotoNote
+// 的完整說明:跟 focal 端點不同,這裡沒有值域檢查)。
+func TestBlogPhotoNote_成功更新與清空(t *testing.T) {
+	f := newBlogPhotoFixture(t)
+
+	got := f.do(t, "POST", "/v1/blog/photos/upload-url", map[string]any{"contentType": "image/jpeg"}, http.StatusOK)
+	photoID := got["photoId"].(string)
+
+	resp := f.do(t, "PATCH", "/v1/blog/photos/"+photoID+"/note", map[string]any{"note": "魚丸湯特寫"}, http.StatusOK)
+	if resp["status"] != "updated" {
+		t.Fatalf("預期 status=updated,got %v", resp)
+	}
+	photo, err := f.srv.store.GetUploadedPhoto(photoID)
+	if err != nil {
+		t.Fatalf("GetUploadedPhoto: %v", err)
+	}
+	if photo.Note != "魚丸湯特寫" {
+		t.Fatalf("Note 未正確更新,got %q", photo.Note)
+	}
+
+	f.do(t, "PATCH", "/v1/blog/photos/"+photoID+"/note", map[string]any{"note": ""}, http.StatusOK)
+	photo, err = f.srv.store.GetUploadedPhoto(photoID)
+	if err != nil {
+		t.Fatalf("GetUploadedPhoto: %v", err)
+	}
+	if photo.Note != "" {
+		t.Fatalf("清空後 Note 應為空字串,got %q", photo.Note)
+	}
+}
+
+// TestBlogPhotoNote_不屬於自己的圖片回404 驗證 note 端點比照 focal/
+// delete 端點的既有授權慣例(見 loadOwnedUploadedPhoto 完整說明):
+// OwnerID 不符時回 404,不洩漏這個 photoId 其實存在。
+func TestBlogPhotoNote_不屬於自己的圖片回404(t *testing.T) {
+	f := newBlogPhotoFixture(t)
+
+	otherPhoto, err := f.srv.store.CreateUploadedPhoto("usr_someone_else", "https://storage.googleapis.com/test-bucket/user-uploads/usr_someone_else/abc.jpg", "")
+	if err != nil {
+		t.Fatalf("CreateUploadedPhoto: %v", err)
+	}
+
+	f.do(t, "PATCH", "/v1/blog/photos/"+otherPhoto.ID+"/note", map[string]any{"note": "偷改別人的備註"}, http.StatusNotFound)
+}
+
+// TestBlogPhotoRating_成功更新與清空 驗證 rating 端點能設定評分(1~3)、
+// 以及傳 null 能清空既有評分。
+func TestBlogPhotoRating_成功更新與清空(t *testing.T) {
+	f := newBlogPhotoFixture(t)
+
+	got := f.do(t, "POST", "/v1/blog/photos/upload-url", map[string]any{"contentType": "image/jpeg"}, http.StatusOK)
+	photoID := got["photoId"].(string)
+
+	resp := f.do(t, "PATCH", "/v1/blog/photos/"+photoID+"/rating", map[string]any{"rating": 3}, http.StatusOK)
+	if resp["status"] != "updated" {
+		t.Fatalf("預期 status=updated,got %v", resp)
+	}
+	photo, err := f.srv.store.GetUploadedPhoto(photoID)
+	if err != nil {
+		t.Fatalf("GetUploadedPhoto: %v", err)
+	}
+	if photo.Rating == nil || *photo.Rating != 3 {
+		t.Fatalf("Rating 未正確更新,got %v", photo.Rating)
+	}
+
+	f.do(t, "PATCH", "/v1/blog/photos/"+photoID+"/rating", map[string]any{"rating": nil}, http.StatusOK)
+	photo, err = f.srv.store.GetUploadedPhoto(photoID)
+	if err != nil {
+		t.Fatalf("GetUploadedPhoto: %v", err)
+	}
+	if photo.Rating != nil {
+		t.Fatalf("清空後 Rating 應為 nil,got %v", photo.Rating)
+	}
+}
+
+// TestBlogPhotoRating_超出值域回400 驗證 rating 不在 1~3 範圍內時回
+// 400,不會寫入資料庫。
+func TestBlogPhotoRating_超出值域回400(t *testing.T) {
+	f := newBlogPhotoFixture(t)
+
+	got := f.do(t, "POST", "/v1/blog/photos/upload-url", map[string]any{"contentType": "image/jpeg"}, http.StatusOK)
+	photoID := got["photoId"].(string)
+
+	f.do(t, "PATCH", "/v1/blog/photos/"+photoID+"/rating", map[string]any{"rating": 0}, http.StatusBadRequest)
+	f.do(t, "PATCH", "/v1/blog/photos/"+photoID+"/rating", map[string]any{"rating": 4}, http.StatusBadRequest)
+
+	photo, err := f.srv.store.GetUploadedPhoto(photoID)
+	if err != nil {
+		t.Fatalf("GetUploadedPhoto: %v", err)
+	}
+	if photo.Rating != nil {
+		t.Fatalf("超出值域的請求不應寫入,got %v", photo.Rating)
+	}
+}
+
+// TestBlogPhotoRating_不屬於自己的圖片回404 驗證 rating 端點比照
+// focal/note 端點的既有授權慣例,OwnerID 不符時回 404。
+func TestBlogPhotoRating_不屬於自己的圖片回404(t *testing.T) {
+	f := newBlogPhotoFixture(t)
+
+	otherPhoto, err := f.srv.store.CreateUploadedPhoto("usr_someone_else", "https://storage.googleapis.com/test-bucket/user-uploads/usr_someone_else/abc.jpg", "")
+	if err != nil {
+		t.Fatalf("CreateUploadedPhoto: %v", err)
+	}
+
+	f.do(t, "PATCH", "/v1/blog/photos/"+otherPhoto.ID+"/rating", map[string]any{"rating": 2}, http.StatusNotFound)
 }
 
 // TestBlogPhotoDelete_成功刪除後查不到 驗證 delete 端點成功刪除後,
@@ -401,7 +527,7 @@ func TestBlogPhotoDelete_DB刪除失敗時GCS物件不會被動到(t *testing.T)
 func TestBlogPhotoList_惰性清理把過期pending標記為failed(t *testing.T) {
 	f := newBlogPhotoFixture(t)
 
-	photo, err := f.srv.store.CreateUploadedPhoto(f.userID, "https://storage.googleapis.com/test-bucket/user-uploads/"+f.userID+"/stale.jpg")
+	photo, err := f.srv.store.CreateUploadedPhoto(f.userID, "https://storage.googleapis.com/test-bucket/user-uploads/"+f.userID+"/stale.jpg", "")
 	if err != nil {
 		t.Fatalf("CreateUploadedPhoto: %v", err)
 	}
@@ -487,7 +613,7 @@ func TestPublicBlogPhotosByIDs_只回傳已發布文章引用且ready的圖片(t
 	f := newBlogPhotoFixture(t)
 
 	// 一張已處理完成、被已發布文章引用的圖片——應該通過。
-	readyPhoto, err := f.srv.store.CreateUploadedPhoto(f.userID, "https://example.com/ready.jpg")
+	readyPhoto, err := f.srv.store.CreateUploadedPhoto(f.userID, "https://example.com/ready.jpg", "")
 	if err != nil {
 		t.Fatalf("CreateUploadedPhoto(ready): %v", err)
 	}
@@ -503,7 +629,7 @@ func TestPublicBlogPhotosByIDs_只回傳已發布文章引用且ready的圖片(t
 	}
 
 	// 一張同樣 ready、但只被草稿文章引用的圖片——不應該通過。
-	draftPhoto, err := f.srv.store.CreateUploadedPhoto(f.userID, "https://example.com/draft.jpg")
+	draftPhoto, err := f.srv.store.CreateUploadedPhoto(f.userID, "https://example.com/draft.jpg", "")
 	if err != nil {
 		t.Fatalf("CreateUploadedPhoto(draft): %v", err)
 	}
@@ -518,7 +644,7 @@ func TestPublicBlogPhotosByIDs_只回傳已發布文章引用且ready的圖片(t
 
 	// 一張被已發布文章引用、但還在處理中(pending)的圖片——不應該通過
 	// (見 handlePublicBlogPhotosByIDs 對 Status 的完整說明)。
-	pendingPhoto, err := f.srv.store.CreateUploadedPhoto(f.userID, "https://example.com/pending.jpg")
+	pendingPhoto, err := f.srv.store.CreateUploadedPhoto(f.userID, "https://example.com/pending.jpg", "")
 	if err != nil {
 		t.Fatalf("CreateUploadedPhoto(pending): %v", err)
 	}

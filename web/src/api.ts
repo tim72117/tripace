@@ -1322,6 +1322,16 @@ export interface UploadedPhoto {
   focalY?: number
   width?: number
   height?: number
+  // note:上傳者自己的場景備註(見後端 model.UploadedPhoto.Note 的完整
+  // 說明)——純文字,不是 alt/SEO 用途,只在管理介面查詢用。後端省略
+  // 空字串欄位(見 writeJSON 的 omitempty 慣例),故這裡標成選填。
+  note?: string
+  // rating:使用者自己標注的照片品質評分(1~3,3 分最高——見後端
+  // model.UploadedPhoto.Rating 的完整說明)。3 分適合當 gallery 主圖/
+  // 單圖,1 分適合合併進多圖群組當陪襯小圖,純粹是編排文章時的人工
+  // 參考依據,不是公開評論分數。後端省略零值(0)/未評分欄位,故這裡
+  // 標成選填。
+  rating?: number
   variants?: PhotoVariant[]
   createdAt: string
   updatedAt: string
@@ -1385,6 +1395,19 @@ export function setPhotoFocal(cfg: ClientConfig, photoId: string, focalX: number
     'PATCH',
     `/v1/blog/photos/${encodeURIComponent(photoId)}/focal`,
     { focalX, focalY },
+  )
+}
+
+// setPhotoRating:PATCH /v1/blog/photos/{photoId}/rating——更新這張原圖
+// 的品質評分(見後端 handleBlogPhotoRating 的完整說明)。rating 傳
+// null 代表清空既有評分,回到「尚未評分」狀態;傳 1~3 的整數代表設定
+// 評分,後端會拒絕範圍外的值。
+export function setPhotoRating(cfg: ClientConfig, photoId: string, rating: number | null) {
+  return request<{ status: string }>(
+    cfg,
+    'PATCH',
+    `/v1/blog/photos/${encodeURIComponent(photoId)}/rating`,
+    { rating },
   )
 }
 
