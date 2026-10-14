@@ -33,9 +33,11 @@ var knownRoutePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^/device$`),
 	regexp.MustCompile(`^/demo/pace$`),
 	regexp.MustCompile(`^/ai-plan$`),
-	// /itineraries(清單)與 /itineraries/:id(詳細頁):AI 排好的範例行程
-	// 展示,公開頁。2026-10 使用者明確要求「路由不要加 ai」,從原本的
-	// /ai-itineraries 改名(見 web/src/App.tsx 對應路由的完整說明)。
+	// /itineraries(清單)與 /itineraries/:id(詳細頁):精選行程展示
+	// (2026-10 頁面文案從「AI 排好的範例行程」改名,見 web/src/App.tsx
+	// AiItinerariesRoute import 處的完整說明),公開頁。2026-10 使用者
+	// 明確要求「路由不要加 ai」,從原本的 /ai-itineraries 改名(見
+	// web/src/App.tsx 對應路由的完整說明)。
 	regexp.MustCompile(`^/itineraries(/[^/]+)?$`),
 	// /u/:handle/:slug:部落客發文正式頁面(2026-10,見 web/src/App.tsx
 	// 對應路由與 web/src/blog/BlogArticlePage.tsx 的完整說明)——取代原本

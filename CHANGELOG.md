@@ -2,6 +2,27 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.34.0 — 2026-10-14
+
+精選行程展示頁新增後端發布機制、路由從 `/ai-itineraries` 改名為 `/itineraries`，整合定山溪秋日泡湯範例行程，`showcase-demo` 新增多個獨立產品原型展示頁。**本版含破壞性變更。**
+
+### 破壞性變更
+
+- **路由 `/ai-itineraries` 改名為 `/itineraries`，未保留舊路由重導向**：任何已分享、加入書籤的 `/ai-itineraries` 舊連結會直接變成 404，不再自動導向新路徑。改名依使用者明確要求分兩階段完成（先去除對外文案的 `ai` 字樣，後續再把 `web/src/ai-itineraries/` 目錄本身也改名為 `web/src/itineraries/`），元件內部命名（`AiItinerariesRoute` 等）維持不變。
+
+### 新增
+
+- **行程頁後端發布機制（`itinerary_pages`）**：新增資料表與對應 CLI（`itinerary-page add/get/set/publish`），比照部落格 `content_pages` 的發布模式。`/itineraries` 清單頁改為資料庫行程與靜態範例合併顯示，以 feature flag 控制靜態範例是否顯示（預設關閉）。
+- **定山溪溫泉街紅葉散策一日遊（`jozankei-1day`）全套展示層**：手繪地圖樣式、楓葉相框、秋日泡湯地點卡等專屬呈現；地圖站點的 Google 照片改為透過 `attractionId` 即時查詢（新增公開端點 `GET /public/geo/attraction/{id}`），取代原本寫死照片網址的做法。
+- **`tools/img2webp`**：獨立的圖片轉 WebP 工具（含 EXIF orientation 處理、resize），合併自 `wip/hokkaido-and-geo-outline-split` 分支。
+- **`web/showcase-demo` 新增多個獨立產品原型展示頁**：廣告聯盟比較、行程大富翁、趣味地圖、行程海報、路徑規劃骨架/規劃等 mock-data 展示頁面。這些是獨立於主應用之外的展示沙盒，不影響正式路由。
+
+### 修正
+
+- **hand-drawn 地圖樣式與 `AdvancedMarkerElement` 互斥導致標記顯示失敗**：改用 `OverlayView` 實作，保留原有的發光/漣漪動畫效果。
+- **`server/cmd/server/static.go` 的 `/itineraries` 路由註解文案過時**：仍寫著改名前的「AI 排好的範例行程」，已同步成「精選行程」。
+- `server/internal/api/geo_outline.go` 的公開端點 handler（`handlePublicGeoAttractions`/`handlePublicGeoPlaceDetails`/`handlePublicGeoPlacePhotoAssets`/`handleGeoAttractionsByCity`）搬移到新檔案 `geo_outline_public.go`，純內部檔案組織調整，不影響對外行為。
+
 ## v0.33.1 — 2026-10-14
 
 修正 v0.33.0 部署失敗。無破壞性變更。
