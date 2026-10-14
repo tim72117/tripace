@@ -91,6 +91,13 @@ const NotFoundPage = lazy(() => import('./home/NotFoundPage').then((m) => ({ def
 // 依賴任何需要 token 的後端端點,故放進 home/ 底下跟其餘公開行銷頁同一
 // 層級,不是 /app 底下需要登入的正式功能。
 const TripPlanRoute = lazy(() => import('./trip-plan/TripPlanRoute').then((m) => ({ default: m.TripPlanRoute })))
+// AiItinerariesRoute:「精選行程」展示(清單 + 點進去的時間軸,2026-10
+// 使用者明確要求頁面文案從「AI 排好的範例行程」改成「精選行程」,元件/
+// 目錄名稱維持不變,純粹是對外文案改名),
+// 公開頁,整個功能在 itineraries/ 這個獨立目錄(2026-10 從 ai-itineraries/
+// 改名,使用者明確要求「web/src/ai-itineraries 路徑簡化」,見該檔案的
+// 完整說明),見該檔案的完整說明。
+const AiItinerariesRoute = lazy(() => import('./itineraries/AiItinerariesRoute').then((m) => ({ default: m.AiItinerariesRoute })))
 const PlanAiSimPage = lazy(() => import('./home/plan-ai-sim/AIPlanTimelinePage').then((m) => ({ default: m.AIPlanTimelinePage })))
 // BlogArticlePage:部落客發文正式頁面(2026-10 從主題介紹頁內容規格化
 // 試做轉正,見 docs/brainstorm/2026-10-product-direction-brainstorm.md
@@ -226,6 +233,31 @@ export function App() {
               新增 /plan-ai 忘了同步這份白名單,導致正式環境該路徑直接
               404(即使前端路由本身定義正確),這是實際發生過的教訓。 */}
           <Route path="/ai-plan" element={<PlanAiSimPage />} />
+          {/* /itineraries(清單)與 /itineraries/:id(詳細頁):精選行程
+              展示(2026-10 頁面文案從「AI 排好的範例行程」改名,見上方
+              AiItinerariesRoute import 處的完整說明),公開頁。2026-10
+              使用者另外明確要求「路由不要加
+              ai」,從原本的 /ai-itineraries 改名——當時是純粹對外呈現
+              的路徑改名,元件所在目錄/檔案內部命名(AiItinerariesRoute
+              等)維持不變,理由同上方 /ai-plan 的既有先例;後續使用者
+              再要求「web/src/ai-itineraries 路徑簡化」,這次才真的把
+              目錄本身也從 ai-itineraries/ 改名成 itineraries/(檔案內部
+              命名 AiItinerariesRoute 等仍維持不變,只動目錄跟 import
+              路徑)。
+              使用者後續一度提過「路徑加上區域、地區、國家」(改成
+              /itineraries/國家/地區/:id 三段式),但接著自己提出疑問
+              「路由要分段嗎,還是直接用 slug」,評估後明確拍板「改成
+              /itineraries/:id,不分段」——分段路由唯一的好處(可以做
+              /itineraries/taiwan 這種國家分類頁)目前沒有需求,壞處是
+              country/area 這兩段路由參數若不驗證跟 id 實際對應的 region
+              一致,會出現「網址寫錯國家但仍正常顯示」這種沒有 SEO 唯一性
+              保證的狀態,要做對需要後端額外驗證邏輯,複雜度不值得。這段
+              維持原本的扁平路徑,沒有真的改過。
+              server/cmd/server/static.go 的 knownRoutePatterns——上次
+              新增 /plan-ai 忘了同步這份白名單,導致正式環境該路徑直接
+              404(即使前端路由本身定義正確),這是實際發生過的教訓。 */}
+          <Route path="/itineraries" element={<AiItinerariesRoute />} />
+          <Route path="/itineraries/:id" element={<AiItinerariesRoute />} />
           {/* /u/:handle/:slug:部落客發文正式頁面(2026-10,見
               BlogArticlePage.tsx 開頭說明)——不再是固定讀單一 slug 的
               demo 路徑,改依網址路徑參數(作者 handle + 文章 slug)渲染

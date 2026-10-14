@@ -1,0 +1,381 @@
+/* AiItineraryDetailPageMapView 專屬樣式——地圖全幅背景 + 側欄式時間軸,
+   版面語言比照 home/plan-ai-sim/AIPlanTimelinePage.tsx 桌面版的「左地圖/
+   右資訊欄」做法,但這裡沒有漂浮導覽按鈕/輸入膠囊那些機制,只需要
+   地圖背景、回上一頁連結、側欄面板三塊。配色沿用既有 --ios- 與 --color-
+   開頭的 token 慣例。 */
+
+.page {
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  position: relative;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+}
+
+/* mapBackdrop——NativeMapBase 的容器,鋪滿整頁,z-index:0 讓側欄/回上
+   一頁連結(DOM 順序在後)天然疊在上層。 */
+.mapBackdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+/* mapBackdropCastle class 已移除(2026-10)——使用者回報「地圖高度
+   跑版了」,復現:一進頁就這樣。根因:這個 class 原本宣告
+   position:relative,原意是想給當時的城牆 SVG 裝飾層(現已換成下方的
+   .scrollFrame 捲軸外框)一個定位基準,
+   但 .mapBackdrop 本身已經是 position:absolute——absolute/relative/
+   fixed/sticky 任一種定位屬性的元素都能當子層 position:absolute 的
+   參照基準,不需要額外加 relative。這裡的 position:relative 反而在
+   CSS 層疊規則下覆蓋掉 .mapBackdrop 的 position:absolute(兩個 class
+   都設了 position,同權重時後面的宣告優先),導致這個容器從「絕對
+   定位、inset:0 鋪滿 .page」變成「一般文件流中的 relative 元素,
+   inset:0 在 relative 下只是相對自身原始位置的偏移、不會撐滿父層」,
+   容器因此失去明確高度,整個地圖畫布跟著塌縮成內容自然高度——這就是
+   地圖只佔頁面上方一小截、下方留白的根本原因。是否要渲染
+   TreasureScrollBorder 改由 AiItineraryDetailPageMapView.tsx 的
+   {isPlayfulUI && <TreasureScrollBorder />} 條件渲染直接控制,不需要
+   額外的 CSS class 當旗標。 */
+
+/* ===== 捲軸寶藏地圖外框。2026-10 改版(使用者連續回報「左右兩邊上下
+   的捲軸都沒出現」,接著明確指出架構方向「外框就給一個容器,淡化坐在
+   容器內部」):拆成兩個獨立容器,不再混在同一層:
+   - .scrollFrame(TreasureScrollBorder,見 .tsx 該元件的完整說明)——
+     邊框裝飾本體(撕裂邊/捲筒/指北針),是 .page 的直接子層(不在
+     .mapBackdrop 裡面),z-index 要高於兩側面板(.panel/FoodSpotPanel
+     都是 1),確保整圈邊框貼在畫面最外緣、不被任何內容蓋住。
+   - .scrollSheet(MapVignette)——左右淡化暈影,維持在 .mapBackdrop
+     內部、跟地圖畫布同一層級,不特別拉高 z-index,面板原本就會自然
+     蓋在它上面,不需要處理堆疊衝突。
+   配色沿用這個子系統卡片/手繪地圖既有的暖色調:#8a6240 深褐墨線、
+   #e8d2a8 米黃羊皮紙、#d88f45 與 #e8a561 焦糖棕,不另外發明色系。 */
+
+/* scrollFrame——邊框裝飾容器,撐滿 .page(inset:0,相對 .page 的
+   position:relative 定位),pointer-events:none 讓所有子層都不攔截
+   滑鼠/觸控事件,底下地圖的拖曳/縮放/點擊照常。z-index:3 高於兩側
+   面板(z-index:1),確保撕裂邊/捲筒貼在最外緣、不被面板蓋住。 */
+.scrollFrame {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* scrollSheet——羊皮紙暈影:只在左右兩側(撕裂邊內側的地圖區域)往內
+   漸淡,上下(捲筒內側)完全不淡化,見上方「捲軸寶藏地圖外框」的完整
+   說明——這一層留在 .mapBackdrop 內部,跟地圖畫布同一層級,面板本身
+   不透明會自然蓋住暈影,不需要跟邊框搶同一個 z-index。 */
+.scrollSheet {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right, rgba(232, 210, 168, 0.6) 0%, rgba(232, 210, 168, 0) 12%, rgba(232, 210, 168, 0) 88%, rgba(232, 210, 168, 0.6) 100%);
+  pointer-events: none;
+}
+
+/* scrollCompass——指北針。桌面版擺在左側美食面板(360px)右邊的可見
+   區域下緣,不跟任何面板重疊;尺寸刻意小,低調不搶地圖焦點。 */
+.scrollCompass {
+  position: absolute;
+  left: 384px;
+  bottom: 64px;
+  width: 72px;
+  height: 72px;
+  opacity: 0.92;
+  filter: drop-shadow(0 3px 5px rgba(74, 46, 24, 0.35));
+}
+.compassDisc {
+  fill: rgba(246, 236, 214, 0.88);
+  stroke: none;
+}
+.compassRing {
+  fill: none;
+  stroke: #8a6240;
+  stroke-width: 2.5;
+}
+.compassRingInner {
+  fill: none;
+  stroke: #d88f45;
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+.compassStarDark {
+  fill: #8a6240;
+  stroke: #8a6240;
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+.compassStarLight {
+  fill: #e8a561;
+  stroke: #8a6240;
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+.compassMinor {
+  fill: none;
+  stroke: #8a6240;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+.compassPin {
+  fill: #f6ecd6;
+  stroke: #8a6240;
+  stroke-width: 1.5;
+}
+.compassNorth {
+  fill: #d88f45;
+  stroke: #8a6240;
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+/* ===== 楓葉相框(borderStyle:'maple-leaf',2026-10 新增,見 .tsx
+   MapleLeafBorder/MapleVignette 的完整說明)。結構完全對應上方的捲軸
+   寶藏地圖外框那一對——.mapleFrame 對應 .scrollFrame(邊框裝飾容器,
+   .page 直接子層、z-index:3),.mapleSheet 對應 .scrollSheet(暈影,
+   留在 .mapBackdrop 內部)——只換主題配色:紅葉季的秋色,#c8361e 楓紅、
+   #e8742a 橘紅、#e6a832 金黃、#7a2a12 深褐葉脈/描邊,暈影用偏橘的
+   暖色 rgba(226, 120, 58, …) 而不是羊皮紙米黃。
+   跟 .scrollFrame 一樣:這些都是 .page 或 .mapBackdrop 的子層,只在
+   子層自己身上宣告 position:absolute,絕對不要回頭去碰 .mapBackdrop 的
+   position(見上方 mapBackdropCastle 被移除的完整說明)。 */
+
+/* mapleFrame——楓葉相框的邊框裝飾容器,規則同 .scrollFrame:撐滿
+   .page、pointer-events:none、z-index:3 高於兩側面板,overflow:hidden
+   讓四角楓葉叢可以用負值偏移「掛在畫面外緣」只露出一部分,看起來像
+   葉子從相框邊緣探進來,而不是整叢貼在畫面裡。 */
+.mapleFrame {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* mapleSheet——暖橘暈影:只在左右兩側往內漸淡,上下完全不淡化,
+   理由同 .scrollSheet(使用者先前拍板的決定,這裡不重開)。透明度比
+   羊皮紙暈影略低——橘色比米黃搶眼,同樣 0.6 會把兩側站點蓋得太重。 */
+.mapleSheet {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right, rgba(226, 120, 58, 0.5) 0%, rgba(226, 120, 58, 0) 14%, rgba(226, 120, 58, 0) 86%, rgba(226, 120, 58, 0.5) 100%);
+  pointer-events: none;
+}
+
+/* mapleCorner——一叢楓葉的 SVG 外框,四角共用同一組幾何(以左上角為
+   根部向外散開),靠 transform 鏡射到其他三個角(見 .tsx
+   MapleLeafCorner 的完整說明)。尺寸 180px、往外偏移 -28px,讓葉叢約
+   有六分之一掛在畫面外;右上角會跟側欄面板的標題區(.header 上方
+   72px 留白)相鄰,偏移量刻意讓葉片只碰到留白、不壓到標題文字。 */
+.mapleCorner {
+  position: absolute;
+  width: 180px;
+  height: 180px;
+  opacity: 0.94;
+  filter: drop-shadow(0 3px 5px rgba(90, 30, 10, 0.35));
+}
+.mapleCornerTl {
+  top: -28px;
+  left: -28px;
+}
+.mapleCornerTr {
+  top: -28px;
+  right: -28px;
+  transform: scaleX(-1);
+}
+.mapleCornerBl {
+  bottom: -28px;
+  left: -28px;
+  transform: scaleY(-1);
+}
+.mapleCornerBr {
+  bottom: -28px;
+  right: -28px;
+  transform: scale(-1, -1);
+}
+
+/* 楓葉三色:填色各自不同,描邊/葉柄統一深褐,讓三種顏色的葉子疊在
+   一起時輪廓仍然分得開(紅橘相鄰沒有描邊會糊成一片)。 */
+.mapleLeafRed {
+  fill: #c8361e;
+  stroke: #7a2a12;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.mapleLeafOrange {
+  fill: #e8742a;
+  stroke: #7a2a12;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.mapleLeafGold {
+  fill: #e6a832;
+  stroke: #7a2a12;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.mapleStem {
+  fill: none;
+  stroke: #7a2a12;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+/* back——2026-10 修正(使用者回報「左上角文字重疊了」,實機截圖確認
+   這顆「所有範例行程」連結跟 AiItinerariesRoute.tsx 的 SiteNavBrand
+   (fixed 定位,left:16px/top:16px/z-index:200,見 SiteNavButtons.css
+   的完整說明)疊在同一個座標,「Tripace所有範例AI排好的行程」擠成
+   一團文字):往下移到 SiteNavBrand 區塊下方的淨空處 58px(52px 功能列
+   底緣 + 6px 間距)。原本捲軸外框還有上下捲筒時,isPlayfulUI 的行程
+   需要另外疊加 backBelowScroll class 再往下避開捲筒——捲筒已移除
+   (見上方「捲軸寶藏地圖外框」的完整說明,使用者拍板「不要捲軸的部分,
+   保留圖紙就好」),這顆連結不再需要依 isPlayfulUI 區分兩種位置,
+   backBelowScroll class 已刪除。 */
+.back {
+  position: absolute;
+  top: 58px;
+  left: 16px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--color-dark);
+  background: var(--ios-bg);
+  box-shadow: 0 6px 20px -8px rgba(0, 0, 0, 0.35);
+  text-decoration: none;
+}
+.back:hover {
+  color: var(--ios-blue);
+}
+
+/* panel——側欄式時間軸面板,桌面版貼右側、上下撐滿;手機版退回滿版
+   下半部,地圖佔上半部固定高度(見下方 responsive 區塊)。刻意不給
+   實色背景鋪滿整個面板高度——只在卡片本身(PlanTimelineView 既有
+   樣式)上有底色,地圖從卡片之間的留白透出來,呼應 AIPlanTimelinePage.tsx
+   「浮空疊在地圖上」的既有視覺語言,不做成不透明側欄。 */
+.panel {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 420px;
+  background: linear-gradient(to left, var(--ios-bg) 55%, transparent 100%);
+}
+
+.header {
+  flex: none;
+  padding: 72px 20px 12px;
+}
+.title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--ios-gray);
+}
+.metaItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.summary {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-dark);
+}
+
+/* timelineScroll——疊加在 PlanTimelineView 自己的 .scroll 上,補上這個
+   面板需要的捲動行為。.panel 本身是 absolute 定位、上下撐滿,.header
+   是固定高度的 flex:none,時間軸要佔滿剩餘空間並自己負責捲動,理由
+   同 AIPlanTimelinePage.tsx 的 .timelineScroll。 */
+.timelineScroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 32px;
+}
+
+/* timelineEndMarker——疊在地圖背景上方,共用元件預設的淺灰色文字在這種
+   背景下可能對比不足,加文字陰影提高可讀性,理由同 AIPlanTimelinePage.tsx
+   的 .timelineEndMarker。 */
+.timelineEndMarker {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+/* 手機版:側欄改成貼齊視窗下半部的滿版面板,地圖留在上半部當固定高度
+   背景(不是完全被蓋住)——這個子專案目前沒有明確的手機/桌面分流
+   pattern 可以直接套用,這是試作階段的合理簡化做法:地圖佔上方
+   45dvh,面板佔下方剩餘空間,面板給實色背景(窄螢幕沒有多餘寬度讓
+   地圖從側邊透出來,不透明底色比半透明更易讀)。 */
+@media (max-width: 767px) {
+  .panel {
+    position: absolute;
+    top: 45dvh;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    background: var(--ios-bg);
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    box-shadow: 0 -8px 24px -12px rgba(0, 0, 0, 0.3);
+  }
+  .header {
+    padding: 16px 16px 10px;
+  }
+  /* back——手機版同樣要避開 SiteNavBrand(fixed 定位,見桌面版 .back
+     的完整說明)的淨空需求,理由不變,數值配合手機版 SiteNavButtons.css
+     的實際留白(16px)微調。 */
+  .back {
+    top: 16px;
+    left: 12px;
+  }
+  /* scrollCompass 手機版:左側美食面板在手機版隱藏(見 FoodSpotPanel.module.css
+     手機版 display:none 的完整說明),桌面版「貼在美食面板右側」的定位
+     依據不存在,改擺到右上角、不跟時間軸面板(45dvh 起)重疊。 */
+  .scrollCompass {
+    left: auto;
+    right: 14px;
+    bottom: auto;
+    top: 48px;
+    width: 56px;
+    height: 56px;
+  }
+  /* mapleCorner 手機版:時間軸面板從 45dvh 起鋪到底、不透明底色,
+     下方兩角的楓葉會直接壓在卡片上——隱藏下方兩角,只留上方兩角
+     (地圖區域),並縮小避免跟 SiteNavBrand/.back 連結搶太多空間。 */
+  .mapleCorner {
+    width: 120px;
+    height: 120px;
+  }
+  .mapleCornerTl,
+  .mapleCornerTr {
+    top: -20px;
+  }
+  .mapleCornerTl {
+    left: -20px;
+  }
+  .mapleCornerTr {
+    right: -20px;
+  }
+  .mapleCornerBl,
+  .mapleCornerBr {
+    display: none;
+  }
+}

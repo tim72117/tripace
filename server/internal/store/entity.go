@@ -298,6 +298,30 @@ type contentPageRow struct {
 
 func (contentPageRow) TableName() string { return "content_pages" }
 
+// itineraryPageRow——範例行程內容(對齊「AI 排過的主題行程展示」構想,
+// 見 web/src/itineraries/ 的完整說明),結構完全比照 contentPageRow
+// ——同一套 CLI 發布模式(OwnerID+Slug 複合唯一索引、Content 整份 JSON
+// 字串、Status draft/published),不是重新發明一套。
+//
+// OwnerID 目前只用空字串這個「官方」命名空間(範例行程全部是內部
+// 團隊發布的官方展示內容,沒有使用者自己發布行程的概念),跟
+// contentPageRow 不同的是,這裡沒有對應 content-page 的「official vs
+// 使用者自己」雙重身份切換邏輯——保留這個欄位只是為了跟 contentPageRow
+// 的表結構一致、未來若要開放使用者自己發布行程,不需要改資料表結構,
+// 只需要在 API 層加回身份切換邏輯即可。
+type itineraryPageRow struct {
+	ID        string    `gorm:"primaryKey;column:id"`
+	OwnerID   string    `gorm:"column:owner_id;not null;default:'';uniqueIndex:ux_itinerary_pages_owner_slug"`
+	Slug      string    `gorm:"column:slug;not null;uniqueIndex:ux_itinerary_pages_owner_slug"`
+	Content   string    `gorm:"column:content;not null"`
+	Status    string    `gorm:"column:status;not null;default:draft"`
+	UpdatedBy string    `gorm:"column:updated_by"`
+	CreatedAt time.Time `gorm:"column:created_at;not null"`
+	UpdatedAt time.Time `gorm:"column:updated_at;not null"`
+}
+
+func (itineraryPageRow) TableName() string { return "itinerary_pages" }
+
 // photoCacheRow 快取 Google Places Photo Media API 已下載過的圖片(見
 // server/internal/geo/places.go 的 fetchPhotoAsDataURI)——同一個地點
 // (place id + 寬度組合)重複被查詢時直接吃快取,不重新打 Photo Media

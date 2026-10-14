@@ -1,0 +1,176 @@
+/* FoodSpotPanel.tsx 專屬樣式——地圖基底展示頁左側美食清單面板。版面
+   語言對齊 AiItineraryDetailPageMapView.module.css 的 .panel(半透明
+   漸層疊在地圖上、卡片浮空),但這裡貼左側、漸層方向相反,跟右側時間
+   軸面板形成對稱的兩側資訊欄。配色沿用既有 --ios- 與 --color- 開頭的
+   token 慣例。
+   2026-10 放大版(使用者明確要求「美食清單放大」):面板寬度
+   300→360px,縮圖 52→80px,呼應 renderItineraryStopCard.module.css
+   時間軸地點卡同一波放大的尺度,讓兩側面板的視覺份量感一致,不是左側
+   明顯比右側單薄。 */
+/* padding-top 106px(非原本的 72px)——2026-10 修正(使用者回報「美食
+   被蓋住了」,實機截圖確認「美食清單」標題文字完全看不到):.back(回
+   上一頁連結,AiItineraryDetailPageMapView.module.css)定位在
+   top:58px,含 padding 後的實際高度延伸到約 87px,跟這裡原本
+   padding-top:72px 讓出的 .heading 起始位置(72px~約 87px)幾乎完全
+   重疊,導致 .heading 被 .back 蓋住。106px 對齊
+   AiItineraryDetailPageMapView.module.css .header 當時也用過的
+   「功能列淨空」預留值,確保 .heading 落在 .back 下緣之後。 */
+.panel {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  padding: 106px 18px 24px 20px;
+  background: linear-gradient(to right, var(--ios-bg) 55%, transparent 100%);
+  overflow-y: auto;
+}
+
+.heading {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 14px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-dark);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card {
+  display: flex;
+  gap: 14px;
+  padding: 12px;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 16px;
+  box-shadow: 0 6px 16px -8px rgba(61, 53, 48, 0.14);
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.card:hover {
+  border-color: var(--ios-sand);
+}
+.card:focus-visible {
+  outline: 2px solid var(--ios-sand);
+  outline-offset: 2px;
+}
+/* cardSelected——2026-10 新增,跟地圖上對應圓點雙向連動時的強調樣式,
+   理由同 renderItineraryStopCard.module.css 的 .stopCardSelected。 */
+.cardSelected {
+  border-color: var(--ios-sand);
+  box-shadow: 0 0 0 2px var(--ios-sand), 0 6px 16px -8px rgba(61, 53, 48, 0.14);
+}
+
+/* cardPlayful/playfulBadge——手繪卡通版樣式,只套在 itinerary.mapStyle
+   === 'hand-drawn' 的行程(見 FoodSpotPanel.tsx isPlayful prop 的完整
+   說明),設計理由跟具體數值對齊 renderItineraryStopCard.module.css 的
+   .stopCardPlayful/.playfulBadge,兩種卡片(時間軸地點卡/美食清單卡)
+   用同一套手繪卡通視覺語言,不是各自發明一套。 */
+.cardPlayful {
+  border: 3px solid #e8a561;
+  border-radius: 14px 18px 14px 20px;
+  box-shadow: 3px 6px 0 -2px rgba(232, 165, 97, 0.35);
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+.cardPlayful:hover {
+  border-color: #d88f45;
+  transform: rotate(-1deg) translateY(-2px);
+}
+.cardPlayfulSelected {
+  border-color: #d88f45;
+  box-shadow: 3px 6px 0 -2px rgba(216, 143, 69, 0.5), 0 0 0 2px #e8a561;
+  transform: rotate(1deg) translateY(-2px);
+}
+.playfulBadge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  transform: rotate(8deg);
+}
+
+.thumb {
+  position: relative;
+  flex: none;
+  width: 80px;
+  height: 80px;
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  background: var(--ios-active);
+}
+.thumbImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.body {
+  min-width: 0;
+  flex: 1;
+}
+.cardHead {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.name {
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: break-word;
+}
+.price {
+  flex: none;
+  font-size: 13px;
+  color: var(--ios-sand);
+  font-variant-numeric: tabular-nums;
+}
+.category {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--ios-gray);
+  letter-spacing: 0.02em;
+}
+.desc {
+  margin: 5px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ios-gray);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 手機版:跟 AiItineraryDetailPageMapView.module.css 手機版 .panel 同一套
+   斷點,時間軸面板改佔下半部滿版後,左側這個面板沒有合理的擺放空間
+   (寬度不夠同時容納地圖+兩側面板),先隱藏,等有更完整的手機版版面
+   設計再處理——這是試作階段的合理簡化,不是遺漏。 */
+@media (max-width: 767px) {
+  .panel {
+    display: none;
+  }
+}

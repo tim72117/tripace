@@ -132,37 +132,60 @@
   font-weight: 600;
 }
 
+/* --anchor-dot-size——2026-10 新增,預設 12px 對齊 .anchorDot 原本寫死
+   的尺寸(見下方)。PlanTimelineView.tsx 的 anchorDotSize prop 有值時,
+   透過 inline style 在 .axisCol 上覆寫這個自訂屬性(見該 prop 的完整
+   說明),.axisLineAbove/.axisLineBelow/.anchorDot 三者都改用 calc()
+   依這個變數算,確保軸線永遠精確對齊圓點中心,不論圓點實際多大——
+   這是使用者明確要求「放大圓點容納 icon 時,軸線要同步對齊,不要用
+   寫死數值」的做法。 */
 .axisCol {
+  --anchor-dot-size: 12px;
   position: relative;
   display: flex;
   justify-content: center;
 }
-/* axisLineAbove/axisLineBelow 以圓點中心(16px = .anchorDot 的
-   margin-top 10px + 高度 12px 的一半)為界,不用整列高度的 50%:卡片
-   有縮圖和兩行說明時整列約 137px,50% 會落在圓點下方約 50px,第一個
-   節點(沒有 axisLineAbove 補位)圓點到線之間會斷一截。 */
+/* axisLineAbove/axisLineBelow 以圓點中心(.anchorDot 的 margin-top
+   10px + 高度 --anchor-dot-size 的一半,用 calc() 動態算,不是寫死的
+   16px)為界,不用整列高度的 50%:卡片有縮圖和兩行說明時整列約 137px,
+   50% 會落在圓點下方約 50px,第一個節點(沒有 axisLineAbove 補位)
+   圓點到線之間會斷一截。 */
 .axisLineAbove {
   position: absolute;
-  top: -20px;
+  top: calc(10px + var(--anchor-dot-size) / 2 - 36px);
   height: 36px;
   width: 2px;
   background: var(--ios-sep);
 }
 .axisLineBelow {
   position: absolute;
-  top: 16px;
+  top: calc(10px + var(--anchor-dot-size) / 2);
   bottom: -20px;
   width: 2px;
   background: var(--ios-sep);
 }
 .anchorDot {
-  width: 12px;
-  height: 12px;
+  width: var(--anchor-dot-size);
+  height: var(--anchor-dot-size);
   border-radius: 999px;
   background: var(--ios-card);
   border: 2px solid var(--ios-sand);
   margin-top: 10px;
   z-index: 2;
+}
+/* anchorDotWithIcon——2026-10 新增,只在呼叫端傳入 anchorDotSize prop
+   時才加這個 class(見 PlanTimelineView.tsx anchorDotSize/renderAnchorIcon
+   的完整說明)。實際直徑由 inline style 的 width/height 決定(見 .tsx),
+   這裡只負責讓放大後的圓點有 flex 置中,容納 renderAnchorIcon 回傳的
+   icon 內容——/app、/trip-plan 等正式頁不傳 anchorDotSize 就不會有
+   這個 class,原本 12px 空心圓點的外觀/版面完全不受影響。 */
+.anchorDotWithIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  overflow: hidden;
 }
 /* anchorDotDraggable——只在呼叫端真的傳入 getStopTimeDragBounds/
    onDragStopTime 時才加這個 class(見該處 onPointerDown 的完整說明),

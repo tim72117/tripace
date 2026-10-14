@@ -264,6 +264,20 @@ func checkIndexHTMLHasAllSEOTargets(html []byte) error {
 // 不需要額外呼叫 strings.Split 再手動處理陣列長度。
 var blogArticlePathPattern = regexp.MustCompile(`^/u/(?P<handle>[^/]+)/(?P<slug>[^/]+)$`)
 
+// itineraryPagePathPattern 匹配「AI 排過的主題行程展示」詳細頁的路徑
+// ——對齊 static.go knownRoutePatterns 與 App.tsx 的
+// <Route path="/itineraries/:id">(2026-10 使用者明確要求「路由不要加
+// ai」,從原本的 /ai-itineraries 改名)。2026-10 新增,使用者明確要求
+// 「跟部落格用同一套 SEO 存放機制」:這個路徑的性質跟 /u/{handle}/{slug}
+// 完全相同(動態路徑、內容存在資料庫、數量會持續成長、不可能窮舉進
+// seoMetaByPath 靜態表),故沿用同一套「request 當下查資料庫、server 端
+// 字串取代 index.html」的機制,而非走前端 react-helmet-async(那套已經
+// 被 2026-10 第二次修正明確棄用,見本檔案開頭的完整說明——Googlebot
+// 第一次抓取時 JS 還沒執行,讀到的 canonical/title 仍是首頁的,且
+// react-helmet-async 不會移除 index.html 裡已經寫死的標籤,只會追加,
+// 造成同一份 <head> 裡出現兩個互相矛盾的 canonical)。
+var itineraryPagePathPattern = regexp.MustCompile(`^/itineraries/(?P<slug>[^/]+)$`)
+
 // blogArticleContentFields 只取 ThemePageContent(web/src/blog/types.ts)
 // 裡這次需要的五個欄位——title/eyebrow/lede/heroPhotoId/
 // heroStandalonePhotoId,其餘 blocks 等欄位這裡用不到,不需要完整
@@ -364,6 +378,62 @@ func blogArticleSEOMeta(st *store.Store, baseURL, handle, slug string) (seoMeta,
 	}, true
 }
 
+// itineraryPageContentFields 只取 SampleItinerary(web/src/itineraries/types.ts)
+// 裡這次需要的三個欄位——title/summary/coverPhoto,其餘 stops/
+// categories/mapStyle 等欄位這裡用不到,不需要完整解析。json 欄位名稱
+// 必須跟 types.ts 的 SampleItinerary 介面逐字一致,理由同
+// blogArticleContentFields 的完整說明。
+type itineraryPageContentFields struct {
+	Title      string `json:"title"`
+	Summary    string `json:"summary"`
+	CoverPhoto string `json:"coverPhoto"`
+}
+
+// itineraryPageSEOMeta 依 slug 查詢這份已發布範例行程的內容,組出對應的
+// seoMeta——查詢邏輯完全比照 blogArticleSEOMeta,但範例行程目前只有
+// 官方命名空間(ownerID 固定空字串,見 itinerary_page.go
+// requireItineraryPageAdmin 的完整說明,這批內容沒有「使用者自己發布」
+// 的情境),不需要像部落格文章那樣先用 handle 查作者 UserID。
+//
+// image——coverPhoto 欄位直接存完整圖片網址(不是像部落格那樣存
+// photoId 間接識別碼再查 uploaded_photos 表,見 types.ts
+// SampleItinerary.coverPhoto 的完整說明:範例行程的照片目前是外部
+// 固定網址,不是這個站自己的上傳管理系統),故不需要額外查詢步驟,
+// 直接使用。沒有 coverPhoto 時 image 留空字串,呼叫端(applySEOMeta)
+// 的既有 fallback 邏輯會接手(沿用 defaultImage,見該函式對 image
+// 變數的完整說明)。
+//
+// description 的挑選順序:summary(範例行程本來就有專門寫給訪客看的
+// 簡介文字,語意上最貼近 SEO description 的用途,跟部落格文章挑選
+// lede 的理由一致);summary 留空時用 title 本身(確保 description
+// 不會是空字串,理由同 blogArticleSEOMeta)。
+func itineraryPageSEOMeta(st *store.Store, baseURL, slug string) (seoMeta, bool) {
+	page, err := st.GetItineraryPageBySlug("", slug)
+	if err != nil || page.Status != "published" {
+		return seoMeta{}, false
+	}
+	var fields itineraryPageContentFields
+	// Content 解析失敗時 fields 維持零值,理由同 blogArticleSEOMeta 的
+	// 完整說明——寧可 SEO meta 退化成空字串也不要讓這個邊界情況影響到
+	// 行程內容本身的正常顯示。
+	_ = json.Unmarshal([]byte(page.Content), &fields)
+
+	title := fields.Title
+	if title != "" {
+		title += " | Tripace"
+	}
+	description := fields.Summary
+	if description == "" {
+		description = fields.Title
+	}
+	return seoMeta{
+		title:       title,
+		description: description,
+		canonical:   baseURL + "/itineraries/" + slug,
+		image:       fields.CoverPhoto,
+	}, true
+}
+
 // heroPhotoImageURL 從一筆 UploadedPhoto 選出最適合當 og:image/
 // twitter:image 的網址——見 blogArticleSEOMeta 對 image 欄位的完整
 // 說明(優先 large,查無則退回原圖)。獨立成函式方便單元測試覆蓋
@@ -382,16 +452,21 @@ func heroPhotoImageURL(photo model.UploadedPhoto) string {
 // applySEOMeta 依請求路徑,把 index.html 內容裡寫死的首頁 title/
 // description/canonical/image 取代成該路由自己的值。
 //
-// 兩種路由各自決定對應的 seoMeta:
+// 三種路由各自決定對應的 seoMeta:
 //   - 固定路徑(seoMetaByPath,城市介紹頁/功能介紹等)直接查表。
 //   - /u/{handle}/{slug} 部落格文章(2026-10 新增)動態查資料庫,見
 //     blogArticleSEOMeta 的完整說明——每篇文章都要注入自己的
 //     title/description/canonical,不能像固定路徑那樣窮舉進靜態表。
+//   - /itineraries/{slug} 範例行程詳細頁(2026-10 新增,使用者明確
+//     要求「跟部落格用同一套 SEO 存放機制」)動態查資料庫,見
+//     itineraryPageSEOMeta 的完整說明,跟部落格文章是同一類動態路徑、
+//     同一套處理邏輯。
 //
-// 兩種都找不到對應資料時(不在 seoMetaByPath 裡,也不符合部落格文章
-// 路徑規則、或符合規則但查無已發布文章,例如首頁本身、/privacy、
-// /terms,或任何其餘 SPA fallback 路由)原樣傳回,不做任何取代,沿用
-// index.html 原本的首頁預設內容(這是既有且正確的行為,不是遺漏)。
+// 三種都找不到對應資料時(不在 seoMetaByPath 裡,也不符合部落格文章/
+// 範例行程的路徑規則、或符合規則但查無已發布內容,例如首頁本身、
+// /privacy、/terms,或任何其餘 SPA fallback 路由)原樣傳回,不做任何
+// 取代,沿用 index.html 原本的首頁預設內容(這是既有且正確的行為,
+// 不是遺漏)。
 // 每個目標字串都用 strings.Replace(...,1)(限制取代一次),不是
 // ReplaceAll——這份清單裡的字串設計上本來就只該在 index.html 出現
 // 一次,限制次數是額外的保險,避免未來不小心在別處重複出現同樣文字時
@@ -408,6 +483,11 @@ func applySEOMeta(html []byte, path string, st *store.Store) []byte {
 				slug := m[blogArticlePathPattern.SubexpIndex("slug")]
 				if blogMeta, found := blogArticleSEOMeta(st, siteBaseURL(), handle, slug); found {
 					meta, ok = blogMeta, true
+				}
+			} else if m := itineraryPagePathPattern.FindStringSubmatch(path); m != nil {
+				slug := m[itineraryPagePathPattern.SubexpIndex("slug")]
+				if itnMeta, found := itineraryPageSEOMeta(st, siteBaseURL(), slug); found {
+					meta, ok = itnMeta, true
 				}
 			}
 		}

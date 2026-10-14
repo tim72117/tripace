@@ -260,6 +260,43 @@ func (c *httpClient) contentPageDelete(slug string, official bool) error {
 	return err
 }
 
+// itineraryPageCreate/List/Get/Update/Publish/Delete 對齊
+// /internal/maintenance/itinerary-pages* 系列端點(見
+// server/internal/api/itinerary_page.go)——寫法比照上方 contentPage*
+// 系列,差異只在沒有 official 參數(範例行程固定寫入官方命名空間,見
+// itinerary-page 資源註冊處的完整說明),不需要在 body/query string
+// 帶這個欄位。
+func (c *httpClient) itineraryPageCreate(slug string, content map[string]any, updatedBy string) (any, error) {
+	return c.do("POST", "/internal/maintenance/itinerary-pages", map[string]any{
+		"slug": slug, "content": content, "updatedBy": updatedBy,
+	})
+}
+
+func (c *httpClient) itineraryPageList() (any, error) {
+	return c.do("GET", "/internal/maintenance/itinerary-pages", nil)
+}
+
+func (c *httpClient) itineraryPageGet(slug string) (any, error) {
+	return c.do("GET", "/internal/maintenance/itinerary-pages/"+url.PathEscape(slug), nil)
+}
+
+func (c *httpClient) itineraryPageUpdate(slug string, content map[string]any, updatedBy string) (any, error) {
+	return c.do("PUT", "/internal/maintenance/itinerary-pages/"+url.PathEscape(slug), map[string]any{
+		"content": content, "updatedBy": updatedBy,
+	})
+}
+
+func (c *httpClient) itineraryPagePublish(slug string, published bool) (any, error) {
+	return c.do("PATCH", "/internal/maintenance/itinerary-pages/"+url.PathEscape(slug)+"/publish", map[string]any{
+		"published": published,
+	})
+}
+
+func (c *httpClient) itineraryPageDelete(slug string) error {
+	_, err := c.do("DELETE", "/internal/maintenance/itinerary-pages/"+url.PathEscape(slug), nil)
+	return err
+}
+
 // blogProfileSet/blogProfileGet 對齊 POST/GET /v1/blog/profile(見
 // server/internal/api/blog_profile.go)——身份完全來自呼叫端的 JWT
 // (s.userFor(r)),不需要像 content-page 系列那樣額外帶 ownerID/official

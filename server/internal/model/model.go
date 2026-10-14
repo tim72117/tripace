@@ -256,6 +256,23 @@ type ContentPage struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// ItineraryPage——範例行程內容(對齊「AI 排過的主題行程展示」構想,見
+// web/src/itineraries/ 的完整說明),結構完全比照 ContentPage,見
+// store.itineraryPageRow 的完整說明——同一套 CLI 發布模式,不是重新
+// 發明一套。Content 欄位(整份行程 JSON,含 title/region/days/stops 等)
+// 由前端定義格式,後端全程原樣存取轉發,不解析/不驗證內部結構,對齊
+// ContentPage.Content 的既有不驗證慣例。
+type ItineraryPage struct {
+	ID        string    `json:"id"`
+	OwnerID   string    `json:"ownerId,omitempty"`
+	Slug      string    `json:"slug"`
+	Content   string    `json:"-"`
+	Status    string    `json:"status"`
+	UpdatedBy string    `json:"updatedBy,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 // Entry 是主體:LLM 處理訊息後產出的「事件/條目」,承載所有結構化結果。
 // 可獨立存在,並可關聯多則來源訊息(多對多)。
 type Entry struct {

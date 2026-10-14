@@ -75,7 +75,7 @@ func Open(dsn string) (*Store, error) {
 	// 處理的情境,AutoMigrate 建的新表從一開始就是正確的複合索引,不需要
 	// 額外的舊索引清理邏輯。
 	migrationOK := true
-	if err := db.AutoMigrate(&userRow{}, &tripRow{}, &entryRow{}, &memberLink{}, &publicLinkRow{}, &cliAuthSessionRow{}, &attractionRow{}, &contentPageRow{}, &blogProfileRow{}, &uploadedPhotoRow{}, &photoVariantRow{}, &photoCacheRow{}, &placeDetailsCacheRow{}, &googlePlacePhotoRow{}, &placePexelsPhotoRow{}, &pexelsPhotoCacheRow{}, &photoAssetRow{}, &apiRequestLogRow{}, &geoAPICallLogRow{}, &geoRateLimitRow{}, &planAiChatMessageRow{}); err != nil {
+	if err := db.AutoMigrate(&userRow{}, &tripRow{}, &entryRow{}, &memberLink{}, &publicLinkRow{}, &cliAuthSessionRow{}, &attractionRow{}, &contentPageRow{}, &itineraryPageRow{}, &blogProfileRow{}, &uploadedPhotoRow{}, &photoVariantRow{}, &photoCacheRow{}, &placeDetailsCacheRow{}, &googlePlacePhotoRow{}, &placePexelsPhotoRow{}, &pexelsPhotoCacheRow{}, &photoAssetRow{}, &apiRequestLogRow{}, &geoAPICallLogRow{}, &geoRateLimitRow{}, &planAiChatMessageRow{}); err != nil {
 		log.Printf("!!! AutoMigrate 失敗,資料庫 schema 可能未同步,部分功能可能異常或無法使用,請盡快檢查: %v", err)
 		migrationOK = false
 	}

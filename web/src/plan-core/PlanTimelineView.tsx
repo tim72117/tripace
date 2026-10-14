@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useRef, useState } from 'react'
-import type { MutableRefObject, PointerEvent as ReactPointerEvent, Ref, ReactNode, UIEventHandler } from 'react'
+import type { CSSProperties, MutableRefObject, PointerEvent as ReactPointerEvent, Ref, ReactNode, UIEventHandler } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Bus, Car, Footprints, TrainFront } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -226,6 +226,28 @@ export interface PlanTimelineViewProps {
   // hoverStopId state 並傳進來(見 home/AiPlanPhoneDemoScreen.tsx 的
   // 完整說明)——/app、/trip-plan 等正式頁不使用插槽,不需要傳這個 prop。
   hoveredStopIdForCard?: string | null
+  // renderAnchorIcon——選填:在軸線圓點(anchorDot)裡疊一個 icon,2026-10
+  // 新增(使用者明確要求「在時間軸的元件放進對應地點的 icon」,只套用
+  // itineraries 展示頁,不影響 /app、/trip-plan 等正式規劃頁面)。
+  // 跟 renderStopCard 不同,這個插槽不是「替換掉」anchorDot 的渲染——
+  // anchorDot 本身的拖拉手勢/進場動畫/選取狀態樣式(見上方
+  // getStopTimeDragBounds/onDragStopTime 的完整說明)仍由這個元件
+  // 自己管理,呼叫端只負責提供「要疊在圓點正中央的視覺內容」(通常是
+  // 一個小 icon),回傳 null 時這個節點的圓點維持原本的空心圓點樣式。
+  // 未傳這個 prop 時行為與新增這個插槽之前完全相同。
+  renderAnchorIcon?: (step: PlanNode) => ReactNode
+  // anchorDotSize——選填:軸線圓點的直徑(像素),2026-10 新增,同
+  // renderAnchorIcon 的完整說明。預設 12px 的圓點太小放不下可辨識的
+  // icon,未傳這個 prop 時維持共用元件原本的 CSS 尺寸(見 .anchorDot
+  // 的完整說明),/app、/trip-plan 等正式頁不傳就不受影響;itineraries
+  // 傳一個較大的值(例如 22)讓圓點有足夠空間容納 renderAnchorIcon 回傳
+  // 的 icon 內容。實作上透過 .axisCol 的 --anchor-dot-size CSS 自訂屬性
+  // 驅動(見 .module.css .axisCol 的完整說明),連帶讓 axisLineAbove/
+  // axisLineBelow 同步對齊新的圓點中心,不會因為放大圓點而讓軸線偏移
+  // ——這是使用者明確要求的做法,原本的城牆/捲軸邊框 bug 也是類似的
+  // CSS 疊加副作用,這次改用 CSS 變數而非寫死數值,從根本避免同一類
+  // 對齊問題。
+  anchorDotSize?: number
   onOpenPhotos: (photos: { photos: string[]; alt: string }) => void
   // mountedIdsRef——追蹤「已經播過進場動畫的節點 id」,呼叫端
   // (TripPlanPage.tsx)擁有這個 ref 的生命週期,這裡只負責讀寫其內容,
@@ -312,6 +334,8 @@ export function PlanTimelineView({
   onHoverTransit,
   renderStopCard,
   hoveredStopIdForCard,
+  renderAnchorIcon,
+  anchorDotSize,
   onOpenPhotos,
   mountedIdsRef,
   scrollRef,
@@ -538,7 +562,15 @@ export function PlanTimelineView({
                         <div className={`${styles.stopTime} ${mountedClass}`}>
                           <div className={`${styles.stopTimeText} ${isDraggingThis ? styles.stopTimeDragging : ''}`}>{displayTime}</div>
                         </div>
-                        <div className={styles.axisCol}>
+                        {/* --anchor-dot-size——見 .module.css .axisCol
+                            的完整說明,CSS 自訂屬性驅動
+                            axisLineAbove/axisLineBelow/anchorDot 三者
+                            的尺寸與對齊計算,anchorDotSize 未傳時維持
+                            undefined 不覆寫 CSS 預設的 12px。 */}
+                        <div
+                          className={styles.axisCol}
+                          style={anchorDotSize != null ? ({ '--anchor-dot-size': `${anchorDotSize}px` } as CSSProperties) : undefined}
+                        >
                           {idx > 0 && <div className={styles.axisLineAbove} />}
                           {/* axisLineBelow——「還有下一個節點」或「正在生成中」
                               任一成立時都畫出來,避免最後一張卡片下方到呼吸點
@@ -555,18 +587,23 @@ export function PlanTimelineView({
                               能拖拉時出現(見 .anchorDotDraggable 的
                               完整說明)。 */}
                           <div
-                            className={`${styles.anchorDot} ${mountedClass} ${justMounted ? styles.anchorPop : ''} ${getStopTimeDragBounds && onDragStopTime ? styles.anchorDotDraggable : ''} ${isDraggingThis ? styles.anchorDotDragging : ''}`}
+                            className={`${styles.anchorDot} ${mountedClass} ${justMounted ? styles.anchorPop : ''} ${getStopTimeDragBounds && onDragStopTime ? styles.anchorDotDraggable : ''} ${isDraggingThis ? styles.anchorDotDragging : ''} ${anchorDotSize != null ? styles.anchorDotWithIcon : ''}`}
                             // style 的 translateY——見 dragTranslateY 的
                             // 完整說明,只在這個節點正在被拖拉時套用,其餘
                             // 時候維持 undefined(不覆寫 CSS 既有的
                             // transform,例如 .anchorDotDragging 的
-                            // scale(1.3))。isDraggingThis 為 true 時
-                            // dragState 必然非 null(見上方宣告),但
-                            // TypeScript narrowing 跨不過 isDraggingThis
-                            // 這個中間變數,仍需要 dragState? 保險。
+                            // scale(1.3))。圓點實際尺寸由外層 .axisCol
+                            // 的 --anchor-dot-size 自訂屬性驅動(見上方
+                            // 完整說明),這裡不需要另外設定 width/height。
+                            // isDraggingThis 為 true 時 dragState 必然
+                            // 非 null(見上方宣告),但 TypeScript
+                            // narrowing 跨不過 isDraggingThis 這個中間
+                            // 變數,仍需要 dragState? 保險。
                             style={isDraggingThis && dragState ? { transform: `translateY(${dragTranslateY(dragState)}px) scale(1.3)` } : undefined}
                             onPointerDown={(e) => handlePointerDown(e, p.id, p.time)}
-                          />
+                          >
+                            {renderAnchorIcon?.(p)}
+                          </div>
                         </div>
                         <div className={`${styles.stopCardWrap} ${mountedClass} ${justMounted ? styles.cardSlide : ''}`}>
                           {renderStopCard ? (

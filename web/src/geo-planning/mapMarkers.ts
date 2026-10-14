@@ -203,7 +203,20 @@ export type PlanStopMarkerState = 'base' | 'hover' | 'selected'
 // layout box 完全相同——AdvancedMarkerElement 以 content 底部中央錨定
 // 座標,畫布尺寸若隨狀態改變,圓心會跟著跳位(tripEntry 旗子 24→30 就
 // 有這個問題,是既有慣例但這裡順手避掉)。
-export function planStopMarkerContent(
+// planStopMarkerSvgString——跟 planStopMarkerContent 完全相同的繪圖邏輯,
+// 差別只在回傳 SVG 字串而不是解析好的 DOM 元素。2026-10 新增,使用者
+// 明確要求「hand-drawn 改用普通標記(非 Advanced Marker)」,當時改走
+// google.maps.Marker(舊版,不吃 DOM Node,只吃 icon 圖片網址),需要
+// 這段字串轉成 data URI。2026-10 二次改版後,舊版 Marker 分支已換成
+// geo-planning/planStopOverlay.ts 的 OverlayView 實作(理由見該檔案
+// 開頭的完整說明:靜態 icon 圖片內部的 SVG 節點不能套用
+// .ps-halo/.ps-ripple 這兩個外部 CSS 動畫),該檔案改用
+// svgStringToElement 把這支函式的輸出解析成真正的 DOM 節點塞進
+// OverlayView 的 div,不再需要轉成 data URI。planStopMarkerContent 內部
+// 也呼叫這支函式再轉成 DOM 元素,三處(AdvancedMarkerElement/
+// PlanStopOverlay/這裡)共用同一份繪圖邏輯,不是維護多份調校過的 SVG
+// 字串。
+export function planStopMarkerSvgString(
   state: PlanStopMarkerState,
   color: string,
   // entering——這顆 marker 是不是「剛從 base 進入強調態」。只有 true 才
@@ -219,12 +232,33 @@ export function planStopMarkerContent(
   // 光暈的進場縮放也一併受控:hover→selected 時若讓光暈再 pop 一次,
   // 點擊會感覺像「重新進場」而不是「落定」。
   entering = true,
-): SVGElement {
+  // glyphSvg——選填,2026-10 新增(使用者明確要求「地圖上的食物小點顯示
+  // 食物 icon」,只套用在 itineraries 展示頁,見 usePlanStopMarkers.ts
+  // PlanStopMarker.glyph 的完整說明)。疊在圓點正中央的一段 SVG fragment
+  // (不含外層 <svg> 標籤,直接拼進這個函式自己的 svg 字串),未傳時維持
+  // 原本的純色圓點——/app、/trip-plan 等正式規劃頁的呼叫端不傳這個參數,
+  // 完全不受影響。放在最上層(所有圓圈之後)確保圖示不被任何環/光暈
+  // 蓋住。
+  glyphSvg?: string,
+  // size——選填,2026-10 新增(使用者回報「地圖上顯示美食 icon 還沒做」
+  // 「圖案太小了」,確認方向「讓美食 marker 整顆圓點放大」):整顆
+  // marker(圓點+環+光暈+glyph)的渲染尺寸,未傳時維持原本的 14px。
+  // 做法是只改 <svg> 外層的 width/height,viewBox 固定不變仍是
+  // "0 0 14 14"——內部所有座標(cx/cy/r 等)完全不用重新計算,瀏覽器
+  // 依 viewBox 與 width/height 的比例自動等比縮放全部內容(含 glyph),
+  // 比逐一調整每個圖形的座標/半徑簡單可靠,也保證 glyph 跟圓點本體
+  // 永遠同步縮放、不會對不齊。/app、/trip-plan 等正式規劃頁的呼叫端
+  // 不傳這個參數,維持原本 14px,完全不受影響。
+  size = 14,
+): string {
   const head =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14" overflow="visible" style="overflow:visible">'
+    '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 14 14" overflow="visible" style="overflow:visible">'
   if (state === 'base') {
-    return svgStringToElement(
-      head + '<circle cx="7" cy="7" r="5.5" fill="' + color + '" stroke="#FDFCFA" stroke-width="2"/></svg>',
+    return (
+      head +
+      '<circle cx="7" cy="7" r="5.5" fill="' + color + '" stroke="#FDFCFA" stroke-width="2"/>' +
+      (glyphSvg ?? '') +
+      '</svg>'
     )
   }
   // ringOpacity——hover 與 selected 唯一的差異(見上方對這個選擇的完整
@@ -256,7 +290,7 @@ export function planStopMarkerContent(
   // AdvancedMarkerElement 每次替換 content 都會重建元素、動畫從頭播——
   // 這個特性正好就是「hover 進來時播一次擴散」想要的行為(但也因此
   // 需要 usePlanStopMarkers 那側避免無謂的重複替換,見該檔案的說明)。
-  const svg =
+  return (
     head +
     // 柔光暈(selected 直徑 34px / hover 42px,見上方 haloRadius):跟
     // .geo-attraction-glow 同一套語彙。用
@@ -276,8 +310,23 @@ export function planStopMarkerContent(
     '<circle cx="7" cy="7" r="10.75" fill="none" stroke="' + color + '" stroke-width="2.5" stroke-opacity="' + ringOpacity + '"/>' +
     '<circle cx="7" cy="7" r="8" fill="none" stroke="#FDFCFA" stroke-width="3"/>' +
     '<circle cx="7" cy="7" r="6.5" fill="' + color + '"/>' +
+    (glyphSvg ?? '') +
     '</svg>'
-  return svgStringToElement(svg)
+  )
+}
+
+// planStopMarkerContent——AdvancedMarkerElement.content 要求真正的 DOM
+// Node,這裡直接包一層 svgStringToElement 轉換 planStopMarkerSvgString
+// 的輸出,簽名與既有行為完全不變,/app、/trip-plan 等正式規劃頁的呼叫端
+// 不受這次重構影響。
+export function planStopMarkerContent(
+  state: PlanStopMarkerState,
+  color: string,
+  entering = true,
+  glyphSvg?: string,
+  size = 14,
+): SVGElement {
+  return svgStringToElement(planStopMarkerSvgString(state, color, entering, glyphSvg, size))
 }
 
 // currentLocationMarkerContent:使用者目前位置的標記——2026-09 新增,

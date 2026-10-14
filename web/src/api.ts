@@ -512,6 +512,33 @@ export function fetchPublicGeoAttractions(cfg: ClientConfig, city: string) {
   )
 }
 
+// PublicGeoAttractionByID——fetchPublicGeoAttractionByID 的回應形狀,對齊
+// 後端 handlePublicGeoAttractionByID 的 JSON 輸出(見該函式的完整說明)。
+// summary/googlePhotoUrls 選填:summary 可能是 nil(景點建檔時沒填);
+// googlePhotoUrls 只在 attraction 有 placeId 且 photo_assets 查到新鮮
+// 記錄時才會出現。
+export interface PublicGeoAttractionByID {
+  id: string
+  name: string
+  lat: number
+  lng: number
+  summary?: string
+  googlePhotoUrls?: string[]
+}
+
+// fetchPublicGeoAttractionByID:GET /public/geo/attraction/{id}(免登入,
+// 見後端 handlePublicGeoAttractionByID 的完整說明——2026-10 新增這個
+// 公開掛載點,複用原本只給 /internal/geo/plan-ai/* 用的同一支 handler)
+// ——供公開展示頁(web/src/itineraries/「精選行程」展示頁)依已建檔
+// attraction 的 id 查詢名稱/座標/Google 照片,取代原本把查詢結果的照片
+// 網址寫死存進行程 content JSON 的做法(那種做法會讓資料跟
+// photo_assets 的實際狀態脫鉤,見 useStopAttractionDetails.ts 的完整
+// 說明)。id 不存在時後端回 404(ApiError),呼叫端應視為「這一站沒有
+// 對應的已建檔地標照片」,不是整頁壞掉。
+export function fetchPublicGeoAttractionByID(cfg: ClientConfig, id: string) {
+  return request<PublicGeoAttractionByID>(cfg, 'GET', `/public/geo/attraction/${encodeURIComponent(id)}`)
+}
+
 // GeoGeocodeCandidate:fetchGeoGeocode 單筆候選地點——對齊後端
 // handleGeoGeocode 的回應形狀(見該函式的說明)。placeId 供使用者點選
 // 候選後另外呼叫 fetchGeoPlaceDetails 補查完整資訊(含照片,Pexels-first
@@ -1254,6 +1281,36 @@ export function fetchPublicBlogArticle(cfg: ClientConfig, handle: string, slug: 
     cfg,
     'GET',
     `/v1/blog/${encodeURIComponent(handle)}/${encodeURIComponent(slug)}`,
+  )
+}
+
+// fetchPublicItineraryPage:GET /v1/itinerary-pages/{slug}(免登入,見
+// 後端 handlePublicItineraryPage/itinerary_page.go 的完整說明)——供
+// 「AI 排過的主題行程展示」(web/src/itineraries/)讀取已透過 CLI
+// (itinerary-page add/set/publish)發布的範例行程內容。只回傳
+// status=published 的頁面,草稿一律 404(ApiError),理由同
+// fetchPublicThemePage。
+//
+// 回應形狀用 unknown——實際內容形狀由呼叫端依
+// web/src/itineraries/types.ts 的 SampleItinerary 自行斷言,api.ts
+// 不耦合那個模組的型別定義,理由同 fetchPublicThemePage。
+export function fetchPublicItineraryPage(cfg: ClientConfig, slug: string) {
+  return request<{ id: string; slug: string; content: unknown; status: string; updatedAt: string }>(
+    cfg,
+    'GET',
+    `/v1/itinerary-pages/${encodeURIComponent(slug)}`,
+  )
+}
+
+// fetchPublicItineraryPageList:GET /v1/itinerary-pages(免登入,見後端
+// handlePublicItineraryPageList/itinerary_page.go 的完整說明)——供清單頁
+// (AiItinerariesRoute.tsx)把已發布進資料庫的行程併進靜態 registry.ts
+// 清單一起顯示。只回傳 status=published 的頁面,理由同 fetchPublicItineraryPage。
+export function fetchPublicItineraryPageList(cfg: ClientConfig) {
+  return request<{ itineraryPages: { id: string; slug: string; content: unknown; status: string; updatedAt: string }[] }>(
+    cfg,
+    'GET',
+    '/v1/itinerary-pages',
   )
 }
 

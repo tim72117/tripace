@@ -1,0 +1,10 @@
+/* AiItinerariesRoute 外殼:撐滿視窗、自己是捲動容器。頂部的浮動導覽按鈕
+   (SiteNavButtons,fixed 定位,底緣約 52px)會蓋住內容頂端,所以內容頁各自
+   用 padding-top: 72px 讓出位置(見兩個頁面的 .page)。 */
+.root {
+  height: 100dvh;
+  overflow-y: auto;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
+}

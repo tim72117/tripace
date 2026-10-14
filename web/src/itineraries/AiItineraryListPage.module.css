@@ -1,0 +1,212 @@
+/* AiItineraryListPage 專屬樣式。配色全用既有 --ios-* / --color-* token,淺色/
+   深色模式自動跟著走。頂部有浮動導覽按鈕(底緣約 52px),padding-top 72px 讓位。 */
+.page {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 72px 20px 64px;
+}
+
+.heading {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+}
+.subheading {
+  margin: 6px 0 20px;
+  font-size: 14px;
+  color: var(--ios-gray);
+}
+
+/* 篩選列:每一列「標籤 + 選項膠囊」,選項多時自動換行。 */
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.filterRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.filterLabel {
+  width: 32px;
+  font-size: 12px;
+  color: var(--ios-gray);
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-dark);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.chip:hover {
+  background: var(--ios-active);
+}
+.chipActive {
+  border-color: var(--ios-blue);
+  color: var(--ios-blue);
+  font-weight: 600;
+}
+.chipCount {
+  font-size: 11px;
+  color: var(--ios-gray);
+}
+
+.count {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--ios-gray);
+}
+
+/* 卡片牆:自動依寬度排欄(每欄至少 280px),範例行程變多時自然往下長。 */
+.grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: 1px solid var(--ios-sep);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--ios-card);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.card:hover {
+  border-color: var(--ios-blue);
+  transform: translateY(-2px);
+}
+.card:focus-visible {
+  outline: 2px solid var(--ios-blue);
+  outline-offset: 2px;
+}
+
+/* cover——固定 16:9。圖片用絕對定位鋪滿並由 overflow: hidden 裁切,而不是
+   height: 100%:後者對「高度 auto 的容器」沒有約束力,直式照片會用自己的原始
+   比例把整個封面(連同整排卡片)撐高。 */
+.cover {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--ios-active);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.coverImg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.coverFallback {
+  color: var(--ios-gray);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px 16px;
+  flex: 1 1 auto;
+}
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+  color: var(--ios-gray);
+}
+.metaItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+/* summary 最多顯示 3 行,卡片高度不因簡介長短而差太多。 */
+.summary {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-dark);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+.tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: var(--ios-active);
+  color: var(--color-dark);
+}
+
+/* 空狀態 */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 72px 24px;
+}
+.emptyIcon {
+  color: var(--ios-gray);
+}
+.emptyTitle {
+  margin: 12px 0 14px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.clear {
+  padding: 7px 16px;
+  border: 1px solid var(--ios-blue);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ios-blue);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (max-width: 480px) {
+  .page {
+    padding: 72px 16px 48px;
+  }
+  .heading {
+    font-size: 21px;
+  }
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

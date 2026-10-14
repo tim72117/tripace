@@ -326,9 +326,13 @@ func (s *Server) handlePublicGeoAttractionSearch(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusOK, map[string]any{"attractions": attractions})
 }
 
-// GET /internal/geo/plan-ai/attraction/{id}
+// GET /internal/geo/plan-ai/attraction/{id}(需登入)、2026-10 起同時也
+// 掛在 GET /public/geo/attraction/{id}(免登入,見 api.go 該路由註冊處的
+// 完整說明——web/src/itineraries/ 的精選行程展示頁需要訪客也能查到
+// 地標照片)。同一支 handler、同一份邏輯,兩個掛載點只是權限要求不同,
+// 不是兩份獨立實作。
 //
-// 用資料庫 id 查單筆已建檔景點(store.GetAttraction,需登入)——供
+// 用資料庫 id 查單筆已建檔景點(store.GetAttraction)——供
 // /plan-ai 的 search_attraction/add_attraction 工具使用(見
 // attractionTools.ts 的完整說明):2026-09 使用者明確要求
 // 「search_attraction 不用完整資訊,LLM 只送 attraction id 就好,前端會

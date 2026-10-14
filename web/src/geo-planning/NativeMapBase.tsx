@@ -3,7 +3,7 @@ import { importLibrary } from '@googlemaps/js-api-loader'
 import type { ReactNode } from 'react'
 import type { Theme } from '../theme'
 import { ensureOptionsSet, themeToColorScheme } from './googleMapsBootstrap'
-import styles from './ExploreMap.module.css'
+import cssStyles from './ExploreMap.module.css'
 
 // NativeMapBase——只做「建立一個 Google Map 實例」這件事的最小元件,不掛
 // 任何搜尋框/類別標籤/景點 overlay/marker/panTarget 等行為。這是
@@ -52,6 +52,7 @@ export function NativeMapBase({
   showZoomControl = true,
   theme,
   mapId,
+  styles,
   onHandleChange,
   onPoiClick,
   children,
@@ -76,6 +77,15 @@ export function NativeMapBase({
   // lodging.json 是對應的樣式快照)——這是唯一需要跟正式功能不同樣式的
   // 呼叫端,不影響共用元件本身的預設行為。
   mapId?: string
+  // styles——inline JS 樣式規則(google.maps.MapTypeStyle[]),2026-10
+  // 新增,使用者明確要求「用 map sdk 繪製手繪可愛風地圖」。跟 mapId(Cloud-
+  // based styling)是官方文件明定互斥的兩套機制:地圖一旦帶 mapId,
+  // Console 上設定的 Cloud Style 會覆蓋/忽略這裡傳入的 inline styles,
+  // 若呼叫端傳了 styles,這個元件會完全不帶 mapId(連預設的
+  // VITE_GOOGLE_MAPS_MAP_ID 也不退回),讓 inline styles 真正生效,見下方
+  // 建圖 options 的判斷。沒有 Cloud Console 存取權限、或想直接在程式碼裡
+  // 定義一次性視覺風格(不需要走 Console 手動設定流程)時用這個管道。
+  styles?: google.maps.MapTypeStyle[]
   // onHandleChange:每次 mapRef/mapReady 有實質變化就呼叫一次,把
   // MapHandle 往上交給呼叫端——呼叫端拿到後自行組裝掛載式 hook(見檔案
   // 開頭說明)。用 callback 而非直接 return 值,是因為 mapRef 是 ref、
@@ -166,8 +176,16 @@ export function NativeMapBase({
           center,
           zoom,
           ...(minZoom != null ? { minZoom } : {}),
-          mapId: mapId ?? (import.meta.env.VITE_GOOGLE_MAPS_MAP_ID as string),
-          colorScheme,
+          // styles 有值時完全不帶 mapId、也不帶 colorScheme(2026-10 修正
+          // ——實測發現 styles 與 colorScheme 同時存在會讓地圖初始化失敗,
+          // 畫面顯示 Google 原生的「這個網頁無法正確載入 Google 地圖」
+          // 錯誤訊息:colorScheme/Dynamic Color Scheme 是 mapId 底下的
+          // vector map 渲染管線專屬選項,legacy JSON styles 走的是不支援
+          // colorScheme 的 raster map 渲染管線,兩者混用會被 SDK 拒絕,
+          // 不是單純「其中一個被忽略」那麼溫和的失敗方式)。mapId 跟
+          // colorScheme 互斥的理由同上一版註解——Cloud Style 會蓋掉這裡
+          // 的 inline styles。
+          ...(styles ? { styles } : { mapId: mapId ?? (import.meta.env.VITE_GOOGLE_MAPS_MAP_ID as string), colorScheme }),
           disableDefaultUI: true,
           zoomControl: showZoomControl,
           gestureHandling: 'greedy',
@@ -216,7 +234,7 @@ export function NativeMapBase({
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKey, center, theme, zoom, minZoom, mapId, isVisible])
+  }, [apiKey, center, theme, zoom, minZoom, mapId, styles, isVisible])
 
   // 通知呼叫端的唯一進入點——依賴 mapVersion(state,見該欄位的完整
   // 說明)而非只依賴 mapReady:theme 改變觸發重建時,importLibrary('maps')
@@ -272,13 +290,13 @@ export function NativeMapBase({
   }, [])
 
   return (
-    <div className={styles.wrap}>
-      <div ref={containerRef} className={styles.map} />
+    <div className={cssStyles.wrap}>
+      <div ref={containerRef} className={cssStyles.map} />
       {children}
       {err && (
-        <div className={styles.mapError}>
+        <div className={cssStyles.mapError}>
           <span>地圖載入失敗</span>
-          <span className={styles.mapErrorDetail}>{err}</span>
+          <span className={cssStyles.mapErrorDetail}>{err}</span>
         </div>
       )}
     </div>

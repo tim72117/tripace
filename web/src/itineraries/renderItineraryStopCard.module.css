@@ -1,0 +1,171 @@
+/* renderItineraryStopCard.tsx 專屬樣式——itineraries 展示頁放大版
+   地點卡(見該檔案的完整說明)。版型對齊 plan-core/PlanTimelineView.module.css
+   的 .stopCard(縮圖+文字兩欄橫排),縮圖 96px/標題 19px 比正式頁預設的
+   64px/17px 明顯放大,其餘(背景色/邊框/圓角/陰影/選取狀態)沿用同一套
+   --ios- 開頭 token,視覺語言一致,不是另起一套配色。
+   2026-10 修改:圖片改成方形、貼齊卡片左側(使用者明確要求「地點卡圖片
+   不要用圓的,用圖卡左側方形圖片」)——.stopCard 本身改成 padding:0
+   (圖片要頂到卡片左/上/下邊緣,不能有內距),文字區塊改在 .stopBody
+   自己補 padding,圖片的圓角只在左側兩個角跟卡片外框對齊,右側直角跟
+   文字區塊相接,呼應「圖卡」版型(圖片是卡片的一部分,不是卡片內獨立
+   的圓形頭像)。 */
+.stopCard {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 6px 16px -8px rgba(61, 53, 48, 0.14);
+  max-width: 460px;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.stopCard:hover {
+  border-color: var(--ios-sand);
+}
+.stopCard:focus-visible {
+  outline: 2px solid var(--ios-sand);
+  outline-offset: 2px;
+}
+.stopCardSelected {
+  border-color: var(--ios-sand);
+  box-shadow: 0 0 0 2px var(--ios-sand), 0 6px 16px -8px rgba(61, 53, 48, 0.14);
+}
+
+/* stopCardPlayful——手繪卡通版樣式(2026-10 新增,使用者明確要求「圖卡
+   加入一些手繪卡通樣式,活潑一點」,只套在 itinerary.mapStyle ===
+   'hand-drawn' 的行程,見 renderItineraryStopCard.tsx createRenderItineraryStopCard
+   的完整說明)。設計方向對齊 handDrawnMapStyle.ts 的暖色調美學,但這裡
+   走更明顯的「卡通貼紙卡」語彙,跟地圖樣式(偏寫實簡化)拉開一點差異,
+   呼應「活潑」而非只是「柔和」:
+   - 邊框加粗到 3px、改用暖橘色而非中性灰階的 --ios-sep,模擬彩色蠟筆
+     描邊的手感
+   - 四角圓角刻意不對稱(18px/22px/18px/24px),打破標準卡片工整的
+     四角等圓角,帶一點手繪時「畫不準」的隨興感,但幅度克制,不影響
+     可讀性或版面對齊
+   - 陰影改用暖橘色調且位移更明顯(8px 而非 6px),模擬貼紙浮貼在紙面
+     上的立體感,而非標準 UI 元件的柔和投影
+   - hover/selected 時輕微旋轉(1.5deg)+ 位移,像貼紙被手指輕輕撥動,
+     純視覺回饋,不影響點擊熱區(transform 不改變版面佈局尺寸) */
+.stopCardPlayful {
+  border: 3px solid #e8a561;
+  border-radius: 18px 22px 18px 24px;
+  box-shadow: 4px 8px 0 -2px rgba(232, 165, 97, 0.35);
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+.stopCardPlayful:hover {
+  border-color: #d88f45;
+  transform: rotate(-1.5deg) translateY(-2px);
+}
+.stopCardPlayfulSelected {
+  border-color: #d88f45;
+  box-shadow: 4px 8px 0 -2px rgba(216, 143, 69, 0.5), 0 0 0 2px #e8a561;
+  transform: rotate(1.5deg) translateY(-2px);
+}
+
+/* playfulBadge——縮圖右上角的小貼紙裝飾,純裝飾不承載資訊(見 .tsx 的
+   aria-hidden 說明)。白底圓形徽章疊一個地點釘圖示,模擬手帳貼紙的
+   質感,輕微傾斜呼應整張卡片的活潑調性。 */
+.playfulBadge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  transform: rotate(8deg);
+}
+
+.stopThumb {
+  position: relative;
+  width: 112px;
+  align-self: stretch;
+  flex: none;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 38px;
+  line-height: 1;
+  background: var(--ios-bg);
+}
+.stopThumbImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.stopThumbPhotoBtn {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: block;
+}
+.stopThumbPhotoCount {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.thumbSpinner {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 2px solid var(--ios-sep);
+  border-top-color: var(--ios-sand);
+  animation: itineraryThumbSpin 0.8s linear infinite;
+}
+@keyframes itineraryThumbSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.stopBody {
+  min-width: 0;
+  flex: 1;
+  padding: 16px;
+}
+.stopMeta {
+  font-size: 13px;
+  color: var(--ios-gray);
+  letter-spacing: 0.02em;
+  margin-bottom: 3px;
+}
+.stopName {
+  font-size: 19px;
+  font-weight: 600;
+  margin-bottom: 5px;
+  overflow-wrap: break-word;
+}
+.stopDesc {
+  font-size: 14px;
+  color: var(--ios-gray);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

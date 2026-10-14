@@ -1,0 +1,310 @@
+/* renderOnsenAutumnStopCard.tsx 專屬樣式——「秋日泡湯」主題地點卡
+   (2026-10 新增,只套在 itinerary.cardTheme === 'onsen-autumn' 的行程,
+   目前是 jozankei-1day,見該檔案與 types.ts 的完整說明)。
+   版型骨架對齊 renderItineraryStopCard.module.css 的 .stopCard(左側方形
+   縮圖 112px + 右側文字,max-width 460px,縮圖頂到卡片左/上/下邊緣),
+   讓這張卡片在同一個時間軸版面裡的尺寸/節奏跟其他行程一致;但配色
+   刻意不沿用 --ios- 系列 token,改用一組秋夜溫泉街的暖色票,跟地圖外框
+   的楓葉相框(AiItineraryDetailPageMapView.module.css 的 .mapleLeafRed
+   等)同一個色系:
+     #c8361e 楓紅  #a4321c 深楓紅  #e8742a 鏽橘  #e6a832 金黃
+     #7a2a12 深褐(描邊/標籤底)  #4a2316 墨褐(標題字)  #6b4a3a 淺褐(內文)
+     #fbf2e5 → #f3e0c6 和紙米色(卡片底)
+   這些色票集中寫在 .card 的自訂屬性(--oa- 開頭)上,底下所有規則都
+   引用它,改色只要改一處。
+
+   質感做法全部用 CSS 漸層,不用任何圖片資產(這份行程目前沒有真實
+   圖片的資產管線):
+   - 和紙:底色線性漸層(左上淺→右下略深)疊一層極淡的斜向
+     repeating-linear-gradient 當紙纖維
+   - 木紋:縮圖區外緣 3px 的深褐描邊,搭配卡片左側的縱向木紋
+     repeating-linear-gradient(見 .thumb::after)
+   - 蒸氣:縮圖區三縷 SVG 路徑做上升+淡出動畫(見 .steamWisp)
+
+   注意:這個檔案的註解裡不要出現「星號緊接斜線」這組字元(例如寫
+   成「--oa- 開頭」就好,不要用萬用字元寫法),PostCSS 會把它當成註解
+   結尾,整份樣式表會從那個位置開始壞掉。 */
+.card {
+  --oa-maple: #c8361e;
+  --oa-maple-deep: #a4321c;
+  --oa-rust: #e8742a;
+  --oa-gold: #e6a832;
+  --oa-bark: #7a2a12;
+  --oa-ink: #4a2316;
+  --oa-ink-soft: #6b4a3a;
+  --oa-paper: #fbf2e5;
+  --oa-paper-deep: #f3e0c6;
+
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  max-width: 460px;
+  border: 2px solid var(--oa-bark);
+  border-radius: 14px;
+  overflow: hidden;
+  cursor: pointer;
+  color: var(--oa-ink);
+  background-color: var(--oa-paper);
+  background-image:
+    repeating-linear-gradient(118deg, rgba(122, 42, 18, 0.035) 0 2px, rgba(122, 42, 18, 0) 2px 7px),
+    linear-gradient(135deg, var(--oa-paper) 0%, var(--oa-paper-deep) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 248, 236, 0.9) inset,
+    0 8px 18px -10px rgba(74, 35, 22, 0.45);
+  transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
+}
+/* hover/selected:輕微上浮 + 金黃光暈,像溫泉街入夜後燈籠亮起的那種
+   暖光;不旋轉——這套走的是「沉靜溫潤」,不是手繪貼紙那種活潑撥動。 */
+.card:hover {
+  border-color: var(--oa-maple-deep);
+  transform: translateY(-2px);
+  box-shadow:
+    0 1px 0 rgba(255, 248, 236, 0.9) inset,
+    0 12px 22px -10px rgba(74, 35, 22, 0.5);
+}
+.card:focus-visible {
+  outline: 2px solid var(--oa-gold);
+  outline-offset: 2px;
+}
+.cardSelected {
+  border-color: var(--oa-maple);
+  box-shadow:
+    0 1px 0 rgba(255, 248, 236, 0.9) inset,
+    0 0 0 3px rgba(230, 168, 50, 0.55),
+    0 12px 22px -10px rgba(74, 35, 22, 0.5);
+}
+
+/* thumb——左側縮圖區。深楓紅往下沉到深褐的放射漸層當溫泉池面的底色
+   (有照片時照片會整個蓋住它),右緣 3px 深褐描邊 + 縱向木紋
+   (::after)當縮圖跟文字區之間的木框分隔。position:relative 只在
+   .thumb 這一個自己的 class 上宣告——它不是任何 absolute 元素,給
+   內部 absolute 的蒸氣/圖樣當定位基準。 */
+.thumb {
+  position: relative;
+  width: 112px;
+  flex: none;
+  align-self: stretch;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse 90% 60% at 50% 100%, rgba(230, 168, 50, 0.35) 0%, rgba(230, 168, 50, 0) 70%),
+    linear-gradient(180deg, var(--oa-maple) 0%, var(--oa-maple-deep) 55%, var(--oa-bark) 100%);
+}
+.thumb::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 5px;
+  background:
+    repeating-linear-gradient(180deg, rgba(255, 220, 170, 0.18) 0 3px, rgba(0, 0, 0, 0) 3px 9px),
+    var(--oa-bark);
+  pointer-events: none;
+}
+.thumbImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.thumbPhotoBtn {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  display: block;
+}
+.thumbPhotoCount {
+  position: absolute;
+  right: 8px;
+  bottom: 3px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(74, 35, 22, 0.75);
+  color: var(--oa-paper);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.thumbSpinner {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 2px solid rgba(251, 242, 229, 0.35);
+  border-top-color: var(--oa-gold);
+  animation: onsenThumbSpin 0.8s linear infinite;
+}
+@keyframes onsenThumbSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* steam——縮圖區背景的蒸氣 SVG,鋪滿整個縮圖、貼齊底部(viewBox 用
+   xMidYMax meet),疊在池面漸層之上、圖樣之下。三條路徑各自跑同一組
+   onsenSteamRise 動畫但延遲錯開,循環是「從底部淡入→上升→頂部淡出」,
+   透明度最高只到 0.55,蒸氣是氛圍不是主角,不能蓋過圖樣。
+   prefers-reduced-motion 時停掉動畫、固定在中間透明度,尊重系統設定。 */
+.steam {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.steamWisp {
+  fill: none;
+  stroke: rgba(255, 240, 220, 0.9);
+  stroke-width: 5;
+  stroke-linecap: round;
+  opacity: 0;
+  transform-origin: 50% 100%;
+  animation: onsenSteamRise 4.2s ease-in-out infinite;
+}
+.steamWisp2 {
+  animation-delay: 1.4s;
+}
+.steamWisp3 {
+  animation-delay: 2.8s;
+}
+@keyframes onsenSteamRise {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scaleX(0.9);
+  }
+  35% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-22px) scaleX(1.15);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .steamWisp {
+    animation: none;
+    opacity: 0.3;
+  }
+}
+
+/* glyph——縮圖區正中的主題圖樣(楓葉/溫泉饅頭/溫泉記號,見 .tsx
+   OnsenThumbGlyph 的完整說明)。金黃填色 + 深褐描邊,跟楓葉相框的
+   .mapleLeafGold 同一組配色;加一點深色投影讓它從楓紅底色上浮起來。 */
+.glyph {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  filter: drop-shadow(0 2px 3px rgba(60, 16, 6, 0.45));
+}
+.glyphLeaf,
+.glyphFill {
+  fill: var(--oa-gold);
+  stroke: var(--oa-bark);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+.glyphStem {
+  fill: none;
+  stroke: var(--oa-bark);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.glyphLine {
+  fill: none;
+  stroke: var(--oa-bark);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* body——右側文字區。padding 對齊既有卡片的 16px;position:relative
+   給右上角 .cornerLeaf 當定位基準(.body 不是 absolute 元素)。 */
+.body {
+  position: relative;
+  min-width: 0;
+  flex: 1;
+  padding: 14px 16px 16px;
+}
+/* cornerLeaf——右上角一小片金黃楓葉,低透明度壓在紙面上像壓花,
+   不搶文字;pointer-events:none 避免擋到卡片點擊。 */
+.cornerLeaf {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  fill: var(--oa-gold);
+  stroke: var(--oa-bark);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.cornerLeafStem {
+  fill: none;
+  stroke: var(--oa-bark);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+/* tag——「停留時間 · 類型」的暖簾式小標籤(見 .tsx 的完整說明)。深褐
+   底、米色字、字距略開,右側留出 .cornerLeaf 的空間(padding-right
+   由 .body 的寬度自然處理,標籤本身是 inline-flex 不撐滿)。 */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+  padding: 3px 9px 3px 8px;
+  border-radius: 4px;
+  background: var(--oa-bark);
+  color: var(--oa-paper);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+.tagDuration {
+  font-variant-numeric: tabular-nums;
+  color: var(--oa-gold);
+  font-weight: 600;
+}
+.tagDivider {
+  width: 1px;
+  height: 11px;
+  background: rgba(251, 242, 229, 0.45);
+}
+
+/* name——站名改用明體/襯線字型堆疊,帶一點日式溫泉旅館招牌的沉穩感;
+   字級 19px 對齊既有卡片的 .stopName,讓不同主題的卡片在同一個時間軸
+   裡標題份量一致。字型堆疊優先取各平台常見的中日文明體,最後退回
+   serif 通用字型——沒有外部字型資產,所有候選都是系統內建。 */
+.name {
+  font-family: "Noto Serif TC", "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", "Songti TC", "PMingLiU", serif;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  color: var(--oa-ink);
+  margin-bottom: 6px;
+  padding-right: 26px;
+  overflow-wrap: break-word;
+}
+.desc {
+  font-size: 14px;
+  color: var(--oa-ink-soft);
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

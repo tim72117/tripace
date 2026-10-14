@@ -178,6 +178,31 @@ func buildResources(c *httpClient, apiURL string) []resource {
 			},
 		},
 		{
+			// itinerary-page:範例行程內容管理(見「AI 排過的主題行程
+			// 展示」構想、server/internal/api/itinerary_page.go)——原本
+			// 寫死在 web/src/itineraries/example/*.ts 的範例行程
+			// 檔案,改成透過這組指令編輯、存進資料庫,前端打 API 讀取
+			// 內容渲染。
+			//
+			// 沒有 -official 旗標——跟 content-page 不同,範例行程目前
+			// 只有官方命名空間一種情境(沒有使用者自己發布行程的概念,
+			// 見 model.ItineraryPage/store.itineraryPageRow 的完整
+			// 說明),所有操作固定要求呼叫者是管理員(email 在
+			// ADMIN_BOOTSTRAP_EMAIL 白名單內,見
+			// requireItineraryPageAdmin 的完整說明),不需要像
+			// content-page 那樣額外用旗標切換身份。
+			name: "itinerary-page",
+			commands: []resourceCommand{
+				{verb: "add", run: func(args []string) { cmdItineraryPageAdd(c, args) }, usage: "tripace-cli itinerary-page add -slug 文字 (-content JSON | -content-file 路徑)"},
+				{verb: "list", run: func(args []string) { cmdItineraryPageList(c) }, usage: "tripace-cli itinerary-page list"},
+				{verb: "get", run: func(args []string) { cmdItineraryPageGet(c, args) }, usage: "tripace-cli itinerary-page get -slug 文字"},
+				{verb: "set", run: func(args []string) { cmdItineraryPageSet(c, args) }, usage: "tripace-cli itinerary-page set -slug 文字 (-content JSON | -content-file 路徑)"},
+				{verb: "publish", run: func(args []string) { cmdItineraryPagePublish(c, args, true) }, usage: "tripace-cli itinerary-page publish -slug 文字"},
+				{verb: "unpublish", run: func(args []string) { cmdItineraryPagePublish(c, args, false) }, usage: "tripace-cli itinerary-page unpublish -slug 文字"},
+				{verb: "delete", run: func(args []string) { cmdItineraryPageDelete(c, args) }, usage: "tripace-cli itinerary-page delete -slug 文字"},
+			},
+		},
+		{
 			// blog-profile:「部落客公開身份」設定(handle + 頭像網址,見
 			// server/internal/api/blog_profile.go)——用登入者自己的 JWT
 			// 身份(s.userFor(r)解析),不需要也不支援指定任意 ownerID,
@@ -1027,6 +1052,140 @@ func cmdContentPageDelete(c *httpClient, args []string) {
 	}
 	if err := c.contentPageDelete(*slug, *official); err != nil {
 		fatal("content-page delete: %v", err)
+	}
+	output(map[string]string{"deleted": *slug})
+}
+
+// loadItineraryPageContent 從 -content(JSON 字串)或 -content-file(檔案
+// 路徑)讀出範例行程內容,解析成 map[string]any——兩者二擇一,理由同
+// loadContentPageContent 的完整說明(行程內容通常很長,-content-file
+// 讓使用者可以先在編輯器裡寫好一份 JSON 檔案再交給 CLI)。
+func loadItineraryPageContent(content, contentFile string) map[string]any {
+	if content == "" && contentFile == "" {
+		fatal("需要 -content 或 -content-file 其中一個")
+	}
+	if content != "" && contentFile != "" {
+		fatal("-content 與 -content-file 只能二選一")
+	}
+	raw := []byte(content)
+	if contentFile != "" {
+		b, err := os.ReadFile(contentFile)
+		if err != nil {
+			fatal("讀取 -content-file 失敗: %v", err)
+		}
+		raw = b
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		fatal("content 必須是合法 JSON: %v", err)
+	}
+	return m
+}
+
+// cmdItineraryPageAdd 新增一筆範例行程內容(初始狀態為 draft,見
+// store.CreateItineraryPage 的完整說明)。走 POST
+// /internal/maintenance/itinerary-pages。沒有 -official 旗標,理由見
+// itinerary-page 資源註冊處的完整說明——固定寫入官方命名空間,呼叫者
+// 必須是管理員。
+func cmdItineraryPageAdd(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("itinerary-page add", flag.ExitOnError)
+	slug := fs.String("slug", "", "路由 slug（必填），例如 tainan-chikan-2day")
+	content := fs.String("content", "", "完整行程 JSON 字串（與 -content-file 二選一）")
+	contentFile := fs.String("content-file", "", "完整行程 JSON 檔案路徑（與 -content 二選一）")
+	updatedBy := fs.String("updated-by", "", "操作者識別（選填）")
+	_ = fs.Parse(args)
+	if *slug == "" {
+		fatal("itinerary-page add 需要 -slug")
+	}
+	m := loadItineraryPageContent(*content, *contentFile)
+	res, err := c.itineraryPageCreate(*slug, m, *updatedBy)
+	if err != nil {
+		fatal("itinerary-page add: %v", err)
+	}
+	output(res)
+}
+
+// cmdItineraryPageList 列出全部範例行程(含 draft)。走 GET
+// /internal/maintenance/itinerary-pages。
+func cmdItineraryPageList(c *httpClient) {
+	res, err := c.itineraryPageList()
+	if err != nil {
+		fatal("itinerary-page list: %v", err)
+	}
+	output(res)
+}
+
+// cmdItineraryPageGet 查詢單一範例行程目前的內容(含 draft,管理端點
+// 不區分發布狀態)——供「get 一份、本機編輯、set 整份寫回」的操作流程
+// 使用,理由同 cmdContentPageGet 的完整說明。走 GET
+// /internal/maintenance/itinerary-pages/{slug}。
+func cmdItineraryPageGet(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("itinerary-page get", flag.ExitOnError)
+	slug := fs.String("slug", "", "路由 slug（必填）")
+	_ = fs.Parse(args)
+	if *slug == "" {
+		fatal("itinerary-page get 需要 -slug")
+	}
+	res, err := c.itineraryPageGet(*slug)
+	if err != nil {
+		fatal("itinerary-page get: %v", err)
+	}
+	output(res)
+}
+
+// cmdItineraryPageSet 整份覆寫一筆既有範例行程的內容——不動發布狀態
+// (見 store.UpdateItineraryPageContent 的完整說明,改發布狀態要用
+// itinerary-page publish/unpublish)。走 PUT
+// /internal/maintenance/itinerary-pages/{slug}。
+func cmdItineraryPageSet(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("itinerary-page set", flag.ExitOnError)
+	slug := fs.String("slug", "", "路由 slug（必填）")
+	content := fs.String("content", "", "完整行程 JSON 字串（與 -content-file 二選一）")
+	contentFile := fs.String("content-file", "", "完整行程 JSON 檔案路徑（與 -content 二選一）")
+	updatedBy := fs.String("updated-by", "", "操作者識別（選填）")
+	_ = fs.Parse(args)
+	if *slug == "" {
+		fatal("itinerary-page set 需要 -slug")
+	}
+	m := loadItineraryPageContent(*content, *contentFile)
+	if _, err := c.itineraryPageUpdate(*slug, m, *updatedBy); err != nil {
+		fatal("itinerary-page set: %v", err)
+	}
+	output(map[string]string{"updated": *slug})
+}
+
+// cmdItineraryPagePublish 切換發布狀態——publish 設為 "published",
+// unpublish 設回 "draft"(見 handleMaintenanceItineraryPagePublish 的
+// 完整說明)。走 PATCH /internal/maintenance/itinerary-pages/{slug}/publish。
+func cmdItineraryPagePublish(c *httpClient, args []string, published bool) {
+	label := "itinerary-page publish"
+	if !published {
+		label = "itinerary-page unpublish"
+	}
+	fs := flag.NewFlagSet(label, flag.ExitOnError)
+	slug := fs.String("slug", "", "路由 slug（必填）")
+	_ = fs.Parse(args)
+	if *slug == "" {
+		fatal("%s 需要 -slug", label)
+	}
+	res, err := c.itineraryPagePublish(*slug, published)
+	if err != nil {
+		fatal("%s: %v", label, err)
+	}
+	output(res)
+}
+
+// cmdItineraryPageDelete 刪除一筆範例行程內容。走 DELETE
+// /internal/maintenance/itinerary-pages/{slug}。
+func cmdItineraryPageDelete(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("itinerary-page delete", flag.ExitOnError)
+	slug := fs.String("slug", "", "路由 slug（必填）")
+	_ = fs.Parse(args)
+	if *slug == "" {
+		fatal("itinerary-page delete 需要 -slug")
+	}
+	if err := c.itineraryPageDelete(*slug); err != nil {
+		fatal("itinerary-page delete: %v", err)
 	}
 	output(map[string]string{"deleted": *slug})
 }

@@ -512,6 +512,14 @@ func (s *Server) Routes() http.Handler {
 	// 那一篇文章(見 handlePublicBlogArticle 的完整說明)。
 	mux.HandleFunc("GET /v1/blog/{handle}/{slug}", s.handlePublicBlogArticle)
 
+	// 範例行程(itinerary_page.go)公開讀取——「AI 排過的主題行程展示」
+	// /itineraries 清單頁跟詳細頁會打這兩支,無需登入,只回傳
+	// status=published 的內容,理由同上方 content-pages 公開端點。管理
+	// 端點(新增/編輯/發布)在下面 internalMux 區塊,走
+	// /internal/maintenance/itinerary-pages/*。
+	mux.HandleFunc("GET /v1/itinerary-pages", s.handlePublicItineraryPageList)
+	mux.HandleFunc("GET /v1/itinerary-pages/{slug}", s.handlePublicItineraryPage)
+
 	// 依一批 photoId 批次查出可公開顯示的圖片資訊(blog_photo.go 的
 	// handlePublicBlogPhotosByIDs 完整說明)——供前端把已發布文章內容裡
 	// 存的 photoId 穩定識別碼展開成實際圖片網址。刻意掛在 /public/*
@@ -594,6 +602,21 @@ func (s *Server) Routes() http.Handler {
 	// 環境一律 404(handler 本身已實作/測試完成,只是沒有接上 mux)。
 	mux.HandleFunc("GET /public/geo/place-photo-assets", s.handlePublicGeoPlacePhotoAssets)
 	mux.HandleFunc("GET /public/geo/attractions", s.handlePublicGeoAttractions)
+	// GET /public/geo/attraction/{id}:handlePublicGeoAttractionByID 的
+	// 真正公開掛載點——2026-10 新增。這支 handler 原本只掛在
+	// internalMux 的 /internal/geo/plan-ai/attraction/{id}(服務 /plan-ai
+	// 試作頁的 search_attraction/add_attraction 工具,見該端點註冊處的
+	// 完整說明),會走 internalAuth 中間件強制要求 JWT,即使 handler 本身
+	// 命名與其舊有註解都宣稱「免登入」——這是命名與實際掛載路徑不符造成
+	// 的文件債(handler 邏輯本身確實不含任何需要登入身分的操作,純查表,
+	// 見 geo_plan_ai.go handlePublicGeoAttractionByID 的完整說明)。
+	// web/src/itineraries/(精選行程展示頁,訪客無登入)需要依 attractionId
+	// 查詢已建檔地標的 googlePhotoUrls(見 useStopAttractionDetails.ts 的
+	// 完整說明,取代原本把查詢結果的照片網址寫死存進行程 content JSON 的
+	// 做法),故補上這個真正公開、不需要 JWT 的掛載點,複用同一支 handler
+	// 的邏輯,不重寫第二份。舊的 internalMux 掛載點維持不變,/plan-ai
+	// 既有呼叫端不受影響。
+	mux.HandleFunc("GET /public/geo/attraction/{id}", s.handlePublicGeoAttractionByID)
 
 	// 註:AI 規劃時間軸的「模擬推論 WebSocket」(handlePlanSimWS)不在這個
 	// 分支上——它只服務試作原型(web/src/plan-ai/AIPlanTimelinePage.tsx),
@@ -682,6 +705,18 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("PUT /internal/maintenance/content-pages/{slug}", s.handleMaintenanceContentPageUpdate)
 	internalMux.HandleFunc("PATCH /internal/maintenance/content-pages/{slug}/publish", s.handleMaintenanceContentPagePublish)
 	internalMux.HandleFunc("DELETE /internal/maintenance/content-pages/{slug}", s.handleMaintenanceContentPageDelete)
+	// 範例行程管理端點(itinerary_page.go)——只給 tripace-cli
+	// itinerary-page 系列指令用,公開讀取在上面 mux 區塊的
+	// /v1/itinerary-pages。固定要求呼叫者是管理員(見
+	// requireItineraryPageAdmin 的完整說明),沒有 content-page 那種
+	// official/使用者自己雙重身份切換——範例行程目前只有官方命名空間
+	// 一種情境。
+	internalMux.HandleFunc("POST /internal/maintenance/itinerary-pages", s.handleMaintenanceItineraryPageCreate)
+	internalMux.HandleFunc("GET /internal/maintenance/itinerary-pages", s.handleMaintenanceItineraryPageList)
+	internalMux.HandleFunc("GET /internal/maintenance/itinerary-pages/{slug}", s.handleMaintenanceItineraryPageGet)
+	internalMux.HandleFunc("PUT /internal/maintenance/itinerary-pages/{slug}", s.handleMaintenanceItineraryPageUpdate)
+	internalMux.HandleFunc("PATCH /internal/maintenance/itinerary-pages/{slug}/publish", s.handleMaintenanceItineraryPagePublish)
+	internalMux.HandleFunc("DELETE /internal/maintenance/itinerary-pages/{slug}", s.handleMaintenanceItineraryPageDelete)
 	// 景點資料同步機制新增的端點(見 attraction_sync.go、
 	// docs/ATTRACTION_SYNC_DESIGN.md)——專門服務
 	// server/internal/attractionsync 套件的三層比對 + 交握式傳輸,不是
