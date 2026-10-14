@@ -163,6 +163,73 @@ export function PostComposerPage() {
           文件本身也建議分潤機制應排在圖片處理/AI 產文/外部串接都驗證過使用者真的願意用之後才投入設計，
           這裡只保留文字構想，不做沒有意義的假 UI。
         </div>
+
+        {/* 補充說明區塊:AI 產文(step 4)目前只是顯示一段純文字初稿,但 tripace
+            既有的部落格文章系統(content_pages 表)其實有一套固定的版面格式——
+            文章內容是一個扁平的 blocks 陣列,由 paragraph/image/gallery/stop/
+            捲動時間軸幾種區塊組成。這套規則定義在 .claude/skills/blog-article-content
+            這份 skill 文件裡(給 Claude 操作用),這裡用給人看的方式重新整理一次,
+            讓「AI 產文」這個構想的輸出格式從一開始就對齊既有系統,不是另外自創一套。
+            這是補充說明,不是取代上面四步驟的互動流程。 */}
+        <div className={styles.layoutRules}>
+          <h2 className={styles.layoutRulesTitle}>補充說明：AI 產文最終要符合既有版面格式</h2>
+          <p className={styles.layoutRulesIntro}>
+            上面「4. AI 產文」目前只示範產出一段純文字初稿。但實際要發布的文章，內容會存成既有部落格系統
+            （<code className={styles.inlineCode}>content_pages</code> 資料表）的 <code className={styles.inlineCode}>blocks</code>{' '}
+            扁平陣列——由幾種固定「區塊種類」組成，而不是整段純文字。AI 產文這個構想要串接發布，
+            最終輸出就要對齊這套格式。
+          </p>
+
+          <h3 className={styles.layoutRulesSubtitle}>區塊種類一覽</h3>
+          <div className={styles.blockKindGrid}>
+            <div className={styles.blockKindCard}>
+              <span className={styles.blockKindTag}>paragraph</span>
+              <p>一般文字段落，也可標成小標題/強調句/引言/小字說明。</p>
+            </div>
+            <div className={styles.blockKindCard}>
+              <span className={styles.blockKindTag}>image</span>
+              <p>單張照片，可選擇欄寬/外擴/滿版，或疊字在圖片上呈現短句。</p>
+            </div>
+            <div className={styles.blockKindCard}>
+              <span className={styles.blockKindTag}>gallery</span>
+              <p>同一場景的多張照片（2～4 張）一起排版，有格狀/密集多欄/雜誌拼貼等版式。</p>
+            </div>
+            <div className={styles.blockKindCard}>
+              <span className={styles.blockKindTag}>stop</span>
+              <p>逐站介紹用的站點卡片，帶編號、站名、介紹文字與這一站的照片。</p>
+            </div>
+            <div className={styles.blockKindCard}>
+              <span className={styles.blockKindTag}>scroll-timeline</span>
+              <p>把一段內容包進互動式小地圖時間軸，用 start/anchor/end 三種標記夾住。</p>
+            </div>
+          </div>
+
+          <h3 className={styles.layoutRulesSubtitle}>AI 產文時怎麼決定排版</h3>
+          <p className={styles.layoutRulesIntro}>
+            每個場景先看「有幾張內容上合適的照片」，再決定要用哪種區塊——這個判斷邏輯 AI 產文也要照著做：
+          </p>
+          <ul className={styles.decisionList}>
+            <li>
+              <strong>0 張照片</strong>：這段落不放圖片區塊，純文字呈現，不要硬塞不相關的照片湊版面。
+            </li>
+            <li>
+              <strong>1 張照片</strong>：用 <code className={styles.inlineCode}>image</code>
+              ——文字夠長就讓圖片靠一側文繞排，文字短就把文字疊在圖片上，單純想要一張有存在感的代表照就用外擴/滿版。
+            </li>
+            <li>
+              <strong>2 張以上</strong>：改用 <code className={styles.inlineCode}>gallery</code>，不要拆成好幾個獨立的{' '}
+              <code className={styles.inlineCode}>image</code>——2～4 張用格狀排列、5 張以上改密集多欄排列，最多只放 4 張，多出來的留著當候補。
+            </li>
+          </ul>
+
+          <h3 className={styles.layoutRulesSubtitle}>圖片引用：photoId，不是外部網址</h3>
+          <p className={styles.layoutRulesIntro}>
+            文章裡的每張圖片都是用 <code className={styles.inlineCode}>photoId</code> 引用既有的已上傳照片，
+            絕對不會直接寫檔名或外部網址——這代表「AI 產文」這個構想要串接發布，前提是照片必須先經過本頁
+            「1. 上傳照片 → 2. 圖片處理」流程產生對應的 <code className={styles.inlineCode}>photoId</code>，
+            AI 產出的內容只能引用這些 ID，不能憑空生成或連結外部圖片網址。
+          </p>
+        </div>
       </div>
     </div>
   )

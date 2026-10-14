@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   CITY_OPTIONS,
@@ -11,6 +11,7 @@ import {
   type CampaignStatus,
   type DemoAdvertiser,
   type DemoCampaign,
+  type DemoProductCreative,
 } from './adAdminDemoData'
 import styles from './AdAdminDemoPage.module.css'
 
@@ -201,38 +202,101 @@ function CampaignsTab({
           </thead>
           <tbody>
             {filtered.map((c) => (
-              <tr key={c.id}>
-                <td>{advertiserName(c.advertiserId)}</td>
-                <td>{c.name}</td>
-                <td>
-                  <span className={`${styles.statusBadge} ${styles[`status_${c.status}`]}`}>{STATUS_LABEL[c.status]}</span>
-                </td>
-                <td className="muted">
-                  {c.startDate} ～ {c.endDate}
-                </td>
-                <td>
-                  {c.placements.length === 0 ? (
-                    <span className="muted">（尚未勾選）</span>
-                  ) : (
-                    c.placements.map((p) => (
-                      <span key={p} className="badge">
-                        {PLACEMENT_OPTIONS.find((o) => o.key === p)?.label ?? p}
-                      </span>
-                    ))
-                  )}
-                </td>
-                <td>{TIER_LABEL[c.tier]}</td>
-                <td className="row-actions">
-                  <button className="ghost" onClick={() => setEditingId(c.id)}>
-                    編輯
-                  </button>
-                </td>
-              </tr>
+              // 2026-10 使用者明確回報「要編輯才看得到」——方案細節
+              // (ProductCreativesSection,團體行程/機票的標頭/日期安排/
+              // 文案)原本只在 CampaignEditor 裡才會渲染,列表層級完全
+              // 看不出這個活動底下實際掛了哪些方案。改成用 React
+              // Fragment 讓每筆活動多渲染一行摘要列(見下方
+              // ProductCreativesSummaryRow),不需要點進編輯才看得到
+              // 方案細節的存在與大致內容——這一行是唯讀摘要,真正要改
+              // 內容仍然要點「編輯」進 CampaignEditor,這裡只是解決
+              // 「看不到」的問題,不是要在列表層直接可編輯。
+              <Fragment key={c.id}>
+                <tr>
+                  <td>{advertiserName(c.advertiserId)}</td>
+                  <td>{c.name}</td>
+                  <td>
+                    <span className={`${styles.statusBadge} ${styles[`status_${c.status}`]}`}>{STATUS_LABEL[c.status]}</span>
+                  </td>
+                  <td className="muted">
+                    {c.startDate} ～ {c.endDate}
+                  </td>
+                  <td>
+                    {c.placements.length === 0 ? (
+                      <span className="muted">（尚未勾選）</span>
+                    ) : (
+                      c.placements.map((p) => (
+                        <span key={p} className="badge">
+                          {PLACEMENT_OPTIONS.find((o) => o.key === p)?.label ?? p}
+                        </span>
+                      ))
+                    )}
+                  </td>
+                  <td>{TIER_LABEL[c.tier]}</td>
+                  <td className="row-actions">
+                    <button className="ghost" onClick={() => setEditingId(c.id)}>
+                      編輯
+                    </button>
+                  </td>
+                </tr>
+                {c.productCreatives && c.productCreatives.length > 0 && (
+                  <tr className={styles.productSummaryRow}>
+                    <td colSpan={6}>
+                      <ProductCreativesSummary productCreatives={c.productCreatives} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>
       </div>
     </section>
+  )
+}
+
+// ProductCreativesSummary——2026-10 新增(使用者明確回報「方案細節要
+// 編輯才看得到」):列表層級的唯讀摘要,讓「這個活動底下掛了哪些方案、
+// 標頭/日期安排/文案大致是什麼」不用點進 CampaignEditor 就看得到。
+// 每個方案一張精簡卡片,只取最關鍵的三件事:標頭(行程名稱/目的地)、
+// 日期安排(出發日期+天數,或當日最低價更新時間——呼應兩種商品類型
+// 「固定日期」vs「浮動報價」的既有設計分野,見 DemoGroupTourCreative/
+// DemoFlightCreative 的完整說明)、文案(desc,團體行程才有;機票沒有
+// desc 欄位,改顯示當日最低價數字本身當作這張卡片最重要的「文案」)。
+// 不是 ProductCreativesSection 的縮小版重複渲染——那個元件是給編輯
+// 表單用的完整區塊(含新增按鈕、分組標題等編輯語境的 UI),這裡刻意
+// 另外寫一個更精簡的摘要樣式,避免列表被撐得太高。
+function ProductCreativesSummary({ productCreatives }: { productCreatives: DemoProductCreative[] }) {
+  return (
+    <div className={styles.productSummaryList}>
+      {productCreatives.map((p) => (
+        <div key={p.id} className={styles.productSummaryCard}>
+          <span className={styles.productSummaryEmoji} aria-hidden="true">
+            {p.coverEmoji}
+          </span>
+          <div className={styles.productSummaryBody}>
+            {p.category === 'group_tour' ? (
+              <>
+                <div className={styles.productSummaryHeader}>{p.title}</div>
+                <div className={styles.productSummaryMeta}>
+                  {p.departureDate} 出發・{p.days} 天
+                  {p.registrationDeadline && `・報名截止 ${p.registrationDeadline}`}
+                </div>
+                <p className={styles.productSummaryDesc}>{p.desc}</p>
+              </>
+            ) : (
+              <>
+                <div className={styles.productSummaryHeader}>{p.destination}</div>
+                <div className={styles.productSummaryMeta}>價格更新於 {p.priceUpdatedAt}</div>
+                <p className={styles.productSummaryDesc}>
+                  當日最低價 <strong>NT$ {p.lowestPriceToday.toLocaleString()}</strong>（依出發日浮動）
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -463,7 +527,120 @@ function CampaignEditor({
           </div>
         )}
       </section>
+
+      {draft.productCreatives && draft.productCreatives.length > 0 && (
+        <ProductCreativesSection
+          productCreatives={draft.productCreatives}
+          advertiserName={advertisers.find((a) => a.id === draft.advertiserId)?.name ?? ''}
+        />
+      )}
     </>
+  )
+}
+
+// ProductCreativesSection——「方案提供者」廣告主（賣團體行程 + 機票
+// 兩種性質不同的商品，例如旅行社）專屬的素材卡片區塊，跟上面既有的
+// 「素材」區塊（單一商品假設,DemoCreative）分開渲染，因為這兩種素材
+// 的欄位需求明顯不同，硬塞進同一張卡片樣式只會讓大部分欄位變成「不
+// 適用」。團體行程卡片強調「固定出發日期/天數/報名截止」,機票卡片
+// 強調「當日最低價會浮動,點進去是查詢頁不是固定商品頁」,呼應兩種
+// 商品不同的導流假設(見下方「導流流程構想」文字區塊)。
+function ProductCreativesSection({
+  productCreatives,
+  advertiserName,
+}: {
+  productCreatives: DemoProductCreative[]
+  advertiserName: string
+}) {
+  const groupTours = productCreatives.filter((c) => c.category === 'group_tour')
+  const flights = productCreatives.filter((c) => c.category === 'flight')
+
+  return (
+    <section className="card">
+      <div className="section-head">
+        <h2>方案素材（團體行程 / 機票）</h2>
+        <button onClick={() => alert('雛形：開啟方案素材上傳表單（未串接，構想性質）')}>+ 新增方案素材</button>
+      </div>
+      <p className="muted">
+        這類廣告主（例如有「出發日曆」頁面的旅遊方案提供者）賣的不是單一商品，而是
+        <strong>團體行程</strong>（固定出發日期/固定內容/固定報名連結）跟<strong>機票</strong>
+        （依出發日浮動最低價、通常導向比價/查詢頁）兩種性質不同的商品，所以用獨立的卡片樣式呈現，
+        不套用上面「素材」區塊的單一商品卡片。
+      </p>
+
+      {groupTours.length > 0 && (
+        <div className={styles.productGroup}>
+          <h3 className={styles.productGroupTitle}>團體行程</h3>
+          <div className={styles.productCreativeGrid}>
+            {groupTours.map((cr) => (
+              <div key={cr.id} className={`${styles.productCard} ${styles.productCardTour}`}>
+                <div className={styles.productCardCover}>{cr.coverEmoji}</div>
+                <div className={styles.productCardBody}>
+                  <span className={styles.creativePreviewLabel}>贊助・{advertiserName}</span>
+                  <strong>{cr.title}</strong>
+                  <div className={styles.productFieldRow}>
+                    <span className={styles.productFieldTag}>出發 {cr.departureDate}</span>
+                    <span className={styles.productFieldTag}>{cr.days} 天</span>
+                    {cr.registrationDeadline && (
+                      <span className={styles.productFieldTag}>截止報名 {cr.registrationDeadline}</span>
+                    )}
+                  </div>
+                  <p>{cr.desc}</p>
+                  <div className={styles.productCardFooter}>
+                    <span className={styles.productPrice}>NT$ {cr.price.toLocaleString()}</span>
+                    <span className={styles.creativePreviewCta}>{cr.ctaLabel}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {flights.length > 0 && (
+        <div className={styles.productGroup}>
+          <h3 className={styles.productGroupTitle}>機票</h3>
+          <div className={styles.productCreativeGrid}>
+            {flights.map((cr) => (
+              <div key={cr.id} className={`${styles.productCard} ${styles.productCardFlight}`}>
+                <div className={styles.productCardCover}>{cr.coverEmoji}</div>
+                <div className={styles.productCardBody}>
+                  <span className={styles.creativePreviewLabel}>贊助・{advertiserName}</span>
+                  <strong>飛往 {cr.destination}</strong>
+                  <div className={styles.productFieldRow}>
+                    <span className={styles.productFieldTag}>今日最低價更新於 {cr.priceUpdatedAt}</span>
+                  </div>
+                  <p className={styles.flightPriceHint}>價格會隨出發日期變動，實際金額以出發日曆頁即時顯示為準。</p>
+                  <div className={styles.productCardFooter}>
+                    <span className={styles.productPrice}>NT$ {cr.lowestPriceToday.toLocaleString()} 起</span>
+                    <span className={styles.creativePreviewCta}>{cr.ctaLabel}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 導流流程構想——構想性質的文字說明，不是真的做出跳轉功能。
+          對齊其他雛形頁「關鍵決策摘要」區塊的呈現方式。 */}
+      <div className={styles.flowNote}>
+        <strong>導流流程構想：</strong>
+        <ul>
+          <li>
+            <strong>團體行程</strong>：每個行程是固定出發日期/固定天數/固定內容的商品，點擊後應該直接導去
+            <em>該行程專屬的報名頁</em>（landingUrl 固定），因為使用者看到這張卡片時，決策情境已經是「我要不要報名這團」，
+            不需要再多一層選擇。
+          </li>
+          <li>
+            <strong>機票</strong>：顯示的「最低價」只是當天示意，實際金額隨出發日變動，不存在一個固定連結+固定價格的
+            「商品頁」。點擊後應該導去業者的<em>出發日曆頁本身</em>，讓使用者自己挑日期、看當天實際報價——這跟現有
+            <code>DemoCreative</code> 假設的「固定一個 landingUrl」不同，所以機票素材的 landingUrl 指向的是一個
+            查詢型頁面，不是結果頁。
+          </li>
+        </ul>
+      </div>
+    </section>
   )
 }
 

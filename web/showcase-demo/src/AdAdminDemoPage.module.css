@@ -360,6 +360,183 @@
   padding-top: 4px;
 }
 
+/* productGroup/productCard——「方案提供者」廣告主（團體行程 + 機票
+   兩種性質不同的商品，例如旅行社）專屬的素材卡片，跟上面
+   .creativePreviewCard（單一商品假設）分開一套樣式，因為兩種商品的
+   欄位需求不同：團體行程強調出發日期/天數/報名截止，機票強調目的地/
+   當日最低價/「價格會變動」提示。視覺語言沿用既有卡片的圓角+色塊+
+   CTA 語言，只是欄位內容跟配色 accent 不同（團體行程用既有 accent 藍，
+   機票用橘色系呼應「浮動/易變」的語意）。 */
+.productGroup {
+  margin-top: 1rem;
+}
+.productGroupTitle {
+  font-size: 0.85rem;
+  color: var(--admin-muted, #9aa1ad);
+  margin: 0 0 0.6rem;
+  font-weight: 600;
+}
+.productCreativeGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.productCard {
+  display: flex;
+  gap: 10px;
+  width: 300px;
+  flex: none;
+  background: var(--admin-bg, #0f1115);
+  border: 1px solid var(--admin-border, #2a2f3a);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.productCardCover {
+  flex: 0 0 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+.productCardTour .productCardCover {
+  background: rgba(108, 140, 255, 0.12);
+}
+.productCardFlight .productCardCover {
+  background: rgba(255, 176, 32, 0.14);
+}
+.productCardBody {
+  flex: 1;
+  padding: 10px 12px 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+}
+.productCardBody strong {
+  font-size: 0.88rem;
+}
+.productCardBody p {
+  margin: 2px 0 2px;
+  color: var(--admin-muted, #9aa1ad);
+  line-height: 1.4;
+}
+.productFieldRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0;
+}
+.productFieldTag {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.68rem;
+  border-radius: 999px;
+  background: rgba(154, 161, 173, 0.15);
+  color: var(--admin-muted, #9aa1ad);
+}
+.productCardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+.productPrice {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--admin-text, #e6e8ec);
+}
+.productCardFlight .productPrice {
+  color: #ffb020;
+}
+.flightPriceHint {
+  font-size: 0.7rem !important;
+  color: #ffb020 !important;
+  font-style: italic;
+}
+
+/* productSummaryRow/productSummaryList/productSummaryCard——2026-10
+   新增(見 ProductCreativesSummary 的完整說明):活動列表層級的方案
+   摘要列，不需要點「編輯」就能看到方案的標頭/日期安排/文案。
+   .productSummaryRow 是插在活動列下方的一整行(colSpan=6，跨滿整個
+   表格寬度)，底色跟一般列區分開來，表達「這是附屬於上一列的展開
+   內容」而不是另一筆獨立活動。卡片樣式刻意比 .productCard(編輯表單
+   裡的完整版)更精簡——只有 emoji+三行文字，不是圓角大卡片，避免列表
+   被撐得太高。 */
+.productSummaryRow td {
+  background: var(--admin-bg);
+  padding: 10px 16px 14px 40px;
+  border-top: none;
+}
+.productSummaryList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.productSummaryCard {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  min-width: 220px;
+  max-width: 280px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+}
+.productSummaryEmoji {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.productSummaryBody {
+  min-width: 0;
+}
+.productSummaryHeader {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--admin-text, #e6e8ec);
+}
+.productSummaryMeta {
+  font-size: 0.72rem;
+  color: var(--admin-muted, #9aa1ad);
+  margin-top: 2px;
+}
+.productSummaryDesc {
+  font-size: 0.75rem;
+  color: var(--admin-muted, #9aa1ad);
+  margin: 4px 0 0;
+  line-height: 1.4;
+}
+.productSummaryDesc strong {
+  color: var(--admin-text, #e6e8ec);
+}
+
+/* flowNote——導流流程構想的文字說明區塊，對齊其他雛形頁「關鍵決策
+   摘要」那種帶邊框的說明框視覺語言。 */
+.flowNote {
+  margin-top: 1.1rem;
+  padding: 0.85rem 1rem;
+  border: 1px dashed var(--admin-border, #2a2f3a);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--admin-text, #e6e8ec);
+}
+.flowNote ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
+.flowNote li {
+  margin-bottom: 0.4rem;
+}
+.flowNote code {
+  background: rgba(108, 140, 255, 0.12);
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  font-size: 0.78rem;
+}
+
 /* chart——Stats 分頁的簡化版折線/長條圖(對應 StatsTab 的完整說明:
    真實實作建議沿用 web/admin/src/TimelineChart.tsx,這裡只是範例介面
    用純 SVG 示意同樣的資料呈現方式)。 */

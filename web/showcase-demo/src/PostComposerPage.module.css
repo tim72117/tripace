@@ -201,3 +201,71 @@
   padding: 12px 14px;
   margin-top: 20px;
 }
+
+.layoutRules {
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 14px;
+  padding: 20px;
+  margin-top: 24px;
+}
+.layoutRulesTitle {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 10px;
+}
+.layoutRulesSubtitle {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 20px 0 8px;
+}
+.layoutRulesIntro {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--color-dark);
+  margin: 0;
+}
+.inlineCode {
+  font-size: 12px;
+  background: var(--ios-active);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.blockKindGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.blockKindCard {
+  background: var(--ios-active);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.blockKindCard p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ios-gray);
+  margin: 6px 0 0;
+}
+.blockKindTag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: monospace;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+
+.decisionList {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--color-dark);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

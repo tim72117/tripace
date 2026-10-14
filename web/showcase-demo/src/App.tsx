@@ -7,6 +7,12 @@ import { ItineraryCheckupPage } from './ItineraryCheckupPage'
 import { PostComposerPage } from './PostComposerPage'
 import { AdSystemPage } from './AdSystemPage'
 import { AdAdminDemoPage } from './AdAdminDemoPage'
+import { AdAffiliateComparePage } from './AdAffiliateComparePage'
+import { RoutePathPlanningPage } from './RoutePathPlanningPage'
+import { RoutePathMapSkeletonPage } from './RoutePathMapSkeletonPage'
+import { ItineraryPosterPage } from './ItineraryPosterPage'
+import { ItineraryMonopolyPage } from './ItineraryMonopolyPage'
+import { ItineraryPlayfulMapPage } from './ItineraryPlayfulMapPage'
 
 // 2026-10:從主站 web/ 的 web/src/showcase-demo/ 搬出來,成為完全獨立的
 // 小站(自己的 package.json/dev server,見根目錄 vite.config.ts 的完整
@@ -26,6 +32,12 @@ export function App() {
         <Route path="/post-composer" element={<PostComposerPage />} />
         <Route path="/ad-system" element={<AdSystemPage />} />
         <Route path="/ad-admin-demo" element={<AdAdminDemoPage />} />
+        <Route path="/route-path-planning" element={<RoutePathPlanningPage />} />
+        <Route path="/route-path-map-skeleton" element={<RoutePathMapSkeletonPage />} />
+        <Route path="/itinerary-poster" element={<ItineraryPosterPage />} />
+        <Route path="/itinerary-monopoly" element={<ItineraryMonopolyPage />} />
+        <Route path="/itinerary-playful-map" element={<ItineraryPlayfulMapPage />} />
+        <Route path="/ad-affiliate-compare" element={<AdAffiliateComparePage />} />
       </Routes>
     </BrowserRouter>
   )

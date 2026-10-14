@@ -25,6 +25,49 @@ export interface DemoCreative {
   status: 'active' | 'paused'
 }
 
+// DemoGroupTourCreative/DemoFlightCreative——「方案提供者」廣告主
+// （賣的不是單一商品，而是團體行程 + 機票兩種性質不同的商品類型）的
+// 素材型別。這兩個型別跟既有的 DemoCreative 是平行關係，不是取代它
+// ——安平老街咖啡/九份山城民宿/京都和服體驗工作室這三個既有廣告主
+// 維持「單一商品素材」的假設不變，繼續用 DemoCreative。
+//
+// 兩者欄位明顯不同，硬塞進同一個型別只會讓大部分欄位變成「這種商品
+// 類型不適用」的 optional 欄位，所以拆成 union（見 DemoProductCreative）
+// ，讓 TypeScript 可以用 category 這個 discriminant narrowing。
+export interface DemoGroupTourCreative {
+  id: string
+  category: 'group_tour'
+  title: string // 行程名稱，例如「北海道粉雪五日」
+  departureDate: string // 固定出發日期
+  days: number // 天數
+  desc: string
+  price: number
+  registrationDeadline?: string // 報名截止日（選填，有些團到出發前都能報名）
+  ctaLabel: string
+  landingUrl: string // 固定的報名頁連結——這個行程專屬
+  coverEmoji: string
+  status: 'active' | 'paused'
+}
+
+export interface DemoFlightCreative {
+  id: string
+  category: 'flight'
+  destination: string // 目的地，例如「東京」
+  lowestPriceToday: number // 當天最低價（示意用假資料，不做成真的動態報價）
+  priceUpdatedAt: string // 價格更新時間戳，提醒營運人員/使用者這是浮動價
+  ctaLabel: string
+  landingUrl: string // 導向業者的「出發日曆」頁本身，不是固定商品頁——
+  // 機票沒有「一個固定連結對應一個固定價格」這種東西，使用者要自己
+  // 在日曆頁挑出發日才會看到當天實際報價。
+  coverEmoji: string
+  status: 'active' | 'paused'
+}
+
+// DemoProductCreative——團體行程/機票兩種素材的 union type，讓
+// DemoCampaign.productCreatives 可以用同一個陣列混放兩種類型，呼叫端
+// 用 category 分辨該渲染哪種卡片。
+export type DemoProductCreative = DemoGroupTourCreative | DemoFlightCreative
+
 export interface DemoCampaign {
   id: string
   advertiserId: string
@@ -39,6 +82,10 @@ export interface DemoCampaign {
   targetDevice: 'any' | 'mobile' | 'desktop'
   dailyCapImpressions: number | null
   creatives: DemoCreative[]
+  // productCreatives——選填欄位，只有「方案提供者」這類廣告主（賣團體
+  // 行程+機票兩種商品）的活動才會用到。保持選填、跟 creatives 分開，
+  // 是為了不動既有三個廣告主案例的資料結構與既有程式碼路徑。
+  productCreatives?: DemoProductCreative[]
 }
 
 // PLACEMENT_OPTIONS——對應 docs/brainstorm/2026-10-ad-placement-admin-ui-plan.md
@@ -60,6 +107,23 @@ export const PLACEMENT_OPTIONS: { key: string; label: string; positionDesc: stri
     key: 'itineraries.list_inline',
     label: '範例行程列表・中插卡片',
     positionDesc: '卡片牆第 3 張卡片的位置',
+  },
+  // 下面兩個版位是呼應「方案提供者」廣告主（團體行程 + 機票兩種商品）
+  // 的構想：團體行程是「固定出發日期、固定內容」的商品，適合出現在
+  // 使用者已經鎖定某個城市、正在看這個城市有什麼玩法的情境（城市頁）；
+  // 機票是「依出發日動態浮動」的商品，適合出現在使用者正在規劃「我
+  // 哪天出發」這個決策點的情境（出發日期/排期規劃相關頁面），這兩種
+  // 商品的「使用者決策情境」本質不同，所以拆成兩個版位而不是沿用同
+  // 一個。
+  {
+    key: 'city.group_tour_recommend',
+    label: '城市頁・團體行程推薦區',
+    positionDesc: '城市頁「其他玩法」區塊，推薦這個城市近期可出發的團體行程（呼應固定出發日期/固定內容的商品特性）',
+  },
+  {
+    key: 'itineraries.departure_planning',
+    label: '行程規劃・出發日期選擇情境',
+    positionDesc: '使用者正在挑選/調整出發日期的畫面（例如行程草稿的日期欄位附近），適合推「這個目的地今天的最低機票價」這類會隨日期變動的資訊',
   },
 ]
 
@@ -95,6 +159,20 @@ export const DEMO_ADVERTISERS: DemoAdvertiser[] = [
     contactName: '—',
     status: 'suspended',
     createdAt: '2026-06-10',
+  },
+  // adv_005——「方案提供者」案例，參考使用者分享的一個真實旅行社網站
+  // 案例（不具名）：網站有「出發日曆」頁面，查某天可出發的團體行程
+  // 跟各目的地機票最低價。這類廣告主賣的不是單一商品，底下活動會混用
+  // DemoGroupTourCreative/DemoFlightCreative 兩種素材（見 cmp_005）。
+  // 2026-10 使用者明確要求「不要提到姓名」,廣告主名稱/聯絡人全部改成
+  // 匿名化的通用假資料,不保留原始案例的業者名稱或真實姓名。
+  {
+    id: 'adv_005',
+    name: '日本線旅行社',
+    contactEmail: 'contact@demo-travel.example',
+    contactName: '業務窗口',
+    status: 'active',
+    createdAt: '2026-10-05',
   },
 ]
 
@@ -188,6 +266,80 @@ export const DEMO_CAMPAIGNS: DemoCampaign[] = [
     targetDevice: 'any',
     dailyCapImpressions: null,
     creatives: [],
+  },
+  // cmp_005——「方案提供者」範例活動，混用兩種版位跟兩種素材類型：
+  // 團體行程投放在城市頁推薦區（固定出發日期/內容，適合使用者已鎖定
+  // 城市的情境），機票投放在出發日期規劃情境（浮動最低價，適合使用者
+  // 正在決定「哪天出發」的情境）。creatives 留空陣列，只用
+  // productCreatives，呼應資料結構的設計意圖。
+  {
+    id: 'cmp_005',
+    advertiserId: 'adv_005',
+    name: '日本線出發日曆推廣',
+    status: 'active',
+    startDate: '2026-10-10',
+    endDate: '2027-02-28',
+    placements: ['city.group_tour_recommend', 'itineraries.departure_planning'],
+    tier: 'standard',
+    weight: 6,
+    targetCities: ['京都'],
+    targetDevice: 'any',
+    dailyCapImpressions: 800,
+    creatives: [],
+    productCreatives: [
+      {
+        id: 'crv_tour_001',
+        category: 'group_tour',
+        title: '北海道粉雪五日',
+        departureDate: '2026-12-18',
+        days: 5,
+        desc: '小樽運河、白色戀人工廠、二世谷滑雪初體驗，含三餐溫泉飯店。',
+        price: 32900,
+        registrationDeadline: '2026-12-01',
+        ctaLabel: '立即報名',
+        landingUrl: 'https://demo-travel.example/tours/hokkaido-powder-5d',
+        coverEmoji: '🗻',
+        status: 'active',
+      },
+      {
+        id: 'crv_tour_002',
+        category: 'group_tour',
+        title: '京都紅葉賞楓四日',
+        departureDate: '2026-11-22',
+        days: 4,
+        desc: '清水寺、嵐山渡月橋、伏見稻荷千本鳥居，賞楓專車接送。',
+        price: 28500,
+        registrationDeadline: '2026-11-10',
+        ctaLabel: '立即報名',
+        landingUrl: 'https://demo-travel.example/tours/kyoto-autumn-4d',
+        coverEmoji: '🍁',
+        status: 'active',
+      },
+      {
+        id: 'crv_flight_001',
+        category: 'flight',
+        destination: '東京',
+        lowestPriceToday: 6280,
+        priceUpdatedAt: '2026-10-14 09:00',
+        ctaLabel: '查出發日曆',
+        // 導向「出發日曆」頁本身，不是固定商品頁——機票沒有固定
+        // landingUrl+固定價格這種東西，使用者要自己選日期才看到報價。
+        landingUrl: 'https://demo-travel.example/departure-calendar?dest=tokyo',
+        coverEmoji: '✈️',
+        status: 'active',
+      },
+      {
+        id: 'crv_flight_002',
+        category: 'flight',
+        destination: '大阪',
+        lowestPriceToday: 5990,
+        priceUpdatedAt: '2026-10-14 09:00',
+        ctaLabel: '查出發日曆',
+        landingUrl: 'https://demo-travel.example/departure-calendar?dest=osaka',
+        coverEmoji: '✈️',
+        status: 'active',
+      },
+    ],
   },
 ]
 

@@ -1,0 +1,907 @@
+/* ItineraryPlayfulMapPage.tsx 專屬樣式(CSS Modules)。構想一附錄四——
+   尋寶手帳攤開頁。沿用 page/inner/back/heading/subheading/note 的既有骨架
+   慣例;地圖底圖沿用 RoutePathMapSkeletonPage.module.css 的
+   mapCanvas/mapGrid/mapVignette 三層疊加。所有顏色都從既有 token
+   (ios 系列與 color 系列)用 color-mix 調出來,不新發明 token。 */
+.page {
+  min-height: 100vh;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  padding: 32px 20px 80px;
+}
+.inner {
+  max-width: 1040px;
+  margin: 0 auto;
+}
+.back {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--ios-gray);
+  text-decoration: none;
+  margin-bottom: 16px;
+}
+.back:hover {
+  color: var(--color-accent);
+}
+.heading {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.subheading {
+  font-size: 13px;
+  color: var(--ios-gray);
+  margin: 0 0 20px;
+  line-height: 1.7;
+}
+
+/* ---------- 手帳本體:兩頁攤開 + 中間書脊 ---------- */
+/* journal——整本手帳的外殼:深色封皮露出一圈邊,內側是兩張紙頁,中間
+   一條書脊。大螢幕兩頁並排,窄螢幕上下堆疊(書脊轉成橫條)。 */
+.journal {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) 18px minmax(0, 1fr);
+  background: color-mix(in srgb, var(--color-dark) 78%, var(--ios-sand));
+  border-radius: 18px;
+  padding: 12px;
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  margin-bottom: 18px;
+}
+.pageLeft,
+.pageRight {
+  position: relative;
+  min-width: 0;
+  padding: 18px 18px 20px;
+}
+/* 左頁:泛黃牛皮紙感,右上角微微翹起的紙角用 radial 暗角暗示。 */
+.pageLeft {
+  background:
+    radial-gradient(ellipse at 100% 0%, rgba(0, 0, 0, 0.08), transparent 40%),
+    color-mix(in srgb, var(--ios-sand) 22%, var(--ios-card));
+  border-radius: 10px 2px 2px 10px;
+}
+/* 右頁:橫線筆記紙,左側一條紅色邊線像真的筆記本。 */
+.pageRight {
+  background:
+    linear-gradient(90deg, transparent 34px, color-mix(in srgb, var(--color-accent) 35%, transparent) 34px, color-mix(in srgb, var(--color-accent) 35%, transparent) 35px, transparent 35px),
+    repeating-linear-gradient(
+      180deg,
+      transparent 0,
+      transparent 27px,
+      color-mix(in srgb, var(--ios-sep) 80%, transparent) 27px,
+      color-mix(in srgb, var(--ios-sep) 80%, transparent) 28px
+    ),
+    var(--ios-card);
+  border-radius: 2px 10px 10px 2px;
+  padding-left: 46px;
+}
+.spine {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.32),
+    rgba(0, 0, 0, 0.08) 40%,
+    rgba(0, 0, 0, 0.08) 60%,
+    rgba(0, 0, 0, 0.32)
+  );
+}
+@media (max-width: 760px) {
+  .journal {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 14px auto;
+  }
+  .pageLeft {
+    border-radius: 10px 10px 2px 2px;
+  }
+  .pageRight {
+    border-radius: 2px 2px 10px 10px;
+  }
+  .spine {
+    background: linear-gradient(
+      180deg,
+      rgba(0, 0, 0, 0.32),
+      rgba(0, 0, 0, 0.08) 40%,
+      rgba(0, 0, 0, 0.08) 60%,
+      rgba(0, 0, 0, 0.32)
+    );
+  }
+}
+
+/* ---------- 左頁標題 ---------- */
+.pageHeaderLeft {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.pageTitleScript {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--color-accent);
+  border-bottom: 2px dashed color-mix(in srgb, var(--color-accent) 45%, transparent);
+  padding-bottom: 2px;
+}
+.pageDayTheme {
+  font-size: 12px;
+  color: var(--ios-gray);
+  font-weight: 600;
+}
+
+/* ---------- 尋寶地圖 ---------- */
+/* mapFrame——地圖外一圈「古城風格」雙層邊框:深褐外層 + 米黃內層,四角
+   鉚釘用 radial-gradient 小圓點。 */
+.mapFrame {
+  position: relative;
+  border: 4px solid color-mix(in srgb, var(--color-dark) 55%, var(--ios-sand));
+  border-radius: 12px;
+  padding: 6px;
+  background: color-mix(in srgb, var(--ios-sand) 45%, var(--ios-card));
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ios-sand) 70%, #fff);
+}
+.mapFrame::before,
+.mapFrame::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle, color-mix(in srgb, var(--color-dark) 70%, var(--ios-sand)) 2.5px, transparent 3px),
+    radial-gradient(circle, color-mix(in srgb, var(--color-dark) 70%, var(--ios-sand)) 2.5px, transparent 3px);
+  background-repeat: no-repeat;
+  background-size: 10px 10px;
+}
+.mapFrame::before {
+  background-position: 0 0, 100% 0;
+}
+.mapFrame::after {
+  background-position: 0 100%, 100% 100%;
+}
+.mapCanvas {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 6px;
+  overflow: hidden;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ios-green) 14%, var(--ios-bg)),
+    color-mix(in srgb, var(--ios-sand) 24%, var(--ios-bg)) 55%,
+    color-mix(in srgb, var(--ios-sand) 10%, var(--ios-bg))
+  );
+}
+.mapGrid {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(var(--ios-sep) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ios-sep) 1px, transparent 1px);
+  background-size: 12.5% 12.5%;
+  opacity: 0.3;
+}
+.mapVignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 45%, transparent 50%, color-mix(in srgb, var(--ios-sand) 55%, transparent) 100%);
+  pointer-events: none;
+}
+.mapSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+/* 地圖上的手寫地名塗鴉——純裝飾,斜體淡字。 */
+.doodle {
+  position: absolute;
+  font-size: 11px;
+  font-style: italic;
+  letter-spacing: 0.2em;
+  color: color-mix(in srgb, var(--color-dark) 45%, transparent);
+  pointer-events: none;
+  user-select: none;
+}
+.doodleSea {
+  left: 6%;
+  top: 14%;
+  color: color-mix(in srgb, var(--ios-green) 70%, transparent);
+  transform: rotate(-8deg);
+}
+.doodleCanal {
+  left: 38%;
+  top: 84%;
+  transform: rotate(4deg);
+}
+.doodleOld {
+  left: 68%;
+  top: 70%;
+  transform: rotate(-3deg);
+}
+.compass {
+  position: absolute;
+  right: 4%;
+  top: 4%;
+  width: 52px;
+  height: 52px;
+  opacity: 0.8;
+  pointer-events: none;
+}
+.compassRing {
+  fill: color-mix(in srgb, var(--ios-card) 70%, transparent);
+  stroke: var(--color-dark);
+  stroke-width: 1.2;
+}
+.compassRingInner {
+  fill: none;
+  stroke: var(--color-dark);
+  stroke-width: 0.6;
+  stroke-dasharray: 1.5 1.5;
+}
+.compassNeedleN {
+  fill: var(--color-accent);
+}
+.compassNeedleE {
+  fill: var(--color-dark);
+  opacity: 0.5;
+}
+.compassText {
+  font-size: 7px;
+  font-weight: 700;
+  fill: var(--ios-card);
+}
+
+/* 尋寶步徑——虛線兩層:底層寬半透明當陰影,上層是手繪感短虛線。 */
+.trailShadow {
+  fill: none;
+  stroke: var(--color-dark);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.08;
+}
+.trail {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 2.4 1.8;
+  opacity: 0.9;
+  animation: trailWalk 1.6s linear infinite;
+}
+@keyframes trailWalk {
+  to {
+    stroke-dashoffset: -4.2;
+  }
+}
+.trailDim {
+  opacity: 0.3;
+}
+.trailDim .trail {
+  animation: none;
+}
+.trailBridge {
+  fill: none;
+  stroke: var(--ios-gray);
+  stroke-width: 0.9;
+  stroke-dasharray: 0.6 2;
+  stroke-linecap: round;
+  opacity: 0.7;
+}
+.xMark path {
+  stroke: var(--color-accent);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+
+/* 圖釘貼紙——水滴形釘頭(圓角三個 50% + 一個 0,再旋轉 -45deg),白色粗
+   邊 + 暖色位移陰影模擬貼紙浮貼;釘尖對齊站點座標(translate 讓釘尖在
+   座標點上,而不是圓心)。 */
+.pin {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  z-index: 2;
+}
+.pinHead {
+  position: absolute;
+  inset: 0;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  border: 3px solid var(--ios-card);
+  box-shadow: 2px 3px 0 color-mix(in srgb, var(--ios-sand) 70%, var(--color-dark));
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.pinSpot .pinHead {
+  background: linear-gradient(135deg, var(--color-accent), color-mix(in srgb, var(--color-accent) 70%, #000));
+}
+.pinFood .pinHead {
+  background: linear-gradient(135deg, var(--ios-green), color-mix(in srgb, var(--ios-green) 70%, #000));
+}
+.pinNumber {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(45deg);
+  color: var(--ios-card);
+  font-size: 13px;
+  font-weight: 800;
+}
+.pin:hover .pinHead {
+  transform: rotate(-45deg) scale(1.1);
+}
+.pinActive .pinHead {
+  transform: rotate(-45deg) scale(1.18);
+  box-shadow:
+    2px 3px 0 color-mix(in srgb, var(--ios-sand) 70%, var(--color-dark)),
+    0 0 0 4px color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+.pinActive {
+  z-index: 4;
+  animation: pinBounce 0.5s ease;
+}
+@keyframes pinBounce {
+  0% {
+    transform: translate(-50%, -100%) translateY(-10px);
+  }
+  60% {
+    transform: translate(-50%, -100%) translateY(2px);
+  }
+  100% {
+    transform: translate(-50%, -100%);
+  }
+}
+.pinDim {
+  opacity: 0.45;
+  filter: saturate(0.5);
+}
+.pinDim:hover {
+  opacity: 0.9;
+  filter: none;
+}
+.pinLabel {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-dark);
+  background: color-mix(in srgb, var(--ios-card) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ios-sand) 60%, transparent);
+  padding: 1px 6px;
+  border-radius: 4px 7px 5px 8px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.pinPulse {
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 26px;
+  height: 12px;
+  margin-left: -13px;
+  border-radius: 50%;
+  border: 2px solid var(--color-accent);
+  opacity: 0.6;
+  animation: pinPulse 1.4s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes pinPulse {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+.mapLegend {
+  display: flex;
+  align-items: center;
+  gap: 6px 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding: 0 2px;
+  font-size: 11px;
+  color: var(--ios-gray);
+}
+.legendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  display: inline-block;
+  margin-left: 8px;
+}
+.legendDot:first-child {
+  margin-left: 0;
+}
+.legendSpot {
+  background: var(--color-accent);
+}
+.legendFood {
+  background: var(--ios-green);
+}
+.legendTrail {
+  display: inline-block;
+  width: 22px;
+  border-top: 2px dashed var(--color-accent);
+  margin-left: 8px;
+}
+.legendBridge {
+  display: inline-block;
+  width: 22px;
+  border-top: 2px dotted var(--ios-gray);
+  margin-left: 8px;
+}
+
+/* ---------- 右頁:Day 索引耳 + 標題 ---------- */
+/* dayTabs——貼在右頁右側外緣的索引耳,像筆記本側邊的分頁標籤,翻到哪天
+   那一耳就凸出來、變成硃紅色。 */
+.dayTabs {
+  position: absolute;
+  right: -4px;
+  top: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 3;
+}
+.dayTab {
+  writing-mode: vertical-rl;
+  padding: 12px 6px;
+  border: 1px solid var(--ios-sep);
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+  background: color-mix(in srgb, var(--ios-sand) 30%, var(--ios-card));
+  color: var(--ios-gray);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  cursor: pointer;
+  transform: translateX(4px);
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.dayTab:hover {
+  transform: translateX(0);
+}
+.dayTabActive {
+  background: var(--color-accent);
+  color: var(--ios-card);
+  border-color: var(--color-accent);
+  transform: translateX(-2px);
+  box-shadow: -2px 2px 0 color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+@media (max-width: 760px) {
+  .dayTabs {
+    position: static;
+    flex-direction: row;
+    margin-bottom: 10px;
+  }
+  .dayTab {
+    writing-mode: horizontal-tb;
+    padding: 6px 14px;
+    border-right: 1px solid var(--ios-sep);
+    border-radius: 8px;
+    transform: none;
+  }
+  .dayTabActive {
+    transform: none;
+  }
+}
+.pageHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-right: 36px;
+}
+/* pageDateStamp——橡皮章風格的日期章:雙線邊框 + 微旋轉 + 半透明墨色。 */
+.pageDateStamp {
+  display: inline-block;
+  padding: 3px 10px;
+  border: 2px double var(--color-accent);
+  border-radius: 6px;
+  color: var(--color-accent);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  transform: rotate(-4deg);
+  opacity: 0.85;
+}
+.pageDayThemeRight {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* ---------- 拍立得清單 ---------- */
+.polaroidList {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.polaroidItem {
+  display: flex;
+}
+/* polaroid——白色拍立得框,上方和紙膠帶、左上橡皮章時間。奇偶交錯微旋轉
+   模擬「隨手貼上去」;active 時擺正、放大、硃紅粗邊。 */
+.polaroid {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 12px 12px;
+  background: var(--ios-card);
+  border: 2px solid color-mix(in srgb, var(--ios-sand) 60%, var(--ios-card));
+  border-radius: 6px 10px 7px 9px;
+  box-shadow: 3px 4px 0 color-mix(in srgb, var(--ios-sand) 40%, transparent);
+  cursor: pointer;
+  color: var(--color-dark);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  transform: rotate(-1.4deg);
+}
+.polaroidItem:nth-child(even) .polaroid {
+  transform: rotate(1.1deg);
+}
+.polaroid:hover {
+  transform: rotate(0deg) translateY(-2px);
+}
+.polaroidActive,
+.polaroidItem:nth-child(even) .polaroidActive {
+  transform: rotate(0deg) scale(1.02);
+  border-color: var(--color-accent);
+  box-shadow:
+    4px 5px 0 color-mix(in srgb, var(--color-accent) 30%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+.polaroidFood {
+  border-color: color-mix(in srgb, var(--ios-green) 45%, var(--ios-card));
+}
+.washi {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  width: 72px;
+  height: 16px;
+  margin-left: -36px;
+  transform: rotate(-3deg);
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ios-sand) 75%, #fff) 0 6px,
+    color-mix(in srgb, var(--ios-green) 45%, #fff) 6px 12px
+  );
+  opacity: 0.85;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.polaroidItem:nth-child(even) .washi {
+  transform: rotate(3deg);
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-accent) 35%, #fff) 0 6px,
+    color-mix(in srgb, var(--ios-sand) 60%, #fff) 6px 12px
+  );
+}
+.timeStamp {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  padding: 1px 7px;
+  border: 1.5px solid var(--color-accent);
+  border-radius: 4px;
+  color: var(--color-accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  transform: rotate(6deg);
+  opacity: 0.8;
+}
+.polaroidPhoto {
+  position: relative;
+  flex: 0 0 64px;
+  height: 64px;
+  border-radius: 4px;
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--ios-sand) 40%, var(--ios-card)),
+    color-mix(in srgb, var(--ios-green) 25%, var(--ios-card))
+  );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+.polaroidEmoji {
+  font-size: 30px;
+}
+.polaroidOrder {
+  position: absolute;
+  right: -6px;
+  top: -6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--ios-card);
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--ios-card);
+  transform: rotate(8deg);
+}
+.polaroidFood .polaroidOrder {
+  background: var(--ios-green);
+}
+.polaroidCaption {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 4px;
+}
+.polaroidName {
+  font-size: 15px;
+  font-weight: 800;
+}
+.polaroidMeta {
+  font-size: 11px;
+  color: var(--ios-gray);
+}
+.polaroidNote {
+  font-size: 12.5px;
+  line-height: 1.5;
+  font-style: italic;
+  color: color-mix(in srgb, var(--color-dark) 80%, var(--ios-gray));
+}
+
+/* ---------- 收據(美食口袋名單) ---------- */
+/* receipt——夾在手帳裡的白色收據:等寬字感 + 虛線分隔 + 底緣鋸齒(用
+   linear-gradient 畫三角鋸齒),微微斜放。 */
+.receipt {
+  position: relative;
+  margin: 22px 0 8px 10px;
+  width: calc(100% - 22px);
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-bottom: none;
+  padding: 10px 12px 14px;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  transform: rotate(1.6deg);
+  box-shadow: 2px 3px 0 color-mix(in srgb, var(--ios-sand) 35%, transparent);
+}
+.receipt::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -8px;
+  height: 8px;
+  background: linear-gradient(135deg, var(--ios-card) 50%, transparent 50%) 0 0 / 12px 8px,
+    linear-gradient(225deg, var(--ios-card) 50%, transparent 50%) 6px 0 / 12px 8px;
+  background-repeat: repeat-x;
+}
+.receiptHead {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  border-bottom: 1px dashed var(--ios-sep);
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+}
+.receiptHeadSub {
+  color: var(--ios-gray);
+  font-weight: 600;
+}
+.receiptList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.receiptRow + .receiptRow {
+  border-top: 1px dotted var(--ios-sep);
+}
+.receiptRowBtn {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 2px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  font: inherit;
+  color: var(--color-dark);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.receiptRowBtn:hover {
+  background: color-mix(in srgb, var(--ios-sand) 18%, transparent);
+}
+.receiptName {
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.receiptHint {
+  font-size: 11px;
+  color: var(--ios-gray);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.receiptPrice {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+.receiptFoot {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--ios-gray);
+  text-align: right;
+}
+
+/* ---------- 護照戳章進度列 ---------- */
+.passport {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 14px;
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+.navBtn {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-radius: 6px 10px 7px 9px;
+  border: 2px solid var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  color: var(--color-accent);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 color-mix(in srgb, var(--color-accent) 30%, transparent);
+  white-space: nowrap;
+}
+.navBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.navBtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  box-shadow: none;
+}
+.stampRow {
+  flex: 1;
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+.stampItem {
+  display: flex;
+  align-items: center;
+}
+.stampDots {
+  width: 18px;
+  border-top: 2px dotted var(--ios-sep);
+  margin: 0 2px;
+}
+/* stamp——圓形護照章:未到是灰色虛線框,已到蓋上硃紅雙線墨章(微旋轉),
+   目前站放大 + 實心。 */
+.stamp {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px dashed var(--ios-sep);
+  background: transparent;
+  color: var(--ios-gray);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+  transition: transform 0.15s ease;
+}
+.stamp:hover {
+  transform: scale(1.08);
+}
+.stampEmoji {
+  font-size: 16px;
+  line-height: 1;
+}
+.stampOrder {
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  margin-top: 2px;
+}
+.stampVisited {
+  border: 2px double var(--color-accent);
+  color: var(--color-accent);
+  transform: rotate(-8deg);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+.stampVisited.stampFood {
+  border-color: var(--ios-green);
+  color: var(--ios-green);
+  background: color-mix(in srgb, var(--ios-green) 10%, transparent);
+}
+.stampVisited:hover {
+  transform: rotate(-8deg) scale(1.08);
+}
+.stampActive {
+  border: 2px solid var(--color-accent);
+  background: var(--color-accent);
+  color: var(--ios-card);
+  transform: scale(1.18);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+.stampActive.stampFood {
+  border-color: var(--ios-green);
+  background: var(--ios-green);
+}
+.stampActive:hover {
+  transform: scale(1.22);
+}
+.stampDayFlag {
+  position: absolute;
+  top: -8px;
+  right: -10px;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--color-dark);
+  color: var(--ios-card);
+  transform: rotate(10deg);
+}
+.passportCaption {
+  font-size: 12px;
+  color: var(--ios-gray);
+  text-align: center;
+  margin: 8px 0 20px;
+}
+
+.note {
+  font-size: 12px;
+  color: var(--ios-gray);
+  line-height: 1.6;
+  background: var(--ios-active);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.note a {
+  color: var(--color-accent);
+}

@@ -1,0 +1,49 @@
+/* AdAffiliateComparePage.tsx 專屬樣式(CSS Modules)。構想八的雛形——
+   廣告/聯盟行銷外部方案比較,內容是嵌入的靜態 iframe(見該元件的完整
+   說明)。版面骨架(.page/.inner/.back/.heading/.subheading)對齊其他
+   構想雛形頁(如 AdSystemPage)的既有慣例,不另外發明一套。 */
+.page {
+  min-height: 100vh;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  padding: 32px 20px 80px;
+}
+.inner {
+  max-width: 1160px;
+  margin: 0 auto;
+}
+.back {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--ios-gray);
+  text-decoration: none;
+  margin-bottom: 16px;
+}
+.back:hover {
+  color: var(--color-accent);
+}
+.heading {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.subheading {
+  font-size: 13px;
+  color: var(--ios-gray);
+  line-height: 1.6;
+  margin: 0 0 24px;
+  max-width: 760px;
+}
+
+/* .frame——iframe 本身用固定高度 + 內部捲動(見 AdAffiliateComparePage.tsx
+   的完整說明:這份內容不需要動態量測高度的互動性),邊框對齊其他雛形
+   頁卡片的既有圓角/分隔線語言,不是無邊框全版面嵌入,讓它在這個索引站
+   裡仍然維持「一個區塊」的視覺定位,而不是喧賓奪主佔滿整頁。 */
+.frame {
+  width: 100%;
+  height: 80vh;
+  min-height: 640px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 14px;
+  background: var(--ios-card);
+}

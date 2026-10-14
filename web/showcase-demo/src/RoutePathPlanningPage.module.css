@@ -1,0 +1,280 @@
+/* RoutePathPlanningPage.tsx 專屬樣式(CSS Modules)。構想七的構想稿——
+   路徑機制(AI 參考旅遊路徑安排行程)。長篇文案頁,比 PlanningModesPage
+   (並排面板)多了章節(section)堆疊與「場景描繪」卡片兩種版面,但沿用
+   同一套 page/inner/back/heading/subheading/note 骨架慣例,不自創一套
+   不同的排版系統。 */
+.page {
+  min-height: 100vh;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  padding: 32px 20px 80px;
+}
+.inner {
+  max-width: 820px;
+  margin: 0 auto;
+}
+.back {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--ios-gray);
+  text-decoration: none;
+  margin-bottom: 16px;
+}
+.back:hover {
+  color: var(--color-accent);
+}
+.heading {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.subheading {
+  font-size: 13px;
+  color: var(--ios-gray);
+  margin: 0 0 28px;
+  line-height: 1.7;
+}
+
+.section {
+  margin-bottom: 32px;
+}
+.sectionTitle {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ios-sep);
+}
+.p {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--color-dark);
+  margin: 0 0 12px;
+}
+.p code {
+  font-size: 12px;
+  background: var(--ios-active);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* 不同使用者角度——每個角度一個小卡,對齊 PlanningModesPage 的 .panel
+   質感(淺底、圓角、border),但這裡是直向堆疊不是並排。 */
+.angle {
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+.angleTitle {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 8px;
+  color: var(--color-accent);
+}
+.angle .p {
+  margin-bottom: 0;
+}
+
+/* 資料結構草案的程式碼區塊 */
+.code {
+  font-size: 11.5px;
+  line-height: 1.6;
+  background: var(--ios-active);
+  border-radius: 10px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 0 0 14px;
+  white-space: pre;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+}
+
+/* 前端介面層構想——「場景」卡片,比一般 angle 卡更強調畫面感,用較大的
+   留白跟左側色條標示這是一段畫面描繪而非規格說明。 */
+.scene {
+  margin-bottom: 20px;
+  padding-left: 16px;
+  border-left: 3px solid var(--color-accent);
+}
+.sceneTitle {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+/* 場景一示意圖——「路徑卡」:地圖縮圖(漸層+SVG 路徑線+圓點)+ 文字區 +
+   CTA 按鈕,純靜態示意,不需要可互動。 */
+.routeCardMock {
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 14px;
+  max-width: 280px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+.routeCardMapMock {
+  height: 90px;
+  background: linear-gradient(135deg, var(--ios-sand) 0%, var(--ios-bg) 100%);
+}
+.routeCardSvg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.routeCardLine {
+  fill: none;
+  stroke: var(--ios-card);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+.routeCardDot {
+  fill: var(--ios-card);
+  opacity: 0.7;
+  stroke: var(--color-accent);
+  stroke-width: 1;
+}
+.routeCardBody {
+  padding: 12px 14px;
+}
+.routeCardText {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--color-dark);
+  margin-bottom: 10px;
+}
+.routeCardCta {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--color-accent);
+  border: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: default;
+}
+
+/* 場景二示意圖——大地圖版面骨架:漸層模擬地圖 + 一條斜切的 SVG 路徑線
+   + 沿線圓形縮圖徽章(白邊框模擬照片),純靜態展示版面長相,不需要可點擊
+   展開(那是另一個雛形頁面的職責)。 */
+.routeMapMock {
+  background: linear-gradient(150deg, var(--ios-sand) 0%, var(--ios-bg) 65%);
+  border: 1px solid var(--ios-sep);
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+.routeMapSvg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.routeMapLine {
+  fill: none;
+  stroke: var(--ios-card);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  opacity: 0.9;
+}
+.routeMapBadge circle {
+  fill: var(--color-accent);
+  stroke: var(--ios-card);
+  stroke-width: 3;
+  opacity: 0.9;
+}
+
+/* 照片呈現兩種可能性——並排對照用的子卡片,強調兩種質感的差異。 */
+.photoCaseRow {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.photoCaseRow .photoCase {
+  flex: 1 1 240px;
+  min-width: 220px;
+}
+.photoCase {
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.photoCaseLabel {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--color-accent);
+  border-radius: 999px;
+  padding: 3px 12px;
+  margin-bottom: 10px;
+}
+.photoCase .p {
+  margin-bottom: 0;
+}
+
+/* 可能性 A 示意圖——橫向照片縮圖排(用色塊模擬 Google Places 隨拍相片)。 */
+.photoMockA {
+  margin-bottom: 10px;
+}
+.photoMockAStrip {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.photoMockThumb {
+  flex: 1;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--ios-sand) 0%, var(--ios-sep) 100%);
+}
+.photoMockCaption {
+  font-size: 10.5px;
+  color: var(--ios-gray);
+}
+
+/* 可能性 B 示意圖——大圖置頂 + 摘錄文字區塊(用色塊/線條模擬部落格封面
+   圖與襯線文字段落)。 */
+.photoMockB {
+  margin-bottom: 10px;
+}
+.photoMockBHero {
+  width: 100%;
+  height: 72px;
+  border-radius: 10px;
+  background: linear-gradient(120deg, var(--ios-sand) 0%, var(--color-accent) 100%);
+  margin-bottom: 8px;
+}
+.photoMockBExcerpt {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.photoMockBLine {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--ios-sep);
+  width: 100%;
+}
+.photoMockBLineShort {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--ios-sep);
+  width: 60%;
+}
+
+.note {
+  font-size: 12px;
+  color: var(--ios-gray);
+  line-height: 1.6;
+  background: var(--ios-active);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
