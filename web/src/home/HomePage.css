@@ -121,6 +121,27 @@
 
 /* ---------- destinations ---------- */
 
+/* home-ai-demo——首頁的 AI 編排行程展示區塊(hero 與目的地清單之間)。
+   結構與 .destinations 完全對齊:外層畫全寬頂部分隔線、內層 640px 置中,
+   這樣三個區塊(hero / AI 展示 / 目的地)的分隔線寬度一致,不會有某一條
+   懸在畫面中央像斷掉(見 .destinations 註解記錄的那次視覺診斷)。
+   eyebrow/title 直接沿用 .explore-eyebrow/.explore-title 既有樣式,
+   不另外定義一套——同一個頁面的區塊標題該長得一樣。 */
+.kyoto-bloom .home-ai-demo {
+  border-top: 1px solid var(--line);
+  position: relative; z-index: var(--z-base); background: var(--paper);
+}
+.kyoto-bloom .home-ai-demo-inner {
+  max-width: 640px; margin: 0 auto; padding: 10vh var(--edge-pad) 10vh;
+  text-align: center;
+}
+/* 描述文字:比 .explore-title 小一級、顏色退一階,讓視線往下帶到手機
+   展示本身——那才是這個區塊真正要給人看的東西。 */
+.kyoto-bloom .home-ai-demo-desc {
+  font-size: 15px; line-height: 1.9; color: var(--ink-soft);
+  margin: 0 auto 36px; max-width: 30em;
+}
+
 /* .destinations 本身畫全寬的頂部分隔線(呼應 footer 的 border-top 同樣是
    全寬——先前 border-top 直接畫在下面 640px 寬的內容容器上,導致這條線
    懸在畫面正中央、跟 hero 的山稜填色帶/footer 的全寬分隔線寬度不一致,

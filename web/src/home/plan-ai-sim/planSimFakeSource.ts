@@ -50,7 +50,13 @@ export function createPlanSimFakeSource(): PlanSimSource {
       emit(action)
       return
     }
-    emit({ type: 'thinking' })
+    // nextType/nextId——2026-10 使用者明確要求「先分離推論中跟安排中的
+    // 信號」/「安排中時就加入一張卡片,只是這張卡片沒有資料時就呈現
+    // 骨架卡」:帶上 action.type 跟 action.id(見 PlanAction.nextType/
+    // nextId 的完整說明),讓接收端判斷下一步是不是真的 add_stop、以及
+    // 待會兒要插入的佔位節點該用哪個 id,才能在真正的 add_stop 訊息
+    // 到達時用 updateNode 原地補資料,不需要插入新節點。
+    emit({ type: 'thinking', nextType: action.type, nextId: action.id })
     timer = setTimeout(() => {
       if (cancelled) return
       emit(action)

@@ -44,114 +44,93 @@
   opacity: 0.55;
 }
 
+/* statusBar——2026-10 新增(使用者明確要求「手機上方放信號跟電量」),
+   位置對齊真實 iOS 狀態列:貼齊畫面頂端、左右各留出動態島(.notch,見
+   AiPlanPhoneDemo.module.css 該 class 的完整說明:寬度 34%、置中)的
+   空間,不會被動態島蓋住也不會重疊。z-index 比 .notch 所在的 .bezel
+   更上層(.notch 本身 z-index: 2,定義在外框那層 CSS),這裡疊在
+   .screen 內容最上方,數值對齊 .tryItCta 的 z-index: 2 即可,不需要
+   刻意拉更高——動態島是外框元素,本來就不會跟 .screen 內部的 z-index
+   競爭堆疊順序(各自屬於不同的堆疊環境)。 */
+.statusBar {
+  position: absolute;
+  top: 14px;
+  left: 24px;
+  right: 24px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ios-bg, #1C1815);
+  pointer-events: none;
+}
+
+.statusBarTime {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.statusBarIcons {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* display: flex; flex-direction: column——HorizontalPlanTimeline 的
+   .wrap 用 margin-top: auto 把自己推到容器底部(對齊 /ai-plan 展示頁
+   AIPlanTimelinePage.module.css 手機版 .timelinePanel 的同一個模式,
+   見該處的完整說明),這個 margin-top: auto 只有在父層是 flex 容器時
+   才會生效,這裡補上同樣的宣告。 */
 .timelineWrap {
   position: absolute;
   inset: 0;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
+  /* 2026-10 修正(使用者實機回報「卡片跟按鈕中間多出了間距」):原本
+     這裡額外補了 padding-bottom: 72px 給 .tryItCta 留空間,但
+     HorizontalPlanTimeline.module.css 的 .wrap 本身已經自帶
+     padding-bottom: 70px(那是給 /ai-plan 頁面自己的漂浮「讓我試看看」
+     composer 預留的空間,見該處的完整說明),兩層疊加起來共約 142px,
+     遠超過這個展示框實際只需要的 40px 按鈕高度+留白,卡片列因此被
+     不必要地往上推、底部露出一大塊空白。這裡的留白移除,改用
+     HorizontalPlanTimeline 元件自帶的 70px(雖然理由是對齊另一個
+     呼叫端的 composer,但數值本身已經足夠讓這個展示框的按鈕不蓋住
+     卡片,不需要再疊加一層)。 */
 }
 
-/* timelineScroll——疊加在 PlanTimelineView 自己的 .scroll 上,見該
-   prop 的完整說明:這個展示框是固定尺寸容器(不是撐滿瀏覽器視窗的
-   .page),需要自己接手捲動,不能依賴外層 <main> 提供捲動容器。 */
-.timelineScroll {
-  position: absolute;
-  inset: 0;
-  overflow-y: auto;
-  padding-bottom: 72px;
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-.timelineScroll::-webkit-scrollbar {
-  display: none;
-}
+/* composer/composerText/caret(開場輸入膠囊)已整個移除——2026-10
+   使用者明確要求「首頁展示不要輸入框」,見 AiPlanPhoneDemoScreen.tsx
+   usePlanSimSocket 呼叫處的完整說明。 */
 
-.statusPill {
+/* tryItCta——2026-10(第二輪,使用者明確要求「原本輸入框的地方,放
+   試試看按鈕」)取代原輸入膠囊的純視覺行動呼籲,配色對齊 /ai-plan 展示
+   頁排完劇本後出現的 .composerCta(見 AIPlanTimelinePage.module.css
+   該 class 的完整說明:--color-accent 底色),但尺寸依這個手機展示框
+   390×844 的比例縮小,不是原樣照搬。這裡不是 <button>(見
+   AiPlanPhoneDemoScreen.tsx 該處的完整說明:整個展示框
+   pointer-events:none,點擊冒泡到外層 Link),故不需要任何互動狀態
+   樣式(:hover/:focus-visible 等)。 */
+.tryItCta {
   position: absolute;
   left: 16px;
+  right: 16px;
   bottom: 16px;
   z-index: 2;
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--ios-gray, #8A8072);
-  background: var(--ios-card, #26211D);
-  border: 1px solid var(--ios-sep, #3A332C);
-  border-radius: 999px;
-  padding: 5px 12px;
-}
-
-.statusDot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  flex: none;
-}
-.statusDotGenerating {
-  background: var(--ios-sand, #D9A97D);
-  animation: breathe 1.4s ease-in-out infinite;
-}
-.statusDotDone {
-  background: var(--ios-green, #7FA06F);
-}
-
-@keyframes breathe {
-  0%, 100% { opacity: 0.45; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.25); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .statusDotGenerating {
-    animation: none;
-  }
-}
-
-/* demoStopCard 系列——renderStopCard 插槽的放大版地點卡(見
-   AiPlanPhoneDemoScreen.tsx renderDemoStopCard 的完整說明)。版型對齊
-   PlanTimelineView.module.css 的 .stopCard(縮圖+文字兩欄橫排),縮圖
-   88px/標題 20px 比正式頁預設的 64px/17px 明顯放大,其餘(背景色/
-   邊框/圓角/陰影)沿用同一套 --ios-* token,視覺語言一致,不是另起
-   一套配色。 */
-.demoStopCard {
-  display: flex;
-  gap: 14px;
-  align-items: center;
-  background: var(--ios-card, #26211D);
-  border: 1px solid var(--ios-sep, #3A332C);
-  border-radius: 16px;
-  padding: 14px;
-  box-shadow: 0 6px 16px -8px rgba(61, 53, 48, 0.14);
-}
-.demoStopThumb {
-  width: 88px;
-  height: 88px;
-  border-radius: 999px;
-  flex: none;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
   justify-content: center;
-  font-size: 34px;
-  background: var(--ios-bg, #1C1815);
-}
-.demoStopThumbImg {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.demoStopBody {
-  min-width: 0;
-  flex: 1;
-}
-.demoStopMeta {
-  font-size: 13px;
-  color: var(--ios-gray, #8A8072);
-  letter-spacing: 0.02em;
-  margin-bottom: 4px;
-}
-.demoStopName {
-  font-size: 20px;
+  height: 40px;
+  border-radius: 20px;
+  background: var(--color-accent);
+  color: var(--ios-bg, #1C1815);
+  font-size: 14px;
   font-weight: 600;
-  overflow-wrap: break-word;
+  box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.5);
 }
+
+/* 狀態藥丸相關樣式(.statusPill、.statusDot 系列)與 @keyframes breathe
+   已整個移除——2026-10 使用者明確要求先拿掉「已安排 N 站」、再拿掉
+   「正在安排行程…」,這顆藥丸沒有任何內容了。breathe 的唯一使用者是
+   .statusDotGenerating,故一併刪除。 */

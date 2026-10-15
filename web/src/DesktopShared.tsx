@@ -54,6 +54,59 @@ export const PACE_ENABLED = import.meta.env.VITE_FEATURE_PACE === 'true'
 // 開關方向一致,不需要呼叫端記住「這個特別相反」。
 export const TIME_DRAG_ENABLED = import.meta.env.VITE_FEATURE_TIME_DRAG === 'true'
 
+// ROUTE_LINE_ENABLED——「規劃行程」對話小匡標頭列路徑開關的開關(見
+// DesktopLayout.tsx 的完整說明:開啟時地圖上依時間軸順序把所有已排入
+// 的景點連成一條完整路線)。同 TIME_DRAG_ENABLED 一套編譯時 feature
+// flag 機制(使用者明確要求「這個開關加上 feature flag」),預設關閉,
+// 只在明確設為字串 "true" 時才啟用——flag 關閉時,標頭列上的路徑開關
+// icon 本身就不會渲染,不是「icon 在但點了沒反應」。
+export const ROUTE_LINE_ENABLED = import.meta.env.VITE_FEATURE_ROUTE_LINE === 'true'
+
+// DESTINATION_PROMPT_ENABLED——使用者首次進入 /app 時,地圖右上角「規劃
+// 行程」小匡下方自動彈出的「想去哪裡?」對話氣泡開關(見
+// DestinationPrompt.tsx 的完整說明:先選大地區、再選該地區底下的
+// 城市,選定城市後把「我想去○○玩」送進既有的 onagent 對話/時間軸機制,
+// 跟使用者自己在輸入框打字送出完全相同效果)。同 TIME_DRAG_ENABLED/
+// ROUTE_LINE_ENABLED 一套編譯時 feature flag 機制,預設關閉,只在明確設為
+// 字串 "true" 時才啟用——這是一個主動引導使用者的新互動,還沒有實際流量
+// 驗證過,先用 flag 包住,可以只在特定環境開啟觀察效果,不需要重新部署
+// 就能整個關掉。flag 關閉時這個對話氣泡完全不會掛載,不是掛載了但永遠
+// 不觸發——呼叫端(DesktopLayout.tsx)直接用這個常數包住整段渲染。
+export const DESTINATION_PROMPT_ENABLED = import.meta.env.VITE_FEATURE_DESTINATION_PROMPT === 'true'
+
+// TRANSIT_MODE_SELECT_ENABLED——點擊時間軸「交通膠囊」彈出交通方式選單
+// (步行/公車/捷運/開車)讓使用者改選的開關(2026-10 新增,使用者明確
+// 要求「交通時間的膠囊可以選擇交通方式」)。選完後重新呼叫
+// fetchPlanAiTransitEstimate(見 api.ts 的完整說明,mode 本來就是這支端點
+// 的選填查詢參數,後端早已支援、不需要改動)以使用者指定的 mode 重新
+// 查詢這段交通的時間/距離,取代原本「後端依直線距離自動決定」的預設值。
+//
+// 只有正式頁面(/app、/trip-plan,見 TripPlanPage.tsx)接這個功能——
+// /ai-plan 展示頁(AIPlanTimelinePage.tsx)固定接純前端假資料
+// (planAiFakeDataSource.transitEstimate),沒有後端可以重新查詢,不接這個
+// flag 對應的 callback,PlanTimelineView 在沒收到對應 callback 時膠囊
+// 维持原本純展示、不可點擊(見該元件 onTransitModeChange prop 的完整
+// 說明),flag 開關本身不影響展示頁的行為。
+//
+// 同 TIME_DRAG_ENABLED/ROUTE_LINE_ENABLED/DESTINATION_PROMPT_ENABLED 一套
+// 編譯時 feature flag 機制,預設關閉,只在明確設為字串 "true" 時才啟用。
+export const TRANSIT_MODE_SELECT_ENABLED = import.meta.env.VITE_FEATURE_TRANSIT_MODE_SELECT === 'true'
+
+// NEW_TRIP_DRAFT_ENABLED——/ai-plan 展示頁交接後手機版對話區,composer
+// 上方「新行程」按鈕的開關(2026-10 新增,見 home/plan-ai-sim/
+// LivePlanLayer.tsx 的完整說明:點擊後把目前草稿歸檔進行程清單、開始
+// 一份全新的空白草稿,舊草稿保留在 plan-core/planTimelineDrafts.ts 管理
+// 的清單裡,供未來「叫出舊行程清單」UI 使用——這一輪只做「新增」這個
+// 動作本身)。
+//
+// 同 TIME_DRAG_ENABLED/ROUTE_LINE_ENABLED/DESTINATION_PROMPT_ENABLED/
+// TRANSIT_MODE_SELECT_ENABLED 一套編譯時 feature flag 機制,預設關閉,
+// 只在明確設為字串 "true" 時才啟用——這是全新功能,資料層(多份草稿)
+// 還沒有被實際使用驗證過,先用 flag 包住,可以只在特定環境開啟觀察
+// 效果,不需要重新部署就能整個關掉。flag 關閉時這顆「新行程」按鈕完全
+// 不會渲染,不是渲染了但點了沒反應。
+export const NEW_TRIP_DRAFT_ENABLED = import.meta.env.VITE_FEATURE_NEW_TRIP_DRAFT === 'true'
+
 // DEBUG_PANEL_ENABLED:原本綁在網址參數 ?demo(見 main.tsx 的 isDemo)
 // 底下的試做用導覽項目(API/WS 狀態除錯面板),改成跟 TIMELINE_ENABLED/
 // PACE_ENABLED 同一種編譯時 feature flag 機制——各自獨立開關而非沿用單一

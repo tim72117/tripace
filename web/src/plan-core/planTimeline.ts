@@ -1,4 +1,11 @@
-// planTimeline.ts — 時間軸的鏈結串列資料層,純函式、不依賴 React。
+// planTimeline.ts — 時間軸的鏈結串列領域層,純函式、不依賴 React。
+//
+// 「領域層」而不是「資料層」(2026-10 改名):這個模組不持有任何資料,
+// 也不存取外部儲存——它只定義「行程時間軸」這個領域的型別與規則
+// (怎麼插入一站、刪掉一天後鏈結怎麼接、跨日時 message 歸屬誰)。
+// 實際那一份 PlanTimeline 活在呼叫端的 useSyncedState 裡,持久化則
+// 是 planTimelineStorage.ts 的事。叫「資料層」會跟 data access layer
+// (DAO/repository)混淆,那正好是這裡「不做」的事。
 //
 // 背景:原本 AIPlanTimelinePage.tsx 的 steps 是一個普通陣列,新增節點
 // (見 attractionTools.ts 的 add_attraction)一律 append 到陣列尾端,
@@ -120,7 +127,7 @@ export interface PlanNodeData {
   time?: string
   // day——這個 stop 屬於行程的第幾天,1-based,省略時視為第 1 天(對齊
   // 既有單日行程的呼叫端,不需要因為加了這個欄位就強制所有呼叫端補上
-  // day: 1)。2026-09 新增,理由:原本這個資料層只有一條扁平時間軸,
+  // day: 1)。2026-09 新增,理由:原本這個領域層只有一條扁平時間軸,
   // time 是唯一的排序依據,且驗證邏輯要求整條時間軸嚴格遞增(見下方
   // insertAfter 的完整說明)——多天行程若延續同一套邏輯,第二天只能從
   // 「比前一天最後一站更晚」的時刻開始接續(例如前一天到 23:00,第二天
@@ -179,6 +186,66 @@ export interface PlanNodeData {
   // note:這個節點自己的備註(見 NoteInfo 的完整說明)——undefined 代表
   // 沒有備註,不是空字串這種「有欄位但沒內容」的表達方式。
   note?: NoteInfo
+  // children——2026-10 新增(使用者明確要求「鄰近的景點不用每個都安排
+  // 時間點,而是集合的概念」):這個 stop 是一個「主題點」,底下包含多個
+  // 不獨立佔用時間軸時間點的子景點(例如「赤崁樓周邊」底下包含赤崁樓、
+  // 大天后宮、武廟愛玉)。子景點只是這個主題節點自己承載的展示資料,
+  // 不是鏈結串列裡獨立的節點——沒有 id 以外的 prevId/nextId,不參與
+  // insertAfter/removeNode/toRenderList 的任何鏈結運算。沒有這個欄位
+  // (undefined)代表這是一個普通的單一地點站,渲染/行為完全不受影響,
+  // 是向下相容的新增欄位,不影響任何既有呼叫端。目前只有 plan-ai 展示
+  // 層(HorizontalPlanTimeline.tsx)的模擬劇本會寫入這個欄位,/app 正式
+  // 功能(TripPlanPage.tsx/PlanTimelineView.tsx)不產生、也不特別渲染
+  // 有 children 的節點(維持現有單站外觀,忽略這個欄位)。
+  children?: PlanThemeChild[]
+  // candidateCards——2026-10 新增(使用者明確要求「製作多個候選點的
+  // 圖卡,原本的一個圖卡裡面,放入多個小格,讓使用者選要去哪裡」「可以
+  // 都去,讓使用者選」「可選的狀態跟地點集合是不一樣的,原本的卡片要
+  // 換成是多個小格子的樣子」):跟 children 共用同一份子景點資料結構,
+  // 但渲染方式完全不同——children 原本的語意是「主題點」:一張正常
+  // 外觀的卡片(時間/名稱/描述齊全),底下額外列出一排子景點 chip 讓
+  // 使用者個別瀏覽/點擊(見 children 的完整說明,孔廟+孔廟商圈合併成
+  // 「孔廟周邊」的既有用法)。candidateCards 為 true 時,整張卡片完全
+  // 不顯示這個節點本身的 time/name/desc,改成整張卡片的內容就是並列
+  // 的候選格子本身(見 HorizontalPlanTimeline.tsx candidateCards 渲染
+  // 分支的完整說明)——沒有「主卡片+底下展開區」這層結構,每個候選彼此
+  // 平等並列,不是其中一個代表整張卡、其餘是附屬資訊。候選的實際資料
+  // 仍然共用 children 這個既有欄位,candidateCards 只是切換卡片外觀
+  // 呈現模式的旗標,不是另外一份資料結構。省略(undefined)或 false 時
+  // 維持原本 children 的主題點渲染方式,向下相容既有呼叫端。
+  candidateCards?: boolean
+}
+
+// PlanThemeChild——主題點底下的子景點,見 PlanNodeData.children 的完整
+// 說明。刻意只取 PlanNodeData 裡跟「卡片展示一個地點基本資訊」相關的
+// 欄位子集(name/desc/thumbBg/thumbIcon/placeId/lat/lng/
+// googlePhotoUrls),不包含 time/day/duration/transitFromPrev/note 這些
+// 跟時間軸排序、交通、備註相關的欄位——子景點不再各自佔用時間軸時間點
+// (使用者明確要求),這些欄位對它們沒有意義。也不包含 loading/removing
+// 這些只在頂層 stop 節點才有意義的非同步/動畫狀態(子景點目前只有模擬
+// 腳本寫死資料的使用情境,不需要支援背景查詢中/淡出移除這些中間狀態;
+// 若未來子景點也要接真實查詢,再回來擴充)。
+export interface PlanThemeChild {
+  id: string
+  name?: string
+  desc?: string
+  thumbBg?: string
+  thumbIcon?: string
+  placeId?: string
+  lat?: number
+  lng?: number
+  googlePhotoUrls?: string[]
+  // farFromNext——2026-10 新增(使用者明確要求「出現選擇時,有比較遠的
+  // 行程時,要有一個標誌讓使用者知道,可能需要調整後續時間」「兩者都要
+  // 考量」:前一站/下一站是「這個候選所屬的候選卡」在時間軸上的前後
+  // 鄰居,不是候選彼此之間互相比較)。選了這個候選點,相對於候選卡前後
+  // 鄰接的站點(上一站/下一站)距離明顯較遠,可能壓縮或推遲後續行程的
+  // 時間安排。這裡刻意手動標註(不是前端自動算距離)——候選卡的候選
+  // 點目前都是劇本固定資料,編寫劇本的人本來就知道實際地理位置關係,
+  // 手動標註比引入一套距離公式+閾值判斷更直接,也不需要處理「閾值
+  // 抓多少才算遠」這種容易爭論、因地點密度而異的判斷標準。省略視為
+  // false(沒有這個提示)。
+  farFromNext?: boolean
 }
 
 export interface PlanNode extends PlanNodeData {
@@ -557,7 +624,7 @@ export function insertAfter(
 // 淡出動畫、邏輯上已經視為移除中」的中間狀態,會讓同一個 id 在動畫播放
 // 期間(見 removing 欄位/REMOVE_FADE_MS 的完整說明)被重複接受移除指令。
 // 讓 removeNode 自己同時判斷「不存在」與「已經在移除中」兩種情況並回傳
-// 結構化錯誤,這個判斷收斂回資料層本身,呼叫端只需要看回傳值。
+// 結構化錯誤,這個判斷收斂回領域層本身,呼叫端只需要看回傳值。
 export type RemoveNodeErrorCode = 'anchor_not_found' | 'already_removing'
 
 export interface RemoveNodeError {
@@ -585,7 +652,7 @@ export type RemoveNodeResult =
 // 顯示錯誤的距離/時間。這裡只負責清空(同步、純資料操作,不涉及任何
 // 網路查詢),要不要背景重新查一次新的交通資訊是呼叫端的職責(見
 // AIPlanTimelinePage.tsx refreshTransitForStop 的完整說明)——這裡刻意
-// 不觸發查詢,理由同 insertAfter 本身也不觸發交通查詢,鏈結資料層只管
+// 不觸發查詢,理由同 insertAfter 本身也不觸發交通查詢,鏈結領域層只管
 // 資料結構正確,不碰網路 I/O。
 //
 // opts.allowRemoving——選填,預設 false。true 時跳過「已標記 removing
@@ -635,6 +702,89 @@ export function removeNode(
   const headId = timeline.headId === id ? node.nextId : timeline.headId
 
   return { ok: true, timeline: { nodes, headId } }
+}
+
+// removeDay — 把某一天的所有節點整個移除,其餘天數不受影響。
+//
+// 2026-10 新增(使用者要求「時間軸元件加入重置當天的方法」)。
+//
+// 為什麼放在 plan-core 而不是展示頁:這是時間軸資料結構本身的操作
+// (走訪鏈結、重接 prevId/nextId、處理 headId),跟 /ai-plan 那個展示頁
+// 沒有關係——真實的 AI 規劃層(LivePlanLayer/TripPlanPage)同樣會需要
+// 「這天重排」這個動作。放在這裡兩邊共用,不是在呼叫端各寫一次迴圈
+// 呼叫 removeNode。
+//
+// 跟連續呼叫 removeNode 的差別:removeNode 每次都要複製整個 nodes Map
+// 並重接鏈結,刪 N 個節點就複製 N 次;這裡一次走訪就收集完該天所有
+// id,只重建一次 Map。更重要的是中間狀態——連續呼叫時每一步都是一個
+// 合法但「半刪完」的時間軸,若呼叫端在過程中讀取(例如 React 的
+// setState updater 被重跑)會看到不一致的中間值。
+//
+// message 節點的歸屬:message 自己沒有 day 欄位(見 PlanNodeData 的
+// 完整說明),它依附在前一個 stop 之後。所以走訪時用「目前走到哪一天」
+// 當上下文——遇到 stop 就更新當前天數,message 跟著它前面那個 stop 的
+// 天數走。這跟 toRenderList 插入 Day 分隔線的判斷方式一致。
+//
+// Day 分隔線不需要處理:它是 toRenderList 渲染時衍生出來的,不是真實
+// 存在於 nodes 裡的節點(見該函式的完整說明)。
+export function removeDay(timeline: PlanTimeline, day: number): PlanTimeline {
+  const targetDay = normalizedDay(day)
+  // 先走訪一次,收集這一天的所有節點 id。不在走訪過程中直接刪——
+  // 邊走邊改鏈結會讓 cursor 的下一步失去依據。
+  const doomed = new Set<string>()
+  let cursor = timeline.headId
+  const visited = new Set<string>()
+  // currentDay 預設 1:時間軸開頭若直接是 message(還沒有任何 stop),
+  // 它歸屬第一天,對齊 normalizedDay 對 undefined 的處理。
+  let currentDay = 1
+  while (cursor !== null) {
+    if (visited.has(cursor)) break // 防禦性:理由同 toRenderList
+    visited.add(cursor)
+    const node = timeline.nodes.get(cursor)
+    if (!node) break
+    if (node.type === 'stop') currentDay = normalizedDay(node.day)
+    if (currentDay === targetDay) doomed.add(cursor)
+    cursor = node.nextId
+  }
+
+  // 這一天本來就沒有任何節點——原樣返回同一個物件參照,讓呼叫端的
+  // 記憶化(React.memo/useMemo 等)不會因為一次沒有實際效果的呼叫而
+  // 失效重算。
+  if (doomed.size === 0) return timeline
+
+  const nodes = new Map(timeline.nodes)
+  for (const id of doomed) nodes.delete(id)
+
+  // 重接鏈結:把每個倖存節點的 prevId/nextId 往前/往後跳過所有被刪的
+  // 節點。用迴圈一路跳而不是只跳一格——連續多個節點同屬這一天時
+  // (正常情況:一天有好幾站),只跳一格會指向另一個同樣被刪掉的 id。
+  const skipForward = (id: string | null): string | null => {
+    let next = id
+    while (next !== null && doomed.has(next)) {
+      next = timeline.nodes.get(next)?.nextId ?? null
+    }
+    return next
+  }
+  const skipBackward = (id: string | null): string | null => {
+    let prev = id
+    while (prev !== null && doomed.has(prev)) {
+      prev = timeline.nodes.get(prev)?.prevId ?? null
+    }
+    return prev
+  }
+
+  for (const [id, node] of nodes) {
+    const prevId = skipBackward(node.prevId)
+    const nextId = skipForward(node.nextId)
+    if (prevId === node.prevId && nextId === node.nextId) continue
+    // 前一站被刪掉時,這一站的交通資訊(從上一站過來的那段)失去依據,
+    // 一併清掉——理由同 removeNode 對 transitFromPrev 的既有處理。
+    const clearedTransit =
+      node.type === 'stop' && prevId !== node.prevId ? { transitFromPrev: undefined } : {}
+    nodes.set(id, { ...node, prevId, nextId, ...clearedTransit })
+  }
+
+  return { nodes, headId: skipForward(timeline.headId) }
 }
 
 // updateNode — 依 id 合併更新某個節點的資料欄位,不動它的鏈結位置

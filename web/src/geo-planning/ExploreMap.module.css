@@ -142,9 +142,21 @@
    .citySearchBtn 同一套圓形尺寸,但底色是素色(而非 --color-accent
    強調色),避免跟右側的「搜尋」按鈕搶視覺焦點——搜尋才是這個膠囊的
    主要動作,AI 入口是附加的次要功能。 */
+/* citySearchAiBtnAnchor——透明容器,包住 AI 按鈕本身(見 ExploreMap.tsx
+   chatButtonOverlay prop 的完整說明)。用 inline-flex 而非 block:
+   跟按鈕一樣只佔按鈕本身的尺寸(flex: 0 0 auto 的行為交給這一層接手,
+   按鈕本身改成 width/height:100% 撐滿這個容器),不干擾 .citySearch 既有
+   的 flex row 排列——這個 anchor 在排版上等同直接放按鈕,唯一差異是
+   它是 position:relative,可以當 chatButtonOverlay 內容的定位基準。
+   本身沒有背景、邊框、padding——純粹是定位用的透明殼。 */
+.citySearchAiBtnAnchor {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
 .citySearchAiBtn {
   position: relative;
-  flex: 0 0 auto;
   width: 30px;
   height: 30px;
   display: flex;

@@ -1,47 +1,10 @@
-import { useCallback, useEffect, useRef } from 'react'
-import { TIME_DRAG_ENABLED } from '../DesktopShared'
-import { PlanTimelineView, type StopCardRenderContext } from '../plan-core/PlanTimelineView'
-import { getTimeDragBounds, type PlanNode } from '../plan-core/planTimeline'
+import { useEffect, useState } from 'react'
+import { SignalHigh, Wifi, BatteryFull } from 'lucide-react'
+import type { PlanSimSource } from './plan-ai-sim/planSimSource'
+import { HorizontalPlanTimeline } from './plan-ai-sim/HorizontalPlanTimeline'
 import { usePlanSimSocket } from './plan-ai-sim/AIPlanTimelinePage'
 import demoMapSrc from './assets/ai-plan-demo-map.png'
 import styles from './AiPlanPhoneDemoScreen.module.css'
-
-// renderDemoStopCard——這個展示框專屬的地點卡渲染(使用者明確要求「讓
-// 只有小展示地點卡可以替換元件」「讓圖片跟標題大一點」),透過
-// PlanTimelineView 的 renderStopCard 插槽接上(見該 prop/
-// StopCardRenderContext 的完整說明),不修改共用元件本身的 .stopCard
-// 樣式——那會連動影響 /app、/trip-plan 等所有正式頁面。
-//
-// 縮圖 88px/標題 20px,比正式頁預設的 64px/17px 明顯放大(約 1.3 倍)
-// ——這個展示框本身縮小嵌在手機外框裡(見 AiPlanPhoneDemo.tsx 的
-// SCALE),卡片在這個尺寸下需要更大的視覺元素才容易被辨識,不是單純
-// 「比較好看」的偏好調整。
-//
-// 2026-10 使用者明確定調「小展示不做互動,大展示除了 AI 對話外都要
-// 對齊功能」——曾經一度接上 ctx.onClick/onMouseEnter/onMouseLeave 讓
-// 這張卡片呈現選取/hover 視覺,但這個方向已經撤銷:小展示維持純展示
-// 性質,不接任何點選/hover 回呼,只用 ctx.usablePhotos 這個純資料欄位
-// 決定外觀。ctx.isSelected 不再被引用——這個展示框完全沒有管道能把
-// 任何站點標成選取狀態(見下方 onPanToStop 的完整說明),保留判斷式
-// 只會是永遠不成立的死碼,已拿掉(連同 .demoStopCardSelected 這個
-// CSS class)。拖拉調整時間功能(TIME_DRAG_ENABLED)不受影響,維持原狀
-// ——那是使用者明確要求保留的既有功能,不在這次撤銷範圍內。
-function renderDemoStopCard(step: PlanNode, ctx: StopCardRenderContext) {
-  if (step.type !== 'stop') return null
-  return (
-    <div className={styles.demoStopCard}>
-      <div className={styles.demoStopThumb} style={{ background: ctx.usablePhotos.length ? undefined : step.thumbBg }}>
-        {ctx.usablePhotos.length ? (
-          <img src={ctx.usablePhotos[0]} alt={step.name} className={styles.demoStopThumbImg} />
-        ) : step.thumbIcon}
-      </div>
-      <div className={styles.demoStopBody}>
-        <div className={styles.demoStopMeta}>{step.duration} · {step.kind}</div>
-        <div className={styles.demoStopName}>{step.name}</div>
-      </div>
-    </div>
-  )
-}
 
 // AiPlanPhoneDemoScreen — 功能介紹頁手機外框(AiPlanPhoneDemo.tsx)內部
 // 顯示的展示畫面(方案 B,2026-10 使用者明確確認:「試做B我試試看效果」)。
@@ -72,41 +35,78 @@ function renderDemoStopCard(step: PlanNode, ctx: StopCardRenderContext) {
 // 這個元件本身不處理手機外框造型(鈦金屬邊框/notch/按鈕等,那是
 // AiPlanPhoneDemo.tsx 的職責),只負責「螢幕裡顯示的內容」,呼叫端把
 // 它放進 .screen 容器裡即可。
-export function AiPlanPhoneDemoScreen() {
-  // promptTyped 固定傳 true——這個展示框一開始就是「已經送出」的狀態,
-  // 不重播打字動畫(手機外框本身很小,打字動畫在這個尺寸下不易辨識,
-  // 且使用者的重點是「看到排程逐站長出來」,不是「看到怎麼打字」)。
-  const { steps, isGenerating, timelineRef, dragStopTime } = usePlanSimSocket(true)
+//
+// 2026-10(第二輪,使用者明確要求「功能介紹的小展示換成橫向版」):
+// 時間軸渲染從縱向 PlanTimelineView 換成 plan-ai-sim/HorizontalPlanTimeline
+// (/ai-plan 展示頁手機版模擬中用的同一個元件),跟那邊共用同一套橫向
+// 卡片+迷你時間尺視覺語言,不再需要原本透過 renderStopCard 插槽自訂的
+// 放大版地點卡(那是縱向版才有的客製化管道,HorizontalPlanTimeline
+// 沒有、也不需要這個插槽——它本身的卡片設計已經適合這個尺寸)。不再
+// 需要 mountedIdsRef/scrollRef/scrollToLatest 這套縱向版的輔助機制,
+// HorizontalPlanTimeline 自己管理卡片捲動與置中。
+// createSource/started——選填,讓呼叫端注入不同的播放節奏。
+//
+// 省略時維持原本行為:掛載就用計時器自動播完(/product 的功能介紹卡)。
+// 首頁的捲動展示傳 createPlanSimScrollSource 與自己的進場時機,改由捲動
+// 位置推進(見 planSimScrollSource.ts)——外框、版面、渲染元件全部沿用
+// 這一份,只有「誰推進播放」不同。
+//
+// onSource 把來源實例交還給呼叫端:捲動版需要拿到它才能呼叫 advanceTo()。
+//
+// focusLatest——2026-10 新增(使用者明確要求「做在首頁的展示上」:
+// 「第一張卡滿版,第二個骨架推論中時,第一張壓小,……後面比照前面」的
+// 單卡聚焦版面,見 HorizontalPlanTimeline.tsx 該 prop 的完整說明)。
+// 這個元件同時被兩處呼叫:首頁 ScrollPlanDemo.tsx(捲動驅動)跟
+// /product 功能介紹頁 FeatureShowcase.tsx(計時器驅動,透過
+// AiPlanPhoneDemo 預設 screenProps),使用者這次明確只要首頁這個情境
+// 套用,不影響 /product 那張卡片維持原本固定寬度橫向捲動的既有外觀
+// ——選填,省略時預設 false,呼叫端(ScrollPlanDemo.tsx)自行傳 true
+// 開啟。
+export function AiPlanPhoneDemoScreen({
+  createSource,
+  started = true,
+  onSource,
+  focusLatest = false,
+}: {
+  createSource?: () => PlanSimSource
+  started?: boolean
+  onSource?: (source: PlanSimSource | null) => void
+  focusLatest?: boolean
+} = {}) {
+  // 2026-10 使用者明確要求「首頁展示不要輸入框」:移除開場假打字動畫
+  // 與輸入膠囊(原本的 typedPrompt/promptTyped state 與下方 .composer
+  // 區塊),這個小展示本身是 pointer-events:none、本來就不接受真的
+  // 輸入(見下方 .screen 的完整說明),輸入框只是純視覺的開場效果。
+  //
+  // 拿掉後,usePlanSimSocket 的 start 參數直接傳 started(區塊進入
+  // 視窗),不再透過「假打字播完」這個中間步驟——這不影響劇本的實際
+  // 播放進度,首頁版的 PlanSimSource 是 createPlanSimScrollSource(見
+  // 檔頭說明),站點是靠呼叫端(ScrollPlanDemo.tsx)的 advanceTo(progress)
+  // 依捲動位置推進,不是建立來源後自動播完,started 本身只決定「要不要
+  // 建立這個來源」這一層。
+  const { steps, isGenerating, source } = usePlanSimSocket(started, createSource)
+  useEffect(() => { onSource?.(source) }, [source, onSource])
 
-  // mountedIdsRef/scrollRef——PlanTimelineView 必填的輔助 ref,理由同
-  // AIPlanTimelinePage.tsx 同名變數的完整說明(追蹤進場動畫播過的節點
-  // id、捲動容器參照)。這裡沒有額外邏輯需要掛在這兩個 ref 上。
-  const mountedIdsRef = useRef<Set<string>>(new Set())
-  const scrollRef = useRef<HTMLDivElement | null>(null)
-
-  const stopCount = steps.filter((s) => s.type === 'stop').length
-
-  // scrollToLatest/自動跟隨捲動——理由同 AIPlanTimelinePage.tsx 同名
-  // 邏輯的完整說明(排程過程中新站點/呼吸點長出來,畫面要跟著捲到底,
-  // 否則使用者只看得到最上面幾站、看不到持續安排的動態)。這裡是簡化
-  // 版:不需要 followingRef/handleScroll 那套「使用者手動往上捲就退出
-  // 跟隨」的邏輯——這個展示框整個是 pointer-events:none(見
-  // AiPlanPhoneDemo.tsx 的完整說明),使用者無法在上面滑動捲頁,不會有
-  // 「跟隨 vs 使用者主動瀏覽」的衝突情境,永遠跟隨到底即可。
-  const scrollToLatest = useCallback(() => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const scroller = scrollRef.current
-        if (!scroller) return
-        scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' })
-      })
-    })
-  }, [])
-
+  // selectedStopId——2026-10(使用者明確要求「功能介紹的小展示換成
+  // 橫向版」):HorizontalPlanTimeline 必填這個 prop 並自己管理捲動/
+  // 卡片置中(不像縱向版 PlanTimelineView 那樣由呼叫端自己接手
+  // scrollRef/scrollToLatest),這裡只需要給它一個內部 state 讓「最新
+  // 長出來的站點」能被標成選中、卡片列自動捲到該站,不需要自訂
+  // scrollToLatest 邏輯——HorizontalPlanTimeline 內部的
+  // scrollToStop/handleScroll 已經處理了「捲到指定站點」這件事。
+  //
+  // 新站點長出來時自動選中它(呼應原本「永遠跟隨到底」的展示效果:
+  // 排程過程中新站點陸續出現,畫面跟著捲到最新一站),用最後一個 stop
+  // 節點的 id——這個展示框本身是 pointer-events:none(見
+  // AiPlanPhoneDemo.tsx 的完整說明),使用者無法手動點選/捲動,不會有
+  // 「使用者正在看某一站、卻被自動跳走」的衝突情境,永遠選中最新一站
+  // 即可。
+  const [selectedStopId, setSelectedStopId] = useState<string | null>(null)
   useEffect(() => {
-    if (steps.length === 0) return
-    scrollToLatest()
-  }, [steps, isGenerating, scrollToLatest])
+    const stops = steps.filter((s) => s.type === 'stop')
+    const latest = stops[stops.length - 1]
+    if (latest) setSelectedStopId(latest.id)
+  }, [steps])
 
   return (
     <div className={`${styles.screen} app-theme-root`}>
@@ -125,46 +125,59 @@ export function AiPlanPhoneDemoScreen() {
           接收。 */}
       <img src={demoMapSrc} alt="" className={styles.mapBackdrop} aria-hidden="true" />
       <div className={styles.scrim} />
+      {/* statusBar——2026-10 新增(使用者明確要求「手機上方放信號跟
+          電量」):動態島兩側的 iOS 狀態列裝飾,純視覺、不即時更新
+          (對齊 Apple 行銷素材慣用的固定時間「9:41」,這裡同樣寫死一個
+          時間字串,不需要真的讀系統時鐘——這個展示框本身就是模擬畫面,
+          不是在演示系統 UI 本身的即時性)。aria-hidden:這些圖示/文字
+          不帶任何實際資訊,不該被輔助技術當成有意義內容朗讀。 */}
+      <div className={styles.statusBar} aria-hidden="true">
+        <span className={styles.statusBarTime}>9:41</span>
+        <span className={styles.statusBarIcons}>
+          <SignalHigh size={15} strokeWidth={2.2} />
+          <Wifi size={15} strokeWidth={2.2} />
+          <BatteryFull size={18} strokeWidth={1.8} />
+        </span>
+      </div>
       <div className={styles.timelineWrap}>
-        <PlanTimelineView
+        {/* onSelectStop/onOpenPhotos——這個展示框不做互動(2026-10
+            使用者明確定調「小展示不做互動」,這次換成橫向版延續同一個
+            定調),給最小可用的 no-op 滿足型別:onSelectStop 仍然接上
+            setSelectedStopId(讓使用者手動點擊卡片時至少視覺上能正確
+            反應,雖然整個展示框是 pointer-events:none、實際上點不到),
+            onOpenPhotos 整個不處理(沒有 Lightbox 覆蓋層可以開,這個
+            展示框沒有那層 UI)。 */}
+        <HorizontalPlanTimeline
           steps={steps}
-          isThinking={isGenerating}
-          emptyStateMessage=""
-          hideEmptyState
-          endMarkerMessage="行程結束"
-          // selectedStopId/onPanToStop——這個展示框不做互動(2026-10
-          // 使用者明確定調「小展示不做互動」),PlanTimelineView 的這兩個
-          // prop 是必填,給一組最小可用的 no-op 實作滿足型別,不做任何
-          // 實際的地圖平移(靜態圖片沒有「平移」這個概念),也不维護任何
-          // selectedStopId state——沒有狀態就沒有永遠不成立的死碼分支。
-          selectedStopId={null}
-          showJumpPill={false}
-          onJumpToLatest={() => {}}
-          onPanToStop={() => {}}
-          // TIME_DRAG_ENABLED——feature flag(見 DesktopShared.tsx 同名
-          // 常數的完整說明),關閉時兩個 prop 都不傳。
-          getStopTimeDragBounds={TIME_DRAG_ENABLED ? (stopId) => getTimeDragBounds(timelineRef.current, stopId) : undefined}
-          onDragStopTime={TIME_DRAG_ENABLED ? dragStopTime : undefined}
-          renderStopCard={renderDemoStopCard}
+          selectedStopId={selectedStopId}
+          onSelectStop={setSelectedStopId}
           onOpenPhotos={() => {}}
-          mountedIdsRef={mountedIdsRef}
-          scrollRef={scrollRef}
-          scrollClassName={styles.timelineScroll}
+          isGenerating={isGenerating}
+          focusLatest={focusLatest}
         />
       </div>
-      <div className={styles.statusPill}>
-        {isGenerating ? (
-          <>
-            <span className={`${styles.statusDot} ${styles.statusDotGenerating}`} />
-            <span>正在安排行程…</span>
-          </>
-        ) : (
-          <>
-            <span className={`${styles.statusDot} ${styles.statusDotDone}`} />
-            <span>已安排 {stopCount} 站</span>
-          </>
-        )}
+      {/* 2026-10 開場輸入膠囊整個移除(使用者明確要求「首頁展示不要
+          輸入框」)——原本顯示打字中/打完的那句需求,純展示、唯讀,
+          不接受真的輸入。.composer/.composerText/.caret 的樣式一併從
+          .module.css 移除,見 usePlanSimSocket 呼叫處的完整說明。
+          2026-10(第二輪,使用者明確要求「原本輸入框的地方,放試試看
+          按鈕」):原輸入膠囊的位置改放一顆純視覺的行動呼籲按鈕,對齊
+          /ai-plan 展示頁排完劇本後出現的「讓我試看看」按鈕視覺語言
+          (見 AIPlanTimelinePage.tsx composerCollapsed 的完整說明),但
+          這裡不是真的 <button>——這個展示框整個是 pointer-events:none
+          (見 .screen 的完整說明),點擊事件本來就會原樣冒泡到外層
+          AiPlanPhoneDemo.tsx 的 <Link to="/ai-plan">,這顆「按鈕」只是
+          視覺引導,不需要(也不能)自己攔截點擊或觸發任何互動,故用
+          <div> 而非 <button>,避免暗示這裡有獨立於外層 Link 之外的
+          可互動語意。 */}
+      <div className={styles.tryItCta} aria-hidden="true">
+        試試看
       </div>
+      {/* 2026-10 整顆狀態藥丸移除(使用者明確要求,先拿掉「已安排 N 站」、
+          再拿掉「正在安排行程…」)——這個小畫面的重點是時間軸本身,
+          站數在上面一目了然,而「正在安排」的狀態由時間軸底部的骨架卡
+          與呼吸點在生成的位置本身表達,比固定在角落的一行字更精準。
+          .statusPill/.statusDot* 的樣式一併從 .module.css 移除。 */}
     </div>
   )
 }

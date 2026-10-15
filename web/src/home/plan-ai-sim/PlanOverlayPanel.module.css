@@ -1,0 +1,112 @@
+/* PlanOverlayPanel——/ai-plan 疊在地圖上方的 UI 層外殼(定位 + 事件穿透 +
+   地圖安全區)。交接前的模擬層與交接後的真實層(LivePlanLayer)共用同一份,
+   不再各自維護一套版面規則——兩邊原本各寫一份,交接後手機版因此出現
+   「輸入框貼在頂端」「整張地圖拉不動」(見下方 .passThrough)。
+
+   這份檔案收納的規則,原本散在 AIPlanTimelinePage.module.css:
+   .navSpacer、.mapSafeArea、.timelinePanel(桌面側欄/手機 flex 子項)與
+   交接後的事件穿透。設計背景(為什麼安全區用 absolute 四邊宣告而非
+   flex、為什麼 navSpacer 是人工估算)記在各 class 上。 */
+
+/* navSpacer——漂浮導覽列(SiteNavButtons,position: fixed,跨多頁共用,
+   不改它去適配單一頁面)佔掉頁面上方一截,fixed 元素量不到實際高度,
+   所以放一個看不見、但真實佔有 flex 版面的佔位元素,高度對齊導覽列的
+   視覺高度。這一截仍是估算值(72px),是整套機制裡唯一人工估算的部分。
+   只在手機版渲染:桌面版面板是 absolute 側欄,不在 flex 流裡。 */
+.navSpacer {
+  flex: 0 0 72px;
+}
+
+/* panel——時間軸/輸入框所在的面板。
+   桌面(>=768px):固定 560px、貼齊 .page 右緣、上下撐滿的側欄,地圖左側
+   完全露出。容器只負責定位,不給背景與陰影(使用者要求「浮空」效果)。
+   手機(<=767px):退回 .page(flex column)的一般 flex 子項,flex:1 吃滿
+   導覽列佔位以外的剩餘高度;min-height:0 是 flex 子項成為捲動容器的
+   常見前提(預設 min-height:auto 不會小於內容)。 */
+@media (min-width: 768px) {
+  .panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 560px;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 767px) {
+  .panel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* passThrough——面板自己不接收指標事件,讓空白處的拖曳/縮放穿透到
+     底下的地圖。手機版面板撐滿整頁、疊在地圖上方,若自己攔截,地圖
+     就完全拉不動。
+     pointer-events 會繼承,所以內容必須自己把「真正需要互動的元素」
+     寫回 auto(交接後的 TripPlanPage 由 .compactBottom 負責)。
+     只放手機斷點:桌面版是 560px 側欄,不覆蓋地圖。 */
+  .passThrough {
+    pointer-events: none;
+  }
+}
+
+/* safeArea——地圖的「安全可視區」,一個看不見的矩形,供 useMapSafeArea
+   量測:目標點落在這個矩形內就 panTo,超出才 fitBounds。
+   用 absolute 直接宣告四個邊,不靠 flex 手足元素分配空間——flex 版本
+   會在手足元素改了 flex 設定、或時間軸沒內容撐不開時靜默算錯,不會有
+   任何地方報錯。代價是底部那一截是人工估算,換來的是幾何意圖一眼可見。
+   相對於最近的 positioned 祖先(手機版面板是 static,所以是 .page)。
+   只在手機版渲染(桌面版是右側縱向側欄,版面語意不同)。
+
+   bottom——底部被橫向時間軸佔用的高度:
+     卡片 300px(--horizontal-timeline-card-height)
+   + 日期列 20px + gap 10px
+   + .wrap 的 padding 12px(上)+ 4px(下)
+   + .wrap 的 padding-bottom 70px(原本就是為了讓開輸入框與 Google 版權
+     文字預留的,見 HorizontalPlanTimeline.module.css .wrap)
+   = 416px。 */
+.safeArea {
+  position: absolute;
+  top: 72px;
+  left: 0;
+  right: 0;
+  bottom: 416px;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* composerSlot——輸入框的插槽:相對整個 .page 貼底置中,只決定「放哪裡」
+   與「多寬、疊在哪一層」,不碰輸入框自己的外觀(膠囊底色、邊框、陰影由
+   內容自己負責)。模擬層與真實層的輸入框因此在同一個位置,交接時不會跳。
+
+   max-width: 100vw 以外再補一道保險——內容(例如「讓我試看看」按鈕)由
+   文字自然撐開時,flex 子項預設 min-width:auto 仍可能撐大容器、超出
+   width 上限;這個容器是 position:absolute,撐大後會讓 .page 以外的視窗
+   整體出現橫向卷軸(.page 的 overflow:hidden 對絕對定位元素自身被撐大
+   無效)。這是真實回報過的問題,max-width 當第二道防線。
+
+   z-index——輸入框是使用者的操作入口,必須保證在時間軸內容最上層:
+   時間軸裡帶 z-index 的元素(.transitPill、.anchorDot、.jumpPillWrap,
+   最高 10)若沒有明確比它們高,在重疊時會蓋過輸入框(實際發生過:
+   交通卡疊在輸入框上方)。 */
+.composerSlot {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 48px));
+  max-width: calc(100vw - 48px);
+  box-sizing: border-box;
+  z-index: 20;
+}
+
+@media (max-width: 767px) {
+  .composerSlot {
+    width: calc(100% - 32px);
+  }
+}

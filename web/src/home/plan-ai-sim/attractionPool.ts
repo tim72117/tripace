@@ -205,6 +205,21 @@ export const ATTRACTION_POOL: PooledAttraction[] = [
     thumbIcon: '🍚',
     lat: 22.9976, lng: 120.1975,
   },
+  // attr-fuji-meatball——2026-10 使用者明確要求「製作多個候選點的圖卡」
+  // 「阿堂鹹粥的圖卡換成多個,另外再加入一個新的食物地點」新增:福記
+  // 肉圓,民族路上的在地知名小吃,步行距離貼近阿堂鹹粥(同屬中西區永福
+  // 路/民族路一帶的午餐候選),當作 stop-lunch 主題卡的第二個候選點
+  // (見 planSimScript.ts stop-lunch 的完整說明)。
+  {
+    id: 'attr-fuji-meatball',
+    name: '福記肉圓',
+    kind: '午餐',
+    duration: '停留 1h',
+    desc: '傳承多代的在地肉圓老店，外皮Q彈內餡扎實，淋上特調醬汁是台南經典小吃代表之一。',
+    thumbBg: 'linear-gradient(135deg, #C97B4A, #8B4A2F)',
+    thumbIcon: '🥟',
+    lat: 22.9969, lng: 120.1981,
+  },
   {
     id: 'attr-hayashi',
     name: '林百貨',

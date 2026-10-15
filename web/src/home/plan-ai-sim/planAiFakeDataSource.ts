@@ -41,6 +41,29 @@ const REAL_PHOTOS: Record<string, string> = {
   'attr-fire-museum': `${REAL_PHOTOS_BASE}/fire-museum.jpg`, // IMG_9844
 }
 
+// FAKE_QUERY_DELAY_MS — 人為固定延遲,讓 fakePlaceDetails/fakeTransitEstimate
+// 這兩個 async 函式不要「同步查完立刻 return」。呼叫端(AIPlanTimelinePage.tsx
+// 的 resolveAttractionForStep/refreshTransitForStop)在呼叫這兩個函式之前
+// 都會先把對應節點標成 loading:true(縮圖轉圈/交通列轉圈,見
+// HorizontalPlanTimeline.tsx、plan-core/PlanTimelineView.tsx 的 thumbSpinner/
+// transitRow),若這裡不延遲、單一個 microtask 就 resolve,loading 狀態存在
+// 的時間短到使用者在實機上完全看不到這個效果——這是純展示頁,不需要真的
+// 模擬網路延遲的隨機抖動,固定一個合理數值即可。
+//
+// 數值對齊原始後端(plan_sim_demo.go/plan_sim_ws.go)故意加的
+// transitEstimateMinDelay/transitEstimateMaxDelay(800~1500ms)的量級,取中間
+// 值附近、足以讓 loading 動畫被看見、又不會讓使用者覺得遲鈍。
+//
+// 與 planSimFakeSource.ts 的播放節奏相容:劇本每則 action 之間本來就有
+// randomDelayMs()(900~1500ms)的 thinking 停頓,這裡的延遲是在
+// insertAttractionAfter 同步插入節點「之後」才背景觸發的非同步查詢,跑在
+// 下一則 action 送出前的這段間隔之內,不會拖慢或打亂劇本本身的播放節奏。
+const FAKE_QUERY_DELAY_MS = 650
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 // haversineKm — 兩點球面距離(公里),供 fakeTransitEstimate 估算交通
 // 時間使用。真後端(fetchPlanAiTransitEstimate → handlePublicGeoTransitEstimate)
 // 用的是實際路網距離,這裡只是純前端展示用的粗略估算,不需要一樣精準
@@ -65,6 +88,7 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
 // (AIPlanTimelinePage.tsx)在沒有 googlePhotoUrls 時本來就會 fallback
 // 顯示 thumbIcon,不需要另外處理。
 async function fakePlaceDetails(placeId: string): Promise<PlanAiPlaceDetailsResult> {
+  await delay(FAKE_QUERY_DELAY_MS)
   const hit = getAttractionById(placeId)
   if (!hit) return { found: false }
   const photo = REAL_PHOTOS[placeId]
@@ -78,6 +102,7 @@ async function fakeTransitEstimate(
   from: { lat: number; lng: number },
   to: { lat: number; lng: number },
 ): Promise<PlanAiTransitEstimateResult> {
+  await delay(FAKE_QUERY_DELAY_MS)
   const km = haversineKm(from, to)
   if (km <= 1.5) {
     return { mode: '步行', icon: '🚶', minutes: Math.max(1, Math.round((km / 4.5) * 60)), distance: `${Math.round(km * 1000)}m` }

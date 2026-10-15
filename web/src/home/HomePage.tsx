@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { ScrollPlanDemo } from './ScrollPlanDemo'
 import { trackEvent } from '../analytics'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons'
 import './HomePage.css'
@@ -105,6 +106,14 @@ export function HomePage() {
           </a>
         </div>
       </section>
+
+      {/* ScrollPlanDemo——捲動式 AI 規劃展示(雛形):使用者往下捲時,
+          行程一站一站排出來。取代原本靜態的 AiPlanPhoneDemo 手機展示
+          ——後者只是一張固定畫面,看不出「AI 正在排」這個過程本身,而
+          那正是這個產品最值得展示的部分。
+          跟 /ai-plan 共用同一份劇本與渲染元件,差別只在誰推進播放
+          (那邊是計時器、這裡是捲動位置),見 planSimScrollSource.ts。 */}
+      <ScrollPlanDemo />
 
       {/* destinations:目的地清單——每個城市的介紹頁面(見 App.tsx 對應
           路由)集中列在這裡,取代舊版首頁「捲動看完一個城市的完整敘事」

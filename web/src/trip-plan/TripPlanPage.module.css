@@ -35,6 +35,15 @@
   color: var(--color-dark);
 }
 
+/* pageTransparentBackground——疊加在 .page 上,拿掉實色背景(見
+   TripPlanPage.tsx transparentBackground prop 的完整說明)。只有
+   /ai-plan 展示頁的 LivePlanLayer 這個呼叫端會套用,讓底下
+   AIPlanTimelinePage 的 NativeMapBase(交接前後同一個地圖實例)能
+   透出來,不被這個元件自己的實色背景蓋住。 */
+.pageTransparentBackground {
+  background: transparent;
+}
+
 /* compact:放進對話浮動小匡(DesktopLayout.tsx 的 chat-popover)時疊加
    的 modifier。
    上面 .page 的 min-height:100% + 自然高度 + 不管 overflow,成立的前提
@@ -54,6 +63,23 @@
   height: 100%;
   min-height: 0;
   position: relative;
+}
+
+/* compactBottom:compact 且 horizontalTimeline(手機版交接後的真實層)。
+   這個模式下容器是一整頁高的透明疊層,底下就是地圖,兩件事要同時成立:
+   1. 內容貼底:縱向版靠 PlanTimelineView 的 flex:1 捲動區把輸入框推到底,
+      橫向版沒有這個填充物,時間軸為空時(剛交接、草稿是空的)輸入框會
+      貼在頂端,跑到導覽列底下。justify-content: flex-end 讓時間軸與
+      輸入框一起沉到底部。
+   2. 不攔截地圖手勢:容器本身 pointer-events:none,只有實際的內容(時間軸、
+      輸入框、按鈕)接收事件,空白處的拖曳/縮放穿透到底下的地圖。
+      pointer-events 會繼承,所以子元素要明確寫回 auto。 */
+.compactBottom {
+  justify-content: flex-end;
+  pointer-events: none;
+}
+.compactBottom > * {
+  pointer-events: auto;
 }
 
 /* compactScroll:疊加在 PlanTimelineView 自己的 .scroll 上(透過該元件
@@ -209,6 +235,44 @@
 /* Header 相關樣式(.header/.headerInner/.headerRight/.statusPill/
    .statusDot*)已整個移除,原因見 TripPlanPage.tsx 對應位置的說明。 */
 
+/* newDraftBtn——「新行程」按鈕(2026-10 新增,見 TripPlanPage.tsx
+   onNewDraft prop 的完整說明)。目前唯一的呼叫情境是
+   horizontalTimeline && onNewDraft 同時成立,而這只會發生在 compact 模式
+   下(見該 prop 的完整說明,唯一呼叫端 LivePlanLayer.tsx 永遠傳
+   compact)——不採用全頁版 .composer 那套 position: sticky 相對外層
+   <main> 定位(那套機制只在「捲動權收在外層 <main>」的全頁版成立,見
+   .composer 基礎規則與 .compact .composer 覆寫的完整說明:compact 模式
+   下 sticky 沒有正確的捲動祖先可以依附)。改成單純的 flex 版面語意,
+   對齊 .compact .composer 本身「flex: none + margin-bottom」的既有做法
+   ——這顆按鈕在 JSX 裡本來就是 composer 的上一個手足元素,flex column
+   容器(.page)會自然把它排在 composer 正上方,不需要額外定位。
+   視覺語言比照 .composer 本身的卡片 token(圓角膠囊、同一組 --ios-*
+   配色),但縮小一號、置中,不搶走 composer 本身的視覺焦點——這是次要
+   動作,不是主要的對話輸入入口。 */
+.newDraftBtn {
+  flex: none;
+  align-self: center;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: fit-content;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 999px;
+  color: var(--color-dark);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  box-shadow: 0 8px 20px -10px rgba(61, 53, 48, 0.28);
+  cursor: pointer;
+  z-index: 5;
+}
+.newDraftBtn:hover {
+  background: var(--ios-active);
+}
+
 /* ---------- Composer ---------- */
 
 /* composer——漂浮在時間軸內容上方的膠囊。2026-09 改用 position: sticky
@@ -285,4 +349,21 @@
   /* composer 的左右安全間距收窄——手機面板本身寬度已經比桌面窄很多
      (例如 iPhone SE 375px)。 */
   .composer { width: calc(100% - 32px); }
+}
+
+/* inSlot——輸入框被傳送進版面外殼的插槽(見 ComposerPortal.tsx、
+   plan-core/composerSlot.ts)後的覆寫。插槽本身已負責貼底置中、寬度與
+   層級,輸入框只要填滿它,不能再自己定位或留外距。
+   wrapperClassName 帶著 .compact(讓「.compact .input」這類後代選擇器
+   照常命中),所以要把 .compact 的 height:100% 與 .compact .composer 的
+   相對定位/下外距還原。放在檔案最後,靠順序勝過同特異度的前面規則。 */
+.inSlot {
+  height: auto;
+}
+.inSlot .composer {
+  position: static;
+  bottom: auto;
+  width: 100%;
+  margin: 0;
+  z-index: auto;
 }

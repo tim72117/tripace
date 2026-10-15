@@ -1,14 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import {
-  CalendarClock,
-  Layers,
-  Wand2,
-} from 'lucide-react';
-import { ThemePointDemo } from './ThemePointDemo';
-import { TimelineDemo } from './TimelineDemo';
-import { AiPlanPhoneDemo } from './AiPlanPhoneDemo';
+import { FeatureShowcase } from './FeatureShowcase';
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { ExploreOtherCities } from './ExploreOtherCities';
 import { trackEvent } from '../analytics';
@@ -25,29 +18,6 @@ import './ProductPage.css';
 // 修改其中一邊記得同步另一邊。
 const SEO_TITLE = '功能介紹——AI編排行程、主題景點、時間軸排程 | Tripace'
 
-const FEATURES = [
-  {
-    // 2026-09:「自動編排行程」改名為「AI編排行程」並移到第一個位置
-    // （使用者明確要求），同時拿掉原本的「即將推出」徽章——不再是未上線
-    // 的試做功能，比照另外兩張卡片的正式項目對待。icon 維持 Wand2
-    // (魔杖,「自動生成/一鍵搞定」語意),避免跟「時間軸排程」的
-    // CalendarClock(時鐘,強調時間刻度本身)、「主題景點」的 Layers
-    // (圖層堆疊,強調空間分層)撞語意。
-    icon: Wand2,
-    title: 'AI編排行程',
-    description: '描述你的旅行需求，AI 自動把景點排成一份完整的每日時間軸行程。',
-  },
-  {
-    icon: Layers,
-    title: '主題景點',
-    description: '找景點沒有方向？點開主題點，就能看到周邊精心挑選的店家與景點。',
-  },
-  {
-    icon: CalendarClock,
-    title: '時間軸排程',
-    description: '把景點排入每天的時間軸，安排順序，一眼掌握整趟旅程的節奏。',
-  },
-] as const;
 
 function isCurrentlyDark(t: 'dark' | 'light' | null, systemPrefersDark: boolean) {
   if (t === 'dark') return true;
@@ -114,48 +84,7 @@ export function ProductPage() {
         </div>
       </header>
 
-      <section className="product-features">
-        <h2 className="product-section-title">核心功能</h2>
-        <div className="product-features-grid">
-          {FEATURES.map(({ icon: Icon, title, description }) => (
-            <div className="product-feature-card" key={title}>
-              <div className="product-feature-icon">
-                <Icon size={22} />
-              </div>
-              <h3>{title}</h3>
-              <p>{description}</p>
-              {/* ThemePointDemo:只在「主題景點」這張卡片內渲染(見上方
-                  FEATURES 陣列的 Layers icon 那筆)——文字說明「點開
-                  主題點,就能看到周邊精選店家」這句話本身仍是抽象敘述,
-                  這裡用一個假地圖示意圖具體演示:中央大圓圈是主題點,
-                  周圍散布的小點是精選點,純靜態展示(不含任何按鈕/
-                  互動)——不是接真實 Google Maps(不需要,這裡純粹示範
-                  「主題點揭露精選點」這個產品概念本身,跟任何真實城市/
-                  資料庫內容無關),見 ThemePointDemo.tsx 的完整說明。
-                  用 title 字串比對挑出這一張卡片,而非把 FEATURES 拆成
-                  「主題景點」與「其餘」兩份陣列分開處理——FEATURES 的
-                  渲染順序、其餘三張卡片的結構完全不受影響,只有這一張
-                  卡片額外多渲染一段內容,改動範圍最小。
-                  TimelineDemo:同樣邏輯,只在「時間軸排程」卡片內渲染
-                  ——地圖上依序點選候選景點、依序飛入右側時間軸時段格
-                  的假動畫,見 TimelineDemo.tsx 的完整說明。
-                  AiPlanPhoneDemo:同樣邏輯,只在「AI編排行程」卡片內渲染
-                  ——模擬手機外框內顯示固定手機版面的展示畫面
-                  (AiPlanPhoneDemoScreen,不用 iframe),見 AiPlanPhoneDemo.tsx
-                  的完整說明。 */}
-              {title === '主題景點' && <ThemePointDemo dark={dark} />}
-              {title === '時間軸排程' && <TimelineDemo dark={dark} />}
-              {/* 點整支手機連到 /ai-plan 完整展示(站內路由,故用 <Link>,見
-                  AiPlanPhoneDemo.tsx)。取代原本的「觀看展示」按鈕。 */}
-              {title === 'AI編排行程' && (
-                <AiPlanPhoneDemo
-                  onClick={() => trackEvent('landing_cta_click', { page: 'product', position: 'feature-ai-plan' })}
-                />
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
+      <FeatureShowcase dark={dark} page="product" />
 
       <section className="product-final-cta">
         <h2>準備好規劃下一趟旅程了嗎？</h2>

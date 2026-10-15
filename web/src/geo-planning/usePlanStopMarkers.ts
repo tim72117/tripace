@@ -111,6 +111,7 @@ export function usePlanStopMarkers({
   stops,
   selectedStopId,
   hoverStopId,
+  hoverTransitPair,
   onStopClick,
   useAdvancedMarkers = true,
 }: {
@@ -124,6 +125,15 @@ export function usePlanStopMarkers({
   // 暈收斂、hover 環虛暈擴散)——見 planStopMarkerContent 對 state 參數
   // 的完整說明。selected 優先:兩者同時指向同一顆時視覺等同 selected。
   hoverStopId?: string | null
+  // hoverTransitPair——滑鼠懸停在時間軸「交通膠囊」上時,這段交通連接的
+  // 兩個站點 id(使用者明確要求「移動到交通的膠囊上,地圖上讓連接的兩個
+  // 點都顯示 hover 狀態」)。跟 hoverStopId 是互補而非互斥的兩種來源:
+  // hoverStopId 是「滑鼠在單一張站點卡上」,這個是「滑鼠在兩站之間的
+  // 交通膠囊上」——兩者都會讓對應的點進入 hover 視覺,resolveState 裡
+  // 用「屬於其中任一來源」判斷,不需要呼叫端自己合併成單一清單。選填:
+  // 省略時這個圖層的 hover 判斷退回只看 hoverStopId,行為等同新增這個
+  // 參數之前。
+  hoverTransitPair?: { fromId: string; toId: string } | null
   // onStopClick——點擊地圖上的小圓點時回報是哪一站。選填:省略時圓點
   // 純粹是顯示用,不可點擊。
   //
@@ -195,6 +205,12 @@ export function usePlanStopMarkers({
   // 後到的情況)key 不變、marker 不重建,tooltip 會一直停在舊名。
   const stopsKey = stops.map((s) => `${s.id}|${s.lat}|${s.lng}|${s.name ?? ''}`).join(',')
 
+  // hoverTransitPairKey——hoverTransitPair 每次 render 都是新物件參照
+  // (即使內容相同,呼叫端通常是 onHoverTransit(pair) 直接 setState 一個
+  // 字面量),直接放進依賴陣列會讓同步 effect 誤判「變了」而每次 render
+  // 都重跑——理由同 stopsKey。
+  const hoverTransitPairKey = hoverTransitPair ? `${hoverTransitPair.fromId}|${hoverTransitPair.toId}` : ''
+
   // resolveState——把「這一站在當下是什麼視覺狀態」的規則收斂成一處,
   // 建立 effect 與同步 effect 共用,避免兩邊各寫一次 selected 優先的判斷
   // 而漂移。
@@ -204,8 +220,10 @@ export function usePlanStopMarkers({
   // 依賴陣列只決定「要不要執行」,不影響「執行的是哪一輪的閉包」——真的
   // 執行時跑的必然是最後一輪。同資料夾 useSearchResultMarkers 的建立
   // effect 也是直接讀 selectedKey/hoverKey,同一個道理。
+  const isHoverViaTransitPair = (id: string): boolean =>
+    hoverTransitPair?.fromId === id || hoverTransitPair?.toId === id
   const resolveState = (id: string): PlanStopMarkerState =>
-    id === selectedStopId ? 'selected' : id === hoverStopId ? 'hover' : 'base'
+    id === selectedStopId ? 'selected' : id === hoverStopId || isHoverViaTransitPair(id) ? 'hover' : 'base'
 
   useEffect(() => {
     if (!mapReady || !mapRef.current) return
@@ -361,5 +379,5 @@ export function usePlanStopMarkers({
       setStopMarkerZIndex(marker, zIndexForState(state))
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, selectedStopId, hoverStopId, stopsKey, useAdvancedMarkers])
+  }, [mapReady, selectedStopId, hoverStopId, hoverTransitPairKey, stopsKey, useAdvancedMarkers])
 }

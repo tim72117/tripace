@@ -1,7 +1,7 @@
 /* PlanTimelineView.module.css — 時間軸視圖本體的樣式,從
    trip-plan/TripPlanPage.module.css 拆分出來(2026-10,使用者明確要求
    「先將正式畫面的排程時間軸UI拆成獨立元件」,放進 plan-core/ 跟
-   planTimeline.ts/attractionTools.ts 這兩份純資料層放在一起)——這份只
+   planTimeline.ts/attractionTools.ts 這兩份純領域層放在一起)——這份只
    含時間軸捲動內容本身(空狀態/列印/卡片/軸線/交通/備註/訊息/骨架/
    「回到最新」浮動按鈕)的樣式,header/狀態藥丸/composer 輸入框/右上角
    小地圖仍留在 TripPlanPage.module.css,因為那些是「正式功能頁面外殼」
@@ -220,6 +220,33 @@
   cursor: grabbing;
   border-color: var(--ios-blue);
   transition: none;
+}
+
+/* dragBoundLabel——拖拉中顯示在圓點上/下方的邊界時間刻度(使用者明確
+   要求「點下圓點時出現上下兩個刻度」,見 PlanTimelineView.tsx
+   isDraggingThis 區塊的完整說明)。position:absolute 相對 .axisCol
+   (position:relative,見上方該 class)定位,不吃版面空間、不影響
+   .stopRow 本身的高度。字級比 .stopTimeText(13px)小一階,視覺上是
+   輔助提示而非主要資訊。 */
+.dragBoundLabel {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ios-gray);
+  white-space: nowrap;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+/* top/bottom 數值——圓點中心在 axisCol 頂部往下 16px(margin-top 10px +
+   高度 12px 的一半,同 .axisLineAbove/.axisLineBelow 注解的既有換算),
+   圓點本身半徑 6px,上方刻度留在圓點上緣再往上一小段間距,下方同理。 */
+.dragBoundLabelAbove {
+  top: -6px;
+}
+.dragBoundLabelBelow {
+  top: 34px;
 }
 
 .stopCardWrap {
@@ -475,6 +502,7 @@
 .transitDashBelow { top: 50%; bottom: 0; }
 /* transitPill:交通 pill 刻意降權——不該跟景點卡本身有同樣份量。 */
 .transitPill {
+  position: relative;
   z-index: 2;
   white-space: nowrap;
   display: flex;
@@ -485,6 +513,69 @@
   padding: 5px 12px;
   font-size: 12px;
   color: var(--ios-gray);
+}
+
+/* transitPillClickable——只在呼叫端提供 onTransitModeChange 時疊加(見
+   PlanTimelineView.tsx canPickMode 的完整說明),讓使用者在滑鼠懸停時
+   能感覺到這顆膠囊現在可以點擊,跟純展示用的膠囊(/ai-plan 展示頁)在
+   視覺上有區別——否則使用者會對著一顆看起來一樣的膠囊點了沒反應。 */
+.transitPillClickable {
+  cursor: pointer;
+}
+.transitPillClickable:hover {
+  background: var(--ios-sep);
+}
+.transitPillClickable:focus-visible {
+  outline: 2px solid var(--ios-blue);
+  outline-offset: 2px;
+}
+
+/* transitModeMenu——交通方式選單,疊在膠囊正下方(使用者明確要求「交通
+   時間的膠囊可以選擇交通方式」)。position:absolute 相對 .transitPill
+   (position:relative)定位,不影響旁邊其他卡片的版面;z-index 比
+   .transitPill 自己再高一階,確保疊在同一列其他內容之上。 */
+.transitModeMenu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 6px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 108px;
+  padding: 4px;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
+  /* white-space 在 .transitPill 上是 nowrap(整顆膠囊不換行的既有設計),
+     選單是獨立彈出的區塊,文字不需要跟著不換行。 */
+  white-space: normal;
+}
+
+.transitModeOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-dark);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.transitModeOption:hover {
+  background: var(--ios-active);
+}
+/* transitModeOptionActive——目前已經是這段交通採用的 mode,視覺上標示
+   出「現在選的是哪一個」,理由同大多數選單類元件的既有慣例。 */
+.transitModeOptionActive {
+  color: var(--ios-blue);
+  font-weight: 700;
 }
 
 /* note row */

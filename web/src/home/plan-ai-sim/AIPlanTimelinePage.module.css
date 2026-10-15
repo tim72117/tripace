@@ -23,8 +23,8 @@
    plan-core/PlanTimelineView.module.css,原本這裡那一大批時間軸相關
    class(.row/.stopCard/.transitRow/.noteRow/.messageRow/.tipRow/
    .skeletonRow/.jumpPill/.emptyState/.inner/.shimmer 等)已經搬過去,
-   這份檔案只留下外殼本身仍在使用的樣式:.page、頂部狀態藥丸、composer
-   輸入框、右上角小地圖、.timelineScroll(見該 class 的完整說明)。
+   這份檔案只留下外殼本身仍在使用的樣式:.page、composer 輸入框、
+   右上角小地圖、.timelineScroll(見該 class 的完整說明)。
 
    .scroll 本身兩邊捲動模型不同,不能照搬共用元件的基礎定義:正式頁
    .page 是自然高度、捲動權收在外層 <main>(unboundedScroll),這個
@@ -52,6 +52,9 @@
   inset: 0;
   z-index: 0;
 }
+
+/* navSpacer/mapSafeArea/timelinePanel 已移到 PlanOverlayPanel.module.css
+   (定位 + 事件穿透 + 地圖安全區,模擬層與真實層共用)。 */
 
 .page {
   width: 100%;
@@ -96,77 +99,6 @@
     --vermilion-soft: #E89A85;
     --line: #443C34;
     --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
-  }
-}
-
-/* ---------- 狀態藥丸(已安排幾站/正在安排行程) ----------
-   使用者明確要求「不要有上方的實際功能列了」,原本的 .header/
-   .headerLeft/.headerRight/.tripName(實體功能列容器)已整個移除——
-   頁面頂部現在只剩 home/SiteNavButtons.tsx 那組 fixed 漂浮按鈕
-   (SiteNavBrand/SiteNavThemeToggle/SiteNavCta)。
-   2026-10(第二輪,位置再次調整):.statusPill 第一輪原本掛在
-   SiteNavBrand 的 extra prop 裡,跟品牌文字/pageLabel 一起排在同一個
-   fixed 定位的 .site-nav-brand-row 裡。使用者這輪要求「放到輸入匡的
-   前面」——改成放進 .composer 的 .inputRow 最前面(輸入框膠囊內部最
-   左側,跟輸入框/送出鈕同一排,見 AIPlanTimelinePage.tsx 該處的完整
-   說明)。.statusPill 本身是 display:flex + flex:none,直接搬進
-   .inputRow 這個 flex 容器照樣正確排列,不需要調整自身樣式,只是
-   render 位置從 SiteNavBrand 的 extra 換成 .inputRow 的子元素。 */
-
-.statusPill {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--ios-gray);
-  background: var(--ios-bg);
-  border: 1px solid var(--ios-sep);
-  border-radius: 999px;
-  padding: 6px 14px;
-  flex: none;
-}
-
-.statusDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  flex: none;
-}
-.statusDotGenerating { background: var(--ios-sand); animation: breathe 1.4s ease-in-out infinite; }
-.statusDotDone { background: var(--ios-green); }
-
-/* timelinePanel——2026-10 使用者要求「將 /ai-plan 時間軸放到右側」,
-   且明確要求「只有桌面版」套用,手機版維持原本滿版置中的版式不變。
-   桌面斷點(min-width:768px,跟下方手機斷點 767px 互斥,兩者合起來
-   涵蓋所有寬度):固定寬度 560px 的側欄,position:absolute 貼齊 .page
-   右緣、上下撐滿,讓左側地圖(NativeMapBase 整頁的地圖底層,見 .mapBackdrop)完全露出不被時間軸內容遮擋——視覺
-   語言從「時間軸置中疊在地圖正中央」改成「左地圖/右資訊欄」。
-   這層需要自己的 position:relative,取代原本 composer/jumpPillWrap
-   相對 .page 計算位置的定位基準(見下方兩者的完整說明:現在要相對這個
-   側欄本身置中,不是整個視窗寬度置中)。
-   2026-10 修正:第一版給了實色背景(--ios-bg)+ 朝左的陰影,想強調
-   「這是一塊獨立面板」——使用者回報「不要有底,跟剛剛一樣的浮空
-   效果」:原本(改動前)時間軸是直接疊在地圖上、沒有自己的背景色/
-   陰影分界,卡片本身(PlanTimelineView 的 .stopCard 等)才各自有自己
-   的卡片底色,地圖從卡片與卡片之間的留白透出來——這次只是把這整塊
-   內容整體搬到右側,不應該連帶改變「浮空疊在地圖上」這個既有視覺
-   語言,變成一塊不透明的實色側欄。拿掉 background/box-shadow,這個
-   容器現在純粹只負責定位(固定寬度+貼右+上下撐滿),不產生任何視覺
-   上的底色或陰影,地圖在整個側欄範圍內都繼續透出來,跟改動前同一種
-   「浮空」觀感。
-   手機版(max-width:767px)不套用——見下方 responsive 區塊,.timelinePanel
-   在窄螢幕退回 .page 的一般 flex 子項,寬度撐滿、不再是 absolute 側欄,
-   PlanTimelineView 自己的 .inner(max-width:640px; margin:0 auto)
-   繼續負責窄螢幕下的置中呈現,跟改動前完全一致。 */
-@media (min-width: 768px) {
-  .timelinePanel {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 560px;
-    display: flex;
-    flex-direction: column;
   }
 }
 
@@ -244,26 +176,30 @@
    PlanTimelineView 內部的 .scroll 已經補上對應的 padding-bottom,確保
    捲到底時最後一張卡片不會被這個膠囊蓋住。 */
 .composer {
-  position: absolute;
-  left: 50%;
-  bottom: 20px;
-  bottom: max(20px, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
-  width: min(560px, calc(100% - 48px));
+  /* 定位(貼底置中、寬度、z-index)由 PlanOverlayPanel 的 composer slot
+     負責,這裡只留膠囊外觀,寬度填滿插槽。 */
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 26px;
+  padding: 10px 10px 10px 20px;
+  /* 膠囊外觀(背景/邊框/陰影)只在「輸入框還在」時出現——「讓我試看看」
+     按鈕獨自出現時(composerCollapsed 且未 handedOver,見
+     .composerBare 的完整說明)使用者明確要求「連膠囊外框也要拿掉」,
+     按鈕直接浮在地圖/時間軸上,不是裝在一個實色容器裡。 */
   background: var(--ios-card);
   border: 1px solid var(--ios-sep);
-  border-radius: 26px;
   box-shadow: 0 12px 32px -12px rgba(43, 36, 32, 0.28);
-  padding: 10px 10px 10px 20px;
-  /* z-index——這個頁面原本就一直缺少這個屬性(從 2026-09 改成漂浮膠囊
-     那次就沒設定),預設 z-index:auto 讓它在層疊順序上跟時間軸裡帶
-     z-index 的元素(PlanTimelineView.module.css 的 .transitPill/
-     .anchorDot/.jumpPillWrap 等,最高到 10)競爭時沒有保證贏——使用者
-     截圖回報「路程的膠囊疊在輸入匡上方」:交通卡 .transitPill 有
-     z-index:2,composer 沒有設定時在某些重疊情境下會被蓋過去。輸入框
-     作為使用者操作入口,邏輯上必須保證永遠疊在時間軸內容最上層,補上
-     明確比時間軸裡最高值(.jumpPillWrap 的 10)還高的 z-index。 */
-  z-index: 20;
+}
+/* composerBare——「讓我試看看」按鈕獨自出現時疊加的狀態,拿掉
+   .composer 基底定義的膠囊外觀(背景/邊框/陰影),padding 也一併清空
+   (基底的 10px 10px 10px 20px 是為了在實色膠囊內給輸入框/按鈕留出
+   視覺呼吸空間,按鈕獨自置中時不需要這圈留白,留著只會讓按鈕看起來
+   偏移、不是真正置中在膠囊原本佔據的那塊區域中心)。 */
+.composerBare {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
 }
 .composerInner { width: 100%; }
 /* 原本輸入框上方常駐一行狀態提示文字(.aiLine)——漂浮膠囊只有單行
@@ -274,6 +210,14 @@
 .inputRow {
   display: flex;
   align-items: center;
+  /* justify-content: center——2026-10 改成「讓我試看看」出現時完全移除
+     輸入框 DOM(而非收合讓位,見 AIPlanTimelinePage.tsx 該處的完整
+     說明):.inputRow 此時只剩 composerCta 這一顆子元素,預設的
+     flex-start 會讓它貼齊左側(跟輸入框原本左對齊的視覺習慣一致,但
+     使用者明確要求「按鈕置中」)。輸入框還在時(composerCollapsed 為
+     false)這個屬性不影響原本的左右排列,因為 .inputWrap 的 flex:1
+     會撐滿剩餘空間,justify-content 沒有多餘空間可以作用。 */
+  justify-content: center;
   gap: 10px;
   min-width: 0;
 }
@@ -285,6 +229,11 @@
   padding: 0 6px;
   height: 44px;
   min-width: 0;
+  /* transition 定義在這裡(而非只在 .inputWrapCollapsed):收合與展開
+     兩個方向都要有動畫,只寫在收合那一側的話,移除 class 時會瞬間跳回。 */
+  transition:
+    width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    padding 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .input {
   border: none;
@@ -354,30 +303,39 @@
 .sendBtnActive {
   opacity: 1;
 }
-/* composerCta——排程結束後疊加在 .sendBtn 上、展開成「立即使用」的
-   終點樣式(見 AIPlanTimelinePage.tsx 的完整說明)。使用者試過「整個
-   膠囊縮成一顆按鈕」的版本後,改要求「保留膠囊輸入外框,送出按鈕部分
-   轉變為立即使用按鈕」,並要求「要有按鈕展開動畫」——膠囊外框
-   (.composer)維持原本完整寬度不變,只有這顆按鈕本身從 .sendBtn 固定
-   的 36px 圓形,用 width: auto + 文字「立即使用」自然撐開的寬度展開
-   (.sendBtn 已經宣告 width 的 transition,這裡改成 auto 會讓瀏覽器
-   算出目標寬度、平滑過渡過去,不是瞬間跳到新寬度)。底色改用主色
-   (--color-accent,對齊首頁 vermilion 硃紅,見 base-ui.css 的完整
-   說明),跟未展開時純功能性、固定停用的深色圓鈕區隔開來,傳達「這是
-   排完程後真正可以繼續的行動呼籲」。 */
+/* composerCta——排程結束後出現的「讓我試看看」行動呼籲按鈕(見
+   AIPlanTimelinePage.tsx 該處的完整說明)。
+   2026-10(第三輪):輸入框此時完全從 DOM 移除(不再是「收合讓位」,
+   見 .inputRow 的 justify-content 與 AIPlanTimelinePage.tsx 條件渲染
+   的完整說明),.composerCta 因此不再需要靠 width: 100% 撐滿輸入框
+   讓出的空間——但使用者明確要求「按鈕要寬點」,不要退回純粹由文字
+   內容撐開的窄按鈕:改成 width: 100%(相對 .inputRow 此時唯一的子項
+   這塊可用寬度撐滿)+ max-width 420px 當上限,在寬螢幕上是一顆份量
+   足夠的主要行動呼籲按鈕,窄螢幕上仍會隨 .composer 的
+   max-width:calc(100vw - 48px) 一起等比例收窄,不會撐爆版面(見
+   .composer 的完整說明——這正是先前「外框出現左右卷軸」的根因,
+   min-width:0 是避免同一問題再次發生的必要條件)。
+   因為輸入框是整個移除(不是 width transition),這裡改用 opacity
+   淡入取代原本的展開動畫——按鈕是全新掛載的 DOM 節點,沒有「從小圓鈕
+   展開成長條」的連續狀態可以 transition,淡入是這種「瞬間出現」情境
+   更合適的動畫語言。 */
 .composerCta {
-  max-width: 120px;
-  width: auto;
-  padding: 0 14px;
+  max-width: 420px;
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  padding: 0 24px;
+  font-size: 15px;
   background: var(--color-accent);
+  animation: composerCtaFadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes composerCtaFadeIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 /* ---------- animations ---------- */
-
-@keyframes breathe {
-  0%, 100% { opacity: 0.45; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.25); }
-}
 
 @media (prefers-reduced-motion: reduce) {
   .page * {
@@ -393,20 +351,4 @@
 /* ---------- responsive (phone) ---------- */
 
 @media (max-width: 767px) {
-  .composer { width: calc(100% - 32px); }
-  /* timelinePanel 手機版退回——使用者明確要求「只有桌面版」套用右側
-     欄位版式(見該 class 桌面斷點的完整說明)。這裡不是「什麼都不寫」
-     就自然退回:.timelinePanel 現在是 .page(flex-direction:column)
-     裡的一個 flex 子項,需要明確的 flex:1 才能吃滿剩餘高度,PlanTimelineView
-     內部 .timelineScroll 的捲動機制才有正確的容器高度可以依據——不給
-     這個宣告,裸 div 預設 flex:0 1 auto,高度只會被內容撐開,在固定
-     height:100dvh 的 .page 裡會跟原本「沒有這層包裝」時的捲動行為
-     不一致。min-height:0 是 flex 子項常見的捲動容器前提(子項預設
-     min-height:auto 不會小於內容,少這行可能無法正確收縮/捲動)。 */
-  .timelinePanel {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
 }

@@ -1,0 +1,100 @@
+/* ScrollPlanDemo.module.css — 首頁捲動式 AI 規劃展示的版型。
+   見 ScrollPlanDemo.tsx 開頭的完整說明。 */
+
+/* wrap——高度由 tsx 以 inline style 指定(SCROLL_SPAN_VH),它提供的是
+   「捲動距離」而不是視覺內容:實際看到的東西都在 .sticky 裡。 */
+.wrap {
+  position: relative;
+  background: var(--paper, #F7F3EC);
+  border-top: 1px solid var(--line, #C9BFA8);
+}
+
+/* sticky——黏在視窗上,使用者捲過 .wrap 那段距離時,畫面內容原地不動、
+   只有時間軸逐漸長出來。高度設 100vh 讓它填滿視窗,內容垂直置中。 */
+.sticky {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  /* padding-top——2026-10 使用者回報「展示的畫面斷點上方文字要留一個
+     空間」:.sticky 吸頂時 top:0 讓它直接貼齊視窗頂端(含上方導覽列
+     下緣),內容雖然整體垂直置中(justify-content: center),但標題
+     文字(.header)離導覽列只剩導覽列本身的高度,視覺上太緊貼。補一段
+     固定留白,讓吸頂狀態下標題區塊跟導覽列之間有明確的呼吸空間,不靠
+     置中本身的機率性留白。 */
+  padding: 56px var(--edge-pad, 24px) 0;
+  overflow: hidden;
+}
+
+.header {
+  text-align: center;
+  flex: none;
+}
+
+.eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--vermilion, #8B3A2F);
+  margin-bottom: 14px;
+}
+
+.title {
+  font-family: 'ShipporiSerif', "Noto Serif TC", serif;
+  font-size: clamp(24px, 3.4vw, 34px);
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 0 0 16px;
+  text-wrap: balance;
+}
+
+/* desc——同時是狀態列(「往下捲動…」/「正在安排…」/「已安排 N 站」),
+   高度固定避免文字切換時整個版面跳動。 */
+.desc {
+  font-size: 15px;
+  line-height: 1.9;
+  color: var(--ink-soft, #5A5148);
+  margin: 0;
+  min-height: 1.9em;
+}
+
+/* Desktop(≥1440px)改成左右並排:文案在左、手機在右。
+   斷點取 1440px——在那之下(筆電常見的 1280~1366)上下排列仍然舒適,
+   手機外框加上標題剛好填滿視窗高度;超過之後垂直空間相對變得寬裕、
+   水平空間大量空出來,繼續上下排會讓左右兩側留白過多,視覺重心全部
+   擠在中央一條窄帶裡。
+   這個斷點是這個區塊自己的視覺決定,不沿用 useIsDesktop 的 767px
+   ——那個分界是「手機版 vs 桌面版」的功能性判斷(整套版面、互動模式
+   都不同),這裡只是同一套版面在不同寬度下的排列方式。 */
+@media (min-width: 1440px) {
+  .sticky {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    /* gap 從 72px 收到 32px(使用者明確要求「文字靠近展示」)——兩者是
+       同一件事的說明與示範,離太遠會讀成兩個獨立區塊,視線要來回跳。 */
+    gap: 32px;
+  }
+
+  /* 文案改左對齊——並排時置中會讓左欄的文字邊緣參差不齊,視線找不到
+     一致的起始點。寬度設上限避免在超寬螢幕上一行拉太長(超過約 30 個
+     字就不好讀)。 */
+  .header {
+    text-align: left;
+    /* 寬度從 24em 收到 18em:文字欄變窄,整體重心往手機那側靠,
+       兩者看起來是一組。 */
+    max-width: 18em;
+  }
+
+  /* AiPlanPhoneDemo 的 .holder 自帶 margin: 1.25rem auto 0——上下排列時
+     那個 auto 負責水平置中,但在 flex row 下 auto 邊距會吃掉所有剩餘的
+     水平空間,把左欄的文案一路推到視窗最左邊(使用者回報「緊貼左邊」)。
+     並排時置中由 .sticky 的 justify-content 負責,這裡把 auto 歸零。 */
+  .phone {
+    margin: 0;
+  }
+}

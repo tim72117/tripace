@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, MutableRefObject, PointerEvent as ReactPointerEvent, Ref, ReactNode, UIEventHandler } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Bus, Car, Footprints, TrainFront } from 'lucide-react'
@@ -25,11 +25,51 @@ const TIME_DRAG_PX_PER_STEP = 18
 // 位置時被攔住在一個跟邊界本身有落差的刻度格上,體感是「明明還沒拖到
 // 底,卻被卡住了」)。吸附用 Math.round 而非無條件捨去,讓使用者拖到
 // 刻度格中點附近時能四捨五入到比較直覺的那一格。
-function clampToStep(minutes: number, bounds: TimeDragBounds): number {
+//
+// export——2026-10 新增:這支純函式(跟 defaultStartMinutesForDrag 一樣)
+// 原本是模組內部私有的,為了能寫單元測試(PlanTimelineView.test.ts)而
+// 加上 export——完整的拖拉手勢(handlePointerDown/Move/Up)綁在原生
+// document 事件監聽器上,要測試整條手勢需要模擬 PointerEvent 序列,相對
+// 脆弱;這兩個函式是手勢背後的純計算邏輯,直接測函式本身更可靠,對齊
+// planTimeline.ts 把純資料邏輯獨立出來測試的既有慣例。
+export function clampToStep(minutes: number, bounds: TimeDragBounds): number {
   const stepped = Math.round(minutes / TIME_DRAG_MINUTES_PER_STEP) * TIME_DRAG_MINUTES_PER_STEP
   const lower = bounds.minMinutes ?? 0
   const upper = bounds.maxMinutes ?? 24 * 60 - 1
   return Math.min(Math.max(stepped, lower), upper)
+}
+
+// DEFAULT_START_MINUTES_NO_BOUNDS——完全沒有前後站可以參考時(bounds 兩端
+// 都是 null)拖拉起始的預設分鐘數,09:00,對齊一般行程多半從早上開始安排
+// 的直覺,不是精算出來的最佳值。
+const DEFAULT_START_MINUTES_NO_BOUNDS = 9 * 60
+
+// defaultStartMinutesForDrag——2026-10 新增:使用者明確要求「拉動原點要
+// 可以設定時間」,修正「沒有時間的站點完全無法啟動拖拉」這個問題(見
+// handlePointerDown 原本 `if (!currentTime) return` 的判斷,還沒決定
+// 幾點的 stop——PlanNodeData.time 選填,見 planTimeline.ts insertAfter 的
+// 完整說明——會直接擋住整個拖拉手勢,使用者連拖都拖不動,更不用說拖出
+// 一個時間)。
+//
+// 算一個落在 bounds 範圍內、吸附過刻度的起始分鐘數,而不是放著讓使用者
+// 從「無時間」直接開始拖——拖拉手勢的位移量是相對這個起始值的差值(見
+// dragTranslateY/handlePointerMove 的完整說明),沒有一個明確的起始分鐘
+// 就無從計算要位移多少。
+//   - 兩端都有值:取中點,吸附到刻度——使用者在前後兩站之間拖出一個新
+//     時間,從中間開始最合理,不偏向任一端。
+//   - 只有一端有值:從那一端往「有更多空間」的方向推一步(30 分鐘)
+//     ——不能直接用邊界值本身當起點,那樣會讓這個站點一開始就跟邊界
+//     重疊,使用者還沒開始拖就已經卡在極限位置。
+//   - 兩端都沒有值(鏈結上下都沒有同一天的其他 stop,或這是當天唯一一
+//     站):退回 DEFAULT_START_MINUTES_NO_BOUNDS。
+export function defaultStartMinutesForDrag(bounds: TimeDragBounds): number {
+  const { minMinutes, maxMinutes } = bounds
+  if (minMinutes != null && maxMinutes != null) {
+    return clampToStep(Math.round((minMinutes + maxMinutes) / 2), bounds)
+  }
+  if (minMinutes != null) return clampToStep(minMinutes + TIME_DRAG_MINUTES_PER_STEP, bounds)
+  if (maxMinutes != null) return clampToStep(maxMinutes - TIME_DRAG_MINUTES_PER_STEP, bounds)
+  return clampToStep(DEFAULT_START_MINUTES_NO_BOUNDS, bounds)
 }
 
 // DragState——目前正在拖拉中的節點與即時預覽值(見 anchorDot 拖拉手勢
@@ -49,6 +89,18 @@ interface DragState {
   startMinutes: number
   bounds: TimeDragBounds
   previewMinutes: number
+  // hadNoInitialTime——這次拖拉開始時,這個 stop 原本是不是沒有時間
+  // (currentTime 為 undefined,見 handlePointerDown 的完整說明)。
+  //
+  // 存在的理由:handlePointerUp 原本只在「previewMinutes !== startMinutes」
+  // 才提交(避免拖一下又放回原位時觸發沒有意義的寫入)。但「沒有時間」
+  // 的站點,startMinutes 本身是 defaultStartMinutesForDrag 臨時算出來的
+  // 參考值,不是「原本就有的值」——使用者只要放開手勢(哪怕沒有真的拖出
+  // 刻度差),都代表他想把這個臨時值定下來,不該套用「沒變動就不提交」
+  // 這個只適用於「本來就有時間」情境的判斷,否則沒有時間的站點只要沒有
+  // 精準拖出至少一格位移,永遠無法被設定成功(使用者實際回報的症狀:
+  // 「沒有時間,拉動完還是沒有顯示」)。
+  hadNoInitialTime: boolean
 }
 
 // dragTranslateY——anchorDot 本身在拖拉過程中跟著手勢上下位移的像素量
@@ -84,9 +136,27 @@ const TRANSIT_MODE_ICONS: Record<string, LucideIcon> = {
   大眾運輸: Bus,
 }
 
+// TRANSIT_MODE_OPTIONS——交通方式選單(onTransitModeChange,使用者明確
+// 要求「交通時間的膠囊可以選擇交通方式」)的四個選項,對齊後端
+// geo_plan_ai.go estimateTransitMode/metersPerMinuteFor/iconForTransitMode
+// 認得的字串值——'大眾運輸' 故意不列入這份清單:它在後端是跟 '公車' 完全
+// 同義的別名(metersPerMinuteFor/iconForTransitMode 兩邊都把它當公車處理,
+// 只是 estimateTransitMode 依距離自動判斷時不會選到這個詞),讓使用者
+// 手動選的情境不需要兩個意思相同的選項並存造成困惑,'公車' 已經足以
+// 代表這個選項。沒有'步行'對應的 icon 項目——TRANSIT_MODE_ICONS 對沒
+// 命中的 key 一律 fallback Footprints,跟後端「查不到就當步行」的語意
+// 一致,這裡顯式列出 Footprints 只是為了選單本身要能畫出這個選項的圖示,
+// 不是新增一條後端沒有的規則。
+const TRANSIT_MODE_OPTIONS: { mode: string; label: string; icon: LucideIcon }[] = [
+  { mode: '步行', label: '步行', icon: Footprints },
+  { mode: '公車', label: '公車', icon: Bus },
+  { mode: '捷運', label: '捷運', icon: TrainFront },
+  { mode: '開車', label: '開車', icon: Car },
+]
+
 // PlanTimelineView — 2026-10 從 trip-plan/TripPlanPage.tsx 拆出來的時間軸
 // 視圖本體(使用者明確要求「先將正式畫面的排程時間軸UI拆成獨立元件」),
-// 放進 plan-core/ 跟 planTimeline.ts(純資料層)放在一起——這裡只負責
+// 放進 plan-core/ 跟 planTimeline.ts(純領域層)放在一起——這裡只負責
 // 「把一條 PlanNode 陣列畫成時間軸」這件事本身(空狀態/卡片/軸線/交通/
 // 備註/訊息/骨架/呼吸點/「回到最新」浮動按鈕),不含 header、composer
 // 輸入框、右上角小地圖——那些是外殼頁面(TripPlanPage.tsx)自己的職責,
@@ -202,6 +272,21 @@ export interface PlanTimelineViewProps {
   // 選填,理由同 onHoverStop——/ai-plan 展示頁等沒有地圖的使用情境不
   // 需要這個回報。
   onHoverTransit?: (pair: { fromId: string; toId: string } | null) => void
+  // onTransitModeChange——使用者點開交通膠囊的選單、選了另一種交通方式
+  // 時觸發(2026-10 新增,使用者明確要求「交通時間的膠囊可以選擇交通
+  // 方式」)。帶這段交通「到達站」的 id(stopId,對齊 TransitInfo 掛在
+  // 到達站自己身上的既有設計,見該介面的完整說明)與使用者選定的新
+  // mode 字串(對應後端 geo_plan_ai.go iconForTransitMode/
+  // metersPerMinuteFor 認得的四個值之一:'步行'|'公車'|'捷運'|'開車',
+  // 見 TRANSIT_MODE_OPTIONS 的完整說明)。
+  //
+  // 選填——沒有提供這個 callback 時,交通膠囊維持原本純展示、不可點擊
+  // (見下方 render 區塊的完整說明):/ai-plan 展示頁固定接純前端假資料,
+  // 沒有後端可以依指定 mode 重新查詢,不接這個 prop;只有 /app、
+  // /trip-plan(TripPlanPage.tsx)接了 fetchPlanAiTransitEstimate 的真實
+  // 後端,才提供這個 callback。重新查詢、更新 transitFromPrev 的實際
+  // 邏輯交給呼叫端决定,這個元件只負責「使用者選了哪一個」這個通知。
+  onTransitModeChange?: (stopId: string, mode: string) => void
   // renderStopCard——選填:替換掉這個元件預設的 .stopCard 渲染(縮圖/
   // 名稱/描述/tags/刪除按鈕那一整塊),改由呼叫端提供的函式決定要畫
   // 什麼(使用者明確要求「讓時間軸元件的地點卡類似用插槽的方式讓外部
@@ -332,6 +417,7 @@ export function PlanTimelineView({
   onDragStopTime,
   onHoverStop,
   onHoverTransit,
+  onTransitModeChange,
   renderStopCard,
   hoveredStopIdForCard,
   renderAnchorIcon,
@@ -379,6 +465,27 @@ export function PlanTimelineView({
   // 功能的核心體驗(使用者明確要求「拉動時時間跟著改變」),不能只在
   // 放開時才更新畫面。
   const [dragState, setDragState] = useState<DragState | null>(null)
+
+  // openTransitMenuStopId——目前正展開交通方式選單的那段交通膠囊所屬的
+  // stopId(見 onTransitModeChange prop 的完整說明:到達站的 id),null
+  // 代表沒有任何選單展開。同一時間只會有一個選單展開——點開其中一個會
+  // 直接覆蓋這個值,等同先關掉前一個(不需要額外邏輯處理「兩個選單同時
+  // 展開」這種情況,直接用單一值自然互斥)。
+  const [openTransitMenuStopId, setOpenTransitMenuStopId] = useState<string | null>(null)
+
+  // 點擊選單以外的任何地方關閉選單——對齊一般下拉選單的既有互動慣例
+  // (使用者沒有明確要求這個細節,但「點開後只能靠再點一次同一顆膠囊才能
+  // 關閉」會讓選單開著時擋住後面卡片內容卻沒有明顯的關閉方式,體驗不
+  // 完整)。只在 openTransitMenuStopId 非 null 時才掛監聽器,避免每次
+  // render 都掛一份閒置的全域 listener。選單自己的 onClick 已
+  // stopPropagation(見 render 區塊的完整說明),不會被這裡誤判成「點了
+  // 外部」。
+  useEffect(() => {
+    if (openTransitMenuStopId == null) return
+    const handleDocClick = () => setOpenTransitMenuStopId(null)
+    document.addEventListener('click', handleDocClick)
+    return () => document.removeEventListener('click', handleDocClick)
+  }, [openTransitMenuStopId])
   // dragStateRef——handlePointerMove/handlePointerUp 是原生事件監聽器
   // (掛在 document 上,見 handlePointerDown 的完整說明),不是每次
   // render 都重新綁定的 React 合成事件處理器,讀到的必須是「當下最新」
@@ -413,10 +520,15 @@ export function PlanTimelineView({
     document.removeEventListener('pointercancel', handlePointerUp)
     dragStateRef.current = null
     setDragState(null)
-    // 只在時間真的有變動時才提交——拖拉一下又放回原位(deltaSteps 算出
-    // 來還是 0)不需要呼叫 onDragStopTime 觸發一次沒有意義的寫入/重新
-    // 查詢交通資訊。
-    if (state.previewMinutes !== state.startMinutes) {
+    // 提交條件:「時間真的有變動」或「這個站點原本沒有時間」(見
+    // DragState.hadNoInitialTime 的完整說明)。
+    //   - 本來就有時間、使用者拖一下又放回原位(deltaSteps 算出來還是 0)
+    //     ——不提交,避免觸發一次沒有意義的寫入/重新查詢交通資訊。
+    //   - 本來沒有時間——startMinutes 只是 defaultStartMinutesForDrag
+    //     臨時算出來的參考值,不是使用者刻意維持的原狀;只要放開手勢就
+    //     代表要把這個值定下來,即使沒有拖出任何位移也要提交,否則這個
+    //     站點會永遠停在「沒有時間」(使用者實際回報的症狀)。
+    if (state.previewMinutes !== state.startMinutes || state.hadNoInitialTime) {
       onDragStopTime?.(state.stopId, minutesToTime(state.previewMinutes))
     }
   }, [handlePointerMove, onDragStopTime])
@@ -433,12 +545,20 @@ export function PlanTimelineView({
   // 的,拖拉圓點這個動作不該連帶觸發頁面捲動)。
   const handlePointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>, stopId: string, currentTime: string | undefined) => {
     if (!getStopTimeDragBounds || !onDragStopTime) return
-    if (!currentTime) return
     e.preventDefault()
     e.stopPropagation()
-    const [h, m] = currentTime.split(':').map(Number)
-    const startMinutes = h * 60 + m
     const bounds = getStopTimeDragBounds(stopId)
+    // currentTime 為 undefined——這個 stop 還沒決定幾點(PlanNodeData.time
+    // 選填,見 planTimeline.ts insertAfter 的完整說明),用
+    // defaultStartMinutesForDrag 算一個落在 bounds 內的起始分鐘數,而不是
+    // 放棄這次拖拉(使用者明確要求「拉動原點要可以設定時間」)——拖拉的
+    // 第一步位移是相對這個起始值的差值,沒有明確起始值就無法拖。
+    const startMinutes = currentTime
+      ? (() => {
+          const [h, m] = currentTime.split(':').map(Number)
+          return h * 60 + m
+        })()
+      : defaultStartMinutesForDrag(bounds)
     const state: DragState = {
       stopId,
       pointerId: e.pointerId,
@@ -446,6 +566,7 @@ export function PlanTimelineView({
       startMinutes,
       bounds,
       previewMinutes: startMinutes,
+      hadNoInitialTime: !currentTime,
     }
     dragStateRef.current = state
     setDragState(state)
@@ -515,35 +636,104 @@ export function PlanTimelineView({
                       <div className={styles.transitAxis}>
                         <div className={styles.transitDashAbove} />
                         <div className={styles.transitDashBelow} />
-                        <div
-                          className={`${mountedClass} ${justMounted ? styles.pillExpand : ''} ${styles.transitPill}`}
-                          // onMouseEnter/Leave——見 onHoverTransit 的完整
-                          // 說明。p.prevId 是這段交通的起點(transit 掛在
-                          // 到達站 p 自己身上,見 planTimeline.ts
-                          // TransitInfo 的完整說明),p.id 是終點。prevId
-                          // 理論上不會是 null(transit 存在就代表有前一
-                          // 站),但型別上允許,防禦性地在 null 時不觸發
-                          // hover——沒有起點就沒有線可畫。
-                          onMouseEnter={() => {
-                            if (p.prevId) onHoverTransit?.({ fromId: p.prevId, toId: p.id })
-                          }}
-                          onMouseLeave={() => onHoverTransit?.(null)}
-                        >
-                          {/* 查詢中(loading:true)只顯示轉圈動畫,不顯示
-                              任何文字,重用 stop 卡片查詢中狀態既有的
-                              thumbSpinner 動畫。 */}
-                          {transit.loading ? (
-                            <span className={styles.thumbSpinner} aria-label="查詢交通資訊中" />
-                          ) : (
-                            <>
-                              {(() => {
-                                const TransitIcon = TRANSIT_MODE_ICONS[transit.mode ?? ''] ?? Footprints
-                                return <TransitIcon size={14} strokeWidth={2.2} aria-hidden />
-                              })()}
-                              <span>{transit.mode} {transit.minutes} 分 · {transit.distance}</span>
-                            </>
-                          )}
-                        </div>
+                        {/* canPickMode——只有呼叫端提供 onTransitModeChange
+                            且這段交通資訊已經查詢完成(非 loading)才可以
+                            點開選單(見該 prop 的完整說明:/ai-plan 展示頁
+                            沒有提供這個 callback,膠囊維持原本純展示)。
+                            loading 中不可點——這時 transit.mode 還沒有
+                            確定值,選單裡「目前選中」的高亮也無從判斷。 */}
+                        {(() => {
+                          const canPickMode = !!onTransitModeChange && !transit.loading
+                          const menuOpen = openTransitMenuStopId === p.id
+                          return (
+                            <div
+                              className={`${mountedClass} ${justMounted ? styles.pillExpand : ''} ${styles.transitPill} ${canPickMode ? styles.transitPillClickable : ''}`}
+                              // onMouseEnter/Leave——見 onHoverTransit 的
+                              // 完整說明。p.prevId 是這段交通的起點
+                              // (transit 掛在到達站 p 自己身上,見
+                              // planTimeline.ts TransitInfo 的完整說明),
+                              // p.id 是終點。prevId 理論上不會是 null
+                              // (transit 存在就代表有前一站),但型別上
+                              // 允許,防禦性地在 null 時不觸發 hover——
+                              // 沒有起點就沒有線可畫。
+                              onMouseEnter={() => {
+                                if (p.prevId) onHoverTransit?.({ fromId: p.prevId, toId: p.id })
+                              }}
+                              onMouseLeave={() => onHoverTransit?.(null)}
+                              // role="button"/tabIndex/onKeyDown——這個
+                              // 膠囊原本是純展示的 <div>,canPickMode 時
+                              // 才疊加可互動語意,讓鍵盤使用者也能用
+                              // Enter/Space 開關選單,不是只有滑鼠點擊
+                              // 才能觸發。
+                              role={canPickMode ? 'button' : undefined}
+                              tabIndex={canPickMode ? 0 : undefined}
+                              aria-haspopup={canPickMode ? 'menu' : undefined}
+                              aria-expanded={canPickMode ? menuOpen : undefined}
+                              onClick={() => {
+                                if (!canPickMode) return
+                                setOpenTransitMenuStopId((cur) => (cur === p.id ? null : p.id))
+                              }}
+                              onKeyDown={(e) => {
+                                if (!canPickMode) return
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault()
+                                  setOpenTransitMenuStopId((cur) => (cur === p.id ? null : p.id))
+                                }
+                              }}
+                            >
+                              {/* 查詢中(loading:true)只顯示轉圈動畫,不
+                                  顯示任何文字,重用 stop 卡片查詢中狀態
+                                  既有的 thumbSpinner 動畫。 */}
+                              {transit.loading ? (
+                                <span className={styles.thumbSpinner} aria-label="查詢交通資訊中" />
+                              ) : (
+                                <>
+                                  {(() => {
+                                    const TransitIcon = TRANSIT_MODE_ICONS[transit.mode ?? ''] ?? Footprints
+                                    return <TransitIcon size={14} strokeWidth={2.2} aria-hidden />
+                                  })()}
+                                  <span>{transit.mode} {transit.minutes} 分 · {transit.distance}</span>
+                                </>
+                              )}
+                              {/* 交通方式選單——點開膠囊後彈出,使用者明確
+                                  要求「交通時間的膠囊可以選擇交通方式」。
+                                  渲染在膠囊內部(position:relative 的子
+                                  節點,見 .module.css 的
+                                  .transitModeMenu),選了之後立刻關閉
+                                  選單、通知呼叫端——實際重新查詢的邏輯
+                                  由呼叫端決定,這裡不自己 fetch。 */}
+                              {menuOpen && (
+                                <div
+                                  className={styles.transitModeMenu}
+                                  role="menu"
+                                  // stopPropagation——選單本身的點擊不該
+                                  // 再冒泡到外層膠囊的 onClick,否則點選單
+                                  // 空白處(非選項按鈕)會被外層判定成
+                                  // 「再點一次膠囊」而關閉選單,跟選項
+                                  // 按鈕各自的 onClick 行為衝突。
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {TRANSIT_MODE_OPTIONS.map(({ mode, label, icon: OptionIcon }) => (
+                                    <button
+                                      key={mode}
+                                      type="button"
+                                      role="menuitemradio"
+                                      aria-checked={transit.mode === mode}
+                                      className={`${styles.transitModeOption} ${transit.mode === mode ? styles.transitModeOptionActive : ''}`}
+                                      onClick={() => {
+                                        setOpenTransitMenuStopId(null)
+                                        onTransitModeChange?.(p.id, mode)
+                                      }}
+                                    >
+                                      <OptionIcon size={14} strokeWidth={2.2} aria-hidden />
+                                      <span>{label}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })()}
                       </div>
                       <div />
                     </div>
@@ -556,7 +746,16 @@ export function PlanTimelineView({
                     // 才會變,拖拉過程中(放開前)這裡顯示的是這個元件
                     // 自己 state 裡的暫時值。
                     const isDraggingThis = dragState?.stopId === p.id
-                    const displayTime = isDraggingThis ? minutesToTime(dragState.previewMinutes) : p.time
+                    // displayTime——'--:--' 佔位(2026-10 新增,使用者明確
+                    // 要求「拉動原點要可以設定時間」後的配套):p.time 選填
+                    // (見 planTimeline.ts insertAfter 的完整說明,還沒決定
+                    // 幾點的 stop 本來就允許 time 是 undefined),之前這裡
+                    // 直接渲染 undefined,畫面上是一片空白,使用者看不出
+                    // 這格「可以拖出一個時間」。用 '--:--' 讓空白狀態本身
+                    // 也清楚傳達「這裡還沒有時間,但這是時間欄位」,不是
+                    // 版面缺東西。拖拉中(isDraggingThis)優先顯示即時預覽
+                    // 值,邏輯不變。
+                    const displayTime = isDraggingThis ? minutesToTime(dragState.previewMinutes) : (p.time ?? '--:--')
                     return (
                       <div data-tl-node className={`${styles.row} ${styles.stopRow} ${removingClass}`}>
                         <div className={`${styles.stopTime} ${mountedClass}`}>
@@ -604,6 +803,27 @@ export function PlanTimelineView({
                           >
                             {renderAnchorIcon?.(p)}
                           </div>
+                          {/* 拖拉邊界刻度——2026-10 新增,使用者明確要求
+                              「點下圓點時出現上下兩個刻度」:拖拉中讓
+                              使用者直接看到這次能拖到的上下限(bounds.
+                              minMinutes/maxMinutes,見 TimeDragBounds 的
+                              完整說明),不用自己心算「拖到底大概是幾點」。
+                              null(那一端沒有限制,見 getTimeDragBounds
+                              的完整說明)時顯示「不限」而非留空——留空
+                              會讓使用者誤以為這裡本來就沒有刻度,而非
+                              「這端沒有邊界」。固定掛在 .axisCol(見上方
+                              CSS)用 position:absolute 疊加,不吃版面
+                              空間,只在 isDraggingThis 時渲染。 */}
+                          {isDraggingThis && dragState && (
+                            <>
+                              <div className={`${styles.dragBoundLabel} ${styles.dragBoundLabelAbove}`}>
+                                {dragState.bounds.minMinutes != null ? minutesToTime(dragState.bounds.minMinutes) : '不限'}
+                              </div>
+                              <div className={`${styles.dragBoundLabel} ${styles.dragBoundLabelBelow}`}>
+                                {dragState.bounds.maxMinutes != null ? minutesToTime(dragState.bounds.maxMinutes) : '不限'}
+                              </div>
+                            </>
+                          )}
                         </div>
                         <div className={`${styles.stopCardWrap} ${mountedClass} ${justMounted ? styles.cardSlide : ''}`}>
                           {renderStopCard ? (

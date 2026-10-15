@@ -4,6 +4,7 @@ import {
   getTimeDragBounds,
   insertAfter,
   minutesToTime,
+  removeDay,
   removeNode,
   toRenderList,
   updateNode,
@@ -605,5 +606,145 @@ describe('getTimeDragBounds', () => {
   it('找不到對應 id 或節點不是 stop 時,回傳上下界都不限的保守預設值', () => {
     const timeline = createEmptyTimeline()
     expect(getTimeDragBounds(timeline, 'not-exist')).toEqual({ minMinutes: null, maxMinutes: null })
+  })
+})
+
+describe('removeDay', () => {
+  // build — 依序插入給定節點,回傳時間軸與每筆的 id。removeDay 的
+  // 測試幾乎都要先組一份多天的時間軸,這裡抽成共用。
+  function build(
+    items: Array<{
+      data:
+        | ReturnType<typeof stopOnDay>
+        | ReturnType<typeof stop>
+        | { type: 'message'; text: string }
+      id: string
+    }>,
+  ) {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    let anchor: string | null = null
+    for (const item of items) {
+      const result = insertAfter(timeline, anchor, item.data, item.id)
+      if (!result.ok) throw new Error(`插入 ${item.id} 失敗: ${result.error.message}`)
+      timeline = result.timeline
+      anchor = item.id
+    }
+    return timeline
+  }
+
+  // ids — 把時間軸依鏈結順序走訪成 id 陣列,驗證「剩下哪些、順序對不對」。
+  // 不用 toRenderList——那會插入衍生的 Day 分隔線,不是真實節點。
+  function ids(timeline: PlanTimeline): string[] {
+    const out: string[] = []
+    let cursor = timeline.headId
+    const seen = new Set<string>()
+    while (cursor !== null) {
+      if (seen.has(cursor)) throw new Error('鏈結成環')
+      seen.add(cursor)
+      out.push(cursor)
+      cursor = timeline.nodes.get(cursor)?.nextId ?? null
+    }
+    return out
+  }
+
+  it('移除中間那一天,前後兩天接起來', () => {
+    const timeline = build([
+      { data: stopOnDay('赤崁樓', '08:30', 1), id: 'd1a' },
+      { data: stopOnDay('午餐', '11:30', 1), id: 'd1b' },
+      { data: stopOnDay('孔廟', '09:00', 2), id: 'd2a' },
+      { data: stopOnDay('文學館', '11:20', 2), id: 'd2b' },
+      { data: stopOnDay('安平古堡', '09:30', 3), id: 'd3a' },
+    ])
+    const result = removeDay(timeline, 2)
+    expect(ids(result)).toEqual(['d1a', 'd1b', 'd3a'])
+    // 鏈結要雙向一致——只改 nextId 沒改 prevId 的話往回走會斷掉。
+    expect(result.nodes.get('d3a')?.prevId).toBe('d1b')
+    expect(result.nodes.get('d1b')?.nextId).toBe('d3a')
+  })
+
+  it('移除第一天時 headId 往後移', () => {
+    const timeline = build([
+      { data: stopOnDay('赤崁樓', '08:30', 1), id: 'd1a' },
+      { data: stopOnDay('午餐', '11:30', 1), id: 'd1b' },
+      { data: stopOnDay('孔廟', '09:00', 2), id: 'd2a' },
+    ])
+    const result = removeDay(timeline, 1)
+    expect(result.headId).toBe('d2a')
+    expect(ids(result)).toEqual(['d2a'])
+    expect(result.nodes.get('d2a')?.prevId).toBeNull()
+  })
+
+  it('移除最後一天,前一天的 nextId 歸 null', () => {
+    const timeline = build([
+      { data: stopOnDay('赤崁樓', '08:30', 1), id: 'd1a' },
+      { data: stopOnDay('孔廟', '09:00', 2), id: 'd2a' },
+      { data: stopOnDay('文學館', '11:20', 2), id: 'd2b' },
+    ])
+    const result = removeDay(timeline, 2)
+    expect(ids(result)).toEqual(['d1a'])
+    expect(result.nodes.get('d1a')?.nextId).toBeNull()
+  })
+
+  it('移除唯一的一天,時間軸變空', () => {
+    const timeline = build([
+      { data: stopOnDay('赤崁樓', '08:30', 1), id: 'd1a' },
+      { data: stopOnDay('午餐', '11:30', 1), id: 'd1b' },
+    ])
+    const result = removeDay(timeline, 1)
+    expect(result.headId).toBeNull()
+    expect(result.nodes.size).toBe(0)
+  })
+
+  it('message 節點跟著它前面那個 stop 的天數一起被移除', () => {
+    // message 自己沒有 day 欄位,歸屬靠前一個 stop 決定(見 removeDay
+    // 的完整說明)。d2note 夾在兩個 day 2 的站點之間,應該一起消失;
+    // d1note 在 day 1 的站點之後,要留下來。
+    const timeline = build([
+      { data: stopOnDay('赤崁樓', '08:30', 1), id: 'd1a' },
+      { data: { type: 'message' as const, text: '第一天的備註' }, id: 'd1note' },
+      { data: stopOnDay('孔廟', '09:00', 2), id: 'd2a' },
+      { data: { type: 'message' as const, text: '第二天的備註' }, id: 'd2note' },
+      { data: stopOnDay('文學館', '11:20', 2), id: 'd2b' },
+      { data: stopOnDay('安平古堡', '09:30', 3), id: 'd3a' },
+    ])
+    const result = removeDay(timeline, 2)
+    expect(ids(result)).toEqual(['d1a', 'd1note', 'd3a'])
+  })
+
+  it('沒有 day 欄位的節點視為第一天', () => {
+    // normalizedDay 把 undefined 當 1(見該函式),removeDay 要一致。
+    const timeline = build([
+      { data: { type: 'stop' as const, name: '赤崁樓', time: '08:30' }, id: 'noday' },
+      { data: stopOnDay('孔廟', '09:00', 2), id: 'd2a' },
+    ])
+    const result = removeDay(timeline, 1)
+    expect(ids(result)).toEqual(['d2a'])
+  })
+
+  it('該天沒有任何節點時原樣返回同一個物件參照', () => {
+    // 讓呼叫端的記憶化不會因為一次沒有實際效果的呼叫而失效重算。
+    const timeline = build([{ data: stopOnDay('赤崁樓', '08:30', 1), id: 'd1a' }])
+    expect(removeDay(timeline, 5)).toBe(timeline)
+  })
+
+  it('連續多站同屬一天時全部移除(鏈結要一路跳過,不是只跳一格)', () => {
+    // 這個案例守住 skipForward/skipBackward 的迴圈——只跳一格的實作
+    // 會讓 d1a.nextId 指向 d2b(同樣已被刪除的 id),走訪時就會斷掉。
+    const timeline = build([
+      { data: stopOnDay('赤崁樓', '08:30', 1), id: 'd1a' },
+      { data: stopOnDay('孔廟', '09:00', 2), id: 'd2a' },
+      { data: stopOnDay('文學館', '11:20', 2), id: 'd2b' },
+      { data: stopOnDay('消防史料館', '12:30', 2), id: 'd2c' },
+      { data: stopOnDay('林百貨', '13:30', 2), id: 'd2d' },
+      { data: stopOnDay('安平古堡', '09:30', 3), id: 'd3a' },
+    ])
+    const result = removeDay(timeline, 2)
+    expect(ids(result)).toEqual(['d1a', 'd3a'])
+    expect(result.nodes.size).toBe(2)
+  })
+
+  it('空的時間軸呼叫不會爆,原樣返回', () => {
+    const empty = createEmptyTimeline()
+    expect(removeDay(empty, 1)).toBe(empty)
   })
 })

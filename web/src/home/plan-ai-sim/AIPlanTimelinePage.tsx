@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TIME_DRAG_ENABLED } from '../../DesktopShared'
 import { useThemeToggle } from '../../hooks/useThemeToggle'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../SiteNavButtons'
@@ -7,9 +6,14 @@ import { trackEvent } from '../../analytics'
 import { useSyncedState } from '../../hooks/useSyncedState'
 import { planAiFakeDataSource } from './planAiFakeDataSource'
 import { createPlanSimFakeSource } from './planSimFakeSource'
+import type { PlanSimSource } from './planSimSource'
 import { PlanTimelineView } from '../../plan-core/PlanTimelineView'
+import { LivePlanLayer } from './LivePlanLayer'
+import { PlanOverlayPanel } from './PlanOverlayPanel'
+import { HorizontalPlanTimeline } from './HorizontalPlanTimeline'
+import { useIsDesktop } from '../../hooks/useIsDesktop'
 import { Lightbox } from '../../geo-planning/PhotoCarousel'
-// planTimeline.ts——共用的時間軸資料層(純函式,不碰 UI 或任何後端
+// planTimeline.ts——共用的時間軸領域層(純函式,不碰 UI 或任何後端
 // 呼叫),直接 import plan-core/ 那份跟正式頁 trip-plan/TripPlanPage.tsx
 // 共用,不維護 home/plan-ai-sim/ 底下重複的一份。這個目錄原本有一份幾乎
 // 一模一樣的副本(唯一差異是死碼清理時拿掉的一個已確認恆為 no-op 的
@@ -17,6 +21,7 @@ import { Lightbox } from '../../geo-planning/PhotoCarousel'
 // 帶進來的重複檔案。
 import {
   createEmptyTimeline,
+  removeDay,
   getTimeDragBounds,
   insertAfter,
   removeNode,
@@ -25,10 +30,23 @@ import {
   updateNode,
   type PlanNode,
   type PlanNodeData,
+  type PlanThemeChild,
   type PlanTimeline,
 } from '../../plan-core/planTimeline'
 import { NativeMapBase, type MapHandle } from '../../geo-planning/NativeMapBase'
-import { usePlanStopMarkers, type PlanStopMarker } from '../../geo-planning/usePlanStopMarkers'
+// SafeAreaDebugOverlay——地圖安全區的除錯疊圖(開發工具,用
+// ?debugSafeArea=1 開啟,見該檔案檔頭的完整說明)。
+//
+// 用 lazy 動態載入而不是靜態 import:DEBUG_SAFE_AREA 是執行期才知道的
+// 值(讀 URL 參數),Vite 無法靜態判斷這段永遠用不到、搖不掉,靜態
+// import 會讓這個純開發工具跟著進正式打包結果。改成 lazy 之後它自成
+// 一個 chunk,沒帶那個 URL 參數的訪客完全不會下載。
+const SafeAreaDebugOverlay = lazy(() =>
+  import('./SafeAreaDebugOverlay').then((m) => ({ default: m.SafeAreaDebugOverlay })),
+)
+import type { PlanStopMarker } from '../../geo-planning/usePlanStopMarkers'
+import { useMapMarkerLayer, type MapMarkerPoint } from '../../geo-planning/mapMarkerLayer'
+import { useMapSafeArea } from '../../geo-planning/useMapSafeArea'
 import styles from './AIPlanTimelinePage.module.css'
 
 // LANDING_MAP_ID——主題介紹頁(home/InteractiveExploreMap.tsx)同名常數的
@@ -49,6 +67,21 @@ const LANDING_MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_LANDING_MAP_ID as string
 // 選值的理由仍然適用,故原樣沿用數字而非重新調整構圖)。
 const CENTER = { lat: 22.9975, lng: 120.1900 }
 const ZOOM = 14
+
+// 地圖安全區除錯疊圖——開發工具,用 ?debugSafeArea=1 開啟(見
+// SafeAreaDebugOverlay.tsx 檔頭的完整說明)。改成讀 URL 參數而不是
+// 改程式碼的常數:不用動原始碼就能隨時開,也不會因為忘了改回 false
+// 而誤上 production。
+//
+// 開啟時會一併停掉模擬播放(見下方 usePlanSimSocket 的呼叫)——驗證
+// 中心點計算時畫面上不該有東西在動。
+const DEBUG_SAFE_AREA =
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debugSafeArea')
+// DEBUG_TARGET——赤崁樓(劇本第一站的座標)。選它是因為它在初始地圖
+// 中心(CENTER)的右上方,水平與垂直都有偏移,兩個軸的計算都能驗證到
+// ——選一個剛好在中心正上方或正左方的點,會讓其中一軸的 delta 恆為 0,
+// 那一軸算錯也看不出來。
+const DEBUG_TARGET = { lat: 23.0009, lng: 120.2024 }
 
 // AIPlanTimelinePage — 「AI 安排行程」時間軸展示原型的正式頁面版本。
 // 原型先在 Artifact(Design Component 畫布)做過一輪,經 Fable 設計方案
@@ -108,11 +141,53 @@ type PlanStep = PlanNode
 // usePlanSimSocket 的 ws.onmessage 裡(見該處說明)。
 export interface PlanAction {
   // thinking:每一筆實際 action 送出前的「思考中」信號(見
-  // plan_sim_ws.go 的完整說明),不帶任何額外欄位——前端收到時只用來
-  // 觸發/延續思考動畫(呼吸點+骨架卡),不對時間軸做任何異動(見
-  // ws.onmessage 對這個 type 的處理——提早 return,不呼叫
-  // planActionToInsert)。
-  type: 'thinking' | 'add_section' | 'add_stop' | 'add_transit' | 'add_note' | 'add_message' | 'remove_step' | 'done'
+  // plan_sim_ws.go 的完整說明),前端收到時用來觸發/延續思考動畫、
+  // 不對時間軸做任何異動(見 ws.onmessage 對這個 type 的處理——提早
+  // return,不呼叫 planActionToInsert)。
+  //
+  // 2026-10 使用者明確要求「先分離推論中跟安排中的信號」,新增
+  // nextType 欄位(只有 type === 'thinking' 時才有意義)——原本骨架卡
+  // (isGenerating)只要收到任何 thinking 就顯示,但劇本裡 thinking
+  // 前導的下一步不一定是 add_stop(也可能是 add_message 這種純旁白
+  // 訊息、或 add_note),這種情況下骨架卡顯示了卻完全沒有對應的地點
+  // 卡片可以轉場,使用者看到「骨架消失但畫面沒變化」會覺得困惑。改成
+  // thinking 攜帶即將送出的下一步真正是什麼 type,接收端
+  // (usePlanSimSocket)只在下一步是 add_stop 時才把 isGenerating 設
+  // true、顯示骨架卡——「安排中」(骨架卡)跟「推論中」(任何 thinking
+  // 都代表 AI 正在運作,但不一定可見)現在是兩個分開的概念,骨架卡只
+  // 對應前者。
+  nextType?: PlanAction['type']
+  // nextId——2026-10 新增(使用者明確要求「安排中時就加入一張卡片,只是
+  // 這張卡片沒有資料時就呈現骨架卡」):即將送出的下一步 action 的 id。
+  // 骨架卡原本是獨立於 stops 之外、靠 isGenerating 旗標額外渲染的一塊
+  // (見 HorizontalPlanTimeline.tsx 先前版本的完整說明),selectedStopId/
+  // 自動捲動邏輯因此要另外處理「骨架卡還是地點卡」這個分支,多次踩坑
+  // (捲動時機慢一拍、單卡滿版被撐歪等)。改成在 thinking 階段就真的
+  // 插入一筆 loading:true、沒有任何資料的 stop 節點到 PlanTimeline
+  // (見 ws.onmessage 的 thinking 分支),這個節點需要使用之後 add_stop
+  // 訊息會用的同一個 id,之後才能用 updateNode 原地補上真實資料(而不是
+  // 插入新節點、留下一個空節點孤兒)——nextId 就是為了讓 thinking 階段
+  // 能預先知道「待會兒這個 id」。add_note 等後續動作的 afterId 也引用
+  // 這個固定 id(見 planSimScript.ts 既有劇本),若骨架階段用不同的
+  // 暫時 id,之後還要處理 id 置換,不如一開始就用對的 id。
+  nextId?: string
+  // reset——把時間軸清空、回到什麼都還沒排的狀態。
+  //
+  // 2026-10 為捲動驅動的展示(首頁 ScrollPlanDemo)新增:使用者往回捲時
+  // 要看到行程一段一段退回去。PlanSimSource 是串流模型,無法「收回」
+  // 已送出的訊息,所以回退的做法是「送一則 reset 清空、再重播到目標
+  // 位置」(見 planSimScrollSource.ts 的 advanceTo)。計時器版永遠不會
+  // 送這則,行為完全不受影響。
+  //
+  // reset_day——只清掉某一天(用 day 欄位指定),其餘天數保留。
+  //
+  // 2026-10 使用者明確要求「首頁展示,當往回滾到前一天時,清除當天的
+  // 資料」:回捲跨過日界時,不該像 reset 那樣整個清空重播——那會讓
+  // 已經看過的前幾天也跟著消失、再重捲一次才長回來。只清掉「正要退出
+  // 的那一天」,前面幾天維持原樣,視覺上就是「這一天的安排被收回去」。
+  // 搭配來源端把播放進度倒回那一天的第一步(見 planSimScrollSource.ts
+  // advanceTo 的回退分支),再往下捲時這一天會重新一站一站排出來。
+  type: 'thinking' | 'reset' | 'reset_day' | 'add_section' | 'add_stop' | 'add_transit' | 'add_note' | 'add_message' | 'remove_step' | 'done'
   label?: string
   id?: string
   time?: string
@@ -138,6 +213,20 @@ export interface PlanAction {
   placeId?: string
   lat?: number
   lng?: number
+  // children——2026-10 新增(使用者明確要求「鄰近的景點不用每個都安排
+  // 時間點,而是集合的概念」):這一站是一個「主題點」,底下包含多個
+  // 不獨立佔用時間軸時間點的子景點,直接對齊 planTimeline.ts
+  // PlanNodeData.children/PlanThemeChild 的完整說明——這裡只是讓
+  // planSimScript.ts 能在劇本層表達這個欄位,planActionToInsert 原樣
+  // 轉傳給 insertAttractionAfter 的 data,不做任何轉換。
+  children?: PlanThemeChild[]
+  // candidateCards——2026-10 新增(使用者明確要求「製作多個候選點的
+  // 圖卡」「可選的狀態跟地點集合是不一樣的,原本的卡片要換成是多個
+  // 小格子的樣子」),直接對齊 planTimeline.ts
+  // PlanNodeData.candidateCards 的完整說明——這裡同樣只是讓
+  // planSimScript.ts 能在劇本層表達這個欄位,planActionToInsert 原樣
+  // 轉傳,不做任何轉換(跟 children 的既有做法一致)。
+  candidateCards?: boolean
   icon?: string
   mode?: string
   minutes?: number
@@ -246,6 +335,8 @@ function planActionToInsert(
     loading: action.type === 'add_stop' && !!action.placeId,
     lat: action.lat,
     lng: action.lng,
+    children: action.children,
+    candidateCards: action.candidateCards,
   }
   const renderedForAppend = toRenderList(timeline)
   const lastId = renderedForAppend.length > 0 ? renderedForAppend[renderedForAppend.length - 1].id : null
@@ -258,6 +349,10 @@ function planActionToInsert(
 // 「動畫播完後多久真的把節點從時間軸移除」,兩者對不上會出現「畫面還沒
 // 淡完節點就消失」或「淡完了節點還占著版面空間」的落差。
 const REMOVE_FADE_MS = 320
+
+// CTA_AFTER_STOPS——模擬排到第幾站時,把輸入膠囊的送出鈕換成「立即
+// 使用」行動呼籲按鈕(見下方 composerCollapsed 的完整說明)。
+const CTA_AFTER_STOPS = 5
 
 // resolveAttractionForStep — add_attraction 帶 placeId 時,單段查詢取得
 // 真實地點資料:呼叫 GET /internal/geo/plan-ai/place-details-any(fetchPlaceDetails,
@@ -453,7 +548,14 @@ function refreshTransitForStop(
 // 需要複製貼上一份——這個 hook 內部只呼叫同檔案的私有輔助函式
 // (planActionToInsert/resolveAttractionForStep/refreshTransitForStop
 // 等),這些函式不需要跟著一起 export,JS 模組內部呼叫不受影響。
-export function usePlanSimSocket(start: boolean) {
+// createSource——選填的來源工廠,讓呼叫端注入不同的播放節奏。
+// 省略時用 createPlanSimFakeSource(計時器自動播完,/ai-plan 展示頁的
+// 既有行為);首頁的捲動展示傳 createPlanSimScrollSource,改由捲動位置
+// 推進(見 planSimScrollSource.ts 的完整說明)。
+//
+// 回傳值裡額外帶出 source——捲動版需要拿到它才能呼叫 advanceTo(),
+// 計時器版的呼叫端忽略即可。
+export function usePlanSimSocket(start: boolean, createSource: () => PlanSimSource = createPlanSimFakeSource) {
   // timeline 改用 useSyncedState(見該 hook 開頭的完整背景說明)取代單純
   // 的 useState——insertAttractionAfter(下方)呼叫來源是 AgentBridge 的
   // 原生 WebSocket onmessage,完全在 React 事件系統之外,需要「commit
@@ -487,6 +589,20 @@ export function usePlanSimSocket(start: boolean) {
   // isGenerating 初始值為 false——要等 start 變 true(打字動畫播完、
   // 視同「使用者送出」)才開始安排,見上方 usePlanSimSocket 的完整說明。
   const [isGenerating, setIsGenerating] = useState(false)
+  // source——目前這次播放的來源實例,對外暴露讓捲動版呼叫 advanceTo()。
+  const [source, setSource] = useState<PlanSimSource | null>(null)
+  // latestInsertedStopIdRef——2026-10 新增(使用者明確回報「骨架卡轉成
+  // 地點時就要拉到中間,目前是要等下一個骨架時才拉往中間」):這個
+  // hook 本身不持有 selectedStopId(那是下游 useSimulatedStopsView 的
+  // state,見該函式的完整說明),插入新地點站後無法直接呼叫對應的
+  // setSelectedStopId。改用 ref 記下「最新插入的地點站 id 是誰」,讓
+  // useSimulatedStopsView 在 steps 更新時讀取並同步選取,不需要把
+  // selectedStopId 這個 state 整個搬到這個 hook 來。用 ref 而非回傳值
+  // 直接驅動 state,是因為這個賦值跟 setTimeline 不在同一個 React
+  // 批次更新時機保證內(insertAttractionAfter 呼叫來源可能是原生
+  // WebSocket onmessage,見上方 useSyncedState 的完整說明),ref 讀寫
+  // 本身沒有這個時機疑慮。
+  const latestInsertedStopIdRef = useRef<string | null>(null)
 
   // insertAttractionAfter — 這是使用者明確要求的「機制跟介面由行程
   // 安排元件提供」的落地:不管是 add_attraction 工具(attractionTools.ts)
@@ -608,15 +724,33 @@ export function usePlanSimSocket(start: boolean) {
   )
 
   useEffect(() => {
-    if (!start) return
+    // start 轉 false 時清空並停止——原本是直接 return(不清),因為
+    // /ai-plan 的 start 只會 false→true 一次、不會再回去。捲動驅動的
+    // 展示(首頁 ScrollPlanDemo)則會在使用者捲出視窗時把 start 設回
+    // false,期待行程整個清掉、捲回來重新演一次(使用者明確要求「上滾的
+    // 時候不用停留,做清除安排的動作」),所以這裡要真的重置。
+    if (!start) {
+      setTimeline(createEmptyTimeline())
+      setIsGenerating(false)
+      setSource(null)
+      return
+    }
     setTimeline(createEmptyTimeline())
-    setIsGenerating(true)
+    // isGenerating 不在這裡設 true——改由第一則 thinking 訊息驅動
+    // (見下方 onMessage 的 thinking 分支)。
+    //
+    // 計時器版(createPlanSimFakeSource)建立後立刻開始播,兩種寫法的
+    // 結果幾乎相同;但捲動版(createPlanSimScrollSource)要等使用者捲動
+    // 才送出第一則,若在這裡就設 true,使用者還沒捲到時畫面會顯示
+    // 「正在安排行程…」卻什麼都沒發生。改成由實際的 thinking 訊息驅動,
+    // 兩種節奏都正確。
     // source——PlanSimSource(見該檔案開頭的完整說明)取代原本的
     // WebSocket 連線,建立後立即自動從頭播放固定劇本到 done,由 start
     // (見上方 usePlanSimSocket 的完整說明)決定何時建立。cancelled
     // 旗標理由同原本 WS 版本——避免 effect cleanup 之後,已經在飛行中的
     // setTimeout 回呼繼續寫入 state。
-    const source = createPlanSimFakeSource()
+    const source = createSource()
+    setSource(source)
     let cancelled = false
 
     const unsubscribeMessage = source.onMessage((action) => {
@@ -630,7 +764,88 @@ export function usePlanSimSocket(start: boolean) {
       // 語意上也更清楚——這則訊息唯一的作用是讓 isGenerating 維持
       // true、思考動畫(呼吸點+骨架卡)持續顯示,不需要對時間軸資料做
       // 任何事)。
-      if (action.type === 'thinking') return
+      // 2026-10:改成真的在這裡設 isGenerating(原本只是 return,
+      // 由上方建立 source 時一次設 true)——捲動驅動的來源
+      // (createPlanSimScrollSource)要等使用者捲動才送出第一則,
+      // 在建立當下就設 true 會讓畫面顯示「正在安排」卻什麼都沒發生。
+      // 改由實際的 thinking 訊息驅動,計時器版與捲動版都正確。
+      //
+      // 2026-10(第二輪,使用者明確要求「先分離推論中跟安排中的
+      // 信號」):原本只要收到任何 thinking 就顯示骨架卡(isGenerating
+      // = true),但劇本裡 thinking 前導的下一步不一定是 add_stop
+      // (也可能是 add_message 這種純旁白訊息、或 add_note)——這種
+      // 情況下骨架卡顯示了,下一步送達後卻完全沒有對應的地點卡片可以
+      // 轉場(add_message/add_note 不會被 HorizontalPlanTimeline
+      // 渲染成卡片,見該元件 stops 過濾邏輯的完整說明),使用者看到的
+      // 是「骨架消失但畫面沒變化」,誤以為插入失敗。改成只在
+      // action.nextType === 'add_stop'(見 PlanAction.nextType 的完整
+      // 說明)時才設 isGenerating(true)——「安排中」(骨架卡)現在只
+      // 對應「真的要安排一個新地點」,跟「推論中」(任何 thinking,
+      // AI 正在運作但不一定產生可見的地點卡片)分開。
+      if (action.type === 'thinking') {
+        if (action.nextType === 'add_stop' && action.nextId) {
+          setIsGenerating(true)
+          // 2026-10 使用者明確要求「安排中時就加入一張卡片,只是這張
+          // 卡片沒有資料時就呈現骨架卡」:插入一筆空白的 loading stop
+          // 節點,id 用 action.nextId(即將到達的 add_stop 訊息會用的
+          // 同一個 id,見 PlanAction.nextId 的完整說明)——之後真正的
+          // add_stop 訊息到達時(見下方),改用 updateNode 原地把這筆
+          // 節點補上完整資料,而不是插入另一筆新節點。沒有 name/time/
+          // placeId/lat/lng,HorizontalPlanTimeline 依 node.loading 且
+          // 沒有資料的狀態自然渲染成骨架卡樣式(見該元件對 loading 節點
+          // 的渲染邏輯),不需要額外的 isGenerating 分支渲染一塊獨立的
+          // 骨架卡。錨點用目前時間軸最後一筆(跟 planActionToInsert 預設
+          // 行為一致),接在已生成內容之後。
+          const rendered = toRenderList(timelineRef.current)
+          const anchorNode = rendered.length > 0 ? rendered[rendered.length - 1] : null
+          const anchorId = anchorNode?.id ?? null
+          // day——2026-10 使用者明確回報「第二天時,時間軸線會一直換成
+          // 第一日又回來」:這筆空白佔位節點原本沒有帶 day,渲染層
+          // (HorizontalPlanTimeline.tsx currentDay)用 node.day ?? 1
+          // 退回預設值——若這個骨架卡出現在第二天行程正要開始排的時機
+          // (前一筆錨點節點 day 是 2),骨架階段會被誤判成第一天,時間
+          // 軸線先跳回 Day 1,等真正的 add_stop 資料(帶正確 day)透過
+          // updateNode 補上才又跳回 Day 2,造成軸線來回跳動。改成延續
+          // 錨點節點的 day(錨點通常就是上一個已完成的站點,新站點理論
+          // 上屬於同一天,除非劇本本身的 add_stop.day 指定換天——那種
+          // 情況下等真正資料到達時 updateNode 會覆蓋這裡的暫定值,不會
+          // 錯誤停留在舊的 day)。沒有錨點(時間軸完全空白)時沿用原本
+          // 預設第一天的語意。
+          const anchorDay = (anchorNode && anchorNode.type === 'stop' ? anchorNode.day : undefined) ?? 1
+          const result = insertAttractionAfter(anchorId, action.nextId, { type: 'stop', loading: true, day: anchorDay })
+          if (!result.ok) {
+            throw new Error(result.error.message)
+          }
+        }
+        return
+      }
+      // 2026-10 使用者明確回報「第一個骨架下一個,直接就出現第一張卡跟
+      // 第二個骨架,我要有只有第一個卡的狀態」:原本 isGenerating 只有
+      // 整段劇本播完(done)才會變 false,每一站完成後它仍然是 true
+      // (因為緊接著的下一則 thinking 往往馬上送到),骨架卡因此永遠
+      // 跟著顯示,畫面上從來沒有「只有一張完整卡、沒有任何推論中信號」
+      // 的穩定狀態。這裡非 thinking/done 的每一則訊息(代表某個具體動作
+      // 真正完成,例如這一站/這則備註/這次移除處理完畢)處理前都先讓
+      // isGenerating 變 false,骨架卡立即消失,只留這張剛完成的卡片,
+      // 直到下一則 thinking 送達才重新變 true、骨架卡再次出現——讓
+      // 「完成→停留→下一輪推論開始」這個節奏在畫面上真正看得到。
+      setIsGenerating(false)
+      // reset:清空時間軸(見 PlanAction.type 對這則訊息的完整說明)。
+      // 來源在「使用者往回捲」時先送這則,再重播到目標進度。isGenerating
+      // 已經在上面統一設成 false,這裡不需要重複設定。
+      if (action.type === 'reset') {
+        setTimeline(createEmptyTimeline())
+        return
+      }
+      // reset_day:只清掉指定的那一天(見 PlanAction.type 的完整說明)。
+      // 用 plan-core 的 removeDay——走訪鏈結、重接 prevId/nextId、處理
+      // headId 都在那支純函式裡(資料操作統一在領域層,頁面層只呼叫,
+      // 不自己改資料結構)。
+      if (action.type === 'reset_day') {
+        const day = action.day ?? 1
+        setTimeline((prev) => removeDay(prev, day))
+        return
+      }
       // remove_step:先標記 removing(觸發 CSS 淡出),真正從鏈結摘除
       // 延遲到動畫播完後才做(見 removeNode/REMOVE_FADE_MS 的完整
       // 說明)——不然節點會瞬間消失,看不到淡出過程。這段標記邏輯不透過
@@ -683,6 +898,48 @@ export function usePlanSimSocket(start: boolean) {
         }
         return
       }
+      // 2026-10 使用者明確要求「安排中時就加入一張卡片,只是這張卡片
+      // 沒有資料時就呈現骨架卡」:add_stop 訊息到達時,通常前面的
+      // thinking 已經用這個 action.id 當 id 插入過一筆空白的 loading
+      // 佔位節點(見上方 thinking 分支)——這裡改用 updateNode 原地
+      // 補上完整資料,不再呼叫 insertAttractionAfter 插入另一筆新節點
+      // (那樣會留下一個永遠空白的孤兒節點,且畫面上會出現兩張卡)。
+      // 只有在真的找不到對應佔位節點時(理論上不該發生,thinking 一定
+      // 先於對應的 action 送達,但防禦性地保留 fallback,避免未來劇本
+      // 資料若有 thinking 被跳過的情況時整個卡住)才退回原本的插入路徑。
+      if (action.type === 'add_stop' && action.id && timelineRef.current.nodes.has(action.id)) {
+        const toUpdate = planActionToInsert(timelineRef.current, action)
+        if (!toUpdate) return
+        // staleOtherAgentMessages——理由同 insertAttractionAfter 對新插入
+        // stop 的既有處理(見該函式呼叫處的完整說明):佔位節點原地轉成
+        // 真正的地點站,同樣代表話題已經推進,其他還「新鮮」的對話訊息
+        // 節點要一併淡化,不能因為這裡走的是 updateNode 而非插入新節點
+        // 就漏掉這個效果。
+        setTimeline((prev) => staleOtherAgentMessages(updateNode(prev, action.id!, toUpdate.data), action.id!))
+        // insertAttractionAfter 原本插入成功後,若帶 placeId 且是 loading
+        // 佔位狀態會背景觸發 resolveAttractionForStep 補資料(見該函式
+        // 的完整說明)——這裡繞過 insertAttractionAfter 直接 updateNode,
+        // 需要自己重做這一段背景查詢觸發,否則帶 placeId 的佔位卡永遠
+        // 不會真的查到完整資料。
+        if (toUpdate.data.placeId && toUpdate.data.loading) {
+          resolveAttractionForStep(
+            action.id,
+            toUpdate.data.placeId,
+            (placeId) => planAiFakeDataSource.placeDetails(placeId),
+            setTimeline,
+            () => false,
+            () => refreshTransitForStop(action.id!, setTimeline, () => timelineRef.current),
+          )
+        } else if (toUpdate.data.lat != null && toUpdate.data.lng != null) {
+          refreshTransitForStop(action.id, setTimeline, () => timelineRef.current)
+        }
+        // 2026-10 使用者明確回報「骨架卡轉成地點時就要拉到中間,目前是
+        // 要等下一個骨架時才拉往中間」:見下方 latestInsertedStopIdRef
+        // 的完整說明——這裡原地補資料,id 本來就沒變,同樣要記下來讓
+        // useSimulatedStopsView 同步選取。
+        latestInsertedStopIdRef.current = action.id
+        return
+      }
       // 新增類 action(含 add_message,見 STEP_ADD_TYPES 的完整說明):
       // 統一走 planActionToInsert + insertAttractionAfter
       // (見兩者的完整說明)——不再有模擬路徑專屬的 insertAfter 呼叫或
@@ -696,6 +953,16 @@ export function usePlanSimSocket(start: boolean) {
       const result = insertAttractionAfter(toInsert.anchorId, toInsert.newId, toInsert.data)
       if (!result.ok) {
         throw new Error(result.error.message)
+      }
+      // 2026-10 使用者明確回報「骨架卡轉成地點時就要拉到中間,目前是
+      // 要等下一個骨架時才拉往中間」:新插入的地點站 id 記下來,讓
+      // useSimulatedStopsView(見該函式的完整說明)能在同一個 stops
+      // 更新週期裡把 selectedStopId 同步指過去——這個 effect 所在的
+      // usePlanSimSocket 本身不持有 selectedStopId 這個 state(它屬於
+      // 下游的 useSimulatedStopsView),不能在這裡直接呼叫對應的
+      // setter,只能先記錄「最新插入的站點是誰」。
+      if (action.type === 'add_stop') {
+        latestInsertedStopIdRef.current = toInsert.newId
       }
     })
     const unsubscribeError = source.onError(() => {
@@ -712,6 +979,16 @@ export function usePlanSimSocket(start: boolean) {
 
   const steps = toRenderList(timeline)
 
+  // clearTimeline——把時間軸清空。
+  //
+  // 「讓我試看看」按鈕用(使用者明確要求交接時清空時間軸):模擬跑完
+  // 幾站之後使用者決定自己試,展示用的那幾站要先清掉,不能讓他以為
+  // 那是自己排的。這個頁面的時間軸不持久化(純展示),所以只要清掉
+  // 記憶體這份即可。
+  const clearTimeline = useCallback(() => {
+    commitTimeline(() => ({ next: createEmptyTimeline(), result: undefined }))
+  }, [commitTimeline])
+
   return {
     steps,
     timeline,
@@ -720,6 +997,9 @@ export function usePlanSimSocket(start: boolean) {
     insertAttractionAfter,
     setNoteForStop,
     dragStopTime,
+    clearTimeline,
+    source,
+    latestInsertedStopIdRef,
   }
 }
 
@@ -743,10 +1023,202 @@ function isEmbedded(): boolean {
   return new URLSearchParams(window.location.search).get('embedded') === '1'
 }
 
+// PlanStopsView — 「地圖要顯示哪些站點」這份投影的統一介面。
+//
+// 2026-10 改名(原本叫 PlanInferenceSource,「推論來源」):那個名字誤導
+// ——真正的推論(AI 決定排哪些站)發生在更上游,是 PlanSimSource 的劇本
+// 播放、或 onagent 的工具呼叫。這個介面做的是投影:把 PlanTimeline 這份
+// 真相,篩成地圖需要的形狀(只留有座標的 stop 節點、只取 id/lat/lng/name,
+// 丟掉備註、交通、removing 標記、children)。
+//
+// 「投影」= 單向、唯讀、可重算的衍生。丟掉重算一次,結果一樣——它不持有
+// 任何東西(toRenderList(timeline) → steps 是另一個投影,給時間軸 UI 用,
+// 那個反而會加東西:插入 Day 分隔線)。
+//
+// kind 欄位說的是「這份站點來自模擬還是真實」,給 JSX 決定渲染哪個時間軸
+// 層用(`view.kind === 'live' ? <LivePlanLayer> : <PlanTimelineView>`),
+// 不是「推論方式」。刻意不把「要渲染哪個元件」這件事做成介面的方法——那是
+// 版面層級的分支,跟「站點資料從哪來」是兩個獨立的關注點。
+//
+// 這個介面取代原本到處寫 `handedOver ? liveXxx : mapXxx` 的三元判斷
+// (2026-10,使用者明確要求「現在就重構成介面(與模擬層/真實層統一父
+// 介面)」,設計上參考 plan-core/planTimelineStorage.ts PlanTimelineStore
+// 的既有模式)。
+//
+// 檢視狀態(selectedStopId/hoverStopId)不在這裡——它不是投影出來的,是
+// 獨立的 state,見下方 PlanSelection 的完整說明。
+//
+// 「交接」不是這個介面的方法——交接的語意是「把目前這份投影整個換成另一
+// 種 kind」,不是某個實例對自己做的操作(模擬投影沒有能力把自己變成真實
+// 投影,反之亦然)。這個動作留在 AIPlanTimelinePage 元件本身:它用一個
+// state(planSource)持有「目前用哪一份」,handover() 就是改寫它。
+export interface PlanStopsView {
+  kind: 'simulated' | 'live'
+  stops: PlanStopMarker[]
+}
+
+// PlanSelection — 「使用者現在在看哪一站」這組檢視狀態,2026-10 從
+// PlanStopsView 裡抽出來(使用者明確指出「推論不應該持有 UI 狀態
+// 的,這樣要替換控制來源,或是不同控制來源操作時才不會產生不同步」)。
+//
+// 原本這兩個值住在每個來源實作各自的 useState 裡。那樣做有三個實際
+// 問題,都是「來源實例跟檢視狀態綁在一起」造成的:
+//
+//   1. 來源物件會隨選取改變而變成新參照——選取只是「使用者點了哪張
+//      卡」,卻讓整個 source 物件換新,下游任何以 source 為依賴的
+//      effect 都會跟著重跑。AIPlanTimelinePage 因此需要一個 effect 把
+//      simulatedSource 同步回 planSource state,而那個 effect 踩過
+//      「Maximum update depth exceeded」的無限迴圈(見該處的完整說明,
+//      修法是改成依賴 stops/selectedStopId/hoverStopId 三個值而不是
+//      整個物件——那是在補這個設計的破口)。
+//   2. 替換來源時兩份狀態不同步:模擬層跟真實層各持有一份選取,交接
+//      時從一份換成另一份。目前看起來「天然正確」(新的那份是 null),
+//      但那是因為剛好只有單向、一次性的交接;只要之後出現「切回模擬」
+//      或「同時有兩個控制來源」,就會變成兩份狀態互相覆蓋。
+//   3. 語意不對:選取不是推論的產物。AI 排出哪些站是推論結果,使用者
+//      在看哪一站不是——它不持久化、不進 AI 的工具、重新整理後不該
+//      還在。放在推論來源裡等於宣稱它跟 stops 是同一種東西。
+//
+// 抽出來之後,選取狀態跟「目前用哪個來源」完全無關,這讓兩件事都做得到:
+//   - 交接時「要清空選取」變成明確的一行呼叫(見 handover),而不是靠
+//     「換掉實例」的副作用隱含達成——後者讀程式碼看不出來。
+//   - 反過來,「替換推論層但不改變現況」也成立(使用者明確指出的情境):
+//     使用者正選中某一站,此時把推論來源換掉(模擬版換成接真實後端、
+//     計時器版換捲動版),選取可以原封不動留著。綁在來源裡的話這件事
+//     根本做不到——換來源就等於選取被丟掉。
+export interface PlanSelection {
+  selectedStopId: string | null
+  hoverStopId: string | null
+  setSelectedStopId: (id: string | null) => void
+  setHoverStopId: (id: string | null) => void
+  // clear——交接/重置時清空選取。等同連續呼叫兩個 setter 傳 null,
+  // 收成一個具名方法讓呼叫端的意圖一眼可見。
+  clear: () => void
+}
+
+// usePlanSelection — PlanSelection 的唯一實作。沒有第二種實作,也不預期
+// 會有:這就是兩個 useState,抽成 hook 只是為了讓「這組狀態是一個整體」
+// 這件事在型別上成立,並給它一個可以被兩個消費端共用的身分。
+export function usePlanSelection(): PlanSelection {
+  const [selectedStopId, setSelectedStopId] = useState<string | null>(null)
+  const [hoverStopId, setHoverStopId] = useState<string | null>(null)
+  const clear = useCallback(() => {
+    setSelectedStopId(null)
+    setHoverStopId(null)
+  }, [])
+  return { selectedStopId, hoverStopId, setSelectedStopId, setHoverStopId, clear }
+}
+
+// useSimulatedStopsView — 「模擬來源」的具體實作:包裝模擬層自己的
+// mapStops/selectedStopId/hoverStopId 這幾個 state 與其 setter,原樣對應
+// 既有行為,不是重新設計一套。steps 由呼叫端(usePlanSimSocket 的回傳值)
+// 傳入,這個 hook 只負責從中篩出站點、管理選取/hover 這兩個 state。
+//
+// latestInsertedStopIdRef——2026-10 新增(見 usePlanSimSocket 同名 ref
+// 的完整說明):新地點站插入後,這裡同步把 selectedStopId/hoverStopId
+// 指過去,修正 HorizontalPlanTimeline 的自動捲動 effect 因為
+// selectedStopId 一直停在舊卡、要等下一輪才追上的「慢一拍」問題。
+//
+function useSimulatedStopsView(
+  steps: PlanStep[],
+  latestInsertedStopIdRef: { current: string | null },
+  // selection——檢視狀態由外部注入,這個來源不持有(見 PlanSelection 的
+  // 完整說明)。模擬來源仍然需要「寫入」選取:新站點排出來時自動選中它
+  // (見下方 lastAutoSyncedStopIdRef 的 effect),那是推論的行為(排出
+  // 新站 → 把焦點帶過去),不是持有狀態。
+  selection: PlanSelection,
+): PlanStopsView {
+  const { setSelectedStopId, setHoverStopId } = selection
+  // 2026-10 修正無限重渲染迴圈:steps 是 toRenderList(timeline) 的回傳值
+  // (見 usePlanSimSocket),每次呼叫都是新陣列參照,即使 timeline 內容
+  // 沒變——直接把 steps 放進 useMemo 依賴陣列,等於這個 memo 永遠判定
+  // 「依賴變了」而重新計算出新的 stops 陣列,導致呼叫端(見下方 return)
+  // 回傳的 PlanStopsView.stops 也永遠是新參照,使 AIPlanTimelinePage
+  // 裡依賴 simulatedSource.stops 的 effect 永遠判定變動、無限重新執行
+  // (見該 effect 的完整說明)。改用內容摘要字串當依賴(理由同
+  // usePlanStopMarkers.ts 的 stopsKey),只有篩選/映射後的實際結果真的
+  // 不同時,stops 才換新參照。
+  //
+  // 2026-10(第二輪,使用者明確要求「點選聚合點時,原本的點變成一個範圍
+  // 圈圈,顯示圈圈內的地點小點」):子景點不再混進這份清單跟主題點用
+  // 同一套圓點樣式——改成獨立的範圍圓圈+子景點小點圖層(見下方
+  // useThemeRadiusCircle 的完整說明),視覺上明確區分「主題點本身」跟
+  // 「展開後的範圍與子景點」,不是把子景點偽裝成跟其他站點一樣的一般
+  // marker。這份清單維持只放「真正獨立佔用時間軸時間點的站點」,主題
+  // 點本身(不論是否展開)仍然只在這裡佔一筆。
+  const stopsKey = steps
+    .filter((s) => s.type === 'stop' && s.lat != null && s.lng != null)
+    .map((s) => `${s.id}|${s.lat}|${s.lng}|${s.name ?? ''}`)
+    .join(',')
+  const stops = useMemo<PlanStopMarker[]>(
+    () =>
+      steps
+        .filter((s) => s.type === 'stop' && s.lat != null && s.lng != null)
+        .map((s) => ({ id: s.id, lat: s.lat!, lng: s.lng!, name: s.name })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stopsKey],
+  )
+  // lastAutoSyncedStopIdRef——2026-10 修正(使用者實機回報「自動播放
+  // 結束後,點其他卡片會被拉回最後一個」):記錄「這個 latestId 已經
+  // 自動同步過選取了」,不是只看 selectedStopId 現在是不是等於
+  // latestId。原本的判斷式 `if (selectedStopId === latestId) return`
+  // 沒有分辨「selectedStopId 還沒追上最新插入的站(該自動同步)」跟
+  // 「使用者後來手動點了別的站,selectedStopId 刻意不等於 latestId」
+  // 這兩種情況——只要 selectedStopId 不等於 latestId 就一律覆蓋,導致
+  // 自動播放結束(latestInsertedStopIdRef.current 停在最後一站不再變)
+  // 後,使用者點任何其他卡片觸發 setSelectedStopId(otherId),這個
+  // effect 因為依賴陣列裡的 selectedStopId 改變而重新執行,又把選取
+  // 強制拉回最後一站,使用者點哪張卡都沒有反應。
+  const lastAutoSyncedStopIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    const latestId = latestInsertedStopIdRef.current
+    if (latestId == null) return
+    if (!stops.some((s) => s.id === latestId)) return
+    // 這個 latestId 已經自動同步過一次了——不管 selectedStopId 現在是
+    // 不是等於它,都不再重複同步,讓使用者之後手動選別的卡片時這裡
+    // 不會把選取搶回來。
+    if (lastAutoSyncedStopIdRef.current === latestId) return
+    lastAutoSyncedStopIdRef.current = latestId
+    setSelectedStopId(latestId)
+    setHoverStopId(latestId)
+  }, [stops, latestInsertedStopIdRef, setSelectedStopId, setHoverStopId])
+  return { kind: 'simulated', stops }
+}
+
+// useLiveStopsView — 「真實來源」的具體實作:包裝 LivePlanLayer 透傳上來
+// 的 liveStops/liveSelectedStopId/liveHoverStopId 這幾個 state 與其
+// setter,原樣對應既有行為(2026-10 前這幾個 state 直接宣告在
+// AIPlanTimelinePage 裡,這裡只是把它們連同對應的 onStopsChange/
+// onSelectedStopChange/onHoverStopChange 回調一起收進這個 hook,呼叫端
+// 不再需要自己管理這組 state)。
+//
+// 回傳值裡額外帶出 onStopsChange/onSelectedStopChange/onHoverStopChange
+// 三個回調(不屬於 PlanStopsView 介面本身)——這三個回調要原樣轉給
+// <LivePlanLayer>,是這個來源「怎麼被餵資料」的實作細節,不是其他呼叫端
+// (例如 usePlanStopMarkers)需要透過 PlanStopsView 介面讀取的資料,
+// 混進介面本身只會讓它背上跟「渲染 LivePlanLayer」綁死的職責。
+function useLiveStopsView(selection: PlanSelection) {
+  const [stops, setStops] = useState<PlanStopMarker[]>([])
+  const handleStopsChange = useCallback(
+    (next: { id: string; lat: number; lng: number; name?: string }[]) => setStops(next),
+    [],
+  )
+  const source: PlanStopsView = { kind: 'live', stops }
+  // onSelectedStopChange/onHoverStopChange 直接轉給共用的 selection——
+  // LivePlanLayer 內部的 TripPlanPage 選中某一站時,寫入的是跟模擬層、
+  // 地圖層同一份檢視狀態(見 PlanSelection 的完整說明),不是這個來源
+  // 自己的一份。
+  return {
+    source,
+    onStopsChange: handleStopsChange,
+    onSelectedStopChange: selection.setSelectedStopId,
+    onHoverStopChange: selection.setHoverStopId,
+  }
+}
+
 export function AIPlanTimelinePage() {
   const embedded = isEmbedded()
   const { theme, dark, toggleTheme } = useThemeToggle()
-  const navigate = useNavigate()
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const followingRef = useRef(true)
   const lastScrollTopRef = useRef(0)
@@ -783,23 +1255,101 @@ export function AIPlanTimelinePage() {
   // usePlanAiChatBridge(接真實 onagent 對話)與對應的 getStepsForBridge/
   // addNoteToTimeline 橋接函式,使用者明確要求這個頁面的輸入框改為
   // 純展示、不接受真的輸入,整條 onagent 對話路徑已一併移除。
-  const { steps, isGenerating, timelineRef, dragStopTime } = usePlanSimSocket(promptTyped)
-
-  // mapStops——要畫在地圖上的站點。只取 type==='stop' 且已經有座標的
-  // 節點:section(AI 的敘述文字)本來就不是地點。腳本的站點是逐步送
-  // 進來的,還沒送到的自然不在清單裡——地圖上的圓點因此會隨著時間軸
-  // 一站一站長出來(見 usePlanStopMarkers 既有的進場動畫)。帶 name
-  // (跟原本 PlotStop 只有 id/lat/lng 不同)——usePlanStopMarkers 拿它
-  // 當 marker 的原生 title(滑鼠停在圓點上的 tooltip),見該 hook
-  // PlanStopMarker 的完整說明。
-  const mapStops = useMemo<PlanStopMarker[]>(
-    () =>
-      steps
-        .filter((s) => s.type === 'stop' && s.lat != null && s.lng != null)
-        .map((s) => ({ id: s.id, lat: s.lat!, lng: s.lng!, name: s.name })),
-    [steps],
-  )
+  // DEBUG_SAFE_AREA 開啟時傳 false,不建立來源、不播放——驗證中心點
+  // 計算時畫面上不該有東西在動(見該常數的完整說明)。沒帶那個 URL
+  // 參數時這個判斷恆為 false,播放行為跟平常完全一樣。
+  const { steps, isGenerating, timelineRef, dragStopTime, clearTimeline, latestInsertedStopIdRef } = usePlanSimSocket(DEBUG_SAFE_AREA ? false : promptTyped)
   const stopCount = steps.filter((s) => s.type === 'stop').length
+
+  // expandedThemeId——2026-10 改成由 useMapMarkerLayer 內部 reducer 自己
+  // 判斷(見下方該 hook 呼叫處的完整說明),不再是這裡自己宣告的獨立
+  // state、也不再需要另外讀 timelineRef.current.nodes 算一次——原本
+  // 「選中的站點若帶 children 就展開」這個判斷邏輯已經收斂進
+  // mapMarkerLayer/reducer.ts 的 applySelection,這裡只需要把 children
+  // 資訊帶進 points 陣列(見下方 mapMarkerPoints 的完整說明)。
+
+  // simulatedSource/liveSource——兩種具體的 PlanStopsView 實作(見
+  // 該介面與這兩個 hook 的完整說明),各自原樣包裝先前直接宣告在這個
+  // 元件裡的 mapStops/selectedStopId/hoverStopId 與
+  // liveStops/liveSelectedStopId/liveHoverStopId 這兩組 state。兩個 hook
+  // 都無條件呼叫(不因為目前用哪一個就跳過另一個的 state 宣告)——這是
+  // React hooks 規則的既有要求,呼叫次數/順序不能依條件變動,跟原本
+  // mapStops/liveStops 兩組 state 本來就都無條件宣告是同一種既有模式,
+  // 不是這次重構才新增的限制。
+  // selection——「使用者在看哪一站」這組檢視狀態,跟「目前用哪個推論
+  // 來源」完全分開(見 PlanSelection 的完整說明)。宣告在兩個來源之前,
+  // 因為兩者都要用同一份。
+  const selection = usePlanSelection()
+  const simulatedSource = useSimulatedStopsView(steps, latestInsertedStopIdRef, selection)
+  const { source: liveSource, onStopsChange: handleLiveStopsChange, onSelectedStopChange: setLiveSelectedStopId, onHoverStopChange: setLiveHoverStopId } = useLiveStopsView(selection)
+
+  // planSource——目前使用中的來源實例(型別是 PlanStopsView),
+  // 取代原本的 handedOver 布林值。這是這個元件唯一需要持有的「目前用
+  // 哪一個來源」狀態——其餘呼叫端(usePlanStopMarkers、JSX 渲染判斷)
+  // 一律讀 planSource.kind/stops/selectedStopId/... 或呼叫
+  // planSource.setSelectedStopId(...) 等方法,不再各自寫
+  // `handedOver ? A : B` 這種三元判斷。
+  //
+  // 初值是 simulatedSource——頁面一開始一定是模擬層,交接是單向的(見
+  // handover 的完整說明)。
+  const [planSource, setPlanSource] = useState<PlanStopsView>(simulatedSource)
+  // 模擬來源的 stops 會隨著劇本播放持續更新,simulatedSource 因此每次
+  // render 都是新的物件參照——交接前(planSource.kind === 'simulated')
+  // 要讓 planSource 跟著最新的內容走,不能卡在掛載當下那一份陳舊的快照。
+  // 交接後這個 effect 不再做任何事:handover() 當下已經把 planSource
+  // 換成 liveSource,之後條件恆為 false,不會換回模擬來源。
+  //
+  // 2026-10 修正無限重渲染迴圈:simulatedSource 是物件 literal,每次
+  // render 都是新參照,若依賴陣列直接放它本身,effect 會在每次 render
+  // 後都判定「依賴變了」而重新執行——執行時又 setPlanSource 換成另一個
+  // 新物件,觸發下一次 render,形成自我餵養的無限迴圈(console 報
+  // "Maximum update depth exceeded")。改成依賴實際內容打斷迴圈。
+  //
+  // 2026-10(檢視狀態抽出後):依賴從三個值縮回一個 stops。原本
+  // selectedStopId/hoverStopId 也在裡面,代表「使用者點一張卡」會讓
+  // 整個來源物件換新、這個 effect 重跑一次——那是把檢視狀態綁在來源上
+  // 的直接代價(見 PlanSelection 的完整說明)。現在選取改變完全不碰
+  // 這條路徑。
+  useEffect(() => {
+    setPlanSource((prev) => (prev.kind === 'simulated' ? simulatedSource : prev))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simulatedSource.stops])
+
+  // handover——「交接」這個動作本身,取代原本單純的 setHandedOver(true)
+  // 布林翻轉:把目前的來源實例整個換成 liveSource(真實來源)。
+  //
+  // 2026-10 改動(使用者明確要求「按鈕按下去不能進入 app,是要替換掉
+  // 時間軸層」):原本這顆按鈕是 navigate('/app') 跳到正式功能頁,現在
+  // 留在同一頁替換內容——模擬的時間軸清空,換成讓使用者自己描述需求的
+  // 介面。這樣做的理由是連續性:使用者剛看完一段「AI 自動排行程」的
+  // 展示,當下最想做的是「換我試試看」,跳轉到另一個頁面(還可能撞上
+  // 登入牆)會把那個當下打斷。
+  //
+  // 單向、不可逆——交接後沒有「回到模擬」的路徑(見 LivePlanLayer.tsx
+  // 檔頭 TODO 第 3 點的完整說明:模擬的腳本播放是一次性的,重播需要
+  // 另外設計)。
+  const handover = useCallback(() => {
+    clearTimeline()
+    // 清空選取——2026-10 檢視狀態從推論來源抽出來之後(見 PlanSelection
+    // 的完整說明),這件事必須明確做。原本是靠「換掉來源實例」的副作用
+    // 隱含達成:新實例的 useState 初值是 null,所以看起來自動清空了。
+    // 那個隱含行為有兩個問題——讀程式碼看不出來,而且反過來的情境
+    // (替換推論層但要保留現況)做不到。現在兩種都只是要不要呼叫這一行。
+    selection.clear()
+    setPlanSource(liveSource)
+  }, [clearTimeline, liveSource, selection])
+
+  // handedOver——衍生值,不是獨立 state:純粹讓下方大量既有的「交接後
+  // 要不要做某件事」判斷(JSX 渲染分支、地圖偏移 effect 等)不必逐一
+  // 改寫成 `planSource.kind === 'live'`,維持原本的閱讀習慣。
+  const handedOver = planSource.kind === 'live'
+
+  // isDesktop——只用來決定模擬層(handedOver 為 false)的手機版要不要
+  // 換成橫向卡片時間軸(HorizontalPlanTimeline,見該元件檔頭的完整
+  // 說明:方案二設計稿的落地)。桌面版與交接後的真實層(handedOver 為
+  // true)完全不受這個判斷影響,繼續渲染原本的 PlanTimelineView,見下方
+  // JSX 的完整說明。
+  const isDesktop = useIsDesktop()
 
   // mapHandle——NativeMapBase 建圖完成後回報上來的控制代碼,見該元件
   // onHandleChange 的完整說明。usePlanStopMarkers 需要 mapRef/mapReady
@@ -809,51 +1359,176 @@ export function AIPlanTimelinePage() {
     setMapHandle(handle)
   }, [])
 
-  // selectedStopId——目前被點選、卡片套用 .stopCardSelected 高亮樣式的
-  // 站點。2026-10 移除右上角小地圖功能前,這個狀態同時也驅動小地圖
-  // panTo+放大(見 panToStop),拿掉地圖後這裡純粹只剩「點了哪張卡片」
-  // 的視覺回饋,不影響其餘行為。2026-10 地圖換成真實互動地圖
-  // (NativeMapBase)後,這個 state 重新驅動地圖圓點強調(見下方
-  // usePlanStopMarkers 呼叫處),回到原本「選取會連動地圖」的語意,
-  // 只是不做 pan/放大(panToStop 維持不變,只設定這個 state)。
-  const [selectedStopId, setSelectedStopId] = useState<string | null>(null)
-
-  // hoverStopId——滑鼠正懸停在哪一張時間軸卡片上。2026-10 新增,對齊
-  // 正式功能頁 DesktopLayout.tsx 的 hoverPlanStopId 既有模式(見該檔案
-  // 同名 state 的完整說明)——這個展示頁先前只接了「點選」
-  // (selectedStopId),卡片 hover 完全沒有對應的 state 可以更新,
-  // usePlanStopMarkers 本身早就支援 hoverStopId 這個參數(見該 hook 的
-  // 完整說明),只是這個頁面沒有建立對應的 state 餵給它,圓點因此完全
-  // 是靜態的。跟 selectedStopId 分開存、不合併成單一「強調中的 id」,
-  // 理由同 DesktopLayout.tsx hoverPlanStopId 的完整說明:兩者生命週期
-  // 不同(hover 移出就消失,選取會留著),合併會讓「滑過另一張卡再移開」
-  // 把先前點選的高亮一併清掉。
+  // mapSafeArea——2026-10 新增(使用者構想:「底下是地圖層,上方是一層
+  // UI 層,UI 層把各個元素都配置好,像地圖主顯示區就配出一個區塊,只是
+  // 不用顯示,那自然就可以得知主顯示區的範圍」,見 useMapSafeArea.ts/
+  // AIPlanTimelinePage.module.css .mapSafeArea 的完整說明)。取代原本
+  // 「手算 timelineHeight / 2 再呼叫 panBy」的土法地圖視覺中心偏移
+  // ——那套作法要自己推導 panBy 的方向語意、踩過一次方向寫反的實機
+  // bug,且只能做「初始置中校正」這一件事,沒辦法判斷之後每次移動到
+  // 特定地點時目標是否落在安全範圍內。
   //
-  // 這裡只對齊「點選」跟「hover」這兩項(使用者明確要求「先不用全部
-  // 對齊,先對齊點選跟 hover」),不跟進 DesktopLayout.tsx 的
-  // hoverTransitPair(交通膠囊 hover 連線跨兩站的對齊)——那是另一個
-  // 對齊項目,故下方 usePlanStopMarkers 呼叫處不傳 hoverTransitPair,
-  // 讓它退回只看 hoverStopId 的既有預設行為(見該 hook 對這個參數的
-  // 完整說明)。
-  const [hoverStopId, setHoverStopId] = useState<string | null>(null)
+  // panToWithinSafeArea 取代所有原本直接呼叫 mapHandle.mapRef.current.
+  // panTo(target) 的地方(見下方 panToStopId/panToStop/
+  // hasAutoPannedToFirstStopRef 的完整說明):目標點在 UI 層配置的
+  // 安全區塊範圍內就用 panTo(維持平滑移動、zoom 不變的既有體驗),超出
+  // 範圍才改用 fitBounds 確保目標點移動後真的落在可視範圍內(使用者
+  // 明確要求「如果移動範圍在可視區就用 panTo,以外則用 fitBounds」)。
+  const mapSafeArea = useMapSafeArea(mapHandle.mapRef)
 
-  usePlanStopMarkers({
+  // selectedStopId/setSelectedStopId——改讀/寫 planSource(見該變數的
+  // 完整說明),不再各自宣告 state——交接前這組方法呼叫的是
+  // simulatedSource 包裝的 setSelectedStopId/setHoverStopId,交接後呼叫
+  // 的是 liveSource 包裝的那組,planSource 本身已經指向正確的實例,呼叫
+  // 端(下方 usePlanStopMarkers 呼叫處、JSX 裡 panToStop 等)不需要知道
+  // 這個差異。
+  //
+  // 2026-10 移除右上角小地圖功能前,這個狀態同時也驅動小地圖 panTo+
+  // 放大(見 panToStop),拿掉地圖後這裡純粹只剩「點了哪張卡片」的視覺
+  // 回饋,不影響其餘行為。2026-10 地圖換成真實互動地圖(NativeMapBase)
+  // 後,這個狀態重新驅動地圖圓點強調(見下方 usePlanStopMarkers 呼叫
+  // 處),回到原本「選取會連動地圖」的語意,只是不做 pan/放大
+  // (panToStop 維持不變,只設定這個狀態)。
+  const { selectedStopId, hoverStopId, setSelectedStopId, setHoverStopId } = selection
+
+  // mapMarkerPoints——把 planSource.stops(PlanStopMarker[])轉成
+  // useMapMarkerLayer 要的 MapMarkerPoint[]。2026-10 改用共用元件取代
+  // usePlanStopMarkers+useThemeRadiusCircle+這裡自己手寫的
+  // expandedThemeId effect(原本三處各自維護一部分「主題點該不該展開」
+  // 的判斷,現在整個收斂進 mapMarkerLayer/reducer.ts 的 applySelection,
+  // 見該檔案完整說明)。
+  //
+  // kind——只有 simulated 來源的時間軸節點才可能帶 children(見
+  // planTimeline.ts PlanNodeData.children 的完整說明;交接後的真實
+  // 行程節點 liveSource.stops 本身就不帶這個概念,恆為 undefined,
+  // 不需要像原本的 expandedThemeId effect 那樣額外用
+  // planSource.kind !== 'simulated' 顯式防護,這裡的 kind 判斷已經
+  // 完全由「這個節點實際有沒有 children」決定,行為等價)。
+  //
+  // stopsKey——同 useSimulatedStopsView 的 stopsKey 慣例,避免每次
+  // render 都是新陣列參照讓下游 effect 誤判變動;這裡額外把 children
+  // 內容也編進去(對齊 mapMarkerLayer/index.ts pointsKey 2026-10 修正
+  // 的完整說明:children 非同步晚到也要能被偵測到)。
+  const mapMarkerPointsKey = planSource.stops
+    .map((s) => {
+      const node = planSource.kind === 'simulated' ? timelineRef.current.nodes.get(s.id) : undefined
+      const childrenKey = (node?.children ?? []).map((c) => `${c.id}:${c.lat ?? ''}:${c.lng ?? ''}`).join(';')
+      return `${s.id}|${s.lat}|${s.lng}|${s.name ?? ''}|${childrenKey}`
+    })
+    .join(',')
+  const mapMarkerPoints = useMemo<MapMarkerPoint[]>(
+    () =>
+      planSource.stops.map((s) => {
+        const node = planSource.kind === 'simulated' ? timelineRef.current.nodes.get(s.id) : undefined
+        const children = (node?.children ?? []).filter(
+          (c): c is PlanThemeChild & { lat: number; lng: number } => c.lat != null && c.lng != null,
+        )
+        if (children.length > 0) {
+          return { id: s.id, lat: s.lat, lng: s.lng, name: s.name, kind: 'theme', children: children.map((c) => ({ id: c.id, lat: c.lat, lng: c.lng, name: c.name })) }
+        }
+        return { id: s.id, lat: s.lat, lng: s.lng, name: s.name, kind: 'attraction' }
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mapMarkerPointsKey],
+  )
+
+  // useMapMarkerLayer——取代原本 usePlanStopMarkers+useThemeRadiusCircle
+  // 兩次呼叫(見該共用元件 types.ts/index.ts 開頭的完整設計說明:完全
+  // 受控,取代原本分散在這個元件跟兩個獨立 hook 之間、互相靠 effect
+  // 同步的做法)。
+  //
+  // 2026-10 改版(無限重渲染迴圈修正):selectedStopId/hoverStopId 是
+  // 唯一的事實來源,直接傳給 selectedId/hoverId——這個 hook 內部完全
+  // 不會自己改變這兩個值,onSelectedChange 純粹是「使用者點了地圖上的
+  // 點」這個意圖通知,接 setSelectedStopId 就是直接採納這個意圖當作
+  // 新的選取,不會形成雙向同步環(見 mapMarkerLayer/types.ts 開頭對
+  // 這次改版理由的完整說明)。
+  //
+  // autoPanOnSelect 刻意維持 false——這個頁面自己下方已經有
+  // panToStopId(透過 useMapSafeArea.panToWithinSafeArea 移動地圖,
+  // 見該處的完整說明)這套跟 mapMarkerLayer 完全無關的 pan 機制,不要
+  // 同時啟用兩套 pan 邏輯重複觸發(見 mapMarkerLayer/types.ts
+  // autoPanOnSelect 2026-10 補充的範圍邊界說明)。
+  //
+  // onPointClick 省略——原本 onStopClick 只做一件事:把點擊結果寫回
+  // selectedStopId,這件事已經由 onSelectedChange 涵蓋,不需要額外監聽
+  // onPointClick 重複處理同一個意圖。
+  const mapMarkerLayer = useMapMarkerLayer({
     mapRef: mapHandle.mapRef,
     mapReady: mapHandle.mapReady,
-    stops: mapStops,
-    // selectedStopId/hoverStopId——讓地圖圓點跟著時間軸卡片的點選/hover
-    // 一起強調,對齊正式功能頁 DesktopLayout.tsx 呼叫 usePlanStopMarkers
-    // 時的既有模式(完整傳入這兩個參數)。
-    selectedStopId: selectedStopId,
-    hoverStopId: hoverStopId,
-    // onStopClick——點擊地圖上的圓點時反向高亮對應的時間軸卡片,這是
-    // 雙向連動的另一半,對齊 DesktopLayout.tsx 的
-    // onPlanStopClick={setSelectedPlanStopId} 同樣的模式。
-    onStopClick: (id) => setSelectedStopId(id),
+    points: mapMarkerPoints,
+    selectedId: selectedStopId,
+    hoverId: hoverStopId,
+    onSelectedChange: setSelectedStopId,
   })
+  const expandedThemeId = mapMarkerLayer.expandedThemeId
+
+  // expandedThemeNode——expandedThemeId 目前指向的完整時間軸節點,下方
+  // panTo effect 查詢子景點座標時仍會用到(見該 effect 的完整說明)。
+  const expandedThemeNode = expandedThemeId != null ? timelineRef.current.nodes.get(expandedThemeId) : undefined
+
+  // panToStopId——2026-10(第三輪,使用者明確要求「選擇圖卡時不要移動
+  // 地圖中心,標誌地點就好,另外做一個 icon,移動到該點」):原本是一個
+  // 無條件跟著 selectedStopId 自動觸發的 useEffect(「選中卡片→地圖
+  // 自動 panTo」),改成只在使用者明確點擊卡片上新增的「移動到此」
+  // 按鈕時才呼叫的命令式函式——選取本身(selectedStopId 改變、地圖
+  // marker 高亮)跟「要不要移動地圖視角」現在是兩個分開的動作,不再
+  // 綁死在一起。保留原本查詢座標的邏輯(一般站點查 planSource.stops,
+  // 查不到再查 expandedThemeNode.children,涵蓋子景點 id 的情況,理由
+  // 同先前版本的完整說明),只是觸發時機從「selectedStopId 改變」
+  // 換成「呼叫這個函式」。只在手機版+模擬中有意義(桌面版縱向側欄/
+  // 交接後版面語意不同,理由同上方 mapSafeArea 的完整說明),呼叫端
+  // (HorizontalPlanTimeline.tsx 卡片上的按鈕)只在這個情境下會渲染
+  // 這顆按鈕,這裡的 isDesktop/handedOver 判斷是雙重保險,不是唯一
+  // 防線。
+  //
+  // 2026-10(第四輪):改呼叫 mapSafeArea.panToWithinSafeArea 取代原本
+  // 直接呼叫 mapRef.current.panTo——見 mapSafeArea 的完整說明,會先
+  // 判斷目標是否落在 UI 層配置的安全區塊內,再決定 panTo 或 fitBounds。
+  const panToStopId = useCallback(
+    (stopId: string) => {
+      if (isDesktop || handedOver) return
+      if (!mapHandle.mapReady || !mapHandle.mapRef.current) return
+      const stop = planSource.stops.find((s) => s.id === stopId)
+      const target = stop
+        ? { lat: stop.lat, lng: stop.lng }
+        : (() => {
+            const child = expandedThemeNode?.children?.find((c) => c.id === stopId)
+            return child && child.lat != null && child.lng != null ? { lat: child.lat, lng: child.lng } : null
+          })()
+      if (!target) return
+      mapSafeArea.panToWithinSafeArea(target)
+    },
+    // mapSafeArea.panToWithinSafeArea 本身是 useMapSafeArea 內部
+    // useCallback 包過的穩定參照(依賴只有 mapRef),但 useMapSafeArea()
+    // 每次呼叫回傳的外層物件 { safeAreaElRef, panToWithinSafeArea }
+    // 都是新的物件 literal——依賴陣列放整個 mapSafeArea 會讓這個
+    // useCallback 每次 render 都判定「依賴變了」而重新建立,直接放
+    // 真正穩定的那個函式本身即可。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isDesktop, handedOver, mapHandle.mapReady, mapHandle.mapRef, planSource.stops, expandedThemeNode, mapSafeArea.panToWithinSafeArea],
+  )
+
+  // hasAutoPannedToFirstStopRef——2026-10 使用者明確要求「只有第一個
+  // 點出現時要移動到該點」:行程第一站被插入時(不管那一刻它是否剛好
+  // 是 selectedStopId),自動 panTo 一次,讓使用者一開始就能看到行程
+  // 起點對應的地圖位置——之後新增的站點、或選取其他已存在的站點,
+  // 都改成使用者自己按卡片上的「移動到此」按鈕(見 panToStopId 的完整
+  // 說明),不再自動觸發。這個 ref 記錄「有沒有已經自動 panTo 過第一
+  // 站」,只在還沒有的情況下、且這一刻 planSource.stops 真的有內容時
+  // 才觸發一次,之後恆為 true,不受任何後續的 stops 變動影響——跟
+  // useSimulatedStopsView.ts latestInsertedStopIdRef 那種「只同步
+  // 一次,不要每次變動都搶回」的既有設計原則一致(見該處的完整說明)。
+  const hasAutoPannedToFirstStopRef = useRef(false)
+  useEffect(() => {
+    if (hasAutoPannedToFirstStopRef.current) return
+    if (planSource.stops.length === 0) return
+    hasAutoPannedToFirstStopRef.current = true
+    panToStopId(planSource.stops[0].id)
+  }, [planSource.stops, panToStopId])
 
   // composerCollapsed——排程結束後,漂浮輸入膠囊(.composer)裡原本的
-  // 箭頭送出鈕(.sendBtn)切換成「立即使用」行動呼籲按鈕(.composerCta)。
+  // 箭頭送出鈕(.sendBtn)切換成「讓我試看看」行動呼籲按鈕(.composerCta)。
   // 使用者原本要求「排程結束後,輸入匡做一個動畫轉場……縮成一顆
   // 按鈕」,試做後改要求「保留膠囊輸入外框,送出按鈕部分轉變為立即
   // 使用按鈕」——膠囊外框本身固定維持完整寬度,不再整體收縮,只有
@@ -863,14 +1538,32 @@ export function AIPlanTimelinePage() {
   // 觸發時機是 isGenerating 從 true 翻成 false(劇本收到 done)那一刻,
   // 用 wasGeneratingRef 記住上一次的值來辨識這個「下降邊」——isGenerating
   // 初始值就是 false(打字動畫還沒播完、劇本尚未開始),不能單看「目前
-  // 是 false」就切換,否則一進頁面就已經顯示「立即使用」。這個頁面固定
+  // 是 false」就切換,否則一進頁面就已經顯示「讓我試看看」。這個頁面固定
   // 只播放一次、不能重播,所以這個切換只會發生一次。
+  //
+  // 2026-10 改成「排到第 CTA_AFTER_STOPS 站就切換」,不再等整段劇本播完
+  // (使用者明確要求「播放到第 5 個景點就加入按鈕」)——整段腳本有 14
+  // 站、跑完要好幾十秒,而使用者通常看個幾站就知道這個功能在做什麼,
+  // 把行動呼籲壓在最後等於讓最有意願的那批人也得枯等。第 5 站時已經
+  // 排出完整的上午行程,足夠展示「AI 真的會連續安排」。
+  //
+  // 原本的「isGenerating 下降邊」條件保留當後備:腳本日後若改短到不足
+  // 5 站,播完仍然會顯示按鈕,不會變成永遠不出現。
+  //
+  // 只進不退(setComposerCollapsed(true) 重複寫入同值不觸發重渲染):
+  // 切換之後後續站點繼續插入時,按鈕不該閃回箭頭送出鈕。
+  // userPrompt——交接之後使用者自己打的內容。跟 typedPrompt(假打字
+  // 動畫的進度)是兩個獨立的 state:後者是展示用的、唯讀,前者才是
+  // 真的使用者輸入。
+  const [userPrompt, setUserPrompt] = useState('')
+
   const [composerCollapsed, setComposerCollapsed] = useState(false)
   const wasGeneratingRef = useRef(false)
   useEffect(() => {
-    if (wasGeneratingRef.current && !isGenerating) setComposerCollapsed(true)
+    if (stopCount >= CTA_AFTER_STOPS) setComposerCollapsed(true)
+    else if (wasGeneratingRef.current && !isGenerating) setComposerCollapsed(true)
     wasGeneratingRef.current = isGenerating
-  }, [isGenerating])
+  }, [isGenerating, stopCount])
 
   // mountedIdsRef——追蹤「已經播過進場動畫的節點 id」,用來正確判斷
   // 下方渲染迴圈裡的 justMounted。原本 justMounted 是用
@@ -903,7 +1596,7 @@ export function AIPlanTimelinePage() {
   const panToStop = useCallback((step: PlanStep) => {
     if (step.lat == null || step.lng == null) return
     setSelectedStopId(step.id)
-  }, [])
+  }, [setSelectedStopId])
 
   // scrollToLatest — 直接捲到最底。.scroll 底部已留 128px 給漂浮膠囊,
   // 捲到底時最新的節點/呼吸點會停在膠囊上方,不會卡在視窗邊緣。原本
@@ -924,7 +1617,7 @@ export function AIPlanTimelinePage() {
   // (followingRef)放進依賴,否則使用者手動捲到底、跟隨狀態從 false
   // 翻成 true 的那一刻,這個 effect 也會被觸發去捲動。
   //
-  // 2026-10 補上 isGenerating 依賴(使用者截圖回報「立即使用」按鈕
+  // 2026-10 補上 isGenerating 依賴(使用者截圖回報「讓我試看看」按鈕
   // 展開那一刻,composer 直接疊在時間軸中段內容上,不是停在底部)——
   // 根因:固定劇本播完觸發的「done」事件只翻轉 isGenerating(true→
   // false),不一定伴隨新的 steps 更新;而 isGenerating 翻 false 的
@@ -1010,6 +1703,24 @@ export function AIPlanTimelinePage() {
           mapId={LANDING_MAP_ID}
           onHandleChange={handleMapHandleChange}
         />
+        {/* 安全區除錯疊圖(見 DEBUG_SAFE_AREA 的完整說明)。放在
+            .mapBackdrop 裡面——那個容器的範圍跟地圖 div 完全一致,
+            而 solveSafeAreaCenter 回傳的像素座標都是相對地圖容器左上角,
+            兩者基準相同才對得準。 */}
+        {DEBUG_SAFE_AREA && (
+          // fallback 給 null——疊圖載入前畫面上什麼都不顯示即可,它是
+          // 疊在地圖上的標記,沒有「載入中」狀態需要佔位。
+          <Suspense fallback={null}>
+            <SafeAreaDebugOverlay
+              target={DEBUG_TARGET}
+              safeAreaElRef={mapSafeArea.safeAreaElRef}
+              mapRef={mapHandle.mapRef}
+              mapReady={mapHandle.mapReady}
+              onPan={mapSafeArea.panToWithinSafeArea}
+              resetView={{ center: CENTER, zoom: ZOOM }}
+            />
+          </Suspense>
+        )}
       </div>
       {/* 上方漂浮按鈕——使用者明確要求「上方功能列採用跟首頁一樣的漂浮
           按鈕,要有功能介紹跟登入日夜間切換按鈕」,直接沿用
@@ -1022,16 +1733,19 @@ export function AIPlanTimelinePage() {
           理由同 HomePage.tsx 的既有用法。 */}
       {!embedded && (
         <>
-        {/* statusPill(已安排幾站)2026-10 從這裡移到 .composer 的
-            .inputRow 最前面(見下方該處的完整說明)——使用者先前要求
-            「不要放在功能列上，要放在台南兩日遊右邊」,這次進一步要求
-            移到輸入匡前面,SiteNavBrand 不再需要帶 extra prop。 */}
         <SiteNavBrand pageLabel="台南兩日遊" />
         <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
         <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'plan-ai-sim', position: 'nav' })}>登入</SiteNavCta>
         <SiteNavCta href="/product" variant="accent" slot={2} onClick={() => trackEvent('landing_feature_intro_click', { page: 'plan-ai-sim' })}>功能介紹</SiteNavCta>
         </>
       )}
+
+      {/* navSpacer——2026-10 新增(見 AIPlanTimelinePage.module.css 該
+          class 的完整設計說明)。只在手機版+未交接時渲染:桌面版
+          .timelinePanel 是 position: absolute 側欄,不佔用 .page 的
+          flex 版面空間,不需要這塊讓位;交接後(LivePlanLayer)不是
+          這套手機版地圖安全區機制服務的範圍(見 mapSafeAreaEl 的完整
+          說明)。 */}
 
       {/* timelinePanel——2026-10 使用者要求「將 /ai-plan 時間軸放到
           右側」:原本 PlanTimelineView 直接是 .page 的 flex 子項,
@@ -1047,7 +1761,99 @@ export function AIPlanTimelinePage() {
           「輸入匡位置不要動」,維持原本相對整個 .page 水平置中、固定
           貼在視窗底部的位置,不跟著時間軸一起搬到右側,見下方 composer
           仍在 .timelinePanel 外層、直接是 .page 子元素的結構。 */}
-      <div className={styles.timelinePanel}>
+      {/* 時間軸層的二選一:模擬(PlanTimelineView + 下方假輸入膠囊)
+          vs 真實 AI(LivePlanLayer,內部是 /app 的 TripPlanPage)。
+          使用者按下「讓我試看看」後 handedOver 轉 true,模擬整段換掉。
+
+          目前是框架階段:LivePlanLayer 直接掛 TripPlanPage,沿用它自帶的
+          對話框與時間軸,所以真實層不需要下方那個假輸入膠囊(見該處
+          !handedOver 的判斷)。 */}
+      {handedOver ? (
+        <PlanOverlayPanel isDesktop={isDesktop} safeAreaRef={mapSafeArea.safeAreaElRef} passThrough>
+          <LivePlanLayer
+            onStopsChange={handleLiveStopsChange}
+            onSelectedStopChange={setLiveSelectedStopId}
+            onHoverStopChange={setLiveHoverStopId}
+          />
+        </PlanOverlayPanel>
+      ) : (
+      <>
+      <PlanOverlayPanel
+        isDesktop={isDesktop}
+        safeAreaRef={mapSafeArea.safeAreaElRef}
+        composer={(
+          <div className={`${styles.composer} ${composerCollapsed && !handedOver ? styles.composerBare : ''}`}>
+            <div className={styles.composerInner}>
+              {/* 輸入框是純展示用的假打字動畫(見 typedPrompt 的完整說明),
+                  不接受真的輸入、不會真的送出任何請求——這個頁面固定進頁就
+                  自動播放整段劇本(見 usePlanSimSocket),不再有 onagent 對話
+                  路徑,故這裡不是 <form>(沒有東西可以 submit)。
+                  2026-10(第三輪):「讓我試看看」出現時(composerCollapsed
+                  且尚未 handedOver)輸入框整個從 DOM 移除、按鈕置中顯示
+                  (使用者明確要求「按鈕置中,移除輸入匡」)——取代先前「輸入
+                  框收合讓位、按鈕展開動畫」的版本(見 .module.css
+                  .composerCta 的完整說明:那一版同一顆 <button> 疊加 class
+                  做 width transition,這版輸入框是條件渲染、不是 class
+                  切換,沒有連續的寬度狀態可以 transition,改用 opacity
+                  淡入)。交接後(handedOver)輸入框恢復渲染、開放輸入。 */}
+              <div className={styles.inputRow}>
+                {!(composerCollapsed && !handedOver) && (
+                  <div className={styles.inputWrap}>
+                    <input
+                      type="text"
+                      aria-label={handedOver ? '描述你想要的行程' : '輸入指令(僅供展示)'}
+                      className={styles.input}
+                      placeholder={handedOver ? '想去哪裡玩?例如:台南兩天一夜' : undefined}
+                      value={handedOver ? userPrompt : typedPrompt}
+                      onChange={handedOver ? (e) => setUserPrompt(e.target.value) : undefined}
+                      readOnly={!handedOver}
+                    />
+                  </div>
+                )}
+                {/* composerCta——排程結束後出現的行動呼籲按鈕,文案「讓我
+                    試看看」(2026-10 從「立即使用」改,使用者明確要求),
+                    點擊要導向登入頁面(/app,對齊首頁 SiteNavCta 的「登入」
+                    按鈕同樣指向 /app——未登入時 /app 本身就會顯示登入畫面,
+                    見 PhoneContent.tsx 的既有行為,不需要另外一個獨立的
+                    /login 路由)。仍是同一顆 <button>(進行中是箭頭送出鈕,
+                    結束後疊上 .composerCta 變成文字按鈕)——這顆按鈕本身
+                    的身分沒有變,只有旁邊的輸入框從「收合」改成「整個移除」
+                    (見上方完整說明)。未展開時維持 disabled,onClick 不會被
+                    觸發,不需要額外判斷 composerCollapsed 才能呼叫
+                    navigate。 */}
+                <button
+                  type="button"
+                  className={`${styles.sendBtn} ${composerCollapsed ? styles.composerCta : ''} ${
+                    // 打字動畫進行中(輸入框已經有字、但還沒打完那一刻)使用者
+                    // 明確要求送出鈕要「模擬送出的樣式,但是不能真的可以
+                    // 點選」——拿掉 disabled 平常的淺化/半透明樣式,改成完全
+                    // 不透明的深色圓鈕(見 .module.css 的 .sendBtnActive 完整
+                    // 說明),視覺上看起來像「有內容、可以送出」,呼應正在
+                    // 打字這個當下的狀態;disabled 屬性本身仍然保留、原生
+                    // 點擊行為依舊被瀏覽器擋下,只是視覺樣式改觀感,不是真的
+                    // 開放互動。打完字之後(promptTyped)排程已經開始跑,不再
+                    // 需要這個「看起來可送」的暗示,退回原本淡化的樣子。
+                    !composerCollapsed && typedPrompt && !promptTyped ? styles.sendBtnActive : ''
+                  }`}
+                  aria-label={composerCollapsed ? '讓我試看看' : '送出'}
+                  disabled={!composerCollapsed}
+                  onClick={handover}
+                >
+                  {composerCollapsed ? (
+                    '讓我試看看'
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ios-bg)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="12" y1="19" x2="12" y2="5" />
+                      <polyline points="5 12 12 5 19 12" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      >
+      {isDesktop ? (
       <PlanTimelineView
         steps={steps}
         isThinking={isGenerating}
@@ -1076,100 +1882,78 @@ export function AIPlanTimelinePage() {
         jumpPillWrapClassName={styles.timelineJumpPillWrap}
         endMarkerClassName={styles.timelineEndMarker}
       />
-      </div>
-
-      <div className={styles.composer}>
-        <div className={styles.composerInner}>
-          {/* 輸入框是純展示用的假打字動畫(見 typedPrompt 的完整說明),
-              不接受真的輸入、不會真的送出任何請求——這個頁面固定進頁就
-              自動播放整段劇本(見 usePlanSimSocket),不再有 onagent 對話
-              路徑,故這裡不是 <form>(沒有東西可以 submit)。膠囊外框
-              (.composer)本身固定維持完整寬度,不做整體收縮動畫——使用者
-              試過「整個膠囊縮成一顆按鈕」的版本後,改要求「保留膠囊輸入
-              外框,送出按鈕部分轉變為立即使用按鈕」,並要求「要有按鈕
-              展開動畫」:輸入框(顯示打好的那句話)留在原位不動,右側
-              原本的箭頭送出鈕(sendBtn)在排程結束後展開成「立即使用」
-              文字按鈕(composerCta)。這裡改成同一顆 <button>(不是條件
-              渲染出兩顆不同的按鈕元素),靠 composerCollapsed 切換
-              class/內容——同一個 DOM 節點才能讓瀏覽器對 width 做
-              transition 展開動畫(見 .module.css 的 .composerCta 完整
-              說明),條件渲染兩個獨立元素只會是瞬間切換、沒有動畫可言。
-              未展開時維持 aria-label="送出"/disabled(對齊原本 sendBtn
-              的假展示語意),展開後 aria-label 换成"立即使用",不再
-              disabled(理由見下方 composerCta 完整說明)。 */}
-          <div className={styles.inputRow}>
-            {/* statusPill(已安排幾站)2026-10 從頂部 SiteNavBrand 旁邊
-                移到這裡——使用者明確要求「放到輸入匡的前面」,具體是指
-                輸入框膠囊內部最左側,跟輸入框/送出鈕同一排。.statusPill
-                本身已經是 display:flex + flex:none(見 .module.css),
-                直接搬進這個 flex 容器的第一個位置就能正確排列,
-                .inputWrap 的 flex:1 繼續佔滿剩餘空間,不需要額外樣式
-                調整。 */}
-            <div className={styles.statusPill}>
-              {isGenerating ? (
-                <>
-                  <span className={`${styles.statusDot} ${styles.statusDotGenerating}`} />
-                  <span>正在安排行程…</span>
-                </>
-              ) : (
-                <>
-                  <span className={`${styles.statusDot} ${styles.statusDotDone}`} />
-                  <span>已安排 {stopCount} 站</span>
-                </>
-              )}
-            </div>
-            <div className={styles.inputWrap}>
-              <input
-                type="text"
-                aria-label="輸入指令(僅供展示)"
-                className={styles.input}
-                value={typedPrompt}
-                readOnly
-              />
-            </div>
-            {/* composerCta——排程結束後由送出鈕展開成的行動呼籲按鈕,
-                使用者明確要求文案「立即使用」,點擊要導向登入頁面
-                (/app,對齊首頁 SiteNavCta 的「登入」按鈕同樣指向
-                /app——未登入時 /app 本身就會顯示登入畫面,見
-                PhoneContent.tsx 的既有行為,不需要另外一個獨立的
-                /login 路由)。用 <button onClick={navigate(...)}> 而非
-                <Link>,是因為要維持跟未展開時的 <button>(送出鈕)是
-                同一個 DOM 元素/同一種標籤,才能讓瀏覽器對 max-width 等
-                屬性做 transition 展開動畫(見 .module.css 的完整說明)
-                ——換成 <a>(Link 的底層標籤)會被視為全新元素,動畫
-                會直接跳過。未展開時維持 disabled,onClick 不會被
-                觸發,不需要額外判斷 composerCollapsed 才能呼叫
-                navigate。 */}
-            <button
-              type="button"
-              className={`${styles.sendBtn} ${composerCollapsed ? styles.composerCta : ''} ${
-                // 打字動畫進行中(輸入框已經有字、但還沒打完那一刻)使用者
-                // 明確要求送出鈕要「模擬送出的樣式,但是不能真的可以
-                // 點選」——拿掉 disabled 平常的淺化/半透明樣式,改成完全
-                // 不透明的深色圓鈕(見 .module.css 的 .sendBtnActive 完整
-                // 說明),視覺上看起來像「有內容、可以送出」,呼應正在
-                // 打字這個當下的狀態;disabled 屬性本身仍然保留、原生
-                // 點擊行為依舊被瀏覽器擋下,只是視覺樣式改觀感,不是真的
-                // 開放互動。打完字之後(promptTyped)排程已經開始跑,不再
-                // 需要這個「看起來可送」的暗示,退回原本淡化的樣子。
-                !composerCollapsed && typedPrompt && !promptTyped ? styles.sendBtnActive : ''
-              }`}
-              aria-label={composerCollapsed ? '立即使用' : '送出'}
-              disabled={!composerCollapsed}
-              onClick={() => navigate('/app')}
-            >
-              {composerCollapsed ? (
-                '立即使用'
-              ) : (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ios-bg)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="19" x2="12" y2="5" />
-                  <polyline points="5 12 12 5 19 12" />
-                </svg>
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
+      ) : (
+      // 手機版(模擬中)——改用橫向卡片時間軸(方案二設計稿的落地,見
+      // HorizontalPlanTimeline.tsx 檔頭的完整說明),取代縱向
+      // PlanTimelineView。onSelectStop 同時寫入 selectedStopId 跟
+      // hoverStopId(而不是只設 selectedStopId)——這兩個 state 一起餵給
+      // 上方 useMapMarkerLayer(見該處呼叫的完整說明),地圖圓點的
+      // 「選取」樣式實際上同時看這兩個值的其中之一命中(見 mapMarkers.ts/
+      // PlanStopMarkerState 的既有邏輯),縱向版本原本是「點擊卡片→
+      // selectedStopId」「hover 卡片→hoverStopId」各自觸發,手機版橫向
+      // 卡片沒有滑鼠 hover 這件事,只有「捲到/點到哪一站」這一種事件。
+      // mapMarkerLayer/mapMarkers.ts 的三態邏輯是 selected 優先於
+      // hover(見 PlanStopMarkerState 的完整說明:兩者同時命中同一個 id
+      // 時最終呈現 'selected'),只設 selectedStopId 其實已經足夠讓地圖
+      // 圓點呈現「選取」高亮;這裡連同 hoverStopId 一併更新純粹是為了
+      // 不留下舊的 hoverStopId 殘留(例如使用者先前在桌面寬度下 hover
+      // 過某一站、之後縮小視窗切換成手機版橫向卡片,殘留的 hoverStopId
+      // 理論上不該發生但避免有這種邊界情況殘留失準的圓點狀態)。
+      // focusLatest(2026-10 修正,使用者實機回報「自動播放時第二個
+      // 景點後沒有自動往下一個滑動」):這個 prop 名稱雖然原本是為了
+      // 「第一張卡滿版、後面壓縮堆疊」這組視覺效果設計的,但那組卡片
+      // 寬度縮放邏輯後來已經被取代(見 HorizontalPlanTimeline.tsx
+      // isSingleCard 的完整說明:目前只有「只剩一張卡」這個寬度例外,
+      // 其餘卡片一律固定寬度,焦點改用捲動位置表達,不是寬度差異)——
+      // focusLatest 現在的唯一實際作用,只剩下開關「骨架轉正式卡時
+      // 自動捲動到最新站點」這個自動捲動 effect(見該檔案
+      // justFinishedGenerating 的完整說明),不會再帶來任何卡片縮放的
+      // 副作用。原本這裡沒有傳這個 prop,套用元件預設值 false,整個
+      // 自動捲動 effect 的第一行 `if (!focusLatest) return` 直接讓
+      // 自動捲動在這個完整展示頁上完全不會啟動——不是只影響第二站
+      // 以後,是從第一站就沒有自動捲動,只是使用者在只有一張卡時不易
+      // 察覺,到第二站需要真正捲動才會注意到。改成跟首頁 demo
+      // (AiPlanPhoneDemoScreen.tsx)一致,啟用自動捲動到最新完成站點。
+      <>
+      <HorizontalPlanTimeline
+        steps={steps}
+        selectedStopId={selectedStopId}
+        focusLatest
+        onSelectStop={(stopId) => {
+          setSelectedStopId(stopId)
+          setHoverStopId(stopId)
+        }}
+        // onSelectThemeChild——2026-10 新增(見 HorizontalPlanTimeline.tsx
+        // 該 prop 的完整說明)。只設定 selectedStopId(選中主題卡本身,
+        // 連帶觸發 expandedThemeId 的 effect 展開範圍圓圈+子景點小點,見
+        // 該 effect 的完整說明)。
+        //
+        // 2026-10(第二輪,使用者明確要求「手機板觸發地圖中心移動跟標示
+        // 目標點都要用捲動中心點觸發,不要用點選觸發」):不再呼叫
+        // setHoverStopId(child.id)——地圖 panTo 的 effect 已經改成只讀
+        // selectedStopId(見該 effect 的完整說明),hoverStopId 不再驅動
+        // 任何地圖行為,這裡設定它只會是沒有視覺效果的殘留狀態,拿掉。
+        onSelectThemeChild={(parentId) => {
+          setSelectedStopId(parentId)
+        }}
+        // onOpenPhotos——跟桌面版 PlanTimelineView 共用同一個 Lightbox
+        // 覆蓋層(見上方 lightboxPhotos state 的完整說明),兩個時間軸
+        // 元件都只負責「觸發開啟」,實際渲染/關閉邏輯統一收在這個頁面
+        // 層級,不重複實作。
+        onOpenPhotos={setLightboxPhotos}
+        isGenerating={isGenerating}
+        // onPanToStop——2026-10 新增(使用者明確要求「選擇圖卡時不要
+        // 移動地圖中心,標誌地點就好,另外做一個 icon,移動到該點」):
+        // 卡片角落新增的「移動到此」按鈕觸發,見 panToStopId 的完整
+        // 說明。選填 prop,省略時卡片不會渲染這顆按鈕(對齊
+        // onRemoveStop/onTransitModeChange 等既有選填 prop 的慣例)。
+        onPanToStop={panToStopId}
+      />
+      </>
+      )}
+      </PlanOverlayPanel>
+      </>
+      )}
     </div>
     {lightboxPhotos && (
       <Lightbox

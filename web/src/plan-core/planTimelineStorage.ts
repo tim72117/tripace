@@ -52,18 +52,32 @@ interface PersistedTimeline {
   rev?: number
 }
 
-// readRev — 只讀版次,不解析整份內容(寫入前的比對用,避免每次寫入都
-// 付出完整反序列化與形狀驗證的成本)。讀不到/格式不符一律當 0,呼叫端
-// 據此判定為「沒有更新的版本」。
-export function readRev(): number {
+// readRevForKey/loadTimelineWithRevForKey/saveTimelineForKey——2026-10
+// 新增(見 plan-core/planTimelineDrafts.ts 的完整背景說明):把原本寫死
+// PLAN_TIMELINE_STORAGE_KEY 的 readRev/loadTimelineWithRev/saveTimeline
+// 三個函式參數化成「可以指定任意 localStorage key」的版本,序列化格式/
+// 版本檢查/rev 機制完全不變,只是多一個 key 參數——讓「多份行程草稿」
+// (每份各自存在獨立 key 底下)能重用同一套既有邏輯,不需要重新發明一套
+// 存檔格式。下方既有的 readRev/loadTimelineWithRev/saveTimeline(固定用
+// PLAN_TIMELINE_STORAGE_KEY)全部改成呼叫這幾個 ForKey 版本、傳入固定
+// key——這是純粹的內部重構,這三個既有函式自己的簽名/行為/呼叫端完全
+// 不受影響。
+export function readRevForKey(key: string): number {
   try {
-    const raw = localStorage.getItem(PLAN_TIMELINE_STORAGE_KEY)
+    const raw = localStorage.getItem(key)
     if (!raw) return 0
     const p = JSON.parse(raw) as Partial<PersistedTimeline>
     return typeof p?.rev === 'number' ? p.rev : 0
   } catch {
     return 0
   }
+}
+
+// readRev — 只讀版次,不解析整份內容(寫入前的比對用,避免每次寫入都
+// 付出完整反序列化與形狀驗證的成本)。讀不到/格式不符一律當 0,呼叫端
+// 據此判定為「沒有更新的版本」。
+export function readRev(): number {
+  return readRevForKey(PLAN_TIMELINE_STORAGE_KEY)
 }
 
 // sanitizeNode — 把「暫態 UI 狀態」欄位清掉再存。
@@ -102,7 +116,7 @@ function sanitizeNode(node: PlanNode): PlanNode {
 // 異動,版次就會宣稱「我跟磁碟一致」,實際上記憶體多了一筆沒存到的內容;
 // 更糟的是 revRef 一旦膨脹到高於磁碟 rev,「我是否過期」的判斷從此永遠
 // 為 false,這份實例再也不會察覺別人寫過,rev 機制對它完全失效。
-export function saveTimeline(timeline: PlanTimeline, baseRev = 0): number | null {
+export function saveTimelineForKey(key: string, timeline: PlanTimeline, baseRev = 0): number | null {
   const nextRev = baseRev + 1
   try {
     const payload: PersistedTimeline = {
@@ -111,12 +125,16 @@ export function saveTimeline(timeline: PlanTimeline, baseRev = 0): number | null
       nodes: [...timeline.nodes.entries()].map(([id, node]) => [id, sanitizeNode(node)]),
       rev: nextRev,
     }
-    localStorage.setItem(PLAN_TIMELINE_STORAGE_KEY, JSON.stringify(payload))
+    localStorage.setItem(key, JSON.stringify(payload))
     return nextRev
   } catch {
     // 見上方說明:呼叫端據 null 判斷,不自行推進版次。
     return null
   }
+}
+
+export function saveTimeline(timeline: PlanTimeline, baseRev = 0): number | null {
+  return saveTimelineForKey(PLAN_TIMELINE_STORAGE_KEY, timeline, baseRev)
 }
 
 // loadTimeline 讀回時間軸;沒有存過、資料損毀、或版本不符時一律回傳空
@@ -165,12 +183,16 @@ function parseTimeline(raw: string | null): PlanTimeline {
   }
 }
 
-export function loadTimeline(): PlanTimeline {
+export function loadTimelineForKey(key: string): PlanTimeline {
   try {
-    return parseTimeline(localStorage.getItem(PLAN_TIMELINE_STORAGE_KEY))
+    return parseTimeline(localStorage.getItem(key))
   } catch {
     return createEmptyTimeline()
   }
+}
+
+export function loadTimeline(): PlanTimeline {
+  return loadTimelineForKey(PLAN_TIMELINE_STORAGE_KEY)
 }
 
 // loadTimelineWithRev — 一次 getItem 同時取得內容與版次,兩者保證來自
@@ -182,10 +204,10 @@ export function loadTimeline(): PlanTimeline {
 // 寫入就覆蓋掉別人的內容。同分頁是單執行緒、兩行之間沒有 await/yield
 // 點,實務上很難撞上——但那個不變量只靠「恰好沒有 yield」成立,這裡
 // 讓它由結構保證。
-export function loadTimelineWithRev(): { timeline: PlanTimeline; rev: number } {
+export function loadTimelineWithRevForKey(key: string): { timeline: PlanTimeline; rev: number } {
   let raw: string | null = null
   try {
-    raw = localStorage.getItem(PLAN_TIMELINE_STORAGE_KEY)
+    raw = localStorage.getItem(key)
   } catch {
     return { timeline: createEmptyTimeline(), rev: 0 }
   }
@@ -199,6 +221,10 @@ export function loadTimelineWithRev(): { timeline: PlanTimeline; rev: number } {
   return { timeline: parseTimeline(raw), rev }
 }
 
+export function loadTimelineWithRev(): { timeline: PlanTimeline; rev: number } {
+  return loadTimelineWithRevForKey(PLAN_TIMELINE_STORAGE_KEY)
+}
+
 // clearTimeline 清空已持久化的內容——供「重新開始規劃」這類明確的使用者
 // 動作呼叫。不自動在任何地方被呼叫(例如登出時),避免誤刪使用者還想保留
 // 的規劃草稿。
@@ -208,4 +234,49 @@ export function clearTimeline(): void {
   } catch {
     // 見 saveTimeline 的說明:靜默忽略。
   }
+}
+
+// PlanTimelineStore — 把「持久化怎麼做」抽成可替換的介面,取代原本
+// useTripPlanTimeline 直接 import 這個檔案三個函式(readRev/
+// loadTimelineWithRev/saveTimeline)呼叫的寫法。
+//
+// 存在的理由(2026-10,/ai-plan 展示頁交接給真實 TripPlanPage 之後):
+// 那個展示入口(LivePlanLayer.tsx)複用正式功能的 TripPlanPage,但不該
+// 寫進使用者真正的 localStorage 草稿——訪客在展示頁試玩的內容,不該
+// 跟著使用者下次打開 /app 時殘留的規劃內容混在一起。原本考慮用一個
+// `persist: boolean` 開關,但那樣 useTripPlanTimeline 內部每個讀寫點都要
+// 多一層 if(persist) 判斷,且「不持久化」要做到什麼程度(讀到底要不要
+// 回空、寫入要不要假裝成功)容易每個呼叫端各自詮釋不一致。改成介面:
+// 呼叫端只決定「用哪一種 store」,讀寫邏輯本身(含現有的 rev 機制、
+// 失敗時回傳 null 的語意)完全不變,呼叫端的判斷邏輯(見 saveTimeline
+// 呼叫端對 null 回傳值的既有處理)也不需要跟著改。
+export interface PlanTimelineStore {
+  readRev(): number
+  loadTimelineWithRev(): { timeline: PlanTimeline; rev: number }
+  saveTimeline(timeline: PlanTimeline, baseRev: number): number | null
+}
+
+// localStoragePlanTimelineStore — 正式功能(/app 等)使用的預設 store,
+// 原樣包一層本檔案既有的三個函式,不改變它們本身的行為或簽名(它們仍然
+// 各自被保留、匯出,供既有呼叫端或測試直接使用)。
+export const localStoragePlanTimelineStore: PlanTimelineStore = {
+  readRev,
+  loadTimelineWithRev,
+  saveTimeline: (timeline, baseRev) => saveTimeline(timeline, baseRev),
+}
+
+// noopPlanTimelineStore — 完全不碰 localStorage 的 store:讀永遠回空
+// 時間軸、寫永遠回傳 null(saveTimeline 既有的「存檔失敗」語意——呼叫端
+// 本來就不會在這個情況下推進 revRef 或做任何特殊處理,見
+// useTripPlanTimeline.commitTimeline 的完整說明),不需要額外改動呼叫端
+// 的判斷邏輯。2026-10:/ai-plan 展示頁的 LivePlanLayer 第一輪曾經傳這個
+// store 讓交接後不持久化,第二輪使用者明確要求改回跟 /app 共用同一份
+// localStorage 草稿,該呼叫端現在不傳這個 prop(退回 TripPlanPage 的
+// 預設值)。這個 store 目前沒有任何呼叫端在用,保留著是因為未來若有其他
+// 情境需要「完全不持久化」的 TripPlanPage 實例,這裡已經有現成可用的
+// 實作,不需要重新發明。
+export const noopPlanTimelineStore: PlanTimelineStore = {
+  readRev: () => 0,
+  loadTimelineWithRev: () => ({ timeline: createEmptyTimeline(), rev: 0 }),
+  saveTimeline: () => null,
 }
