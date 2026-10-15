@@ -1,0 +1,71 @@
+/* ScrollTimelineDemoPage — 頁面外殼(標題區+版面寬度/留白)+ 定義
+   ScrollTimeline.module.css 需要讀取的頁面作用域 token
+   (--paper/--ink/--ink-soft/--line/--card-shadow/--timeline-accent)。
+   色票沿用 JiufenPage 等既有頁面的「紙感和風」數值,不重新配色。實際
+   的時間軸/地圖互動樣式都在 ScrollTimeline.module.css,這裡不重複
+   定義。 */
+
+.scroll-timeline-demo-page {
+  --paper: #F7F3EC;
+  --ink: #2B2420;
+  --ink-soft: #5A5148;
+  --vermilion: #8B3A2F;
+  --line: #C9BFA8;
+  --card-shadow: 0 24px 48px -20px rgba(43, 36, 32, 0.45);
+  /* --timeline-accent:ScrollTimeline.module.css 讀的中性變數名,
+     同 --footer-accent/--explore-accent 的既有模式(見該二元件開頭
+     說明)。 */
+  --timeline-accent: var(--vermilion);
+
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
+  line-height: 1.8;
+}
+
+@media (prefers-color-scheme: dark) {
+  .scroll-timeline-demo-page {
+    --paper: #1C1815;
+    --ink: #EDE6D8;
+    --ink-soft: #B8AD9C;
+    --vermilion: #D97A63;
+    --line: #443C34;
+    --card-shadow: 0 24px 48px -20px rgba(0, 0, 0, 0.7);
+  }
+}
+
+.scroll-timeline-demo-page * {
+  box-sizing: border-box;
+}
+
+.std-header {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 72px 24px 32px;
+  text-align: center;
+}
+
+.std-header-eyebrow {
+  display: inline-block;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--vermilion);
+  margin-bottom: 12px;
+}
+
+.std-header h1 {
+  font-size: 28px;
+  margin: 0 0 12px;
+}
+
+.std-header p {
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.std-page-body {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 0 24px 40vh;
+}

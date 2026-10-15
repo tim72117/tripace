@@ -18,7 +18,7 @@ export interface SampleStop {
   // day——第幾天,1-based,省略視為第 1 天。
   day?: number
   // time——該站開始時間,24 小時制 "HH:MM"。同一天內必須由早到晚遞增
-  // (時間軸資料層的規則,見 plan-core/planTimeline.ts insertAfter)。
+  // (時間軸領域層的規則,見 plan-core/planTimeline.ts insertAfter)。
   time: string
   name: string
   // kind——站點性質的短標籤,顯示在卡片上(如「景點」「美食」「展館」「購物」
