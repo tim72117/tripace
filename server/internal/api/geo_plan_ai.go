@@ -27,6 +27,18 @@ import (
 // 跟正式功能的流量分開限流或個別關閉。現已全部搬到需登入的
 // /internal/geo/plan-ai/*(掛 internalAuth,見 api.go 該區塊的完整說明)。
 //
+// 2026-10:其中 handlePublicGeoPlaceSearch/handlePublicGeoAttractionSearch
+// 這兩支額外重新掛了一份到 /public/geo/plan-ai/*(見 api.go Routes 內該
+// 區塊的完整說明)——/ai-plan 展示頁(web/src/home/plan-ai-sim/
+// LivePlanLayer.tsx)讓未登入訪客體驗真實 AI 對話排行程,訪客沒有 JWT,
+// 只靠需登入的 /internal/geo/plan-ai/* 會讓這兩支工具呼叫一律 401。這兩支
+// handler 本身的程式碼不變,一樣掛在 internalAuth 底下的 /internal/geo/
+// plan-ai/* 這份路由供已登入的正式功能使用;公開路由額外在 Routes 裡用
+// withGeoQueryIPThrottle 包一層以 IP 為 key 的節流(見該函式與
+// throttleGeoQueryByIP 的完整說明),彌補訪客沒有登入身份、這兩支 handler
+// 內建的 throttleGeoQueryByUser per-user 節流對訪客全部退化成同一把
+// s.guestUser 共用配額、形同沒有保護的缺口。
+//
 // 註:另有一個「AI 規劃時間軸試作原型」(寫死腳本 + 模擬推論 WebSocket,
 // handlePlanSimWS)也共用這批端點與 plan-core 資料層,但它不在這個分支上
 // ——保存在 plan-ai-sim 分支,見 api.go 路由註冊處的說明。這個檔案裡若有

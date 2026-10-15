@@ -294,3 +294,84 @@ func TestRateLimiter_ConcurrentCallsAcrossDifferentKeys(t *testing.T) {
 		t.Errorf("places.photoMedia 併發放行次數 = %d, want 3", got)
 	}
 }
+
+// TestRateLimiter_AllowWithLimit_EnforcesQuotaAndWindowReset 驗證
+// AllowWithLimit 的限流語意本身與 SetLimitForKey + Allow 一致:視窗內
+// 超過上限被拒絕、視窗過期後重新計數、不同 key 互不影響。
+func TestRateLimiter_AllowWithLimit_EnforcesQuotaAndWindowReset(t *testing.T) {
+	rl := NewRateLimiter()
+	current := time.Unix(0, 0)
+	rl.now = func() time.Time { return current }
+
+	for i := 0; i < 3; i++ {
+		if !rl.AllowWithLimit("a", time.Minute, 3) {
+			t.Fatalf("第 %d 次應被放行", i+1)
+		}
+	}
+	if rl.AllowWithLimit("a", time.Minute, 3) {
+		t.Fatal("超過上限的第 4 次應被拒絕")
+	}
+	if !rl.AllowWithLimit("b", time.Minute, 3) {
+		t.Fatal("不同 key 不應受 a 的配額影響")
+	}
+
+	current = current.Add(time.Minute)
+	if !rl.AllowWithLimit("a", time.Minute, 3) {
+		t.Fatal("視窗過期後應重新計數並放行")
+	}
+}
+
+// TestRateLimiter_AllowWithLimit_DoesNotGrowLimitsTable 驗證 key 為外部
+// 來源 IP 這種無上限集合時,AllowWithLimit 不會把每個 key 寫進 limits
+// 規則表——規則表不會被 maybeSweepLocked 回收,寫入就是永久洩漏。
+// 另外確認閒置視窗仍會被清掉,整體記憶體不隨歷史累積。
+func TestRateLimiter_AllowWithLimit_DoesNotGrowLimitsTable(t *testing.T) {
+	rl := NewRateLimiter()
+	current := time.Unix(0, 0)
+	rl.now = func() time.Time { return current }
+
+	const distinctKeys = 50
+	for i := 0; i < distinctKeys; i++ {
+		rl.AllowWithLimit("ip-"+string(rune('a'+i%26))+string(rune('a'+i/26)), time.Minute, 5)
+	}
+
+	rl.mu.Lock()
+	limitsLen := len(rl.limits)
+	windowsLen := len(rl.windows)
+	rl.mu.Unlock()
+	if limitsLen != 0 {
+		t.Fatalf("limits 規則表不應被寫入,實際 %d 筆", limitsLen)
+	}
+	if windowsLen != distinctKeys {
+		t.Fatalf("windows 應有 %d 筆,實際 %d", distinctKeys, windowsLen)
+	}
+
+	// 閒置超過 idleWindowTTL 後,觸發一次掃描,視窗應被回收。
+	current = current.Add(idleWindowTTL + time.Minute)
+	for i := 0; i < sweepEveryNCalls; i++ {
+		rl.Allow("unrelated-key")
+	}
+	rl.mu.Lock()
+	windowsAfter := len(rl.windows)
+	rl.mu.Unlock()
+	if windowsAfter != 0 {
+		t.Fatalf("閒置視窗應已被清除,實際剩 %d 筆", windowsAfter)
+	}
+}
+
+// TestRateLimiter_AllowWithLimit_NonPositiveMaxCallsIsUnlimited 驗證
+// maxCalls <=0 視為不限流且不建立視窗狀態,對齊 SetLimitForKey 的語意。
+func TestRateLimiter_AllowWithLimit_NonPositiveMaxCallsIsUnlimited(t *testing.T) {
+	rl := NewRateLimiter()
+	for i := 0; i < 10; i++ {
+		if !rl.AllowWithLimit("k", time.Minute, 0) {
+			t.Fatal("maxCalls=0 應一律放行")
+		}
+	}
+	rl.mu.Lock()
+	n := len(rl.windows)
+	rl.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("不限流時不應建立視窗狀態,實際 %d 筆", n)
+	}
+}

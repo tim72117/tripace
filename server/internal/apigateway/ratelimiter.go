@@ -169,6 +169,43 @@ func (rl *RateLimiter) Allow(key string) bool {
 		return true
 	}
 
+	return rl.allowInWindowLocked(key, limit, now)
+}
+
+// AllowWithLimit 用呼叫端當下指定的視窗與上限判斷 key 這次是否放行,
+// 不把規則寫進 limits 表——跟 SetLimitForKey + Allow 的差別只在這裡。
+//
+// 為什麼需要:key 是來源 IP 這種由外部決定、數量無上限的集合時,若每個
+// 新 key 都 SetLimitForKey,limits 表會隨歷史上出現過的不同 key 單調
+// 增長,而 maybeSweepLocked 只清 windows、不清 limits(limits 同時承載
+// 後台管理介面設定的固定規則,不能用閒置判斷刪除),等於這張表永遠
+// 不會縮小。改用這支方法後,只有 windows 會增長,而 windows 本來就會被
+// maybeSweepLocked 回收,記憶體用量由「閒置回收門檻內的不同 key 數」
+// 決定,不再隨歷史累積。
+//
+// maxCalls <=0 視為不限流(一律放行、不建立視窗狀態),對齊
+// SetLimitForKey 對 maxCalls <=0 的語意;window <=0 夾成 1 秒。
+func (rl *RateLimiter) AllowWithLimit(key string, window time.Duration, maxCalls int) bool {
+	if maxCalls <= 0 {
+		return true
+	}
+	if window <= 0 {
+		window = time.Second
+	}
+
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := rl.now()
+	rl.maybeSweepLocked(now)
+
+	return rl.allowInWindowLocked(key, rateLimit{window: window, maxCalls: maxCalls}, now)
+}
+
+// allowInWindowLocked 是 Allow 與 AllowWithLimit 共用的視窗計數邏輯:
+// 依 limit 判斷 key 在目前視窗內是否還有額度,有就記錄這次呼叫並回傳
+// true。呼叫時必須已持有 rl.mu。
+func (rl *RateLimiter) allowInWindowLocked(key string, limit rateLimit, now time.Time) bool {
 	w, ok := rl.windows[key]
 	if !ok || now.Sub(w.windowStart) >= limit.window {
 		// 這個 key 第一次被呼叫、或目前視窗已經過期——開一個新視窗,

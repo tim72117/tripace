@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -205,6 +207,22 @@ type Server struct {
 	// 出現過的使用者總數無上限增長。
 	geoQueryUserRateLimiter *apigateway.RateLimiter
 
+	// geoQueryIPRateLimiter 保護 2026-10 新開放給訪客的
+	// /public/geo/plan-ai/place-search 與
+	// /public/geo/plan-ai/attraction-search 這兩支公開端點(見
+	// throttleGeoQueryByIP 的完整說明)——這兩支端點複用
+	// handlePublicGeoPlaceSearch/handlePublicGeoAttractionSearch,
+	// handler 內部本來就會呼叫 throttleGeoQueryByUser 做 per-user
+	// 節流,但訪客沒有登入身份,userFor 一律回退成共用的
+	// s.guestUser(ID 固定 "usr_me"),等於所有訪客共用同一份
+	// per-user 配額,完全沒有保護效果(見該欄位說明)。這裡用獨立的
+	// RateLimiter 實例、key 改成來源 IP,在公開路由註冊處額外疊加一層
+	// (見 Routes 內 /public/geo/plan-ai/* 區塊),跟 geoQueryUserRateLimiter/
+	// planAiChatRateLimiter 一樣刻意用獨立實例、不混用同一份 key 空間,
+	// 理由同上——這是為訪客流量另開的資源池,不該跟已登入使用者或其他
+	// endpoint 的配額互相排擠。
+	geoQueryIPRateLimiter *apigateway.RateLimiter
+
 	// planAiChatRateLimiter 保護 POST /internal/plan-ai/chat(見
 	// plan_ai_chat.go 的完整說明),用 key = s.userFor(r).ID 做 per-user
 	// 節流——跟 geoQueryUserRateLimiter 共用同一個元件(apigateway.
@@ -225,6 +243,22 @@ type Server struct {
 // 200ms 一次等效於 60 秒視窗內最多 300 次(60s / 0.2s = 300)。
 const geoQueryUserThrottleWindow = 60 * time.Second
 const geoQueryUserThrottleMaxCalls = 300
+
+// geoQueryIPThrottleWindow/geoQueryIPThrottleMaxCalls 是
+// geoQueryIPRateLimiter 預設的節流規則——保護 2026-10 新開放給訪客的
+// /public/geo/plan-ai/place-search 與 /public/geo/plan-ai/attraction-search
+// (見 throttleGeoQueryByIP 的完整說明)。沿用跟 geoQueryUserThrottleWindow/
+// geoQueryUserThrottleMaxCalls 完全相同的數值(60 秒視窗內最多 300
+// 次)——理由:這兩支端點本來就是同一組 handler(handlePublicGeoPlaceSearch/
+// handlePublicGeoAttractionSearch),既有的 per-user 節流值已經是「2026-10
+// 使用者明確要求的 200ms 一次」這個合理上限,沒有理由對訪客另外訂一組
+// 更寬鬆的數字;但這裡刻意不「略嚴格一些」的理由是:以 IP 當 key 本身已經
+// 比 per-user 更容易因為 NAT/公司網路/校園網路等多人共用同一對外 IP 的
+// 情況而連帶影響到同一來源底下的其他訪客,維持同一組數值已經是相對保守
+// 的選擇,不需要再疊加更嚴格的上限——若之後觀察到被濫用的實際數據,再
+// 依據情況調整,不在這裡預先過度設計。
+const geoQueryIPThrottleWindow = 60 * time.Second
+const geoQueryIPThrottleMaxCalls = 300
 
 // planAiChatRateLimitWindow/planAiChatRateLimitMaxCalls 是
 // planAiChatRateLimiter 預設的節流規則——待確認的估計值:先抓「每分鐘
@@ -286,6 +320,11 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 	// 不會錯誤地讓使用者每次都拿到全新配額。
 	geoQueryUserRateLimiter := apigateway.NewRateLimiter()
 
+	// geoQueryIPRateLimiter:跟 geoQueryUserRateLimiter 一樣,key 是動態的
+	// 來源 IP 集合,不在這裡預先設定規則——改由 throttleGeoQueryByIP
+	// (見該函式的完整說明)每次請求時用 AllowWithLimit 帶入視窗與上限。
+	geoQueryIPRateLimiter := apigateway.NewRateLimiter()
+
 	// planAiChatRateLimiter:跟 geoQueryUserRateLimiter 一樣,key 是動態的
 	// 使用者 ID 集合,不在這裡預先呼叫 SetLimitForKey——改由
 	// handlePlanAiChat 每次請求時懶惰呼叫(理由同
@@ -308,6 +347,7 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 		newMaintenancePhotoClient: geo.New,
 		planAiRateLimiter:         planAiRateLimiter,
 		geoQueryUserRateLimiter:   geoQueryUserRateLimiter,
+		geoQueryIPRateLimiter:     geoQueryIPRateLimiter,
 		planAiChatRateLimiter:     planAiChatRateLimiter,
 	}
 }
@@ -367,6 +407,135 @@ func (s *Server) throttleGeoQueryByUser(w http.ResponseWriter, r *http.Request) 
 	}
 	writeErr(w, http.StatusTooManyRequests, "rate_limited", "查詢過於頻繁,請稍後再試")
 	return false
+}
+
+// trustedProxyHops 是 X-Forwarded-For 由後往前數、要信任的那一筆的位置
+// (1 = 最後一筆,即緊鄰本服務的那層代理所看到的連線來源)。預設 1 對應
+// Cloud Run 直接面對外部流量;若前面另外接了負載平衡器,每多一層就要把
+// TRUSTED_PROXY_HOPS 調高 1,否則所有訪客會被算成同一個 IP。無效值
+// (非正整數)一律回到預設 1。啟動時讀一次,不隨請求變動。
+var trustedProxyHops = trustedProxyHopsFromEnv(os.Getenv("TRUSTED_PROXY_HOPS"))
+
+func trustedProxyHopsFromEnv(v string) int {
+	if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n >= 1 {
+		return n
+	}
+	return 1
+}
+
+// clientIP 從請求取出發出這次呼叫的真實來源 IP——優先看
+// X-Forwarded-For/X-Real-IP 這兩個常見反向代理 header,理由是這個專案
+// 部署在 Cloud Run 後面(見 cmd/server 的部署說明),所有對外流量都會先
+// 經過 Google 的反向代理層再轉送進容器,這時 r.RemoteAddr 拿到的是代理
+// 本身的位址,不是真正發出請求的使用者 IP——若節流直接用 r.RemoteAddr
+// 當 key,所有訪客流量會共用同一個(或少數幾個)代理位址當 key,等同
+// 完全沒有區分不同來源,節流形同虛設。
+//
+// 目前專案裡沒有其他地方已經處理過這個問題(例如還沒有既有的訪客流量
+// 限流或 IP 擷取邏輯可以重用),這是第一個需要真實來源 IP 的呼叫端,
+// 故在這裡新寫一個小 helper,供 throttleGeoQueryByIP 使用;之後若有其他
+// 端點也需要類似的真實來源 IP,應優先重用這支函式,不要各自重新發明。
+//
+// 判斷順序:
+//  1. X-Forwarded-For——標準反向代理 header,可能是逗號分隔的多個 IP,
+//     每經過一層代理會在**尾端**追加一個(該代理看到的連線對端位址)。
+//     最左邊的值是用戶端自己送的、可任意偽造,不能當 key——若取第一個,
+//     呼叫端每次請求換一個假值就能讓節流永遠看不到同一個 key,繞過整層
+//     保護(這支函式保護的是會消耗 Google Places 配額的端點,繞過等於
+//     沒有保護)。改取「由後往前數 trustedProxyHops 個」那一筆:Cloud Run
+//     直接面對外部流量時,尾端那一筆就是 Google 代理看到的真實連線來源,
+//     所以預設 1;前面若多接一層自己的代理/負載平衡器,對應調高
+//     TRUSTED_PROXY_HOPS。header 內的值少於 trustedProxyHops 筆時視為
+//     不可信,不使用這個 header,改走下面的 fallback。
+//  2. X-Real-IP——部分反向代理(含某些 Cloud Run 設定情境)改用這個
+//     單一 IP 的 header,沒有逗號分隔的問題。
+//  3. 都沒有時 fallback 回 r.RemoteAddr(本機開發、或沒有代理的情境,
+//     這時 RemoteAddr 本身就是真實來源),並去除其中的 port 後綴
+//     (net.SplitHostPort)——RemoteAddr 的格式固定是 "IP:port",節流
+//     只需要 IP 本身,保留 port 會讓同一個使用者每次連線用不同來源
+//     port 時被誤判成不同 key,完全失去節流效果。
+//
+// X-Real-IP 與 X-Forwarded-For 最左邊的值都是用戶端可自行偽造的輸入,
+// 不能用於任何授權判斷(這裡也沒有這樣用)。節流被繞過不會造成資料外洩
+// 或權限提升,但會讓付費的 Google API 配額失去保護,所以 X-Forwarded-For
+// 不取最左邊的值,見上方第 1 點。
+func clientIP(r *http.Request) string {
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		parts := strings.Split(fwd, ",")
+		hops := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if p = strings.TrimSpace(p); p != "" {
+				hops = append(hops, p)
+			}
+		}
+		if n := len(hops); n >= trustedProxyHops {
+			return hops[n-trustedProxyHops]
+		}
+	}
+	if real := strings.TrimSpace(r.Header.Get("X-Real-IP")); real != "" {
+		return real
+	}
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil && host != "" {
+		return host
+	}
+	return r.RemoteAddr
+}
+
+// throttleGeoQueryByIP 是 throttleGeoQueryByUser 的訪客版本——保護
+// 2026-10 新開放給訪客(未登入)的 /public/geo/plan-ai/place-search 與
+// /public/geo/plan-ai/attraction-search(見 Routes 內該區塊的完整說明)。
+//
+// 背景:這兩支端點複用既有的 handlePublicGeoPlaceSearch/
+// handlePublicGeoAttractionSearch,handler 內部本來就會呼叫
+// throttleGeoQueryByUser 做 per-user 節流,但訪客沒有 JWT、沒有登入
+// 身份——userFor 在沒有合法 token 時一律回退成共用的 s.guestUser(ID
+// 固定 "usr_me",見 userFor 的完整說明),代表所有訪客會共用同一份
+// per-user 配額(60 秒內全站訪客合計最多 300 次),對任何單一訪客而言
+// 幾乎等於沒有限流——這支函式在那層之外,對外部來源額外疊加一層以 IP
+// 為 key 的節流,彌補這個缺口。
+//
+// 這兩層節流疊加的順序(見 geo_plan_ai.go 兩支 handler 呼叫處)是:先
+// throttleGeoQueryByIP(這一層,只在公開路由這條路徑上執行),再進入
+// handler 本身的 throttleGeoQueryByUser(兩層都通過才真的處理請求)——
+// 理由同 handlePublicGeoAttractionSearch 疊加 planAiRateLimiter 與
+// throttleGeoQueryByUser 兩層節流的既有慣例(見該函式說明):不同層
+// 保護不同範圍,不能互相取代。
+//
+// key 用 clientIP(r)(見該函式說明,已處理 Cloud Run 反向代理的
+// X-Forwarded-For/X-Real-IP)。視窗/上限值見
+// geoQueryIPThrottleWindow/geoQueryIPThrottleMaxCalls 的完整說明。
+//
+// 回傳 true 代表這次請求可以繼續處理;回傳 false 代表已經寫好 429
+// 回應(不做任何降級,比照 throttleGeoQueryByUser 的既有行為),呼叫端
+// 應該立刻 return,不再執行任何後續邏輯(含不再呼叫 handler 本身)。
+func (s *Server) throttleGeoQueryByIP(w http.ResponseWriter, r *http.Request) bool {
+	// 用 AllowWithLimit 而不是 SetLimitForKey + Allow:key 是外部來源 IP,
+	// 數量無上限;SetLimitForKey 會把每個見過的 IP 永久寫進規則表,
+	// 清理機制又不會回收規則表(見 RateLimiter.AllowWithLimit 的說明)。
+	if s.geoQueryIPRateLimiter.AllowWithLimit(clientIP(r), geoQueryIPThrottleWindow, geoQueryIPThrottleMaxCalls) {
+		return true
+	}
+	writeErr(w, http.StatusTooManyRequests, "rate_limited", "查詢過於頻繁,請稍後再試")
+	return false
+}
+
+// withGeoQueryIPThrottle 包一層 throttleGeoQueryByIP 檢查在 next 前面,
+// 供 Routes 註冊 /public/geo/plan-ai/* 這批新公開端點時使用(見該處的
+// 完整說明)——節流不通過時直接回 429、不呼叫 next,通過時原封不動呼叫
+// next(即 handlePublicGeoPlaceSearch/handlePublicGeoAttractionSearch
+// 本身,兩支 handler 內部仍會各自再跑一次 throttleGeoQueryByUser,兩層
+// 節流疊加的理由見 throttleGeoQueryByIP 的完整說明)。寫成這支小 wrapper
+// 而非讓這批 handler 自己判斷「這次是公開路由還是 internal 路由」,是
+// 因為 handler 本身不需要、也不該知道自己被掛在哪一組 mux 上——這批節流
+// 檢查是路由層的關注點,留在路由註冊處最清楚,也維持 handler 本身在這次
+// 改動前後完全不變。
+func withGeoQueryIPThrottle(s *Server, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.throttleGeoQueryByIP(w, r) {
+			return
+		}
+		next(w, r)
+	}
 }
 
 // photoCacheMaxAge 是圖片快取視為新鮮的上限——超過這個天數,即使資料庫
@@ -593,6 +762,24 @@ func (s *Server) Routes() http.Handler {
 	// ——那批沒有白名單可限制範圍(可以查任意地名/placeID),只靠拒絕型
 	// 限流把關,等於讓任何訪客都能消耗 Google Places 計費配額。已全部搬到
 	// 需登入的 /internal/geo/plan-ai/*(見下方 internalMux 的該區塊)。
+	//
+	// 2026-10:其中 place-search/attraction-search 兩支(/ai-plan 展示頁
+	// 排行程的最低需求,見 web/src/home/plan-ai-sim/LivePlanLayer.tsx
+	// 開頭 TODO 第1項的完整說明)重新開放為公開端點——/ai-plan 展示頁
+	// 讓訪客直接體驗真實 AI 對話排行程,訪客沒有 JWT,原本掛在需登入的
+	// /internal/geo/plan-ai/* 會讓這兩支工具呼叫一律 401、排不出任何
+	// 站點。這兩支本來就沒有白名單可限制查詢範圍(可查任意地名/
+	// 座標附近),2026-09 拿掉公開版主要是因為「只靠拒絕型限流把關」不足以
+	// 防濫用——這次重新開放改用 IP 為 key 的節流(withGeoQueryIPThrottle/
+	// throttleGeoQueryByIP,見兩者的完整說明)疊加在 handler 本身既有的
+	// per-user 節流之上,理由是訪客沒有登入身份、per-user 節流對訪客
+	// 一律退化成共用同一把 s.guestUser 配額,幾乎沒有保護效果。place-
+	// details-any/attraction/{id}/transit-estimate 這三支仍刻意只留在
+	// /internal/geo/plan-ai/*——/ai-plan 展示頁排行程的最低需求只需要
+	// 查詢(place-search/attraction-search),不需要查單筆細節/交通預估,
+	// 不擴大開放範圍超出目前確認的需求。
+	mux.HandleFunc("GET /public/geo/plan-ai/place-search", withGeoQueryIPThrottle(s, s.handlePublicGeoPlaceSearch))
+	mux.HandleFunc("GET /public/geo/plan-ai/attraction-search", withGeoQueryIPThrottle(s, s.handlePublicGeoAttractionSearch))
 	mux.HandleFunc("GET /public/geo/place-details", s.handlePublicGeoPlaceDetails)
 	// GET /public/geo/place-photo-assets:handlePublicGeoPlacePhotoAssets
 	// 的免登入版(見該函式的完整說明)——純讀 photo_assets,不觸發點擊
