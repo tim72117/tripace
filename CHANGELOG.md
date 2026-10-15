@@ -2,6 +2,32 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.35.0 — 2026-10-16
+
+首頁 AI 編排行程展示改為捲動式橫向時間軸，`/ai-plan` 抽出共用版面外殼並修正手機版交接後的版位與手勢問題，開放訪客使用 AI 排程所需的地點查詢端點（含 IP 節流）。無破壞性變更，不含資料庫結構變更。
+
+### 新增
+
+- **首頁捲動式 AI 編排行程展示**：`HomePage.tsx` 掛載新的 `ScrollPlanDemo`，使用者往下捲時行程一站一站排出來，取代原本靜態的 `AiPlanPhoneDemo` 手機展示；與 `/ai-plan` 共用同一份劇本與渲染元件，差別只在誰推進播放（計時器 vs 捲動位置，見 `planSimScrollSource.ts`）。新增 `FeatureShowcase`、橫向時間軸元件 `HorizontalPlanTimeline`。
+- **`/ai-plan` 共用版面外殼 `PlanOverlayPanel`**：把定位（桌面右側欄／手機貼底）、手機版事件穿透、地圖安全區、輸入框插槽收進同一個元件，交接前的模擬層與交接後的真實層（`LivePlanLayer` → `TripPlanPage`）共用，輸入框前後在同一位置。`TripPlanPage` 透過 `ComposerSlotContext`／`ComposerPortal` 把輸入框傳送進插槽，不在外殼內（`/app`、`/trip-plan`）時維持原位渲染。
+- **訪客公開端點**：新增 `GET /public/geo/plan-ai/place-search`、`/public/geo/plan-ai/attraction-search`，複用既有 handler，讓未登入訪客在 `/ai-plan` 也能體驗真實 AI 排程（原本打 `/internal/geo/plan-ai/*` 一律 401）。以來源 IP 為 key 節流（60 秒 300 次）。
+- **`RateLimiter.AllowWithLimit`**：key 為外部來源 IP 這種無上限集合時，不把每個 key 寫進規則表（清理機制只回收計數視窗、不回收規則表，寫入就是永久洩漏）。
+- **共用時間軸模組**：`planTimeline`、`PlanTimelineView`、`TripPlanPage` 新增選填 props，並新增草稿清單 `planTimelineDrafts`；地圖新增 `mapMarkerLayer`、`useMapSafeArea`、`solveSafeAreaCenter`。`usePlanSimSocket` 新增選填的第二參數 `createSource`，`AiPlanPhoneDemo`／`AiPlanPhoneDemoScreen` 新增選填 props（`scale`、`className`、`screenProps`、`createSource`、`started`、`onSource`、`focusLatest`），既有呼叫端不需調整。
+- **新的前端 feature flag（皆預設關閉）**：`VITE_FEATURE_TRANSIT_MODE_SELECT`（交通方式選單）、`VITE_FEATURE_NEW_TRIP_DRAFT`（交接後的「新行程」按鈕）。另外 `DesktopShared.tsx` 已宣告 `ROUTE_LINE_ENABLED`（`VITE_FEATURE_ROUTE_LINE`）與 `DESTINATION_PROMPT_ENABLED`（`VITE_FEATURE_DESTINATION_PROMPT`）兩個旗標，但對應功能尚未納入本版，開啟沒有效果。
+- **`showcase-demo` 新增 `/plan-data-flow` 內部文件頁**：整理行程資料的分層架構與四種輸入來源各自接在哪一層。
+
+### 修正
+
+- **手機版交接後地圖拉不動、輸入框貼在頂端**：交接後 `.timelinePanel` 撐滿整頁且 `TripPlanPage` 容器高度 100%，兩層都攔截指標事件；草稿為空時沒有東西把輸入框推到底部。改由 `PlanOverlayPanel` 統一處理貼底與事件穿透。
+- **手機版橫向 overscroll**：`base-ui.css` 由 `overscroll-behavior-y` 改為不分軸向的 `overscroll-behavior`，修正拖曳橫向卡片列或地圖時整個畫面彈出視窗再彈回。
+- **訪客端點 IP 節流可被偽造的 header 繞過**：`clientIP` 原本可能取 `X-Forwarded-For` 最左邊（用戶端自行送出）或 `X-Real-IP`（Cloud Run 不會設定），每次請求換一個假值就能讓節流永遠看不到同一個 key，耗用 Google Places 配額。改為取 `X-Forwarded-For` 由後往前數 `TRUSTED_PROXY_HOPS`（預設 1）筆，header 筆數不足時退回 `RemoteAddr`，不再讀 `X-Real-IP`。
+- **Vitest 在 Node 25+ 整批失敗**：新版 Node 內建 Web Storage，沒帶 `--localstorage-file` 時 `globalThis.localStorage` 回傳 `undefined` 並搶先佔位，jsdom 自己的 Storage 拿不到。`vitest.setup.ts` 只在缺失時補上（優先用 jsdom 實例自己的 Storage），Node 26 下失敗由 45 項降到 4 項（剩餘為寫死日期與地圖 mock 缺方法的既有問題）。
+
+### 部署注意
+
+- **`TRUSTED_PROXY_HOPS`**（新環境變數，見 `server/.env.example`）：預設 1，對應 Cloud Run 直接面對外部流量。若 `tripace.io` 前面另外接了負載平衡器等代理，每多一層要加 1，否則所有訪客會被算成同一個 IP、共用 300 次/分鐘的額度。
+- 公開端點 `/public/geo/plan-ai/*` 會消耗 Google Places 配額，上線後留意用量。
+
 ## v0.34.1 — 2026-10-15
 
 九份主題景點頁新增第一個聯盟行銷版位（KKday Deeplink）。無破壞性變更。

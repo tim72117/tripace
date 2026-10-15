@@ -501,8 +501,9 @@ func clientIP(r *http.Request) string {
 // throttleGeoQueryByUser 兩層節流的既有慣例(見該函式說明):不同層
 // 保護不同範圍,不能互相取代。
 //
-// key 用 clientIP(r)(見該函式說明,已處理 Cloud Run 反向代理的
-// X-Forwarded-For/X-Real-IP)。視窗/上限值見
+// key 用 clientIP(r)(見該函式說明:取 Cloud Run 反向代理追加在
+// X-Forwarded-For 尾端的來源,不信任用戶端可偽造的 X-Real-IP 或最左邊
+// 的值)。視窗/上限值見
 // geoQueryIPThrottleWindow/geoQueryIPThrottleMaxCalls 的完整說明。
 //
 // 回傳 true 代表這次請求可以繼續處理;回傳 false 代表已經寫好 429
