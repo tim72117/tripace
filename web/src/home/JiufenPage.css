@@ -292,6 +292,59 @@
    TainanPage.css 同一次改造移除的規則範圍)。 */
 
 /* Final CTA */
+.jiufen-affiliate-card {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.jiufen-page .jiufen-affiliate-link {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.1rem 1.4rem;
+  border-radius: 1rem;
+  background: var(--paper-dim);
+  border: 1px solid var(--line);
+  text-decoration: none;
+  color: var(--ink);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.jiufen-page .jiufen-affiliate-link:hover {
+  transform: translateY(-2px);
+  border-color: var(--vermilion-soft);
+}
+
+.jiufen-affiliate-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.jiufen-affiliate-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.jiufen-affiliate-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.jiufen-affiliate-sub {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.jiufen-affiliate-arrow {
+  color: var(--vermilion);
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
 .jiufen-final-cta {
   max-width: 720px;
   margin: 0 auto;
