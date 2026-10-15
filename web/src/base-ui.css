@@ -134,10 +134,10 @@ body:has(.app-theme-root[data-theme="dark"]) {
 }
 
 html {
-  /* 同 body 的 overscroll-behavior-y 說明——部分瀏覽器(尤其 Chrome for
+  /* 同 body 的 overscroll-behavior 說明——部分瀏覽器(尤其 Chrome for
      Android)的下拉重新整理判斷是看 html 這層,只設 body 不夠保險,兩層
      都鎖。 */
-  overscroll-behavior-y: none;
+  overscroll-behavior: none;
 }
 
 body {
@@ -151,8 +151,16 @@ body {
      「整頁下拉」手勢是在 body/html 這層攔截的,內層容器各自的 overflow
      設定並不會連帶擋掉它。手機版導覽抽屜欄/設定面板等疊層都是用觸控手勢
      操作,下拉重新整理誤觸發會直接把整個 App 狀態重置掉,體驗上完全不
-     該出現在一個看起來像原生 App 的介面裡。 */
-  overscroll-behavior-y: none;
+     該出現在一個看起來像原生 App 的介面裡。
+     2026-10 從 overscroll-behavior-y 改成不分軸向的 overscroll-behavior
+     (使用者實機回報「拉動不是你拉動的元素時,整個畫面會離開視窗,然後
+     又彈回來」):原本只鎖垂直方向,手機版橫向卡片列(home/plan-ai-sim/
+     HorizontalPlanTimeline.tsx)或地圖(NativeMapBase)這類有水平拖曳
+     手勢的區域,若觸控沒有被內層元素完全吃掉,iOS Safari 仍會在水平
+     方向觸發整頁彈性拉伸——跟垂直方向的下拉重新整理是同一類「瀏覽器
+     原生整頁手勢劫持內部容器滑動意圖」的問題,改成兩個方向都鎖,不是
+     只防垂直這一種情境。 */
+  overscroll-behavior: none;
 }
 
 /* .grow/.name/.sub 這三個 class 繼續留在這裡當全站 utility class——
