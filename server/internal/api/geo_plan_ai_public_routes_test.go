@@ -259,7 +259,9 @@ func TestClientIP(t *testing.T) {
 		{"空白與空項被忽略", 1, " 1.2.3.4 ,, 203.0.113.9 ,", "", "10.0.0.1:1234", "203.0.113.9"},
 		{"前面多一層代理(hops=2)取倒數第二筆", 2, "1.2.3.4, 203.0.113.9, 130.211.0.1", "", "10.0.0.1:1234", "203.0.113.9"},
 		{"筆數少於 hops 時不信任 header,退回 RemoteAddr", 2, "203.0.113.9", "", "10.0.0.1:1234", "10.0.0.1"},
-		{"沒有 XFF 時用 X-Real-IP", 1, "", "198.51.100.5", "10.0.0.1:1234", "198.51.100.5"},
+		{"沒有 XFF 時不信任 X-Real-IP,用 RemoteAddr", 1, "", "198.51.100.5", "10.0.0.1:1234", "10.0.0.1"},
+		{"XFF 筆數不足時也不信任 X-Real-IP", 2, "203.0.113.9", "198.51.100.5", "10.0.0.1:1234", "10.0.0.1"},
+		{"XFF 足夠時 X-Real-IP 不影響結果", 1, "1.2.3.4, 203.0.113.9", "198.51.100.5", "10.0.0.1:1234", "203.0.113.9"},
 		{"都沒有時用 RemoteAddr 去掉 port", 1, "", "", "192.0.2.10:5555", "192.0.2.10"},
 	}
 	for _, tc := range cases {
@@ -309,5 +311,35 @@ func TestThrottleGeoQueryByIP_SpoofedLeadingForwardedForCannotBypass(t *testing.
 	}
 	if send(geoQueryIPThrottleMaxCalls) {
 		t.Fatal("偽造最左邊 X-Forwarded-For 不應能繞過節流:超過配額後必須被拒絕")
+	}
+}
+
+// TestThrottleGeoQueryByIP_SpoofedXRealIPCannotBypass 驗證繞過情境:
+// X-Forwarded-For 筆數不足(代理層數設定比實際多)時,用戶端每次請求換
+// 一個假的 X-Real-IP,這些請求必須仍被算成同一個來源(RemoteAddr),
+// 超過配額後被拒絕。若 X-Real-IP 是 fallback,每次都會是新 key,永遠不會
+// 被限流。
+func TestThrottleGeoQueryByIP_SpoofedXRealIPCannotBypass(t *testing.T) {
+	s := newTestServer(t)
+	old := trustedProxyHops
+	trustedProxyHops = 2
+	t.Cleanup(func() { trustedProxyHops = old })
+
+	send := func(i int) bool {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/public/geo/plan-ai/place-search", nil)
+		r.RemoteAddr = "10.0.0.1:4321"
+		r.Header.Set("X-Forwarded-For", "203.0.113.50")
+		r.Header.Set("X-Real-IP", fmt.Sprintf("10.%d.%d.1", i/250, i%250))
+		return s.throttleGeoQueryByIP(w, r)
+	}
+
+	for i := 0; i < geoQueryIPThrottleMaxCalls; i++ {
+		if !send(i) {
+			t.Fatalf("第 %d 次應在配額內被放行", i+1)
+		}
+	}
+	if send(geoQueryIPThrottleMaxCalls) {
+		t.Fatal("偽造 X-Real-IP 不應能繞過節流:超過配額後必須被拒絕")
 	}
 }

@@ -424,7 +424,7 @@ func trustedProxyHopsFromEnv(v string) int {
 }
 
 // clientIP 從請求取出發出這次呼叫的真實來源 IP——優先看
-// X-Forwarded-For/X-Real-IP 這兩個常見反向代理 header,理由是這個專案
+// X-Forwarded-For 這個反向代理 header,理由是這個專案
 // 部署在 Cloud Run 後面(見 cmd/server 的部署說明),所有對外流量都會先
 // 經過 Google 的反向代理層再轉送進容器,這時 r.RemoteAddr 拿到的是代理
 // 本身的位址,不是真正發出請求的使用者 IP——若節流直接用 r.RemoteAddr
@@ -447,18 +447,21 @@ func trustedProxyHopsFromEnv(v string) int {
 //     所以預設 1;前面若多接一層自己的代理/負載平衡器,對應調高
 //     TRUSTED_PROXY_HOPS。header 內的值少於 trustedProxyHops 筆時視為
 //     不可信,不使用這個 header,改走下面的 fallback。
-//  2. X-Real-IP——部分反向代理(含某些 Cloud Run 設定情境)改用這個
-//     單一 IP 的 header,沒有逗號分隔的問題。
-//  3. 都沒有時 fallback 回 r.RemoteAddr(本機開發、或沒有代理的情境,
-//     這時 RemoteAddr 本身就是真實來源),並去除其中的 port 後綴
+//  2. 都沒有(或不可信)時 fallback 回 r.RemoteAddr(本機開發、或沒有
+//     代理的情境,這時 RemoteAddr 本身就是真實來源;header 不可信時它
+//     是代理的位址,多個訪客會共用同一個 key——寧可誤擋也不讓偽造值
+//     繞過節流),並去除其中的 port 後綴
 //     (net.SplitHostPort)——RemoteAddr 的格式固定是 "IP:port",節流
 //     只需要 IP 本身,保留 port 會讓同一個使用者每次連線用不同來源
 //     port 時被誤判成不同 key,完全失去節流效果。
 //
-// X-Real-IP 與 X-Forwarded-For 最左邊的值都是用戶端可自行偽造的輸入,
-// 不能用於任何授權判斷(這裡也沒有這樣用)。節流被繞過不會造成資料外洩
-// 或權限提升,但會讓付費的 Google API 配額失去保護,所以 X-Forwarded-For
-// 不取最左邊的值,見上方第 1 點。
+// 刻意不讀 X-Real-IP:Cloud Run 不會設定它,用戶端送什麼就是什麼,
+// 只要它是 fallback 之一,攻擊者讓 X-Forwarded-For 筆數不足(例如
+// TRUSTED_PROXY_HOPS 設得比實際代理層數大)或直連時,每次換一個假的
+// X-Real-IP 就能讓節流永遠看不到同一個 key。X-Forwarded-For 最左邊的值
+// 同樣由用戶端自行送出,不取,見上方第 1 點。這些值都不能用於任何授權
+// 判斷(這裡也沒有這樣用);節流被繞過不會造成資料外洩或權限提升,但
+// 會讓付費的 Google API 配額失去保護。
 func clientIP(r *http.Request) string {
 	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
 		parts := strings.Split(fwd, ",")
@@ -471,9 +474,6 @@ func clientIP(r *http.Request) string {
 		if n := len(hops); n >= trustedProxyHops {
 			return hops[n-trustedProxyHops]
 		}
-	}
-	if real := strings.TrimSpace(r.Header.Get("X-Real-IP")); real != "" {
-		return real
 	}
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil && host != "" {
 		return host
