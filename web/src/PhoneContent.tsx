@@ -7,7 +7,9 @@ import { type ContentProps } from './AppCommon'
 import { useIsDesktop } from './hooks/useIsDesktop'
 import { useTripsState } from './hooks/useTripsState'
 import { LoginForm, LoginCard } from './home/LoginForm'
-import { TIMELINE_ENABLED, PACE_ENABLED } from './DesktopShared'
+import { TIMELINE_ENABLED, PACE_ENABLED, DESTINATION_PROMPT_ENABLED } from './DesktopShared'
+import { buildDestinationPrompt, type DestinationDirection } from './destinationPromptData'
+import { useDeferredPromptSender } from './hooks/useDeferredPromptSender'
 import { DesktopContent } from './DesktopLayout'
 import { SettingsScreen } from './user/SettingsScreen'
 import { TripManageModal } from './trip/TripManageModal'
@@ -145,6 +147,23 @@ export function PhoneContent(props: ContentProps) {
   // 切換——規劃地圖是唯一常駐的主畫面,/app/:panelMode 這個路由現在只供
   // 桌面版使用,見 App.tsx)。
   const [chatSheetOpen, setChatSheetOpen] = useState(false)
+  // destinationPromptOpen/useDeferredPromptSender/handleDestinationConfirm:「想去哪裡?」
+  // 對話氣泡(DestinationPrompt.tsx,桌面版先做、使用者後來要求移植到手機版)。
+  // 氣泡本身渲染在 PlanPhoneView 裡(要平移地圖);這裡持有開關與送出邏輯:
+  // 對話的 sendPrompt 住在底部 sheet 的 TripPlanPage 內部,透過
+  // onSendPromptReady 交給 useDeferredPromptSender(TripPlanPage 是 lazy +
+  // keepMounted,載入完成前選完的那句話會被暫存、就緒時補送,與桌面版
+  // DesktopLayout.tsx 同一套)。使用者在氣泡選完城市與玩法方向後:送出
+  // 「我想去○○玩,想…」、關閉氣泡,並打開對話 sheet 讓使用者看到安排開始
+  // (桌面版的對話小匡本來就在畫面上,手機版對話是疊加層,不主動打開會
+  // 看不到任何反應)。旗標 DESTINATION_PROMPT_ENABLED 預設關閉。
+  const [destinationPromptOpen, setDestinationPromptOpen] = useState(true)
+  const { register: registerSendPrompt, submit: submitDestinationPrompt } = useDeferredPromptSender()
+  const handleDestinationConfirm = useCallback((city: string, directions: DestinationDirection[]) => {
+    void submitDestinationPrompt(buildDestinationPrompt(city, directions))
+    setDestinationPromptOpen(false)
+    setChatSheetOpen(true)
+  }, [submitDestinationPrompt])
   const [paceSheetOpen, setPaceSheetOpen] = useState(false)
   // exploreActive/exploreTrigger:2026-10「探索」標籤從疊在地圖左上角
   // 搬到底部常駐功能列(使用者明確要求),這兩個 state 是這個元件與
@@ -426,6 +445,9 @@ export function PhoneContent(props: ContentProps) {
           onExploreActiveChange={setExploreActive}
           tripListDrawerTrigger={tripListDrawerTrigger}
           onTripListDrawerActiveChange={setTripListDrawerOpen}
+          destinationPromptOpen={DESTINATION_PROMPT_ENABLED && destinationPromptOpen}
+          onDestinationConfirm={handleDestinationConfirm}
+          onDestinationClose={() => setDestinationPromptOpen(false)}
         />
         {/* PhoneSideTools:右側下方路徑+demo-* 小圖示,跨所有主畫面模式
             共用(不是規劃地圖專屬),見該元件開頭說明。 */}
@@ -605,7 +627,13 @@ export function PhoneContent(props: ContentProps) {
                 情境,見該處呼叫的完整說明),手機版這張對話小匡同樣屬於
                 「沒有任何祖先在管捲動」的疊加層情境,理當傳 compact,
                 這裡補上,不是新增行為,是補回原本就該有的 prop。 */}
-            <TripPlanPage cfg={cfg} compact />
+            <TripPlanPage
+              cfg={cfg}
+              compact
+              // onSendPromptReady——把對話的 sendPrompt 交給「想去哪裡?」氣泡
+              // (見 useDeferredPromptSender/handleDestinationConfirm 的說明)。
+              onSendPromptReady={registerSendPrompt}
+            />
           </Suspense>
         </SheetBody>
       </PersistentSheet>

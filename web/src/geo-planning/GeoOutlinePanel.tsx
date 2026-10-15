@@ -84,6 +84,7 @@ export function GeoOutlinePanel({
   onCityChange,
   onSearch,
   onOpenChat,
+  chatButtonOverlay,
   showZoomControl,
   searchRightSlot,
   onAttractionsChange,
@@ -144,6 +145,10 @@ export function GeoOutlinePanel({
   // onOpenChat:原封不動轉傳給 ExploreMap——搜尋框膠囊左側的 AI
   // 按鈕,見 ExploreMap.tsx 對這個 prop 的完整說明。
   onOpenChat?: () => void
+  // chatButtonOverlay:原封不動轉傳給 ExploreMap——疊在 AI 按鈕正下方的
+  // 任意內容(目前唯一的用途是「想去哪裡?」對話氣泡),見 ExploreMap.tsx
+  // 對這個 prop 的完整說明。
+  chatButtonOverlay?: ReactNode
   // showZoomControl:原封不動轉傳給 ExploreMap——地圖右下角縮放按鈕
   // 開關,見 ExploreMap.tsx 對這個 prop 的完整說明。
   showZoomControl?: boolean
@@ -603,6 +608,7 @@ export function GeoOutlinePanel({
           onCityChange={onCityChange}
           onSearch={onSearch}
           onOpenChat={onOpenChat}
+          chatButtonOverlay={chatButtonOverlay}
           showZoomControl={showZoomControl}
           searchRightSlot={searchRightSlot}
           searching={loading}

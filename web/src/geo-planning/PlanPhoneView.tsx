@@ -22,6 +22,9 @@ import { computeNearbyAttractions } from './geoNearbyAttractions'
 import { fetchPoiContent } from './useThemeAttractionSelection'
 import { curatedCategoryOf, type CuratedCategory } from './geoCuratedCategoryStub'
 import { fetchGeoPlaceDetails, fetchGeoPlacePhotoAssets } from '../api'
+import { DestinationPrompt } from '../DestinationPrompt'
+import { panMapToCity } from './panToCity'
+import type { DestinationDirection } from '../destinationPromptData'
 import styles from './PlanPhoneView.module.css'
 
 // SheetEntry:2026-08 這次重構後,清單與資訊卡「該不該顯示」的真相來源
@@ -165,6 +168,9 @@ export function PlanPhoneView({
   onExploreActiveChange,
   tripListDrawerTrigger,
   onTripListDrawerActiveChange,
+  destinationPromptOpen,
+  onDestinationConfirm,
+  onDestinationClose,
 }: {
   cfg: ClientConfig
   tripID?: string | null
@@ -226,6 +232,18 @@ export function PlanPhoneView({
   // PhoneTabBar 的「行程」按鈕顯示 active 視覺,理由同
   // onExploreActiveChange。
   onTripListDrawerActiveChange?: (active: boolean) => void
+  // destinationPromptOpen/onDestinationConfirm/onDestinationClose——「想去哪裡?」
+  // 對話氣泡(DestinationPrompt.tsx,手機版型 variant="phone")的開關與
+  // 回呼,使用者明確要求把桌面版的氣泡移植到手機版。
+  //
+  // 氣泡放在這個元件裡(而不是 PhoneContent),是因為選定城市後要把地圖移過去,
+  // 平移狀態(geo.setPanTarget)住在這裡;而「選完要送進對話」所需的
+  // sendPrompt 住在 PhoneContent 的對話 sheet(TripPlanPage),所以送出動作
+  // 用 onDestinationConfirm 交回呼叫端決定。destinationPromptOpen 省略/false
+  // 時完全不渲染,其餘使用情境不受影響。
+  destinationPromptOpen?: boolean
+  onDestinationConfirm?: (city: string, directions: DestinationDirection[]) => void
+  onDestinationClose?: () => void
 }) {
   const [searchCity, setSearchCity] = useState('')
   const [searchTrigger, setSearchTrigger] = useState(0)
@@ -334,6 +352,17 @@ export function PlanPhoneView({
   const [categoryTagsState, dispatchCategoryTags] = useReducer(reduceCategoryTagsState, initialCategoryTagsState)
   // sheetStack:清單/資訊卡「該不該顯示」的唯一真相來源(見上方
   // SheetEntry 的說明與 useSheetStack.ts 開頭的完整背景)。
+  // mapReady——Google Maps 實例真的建好了沒(由 <ExploreMap> 的
+  // onMapReady 回報)。目前唯一的用途是把「想去哪裡?」對話氣泡延後到
+  // 地圖有內容之後才顯示:使用者明確要求「對話泡泡等頁面都載入好才
+  // 開始」,在那之前彈出來的話,畫面上會是一張懸空的卡片配一片空白。
+  //
+  // 只認第一次(已經是 true 就不再寫)——地圖會因為 theme 切換而重建
+  // (見 ExploreMap 對 onMapReady 可能多次呼叫的說明),那時氣泡若還開著
+  // 不該閃一下重來,已經關掉的也不該被重新打開。
+  const [mapReady, setMapReady] = useState(false)
+  const handleMapReady = useCallback(() => { setMapReady(true) }, [])
+
   const sheetStack = useSheetStack<SheetEntry>()
   // handleSelectNearbyAttraction:附近景點清單點擊項目——push 一層
   // {type:'nearby-place'} 顯示(見上方 SheetEntry 的完整說明),重用
@@ -523,6 +552,7 @@ export function PlanPhoneView({
           width:100%/height:100% 生效)。 */}
       <div className={outlineMapStyles.mapArea}>
         <ExploreMap
+          onMapReady={handleMapReady}
           cfg={cfg}
           initialCenter={outlineMapState.initialCenter}
           currentPosition={outlineMapState.currentPosition}
@@ -715,6 +745,21 @@ export function PlanPhoneView({
           )}
         </ExploreMap>
       </div>
+      {/* 「想去哪裡?」對話氣泡——貼在底部常駐列上方(2026-10 從原本的
+          搜尋框下方改過來,理由見 .destinationPromptSlot 的完整說明)。
+          .destinationPromptSlot 是左右各留 16px 的絕對定位容器,氣泡本身以
+          variant="phone" 撐滿它。選城市只平移地圖(panMapToCity),流程最後
+          選完玩法方向才由 onDestinationConfirm 交回呼叫端送出對話。 */}
+      {destinationPromptOpen && mapReady && (
+        <div className={styles.destinationPromptSlot}>
+          <DestinationPrompt
+            variant="phone"
+            onClose={() => onDestinationClose?.()}
+            onSelectCity={(city) => panMapToCity(cfg, city, geo.setPanTarget)}
+            onConfirmPlan={(city, directions) => onDestinationConfirm?.(city, directions)}
+          />
+        </div>
+      )}
       <PlanPhoneDatePickerSheet
         open={sheetStack.stack.some((e) => e.type === 'date-picker')}
         scheduledDates={geo.scheduledDates}

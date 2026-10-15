@@ -14,6 +14,13 @@ import styles from './PanelHead.module.css'
 export interface PanelHeadProps {
   title: string
   onClose?: () => void
+  // headerAction——選填,2026-10 新增:使用者明確要求「規劃行程標頭列
+  // 加上開關路徑的 icon」(地圖右上角「規劃行程」對話小匡,見
+  // DesktopLayout.tsx 的完整說明)。渲染在標題文字之後、關閉按鈕之前
+  // (若有的話),只在呼叫端真的傳入時才多佔用這個位置——其餘呼叫端
+  // (trips/timeline/pace/geo-outline 等)不傳就完全不受影響,維持
+  // 原本只有「標題+關閉按鈕」兩個元素的版面。
+  headerAction?: React.ReactNode
   // className/style:比照 ScrollArea/Button 等其餘共用元件的既有慣例,
   // 保留一次性覆寫的逃生口——目前沒有呼叫端需要,但沒有理由讓這個共用
   // 元件成為擋住未來需求的瓶頸。
@@ -24,12 +31,13 @@ export interface PanelHeadProps {
 // forwardRef——比照 ScrollArea.tsx 等既有慣例保留轉發能力,目前沒有
 // 呼叫端需要,但沒有理由讓這個共用元件成為擋住未來需求的瓶頸。
 export const PanelHead = forwardRef<HTMLDivElement, PanelHeadProps>(function PanelHead(
-  { title, onClose, className, style },
+  { title, onClose, headerAction, className, style },
   ref,
 ) {
   return (
     <div ref={ref} className={className ? `${styles.head} ${className}` : styles.head} style={style}>
       <span className={styles.title}>{title}</span>
+      {headerAction}
       {onClose && (
         <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">
           <X size={16} strokeWidth={2} />

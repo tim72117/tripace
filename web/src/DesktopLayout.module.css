@@ -104,3 +104,45 @@
 .chatPopoverHidden {
   display: none;
 }
+
+/* routeLineToggle——「規劃行程」標頭列路徑開關的 icon 按鈕(見
+   DesktopLayout.tsx headerAction 的完整說明)。視覺比照
+   PanelHead.module.css 的 .closeBtn(圓形、無底色、hover 才顯示底色),
+   這兩顆按鈕在同一條標頭列上並排,風格需要一致;不是直接共用那份
+   CSS,是因為這個元件在 DesktopLayout.module.css 裡、跨模組的 CSS
+   Modules class 不能互相引用,各自定義一份數值相同的規則。 */
+.routeLineToggle {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
+  flex: none;
+}
+.routeLineToggle:hover {
+  background: var(--ios-bg);
+  color: var(--color-dark);
+}
+/* aria-pressed="true"(開啟中)——用強調色跟未開啟時區分,不只靠圖示
+   本身的 Route/RouteOff 差異(圖示切換在小尺寸下不夠顯眼)。 */
+.routeLineToggle[aria-pressed="true"] {
+  color: var(--ios-sand);
+}
+.routeLineToggle[aria-pressed="true"]:hover {
+  background: var(--ios-bg);
+  color: var(--ios-sand);
+}
+
+/* destinationPromptWrap 已移除(2026-10)——「想去哪裡?」對話氣泡改成
+   透過 ExploreMap.tsx 的 chatButtonOverlay prop 疊在 AI 按鈕
+   (.citySearchAiBtn)正下方的透明 anchor 容器裡(見該 prop 的完整
+   說明),不再由這裡用手算的 top/right 數值定位——那組算法曾經依照
+   .citySearch/.citySearchAiBtn 的 CSS 耦合精算過,但實際畫面量測後
+   仍然對不準(使用者回報「沒對齊」),根因是這種跨 CSS Modules 檔案的
+   手動像素耦合本來就脆弱,任一邊版面改動就會失真。改用「直接把內容
+   渲染在目標按鈕自己的 DOM 子節點裡」天然就不會有這個問題。 */

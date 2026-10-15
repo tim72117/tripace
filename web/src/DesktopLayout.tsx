@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { Route, RouteOff } from 'lucide-react'
 import type { ApiCall, WsEvent } from './api'
 import { onApiCall, onWsEvent, fetchGeoPlaceDetails, fetchGeoPlacePhotoAssets } from './api'
 import { ChatScreen } from './chat/ChatScreen'
@@ -24,7 +25,11 @@ import { reduceCategoryTagsState, initialCategoryTagsState } from './geo-plannin
 import { curatedCategoryOf } from './geo-planning/geoCuratedCategoryStub'
 import type { GeoAttraction, GeoPlaceDetails } from './api'
 import { type ContentProps } from './AppCommon'
-import { type PanelMode, DEBUG_PANEL_ENABLED, PANEL_REGISTRY } from './DesktopShared'
+import { type PanelMode, DEBUG_PANEL_ENABLED, PANEL_REGISTRY, ROUTE_LINE_ENABLED, DESTINATION_PROMPT_ENABLED } from './DesktopShared'
+import { DestinationPrompt } from './DestinationPrompt'
+import { panMapToCity } from './geo-planning/panToCity'
+import { buildDestinationPrompt } from './destinationPromptData'
+import { useDeferredPromptSender } from './hooks/useDeferredPromptSender'
 import { RouteEditor } from './demo/RouteEditor'
 // TripPlanPage:「AI 規劃」正式功能頁面(見該檔案開頭的完整說明)——lazy
 // 載入,理由同 App.tsx 對其餘整頁級路由的既有做法:這個頁面串接 onagent
@@ -164,6 +169,57 @@ export function DesktopContent(props: ContentProps) {
   // 視覺——selected 與 hover 的強調樣式刻意有差異(外環墨濃度、光暈大小),
   // 見 planStopMarkerContent 對 state 參數的完整說明。
   const [hoverPlanStopId, setHoverPlanStopId] = useState<string | null>(null)
+  // hoverTransitPair:滑鼠懸停在時間軸「交通膠囊」上時,這段交通連接的
+  // 兩個站點 id(2026-10 新增,使用者明確要求「移動到交通的膠囊上,地圖
+  // 上讓連接的兩個點都顯示 hover 狀態,並用虛線做連線」)。跟
+  // hoverPlanStopId 分開存——後者是「單一站點卡」的 hover,這個是
+  // 「交通膠囊」的 hover,兩種來源在時間軸上可能同時都沒有值、也可能
+  // 其中一種有值(使用者同一時刻只會把滑鼠停在其中一種元素上),不需要
+  // 合併成單一狀態。
+  const [hoverTransitPair, setHoverTransitPair] = useState<{ fromId: string; toId: string } | null>(null)
+  // showPlanRouteLine:「規劃行程」標頭列路徑開關的狀態(2026-10 新增,
+  // 使用者明確要求「登入後的介面規劃行程標頭列加上開關路徑的icon,打開
+  // 時,地圖上顯示所有點的線斷」,並要求「這個開關加上 feature flag」
+  // ——見 ROUTE_LINE_ENABLED 的完整說明,flag 關閉時下方 icon 按鈕根本
+  // 不會渲染,這個 state 存在與否不受 flag 影響,只是沒有入口能把它
+  // 切成 true)。預設關閉,使用者主動點擊標頭列的 icon 才開啟。
+  const [showPlanRouteLine, setShowPlanRouteLine] = useState(false)
+  // destinationPromptOpen:「想去哪裡?」對話氣泡(DestinationPrompt.tsx,
+  // 見該檔案與下方 render 區塊的完整說明)目前是否顯示。
+  //
+  // 2026-10 使用者明確修正規格:「不是第一次才開,是剛進視窗的時候開」
+  // ——不是「只在裝置/瀏覽器真正第一次使用時彈出一次,之後永久不再彈」,
+  // 而是「每次進入或重新整理 /app,這個元件重新掛載,都要自動彈出一次」。
+  // 固定初始值 true(不是讀 localStorage 判斷),天然符合這個語意:
+  // 只要這個元件被重新建立(進入頁面/重新整理),state 就重新初始化成
+  // true,不需要任何外部持久化記錄去判斷「這次該不該自動開」。
+  //
+  // 同一次 session 內關閉後不會自動重生:這個 state 只在這裡初始化一次、
+  // 以及下方關閉時設為 false,中間沒有任何程式路徑會把它重新設回
+  // true——使用者點擊「規劃行程」按鈕本身完全不會碰到這個 state(那顆
+  // 按鈕對應的是 chatPopoverOpen,是另一個獨立的 state),天然滿足
+  // 「手動開啟規劃行程小匡不應該觸發這個氣泡重新出現」的要求;只有
+  // 重新整理頁面(整個 React 樹重新掛載,這個 state 重新初始化)才會
+  // 讓它再次顯示。
+  const [destinationPromptOpen, setDestinationPromptOpen] = useState(true)
+  // mapReady——Google Maps 實例真的建好了沒(由 <ExploreMap> 的 onMapReady
+  // 回報)。用來把上面那顆對話氣泡延後到地圖有內容之後才顯示:使用者明確
+  // 要求「對話泡泡等頁面都載入好才開始」,在那之前彈出來的話,畫面上會是
+  // 一張懸空的卡片配一片空白。手機版(PlanPhoneView)有同一套處理。
+  //
+  // 只認第一次——地圖會因為 theme 切換而重建(見 ExploreMap 對 onMapReady
+  // 可能多次呼叫的說明),那時氣泡若還開著不該閃一下重來。
+  const [mapReady, setMapReady] = useState(false)
+  const handleMapReady = useCallback(() => { setMapReady(true) }, [])
+  // sendPrompt 橋接——保存 TripPlanPage 內部 usePlanAiChatBridge 的
+  // sendPrompt 函式參照(見該元件 onSendPromptReady prop 的完整說明),
+  // 讓「想去哪裡?」氣泡選定城市後能呼叫它、把這句話送進既有的 onagent
+  // 對話/時間軸機制,效果等同使用者自己在輸入框打字送出。
+  //
+  // 由 useDeferredPromptSender 持有:參照不觸發重渲染,且在 TripPlanPage
+  // 的 chunk 還沒載入完(onSendPromptReady 尚未呼叫)時,使用者先選完
+  // 城市,送出的那句話會被暫存,等 register 時補送——不再被空實作吞掉。
+  const { register: registerSendPrompt, submit: submitDestinationPrompt } = useDeferredPromptSender()
   // pendingSchedule:使用者在還沒選定旅程時,對某個候選按了日期選擇(見
   // PlacePanel 的 onSchedule)——原本這個情境下 geo.handleScheduleCandidate
   // 內部的 tripID guard 會直接靜默 no-op,浮動匡正常關閉卻完全沒有任何
@@ -664,6 +720,7 @@ export function DesktopContent(props: ContentProps) {
               <div className={outlineMapStyles.wrap}>
                 <div className={outlineMapStyles.mapArea}>
                   <ExploreMap
+                    onMapReady={handleMapReady}
                     cfg={cfg}
                     initialCenter={outlineMapState.initialCenter}
                     currentPosition={outlineMapState.currentPosition}
@@ -684,6 +741,8 @@ export function DesktopContent(props: ContentProps) {
                     // 間接保證。
                     selectedPlanStopId={chatPopoverVisible ? selectedPlanStopId : null}
                     hoverPlanStopId={chatPopoverVisible ? hoverPlanStopId : null}
+                    hoverTransitPair={chatPopoverVisible ? hoverTransitPair : null}
+                    showPlanRouteLine={chatPopoverVisible ? showPlanRouteLine : false}
                     onPlanStopClick={setSelectedPlanStopId}
                     city={geoSearchCity}
                     onCityChange={setGeoSearchCity}
@@ -715,6 +774,47 @@ export function DesktopContent(props: ContentProps) {
                     }}
                     hideCategoryTags={categoryTagsState.hidden}
                     onOpenChat={() => setChatPopoverOpen(true)}
+                    // chatButtonOverlay——「想去哪裡?」對話氣泡(2026-10
+                    // 使用者明確要求「氣泡的啟示位置在對話按鈕正下方」,
+                    // 且明確否決掉跨元件用絕對座標/getBoundingClientRect
+                    // 手動計算對齊的方案,要求「就做一個透明容器」)。
+                    //
+                    // 改成透過這個 prop 疊在 AI 按鈕(.citySearchAiBtn)
+                    // 正下方(見 ExploreMap.tsx 對這個 prop 的完整說明:
+                    // 定位基準是包住按鈕的透明 anchor 容器,不是任何跨
+                    // 容器算出來的像素數字),取代原本渲染在 DesktopMain
+                    // 子節點、靠 DesktopLayout.module.css 的
+                    // .destinationPromptWrap 手動估算 top/right 的做法
+                    // ——那個做法在實際畫面上量測後發現對不準(使用者
+                    // 回報「沒對齊」),根因是 .citySearch 膠囊的
+                    // width/padding 等任一個數字改變,外部這組手算的
+                    // top/right 就會跟著失真,屬於脆弱的耦合。
+                    chatButtonOverlay={DESTINATION_PROMPT_ENABLED && destinationPromptOpen && mapReady && (
+                      <DestinationPrompt
+                        onClose={() => setDestinationPromptOpen(false)}
+                        // 三層流程:選大地區 → 選城市 → 問「需要安排行程嗎?」。
+                        //
+                        // onSelectCity——使用者點選了城市子選項:把地圖移到該城市
+                        // (使用者明確要求「選完目的地後,地圖轉到該點為中心」)。
+                        // 只查座標、用既有的 geo.setPanTarget 平移,不走城市搜尋框
+                        // 那條路徑——那條在查到唯一結果時還會順帶選中結果、開資訊卡、
+                        // 顯示候選清單,對「單純把地圖對準城市」副作用太大。查詢
+                        // 失敗只吞掉:平移只是附加效果,不該因為查不到座標而報錯給
+                        // 使用者。帶 nonce 理由同時間軸點卡片(見 onPanToStop)。
+                        onSelectCity={(city) => panMapToCity(cfg, city, geo.setPanTarget)}
+                        // onConfirmPlan——第三層點「需要安排」、第四層確認玩法方向
+                        // (古蹟/美食/展館/戶外活動可複選,或「都可以」):這時才把「我想去○○玩,
+                        // 想…」送進對話(尚未就緒時暫存補送)並關閉氣泡
+                        // (使用者明確要求選完目的地後再問「需要安排行程嗎?」,
+                        // 再讓使用者選方向)。不等待 sendPrompt 的回傳值才關閉,
+                        // 理由見下方 onClose 的完整說明。點「先不用」只走
+                        // onClose,不送出任何對話。
+                        onConfirmPlan={(city, directions) => {
+                          void submitDestinationPrompt(buildDestinationPrompt(city, directions))
+                          setDestinationPromptOpen(false)
+                        }}
+                      />
+                    )}
                     onGeocodeCandidatesChange={outlineMapState.onGeocodeCandidatesChange}
                     onAttractionSelect={geo.selectAttraction}
                     onAttractionsChange={setGeoAttractions}
@@ -948,7 +1048,25 @@ export function DesktopContent(props: ContentProps) {
           <FloatingPanel
             side="right"
             width={CHAT_POPOVER_WIDTH}
-            title="對話"
+            title="規劃行程"
+            // headerAction——路徑開關 icon(2026-10 新增,使用者明確要求
+            // 「登入後的介面規劃行程標頭列加上開關路徑的icon,打開時,
+            // 地圖上顯示所有點的線斷」「這個開關加上 feature flag」)。
+            // ROUTE_LINE_ENABLED 關閉時整個不渲染這顆按鈕,不是渲染了
+            // 但點了沒反應——見 DesktopShared.tsx 同名常數的完整說明。
+            // icon 本身用開/關兩種狀態切換(Route/RouteOff),讓使用者
+            // 不需要額外的文字標籤就能分辨目前是否已經開啟。
+            headerAction={ROUTE_LINE_ENABLED ? (
+              <button
+                type="button"
+                className={styles.routeLineToggle}
+                onClick={() => setShowPlanRouteLine((v) => !v)}
+                aria-pressed={showPlanRouteLine}
+                title={showPlanRouteLine ? '隱藏路徑' : '顯示路徑'}
+              >
+                {showPlanRouteLine ? <Route size={16} strokeWidth={2} /> : <RouteOff size={16} strokeWidth={2} />}
+              </button>
+            ) : undefined}
             className={[
               styles.chatPopover,
               geoHotelSidebarVisible ? styles.chatPopoverShifted : '',
@@ -1024,6 +1142,12 @@ export function DesktopContent(props: ContentProps) {
                 selectedStopId={selectedPlanStopId}
                 onSelectedStopChange={setSelectedPlanStopId}
                 onHoverStopChange={setHoverPlanStopId}
+                onHoverTransitChange={setHoverTransitPair}
+                // onSendPromptReady——見該 prop 的完整說明:把這份實例的
+                // sendPrompt 函式參照交給「想去哪裡?」對話氣泡
+                // (destinationPromptOpen,見下方 render 區塊)選定城市後
+                // 呼叫,讓送出的那句話走跟使用者手動打字完全相同的路徑。
+                onSendPromptReady={registerSendPrompt}
               />
             </Suspense>
           </FloatingPanel>

@@ -30,6 +30,11 @@ export interface FloatingPanelProps {
   // 那個 FloatingPanel 用到。
   height?: 'default' | 'info'
   title?: string
+  // headerAction——選填,只在有 title 時才有意義(轉發給 PanelHead,見
+  // 該元件同名 prop 的完整說明)。只傳 onClose、不傳 title 的呼叫端
+  // (chat-popover 等)用不到這個插槽——那種情況下標題列整個不存在,
+  // 沒有地方可以放這個 icon。
+  headerAction?: React.ReactNode
   onClose?: () => void
   className?: string
   style?: React.CSSProperties
@@ -39,7 +44,7 @@ export interface FloatingPanelProps {
 // forwardRef——比照 ScrollArea.tsx 等既有慣例保留轉發能力,目前沒有
 // 呼叫端需要,但沒有理由讓這個共用元件成為擋住未來需求的瓶頸。
 export const FloatingPanel = forwardRef<HTMLDivElement, FloatingPanelProps>(function FloatingPanel(
-  { side, width, height = 'default', title, onClose, className, style, children },
+  { side, width, height = 'default', title, headerAction, onClose, className, style, children },
   ref,
 ) {
   const sideClass = side === 'left' ? styles.left : styles.right
@@ -51,7 +56,7 @@ export const FloatingPanel = forwardRef<HTMLDivElement, FloatingPanelProps>(func
       style={{ width, ...style }}
     >
       {title != null ? (
-        <PanelHead title={title} onClose={onClose} />
+        <PanelHead title={title} headerAction={headerAction} onClose={onClose} />
       ) : (
         onClose && (
           <button type="button" className={styles.floatingCloseBtn} onClick={onClose} title="關閉">

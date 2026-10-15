@@ -10,7 +10,17 @@
   border-bottom: 1px solid var(--ios-sep);
 }
 
+/* title 用 flex:1 撐滿除了 headerAction/closeBtn 以外的剩餘空間——
+   2026-10 新增 headerAction(見 PanelHead.tsx 的完整說明)後,.head 的
+   子元素從兩個(title/closeBtn,靠 justify-content:space-between 兩端
+   對齊)變成最多三個,若不給 title 明確的 flex:1,space-between 會把
+   三者平均分散在整列(title 靠左、headerAction 被推到置中、closeBtn
+   靠右),不是「標題靠左、headerAction 跟關閉按鈕一起靠右」的預期版面。
+   沒有 headerAction 的呼叫端(多數既有用法)不受影響——title 撐滿剩餘
+   空間、closeBtn 靠右,視覺上與改動前的 space-between 兩端對齊效果
+   相同。 */
 .title {
+  flex: 1;
   font-size: 13px;
   font-weight: 700;
   color: var(--color-dark);

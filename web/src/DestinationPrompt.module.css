@@ -1,0 +1,303 @@
+/* DestinationPrompt.tsx 專屬樣式(CSS Modules)。配色沿用專案既有
+   --ios-* 系列 CSS 變數(見 base-ui.css),不自創新的顏色系統——這個元件
+   跟其餘浮動卡片(FloatingPanel.module.css)共用同一套視覺語言(卡片底色/
+   分隔線/強調色),只是外形改成對話氣泡。 */
+
+/* wrap——取代原本的單一 .bubble,改成兩張各自獨立的氣泡卡片(問句/選項)
+   堆疊起來的外層容器(使用者明確要求「選項跟問句的泡泡分開」)。本身
+   沒有背景/邊框,只負責定出兩張氣泡之間的垂直間距——間距刻意很小
+   (見 gap),呼應「分開但位置不要分太開」:視覺上是連續對話的兩句泡泡,
+   不是兩張互不相關、隔得老遠的卡片。定位仍然靠呼叫端
+   (DesktopLayout.tsx)決定,這裡不假設自己在整個頁面裡的絕對座標。 */
+/* position:absolute + top:100% + left:50% + translateX(-50%)——這個
+   元件現在渲染在 ExploreMap.tsx 的 .citySearchAiBtnAnchor(透明的
+   position:relative 容器,包住 AI 按鈕本身)內部,見 ExploreMap.tsx
+   chatButtonOverlay prop 的完整說明。不再由外部(DesktopLayout.module.css)
+   算一組跨容器的 top/right 像素值——那種做法在實際畫面上量測後對不準
+   (使用者回報「沒對齊」,根因是手算的像素耦合任一邊版面改動就會失真)。
+   直接以這顆按鈕自己的 DOM 位置為定位基準:top:100% 貼齊按鈕底部,
+   left:50%+translateX(-50%) 讓氣泡水平置中於按鈕——按鈕寬度遠小於
+   氣泡寬度(30px 對 280px),置中對齊比靠左對齊更自然,也呼應下方
+   .tail 同樣置中指向這顆按鈕。 */
+.wrap {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 280px;
+  max-width: calc(100vw - 48px);
+  z-index: 4;
+}
+
+/* wrapPhone——手機版型:沒有右上角對話按鈕可以當定位基準,改成相對呼叫端
+   (PlanPhoneView 的 .destinationPromptSlot)的絕對座標容器撐滿寬度,
+   取消桌面版的置中位移與固定 280px 寬。尖角在 .tsx 依 variant 不渲染。
+   特異度用 .wrap.wrapPhone 兩個 class 疊加,確保蓋過上面單一 .wrap 的
+   position/top/left/transform/width,不依賴宣告順序。 */
+.wrap.wrapPhone {
+  position: static;
+  top: auto;
+  left: auto;
+  transform: none;
+  margin-top: 0;
+  width: 100%;
+  max-width: none;
+}
+
+/* questionBubble/optionBubble 共用的氣泡外觀——使用者明確要求「不要
+   底色」:拿掉原本的實色 --ios-card 填滿,改成輕量的半透明+模糊
+   (backdrop-filter),文字/按鈕邊框仍然讀得清楚,但不是一塊不透明色塊
+   疊在地圖上,維持「氣泡」語意同時讓底下地圖隱約透出來。
+   backdrop-filter 不支援的瀏覽器(極少數,如舊版 Firefox)會直接退化成
+   半透明看穿底圖,不影響功能,只是少了模糊效果,可接受。 */
+.questionBubble,
+.optionBubble {
+  position: relative;
+  border: 1px solid var(--ios-sep);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--ios-card) 55%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+}
+
+.questionBubble {
+  padding: 14px 16px 12px;
+  /* bubbleIn——問句氣泡彈出的進場動畫,使用者明確要求「等畫面出現在
+     打字」:.tsx 的 BUBBLE_IN_MS 常數必須對應這裡的動畫秒數(0.18s =
+     180ms),打字動畫要等這個動畫跑完才開始,見該常數宣告處的完整
+     說明。 */
+  animation: bubbleIn 0.18s ease-out;
+}
+
+.optionBubble {
+  padding: 10px 12px;
+  /* 選項氣泡是打字動畫跑完後才掛載進來的(見 .tsx 的 typingDone),掛載
+     當下播一次淡入+上移,呼應「膠囊從問句氣泡底下冒出來」的印象。 */
+  animation: bubbleIn 0.16s ease-out;
+}
+
+@keyframes bubbleIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* tail——指向正上方「對話按鈕」(地圖右上角城市搜尋框膠囊最左側的 AI
+   按鈕,ExploreMap.module.css 的 .citySearchAiBtn)的尖角,經典對話氣泡
+   造型的核心視覺特徵(使用者明確要求「有尖角指向上方規劃行程按鈕的
+   經典聊天氣泡造型」,後續再明確要求「氣泡的啟示位置在對話按鈕正
+   下方」)。只掛在 .questionBubble 上(見 .tsx 的完整說明:選項氣泡是
+   從問句氣泡延伸下來的,不需要再指向規劃小匡)。
+   用兩個疊在一起、略微錯位的三角形(border 畫法)做出「外框描邊 + 內部
+   底色」的尖角效果,外層那個(深一點的 --ios-sep 當描邊色)比內層大
+   1px,視覺上形成一圈細描邊,呼應 .questionBubble 本身的 border——不
+   這樣疊兩層的話,純色三角形尖角會跟卡片的描邊「接不起來」,尖角邊緣
+   看起來像是另外貼上去的色塊。內層三角形改用跟 .questionBubble 同一個
+   半透明 token(而非純色 --ios-card)對齊去底色後的卡片視覺,否則尖角
+   會是一塊不透明的色塊,跟底下已經半透明的卡片本體顯得不一致。
+   水平置中(left:50% + transform 位移半個三角形寬度)而非固定偏左數值
+   ——.wrap 自己用 left:50%+translateX(-50%) 對準 anchor(ExploreMap.tsx
+   的 .citySearchAiBtnAnchor)的水平中心(見上方 .wrap 的完整說明),這裡
+   只要讓尖角對準容器自身的水平中心即可,不需要再疊加一個跟外部定位
+   耦合的偏移值。 */
+.tail {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-bottom: 9px solid var(--ios-sep);
+}
+.tail::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: -8px;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 8px solid color-mix(in srgb, var(--ios-card) 55%, transparent);
+}
+
+/* closeBtn——氣泡右上角的 X 按鈕,視覺比照 PanelHead.module.css 的
+   .closeBtn(圓形、無底色、hover 才顯示底色)——使用者明確要求「只能靠
+   明確的關閉按鈕關閉」,這顆按鈕是整個元件唯一的關閉入口,視覺上要夠
+   明顯、容易點擊,不是縮在角落的小圖示。這裡不用 composes 共用
+   PanelHead 的 .closeBtn(理由:那個 class 是絕對定位在 FloatingPanel
+   的 .panel 座標系裡,這裡的定位基準是 .bubble 自己,直接複製一份數值
+   相近但座標系獨立的規則,比硬要共用、還要處理兩種不同定位基準的 class
+   更單純)。 */
+.closeBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ios-gray);
+  cursor: pointer;
+}
+.closeBtn:hover {
+  background: var(--ios-active);
+  color: var(--color-dark);
+}
+
+/* margin-bottom 拿掉(原本是留給緊接在問句後面的選項列的間距)——問句
+   跟選項現在是兩張分開的氣泡(.questionBubble/.optionBubble),不再共用
+   同一張卡片內部的垂直節奏,底部留白交給 .questionBubble 自己的
+   padding-bottom 決定即可。 */
+.question {
+  margin: 0 28px 0 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-dark);
+}
+
+/* optionList——使用者明確要求「先顯示你去哪裡,下面再出現可選的膠囊」
+   (見 .tsx 的 typingDone 分階段渲染),這裡加上一個淡入+輕微上移的
+   進場動畫,讓膠囊「出現」這個時機點本身也有視覺回饋,不是文字打完後
+   突然憑空生成一排按鈕。 */
+.optionList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  animation: optionsIn 0.16s ease-out;
+}
+
+@keyframes optionsIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* optionBtn——大地區/城市選項的膠囊按鈕,第一層(大地區)與第二層(城市)
+   共用同一套樣式:使用者的需求裡兩層選項的性質一樣(都是「點了就切換
+   畫面/送出訊息」的選項),不需要刻意做視覺區分來暗示「這是第幾層」——
+   上方 .question 的文字內容(「想去哪裡?」vs「○○——想去哪個城市?」)
+   已經足夠讓使用者分辨目前在哪一層。
+   不帶底色(使用者明確要求「不要底色」)——只靠邊框(border)劃出膠囊
+   輪廓,background 改成 transparent;hover 時才用 --ios-active 給一點
+   淺色回饋,維持「平常是透明、互動時才有感覺」的語意。 */
+.optionBtn {
+  padding: 7px 14px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-dark);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.optionBtn:hover {
+  background: var(--ios-active);
+  border-color: var(--ios-blue);
+}
+
+/* directionGrid/directionCard——第四層「玩法方向」的照片卡片(使用者明確要求
+   「每一種類型都要放該類型的熱門相片」)。兩欄格線:四個類型排成 2×2,
+   「都可以」(.directionAny)橫跨兩欄放在最下面。氣泡寬度桌面 280px、手機
+   撐滿搜尋框寬度,兩欄都放得下,卡片高度由 aspect-ratio 控制,不隨寬度
+   跑版。進場動畫沿用 .optionList 的 optionsIn。 */
+.directionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  animation: optionsIn 0.16s ease-out;
+}
+
+.directionCard {
+  position: relative;
+  padding: 0;
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--ios-active);
+  cursor: pointer;
+  aspect-ratio: 10 / 7;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.directionCard:hover {
+  border-color: var(--ios-blue);
+  transform: translateY(-1px);
+}
+
+.directionPhoto {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* directionCardChecked——已勾選:藍色外框加粗,右上角顯示勾(.directionCheck)。
+   用 box-shadow 補粗框而不是加粗 border,避免勾選時卡片尺寸被撐動。 */
+.directionCardChecked {
+  border-color: var(--ios-blue);
+  box-shadow: 0 0 0 2px var(--ios-blue);
+}
+.directionCheck {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  box-sizing: content-box;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--ios-blue);
+  color: #fff;
+}
+
+/* directionLabel——壓在照片底部的類型名稱。用由下往上的深色漸層墊底,
+   白字在任何照片上都讀得清楚(不假設照片底部是暗的)。 */
+.directionLabel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 18px 10px 7px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+}
+
+/* directionConfirm——「開始安排」:停用時降低透明度並取消 hover 回饋;可按時用
+   --ios-blue 邊框與文字色,與一般選項膠囊區隔出「這是確認動作」。 */
+.directionConfirm {
+  border-color: var(--ios-blue);
+  color: var(--ios-blue);
+}
+.directionConfirm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: var(--ios-sep);
+  color: var(--color-dark);
+}
+.directionConfirm:disabled:hover {
+  background: transparent;
+}

@@ -209,3 +209,27 @@
 .wrap [class*='_searchThisAreaButton_'] {
   top: 120px;
 }
+
+/* destinationPromptSlot——「想去哪裡?」對話氣泡(DestinationPrompt.tsx,
+   variant="phone")的定位容器。
+
+   2026-10 從貼齊搜尋框下方(top:72px)改成貼齊底部(使用者明確要求
+   「手機版的對話泡泡改到下面」):手機螢幕窄,氣泡壓在上緣會蓋住剛
+   平移過去的城市中心,而使用者的視線與拇指在選地區/選城市這幾步都
+   停在下半部,放底部更順手。
+
+   bottom 沿用 .candidateGroup 的既有算式 calc(var(--tab-bar-height)
+   + 16px)——那個 CSS 自訂屬性由 .mainArea 容器提供(見 .wrap 的完整
+   說明),不自己寫死數字,底部常駐列高度調整時會跟著走。
+
+   z-index 5:要高於同樣貼在底部的 .candidateGroup(3),否則兩者重疊時
+   氣泡會被候選籃壓在下面;仍低於所有 bottom sheet(Z_LAYERS 最小值見
+   components/zLayers.ts),sheet 開啟時氣泡自然被蓋住,不需要另外處理
+   顯示/隱藏。 */
+.destinationPromptSlot {
+  position: absolute;
+  bottom: calc(var(--tab-bar-height) + 16px);
+  left: 16px;
+  right: 16px;
+  z-index: 5;
+}
