@@ -1,0 +1,130 @@
+/* PlanDataFlowPage.tsx 專屬樣式(CSS Modules)。這不是產品構想的雛形,
+   是把「行程資料的分層架構」整理成一頁可以看的圖——對齊
+   ComponentConventionsPage 的既有定位(把已經做完的設計規範文件化,
+   而不是留在程式碼註解裡)。 */
+.page {
+  min-height: 100vh;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  padding: 32px 20px 80px;
+}
+.inner {
+  max-width: 940px;
+  margin: 0 auto;
+}
+.back {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--ios-gray);
+  text-decoration: none;
+  margin-bottom: 16px;
+}
+.back:hover {
+  color: var(--color-accent);
+}
+.heading {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.subheading {
+  font-size: 13px;
+  color: var(--ios-gray);
+  margin: 0 0 28px;
+  line-height: 1.6;
+}
+.section {
+  margin-bottom: 32px;
+}
+.sectionTitle {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ios-sep);
+}
+.lead {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--ios-gray);
+  margin: 0 0 16px;
+}
+
+/* figure/svg——架構圖本體。overflow-x: auto 讓窄螢幕可以橫向捲動看完
+   整張圖,而不是把圖壓縮到看不清楚文字(圖裡的標籤已經是 11~12px,
+   再等比縮小就不可讀了)。 */
+.figure {
+  margin: 0 0 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.diagram {
+  display: block;
+  min-width: 880px;
+  width: 100%;
+  height: auto;
+  color: var(--color-dark);
+}
+.caption {
+  font-size: 12px;
+  color: var(--ios-gray);
+  line-height: 1.7;
+  margin: 0;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.table th,
+.table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--ios-sep);
+  vertical-align: top;
+  line-height: 1.6;
+}
+.table th {
+  font-weight: 600;
+  color: var(--ios-gray);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: var(--ios-sep);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* flowList——「一次異動的完整流程」那段編號清單。用 ol 而不是圖,
+   因為它是嚴格的時序,編號本身就是資訊。 */
+.flowList {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.9;
+}
+.flowList li {
+  margin-bottom: 4px;
+}
+.flowList .code {
+  white-space: nowrap;
+}
+
+/* note——「不乾淨的地方」那段。用左側色條標示這是已知的例外/缺口,
+   不是正常的架構描述,避免讀者誤以為那也是推薦做法。 */
+.note {
+  border-left: 3px solid var(--color-accent);
+  padding: 2px 0 2px 12px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.noteTitle {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 2px;
+}

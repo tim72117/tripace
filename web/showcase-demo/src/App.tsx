@@ -13,6 +13,7 @@ import { RoutePathMapSkeletonPage } from './RoutePathMapSkeletonPage'
 import { ItineraryPosterPage } from './ItineraryPosterPage'
 import { ItineraryMonopolyPage } from './ItineraryMonopolyPage'
 import { ItineraryPlayfulMapPage } from './ItineraryPlayfulMapPage'
+import { PlanDataFlowPage } from './PlanDataFlowPage'
 
 // 2026-10:從主站 web/ 的 web/src/showcase-demo/ 搬出來,成為完全獨立的
 // 小站(自己的 package.json/dev server,見根目錄 vite.config.ts 的完整
@@ -38,6 +39,7 @@ export function App() {
         <Route path="/itinerary-monopoly" element={<ItineraryMonopolyPage />} />
         <Route path="/itinerary-playful-map" element={<ItineraryPlayfulMapPage />} />
         <Route path="/ad-affiliate-compare" element={<AdAffiliateComparePage />} />
+        <Route path="/plan-data-flow" element={<PlanDataFlowPage />} />
       </Routes>
     </BrowserRouter>
   )
