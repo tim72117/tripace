@@ -46,6 +46,7 @@ server/migrate-photo-assets
 server/cmd/server/web/dist/
 server/cmd/server/webadmin/dist/
 server/cmd/adminserver/web/dist/
+server/cmd/partnerserver/web/dist/
 
 # ---- 本機工作區(非主專案內容,不進版控) ----
 # marketing/:行銷相關工具(如 fb-page-tools),跟 App 主體程式碼是分開維護

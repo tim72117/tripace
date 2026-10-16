@@ -882,6 +882,14 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/field", s.handleMaintenanceAttractionUpdateField)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/place-id", s.handleMaintenanceAttractionUpdatePlaceID)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/theme", s.handleMaintenanceAttractionUpdateTheme)
+
+	// 廣告業主系統(見 ad_plans_public.go registerAdPlanRoutes 的完整
+	// 說明)——這個領域對外曝露的路由(含 mux 上的公開端點與這裡
+	// internalMux 上的維運端點)收斂進同一個函式呼叫,不在 Routes()
+	// 本身逐行攤平,讓這個領域之後的路由異動不會再跟其他領域混在
+	// 同一段 diff 裡。
+	s.registerAdPlanRoutes(mux, internalMux)
+
 	// 主題介紹頁/部落格文章管理端點(content_page.go)——只給 tripace-cli
 	// content-page 系列指令用,公開讀取在上面 mux 區塊的
 	// /v1/content-pages/{slug}。這組端點依請求是否標示 official 決定

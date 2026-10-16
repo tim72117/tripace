@@ -43,6 +43,7 @@
 //	entry delete -entry ID
 //	geocode      -place 文字 [-region 國碼] [-entry ID]
 //	notify       -trip ID
+//	partner-grant -email 文字 -name 文字   開通某個既有使用者的廣告業主身分（純內部維運操作）
 //
 // 所有輸出為 JSON（方便 Claude Code 解析）。
 package main
@@ -300,6 +301,9 @@ func main() {
 		return
 	case "notify":
 		cmdNotify(args)
+		return
+	case "partner-grant":
+		cmdPartnerGrant(args)
 		return
 	case "-h", "--help", "help":
 		usage(args)

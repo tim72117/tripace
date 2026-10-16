@@ -5,6 +5,7 @@ import { ScrollHint } from './ScrollHint';
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { CityPageFooter } from './CityPageFooter';
 import { ExploreOtherCities } from './ExploreOtherCities';
+import { SponsoredPlanCard } from './SponsoredPlanCard';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { trackEvent } from '../analytics';
 import { SITE_SEO_BASE_URL } from '../AppCommon';
@@ -323,6 +324,14 @@ export function KyotoPage() {
         ))}
       </ScrollTimeline>
       </div>
+
+      {/* 2026-10 新增:業主自助控制台(web/partner)投放的方案(見
+          SponsoredPlanCard.tsx 的完整說明)。placement="kyoto-kiyomizu"
+          對應這個頁面自己的路由 slug——業主在 web/partner 建立活動時
+          選擇「京都清水寺」當投放頁面,底下的方案一旦被業主自己按下
+          「發布」,就會出現在這裡。沒有任何投放內容時這個元件回傳
+          null,不佔版面。 */}
+      <SponsoredPlanCard placement="kyoto-kiyomizu" />
 
       <section className="kyoto-final-cta">
         <h2>這條路線，只是一個開始</h2>
