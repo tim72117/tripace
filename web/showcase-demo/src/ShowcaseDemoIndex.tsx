@@ -31,6 +31,14 @@ const ITEMS: {
   status: 'ready' | 'draft'
   priority: Priority
   desc: string
+  // indent——2026-10 新增,專給構想六附錄A/B 使用:標記這個項目是上一個
+  // 項目的附錄/子項目,渲染時套用 styles.itemIndented(縮排 + 左側引導
+  // 線,見該 class 的完整說明),表達「同一個決策底下的不同呈現形式」
+  // 這種從屬關係。刻意不套用到構想一的附錄一~四(那組維持原本「標題
+  // 字首寫『構想一附錄：』」的既有表達方式,不互相依賴同一套機制)
+  // ——廣告投放相關的改動(構想六)與其他構想的改動保持獨立,不為了
+  // 避免重複而讓兩者共用同一個欄位。
+  indent?: boolean
 }[] = [
   // 構想一——5 星:核心轉換漏斗(訪客→相信 AI 真的能排行程→願意登入
   // 使用),且已有完整雛形驗證可行,複用成本低(ItineraryShowcasePage 本身
@@ -148,20 +156,51 @@ const ITEMS: {
   // 構想六——4 星(使用者明確拍板次優先,僅次於一/二/五):直接的營收
   // 來源,且已有具體版位設計跟管理後台雛形,落地路徑清楚——在構想一/
   // 二/五確立的核心體驗/內容循環之後,下一步接上去變現,次優先順位
-  // 合理。
+  // 合理。這是總覽頁,放兩種投放模式共通的核心決策(AI 內容不受廣告
+  // 影響、隱私權政策需更新等,見 adSystemData.ts 的 KEY_DECISIONS)——
+  // 下方兩個附錄才是各自模式的實際雛形/資料結構。
   {
     path: '/ad-system',
     title: '構想六：廣告投放系統',
     status: 'ready',
     priority: 2,
-    desc: '贊助卡片在三個候選版位（城市頁/文章頁/範例行程列表）的視覺示意 + 關鍵決策摘要。',
+    desc: '贊助卡片在三個候選版位（城市頁/文章頁/範例行程列表）的視覺示意 + 兩種投放模式共通的關鍵決策摘要。',
   },
+  // 構想六附錄A——2026-10 拆分:原本單一「構想六附錄：投放設定介面
+  // 範例」的 adAdminDemoData.ts 其實混了兩種性質完全不同的廣告主——
+  // adv_001~004(在地店家,單一商品素材 DemoCreative)是「贊助模式」:
+  // 業主不自己操作後台,透過 email/電話把素材交給內部營運人員代為
+  // 上稿,MVP 決策明確寫「第一階段不開放廣告主自助登入」(見
+  // docs/brainstorm/2026-10-ad-placement-admin-ui-plan.md 第 0 節)。
+  // 這個附錄專指這種「固定檔期、營運代操」的子集合,沿用既有
+  // web/admin 風格雛形,不含 adv_005 那組「方案提供者」案例(見附錄B)。
   {
     path: '/ad-admin-demo',
-    title: '構想六附錄：投放設定介面範例',
+    title: '構想六附錄A：贊助模式（營運代操）',
     status: 'ready',
     priority: 2,
-    desc: '模擬 web/admin 風格的廣告主/活動/素材管理後台（Advertisers/Campaigns/Stats 三分頁），純前端假資料。',
+    indent: true,
+    desc: '模擬 web/admin 風格的廣告主/活動/素材管理後台（Advertisers/Campaigns/Stats 三分頁），固定檔期計價、內部營運人員代為上稿，不開放廣告主自助登入。純前端假資料。',
+  },
+  // 構想六附錄B——2026-10 拆分,對應使用者在另一個對話明確要求「建立
+  // 獨立的廣告業主控制台」後實際落地的正式後端/前端骨架:跟附錄A的
+  // 「贊助模式」是不同商業模式——這裡是廣告業主/聯盟行銷夥伴自己
+  // 登入、自己建立活動與方案內容,不經過內部營運人員代操。對應
+  // adAdminDemoData.ts 裡 adv_005(日本線旅行社)那組「方案提供者」
+  // 案例的資料結構雛形(DemoGroupTourCreative/DemoFlightCreative
+  // union),正式後端已落地在 server/internal/partnerconsole(獨立
+  // 登入系統,Claims.Sub 存 partnerRow.ID,資料歸屬以 partner_id 隔離)
+  // + server/cmd/partnerserver(獨立 binary,/partner/*)+ web/partner
+  // (獨立 SPA,/partner/)。這個 showcase-demo 項目之後應該補一頁雛形
+  // 展示,目前先登記、沿用附錄A的星等(同一個決策底下的不同呈現形式,
+  // 不獨立評分,理由同構想一附錄的既有慣例)。
+  {
+    path: '',
+    title: '構想六附錄B：廣告業主自助控制台',
+    status: 'draft',
+    priority: 2,
+    indent: true,
+    desc: '廣告業主/聯盟行銷夥伴自己登入、自己建立活動與方案內容(不經營運代操)，對應 adv_005「方案提供者」案例(團體行程+機票 union)。正式架構已落地：server/internal/partnerconsole + server/cmd/partnerserver + web/partner，三者皆獨立於主站/admin 後台。',
   },
   // 構想七——2026-10 新增,使用者明確要求「導入路徑的機制,讓AI可以選用
   // 路徑作為安排基底」:存放特定旅遊路徑,AI 排行程時可以參考路線沿途
@@ -398,14 +437,21 @@ export function ShowcaseDemoIndex() {
                 <p className={styles.itemDesc}>{item.desc}</p>
               </>
             )
+            // indent 項目套用 itemIndented(縮排 + 左側引導線,見該
+            // class 的完整說明),表達「從屬於上一個主項目」的層級——
+            // 用 join 而非字串模板拼接,避免 item.path 為空、itemIndented
+            // 沒套用時留下多餘的尾端空白 class。
+            const itemClassName = [styles.item, item.indent ? styles.itemIndented : null]
+              .filter(Boolean)
+              .join(' ')
             return (
               <li key={item.title}>
                 {item.path ? (
-                  <Link to={item.path} className={styles.item}>
+                  <Link to={item.path} className={itemClassName}>
                     {content}
                   </Link>
                 ) : (
-                  <div className={styles.item} aria-disabled="true">
+                  <div className={itemClassName} aria-disabled="true">
                     {content}
                   </div>
                 )}

@@ -44,6 +44,19 @@
 .item:hover {
   border-color: var(--color-accent);
 }
+/* itemIndented——附錄/子項目縮排樣式(2026-10 新增,對應構想六底下
+   「贊助模式」「業主自助控制台」兩個附錄的從屬關係)。靠左側縮排
+   + 一條垂直引導線 + 較淡的邊框/背景,表達「隸屬於上一個主項目」,
+   不是跟主項目平起平坐的獨立清單項——比單純改標題文字(原本構想六
+   附錄只靠「構想六附錄：」字首表達從屬)更能一眼看出層級關係。 */
+.itemIndented {
+  margin-left: 24px;
+  padding: 12px 16px;
+  background: transparent;
+  border-color: var(--ios-sep);
+  border-left: 2px solid var(--color-accent);
+  border-radius: 8px;
+}
 .itemTitle {
   font-size: 15px;
   font-weight: 600;
