@@ -1,0 +1,112 @@
+/* BlogArticleList——版面語言對齊同目錄 BlogProfileSettings.module.css
+   (卡片化區塊、ios- 系列 CSS 變數),插在圖片管理頁最上方、部落格身份
+   設定之前的獨立區塊。列表本身用簡單的 <ul> row 清單,不是縮圖卡片
+   網格(跟 PhotoManagerPage.module.css 的 .grid/.card 語意不同:文章
+   是以文字列項為主,不需要縮圖網格的版面)。 */
+
+.section {
+  max-width: 640px;
+  margin: 0 0 28px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+}
+
+.heading {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* headRow:2026-10 新增「新增文章」按鈕(見 BlogArticleList.tsx onEdit
+   開頭說明)——標題跟按鈕同一列,按鈕靠右對齊。 */
+.headRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  border-radius: 8px;
+  border: 1px solid var(--ios-sep);
+  overflow: hidden;
+}
+
+/* rowLink/rowStatic 共用同一組內距/排版,只差「是否可點擊」——rowLink
+   是 <Link>(公開閱讀連結)或 <button>(2026-10 新增,onEdit 傳入時改
+   開啟文章編輯器,見 BlogArticleList.tsx ArticleRow 的完整說明),
+   rowStatic 是純文字的 <li> 本身(草稿或尚未設定部落格身份、且沒有
+   onEdit 時)。width:100%/text-align:left/font/background/border 的
+   reset 是為了讓 <button> 元素(預設有自己的按鈕外觀)跟 <Link> 視覺
+   一致——<Link> 本身是 <a>,沒有這些預設樣式問題,但 reset 規則套用在
+   兩者身上都是安全的(對 <a> 而言是 no-op,不會改變其既有外觀)。 */
+.rowLink,
+.rowStatic {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+
+.rowLink {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.rowLink:hover {
+  background: var(--ios-sep);
+}
+
+.rowMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rowTitle {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusPublished,
+.statusDraft {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.statusPublished {
+  background: rgba(52, 199, 89, 0.15);
+  color: #1f8a3c;
+}
+.statusDraft {
+  background: var(--ios-sep);
+  color: var(--ios-gray);
+}
+
+.rowMeta {
+  font-size: 12px;
+  color: var(--ios-gray);
+}

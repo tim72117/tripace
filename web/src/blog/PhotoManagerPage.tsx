@@ -10,6 +10,7 @@ import { Button } from '../components/Button'
 import { PhotoFocalEditor } from './PhotoFocalEditor'
 import { photoDisplayStatus, canEditFocal, objectPositionFor, type FocalPoint } from './photoFocalMath'
 import { BlogProfileSettings } from './BlogProfileSettings'
+import { BlogArticleList } from './BlogArticleList'
 import { trackEvent } from '../analytics'
 import styles from './PhotoManagerPage.module.css'
 
@@ -75,27 +76,71 @@ export function PhotoManagerPage() {
           登入,不需要再顯示登入按鈕)。原本 .header 裡的品牌文字連結
           (<Link className={styles.brand}>Tripace</Link>)已改由這裡的
           共用 SiteNavBrand 取代,避免左上角出現兩個重複的品牌標記;
-          .header 保留純粹的頁面標題列角色(「我的圖片」)。 */}
+          .header 保留純粹的頁面標題列角色。
+          2026-10:標題從「我的圖片」改成「部落格管理」——圖片管理區塊
+          (PhotoManagerBody)已整個搬進 blog/ArticleEditor.tsx(見
+          PhotoManagerContent 掛載處的完整說明),這個頁面現在的內容是
+          文章列表+部落格身份設定,「我的圖片」已經不準確描述頁面
+          內容。 */}
       <SiteNavBrand />
       <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
       <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'photo-manager', position: 'nav' })}>返回應用</SiteNavCta>
       <header className={styles.header}>
-        <span className={styles.title}>我的圖片</span>
+        <span className={styles.title}>部落格管理</span>
       </header>
-      {/* BlogProfileSettings:新增的「設定你的部落格身份」區塊,插在
-          既有圖片管理內容之前——這個頁面本身已經是 /blog/photos 這個
-          部落客管理中心的既有入口,整合進來比另開一條獨立路由更直覺
-          (見該元件開頭的完整說明)。純新增,不改動下方
-          PhotoManagerBody 既有的任何邏輯。 */}
-      <div className={styles.body}>
-        <BlogProfileSettings cfg={cfg} />
-      </div>
-      <PhotoManagerBody cfg={cfg} />
+      <PhotoManagerContent cfg={cfg} />
     </div>
   )
 }
 
-function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
+// PhotoManagerContent:2026-10 從 PhotoManagerPage 拆出——不含登入檢查/
+// SiteNavBrand 等「獨立整頁」才需要的外殼,純粹是「我的文章列表+設定
+// 部落格身份」這兩塊內容本體。拆出來是為了讓 planning/member/desktop/Content.tsx 的
+// panelMode==='blog' 分支(見該檔案完整說明)可以直接渲染這份內容,
+// 保留左側導覽列(desktop/Nav)不離開 /app——使用者明確要求「進去後要保留
+// 左邊的功能頁」,原本整頁 navigate('/blog/photos') 的做法離開了
+// /app 的畫面結構,導覽列不在 /blog/photos 這條獨立路由裡,
+// 保留不了。這裡渲染時呼叫端(planning/member/desktop/Content)已經保證是已登入狀態
+// (/app 本身就是登入後才會出現的畫面),不需要重複 isGuest 分支;
+// /blog/photos 路由本身繼續由 PhotoManagerPage 完整保留(含登入檢查
+// 外殼),未登入也能直接打網址到達這個頁面的既有行為不受影響,兩個
+// 進入點共用同一份內容元件,不是互斥的兩套實作。
+//
+// 2026-10:圖片管理(PhotoManagerBody)已整個搬進 blog/ArticleEditor.tsx
+// ——使用者明確要求「照片上傳搬進文章編輯」,整個圖片管理區塊(縮圖
+// 網格/上傳/刪除/評分/裁切焦點)不再顯示在這個部落格管理面板裡,只在
+// 編輯一篇文章時才看得到(見 ArticleEditor.tsx 掛載 PhotoManagerBody
+// 處的完整說明)。這個檔案(PhotoManagerPage.tsx)仍然是
+// PhotoManagerBody 實際定義的所在地(見下方,已改成 export),只是不再
+// 由這裡的 PhotoManagerContent 渲染。
+//
+// onArticleEdit(2026-10 新增,選填)——原樣透傳給 BlogArticleList 的
+// onEdit(見該元件開頭的完整說明,null 代表「新建一篇」)。只有
+// planning/member/desktop/Content.tsx 渲染時會傳(切到 panelMode:'blog-editor'),
+// PhotoManagerPage(/blog/photos 獨立路由)不傳,維持該路由原本「點
+// 已發布文章連去公開閱讀頁、不顯示新增文章按鈕」的既有行為。
+export function PhotoManagerContent({
+  cfg,
+  onArticleEdit,
+}: {
+  cfg: api.ClientConfig
+  onArticleEdit?: (article: api.MyContentPage | null) => void
+}) {
+  return (
+    <div className={styles.body}>
+      <BlogArticleList cfg={cfg} onEdit={onArticleEdit} />
+      <BlogProfileSettings cfg={cfg} />
+    </div>
+  )
+}
+
+// PhotoManagerBody(2026-10 改成 export)——圖片管理區塊本體(上傳/
+// 縮圖網格/刪除/評分/裁切焦點),現在由 blog/ArticleEditor.tsx 掛載
+// (見該檔案的完整說明),不再由上面的 PhotoManagerContent 渲染。留在
+// 這個檔案裡(而非搬去 ArticleEditor.tsx 或另開新檔案)是因為它依賴的
+// UploadedPhoto/api.* 呼叫、POLLING_* 常數都定義在這個檔案作用域內,
+// 搬動反而要跟著搬一整組依賴,維持原地 export 改動範圍最小。
+export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
   const [photos, setPhotos] = useState<UploadedPhoto[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
@@ -294,7 +339,13 @@ function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
       <ErrorBanner msg={err} />
 
       <div className={styles.toolbar}>
-        <Button variant="primary" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+        {/* compact:2026-10 code review 修正——這顆按鈕嵌入文章編輯器
+            卡片(article-photo-library)時需要桌面藥丸尺寸,原本改用
+            PhotoManagerPage.module.css 全域選擇器覆寫,現在直接用
+            Button 既有的 compact prop(見該元件開頭說明),/blog/photos
+            獨立路由(沒有 compact 視覺需求差異,但維持一致尺寸也沒有
+            壞處)跟編輯器卡片共用同一個外觀。 */}
+        <Button variant="primary" compact onClick={() => fileInputRef.current?.click()} disabled={uploading}>
           {uploadProgress
             ? `上傳中…(${uploadProgress.done}/${uploadProgress.total})`
             : uploading

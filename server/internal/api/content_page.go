@@ -301,6 +301,158 @@ func (s *Server) handleMaintenanceContentPageDelete(w http.ResponseWriter, r *ht
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
+// GET /v1/blog/articles — 列出目前登入者自己的文章(不分 draft/published)。
+//
+// 跟上面的 handleMaintenanceContentPageList(CLI 專用,列出全站所有人的
+// 文章)是不同的端點:這支走一般使用者登入驗證(s.requireRealUser,
+// 非 internalAuth),回應只包含目前登入者自己名下的文章,供前端「我的
+// 文章列表」這類使用者自助查詢自己資料的 UI 使用(對齊
+// fetchMyUploadedPhotos/fetchMyBlogProfile 這組既有 /v1/blog/* 端點的
+// 設計慣例,見 api.go 路由註冊處的完整說明)。
+//
+// 不分 draft/published——使用者在自己的列表裡本來就該看到還沒發布的
+// 草稿,才能決定要不要發布,不是公開讀者視角的「只給已發布內容」。
+func (s *Server) handleMyContentPageList(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireRealUser(r)
+	if !ok {
+		writeErr(w, http.StatusUnauthorized, "unauthorized", "請先登入")
+		return
+	}
+	pages, err := s.store.ListContentPagesByOwner(user.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"contentPages": pages})
+}
+
+// POST /v1/blog/articles — 建立一篇屬於目前登入者的文章。
+//
+// body: { "slug": "...", "content": {...ThemePageContent} }
+//
+// ownerID 固定是 s.requireRealUser 解析出的登入者 ID,不支援 official
+// 切換(那是 CLI 管理端點才有的身份選擇,見 resolveContentPageOwnerID
+// 開頭的完整說明)——一般使用者自助發文天生只能寫自己名下的 slug
+// 命名空間,沒有「代表官方發文」這個選項,所以這裡不需要、也不應該
+// 開放 official 參數。驗證/轉發邏輯比照 handleMaintenanceContentPageCreate
+// (isJSONObject 檢查、slug_taken 衝突回 409),差異只在 ownerID 來源。
+func (s *Server) handleMyContentPageCreate(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireRealUser(r)
+	if !ok {
+		writeErr(w, http.StatusUnauthorized, "unauthorized", "請先登入")
+		return
+	}
+	var body struct {
+		Slug    string          `json:"slug"`
+		Content json.RawMessage `json:"content"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	slug := strings.TrimSpace(body.Slug)
+	if slug == "" || !isJSONObject(body.Content) {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "slug 為必填,content 必須是 JSON 物件")
+		return
+	}
+	res, err := s.store.CreateContentPage(user.ID, slug, string(body.Content), user.ID)
+	if errors.Is(err, store.ErrAlreadyExists) {
+		writeErr(w, http.StatusConflict, "slug_taken", "此 slug 已存在,請改用更新")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "create_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, res)
+}
+
+// GET /v1/blog/articles/{slug} — 讀取目前登入者名下的單篇文章(不分
+// draft/published,編輯器需要能打開自己還沒發布的草稿)。
+func (s *Server) handleMyContentPageGet(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireRealUser(r)
+	if !ok {
+		writeErr(w, http.StatusUnauthorized, "unauthorized", "請先登入")
+		return
+	}
+	slug := r.PathValue("slug")
+	page, err := s.store.GetContentPageBySlug(user.ID, slug)
+	if errors.Is(err, store.ErrNotFound) {
+		writeErr(w, http.StatusNotFound, "not_found", "找不到此文章")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+// PUT /v1/blog/articles/{slug} — 整份覆寫目前登入者名下單篇文章的內容。
+//
+// body: { "content": {...ThemePageContent} }
+//
+// 整份覆寫、不動 status,理由同 handleMaintenanceContentPageUpdate 的
+// 完整說明——發布狀態透過獨立端點切換,避免改內容時意外動到。
+func (s *Server) handleMyContentPageUpdate(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireRealUser(r)
+	if !ok {
+		writeErr(w, http.StatusUnauthorized, "unauthorized", "請先登入")
+		return
+	}
+	slug := r.PathValue("slug")
+	var body struct {
+		Content json.RawMessage `json:"content"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if !isJSONObject(body.Content) {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "content 必須是 JSON 物件")
+		return
+	}
+	if err := s.store.UpdateContentPageContent(user.ID, slug, string(body.Content), user.ID); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "not_found", "找不到此文章")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+// PATCH /v1/blog/articles/{slug}/publish — 切換目前登入者名下單篇文章的
+// 發布狀態。
+//
+// body: { "published": true|false }
+func (s *Server) handleMyContentPagePublish(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireRealUser(r)
+	if !ok {
+		writeErr(w, http.StatusUnauthorized, "unauthorized", "請先登入")
+		return
+	}
+	slug := r.PathValue("slug")
+	var body struct {
+		Published bool `json:"published"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	status := "draft"
+	if body.Published {
+		status = "published"
+	}
+	if err := s.store.SetContentPageStatus(user.ID, slug, status); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "not_found", "找不到此文章")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": status})
+}
+
 // GET /v1/content-pages/{slug} — 公開讀取端點,無需登入。
 //
 // 只回傳 status == "published" 的內容——草稿即使資料庫裡已經存在,

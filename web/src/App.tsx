@@ -342,6 +342,41 @@ export function App() {
               </div>
             }
           />
+          {/* /app/blog、/app/blog/:slug:2026-10 新增,使用者明確要求「部落格
+              頁面給獨立路由」——跟下方 /app 路由註解提到的「/app/:panelMode?
+              已整段移除,side panel 展開狀態不反映在網址上」這個刻意決定
+              有意的例外:只對 blog/blog-editor 這兩個 panelMode 重新引入
+              網址驅動,其餘 panelMode(trips/timeline/geo-outline 等)
+              維持純 useState、不綁路由。
+              元素內容跟下面 /app 完全相同(同樣渲染 PhoneContent,寬螢幕
+              會切到桌面版 planning/member/desktop/Content)——實際的「網址 ↔
+              panelMode」同步邏輯在 planning/member/desktop/Content.tsx 內部用
+              useLocation()/useNavigate() 處理,不是在這裡用路徑參數
+              改變渲染內容,理由是 ContentProps 介面被 PhoneContent 的
+              每個呼叫端共用,不想為了這兩個 panelMode 額外擴充整條 props
+              傳遞鏈——桌面版 Content 本身已經在 BrowserRouter context 內,
+              可以直接呼叫 router hook,不需要外部傳參數。手機版沒有 blog
+              面板,打開這兩個網址時等同 /app。
+              server/cmd/server/static.go 的 knownRoutePatterns 已同步新增。
+              放在 /app 本身前面,是因為 React Router 比對靜態片段優先於
+              下方 /app/:legacyPanelMode 這個單層相容萬用路由,但明確放在
+              前面表達意圖,不依賴排序規則本身。 */}
+          <Route
+            path="/app/blog"
+            element={
+              <KeyboardShrinkGuard className={`${styles.webApp} app-theme-root`} dataTheme={props.theme ?? undefined}>
+                <PhoneContent {...props} />
+              </KeyboardShrinkGuard>
+            }
+          />
+          <Route
+            path="/app/blog/:slug"
+            element={
+              <KeyboardShrinkGuard className={`${styles.webApp} app-theme-root`} dataTheme={props.theme ?? undefined}>
+                <PhoneContent {...props} />
+              </KeyboardShrinkGuard>
+            }
+          />
           {/* /app 路徑:主要應用畫面本體(套 iPhone 外框,寬螢幕自動切桌面版佈局)。
               2026-10:原本這裡是 /app/:panelMode? 選填路徑參數,桌面版 side
               panel 展開哪個面板(旅程列表/規劃/時間軸/路徑/AI 規劃)由網址

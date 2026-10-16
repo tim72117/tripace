@@ -1,7 +1,7 @@
 import { forwardRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
-  List, Layers, Activity, BookOpen, PanelLeft,
+  List, Layers, Activity, PanelLeft, Newspaper,
 } from 'lucide-react'
 import { Timeline } from 'lucide-react'
 import type { ClientConfig } from '../api'
@@ -9,8 +9,7 @@ import type { User } from '../user/types'
 import { DesktopUserMenu } from '../user/DesktopUserMenu'
 import {
   type PanelMode, TIMELINE_ENABLED,
-  DEBUG_PANEL_ENABLED,
-  DEMO_ROUTE_EDITOR_ENABLED, PANEL_REGISTRY,
+  DEBUG_PANEL_ENABLED, BLOG_ENABLED, PANEL_REGISTRY,
 } from '../DesktopShared'
 import styles from './Nav.module.css'
 
@@ -131,6 +130,21 @@ export const Nav = forwardRef<HTMLElement, NavProps>(function Nav(
             </button>
           )
         })()}
+        {/* BLOG_ENABLED:編譯時 feature flag(見 DesktopShared.tsx 對這個
+            常數的完整說明)——對應 panelMode:'blog',main-replace slot
+            整頁取代 .desktop-main,跟其餘
+            rail 按鈕一樣走 onSelect,不離開 /app 畫面本身,左側 rail
+            持續顯示。 */}
+        {BLOG_ENABLED && (
+          <button
+            className={panelMode === 'blog' ? `${styles.btn} ${styles.active}` : styles.btn}
+            onClick={() => onSelect('blog')}
+            title="部落格"
+          >
+            <Newspaper size={20} strokeWidth={1.8} />
+            {expanded && <span className={styles.btnLabel}>部落格</span>}
+          </button>
+        )}
         {/* DEBUG_PANEL_ENABLED:編譯時 feature flag(見 DesktopShared.tsx
             對這個常數的說明),取代原本綁在網址參數 ?demo 底下的單一
             isDemo 開關——分隔線只在開啟時出現,避免試做項目跟正式功能
@@ -147,16 +161,6 @@ export const Nav = forwardRef<HTMLElement, NavProps>(function Nav(
           >
             <Activity size={20} strokeWidth={1.8} />
             {expanded && <span className={styles.btnLabel}>API / WS 狀態面板</span>}
-          </button>
-        )}
-        {DEMO_ROUTE_EDITOR_ENABLED && (
-          <button
-            className={panelMode === 'demo-route-editor' ? `${styles.btn} ${styles.btnDemo} ${styles.active}` : `${styles.btn} ${styles.btnDemo}`}
-            onClick={() => onSelect('demo-route-editor')}
-            title="路徑編輯器(試做)"
-          >
-            <BookOpen size={20} strokeWidth={1.8} />
-            {expanded && <span className={styles.btnLabel}>路徑編輯器(試做)</span>}
           </button>
         )}
       </div>

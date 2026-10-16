@@ -60,6 +60,14 @@ var knownRoutePatterns = []*regexp.Regexp{
 	// 自行判斷 isGuest 顯示登入表單),故訪客直接造訪這個網址時,前端
 	// router 本身仍要能接手渲染,不能被這裡擋成 404。
 	regexp.MustCompile(`^/blog/photos$`),
+	// /app/blog、/app/blog/:slug:2026-10 新增,使用者明確要求「部落格
+	// 頁面給獨立路由」,見 web/src/App.tsx 對應路由與
+	// web/src/planning/member/desktop/Content.tsx 網址同步邏輯的完整
+	// 說明——只對 blog/blog-editor 這兩個 panelMode 重新引入網址驅動,
+	// 放在下面 /app(/[^/]+)? 這個單層相容路由前面,理由同該相容路由本身
+	// 的既有註解(表達意圖,不依賴清單順序本身的比對規則——這份清單本來
+	// 就是逐一嘗試比對,不是像 React Router 那樣有特異度排序)。
+	regexp.MustCompile(`^/app/blog(/[^/]+)?$`),
 	regexp.MustCompile(`^/app(/[^/]+)?$`),
 	// /dev/layouts:開發用的版型目錄頁(2026-10 新增,見
 	// web/src/blog/LayoutGalleryPage.tsx 的完整說明)——陳列
