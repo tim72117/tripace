@@ -1,5 +1,5 @@
 // adAdminDemoData.ts — 投放設定介面範例的假資料,對應
-// docs/brainstorm/2026-10-ad-placement-admin-ui-plan.md 的規劃內容。
+// 構想頁 /ideas/product-ad-placement-admin-ui 的規劃內容。
 // 全部是展示用的假資料,沒有真實後端串接,也沒有真的 web/admin 認證。
 
 export type CampaignStatus = 'draft' | 'scheduled' | 'active' | 'paused' | 'ended'
@@ -88,7 +88,7 @@ export interface DemoCampaign {
   productCreatives?: DemoProductCreative[]
 }
 
-// PLACEMENT_OPTIONS——對應 docs/brainstorm/2026-10-ad-placement-admin-ui-plan.md
+// PLACEMENT_OPTIONS——對應構想頁 /ideas/product-ad-placement-admin-ui
 // 第 3.2 節「投放版位」核取方塊清單,positionDesc 文字直接對齊
 // showcase-demo/adSystemData.ts 的 PLACEMENT_DEMOS,呼應規劃文件第 6 節
 // 待確認項「版位說明文字的共用來源」——這裡先各自維護一份,內容保持一致。

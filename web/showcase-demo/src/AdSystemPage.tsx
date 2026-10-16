@@ -4,7 +4,7 @@ import { KEY_DECISIONS, PLACEMENT_DEMOS } from './adSystemData'
 import styles from './AdSystemPage.module.css'
 
 // AdSystemPage:構想六(廣告投放系統)雛形——對應
-// docs/brainstorm/2026-10-product-direction-brainstorm.md 構想六。
+// 構想頁 /ideas/product-direction-6-ad-system(原 docs/brainstorm 產品方向腦力激盪文件的構想六)。
 //
 // 跟其他五項構想的雛形性質不同:那些是 UI 呈現構想的互動雛形,這裡的
 // 廣告投放系統大半是後端架構與商業決策(資料模型、投放演算法、計費

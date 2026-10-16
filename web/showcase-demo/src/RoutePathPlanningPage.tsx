@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import styles from './RoutePathPlanningPage.module.css'
 
 // RoutePathPlanningPage:構想七(路徑機制——AI 參考旅遊路徑安排行程)
-// 雛形——對應 docs/research-route-path-planning-2026-10.md 的構想筆記,
+// 雛形——對應 構想頁 /ideas/research-route-path-01 起的構想筆記,
 // 兩份內容同步,這裡是視覺化版本。這份純粹是構想文案頁,不是可運作的
 // 功能雛形(沒有假資料互動、沒有地圖),比照 ShowcaseDemoIndex 裡構想七
 // 項目的 status: 'draft' 定位——寫法風格對齊 PlanningModesPage.tsx(構想

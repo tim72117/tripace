@@ -1,5 +1,5 @@
 // adSystemData.ts — 構想六(廣告投放系統)雛形的假資料,對應
-// docs/brainstorm/2026-10-product-direction-brainstorm.md 構想六的
+// 構想頁 /ideas/product-direction-6-ad-system(構想六)的
 // 內容。全部是展示用的假資料,沒有真實廣告主/後端串接。
 
 export interface SponsoredCreative {

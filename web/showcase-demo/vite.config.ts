@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // 獨立展示小站，從 web/src/showcase-demo/ 搬出來的產品方向雛形集合
-// （見 docs/brainstorm/2026-10-product-direction-brainstorm.md）。跟主站
+// （見構想頁 /ideas/product-direction-*）。跟主站
 // web/ 完全切分：自己的 package.json/node_modules/dev server，不再掛在
 // 主站路由底下，不共用任何 web/src 的程式碼（原本就是純自包含、假資料，
 // 搬動前已確認沒有跨目錄 import）。

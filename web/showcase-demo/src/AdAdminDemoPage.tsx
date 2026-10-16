@@ -16,7 +16,7 @@ import {
 import styles from './AdAdminDemoPage.module.css'
 
 // AdAdminDemoPage:投放設定介面範例,對應
-// docs/brainstorm/2026-10-ad-placement-admin-ui-plan.md 的規劃內容。
+// 構想頁 /ideas/product-ad-placement-admin-ui 的規劃內容。
 //
 // 這不是真的 web/admin 分頁——web/admin 是獨立建置的 SPA(有自己的
 // api.ts/認證流程),這裡是在主站 /showcase-demo 底下做一個「看起來像
@@ -47,7 +47,7 @@ export function AdAdminDemoPage() {
 
         <p className={styles.noteBanner}>
           範例介面——純前端假資料,模擬 web/admin 的視覺風格與互動流程,沒有真實後端串接。
-          對應規劃：docs/brainstorm/2026-10-ad-placement-admin-ui-plan.md
+          對應規劃：構想頁 /ideas/product-ad-placement-admin-ui
         </p>
 
         <header className="topbar">

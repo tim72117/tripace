@@ -1,0 +1,203 @@
+/* IdeaPage.tsx 專屬樣式(CSS Modules)。內部查看用,沿用 ShowcaseDemoIndex 的
+   簡潔版面與 base-ui.css 的 CSS 變數,不另外定義一套視覺語言。 */
+.page {
+  min-height: 100vh;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  padding: 28px 20px 96px;
+}
+.inner {
+  max-width: 760px;
+  margin: 0 auto;
+}
+.back {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--ios-gray);
+  text-decoration: none;
+  margin-bottom: 18px;
+}
+.back:hover {
+  color: var(--color-accent);
+}
+.header {
+  margin-bottom: 8px;
+}
+.title {
+  font-size: 24px;
+  line-height: 1.4;
+  font-weight: 700;
+  margin: 0 0 10px;
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.chip {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: var(--ios-card);
+}
+.tag {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--ios-active);
+  color: var(--ios-gray);
+  border: 1px solid var(--ios-sep);
+}
+.summary {
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--ios-gray);
+  margin: 0;
+}
+.section {
+  margin-top: 28px;
+}
+.sectionHeading {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0 0 10px;
+  padding-left: 10px;
+  border-left: 3px solid var(--color-accent);
+  line-height: 1.4;
+}
+.paragraph {
+  font-size: 15px;
+  line-height: 1.9;
+  margin: 0 0 10px;
+}
+.bullets {
+  margin: 0 0 10px;
+  padding-left: 22px;
+  font-size: 15px;
+  line-height: 1.85;
+}
+.bullets li {
+  margin-bottom: 4px;
+}
+.note {
+  font-size: 14px;
+  line-height: 1.8;
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  background: var(--ios-card);
+  border: 1px dashed var(--ios-sand, var(--ios-sep));
+  border-radius: 10px;
+  color: var(--color-dark);
+}
+.tableWrap {
+  overflow-x: auto;
+  margin: 4px 0 10px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 10px;
+  background: var(--ios-card);
+}
+.table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.table th,
+.table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ios-sep);
+}
+.table th {
+  font-weight: 700;
+  background: var(--ios-active);
+  white-space: nowrap;
+}
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+.turns {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.turn {
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--ios-sep);
+  background: var(--ios-card);
+  border-left-width: 4px;
+}
+.speaker {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: var(--ios-gray);
+}
+.turnText {
+  font-size: 14.5px;
+  line-height: 1.85;
+  margin: 0;
+}
+/* 角色色條:只用左邊框區分,不改整塊底色,避免深色模式下對比不足。 */
+.toneNovice { border-left-color: var(--ios-green); }
+.toneVeteran { border-left-color: var(--ios-blue); }
+.tonePlanner { border-left-color: var(--color-accent); }
+.toneDesigner { border-left-color: var(--ios-sand, var(--ios-gray)); }
+.toneJudge { border-left-color: var(--color-dark); }
+.toneNeutral { border-left-color: var(--ios-sep); }
+.verdict {
+  margin-top: 28px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--ios-card);
+  border: 1px solid var(--color-accent);
+}
+.verdict .sectionHeading {
+  margin-top: 0;
+}
+.verdict .paragraph:last-child {
+  margin-bottom: 0;
+}
+.footer {
+  margin-top: 40px;
+  padding-top: 18px;
+  border-top: 1px solid var(--ios-sep);
+}
+.sourceLabel {
+  font-size: 12px;
+  color: var(--ios-gray);
+  margin-bottom: 6px;
+}
+.sourceList {
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ios-gray);
+  line-height: 1.7;
+  word-break: break-all;
+}
+.pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pagerLink {
+  font-size: 13px;
+  color: var(--color-accent);
+  text-decoration: none;
+  max-width: 48%;
+  line-height: 1.5;
+}
+.pagerLink:hover {
+  text-decoration: underline;
+}

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import styles from './ShowcaseDemoIndex.module.css'
 
-// ShowcaseDemoIndex:docs/brainstorm/2026-10-product-direction-brainstorm.md
+// ShowcaseDemoIndex:產品方向腦力激盪(/ideas/product-direction-*,原 docs/brainstorm 文件已改寫成構想頁)
 // 六項產品構想的雛形試做入口頁——使用者要求「開始試做雛形，有可以延續的
 // 就延續製作」「直接試做」「你全權處理試做，不用問細節」,這裡是統一的
 // 導覽入口,不對外公開(不在首頁/導覽列任何地方連結),只能直接輸入網址
@@ -205,7 +205,7 @@ const ITEMS: {
   // 構想七——2026-10 新增,使用者明確要求「導入路徑的機制,讓AI可以選用
   // 路徑作為安排基底」:存放特定旅遊路徑,AI 排行程時可以參考路線沿途
   // 安排站點。構想稿已寫成 RoutePathPlanningPage.tsx(對應
-  // docs/research-route-path-planning-2026-10.md 的研究筆記,兩份內容
+  // 構想頁 /ideas/research-route-path-01 起的研究筆記,兩份內容
   // 同步),status 仍標 'draft'——這只是構想文案/發想稿,不是可互動的
   // 完整雛形(不像構想一/三那樣有假資料卡片牆或面板可以點)。複用的既有
   // 基礎:VITE_FEATURE_PACE 控制的「路徑」(配速表)功能
@@ -243,109 +243,110 @@ const ITEMS: {
   },
   // 構想九~二十一(2 星,統一說明見上方 priority 型別註解):純登記性質,
   // 優先序留待真正要往下發展時個別重新評估。
-  // 構想九~十六——2026-10 新增:使用者要求「掃描 docs/ 底下所有文件,
+  // 構想九~二十一——2026-10 新增:使用者要求「掃描 docs/ 底下所有文件,
   // 找出提到的產品構想/功能發想,簡短列出並附文件關聯」。這批構想只是
-  // 登記性質(path 留空、status 一律 'draft'),不是完整雛形——完整內容
-  // 都在各自來源文件裡,desc 附上來源路徑供查閱。
+  // 登記性質(status 一律 'draft'),不是完整雛形。原始文件已改寫成
+  // 「一個構想一頁」(見 ideas/),path 指向對應的構想頁,desc 附上詳見的
+  // 頁面;仍保留在 docs/ 的來源文件(研究筆記系列)維持列出路徑。
   //
-  // 構想九來源:docs/feature-brainstorm.md(10 項功能腦力激盪統整,
-  // 其中第 2 項「行程健檢」已是構想四,不重複列入)、
-  // docs/feature-priorities.md(同一批 10 項的落地順序規劃,延續同一批
-  // 構想,非獨立主題)。
+  // 構想九~十四來源:功能腦力激盪(10 項統整,/ideas/product-feature-*,
+  // 其中第 2 項「行程健檢」已是構想四,不重複列入)、功能優先序
+  // (/ideas/product-feature-priorities,同一批 10 項的落地順序規劃,
+  // 延續同一批構想,非獨立主題)。
   {
-    path: '',
+    path: '/ideas/product-feature-1-inspiration-inbox',
     title: '構想九：靈感收件匣（貼上即成行程）',
     status: 'draft',
     priority: 1,
-    desc: '把 IG/小紅書/截圖/朋友訊息整段貼進來，AI 抽出地點/場次比對成真實地標，收進候選池建議插入日程。（來源：docs/feature-brainstorm.md, docs/feature-priorities.md）',
+    desc: '把 IG/小紅書/截圖/朋友訊息整段貼進來，AI 抽出地點/場次比對成真實地標，收進候選池建議插入日程。（詳見構想頁：/ideas/product-feature-1-inspiration-inbox；落地順序見 /ideas/product-feature-priorities）',
   },
   {
-    path: '',
+    path: '/ideas/product-feature-3-conversational-replan',
     title: '構想十：對話式重排（模糊指令 + 連鎖順延 + diff 預覽）',
     status: 'draft',
     priority: 1,
-    desc: '一句「下午太趕幫我鬆一點」讓 AI 重排整段，刪移項目自動順延補位，所有批次改動先 diff 預覽再套用，可一鍵還原。（來源：docs/feature-brainstorm.md, docs/feature-priorities.md）',
+    desc: '一句「下午太趕幫我鬆一點」讓 AI 重排整段，刪移項目自動順延補位，所有批次改動先 diff 預覽再套用，可一鍵還原。（詳見構想頁：/ideas/product-feature-3-conversational-replan；落地順序見 /ideas/product-feature-priorities）',
   },
   {
-    path: '',
+    path: '/ideas/product-feature-4-transit-autofill',
     title: '構想十一：接駁自動補齊（交通是一等公民）',
     status: 'draft',
     priority: 1,
-    desc: '景點之間自動補上交通方式、時間、花費，依情境判斷（拖行李→計程車、有 JR Pass→優先 JR），在末班車/停駛等斷點主動警示。（來源：docs/feature-brainstorm.md, docs/feature-priorities.md）',
+    desc: '景點之間自動補上交通方式、時間、花費，依情境判斷（拖行李→計程車、有 JR Pass→優先 JR），在末班車/停駛等斷點主動警示。（詳見構想頁：/ideas/product-feature-4-transit-autofill；落地順序見 /ideas/product-feature-priorities）',
   },
   {
-    path: '',
+    path: '/ideas/product-feature-5-gap-radar',
     title: '構想十二：空檔雷達（時間感知推薦）',
     status: 'draft',
     priority: 1,
-    desc: '偵測行程中尷尬的時間空檔，依當時位置、營業狀態、前後脈絡推薦合適的補位選項。（來源：docs/feature-brainstorm.md, docs/feature-priorities.md）',
+    desc: '偵測行程中尷尬的時間空檔，依當時位置、營業狀態、前後脈絡推薦合適的補位選項。（詳見構想頁：/ideas/product-feature-5-gap-radar；落地順序見 /ideas/product-feature-priorities）',
   },
   {
-    path: '',
+    path: '/ideas/product-feature-6-companion-voting',
     title: '構想十三：旅伴共決 + 旅費分帳 + 訂單轉寄收件匣',
     status: 'draft',
     priority: 1,
-    desc: '旅伴把候選地點丟進共享候選池滑卡表態、AI 彙整衝突提折衷方案供表決；行程卡掛花費自動分帳結清；專屬 email 收轉寄訂單確認信自動解析進時間軸。（來源：docs/feature-brainstorm.md, docs/feature-priorities.md）',
+    desc: '旅伴把候選地點丟進共享候選池滑卡表態、AI 彙整衝突提折衷方案供表決；行程卡掛花費自動分帳結清；專屬 email 收轉寄訂單確認信自動解析進時間軸。（詳見構想頁：/ideas/product-feature-6-companion-voting、/ideas/product-feature-9-expense-splitting、/ideas/product-feature-10-booking-forward-inbox）',
   },
   {
-    path: '',
+    path: '/ideas/product-feature-7-copy-and-adapt',
     title: '構想十四：一鍵複製 + AI 改編別人公開的行程',
     status: 'draft',
     priority: 1,
-    desc: '看到別人公開分享的行程按「複製成我的」，告訴 AI 天數/人數/限制（例如帶小孩），自動改編成自己的版本。（來源：docs/feature-brainstorm.md, docs/feature-priorities.md）',
+    desc: '看到別人公開分享的行程按「複製成我的」，告訴 AI 天數/人數/限制（例如帶小孩），自動改編成自己的版本。（詳見構想頁：/ideas/product-feature-7-copy-and-adapt；落地順序見 /ideas/product-feature-priorities）',
   },
   // 構想十五來源:景點策展方向一路延伸的研究筆記系列(同一條主題的
   // 多輪文件,依規則全部附上):資料模型關聯性案例研究 → 延伸探索操作
   // 流程 → 分類密度/行程狀態/多錨點下一步發想 → 單一景點敘事內容發想,
   // 加上兩份候選地點盤點(資料面延伸,同一方向下的素材儲備)。
   {
-    path: '',
+    path: '/ideas/research-storytelling-overview',
     title: '構想十五：精選景點策展與敘事深化',
     status: 'draft',
     priority: 1,
-    desc: '主題點/精選點的關聯性判準、延伸探索（「為什麼跟這裡有關」的視覺化關聯鏈）、資料量成長後的密度管理（圖例即控制器/三層精選層級/坂段分組）、單一景點三幕式敘事內容生產。（來源：docs/research-curated-attraction-relationships-2026-08.md, docs/research-attraction-explore-ux-2026-08.md, docs/research-curated-attraction-next-steps-2026-09.md, docs/research-attraction-storytelling-ideas-2026-09.md, docs/research-taiwan-attraction-candidates-2026-09.md, docs/research-tainan-attraction-candidates-2026-09.md）',
+    desc: '主題點/精選點的關聯性判準、延伸探索（「為什麼跟這裡有關」的視覺化關聯鏈）、資料量成長後的密度管理（圖例即控制器/三層精選層級/坂段分組）、單一景點三幕式敘事內容生產。（來源：docs/research-curated-attraction-relationships-2026-08.md, docs/research-attraction-explore-ux-2026-08.md, docs/research-curated-attraction-next-steps-2026-09.md, docs/research-taiwan-attraction-candidates-2026-09.md, docs/research-tainan-attraction-candidates-2026-09.md；單一景點敘事內容發想見構想頁 /ideas/research-storytelling-overview）',
   },
   {
-    path: '',
+    path: '/ideas/research-companion-01',
     title: '構想十六：旅伴應徵配對（建立在路徑之上）',
     status: 'draft',
     priority: 1,
-    desc: '使用者選一條既有路徑（或當場新建）發布成「應徵旅伴」貼文，設定旅伴條件，其他使用者瀏覽提出配對，條件相符開聊天室自行洽談。建立在構想七的路徑機制之上。（來源：docs/research-travel-companion-matching-2026-08.md，另見構想七：docs/research-route-path-planning-2026-10.md）',
+    desc: '使用者選一條既有路徑（或當場新建）發布成「應徵旅伴」貼文，設定旅伴條件，其他使用者瀏覽提出配對，條件相符開聊天室自行洽談。建立在構想七的路徑機制之上。（詳見構想頁：/ideas/research-companion-01；另見構想七的路徑機制 /ideas/research-route-path-01）',
   },
   {
-    path: '',
+    path: '/ideas/design-overview',
     title: '構想十七：行程規劃引導介面（候選籃為核心的空間化規劃流程）',
     status: 'draft',
     priority: 1,
-    desc: '一步步引導使用者規劃行程的介面：候選籃常駐容器、住宿錨點長成日層架、對話即候選來源、就近備胎補洞、多源事實對帳、接縫時間、留白格等 15 項構想共同支撐的一套規劃機制。（來源：docs/trip-planning-design-discussion.md）',
+    desc: '一步步引導使用者規劃行程的介面：候選籃常駐容器、住宿錨點長成日層架、對話即候選來源、就近備胎補洞、多源事實對帳、接縫時間、留白格等 15 項構想共同支撐的一套規劃機制。（詳見構想頁：/ideas/design-overview（15 項構想各一頁））',
   },
   {
-    path: '',
+    path: '/ideas/ai-r1-overview',
     title: '構想十八：AI 主動規劃行程的能力邊界與風險標示設計',
     status: 'draft',
     priority: 1,
-    desc: '三輪三方角色設計討論：第一輪在地基未補齊現況下定案 15 項構想（哪些結論是臨時性、該怎麼標示風險）；第二輪在交通時間/營業時間查詢補齊後重新檢視同一批議題；願景篇反過來問「AI 做得好時能帶來什麼新價值」。（來源：docs/ai-trip-planning-discussion.md, docs/ai-trip-planning-discussion-r2.md, docs/ai-trip-planning-discussion-vision.md）',
+    desc: '三輪三方角色設計討論：第一輪在地基未補齊現況下定案 15 項構想（哪些結論是臨時性、該怎麼標示風險）；第二輪在交通時間/營業時間查詢補齊後重新檢視同一批議題；願景篇反過來問「AI 做得好時能帶來什麼新價值」。（詳見構想頁：第一輪 /ideas/ai-r1-overview、第二輪 /ideas/ai-r2-overview、願景篇 /ideas/vision-overview）',
   },
   {
-    path: '',
+    path: '/ideas/product-want-traveler-3-offline',
     title: '構想十九：旅行中的離線保障與行程被打亂時的即時救援',
     status: 'draft',
     priority: 1,
-    desc: '沒網路時仍能看到今天行程基本資訊、離線時的修改不遺失並於恢復連線後自動補上；臨時卡關（下大雨、店家臨時公休、晚了 40 分鐘）時一句話重排今天剩餘行程並保住訂位等鎖定項目，改壞了可以退回上一步。（來源：docs/brainstorm/want-onagent-traveler.md, docs/feature-brainstorm.md「今天模式 + 現場救援」）',
+    desc: '沒網路時仍能看到今天行程基本資訊、離線時的修改不遺失並於恢復連線後自動補上；臨時卡關（下大雨、店家臨時公休、晚了 40 分鐘）時一句話重排今天剩餘行程並保住訂位等鎖定項目，改壞了可以退回上一步。（詳見構想頁：/ideas/product-want-traveler-3-offline、/ideas/product-want-traveler-4-disruption、/ideas/product-feature-8-today-mode）',
   },
   {
-    path: '',
+    path: '/ideas/product-want-traveler-5-elders-sharing',
     title: '構想二十：給長輩看的簡化分享版 + 日曆/通知整合',
     status: 'draft',
     priority: 1,
-    desc: '分享給不熟手機操作的家人時提供大字、只能看不能誤觸的簡化版本；連結可設定幾天後自動失效；行程一鍵送進手機內建日曆與提醒；有人邀請或改動行程時主動通知。（來源：docs/brainstorm/want-onagent-traveler.md）',
+    desc: '分享給不熟手機操作的家人時提供大字、只能看不能誤觸的簡化版本；連結可設定幾天後自動失效；行程一鍵送進手機內建日曆與提醒；有人邀請或改動行程時主動通知。（詳見構想頁：/ideas/product-want-traveler-5-elders-sharing）',
   },
   {
-    path: '',
+    path: '/ideas/product-want-traveler-6-memories',
     title: '構想二十一：行程照片日記（照片貼回當天行程旁）',
     status: 'draft',
     priority: 1,
-    desc: '把旅途中拍的照片直接貼在對應那天、那個地點旁邊，回頭看行程時像翻一本圖文並茂的旅遊日記，而不是乾巴巴的地名清單。（來源：docs/brainstorm/want-onagent-traveler.md）',
+    desc: '把旅途中拍的照片直接貼在對應那天、那個地點旁邊，回頭看行程時像翻一本圖文並茂的旅遊日記，而不是乾巴巴的地名清單。（詳見構想頁：/ideas/product-want-traveler-6-memories）',
   },
   // 內部架構文件——2026-10 新增,性質跟上面的產品構想不同:它不是「要不要
   // 做」的發想,是把「已經長成這樣」的現況整理成一張圖(定位同構想二的
@@ -358,6 +359,16 @@ const ITEMS: {
     status: 'ready',
     priority: 1,
     desc: 'PlanTimeline 存在哪、誰能改、四種輸入來源（模擬推論／真實 AI／使用者操作／持久化回讀）各自接在哪一層。新增輸入來源或資料操作時，「這該放哪一層」的答案。',
+  },
+  // 構想總覽——原本散在 docs/ 的構想文件(產品構想、AI 排行程的多輪設計
+  // 討論、行程規劃設計討論、研究發想)改寫成「一個構想一頁」後的入口,
+  // 內容在 ideas/ 底下(見 ideas/types.ts)。docs/ 裡的原始文件已移除。
+  {
+    path: '/ideas',
+    title: '構想總覽（原 docs/ 構想文件，一個構想一頁）',
+    status: 'ready',
+    priority: 1,
+    desc: '產品構想、AI 排行程三輪設計討論（第一輪／第二輪／願景篇）、行程規劃設計討論與研究發想，依群組列出，可搜尋，點進去看每個構想的完整內容與討論過程。',
   },
 ]
 
@@ -402,8 +413,9 @@ export function ShowcaseDemoIndex() {
       <div className={styles.inner}>
         <h1 className={styles.heading}>產品方向雛形試做</h1>
         <p className={styles.subheading}>
-          構想一～六對應 docs/brainstorm/2026-10-product-direction-brainstorm.md，構想七/八是後續延伸的獨立構想，
-          構想九以後是掃描 docs/ 底下其他文件找出的構想登記（僅簡短列出 + 來源文件連結，非完整雛形）。
+          構想一～六對應產品方向腦力激盪（/ideas/product-direction-*），構想七/八是後續延伸的獨立構想，
+          構想九以後是掃描 docs/ 底下其他文件找出的構想登記（僅簡短列出 + 對應構想頁連結，非完整雛形）。
+          原本散在 docs/ 的構想文件已改寫成一個構想一頁，總覽見「構想總覽」。
           這些頁面純供內部查看，不對外公開連結，資料皆為前端假資料，沒有真實後端串接。
         </p>
         <ul className={styles.list}>

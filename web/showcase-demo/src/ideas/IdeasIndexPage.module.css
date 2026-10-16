@@ -1,0 +1,127 @@
+/* IdeasIndexPage.tsx 專屬樣式(CSS Modules),沿用 ShowcaseDemoIndex 的簡潔版面。 */
+.page {
+  min-height: 100vh;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  padding: 28px 20px 96px;
+}
+.inner {
+  max-width: 760px;
+  margin: 0 auto;
+}
+.back {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--ios-gray);
+  text-decoration: none;
+  margin-bottom: 18px;
+}
+.back:hover {
+  color: var(--color-accent);
+}
+.heading {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.subheading {
+  font-size: 14px;
+  color: var(--ios-gray);
+  margin: 0 0 18px;
+  line-height: 1.7;
+}
+.search {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 15px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--ios-sep);
+  background: var(--ios-card);
+  color: var(--color-dark);
+}
+.search:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+.count {
+  font-size: 13px;
+  color: var(--ios-gray);
+  margin: 8px 0 0;
+}
+.group {
+  margin-top: 32px;
+}
+.groupTitle {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.groupCount {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: var(--ios-active);
+  color: var(--ios-gray);
+  border: 1px solid var(--ios-sep);
+}
+.groupBlurb {
+  font-size: 13.5px;
+  color: var(--ios-gray);
+  line-height: 1.7;
+  margin: 0 0 12px;
+}
+.empty {
+  font-size: 14px;
+  color: var(--ios-gray);
+  margin: 0;
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.item {
+  display: block;
+  padding: 13px 16px;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease;
+}
+.item:hover {
+  border-color: var(--color-accent);
+}
+.itemTitle {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--ios-active);
+  color: var(--ios-gray);
+  border: 1px solid var(--ios-sep);
+}
+.itemSummary {
+  font-size: 13.5px;
+  color: var(--ios-gray);
+  line-height: 1.7;
+  margin: 4px 0 0;
+}
