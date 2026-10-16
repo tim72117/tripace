@@ -1510,3 +1510,84 @@ export function setMyBlogProfile(cfg: ClientConfig, handle: string, avatarUrl?: 
   })
 }
 
+// MyContentPage:對齊後端 model.ContentPage 的 JSON 形狀(GET
+// /v1/blog/articles 回應裡的每一筆)——「我的文章列表」用的摘要資料,
+// 不含完整 content(後端這支端點刻意不展開 content,title 是後端寫入
+// 時另外解析存好的反正規化快取欄位,見 server 端
+// store.contentPageRow.Title 的完整說明,不是前端自己去解析)。
+export interface MyContentPage {
+  id: string
+  ownerId?: string
+  slug: string
+  title?: string
+  status: 'draft' | 'published'
+  updatedBy?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// fetchMyContentPages:GET /v1/blog/articles——列出目前登入者自己發表過
+// 的所有文章(不分 draft/published,見後端 handleMyContentPageList 的
+// 完整說明)。供「我的文章列表」面板使用,呼叫端通常還需要搭配
+// fetchMyBlogProfile 取得 handle,才能組出 /u/{handle}/{slug} 這種
+// 「點進去看文章」的連結(見 BlogArticlePage.tsx 的路由格式)。
+export function fetchMyContentPages(cfg: ClientConfig) {
+  return request<{ contentPages: MyContentPage[] }>(cfg, 'GET', '/v1/blog/articles').then(
+    (r) => r.contentPages,
+  )
+}
+
+// MyContentPageDetail:對齊後端 model.ContentPage 的完整 JSON 形狀
+// (model_content_page.go MarshalJSON)——跟上面的 MyContentPage(列表用
+// 摘要,不含 content)不同,這是編輯器打開單篇文章時需要的完整形狀,
+// content 用 unknown(而非 blog/types.ts 的 ThemePageContent)是因為
+// 後端完全不驗證 content 內部結構(見 content_page.go isJSONObject 的
+// 完整說明),呼叫端自己決定要不要、怎麼把 unknown 收斂成 ThemePageContent
+// ——對齊 fetchPublicThemePage 回應型別用 unknown 的既有慣例。
+export interface MyContentPageDetail {
+  id: string
+  ownerId?: string
+  slug: string
+  title?: string
+  content: unknown
+  status: 'draft' | 'published'
+  updatedBy?: string
+  createdAt: string
+  updatedAt: string
+}
+
+// fetchMyContentPage:GET /v1/blog/articles/{slug}——讀取登入者自己名下
+// 單篇文章的完整內容(不分 draft/published,見後端
+// handleMyContentPageGet 的完整說明),供編輯器開啟既有文章時使用。
+export function fetchMyContentPage(cfg: ClientConfig, slug: string) {
+  return request<MyContentPageDetail>(cfg, 'GET', `/v1/blog/articles/${encodeURIComponent(slug)}`)
+}
+
+// createMyContentPage:POST /v1/blog/articles——以登入者身份建立一篇新
+// 文章(見後端 handleMyContentPageCreate 的完整說明)。content 收任意
+// 物件(呼叫端傳 ThemePageContent),這裡直接轉發,不在前端這層做額外
+// 的字串化——後端期待 content 是巢狀 JSON 物件而非字串(對齊 GET 回應
+// 形狀對稱的既有慣例)。
+export function createMyContentPage(cfg: ClientConfig, slug: string, content: unknown) {
+  return request<MyContentPageDetail>(cfg, 'POST', '/v1/blog/articles', { slug, content })
+}
+
+// updateMyContentPage:PUT /v1/blog/articles/{slug}——整份覆寫登入者自己
+// 名下單篇文章的 content(見後端 handleMyContentPageUpdate 的完整
+// 說明),不動 status。
+export function updateMyContentPage(cfg: ClientConfig, slug: string, content: unknown) {
+  return request<{ status: string }>(cfg, 'PUT', `/v1/blog/articles/${encodeURIComponent(slug)}`, { content })
+}
+
+// setMyContentPagePublished:PATCH /v1/blog/articles/{slug}/publish——
+// 切換登入者自己名下單篇文章的發布狀態(見後端
+// handleMyContentPagePublish 的完整說明)。
+export function setMyContentPagePublished(cfg: ClientConfig, slug: string, published: boolean) {
+  return request<{ status: string }>(
+    cfg,
+    'PATCH',
+    `/v1/blog/articles/${encodeURIComponent(slug)}/publish`,
+    { published },
+  )
+}
+

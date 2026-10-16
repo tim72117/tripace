@@ -719,6 +719,23 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/blog/profile", s.handleBlogProfileGet)
 	mux.HandleFunc("POST /v1/blog/profile", s.handleBlogProfileSet)
 
+	// 「我的文章列表」(content_page.go handleMyContentPageList 的完整
+	// 說明)——列出目前登入者自己發表過的 content_pages(不分
+	// draft/published),供左側功能列「部落格」面板的文章列表 UI 使用。
+	// 身分完全來自 JWT(s.requireRealUser),路徑同上面 photos/profile
+	// 系列不帶 handle——操作自己的資源不需要繞公開讀取那層人類可讀
+	// 識別字。
+	mux.HandleFunc("GET /v1/blog/articles", s.handleMyContentPageList)
+	// 使用者自助式文章 create/get/update/publish(2026-10 新增,見
+	// handleMyContentPageCreate 開頭的完整說明)——跟上面唯讀的 list
+	// 不同,這四支是編輯器(blog/ArticleEditor.tsx)實際存檔時會打的
+	// 寫入端點,ownerID 固定是登入者自己,不支援 CLI 管理端點才有的
+	// official 切換。
+	mux.HandleFunc("POST /v1/blog/articles", s.handleMyContentPageCreate)
+	mux.HandleFunc("GET /v1/blog/articles/{slug}", s.handleMyContentPageGet)
+	mux.HandleFunc("PUT /v1/blog/articles/{slug}", s.handleMyContentPageUpdate)
+	mux.HandleFunc("PATCH /v1/blog/articles/{slug}/publish", s.handleMyContentPagePublish)
+
 	// PaceRouteMap(web/src/PaceRouteMap.tsx,UI 試做用)展示頁的固定路線資料,
 	// 不需要登入(展示頁本身不需要身分),見 pace_route.go 的說明。
 	mux.HandleFunc("GET /v1/demo/pace-route", s.handlePaceRoute)

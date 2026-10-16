@@ -15,6 +15,7 @@ type contentPageJSON struct {
 	ID        string          `json:"id"`
 	OwnerID   string          `json:"ownerId,omitempty"`
 	Slug      string          `json:"slug"`
+	Title     string          `json:"title,omitempty"`
 	Content   json.RawMessage `json:"content"`
 	Status    string          `json:"status"`
 	UpdatedBy string          `json:"updatedBy,omitempty"`
@@ -36,6 +37,7 @@ func (t ContentPage) MarshalJSON() ([]byte, error) {
 		ID:        t.ID,
 		OwnerID:   t.OwnerID,
 		Slug:      t.Slug,
+		Title:     t.Title,
 		Content:   raw,
 		Status:    t.Status,
 		UpdatedBy: t.UpdatedBy,

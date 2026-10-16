@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import type { ApiCall, WsEvent } from './api'
 import { onApiCall, onWsEvent, fetchGeoPlaceDetails, fetchGeoPlacePhotoAssets } from './api'
 import { ChatScreen } from './chat/ChatScreen'
@@ -25,7 +26,8 @@ import { curatedCategoryOf } from './geo-planning/geoCuratedCategoryStub'
 import type { GeoAttraction, GeoPlaceDetails } from './api'
 import { type ContentProps } from './AppCommon'
 import { type PanelMode, DEBUG_PANEL_ENABLED, PANEL_REGISTRY } from './DesktopShared'
-import { RouteEditor } from './demo/RouteEditor'
+import { PhotoManagerContent } from './blog/PhotoManagerPage'
+import { ArticleEditor } from './blog/ArticleEditor'
 // TripPlanPage:「AI 規劃」正式功能頁面(見該檔案開頭的完整說明)——lazy
 // 載入,理由同 App.tsx 對其餘整頁級路由的既有做法:這個頁面串接 onagent
 // AgentBridge、地圖、markdown 渲染等較重的依賴,不是每個使用者都會點進
@@ -116,12 +118,81 @@ export function DesktopContent(props: ContentProps) {
   // activeTrip 分支的說明),不是空畫面,所以初始值直接給 null 即可,不
   // 需要額外處理「網址帶了不合法字串」這類情境(本來就是處理網址輸入的
   // 防呆,state 不會有這個問題)。
-  const [panelMode, setPanelModeState] = useState<PanelMode>(null)
+  // 2026-10(第三輪):使用者明確要求「部落格頁面給獨立路由」——對
+  // blog/blog-editor 這兩個 panelMode 重新引入網址驅動(見 App.tsx
+  // /app/blog、/app/blog/:slug 路由的完整說明),其餘 panelMode 維持
+  // 上面說明的「純 useState,不綁路由」決定不變。初始值從目前網址路徑
+  // 解析:/app/blog/:slug → blog-editor + 該 slug,/app/blog(無 slug)
+  // → blog 面板,其餘路徑(/app、/app/:legacyPanelMode)→ null(收合,
+  // 行為不變)。只在掛載時解析一次(useState 的初始化函式只跑一次),
+  // 之後 panelMode 變化不會反向被網址變化觸發重新解析——使用者在面板
+  // 間切換時改用下方 navigateToPanel 主動呼叫 navigate() 同步網址,
+  // 不是靠監聽網址變化反推 state,避免兩個方向互相觸發造成循環更新。
+  const location = useLocation()
+  const navigate = useNavigate()
+  const blogRouteMatch = useMemo(() => {
+    const m = /^\/app\/blog(?:\/([^/]+))?$/.exec(location.pathname)
+    if (!m) return null
+    return { slug: m[1] ?? null }
+    // 只在掛載時讀取一次初始網址,理由見上方說明,故這裡故意不把
+    // location.pathname 當成「反應式」依賴——useMemo 在這裡只是避免
+    // 每次 render 都重新 exec regex,不是要它隨網址變化重新計算。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  const [panelMode, setPanelModeState] = useState<PanelMode>(() => {
+    if (!blogRouteMatch) return null
+    return blogRouteMatch.slug != null ? 'blog-editor' : 'blog'
+  })
+  // editingArticleSlug:panelMode 切到 'blog-editor' 時要打開哪一篇文章
+  // ——null 代表「新建一篇」(見下方 onArticleEdit/ArticleEditor 的
+  // 掛載處)。這裡只存 slug(不存整個 MyContentPage),理由同其餘
+  // panelMode 相關 state 的既有模式:ArticleEditor 本身會用這個 slug
+  // 重新打 fetchMyContentPage 取得最新內容,不需要在這裡快取一份可能
+  // 過期的文章物件。初始值取自網址(/app/blog/:slug),理由同上方
+  // panelMode 初始化的完整說明。
+  const [editingArticleSlug, setEditingArticleSlug] = useState<string | null>(blogRouteMatch?.slug ?? null)
   // setPanelMode:再點一次目前啟用中的圖示會收合 panel(切回 null),同
   // 第一輪網址驅動版本的既有行為,只是改成直接設定 state 而非 navigate。
   const setPanelMode = useCallback((mode: Exclude<PanelMode, null>) => {
     setPanelModeState((prev) => (prev === mode ? null : mode))
   }, [])
+  // 把 panelMode/editingArticleSlug 的變化同步寫回網址——用 effect
+  // 統一處理(不是在每個 setPanelModeState/setEditingArticleSlug 呼叫點
+  // 各自手動呼叫 navigate),理由:這個元件裡有好幾處直接呼叫
+  // setPanelModeState(見下方 trips/geo-outline/null 等呼叫點的既有
+  // 說明,各自有不走 setPanelMode toggle 語意的理由),逐一在每個呼叫點
+  // 補網址同步的程式碼容易漏補;用 effect 監聽 panelMode 本身的最終值,
+  // 不管是透過 setPanelMode 還是直接 setPanelModeState 改變的,都會被
+  // 這裡捕捉到,只需要維護這一處同步邏輯。
+  //
+  // 只在 mode 是 'blog'/'blog-editor'/(從 blog 系列收合回去)時才
+  // navigate——其餘 mode(trips/timeline/pace/geo-outline 等)維持不碰
+  // 網址,理由同上方 panelMode state 初始化處的完整說明。用 replace
+  // (不是 push)避免每次切換面板都往瀏覽器歷史堆疊一筆記錄,理由同
+  // 原本「展開側欄不需要變更路由」決定的既有精神:這是面板切換,不是
+  // 真正的頁面導覽,不該讓使用者按「上一頁」時逐層退回每一次面板切換。
+  //
+  // 只依賴 [panelMode, editingArticleSlug]:故意不把 location.pathname/
+  // navigate 當依賴——這個 effect 的職責是「讓網址跟隨 state」單向同步,
+  // 不是「讓 state 跟隨網址」(那是上面 blogRouteMatch 只在掛載時解析
+  // 一次的職責),若依賴 location.pathname,使用者透過瀏覽器前進/後退
+  // 鍵改變網址時,這個 effect 會被觸發、又把網址導回去(因為 state 沒有
+  // 跟著變),等於讓瀏覽器原生的前進/後退失效。
+  useEffect(() => {
+    if (panelMode === 'blog-editor') {
+      navigate(editingArticleSlug ? `/app/blog/${encodeURIComponent(editingArticleSlug)}` : '/app/blog', { replace: true })
+    } else if (panelMode === 'blog') {
+      navigate('/app/blog', { replace: true })
+    } else if (window.location.pathname.startsWith('/app/blog')) {
+      // 從 blog 系列收合/切到其他面板時,如果目前網址還停在
+      // /app/blog...,導回單純的 /app——不這樣處理的話,使用者從 blog
+      // 面板切去「旅程」面板,網址仍顯示 /app/blog,重新整理會錯誤地
+      // 又回到部落格面板。讀 window.location.pathname(不是 React
+      // Router 的 location,理由同上方,避免把它放進依賴陣列)。
+      navigate('/app', { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelMode, editingArticleSlug])
   // chatPopoverOpen:地圖右上角城市搜尋框旁 AI 按鈕觸發的對話浮動小匡
   // 開關——沒有常駐對話欄,ChatScreen 只在這個小匡開啟時才掛載(見下方
   // render 邏輯),這是使用者存取對話功能的唯一入口。
@@ -544,7 +615,7 @@ export function DesktopContent(props: ContentProps) {
   // 變數——兩者必須永遠一致(圓點是小匡內容的延伸,小匡看不見時圓點就是
   // 孤兒),各自寫一次判斷遲早會漂移。
   //
-  // 單看 chatPopoverOpen 不夠:切到 main-replace 的分頁(demo-route-editor/
+  // 單看 chatPopoverOpen 不夠:切到 main-replace 的分頁(blog/blog-editor/
   // demo-chat)時小匡會被隱藏,但 chatPopoverOpen 本身維持 true
   // ——那是刻意的(見下方 FloatingPanel 的完整說明:常駐掛載、不重建
   // WebSocket 連線),所以「開啟」與「看得見」在這裡不是同一件事。
@@ -613,17 +684,23 @@ export function DesktopContent(props: ContentProps) {
         {/* unbounded:main-replace 以外的所有情況固定渲染 GeoOutlinePanel
             (見下方),故拿掉 860px 寬度上限——見 DesktopMain.tsx 對
             unbounded prop 的完整說明。不傳 unboundedScroll——地理規劃
-            輪廓底圖用 position:absolute 撐滿容器,不需要接手垂直捲動。 */}
-        <DesktopMain unbounded={panelSpec?.slot !== 'main-replace'}>
+            輪廓底圖用 position:absolute 撐滿容器,不需要接手垂直捲動。
+            2026-10:blog-editor(ArticleEditor,文章編輯器)額外需要
+            unbounded + unboundedScroll——這是 main-replace 底下唯一一個
+            內容本身會超出可視高度、需要垂直捲動的分頁(demo-chat/blog
+            列表內容都不會超出)。比照 trip-plan/TripPlanPage.module.css
+            .page 的既有修正模式(使用者實際回報過完全相同的「貼著內層
+            860px 容器邊緣的捲軸,不貼齊瀏覽器視窗」問題,見該檔案開頭
+            說明):不讓 ArticleEditor 自己管 overflow(改成自然高度,見
+            ArticleEditor.module.css .articlePane 的完整說明),改由這裡
+            的 unboundedScroll 讓 .main 本身接手捲動,捲軸貼齊視窗邊緣,
+            也避免內層再疊一層 overflow 造成雙捲軸。 */}
+        <DesktopMain
+          unbounded={panelSpec?.slot !== 'main-replace' || panelMode === 'blog-editor'}
+          unboundedScroll={panelMode === 'blog-editor'}
+        >
           {panelSpec?.slot === 'main-replace' ? (
-            panelMode === 'demo-route-editor' ? (
-              // demo-route-editor 只做桌面版(手機版 PhoneNavDrawer 不
-              // 提供對應分頁),直接在這裡渲染。main-replace slot 目前
-              // 有這個試做功能與下面的 demo-chat 兩種模式
-              // (原本還有 demo-onagent,經 DemoPanelContent 共用邏輯
-              // 渲染,已整個移除,含入口與實作)。
-              <RouteEditor />
-            ) : panelMode === 'demo-chat' ? (
+            panelMode === 'demo-chat' ? (
               // demo-chat:舊版對話框(走 tripace app 的 trip_entry_*
               // 工具)——地圖規劃的對話視窗 2026-10 改成渲染 AI 規劃
               // 時間軸之後,這套保留成試做分頁,見 DesktopShared.tsx
@@ -639,6 +716,41 @@ export function DesktopContent(props: ContentProps) {
                 user={props.user}
                 onBack={() => setActiveTrip(null)}
               />
+            ) : panelMode === 'blog' ? (
+              // blog:左側功能列「部落格」入口(見 DesktopShared.tsx
+              // BLOG_ENABLED 的完整說明)——PhotoManagerContent 是從
+              // blog/PhotoManagerPage.tsx 拆出的內容本體(不含登入檢查
+              // 外殼,這裡渲染時已經保證是已登入狀態)。onArticleEdit
+              // 直接呼叫 setPanelModeState(不是 setPanelMode)切到
+              // 'blog-editor'——這裡要的是「一定切換過去」,不是
+              // setPanelMode 的 toggle 語意(再點一次目前啟用中的圖示
+              // 才收合),理由同上方 427 行 setPanelModeState('trips')
+              // 的既有用法。同時記下要打開哪一篇(editingArticleSlug),
+              // 點既有文章時帶 article.slug,新建文章按鈕(見
+              // PhotoManagerContent/BlogArticleList 的完整說明)帶 null。
+              // 2026-10 第三輪:網址同步(/app/blog/:slug)交給上方
+              // useEffect 統一處理,這裡不需要額外呼叫 navigate。
+              <PhotoManagerContent
+                cfg={cfg}
+                onArticleEdit={(article) => {
+                  setEditingArticleSlug(article ? article.slug : null)
+                  setPanelModeState('blog-editor')
+                }}
+              />
+            ) : panelMode === 'blog-editor' ? (
+              // blog-editor:文章編輯畫面(見 DesktopShared.tsx
+              // BLOG_EDITOR_ENABLED 的完整說明)——ArticleEditor 2026-10
+              // 第二輪已串接 content_pages API(見該元件開頭的完整
+              // 說明),editingArticleSlug 為 null 時進入「新建文章」
+              // 模式,否則載入既有文章內容。只做桌面版(手機版
+              // PhoneNavDrawer 不提供對應分頁,同原本 demo-route-editor
+              // 的既有限制)。onBack 直接呼叫 setPanelModeState(不是
+              // setPanelMode)切回 'blog',理由同上方 onArticleEdit 的
+              // 說明——這裡要的是「一定切換過去」,不是 toggle 語意。
+              // cfg 給裡面掛載的 PhotoManagerBody(圖片素材庫)使用。
+              // 2026-10 第三輪:網址同步(回到 /app/blog)交給上方
+              // useEffect 統一處理。
+              <ArticleEditor cfg={cfg} slug={editingArticleSlug} onBack={() => setPanelModeState('blog')} />
             ) : null
           ) : (
             // main-replace 以外的所有情況(含 panelMode === null、'trips'/
@@ -869,7 +981,7 @@ export function DesktopContent(props: ContentProps) {
               關閉按鈕,見該元件的說明),FloatingPanel 這裡只負責定位/
               陰影外殼。 */}
           {/* panelSpec?.slot !== 'main-replace'——main-replace(目前
-              plan-ai/demo-route-editor)取代整個主顯示區,
+              plan-ai/blog-editor)取代整個主顯示區,
               底下沒有地圖可以讓這張清單疊在上面;不是重新引入上面註解
               提到「已修復」的 panelMode === 'geo-outline' 那個 bug(那個
               bug 是「只認一個特定 mode」,這裡排除的是「一整類完全沒有
@@ -952,7 +1064,7 @@ export function DesktopContent(props: ContentProps) {
             className={[
               styles.chatPopover,
               geoHotelSidebarVisible ? styles.chatPopoverShifted : '',
-              // main-replace slot(目前只有 demo-route-editor/demo-chat,
+              // main-replace slot(目前有 blog/blog-editor/demo-chat,
               // 見 DesktopShared.tsx 的 PANEL_REGISTRY)取代整個主顯示區,
               // 底下沒有地圖可以讓
               // 這張對話小匡疊在上面——理由同 geo-outline 模式才有意義
