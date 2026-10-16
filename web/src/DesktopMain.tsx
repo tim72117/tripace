@@ -11,7 +11,7 @@ import styles from './DesktopMain.module.css'
 // 原本用 :has() 被動偵測子孫節點是否包含 .geo-outline-panel-wrap 來決定要不要拿掉寬度上限——改成明確的
 // unbounded prop,理由:呼叫端在渲染 <DesktopMain> 的當下就已經確定會不會放地圖類內容——
 // planning/member/desktop/Content.tsx 由 panelSpec?.slot === 'main-replace' 這個既有分支
-// 判斷式決定(main-replace 時渲染 RouteEditor 等,不會有
+// 判斷式決定(main-replace 時渲染 ArticleEditor/PhotoManagerContent 等,不會有
 // geo-outline-panel-wrap;其餘情況固定渲染 PlanMap,一定有)。
 // 沒有任何一處是「渲染當下還不確定,要等巢狀路由/非同步資料才決定」的
 // 情況,故不需要保留 :has() 這種被動偵測機制——prop 是更符合 React

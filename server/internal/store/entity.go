@@ -286,9 +286,19 @@ func (photoVariantRow) TableName() string { return "photo_variants" }
 // 內容(城市介紹頁)視為 OwnerID="" 這個共用的「系統帳號」命名空間,
 // 彼此之間仍然互斥、不能重複 slug,跟改動前的全域唯一行為一致。
 type contentPageRow struct {
-	ID        string    `gorm:"primaryKey;column:id"`
-	OwnerID   string    `gorm:"column:owner_id;not null;default:'';uniqueIndex:ux_content_pages_owner_slug"`
-	Slug      string    `gorm:"column:slug;not null;uniqueIndex:ux_content_pages_owner_slug"`
+	ID      string `gorm:"primaryKey;column:id"`
+	OwnerID string `gorm:"column:owner_id;not null;default:'';uniqueIndex:ux_content_pages_owner_slug"`
+	Slug    string `gorm:"column:slug;not null;uniqueIndex:ux_content_pages_owner_slug"`
+	// Title(2026-10 新增)——見 model.ContentPage.Title 的完整說明:從
+	// Content JSON 解析出來額外存放的反正規化欄位,供列表查詢(見
+	// ListContentPagesByOwner)直接讀取,不需要每次傳輸/解析整份
+	// content。AutoMigrate 會自動幫既有表 ALTER TABLE ADD COLUMN(見
+	// store.go Open() 的完整說明),不需要另外寫 migration 腳本;
+	// default:'' 讓既有資料列(改動前已存在的城市介紹頁/文章)補上這個
+	// 欄位時不會因為 NOT NULL 約束失敗——這些既有列的 title 快照會是
+	// 空字串,直到下一次呼叫 UpdateContentPageContent 才會被回填成
+	// 正確值(見該方法的完整說明),這是刻意接受的過渡狀態。
+	Title     string    `gorm:"column:title;not null;default:''"`
 	Content   string    `gorm:"column:content;not null"`
 	Status    string    `gorm:"column:status;not null;default:draft"`
 	UpdatedBy string    `gorm:"column:updated_by"`

@@ -246,9 +246,18 @@ type PhotoVariant struct {
 // 是該使用者的 UserID。json 加 omitempty——既有城市介紹頁的內容不該
 // 在 API 回應裡多一個空字串欄位,維持跟改動前一致的回應形狀。
 type ContentPage struct {
-	ID        string    `json:"id"`
-	OwnerID   string    `json:"ownerId,omitempty"`
-	Slug      string    `json:"slug"`
+	ID      string `json:"id"`
+	OwnerID string `json:"ownerId,omitempty"`
+	Slug    string `json:"slug"`
+	// Title(2026-10 新增)——從 Content JSON 的 title 欄位抽出來額外
+	// 存放的一份快取,寫入時由 store.CreateContentPage/
+	// UpdateContentPageContent 自動解析 content 填入(見該二方法的完整
+	// 說明),不需要呼叫端(CLI/發文介面)額外傳這個欄位。存在的
+	// 理由:列表類端點(見 ListContentPagesByOwner)需要顯示文章標題,
+	// 但不該為此每次都把整份 content 傳輸/解析一次——這是一個查詢效能
+	// 優化用的反正規化欄位,不是真正的資料來源(真正的資料來源永遠是
+	// Content 裡的 title,這個欄位只是它的唯讀快照)。
+	Title     string    `json:"title,omitempty"`
 	Content   string    `json:"-"`
 	Status    string    `json:"status"`
 	UpdatedBy string    `json:"updatedBy,omitempty"`

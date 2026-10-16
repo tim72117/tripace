@@ -17,15 +17,21 @@
 // planning/place/desktop/CandidateList/PlanMap,見
 // planning/member/desktop/Content.tsx / planning/member/phone/Content.tsx / PhoneNavDrawer.tsx,不屬於這組
 // 共用的 demo 面板。
-// 'demo-route-editor':旅程分享/路徑編輯器試做(見 docs/ 同一輪討論的
-// 雜誌式編輯介面構想與 artifact mockup)——目前只做右側雜誌內容編輯區
-// (純前端假資料,不呼叫任何 API,見 RouteEditor.tsx 開頭的說明),左側
-// 常駐地圖與後端 schema 都尚未設計,故歸在 demo-* 這組試做面板底下
-// (DEMO_ROUTE_EDITOR_ENABLED,見下方),不是正式導覽項目——等資料結構
-// 定案、真的接上後端,才會比照 geo-outline 升級成正式功能。
+// 'blog':2026-10 新增,左側功能列「部落格」按鈕對應的面板(見下方
+// BLOG_ENABLED 的完整說明)——渲染 blog/PhotoManagerPage.tsx 拆出的
+// PhotoManagerContent(我的文章列表+圖片管理+部落格身份設定),slot 用
+// main-replace(整頁內容,不是疊在地圖上的小卡片)。這是受 flag 控制但非 demo 性質的功能,命名不帶 demo- 前綴,
+// 維持跟 trips/timeline 等正式項目同一組命名空間——flag 只是
+// 控制「要不要在導覽列曝光」,不代表這是試做內容。
+// 'blog-editor':2026-10 新增,文章編輯畫面(見下方 BLOG_EDITOR_ENABLED
+// 的完整說明)——渲染 blog/ArticleEditor.tsx(2026-10 從
+// demo/RouteEditor.tsx 整個搬過來重用的雜誌式編輯介面,已改用 blog/types.ts
+// 的 ThemePageBlock 並串接 content_pages 儲存 API)。跟 'blog' 不同的是,
+// 這個面板沒有對應的導覽列按鈕(見 desktop/Nav.tsx 的說明)——只能從「我的文章列表」(blog 面板裡
+// 的 BlogArticleList)點進一篇文章才會切換過來,不是左側常駐可見的
+// 獨立入口;原本 demo-route-editor 掛在 rail 上的按鈕已整個移除。
 export type PanelMode =
-  | 'trips' | 'timeline' | 'geo-outline'
-  | 'demo-route-editor'
+  | 'trips' | 'timeline' | 'geo-outline' | 'blog' | 'blog-editor'
   | null
 
 // 規劃地圖(geo-outline)已不再有獨立的 feature flag——使用者明確要求
@@ -101,14 +107,57 @@ export const NEW_TRIP_DRAFT_ENABLED = import.meta.env.VITE_FEATURE_NEW_TRIP_DRAF
 // ——tripace 自家 want 框架 ClientToolsBridge 的試做入口——都已整個移除,
 // 含入口與實作。)
 export const DEBUG_PANEL_ENABLED = import.meta.env.VITE_FEATURE_DEBUG_PANEL === 'true'
-// DEMO_ROUTE_EDITOR_ENABLED:路徑編輯器試做的開關,同上面幾個 DEMO_*
-// 一套機制——預設關閉,只在明確設為字串 "true" 時才啟用。
-export const DEMO_ROUTE_EDITOR_ENABLED = import.meta.env.VITE_FEATURE_DEMO_ROUTE_EDITOR === 'true'
+
+// BLOG_ENABLED — 左側功能列「部落格」按鈕的開關(2026-10 新增,使用者
+// 明確要求「將部落格的頁面放到登入後的左側功能列,feature flag 預設
+// 關閉,本地先開啟」)。對應 panelMode:'blog'(見上方該值的完整說明),
+// main-replace slot 渲染 blog/PhotoManagerPage.tsx 拆出的
+// PhotoManagerContent——第一版做法是點擊後 navigate('/blog/photos')
+// 整頁導覽,但使用者回報「進去後要保留左邊的功能頁」:/blog/photos
+// 是獨立路由,離開了 /app 的畫面結構,左側導覽列(desktop/Nav)不在那條路由裡會
+// 整個消失。改成 panelMode 面板切換後,/app 畫面本身不離開,左側
+// rail 持續顯示,跟 timeline/pace 等其餘正式項目的使用體驗一致。
+// /blog/photos 這條獨立路由本身並未移除,未登入也能直接打網址到達
+// 的既有行為不受影響(PhotoManagerPage 保留完整的登入檢查外殼),
+// 兩個進入點(左側面板/直接網址)共用同一份 PhotoManagerContent。
+//
+// 同其餘 TIME_DRAG_ENABLED/ROUTE_LINE_ENABLED/… 一套編譯時 feature flag
+// 機制:預設關閉,只在明確設為字串 "true" 時才啟用——部落格這組頁面
+// 還沒有在左側導覽曝光過,先用 flag 包住只在本機開發環境驗證,不需要
+// 重新部署就能整個關掉。
+export const BLOG_ENABLED = import.meta.env.VITE_FEATURE_BLOG === 'true'
+
+// BLOG_EDITOR_ENABLED — 文章編輯畫面的開關(2026-10 新增,使用者明確
+// 要求「先把左邊文章編輯器加進來,不用管對接有沒有正確」)。對應
+// panelMode:'blog-editor'(見上方該值的完整說明),main-replace slot
+// 渲染 blog/ArticleEditor.tsx(2026-10 從 demo/RouteEditor.tsx 整個
+// 搬過來重用的雜誌式編輯介面)。
+//
+// 這個 flag 刻意獨立於 BLOG_ENABLED 之外(不是「部落格功能」這一個
+// flag 就同時控制列表跟編輯器兩個面板)——理由同 TIMELINE_ENABLED
+// 等分開成獨立旗標的既有慣例:兩個功能的完成度/驗證階段
+// 不同,部署時可能只想開放其中一個(例如先開放看「我的文章列表」,
+// 編輯器還在打通流程階段不想曝光)。
+//
+// 原本的 demo-route-editor/DEMO_ROUTE_EDITOR_ENABLED
+// (VITE_FEATURE_DEMO_ROUTE_EDITOR)已整個移除(含左側 rail 按鈕跟
+// 這個 flag 本身,見 desktop/Nav.tsx 的說明)——使用者明確要求
+// 「移除掉 VITE_FEATURE_DEMO_ROUTE_EDITOR 參數及相關控制」,搬過來
+// 重用的這份編輯器畫面改用這個全新的 flag 控制,不是沿用舊的那個
+// (舊 flag 連同它控制的「左側常駐 rail 按鈕」這個語意一起退役;新
+// flag 控制的是「blog-editor 這個 panelMode 本身能不能被進入」,
+// 語意已經不同——這個畫面現在沒有對應的 rail 按鈕,只能從「我的
+// 文章列表」點進一篇文章才會切換過來,見 BlogArticleList.tsx 的
+// 完整說明)。
+//
+// 同其餘 TIME_DRAG_ENABLED/ROUTE_LINE_ENABLED/… 一套編譯時 feature
+// flag 機制:預設關閉,只在明確設為字串 "true" 時才啟用。
+export const BLOG_EDITOR_ENABLED = import.meta.env.VITE_FEATURE_BLOG_EDITOR === 'true'
 
 // PanelSlot/PanelSpec/PANEL_REGISTRY:每個 panelMode 的版面行為單一定義處
 // ——'float' 表示疊在 .desktop-main(地圖)上方的浮動卡片(不佔 flex 版面
 // 空間、不擠壓地圖寬度),'main-replace' 表示整個取代 .desktop-main
-// (預設關閉的 demo-route-editor 試做功能用這個 slot)。
+// (預設關閉的 blog-editor 編輯類功能用這個 slot)。
 // width 只有 float 用到,決定浮動卡片寬度
 // (見 FloatingPanel.tsx)。requiresTrip 給 rail 按鈕
 // 的 disabled 判斷用(見 desktop/Nav.tsx)。
@@ -132,7 +181,11 @@ export const PANEL_REGISTRY: Record<Exclude<PanelMode, null>, PanelSpec> = {
   trips: { enabled: true, slot: 'float', width: 272 },
   timeline: { enabled: TIMELINE_ENABLED, slot: 'float', width: 380, requiresTrip: true },
   'geo-outline': { enabled: true, slot: 'float', width: 380 },
-  'demo-route-editor': { enabled: DEMO_ROUTE_EDITOR_ENABLED, slot: 'main-replace' },
+  // blog/blog-editor 同樣用 main-replace:PhotoManagerContent(我的
+  // 文章列表+圖片網格+部落格身份設定表單)、ArticleEditor(雜誌式文章
+  // 編輯畫面)都是一整頁內容,不是疊在地圖上的小卡片。
+  blog: { enabled: BLOG_ENABLED, slot: 'main-replace' },
+  'blog-editor': { enabled: BLOG_EDITOR_ENABLED, slot: 'main-replace' },
 }
 
 // isPanelMode/PANEL_MODES(驗證 URL 路徑參數 /app/:panelMode 是否合法)
@@ -143,15 +196,16 @@ export const PANEL_REGISTRY: Record<Exclude<PanelMode, null>, PanelSpec> = {
 
 // DrawerMode:手機版分頁列(phone/Nav.tsx 底部常駐 + PhoneSideTools.tsx
 // 右側小圖示)/主顯示區可切換到的模式——即 PanelMode 扣掉 null 與
-// demo-route-editor(該模式只有桌面版路徑編輯器試做才有實作,見
-// DEMO_ROUTE_EDITOR_ENABLED 的說明,手機版故意不支援)。原本定義在
+// blog-editor(該模式只有桌面版文章編輯器才有實作,見
+// BLOG_EDITOR_ENABLED 的說明,手機版故意不支援)。原本定義在
 // PhoneNavDrawer.tsx,搬到這裡與 PanelMode 收斂在同一份檔案,避免兩份
 // 值域各自維護、日後新增/移除模式時漏改其中一處。
 // （2026-10 補註:桌面版 panelMode 已改回純本地 state,不再有
 // /app/:panelMode 路徑參數可供「網址落在某個模式時 fallback」這件事,
 // 這段排除邏輯本身只跟手機版分頁列實際支援哪些模式有關,與路由無涉。）
-export type DrawerMode = Exclude<PanelMode, 'demo-route-editor' | null>
+// 手機版分頁列不支援 blog-editor(該模式只有桌面版文章編輯器才有實作)。
+export type DrawerMode = Exclude<PanelMode, 'blog-editor' | null>
 
 // LangSelect/TokenDisplay 已移到 user/LangSelect.tsx、user/TokenDisplay.tsx
 // ——兩者都是設定畫面(SettingsDialog 桌面版/SettingsScreen 手機版)專用的
-// UI 小塊,不是桌面/手機共用的正式邏輯,理由同 RouteEditor 移到 demo/ 目錄。
+// UI 小塊,不是桌面/手機共用的正式邏輯,理由同當初 RouteEditor(已於部落格文章編輯器上線時移除)放在 demo/ 目錄。

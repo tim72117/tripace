@@ -233,3 +233,21 @@
 .focalModal {
   max-width: 920px;
 }
+
+/* ---------- 嵌入文章編輯器時的版面微調 ----------
+   2026-10:PhotoManagerBody 被 blog/ArticleEditor.tsx 當成「圖片素材庫」
+   掛在文章編輯器的卡片裡(見該檔案掛載處的完整說明)。那邊會在包裝層
+   加上全域 class .article-photo-library(不是這個 module 的 hash 名稱,
+   故用 :global 宣告),這裡只針對這個作用域補規則——/blog/photos
+   獨立路由頁面不會掛這個 class,原本外觀完全不受影響。
+
+   配色 token(--ios-* 與 --color-*)的映射不寫在這裡,而是寫在
+   ArticleEditor.module.css 的 .photoLibrary 作用域(見該處說明)。
+
+   2026-10 code review 修正:原本這裡用 :global(.article-photo-library)
+   .toolbar > button 全域結構選擇器把上傳按鈕收成桌面藥丸尺寸——
+   components/Button 其實已經有專門為同一類問題設計的 compact prop
+   (見該元件開頭說明,取代的正是這種父層選擇器覆寫反模式),改成在
+   PhotoManagerPage.tsx 的 <Button variant="primary" compact> 直接套用
+   後,這段規則不再需要,且全域選擇器假設「.toolbar 底下只有一顆
+   button」這個 DOM 結構已經不必再維護。 */

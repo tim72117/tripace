@@ -1,0 +1,1218 @@
+/* ArticleEditor(2026-10 第五輪)的視覺語言改成直接對齊公開閱讀頁
+   BlogArticlePage.tsx/BlogArticle.css——使用者明確要求「編輯文章的
+   樣式要跟實際的文章一樣」,編輯時看到的排版/色票/字體跟發布後讀者
+   實際看到的要是同一套語言,不能是兩套各自維護、容易走鐘的樣式系統。
+
+   做法:不直接 import BlogArticle.css(那份是全域 class + 屬性選擇器,
+   直接 import 會讓全域規則外洩污染整個 app,且編輯器的 DOM 結構是
+   contenteditable/toolbar/insert menu,跟公開頁純展示的 DOM 不同,
+   無法 1:1 套用同一份 class)——改成在這個 CSS Module scope 內重新
+   宣告一套數值跟公開頁逐一對齊的 token(--paper/--ink/--brick/
+   --brick-soft/--moss/--line/--shadow-card,對照 BlogArticle.css
+   .theme-page-demo-page 的同名 token,連變數命名都改成一致,取代原本
+   獨立維護的京都和風 --brick 命名),並補上公開頁同款的三組
+   data-palette 基調(paper-warm/ocean-cool/night-market,見下方)與
+   data-theme 深色切換——編輯器預覽因此能跟公開頁呈現完全一致的視覺。
+
+   --brick-wash 是編輯器自己新增的(公開頁沒有這個 token,用在編輯器
+   特有的互動狀態如 hover/focus 底色),數值比照原本 --brick-wash
+   的透明度做法,只是色相換成 --brick。
+
+   data-theme 手動切換機制維持第四輪已接上的做法(App.tsx /app 路由
+   外層 app-theme-root 的 data-theme 屬性),寫法對齊
+   BlogArticle.css .theme-page-demo-page[data-theme="dark"] 的既有
+   慣例。 */
+.editor {
+  --paper: #F7F3EC;
+  --paper-dim: #EFE9DC;
+  --paper-card: #FDFCFA;
+  --ink: #2B2420;
+  --ink-soft: #5A5148;
+  --ink-faint: #9E9488;
+  --brick: #A8402E;
+  --brick-soft: #C4654A;
+  --brick-wash: rgba(168, 64, 46, 0.08);
+  --moss: #5C6B57;
+  --moss-wash: rgba(92, 107, 87, 0.1);
+  --line: #C9BFA8;
+  --line-soft: #DED5C0;
+  --shadow-card: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+  --shadow-float: 0 10px 24px -10px rgba(43, 36, 32, 0.35);
+  /* ShipporiSerif:對齊 BlogArticle.css 的 @font-face 字族名(原本是
+     --font-display: 'Shippori Mincho' 這個不同的字族名字串,即使
+     fallback 鏈大致相同,瀏覽器字體快取/渲染路徑仍可能因字族名不同
+     而有細微差異)——這裡不重新宣告 @font-face(本地字型解析規則
+     完全相同,重複宣告沒有意義),直接沿用同一個已註冊的字族名稱。
+     BlogArticle.css 的 @font-face 在 /u/:handle/:slug 公開頁才會被
+     載入,ArticleEditor 只在 /app 內使用,兩者不會同時出現在同一個
+     文件,但字族名稱字串必須一致,字體宣告才算「同一份」。 */
+  --font-display: 'ShipporiSerif', -apple-system, 'Hiragino Mincho ProN', 'Noto Serif JP', serif;
+  /* article-max-width:2026-10 第五輪從 880px 改成 960px,對齊
+     BlogArticle.css .theme-page-demo-hero/.theme-page-demo-stops 等
+     容器的 max-width:960px。 */
+  --article-max-width: 960px;
+
+  /* 2026-10:改成自然高度,不再自己是 flex:1 1 auto 的獨立捲動容器/管
+     overflow——捲軸要貼齊瀏覽器視窗邊緣,不貼著內層容器邊緣
+     (planning/member/desktop/Content.tsx 對 blog-editor 傳入
+     unboundedScroll,經 PlanLayout 交給 DesktopMain,捲動權收在
+     外層 DesktopMain 的 .main 身上)。min-height:100% 讓背景色至少撐滿
+     可視高度,內容更長時自然往下延伸,交給 .main 捲動,不是自己裁切。 */
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  .editor {
+    --paper: #1C1815;
+    --paper-dim: #14110F;
+    --paper-card: #241F1B;
+    --ink: #EDE6D8;
+    --ink-soft: #B8AD9C;
+    --ink-faint: #8A7F70;
+    --brick: #D9634B;
+    --brick-soft: #E0846B;
+    --brick-wash: rgba(217, 99, 75, 0.14);
+    --moss: #8FA089;
+    --moss-wash: rgba(143, 160, 137, 0.14);
+    --line: #443C34;
+    --line-soft: #362F29;
+    --shadow-card: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+    --shadow-float: 0 10px 24px -10px rgba(0, 0, 0, 0.6);
+  }
+}
+/* data-theme 手動切換——優先權高於上面的 prefers-color-scheme media
+   query(屬性選擇器的特異度本來就高於 media query 內的同層級選擇器,
+   不需要 !important),使用者在 app 內手動選過深色/淺色時,以這個為準;
+   theme 為 null(未手動選過)時這兩條規則都不命中,退回
+   prefers-color-scheme 跟隨系統。數值對齊
+   BlogArticle.css .theme-page-demo-page[data-theme="dark"|"light"]。 */
+:global(.app-theme-root[data-theme="dark"]) .editor {
+  --paper: #1C1815;
+  --paper-dim: #14110F;
+  --paper-card: #241F1B;
+  --ink: #EDE6D8;
+  --ink-soft: #B8AD9C;
+  --ink-faint: #8A7F70;
+  --brick: #D9634B;
+  --brick-soft: #E0846B;
+  --brick-wash: rgba(217, 99, 75, 0.14);
+  --moss: #8FA089;
+  --moss-wash: rgba(143, 160, 137, 0.14);
+  --line: #443C34;
+  --line-soft: #362F29;
+  --shadow-card: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+  --shadow-float: 0 10px 24px -10px rgba(0, 0, 0, 0.6);
+}
+:global(.app-theme-root[data-theme="light"]) .editor {
+  --paper: #F7F3EC;
+  --paper-dim: #EFE9DC;
+  --paper-card: #FDFCFA;
+  --ink: #2B2420;
+  --ink-soft: #5A5148;
+  --ink-faint: #9E9488;
+  --brick: #A8402E;
+  --brick-soft: #C4654A;
+  --brick-wash: rgba(168, 64, 46, 0.08);
+  --moss: #5C6B57;
+  --moss-wash: rgba(92, 107, 87, 0.1);
+  --line: #C9BFA8;
+  --line-soft: #DED5C0;
+  --shadow-card: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+  --shadow-float: 0 10px 24px -10px rgba(43, 36, 32, 0.35);
+}
+
+/* ---------- 具名風格基調(data-palette,2026-10 第五輪新增) ----------
+   對齊 BlogArticle.css 同名的 data-palette 機制(見 types.ts
+   ThemePagePalette 的完整說明)——每組只覆寫色票 token,不碰版面/
+   間距/字級,跟上面 data-theme 是獨立維度、可任意組合。編輯器掛載
+   這個屬性(見 ArticleEditor.tsx 的 palette state)讓作者在編輯時
+   就能用跟公開頁完全一樣的 palette 名稱切換預覽配色,所見即所得。
+   數值逐一照抄 BlogArticle.css 對應區塊,不重新設計。 */
+.editor[data-palette="ocean-cool"] {
+  --paper: #EEF4F5;
+  --paper-dim: #DCE8EA;
+  --ink: #1C2E33;
+  --ink-soft: #4C6670;
+  --brick: #1F6E8C;
+  --brick-soft: #4B93AD;
+  --moss: #3E7C6B;
+  --line: #B9D2D6;
+  --shadow-card: 0 24px 60px -24px rgba(28, 46, 51, 0.4);
+}
+@media (prefers-color-scheme: dark) {
+  .editor[data-palette="ocean-cool"] {
+    --paper: #121C1F;
+    --paper-dim: #0C1517;
+    --ink: #DCEBEE;
+    --ink-soft: #9FB7BD;
+    --brick: #4FA8C9;
+    --brick-soft: #7CC1DA;
+    --moss: #6FAE9A;
+    --line: #2E4348;
+    --shadow-card: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+  }
+}
+:global(.app-theme-root[data-theme="dark"]) .editor[data-palette="ocean-cool"] {
+  --paper: #121C1F;
+  --paper-dim: #0C1517;
+  --ink: #DCEBEE;
+  --ink-soft: #9FB7BD;
+  --brick: #4FA8C9;
+  --brick-soft: #7CC1DA;
+  --moss: #6FAE9A;
+  --line: #2E4348;
+  --shadow-card: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+}
+.editor[data-palette="night-market"] {
+  --paper: #FBF0D9;
+  --paper-dim: #F3E3BE;
+  --ink: #3A2412;
+  --ink-soft: #6B4F35;
+  --brick: #D9622B;
+  --brick-soft: #E8894F;
+  --moss: #8A6B1F;
+  --line: #E0C79A;
+  --shadow-card: 0 24px 60px -24px rgba(58, 36, 18, 0.45);
+}
+@media (prefers-color-scheme: dark) {
+  .editor[data-palette="night-market"] {
+    --paper: #1F150A;
+    --paper-dim: #150E06;
+    --ink: #F3E6D0;
+    --ink-soft: #C7AD86;
+    --brick: #F08A4B;
+    --brick-soft: #F5AB7A;
+    --moss: #C9A43F;
+    --line: #4A3620;
+    --shadow-card: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+  }
+}
+:global(.app-theme-root[data-theme="dark"]) .editor[data-palette="night-market"] {
+  --paper: #1F150A;
+  --paper-dim: #150E06;
+  --ink: #F3E6D0;
+  --ink-soft: #C7AD86;
+  --brick: #F08A4B;
+  --brick-soft: #F5AB7A;
+  --moss: #C9A43F;
+  --line: #4A3620;
+  --shadow-card: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+}
+
+/* ---------- 載入狀態(2026-10 新增,串接 API 後) ---------- */
+.loadingNotice {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  color: var(--ink-faint);
+  font-size: 14px;
+}
+
+/* ---------- slug 欄位(2026-10 新增,新建文章時顯示) ---------- */
+.slugRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: var(--article-max-width);
+  margin: 16px auto 0;
+  padding: 0 48px;
+}
+.slugLabel {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-faint);
+  flex: 0 0 auto;
+}
+.slugInput {
+  flex: 1 1 auto;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--paper-card);
+  color: var(--ink);
+  font-size: 13px;
+  outline: none;
+}
+.slugInput:focus { border-color: var(--brick); }
+
+/* ---------- 提示條:左側地圖尚未實作 ---------- */
+.mapPendingNotice {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 24px;
+  background: var(--brick-wash);
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--brick);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* ---------- 頂部工具列 ----------
+   2026-10 視覺重整:原本 52px 高、左側 eyebrow/狀態直向堆疊、返回按鈕
+   只是一行無底色的文字,整條看起來像臨時拼湊。改成「返回 | 標題資訊
+   ……… 動作按鈕」三段式的正式工具列:
+   - 返回按鈕改成 ghost 按鈕(有 hover 底色/圓角,但平時無外框),跟
+     右側的藥丸按鈕明顯是不同性質的動作;它跟標題資訊之間用一條垂直
+     分隔線(.backBtn + .topbarTitleGroup 的左框線)切開。
+   - 底部不只一條框線,再加一道很淡的向下陰影,讓工具列跟下方封面
+     之間有「浮在內容上方」的層次,而不是兩塊平貼在一起。
+   - position: sticky(2026-10 改用,原本是 relative):.editor 改成
+     自然高度、捲動權收到外層 DesktopMain 的 .main(見該元件的完整
+     說明)後,.topbar 不再天生固定在頂端——整個 .editor 會跟著 .main
+     一起捲動。改用 sticky; top:0,相對最近的捲動祖先(.main,
+     unboundedScroll 時有 overflow-y:auto)固定在捲動範圍頂端,效果等同
+     原本「天生固定」的視覺,但現在是捲動容器換到外層後必須明確宣告的
+     行為,不再是結構本身自帶的副作用。 */
+.topbar {
+  flex: 0 0 auto;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 24px;
+  background: var(--paper-card);
+  border-bottom: 1px solid var(--line-soft);
+  box-shadow: 0 10px 24px -18px rgba(43, 36, 32, 0.35);
+}
+.topbarMeta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+/* topbarTitleGroup:eyebrow + 狀態列直向堆疊(見 ArticleEditor.tsx 的
+   包裝說明)。緊接在返回按鈕後面時補左框線當分隔線;onBack 沒傳、
+   沒有返回按鈕時(見 ArticleEditor.tsx onBack 的說明)就不畫線,
+   避免左緣孤零零一條豎線。 */
+.topbarTitleGroup {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+}
+.backBtn + .topbarTitleGroup {
+  padding-left: 14px;
+  border-left: 1px solid var(--line-soft);
+}
+.topbarEyebrow {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+/* topbarStatus:「尚未儲存」是提醒而非成功狀態,不再用 --moss(苔綠,
+   在這個配色裡是「成功/來自地標庫」的語意色),改用中性墨色小字 +
+   硃紅色小圓點做提示,語意跟 .mapPendingNotice 的警示色一致。 */
+.topbarStatus {
+  font-size: 11.5px;
+  color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbarStatus .dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brick-soft);
+  box-shadow: 0 0 0 3px var(--brick-wash);
+}
+.topbarRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+/* paletteSelect:風格基調切換(2026-10 第五輪新增,見 ArticleEditor.tsx
+   的完整說明)——原生 <select>,不另外做自訂下拉選單元件,這個編輯器
+   選單本來就只有三個固定選項,原生元素已經涵蓋鍵盤操作/無障礙,不需要
+   額外複雜度。 */
+.paletteSelect {
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--paper-card);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.paletteSelect:hover { border-color: var(--ink-soft); color: var(--ink); }
+/* backBtn:「返回文章列表」(見 ArticleEditor.tsx onBack 的完整說明)
+   ——ghost 按鈕:平時無外框無底色,hover 浮出 --paper-dim 底色與圓角,
+   跟右側 .btn 的藥丸外框明顯區分「離開這個畫面」跟「這個畫面裡的
+   操作」。負的 margin-left 讓圖示跟 topbar 的 24px 內距切齊,hover
+   底色才不會看起來往右偏。 */
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  margin-left: -8px;
+  padding: 0 10px 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.backBtn:hover { background: var(--paper-dim); color: var(--ink); }
+.backBtn:focus-visible { outline: 2px solid var(--brick); outline-offset: 1px; }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--ink-soft); color: var(--ink); background: var(--paper-dim); }
+.btn:focus-visible { outline: 2px solid var(--brick); outline-offset: 2px; }
+.btnPrimary {
+  composes: btn;
+  background: var(--brick);
+  border-color: var(--brick);
+  color: var(--paper-card);
+}
+.btnPrimary:hover { background: var(--brick-soft); border-color: var(--brick-soft); color: var(--paper-card); }
+/* 投稿審核目前 disabled(機制尚未設計,見 ArticleEditor.tsx),原本沒有
+   任何 disabled 樣式、看起來跟可點的一模一樣;補上淡化,讓「現在不能
+   按」一眼可辨。 */
+.btnPrimary:disabled,
+.btnPrimary:disabled:hover {
+  background: var(--brick);
+  border-color: var(--brick);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- 雜誌內容區 ----------
+   2026-10:拿掉 flex:1 1 auto/overflow-y:auto——不再是獨立捲動容器,
+   理由同上方 .editor 的完整說明(捲動權收在外層 DesktopMain 的 .main,
+   避免內外兩層都各自 overflow 造成雙捲軸)。 */
+.articlePane {
+  flex: 1 1 auto;
+}
+/* articleInner:雜誌欄本身加寬到 880px(原本 640px 在寬螢幕主顯示區
+   看起來像貼著左邊的窄欄、右側大片留白——地點卡是雙欄版面本身已經
+   有結構撐開寬度,只有純段落文字需要控制行寬避免過長難讀,故改成
+   對純段落/引言文字另外設較窄的 max-width(見 .paragraph/.lede),
+   容器本身撐到更接近 .desktop-main 實際可用寬度)。 */
+.articleInner {
+  max-width: var(--article-max-width);
+  margin: 0 auto;
+  padding: 8px 48px 96px;
+}
+
+/* cover:封面漸層的暗部從 40% 開始改成 30%、終點加深到 0.78,讓標題
+   文字區塊更穩定地落在深色底上(原本標題上緣常壓在淺色區,對比不足);
+   底部再補一條 --line-soft 框線,跟下方引言(.lede)之間有明確的
+   「封面結束、正文開始」分界,而不是圖片直接切到文字。 */
+.cover {
+  position: relative;
+  margin: 0;
+  width: 100%;
+  height: 320px;
+  background:
+    linear-gradient(180deg, rgba(43,36,32,0) 30%, rgba(43,36,32,0.78) 100%),
+    linear-gradient(135deg, #C9A98A 0%, #A9765D 55%, #7C4A3A 100%);
+  border-bottom: 1px solid var(--line-soft);
+  display: flex;
+  align-items: flex-end;
+  cursor: pointer;
+  overflow: hidden;
+}
+.coverEditHint {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 14px;
+  background: rgba(43,36,32,0.4);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.cover:hover .coverEditHint { opacity: 1; }
+.coverCaption {
+  /* padding-inline 對齊 .articleInner 的 48px,讓封面標題跟下方正文
+     左緣切齊,理由同上方 .articleInner 加寬的說明。 */
+  padding: 28px 48px 26px;
+  color: #FBF6EC;
+  max-width: var(--article-max-width);
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+.coverEyebrow {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 700;
+  opacity: 0.85;
+  margin-bottom: 10px;
+}
+.coverTitle {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-wrap: balance;
+  outline: none;
+  background: transparent;
+  border: none;
+  color: inherit;
+  width: 100%;
+  padding: 0;
+}
+.coverTitle:focus { text-decoration: underline dashed rgba(255,255,255,0.4); text-underline-offset: 6px; }
+
+/* lede:封面到引言的留白從 24px 拉到 36px——封面是滿版深色塊,引言
+   需要比段落間更大的呼吸空間才不會像被封面壓著。 */
+.lede {
+  margin-top: 36px;
+  font-family: var(--font-display);
+  font-size: 17px;
+  line-height: 1.85;
+  color: var(--ink-soft);
+  outline: none;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin-left: -4px;
+  resize: none;
+  border: none;
+  background: transparent;
+  width: 100%;
+  display: block;
+  font-weight: 400;
+}
+.lede:focus { background: var(--brick-wash); }
+
+.paragraph {
+  font-size: 16px;
+  line-height: 1.95;
+  color: var(--ink);
+  padding: 3px 6px;
+  margin: 2px -6px;
+  border-radius: 4px;
+  outline: none;
+  border: none;
+  background: transparent;
+  width: 100%;
+  display: block;
+  resize: none;
+  font-family: inherit;
+}
+.paragraph:hover { background: var(--paper-dim); }
+.paragraph:focus { background: var(--brick-wash); }
+
+/* ---------- 段落樣式變體(ParagraphVariant,2026-10 第五輪新增) ----------
+   用 [data-variant="xxx"] 屬性選擇器,對齊 BlogArticle.css
+   [data-variant] 的既有慣例(見該檔案該規則的完整說明)與公開頁逐一
+   同步數值,不重新設計——編輯時套用的樣式變體,跟文章發布後讀者看到
+   的視覺效果一致。省略 variant 時維持上面 .paragraph 的一般內文樣式。 */
+.paragraph[data-variant="heading"] {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.paragraph[data-variant="emphasis"] {
+  font-size: 1.2rem;
+  font-weight: 600;
+  line-height: 1.75;
+  color: var(--ink);
+}
+.paragraph[data-variant="quote"] {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-style: italic;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  border-left: 3px solid var(--brick-soft);
+  padding-left: 1.1rem;
+}
+.paragraph[data-variant="caption"] {
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--ink-soft);
+  opacity: 0.85;
+}
+
+/* sideMenu:左側 hover 浮現的小選單——2026-10 第六輪泛用化,原本只給
+   段落變體切換用(variantMenu/variantBtn),使用者明確要求「圖片左邊
+   出現跟文字一樣的選單，做圖片排列方式」,圖片/圖組原本各自的頂部
+   內嵌工具列(.imageToolbar/.galleryToolbar)也改用這一套,統一編輯器
+   裡所有 block 的排列調整互動都長一樣:hover 在左側浮現垂直選單,不是
+   分散在不同位置(段落在左側、圖片在頂部)兩套不同的互動模式。
+   .sideMenuWrap 是外層定位容器(position:relative 參照),.sideMenu 是
+   實際的選單本體,.sideMenuBtn 是選單裡的按鈕。 */
+.sideMenuWrap {
+  position: relative;
+}
+.sideMenu {
+  position: absolute;
+  top: 2px;
+  left: -34px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 4;
+}
+.sideMenuWrap:hover .sideMenu,
+.sideMenu.menuOpen { opacity: 1; }
+.sideMenuBtn {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--line-soft);
+  background: var(--paper-card);
+  color: var(--ink-faint);
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.sideMenuBtn:hover { border-color: var(--brick); color: var(--brick); }
+.sideMenuBtnActive { background: var(--brick); border-color: var(--brick); color: #fff; }
+.sideMenuBtn:disabled { color: var(--ink-faint); opacity: 0.4; cursor: not-allowed; }
+.sideMenuBtn:disabled:hover { border-color: var(--line-soft); color: var(--ink-faint); }
+
+/* ---------- 插入區塊間隙 ---------- */
+.gap {
+  position: relative;
+  height: 30px;
+  display: flex;
+  align-items: center;
+}
+.gapLine {
+  position: absolute;
+  left: 0; right: 0; top: 50%;
+  height: 1px;
+  background: transparent;
+}
+.gap:hover .gapLine { background: var(--line-soft); }
+.insertBtn {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--paper-card);
+  border: 1.5px solid var(--line);
+  color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.85);
+  transition: all 0.15s;
+  z-index: 2;
+}
+.gap:hover .insertBtn,
+.insertBtn.menuOpen { opacity: 1; transform: scale(1); }
+.insertBtn:hover { border-color: var(--brick); color: var(--brick); background: var(--brick-wash); }
+
+.insertMenu {
+  position: absolute;
+  left: 34px;
+  top: -6px;
+  background: var(--paper-card);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  box-shadow: var(--shadow-float);
+  padding: 6px;
+  display: flex;
+  gap: 2px;
+  flex-direction: column;
+  min-width: 168px;
+  z-index: 10;
+}
+.insertMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  cursor: pointer;
+  background: none;
+  border: none;
+  text-align: left;
+  width: 100%;
+}
+.insertMenuItem:hover { background: var(--paper-dim); color: var(--ink); }
+.insertMenuItem:disabled { color: var(--ink-faint); cursor: not-allowed; }
+.insertMenuItem:disabled:hover { background: none; }
+.insertMenuIcon {
+  width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--brick);
+  flex: 0 0 auto;
+}
+.insertMenuItem:disabled .insertMenuIcon { color: var(--ink-faint); }
+
+/* ---------- 站點卡片(stop) ----------
+   2026-10 第五輪:改用公開頁 BlogArticle.css .theme-page-demo-stop 的
+   完整版面(編號圓徽/標題/內文/blurb/media/info-box),取代先前版本
+   「雙欄卡片」的簡化展示——這一輪 stop 仍然只做純展示(見
+   ArticleEditor.tsx StopBlockView 開頭的完整說明:站點卡片 widget
+   規劃中,這個編輯器還不能新增/編輯 stop,只負責把既有內容正確顯示
+   出來),但既然要顯示,就直接顯示成跟公開頁一致的樣子,不是另一套
+   簡化版構圖。數值逐一照抄 BlogArticle.css 對應區塊。 */
+.stopCard {
+  margin: 0 0 48px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+.stopHead {
+  display: flex;
+  align-items: baseline;
+  gap: 13px;
+  margin-bottom: 10px;
+}
+.stopIndex {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--paper);
+  background: var(--brick);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.stopName {
+  font-family: var(--font-display);
+  font-size: clamp(20px, 3.5vw, 27px);
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+.stopBody {
+  font-size: 16.5px;
+  line-height: 1.85;
+  color: var(--ink-soft);
+  margin: 0 0 16px;
+}
+.stopBlurb {
+  font-size: 16px;
+  line-height: 1.8;
+  font-style: italic;
+  color: var(--ink-soft);
+  border-left: 3px solid var(--brick-soft);
+  padding-left: 14px;
+  margin: 0 0 16px;
+}
+.stopPhoto {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 0 0 16px;
+  box-shadow: var(--shadow-card);
+}
+.stopPhotoImg {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1.4 / 1;
+  object-fit: cover;
+}
+.stopPhotoEmpty {
+  aspect-ratio: 1.4 / 1;
+  background: var(--paper-dim);
+  border: 1.5px dashed var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-direction: column;
+  color: var(--ink-faint);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  padding: 16px;
+}
+.stopInfoBox {
+  margin: 14px 0 0;
+  padding: 2px 0 2px 17px;
+  border-left: 3px solid var(--brick-soft);
+  background: linear-gradient(90deg, var(--paper-dim) 0%, transparent 70%);
+  border-radius: 0 10px 10px 0;
+}
+.stopInfoRow {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 8px 0;
+}
+.stopInfoRow + .stopInfoRow {
+  border-top: 1px dashed var(--line);
+}
+.stopInfoLabel {
+  flex: none;
+  width: 72px;
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--brick);
+  line-height: 1.6;
+}
+.stopInfoValue {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+/* ---------- 圖片區塊 ---------- */
+.imageBlock {
+  margin: 8px 0;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: var(--shadow-card);
+  clear: both;
+}
+.imageFill {
+  display: block;
+  width: 100%;
+  height: 280px;
+}
+/* imageFillPhoto:2026-10 新增,真實圖片(photoId 解析出的縮圖網址)
+   取代舊版的隨機漸層色塊佔位(.imageFill 保留給找不到對應圖片時的
+   退回樣式,見 ArticleEditor.tsx photoURLFor 的完整說明)。 */
+.imageFillPhoto {
+  display: block;
+  width: 100%;
+  height: 280px;
+  object-fit: cover;
+}
+.imageBlockFloatLeft .imageFillPhoto,
+.imageBlockFloatRight .imageFillPhoto { height: 180px; }
+.imageCaption {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  padding: 30px 16px 12px;
+  background: linear-gradient(180deg, transparent, rgba(43,36,32,0.75));
+  color: #FBF6EC;
+  font-size: 12.5px;
+  outline: none;
+  border: none;
+  width: 100%;
+}
+
+.imageBlockFloatLeft,
+.imageBlockFloatRight {
+  width: 240px;
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+.imageBlockFloatLeft { float: left; margin-right: 20px; clear: left; }
+.imageBlockFloatRight { float: right; margin-left: 20px; clear: right; }
+.imageBlockFloatLeft .imageFill,
+.imageBlockFloatRight .imageFill { height: 180px; }
+.imageBlockFloatLeft .imageCaption,
+.imageBlockFloatRight .imageCaption { font-size: 11px; padding: 20px 10px 8px; }
+
+/* ---------- width="wide"/"full" 出血(2026-10 第五輪新增) ----------
+   對齊 BlogArticle.css [data-width="wide"|"full"] 的既有做法:用負
+   margin「相對目前容器寬度」放大,不是 100vw(編輯器容器本身也可能
+   不是全螢幕寬度,理由同公開頁該規則的完整說明)。wide 打平
+   .articleInner 的 48px 內距,full 再額外放大一些。 */
+.imageBlockWide {
+  width: auto;
+  margin-left: -48px;
+  margin-right: -48px;
+  border-radius: 0;
+}
+.imageBlockFull {
+  width: auto;
+  margin-left: calc(-48px - 7.5%);
+  margin-right: calc(-48px - 7.5%);
+  border-radius: 0;
+}
+.imageBlockWide .imageFillPhoto,
+.imageBlockFull .imageFillPhoto,
+.imageBlockWide .imageFill,
+.imageBlockFull .imageFill {
+  aspect-ratio: 2.2 / 1;
+  height: auto;
+}
+
+/* ---------- overlayText 疊字版面(2026-10 第五輪新增) ----------
+   對齊 BlogArticle.css .theme-page-demo-image-overlay 的既有做法——
+   圖片當滿版背景,文字疊在底部漸層遮罩上,跟「圖片配下方 caption」是
+   互斥的獨立版面(有 overlayText 時不走 .imageBlock 原本的結構,見
+   ArticleEditor.tsx ImageBlockView 的完整說明)。 */
+.imageOverlay {
+  position: relative;
+  max-width: 520px;
+  margin: 24px auto;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+}
+.imageOverlayImg {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1.1 / 1;
+  object-fit: cover;
+}
+.imageOverlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 40%, rgba(0, 0, 0, 0.75) 100%);
+  pointer-events: none;
+}
+.imageOverlayText {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  padding: 24px 32px 32px;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  line-height: 1.75;
+  color: #fff;
+  text-align: center;
+  outline: none;
+  background: none;
+  border: none;
+  width: 100%;
+}
+
+.imageRemove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.75);
+  background: rgba(43,36,32,0.55);
+  opacity: 0;
+  transition: opacity 0.15s;
+  cursor: pointer;
+  z-index: 3;
+  border: none;
+}
+.imageBlock:hover .imageRemove { opacity: 1; }
+.imageRemove:hover { background: var(--brick); color: #fff; }
+
+.clearfix { clear: both; }
+
+/* ---------- 多圖群組(gallery) ----------
+   2026-10 第五輪:對齊 BlogArticle.css .theme-page-demo-stop-gallery
+   的完整 grid/row/split 三態渲染(取代先前版本只做 grid 靜態預覽的
+   簡化版)——編輯器預覽現在跟公開頁發布後的實際版面一致。
+   grid(預設,省略 data-layout):主圖(第一張)大+其餘固定 2 欄小圖。 */
+.galleryBlock {
+  margin: 8px 0;
+  position: relative;
+}
+.galleryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.galleryGridItem {
+  border-radius: 12px;
+  overflow: hidden;
+}
+.galleryGrid > .galleryGridItem:first-child {
+  grid-column: 1 / -1;
+}
+.galleryGridImg {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1.5 / 1;
+  object-fit: cover;
+}
+.galleryGrid > .galleryGridItem:first-child .galleryGridImg {
+  aspect-ratio: 1.6 / 1;
+}
+
+/* row:取消主圖大小分層,統一縮小、密集 3 欄排列,對齊
+   BlogArticle.css [data-layout="row"] 的既有做法,適合張數多的站點。 */
+.galleryRow {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.galleryRow > .galleryGridItem:first-child {
+  grid-column: auto;
+}
+.galleryRow .galleryGridImg,
+.galleryRow > .galleryGridItem:first-child .galleryGridImg {
+  aspect-ratio: 1 / 1;
+}
+
+/* split:固定 3 張的非對稱拼貼——左側一張直式大圖,右側兩張橫式圖上下
+   堆疊,對齊 BlogArticle.css [data-layout="split"] 的既有做法。items
+   順序對應固定位置(第一張左、第二三張右上右下),不是自動判斷方向。 */
+.gallerySplit {
+  grid-template-columns: 1.15fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 6px;
+}
+.gallerySplit > .galleryGridItem:nth-child(1) {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+.gallerySplit > .galleryGridItem:nth-child(2) {
+  grid-column: 2;
+  grid-row: 1;
+}
+.gallerySplit > .galleryGridItem:nth-child(3) {
+  grid-column: 2;
+  grid-row: 2;
+}
+.gallerySplit .galleryGridImg {
+  aspect-ratio: auto;
+  height: 100%;
+}
+
+/* ---------- 選圖彈窗(PhotoPickerModal,2026-10 新增) ---------- */
+.pickerModal {
+  max-width: 720px;
+  padding: 20px;
+}
+.pickerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.pickerTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.pickerClose {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: var(--paper-dim);
+  color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.pickerClose:hover { color: var(--ink); }
+.pickerEmpty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: 13.5px;
+}
+.pickerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.pickerItem {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  background: var(--paper-dim);
+}
+.pickerItemSelected { border-color: var(--brick); }
+.pickerItemImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.pickerItemCheck {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--brick);
+  color: #fff;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pickerFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+}
+.pickerHint {
+  font-size: 12.5px;
+  color: var(--ink-faint);
+}
+
+.endNote {
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 12px;
+  color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------- 圖片素材庫(附屬工具區) ----------
+   photoLibrary:2026-10 新增,「圖片素材庫」(見 ArticleEditor.tsx
+   掛載 PhotoManagerBody 處的完整說明)。
+
+   版面:文章正文以 .endNote 收尾之後,素材庫整個包成一張獨立卡片
+   (--paper-card 底、框線、--shadow-card 陰影,跟地點卡同一套卡片
+   語言),跟上方雜誌內容明確分成「文章本體」與「附屬工具」兩個層次,
+   而不是正文底下再多接一段。
+
+   配色——採「token 映射」而非只做外框包裝:PhotoManagerBody 讀的是
+   PhotoManagerPage.module.css + 全域元件(components/Button、Banner、
+   base-ui.css 的 .empty/.rp-modal)用的 --ios-* / --color-* 那組
+   app 殼層 token(淺色值定義在 base-ui.css :root,深色值掛在
+   .app-theme-root 上,見該檔案開頭說明)。這個編輯器是京都和風配色
+   (--paper/--ink/--brick 等,見本檔開頭),深色模式跟隨系統
+   prefers-color-scheme;app-theme-root 則看 data-theme——兩邊淺色值
+   雖然大致相近(base-ui.css 的 token 本來就是對齊首頁 --paper 設計
+   的),但深色值不是同一組色票、切換時機也可能不同步(使用者在 app
+   手動選淺色、系統卻是深色時,編輯器是深的、素材庫會是淺的)。
+   比照 PhotoManagerPage.module.css .root / TainanPage.css 等既有
+   「在自己的作用域把對方依賴的變數名映射到自己的色票」慣例,這裡在
+   .photoLibrary 作用域內把 --ios-* 與 --color-* 指到 .editor 的 token,
+   PhotoManagerBody 及其內部用到的全域元件就自然跟著編輯器的配色與
+   深淺模式走。映射只寫在這個 class 底下、不碰 base-ui.css 與
+   PhotoManagerPage.module.css 的既有規則,/blog/photos 獨立路由頁面
+   讀到的仍是原本的 app 殼層 token。
+
+   映射對照(語意對語意,不是名字對名字):
+   - --ios-bg / --ios-card / --ios-sep → 紙色底 / 卡片白 / 柔和框線
+   - --color-dark / --ios-gray → 墨色主文字 / 淡墨輔助文字
+   - --color-accent → --brick(上傳按鈕底色,跟 topbar 的投稿按鈕同色)
+   - --ios-blue(卡片 hover 外框、重試文字)→ --brick-soft:2026-10
+     code review 修正——原本映射到 --ink-soft(中性墨色),理由是「不跟
+     破壞性動作搶同一個紅」,但 PhotoManagerPage.module.css 的
+     .retryBtn 文字色正是用這個 token,中性墨色讓失敗卡片裡本該最
+     顯眼的「重試」動作失去可點擊的視覺提示,跟卡片本身已用
+     --brick(即 --ios-red)標示的錯誤狀態混在一起看不出差異。
+     改用 --brick-soft(偏粉的硃紅,比 --brick 本身淡,跟
+     .imageRemove hover 的飽和硃紅做出區分)保留「這是可點擊動作」的
+     提示,同時不會跟錯誤狀態用一樣飽和度的顏色搶視覺。
+   - --ios-red(刪除)→ --brick:跟 .imageRemove hover 的刪除語意一致
+   - --btn-primary-disabled → --line;--ios-red-bg/--ios-red-border
+     (ErrorBanner)→ --brick-wash / --line
+   - --ios-sand(評分星星)刻意不映射:編輯器色票裡沒有對應的暖沙金,
+     base-ui.css 的 --ios-sand 本身就是跟這套配色協調的暖色。
+
+   內距:PhotoManagerBody 的 .body 自帶 20px padding,卡片左右只給
+   8px、讓 8 + 20 = 28px 當實際內距,不去改 .body 的既有規則;標題區
+   (.photoLibraryHead)自己補 20px 跟內容切齊。 */
+.photoLibrary {
+  --ios-bg: var(--paper);
+  --ios-card: var(--paper-card);
+  --ios-sep: var(--line-soft);
+  --ios-gray: var(--ink-faint);
+  --ios-blue: var(--brick-soft);
+  --ios-red: var(--brick);
+  --color-dark: var(--ink);
+  --color-accent: var(--brick);
+  --btn-primary-disabled: var(--line);
+  --ios-red-bg: var(--brick-wash);
+  --ios-red-border: var(--line);
+
+  margin-top: 48px;
+  padding: 24px 8px 8px;
+  background: var(--paper-card);
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+}
+.photoLibraryHead {
+  padding: 0 20px 18px;
+  margin: 0 12px 4px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.photoLibraryEyebrow {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--brick);
+  margin-bottom: 6px;
+}
+.photoLibraryHeading {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+}
+.photoLibraryHint {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}

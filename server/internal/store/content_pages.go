@@ -3,6 +3,7 @@ package store
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -26,12 +27,38 @@ func toContentPage(r contentPageRow) model.ContentPage {
 		ID:        r.ID,
 		OwnerID:   r.OwnerID,
 		Slug:      r.Slug,
+		Title:     r.Title,
 		Content:   r.Content,
 		Status:    r.Status,
 		UpdatedBy: r.UpdatedBy,
 		CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
 	}
+}
+
+// extractContentPageTitle 從 content JSON 字串裡抽出 title 欄位,供
+// CreateContentPage/UpdateContentPageContent 寫入時順便填入 contentPageRow.Title
+// 這個反正規化快取欄位(見該欄位的完整說明)。
+//
+// 刻意只解析這一個欄位、用最小的匿名 struct,不是完整反序列化成對應
+// ThemePageContent 的巢狀 struct——理由同本檔開頭/model.ContentPage.Content
+// 的既有原則:後端不需要認得 blocks 內部每種 kind 的完整形狀,這裡只是
+// 為了取出 title 這個頂層字串欄位做一次性的輕量解析,不是要反向驗證
+// 或處理整份內容結構。
+//
+// 解析失敗(content 不是合法 JSON,或沒有 title 欄位)時回傳空字串,
+// 不中斷呼叫端的建立/更新流程——title 只是輔助列表顯示用的快取,不是
+// 資料正確性的關鍵路徑,content 本身才是權威來源(見 isJSONObject 在
+// API 層已經做過的「至少是個 JSON 物件」檢查,這裡只是在那之後再往下
+// 多抽一層,失敗時不應該讓整個寫入請求跟著失敗)。
+func extractContentPageTitle(content string) string {
+	var parsed struct {
+		Title string `json:"title"`
+	}
+	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
+		return ""
+	}
+	return parsed.Title
 }
 
 // CreateContentPage 建立一筆主題介紹頁/部落格文章內容。slug 的唯一性
@@ -63,6 +90,7 @@ func (s *Store) CreateContentPage(ownerID, slug, content, updatedBy string) (mod
 		ID:        newContentPageID(),
 		OwnerID:   ownerID,
 		Slug:      slug,
+		Title:     extractContentPageTitle(content),
 		Content:   content,
 		Status:    "draft",
 		UpdatedBy: updatedBy,
@@ -126,6 +154,30 @@ func (s *Store) ListContentPages() ([]model.ContentPage, error) {
 	return out, nil
 }
 
+// ListContentPagesByOwner 回傳指定 ownerID 底下的全部主題介紹頁/部落格
+// 文章(不分 draft/published),依 slug 排序——供「我的文章列表」這類
+// 「使用者查詢自己發表過的文章」情境使用(對齊 ListContentPages 不分
+// draft/published 的既有語意:使用者在自己的列表裡也該看到還沒發布的
+// 草稿,才能決定要不要發布,不是只給 CLI 管理端點這個待遇)。
+//
+// 跟 ListContentPages 的差異只在多了 ownerID 篩選條件——ListContentPages
+// 是「列出全站所有人的文章」(CLI 專用,不分 owner),這支是「只列出
+// 這一個使用者自己的文章」(給一般使用者查詢自己資料的 API 用,見
+// handleMyContentPageList)。排序鍵只需要 slug(不像 ListContentPages
+// 還要多排 owner_id 來源——這裡本來就已經是單一 owner 底下的清單,不會
+// 有跨 owner 交錯顯示的問題)。
+func (s *Store) ListContentPagesByOwner(ownerID string) ([]model.ContentPage, error) {
+	var rows []contentPageRow
+	if err := s.db.Where("owner_id = ?", ownerID).Order("slug ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]model.ContentPage, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, toContentPage(r))
+	}
+	return out, nil
+}
+
 // FilterPhotoIDsReferencedByPublishedContent 從給定的 photoId 清單裡
 // 篩出「目前至少被一篇 status='published' 文章的 content 引用」的那些
 // ——供 handlePublicBlogPhotosByIDs 做授權檢查用(見該 handler 的完整
@@ -167,18 +219,27 @@ func (s *Store) FilterPhotoIDsReferencedByPublishedContent(ids []string) ([]stri
 // (對齊既有 entry update -detail JSON 的「整段 JSON 覆寫」先例,見
 // entryRow.Detail)——不是欄位級局部更新,CLI 的操作模式是「get 一份
 // JSON、本機編輯、set 整份寫回」,不需要在這一層支援細欄位 patch。
-// 只更新 content/updated_by/updated_at,不動 status——更新內容跟
-// 發布狀態是兩個獨立操作(對應 CLI 的 set 跟 publish 兩個動詞),
+// 只更新 content/title/updated_by/updated_at,不動 status——更新內容
+// 跟發布狀態是兩個獨立操作(對應 CLI 的 set 跟 publish 兩個動詞),
 // 避免每次改內容都意外把已發布的頁面打回草稿,或反過來意外發布
-// 還在編輯中的草稿。(ownerID, slug) 不存在時回傳 ErrNotFound(對齊
-// UpdateAdminPassword 等既有方法檢查 RowsAffected 的慣例)——
-// GORM 的 Updates() 在 WHERE 條件沒有命中任何列時,Error 仍是 nil,
-// 若不額外檢查 RowsAffected,呼叫端(API handler)會把「這組不存在」
-// 誤判成「更新成功」。
+// 還在編輯中的草稿。title 每次都跟著 content 一起重新解析覆寫(見
+// extractContentPageTitle 的完整說明)——這是它唯一的更新入口,保證
+// 這個反正規化快取欄位不會跟 content 裡實際的 title 長期不同步(例如
+// 使用者改了標題只更新 content、忘記同步另一個獨立的 title 參數這種
+// 情境在這裡不存在,因為呼叫端從頭到尾不需要知道有這個欄位)。
+// (ownerID, slug) 不存在時回傳 ErrNotFound(對齊 UpdateAdminPassword
+// 等既有方法檢查 RowsAffected 的慣例)——GORM 的 Updates() 在 WHERE
+// 條件沒有命中任何列時,Error 仍是 nil,若不額外檢查 RowsAffected,
+// 呼叫端(API handler)會把「這組不存在」誤判成「更新成功」。
 func (s *Store) UpdateContentPageContent(ownerID, slug, content, updatedBy string) error {
 	res := s.db.Model(&contentPageRow{}).
 		Where("owner_id = ? AND slug = ?", ownerID, slug).
-		Updates(map[string]any{"content": content, "updated_by": updatedBy, "updated_at": now()})
+		Updates(map[string]any{
+			"content":    content,
+			"title":      extractContentPageTitle(content),
+			"updated_by": updatedBy,
+			"updated_at": now(),
+		})
 	if res.Error != nil {
 		return res.Error
 	}
