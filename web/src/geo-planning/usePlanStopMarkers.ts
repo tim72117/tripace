@@ -49,6 +49,18 @@ export interface PlanStopMarker {
   // 未傳時維持原本的 14px——ExploreMap.tsx/AIPlanTimelinePage.tsx 等
   // 正式規劃頁的呼叫端不傳這個欄位,完全不受影響。
   size?: number
+  // children——選填,2026-10 新增(使用者明確要求交接前後「套用相同的
+  // 元件跟地圖互動」)。這一站底下的子景點(主題點展開後圍成一圈的
+  // 那些點,見 planTimeline.ts PlanNodeData.children 的完整說明)。
+  //
+  // 在這之前 PlanStopMarker 不帶這個欄位,AIPlanTimelinePage 因此只能
+  // 繞過 PlanStopsView 介面、直接讀 timelineRef 拿 children,而且只在
+  // kind === 'simulated' 時讀——交接到真實 AI 之後 timeline 住在
+  // TripPlanPage 內部、外層讀不到,主題點的展開能力整個消失。
+  //
+  // 改成由各自的投影實作填好這個欄位:兩種來源產出同一種形狀,地圖那側
+  // 不再需要「這是模擬還是真實」的分支,交接前後行為一致。
+  children?: { id: string; lat: number; lng: number; name?: string }[]
 }
 
 // zIndexForState——強調中的圓點要疊在其他圓點之上。建立 marker 與同步

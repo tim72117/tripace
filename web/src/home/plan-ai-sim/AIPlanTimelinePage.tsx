@@ -5,6 +5,7 @@ import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../SiteNavButtons'
 import { trackEvent } from '../../analytics'
 import { useSyncedState } from '../../hooks/useSyncedState'
 import { planAiFakeDataSource } from './planAiFakeDataSource'
+import type { PlanAiDataSource } from './planAiDataSource'
 import { createPlanSimFakeSource } from './planSimFakeSource'
 import type { PlanSimSource } from './planSimSource'
 import { PlanTimelineView } from '../../plan-core/PlanTimelineView'
@@ -454,6 +455,11 @@ function refreshTransitForStop(
   stopId: string,
   setTimeline: React.Dispatch<React.SetStateAction<PlanTimeline>>,
   getTimeline: () => PlanTimeline,
+  // dataSource——讀取層(見 planAiDataSource.ts 的完整說明)。2026-10
+  // 從寫死的 planAiFakeDataSource import 改成參數注入,讓這條路徑跟
+  // 推論層一樣可以整個抽換:公開展示頁注入假資料實作,登入後的自動
+  // 播放注入真後端實作。
+  dataSource: PlanAiDataSource,
 ) {
   const timeline = getTimeline()
   const stopNode = timeline.nodes.get(stopId)
@@ -488,7 +494,7 @@ function refreshTransitForStop(
 
   const from = { lat: prevNode.lat, lng: prevNode.lng }
   const to = { lat: stopNode.lat, lng: stopNode.lng }
-  planAiFakeDataSource.transitEstimate(from, to)
+  dataSource.transitEstimate(from, to)
     .then((estimate) => {
       setTimeline((prev) => {
         // 這一站可能已經被使用者操作移除,或它的前一站在查詢期間又
@@ -555,7 +561,15 @@ function refreshTransitForStop(
 //
 // 回傳值裡額外帶出 source——捲動版需要拿到它才能呼叫 advanceTo(),
 // 計時器版的呼叫端忽略即可。
-export function usePlanSimSocket(start: boolean, createSource: () => PlanSimSource = createPlanSimFakeSource) {
+export function usePlanSimSocket(
+  start: boolean,
+  createSource: () => PlanSimSource = createPlanSimFakeSource,
+  // dataSource——讀取層,預設假資料(見 planAiDataSource.ts 的完整
+  // 說明)。公開展示頁(/ai-plan、首頁小展示)不需要登入就能看,打
+  // /internal/ 端點只會拿到 401,所以預設值必須是假資料;要接真後端
+  // 的呼叫端自己注入 createPlanAiApiDataSource(cfg)。
+  dataSource: PlanAiDataSource = planAiFakeDataSource,
+) {
   // timeline 改用 useSyncedState(見該 hook 開頭的完整背景說明)取代單純
   // 的 useState——insertAttractionAfter(下方)呼叫來源是 AgentBridge 的
   // 原生 WebSocket onmessage,完全在 React 事件系統之外,需要「commit
@@ -583,9 +597,9 @@ export function usePlanSimSocket(start: boolean, createSource: () => PlanSimSour
     const node = timelineRef.current.nodes.get(stopId)
     if (!node || node.type !== 'stop') return false
     setTimeline((prev) => updateNode(prev, stopId, { time: newTime }))
-    refreshTransitForStop(stopId, setTimeline, () => timelineRef.current)
+    refreshTransitForStop(stopId, setTimeline, () => timelineRef.current, dataSource)
     return true
-  }, [setTimeline, timelineRef])
+  }, [setTimeline, timelineRef, dataSource])
   // isGenerating 初始值為 false——要等 start 變 true(打字動畫播完、
   // 視同「使用者送出」)才開始安排,見上方 usePlanSimSocket 的完整說明。
   const [isGenerating, setIsGenerating] = useState(false)
@@ -662,7 +676,7 @@ export function usePlanSimSocket(start: boolean, createSource: () => PlanSimSour
         resolveAttractionForStep(
           newId,
           data.placeId,
-          (placeId) => planAiFakeDataSource.placeDetails(placeId),
+          (placeId) => dataSource.placeDetails(placeId),
           setTimeline,
           () => false,
           // onSettled——onagent 路徑插入的佔位卡一開始沒有座標(座標要
@@ -670,14 +684,14 @@ export function usePlanSimSocket(start: boolean, createSource: () => PlanSimSour
           // 才觸發。refreshTransitForStop 自己會從 timeline 重新讀取
           // 這個節點目前的座標,不需要 onSettled 傳入的 lat/lng(這裡
           // 忽略,只借用它「查詢已完成」這個時機訊號)。
-          () => refreshTransitForStop(newId, setTimeline, () => timelineRef.current),
+          () => refreshTransitForStop(newId, setTimeline, () => timelineRef.current, dataSource),
         )
       } else if (result.ok && data.type === 'stop' && data.lat != null && data.lng != null) {
         // 模擬 WS 腳本路徑(planActionToInsert)的固定資料本身就帶座標,
         // 插入當下即可同步觸發,不需要等任何背景查詢——理由同上方
         // onGotCoordinates 的完整說明,兩條路徑只是「座標何時可用」不同,
         // 觸發交通查詢這件事本身沒有差異。
-        refreshTransitForStop(newId, setTimeline, () => timelineRef.current)
+        refreshTransitForStop(newId, setTimeline, () => timelineRef.current, dataSource)
       }
       return result
     },
@@ -878,7 +892,7 @@ export function usePlanSimSocket(start: boolean, createSource: () => PlanSimSour
             const result = removeNode(prev, removedId, { allowRemoving: true })
             return result.ok ? result.timeline : prev
           })
-          if (nextId != null) refreshTransitForStop(nextId, setTimeline, () => timelineRef.current)
+          if (nextId != null) refreshTransitForStop(nextId, setTimeline, () => timelineRef.current, dataSource)
         }, REMOVE_FADE_MS)
         return
       }
@@ -925,13 +939,13 @@ export function usePlanSimSocket(start: boolean, createSource: () => PlanSimSour
           resolveAttractionForStep(
             action.id,
             toUpdate.data.placeId,
-            (placeId) => planAiFakeDataSource.placeDetails(placeId),
+            (placeId) => dataSource.placeDetails(placeId),
             setTimeline,
             () => false,
-            () => refreshTransitForStop(action.id!, setTimeline, () => timelineRef.current),
+            () => refreshTransitForStop(action.id!, setTimeline, () => timelineRef.current, dataSource),
           )
         } else if (toUpdate.data.lat != null && toUpdate.data.lng != null) {
-          refreshTransitForStop(action.id, setTimeline, () => timelineRef.current)
+          refreshTransitForStop(action.id, setTimeline, () => timelineRef.current, dataSource)
         }
         // 2026-10 使用者明確回報「骨架卡轉成地點時就要拉到中間,目前是
         // 要等下一個骨架時才拉往中間」:見下方 latestInsertedStopIdRef
@@ -1146,15 +1160,37 @@ function useSimulatedStopsView(
   // 「展開後的範圍與子景點」,不是把子景點偽裝成跟其他站點一樣的一般
   // marker。這份清單維持只放「真正獨立佔用時間軸時間點的站點」,主題
   // 點本身(不論是否展開)仍然只在這裡佔一筆。
+  // stopsKey——把 children 的座標也編進去(2026-10):子景點的座標是
+  // 非同步查回來的,晚於父節點插入。不編進 key 的話,children 從空的
+  // 變成有內容時 stopsKey 不變,stops 不重算,主題點永遠展不開。
   const stopsKey = steps
     .filter((s) => s.type === 'stop' && s.lat != null && s.lng != null)
-    .map((s) => `${s.id}|${s.lat}|${s.lng}|${s.name ?? ''}`)
+    .map((s) => {
+      const childrenKey = (s.children ?? [])
+        .map((c) => `${c.id}:${c.lat ?? ''}:${c.lng ?? ''}`)
+        .join(';')
+      return `${s.id}|${s.lat}|${s.lng}|${s.name ?? ''}|${childrenKey}`
+    })
     .join(',')
   const stops = useMemo<PlanStopMarker[]>(
     () =>
       steps
         .filter((s) => s.type === 'stop' && s.lat != null && s.lng != null)
-        .map((s) => ({ id: s.id, lat: s.lat!, lng: s.lng!, name: s.name })),
+        .map((s) => {
+          // children——只收已經查到座標的子景點(見 PlanStopMarker.children
+          // 的完整說明)。沒有任何有效子景點時不帶這個欄位,讓下游的
+          // 「有沒有 children」判斷單純看它在不在。
+          const children = (s.children ?? [])
+            .filter((c) => c.lat != null && c.lng != null)
+            .map((c) => ({ id: c.id, lat: c.lat!, lng: c.lng!, name: c.name }))
+          return {
+            id: s.id,
+            lat: s.lat!,
+            lng: s.lng!,
+            name: s.name,
+            ...(children.length > 0 ? { children } : {}),
+          }
+        }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [stopsKey],
   )
@@ -1200,7 +1236,7 @@ function useSimulatedStopsView(
 function useLiveStopsView(selection: PlanSelection) {
   const [stops, setStops] = useState<PlanStopMarker[]>([])
   const handleStopsChange = useCallback(
-    (next: { id: string; lat: number; lng: number; name?: string }[]) => setStops(next),
+    (next: PlanStopMarker[]) => setStops(next),
     [],
   )
   const source: PlanStopsView = { kind: 'live', stops }
@@ -1315,6 +1351,24 @@ export function AIPlanTimelinePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simulatedSource.stops])
 
+  // 真實來源的同步——2026-10 修正(使用者實機回報「真實推論還是沒有
+  // 出現地圖點」)。
+  //
+  // handover() 只做 setPlanSource(liveSource),存進 state 的是交接當下
+  // 那個快照,而那一刻 stops 必然是空的(使用者還沒跟 AI 說任何話)。
+  // 之後 LivePlanLayer 回報站點、useLiveStopsView 的 stops 更新、
+  // liveSource 變成新物件,但 planSource 還指著那個 stops: [] 的舊快照
+  // ——地圖永遠拿到空陣列,一個點都畫不出來。
+  //
+  // 模擬來源早就有對應的同步 effect(見上方),真實來源漏了。兩者現在
+  // 對稱:各自在自己是當前來源時,讓 planSource 跟著最新內容走。
+  // 依賴只放 stops 的理由同上方——liveSource 是物件 literal,每次 render
+  // 都是新參照,直接放它會形成自我餵養的無限迴圈。
+  useEffect(() => {
+    setPlanSource((prev) => (prev.kind === 'live' ? liveSource : prev))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveSource.stops])
+
   // handover——「交接」這個動作本身,取代原本單純的 setHandedOver(true)
   // 布林翻轉:把目前的來源實例整個換成 liveSource(真實來源)。
   //
@@ -1409,25 +1463,26 @@ export function AIPlanTimelinePage() {
   // render 都是新陣列參照讓下游 effect 誤判變動;這裡額外把 children
   // 內容也編進去(對齊 mapMarkerLayer/index.ts pointsKey 2026-10 修正
   // 的完整說明:children 非同步晚到也要能被偵測到)。
+  // 2026-10(使用者明確要求交接前後「套用相同的元件跟地圖互動」):
+  // children 現在由 PlanStopsView 的各自實作填好(見 PlanStopMarker.children
+  // 的完整說明),這裡不再需要 `planSource.kind === 'simulated' ?
+  // timelineRef.current.nodes.get(s.id) : undefined` 那個分支——那個寫法
+  // 繞過介面直接讀 timeline,而且交接後恆為 undefined,主題點的展開能力
+  // 在真實層整個消失。現在兩種來源產出同一種形狀,這裡只做一件事:
+  // 有 children 就是主題點,沒有就是一般景點。
   const mapMarkerPointsKey = planSource.stops
     .map((s) => {
-      const node = planSource.kind === 'simulated' ? timelineRef.current.nodes.get(s.id) : undefined
-      const childrenKey = (node?.children ?? []).map((c) => `${c.id}:${c.lat ?? ''}:${c.lng ?? ''}`).join(';')
+      const childrenKey = (s.children ?? []).map((c) => `${c.id}:${c.lat}:${c.lng}`).join(';')
       return `${s.id}|${s.lat}|${s.lng}|${s.name ?? ''}|${childrenKey}`
     })
     .join(',')
   const mapMarkerPoints = useMemo<MapMarkerPoint[]>(
     () =>
-      planSource.stops.map((s) => {
-        const node = planSource.kind === 'simulated' ? timelineRef.current.nodes.get(s.id) : undefined
-        const children = (node?.children ?? []).filter(
-          (c): c is PlanThemeChild & { lat: number; lng: number } => c.lat != null && c.lng != null,
-        )
-        if (children.length > 0) {
-          return { id: s.id, lat: s.lat, lng: s.lng, name: s.name, kind: 'theme', children: children.map((c) => ({ id: c.id, lat: c.lat, lng: c.lng, name: c.name })) }
-        }
-        return { id: s.id, lat: s.lat, lng: s.lng, name: s.name, kind: 'attraction' }
-      }),
+      planSource.stops.map((s) =>
+        s.children && s.children.length > 0
+          ? { id: s.id, lat: s.lat, lng: s.lng, name: s.name, kind: 'theme', children: s.children }
+          : { id: s.id, lat: s.lat, lng: s.lng, name: s.name, kind: 'attraction' },
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [mapMarkerPointsKey],
   )

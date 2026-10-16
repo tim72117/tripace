@@ -29,6 +29,8 @@ import styles from './PlanDataFlowPage.module.css'
 //   - UI 層或地圖層開始直接呼叫領域層函式(那代表分層被打破,圖要改)
 //   - PlanSelection 的成員增減,或它被某一層獨佔持有(目前是三個消費端
 //     共用的唯一一份,那是刻意的設計,見頁面上同名段落)
+//   - PlanAiDataSource 的方法增減,或多一份實作(目前兩份:純前端假資料、
+//     真後端 API)
 
 // LAYERS——領域層與狀態層。抽成陣列而不是在 JSX 裡寫死兩次,
 // 讓盒子的 y 座標由索引算出來,調整間距時不用逐個改數字。
@@ -447,6 +449,67 @@ export function PlanDataFlowPage() {
         </div>
 
         <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>讀取層：站點詳情與照片怎麼補上來</h2>
+          <p className={styles.lead}>
+            上面那張圖沒畫這條路徑——推論來源送出的 <code className={styles.code}>add_stop</code>
+            只帶 <code className={styles.code}>placeId</code>，真實的名稱、座標、簡介、照片是
+            <strong>插入之後非同步補上</strong>的。這一層跟推論層一樣可以整個抽換。
+          </p>
+          <figure className={styles.figure}>
+            <svg
+              className={styles.diagram}
+              viewBox="0 0 880 260"
+              role="img"
+              aria-label="讀取層流程：插入佔位節點後，透過 PlanAiDataSource 補上詳情與照片，再 updateNode 寫回"
+            >
+              <defs>
+                <marker id="pdfArrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                  <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+                </marker>
+              </defs>
+              <rect x="8" y="8" width="864" height="52" rx="8" fill="currentColor" fillOpacity="0.04" stroke="currentColor" strokeOpacity="0.3" />
+              <text x="20" y="30" fontSize="12" fontWeight="700" fill="currentColor">
+                ① 插入佔位節點　insertAttractionAfter({'{ placeId, loading: true }'})
+              </text>
+              <text x="20" y="48" fontSize="10.5" fill="currentColor" fillOpacity="0.68">
+                卡片立刻出現(骨架狀態),不等查詢回來——使用者馬上看到「這一站排進去了」
+              </text>
+
+              <line x1="440" y1="60" x2="440" y2="88" stroke="currentColor" strokeOpacity="0.55" strokeWidth="1.5" markerEnd="url(#pdfArrow2)" />
+
+              <rect x="8" y="88" width="864" height="74" rx="8" fill="currentColor" fillOpacity="0.1" stroke="currentColor" strokeOpacity="0.55" strokeWidth="2" />
+              <text x="20" y="110" fontSize="12" fontWeight="700" fill="currentColor">
+                ② 讀取層　PlanAiDataSource {'{ placeDetails, transitEstimate, photoAssets? }'}
+              </text>
+              <text x="20" y="130" fontSize="10.5" fill="currentColor" fillOpacity="0.8">
+                planAiFakeDataSource　純前端,attractionPool.ts 的 10 筆台南景點。公開頁不需登入
+              </text>
+              <text x="20" y="148" fontSize="10.5" fill="currentColor" fillOpacity="0.8">
+                createPlanAiApiDataSource(cfg)　打 /internal/geo/plan-ai/* 與 place-photo-assets,需登入
+              </text>
+
+              <line x1="440" y1="162" x2="440" y2="190" stroke="currentColor" strokeOpacity="0.55" strokeWidth="1.5" markerEnd="url(#pdfArrow2)" />
+
+              <rect x="8" y="190" width="864" height="52" rx="8" fill="currentColor" fillOpacity="0.04" stroke="currentColor" strokeOpacity="0.3" />
+              <text x="20" y="212" fontSize="12" fontWeight="700" fill="currentColor">
+                ③ 寫回　updateNode(timeline, id, {'{ name, lat, lng, summary, photos, loading: false }'})
+              </text>
+              <text x="20" y="230" fontSize="10.5" fill="currentColor" fillOpacity="0.68">
+                回到領域層的純函式——讀取層不自己改資料,查完交給 setTimeline 寫回
+              </text>
+            </svg>
+          </figure>
+          <p className={styles.caption}>
+            2026-10：<code className={styles.code}>photoAssets</code> 是這次才補進介面的。
+            原本照片是 <code className={styles.code}>/app</code> 自己直接呼叫
+            <code className={styles.code}>fetchGeoPlacePhotoAssets</code>，展示頁則寫死在假資料裡——
+            兩邊各走各的，換一份實作換不掉照片來源。
+            同時 <code className={styles.code}>usePlanSimSocket</code> 的
+            <code className={styles.code}>dataSource</code> 從寫死的 import 改成參數注入（預設假資料）。
+          </p>
+        </div>
+
+        <div className={styles.section}>
           <h2 className={styles.sectionTitle}>為什麼檢視狀態不放在投影層</h2>
           <p className={styles.lead}>
             2026-10 改動：<code className={styles.code}>selectedStopId</code> /
@@ -552,10 +615,15 @@ export function PlanDataFlowPage() {
         <div className={styles.section}>
           <h2 className={styles.sectionTitle}>已知的例外與缺口</h2>
           <div className={styles.note}>
-            <span className={styles.noteTitle}>地圖層繞過介面讀 children</span>
-            <code className={styles.code}>mapMarkerPointsKey</code> 直接讀
-            <code className={styles.code}>timelineRef.current.nodes.get(id)</code> 拿主題點的子景點——
-            因為 <code className={styles.code}>PlanStopMarker</code> 不帶 children，而那是模擬層專屬的概念。
+            <span className={styles.noteTitle}>
+              地圖層繞過介面讀 children（2026-10 已修正）
+            </span>
+            原本 <code className={styles.code}>mapMarkerPointsKey</code> 直接讀
+            <code className={styles.code}>timelineRef.current.nodes.get(id)</code> 拿主題點的子景點，
+            而且只在 <code className={styles.code}>kind === 'simulated'</code> 時讀——交接到真實層之後
+            timeline 住在 <code className={styles.code}>TripPlanPage</code> 內部、外層讀不到，主題點的展開能力整個消失。
+            現已改為 <code className={styles.code}>PlanStopMarker</code> 帶
+            <code className={styles.code}>children</code>，由兩邊的投影各自填好，地圖那側不再需要分支。
           </div>
           <div className={styles.note}>
             <span className={styles.noteTitle}>兩條路徑的中間層完全分開</span>

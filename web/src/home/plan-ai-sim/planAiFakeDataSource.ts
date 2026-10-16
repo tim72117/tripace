@@ -58,7 +58,17 @@ const REAL_PHOTOS: Record<string, string> = {
 // randomDelayMs()(900~1500ms)的 thinking 停頓,這裡的延遲是在
 // insertAttractionAfter 同步插入節點「之後」才背景觸發的非同步查詢,跑在
 // 下一則 action 送出前的這段間隔之內,不會拖慢或打亂劇本本身的播放節奏。
-const FAKE_QUERY_DELAY_MS = 650
+//
+// 2026-10 從 650ms 調到 280ms(使用者明確要求「縮短地點卡的延遲時間」):
+// 原本的值是對齊後端 800~1500ms 的量級訂的,但那是真的在等網路;這裡
+// 資料全在前端記憶體,650ms 等於純粹讓使用者乾等。280ms 仍然足以讓
+// 骨架卡被看見(人眼可辨識的最短狀態切換約 100~200ms),但不再有「卡住」
+// 的感覺。
+//
+// 注意:卡片照片是 GCS 上的外部圖片(見上方 REAL_PHOTOS),那段下載時間
+// 不受這個常數影響——調這裡只縮短「骨架轉正式卡」的等待,照片仍然要等
+// 瀏覽器下載完才會顯示。
+const FAKE_QUERY_DELAY_MS = 280
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))

@@ -169,7 +169,11 @@ export function AiPlanPhoneDemoScreen({
           AiPlanPhoneDemo.tsx 的 <Link to="/ai-plan">,這顆「按鈕」只是
           視覺引導,不需要(也不能)自己攔截點擊或觸發任何互動,故用
           <div> 而非 <button>,避免暗示這裡有獨立於外層 Link 之外的
-          可互動語意。 */}
+          可互動語意。
+          2026-10(第三輪):使用者先要求「放到時間軸上方,放大一點」,
+          實機看過後改要求「跟時間軸交換位置,時間軸往上放一點」——
+          按鈕維持在底部、尺寸維持放大後的 52px,改成把時間軸往上頂
+          (.timelineWrap 的 padding-bottom),見兩者的完整說明。 */}
       <div className={styles.tryItCta} aria-hidden="true">
         試試看
       </div>

@@ -88,16 +88,21 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
-  /* 2026-10 修正(使用者實機回報「卡片跟按鈕中間多出了間距」):原本
-     這裡額外補了 padding-bottom: 72px 給 .tryItCta 留空間,但
-     HorizontalPlanTimeline.module.css 的 .wrap 本身已經自帶
-     padding-bottom: 70px(那是給 /ai-plan 頁面自己的漂浮「讓我試看看」
-     composer 預留的空間,見該處的完整說明),兩層疊加起來共約 142px,
-     遠超過這個展示框實際只需要的 40px 按鈕高度+留白,卡片列因此被
-     不必要地往上推、底部露出一大塊空白。這裡的留白移除,改用
-     HorizontalPlanTimeline 元件自帶的 70px(雖然理由是對齊另一個
-     呼叫端的 composer,但數值本身已經足夠讓這個展示框的按鈕不蓋住
-     卡片,不需要再疊加一層)。 */
+  /* padding-bottom——把時間軸從「貼齊底部」往上頂(2026-10 使用者明確
+     要求「跟時間軸交換位置,時間軸往上放一點」:按鈕回到下方、時間軸
+     到上方)。
+
+     HorizontalPlanTimeline 的 .wrap 用 margin-top: auto 把自己推到容器
+     底部,那是共用元件的行為(/ai-plan 手機版也依賴它,見該處的完整
+     說明),不該為了這個展示框去改。改成在這個容器補下留白,把「底部」
+     的位置本身往上移——元件的行為不變,它仍然是貼齊容器底部,只是容器
+     的底部現在在更上面。
+
+     56px:.wrap 自帶的 padding-bottom: 70px 已經在卡片下方留了一截
+     (那是給 /ai-plan 自己的漂浮 composer 預留的),但按鈕高 52px 放
+     進去之後卡片仍然壓得太低。2026-10 使用者實機看過後要求「時間軸
+     再往上挪一點」,從 24px 加到 56px。 */
+  padding-bottom: 56px;
 }
 
 /* composer/composerText/caret(開場輸入膠囊)已整個移除——2026-10
@@ -114,6 +119,14 @@
    樣式(:hover/:focus-visible 等)。 */
 .tryItCta {
   position: absolute;
+  /* 2026-10(第三輪,使用者明確要求「跟時間軸交換位置,時間軸往上放
+     一點」):按鈕回到下方、時間軸往上。上一輪曾把按鈕移到卡片列上方
+     (bottom: 432px),但那讓按鈕夾在畫面中段、下方還留著一大塊卡片,
+     視線順序變成「卡片→按鈕→更多卡片」。改回底部,時間軸則靠
+     .timelineWrap 的 padding-bottom 往上頂(見該處的完整說明)。
+
+     尺寸維持上一輪放大後的 52px/17px(使用者要求的「放大一點」仍然
+     成立,只有位置換回來)。 */
   left: 16px;
   right: 16px;
   bottom: 16px;
@@ -121,13 +134,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 40px;
-  border-radius: 20px;
+  /* 放大:40→52px 高、14→17px 字。這顆按鈕現在是畫面中段的視覺焦點
+     (原本在底部邊緣,是次要的收尾),尺寸要撐得起那個位置。 */
+  height: 52px;
+  border-radius: 26px;
   background: var(--color-accent);
   color: var(--ios-bg, #1C1815);
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 600;
-  box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+  /* 陰影加深——浮在卡片列上方需要更明確的層次分離,原本貼齊底部時
+     下方沒有內容,不需要這麼強的浮起感。 */
+  box-shadow: 0 10px 28px -10px rgba(0, 0, 0, 0.55);
 }
 
 /* 狀態藥丸相關樣式(.statusPill、.statusDot 系列)與 @keyframes breathe

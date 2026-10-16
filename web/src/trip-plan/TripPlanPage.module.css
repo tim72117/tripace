@@ -65,6 +65,43 @@
   position: relative;
 }
 
+/* agentBubble——AI 回覆的對話泡泡,緊貼輸入框上方(2026-10 使用者明確
+   要求「要出現在輸入框上方」,見 TripPlanPage.tsx latestAgentMessage 的
+   完整說明)。只有手機版交接後的橫向版會用到。
+
+   配色與左上角收尖的圓角沿用縱向版 PlanTimelineView.module.css 的
+   .messageBubble(同一組 --ios-ai-message-* 變數),兩種版面視覺語言一致。
+   pointer-events: auto——抵銷 .compactBottom 容器的 none(見該處的完整
+   說明),讓長回覆的文字至少可以被選取。 */
+.agentBubbleWrap {
+  padding: 0 16px 8px;
+  pointer-events: auto;
+}
+
+.agentBubble {
+  padding: 10px 14px;
+  border-radius: 4px 16px 16px 16px;
+  background: var(--ios-ai-message-bg);
+  color: var(--ios-ai-message-text);
+  font-size: 14px;
+  line-height: 1.55;
+  /* 最多六行,超過截斷:泡泡貼著輸入框,無限長會把時間軸整個頂出畫面。
+     用 -webkit-line-clamp 而非固定高度——行數截斷在中英文下都是六行,
+     固定高度會切出半行。 */
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  transition: opacity 0.25s ease;
+}
+
+/* agentBubbleStale——新站點插入後這則被標記為「已被後續動作取代」
+   (見 planTimeline.ts staleOtherAgentMessages),降低不透明度表達,
+   不收合成一行——那會讓輸入框上下跳動。 */
+.agentBubbleStale {
+  opacity: 0.55;
+}
+
 /* compactBottom:compact 且 horizontalTimeline(手機版交接後的真實層)。
    這個模式下容器是一整頁高的透明疊層,底下就是地圖,兩件事要同時成立:
    1. 內容貼底:縱向版靠 PlanTimelineView 的 flex:1 捲動區把輸入框推到底,

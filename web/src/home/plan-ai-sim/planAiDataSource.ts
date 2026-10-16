@@ -37,6 +37,13 @@ export interface PlanAiTransitEstimateResult {
   distance: string
 }
 
+// PlanAiPhotoAssetsResult — 對齊 api.ts GeoPlacePhotoAssets(純讀目前
+// 已經落地的照片,不觸發補圖——2026-09 使用者明確要求「重試時只能取圖,
+// 不能觸發補圖」,見該處的完整說明)。
+export interface PlanAiPhotoAssetsResult {
+  googlePhotoUrls?: string[]
+}
+
 // PlanAiDataSource — attractionTools.ts(search_attraction)與
 // AIPlanTimelinePage.tsx(add_attraction 背景反查、插入 stop 時的交通
 // 時間預估)實際需要的最小介面。cfg(ClientConfig)不在這個介面裡——
@@ -48,4 +55,18 @@ export interface PlanAiDataSource {
     from: { lat: number; lng: number },
     to: { lat: number; lng: number },
   ): Promise<PlanAiTransitEstimateResult>
+  // photoAssets — 2026-10 新增(使用者明確要求讀取層「可以像推論層那樣
+  // 獨立抽換,用相同的方式對接取得資料,包含地點資訊、圖片」)。
+  //
+  // 原本只有 placeDetails/transitEstimate 在介面裡,照片是 /app 正式頁
+  // 自己直接呼叫 fetchGeoPlacePhotoAssets 補的(見 TripPlanPage.tsx
+  // resolveAttractionForStep 的第七個參數),展示頁則完全沒有這條路徑
+  // ——照片網址直接寫在 attractionPool.ts 的假資料裡。兩邊各走各的,
+  // 介面因此不完整:換一份實作換不掉照片的來源。
+  //
+  // 選填(?):假資料實作的照片已經隨 placeDetails 一起回傳
+  // (googlePhotoUrls),不需要第二次查詢;真後端則是分兩段(詳情先回,
+  // 照片可能還在背景補圖,之後重試才拿得到)。呼叫端沒有這個方法時
+  // 就不做第二段查詢,跟展示頁目前的行為一致。
+  photoAssets?(placeId: string): Promise<PlanAiPhotoAssetsResult>
 }

@@ -82,6 +82,11 @@ export interface HorizontalPlanTimelineProps {
   // onRemoveStop——選填:卡片右上角顯示一顆刪除按鈕,點擊時呼叫並傳入
   // 這個節點的 id。語意與選填理由完全對齊 PlanTimelineView.tsx 同名
   // prop(見該檔案的完整說明)——模擬層不傳就不會出現刪除按鈕。
+  // onLatestMessageChange——把目前要顯示的 AI 回覆文字回報給呼叫端,
+  // 由呼叫端決定渲染在哪裡(見 latestMessage 的完整說明:泡泡要貼著
+  // 輸入框,那不在這個元件的 DOM 子樹內)。選填,對齊其餘選填 prop 的
+  // 既有慣例——/ai-plan 展示頁的模擬層不傳(劇本沒有 message 節點)。
+  onLatestMessageChange?: (message: { text: string; stale: boolean } | null) => void
   onRemoveStop?: (stopId: string) => void
   // onPanToStop——選填:卡片左下角顯示一顆「移動到此」按鈕,點擊時呼叫
   // 並傳入這個節點的 id。2026-10 新增(使用者明確要求「選擇圖卡時不要
@@ -376,6 +381,7 @@ export function HorizontalPlanTimeline({
   onSelectThemeChild,
   onOpenPhotos,
   onHeightChange,
+  onLatestMessageChange,
   onRemoveStop,
   onPanToStop,
   onTransitModeChange,
@@ -412,6 +418,54 @@ export function HorizontalPlanTimeline({
     [stops, selectedStopId],
   )
   const selectedNoteMeta = useMemo(() => (selectedNote ? resolveNoteMeta(selectedNote) : null), [selectedNote])
+
+  // latestMessage——AI 推論的回覆文字,透過 onLatestMessageChange 交給
+  // 呼叫端渲染成對話泡泡(2026-10 使用者明確要求「展示進到真的推論後,
+  // 用目前的對話泡泡顯示推論的文字」,後續再要求「要出現在輸入框上方」)。
+  //
+  // 為什麼不是這個元件自己渲染:泡泡要緊貼輸入框,而輸入框在交接後是
+  // 透過 ComposerPortal 傳送到版面外殼的插槽裡(見 TripPlanPage.tsx
+  // composerSlot 的完整說明),不在這個元件的 DOM 子樹內。這裡渲染的話
+  // 泡泡會卡在時間尺上方、跟輸入框隔著整個卡片列。
+  //
+  // 在這之前橫向版完全不渲染 message 節點(只取 type === 'stop',見上方
+  // stops 的說明)——那在模擬展示階段沒問題,劇本本來就沒有 message;
+  // 但交接到真實 AI 之後(LivePlanLayer → TripPlanPage,手機版走
+  // horizontalTimeline),onagent 回覆的文字就這樣消失了,使用者只看到
+  // 卡片一張張冒出來,不知道 AI 在說什麼。
+  //
+  // 只顯示最新一則而不是全部:橫向版沒有縱向版那種可捲動的訊息列
+  // (縱向版 PlanTimelineView 每則 message 是時間軸上獨立的一列),
+  // 這裡是固定高度的橫幅,塞不下多則。取最新的那則——舊訊息在
+  // staleOtherAgentMessages 標記下本來就會淡化收合(見 planTimeline.ts
+  // 該函式的完整說明),語意上「最新那則才是現在要看的」。
+  //
+  // 不排除 stale(2026-10 修正,使用者實機回報「有回應了,可是沒有顯示
+  // 對話泡泡」):第一版篩掉 stale 的訊息,理由是「已被後續動作取代」。
+  // 但 staleOtherAgentMessages 的規則是「只要插入任何新的 stop,就把
+  // 所有 message 標記 stale」(見 planTimeline.ts 該函式)——AI 回一句話
+  // 再排一個景點,那句話立刻變 stale,泡泡等於只閃一下就消失。
+  //
+  // 縱向版可以排除是因為它把 stale 訊息收合成一行淡化小字保留著
+  // (見 PlanTimelineView.tsx 的 messageBubbleStale),不是真的不顯示;
+  // 橫向版沒有那個收合態,排除就等於整個不見。改成照樣顯示最新一則,
+  // stale 與否只影響透明度(見 .messageBubbleStale)。
+  const latestMessage = useMemo(() => {
+    for (let i = steps.length - 1; i >= 0; i -= 1) {
+      const node = steps[i]
+      if (node.type === 'message' && node.text) return node
+    }
+    return null
+  }, [steps])
+
+  // 把最新訊息回報給呼叫端渲染(見 latestMessage 與 onLatestMessageChange
+  // 的完整說明)。用 effect 而不是在 render 期間直接呼叫——後者會在父層
+  // 渲染中途觸發它的 setState,React 會警告。
+  useEffect(() => {
+    onLatestMessageChange?.(
+      latestMessage ? { text: latestMessage.text ?? '', stale: latestMessage.stale === true } : null,
+    )
+  }, [latestMessage, onLatestMessageChange])
 
   const scrollerRef = useRef<HTMLDivElement | null>(null)
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map())
@@ -819,6 +873,9 @@ export function HorizontalPlanTimeline({
   // 時(第一站還沒生成出來,見下方骨架卡渲染邏輯)仍要顯示呼吸點本身,
   // 讓使用者在「完全沒有任何內容」的那段等待期也能看到「AI 正在做事」
   // 的訊號,不是進頁後有一段空白期才突然冒出第一張卡片。
+  // 泡泡改由呼叫端渲染(見 onLatestMessageChange 的完整說明)之後,這裡
+  // 恢復原本的條件:沒有站點又沒在生成就整個不渲染。上面那個通知用的
+  // effect 在 return null 之前就已經執行過,呼叫端照樣收得到訊息。
   if (stops.length === 0 && !isGenerating) return null
 
   return (
@@ -829,6 +886,13 @@ export function HorizontalPlanTimeline({
           的完整說明)。沒有備註時渲染一個等高的透明佔位(維持固定版面
           高度,不讓下方內容隨選中站點有沒有備註而上下跳動——跟卡片固定
           height 的理由一致)。 */}
+      {/* messageBubble——AI 推論回覆的對話泡泡(見 latestMessage 的完整
+          說明)。視覺語言對齊縱向版 PlanTimelineView.module.css 的
+          .messageBubble(同一組 --ios-ai-message-* 變數、同樣的左上角
+          收尖圓角),但這裡是固定在時間軸上方的單則橫幅,不是時間軸上
+          可捲動的一列。
+          沒有訊息時整個不渲染(不留佔位):模擬展示階段劇本沒有
+          message,留一塊空白會讓時間軸無故往下壓。 */}
       <div className={styles.noteBanner}>
         {selectedNote && selectedNoteMeta ? (
           <div className={styles.noteBannerContent} style={{ color: selectedNoteMeta.colorVar }}>

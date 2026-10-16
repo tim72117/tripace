@@ -14,13 +14,19 @@
 - **`RateLimiter.AllowWithLimit`**：key 為外部來源 IP 這種無上限集合時，不把每個 key 寫進規則表（清理機制只回收計數視窗、不回收規則表，寫入就是永久洩漏）。
 - **共用時間軸模組**：`planTimeline`、`PlanTimelineView`、`TripPlanPage` 新增選填 props，並新增草稿清單 `planTimelineDrafts`；地圖新增 `mapMarkerLayer`、`useMapSafeArea`、`solveSafeAreaCenter`。`usePlanSimSocket` 新增選填的第二參數 `createSource`，`AiPlanPhoneDemo`／`AiPlanPhoneDemoScreen` 新增選填 props（`scale`、`className`、`screenProps`、`createSource`、`started`、`onSource`、`focusLatest`），既有呼叫端不需調整。
 - **新的前端 feature flag（皆預設關閉）**：`VITE_FEATURE_TRANSIT_MODE_SELECT`（交通方式選單）、`VITE_FEATURE_NEW_TRIP_DRAFT`（交接後的「新行程」按鈕）。另外 `DesktopShared.tsx` 已宣告 `ROUTE_LINE_ENABLED`（`VITE_FEATURE_ROUTE_LINE`）與 `DESTINATION_PROMPT_ENABLED`（`VITE_FEATURE_DESTINATION_PROMPT`）兩個旗標，但對應功能尚未納入本版，開啟沒有效果。
-- **`showcase-demo` 新增 `/plan-data-flow` 內部文件頁**：整理行程資料的分層架構與四種輸入來源各自接在哪一層。
+- **`showcase-demo` 新增 `/plan-data-flow` 內部文件頁**：整理行程資料的分層架構與四種輸入來源各自接在哪一層，並記錄讀取層（站點詳情與照片怎麼補上來）這條原本沒畫出來的路徑。
+- **讀取層可抽換（`PlanAiDataSource`）**：介面補上選填的 `photoAssets`（原本照片是 `/app` 自己直接呼叫 `fetchGeoPlacePhotoAssets`，展示頁則寫死在假資料裡，兩邊各走各的），並新增真後端實作 `createPlanAiApiDataSource(cfg)`。`usePlanSimSocket` 新增選填的第三參數 `dataSource`（預設假資料），原本寫死的 `planAiFakeDataSource` 呼叫全部改為注入。目前尚無呼叫端傳入真後端實作，這條路徑是備而不用的框架。
+- **手機版交接後顯示 AI 回覆的對話泡泡**：橫向時間軸原本只渲染 `type === 'stop'` 的節點，交接到真實 AI 之後 onagent 回覆的文字無處顯示。改由 `HorizontalPlanTimeline` 透過新的選填 prop `onLatestMessageChange` 回報最新訊息，`TripPlanPage` 渲染在 `ComposerPortal` 內、緊貼輸入框上方（泡泡要貼著輸入框，而輸入框不在時間軸的 DOM 子樹內）。桌面版縱向時間軸不受影響，它的 message 節點本來就是獨立的一列。
 
 ### 修正
 
 - **手機版交接後地圖拉不動、輸入框貼在頂端**：交接後 `.timelinePanel` 撐滿整頁且 `TripPlanPage` 容器高度 100%，兩層都攔截指標事件；草稿為空時沒有東西把輸入框推到底部。改由 `PlanOverlayPanel` 統一處理貼底與事件穿透。
 - **手機版橫向 overscroll**：`base-ui.css` 由 `overscroll-behavior-y` 改為不分軸向的 `overscroll-behavior`，修正拖曳橫向卡片列或地圖時整個畫面彈出視窗再彈回。
 - **訪客端點 IP 節流可被偽造的 header 繞過**：`clientIP` 原本可能取 `X-Forwarded-For` 最左邊（用戶端自行送出）或 `X-Real-IP`（Cloud Run 不會設定），每次請求換一個假值就能讓節流永遠看不到同一個 key，耗用 Google Places 配額。改為取 `X-Forwarded-For` 由後往前數 `TRUSTED_PROXY_HOPS`（預設 1）筆，header 筆數不足時退回 `RemoteAddr`，不再讀 `X-Real-IP`。
+- **交接到真實 AI 後地圖上完全沒有站點圓點**：`handover()` 只做一次 `setPlanSource(liveSource)`，存進 state 的是交接當下那個 `stops: []` 的快照；之後 `LivePlanLayer` 回報站點、`liveSource` 換成新物件，但 `planSource` 仍指著舊快照，地圖永遠拿到空陣列。補上與模擬來源對稱的同步 effect。
+- **交接後主題點無法展開**：`PlanStopMarker` 原本不帶 `children`，`AIPlanTimelinePage` 因此繞過 `PlanStopsView` 介面直接讀 `timelineRef`，而且只在 `kind === 'simulated'` 時讀——交接後 timeline 住在 `TripPlanPage` 內部、外層讀不到，所有站點退化成單點。改為 `PlanStopMarker` 帶 `children`，由兩邊的投影各自填好（`TripPlanPage` 的 `mapStops` 一併補上回報），地圖那側不再需要分支。
+- **`dragStopTime` 的 `useCallback` 漏了 `dataSource` 依賴**：注入真後端實作時會鎖住首次 render 的實例，`cfg`（含登入 token）更新後拖拉時間仍用舊的。
+- **首頁小展示的節奏與版位**：「試試看」按鈕放大（40→52px 高、14→17px 字），時間軸往上挪讓出空間；假資料來源的人為查詢延遲從 650ms 降到 280ms——原值是對齊真後端 800~1500ms 的量級訂的，但展示頁資料全在前端記憶體，650ms 等於純粹讓使用者乾等（骨架卡仍然看得見）。這個延遲同時影響 `/ai-plan` 展示頁。
 - **Vitest 在 Node 25+ 整批失敗**：新版 Node 內建 Web Storage，沒帶 `--localstorage-file` 時 `globalThis.localStorage` 回傳 `undefined` 並搶先佔位，jsdom 自己的 Storage 拿不到。`vitest.setup.ts` 只在缺失時補上（優先用 jsdom 實例自己的 Storage），Node 26 下失敗由 45 項降到 4 項（剩餘為寫死日期與地圖 mock 缺方法的既有問題）。
 
 ### 部署注意

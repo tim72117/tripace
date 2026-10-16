@@ -19,6 +19,7 @@ import { PlanTimelineView } from '../plan-core/PlanTimelineView'
 // 等價但程式碼各自獨立的實作。這裡只是多一個呼叫端,不影響
 // home/plan-ai-sim/ 那邊的既有呼叫方式。
 import { HorizontalPlanTimeline } from '../home/plan-ai-sim/HorizontalPlanTimeline'
+import type { PlanStopMarker } from '../geo-planning/usePlanStopMarkers'
 import { ComposerPortal } from './ComposerPortal'
 import { ComposerSlotContext } from '../plan-core/composerSlot'
 import {
@@ -932,7 +933,7 @@ export function TripPlanPage(props: {
   // 這些回調不需要穩定的 identity:元件內部已用 useStableCallback 隔離
   // (見下方 reportStops 與 selectStop),呼叫端的函式參照不會進任何
   // 依賴陣列,傳 inline 箭頭函式是安全的。
-  onStopsChange?: (stops: { id: string; lat: number; lng: number; name?: string }[]) => void
+  onStopsChange?: (stops: PlanStopMarker[]) => void
   // selectedStopId/onSelectedStopChange——目前選中哪一站。三種合法組合:
   //   - 兩個都傳:受控。以 selectedStopId 為準,元件自己不存狀態,每次
   //     使用者點選都呼叫 onSelectedStopChange(地圖對話小匡用這個)。
@@ -1154,6 +1155,12 @@ export function TripPlanPage(props: {
   // composerSlot——版面外殼提供的輸入框插槽(見 plan-core/composerSlot.ts)。
   // 不在外殼裡時是 undefined,輸入框維持原位渲染,行為不變。
   const composerSlot = useContext(ComposerSlotContext)
+  // latestAgentMessage——橫向版時間軸回報的最新 AI 回覆(見
+  // HorizontalPlanTimeline.tsx onLatestMessageChange 的完整說明)。
+  // 渲染成對話泡泡、緊貼輸入框上方(使用者明確要求「要出現在輸入框
+  // 上方」)——縱向版不需要這個,它的 message 節點本來就是時間軸上
+  // 獨立的一列(見 PlanTimelineView.tsx 該分支)。
+  const [latestAgentMessage, setLatestAgentMessage] = useState<{ text: string; stale: boolean } | null>(null)
 
   // mountedIdsRef——追蹤「已經播過進場動畫的節點 id」,理由同原型的完整
   // 說明:用 id 而非陣列 index 判斷 justMounted,插入到中間的節點才能
@@ -1193,11 +1200,28 @@ export function TripPlanPage(props: {
   // 是因為「哪些節點還沒查到座標」屬於時間軸自己的狀態,不該外流給
   // 只負責畫點的圖層(見 usePlanStopMarkers 對 PlanStopMarker.lat/lng
   // 必填的說明)。
+  //
+  // 2026-10 補上 children(使用者明確要求交接前後「套用相同的元件跟
+  // 地圖互動」):主題點展開後的子景點。原本這裡不回報,所以 /ai-plan
+  // 交接到真實層之後,地圖上所有站點都變成單純的景點圓點,主題點
+  // 展開的能力消失——那不是刻意的設計,是這份投影漏了一個欄位。
+  // 只收已經查到座標的子景點,理由同上方對父節點的處理。
   const mapStops = useMemo(
     () =>
       steps
         .filter((s) => s.type === 'stop' && s.lat != null && s.lng != null)
-        .map((s) => ({ id: s.id, lat: s.lat!, lng: s.lng!, name: s.name })),
+        .map((s) => {
+          const children = (s.children ?? [])
+            .filter((c) => c.lat != null && c.lng != null)
+            .map((c) => ({ id: c.id, lat: c.lat!, lng: c.lng!, name: c.name }))
+          return {
+            id: s.id,
+            lat: s.lat!,
+            lng: s.lng!,
+            name: s.name,
+            ...(children.length > 0 ? { children } : {}),
+          }
+        }),
     [steps],
   )
 
@@ -1425,6 +1449,7 @@ export function TripPlanPage(props: {
           縱向版的時間微調彈層整套互動也一併移除了)。 */}
       {horizontalTimeline ? (
         <HorizontalPlanTimeline
+          onLatestMessageChange={setLatestAgentMessage}
           steps={steps}
           selectedStopId={selectedStopId}
           // onSelectStop——對齊 home/plan-ai-sim/AIPlanTimelinePage.tsx
@@ -1551,6 +1576,23 @@ export function TripPlanPage(props: {
         slot={composerSlot}
         wrapperClassName={[compact ? styles.compact : '', styles.inSlot].filter(Boolean).join(' ')}
       >
+        {/* 對話泡泡——緊貼輸入框上方(見 latestAgentMessage 的完整說明)。
+            放在 ComposerPortal 內部、.composer 之前:輸入框是透過 portal
+            傳送到版面外殼插槽的,泡泡要貼著它就得在同一個 portal 裡,
+            不能留在時間軸那邊。
+            只有橫向版(手機版交接後)會有值——縱向版的 message 節點本來
+            就是時間軸上獨立的一列,不走這條路徑。 */}
+        {horizontalTimeline && latestAgentMessage && (
+          <div className={styles.agentBubbleWrap}>
+            <div
+              className={[styles.agentBubble, latestAgentMessage.stale ? styles.agentBubbleStale : '']
+                .filter(Boolean)
+                .join(' ')}
+            >
+              {latestAgentMessage.text}
+            </div>
+          </div>
+        )}
         <div className={styles.composer}>
           <div className={styles.composerInner}>
             <form
