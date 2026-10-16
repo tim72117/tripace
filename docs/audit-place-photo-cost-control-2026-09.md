@@ -13,38 +13,38 @@
 再次稽核，建議直接更新本檔案（比照 audit-* 的「現況（日期複核）」慣例），不要
 另開新日期檔案。
 
-**與既有稽核文件的關係**：`docs/audit-security.md` 的 **S9「完全沒有 rate
-limiting」** 已經記錄「內部端點完全沒有任何請求頻率限制」這個既有發現，本文件
-問題 1 的結論是 S9 在這支特定端點（`GET /internal/geo/place-details`）上的
-具體成本後果延伸，不重複計入 S9 的嚴重度分級，僅在此交叉引用。
-
 嚴重度標記：🔴 高｜🟡 中｜⚪ 低（比照 audit-* 既有慣例，這裡不用 critical，因為
 最終防線 `GOOGLE_PLACES_FETCH_PHOTOS` 目前預設關閉，正式環境尚未真正暴露成本
 風險）。
+
+2026-10-16 複核：對照 main @ 4f14828 逐項檢查，已移除 5 項已修復/已過時的發現
+（R1、R5、問題 1、問題 3、問題 6）。保留項目底下的「**現況（2026-10-16 複核）**」
+是本次複核補上的說明，其餘文字維持 2026-09 原文；原文中提到的 `geo_outline.go`
+行號、函式名（`ListPlacePhotoRefs`、`shouldAddGooglePlacePhoto` 等）在
+2026-10 補圖節奏改版後多半已位移或不存在，請以各項的現況說明與附錄索引為準。
 
 ---
 
 ## 現況更新（2026-09，稽核後修補完成）
 
-下方「逐項結論」與「風險嚴重度分級」維持原文不回頭改寫。修補隨
-`feat: 地點照片查詢加上拒絕型速率限制與併發丟棄機制`（commit `f86480c`）
-落地：
+下方「逐項結論」與「風險嚴重度分級」保留 2026-09 原文，已解決的項目已於
+2026-10-16 複核時移除。修補隨 `feat: 地點照片查詢加上拒絕型速率限制與併發丟棄機制`
+落地（文中記載的 commit `f86480c` 在此 repo 內存在，但不在 main 的歷史上；
+main 上對應的是 `a072cde`「地點照片漸進補圖機制，附拒絕型速率限制與併發丟棄」）：
 
-- **R1（全域無總量上限）：✅ 已解決**——新增拒絕型 `apigateway.RateLimiter`，
-  `places.get` 10 秒/1 次、`places.photoMedia` 10 分鐘/1 次，超過直接拒絕
-  不排隊。
-- **同一 placeID 併發丟棄：已加強**——`singleflight`（等待共享結果）
-  改為 `sync.Map` 搶佔丟棄（未搶到立即降級讀現有快取，不等待）。
-- **`GOOGLE_PLACES_FETCH_PHOTOS` 全域開關：單點地點介紹路徑已改為不受
-  控制**——該路徑改由上述兩層機制頂住成本，其餘 `PhotoDataURI` 呼叫端
-  維持受開關控制。
 - **R2（click_count 可被繞過）：🟡 部分緩解**——節流本身未變，但
   `places.photoMedia` 限流大幅拉長榨乾單一地點所需時間（約 50 秒 → 至少
   50 分鐘）。
+  **現況（2026-10-16 複核）**：上述數字是 2026-09 初版參數（`places.photoMedia`
+  10 分鐘/1 次）。目前預設已改為 `places.photoMedia` 60 秒/60 次、`places.get`
+  60 秒/300 次，另有每日額度 `--geo-rate-limit-photo-media-daily-max`（預設
+  100），且可由後台管理介面執行期調整（`server/cmd/server/main.go:100-104`、
+  `server/cmd/server/geo_rate_limit.go:78-96`、`147-170`）；「約 50 分鐘」的
+  推演不再成立，改由「60 次/分」與「每日 100」界定上限。
 - **R3（多 instance 放大攻擊面）：⚪ 未處理**——新機制同樣只在單一
   process 內生效，維持原文結論。
 
-### 🟡 新發現（R4）：第一次查詢的地點若撞上 `places.get` 限流，會整體降級成空白卡片，Pexels 也不會顯示
+### ⚪ 新發現（R4，2026-10-16 複核由 🟡 降為 ⚪）：第一次查詢的地點若撞上 `places.get` 限流，會整體降級成空白卡片，Pexels 也不會顯示
 
 **這是本次修補新引入的問題，原始稽核未涵蓋**（因為當時 Pexels/Google 查詢
 還沒有這種耦合關係）。`fetchAndCachePlaceDetails`（`geo_outline.go`）目前
@@ -65,41 +65,22 @@ limiting」** 已經記錄「內部端點完全沒有任何請求頻率限制」
 並寫入快取），這樣至少能在沒有名稱/地址的情況下先顯示照片，之後使用者
 重新點擊（觸發新的 `GetPlaceDetails` 嘗試）就能補上文字。
 
-### 🟡 新發現（R5）：快取命中分支完全沒有「Pexels 缺圖時補查」機制，跟 Google 端的持續補圖節奏不對稱　✅ 已解決（commit `5055c5d`）
+**現況（2026-10-16 複核）**：🟡 部分仍在。(1) 「Pexels 也不會顯示」的部分已
+不適用——2026-09 起 Pexels 讀圖來源已整個移除（`geo_outline.go:1371-1373`、
+`1637-1641` 的註解；`fetchAndCachePlaceDetails` 已無 Pexels 查詢），照片欄位
+一律由 `applyPhotoAssetsAsSource`（`geo_outline.go:1042-1049`）讀 `photo_assets`。
+(2) 「第一次查詢的地點撞上限流／同 placeID 併發被丟棄 → 空殼卡片」仍在：
+`fetchAndCachePlaceDetails` 的 `GetPlaceDetails` 失敗即回傳錯誤
+（`geo_outline.go:1567-1570`），handler 遇 `ErrRateLimited` 走
+`buildDegradedPlaceDetailsResponse`，無快取列時回傳 `placeDetailsResponse{}`
+空殼（`geo_outline.go:1439-1441`、`1523-1527`）；沒搶到 in-flight 的併發請求同樣
+降級（`1457`）。(3) 「10 秒內有其他人查詢就會落空」不再成立：`places.get`
+預設已放寬為 60 秒/300 次（`server/cmd/server/main.go:100-101`），故嚴重度降為
+⚪。降級回應的註解自己也承認這個行為（`geo_outline.go:1504-1513`）。
 
-**已解決**：新增 `ensurePexelsPhotos`，快取命中/降級回應分支都會在
-「Pexels 沒圖且 Google 也沒圖（`cached.NewPhotoCount == 0`）」時嘗試
-補查一次，獨立於 Google 端節流之外——只有兩個來源都沒圖、卡片真的會
-顯示空白時才觸發，Google 已有圖時不多打這次外部呼叫。
+### 🟡 新發現（R6，2026-10-16 複核由 🔴 降為 🟡）：`textStale` 與照片補圖判斷共用同一個限流 key，兩者同時觸發時照片補圖必然被自家限流器擋下
 
-**已實測重現（修復前）**：手動清空某地點的 `google_place_photos`/`place_pexels_photos`
-兩張表（保留 `place_details_cache` 本身這一列），重新點擊該地點，卡片
-確實顯示為空白（無 Google 圖、無 Pexels 圖）。
-
-根因：`handleGeoPlaceDetails` 快取命中分支（`geo_outline.go` 第 1263 行
-附近）裡，Pexels 照片只是單純的 `ListPlacePexelsPhotos(placeID)` 讀取
-（第 1380 行），**不論讀出來是不是空陣列都直接使用，沒有任何「發現是空的
-就補查一次」的邏輯**——跟同一個分支裡 Google 端「點擊節奏 OR 7 天時間」
-雙觸發、持續嘗試重新確認/補圖的機制形成明顯不對稱。Pexels 查詢只會在
-`fetchAndCachePlaceDetails`（初次查詢，資料庫完全沒有這個 placeID 時）
-發生恰好一次；之後不論這次查詢成功、失敗、或像本次實測一樣資料被清空，
-快取命中分支都不會再嘗試。
-
-觸發情境不只是本次刻意清空資料庫這種人為操作——初次查詢時 Pexels 查無
-結果（`pExels.Search` 回傳 `ok=false`，例如地點名稱在 Pexels 圖庫沒有
-匹配的示意圖）是完全合理、會實際發生的情況，一旦發生，這個地點就永久
-沒有 Pexels 照片可顯示，沒有任何重試機制。
-
-修法方向（未實作，供之後決策）：在快取命中分支比照 Google 端的節奏，
-加上「`PexelsPhotoURLs` 為空且符合觸發條件（例如點擊節奏或時間視窗）時
-補查一次 Pexels」的邏輯——Pexels API 免費，不需要跟 Google 端一樣嚴格
-的節流保護，可以用比 Google 端更寬鬆的觸發頻率（甚至「只要目前是空的
-就每次點擊都嘗試」也是可接受的成本，因為沒有計費風險，只是要避免真的
-查無結果時每次點擊都重複打 Pexels API 造成不必要的外部呼叫）。
-
-### 🔴 新發現（R6）：`textStale` 與照片補圖判斷共用同一個限流 key，兩者同時觸發時照片補圖必然被自家限流器擋下
-
-**這是這次新增速率限制機制自己造成的自我矛盾，嚴重度高於 R4/R5——不是
+**這是這次新增速率限制機制自己造成的自我矛盾，嚴重度高於 R4——不是
 邊界情況才發生，是「兩個判斷式同時成立」時 100% 必然發生，不是機率性
 問題。**
 
@@ -172,6 +153,24 @@ limiting」** 已經記錄「內部端點完全沒有任何請求頻率限制」
    發生就是必然失敗，建議至少加一筆日誌記錄這種「被限流跳過」的情況，
    方便之後觀察實際發生頻率再決定要不要修。
 
+**現況（2026-10-16 複核）**：🟡 部分仍在，機制已換形。(1) 原文描述的
+`ListPlacePhotoRefs` 補圖判斷（`clickTriggered || timeTriggered`、
+`shouldAddGooglePlacePhoto`）已被 2026-10 新補圖節奏取代：`handleGeoPlaceDetails`
+快取命中分支現在以 `photoCapForClickCount`/`decidePlacePhotoRefreshIndex`
+（`geo_outline.go:1656-1689`）決定，觸發時改呼叫 `backgroundFillPlacePhoto`
+（`geo_outline.go:1094-1148`），該函式內部用 `client.GetPlaceDetails` 取得
+`PhotoRefs`（`1105`），不再呼叫 `ListPlacePhotoRefs`（handler 內已無呼叫；僅剩
+`geo/photo_sync.go:63` 的 `SyncPlacePhotos` 使用）。(2) 同樣的「兩次 `places.get`」
+結構依舊存在：`textStale` 分支同步呼叫 `GetPlaceDetails`（`geo_outline.go:1312`），
+同一次請求稍後觸發的背景補圖又呼叫一次 `GetPlaceDetails`（`1105`），兩者共用
+`"places.get"`（`geo/places.go:1212`）同一個限流 key；推薦修法 1（把 `textStale`
+已取得的 `details.PhotoRefs` 傳給 `backgroundFillPlacePhoto` 的
+`knownPhotoRefs` 參數，該參數已存在，快取未命中路徑就是這樣用，見
+`geo_outline.go:1633`）仍未套用到快取命中的 `textStale` 分支。(3) 「必然被擋」
+不再成立：`places.get` 預設為 60 秒/300 次（`server/cmd/server/main.go:100-101`），
+僅在後台把視窗調到極小時才會自我衝突，故降為 🟡（主要剩下重複外呼的浪費）。
+(4) 「沒有任何日誌」已改善：背景補圖失敗會 `log.Printf`（`geo_outline.go:1107`）。
+
 ---
 
 ## 稽核方法
@@ -195,14 +194,6 @@ limiting」** 已經記錄「內部端點完全沒有任何請求頻率限制」
 
 ## 逐項結論
 
-### 問題 1：端點本身有沒有速率限制　✅ 已解決，見上方「現況更新」
-
-**摘要**：沒有 per-user/per-IP rate limit，只有全域 `Gateway` 排隊節流
-（`MaxConcurrency=1`、`MinInterval=2s`，不分 endpoint 共用一份額度）——
-排隊等待，不是拒絕，故只要攻擊持續夠久，累積呼叫量沒有上限（推演：1000
-個不同 place_id 各發一次請求，約 67 分鐘後全數送出，足以吃光月免費額度）。
-現已疊加拒絕型 `RateLimiter` 解決，細節見上方「現況更新」。
-
 ### 問題 2：`click_count` 節流本身能不能被繞過　🟡 部分緩解，見上方「現況更新」
 
 **摘要**：`shouldAddGooglePlacePhoto` 是「持續觸發」而非「觸發一次就停」
@@ -213,14 +204,24 @@ limiting」** 已經記錄「內部端點完全沒有任何請求頻率限制」
 相對有界，但非「至多觸發 1 次」。現已疊加 `places.photoMedia` 拒絕型
 限流大幅拉長榨乾所需時間，細節見上方「現況更新」。
 
-### 問題 3：`singleflight` 的合併範圍是否足夠　✅ 已解決，見上方「現況更新」
+**現況（2026-10-16 複核）**：🟡 部分緩解，但機制已改版。原文的
+`shouldAddGooglePlacePhoto` 遞減節奏公式（`click_count % (newPhotoCount+1)²==0`）
+已不存在，改為 `photoCapForClickCount`：clickCount<10 上限 1 張、10~99 為 2 張、
+之後每 100 次 +1（`geo_outline.go:1656-1661`），`decidePlacePhotoRefreshIndex`
+（`1680-1689`）找 cap 範圍內第一個缺或過期的 index 補圖。`IncrementPlaceClickCount`
+仍是不檢查來源真實性的原子遞增（`server/internal/store/geocache.go:175-193`），
+腳本仍可靠灌 click_count 墊高 cap，故「可被繞過」的核心仍在；但新增了
+per-user 200ms 節流（`throttleGeoQueryByUser`，`server/internal/api/api.go:402`，
+handler 入口 `geo_outline.go:1236`）、`places.photoMedia` 60 次/分與每日額度
+（見上方現況更新），最大暴露量仍以 Google 實際照片張數與上述限流為界。
+另外新機制有一個原文沒有的副作用：cap 範圍內只要有一個 index「永遠補不到」
+（例如該地點在 Google 端只有 1 張或 0 張照片，但 cap 已是 2 以上；或 0 張照片
+的地點 cap=1、index 0 永遠不新鮮），每次點擊都會判定需要補圖並啟動背景任務
+（`geo_outline.go:1365-1368`），而背景任務會先打一次 `GetPlaceDetails`
+（`1105`）才發現 `indexToFetch >= len(refs)` 而靜默結束（`1117-1121`）——即
+這類地點每次點擊都多一次 Enterprise 級 `places.get`，沒有任何「已確認沒有更多
+照片」的記憶。
 
-**摘要**：`singleflight` 只合併同一 placeID 的併發請求，對「大量不同
-地點」攻擊模式完全無防禦力（這本非其設計目標）；且只在單一 process 內
-生效，多 instance 部署下每個 instance 各自一份節流狀態，攻擊面隨
-instance 數量等比放大。同一 placeID 併發丟棄機制已改用 `sync.Map` 搶佔
-式丟棄取代，細節見上方「現況更新」；多 instance 放大問題（R3）維持
-未處理。
 
 ### 問題 4：`textStale` 分支是否有意外放大成本
 
@@ -258,6 +259,16 @@ instance 數量等比放大。同一 placeID 併發丟棄機制已改用 `sync.M
 下把兩個判斷式合併，反而導致問題 1191-1194 註解描述過的「7 天時間觸發條件
 永遠打不到」的舊 bug 復發。
 
+**現況（2026-10-16 複核）**：🟡 部分仍在，內容已改版。兩個獨立判斷式的結構
+仍在，但具體呼叫已變：`textStale` 分支（`geo_outline.go:1298-1322`）仍同步呼叫
+`GetPlaceDetails`；補圖判斷改為 `decidePlacePhotoRefreshIndex`（`1362-1369`），
+觸發時由背景任務 `backgroundFillPlacePhoto` 再呼叫一次 `GetPlaceDetails`
+（`1105`）加 `PhotoDataURIUnrestricted`（`1123`）——不再有 `ListPlacePhotoRefs`。
+因此單次請求的上限仍是 3 次外呼，但組成變成「`GetPlaceDetails` ×2 + 1 次
+Photo Media」，其中兩次 `GetPlaceDetails` 取得的是同一份資料（見 R6）。原文引用
+的行號（1181-1194、1195、1204、1289、1304、1328）已全部位移，說明「故意不綁死」
+的註解現在在 `geo_outline.go:1292-1297`。
+
 ### 問題 5：`photoOnly=1` 模式有沒有獨立的成本風險
 
 **結論：程式碼確認 `photoOnly=1` 模式完全不會觸發 Google Photo Media 下載，
@@ -293,30 +304,30 @@ instance 數量等比放大。同一 placeID 併發丟棄機制已改用 `sync.M
 **這條路徑在現有程式碼下,不論怎麼操作都不會產生任何 Google Photo Media
 計費呼叫**，唯一的成本是 Pexels API 呼叫次數（免費層級），風險等級低。
 
-### 問題 6：`GOOGLE_PLACES_FETCH_PHOTOS` 全域開關的防護邊界　✅ 已解決，見上方「現況更新」
-
-**摘要**：`geo.SetPhotosEnabled`（process 級唯一全域開關，關閉時直接擋下
-所有 Photo Media 下載，零成本）確認是當時唯一的「總量硬上限」防線——一旦
-打開，沒有任何每日/每月配額計數器，只剩「限速非限量」的 `Gateway` 與
-「有界但非零」的 `click_count` 節流，是核心設計缺口。單點地點介紹路徑
-現已改為繞過此開關、改由拒絕型限流機制頂住成本，細節見上方「現況更新」；
-其餘呼叫端維持受此開關控制不變。
+**現況（2026-10-16 複核）**：🟡 部分仍在，且有一處與原結論不符。(1) Pexels 已
+整個移除：快取命中分支現在只呼叫 `applyPhotoAssetsAsSource` 讀 `photo_assets`
+（`geo_outline.go:1336-1340`），未命中分支直接回空 `photoOnlyResponse{}`
+（`1407-1415`），兩處仍都不會觸發 Photo Media 下載，也不再有 Pexels 呼叫。
+(2) **與原結論不符**：快取命中分支裡，`textStale` 判斷（`1298-1322`）排在
+`photoOnly` 提前返回（`1336`）**之前**，所以 `photoOnly=1` 命中一筆超過 24 小時
+的快取列時，仍會同步呼叫一次 `GetPlaceDetails`（Enterprise 級 `places.get`）。
+原文說「完全沒有任何 `client.GetPlaceDetails` 呼叫」對快取命中分支已不成立；
+`handleGeoPlacePhotoAssets` 的註解（`geo_outline.go:1166-1169`）也承認 photoOnly
+並非零副作用。成本仍受 `places.get` 限流與每個列 24 小時一次的上限約束，且清單
+上限仍是 20 筆（`maxGeoGeocodeCandidates`，現在在 `geo_outline.go:508`）。
+(3) 前端 `GeoListItemCard.tsx` 已不存在，延遲載入邏輯抽成
+`web/src/components/ListItemCard.tsx` 的 `useLazyPhotoObserver`（`84-118`）：
+`isIntersecting` 後立即 `observer.disconnect()` 再觸發 `onLoadPhoto`
+（`108-113`），`photoUrl !== undefined` 時不啟動 observer（`102`），一次性去重
+機制仍在。
 
 ---
 
 ## 風險嚴重度分級與修法建議
 
-**以下是原始稽核當下的發現與建議，不回頭修改——已處理項目見上方「現況
-更新」章節的狀態標記，此處保留完整原文供對照。**
-
-### 🔴 高風險（建議在正式開啟 `GOOGLE_PLACES_FETCH_PHOTOS` 之前處理）
-
-**R1：全域無總量上限,`GOOGLE_PLACES_FETCH_PHOTOS` 開啟後理論上可被無上限
-耗用（對應問題 1、3、6）　✅ 已解決，見上方「現況更新」**
-
-當時列出三種修法選項（配額計數器／per-user rate limit middleware／僅加
-監控告警），最終採用等價於選項 1 精神、但更輕量的拒絕型視窗限流器實作，
-細節見上方「現況更新」。
+**以下是原始稽核當下的發現與建議，保留 2026-09 原文；已修復的項目（原 R1）
+已於 2026-10-16 複核時移除，其餘各項底下的「現況（2026-10-16 複核）」為本次
+補上的說明。**
 
 ### 🟡 中風險
 
@@ -328,16 +339,28 @@ instance 數量等比放大。同一 placeID 併發丟棄機制已改用 `sync.M
 拒絕型限流間接大幅拉長榨乾單一地點所需時間，等價於選項 1 的精神，細節
 見上方「現況更新」。
 
+**現況（2026-10-16 複核）**：🟡 部分仍在，見問題 2 底下的現況說明（機制已改為
+`photoCapForClickCount`，click_count 仍可被腳本灌高；限流參數已與原文不同）。
+
 **R3：多 instance 部署下,全域 Gateway 節流與 singleflight 合併範圍都是
-process 內生效,實際攻擊面隨 instance 數量等比放大(對應問題 3)　⚪ 未處理，見上方「現況更新」**
+process 內生效,實際攻擊面隨 instance 數量等比放大　⚪ 未處理，見上方「現況更新」**
 
 - 現況:`docs/research-multi-instance-limitations-2026-09.md` 已記錄此
   既有限制,本文件延伸指出這對「成本控制」的具體後果——攻擊者若能讓
   請求分散打到不同 Cloud Run instance,每個 instance 各自的 2 秒節流
   間隔會疊加成「instance 數量 × 每 2 秒 1 次」的實際總速率。
 - 修法選項:需要跨 instance 共享狀態(例如改用 Redis 實作分散式節流器/
-  singleflight),屬於較大的架構改動,建議與 R1 的配額機制一併規劃(配額
+  singleflight),屬於較大的架構改動,建議與拒絕型限流／每日額度機制一併規劃(配額
   計數器天然需要跨 instance 共享的儲存層,若要做,建議兩者一起設計)。
+
+**現況（2026-10-16 複核）**：⚪ 仍成立，但內容有變。(1) 拒絕型 `RateLimiter` 的
+視窗計數仍是 process 內記憶體（`server/internal/apigateway/ratelimiter.go:104-132`
+的 `windows` map），每個 instance 各算各的，總速率仍隨 instance 數量等比放大；
+同 placeID 併發丟棄的 `placeDetailsInFlight` 也是 process 內 `sync.Map`
+（`server/internal/api/api.go:146`）。(2) 原文「每 instance 每 2 秒 1 次」的
+Gateway 排隊節流已不存在：`apigateway.DefaultConfig()` 現在是不限併發、不限間隔
+（`server/internal/apigateway/apigateway.go:144-146`），總量保護完全依賴上述
+拒絕型限流。(3) `docs/research-multi-instance-limitations-2026-09.md` 仍存在。
 
 ### ⚪ 低風險 / 已確認無問題
 
@@ -348,43 +371,61 @@ process 內生效,實際攻擊面隨 instance 數量等比放大(對應問題 3)
   建議:無需修改程式碼,但建議在 `geo_outline.go` 現有註解基礎上,補充
   一句量化說明(「疊加後最多 3 次外呼」),避免未來被誤判為 bug。
 
+**現況（2026-10-16 複核）**：🟡 與原結論不同，見問題 4 底下的現況說明——外呼
+組成已變為 `GetPlaceDetails` ×2 + Photo Media，其中兩次 `GetPlaceDetails` 重複
+（見 R6），已不只是「設計者已知、可接受」的取捨。
+
 **問題 5(photoOnly 模式):已逐行驗證程式碼與註解一致,無風險**
 
 - 快取命中/未命中兩個分支都已確認完全不呼叫任何 Google Photo Media
   API,前端 `IntersectionObserver` 一次性去重機制正常運作,清單筆數上限
   (20 筆)在候選查詢階段已截斷。此路徑不需要任何修法動作。
 
+**現況（2026-10-16 複核）**：🟡 結論需修正，見問題 5 底下的現況說明——快取命中
+且文字超過 24 小時的 `photoOnly=1` 請求仍會呼叫一次 `GetPlaceDetails`，並非
+「完全不呼叫任何 Google API」；Photo Media 部分的結論仍成立。
+
 ---
 
 ## 附錄:關鍵程式碼位置索引
 
+（2026-10-16 複核：行號已更新為 main @ 4f14828 的位置；原有的
+`shouldAddGooglePlacePhoto`／`decidePlacePhotoAction`／
+`resetPhotoProgressOnTargetChange`／`UpdatePlacePhotoProgress`／`singleflight.Do`
+已不存在，對應的列改為取代它們的新函式。）
+
 | 主題 | 檔案:行號 |
 |---|---|
-| `handleGeoPlaceDetails` 一般模式主流程 | `server/internal/api/geo_outline.go:1115-1433` |
-| 快取命中分支(textStale/clickTriggered/timeTriggered) | `server/internal/api/geo_outline.go:1169-1366` |
-| `fetchAndCachePlaceDetails`(初次查詢) | `server/internal/api/geo_outline.go:1439-1569` |
-| `shouldAddGooglePlacePhoto` | `server/internal/api/geo_outline.go:1591-1605` |
-| `decidePlacePhotoAction` | `server/internal/api/geo_outline.go:1639-1655` |
-| `resetPhotoProgressOnTargetChange` | `server/internal/api/geo_outline.go:1612-1614` |
-| `photoOnly` 快取命中分支 | `server/internal/api/geo_outline.go:1230-1245` |
-| `photoOnly` 快取未命中分支 | `server/internal/api/geo_outline.go:1391-1406` |
-| `IncrementPlaceClickCount` | `server/internal/store/geocache.go:164-182` |
-| `UpdatePlacePhotoProgress` | `server/internal/store/geocache.go:205-216` |
-| `apigateway.Gateway.Do` / `waitForSlot` | `server/internal/apigateway/apigateway.go:114-170` |
-| `apigateway.DefaultConfig`(併發 1、間隔 2 秒) | `server/internal/apigateway/apigateway.go:64-66` |
-| `GOOGLE_PLACES_FETCH_PHOTOS` 開關 | `server/cmd/server/main.go:97-99,121-126` |
-| `internalAuth`(僅 JWT 驗證,無 rate limit) | `server/internal/api/middleware.go:94-107` |
-| `middleware.go` 掛載清單確認無 rate limit | `server/internal/api/middleware.go`(全文) |
-| `singleflight.Do` 合併範圍 | `server/internal/api/geo_outline.go:1408-1422` |
-| photoOnly 前端捲動觸發(一次性去重) | `web/src/geo-planning/GeoListItemCard.tsx:79-106` |
-| 既有測試涵蓋情境 | `server/internal/api/geo_outline_place_photo_progress_test.go`(全文,見下方說明) |
+| `handleGeoPlaceDetails` 一般模式主流程 | `server/internal/api/geo_outline.go:1235-1458` |
+| 快取命中分支(textStale、補圖判斷) | `server/internal/api/geo_outline.go:1280-1376` |
+| `fetchAndCachePlaceDetails`(初次查詢) | `server/internal/api/geo_outline.go:1558-1645` |
+| `photoCapForClickCount`(取代 `shouldAddGooglePlacePhoto`) | `server/internal/api/geo_outline.go:1656-1661` |
+| `decidePlacePhotoRefreshIndex`(取代 `decidePlacePhotoAction`/`resetPhotoProgressOnTargetChange`) | `server/internal/api/geo_outline.go:1680-1689` |
+| `backgroundFillPlacePhoto`(背景補圖,內部呼叫 `GetPlaceDetails`) | `server/internal/api/geo_outline.go:1094-1148` |
+| `photoOnly` 快取命中分支 | `server/internal/api/geo_outline.go:1336-1340`(其前的 textStale 在 `1298-1322`) |
+| `photoOnly` 快取未命中分支 | `server/internal/api/geo_outline.go:1407-1415` |
+| `IncrementPlaceClickCount` | `server/internal/store/geocache.go:175-193` |
+| `apigateway.Gateway.Do` / `waitForSlot` | `server/internal/apigateway/apigateway.go:206-255`、`261-287` |
+| `apigateway.DefaultConfig`(現為不限併發、不限間隔) | `server/internal/apigateway/apigateway.go:144-146` |
+| 拒絕型 `RateLimiter`(`NewRateLimiter`/`SetLimitForKey`/`Allow`) | `server/internal/apigateway/ratelimiter.go:104-208` |
+| `places.get` / `places.photoMedia` 限流預設值與每日額度 flag | `server/cmd/server/main.go:100-104` |
+| `GOOGLE_PLACES_FETCH_PHOTOS` 開關 | `server/cmd/server/main.go:168-170,315-320` |
+| `internalAuth`(僅 JWT 驗證,無 rate limit) | `server/internal/api/middleware.go:138-167` |
+| per-user 200ms 節流 `throttleGeoQueryByUser`(各 handler 入口顯式呼叫,不是 middleware) | `server/internal/api/api.go:402-409` |
+| `middleware.go` 掛載清單確認無 rate limit | `server/internal/api/middleware.go`(全文,2026-10-16 複核仍無 rate limit middleware;節流改在各 handler 內呼叫) |
+| 同 placeID 併發丟棄(取代 `singleflight.Do`) | `server/internal/api/geo_outline.go:1430-1457`、`1477-1489`(`tryClaimPlaceDetailsInFlight`/`releasePlaceDetailsInFlight`),欄位 `server/internal/api/api.go:146` |
+| photoOnly 前端捲動觸發(一次性去重) | `web/src/components/ListItemCard.tsx:84-118`(`useLazyPhotoObserver`;原 `GeoListItemCard.tsx` 已不存在) |
+| 既有測試涵蓋情境 | `server/internal/api/geo_outline_place_photo_progress_test.go`、`geo_place_photo_refresh_test.go`、`place_details_in_flight_test.go`(見下方說明) |
 
-**既有測試涵蓋範圍**:`geo_outline_place_photo_progress_test.go` 目前涵蓋
-四種情境——快取未命中初次查詢(只下載 1 張)、快取命中無觸發(零成本)、
-點擊節奏觸發、時間觸發、target 變動重置。**完全沒有涵蓋**本文件推演的
-「連續高頻請求下單一地點被榨乾多次補圖」(問題 2)、「大量不同 place_id
-各自觸發一次補圖」(問題 1)、「textStale 與照片 target 重查同時觸發疊加
-成本」(問題 4)這幾種情境——這些是成本推演層級的問題,不是功能正確性
-問題,現有測試套件設計目標本來就是驗證「決策邏輯有沒有被正確串接」而非
-「壓力/濫用情境下的行為」,故未涵蓋不代表既有測試有缺陷,但若日後要落地
-R1/R2 的修法,建議一併補上對應的迴歸測試。
+**既有測試涵蓋範圍**:2026-10-16 複核時,`geo_outline_place_photo_progress_test.go`
+涵蓋四種 handler 層情境——快取未命中初次查詢(回應 pending 並下載第一張)、
+快取命中且 cap 範圍內皆新鮮(零 Google 呼叫)、cap 隨點擊數增長開出新名額、
+cap 範圍內有過期照片觸發換新;`geo_place_photo_refresh_test.go` 涵蓋
+`photoCapForClickCount`/`decidePlacePhotoRefreshIndex` 純函式;
+`place_details_in_flight_test.go` 涵蓋併發搶佔。**完全沒有涵蓋**本文件推演的
+「連續高頻請求下單一地點被榨乾多次補圖」(問題 2)、「textStale 與補圖判斷
+同時觸發疊加成本」(問題 4)、以及「地點 Google 端照片數少於 cap、導致每次
+點擊都重打 `GetPlaceDetails`」(問題 2 現況說明)這幾種情境——這些是成本推演
+層級的問題,不是功能正確性問題,現有測試套件設計目標本來就是驗證「決策邏輯
+有沒有被正確串接」而非「壓力/濫用情境下的行為」,故未涵蓋不代表既有測試有
+缺陷,但若日後要落地相關修法,建議一併補上對應的迴歸測試。
