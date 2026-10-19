@@ -1,0 +1,106 @@
+/* PhoneDemoLayout.module.css — PhoneDemoLayout.tsx 的容器骨架樣式。
+   見該元件檔頭的完整說明:只管「容器放哪裡、多大」,不含任何視覺細節
+   (背景色、照片、文字樣式等)——那些是插槽內容自己的 CSS Module
+   (AiPlanPhoneDemoScreen.module.css)負責的範圍,這裡刻意只留版面
+   定位規則,維持「輕量、只有佈局本身邏輯」的設計取捨。
+
+   整份樣式沿用 AiPlanPhoneDemoScreen.module.css 原本的容器定位數值
+   搬過來,不是重新設計——搬動前後視覺應該完全一致,只是改用插槽組裝。 */
+
+/* --composer-slot-height——composer 站位的高度,統一由這個變數表達
+   (而非分散在 .timelineSlot 的 padding-bottom 與 .composerSlot 的
+   高度各自寫一次容易兜不起來的兩個數字),掛在根容器 .screen 上讓
+   兩者都能讀到。2026-10 使用者明確要求「小展示 composer 高度加高」,
+   從原本 56px 調到 72px。 */
+.screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ios-bg, #1C1815);
+  color: var(--color-dark, #2B2420);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
+  --composer-slot-height: 72px;
+}
+
+.mapBackgroundSlot {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+/* statusBarSlot——見原本 .statusBar 的完整說明:貼齊畫面頂端、左右留出
+   動態島空間,z-index 蓋過地圖背景。內容本身的視覺樣式
+   (.statusBarTime/.statusBarIcons)留在 AiPlanPhoneDemoScreen.module.css,
+   這裡只定位容器。 */
+.statusBarSlot {
+  position: absolute;
+  top: 14px;
+  left: 24px;
+  right: 24px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ios-bg, #1C1815);
+  pointer-events: none;
+}
+
+/* captionSlot——見 PhoneDemoLayout.tsx 檔頭「caption」插槽的完整說明:
+   疊在地圖主顯示區上方、statusBar 之下、timeline 卡片列之上的這段
+   空白區域,文字在這段區域裡上下置中(2026-10 使用者明確要求「手機內
+   的文字放大往下上下置中」)。
+   top/bottom——statusBar 大約在 14px+24px(icon 高度)結束,bottom
+   抓時間軸卡片列(HorizontalPlanTimeline 的 .wrap 用 margin-top: auto
+   推到底部,見該元件的完整說明)實際會開始的位置之上,留出這段區域
+   讓 flex 置中有範圍可算,不是整個容器硬置中。
+   z-index 蓋過地圖背景但不需要蓋過 timeline(兩者在垂直空間上自然
+   錯開)。內容本身的視覺樣式(字級/顏色/行高)留在
+   AiPlanPhoneDemoScreen.module.css,這裡只定位容器。 */
+.captionSlot {
+  position: absolute;
+  top: 46px;
+  /* bottom——2026-10 使用者明確要求「稍微往上一點」,從 260px 加到
+     340px:置中範圍的下緣往上收,讓文字整體的置中位置跟著往上移。 */
+  bottom: 340px;
+  left: 20px;
+  right: 20px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  /* justify-content/text-align——2026-10 使用者明確要求「放手機內的
+     文字都置中」:上下、左右皆置中。 */
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* timelineSlot——見原本 .timelineWrap 的完整說明:撐滿容器、flex column
+   讓內容(HorizontalPlanTimeline)能用 margin-top: auto 推到底部。
+   padding-bottom 把時間軸從「貼齊底部」往上頂,基礎值是 composer 站位
+   的高度(讀 --composer-slot-height 變數,確保跟 .composerSlot 不會
+   不同步),額外加 16px(2026-10 使用者明確要求「時間軸往上一點點」)
+   ——這段只影響時間軸卡片列的位置,不動 composer 站位本身的高度。 */
+.timelineSlot {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: calc(var(--composer-slot-height) + 16px);
+}
+
+/* composerSlot——見 PhoneDemoLayout.tsx 檔頭「composer」插槽的完整
+   說明:貼齊畫面底部的站位容器,高度讀同一個 --composer-slot-height
+   變數(見上方 .composerSlotHeight 的完整說明)。z-index 蓋過時間軸
+   (目前沒有呼叫端傳入實際內容,見 AiPlanPhoneDemoScreen.tsx 的完整
+   說明:真正的「試試看」按鈕已經搬到 AiPlanPhoneDemo.tsx 的
+   .tryItCtaOutside,在縮放容器之外,不經過這個插槽)。 */
+.composerSlot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--composer-slot-height);
+  z-index: 2;
+}

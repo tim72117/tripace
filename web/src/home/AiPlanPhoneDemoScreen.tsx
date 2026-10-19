@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { SignalHigh, Wifi, BatteryFull } from 'lucide-react'
 import type { PlanSimSource } from './plan-ai-sim/planSimSource'
 import { HorizontalPlanTimeline } from './plan-ai-sim/HorizontalPlanTimeline'
 import { usePlanSimSocket } from './plan-ai-sim/AIPlanTimelinePage'
+import { PhoneDemoLayout } from './PhoneDemoLayout'
 import demoMapSrc from './assets/ai-plan-demo-map.png'
 import styles from './AiPlanPhoneDemoScreen.module.css'
 
@@ -62,16 +63,25 @@ import styles from './AiPlanPhoneDemoScreen.module.css'
 // 套用,不影響 /product 那張卡片維持原本固定寬度橫向捲動的既有外觀
 // ——選填,省略時預設 false,呼叫端(ScrollPlanDemo.tsx)自行傳 true
 // 開啟。
+//
+// caption——2026-10 新增(使用者明確要求「最小版面,上方的字放進手機
+// 裡面的上方看看」,並確認「文字是放在地圖的主顯示區」、「只有首頁
+// 顯示,/product 不動」):選填,原樣轉交給 PhoneDemoLayout 的 caption
+// 插槽(見該元件的完整說明)。只有 ScrollPlanDemo.tsx(首頁)傳入主
+// 標題+描述文字,FeatureShowcase.tsx(/product)不傳,維持原本沒有
+// 任何標題文字疊在地圖上的樣子。
 export function AiPlanPhoneDemoScreen({
   createSource,
   started = true,
   onSource,
   focusLatest = false,
+  caption,
 }: {
   createSource?: () => PlanSimSource
   started?: boolean
   onSource?: (source: PlanSimSource | null) => void
   focusLatest?: boolean
+  caption?: ReactNode
 } = {}) {
   // 2026-10 使用者明確要求「首頁展示不要輸入框」:移除開場假打字動畫
   // 與輸入膠囊(原本的 typedPrompt/promptTyped state 與下方 .composer
@@ -108,45 +118,55 @@ export function AiPlanPhoneDemoScreen({
     if (latest) setSelectedStopId(latest.id)
   }, [steps])
 
-  return (
-    <div className={`${styles.screen} app-theme-root`}>
-      {/* app-theme-root(不帶 data-theme 屬性)——使用者明確要求「跟著
-          使用者系統偏好自動切換明暗」:base-ui.css 的
-          .app-theme-root:not([data-theme="light"]) 搭配
-          @media (prefers-color-scheme: dark)(見該檔案開頭四段式寫法的
-          完整說明)只在沒有 data-theme 屬性、或屬性不是 "light" 時才會
-          跟隨系統偏好套用深色 token——不指定這個屬性,就是「跟隨系統」
-          的語意,不需要自己讀 prefers-color-scheme 再手動判斷。沒有
-          app-theme-root 這個 class,token 會是 undefined,CSS 裡的
-          fallback 值會生效但不保證跟設計稿一致。 */}
-      {/* 地圖背景——見檔頭說明,存好的靜態圖片,不即時呼叫 API。
-          pointer-events:none(見 .module.css):這張圖本身不可互動,
-          整個展示框的點擊事件由外層 AiPlanPhoneDemo.tsx 的 <Link>
-          接收。 */}
+  // mapBackground——見 PhoneDemoLayout.tsx mapBackground 插槽的完整
+  // 說明。地圖用存好的靜態圖片(見檔頭說明),不即時呼叫 API。
+  // pointer-events:none(見 .module.css):這張圖本身不可互動,整個
+  // 展示框的點擊事件由外層 AiPlanPhoneDemo.tsx 的 <Link> 接收。
+  const mapBackground = (
+    <>
       <img src={demoMapSrc} alt="" className={styles.mapBackdrop} aria-hidden="true" />
       <div className={styles.scrim} />
-      {/* statusBar——2026-10 新增(使用者明確要求「手機上方放信號跟
-          電量」):動態島兩側的 iOS 狀態列裝飾,純視覺、不即時更新
-          (對齊 Apple 行銷素材慣用的固定時間「9:41」,這裡同樣寫死一個
-          時間字串,不需要真的讀系統時鐘——這個展示框本身就是模擬畫面,
-          不是在演示系統 UI 本身的即時性)。aria-hidden:這些圖示/文字
-          不帶任何實際資訊,不該被輔助技術當成有意義內容朗讀。 */}
-      <div className={styles.statusBar} aria-hidden="true">
-        <span className={styles.statusBarTime}>9:41</span>
-        <span className={styles.statusBarIcons}>
-          <SignalHigh size={15} strokeWidth={2.2} />
-          <Wifi size={15} strokeWidth={2.2} />
-          <BatteryFull size={18} strokeWidth={1.8} />
-        </span>
-      </div>
-      <div className={styles.timelineWrap}>
-        {/* onSelectStop/onOpenPhotos——這個展示框不做互動(2026-10
-            使用者明確定調「小展示不做互動」,這次換成橫向版延續同一個
-            定調),給最小可用的 no-op 滿足型別:onSelectStop 仍然接上
-            setSelectedStopId(讓使用者手動點擊卡片時至少視覺上能正確
-            反應,雖然整個展示框是 pointer-events:none、實際上點不到),
-            onOpenPhotos 整個不處理(沒有 Lightbox 覆蓋層可以開,這個
-            展示框沒有那層 UI)。 */}
+    </>
+  )
+
+  // statusBar——2026-10 新增(使用者明確要求「手機上方放信號跟電量」):
+  // 動態島兩側的 iOS 狀態列裝飾,純視覺、不即時更新(對齊 Apple 行銷
+  // 素材慣用的固定時間「9:41」,這裡同樣寫死一個時間字串,不需要真的
+  // 讀系統時鐘——這個展示框本身就是模擬畫面,不是在演示系統 UI 本身的
+  // 即時性)。aria-hidden:這些圖示/文字不帶任何實際資訊,不該被輔助
+  // 技術當成有意義內容朗讀。
+  const statusBar = (
+    <div aria-hidden="true" className={styles.statusBarContent}>
+      <span className={styles.statusBarTime}>9:41</span>
+      <span className={styles.statusBarIcons}>
+        <SignalHigh size={15} strokeWidth={2.2} />
+        <Wifi size={15} strokeWidth={2.2} />
+        <BatteryFull size={18} strokeWidth={1.8} />
+      </span>
+    </div>
+  )
+
+  return (
+    <PhoneDemoLayout
+      mapBackground={mapBackground}
+      statusBar={statusBar}
+      caption={caption}
+      // timeline——onSelectStop/onOpenPhotos:這個展示框不做互動
+      // (2026-10 使用者明確定調「小展示不做互動」,這次換成橫向版延續
+      // 同一個定調),給最小可用的 no-op 滿足型別:onSelectStop 仍然
+      // 接上 setSelectedStopId(讓使用者手動點擊卡片時至少視覺上能
+      // 正確反應,雖然整個展示框是 pointer-events:none、實際上點不到),
+      // onOpenPhotos 整個不處理(沒有 Lightbox 覆蓋層可以開,這個
+      // 展示框沒有那層 UI)。
+      //
+      // composer 插槽——2026-10 開場輸入膠囊、以及後續「試試看」按鈕
+      // 都已整個移除(使用者明確要求「首頁展示不要輸入框」;「試試看」
+      // 按鈕的真正位置已搬到 AiPlanPhoneDemo.tsx 的 .tryItCtaOutside,
+      // 在縮放容器之外,見該檔案的完整說明——這裡原本殘留一份引用已
+      // 刪除 CSS class 的重複死碼,一併清除,不留在 composer 插槽裡)。
+      // 不傳 composer,插槽不會渲染,.timelineSlot 的 padding-bottom
+      // 維持原有數值撐出相同的版面空間(視覺位置不變)。
+      timeline={(
         <HorizontalPlanTimeline
           steps={steps}
           selectedStopId={selectedStopId}
@@ -155,33 +175,7 @@ export function AiPlanPhoneDemoScreen({
           isGenerating={isGenerating}
           focusLatest={focusLatest}
         />
-      </div>
-      {/* 2026-10 開場輸入膠囊整個移除(使用者明確要求「首頁展示不要
-          輸入框」)——原本顯示打字中/打完的那句需求,純展示、唯讀,
-          不接受真的輸入。.composer/.composerText/.caret 的樣式一併從
-          .module.css 移除,見 usePlanSimSocket 呼叫處的完整說明。
-          2026-10(第二輪,使用者明確要求「原本輸入框的地方,放試試看
-          按鈕」):原輸入膠囊的位置改放一顆純視覺的行動呼籲按鈕,對齊
-          /ai-plan 展示頁排完劇本後出現的「讓我試看看」按鈕視覺語言
-          (見 AIPlanTimelinePage.tsx composerCollapsed 的完整說明),但
-          這裡不是真的 <button>——這個展示框整個是 pointer-events:none
-          (見 .screen 的完整說明),點擊事件本來就會原樣冒泡到外層
-          AiPlanPhoneDemo.tsx 的 <Link to="/ai-plan">,這顆「按鈕」只是
-          視覺引導,不需要(也不能)自己攔截點擊或觸發任何互動,故用
-          <div> 而非 <button>,避免暗示這裡有獨立於外層 Link 之外的
-          可互動語意。
-          2026-10(第三輪):使用者先要求「放到時間軸上方,放大一點」,
-          實機看過後改要求「跟時間軸交換位置,時間軸往上放一點」——
-          按鈕維持在底部、尺寸維持放大後的 52px,改成把時間軸往上頂
-          (.timelineWrap 的 padding-bottom),見兩者的完整說明。 */}
-      <div className={styles.tryItCta} aria-hidden="true">
-        試試看
-      </div>
-      {/* 2026-10 整顆狀態藥丸移除(使用者明確要求,先拿掉「已安排 N 站」、
-          再拿掉「正在安排行程…」)——這個小畫面的重點是時間軸本身,
-          站數在上面一目了然,而「正在安排」的狀態由時間軸底部的骨架卡
-          與呼吸點在生成的位置本身表達,比固定在角落的一行字更精準。
-          .statusPill/.statusDot* 的樣式一併從 .module.css 移除。 */}
-    </div>
+      )}
+    />
   )
 }

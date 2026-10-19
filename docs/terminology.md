@@ -53,6 +53,16 @@
 
 規劃地圖清單抽屜／地點介紹卡／日期選擇 sheet 這四層可以同時疊放（例如清單→介紹卡→日期清單→日曆最多四層），開關統一由 `GeoOutlinePhoneView.tsx` 的 `sheetStack`（`useSheetStack`，`web/src/components/useSheetStack.ts`）以堆疊（`push`／`replace`／`pop`／`closeAll`）管理，不再各自用獨立的 `useState`/布林值決定顯示與否——非頂層的 sheet 仍掛載但套用退縮視覺、停用手勢（`isTopmost`／`stackOffsetPx`）。地點介紹卡往下拖曳或收合到最小段時，堆疊中下一層（清單）會連動縮到最小段（`forceCollapsed`），鬆手/展開後恢復。
 
+## /ai-plan 展示頁三階段
+
+`/ai-plan`（`AIPlanTimelinePage.tsx`）與首頁/`/product` 的手機展示框，圍繞同一套「AI 排行程」敘事分成三個不同的畫面/狀態，彼此不是同一件事，容易在討論時混用——正式定調如下：
+
+- **小展示**：首頁（`ScrollPlanDemo.tsx`）與 `/product` 功能介紹頁（`FeatureShowcase.tsx`）裡的手機外框展示（`AiPlanPhoneDemo.tsx` 包著 `AiPlanPhoneDemoScreen.tsx`），固定 390×844 尺寸、不接受真正互動（`pointer-events: none`，整支手機是連到 `/ai-plan` 的 `<Link>`）。讀同一份固定劇本（`planSimScript.ts`），但推進節奏依呼叫端而異：首頁用 `createPlanSimScrollSource`（捲動位置驅動），`/product` 用 `createPlanSimFakeSource`（計時器自動播完）。版面骨架是獨立的 `PhoneDemoLayout`（`web/src/home/PhoneDemoLayout.tsx`），不跟下面兩階段共用。
+- **播放態**：`/ai-plan` 完整展示頁（`AIPlanTimelinePage.tsx`）裡 `handedOver === false` 的階段，同樣播放 `planSimScript.ts` 固定劇本（用 `createPlanSimFakeSource`，計時器自動播完），但是整頁、允許地圖縮放拖曳、有真正的詢問框（`AskPage.tsx`）互動。版面骨架是 `PlanDemoLayout`（`web/src/home/plan-ai-sim/PlanDemoLayout.tsx`），內部包著 `PlanOverlayPanel`。
+- **推論態**：使用者在播放態按下「讓我試看看」交接後，`handedOver` 轉 `true` 的階段，整段模擬畫面換成 `LivePlanLayer`（內部掛載 `/app` 正式頁的 `TripPlanPage`），接上真實 onagent AI 對話——**完全不讀 `planSimScript.ts`**，沒有固定劇本，是真正的即時推論。版面骨架仍是同一個 `PlanDemoLayout`，只是 `passThrough` 模式。
+
+判斷原則：講「固定劇本播放」時用小展示或播放態（依是否為整頁/可互動判斷是哪一個）；講「真實 AI 對話」時一律是推論態，三者不要混用同一個詞籠統帶過。
+
 ## 資料模型
 
 | 正式用語 | 介面用語（畫面顯示文字） | 介面/前端程式碼 | 後端變數 | 資料庫 |

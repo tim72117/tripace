@@ -70,6 +70,31 @@ export function AiPlanPhoneDemo({
           </div>
         </div>
       </div>
+      {/* tryItCtaOutside——使用者明確要求「用跟開始探索一樣大的按鈕跟
+          文字大小」,但這顆按鈕原本在 AiPlanPhoneDemoScreen.tsx 內部、
+          .phoneFrame 的 scale(${scale}) 縮放範圍內,套用跟 HomePage.css
+          .hero-cta 一致的真實 px 數值後,視覺上會被整個展示框的縮放
+          (預設 0.62)等比例縮小,跟「一樣大」的意圖不符(見該元件移除
+          .tryItCta 處的完整說明)。
+          改成搬到這裡(.phoneFrame 之外、仍在同一個 <Link> 底下,不受
+          scale() 影響),直接套用 hero-cta 的真實數值,不需要任何縮放
+          補償計算。位置用 left/right/bottom 的 inline style 動態乘上
+          scale 疊在手機螢幕底部同一個視覺位置——.holder 的尺寸就是
+          縮放後的視覺尺寸(剛好等於手機螢幕範圍,見 .holder 的完整
+          說明),原本 .tryItCta 在縮放前座標系是 left/right/bottom
+          各 16px,換算到這個縮放後座標系要乘上 scale,才會疊在同一個
+          視覺位置(不是直接照抄 16px,那是縮放前的距離,縮放後的
+          視覺距離會偏大)。
+          仍然是 <div> 不是 <button>——跟原本一樣,整支手機(含這顆
+          按鈕)是純視覺引導,點擊靠 <Link> 本身,這顆視覺元素不需要
+          自己的互動語意。aria-hidden 理由同原本 .tryItCta。 */}
+      <div
+        className={styles.tryItCtaOutside}
+        style={{ left: 16 * scale, right: 16 * scale, bottom: 16 * scale }}
+        aria-hidden="true"
+      >
+        試試看
+      </div>
     </Link>
   );
 }

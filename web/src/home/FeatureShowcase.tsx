@@ -2,6 +2,7 @@ import { Wand2, Layers, CalendarClock } from 'lucide-react';
 import { ThemePointDemo } from './ThemePointDemo';
 import { TimelineDemo } from './TimelineDemo';
 import { AiPlanPhoneDemo } from './AiPlanPhoneDemo';
+import { createDemoSimSource } from './plan-ai-sim/demoSimSource';
 import { trackEvent } from '../analytics';
 // 樣式仍住在 ProductPage.css(.product-features / .product-feature-card
 // 那組,連同三個展示元件各自的規則)——由這個共用元件自己 import,
@@ -100,6 +101,12 @@ export function FeatureShowcase({
             {cardTitle === 'AI編排行程' && (
               <AiPlanPhoneDemo
                 onClick={() => trackEvent('landing_cta_click', { page, position: 'feature-ai-plan' })}
+                // screenProps.createSource——2026-10 使用者明確要求「小
+                // 展示只留 5 個」景點站:改用只讀 demoScript.ts(DEMO_SCRIPT,
+                // 前 5 站)的 createDemoSimSource,不再是預設的
+                // createPlanSimFakeSource(讀完整 PLAN_SIM_SCRIPT,播放態
+                // /ai-plan 展示頁專用),見該檔案檔頭的完整說明。
+                screenProps={{ createSource: createDemoSimSource }}
               />
             )}
           </div>

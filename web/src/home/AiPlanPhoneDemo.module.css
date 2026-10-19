@@ -2,9 +2,13 @@
    record/RecordAiPlanPage.module.css 的 .phoneFrame 系列。 */
 
 /* holder 的寬高是縮放後的視覺尺寸(inline style),佔住正確的版面空間;
-   手機本體以 top left 為原點縮放。 */
+   手機本體以 top left 為原點縮放。2026-10 新增 position: relative——
+   當 .tryItCtaOutside(見下方完整說明)需要疊在手機螢幕上但不被
+   .phoneFrame 的 scale() 縮放影響時,以這層(縮放後的視覺尺寸,剛好
+   對應手機螢幕範圍)當定位基準最直接,不需要額外包一層容器。 */
 .holder {
   display: block;
+  position: relative;
   cursor: pointer;
   margin: 1.25rem auto 0;
   max-width: 100%;
@@ -87,4 +91,33 @@
      拖拉手把本身仍能接收指標事件,不受這裡父層 pointer-events:none
      影響。 */
   pointer-events: none;
+}
+
+/* tryItCtaOutside——2026-10 新增(使用者明確要求「用跟開始探索一樣大
+   的按鈕跟文字大小」,按鈕要放到 .phoneFrame 縮放容器之外,見
+   AiPlanPhoneDemo.tsx 該處與 AiPlanPhoneDemoScreen.tsx 移除舊版
+   .tryItCta 處的完整說明)。left/right/bottom 用 inline style 動態
+   乘上 scale 傳入(這裡不寫死,因為呼叫端可能傳不同的 scale,見
+   AiPlanPhoneDemo 的 scale prop)。
+   padding/font-size/border-radius 直接照抄 HomePage.css .hero-cta 的
+   真實數值(15px 34px / 15px / 999px)——這層不在任何縮放容器內,不
+   需要像舊版 .tryItCta 那樣額外補償縮放倍率。 */
+.tryItCtaOutside {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 15px 34px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  /* 2026-10 使用者明確要求「按鈕內的文字要統一為白色」:原本用
+     var(--ios-bg)——那是頁面底色,在淺色模式下是米白、深色模式下是
+     深褐。深色模式時等於深色字配深色的 accent 底,對比不足。
+     accent 底色在兩種模式下都夠深,固定白字才穩定。 */
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 10px 28px -10px rgba(0, 0, 0, 0.55);
 }

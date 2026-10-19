@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AiPlanPhoneDemo } from './AiPlanPhoneDemo'
-import { createPlanSimScrollSource, type ScrollPlanSource } from './plan-ai-sim/planSimScrollSource'
+import { createDemoScrollSource, type DemoScrollSource } from './plan-ai-sim/demoScrollSource'
 import type { PlanSimSource } from './plan-ai-sim/planSimSource'
 import { trackEvent } from '../analytics'
 import styles from './ScrollPlanDemo.module.css'
@@ -10,15 +10,22 @@ import styles from './ScrollPlanDemo.module.css'
 // 跟 /product 功能介紹卡裡的那個小展示是同一個外框、同一張地圖、同一套
 // 版面(都是 AiPlanPhoneDemo → AiPlanPhoneDemoScreen),唯一的差別是
 // 推論層:
-//   - /product:createPlanSimFakeSource(計時器自動播完),使用者被動觀看
-//   - 首頁:createPlanSimScrollSource(捲動位置推進),節奏在使用者手上
+//   - /product:createDemoSimSource(計時器自動播完),使用者被動觀看
+//   - 首頁:createDemoScrollSource(捲動位置推進),節奏在使用者手上
 //
 // 這正是推論層抽成 PlanSimSource 介面的用途——換掉一個工廠函式即可,
 // 外框與渲染完全不需要知道差別。
 //
+// 2026-10(使用者明確要求「小展示只留 5 個」景點站,並確認要「另寫一套
+// 獨立的 demo source」):這兩支改讀獨立的 demoScript.ts(DEMO_SCRIPT,
+// 只有前 5 站),不再是 planSimScrollSource.ts/planSimFakeSource.ts 讀的
+// 完整 planSimScript.ts(PLAN_SIM_SCRIPT,播放態 /ai-plan 展示頁專用)
+// ——見 demoScript.ts 檔頭的完整說明:小展示跟播放態是分離的兩套概念,
+// 不是同一份資料的不同播放範圍。
+//
 // 往回捲以「天」為單位清除(使用者明確要求「當往回滾到前一天時,清除
 // 當天的資料」):跨出某一天時那一天整個收回去,前幾天維持原樣;同一天
-// 內來回捲動不會有任何變化。不做逐站倒退——見 planSimScrollSource.ts
+// 內來回捲動不會有任何變化。不做逐站倒退——見 demoScrollSource.ts
 // 對串流模型與回捲的完整說明。
 //
 // 但往上捲回區塊頂端會整個清空、重新開始(使用者明確要求「上滾清除」)
@@ -44,15 +51,43 @@ const SCROLL_SPAN_VH = 900
 // PHONE_CSS_HEIGHT — AiPlanPhoneDemo 內部手機外框的 CSS 高度(390×844,
 // 見該元件的常數)。算縮放倍率時當分母。
 const PHONE_CSS_HEIGHT = 844
-// HEADER_RESERVED_PX — 標題區塊(eyebrow + 標題 + 說明)加上下留白佔掉
-// 的高度,算可用空間時先扣掉。粗估值,不需要精確——phoneScale 本來就
-// 夾在上下限之間,差個幾十 px 不會讓版面壞掉。
-const HEADER_RESERVED_PX = 260
+// HEADER_RESERVED_PX — 手機外框「之外」還要讓出多少垂直空間,算可用
+// 高度時先扣掉。
+//
+// 2026-10 從 260 降到 120:原本的 260 是「eyebrow + 標題 + 說明」三段
+// 文字都在外框上方時估的,但那三段後來陸續搬進手機畫面內(使用者先要求
+// 「手機版文字在手機裡面」,再要求「將『編排行程』文字也放進手機內」)
+// ——非並排斷點下外框上方只剩漂浮 nav 列的高度,260 變成嚴重超估,
+// 直接把 phoneScale 壓到 0.76 左右,使用者要求的「放大」實質沒有生效
+// (註解當時還寫著「一般視窗高度下通常落在 0.95~1.1」,與行為矛盾)。
+//
+// 120 的組成:上方漂浮 nav 列約 52px(top 16 + height 36,見
+// SiteNavButtons.css)+ 上下各留一截呼吸空間。粗估值,不需要精確——
+// phoneScale 本來就夾在上下限之間。
+const HEADER_RESERVED_PX = 120
+
+// PHONE_SCALE_MIN——phoneScale 的安全下限,見該 state 宣告處的完整
+// 說明:只在極端矮的視窗才會介入,一般視窗高度下 phoneScale 由
+// available / PHONE_CSS_HEIGHT 實際算出,不會被這個下限夾住。
+const PHONE_SCALE_MIN = 0.75
 
 // START_AT——捲動進度超過這個比例才開始播放(見下方 effect 的完整說明)。
-// 0.08 約等於區塊頂端往下捲四分之一個視窗高度(SCROLL_SPAN_VH 是 300vh,
-// 可推進的距離是 200vh,0.08 × 200vh ≈ 16vh)。
+// SCROLL_SPAN_VH 是 900vh、可推進的距離是 800vh,所以 0.08 約等於
+// 64vh(2026-10 修正:這段推導原本寫「SCROLL_SPAN_VH 是 300vh⋯
+// 0.08 × 200vh ≈ 16vh」,是 SCROLL_SPAN_VH 還是 300 時算的,那之後
+// 它調成 900 卻沒回來改,差了 4 倍——而這段推導正是別人要調這個值時
+// 唯一的依據)。
 const START_AT = 0.08
+
+// DESKTOP_WIDE_BREAKPOINT——跟 ScrollPlanDemo.module.css
+// @media (min-width: 1440px) 並排斷點的數值一致(見該處的完整說明:
+// 這是這個區塊自己的視覺決定,不是 useIsDesktop 的 768px 功能性斷點,
+// 兩者刻意分開,不要混用)。2026-10 使用者明確要求「手機版文字在手機
+// 裡面,桌面版文字在外面」:caption(主標題+描述文字)是否傳給手機
+// 畫面內部的插槽,取決於目前是不是處在這個並排斷點——並排時文字回到
+// 外部 .header,上下排列(手機版)時文字疊在手機畫面內,兩種版面各自
+// 決定,不是同一份文字兩邊都顯示或都隱藏的全域開關。
+const DESKTOP_WIDE_BREAKPOINT = 1440
 
 // ADVANCE_THRESHOLD_PX——2026-10 使用者明確回報「小小的滾動馬上就動了
 // 三步」:根因不是 advanceTo 算錯目標索引(它本來就是依絕對捲動位置
@@ -83,20 +118,40 @@ export function ScrollPlanDemo() {
   // 執行。
   const handleSource = useCallback((s: PlanSimSource | null) => setSource(s), [])
 
+  // isDesktopWide——見 DESKTOP_WIDE_BREAKPOINT 的完整說明:是否處在
+  // 1440px 並排斷點,決定 caption 要不要傳給手機畫面內部。
+  const [isDesktopWide, setIsDesktopWide] = useState(
+    () => window.matchMedia(`(min-width: ${DESKTOP_WIDE_BREAKPOINT}px)`).matches,
+  )
+  useEffect(() => {
+    const mql = window.matchMedia(`(min-width: ${DESKTOP_WIDE_BREAKPOINT}px)`)
+    const onChange = () => setIsDesktopWide(mql.matches)
+    mql.addEventListener('change', onChange)
+    return () => mql.removeEventListener('change', onChange)
+  }, [])
+
   // phoneScale——依視窗高度決定手機要多大。
   //
   // 這個展示是整個視窗的主角(sticky 滿版),手機應該盡量撐大;但上方
   // 還有標題區塊,不能真的填滿。扣掉標題與上下留白後的可用高度,除以
   // 手機的 CSS 高度(844)就是倍率。
   //
-  // 夾在 0.62~1.1 之間:下限是 /product 卡片用的尺寸(再小就看不清楚
-  // 時間軸上的字),上限避免在超高螢幕上被放大到失真——手機外框的
-  // 邊框、動態島這些細節是照 1x 畫的,放太大會顯得粗糙。
-  const [phoneScale, setPhoneScale] = useState(0.62)
+  // 夾在 PHONE_SCALE_MIN~1.1 之間:2026-10 使用者明確要求「再放大」,
+  // 原本下限從 0.88 調到 0.95,但在約 800px 高的常見視窗下,
+  // available / PHONE_CSS_HEIGHT 算出的值本來就小於 0.95,被夾到
+  // 0.95 這個固定下限後,手機實際高度加上文字區塊會超出視窗,導致
+  // 手機頂部蓋住上方漂浮 nav 列(見 HEADER_RESERVED_PX 的完整說明:
+  // 那只是算可用空間的粗估值,不是保證手機不會超出視窗的硬限制)。
+  // PHONE_SCALE_MIN 改成遠低於常見視窗算出值的安全下限(0.75)——這樣
+  // 一般視窗高度下 phoneScale 幾乎都是用 available 算出的實際值
+  // (通常落在 0.95~1.1 之間,視覺上達到「放大」的效果),安全下限只在
+  // 真的極端矮的視窗(例如橫向手機)才會介入,避免那種情況下手機整個
+  // 看不清楚。上限維持 1.1,避免在超高螢幕上被放大到失真。
+  const [phoneScale, setPhoneScale] = useState(0.95)
   useEffect(() => {
     const calc = () => {
       const available = window.innerHeight - HEADER_RESERVED_PX
-      setPhoneScale(Math.min(Math.max(available / PHONE_CSS_HEIGHT, 0.62), 1.1))
+      setPhoneScale(Math.min(Math.max(available / PHONE_CSS_HEIGHT, PHONE_SCALE_MIN), 1.1))
     }
     calc()
     window.addEventListener('resize', calc)
@@ -119,14 +174,14 @@ export function ScrollPlanDemo() {
   // createEmptyTimeline()) 並丟掉來源、轉回 true 時重建一個新的(見該
   // hook 的 effect),所以「整個重來」只需要讓 started 跳一次 false。
   // 這跟逐站倒退(真正的回撥)不同——串流模型無法收回已送出的訊息,
-  // 見 planSimScrollSource.ts 的完整說明。
+  // 見 demoScrollSource.ts 的完整說明。
   //
   // 用 requestAnimationFrame 節流:捲動事件的觸發頻率遠高於畫面更新,
   // 每次都算 getBoundingClientRect 是浪費。
   useEffect(() => {
     const el = wrapRef.current
     if (!el) return
-    const scrollSource = source as ScrollPlanSource | null
+    const scrollSource = source as DemoScrollSource | null
     let raf = 0
     // lastAdvanceScrollYRef——見 ADVANCE_THRESHOLD_PX 的完整說明:記錄
     // 上一次真正呼叫 advanceTo 當下的 window.scrollY,下一次 onScroll
@@ -183,11 +238,20 @@ export function ScrollPlanDemo() {
           但顯示的內容黏在視窗上——使用者捲動時看到的是「同一支手機裡
           行程逐漸長出來」,而不是內容跟著往上跑掉。 */}
       <div className={styles.sticky}>
-        <div className={styles.header}>
-          <div className={styles.eyebrow}>編排行程</div>
-          <h2 className={styles.title}>說一句話，行程就排好了</h2>
-          <p className={styles.desc}>往下捲動，看 AI 排出一天的行程</p>
-        </div>
+        {/* header——2026-10 使用者明確要求「手機版文字在手機裡面,桌面
+            版文字在外面」,後確認「desc 絕對在手機裡,title 跟斷點走」,
+            再確認「手機版將『編排行程』文字也放進手機內」:
+            並排斷點(isDesktopWide,見 DESKTOP_WIDE_BREAKPOINT 的完整
+            說明)以上時,eyebrow 與 title 都放在手機外框左側的外部
+            header;以下時三段文字(eyebrow/title/desc)全部進手機畫面
+            內部,外部 header 整個不渲染——手機版的版面是上下排列,
+            外框上方再放文字會把手機擠下去。 */}
+        {isDesktopWide && (
+          <div className={styles.header}>
+            <div className={styles.eyebrow}>編排行程</div>
+            <h2 className={styles.title}>不只是排行程，而是與你一起規劃</h2>
+          </div>
+        )}
         {/* 外框、地圖、版面完全沿用 /product 功能介紹卡的那一份,
             只把推論層換成捲動驅動(見檔頭說明)。 */}
         <AiPlanPhoneDemo
@@ -195,13 +259,27 @@ export function ScrollPlanDemo() {
           scale={phoneScale}
           onClick={() => trackEvent('landing_cta_click', { page: 'home', position: 'feature-ai-plan' })}
           screenProps={{
-            createSource: createPlanSimScrollSource,
+            createSource: createDemoScrollSource,
             started,
             onSource: handleSource,
             // focusLatest——2026-10 使用者明確要求「做在首頁的展示上」
             // 的單卡聚焦堆疊版面(見 AiPlanPhoneDemoScreen.tsx 該 prop
             // 的完整說明),只有首頁這個情境開啟。
             focusLatest: true,
+            // caption——見上方 header 註解的完整說明:desc 永遠放這裡;
+            // eyebrow 與 title 只在非並排斷點(手機版上下排列)時才一起
+            // 放進來,並排時那兩段已經在外部 header 顯示,不重複。
+            caption: (
+              <>
+                {!isDesktopWide && (
+                  <>
+                    <div className={styles.captionEyebrow}>編排行程</div>
+                    <h2 className={styles.captionTitle}>不只是排行程，而是與你一起規劃</h2>
+                  </>
+                )}
+                <p className={styles.captionDesc}>往下捲動，看 AI 排出一天的行程</p>
+              </>
+            ),
           }}
         />
       </div>

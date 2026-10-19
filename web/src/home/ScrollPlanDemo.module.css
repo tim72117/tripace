@@ -35,6 +35,20 @@
   flex: none;
 }
 
+/* phone——2026-10 使用者明確要求「手機版的往上移動一些」(只有手機本身
+   往上,文字位置不動):疊加 margin-top,覆寫 AiPlanPhoneDemo 元件自帶
+   的 margin: 1.25rem auto 0(見該元件 .holder 的完整說明,20px 上邊距)
+   ,讓手機往上貼近文字一些。只在這裡(非 1440px 並排斷點)生效——並排
+   斷點下方有 .phone { margin: 0 } 的覆寫,這段邊距會被那條規則蓋掉,
+   不影響桌面並排版的位置。
+   數值從 -16px 收到 4px——同一輪使用者明確要求「手機可以再放大」
+   (phoneScale 下限提高到 0.95,見上方 phoneScale 的完整說明),放大
+   後的手機疊上 -16px 會整個蓋住上方漂浮 nav 列(Tripace/登入等按鈕),
+   改成留一點正值間距,避開 nav 的同時仍比原本的 20px 更靠近文字。 */
+.phone {
+  margin-top: 4px;
+}
+
 .eyebrow {
   font-size: 12px;
   letter-spacing: 0.24em;
@@ -52,14 +66,51 @@
   text-wrap: balance;
 }
 
-/* desc——同時是狀態列(「往下捲動…」/「正在安排…」/「已安排 N 站」),
-   高度固定避免文字切換時整個版面跳動。 */
-.desc {
+
+/* captionTitle/captionDesc——疊在手機畫面內地圖主顯示區上方的文字
+   (見 PhoneDemoLayout.tsx caption 插槽的完整說明)。2026-10 使用者
+   確認「desc 絕對在手機裡,title 跟斷點走」:captionDesc 永遠渲染,
+   captionTitle 只在非並排斷點(手機版上下排列)時才一起出現,見
+   ScrollPlanDemo.tsx screenProps.caption 的完整說明。
+   字級依手機畫面寬度(390px CSS 尺寸,見 AiPlanPhoneDemoScreen.tsx
+   檔頭「方案 B」的完整說明)調整,比外部 .title/.desc 小——容器窄得多,
+   照搬外部版的 clamp(24px, 3.4vw, 34px) 會在 390px 寬裡爆版。顏色改用
+   白字(text-shadow 搭配半透明黑底)而非 --ink/--ink-soft——這裡疊在
+   地圖圖片上,不是在 --paper 底色上,原本的深色文字在地圖上對比不足。 */
+/* captionEyebrow——手機版把「編排行程」也移進手機畫面內之後的樣式
+   (2026-10 使用者明確要求「手機版將『編排行程』文字也放進手機內」)。
+   字距與大小沿用外部 .eyebrow。
+   顏色維持 --vermilion(2026-10 使用者明確要求「編排行程 文字要用
+   紅色」):它跟外部版本的 .eyebrow 用同一個色票,兩個斷點下的視覺
+   語言一致。疊在地圖上的對比靠 text-shadow 補——這裡不像
+   captionTitle/captionDesc 那樣改成白字,是因為使用者要的就是這抹
+   紅色本身。 */
+.captionEyebrow {
+  font-size: 12px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--vermilion, #8B3A2F);
+  text-shadow: 0 1px 6px rgba(255, 255, 255, 0.85);
+  margin-bottom: 10px;
+}
+
+.captionTitle {
+  font-family: 'ShipporiSerif', "Noto Serif TC", serif;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 0 0 8px;
+  color: #fff;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+  text-wrap: balance;
+}
+
+.captionDesc {
   font-size: 15px;
-  line-height: 1.9;
-  color: var(--ink-soft, #5A5148);
+  line-height: 1.5;
   margin: 0;
-  min-height: 1.9em;
+  color: rgba(255, 255, 255, 0.82);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
 }
 
 /* Desktop(≥1440px)改成左右並排:文案在左、手機在右。

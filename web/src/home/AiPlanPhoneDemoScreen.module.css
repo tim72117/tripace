@@ -3,17 +3,13 @@
 
    整份樣式刻意不含任何 @media 斷點——這個元件固定只給
    AiPlanPhoneDemo.tsx 那個寫死 390×844 CSS 尺寸的手機外框使用,版面
-   永遠是「手機版」,不需要依視窗寬度切換規則。*/
+   永遠是「手機版」,不需要依視窗寬度切換規則。
 
-.screen {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background: var(--ios-bg, #1C1815);
-  color: var(--color-dark, #2B2420);
-  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
-}
+   2026-10(使用者明確要求「小展示用自己獨立的UI layout」):容器骨架
+   (.screen/.statusBar 的定位/.timelineWrap 的定位)已搬到
+   PhoneDemoLayout.tsx/.module.css(見該元件開頭的完整說明),這份檔案
+   只留插槽「內容本身」的視覺樣式——圖片、文字、icon 排列——不再含任何
+   position: absolute 的容器定位規則。 */
 
 .mapBackdrop {
   position: absolute;
@@ -44,25 +40,16 @@
   opacity: 0.55;
 }
 
-/* statusBar——2026-10 新增(使用者明確要求「手機上方放信號跟電量」),
-   位置對齊真實 iOS 狀態列:貼齊畫面頂端、左右各留出動態島(.notch,見
-   AiPlanPhoneDemo.module.css 該 class 的完整說明:寬度 34%、置中)的
-   空間,不會被動態島蓋住也不會重疊。z-index 比 .notch 所在的 .bezel
-   更上層(.notch 本身 z-index: 2,定義在外框那層 CSS),這裡疊在
-   .screen 內容最上方,數值對齊 .tryItCta 的 z-index: 2 即可,不需要
-   刻意拉更高——動態島是外框元素,本來就不會跟 .screen 內部的 z-index
-   競爭堆疊順序(各自屬於不同的堆疊環境)。 */
-.statusBar {
-  position: absolute;
-  top: 14px;
-  left: 24px;
-  right: 24px;
-  z-index: 2;
+/* statusBarContent——2026-10 新增(使用者明確要求「手機上方放信號跟
+   電量」),位置對齊真實 iOS 狀態列(貼齊畫面頂端、左右各留出動態島
+   空間)現在由 PhoneDemoLayout.module.css 的 .statusBarSlot 負責
+   定位(見該 class 的完整說明),這裡只管插槽內部的排列方式與顏色。 */
+.statusBarContent {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
   color: var(--ios-bg, #1C1815);
-  pointer-events: none;
 }
 
 .statusBarTime {
@@ -77,77 +64,15 @@
   gap: 5px;
 }
 
-/* display: flex; flex-direction: column——HorizontalPlanTimeline 的
-   .wrap 用 margin-top: auto 把自己推到容器底部(對齊 /ai-plan 展示頁
-   AIPlanTimelinePage.module.css 手機版 .timelinePanel 的同一個模式,
-   見該處的完整說明),這個 margin-top: auto 只有在父層是 flex 容器時
-   才會生效,這裡補上同樣的宣告。 */
-.timelineWrap {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  /* padding-bottom——把時間軸從「貼齊底部」往上頂(2026-10 使用者明確
-     要求「跟時間軸交換位置,時間軸往上放一點」:按鈕回到下方、時間軸
-     到上方)。
+/* .timelineWrap(容器定位+padding-bottom)已搬到 PhoneDemoLayout.module.css
+   的 .timelineSlot(見該 class 的完整說明,數值原樣保留)——
+   HorizontalPlanTimeline 的 .wrap 用 margin-top: auto 把自己推到容器
+   底部這件事不受影響,父層仍然是 flex column 容器。
 
-     HorizontalPlanTimeline 的 .wrap 用 margin-top: auto 把自己推到容器
-     底部,那是共用元件的行為(/ai-plan 手機版也依賴它,見該處的完整
-     說明),不該為了這個展示框去改。改成在這個容器補下留白,把「底部」
-     的位置本身往上移——元件的行為不變,它仍然是貼齊容器底部,只是容器
-     的底部現在在更上面。
-
-     56px:.wrap 自帶的 padding-bottom: 70px 已經在卡片下方留了一截
-     (那是給 /ai-plan 自己的漂浮 composer 預留的),但按鈕高 52px 放
-     進去之後卡片仍然壓得太低。2026-10 使用者實機看過後要求「時間軸
-     再往上挪一點」,從 24px 加到 56px。 */
-  padding-bottom: 56px;
-}
-
-/* composer/composerText/caret(開場輸入膠囊)已整個移除——2026-10
-   使用者明確要求「首頁展示不要輸入框」,見 AiPlanPhoneDemoScreen.tsx
-   usePlanSimSocket 呼叫處的完整說明。 */
-
-/* tryItCta——2026-10(第二輪,使用者明確要求「原本輸入框的地方,放
-   試試看按鈕」)取代原輸入膠囊的純視覺行動呼籲,配色對齊 /ai-plan 展示
-   頁排完劇本後出現的 .composerCta(見 AIPlanTimelinePage.module.css
-   該 class 的完整說明:--color-accent 底色),但尺寸依這個手機展示框
-   390×844 的比例縮小,不是原樣照搬。這裡不是 <button>(見
-   AiPlanPhoneDemoScreen.tsx 該處的完整說明:整個展示框
-   pointer-events:none,點擊冒泡到外層 Link),故不需要任何互動狀態
-   樣式(:hover/:focus-visible 等)。 */
-.tryItCta {
-  position: absolute;
-  /* 2026-10(第三輪,使用者明確要求「跟時間軸交換位置,時間軸往上放
-     一點」):按鈕回到下方、時間軸往上。上一輪曾把按鈕移到卡片列上方
-     (bottom: 432px),但那讓按鈕夾在畫面中段、下方還留著一大塊卡片,
-     視線順序變成「卡片→按鈕→更多卡片」。改回底部,時間軸則靠
-     .timelineWrap 的 padding-bottom 往上頂(見該處的完整說明)。
-
-     尺寸維持上一輪放大後的 52px/17px(使用者要求的「放大一點」仍然
-     成立,只有位置換回來)。 */
-  left: 16px;
-  right: 16px;
-  bottom: 16px;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* 放大:40→52px 高、14→17px 字。這顆按鈕現在是畫面中段的視覺焦點
-     (原本在底部邊緣,是次要的收尾),尺寸要撐得起那個位置。 */
-  height: 52px;
-  border-radius: 26px;
-  background: var(--color-accent);
-  color: var(--ios-bg, #1C1815);
-  font-size: 17px;
-  font-weight: 600;
-  /* 陰影加深——浮在卡片列上方需要更明確的層次分離,原本貼齊底部時
-     下方沒有內容,不需要這麼強的浮起感。 */
-  box-shadow: 0 10px 28px -10px rgba(0, 0, 0, 0.55);
-}
-
-/* 狀態藥丸相關樣式(.statusPill、.statusDot 系列)與 @keyframes breathe
-   已整個移除——2026-10 使用者明確要求先拿掉「已安排 N 站」、再拿掉
-   「正在安排行程…」,這顆藥丸沒有任何內容了。breathe 的唯一使用者是
-   .statusDotGenerating,故一併刪除。 */
+   composer/composerText/caret(開場輸入膠囊)、tryItCta(「試試看」
+   按鈕樣式)、狀態藥丸相關樣式(.statusPill、.statusDot 系列)與
+   @keyframes breathe 皆已整個移除——理由見 AiPlanPhoneDemoScreen.tsx
+   對應位置的完整說明:開場輸入膠囊是使用者明確要求「首頁展示不要
+   輸入框」;「試試看」按鈕本體已搬到 AiPlanPhoneDemo.tsx 的
+   .tryItCtaOutside(縮放容器之外);狀態藥丸是使用者明確要求先後拿掉
+   「已安排 N 站」「正在安排行程…」兩段文案後整顆藥丸不再有內容。 */
