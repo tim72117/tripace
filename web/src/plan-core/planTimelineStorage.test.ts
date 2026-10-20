@@ -83,6 +83,32 @@ describe('暫態 UI 狀態不被持久化', () => {
     expect(node?.loading).toBeUndefined()
     expect(node?.removing).toBeUndefined()
   })
+
+  it('ephemeral 節點整個不寫入，前後節點正確銜接——錯誤訊息不該持久化', () => {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, stop('赤崁樓', '09:00'), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+    const r2 = insertAfter(
+      timeline,
+      'n1',
+      { type: 'message', text: '(連線錯誤: 401)', ephemeral: true },
+      'm1',
+    )
+    if (!r2.ok) throw new Error('setup failed')
+    timeline = r2.timeline
+    const r3 = insertAfter(timeline, 'm1', stop('祀典武廟', '10:00'), 'n2')
+    if (!r3.ok) throw new Error('setup failed')
+    timeline = r3.timeline
+
+    saveTimeline(timeline)
+    const restored = loadTimeline()
+
+    expect(restored.nodes.has('m1')).toBe(false)
+    expect(toRenderList(restored).map((n) => n.name)).toEqual(['赤崁樓', '祀典武廟'])
+    expect(restored.nodes.get('n1')).toMatchObject({ nextId: 'n2' })
+    expect(restored.nodes.get('n2')).toMatchObject({ prevId: 'n1' })
+  })
 })
 
 describe('損毀/不相容資料一律丟棄，回到空時間軸', () => {

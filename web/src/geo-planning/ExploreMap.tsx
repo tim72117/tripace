@@ -15,6 +15,8 @@ import { useAttractionOverlays } from './useAttractionOverlays'
 import { useSearchResultMarkers } from './useSearchResultMarkers'
 import { useTripEntryMarkers } from './useTripEntryMarkers'
 import { usePlanStopMarkers, type PlanStopMarker } from './usePlanStopMarkers'
+import { usePlanTransitHoverLine } from './usePlanTransitHoverLine'
+import { usePlanRouteLine } from './usePlanRouteLine'
 import { useCurrentLocationMarker } from './useCurrentLocationMarker'
 import styles from './ExploreMap.module.css'
 
@@ -103,13 +105,17 @@ export function ExploreMap({
   planStops = [],
   selectedPlanStopId,
   hoverPlanStopId,
+  hoverTransitPair,
+  showPlanRouteLine = false,
   onPlanStopClick,
+  onMapReady,
   city,
   onCityChange,
   onSearch,
   searching,
   searchError,
   onOpenChat,
+  chatButtonOverlay,
   showZoomControl = true,
   searchRightSlot,
   onAttractionsChange,
@@ -192,7 +198,30 @@ export function ExploreMap({
   // 分辨「暫時掃過」與「主動錨定」——見 planStopMarkerContent 對 state
   // 參數的完整說明。兩者同時指向同一顆時 selected 優先。
   hoverPlanStopId?: string | null
+  // hoverTransitPair——滑鼠懸停在時間軸「交通膠囊」上時,這段交通連接
+  // 的兩個站點 id(使用者明確要求「移動到交通的膠囊上,地圖上讓連接的
+  // 兩個點都顯示 hover 狀態,並用虛線做連線」)。見 usePlanStopMarkers
+  // 同名參數與 usePlanTransitHoverLine 的完整說明。
+  hoverTransitPair?: { fromId: string; toId: string } | null
+  // showPlanRouteLine——「規劃行程」標頭列路徑開關的狀態(使用者明確
+  // 要求「打開時,地圖上顯示所有點的線斷」,見 usePlanRouteLine 的完整
+  // 說明)。選填,預設 false——與 planStops 一樣,只在呼叫端明確傳入
+  // 時才會啟用這個圖層,未傳的使用情境(手機版、展示頁等)不受影響。
+  showPlanRouteLine?: boolean
   onPlanStopClick?: (id: string) => void
+  // onMapReady——Google Maps 實例真的建好、可以顯示內容時呼叫一次。
+  //
+  // 用途是讓呼叫端把「要等地圖畫好才出現」的 UI 延後到這一刻,而不是
+  // 元件一掛載就彈出來——地圖還是一片空白時就跳出覆蓋層,使用者會先
+  // 看到一個懸空的卡片,地圖才慢慢浮現。
+  // (2026-10:原本唯一的呼叫端是「想去哪裡?」對話氣泡,那個功能已經
+  // 整個移除;這個 callback 本身仍是通用的,保留。)
+  //
+  // 注意這個回調可能被呼叫多次:地圖會在 theme 變動時重建(colorScheme
+  // 只能在 new google.maps.Map 當下設定,見 googleMapsBootstrap.ts),
+  // 此時 mapReady 先轉 false 再轉 true。呼叫端若只想反應第一次,自己
+  // 記一個旗標即可。
+  onMapReady?: () => void
   // city/onCityChange/onSearch/searching/searchError:城市搜尋框,顯示在
   // 地圖上方類別標籤列旁邊(見下方 JSX)——跟 GeoCandidateSidebar 側欄裡
   // 原本就有的同一組搜尋框(見該元件的 city/onCityChange/onSearch prop)
@@ -213,6 +242,25 @@ export function ExploreMap({
   // optional——理由同 onCityChange 等搜尋框 props,呼叫端沒接就不顯示
   // 這顆按鈕。
   onOpenChat?: () => void
+  // chatButtonOverlay:疊在 AI 按鈕(.citySearchAiBtn)正下方的任意內容
+  // (2026-10 使用者明確要求「氣泡的啟示位置在對話按鈕正下方」,且明確
+  // 否決掉跨元件用絕對座標/getBoundingClientRect 手動計算對齊的方案,
+  // 要求「就做一個透明容器」)。
+  //
+  // 做法:在 .citySearchAiBtn 外面包一層透明的 position:relative
+  // anchor(見下方 JSX、styles.citySearchAiBtnAnchor),這個 prop 傳入
+  // 的內容渲染在 anchor 內部、position:absolute;top:100%——定位基準
+  // 直接是這顆按鈕自己,不需要知道任何跨容器的像素數字,按鈕本身的
+  // 版面(搜尋框寬度、padding 等)不管怎麼調整,這個 prop 渲染出來的東西
+  // 永遠精確貼在按鈕正下方。
+  //
+  // optional,呼叫端(目前只有 GeoOutlinePanel→DesktopLayout 這條鏈路
+  // 接了「想去哪裡?」對話氣泡)沒傳就不渲染這個 anchor 的子內容,但
+  // anchor 本身(空的 position:relative 容器)仍然掛載——這樣做的理由:
+  // anchor 本身不吃版面空間(inline-flex,跟按鈕同尺寸),常駐掛載不影響
+  // 既有版面,不需要額外判斷「有沒有傳這個 prop 才掛 anchor」這種條件
+  // 邏輯。
+  chatButtonOverlay?: ReactNode
   // showZoomControl:地圖右下角放大/縮小按鈕,預設 true(桌面版沿用原本
   // 行為)。手機版可以傳 false 隱藏——手機本來就能雙指縮放,這顆按鈕在
   // 小螢幕上顯得多餘、佔用畫面空間(使用者要求「地圖可以隱藏縮放按鈕
@@ -485,6 +533,10 @@ export function ExploreMap({
   // onPoiSelect 加進建圖 effect 的依賴陣列(那樣反而會導致地圖重建)。
   const onPoiSelectRef = useRef(onPoiSelect)
   onPoiSelectRef.current = onPoiSelect
+  // onMapReadyRef:理由同 onPoiSelectRef——建圖 effect 的依賴陣列不含
+  // 這個回調,呼叫端每次 render 產生的新閉包不該讓地圖重建。
+  const onMapReadyRef = useRef(onMapReady)
+  onMapReadyRef.current = onMapReady
   // onAttractionSelectRef:理由同 onPoiSelectRef——下方
   // handleAttractionClickRouted 是傳給 useAttractionOverlays 的
   // callback,若直接閉包捕捉 onAttractionSelect,呼叫端每次重渲染傳入
@@ -770,6 +822,8 @@ export function ExploreMap({
             .catch(() => {})
         })
         setMapReady(true)
+        // 通知呼叫端地圖已經可以顯示內容(見 onMapReady prop 的完整說明)。
+        onMapReadyRef.current?.()
         // 保險的 resize 觸發:Google Maps 在容器尺寸還沒定案(例如
         // React.lazy 動態載入頁面、CSS Modules 樣式套用時機競態)時建圖,
         // 內部瓦片渲染尺寸會卡死在建圖當下量到的(可能是 0 或錯誤的)
@@ -1222,7 +1276,20 @@ export function ExploreMap({
     stops: planStops,
     selectedStopId: selectedPlanStopId,
     hoverStopId: hoverPlanStopId,
+    hoverTransitPair,
     onStopClick: onPlanStopClick,
+  })
+  usePlanTransitHoverLine({
+    mapRef,
+    mapReady,
+    stops: planStops,
+    hoverTransitPair,
+  })
+  usePlanRouteLine({
+    mapRef,
+    mapReady,
+    stops: planStops,
+    enabled: showPlanRouteLine,
   })
   useCurrentLocationMarker({
     mapRef,
@@ -1369,20 +1436,27 @@ export function ExploreMap({
       {!err && onCityChange && onSearch && (
         <div className={styles.citySearch}>
           {onOpenChat && (
-            <button
-              type="button"
-              className={styles.citySearchAiBtn}
-              onClick={onOpenChat}
-              title="開啟對話(Beta)"
-              aria-label="開啟對話(Beta)"
-            >
-              <Sparkles size={16} aria-hidden="true" />
-              {/* betaTag:同 DesktopRail.tsx plan-ai 按鈕的既有先例,標示
-                  這個功能還在測試中——使用者明確要求「beta 是放在正式
-                  頁面的功能列按鈕上」,這顆是規劃地圖上另一個常駐入口,
-                  同一套標示規則。 */}
-              <span className={styles.citySearchAiBtnBetaTag}>BETA</span>
-            </button>
+            // citySearchAiBtnAnchor——透明的 position:relative 容器(見
+            // chatButtonOverlay prop 宣告處的完整說明),包住 AI 按鈕本身,
+            // 不改變按鈕在這排 flex 版面裡的尺寸與排列,純粹只是給
+            // chatButtonOverlay 一個天然貼齊這顆按鈕的定位基準。
+            <div className={styles.citySearchAiBtnAnchor}>
+              <button
+                type="button"
+                className={styles.citySearchAiBtn}
+                onClick={onOpenChat}
+                title="開啟對話(Beta)"
+                aria-label="開啟對話(Beta)"
+              >
+                <Sparkles size={16} aria-hidden="true" />
+                {/* betaTag:同 DesktopRail.tsx plan-ai 按鈕的既有先例,標示
+                    這個功能還在測試中——使用者明確要求「beta 是放在正式
+                    頁面的功能列按鈕上」,這顆是規劃地圖上另一個常駐入口,
+                    同一套標示規則。 */}
+                <span className={styles.citySearchAiBtnBetaTag}>BETA</span>
+              </button>
+              {chatButtonOverlay}
+            </div>
           )}
           <input
             className={styles.citySearchInput}

@@ -36,71 +36,26 @@
    scrollClassName prop,呼叫端各自疊加自己需要的樣式——這裡的
    .timelineScroll 就是補給展示頁的那份。 */
 
-/* pageEmbedded:被當 iframe 嵌進其他頁面時(見 AIPlanTimelinePage 的
-   isEmbedded),內部捲動區隱藏捲軸把手,捲動功能不受影響。 */
-.pageEmbedded .timelineScroll { scrollbar-width: none; }
-.pageEmbedded .timelineScroll::-webkit-scrollbar { display: none; }
+/* .page/.pageEmbedded/.mapBackdrop 已搬到 PlanDemoLayout.module.css
+   (2026-10,使用者明確要求「先重構播放態的layout」,見該檔案開頭的
+   完整說明)——根容器、地圖背景容器這兩塊版面骨架現在由 PlanDemoLayout
+   元件統一管理,不再是這個檔案的職責。
 
-/* mapBackdrop——NativeMapBase 的容器,鋪滿 .page(2026-10 取代原本
-   StaticMapBackdrop.tsx 自帶 position:absolute 的 .backdrop,見
-   AIPlanTimelinePage.tsx 呼叫處的完整說明)。z-index:0 配合上層內容
-   (時間軸/浮動按鈕/輸入框皆為 DOM 順序在後、天然疊在上層,理由同
-   原本 .backdrop 的既有慣例)確保互動地圖不會蓋過任何功能性元素。
-   不再是 pointer-events:none——允許使用者直接縮放/拖曳這張地圖。 */
-.mapBackdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-}
+   pageEmbedded:被當 iframe 嵌進其他頁面時(見 AIPlanTimelinePage 的
+   isEmbedded),內部捲動區隱藏捲軸把手,捲動功能不受影響。這條規則
+   留在這裡(而非跟著 .pageEmbedded 本體搬過去)——.timelineScroll 是
+   這個檔案的 local class,透過 scrollClassName prop 傳給
+   PlanTimelineView,PlanDemoLayout.module.css 看不到這裡 hash 化後的
+   class 名稱,後代選擇器必須留在同時看得到兩個 local class 的檔案裡
+   才會生效。外層的 .pageEmbedded 用 :global() 標記,因為它實際上是
+   PlanDemoLayout.module.css 匯出、套用在 AIPlanTimelinePage.tsx 渲染出
+   的最外層 DOM 節點上的 class,對這個檔案來說是外來的全域 class 名稱,
+   不是這裡自己定義的 local class。 */
+:global(.pageEmbedded) .timelineScroll { scrollbar-width: none; }
+:global(.pageEmbedded) .timelineScroll::-webkit-scrollbar { display: none; }
 
 /* navSpacer/mapSafeArea/timelinePanel 已移到 PlanOverlayPanel.module.css
    (定位 + 事件穿透 + 地圖安全區,模擬層與真實層共用)。 */
-
-.page {
-  width: 100%;
-  height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  background: var(--ios-bg);
-  color: var(--color-dark);
-  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
-  overflow: hidden;
-  /* position: relative——.composer 用 position: absolute 疊在時間軸內容
-     上方(見該 class 的完整說明),需要一個 positioning context,.page
-     本身是最外層、涵蓋 header 以下整個可視區域,是最直接的定位基準。 */
-  position: relative;
-  --paper: #F7F3EC;
-  --paper-dim: #EFE9DC;
-  --ink: #2B2420;
-  --ink-soft: #5A5148;
-  --vermilion: #8B3A2F;
-  --vermilion-soft: #B85C4A;
-  --line: #C9BFA8;
-  --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
-}
-.page:global([data-theme="dark"]),
-.page:global(.app-theme-root[data-theme="dark"]) {
-  --paper: #1C1815;
-  --paper-dim: #14110F;
-  --ink: #EDE6D8;
-  --ink-soft: #B8AD9C;
-  --vermilion: #D97A63;
-  --vermilion-soft: #E89A85;
-  --line: #443C34;
-  --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
-}
-@media (prefers-color-scheme: dark) {
-  .page:global(:not([data-theme="light"])) {
-    --paper: #1C1815;
-    --paper-dim: #14110F;
-    --ink: #EDE6D8;
-    --ink-soft: #B8AD9C;
-    --vermilion: #D97A63;
-    --vermilion-soft: #E89A85;
-    --line: #443C34;
-    --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
-  }
-}
 
 /* ---------- 時間軸捲動容器覆寫(見檔案開頭的完整說明) ----------
    疊加在 PlanTimelineView 自己的 .scroll 上(透過 scrollClassName
@@ -168,116 +123,38 @@
 
 /* ---------- Composer ---------- */
 
-/* composer——2026-09 從貼滿寬度、佔用 flex 版面一格的底部橫幅,改成
-   漂浮在時間軸內容上方的膠囊(使用者明確要求「對話輸入匡改成漂浮
-   膠囊」)。position: absolute 相對 .page(見該 class 新增的 position:
-   relative 說明)定位在畫面底部置中,四周留白讓下方的時間軸內容隱約
-   可見,不再是一道貫穿整個寬度、把畫面硬切成上下兩塊的實心橫幅。
-   PlanTimelineView 內部的 .scroll 已經補上對應的 padding-bottom,確保
-   捲到底時最後一張卡片不會被這個膠囊蓋住。 */
+/* composer——這裡只留「定位」(由 PlanOverlayPanel 的 composer slot
+   負責貼底置中、寬度、z-index,這裡填滿插槽寬度即可),膠囊外觀(背景/
+   邊框/陰影/圓角/padding)、輸入框、送出鈕基礎造型已經搬到共用元件
+   components/Composer.tsx(見該檔頭的完整背景說明:跟正式頁
+   trip-plan/TripPlanPage.module.css 原本各自維護一份、曾經因此跑出
+   字級不一致的 bug)。這裡只保留這個展示頁特有的轉場/狀態樣式
+   (composerBare/composerCta/sendBtnActive),透過
+   AIPlanTimelinePage.tsx 呼叫 <Composer className={styles.composer}
+   sendButtonClassName={...}> 疊加上去。 */
 .composer {
-  /* 定位(貼底置中、寬度、z-index)由 PlanOverlayPanel 的 composer slot
-     負責,這裡只留膠囊外觀,寬度填滿插槽。 */
   width: 100%;
   box-sizing: border-box;
-  border-radius: 26px;
-  padding: 10px 10px 10px 20px;
-  /* 膠囊外觀(背景/邊框/陰影)只在「輸入框還在」時出現——「讓我試看看」
-     按鈕獨自出現時(composerCollapsed 且未 handedOver,見
-     .composerBare 的完整說明)使用者明確要求「連膠囊外框也要拿掉」,
-     按鈕直接浮在地圖/時間軸上,不是裝在一個實色容器裡。 */
-  background: var(--ios-card);
-  border: 1px solid var(--ios-sep);
-  box-shadow: 0 12px 32px -12px rgba(43, 36, 32, 0.28);
 }
-/* composerBare——「讓我試看看」按鈕獨自出現時疊加的狀態,拿掉
-   .composer 基底定義的膠囊外觀(背景/邊框/陰影),padding 也一併清空
-   (基底的 10px 10px 10px 20px 是為了在實色膠囊內給輸入框/按鈕留出
-   視覺呼吸空間,按鈕獨自置中時不需要這圈留白,留著只會讓按鈕看起來
-   偏移、不是真正置中在膠囊原本佔據的那塊區域中心)。 */
-.composerBare {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  padding: 0;
-}
-.composerInner { width: 100%; }
-/* 原本輸入框上方常駐一行狀態提示文字(.aiLine)——漂浮膠囊只有單行
-   高度的空間,常駐提示會讓膠囊變得太高、也不像「輸入框」該有的樣子。
-   時間軸完全空白時的引導文案改放進主顯示區(PlanTimelineView 的
-   .emptyState),其餘狀態靠 input 的 placeholder 傳達即可,composer 內
-   不再渲染任何獨立的狀態列。 */
-.inputRow {
-  display: flex;
-  align-items: center;
-  /* justify-content: center——2026-10 改成「讓我試看看」出現時完全移除
-     輸入框 DOM(而非收合讓位,見 AIPlanTimelinePage.tsx 該處的完整
-     說明):.inputRow 此時只剩 composerCta 這一顆子元素,預設的
-     flex-start 會讓它貼齊左側(跟輸入框原本左對齊的視覺習慣一致,但
-     使用者明確要求「按鈕置中」)。輸入框還在時(composerCollapsed 為
-     false)這個屬性不影響原本的左右排列,因為 .inputWrap 的 flex:1
-     會撐滿剩餘空間,justify-content 沒有多餘空間可以作用。 */
-  justify-content: center;
-  gap: 10px;
-  min-width: 0;
-}
-.inputWrap {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  background: transparent;
-  padding: 0 6px;
-  height: 44px;
-  min-width: 0;
-  /* transition 定義在這裡(而非只在 .inputWrapCollapsed):收合與展開
-     兩個方向都要有動畫,只寫在收合那一側的話,移除 class 時會瞬間跳回。 */
-  transition:
-    width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
-    padding 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.input {
-  border: none;
-  outline: none;
-  background: transparent;
-  flex: 1;
-  min-width: 0;
-  font-size: 14px;
-  color: var(--color-dark);
-  font-family: inherit;
-  white-space: nowrap;
-}
-/* sendBtn——排程進行中固定顯示的箭頭送出鈕,排程結束後同一顆按鈕會
-   疊上 .composerCta(見該 class 的完整說明)展開成「立即使用」。
-   width/padding/border-radius/background/color 都寫在這裡當基準值,
-   讓 .composerCta 疊加時只需要覆寫真正改變的那幾個屬性,並且讓瀏覽器
-   知道要對哪些屬性做 transition(展開動畫,使用者明確要求「要有按鈕
-   展開動畫」——原本是條件渲染兩顆不同的按鈕元素,瞬間切換沒有動畫
-   可言,改成同一顆 <button> 疊加 class 才能讓 width 等屬性真的過渡)。 */
+/* composerBare——「讓我試看看」按鈕獨自出現時,Composer 元件的 bare
+   prop 已經處理掉膠囊外觀(背景/邊框/陰影/padding 歸零,見該元件
+   .composerBare 的完整說明),這裡不需要再疊加任何東西,className
+   保留只是讓呼叫端(AIPlanTimelinePage.tsx)維持既有的條件渲染寫法
+   對齊,沒有實際樣式內容。 */
+/* sendBtn——排程進行中固定顯示的箭頭送出鈕,基礎圓形造型(width/
+   height/border-radius/background/color)已經在共用元件
+   components/Composer.module.css 裡定義。這裡只補這個展示頁特有的
+   transition 宣告——過渡動畫的起點/終點屬性清單必須存在於實際渲染的
+   元素上,共用元件的基礎 .sendBtn 不知道「這個展示頁需要按鈕展開
+   動畫」這件事(composerCta 疊加時 max-width/padding/background-color
+   要變化),所以這組 transition 留在這裡,靠 CSS class 疊加
+   (sendButtonClassName,見 AIPlanTimelinePage.tsx 呼叫處)套用到
+   共用元件渲染出的同一顆 <button> 上。
+   max-width 36px(跟共用元件 .sendBtn 的基礎 width: 36px 一致,當作
+   展開動畫的起點)——使用者明確要求「要有按鈕展開動畫」,.composerCta
+   疊加時展開到 420px(見該 class 的完整說明)。 */
 .sendBtn {
-  /* width 用 max-width 而非 width 做展開動畫的基準——CSS 對 width: auto
-     無法計算出中間幀,transition 只會在動畫結束瞬間跳變,不會真的展開
-     (使用者明確要求「要有按鈕展開動畫」)。改成兩個具體 px 值之間的
-     max-width transition:未展開是 36px(跟原本的圓形寬度一致),
-     .composerCta 展開到 120px(比「立即使用」+ 左右 14px padding 的
-     實際寬度略寬,確保文字不會被裁到,寬度本身仍受內容撐開的實際大小
-     限制,不會因為 max-width 給大了就真的變成 120px 寬的空白按鈕)。 */
   max-width: 36px;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border-radius: 999px;
-  background: var(--color-dark);
-  color: var(--ios-bg);
-  border: none;
-  cursor: pointer;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: inherit;
-  white-space: nowrap;
   overflow: hidden;
   transition:
     max-width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
@@ -285,24 +162,26 @@
     padding 0.35s cubic-bezier(0.4, 0, 0.2, 1),
     background-color 0.35s ease;
 }
-/* sendBtn:disabled——這個展示頁的送出鈕永遠是唯讀展示,固定停用(見
-   AIPlanTimelinePage.tsx 的完整說明:輸入框只播放假打字動畫,不接受
-   真的輸入),但先前完全沒有對應的視覺區分,按鈕看起來跟「可送出」
-   狀態一模一樣,容易讓訪客誤以為可以點擊。降低不透明度並改回預設
-   游標,明確傳達「這裡不能互動」。 */
-.sendBtn:disabled {
-  opacity: 0.45;
-  cursor: default;
+/* sendBtnActive 已移除——2026-10(使用者明確要求「composer 應該用一個
+   展示態來表達,而不是單純關閉送出,展示態的時候送出樣式要正常,但是
+   不能點送出」):改用共用元件 Composer 的 presentational prop(見
+   components/Composer.tsx 該 prop 的完整說明),打字動畫進行中整段
+   期間(不只是「打完字那一刻」)送出鈕的樣式都維持正常、不套用
+   disabled 淡化,不再需要這個只覆蓋單一時間點的補丁 class。 */
+
+/* inputRow——AIPlanTimelinePage.tsx 透過 inputRowClassName 疊加這個
+   class 到共用元件 Composer 的 <form> 上。justify-content: center:
+   「讓我試看看」出現時(composerCollapsed 且未 handedOver)輸入框整個
+   從 DOM 移除(見 AIPlanTimelinePage.tsx hideInput 處的完整說明),
+   這個 <form> 此時只剩送出鈕一個子元素,預設的 flex-start 會讓它貼齊
+   左側(跟輸入框原本左對齊的視覺習慣一致,但使用者明確要求「按鈕置
+   中」)。輸入框還在時(composerCollapsed 為 false)這個屬性不影響
+   原本的左右排列,因為共用元件 .inputWrap 的 flex:1 會撐滿剩餘空間,
+   justify-content 沒有多餘空間可以作用。 */
+.inputRow {
+  justify-content: center;
 }
-/* sendBtnActive——打字動畫進行中(輸入框已經有字、但還沒打完那一刻)
-   使用者明確要求送出鈕要「模擬送出的樣式,但是不能真的可以點選」——
-   拿掉 disabled 平常的淺化/半透明樣式,改成完全不透明的深色圓鈕,視覺
-   上看起來像「有內容、可以送出」,呼應正在打字這個當下的狀態;disabled
-   屬性本身仍然保留、原生點擊行為依舊被瀏覽器擋下,只是視覺樣式改觀感,
-   不是真的開放互動。 */
-.sendBtnActive {
-  opacity: 1;
-}
+
 /* composerCta——排程結束後出現的「讓我試看看」行動呼籲按鈕(見
    AIPlanTimelinePage.tsx 該處的完整說明)。
    2026-10(第三輪):輸入框此時完全從 DOM 移除(不再是「收合讓位」,
@@ -319,14 +198,29 @@
    淡入取代原本的展開動畫——按鈕是全新掛載的 DOM 節點,沒有「從小圓鈕
    展開成長條」的連續狀態可以 transition,淡入是這種「瞬間出現」情境
    更合適的動畫語言。 */
+/* 2026-10(使用者明確要求「用跟開始探索一樣大的按鈕跟文字大小」):
+   垂直尺寸改用 padding 撐高(對齊 HomePage.css .hero-cta 的
+   padding: 15px 34px),取代原本固定的 height: 44px——字級本來就已經
+   是 15px、圓角繼承自 .sendBtn 的 999px,跟 hero-cta 一致,只有高度
+   算法不同(固定 height vs padding 撐開),改成同一種算法兩者的按鈕
+   本體粗細才會真的一致,不是兩個不同算法湊出的相近數字。左右 padding
+   維持原本 24px,不跟著 hero-cta 的 34px 改——這顆按鈕寬度是
+   width:100% 撐滿 composer 可用寬度(見上方 .sendBtn 基準值的完整
+   說明),不是像 hero-cta 那樣由左右 padding 本身撐開寬度,兩者的左右
+   padding 語意不同,沿用原本數值。 */
 .composerCta {
   max-width: 420px;
   width: 100%;
   min-width: 0;
-  height: 44px;
-  padding: 0 24px;
+  height: auto;
+  padding: 15px 24px;
   font-size: 15px;
   background: var(--color-accent);
+  /* 2026-10 使用者明確要求「按鈕內的文字要統一為白色」、「紅色字統一
+     搭配淺色」:原本沒有設定 color,繼承外層的 --ink(深色),配在
+     accent 底上對比不足。深色模式下白字對比 3.04:1 的已知取捨見
+     AiPlanPhoneDemo.module.css 的 .tryItCtaOutside。 */
+  color: #fff;
   animation: composerCtaFadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 

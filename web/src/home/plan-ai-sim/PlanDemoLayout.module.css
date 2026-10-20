@@ -1,0 +1,68 @@
+/* PlanDemoLayout.module.css — PlanDemoLayout.tsx 的容器骨架樣式。
+   從 AIPlanTimelinePage.module.css 搬過來(見該檔案對應段落移除處的
+   完整說明),數值原樣保留,不是重新設計——搬動前後視覺應該完全一致。
+
+   --paper/--ink/--vermilion 等 token 定義維持在 .page 身上(不是重複
+   定義的錯誤,是這個展示頁刻意為了沿用 SiteNavButtons.css 共用元件
+   而補上的本地值,見原本檔案開頭的完整說明),搬動時原樣保留在這裡。 */
+
+/* .pageEmbedded .timelineScroll 的捲軸隱藏規則留在
+   AIPlanTimelinePage.module.css(見該檔案的完整說明)——.timelineScroll
+   是那個檔案的 local class,透過 scrollClassName prop 傳給
+   PlanTimelineView,這裡(PlanDemoLayout 的 CSS Module)看不到那個
+   hash 化後的 class 名稱,後代選擇器規則必須留在同一個能同時看到兩個
+   local class 的檔案裡才會生效,不能搬過來。 */
+
+/* mapBackdrop——見 PlanDemoLayout.tsx mapBackground 插槽的完整說明:
+   鋪滿 .page,z-index:0 確保互動地圖不會蓋過任何功能性元素。 */
+.mapBackdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.page {
+  width: 100%;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
+  overflow: hidden;
+  /* position: relative——composer 用 position: absolute 疊在時間軸內容
+     上方,需要一個 positioning context,.page 本身是最外層,是最直接的
+     定位基準。 */
+  position: relative;
+  --paper: #F7F3EC;
+  --paper-dim: #EFE9DC;
+  --ink: #2B2420;
+  --ink-soft: #5A5148;
+  --vermilion: #8B3A2F;
+  --vermilion-soft: #B85C4A;
+  --line: #C9BFA8;
+  --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
+}
+.page:global([data-theme="dark"]),
+.page:global(.app-theme-root[data-theme="dark"]) {
+  --paper: #1C1815;
+  --paper-dim: #14110F;
+  --ink: #EDE6D8;
+  --ink-soft: #B8AD9C;
+  --vermilion: #D97A63;
+  --vermilion-soft: #E89A85;
+  --line: #443C34;
+  --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+}
+@media (prefers-color-scheme: dark) {
+  .page:global(:not([data-theme="light"])) {
+    --paper: #1C1815;
+    --paper-dim: #14110F;
+    --ink: #EDE6D8;
+    --ink-soft: #B8AD9C;
+    --vermilion: #D97A63;
+    --vermilion-soft: #E89A85;
+    --line: #443C34;
+    --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
+  }
+}

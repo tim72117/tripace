@@ -1,5 +1,5 @@
-// blog_photo.go——使用者上傳部落格配圖的完整流程(見 docs/
-// brainstorm/2026-10-product-direction-brainstorm.md 構想五「發文工具
+// blog_photo.go——使用者上傳部落格配圖的完整流程(見
+// showcase-demo 構想頁 /ideas/product-direction-5-publishing-tool(原產品方向腦力激盪文件)「發文工具
 // 產品線」、store.uploadedPhotoRow/photoVariantRow 的完整說明):
 //
 //  1. POST /v1/blog/photos/upload-url——簽發 pre-signed PUT URL,讓

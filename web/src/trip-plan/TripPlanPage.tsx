@@ -3,14 +3,25 @@ import type { MutableRefObject } from 'react'
 import { ArrowDown } from 'lucide-react'
 import { AgentBridge } from '@onagent/bridge'
 import { TIME_DRAG_ENABLED, TRANSIT_MODE_SELECT_ENABLED } from '../DesktopShared'
-import { ApiError, fetchGeoPlacePhotoAssets, fetchPlanAiPlaceDetailsAny, fetchPlanAiTransitEstimate, postPlanAiChat, postPlanAiChatReply, type ClientConfig } from '../api'
+import { ApiError, fetchPlanAiAttractionSearch, postPlanAiChat, postPlanAiChatReply, type ClientConfig } from '../api'
 import { Lightbox } from '../geo-planning/PhotoCarousel'
 import { hasAnyPhoto, PHOTO_RETRY_DELAY_MS, PHOTO_RETRY_MAX_ATTEMPTS } from '../photoRetry'
 import { toAgentBridgeTools } from '../sdk-proposals/toAgentBridgeTools'
 import { useStableCallback } from '../hooks/useStableCallback'
 import { useSyncedState } from '../hooks/useSyncedState'
 import { createAttractionToolsList, type AttractionStepsCtx, type PlanStepLike } from '../plan-core/attractionTools'
+import {
+  createAskPageToolsList,
+  type AskPageCtx,
+  type AskPageInput,
+  type AskPageCandidate,
+  type UserSelectionRecord,
+  type AskPageSelection,
+} from '../plan-core/askPageTools'
+import { useAskPageBridge } from '../plan-core/useAskPageBridge'
+import { AskPage } from '../home/plan-ai-sim/AskPage'
 import { PlanTimelineView } from '../plan-core/PlanTimelineView'
+import { createPlanAiApiDataSource } from '../home/plan-ai-sim/planAiApiDataSource'
 // HorizontalPlanTimeline——2026-10(手機版共用時間軸重構):原本只給
 // /ai-plan 展示頁「模擬層」用的橫向卡片時間軸,現在也供這個元件的
 // horizontalTimeline 分支使用(見該 prop 的完整說明)——使用者明確要求
@@ -20,9 +31,14 @@ import { PlanTimelineView } from '../plan-core/PlanTimelineView'
 // home/plan-ai-sim/ 那邊的既有呼叫方式。
 import { HorizontalPlanTimeline } from '../home/plan-ai-sim/HorizontalPlanTimeline'
 import type { PlanStopMarker } from '../geo-planning/usePlanStopMarkers'
+import type { PlanAiDataSource } from '../home/plan-ai-sim/planAiDataSource'
+import { findTravelCityById, findTravelCountry, listTravelCities, listTravelCountries } from '../plan-core/travelRegionData'
+import { uiStateStore } from '../plan-core/uiStateStore'
+import { createAttractionPoolStore, type AttractionPoolStore } from '../plan-core/attractionPoolStore'
+import { Composer } from '../components/Composer'
 import { ComposerPortal } from './ComposerPortal'
 import { ComposerSlotContext } from '../plan-core/composerSlot'
-import {
+import { stopLookupFailed,
   getTimeDragBounds,
   insertAfter,
   removeNode,
@@ -86,6 +102,30 @@ type PlanStep = PlanNode
 // 通常已經讓額度恢復,重試一次沒有排到的機率不高;若還是失敗,直接照
 // 既有行為靜默放棄,不無止盡重試造成更多請求堆積。
 const RATE_LIMIT_RETRY_DELAY_MS = 3000
+
+// CITY_ATTRACTION_TYPES——「選完城市 → 自動查該城市附近候選」那一步要查
+// 哪些地點類型(見 handleAskPageDone 該段的呼叫處)。
+//
+// 2026-10 新增(使用者明確要求「自動的只查詢觀光地點」):在這之前這次
+// 呼叫完全不帶 types,等於不篩類型——Google Nearby Search 回的是該座標
+// 附近「最相關的任何地點」,實測台北拿到的候選包含「市政府」與「台北
+// 世界貿易中心 展覽大樓」,那不是景點。而這張選單的標題正是「選擇感
+// 興趣的景點」,顯示非觀光地點跟它自己的提問對不上。
+//
+// 值取自後端 allowedNearbyAttractionTypes 白名單(見
+// server/internal/api/geo_plan_ai.go 該常數)裡「景點/文化」那一類中,
+// 觀光情境最常見的四種。刻意不含:
+//   - 餐飲/購物/住宿——那三類在白名單裡自成分類,是「排行程時另外要問
+//     的事」,不屬於「有興趣的景點」這個問題。
+//   - zoo/amusement_park/art_gallery/place_of_worship——都是合法的觀光
+//     類型,但在多數城市的查詢結果裡數量稀少,加進來對候選組成影響很小,
+//     卻會稀釋掉前四類的名額(後端只取 10 筆)。需要時再加。
+//
+// 不在白名單內的值會被後端靜默忽略(不是回錯誤,見該常數的完整說明),
+// 所以這份清單若有拼錯,症狀是「那個類型沒生效」而不是查詢失敗——改動
+// 時要對照後端白名單,不能只看字串看起來合不合理。
+const CITY_ATTRACTION_TYPES = ['tourist_attraction', 'historical_landmark', 'museum', 'park']
+
 
 // isRateLimitedError——判斷 fetchPlaceDetails 拋出的例外是不是後端
 // place-details-any 端點的限流拒絕(HTTP 429、code "rate_limited",見
@@ -173,11 +213,14 @@ function resolveAttractionForStep(
         // 查無此地(理論上不該發生,placeId 應該總是有效——來自
         // search_attraction 查到的候選)——退回不帶完整資料的狀態,不留在
         // 「查詢中」卡住;沒有座標就無從估算交通時間,不呼叫 onSettled。
-        setTimeline((prev) => updateNode(prev, stepId, { loading: false }))
+        setTimeline((prev) => updateNode(prev, stepId, { loading: false, failed: true }))
         return
       }
       setTimeline((prev) => updateNode(prev, stepId, {
         loading: false,
+        // failed 明確清掉——這次(可能是重試)成功了,節點不該還留著
+        // 上一次的失敗標記。
+        failed: false,
         name: details.name,
         desc: details.summary,
         googlePhotoUrls: details.googlePhotoUrls,
@@ -208,7 +251,7 @@ function resolveAttractionForStep(
         }, RATE_LIMIT_RETRY_DELAY_MS)
         return
       }
-      setTimeline((prev) => updateNode(prev, stepId, { loading: false }))
+      setTimeline((prev) => updateNode(prev, stepId, { loading: false, failed: true }))
     })
 }
 
@@ -225,7 +268,10 @@ function resolveAttractionForStep(
 // 這支函式其餘的查詢/佔位/失敗處理邏輯。
 function refreshTransitForStop(
   stopId: string,
-  cfg: ClientConfig,
+  // dataSource——取代原本直接收 cfg 再呼叫 fetchPlanAiTransitEstimate
+  // (2026-10,見這個元件 dataSource prop 的完整說明:展示頁交接後是
+  // 未登入訪客,固定打 /internal/* 會噴 401)。
+  dataSource: PlanAiDataSource,
   setTimeline: React.Dispatch<React.SetStateAction<PlanTimeline>>,
   getTimeline: () => PlanTimeline,
   forceMode?: string,
@@ -244,7 +290,7 @@ function refreshTransitForStop(
 
   const from = { lat: prevNode.lat, lng: prevNode.lng }
   const to = { lat: stopNode.lat, lng: stopNode.lng }
-  fetchPlanAiTransitEstimate(cfg, from, to, forceMode)
+  dataSource.transitEstimate(from, to, forceMode)
     .then((estimate) => {
       setTimeline((prev) => {
         // 這一站可能已經被移除,或它的前一站在查詢期間又再次變動——此時
@@ -294,7 +340,18 @@ function refreshTransitForStop(
 // 歸零是呼叫端(scrollToLatest 的 effect)的職責,這裡不耦合捲動邏輯
 // 本身,只負責在正確的時間點同步發出「這次不是新內容」的訊號。
 function useTripPlanTimeline(
-  cfg: ClientConfig,
+  // dataSource——地點/交通/照片查詢的存取層(見這個元件 dataSource prop
+  // 的完整說明)。原本這支 hook 直接用 cfg 呼叫 api.ts 的 fetchPlanAi*
+  // 系列,固定打 /internal/*;展示頁交接後是未登入訪客,那些呼叫一律
+  // 401,卡片的照片與交通時間補不上來。
+  //
+  // 2026-10:原本第一個參數是 cfg: ClientConfig,改用 dataSource 之後
+  // 這支 hook 內部已完全不需要它(所有查詢都經過 dataSource),但參數
+  // 留著沒移除,三個 useCallback 的依賴陣列也還列著 cfg。那讓
+  // insertAttractionAfter 捕捉掛載時那一份 dataSource 不再重建
+  // (stale closure):cfg 不變時 dataSource 換了也不會更新,新插入的
+  // 站點會打到舊的存取層。一併移除參數,依賴陣列才不會再誤列。
+  dataSource: PlanAiDataSource,
   suppressAutoScrollRef?: MutableRefObject<boolean>,
   store: PlanTimelineStore = localStoragePlanTimelineStore,
 ) {
@@ -414,6 +471,58 @@ function useTripPlanTimeline(
   // 驗證與插入,新插入的是 stop 節點時順帶淡化其他對話訊息節點
   // (staleOtherAgentMessages),插入成功且帶 placeId 佔位時背景查詢真實
   // 地點資料,查完後觸發交通卡重新計算。
+  // retryStopLookup——重新查詢某一站的地點資料。
+  //
+  // 2026-10 新增(使用者明確要求「介面上做可以重試,重整後要進行重試」)。
+  // 兩個入口共用這一支:
+  //   1. 使用者點卡片上的「重試」按鈕(PlanTimelineView 的 onRetryStop)
+  //   2. 掛載後掃出 failed 的站點自動重查(見下方 effect)
+  //
+  // 走的是跟插入當下完全相同的 resolveAttractionForStep 路徑(含 429
+  // 限流的單次延遲重試、照片獨立重試),不另外實作一套——否則重試的
+  // 行為會跟首次查詢不一致。
+  //
+  // 先把節點設回 loading:true/failed:false 再查:卡片立刻回到「查詢中」
+  // 的視覺狀態,使用者看得出按鈕有反應;查詢結果由
+  // resolveAttractionForStep 自己寫回(成功清 failed、失敗重新標記)。
+  const retryStopLookup = useCallback(
+    (stopId: string) => {
+      const node = timelineRef.current.nodes.get(stopId)
+      if (!node || node.type !== 'stop' || !node.placeId) return
+      setTimeline((prev) => updateNode(prev, stopId, { loading: true, failed: false }))
+      resolveAttractionForStep(
+        stopId,
+        node.placeId,
+        (placeId) => dataSource.placeDetails(placeId),
+        setTimeline,
+        () => !mountedRef.current || !timelineRef.current.nodes.has(stopId),
+        () => refreshTransitForStop(stopId, dataSource, setTimeline, () => timelineRef.current),
+        false,
+        (placeId) => dataSource.photoAssets?.(placeId) ?? Promise.resolve({}),
+      )
+    },
+    [dataSource, setTimeline, timelineRef],
+  )
+
+  // 掛載後自動重試 failed 的站點(使用者明確要求「重整後要進行重試」)。
+  //
+  // failed 是會被持久化的欄位(刻意跟 loading/removing 相反,見
+  // planTimeline.ts 該欄位的完整說明)——所以重整後讀回來的時間軸仍然
+  // 帶著上次失敗的標記,這個 effect 負責消化它們。
+  //
+  // 空依賴陣列、只跑一次:這是「掛載時的補救」,不是持續監看。之後的
+  // 失敗各自由使用者按重試處理,若改成盯著 steps 跑,一個持續失敗的
+  // 站點會變成無限重試迴圈(每次失敗都重新寫 state、又觸發這個 effect)。
+  const retriedOnMountRef = useRef(false)
+  useEffect(() => {
+    if (retriedOnMountRef.current) return
+    retriedOnMountRef.current = true
+    for (const [id, node] of timelineRef.current.nodes) {
+      if (stopLookupFailed(node)) retryStopLookup(id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const insertAttractionAfter = useCallback(
     (anchorId: string | null, newId: string, data: PlanNodeData): ReturnType<typeof insertAfter> => {
       const result = commitTimeline<ReturnType<typeof insertAfter>>((current) => {
@@ -426,7 +535,7 @@ function useTripPlanTimeline(
         resolveAttractionForStep(
           newId,
           data.placeId,
-          (placeId) => fetchPlanAiPlaceDetailsAny(cfg, placeId),
+          (placeId) => dataSource.placeDetails(placeId),
           setTimeline,
           // isCancelled——用 fable 審閱時發現這裡原本固定回傳 false,
           // 429 限流重試新增的 3 秒延遲視窗被打開後,若這個節點在等待
@@ -434,16 +543,16 @@ function useTripPlanTimeline(
           // (mountedRef,見該處的完整說明),就不該再觸發重試,避免對
           // 已經沒有意義的節點多打一次 API、或寫入已卸載元件的 state。
           () => !mountedRef.current || !timelineRef.current.nodes.has(newId),
-          () => refreshTransitForStop(newId, cfg, setTimeline, () => timelineRef.current),
+          () => refreshTransitForStop(newId, dataSource, setTimeline, () => timelineRef.current),
           false,
-          (placeId) => fetchGeoPlacePhotoAssets(cfg, placeId),
+          (placeId) => dataSource.photoAssets?.(placeId) ?? Promise.resolve({}),
         )
       } else if (result.ok && data.type === 'stop' && data.lat != null && data.lng != null) {
-        refreshTransitForStop(newId, cfg, setTimeline, () => timelineRef.current)
+        refreshTransitForStop(newId, dataSource, setTimeline, () => timelineRef.current)
       }
       return result
     },
-    [cfg, commitTimeline, setTimeline, timelineRef],
+    [dataSource, commitTimeline, setTimeline, timelineRef],
   )
 
   // setNoteForStop — 對齊原型同名函式的介面與邏輯(見該處的完整說明):
@@ -503,10 +612,10 @@ function useTripPlanTimeline(
         const result = removeNode(prev, removedId, { allowRemoving: true })
         return result.ok ? result.timeline : prev
       })
-      if (nextId != null) refreshTransitForStop(nextId, cfg, setTimeline, () => timelineRef.current)
+      if (nextId != null) refreshTransitForStop(nextId, dataSource, setTimeline, () => timelineRef.current)
     }, REMOVE_FADE_MS)
     return true
-  }, [cfg, setTimeline, timelineRef, suppressAutoScrollRef])
+  }, [dataSource, setTimeline, timelineRef, suppressAutoScrollRef])
 
   // dragStopTime — 拖拉時間軸小圓點調整某一站的時間(使用者明確要求
   // 「時間軸的小圓點可以拖拉,上下拉動時調整時間,半小時為刻度」,見
@@ -544,9 +653,9 @@ function useTripPlanTimeline(
     // stop 的前一站關聯有變動就重新查一次」慣例,拖拉時間後也視為同一類
     // 變動觸發重新查——即使結果通常跟之前相同,保持行為一致比省這一次
     // API 呼叫更重要(理由同 refreshTransitForStop 開頭列出的呼叫時機)。
-    refreshTransitForStop(stopId, cfg, setTimeline, () => timelineRef.current)
+    refreshTransitForStop(stopId, dataSource, setTimeline, () => timelineRef.current)
     return true
-  }, [cfg, commitTimeline, setTimeline, timelineRef, suppressAutoScrollRef])
+  }, [dataSource, commitTimeline, setTimeline, timelineRef, suppressAutoScrollRef])
 
   // useMemo——toRenderList 每次呼叫都回傳新陣列(見 planTimeline.ts 的
   // 實作,沿著鏈結走訪重新 push 一次),若不做 memo,每次 render(含跟
@@ -567,6 +676,9 @@ function useTripPlanTimeline(
     removeStep,
     dragStopTime,
     resyncFromStorage,
+    // retryStopLookup——地點查詢失敗的站點重新查詢(見該函式的完整
+    // 說明)。匯出給呼叫端接到 PlanTimelineView 的 onRetryStop。
+    retryStopLookup,
     // setTimeline——2026-10 新增匯出:使用者明確要求「交通時間的膠囊可以
     // 選擇交通方式」,呼叫端(TripPlanPage 本體)的 onTransitModeChange
     // handler 需要直接呼叫 refreshTransitForStop(stopId, cfg, setTimeline,
@@ -635,6 +747,60 @@ function usePlanAiChatBridge(
   ) => ReturnType<typeof insertAfter>,
   addNote: (anchorId: string, text: string, category: string | undefined) => ReturnType<typeof insertAfter>,
   removeStep: (removedId: string) => boolean,
+  // userSelectionRef——使用者最近一次在詢問頁的選擇(見
+  // plan-core/askPageTools.ts UserSelectionRecord 的完整說明)。
+  //
+  // 由呼叫端(元件)持有並寫入(handleAskPageDone),這裡只負責讀——
+  // 寫入的時機在元件的事件處理裡,讀取的時機在這個 hook 組出來的
+  // askPageCtx 被工具呼叫時,兩邊透過同一個 ref 物件共用。
+  userSelectionRef: MutableRefObject<UserSelectionRecord | null>,
+  // attractionPool——這次對話出現過的景點(見
+  // plan-core/attractionPoolStore.ts 的完整說明)。這個 hook 兩邊都用
+  // 到:search_attraction 查到候選時寫進去,get_attraction_pool 被呼叫
+  // 時讀出來。
+  attractionPool: AttractionPoolStore,
+  // openAskPage——2026-10 新增(使用者明確要求「詢問頁的內容跟啟動,要
+  // 可以透過程式自己啟動,也要讓 AI 的工具來啟動」),2026-10(第二輪,
+  // 使用者明確要求「open_ask_page 要可以輸出 attraction id 與
+  // place id」)改成非同步、帶候選清單、回傳選擇結果:讓這個 hook 內部
+  // 組裝的 AgentBridge 工具表(見下方 askPageCtx)能呼叫呼叫端
+  // (TripPlanPage 本體)的「開詢問頁並等待使用者選擇」邏輯,對齊
+  // insertAttraction/addNote/removeStep 這幾個既有參數的同一個模式——
+  // 這個 hook 不自己持有詢問頁顯示狀態或候選清單,只是把呼叫端傳進來的
+  // 函式接到 open_ask_page 工具的 ctx 上。
+  //
+  // 2026-10(第三輪,使用者明確要求「open_ask_page 輸入支援一個模式,
+  // 探查模式」)參數從單純的候選清單改成 candidates 或 explore 其中
+  // 一種(見 plan-core/askPageTools.ts AskPageCtx.openAskPage 的完整
+  // 說明)。
+  //
+  // 2026-10(第四輪,使用者明確要求「後端的純文字對話也統一在 ask page
+  // 裡面顯示對話氣泡」)型別再加上 { text },見下方 onAssistantMessage
+  // 呼叫處的完整說明——這個分支不是透過 open_ask_page 工具觸發,是
+  // onAssistantMessage 收到純文字回覆時直接呼叫,但共用同一個
+  // openAskPage 函式(本質上都是「切到詢問頁顯示某個 input」),不需要
+  // 另外開一個參數或另一條路徑。
+  //
+  // 2026-10(第五輪)型別改用 AskPageInput(見該型別的完整說明:集中
+  // 定義,不在這裡重複列舉聯集成員)——新增的 region/transport 兩種
+  // 不經過這個參數本身的型別擴充就能支援,因為 AskPageInput 已經涵蓋,
+  // 這裡不需要另外改動,只有下方 askPageCtx 組裝處需要新增對應的
+  // wrapper(見該處的完整說明)。
+  openAskPage: (input: AskPageInput) => Promise<AskPageSelection[]>,
+  // resolveAskPage——useAskPageBridge 的 handleAskPageDone。使用者改用
+  // 文字輸入框送出新訊息時,視為放棄目前畫面上還沒操作完的詢問頁(城市
+  // 選單、景點候選等),用空陣列 resolve 掉它(等同按下「不用了」)。
+  //
+  // 為什麼需要這一步:useAskPageBridge.openAskPage 在「已有 pending」時
+  // 會直接忽略新的呼叫(見該檔案「2026-10 訂正」的完整說明)——這個保護
+  // 原本是為了不讓背景的文字回覆打斷使用者正在操作的候選卡片,但沒考慮
+  // 到使用者也可能主動放棄畫面上的詢問頁、改用文字告訴 LLM 下一步要做
+  // 什麼。這種情況下舊的 pending resolve 永遠不會被清掉,导致 LLM 之後
+  // 呼叫的任何 ask_*/open_ask_page 都會被同一個保護機制靜默吞掉,而
+  // askPageTools.ts 的回傳訊息仍然宣稱「已顯示」,LLM 完全無法得知畫面
+  // 其實沒有更新(實機重現:城市選單還開著時直接打字「我要去大阪」,
+  // LLM 查完景點呼叫 open_ask_page 卻被吞掉,畫面卡在舊的城市選單)。
+  resolveAskPage: (selected: AskPageSelection[]) => void,
 ) {
   const apiKey = import.meta.env.VITE_PLAN_AI_ONAGENT_APP_KEY as string | undefined
   const [status, setStatus] = useState<PlanAiChatStatus>('connecting')
@@ -664,11 +830,13 @@ function usePlanAiChatBridge(
   const insertAttractionRef = useRef(insertAttraction)
   const addNoteRef = useRef(addNote)
   const removeStepRef = useRef(removeStep)
+  const openAskPageRef = useRef(openAskPage)
   useEffect(() => {
     getStepsRef.current = getSteps
     insertAttractionRef.current = insertAttraction
     addNoteRef.current = addNote
     removeStepRef.current = removeStep
+    openAskPageRef.current = openAskPage
   })
 
   // conversationIDRef——這個對話在整個 TripPlanPage 掛載期間延用同一個
@@ -728,14 +896,96 @@ function usePlanAiChatBridge(
         return { ok: true }
       },
     }
+    // askPageCtx——見 plan-core/askPageTools.ts 開頭的完整說明:獨立於
+    // 上方 ctx(AttractionStepsCtx,時間軸資料操作)之外的另一個 ctx,
+    // 職責分離(UI 顯示狀態控制 + 等待使用者輸入)。openAskPage 是呼叫端
+    // (TripPlanPage 本體)傳入的函式,參照可能隨每次 render 改變,透過
+    // openAskPageRef 間接呼叫(理由同 insertAttractionRef 等其餘 ctx
+    // 方法:這個 effect 的依賴陣列只有 [apiKey, cfg],不能把會隨 render
+    // 變動的函式參照直接寫進 closure)。
+    //
+    // askTravelCountry/askTravelCity/askTransportMode——2026-10 新增
+    // (見 askPageTools.ts AskPageCtx 開頭「第五輪」的完整說明:工具
+    // 共用同一個底層 openAskPageRef,這裡各自包一層轉換單選值
+    // <-> AskPageSelection[] 的 wrapper)。askTransportMode 是:呼叫底層
+    // openAskPage({ transport })顯示對應的詢問頁內部元件,等待使用者
+    // 選完後拿到 AskPageSelection[],取第一筆的 placeId 當選中值(借用
+    // 這個欄位表達「這次選中項目的識別碼」,不是真的 Google Place ID,
+    // 見 useAskPageBridge.ts「2026-10 第五輪」對這個 trade-off 的完整
+    // 說明);空陣列(使用者按「不用了」)回傳 null,不是拋錯——跟
+    // open_ask_page 對「不用了」的既有語意一致。
+    //
+    // askTravelCountry/askTravelCity——2026-10(第十輪,使用者明確要求
+    // 「將國家與地區的工具分開,並做自動串接」)從原本單一的
+    // askTravelRegion 拆成兩個獨立 wrapper,對應
+    // ask_travel_country/ask_travel_city 兩支獨立工具(見
+    // AskPageCountryInput/AskPageCityInput 的完整說明)。兩者都只是
+    // 「開啟選單就回傳」,不等使用者選完(使用者明確要求「都不需要
+    // 等待」,理由見 plan-core/askPageTools.ts 檔頭第三輪的完整說明:
+    // 等待模式會讓一輪推論的生命週期綁在使用者的操作節奏上)。
+    //
+    // 「選完國家 → 自動顯示城市清單」「選完城市 → 自動查鄰近候選 →
+    // 再開景點選單」這兩段串接都不在這裡做,而是在 handleAskPageDone
+    // (使用者按下選擇的那一刻,見該函式的完整說明)——串接本來就不需要
+    // LLM 參與,它全部發生在前端,LLM 在開啟第一個選單時這一輪就已經
+    // 結束了。
+    const askPageCtx: AskPageCtx = {
+      openAskPage: (input) => openAskPageRef.current(input),
+      askTravelCountry: async (input) => {
+        void openAskPageRef.current({ country: input })
+        return null
+      },
+      askTravelCity: async (input) => {
+        void openAskPageRef.current({ city: input })
+        return null
+      },
+      askTransportMode: async (modes, reason) => {
+        // reason 要轉傳(2026-10 修正):AskPage 的 TransportPanel 會用它
+        // 取代寫死的標題「這段要怎麼移動?」。漏掉的話 LLM 不管傳什麼
+        // 文案都不會顯示——open_ask_page 原樣轉交整個 input、
+        // ask_travel_region 的 reason 包在 AskPageRegionInput 裡一起帶
+        // 進去,只有這一支是逐個欄位重組,所以漏了。
+        void openAskPageRef.current({ transport: modes, reason })
+        return null
+      },
+      // getUserSelection——見 userSelectionRef 的完整說明。透過 ref
+      // 讀取,不是閉包捕捉當下的值:這個 ctx 物件只在建立 AgentBridge
+      // 時組一次,直接讀值會永遠拿到掛載當下的 null。
+      getUserSelection: () => userSelectionRef.current,
+      getAttractionPool: () => attractionPool.list(),
+      // getUiState——使用者目前在哪一個畫面(見 plan-core/uiStateStore.ts
+      // 的完整說明)。讀 module 單例而非 React state,理由同上方
+      // getUserSelection 的 ref:這個 ctx 只在建立 AgentBridge 時組一次。
+      getUiState: () => uiStateStore.get(),
+    }
     const bridge = new AgentBridge({
       url: PLAN_AI_ONAGENT_WS_URL,
       appId: PLAN_AI_ONAGENT_APP_ID,
       apiKey,
-      tools: toAgentBridgeTools(createAttractionToolsList(cfg), ctx),
+      // tools——合併兩份各自獨立的工具表(各自搭配各自的 ctx 型別,見
+      // toAgentBridgeTools<Ctx> 的泛型簽名與 askPageTools.ts 開頭的完整
+      // 說明):attractionTools 負責時間軸資料操作,askPageTools 負責
+      // UI 顯示狀態控制。LLM 眼中這兩批工具完全無法區分、可以在同一次
+      // 對話裡混用,只是前端這一層的程式碼組織各自獨立。
+      tools: {
+        // onPlacesFound——search_attraction 查到候選時寫進景點池(見
+        // plan-core/attractionPoolStore.ts 的完整說明),之後 LLM 用
+        // get_attraction_pool 就能把 placeId 對照成名稱。
+        ...toAgentBridgeTools(createAttractionToolsList(cfg, (places) => attractionPool.put(places)), ctx),
+        ...toAgentBridgeTools(createAskPageToolsList(), askPageCtx),
+      },
       // onAssistantMessage/onError——把文字插入成獨立的 message 節點(見
       // planTimeline.ts PlanNodeType 的完整說明),不是附屬在某個景點卡上
       // 的引言,對齊原型的既有設計(理由見該處的完整說明)。
+      //
+      // 2026-10(使用者明確要求「後端的純文字對話也統一在 ask page 裡面
+      // 顯示對話氣泡」):除了寫進時間軸節點(存檔用途不變),額外呼叫
+      // openAskPage({ text }) 讓畫面自動切到 AskPage 顯示這則文字——
+      // 對齊 LLM 呼叫 open_ask_page 工具時的同一條「切到詢問頁」路徑,
+      // 只是這裡是元件自己直接觸發,不經過工具呼叫。不 await 這個呼叫:
+      // openAskPage 回傳的 Promise 要等使用者關閉氣泡(onDone)才會
+      // resolve,但這裡只是要「顯示」,不需要像 open_ask_page 工具那樣
+      // 等待結果再做下一步。
       onAssistantMessage: (text) => {
         isThinkingRef.current = false
         setIsThinking(false)
@@ -743,6 +993,7 @@ function usePlanAiChatBridge(
         const lastId = steps.length > 0 ? steps[steps.length - 1].id : null
         const newId = `agent-msg-${crypto.randomUUID()}`
         insertAttractionRef.current(lastId, newId, { type: 'message', text })
+        openAskPageRef.current({ text })
 
         // postPlanAiChatReply——fire-and-forget:把 onagent 這則回覆存檔。
         // 不 await、不讓失敗影響上面已經完成的訊息顯示邏輯,只在失敗時
@@ -772,7 +1023,10 @@ function usePlanAiChatBridge(
         const steps = getStepsRef.current()
         const lastId = steps.length > 0 ? steps[steps.length - 1].id : null
         const newId = `agent-msg-${crypto.randomUUID()}`
-        insertAttractionRef.current(lastId, newId, { type: 'message', text: `(連線錯誤: ${err.message})` })
+        // ephemeral: true——跟 sendPrompt 的錯誤訊息同樣性質(見該處的
+        // 完整說明):這是這次連線失敗的系統通知,不是真正的對話內容,
+        // 不該被持久化。
+        insertAttractionRef.current(lastId, newId, { type: 'message', text: `(連線錯誤: ${err.message})`, ephemeral: true })
       },
     })
     bridgeRef.current = bridge
@@ -812,6 +1066,10 @@ function usePlanAiChatBridge(
   const sendPrompt = useCallback(async (text: string) => {
     const trimmed = text.trim()
     if (!trimmed || !bridgeRef.current || isThinkingRef.current) return false
+    // 放棄目前畫面上還沒操作完的詢問頁——見上方 resolveAskPage 參數的
+    // 完整說明。對沒有 pending 的情況是安全的 no-op(useAskPageBridge
+    // 內部用 ?. 保護過)。
+    resolveAskPage([])
     // isThinkingRef.current 在這裡同步設成 true,不只靠下面的 setIsThinking
     // 觸發 useEffect 鏡射——state 更新到 effect 真正執行之間有 React
     // 排程/commit 的真實時間差,若只靠 effect 更新 ref,這個時間差就是
@@ -839,10 +1097,14 @@ function usePlanAiChatBridge(
       // 重新組文案;非 ApiError(連線層級失敗,例如網路斷線)才用通用的
       // 連線錯誤措辭,對齊既有 onError 的措辭風格。
       const errText = err instanceof ApiError ? err.message : '(訊息送出失敗,請檢查網路連線後再試一次)'
-      insertAttractionRef.current(lastId, newId, { type: 'message', text: errText })
+      // ephemeral: true——使用者明確要求「錯誤訊息不要寫持久化」(見
+      // PlanNodeData.ephemeral 的完整說明):這則訊息只對這次 session
+      // 有意義,重新整理頁面不該還留著上次送出失敗的提示。畫面渲染/
+      // staleOtherAgentMessages 淡化邏輯不受影響,只有存檔時會被跳過。
+      insertAttractionRef.current(lastId, newId, { type: 'message', text: errText, ephemeral: true })
       return false
     }
-  }, [cfg])
+  }, [cfg, resolveAskPage])
 
   return {
     apiKeyMissing: !apiKey,
@@ -934,6 +1196,20 @@ export function TripPlanPage(props: {
   // (見下方 reportStops 與 selectStop),呼叫端的函式參照不會進任何
   // 依賴陣列,傳 inline 箭頭函式是安全的。
   onStopsChange?: (stops: PlanStopMarker[]) => void
+  // dataSource——地點查詢的存取層(見 home/plan-ai-sim/planAiDataSource.ts
+  // 的完整說明)。選填,省略時用需登入的真後端實作(/app 的既有行為)。
+  //
+  // 2026-10 新增(使用者明確要求「把存取層定義介面,用不同的實作抽換」、
+  // 「展示內用公開的」):/ai-plan 展示頁交接後走的是這個元件,但那是
+  // 未登入的訪客——原本固定用 createPlanAiApiDataSource 打 /internal/*,
+  // 實機連噴 401(照片 8 次、交通 2 次),卡片的照片與交通時間全部補不
+  // 上來。改由呼叫端注入:LivePlanLayer 傳公開實作,/app 用預設值。
+  //
+  // 三份實作各自對應一種情境,不是一份實作內部判斷 cfg.token:
+  //   planAiFakeDataSource           展示頁播放態(純前端劇本)
+  //   createPlanAiPublicDataSource   展示頁推論態(訪客,/public/*)
+  //   createPlanAiApiDataSource      /app(需登入,/internal/*)
+  dataSource?: PlanAiDataSource
   // selectedStopId/onSelectedStopChange——目前選中哪一站。三種合法組合:
   //   - 兩個都傳:受控。以 selectedStopId 為準,元件自己不存狀態,每次
   //     使用者點選都呼叫 onSelectedStopChange(地圖對話小匡用這個)。
@@ -1071,9 +1347,34 @@ export function TripPlanPage(props: {
   // 兩個 prop 各自獨立判斷(見下方渲染區塊:horizontalTimeline && onNewDraft
   // 兩者同時成立才渲染)。
   onNewDraft?: () => void
+  // initialAskPage——選填:掛載時立刻顯示的詢問頁(見
+  // plan-core/askPageTools.ts AskPageInput 的完整說明)。
+  //
+  // 2026-10 新增(使用者明確要求「進入推論態一開始就顯示詢問要去那裡的
+  // 國家清單」):交接到推論態之後,原本畫面是一片空的時間軸、等使用者
+  // 自己打字描述需求。但「要去哪個國家」這個問題每一趟規劃都必然要問,
+  // 而且前端自己就有固定的國家清單(travelRegionData.ts),不需要等 LLM
+  // 呼叫 ask_travel_country 才問得出來——一進來就把選單擺上,使用者點
+  // 一下就能往下走,不用先想出一句話。
+  //
+  // 傳的是完整的 AskPageInput 而不是一個 showCountryPicker 布林:詢問頁
+  // 本來就支援六種形態(候選景點/探查/國家/城市/交通/文字),把「開哪
+  // 一種」交給呼叫端決定,這個元件只負責在掛載時把它顯示出來。日後若
+  // 有情境需要一進來就問交通方式或顯示一則文字,不需要再加第二個 prop。
+  //
+  // 選填且預設不顯示——/app、DesktopLayout.tsx、/trip-plan 全頁等既有
+  // 呼叫端都不傳,行為完全不變(/app 的使用者是自己主動來排行程的,
+  // 一進來就被塞一張選單並不合理;/ai-plan 的使用者剛看完展示、正在
+  // 「換我試試看」的當下,那張選單才是接得上的下一步)。
+  //
+  // 只在掛載時讀一次(見下方 effect 的空依賴陣列):這是「初始」狀態,
+  // 不是受控 prop——之後的詢問頁一律由 LLM 的工具呼叫或使用者互動驅動,
+  // 呼叫端改變這個值不會重新開啟選單。語意同 React 的
+  // defaultValue/useState 初值。
+  initialAskPage?: AskPageInput
 }) {
   const {
-    cfg, compact, visible = true, scrollContainerRef, onPanToStop, onStopsChange,
+    cfg, compact, visible = true, scrollContainerRef, onPanToStop, onStopsChange, dataSource,
     selectedStopId: controlledSelectedStopId, onSelectedStopChange,
     onHoverStopChange, onHoverTransitChange, onSendPromptReady,
     store = localStoragePlanTimelineStore,
@@ -1081,6 +1382,7 @@ export function TripPlanPage(props: {
     hideEmptyState = false,
     horizontalTimeline = false,
     onNewDraft,
+    initialAskPage,
   } = props
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const followingRef = useRef(true)
@@ -1102,7 +1404,13 @@ export function TripPlanPage(props: {
   // 的那段程式碼自己同步設定旗標,保證順序正確。
   const suppressNextAutoScrollRef = useRef(false)
 
-  const { steps, timelineRef, insertAttractionAfter, setNoteForStop, removeStep, dragStopTime, resyncFromStorage, setTimeline } = useTripPlanTimeline(cfg, suppressNextAutoScrollRef, store)
+  // planAiDataSource——存取層實例(見 dataSource prop 的完整說明)。
+  // 宣告在 useTripPlanTimeline 之前:那支 hook 現在要收它當參數。
+  // useMemo 避免每次 render 都建立新物件——它會進 HorizontalPlanTimeline
+  // 內部 effect 的依賴陣列(AskPage 用 dataSource 當依賴),參照不穩定
+  // 會讓那個 effect 每次 render 都重跑。
+  const planAiDataSource = useMemo(() => dataSource ?? createPlanAiApiDataSource(cfg), [dataSource, cfg])
+  const { steps, timelineRef, insertAttractionAfter, setNoteForStop, removeStep, dragStopTime, resyncFromStorage, retryStopLookup, setTimeline } = useTripPlanTimeline(planAiDataSource, suppressNextAutoScrollRef, store)
 
   // getStepsForBridge——usePlanAiChatBridge 的 getSteps 需要讀到「當下
   // 最新」的節點清單,不能綁死成某一次 render 時的閉包。
@@ -1138,7 +1446,416 @@ export function TripPlanPage(props: {
     [setNoteForStop],
   )
 
-  const planAiChat = usePlanAiChatBridge(cfg, getStepsForBridge, insertAttractionAfter, addNoteToTimeline, removeStep)
+  // showAskPage/askPageInput/openAskPage/handleAskPageDone——2026-10
+  // 新增(使用者明確要求「詢問頁的內容跟啟動,要可以透過程式自己啟動,
+  // 也要讓 AI 的工具來啟動」):從 HorizontalPlanTimeline.tsx 內部提升
+  // 到這裡,讓程式(這裡的使用者互動路徑)跟 AI 工具
+  // (usePlanAiChatBridge 內部組裝的 open_ask_page)共用同一份狀態,
+  // 不會出現兩條互相不同步的觸發路徑。縱向版(PlanTimelineView)不
+  // 使用這組狀態——詢問頁/軸線頁互斥顯示是橫向版(手機版交接後)專屬
+  // 的版面安排,見 HorizontalPlanTimeline.tsx showAskPage prop 的完整
+  // 說明。
+  //
+  // 狀態機本身(顯示詢問頁、等待使用者選完才 resolve 的 Promise)抽成
+  // 共用 hook useAskPageBridge(見該檔案開頭的完整設計理由)——這裡跟
+  // AIPlanTimelinePage.tsx 原本各自內嵌一份幾乎相同的邏輯,現在改成
+  // 呼叫同一份實作,差異只在 Input 泛型:這裡用完整的 AskPageInput(見
+  // 該型別的完整說明),展示頁劇本固定只給 { candidates }。text 形態見
+  // 下方 onAssistantMessage 呼叫處與 AskPage.tsx input 聯集「第四輪」
+  // 的完整說明——純文字回覆不經過 AI 工具,是這個元件直接呼叫
+  // openAskPage 觸發,跟 candidates/explore/region/transport 這幾種
+  // 「由 LLM 呼叫對應工具觸發」不同路徑。
+  //
+  // 宣告位置在 usePlanAiChatBridge 呼叫之前(而不是跟其餘大多數 state
+  // 一起宣告在後面)——這個 hook 需要在呼叫當下就拿到 openAskPage 當
+  // 第六個參數,JavaScript 變數必須先宣告才能在同一個函式作用域的
+  // 後續程式碼裡使用,順序不能顛倒。
+  const { showAskPage, askPageInput, openAskPage, handleAskPageDone: resolveAskPage } = useAskPageBridge<AskPageInput>({
+    candidates: [],
+  })
+
+  // sendPromptRef——planAiChat.sendPrompt 的間接參照。
+  //
+  // 2026-10 新增(「選完景點 → 送出 prompt」,見 handleAskPageDone 該
+  // 分支的完整說明):handleAskPageDone 要呼叫 sendPrompt,但
+  // usePlanAiChatBridge 在這個元件裡宣告在它下面(而且它的 ctx 需要
+  // handleAskPageDone 之前就定義好的那幾個函式),JavaScript 不能在
+  // 宣告前使用。用 ref 間接取用,寫法對齊同檔案 openAskPageRef /
+  // insertAttractionRef 等既有 ref 處理同一個順序問題的方式。
+  const sendPromptRef = useRef<((text: string) => Promise<boolean>) | null>(null)
+
+  // uiStateStore 同步——把「使用者目前在哪一個畫面、畫面上有哪些選項」
+  // 寫進那份 LLM 可讀的狀態(見 plan-core/uiStateStore.ts 的完整說明)。
+  //
+  // 用一個 effect 盯著 showAskPage/askPageInput,而不是在每個
+  // openAskPage 呼叫點旁邊各寫一次 uiStateStore.set():開啟詢問頁的
+  // 入口有五、六處(LLM 的四支工具、handleAskPageDone 的兩段自動串接、
+  // initialAskPage、onAssistantMessage 的文字氣泡),每處都手動同步
+  // 一定會漏,而漏掉的那一處會讓 LLM 讀到前一個畫面的殘留狀態——比
+  // 完全沒有這份資訊更糟。這兩個值是「畫面現在長什麼樣」的唯一事實
+  // 來源,盯著它們就不可能不同步。
+  //
+  // selected 目前一律是空陣列,沒有「勾選到一半」的中間狀態:使用者在
+  // 景點畫面逐張勾選時 askPageInput 不會變(選取狀態是 AskPage 元件
+  // 自己的 state,見該檔案 selectedPlaceIds 的說明),這一層讀不到。
+  //
+  // 刻意不為此加一個 onSelectionChange prop 把那份 state 鏡射出來:
+  // 「勾到一半」是短暫的過渡狀態,LLM 在那個瞬間不會被叫起來(它要等
+  // 使用者按下確認、送出 prompt 才會有下一輪),而「選完了哪些」已經由
+  // get_user_selection 回答。真的需要中間狀態時再加,現在加只是多一條
+  // 要維護的同步路徑。
+  //
+  // screen/options 仍然完整:LLM 讀得到「使用者正在景點畫面、畫面上有
+  // 這幾個候選」,那才是它判斷「使用者卡在哪一步」需要的資訊。
+  useEffect(() => {
+    if (!showAskPage) {
+      uiStateStore.reset()
+      return
+    }
+    const input = askPageInput
+    if ('text' in input) {
+      uiStateStore.set({ screen: 'message', title: input.text, options: [], selected: [] })
+      return
+    }
+    if ('country' in input) {
+      uiStateStore.set({
+        screen: 'country',
+        title: input.country.reason,
+        // 選項是前端那份固定清單(travelRegionData.ts),countryIds 有帶
+        // 就是篩選過的子集——跟 RegionPanel 實際顯示的內容用同一個來源
+        // 算出來,不是另外猜一份。
+        options: listTravelCountries(input.country.countryIds).map((c) => ({ id: c.id, name: c.name })),
+        selected: [],
+      })
+      return
+    }
+    if ('city' in input) {
+      uiStateStore.set({
+        screen: 'city',
+        title: input.city.reason,
+        options: listTravelCities(input.city.countryId, input.city.cityIds).map((c) => ({ id: c.id, name: c.name })),
+        selected: [],
+      })
+      return
+    }
+    if ('transport' in input) {
+      uiStateStore.set({
+        screen: 'transport',
+        title: input.reason,
+        options: input.transport.map((m) => ({ id: m, name: m })),
+        selected: [],
+      })
+      return
+    }
+    if ('candidates' in input) {
+      uiStateStore.set({
+        screen: 'attractions',
+        title: input.reason,
+        options: input.candidates.map((c) => ({ id: c.placeId, name: c.name })),
+        selected: [],
+      })
+      return
+    }
+    // explore——候選是 AskPage 內部自己查的,這一層拿不到(同
+    // handleAskPageDone 對 explore 的既有限制說明)。畫面形態仍然要
+    // 記下來:LLM 至少知道「使用者正在看景點候選、還在查詢中」。
+    uiStateStore.set({ screen: 'attractions', title: input.reason, options: [], selected: [] })
+  }, [showAskPage, askPageInput])
+
+  // initialAskPage——掛載時立刻開啟呼叫端指定的詢問頁(見該 prop 的
+  // 完整說明)。
+  //
+  // 不 await 這個 Promise:openAskPage 回傳的 Promise 要等使用者選完才
+  // resolve,而這裡沒有「選完之後要接著做什麼」——後續動作一律由
+  // handleAskPageDone 處理(使用者選完國家會自動串到城市層、選完城市
+  // 送出一句話給 LLM,見該函式的完整說明),跟這次開啟的呼叫端無關。
+  // 寫法對齊 askPageCtx 裡那幾支 void openAskPageRef.current(...) 的
+  // 既有慣例。
+  //
+  // 空依賴陣列:這是「初始」詢問頁,只在掛載時開一次(見該 prop 說明的
+  // 最後一段)。openAskPage 本身來自 useAskPageBridge 的 useCallback、
+  // 參照穩定,但即使它變動也不該重新開啟選單——使用者可能已經選完、
+  // 或正在看另一個 LLM 開的詢問頁,再開一次會把那個狀態蓋掉。
+  // 已經有行程時不開這個詢問頁(2026-10,使用者明確要求「初始狀態如果
+  // 已經有行程了就不要出現詢問視窗」)。
+  //
+  // 這個詢問頁的用途是「還不知道要去哪裡,先問個方向」——時間軸裡已經
+  // 有站點時那個前提不成立:使用者是回來繼續看/調整既有行程的,一進來
+  // 就被一張「要去哪個國家?」的全幅選單蓋住,還得先關掉才看得到自己
+  // 排好的東西。
+  //
+  // 判斷用「有沒有 stop 節點」而不是 nodes.size > 0:時間軸裡還有
+  // message 節點(LLM 的對話訊息,見 planTimeline.ts PlanNodeType 的
+  // 完整說明),只有訊息、沒有任何站點時仍然算「還沒有行程」,該照常
+  // 開這個詢問頁。
+  //
+  // 2026-10(第二輪,使用者明確要求「全部行程都刪除時要觸發開啟選擇」):
+  // 這個 effect 原本只在掛載時跑一次,改成盯著「目前有幾個站點」。
+  //
+  // 它該出現的條件其實不是「剛掛載」,而是「目前沒有行程」——兩種情況
+  // 都符合:
+  //   - 掛載時時間軸是空的(全新使用者,或上次沒排任何東西)
+  //   - 使用者把所有站點刪掉了(UI 上逐站刪、AI 的 remove_attraction、
+  //     或整個清空,三條路徑都會讓 stopCount 歸零,不需要在每一處各自
+  //     加一次觸發)
+  // 「刪到空」跟「一開始就空」對使用者來說是同一件事,沒有理由只處理
+  // 其中一種。
+  //
+  // 判斷用「有沒有 stop 節點」而不是 nodes.size > 0:時間軸裡還有
+  // message 節點(LLM 的對話訊息,見 planTimeline.ts PlanNodeType 的
+  // 完整說明),只有訊息、沒有任何站點時仍然算「還沒有行程」。
+  //
+  // 已經有詢問頁開著時不會被搶佔:useAskPageBridge.openAskPage 對
+  // 「已有 pending」直接忽略(見該函式的完整說明),所以使用者正在看
+  // LLM 開的某個選單時,這裡不會把它蓋掉。
+  //
+  // 刪到空之後使用者自己按「不用了」關掉選單,不會再被開啟一次:
+  // stopCount 維持 0、依賴沒有變動,effect 不重跑。只有再次從「有站點」
+  // 變成 0 才會再觸發。
+  const stopCount = useMemo(() => steps.filter((s) => s.type === 'stop').length, [steps])
+  useEffect(() => {
+    if (!initialAskPage) return
+    if (stopCount > 0) return
+    void openAskPage(initialAskPage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stopCount])
+
+  // userSelectionRef——使用者最近一次在詢問頁的選擇(見
+  // plan-core/askPageTools.ts UserSelectionRecord 的完整說明)。寫入在
+  // 下方 handleAskPageDone,讀取在 usePlanAiChatBridge 組出來的
+  // askPageCtx.getUserSelection。
+  const userSelectionRef = useRef<UserSelectionRecord | null>(null)
+  // attractionPool——這次對話出現過的景點(見
+  // plan-core/attractionPoolStore.ts 的完整說明)。useMemo 讓它跟著這個
+  // 元件實例活著:重新掛載(例如交接後換 draft)就是一份新的池子,對齊
+  // 「這次對話的工作記憶」這個定位。
+  const attractionPool = useMemo(() => createAttractionPoolStore(), [])
+
+  // handleAskPageDone——使用者在詢問頁按下選擇之後。
+  //
+  // 除了結束目前這個詢問(resolveAskPage),還負責前端自己的串接——
+  // 2026-10(第十輪,使用者明確要求「將國家與地區的工具分開,並做自動
+  // 串接」)現在有兩段串接:
+  //   1. 選完國家後,自動開啟該國的城市清單(帶 back,見
+  //      AskPageCityInput 的完整說明,讓使用者能從城市層按「返回上一
+  //      層」重新看到剛剛那份國家清單)。
+  //   2. 選完城市後,自動查那個城市的鄰近候選、接著開啟景點選單(使用者
+  //      明確指出「選完城市不是就是查這個城市鄰近候選嗎」)——這段
+  //      邏輯沒有變,只是判斷條件從 'region' in askPageInput 改成
+  //      'city' in askPageInput(原本單一的 ask_travel_region 拆成
+  //      ask_travel_country/ask_travel_city 兩支獨立工具,askPageInput
+  //      的形態跟著拆成 country/city 兩種,見 AskPageInput 的完整
+  //      說明)。
+  //
+  // 這兩段串接都不需要 LLM 參與——它們原本(等待模式時代)寫在
+  // askTravelRegion 的 handler 裡,靠 await 等使用者選完;改成不等待
+  // 之後搬到這裡。LLM 那一輪推論在開啟第一個選單時就結束了,之後的
+  // 查詢與後續選單都是前端自己做的。
+  //
+  // 刻意不在這裡觸發新一輪推論(使用者明確要求「先不要接新推論」)：
+  // 選單開出來之後就停著,使用者選了什麼目前不往下送。
+  const handleAskPageDone = useCallback(
+    (selected: AskPageSelection[]) => {
+      // 先結束目前這個詢問,畫面才會收起來。
+      resolveAskPage(selected)
+
+      // 純文字氣泡不是一次「選擇」,不該寫進 userSelectionRef
+      // (2026-10 修正):AskPageInput 的 text 形態是 LLM 的文字回覆,
+      // 它的關閉鈕也走 onDone([])。不擋掉的話,使用者剛選完城市、
+      // 接著關掉一則文字氣泡,就會把那次真實的選擇覆寫成
+      // { kind: 'attractions', items: [] }——get_user_selection 會回報
+      // 「最近選了景點但一個都沒選」,剛剛的城市選擇無聲消失。
+      if ('text' in askPageInput) return
+
+      // 記下這次選擇,供 get_user_selection 查詢(見 userSelectionRef
+      // 的完整說明)。kind 由當下詢問頁的形態決定——LLM 要據此判斷
+      // 接下來該做什麼,光看 items 分不出是選了國家、城市還是景點。
+      // country/city 這兩種形態都歸為 UserSelectionRecord 的 'region'
+      // kind(LLM 不需要區分「選的是國家還是城市」,只要知道「這是一次
+      // 地點相關的選擇」)。
+      //
+      // name 從當下畫面上的候選清單回查:selected 只帶 id,但 LLM 讀
+      // 不懂 placeId,也無法用它跟使用者溝通。
+      const selectionKind: UserSelectionRecord['kind'] =
+        'country' in askPageInput || 'city' in askPageInput
+          ? 'region'
+          : 'transport' in askPageInput ? 'transport' : 'attractions'
+      // name 的來源依形態而異(2026-10 修正:原本只從 candidates 回查,
+      // 所以 region 形態永遠拿不到名稱——而那正是這次新串接流程的主
+      // 路徑。LLM 拿到一個裸的 city id 無法用自然語言回應「好,那我們
+      // 來排台南的行程」,那正是 name 這個欄位存在的理由)。
+      //   candidates——從當下畫面上的候選清單回查
+      //   country/city——從 travelRegionData 查國家/城市名
+      //     (findTravelCountry/findTravelCityById)
+      //   transport——交通方式本身就是人類可讀的值,放進 value
+      //   explore——候選是 AskPage 內部自己查的,呼叫端拿不到,仍是
+      //             undefined(要修得讓 AskPage 回報實際候選,改動較大)
+      const candidateNames = new Map(
+        ('candidates' in askPageInput ? askPageInput.candidates : []).map((c) => [c.placeId, c.name]),
+      )
+      userSelectionRef.current = {
+        kind: selectionKind,
+        items: selected.map((sel) => {
+          // transport——選中的是交通方式,不是地點。useAskPageBridge 借用
+          // placeId 欄位表達「選中項目的識別碼」(見該檔案檔頭的 trade-off
+          // 說明),但 UserSelectionRecord 有專屬的 value 欄位,到這一層
+          // 就該轉換回去——否則 LLM 會讀到一個叫 placeId 的 'car',跟
+          // 工具說明書上的 value 對不上,容易誤判成地點 ID。
+          if (selectionKind === 'transport') {
+            return { value: sel.placeId, name: sel.placeId }
+          }
+          if (selectionKind === 'region') {
+            const name = 'country' in askPageInput
+              ? findTravelCountry(sel.placeId)?.name
+              : findTravelCityById(sel.placeId)?.name
+            return { value: sel.placeId, name }
+          }
+          return {
+            placeId: sel.placeId,
+            attractionId: sel.attractionId,
+            name: candidateNames.get(sel.placeId),
+          }
+        }),
+        selectedAt: new Date().toISOString(),
+      }
+
+      // 選完感興趣景點 → 送出一句 prompt 請 AI 依這些地點安排行程。
+      //
+      // 2026-10 新增(使用者明確要求「選完感興趣景點後,送出 prompt,
+      // 已經選好地點,依據這些地點安排行程」):在這之前,使用者選完
+      // 景點就沒有下文了——選擇被記進 userSelectionRef,但沒有任何東西
+      // 去叫 AI 動起來(當時使用者明確要求「先不要接新推論」,所以這條
+      // 路徑是刻意留空的;現在要接上了)。
+      //
+      // 走 sendPrompt 而不是自己呼叫 postPlanAiChat:那是「使用者送出
+      // 一句話」的既有唯一入口(見 usePlanAiChatBridge sendPrompt 的
+      // 完整說明,含 conversationID 延續、isThinking 併發保護、訊息
+      // 寫入時間軸),繞過它等於另外實作一套,兩條路徑的行為會不一致。
+      // 這也跟 DestinationPrompt 選完城市後送出那句話走的是同一個管道。
+      //
+      // prompt 刻意不寫出地點名稱(2026-10 改動,使用者明確要求「送出的
+      // prompt 不要寫地點,讓 AI 用工具讀取使用者選取的」):改成叫 LLM
+      // 自己呼叫 get_user_selection 查。
+      //
+      // 第一版是把名稱直接串進 prompt(`我已經選好地點了:A、B。`),
+      // 想省掉一次工具呼叫的來回。改掉的理由:
+      //   1. 名稱不是穩定的識別碼。LLM 拿到「台北101購物中心」這種字串,
+      //      要排進行程還是得自己 place-search 查一次回 placeId(實機
+      //      驗證時觀察到的真實行為),所謂「少一次來回」並沒有發生,
+      //      只是把工具呼叫換成了搜尋呼叫,而且搜尋會消耗 Google 配額。
+      //      get_user_selection 回的是 placeId + attractionId + name 三者
+      //      齊備,可以直接拿去 add_attraction。
+      //   2. 選擇內容寫進 prompt 就固定在對話歷史裡了。之後使用者改了
+      //      選擇,歷史裡那句舊的還在,LLM 可能照舊的排。工具是現查的,
+      //      永遠反映最新一次。
+      //   3. explore 模式本來就拿不到名稱(候選由 AskPage 內部查,見上方
+      //      candidateNames 的既有說明),原本要為它寫一條只帶數量的
+      //      分支。改成一律讓 LLM 查之後,兩種形態走同一句 prompt,
+      //      不需要分支。
+      //
+      // 文案講「依據」而非「排這幾個」(使用者明確要求「要寫說明,依據
+      // 感興趣地點排行程,不是只排有選的地點,是要依據感興趣地點安排
+      // 整套行程」):只排選到的那幾個會得到一份兩三站就結束的行程,
+      // 而且中間的交通、吃飯、鄰近順路的景點全都沒有——那不是一份可以
+      // 照著走的行程。prompt 要把這個意圖講明,否則 LLM 最自然的解讀
+      // 就是「把這幾個排進去」。
+      //
+      // 2026-10 修正(使用者明確要求「感興趣的點只是優先較高的地點,
+      // 不要從中推估步調」):前一版的文案寫「從中判斷我喜歡什麼類型的
+      // 景點與步調」,那是在要求 LLM 從幾次點擊推論使用者的旅遊風格——
+      // 樣本太小、推論沒有根據,而且猜錯的代價是整份行程的節奏都被帶偏
+      // (勾了三個古蹟就排成緊湊的徒步快走路線,或反之)。
+      // 勾選能可靠表達的只有「這幾個我要」,所以文案改成「優先排進去的
+      // 地點」,並明確叫它不要推估步調——步調由 thought 的「時間要留得
+      // 合理」那條統一處理,不靠猜測。
+      if ('candidates' in askPageInput || 'explore' in askPageInput) {
+        // 一個都沒選(使用者按「不用了」)→ 不送 prompt。那是明確的
+        // 「這批我都不要」,不該解讀成「幫我排這些」(見 AskPage.tsx
+        // 檔頭對空陣列語意的完整說明)。
+        if (selected.length === 0) return
+        void sendPromptRef.current?.(
+          '我已經選好感興趣的地點了,請呼叫 get_user_selection 查詢我選了哪些。' +
+          '那幾個是「優先排進去」的地點,不是全部——請以它們為起點,' +
+          '再補上順路、鄰近、同類型的其他景點,以及用餐與休息的安排,' +
+          '排成一份可以照著走的完整行程。' +
+          '不要從我選的內容推估我的步調或偏好強度,勾選只表達「這幾個我要」。',
+        )
+        return
+      }
+
+      // 選完國家 → 自動開啟該國城市清單,帶 back 讓使用者能返回這份
+      // 國家清單(見 AskPageCityInput.back 的完整說明)。
+      if ('country' in askPageInput) {
+        const selectedCountryId = selected[0]?.placeId
+        if (!selectedCountryId) return
+        void openAskPage({
+          city: { countryId: selectedCountryId, back: { countryIds: askPageInput.country.countryIds } },
+        })
+        return
+      }
+
+      // 選完城市 → 自動查該城市鄰近候選、接著開啟景點選單。
+      if (!('city' in askPageInput)) return
+      const selectedCity = selected[0]?.placeId
+      if (!selectedCity) return
+      const city = findTravelCityById(selectedCity)
+      if (!city) return
+
+      void (async () => {
+        let candidates: AskPageCandidate[] = []
+        try {
+          const { attractions } = await fetchPlanAiAttractionSearch(
+            cfg,
+            city.lat,
+            city.lng,
+            CITY_ATTRACTION_TYPES,
+          )
+          candidates = attractions
+            .filter((a) => !!a.placeId)
+            .map((a) => ({ placeId: a.placeId!, name: a.name, summary: a.summary }))
+        } catch {
+          // 查詢失敗就不開第二個選單,理由同其餘查詢失敗的既有降級
+          // 慣例:使用者看到的是「選完城市之後沒有下文」,而不是一個
+          // 空的候選清單或整頁錯誤。
+          return
+        }
+        if (candidates.length === 0) return
+        // reason——這次 openAskPage 是前端自己觸發的,沒有 LLM 提供的
+        // reason 可用,固定用「選擇感興趣的景點」。
+        //
+        // 2026-10 改動(使用者明確要求「不要用 台北有哪些景點?,用
+        // 選擇感興趣的景點」):原本是用選定城市的名稱動態組
+        // `${city.name}有哪些景點?`。那句話是個「問句」,但這張畫面要
+        // 使用者做的事是「從這幾張卡片裡挑」——標題講的應該是接下來
+        // 要做的動作,不是一個它自己不會回答的問題。城市名稱也不需要
+        // 再講一次:使用者上一步才剛選過那個城市。
+        void openAskPage({ candidates, reason: '選擇感興趣的景點' })
+      })()
+    },
+    [resolveAskPage, askPageInput, cfg, openAskPage],
+  )
+
+  // handleAskPageBack——CityPanel 的「返回上一層」按鈕觸發(見
+  // AskPage.tsx CityPanel 的完整說明)。不是結束詢問(不呼叫
+  // resolveAskPage),單純重新開一個國家層的詢問頁,countryIds 原樣
+  // 重現選國家當時的篩選結果。
+  const handleAskPageBack = useCallback(
+    (countryIds?: string[]) => {
+      void openAskPage({ country: { countryIds } })
+    },
+    [openAskPage],
+  )
+  const planAiChat = usePlanAiChatBridge(
+    cfg,
+    getStepsForBridge,
+    insertAttractionAfter,
+    addNoteToTimeline,
+    removeStep,
+    userSelectionRef,
+    attractionPool,
+    openAskPage,
+    resolveAskPage,
+  )
 
   // reportSendPromptReady——見 onSendPromptReady 參數的完整說明,
   // useStableCallback 包一層讓依賴陣列只剩真正該追蹤的值
@@ -1150,17 +1867,21 @@ export function TripPlanPage(props: {
     reportSendPromptReady(planAiChat.sendPrompt)
   }, [planAiChat.sendPrompt, reportSendPromptReady])
 
+  // sendPromptRef 的填值——見該 ref 的完整說明。跟上面那個 effect 填的
+  // 是同一個函式,只是一個給呼叫端(onSendPromptReady)、一個給這個元件
+  // 內部宣告順序在前面的 handleAskPageDone 用。
+  useEffect(() => {
+    sendPromptRef.current = planAiChat.sendPrompt
+  }, [planAiChat.sendPrompt])
+
   const [chatInput, setChatInput] = useState('')
 
   // composerSlot——版面外殼提供的輸入框插槽(見 plan-core/composerSlot.ts)。
   // 不在外殼裡時是 undefined,輸入框維持原位渲染,行為不變。
   const composerSlot = useContext(ComposerSlotContext)
-  // latestAgentMessage——橫向版時間軸回報的最新 AI 回覆(見
-  // HorizontalPlanTimeline.tsx onLatestMessageChange 的完整說明)。
-  // 渲染成對話泡泡、緊貼輸入框上方(使用者明確要求「要出現在輸入框
-  // 上方」)——縱向版不需要這個,它的 message 節點本來就是時間軸上
-  // 獨立的一列(見 PlanTimelineView.tsx 該分支)。
-  const [latestAgentMessage, setLatestAgentMessage] = useState<{ text: string; stale: boolean } | null>(null)
+  // latestAgentMessage state 已撤回 HorizontalPlanTimeline.tsx 內部
+  // (2026-10,使用者明確指出泡泡「不應該放在輸入匡區」)——見
+  // ComposerPortal 呼叫處的完整說明。
 
   // mountedIdsRef——追蹤「已經播過進場動畫的節點 id」,理由同原型的完整
   // 說明:用 id 而非陣列 index 判斷 justMounted,插入到中間的節點才能
@@ -1449,7 +2170,25 @@ export function TripPlanPage(props: {
           縱向版的時間微調彈層整套互動也一併移除了)。 */}
       {horizontalTimeline ? (
         <HorizontalPlanTimeline
-          onLatestMessageChange={setLatestAgentMessage}
+          // onLatestMessageChange/dimmed 已移除——2026-10 使用者明確
+          // 指出對話泡泡「不應該放在輸入匡區」:泡泡的渲染跟「有新鮮
+          // 泡泡時淡化時間軸」的判斷,現在都搬回
+          // HorizontalPlanTimeline 內部自己處理(它本來就自己算出
+          // latestMessage,之前只是把結果送出去給這裡渲染,現在不需要
+          // 這段繞路),見該檔案的完整說明。
+          // showAskPage/onAskPageDone/askPageInput/dataSource——見
+          // 上方 state 宣告處的完整說明:提升到這一層,讓程式與 AI 工具
+          // 共用同一份狀態。dataSource 用真後端實作(createPlanAiApiDataSource,
+          // 見該函式的完整說明),這裡是正式對話頁,candidates 的
+          // placeId 是真實 Google Place ID,查詢要打真後端。
+          showAskPage={showAskPage}
+          askPageInput={askPageInput}
+          onAskPageDone={handleAskPageDone}
+          onAskPageBack={handleAskPageBack}
+          // onRetryStop——手機版橫向時間軸也要有重試入口(review 發現:
+          // /app 手機版走的是這條路徑,原本拿不到按鈕)。
+          onRetryStop={retryStopLookup}
+          dataSource={planAiDataSource}
           steps={steps}
           selectedStopId={selectedStopId}
           // onSelectStop——對齊 home/plan-ai-sim/AIPlanTimelinePage.tsx
@@ -1465,11 +2204,26 @@ export function TripPlanPage(props: {
           onRemoveStop={removeStep}
           onTransitModeChange={
             TRANSIT_MODE_SELECT_ENABLED
-              ? (stopId, mode) => refreshTransitForStop(stopId, cfg, setTimeline, () => timelineRef.current, mode)
+              ? (stopId, mode) => refreshTransitForStop(stopId, planAiDataSource, setTimeline, () => timelineRef.current, mode)
               : undefined
           }
           onOpenPhotos={setLightboxPhotos}
         />
+      ) : showAskPage ? (
+        /* 縱向(桌面)版的詢問頁——2026-10 新增(使用者明確要求「進入
+           推論態一開始就顯示詢問要去那裡的國家清單」時實機發現):
+           showAskPage 原本只有上方 horizontalTimeline(手機版)那個分支
+           在消費,縱向版完全沒有渲染 AskPage 的位置。後果是桌面版只要
+           有任何東西開啟詢問頁(LLM 呼叫 ask_travel_country 等工具、或
+           initialAskPage),state 翻成 true 了但畫面上什麼都不會出現——
+           使用者看不到任何可以點的東西,而開啟方那側若在等 Promise
+           (工具呼叫的既有路徑)就永遠等不到結果。
+           跟 /ai-plan 播放態桌面分支先前踩過的是同一類問題(見
+           home/plan-ai-sim/AIPlanTimelinePage.tsx 該分支的完整說明:
+           桌面不渲染 AskPage 導致整段劇本停在第 0 步)。
+           處理方式也對齊手機版與那一頁:詢問頁與時間軸互斥顯示,同一塊
+           版面空間用條件渲染切換,不需要額外的過場或狀態。 */
+        <AskPage dataSource={planAiDataSource} input={askPageInput} onDone={handleAskPageDone} />
       ) : (
       <PlanTimelineView
         steps={steps}
@@ -1492,6 +2246,9 @@ export function TripPlanPage(props: {
         // 處理——理論上不會是 false,就算是,使用者再點一次也沒有副
         // 作用。
         onRemoveStop={removeStep}
+        // onRetryStop——地點查詢失敗的站點上那顆「重試」按鈕(見
+        // retryStopLookup 與 PlanTimelineView 該 prop 的完整說明)。
+        onRetryStop={retryStopLookup}
         // getStopTimeDragBounds/onDragStopTime——時間軸小圓點拖拉調整
         // 時間的入口(使用者明確要求「時間軸的小圓點可以拖拉,上下拉動
         // 時調整時間,半小時為刻度」)。getStopTimeDragBounds 直接讀
@@ -1524,7 +2281,7 @@ export function TripPlanPage(props: {
         // 寫法。
         onTransitModeChange={
           TRANSIT_MODE_SELECT_ENABLED
-            ? (stopId, mode) => refreshTransitForStop(stopId, cfg, setTimeline, () => timelineRef.current, mode)
+            ? (stopId, mode) => refreshTransitForStop(stopId, planAiDataSource, setTimeline, () => timelineRef.current, mode)
             : undefined
         }
         onOpenPhotos={setLightboxPhotos}
@@ -1576,80 +2333,54 @@ export function TripPlanPage(props: {
         slot={composerSlot}
         wrapperClassName={[compact ? styles.compact : '', styles.inSlot].filter(Boolean).join(' ')}
       >
-        {/* 對話泡泡——緊貼輸入框上方(見 latestAgentMessage 的完整說明)。
-            放在 ComposerPortal 內部、.composer 之前:輸入框是透過 portal
-            傳送到版面外殼插槽的,泡泡要貼著它就得在同一個 portal 裡,
-            不能留在時間軸那邊。
-            只有橫向版(手機版交接後)會有值——縱向版的 message 節點本來
-            就是時間軸上獨立的一列,不走這條路徑。 */}
-        {horizontalTimeline && latestAgentMessage && (
-          <div className={styles.agentBubbleWrap}>
-            <div
-              className={[styles.agentBubble, latestAgentMessage.stale ? styles.agentBubbleStale : '']
-                .filter(Boolean)
-                .join(' ')}
-            >
-              {latestAgentMessage.text}
-            </div>
-          </div>
-        )}
-        <div className={styles.composer}>
-          <div className={styles.composerInner}>
-            <form
-              className={styles.inputRow}
-              onSubmit={(e) => {
-                e.preventDefault()
-                // isThinking 時直接不處理(即使按鈕已 disabled,form 仍可能
-                // 被 Enter 鍵觸發 submit,這裡是跟按鈕 disabled 對齊的第二
-                // 道防線,理由同 sendPrompt 內部的併發保護說明)。
-                if (!chatInput.trim() || planAiChat.isThinking) return
-                // 等 sendPrompt 的結果決定要不要清空輸入框(見該函式回傳值
-                // 的完整說明)——不再送出後立刻同步清空,避免後端拒絕
-                // (429/400)或網路錯誤時使用者剛打的文字憑空消失。
-                const text = chatInput
-                void planAiChat.sendPrompt(text).then((sent) => {
-                  if (sent) setChatInput('')
-                })
-              }}
-            >
-              <div className={styles.inputWrap}>
-                {/* urlMissing——見 PLAN_AI_ONAGENT_WS_URL 的完整說明:跟
-                    apiKeyMissing 一樣視為「對話功能目前無法使用」,一起
-                    鎖定輸入框,但提示文案刻意不暴露「URL 未設定」這種
-                    環境設定層級的內部細節,對使用者統一顯示成「功能調整
-                    中」——使用者明確要求提示文案不要用「未設定」這類
-                    字眼。 */}
-                <input
-                  type="text"
-                  placeholder={planAiChat.apiKeyMissing || planAiChat.urlMissing ? '對話功能調整中，請稍後再試' : placeholder}
-                  aria-label="輸入指令"
-                  className={styles.input}
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  disabled={planAiChat.apiKeyMissing || planAiChat.urlMissing}
-                />
-              </div>
-              {/* 正式功能不再有模擬腳本的生成中/終止狀態(原型的「終止」按鈕
-                  整個拿掉,見檔案開頭的完整說明)——送出鈕固定送出對話框
-                  文字,onagent 對話本身沒有使用者主動中斷推論的需求(工具
-                  呼叫通常很快完成,不像模擬腳本會長時間持續推播)。
-                  isThinking 時額外 disabled(見 sendPrompt 的完整說明):
-                  UI 層級擋住並發送出,是 sendPrompt 內部併發保護之外的
-                  第一層防線,避免使用者在等待回覆時又點一次送出。 */}
-              <button
-                type="submit"
-                aria-label="送出"
-                className={styles.sendBtn}
-                disabled={planAiChat.apiKeyMissing || planAiChat.urlMissing || planAiChat.isThinking}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ios-bg)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="19" x2="12" y2="5" />
-                  <polyline points="5 12 12 5 19 12" />
-                </svg>
-              </button>
-            </form>
-          </div>
-        </div>
+        {/* agentBubbleWrap(對話泡泡)已搬離這裡——2026-10 使用者明確
+            指出「不應該放在輸入匡區」:原本放在 ComposerPortal 內部是
+            因為「輸入框是透過 portal 傳送到版面外殼插槽的,泡泡要貼著
+            它就得在同一個 portal 裡」,但這個插槽
+            (PlanOverlayPanel.module.css 的 .composerSlot)是絕對定位,
+            泡泡跟輸入框共用同一個插槽導致插槽整體高度隨泡泡內容變動,
+            衍生出「卡片跟輸入匡重疊」的問題(上一輪只能靠加大
+            HorizontalPlanTimeline.module.css .wrap 的 padding-bottom
+            固定留白硬撐空間彌補)。現在泡泡搬回
+            home/plan-ai-sim/HorizontalPlanTimeline.tsx 內部,跟卡片列
+            同層、走正常文件流排列,不再跟輸入框共用插槽,從根本上不會
+            再發生這個問題,也不需要那段留白補償(見該檔案 .wrap 的
+            完整說明)。
+            latestAgentMessage 這個 state 連帶整個撤回
+            HorizontalPlanTimeline 內部——它原本就是在那裡用 useMemo
+            算出來的,之前透過 onLatestMessageChange 回報給這裡只是為了
+            讓這裡渲染泡泡,現在泡泡搬回去了,不再需要這段「算出來→
+            送出去→傳回來渲染」的繞路,HorizontalPlanTimeline 自己算
+            自己用即可。 */}
+        {/* Composer——共用輸入膠囊外框(components/Composer.tsx,見該檔頭
+            的完整背景說明:原本這裡跟展示頁 AIPlanTimelinePage.tsx 各自
+            維護一份膠囊 CSS,查證「播放態跟推論態輸入匡文字樣式有沒有
+            一樣」時發現字級不一致,抽成共用元件避免未來再次不同步)。
+            這裡只傳真實業務邏輯需要的 props,膠囊造型/輸入框/送出鈕的
+            基礎樣式交給共用元件負責,不重複定義。 */}
+        <Composer
+          className={styles.composer}
+          value={chatInput}
+          onChange={setChatInput}
+          placeholder={planAiChat.apiKeyMissing || planAiChat.urlMissing ? '對話功能調整中，請稍後再試' : placeholder}
+          // urlMissing——見 PLAN_AI_ONAGENT_WS_URL 的完整說明:跟
+          // apiKeyMissing 一樣視為「對話功能目前無法使用」,一起鎖定
+          // 輸入框。
+          disabled={planAiChat.apiKeyMissing || planAiChat.urlMissing || planAiChat.isThinking}
+          onSubmit={() => {
+            // isThinking 時直接不處理(即使按鈕已 disabled,form 仍可能
+            // 被 Enter 鍵觸發 submit,這裡是跟按鈕 disabled 對齊的第二
+            // 道防線,理由同 sendPrompt 內部的併發保護說明)。
+            if (!chatInput.trim() || planAiChat.isThinking) return
+            // 等 sendPrompt 的結果決定要不要清空輸入框(見該函式回傳值
+            // 的完整說明)——不再送出後立刻同步清空,避免後端拒絕
+            // (429/400)或網路錯誤時使用者剛打的文字憑空消失。
+            const text = chatInput
+            void planAiChat.sendPrompt(text).then((sent) => {
+              if (sent) setChatInput('')
+            })
+          }}
+        />
       </ComposerPortal>
     </div>
     {lightboxPhotos && (

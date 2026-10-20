@@ -183,6 +183,10 @@ func startGeoRateLimitRefreshLoop(st *store.Store, interval time.Duration, fallb
 		for {
 			time.Sleep(interval)
 			applyRateLimitsFromStore(st, fallback, applier)
+			// field mask 跟限流同一個重讀週期(見
+			// cmd/server/geo_field_masks.go 的完整說明)——兩者都是成本
+			// 設定、調整頻率同樣低,不需要各跑一個 goroutine。
+			applyFieldMasksFromStore(st)
 		}
 	}()
 }

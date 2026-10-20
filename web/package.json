@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e:mockllm": "playwright test tests/e2e-mock-llm.spec.ts",
     "test:e2e:geo-outline": "playwright test tests/e2e-geo-outline.spec.ts"
   },

@@ -315,6 +315,12 @@ func main() {
 	// 五條必須在 geo.New() 之前就位(那是 defaultGateway 建立時機的
 	// 限制),晚一個週期才套用資料庫自訂值是可接受的。
 	applyRateLimitsFromStore(st, geoRateLimitFallback, nil)
+	// field mask 設定(見 cmd/server/geo_field_masks.go 的完整說明)——
+	// 必須在任何 geo API 呼叫之前套用,否則第一批請求會用程式碼的預設
+	// mask(可能是較貴的計費層級)。seeding 與套用的順序理由同上方
+	// 限流設定。
+	seedGeoFieldMasksIfEmpty(st)
+	applyFieldMasksFromStore(st)
 	geo.SetPhotosEnabled(*geoFetchPhotos)
 	if *geoFetchPhotos {
 		log.Printf("Google Photo Media 下載已啟用(依張數計費)")

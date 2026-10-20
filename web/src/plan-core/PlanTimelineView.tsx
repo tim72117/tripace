@@ -3,7 +3,7 @@ import type { CSSProperties, MutableRefObject, PointerEvent as ReactPointerEvent
 import ReactMarkdown from 'react-markdown'
 import { Bus, Car, Footprints, TrainFront } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { minutesToTime, type PlanNode, type TimeDragBounds } from './planTimeline'
+import { minutesToTime, stopLookupFailed, type PlanNode, type TimeDragBounds } from './planTimeline'
 import styles from './PlanTimelineView.module.css'
 
 // TIME_DRAG_MINUTES_PER_STEP/TIME_DRAG_PX_PER_STEP——anchorDot 拖拉調整
@@ -134,6 +134,9 @@ const TRANSIT_MODE_ICONS: Record<string, LucideIcon> = {
   公車: Bus,
   捷運: TrainFront,
   大眾運輸: Bus,
+  // 精選行程人工撰寫的交通方式(見 TransitInfo.note)。
+  電車: TrainFront,
+  巴士: Bus,
 }
 
 // TRANSIT_MODE_OPTIONS——交通方式選單(onTransitModeChange,使用者明確
@@ -247,6 +250,18 @@ export interface PlanTimelineViewProps {
   // 景點,使用者明確要求「也要可以從介面上刪除」,這裡補上直接的 UI
   // 入口,呼叫同一條底層路徑。
   onRemoveStop?: (id: string) => void
+  // onRetryStop——選填:地點資料查詢失敗的站點(PlanNodeData.failed,見
+  // 該欄位的完整說明)上顯示一顆「重試」按鈕,點擊時呼叫並傳入節點 id。
+  //
+  // 2026-10 新增(使用者明確要求「失敗就標記該階段為錯誤,介面上做可以
+  // 重試」)。在這之前失敗的站點只是把 loading 轉 false,卡片停在
+  // add_attraction 插入時那個寫死的佔位標題「查詢中…」上——使用者看到
+  // 一張寫著「查詢中…」卻已經停止查詢的卡,既不知道那是哪裡、也沒有
+  // 任何重來的入口。
+  //
+  // 選填的理由同 onRemoveStop:不傳就不會出現按鈕(例如唯讀的精選行程
+  // 頁、或展示頁的播放態,那些情境沒有可重試的查詢)。
+  onRetryStop?: (id: string) => void
   // getStopTimeDragBounds/onDragStopTime——anchorDot(時間軸小圓點)
   // 拖拉調整時間的入口(使用者明確要求「時間軸的小圓點可以拖拉,上下
   // 拉動時調整時間,半小時為刻度」)。兩者都選填且必須同時存在才會啟用
@@ -413,6 +428,7 @@ export function PlanTimelineView({
   onJumpToLatest,
   onPanToStop,
   onRemoveStop,
+  onRetryStop,
   getStopTimeDragBounds,
   onDragStopTime,
   onHoverStop,
@@ -628,6 +644,23 @@ export function PlanTimelineView({
               // 景點下面」,2026-10 從卡片之前調整到之後)。
               const note = p.note
               const noteStyle = note ? NOTE_STYLES[note.category ?? ''] ?? NOTE_STYLES[DEFAULT_NOTE_CATEGORY] : null
+              // renderNoteRow——站點備註與交通備註共用同一種「一列文字+色條」的版型。
+              const renderNoteRow = (text: string, style: { color: string; noteIcon: string }) => (
+                <div className={`${styles.row} ${styles.noteRow}`}>
+                  <div className={`${styles.noteLeft} ${mountedClass} ${justMounted ? styles.noteFade : ''}`}>
+                    <div className={styles.noteInner}>
+                      <div className={styles.noteBar} style={{ background: style.color }} />
+                      <div className={styles.noteText}>
+                        <span style={{ marginRight: 4 }}>{style.noteIcon}</span>{text}
+                      </div>
+                    </div>
+                  </div>
+                  <div className={styles.noteAxisCol}>
+                    <div className={styles.noteAxisLine} />
+                  </div>
+                  <div />
+                </div>
+              )
               return (
                 <Fragment key={p.id}>
                   {transit && (
@@ -692,7 +725,14 @@ export function PlanTimelineView({
                                     const TransitIcon = TRANSIT_MODE_ICONS[transit.mode ?? ''] ?? Footprints
                                     return <TransitIcon size={14} strokeWidth={2.2} aria-hidden />
                                   })()}
-                                  <span>{transit.mode} {transit.minutes} 分 · {transit.distance}</span>
+                                  {/* minutes/distance 缺席時只顯示有值的部分(人工撰寫的
+                                      交通資訊可能只有交通方式,見 TransitInfo.note);
+                                      三者都有時文字與先前完全相同。 */}
+                                  <span>
+                                    {transit.mode}
+                                    {transit.minutes != null ? ` ${transit.minutes} 分` : ''}
+                                    {transit.distance ? ` · ${transit.distance}` : ''}
+                                  </span>
                                 </>
                               )}
                               {/* 交通方式選單——點開膠囊後彈出,使用者明確
@@ -738,6 +778,9 @@ export function PlanTimelineView({
                       <div />
                     </div>
                   )}
+                  {/* 交通備註——在交通膠囊下方、站點卡片之前獨立一列(見
+                      TransitInfo.note),沿用站點備註的 info 配色。 */}
+                  {transit?.note && renderNoteRow(transit.note, NOTE_STYLES[DEFAULT_NOTE_CATEGORY])}
                   {(() => {
                     // isDraggingThis——這個節點目前是否正在被拖拉中(見
                     // DragState 的完整說明)。顯示的時間用拖拉中的即時
@@ -916,9 +959,46 @@ export function PlanTimelineView({
                               <div className={styles.stopBody}>
                                 <div className={styles.stopMeta}>
                                   {p.duration} · {p.kind}
-                                  {p.loading && <span className={styles.loadingTag}>查詢地點中…</span>}
+                                  {/* loading 與 failed 互斥顯示(review 建議):
+                                      兩個獨立的 && 在兩者同時為真時會同時
+                                      印出「查詢地點中…」與「查詢失敗」兩個
+                                      標籤。目前寫入點維持互斥,但靠呼叫端
+                                      紀律不如讓渲染層自己保證優先序。 */}
+                                  {p.loading ? (
+                                    <span className={styles.loadingTag}>查詢地點中…</span>
+                                  ) : stopLookupFailed(p) ? (
+                                    <span className={styles.failedTag}>地點資料查詢失敗</span>
+                                  ) : null}
+                                  {/* failed——地點資料查詢失敗(見
+                                      planTimeline.ts PlanNodeData.failed 的
+                                      完整說明)。標在 meta 列而不是蓋掉整張
+                                      卡:這一站的時間/類型仍然是使用者排定
+                                      的有效內容,只有「它是哪個地點」沒查到。 */}
                                 </div>
-                                <div className={styles.stopName}>{p.name}</div>
+                                {/* 失敗時不顯示 p.name——那是 add_attraction
+                                    插入當下寫死的佔位字串「查詢中…」(見
+                                    attractionTools.ts 該處的說明),前提是
+                                    「查詢一定會完成並覆蓋它」。失敗時那個前提
+                                    不成立,原樣顯示會變成一張寫著「查詢中…」
+                                    卻已經停止查詢的卡(使用者明確要求「不要有
+                                    任何失敗前會有的暫時性狀態跟文字」)。 */}
+                                <div className={styles.stopName}>
+                                  {stopLookupFailed(p) ? '未能取得地點資料' : p.name}
+                                  {stopLookupFailed(p) && onRetryStop && (
+                                    <button
+                                      type="button"
+                                      className={styles.retryBtn}
+                                      onClick={(e) => {
+                                        // 停止冒泡:卡片本身有點擊行為
+                                        // (選取/panTo),按重試不該連帶觸發。
+                                        e.stopPropagation()
+                                        onRetryStop(p.id)
+                                      }}
+                                    >
+                                      重試
+                                    </button>
+                                  )}
+                                </div>
                                 <div className={styles.stopDesc}>{p.desc}</div>
                                 {p.tags && p.tags.length > 0 && (
                                   <div className={styles.stopTags}>
@@ -954,22 +1034,7 @@ export function PlanTimelineView({
                   {/* note——使用者明確要求「note 的出現位置在景點下面」,
                       改到 stop 卡片之後渲染(原本在卡片之前,2026-10 這次
                       調整)。 */}
-                  {note && noteStyle && (
-                    <div className={`${styles.row} ${styles.noteRow}`}>
-                      <div className={`${styles.noteLeft} ${mountedClass} ${justMounted ? styles.noteFade : ''}`}>
-                        <div className={styles.noteInner}>
-                          <div className={styles.noteBar} style={{ background: noteStyle.color }} />
-                          <div className={styles.noteText}>
-                            <span style={{ marginRight: 4 }}>{noteStyle.noteIcon}</span>{note.text}
-                          </div>
-                        </div>
-                      </div>
-                      <div className={styles.noteAxisCol}>
-                        <div className={styles.noteAxisLine} />
-                      </div>
-                      <div />
-                    </div>
-                  )}
+                  {note && noteStyle && renderNoteRow(note.text, noteStyle)}
                 </Fragment>
               )
             }

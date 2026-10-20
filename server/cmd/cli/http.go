@@ -439,3 +439,17 @@ func (c *httpClient) rateLimitSet(endpoint string, windowSec, windowMs, maxCalls
 	}
 	return c.do("PATCH", "/internal/maintenance/rate-limits/"+url.PathEscape(endpoint), body)
 }
+
+// fieldMaskList 對齊 GET /internal/maintenance/field-masks(見
+// server/internal/api/maintenance.go 的 handleMaintenanceFieldMaskList)。
+func (c *httpClient) fieldMaskList() (any, error) {
+	return c.do("GET", "/internal/maintenance/field-masks", nil)
+}
+
+// fieldMaskSet 對齊 PATCH /internal/maintenance/field-masks/{key}——
+// fields 是不含前綴的欄位名稱清單,前綴由後端依情境自己加上(見
+// fieldmasks.Scenario.Mask 的完整說明)。
+func (c *httpClient) fieldMaskSet(key string, fields []string) (any, error) {
+	return c.do("PATCH", "/internal/maintenance/field-masks/"+url.PathEscape(key),
+		map[string]any{"fields": fields})
+}

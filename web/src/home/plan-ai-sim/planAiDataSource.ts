@@ -28,6 +28,13 @@ export interface PlanAiPlaceDetailsResult {
   lng?: number
   summary?: string
   googlePhotoUrls?: string[]
+  // attractionId——2026-10 新增(使用者明確要求「open_ask_page 要可以
+  // 輸出 attraction id 與 place id」,見 AskPage.tsx 查詢候選完整資料
+  // 處的完整說明)。對齊 api.ts GeoPlanAiPlaceDetailsAnyResult.attractionId
+  // 的既有語意:只在這個 placeId 對應到資料庫已建檔景點時才有值。假資料
+  // 實作(planAiFakeDataSource.ts)的展示景點池沒有對應的資料庫紀錄,
+  // 固定不帶這個欄位,呼叫端(AskPage.tsx)應視為選填。
+  attractionId?: string
 }
 
 export interface PlanAiTransitEstimateResult {
@@ -35,6 +42,29 @@ export interface PlanAiTransitEstimateResult {
   icon: string
   minutes: number
   distance: string
+}
+
+// PlanAiNearbyCandidate/PlanAiSearchNearbyResult——2026-10 新增(使用者
+// 明確要求 open_ask_page 支援「探查模式」:LLM 傳入目的地文字/地圖中心
+// /使用者位置三選一,前端自動用這些資訊查出候選清單顯示,不需要 LLM
+// 自己先呼叫 search_attraction)。欄位形狀對齊 attractionTools.ts
+// search_attraction 回傳的 nearby 候選(placeId/name/summary/category,
+// 見該函式的完整說明),讓 AskPage.tsx 可以直接把結果轉成
+// AskPageCandidate[] 使用,不需要額外的欄位轉換。
+export interface PlanAiNearbyCandidate {
+  placeId: string
+  name: string
+  summary?: string
+  category?: string
+}
+
+export interface PlanAiSearchNearbyResult {
+  // found——地名查詢(query 模式)可能查無結果(見
+  // GeoPlanAiPlaceSearchResult.found 的既有語意);座標模式(給 lat/lng)
+  // 固定視為 found:true(座標本身就是確定的錨點,沒有「查無此地」這種
+  // 情境)。
+  found: boolean
+  candidates: PlanAiNearbyCandidate[]
 }
 
 // PlanAiPhotoAssetsResult — 對齊 api.ts GeoPlacePhotoAssets(純讀目前
@@ -54,6 +84,11 @@ export interface PlanAiDataSource {
   transitEstimate(
     from: { lat: number; lng: number },
     to: { lat: number; lng: number },
+    // forceMode——選填,指定交通方式(walking/driving/transit 等)。
+    // 2026-10 補進介面:/app 的 TripPlanPage 讓使用者手動切換交通方式
+    // (見該元件 onTransitModeChange 的完整說明),省略時由實作自己決定
+    // ——真後端交給後端判斷,假資料固定回傳同一組。
+    forceMode?: string,
   ): Promise<PlanAiTransitEstimateResult>
   // photoAssets — 2026-10 新增(使用者明確要求讀取層「可以像推論層那樣
   // 獨立抽換,用相同的方式對接取得資料,包含地點資訊、圖片」)。
@@ -69,4 +104,14 @@ export interface PlanAiDataSource {
   // 照片可能還在背景補圖,之後重試才拿得到)。呼叫端沒有這個方法時
   // 就不做第二段查詢,跟展示頁目前的行為一致。
   photoAssets?(placeId: string): Promise<PlanAiPhotoAssetsResult>
+  // searchNearby——2026-10 新增(見 PlanAiSearchNearbyResult 的完整
+  // 說明),供 open_ask_page 的「探查模式」使用。輸入三選一:
+  //   - query(地名文字):對齊 search_attraction 的既有邏輯,先查這個
+  //     地名的座標,再查該座標附近的候選。
+  //   - coords(座標,地圖中心或使用者位置皆用同一種輸入形狀,呼叫端
+  //     不需要分辨兩者在這支方法眼中的差異——都是「直接拿這個座標查
+  //     附近」):跳過地名查詢那一步,直接查鄰近候選。
+  // 兩種輸入互斥,呼叫端依實際拿到的參數擇一傳入(見 AskPage.tsx
+  // 探查模式處的完整說明)。
+  searchNearby?(input: { query: string } | { coords: { lat: number; lng: number } }): Promise<PlanAiSearchNearbyResult>
 }

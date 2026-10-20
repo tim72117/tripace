@@ -374,6 +374,26 @@
 .stopBody { min-width: 0; flex: 1; }
 .stopMeta { font-size: 12px; color: var(--ios-gray); letter-spacing: 0.02em; margin-bottom: 2px; }
 .loadingTag { margin-left: 6px; color: var(--ios-sand); }
+/* failedTag/retryBtn——地點資料查詢失敗的站點(見 planTimeline.ts
+   PlanNodeData.failed 的完整說明)。用 --ios-red(錯誤語意的既有色票,
+   見 base-ui.css)而非自訂顏色,跟全站其餘錯誤狀態一致。 */
+.failedTag { margin-left: 6px; color: var(--ios-red); }
+/* retryBtn 做成卡片標題列裡的一顆小按鈕——標題本身在失敗時是
+   「未能取得地點資料」,把重試入口放在它旁邊,使用者讀到問題的同一處
+   就能動作,不需要再找別的地方。 */
+.retryBtn {
+  margin-left: 8px;
+  padding: 2px 10px;
+  border: 1px solid var(--ios-red);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ios-red);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.retryBtn:hover { background: var(--ios-red-bg); }
 .stopName { font-size: 17px; font-weight: 600; margin-bottom: 4px; overflow-wrap: break-word; }
 .stopDesc {
   font-size: 14px;
@@ -419,19 +439,30 @@
   padding-left: 12px;
   padding-bottom: 4px;
 }
-/* messageBubble——尖角朝左上、指向時間軸軸線的對話氣泡。顏色走
-   --ios-ai-message-bg/--ios-ai-message-text(base-ui.css 定義,隨明暗
-   模式切換)。 */
+/* messageBubble——尖角朝左上、指向時間軸軸線的對話氣泡。尖角仍用
+   border-radius 不對稱(4px/16px)模擬,不是獨立三角形 div——跟
+   DestinationPrompt.module.css 的 .tail 不同技法,因為這裡指向的是
+   時間軸軸線(由這個不對稱圓角本身的朝向暗示即可),不是像
+   DestinationPrompt 那樣指向一個固定按鈕需要精準對齊的三角形尖角。
+   底色改成跟 DestinationPrompt.module.css .questionBubble 同一套
+   半透明模糊處理(使用者明確要求「用這個樣式顯示文字」):拿掉原本的
+   --ios-ai-message-bg 實色填滿,改用 color-mix 半透明 + backdrop-filter
+   模糊,文字/連結/code 區塊邊框仍靠 --ios-ai-message-text 保持可讀,
+   但不再是一塊不透明色塊疊在時間軸/地圖背景上。 */
 .messageBubble {
   position: relative;
   max-width: 460px;
   padding: 10px 14px;
   border-radius: 4px 16px 16px 16px;
-  background: var(--ios-ai-message-bg);
+  border: 1px solid var(--ios-sep);
+  background: color-mix(in srgb, var(--ios-ai-message-bg) 55%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
   color: var(--ios-ai-message-text);
   font-size: 14px;
   line-height: 1.55;
-  transition: opacity 0.25s ease, padding 0.25s ease, font-size 0.25s ease;
+  transition: opacity 0.25s ease, padding 0.25s ease, font-size 0.25s ease, background 0.25s ease;
 }
 /* messageMarkdown——新鮮態用 ReactMarkdown 渲染 LLM 回覆文字,對齊
    chat/MessageBubble.module.css 既有 .text.markdown 的收斂間距寫法。 */

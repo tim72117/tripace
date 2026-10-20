@@ -1,0 +1,119 @@
+# onagent 平台上 plan-ai-timeline app 的 open_ask_page tool 定義——見
+# search_attraction.yaml 開頭的完整說明(app 背景、新版 CLI 格式規則、
+# 為何拆成獨立檔案)。
+#
+# 這個工具是前端 ClientTool(見 web/src/plan-core/askPageTools.ts 的
+# 完整實作),不是 BackendDispatch 型——onagent LLM 決定呼叫時,訊息會
+# 經 AgentBridge WebSocket 送回瀏覽器分頁,由 askPageTools.ts 定義的
+# handle 函式實際執行(打開詢問頁、等待使用者選擇、回傳選擇結果),不像
+# onagent-tools.yaml 裡的 recommend_nearby/geocode 那樣繞過瀏覽器直接在
+# onagent 伺服器端 dispatch。
+#
+# kind: query(2026-10 從 action 改成,見下方「第二輪」的完整說明)——
+# 這個工具現在的核心價值正是「把使用者選了什麼回報給 LLM」,回傳值
+# 必須被 LLM 看到才有意義,不能再是 action(fire-and-forget,回傳值不會
+# 被 LLM 看到,見 .claude/skills/onagent-cli-setup 的 SKILL.md)。
+#
+# 推送(需要 onagent CLI,見 .claude/skills/onagent-cli-setup):
+#   onagent tool create -api <onagent 後端 URL> plan-ai-timeline server/tools/plan-ai/open_ask_page.yaml
+#
+# 2026-10(第二輪,使用者明確要求「目前要可以輸出 attraction id 與
+# place id,前端拿到後用對應的 UI 呈現」):這個工具從單純的「打開畫面
+# 就結束」改成「打開畫面 + 等待使用者在畫面上選完 + 把選擇結果回傳給
+# LLM」,新增 candidates 參數(LLM 自己先查好的候選景點)。
+#
+# 2026-10(第三輪,使用者明確要求「open_ask_page 輸入支援一個模式,探查
+# 模式,參數有三個類別 目的地（文字）地圖中心 使用者位置,會自動用這些
+# 資訊送入 search_attraction 取得清單後顯示」):新增 destination/
+# mapCenter/userLocation 三個探查模式參數,跟 candidates 互斥——LLM 不
+# 需要自己先呼叫 search_attraction,只要給「要以什麼為依據查」這個最小
+# 資訊,查詢本身交給前端執行(見 web/src/home/plan-ai-sim/AskPage.tsx
+# 探查模式處的完整說明)。
+#
+# 2026-10(第四輪,使用者明確要求「工具輸出參數加上文字敘述」「多一個
+# 欄位,讓 AI 說明意圖」「要顯示在 AskPage 畫面上」):新增選填的 reason
+# 參數,取代前端原本寫死的詢問標題「要安排這些地點嗎?」,讓這句話能
+# 反映這次呼叫真正的脈絡。
+
+name: open_ask_page
+description: >-
+  打開「詢問頁」，顯示候選景點照片卡片讓使用者直接點選，取代文字一來
+  一回詢問偏好。適合開場還不清楚使用者想安排哪類行程、或排程中遇到多個
+  合理候選（同時段數個景點/餐廳都適合）時主動呼叫；使用者已明確說出
+  偏好或指定地點時不要呼叫。候選來源二選一：candidates（你已用
+  search_attraction 查好的清單）或探查模式（destination/mapCenter/
+  userLocation 三選一，由前端自動查詢，見各參數說明），兩者不要同時
+  使用。
+  呼叫這個工具之後這一輪你的工作就結束了——選單會顯示在畫面上，但這個
+  工具不等使用者點選，也不會把他選了什麼回傳給你：
+  工具會立刻回傳「選單已顯示、正在等待使用者點選」，不會等使用者選完，
+  也不會把使用者選了什麼回傳給你。這一輪你已經做完該做的事，不需要
+  重複呼叫這個工具、改個說法再問一次、或用文字追問要選哪一個。使用者
+  點選之後，系統會送一則新的訊息通知你，那時才是你接續處理的
+  時機。
+  注意那則通知訊息本身不會帶著他勾選的地點——要知道他選了哪些，呼叫
+  get_user_selection 查詢（名稱缺漏時再用 get_attraction_pool 對照）。
+  拿到地點之後要加入行程
+  就照常呼叫 add_attraction。reason 選填，用一句話說明這次
+  詢問的意圖，會取代畫面上原本固定的標題文字。
+kind: query
+parameters:
+  type: object
+  properties:
+    candidates:
+      type: array
+      description: >-
+        你已經用 search_attraction 查好的候選景點清單，與探查模式
+        （destination/mapCenter/userLocation）互斥，見上方 description
+        的完整說明。
+      items:
+        type: object
+        properties:
+          placeId:
+            type: string
+            description: search_attraction 回傳的景點候選 placeId，必填。
+          name:
+            type: string
+            description: 景點名稱，選填——只是查詢完整資料前的暫時標題，不影響最終顯示結果。
+          summary:
+            type: string
+            description: 簡短描述，選填，用途同 name。
+        required:
+          - placeId
+    destination:
+      type: string
+      description: >-
+        探查模式：地名文字（例如「赤崁樓」「台南中西區」），適合使用者
+        提到具體地名、或你已決定要探查哪個區域時用。與
+        candidates/mapCenter/userLocation 互斥，三者皆有值時只採用
+        destination。
+    mapCenter:
+      type: object
+      description: >-
+        探查模式：地圖中心座標，適合使用者指著地圖畫面說「這一帶」
+        「這附近」時用。與 candidates/destination/userLocation 互斥。
+      properties:
+        lat:
+          type: number
+        lng:
+          type: number
+      required:
+        - lat
+        - lng
+    userLocation:
+      type: object
+      description: >-
+        探查模式：使用者目前實際所在位置座標，適合使用者說「我這附近
+        有什麼」這種明確指自己所在位置（而非地圖視野）的情境。與
+        candidates/destination/mapCenter 互斥。
+      properties:
+        lat:
+          type: number
+        lng:
+          type: number
+      required:
+        - lat
+        - lng
+    reason:
+      type: string
+      description: 選填，一句話說明這次詢問的意圖，會取代畫面上原本固定的標題文字（例如「這幾個都是台南必訪的古蹟」）。

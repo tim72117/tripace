@@ -35,6 +35,17 @@ export default defineConfig({
     // Vitest 掃到那個目錄。admin/ 是獨立的另一個子專案(有自己的
     // node_modules),預設的 node_modules/** exclude 不會遞迴排除到子目錄
     // 裡的 node_modules,必須額外明講排除整個 admin/ 目錄。
-    exclude: ['tests/**', '**/node_modules/**', 'admin/**'],
+    //
+    // *.integration.test.ts——2026-10 新增(使用者明確要求「這些元件
+    // 寫前後端的整合測試,測試所有資源端點都可以正確讀取」):這批測試
+    // 直接打真實本機 server(含 PostgreSQL、Google API key,見各測試
+    // 檔案開頭的完整說明),不是像其餘 *.test.ts 那樣 mock fetch——在
+    // 沒有起 server 的環境下(例如一般 `npx vitest run`、CI)執行這批
+    // 測試只會整批連線失敗,不是測試本身有問題,所以用獨立副檔名排除在
+    // 預設掃描範圍外,需要時改用 `npm run test:integration`(走獨立的
+    // vitest.integration.config.ts,見該檔案的完整說明:vitest CLI 的
+    // --exclude 只能附加、無法清空這裡的 exclude 設定,所以用獨立 config
+    // 檔案而非 CLI flag 切換)執行。
+    exclude: ['tests/**', '**/node_modules/**', 'admin/**', '**/*.integration.test.ts', '**/*.integration.test.tsx'],
   },
 })

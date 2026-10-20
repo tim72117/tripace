@@ -8,6 +8,59 @@ import (
 	"github.com/tim72117/tripace/internal/model"
 )
 
+// guestIDHeader 是前端(web/src/guestId.ts)帶上的訪客識別碼 header——
+// 每個瀏覽器各自生成一個隨機 id、存在 localStorage,每次沒有登入 token
+// 的請求都帶上(見該檔案與 web/src/api.ts request() 的完整說明)。
+const guestIDHeader = "X-Guest-Id"
+
+// guestIDPrefix 是前端生成訪客 id 時固定使用的前綴(見 guestId.ts
+// randomGuestId)。這裡驗證收到的值確實以這個前綴開頭,而不是直接信任
+// 呼叫端送來的任意字串當 userID——真實帳號 ID 固定是 "usr_" 前綴(見
+// newID 的呼叫端慣例),若不檢查前綴,惡意呼叫端可以把 X-Guest-Id 設成
+// 任意已知的真實 usr_ ID,讓這次訪客對話記錄被誤植到別人的帳號底下
+// (InsertPlanAiChatMessage 原樣把這個字串存進 user_id 欄位,沒有另外的
+// 資料庫層級檢查)。
+const guestIDPrefix = "guest_"
+
+// userOrGuestFor 解析這次請求的身分,同時支援兩種情境:
+//
+//  1. 已登入:s.userFor(r) 拿到真實使用者(見該函式的完整說明)。
+//  2. 未登入訪客:帶著合法格式的 X-Guest-Id header——這是 2026-10
+//     使用者明確要求「/internal/plan-ai/chat 要沒登入時也可以做」、
+//     「沒有登入時給一個獨立 id」後新增的分支。背景:這支端點原本對
+//     s.isGuestUser(user)(即 userFor 在沒有合法 JWT 時回退的那個固定
+//     共用身分,ID 固定 "usr_me")一律擋掉——如果直接放行、讓所有訪客
+//     共用這個固定 ID,PlanAiChatMessageBelongsToUser(見該函式的完整
+//     說明)會把「這個 userID 底下的任一筆對話記錄」都判定為「屬於
+//     你」,等於任一訪客都能對另一個訪客開的 conversationID 回報內容,
+//     是真正的跨訪客資料污染/竄改風險,不只是體驗問題。改成每個訪客
+//     各自帶一個獨立、不跟真實帳號格式衝突的 id(guestIDPrefix 開頭),
+//     用它取代固定的 guestUser.ID 當這次請求的身分,訪客彼此之間就
+//     跟真實使用者之間一樣,靠不同的 userID 天然互相隔離。
+//
+// 回傳的第二個值為 false 代表兩種情境都不成立(真的沒登入、也沒有帶
+// 合法格式的 X-Guest-Id)——呼叫端應視為未授權,比照既有的 401 回應
+// 慣例處理。
+//
+// 這支函式刻意只放在 plan_ai_chat.go、只給這兩支 handler 使用,不是
+// 改寫 auth.go 的 userFor 本身或 internalAuth 中間件——userFor/
+// internalAuth 是全站共用的身分解析與路由保護機制,若在那一層放行帶
+// X-Guest-Id header 的請求,會讓所有掛在 internalAuth 底下、原本假設
+// 「通過這層就代表已登入」的端點都意外被訪客繞過,是嚴重的權限範圍
+// 擴大。這裡的放行範圍刻意收斂到「呼叫端明確呼叫了這支函式的這兩支
+// handler」,不會外溢到其他端點。
+func (s *Server) userOrGuestFor(r *http.Request) (model.User, bool) {
+	user := s.userFor(r)
+	if !s.isGuestUser(user) {
+		return user, true
+	}
+	guestID := strings.TrimSpace(r.Header.Get(guestIDHeader))
+	if !strings.HasPrefix(guestID, guestIDPrefix) || guestID == guestIDPrefix {
+		return model.User{}, false
+	}
+	return model.User{ID: guestID, Name: "訪客"}, true
+}
+
 // plan_ai_chat.go — AI 規劃對話(/app 的 web/src/trip-plan/TripPlanPage.tsx)
 // 訊息先經過 tripace 自家後端這一段的端點。
 //
@@ -72,20 +125,23 @@ type planAiChatResponse struct {
 	Content        string `json:"content"`
 }
 
-// POST /internal/plan-ai/chat
+// POST /internal/plan-ai/chat(需登入)、POST /public/plan-ai/chat(2026-10
+// 新增,未登入訪客版,見 api.go Routes 內該區塊的完整說明與
+// withPlanAiChatIPThrottle)——兩個路徑共用同一支 handler,行為差異只在
+// 訪客版額外疊加一層 IP 節流(路由層面),handler 本身的邏輯完全相同。
 // Body: { "conversationID": "可選,沒有就開新對話", "content": "訊息內容" }
 //
 // 使用者送出 AI 規劃訊息前的第一站:驗證身分、per-user rate-limit、
 // 驗證並正規化 content、存一筆 role="user" 的記錄,回傳給前端轉發給
 // onagent。
 func (s *Server) handlePlanAiChat(w http.ResponseWriter, r *http.Request) {
-	user := s.userFor(r)
-	if s.isGuestUser(user) {
-		// 理論上 internalAuth 已經擋掉沒有合法 JWT 的請求,會落到這裡只
-		// 會是 userFromToken 的邊界情況(簽章有效但對應使用者已被資料庫
-		// 刪除)——這種情況下仍不該讓一筆訪客身分的對話記錄混進資料庫,
-		// 一律視同未登入,要求重新登入(措辭比照 internalAuth 對一般
-		// token 失效的既有慣例)。
+	// userOrGuestFor(見該函式的完整說明)——2026-10 改成同時支援已登入
+	// 使用者與帶合法格式 X-Guest-Id 的未登入訪客,不再無條件擋掉訪客。
+	// ok 為 false 代表兩者皆非(真的沒登入、也沒有帶合法格式的訪客 id),
+	// 一律視同未登入,要求重新登入或改用展示頁(措辭比照 internalAuth
+	// 對一般 token 失效的既有慣例)。
+	user, ok := s.userOrGuestFor(r)
+	if !ok {
 		writeErr(w, http.StatusUnauthorized, "unauthorized", "登入已過期,請重新登入")
 		return
 	}
@@ -144,7 +200,9 @@ type planAiChatReplyRequest struct {
 	Content        string `json:"content"`
 }
 
-// POST /internal/plan-ai/chat/reply
+// POST /internal/plan-ai/chat/reply(需登入)、POST /public/plan-ai/chat/reply
+// (2026-10 新增,未登入訪客版,見 handlePlanAiChat 開頭對兩個路徑共用
+// 同一支 handler 的完整說明)
 // Body: { "conversationID", "messageID", "content" }
 //
 // onagent 回覆後,前端呼叫這裡把回覆存檔——role="assistant"。
@@ -155,9 +213,14 @@ type planAiChatReplyRequest struct {
 // handlePublicGeoAttractionByID 對「呼叫端傳來的 id 沒有對應到自己資料」
 // 這種情境一律回標準 404 的既有慣例,而不是 403——404 讓呼叫端不需要
 // 分辨「不存在」與「存在但不是你的」兩種狀態)。
+//
+// 這裡的權限邊界(PlanAiChatMessageBelongsToUser 用 userID 比對)正是
+// userOrGuestFor 要求訪客必須帶各自獨立 X-Guest-Id 的理由:若訪客共用
+// 固定的 guestUser.ID,任一訪客都能對另一個訪客開的 conversationID/
+// messageID 呼叫這支端點並通過這裡的檢查,見該函式的完整說明。
 func (s *Server) handlePlanAiChatReply(w http.ResponseWriter, r *http.Request) {
-	user := s.userFor(r)
-	if s.isGuestUser(user) {
+	user, ok := s.userOrGuestFor(r)
+	if !ok {
 		writeErr(w, http.StatusUnauthorized, "unauthorized", "登入已過期,請重新登入")
 		return
 	}

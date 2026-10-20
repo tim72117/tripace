@@ -6,8 +6,24 @@
 // 手動控制——使用者明確要求這個頁面「預設進入會全部播放,用來展示功能
 // 用的」,不是原始版本那種可暫停/單步推進/測試按鈕觸發額外訊息的互動
 // 模擬器,故不移植 planSimTriggerActions(觸發表)與「下一步」等待機制。
+//
+// openAskPage(2026-10 新增,使用者明確要求「播放畫面第一個先模擬送出
+// 一個 ask」)是這個「全部自動播放」原則底下唯一的例外,但不是靠
+// PlanSimSource 介面新增暫停/恢復方法做到的——使用者明確要求「不要在
+// UI 埋入相關程式碼」且「暫停不該由消費端中斷,推論層本身就可以控制
+// 要不要輸出信號」:這支工廠函式現在直接接收 openAskPage 這個函式當
+// 建立參數,形狀跟真實 AgentBridge 收到的 open_ask_page 工具 handle 完全
+// 對應((candidates) => Promise<selection>,見
+// plan-core/askPageTools.ts AskPageCtx.openAskPage 的完整說明)。
+// playFrom 遇到這則 action 時直接 await 這個函式——這正是真實系統的
+// 運作方式:AgentBridge 呼叫工具的 handle 之後,下一步要說什麼本來就
+// 要等這次工具呼叫回傳才知道,不是外部介入讓它暫停,是它自己選擇在這
+// 裡等待。PlanSimSource 介面因此完全不需要改動,暫停邏輯整個封裝在
+// 這個實作內部,消費端(usePlanSimSocket)跟 UI(AskPage.tsx)都不需要
+// 知道這件事發生過。
 
 import type { PlanAction } from './AIPlanTimelinePage'
+import type { AskPageCandidate, AskPageSelection } from '../../plan-core/askPageTools'
 import type { PlanSimSource } from './planSimSource'
 import { PLAN_SIM_SCRIPT } from './planSimScript'
 
@@ -24,7 +40,15 @@ function randomDelayMs(): number {
 // 掛載時呼叫一次,對齊原本「effect 建立一條 WebSocket 連線」的生命週期
 // ——這裡回傳的物件同樣代表「一次播放」,close() 呼叫後計時器全部清除,
 // 不會有殘留的 setTimeout 在之後才觸發 onMessage。
-export function createPlanSimFakeSource(): PlanSimSource {
+//
+// openAskPage——選填,見檔頭的完整說明。省略時(例如某些呼叫端完全不
+// 需要示範這個暫停點,或測試情境)劇本若剛好播到 open_ask_page 這則,
+// 直接當作沒有候選可問、跳過等待立即繼續——不強迫每個呼叫端都要提供
+// 這個函式才能使用這支工廠函式,對齊 dataSource 等其餘選填參數的既有
+// 慣例(省略時該功能的最小可用行為仍然成立)。
+export function createPlanSimFakeSource(
+  openAskPage?: (input: { candidates: AskPageCandidate[]; picks?: string[] }) => Promise<AskPageSelection[]>,
+): PlanSimSource {
   const messageCbs = new Set<(action: PlanAction) => void>()
   // errorCbs 目前沒有任何實際觸發點(見 PlanSimSource 的完整說明),但
   // 介面要求提供,呼叫端(usePlanSimSocket)也確實會註冊一個——保留這組
@@ -43,7 +67,13 @@ export function createPlanSimFakeSource(): PlanSimSource {
   // sendWithThinking 的節奏(見該函式的完整說明)。done 訊息不經過
   // thinking/延遲,直接送出並結束整個播放,理由同原始後端 playScript
   // 對 done 的特判。
-  function playFrom(index: number) {
+  //
+  // async——2026-10 新增(見檔頭 openAskPage 的完整說明):open_ask_page
+  // 這則送出後,直接 await ctx 提供的 openAskPage(candidates),等使用者
+  // 在 AskPage 上操作完、Promise resolve 才繼續排下一則。這是這個函式
+  // 唯一會真的等待外部事件的地方,其餘動作仍然維持「播完立即排下一則」
+  // 的既有行為,不受影響。
+  async function playFrom(index: number) {
     if (cancelled || index >= PLAN_SIM_SCRIPT.length) return
     const action = PLAN_SIM_SCRIPT[index]
     if (action.type === 'done') {
@@ -57,21 +87,41 @@ export function createPlanSimFakeSource(): PlanSimSource {
     // 待會兒要插入的佔位節點該用哪個 id,才能在真正的 add_stop 訊息
     // 到達時用 updateNode 原地補資料,不需要插入新節點。
     emit({ type: 'thinking', nextType: action.type, nextId: action.id })
-    timer = setTimeout(() => {
+    await new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, randomDelayMs())
+    })
+    if (cancelled) return
+    emit(action)
+    // open_ask_page——見檔頭與這支函式開頭的完整說明:await 使用者在
+    // AskPage 上操作完,才繼續排下一則。劇本固定只用 candidates 模式
+    // (探查模式依賴即時的地圖中心/使用者位置,不適合寫死在固定劇本
+    // 裡,見 plan-core/askPageTools.ts AskPageExplore 的完整說明)。
+    // candidates 缺漏或沒有提供 openAskPage 函式時直接跳過等待(見上方
+    // openAskPage 參數選填的說明),不會卡住整段播放。
+    if (action.type === 'open_ask_page' && openAskPage) {
+      // picks——2026-10 使用者明確定調「播放態不會有真實互動」:劇本
+      // 一併表達「這一步哪幾個候選被選中」(見 PlanAction.picks 的完整
+      // 說明),呼叫端據此讓 AskPage 用腳本模式渲染(勾選狀態由劇本
+      // 決定、不渲染按鈕列、停留一下自動送出),而不是 await 一次真人
+      // 點選。這支函式本身不需要知道那些細節——它仍然只是 await 一個
+      // Promise,誰 resolve、何時 resolve 都由呼叫端決定(見檔頭「它自己
+      // 選擇在這裡等待」的既有說明,那個設計沒有變)。
+      await openAskPage({ candidates: action.candidates ?? [], picks: action.picks })
       if (cancelled) return
-      emit(action)
-      // 播完這一則立即排下一則——這個頁面固定「自動全部播放」,不等待
-      // 任何「下一步」信號(對齊使用者明確要求的展示用途,見檔頭說明),
-      // 跟原始後端版本 playScript 每播完一則就卡住 waitForNextStep 的
-      // 行為不同。
-      playFrom(index + 1)
-    }, randomDelayMs())
+    }
+    // 播完這一則(含 open_ask_page 等待完成後)立即排下一則——這個頁面
+    // 固定「自動全部播放」,不等待任何其他「下一步」信號(對齊使用者
+    // 明確要求的展示用途,見檔頭說明),跟原始後端版本 playScript 每播
+    // 完一則就卡住 waitForNextStep 的行為不同。
+    void playFrom(index + 1)
   }
 
   // 建立後立即開始播放,不需要呼叫端額外呼叫任何「開始」方法——對齊
   // WebSocket 版本「effect 一掛載就建立連線、後端立刻開始推播」的既有
-  // 時機。
-  playFrom(0)
+  // 時機。不 await 這次呼叫本身(playFrom 現在是 async 函式)——建立
+  // 這個 source 不需要等整段劇本播完,呼叫端透過 onMessage 訂閱逐步
+  // 接收,理由同原本同步版本就已經是「觸發後立刻返回」的既有行為。
+  void playFrom(0)
 
   return {
     onMessage(cb) {

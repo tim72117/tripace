@@ -275,7 +275,13 @@ function parseSearchAttractionArgs(raw: unknown): SearchAttractionArgs {
 // throw——這是正常的「查無此地」情境(理由同後端 handlePublicGeoPlaceSearch
 // 的完整說明),讓 LLM 能自然接續對話(例如請使用者換個關鍵字),不是
 // 系統錯誤。
-export function createSearchAttraction(cfg: ClientConfig): ClientTool<AttractionStepsCtx> {
+// onPlacesFound——查到候選時的回報(選填)。呼叫端用它把候選寫進景點池
+// (見 plan-core/attractionPoolStore.ts 的完整說明)。選填是為了不強迫
+// 每個呼叫端都要準備一個池子——展示頁的假資料路徑就不需要。
+export function createSearchAttraction(
+  cfg: ClientConfig,
+  onPlacesFound?: (places: { placeId: string; name: string; summary?: string; category?: string; lat?: number; lng?: number; source: 'search' | 'preset' }[]) => void,
+): ClientTool<AttractionStepsCtx> {
   return defineTool(
     'search_attraction',
     parseSearchAttractionArgs,
@@ -313,6 +319,23 @@ export function createSearchAttraction(cfg: ClientConfig): ClientTool<Attraction
       } catch {
         nearby = []
       }
+
+      // 把查到的候選寫進景點池(2026-10,使用者明確要求「中間都會觸發
+      // attraction-search 這是一個景點池,AI 也可以取用,應該要先讓 AI
+      // 存取景點池自行對照」)。
+      //
+      // 之後 LLM 用 get_attraction_pool 就能把一個 placeId 對照成名稱
+      // 與摘要,不需要為了查一個名稱重新呼叫這支工具(那會多打一次
+      // Google Places,而且回來的候選不保證跟這次一樣)。
+      //
+      // 連同錨點本身一起寫入:使用者說「幫我排赤崁樓附近」時,赤崁樓
+      // 本身也是個可以被加入行程的地點,不只是用來定位的座標。
+      onPlacesFound?.([
+        ...(result.placeId
+          ? [{ placeId: result.placeId, name: result.name ?? '', lat: result.lat, lng: result.lng, source: 'search' as const }]
+          : []),
+        ...nearby.map((n) => ({ ...n, source: 'search' as const })),
+      ])
 
       return {
         found: true,
@@ -603,6 +626,10 @@ export const listItinerary: ClientTool<AttractionStepsCtx> = defineTool(
 // 免登入的 /public/geo/* 搬到需登入的 /internal/geo/plan-ai/*(見
 // api.ts 的 fetchPlanAi* 系列與後端 geo_plan_ai.go 的完整說明),傳
 // token: null 的訪客 cfg 會讓每次工具呼叫都拿到 401。
-export function createAttractionToolsList(cfg: ClientConfig): ClientTool<AttractionStepsCtx>[] {
-  return [createSearchAttraction(cfg), addAttraction, addNote, removeAttraction, listItinerary]
+export function createAttractionToolsList(
+  cfg: ClientConfig,
+  // onPlacesFound——見 createSearchAttraction 同名參數的完整說明。
+  onPlacesFound?: Parameters<typeof createSearchAttraction>[1],
+): ClientTool<AttractionStepsCtx>[] {
+  return [createSearchAttraction(cfg, onPlacesFound), addAttraction, addNote, removeAttraction, listItinerary]
 }

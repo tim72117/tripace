@@ -65,42 +65,11 @@
   position: relative;
 }
 
-/* agentBubble——AI 回覆的對話泡泡,緊貼輸入框上方(2026-10 使用者明確
-   要求「要出現在輸入框上方」,見 TripPlanPage.tsx latestAgentMessage 的
-   完整說明)。只有手機版交接後的橫向版會用到。
-
-   配色與左上角收尖的圓角沿用縱向版 PlanTimelineView.module.css 的
-   .messageBubble(同一組 --ios-ai-message-* 變數),兩種版面視覺語言一致。
-   pointer-events: auto——抵銷 .compactBottom 容器的 none(見該處的完整
-   說明),讓長回覆的文字至少可以被選取。 */
-.agentBubbleWrap {
-  padding: 0 16px 8px;
-  pointer-events: auto;
-}
-
-.agentBubble {
-  padding: 10px 14px;
-  border-radius: 4px 16px 16px 16px;
-  background: var(--ios-ai-message-bg);
-  color: var(--ios-ai-message-text);
-  font-size: 14px;
-  line-height: 1.55;
-  /* 最多六行,超過截斷:泡泡貼著輸入框,無限長會把時間軸整個頂出畫面。
-     用 -webkit-line-clamp 而非固定高度——行數截斷在中英文下都是六行,
-     固定高度會切出半行。 */
-  display: -webkit-box;
-  -webkit-line-clamp: 6;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  transition: opacity 0.25s ease;
-}
-
-/* agentBubbleStale——新站點插入後這則被標記為「已被後續動作取代」
-   (見 planTimeline.ts staleOtherAgentMessages),降低不透明度表達,
-   不收合成一行——那會讓輸入框上下跳動。 */
-.agentBubbleStale {
-  opacity: 0.55;
-}
+/* agentBubble 系列(對話泡泡)整組搬到
+   home/plan-ai-sim/HorizontalPlanTimeline.module.css——2026-10 使用者
+   明確指出「不應該放在輸入匡區」,泡泡改成跟卡片列同層、走正常文件流
+   排列,不再跟輸入框共用 ComposerPortal 的絕對定位插槽,見該檔案的
+   完整說明。 */
 
 /* compactBottom:compact 且 horizontalTimeline(手機版交接後的真實層)。
    這個模式下容器是一整頁高的透明疊層,底下就是地圖,兩件事要同時成立:
@@ -312,14 +281,22 @@
 
 /* ---------- Composer ---------- */
 
-/* composer——漂浮在時間軸內容上方的膠囊。2026-09 改用 position: sticky
-   取代 position: absolute 相對 .page 定位:改用 DesktopMain 的
-   unboundedScroll 後(見 DesktopLayout.tsx 對 plan-ai 傳入這兩個 prop
-   的完整說明),真正的捲動容器是外層 .main,.page 本身不再固定高度、
-   會隨內容自然增長——absolute 相對 .page 會讓這顆膠囊跟著內容底部
-   往下移動,而不是固定貼在視窗底部。sticky 相對「最近的捲動祖先」
-   (即 .main,現在有 overflow-y: auto)貼齊,不受 .page 自身高度變化
-   影響,效果等同原本 absolute 的視覺呈現,但正確對齊新的捲動結構。
+/* composer——這裡只留「定位」(貼底、寬度、z-index),膠囊外觀(背景/
+   邊框/陰影/圓角/padding)與輸入框、送出鈕的樣式已經搬到共用元件
+   components/Composer.tsx(見該檔頭的完整背景說明:跟展示頁
+   AIPlanTimelinePage.module.css 原本各自維護一份、曾經因此跑出字級
+   不一致的 bug),這裡透過 TripPlanPage.tsx 呼叫 <Composer
+   className={styles.composer}> 把這組定位 class 疊加上去——共用元件
+   不管「放在哪裡」,只管「長什麼樣子」。
+
+   2026-09 改用 position: sticky 取代 position: absolute 相對 .page
+   定位:改用 DesktopMain 的 unboundedScroll 後(見 DesktopLayout.tsx 對
+   plan-ai 傳入這兩個 prop 的完整說明),真正的捲動容器是外層 .main,
+   .page 本身不再固定高度、會隨內容自然增長——absolute 相對 .page 會讓
+   這顆膠囊跟著內容底部往下移動,而不是固定貼在視窗底部。sticky 相對
+   「最近的捲動祖先」(即 .main,現在有 overflow-y: auto)貼齊,不受
+   .page 自身高度變化影響,效果等同原本 absolute 的視覺呈現,但正確
+   對齊新的捲動結構。
    margin-top: auto 讓它在 flex column 的 .page 裡貼齊底部(sticky 元素
    仍需要 flex 版面把它推到該待的位置,不是 sticky 本身就會自動吸底)。 */
 .composer {
@@ -329,43 +306,7 @@
   margin-left: auto;
   margin-right: auto;
   width: min(560px, calc(100% - 48px));
-  background: var(--ios-card);
-  border: 1px solid var(--ios-sep);
-  border-radius: 26px;
-  box-shadow: 0 12px 32px -12px rgba(61, 53, 48, 0.28);
-  padding: 10px 10px 10px 20px;
   z-index: 5;
-}
-.composerInner { width: 100%; }
-.inputRow { display: flex; align-items: center; gap: 10px; }
-.inputWrap {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  background: transparent;
-  padding: 0 6px;
-  height: 44px;
-}
-.input {
-  border: none;
-  outline: none;
-  background: transparent;
-  flex: 1;
-  font-size: 14px;
-  color: var(--color-dark);
-  font-family: inherit;
-}
-.sendBtn {
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  background: var(--color-dark);
-  border: none;
-  cursor: pointer;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 /* ---------- animations ----------

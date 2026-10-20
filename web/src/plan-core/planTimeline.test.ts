@@ -6,6 +6,7 @@ import {
   minutesToTime,
   removeDay,
   removeNode,
+  stripEphemeralNodes,
   toRenderList,
   updateNode,
   type PlanTimeline,
@@ -746,5 +747,88 @@ describe('removeDay', () => {
   it('空的時間軸呼叫不會爆,原樣返回', () => {
     const empty = createEmptyTimeline()
     expect(removeDay(empty, 1)).toBe(empty)
+  })
+})
+
+describe('stripEphemeralNodes', () => {
+  // message — 組一筆 message 型 PlanNodeData 的簡寫,供這組測試使用。
+  function message(text: string, ephemeral?: boolean) {
+    return { type: 'message' as const, text, ephemeral }
+  }
+
+  it('沒有任何 ephemeral 節點時,原樣返回同一個物件參照', () => {
+    const r1 = insertAfter(createEmptyTimeline(), null, stop('赤崁樓'), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    const r2 = insertAfter(r1.timeline, 'n1', message('AI 的話'), 'm1')
+    if (!r2.ok) throw new Error('setup failed')
+    const timeline = r2.timeline
+    expect(stripEphemeralNodes(timeline)).toBe(timeline)
+  })
+
+  it('中間單一 ephemeral 節點,前後節點直接銜接(對齊 removeNode 的鏈結接續行為)', () => {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, stop('赤崁樓'), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+    const r2 = insertAfter(timeline, 'n1', message('連線錯誤', true), 'm1')
+    if (!r2.ok) throw new Error('setup failed')
+    timeline = r2.timeline
+    const r3 = insertAfter(timeline, 'm1', stop('祀典武廟'), 'n2')
+    if (!r3.ok) throw new Error('setup failed')
+    timeline = r3.timeline
+
+    const stripped = stripEphemeralNodes(timeline)
+    expect(toRenderList(stripped).map((n) => n.name)).toEqual(['赤崁樓', '祀典武廟'])
+    expect(stripped.nodes.get('n1')).toMatchObject({ nextId: 'n2' })
+    expect(stripped.nodes.get('n2')).toMatchObject({ prevId: 'n1' })
+    expect(stripped.nodes.has('m1')).toBe(false)
+    // 傳入的 timeline 本身不受影響(只影響存檔用的這份副本)——畫面渲染
+    // 看到的 timeline 仍然保留這則錯誤訊息。
+    expect(timeline.nodes.has('m1')).toBe(true)
+  })
+
+  it('連續相鄰兩個 ephemeral 節點,摘除後前後節點仍正確銜接', () => {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, stop('赤崁樓'), 'n1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+    const r2 = insertAfter(timeline, 'n1', message('第一次失敗', true), 'm1')
+    if (!r2.ok) throw new Error('setup failed')
+    timeline = r2.timeline
+    const r3 = insertAfter(timeline, 'm1', message('第二次失敗', true), 'm2')
+    if (!r3.ok) throw new Error('setup failed')
+    timeline = r3.timeline
+    const r4 = insertAfter(timeline, 'm2', stop('祀典武廟'), 'n2')
+    if (!r4.ok) throw new Error('setup failed')
+    timeline = r4.timeline
+
+    const stripped = stripEphemeralNodes(timeline)
+    expect(toRenderList(stripped).map((n) => n.name)).toEqual(['赤崁樓', '祀典武廟'])
+    expect(stripped.nodes.get('n1')).toMatchObject({ nextId: 'n2' })
+    expect(stripped.nodes.get('n2')).toMatchObject({ prevId: 'n1' })
+    expect(stripped.nodes.has('m1')).toBe(false)
+    expect(stripped.nodes.has('m2')).toBe(false)
+  })
+
+  it('ephemeral 節點正好是 headId 時,headId 正確轉移到下一個節點', () => {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    const r1 = insertAfter(timeline, null, message('歡迎訊息', true), 'm1')
+    if (!r1.ok) throw new Error('setup failed')
+    timeline = r1.timeline
+    const r2 = insertAfter(timeline, 'm1', stop('赤崁樓'), 'n1')
+    if (!r2.ok) throw new Error('setup failed')
+    timeline = r2.timeline
+
+    const stripped = stripEphemeralNodes(timeline)
+    expect(stripped.headId).toBe('n1')
+    expect(toRenderList(stripped).map((n) => n.name)).toEqual(['赤崁樓'])
+  })
+
+  it('整條時間軸只有 ephemeral 節點時,摘除後變成空時間軸', () => {
+    const r1 = insertAfter(createEmptyTimeline(), null, message('唯一一則錯誤', true), 'm1')
+    if (!r1.ok) throw new Error('setup failed')
+    const stripped = stripEphemeralNodes(r1.timeline)
+    expect(stripped.headId).toBeNull()
+    expect(stripped.nodes.size).toBe(0)
   })
 })

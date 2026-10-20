@@ -112,8 +112,8 @@ type attractionRow struct {
 
 func (attractionRow) TableName() string { return "attractions" }
 
-// blogProfileRow 是「部落客公開身份」設定——2026-10 新增,見 docs/
-// brainstorm/2026-10-product-direction-brainstorm.md 構想五「發文工具
+// blogProfileRow 是「部落客公開身份」設定——2026-10 新增,見
+// showcase-demo 構想頁 /ideas/product-direction-5-publishing-tool(原產品方向腦力激盪文件)「發文工具
 // 產品線」的完整說明:讓使用者可以用一個人類可讀、URL 安全的 handle
 // (例如 "tim72117")發表文章(content_pages,見該 entity 的完整說明),
 // 而不是把內部隨機 UserID(usr_xxx 格式,見 userRow)直接曝露在公開
@@ -145,8 +145,8 @@ type blogProfileRow struct {
 func (blogProfileRow) TableName() string { return "blog_profiles" }
 
 // uploadedPhotoRow 是「使用者上傳圖片」(部落客發文用)的原圖記錄——
-// 2026-10 新增,見 docs/brainstorm/2026-10-product-direction-brainstorm.md
-// 構想五「發文工具產品線」:使用者寫部落格文章(content_pages,見
+// 2026-10 新增,見 showcase-demo 構想頁 /ideas/product-direction-5-publishing-tool(原產品方向腦力激盪文件)
+// 「發文工具產品線」:使用者寫部落格文章(content_pages,見
 // contentPageRow 的完整說明)時,自行上傳的圖片先落地成原圖記錄,之後
 // 再非同步產生縮圖/內文大圖等衍生版本(見 photoVariantRow)。
 //
@@ -605,3 +605,34 @@ type geoRateLimitRow struct {
 }
 
 func (geoRateLimitRow) TableName() string { return "geo_rate_limits" }
+
+// geoFieldMaskRow 是 geo_field_masks 表的一列:一個 Google Places API
+// 查詢情境要取哪些欄位。
+//
+// 2026-10 新增(使用者明確要求「加入可以控制欄位的設定,也讓 cli 可以
+// 設定」)。
+//
+// 背景:Google Places API (New) 用 X-Goog-FieldMask header 指定要回傳
+// 哪些欄位,而**計費層級由請求裡最高層級的那個欄位決定**——
+// displayName/formattedAddress/location 是 Essentials(最便宜)、
+// rating/photos 是 Pro、editorialSummary 是 Enterprise + Atmosphere
+// (最貴)。所以 field mask 直接決定每次呼叫的單價,而它原本寫死在
+// internal/geo/places.go 的 const 裡,要調整只能改程式碼重新部署。
+//
+// 這是跟 geo_rate_limits 同一類的設定(成本相關、需要運維調整、不該
+// 寫死在程式碼),故沿用同一個形狀:endpoint/key 當主鍵、一列一個情境、
+// 由後台或 CLI 修改、背景迴圈定期重讀套用。
+type geoFieldMaskRow struct {
+	// Key 是查詢情境的識別字串(見 internal/geo/fieldmasks 的登錄表),
+	// 不是 Google 的 endpoint 名稱——同一個 Google endpoint 可能有多種
+	// 查詢情境、各自需要不同的欄位組合(例如 searchText 同時服務
+	// 「單純查座標」與「查城市景點並反推行政區」兩種)。
+	Key string `gorm:"primaryKey;column:key"`
+	// Fields 是逗號分隔的欄位清單,內容原樣送進 X-Goog-FieldMask。
+	// 存字串而非正規化成多列:這個值的消費方式就是一個 header 字串,
+	// 拆成多列只會讓讀取端每次都要重新 join 回去。
+	Fields    string    `gorm:"column:fields;not null"`
+	UpdatedAt time.Time `gorm:"column:updated_at;not null"`
+}
+
+func (geoFieldMaskRow) TableName() string { return "geo_field_masks" }

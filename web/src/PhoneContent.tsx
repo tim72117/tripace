@@ -605,7 +605,10 @@ export function PhoneContent(props: ContentProps) {
                 情境,見該處呼叫的完整說明),手機版這張對話小匡同樣屬於
                 「沒有任何祖先在管捲動」的疊加層情境,理當傳 compact,
                 這裡補上,不是新增行為,是補回原本就該有的 prop。 */}
-            <TripPlanPage cfg={cfg} compact />
+            <TripPlanPage
+              cfg={cfg}
+              compact
+            />
           </Suspense>
         </SheetBody>
       </PersistentSheet>

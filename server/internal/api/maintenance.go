@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/tim72117/tripace/internal/adminidentity"
+	"github.com/tim72117/tripace/internal/fieldmasks"
 	"github.com/tim72117/tripace/internal/geo"
 	"github.com/tim72117/tripace/internal/model"
 	"github.com/tim72117/tripace/internal/ratelimits"
@@ -701,6 +702,172 @@ func (s *Server) handleMaintenanceRateLimitSet(w http.ResponseWriter, r *http.Re
 		// 提醒呼叫端這次修改要等多久才真的生效(見這支 handler 的完整
 		// 說明:刻意不直接動限流器)。值讀 ratelimits.RefreshInterval,
 		// 不寫死——原本這個數字在三處各寫死一份(review 發現)。
+		"appliesWithinSec": int(ratelimits.RefreshInterval / time.Second),
+	})
+}
+
+// GET /internal/maintenance/field-masks
+//
+// 列出全部可設定的 Google Places field mask:登錄表(internal/fieldmasks)
+// 的靜態定義(每個欄位的計費層級與用途)配上 geo_field_masks 表的現值。
+// 供 tripace-cli 的 field-mask list 指令使用。
+//
+// 2026-10 新增(使用者明確要求「加入可以控制欄位的設定,也讓 cli 可以
+// 設定」)。
+//
+// 為什麼需要這支:field mask 直接決定每次 Places 呼叫的計費層級——
+// Google 按「請求裡最高層級的那一個欄位」收費,所以單一欄位
+// (editorialSummary)就能讓整個情境從 Pro($17/千次)跳到
+// Enterprise + Atmosphere($25/千次,且免費額度從 5,000 降到 1,000)。
+// 這些欄位原本寫死在 internal/geo/places.go 的 const 裡,調整只能改
+// 程式碼重新部署。
+//
+// 回傳帶每個欄位的 tier 與 desc,不只欄位名稱:只給名稱的話,調整的人
+// 無從判斷哪個該留、哪個可以砍。
+func (s *Server) handleMaintenanceFieldMaskList(w http.ResponseWriter, r *http.Request) {
+	if !s.requireRateLimitAdmin(r) {
+		writeErr(w, http.StatusForbidden, "forbidden", "只有管理員可以檢視 field mask 設定")
+		return
+	}
+	rows, err := s.store.ListGeoFieldMasks()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
+		return
+	}
+	current := make(map[string]string, len(rows))
+	for _, row := range rows {
+		current[row.Key] = row.Fields
+	}
+
+	out := make([]map[string]any, 0, len(fieldmasks.Registry))
+	for _, sc := range fieldmasks.Registry {
+		fields := sc.DefaultFields()
+		configured := false
+		if raw, ok := current[sc.Key]; ok {
+			parsed := []string{}
+			for _, f := range strings.Split(raw, ",") {
+				if f = strings.TrimSpace(f); f != "" {
+					parsed = append(parsed, f)
+				}
+			}
+			if len(parsed) > 0 {
+				fields = parsed
+				configured = true
+			}
+		}
+		available := make([]map[string]any, 0, len(sc.AllFields()))
+		for _, f := range sc.AllFields() {
+			available = append(available, map[string]any{
+				"name":     f.Name,
+				"tier":     string(f.Tier),
+				"desc":     f.Desc,
+				"required": sc.IsRequired(f.Name),
+			})
+		}
+		out = append(out, map[string]any{
+			"key":             sc.Key,
+			"endpoint":        sc.Endpoint,
+			"desc":            sc.Desc,
+			"configured":      configured,
+			"fields":          fields,
+			"tier":            string(sc.TierOf(fields)),
+			"mask":            sc.Mask(fields),
+			"defaultFields":   sc.DefaultFields(),
+			"availableFields": available,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"fieldMasks": out})
+}
+
+// PATCH /internal/maintenance/field-masks/{key}
+//
+// 修改一個查詢情境要取哪些欄位。供 tripace-cli 的 field-mask set 指令
+// 使用(見該指令的完整說明)。
+//
+// 2026-10 新增,理由同 handleMaintenanceFieldMaskList。
+//
+// body: { "fields": ["displayName", "location", ...] }
+//
+// 驗證三件事,全部拒絕而非靜默修正:
+//  1. key 必須在登錄表裡——寫一個沒有任何呼叫處會讀的 key 只會讓表多
+//     一列永遠不生效的設定,操作者卻以為成功了。
+//  2. 每個欄位名稱必須在該情境的登錄表裡。送 Google 不認得的欄位名稱
+//     會讓整支 API 回 400,那會讓這個情境的查詢全部失敗——不能讓它有
+//     機會被設定進去。
+//  3. 必填欄位不可移除。少了名稱/座標,那次查詢等於白花錢。
+//
+// 改完不需要重啟:cmd/server 的背景重讀迴圈會在 RefreshInterval 之內
+// 套用(見 applyFieldMasksFromStore)。這支端點本身不直接改 geo 的
+// 覆寫表,理由同 handleMaintenanceRateLimitSet:讓「資料庫的值」與
+// 「記憶體的值」只有一條更新路徑。
+func (s *Server) handleMaintenanceFieldMaskSet(w http.ResponseWriter, r *http.Request) {
+	if !s.requireRateLimitAdmin(r) {
+		writeErr(w, http.StatusForbidden, "forbidden", "只有管理員可以修改 field mask 設定")
+		return
+	}
+	key := r.PathValue("key")
+	sc := fieldmasks.Find(key)
+	if sc == nil {
+		known := make([]string, 0, len(fieldmasks.Registry))
+		for _, x := range fieldmasks.Registry {
+			known = append(known, x.Key)
+		}
+		writeErr(w, http.StatusBadRequest, "unknown_scenario",
+			"不是登錄表裡的查詢情境;可用的有: "+strings.Join(known, ", "))
+		return
+	}
+
+	var body struct {
+		Fields []string `json:"fields"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "請求內容不是合法的 JSON")
+		return
+	}
+	if len(body.Fields) == 0 {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "fields 不可為空——至少要有這個情境的必填欄位")
+		return
+	}
+
+	seen := map[string]bool{}
+	fields := make([]string, 0, len(body.Fields))
+	for _, f := range body.Fields {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			continue
+		}
+		if !sc.Knows(f) {
+			names := make([]string, 0, len(sc.AllFields()))
+			for _, x := range sc.AllFields() {
+				names = append(names, x.Name)
+			}
+			writeErr(w, http.StatusBadRequest, "unknown_field",
+				"欄位 "+f+" 不屬於這個情境;可用的有: "+strings.Join(names, ", "))
+			return
+		}
+		if seen[f] {
+			continue
+		}
+		seen[f] = true
+		fields = append(fields, f)
+	}
+	for _, req := range sc.Required {
+		if !seen[req.Name] {
+			writeErr(w, http.StatusBadRequest, "missing_required_field",
+				"必填欄位 "+req.Name+" 不可移除("+req.Desc+")")
+			return
+		}
+	}
+
+	if err := s.store.UpsertGeoFieldMask(key, strings.Join(fields, ",")); err != nil {
+		writeErr(w, http.StatusInternalServerError, "upsert_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"key":              key,
+		"fields":           fields,
+		"tier":             string(sc.TierOf(fields)),
+		"mask":             sc.Mask(fields),
 		"appliesWithinSec": int(ratelimits.RefreshInterval / time.Second),
 	})
 }

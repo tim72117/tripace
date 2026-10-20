@@ -31,13 +31,25 @@ func planAiChatTestToken(t *testing.T, s *Server, userID string) string {
 
 func postPlanAiChat(t *testing.T, routes http.Handler, token string, body map[string]any) (*http.Response, map[string]any) {
 	t.Helper()
+	return postPlanAiChatTo(t, routes, "/internal/plan-ai/chat", token, "", body)
+}
+
+// postPlanAiChatTo——postPlanAiChat 的通用版本,額外接受自訂路徑(供測試
+// /public/plan-ai/chat 這條新路由)與 guestID(帶上 X-Guest-Id header,
+// 空字串代表不帶這個 header)。token 與 guestID 可以同時傳空字串,模擬
+// 「完全沒有身分資訊」的請求。
+func postPlanAiChatTo(t *testing.T, routes http.Handler, path, token, guestID string, body map[string]any) (*http.Response, map[string]any) {
+	t.Helper()
 	b, err := json.Marshal(body)
 	if err != nil {
 		t.Fatalf("marshal body: %v", err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/internal/plan-ai/chat", bytes.NewReader(b))
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(b))
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if guestID != "" {
+		req.Header.Set(guestIDHeader, guestID)
 	}
 	rec := httptest.NewRecorder()
 	routes.ServeHTTP(rec, req)
@@ -51,13 +63,23 @@ func postPlanAiChat(t *testing.T, routes http.Handler, token string, body map[st
 
 func postPlanAiChatReply(t *testing.T, routes http.Handler, token string, body map[string]any) (*http.Response, map[string]any) {
 	t.Helper()
+	return postPlanAiChatReplyTo(t, routes, "/internal/plan-ai/chat/reply", token, "", body)
+}
+
+// postPlanAiChatReplyTo——postPlanAiChatReply 的通用版本,理由同
+// postPlanAiChatTo。
+func postPlanAiChatReplyTo(t *testing.T, routes http.Handler, path, token, guestID string, body map[string]any) (*http.Response, map[string]any) {
+	t.Helper()
 	b, err := json.Marshal(body)
 	if err != nil {
 		t.Fatalf("marshal body: %v", err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/internal/plan-ai/chat/reply", bytes.NewReader(b))
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(b))
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if guestID != "" {
+		req.Header.Set(guestIDHeader, guestID)
 	}
 	rec := httptest.NewRecorder()
 	routes.ServeHTTP(rec, req)
@@ -130,12 +152,31 @@ func TestHandlePlanAiChat_ContentTooLong_Returns400(t *testing.T) {
 	}
 }
 
-// TestHandlePlanAiChat_GuestRejected 驗證沒有合法 JWT 的請求被擋下——
-// internalAuth 理論上已經擋掉完全沒帶 Authorization header 的請求(見
-// middleware.go),這裡改驗證 handler 本身對「userFor 退回訪客」這個邊界
-// 情況的額外防線(見 isGuestUser 的完整說明)：不帶任何 Authorization
-// header 直接打完整路由,應該先被 internalAuth 擋成 401。
+// TestHandlePlanAiChat_GuestRejected 驗證完全沒有身分資訊(沒 JWT、也沒
+// X-Guest-Id)的請求被擋下——internalAuth 本身會先擋掉沒帶 Authorization
+// header 打 /internal/plan-ai/chat 的請求(見 middleware.go),這裡改打
+// /public/plan-ai/chat(2026-10 新增的訪客公開路由,不經過 internalAuth,
+// 見 api.go Routes 內該區塊的完整說明)驗證 handler 本身
+// userOrGuestFor(見該函式的完整說明)對「兩種身分資訊都沒有」這個情況
+// 的防線——沒有 X-Guest-Id 時不該悄悄放行成某種共用身分。
 func TestHandlePlanAiChat_GuestRejected(t *testing.T) {
+	s := newTestServer(t)
+	routes := s.Routes()
+
+	resp, body := postPlanAiChatTo(t, routes, "/public/plan-ai/chat", "", "", map[string]any{
+		"content": "測試",
+	})
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("狀態碼 = %d,期待 401,body = %+v", resp.StatusCode, body)
+	}
+}
+
+// TestHandlePlanAiChat_InternalRouteStillRequiresLogin 驗證
+// /internal/plan-ai/chat(需登入版)在完全沒帶 Authorization header 時仍然
+// 被 internalAuth 中間件擋下(2026-10 新增公開版 /public/plan-ai/chat 之後
+// 這條既有行為要維持不變,不能因為新增訪客路徑而連帶放寬了需登入版的
+// 保護)。
+func TestHandlePlanAiChat_InternalRouteStillRequiresLogin(t *testing.T) {
 	s := newTestServer(t)
 	routes := s.Routes()
 
@@ -144,6 +185,96 @@ func TestHandlePlanAiChat_GuestRejected(t *testing.T) {
 	})
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("狀態碼 = %d,期待 401,body = %+v", resp.StatusCode, body)
+	}
+}
+
+// TestHandlePlanAiChat_PublicRoute_GuestWithValidID_Success 驗證
+// /public/plan-ai/chat(訪客公開路由)帶合法格式的 X-Guest-Id 時能成功
+// 送出訊息——沒有 Authorization header,不需要登入。
+func TestHandlePlanAiChat_PublicRoute_GuestWithValidID_Success(t *testing.T) {
+	s := newTestServer(t)
+	routes := s.Routes()
+
+	resp, body := postPlanAiChatTo(t, routes, "/public/plan-ai/chat", "", "guest_abc123", map[string]any{
+		"content": "訪客的訊息",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("狀態碼 = %d,期待 200,body = %+v", resp.StatusCode, body)
+	}
+	if _, ok := body["conversationID"]; !ok {
+		t.Fatalf("期待回應帶 conversationID,實際 body = %+v", body)
+	}
+}
+
+// TestHandlePlanAiChat_PublicRoute_InvalidGuestID_Returns401 驗證
+// X-Guest-Id 格式不符(不是 guest_ 前綴,例如惡意呼叫端嘗試冒充真實帳號
+// 的 usr_ ID)時一律拒絕,不會把任意字串直接當成 userID 使用——見
+// userOrGuestFor 的完整說明:若不檢查前綴,呼叫端能把 X-Guest-Id 設成
+// 已知的真實使用者 ID,讓這筆訪客訊息被誤植到別人帳號底下。
+func TestHandlePlanAiChat_PublicRoute_InvalidGuestID_Returns401(t *testing.T) {
+	s := newTestServer(t)
+	routes := s.Routes()
+
+	cases := []string{
+		"usr_someone_else", // 嘗試冒充真實帳號格式
+		"guest_",           // 前綴正確但內容為空
+		"not-a-valid-id",
+	}
+	for _, guestID := range cases {
+		resp, body := postPlanAiChatTo(t, routes, "/public/plan-ai/chat", "", guestID, map[string]any{
+			"content": "測試",
+		})
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("guestID=%q: 狀態碼 = %d,期待 401,body = %+v", guestID, resp.StatusCode, body)
+		}
+	}
+}
+
+// TestHandlePlanAiChatReply_PublicRoute_DifferentGuests_Returns404 驗證
+// 兩個不同的訪客(各自獨立的 X-Guest-Id)無法互相讀寫對方的對話記錄——
+// 這正是 userOrGuestFor 要求訪客必須帶各自獨立 id(而不是共用固定的
+// guestUser.ID)的理由,見該函式的完整說明:若訪客共用同一個 userID,
+// 這個測試會失敗(訪客 B 能成功回報訪客 A 的對話)。
+func TestHandlePlanAiChatReply_PublicRoute_DifferentGuests_Returns404(t *testing.T) {
+	s := newTestServer(t)
+	routes := s.Routes()
+
+	_, chatBody := postPlanAiChatTo(t, routes, "/public/plan-ai/chat", "", "guest_owner", map[string]any{
+		"content": "訪客 A 的訊息",
+	})
+	convID, _ := chatBody["conversationID"].(string)
+	msgIDFloat, _ := chatBody["messageID"].(float64)
+
+	resp, body := postPlanAiChatReplyTo(t, routes, "/public/plan-ai/chat/reply", "", "guest_intruder", map[string]any{
+		"conversationID": convID,
+		"messageID":      msgIDFloat,
+		"content":        "訪客 B 想冒充回覆",
+	})
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("狀態碼 = %d,期待 404,body = %+v", resp.StatusCode, body)
+	}
+}
+
+// TestHandlePlanAiChatReply_PublicRoute_SameGuest_Success 驗證同一個訪客
+// (相同 X-Guest-Id)能正常對自己開的對話回報內容——確保上一個測試驗證
+// 的是「跨訪客」被擋,而不是訪客身分整個無法使用 reply 端點。
+func TestHandlePlanAiChatReply_PublicRoute_SameGuest_Success(t *testing.T) {
+	s := newTestServer(t)
+	routes := s.Routes()
+
+	_, chatBody := postPlanAiChatTo(t, routes, "/public/plan-ai/chat", "", "guest_self", map[string]any{
+		"content": "訪客的訊息",
+	})
+	convID, _ := chatBody["conversationID"].(string)
+	msgIDFloat, _ := chatBody["messageID"].(float64)
+
+	resp, body := postPlanAiChatReplyTo(t, routes, "/public/plan-ai/chat/reply", "", "guest_self", map[string]any{
+		"conversationID": convID,
+		"messageID":      msgIDFloat,
+		"content":        "AI 的回覆",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("狀態碼 = %d,期待 200,body = %+v", resp.StatusCode, body)
 	}
 }
 

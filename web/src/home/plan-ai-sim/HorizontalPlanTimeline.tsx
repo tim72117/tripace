@@ -1,6 +1,21 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { type PlanNode, type NoteInfo, type PlanThemeChild, type TransitInfo } from '../../plan-core/planTimeline'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { stopLookupFailed, type PlanNode, type NoteInfo, type PlanThemeChild, type TransitInfo } from '../../plan-core/planTimeline'
+import type { AskPageInput, AskPageSelection } from '../../plan-core/askPageTools'
+import { AskPage } from './AskPage'
+import type { PlanAiDataSource } from './planAiDataSource'
+import { planAiFakeDataSource } from './planAiFakeDataSource'
 import styles from './HorizontalPlanTimeline.module.css'
+
+// ZOOM_OUT_ENABLED——2026-10 使用者先要求「讓時間尺有 zoom in/zoom out
+// 的切換,推論時用 zoom out」,之後又要求「先不做 zoom out」:整套
+// zoom out 邏輯(allDays/hasZoomedOut/showZoomOut 的計算、.ruler JSX 裡
+// 的 .rulerOverviewSegment/.rulerOverviewDot 渲染分支、對應的
+// HorizontalPlanTimeline.test.tsx 測試)保留不刪,只用這個開關強制
+// 關閉,方便之後要重新啟用時直接把這裡改回 true,不需要重新實作或從
+// git 歷史挖回來。關閉後行為等同這個功能從未存在:.ruler 永遠走 zoom in
+// 分支(單日 24 小時範圍 + 跨日滑動過渡),不管 isGenerating 是否為
+// true,見 showZoomOut 的完整說明。
+const ZOOM_OUT_ENABLED = false
 
 // 2026-10(手機版共用時間軸重構):這個元件原本只給「模擬層」用,現在
 // 同時也是「交接後真實層」(LivePlanLayer 內部的 TripPlanPage,手機版時
@@ -82,11 +97,9 @@ export interface HorizontalPlanTimelineProps {
   // onRemoveStop——選填:卡片右上角顯示一顆刪除按鈕,點擊時呼叫並傳入
   // 這個節點的 id。語意與選填理由完全對齊 PlanTimelineView.tsx 同名
   // prop(見該檔案的完整說明)——模擬層不傳就不會出現刪除按鈕。
-  // onLatestMessageChange——把目前要顯示的 AI 回覆文字回報給呼叫端,
-  // 由呼叫端決定渲染在哪裡(見 latestMessage 的完整說明:泡泡要貼著
-  // 輸入框,那不在這個元件的 DOM 子樹內)。選填,對齊其餘選填 prop 的
-  // 既有慣例——/ai-plan 展示頁的模擬層不傳(劇本沒有 message 節點)。
-  onLatestMessageChange?: (message: { text: string; stale: boolean } | null) => void
+  // onLatestMessageChange prop 已移除(2026-10,使用者明確指出泡泡
+  // 「不應該放在輸入匡區」)——泡泡改由這個元件自己用下方 latestMessage
+  // 直接渲染(見 agentBubbleRow 的完整說明),不再需要回報給呼叫端。
   onRemoveStop?: (stopId: string) => void
   // onPanToStop——選填:卡片左下角顯示一顆「移動到此」按鈕,點擊時呼叫
   // 並傳入這個節點的 id。2026-10 新增(使用者明確要求「選擇圖卡時不要
@@ -128,6 +141,86 @@ export interface HorizontalPlanTimelineProps {
   // 使用者自由橫向瀏覽全部站點」的既有體驗,不受這個新版面邏輯影響。
   // 選填,省略時視為 false,維持改動前的固定寬度行為。
   focusLatest?: boolean
+  // dimmed——選填,2026-10 新增(使用者明確要求「對話氣泡出現時,時間軸
+  // 淡化」)。原本由呼叫端(TripPlanPage.tsx)算出「目前有一則新鮮
+  // (非 stale)的泡泡正顯示」這個條件後傳進來;泡泡本身搬進這個元件
+  // 內部後(見下方 agentBubbleRow 的完整說明:使用者明確指出泡泡「不
+  // 應該放在輸入匡區」),這個判斷現在改成內部用 latestMessage 自己
+  // 算(見下方 effectiveDimmed),省略這個 prop 時走內部算出的值。
+  // 仍然保留外部覆寫的管道(受控/非受控雙模式,對齊 showAskPage 等
+  // 既有 prop 的同一個模式)——明確傳入時以外部值為準,純視覺 class
+  // 切換,不影響底下卡片列的捲動/選取/拖拉互動(pointer-events 不變,
+  // 淡化期間仍然可以操作時間軸,只是視覺上退到背景)。
+  dimmed?: boolean
+  // showAskPage/onAskPageDone——2026-10(使用者明確要求「詢問頁的內容
+  // 跟啟動要可以透過程式自己啟動,也要讓 AI 的工具來啟動」):原本
+  // showAskPage 是這個元件自己內部管理的 state,改成受控——呼叫端
+  // (TripPlanPage.tsx)把 state 提升上去,才能同時被兩個入口驅動:
+  // (1) 程式自己(使用者互動、進頁預設顯示)直接呼叫 setter;(2) AI
+  // 工具(見 plan-core/askPageTools.ts 的 open_ask_page)透過獨立的
+  // AskPageCtx 呼叫同一個 setter。兩者共用同一份狀態,不會有「AI 觸發
+  // 完、使用者馬上手動切換」這種兩條路徑各自維護狀態、互相打架的問題。
+  //
+  // 省略時退回內部自行管理(預設 true,一進頁顯示詢問頁)——維持這個
+  // 元件可以獨立掛載測試/使用,不強制呼叫端一定要接上外部狀態管理,
+  // 對齊 onRemoveStop 等其餘選填 prop 的既有慣例(省略時該功能的最小
+  // 可用行為仍然成立)。
+  //
+  // onAskPageDone 現在帶一個 AskPageSelection[] 參數(2026-10 第二輪,
+  // 使用者明確要求「open_ask_page 要可以輸出 attraction id 與
+  // place id,前端拿到後用對應的 UI 呈現」)——AskPage.tsx 的 onDone
+  // 回報使用者選了哪些候選,這個元件只是原樣轉呼叫給呼叫端,不在這裡
+  // 處理選擇結果本身(例如要不要接著呼叫 add_attraction),那是呼叫端
+  // (TripPlanPage.tsx 的 askPageCtx)的職責,見該處的完整說明。
+  showAskPage?: boolean
+  onAskPageDone?: (selected: AskPageSelection[]) => void
+  // onAskPageBack——2026-10(第十輪,使用者明確要求「將國家與地區的
+  // 工具分開,並做自動串接」)原樣轉傳給 AskPage 的 onBack prop(見該
+  // 元件 CityPanel 的完整說明:「返回上一層」按鈕)。選填,理由同
+  // onAskPageDone——不是每個呼叫端都需要這個功能(例如
+  // AIPlanTimelinePage.tsx 的展示頁劇本不支援真正的國家/城市串接)。
+  onAskPageBack?: (countryIds?: string[]) => void
+  // dataSource/askPageInput——showAskPage 為 true 時傳給 AskPage 顯示
+  // 候選景點卡片所需的兩樣東西(見 AskPage.tsx AskPageProps 的完整
+  // 說明)。兩者都選填:這個元件本身可能在完全不會開詢問頁的情境下
+  // 掛載(例如只是純展示捲動、showAskPage 固定 false 的呼叫端),這種
+  // 情況不需要呼叫端準備這兩個值。showAskPage 為 true 卻沒有傳
+  // askPageInput 時,AskPage 收到空候選清單,顯示一個沒有候選卡片、
+  // 只剩「不用了」按鈕可按的空狀態——不會因為缺這個 prop 而整頁壞掉。
+  //
+  // askPageInput——2026-10(使用者明確要求「open_ask_page 輸入支援一個
+  // 模式,探查模式」)取代原本的 askPageCandidates,改成承載 candidates
+  // 或 explore 其中一種(見 plan-core/askPageTools.ts
+  // AskPageCtx.openAskPage 的完整說明),原樣轉傳給 AskPage,這個元件
+  // 不需要知道兩種模式的差異。2026-10(第二輪,使用者明確要求「後端的
+  // 純文字對話也統一在 ask page 裡面顯示對話氣泡」)新增 text 形態,
+  // 見 AskPage.tsx input 聯集與該檔案「第四輪」的完整說明。
+  dataSource?: PlanAiDataSource
+  askPageInput?: AskPageInput
+  // renderAskPage——2026-10(使用者明確要求「ask page 內的感興趣的景點
+  // 詢問,可以用挖洞的方式,再撥放態置換成可以由腳本控制的原件」、
+  // 「所以是要做在被置換的原件上,與正式使用的不一樣」):把「用哪一份
+  // 詢問頁」挖成一個洞,由呼叫端決定。
+  //
+  // 這個元件有三個呼叫端,對詢問頁的需求不同:
+  //   TripPlanPage(/app 推論態)——真實互動,用正式的 AskPage。
+  //   AIPlanTimelinePage(播放態)——自動演示,置換成 ScriptedAskPage
+  //     (劇本指定選哪幾張、演出點擊特效、時間到自己送出)。
+  //   AiPlanPhoneDemoScreen(小展示)——目前不顯示詢問頁。
+  // 省略時用正式的 AskPage(非受控預設),對齊這個元件 showAskPage/
+  // dimmed 等既有 prop 的受控/非受控雙模式。
+  //
+  // 為什麼是 render prop 而不是一個 `scripted?: boolean` 旗標:這個
+  // 元件不該知道「播放態」這個概念,也不該 import 只有播放態會用到的
+  // 元件——那會讓推論態的打包結果夾帶展示用的程式碼。交出渲染權,
+  // 它只需要知道「這塊空間要放詢問頁」。
+  renderAskPage?: () => ReactNode
+  // onRetryStop——地點資料查詢失敗的站點上顯示「重試」按鈕,語意同
+  // PlanTimelineView 的同名 prop(見該處的完整說明)。
+  //
+  // 2026-10（review 發現）：這個元件原本對 failed 零處理,而手機版
+  // 的 /app 走的正是這條橫向路徑——手機使用者實際上拿不到重試入口。
+  onRetryStop?: (id: string) => void
 }
 
 // MIN_SEGMENT_MINUTES——沒有 duration 可解析、或下一站時間早於/等於這一
@@ -381,13 +474,33 @@ export function HorizontalPlanTimeline({
   onSelectThemeChild,
   onOpenPhotos,
   onHeightChange,
-  onLatestMessageChange,
   onRemoveStop,
   onPanToStop,
   onTransitModeChange,
   isGenerating = false,
   focusLatest = false,
+  dimmed: dimmedProp,
+  showAskPage: showAskPageProp,
+  onAskPageDone,
+  onAskPageBack,
+  dataSource,
+  askPageInput,
+  renderAskPage,
+  onRetryStop,
 }: HorizontalPlanTimelineProps) {
+  // showAskPageState/showAskPageSetter——受控/非受控雙模式(對齊
+  // selectStop 等既有呼叫端的同一個既有模式):呼叫端有傳 showAskPage
+  // prop 時,顯示的值跟寫入動作都以呼叫端為準(內部這份 state 完全
+  // 不使用);沒傳時退回這個元件自己管理。預設 false(2026-10 改回,
+  // 使用者明確要求「一開始先不要出現詢問頁」,/ai-plan 展示模擬頁與
+  // 正式 /app 頁面行為一致)——詢問頁只透過程式呼叫或 AI 的
+  // open_ask_page 工具主動開啟。見 HorizontalPlanTimelineProps.
+  // showAskPage 的完整說明。
+  const [internalShowAskPage, setInternalShowAskPage] = useState(false)
+  const showAskPage = showAskPageProp ?? internalShowAskPage
+  const handleAskPageDone = onAskPageDone ?? (() => setInternalShowAskPage(false))
+  const askPageDataSource = dataSource ?? planAiFakeDataSource
+
   // stops——只取 type === 'stop' 的節點，見檔頭說明。section/message
   // 節點在這個元件裡完全不渲染。
   const stops = useMemo(() => steps.filter((s): s is PlanNode & { type: 'stop' } => s.type === 'stop'), [steps])
@@ -419,53 +532,22 @@ export function HorizontalPlanTimeline({
   )
   const selectedNoteMeta = useMemo(() => (selectedNote ? resolveNoteMeta(selectedNote) : null), [selectedNote])
 
-  // latestMessage——AI 推論的回覆文字,透過 onLatestMessageChange 交給
-  // 呼叫端渲染成對話泡泡(2026-10 使用者明確要求「展示進到真的推論後,
-  // 用目前的對話泡泡顯示推論的文字」,後續再要求「要出現在輸入框上方」)。
+  // effectiveDimmed——見 HorizontalPlanTimelineProps.dimmed 的完整
+  // 說明:呼叫端明確傳入時以外部值為準,否則預設不淡化。
   //
-  // 為什麼不是這個元件自己渲染:泡泡要緊貼輸入框,而輸入框在交接後是
-  // 透過 ComposerPortal 傳送到版面外殼的插槽裡(見 TripPlanPage.tsx
-  // composerSlot 的完整說明),不在這個元件的 DOM 子樹內。這裡渲染的話
-  // 泡泡會卡在時間尺上方、跟輸入框隔著整個卡片列。
-  //
-  // 在這之前橫向版完全不渲染 message 節點(只取 type === 'stop',見上方
-  // stops 的說明)——那在模擬展示階段沒問題,劇本本來就沒有 message;
-  // 但交接到真實 AI 之後(LivePlanLayer → TripPlanPage,手機版走
-  // horizontalTimeline),onagent 回覆的文字就這樣消失了,使用者只看到
-  // 卡片一張張冒出來,不知道 AI 在說什麼。
-  //
-  // 只顯示最新一則而不是全部:橫向版沒有縱向版那種可捲動的訊息列
-  // (縱向版 PlanTimelineView 每則 message 是時間軸上獨立的一列),
-  // 這裡是固定高度的橫幅,塞不下多則。取最新的那則——舊訊息在
-  // staleOtherAgentMessages 標記下本來就會淡化收合(見 planTimeline.ts
-  // 該函式的完整說明),語意上「最新那則才是現在要看的」。
-  //
-  // 不排除 stale(2026-10 修正,使用者實機回報「有回應了,可是沒有顯示
-  // 對話泡泡」):第一版篩掉 stale 的訊息,理由是「已被後續動作取代」。
-  // 但 staleOtherAgentMessages 的規則是「只要插入任何新的 stop,就把
-  // 所有 message 標記 stale」(見 planTimeline.ts 該函式)——AI 回一句話
-  // 再排一個景點,那句話立刻變 stale,泡泡等於只閃一下就消失。
-  //
-  // 縱向版可以排除是因為它把 stale 訊息收合成一行淡化小字保留著
-  // (見 PlanTimelineView.tsx 的 messageBubbleStale),不是真的不顯示;
-  // 橫向版沒有那個收合態,排除就等於整個不見。改成照樣顯示最新一則,
-  // stale 與否只影響透明度(見 .messageBubbleStale)。
-  const latestMessage = useMemo(() => {
-    for (let i = steps.length - 1; i >= 0; i -= 1) {
-      const node = steps[i]
-      if (node.type === 'message' && node.text) return node
-    }
-    return null
-  }, [steps])
-
-  // 把最新訊息回報給呼叫端渲染(見 latestMessage 與 onLatestMessageChange
-  // 的完整說明)。用 effect 而不是在 render 期間直接呼叫——後者會在父層
-  // 渲染中途觸發它的 setState,React 會警告。
-  useEffect(() => {
-    onLatestMessageChange?.(
-      latestMessage ? { text: latestMessage.text ?? '', stale: latestMessage.stale === true } : null,
-    )
-  }, [latestMessage, onLatestMessageChange])
+  // 2026-10(第二輪,使用者明確要求「後端的純文字對話也統一在 ask page
+  // 裡面顯示對話氣泡」):文字氣泡從這個元件自己渲染的 agentBubbleRow
+  // (見下方 showAskPage JSX 註解的完整說明,原本跟卡片列同時顯示,
+  // 疊在卡片列之上)搬進 AskPage.tsx 內部渲染。.wrapDimmed 套在這個
+  // 元件的最外層容器(見下方 JSX),AskPage 本身是這個容器的子元素
+  // ——若沿用「showAskPage 顯示中就淡化」當預設值,等於連 AskPage
+  // (候選卡片/探查中/文字氣泡)自己都被壓到 0.45 透明度,使用者會
+  // 覺得整個詢問畫面「看起來霧霧的」,這不是原本「氣泡蓋在卡片列上
+  // 方、讓卡片列退到背景」的語意,是這次搬動衍生出的新問題。文字氣泡
+  // 現在就是 AskPage 本身的內容,不再是疊加在卡片列上方的獨立元素,
+  // 不需要靠淡化卡片列來讓它突出,因此拿掉這個預設值,恆不淡化
+  // (呼叫端仍可透過 dimmedProp 明確要求淡化,只是沒有內部自動觸發)。
+  const effectiveDimmed = dimmedProp ?? false
 
   const scrollerRef = useRef<HTMLDivElement | null>(null)
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map())
@@ -791,6 +873,41 @@ export function HorizontalPlanTimeline({
     return map
   }, [segments])
 
+  // allDays——使用者明確要求「讓時間尺有 zoom in/zoom out 的切換,zoom
+  // out 的時候顯示所有天,推論時用 zoom out」:isGenerating 期間時間尺
+  // 整個換成「跨天總覽」渲染(見下方 .ruler JSX 裡 isGenerating 的
+  // 條件分支),這裡算出排序後的完整天數清單給那個分支用。currentDay
+  // 永遠併入清單(即使它還沒有任何 segment——例如剛跨到新的一天、第
+  // 一站還在生成中),否則「正在排的這一天」在總覽裡會完全消失,跟
+  // isGenerating 原本想呈現的「還有進度正在進行」的語意矛盾。 */
+  const allDays = useMemo(() => {
+    const days = new Set(segmentsByDay.keys())
+    days.add(currentDay)
+    return Array.from(days).sort((a, b) => a - b)
+  }, [segmentsByDay, currentDay])
+
+  // hasZoomedOut——使用者明確要求「開始推論時就進入 zoom out,不自動
+  // zoom in」:一旦 isGenerating 第一次轉 true,整個元件生命週期內
+  // 永久維持 zoom out,即使這次推論結束(isGenerating 轉 false)或之後
+  // 又有新的推論週期,都不會自動切回 zoom in(見下方 showZoomOut 的
+  // 完整說明)。用獨立的 state 記住這件事,不能直接拿 isGenerating 本身
+  // 當總覽模式的開關——isGenerating 是瞬時的、推論結束就變 false,
+  // 若直接拿它當條件會在每次推論結束時自動切回單日細節,正是這次要
+  // 拿掉的行為。
+  const [hasZoomedOut, setHasZoomedOut] = useState(false)
+  useEffect(() => {
+    if (isGenerating) setHasZoomedOut(true)
+  }, [isGenerating])
+  // showZoomOut——真正驅動 .ruler 渲染哪個分支的條件:只要曾經進入過
+  // zoom out(hasZoomedOut),或者「現在正在推論但這是第一次,
+  // hasZoomedOut 的 state 更新還沒反映到這一輪渲染」(isGenerating 剛
+  // 轉 true 的那個 commit,useEffect 要等下一輪才會執行,直接讀
+  // hasZoomedOut 會慢半拍、第一次推論開始的那一幀還是 zoom in 畫面)
+  // 就顯示總覽。兩個條件用 || 合併,涵蓋「state 還沒追上」的那一瞬間。
+  // ZOOM_OUT_ENABLED(檔案最上方的模組層級開關)目前是 false,見該常數
+  // 的完整說明。
+  const showZoomOut = ZOOM_OUT_ENABLED && (hasZoomedOut || isGenerating)
+
   // visibleDays——目前要渲染哪幾條軸線。
   //
   // 不在跨日過渡中時只有 currentDay 一條(跟改動前相同);過渡中則同時
@@ -869,30 +986,26 @@ export function HorizontalPlanTimeline({
     return () => observer.disconnect()
   }, [wrapElement, onHeightChange])
 
-  // 2026-10:stops 為空時不再無條件 return null——isGenerating 為 true
-  // 時(第一站還沒生成出來,見下方骨架卡渲染邏輯)仍要顯示呼吸點本身,
-  // 讓使用者在「完全沒有任何內容」的那段等待期也能看到「AI 正在做事」
-  // 的訊號,不是進頁後有一段空白期才突然冒出第一張卡片。
-  // 泡泡改由呼叫端渲染(見 onLatestMessageChange 的完整說明)之後,這裡
-  // 恢復原本的條件:沒有站點又沒在生成就整個不渲染。上面那個通知用的
-  // effect 在 return null 之前就已經執行過,呼叫端照樣收得到訊息。
-  if (stops.length === 0 && !isGenerating) return null
+  // 2026-10(第四輪):移除「沒有站點又沒在生成就整個不渲染」的早退。
+  // 根因(使用者實機回報「播放態的輸入匡位置不對」查證後確認):composer
+  // 在第三輪重構後改成 .panel 正常文件流的最後一個子項,排在這個元件
+  // 的 .wrap 之後(見 PlanOverlayPanel.tsx children 的渲染順序)——這個
+  // 元件 return null 時,.panel 裡就只剩 composer 一個看得見的子項,
+  // 沒有任何內容把它推到底部,導致打字動畫階段(此時 stops 為空、
+  // isGenerating 也還是 false,因為 usePlanSimSocket 要等 promptTyped
+  // 才開始播放)composer 貼在面板頂端,跟其他階段的底部位置不一致。
+  // 固定渲染 .wrap 這個外框(内容仍然可以是空的,見下方 .ruler/.scroller
+  // 各自的條件渲染),讓 composer 的版面位置不隨這個元件的內容多寡而
+  // 跳動,使用者明確要求「從頭到尾都用同一個 UI 佈局外框」。
 
   return (
-    <div className={styles.wrap} ref={setWrapElement}>
+    <div className={`${styles.wrap} ${effectiveDimmed ? styles.wrapDimmed : ''}`} ref={setWrapElement}>
       {/* selectedNoteBanner——全寬備註區,2026-10 使用者明確要求「移動到
           時間軸的軸線上方」,從原本夾在時間尺(.ruler)跟卡片列
           (.scroller)之間,移到時間尺之前(見 selectedNote/selectedNoteMeta
           的完整說明)。沒有備註時渲染一個等高的透明佔位(維持固定版面
           高度,不讓下方內容隨選中站點有沒有備註而上下跳動——跟卡片固定
           height 的理由一致)。 */}
-      {/* messageBubble——AI 推論回覆的對話泡泡(見 latestMessage 的完整
-          說明)。視覺語言對齊縱向版 PlanTimelineView.module.css 的
-          .messageBubble(同一組 --ios-ai-message-* 變數、同樣的左上角
-          收尖圓角),但這裡是固定在時間軸上方的單則橫幅,不是時間軸上
-          可捲動的一列。
-          沒有訊息時整個不渲染(不留佔位):模擬展示階段劇本沒有
-          message,留一塊空白會讓時間軸無故往下壓。 */}
       <div className={styles.noteBanner}>
         {selectedNote && selectedNoteMeta ? (
           <div className={styles.noteBannerContent} style={{ color: selectedNoteMeta.colorVar }}>
@@ -934,8 +1047,70 @@ export function HorizontalPlanTimeline({
           key={currentDay} 改變時才真正被掛載的新節點上,不換天時這個
           節點完全不會被重新建立,class 雖然寫在 JSX 裡但不會被瀏覽器
           重新套用,不會重播。 */}
-      {(timelineRange || isGenerating) && (
+      {(timelineRange || showZoomOut) && (
         <div className={styles.ruler} role="list" aria-label="行程時間尺">
+        {showZoomOut ? (
+          /* zoomOutTrack——使用者明確要求「讓時間尺有 zoom in/zoom out
+             的切換,zoom out 的時候顯示所有天,推論時用 zoom out」,
+             後續再要求「開始推論時就進入 zoom out,不自動 zoom in」:
+             驅動這個分支的條件是 showZoomOut(見該變數的完整說明),
+             不是直接用 isGenerating——一旦進入過 zoom out,即使這次
+             推論結束也不會自動切回下面的 zoom in 分支。
+             顯示內容本身(總覽軌道)仍然只取決於 allDays/currentDay
+             這些資料,跟 isGenerating 本身是否仍為 true 無關。取代
+             下面 zoom in 分支的單日 24 小時範圍 + 跨日滑動過渡邏輯——
+             兩者是完全不同的尺度(一條代表 1 天、一條代表整趟行程的
+             N 天),不是同一條軸線的參數調整,所以用 if/else 分成兩條
+             獨立的渲染路徑,不要勉強共用同一套 visibleDays/位移計算。
+             推論結束(isGenerating 轉 false)後自動切回下面的 zoom in
+             分支,不需要使用者手動切換(使用者明確要求「先不做手動,
+             安排中跟安排完成自動切換」)。
+             每天等寬均分軸線寬度(使用者明確要求,不依每天安排密度
+             調整比例)、不可點擊(使用者明確要求「純簡覽用」,故不是
+             <button> 而是 <div>,也不接 onClick/aria-label 導覽語意)。
+             呼吸泛光(.rulerTrackGenerating)疊在 currentDay 對應的那
+             一段上,延續 zoom in 分支「正在排的那一天在發光」的既有
+             語意。 */
+          <div className={styles.rulerTrack} role="presentation">
+            {allDays.map((day, i) => {
+              // overviewDaySegments——這一天的行程點,用來在總覽段落內
+              // 畫出小圓點標記(使用者實機回報「zoom out 的時間尺沒有
+              // 標行程點」/「時間尺上的行程點都不見了」:這個分支原本
+              // 完全沒有渲染任何子元素,只有一塊空的等寬色段)。
+              const overviewDaySegments = segmentsByDay.get(day) ?? []
+              return (
+              <div
+                key={day}
+                className={`${styles.rulerOverviewSegment}${day === currentDay ? ` ${styles.rulerTrackGenerating}` : ''}`}
+                style={{ left: `${(i / allDays.length) * 100}%`, width: `${(1 / allDays.length) * 100}%` }}
+                aria-hidden="true"
+              >
+                {/* rulerOverviewDot——使用者明確要求「改回色塊,跟
+                    .rulerSegment 一致」(一開始用小圓點,理由是總覽段落
+                    已經被切得很窄,膠囊造型容易擠在一起分不清楚,但
+                    使用者選擇優先維持視覺一致性):沿用 .rulerSegment
+                    同一套膠囊外觀(border-radius: 999px、同樣的
+                    --ios-blue 底色/opacity),只是定位邏輯不同——這裡
+                    沒有精確的時間比例可用(zoom out 本來就不依實際時間,
+                    見 allDays 均分段落寬度的既有設計),改成把這一天的
+                    站點數量等距切分段落內部空間,每站各佔 1/N 寬度,
+                    視覺上仍然是「色塊並排」而不是離散的點。 */}
+                {overviewDaySegments.map((seg, segIndex) => (
+                  <span
+                    key={seg.node.id}
+                    className={styles.rulerOverviewDot}
+                    style={{
+                      left: `${(segIndex / overviewDaySegments.length) * 100}%`,
+                      width: `${(1 / overviewDaySegments.length) * 100}%`,
+                    }}
+                  />
+                ))}
+              </div>
+              )
+            })}
+          </div>
+        ) : (
+          <>
           {/* 跨日過渡中會同時渲染兩條軌道(fromDay/toDay),各自依
               offsetPct 位移,整個過程跟著卡片列的捲動位置連續變化
               (見 visibleDays 與 dayTransition 的完整說明)。不在過渡
@@ -956,7 +1131,13 @@ export function HorizontalPlanTimeline({
             return (
           <div
             key={day}
-            className={`${styles.rulerTrack}${isTransitioning ? ` ${styles.rulerTrackSliding}` : ''}`}
+            // rulerTrackGenerating——使用者明確要求「安排中的呼吸小點,
+            // 改成讓整個時間軸軸線用呼吸燈」:原本獨立的 .tipDot 小圓點
+            // 整個移除,改成直接疊加這個 class 讓整條軌道的背景本身
+            // 脈動。條件沿用原本 .tipDot 的既有判斷(isGenerating 且是
+            // 「最新的那一天」day === currentDay)——呼吸只該出現在正在
+            // 排的那一天軌道上,過渡中不該兩條軌道一起脈動。
+            className={`${styles.rulerTrack}${isTransitioning ? ` ${styles.rulerTrackSliding}` : ''}${isGenerating && day === currentDay ? ` ${styles.rulerTrackGenerating}` : ''}`}
             style={isTransitioning ? { transform: `translateX(${offsetPct}%)` } : undefined}
           >
             {hasTime && daySegments.map((seg) => {
@@ -996,34 +1177,38 @@ export function HorizontalPlanTimeline({
                 </Fragment>
               )
             })}
-            {/* tipDot——呼吸點本身,接在已排時間進度之後。tipLeftPct:
-                有 timelineRange 時,取最後一段 segment 的結尾位置
-                (用該段真實的 endMinutes,不是整個 range 的 max——
-                range.max 恆等於最後一段的 endMinutes,兩者算出來的
-                結果相同,這裡直接重用 timelineRange.total 當分母避免
-                重複計算);完全沒有已排時間時(timelineRange 為 null)
-                固定在最左端(0%),對齊「連第一站都還沒排出來」這個
-                起始狀態。 */}
-            {/* 呼吸點只掛在「最新的那一天」那條軌道上——它表達的是
-                「正在排下一段」,過渡中不該兩條軌道各冒一個。 */}
-            {isGenerating && day === currentDay && (() => {
-              const tipLeftPct = hasTime ? 100 : 0
-              return (
-                <span
-                  key={`ruler-tip-${stops.length > 0 ? stops[stops.length - 1].id : 'empty'}`}
-                  className={styles.tipDot}
-                  style={{ left: `${tipLeftPct}%` }}
-                  aria-hidden="true"
-                />
-              )
-            })()}
           </div>
             )
           })}
           </div>
+          </>
+        )}
         </div>
       )}
 
+      {/* showAskPage——詢問頁/軸線頁互斥顯示(見該 state 的完整說明),
+          架構打通階段:詢問頁完成時呼叫 onDone 把這裡切回 false,軌道
+          切回下方既有的 .scroller 卡片列,不需要任何過場動畫或額外
+          狀態——同一塊版面空間,簡單的條件渲染切換即可。
+          2026-10(使用者明確要求「後端的純文字對話也統一在 ask page
+          裡面顯示對話氣泡」):原本這裡在 showAskPage 區塊之前還獨立
+          渲染一個 agentBubbleRow(對話氣泡,不受 showAskPage 控制,
+          跟卡片列/詢問頁同時顯示),現已移除——純文字回覆改成 AskPage
+          的第三種 input 形態(見該元件 input 聯集與 onAssistantMessage
+          呼叫處的完整說明),氣泡統一由 AskPage 內部渲染,不再有「兩塊
+          各自獨立顯示」的情況。 */}
+      {showAskPage ? (
+        renderAskPage ? (
+          renderAskPage()
+        ) : (
+          <AskPage
+            dataSource={askPageDataSource}
+            input={askPageInput ?? { candidates: [] }}
+            onDone={handleAskPageDone}
+            onBack={onAskPageBack}
+          />
+        )
+      ) : (
       <div
         className={styles.scroller}
         ref={scrollerRef}
@@ -1400,6 +1585,39 @@ export function HorizontalPlanTimeline({
                     <div className={`${styles.skeletonLine} ${styles.skeletonLineName} ${styles.shimmer}`} aria-hidden="true" />
                     <div className={`${styles.skeletonLine} ${styles.skeletonLineDesc} ${styles.shimmer}`} aria-hidden="true" />
                   </>
+                ) : stopLookupFailed(node) ? (
+                  /* 地點資料查詢失敗(見 planTimeline.ts PlanNodeData.failed
+                     的完整說明)。
+                     2026-10（review 發現）：這個分支原本不存在——failed 的
+                     節點會掉進下面的 else,顯示 node.name 那個插入當下寫死
+                     的佔位字串「查詢中…」(見 attractionTools.ts),既沒有
+                     錯誤標示也沒有重試入口,跟縱向版修好之前一模一樣。而
+                     failed 欄位的註解卻宣稱「見 PlanTimelineView /
+                     HorizontalPlanTimeline 對 failed 的處理」——那是註解
+                     與程式碼不符,不是刻意取捨。
+                     手機版的 /app 走的正是這條橫向路徑,所以手機使用者
+                     實際上拿不到重試入口。 */
+                  <>
+                    <div className={styles.name}>未能取得地點資料</div>
+                    <p className={styles.failedDesc}>
+                      地點資料查詢失敗
+                      {onRetryStop && (
+                        <button
+                          type="button"
+                          className={styles.retryBtn}
+                          onClick={(e) => {
+                            // stopPropagation 理由同下方子景點 chip:
+                            // 不要冒泡觸發外層卡片的 onClick(選取/捲動
+                            // 置中)。
+                            e.stopPropagation()
+                            onRetryStop(node.id)
+                          }}
+                        >
+                          重試
+                        </button>
+                      )}
+                    </p>
+                  </>
                 ) : (
                   <>
                     <div className={styles.name}>{node.name ?? node.label ?? '未命名景點'}</div>
@@ -1469,6 +1687,7 @@ export function HorizontalPlanTimeline({
           {!isSingleCard && <div className={styles.trailingSpacer} aria-hidden="true" />}
         </div>
       </div>
+      )}
     </div>
   )
 }

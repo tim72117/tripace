@@ -33,27 +33,35 @@
   gap: 10px;
   padding: 12px 0 4px;
   position: relative;
-  /* padding-bottom——實機測試發現的另一個疊層問題:.composer(漂浮的
-     「讓我試看看」輸入膠囊,見 AIPlanTimelinePage.module.css)是
-     position: absolute; bottom: 20px,浮在 .page 底部,z-index 20。
-     這個元件被 margin-top: auto 推到 .timelinePanel 最底端後,跟
-     這顆浮動按鈕的範圍重疊,蓋住卡片下緣約 45px 高度(備註列被切掉
-     一半)。縱向版 PlanTimelineView 的 .scroll 已經有對應的
-     padding-bottom: 128px 預留這塊空間(見 AIPlanTimelinePage.module.css
-     .timelineScroll 的完整說明),這裡補上同一道留白,讓卡片底部的
-     備註/文字不被蓋住,也讓 Google 地圖右下角的版權文字
-     (「地圖資料 ©2026 Google / 條款」)不被卡片列蓋住——Google Maps
-     服務條款要求這些文字保持可見。70px(留 12-16px 呼吸空間,實測
-     92px 會把卡片不必要地多往上推 22-26px)。 */
-  padding-bottom: 70px;
-  /* pointer-events: none——實機測試發現的第三個疊層問題:上面這段
-     padding-bottom 留白雖然解決了視覺遮擋,但 .wrap 本身是一塊延伸到
-     畫面最底部、完全透明的互動區域,擋住了它底下的 Google 地圖(版權
-     文字連結點不到、右下角縮放按鈕/拖曳地圖都被攔截)。這塊留白本身
-     不該吃掉任何點擊/觸控事件——改成 pointer-events: none 讓事件穿透
-     到底下的地圖,真正需要互動的子元素(.ruler 時間尺、.scroller 卡片
-     列)各自明確設回 pointer-events: auto,兩者互不影響。 */
+  /* padding-bottom——2026-10(第三輪,使用者明確要求「composer 區位要
+     跟 UI 區的元素一起排列」,不要再疊在卡片列上方):composer 不再是
+     position: absolute 浮在 .page 底部的插槽(見
+     PlanOverlayPanel.tsx/.module.css 的 .composerSlotMobile 完整
+     說明),改成跟這個 .wrap 同層、排在它後面的正常文件流元素,自己
+     佔用真實高度,不再需要這裡預留一塊空白去避開重疊。之前兩輪
+     (70px 給純 composer、210px 再加上曾經疊放的 agentBubble)的留白
+     補償邏輯整個作廢,這裡只留一個小的呼吸間距,讓卡片底部跟接下來的
+     composer 之間有一點視覺分隔,不是為了避開誰。Google 地圖右下角的
+     版權文字(見舊版說明)現在由 .safeArea 的計算一併處理,不再靠這裡
+     的留白讓出空間。 */
+  padding-bottom: 12px;
+  /* pointer-events: none——這不是只為了上面那塊留白,是整個 .wrap 容器
+     的基礎設定:讓手機版空白處的拖曳/縮放手勢能穿透到底下的地圖,真正
+     需要互動的子元素(.ruler 時間尺、.scroller 卡片列)各自明確設回
+     pointer-events: auto(見第 72/287 行)。不是這次重構要動的範圍,
+     保留不變。 */
   pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+/* wrapDimmed——2026-10 新增(使用者明確要求「對話氣泡出現時,時間軸
+   淡化」):呼叫端(TripPlanPage.tsx)有一則新鮮 AI 回覆泡泡顯示時疊加
+   這個 class,降低整個時間軸容器的不透明度,把注意力導向正在說話的
+   泡泡。只動 opacity,不動 pointer-events——淡化期間卡片列/時間尺
+   仍然可以操作(.ruler/.scroller 各自的 pointer-events: auto 不受
+   影響),不是鎖定互動,純粹是視覺上退到背景。 */
+.wrapDimmed {
+  opacity: 0.45;
 }
 
 /* ===== 迷你時間尺 ===== */
@@ -135,9 +143,68 @@
   opacity: 0.45;
   cursor: pointer;
   padding: 0;
+  /* z-index: 1——使用者實機回報「推論中的閃動動畫覆蓋了行程點」:
+     .rulerTrackGenerating::after(流動光線,見該處的完整說明)是用
+     position: absolute 疊在 .rulerTrack 上的偽元素,沒有明確 z-index
+     時,偽元素在層疊順序上排在所有真實子元素(.rulerSegment 這些)
+     之後,會蓋住它們——即使 mix-blend-mode: screen 讓底色能透出,
+     光帶經過的瞬間視覺上仍會讓站點膠囊被洗白、看起來消失。明確設
+     z-index: 1 讓行程點固定疊在光帶之上,不受光帶動畫播放進度影響。 */
+  z-index: 1;
   /* 只過渡 opacity 與 background——選中狀態不再改變幾何(見下方
      .rulerSegmentSelected 的完整說明),transform 留在這裡會是死碼。 */
   transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+/* rulerOverviewSegment——使用者明確要求「讓時間尺有 zoom in/zoom out
+   的切換,zoom out 的時候顯示所有天」:isGenerating 期間的跨天總覽
+   軌道,每天一段等寬排列(見 HorizontalPlanTimeline.tsx allDays 的
+   完整說明)。不沿用 .rulerSegment(那是「可點擊的站點膠囊」,膠囊
+   造型+留白間隙在這裡會讓「等寬排列的天數」看起來像隨機寬度的站點,
+   語意不符),改用右邊框當天與天之間的分隔線,視覺上是「一條軸線被
+   切成 N 等分」而不是「N 個獨立膠囊」。不可點擊(使用者明確要求
+   「純簡覽用」),故 cursor 維持預設、不加 :hover 狀態。 */
+.rulerOverviewSegment {
+  /* position: relative——.rulerOverviewDot(下方,行程點標記)的定位
+     基準。沒有這個的話 .rulerOverviewDot 的 absolute 會相對更外層的
+     .rulerTrack 定位,算出來的 left 百分比會是整條軌道的比例而不是
+     這一天這一段內部的比例,點會全部擠在軌道最左側。
+     height: 100%(而非當初從 position: absolute 時代沿用下來、對
+     relative 元素完全無效的 top:0; bottom:0)——這是實機發現的真實
+     bug:relative 定位元素的 top/bottom 只做視覺位移,不會撐開元素
+     本身的高度,這個 class 原本沒有任何子內容撐開高度,實際渲染高度
+     是 0px,導致裡面用 position: absolute; top:0; bottom:0 定位的
+     .rulerOverviewDot 也跟著算不出任何高度(0 到 0 之間沒有空間可以
+     撐開),整個行程點視覺上完全消失,不是顏色對比度或層疊順序的
+     問題。 */
+  position: relative;
+  height: 100%;
+  box-sizing: border-box;
+  border-right: 1px solid var(--ios-card);
+}
+.rulerOverviewSegment:last-child {
+  border-right: none;
+}
+
+/* rulerOverviewDot——使用者明確要求「zoom out 的時間尺沒有標行程點」
+   後補上的站點標記,等距切分各自所屬的 .rulerOverviewSegment 段落
+   內部空間(見 HorizontalPlanTimeline.tsx 計算 left/width 百分比處的
+   完整說明)。外觀直接複用 .rulerSegment 的膠囊樣式(使用者明確要求
+   「改回色塊,跟 .rulerSegment 一致」,維持視覺一致性優先於窄段落下
+   的辨識度)——不用 composes 共用那份 class 的理由同其他地方的既有
+   先例(.rulerOverviewSegment 沒有共用 .rulerSegment 的理由同一套):
+   這裡沒有 cursor: pointer/opacity transition 的互動語意(純簡覽用,
+   不是 <button>),直接複製一份靜態樣式數值比共用再覆寫互動屬性更
+   單純。 */
+.rulerOverviewDot {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  min-width: 2px;
+  border-radius: 999px;
+  background: var(--ios-blue);
+  opacity: 0.45;
 }
 
 .rulerSegment:hover {
@@ -671,32 +738,56 @@
   scroll-snap-align: center;
 }
 
-/* tipDot——呼吸點本身,直接複用縱向版 breathe 動畫的視覺語言(放大+
-   淡入淡出的呼吸節奏),尺寸對齊縱向版 .tipDot(10px)。 */
-/* tipDot——2026-10(第二輪,使用者明確要求「呼吸點,放在時間軸的軸線
-   上」)改放進 .rulerTrack(絕對定位容器,見該 class 的完整說明)裡,
-   原本 flex:none 的排列方式(給卷軸列用的)對這個情境無效——父層是
-   position:relative 的絕對定位容器,子項要用 position:absolute 才能
-   吃到 HorizontalPlanTimeline.tsx 那裡算出的 left 百分比,否則 left
-   inline style 完全不生效,呼吸點會维持在文件流裡的原始位置(實機測試
-   發現的真實 bug:改用這個 class 後呼吸點整個消失不見,因為沒有
-   position: absolute 時 left 不生效,且 .rulerTrack 固定 height: 20px
-   會把依文件流排列的額外內容裁切掉)。 */
-.tipDot {
-  position: absolute;
-  top: 50%;
-  width: 10px;
-  height: 10px;
-  margin-top: -5px;
-  margin-left: -5px;
-  border-radius: 999px;
-  background: var(--ios-sand);
-  animation: horizontalBreathe 1.4s ease-in-out infinite;
-  z-index: 1;
+/* tipDot(獨立呼吸小圓點)整個移除——2026-10(第三輪,使用者明確要求
+   「安排中的呼吸小點,改成讓整個時間軸軸線用呼吸燈」,第四輪再要求
+   「不要整條注入顏色,用邊邊泛光」):改成疊加在 .rulerTrack 本身的
+   .rulerTrackGenerating(見下方),軌道外緣的光暈脈動,不再是軌道上的
+   一個獨立小圓點,也不是直接改軌道背景色。觸發條件(isGenerating 且是
+   「最新的那一天」)原樣沿用,見 HorizontalPlanTimeline.tsx 疊加這個
+   class 處的完整說明。 */
+
+/* rulerTrackGenerating——2026-10(第五輪,使用者明確要求「用骨架卡那種
+   流動光線看看」):改用跟下方 .shimmer 同一套手法(放大 background-size
+   的漸層 + background-position 位移做出一道亮帶橫向掃過),取代第四輪
+   的 box-shadow 外發光。用 ::after 疊一層(而非直接改 .rulerTrack 的
+   background)——.rulerTrack 本身的 --ios-sep 底色要保留(子元素
+   .rulerSegment/.rulerSegmentSelected 的對比度依賴這層底色不被蓋掉,
+   理由同第四輪取消整條變色的說明),亮帶疊在最上層、position: absolute
+   inset: 0 蓋滿整條軌道、border-radius 跟著圓角走(mix-blend-mode:
+   screen 讓亮帶只讓底色變亮、不完全蓋掉子元素的視覺,子元素仍然看得
+   見)、pointer-events: none 不擋 .rulerSegment 的點擊。
+   亮帶顏色第六輪改成純白無色(見下方 ::after 規則的完整說明),不再
+   套用 --color-accent 強調色,避免跟底下行程點的顏色互相干擾。 */
+.rulerTrackGenerating {
+  /* position: relative 不用重複寫——.rulerTrack 基礎定義本身已經是
+     relative(::after 的定位祖先),這裡只需要補上 overflow: hidden
+     讓亮帶 background-position 位移時不會溢出膠囊圓角之外的方角。 */
+  overflow: hidden;
 }
-@keyframes horizontalBreathe {
-  0%, 100% { opacity: 0.45; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.25); }
+/* rulerTrackGenerating::after——2026-10(第六輪,使用者明確要求「閃動
+   動畫改成半透明,無色」):亮帶顏色從 --color-accent 改成純白
+   (rgba(255,255,255,…)),不帶任何色相,搭配 mix-blend-mode: screen
+   單純是「提亮」,不是「染色」——這樣行程點(.rulerSegment)原本的
+   --ios-blue 底色經過光帶時只會變亮,不會被加上強調色的色偏。 */
+.rulerTrackGenerating::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background: linear-gradient(
+    90deg,
+    transparent 25%,
+    rgba(255, 255, 255, 0.7) 37%,
+    transparent 63%
+  );
+  background-size: 400% 100%;
+  animation: rulerTrackShimmer 1.4s ease infinite;
+}
+@keyframes rulerTrackShimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
 }
 
 /* skeletonCard——骨架卡本身,沿用 .card 的外框尺寸(寬度/高度/圓角/
@@ -831,7 +922,7 @@
   100% { background-position: 0 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .tipDot { animation: none; }
+  .rulerTrackGenerating::after { animation: none; }
   .shimmer { animation: none; }
 }
 
@@ -1106,3 +1197,148 @@
 .noteText {
   color: inherit;
 }
+
+/* ===== 對話泡泡(agentBubble)===== */
+/* agentBubbleRow——2026-10(使用者明確指出泡泡「不應該放在輸入匡
+   區」,從 trip-plan/TripPlanPage.tsx 的 ComposerPortal 搬到這裡):
+   跟 .ruler/.scroller/.timelineWrap 同屬 .wrap 這個 flex column 的
+   子項,走正常文件流排列,不再跟底部的 composer 輸入膠囊共用絕對定位
+   插槽——這正是搬過來要解決的根本問題:插槽是絕對定位,泡泡跟輸入框
+   共用同一個插槽會讓插槽整體高度隨泡泡內容變動,衍生出卡片被輸入框
+   蓋住的問題(見 .wrap 的 padding-bottom 完整說明)。放在 .ruler 之後
+   (時間軸上方)、.scroller 之前(卡片列),對齊「泡泡緊貼在卡片列正
+   上方」的既有視覺位置,不是插在卡片列中間或最下面。
+   沒有訊息時整個不渲染(不留佔位),理由同 .noteBanner 相反的設計
+   取捨——那個是「沒有備註也占位,避免下方內容上下跳動」,這裡刻意
+   相反:泡泡本來就是偶發性出現的浮動內容,用 gap(見 .wrap 的
+   gap: 10px)讓它出現時自然插入、消失時自然收合,不需要固定佔位。 */
+.agentBubbleRow {
+  padding: 0 16px;
+  pointer-events: auto;
+}
+
+/* agentBubble——底色用 DestinationPrompt.module.css .questionBubble
+   同一套半透明模糊處理(使用者明確要求「用這個樣式顯示文字」):拿掉
+   實色填滿,改用 color-mix 半透明 + backdrop-filter,讓底下地圖隱約
+   透出來,呼應「氣泡」語意而不是一塊不透明色塊貼在地圖上方。尖角維持
+   不對稱圓角手法(同 plan-core/PlanTimelineView.module.css 的
+   .messageBubble,理由同處完整說明)。 */
+.agentBubble {
+  /* position: relative——.agentBubbleCloseBtn 的定位基準。右側 padding
+     加寬到 30px,幫關閉按鈕(22px 寬 + 8px 右邊距)留出不會壓到文字的
+     空間,對齊 DestinationPrompt.module.css .question 用 margin-right
+     28px 避開 .closeBtn 的同一個理由。 */
+  position: relative;
+  padding: 10px 30px 10px 14px;
+  border-radius: 4px 16px 16px 16px;
+  border: 1px solid var(--ios-sep);
+  background: color-mix(in srgb, var(--ios-ai-message-bg) 55%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  color: var(--ios-ai-message-text);
+  font-size: 14px;
+  line-height: 1.55;
+  /* 最多約六行,超過截斷:泡泡貼著輸入框上方,無限長會把時間軸整個頂
+     出畫面。ReactMarkdown 渲染出的內容是 <p>/<ul>/<li> 等多個子元素,
+     -webkit-line-clamp 只對單一文字區塊內的視覺行可靠,套在多個子
+     元素上行為不穩定——改用 max-height + overflow 抓一個約等於六行的
+     高度上限(line-height 1.55 × 14px × 6 ≈ 130px,抓整數 132px),
+     精確度不如逐行裁切,但能正確處理多個子元素疊起來的 markdown 內容,
+     不會出現某個清單項目被腰斬的畫面。 */
+  max-height: 132px;
+  overflow: hidden;
+  transition: opacity 0.25s ease, background 0.25s ease;
+}
+
+/* agentBubbleMarkdown——對齊 plan-core/PlanTimelineView.module.css
+   .messageMarkdown 既有的收斂間距寫法(見該處完整說明),讓這裡的
+   ReactMarkdown 輸出跟縱向版 message 節點的排版手感一致,不是另外
+   發明一套。 */
+.agentBubbleMarkdown > :first-child { margin-top: 0; }
+.agentBubbleMarkdown > :last-child { margin-bottom: 0; }
+.agentBubbleMarkdown p { margin: 6px 0; }
+.agentBubbleMarkdown ul,
+.agentBubbleMarkdown ol { margin: 6px 0; padding-left: 20px; }
+.agentBubbleMarkdown li { margin: 2px 0; }
+.agentBubbleMarkdown code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  background: var(--ios-sep);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.agentBubbleMarkdown pre {
+  background: var(--ios-sep);
+  padding: 8px 10px;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.agentBubbleMarkdown pre code { background: none; padding: 0; }
+.agentBubbleMarkdown a { color: var(--ios-blue); }
+.agentBubbleMarkdown h1,
+.agentBubbleMarkdown h2,
+.agentBubbleMarkdown h3 {
+  font-size: 15px;
+  margin: 6px 0 4px;
+  color: var(--ios-ai-message-text);
+}
+
+/* agentBubbleStale——新站點插入後這則被標記為「已被後續動作取代」
+   (見 planTimeline.ts staleOtherAgentMessages),降低不透明度表達,
+   不收合成一行——那會讓輸入框上下跳動。 */
+.agentBubbleStale {
+  opacity: 0.55;
+}
+
+/* agentBubbleCloseBtn——使用者明確要求「氣泡可以關閉」,數值直接對齊
+   DestinationPrompt.module.css .closeBtn(圓形、無底色、hover 才顯示
+   底色),不用 composes 共用那份 class 的理由同該處完整說明:定位基準
+   是各自的氣泡容器,座標系不同,直接複製一份數值相近但獨立的規則比較
+   單純。 */
+.agentBubbleCloseBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ios-gray);
+  cursor: pointer;
+}
+.agentBubbleCloseBtn:hover {
+  background: var(--ios-active);
+  color: var(--color-dark);
+}
+
+/* failedDesc/retryBtn——地點資料查詢失敗的站點(見 planTimeline.ts
+   stopLookupFailed 的完整說明)。2026-10 新增:這個元件原本對 failed
+   零處理,手機版的失敗卡片會顯示插入當下的佔位字串「查詢中…」。
+   色票用 --ios-red(錯誤語意的既有色票),與縱向版 PlanTimelineView
+   的 .failedTag/.retryBtn 一致。 */
+.failedDesc {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--ios-red);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.retryBtn {
+  padding: 2px 10px;
+  border: 1px solid var(--ios-red);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ios-red);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: none;
+}
+.retryBtn:hover { background: var(--ios-red-bg); }

@@ -6,6 +6,7 @@ import type { Entry } from './types'
 import type { Trip } from './trip/types'
 import type { AuthResponse, TripRole, Me, Member } from './user/types'
 import type { TripEntry } from './clienttools/tripEntryTools'
+import { getGuestId } from './guestId'
 
 // 後端統一錯誤格式:{ "error": { "code", "message" } }——純 API 層錯誤
 // 格式,不是業務型別,不放 types.ts(理由同該檔案開頭的說明)。
@@ -145,7 +146,19 @@ async function request<T>(
   const url = cfg.baseURL.replace(/\/+$/, '') + path
   const headers: Record<string, string> = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
-  if (cfg.token) headers['Authorization'] = `Bearer ${cfg.token}`
+  if (cfg.token) {
+    headers['Authorization'] = `Bearer ${cfg.token}`
+  } else {
+    // X-Guest-Id——沒有登入 token 時一律帶上(見 guestId.ts 的完整背景
+    // 說明),讓後端能把這次請求歸到一個穩定、跟其他訪客不衝突的獨立
+    // 身分,而不是所有訪客共用同一個固定的 guestUser.ID。只在這一處統一
+    // 附加,呼叫端(各支 postXxx 函式)不需要各自記得處理。後端目前只有
+    // POST /internal/plan-ai/chat 會讀取這個 header(見 handlePlanAiChat
+    // 的完整說明);其餘仍要求登入的端點不受影響,帶著這個 header 也不會
+    // 被那些端點採用,userFor 的訪客分支只有在明確需要訪客身分的少數
+    // 端點才會改讀它。
+    headers['X-Guest-Id'] = getGuestId()
+  }
 
   const startedAt = nowISO()
   const t0 = performance.now()
@@ -826,22 +839,28 @@ export interface GeoPlanAiPlaceSearchResult {
   placeId?: string
 }
 
-// fetchPlanAiPlaceSearch:GET /internal/geo/plan-ai/place-search(需登入,通用
-// 地名文字查詢,見後端 handlePublicGeoPlaceSearch 的完整說明)——供
-// plan-core/attractionTools.ts 的 search_attraction 工具查詢任意地名取得
-// 座標,不限於資料庫裡已建檔的固定景點池。
+// fetchPlanAiPlaceSearch:GET /internal/geo/plan-ai/place-search(需登入)
+// 或 GET /public/geo/plan-ai/place-search(未登入訪客版,見後端
+// handlePublicGeoPlaceSearch 的完整說明——兩個路徑共用同一支 handler,
+// 訪客版額外疊加 IP 節流,見 api.go withGeoQueryIPThrottle 的完整說明)
+// ——供 plan-core/attractionTools.ts 的 search_attraction 工具查詢任意
+// 地名取得座標,不限於資料庫裡已建檔的固定景點池。
 //
-// 2026-09:這批 fetchPlanAi* 端點原本掛在免登入的 /public/geo/* 底下,已
-// 改為需登入(搬到 /internal/geo/plan-ai/*)——任何訪客都能消耗 Google
-// Places 計費配額的曝險已關閉。**呼叫端必須傳有 token 的 cfg**:request()
-// 會在 cfg.token 有值時自動帶上 Authorization header(見該函式),傳
-// token: null 的訪客 cfg 會拿到 401。只回傳最相關的第一筆結果(found:true 時),不是候選列表——這支
+// 2026-10 訂正:這支函式原本寫死打 /internal/geo/plan-ai/place-search,
+// 沒有依 cfg.token 切換路徑,導致 /ai-plan 展示頁訪客(無 token)呼叫
+// search_attraction 工具時固定收到 401「缺少或格式錯誤的 Authorization:
+// Bearer token」——後端其實已經有對應的公開版本(api.go 第 910 行附近
+// 的 /public/geo/plan-ai/place-search),只是這裡沒有接上,比照
+// postPlanAiChat 依 cfg.token 是否存在決定打哪條路徑的既有模式修正。
+//
+// 只回傳最相關的第一筆結果(found:true 時),不是候選列表——這支
 // 端點的用途是「取得一個確定的錨點座標」,不是給使用者手動挑選多筆候選
 // 的搜尋框。後端套用全域拒絕型限流(見該 handler 的完整說明,不分呼叫者
 // 共用同一個視窗),前端這裡不重複實作節流,查詢過於頻繁時直接讓後端的
 // 429 錯誤透過 request() 既有的錯誤處理路徑往上拋。
 export function fetchPlanAiPlaceSearch(cfg: ClientConfig, query: string) {
-  return request<GeoPlanAiPlaceSearchResult>(cfg, 'GET', `/internal/geo/plan-ai/place-search?query=${encodeURIComponent(query)}`)
+  const path = cfg.token ? '/internal/geo/plan-ai/place-search' : '/public/geo/plan-ai/place-search'
+  return request<GeoPlanAiPlaceSearchResult>(cfg, 'GET', `${path}?query=${encodeURIComponent(query)}`)
 }
 
 // GeoPlanAiAttractionSearchResult:fetchPlanAiAttractionSearch 的回應
@@ -855,23 +874,27 @@ export interface GeoPlanAiAttractionSearchResult {
   attractions: GeoAttraction[]
 }
 
-// fetchPlanAiAttractionSearch:GET /internal/geo/plan-ai/attraction-search(需
-// 登入版的鄰近景點候選查詢,見後端 handlePublicGeoAttractionSearch 的
-// 完整說明)——供 /plan-ai 的 search_attraction 工具使用:查詢某個座標
-// 附近的景點候選,資料庫候選不足 10 筆時後端會額外用 Google Nearby
-// Search 補上不重複的點。後端套用獨立的拒絕型限流(見該 handler 的
-// 完整說明),前端這裡不重複實作節流。
+// fetchPlanAiAttractionSearch:GET /internal/geo/plan-ai/attraction-search
+// (需登入)或 GET /public/geo/plan-ai/attraction-search(未登入訪客版,
+// 見後端 handlePublicGeoAttractionSearch 的完整說明——兩個路徑共用同一
+// 支 handler,訪客版額外疊加 IP 節流)——供 /plan-ai 的 search_attraction
+// 工具使用:查詢某個座標附近的景點候選,資料庫候選不足 10 筆時後端會
+// 額外用 Google Nearby Search 補上不重複的點。後端套用獨立的拒絕型
+// 限流(見該 handler 的完整說明),前端這裡不重複實作節流。
+//
+// 2026-10 訂正:這支函式原本寫死打需登入版路徑,沒有依 cfg.token 切換,
+// 理由與修法同 fetchPlanAiPlaceSearch 的完整說明——比照 postPlanAiChat
+// 既有模式修正。
 //
 // types:選填、逗號分隔的地點類型清單(對應後端
 // allowedNearbyAttractionTypes 白名單,見該常數的完整說明),只影響
 // Google Nearby Search 補點那段是否依類型限縮搜尋範圍——資料庫候選
 // 不受這個參數篩選。省略或傳空陣列時不加這個查詢參數,行為與改動前
 // 完全一致(不限制類型)。
-// 需登入——理由與 cfg.token 的要求同 fetchPlanAiPlaceSearch 的完整說明
-// (2026-09 這批端點從免登入的 /public/geo/* 搬到 /internal/geo/plan-ai/*)。
 export function fetchPlanAiAttractionSearch(cfg: ClientConfig, lat: number, lng: number, types?: string[]) {
   const typesQuery = types && types.length > 0 ? `&types=${encodeURIComponent(types.join(','))}` : ''
-  return request<GeoPlanAiAttractionSearchResult>(cfg, 'GET', `/internal/geo/plan-ai/attraction-search?lat=${lat}&lng=${lng}${typesQuery}`)
+  const path = cfg.token ? '/internal/geo/plan-ai/attraction-search' : '/public/geo/plan-ai/attraction-search'
+  return request<GeoPlanAiAttractionSearchResult>(cfg, 'GET', `${path}?lat=${lat}&lng=${lng}${typesQuery}`)
 }
 
 // GeoPlanAiPlaceDetailsAnyResult:fetchPlanAiPlaceDetailsAny 的回應
@@ -904,18 +927,22 @@ export interface GeoPlanAiPlaceDetailsAnyResult {
   photoRefreshPending?: boolean
 }
 
-// fetchPlanAiPlaceDetailsAny:GET /internal/geo/plan-ai/place-details-any(需登入
-// 版、不受白名單限制的地點詳情查詢,見後端 handlePublicGeoPlaceDetailsAny
-// 的完整說明)——跟既有的 fetchPublicGeoPlaceDetails 差異在於後者只能查
-// publicPlaceDetailsAllowlist 裡固定收錄的那批 placeId(為散策羅盤等
-// 固定展示頁設計),這支函式可以查任意 placeId,供 /plan-ai 的
-// add_attraction 工具使用(見 attractionTools.ts 的完整說明:LLM 只需要
-// 記住 placeId,插入時由前端這裡重新查詢完整資料,不需要 LLM 在兩次
-// 工具呼叫之間原封不動複製貼上 name/lat/lng/summary)。
-// 需登入——理由與 cfg.token 的要求同 fetchPlanAiPlaceSearch 的完整說明
-// (2026-09 這批端點從免登入的 /public/geo/* 搬到 /internal/geo/plan-ai/*)。
+// fetchPlanAiPlaceDetailsAny:不受白名單限制的地點詳情查詢(見後端
+// handlePublicGeoPlaceDetailsAny 的完整說明)——跟既有的
+// fetchPublicGeoPlaceDetails 差異在於後者只能查 publicPlaceDetailsAllowlist
+// 裡固定收錄的那批 placeId(為散策羅盤等固定展示頁設計),這支函式可以查
+// 任意 placeId,供 /plan-ai 的 add_attraction 工具、AskPage.tsx 候選卡片
+// 背景補完整資料使用(見 attractionTools.ts/AskPage.tsx 的完整說明:LLM
+// 只需要記住 placeId,插入/顯示時由前端這裡重新查詢完整資料,不需要在
+// 兩次工具呼叫之間原封不動複製貼上 name/lat/lng/summary)。
+// 2026-10 比照 fetchPlanAiPlaceSearch/fetchPlanAiAttractionSearch 依 token
+// 切換路徑(見兩者的完整說明)——這支原本刻意只留在需登入的 /internal/*,
+// 但實測發現 /ai-plan 展示頁的 open_ask_page 候選卡片一定會呼叫它補完整
+// 資料,訪客沒有 token 時打 /internal/* 必然 401,候選卡片只能顯示暫時
+// 標題、沒有照片,判斷有誤,已重新開放對應的 /public/* 版本。
 export function fetchPlanAiPlaceDetailsAny(cfg: ClientConfig, placeId: string) {
-  return request<GeoPlanAiPlaceDetailsAnyResult>(cfg, 'GET', `/internal/geo/plan-ai/place-details-any?placeId=${encodeURIComponent(placeId)}`)
+  const path = cfg.token ? '/internal/geo/plan-ai/place-details-any' : '/public/geo/plan-ai/place-details-any'
+  return request<GeoPlanAiPlaceDetailsAnyResult>(cfg, 'GET', `${path}?placeId=${encodeURIComponent(placeId)}`)
 }
 
 // GeoPlanAiAttractionByIDResult:fetchPlanAiAttractionByID 的回應形狀
@@ -993,31 +1020,44 @@ export interface PlanAiChatResult {
   content: string
 }
 
-// postPlanAiChat:POST /internal/plan-ai/chat(需登入,見後端
-// handlePlanAiChat 的完整說明)——使用者在 TripPlanPage 對話框送出訊息前
-// 的第一站:後端驗證身分、per-user rate-limit、驗證並正規化內容、存一筆
+// postPlanAiChat:POST /internal/plan-ai/chat(需登入)或
+// POST /public/plan-ai/chat(2026-10 新增,未登入訪客版,見後端
+// handlePlanAiChat 開頭的完整說明——兩個路徑共用同一支 handler,訪客版
+// 額外疊加 IP 節流)——使用者在 TripPlanPage 對話框送出訊息前的第一站:
+// 後端驗證身分、per-user rate-limit、驗證並正規化內容、存一筆
 // role="user" 記錄。conversationID 選填,沒有就視為開新對話,由後端生成
 // 並透過回應帶回;呼叫端(usePlanAiChatBridge)須記住回應裡的
 // conversationID,之後每次送訊息都帶著同一個,維持同一個對話。
+//
+// 依 cfg.token 是否存在決定打哪條路徑——有 token 打需登入版(對齊既有
+// 行為,保留 internalAuth 的保護範圍不變);沒有 token 時改打公開版,
+// 讓 /ai-plan 展示頁的未登入訪客(見 home/plan-ai-sim/LivePlanLayer.tsx
+// 開頭「訪客無法真的排行程」那段 TODO 的完整說明)能送出對話——
+// request() 本身已經在沒有 token 時自動附加 X-Guest-Id header(見該
+// 函式的完整說明),這裡只需要決定打哪個路徑,不需要重複處理身分資訊。
 //
 // 失敗(429 rate_limited/400 content_too_long 等)透過既有的 ApiError 往上
 // 拋,呼叫端據 err.message(後端已經給好繁體中文文案,見該 handler 的完整
 // 說明)顯示錯誤,不應該呼叫 bridge.prompt(...) 轉發給 onagent。
 export function postPlanAiChat(cfg: ClientConfig, content: string, conversationID?: string) {
-  return request<PlanAiChatResult>(cfg, 'POST', '/internal/plan-ai/chat', {
+  const path = cfg.token ? '/internal/plan-ai/chat' : '/public/plan-ai/chat'
+  return request<PlanAiChatResult>(cfg, 'POST', path, {
     conversationID: conversationID ?? '',
     content,
   })
 }
 
-// postPlanAiChatReply:POST /internal/plan-ai/chat/reply(需登入,見後端
-// handlePlanAiChatReply 的完整說明)——onagent 回覆後,把回覆存檔成
-// role="assistant" 記錄。messageID 必須是 postPlanAiChat 回傳過、屬於同一
-// 個 conversationID 的既有記錄,否則後端回 404。呼叫端(usePlanAiChatBridge
-// 的 onAssistantMessage)把這支呼叫當成 fire-and-forget:不等待、失敗不
-// 影響使用者看到的對話內容,只在失敗時 console.warn。
+// postPlanAiChatReply:POST /internal/plan-ai/chat/reply 或
+// POST /public/plan-ai/chat/reply(理由同 postPlanAiChat 的路徑切換邏輯,
+// 見後端 handlePlanAiChatReply 開頭的完整說明)——onagent 回覆後,把回覆
+// 存檔成 role="assistant" 記錄。messageID 必須是 postPlanAiChat 回傳過、
+// 屬於同一個 conversationID 的既有記錄,否則後端回 404。呼叫端
+// (usePlanAiChatBridge 的 onAssistantMessage)把這支呼叫當成
+// fire-and-forget:不等待、失敗不影響使用者看到的對話內容,只在失敗時
+// console.warn。
 export function postPlanAiChatReply(cfg: ClientConfig, conversationID: string, messageID: number, content: string) {
-  return request<{ ok: boolean }>(cfg, 'POST', '/internal/plan-ai/chat/reply', {
+  const path = cfg.token ? '/internal/plan-ai/chat/reply' : '/public/plan-ai/chat/reply'
+  return request<{ ok: boolean }>(cfg, 'POST', path, {
     conversationID,
     messageID,
     content,
@@ -1247,7 +1287,7 @@ export function fetchPublicView(baseURL: string, token: string) {
 // 現在同時服務城市介紹頁與部落客發文,命名不該只停留在前者),這支
 // 前端函式沿用呼叫端既有名稱不變,只同步後端路徑。供部落客發文頁面
 // (web/src/blog/BlogArticlePage.tsx,2026-10 從主題介紹頁試做轉正,見
-// docs/brainstorm/2026-10-product-direction-brainstorm.md 構想五)
+// showcase-demo 構想頁 /ideas/product-direction-5-publishing-tool 構想五)
 // 讀取已發布的規格化內容。只回傳 status=published 的頁面,草稿一律
 // 404(ApiError),對齊公開端點不應曝露未發布內容的設計。
 //

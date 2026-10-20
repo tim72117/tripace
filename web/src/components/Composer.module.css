@@ -1,0 +1,96 @@
+/* Composer.module.css——漂浮輸入膠囊的共用外框樣式。見 Composer.tsx
+   檔頭的完整背景說明:這裡只收納兩邊呼叫端(正式頁/展示頁)視覺上沒有
+   理由不一致的部分,各自的轉場動畫、特有狀態留在呼叫端自己的 CSS 裡
+   疊加。
+
+   定位(貼底置中、寬度、z-index)不在這裡——由呼叫端外層的插槽容器
+   負責(home/plan-ai-sim/PlanOverlayPanel.module.css 的 composerSlot/
+   composerSlotMobile),這裡只有膠囊本身的造型,寬度填滿外層插槽。 */
+.composer {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 26px;
+  padding: 10px 10px 10px 20px;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  box-shadow: 0 12px 32px -12px rgba(43, 36, 32, 0.28);
+}
+
+/* composerBare——拿掉膠囊外觀,只留內容本身置中。對齊展示頁「讓我試
+   看看」CTA 獨自出現時「連膠囊外框也要拿掉」的既有需求(見 Composer.tsx
+   bare prop 的說明)。 */
+.composerBare {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.composerInner {
+  width: 100%;
+}
+
+.inputRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.inputWrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background: transparent;
+  padding: 0 6px;
+  height: 44px;
+  min-width: 0;
+}
+
+/* font-size: 16px——兩邊呼叫端統一的字級。2026-10 查證「播放態跟推論
+   態的輸入匡文字樣式有沒有一樣」時發現的真實不一致:正式頁(TripPlanPage)
+   原本因為 iOS Safari 聚焦 input 字級小於 16px 會自動縮放畫面的問題,
+   把交接後真實輸入框的字級從基礎 14px 覆寫成 16px;展示頁的假輸入框
+   當時維持 14px(它是 readOnly,不會真的被聚焦,本來不會觸發這個問題)
+   ——兩邊視覺上因此比預期小一號,使用者明確要求統一。這裡直接定成
+   16px,不需要呼叫端各自覆寫,也就不會再因為某一邊忘記同步而不一致。 */
+.input {
+  border: none;
+  outline: none;
+  background: transparent;
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  color: var(--color-dark);
+  font-family: inherit;
+}
+
+.sendBtn {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: var(--color-dark);
+  border: none;
+  cursor: pointer;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* sendBtn:disabled——固定停用時的視覺區分(淡化+預設游標),避免看起來
+   跟「可送出」狀態一樣讓使用者誤以為能點擊。兩邊呼叫端都需要:展示頁
+   的假輸入框永遠停用,正式頁在 apiKeyMissing/urlMissing/isThinking 時
+   也會停用。 */
+.sendBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+  }
+}

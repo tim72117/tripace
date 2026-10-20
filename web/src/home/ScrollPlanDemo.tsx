@@ -61,10 +61,21 @@ const PHONE_CSS_HEIGHT = 844
 // 直接把 phoneScale 壓到 0.76 左右,使用者要求的「放大」實質沒有生效
 // (註解當時還寫著「一般視窗高度下通常落在 0.95~1.1」,與行為矛盾)。
 //
-// 120 的組成:上方漂浮 nav 列約 52px(top 16 + height 36,見
-// SiteNavButtons.css)+ 上下各留一截呼吸空間。粗估值,不需要精確——
-// phoneScale 本來就夾在上下限之間。
-const HEADER_RESERVED_PX = 120
+// 2026-10(第二輪,review 實測發現):120 仍然多扣了 60px。那個值是照
+// 「漂浮 nav 列 52px + 呼吸空間」推導的,但 nav 是 position: fixed,
+// 完全不佔 .sticky 的內容流——真正讓開 nav 的是 .sticky 自己的
+// padding-top: 56px。拿 nav 的高度再扣一次,等於同一段空間算了兩次。
+//
+// 60 的組成(實測 DevTools 量到的實際佔用):
+//   .sticky 的 padding-top    56px
+//   .phone 的 margin-top       4px
+// 以上就是全部。.sticky 的 gap: 32px 與 .header(eyebrow + 標題)都不
+// 計入——那兩段文字後來已經搬進手機畫面內(captionEyebrow/captionTitle),
+// .sticky 實際只剩手機這一個子元素,gap 沒有第二個元素可以撐開。
+//
+// 改成 60 之後實測:視窗高 901px → phoneScale 0.997(原本 0.925)、
+// 800px → 0.877、768px → 0.839。
+const HEADER_RESERVED_PX = 60
 
 // PHONE_SCALE_MIN——phoneScale 的安全下限,見該 state 宣告處的完整
 // 說明:只在極端矮的視窗才會介入,一般視窗高度下 phoneScale 由
@@ -143,10 +154,17 @@ export function ScrollPlanDemo() {
   // 手機頂部蓋住上方漂浮 nav 列(見 HEADER_RESERVED_PX 的完整說明:
   // 那只是算可用空間的粗估值,不是保證手機不會超出視窗的硬限制)。
   // PHONE_SCALE_MIN 改成遠低於常見視窗算出值的安全下限(0.75)——這樣
-  // 一般視窗高度下 phoneScale 幾乎都是用 available 算出的實際值
-  // (通常落在 0.95~1.1 之間,視覺上達到「放大」的效果),安全下限只在
-  // 真的極端矮的視窗(例如橫向手機)才會介入,避免那種情況下手機整個
-  // 看不清楚。上限維持 1.1,避免在超高螢幕上被放大到失真。
+  // 一般視窗高度下 phoneScale 幾乎都是用 available 算出的實際值,
+  // 視覺上達到「放大」的效果。上限維持 1.1,避免在超高螢幕上被放大
+  // 到失真。
+  //
+  // 實際落點(HEADER_RESERVED_PX = 60,見其完整說明):768px 視窗
+  // 0.839、800px 0.877、900px 0.995、1080px 以上一律撞 1.1 上限。
+  // 下限 0.75 在視窗高度低於約 693px 時開始介入——那不算極端(縮小的
+  // 桌面視窗、橫向手機都會到),被夾住後手機實際高度 633px 加上
+  // 56+4 的留白會超出視窗,底部被 .sticky 的 overflow: hidden 裁掉
+  // (不會出現頁面卷軸,但時間軸最下面一截看不到)。那是刻意的取捨:
+  // 再往下縮手機內的文字就無法辨識了,寧可裁掉底部也不要整個看不清。
   const [phoneScale, setPhoneScale] = useState(0.95)
   useEffect(() => {
     const calc = () => {

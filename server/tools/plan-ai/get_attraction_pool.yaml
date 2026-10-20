@@ -1,0 +1,43 @@
+# onagent 平台上 plan-ai-timeline app 的 get_attraction_pool tool 定義——
+# 見 search_attraction.yaml 開頭的完整說明(app 背景、新版 CLI 格式規則、
+# 為何拆成獨立檔案)。
+#
+# 2026-10 新增(使用者明確要求「中間都會觸發 attraction-search 這是一個
+# 景點池,AI 也可以取用,應該要先讓 AI 存取景點池自行對照」)。
+#
+# 存在的理由:search_attraction 每次查詢都會把錨點與鄰近候選寫進前端的
+# 景點池(見 web/src/plan-core/attractionPoolStore.ts),但那些結果並不
+# 全都回到 LLM 手上——尤其 open_ask_page 的探查模式是由頁面自己查附近
+# 候選,LLM 從沒看過那批資料。使用者選完之後,get_user_selection 回來的
+# 可能只是一串 placeId,LLM 讀不懂也無法用來跟使用者溝通。這支工具讓它
+# 自己對照,不需要重新呼叫 search_attraction 再查一次。
+#
+# 無參數(parameters.properties 為空物件)——池子刻意不分頁、不設上限
+# (一次對話通常幾十筆),每次呼叫回傳完整清單,由 LLM 自己在結果裡找。
+#
+# kind: query——這是純查詢,LLM 需要看到回傳的清單才能對照,不能是
+# action(fire-and-forget)。
+#
+# 推送(需要 onagent CLI,見 .claude/skills/onagent-cli-setup):
+#   onagent tool create -api <onagent 後端 URL> plan-ai-timeline server/tools/plan-ai/get_attraction_pool.yaml
+
+name: get_attraction_pool
+description: >-
+  查詢這次對話中出現過的所有景點（景點池）。每次 search_attraction
+  查詢、以及頁面自己在選單上探查附近候選時找到的地點，都會累積到這個
+  池子裡——包含那些從未出現在你的工具回傳值裡的候選。
+
+  每筆包含 placeId（呼叫 add_attraction 時要帶的識別碼）、name、
+  summary、category、lat / lng。清單依加入時間由新到舊排列，最前面
+  是最近一次查詢到的那批。
+
+  主要用途是把識別碼對照成名稱：get_user_selection 回來的選擇項目
+  若只有 placeId 沒有 name，到這裡查。需要知道某個地點的座標或簡介
+  時也可以用。
+
+  若回報「景點池目前是空的」，表示這次對話還沒查詢過任何景點——改呼叫
+  search_attraction，不要反覆呼叫這個工具。
+kind: query
+parameters:
+  type: object
+  properties: {}

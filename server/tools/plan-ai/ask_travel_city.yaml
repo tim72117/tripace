@@ -1,0 +1,69 @@
+# onagent 平台上 plan-ai-timeline app 的 ask_travel_city tool 定義——
+# 見 search_attraction.yaml 開頭的完整說明(app 背景、新版 CLI 格式
+# 規則、為何拆成獨立檔案)。
+#
+# 2026-10(第十輪,使用者明確要求「將國家與地區的工具分開,並做自動
+# 串接」):取代原本單一的 ask_travel_region(level 參數在「選國家」
+# 「選城市」兩層之間切換)——拆成這支獨立的城市選單工具,適合使用者
+# 已經明確說出想去的國家、只需要問城市的情境,不需要先呼叫
+# ask_travel_country 顯示整份國家清單。選定城市後,前端會自動接著查
+# 附近景點、顯示候選卡片,你不需要自己再呼叫 search_attraction。
+#
+# 這個工具是前端 ClientTool(見 web/src/plan-core/askPageTools.ts 的
+# 完整實作),不是 BackendDispatch 型——跟 open_ask_page 一樣由
+# AgentBridge WebSocket 轉交給瀏覽器分頁執行。
+#
+# kind: query——回傳值(「選單已顯示、正在等待使用者點選」這句話)必須
+# 被 LLM 看到,它才知道這一輪該停下來等,不是重複呼叫。
+#
+# 單選(跟 open_ask_page 的 candidates 可複選不同):一次只會去一個
+# 城市。
+#
+# 推送(需要 onagent CLI,見 .claude/skills/onagent-cli-setup):
+#   onagent tool create -api <onagent 後端 URL> plan-ai-timeline server/tools/plan-ai/ask_travel_city.yaml
+
+name: ask_travel_city
+description: >-
+  打開「詢問頁」，顯示某個國家底下的城市選項讓使用者直接點選一個，
+  取代文字一來一回詢問「想去哪個城市」。適合使用者已經明確說出想去的
+  國家、只需要問城市的情境；使用者還沒決定國家時改用
+  ask_travel_country 先問國家，不要呼叫這支。選項是前端固定清單，不能
+  自訂內容，只能用 cityIds 篩選。
+  呼叫這個工具之後這一輪你的工作就結束了——選單會顯示在畫面上，但這個
+  工具不等使用者點選，也不會把他選了什麼回傳給你：
+  工具會立刻回傳「選單已顯示、正在等待使用者點選」，不會等使用者選完，
+  也不會把使用者選了什麼回傳給你。這一輪你已經做完該做的事，不需要
+  重複呼叫這個工具、改個說法再問一次、或用文字追問要選哪一個。使用者
+  點選之後，前端會自動用選定城市的座標查附近景點、顯示候選卡片讓使用者
+  選，你不需要自己再呼叫 search_attraction；系統會在使用者完成整個
+  流程後由前端自動接著查該城市附近的景點候選並顯示選單，不需要你
+  介入。
+kind: query
+parameters:
+  type: object
+  properties:
+    countryId:
+      type: string
+      description: >-
+        必填，指定要顯示哪個國家底下的城市。合法值：taiwan 台灣、
+        japan 日本、korea 韓國、thailand 泰國、vietnam 越南、
+        singapore 新加坡、malaysia 馬來西亞、hongkong 香港、macau
+        澳門、china 中國大陸、philippines 菲律賓、indonesia 印尼、
+        cambodia 柬埔寨、australia 澳洲、newzealand 紐西蘭、usa
+        美國、canada 加拿大、uk 英國、france 法國、italy 義大利、
+        germany 德國、turkey 土耳其。
+    cityIds:
+      type: array
+      description: >-
+        選填，篩選/排序該國要顯示的城市，省略顯示該國全部城市
+        （taiwan 底下是全部22縣市，其餘國家固定4-6個熱門城市，不確定
+        有哪些時直接省略這個參數即可）。合法值格式是「countryId-城市
+        拼音」（例如 taiwan-tainan、japan-tokyo），不要自己編造清單
+        外的城市 id。
+      items:
+        type: string
+    reason:
+      type: string
+      description: 選填，一句話說明這次詢問的意圖，會取代畫面上原本固定的標題文字「{國家名稱}要去哪裡?」（例如「日本的話想去哪個城市呢?」）。
+  required:
+    - countryId

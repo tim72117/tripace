@@ -109,7 +109,13 @@ func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		// guestIDHeader(X-Guest-Id)必須在允許清單裡:前端 request() 在沒有登入
+		// token 時一律附加它(見 web/src/api.ts),本機 web 開發伺服器(Vite,
+		// 不同 port)對這個 server 是跨來源請求,瀏覽器的 preflight 若發現自訂
+		// 標頭不在允許清單就整個請求擋掉——所有未登入的 API 呼叫都會失敗,
+		// 表現成頁面「找不到資料」,而 server 這邊完全沒有收到請求。正式環境網頁
+		// 與 API 同網域,不經過 preflight,所以只有本機開發會踩到。
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, "+guestIDHeader)
 		w.Header().Set("Access-Control-Max-Age", "86400")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

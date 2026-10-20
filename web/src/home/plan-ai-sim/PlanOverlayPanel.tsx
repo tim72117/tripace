@@ -39,6 +39,30 @@ export function PlanOverlayPanel({ isDesktop, safeAreaRef, passThrough = false, 
   // 讓 context 的消費者拿到非 null 的值。
   const [composerSlot, setComposerSlot] = useState<HTMLDivElement | null>(null)
 
+  // slotEl——2026-10 使用者明確要求「composer 區位要跟 UI 區的元素一起
+  // 排列」,並確認「只改手機版,不動桌面版」:插槽容器依 isDesktop 放到
+  // 不同位置,不是同一份 JSX 兩種斷點共用。
+  //
+  // 桌面版維持改動前的既有行為(.composerSlot,絕對定位、是 .panel 的
+  // 手足而非子孫)——理由仍然成立:桌面 .panel 是固定 560px 的 absolute
+  // 側欄,插槽若放進面板內部會被側欄寬度侷限、相對側欄定位,輸入框會跑
+  // 進右側欄裡,不再相對整個 .page 置中。這個限制桌面版依然存在,所以
+  // 桌面這條路徑原封不動。
+  //
+  // 手機版插槽改放進 .panel 內部,當 children 之後的最後一個 flex 子項
+  // (見 .composerSlotMobile 的完整說明)——手機版 .panel 本身撐滿整頁
+  // 寬度(見 .module.css .panel 手機斷點的既有定義),composer 放進去
+  // 不會被任何寬度限制卡住,改成正常文件流排列後,不再需要跟其他絕對
+  // 定位元素(卡片列、對話泡泡)協調重疊/留白問題。
+  const slotEl = (
+    <div
+      className={isDesktop ? styles.composerSlot : styles.composerSlotMobile}
+      ref={setComposerSlot}
+    >
+      {composer}
+    </div>
+  )
+
   return (
     <ComposerSlotContext.Provider value={composerSlot}>
       {!isDesktop && <div className={styles.navSpacer} aria-hidden="true" />}
@@ -46,12 +70,9 @@ export function PlanOverlayPanel({ isDesktop, safeAreaRef, passThrough = false, 
         {/* 渲染在 children 之前:對齊原本「安全區在時間軸手足之前」的順序。 */}
         {!isDesktop && <div className={styles.safeArea} ref={safeAreaRef} aria-hidden="true" />}
         {children}
+        {!isDesktop && slotEl}
       </div>
-      {/* 插槽是面板的手足、不是子孫:桌面版面板是 absolute 側欄,若放在裡面
-          會相對側欄定位,輸入框就跑到右側欄內;要相對整個 .page 置中。 */}
-      <div className={styles.composerSlot} ref={setComposerSlot}>
-        {composer}
-      </div>
+      {isDesktop && slotEl}
     </ComposerSlotContext.Provider>
   )
 }

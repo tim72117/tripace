@@ -9,11 +9,15 @@ import type { PlanAiDataSource } from './planAiDataSource'
 import { createPlanSimFakeSource } from './planSimFakeSource'
 import type { PlanSimSource } from './planSimSource'
 import { PlanTimelineView } from '../../plan-core/PlanTimelineView'
+import { Composer } from '../../components/Composer'
 import { LivePlanLayer } from './LivePlanLayer'
-import { PlanOverlayPanel } from './PlanOverlayPanel'
+import { PlanDemoLayout } from './PlanDemoLayout'
 import { HorizontalPlanTimeline } from './HorizontalPlanTimeline'
+import { ScriptedAskPage } from './ScriptedAskPage'
 import { useIsDesktop } from '../../hooks/useIsDesktop'
 import { Lightbox } from '../../geo-planning/PhotoCarousel'
+import type { AskPageCandidate } from '../../plan-core/askPageTools'
+import { useAskPageBridge } from '../../plan-core/useAskPageBridge'
 // planTimeline.ts——共用的時間軸領域層(純函式,不碰 UI 或任何後端
 // 呼叫),直接 import plan-core/ 那份跟正式頁 trip-plan/TripPlanPage.tsx
 // 共用,不維護 home/plan-ai-sim/ 底下重複的一份。這個目錄原本有一份幾乎
@@ -188,7 +192,7 @@ export interface PlanAction {
   // 的那一天」,前面幾天維持原樣,視覺上就是「這一天的安排被收回去」。
   // 搭配來源端把播放進度倒回那一天的第一步(見 planSimScrollSource.ts
   // advanceTo 的回退分支),再往下捲時這一天會重新一站一站排出來。
-  type: 'thinking' | 'reset' | 'reset_day' | 'add_section' | 'add_stop' | 'add_transit' | 'add_note' | 'add_message' | 'remove_step' | 'done'
+  type: 'thinking' | 'reset' | 'reset_day' | 'add_section' | 'add_stop' | 'add_transit' | 'add_note' | 'add_message' | 'remove_step' | 'open_ask_page' | 'done'
   label?: string
   id?: string
   time?: string
@@ -260,6 +264,30 @@ export interface PlanAction {
   // 若送出無效的 afterId,那是腳本自己的 bug,應該讓它在這裡明確
   // 中斷、被發現,而不是悄悄插到錯的位置)。
   afterId?: string
+  // candidates——2026-10 新增(使用者明確要求「播放畫面第一個先模擬送出
+  // 一個 ask」),只有 type === 'open_ask_page' 時有意義:對齊真實
+  // open_ask_page 工具的 candidates 參數(見 plan-core/askPageTools.ts
+  // AskPageCandidate 的完整說明),劇本(planSimScript.ts)用這個欄位
+  // 表達「這一步要顯示哪些候選景點卡片」。placeId 一律用
+  // attractionPool.ts 的 id(跟劇本其餘 add_stop 的 placeId 慣例一致,
+  // 見 planSimScript.ts 檔頭的完整說明),查詢完整資料時透過
+  // dataSource.placeDetails 精確查找,不是真的打 Google API。
+  candidates?: AskPageCandidate[]
+  // picks——2026-10(使用者明確要求「ask page 內的感興趣的景點詢問,
+  // 可以用挖洞的方式,再撥放態置換成可以由腳本控制的原件」),只有
+  // type === 'open_ask_page' 時有意義:這一步要顯示成「已選取」的候選
+  // placeId。
+  //
+  // 播放態是自動演示、不接受真實互動(見 docs/terminology.md),所以
+  // 「使用者選了什麼」這件事也該由劇本表達,而不是等真人點——劇本原本
+  // 已經能說「顯示哪些候選」(candidates),現在也能說「其中哪幾個被
+  // 選中」。畫面上就是那幾張卡片帶勾,停留一下後自動收起、繼續播。
+  //
+  // 省略時視為一張都沒選(對應真人開了選單還沒點的那一刻)。值必須是
+  // candidates 裡的 placeId,劇本自己負責對齊——這裡不做驗證,對齊
+  // afterId 的既有處理方式(劇本送出無效的值是劇本自己的 bug,應該
+  // 在畫面上看得出來,不是靜默吃掉)。
+  picks?: string[]
 }
 
 // STEP_ADD_TYPES——需要走 planActionToInsert(插入新節點)的訊息型別。
@@ -275,6 +303,24 @@ export interface PlanAction {
 // 走跟 add_section/add_stop 完全一樣的插入路徑,不需要像 add_note 那樣
 // 另外特判。
 const STEP_ADD_TYPES: ReadonlySet<PlanAction['type']> = new Set(['add_section', 'add_stop', 'add_message'])
+
+// ASK_PAGE_CONFIRM_DELAY_MS——最後一張候選被「點」完之後,再停多久才演出
+// 按下「確認選擇」(見 ScriptedAskPage.tsx confirmAfterMs 的完整說明)。
+//
+// 2026-10(使用者明確要求「點完後大幅減少停頓」):原本這個常數叫
+// ASK_PAGE_AUTO_PICK_MS、值 2800ms,語意是「選單在畫面上停留多久」
+// ——那是還沒有點擊演出時的設計,當時整段詢問就只有「開著讓人看」
+// 這件事,需要一段長停留才讀得完。
+//
+// 加上點擊演出之後,「讓人看清候選」這件事已經由那 2 次點擊
+// (2 × PICK_INTERVAL_MS = 1040ms,期間還有勾選與特效逐張出現)承擔了,
+// 這個常數剩下的意義只是「點完到按確認之間的一拍」。維持 2800ms 會變成
+// 點完之後畫面完全不動將近 3 秒,看起來像播放卡住。
+//
+// 600ms 的取法:比單次點擊的間隔(520ms)略長一點,讓「點完了」跟「按下
+// 確認」讀得出是兩個獨立動作,而不是連在一起的一下;又遠短於單則劇本
+// 動作的 randomDelayMs(900~1500ms),因為這一拍只是同一步內的收尾。
+const ASK_PAGE_CONFIRM_DELAY_MS = 600
 
 // planActionToInsert — 把一則新增類 PlanAction 轉成 insertAttractionAfter
 // 需要的 (anchorId, newId, data) 三元組,不實際執行插入——純函式,呼叫端
@@ -399,11 +445,14 @@ function resolveAttractionForStep(
         // resolvePlaceForStep 的同類分支。這裡沒有可用的座標,不呼叫
         // onSettled——沒有座標就無從估算交通時間,理由同
         // refreshTransitForStop 本身「沒有座標就清空」的既有判斷。
-        setTimeline((prev) => updateNode(prev, stepId, { loading: false }))
+        setTimeline((prev) => updateNode(prev, stepId, { loading: false, failed: true }))
         return
       }
       setTimeline((prev) => updateNode(prev, stepId, {
         loading: false,
+        // failed 明確清掉——這次(可能是重試)成功了,節點不該還留著
+        // 上一次的失敗標記。
+        failed: false,
         name: details.name,
         desc: details.summary,
         googlePhotoUrls: details.googlePhotoUrls,
@@ -415,7 +464,7 @@ function resolveAttractionForStep(
     })
     .catch(() => {
       if (isCancelled()) return
-      setTimeline((prev) => updateNode(prev, stepId, { loading: false }))
+      setTimeline((prev) => updateNode(prev, stepId, { loading: false, failed: true }))
     })
 }
 
@@ -600,6 +649,31 @@ export function usePlanSimSocket(
     refreshTransitForStop(stopId, setTimeline, () => timelineRef.current, dataSource)
     return true
   }, [setTimeline, timelineRef, dataSource])
+  // retryStopLookup——地點查詢失敗的站點重新查詢。
+  //
+  // 2026-10（review 發現）：這個檔案的 resolveAttractionForStep 失敗分支
+  // 跟 TripPlanPage 一樣標記 failed(兩邊逐行一致),但這裡原本**沒有任何
+  // 消化路徑**——沒有重試入口、也沒有掛載重試,節點就永久停在錯誤狀態。
+  // 那讓 failed 標記變成淨負面:改動前至少還會顯示劇本自帶的假資料名稱
+  // (見 resolveAttractionForStep 失敗分支的既有註解「退回訊息本身帶的
+  // 假資料」),標了 failed 卻無從恢復反而更糟。
+  //
+  // 寫法對齊 TripPlanPage 的同名函式:先把節點設回 loading 讓使用者看得出
+  // 按鈕有反應,查詢結果由 resolveAttractionForStep 自己寫回。
+  const retryStopLookup = useCallback((stopId: string) => {
+    const node = timelineRef.current.nodes.get(stopId)
+    if (!node || node.type !== 'stop' || !node.placeId) return
+    setTimeline((prev) => updateNode(prev, stopId, { loading: true, failed: false }))
+    resolveAttractionForStep(
+      stopId,
+      node.placeId,
+      (placeId) => dataSource.placeDetails(placeId),
+      setTimeline,
+      () => !timelineRef.current.nodes.has(stopId),
+      () => refreshTransitForStop(stopId, setTimeline, () => timelineRef.current, dataSource),
+    )
+  }, [setTimeline, timelineRef, dataSource])
+
   // isGenerating 初始值為 false——要等 start 變 true(打字動畫播完、
   // 視同「使用者送出」)才開始安排,見上方 usePlanSimSocket 的完整說明。
   const [isGenerating, setIsGenerating] = useState(false)
@@ -1014,6 +1088,9 @@ export function usePlanSimSocket(
     clearTimeline,
     source,
     latestInsertedStopIdRef,
+    // retryStopLookup——見該函式的完整說明。匯出給呼叫端接到
+    // PlanTimelineView 的 onRetryStop。
+    retryStopLookup,
   }
 }
 
@@ -1035,6 +1112,18 @@ export function usePlanSimSocket(
 function isEmbedded(): boolean {
   if (typeof window === 'undefined') return false
   return new URLSearchParams(window.location.search).get('embedded') === '1'
+}
+
+// shouldSkipDemo——2026-10 新增(使用者明確要求「網址加入一個參數,進去
+// 的已略過播放態」):網址帶 ?skipDemo=1 時,掛載後直接呼叫 handover()
+// (見該函式的完整說明)跳過整段劇本播放,一進頁面就是推論態——適合
+// 需要反覆測試推論行為(例如本次 search_attraction/open_ask_page 相關
+// 的實機驗證)的情境,不用每次都等劇本播完、點「不用了」跳過開場候選
+// 卡片才能進到推論態。寫法比照 isEmbedded 的既有慣例,不是另外發明
+// 一套參數解析方式。
+function shouldSkipDemo(): boolean {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get('skipDemo') === '1'
 }
 
 // PlanStopsView — 「地圖要顯示哪些站點」這份投影的統一介面。
@@ -1286,6 +1375,98 @@ export function AIPlanTimelinePage() {
     return () => clearInterval(timer)
   }, [])
 
+  // showAskPage/askPageInput/openAskPage/handleAskPageDone——2026-10
+  // 新增(使用者明確要求「播放畫面第一個先模擬送出一個 ask」)。狀態機
+  // 本身抽成共用 hook useAskPageBridge(見該檔案開頭的完整設計理由),
+  // 跟 TripPlanPage.tsx 的同名機制共用同一份實作,差異只在 Input 泛型:
+  // 這裡的劇本固定只給 { candidates }(劇本內容是寫死的,不適合依賴
+  // 即時地圖中心/使用者位置的探查模式),不像 TripPlanPage.tsx 還支援
+  // { explore }。openAskPage 會被傳給 createPlanSimFakeSource(見該
+  // 函式的完整說明)當建立參數,劇本播到 open_ask_page 這則時會直接
+  // 呼叫它、await 它——跟真實 AgentBridge 呼叫 open_ask_page 工具
+  // handle 的形狀完全對應,這個元件(劇本的消費端)不需要額外做任何事。
+  //
+  // 宣告位置在 usePlanSimSocket 呼叫之前(而不是跟其餘大多數 state
+  // 一起宣告在後面)——下方 createSource 的 useCallback 需要在呼叫
+  // usePlanSimSocket 當下就拿到 openAskPage,JavaScript 變數必須先
+  // 宣告才能在同一個函式作用域的後續程式碼裡使用,順序不能顛倒。
+  const { showAskPage, askPageInput, openAskPage, handleAskPageDone } = useAskPageBridge<{
+    candidates: AskPageCandidate[]
+    // picks——劇本指定這一步哪幾個候選顯示成已選取(見 PlanAction.picks
+    // 的完整說明)。播放態用它讓 AskPage 走腳本模式,不等真人點選。
+    picks?: string[]
+  }>({ candidates: [] })
+  // isDesktop——決定兩件事:
+  //   1. 模擬層的手機版要不要換成橫向卡片時間軸(HorizontalPlanTimeline,
+  //      見該元件檔頭的完整說明);桌面版繼續渲染 PlanTimelineView。
+  //   2. 劇本播到 open_ask_page 時要不要等使用者選擇(見下方
+  //      createPlanSimSource 的完整說明)。
+  // 宣告位置提前到這裡(原本在 mapHandle 附近)——createPlanSimSource
+  // 要用到它,JavaScript 變數必須先宣告才能在後續程式碼裡使用。
+  const isDesktop = useIsDesktop()
+
+  // createPlanSimSource——用 useCallback 包一層穩定參照:
+  // usePlanSimSocket 的 createSource 參數若每次 render 都是新函式,
+  // 底下的 effect(建立來源的那個)會每次 render 都重新執行,意外地
+  // 重播整段劇本。
+  //
+  // openAskPage 兩種版面都傳(2026-10 使用者明確要求「桌面版的要顯示
+  // ask page」):劇本第一則就是 open_ask_page,planSimFakeSource 會
+  // await 它才繼續播下一則。
+  //
+  // 曾經一度改成「桌面版不傳,直接跳過等待」——那是因為 AskPage 原本
+  // 只渲染在手機版的 HorizontalPlanTimeline 裡,桌面版渲染
+  // PlanTimelineView、沒有這個元件,整段劇本停在第 0 步(實機確認過:
+  // 桌面版時間軸全空、一張卡片都沒有)。跳過等待雖然解開了卡死,
+  // 但桌面使用者也就永遠看不到候選選單。改成桌面分支也渲染 AskPage
+  // (見下方 JSX),兩種版面都看得到。
+  //
+  // 2026-10(使用者明確定調「播放態不會有真實互動」):先前這裡的
+  // openAskPage 交給 source 之後,那個 Promise 只有使用者真的在 AskPage
+  // 上點選、觸發 handleAskPageDone 才會 resolve——等於整段劇本的推進被
+  // 綁在一次真人互動上,跟「預設進入會全部播放」這個既有定調矛盾
+  // (見 planSimFakeSource.ts 檔頭)。也正是桌面卡死那個 bug 的根因:
+  // 沒人可以點,就永遠播不下去。
+  //
+  // 現在改由 AskPage 的腳本模式負責(見 AskPage.tsx AskPageProps.scripted
+  // 的完整說明):劇本帶 picks 指定哪幾個候選顯示成已選取,AskPage 不渲染
+  // 按鈕列、演出按下確認後自己送出,Promise 照常 resolve、
+  // 劇本繼續。這一層只要把 openAskPage 原樣交出去就好,不需要再包一層
+  // 計時器——「不等真人」這件事屬於那個面板怎麼渲染,不屬於這裡怎麼
+  // 橋接 Promise。
+  const createPlanSimSource = useCallback(() => createPlanSimFakeSource(openAskPage), [openAskPage])
+
+  // renderScriptedAskPage——置換用的詢問頁(見 ScriptedAskPage.tsx 檔頭
+  // 的完整說明),同時給桌面與手機兩個分支用。
+  //
+  // 必須用 useCallback 包,而且依賴要精確到「劇本這一步的實際內容」:
+  // HorizontalPlanTimeline 收到的是一個會被它直接呼叫的函式,每次父元件
+  // render 若都傳一個新函式進去,它回傳的 element 每次都是新的,React
+  // 對應不到同一個元件實例,於是每次 render 都把 ScriptedAskPage 整個
+  // 重新掛載。
+  //
+  // 實機踩過(用 DevTools 追 960ms、57 個取樣確認):劇本播放期間父元件
+  // 每則訊息都會 render,內嵌的箭頭函式讓詢問頁被反覆重掛,
+  // getAnimations() 回報 5 個同名動畫、currentTime 全程停在 0——點擊
+  // 特效每一格都在重新開始,所以完全看不到動畫,卡片只是突然變成已勾選。
+  //
+  // 依賴列 candidates/picks 而不是整個 askPageInput:後者是 bridge 的
+  // state,open_ask_page 之外的 render 也可能換掉它的參照。
+  const askPageCandidates = askPageInput.candidates
+  const askPagePicks = askPageInput.picks
+  const renderScriptedAskPage = useCallback(
+    () => (
+      <ScriptedAskPage
+        dataSource={planAiFakeDataSource}
+        candidates={askPageCandidates}
+        picks={askPagePicks ?? []}
+        confirmAfterMs={ASK_PAGE_CONFIRM_DELAY_MS}
+        onDone={handleAskPageDone}
+      />
+    ),
+    [askPageCandidates, askPagePicks, handleAskPageDone],
+  )
+
   // 這個頁面固定「打字動畫播完才開始安排」(見上方 promptTyped 的完整
   // 說明),不再需要 simEnabled 開關——原始版本這裡還有
   // usePlanAiChatBridge(接真實 onagent 對話)與對應的 getStepsForBridge/
@@ -1294,7 +1475,10 @@ export function AIPlanTimelinePage() {
   // DEBUG_SAFE_AREA 開啟時傳 false,不建立來源、不播放——驗證中心點
   // 計算時畫面上不該有東西在動(見該常數的完整說明)。沒帶那個 URL
   // 參數時這個判斷恆為 false,播放行為跟平常完全一樣。
-  const { steps, isGenerating, timelineRef, dragStopTime, clearTimeline, latestInsertedStopIdRef } = usePlanSimSocket(DEBUG_SAFE_AREA ? false : promptTyped)
+  const { steps, isGenerating, timelineRef, dragStopTime, clearTimeline, latestInsertedStopIdRef, retryStopLookup } = usePlanSimSocket(
+    DEBUG_SAFE_AREA ? false : promptTyped,
+    createPlanSimSource,
+  )
   const stopCount = steps.filter((s) => s.type === 'stop').length
 
   // expandedThemeId——2026-10 改成由 useMapMarkerLayer 內部 reducer 自己
@@ -1393,17 +1577,27 @@ export function AIPlanTimelinePage() {
     setPlanSource(liveSource)
   }, [clearTimeline, liveSource, selection])
 
+  // skipDemo——見 shouldSkipDemo 的完整說明:網址帶 ?skipDemo=1 時,
+  // 掛載後立即呼叫 handover() 跳過劇本播放。用 ref 記錄「已經觸發過」
+  // 而非只靠依賴陣列,是因為 handover 本身的參照會隨 liveSource/
+  // selection 改變而重新產生(見上方 useCallback 依賴陣列)——若直接把
+  // handover 放進 effect 依賴陣列,每次 handover 參照變動都會讓這個
+  // effect 重新執行,對已經交接過的頁面重複呼叫 handover()(雖然
+  // handover 本身冪等、不會造成實際問題,但語意上這個 effect 应该只在
+  // 「掛載時」判斷一次,不該隨 handover 參照變動反覆觸發)。
+  const skipDemoTriggeredRef = useRef(false)
+  useEffect(() => {
+    if (skipDemoTriggeredRef.current) return
+    if (!shouldSkipDemo()) return
+    skipDemoTriggeredRef.current = true
+    handover()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // handedOver——衍生值,不是獨立 state:純粹讓下方大量既有的「交接後
   // 要不要做某件事」判斷(JSX 渲染分支、地圖偏移 effect 等)不必逐一
   // 改寫成 `planSource.kind === 'live'`,維持原本的閱讀習慣。
   const handedOver = planSource.kind === 'live'
-
-  // isDesktop——只用來決定模擬層(handedOver 為 false)的手機版要不要
-  // 換成橫向卡片時間軸(HorizontalPlanTimeline,見該元件檔頭的完整
-  // 說明:方案二設計稿的落地)。桌面版與交接後的真實層(handedOver 為
-  // true)完全不受這個判斷影響,繼續渲染原本的 PlanTimelineView,見下方
-  // JSX 的完整說明。
-  const isDesktop = useIsDesktop()
 
   // mapHandle——NativeMapBase 建圖完成後回報上來的控制代碼,見該元件
   // onHandleChange 的完整說明。usePlanStopMarkers 需要 mapRef/mapReady
@@ -1732,184 +1926,158 @@ export function AIPlanTimelinePage() {
   // prefers-color-scheme、.app-theme-root[data-theme="dark"]),見
   // App.tsx 的 /app 路由同樣疊加這個 class。少了它,無論系統偏好或
   // data-theme 屬性值是什麼,這個頁面都只會顯示淺色 token。
+  // navButtons——上方漂浮按鈕列插槽內容(見原本「上方漂浮按鈕」的完整
+  // 說明,邏輯不變,只是現在當成 PlanDemoLayout 的 nav 插槽傳入,而不是
+  // 直接寫在這個元件的根容器 JSX 裡)。SiteNavBrand 等元件本身是 fixed
+  // 定位,放進哪個 DOM 位置不影響視覺,純粹是程式碼組織上收進插槽。
+  // 2026-10 使用者明確要求「展示頁面不要功能介紹按鈕」——移除原本的
+  // 「功能介紹」CTA(連到 /product),只留登入。
+  const navButtons = (
+    <>
+    <SiteNavBrand pageLabel="台南兩日遊" />
+    <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
+    <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'plan-ai-sim', position: 'nav' })}>登入</SiteNavCta>
+    </>
+  )
+
+  // mapBackground——地圖背景插槽內容(見原本「NativeMapBase」區塊的
+  // 完整說明,邏輯不變)。
+  const mapBackground = (
+    <>
+      <NativeMapBase
+        center={CENTER}
+        zoom={ZOOM}
+        mapId={LANDING_MAP_ID}
+        onHandleChange={handleMapHandleChange}
+      />
+      {DEBUG_SAFE_AREA && (
+        <Suspense fallback={null}>
+          <SafeAreaDebugOverlay
+            target={DEBUG_TARGET}
+            safeAreaElRef={mapSafeArea.safeAreaElRef}
+            mapRef={mapHandle.mapRef}
+            mapReady={mapHandle.mapReady}
+            onPan={mapSafeArea.panToWithinSafeArea}
+            resetView={{ center: CENTER, zoom: ZOOM }}
+          />
+        </Suspense>
+      )}
+    </>
+  )
+
   return (
     <>
-    <div
-      className={`${styles.page} ${embedded ? styles.pageEmbedded : ''} app-theme-root`}
-      data-theme={theme ?? undefined}
-    >
-      {/* NativeMapBase——整頁的地圖底層,2026-10 從 StaticMapBackdrop
-          (Static Maps API 靜態圖)換成這個真實互動地圖(使用者明確要求
-          「/ai-plan 則用主題介紹頁的地圖」「换成真實互動地圖」「允許
-          互動,跟主題介紹頁一致的體驗」)。外層 .mapBackdrop 是
-          position:absolute 撐滿 .page 的容器(NativeMapBase 本身的
-          .wrap/.map 是 width/height:100%,需要一個有明確定位的父層才能
-          撐滿背景,理由同 ExploreMap.tsx 一貫的用法),取代原本
-          StaticMapBackdrop 元件自帶 position:absolute 的 .backdrop。
-          mapId 用跟主題介紹頁相同的 Cloud Style(LANDING_MAP_ID,關閉
-          全部 POI 標籤),視覺語言一致。不再是 pointer-events:none——
-          使用者明確要求允許縮放/拖曳,這個限制已經移除,時間軸側欄
-          (.timelinePanel)本身有自己的 z-index 疊在地圖之上,兩者的
-          互動範圍不會互相干擾。 */}
-      <div className={styles.mapBackdrop}>
-        <NativeMapBase
-          center={CENTER}
-          zoom={ZOOM}
-          mapId={LANDING_MAP_ID}
-          onHandleChange={handleMapHandleChange}
+    {/* PlanDemoLayout——版面骨架(根容器+地圖背景+上方 nav+既有的
+        PlanOverlayPanel),見該元件開頭的完整設計理由。時間軸層的二選一
+        (模擬 vs 真實 AI,見下方 handedOver 判斷的完整說明)決定要傳哪組
+        passThrough/composer/children,layout 本身不關心這個決策。 */}
+    {handedOver ? (
+      <PlanDemoLayout
+        embedded={embedded}
+        theme={theme}
+        mapBackground={mapBackground}
+        nav={navButtons}
+        isDesktop={isDesktop}
+        safeAreaRef={mapSafeArea.safeAreaElRef}
+        passThrough
+      >
+        <LivePlanLayer
+          onStopsChange={handleLiveStopsChange}
+          onSelectedStopChange={setLiveSelectedStopId}
+          onHoverStopChange={setLiveHoverStopId}
         />
-        {/* 安全區除錯疊圖(見 DEBUG_SAFE_AREA 的完整說明)。放在
-            .mapBackdrop 裡面——那個容器的範圍跟地圖 div 完全一致,
-            而 solveSafeAreaCenter 回傳的像素座標都是相對地圖容器左上角,
-            兩者基準相同才對得準。 */}
-        {DEBUG_SAFE_AREA && (
-          // fallback 給 null——疊圖載入前畫面上什麼都不顯示即可,它是
-          // 疊在地圖上的標記,沒有「載入中」狀態需要佔位。
-          <Suspense fallback={null}>
-            <SafeAreaDebugOverlay
-              target={DEBUG_TARGET}
-              safeAreaElRef={mapSafeArea.safeAreaElRef}
-              mapRef={mapHandle.mapRef}
-              mapReady={mapHandle.mapReady}
-              onPan={mapSafeArea.panToWithinSafeArea}
-              resetView={{ center: CENTER, zoom: ZOOM }}
-            />
-          </Suspense>
-        )}
-      </div>
-      {/* 上方漂浮按鈕——使用者明確要求「上方功能列採用跟首頁一樣的漂浮
-          按鈕,要有功能介紹跟登入日夜間切換按鈕」,直接沿用
-          home/SiteNavButtons.tsx 這份跨頁面共用元件(HomePage.tsx/
-          ProductPage.tsx/城市介紹頁都是同一套),不是重新刻一份樣式。
-          這幾個元件本身是 fixed 定位、疊在頁面最上層(見
-          SiteNavButtons.css 的完整說明)。頁面本身不再有任何實體功能
-          列(.header 已完全移除,使用者明確要求「不要有上方的實際功能
-          列了」)。slot={2} 讓「功能介紹」往左讓開「登入」按鈕的寬度,
-          理由同 HomePage.tsx 的既有用法。 */}
-      {!embedded && (
-        <>
-        <SiteNavBrand pageLabel="台南兩日遊" />
-        <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
-        <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'plan-ai-sim', position: 'nav' })}>登入</SiteNavCta>
-        <SiteNavCta href="/product" variant="accent" slot={2} onClick={() => trackEvent('landing_feature_intro_click', { page: 'plan-ai-sim' })}>功能介紹</SiteNavCta>
-        </>
-      )}
-
-      {/* navSpacer——2026-10 新增(見 AIPlanTimelinePage.module.css 該
-          class 的完整設計說明)。只在手機版+未交接時渲染:桌面版
-          .timelinePanel 是 position: absolute 側欄,不佔用 .page 的
-          flex 版面空間,不需要這塊讓位;交接後(LivePlanLayer)不是
-          這套手機版地圖安全區機制服務的範圍(見 mapSafeAreaEl 的完整
-          說明)。 */}
-
-      {/* timelinePanel——2026-10 使用者要求「將 /ai-plan 時間軸放到
-          右側」:原本 PlanTimelineView 直接是 .page 的 flex 子項,
-          時間軸內容靠 PlanTimelineView.module.css 自己的 .inner
-          (max-width:640px; margin:0 auto)在整個視窗寬度置中,蓋住地圖
-          正中央。改成固定寬度(560px)、貼齊視窗右緣的側欄容器——地圖
-          (NativeMapBase)因此左側完全露出不被內容遮擋,視覺語言
-          改成「左地圖/右資訊欄」。這層需要 position:relative,取代
-          原本掛在 .page 身上、給 jumpPillWrap 置中計算用的定位基準
-          (見 .timelinePanel/.timelineJumpPillWrap 的完整說明:
-          jumpPillWrap 現在要相對這個側欄本身置中,不是整個 .page)。
-          composer(輸入膠囊)刻意「不」包進這個側欄——使用者明確要求
-          「輸入匡位置不要動」,維持原本相對整個 .page 水平置中、固定
-          貼在視窗底部的位置,不跟著時間軸一起搬到右側,見下方 composer
-          仍在 .timelinePanel 外層、直接是 .page 子元素的結構。 */}
-      {/* 時間軸層的二選一:模擬(PlanTimelineView + 下方假輸入膠囊)
-          vs 真實 AI(LivePlanLayer,內部是 /app 的 TripPlanPage)。
-          使用者按下「讓我試看看」後 handedOver 轉 true,模擬整段換掉。
-
-          目前是框架階段:LivePlanLayer 直接掛 TripPlanPage,沿用它自帶的
-          對話框與時間軸,所以真實層不需要下方那個假輸入膠囊(見該處
-          !handedOver 的判斷)。 */}
-      {handedOver ? (
-        <PlanOverlayPanel isDesktop={isDesktop} safeAreaRef={mapSafeArea.safeAreaElRef} passThrough>
-          <LivePlanLayer
-            onStopsChange={handleLiveStopsChange}
-            onSelectedStopChange={setLiveSelectedStopId}
-            onHoverStopChange={setLiveHoverStopId}
-          />
-        </PlanOverlayPanel>
-      ) : (
-      <>
-      <PlanOverlayPanel
+      </PlanDemoLayout>
+    ) : (
+      <PlanDemoLayout
+        embedded={embedded}
+        theme={theme}
+        mapBackground={mapBackground}
+        nav={navButtons}
         isDesktop={isDesktop}
         safeAreaRef={mapSafeArea.safeAreaElRef}
         composer={(
-          <div className={`${styles.composer} ${composerCollapsed && !handedOver ? styles.composerBare : ''}`}>
-            <div className={styles.composerInner}>
-              {/* 輸入框是純展示用的假打字動畫(見 typedPrompt 的完整說明),
-                  不接受真的輸入、不會真的送出任何請求——這個頁面固定進頁就
-                  自動播放整段劇本(見 usePlanSimSocket),不再有 onagent 對話
-                  路徑,故這裡不是 <form>(沒有東西可以 submit)。
-                  2026-10(第三輪):「讓我試看看」出現時(composerCollapsed
-                  且尚未 handedOver)輸入框整個從 DOM 移除、按鈕置中顯示
-                  (使用者明確要求「按鈕置中,移除輸入匡」)——取代先前「輸入
-                  框收合讓位、按鈕展開動畫」的版本(見 .module.css
-                  .composerCta 的完整說明:那一版同一顆 <button> 疊加 class
-                  做 width transition,這版輸入框是條件渲染、不是 class
-                  切換,沒有連續的寬度狀態可以 transition,改用 opacity
-                  淡入)。交接後(handedOver)輸入框恢復渲染、開放輸入。 */}
-              <div className={styles.inputRow}>
-                {!(composerCollapsed && !handedOver) && (
-                  <div className={styles.inputWrap}>
-                    <input
-                      type="text"
-                      aria-label={handedOver ? '描述你想要的行程' : '輸入指令(僅供展示)'}
-                      className={styles.input}
-                      placeholder={handedOver ? '想去哪裡玩?例如:台南兩天一夜' : undefined}
-                      value={handedOver ? userPrompt : typedPrompt}
-                      onChange={handedOver ? (e) => setUserPrompt(e.target.value) : undefined}
-                      readOnly={!handedOver}
-                    />
-                  </div>
-                )}
-                {/* composerCta——排程結束後出現的行動呼籲按鈕,文案「讓我
-                    試看看」(2026-10 從「立即使用」改,使用者明確要求),
-                    點擊要導向登入頁面(/app,對齊首頁 SiteNavCta 的「登入」
-                    按鈕同樣指向 /app——未登入時 /app 本身就會顯示登入畫面,
-                    見 PhoneContent.tsx 的既有行為,不需要另外一個獨立的
-                    /login 路由)。仍是同一顆 <button>(進行中是箭頭送出鈕,
-                    結束後疊上 .composerCta 變成文字按鈕)——這顆按鈕本身
-                    的身分沒有變,只有旁邊的輸入框從「收合」改成「整個移除」
-                    (見上方完整說明)。未展開時維持 disabled,onClick 不會被
-                    觸發,不需要額外判斷 composerCollapsed 才能呼叫
-                    navigate。 */}
-                <button
-                  type="button"
-                  className={`${styles.sendBtn} ${composerCollapsed ? styles.composerCta : ''} ${
-                    // 打字動畫進行中(輸入框已經有字、但還沒打完那一刻)使用者
-                    // 明確要求送出鈕要「模擬送出的樣式,但是不能真的可以
-                    // 點選」——拿掉 disabled 平常的淺化/半透明樣式,改成完全
-                    // 不透明的深色圓鈕(見 .module.css 的 .sendBtnActive 完整
-                    // 說明),視覺上看起來像「有內容、可以送出」,呼應正在
-                    // 打字這個當下的狀態;disabled 屬性本身仍然保留、原生
-                    // 點擊行為依舊被瀏覽器擋下,只是視覺樣式改觀感,不是真的
-                    // 開放互動。打完字之後(promptTyped)排程已經開始跑,不再
-                    // 需要這個「看起來可送」的暗示,退回原本淡化的樣子。
-                    !composerCollapsed && typedPrompt && !promptTyped ? styles.sendBtnActive : ''
-                  }`}
-                  aria-label={composerCollapsed ? '讓我試看看' : '送出'}
-                  disabled={!composerCollapsed}
-                  onClick={handover}
-                >
-                  {composerCollapsed ? (
-                    '讓我試看看'
-                  ) : (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ios-bg)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="12" y1="19" x2="12" y2="5" />
-                      <polyline points="5 12 12 5 19 12" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
+          // Composer——共用輸入膠囊外框(components/Composer.tsx,見該檔頭
+          // 的完整背景說明)。這個展示頁的特有邏輯(假打字動畫唯讀、
+          // composerCollapsed 後整個切換成「讓我試看看」CTA)留在這裡
+          // 透過 props 組裝,共用元件不知道這些概念。
+          //
+          // presentational——2026-10 使用者明確要求:「composer 應該用
+          // 一個展示態來表達,而不是單純關閉送出,展示態的時候送出樣式
+          // 要正常,但是不能點送出」(見 Composer.tsx 該 prop 的完整
+          // 說明)。這個展示頁從「打字動畫進行中」到「排完一站都還沒到
+          // 第 5 站」整段期間,送出鈕全程都是這個狀態——輸入框是純展示
+          // 用的假打字動畫(見 typedPrompt 的完整說明),不接受真的輸入、
+          // 不會真的送出任何請求,但視覺上應該完全像一個「正常、能用」
+          // 的輸入框,不該讓訪客一眼看出「這是灰掉的假東西」。取代先前
+          // 「預設 disabled 淡化,打字中那一刻另外疊加 sendBtnActive
+          // 抵銷淡化樣式」的拼湊寫法——那個寫法只覆蓋了「打字中」這一
+          // 個特例,排完第一站後到第 5 站之前這段期間其實仍然是淡化的,
+          // 跟「送出鈕全程該是正常樣式」的真正意圖不符,改用
+          // presentational 後不再需要特例判斷,整段期間自然一致。
+          //
+          // 2026-10(第三輪):「讓我試看看」出現時(composerCollapsed 且
+          // 尚未 handedOver)輸入框整個從 DOM 移除、按鈕置中顯示(使用者
+          // 明確要求「按鈕置中,移除輸入匡」)——取代先前「輸入框收合
+          // 讓位、按鈕展開動畫」的版本(見 .module.css .composerCta 的
+          // 完整說明:那一版同一顆 <button> 疊加 class 做 width
+          // transition,這版輸入框是條件渲染、不是 class 切換,沒有連續
+          // 的寬度狀態可以 transition,改用 opacity 淡入)。交接後
+          // (handedOver)輸入框恢復渲染、開放輸入,不再是 presentational
+          // ——這時是正式功能,真的要能送出。
+          <Composer
+            bare={composerCollapsed && !handedOver}
+            hideInput={composerCollapsed && !handedOver}
+            inputRowClassName={styles.inputRow}
+            ariaLabel={handedOver ? '描述你想要的行程' : '輸入指令(僅供展示)'}
+            placeholder={handedOver ? '想去哪裡玩?例如:台南兩天一夜' : undefined}
+            value={handedOver ? userPrompt : typedPrompt}
+            onChange={handedOver ? setUserPrompt : undefined}
+            readOnly={!handedOver}
+            presentational={!handedOver && !composerCollapsed}
+            // composerCta——排程結束後出現的行動呼籲按鈕,文案「讓我試
+            // 看看」(2026-10 從「立即使用」改,使用者明確要求),點擊要
+            // 導向登入頁面(/app,對齊首頁 SiteNavCta 的「登入」按鈕同樣
+            // 指向 /app——未登入時 /app 本身就會顯示登入畫面,見
+            // PhoneContent.tsx 的既有行為,不需要另外一個獨立的 /login
+            // 路由)。仍是同一顆送出鈕(進行中是箭頭 icon,結束後疊上
+            // .composerCta 變成文字按鈕)——這顆按鈕本身的身分沒有變,
+            // 只有旁邊的輸入框從「收合」改成「整個移除」(見上方完整
+            // 說明)。排到第 5 站前透過 presentational 擋下 onSubmit,
+            // 不需要額外判斷 composerCollapsed 才能呼叫 navigate——
+            // onSubmit 只有在不是 presentational 時才會真的被呼叫。
+            onSubmit={handover}
+            sendButtonAriaLabel={composerCollapsed ? '讓我試看看' : '送出'}
+            sendButtonClassName={composerCollapsed ? styles.composerCta : ''}
+            sendButton={composerCollapsed ? '讓我試看看' : undefined}
+          />
         )}
       >
       {isDesktop ? (
+      /* 桌面版的詢問頁(2026-10 使用者明確要求「桌面版的要顯示 ask
+         page」):劇本播到 open_ask_page 時取代縱向時間軸,跟手機版
+         「顯示 AskPage 時取代卡片列」是同一種處理(見
+         HorizontalPlanTimeline.tsx showAskPage 分支)。
+         在這之前桌面版完全沒有渲染 AskPage,而劇本第一則就是
+         open_ask_page——planSimFakeSource 等著使用者選擇,畫面上卻沒有
+         任何可以點的東西,整段劇本停在第 0 步(實機確認:桌面版時間軸
+         全空、一張卡片都沒有)。
+         dataSource 用假資料實作,理由同下方手機版分支的完整說明。
+
+         2026-10 改成置換 ScriptedAskPage(使用者明確定調「播放態不會有
+         真實互動」、「所以是要做在被置換的原件上,與正式使用的不一樣」):
+         這一頁是播放態,渲染的是播放態專用那一份(見 ScriptedAskPage.tsx
+         檔頭的完整說明:劇本指定選哪幾張、依序演出點擊特效、時間到自己
+         送出),不是正式的 AskPage。正式那一份完全沒有為了展示而加的
+         分支,它只服務真實互動。
+         兩者的 onDone 形狀一致,所以在這裡是直接互換,呼叫端其餘程式碼
+         不需要知道換了哪一份。 */
+      showAskPage ? (
+      renderScriptedAskPage()
+      ) : (
       <PlanTimelineView
+        // onRetryStop——見上方 retryStopLookup 的完整說明:標了 failed
+        // 就要給得出脫離的路。
+        onRetryStop={retryStopLookup}
         steps={steps}
         isThinking={isGenerating}
         emptyStateMessage={emptyStateMessage}
@@ -1937,6 +2105,7 @@ export function AIPlanTimelinePage() {
         jumpPillWrapClassName={styles.timelineJumpPillWrap}
         endMarkerClassName={styles.timelineEndMarker}
       />
+      )
       ) : (
       // 手機版(模擬中)——改用橫向卡片時間軸(方案二設計稿的落地,見
       // HorizontalPlanTimeline.tsx 檔頭的完整說明),取代縱向
@@ -1971,6 +2140,20 @@ export function AIPlanTimelinePage() {
       // (AiPlanPhoneDemoScreen.tsx)一致,啟用自動捲動到最新完成站點。
       <>
       <HorizontalPlanTimeline
+        // showAskPage/askPageInput/onAskPageDone/dataSource——見
+        // 上方 state 宣告處的完整說明。dataSource 用假資料實作(預設值
+        // planAiFakeDataSource,這裡顯式傳入對齊 usePlanSimSocket 呼叫處
+        // 的同一份實例,理由同該處說明:這個展示頁不需要登入就能看,
+        // 不能打需要登入的後端端點)。
+        showAskPage={showAskPage}
+        askPageInput={askPageInput}
+        onAskPageDone={handleAskPageDone}
+        dataSource={planAiFakeDataSource}
+        // renderAskPage——置換成播放態專用那一份(見
+        // HorizontalPlanTimeline.tsx 該 prop 與 ScriptedAskPage.tsx 檔頭
+        // 的完整說明)。桌面分支也是同一份,兩種版面一致。
+        renderAskPage={renderScriptedAskPage}
+        onRetryStop={retryStopLookup}
         steps={steps}
         selectedStopId={selectedStopId}
         focusLatest
@@ -2006,10 +2189,8 @@ export function AIPlanTimelinePage() {
       />
       </>
       )}
-      </PlanOverlayPanel>
-      </>
-      )}
-    </div>
+      </PlanDemoLayout>
+    )}
     {lightboxPhotos && (
       <Lightbox
         photos={lightboxPhotos.photos}

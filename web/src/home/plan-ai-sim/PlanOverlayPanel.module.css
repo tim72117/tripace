@@ -62,19 +62,32 @@
    相對於最近的 positioned 祖先(手機版面板是 static,所以是 .page)。
    只在手機版渲染(桌面版是右側縱向側欄,版面語意不同)。
 
-   bottom——底部被橫向時間軸佔用的高度:
+   bottom——底部被橫向時間軸 + composer 佔用的高度:
      卡片 300px(--horizontal-timeline-card-height)
    + 日期列 20px + gap 10px
    + .wrap 的 padding 12px(上)+ 4px(下)
-   + .wrap 的 padding-bottom 70px(原本就是為了讓開輸入框與 Google 版權
-     文字預留的,見 HorizontalPlanTimeline.module.css .wrap)
-   = 416px。 */
+   + .wrap 的 padding-bottom 12px(2026-10 第三輪,composer 搬出絕對定位
+     插槽、改放進 .panel 正常文件流後,這裡只是卡片與接下來的 composer
+     之間的呼吸間距,不再是幫 composer 預留的空間,見
+     HorizontalPlanTimeline.module.css .wrap 的完整說明)
+   + composer 實際高度 76px(.inputWrap 44px + .composer 上下 padding
+     各 10px + .compact .composer 的 margin-bottom 12px,見
+     trip-plan/TripPlanPage.module.css .compact .composer 的完整說明:
+     composer 進了 .composerSlotMobile 後,.inSlot .composer 把
+     position: sticky 覆寫成 static,.compact .composer 再疊加
+     margin-bottom 12px 當跟上方內容的間距——這裡算進去的是它排進文件
+     流後實際佔用的高度,不是原本 sticky 定位時的偏移量)
+   + .composerSlotMobile 的 padding-bottom 20px(見該 class 的完整
+     說明:max(20px, env(safe-area-inset-bottom)) 取保守下限 20px 估算,
+     真正有安全區的裝置上這個值會更大,代表安全區留白比估算值更寬裕,
+     不會讓地圖安全可視區誤判成比實際更大)
+   = 454px。 */
 .safeArea {
   position: absolute;
   top: 72px;
   left: 0;
   right: 0;
-  bottom: 416px;
+  bottom: 454px;
   visibility: hidden;
   pointer-events: none;
 }
@@ -109,4 +122,77 @@
   .composerSlot {
     width: calc(100% - 32px);
   }
+}
+
+/* composerSlotMobile——2026-10 使用者明確要求「composer 區位要跟 UI
+   區的元素一起排列」,並確認「只改手機版,不動桌面版」:取代手機版
+   原本共用的 .composerSlot(絕對定位、跟 .panel 平行的手足),改成
+   .panel 內部正常文件流的最後一個子項(見 PlanOverlayPanel.tsx 依
+   isDesktop 分流插槽位置處的完整說明)。
+   桌面版完全不受影響,仍然使用 .composerSlot 原封不動。
+   寬度/pointer-events 不需要像 .composerSlot 那樣特別處理——手機版
+   .panel 本身撐滿整頁寬度(見上方 .panel 手機斷點的既有定義),composer
+   放進正常文件流不會被撐爆造成橫向卷軸;.panel 的 pointer-events 繼承
+   規則(手機版 .passThrough 時整個面板不接收指標事件,見該 class 的
+   完整說明)對一般內容元素不影響,composer 內容本身(.composer 的
+   position: sticky)已經設定 pointer-events 相關的子層級規則。
+
+   padding——使用者明確要求「輸入匡要跟之前一樣的四周間距」,逐一核對
+   舊架構(.composerSlot)後補齊的三個方向:
+     - 左右 16px:舊版 .composerSlot 手機斷點是
+       width: calc(100% - 32px)(左右各留 16px);.inSlot .composer 已把
+       composer 本身的 width 改成 100%(見該處完整說明),左右間距現在
+       要靠外層容器的 padding 營造,不是 composer 自己的寬度限制。16px
+       同時對齊 .ruler 的 padding: 0 16px(見 HorizontalPlanTimeline
+       .module.css 該處),讓 composer 跟上方時間尺/卡片列的左右邊界
+       視覺對齊,不是另外取一個數字。
+     - 底部 max(20px, env(safe-area-inset-bottom)):舊版 .composerSlot
+       的 bottom 值原樣照搬,見下方 iOS 安全區說明。
+   iOS 安全區(底部 max(20px, env(...)) 裡的 env() 部分)——查證後確認
+   的真實遺漏:舊架構下由 .composerSlot 自己的
+   bottom: max(20px, env(safe-area-inset-bottom)) 處理(絕對定位元素的
+   bottom 偏移量),trip-plan/TripPlanPage.module.css 的
+   .compact .composer 刻意把繼承來的同一個 bottom 值清掉(改成
+   bottom: auto,見該處完整說明),避免跟外層插槽的安全區處理重複疊加
+   成雙重偏移——這代表安全區處理的責任原本就該由外層插槽承擔,不是
+   composer 自己。composerSlotMobile 取代 .composerSlot 的角色後,必須
+   接手這個責任,但它現在是正常文件流元素(不是絕對定位),bottom 偏移
+   對它無效,改用 padding-bottom 達到同樣的「底部留出安全區高度」效果
+   ——env() 在不支援的裝置上退化成 0,max(20px, 0) 仍然保留原本至少
+   20px 的底部間距,不影響非 iOS 裝置。
+
+   position: relative——2026-10 補上(使用者實機回報「讓我試看看」按鈕
+   在 /ai-plan 播放到第 5 站後整個看不見,DOM 裡確實存在、座標/opacity
+   都正常,用 Chrome DevTools elementFromPoint 查證後確認是被地圖蓋住:
+   這個容器原本是 position: static,static 元素不建立 stacking
+   context,疊層規則上必然輸給任何 position: absolute 的同層內容
+   ——AIPlanTimelinePage.tsx 的 .mapBackdrop 正是 position: absolute,
+   地圖內部(Google Maps SDK 自己掛的 .gm-style 相關節點)又有自己的
+   z-index,整組蓋在這個 static 容器上面,跟 DOM 先後順序或這裡的
+   z-index 數值都無關——static 元素本來就不參與 z-index 排序。
+   上面的 .wrap(卡片列,HorizontalPlanTimeline.module.css)本身是
+   position: relative 所以沒有這個問題,只有這個插槽當時漏掉。改成
+   relative 讓它重新取得 stacking context、贏過地圖,不需要額外設
+   z-index(relative 本身已經足夠,這裡刻意不加 z-index 數值,避免未來
+   跟其他需要明確比大小的元素產生不必要的競爭)。 */
+.composerSlotMobile {
+  position: relative;
+  flex: none;
+  padding: 0 16px max(20px, env(safe-area-inset-bottom));
+  /* pointer-events: auto——2026-10 補上(使用者實機回報「推論態的輸入
+     匡還是不能用」,查證後確認是交接後的真實層 LivePlanLayer/
+     TripPlanPage 點不進輸入框):.panel 的 .passThrough(見上方該 class
+     的完整說明)手機版讓整個面板 pointer-events: none、只讓出空白處
+     給地圖手勢,原本的分工是「交接後的 TripPlanPage 由 .compactBottom
+     負責寫回 auto」——但那是 composer 還是 .panel 手足時的舊架構;
+     2026-10 第三輪重構把 composer 搬進 .panel 正常文件流、變成它的
+     子孫之後,.compactBottom 的 .compactBottom > * 選擇器(掛在
+     TripPlanPage 自己的 .page 根節點)管不到這個透過
+     ComposerSlotContext portal 出去、實際 DOM 位置落在外層
+     PlanOverlayPanel 底下的插槽——兩者不在同一棵 DOM 子樹,不是父子
+     關係,導致 composer 繼承到 .passThrough 的 pointer-events: none
+     卻沒有任何規則寫回 auto,整個輸入框看得到但點不到。直接在插槽
+     本身補上 auto,不依賴呼叫端(TripPlanPage/AIPlanTimelinePage)各自
+     記得處理——這個插槽本來就是「放輸入框的地方」,本來就該能互動。 */
+  pointer-events: auto;
 }

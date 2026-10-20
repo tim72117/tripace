@@ -21,7 +21,7 @@
 // 重建成 Map——這正是這個元件存在的核心價值,呼叫端不需要各自記得處理。
 
 import type { PlanNode, PlanTimeline } from './planTimeline'
-import { createEmptyTimeline } from './planTimeline'
+import { createEmptyTimeline, stripEphemeralNodes } from './planTimeline'
 
 // STORAGE_KEY 沿用專案既有的 tripace.* 前綴慣例(見 assistLang.ts 的
 // ASSIST_LANG_KEY、hooks/useAppState.ts 的 AUTH_* 系列)。
@@ -119,10 +119,21 @@ function sanitizeNode(node: PlanNode): PlanNode {
 export function saveTimelineForKey(key: string, timeline: PlanTimeline, baseRev = 0): number | null {
   const nextRev = baseRev + 1
   try {
+    // ephemeral 節點整個不寫入(見 PlanNodeData.ephemeral 的完整說明:
+    // sendPrompt 送出失敗時插入的錯誤訊息節點,只對這次 session 有
+    // 意義,不該永久留存)——跟 sanitizeNode 清掉單一暫態欄位
+    // (loading/removing)不同,這裡要丟棄的是整個節點;ephemeral 節點
+    // 跟其他所有節點一樣是鏈結串列的一份子(有 prevId/nextId),直接
+    // filter 掉會留下指向不存在節點的孤兒指標,必須用 stripEphemeralNodes
+    // 正確摘除、讓前後節點重新銜接(見該函式的完整說明)。只處理要存檔
+    // 的這份副本,傳入的 timeline 本身不受影響——呼叫端記憶體裡的畫面
+    // 渲染用 timeline 不變,錯誤訊息仍正常顯示,只是不會被存進
+    // localStorage。
+    const sanitizedTimeline = stripEphemeralNodes(timeline)
     const payload: PersistedTimeline = {
       version: STORAGE_VERSION,
-      headId: timeline.headId,
-      nodes: [...timeline.nodes.entries()].map(([id, node]) => [id, sanitizeNode(node)]),
+      headId: sanitizedTimeline.headId,
+      nodes: [...sanitizedTimeline.nodes.entries()].map(([id, node]) => [id, sanitizeNode(node)]),
       rev: nextRev,
     }
     localStorage.setItem(key, JSON.stringify(payload))

@@ -54,6 +54,12 @@ marketing/
 # tmp/:暫存檔案(如本機 docker-compose 覆寫設定),純本機用途。
 tmp/
 
+# .mcp.json:Claude Code 的 MCP server 宣告。每個人本機裝的 server 不同
+# (chrome-devtools 等,視當下要做什麼而定),進版控會讓別人的環境被迫
+# 載入自己沒裝、也不需要的工具。理由同上方 .claude/skills/*/bin/ 那批
+# 「每台機器內容不同,本機專用」的既有排除。
+.mcp.json
+
 # ---- 系統 / 編輯器 ----
 .DS_Store
 Thumbs.db

@@ -11,10 +11,11 @@
 // 裡的 id,placeDetails 直接用它精確查找即可,不需要另外維護一套 id
 // 對應表。
 
-import { getAttractionById } from './attractionPool'
+import { ATTRACTION_POOL, getAttractionById } from './attractionPool'
 import type {
   PlanAiDataSource,
   PlanAiPlaceDetailsResult,
+  PlanAiSearchNearbyResult,
   PlanAiTransitEstimateResult,
 } from './planAiDataSource'
 
@@ -123,10 +124,55 @@ async function fakeTransitEstimate(
   return { mode: '開車', icon: '🚗', minutes: Math.max(1, Math.round((km / 35) * 60)), distance: `${km.toFixed(1)}km` }
 }
 
+// NEARBY_CANDIDATE_RADIUS_KM/NEARBY_CANDIDATE_MAX——fakeSearchNearby 的
+// 候選範圍(2026-10 新增,見 PlanAiDataSource.searchNearby 的完整說明:
+// 供 open_ask_page 探查模式使用)。這份假資料池只有 10 筆台南景點、
+// 彼此距離本來就不遠,不需要像真後端那樣精算門檻——半徑 5km 內、最多
+// 6 筆,足以在這個固定池子裡展示「選出一批鄰近候選」的效果,不會因為
+// 範圍抓太小而每次都查到空清單。
+const NEARBY_CANDIDATE_RADIUS_KM = 5
+const NEARBY_CANDIDATE_MAX = 6
+
+// fakeSearchNearbyByCoords——依座標在 ATTRACTION_POOL 裡找鄰近候選,
+// 用 haversineKm 算直線距離排序,只取 NEARBY_CANDIDATE_RADIUS_KM 範圍內
+// 最近的幾筆(見該常數的完整說明)。excludeId 選填——query 模式找到
+// 定位點本身後,候選清單不該把這個定位點自己也列進去(呼叫端已經知道
+// 這個地點,候選應該是「附近還有哪些」而不是重複同一個)。
+function fakeSearchNearbyByCoords(lat: number, lng: number, excludeId?: string): PlanAiSearchNearbyResult {
+  const candidates = ATTRACTION_POOL
+    .filter((a) => a.id !== excludeId)
+    .map((a) => ({ attraction: a, km: haversineKm({ lat, lng }, { lat: a.lat, lng: a.lng }) }))
+    .filter(({ km }) => km <= NEARBY_CANDIDATE_RADIUS_KM)
+    .sort((a, b) => a.km - b.km)
+    .slice(0, NEARBY_CANDIDATE_MAX)
+    .map(({ attraction }) => ({ placeId: attraction.id, name: attraction.name, summary: attraction.desc, category: attraction.kind }))
+  return { found: true, candidates }
+}
+
+// fakeSearchNearby——見 PlanAiDataSource.searchNearby 的完整說明。
+// query 模式:這份假資料池沒有 Google Places Text Search 那種自由地名
+// 查詢能力,改用最簡單的名稱包含比對(query 字串出現在 PooledAttraction.name
+// 裡)在池子裡找第一筆命中的當「定位點」,取它的座標再呼叫
+// fakeSearchNearbyByCoords(用 excludeId 排除定位點本身)。找不到任何
+// 命中時回傳 found:false,對齊真後端查無地名時的既有語意。
+// coords 模式:直接呼叫 fakeSearchNearbyByCoords,不需要 excludeId
+// (呼叫端給的是一個座標,不是池子裡某一筆既有景點,沒有「排除自己」
+// 的需求)。
+async function fakeSearchNearby(input: { query: string } | { coords: { lat: number; lng: number } }): Promise<PlanAiSearchNearbyResult> {
+  await delay(FAKE_QUERY_DELAY_MS)
+  if ('coords' in input) {
+    return fakeSearchNearbyByCoords(input.coords.lat, input.coords.lng)
+  }
+  const anchor = ATTRACTION_POOL.find((a) => a.name.includes(input.query))
+  if (!anchor) return { found: false, candidates: [] }
+  return fakeSearchNearbyByCoords(anchor.lat, anchor.lng, anchor.id)
+}
+
 // planAiFakeDataSource — 這個目錄唯一對外匯出的 PlanAiDataSource 實例,
 // 直接是一個固定物件(不是工廠函式)——不像真後端實作需要 cfg 才能呼叫
 // api.ts 的 request(),這份假資料完全不需要任何建構參數。
 export const planAiFakeDataSource: PlanAiDataSource = {
   placeDetails: fakePlaceDetails,
   transitEstimate: fakeTransitEstimate,
+  searchNearby: fakeSearchNearby,
 }

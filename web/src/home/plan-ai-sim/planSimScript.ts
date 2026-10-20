@@ -51,10 +51,39 @@
 // placeId 一律用 attractionPool.ts 的 id(而非原始的 Google Place ID)
 // ——這裡的「查詢完成」是呼叫 planAiFakeDataSource.placeDetails(見該
 // 檔案的完整說明),用 id 精確查找假資料池,不是真的打 Google API。
+//
+// open_ask_page(2026-10 新增,使用者明確要求「播放畫面第一個先模擬
+// 送出一個 ask」):劇本最開頭插入這則,示範「開始安排前先讓使用者從
+// 候選景點裡選」這個流程——跟真實 LLM 呼叫這個工具的時機一致(見
+// server/tools/plan-ai/open_ask_page.yaml description 的完整說明:
+// 「適合在對話剛開始、還不清楚使用者想要哪種類型的行程時主動呼叫」)。
+// candidates 挑赤崁樓周邊幾個真實存在於 attractionPool.ts 的景點
+// (跟緊接在後面的 stop-chikanlou-area 主題卡是同一帶的景點,呼應
+// 「選完接著就排出這個區域行程」的敘事),不是憑空湊數的 id。
 
 import type { PlanAction } from './AIPlanTimelinePage'
 
 export const PLAN_SIM_SCRIPT: PlanAction[] = [
+  {
+    type: 'open_ask_page',
+    id: 'ask-chikanlou-area',
+    candidates: [
+      { placeId: 'attr-chikanlou', name: '赤崁樓' },
+      { placeId: 'attr-datianhou', name: '祀典大天后宮' },
+      { placeId: 'attr-wumiao', name: '祀典武廟' },
+    ],
+    // picks——2026-10(使用者明確定調「播放態不會有真實互動」、要求
+    // 「置換的元件本身要可以做到模擬選項被點擊發出顯眼的特效」):
+    // 這一步要「演出」被點擊的候選(見 PlanAction.picks 的完整說明)。
+    // 播放態渲染的是 ScriptedAskPage,它會依序把這兩張點出來、每次帶
+    // 一次點擊特效,再自動送出,不等真人點。
+    //
+    // 挑赤崁樓與祀典大天后宮兩張(不是三張全選):全選看起來像「預設
+    // 就都勾著」,少選一張才看得出這是一次有取捨的選擇。這兩個也正是
+    // 緊接在後面 stop-chikanlou-area 主題卡 children 裡的前兩站,
+    // 「選完接著就排出來」這條敘事才連得起來。
+    picks: ['attr-chikanlou', 'attr-datianhou'],
+  },
   // add_message 示範:LLM 一邊想一邊跟使用者說的話,排在第一筆 add_stop
   // 之前——忠實對齊「先說話、後新增景點」的真實節奏(見原始後端劇本
   // 註解的完整說明)。

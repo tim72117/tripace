@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { Route, RouteOff } from 'lucide-react'
 import type { ApiCall, WsEvent } from './api'
 import { onApiCall, onWsEvent, fetchGeoPlaceDetails, fetchGeoPlacePhotoAssets } from './api'
 import { ChatScreen } from './chat/ChatScreen'
@@ -24,7 +25,7 @@ import { reduceCategoryTagsState, initialCategoryTagsState } from './geo-plannin
 import { curatedCategoryOf } from './geo-planning/geoCuratedCategoryStub'
 import type { GeoAttraction, GeoPlaceDetails } from './api'
 import { type ContentProps } from './AppCommon'
-import { type PanelMode, DEBUG_PANEL_ENABLED, PANEL_REGISTRY } from './DesktopShared'
+import { type PanelMode, DEBUG_PANEL_ENABLED, PANEL_REGISTRY, ROUTE_LINE_ENABLED } from './DesktopShared'
 import { RouteEditor } from './demo/RouteEditor'
 // TripPlanPage:「AI 規劃」正式功能頁面(見該檔案開頭的完整說明)——lazy
 // 載入,理由同 App.tsx 對其餘整頁級路由的既有做法:這個頁面串接 onagent
@@ -164,6 +165,21 @@ export function DesktopContent(props: ContentProps) {
   // 視覺——selected 與 hover 的強調樣式刻意有差異(外環墨濃度、光暈大小),
   // 見 planStopMarkerContent 對 state 參數的完整說明。
   const [hoverPlanStopId, setHoverPlanStopId] = useState<string | null>(null)
+  // hoverTransitPair:滑鼠懸停在時間軸「交通膠囊」上時,這段交通連接的
+  // 兩個站點 id(2026-10 新增,使用者明確要求「移動到交通的膠囊上,地圖
+  // 上讓連接的兩個點都顯示 hover 狀態,並用虛線做連線」)。跟
+  // hoverPlanStopId 分開存——後者是「單一站點卡」的 hover,這個是
+  // 「交通膠囊」的 hover,兩種來源在時間軸上可能同時都沒有值、也可能
+  // 其中一種有值(使用者同一時刻只會把滑鼠停在其中一種元素上),不需要
+  // 合併成單一狀態。
+  const [hoverTransitPair, setHoverTransitPair] = useState<{ fromId: string; toId: string } | null>(null)
+  // showPlanRouteLine:「規劃行程」標頭列路徑開關的狀態(2026-10 新增,
+  // 使用者明確要求「登入後的介面規劃行程標頭列加上開關路徑的icon,打開
+  // 時,地圖上顯示所有點的線斷」,並要求「這個開關加上 feature flag」
+  // ——見 ROUTE_LINE_ENABLED 的完整說明,flag 關閉時下方 icon 按鈕根本
+  // 不會渲染,這個 state 存在與否不受 flag 影響,只是沒有入口能把它
+  // 切成 true)。預設關閉,使用者主動點擊標頭列的 icon 才開啟。
+  const [showPlanRouteLine, setShowPlanRouteLine] = useState(false)
   // pendingSchedule:使用者在還沒選定旅程時,對某個候選按了日期選擇(見
   // PlacePanel 的 onSchedule)——原本這個情境下 geo.handleScheduleCandidate
   // 內部的 tripID guard 會直接靜默 no-op,浮動匡正常關閉卻完全沒有任何
@@ -684,6 +700,8 @@ export function DesktopContent(props: ContentProps) {
                     // 間接保證。
                     selectedPlanStopId={chatPopoverVisible ? selectedPlanStopId : null}
                     hoverPlanStopId={chatPopoverVisible ? hoverPlanStopId : null}
+                    hoverTransitPair={chatPopoverVisible ? hoverTransitPair : null}
+                    showPlanRouteLine={chatPopoverVisible ? showPlanRouteLine : false}
                     onPlanStopClick={setSelectedPlanStopId}
                     city={geoSearchCity}
                     onCityChange={setGeoSearchCity}
@@ -715,6 +733,21 @@ export function DesktopContent(props: ContentProps) {
                     }}
                     hideCategoryTags={categoryTagsState.hidden}
                     onOpenChat={() => setChatPopoverOpen(true)}
+                    // chatButtonOverlay——「想去哪裡?」對話氣泡(2026-10
+                    // 使用者明確要求「氣泡的啟示位置在對話按鈕正下方」,
+                    // 且明確否決掉跨元件用絕對座標/getBoundingClientRect
+                    // 手動計算對齊的方案,要求「就做一個透明容器」)。
+                    //
+                    // 改成透過這個 prop 疊在 AI 按鈕(.citySearchAiBtn)
+                    // 正下方(見 ExploreMap.tsx 對這個 prop 的完整說明:
+                    // 定位基準是包住按鈕的透明 anchor 容器,不是任何跨
+                    // 容器算出來的像素數字),取代原本渲染在 DesktopMain
+                    // 子節點、靠 DesktopLayout.module.css 的
+                    // 外部手動估算 top/right 的做法
+                    // ——那個做法在實際畫面上量測後發現對不準(使用者
+                    // 回報「沒對齊」),根因是 .citySearch 膠囊的
+                    // width/padding 等任一個數字改變,外部這組手算的
+                    // top/right 就會跟著失真,屬於脆弱的耦合。
                     onGeocodeCandidatesChange={outlineMapState.onGeocodeCandidatesChange}
                     onAttractionSelect={geo.selectAttraction}
                     onAttractionsChange={setGeoAttractions}
@@ -948,7 +981,25 @@ export function DesktopContent(props: ContentProps) {
           <FloatingPanel
             side="right"
             width={CHAT_POPOVER_WIDTH}
-            title="對話"
+            title="規劃行程"
+            // headerAction——路徑開關 icon(2026-10 新增,使用者明確要求
+            // 「登入後的介面規劃行程標頭列加上開關路徑的icon,打開時,
+            // 地圖上顯示所有點的線斷」「這個開關加上 feature flag」)。
+            // ROUTE_LINE_ENABLED 關閉時整個不渲染這顆按鈕,不是渲染了
+            // 但點了沒反應——見 DesktopShared.tsx 同名常數的完整說明。
+            // icon 本身用開/關兩種狀態切換(Route/RouteOff),讓使用者
+            // 不需要額外的文字標籤就能分辨目前是否已經開啟。
+            headerAction={ROUTE_LINE_ENABLED ? (
+              <button
+                type="button"
+                className={styles.routeLineToggle}
+                onClick={() => setShowPlanRouteLine((v) => !v)}
+                aria-pressed={showPlanRouteLine}
+                title={showPlanRouteLine ? '隱藏路徑' : '顯示路徑'}
+              >
+                {showPlanRouteLine ? <Route size={16} strokeWidth={2} /> : <RouteOff size={16} strokeWidth={2} />}
+              </button>
+            ) : undefined}
             className={[
               styles.chatPopover,
               geoHotelSidebarVisible ? styles.chatPopoverShifted : '',
@@ -1024,6 +1075,7 @@ export function DesktopContent(props: ContentProps) {
                 selectedStopId={selectedPlanStopId}
                 onSelectedStopChange={setSelectedPlanStopId}
                 onHoverStopChange={setHoverPlanStopId}
+                onHoverTransitChange={setHoverTransitPair}
               />
             </Suspense>
           </FloatingPanel>

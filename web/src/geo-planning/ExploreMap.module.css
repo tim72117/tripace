@@ -242,7 +242,12 @@
   border: none;
   border-radius: 50%;
   background: var(--color-accent);
-  color: var(--ios-card);
+  /* 2026-10 使用者明確要求「紅色字統一搭配淺色」:原本用
+     var(--ios-card)(卡片白),深色模式下那個 token 變成 #26211D
+     深褐,等於深色字配 accent 紅底。固定白字,兩種模式一致。
+     深色模式對比 3.04:1 的已知取捨見 AiPlanPhoneDemo.module.css
+     的 .tryItCtaOutside。 */
+  color: #fff;
   cursor: pointer;
   transition: opacity 0.12s;
 }
@@ -801,7 +806,12 @@
 
 :global(.geo-attraction-overlay-selected) :global(.geo-attraction-label) {
   background: var(--color-accent);
-  color: var(--ios-card);
+  /* 2026-10 使用者明確要求「紅色字統一搭配淺色」:原本用
+     var(--ios-card)(卡片白),深色模式下那個 token 變成 #26211D
+     深褐,等於深色字配 accent 紅底。固定白字,兩種模式一致。
+     深色模式對比 3.04:1 的已知取捨見 AiPlanPhoneDemo.module.css
+     的 .tryItCtaOutside。 */
+  color: #fff;
   font-weight: 700;
 }
 

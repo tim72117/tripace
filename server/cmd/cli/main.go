@@ -134,6 +134,19 @@ func buildResources(c *httpClient, apiURL string) []resource {
 			},
 		},
 		{
+			// field-mask:Google Places 查詢要取哪些欄位(見
+			// server/internal/fieldmasks 的登錄表與
+			// handleMaintenanceFieldMaskList/Set 的完整說明)。
+			// 2026-10 新增——field mask 直接決定每次呼叫的計費層級,
+			// 單一欄位(editorialSummary)就能讓整個情境從 Pro 跳到
+			// Enterprise + Atmosphere。
+			name: "field-mask",
+			commands: []resourceCommand{
+				{verb: "list", run: func(args []string) { cmdFieldMaskList(c, args) }, usage: "tripace-cli field-mask list [-json]"},
+				{verb: "set", run: func(args []string) { cmdFieldMaskSet(c, args) }, usage: "tripace-cli field-mask set -scenario KEY -fields a,b,c"},
+			},
+		},
+		{
 			name: "entry",
 			commands: []resourceCommand{
 				{verb: "add", run: func(args []string) { cmdEntryAdd(c, args) }, usage: "tripace-cli entry add -trip ID -title 文字 [-start ...] [-start-time ...] [-end ...] [-end-time ...] [-location ...]"},
@@ -1744,6 +1757,130 @@ func cmdRateLimitSet(c *httpClient, args []string) {
 	res, err := c.rateLimitSet(*endpoint, wSec, wMs, mc, dm)
 	if err != nil {
 		fatal("rate-limit set: %v", err)
+	}
+	output(res)
+}
+
+// cmdFieldMaskList 列出全部可設定的 Google Places field mask——走
+// GET /internal/maintenance/field-masks(見 handleMaintenanceFieldMaskList
+// 的完整說明)。
+//
+// 2026-10 新增(使用者明確要求「加入可以控制欄位的設定,也讓 cli 可以
+// 設定」)。
+//
+// 預設印人看得懂的分段輸出而非表格:每個情境有不定數量的欄位、各帶
+// 計費層級與用途說明,硬塞進固定寬度的表格會讓說明欄被截斷,而那些說明
+// 正是「該不該砍這個欄位」的判斷依據。-json 輸出原始回應供管線處理
+// (理由同 rate-limit list 的同名旗標)。
+func cmdFieldMaskList(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("field-mask list", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "輸出原始 JSON 回應")
+	_ = fs.Parse(args)
+
+	res, err := c.fieldMaskList()
+	if err != nil {
+		fatal("field-mask list: %v", err)
+	}
+	if *asJSON {
+		output(res)
+		return
+	}
+	m, ok := res.(map[string]any)
+	if !ok {
+		output(res)
+		return
+	}
+	rows, ok := m["fieldMasks"].([]any)
+	if !ok {
+		output(res)
+		return
+	}
+
+	str := func(v any) string { s, _ := v.(string); return s }
+	strs := func(v any) []string {
+		arr, _ := v.([]any)
+		out := make([]string, 0, len(arr))
+		for _, x := range arr {
+			if s, ok := x.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+
+	for i, raw := range rows {
+		r, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if i > 0 {
+			fmt.Println()
+		}
+		mark := "預設值"
+		if c, _ := r["configured"].(bool); c {
+			mark = "已自訂"
+		}
+		fmt.Printf("%s  [%s]  計費層級: %s  (%s)\n",
+			str(r["key"]), mark, str(r["tier"]), str(r["endpoint"]))
+		fmt.Printf("  %s\n", str(r["desc"]))
+		fmt.Printf("  目前欄位: %s\n", strings.Join(strs(r["fields"]), ","))
+		cur := map[string]bool{}
+		for _, f := range strs(r["fields"]) {
+			cur[f] = true
+		}
+		avail, _ := r["availableFields"].([]any)
+		for _, a := range avail {
+			f, ok := a.(map[string]any)
+			if !ok {
+				continue
+			}
+			on := " "
+			if cur[str(f["name"])] {
+				on = "✓"
+			}
+			req := ""
+			if b, _ := f["required"].(bool); b {
+				req = " (必填)"
+			}
+			fmt.Printf("    [%s] %-18s %-22s%s %s\n",
+				on, str(f["name"]), str(f["tier"]), req, str(f["desc"]))
+		}
+	}
+	fmt.Println()
+	fmt.Println("Google 按「請求裡最高層級的那一個欄位」計費,所以單一欄位就能決定整個情境的單價。")
+	fmt.Printf("改完約 %d 秒內生效,不需要重啟。\n", int(ratelimits.RefreshInterval/time.Second))
+}
+
+// cmdFieldMaskSet 修改一個查詢情境要取哪些欄位——走
+// PATCH /internal/maintenance/field-masks/{key}。
+//
+// -fields 是完整取代(不是增量加減):這個設定的語意就是「這個情境要取
+// 這些欄位」,用增量語法(+a -b)會讓「目前到底有哪些」變成要自己推算。
+// 想知道可用的值與目前狀態用 field-mask list。
+//
+// 必填欄位由後端驗證(見 handleMaintenanceFieldMaskSet),CLI 不複製一份
+// 規則——否則兩邊的驗證會各自長歪。
+func cmdFieldMaskSet(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("field-mask set", flag.ExitOnError)
+	key := fs.String("scenario", "", "要修改的查詢情境(用 field-mask list 看可用的值)")
+	fields := fs.String("fields", "", "逗號分隔的欄位清單,完整取代目前設定")
+	_ = fs.Parse(args)
+
+	if *key == "" {
+		fatal("field-mask set: 需要 -scenario(用 field-mask list 看可用的值)")
+	}
+	if *fields == "" {
+		fatal("field-mask set: 需要 -fields(逗號分隔;完整取代目前設定)")
+	}
+	list := []string{}
+	for _, f := range strings.Split(*fields, ",") {
+		if f = strings.TrimSpace(f); f != "" {
+			list = append(list, f)
+		}
+	}
+	res, err := c.fieldMaskSet(*key, list)
+	if err != nil {
+		fatal("field-mask set: %v", err)
 	}
 	output(res)
 }

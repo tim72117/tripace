@@ -7,7 +7,15 @@
 
 name: add_attraction
 description: >-
-  把一個景點加入行程時間軸。placeId 必須是 search_attraction 的 nearby
+  把一個景點加入行程時間軸。
+
+  呼叫這支工具之前，每一次都必須先呼叫 list_itinerary 讀取最新的已安排
+  地點，再據此決定 anchorId 與 time——即使你覺得記得目前排了什麼，也要
+  先查。時間軸不只有你會動它（使用者可以自己刪除站點、拖曳調整時間），
+  你記憶中的狀態隨時可能已經過期。連續加入多站時每一站都要重新查一次，
+  因為你每次插入都會改變時間軸。
+
+  placeId 必須是 search_attraction 的 nearby
   清單回傳過的 placeId，或使用者剛提到的地點本身查詢結果的 placeId，
   不要自己編造。anchorId 是要插在哪個既有節點「後面」——省略或傳 "null"
   代表插在最前面；要接在某個已加入的站點之後，傳那個站點呼叫成功後回傳

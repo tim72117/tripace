@@ -105,6 +105,13 @@ tripace-cli rate-limit set -endpoint public.placeSearch -window 10
 tripace-cli rate-limit set -endpoint places.photoMedia -max-calls 30 -daily-max 50
 tripace-cli rate-limit set -endpoint geocode -daily-max 0        # 0 = 每日不限制
 
+# 列出 Google Places 查詢要取哪些欄位（含每個欄位的計費層級與用途）
+tripace-cli field-mask list
+tripace-cli field-mask list -json
+
+# 修改一個查詢情境的欄位（完整取代，不是增量）
+tripace-cli field-mask set -scenario placeDetails -fields displayName,formattedAddress,location,photos
+
 # 查詢有 place_id 但還沒有 Google 照片的景點（可選 -city 限定城市）
 GOWORK=off go run ./cmd/cli attraction query -status no-google-photo [-city "台南"]
 
@@ -170,6 +177,27 @@ GOWORK=off go run ./cmd/cli attraction sync -direction pull -apply -allow-delete
 進位成 1 秒並記一則 log（見 `cmd/server/geo_rate_limit.go` 的
 `windowSecForStore`）——所以 `rate-limit list` 看到那條規則是 1 秒而非 500ms
 時，那不是錯誤。
+
+## Google Places 欄位設定（成本）
+
+`field-mask list` 列出四個查詢情境各自要取哪些欄位。這直接決定帳單：
+Google 按**請求裡最高層級的那一個欄位**計費，所以單一欄位就能改變整個情境的單價。
+
+| 層級 | 欄位例 | Place Details 第一級單價 | 每月免費 |
+|---|---|---|---|
+| Essentials | `displayName` / `location` / `formattedAddress` | — | — |
+| Pro | `photos` / `rating` | $17 / 1000 次 | 5,000 次 |
+| Enterprise + Atmosphere | `editorialSummary` | $25 / 1000 次 | 1,000 次 |
+
+所以 `placeDetails` 拿掉 `editorialSummary` 就從 $25 降到 $17，免費額度也從 1,000 回到 5,000。
+代價是景點卡沒有簡介文字（Places API 的所有介紹性欄位——`editorialSummary` /
+`generativeSummary` / `reviewSummary` / `reviews` ——全部在最貴那一檔，Pro 級沒有任何
+文字簡介可用）。
+
+必填欄位（名稱、座標等）不可移除，後端會擋。不在登錄表裡的欄位名稱也會被拒絕
+——送 Google 不認得的欄位會讓整支 API 回 400。
+
+改完約 45 秒內生效，不需重啟。定價請在 Google 的定價頁再確認一次。
 
 ## 已知限制
 

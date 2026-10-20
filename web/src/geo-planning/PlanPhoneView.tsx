@@ -334,6 +334,7 @@ export function PlanPhoneView({
   const [categoryTagsState, dispatchCategoryTags] = useReducer(reduceCategoryTagsState, initialCategoryTagsState)
   // sheetStack:清單/資訊卡「該不該顯示」的唯一真相來源(見上方
   // SheetEntry 的說明與 useSheetStack.ts 開頭的完整背景)。
+
   const sheetStack = useSheetStack<SheetEntry>()
   // handleSelectNearbyAttraction:附近景點清單點擊項目——push 一層
   // {type:'nearby-place'} 顯示(見上方 SheetEntry 的完整說明),重用

@@ -17,6 +17,33 @@
 // prevId/nextId 兩份資料各自表達順序、卻沒有機制保證兩者一致」的
 // 偽鏈結串列——PlanTimeline 只儲存 Map<id, PlanNode>(每個節點各自的
 // prev/next 指標)與 headId,陣列從來不是被儲存的東西,渲染前一律呼叫
+// stopLookupFailed——這個 stop 的地點資料「沒拿到」。
+//
+// 2026-10 抽到領域層(review 發現)：這個判準原本各處自己寫,而
+// 「要不要顯示錯誤」(兩個時間軸元件)與「要不要重查」
+// (TripPlanPage 的掛載重試)必須用同一個判準——不一致會出現「畫面
+// 說失敗但不會自動重試」或反之。
+//
+// 判準不只看 failed,還看「有 placeId 但座標沒落地」:429 限流路徑
+// 刻意維持 loading: true 且不設 failed(見 TripPlanPage 的
+// resolveAttractionForStep 該分支),而存檔時 sanitizeNode 會剝掉
+// loading(見 planTimelineStorage.ts)。兩者相撞的結果是重整後出現
+// 「既不是 loading、也不是 failed、name 停在佔位字串『查詢中…』」的
+// 孤兒節點——沒有錯誤標示、沒有重試入口,正是 failed 這個欄位要消滅
+// 的狀態。
+//
+// 用座標當判準而不是 name:name 在插入當下就有佔位字串(見
+// attractionTools.ts),分不出「查到了」或「還沒查」;座標只有查詢
+// 成功才寫入。
+//
+// loading 為 true 時回 false——那是「正在查」,不是「沒拿到」。
+export function stopLookupFailed(node: PlanNode): boolean {
+  if (node.type !== 'stop') return false
+  if (node.loading) return false
+  if (node.failed) return true
+  return !!node.placeId && node.lat == null
+}
+
 // toRenderList() 沿著鏈結重新走訪一次現算出來,順序的唯一事實來源
 // (single source of truth)只有鏈結本身,不會有「陣列順序」跟「鏈結
 // 順序」兩者漂移不一致的問題。
@@ -74,6 +101,12 @@ export interface TransitInfo {
   mode?: string
   minutes?: number
   distance?: string
+  // note——這段交通的文字備註(例如班次、轉乘、末班車提醒),選填。
+  // 精選行程(itineraries)這種靜態資料沒有「查詢出來的分鐘/距離」,
+  // 交通資訊靠人工撰寫的備註表達,所以 minutes/distance 都可以缺:
+  // 膠囊只顯示有值的部分,備註另外在膠囊下方獨立一列顯示(版型同
+  // 站點備註 NoteInfo)。由 Routes 查詢產生的交通資訊不會帶這個欄位。
+  note?: string
 }
 
 // NoteInfo — 掛在某個節點(目前只有 stop 會用到)自己身上的一則備註,
@@ -123,6 +156,22 @@ export interface PlanNodeData {
   // 只負責承載這個狀態,不內建計時器或自動判斷邏輯。
   text?: string
   stale?: boolean
+  // ephemeral——2026-10 新增(使用者明確要求「錯誤訊息不要寫持久化」,
+  // 查證後確認的真實問題:trip-plan/TripPlanPage.tsx 的 sendPrompt 送出
+  // 失敗(例如 401 unauthorized、429 rate_limited)時,會把錯誤文案插入
+  // 成一個普通的 message 節點,而整條時間軸的任何異動都會觸發
+  // plan-core/planTimelineStorage.ts 的 saveTimeline 寫進 localStorage
+  // ——這則訊息因此永久留存:重新整理頁面、下次打開都還在,即使它只是
+  // 「剛才這次請求失敗」這個稍縱即逝的系統通知,跟真正的行程規劃內容
+  // (站點、備註、使用者/AI 的對話內容)完全不是同一種東西)。
+  //
+  // 這個欄位只有 message 節點會用到,標記為 true 的節點在記憶體/畫面上
+  // 渲染邏輯跟其他 message 節點完全一樣(不影響 stale 淡化、不影響
+  // toRenderList 排序),只有 planTimelineStorage.ts 的 saveTimeline 會
+  // 特別處理它——序列化寫入 localStorage 前整個跳過,不是只清掉某個
+  // 欄位(對齊 sanitizeNode 清 loading/removing 的既有做法,但這裡要
+  // 丟棄的是整個節點,不是節點的某個暫態欄位)。
+  ephemeral?: boolean
   // stop
   time?: string
   // day——這個 stop 屬於行程的第幾天,1-based,省略時視為第 1 天(對齊
@@ -166,6 +215,39 @@ export interface PlanNodeData {
   // 覆蓋,loading 轉 false。沒有 placeId 的 stop 這個欄位固定是 false,
   // 直接顯示假資料。
   loading?: boolean
+  // failed:這個 stop 的地點資料查詢失敗了(見 resolveAttractionForStep
+  // 的失敗分支)。
+  //
+  // 2026-10 新增(使用者明確要求「不要有任何失敗前會有的暫時性狀態跟
+  // 文字,失敗就標記該階段為錯誤,介面上做」)。
+  //
+  // 為什麼需要一個獨立欄位、而不是只把 loading 轉 false:
+  // add_attraction 插入節點時只有 placeId,沒有名稱——name 先填一個寫死
+  // 的佔位字串「查詢中…」(見 attractionTools.ts 該處的完整說明:留
+  // undefined 會讓卡片變成沒有標題的空殼)。那個佔位值的前提是「查詢
+  // 一定會完成並覆蓋它」,失敗時前提不成立:原本的失敗分支只寫
+  // { loading: false },卡片就停在「查詢中…」這個字串上,而且連轉圈的
+  // 視覺提示都沒有了——使用者看到一張寫著「查詢中…」但其實已經停止
+  // 查詢的卡,完全不知道那是哪裡、也不知道它壞了。
+  //
+  // 有了這個欄位,渲染層就能明確畫出錯誤狀態(見 PlanTimelineView /
+  // HorizontalPlanTimeline 對 failed 的處理),而不是靠「loading 是
+  // false 但 name 還是佔位字串」這種隱性的、讀不出意圖的組合去推斷。
+  //
+  // 跟 loading 互斥:失敗時 loading 必須一併設成 false(兩者同時為 true
+  // 沒有意義)。重試成功時這個欄位要清掉(設 undefined 或 false)。
+  //
+  // 持久化:這個欄位**要**存進 localStorage,刻意跟 loading/removing
+  // 相反(那兩個會被 sanitizeNode 剝掉,見 planTimelineStorage.ts 該函式
+  // 的完整說明)。理由:使用者明確要求「重整後要進行重試」——重整後必須
+  // 知道哪幾站是失敗狀態才能重查,若存檔時剝掉,讀回來的節點看起來就是
+  // 一般的已完成節點(只是 name 停在佔位字串),沒有任何線索可以觸發重試。
+  //
+  // loading 不能存是因為「那次請求隨頁面關閉就結束了,沒有任何進行中的
+  // 請求會把它翻回 false」;failed 不一樣——它描述的是一個**已經定案的
+  // 結果**,而那個結果在重整後仍然成立(那一站的資料確實還沒拿到),
+  // 所以它該被保留,並由掛載時的重試邏輯消化掉。
+  failed?: boolean
   // googlePhotoUrls:比照地圖版景點介紹卡的多圖瀏覽需求(見
   // PhotoCarousel.tsx)。UI 縮圖固定只顯示第一張,Lightbox 放大瀏覽時
   // 才看得到完整清單。
@@ -821,4 +903,52 @@ export function staleOtherAgentMessages(timeline: PlanTimeline, excludeId: strin
     }
   }
   return changed ? { nodes, headId: timeline.headId } : timeline
+}
+
+// stripEphemeralNodes — 把所有標記 ephemeral:true 的節點(見
+// PlanNodeData.ephemeral 的完整說明:sendPrompt 送出失敗時插入的錯誤
+// 訊息,只對這次 session 有意義)從鏈結中摘除,前後節點正確銜接,
+// headId 視需要跟著調整。供 planTimelineStorage.ts 的 saveTimelineForKey
+// 在序列化前呼叫,只影響「存進 localStorage 的那份副本」,不影響傳入的
+// timeline 本身(呼叫端記憶體裡的畫面渲染用 timeline 不受影響,錯誤訊息
+// 仍然正常顯示,只是不會被存檔)。
+//
+// 不直接複用 removeNode:那個函式是為「使用者主動移除一個行程站點」
+// 設計的業務邏輯,帶有 already_removing 檢查、stop 節點間
+// transitFromPrev 清空等跟這裡完全無關的分支,且回傳結構化的
+// RemoveNodeResult(需要呼叫端處理 ok/error)——這裡要做的只是單純的
+// 批次鏈結摘除,沒有「找不到」或「已在移除中」這類情境需要回報,直接走
+// 一次 Map 自己接好鏈結更單純,不需要背上 removeNode 的錯誤處理介面。
+export function stripEphemeralNodes(timeline: PlanTimeline): PlanTimeline {
+  let hasEphemeral = false
+  for (const node of timeline.nodes.values()) {
+    if (node.ephemeral) {
+      hasEphemeral = true
+      break
+    }
+  }
+  if (!hasEphemeral) return timeline
+
+  const nodes = new Map(timeline.nodes)
+  let headId = timeline.headId
+  // 疊代 timeline.nodes 取得要處理的 id 清單,但讀寫一律經過 nodes(正在
+  // 修改中的那份)——若有連續兩個 ephemeral 節點相鄰,第一個被摘除時會
+  // 更新第二個的 prevId;第二個節點自己被處理時,必須讀到這個已經更新
+  // 過的 prevId(從 nodes 讀),而不是 timeline 裡那份摘除前的舊值,
+  // 否則鏈結會接到一個已經被摘除、不存在的節點上。
+  for (const id of timeline.nodes.keys()) {
+    const node = nodes.get(id)
+    if (!node || !node.ephemeral) continue
+    nodes.delete(id)
+    if (node.prevId !== null) {
+      const prevNode = nodes.get(node.prevId)
+      if (prevNode) nodes.set(node.prevId, { ...prevNode, nextId: node.nextId })
+    }
+    if (node.nextId !== null) {
+      const nextNode = nodes.get(node.nextId)
+      if (nextNode) nodes.set(node.nextId, { ...nextNode, prevId: node.prevId })
+    }
+    if (headId === id) headId = node.nextId
+  }
+  return { nodes, headId }
 }

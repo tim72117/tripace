@@ -11,6 +11,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,7 +46,67 @@ var (
 	// instance 呼叫 SetLimitForKey 會立即反映到 Gateway.Do 下一次呼叫
 	// Allow 時讀到的規則,不需要重建 Gateway、不需要繞過 sync.Once。
 	defaultRateLimiter *apigateway.RateLimiter
+	// fieldMaskOverrides 是執行期可覆寫的 field mask(key 是
+	// fieldmasks.Scenario.Key,值是完整的 X-Goog-FieldMask 字串)。
+	//
+	// 2026-10 新增(使用者明確要求「加入可以控制欄位的設定,也讓 cli
+	// 可以設定」):field mask 直接決定每次 Google Places 呼叫的計費層級
+	// (最高層級的那一個欄位決定整筆價格,見 internal/fieldmasks 的完整
+	// 說明),原本寫死在下方那幾個 const 裡,調整只能改程式碼重新部署。
+	//
+	// 沒有覆寫時各呼叫處用原本的 const——那是刻意的:這個設定的目的是
+	// 讓運維「能夠」調整,不是在沒人同意的情況下改變預設行為。
+	//
+	// 用 RWMutex 保護:寫入來自 cmd/server 的背景重讀 goroutine,讀取
+	// 來自每一次 API 呼叫(頻率高得多),讀多寫少正好是 RWMutex 的情境。
+	// 理由同 defaultRateLimiter 那段說明:這裡存的是 package 級狀態,
+	// 要讓設定在 Gateway 已經建立之後仍然可以改。
+	fieldMaskMu        sync.RWMutex
+	fieldMaskOverrides = map[string]string{}
 )
+
+// SetFieldMaskOverrides 覆寫執行期的 field mask 設定(見
+// fieldMaskOverrides 的完整說明)。整份取代而非逐筆合併:呼叫端
+// (cmd/server 的重讀迴圈)每次都從資料庫讀出完整狀態,逐筆合併會讓
+// 「某個情境的設定被刪掉」這件事無法表達。
+func SetFieldMaskOverrides(m map[string]string) {
+	next := make(map[string]string, len(m))
+	for k, v := range m {
+		if v == "" {
+			continue
+		}
+		next[k] = v
+	}
+	fieldMaskMu.Lock()
+	fieldMaskOverrides = next
+	fieldMaskMu.Unlock()
+}
+
+// hasField 判斷一個 X-Goog-FieldMask 字串裡是否已經有某個欄位。
+//
+// 用逗號切開精確比對而不是 strings.Contains:欄位名稱可能是另一個的
+// 子字串(例如 "photos" 之於 "places.photos"),Contains 會誤判成已經
+// 存在、於是漏掉該附加的欄位。
+func hasField(mask, field string) bool {
+	for _, f := range strings.Split(mask, ",") {
+		if strings.TrimSpace(f) == field {
+			return true
+		}
+	}
+	return false
+}
+
+// fieldMaskFor 取某個情境實際要用的 mask——有覆寫用覆寫的,否則用傳入的
+// 預設值(各呼叫處原本的 const)。
+func fieldMaskFor(scenarioKey, fallback string) string {
+	fieldMaskMu.RLock()
+	v, ok := fieldMaskOverrides[scenarioKey]
+	fieldMaskMu.RUnlock()
+	if ok {
+		return v
+	}
+	return fallback
+}
 
 // ConfigureDefaultGateway 設定預設 Gateway 的節流參數與記錄器——必須在
 // process 內第一次呼叫 geo.New() 之前呼叫才會生效(典型用法是在
@@ -150,8 +211,8 @@ type RateLimitConfig struct {
 // placeGetEndpoint 同時對應 GetPlaceDetails(查名稱/地址/評分/簡介)與
 // ListPlacePhotoRefs(只查 photos[] 長度,用於漸進補圖判斷是否需要重新
 // 確認 target)——兩者在 internal/geo/places.go 裡呼叫 gateway.Do 時
-// 都寫死傳入 "places.get"(見稽核報告
-// docs/audit-place-photo-cost-control-2026-09.md 問題 1 的既有記錄)。
+// 都寫死傳入 "places.get"(2026-09 地點照片成本稽核時的既有記錄,該項
+// 已修復並從 docs/audit-place-photo-cost-control-2026-09.md 移除)。
 // 這裡刻意不為 ListPlacePhotoRefs 另外拆一個獨立的 endpoint 字串(例如
 // "places.photoRefs")來精確對應「地點照片 vs 地點資訊」的語意——理由:
 //  1. Google 端實際計費層級上,ListPlacePhotoRefs 走的是 Place Details
@@ -776,9 +837,18 @@ func (c *Client) Search(ctx context.Context, place string, opts *SearchOptions) 
 	// fieldMask 只取 Essentials 級欄位(呼叫成本最低);IncludePhotos 為
 	// true 時額外要求 photos(Pro 級欄位),比照 SearchNearby 既有模式,見
 	// SearchOptions.IncludePhotos 的說明。
-	fm := fieldMask
-	if includePhotos {
-		fm = fieldMask + ",places.photos"
+	// 2026-10（review 發現）：這裡原本直寫 fieldMask const,是四個情境裡
+	// 唯一沒接上 fieldMaskFor 的——CLI 設定 textSearch 會回 200、list 也
+	// 顯示「已自訂」,但實際送給 Google 的 header 永遠是 const,等於設定
+	// 成功的假象(在成本控制功能上特別危險:操作者以為砍了欄位、降了檔,
+	// 實際完全沒有)。
+	//
+	// includePhotos 的附加也改成建立在覆寫結果上,不是退回 const——原本
+	// 寫 `fm = fieldMask + ",places.photos"`,那會讓 IncludePhotos: true
+	// 的呼叫整個繞過設定機制,形成「看情況才生效」的設定。
+	fm := fieldMaskFor("textSearch", fieldMask)
+	if includePhotos && !hasField(fm, "places.photos") {
+		fm += ",places.photos"
 	}
 	req, err := c.newPlacesSearchRequest(ctx, placesURL, reqBody, fm)
 	if err != nil {
@@ -956,7 +1026,7 @@ func (c *Client) SearchCityAttractions(ctx context.Context, query string, maxRes
 		"textQuery": query,
 		"pageSize":  maxResults,
 	}
-	req, err := c.newPlacesSearchRequest(ctx, placesURL, reqBody, districtFieldMask)
+	req, err := c.newPlacesSearchRequest(ctx, placesURL, reqBody, fieldMaskFor("cityDistricts", districtFieldMask))
 	if err != nil {
 		return nil, err
 	}
@@ -1115,7 +1185,7 @@ func (c *Client) SearchLandmarkWithPhoto(ctx context.Context, query string) (pla
 		"textQuery": query,
 		"pageSize":  1,
 	}
-	req, err := c.newPlacesSearchRequest(ctx, placesURL, reqBody, districtFieldMask)
+	req, err := c.newPlacesSearchRequest(ctx, placesURL, reqBody, fieldMaskFor("cityDistricts", districtFieldMask))
 	if err != nil {
 		return Place{}, "", 0, "", err
 	}
@@ -1204,7 +1274,7 @@ func (c *Client) GetPlaceDetails(ctx context.Context, placeID string) (PlaceDeta
 		return PlaceDetails{}, ErrNotFound
 	}
 
-	req, err := c.newPlaceDetailsRequest(ctx, "places/"+placeID, placeDetailsFieldMask)
+	req, err := c.newPlaceDetailsRequest(ctx, "places/"+placeID, fieldMaskFor("placeDetails", placeDetailsFieldMask))
 	if err != nil {
 		return PlaceDetails{}, err
 	}
@@ -1527,9 +1597,11 @@ func (c *Client) SearchNearby(ctx context.Context, lat, lng float64, opts *Nearb
 	if len(includedTypes) > 0 {
 		reqBody["includedTypes"] = includedTypes
 	}
-	fm := nearbyFieldMask
-	if includePhotos {
-		fm = nearbyFieldMask + ",places.photos"
+	fm := fieldMaskFor("nearbySearch", nearbyFieldMask)
+	// 理由同 Search 的同一處(review 發現):附加 photos 要建立在覆寫
+	// 結果上,不是退回 const。
+	if includePhotos && !hasField(fm, "places.photos") {
+		fm += ",places.photos"
 	}
 	req, err := c.newPlacesSearchRequest(ctx, nearbyURL, reqBody, fm)
 	if err != nil {

@@ -225,7 +225,8 @@ type Server struct {
 	geoQueryIPRateLimiter *apigateway.RateLimiter
 
 	// planAiChatRateLimiter 保護 POST /internal/plan-ai/chat(見
-	// plan_ai_chat.go 的完整說明),用 key = s.userFor(r).ID 做 per-user
+	// plan_ai_chat.go 的完整說明),用 key = user.ID(已登入使用者的真實
+	// ID,或訪客的 X-Guest-Id,見 userOrGuestFor 的完整說明)做 per-user
 	// 節流——跟 geoQueryUserRateLimiter 共用同一個元件(apigateway.
 	// RateLimiter)但刻意用獨立實例,不混用同一份 key 空間:AI 規劃對話
 	// 跟地圖查詢是不同的資源,不該互相排擠彼此的配額(例如使用者在地圖上
@@ -233,6 +234,36 @@ type Server struct {
 	// 還能不能送出下一則 AI 對話訊息,反之亦然)。限制值見
 	// planAiChatRateLimitWindow/planAiChatRateLimitMaxCalls 的完整說明。
 	planAiChatRateLimiter *apigateway.RateLimiter
+
+	// planAiChatIPRateLimiter 保護 2026-10 新開放給訪客的
+	// POST /public/plan-ai/chat 與 POST /public/plan-ai/chat/reply(見
+	// withPlanAiChatIPThrottle 的完整說明)——理由跟 geoQueryIPRateLimiter
+	// 類似但不完全相同:這支端點的 per-user 節流(planAiChatRateLimiter)
+	// 對訪客並非完全無效(訪客各自帶獨立的 X-Guest-Id,見 userOrGuestFor
+	// 的完整說明,不會像舊版共用固定 guestUser.ID 那樣讓 per-user 節流
+	// 整個失效),但 X-Guest-Id 是前端存在 localStorage 的值,清掉
+	// localStorage 或換一個瀏覽器/無痕視窗就能拿到全新的 id、繞過
+	// per-user 節流——疊加一層以來源 IP 為 key 的節流,讓「換 id 繞過
+	// per-user 限制」這條路徑仍然受到同一來源 IP 的總量限制,跟
+	// geoQueryIPRateLimiter 疊加 geoQueryUserRateLimiter 的既有理由一致。
+	planAiChatIPRateLimiter *apigateway.RateLimiter
+
+	// geoAttractionsIPRateLimiter 保護 2026-10 新開放給訪客的
+	// GET /public/geo/attractions/nearby 與 GET /public/geo/attractions
+	// (見 throttleGeoAttractionsByIP 的完整說明)——這兩支複製自需登入的
+	// handleGeoAttractionsNearby/handleGeoAttractions,內部都會呼叫
+	// fetchNearbyHotels 即時查 Google Places Nearby Search(計費),
+	// handleGeoAttractions 在資料庫查無資料時還會額外 fallback 到
+	// SearchCityAttractions(同樣計費)。這兩支風險等級相同(都會觸發
+	// 計費 API),刻意共用同一個 RateLimiter 實例與同一組節流函式,不像
+	// geoQueryIPRateLimiter/planAiChatIPRateLimiter 那樣各自獨立一份
+	// ——不是疏漏,是因為這裡要保護的是「訪客能觸發多少次計費查詢」
+	// 這一件事本身,兩支端點是同一個風險池,沒有必要分開計算配額。
+	// 跟 geoQueryIPRateLimiter(純查資料庫/輕量端點,300 次/60 秒)分開
+	// 一個獨立實例,是因為這裡的上限需要嚴格得多(見
+	// geoAttractionsIPThrottleMaxCalls 的完整說明),不能跟風險較低的
+	// 查詢共用同一組規則。
+	geoAttractionsIPRateLimiter *apigateway.RateLimiter
 }
 
 // geoQueryUserThrottleWindow/geoQueryUserThrottleMaxCalls 是
@@ -269,6 +300,90 @@ const geoQueryIPThrottleMaxCalls = 300
 // 日後應依 plan_ai_chat_messages 表的實際寫入頻率重新評估調整。
 const planAiChatRateLimitWindow = 60 * time.Second
 const planAiChatRateLimitMaxCalls = 10
+
+// planAiChatIPThrottleWindow/planAiChatIPThrottleMaxCalls 是
+// planAiChatIPRateLimiter 預設的節流規則——沿用跟 planAiChatRateLimiter
+// 相同的視窗長度(60 秒),上限值刻意比 per-user 的 10 次寬鬆一些
+// (30 次):這一層保護的是「同一來源 IP 底下所有訪客的總和」,正常情境
+// 下一個 IP 後面可能有多位訪客各自在對話(NAT/公司網路/校園網路),用
+// 跟 per-user 完全相同的上限會讓這些正常情境下的多人同時使用被誤擋;
+// 30 次仍然遠低於任何正常對話量級會觸及的程度,足以擋住「不斷清
+// localStorage 換新 X-Guest-Id 繞過 per-user 節流」這種濫用路徑。
+const planAiChatIPThrottleWindow = 60 * time.Second
+const planAiChatIPThrottleMaxCalls = 30
+
+// throttlePlanAiChatByIP 是 throttleGeoQueryByIP 的對應版本,保護
+// 2026-10 新開放給訪客的 POST /public/plan-ai/chat 與
+// POST /public/plan-ai/chat/reply(見 planAiChatIPRateLimiter 欄位的
+// 完整說明)。key 同樣用 clientIP(r)(見該函式說明)。
+//
+// 回傳 true 代表這次請求可以繼續處理;回傳 false 代表已經寫好 429
+// 回應,呼叫端應該立刻 return,不再執行任何後續邏輯。
+func (s *Server) throttlePlanAiChatByIP(w http.ResponseWriter, r *http.Request) bool {
+	if s.planAiChatIPRateLimiter.AllowWithLimit(clientIP(r), planAiChatIPThrottleWindow, planAiChatIPThrottleMaxCalls) {
+		return true
+	}
+	writeErr(w, http.StatusTooManyRequests, "rate_limited", "訊息送得太快了,請稍後再試")
+	return false
+}
+
+// withPlanAiChatIPThrottle 包一層 throttlePlanAiChatByIP 檢查在 next
+// 前面,供 Routes 註冊 /public/plan-ai/chat* 這批公開端點時使用,寫法
+// 對齊 withGeoQueryIPThrottle 的既有模式(見該函式的完整說明:節流檢查
+// 是路由層的關注點,留在路由註冊處,不讓 handler 自己判斷掛在哪組
+// mux 上)。
+func withPlanAiChatIPThrottle(s *Server, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.throttlePlanAiChatByIP(w, r) {
+			return
+		}
+		next(w, r)
+	}
+}
+
+// geoAttractionsIPThrottleWindow/geoAttractionsIPThrottleMaxCalls 是
+// geoAttractionsIPRateLimiter 預設的節流規則——保護 2026-10 新開放給
+// 訪客的 GET /public/geo/attractions/nearby 與 GET /public/geo/attractions
+// (見該欄位的完整說明)。這兩支都會觸發計費的 Google Places API 呼叫
+// (fetchNearbyHotels,handleGeoAttractions 另外還可能觸發
+// SearchCityAttractions),風險遠高於 geoQueryIPRateLimiter 保護的純查詢/
+// 輕量端點(300 次/60 秒),故上限抓嚴格許多——比照同樣「會觸發昂貴
+// 操作」情境下的既有先例 planAiChatIPThrottleMaxCalls(30 次/60 秒,見
+// 該常數的完整說明:這一層保護的是同一來源 IP 底下所有訪客的總和,
+// 需要在「擋住濫用」與「NAT/公司網路多人共用同一對外 IP 的正常情境
+// 不被誤擋」之間取捨),這裡直接沿用同一個數值與理由。
+const geoAttractionsIPThrottleWindow = 60 * time.Second
+const geoAttractionsIPThrottleMaxCalls = 30
+
+// throttleGeoAttractionsByIP 是 throttleGeoQueryByIP 的對應版本,保護
+// 2026-10 新開放給訪客的 GET /public/geo/attractions/nearby 與
+// GET /public/geo/attractions(見 geoAttractionsIPRateLimiter 欄位的完整
+// 說明)。key 同樣用 clientIP(r)(見該函式說明)。
+//
+// 回傳 true 代表這次請求可以繼續處理;回傳 false 代表已經寫好 429
+// 回應,呼叫端應該立刻 return,不再執行任何後續邏輯(含不再呼叫 handler
+// 本身)。
+func (s *Server) throttleGeoAttractionsByIP(w http.ResponseWriter, r *http.Request) bool {
+	if s.geoAttractionsIPRateLimiter.AllowWithLimit(clientIP(r), geoAttractionsIPThrottleWindow, geoAttractionsIPThrottleMaxCalls) {
+		return true
+	}
+	writeErr(w, http.StatusTooManyRequests, "rate_limited", "查詢過於頻繁,請稍後再試")
+	return false
+}
+
+// withGeoAttractionsIPThrottle 包一層 throttleGeoAttractionsByIP 檢查在
+// next 前面,供 Routes 註冊 /public/geo/attractions* 這批新公開端點時
+// 使用,寫法對齊 withGeoQueryIPThrottle 的既有模式(見該函式的完整說明:
+// 節流檢查是路由層的關注點,留在路由註冊處,不讓 handler 自己判斷掛在
+// 哪組 mux 上)。
+func withGeoAttractionsIPThrottle(s *Server, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.throttleGeoAttractionsByIP(w, r) {
+			return
+		}
+		next(w, r)
+	}
+}
 
 func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID string) *Server {
 	uploader, err := photostorage.New(context.Background(), os.Getenv("GCS_PHOTO_BUCKET"))
@@ -337,24 +452,37 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 	// geoQueryUserRateLimiter 的完整說明)。
 	planAiChatRateLimiter := apigateway.NewRateLimiter()
 
+	// planAiChatIPRateLimiter:跟 geoQueryIPRateLimiter 一樣,key 是動態的
+	// 來源 IP 集合,不在這裡預先設定規則——改由 throttlePlanAiChatByIP
+	// (見該函式的完整說明)每次請求時用 AllowWithLimit 帶入視窗與上限。
+	planAiChatIPRateLimiter := apigateway.NewRateLimiter()
+
+	// geoAttractionsIPRateLimiter:跟 geoQueryIPRateLimiter 一樣,key 是
+	// 動態的來源 IP 集合,不在這裡預先設定規則——改由
+	// throttleGeoAttractionsByIP(見該函式的完整說明)每次請求時用
+	// AllowWithLimit 帶入視窗與上限。
+	geoAttractionsIPRateLimiter := apigateway.NewRateLimiter()
+
 	return &Server{
-		store:                     st,
-		signer:                    signer,
-		hub:                       newHub(),
-		devMode:                   devMode,
-		googleClientID:            googleClientID,
-		guestUser:                 model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
-		adminBootstrapEmail:       os.Getenv("ADMIN_BOOTSTRAP_EMAIL"),
-		photoCache:                storePhotoCache{store: st},
-		photoUploader:             uploader,
-		blogPhotoUploader:         blogPhotoUploader,
-		newGeoGeocodeClient:       geo.New,
-		newPlaceDetailsClient:     geo.New,
-		newMaintenancePhotoClient: geo.New,
-		planAiRateLimiter:         planAiRateLimiter,
-		geoQueryUserRateLimiter:   geoQueryUserRateLimiter,
-		geoQueryIPRateLimiter:     geoQueryIPRateLimiter,
-		planAiChatRateLimiter:     planAiChatRateLimiter,
+		store:                       st,
+		signer:                      signer,
+		hub:                         newHub(),
+		devMode:                     devMode,
+		googleClientID:              googleClientID,
+		guestUser:                   model.User{ID: "usr_me", Name: "我", AvatarColor: "#8C7B6A"},
+		adminBootstrapEmail:         os.Getenv("ADMIN_BOOTSTRAP_EMAIL"),
+		photoCache:                  storePhotoCache{store: st},
+		photoUploader:               uploader,
+		blogPhotoUploader:           blogPhotoUploader,
+		newGeoGeocodeClient:         geo.New,
+		newPlaceDetailsClient:       geo.New,
+		newMaintenancePhotoClient:   geo.New,
+		planAiRateLimiter:           planAiRateLimiter,
+		geoQueryUserRateLimiter:     geoQueryUserRateLimiter,
+		geoQueryIPRateLimiter:       geoQueryIPRateLimiter,
+		planAiChatRateLimiter:       planAiChatRateLimiter,
+		planAiChatIPRateLimiter:     planAiChatIPRateLimiter,
+		geoAttractionsIPRateLimiter: geoAttractionsIPRateLimiter,
 	}
 }
 
@@ -807,12 +935,32 @@ func (s *Server) Routes() http.Handler {
 	// throttleGeoQueryByIP,見兩者的完整說明)疊加在 handler 本身既有的
 	// per-user 節流之上,理由是訪客沒有登入身份、per-user 節流對訪客
 	// 一律退化成共用同一把 s.guestUser 配額,幾乎沒有保護效果。place-
-	// details-any/attraction/{id}/transit-estimate 這三支仍刻意只留在
-	// /internal/geo/plan-ai/*——/ai-plan 展示頁排行程的最低需求只需要
-	// 查詢(place-search/attraction-search),不需要查單筆細節/交通預估,
-	// 不擴大開放範圍超出目前確認的需求。
+	// details-any 這一支原本也刻意只留在 /internal/geo/plan-ai/*,但實測
+	// 發現 AskPage.tsx 顯示候選卡片(名稱/照片/attractionId)一定會呼叫
+	// 這支端點補完整資料,不是可有可無的加值功能——判斷有誤,這其實也是
+	// /ai-plan 展示頁排行程的最低需求之一(訪客呼叫 search_attraction 查
+	// 到候選、open_ask_page 顯示候選卡片這整段流程缺了它就只能看到空白
+	// 候選卡片)。改成比照 place-search/attraction-search 的既有做法開放
+	// 為公開端點:同樣只靠拒絕型限流把關(沒有白名單可限制查詢範圍,可查
+	// 任意 placeID),疊加 withGeoQueryIPThrottle。attraction/{id}/
+	// transit-estimate 這兩支目前確認的展示頁流程不需要查詢,仍留在
+	// /internal/geo/plan-ai/*,不一併擴大開放範圍。
 	mux.HandleFunc("GET /public/geo/plan-ai/place-search", withGeoQueryIPThrottle(s, s.handlePublicGeoPlaceSearch))
 	mux.HandleFunc("GET /public/geo/plan-ai/attraction-search", withGeoQueryIPThrottle(s, s.handlePublicGeoAttractionSearch))
+	mux.HandleFunc("GET /public/geo/plan-ai/place-details-any", withGeoQueryIPThrottle(s, s.handlePublicGeoPlaceDetailsAny))
+	// POST /public/plan-ai/chat、/public/plan-ai/chat/reply——2026-10 新增
+	// (使用者明確要求「/internal/plan-ai/chat 要沒登入時也可以做」):
+	// /ai-plan 展示頁(web/src/home/plan-ai-sim/LivePlanLayer.tsx)讓訪客
+	// 體驗真實 AI 對話排行程,訪客沒有 JWT,掛在 internalAuth 底下的
+	// /internal/plan-ai/chat 會讓這支呼叫一律 401(internalAuth 本身在
+	// 沒有合法 Authorization header 時就直接擋下,見該中間件的完整
+	// 說明,根本不會進到 handler)。複用同一支 handlePlanAiChat/
+	// handlePlanAiChatReply(見兩者開頭的完整說明,內部用 userOrGuestFor
+	// 同時支援已登入使用者與帶合法格式 X-Guest-Id 的訪客),這裡只是另外
+	// 掛一份不經過 internalAuth 的公開路由,疊加以來源 IP 為 key 的節流
+	// (withPlanAiChatIPThrottle,見該函式的完整說明)。
+	mux.HandleFunc("POST /public/plan-ai/chat", withPlanAiChatIPThrottle(s, s.handlePlanAiChat))
+	mux.HandleFunc("POST /public/plan-ai/chat/reply", withPlanAiChatIPThrottle(s, s.handlePlanAiChatReply))
 	mux.HandleFunc("GET /public/geo/place-details", s.handlePublicGeoPlaceDetails)
 	// GET /public/geo/place-photo-assets:handlePublicGeoPlacePhotoAssets
 	// 的免登入版(見該函式的完整說明)——純讀 photo_assets,不觸發點擊
@@ -837,6 +985,31 @@ func (s *Server) Routes() http.Handler {
 	// 的邏輯,不重寫第二份。舊的 internalMux 掛載點維持不變,/plan-ai
 	// 既有呼叫端不受影響。
 	mux.HandleFunc("GET /public/geo/attraction/{id}", s.handlePublicGeoAttractionByID)
+
+	// GET /public/geo/attractions/nearby-only、GET /public/geo/attractions/
+	// nearby——2026-10 新增,複製自需登入的
+	// /internal/geo/attractions/nearby-only、/internal/geo/attractions/
+	// nearby(見 handleGeoAttractionsOnlyNearby/handleGeoAttractionsNearby
+	// 的完整說明),複用同一支 handler,不是重寫第二份邏輯。
+	//
+	// 風險分級不同,故套用不同的節流:
+	//   - nearby-only 只查 store.ListAttractionsNearby(人工建檔資料庫,
+	//     免費,不觸發任何外部 API),是這批裡風險最低的,沿用現有的
+	//     withGeoQueryIPThrottle(300 次/60 秒,見該函式與
+	//     geoQueryIPThrottleMaxCalls 的完整說明),不需要另外收緊。
+	//   - nearby 內部會呼叫 fetchNearbyHotels 即時查 Google Places Nearby
+	//     Search(計費),風險等級對齊 plan-ai 那組會觸發計費 API 的端點,
+	//     改用新增的 withGeoAttractionsIPThrottle(30 次/60 秒,見
+	//     geoAttractionsIPRateLimiter 欄位的完整說明)。
+	//
+	// 注意:GET /public/geo/attractions 這個路徑已被上面的
+	// handlePublicGeoAttractions(城市白名單限制查詢範圍,見該函式的完整
+	// 說明)佔用——是完全不同的 handler,不是本次要公開的
+	// handleGeoAttractions(/internal/geo/attractions 的核心邏輯,
+	// city 參數任意、無白名單限制)。兩者路徑衝突,未比照這裡的模式新增
+	// handleGeoAttractions 的公開掛載點,需要另外決定路徑或處理方式。
+	mux.HandleFunc("GET /public/geo/attractions/nearby-only", withGeoQueryIPThrottle(s, s.handleGeoAttractionsOnlyNearby))
+	mux.HandleFunc("GET /public/geo/attractions/nearby", withGeoAttractionsIPThrottle(s, s.handleGeoAttractionsNearby))
 
 	// 註:AI 規劃時間軸的「模擬推論 WebSocket」(handlePlanSimWS)不在這個
 	// 分支上——它只服務試作原型(web/src/plan-ai/AIPlanTimelinePage.tsx),
@@ -890,6 +1063,13 @@ func (s *Server) Routes() http.Handler {
 	// 介紹頁那三支有城市/placeID 白名單可以限制查詢範圍(這批可以查任意
 	// 地名、任意 placeID),只靠拒絕型限流把關,等於任何訪客都能消耗
 	// Google Places 的計費配額。搬到 internalAuth 底下關掉這個曝險。
+	//
+	// 2026-10:其中 place-search/attraction-search/place-details-any 三支
+	// 後來又重新開放為公開端點(見上方 mux 區塊 /public/geo/plan-ai/* 的
+	// 完整說明),這裡的 /internal/geo/plan-ai/* 版本保留給已登入使用者
+	// 走(正式功能 TripPlanPage.tsx 的 ClientConfig 帶 token 時固定打
+	// /internal/*,見 web/src/api.ts fetchPlanAi* 系列函式的既有模式),
+	// 兩條路徑背後是同一個 handler,只是訪客/登入分流,不是重複定義。
 	internalMux.HandleFunc("GET /internal/geo/plan-ai/place-search", s.handlePublicGeoPlaceSearch)
 	internalMux.HandleFunc("GET /internal/geo/plan-ai/attraction-search", s.handlePublicGeoAttractionSearch)
 	internalMux.HandleFunc("GET /internal/geo/plan-ai/place-details-any", s.handlePublicGeoPlaceDetailsAny)
@@ -913,6 +1093,11 @@ func (s *Server) Routes() http.Handler {
 	// rate-limit 指令,不是產品前端。
 	internalMux.HandleFunc("GET /internal/maintenance/rate-limits", s.handleMaintenanceRateLimitList)
 	internalMux.HandleFunc("PATCH /internal/maintenance/rate-limits/{endpoint}", s.handleMaintenanceRateLimitSet)
+	// field-masks——列出/修改 Google Places 查詢要取哪些欄位(見兩支
+	// handler 的完整說明)。跟 rate-limits 同一個命名空間與呼叫者:
+	// 兩者都是成本設定,由 tripace-cli 或後台操作,不是產品前端。
+	internalMux.HandleFunc("GET /internal/maintenance/field-masks", s.handleMaintenanceFieldMaskList)
+	internalMux.HandleFunc("PATCH /internal/maintenance/field-masks/{key}", s.handleMaintenanceFieldMaskSet)
 	internalMux.HandleFunc("GET /internal/maintenance/attractions/query", s.handleMaintenanceAttractionQuery)
 	internalMux.HandleFunc("DELETE /internal/maintenance/attractions/{id}", s.handleMaintenanceAttractionDelete)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/coords", s.handleMaintenanceAttractionUpdateCoords)

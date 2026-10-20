@@ -348,8 +348,18 @@ func (s *Server) fetchNearbyHotels(ctx context.Context, client *geo.Client, lat,
 // 內嵌在這支端點的 JSON 回應裡——不再另外開一支圖片代理端點:圖片是
 // 隨這支已驗證(internalAuth)的 JSON 回應一起送出,前端透過既有的
 // fetch()+Authorization header 拿到即可直接當 <img src> 用,不受
-// 瀏覽器 <img> 標籤無法附加自訂驗證 header 的限制,也不需要額外開一支
-// 不驗證的公開端點。
+// 瀏覽器 <img> 標籤無法附加自訂驗證 header 的限制。
+//
+// 2026-10:這支端點原計畫比照 handleGeoAttractionsNearby/
+// handleGeoAttractionsOnlyNearby 一併新增免登入版(見這兩支的完整說明),
+// 但 GET /public/geo/attractions 這個路徑已被 handlePublicGeoAttractions
+// (geo_outline_public.go,城市白名單限制查詢範圍)佔用——是完全不同的
+// handler,不是這支的公開版本。兩者路徑衝突,需要另外決定路徑或處理
+// 方式才能補上這支的公開掛載點,故這支目前仍只掛在
+// /internal/geo/attractions(需 JWT),上面那句「不需要額外開一支不驗證
+// 的公開端點」的舊說明只是指「圖片不需要另開代理端點」,不代表這支端點
+// 整體刻意不開放公開版本——見 api.go Routes() 內
+// /public/geo/attractions/nearby 註冊處的對應說明。
 func (s *Server) handleGeoAttractions(w http.ResponseWriter, r *http.Request) {
 	city := r.URL.Query().Get("city")
 	if city == "" {
@@ -850,6 +860,12 @@ func (s *Server) listAttractionResponses(lat, lng, radiusMeters float64) ([]attr
 //     geocode.go 的寫法,在 internal/onagenttools 新增一個獨立的
 //     dispatch handler,內部呼叫這支端點背後同一組 s.fetchNearbyHotels/
 //     listAttractionResponses,不需要更動這支 HTTP 端點本身。
+//
+// 2026-10:新增免登入版 GET /public/geo/attractions/nearby(見 api.go
+// Routes() 內該路由的註冊處說明),複用這支 handler 本身、不重寫邏輯。
+// 這支端點會觸發計費的 fetchNearbyHotels,公開版疊加比一般查詢端點
+// 嚴格許多的 IP 節流(withGeoAttractionsIPThrottle,見
+// geoAttractionsIPRateLimiter 欄位的完整說明)。
 func (s *Server) handleGeoAttractionsNearby(w http.ResponseWriter, r *http.Request) {
 	lat, lng, radiusMeters, err := parseNearbyLatLngRadius(r, 15000)
 	if err != nil {
@@ -892,6 +908,12 @@ func (s *Server) handleGeoAttractionsNearby(w http.ResponseWriter, r *http.Reque
 // 目的正是要繞開那個限制:景點區域本身查詢免費,前端可以單純依地圖
 // 可視範圍/縮放自動觸發(idle 事件),不需要等使用者按鈕,只要不會連帶
 // 觸發付費的飯店查詢即可——見 web/src/GeoOutlineMap.tsx 的說明。
+//
+// 2026-10:新增免登入版 GET /public/geo/attractions/nearby-only(見
+// api.go Routes() 內該路由的註冊處說明),複用這支 handler 本身、不
+// 重寫邏輯。這支端點完全不觸發外部 API(純查資料庫),是風險最低的
+// 一支,公開版沿用既有的 withGeoQueryIPThrottle(跟
+// /public/geo/plan-ai/* 那組共用同一個節流池/規則,300 次/60 秒)。
 func (s *Server) handleGeoAttractionsOnlyNearby(w http.ResponseWriter, r *http.Request) {
 	lat, lng, radiusMeters, err := parseNearbyLatLngRadius(r, 15000)
 	if err != nil {

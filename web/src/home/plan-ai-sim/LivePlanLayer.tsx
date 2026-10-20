@@ -11,6 +11,7 @@ import { NEW_TRIP_DRAFT_ENABLED } from '../../DesktopShared'
 // 獨立 localStorage key/store 工廠函式),這裡只負責「交接後的真實層
 // 要不要接上這個功能」這一層決定。
 import { localStoragePlanTimelineStore, type PlanTimelineStore } from '../../plan-core/planTimelineStorage'
+import { createPlanAiPublicDataSource } from './planAiPublicDataSource'
 import { createDraftPlanTimelineStore, startNewDraft } from '../../plan-core/planTimelineDrafts'
 
 // LivePlanLayer — /ai-plan 按下「讓我試看看」之後接手的真實 AI 對話層。
@@ -42,13 +43,22 @@ import { createDraftPlanTimelineStore, startNewDraft } from '../../plan-core/pla
 //    重播需要另外設計。
 // ─────────────────────────────────────────────────────────────
 //
-// 已知限制(2026-10 當下):TripPlanPage 的 agent 工具打的是
-// /internal/geo/plan-ai/* 這組需要登入的端點(見 server/internal/api/
-// api.go 的 internalMux 註冊)。沒有登入的訪客在這裡仍然會看到對話
-// 介面、AI 也會回話(onagent 走 apiKey 不是 JWT),但工具呼叫會拿到
-// 401、排不出站點。使用者明確要求「先接登入後的後端,但先不用管有沒有
-// 登入」——這個限制是當下刻意接受的,之後要讓訪客真的能用,需要後端
-// 補上對應的免登入端點(或這裡改走某種展示用的受限身分)。
+// 已知限制(2026-10 更新):對話本身(送出訊息/收 AI 回覆存檔)已經不受
+// 這個限制——TripPlanPage 的 postPlanAiChat/postPlanAiChatReply(見
+// api.ts 兩者的完整說明)會依 cfg.token 是否存在,自動切換打需登入版
+// 或新增的免登入版(POST /public/plan-ai/chat[/reply],見後端
+// handlePlanAiChat 開頭的完整說明),訪客能正常對話、訊息也會正確存檔
+// 到各自獨立的身分底下(見 web/src/guestId.ts 的完整說明)。
+//
+// 仍然存在的限制:agent 工具(search_attraction/add_attraction 等,見
+// plan-core/attractionTools.ts)打的是 /internal/geo/plan-ai/* 這組仍然
+// 需要登入的端點(fetchPlanAiPlaceSearch/fetchPlanAiAttractionSearch 等,
+// 見 api.ts 對應函式——雖然後端已經有公開版本 /public/geo/plan-ai/*
+// 可用,見 server/internal/api/geo_plan_ai.go 開頭的完整說明,但這幾支
+// 前端函式目前仍寫死呼叫需登入的路徑,沒有切換)。沒有登入的訪客在這裡
+// 仍然會看到對話介面、AI 也會回話(onagent 走 apiKey 不是 JWT),但工具
+// 呼叫會拿到 401、排不出站點。之後要讓訪客真的能排出行程,需要讓
+// api.ts 這幾支函式比照 postPlanAiChat 依 cfg.token 切換路徑。
 // LivePlanLayerProps——onStopsChange/onSelectedStopChange/onHoverStopChange
 // 三個型別直接取自 TripPlanPage 本身對應 prop 的型別(用 Parameters 萃取
 // 而非重新宣告一份一樣的型別字面值),這一層只是原樣轉呼叫給內部的
@@ -108,6 +118,9 @@ export function LivePlanLayer({ onStopsChange, onSelectedStopChange, onHoverStop
   // PlanTimelineView(horizontalTimeline 預設 false,見該 prop 的完整
   // 說明)。
   const isDesktop = useIsDesktop()
+  // publicDataSource——見下方 dataSource prop 的完整說明。useMemo 讓
+  // 參照穩定:它會往下傳進 TripPlanPage 的 useMemo 依賴陣列。
+  const publicDataSource = useMemo(() => createPlanAiPublicDataSource(BASE_URL), [])
   // cfg — 從 localStorage 讀目前的登入 token。
   //
   // 刻意不走 useAppState():那支 hook 還負責旅程清單、主題、登出等一整
@@ -159,12 +172,42 @@ export function LivePlanLayer({ onStopsChange, onSelectedStopChange, onHoverStop
       hideEmptyState
       // horizontalTimeline——見上方 isDesktop 的完整說明。
       horizontalTimeline={!isDesktop}
+      // dataSource——展示頁推論態固定用公開實作(使用者明確要求「展示內
+      // 用公開的」、「展示的撥放態跟推論態也是不一樣的存取層」)。
+      //
+      // 這個頁面不需要登入就能看,TripPlanPage 預設的
+      // createPlanAiApiDataSource 打的是 /internal/*,未登入一律 401
+      // ——實機看到照片連噴 8 次、交通 2 次。公開實作全部改打 /public/*。
+      //
+      // 三個階段三份實作,不是一份實作內部判斷 cfg.token:
+      //   播放態(模擬劇本)  planAiFakeDataSource        純前端假資料
+      //   推論態(這裡)      createPlanAiPublicDataSource /public/*
+      //   /app              createPlanAiApiDataSource    /internal/*
+      dataSource={publicDataSource}
       // onNewDraft——見 TripPlanPage.tsx 該 prop 的完整說明。只在
       // NEW_TRIP_DRAFT_ENABLED(DesktopShared.tsx)開啟時傳,關閉時維持
       // undefined——TripPlanPage 沒收到這個 callback 就不會渲染「新行程」
       // 按鈕,不需要在這裡另外包一層條件判斷要不要渲染什麼 UI,呼叫端
       // 只需要決定要不要給它這個能力。
       onNewDraft={NEW_TRIP_DRAFT_ENABLED ? handleNewDraft : undefined}
+      // initialAskPage——2026-10(使用者明確要求「進入推論態一開始就顯示
+      // 詢問要去那裡的國家清單」):交接後一掛載就把國家選單擺上,使用者
+      // 點一下就能往下走,不用先自己想出一句話描述需求。
+      //
+      // { country: {} }——空的 AskPageCountryInput 表示「顯示全部國家」
+      // (countryIds 省略即不篩選,見 askPageTools.ts 該型別的完整說明),
+      // 跟 LLM 呼叫 ask_travel_country 不帶 countryIds 時走的是同一條
+      // 渲染路徑,不是另一套只有這裡用的特例。
+      //
+      // 不帶 reason:那個欄位是給 LLM 用一句話說明「為什麼現在問這個」
+      // (會取代畫面上的預設標題)。這次開啟不是 LLM 的決定,是進頁的
+      // 固定行為,沒有特別的意圖要說明——交給 RegionPanel 用它自己的
+      // 預設標題(「要去哪個國家?」)即可。
+      //
+      // 選完之後的串接不在這裡:使用者點完國家會由 TripPlanPage 的
+      // handleAskPageDone 自動接到城市層、選完城市再送一句話給 LLM
+      // (見該函式的完整說明),這個呼叫端只負責「開啟第一層」。
+      initialAskPage={{ country: {} }}
       onStopsChange={onStopsChange}
       onSelectedStopChange={onSelectedStopChange}
       onHoverStopChange={onHoverStopChange}

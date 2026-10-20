@@ -100,8 +100,8 @@ const TripPlanRoute = lazy(() => import('./trip-plan/TripPlanRoute').then((m) =>
 const AiItinerariesRoute = lazy(() => import('./itineraries/AiItinerariesRoute').then((m) => ({ default: m.AiItinerariesRoute })))
 const PlanAiSimPage = lazy(() => import('./home/plan-ai-sim/AIPlanTimelinePage').then((m) => ({ default: m.AIPlanTimelinePage })))
 // BlogArticlePage:部落客發文正式頁面(2026-10 從主題介紹頁內容規格化
-// 試做轉正,見 docs/brainstorm/2026-10-product-direction-brainstorm.md
-// 構想五「發文工具產品線」的完整說明;原始規格設計見 docs/
+// 試做轉正,見 showcase-demo 構想頁 /ideas/product-direction-5-publishing-tool(原產品方向腦力激盪文件)
+// 「發文工具產品線」的完整說明;原始規格設計見 docs/
 // refactor-theme-page-content-cms-plan-2026-10.md 的 ThemePageContent,
 // 見 web/src/blog/types.ts)——2026-10 改成依路由路徑參數(作者
 // handle + 文章 slug)渲染對應文章,見下方 /u/:handle/:slug 路由與
