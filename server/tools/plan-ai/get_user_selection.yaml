@@ -9,7 +9,7 @@
 # ask_transport_mode 四個詢問
 # 頁工具已改成「開啟選單就回傳,不等使用者選完」(見
 # web/src/plan-core/askPageTools.ts 的 askPageOpenedResult),所以使用者
-# 選了什麼不再透過那三支工具的回傳值回到 LLM 手上。這支工具是 LLM 取得
+# 選了什麼不再透過那四支工具的回傳值回到 LLM 手上。這支工具是 LLM 取得
 # 選擇結果的唯一管道。
 #
 # 為什麼不直接把結果塞進一則訊息:訊息是對話歷史的一部分,每一輪都會被

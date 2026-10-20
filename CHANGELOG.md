@@ -2,6 +2,62 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.37.0 — 2026-10-20
+
+`/ai-plan` 從「看展示」到「自己排一趟」這條路徑補上入口與韌性（三層詢問頁、查詢失敗的重試），把限流與 Google Places 欄位兩組成本相關的設定從硬編碼改成可線上調整，並讓行程地圖支援夜間模式。無破壞性變更，**含資料庫結構變更（新增 `geo_field_masks` 表）**。
+
+### 新增
+
+- **`/ai-plan` 推論態的三層詢問頁（`AskPage`）**：使用者交接到真實 AI 之後，原本是一片空的時間軸、等他自己打字描述需求——那是最難起頭的狀態。改成一進來就問「要去哪個國家？」，接著是城市、再接著是該城市的候選景點（`travelRegionData.ts` 內建 22 國的固定「國家 → 熱門城市」兩層清單，城市帶經緯度供 Nearby Search 查景點）。三層都由前端自己接續，不需要 LLM 介入每一步。選項用前端內建的固定清單而不是讓 LLM 自己發明候選，避免每次列出的國家／城市不一致或出現使用者用不到的奇怪地名。
+- **選完景點送出的 prompt 刻意不帶地點名稱**：改成在 prompt 裡叫 LLM 自己呼叫 `get_user_selection` 查。第一版是把名稱串進 prompt，但名稱不是穩定識別碼——LLM 拿到字串還是得自己 `place-search` 一次才能回推 `placeId`（實機觀察到的真實行為），而工具回的是 `placeId` ＋ `name` 齊備，可以直接 `add_attraction`。另一個理由是選擇內容寫進 prompt 就固定在對話歷史裡了，之後使用者改了選擇，歷史裡那句話仍然成立卻已經過時。
+- **詢問頁只在「沒有任何站點」時開啟**：觸發條件不是「剛掛載」而是「目前沒有行程」，所以 effect 從只跑一次改成盯著 `stopCount`——掛載時時間軸是空的會開，行程被刪到空時也會開（三條刪除路徑都會讓 `stopCount` 歸零，不需要在每一處各自加觸發）。已經有行程時不開：使用者是回來繼續看的，不該被全幅選單蓋住。
+- **`get_ui_state` 工具與 `uiStateStore`**：LLM 開完選單那一輪就結束了（工具不等待），下一輪被叫起來時無從得知使用者卡在哪一步——是還沒選、選到一半、還是早就選完了。沒有這份資訊它只能猜，或重複呼叫同一支開選單的工具（實機踩過的迴圈）。這支回答「現在在看什麼畫面、畫面上有哪些選項」，跟 `get_user_selection`（最近一次**完成**的選擇）、`get_attraction_pool`（這次對話查過哪些景點）回答的是不同問題，刻意不合併。是 module 層單一實例而非 React state：讀取方是 `AgentBridge` 的工具 handler，跑在 WebSocket `onmessage` 回呼裡、拿不到 state 最新值（沿用 `attractionPoolStore` 的同一解法）。刻意不持久化——描述的是「此刻的畫面」，重整後畫面本來就重建了。
+- **播放態專用的 `ScriptedAskPage`（置換，不是在正式元件加分支）**：劇本指定選哪幾張、依序演出點擊特效、時間到自己送出。兩者只有「長得一樣」這點重疊，行為是相反的——正式版的勾選是使用者的輸入，播放態的勾選是劇本的輸出。塞進同一個元件會讓它同時裝著兩套 state 與兩條時間線，而正式路徑是會上線的功能，每多一條分支就多一份真實使用者會踩到的路徑要驗證。共用的只有 `AskPage.module.css`（外殼必須一模一樣，否則播放態演的就不是真實畫面）。
+- **`PlanNodeData.failed` 與兩個時間軸的重試入口**：`add_attraction` 插入節點時只有 `placeId`、沒有名稱，所以 `name` 先填佔位字串「查詢中…」——那個值的前提是「查詢一定會完成並覆蓋它」。失敗時前提不成立：原本只寫 `{ loading: false }`，卡片就停在「查詢中…」上、連轉圈提示都沒了，使用者既不知道那是哪裡也沒有重來的入口。現在縱向與橫向時間軸都顯示錯誤狀態與重試按鈕，掛載時也會掃出 failed 的站點自動重查。`failed` 會被持久化，刻意跟 `loading`／`removing` 相反——那兩個是只在這次 session 有意義的暫態，`failed` 是已經定案的結果。
+- **判準抽成領域層的 `stopLookupFailed`**：「要不要顯示錯誤」（兩個時間軸元件）與「要不要重查」（掛載重試）必須用同一個判準，不一致會出現「畫面說失敗但不會自動重試」或反之。判準不只看 `failed`，還看「有 `placeId` 但座標沒落地」：429 限流路徑刻意維持 `loading: true` 且不設 `failed`，而存檔時 `sanitizeNode` 會剝掉 `loading`，兩者相撞的結果是重整後出現「既不是 loading、也不是 failed、name 停在佔位字串」的孤兒節點。用座標而不是 `name` 當判準：`name` 在插入當下就有佔位字串，分不出「查到了」或「還沒查」。
+- **限流規則集中成單一登錄表（`internal/ratelimits`）**：在這之前，一條限流規則的資訊散在四個地方——CLI flag 預設值、`geo_rate_limit.go` 的 seeding 與重讀 `switch/case`、`api.go` 裡 plan-ai 兩條的硬編碼 `SetLimitForKey`、`geo/places.go` 的 `RateLimitConfig` 欄位，而 endpoint key 是各處重複的字串字面值。新增一條規則要同時改四處，漏一處就靜默失效（key 不相符時設定的是一條規則、查的是另一條，等於完全沒有限流）。現在七條規則的 endpoint key、預設視窗、預設上限、每日額度、說明文字與「超過上限時呼叫端會看到什麼」全部集中在 `Registry`，四處改成共同讀它。
+- **`plan-ai` 兩支公開端點納入可設定範圍**：`public.placeSearch` 與 `public.nearbyAttractionSearch` 正是「散在四處、漏一處」的實例——資料表、後台管理介面、熱重載迴圈全都沒有它們，它們是 `api.New` 裡的硬編碼字面值，要調整只能改程式碼重新部署。現在這兩條跟 Google 那五條一樣吃資料表、後台與熱重載，45 秒內生效、不需重啟。
+- **限流的維運端點與 CLI `rate-limit` 子命令**：新增 `GET`／`PATCH /internal/maintenance/rate-limits`，以及 `tripace-cli rate-limit list [-json]` 與 `rate-limit set -endpoint KEY [-window 秒 | -window-ms 毫秒] [-max-calls N] [-daily-max N]`。在這之前要知道目前生效的限流只能讀程式碼，而程式碼裡的字面值未必等於實際生效值（後台可能已經改過資料庫）。`list` 標示每條規則是「已自訂」還是仍是預設值；`set` 沒帶的欄位維持目前值、不會被零值覆寫成「不限制」，`-window-ms` 不滿整秒直接拒絕並說明原因，不靜默四捨五入成 0 秒（等於關掉限流）或 1 秒（悄悄把保護放寬一倍）。
+- **`ratelimits.RefreshInterval`**：重讀間隔的 45 秒原本在三處各寫死一份（`cmd/server` 的常數、維運端點回應的 `appliesWithinSec`、CLI 列表結尾那行「約 45 秒內生效」）。有人調整重讀間隔時，端點與 CLI 會繼續回報舊數字，運維照著等卻沒生效，是難查的誤導。
+- **Google Places field mask 可線上設定（`internal/fieldmasks` ＋ `geo_field_masks` 表 ＋ CLI）**：Places API 用 `X-Goog-FieldMask` 指定回傳欄位，而**計費層級由請求裡最高層級的那一個欄位決定**，不是各欄位的總和。`placeDetails` 這個情境原本固定帶 `editorialSummary`，單這一個欄位就讓每一次呼叫都按最貴的 Enterprise ＋ Atmosphere 計費，即使那次查詢其實只需要名稱與座標。這些常數原本寫死在 `geo/places.go`，調整只能改程式碼重新部署。新增 `internal/fieldmasks` 當單一登錄表（四個查詢情境，每個欄位標註計費層級與「拿掉會失去什麼」），搭配資料表、維運端點與 `tripace-cli field-mask list`／`field-mask set -scenario KEY -fields a,b,c`。刻意跟 `internal/ratelimits` 同構，因為兩者是同一類東西：成本相關、需要運維依實際用量調整、不該寫死在程式碼裡。
+- **field mask 設定端點三種驗證全部拒絕而非靜默修正**：情境 key 不在登錄表裡會拒絕（寫一個沒有任何呼叫處會讀的 key 只會讓表多一列永遠不生效的設定，操作者卻以為成功了）；欄位名稱不在該情境的登錄表裡會拒絕（送 Google 不認得的欄位會讓整支 API 回 400，那個情境的查詢全部失敗）；必填欄位（名稱、座標）不可移除。必填欄位全部限定 Essentials 級——「必填」的前提是「留著不影響價格」，有測試守住這個不變式。
+- **訪客公開存取層 `planAiPublicDataSource`**：`?skipDemo=1` 讓未登入訪客直接進真實 AI 推論，但原本固定打 `/internal/*` 一律 401（實機回報照片連噴 8 次、交通 2 次）。新增這第三份 `PlanAiDataSource` 實作（展示頁假資料／訪客公開端點／登入版 internal），而不是在既有實作裡加 `cfg.token ? a : b`——「訪客模式」是一種完整的資料來源，不是每個方法各自的分岔。對齊 `PlanTimelineStore` 的既有模式。
+- **手繪配色的行程地圖支援夜間模式**：手繪配色走的是 inline styles、不帶 `mapId`，而 Google 的 `colorScheme`（暗色）只對帶 `mapId` 的向量地圖生效——所以這些行程在頁面切到夜間模式時，地圖仍是整片淺米色。新增 `HAND_DRAWN_DARK_COLORS` 與 `HAND_DRAWN_MAP_STYLE_DARK`，依 theme 切換日夜兩份 styles。暗色版不是另寫一份規則，而是把淺色版的每個顏色依表替換：規則的結構（哪些地物顯示／隱藏、線條粗細）完全一致，只有顏色不同，避免日夜兩版的資訊量悄悄分岔。`handDrawnMapStyle.test.ts` 守住這個不變式——淺色版新增了表裡沒有的顏色就會失敗。另外新增 `.scrollSheetDark`／`.mapleSheetDark`：淺米色的羊皮紙漸層疊在暗色地圖上會變成一條突兀的亮邊。
+- **新增範例行程「京都三大經典・燒肉吃到飽五日」**：`registry.ts` 是 `import.meta.glob` 自動收錄，新增一份範例行程不需要改註冊檔。
+
+### 修正
+
+- **任何登入使用者都能改限流設定**：兩支新端點掛在 `internalMux` 上，而 `internalAuth` 只驗 JWT 簽章、不判斷角色——任何一般使用者的 token 都能通過，把 `maxCalls` 或 `dailyMax` 調到極大值就等於直接拆掉 Google API 的計費保護。補上 `requireRateLimitAdmin`（沿用既有的 email 白名單模式，不另外發明角色模型）。對照組佐證這是疏漏而非刻意：adminconsole 的同功能端點本來就有 `withAdmin` 把關。刻意不把整個 `internalMux` 改成要管理權限——前端一般使用者依賴其中的 `/internal/geo/*`、`/internal/plan-ai/*`。
+- **500ms 的規則被 seeding 寫成 0 秒，視窗靜默變成設計值的兩倍**：seeding 原本用 `int(window/time.Second)` 轉換，`int(500*time.Millisecond/time.Second)` 截斷成 0，而 `public.nearbyAttractionSearch` 的預設視窗正是 500ms。0 不會讓限流失效（`SetLimitForKey` 對 `window <= 0` 會夾成 1 秒），但造成兩個靜默錯誤：實際生效視窗變成 1 秒而非設計的 500ms，且 CLI／後台會顯示「視窗 0 秒」、看起來像沒有限制。新增 `windowSecForStore` 進位成 1 秒並記 log。另外 seeding「已有資料列就完全不動」的語意代表既有環境已經寫壞的那一列不會被自動修正，所以 `applyRateLimitsFromStore` 也把 `WindowSec <= 0` 視為無效值退回預設並記 log——沒有這道守衛，那些環境每 45 秒就會把 0 套進去再被夾成 1 秒，永久固化。
+- **訪客模式每一段路程顯示「🚶 0 分」的假交通資訊**：公開端點沒有 `transit-estimate`，`planAiPublicDataSource` 原本 resolve 一組空值 `{ mode: '', minutes: 0, distance: '' }`，以為那等同「沒有交通資訊」。實際上呼叫端走的是成功分支、無條件寫進 `transitFromPrev`，而渲染端的判斷是 `transit.minutes != null`——0 會通過。結果比原本 401 時什麼都不顯示更糟。改成 reject，呼叫端既有的 `.catch` 會把 `transitFromPrev` 清成 `undefined`，膠囊完全不渲染。
+- **純文字回覆會瞬間蓋掉正在等待操作的候選卡片詢問頁**：`useAskPageBridge` 原本假設「呼叫端都是 await 完成才呼叫下一次 `openAskPage`」，但收到純文字回覆時會呼叫 `openAskPage({ text })`、完全不 await。實機重現：LLM 開出候選卡片後緊接著送出一則文字回覆，第二次呼叫用新的 resolve 覆蓋掉 ref，候選卡片瞬間被文字氣泡取代——使用者永遠看不到候選、那個工具呼叫的 Promise 永遠不會 resolve，整個對話卡住。改為已有 pending 時忽略新呼叫。
+- **地圖圖層在日夜切換後消失**：`NativeMapBase` 在 `theme`／`styles` 變動時會重建 `google.maps.Map` 實例，舊實例上的圖層隨之失效。但 `mapReady` 是布林值，重建過程中間的 `false` 可能被 React 18 的自動批次處理合併掉，只靠它當依賴會讓 effect 誤判成「沒有變化」而不重跑。`usePlanStopMarkers` 早有 `mapVersion` 這個參數，但 `usePlanRoutePolyline` 與兩支線圖層 hook 沒有，呼叫端也沒傳——夜間模式一旦接上，marker 與路徑線在切換主題後就會消失，而且因為 `stopsKey`／`enabled` 都沒變，使用者不關掉再開就叫不回來。
+- **`plan-ai` 工具說明與 `thought.md` 多處互相矛盾的指示**：LLM 遇到矛盾會隨機挑一套。`thought.md` 重新分章（行為準則／行程安排方式／工具使用，一個工具一節／回應方式），新增的「行程安排方式」章節講一份好的行程長什麼樣（沒說長度就排一整天、一天 5~7 站的密度基準、地理順路、用餐時段、動靜交錯）。清掉的矛盾包括：「開選單那一輪可以簡短帶過在做什麼」vs「不要輸出任何文字」（前者是 `reason` 參數出現前的寫法）、`get_user_selection.yaml` 還留著已拆分的 `ask_travel_region`、四支開選單 yaml 仍寫「進入等待使用者回應的狀態」（工具其實不等待）、`open_ask_page.yaml` 說「訊息會帶著他勾選的地點」但前端刻意不帶、`ask_travel_country.yaml` 寫「全部 24 個」實際是 22 個。
+- **`add_attraction` 的前置查詢從「不確定時才查」改為強制**：`add_attraction.yaml` 與 `list_itinerary.yaml` 的 description 改成「每一次呼叫 `add_attraction` 之前都必須先呼叫 `list_itinerary`」。參數 schema 沒動，不是 API 變更，但這是 agent 行為的實質改動。原本的寫法讓 LLM 憑記憶猜 `anchorId`，而使用者隨時可以自己刪站、拖曳改時間。
+- **移除 `DestinationPrompt`（`/app` 的「想去哪裡？」對話氣泡）**：feature flag 原本預設關閉、從未啟用（`VITE_FEATURE_DESTINATION_PROMPT` 從未寫進 `.env.example`，`DesktopLayout.tsx` 也從未引用那個常數，v0.36.0 條目自己記載「開啟沒有效果」）。它跟這次做的 `AskPage` 詢問頁在問同一件事，兩套並存只會讓同一個產品問題有兩個答案。連帶移除它的孤兒依賴：`useTypewriter`、`useDeferredPromptSender`、`panToCity`，以及兩處只剩寫入沒有讀取的 `mapReady` state。
+- **accent（紅）底上的文字在深色模式下變成深褐字配亮鮭紅底**：全站有 10 處用 `var(--ios-card)`／`var(--ios-bg)` 當 accent 底上的文字色，那兩個 token 會跟著主題翻。統一改為固定白字。深色模式白字對比 3.04:1 仍低於 WCAG AA，是評估後接受的取捨：`--color-accent` 同時扛 43 處文字色（紅字鋪深底，要夠亮）與 30 處底色（白字鋪紅底，要夠暗），調暗只是把問題從 30 處搬到 43 處，真要兩邊合格得把底色與文字色拆成兩個 token。
+- **CLI 的哨兵值把不合法輸入靜默吞掉**：原本用哨兵值（0／-1）反推哪些旗標有給，`-max-calls -5`（打錯字、或 shell 把後續參數吃進來）不會送出請求，使用者看到的是「至少要指定一項要修改的值」，會以為自己漏打旗標而不是值不合法；後端那句精準的錯誤訊息永遠到不了使用者眼前。改用 `fs.Visit` 判斷旗標是否真的出現在命令列，哨兵值整套移除，驗證一律交給後端。
+- **`rate-limit list` 表格混用資料庫值與程式碼預設值**：`windowSec` 為 0 時會印登錄表的 500ms、`CUSTOM` 欄還標著「已自訂」，等於把「設定壞了」顯示成「設定正常」——正好掩蓋上面那個 bug。改成同一欄只來自單一來源，0 印成「0（異常）」。
+- **CLI 表格中文表頭造成欄位錯位**：`%-32s` 這類寬度按 byte 數補空白，中文字元佔 3 bytes 但終端機只顯示 2 格，中文表頭會比對應的資料欄少佔顯示格、誤差逐欄累積（實測偏左約 6 格）。表頭一律改用 ASCII。
+- **`ExploreMap.tsx` 的 import 指向未進版控的檔案**：`usePlanRouteLine.ts` 與 `usePlanTransitHoverLine.ts` 兩個檔案從未進版控，但已經在版控裡的 `ExploreMap.tsx` 正 import 它們——單獨 checkout 編譯不過，`ExploreMap.searchEntries.test.tsx` 也因此整個載不起來。這次一併補上。
+- **交通膠囊虛線在內容沒變時重複重畫**：`usePlanTransitHoverLine` 原本直接把 `stops` 陣列放進依賴陣列，每次父層 render 都是新參照。改用內容摘要字串 `stopsKey`，對齊隔壁兩支 hook 的既有做法。
+- **`jozankei-1day` 移除楓葉相框**：不設 `borderStyle`，並把 `playfulUI` 關成 `false`——只拿掉 `borderStyle` 的話外框會退回預設的寶藏地圖（指北針＋羊皮紙）。`borderStyle: 'maple-leaf'` 目前沒有任何行程使用，元件保留。
+- **移除打不開的 `ScrollTimelineDemoPage`**：檔頭宣稱路由 `/demo/scroll-timeline`，但那條路由從未註冊，頁面沒有任何進入點。`ScrollTimeline` 元件本身是活的，四個城市頁與 blog 文章頁都在用。
+- **過時的註解與文件**：`LivePlanLayer.tsx` 還寫著「訪客工具呼叫會拿到 401」（本版已修掉）；`chatButtonOverlay` 在 `ExploreMap`／`GeoOutlinePanel`／`DesktopLayout.module.css` 的說明都還說它載著已移除的氣泡，`DesktopLayout.tsx` 另有一段 15 行、緊鄰不存在的 prop 的孤兒註解；`api.go` 的「目前是這三支」、`maintenance.go` 的「這兩支端點」、`places.go` 的「全部四個」數量陳述都已落後；`docs/routing-architecture.md` 補上限流與 field mask 的維運路由與 `/public/plan-ai/*` 五支；`tripace-cli` 的 SKILL.md 寫死了另一台 macOS 機器的絕對路徑，改為相對路徑並說明 `bin/` 是本機產物。
+
+### 已知問題
+
+- **`/ai-plan` 的地圖標記在日夜切換後消失**：`mapVersion` 的斷鏈補進了 `usePlanStopMarkers`（`/app` 的路徑）與 `usePlanRoutePolyline`，但 `/ai-plan` 用的是 `useMapMarkerLayer`，同樣的斷鏈還在。
+- **自動重試有兩個缺口**：多個實例同時掛載時會對同一站重複發出自動重試；`resyncFromStorage` 讀回來的 `failed` 節點不會自動重查（掛載重試的 effect 是空依賴陣列、只在掛載時跑一次）。
+- **`get_ui_state.yaml` 沒說明 explore（探查）模式的 `options` 與 `selected` 一律為空**：LLM 讀到空陣列可能誤判為「使用者什麼都沒選」。
+- **既有的測試紅項**：`PlacePanel` 2 項、`ExploreMap.searchEntries` 2 項。後者原本因為上述 import 斷鏈整檔載不起來，修掉斷鏈後才真的執行，然後撞上既有的地圖 mock 缺口（`useTripEntryMarkers.ts` 的 `mapRef.current.getDiv` 在 mock 上不存在）。
+
+### 部署注意
+
+- **新增 `geo_field_masks` 表**：啟動時會對登錄表裡每個情境檢查是否已有資料列，沒有才用程式碼預設值寫入一筆（已有資料列完全不動，避免每次重啟都蓋掉運維調整過的設定）。
+- **`placeDetails` 情境預設仍含 `editorialSummary`**，也就是仍按最貴的 Enterprise ＋ Atmosphere 層級計費。要降一檔需執行 `tripace-cli field-mask set -scenario placeDetails -fields <不含 editorialSummary 的清單>`，代價是景點卡失去 Google 編輯撰寫的簡介文字。
+- **`server/tools/plan-ai/*.yaml` 與 `thought.md` 要重新推上 onagent 平台才會生效**（`onagent tool create`／`onagent app thought set`）：本版改了多支 tool description（`add_attraction`、`list_itinerary`、`get_user_selection`、`ask_travel_country`、`ask_travel_city`、`open_ask_page` 等）與 `thought.md`，倉庫裡的檔案與平台上的版本在推送前不一致。
+
 ## v0.36.0 — 2026-10-19
 
 首頁 AI 編排行程小展示抽出獨立的劇本與版面外殼，與 `/ai-plan` 完整展示頁解耦。無破壞性變更，不含資料庫結構變更。

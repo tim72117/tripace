@@ -50,15 +50,15 @@ import { createDraftPlanTimelineStore, startNewDraft } from '../../plan-core/pla
 // handlePlanAiChat 開頭的完整說明),訪客能正常對話、訊息也會正確存檔
 // 到各自獨立的身分底下(見 web/src/guestId.ts 的完整說明)。
 //
-// 仍然存在的限制:agent 工具(search_attraction/add_attraction 等,見
-// plan-core/attractionTools.ts)打的是 /internal/geo/plan-ai/* 這組仍然
-// 需要登入的端點(fetchPlanAiPlaceSearch/fetchPlanAiAttractionSearch 等,
-// 見 api.ts 對應函式——雖然後端已經有公開版本 /public/geo/plan-ai/*
-// 可用,見 server/internal/api/geo_plan_ai.go 開頭的完整說明,但這幾支
-// 前端函式目前仍寫死呼叫需登入的路徑,沒有切換)。沒有登入的訪客在這裡
-// 仍然會看到對話介面、AI 也會回話(onagent 走 apiKey 不是 JWT),但工具
-// 呼叫會拿到 401、排不出站點。之後要讓訪客真的能排出行程,需要讓
-// api.ts 這幾支函式比照 postPlanAiChat 依 cfg.token 切換路徑。
+// 2026-10 已完成:agent 工具(search_attraction/add_attraction 等,見
+// plan-core/attractionTools.ts)用的那幾支前端函式
+// (fetchPlanAiPlaceSearch/fetchPlanAiAttractionSearch/
+// fetchPlanAiPlaceDetailsAny)已比照 postPlanAiChat 依 cfg.token 切換
+// /internal 與 /public 兩組路徑,未登入訪客打的是公開版
+// (見 server/internal/api/geo_plan_ai.go 開頭的完整說明),工具呼叫
+// 不再拿到 401,訪客可以真的排出站點。api.plan-ai-guest.integration.test.ts
+// 守住這件事。唯一的例外是 transit-estimate:後端沒有公開版,訪客模式
+// 那一段交通資訊完全不顯示(見 planAiPublicDataSource.ts 的完整說明)。
 // LivePlanLayerProps——onStopsChange/onSelectedStopChange/onHoverStopChange
 // 三個型別直接取自 TripPlanPage 本身對應 prop 的型別(用 Parameters 萃取
 // 而非重新宣告一份一樣的型別字面值),這一層只是原樣轉呼叫給內部的

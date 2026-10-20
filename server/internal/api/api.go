@@ -911,9 +911,12 @@ func (s *Server) Routes() http.Handler {
 	// web/src/home/InteractiveExploreMap.tsx)專用,刻意不掛 internalAuth
 	// (訪客沒有 JWT,見該元件 GUEST_CFG 的完整說明)。
 	//
-	// 目前是這三支(place-details/place-photo-assets/attractions),每一支
-	// 都有授權限制查詢範圍——前兩支要求 placeID 必須是已建檔的 attraction
-	// 才放行,attractions 則限制在城市白名單內(見
+	// 最早的三支(place-details/place-photo-assets/attractions)都有授權
+	// 限制查詢範圍;2026-10 之後新增的 plan-ai 五支(place-search/
+	// attraction-search/place-details-any/chat/chat-reply)沒有白名單,
+	// 改靠 IP 節流把關(見各自的說明)。最早三支的限制:前兩支要求
+	// placeID 必須是已建檔的 attraction 才放行,attractions 則限制在城市
+	// 白名單內(見
 	// publicAttractionsCityAllowlist 的完整說明)。這不是一般性「免認證」
 	// 的路由群組,新增其他公開端點時應各自評估是否也需要類似的範圍限制,
 	// 不能直接比照這裡的寫法就假設安全。

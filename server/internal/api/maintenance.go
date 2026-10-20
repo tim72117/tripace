@@ -16,7 +16,9 @@
 //     較弱、常查無結果,已改為回傳多筆候選),但刻意不共用同一支端點,
 //     避免其中一邊改動時誤傷到另一邊的呼叫端,且回應形狀也不同(見下方)。
 //
-// 這兩支端點取代原本 tripace-cli 裡「直接在 CLI process 本地建立
+// (歷史起源——這個檔案最初只有 geocode 與 attraction-update-photo 兩支
+// 端點;目前已擴充到景點建檔/查詢、限流規則、field mask 三類維運操作。)
+// 那兩支端點取代原本 tripace-cli 裡「直接在 CLI process 本地建立
 // geo.Client、繞過後端」的做法(geocode 子命令)、與「只能在 -db 直連模式
 // 下才能用」的做法(attraction-update-photo 子命令)——搬進後端後,兩者都
 // 走跟其餘子命令一致的 HTTP + JWT 登入路徑,也因此能被

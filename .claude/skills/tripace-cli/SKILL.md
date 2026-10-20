@@ -7,14 +7,14 @@ description: 用 tripace 自己的 CLI 工具(server/cmd/cli)透過 HTTP 存取 
 
 `server/cmd/cli` 是 tripace 專案自帶的 entry/trip 操作工具，讓 Claude Code 可以直接用 HTTP 打自家 server 的 `/internal/*`、`/v1/*` API 查資料或寫資料，不需要手動組 curl、也不需要碰資料庫。
 
-**這個 skill 內建預先編譯好的執行檔**，位於 `/Users/caitingyu/Documents/tripace/.claude/skills/tripace-cli/bin/`。目前只實際編了本機這台機器的平台：
+**這個 skill 內建預先編譯好的執行檔**，位於 `.claude/skills/tripace-cli/bin/`。執行檔是各台機器自行編譯的本機產物（`bin/` 已被 .gitignore 排除、不進版控），路徑相對於 repo 根目錄；`bin/` 不存在或不是你的平台時，直接用下方「備援：go run 現場編譯」。曾編過的平台：
 
 - `tripace-cli-darwin-arm64`
 
 優先使用這個內建執行檔，不需要每次都重新 `go run` 編譯。呼叫時直接用完整路徑：
 
 ```bash
-/Users/caitingyu/Documents/tripace/.claude/skills/tripace-cli/bin/tripace-cli-darwin-arm64 trip list
+.claude/skills/tripace-cli/bin/tripace-cli-darwin-arm64 trip list
 ```
 
 **執行檔是某一個時間點的快照，`server/cmd/cli` 原始碼有更新（新增子命令、改參數）之後這個執行檔不會自動同步**——若懷疑執行檔行為跟目前原始碼對不上（例如這份文件提到的子命令執行檔不認得），用下方「備援：go run 現場編譯」重新驗證，並考慮重新編譯覆蓋這個執行檔（`cd server && GOWORK=off GOOS=darwin GOARCH=arm64 go build -o ../.claude/skills/tripace-cli/bin/tripace-cli-darwin-arm64 ./cmd/cli`）。

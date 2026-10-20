@@ -146,8 +146,8 @@ export function GeoOutlinePanel({
   // 按鈕,見 ExploreMap.tsx 對這個 prop 的完整說明。
   onOpenChat?: () => void
   // chatButtonOverlay:原封不動轉傳給 ExploreMap——疊在 AI 按鈕正下方的
-  // 任意內容(目前唯一的用途是「想去哪裡?」對話氣泡),見 ExploreMap.tsx
-  // 對這個 prop 的完整說明。
+  // 任意內容。原本唯一的用途(「想去哪裡?」對話氣泡)已於 2026-10 移除,
+  // 目前沒有呼叫端傳入,見 ExploreMap.tsx 對這個 prop 的完整說明。
   chatButtonOverlay?: ReactNode
   // showZoomControl:原封不動轉傳給 ExploreMap——地圖右下角縮放按鈕
   // 開關,見 ExploreMap.tsx 對這個 prop 的完整說明。

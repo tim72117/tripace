@@ -733,21 +733,6 @@ export function DesktopContent(props: ContentProps) {
                     }}
                     hideCategoryTags={categoryTagsState.hidden}
                     onOpenChat={() => setChatPopoverOpen(true)}
-                    // chatButtonOverlay——「想去哪裡?」對話氣泡(2026-10
-                    // 使用者明確要求「氣泡的啟示位置在對話按鈕正下方」,
-                    // 且明確否決掉跨元件用絕對座標/getBoundingClientRect
-                    // 手動計算對齊的方案,要求「就做一個透明容器」)。
-                    //
-                    // 改成透過這個 prop 疊在 AI 按鈕(.citySearchAiBtn)
-                    // 正下方(見 ExploreMap.tsx 對這個 prop 的完整說明:
-                    // 定位基準是包住按鈕的透明 anchor 容器,不是任何跨
-                    // 容器算出來的像素數字),取代原本渲染在 DesktopMain
-                    // 子節點、靠 DesktopLayout.module.css 的
-                    // 外部手動估算 top/right 的做法
-                    // ——那個做法在實際畫面上量測後發現對不準(使用者
-                    // 回報「沒對齊」),根因是 .citySearch 膠囊的
-                    // width/padding 等任一個數字改變,外部這組手算的
-                    // top/right 就會跟著失真,屬於脆弱的耦合。
                     onGeocodeCandidatesChange={outlineMapState.onGeocodeCandidatesChange}
                     onAttractionSelect={geo.selectAttraction}
                     onAttractionsChange={setGeoAttractions}

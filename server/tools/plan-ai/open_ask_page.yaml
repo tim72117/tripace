@@ -5,7 +5,8 @@
 # 這個工具是前端 ClientTool(見 web/src/plan-core/askPageTools.ts 的
 # 完整實作),不是 BackendDispatch 型——onagent LLM 決定呼叫時,訊息會
 # 經 AgentBridge WebSocket 送回瀏覽器分頁,由 askPageTools.ts 定義的
-# handle 函式實際執行(打開詢問頁、等待使用者選擇、回傳選擇結果),不像
+# handle 函式實際執行(打開詢問頁並立刻回傳「選單已顯示」,不等待使用者選擇;
+# 選擇結果改走 get_user_selection),不像
 # onagent-tools.yaml 裡的 recommend_nearby/geocode 那樣繞過瀏覽器直接在
 # onagent 伺服器端 dispatch。
 #
@@ -20,7 +21,8 @@
 # 2026-10(第二輪,使用者明確要求「目前要可以輸出 attraction id 與
 # place id,前端拿到後用對應的 UI 呈現」):這個工具從單純的「打開畫面
 # 就結束」改成「打開畫面 + 等待使用者在畫面上選完 + 把選擇結果回傳給
-# LLM」,新增 candidates 參數(LLM 自己先查好的候選景點)。
+# LLM」,新增 candidates 參數(LLM 自己先查好的候選景點)。(後來又被推翻:
+# 工具現在開啟選單就立刻回傳、不等使用者,選擇結果走 get_user_selection。)
 #
 # 2026-10(第三輪,使用者明確要求「open_ask_page 輸入支援一個模式,探查
 # 模式,參數有三個類別 目的地（文字）地圖中心 使用者位置,會自動用這些

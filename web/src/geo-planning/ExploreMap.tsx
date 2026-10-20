@@ -254,8 +254,10 @@ export function ExploreMap({
   // 版面(搜尋框寬度、padding 等)不管怎麼調整,這個 prop 渲染出來的東西
   // 永遠精確貼在按鈕正下方。
   //
-  // optional,呼叫端(目前只有 GeoOutlinePanel→DesktopLayout 這條鏈路
-  // 接了「想去哪裡?」對話氣泡)沒傳就不渲染這個 anchor 的子內容,但
+  // 2026-10:原本唯一的用途(「想去哪裡?」對話氣泡)已整個移除,目前
+  // 沒有任何呼叫端傳入這個 prop,保留為通用的定位出口。
+  //
+  // optional,沒傳就不渲染這個 anchor 的子內容,但
   // anchor 本身(空的 position:relative 容器)仍然掛載——這樣做的理由:
   // anchor 本身不吃版面空間(inline-flex,跟按鈕同尺寸),常駐掛載不影響
   // 既有版面,不需要額外判斷「有沒有傳這個 prop 才掛 anchor」這種條件

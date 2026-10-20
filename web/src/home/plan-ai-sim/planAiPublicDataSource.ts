@@ -61,10 +61,9 @@ export function createPlanAiPublicDataSource(baseURL: string): PlanAiDataSource 
     // 仍留在 internal」——那個判斷在展示頁只播劇本時成立,?skipDemo=1
     // 之後不再成立)。
     //
-    // 這裡直接回一個「查不到」的結果,不打任何端點:打了必然 401,徒增
-    // 一次請求與一筆 console 錯誤,而呼叫端
-    // (refreshTransitForStop)對失敗的處理本來就是「這一段不顯示交通
-    // 資訊」,行為一致。
+    // 這裡直接讓它失敗,不打任何端點:打了必然 401,徒增一次請求與一筆
+    // console 錯誤,而呼叫端(refreshTransitForStop)對失敗的處理本來
+    // 就是「這一段不顯示交通資訊」,行為一致。
     //
     // 要讓訪客也看到交通時間,得先在後端開放 /public/geo/plan-ai/
     // transit-estimate——那會多一個消耗 Google API 配額的公開端點,

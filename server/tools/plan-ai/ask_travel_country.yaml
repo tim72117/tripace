@@ -43,7 +43,7 @@ parameters:
     countryIds:
       type: array
       description: >-
-        選填，篩選/排序要顯示的國家，省略顯示全部 24 個。合法值：
+        選填，篩選/排序要顯示的國家，省略顯示全部 22 個。合法值：
         taiwan 台灣（國內旅遊，全部22縣市）、japan 日本、korea 韓國、
         thailand 泰國、vietnam 越南、singapore 新加坡、malaysia 馬來
         西亞、hongkong 香港、macau 澳門、china 中國大陸、philippines

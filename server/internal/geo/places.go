@@ -134,6 +134,12 @@ func ConfigureDefaultGatewayDailyQuota(checker apigateway.DailyQuotaChecker) {
 
 // RateLimitConfig 是 ConfigureDefaultGatewayRateLimit 的參數。
 //
+// 2026-10 補充:這個 struct 只承載 Google Places/Geocoding 那五條規則的
+// CLI flag/環境變數覆寫。完整的可設定限流規則清單(含 plan-ai 兩支公開
+// 端點,共七條)與每個 endpoint key 的唯一定義處在 internal/ratelimits
+// 的 Registry;登錄表的預設值是 flag 都沒給時的最終回退。下方「全部四個」
+// 「四個(現在五個)」是各自當時的歷史敘述,現況以登錄表為準。
+//
 // 2026-10 使用者明確要求:原本只涵蓋 "places.get"/"places.photoMedia"
 // 兩個 endpoint 的拒絕型限流,擴大到涵蓋全部四個會呼叫 Google Places
 // API 的 endpoint(含 "places.searchText"/"places.searchNearby")——

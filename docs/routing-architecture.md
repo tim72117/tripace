@@ -114,6 +114,33 @@ server 的 HTTP API(見 `cmd/cli/main.go` 開頭的架構說明),不再有任何
 | GET | /internal/maintenance/attractions | handleMaintenanceAttractionList | attractionList() |
 | GET | /internal/maintenance/attractions/cities | handleMaintenanceAttractionCities | attractionCities() |
 | DELETE | /internal/maintenance/attractions/{id} | handleMaintenanceAttractionDelete | attractionDelete() |
+| GET | /internal/maintenance/rate-limits | handleMaintenanceRateLimitList | rateLimitList()(`rate-limit list`) |
+| PATCH | /internal/maintenance/rate-limits/{endpoint} | handleMaintenanceRateLimitSet | rateLimitSet()(`rate-limit set`) |
+| GET | /internal/maintenance/field-masks | handleMaintenanceFieldMaskList | fieldMaskList()(`field-mask list`) |
+| PATCH | /internal/maintenance/field-masks/{key} | handleMaintenanceFieldMaskSet | fieldMaskSet()(`field-mask set`) |
+
+> 上表**不是**完整清單:`content-pages`、`itinerary-pages`、`sync/*` 與
+> `attractions/{id}/{coords,field,place-id,theme}` 等維運路由後來陸續加入,
+> 這份文件沒有跟上,以 `server/internal/api/api.go` 的 `internalMux`
+> 註冊處為準。限流與 field mask 這四支要求管理權限
+> (`requireRateLimitAdmin`),不是任何登入使用者都能呼叫。
+
+### `/public/plan-ai/*` 與 `/public/geo/plan-ai/*`(訪客可呼叫,以來源 IP 節流)
+
+`?skipDemo=1` 讓未登入訪客直接進真實 AI 推論時用的端點。複用既有 handler,
+但**沒有**最早那三支 `/public/geo/*`(place-details/place-photo-assets/
+attractions)的範圍白名單,只靠 IP 節流把關:
+
+| 方法 | 路徑 | Handler | 節流 |
+|---|---|---|---|
+| GET | /public/geo/plan-ai/place-search | handlePublicGeoPlaceSearch | withGeoQueryIPThrottle |
+| GET | /public/geo/plan-ai/attraction-search | handlePublicGeoAttractionSearch | withGeoQueryIPThrottle |
+| GET | /public/geo/plan-ai/place-details-any | handlePublicGeoPlaceDetailsAny | withGeoQueryIPThrottle |
+| POST | /public/plan-ai/chat | handlePlanAiChat | withPlanAiChatIPThrottle |
+| POST | /public/plan-ai/chat/reply | handlePlanAiChatReply | withPlanAiChatIPThrottle |
+
+沒有公開版的:`transit-estimate` 仍只在 `/internal/geo/plan-ai/`,訪客模式
+的交通資訊因此完全不顯示。
 
 ## 三之一、`/onagent/*` 完整路由表(只給 onagent 平台呼叫)
 
