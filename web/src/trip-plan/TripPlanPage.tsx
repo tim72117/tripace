@@ -1257,13 +1257,16 @@ export function TripPlanPage(props: {
   // 對話/時間軸機制,效果等同使用者自己在輸入框打字送出)函式參照交給
   // 呼叫端保管。
   //
-  // 存在的理由:地圖右上角「想去哪裡?」對話氣泡(DestinationPrompt.tsx,
-  // 見 DesktopLayout.tsx 掛載這張對話小匡時的完整說明)是這個元件以外的
-  // 另一個獨立 UI,使用者選定城市後需要觸發「送出這句話」這個動作,但
-  // 不該自己重新實作一套送出邏輯(那樣會跟這裡的 postPlanAiChat/
-  // conversationID/並發保護等邏輯脫鉤,使用者會看到兩種不一致的行為)。
-  // 讓呼叫端(DesktopLayout.tsx)透過這個 callback 拿到同一份 sendPrompt,
-  // 就能讓「點城市」跟「手動打字送出」走完全相同的路徑。
+  // 存在的理由:這個元件以外的獨立 UI(原本是地圖右上角「想去哪裡?」
+  // 對話氣泡)可能需要觸發「送出這句話」這個動作,但不該自己重新實作
+  // 一套送出邏輯(那樣會跟這裡的 postPlanAiChat/conversationID/並發保護
+  // 等邏輯脫鉤,使用者會看到兩種不一致的行為)。透過這個 callback 拿到
+  // 同一份 sendPrompt,外部觸發跟「手動打字送出」就走完全相同的路徑。
+  //
+  // 2026-10:那個氣泡功能已整個移除,目前沒有任何呼叫端傳這個 prop。
+  // 保留它而不刪除——它是選填的通用出口,而「外部 UI 要送出一句話」
+  // 這個需求本身沒有消失(選完景點自動送 prompt 就是同一類動作,只是
+  // 那條走的是元件內部的 sendPromptRef)。
   //
   // 用 callback 而非把 sendPrompt 放進某個呼叫端能讀到的 ref/context:
   // 這個元件目前對外的既有模式都是「呼叫端傳 callback 進來、這裡在對的
@@ -1731,7 +1734,8 @@ export function TripPlanPage(props: {
       // 一句話」的既有唯一入口(見 usePlanAiChatBridge sendPrompt 的
       // 完整說明,含 conversationID 延續、isThinking 併發保護、訊息
       // 寫入時間軸),繞過它等於另外實作一套,兩條路徑的行為會不一致。
-      // 這也跟 DestinationPrompt 選完城市後送出那句話走的是同一個管道。
+      // (已移除的「想去哪裡?」氣泡選完城市後送出那句話,走的也是同一個
+      // 管道。)
       //
       // prompt 刻意不寫出地點名稱(2026-10 改動,使用者明確要求「送出的
       // prompt 不要寫地點,讓 AI 用工具讀取使用者選取的」):改成叫 LLM

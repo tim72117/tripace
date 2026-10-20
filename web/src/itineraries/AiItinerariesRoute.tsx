@@ -113,7 +113,7 @@ export function AiItinerariesRoute() {
       )}
       <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
       <SiteNavCta href="/app">登入</SiteNavCta>
-      {id ? <AiItineraryDetailPage items={SAMPLE_ITINERARIES} id={id} /> : <AiItineraryListPage items={listItems} />}
+      {id ? <AiItineraryDetailPage items={SAMPLE_ITINERARIES} id={id} dark={dark} /> : <AiItineraryListPage items={listItems} />}
     </div>
   )
 }

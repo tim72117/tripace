@@ -11,8 +11,11 @@ import type { SampleItinerary } from '../types'
 // 離線備援,以及本機開發/測試不依賴資料庫就能檢視這份行程的完整內容。
 //
 // mapStyle/playfulUI/borderStyle/cardTheme 四個欄位的完整說明見 types.ts
-// SampleItinerary 對應欄位——這份行程同時示範了全部四種展示層擴充欄位:
-// 手繪地圖配色、活潑卡片/邊框、楓葉相框、秋日泡湯主題卡片。
+// SampleItinerary 對應欄位。這份行程用手繪地圖配色(mapStyle)與秋日泡湯主題
+// 卡片(cardTheme);2026-10-17 起移除了楓葉相框(不設 borderStyle),並把
+// playfulUI 設為 false——只拿掉 borderStyle 的話,外框會退回預設的寶藏地圖
+// (指北針+羊皮紙),那是使用者先前明確不要的,所以要連 playfulUI 一起關掉
+// 才不會畫任何外框。
 //
 // stops[].photos 是寫死的 GCS 落地網址快照(建檔當下 tripace-cli
 // attraction photo-update 查到的 Google 照片)——資料庫版本的這些站點
@@ -31,8 +34,7 @@ const itinerary: SampleItinerary = {
   summary: '從西到東走一圈定山溪溫泉街,紅葉季最值得散步的六個停靠站——紅色吊橋、免費足湯、山洞觀音、現烤麵包,全程輕鬆步行就能走完。',
   addedAt: '2026-10-14',
   mapStyle: 'hand-drawn',
-  playfulUI: true,
-  borderStyle: 'maple-leaf',
+  playfulUI: false,
   cardTheme: 'onsen-autumn',
   stops: [
     {

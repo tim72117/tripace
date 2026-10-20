@@ -379,3 +379,14 @@
     display: none;
   }
 }
+
+/* 夜間模式的暈影:跟暗色地圖(handDrawnMapStyle.ts HAND_DRAWN_DARK_COLORS)融在一起,
+   邊緣淡出成暖褐近黑,而不是淺米色/亮橘的亮邊。放在檔案最後,靠順序覆蓋同
+   特異度的 .scrollSheet/.mapleSheet 的 background。 */
+.scrollSheetDark {
+  background: linear-gradient(to right, rgba(18, 14, 10, 0.65) 0%, rgba(18, 14, 10, 0) 12%, rgba(18, 14, 10, 0) 88%, rgba(18, 14, 10, 0.65) 100%);
+}
+.mapleSheetDark {
+  background: linear-gradient(to right, rgba(120, 48, 16, 0.45) 0%, rgba(120, 48, 16, 0) 14%, rgba(120, 48, 16, 0) 86%, rgba(120, 48, 16, 0.45) 100%);
+}
+

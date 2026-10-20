@@ -120,6 +120,7 @@ function setStopMarkerZIndex(marker: StopMapMarker, zIndex: number | null) {
 export function usePlanStopMarkers({
   mapRef,
   mapReady,
+  mapVersion = 0,
   stops,
   selectedStopId,
   hoverStopId,
@@ -129,6 +130,11 @@ export function usePlanStopMarkers({
 }: {
   mapRef: React.RefObject<google.maps.Map | null>
   mapReady: boolean
+  // mapVersion:地圖實例每重建一次(例如明暗模式切換)就遞增,見
+  // NativeMapBase MapHandle.mapVersion。必須列進 effect 依賴——重建後
+  // mapRef.current 是新實例,舊實例上的圖層隨之失效,但 mapReady 不一定
+  // 出現 false→true 的邊緣,只靠 mapReady 會讓路徑/站點不會重畫到新地圖上。
+  mapVersion?: number
   stops: PlanStopMarker[]
   selectedStopId?: string | null
   // hoverStopId——滑鼠正懸停在哪一張時間軸卡片上(2026-10 新增,使用者
@@ -335,7 +341,7 @@ export function usePlanStopMarkers({
       stateRef.current = []
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, stopsKey, useAdvancedMarkers])
+  }, [mapReady, mapVersion, stopsKey, useAdvancedMarkers])
 
   // 選取樣式同步成獨立 effect,不跟建立 marker 那個合併:選取狀態變動
   // (使用者點了另一張卡片)不該讓整批 marker 重建,那會造成明顯的閃爍。
@@ -391,5 +397,5 @@ export function usePlanStopMarkers({
       setStopMarkerZIndex(marker, zIndexForState(state))
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, selectedStopId, hoverStopId, hoverTransitPairKey, stopsKey, useAdvancedMarkers])
+  }, [mapReady, mapVersion, selectedStopId, hoverStopId, hoverTransitPairKey, stopsKey, useAdvancedMarkers])
 }

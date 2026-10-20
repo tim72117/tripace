@@ -12,7 +12,7 @@ import { createRenderItineraryStopCard } from './renderItineraryStopCard'
 import { createRenderOnsenAutumnStopCard } from './renderOnsenAutumnStopCard'
 import { MAPLE_LEAF_PATH, MAPLE_STEM_PATH } from './mapleLeafPath'
 import { renderAnchorIcon } from './renderAnchorIcon'
-import { HAND_DRAWN_MAP_STYLE } from './handDrawnMapStyle'
+import { HAND_DRAWN_MAP_STYLE, HAND_DRAWN_MAP_STYLE_DARK } from './handDrawnMapStyle'
 import { FoodSpotPanel } from './FoodSpotPanel'
 import { useFoodSpotDetails } from './useFoodSpotDetails'
 import { useStopAttractionDetails } from './useStopAttractionDetails'
@@ -106,8 +106,10 @@ function TreasureScrollBorder() {
 
 // MapVignette——左右淡化暈影,獨立於 TreasureScrollBorder 之外(見上方
 // 完整說明),疊在地圖畫布正上方、兩側面板之下。
-function MapVignette() {
-  return <div className={styles.scrollSheet} aria-hidden="true" />
+// dark——夜間模式時改用暗色暈影(淺米色的羊皮紙漸層疊在暗色地圖上會變成一條
+// 突兀的亮邊)。
+function MapVignette({ dark = false }: { dark?: boolean }) {
+  return <div className={dark ? `${styles.scrollSheet} ${styles.scrollSheetDark}` : styles.scrollSheet} aria-hidden="true" />
 }
 
 // ===== 楓葉相框(borderStyle:'maple-leaf',2026-10 新增)。使用者要求
@@ -172,8 +174,8 @@ function MapleLeafBorder() {
 
 // MapleVignette——暖橘色左右暈影(對應 MapVignette),疊在地圖畫布正
 // 上方、兩側面板之下。
-function MapleVignette() {
-  return <div className={styles.mapleSheet} aria-hidden="true" />
+function MapleVignette({ dark = false }: { dark?: boolean }) {
+  return <div className={dark ? `${styles.mapleSheet} ${styles.mapleSheetDark}` : styles.mapleSheet} aria-hidden="true" />
 }
 
 // AiItineraryDetailPageMapView — 「台南赤崁兩日遊」試作用的地圖基底展示版面
@@ -225,7 +227,11 @@ function fallbackCenterOf(itinerary: SampleItinerary): { lat: number; lng: numbe
   return first ? { lat: first.lat!, lng: first.lng! } : { lat: 22.9965, lng: 120.2 }
 }
 
-export function AiItineraryDetailPageMapView({ itinerary }: { itinerary: SampleItinerary }) {
+// dark——頁面目前是不是夜間模式(由 AiItinerariesRoute 的 useThemeToggle 決定,
+// 經 AiItineraryDetailPage 傳進來)。必須明確傳給 NativeMapBase 的 theme:
+// 不傳的話它拿到 null,走 mapId 的地圖會永遠用預設淺色;手繪配色則另外依
+// dark 切換日夜兩份 styles(見 handDrawnMapStyle.ts HAND_DRAWN_DARK_COLORS)。
+export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itinerary: SampleItinerary; dark?: boolean }) {
   // stopAttractionDetails——帶 attractionId 的站點即時查到的 Google 照片
   // (見 useStopAttractionDetails.ts 的完整說明),key 是 attractionId 本身。
   const stopAttractionDetails = useStopAttractionDetails(itinerary.stops)
@@ -386,12 +392,14 @@ export function AiItineraryDetailPageMapView({ itinerary }: { itinerary: SampleI
   usePlanRoutePolyline({
     mapRef: mapHandle.mapRef,
     mapReady: mapHandle.mapReady,
+    mapVersion: mapHandle.mapVersion,
     segments: routeSegments,
   })
 
   usePlanStopMarkers({
     mapRef: mapHandle.mapRef,
     mapReady: mapHandle.mapReady,
+    mapVersion: mapHandle.mapVersion,
     stops: mapStops,
     selectedStopId,
     hoverStopId,
@@ -417,10 +425,11 @@ export function AiItineraryDetailPageMapView({ itinerary }: { itinerary: SampleI
         <NativeMapBase
           center={center}
           zoom={ZOOM}
-          {...(isHandDrawn ? { styles: HAND_DRAWN_MAP_STYLE } : { mapId: SIMPLE_MAP_ID })}
+          theme={dark ? 'dark' : 'light'}
+          {...(isHandDrawn ? { styles: dark ? HAND_DRAWN_MAP_STYLE_DARK : HAND_DRAWN_MAP_STYLE } : { mapId: SIMPLE_MAP_ID })}
           onHandleChange={handleMapHandleChange}
         />
-        {isPlayfulUI && (isMapleBorder ? <MapleVignette /> : <MapVignette />)}
+        {isPlayfulUI && (isMapleBorder ? <MapleVignette dark={dark} /> : <MapVignette dark={dark} />)}
       </div>
       {isPlayfulUI && (isMapleBorder ? <MapleLeafBorder /> : <TreasureScrollBorder />)}
 

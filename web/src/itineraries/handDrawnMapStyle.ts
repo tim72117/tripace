@@ -82,3 +82,43 @@ export const HAND_DRAWN_MAP_STYLE: google.maps.MapTypeStyle[] = [
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#c9e0e8' }] },
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#6b96a3' }] },
 ]
+
+// HAND_DRAWN_DARK_COLORS——淺色版每個顏色對應的暗色版顏色。
+//
+// 為什麼要有暗色版:手繪配色走的是 inline styles、不帶 mapId,而 Google 的
+// colorScheme(暗色)只對帶 mapId 的向量地圖生效——所以使用手繪配色的行程在
+// 頁面切到夜間模式時,地圖仍是整片淺米色,跟暗色介面格格不入。解法是日夜
+// 各給一份 styles,依 theme 切換(NativeMapBase 會在 theme/styles 變動時重建地圖)。
+//
+// 暗色版不是另寫一份規則,而是把淺色版的每個顏色依這張表替換:規則的結構
+// (哪些地物顯示/隱藏、線條粗細)必須與淺色版完全一致,只有顏色不同,避免日夜
+// 兩版的資訊量悄悄分岔。色調沿用同一個暖色系(暖褐/苔綠/灰藍),對齊專案夜間
+// token(--ios-bg 深色約 #1C1815、--ios-card 深色約 #26211D)的氣質。
+// 淺色版新增了表裡沒有的顏色時,handDrawnMapStyle.test.ts 會失敗提醒補這張表。
+export const HAND_DRAWN_DARK_COLORS: Record<string, string> = {
+  '#f7f0e4': '#26211d', // 整體底色、文字描邊
+  '#8a7860': '#b3a187', // 一般文字
+  '#e4ecd8': '#2d3527', // 自然地貌
+  '#d3e4bd': '#34412c', // 公園
+  '#6e8f4f': '#93b573', // 公園文字
+  '#efe0c8': '#3b3228', // 一般道路
+  '#d9c4a0': '#4d4033', // 道路描邊
+  '#e8c79a': '#6a5233', // 高速公路
+  '#c99f68': '#8d6c40', // 高速公路描邊
+  '#f0ddba': '#44392c', // 主幹道
+  '#c9e0e8': '#243840', // 水域
+  '#6b96a3': '#7fa9b6', // 水域文字
+}
+
+// MapTypeStyle.stylers 的元素型別是 object(Google 型別宣告沒有細分),這裡只關心
+// 有沒有 color 欄位,收斂成這個型別。
+type ColorStyler = { color?: unknown }
+
+export const HAND_DRAWN_MAP_STYLE_DARK: google.maps.MapTypeStyle[] = HAND_DRAWN_MAP_STYLE.map((rule) => ({
+  ...rule,
+  stylers: rule.stylers?.map((s) => {
+    const color = (s as ColorStyler).color
+    return typeof color === 'string' ? { ...s, color: HAND_DRAWN_DARK_COLORS[color] ?? color } : s
+  }),
+}))
+

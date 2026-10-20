@@ -31,10 +31,16 @@ const ROUTE_COLORS = ['#d88f45', '#4a7fb5']
 export function usePlanRoutePolyline({
   mapRef,
   mapReady,
+  mapVersion = 0,
   segments,
 }: {
   mapRef: React.RefObject<google.maps.Map | null>
   mapReady: boolean
+  // mapVersion:地圖實例每重建一次(例如明暗模式切換)就遞增,見
+  // NativeMapBase MapHandle.mapVersion。必須列進 effect 依賴——重建後
+  // mapRef.current 是新實例,舊實例上的圖層隨之失效,但 mapReady 不一定
+  // 出現 false→true 的邊緣,只靠 mapReady 會讓路徑/站點不會重畫到新地圖上。
+  mapVersion?: number
   segments: RoutePolylineSegment[]
 }) {
   const polylinesRef = useRef<google.maps.Polyline[]>([])
@@ -77,5 +83,5 @@ export function usePlanRoutePolyline({
       polylinesRef.current = []
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, segmentsKey])
+  }, [mapReady, mapVersion, segmentsKey])
 }

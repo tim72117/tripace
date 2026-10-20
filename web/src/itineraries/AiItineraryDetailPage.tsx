@@ -94,7 +94,7 @@ function useApiBackedItinerary(id: string): ApiFetchState {
 //
 // 找不到 id(網址打錯、或行程被下架)時顯示「找不到這份行程」並導回清單,不是
 // 空白頁。
-export function AiItineraryDetailPage({ items, id }: { items: SampleItinerary[]; id: string }) {
+export function AiItineraryDetailPage({ items, id, dark = false }: { items: SampleItinerary[]; id: string; dark?: boolean }) {
   // apiState——2026-10 改版,使用者明確要求「做成獨立通用的元件,透過
   // 讀取後端端點資料來呈現不同地點」:每份行程都無條件查詢 API(見
   // useApiBackedItinerary 的完整說明),不再有 enabled 旗標/前端白名單。
@@ -169,7 +169,7 @@ export function AiItineraryDetailPage({ items, id }: { items: SampleItinerary[];
     return (
       <>
         {headBrand}
-        <AiItineraryDetailPageMapView itinerary={itinerary} />
+        <AiItineraryDetailPageMapView itinerary={itinerary} dark={dark} />
       </>
     )
   }
