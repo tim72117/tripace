@@ -66,6 +66,20 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* overflow-x: hidden(2026-10,使用者明確指出「時間軸出現捲軸,樣式
+     不好看,而且有橫向」,實機回報的真實 bug)——.transitAxis 裡的
+     .transitPill(交通段文字 pill,例如「步行 2 分‧129m」)刻意比它
+     自己 28px 寬的軸線欄還寬,靠 overflow: visible 讓內容視覺上溢出、
+     疊在卡片旁邊顯示(見 PlanTimelineView.module.css .transitAxis 一帶
+     的完整說明,這段溢出本身是刻意的既有設計)。寬螢幕側欄(560px)的
+     .inner 可用寬度(扣掉左右 padding 後)比這批卡片版面假設的寬度窄
+     一截,溢出的 pill 因此把 .timelineScroll 的 scrollWidth 撐大過
+     clientWidth,觸發瀏覽器原生橫向捲軸——那條捲軸樣式跟整體深色
+     設計不搭,而且時間軸本來就不該支援橫向捲動(使用者看的是縱向
+     清單)。overflow-x: hidden 只裁掉超出 .timelineScroll 邊界的那一小
+     截溢出內容,不影響 pill 在卡片範圍內的正常顯示,也不影響
+     overflow-y 的縱向捲動行為。 */
+  overflow-x: hidden;
   /* padding-top 72px——.header 已移除(見上方「頂部狀態藥丸」說明),
      內容區直接貼齊 .page 頂端,會被 fixed 定位的 SiteNavBrand/
      SiteNavThemeToggle/SiteNavCta 蓋住第一張卡片。這幾顆漂浮按鈕統一
@@ -80,6 +94,32 @@
      幾張卡片——膠囊本身高度約在 64px 上下(含 padding),128px 留了
      充裕的緩衝空間讓使用者往下捲到底時最後一張卡片仍完全可見。 */
   padding-bottom: 128px;
+  /* scrollbar-width/scrollbar-color/::-webkit-scrollbar*(2026-10,
+     使用者明確指出「直的捲軸太粗」,確認方向「保留但改細、深色主題
+     配色」)——瀏覽器原生捲軸(通常 15-17px)在這個寬度固定 560px 的
+     側欄裡比例失調,跟整體深色設計也不搭。做法對齊既有先例
+     trip-plan/TripPlanPage.module.css 的 .compactScroll(同樣是「疊在
+     地圖上方的固定寬度浮動卡片 + 內部捲動」情境,見該處的完整說明:
+     scrollbar-width:thin 是 Firefox 標準屬性,webkit 系要另外用
+     ::-webkit-scrollbar 系列偽元素,兩者都要寫才能涵蓋主流瀏覽器),
+     不是重新發明一套。只隱藏視覺上的粗細、改細既有配色,不是隱藏捲軸
+     本身——桌面版使用者習慣看到捲軸存在來判斷「還有更多內容」,只是
+     嫌它太粗。 */
+  scrollbar-width: thin;
+  scrollbar-color: var(--ios-gray) transparent;
+}
+.timelineScroll::-webkit-scrollbar {
+  width: 6px;
+}
+.timelineScroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.timelineScroll::-webkit-scrollbar-thumb {
+  background-color: var(--ios-gray);
+  border-radius: 999px;
+}
+.timelineScroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-dark);
 }
 
 /* timelineJumpPillWrap——疊加在 PlanTimelineView 自己的 .jumpPillWrap 上

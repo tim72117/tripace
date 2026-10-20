@@ -25,6 +25,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/tim72117/tripace/internal/auth"
@@ -180,6 +182,63 @@ func TestThrottleGeoQueryByIP_DifferentIPsHaveIndependentQuota(t *testing.T) {
 	// IP B 的配額應完全不受 IP A 影響,仍能正常放行。
 	if !reqFromIP(ipB) {
 		t.Fatalf("IP B: expected allowed (independent quota), got blocked")
+	}
+}
+
+// TestThrottleGeoQueryByIP_ConcurrentRequests_ExactlyMaxCallsAllowed 驗證
+// throttleGeoQueryByIP 在真正並發(多 goroutine 同時呼叫,不是上面
+// TestThrottleGeoQueryByIP_AllowsUpToLimitThenBlocks 那種依序迴圈)下
+// 計數仍然正確——RateLimiter.Allow/AllowWithLimit 內部用 sync.Mutex
+// 保護(見 apigateway/ratelimiter.go 的完整說明),理論上併發安全,但
+// 既有測試全部是單一 goroutine 依序呼叫,從未真正驗證過這個保護在併發
+// 下確實生效,不是只在單執行緒情境下「剛好」沒出錯。
+//
+// 2026-10 新增(使用者明確要求「請求改並發看看」)。
+//
+// 驗證方式:同一個 IP,同時發出 2×geoQueryIPThrottleMaxCalls 次請求
+// (超過配額一倍,確保一定會有請求被擋),用 atomic 計數器分別累計
+// 放行與拒絕的次數,等全部 goroutine 完成後斷言:
+//  1. 放行次數精確等於 geoQueryIPThrottleMaxCalls,不多也不少——如果
+//     Mutex 保護失效,競態視窗會讓多個 goroutine 同時讀到「尚未達到
+//     上限」的舊計數值、一起放行,放行次數就會超過配額(這是最常見的
+//     併發計數 bug,單執行緒測試完全測不出來)。
+//  2. 放行次數+拒絕次數精確等於發出的總請求數——驗證沒有請求在併發過程
+//     中「消失」(例如 panic 被外層 recover 吞掉卻沒有計數)。
+// 用 -race 執行這個測試(go test -race)能進一步確認沒有資料競態,這裡
+// 的斷言本身驗證的是「計數語意正確」,-race 驗證的是「沒有未同步的
+// 記憶體存取」,兩者互補、缺一不可。
+func TestThrottleGeoQueryByIP_ConcurrentRequests_ExactlyMaxCallsAllowed(t *testing.T) {
+	s := newTestServer(t)
+
+	const testIP = "203.0.113.42"
+	const totalRequests = geoQueryIPThrottleMaxCalls * 2
+
+	var wg sync.WaitGroup
+	var allowedCount, blockedCount int64
+
+	for i := 0; i < totalRequests; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodGet, "/public/geo/plan-ai/place-search", nil)
+			r.Header.Set("X-Forwarded-For", testIP)
+			if s.throttleGeoQueryByIP(w, r) {
+				atomic.AddInt64(&allowedCount, 1)
+			} else {
+				atomic.AddInt64(&blockedCount, 1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if allowedCount != geoQueryIPThrottleMaxCalls {
+		t.Fatalf("expected exactly %d allowed requests under concurrency, got %d (blocked=%d)",
+			geoQueryIPThrottleMaxCalls, allowedCount, blockedCount)
+	}
+	if allowedCount+blockedCount != totalRequests {
+		t.Fatalf("expected allowed+blocked to equal total requests %d, got %d (allowed=%d, blocked=%d)",
+			totalRequests, allowedCount+blockedCount, allowedCount, blockedCount)
 	}
 }
 

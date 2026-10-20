@@ -22,11 +22,21 @@
    完全露出。容器只負責定位,不給背景與陰影(使用者要求「浮空」效果)。
    手機(<=767px):退回 .page(flex column)的一般 flex 子項,flex:1 吃滿
    導覽列佔位以外的剩餘高度;min-height:0 是 flex 子項成為捲動容器的
-   常見前提(預設 min-height:auto 不會小於內容)。 */
+   常見前提(預設 min-height:auto 不會小於內容)。
+
+   桌面 top: 72px(2026-10,使用者明確指出「畫面上面功能列 layout 要留
+   空間」,實機回報的真實 bug)——取代原本的 top: 0。漂浮導覽列
+   (SiteNavButtons,position: fixed)蓋在整個頁面最上層,桌面側欄
+   top: 0 會讓側欄內容(問句標題、第一張候選卡片)直接貼齊視窗頂端,
+   跟導覽列的「登入」「切換日夜模式」按鈕幾乎疊在同一行高度,視覺上
+   擁擠、沒有分隔空間。72px 沿用下方 .navSpacer 的既有估算值(原本
+   只在手機版的 flex column 流裡當佔位元素用)——桌面側欄不在 flex
+   流裡,不需要佔位元素,但同樣在跟導覽列共用同一塊螢幕空間,沿用同一個
+   估算值而不是另外發明一個新數字,留白觀感才會一致。 */
 @media (min-width: 768px) {
   .panel {
     position: absolute;
-    top: 0;
+    top: 72px;
     right: 0;
     bottom: 0;
     width: 560px;

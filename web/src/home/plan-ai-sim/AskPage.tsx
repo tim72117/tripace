@@ -129,9 +129,18 @@ export interface AskPageProps {
   // (TripPlanPage.tsx)收到後呼叫 openAskPage({ country: { countryIds }
   // }),不是 resolveAskPage。
   onBack?: (countryIds?: string[]) => void
+  // stacked——寬螢幕側欄(PlanOverlayPanelWide,見該元件的完整說明)改用
+  // 縱向堆疊的橫式列表,取代預設的橫向捲動小卡(使用者明確要求「所有的
+  // 詢問項目都要換」,2026-10 新增)。往下傳給四個子面板(CandidatesPanel/
+  // CountryPanel/CityPanel/TransportPanel),各自依這個值切換對應的
+  // *Stacked class(見 AskPage.module.css 的完整說明)。text 模式(純
+  // 文字對話氣泡)沒有候選卡片這種排列可言,不受這個 prop 影響。選填,
+  // 省略時維持原本的橫向捲動,對齊既有呼叫端(/ai-plan 手機版、尚未
+  // 接上這個 prop 的其他呼叫點)不需要改動就能繼續運作。
+  stacked?: boolean
 }
 
-export function AskPage({ dataSource, input, onDone, onBack }: AskPageProps) {
+export function AskPage({ dataSource, input, onDone, onBack, stacked }: AskPageProps) {
   // text 模式(見上方檔頭「第四輪」的完整說明):純文字對話氣泡,沒有
   // 候選卡片/選取/確認這些互動,跟其餘模式的渲染邏輯完全不共用,在這裡
   // 直接短路回傳,不進外殼的 .bubble/.question/.actions 結構(文字氣泡
@@ -163,18 +172,18 @@ export function AskPage({ dataSource, input, onDone, onBack }: AskPageProps) {
   }
 
   if ('country' in input) {
-    return <CountryPanel input={input.country} onDone={onDone} />
+    return <CountryPanel input={input.country} onDone={onDone} stacked={stacked} />
   }
 
   if ('city' in input) {
-    return <CityPanel input={input.city} onBack={onBack} onDone={onDone} />
+    return <CityPanel input={input.city} onBack={onBack} onDone={onDone} stacked={stacked} />
   }
 
   if ('transport' in input) {
-    return <TransportPanel modes={input.transport} reason={input.reason} onDone={onDone} />
+    return <TransportPanel modes={input.transport} reason={input.reason} onDone={onDone} stacked={stacked} />
   }
 
-  return <CandidatesPanel dataSource={dataSource} input={input} onDone={onDone} />
+  return <CandidatesPanel dataSource={dataSource} input={input} onDone={onDone} stacked={stacked} />
 }
 
 // CandidatesPanel——感興趣地點:候選景點照片卡片,可複選,「確認選擇」
@@ -185,10 +194,12 @@ function CandidatesPanel({
   dataSource,
   input,
   onDone,
+  stacked,
 }: {
   dataSource: PlanAiDataSource
   input: { candidates: AskPageCandidate[]; reason?: string } | { explore: AskPageExplore; reason?: string }
   onDone: (selected: AskPageSelection[]) => void
+  stacked?: boolean
 }) {
   const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>([])
   // candidates——這個元件實際要顯示的候選清單,explore 模式下由
@@ -324,10 +335,10 @@ function CandidatesPanel({
   }
 
   return (
-    <div className={styles.wrap}>
-      <div className={styles.bubble}>
+    <div className={[styles.wrap, stacked ? styles.wrapStacked : ''].filter(Boolean).join(' ')}>
+      <div className={[styles.bubble, stacked ? styles.bubbleStacked : ''].filter(Boolean).join(' ')}>
         <p className={styles.question}>{input.reason ?? '要安排這些地點嗎?'}</p>
-        <div className={styles.directionScroller}>
+        <div className={[styles.directionScroller, stacked ? styles.directionScrollerStacked : ''].filter(Boolean).join(' ')}>
           {candidates.map((candidate) => {
             const checked = selectedPlaceIds.includes(candidate.placeId)
             const detail = details.get(candidate.placeId)
@@ -336,11 +347,44 @@ function CandidatesPanel({
                 key={candidate.placeId}
                 type="button"
                 aria-pressed={checked}
-                className={checked ? `${styles.directionCard} ${styles.directionCardChecked}` : styles.directionCard}
+                className={[
+                  styles.directionCard,
+                  stacked ? styles.directionCardStacked : '',
+                  checked ? styles.directionCardChecked : '',
+                ].filter(Boolean).join(' ')}
                 onClick={() => toggleCandidate(candidate.placeId)}
               >
-                {detail?.photoUrl && <img src={detail.photoUrl} alt="" className={styles.directionPhoto} />}
-                <span className={styles.directionLabel}>
+                {detail?.photoUrl ? (
+                  <img
+                    src={detail.photoUrl}
+                    alt=""
+                    className={[styles.directionPhoto, stacked ? styles.directionPhotoStacked : ''].filter(Boolean).join(' ')}
+                  />
+                ) : (
+                  // stacked 模式的佔位縮圖——使用者明確指出「手機版的有
+                  // 留空間,桌面版的連空間都沒有」:橫向捲動模式下卡片本身
+                  // 是固定尺寸的方塊(見 .directionCard 的完整說明),沒有
+                  // 照片時卡片仍維持同樣大小、只是內容空白,視覺上像是
+                  // 「有留空間」;stacked 模式是圖文並排的列表樣式,沒有
+                  // <img> 時沒有東西撐出縮圖寬度,整行會變成只剩文字靠左,
+                  // 跟有照片的項目排列不整齊。這裡補一個跟
+                  // .directionPhotoStacked 同尺寸的佔位色塊,維持版面
+                  // 對齊。用通用的地圖釘子 icon(MapPin,跟 CountryPanel/
+                  // CityPanel 既有的 .regionIcon 同一顆圖示,不是另外引入
+                  // 新圖示),不依景點類型(餐廳/公園/景點等)顯示不同圖示
+                  // ——AskPageCandidate/CandidateDetails 目前整條資料鏈路
+                  // 都沒有攜帶類型欄位(2026-10,使用者明確要求「先改成
+                  // 通用的地圖釘子佔位圖,最小改動先解決沒有空間的問題」,
+                  // 類型區分留待之後有需要再擴充資料結構)。只在 stacked
+                  // 模式顯示——橫向捲動模式本來就有「留空間」的效果,不
+                  // 需要額外補一個佔位圖示。
+                  stacked && (
+                    <span className={styles.directionPhotoPlaceholder} aria-hidden="true">
+                      <MapPin size={20} strokeWidth={2} />
+                    </span>
+                  )
+                )}
+                <span className={[styles.directionLabel, stacked ? styles.directionLabelStacked : ''].filter(Boolean).join(' ')}>
                   {detail?.loading ? '查詢中…' : (detail?.name ?? candidate.name ?? '未命名地點')}
                 </span>
                 {checked && <Check size={14} strokeWidth={3} className={styles.directionCheck} />}
@@ -388,27 +432,29 @@ function CandidatesPanel({
 function CountryPanel({
   input,
   onDone,
+  stacked,
 }: {
   input: AskPageCountryInput
   onDone: (selected: AskPageSelection[]) => void
+  stacked?: boolean
 }) {
   // listTravelCountries——篩選邏輯抽到 travelRegionData.ts 共用(見該
   // 函式的完整說明:uiStateStore 要算出同一份清單,兩邊各寫一份會不一致)。
   const countries = listTravelCountries(input.countryIds)
   return (
-    <div className={styles.wrap}>
-      <div className={styles.bubble}>
+    <div className={[styles.wrap, stacked ? styles.wrapStacked : ''].filter(Boolean).join(' ')}>
+      <div className={[styles.bubble, stacked ? styles.bubbleStacked : ''].filter(Boolean).join(' ')}>
         <p className={styles.question}>{input.reason ?? '要去哪個國家?'}</p>
-        <div className={styles.directionScroller}>
+        <div className={[styles.directionScroller, stacked ? styles.directionScrollerStacked : ''].filter(Boolean).join(' ')}>
           {countries.map((c) => (
             <button
               key={c.id}
               type="button"
-              className={styles.regionCard}
+              className={[styles.regionCard, stacked ? styles.regionCardStacked : ''].filter(Boolean).join(' ')}
               onClick={() => onDone([{ placeId: c.id }])}
             >
               <MapPin size={18} strokeWidth={2} className={styles.regionIcon} />
-              <span className={styles.regionName}>{c.name}</span>
+              <span className={[styles.regionName, stacked ? styles.regionNameStacked : ''].filter(Boolean).join(' ')}>{c.name}</span>
             </button>
           ))}
         </div>
@@ -441,29 +487,31 @@ function CityPanel({
   input,
   onBack,
   onDone,
+  stacked,
 }: {
   input: AskPageCityInput
   onBack?: (countryIds?: string[]) => void
   onDone: (selected: AskPageSelection[]) => void
+  stacked?: boolean
 }) {
   const country = findTravelCountry(input.countryId)
   // listTravelCities——理由同 RegionPanel 的 listTravelCountries。
   const cities = listTravelCities(input.countryId, input.cityIds)
   const question = input.reason ?? (country ? `${country.name}要去哪裡?` : '要安排哪個城市?')
   return (
-    <div className={styles.wrap}>
-      <div className={styles.bubble}>
+    <div className={[styles.wrap, stacked ? styles.wrapStacked : ''].filter(Boolean).join(' ')}>
+      <div className={[styles.bubble, stacked ? styles.bubbleStacked : ''].filter(Boolean).join(' ')}>
         <p className={styles.question}>{question}</p>
-        <div className={styles.directionScroller}>
+        <div className={[styles.directionScroller, stacked ? styles.directionScrollerStacked : ''].filter(Boolean).join(' ')}>
           {cities.map((city) => (
             <button
               key={city.id}
               type="button"
-              className={styles.regionCard}
+              className={[styles.regionCard, stacked ? styles.regionCardStacked : ''].filter(Boolean).join(' ')}
               onClick={() => onDone([{ placeId: city.id }])}
             >
               <MapPin size={18} strokeWidth={2} className={styles.regionIcon} />
-              <span className={styles.regionName}>{city.name}</span>
+              <span className={[styles.regionName, stacked ? styles.regionNameStacked : ''].filter(Boolean).join(' ')}>{city.name}</span>
             </button>
           ))}
         </div>
@@ -501,23 +549,25 @@ function TransportPanel({
   modes,
   reason,
   onDone,
+  stacked,
 }: {
   modes: TransportMode[]
   reason?: string
   onDone: (selected: AskPageSelection[]) => void
+  stacked?: boolean
 }) {
   return (
-    <div className={styles.wrap}>
-      <div className={styles.bubble}>
+    <div className={[styles.wrap, stacked ? styles.wrapStacked : ''].filter(Boolean).join(' ')}>
+      <div className={[styles.bubble, stacked ? styles.bubbleStacked : ''].filter(Boolean).join(' ')}>
         <p className={styles.question}>{reason ?? '這段要怎麼移動?'}</p>
-        <div className={styles.transportRow}>
+        <div className={[styles.transportRow, stacked ? styles.transportRowStacked : ''].filter(Boolean).join(' ')}>
           {modes.map((mode) => {
             const meta = TRANSPORT_MODE_META[mode]
             return (
               <button
                 key={mode}
                 type="button"
-                className={styles.transportCard}
+                className={[styles.transportCard, stacked ? styles.transportCardStacked : ''].filter(Boolean).join(' ')}
                 onClick={() => onDone([{ placeId: mode }])}
               >
                 <meta.Icon size={22} strokeWidth={2} />

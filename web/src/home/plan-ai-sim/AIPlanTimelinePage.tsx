@@ -15,6 +15,7 @@ import { PlanDemoLayout } from './PlanDemoLayout'
 import { HorizontalPlanTimeline } from './HorizontalPlanTimeline'
 import { ScriptedAskPage } from './ScriptedAskPage'
 import { useIsDesktop } from '../../hooks/useIsDesktop'
+import { useIsWide } from '../../hooks/useIsWide'
 import { Lightbox } from '../../geo-planning/PhotoCarousel'
 import type { AskPageCandidate } from '../../plan-core/askPageTools'
 import { useAskPageBridge } from '../../plan-core/useAskPageBridge'
@@ -49,9 +50,17 @@ import { NativeMapBase, type MapHandle } from '../../geo-planning/NativeMapBase'
 const SafeAreaDebugOverlay = lazy(() =>
   import('./SafeAreaDebugOverlay').then((m) => ({ default: m.SafeAreaDebugOverlay })),
 )
+// WideLayoutDebugOverlay——wide 模式(見 PlanOverlayPanelWide 的完整
+// 說明)側欄/composer 插槽的除錯疊圖,共用同一個 ?debugSafeArea=1 開關,
+// 見該檔案檔頭的完整說明:標示的是不同的幾何,跟上面的
+// SafeAreaDebugOverlay 互補、不是取代關係。同樣 lazy 載入,理由相同。
+const WideLayoutDebugOverlay = lazy(() =>
+  import('./WideLayoutDebugOverlay').then((m) => ({ default: m.WideLayoutDebugOverlay })),
+)
 import type { PlanStopMarker } from '../../geo-planning/usePlanStopMarkers'
 import { useMapMarkerLayer, type MapMarkerPoint } from '../../geo-planning/mapMarkerLayer'
 import { useMapSafeArea } from '../../geo-planning/useMapSafeArea'
+import { SIDEBAR_WIDTH, SIDEBAR_TOP, COMPOSER_BAND_HEIGHT } from './planOverlayGeometry'
 import styles from './AIPlanTimelinePage.module.css'
 
 // LANDING_MAP_ID——主題介紹頁(home/InteractiveExploreMap.tsx)同名常數的
@@ -1404,6 +1413,11 @@ export function AIPlanTimelinePage() {
   // 宣告位置提前到這裡(原本在 mapHandle 附近)——createPlanSimSource
   // 要用到它,JavaScript 變數必須先宣告才能在後續程式碼裡使用。
   const isDesktop = useIsDesktop()
+  // isWide——是否達到 PlanDemoLayout wide 模式的斷點(1024px,見
+  // useIsWide 的完整說明)。獨立於 isDesktop 的判斷,只決定要不要把
+  // wide prop 傳給 PlanDemoLayout,不影響上面 isDesktop 原本的兩個
+  // 既有用途。
+  const isWide = useIsWide()
 
   // createPlanSimSource——用 useCallback 包一層穩定參照:
   // usePlanSimSocket 的 createSource 參數若每次 render 都是新函式,
@@ -1462,9 +1476,15 @@ export function AIPlanTimelinePage() {
         picks={askPagePicks ?? []}
         confirmAfterMs={ASK_PAGE_CONFIRM_DELAY_MS}
         onDone={handleAskPageDone}
+        // stacked——寬螢幕(>=1024px)側欄改用縱向堆疊的候選卡片列表,
+        // 取代橫向捲動(見 ScriptedAskPage.tsx stacked prop 的完整說明,
+        // 2026-10 使用者明確要求)。這個 callback 同時服務手機版
+        // (horizontalTimeline 分支)與桌面版(isDesktop 分支)兩處呼叫,
+        // isWide 在手機版恆為 false,不會影響手機版既有的橫向捲動。
+        stacked={isWide}
       />
     ),
-    [askPageCandidates, askPagePicks, handleAskPageDone],
+    [askPageCandidates, askPagePicks, handleAskPageDone, isWide],
   )
 
   // 這個頁面固定「打字動畫播完才開始安排」(見上方 promptTyped 的完整
@@ -1768,13 +1788,54 @@ export function AIPlanTimelinePage() {
   // 才觸發一次,之後恆為 true,不受任何後續的 stops 變動影響——跟
   // useSimulatedStopsView.ts latestInsertedStopIdRef 那種「只同步
   // 一次,不要每次變動都搶回」的既有設計原則一致(見該處的完整說明)。
+  //
+  // 2026-10(第五輪,使用者明確要求「桌面版第一個點要出現在安全區
+  // 中心」):不透過 panToStopId(那個函式內部 `isDesktop ||
+  // handedOver` 就直接 return,見該函式的完整說明:它只服務手機版
+  // 卡片上「移動到此」這顆按鈕,原本連同這個初始置中一起被擋掉,是因為
+  // 當初桌面疊加版面(PlanOverlayPanel)從未渲染過安全區元素,
+  // mapSafeArea.safeAreaElRef 在桌面恆為 null,呼叫了也只會退化成
+  // 普通 panTo,索性整個排除)。isWide 模式(見 PlanOverlayPanelWide
+  // 的完整說明)現在會接上一塊排除右側側欄範圍的矩形,桌面寬螢幕下
+  // panToWithinSafeArea 已經具備正確運作的前提——這裡改成直接呼叫它,
+  // 不經過 panToStopId 的 isDesktop 排除,讓桌面 wide 版也享有「移動
+  // 完成後落在安全區中心」的效果,同時完全不影響 panToStopId 本身
+  // (手機版「移動到此」按鈕的既有行為不變)。非 wide 的桌面疊加版面
+  // (768px~1023px)跟手機版/交接後維持原行為不受影響——safeAreaEl 為
+  // null 時 panToWithinSafeArea 本身就會退化成普通 panTo(見該函式的
+  // 完整說明),不會出錯,只是沒有「排除側欄」的效果。
+  //
+  // 2026-10(code review 發現、修正第二輪):上一版的 guard 只寫
+  // `if (handedOver) return`,把非 wide 的桌面疊加版面(768px~1023px,
+  // isDesktop 為 true、isWide 為 false)漏掉了——這個版面區間過去是
+  // 透過 panToStopId 的 `isDesktop || handedOver` 整個排除掉的,從未
+  // 自動 panTo 過;這裡少了 `isDesktop && !isWide` 這個條件,會讓這個
+  // 區間意外開始觸發一次 panTo(雖然 safeAreaEl 是 null、退化成普通
+  // panTo,不會出錯,但仍是一個新出現的、未經設計確認的鏡頭移動),
+  // 跟上面註解宣稱的「語意上維持跟改動前一致」矛盾。補回這個排除條件,
+  // 讓這個版面區間真正維持原行為不受影響。
+  //
+  // 同一輪 review 也發現這裡拿掉了 panToStopId 原有的
+  // `!mapHandle.mapReady || !mapHandle.mapRef.current` 明確就緒檢查,
+  // 只靠 panToWithinSafeArea 內部對 map/projection/zoom/center 的 null
+  // 檢查頂著——這個 effect 是一次性 ref-latch(hasAutoPannedToFirstStopRef
+  // 一旦設成 true 就不會再重試),若剛好撞上 mapRef.current 已經非
+  // null、但 mapReady 還沒真正翻成 true 的時間窗口(NativeMapBase.tsx
+  // 描述過這個 React 雙重 commit 的邊界情況),這次呼叫就會在地圖還沒
+  // 完全初始化好時發生,且永遠不會補一次。補回明確的就緒檢查,等到
+  // mapReady 真正翻成 true 才消費這個一次性 ref。
   const hasAutoPannedToFirstStopRef = useRef(false)
   useEffect(() => {
     if (hasAutoPannedToFirstStopRef.current) return
     if (planSource.stops.length === 0) return
+    if (handedOver) return
+    if (isDesktop && !isWide) return
+    if (!mapHandle.mapReady || !mapHandle.mapRef.current) return
     hasAutoPannedToFirstStopRef.current = true
-    panToStopId(planSource.stops[0].id)
-  }, [planSource.stops, panToStopId])
+    const first = planSource.stops[0]
+    mapSafeArea.panToWithinSafeArea({ lat: first.lat, lng: first.lng })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planSource.stops, handedOver, isDesktop, isWide, mapHandle.mapReady, mapHandle.mapRef, mapSafeArea.panToWithinSafeArea])
 
   // composerCollapsed——排程結束後,漂浮輸入膠囊(.composer)裡原本的
   // 箭頭送出鈕(.sendBtn)切換成「讓我試看看」行動呼籲按鈕(.composerCta)。
@@ -1950,6 +2011,59 @@ export function AIPlanTimelinePage() {
         mapId={LANDING_MAP_ID}
         onHandleChange={handleMapHandleChange}
       />
+      {/* wide 模式的安全區——使用者明確指出「安全區是左側剩餘空間」:
+          地圖容器本身仍是 absolute 鋪滿整個 .page(使用者明確要求「地圖
+          一樣要滿版」,見 PlanDemoLayout.module.css .mapBackdrop 的完整
+          說明),側欄(PlanOverlayPanelWide 的 .panel)疊加貼在右側,寬度
+          固定 560px(跟 PlanOverlayPanel 桌面版同一個數字,見該檔案
+          .panel 的完整說明)。這個看不見的 div right 留出那 560px、
+          左側其餘部分才是「沒被側欄蓋住」的安全可視區,接上跟手機版
+          同一個 mapSafeArea.safeAreaElRef——useMapSafeArea 的計算邏輯
+          本來就只依賴這個 ref 指向的元素範圍,不關心是哪種版面產生的,
+          這裡接一塊排除右側側欄範圍的矩形上去,算出來的安全區自然就是
+          左側剩餘空間,跟手機版用同一套 solveSafeAreaCenter 不需要改。
+          手機版的安全區元素在 PlanOverlayPanel.tsx 的 .safeArea(只在
+          isDesktop=false 時渲染),跟這裡互斥:wide 必然是桌面版面,
+          兩者不會同時掛載,不會有同一個 ref 被兩處元素搶著賦值的問題。
+
+          top: 72(2026-10,使用者明確指出「有跟地圖安全區還有側欄重疊
+          嗎」後查出的真實 bug):漂浮導覽列(SiteNavButtons,position:
+          fixed)橫跨整個頁面頂部,頁面頂部 72px 這段範圍實際上被它佔用
+          (跟 PlanOverlayPanelWide.module.css .panel 的 top: 72px 同一個
+          數字,見該 class 的完整說明),之前這裡維持 top: 0,導致安全區
+          矩形把那段被導覽列佔用的範圍也算進「可視安全區」——地圖平移
+          計算出的目標點可能落在導覽列底下被蓋住的位置,使用者看起來
+          像是地圖沒有真的移到該去的地方。改成 top: 72 後,安全區矩形
+          才真正等於「扣掉導覽列、扣掉右側側欄之後剩下的可視範圍」。
+
+          bottom: COMPOSER_BAND_HEIGHT(2026-10,使用者明確要求「composer
+          區也要一整列」「也是不要重疊」):同樣的道理套用在底部——
+          composer 插槽(PlanOverlayPanelWide.module.css .composerSlot)
+          貼底置中,COMPOSER_BOTTOM + COMPOSER_HEIGHT(實機量測得到的
+          66px,不是 CSS 寫死的值,因為 .composerSlot 本身沒有設 height,
+          見 planOverlayGeometry.ts 的完整說明)合計這條底部範圍實際上
+          是給 composer 保留的。
+
+          2026-10(code review 發現):top/right/bottom 這三個數字原本
+          各自寫死在這裡(72/560/86),跟 WideLayoutDebugOverlay.tsx 的
+          除錯框線各自一份、互相手動對照,這份重複已經在同一輪改動裡
+          造成過兩次真實漂移(SIDEBAR_TOP 漏改一次、bottom 的計算基準
+          跟除錯框線不同步)。改成從 planOverlayGeometry.ts 匯入同一份
+          常數,這兩個消費者不會再各自算出不一致的數字;CSS Module
+          (PlanOverlayPanelWide.module.css 的 .panel)仍然要手動對照這份
+          數值,見該模組開頭的完整說明。 */}
+      {isWide && (
+        <div
+          ref={mapSafeArea.safeAreaElRef}
+          // pointer-events: none——純粹的量測用矩形,不是真實可見的 UI
+          // 元素(對齊 PlanOverlayPanel.module.css .safeArea 的既有寫法:
+          // 同樣是 position absolute + pointer-events none)。漏掉這個
+          // 屬性的後果是這塊矩形疊在地圖上方攔截所有滑鼠事件,地圖完全
+          // 拖不動(實機回報過的真實 bug,不是臆測的風險)。
+          style={{ position: 'absolute', top: SIDEBAR_TOP, left: 0, bottom: COMPOSER_BAND_HEIGHT, right: SIDEBAR_WIDTH, pointerEvents: 'none' }}
+          aria-hidden="true"
+        />
+      )}
       {DEBUG_SAFE_AREA && (
         <Suspense fallback={null}>
           <SafeAreaDebugOverlay
@@ -1965,6 +2079,19 @@ export function AIPlanTimelinePage() {
     </>
   )
 
+  // wideDebugOverlay——跟 mapBackground 分開組裝,不塞進那個插槽裡:
+  // 見 PlanDemoLayout.tsx debugOverlay prop 的完整說明——mapBackground
+  // 最終被包進 .mapBackdrop(z-index: 0),composer 插槽是 z-index: 20,
+  // 兩者是 .page 的手足,子層級的 z-index 再高也蓋不過父層級已經輸掉的
+  // 比較結果,標示 composer 範圍的疊圖必須跟 composer 插槽同層級。
+  // 只在 wide 模式下才有側欄/composer 插槽可標示,isDesktop 的桌面疊加
+  // 版面(PlanOverlayPanel)跟手機版都不渲染這個疊圖。
+  const wideDebugOverlay = DEBUG_SAFE_AREA && isWide ? (
+    <Suspense fallback={null}>
+      <WideLayoutDebugOverlay />
+    </Suspense>
+  ) : undefined
+
   return (
     <>
     {/* PlanDemoLayout——版面骨架(根容器+地圖背景+上方 nav+既有的
@@ -1977,6 +2104,8 @@ export function AIPlanTimelinePage() {
         theme={theme}
         mapBackground={mapBackground}
         nav={navButtons}
+        wide={isWide}
+        debugOverlay={wideDebugOverlay}
         isDesktop={isDesktop}
         safeAreaRef={mapSafeArea.safeAreaElRef}
         passThrough
@@ -1993,6 +2122,8 @@ export function AIPlanTimelinePage() {
         theme={theme}
         mapBackground={mapBackground}
         nav={navButtons}
+        wide={isWide}
+        debugOverlay={wideDebugOverlay}
         isDesktop={isDesktop}
         safeAreaRef={mapSafeArea.safeAreaElRef}
         composer={(

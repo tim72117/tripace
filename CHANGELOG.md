@@ -2,7 +2,29 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
-## v0.37.0 — 2026-10-20
+## v0.37.1 — 2026-10-21
+
+`/ai-plan` 展示頁新增 1024px 寬螢幕側欄版面（地圖維持滿版，側欄與 composer 疊加顯示），詢問頁候選卡片在寬螢幕下改為縱向堆疊列表，並修正時間軸的捲軸樣式與桌面疊加版面的導覽列留白問題。無破壞性變更、無資料庫結構變更。
+
+### 新增
+
+- **寬螢幕（≥1024px）側欄版面 `PlanOverlayPanelWide`**：`/ai-plan` 展示頁在寬螢幕下改用這個獨立側欄外殼（`useIsWide` 判斷斷點），取代原本沿用桌面疊加版面 `PlanOverlayPanel` 的做法。地圖容器維持 `absolute` 鋪滿整個頁面不被擠壓（使用者明確要求「地圖一樣要滿版」），側欄疊加貼齊右緣、composer 插槽橫跨整頁貼底置中——都是疊加模式，不是 flex 擠壓。側欄幾何常數（側欄寬度、頂部留白、composer 佔用高度）抽成 `planOverlayGeometry.ts` 單一來源，供 `AIPlanTimelinePage.tsx` 的安全可視區矩形與 `WideLayoutDebugOverlay.tsx` 的除錯疊圖共用——這份數值先前各自手寫一份，同一輪改動裡已經造成兩次真實漂移（側欄頂部留白漏改一次、底部計算基準跟除錯框線不同步）。
+- **`?debugSafeArea=1` 新增側欄/composer 邊界疊圖 `WideLayoutDebugOverlay`**：標示寬螢幕側欄與 composer 插槽的實際範圍，跟既有的 `SafeAreaDebugOverlay`（畫地圖安全可視區的計算結果）互補，`AIPlanTimelinePage.tsx` 的 `DEBUG_SAFE_AREA` 開關同時渲染兩者。
+- **`throttleGeoQueryByIP` 的真並發測試**：既有測試全部是單一 goroutine 依序呼叫，從未驗證過 `RateLimiter` 內部的 `sync.Mutex` 保護在真正並發下是否確實生效。新增 `TestThrottleGeoQueryByIP_ConcurrentRequests_ExactlyMaxCallsAllowed`，同一個 IP 併發送出兩倍配額的請求，斷言放行次數精確等於配額上限（多了代表計數器有競態視窗）、放行加拒絕精確等於總請求數（有請求在併發中「消失」代表有 panic 被吞掉卻沒計數），`-race` 跑過確認沒有未同步的記憶體存取。
+- **詢問頁候選卡片的 `stacked` 模式**：`AskPage`／`ScriptedAskPage` 新增 `stacked` prop，寬螢幕側欄下四種詢問項目（候選景點、國家、城市、交通方式）改成縱向堆疊的橫式列表，取代橫向捲動小卡——側欄欄位不寬但可以向下延伸，縱向清單更適合這個版面。沒有照片時顯示通用的地圖釘子佔位圖（`MapPin`，跟 `CountryPanel`／`CityPanel` 既有的 `.regionIcon` 共用同一顆圖示，不分景點類型），維持跟有照片項目一致的版面對齊——橫向捲動模式本身因為卡片固定尺寸已經「有留空間」，只在 stacked 模式才需要這個佔位圖。手機版（橫向捲動）完全不受影響，`stacked` 省略時維持原行為。
+
+### 修正
+
+- **寬螢幕側欄內容緊貼視窗頂端，跟漂浮導覽列的按鈕幾乎疊在一起**：桌面疊加版面 `PlanOverlayPanel`、寬螢幕側欄 `PlanOverlayPanelWide` 的 `.panel` 原本都是 `top: 0`，而漂浮導覽列（`SiteNavButtons`，`position: fixed`）蓋在整個頁面最上層——側欄第一張候選卡片因此直接貼齊視窗頂端，跟「登入」「切換日夜模式」按鈕視覺上擁擠、沒有分隔空間。兩者都改成 `top: 72px`（沿用手機版 `.navSpacer` 既有的導覽列高度估算值），地圖安全可視區矩形同步排除這段範圍，避免地圖平移的目標點落在導覽列底下被蓋住的位置。
+- **寬螢幕側欄內容跟底部 composer 輸入框重疊**：`PlanOverlayPanelWide` 的 `.panel` 原本 `bottom: 0`，composer 插槽（`position: absolute`、貼底置中）疊在側欄上方，候選清單底部幾項與「不用了」按鈕因此被輸入框蓋住一部分。改成 `bottom: 86px`（composer 貼底間距 20px ＋ 實機量測的插槽真實高度 66px），地圖安全可視區矩形同步排除這段底部範圍。
+- **時間軸側欄出現難看的原生橫向捲軸**：寬螢幕側欄（560px）的可用寬度比交通段文字 pill（`.transitPill`，刻意用 `overflow: visible` 讓內容疊在卡片旁邊顯示，是既有設計）假設的版面寬度窄一截，溢出的 pill 把 `.timelineScroll` 的 `scrollWidth` 撐大過 `clientWidth`，觸發瀏覽器原生橫向捲軸。新增 `overflow-x: hidden` 只裁掉邊界外的溢出內容，不影響 pill 在卡片範圍內的正常顯示。
+- **時間軸直向捲軸過粗，跟深色設計不搭**：新增 `scrollbar-width: thin` 搭配 `::-webkit-scrollbar` 系列偽元素（對齊既有的 `TripPlanPage.module.css` `.compactScroll` 做法），只改細視覺粗細與配色，不隱藏捲軸本身——桌面版使用者仍需要捲軸提示「還有更多內容」。
+- **選完感興趣地點送出的提示文字過長，且跟 `thought.md` 的規則重複維護**：原本在 `TripPlanPage.tsx` 內嵌一長串「以選取地點為依據、補上順路景點與用餐休息、不要推估步調」的完整指示，簡化成一句單純的告知「我已經選好感興趣的地點了，請幫我安排行程。」。這些規則（何時該查 `get_user_selection`、排行程的步調與完整度基準）改由 `thought.md`（agent 的 system prompt）統一管理，不為這一個特定觸發路徑重複寫一次又臭又長的 inline 指示；代價是若 `thought.md` 日後沒有同步維護這些規則，這裡的極簡文案不會再提醒 LLM。
+- **寬螢幕側欄下，桌面非 wide 版面（768px~1023px）意外觸發地圖自動置中**：補上 `isDesktop && !isWide` 排除條件與 `mapReady`／`mapRef` 就緒檢查——這個版面區間原本透過 `panToStopId` 的 `isDesktop || handedOver` 整條排除，改成直接呼叫 `panToWithinSafeArea` 後遺漏了對應排除，雖然安全區元素為 `null` 時會退化成普通 `panTo` 不會出錯，但仍是未經設計確認的鏡頭移動（code review 發現）。
+
+### 其他
+
+- **Google Places API 層限流運行時設定調整（資料庫設定，非程式碼變更）**：排查瀏覽器出現大量「查詢過於頻繁」429 錯誤，查出根因是 `places.get`（取得地點詳細資訊）的限流設定被人手動覆寫成 `60 秒/1 次`（程式碼預設值是 300 次，見 `docs/audit-place-photo-cost-control-2026-09.md`），而不是常見的「視窗過期」表面解釋。用 `tripace-cli rate-limit set` 改回 `60 秒/60 次`；順便把 `places.photoMedia`（取得地點照片）從原值調整為 `60 秒/10 次`。這兩個端點的限流規則存在 `geo_rate_limits` 資料表、45 秒內熱重載生效，不需要重新部署。
 
 `/ai-plan` 從「看展示」到「自己排一趟」這條路徑補上入口與韌性（三層詢問頁、查詢失敗的重試），把限流與 Google Places 欄位兩組成本相關的設定從硬編碼改成可線上調整，並讓行程地圖支援夜間模式。無破壞性變更，**含資料庫結構變更（新增 `geo_field_masks` 表）**。
 

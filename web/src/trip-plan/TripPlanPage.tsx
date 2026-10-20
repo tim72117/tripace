@@ -9,6 +9,7 @@ import { hasAnyPhoto, PHOTO_RETRY_DELAY_MS, PHOTO_RETRY_MAX_ATTEMPTS } from '../
 import { toAgentBridgeTools } from '../sdk-proposals/toAgentBridgeTools'
 import { useStableCallback } from '../hooks/useStableCallback'
 import { useSyncedState } from '../hooks/useSyncedState'
+import { useIsWide } from '../hooks/useIsWide'
 import { createAttractionToolsList, type AttractionStepsCtx, type PlanStepLike } from '../plan-core/attractionTools'
 import {
   createAskPageToolsList,
@@ -1391,6 +1392,13 @@ export function TripPlanPage(props: {
   const followingRef = useRef(true)
   const lastScrollTopRef = useRef(0)
   const [showJumpPill, setShowJumpPill] = useState(false)
+  // isWide——寬螢幕(>=1024px)斷點(見 useIsWide 的完整說明),決定
+  // 下方 AskPage 的 stacked prop:桌面縱向分支(非 horizontalTimeline)
+  // 側欄改用縱向堆疊的候選/選項列表,取代橫向捲動(使用者明確要求「所有
+  // 的詢問項目都要換」,2026-10 新增)。這個元件本身目前沒有獨立的
+  // PlanOverlayPanelWide 側欄外殼(那是 /ai-plan 展示頁 PlanDemoLayout
+  // 專用的 layout 元件),只影響 AskPage 內部候選卡片的排列方式。
+  const isWide = useIsWide()
 
   // suppressNextAutoScrollRef——使用者明確要求「刪除的時候不要自動移動
   // 到最新」:下方 scrollToLatest 的 effect 只依賴 steps 陣列本身是否
@@ -1757,33 +1765,24 @@ export function TripPlanPage(props: {
       //      分支。改成一律讓 LLM 查之後,兩種形態走同一句 prompt,
       //      不需要分支。
       //
-      // 文案講「依據」而非「排這幾個」(使用者明確要求「要寫說明,依據
-      // 感興趣地點排行程,不是只排有選的地點,是要依據感興趣地點安排
-      // 整套行程」):只排選到的那幾個會得到一份兩三站就結束的行程,
-      // 而且中間的交通、吃飯、鄰近順路的景點全都沒有——那不是一份可以
-      // 照著走的行程。prompt 要把這個意圖講明,否則 LLM 最自然的解讀
-      // 就是「把這幾個排進去」。
-      //
-      // 2026-10 修正(使用者明確要求「感興趣的點只是優先較高的地點,
-      // 不要從中推估步調」):前一版的文案寫「從中判斷我喜歡什麼類型的
-      // 景點與步調」,那是在要求 LLM 從幾次點擊推論使用者的旅遊風格——
-      // 樣本太小、推論沒有根據,而且猜錯的代價是整份行程的節奏都被帶偏
-      // (勾了三個古蹟就排成緊湊的徒步快走路線,或反之)。
-      // 勾選能可靠表達的只有「這幾個我要」,所以文案改成「優先排進去的
-      // 地點」,並明確叫它不要推估步調——步調由 thought 的「時間要留得
-      // 合理」那條統一處理,不靠猜測。
+      // 2026-10(使用者明確要求「不要有其他指示,告知選好開始安排行程
+      // 就好」):文案從一長串「依據感興趣地點安排整套行程、以它們為
+      // 起點補上順路景點與用餐休息、不要推估步調」的完整指示,收斂成
+      // 一句單純的告知。上面幾輪歷史演進記錄的那些額外指示(依據而非
+      // 只排、不要推估步調等)不是因為不重要而被拿掉——而是這次使用者
+      // 明確要求交給 thought.md(system prompt)統一管理:LLM 收到
+      // 「使用者說選好了」這類訊息時該呼叫 get_user_selection,以及
+      // 排行程時的步調/完整度等規則,應該是整個 agent 一貫的行為準則,
+      // 不該為了這一個特定觸發路徑重複寫一次又臭又長的 inline 指示。
+      // 這個取捨的代價:若 thought.md 日後沒有同步維護這些規則,這裡的
+      // 極簡文案不會再提醒 LLM,需要靠 thought.md 本身的完整度兜底,
+      // 不是這裡的 prompt。
       if ('candidates' in askPageInput || 'explore' in askPageInput) {
         // 一個都沒選(使用者按「不用了」)→ 不送 prompt。那是明確的
         // 「這批我都不要」,不該解讀成「幫我排這些」(見 AskPage.tsx
         // 檔頭對空陣列語意的完整說明)。
         if (selected.length === 0) return
-        void sendPromptRef.current?.(
-          '我已經選好感興趣的地點了,請呼叫 get_user_selection 查詢我選了哪些。' +
-          '那幾個是「優先排進去」的地點,不是全部——請以它們為起點,' +
-          '再補上順路、鄰近、同類型的其他景點,以及用餐與休息的安排,' +
-          '排成一份可以照著走的完整行程。' +
-          '不要從我選的內容推估我的步調或偏好強度,勾選只表達「這幾個我要」。',
-        )
+        void sendPromptRef.current?.('我已經選好感興趣的地點了,請幫我安排行程。')
         return
       }
 
@@ -2227,7 +2226,7 @@ export function TripPlanPage(props: {
            桌面不渲染 AskPage 導致整段劇本停在第 0 步)。
            處理方式也對齊手機版與那一頁:詢問頁與時間軸互斥顯示,同一塊
            版面空間用條件渲染切換,不需要額外的過場或狀態。 */
-        <AskPage dataSource={planAiDataSource} input={askPageInput} onDone={handleAskPageDone} />
+        <AskPage dataSource={planAiDataSource} input={askPageInput} onDone={handleAskPageDone} stacked={isWide} />
       ) : (
       <PlanTimelineView
         steps={steps}

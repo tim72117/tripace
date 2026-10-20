@@ -1,5 +1,6 @@
 import type { ReactNode, Ref } from 'react'
 import { PlanOverlayPanel } from './PlanOverlayPanel'
+import { PlanOverlayPanelWide } from './PlanOverlayPanelWide'
 import styles from './PlanDemoLayout.module.css'
 
 // PlanDemoLayout——/ai-plan 完整展示頁(AIPlanTimelinePage.tsx)的外層
@@ -35,12 +36,48 @@ interface PlanDemoLayoutProps {
   // nav——上方漂浮按鈕列插槽(SiteNavBrand 等),fixed 定位元件自己
   // 處理疊層,這裡只是提供掛載位置。
   nav?: ReactNode
-  // 以下皆透傳給內部的 PlanOverlayPanel,見該元件 props 的完整說明。
+  // wide——寬螢幕(>=1024px)版面:改渲染 PlanOverlayPanelWide,取代
+  // PlanOverlayPanel(見該元件開頭的完整設計理由,2026-10 新增,使用者
+  // 明確要求「左邊地圖中心,右側時間軸,下方 composer」,後確認「地圖
+  // 一樣要滿版」)。
+  //
+  // 跟 isDesktop 是獨立的兩個判斷,不是同一個斷點的兩種取值——isDesktop
+  // 決定 PlanOverlayPanel 內部的手機/桌面兩種插槽位置(見該 prop 的完整
+  // 說明),wide 決定「側欄外殼要不要換成 PlanOverlayPanelWide 那一份」。
+  // 呼叫端目前的用法是 wide 時 isDesktop 必為 true(1024px 必然也
+  // >=768px),但這裡不假設這個關係、不做互斥檢查——两個 prop 各自描述
+  // 各自的版面決策,耦合關係留給呼叫端的斷點判斷邏輯負責,這層不重複
+  // 那份邏輯。
+  //
+  // 地圖容器(.mapBackdrop)不隨 wide 改變,維持 absolute 鋪滿整個
+  // .page、side 疊加在上方(跟桌面版 PlanOverlayPanel 同一種模式)——
+  // 使用者明確要求「地圖一樣要滿版」,側欄佔用的範圍改由呼叫端
+  // (AIPlanTimelinePage.tsx)的安全可視區換算處理,不是版面層級的擠壓。
+  // wide 因此只切換側欄本身用哪個元件,不影響地圖/nav/children 的
+  // 外層 DOM 結構或 CSS。
+  wide?: boolean
+  // 以下皆透傳給內部的 PlanOverlayPanel(wide 為 false 時)或
+  // PlanOverlayPanelWide(wide 為 true 時)。PlanOverlayPanelWide 不支援
+  // passThrough/safeAreaRef(見該元件開頭的完整說明:寬螢幕側欄不疊在
+  // 地圖上方,兩者的設計前提都不適用),wide 為 true 時這兩個 prop
+  // 原樣接收但不會被用到。
   isDesktop: boolean
   safeAreaRef: Ref<HTMLDivElement>
   passThrough?: boolean
   composer?: ReactNode
   children: ReactNode
+  // debugOverlay——開發工具疊圖插槽(例如 WideLayoutDebugOverlay,見該
+  // 元件的完整說明),渲染在 .page 的最後一個子元素、跟 composer 插槽
+  // 同層級。2026-10 新增(查證「composer 疊圖看不見」的真正根因):
+  // mapBackground 插槽被包進 .mapBackdrop(z-index: 0,見該 class 的
+  // 完整說明),composer 插槽(PlanOverlayPanelWide/.PlanOverlayPanel 的
+  // .composerSlot)是 z-index: 20——兩者都是 .page 的直接子元素,
+  // stacking context 在父層級比較時 .mapBackdrop 的 0 已經輸給 20,
+  // 不管塞進 .mapBackdrop 內部的疊圖元素自己 z-index 設多高都無法
+  // 蓋過 composer(子層級的 z-index 救不回父層級已經輸掉的比較結果)。
+  // 需要標示 composer 範圍的疊圖必須跟 composer 插槽同層級、且自己的
+  // z-index 高於它,不能塞進 mapBackground。
+  debugOverlay?: ReactNode
 }
 
 export function PlanDemoLayout({
@@ -48,11 +85,13 @@ export function PlanDemoLayout({
   theme,
   mapBackground,
   nav,
+  wide = false,
   isDesktop,
   safeAreaRef,
   passThrough,
   composer,
   children,
+  debugOverlay,
 }: PlanDemoLayoutProps) {
   return (
     <div
@@ -61,14 +100,19 @@ export function PlanDemoLayout({
     >
       {mapBackground && <div className={styles.mapBackdrop}>{mapBackground}</div>}
       {!embedded && nav}
-      <PlanOverlayPanel
-        isDesktop={isDesktop}
-        safeAreaRef={safeAreaRef}
-        passThrough={passThrough}
-        composer={composer}
-      >
-        {children}
-      </PlanOverlayPanel>
+      {wide ? (
+        <PlanOverlayPanelWide composer={composer}>{children}</PlanOverlayPanelWide>
+      ) : (
+        <PlanOverlayPanel
+          isDesktop={isDesktop}
+          safeAreaRef={safeAreaRef}
+          passThrough={passThrough}
+          composer={composer}
+        >
+          {children}
+        </PlanOverlayPanel>
+      )}
+      {debugOverlay}
     </div>
   )
 }

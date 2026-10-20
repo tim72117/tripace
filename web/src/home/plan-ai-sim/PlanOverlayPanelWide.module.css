@@ -1,0 +1,69 @@
+/* PlanOverlayPanelWide——寬螢幕(>=1024px)側欄樣式,見 .tsx 開頭的完整
+   設計理由。跟 PlanOverlayPanel.module.css 的桌面 .panel 是同一種疊加
+   模式(position: absolute 貼齊右緣、地圖維持滿版不被擠壓,使用者明確
+   要求「地圖一樣要滿版」)——只有候選卡片排列方式(見 AskPage.module.css
+   .directionScrollerStacked)不同,版面定位邏輯刻意不重新發明一套。 */
+
+/* panel——時間軸/composer 所在的側欄本體。固定寬度(跟 PlanOverlayPanel
+   桌面版的 560px 一致,維持兩種桌面版面的側欄寬度觀感相同,不是重新
+   設計一個新數字),position: absolute 貼齊 .page 右緣、上下撐滿——跟
+   PlanOverlayPanel.module.css 的桌面 .panel 同一組定位規則。
+
+   top: 72px(2026-10,使用者明確指出「畫面上面功能列 layout 要留
+   空間」,實機回報的真實 bug)——取代原本的 top: 0。既有
+   PlanOverlayPanel.module.css 的桌面 .panel 同樣是 top: 0,這不是
+   wide 模式才有的新問題:漂浮導覽列(SiteNavButtons,position: fixed,
+   見該檔案)蓋在整個頁面最上層,桌面側欄 top: 0 會讓側欄內容(問句標題、
+   第一張候選卡片)直接貼齊視窗頂端,跟導覽列的「登入」「切換日夜模式」
+   按鈕幾乎疊在同一行高度,視覺上擁擠、沒有分隔空間(實機量測:登入
+   按鈕 top 16px/bottom 52px)。72px 這個數字沿用
+   PlanOverlayPanel.module.css .navSpacer 的既有估算值(該 class 只在
+   手機版渲染,用來在 flex column 流裡預留導覽列視覺高度的佔位元素)
+   ——桌面側欄雖然不是 flex 流的子項(不需要佔位元素),但同樣在跟
+   導覽列共用同一塊螢幕空間,沿用同一個估算值而不是另外發明一個新數字,
+   兩種桌面版面對導覽列的留白觀感才會一致。
+
+   bottom: 86px(2026-10,使用者明確指出「composer 跟上面區域重疊了」,
+   實機回報的真實 bug)——取代原本的 bottom: 0。.composerSlot 是
+   position: absolute、z-index: 20,疊在這個側欄上方(見該 class 的
+   完整說明),.panel 原本 bottom: 0 讓側欄內容一路撐到頁面最底部,
+   跟 composer 佔用的範圍(bottom: 20px + 實際高度 66px,實機量測
+   得到)重疊——候選清單底部幾項、「不用了」按鈕因此被 composer 輸入框
+   蓋住一部分。
+
+   2026-10(code review 發現,side-effect 修正):CSS Module 無法直接
+   import TS 常數,top/width/bottom 這三個數字仍然要在這裡手動維護,
+   但 TS 那一側(AIPlanTimelinePage.tsx 的安全區矩形、
+   WideLayoutDebugOverlay.tsx 的除錯框線)已經改成從
+   planOverlayGeometry.ts 匯入同一份 SIDEBAR_TOP/SIDEBAR_WIDTH/
+   COMPOSER_BAND_HEIGHT 常數——這份重複過去曾經造成兩次真實漂移
+   (SIDEBAR_TOP 漏改一次、bottom 的計算基準跟除錯框線不同步),抽成
+   TS 共用模組後至少把「三處互相手動對照」收斂成「這裡對照
+   planOverlayGeometry.ts 一處」,修改這幾個數字時直接去那個檔案確認
+   目前值,不要只看這裡或只看其中一個 TS 消費者。 */
+.panel {
+  position: absolute;
+  top: 72px;
+  right: 0;
+  bottom: 86px;
+  width: 560px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* composerSlot——輸入框插槽,貼在整個版面(.page)最下方置中,跨側欄與
+   地圖兩側橫跨(使用者明確要求「下方 composer」,不是側欄內部底部)。
+   做法對齊 PlanOverlayPanel.module.css 的 .composerSlot:position:
+   absolute 相對 .page 定位,不是側欄的子孫,寬度限制與下方安全區間距
+   沿用同一組數值,讓寬螢幕側欄跟桌面浮動側欄的輸入框視覺一致。 */
+.composerSlot {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 48px));
+  max-width: calc(100vw - 48px);
+  box-sizing: border-box;
+  z-index: 20;
+}

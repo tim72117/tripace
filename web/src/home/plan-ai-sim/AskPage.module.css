@@ -36,6 +36,49 @@
   padding: 24px 16px;
 }
 
+/* wrapStacked——stacked 模式(寬螢幕側欄,見 PlanOverlayPanelWide.module.css
+   .panel 的完整說明:固定高度的 flex column 容器)專用的高度限制,疊加在
+   .wrap 之上、不是取代它(對齊 .directionScrollerStacked 等既有組合 class
+   的既有模式)——只在這個情境套用,不影響其餘六處共用 .wrap 的呼叫點
+   (手機版橫向卡片列、text 模式氣泡、非 wide 桌面版等,它們的父層不是
+   固定高度容器,.wrap 原本依內容自然撐高的行為必須維持不變)。
+
+   2026-10(實機回報的真實 bug 修法第二輪):第一輪曾經直接改 .wrap 本身
+   加 height: 100% + 拿掉 justify-content: center,全域套用後發現會把
+   其餘六處呼叫點的氣泡位置一併搞壞(justify-content: center 原本在
+   「.wrap 高度由內容決定」的情境下沒有可觀察效果,一旦 .wrap 變成固定
+   滿版高度,center 就會把內容推到容器正中央而非貼齊頂部——這正是候選
+   景點卡片那次「位置跑到螢幕中間偏下」的真正成因)。改成只在 stacked
+   情境疊加的獨立 class,不動 .wrap 本身的既有定義,避免同一個修法的
+   連帶副作用波及其他五種渲染分支。
+
+   align-items/justify-content 都改 flex-start——stacked 模式下 .bubble
+   要貼齊側欄頂部由上往下排列(候選清單用剩餘高度捲動,見
+   .directionScrollerStacked 的完整說明),不是水平或垂直置中飄在側欄
+   中段。 */
+.wrapStacked {
+  /* align-items: stretch(flex 預設值,這裡明確寫出來)——.bubble 要
+     撐滿 .wrap 給出的高度,.directionScrollerStacked 的 flex: 1 才有
+     真正的空間可以伸展,不是被壓成幾乎看不見的高度。2026-10(實機
+     回報的真實 bug 修法第三輪):第二輪曾經寫 align-items: flex-start,
+     直覺以為「候選清單該貼齊頂部」,但 align-items 控制的是交叉軸
+     (這裡 .wrap 是預設 flex-direction: row,交叉軸是垂直方向)子項目
+     要不要被拉伸——flex-start 的效果是「子項目依內容自然高度,不拉伸」,
+     這會讓 .bubble 的 max-height: 100% 這個上限形同虛設(.bubble 自己
+     從不會被撐到接近那個上限),連帶讓它內部 flex: 1 的
+     .directionScrollerStacked 在一個只有 127px 高的 .bubble 裡被壓成
+     4px(實機量測到的真實數字,候選卡片全部擠在一條看不見的細縫裡)。
+     「候選清單該貼齊頂部」這個視覺意圖改由 .bubble 內部的
+     flex-direction: column(見 .bubbleStacked 的完整說明)天然達成
+     ——不需要 .wrap 這層的 align-items 幫忙,那是完全不同層級的版面
+     語意,不該混在一起用同一個屬性處理。 */
+  align-items: stretch;
+  justify-content: flex-start;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
 .bubble {
   width: 100%;
   border: 1px solid var(--ios-sep);
@@ -47,12 +90,28 @@
   padding: 16px 16px 14px;
 }
 
+/* bubbleStacked——同 .wrapStacked 的完整說明(第二輪修法:改成只在
+   stacked 情境疊加的獨立 class,不動 .bubble 本身,避免波及其他五種
+   渲染分支)。.bubble 要能在固定高度的父層(.wrapStacked)裡收縮,
+   才能把剩餘高度正確讓給 .directionScrollerStacked 當捲動區域,而不是
+   依內容自然撐高、超出側欄邊線(.question/.actions 已各自設
+   flex-shrink: 0,維持原本高度不變)。 */
+.bubbleStacked {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 100%;
+}
+
 .question {
   margin: 0 0 12px;
   font-size: 17px;
   font-weight: 700;
   color: var(--color-dark);
   text-align: center;
+  /* flex-shrink: 0——.bubble 改成 flex column 後(見該 class 的完整
+     說明),標題不該被壓縮,高度固定由內容決定。 */
+  flex-shrink: 0;
 }
 
 /* directionScroller——橫向捲動單卡列,取代原本的 2×2 .directionGrid
@@ -75,6 +134,31 @@
 }
 .directionScroller::-webkit-scrollbar {
   display: none;
+}
+
+/* directionScrollerStacked——寬螢幕(>=1024px)側欄改用縱向堆疊的候選
+   清單,取代橫向捲動(使用者明確要求「寬版裝置的詢問匡選項改上下
+   排列」)。2026-10 新增(ScriptedAskPage.tsx stacked prop,目前只有
+   /ai-plan 展示頁的桌面寬螢幕分支會加這個 class,正式版 AskPage.tsx
+   的 CandidatesPanel 尚未接上)。
+   overflow-x 改 hidden(縱向清單不該有橫向捲動),scroll-snap 相關屬性
+   在縱向排列下語意不同(見下方 .directionCard.directionCardStacked
+   的完整說明:捲動軸向跟著改成 y),不直接沿用橫向的設定值。 */
+.directionScrollerStacked {
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  /* flex: 1 1 0 + min-height: 0——取代原本的 max-height: 100%(實機
+     回報過的真實 bug:清單超出側欄邊線,見 .wrap/.bubble 改成 flex
+     column 處的完整說明)。max-height: 100% 只在父層是固定高度容器
+     時才有效果,但這裡的父層(.bubble)原本是依內容自然撐高,兩者
+     互為因果地「永遠量不出一個有限的 100%」。現在 .bubble 已經改成
+     flex column 且 min-height: 0,這裡改用 flex: 1 主動跟
+     .question/.actions(已設 flex-shrink: 0)分配剩餘空間,是在 flex
+     容器裡「吃滿剩下的高度、超出就自己捲動」的標準寫法。 */
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .directionCard {
@@ -101,11 +185,67 @@
   transform: translateY(-1px);
 }
 
+/* directionCardStacked——.directionScrollerStacked 底下的候選卡片:
+   橫式列表樣式(圖片在左、文字在右),取代橫向捲動模式的「照片鋪底、
+   文字疊加在底部漸層上」(見 .directionCard/.directionPhoto/
+   .directionLabel 的既有說明)。使用者明確要求「卡片改成橫式佈局
+   （圖片在左、文字在右），標準列表樣式」。
+   width/aspect-ratio 都改掉:橫式列表撐滿容器寬度、高度由內容決定,
+   不再是固定寬度搭配 10/7 比例的小方塊。flex 排列文字區,圖片區固定
+   寬高當縮圖——跟 .directionLabel 原本的「壓在照片上」完全不同的版面
+   語意,靠組合 class(.directionPhotoStacked/.directionLabelStacked)
+   個別覆寫,不是整個換一套獨立命名的卡片元件:勾選態
+   (.directionCardChecked)、check icon(.directionCheck)等既有樣式
+   仍然原樣適用,只有圖文排列方式不同。 */
+.directionCardStacked {
+  width: 100%;
+  flex: 0 0 auto;
+  aspect-ratio: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  scroll-snap-align: start;
+}
+
 .directionPhoto {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* directionPhotoStacked——縮圖尺寸固定,不再鋪滿整張卡片(見
+   .directionCardStacked 的完整說明)。有獨立的圓角(卡片本身是
+   overflow: hidden,但 stacked 模式下圖片不貼齊卡片邊緣,需要自己的
+   border-radius 才會圓角)。 */
+.directionPhotoStacked {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+}
+
+/* directionPhotoPlaceholder——沒有照片時的佔位縮圖(2026-10,使用者
+   明確指出「手機版的有留空間,桌面版的連空間都沒有」):跟
+   .directionPhotoStacked 同尺寸(56px 方形、8px 圓角),維持圖文並排的
+   版面對齊——沒有照片時若完全不渲染任何縮圖元素,整行會變成只剩文字
+   靠左顯示,跟有照片的項目排列不整齊。用通用的地圖釘子 icon(MapPin,
+   跟 CountryPanel/CityPanel 既有的 .regionIcon 同一顆圖示),不依景點
+   類型顯示不同圖示——候選資料目前整條鏈路都沒有攜帶類型欄位(使用者
+   明確要求「先改成通用的地圖釘子佔位圖,最小改動先解決沒有空間的
+   問題」,類型區分留待之後有需要再擴充)。背景色沿用 .directionCard
+   的既有底色(--ios-active),不是另外設計一個新顏色。 */
+.directionPhotoPlaceholder {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ios-active);
+  color: var(--ios-gray);
 }
 
 /* directionCardChecked——已勾選:藍色外框加粗,右上角顯示勾
@@ -141,10 +281,29 @@
   text-align: left;
 }
 
+/* directionLabelStacked——取代上面絕對定位疊加的版本:正常文件流,
+   跟縮圖(.directionPhotoStacked)左右並排,不需要漸層墊底(字不是疊在
+   照片上)。right: 28px 讓出 .directionCheck(絕對定位在卡片右上角,
+   勾選態時才出現)的空間,避免文字跟勾選圖示重疊。 */
+.directionLabelStacked {
+  position: static;
+  flex: 1;
+  min-width: 0;
+  padding: 0 28px 0 0;
+  background: none;
+  color: var(--color-dark);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+}
+
 .actions {
   display: flex;
   gap: 8px;
   margin-top: 12px;
+  /* flex-shrink: 0——理由同 .question:「不用了」/「確認選擇」按鈕列
+     不該被壓縮,高度固定由內容決定,把剩餘高度讓給候選清單區域。 */
+  flex-shrink: 0;
 }
 
 .optionBtn {
@@ -291,6 +450,21 @@
   border-color: var(--ios-blue);
   transform: translateY(-1px);
 }
+
+/* regionCardStacked——.directionScrollerStacked 底下的國家/城市卡片:
+   橫式列表樣式,對齊 .directionCardStacked 的設計(使用者明確要求
+   「所有的詢問項目都要換」,2026-10 新增)。icon 在左、名稱在右,不再是
+   icon 在上名稱在下的直欄小方塊。 */
+.regionCardStacked {
+  width: 100%;
+  flex: 0 0 auto;
+  min-height: 0;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  scroll-snap-align: start;
+}
 .regionIcon {
   color: var(--ios-blue);
 }
@@ -298,6 +472,9 @@
   font-size: 14px;
   font-weight: 700;
   text-align: center;
+}
+.regionNameStacked {
+  text-align: left;
 }
 .regionSummary {
   font-size: 11px;
@@ -319,6 +496,14 @@
   gap: 8px;
   justify-content: center;
 }
+
+/* transportRowStacked——寬螢幕側欄改縱向排列(使用者明確要求「所有的
+   詢問項目都要換」,2026-10 新增),對齊 .directionScrollerStacked/
+   CountryPanel/CityPanel 的同一種版面決策。 */
+.transportRowStacked {
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
 .transportCard {
   flex: 0 0 auto;
   width: 72px;
@@ -339,6 +524,17 @@
   border-color: var(--ios-blue);
   transform: translateY(-1px);
   color: var(--ios-blue);
+}
+
+/* transportCardStacked——橫式列表樣式,跟 .directionCardStacked/
+   .regionCardStacked 同一種版面語意(icon 在左、文字在右),取代直欄
+   小方塊。 */
+.transportCardStacked {
+  width: 100%;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
 }
 .transportLabel {
   font-size: 13px;

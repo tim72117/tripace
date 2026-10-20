@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check } from 'lucide-react'
+import { Check, MapPin } from 'lucide-react'
 import type { AskPageCandidate, AskPageSelection } from '../../plan-core/askPageTools'
 import type { PlanAiDataSource } from './planAiDataSource'
 import styles from './AskPage.module.css'
@@ -78,6 +78,16 @@ export interface ScriptedAskPageProps {
   // 自己決定何時結束——捲動驅動的來源(demoScrollSource)推進到下一步時
   // 自己收起,不需要這個元件計時。
   confirmAfterMs?: number
+  // stacked——候選卡片改成縱向上下堆疊,取代預設的橫向捲動列。2026-10
+  // 新增(使用者明確要求「桌面版的詢問視窗候選改在右側、上下排列」):
+  // 桌面版這個元件是渲染在右上角固定寬度的面板裡(見
+  // AIPlanTimelinePage.tsx isDesktop 分支的完整說明),欄位不寬但可以
+  // 往下延伸,縱向清單比橫向捲動更適合這個版面;手機版維持原本的橫向
+  // 捲動(見 AskPage.module.css .directionScroller 的完整說明:跟
+  // HorizontalPlanTimeline.tsx 的橫向卡片列是同一套滑動手感,不能悄悄
+  // 改掉)。預設 false,呼叫端(AIPlanTimelinePage.tsx)依 isDesktop 決定
+  // 要不要傳 true——只影響這個展示頁,不動正式 AskPage.tsx 的任何路徑。
+  stacked?: boolean
 }
 
 interface CandidateDetail {
@@ -94,6 +104,7 @@ export function ScriptedAskPage({
   reason,
   onDone,
   confirmAfterMs,
+  stacked,
 }: ScriptedAskPageProps) {
   // pickedCount——已經演出點擊了幾張。下方 selected 取 picks 的前
   // pickedCount 個,所以勾會一張一張出現,不是一次全亮——一次全亮看不出
@@ -213,10 +224,10 @@ export function ScriptedAskPage({
   // 被報成可操作的控制項,而它們其實不是。文字內容本身是這段演出的實際
   // 內容,螢幕閱讀器讀得到才對,所以不加 aria-hidden。
   return (
-    <div className={styles.wrap}>
-      <div className={styles.bubble}>
+    <div className={[styles.wrap, stacked ? styles.wrapStacked : ''].filter(Boolean).join(' ')}>
+      <div className={[styles.bubble, stacked ? styles.bubbleStacked : ''].filter(Boolean).join(' ')}>
         <p className={styles.question}>{reason ?? '要安排這些地點嗎?'}</p>
-        <div className={styles.directionScroller}>
+        <div className={[styles.directionScroller, stacked ? styles.directionScrollerStacked : ''].filter(Boolean).join(' ')}>
           {candidates.map((candidate) => {
             const checked = selected.includes(candidate.placeId)
             const picking = pickingId === candidate.placeId
@@ -226,14 +237,30 @@ export function ScriptedAskPage({
                 key={candidate.placeId}
                 className={[
                   styles.directionCard,
+                  stacked ? styles.directionCardStacked : '',
                   checked ? styles.directionCardChecked : '',
                   picking ? styles.scriptedPicking : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
               >
-                {detail?.photoUrl && <img src={detail.photoUrl} alt="" className={styles.directionPhoto} />}
-                <span className={styles.directionLabel}>
+                {detail?.photoUrl ? (
+                  <img
+                    src={detail.photoUrl}
+                    alt=""
+                    className={[styles.directionPhoto, stacked ? styles.directionPhotoStacked : ''].filter(Boolean).join(' ')}
+                  />
+                ) : (
+                  // stacked 模式的佔位縮圖——理由同 AskPage.tsx
+                  // CandidatesPanel 同一處的完整說明,兩邊共用同一份
+                  // AskPage.module.css,樣式邏輯保持一致。
+                  stacked && (
+                    <span className={styles.directionPhotoPlaceholder} aria-hidden="true">
+                      <MapPin size={20} strokeWidth={2} />
+                    </span>
+                  )
+                )}
+                <span className={[styles.directionLabel, stacked ? styles.directionLabelStacked : ''].filter(Boolean).join(' ')}>
                   {detail?.loading ? '查詢中…' : (detail?.name ?? candidate.name ?? '未命名地點')}
                 </span>
                 {checked && <Check size={14} strokeWidth={3} className={styles.directionCheck} />}
