@@ -23,6 +23,7 @@ import (
 	"github.com/tim72117/tripace/internal/onagenttools"
 	"github.com/tim72117/tripace/internal/photostorage"
 	"github.com/tim72117/tripace/internal/photoupload"
+	"github.com/tim72117/tripace/internal/ratelimits"
 	"github.com/tim72117/tripace/internal/store"
 	"github.com/tim72117/tripace/internal/tripsvc"
 )
@@ -306,9 +307,14 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 	// 保護幾乎不再能防住短時間內重複觸發計費 API 的情況,是使用者評估
 	// 過後接受的取捨,不是這裡自行放寬的判斷——沿用「視窗內最多 1 次」
 	// 的既有限制邏輯本身不變,只是視窗長度縮短。
+	// 2026-10:預設值改讀 internal/ratelimits 的登錄表(見該套件檔頭的
+	// 完整說明)。這兩條規則現在也納入 geo_rate_limits 表與後台/CLI 的
+	// 管理範圍——啟動時先套用登錄表的預設值,之後由
+	// ApplyPlanAIRateLimits(見該方法)用資料庫的現值覆寫。
 	planAiRateLimiter := apigateway.NewRateLimiter()
-	planAiRateLimiter.SetLimitForKey(publicPlaceSearchEndpoint, 10*time.Second, 1)
-	planAiRateLimiter.SetLimitForKey(nearbyAttractionSearchEndpoint, 500*time.Millisecond, 1)
+	for _, r := range ratelimits.OfKind(ratelimits.KindPlanAIEndpoint) {
+		planAiRateLimiter.SetLimitForKey(r.Endpoint, r.DefaultWindow, r.DefaultMaxCalls)
+	}
 
 	// geoQueryUserRateLimiter:不在這裡預先呼叫 SetLimitForKey——key 是
 	// 使用者 ID,數量隨使用者登入而動態出現,不像 planAiRateLimiter 只有
@@ -518,6 +524,32 @@ func (s *Server) throttleGeoQueryByIP(w http.ResponseWriter, r *http.Request) bo
 	}
 	writeErr(w, http.StatusTooManyRequests, "rate_limited", "查詢過於頻繁,請稍後再試")
 	return false
+}
+
+// ApplyPlanAIRateLimits 把 plan-ai 兩支端點的限流規則換成傳入的值,供
+// cmd/server 的設定重讀迴圈呼叫(見 cmd/server/geo_rate_limit.go 的
+// applyRateLimitsFromStore)——對稱 geo.UpdateDefaultGatewayRateLimit
+// 在 KindGoogleAPI 那一側扮演的角色。
+//
+// 2026-10 新增(使用者明確要求「都加進去」:把這兩條規則納入
+// geo_rate_limits 表與後台/CLI 的管理範圍)。在這之前它們是
+// api.New 裡的硬編碼字面值,只能改程式碼重新部署。
+//
+// 只接受 ratelimits 登錄表裡 KindPlanAIEndpoint 的 endpoint——其餘 key
+// 直接忽略而不是寫進限流器:這個限流器只有那兩個 key 會被 Allow 查詢,
+// 寫入別的 key 只會讓規則表無限增長(key 來自資料庫,內容可能有程式
+// 已經移除的舊 endpoint),而且不會有任何效果。
+func (s *Server) ApplyPlanAIRateLimits(limits map[string]struct {
+	Window   time.Duration
+	MaxCalls int
+}) {
+	for _, r := range ratelimits.OfKind(ratelimits.KindPlanAIEndpoint) {
+		v, ok := limits[r.Endpoint]
+		if !ok {
+			continue
+		}
+		s.planAiRateLimiter.SetLimitForKey(r.Endpoint, v.Window, v.MaxCalls)
+	}
 }
 
 // withGeoQueryIPThrottle 包一層 throttleGeoQueryByIP 檢查在 next 前面,
@@ -876,6 +908,11 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("POST /internal/maintenance/attractions", s.handleMaintenanceAttractionAdd)
 	internalMux.HandleFunc("GET /internal/maintenance/attractions", s.handleMaintenanceAttractionList)
 	internalMux.HandleFunc("GET /internal/maintenance/attractions/cities", s.handleMaintenanceAttractionCities)
+	// rate-limits——列出/修改可設定的限流規則(見兩支 handler 的完整
+	// 說明)。掛在 maintenance 命名空間:呼叫者是 tripace-cli 的
+	// rate-limit 指令,不是產品前端。
+	internalMux.HandleFunc("GET /internal/maintenance/rate-limits", s.handleMaintenanceRateLimitList)
+	internalMux.HandleFunc("PATCH /internal/maintenance/rate-limits/{endpoint}", s.handleMaintenanceRateLimitSet)
 	internalMux.HandleFunc("GET /internal/maintenance/attractions/query", s.handleMaintenanceAttractionQuery)
 	internalMux.HandleFunc("DELETE /internal/maintenance/attractions/{id}", s.handleMaintenanceAttractionDelete)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/coords", s.handleMaintenanceAttractionUpdateCoords)

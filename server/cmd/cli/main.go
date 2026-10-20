@@ -56,8 +56,10 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/tim72117/tripace/internal/model"
+	"github.com/tim72117/tripace/internal/ratelimits"
 	"github.com/tim72117/tripace/internal/tripsvc"
 )
 
@@ -116,6 +118,19 @@ func buildResources(c *httpClient, apiURL string) []resource {
 				{verb: "create", run: func(args []string) { cmdTripCreate(c, args) }, usage: "tripace-cli trip create -name 文字"},
 				{verb: "entries", run: func(args []string) { cmdTripEntries(c, args) }, usage: "tripace-cli trip entries -trip ID"},
 				{verb: "reset", run: func(args []string) { cmdTripReset(c, args) }, usage: "tripace-cli trip reset -trip ID"},
+			},
+		},
+		{
+			// rate-limit:可設定的拒絕型限流規則(見
+			// server/internal/ratelimits 的登錄表與
+			// handleMaintenanceRateLimitList/Set 的完整說明)。
+			// 2026-10 新增——在這之前要知道目前生效的限流只能讀程式碼,
+			// 而程式碼裡的字面值未必等於實際生效值(後台管理介面可能
+			// 已經改過資料庫)。
+			name: "rate-limit",
+			commands: []resourceCommand{
+				{verb: "list", run: func(args []string) { cmdRateLimitList(c, args) }, usage: "tripace-cli rate-limit list [-json]"},
+				{verb: "set", run: func(args []string) { cmdRateLimitSet(c, args) }, usage: "tripace-cli rate-limit set -endpoint KEY [-window 秒 | -window-ms 毫秒] [-max-calls 次數] [-daily-max 每日上限]"},
 			},
 		},
 		{
@@ -1511,4 +1526,224 @@ func usage(args []string) {
 	}
 	fmt.Print(topUsage())
 	os.Exit(0)
+}
+
+// cmdRateLimitList 列出全部可設定的限流規則——走
+// GET /internal/maintenance/rate-limits(見 handleMaintenanceRateLimitList
+// 的完整說明)。
+//
+// 2026-10 新增(使用者明確要求「cli 可以列出所有限流設定及個別設定
+// 視窗大小」)。
+//
+// 預設印成對齊的表格而非原始 JSON:這個指令的用途是「一眼看出目前生效
+// 的限流是什麼」,七條規則各有視窗/次數/每日額度/是否已自訂,JSON 讀
+// 起來要自己對照欄位。加 -json 時才輸出原始回應(對齊其餘指令一律
+// output(res) 的既有慣例,也讓需要接管線處理的情境仍然可用)。
+func cmdRateLimitList(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("rate-limit list", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "輸出原始 JSON 回應,不印表格")
+	_ = fs.Parse(args)
+
+	res, err := c.rateLimitList()
+	if err != nil {
+		fatal("rate-limit list: %v", err)
+	}
+	if *asJSON {
+		output(res)
+		return
+	}
+
+	m, ok := res.(map[string]any)
+	if !ok {
+		output(res)
+		return
+	}
+	rows, ok := m["rateLimits"].([]any)
+	if !ok {
+		output(res)
+		return
+	}
+
+	// num 取 JSON 數字欄位(encoding/json 解到 any 時一律是 float64)。
+	//
+	// 2026-10（review 發現）：原本缺欄位時回 0,但 0 在限流語意下有實質
+	// 意義(次數 0 看起來像「完全禁止」、每日 0 是「不限制」),把「欄位
+	// 缺漏」顯示成 0 會被誤讀成真實設定。改成回 (值, 是否存在),缺漏時
+	// 顯示 "?"——那不會被誤讀成任何一種限流語意。
+	num := func(v any) (int, bool) {
+		f, ok := v.(float64)
+		if !ok {
+			return 0, false
+		}
+		return int(f), true
+	}
+	str := func(v any) string {
+		s, _ := v.(string)
+		return s
+	}
+	// intCell 把一個數字欄位印成表格裡的一格,缺漏時印 "?"。
+	intCell := func(v any) string {
+		n, ok := num(v)
+		if !ok {
+			return "?"
+		}
+		return fmt.Sprintf("%d", n)
+	}
+	// windowCell 把視窗長度印成人看得懂的單位。一律從毫秒換算,來源由
+	// 呼叫端決定(見下方 configured 的分流)。
+	//
+	// 2026-10（review 發現）：原本的簽名是 window(sec, ms),而 sec 跟著
+	// configured 分流、ms 永遠傳登錄表的 defaultWindowMs——兩個參數不
+	// 同源。資料庫 windowSec 為 0 時(限流實質異常)會印出登錄表的
+	// 500ms,而 CUSTOM 欄還標著已自訂,等於把「設定壞了」顯示成
+	// 「設定正常」,是最危險方向的錯。
+	//
+	// 0 明確印成警示而不是 "-":0 秒視窗會被 RateLimiter 夾成 1 秒
+	// (見 apigateway.SetLimitForKey),那是異常狀態,不該長得像
+	// 「沒有設定」。
+	windowCell := func(ms int, ok bool) string {
+		if !ok {
+			return "?"
+		}
+		if ms == 0 {
+			return "0(異常)"
+		}
+		if ms%1000 == 0 {
+			return fmt.Sprintf("%ds", ms/1000)
+		}
+		return fmt.Sprintf("%dms", ms)
+	}
+
+	// 表頭一律用 ASCII:%-32s 這類寬度按 byte 數補空白,中文字元佔 3
+	// bytes 但終端機只顯示 2 格,中文表頭會比對應的資料欄少佔顯示格、
+	// 誤差逐欄累積(review 實測「已自訂」表頭比底下的值偏左約 6 格)。
+	// 說明欄是最後一欄、沒有後續欄位要對齊,放中文無妨。
+	fmt.Printf("%-32s %-16s %-10s %-6s %-12s %-7s %s\n",
+		"ENDPOINT", "KIND", "WINDOW", "MAX", "DAILY", "CUSTOM", "說明")
+	for _, raw := range rows {
+		r, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		configured, _ := r["configured"].(bool)
+		// 已自訂的用資料庫的值,沒自訂的印登錄表預設值——兩者在同一欄
+		// 顯示,靠 CUSTOM 欄位區分來源,不要分成兩組欄位讓表格變寬
+		// (實際生效的值永遠只有一個)。
+		var winMs int
+		var winOK bool
+		var maxCell, dailyCell string
+		if configured {
+			sec, ok := num(r["windowSec"])
+			winMs, winOK = sec*1000, ok
+			maxCell = intCell(r["maxCalls"])
+			// DAILY 在已自訂時印「今天用掉/上限」——usedToday 是這張表
+			// 唯一會變動的執行期狀態,也是「今天還剩多少額度」這個運維
+			// 問題的直接答案(review 建議)。上限 <= 0 代表不限制。
+			used, usedOK := num(r["usedToday"])
+			daily, dailyOK := num(r["dailyMax"])
+			switch {
+			case !dailyOK:
+				dailyCell = "?"
+			case daily <= 0 && usedOK:
+				dailyCell = fmt.Sprintf("%d/-", used)
+			case daily <= 0:
+				dailyCell = "-"
+			case usedOK:
+				dailyCell = fmt.Sprintf("%d/%d", used, daily)
+			default:
+				dailyCell = fmt.Sprintf("?/%d", daily)
+			}
+		} else {
+			ms, ok := num(r["defaultWindowMs"])
+			winMs, winOK = ms, ok
+			maxCell = intCell(r["defaultMaxCalls"])
+			daily, dailyOK := num(r["defaultDailyMax"])
+			switch {
+			case !dailyOK:
+				dailyCell = "?"
+			case daily <= 0:
+				dailyCell = "-"
+			default:
+				dailyCell = fmt.Sprintf("%d", daily)
+			}
+		}
+		mark := "-"
+		if configured {
+			mark = "yes"
+		}
+		fmt.Printf("%-32s %-16s %-10s %-6s %-12s %-7s %s\n",
+			str(r["endpoint"]), str(r["kind"]),
+			windowCell(winMs, winOK), maxCell, dailyCell, mark, str(r["desc"]))
+	}
+	fmt.Println()
+	fmt.Println("CUSTOM 為 - 代表這條規則目前仍是預設值(會被啟動參數覆寫);")
+	fmt.Println("設定過之後就以資料庫的值為準。DAILY 已自訂時顯示「今天用掉/上限」,- 代表不限制。")
+	// 生效秒數讀 ratelimits 的共用常數,不再寫死 45——原本這個數字在
+	// 三個地方各寫死一份(handler 的 appliesWithinSec、這行文字、
+	// cmd/server 的 geoRateLimitRefreshInterval),有人調整重讀間隔時
+	// 端點與 CLI 會繼續回報 45,運維照著等卻沒生效(review 發現)。
+	fmt.Printf("修改後約 %d 秒內生效,不需要重啟。\n", int(ratelimits.RefreshInterval/time.Second))
+}
+
+// cmdRateLimitSet 修改一條限流規則——走
+// PATCH /internal/maintenance/rate-limits/{endpoint}(見
+// handleMaintenanceRateLimitSet 的完整說明)。
+//
+// -window 與 -window-ms 二選一:後者是為了能設定短於 1 秒的視窗。沒帶
+// 的欄位維持目前值,不會被覆寫成零值。
+func cmdRateLimitSet(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("rate-limit set", flag.ExitOnError)
+	endpoint := fs.String("endpoint", "", "要修改的限流 endpoint(用 rate-limit list 看可用的值)")
+	windowSec := fs.Int("window", 0, "視窗長度(秒)")
+	windowMs := fs.Int("window-ms", 0, "視窗長度(毫秒);目前資料表只存整數秒,傳不滿整秒的值會被後端拒絕")
+	maxCalls := fs.Int("max-calls", 0, "視窗內最多可放行的呼叫次數")
+	dailyMax := fs.Int("daily-max", 0, "每日總額度上限(0 代表不限制)")
+	_ = fs.Parse(args)
+
+	if *endpoint == "" {
+		fatal("rate-limit set: 需要 -endpoint(用 rate-limit list 看可用的值)")
+	}
+
+	// 用 fs.Visit 判斷哪些旗標真的出現在命令列,而不是用哨兵值
+	// (0 / -1)反推。
+	//
+	// 2026-10（review 發現）：原本的哨兵寫法會把所有不合法的值靜默吞掉
+	// ——`-max-calls -5`(打錯字、或 shell 把後續參數吃進來)不會送出
+	// 請求,使用者看到的是「至少要指定一項要修改的值」,他會以為自己漏
+	// 打旗標,而不是值不合法。後端對這些值本來就有精準的錯誤訊息(例如
+	// 「上限次數必須大於 0（要完全關閉某個功能請用對應的功能開關,不是
+	// 把限流設成 0）」),那整句永遠到不了使用者眼前。
+	//
+	// 改用 fs.Visit 之後:旗標有出現就照原值送出,驗證一律交給後端
+	// (單一驗證處,CLI 不複製一份規則),哨兵值整套消失,`-daily-max`
+	// 的預設值也回到自然的 0。
+	seen := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { seen[f.Name] = true })
+
+	if seen["window"] && seen["window-ms"] {
+		fatal("rate-limit set: -window 與 -window-ms 只能給一個")
+	}
+
+	var wSec, wMs, mc, dm *int
+	if seen["window"] {
+		wSec = windowSec
+	}
+	if seen["window-ms"] {
+		wMs = windowMs
+	}
+	if seen["max-calls"] {
+		mc = maxCalls
+	}
+	if seen["daily-max"] {
+		dm = dailyMax
+	}
+	if wSec == nil && wMs == nil && mc == nil && dm == nil {
+		fatal("rate-limit set: 至少要指定一項要修改的值(-window / -window-ms / -max-calls / -daily-max)")
+	}
+
+	res, err := c.rateLimitSet(*endpoint, wSec, wMs, mc, dm)
+	if err != nil {
+		fatal("rate-limit set: %v", err)
+	}
+	output(res)
 }

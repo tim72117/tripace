@@ -412,3 +412,30 @@ func blogPhotoPutFile(uploadURL, contentType, filePath string) error {
 	}
 	return nil
 }
+
+// rateLimitList 對齊 GET /internal/maintenance/rate-limits(見
+// server/internal/api/maintenance.go 的 handleMaintenanceRateLimitList)
+// ——列出全部可設定的限流規則:登錄表的靜態定義配上資料庫現值。
+func (c *httpClient) rateLimitList() (any, error) {
+	return c.do("GET", "/internal/maintenance/rate-limits", nil)
+}
+
+// rateLimitSet 對齊 PATCH /internal/maintenance/rate-limits/{endpoint}
+// ——只送出有指定的欄位(nil 代表不改,維持目前值),理由同該 handler
+// 的完整說明:沒帶的欄位不該被零值覆寫成「不限制」。
+func (c *httpClient) rateLimitSet(endpoint string, windowSec, windowMs, maxCalls, dailyMax *int) (any, error) {
+	body := map[string]any{}
+	if windowSec != nil {
+		body["windowSec"] = *windowSec
+	}
+	if windowMs != nil {
+		body["windowMs"] = *windowMs
+	}
+	if maxCalls != nil {
+		body["maxCalls"] = *maxCalls
+	}
+	if dailyMax != nil {
+		body["dailyMax"] = *dailyMax
+	}
+	return c.do("PATCH", "/internal/maintenance/rate-limits/"+url.PathEscape(endpoint), body)
+}

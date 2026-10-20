@@ -66,8 +66,9 @@ func main() {
 	// geoMaxConcurrency/geoMinIntervalMs 是完全不同的機制:那組參數
 	// (2026-10 起預設不限制)是「排隊,最終還是會送出」;這裡才是真正
 	// 「超過就拒絕」的總量上限,目的是防止惡意或異常流量長時間持續
-	// 發送、最終累積無上限的計費呼叫(見
-	// docs/audit-place-photo-cost-control-2026-09.md 的 R1 風險項目)。
+	// 發送、最終累積無上限的計費呼叫(這個風險原本記在
+	// docs/audit-place-photo-cost-control-2026-09.md 的 R1,已由這組總量上限
+	// 修復並從該文件移除)。
 	//
 	// 2026-10 之前只有 places.get/places.photoMedia 兩個 endpoint 套用
 	// 這組拒絕型限流,其餘 endpoint 只靠上面的排隊節流保護。使用者明確
@@ -307,11 +308,13 @@ func main() {
 	// defaultRateLimiter 建立當下就反映資料庫的最終結果,不需要等第一次
 	// 背景重讀週期。
 	seedGeoRateLimitsIfEmpty(st, geoRateLimitFallback, *geoRateLimitPhotoMediaDailyMax)
-	applyGeoRateLimitsFromStore(st, geoRateLimitFallback)
-	// 背景定期重讀(見 startGeoRateLimitRefreshLoop 的完整說明)——讓後台
-	// 管理介面之後修改設定時,不需要重啟這支 process 就能在
-	// geoRateLimitRefreshInterval 之內生效。
-	startGeoRateLimitRefreshLoop(st, geoRateLimitRefreshInterval, geoRateLimitFallback)
+	// 這裡 applier 傳 nil:api.New() 還沒被呼叫(在下方),plan-ai 的
+	// 限流器此刻還不存在。那兩條規則的初值由 api.New 自己從
+	// ratelimits.Registry 套用(見該處),資料庫的現值則由下方啟動的
+	// 背景重讀迴圈在第一個週期套上——plan-ai 這兩條不像 Google API 那
+	// 五條必須在 geo.New() 之前就位(那是 defaultGateway 建立時機的
+	// 限制),晚一個週期才套用資料庫自訂值是可接受的。
+	applyRateLimitsFromStore(st, geoRateLimitFallback, nil)
 	geo.SetPhotosEnabled(*geoFetchPhotos)
 	if *geoFetchPhotos {
 		log.Printf("Google Photo Media 下載已啟用(依張數計費)")
@@ -353,6 +356,14 @@ func main() {
 
 	signer := auth.NewSigner(*jwtSecret, 30*24*time.Hour)
 	srv := api.New(st, signer, *devMode, googleClientID)
+	// 背景定期重讀(見 startGeoRateLimitRefreshLoop 的完整說明)——讓後台
+	// 管理介面/CLI 之後修改設定時,不需要重啟這支 process 就能在
+	// geoRateLimitRefreshInterval 之內生效。
+	//
+	// 2026-10 移到 api.New() 之後(原本在上面 seed 緊接著):這個迴圈
+	// 現在也負責把 plan-ai 兩條規則推進 srv 的限流器(見
+	// applyRateLimitsFromStore),需要 srv 已經存在才能傳進去。
+	startGeoRateLimitRefreshLoop(st, geoRateLimitRefreshInterval, geoRateLimitFallback, srv)
 
 	dbKind := "sqlite:" + dsn
 	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
@@ -404,6 +415,19 @@ func main() {
 	// 404)。補上這行,刻意只轉發 /public/blog/ 這個更深的前綴,理由同
 	// /public/geo/:不影響 /public/{token} 的 SPA fallback 路由。
 	mux.Handle("/public/blog/", srv.Routes())
+	// /public/plan-ai/ — POST /public/plan-ai/chat、
+	// /public/plan-ai/chat/reply(見 internal/api/plan_ai_chat.go
+	// handlePlanAiChat/handlePlanAiChatReply 開頭的完整說明與
+	// api.go Routes 內該區塊的註冊)——2026-10 新增,讓 /ai-plan 展示頁
+	// 的未登入訪客也能送出 AI 規劃對話。同一個「新路徑要明確轉發、否則
+	// 落到 SPA fallback」的陷阱,見上面 /onagent/、/public/geo/、
+	// /public/blog/ 的說明——這次新增時第一次 smoke test 就實際踩到
+	// (curl 打這支端點回了 200 + "build not found" 的 SPA fallback
+	// 內容,而不是預期的 JSON 回應,不是顯眼的 404,若沒有手動測試會
+	// 悄悄部署出一個完全無法運作的訪客對話功能)。刻意只轉發
+	// /public/plan-ai/ 這個前綴,不影響 /public/{token} 的 SPA fallback
+	// 路由。
+	mux.Handle("/public/plan-ai/", srv.Routes())
 
 	// 管理後台(/admin/api/*)預設拆分成獨立的 cmd/adminserver binary/
 	// Cloud Run 服務(見 server/cmd/adminserver/main.go),那條部署路徑

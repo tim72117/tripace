@@ -14,6 +14,7 @@ import (
 
 	"github.com/tim72117/tripace/internal/apigateway"
 	"github.com/tim72117/tripace/internal/geo"
+	"github.com/tim72117/tripace/internal/ratelimits"
 	"gorm.io/gorm"
 )
 
@@ -58,7 +59,11 @@ import (
 // 的是「這支公開端點本身」的呼叫頻率,不是 Google API 那個 endpoint 分類
 // 概念,兩者刻意分開,即使實務上一次成功呼叫最終仍會觸發一次
 // "places.searchText" 的 Google API 呼叫。
-const publicPlaceSearchEndpoint = "public.placeSearch"
+// 2026-10:值改為引用 internal/ratelimits 的單一定義處(見該套件檔頭的
+// 完整說明:endpoint key 散在多處字串字面值時,改一處漏一處會造成靜默
+// 失效——SetLimitForKey 設定的是一條規則、Allow 查的是另一條,等於沒有
+// 限流)。字串內容不變。
+const publicPlaceSearchEndpoint = ratelimits.EndpointPublicPlaceSearch
 
 // GET /internal/geo/plan-ai/place-search?query={文字}
 //
@@ -153,7 +158,7 @@ func (s *Server) handlePublicGeoPlaceSearch(w http.ResponseWriter, r *http.Reque
 // 用的 RateLimiter key——這支端點會在資料庫候選不足時觸發 Google Nearby
 // Search(計費呼叫),理由與獨立限流的完整說明見 api.go Server struct 上
 // 對應欄位的註解,對稱 publicPlaceSearchEndpoint 的既有模式。
-const nearbyAttractionSearchEndpoint = "public.nearbyAttractionSearch"
+const nearbyAttractionSearchEndpoint = ratelimits.EndpointNearbyAttractionSearch
 
 // allowedNearbyAttractionTypes 是 handlePublicGeoAttractionSearch 的
 // types 查詢參數允許傳入的 Google Places 官方地點類型白名單——使用者

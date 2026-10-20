@@ -36,8 +36,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tim72117/tripace/internal/adminidentity"
 	"github.com/tim72117/tripace/internal/geo"
 	"github.com/tim72117/tripace/internal/model"
+	"github.com/tim72117/tripace/internal/ratelimits"
+	"github.com/tim72117/tripace/internal/store"
 )
 
 // GET /internal/maintenance/geocode?place={地名}&region={國碼,選填}&n={候選筆數,選填}
@@ -494,4 +497,210 @@ func (s *Server) handleMaintenanceAttractionUpdateTheme(w http.ResponseWriter, r
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "isTheme": in.IsTheme})
+}
+
+// requireRateLimitAdmin——限流設定的管理權限檢查。
+//
+// 2026-10（review 發現）：這兩支端點原本只靠 internalMux 的 internalAuth
+// 把關,而 internalAuth 只驗 JWT 簽章、不判斷角色(見 middleware.go 該
+// 函式)——任何一個登入使用者的 token 都能通過。限流設定直接關係到
+// Google API 的計費額度(把 maxCalls 或 dailyMax 調大就等於拆掉成本
+// 保護),不該是一般使用者能改的。
+//
+// 對照組佐證這是疏漏而非刻意:adminconsole 的同功能端點
+// (GET/PUT /admin/api/geo-rate-limits)是用 withAdmin 包起來的,
+// 同一件事在那一側有管理權限把關、這一側沒有。
+//
+// 沿用 api 套件既有的 requireItineraryPageAdmin 模式(email 白名單,
+// 見 itinerary_page.go 該函式),不另外發明一套角色模型。也刻意不把整個
+// internalMux 改成要管理權限——前端一般使用者依賴其中的
+// /internal/geo/*、/internal/plan-ai/* 等端點。
+func (s *Server) requireRateLimitAdmin(r *http.Request) bool {
+	user, ok := s.requireRealUser(r)
+	if !ok {
+		return false
+	}
+	email, err := s.store.GetUserEmail(user.ID)
+	if err != nil {
+		return false
+	}
+	return adminidentity.IsAdminEmail(email, s.adminBootstrapEmail)
+}
+
+// GET /internal/maintenance/rate-limits
+//
+// 列出全部可設定的限流規則:登錄表(internal/ratelimits)的靜態定義
+// (預設值、說明、超過上限時的行為)配上 geo_rate_limits 表的現值。
+// 供 tripace-cli 的 rate-limit list 指令使用。
+//
+// 2026-10 新增(使用者明確要求「cli 可以列出所有限流設定及個別設定
+// 視窗大小」)。在這之前要知道目前生效的限流只能讀程式碼——而程式碼裡
+// 的字面值未必等於實際生效值(後台管理介面可能已經改過資料庫)。
+//
+// 回傳的每一條規則都帶 configured 欄位,標示這條規則是「資料庫有自訂
+// 值」還是「仍是預設值」——兩者的後續行為不同(預設值會被啟動參數覆寫,
+// 自訂值不會,見 cmd/server/geo_rate_limit.go seedGeoRateLimitsIfEmpty
+// 的完整說明),運維時需要分得出來。
+func (s *Server) handleMaintenanceRateLimitList(w http.ResponseWriter, r *http.Request) {
+	if !s.requireRateLimitAdmin(r) {
+		writeErr(w, http.StatusForbidden, "forbidden", "只有管理員可以檢視限流設定")
+		return
+	}
+	rows, err := s.store.ListGeoRateLimits()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
+		return
+	}
+	current := make(map[string]store.GeoRateLimit, len(rows))
+	for _, row := range rows {
+		current[row.Endpoint] = row
+	}
+
+	out := make([]map[string]any, 0, len(ratelimits.Registry))
+	for _, rule := range ratelimits.Registry {
+		item := map[string]any{
+			"endpoint":         rule.Endpoint,
+			"kind":             string(rule.Kind),
+			"desc":             rule.Desc,
+			"rejectBehavior":   rule.RejectBehavior,
+			"defaultWindowSec": int(rule.DefaultWindow / time.Second),
+			"defaultMaxCalls":  rule.DefaultMaxCalls,
+			"defaultDailyMax":  rule.DefaultDailyMax,
+		}
+		// defaultWindowMs——視窗短於 1 秒的規則(nearbyAttractionSearch
+		// 是 500ms)用秒表示會變成 0,看起來像「沒有限制」。額外給一個
+		// 毫秒欄位,呼叫端顯示時可以挑合適的單位。
+		item["defaultWindowMs"] = rule.DefaultWindow.Milliseconds()
+		if row, ok := current[rule.Endpoint]; ok {
+			item["configured"] = true
+			item["windowSec"] = row.WindowSec
+			item["maxCalls"] = row.MaxCalls
+			item["dailyMax"] = row.DailyMax
+			item["usedToday"] = row.UsedToday
+		} else {
+			item["configured"] = false
+		}
+		out = append(out, item)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"rateLimits": out})
+}
+
+// PATCH /internal/maintenance/rate-limits/{endpoint}
+//
+// 修改一條限流規則的視窗長度/上限次數/每日額度。供 tripace-cli 的
+// rate-limit set 指令使用(見該指令的完整說明)。
+//
+// 2026-10 新增,理由同 handleMaintenanceRateLimitList。
+//
+// endpoint 必須是登錄表裡既有的 key——不接受任意字串:寫入一個沒有任何
+// 程式碼會去 Allow 查詢的 key,只會讓 geo_rate_limits 表多一列永遠不
+// 生效的設定,而操作者會以為自己設定成功了。
+//
+// windowSec/windowMs 二選一(都省略代表不改視窗):windowMs 是為了能
+// 設定短於 1 秒的視窗(nearbyAttractionSearch 預設 500ms)——只給
+// windowSec 的話那條規則無法透過這支端點正確設定(1 秒是最小值,想設
+// 500ms 只能傳 0,而 0 的語意是「不改」)。
+//
+// 改完不需要重啟:cmd/server 的背景重讀迴圈會在
+// geoRateLimitRefreshInterval(45 秒)之內把新值套用到實際的限流器
+// (見 applyRateLimitsFromStore)。這支端點本身不直接動限流器——那樣
+// 會讓「資料庫的值」與「記憶體的值」有兩條各自獨立的更新路徑,兩者
+// 不一致時難以判斷哪個才是現況。
+func (s *Server) handleMaintenanceRateLimitSet(w http.ResponseWriter, r *http.Request) {
+	if !s.requireRateLimitAdmin(r) {
+		writeErr(w, http.StatusForbidden, "forbidden", "只有管理員可以修改限流設定")
+		return
+	}
+	endpoint := r.PathValue("endpoint")
+	rule := ratelimits.Find(endpoint)
+	if rule == nil {
+		known := make([]string, 0, len(ratelimits.Registry))
+		for _, x := range ratelimits.Registry {
+			known = append(known, x.Endpoint)
+		}
+		writeErr(w, http.StatusBadRequest, "unknown_endpoint",
+			"不是登錄表裡的限流 endpoint;可用的有: "+strings.Join(known, ", "))
+		return
+	}
+
+	var body struct {
+		WindowSec *int `json:"windowSec"`
+		WindowMs  *int `json:"windowMs"`
+		MaxCalls  *int `json:"maxCalls"`
+		DailyMax  *int `json:"dailyMax"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "請求內容不是合法的 JSON")
+		return
+	}
+
+	// 以目前的值為基底,只覆寫這次有帶的欄位——沒帶的維持原樣,不要被
+	// 零值覆寫成「不限制」。資料庫還沒有這條規則時,基底用登錄表的
+	// 預設值(對齊 seeding 的語意)。
+	windowMs := rule.DefaultWindow.Milliseconds()
+	maxCalls := rule.DefaultMaxCalls
+	dailyMax := rule.DefaultDailyMax
+	rows, err := s.store.ListGeoRateLimits()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "list_failed", err.Error())
+		return
+	}
+	for _, row := range rows {
+		if row.Endpoint != endpoint {
+			continue
+		}
+		windowMs = int64(row.WindowSec) * 1000
+		maxCalls = row.MaxCalls
+		dailyMax = row.DailyMax
+	}
+
+	if body.WindowMs != nil {
+		windowMs = int64(*body.WindowMs)
+	} else if body.WindowSec != nil {
+		windowMs = int64(*body.WindowSec) * 1000
+	}
+	if body.MaxCalls != nil {
+		maxCalls = *body.MaxCalls
+	}
+	if body.DailyMax != nil {
+		dailyMax = *body.DailyMax
+	}
+
+	if windowMs <= 0 {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "視窗長度必須大於 0")
+		return
+	}
+	if maxCalls <= 0 {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "上限次數必須大於 0（要完全關閉某個功能請用對應的功能開關，不是把限流設成 0）")
+		return
+	}
+	if dailyMax < 0 {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "每日額度不可為負數（0 代表不限制）")
+		return
+	}
+
+	// UpsertGeoRateLimit 的 windowSec 是整數秒——短於 1 秒的視窗存不
+	// 進去。這是既有資料表的欄位型別限制(見 store.GeoRateLimit),
+	// 不在這次改動範圍內:遇到這種值直接拒絕並說清楚,不要靜默四捨五入
+	// 成 0 秒或 1 秒(前者等於關掉限流、後者悄悄把保護放寬一倍)。
+	if windowMs%1000 != 0 {
+		writeErr(w, http.StatusBadRequest, "unsupported_window",
+			"geo_rate_limits 表的視窗欄位只存整數秒，無法設定不滿整秒的視窗；請改用整數秒，或修改程式碼裡登錄表的預設值")
+		return
+	}
+
+	if err := s.store.UpsertGeoRateLimit(endpoint, int(windowMs/1000), maxCalls, dailyMax); err != nil {
+		writeErr(w, http.StatusInternalServerError, "upsert_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"endpoint":  endpoint,
+		"windowSec": int(windowMs / 1000),
+		"maxCalls":  maxCalls,
+		"dailyMax":  dailyMax,
+		// 提醒呼叫端這次修改要等多久才真的生效(見這支 handler 的完整
+		// 說明:刻意不直接動限流器)。值讀 ratelimits.RefreshInterval,
+		// 不寫死——原本這個數字在三處各寫死一份(review 發現)。
+		"appliesWithinSec": int(ratelimits.RefreshInterval / time.Second),
+	})
 }

@@ -93,6 +93,18 @@ tripace-cli attraction list -city "台南"
 # 列出目前已有景點區域資料的城市清單
 tripace-cli attraction cities
 
+# 列出所有可設定的限流規則（視窗長度/上限次數/每日額度/是否已自訂）
+tripace-cli rate-limit list
+tripace-cli rate-limit list -json          # 原始 JSON，供管線處理
+
+# 注意：這是唯一預設印表格（而非 JSON）的 list 指令，其餘 list 一律直接印 JSON。
+# 要接管線處理時記得加 -json。
+
+# 修改一條限流規則（只送有指定的欄位，其餘維持原值；約 45 秒內生效，不需重啟）
+tripace-cli rate-limit set -endpoint public.placeSearch -window 10
+tripace-cli rate-limit set -endpoint places.photoMedia -max-calls 30 -daily-max 50
+tripace-cli rate-limit set -endpoint geocode -daily-max 0        # 0 = 每日不限制
+
 # 查詢有 place_id 但還沒有 Google 照片的景點（可選 -city 限定城市）
 GOWORK=off go run ./cmd/cli attraction query -status no-google-photo [-city "台南"]
 
@@ -134,6 +146,30 @@ GOWORK=off go run ./cmd/cli attraction sync -direction pull -apply -allow-delete
 ```
 
 `entry-add`/`entry-update` 的 `-kind` 若填 `stay`，代表這筆是住宿（飯店）項目；`-location` 填地址或飯店名稱、`-detail` 可帶額外 JSON（例如飯店資訊）。飯店本身沒有獨立的「加入行程」子命令——飯店資料是即時透過 Google Places 查詢（見 `server/internal/geo/places.go`），流程是先用 `geocode` 或前端地圖找到飯店名稱/座標，再用 `entry-add -kind stay` 把它記成一筆行程項目。
+
+## 限流設定
+
+`rate-limit list` 列出的規則來自 `server/internal/ratelimits` 的登錄表，
+配上 `geo_rate_limits` 表的現值：
+
+- **已自訂 = `-`**：這條規則仍是預設值，會被啟動參數（CLI flag／環境變數）覆寫。
+- **已自訂 = `是`**：資料庫有值，以它為準，重啟不會被啟動參數蓋掉。
+
+兩類規則的 `KIND` 意義不同，不能互相取代：
+
+| KIND | 保護什麼 |
+|---|---|
+| `google-api` | 不同呼叫來源共用同一個 Google API 額度，只在真正打 Google 時生效 |
+| `plan-ai-endpoint` | tripace 自己的兩支查詢端點不被失控的呼叫節奏觸發大量計費（防 LLM 工具迴圈） |
+
+`-window-ms` 目前沒有 `-window` 做不到的事：`geo_rate_limits` 表的視窗欄位
+只存整數秒，傳不滿整秒的值（例如 `-window-ms 500`）會回 400 `unsupported_window`，
+所以它只接受整秒的倍數。要設定不滿整秒的視窗，得改程式碼裡登錄表的預設值。
+
+`public.nearbyAttractionSearch` 的登錄表預設值正是 500ms，存進資料表時會
+進位成 1 秒並記一則 log（見 `cmd/server/geo_rate_limit.go` 的
+`windowSecForStore`）——所以 `rate-limit list` 看到那條規則是 1 秒而非 500ms
+時，那不是錯誤。
 
 ## 已知限制
 
