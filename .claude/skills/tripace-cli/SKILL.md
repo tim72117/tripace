@@ -45,7 +45,7 @@ tripace-cli login --web
 tripace-cli login --web -console http://localhost:5173
 ```
 
-`-api URL` 全域旗標可指定 server 位址（預設 `http://localhost:8080`），用於連正式環境或非預設埠的本機環境。
+`-api URL` 全域旗標可指定 server 位址（**預設 `https://tripace.io`（正式機）**，2026-10 起改成這個預設值——CLI 主要使用情境已經是對正式環境查詢/調整。本機開發需明確帶 `-api http://localhost:8080`，否則包含 `trip reset`/`entry delete`/`attraction delete` 這類會刪資料的指令也會預設打到正式環境）。
 
 ## 常用子命令
 
@@ -141,7 +141,7 @@ GOWORK=off go run ./cmd/cli attraction photo-update -id lmk_xxx
 # 授權本機 server 對另一台 server（target）做景點資料同步——走瀏覽器核准
 # 流程換一把 JWT，交給本機 server 自行保管（不是存在 CLI），之後同步都
 # 由本機 server 主動發起，CLI 不再經手這把 token
-GOWORK=off go run ./cmd/cli attraction sync-setup -target https://tripace.shuttle.tools
+GOWORK=off go run ./cmd/cli attraction sync-setup -target https://tripace.io
 
 # 把本機景點資料同步到 target（-direction push）或反過來從 target 同步
 # 進本機（-direction pull）；預設 dry-run 只顯示差異報告，加 -apply 才會

@@ -20,7 +20,7 @@ func cmdGeocode(args []string) {
 	region := fs.String("region", "", "國家代碼限制，如 jp / tw / cn（可選）")
 	maxN := fs.Int("n", 1, "回傳候選筆數（1-5，預設 1）")
 	entryID := fs.String("entry", "", "寫入座標的 entry ID（指定時取第一筆自動寫入）")
-	apiURLFlag := fs.String("api", "http://localhost:8080", "server URL")
+	apiURLFlag := fs.String("api", defaultAPIURL, "server URL")
 	_ = fs.Parse(args)
 
 	if *place == "" && fs.NArg() > 0 {

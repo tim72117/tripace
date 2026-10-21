@@ -2,7 +2,7 @@
 
 用自然語言記錄行程,AI 自動整理成事項、時間與地點,排上時間軸,還能和同行的人一起編輯、免登入分享。
 
-正式站:https://tripace.shuttle.tools
+正式站:https://tripace.io
 
 ## 專案結構
 

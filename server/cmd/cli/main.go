@@ -264,6 +264,14 @@ func buildResources(c *httpClient, apiURL string) []resource {
 	}
 }
 
+// defaultAPIURL——所有子命令 -api 旗標未指定時的預設值。2026-10 改成
+// 正式網域(原為 http://localhost:8080):使用者明確要求「正式機預設不用
+// 加網址」,CLI 主要使用情境已經是對正式環境查詢/調整(例如
+// rate-limit list/set),本機開發時改為明確帶 -api http://localhost:8080
+// (風險取捨:trip reset/entry delete/attraction delete 這類會刪資料的
+// 指令,沒加 -api 時現在預設也會打正式環境,使用者已確認接受這個行為)。
+const defaultAPIURL = "https://tripace.io"
+
 // findResource 回傳名為 name 的資源，查無則回傳 nil。
 func findResource(resources []resource, name string) *resource {
 	for i := range resources {
@@ -289,7 +297,7 @@ func main() {
 	// 的提早返回,因為兩者都可能呼叫 usage(),而 usage() 底層的
 	// topUsage()/resourceUsage() 讀取套件層級的 resources 變數,必須在
 	// 任何可能呼叫 usage() 的分支之前就就緒,否則會印出空的指令清單。
-	apiURL := "http://localhost:8080"
+	apiURL := defaultAPIURL
 	args1 := os.Args[1:]
 	filtered := args1[:0:len(args1)]
 	for i := 0; i < len(args1); i++ {
@@ -480,7 +488,7 @@ func cmdTripReset(c client, args []string) {
 func cmdNotify(args []string) {
 	fs := flag.NewFlagSet("notify", flag.ExitOnError)
 	trip := fs.String("trip", "", "行程 ID（必填）")
-	apiURL := fs.String("api", "http://localhost:8080", "server base URL")
+	apiURL := fs.String("api", defaultAPIURL, "server base URL")
 	_ = fs.Parse(args)
 	if *trip == "" {
 		fatal("notify 需要 -trip")
@@ -1491,7 +1499,7 @@ func topUsage() string {
 	b.WriteString("cli — entry/trip 操作工具\n\n")
 	b.WriteString("用法: tripace-cli [-api URL] <資源> <動詞> [旗標]，或 tripace-cli <全域指令> [旗標]\n\n")
 	b.WriteString("全域旗標:\n")
-	b.WriteString("  -api URL  server 位址（預設 http://localhost:8080）\n\n")
+	b.WriteString("  -api URL  server 位址（預設 " + defaultAPIURL + "，本機開發請明確帶 -api http://localhost:8080）\n\n")
 	b.WriteString("全域指令:\n")
 	b.WriteString("  login --web [-console URL]\n")
 	b.WriteString("               透過瀏覽器核准登入，換取本機快取的 token（其餘指令的前置條件）。\n")
