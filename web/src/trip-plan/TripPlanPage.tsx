@@ -2184,6 +2184,19 @@ export function TripPlanPage(props: {
           // 共用同一份狀態。dataSource 用真後端實作(createPlanAiApiDataSource,
           // 見該函式的完整說明),這裡是正式對話頁,candidates 的
           // placeId 是真實 Google Place ID,查詢要打真後端。
+          // isGenerating——2026-10(使用者明確指出「推論態推論中是不是
+          // 動畫沒有對齊播放態」後查出的真實落差):這裡原本完全沒傳這個
+          // prop,預設 false,AI 思考中時卡片列尾端的呼吸點+骨架卡
+          // shimmer(見 HorizontalPlanTimeline.tsx 該 prop 的完整說明)
+          // 永遠不會出現,只有 composer 的 placeholder 文字會變成「AI
+          // 思考中」(見下方 placeholder 變數),跟 /ai-plan 展示頁播放態
+          // (usePlanSimSocket 的 isGenerating,見該函式的完整說明)視覺
+          // 不對齊。直接沿用 planAiChat.isThinking——語意範圍比模擬來源
+          // 的 isGenerating 略寬(後者只在下一步確定是 add_stop 時才設
+          // true,這裡是從送出到收到第一個回覆整段期間都 true),但作為
+          // 「系統正在處理」的視覺回饋這個寬度是合理的,不會比播放態的
+          // 語意更窄。
+          isGenerating={planAiChat.isThinking}
           showAskPage={showAskPage}
           askPageInput={askPageInput}
           onAskPageDone={handleAskPageDone}
