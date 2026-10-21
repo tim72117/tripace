@@ -2,6 +2,41 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.38.0 — 2026-10-21
+
+新增一組可線上調整的 Google 地理成本設定（照片張數上限、照片有效天數、地點詳情快取時效），並把地點詳情（`places.get`）收斂成統一快取加並發去重；首頁手機版展示重做版面並加上單一圓形遮罩的進退場動畫。**含資料庫結構變更（新增 `geo_settings` 表、`place_details_cache` 新增 `photo_count` 欄位，皆由 `AutoMigrate` 只增不改，不需手動遷移）。無破壞性 API 變更，但 `tripace-cli` 的 `-api` 預設值改為正式機（見「變更」）。**
+
+### 新增
+
+- **可線上調整的地理數值設定（`internal/geosettings` ＋ `geo_settings` 表 ＋ 維運端點 ＋ CLI）**：跟 `internal/ratelimits`、`internal/fieldmasks` 同一個模式——成本相關、需要運維依實際用量調整的數值，定義只有登錄表一處。三項設定：`photoMaxCount`（每個地點最多補幾張照片，預設 3、範圍 1~20）、`photoExpiryDays`（照片資產有效天數，預設 7、範圍 1~30，只影響之後寫入的照片）、`placeDetailsCacheHours`（地點詳情快取時效，預設 24 小時、範圍 1~720）。端點 `GET /internal/maintenance/geo-settings`、`PATCH /internal/maintenance/geo-settings/{key}`，CLI `tripace-cli geo-setting list [-json]` 與 `geo-setting set -key KEY -value 數值`。資料庫沒有資料列就沿用登錄表預設值，所以新增一項設定只要在登錄表加一筆；範圍設下限（0 會把補圖或快取整個關掉卻看起來有開）與上限（Google 對 Places 內容的快取有合規限制），超出範圍的值在端點與執行中實例各擋一次。修改後這個實例立即生效，其他實例約 45 秒內跟上，不需重啟。`set` 用 `flag.Visit` 判斷 `-value` 有沒有給，0 與負數原樣送到後端取得精準錯誤訊息。
+- **統一的地點詳情快取與並發去重（`internal/geo/details_cache.go`）**：起因是 10/19 帳單上 `GetPlace` 與請求數 1:1——「先讀快取再決定要不要打 Google」原本寫在 api 層的單一 handler，AI 版 `place-details-any` 只拿了「未命中」那一半，每個請求都打一次 `places.get`。把讀快取下沉到 `Client`，並提供行程內預設快取（`SetDefaultDetailsCache`）讓 `geo.New()` 自動帶上，任何呼叫端都不可能跳過。只快取文字欄位（名稱、地址、座標、評分、簡介）；照片參照是有時效的 resource name，不快取，需要參照的背景補圖走 `GetPlaceDetailsFresh`。同一個 placeID 同時有多個未命中請求時只打一次 Google，領頭者在獨立 goroutine 執行並有 `recover` 與 `defer` 清理，各請求者各自尊重自己的 context 逾時，`Fresh` 與一般查詢用不同的登記 key（避免補圖因為共用到「命中快取、沒有照片參照」的結果而把實際張數誤記成 0）。
+- **記下地點在 Google 上的實際照片數（`place_details_cache.photo_count`）與補圖有效上限**：補圖判斷原本只看「上限範圍內每個索引有沒有新鮮的 `photo_assets`」，地點實際照片數少於上限時，多出來的索引永遠沒有紀錄、永遠被判成「缺」，每次請求都白打一次 `places.get` 什麼都補不到。現在記下實際張數（`NULL`＝沒查過、`0`＝確認沒有照片，語意不同），有效上限取「點擊次數決定的上限、實際張數、`photoMaxCount`」三者最小值，補到上限就不再補、也不再重讀地點資訊。`SetCachedPlaceDetails` 的 `DoUpdates` 刻意不含這欄，否則每次請求都會把記下的張數洗回 `NULL`。
+- **前端 `placeDetails` 去重（`placeDetailsDedupe.ts`）**：詢問頁為每張候選卡查一次、使用者確認後時間軸又對同一個 `placeId` 查一次，後端每次請求還會累加點擊數。進行中的請求共用同一個 Promise，成功結果短期記憶（5 分鐘、上限 100 筆）；失敗（429／5xx）、`photoRefreshPending`、`found === false` 一律不記憶——前兩者的呼叫端依賴「再查一次會拿到新結果」。依 `scopeKey` 在模組層級共用，因為詢問頁與時間軸不一定拿到同一個資料來源實例。
+- **showcase-demo 新增稽核頁「Google API 快取涵蓋範圍稽核」**：盤點後端所有會打 Google 的端點哪些有快取、哪些沒有，並記錄這批統一快取的實測數據與待決定的後續範圍。
+- **首頁手機版展示（frameless 斷點）重做**：版面改用單層 CSS Grid 取代多層 flex 連鎖，修掉時間軸貼底 88px 死間隙與地圖欄寬溢出；`HorizontalPlanTimeline` 新增 `stackedLayout` prop，明確關閉內部 `margin-top: auto` 貼底機制，不再依賴外層容器的隱性配合；導覽列高度抽成共用的 `--site-nav-h` CSS 變數。地圖改畫在 `.sticky` 的獨立層，真正滿版並貼齊視窗頂端（穿到導覽列底下，不受避開導覽列的 `padding-top` 影響），無圓角、不顯示 9:41 與訊號電量裝飾列。
+- **首頁手機版的單一圓形遮罩進退場**：`progress` 超過 `START_AT`（0.08）時，遮罩從畫面中心圓形展開顯示地圖與時間軸；超過 `END_AT`（0.98，即將離開 `.sticky` 區塊時）圓形收回。只用一個遮罩元素——圓內透明、圓外靠超大 `box-shadow`（spread 150vmax、顏色 `--paper`）填滿，洞的 `width/height` 過渡；靠 z-index（遮罩 2、地圖與時間軸 1、caption 3）蓋住地圖與時間軸而讓文字不受影響，不需要各自 `clip-path`（`clip-path` 只能裁自己與子孫，z-index 與 DOM 親子無關）。偏好減少動態時直接跳到終態。
+
+### 修正
+
+- **推論態橫向時間軸「AI 思考中」沒有呼吸點與骨架卡動畫**：`TripPlanPage.tsx` 呼叫 `HorizontalPlanTimeline` 時沒傳 `isGenerating`，預設 `false`，只有 composer 的 placeholder 會變成「AI 思考中」，跟 `/ai-plan` 播放態視覺不對齊。改為 `isGenerating={planAiChat.isThinking}`；`/ai-plan` 交接後的推論態（`LivePlanLayer`）複用同一個 `TripPlanPage`，一併涵蓋。縱向版 `PlanTimelineView` 原本就有傳，不受影響。
+- **AI 版 `place-details-any` 每次請求都把 Google 存的地址與評分洗成「城市名／0」並重設 `fetched_at`**：命中已建檔景點時為了累加點擊數而用 `SetCachedPlaceDetails`（upsert）建列，覆蓋既有資料，讓地圖版的 24 小時重查永遠不會發生。新增 `EnsureCachedPlaceDetailsRow`，只在列不存在時建立、不覆蓋既有資料。
+- **首頁手機版展示的文字在遮罩收起時看不見**：caption 原本固定白字，遮罩收起（頁面底色）的淺色模式下完全隱形。文字色與陰影改讀 `--caption-fg`／`--caption-shadow`，一律跟主題走（`--ink`、`--paper` 光暈），淺色模式遮罩打開後也是深色字。
+- **首頁地圖遮罩在深色模式下不變暗**：遮罩用的 `--ios-bg` 深色覆寫只掛在 `.app-theme-root`（`/app` 登入後路由），首頁走的是 `.kyoto-bloom[data-theme]` 這組選擇器，兩套 token 互不相通。改用 `--paper`。
+- **「編排行程」紅字疊在地圖上對比不足**：原本的白色 `text-shadow` 假設底色永遠偏深；改用同色票裡本來就有的提亮變體 `--vermilion-soft` 搭配跟主題走的陰影。
+- **「往下捲動，看 AI 排出一天的行程」提示位置**：改在 `steps` 為空時顯示於時間軸那塊區域（絕對定位於 `.screen`、跟文字同層，不被遮罩蓋住），第一張卡片出現後消失；不再 `aria-hidden`，螢幕閱讀器讀得到操作提示。
+- **視窗縮放跨過手機斷點時遮罩狀態沒有重新計算**：捲動 effect 的依賴補上 `isPhoneFrameless`。
+
+### 變更
+
+- **`tripace-cli` 的 `-api` 預設值從 `http://localhost:8080` 改為 `https://tripace.io`（正式機）**：CLI 的主要使用情境已經是對正式環境查詢與調整（`rate-limit`、`geo-setting` 等）。**本機開發需明確帶 `-api http://localhost:8080`；未帶時，包含 `trip reset`、`entry delete`、`attraction delete` 這類會刪資料的指令也會預設打到正式環境**（已確認接受這個取捨）。`defaultAPIURL` 常數統一了 `main.go` 全域旗標與 `notify`、`geocode` 兩個子命令各自重複定義的預設值，usage 文字與 `tripace-cli` skill 文件同步更新。`README.md` 與 `SKILL.md` 裡指向已 301 轉址舊網域 `tripace.shuttle.tools` 的引用改為 `tripace.io`。
+- **`/ai-plan` 播放態的詢問頁候選卡片改走真資料**：候選 `placeId` 改為資料庫景點固定的 Google Place ID，名稱與照片由 `createPlanAiPublicDataSource` → `/public/geo/plan-ai/place-details-any` 查回，跟推論態同一條路；查詢失敗時降級成劇本帶的名稱、沒有照片。時間軸那段的午餐站仍是假資料（阿堂鹹粥／福記肉圓），與詢問頁選的阿蓮牛肉湯不是同一家，兩邊敘事暫時對不上。
+- **首頁標題文案**：「不只是排行程，而是與你一起規劃」改為「不只是排滿行程，而是與你一起規劃」（桌面版 header 與手機版 caption 兩處）。
+- **移除沒有呼叫端的背景照片預熱函式**：`geo_outline.go` 移除 `warmPlaceDetailsPhotoCache` 與其逾時常數 `backgroundPhotoWarmTimeout`（`handleGeoPlacesNearby`／`handleGeoGeocode` 早已不在回應裡帶照片）。
+
+### 其他
+
+- **Google Places API 層限流的運行時設定調整（資料庫設定，非程式碼變更，已記於 v0.37.1）**：`public.placeSearch`、`public.nearbyAttractionSearch` 兩條 plan-ai 端點在正式機改為 60 秒／60 次、每日上限 500；本次沒有新增程式碼變更。
+
 ## v0.37.1 — 2026-10-21
 
 `/ai-plan` 展示頁新增 1024px 寬螢幕側欄版面（地圖維持滿版，側欄與 composer 疊加顯示），詢問頁候選卡片在寬螢幕下改為縱向堆疊列表，並修正時間軸的捲軸樣式與桌面疊加版面的導覽列留白問題。無破壞性變更、無資料庫結構變更。

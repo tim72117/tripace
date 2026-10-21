@@ -159,8 +159,23 @@
      與按鈕都完整可見是更優先的需求。 */
   height: 100%;
   display: block;
-  background: #FFFFFF;
-  border-radius: 20px;
+  /* background 改透明(2026-10,使用者明確回報「上方地圖沒有滿版」
+     查出的連鎖根因):這層底下的 .mapBackgroundSlot 現在改由外層
+     ScrollPlanDemo.tsx 的 .sticky 畫一份不受 padding-top 影響的獨立
+     地圖層(見該檔案 stickyMapBackdrop 的完整說明),AiPlanPhoneDemoScreen
+     這裡的 mapBackground 插槽相應不再渲染內容(stacked=true 時)。
+     若這裡維持原本的 #FFFFFF 實心底色,這層在文件流/z-index 上排在
+     外層新地圖之後,會整塊蓋住外層剛畫好的地圖,等於白做工。改透明
+     讓外層的地圖從這裡「穿透」上來。非 frameless(疊圖模式,
+     /product 功能介紹卡)不受影響——那個情境 mapBackground 仍然在
+     這層內部正常渲染,透明底色不會露出任何破綻。
+     border-radius 拿掉(使用者明確要求「手機版的地圖不用圓邊」)——
+     frameless 模式本來就沒有手機外框可以對應這個圓角語意(上方「拿掉
+     原本的 aspect-ratio」那段已經在講這件事:這個模式視覺上就是一塊
+     普通內容區,不假裝自己是手機螢幕的一部分),20px 圓角留著反而讓
+     地圖在貼齊視窗頂端後,邊緣出現沒有道理的切角。
+     overflow: hidden 保留——仍然需要裁切內部內容(地圖圖片/卡片列)
+     不溢出容器邊界,跟圓角是兩件事。 */
   overflow: hidden;
   pointer-events: none;
 }

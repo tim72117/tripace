@@ -40,6 +40,44 @@
   opacity: 0.55;
 }
 
+/* timelineHint——2026-10(使用者明確要求「往下捲動的字放在時間軸還沒
+   顯示的區域」)見 AiPlanPhoneDemoScreen.tsx 該處的完整說明:只在
+   stacked(frameless,首頁)模式、steps.length === 0 時顯示,渲染在
+   caption 插槽裡(跟文字同層、在單一圓形遮罩之上),但用絕對定位放到
+   時間軸那塊區域:containing block 是 .screen(position: relative),
+   貼底、高度對應卡片軌道 300px(HorizontalPlanTimeline.module.css
+   --horizontal-timeline-card-height,該變數定義在那個元件自己身上,
+   這裡讀不到,所以寫死同一個數字),底部留 12px 對齊軌道實際位置
+   (實測軌道 y 532~832、畫面底 844)。
+   顏色讀 --caption-soft-fg/--caption-shadow(定義在 ScrollPlanDemo.
+   module.css 的 .stickyFrameless,自訂屬性會跨 CSS Module 繼承):遮罩
+   還沒打開時是頁面底色,要用跟主題走的 --ink-soft,打開後疊在地圖上
+   才是白字加深色陰影。fallback 是原本固定的白字,/product 之外沒有
+   其他呼叫端會渲染這個元素。
+   用 --ink-soft 這組 token(.kyoto-bloom scope)而非 --ios-* 系列:
+   --ios-bg 的深色覆寫只在 .app-theme-root 範圍生效,首頁走的是
+   .kyoto-bloom[data-theme] 這組選擇器(見 ScrollPlanDemo.module.css
+   .stickyMapScrim 的根因說明)。 */
+.timelineHint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12px;
+  height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 32px;
+  text-align: center;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--caption-soft-fg, rgba(255, 255, 255, 0.82));
+  text-shadow: var(--caption-shadow, 0 1px 6px rgba(0, 0, 0, 0.5));
+  transition: color 0.6s ease, text-shadow 0.6s ease;
+  pointer-events: none;
+}
+
 /* statusBarContent——2026-10 新增(使用者明確要求「手機上方放信號跟
    電量」),位置對齊真實 iOS 狀態列(貼齊畫面頂端、左右各留出動態島
    空間)現在由 PhoneDemoLayout.module.css 的 .statusBarSlot 負責

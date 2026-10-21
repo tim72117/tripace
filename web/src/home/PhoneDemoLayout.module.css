@@ -41,6 +41,19 @@
    完整說明),不再用 position: absolute——跟 caption/timeline 由同一個
    grid 排版引擎管理,不是兩套不同的定位系統疊在一起。 */
 .screenStacked {
+  /* background: transparent(2026-10,使用者明確回報「上方地圖沒有
+     滿版」查出的連鎖根因第二層):.screen 基礎 class 的 --ios-bg 不
+     透明底色原本是給「地圖還沒載入完成時防止露出畫布原色」用的,但
+     stacked 模式下(ScrollPlanDemo.tsx 的 frameless 呼叫端)
+     mapBackground 插槽已經改成完全不渲染內容(見
+     AiPlanPhoneDemoScreen.tsx 該處的完整說明——外層 .sticky 自己另外
+     畫了一份不受 padding-top 影響的獨立地圖層)。這層不透明底色沒有
+     跟著關掉,會整塊疊在外層新地圖之上(文件流順序上 .phoneFrameless
+     排在新地圖層之後),把剛畫好的地圖蓋住,只在最頂端露出一截——
+     那其實是外層地圖本身没有被蓋住的部分,不是地圖高度算錯。改透明
+     讓外層地圖真正透上來。非 stacked(疊圖模式)不受影響,繼續吃
+     .screen 的不透明底色。 */
+  background: transparent;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   /* grid-template-columns: minmax(0, 1fr)——2026-10 補上(使用者實機
@@ -138,10 +151,12 @@
    保持垂直置中(使用者明確要求「文字區高度可以擠壓，置中就好」),
    不特別保護一個最小高度,文字量超過可視高度交給 overflow: hidden
    裁切,不會撐破容器、推擠到下方的時間軸區。
-   padding-top 讓出 statusBarSlot(絕對定位貼頂,高度約 14px+24px)的
-   視覺空間——stacked 模式下 statusBarSlot 仍是 position: absolute、
-   不佔文件流,這裡改用 padding 手動補回那段距離,避免文字貼齊容器頂端
-   跟狀態列(9:41 時間)重疊。
+   padding-top 原本讓出 statusBarSlot(9:41 時間/訊號裝飾列,絕對定位
+   貼頂)的視覺空間,避免文字貼齊容器頂端跟狀態列重疊——2026-10(使用者
+   明確要求「手機版的不用時間與手機信號這些」)stacked 模式下
+   statusBar 已經改成不渲染(見 AiPlanPhoneDemoScreen.tsx 該處的完整
+   說明),這段留白沒有對應內容可讓了,收窄成一般呼吸間距,不再寫死
+   38px 那個「剛好夠狀態列高度」的數字。
    background——2026-10(第十一輪)拿掉原本的不透明底色(--ios-bg)。
    使用者先前要求的「文字/時間軸改成實體區塊疊在地圖上方(不透明)」
    是要解決「文字疊在地圖上可能被時間軸往上推覆蓋」的版面穩定性
@@ -156,7 +171,10 @@
 .captionStacked {
   grid-row: 1;
   grid-column: 1;
-  z-index: 1;
+  /* z-index: 3——2026-10(首頁單一圓形遮罩,見 ScrollPlanDemo.module.css
+     .stickyRevealMask):遮罩是 z-index 2,蓋在地圖與時間軸(z 1)之上,
+     caption 文字要在遮罩之上才不被遮住。 */
+  z-index: 3;
   min-height: 0;
   overflow: hidden;
   display: flex;
@@ -164,7 +182,7 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 38px 20px 16px;
+  padding: 16px 20px;
 }
 
 /* timelineSlot——見原本 .timelineWrap 的完整說明:撐滿容器、flex column

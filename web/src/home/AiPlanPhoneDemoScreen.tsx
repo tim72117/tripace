@@ -128,7 +128,17 @@ export function AiPlanPhoneDemoScreen({
   // 說明。地圖用存好的靜態圖片(見檔頭說明),不即時呼叫 API。
   // pointer-events:none(見 .module.css):這張圖本身不可互動,整個
   // 展示框的點擊事件由外層 AiPlanPhoneDemo.tsx 的 <Link> 接收。
-  const mapBackground = (
+  //
+  // stacked 時不渲染(2026-10,使用者明確回報「上方地圖沒有滿版」後
+  // 查出的根因修正):stacked=true 只有 ScrollPlanDemo.tsx(首頁
+  // frameless 模式)會傳,那個呼叫端已經在 .sticky 容器自己另外畫了
+  // 一層不受 padding-top 影響、真正貼齊視窗頂端的獨立地圖層(見該
+  // 檔案 stickyMapBackdrop 的完整說明)——這裡的 mapBackground 插槽
+  // 位於 PhoneDemoLayout 的 .screenFrameless 內部,仍然會被外層
+  // .stickyFrameless 的 padding-top 往下推,兩層地圖一起渲染只會
+  // 疊出一張對不齊的重複地圖,不如直接關掉這裡的。非 stacked(疊圖
+  // 模式,/product 功能介紹卡)維持原樣,繼續由這裡渲染。
+  const mapBackground = stacked ? undefined : (
     <>
       <img src={demoMapSrc} alt="" className={styles.mapBackdrop} aria-hidden="true" />
       <div className={styles.scrim} />
@@ -141,7 +151,16 @@ export function AiPlanPhoneDemoScreen({
   // 讀系統時鐘——這個展示框本身就是模擬畫面,不是在演示系統 UI 本身的
   // 即時性)。aria-hidden:這些圖示/文字不帶任何實際資訊,不該被輔助
   // 技術當成有意義內容朗讀。
-  const statusBar = (
+  //
+  // stacked 時不渲染(2026-10,使用者明確要求「手機版的不用時間與手機
+  // 信號這些」):frameless 模式(stacked=true,只有首頁 ScrollPlanDemo
+  // 會傳)本來就已經拿掉手機外框造型(見 AiPlanPhoneDemo.module.css
+  // .screenFrameless 圓角拿掉時的完整說明:「這個模式視覺上就是一塊
+  // 普通內容區,不假裝自己是手機螢幕的一部分」)——外框都不裝了,內部
+  // 卻還疊著「9:41+訊號+WiFi+電量」這組只有真正手機螢幕造型才有意義
+  // 的狀態列裝飾,邏輯上互相矛盾。/product 功能介紹卡(疊圖模式,仍是
+  // 完整手機外框)維持原樣,繼續渲染這個狀態列。
+  const statusBar = stacked ? undefined : (
     <div aria-hidden="true" className={styles.statusBarContent}>
       <span className={styles.statusBarTime}>9:41</span>
       <span className={styles.statusBarIcons}>
@@ -156,7 +175,25 @@ export function AiPlanPhoneDemoScreen({
     <PhoneDemoLayout
       mapBackground={mapBackground}
       statusBar={statusBar}
-      caption={caption}
+      // caption 插槽另外帶上 timelineHint——2026-10(使用者明確要求「往下
+      // 捲動的字放在時間軸還沒顯示的區域」,只有 stacked=frameless 才有):
+      // steps.length === 0 時,把提示文字絕對定位在時間軸那塊區域置中
+      // (見 .timelineHint),第一張卡片長出來後(steps.length > 0)自動
+      // 消失。為什麼放在 caption 插槽而不是 timeline 插槽:首頁有單一
+      // 圓形遮罩蓋在地圖與時間軸(z=2)之上、caption(z=3)之下(見
+      // ScrollPlanDemo.module.css .stickyRevealMask),提示文字寫在
+      // timeline 插槽裡會被遮罩蓋住、揭示前看不到;放進 caption 插槽就
+      // 跟文字同層,不受遮罩影響。絕對定位的 containing block 是
+      // .screen(位置 relative),不會被 .captionStacked 的 overflow:
+      // hidden 裁掉。
+      caption={
+        stacked && steps.length === 0 ? (
+          <>
+            {caption}
+            <p className={styles.timelineHint}>往下捲動，看 AI 排出一天的行程</p>
+          </>
+        ) : caption
+      }
       stacked={stacked}
       // timeline——onSelectStop/onOpenPhotos:這個展示框不做互動
       // (2026-10 使用者明確定調「小展示不做互動」,這次換成橫向版延續
