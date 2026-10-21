@@ -100,6 +100,25 @@ const START_AT = 0.08
 // 決定,不是同一份文字兩邊都顯示或都隱藏的全域開關。
 const DESKTOP_WIDE_BREAKPOINT = 1440
 
+// PHONE_FRAMELESS_BREAKPOINT——2026-10(第七輪,使用者明確回報手機
+// 斷點下手機外框會因為 phoneScale 算法在不同視窗高度/行動瀏覽器網址
+// 列收合情境下產生跳動/貼邊/疊壓等一連串問題,最終確認「手機斷點不
+// 顯示邊框、到平板直式時才顯示，完全不用縮放的方式」)——低於這個
+// 寬度時 AiPlanPhoneDemo 改用 frameless 模式(見該元件 frameless prop
+// 的完整說明):不渲染手機外框裝飾(鈦金屬邊框/notch/側邊按鈕)、不套用
+// transform: scale(),只剩螢幕內容本身用自然版面撐滿容器寬度。
+// 徹底迴避本檔先前幾輪繞著 phoneScale 打轉、反覆修正又反覆冒出新邊界
+// 情況(視窗高度變化跳動、窄螢幕貼邊、矮螢幕疊壓導覽列)的整個問題
+// 類別——手機斷點下既然沒有「手機外框」這個造型需求,就不需要再用
+// JS 算一個倍率去模擬手機的樣子。
+//
+// 768px——常見的平板直式寬度下限(iPad mini/Air 直式),跟專案裡
+// useIsDesktop 的手機/桌面功能性斷點數值相同,但這裡刻意獨立成自己的
+// 常數(不直接 import useIsDesktop)——理由同 DESKTOP_WIDE_BREAKPOINT
+// 的既有說明,這是這個區塊自己的視覺決定,兩者數值相同是巧合,不是
+// 同一個語意、不該耦合在一起維護。
+const PHONE_FRAMELESS_BREAKPOINT = 768
+
 // ADVANCE_THRESHOLD_PX——2026-10 使用者明確回報「小小的滾動馬上就動了
 // 三步」:根因不是 advanceTo 算錯目標索引(它本來就是依絕對捲動位置
 // 算的,這本身沒有問題),而是瀏覽器把「使用者感受到的一次捲動」拆成
@@ -141,7 +160,25 @@ export function ScrollPlanDemo() {
     return () => mql.removeEventListener('change', onChange)
   }, [])
 
-  // phoneScale——依視窗高度決定手機要多大。
+  // isPhoneFrameless——見 PHONE_FRAMELESS_BREAKPOINT 的完整說明:是否
+  // 處於手機斷點(< 768px),決定要不要把 frameless 傳給 AiPlanPhoneDemo
+  // (見下方 JSX)。用 matchMedia 而非 window.innerWidth——跟
+  // isDesktopWide 同一套既有模式,change 事件比自己監聽 resize 更精準
+  // (不會在不影響這個斷點的寬度變化時白白觸發)。
+  const [isPhoneFrameless, setIsPhoneFrameless] = useState(
+    () => window.matchMedia(`(max-width: ${PHONE_FRAMELESS_BREAKPOINT - 1}px)`).matches,
+  )
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${PHONE_FRAMELESS_BREAKPOINT - 1}px)`)
+    const onChange = () => setIsPhoneFrameless(mql.matches)
+    mql.addEventListener('change', onChange)
+    return () => mql.removeEventListener('change', onChange)
+  }, [])
+
+  // phoneScale——依視窗高度決定手機要多大,只在非手機斷點(平板直式
+  // 以上,顯示外框)才有意義——見 PHONE_FRAMELESS_BREAKPOINT 的完整
+  // 說明,手機斷點改用 frameless 模式,不套用 transform: scale(),這裡
+  // 算出的值在那個模式下不會被使用。
   //
   // 這個展示是整個視窗的主角(sticky 滿版),手機應該盡量撐大;但上方
   // 還有標題區塊,不能真的填滿。扣掉標題與上下留白後的可用高度,除以
@@ -165,16 +202,50 @@ export function ScrollPlanDemo() {
   // 56+4 的留白會超出視窗,底部被 .sticky 的 overflow: hidden 裁掉
   // (不會出現頁面卷軸,但時間軸最下面一截看不到)。那是刻意的取捨:
   // 再往下縮手機內的文字就無法辨識了,寧可裁掉底部也不要整個看不清。
+  //
+  // 2026-10(第七輪)補上先前已驗證正確、跟這次問題不同根因的獨立
+  // 修法:改用 window.visualViewport(行動裝置上專門反映「實際可視
+  // 區域」的 API)+ debounce 200ms + 只在「寬度」真的變化時才重算——
+  // 這是處理「手機瀏覽器捲動時網址列收合/展開導致 window.innerHeight
+  // 瞬時變化,連帶讓 phoneScale 跳動」這個問題,跟這一輪處理的「手機
+  // 斷點下手機貼邊/疊壓」是兩個不同成因、但都源自同一套 phoneScale
+  // 計算的獨立問題,只在非手機斷點(平板直式以上)還需要這套計算時
+  // 才有意義,保留下來。
   const [phoneScale, setPhoneScale] = useState(0.95)
   useEffect(() => {
-    const calc = () => {
-      const available = window.innerHeight - HEADER_RESERVED_PX
+    if (isPhoneFrameless) return
+    const viewport = window.visualViewport
+    const applyHeight = (height: number) => {
+      const available = height - HEADER_RESERVED_PX
       setPhoneScale(Math.min(Math.max(available / PHONE_CSS_HEIGHT, PHONE_SCALE_MIN), 1.1))
     }
-    calc()
-    window.addEventListener('resize', calc)
-    return () => window.removeEventListener('resize', calc)
-  }, [])
+    let lastWidth = viewport?.width ?? window.innerWidth
+    applyHeight(viewport?.height ?? window.innerHeight)
+    const calc = () => {
+      const width = viewport?.width ?? window.innerWidth
+      if (width === lastWidth) return
+      lastWidth = width
+      applyHeight(viewport?.height ?? window.innerHeight)
+    }
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined
+    const onViewportChange = () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(calc, 200)
+    }
+    if (viewport) {
+      viewport.addEventListener('resize', onViewportChange)
+    } else {
+      window.addEventListener('resize', onViewportChange)
+    }
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      if (viewport) {
+        viewport.removeEventListener('resize', onViewportChange)
+      } else {
+        window.removeEventListener('resize', onViewportChange)
+      }
+    }
+  }, [isPhoneFrameless])
 
   // 捲動 → 推進播放,同時由捲動進度決定 started(啟動與清除)。
   //
@@ -254,8 +325,11 @@ export function ScrollPlanDemo() {
     <div ref={wrapRef} className={styles.wrap} style={{ height: `${SCROLL_SPAN_VH}vh` }}>
       {/* sticky 容器:整個區塊有 SCROLL_SPAN_VH 的高度提供捲動距離,
           但顯示的內容黏在視窗上——使用者捲動時看到的是「同一支手機裡
-          行程逐漸長出來」,而不是內容跟著往上跑掉。 */}
-      <div className={styles.sticky}>
+          行程逐漸長出來」,而不是內容跟著往上跑掉。
+          stickyFrameless——2026-10(第九輪)手機斷點下疊加,見
+          ScrollPlanDemo.module.css 該 class 的完整說明:左右 padding
+          歸零讓地圖真正滿版。 */}
+      <div className={isPhoneFrameless ? `${styles.sticky} ${styles.stickyFrameless}` : styles.sticky}>
         {/* header——2026-10 使用者明確要求「手機版文字在手機裡面,桌面
             版文字在外面」,後確認「desc 絕對在手機裡,title 跟斷點走」,
             再確認「手機版將『編排行程』文字也放進手機內」:
@@ -271,10 +345,18 @@ export function ScrollPlanDemo() {
           </div>
         )}
         {/* 外框、地圖、版面完全沿用 /product 功能介紹卡的那一份,
-            只把推論層換成捲動驅動(見檔頭說明)。 */}
+            只把推論層換成捲動驅動(見檔頭說明)。
+            frameless——見 PHONE_FRAMELESS_BREAKPOINT 的完整說明,手機
+            斷點下不顯示外框、不套用縮放,只有這個呼叫端這樣用(/product
+            功能介紹卡維持原本永遠顯示外框的既有行為,見
+            AiPlanPhoneDemo.tsx frameless prop 的完整說明)。
+            phoneFrameless——2026-10(第九輪)手機斷點下疊加,見
+            ScrollPlanDemo.module.css 該 class 的完整說明:讓這層撐滿
+            .sticky 剩餘的垂直空間與全部水平空間,地圖才能真正滿版。 */}
         <AiPlanPhoneDemo
-          className={styles.phone}
+          className={isPhoneFrameless ? `${styles.phone} ${styles.phoneFrameless}` : styles.phone}
           scale={phoneScale}
+          frameless={isPhoneFrameless}
           onClick={() => trackEvent('landing_cta_click', { page: 'home', position: 'feature-ai-plan' })}
           screenProps={{
             createSource: createDemoScrollSource,
@@ -284,9 +366,25 @@ export function ScrollPlanDemo() {
             // 的單卡聚焦堆疊版面(見 AiPlanPhoneDemoScreen.tsx 該 prop
             // 的完整說明),只有首頁這個情境開啟。
             focusLatest: true,
+            // stacked——2026-10(第九輪,使用者明確回報「文字區要給固定
+            // 容器大小，不要被時間軸往上推覆蓋了」,並確認改用「真正
+            // flex 文件流」)跟 isPhoneFrameless 綁一起:手機斷點下 caption
+            // 文字區跟 timeline 時間軸區改成上下排列的實體區塊(見
+            // PhoneDemoLayout.tsx stacked prop 的完整說明),不再是
+            // 疊在地圖上的絕對定位層,兩者高度由 flex 版面引擎保證
+            // 不重疊。非手機斷點(顯示外框的情況)維持原本疊圖模式。
+            stacked: isPhoneFrameless,
             // caption——見上方 header 註解的完整說明:desc 永遠放這裡;
             // eyebrow 與 title 只在非並排斷點(手機版上下排列)時才一起
             // 放進來,並排時那兩段已經在外部 header 顯示,不重複。
+            //
+            // 「試試看」按鈕(2026-10 第八輪新增)——只在 isPhoneFrameless
+            // 時加進來,見 AiPlanPhoneDemo.tsx frameless 分支開頭的完整
+            // 說明:手機斷點下按鈕移進 caption、疊在文字正下方,不再由
+            // AiPlanPhoneDemo 獨立渲染,避免矮螢幕下被 .sticky 的
+            // overflow: hidden 連同地圖下緣一起裁掉。非手機斷點(顯示
+            // 外框的情況)維持原樣,按鈕仍由 AiPlanPhoneDemo 渲染在
+            // .phoneFrame 之外(.tryItCtaOutside),不經過這裡。
             caption: (
               <>
                 {!isDesktopWide && (
@@ -296,6 +394,11 @@ export function ScrollPlanDemo() {
                   </>
                 )}
                 <p className={styles.captionDesc}>往下捲動，看 AI 排出一天的行程</p>
+                {isPhoneFrameless && (
+                  <div className={styles.tryItCtaCaption} aria-hidden="true">
+                    試試看
+                  </div>
+                )}
               </>
             ),
           }}

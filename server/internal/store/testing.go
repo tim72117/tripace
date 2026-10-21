@@ -72,3 +72,9 @@ func (s *Store) TestSetUploadedPhotoCreatedAt(id string, createdAt time.Time) er
 	return nil
 }
 
+
+// SetCachedPlaceDetailsFetchedAtForTest 直接改寫 place_details_cache 一列的
+// fetched_at——供測試模擬「這筆快取是 N 小時前寫的」,不需要真的等時間過去。
+func (s *Store) SetCachedPlaceDetailsFetchedAtForTest(placeID string, at time.Time) {
+	_ = s.db.Model(&placeDetailsCacheRow{}).Where("place_id = ?", placeID).Update("fetched_at", at.UTC()).Error
+}

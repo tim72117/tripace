@@ -12,6 +12,42 @@
   cursor: pointer;
   margin: 1.25rem auto 0;
   max-width: 100%;
+  /* text-decoration: none——2026-10(第九輪)使用者明確回報「文字都
+     出現底線」:這個元件整體是一個 <Link>(<a> 標籤),瀏覽器預設會
+     給連結文字加底線,疊圖模式下底線視覺上被白字 text-shadow/深色
+     地圖背景蓋得不明顯(一直都存在,只是不容易注意到),stacked 模式
+     下 captionSlotStacked 改成不透明背景的實體區塊後底線變得清楚
+     可見。在 <Link> 本身重置,所有巢狀文字(eyebrow/title/desc 與
+     .tryItCtaCaption 按鈕文字)一次解決,不需要在每個子層各自重置。 */
+  text-decoration: none;
+}
+
+/* holderFrameless——2026-10(第七輪,見 AiPlanPhoneDemo.tsx frameless
+   prop 的完整說明)手機斷點不顯示外框、不套用 transform: scale() 的
+   版面:.holder 原本的寬高是 inline style 算出的縮放後尺寸(width:
+   PHONE_WIDTH * scale),frameless 模式完全不傳這組 inline style(見
+   AiPlanPhoneDemo.tsx 的完整說明),改用這條規則讓容器自然撐滿呼叫端
+   給的寬度與高度。
+   2026-10(第九輪,使用者明確回報「手機版的地圖高度不對,且寬度沒有
+   滿版」):width/max-width 改成 100%、拿掉 480px 上限——呼叫端
+   (ScrollPlanDemo.tsx 的 .phoneFrameless)已經是手機斷點(窄螢幕)
+   才會套用,不需要額外的寬度上限,寬度應該完全由呼叫端給定的容器
+   決定(真正滿版)。新增 height: 100%——讓這層容器撐滿呼叫端給的
+   垂直空間(呼叫端用 flex: 1 1 auto 分配,見 ScrollPlanDemo.module.css
+   .phoneFrameless 的完整說明),下面 .screenFrameless 的 height: 100%
+   才有一個由可用空間決定的高度可以依附,不是算出一個跟可視高度不
+   成比例的固定值。
+   2026-10(第十輪,Opus 第二意見發現的脆弱點):新增 margin: 0,明確
+   覆寫 .holder 的 margin: 1.25rem auto 0(見該 class 的完整說明)。
+   原本依賴 ScrollPlanDemo.module.css 的 .phoneFrameless 疊加
+   margin-top: 0 來蓋掉——兩個 class 特異度相同,誰蓋誰其實取決於兩份
+   CSS Module 各自的載入順序,沒有任何語言規則保證 .phoneFrameless
+   一定排在 .holder 後面載入。直接在這裡寫死 margin: 0,不依賴跨檔案
+   的載入順序。 */
+.holderFrameless {
+  width: 100%;
+  height: 100%;
+  margin: 0;
 }
 
 .phoneFrame {
@@ -90,6 +126,42 @@
      .anchorDotDraggable 針對這個情境明確覆寫 pointer-events:auto,讓
      拖拉手把本身仍能接收指標事件,不受這裡父層 pointer-events:none
      影響。 */
+  pointer-events: none;
+}
+
+/* screenFrameless——2026-10(第七輪)frameless 模式專用,取代 .screen
+   原本固定 width/height:100%(對應父層 .bezel 的 390×844 畫布)+
+   border-radius:49px(模擬手機螢幕圓角)的樣式——這個模式沒有外框/
+   bezel 可以對應,圓角跟著拿掉(視覺上就是一塊普通內容區,不假裝自己
+   是手機螢幕的一部分),寬度用 100% 撐滿 .holderFrameless 給的空間,
+   高度交給內容自然撐開(不像 .screen 被 844px 的 .phoneFrame 鎖死)。
+   pointer-events:none 維持不變,理由同 .screen 的既有說明。 */
+.screenFrameless {
+  width: 100%;
+  /* 2026-10(第九輪,使用者明確回報「手機版的地圖高度不對,且寬度沒有
+     滿版」):拿掉原本的 aspect-ratio: 390/844——那是用寬度反推出一個
+     固定比例的高度,在窄螢幕(寬度被壓縮)下換算出的高度遠超過
+     .sticky 實際可用的垂直空間(例如 375px 寬螢幕算出 714px 高,但
+     可視高度可能只有 600 多 px),被 .sticky 的 overflow: hidden
+     裁掉大半。改成 height: 100%,直接撐滿 .holderFrameless 給的
+     高度——.holderFrameless 現在也是 height: 100%(見該 class 的
+     完整說明),一路往上追到 ScrollPlanDemo.module.css 的
+     .phoneFrameless(flex: 1 1 auto 撐滿 .sticky 扣除 padding-top 後
+     的剩餘空間)才是這個高度鏈的真正來源——地圖因此會填滿「扣掉
+     文字與按鈕視覺重量後」.sticky 剩下的所有垂直空間,不論螢幕多窄
+     多矮,都不會算出一個跟可視高度不成比例的固定值。
+     內部版面(.statusBarSlot/.captionSlot/.timelineSlot 的絕對定位
+     偏移量,見 PhoneDemoLayout.module.css)原本是為 390×844 的畫面
+     比例設計的像素值,在這個新的高度模型下不會再維持跟原始手機外框
+     完全相同的視覺比例(容器實際寬高比會隨視窗尺寸變化,不再固定是
+     390:844)——這是刻意接受的取捨:比起維持一個算出來、實際上裝不
+     進可視空間而被裁掉一截的「正確比例」,填滿實際可用空間、讓文字
+     與按鈕都完整可見是更優先的需求。 */
+  height: 100%;
+  display: block;
+  background: #FFFFFF;
+  border-radius: 20px;
+  overflow: hidden;
   pointer-events: none;
 }
 

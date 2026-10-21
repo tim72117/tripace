@@ -5,6 +5,8 @@ import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../SiteNavButtons'
 import { trackEvent } from '../../analytics'
 import { useSyncedState } from '../../hooks/useSyncedState'
 import { planAiFakeDataSource } from './planAiFakeDataSource'
+import { createPlanAiPublicDataSource } from './planAiPublicDataSource'
+import { BASE_URL } from '../../AppCommon'
 import type { PlanAiDataSource } from './planAiDataSource'
 import { createPlanSimFakeSource } from './planSimFakeSource'
 import type { PlanSimSource } from './planSimSource'
@@ -1468,10 +1470,23 @@ export function AIPlanTimelinePage() {
   // state,open_ask_page 之外的 render 也可能換掉它的參照。
   const askPageCandidates = askPageInput.candidates
   const askPagePicks = askPageInput.picks
+  // askPageDataSource——2026-10 使用者明確要求「播放態用固定的 attraction
+  // id,但是資料跟圖片與推論態用一樣的方式取得」:詢問頁候選卡片的名稱與
+  // 照片不再查假資料池(那邊只有 REAL_PHOTOS 登記過的 id 才有圖,其餘卡片
+  // 上半部空白),改走跟推論態(訪客)同一條 createPlanAiPublicDataSource
+  // → /public/geo/plan-ai/place-details-any,由後端依 placeId 回資料庫
+  // 既有景點的真名稱與照片。劇本裡的候選 placeId 是固定的(見
+  // planSimScript.ts open_ask_page 的完整說明),所以畫面內容穩定,不會
+  // 因為查詢而變動。只有詢問頁這一處換;時間軸站點的背景反查仍是假資料
+  // (planAiFakeDataSource),那是劇本逐站排出來的另一條路徑。
+  // 用公開端點而不是依登入狀態切換:播放態本來就是給未登入訪客看的展示,
+  // 公開端點登入後也能用,不需要分兩套。查詢失敗時 ScriptedAskPage 會降級
+  // 成劇本自己帶的名稱、沒有照片(見它的 catch),不會整頁壞掉。
+  const askPageDataSource = useMemo(() => createPlanAiPublicDataSource(BASE_URL), [])
   const renderScriptedAskPage = useCallback(
     () => (
       <ScriptedAskPage
-        dataSource={planAiFakeDataSource}
+        dataSource={askPageDataSource}
         candidates={askPageCandidates}
         picks={askPagePicks ?? []}
         confirmAfterMs={ASK_PAGE_CONFIRM_DELAY_MS}
@@ -1484,7 +1499,7 @@ export function AIPlanTimelinePage() {
         stacked={isWide}
       />
     ),
-    [askPageCandidates, askPagePicks, handleAskPageDone, isWide],
+    [askPageCandidates, askPagePicks, askPageDataSource, handleAskPageDone, isWide],
   )
 
   // 這個頁面固定「打字動畫播完才開始安排」(見上方 promptTyped 的完整

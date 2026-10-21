@@ -221,6 +221,14 @@ export interface HorizontalPlanTimelineProps {
   // 2026-10（review 發現）：這個元件原本對 failed 零處理,而手機版
   // 的 /app 走的正是這條橫向路徑——手機使用者實際上拿不到重試入口。
   onRetryStop?: (id: string) => void
+  // stackedLayout——2026-10 新增,見 .wrapStacked 的完整說明:首頁
+  // frameless 展示的 stacked 模式下傳 true,關掉 .wrap 內建的
+  // margin-top: auto 貼底機制(那是 /ai-plan 完整展示頁 .timelinePanel
+  // 疊圖版面專用的既有推力,在 stacked 模式的 grid 容器裡本來就不會
+  // 產生任何效果,但明確關掉能切斷這個元件的排版邏輯去依賴/牽連外層
+  // 容器的實作細節,不是遷就它去設計外層)。選填,省略時維持原本的
+  // margin-top: auto 行為,/ai-plan 展示頁與 TripPlanPage 不受影響。
+  stackedLayout?: boolean
 }
 
 // MIN_SEGMENT_MINUTES——沒有 duration 可解析、或下一站時間早於/等於這一
@@ -487,6 +495,7 @@ export function HorizontalPlanTimeline({
   askPageInput,
   renderAskPage,
   onRetryStop,
+  stackedLayout = false,
 }: HorizontalPlanTimelineProps) {
   // showAskPageState/showAskPageSetter——受控/非受控雙模式(對齊
   // selectStop 等既有呼叫端的同一個既有模式):呼叫端有傳 showAskPage
@@ -999,7 +1008,10 @@ export function HorizontalPlanTimeline({
   // 跳動,使用者明確要求「從頭到尾都用同一個 UI 佈局外框」。
 
   return (
-    <div className={`${styles.wrap} ${effectiveDimmed ? styles.wrapDimmed : ''}`} ref={setWrapElement}>
+    <div
+      className={`${styles.wrap} ${effectiveDimmed ? styles.wrapDimmed : ''} ${stackedLayout ? styles.wrapStacked : ''}`}
+      ref={setWrapElement}
+    >
       {/* selectedNoteBanner——全寬備註區,2026-10 使用者明確要求「移動到
           時間軸的軸線上方」,從原本夾在時間尺(.ruler)跟卡片列
           (.scroller)之間,移到時間尺之前(見 selectedNote/selectedNoteMeta

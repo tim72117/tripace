@@ -453,3 +453,16 @@ func (c *httpClient) fieldMaskSet(key string, fields []string) (any, error) {
 	return c.do("PATCH", "/internal/maintenance/field-masks/"+url.PathEscape(key),
 		map[string]any{"fields": fields})
 }
+
+// geoSettingList 對齊 GET /internal/maintenance/geo-settings(見
+// server/internal/api/maintenance_geo_settings.go)。
+func (c *httpClient) geoSettingList() (any, error) {
+	return c.do("GET", "/internal/maintenance/geo-settings", nil)
+}
+
+// geoSettingSet 對齊 PATCH /internal/maintenance/geo-settings/{key}。
+// value 原樣送出(包含 0 與負數),由後端統一驗證並回精準的錯誤訊息——
+// CLI 不複製一份規則,理由同 rateLimitSet。
+func (c *httpClient) geoSettingSet(key string, value int) (any, error) {
+	return c.do("PATCH", "/internal/maintenance/geo-settings/"+url.PathEscape(key), map[string]any{"value": value})
+}

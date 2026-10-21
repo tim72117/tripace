@@ -26,7 +26,13 @@
    量測,把版面推到底部是排版責任,不該順便由一個量測用的隱形元素
    兼任——那正是它改成 absolute 之後會連帶弄壞排版的原因。 */
 .wrap {
-  /* margin-top: auto——把自己推到 .timelinePanel(flex column)底部。 */
+  /* margin-top: auto——把自己推到 .timelinePanel(flex column)底部。
+     stacked 模式(首頁 frameless 展示,見 .wrapStacked 的完整說明)不吃
+     這個推力——那邊的外層容器本身已經用 CSS Grid 的 auto 列高度把這個
+     元件天然放在容器最底部,margin-top: auto 在那種容器裡本來就不會
+     產生任何推力(flex: 0 0 auto / grid auto 列都沒有「剩餘空間」概念
+     可以推),保留它掛在基礎 class 上只是死碼,改用 .wrapStacked 明確
+     覆寫成 0,切斷這個元件的內部排版邏輯去依賴/牽連外層容器的實作細節。 */
   margin-top: auto;
   display: flex;
   flex-direction: column;
@@ -62,6 +68,16 @@
    影響),不是鎖定互動,純粹是視覺上退到背景。 */
 .wrapDimmed {
   opacity: 0.45;
+}
+
+/* wrapStacked——2026-10 新增,見上方 .wrap margin-top: auto 的完整
+   說明與 HorizontalPlanTimeline.tsx stackedLayout prop 的完整說明:
+   首頁 frameless 展示的 stacked 模式下疊加,歸零 margin-top,改成
+   單純 flex 文件流排列(由外層 PhoneDemoLayout.module.css 的
+   .timelineStacked 決定這個元件在容器裡的位置,不是靠這裡的 auto
+   邊距自己推)。 */
+.wrapStacked {
+  margin-top: 0;
 }
 
 /* ===== 迷你時間尺 ===== */

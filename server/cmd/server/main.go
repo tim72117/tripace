@@ -15,6 +15,7 @@ import (
 	"github.com/tim72117/tripace/internal/apigateway"
 	"github.com/tim72117/tripace/internal/auth"
 	"github.com/tim72117/tripace/internal/geo"
+	"github.com/tim72117/tripace/internal/geosettings"
 	"github.com/tim72117/tripace/internal/model"
 	"github.com/tim72117/tripace/internal/store"
 
@@ -300,6 +301,12 @@ func main() {
 	// 每日額度檢查器(見 storeGeoDailyQuotaChecker 的完整說明)——同樣
 	// 必須在任何 geo.New() 呼叫之前設定。
 	geo.ConfigureDefaultGatewayDailyQuota(storeGeoDailyQuotaChecker{store: st})
+	// 統一的地點詳情快取(見 internal/geo/details_cache.go 的說明)——同樣必須在
+	// 任何 geo.New() 呼叫之前設定:geo.New 建 client 的當下就會帶上這份預設快取,
+	// 之後所有呼叫端(handler、onagent 工具、維運端點)自動受快取保護,
+	// 不需要各自記得去接。有效期由 geo-setting 的 placeDetailsCacheHours 調整,
+	// 啟動後由 startGeoSettingsRefreshLoop 套用資料庫的值。
+	geo.SetDefaultDetailsCache(api.NewPlaceDetailsCache(st))
 	// 啟動時把 geoRateLimitFallback(含這次新增的 photoMediaDailyMax)
 	// 寫進資料庫——但只在該 endpoint 尚未有任何資料列時才寫入(見
 	// seedGeoRateLimitsIfEmpty 的完整說明),避免每次重啟都用啟動參數
@@ -370,6 +377,9 @@ func main() {
 	// 現在也負責把 plan-ai 兩條規則推進 srv 的限流器(見
 	// applyRateLimitsFromStore),需要 srv 已經存在才能傳進去。
 	startGeoRateLimitRefreshLoop(st, geoRateLimitRefreshInterval, geoRateLimitFallback, srv)
+	// 數值設定(照片最大張數、照片過期週期,見 geo_settings.go):啟動時套用一次,
+	// 之後背景重讀。api.New 之後才有 srv 可以套用,所以放在這裡。
+	startGeoSettingsRefreshLoop(st, geosettings.RefreshInterval, srv)
 
 	dbKind := "sqlite:" + dsn
 	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {

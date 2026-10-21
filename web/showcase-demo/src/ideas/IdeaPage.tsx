@@ -116,12 +116,16 @@ export function IdeaPage() {
         )}
 
         <footer className={styles.footer}>
-          <div className={styles.sourceLabel}>原始文件(已移除,需要原文請查 git 歷史)</div>
-          <ul className={styles.sourceList}>
-            {idea.source.map((s) => (
-              <li key={s}>{s}</li>
-            ))}
-          </ul>
+          {idea.source && idea.source.length > 0 && (
+            <>
+              <div className={styles.sourceLabel}>原始文件(已移除,需要原文請查 git 歷史)</div>
+              <ul className={styles.sourceList}>
+                {idea.source.map((s) => (
+                  <li key={s}>{s}</li>
+                ))}
+              </ul>
+            </>
+          )}
           <nav className={styles.pager}>
             {prev ? <Link to={`/ideas/${prev.id}`} className={styles.pagerLink}>← {prev.title}</Link> : <span />}
             {next ? <Link to={`/ideas/${next.id}`} className={styles.pagerLink}>{next.title} →</Link> : <span />}

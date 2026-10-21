@@ -13,6 +13,7 @@ export type IdeaGroupId =
   | 'ai-planning-vision' // AI 排行程多輪討論——願景篇(AI 做得好時的新價值)
   | 'design-discussion'  // 行程規劃設計討論(三方角色討論、UX 設計)
   | 'research'           // 研究類發想
+  | 'audit'              // 稽核報告(程式碼盤點、成本/安全/一致性檢查;本頁即原始文件)
 
 export interface IdeaGroupMeta {
   id: IdeaGroupId
@@ -59,6 +60,7 @@ export interface IdeaDoc {
   // 最後的結論/仲裁判定/建議做法。
   verdict?: string
   tags?: string[]
-  // 原始檔案的歷史路徑(docs/ 下的路徑),至少一筆。
-  source: string[]
+  // 原始檔案的歷史路徑(docs/ 下的路徑)。改寫自舊 docs/ 文件的構想至少一筆;
+  // 稽核報告(group: 'audit')直接以這個頁面為原始文件,不填。
+  source?: string[]
 }

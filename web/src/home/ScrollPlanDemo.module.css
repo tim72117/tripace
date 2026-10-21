@@ -10,11 +10,18 @@
 }
 
 /* sticky——黏在視窗上,使用者捲過 .wrap 那段距離時,畫面內容原地不動、
-   只有時間軸逐漸長出來。高度設 100vh 讓它填滿視窗,內容垂直置中。 */
+   只有時間軸逐漸長出來。高度設 100svh(見下方完整說明)讓它填滿視窗,
+   內容垂直置中。 */
 .sticky {
   position: sticky;
   top: 0;
-  height: 100vh;
+  /* 100svh——2026-10(第十輪,Opus 第二意見)取代 100vh:手機瀏覽器的
+     100vh 是「網址列完全收合」時的最大可視高度,比使用者實際看到的
+     可視區域(網址列展開時)大一截,會讓底部內容被這段差額悄悄吃掉
+     一截,視覺上像是沒有真正貼齊畫面底部。100svh(small viewport
+     height)永遠對齊網址列展開、可視區域最小時的高度,不會有這段
+     誤差。 */
+  height: 100svh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -28,6 +35,34 @@
      置中本身的機率性留白。 */
   padding: 56px var(--edge-pad, 24px) 0;
   overflow: hidden;
+}
+
+/* stickyFrameless——2026-10(第九輪,使用者明確回報「手機版的地圖高度
+   不對,且寬度沒有滿版」)疊加在 .sticky 上,只在 isPhoneFrameless 時
+   套用(見 ScrollPlanDemo.tsx 的完整說明)。左右 padding 歸零——地圖
+   要真正滿版貼齊螢幕邊緣,不能繼續沿用 --edge-pad 這個全站統一留白
+   節奏(那是給一般內容文字用的,手機斷點下這裡的視覺主角是滿版地圖,
+   文字/按鈕疊在地圖上,自己在 PhoneDemoLayout.module.css 的
+   .captionSlot 已有 left/right: 20px 內距,不需要再疊加外層一層)。
+   padding-top 第二次修正(使用者明確回報「地圖上方還有一小段空白」
+   且地圖自帶的狀態列被這段留白連帶裁切了一半)曾一度歸零,地圖貼齊
+   視窗頂端、疊到導覽列底下——在純地圖背景(非 stacked)下這個疊合
+   不明顯,視覺上可接受。
+   第三次修正(使用者明確回報 stacked 模式下「文字區要給固定容器
+   大小...」一連串調整後,caption 區塊變成不透明實體背景貼齊視窗
+   頂端,這時跟漂浮導覽列(Tripace/登入按鈕,position: fixed)重疊,
+   文字被按鈕橫切,比疊在純地圖背景上明顯刺眼太多,確認「stacked
+   模式下重新加回頂部留白,只夠避開導覽列高度即可」)。
+   第四次修正(2026-10 第十輪,Opus 第二意見):padding-top 改讀
+   SiteNavButtons.css 的 --site-nav-h 共用變數(見該處完整說明,目前
+   值 52px),不再自己寫死一個數字——導覽列的實際高度只要在那份檔案
+   裡改一次,這裡會自動跟著變,不需要回來找所有「讓出導覽列空間」的
+   地方各自同步更新。額外加 8px 當安全緩衝(呼應先前「略大於實測底緣
+   的安全距離」的既有取捨,不要讓文字剛好貼齊導覽列底緣)。 */
+.stickyFrameless {
+  padding-left: 0;
+  padding-right: 0;
+  padding-top: calc(var(--site-nav-h, 52px) + 8px);
 }
 
 .header {
@@ -47,6 +82,28 @@
    改成留一點正值間距,避開 nav 的同時仍比原本的 20px 更靠近文字。 */
 .phone {
   margin-top: 4px;
+}
+
+/* phoneFrameless——2026-10(第九輪)疊加在 .phone 上,只在
+   isPhoneFrameless 時套用。原本 .phone 只有 margin-top: 4px、尺寸由
+   AiPlanPhoneDemo.tsx 的 inline style(width/height = PHONE_WIDTH/
+   PHONE_HEIGHT × scale)決定;frameless 模式完全不傳那組 inline style
+   (見該元件的完整說明),這裡改用 flex: 1 1 auto; min-height: 0 讓它
+   在 .sticky(flex column 容器)裡撐滿扣除 padding-top 後的剩餘垂直
+   空間,width: 100% 撐滿水平空間(因為 .stickyFrameless 已經把左右
+   padding 歸零,100% 就是視窗寬度)——這兩個屬性合起來讓
+   .holderFrameless/.screenFrameless(見 AiPlanPhoneDemo.module.css)
+   的 height: 100% 有一個真正由可用空間決定、而非寫死 aspect-ratio
+   算出的高度可以依附,地圖因此會填滿「扣掉文字與按鈕視覺重量後」
+   .sticky 剩下的所有垂直空間,不會算出一個跟可視高度不成比例、被
+   .sticky 的 overflow: hidden 裁掉大半的固定比例高度。
+   margin-top 歸零——frameless 模式沒有「手機外框」這個實體,不需要
+   上面 .phone 那段把外框往上貼近文字的視覺調整。 */
+.phoneFrameless {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  margin-top: 0;
 }
 
 .eyebrow {
@@ -111,6 +168,38 @@
   margin: 0;
   color: rgba(255, 255, 255, 0.82);
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+}
+
+/* tryItCtaCaption——2026-10(第八輪)新增,見 ScrollPlanDemo.tsx
+   screenProps.caption 裡掛載處與 AiPlanPhoneDemo.tsx frameless 分支
+   開頭的完整說明:手機斷點(frameless 模式)下「試試看」按鈕疊在文字
+   正下方,跟其餘 caption 內容(.captionEyebrow/.captionTitle/
+   .captionDesc)同一個 flex column 置中容器裡的最後一個子項,不需要
+   額外的 position: absolute 定位。
+   樣式數值照抄 AiPlanPhoneDemo.module.css .tryItCtaOutside(同一顆
+   按鈕的另一種版面位置,見該檔案的完整說明)——視覺是同一顆按鈕,只是
+   現在改放進 caption 插槽,不是獨立疊加在 .phoneFrame 之外。
+   margin-top 跟其餘 caption 子項的間距一致(captionTitle/
+   captionDesc 之間是 8px margin-bottom,這裡用稍大的 16px 讓按鈕
+   跟文字區塊之間有更明確的分隔,呼應它是「可互動的行動呼籲」而非
+   說明文字的一部分)。
+   .captionSlot 本身是 pointer-events: none(見 PhoneDemoLayout.module.css
+   的完整說明),這裡不需要局部恢復 pointer-events: auto——這顆按鈕
+   一直都是純視覺引導,aria-hidden,點擊靠外層 <Link> 冒泡,不需要
+   自己接收指標事件,理由同 .tryItCtaOutside 的既有說明。 */
+.tryItCtaCaption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 16px;
+  padding: 15px 34px;
+  border-radius: 999px;
+  background: var(--color-accent, #8B3A2F);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 10px 28px -10px rgba(0, 0, 0, 0.55);
 }
 
 /* Desktop(≥1440px)改成左右並排:文案在左、手機在右。

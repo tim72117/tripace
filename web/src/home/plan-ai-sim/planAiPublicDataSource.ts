@@ -5,6 +5,7 @@ import {
   fetchPublicGeoPlacePhotoAssets,
   type ClientConfig,
 } from '../../api'
+import { getSharedPlaceDetailsDedupe } from './placeDetailsDedupe'
 import type { PlanAiDataSource, PlanAiSearchNearbyResult } from './planAiDataSource'
 
 // planAiPublicDataSource.ts — PlanAiDataSource 的「訪客」實作:全部打
@@ -53,8 +54,11 @@ async function searchNearbyByCoords(cfg: ClientConfig, lat: number, lng: number)
 
 export function createPlanAiPublicDataSource(baseURL: string): PlanAiDataSource {
   const cfg = guestCfg(baseURL)
+  // 去重(見 placeDetailsDedupe.ts):AIPlanTimelinePage 的 askPageDataSource 與
+  // LivePlanLayer 的 publicDataSource 是兩個不同實例,所以記憶依 baseURL 共用。
+  const dedupe = getSharedPlaceDetailsDedupe(`public|${baseURL}`)
   return {
-    placeDetails: (placeId) => fetchPlanAiPlaceDetailsAny(cfg, placeId),
+    placeDetails: (placeId) => dedupe.get(placeId, () => fetchPlanAiPlaceDetailsAny(cfg, placeId)),
     // transitEstimate——後端目前沒有公開版(只有
     // GET /internal/geo/plan-ai/transit-estimate,見 api.go 該路由上方
     // 的註解:「transit-estimate 這兩支目前確認的展示頁流程不需要查詢,

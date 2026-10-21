@@ -147,6 +147,18 @@ func buildResources(c *httpClient, apiURL string) []resource {
 			},
 		},
 		{
+			// geo-setting:可線上調整的數值設定(照片最大張數、照片過期週期,
+			// 見 server/internal/geosettings 的登錄表與
+			// handleMaintenanceGeoSettingList/Set 的完整說明)。
+			// 2026-10 新增——這兩個值直接決定 Google Place Photos 與
+			// places.get 的呼叫量與費用,原本寫死在程式碼裡。
+			name: "geo-setting",
+			commands: []resourceCommand{
+				{verb: "list", run: func(args []string) { cmdGeoSettingList(c, args) }, usage: "tripace-cli geo-setting list [-json]"},
+				{verb: "set", run: func(args []string) { cmdGeoSettingSet(c, args) }, usage: "tripace-cli geo-setting set -key KEY -value 數值"},
+			},
+		},
+		{
 			name: "entry",
 			commands: []resourceCommand{
 				{verb: "add", run: func(args []string) { cmdEntryAdd(c, args) }, usage: "tripace-cli entry add -trip ID -title 文字 [-start ...] [-start-time ...] [-end ...] [-end-time ...] [-location ...]"},
@@ -1889,6 +1901,96 @@ func cmdFieldMaskSet(c *httpClient, args []string) {
 	res, err := c.fieldMaskSet(*key, list)
 	if err != nil {
 		fatal("field-mask set: %v", err)
+	}
+	output(res)
+}
+
+// cmdGeoSettingList 對應 GET /internal/maintenance/geo-settings。預設印表格
+// (表頭一律 ASCII——中文字元佔 3 bytes 但終端機只顯示 2 格,%-Ns 這類按
+// byte 補空白的寬度會讓欄位錯位,見 cmdRateLimitList 踩過的同一個坑),
+// -json 印原始回應。
+func cmdGeoSettingList(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("geo-setting list", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "輸出原始 JSON 回應")
+	_ = fs.Parse(args)
+
+	res, err := c.geoSettingList()
+	if err != nil {
+		fatal("geo-setting list: %v", err)
+	}
+	if *asJSON {
+		output(res)
+		return
+	}
+	m, ok := res.(map[string]any)
+	if !ok {
+		output(res)
+		return
+	}
+	rows, ok := m["settings"].([]any)
+	if !ok {
+		output(res)
+		return
+	}
+
+	num := func(v any) int { f, _ := v.(float64); return int(f) }
+	fmt.Printf("%-24s %-7s %-8s %-9s %s\n", "KEY", "VALUE", "DEFAULT", "RANGE", "CUSTOM")
+	for _, raw := range rows {
+		r, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		custom := "-"
+		if cfg, _ := r["configured"].(bool); cfg {
+			custom = "yes"
+		}
+		key, _ := r["key"].(string)
+		fmt.Printf("%-24s %-7d %-8d %-9s %s\n", key, num(r["value"]), num(r["default"]),
+			fmt.Sprintf("%d-%d", num(r["min"]), num(r["max"])), custom)
+	}
+	fmt.Println()
+	for _, raw := range rows {
+		r, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		key, _ := r["key"].(string)
+		desc, _ := r["desc"].(string)
+		fmt.Printf("%s: %s\n", key, desc)
+	}
+	fmt.Println()
+	fmt.Println("CUSTOM 為 - 代表目前仍是預設值;設定過之後就以資料庫的值為準。")
+	if sec := num(m["appliesWithinSec"]); sec > 0 {
+		fmt.Printf("修改後這個實例立即生效,多實例部署時其他實例約 %d 秒內跟上,不需要重啟。\n", sec)
+	}
+}
+
+// cmdGeoSettingSet 對應 PATCH /internal/maintenance/geo-settings/{key}。
+//
+// 用 flag.Visit 判斷 -value 有沒有出現在命令列,而不是拿預設值 0 當「沒給」
+// 的哨兵——0 與負數必須原樣送到後端,由後端回精準的錯誤訊息(同
+// cmdRateLimitSet 改用 flag.Visit 的同一個教訓)。
+func cmdGeoSettingSet(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("geo-setting set", flag.ExitOnError)
+	key := fs.String("key", "", "要修改的設定(用 geo-setting list 看可用的值)")
+	value := fs.Int("value", 0, "新的數值")
+	_ = fs.Parse(args)
+
+	if *key == "" {
+		fatal("geo-setting set: 需要 -key(用 geo-setting list 看可用的值)")
+	}
+	given := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "value" {
+			given = true
+		}
+	})
+	if !given {
+		fatal("geo-setting set: 需要 -value(整數;合法範圍用 geo-setting list 查看)")
+	}
+	res, err := c.geoSettingSet(*key, *value)
+	if err != nil {
+		fatal("geo-setting set: %v", err)
 	}
 	output(res)
 }

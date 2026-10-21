@@ -402,6 +402,20 @@ type placeDetailsCacheRow struct {
 	Summary    *string   `gorm:"column:summary"`
 	FetchedAt  time.Time `gorm:"column:fetched_at;not null"`
 	ClickCount int64     `gorm:"column:click_count;not null;default:0"`
+	// PhotoCount:這個地點在 Google 上「實際有幾張照片」(2026-10)。
+	// 指標而非數值:NULL=還沒查過、不知道;0=查過、確認這個地點沒有照片
+	// ——兩者語意不同,補圖判斷(internal/api 的 effectivePhotoCap)對 NULL
+	// 沿用點擊數上限、對 0 則完全不補。
+	//
+	// 為什麼要記:補圖判斷只看「上限範圍內每個索引有沒有新鮮的 photo_assets」,
+	// 地點實際照片數少於上限時,多出來的索引永遠沒有紀錄、永遠被判成「缺」,
+	// 每次請求都白打一次 places.get 卻什麼都補不到。記下實際張數,判斷時把
+	// 上限截到這個數字,就不會再追一個不存在的索引。
+	//
+	// 由補圖背景任務與同步查詢在拿到 Google 的照片清單時寫入;
+	// SetCachedPlaceDetails 的 DoUpdates 刻意不含這欄(同 click_count),否則每次
+	// 請求都會把記下的張數洗回 NULL。
+	PhotoCount *int `gorm:"column:photo_count"`
 }
 
 func (placeDetailsCacheRow) TableName() string { return "place_details_cache" }
@@ -636,3 +650,15 @@ type geoFieldMaskRow struct {
 }
 
 func (geoFieldMaskRow) TableName() string { return "geo_field_masks" }
+
+// geoSettingRow 是 geo_settings 表的一列:一項「可線上調整的數值設定」的
+// 自訂值(登錄表見 internal/geosettings)。沒有資料列 = 沿用登錄表預設值,
+// 所以不需要 seeding——跟 geo_rate_limits/geo_field_masks 不同,單一數值
+// 沒有「多個欄位要一起寫入才算完整」的問題。
+type geoSettingRow struct {
+	Key       string    `gorm:"primaryKey;column:key"`
+	Value     int       `gorm:"column:value;not null"`
+	UpdatedAt time.Time `gorm:"column:updated_at;not null"`
+}
+
+func (geoSettingRow) TableName() string { return "geo_settings" }

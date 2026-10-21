@@ -76,12 +76,18 @@ export function AiPlanPhoneDemoScreen({
   onSource,
   focusLatest = false,
   caption,
+  stacked = false,
 }: {
   createSource?: () => PlanSimSource
   started?: boolean
   onSource?: (source: PlanSimSource | null) => void
   focusLatest?: boolean
   caption?: ReactNode
+  // stacked——2026-10(第九輪)新增,原樣轉交給 PhoneDemoLayout 的
+  // stacked prop(見該元件的完整說明)。只有 ScrollPlanDemo.tsx 在
+  // frameless 模式下傳 true,/product 功能介紹卡維持原狀不傳(預設
+  // false,疊圖模式)。
+  stacked?: boolean
 } = {}) {
   // 2026-10 使用者明確要求「首頁展示不要輸入框」:移除開場假打字動畫
   // 與輸入膠囊(原本的 typedPrompt/promptTyped state 與下方 .composer
@@ -151,6 +157,7 @@ export function AiPlanPhoneDemoScreen({
       mapBackground={mapBackground}
       statusBar={statusBar}
       caption={caption}
+      stacked={stacked}
       // timeline——onSelectStop/onOpenPhotos:這個展示框不做互動
       // (2026-10 使用者明確定調「小展示不做互動」,這次換成橫向版延續
       // 同一個定調),給最小可用的 no-op 滿足型別:onSelectStop 仍然
@@ -174,6 +181,7 @@ export function AiPlanPhoneDemoScreen({
           onOpenPhotos={() => {}}
           isGenerating={isGenerating}
           focusLatest={focusLatest}
+          stackedLayout={stacked}
         />
       )}
     />

@@ -31,14 +31,35 @@ export function AiPlanPhoneDemo({
   onClick,
   screenProps,
   scale = DEFAULT_SCALE,
+  frameless = false,
   className,
 }: {
   onClick?: () => void
   // scale——手機外框的縮放倍率。外框內部永遠以 390×844 的 CSS 尺寸排版
   // (那是 AiPlanPhoneDemoScreen 寫死的手機版面,見該元件的完整說明),
   // 只有最外層用 transform: scale() 縮放,所以放大不會改變內部版面、
-  // 不會觸發任何 media query,純粹是視覺上的大小。
+  // 不會觸發任何 media query,純粹是視覺上的大小。frameless 為 true 時
+  // 這個 prop 被忽略(不渲染任何 scale() 縮放,見該 prop 的完整說明)。
   scale?: number
+  // frameless——2026-10(第七輪)新增,見 ScrollPlanDemo.tsx
+  // PHONE_FRAMELESS_BREAKPOINT 的完整說明:true 時不渲染手機外框裝飾
+  // (鈦金屬邊框/notch/側邊按鈕),也不套用 transform: scale(),只剩
+  // AiPlanPhoneDemoScreen 的內容本身用 100% 寬度的自然版面撐滿呼叫端
+  // 給的容器寬度。
+  //
+  // 背景:原本的 scale() 模式需要用 JS 算出一個精確倍率去模擬「手機
+  // 畫布要多大」,這套計算在手機斷點(窄螢幕)上反覆出現新的邊界問題
+  // (視窗高度變化時跳動、窄螢幕下手機貼齊外框、矮螢幕下手機疊壓到
+  // 上方導覽列)——每次修正都是在同一套「用高度/寬度反推縮放倍率」
+  // 的模型裡打轉。使用者最終確認的方向是從根本跳出這個模型:手機
+  // 斷點本來就不需要「手機外框」這個造型語意,直接不渲染外框、也不
+  // 計算任何倍率,問題類別整個消失,不是逐一修正每個邊界情況。
+  //
+  // 預設 false——只有 ScrollPlanDemo.tsx(首頁捲動展示)在手機斷點下
+  // 會傳 true;/product 功能介紹卡(FeatureShowcase.tsx)維持原本
+  // 永遠顯示外框的既有行為,不受這個新模式影響(見該元件呼叫處的既有
+  // 說明,那裡是固定小卡片情境,跟首頁全螢幕展示的設計情境不同)。
+  frameless?: boolean
   // screenProps——原樣透傳給 AiPlanPhoneDemoScreen,讓呼叫端換掉播放
   // 節奏(見該元件 createSource 的完整說明)。外框本身不受影響。
   screenProps?: Parameters<typeof AiPlanPhoneDemoScreen>[0]
@@ -48,6 +69,28 @@ export function AiPlanPhoneDemo({
   // 剩餘空間、把同列的其他內容推到邊緣,需要在自己的樣式裡歸零。
   className?: string
 } = {}) {
+  if (frameless) {
+    const framelessHolderClass = className
+      ? `${styles.holder} ${styles.holderFrameless} ${className}`
+      : `${styles.holder} ${styles.holderFrameless}`
+    // 2026-10(第八輪,使用者明確回報「進入地圖區後，下方讓我試試的
+    // 按鈕不見了」,並確認「文字仍疊在地圖上，但按鈕移到文字正下方
+    // (仍疊在地圖上)」)——「試試看」按鈕不再由這個元件獨立渲染
+    // (原本的 .tryItCtaOutsideFrameless 跟地圖內容同層並排,見本次
+    // 修正前的版本),改成呼叫端(ScrollPlanDemo.tsx)把按鈕塞進
+    // screenProps.caption 插槽裡、緊接在文字下方——caption 疊在地圖
+    // 主顯示區上方(見 PhoneDemoLayout.tsx 的完整說明),這樣按鈕在
+    // 整個 .sticky 置中堆疊中的位置更靠前面,不會像原本那樣跟在地圖
+    // 內容「後面」,在矮螢幕下被 .sticky 的 overflow: hidden 連同地圖
+    // 下緣一起裁掉看不到。
+    return (
+      <Link to="/ai-plan" onClick={onClick} aria-label="開啟編排行程完整展示" className={framelessHolderClass}>
+        <div className={styles.screenFrameless}>
+          <AiPlanPhoneDemoScreen {...screenProps} />
+        </div>
+      </Link>
+    );
+  }
   return (
     <Link
       to="/ai-plan"

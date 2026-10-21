@@ -23,9 +23,57 @@
   --composer-slot-height: 72px;
 }
 
+/* screenStacked——2026-10(第十輪,Opus 第二意見確認根因後重寫):原本
+   用 flex column 包兩個疊加了疊圖模式 class 的插槽(.captionSlotStacked
+   疊在 .captionSlot 上、.timelineSlotStacked 疊在 .timelineSlot 上),
+   疊加寫法繼承了疊圖模式才需要的 position: absolute/padding-bottom
+   等屬性,是先前「時間軸貼不到底部」那個 88px 間隙 bug 的真正根因
+   (padding-bottom 是幫一個 stacked 模式根本沒有渲染的 composer 插槽
+   留位置)。
+   改成單一層 CSS Grid:grid-template-rows 把容器切成「文字區(可被
+   擠壓,吃剩餘空間)+ 時間軸區(依內容自然高度)」兩行,一次性在這一
+   層決定兩個插槽的高度分配,不再需要 .captionSlotStacked/
+   .timelineSlotStacked 各自宣告 flex: 1 1 auto / flex: 0 0 auto 再
+   指望兩者加起來剛好對齊容器邊界——grid 的兩行高度本來就會精確加總
+   等於容器總高度,時間軸的那一行自然就貼在容器最底部,不需要任何
+   「推到底部」的技巧。
+   mapBackgroundSlot 改用 grid-row: 1 / -1 跨兩行鋪滿(見該 class的
+   完整說明),不再用 position: absolute——跟 caption/timeline 由同一個
+   grid 排版引擎管理,不是兩套不同的定位系統疊在一起。 */
+.screenStacked {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  /* grid-template-columns: minmax(0, 1fr)——2026-10 補上(使用者實機
+     回報「地圖看起來還是沒有真正滿版」,實測發現根因):沒有明確宣告
+     欄寬時,單欄 grid 的隱式欄寬是 auto,寬度由同一欄裡所有 grid item
+     的 intrinsic content size 撐出來——.timelineStacked 底下
+     HorizontalPlanTimeline 的卡片列(.scrollerTrack 有 min-width:100%,
+     見該元件 .module.css 的完整說明,是為了讓卡片寬度算法有固定基準
+     設計的)把這個隱式欄寬撐大到超過容器實際寬度(手機寬 375px 時
+     量到 594px),.mapBackgroundSlot(grid-row:1/-1 跨兩行鋪底)跟著
+     被撐寬、往左溢出容器邊界。地圖圖片本身因為用 position:absolute;
+     inset:0 疊在 .mapBackgroundSlot 上面、視覺上仍貼齊螢幕邊緣看不
+     出異狀,但容器尺寸本身是錯的,未來只要有任何用 position:static
+     參與版面的子元素,都會被這個算錯的欄寬影響。
+     minmax(0,1fr) 明確鎖死單欄寬度等於容器可用寬度,不受任何子項
+     content size 影響——同一欄裡所有 item 都撐滿這個固定寬度,不再
+     互相干擾。 */
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .mapBackgroundSlot {
   position: absolute;
   inset: 0;
+  z-index: 0;
+}
+
+/* screenStacked 底下的 mapBackgroundSlot 改成參與 grid 排版(跨兩行
+   鋪滿),取代上面疊圖模式專用的 position: absolute——兩種模式各自
+   用自己的定位系統,不共用同一條規則硬湊。 */
+.screenStacked > .mapBackgroundSlot {
+  position: static;
+  grid-row: 1 / -1;
+  grid-column: 1;
   z-index: 0;
 }
 
@@ -75,6 +123,50 @@
   pointer-events: none;
 }
 
+/* captionStacked——2026-10(第十輪,取代 .captionSlotStacked)見
+   PhoneDemoLayout.tsx stacked prop 與 .screenStacked 的完整說明:不再
+   疊加 .captionSlot(避免繼承疊圖模式的 absolute/top/bottom),獨立
+   宣告一份。這一層是 .screenStacked grid 的第一行(grid-template-rows:
+   minmax(0,1fr) auto),高度由 grid 引擎直接決定「容器總高度減去
+   .timelineStacked 的自然高度」,不需要靠 flex-basis/flex-shrink 之類
+   的中間計算去湊——grid 兩行高度加總天然等於容器總高度,時間軸永遠
+   貼在容器最底部,不會像之前的 flex 疊加方案在中間留下算不準的空隙。
+   min-height: 0——grid 子項預設 min-height: auto(等同 flex 子項的
+   同一個預設值)會讓這一行永遠不小於內容本身高度,即使 minmax(0,1fr)
+   想壓縮它也壓不下去,這裡明確放行真正可以被壓縮到 0。
+   display: flex + align-items: center——內容在這個可能被壓縮的高度裡
+   保持垂直置中(使用者明確要求「文字區高度可以擠壓，置中就好」),
+   不特別保護一個最小高度,文字量超過可視高度交給 overflow: hidden
+   裁切,不會撐破容器、推擠到下方的時間軸區。
+   padding-top 讓出 statusBarSlot(絕對定位貼頂,高度約 14px+24px)的
+   視覺空間——stacked 模式下 statusBarSlot 仍是 position: absolute、
+   不佔文件流,這裡改用 padding 手動補回那段距離,避免文字貼齊容器頂端
+   跟狀態列(9:41 時間)重疊。
+   background——2026-10(第十一輪)拿掉原本的不透明底色(--ios-bg)。
+   使用者先前要求的「文字/時間軸改成實體區塊疊在地圖上方(不透明)」
+   是要解決「文字疊在地圖上可能被時間軸往上推覆蓋」的版面穩定性
+   問題,但不透明背景的副作用是把地圖從視覺上切成只剩下半段可見,
+   使用者後來實機回報「地圖在文字區沒有滿版」,明確要求改回透明,讓
+   地圖整個高度都看得到。文字可讀性改靠文字本身的 text-shadow(見
+   ScrollPlanDemo.module.css .captionTitle/.captionDesc/.captionEyebrow
+   的既有樣式,本來就是為了疊在地圖上設計的白字+深色陰影組合,拿掉
+   背景後這套既有樣式直接適用,不需要另外調整)。版面穩定性(文字不被
+   時間軸覆蓋)已經由 Grid 的 grid-template-rows 兩行分配保證,不再
+   需要靠不透明背景色本身來「畫出」兩個區塊的分界。 */
+.captionStacked {
+  grid-row: 1;
+  grid-column: 1;
+  z-index: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 38px 20px 16px;
+}
+
 /* timelineSlot——見原本 .timelineWrap 的完整說明:撐滿容器、flex column
    讓內容(HorizontalPlanTimeline)能用 margin-top: auto 推到底部。
    padding-bottom 把時間軸從「貼齊底部」往上頂,基礎值是 composer 站位
@@ -88,6 +180,31 @@
   display: flex;
   flex-direction: column;
   padding-bottom: calc(var(--composer-slot-height) + 16px);
+}
+
+/* timelineStacked——2026-10(第十輪,取代 .timelineSlotStacked,見
+   Opus 第二意見確認的根因)不再疊加 .timelineSlot,獨立宣告一份。
+   先前的疊加寫法繼承了 .timelineSlot 的 padding-bottom:
+   calc(--composer-slot-height + 16px)(=88px)——那段 padding 是給
+   疊圖模式底部的 composer 站位留空間,但 stacked 模式的呼叫端
+   (AiPlanPhoneDemoScreen.tsx)根本沒有渲染 composer,這段 padding
+   變成一段沒人要的死空白,是時間軸看起來沒有真正貼齊容器底部的真正
+   根因——不是 margin-top: auto 失效(那個技巧在 flex: 0 0 auto 容器
+   裡本來就不會產生效果,但也不會製造出額外的間隙;間隙其實是這段
+   繼承來的 padding 造成的)。
+   grid-row: 2(.screenStacked 的第二行,見該 class 的完整說明)天生
+   緊接在第一行之後、落在容器最底部,不需要 padding-bottom 預留任何
+   空間,也不需要 margin-top: auto 這種「推到底部」的技巧——
+   HorizontalPlanTimeline 這裡改用 stackedLayout prop 關掉它內部
+   .wrap 的 margin-top: auto(見該元件 .wrapStacked 的完整說明),改成
+   單純 flex 文件流排列,不依賴這層容器有沒有剩餘空間可以推。
+   min-height: 0 讓 HorizontalPlanTimeline 內部的捲動/置中機制在這個
+   依內容決定高度(grid 的 auto 列)的容器裡正常運作。 */
+.timelineStacked {
+  grid-row: 2;
+  grid-column: 1;
+  z-index: 1;
+  min-height: 0;
 }
 
 /* composerSlot——見 PhoneDemoLayout.tsx 檔頭「composer」插槽的完整

@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tim72117/tripace/internal/apigateway"
@@ -51,6 +52,17 @@ type Server struct {
 	// 或額外的套件間依賴傳遞這個值,保持兩個套件原本就互相獨立的既有
 	// 結構。
 	adminBootstrapEmail string
+
+	// photoMaxCount:全域「照片最大張數」設定的目前生效值(見 photo_max_count.go),
+	// 由維運端點與背景重讀更新,補圖判斷每次請求都讀,所以用 atomic。
+	photoMaxCount atomic.Int64
+
+	// photoFillInFlight:正在進行中的背景補圖(key 是 "placeID#photoIndex"),
+	// 見 backgroundFillPlacePhoto 的去重說明。
+	photoFillInFlight sync.Map
+
+	// photoExpiryDays:全域「照片過期週期(天)」設定的目前生效值,見 PhotoAssetExpiry。
+	photoExpiryDays atomic.Int64
 
 	// photoCache 實作 geo.PhotoCache,由 s.store 提供的圖片快取表(見
 	// store.GetCachedPhoto/SetCachedPhoto)支撐——geo_outline.go 裡建立
@@ -115,7 +127,7 @@ type Server struct {
 	// 邏輯)——兩個使用者幾乎同時點擊地圖上同一個 Google 原生 POI 圖標、
 	// 且快取都未命中時,若不做任何處理,兩個請求會各自重複打
 	// GetPlaceDetails/PhotoDataURI/Pexels Search 這些依用量計費的外部
-	// API,且各自呼叫 SetGooglePlacePhotos/SetPlacePexelsPhotos(整批
+	// API,且各自呼叫 SetGooglePlacePhotos(整批
 	// 覆寫寫入,見兩者的完整說明)可能互相覆蓋、造成其中一個請求查到的
 	// 結果被另一個請求的結果蓋掉。
 	//
@@ -1101,6 +1113,11 @@ func (s *Server) Routes() http.Handler {
 	// 兩者都是成本設定,由 tripace-cli 或後台操作,不是產品前端。
 	internalMux.HandleFunc("GET /internal/maintenance/field-masks", s.handleMaintenanceFieldMaskList)
 	internalMux.HandleFunc("PATCH /internal/maintenance/field-masks/{key}", s.handleMaintenanceFieldMaskSet)
+	// geo-settings——列出/修改可線上調整的數值設定(照片最大張數、照片
+	// 過期週期,見 maintenance_geo_settings.go)。同一個命名空間與呼叫者:
+	// 成本設定,由 tripace-cli 操作,不是產品前端。
+	internalMux.HandleFunc("GET /internal/maintenance/geo-settings", s.handleMaintenanceGeoSettingList)
+	internalMux.HandleFunc("PATCH /internal/maintenance/geo-settings/{key}", s.handleMaintenanceGeoSettingSet)
 	internalMux.HandleFunc("GET /internal/maintenance/attractions/query", s.handleMaintenanceAttractionQuery)
 	internalMux.HandleFunc("DELETE /internal/maintenance/attractions/{id}", s.handleMaintenanceAttractionDelete)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/coords", s.handleMaintenanceAttractionUpdateCoords)

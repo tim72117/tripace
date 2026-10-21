@@ -717,16 +717,26 @@ func (s *Server) handlePublicGeoPlaceDetailsAny(w http.ResponseWriter, r *http.R
 		// 仍然不中斷請求本身——這張快取列寫入失敗不影響這次回應內容
 		// (name/summary/lat/lng 已經從 attraction 表直接取得),只是這次
 		// 不會觸發背景補圖判斷。
-		if err := s.store.SetCachedPlaceDetails(placeID, a.Name, a.CityName, a.Lat, a.Lng, 0, summaryPtr); err != nil {
-			log.Printf("handlePublicGeoPlaceDetailsAny: SetCachedPlaceDetails 失敗 place_id=%s: %v", placeID, err)
+		//
+		// 2026-10 統一快取:改用 EnsureCachedPlaceDetailsRow(列不存在才建、存在
+		// 就完全不動),原本的 SetCachedPlaceDetails 是 upsert——每次請求都把地圖版
+		// 存的 Google 地址/評分覆蓋成「城市名/0」,還把 fetched_at 重設成現在,
+		// 讓統一快取與地圖版的 24 小時重查都以為這份湊出來的資料是新鮮的。
+		// 新建的列 fetched_at 是 epoch(視為過期):它只負責讓點擊數可以累加。
+		if err := s.store.EnsureCachedPlaceDetailsRow(placeID, a.Name, a.CityName, a.Lat, a.Lng, summaryPtr); err != nil {
+			log.Printf("handlePublicGeoPlaceDetailsAny: EnsureCachedPlaceDetailsRow 失敗 place_id=%s: %v", placeID, err)
 		}
 
 		photoRefreshPending := false
-		if _, ok, cErr := s.store.GetCachedPlaceDetails(placeID, placeDetailsRowExistenceMaxAge); cErr == nil && ok {
+		// 2026-10:這裡只是確認「這一列存在」(點擊數累加需要它),不是在判斷資料
+		// 新鮮不新鮮,所以用不限時間的讀取(placeDetailsCacheReadAnyAge)。上面用
+		// EnsureCachedPlaceDetailsRow 建出來的湊合列 fetched_at 是 epoch(視為過期,
+		// 避免被當成 Google 的新鮮資料),如果這裡仍用 30 天的存在判斷,那一列會被
+		// 當成不存在,點擊數與補圖判斷整段被跳過。
+		if _, ok, cErr := s.store.GetCachedPlaceDetails(placeID, placeDetailsCacheReadAnyAge); cErr == nil && ok {
 			clickCount, clickErr := s.store.IncrementPlaceClickCount(placeID)
 			if clickErr == nil {
-				fresh := s.freshPhotoIndexStates(placeID, photoCapForClickCount(clickCount))
-				if shouldFetch, indexToFetch := decidePlacePhotoRefreshIndex(clickCount, fresh); shouldFetch {
+				if shouldFetch, indexToFetch := s.decidePhotoRefresh(placeID, clickCount); shouldFetch {
 					photoRefreshPending = true
 					// knownPhotoRefs 傳 nil——這條分支沒有同步查過
 					// GetPlaceDetails(走的是 attractions 表直接命中,見

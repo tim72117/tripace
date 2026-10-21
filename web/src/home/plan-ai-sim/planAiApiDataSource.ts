@@ -6,6 +6,7 @@ import {
   fetchPlanAiTransitEstimate,
   type ClientConfig,
 } from '../../api'
+import { getSharedPlaceDetailsDedupe } from './placeDetailsDedupe'
 import type { PlanAiDataSource, PlanAiSearchNearbyResult } from './planAiDataSource'
 
 // planAiApiDataSource.ts — PlanAiDataSource(見 planAiDataSource.ts 的
@@ -55,8 +56,11 @@ async function searchNearbyByCoords(cfg: ClientConfig, lat: number, lng: number)
 }
 
 export function createPlanAiApiDataSource(cfg: ClientConfig): PlanAiDataSource {
+  // 去重(見 placeDetailsDedupe.ts):依 baseURL+token 共用,詢問頁與時間軸
+  // 即使各自建立資料來源實例,同一個 placeId 也只會發一次請求。
+  const dedupe = getSharedPlaceDetailsDedupe(`api|${cfg.baseURL}|${cfg.token ?? ''}`)
   return {
-    placeDetails: (placeId) => fetchPlanAiPlaceDetailsAny(cfg, placeId),
+    placeDetails: (placeId) => dedupe.get(placeId, () => fetchPlanAiPlaceDetailsAny(cfg, placeId)),
     // transitEstimate——介面的簽名沒有 mode 參數(假資料實作不需要,
     // 見 planAiDataSource.ts),真後端的 mode 是選填的,省略時由後端
     // 自己決定用哪一種交通方式,行為跟假資料實作一致。

@@ -497,6 +497,7 @@ type Client struct {
 	apiKey       string
 	gateway      requestDoer
 	cache        PhotoCache
+	detailsCache PlaceDetailsCache // 地點詳情文字快取,見 details_cache.go;nil 代表不快取
 	pexelsClient *pexels.Client
 }
 
@@ -507,6 +508,10 @@ func New(apiKey string) *Client {
 	return &Client{
 		apiKey:  apiKey,
 		gateway: defaultGateway(),
+		// 帶上整個 process 共用的預設地點詳情快取(見 SetDefaultDetailsCache)——
+		// 讓任何透過 geo.New 建 client 的呼叫端(handler、onagent 工具、維運
+		// 端點、日後新增的端點)自動受快取保護,不需要每個地方記得去接。
+		detailsCache: defaultDetailsCache(),
 	}
 }
 
@@ -1263,6 +1268,10 @@ type PlaceDetails struct {
 	// 換成真正的圖片內容。每個元素是同 NearbyPlace.PhotoRef 的照片
 	// resource name,呼叫端需另外呼叫 PhotoDataURI 轉成 data URI。
 	PhotoRefs []string `json:"-"`
+	// FromCache 為 true 代表這份資料來自快取、沒有打 Google(見
+	// details_cache.go)。快取只存文字欄位,所以 FromCache 時 PhotoRefs 一定是
+	// nil——需要照片參照的呼叫端必須改用 GetPlaceDetailsFresh。
+	FromCache bool `json:"-"`
 }
 
 // GetPlaceDetails 用 Place ID 查詢單一地點的詳細資訊(Places API (New) 的
@@ -1272,7 +1281,10 @@ type PlaceDetails struct {
 // 附帶任何名稱/地址等資料,必須再打這支端點才查得到內容,沒有更省的
 // 做法(Google 官方 Maps 網站本身點 POI 背後也是即時查一次 Place
 // Details)。
-func (c *Client) GetPlaceDetails(ctx context.Context, placeID string) (PlaceDetails, error) {
+// fetchPlaceDetails 是對 Google 發出 places.get 的那一次呼叫(上方註解描述的就是
+// 它),不讀也不寫快取——公開入口 GetPlaceDetails/GetPlaceDetailsFresh 在
+// details_cache.go,負責快取與並發去重。
+func (c *Client) fetchPlaceDetails(ctx context.Context, placeID string) (PlaceDetails, error) {
 	if c.apiKey == "" {
 		return PlaceDetails{}, ErrNoKey
 	}

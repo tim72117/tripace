@@ -190,7 +190,7 @@ func (s *Server) handleMaintenanceAttractionUpdatePhoto(w http.ResponseWriter, r
 	}
 
 	now := time.Now()
-	expiresAt := now.Add(photoAssetExpiry)
+	expiresAt := now.Add(s.PhotoAssetExpiry())
 	if err := s.store.UpsertPhotoAsset(model.PhotoAsset{
 		PlaceID:    placeID,
 		PhotoIndex: 0,

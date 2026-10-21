@@ -74,34 +74,48 @@
 
 /* ---------- HERO ---------- */
 
+/* .hero——2026-10 使用者明確回報「首屏還沒捲完就看到下一區塊(地圖
+   展示)露出一小截」:原本 min-height: 94vh 只是下限,padding(6vh+8vh)
+   加上內容(eyebrow/title/sub/按鈕)實際高度的總和,在常見手機螢幕下
+   會超過一個螢幕高度,導致整體比視窗還高,捲動前就先露出下一區塊的
+   邊緣。改成 height: 100dvh(固定滿版,不再是下限)+ overflow: hidden
+   (內容萬一還是超出,直接裁切而非把整個區塊撐高)——同時把 padding
+   與各段落的留白用 clamp() 收斂到更保守的區間,確保在常見手機螢幕
+   高度(iPhone SE 667px 起)下,內容本身的高度不會逼近甚至超過
+   100dvh,不需要真的依賴 overflow: hidden 裁切就能完整顯示。
+   100dvh(而非 100vh)——行動瀏覽器網址列收合/展開時,dvh 會跟著
+   動態可視區域變化,vh 則固定用最大可視高度算,兩者在網址列存在時
+   数值不同;用 dvh 才能讓「滿版」真的對齊使用者當下實際看到的可視
+   區域,不會因為網址列展開時 vh 算出的高度比實際可視區域大,反而
+   造成內容被裁掉一截看不到。 */
 .kyoto-bloom .hero {
   position: relative;
-  min-height: 94vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 6vh var(--edge-pad) 8vh;
+  padding: clamp(24px, 6vh, 64px) var(--edge-pad) clamp(32px, 8vh, 80px);
   overflow: hidden;
   background: radial-gradient(ellipse 120% 60% at 50% 0%, var(--paper-dim), transparent 70%), var(--paper);
 }
 
 .kyoto-bloom .hero-eyebrow {
   font-size: 13px; letter-spacing: 0.28em; text-transform: uppercase;
-  color: var(--vermilion); margin-bottom: 28px;
+  color: var(--vermilion); margin-bottom: clamp(14px, 3vh, 28px);
 }
 
 .kyoto-bloom .hero-title {
   font-family: 'ShipporiSerif', "Noto Serif TC", serif;
-  font-weight: 600; font-size: clamp(34px, 6vw, 68px); line-height: 1.25;
-  text-wrap: balance; margin: 0 0 22px; letter-spacing: 0.02em;
+  font-weight: 600; font-size: clamp(30px, 6vw, 68px); line-height: 1.25;
+  text-wrap: balance; margin: 0 0 clamp(14px, 2.5vh, 22px); letter-spacing: 0.02em;
 }
 .kyoto-bloom .hero-title em { font-style: normal; color: var(--vermilion); }
 
 .kyoto-bloom .hero-sub {
-  font-size: clamp(15px, 1.6vw, 18px); color: var(--ink-soft);
-  max-width: 46ch; line-height: 1.85; margin: 0 0 40px;
+  font-size: clamp(14px, 1.6vw, 18px); color: var(--ink-soft);
+  max-width: 46ch; line-height: 1.7; margin: 0 0 clamp(20px, 4vh, 40px);
 }
 
 .kyoto-bloom .hero-cta {

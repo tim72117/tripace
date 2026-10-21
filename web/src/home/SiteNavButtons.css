@@ -4,7 +4,22 @@
    --vermilion/--vermilion-soft/--card-shadow token,不重新定義一份。
    z-index 統一用字面值 200(對齊 HomePage.css 原本的 --z-fixed-ui),
    不透過 CSS 變數傳遞(避免呼叫端 scope 沒定義這個變數時外顯 z-index
-   失效),固定 UI 必須蓋過頁面其餘所有內容。 */
+   失效),固定 UI 必須蓋過頁面其餘所有內容。
+
+   --site-nav-h——2026-10(第十輪,Opus 第二意見)新增:這排固定導覽
+   按鈕(.site-nav-theme-toggle/.site-nav-cta 都是 top: 16px + 36px
+   高)實際佔用的垂直空間,top + height = 52px。其他元件若需要「讓出
+   導覽列高度」的空間(例如 ScrollPlanDemo.module.css 的
+   .stickyFrameless padding-top),應該讀這個變數,而不是各自重新寫一次
+   52px/56px/60px 這類數字——之前這類安全距離散落在好幾個檔案各自
+   硬編碼估算值(60px、HEADER_RESERVED_PX 等),互相之間沒有連動,
+   導覽列本身的高度/位置一旦調整,那些硬編碼的地方不會自動跟著變。
+   掛在 :root 而非某個 scope class 上,因為導覽按鈕本身用 position:
+   fixed 相對整個 viewport 定位,不屬於任何特定頁面 scope,讀取方也
+   未必跟這些按鈕在同一個 scope 底下。 */
+:root {
+  --site-nav-h: 52px;
+}
 
 .site-nav-brand {
   position: fixed;

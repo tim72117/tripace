@@ -28,6 +28,11 @@ export const IDEA_GROUPS: IdeaGroupMeta[] = [
     blurb: '規劃介面的設計討論:候選籃、旅伴提問、日層架、行前底氣卡等,以及行程 UX 設計文件。',
   },
   {
+    id: 'audit',
+    title: '稽核報告',
+    blurb: '程式碼盤點與稽核:成本控制、快取涵蓋範圍、一致性與安全性檢查。這個分類的頁面本身就是原始文件(2026-10 起稽核文件統一存放在 showcase-demo)。',
+  },
+  {
     id: 'research',
     title: '研究發想',
     blurb: '景點敘事、路徑規劃、旅伴媒合等主題的研究與點子整理。',

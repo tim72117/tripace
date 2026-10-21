@@ -57,9 +57,9 @@
 // 候選景點裡選」這個流程——跟真實 LLM 呼叫這個工具的時機一致(見
 // server/tools/plan-ai/open_ask_page.yaml description 的完整說明:
 // 「適合在對話剛開始、還不清楚使用者想要哪種類型的行程時主動呼叫」)。
-// candidates 挑赤崁樓周邊幾個真實存在於 attractionPool.ts 的景點
-// (跟緊接在後面的 stop-chikanlou-area 主題卡是同一帶的景點,呼應
-// 「選完接著就排出這個區域行程」的敘事),不是憑空湊數的 id。
+// candidates 用的是資料庫景點固定的 Google Place ID(不是 attractionPool.ts
+// 的假 id),名稱與照片由詢問頁走推論態同一條路向後端查(見下方
+// candidates 的說明)。
 
 import type { PlanAction } from './AIPlanTimelinePage'
 
@@ -67,22 +67,41 @@ export const PLAN_SIM_SCRIPT: PlanAction[] = [
   {
     type: 'open_ask_page',
     id: 'ask-chikanlou-area',
+    // 2026-10 使用者明確要求「播放態用固定的 attraction id,但是資料跟圖片
+    // 與推論態用一樣的方式取得」:這四個 placeId 是資料庫景點(attractions
+    // 表)固定的 Google Place ID,不是 attractionPool.ts 的假 id。詢問頁
+    // 拿它們走跟推論態相同的 placeDetails(/public/geo/plan-ai/
+    // place-details-any,見 AIPlanTimelinePage.tsx askPageDataSource),
+    // 名稱與照片都由後端依資料庫回傳;name 只是查詢失敗時的備用標題與
+    // 查詢中的暫時標題。固定 id 對應的景點(本地 DB 台南,
+    // tripace-cli attraction list -city 台南):
+    //   赤崁・府城   lmk_6140f3d4e82f(區域,L1,4 張照片)
+    //   阿蓮牛肉湯   lmk_42e39db43606(中餐,1 張照片)
+    //   林百貨       lmk_7f51fce4f43a(2 張照片)
+    //   祀典武廟     lmk_559aeaa269e9(2 張照片,不選,留作取捨)
+    // 選中的順序與內容是使用者指定的:第一筆赤崁・府城、第二選一個中餐、
+    // 第三林百貨。中餐只放一個候選,是因為資料庫裡其他中餐(金得春捲、
+    // 富盛號碗粿等)目前沒有照片,放進來會是一張空白卡。
     candidates: [
-      { placeId: 'attr-chikanlou', name: '赤崁樓' },
-      { placeId: 'attr-datianhou', name: '祀典大天后宮' },
-      { placeId: 'attr-wumiao', name: '祀典武廟' },
+      { placeId: 'ChIJbYl7d2F2bjQRnFdvyMBuZfI', name: '赤崁・府城' },
+      { placeId: 'ChIJv67MHQB3bjQRdazMuVcqAME', name: '阿蓮牛肉湯' },
+      { placeId: 'ChIJrZJc4GJ2bjQRa3BRyIgtRcM', name: '林百貨' },
+      { placeId: 'ChIJ_3sZgmF2bjQRJqNT18Vuoa0', name: '祀典武廟' },
     ],
     // picks——2026-10(使用者明確定調「播放態不會有真實互動」、要求
     // 「置換的元件本身要可以做到模擬選項被點擊發出顯眼的特效」):
     // 這一步要「演出」被點擊的候選(見 PlanAction.picks 的完整說明)。
-    // 播放態渲染的是 ScriptedAskPage,它會依序把這兩張點出來、每次帶
+    // 播放態渲染的是 ScriptedAskPage,它會依序把這幾張點出來、每次帶
     // 一次點擊特效,再自動送出,不等真人點。
     //
-    // 挑赤崁樓與祀典大天后宮兩張(不是三張全選):全選看起來像「預設
-    // 就都勾著」,少選一張才看得出這是一次有取捨的選擇。這兩個也正是
-    // 緊接在後面 stop-chikanlou-area 主題卡 children 裡的前兩站,
-    // 「選完接著就排出來」這條敘事才連得起來。
-    picks: ['attr-chikanlou', 'attr-datianhou'],
+    // 2026-10 使用者明確指定三張的順序與內容:「第一筆用赤崁、府城,
+    // 第二選一個中餐,第三選林百貨」。四張候選選三張,祀典武廟不選,
+    // 仍保有取捨感(全選會像預設就都勾著)。
+    //
+    // 注意:後面時間軸上的午餐站(stop-lunch)仍是假資料池的阿堂鹹粥/
+    // 福記肉圓,跟這裡選的阿蓮牛肉湯不是同一家——詢問頁改走真資料後,
+    // 時間軸那一段尚未跟著換,兩邊敘事暫時對不上。
+    picks: ['ChIJbYl7d2F2bjQRnFdvyMBuZfI', 'ChIJv67MHQB3bjQRdazMuVcqAME', 'ChIJrZJc4GJ2bjQRa3BRyIgtRcM'],
   },
   // add_message 示範:LLM 一邊想一邊跟使用者說的話,排在第一筆 add_stop
   // 之前——忠實對齊「先說話、後新增景點」的真實節奏(見原始後端劇本

@@ -116,9 +116,8 @@ func (s *Store) GetCachedPlaceDetails(placeID string, maxAge time.Duration) (row
 }
 
 // SetCachedPlaceDetails 寫入(或覆蓋既有)一筆 Place Details 快取——只含
-// 名稱/地址/座標/評分/簡介,不含照片。照片改由 SetGooglePlacePhotos/
-// SetPlacePexelsPhotos 分別寫入 google_place_photos/place_pexels_photos
-// 兩張表(見 googlePlacePhotoRow 的完整說明:Google 與 Pexels 的照片要
+// 名稱/地址/座標/評分/簡介,不含照片。照片改由 SetGooglePlacePhotos
+// 寫入 google_place_photos 表(見 googlePlacePhotoRow 的完整說明:Google 與 Pexels 的照片要
 // 同時並列顯示,不是互斥的單一選擇,故從這張表拆出、各自獨立管理)。
 //
 // 用 Model(...).Where(...).Clauses(clause.OnConflict{...}).Create(&row)
@@ -192,6 +191,33 @@ func (s *Store) IncrementPlaceClickCount(placeID string) (clickCount int64, err 
 	return row.ClickCount, nil
 }
 
+// GetPlacePhotoCount 回傳這個地點在 Google 上實際有幾張照片(見
+// placeDetailsCacheRow.PhotoCount)。回傳 nil 代表還不知道(資料列不存在,
+// 或存在但從未記錄過);非 nil 的 0 代表確認這個地點沒有照片。
+// 資料列不存在不是錯誤。
+func (s *Store) GetPlacePhotoCount(placeID string) (*int, error) {
+	var row placeDetailsCacheRow
+	err := s.db.Select("place_id", "photo_count").Where("place_id = ?", placeID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return row.PhotoCount, nil
+}
+
+// SetPlacePhotoCount 記下這個地點在 Google 上實際有幾張照片。
+//
+// 只更新既有的資料列、不會憑空建列(跟 IncrementPlaceClickCount 對不存在的
+// 列的處理一致:交由呼叫端走一般查詢流程建列)。用 Update("photo_count", n)
+// 單欄位更新,所以寫入 0 也會生效(Updates(struct) 會跳過零值)。
+func (s *Store) SetPlacePhotoCount(placeID string, count int) error {
+	return s.db.Model(&placeDetailsCacheRow{}).
+		Where("place_id = ?", placeID).
+		Update("photo_count", count).Error
+}
+
 // ListGooglePlacePhotos 回傳該地點目前已落地的 Google Places 照片清單,
 // 依 photo_index 由小到大排序——供 handleGeoPlaceDetails 組裝回應與
 // GeoInfoPanel 顯示使用。查無資料回傳空 slice(非 nil、非 error)。
@@ -222,37 +248,6 @@ func (s *Store) SetGooglePlacePhotos(placeID string, photoURLs []string) error {
 		fetchedAt := now()
 		for i, url := range photoURLs {
 			rows[i] = googlePlacePhotoRow{PlaceID: placeID, PhotoIndex: i, PhotoURL: url, FetchedAt: fetchedAt}
-		}
-		return tx.Create(&rows).Error
-	})
-}
-
-// ListPlacePexelsPhotos 回傳該地點目前已快取的 Pexels 照片清單,依
-// photo_index 由小到大排序,理由同 ListGooglePlacePhotos。
-func (s *Store) ListPlacePexelsPhotos(placeID string) ([]placePexelsPhotoRow, error) {
-	rows := make([]placePexelsPhotoRow, 0)
-	err := s.db.Where("place_id = ?", placeID).Order("photo_index ASC").Find(&rows).Error
-	if err != nil {
-		return nil, err
-	}
-	return rows, nil
-}
-
-// SetPlacePexelsPhotos 覆寫該地點的 Pexels 照片清單,理由同
-// SetGooglePlacePhotos。photoURLs/pageURLs 兩個 slice 長度必須一致,
-// 依相同索引一一對應同一張照片的下載網址與可追溯來源網址。
-func (s *Store) SetPlacePexelsPhotos(placeID string, photoURLs, pageURLs []string) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("place_id = ?", placeID).Delete(&placePexelsPhotoRow{}).Error; err != nil {
-			return err
-		}
-		if len(photoURLs) == 0 {
-			return nil
-		}
-		rows := make([]placePexelsPhotoRow, len(photoURLs))
-		fetchedAt := now()
-		for i, url := range photoURLs {
-			rows[i] = placePexelsPhotoRow{PlaceID: placeID, PhotoIndex: i, PhotoURL: url, PageURL: pageURLs[i], FetchedAt: fetchedAt}
 		}
 		return tx.Create(&rows).Error
 	})
