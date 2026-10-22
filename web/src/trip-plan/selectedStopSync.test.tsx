@@ -15,8 +15,8 @@ import { useStableCallback } from '../hooks/useStableCallback'
 //
 // 這組測試存在的理由是一個實際發生過的 bug(2026-10):原本
 // selectedStopId 由 TripPlanPage 自己持有、用 useEffect 依賴
-// [selectedStopId] 單向上報給 DesktopLayout,而地圖那側點圓點時直接寫
-// DesktopLayout 的 state。結果:
+// [selectedStopId] 單向上報給 desktop/Content,而地圖那側點圓點時直接寫
+// desktop/Content 的 state。結果:
 //   點卡片 A(兩份都 A)→ 點地圖圓點 B(父=B、子仍 A,畫面同時兩個
 //   選中)→ 再點卡片 A:setSelectedStopId('A') 本身正常執行,但子元件的
 //   值本來就是 'A',React bail out、上報 effect 的依賴沒變、不重跑,
@@ -71,8 +71,8 @@ describe('selectedStopId 受控模式(地圖對話小匡)', () => {
     expect(getByTestId('selected').textContent).toBe('A')
     expect(getByTestId('host-selected').textContent).toBe('A')
 
-    // 點地圖圓點:直接寫唯一事實來源(DesktopLayout 的
-    // onPlanStopClick={setSelectedPlanStopId})。受控之下時間軸立刻跟著變,
+    // 點地圖圓點:直接寫唯一事實來源(desktop/Content 的
+    // onStopClick={setSelectedStopId})。受控之下時間軸立刻跟著變,
     // 不會出現「地圖與卡片各自高亮不同站」。
     act(() => { setFromMap!('B') })
     expect(getByTestId('selected').textContent).toBe('B')

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { solveSafeAreaCenter, type SafeAreaCenterSolution } from '../../geo-planning/solveSafeAreaCenter'
+import { debugDotStyle, debugLabelStyle } from '../../plan-core/debugOverlayParts'
 
 // SafeAreaDebugOverlay——開發工具:把 useMapSafeArea 的中心點計算視覺化,
 // 讓「安全區塊的幾何」與「計算結果」都能肉眼核對。
@@ -97,30 +98,14 @@ export function SafeAreaDebugOverlay({
     }
   }, [mapReady, mapRef, safeAreaElRef, target])
 
-  const dot = (p: { x: number; y: number }, color: string): React.CSSProperties => ({
-    position: 'absolute',
-    left: p.x,
-    top: p.y,
-    width: 16,
-    height: 16,
-    marginLeft: -8,
-    marginTop: -8,
-    borderRadius: '50%',
-    background: color,
-    border: '2px solid #fff',
-    boxShadow: '0 0 0 1px rgba(0,0,0,.5)',
-  })
+  // 圓點與標籤的樣式與登入後的除錯疊圖共用(plan-core/debugOverlayParts.tsx)。
+  const dot = (p: { x: number; y: number }, color: string): React.CSSProperties => debugDotStyle(p, color)
 
   const label = (p: { x: number; y: number }, color: string): React.CSSProperties => ({
     position: 'absolute',
     left: p.x + 12,
     top: p.y - 8,
-    padding: '2px 6px',
-    borderRadius: 4,
-    background: color,
-    color: '#fff',
-    font: '600 11px/1.4 ui-monospace, monospace',
-    whiteSpace: 'nowrap',
+    ...debugLabelStyle(color),
   })
 
   return (

@@ -9,7 +9,7 @@ import styles from './PacePhoneSwipe.module.css'
 // (PaceChart,已經不含地圖,見 PaceChart.tsx 的拆分)是從左邊滑入
 // 蓋在地圖上面的抽屜面板(off-canvas / drawer navigation,Material Design
 // 的正式元件名稱)。桌面版是側欄放清單、主區同時顯示地圖(見
-// DesktopLayout.tsx DesktopContent 的 pace 分支),手機螢幕窄放不下兩塊並排,用抽屜取代
+// desktop/Content.tsx desktop/Content 的 pace 分支),手機螢幕窄放不下兩塊並排,用抽屜取代
 // 並排——這是刻意選用抽屜而非輪播(carousel):輪播模式下兩頁等寬一起被
 // 拖曳平移,地圖(主要內容)會跟著清單一起被拖動;抽屜模式下地圖固定不動,
 // 只有清單這個抽屜面板滑入/滑出蓋在地圖上面。
@@ -28,8 +28,8 @@ export function PacePhoneSwipe({
   checkpoints,
   onRouteChange,
 }: {
-  // cfg/tripID:登入後正式介面(見 PhoneContent.tsx 的 PhoneNavDrawer)傳入
-  // 目前選取的旅程,改走認證過的 fetchEntries——跟桌面版 DesktopLayout.tsx
+  // cfg/tripID:登入後正式介面(見 phone/Content.tsx 的 PhoneNavDrawer)傳入
+  // 目前選取的旅程,改走認證過的 fetchEntries——跟桌面版 desktop/Content.tsx
   // 的 <PaceChart cfg={cfg} tripID={activeTrip?.id} /> 同一套邏輯,不再
   // 掛載時完全不傳而落到公開分享 token 的 fallback 路徑。
   cfg?: ClientConfig
@@ -42,7 +42,7 @@ export function PacePhoneSwipe({
   // checkpoints/onRouteChange:PaceRouteMap 畫路線需要的 checkpoint 清單,
   // 由呼叫端持有 state 並透過 PaceChart 的 onRouteChange 鏡像、往下傳給
   // PaceRouteMap——這個元件本身不持有這份資料,只負責轉傳,同一套模式
-  // 比照 DesktopLayout.tsx/PhoneContent.tsx。
+  // 比照 desktop/Content.tsx、phone/Content.tsx。
   checkpoints: Checkpoint[]
   onRouteChange: (checkpoints: Checkpoint[]) => void
 }) {

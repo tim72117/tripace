@@ -7,7 +7,7 @@ import type { Trip } from '../trip/types'
 import styles from './DemoPanel.module.css'
 
 // DemoPanel:只在 DEBUG_PANEL_ENABLED 開啟(見 DesktopShared.tsx)、且點開
-// 桌面版 rail 上的 API/WS 狀態面板圖示時才會出現(見 DesktopLayout.tsx 的
+// 桌面版 rail 上的 API/WS 狀態面板圖示時才會出現(見 desktop/Content.tsx 的
 // showDebugPanel),不是正式使用者預設看得到的功能——元件/檔案命名故意
 // 帶上 Demo 反映這件事。
 // 三個分頁 —— API 交易紀錄、WS 事件、目前旅程的 Entry 條目。

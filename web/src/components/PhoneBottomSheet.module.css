@@ -1,6 +1,6 @@
 /* PhoneBottomSheet.tsx 專屬樣式(CSS Modules)。backdrop/panel 的基礎
    視覺語言(上緣圓角、拖曳把手、box-shadow)比照三份原始檔案
-   (trip/PhoneTripsDrawer.module.css、
+   (trip/phone/TripList.module.css、
    geo-planning/GeoOutlinePhoneListDrawer.module.css、
    geo-planning/GeoOutlinePhoneInfoSheet.module.css)彼此一致的部分——
    定位相關屬性(position/z-index/left/right/bottom/background)不在這裡
@@ -30,7 +30,7 @@
    atMaxExpansion 的說明。
 
    will-change: transform——修正實際發生過的瀏覽器渲染 bug:keepMounted
-   的呼叫端(見 PhoneContent.tsx 的對話疊加層)首次掛載、open 一開始就是
+   的呼叫端(見 phone/Content.tsx 的對話疊加層)首次掛載、open 一開始就是
    false 的情況下,DevTools 檢查發現 computed style 的 transform 數值
    完全正確(translateY(calc(0px + 100vh))),但瀏覽器沒有真正把這個
    位移套用到畫面上(元素視覺上仍佔滿整個螢幕),直到在 DevTools 手動
@@ -155,7 +155,7 @@
      而沒被發現缺漏的規則。 */
   scrollbar-width: none;
   /* -webkit-overflow-scrolling: touch——2026-10 補上(code review 發現
-     的回歸,見 trip/PhoneTripsDrawer.tsx 改用 SheetBody 取代 ScrollArea
+     的回歸,見 trip/phone/TripList.tsx 改用 SheetBody 取代 ScrollArea
      那次改動的說明):components/ScrollArea.module.css 的 .scrollArea
      原本就帶這個屬性(iOS Safari 的慣性捲動,沒有它舊版 iOS Safari
      捲動會頓挫、不流暢,見該檔案的完整說明),.bodyScrollable 當初補
@@ -185,7 +185,7 @@
    GeoOutlinePhoneInfoSheet.tsx 的實際用法),垂直置中對多行內容會讓
    .headActions 的關閉鈕卡在內容中段,改成從頂部對齊,單行標題時視覺
    差異可忽略(仍有 padding-top 4px 維持跟內容的間距觀感)。
-   不是所有呼叫端都用這組標準樣式(例如 trip/PhoneTripsDrawer.tsx
+   不是所有呼叫端都用這組標準樣式(例如 trip/phone/TripList.tsx
    目前不帶 head),不受影響。 */
 .head {
   flex: 0 0 auto;

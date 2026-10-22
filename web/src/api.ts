@@ -453,15 +453,15 @@ export interface GeoAttraction {
   // level:知名度分級,1(國際)~5(在地),只有走後端資料庫路徑
   // (server/internal/api/geo_outline.go 的 store.ListAttractionsByCity)
   // 才會有值——即時查 Google Places 的結果沒有分級資訊,固定不帶這個
-  // 欄位。前端依此決定隨縮放層級顯示哪些粒度,見 ExploreMap.tsx。
+  // 欄位。前端依此決定隨縮放層級顯示哪些粒度,見 PlanMap.tsx。
   level?: number
-  // isTheme:是否為「主題點」(散策羅盤用語,見 useAttractionOverlays.ts
+  // isTheme:是否為「主題點」(散策羅盤用語,見 geo-planning/mapDrawLayer/featureLayers/attractionGlowLayer.ts
   // 的完整說明)——後端 model.Attraction.IsTheme 新增欄位,與 level 並存
   // (level 保留給 zoom 顯示門檻/知名度描述使用,不再依賴 level===1 判斷
   // 主題點)。跟 level 不同,這個欄位後端固定回傳(沒有 omitempty),即時
   // 查 Google Places 的路徑(toAttractionResponses/geo.District)沒有主題
   // 概念,一律回傳 false,前端判斷「是否顯示這批精選點」時仍需搭配
-  // level == null(見 useAttractionOverlays.ts 的 filteredAttractions)
+  // level == null(見 attractionGlowLayer.ts/attractionGlowSupport.ts 的 filteredAttractions)
   // 才能正確識別「這批資料完全沒有主題/分級概念,一律顯示」的情況,不能
   // 只看 isTheme 是否為 true。
   isTheme: boolean
@@ -563,7 +563,7 @@ export function fetchPublicGeoAttractionByID(cfg: ClientConfig, id: string) {
 // components/ListItemCard.tsx 依 placeId 觸發的延遲查詢(fetchGeoPlacePhoto,
 // 捲進可視範圍才查),原本這裡的 photoUrl 只是「前幾筆候選的即時預覽」,
 // 已確認目前渲染路徑實際上都是走 placeId 延遲查詢(見
-// GeoHotelSidebar.tsx/GeoOutlinePhoneListDrawer.tsx),移除這個欄位不影響
+// geo-planning/desktop/ResultList.tsx/GeoOutlinePhoneListDrawer.tsx),移除這個欄位不影響
 // 任何畫面顯示。
 //
 // primaryType/category:原本是另外獨立的 GeoPlace 型別才有的欄位——
@@ -573,10 +573,10 @@ export function fetchPublicGeoAttractionByID(cfg: ClientConfig, id: string) {
 // 幾乎重複的型別與 state,這是實際發生過的重複——2026-08
 // 起兩者合併,GeoPlace 整個移除,全部改用這個型別。primaryType 選填
 // (bias 模式呼叫端目前不會填,只有 restrict 模式的呼叫端——見
-// ExploreMap.tsx 的 runPlacesQuery——會帶入,固定空字串,理由同原本
+// PlanMap.tsx 的 runPlacesQuery——會帶入,固定空字串,理由同原本
 // GeoPlace 分支的既有慣例);category 同樣選填,值域固定是
 // 'lodging'/'tourist_attraction'/'restaurant' 其中之一(對齊地圖上方
-// 類別標籤,見 ExploreMap.tsx 的 CATEGORY_TAGS),只有 restrict 模式
+// 類別標籤,見 PlanMap.tsx 的 CATEGORY_TAGS),只有 restrict 模式
 // 查出來的候選才會有值,查無對應分類或 bias 模式查出來的候選則為
 // undefined。前端分類判斷(圖示、entry kind 推導等)一律讀 category,不
 // 要自己解讀 primaryType——直接拿 primaryType 跟這三個查詢用的類型字面
@@ -657,7 +657,7 @@ export function fetchGeoAttractionsNearby(cfg: ClientConfig, lat: number, lng: n
 // 對齊 server 的 GET /internal/geo/attractions/nearby-only
 // (handleGeoAttractionsOnlyNearby)——跟 fetchGeoAttractionsNearby 查同一份
 // 景點區域資料,但不附帶 hotels(即時查 Google Places、直接計費)。這支
-// 端點查詢本身免費,故 ExploreMap.tsx 用它做地圖 idle(拖曳/縮放停止)
+// 端點查詢本身免費,故 PlanMap.tsx 用它做地圖 idle(拖曳/縮放停止)
 // 時的自動查詢,不需要像飯店那樣收在使用者明確按下「搜尋這個區域」
 // 按鈕之後才觸發。
 export function fetchGeoAttractionsOnlyNearby(cfg: ClientConfig, lat: number, lng: number, radiusMeters?: number) {
@@ -676,11 +676,11 @@ export function fetchGeoAttractionsOnlyNearby(cfg: ClientConfig, lat: number, ln
 // 來源不同(自建資料庫+Google Places nearby / Google Places Text
 // Search geocoding),但對前端而言都是「使用者搜尋或瀏覽時查到的地點」,
 // 理應共用同一份清單 state、同一套點擊/選取邏輯,不該在
-// ExploreMap/GeoOutlinePanel/DesktopLayout/手機版分別維護三條平行的
+// PlanMap/desktop/Content/手機版分別維護三條平行的
 // state 與 callback(這是實際發生過的問題:三者行為逐漸各自演化,飯店
 // 清單意外變成即時依可視範圍過濾,導致清單項目點擊後永遠已經在畫面
 // 內、地圖移動邏輯形同虛設)。kind 判別欄位保留「這筆結果原本是哪種
-// 來源」,供分組標題(見 GeoHotelSidebar.tsx 的「搜尋結果/飯店/附近
+// 來源」,供分組標題(見 geo-planning/desktop/ResultList.tsx 的「搜尋結果/飯店/附近
 // 推薦」分段標題)、marker 圖示樣式(見 mapMarkers.ts 的
 // searchResultMarkerContent)、加入候選籃時要組成的 GeoCandidate 判別
 // 欄位(hotel/place 才能加入候選籃,geocode 不能,見
@@ -707,7 +707,7 @@ export function hotelToSearchResult(h: GeoHotel): GeoSearchResult {
   return { kind: 'hotel', name: h.name, address: h.address, lat: h.lat, lng: h.lng, photoUrl: h.photoUrl }
 }
 // placeToSearchResult:kind:'place' 的搜尋結果(地圖上方類別標籤/「搜尋
-// 這個區域」按鈕查到的候選,見 ExploreMap.tsx 的 runPlacesQuery)轉成
+// 這個區域」按鈕查到的候選,見 PlanMap.tsx 的 runPlacesQuery)轉成
 // GeoSearchResult——來源型別跟 geocodeCandidateToSearchResult 相同,都是
 // GeoGeocodeCandidate(2026-08 起合併,見該型別的完整說明),只有 kind
 // 判別欄位不同,故仍拆成兩支函式,不合併成一支——kind 由呼叫端的查詢
@@ -720,7 +720,7 @@ export function geocodeCandidateToSearchResult(c: GeoGeocodeCandidate): GeoSearc
 }
 
 // GeoTripEntry:旅程本身已有座標的 entry,轉成地理輪廓底圖圖層通用的
-// name/lat/lng 形狀,供 ExploreMap 畫 marker、GeoCandidateSidebar
+// name/lat/lng 形狀,供 PlanMap 畫 marker、geo-planning/desktop/CandidateList
 // 顯示用——欄位命名對齊 GeoHotel/GeoPlace(而非直接重用 Entry,因為
 // Entry 的欄位是 title/location,語意上屬於旅程資料,不是地理圖層資料,
 // 混用會讓兩套型別的職責模糊)。id 保留供候選籃移除比對用(entry 有
@@ -732,7 +732,7 @@ export interface GeoTripEntry {
   lng: number
   location?: string | null
   kind?: string | null
-  // start/startTime:對齊 Entry 的同名欄位,供 GeoCandidateSidebar 的
+  // start/startTime:對齊 Entry 的同名欄位,供 geo-planning/desktop/CandidateList 的
   // 「已排入行程」分組依日期歸類、仿構想 5 原型日層架的呈現方式(見該
   // 元件說明)——沒有 start 的 entry(尚未排定日期)歸進「未排定日期」
   // 分組,理由同 Timeline.tsx 對無日期 entry 的處理。
@@ -743,7 +743,7 @@ export interface GeoTripEntry {
 // GeoPlaceDetails:對齊 server 的 GET /internal/geo/place-details
 // (handleGeoPlaceDetails)——單一地點的詳細資訊,供「使用者點擊地圖上
 // Google 原生 POI 圖標」情境使用。原生 POI 點擊只會拿到一個 placeId,
-// 沒有附帶任何名稱/地址/介紹等資料(見 ExploreMap.tsx 攔截
+// 沒有附帶任何名稱/地址/介紹等資料(見 PlanMap.tsx 攔截
 // IconMouseEvent 的說明),必須再打這支端點查詳細內容。
 export interface GeoPlaceDetails {
   name: string
@@ -754,12 +754,12 @@ export interface GeoPlaceDetails {
   summary?: string
   // googlePhotoUrls:2026-08 起,一般模式(不帶 photoOnly/textOnly query
   // 參數)的後端回應改成多圖清單(見 server 端 handleGeoPlaceDetails 的
-  // 說明)。顯示邏輯見 PhotoCarousel.tsx(useAttractionOverlays.ts 的地圖
+  // 說明)。顯示邏輯見 PhotoCarousel.tsx(attractionGlowLayer.ts 的地圖
   // 縮圖、AttractionInfoPanel.tsx 的介紹卡都只讀這個清單)。
   //
   // 2026-10 使用者明確要求「後端不要再傳 photoUrl 到前端」:原本這裡
   // 還有一個 photoUrl?: string 欄位,是這份清單第一張的相容複寫,供
-  // 還沒跟進多圖 UI 的舊呼叫端使用——地圖版(useAttractionOverlays.ts/
+  // 還沒跟進多圖 UI 的舊呼叫端使用——地圖版(attractionGlowLayer.ts/
   // AttractionInfoPanel.tsx)已經全部改讀 googlePhotoUrls,這個欄位已經
   // 沒有任何地圖版呼叫端在用,後端 placeDetailsResponse(見該型別完整
   // 說明)已經拿掉這個欄位的 json 標籤,不會再序列化進回應,前端型別
@@ -989,7 +989,7 @@ export interface GeoPlanAiTransitEstimateResult {
 // handlePublicGeoTransitEstimate 的完整說明)——2026-09 使用者明確要求
 // 「交通預估時間不要讓 AI 推論產生,而是建立兩個點時,前端自己將兩點
 // 送到後端,由後端預估時間」,這支函式就是那個「前端自己送」的落地:
-// 呼叫端(AIPlanTimelinePage.tsx insertAttractionAfter)在插入 stop
+// 呼叫端(home/plan-ai-sim/Content.tsx insertAttractionAfter)在插入 stop
 // 節點且前面已有另一個 stop 節點時主動呼叫,不是 LLM 或任何推論路徑
 // 觸發的。mode 是選填參數,省略時由後端依直線距離自動決定一個預設值。
 // 需登入——理由與 cfg.token 的要求同 fetchPlanAiPlaceSearch 的完整說明
@@ -1066,7 +1066,7 @@ export function postPlanAiChatReply(cfg: ClientConfig, conversationID: string, m
 
 // fetchGeoPlacePhoto:GET /internal/geo/place-details 的 photoOnly=1 模式
 // (見後端 handleGeoPlaceDetails 的說明)——只查/回傳照片,不含 name/
-// address/rating/summary,供 GeoHotelSidebar.tsx 搜尋結果清單的延遲載入
+// address/rating/summary,供 geo-planning/desktop/ResultList.tsx 搜尋結果清單的延遲載入
 // 使用(GeocodeCandidateItem,項目捲進可視範圍才觸發)。跟一般的
 // fetchGeoPlaceDetails 是同一支後端端點、同一套快取,只是這個模式下
 // 快取未命中時只試 Pexels、不 fallback 較貴的 Google GetPlaceDetails/
@@ -1091,7 +1091,7 @@ export type GeoPlaceText = Omit<GeoPlaceDetails, 'googlePhotoUrls' | 'photoRefre
 
 // fetchGeoPlaceText:GET /internal/geo/place-details 的 textOnly=1 模式
 // (見後端 handleGeoPlaceDetails 的說明)——只查/回傳文字資訊(名稱/
-// 地址/評分/簡介),不含照片,供 GeoOutlinePanel.tsx 的
+// 地址/評分/簡介),不含照片,供 PlanMap.tsx 的
 // handleGeocodeCandidateSelect 使用:使用者點選候選後,先打這支立即
 // 拿到文字資訊開啟資訊卡(此時沒有照片,前端顯示佔位圖),不必
 // 等照片查完才有畫面反應;照片另外並行呼叫 fetchGeoPlacePhoto 取得,
@@ -1132,7 +1132,7 @@ export function updateEntry(cfg: ClientConfig, entryID: string, input: UpdateEnt
 // 新條目的 id。跟上面 createTripEntry(POST /v1/trips/{id}/entries)是完全
 // 不同的兩支端點:createTripEntry 對齊「旅程清單」表格功能(TripEntry 形狀,
 // title/date/time/note,無座標概念);這支對齊 model.Entry(跟
-// updateEntry/fetchEntries 同一份資料),供 GeoCandidateSidebar 把候選籃
+// updateEntry/fetchEntries 同一份資料),供 geo-planning/desktop/CandidateList 把候選籃
 // 項目(飯店/景點/推薦地點)拖進日層架、真正寫成一筆行程 entry 時使用——
 // 這支端點本身不接受 lat/lng,寫完後要另外呼叫 setEntryLatLng 補上座標。
 export interface RecordEntryInput {
@@ -1143,7 +1143,7 @@ export interface RecordEntryInput {
   endTime?: string
   location?: string
   // kind:條目類型("stay"|"flight"|"activity"|"note"|"car"|"restaurant"|
-  // "ticket",對齊 model.Entry.Kind)——GeoCandidateSidebar.tsx 把候選籃
+  // "ticket",對齊 model.Entry.Kind)——geo-planning/desktop/CandidateList.tsx 把候選籃
   // 項目(飯店/景點/推薦地點)拖進日層架時,帶入該候選原本的分類,讓新
   // entry 保留分類資訊(不帶則後端建立時不分類,沿用既有行為)。
   kind?: string
@@ -1173,7 +1173,7 @@ export function setEntryLatLng(cfg: ClientConfig, entryID: string, lat: number, 
 
 // 對齊後端 DELETE /internal/entries/{id}(handleInternalDeleteEntry)——刪除
 // 單一 model.Entry(跟 recordEntry/setEntryLatLng/updateEntry 同一份資料,
-// 不是 TripEntry「旅程清單」表格的 deleteTripEntry)。供 GeoCandidateSidebar
+// 不是 TripEntry「旅程清單」表格的 deleteTripEntry)。供 geo-planning/desktop/CandidateList
 // 「返回候選」按鈕使用:已排入行程的項目(kind==='entry')退回候選籃時,
 // 該筆 entry 已經是真正的資料庫記錄,只從前端候選籃 state 移除不夠(見
 // onRemove 既有行為,重新整理頁面/onTripEntriesChange 重新查詢時又會出現)

@@ -1,4 +1,4 @@
-// useAskPageBridge.test.ts — 針對 TripPlanPage.tsx/AIPlanTimelinePage.tsx
+// useAskPageBridge.test.ts — 針對 TripPlanPage.tsx/Content.tsx
 // 共用的「顯示詢問頁、等待使用者選完才 resolve」狀態機補測試(見該檔案
 // 開頭說明:抽出來之前這段邏輯包在元件內部完全無法單獨測試)。重點是
 // 「卡住整個對話/整個展示播放」這類最嚴重症狀的來源:resolve 有沒有

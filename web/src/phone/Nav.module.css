@@ -1,0 +1,119 @@
+/* bar:底部常駐導覽列——position: absolute 掛在 .container(phone/Content.tsx)
+   內,不佔 flex 版面空間(理由同 geo-planning/GeoOutlinePhoneView.tsx 的
+   candidateBtn 等疊加按鈕),各主畫面(地圖/地圖等)需要自行留
+   padding-bottom 避免視覺上被蓋住,見 GeoOutlinePhoneView.module.css 的
+   調整。padding-bottom 用 safe-area-inset-bottom 避開 iPhone home
+   indicator(需要 index.html 的 viewport-fit=cover 才會生效,否則
+   iOS Safari 一律算成 0)——方向與原本 PhoneNavDrawer.module.css 的
+   .tabs padding-top(避瀏海)相反,因為這裡貼的是螢幕下緣而非側滑抽屜
+   頂部。padding-bottom 加在 .bar(而非 .tab)上,是讓 safe-area 變成
+   bar 底部的純留白,不擠壓 .tab 本身的可視高度——.tab 的圖示才不會被
+   往上推離開自然置中的位置。 */
+.bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* z-index:高於 trip/phone/TripList.tsx 的 Z_LAYERS.BELOW_TAB_BAR_1(33)/
+     timeline/PhoneTimelineDrawer.tsx 的 Z_LAYERS.BELOW_TAB_BAR_2(13)——
+     底部常駐列在任何情況下都該疊在最上層、保持可見可點,不該被任何浮動
+     內容蓋住(使用者回報「功能列被遮住了」,先把疊層順序錯開排除掉
+     z-index 造成的可能性,而不是繼續在 bottom 定位數值上猜測)。
+     2026-10 改用 var(--z-tab-bar)(見 components/zLayers.css 的完整
+     說明,code review 發現這裡原本寫死 35,跟 zLayers.ts 的
+     Z_LAYERS.TAB_BAR 只靠人工保持同步、沒有任何機制防止兩邊漂移)——
+     取代原本寫死的數字 35,數值本身不變,但 CSS 端未來若需要調整這個
+     層級,只需要改 zLayers.css 這一處,不用再找散落在各 .module.css
+     裡的裸數字。 */
+  z-index: var(--z-tab-bar);
+  display: flex;
+  background: var(--ios-card);
+  border-top: 1px solid var(--ios-sep);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* tab:固定等寬三等分(行程/探索/規劃),取代原本 .tabs 的
+   overflow-x: auto 橫向捲動——底部列項目固定就 3 個,不需要捲動,等寬
+   排列更符合一般 App 底部導覽列的慣例。高度維持 64px 不受 .bar 的
+   safe-area padding-bottom 影響,圖示置中在這個固定高度內——這個數值
+   同時是其他手機版元件(GeoOutlinePhoneView/PhoneSideTools/
+   trip/phone/TripList 等)預留底部空間避開功能列的依據,調整這裡要一併
+   同步那幾處。 */
+.tab {
+  flex: 1 1 0;
+  height: 64px;
+  display: flex;
+  /* 2026-10 修正:新增 icon 下方文字標籤——排列方向從橫向置中改成直向
+     (icon 在上、文字在下),見下方 .tabLabel。 */
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: none;
+  background: none;
+  /* 2026-10 修正:原本 color: var(--ios-gray)(暖灰 #9E9488/深色模式
+     #8A8072)搭配 opacity: 0.75,使用者回報整排未選中的按鈕看起來太暗
+     不夠清楚——改用 --color-dark(深棕/深色模式下是淺杏色 #EDE6D8,見
+     base-ui.css)取代偏灰的 --ios-gray,文字本身的顏色更銳利清楚,
+     opacity 另外調到 0.68 做「未選中」的視覺降階,跟下方
+     .tabIconActive(opacity: 1 + 主色 + 陰影)的選中態仍保留足夠對比,
+     兩種狀態不會混淆。 */
+  color: var(--color-dark);
+  opacity: 0.68;
+  cursor: pointer;
+}
+
+/* tabLabel:icon 下方的文字標籤——字級刻意偏小(10px),避免跟上方 icon
+   爭奪視覺焦點,同時 4 個字左右的標籤名稱(旅程/行程/AI 規劃)在 64px
+   高度內仍有餘裕。顏色繼承自 .tab(inherit),跟著 icon 一起在未選中/
+   選中兩態之間變化,不需要額外疊加 active class。 */
+.tabLabel {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  color: inherit;
+}
+
+/* tabIcon:包住 icon 本身的內層圓形,陰影(見下方 tabIconActive)只圍繞
+   這個貼合 icon 尺寸的圓,不是整顆 .tab 按鈕矩形(使用者要求「陰影不要
+   整片,在 icon 四周」)。padding 撐出圓形陰影的可視範圍,比 icon 本身
+   (20px)大一圈。 */
+.tabIcon {
+  position: relative; /* 供 .betaTag 絕對定位在角落 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: inherit;
+}
+
+/* betaTag——視覺語言沿用 desktop/Nav.module.css 的 .betaTag(標示正式
+   功能還在測試中),同一組顏色/字級,只是定位基準換成這裡的 36px 圓
+   (桌面版是 48px 方按鈕)。 */
+.betaTag {
+  position: absolute;
+  top: -2px;
+  right: -6px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ios-bg);
+  background: var(--ios-sand);
+  border-radius: 999px;
+  padding: 1px 4px;
+  line-height: 1.3;
+  pointer-events: none;
+}
+
+/* tabIconActive:選中的分頁除了變色,額外加陰影做視覺區分(使用者要求
+   「被點選的要有陰影」)——陰影視覺語言對齊 GeoOutlinePhoneView.module.css
+   的 candidateBtn/listBtn 等浮動圓按鈕(同一套 box-shadow 數值),讓
+   選中的分頁圖示看起來像微微浮起。 */
+.tabIconActive {
+  opacity: 1;
+  color: var(--color-accent);
+  background: var(--ios-card);
+  box-shadow: 0 4px 12px rgba(61, 53, 48, 0.2);
+}

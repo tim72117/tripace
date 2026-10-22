@@ -7,10 +7,24 @@ import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
 import { PlanOverlayPanel } from './PlanOverlayPanel'
 import { ComposerPortal } from '../../trip-plan/ComposerPortal'
-import { ComposerSlotContext } from '../../plan-core/composerSlot'
+import { ComposerSlotContext } from '../../plan-core/overlayDom'
 import { useContext } from 'react'
 
-const noopRef = () => {}
+describe('PlanOverlayPanel wide', () => {
+  it('面板 + 插槽同層手足、不帶 data-slot 標記,composer 經 context 也能 portal 進插槽', () => {
+    const { container } = render(
+      <PlanOverlayPanel wide composer={<span data-testid="c" />}>
+        <div />
+      </PlanOverlayPanel>,
+    )
+    expect(container.children).toHaveLength(2)
+    const [panel, slot] = Array.from(container.children)
+    expect(panel.className).toMatch(/panel/)
+    expect(slot.className).toMatch(/composerSlot/)
+    expect(panel.hasAttribute('data-slot')).toBe(false)
+    expect(slot.querySelector('[data-testid="c"]')).not.toBeNull()
+  })
+})
 
 describe('PlanOverlayPanel 結構', () => {
   // 2026-10(第三輪)使用者明確要求「composer 區位要跟 UI 區的元素一起
@@ -19,31 +33,12 @@ describe('PlanOverlayPanel 結構', () => {
   // 不變(見 PlanOverlayPanel.tsx 依 isDesktop 分流插槽位置處的完整
   // 說明)。這裡原本斷言「三者是同層手足」的行為只對桌面版仍然成立,
   // 手機版改成斷言插槽是面板的子孫。
-  it('手機版:導覽列佔位 + 面板,插槽是面板的子孫(跟卡片列同層排列)', () => {
-    const { container } = render(
-      <PlanOverlayPanel isDesktop={false} safeAreaRef={noopRef}>
-        <div data-testid="timeline" />
-      </PlanOverlayPanel>,
-    )
-    expect(container.children).toHaveLength(2)
-    const [spacer, panel] = Array.from(container.children)
-    expect(spacer.className).toMatch(/navSpacer/)
-    expect(panel.className).toMatch(/panel/)
-    expect(panel.querySelector('[data-testid="timeline"]')).not.toBeNull()
-    const slot = panel.querySelector('[class*="composerSlotMobile"]')
-    expect(slot).not.toBeNull()
-    // 插槽排在 children 之後(.wrap/.timeline 這類內容之後、面板的最後
-    // 一個子項),對齊「composer 跟卡片列一起排列、composer 在最下面」
-    // 的既有視覺順序。
-    expect(panel.lastElementChild).toBe(slot)
-  })
-
   // 桌面版維持改動前的既有行為:插槽仍然是面板的手足,不是子孫(見上方
   // PlanOverlayPanel.tsx 的完整說明:桌面 .panel 是固定 560px 的
   // absolute 側欄,插槽放進面板內部會被側欄寬度侷限)。
   it('桌面版:面板 + 輸入框插槽,兩者仍是同層手足(改動前既有行為不變)', () => {
     const { container } = render(
-      <PlanOverlayPanel isDesktop safeAreaRef={noopRef}>
+      <PlanOverlayPanel>
         <div data-testid="timeline" />
       </PlanOverlayPanel>,
     )
@@ -57,7 +52,7 @@ describe('PlanOverlayPanel 結構', () => {
 
   it('桌面版:沒有導覽列佔位與安全區,只有面板 + 插槽', () => {
     const { container } = render(
-      <PlanOverlayPanel isDesktop safeAreaRef={noopRef}>
+      <PlanOverlayPanel>
         <div />
       </PlanOverlayPanel>,
     )
@@ -66,24 +61,12 @@ describe('PlanOverlayPanel 結構', () => {
     expect(container.querySelector('[class*="safeArea"]')).toBeNull()
   })
 
-  it('安全區元素只在手機版交給 safeAreaRef', () => {
-    const seen: Array<HTMLElement | null> = []
-    const ref = (el: HTMLDivElement | null) => { seen.push(el) }
-
-    render(<PlanOverlayPanel isDesktop={false} safeAreaRef={ref}><div /></PlanOverlayPanel>)
-    expect(seen.some((el) => el !== null)).toBe(true)
-
-    seen.length = 0
-    render(<PlanOverlayPanel isDesktop safeAreaRef={ref}><div /></PlanOverlayPanel>)
-    expect(seen.some((el) => el !== null)).toBe(false)
-  })
-
   it('passThrough 只在指定時才加上讓出事件的 class', () => {
-    const a = render(<PlanOverlayPanel isDesktop safeAreaRef={noopRef}><div /></PlanOverlayPanel>)
+    const a = render(<PlanOverlayPanel><div /></PlanOverlayPanel>)
     expect(a.container.querySelector('[class*="panel"]')!.className).not.toMatch(/passThrough/)
     a.unmount()
 
-    const b = render(<PlanOverlayPanel isDesktop safeAreaRef={noopRef} passThrough><div /></PlanOverlayPanel>)
+    const b = render(<PlanOverlayPanel passThrough><div /></PlanOverlayPanel>)
     expect(b.container.querySelector('[class*="panel"]')!.className).toMatch(/passThrough/)
   })
 })
@@ -91,7 +74,7 @@ describe('PlanOverlayPanel 結構', () => {
 describe('輸入框插槽', () => {
   it('composer prop:內容渲染在插槽裡,不在面板裡', () => {
     const { container } = render(
-      <PlanOverlayPanel isDesktop safeAreaRef={noopRef} composer={<input data-testid="sim-input" />}>
+      <PlanOverlayPanel composer={<input data-testid="sim-input" />}>
         <div />
       </PlanOverlayPanel>,
     )
@@ -113,7 +96,7 @@ describe('輸入框插槽', () => {
       )
     }
     const { container } = render(
-      <PlanOverlayPanel isDesktop safeAreaRef={noopRef}>
+      <PlanOverlayPanel>
         <Content />
       </PlanOverlayPanel>,
     )

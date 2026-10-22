@@ -1,7 +1,7 @@
 // attractionPool.ts — 給 onagent「查詢景點」「新增景點」兩個工具使用的
 // 假景點池,純前端固定資料,不打任何後端 API。這是使用者明確要求的
 // 「前端先做一個假的景點池讓 agent 可以查詢」——跟 plan_sim_ws.go 那套
-// 既有的模擬 WS 腳本是完全獨立的兩條路徑(見 AIPlanTimelinePage.tsx 頂部
+// 既有的模擬 WS 腳本是完全獨立的兩條路徑(見 home/plan-ai-sim/Content.tsx 頂部
 // 對這兩條路徑分工的說明),互不影響:腳本負責「自動演示 AI 逐步排行程」
 // 的既有展示,這份池子負責「使用者在對話框打字,onagent 呼叫工具查詢/
 // 新增景點」的新互動,兩者各自獨立運作,不共用同一個 WebSocket 連線或
@@ -23,7 +23,7 @@ export interface PooledAttraction {
   thumbIcon: string
   // tags——選填(使用者明確要求「景點不要有費用資訊」,原本每筆金額
   // tag 拿掉後,幾筆條目已經沒有剩下任何 tag 可以顯示,對齊
-  // AIPlanTimelinePage.tsx 渲染端本來就用 p.tags?.length > 0 判斷、
+  // home/plan-ai-sim/Content.tsx 渲染端本來就用 p.tags?.length > 0 判斷、
   // 安全處理沒有 tags 的情況,不強制每筆條目都要有這個欄位)。
   tags?: string[]
   lat: number

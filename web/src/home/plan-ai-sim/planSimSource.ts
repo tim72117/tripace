@@ -1,5 +1,5 @@
 // planSimSource.ts — 膠合層:把「開啟模擬」自動播放的推論信號來源收斂
-// 成一個介面,usePlanSimSocket(AIPlanTimelinePage.tsx)只依賴這個介面,
+// 成一個介面,usePlanSimSocket(home/plan-ai-sim/Content.tsx)只依賴這個介面,
 // 不直接建立 WebSocket 或計時器。
 //
 // 背景:原始(plan-ai-sim 分支)版本是後端 handlePlanSimWS
@@ -16,7 +16,7 @@
 // (onMessage/onError/close),讓 usePlanSimSocket 原本圍繞 ws.onmessage/
 // ws.onerror/ws.close 寫的邏輯只需要換呼叫對象,結構不必重寫。
 
-import type { PlanAction } from './AIPlanTimelinePage'
+import type { PlanAction } from './planAction'
 
 export interface PlanSimSource {
   // onMessage — 註冊收到一則 PlanAction 時的回呼,回傳取消訂閱函式

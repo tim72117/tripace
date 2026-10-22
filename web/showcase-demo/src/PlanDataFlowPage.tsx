@@ -9,7 +9,7 @@ import styles from './PlanDataFlowPage.module.css'
 // 程式碼註解裡)。
 //
 // 為什麼需要這一頁:這套分層散落在 plan-core/planTimeline.ts、
-// planTimelineStorage.ts、AIPlanTimelinePage.tsx 的 PlanStopsView、
+// planTimelineStorage.ts、plan-core/usePlanStopsState.ts 的 maskPlanStopsView / usePlanStopsState、
 // planSimSource.ts 幾個檔案的註解裡,每一份註解都只講自己那一塊,
 // 沒有一個地方能一眼看到全貌。新增輸入來源(例如再接一種推論層)或
 // 新增資料操作時,最常問的問題就是「這該放哪一層」——這張圖就是答案。
@@ -277,7 +277,7 @@ export function PlanDataFlowPage() {
                 markerEnd="url(#pdfArrow)"
                 transform="rotate(180 648 582)"
               />
-              {/* ===== 投影層(PlanStopsView 的兩個實作)=====
+              {/* ===== 投影層(站點檢視的兩個實作,現為 plan-core/usePlanStopsState.ts 的 maskPlanStopsView / usePlanStopsState 一帶)=====
                   2026-10:檢視狀態從這裡抽走了,現在只剩 kind + stops。
                   原本叫「推論層」,但真正的推論在最上面的輸入來源。 */}
               <rect
@@ -292,10 +292,10 @@ export function PlanDataFlowPage() {
                 strokeOpacity="0.3"
               />
               <text x="20" y="618" fontSize="11.5" fontWeight="700" fill="currentColor">
-                投影層　PlanStopsView {'{ kind, stops }'}
+                站點檢視實例　模擬態 / 推論態
               </text>
               <text x="20" y="636" fontSize="10.5" fill="currentColor" fillOpacity="0.68">
-                useSimulatedStopsView / useLiveStopsView　從 timeline 篩出有座標的 stop,只取 id/lat/lng/name
+                模擬態 useSimulatedStopsView 從 timeline 篩出有座標的 stop;推論態 usePlanStopsState 收規劃面板回報的站點
               </text>
 
               {/* ===== 檢視狀態(跟投影層平行;它不是投影出來的)===== */}

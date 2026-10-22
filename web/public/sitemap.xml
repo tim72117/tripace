@@ -43,6 +43,16 @@
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
+  <!-- /momiji-front:紅葉前線視覺示意頁(2026-10 新增,見 web/src/momiji-front/MomijiFrontPage.tsx),
+       依日本気象株式会社的紅葉見頃預測日做全日本的變色動畫與文字版都市預測表。預測資料每年更新
+       (下一回預測預定 11 月上旬,見 momijiForecast.ts),所以 changefreq 用 monthly;優先度與其他內容頁相同。
+       SEO meta 由 server/cmd/server/seo_meta.go 的 seoMetaByPath 輸出。 -->
+  <url>
+    <loc>https://tripace.io/momiji-front</loc>
+    <lastmod>2026-10-23</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
   <url>
     <loc>https://tripace.io/privacy</loc>
     <lastmod>2026-08-26</lastmod>

@@ -1,9 +1,9 @@
-// geoCandidateHelpers:候選籃(GeoCandidateSidebar.tsx)相關的純函式與型別
-// 定義,不含任何 React JSX——從 GeoCandidateSidebar.tsx 抽出,理由是這批
-// 型別/函式被多個檔案廣泛引用(DesktopLayout.tsx、GeoHotelSidebar.tsx、
+// geoCandidateHelpers:候選籃(geo-planning/desktop/CandidateList.tsx)相關的純函式與型別
+// 定義,不含任何 React JSX——從 geo-planning/desktop/CandidateList.tsx 抽出,理由是這批
+// 型別/函式被多個檔案廣泛引用(desktop/Content.tsx、geo-planning/desktop/ResultList.tsx、
 // PlacePanel.tsx),讓這些呼叫端只依賴這批純邏輯時,不需要把整支候選籃
 // UI 元件檔案一起拉進 bundle 依賴圖。
-// GeoCandidateSidebar.tsx 本身也從這裡 re-import 使用,行為與抽出前完全
+// geo-planning/desktop/CandidateList.tsx 本身也從這裡 re-import 使用,行為與抽出前完全
 // 一致,只是定義位置搬動。
 import { useState } from 'react'
 import * as api from '../api'
@@ -24,7 +24,7 @@ import { Car, Hotel, MapPin, Plane, StickyNote, Ticket, UtensilsCrossed } from '
 // inTrip(僅 kind:'entry' 才有):區分「這筆 entry 形狀的項目是否真的已經
 // 排入行程」——true 代表後端真的有這筆 entry 資料(來自
 // onTripEntriesChange 查詢結果),顯示在「已排入行程」分組;false 代表
-// 使用者按過「返回候選」(見 GeoCandidateSidebar.tsx 的 DayEntryCard 說明),
+// 使用者按過「返回候選」(見 geo-planning/desktop/CandidateList.tsx 的 DayEntryCard 說明),
 // 後端那筆 entry 已經被真的刪除(api.deleteEntry),但本地保留這個物件的
 // 完整內容(名稱/座標/地址/原本的分類 entryKind)讓它繼續顯示在「候選中」
 // 分組,不需要因為沒有原始 hotel/attraction/place 資料就被迫遺失照片以外
@@ -38,7 +38,7 @@ export type GeoCandidate =
 // ENTRY_KIND_ICONS:「已排入行程」日層架卡片的類別圖示,對應後端
 // model.Entry.Kind(見 types.ts 的 Entry.kind 註解——
 // stay/flight/activity/note/car/restaurant/ticket,未分類或不認得的值
-// 一律退回 MapPin)。stay/restaurant/activity 刻意對齊 ExploreMap.tsx
+// 一律退回 MapPin)。stay/restaurant/activity 刻意對齊 PlanMap.tsx
 // CATEGORY_TAGS 用的 Hotel/UtensilsCrossed/MapPin(飯店就是飯店 icon),
 // 讓使用者在地圖類別標籤與這裡的日層架卡片看到同一種類型時,圖示語意
 // 一致;其餘沒有對應類別標籤的 kind(flight/note/car/ticket)沿用各自
@@ -68,8 +68,8 @@ export function entryKindIcon(kind?: string | null): typeof MapPin {
 // 本來就只拿 name/address/lat/lng/photoUrl(/category)顯示,primaryType
 // 沒有任何顯示邏輯依賴它。
 //
-// 抽成這支函式前,這段轉換邏輯在 geoInfoContent.ts、GeoHotelSidebar.tsx、
-// GeoOutlinePhoneListDrawer.tsx 三處各自逐字重複——正是這個檔案開頭
+// 抽成這支函式前,這段轉換邏輯在 geoInfoContent.ts、geo-planning/desktop/ResultList.tsx、
+// phone/ResultList.tsx 三處各自逐字重複——正是這個檔案開頭
 // 註解反覆提醒要避免的「兩處各寫一份、之後改一邊忘了改另一邊」模式,
 // 這次一併修正,三處呼叫端改叫這支函式。
 export function searchResultToCandidate(r: Exclude<GeoSearchResult, { kind: 'geocode' }>): GeoCandidate {
@@ -78,7 +78,7 @@ export function searchResultToCandidate(r: Exclude<GeoSearchResult, { kind: 'geo
   }
   // place:GeoGeocodeCandidate 不帶 photoUrl(見該型別的說明,改成
   // placeId 供延遲查詢),候選籃項目的照片顯示已經跟著改用 placeId(見
-  // GeoHotelSidebar.tsx 卡片的「+」按鈕候選預覽,同樣走
+  // geo-planning/desktop/ResultList.tsx 卡片的「+」按鈕候選預覽,同樣走
   // components/ListItemCard.tsx 的延遲載入邏輯)。
   return { kind: 'place', name: r.name, address: r.address, lat: r.lat, lng: r.lng, primaryType: '', category: r.category, placeId: r.placeId }
 }
@@ -122,8 +122,8 @@ export function candidateEntryKind(c: GeoCandidate): string {
 
 // createEntryFromCandidate:把一個純候選(飯店/景點/推薦地點,或按過
 // 「返回候選」、inTrip===false 的 entry 形狀候選)寫成一筆真正的行程
-// entry——抽成獨立函式供兩處呼叫端共用(GeoCandidateSidebar 的拖曳放進
-// 日層架、GeoHotelSidebar/PlacePanel 的「+」按鈕展開日期選擇後直接
+// entry——抽成獨立函式供兩處呼叫端共用(geo-planning/desktop/CandidateList 的拖曳放進
+// 日層架、geo-planning/desktop/ResultList/PlacePanel 的「+」按鈕展開日期選擇後直接
 // 建立),避免同一段「recordEntry 再 setEntryLatLng 補座標」的兩步驟邏輯
 // 兩處各寫一份、之後改一邊忘了改另一邊。title 用候選名稱、start 用選定
 // 的日期、location 用地址/地標名稱、kind 用 candidateEntryKind 推導出的
@@ -160,6 +160,26 @@ export function dayGroupKey(c: GeoCandidate): string {
   return c.start || NO_DATE_GROUP
 }
 
+// groupInTripByDay:把「已排入行程」的 entry 依日期分組(key 見 dayGroupKey),組與組之間依日期鍵排序、「未排定日期」排最後;
+// 同一天內維持傳入的順序(由上游 fetchEntries 決定,通常已經是時間序),不再另外排序,避免跟後端既有排序邏輯打架。
+// 桌面 desktop/CandidateList 與手機 phone/CandidateList 共用(2026-10 從兩邊各一份相同的程式抽出)。
+export function groupInTripByDay(
+  inTrip: (GeoCandidate & { kind: 'entry' })[],
+): [string, (GeoCandidate & { kind: 'entry' })[]][] {
+  const groups = new Map<string, (GeoCandidate & { kind: 'entry' })[]>()
+  for (const c of inTrip) {
+    const key = dayGroupKey(c)
+    const arr = groups.get(key)
+    if (arr) arr.push(c)
+    else groups.set(key, [c])
+  }
+  return [...groups.entries()].sort(([a], [b]) => {
+    if (a === NO_DATE_GROUP) return 1
+    if (b === NO_DATE_GROUP) return -1
+    return a.localeCompare(b)
+  })
+}
+
 // candidateListKey:候選籃清單渲染用的 React key——entry 形狀的候選(見
 // GeoTripEntry.id 的說明)有穩定、保證唯一的 id,優先使用;其餘三種
 // (hotel/attraction/place)沒有穩定 id(即時查詢結果),退回原本的
@@ -184,7 +204,7 @@ export function dayGroupLabel(key: string): string {
 // slice(0, 10) 這種常見寫法,那會先把時間轉成 UTC 再取字串,在 UTC 之後
 // 的時區(例如 UTC+7/+8)最明顯的症狀是:本地深夜到隔天日出前這段
 // 時間,算出來的日期會倒退回前一天(實際發生過的 bug——見
-// GeoCandidateSidebar.tsx 的 todayKey/nextDayKey/prevDayKey 呼叫處)。
+// geo-planning/desktop/CandidateList.tsx 的 todayKey/nextDayKey/prevDayKey 呼叫處)。
 export function localDateKey(d: Date): string {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -197,16 +217,16 @@ export function localDateKey(d: Date): string {
 // 暫時退回候選籃、但仍保留原本 start/startTime 的項目,見 GeoCandidate
 // 型別定義的完整說明;hotel/attraction/place 三種來源天生沒有日期概念,
 // 一律視為「沒有排定日期」)。供各處「加入候選」按鈕決定要不要先跳日期
-// 選擇——桌面版 PlacePanel.tsx 與手機版 GeoOutlinePhoneInfoSheet.tsx
+// 選擇——桌面版 PlacePanel.tsx 與手機版 PlanPhoneInfoSheet.tsx
 // 原本各自獨立定義過一份逐字相同的複製,收斂成這裡的單一定義。
 export function candidateHasScheduledDate(c: GeoCandidate): boolean {
   return c.kind === 'entry' && !!c.start
 }
 
 // useCandidateDatePicker:「選日期把候選寫成真正的行程 entry」這段 async
-// 流程的共用核心——桌面版 GeoHotelSidebar.tsx 的 AddCandidateButton(懸浮
-// popover)、手機版 GeoOutlinePhoneListDrawer.tsx 的 ItemAddButton(原地
-// 展開)、GeoOutlinePhoneCandidateDrawer.tsx 的 CandidateRow(原地展開)
+// 流程的共用核心——桌面版 geo-planning/desktop/ResultList.tsx 的 AddCandidateButton(懸浮
+// popover)、手機版 phone/ResultList.tsx 的 ItemAddButton(原地
+// 展開)、phone/CandidateList.tsx 的 CandidateRow(原地展開)
 // 三處原本各自重寫一份逐字幾乎相同的 saving/err state + try/catch/finally
 // 呼叫 createEntryFromCandidate 邏輯,只有「選好日期後」的收尾動作不同
 // (收合 popover/清空輸入框/通知外部刷新)——這裡把 saving/err state 與

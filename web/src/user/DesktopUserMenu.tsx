@@ -11,8 +11,8 @@ import styles from './DesktopUserMenu.module.css'
 // 桌面版左下方使用者設定入口:頭像 + 名稱一列,點擊展開 popover 選單。
 // 已登入時選單只有「設定」(開啟 SettingsDialog)、「登出」兩項精簡項目;
 // 訪客狀態維持原邏輯不變,popover 顯示登入表單(LoginForm)。
-// 從 DesktopLayout.tsx 抽出獨立成檔案——原本在 DesktopRail 底下就地定義,
-// 但本身是完整獨立、自帶 state(open)的元件,搬出來讓 DesktopLayout.tsx
+// 從 desktop/Content.tsx 抽出獨立成檔案——原本在 desktop/Nav 底下就地定義,
+// 但本身是完整獨立、自帶 state(open)的元件,搬出來讓 desktop/Content.tsx
 // 專注在整體佈局骨架,不需要為了讀懂側欄結構而一併讀完使用者選單的
 // popover 互動細節。
 export function DesktopUserMenu({
@@ -30,10 +30,10 @@ export function DesktopUserMenu({
   onAuthed: (token: string, user: User, email: string) => void
   onLogout: () => void
   onOpenSettings: () => void
-  // expanded:目前掛載在收合(48px)還是展開(180px)的 DesktopRail 底下——
+  // expanded:目前掛載在收合(48px)還是展開(180px)的 desktop/Nav 底下——
   // 原本用 :global(.desktop-rail)/:global(.desktop-rail.expanded) 這兩個
-  // 全域字串 class 選擇器從 CSS 側「猜測」外層容器的寬度狀態,DesktopRail
-  // 元件化雜湊 class 後這組選擇器會直接失效。改成 DesktopRail 把它自己已經
+  // 全域字串 class 選擇器從 CSS 側「猜測」外層容器的寬度狀態,desktop/Nav
+  // 元件化雜湊 class 後這組選擇器會直接失效。改成 desktop/Nav 把它自己已經
   // 持有的 expanded state 直接當 prop 往下傳,DesktopUserMenu 不再需要靠
   // CSS 選擇器反推自己被放進什麼容器——更符合 React「資料由上往下明確
   // 傳遞」的慣例,也讓這個元件的排版分支在型別層級就可見(而非藏在
@@ -64,8 +64,8 @@ export function DesktopUserMenu({
 
   return (
     <div className={styles.menu} ref={menuRef}>
-      {/* portal 到 document.body——DesktopRail 為了寬度收合/展開過渡動畫
-          設有 overflow:hidden(見 DesktopRail.module.css 的 .rail 說明),
+      {/* portal 到 document.body——desktop/Nav 為了寬度收合/展開過渡動畫
+          設有 overflow:hidden(見 desktop/Nav.module.css 的 .rail 說明),
           popover 若留在 rail 子樹內,只要往上/往右超出 rail 當下的窄版
           範圍就會被裁掉一角,這是實際回報過的 bug(選單邊緣被邊框遮蔽),
           不是預防性寫法。改成 portal 出去+position:fixed(用 rect 動態算

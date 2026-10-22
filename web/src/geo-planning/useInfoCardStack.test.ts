@@ -81,7 +81,7 @@ describe('useInfoCardStack', () => {
 // 登記進 stack(exclusive 卡片並觸發 onExclusivePresent),present 變回
 // false 時從 stack 移除;onExclusivePresent 只在「從不存在到存在」這個
 // 上升緣觸發一次,不會因為其他重渲染而重複呼叫。這對應
-// DesktopLayout.tsx 用這個 hook 把 geoHotelSidebarVisible 接到
+// desktop/Content.tsx 用這個 hook 把 geoHotelSidebarVisible 接到
 // geo.clearSelection() 的實際用法——搜尋結果一出現時只該關閉一次主題卡,
 // 不該每次重渲染都呼叫。
 describe('useInfoCardStackSync', () => {
@@ -152,7 +152,7 @@ describe('useInfoCardStackSync', () => {
   })
 })
 
-// 雙向互斥組合場景——對應 DesktopLayout.tsx 實際用法:searchResults 與
+// 雙向互斥組合場景——對應 desktop/Content.tsx 實際用法:searchResults 與
 // attraction 都是 exclusive,各自帶 onExclusivePresent 反向清空對方的
 // 實際 state(geo.clearSelection()/geo.setGeocodeCandidates([]))。這裡
 // 直接驗證「先出現哪一個」都不影響互斥結果——先前的 bug 是只做了

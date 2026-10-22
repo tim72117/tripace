@@ -1,4 +1,4 @@
-// 登入後 App(PhoneContent.tsx/DesktopLayout.tsx 及底下畫面)的介面深色/淺色
+// 登入後 App(phone/Content.tsx/desktop/Content.tsx 及底下畫面)的介面深色/淺色
 // 模式偏好。
 //
 // 跟 home/ 底下 HomePage.tsx/LegalPage.tsx 那套獨立、純記憶體(state 存在

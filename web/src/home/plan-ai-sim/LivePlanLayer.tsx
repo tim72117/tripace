@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useState } from 'react'
-import { TripPlanPage } from '../../trip-plan/TripPlanPage'
+import { PlanPanelContent } from '../../trip-plan/PlanPanelContent'
+import type { LivePlanLayerContract } from '../../plan-core/layerContracts'
+import { useGuestClientConfig } from '../../plan-core/clientConfig'
 import { BASE_URL } from '../../AppCommon'
-import type { ClientConfig } from '../../api'
-import { useIsDesktop } from '../../hooks/useIsDesktop'
 import { NEW_TRIP_DRAFT_ENABLED } from '../../DesktopShared'
 // createDraftPlanTimelineStore/startNewDraft——「新行程」按鈕(見
 // NEW_TRIP_DRAFT_ENABLED 的完整說明,定義在 DesktopShared.tsx,跟
@@ -11,12 +11,12 @@ import { NEW_TRIP_DRAFT_ENABLED } from '../../DesktopShared'
 // 獨立 localStorage key/store 工廠函式),這裡只負責「交接後的真實層
 // 要不要接上這個功能」這一層決定。
 import { localStoragePlanTimelineStore, type PlanTimelineStore } from '../../plan-core/planTimelineStorage'
-import { createPlanAiPublicDataSource } from './planAiPublicDataSource'
+import { getPlanAiPublicDataSource } from './planAiPublicDataSource'
 import { createDraftPlanTimelineStore, startNewDraft } from '../../plan-core/planTimelineDrafts'
 
 // LivePlanLayer — /ai-plan 按下「讓我試看看」之後接手的真實 AI 對話層。
 //
-// 跟同目錄 AIPlanTimelinePage 的模擬層是互斥的兩層:模擬層播固定腳本
+// 跟同目錄 plan-ai-sim/Content 的模擬層是互斥的兩層:模擬層播固定腳本
 // (planSimScript)、不打任何後端;這一層直接複用 /app 的正式功能元件
 // TripPlanPage,連真的 onagent、呼叫真的工具、排出真的行程。
 //
@@ -33,9 +33,11 @@ import { createDraftPlanTimelineStore, startNewDraft } from '../../plan-core/pla
 //
 // 2. 交接後地圖沒有跟著走——已完成:見下方 onStopsChange/
 //    onSelectedStopChange/onHoverStopChange 三個 props,原樣轉呼叫給
-//    TripPlanPage 同名 prop,由外層 AIPlanTimelinePage 接住寫進
-//    liveStops/liveSelectedStopId/liveHoverStopId 這組 state,餵給
-//    usePlanStopMarkers(handedOver 為 true 時的資料來源)。
+//    TripPlanPage 同名 prop(現況:selectedStopId 受控加 tripPlanProps
+//    四個回呼,見 LivePlanLayerProps),由外層 plan-ai-sim/Content 以
+//    plan-core/usePlanStopsState 的 usePlanStopsState 接住(推論態的站點
+//    檢視),handedOver 為 true 時餵給地圖圖層,為 false 則用
+//    useSimulatedStopsView 的模擬態資料。
 //
 // 3. 沒有回到模擬的路徑
 //    handedOver 是單向的,按下去就回不去。目前沒有需求,但如果要做,
@@ -64,15 +66,17 @@ import { createDraftPlanTimelineStore, startNewDraft } from '../../plan-core/pla
 // 而非重新宣告一份一樣的型別字面值),這一層只是原樣轉呼叫給內部的
 // TripPlanPage(見下方 JSX),型別定義只需要有一份,TripPlanPage 的 props
 // 日後若調整,這裡不會因為手動複製一份而悄悄跟著脫鉤。
-type TripPlanPageProps = Parameters<typeof TripPlanPage>[0]
 
-interface LivePlanLayerProps {
-  onStopsChange?: TripPlanPageProps['onStopsChange']
-  onSelectedStopChange?: TripPlanPageProps['onSelectedStopChange']
-  onHoverStopChange?: TripPlanPageProps['onHoverStopChange']
-}
+// LivePlanLayerProps——共同的站點檢視接線(selectedStopId 受控、tripPlanProps 四個回報回呼)見 PlanPanelStopsBinding,
+// 與登入後的兩個 LivePlanLayer 同一個形狀(2026-10 統一;原本這裡四個回呼分開傳、其他兩個用 tripPlanProps)。
+// 選取為什麼是受控雙向:時間軸卡片與地圖圓點共用同一份選取(頁面的 usePlanSelection),「點圓點 → 卡片高亮」與
+// 「點卡片 → 圓點高亮」兩個方向都成立;原本只傳 onSelectedStopChange(非受控但通知)只有卡片 → 地圖單向,見 TripPlanPage
+// 對 selectedStopId 的說明。
+// cfg 的來源(三個入口的 LivePlanLayer 刻意不同):這裡自己用 useGuestClientConfig() 讀(訪客容許沒登入,有 token 就帶上),
+// 登入後的兩個 LivePlanLayer 則由入口傳進來(一定有 token)。這是授權策略的差別,不合併。
+export type LivePlanLayerProps = LivePlanLayerContract
 
-export function LivePlanLayer({ onStopsChange, onSelectedStopChange, onHoverStopChange }: LivePlanLayerProps) {
+export function LivePlanLayer({ selectedStopId, tripPlanProps }: LivePlanLayerProps) {
   // activeDraftId——null 代表「還在用舊的固定單一草稿」(/app 共用的
   // localStoragePlanTimelineStore,見下方 store 的完整說明),非 null
   // 代表使用者已經按過至少一次「新行程」,目前指向 planTimelineDrafts.ts
@@ -110,17 +114,14 @@ export function LivePlanLayer({ onStopsChange, onSelectedStopChange, onHoverStop
   // key 空間)。null 時給一個固定字串,不是 TripPlanPage 本身需要知道的
   // 概念,純粹是這裡用來控制掛載時機的實作細節。
   const mountKey = activeDraftId ?? 'legacy'
-  // isDesktop——2026-10 新增(使用者明確要求「兩個不同的層,時間軸要
-  // 共用相同的,只有資料層不一樣」):手機版時對內部 TripPlanPage 傳
-  // horizontalTimeline,讓交接後的真實層手機版畫面跟交接前的模擬層
-  // 手機版畫面共用同一個 HorizontalPlanTimeline 渲染元件,不是各自一份
-  // (模擬層橫向、交接後縱向)。桌面版不受影響,繼續渲染縱向
-  // PlanTimelineView(horizontalTimeline 預設 false,見該 prop 的完整
-  // 說明)。
-  const isDesktop = useIsDesktop()
+  // 橫向時間軸(2026-10 使用者明確要求「兩個不同的層,時間軸要共用相同的,
+  // 只有資料層不一樣」):手機版讓交接後的真實層跟交接前的模擬層共用同一個
+  // HorizontalPlanTimeline 渲染元件,不是各自一份。是否橫向現在由
+  // PlanPanelContent 依螢幕決定(手機橫向、桌面直向 PlanTimelineView),
+  // 這裡不再自己判斷 isDesktop、也不傳 horizontalTimeline。
   // publicDataSource——見下方 dataSource prop 的完整說明。useMemo 讓
   // 參照穩定:它會往下傳進 TripPlanPage 的 useMemo 依賴陣列。
-  const publicDataSource = useMemo(() => createPlanAiPublicDataSource(BASE_URL), [])
+  const publicDataSource = getPlanAiPublicDataSource(BASE_URL)
   // cfg — 從 localStorage 讀目前的登入 token。
   //
   // 刻意不走 useAppState():那支 hook 還負責旅程清單、主題、登出等一整
@@ -129,27 +130,16 @@ export function LivePlanLayer({ onStopsChange, onSelectedStopChange, onHoverStop
   //
   // 讀不到 token 時傳 null(訪客)——request() 會因此不帶
   // Authorization header,行為跟其他公開頁的 GUEST_CFG 一致。
-  const cfg = useMemo<ClientConfig>(() => {
-    let token: string | null = null
-    try {
-      token = localStorage.getItem('tripace.auth.token')
-    } catch {
-      // localStorage 被停用(無痕模式等)——當作訪客處理,不讓整頁壞掉。
-    }
-    return { baseURL: BASE_URL, token }
-  }, [])
+  const cfg = useGuestClientConfig()
 
-  // compact — 這一層被放進 /ai-plan 的 .timelinePanel 裡(固定寬度的
-  // 側欄,不是整頁),跟地圖對話小匡是同一種容器情境:沒有祖先在管捲動,
-  // 需要 TripPlanPage 自己變成固定高度的 flex 容器、由時間軸區塊接手
-  // 捲動。見該元件 compact prop 的完整說明。
+  // 與登入後共同的設定(compact、透明背景、不顯示空狀態、詢問頁從全部國家開始)在 PlanPanelContent,
+  // 這裡只傳 /ai-plan 特有的:草稿儲存、公開資料來源、新行程、依螢幕的橫向時間軸。
   return (
-    <TripPlanPage
+    <PlanPanelContent
       // key——activeDraftId 改變時強制重新掛載(見 mountKey 的完整
       // 說明),不是 TripPlanPage 本身支援「執行中途換 store」。
       key={mountKey}
       cfg={cfg}
-      compact
       // store——2026-10(第三輪,「新行程」按鈕,見 activeDraftId/handleNewDraft
       // 的完整說明):activeDraftId 為 null 時維持第二輪的既有行為,傳
       // localStoragePlanTimelineStore(使用者明確要求「讓我試試看進入後的
@@ -160,18 +150,7 @@ export function LivePlanLayer({ onStopsChange, onSelectedStopChange, onHoverStop
       // 固定 key,兩者的 localStorage key 空間完全分開(見
       // plan-core/planTimelineDrafts.ts 的完整說明)。
       store={store}
-      // transparentBackground——讓底下 AIPlanTimelinePage 的
-      // NativeMapBase(交接前後同一個地圖實例,不會重新掛載)能透出來,
-      // 不被這個元件自己預設的實色背景蓋住(見該 prop 的完整說明:
-      // 實機回報「試試看時背景是空白的」,根因是這個元件的空狀態提示
-      // 文字疊在不透明背景上,把地圖整個蓋住了)。
-      transparentBackground
-      // hideEmptyState——不顯示「想去哪裡玩?跟我說說你的想法……」這段
-      // /app 新手引導文案(見該 prop 的完整說明:使用者剛看完展示按下
-      // 「讓我試看看」,不需要這段對一般使用者合理的引導提示)。
-      hideEmptyState
-      // horizontalTimeline——見上方 isDesktop 的完整說明。
-      horizontalTimeline={!isDesktop}
+      // horizontalTimeline 不傳,由 PlanPanelContent 依螢幕決定(見上方說明)。
       // dataSource——展示頁推論態固定用公開實作(使用者明確要求「展示內
       // 用公開的」、「展示的撥放態跟推論態也是不一樣的存取層」)。
       //
@@ -190,27 +169,8 @@ export function LivePlanLayer({ onStopsChange, onSelectedStopChange, onHoverStop
       // 按鈕,不需要在這裡另外包一層條件判斷要不要渲染什麼 UI,呼叫端
       // 只需要決定要不要給它這個能力。
       onNewDraft={NEW_TRIP_DRAFT_ENABLED ? handleNewDraft : undefined}
-      // initialAskPage——2026-10(使用者明確要求「進入推論態一開始就顯示
-      // 詢問要去那裡的國家清單」):交接後一掛載就把國家選單擺上,使用者
-      // 點一下就能往下走,不用先自己想出一句話描述需求。
-      //
-      // { country: {} }——空的 AskPageCountryInput 表示「顯示全部國家」
-      // (countryIds 省略即不篩選,見 askPageTools.ts 該型別的完整說明),
-      // 跟 LLM 呼叫 ask_travel_country 不帶 countryIds 時走的是同一條
-      // 渲染路徑,不是另一套只有這裡用的特例。
-      //
-      // 不帶 reason:那個欄位是給 LLM 用一句話說明「為什麼現在問這個」
-      // (會取代畫面上的預設標題)。這次開啟不是 LLM 的決定,是進頁的
-      // 固定行為,沒有特別的意圖要說明——交給 RegionPanel 用它自己的
-      // 預設標題(「要去哪個國家?」)即可。
-      //
-      // 選完之後的串接不在這裡:使用者點完國家會由 TripPlanPage 的
-      // handleAskPageDone 自動接到城市層、選完城市再送一句話給 LLM
-      // (見該函式的完整說明),這個呼叫端只負責「開啟第一層」。
-      initialAskPage={{ country: {} }}
-      onStopsChange={onStopsChange}
-      onSelectedStopChange={onSelectedStopChange}
-      onHoverStopChange={onHoverStopChange}
+      selectedStopId={selectedStopId}
+      {...tripPlanProps}
     />
   )
 }

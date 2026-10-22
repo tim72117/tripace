@@ -55,7 +55,7 @@ export interface SiteNavBrandProps {
 export function SiteNavBrand({ href = '/', pageLabel, extra }: SiteNavBrandProps) {
   if (!pageLabel) {
     // 2026-09 code review 抓到:這裡原本沒有 pageLabel 時直接 return,
-    // 完全忽略 extra prop——目前唯一傳 extra 的呼叫端(AIPlanTimelinePage.tsx)
+    // 完全忽略 extra prop——目前唯一傳 extra 的呼叫端(home/plan-ai-sim/Content.tsx)
     // 剛好一定會帶 pageLabel 所以沒觸發,但只要未來有呼叫端只傳 extra、
     // 不傳 pageLabel,內容就會被靜默吞掉且沒有任何錯誤提示。改成一併
     // 檢查 extra,只要兩者都沒有才走純文字的最簡短路徑。

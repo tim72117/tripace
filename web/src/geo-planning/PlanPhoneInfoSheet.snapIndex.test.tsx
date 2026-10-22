@@ -16,6 +16,7 @@
 // ——藉由檢查 data-testid="phone-bottom-sheet" 這個節點的 class 是否包含
 // PhoneBottomSheet.module.css 匯出的 panelCollapsed,就能在不量測實際
 // px/不模擬拖曳手勢的情況下,間接但準確地驗證目前是否停在最小段。
+import { createPlanAiApiDataSource } from '../home/plan-ai-sim/planAiApiDataSource'
 import { StrictMode } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
@@ -78,6 +79,7 @@ window.matchMedia = vi.fn().mockImplementation((query: string) => ({
 })) as unknown as typeof window.matchMedia
 
 const cfg: ClientConfig = { baseURL: 'http://localhost:8080', token: null }
+const dataSource = createPlanAiApiDataSource(cfg)
 
 function themeAttraction(overrides: Partial<GeoAttraction> & { name: string } = { name: '清水寺' }): GeoAttraction {
   return { isTheme: true, lat: 1, lng: 1, ...overrides }
@@ -110,7 +112,7 @@ describe('PlanPhoneInfoSheet — activeSnapIndex 初始化(不同路徑進來的
       <PlanPhoneInfoSheet
         content={null}
         attraction={themeAttraction()}
-        cfg={cfg}
+        dataSource={dataSource}
         onClose={() => {}}
       />,
     )
@@ -123,7 +125,7 @@ describe('PlanPhoneInfoSheet — activeSnapIndex 初始化(不同路徑進來的
       <PlanPhoneInfoSheet
         content={poiContent()}
         attraction={null}
-        cfg={cfg}
+        dataSource={dataSource}
         onClose={() => {}}
       />,
     )
@@ -136,7 +138,7 @@ describe('PlanPhoneInfoSheet — activeSnapIndex 初始化(不同路徑進來的
       <PlanPhoneInfoSheet
         content={null}
         attraction={themeAttraction({ name: '清水寺' })}
-        cfg={cfg}
+        dataSource={dataSource}
         onClose={() => {}}
       />,
     )
@@ -148,7 +150,7 @@ describe('PlanPhoneInfoSheet — activeSnapIndex 初始化(不同路徑進來的
         <PlanPhoneInfoSheet
           content={null}
           attraction={themeAttraction({ name: '八坂神社' })}
-          cfg={cfg}
+          dataSource={dataSource}
           onClose={() => {}}
         />
       </StrictMode>,
@@ -161,7 +163,7 @@ describe('PlanPhoneInfoSheet — activeSnapIndex 初始化(不同路徑進來的
       <PlanPhoneInfoSheet
         content={null}
         attraction={themeAttraction()}
-        cfg={cfg}
+        dataSource={dataSource}
         onClose={() => {}}
       />,
     )
@@ -173,7 +175,7 @@ describe('PlanPhoneInfoSheet — activeSnapIndex 初始化(不同路徑進來的
         <PlanPhoneInfoSheet
           content={poiContent()}
           attraction={null}
-          cfg={cfg}
+          dataSource={dataSource}
           onClose={() => {}}
         />
       </StrictMode>,

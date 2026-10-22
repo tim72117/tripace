@@ -7,7 +7,7 @@
 // 是 planTimelineStorage.ts 的事。叫「資料層」會跟 data access layer
 // (DAO/repository)混淆,那正好是這裡「不做」的事。
 //
-// 背景:原本 AIPlanTimelinePage.tsx 的 steps 是一個普通陣列,新增節點
+// 背景:原本 home/plan-ai-sim/Content.tsx 的 steps 是一個普通陣列,新增節點
 // (見 attractionTools.ts 的 add_attraction)一律 append 到陣列尾端,
 // 不管呼叫端傳的 time 是幾點——導致「先加下午 3 點的站、後來想在前面
 // 補一個早上 9 點的站」時,新卡片仍然排在最後面,時間軸畫面上出現
@@ -49,12 +49,12 @@ export function stopLookupFailed(node: PlanNode): boolean {
 // 順序」兩者漂移不一致的問題。
 //
 // insertAfter 是這裡唯一的寫入路徑,由「行程安排元件」(呼叫端
-// AIPlanTimelinePage.tsx)提供給 attractionTools.ts 的 add_attraction
+// home/plan-ai-sim/Content.tsx)提供給 attractionTools.ts 的 add_attraction
 // 工具呼叫——工具本身不再自己組陣列 append,必須指定一個錨點(anchorId,
 // null 代表插在最前面)並帶新節點的 time,由這裡統一驗證時間是否落在
 // 合理範圍、決定實際插入位置、回傳明確的成功或錯誤結果。
 
-// PlanNodeType — 對齊 AIPlanTimelinePage.tsx 既有的 PlanStepType,
+// PlanNodeType — 對齊 home/plan-ai-sim/Content.tsx 既有的 PlanStepType,
 // 這裡不 import 那邊的型別(避免循環依賴,理由同 attractionTools.ts
 // 對 PlanStepLike 的說明),改宣告一個結構相容的版本。
 //
@@ -94,7 +94,7 @@ export type PlanNodeType = 'section' | 'stop' | 'message'
 //     混在 stop 之間打亂鏈結的單純性。
 //   - 任何造成「這個 stop 的前一站」改變的操作(插入新站、移除站、前一站
 //     座標更新)都對應到明確的「這個 stop 的 transitFromPrev 需要重新
-//     計算」時機,見 AIPlanTimelinePage.tsx 的 refreshTransitForStop。
+//     計算」時機,見 home/plan-ai-sim/Content.tsx 的 refreshTransitForStop。
 export interface TransitInfo {
   loading?: boolean
   icon?: string
@@ -133,7 +133,7 @@ export interface NoteInfo {
 
 
 // PlanNodeData — 節點除了鏈結指標(prevId/nextId)以外的實際內容,涵蓋
-// AIPlanTimelinePage.tsx 原本 PlanStep 的全部展示欄位(含 loading/
+// home/plan-ai-sim/Content.tsx 原本 PlanStep 的全部展示欄位(含 loading/
 // removing/googlePhotoUrls 這類只在 stop 節點上有意義的 UI 呈現/非同步
 // 查詢狀態欄位)——不同節點型別各自只用到欄位的子集,不需要為了「純資料 vs
 // UI 狀態」這條界線另外拆一層泛型,那樣只會讓 insertAfter/updateNode/
@@ -152,7 +152,7 @@ export interface PlanNodeData {
   // message),舊的這一則就該被標記為 stale、渲染成收合/淡化的樣子,
   // 而不是一直佔著原本的版面、也不是被刪除或併入任何 stop 卡片——它
   // 依然是時間軸上自己獨立的一個節點,只是視覺上不再搶眼。由呼叫端
-  // (AIPlanTimelinePage.tsx)決定何時把 stale 從 false 翻成 true,這裡
+  // (home/plan-ai-sim/Content.tsx)決定何時把 stale 從 false 翻成 true,這裡
   // 只負責承載這個狀態,不內建計時器或自動判斷邏輯。
   text?: string
   stale?: boolean
@@ -201,7 +201,7 @@ export interface PlanNodeData {
   // (見 attractionTools.ts 檔頭「第四/五/六次重構」的完整說明)只知道
   // 這個 id 時會有值,用來在插入節點之後背景觸發
   // fetchPlanAiPlaceDetailsAny 單段查詢真實地點資料(name/summary/
-  // googlePhotoUrls/lat/lng),見 AIPlanTimelinePage.tsx
+  // googlePhotoUrls/lat/lng),見 home/plan-ai-sim/Content.tsx
   // resolveAttractionForStep 的完整說明。該端點內部會優先查一次資料庫
   // attraction(查得到就優先用資料庫資料,查不到才 fallback 查
   // Google),故不需要這個檔案自己判斷「資料庫 vs Google」兩種來源、也
@@ -346,7 +346,7 @@ export function createEmptyTimeline(): PlanTimeline {
 }
 
 // DAY_DIVIDER_ID_PREFIX — toRenderList 自動插入的跨天分隔線虛擬節點
-// id 前綴(見該函式的完整說明)。呼叫端(AIPlanTimelinePage.tsx/
+// id 前綴(見該函式的完整說明)。呼叫端(home/plan-ai-sim/Content.tsx/
 // TripPlanPage.tsx 的渲染邏輯)可以用這個前綴判斷某個節點是不是這種
 // 虛擬分隔線,而不是真的鏈結節點——例如點擊卡片、拖曳排序這類只該對
 // 真實節點生效的互動,不該誤把分隔線當成一般節點處理。
@@ -733,7 +733,7 @@ export type RemoveNodeResult =
 // (變成被移除節點的 prevId,或沒有前一站),舊資料不再有效,不能留著
 // 顯示錯誤的距離/時間。這裡只負責清空(同步、純資料操作,不涉及任何
 // 網路查詢),要不要背景重新查一次新的交通資訊是呼叫端的職責(見
-// AIPlanTimelinePage.tsx refreshTransitForStop 的完整說明)——這裡刻意
+// home/plan-ai-sim/Content.tsx refreshTransitForStop 的完整說明)——這裡刻意
 // 不觸發查詢,理由同 insertAfter 本身也不觸發交通查詢,鏈結領域層只管
 // 資料結構正確,不碰網路 I/O。
 //

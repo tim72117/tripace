@@ -5,8 +5,8 @@ import type { Trip } from '../trip/types'
 import { LS_DEFAULT_TRIP, errMsg } from '../AppCommon'
 
 // useTripsState:旅程列表共用資料邏輯(抓取/建立/自動導向預設旅程)。
-// 手機版 PhoneNavDrawer 的旅程列表分頁(見 trip/PhoneTripsDrawer.tsx)與
-// 桌面版側欄列表 DesktopTripList(見 trip/DesktopTripList.tsx)共用同一份
+// 手機版 PhoneNavDrawer 的旅程列表分頁(見 trip/phone/TripList.tsx)與
+// 桌面版側欄列表 trip/desktop/TripList(見 trip/desktop/TripList.tsx)共用同一份
 // state 管理與 API 呼叫,只有呈現方式(渲染 JSX)不同,避免整套重寫一份。
 export function useTripsState(cfg: ClientConfig, onOpen: (t: Trip) => void) {
   const [trips, setTrips] = useState<Trip[]>([])

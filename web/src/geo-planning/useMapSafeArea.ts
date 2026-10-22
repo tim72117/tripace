@@ -1,10 +1,10 @@
 import { useCallback, useRef } from 'react'
-import { solveSafeAreaCenter } from './solveSafeAreaCenter'
+import { panMapTo } from './panMapTo'
 
 // useMapSafeArea——2026-10 新增(使用者構想:「底下是地圖層,上方是一層
 // UI 層,UI 層把各個元素都配置好,像地圖主顯示區就配出一個區塊,只是
 // 不用顯示,那自然就可以得知主顯示區的範圍」):取代
-// AIPlanTimelinePage.tsx 原本「手算 timelineHeight / 2 再呼叫 panBy」
+// home/plan-ai-sim/Content.tsx 原本「手算 timelineHeight / 2 再呼叫 panBy」
 // 的土法可視區偏移——那套作法要自己推導 panBy 的方向語意、還踩過一次
 // 方向寫反的實機 bug,且只服務這一個頁面,沒有辦法被其他地圖呼叫端重用。
 //
@@ -60,48 +60,12 @@ export function useMapSafeArea(mapRef: React.RefObject<google.maps.Map | null>) 
   // 函式,取代直接呼叫 mapRef.current.panTo(target)。效果是:target
   // 這個地理座標,移動完成後會落在安全區塊的幾何中心,不是整個地圖
   // 容器的中心。
+  // 平移本身(算安全區中心、拿不到資料時退回 panTo)在共用的 panMapTo,登入後的 usePanTarget 也用它。
   const panToWithinSafeArea = useCallback(
     (target: { lat: number; lng: number }) => {
       const map = mapRef.current
       if (!map) return
-      // 以下每個取不到值的情況都退化成無條件 panTo——不強制呼叫端一定
-      // 要先配置好安全區塊才能用這個 hook,也不讓計算本身的邊界情況
-      // 擋住「移動地圖」這個基本功能。
-      const safeAreaEl = safeAreaElRef.current
-      if (!safeAreaEl) {
-        map.panTo(target)
-        return
-      }
-      const projection = map.getProjection()
-      const zoom = map.getZoom()
-      const center = map.getCenter()
-      // 地圖還沒完全初始化完成前這幾個可能查不到(理論上呼叫端已經
-      // 檢查過 mapReady,這裡是雙重防禦)。
-      if (!projection || zoom == null || !center) {
-        map.panTo(target)
-        return
-      }
-
-      const solution = solveSafeAreaCenter({
-        target,
-        currentCenter: { lat: center.lat(), lng: center.lng() },
-        zoom,
-        mapRect: map.getDiv().getBoundingClientRect(),
-        safeRect: safeAreaEl.getBoundingClientRect(),
-        projectToPoint: (latLng) => projection.fromLatLngToPoint(new google.maps.LatLng(latLng.lat, latLng.lng)),
-        projectToLatLng: (point) => {
-          const latLng = projection.fromPointToLatLng(new google.maps.Point(point.x, point.y))
-          return latLng ? { lat: latLng.lat(), lng: latLng.lng() } : null
-        },
-      })
-      if (!solution) {
-        map.panTo(target)
-        return
-      }
-
-      // 全程只用 panTo,不使用 fitBounds——zoom 永遠不變,不會有連續
-      // 呼叫造成視野越縮越遠的累積效應(見檔頭改版說明第 2 點)。
-      map.panTo(solution.newCenter)
+      panMapTo(map, target, safeAreaElRef.current)
     },
     [mapRef],
   )

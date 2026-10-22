@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 // ComposerPortal——把輸入框傳送進版面外殼提供的插槽(見
-// plan-core/composerSlot.ts 的三種 slot 值語意)。
+// plan-core/overlayDom.ts 的三種 slot 值語意)。
 //
 // 抽成獨立元件是為了讓這個分支可以單獨測試,而不是埋在 TripPlanPage
 // 一千多行的 render 裡。slot 為 undefined(不在外殼裡)時是完全透明的

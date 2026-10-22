@@ -45,7 +45,7 @@ function readTopPx(panel: HTMLElement): number {
 }
 
 describe('PhoneBottomSheet 收合段高度不受 panelStyle.bottom 影響（根因修正版）', () => {
-  it('panelStyle.bottom 非 0(對齊 trip/PhoneTripsDrawer.tsx 用 var(--tab-bar-height) 的實際情境)：收合段 top 值會扣掉 bottom，可視高度精確等於 minHeightPx', () => {
+  it('panelStyle.bottom 非 0(對齊 trip/PhoneTripList.tsx 用 var(--tab-bar-height) 的實際情境)：收合段 top 值會扣掉 bottom，可視高度精確等於 minHeightPx', () => {
     function Harness() {
       const [activeSnapIndex, setActiveSnapIndex] = useState(0) // 一開始就是收合段
       return (
@@ -56,7 +56,7 @@ describe('PhoneBottomSheet 收合段高度不受 panelStyle.bottom 影響（根�
           minHeightPx={100}
           activeSnapIndex={activeSnapIndex}
           onSnapIndexChange={setActiveSnapIndex}
-          // 對齊 trip/PhoneTripsDrawer.tsx 實際回報問題的寫法——bottom
+          // 對齊 trip/phone/TripList.tsx 實際回報問題的寫法——bottom
           // 不是 0,是一個代表「功能列高度」的非零值。
           panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: '64px' }}
           head={<SheetHead title="旅程" onClose={() => {}} />}

@@ -3,18 +3,18 @@ import { curatedCategoryOf, CURATED_CATEGORY_MAP_CLASS } from './geoCuratedCateg
 
 // AttractionOverlay:單一景點區域的複合 DOM 疊層(光暈 + 圓形地標圖 + 白話標籤),
 // 用 google.maps.OverlayView 子類別實作,讓它跟著地圖投影自動換算像素位置。
-// 從 ExploreMap.tsx 抽成獨立模組——這裡是純 DOM/Google Maps SDK 操作,
+// 從 PlanMap.tsx 抽成獨立模組——這裡是純 DOM/Google Maps SDK 操作,
 // 不涉及任何 React state,搬移風險最低,但下面這段關於 CSS class 命名的
 // 限制務必完整保留(見 onAdd() 內的說明):**這批 class 名稱與
-// ExploreMap.module.css 的 :global(.geo-attraction-*) 選擇器是一一
+// PlanMap.module.css 的 :global(.geo-attraction-*) 選擇器是一一
 // 對應的固定字串契約,兩邊修改必須同步,不能只改其中一邊**——搬到這個
 // 獨立檔案後,兩者在檔案樹上的物理距離變遠,更容易被之後的維護者忽略
 // 同步,故此處鄭重重申一次(該限制的完整技術理由見 onAdd() 內的行內
-// 註解與 ExploreMap.module.css 開頭的對應說明)。
+// 註解與 PlanMap.module.css 開頭的對應說明)。
 //
 // 這個 class 不能在模組頂層直接 `extends google.maps.OverlayView`——
 // extends 子句在 class 宣告當下就會被求值,而 google.maps SDK 是透過
-// importLibrary('maps')異步載入的(見 ExploreMap.tsx 建圖的
+// importLibrary('maps')異步載入的(見 PlanMap.tsx 建圖的
 // useEffect),模組載入的當下 google 這個全域變數還不存在,會直接拋出
 // ReferenceError: google is not defined。改用 getAttractionOverlayClass()
 // 延後到 SDK 確定載入完成後才定義並快取這個 class(單例,只建一次)。
@@ -34,7 +34,7 @@ export type AttractionOverlayInstance = google.maps.OverlayView & {
   setPhotoUrls: (photoUrls: string[] | undefined) => void
   setHidden: (hidden: boolean) => void
   // setLabelHidden/getLabelEl/getLabelPriority:標籤避讓機制(見
-  // useAttractionOverlays.ts 的 resolveLabelCollisions 完整說明)專用——
+  // 本檔 resolveLabelCollisions 完整說明)專用——
   // 跟 setHidden 不同,這裡只隱藏標籤文字本身,圓點/縮圖維持可見可點擊,
   // 使用者仍看得到「這裡有一個點」,只是暫時看不到名稱(密集區域縮放
   // 放大後,或拖曳移開重疊的鄰居後,標籤會自動重新顯示)。
@@ -54,7 +54,7 @@ export type AttractionOverlayInstance = google.maps.OverlayView & {
 
 // THEME_PHOTO_FADE_OUT_MS:主題點照片收起時幽靈複本的淡出時長(見
 // setThemePhotoCollapsed/mountThemePhotoGhosts)——只拿來當 animationend
-// 沒觸發時的 setTimeout 保底基準,實際動畫時長定義在 ExploreMap.module.css
+// 沒觸發時的 setTimeout 保底基準,實際動畫時長定義在 PlanMap.module.css
 // 的 .geo-attraction-landmark-ghost/.geo-attraction-glow-fading,兩邊要
 // 一起改(這裡只要 >= CSS 的值即可,略大無妨)。
 const THEME_PHOTO_FADE_OUT_MS = 240
@@ -77,14 +77,14 @@ export function getAttractionOverlayClass() {
     private position: google.maps.LatLng
     private selected: boolean
     // candidate:這個景點區域目前是否已經在候選籃裡(見
-    // ExploreMap.tsx 的 candidateKeys prop 說明)——跟 selected 是
+    // PlanMap.tsx 的 candidateKeys prop 說明)——跟 selected 是
     // 兩個獨立、可以同時成立的狀態:selected 是「側欄目前點開哪一項的
     // 介紹」,candidate 是「使用者已經把這個景點丟進候選籃」,一個是
     // 暫時的瀏覽焦點、一個是持續累積的規劃結果,不能合併成同一個布林值。
     private candidate: boolean
     // hovered:僅精選點(見下方 isTheme)使用——使用者滑鼠移到
     // AttractionInfoPanel「附近景點」清單裡對應的項目時暫時為 true,見
-    // useAttractionOverlays.ts 同步這個狀態的 effect。主題點永遠忽略這個
+    // attractionGlowLayer.ts 同步這個狀態的 effect。主題點永遠忽略這個
     // 欄位(建構時就已經是完整照片呈現,沒有「展開」的必要)。
     private hovered: boolean = false
     // focused:2026-10 新增,僅精選點(isTheme===false)使用——「這個精選點
@@ -97,14 +97,14 @@ export function getAttractionOverlayClass() {
     // 圓心挖一個白色小孔——的樣式。)
     //
     // 刻意是一個跟 selected 完全獨立的新欄位,不重用 selected:selected
-    // 是全站共用的「側欄目前選中哪個候選景點」語意(DesktopLayout.tsx
+    // 是全站共用的「側欄目前選中哪個候選景點」語意(desktop/Content.tsx
     // 正式行程規劃功能在用),若把 selected && !isTheme 的視覺直接改成
     // 這套圖釘,正式功能的候選景點選取視覺會跟著變,是不能接受的副作用。
     // focused 只是「要不要切換成圖釘造型」的開關;切換之後圖釘本身的
     // base/hover/selected 三態,仍沿用既有的 hovered/selected 兩個布林值
     // 決定(見 renderFocusedPin()),不另外發明一套狀態。預設 false,除了
     // ScrollTimeline 這條路徑以外的所有呼叫端(九份/京都/台南正式城市頁、
-    // DesktopLayout.tsx)從不呼叫 setFocused,渲染邏輯完全維持原樣。
+    // desktop/Content.tsx)從不呼叫 setFocused,渲染邏輯完全維持原樣。
     private focused: boolean = false
     // focusedPinEntrancePending:下一次 renderFocusedPin() 要不要播「圖釘
     // 落下」進場動畫——只在 setFocused(true) 時立起(含 onAdd 之前的空窗
@@ -116,7 +116,7 @@ export function getAttractionOverlayClass() {
     private focusedPinEntrancePending: boolean = false
     // themePhotoCollapsed:2026-10 新增,僅主題點(isTheme===true)使用——
     // 「這個主題點目前不是 ScrollTimeline.tsx 時間軸聚焦的那個主題」
-    // (見 useAttractionOverlays.ts 的 themePhotoOnlyWhenFocused/
+    // (見 attractionGlowLayer.ts 的 themePhotoOnlyWhenFocused/
     // focusedThemeId 完整說明)。true 時主題點不再恆顯示圓形照片光暈,
     // 退化成跟一般未 hover 精選點完全相同的素色小圓點
     // (.geo-attraction-curated-dot,含分類配色),只有被 hover 時才臨時
@@ -126,11 +126,11 @@ export function getAttractionOverlayClass() {
     // 這是純 opt-in 的新行為:預設 false,只有 InteractiveExploreMap.tsx
     // 開了 themePhotoOnlyWhenFocused prop(目前僅 ScrollTimeline.tsx 開)
     // 才會透過 setThemePhotoCollapsed 寫成 true。九份/京都/台南/首頁/
-    // DesktopLayout.tsx 等所有既有呼叫端從不呼叫,主題點繼續維持
+    // desktop/Content.tsx 等所有既有呼叫端從不呼叫,主題點繼續維持
     // 「恆顯示圓形照片」的既有行為,一個字都不變。
     private themePhotoCollapsed: boolean = false
     // photoUrls:這個景點區域實際要顯示的照片清單,由呼叫端(見
-    // useAttractionOverlays.ts)查完 GET /internal(或 /public)/geo/
+    // attractionGlowLayer.ts)查完 GET /internal(或 /public)/geo/
     // place-details 後透過 setPhotoUrls 寫入(GeoPlaceDetails.googlePhotoUrls,
     // 即時查詢結果,見該欄位的完整說明)——2026-09 使用者明確要求
     // 「不再使用 landmarkPhotoUrl,如果有 place id 則使用 photo_assets
@@ -190,7 +190,7 @@ export function getAttractionOverlayClass() {
       // :global()包裹的規則本來就不會被匯出(這正是 :global 的用途:定義
       // 不受雜湊影響的固定 class 名),若誤用 styles.xxx 取值會拿到
       // undefined,等於完全沒套用到任何 class、CSS 規則(尤其是關鍵的
-      // position: absolute)整個失效。故這裡與 ExploreMap.module.css
+      // position: absolute)整個失效。故這裡與 PlanMap.module.css
       // 的 :global(.xxx) 選擇器一致,直接寫死字串。
       div.className = [
         'geo-attraction-overlay',
@@ -202,7 +202,7 @@ export function getAttractionOverlayClass() {
         // 同層級(都是 2),只能看 DOM 順序決定誰蓋過誰——使用者實測
         // 回報「主題點縮圖還是被小點覆蓋」,根因就是主題點身份完全沒有
         // 反映在 CSS 層級裡。這個 class 建構時就固定(不像 selected/
-        // candidate/hovered 會隨使用者互動變動),讓 ExploreMap.module.css
+        // candidate/hovered 會隨使用者互動變動),讓 PlanMap.module.css
         // 能明確針對「主題點」給一個固定的、比一般精選點更高的 z-index
         // (見該檔案 .geo-attraction-overlay-theme 的完整說明),不依賴
         // hover/selected 等需要互動才會觸發的狀態。
@@ -224,7 +224,7 @@ export function getAttractionOverlayClass() {
 
     // renderContent:依 isTheme/hovered 組出 innerHTML 並重新綁定點擊——
     // 主題點(isTheme===true)一律畫完整的光暈+圓形地標圖(或無照片時的
-    // 佔位圓)+白話標籤。精選點(isTheme===false,見 useAttractionOverlays.ts
+    // 佔位圓)+白話標籤。精選點(isTheme===false,見 attractionGlowLayer.ts
     // 對這個分級的完整說明)預設只畫散策羅盤那種輕量的圓點
     // (geo-attraction-curated-dot),不帶照片,理由是精選點數量可能一次
     // 揭露一整批(見 revealedAttractionNames),若每個都用跟主題點同等
@@ -263,7 +263,7 @@ export function getAttractionOverlayClass() {
       const showGlow = this.isTheme && !this.themePhotoCollapsed
       // 圓點分類配色:見 geoCuratedCategoryStub.ts 的完整說明——優先讀
       // 後端 category 欄位,查無對應分類時圓點退回基底 class
-      // (ExploreMap.module.css 的 --ios-sand 預設色),不額外附加
+      // (PlanMap.module.css 的 --ios-sand 預設色),不額外附加
       // modifier class。
       const category = curatedCategoryOf(this.attraction.category)
       const dotClass = [
@@ -320,7 +320,7 @@ export function getAttractionOverlayClass() {
     // stroke-opacity attribute 表達(token 值不能進 rgba())。
     //
     // 進場動畫(.geo-attraction-focused-pin-enter,@keyframes 與
-    // prefers-reduced-motion 退化定義在 ExploreMap.module.css 的 :global
+    // prefers-reduced-motion 退化定義在 PlanMap.module.css 的 :global
     // 區塊)只在 setFocused(true) 後的第一次渲染掛上(見
     // focusedPinEntrancePending 欄位說明)——圖釘從上方落下、落定,是
     // 「時間軸剛點到這一站」的一次性回饋;hover/selected 切換或其他原因
@@ -364,7 +364,7 @@ export function getAttractionOverlayClass() {
     // 圖示/圓點可點,理由是「只召喚不強加」,但使用者點擊習慣上會直接點
     // 文字,排除掉反而像沒反應),故把 .geo-attraction-label 併入點擊目標,
     // 主題點/精選點皆適用。點下去回報這個景點區域資料,由外層決定怎麼
-    // 放大(見 ExploreMap.tsx 的 handleAttractionClick)。innerHTML 每次
+    // 放大(見 PlanMap.tsx 的 handleAttractionClick)。innerHTML 每次
     // 重設都會拿掉舊的監聽器,故每次 renderContent() 都要重新綁定;
     // querySelectorAll 回傳 NodeList,要對每個 target 各自綁一次,不是
     // 單一 Element。
@@ -383,7 +383,7 @@ export function getAttractionOverlayClass() {
           // 會觸發(this.onClick 這行從來沒有不執行過),但沒有考慮到
           // click 事件本身還是會繼續冒泡到地圖容器,而 Google Maps SDK
           // 會在地圖容器上用它自己的事件委派,依點擊座標解讀出底層瓦片/
-          // Google 原生 POI 圖示的點擊,觸發 ExploreMap.tsx 的
+          // Google 原生 POI 圖示的點擊,觸發 PlanMap.tsx 的
           // map.addListener('click', ...)——這跟我們自建 DOM 元素的
           // click 監聽是兩套完全獨立的事件系統(前者是 Google Maps SDK
           // 自己判讀座標對應到哪個底層 feature,不是標準 DOM 事件冒泡),
@@ -448,7 +448,7 @@ export function getAttractionOverlayClass() {
       this.div = null
     }
 
-    // getLabelEl:標籤避讓機制(見 useAttractionOverlays.ts 的
+    // getLabelEl:標籤避讓機制(見 attractionGlowSupport.ts 的
     // resolveLabelCollisions)量測碰撞範圍用——每次 renderContent()
     // 重設 innerHTML 都會產生全新的標籤節點,不能在建構時快取一次就
     // 固定下來,故改成即時查詢,呼叫端自己決定多久查一次。
@@ -492,14 +492,14 @@ export function getAttractionOverlayClass() {
     // 精選點最低(0),彼此之間重疊時目前不細分先後(見呼叫端排序的完整
     // 說明,相同優先序時改用穩定的既有規則,例如陣列順序)。
     // 2026-10 修正:優先序順序對調過一次——原本主題點(100)固定贏過
-    // hovered/selected/candidate(60),但這跟 ExploreMap.module.css 的
+    // hovered/selected/candidate(60),但這跟 PlanMap.module.css 的
     // z-index 語意(.geo-attraction-overlay-theme 固定 2.5,hovered 等
     // 互動狀態固定 3,互動狀態贏過主題點)矛盾,兩套機制各自判斷出不同
     // 的「誰該蓋過誰」會造成「JS 覺得這個標籤該顯示,但 CSS 層級卻讓
     // 另一個縮圖疊在它上面」這種視覺與避讓結果對不上的情況。改成跟
     // CSS 一致:使用者當下正在互動的精選點(hovered/selected/candidate)
     // 優先序最高,主題點次之,其餘一般精選點最低——理由見
-    // ExploreMap.module.css .geo-attraction-overlay-theme 規則的完整
+    // PlanMap.module.css .geo-attraction-overlay-theme 規則的完整
     // 說明:主題點永遠是散策羅盤的主角,預設該蓋過一般精選點,但使用者
     // 明確點開/hover 某個精選點時,那個精選點的即時回饋該優先顯示。
     // 2026-10:focused(ScrollTimeline 聚焦的精選點,見 focused 欄位說明)
@@ -513,7 +513,7 @@ export function getAttractionOverlayClass() {
 
     // updateContainerZIndex:2026-10 新增,修正一個比子層 z-index class
     // 更根本的問題——.geo-attraction-overlay(每個景點 overlay 的根容器)
-    // 用 transform: translate(...)做置中定位(見 ExploreMap.module.css
+    // 用 transform: translate(...)做置中定位(見 PlanMap.module.css
     // 該 class 的說明),而 transform 只要不是 none,就會強制讓這個元素
     // 建立新的 stacking context,不管有沒有設定 z-index。這代表每個
     // overlay 容器都是各自獨立的 stacking context,子層(縮圖/圓點/
@@ -583,7 +583,7 @@ export function getAttractionOverlayClass() {
     // setFocused:2026-10 新增(見 focused 欄位的完整說明)——主題點永遠
     // no-op(主題點恆顯示照片光暈,沒有「換成小圓點」這回事),值沒有真的
     // 改變時提早跳出。切換 geo-attraction-overlay-focused class 讓
-    // ExploreMap.module.css 能針對這個狀態調整層級,並重繪 innerHTML
+    // PlanMap.module.css 能針對這個狀態調整層級,並重繪 innerHTML
     // (小圓點 SVG 跟既有圓點/照片是不同 DOM 結構,不是切 class 能表達的
     // 差異,理由同 setHovered)。比照 setHidden,先存欄位再檢查 div 是否
     // 存在——呼叫端可能在 onAdd() 之前的空窗期就呼叫,div 建好時 onAdd
@@ -691,7 +691,7 @@ export function getAttractionOverlayClass() {
     // mountThemePhotoGhosts:把 captureThemePhotoGhosts 做好的幽靈塞回
     // 容器最前面(DOM 順序在圓點/標籤之前;幽靈全是絕對定位,不占
     // flex 版面,圓點/標籤的位置跟沒有幽靈時完全相同),淡出動畫
-    // (ExploreMap.module.css 的 landmarkGhostFadeOut/glowFadeOut)結束
+    // (PlanMap.module.css 的 landmarkGhostFadeOut/glowFadeOut)結束
     // 後自行移除。animationend 之外另用固定時長的 setTimeout 保底——
     // 動畫被中途打斷(例如分頁切到背景、或 CSS 被覆寫成 none)時事件
     // 不會觸發,幽靈不能因此永遠留在 DOM 上。期間若有其他原因觸發
@@ -712,13 +712,13 @@ export function getAttractionOverlayClass() {
     // 實際要顯示的照片清單(見上方 photoUrls 欄位的完整說明)——值真的
     // 改變時才重繪,理由同 setHovered:overlay 建構當下、查詢還沒回來
     // 之前會先呼叫一次 setPhotoUrls(undefined)(見
-    // useAttractionOverlays.ts 的查詢 effect),此時 this.photoUrls 本來
+    // attractionGlowLayer.ts 的查詢 effect),此時 this.photoUrls 本來
     // 就是 undefined,不該觸發一次沒有意義的重繪。只有在 showPhoto 為
     // true(主題點,或精選點目前正被 hover)時,photoUrls 的變化才會真的
     // 反映在畫面上,但這裡不做這層判斷——精選點未 hover 時呼叫這個方法
     // 只是單純更新內部欄位、不重繪,之後真的被 hover 時 renderContent
     // 自然會讀到最新值,不需要在這裡分成兩種情境處理。用參照比較(而非
-    // 深比陣列內容)判斷是否跳過重繪即可——呼叫端(useAttractionOverlays.ts)
+    // 深比陣列內容)判斷是否跳過重繪即可——呼叫端(attractionGlowLayer.ts)
     // 每次查詢只會產生一個新的 googlePhotoUrls 陣列參照,不會原地重複呼叫
     // 同一個參照兩次。
     setPhotoUrls(photoUrls: string[] | undefined) {
@@ -728,7 +728,7 @@ export function getAttractionOverlayClass() {
     }
 
     // setHidden:手機版點開主題點的 bottom sheet 期間,暫時隱藏地圖上這個
-    // overlay 本身(見 useAttractionOverlays.ts 呼叫端說明)——只切
+    // overlay 本身(見 attractionGlowLayer.ts 呼叫端說明)——只切
     // style.visibility,不走 onRemove()/div=null 那條路徑,理由是這裡是
     // 「暫時收起、之後要能原樣恢復」的情境,onRemove 是生命週期結束時的
     // 一次性清理,重新呼叫 onAdd 會重建 DOM 並重播 fadeIn 動畫、閃爍。
@@ -762,28 +762,13 @@ function escapeHtml(s: string): string {
   return div.innerHTML
 }
 
-// maxLevelForZoom:Google Maps zoom 值(數字越大越接近地面)累加式對應到
-// 知名度分級(model.Attraction.Level,1=國際~5=在地,見後端型別說明)的
-// 顯示上限——縮得越小只顯示越知名的地標,拉近才逐步冒出更細粒度的
-// 在地資訊,不會一次全部消失/出現。level 未設定的地標(即時查 Google
-// Places、非人工建檔的結果)不受這個篩選影響,見呼叫端的判斷。
-export function maxLevelForZoom(zoom: number): number {
-  if (zoom <= 10) return 1
-  if (zoom <= 11) return 2
-  if (zoom <= 13) return 3
-  if (zoom <= 14) return 4
-  return 5
-}
-
 // minZoomForLevel:maxLevelForZoom 的反函式——給定一個知名度分級,回傳
 // 「至少要縮放到多少 zoom 才看得到它」的最小 zoom 值。供側欄點擊地點
 // 時使用:點一個 5 級(在地級,如「永康商圈」)的地點,若目前 zoom 只有
-// 12(對應 maxLevel=3),該點根本不會被畫出來(見 ExploreMap.tsx 的
+// 12(對應 maxLevel=3),該點根本不會被畫出來(見 PlanMap.tsx 的
 // filteredAttractions 篩選),必須先把 zoom 拉到 15 以上才看得到,單純
-// panTo 平移過去只會移到一個空地圖。數字取自 maxLevelForZoom 每個門檻的
-// 下一格,兩者需要保持同步——調整 maxLevelForZoom 的門檻時記得一併更新
-// 這裡。這份門檻表在 geoAttractionClick.ts 有一份不依賴 Google Maps
-// SDK 的重新匯出版本(供該模組單元測試使用),三處調整時需同步。
+// panTo 平移過去只會移到一個空地圖。數字取自(已移除的)zoom 分級門檻
+// 每一格的下一格;現在光暈不再依 zoom 隱藏,這張表只剩 usePanTarget 拉近 zoom 時使用。
 export function minZoomForLevel(level: number): number {
   if (level <= 1) return 0
   if (level === 2) return 11

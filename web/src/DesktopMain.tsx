@@ -11,12 +11,12 @@ import styles from './DesktopMain.module.css'
 //
 // 原本用 :has() 被動偵測子孫節點是否包含 .pace-route-map-wrap/
 // .geo-outline-panel-wrap 來決定要不要拿掉寬度上限——改成明確的
-// unbounded prop,理由:grep 過三處呼叫端(DesktopLayout.tsx/
+// unbounded prop,理由:grep 過三處呼叫端(desktop/Content.tsx/
 // pace/PacePage.tsx/trip/PublicViewScreen.tsx 的 PublicPaceDrawerMap),
 // 全部在渲染 <DesktopMain> 的當下就已經確定會不會放地圖類內容——
-// DesktopLayout.tsx 由 panelSpec?.slot === 'main-replace' 這個既有分支
+// desktop/Content.tsx 由 panelSpec?.slot === 'main-replace' 這個既有分支
 // 判斷式決定(main-replace 時渲染 RouteEditor/TripPlanPage,不會有
-// geo-outline-panel-wrap;其餘情況固定渲染 GeoOutlinePanel,一定有),
+// geo-outline-panel-wrap;其餘情況固定渲染 PlanMap,一定有),
 // PacePage.tsx/PublicViewScreen.tsx 則是無條件固定渲染 PaceRouteMap。
 // 沒有任何一處是「渲染當下還不確定,要等巢狀路由/非同步資料才決定」的
 // 情況,故不需要保留 :has() 這種被動偵測機制——prop 是更符合 React
@@ -26,7 +26,7 @@ import styles from './DesktopMain.module.css'
 // .pace-route-map-wrap/.geo-outline-panel-wrap 這兩個全域字串 class 原本
 // 存在的唯一理由就是給這裡的 :has() 選擇器偵測——grep 確認過沒有其他
 // CSS 規則依賴它們後,已經一併清掉(PaceRouteMap.module.css 的 wrap 改回
-// 一般會被雜湊的 CSS Modules class,GeoOutlinePanel.tsx 的最外層 div
+// 一般會被雜湊的 CSS Modules class,PlanMap.tsx 的最外層 div
 // 不再疊加這個字串 class),不留這種只服務單一已刪除規則的殘留固定命名。
 export interface DesktopMainProps {
   children: ReactNode
@@ -39,14 +39,14 @@ export interface DesktopMainProps {
   unbounded?: boolean
   // unboundedScroll:僅在 unbounded 為 true 時有意義——配速表路線圖
   // (PaceRouteMap)需要 .desktop-main 本身接手垂直捲動(原
-  // .pace-chart 改自然高度不再自己捲),地理規劃輪廓底圖(GeoOutlinePanel)
+  // .pace-chart 改自然高度不再自己捲),地理規劃輪廓底圖(PlanMap)
   // 用 position:absolute 撐滿,不需要這組 overflow 設定。
   unboundedScroll?: boolean
   className?: string
 }
 
 // forwardRef——比照 ScrollArea.tsx/Button.tsx 既有慣例保留轉發能力。
-// 2026-10:DesktopLayout.tsx 現在會用到這個 ref(desktopMainRef,傳給
+// 2026-10:desktop/Content.tsx 現在會用到這個 ref(desktopMainRef,傳給
 // TripPlanPage 的 scrollContainerRef prop,讓全頁版「回到最新」機制
 // 量測/監聽真正捲動的 <main>,見該檔案的完整說明)——這裡原本的註解
 // 寫著「目前沒有呼叫端需要」已經過時,更新為反映實際使用情況。

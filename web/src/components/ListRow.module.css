@@ -41,7 +41,7 @@
   background: var(--ios-active);
 }
 /* 目前選取的項目(原 base-ui.css 的 .row.active,見 TripManageModal.tsx
-   成員清單/DesktopTripList.tsx 旅程項目同一種「目前選中」的用法)。 */
+   成員清單/trip/desktop/TripList.tsx 旅程項目同一種「目前選中」的用法)。 */
 .row.active {
   background: var(--color-accent);
 }
@@ -51,7 +51,7 @@
 }
 /* .grow(base-ui.css 保留的全站 utility class,flex:1 撐滿剩餘空間 +
    min-width:0 讓子層 text-overflow: ellipsis 生效)刻意沒有整組跟著遷移
-   進這個 CSS Module——DesktopTripList.tsx/DesktopUserMenu.tsx 都有呼叫端
+   進這個 CSS Module——trip/desktop/TripList.tsx/DesktopUserMenu.tsx 都有呼叫端
    在完全不是 .row/.list 的自訂容器(各自的 .item/.trigger,不在這次
    遷移範圍內)裡用字串 className="grow"/"name"/"sub",靠各自 module CSS
    的 :global(.name)/:global(.sub) 覆寫出不同字級——這些呼叫端不會換成

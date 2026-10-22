@@ -17,7 +17,7 @@
 // (LLM)傳的 time 是幾點,新卡片一律排最後面,導致時間軸畫面上出現時間
 // 忽前忽後的錯亂順序(見 planTimeline.ts 開頭的完整背景說明)。改成鏈結
 // 串列資料結構(planTimeline.ts)後,插入操作收斂成「行程安排元件」
-// (AIPlanTimelinePage.tsx)透過 ctx.insertAttractionAfter 提供的單一
+// (home/plan-ai-sim/Content.tsx)透過 ctx.insertAttractionAfter 提供的單一
 // 介面——這個工具不再自己組陣列、自己決定位置,而是明確指定 anchorId
 // (要插在哪個既有節點後面,null 代表插在最前面),由該介面統一驗證時間
 // 是否落在合理範圍、決定實際插入位置。
@@ -79,18 +79,18 @@ import { fetchPlanAiAttractionSearch, fetchPlanAiPlaceSearch, type ClientConfig 
 import type { InsertAfterError } from './planTimeline'
 
 // AttractionStepsCtx — add_attraction 需要的 context:一個能讀取時間軸
-// 現況、並且插入新節點的口子。刻意不是完整的 AIPlanTimelinePage state
+// 現況、並且插入新節點的口子。刻意不是完整的 plan-ai-sim/Content state
 // (不含 isGenerating/following 等其餘 UI state),只暴露這個工具真正
 // 需要的最小介面,理由同 tripEntryAdd.ts 的 TripEntryAddCtx 設計說明。
 //
 // insertAttractionAfter 是這裡唯一的寫入口——「機制跟介面由行程安排
 // 元件提供」:鏈結串列的構建、時間驗證、prevId/nextId 維護全部收在
-// AIPlanTimelinePage.tsx(呼叫 planTimeline.ts 的 insertAfter),這個
+// home/plan-ai-sim/Content.tsx(呼叫 planTimeline.ts 的 insertAfter),這個
 // 工具檔案只負責把 args 轉成呼叫這個介面所需的形狀、以及把失敗結果轉成
 // 拋給 LLM 的錯誤訊息,不自己碰鏈結細節。
 // addNote——同樣由行程安排元件提供,但不是「插入新節點」這種操作,而是
 // 語意層級的「把一則備註寫在某個既有景點節點上」方法(對齊
-// AIPlanTimelinePage.tsx 的 addNoteToTimeline)。這是使用者明確要求的
+// home/plan-ai-sim/Content.tsx 的 addNoteToTimeline)。這是使用者明確要求的
 // 兩層架構:排程元件本身提供操作資料的方法(addNoteToTimeline),LLM 的
 // 工具透過這些方法操作排程內的資料,不是工具自己組好 PlanNodeData 形狀
 // 直接丟給底層的 insertAttractionAfter。
@@ -112,7 +112,7 @@ import type { InsertAfterError } from './planTimeline'
 // 明確的掛載對象,不存在「沒有目標節點的備註」這種情境,故不開放 null。
 //
 // category 決定備註顯示的顏色/圖示,對照表由元件這一層決定(元件內部的
-// NOTE_STYLES,見 AIPlanTimelinePage.tsx 的完整說明),這裡的工具檔案
+// NOTE_STYLES,見 home/plan-ai-sim/Content.tsx 的完整說明),這裡的工具檔案
 // 只傳語意層級的 category 字串,不需要知道視覺樣式怎麼對照。回傳值不再
 // 是新節點 id(沒有新節點被建立),而是被寫入備註的那個 anchorId 本身,
 // 方便 LLM 確認操作對象。
@@ -151,10 +151,10 @@ export interface AttractionStepsCtx {
   ) => Promise<{ ok: true } | { ok: false; error: InsertAfterError }>
 }
 
-// PlanStepLike — 這個檔案不 import AIPlanTimelinePage.tsx 的 PlanStep
-// (避免循環依賴:AIPlanTimelinePage.tsx 需要 import 這裡定義的工具),
+// PlanStepLike — 這個檔案不 import home/plan-ai-sim/Content.tsx 的 PlanStep
+// (避免循環依賴:home/plan-ai-sim/Content.tsx 需要 import 這裡定義的工具),
 // 改宣告一個結構相容的最小子集——只列出 add_attraction 實際會寫入的
-// 欄位。呼叫端(AIPlanTimelinePage.tsx)實際操作的是完整的 PlanStep,
+// 欄位。呼叫端(home/plan-ai-sim/Content.tsx)實際操作的是完整的 PlanStep,
 // 但因為 TypeScript 結構化型別,傳一個「需要的比較少」的型別進去,
 // 呼叫端只要在型別上相容(額外欄位視為 optional 或由呼叫端自己補齊)
 // 就能接受,不需要這裡知道 PlanStep 完整的形狀。
@@ -183,7 +183,7 @@ export interface PlanStepLike {
   lng?: number
   // placeId/loading——addAttraction(見該常數的完整說明)插入佔位節點
   // 時需要的兩個欄位:placeId 標記這筆需要背景反查,loading 驅動 UI
-  // 顯示查詢中狀態(見 AIPlanTimelinePage.tsx PlanNodeData 對應欄位的
+  // 顯示查詢中狀態(見 home/plan-ai-sim/Content.tsx PlanNodeData 對應欄位的
   // 完整說明)。
   placeId?: string
   loading?: boolean
@@ -446,10 +446,10 @@ export const addAttraction: ClientTool<AttractionStepsCtx> = defineTool(
       placeId: args.placeId,
       loading: true,
       // name 給一個通用佔位文字(而非留 undefined)——卡片標題
-      // (.stopName,見 AIPlanTimelinePage.tsx 的渲染邏輯)直接輸出
+      // (.stopName,見 home/plan-ai-sim/Content.tsx 的渲染邏輯)直接輸出
       // p.name,留空會讓卡片顯示一個沒有標題、只有底下「查詢地點中…」
       // 小標籤的空白狀態,體驗不佳。查詢完成後(見
-      // AIPlanTimelinePage.tsx insertAttractionAfter 觸發的
+      // home/plan-ai-sim/Content.tsx insertAttractionAfter 觸發的
       // resolveAttractionForStep)這個佔位值會被真實地點名稱覆蓋。
       name: '查詢中…',
     })
@@ -496,7 +496,7 @@ function parseAddNoteArgs(raw: unknown): AddNoteArgs {
 // 方法,LLM 的工具透過這些方法操作排程內的資料」——這個工具本身不再
 // 決定 note 該對應什麼顏色/圖示(原本內建一份 NOTE_STYLES 對照表直接
 // 組 PlanNodeData 丟給 ctx.insertAttractionAfter 插入獨立節點),改成
-// 呼叫 ctx.addNote(語意層級的方法,由 AIPlanTimelinePage.tsx 的
+// 呼叫 ctx.addNote(語意層級的方法,由 home/plan-ai-sim/Content.tsx 的
 // addNoteToTimeline 提供,見該函式的完整說明)——「把備註寫在哪個節點
 // 上、分類要怎麼轉譯成視覺樣式」完全交給行程安排元件決定,這個工具
 // 檔案只負責把 LLM 的 args 轉成呼叫這個語意層級方法所需的形狀,不自己
@@ -618,7 +618,7 @@ export const listItinerary: ClientTool<AttractionStepsCtx> = defineTool(
 // 完整工具清單,不需要知道各工具是否需要 cfg 這種實作細節。
 //
 // 唯一呼叫端是 trip-plan/TripPlanPage.tsx(正式功能)——home/plan-ai-sim/
-// AIPlanTimelinePage.tsx(展示原型,使用者明確要求不要修改那份檔案,見
+// home/plan-ai-sim/Content.tsx(展示原型,使用者明確要求不要修改那份檔案,見
 // TripPlanPage.tsx 檔頭的完整說明)完全沒有引用這個函式,不是第二個
 // 呼叫端,不要被下面「2026-09」這則歷史註解誤導。
 //

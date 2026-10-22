@@ -61,7 +61,7 @@
 // 的假 id),名稱與照片由詢問頁走推論態同一條路向後端查(見下方
 // candidates 的說明)。
 
-import type { PlanAction } from './AIPlanTimelinePage'
+import type { PlanAction } from './planAction'
 
 export const PLAN_SIM_SCRIPT: PlanAction[] = [
   {
@@ -71,7 +71,7 @@ export const PLAN_SIM_SCRIPT: PlanAction[] = [
     // 與推論態用一樣的方式取得」:這四個 placeId 是資料庫景點(attractions
     // 表)固定的 Google Place ID,不是 attractionPool.ts 的假 id。詢問頁
     // 拿它們走跟推論態相同的 placeDetails(/public/geo/plan-ai/
-    // place-details-any,見 AIPlanTimelinePage.tsx askPageDataSource),
+    // place-details-any,見 home/plan-ai-sim/Content.tsx askPageDataSource),
     // 名稱與照片都由後端依資料庫回傳;name 只是查詢失敗時的備用標題與
     // 查詢中的暫時標題。固定 id 對應的景點(本地 DB 台南,
     // tripace-cli attraction list -city 台南):

@@ -1,7 +1,8 @@
+import { requirePlacePhoto, type PlanAiDataSource } from '../home/plan-ai-sim/planAiDataSource'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoPlaceDetails, GeoPlaceText, GeoSearchResult, GeoTripEntry } from '../api'
-import { deleteEntry, fetchGeoPlacePhoto, geocodeCandidateToSearchResult } from '../api'
-import { geoItemKey, type GeoSelectedKey } from './GeoHotelSidebar'
+import { deleteEntry, geocodeCandidateToSearchResult } from '../api'
+import { geoItemKey, type GeoSelectedKey } from './geoSelectedKey'
 import type { PlaceInfoContent } from './PlacePanel'
 import {
   poiInfoContent,
@@ -11,8 +12,8 @@ import {
 import { type GeoCandidate, createEntryFromCandidate } from './geoCandidateHelpers'
 import { geoSelectionReducer, GEO_SELECTION_NONE, type GeoPanTarget } from './geoSelection'
 
-// useGeoPlanningState:桌面版(DesktopLayout.tsx)/手機版
-// (GeoOutlinePhoneView.tsx)共用的「地理規劃地圖」狀態與互動邏輯——原本
+// useGeoPlanningState:桌面版(desktop/Content.tsx)/手機版
+// (PlanPhoneView.tsx)共用的「地理規劃地圖」狀態與互動邏輯——原本
 // 兩邊各自實作一份形狀高度相似的 state/handler(geoSelection reducer、
 // candidateKeys/addGeoCandidate/removeGeoCandidate/geoScheduledDates 的
 // useMemo/useCallback、onTripEntriesChange 的候選籃合併邏輯、
@@ -45,15 +46,18 @@ import { geoSelectionReducer, GEO_SELECTION_NONE, type GeoPanTarget } from './ge
 // 版本。
 export function useGeoPlanningState({
   cfg,
+  dataSource,
   tripID,
 }: {
+  // cfg:建立/刪除 entry 用;查照片走 dataSource(資料存取層實例)。
   cfg: ClientConfig
+  dataSource: PlanAiDataSource
   // tripID:寫入 entry 用(createEntryFromCandidate)——理由同
-  // DesktopLayout.tsx/GeoOutlinePhoneView.tsx 原本個別持有的 activeTrip?.id。
+  // desktop/Content.tsx/PlanPhoneView.tsx 原本個別持有的 activeTrip?.id。
   tripID?: string | null
 }) {
   // geoSelection:目前選中要顯示哪張卡片(PlacePanel/AttractionInfoPanel,
-  // 或手機版對應的 GeoOutlinePhoneInfoSheet)與哪個識別鍵該標記選取樣式
+  // 或手機版對應的 PlanPhoneInfoSheet)與哪個識別鍵該標記選取樣式
   // ——見 geo-planning/geoSelection.ts 的完整說明。
   const [geoSelection, dispatchGeoSelection] = useReducer(geoSelectionReducer, GEO_SELECTION_NONE)
   const selectedKey: GeoSelectedKey =
@@ -65,9 +69,9 @@ export function useGeoPlanningState({
   // geo-planning/geoSelection.ts 的 GeoPanTarget 型別說明。
   const [panTarget, setPanTarget] = useState<GeoPanTarget | null>(null)
 
-  // geoHoverKey:滑鼠移到側欄項目上時的臨時識別鍵(見 ExploreMap.tsx
-  // 的 hoverKey prop 說明)——只有桌面版側欄(GeoHotelSidebar/
-  // GeoCandidateSidebar)支援滑鼠 hover,手機版觸控裝置沒有這個互動,
+  // geoHoverKey:滑鼠移到側欄項目上時的臨時識別鍵(見 PlanMap.tsx
+  // 的 hoverKey prop 說明)——只有桌面版側欄(geo-planning/desktop/ResultList/
+  // geo-planning/desktop/CandidateList)支援滑鼠 hover,手機版觸控裝置沒有這個互動,
   // 呼叫端不使用即可。
   const [hoverKey, setHoverKey] = useState<GeoSelectedKey>(null)
 
@@ -196,8 +200,8 @@ export function useGeoPlanningState({
 
   // geocodeCandidates/setGeocodeCandidates:2026-08 從 GeoOutlinePanel.tsx
   // 搬遷到這裡——原本是那個檔案的私有 state,但「手機版清單抽屜關閉時
-  // 連動清空地圖 marker」這個需求的觸發點(GeoOutlinePhoneView.tsx 的
-  // GeoOutlinePhoneListDrawer.onClose)活在比 GeoOutlinePanel 更外層,沒
+  // 連動清空地圖 marker」這個需求的觸發點(PlanPhoneView.tsx 的
+  // phone/ResultList.onClose)活在比 GeoOutlinePanel 更外層,沒
   // 辦法碰到它內部的 state,只能把擁有權移到這個兩邊(桌面版/手機版)
   // 共用的狀態層,讓外層能直接呼叫 setter 清空。搬遷後 GeoOutlinePanel.tsx
   // 改為受控元件,經由 geocodeCandidates/setGeocodeCandidates props 讀寫
@@ -214,7 +218,7 @@ export function useGeoPlanningState({
   const [selectedCandidate, setSelectedCandidate] = useState<GeoSearchResult | null>(null)
 
   // searchResults:飯店/推薦地點/搜尋結果三種來源統一後的清單資料——見
-  // ExploreMap.tsx 的 onSearchResultsChange prop 說明,取代原本各自
+  // PlanMap.tsx 的 onSearchResultsChange prop 說明,取代原本各自
   // 獨立的 hotels/places/geocodeCandidates 三組 state。
   //
   // 2026-08 起改成用 useMemo 從上面的 geocodeCandidates 衍生,不再是獨立
@@ -231,7 +235,7 @@ export function useGeoPlanningState({
   // 注意這裡刻意「不」用一個觀察 geocodeCandidates 變化的 useEffect 去算
   // searchResults 再 setState——直接用 useMemo 同步衍生,理由是這個專案
   // 先前吃過 level-triggered useEffect 的虧(見 GeoOutlinePanel.tsx/
-  // ExploreMap.tsx 對 edge-triggered 設計的完整說明):useMemo 只是
+  // PlanMap.tsx 對 edge-triggered 設計的完整說明):useMemo 只是
   // 「讀取時算一次值」,不是額外一個會在任何寫入 geocodeCandidates 的
   // 時機被誤觸發的副作用,不會重新引入同一類 bug。
   const searchResults = useMemo(
@@ -253,14 +257,14 @@ export function useGeoPlanningState({
     dispatchGeoSelection({ type: 'SELECT_INFO', key: geoItemKey(r.kind, r), content: searchResultInfoContent(r) })
   }, [])
   // selectPoi 的第二參數 attraction:有值時代表這次點擊來源同時也是地圖
-  // 上的景點區域地標(見 ExploreMap.tsx 的 onAttractionOpenPlaceDetails
+  // 上的景點區域地標(見 PlanMap.tsx 的 onAttractionOpenPlaceDetails
   // 完整說明),把 attraction.summary 附加到 PlaceInfoContent.attractionSummary
   // 上並存顯示(見 PlacePanel.tsx 對這個欄位的完整說明)——沒有主題卡
   // 開著、直接點擊非主題點地標退回這條互斥路徑時,同樣需要保留這份人工
   // 整理過的介紹文字,不能因為改走 selectPoi 就悄悄遺失。
   // selectPlaceContent:直接用呼叫端已經組好的 PlaceInfoContent 開地點卡
   // ——供沒有 GeoPlaceDetails 可查(如非主題點地標沒有 placeId、或查詢
-  // 失敗)但仍要開地點卡的情境使用(見 DesktopLayout.tsx 的
+  // 失敗)但仍要開地點卡的情境使用(見 desktop/Content.tsx 的
   // handleAttractionOpenPlaceWithoutGoogle),不像 selectPoi 那樣強制要求
   // 先有一筆 GeoPlaceDetails 才能組出內容。selectPoi 內部改呼叫這支,
   // 避免兩處重複同一行 dispatch。
@@ -270,7 +274,7 @@ export function useGeoPlanningState({
     dispatchGeoSelection({ type: 'SELECT_INFO', content })
   }, [])
   // selectPoi 的第二參數 attraction:有值時代表這次點擊來源同時也是地圖
-  // 上的景點區域地標(見 ExploreMap.tsx 的 onAttractionOpenPlaceDetails
+  // 上的景點區域地標(見 PlanMap.tsx 的 onAttractionOpenPlaceDetails
   // 完整說明),把 attraction.summary 附加到 PlaceInfoContent.attractionSummary
   // 上並存顯示(見 PlacePanel.tsx 對這個欄位的完整說明)——沒有主題卡
   // 開著、直接點擊非主題點地標退回這條互斥路徑時,同樣需要保留這份人工
@@ -283,8 +287,8 @@ export function useGeoPlanningState({
   // patchGeocodeCandidateText/patchGeocodeCandidatePhoto 的 placeId 二次
   // 確認:原本只依賴 GeoOutlinePanel.tsx 的 useEffect + cancelled flag
   // 當唯一防線(呼叫端的 onGeocodeCandidateText/onGeocodeCandidatePhoto
-  // callback 簽章雖然帶 placeId 參數,但兩個呼叫端(GeoOutlinePhoneView.tsx/
-  // DesktopLayout.tsx)先前都用 `_placeId` 忽略未傳入)——這是單點防禦,
+  // callback 簽章雖然帶 placeId 參數,但兩個呼叫端(PlanPhoneView.tsx/
+  // desktop/Content.tsx)先前都用 `_placeId` 忽略未傳入)——這是單點防禦,
   // 不是縱深防禦:一旦 cancelled flag 邏輯本身有 bug(或未來新增一條
   // 繞過那個 effect、直接呼叫這兩個函式的路徑),連續快速點擊兩個不同
   // 候選(例如地圖上先點 A marker、還沒等文字/照片查完就點 B marker)時,
@@ -315,7 +319,7 @@ export function useGeoPlanningState({
   // infoContentPhotoFetch:推薦地點(GeoGeocodeCandidate)資訊卡開啟時的
   // 照片延遲補查——這支查詢不帶 eager photoUrl(後端照片查詢改成背景
   // 預熱快取,見 server 端 handleGeoPlacesNearby 的說明),這張卡片
-  // (PlacePanel/GeoOutlinePhoneInfoSheet)本身是純展示元件、沒有
+  // (PlacePanel/PlanPhoneInfoSheet)本身是純展示元件、沒有
   // IntersectionObserver 延遲載入機制(不像 components/ListItemCard.tsx,
   // 理由是資訊卡一開啟就整張可見,不需要捲動觸發的節流),故改在這裡用
   // useEffect 主動補查一次。
@@ -338,7 +342,7 @@ export function useGeoPlanningState({
     if (fetchedPlaceIdsRef.current.has(placeId)) return
     fetchedPlaceIdsRef.current.add(placeId)
     let cancelled = false
-    fetchGeoPlacePhoto(cfg, placeId, infoContent.name)
+    requirePlacePhoto(dataSource, placeId, infoContent.name)
       .then((result) => {
         if (cancelled) return
         dispatchGeoSelection({
@@ -354,7 +358,7 @@ export function useGeoPlanningState({
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [infoContent?.placeId, infoContent?.photoUrl, cfg])
+  }, [infoContent?.placeId, infoContent?.photoUrl, dataSource])
 
   // selectCandidateFromBasket:候選籃/清單抽屜裡任何一項被點擊——開資訊
   // 卡並移動地圖到該點為中心(見兩邊原本 selectGeoCandidate/onSelect 的
@@ -380,7 +384,7 @@ export function useGeoPlanningState({
   }, [])
 
   // draggingCandidate:桌面版拖放改期功能用的中介 state——拖的是「已
-  // 排入行程」的卡片,放開目標是日期分組,見 GeoCandidateSidebar.tsx
+  // 排入行程」的卡片,放開目標是日期分組,見 geo-planning/desktop/CandidateList.tsx
   // handleDropOnDay 的完整說明。
   //
   // 2026-10 修正:原本這裡還有 pickingDayKey/onlyCandidates/
@@ -442,3 +446,6 @@ export function useGeoPlanningState({
     setDraggingCandidate,
   }
 }
+
+// GeoPlanningState:useGeoPlanningState 的回傳型別(供 useGeoOutlineMapState 的 outlineBindingFrom 等型別引用)。
+export type GeoPlanningState = ReturnType<typeof useGeoPlanningState>

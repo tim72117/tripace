@@ -22,9 +22,9 @@
 - 結尾「免費開始使用」按鈕｜導向 `/app`
 - 頁尾「回首頁」連結｜導向 `/`
 
-## DesktopLayout.tsx(桌面版整體佈局)
+## desktop/Content.tsx(桌面版整體佈局)
 
-- Rail「行程列表」圖示鈕｜切換疊加顯示 `DesktopTripList`(不影響主顯示區)
+- Rail「行程列表」圖示鈕｜切換疊加顯示旅程列表（`trip/desktop/TripList.tsx`）(不影響主顯示區)
 - Rail「時間軸」圖示鈕｜切到 `timeline` 面板(未選行程時停用)
 - Rail「路徑」圖示鈕｜切到 `pace` 面板(配速表)
 - Rail「規劃」圖示鈕｜切到 `geo-outline` 面板(地理輪廓底圖)
@@ -48,7 +48,7 @@
 - 附近推薦地點 marker 點擊(依類別標籤查出的三種地點各自對應飯店/景點/餐廳圖示,其餘查詢結果沿用相機圖示)｜回報選取該推薦地點
 - 地圖上 Google 原生 POI 圖標點擊｜攔截預設資訊卡,改查詳細資料後開啟自訂資訊面板
 
-## GeoCandidateSidebar.tsx(候選籃側欄)
+## geo-planning/desktop/CandidateList.tsx(候選籃側欄)
 
 - 城市搜尋輸入框＋「查看」按鈕｜觸發城市座標查詢並移動地圖
 - 候選項目卡片本體｜開啟資訊面板顯示該地點介紹
@@ -56,7 +56,7 @@
 - 「已排入行程」日層架卡片本體(依日期分組,圖示對應 entry 類型)｜開啟資訊面板(同候選項目)
 - 日層架卡片「×」移除鈕｜移除該候選(僅前端狀態,不影響實際行程資料)
 
-## GeoHotelSidebar.tsx(飯店/地點/附近推薦側欄)
+## geo-planning/desktop/ResultList.tsx(飯店/地點/附近推薦側欄)
 
 - 頂部分頁「地點」「飯店」「附近推薦」圖示鈕｜切換顯示分頁
 - 各分頁項目卡片本體｜移動地圖到該座標並標記選取
@@ -91,14 +91,14 @@
 - 旅程清單表格 checkbox、列本體點擊｜勾選/取消勾選要刪除的項目
 - 「刪除(N)」按鈕｜刪除勾選的項目
 
-## PhoneContent.tsx / PhoneTabBar.tsx / PhoneSideTools.tsx / PhoneTripsDrawer.tsx(手機版導覽)
+## phone/Content.tsx / phone/Nav.tsx / PhoneSideTools.tsx / trip/phone/TripList.tsx(手機版導覽)
 
 `PhoneNavDrawer.tsx` 已整個移除（分享/成員/開啟時自動進入合併進
 `TripManageModal`）。規劃地圖現為唯一常駐主畫面，不再有可切換的分頁，
-底部常駐列（`PhoneTabBar.tsx`）只剩「旅程」／「對話」兩個項目，各自是
+底部常駐列（`phone/Nav.tsx`）只剩「旅程」／「對話」兩個項目，各自是
 獨立開關的疊加層，不是互斥分頁。
 
-- 底部常駐列「旅程」按鈕｜開啟/收合旅程列表抽屜（`PhoneTripsDrawer`）
+- 底部常駐列「旅程」按鈕｜開啟/收合旅程列表抽屜（`trip/phone/TripList.tsx`）
 - 底部常駐列「對話」按鈕｜開啟對話疊加層（`PhoneBottomSheet`，`chatSheetOpen`）
 - 右側工具列（`PhoneSideTools.tsx`）「路徑」圖示按鈕｜開啟配速表疊加層（`paceSheetOpen`）
 - 旅程列表抽屜「新增旅程」/既有旅程項目｜新增或切換旅程

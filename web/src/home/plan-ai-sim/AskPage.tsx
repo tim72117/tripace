@@ -38,7 +38,7 @@ import styles from './AskPage.module.css'
 // dataSource 用 PlanAiDataSource 介面(見該檔案的完整說明),不是直接
 // 收 ClientConfig 呼叫 fetchPlanAiPlaceDetailsAny——這個元件同時被
 // /app 正式頁(TripPlanPage.tsx,真後端,candidates 的 placeId 是真實
-// Google Place ID)跟 /ai-plan 展示頁(AIPlanTimelinePage.tsx,假資料,
+// Google Place ID)跟 /ai-plan 展示頁(home/plan-ai-sim/Content.tsx,假資料,
 // candidates 的 placeId 是 attractionPool.ts 自己的 id,見
 // planSimScript.ts 開頭說明)共用,若直接打需要登入的後端 API,對展示
 // 頁傳入的假 placeId 查詢必然失敗(查無資料,或命中真實後端但查不到
@@ -71,7 +71,7 @@ import styles from './AskPage.module.css'
 // 一般文字回覆(沒有呼叫 open_ask_page 工具,只是常規對話),不帶任何
 // 候選景點。這個形態原本是 HorizontalPlanTimeline.tsx 自己渲染的
 // agentBubbleRow(見該檔案被移除的那段完整說明),搬過來統一由這個
-// 元件負責——呼叫端(TripPlanPage.tsx/AIPlanTimelinePage.tsx 的
+// 元件負責——呼叫端(TripPlanPage.tsx/Content.tsx 的
 // onAssistantMessage)收到純文字回覆時改成呼叫 openAskPage({ text })
 // 讓畫面自動切到這裡,不再是「插入時間軸節點 + 軸線頁上方疊一個獨立
 // 氣泡」兩件事分開做。使用者關閉氣泡或畫面被新一輪 open_ask_page/
@@ -109,7 +109,7 @@ interface CandidateDetails {
 export interface AskPageProps {
   // dataSource——背景查詢候選完整資料需要的讀取層(見 planAiDataSource.ts
   // 的完整說明:真後端/假資料各自的實作),對齊
-  // attractionTools.ts/AIPlanTimelinePage.tsx 既有的注入慣例。探查模式
+  // attractionTools.ts/Content.tsx 既有的注入慣例。探查模式
   // 下還會用到 dataSource.searchNearby(見該方法的完整說明)。
   dataSource: PlanAiDataSource
   // input——AskPageInput(見 plan-core/askPageTools.ts 的完整說明),
@@ -122,14 +122,14 @@ export interface AskPageProps {
   onDone: (selected: AskPageSelection[]) => void
   // onBack——2026-10(第十輪)只有 CityPanel 在 input.city.back 有值時
   // 會用到(見 CityPanel 的完整說明:「返回上一層」按鈕),選填——
-  // AIPlanTimelinePage.tsx 的展示頁劇本不支援這個互動(劇本內容固定,
+  // home/plan-ai-sim/Content.tsx 的展示頁劇本不支援這個互動(劇本內容固定,
   // 沒有真正的國家/城市串接流程),不傳就不渲染這顆按鈕。跟 onDone 不
   // 同:onDone 結束整個詢問(resolve 掉等待中的工具呼叫),onBack 只是
   // 换另一個 input 重新開一個詢問頁,不結束任何東西——呼叫端
   // (TripPlanPage.tsx)收到後呼叫 openAskPage({ country: { countryIds }
   // }),不是 resolveAskPage。
   onBack?: (countryIds?: string[]) => void
-  // stacked——寬螢幕側欄(PlanOverlayPanelWide,見該元件的完整說明)改用
+  // stacked——寬螢幕側欄(PlanOverlayPanel 的 wide 分支,見該元件的完整說明)改用
   // 縱向堆疊的橫式列表,取代預設的橫向捲動小卡(使用者明確要求「所有的
   // 詢問項目都要換」,2026-10 新增)。往下傳給四個子面板(CandidatesPanel/
   // CountryPanel/CityPanel/TransportPanel),各自依這個值切換對應的

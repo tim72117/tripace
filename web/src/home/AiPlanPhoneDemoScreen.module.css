@@ -29,7 +29,7 @@
    直接讓卡片文字壓在上面不好讀,這層把對比拉回來。
    用 --ios-bg(跟 .screen 背景色同一個全域 token,base-ui.css 淺色/
    深色模式都有定義,見該檔案的完整說明)——先前誤用了一個只在
-   AIPlanTimelinePage.module.css 的 .page 自己定義、未對外提供的
+   home/plan-ai-sim/Content.module.css 的 .page 自己定義、未對外提供的
    --paper token(非全域 token),fallback 值固定是深色,導致明確要求
    「跟著系統偏好切換明暗」後,淺色模式下這層遮罩仍然是深色、對比度
    完全錯誤的 bug。 */

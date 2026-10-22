@@ -11,13 +11,13 @@
 //      onSearchResultsChange 對 sheetStack.replace 的接線。
 //   3. 候選籃選取候選項目——資訊卡正確顯示(同樣是 replace 語意)。
 //
-// mock 掉 ExploreMap(理由同其餘 PlanPhoneView.*.test.tsx——這批
+// mock 掉 PlanMap(理由同其餘 PlanPhoneView.*.test.tsx——這批
 // 測試不驗證地圖/查詢本身怎麼運作,只驗證 PlanPhoneView 這一層
 // 怎麼把查詢入口/選取入口接到 sheetStack 上),直接暴露這次重構動到的
 // 幾個 callback 讓測試手動觸發。GeoOutlinePanel.tsx 已退役(見
 // useGeoOutlineMapState.ts 的完整說明),原本的 setGeocodeCandidates +
 // onSearchResultsChange 兩步(分別是 GeoOutlinePanel 的 prop),現在
-// 合併成 ExploreMap 的 onGeocodeCandidatesChange 一步(呼叫它會連帶
+// 合併成 PlanMap 的 onGeocodeCandidatesChange 一步(呼叫它會連帶
 // 觸發 hook 內部的兩者,見 useGeoOutlineMapState.ts
 // handleGeocodeCandidatesChange 的完整說明)。
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -30,7 +30,7 @@ import type { User } from '../user/types'
 
 // PhoneBottomSheet 的 open 變 false 後不是立刻卸載,而是延遲
 // PHONE_BOTTOM_SHEET_EXIT_MS(見該檔案 exitDurationMs 的說明)才真正從
-// DOM 移除,播放退場滑出動畫——清單抽屜(PlanPhoneListDrawer)走的
+// DOM 移除,播放退場滑出動畫——清單抽屜(geo-planning/phone/ResultList)走的
 // 就是這套機制(資訊卡則是另一套:content/attraction 變 null 時同步
 // return null,不經過這個延遲,見 PlanPhoneInfoSheet.tsx)。這個
 // 檔案有幾個測試會讓清單從「顯示」變成「該關閉」(例如唯一解 replace 掉
@@ -68,8 +68,8 @@ let capturedOnGeocodeCandidatesChange: ((candidates: GeoGeocodeCandidate[]) => v
 let capturedOnAttractionSelect: ((a: GeoAttraction) => void) | undefined
 let capturedOnAttractionsChange: ((attractions: GeoAttraction[]) => void) | undefined
 
-vi.mock('./ExploreMap', () => ({
-  ExploreMap: (props: {
+vi.mock('./PlanMap', () => ({
+  PlanMap: (props: {
     onSearchStart?: () => void
     onGeocodeCandidatesChange?: (candidates: GeoGeocodeCandidate[]) => void
     onAttractionSelect?: (a: GeoAttraction) => void
@@ -80,15 +80,15 @@ vi.mock('./ExploreMap', () => ({
     capturedOnGeocodeCandidatesChange = props.onGeocodeCandidatesChange
     capturedOnAttractionSelect = props.onAttractionSelect
     capturedOnAttractionsChange = props.onAttractionsChange
-    // children(PlanPhoneInfoSheet)改掛入 ExploreMap 後(見
+    // children(PlanPhoneInfoSheet)改掛入 PlanMap 後(見
     // PlanPhoneView.tsx 的完整說明),這個 mock 必須真的渲染
     // children,否則資訊卡永遠不會出現在測試的 DOM 樹裡。
     return props.children ?? null
   },
 }))
 
-// PlanPhoneTripListDrawer(2026-10 改名,原檔名
-// GeoOutlinePhoneCandidateDrawer)也一併 mock——「候選籃選取候選後資訊卡
+// geo-planning/phone/CandidateList(2026-10 改名,原檔名
+// phone/CandidateList)也一併 mock——「候選籃選取候選後資訊卡
 // 正確顯示」這個場景真正要驗證的是 PlanPhoneView.tsx 怎麼接線
 // onSelect(呼叫 geo.selectCandidateFromBasket + sheetStack.replace),不是
 // 候選籃本身「怎麼把候選加進 geo.candidates」這件事——那條路徑(資訊卡
@@ -97,8 +97,8 @@ vi.mock('./ExploreMap', () => ({
 // (需要 mock 後端 API)。直接 mock 掉這個抽屜元件,暴露 onSelect 讓測試
 // 直接呼叫,對齊其餘測試 mock GeoOutlinePanel 的既有模式。
 let capturedTripListDrawerOnSelect: ((c: GeoCandidate) => void) | undefined
-vi.mock('./PlanPhoneTripListDrawer', () => ({
-  PlanPhoneTripListDrawer: (props: { onSelect: (c: GeoCandidate) => void }) => {
+vi.mock('./phone/CandidateList', () => ({
+  CandidateList: (props: { onSelect: (c: GeoCandidate) => void }) => {
     capturedTripListDrawerOnSelect = props.onSelect
     return null
   },
@@ -240,7 +240,7 @@ describe('PlanPhoneView：sheetStack 全面接管後新增的路徑', () => {
     // 一開始沒有任何 sheet——堆疊是空的。
     expect(sheetPanels(container)).toHaveLength(0)
 
-    // 模擬候選籃選取候選項目——PlanPhoneTripListDrawer 的 onSelect
+    // 模擬候選籃選取候選項目——geo-planning/phone/CandidateList 的 onSelect
     // 被呼叫,對應 PlanPhoneView.tsx 接線的
     // geo.selectCandidateFromBasket(c) + setTripListDrawerOpen(false) +
     // sheetStack.replace({type:'info'})。

@@ -34,7 +34,7 @@
    場合——原本是 base-ui.css 的 `.new-trip-composer .btn-primary` 父層
    選擇器覆寫(見該規則的說明),現在改成呼叫端明確傳 size="compact" 這個
    具名 variant,取代「靠 CSS 特異性、掛在哪個容器底下決定長相」的隱性
-   耦合。呼叫端(DesktopTripList.tsx/PhoneTripsDrawer.tsx)已經把按鈕包在
+   耦合。呼叫端(trip/desktop/TripList.tsx/trip/phone/TripList.tsx)已經把按鈕包在
    自己的 flex row 容器裡,不需要 width:100% 撐滿整列,故一併把 display/
    width 改成不撐滿的行內尺寸。 */
 .primary.compact {

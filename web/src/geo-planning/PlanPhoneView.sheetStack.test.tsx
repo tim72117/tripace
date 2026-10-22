@@ -4,17 +4,17 @@
 // 關閉資訊卡時清單會自動重新變回可互動的頂層,不需要使用者重新觸發
 // 搜尋才能再看到清單。
 //
-// mock 掉 ExploreMap(理由同 PlanPhoneView.listDrawer.test.tsx
+// mock 掉 PlanMap(理由同 PlanPhoneView.listDrawer.test.tsx
 // ——這個測試不驗證地圖/查詢本身,只驗證清單/資訊卡兩個 sheet 之間的
 // 堆疊互動),直接暴露 onSearchStart/onSearchResultSelect 讓測試手動
 // 觸發清單打開,並用一個假的 GeoSearchResult 觸發
 // selectSearchResultFromList 開啟資訊卡。GeoOutlinePanel.tsx 已退役
 // (見 useGeoOutlineMapState.ts 的完整說明),PlanPhoneView.tsx
-// 現在直接使用 ExploreMap,故改成 mock 這個模組;
+// 現在直接使用 PlanMap,故改成 mock 這個模組;
 // onSearchResultsChange/setGeocodeCandidates 這兩個原本由
 // GeoOutlinePanel 提供的 prop,現在是 useGeoOutlineMapState 內部消化,
 // 這裡改成直接呼叫 geo 的 setGeocodeCandidates(透過 PlanPhoneView
-// 傳給 hook 的同一個函式)搭配捕捉 ExploreMap 收到的 onSearchStart/
+// 傳給 hook 的同一個函式)搭配捕捉 PlanMap 收到的 onSearchStart/
 // onSearchResultSelect 來重現相同的測試情境。
 //
 // 兩個 sheet 共用同一個 data-testid="phone-bottom-sheet"(見
@@ -42,22 +42,22 @@ let capturedOnSearchStart: (() => void) | undefined
 let capturedOnGeocodeCandidatesChange: ((candidates: GeoGeocodeCandidate[]) => void) | undefined
 let capturedOnSearchResultSelect: ((r: GeoSearchResult) => void) | undefined
 
-// geo.searchResults(PlanPhoneListDrawer 的 results prop 來源)
+// geo.searchResults(geo-planning/phone/ResultList 的 results prop 來源)
 // 2026-08 起改成從 geo.geocodeCandidates 衍生(見 useGeoPlanningState.ts
 // 的說明)——GeoOutlinePanel.tsx 退役後(見 useGeoOutlineMapState.ts 的
 // 完整說明),setGeocodeCandidates 這個 setter 已經不再是任何元件的
 // prop,改成 useGeoOutlineMapState 內部的輸入參數,外部無法直接呼叫。
-// 改成捕捉 ExploreMap 收到的 onGeocodeCandidatesChange——呼叫它會連帶
+// 改成捕捉 PlanMap 收到的 onGeocodeCandidatesChange——呼叫它會連帶
 // 觸發 hook 內部的 setGeocodeCandidates,效果等價於先前直接呼叫
-// setGeocodeCandidates,且更貼近真實資料流(這正是 ExploreMap 內部類別
+// setGeocodeCandidates,且更貼近真實資料流(這正是 PlanMap 內部類別
 // 標籤/搜尋這個區域查詢完成時實際會呼叫的 callback)。
-// onSearchResultsChange 不再是 ExploreMap 的 prop(原本由
+// onSearchResultsChange 不再是 PlanMap 的 prop(原本由
 // GeoOutlinePanel 攔截轉呼叫,見該檔案已移除的說明)——不再需要捕捉它,
 // 清單開關狀態機改由下方直接呼叫 capturedOnGeocodeCandidatesChange 觸發
 // (該 callback 內部同時會呼叫 onSearchResultsChange,見
 // useGeoOutlineMapState.ts 的完整說明)。
-vi.mock('./ExploreMap', () => ({
-  ExploreMap: (props: {
+vi.mock('./PlanMap', () => ({
+  PlanMap: (props: {
     onSearchStart?: () => void
     onGeocodeCandidatesChange?: (candidates: GeoGeocodeCandidate[]) => void
     onSearchResultSelect?: (r: GeoSearchResult) => void
@@ -66,10 +66,10 @@ vi.mock('./ExploreMap', () => ({
     capturedOnSearchStart = props.onSearchStart
     capturedOnGeocodeCandidatesChange = props.onGeocodeCandidatesChange
     capturedOnSearchResultSelect = props.onSearchResultSelect
-    // children(PlanPhoneInfoSheet)改掛入 ExploreMap 後(見
+    // children(PlanPhoneInfoSheet)改掛入 PlanMap 後(見
     // PlanPhoneView.tsx 的完整說明),這個 mock 必須真的渲染
     // children,否則資訊卡永遠不會出現在測試的 DOM 樹裡——對齊
-    // DesktopLayout.tsx/InteractiveExploreMap.tsx 對應測試 mock ExploreMap/
+    // desktop/Content.tsx/InteractiveExploreMap.tsx 對應測試 mock PlanMap/
     // NativeMapBase 時的既有慣例。
     return props.children ?? null
   },
@@ -143,7 +143,7 @@ describe('PlanPhoneView：地點清單與資訊卡的 sheet 堆疊', () => {
     })
     expect(sheetPanels(container)).toHaveLength(1)
 
-    // 點清單項目——PlanPhoneListDrawer 的 onSelect 呼叫
+    // 點清單項目——geo-planning/phone/ResultList 的 onSelect 呼叫
     // geo.selectSearchResultFromList,底層走 onSearchResultSelect 這條
     // callback 觸發 geo.infoContent 賦值,連帶讓 PlanPhoneInfoSheet
     // open。

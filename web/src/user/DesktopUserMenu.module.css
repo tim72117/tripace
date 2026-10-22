@@ -2,12 +2,12 @@
    desktop-user- 前綴(例如 .menu 對應原本的 .desktop-user-menu,.trigger
    對應 .desktop-user-trigger)——import 時已經有明確的命名空間。
 
-   .expanded/.triggerExpanded:這個元件常駐掛載在 DesktopRail.tsx 的 rail
+   .expanded/.triggerExpanded:這個元件常駐掛載在 desktop/Nav.tsx 的 rail
    最下方,rail 收合(48px)/展開(180px)兩種寬度需要不同排版(收合只顯示
    頭像置中、展開顯示頭像+姓名靠左)。原本用 :global(.desktop-rail)/
    :global(.desktop-rail.expanded) 這兩個全域字串選擇器從 CSS 側偵測外層
-   容器寬度狀態,DesktopRail 元件化雜湊 class 後這組選擇器會失效——改成
-   DesktopRail 把 expanded state 直接當 prop 傳下來(見 DesktopUserMenu.tsx
+   容器寬度狀態,desktop/Nav 元件化雜湊 class 後這組選擇器會失效——改成
+   desktop/Nav 把 expanded state 直接當 prop 傳下來(見 DesktopUserMenu.tsx
    的 expanded prop),這裡只需要一個由 prop 驅動的本地 modifier class,
    不再依賴任何外部/全域 class 名稱。
 
@@ -29,7 +29,7 @@
 }
 
 /* trigger 基礎樣式——這個元件只會渲染在 48px 收合 rail 或 180px 展開 rail
-   底下(見 DesktopRail.tsx),沒有其他掛載情境,故 hover 高亮限縮成圓形、
+   底下(見 desktop/Nav.tsx),沒有其他掛載情境,故 hover 高亮限縮成圓形、
    只貼合頭像本身(justify-content: center/padding 9px 0)、背景色移到
    .avatar 本身這組「rail 底下的排版」直接當基礎樣式寫,不需要再區分
    「trigger 本身」與「trigger 在 rail 底下」兩層——原本 width:100% 的

@@ -14,7 +14,7 @@ import { loadTimelineWithRev, readRev, saveTimeline } from './planTimelineStorag
 // 持久化。刻意不碰任何 API、不吃 ClientConfig。
 //
 // 2026-10 抽出來的背景:/ai-plan 的模擬時間軸(home/plan-ai-sim/
-// AIPlanTimelinePage.tsx)與 /app 的正式 AI 規劃(trip-plan/TripPlanPage.tsx)
+// home/plan-ai-sim/Content.tsx)與 /app 的正式 AI 規劃(trip-plan/TripPlanPage.tsx)
 // 各自寫了一份 insertAttractionAfter/setNoteForStop,結構幾乎逐行相同
 // (同樣的 insertAfter → 檢查 ok → staleOtherAgentMessages 流程),差別
 // 只在「插入後要做什麼背景查詢」注入的函式不同:正式版打真 API、模擬版
@@ -37,9 +37,9 @@ import { loadTimelineWithRev, readRev, saveTimeline } from './planTimelineStorag
 //     REMOVE_FADE_MS),那是視覺時序而非資料語意,各層自己決定。
 
 // TODO(交接):這支 hook 已經抽出來並有測試覆蓋,但 TripPlanPage 與
-// AIPlanTimelinePage 都還沒改用它——兩邊仍是各自的 insertAttractionAfter/
+// plan-ai-sim/Content 都還沒改用它——兩邊仍是各自的 insertAttractionAfter/
 // setNoteForStop 實作。那是純重構(行為不變),可以獨立進行、獨立驗證:
-//   1. 先改 AIPlanTimelinePage(較單純:不持久化、onStopInserted 注入
+//   1. 先改 plan-ai-sim/Content(較單純:不持久化、onStopInserted 注入
 //      planAiFakeDataSource),跑 /ai-plan 確認腳本播放正常。
 //   2. 再改 TripPlanPage(要處理 persist: true、真 API、以及它自己那套
 //      removeStep 淡出動畫與 dragStopTime——後兩者刻意沒進這支 hook,

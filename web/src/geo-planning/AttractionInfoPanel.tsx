@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import type { ClientConfig, GeoAttraction, GeoPlaceDetails } from '../api'
+import type { GeoAttraction, GeoPlaceDetails } from '../api'
 import { attractionBadges } from './geoInfoContent'
-import { fetchPlaceDetailsCached, getCachedPlaceDetails } from './placeDetailsCache'
+import { fetchPlaceDetailsCachedVia, getCachedPlaceDetails } from './placeDetailsCache'
+import { requireGeoPlaceDetails, type PlanAiDataSource } from '../home/plan-ai-sim/planAiDataSource'
 import {
   curatedCategoryOf,
   CURATED_CATEGORY_ICONS,
@@ -19,7 +20,7 @@ import styles from './AttractionInfoPanel.module.css'
 // 專用的介紹圖卡,獨立於 PlacePanel(飯店/推薦地點/Google 原生 POI 共用
 // 的那個)之外——理由是這兩者的操作集合已經完全不同:PlacePanel 的
 // 「加入候選/加入行程」按鈕組是給還沒被選進行程規劃的地點用的,而
-// attraction 本身不接受被加入候選籃或行程(見 DesktopLayout.tsx
+// attraction 本身不接受被加入候選籃或行程(見 desktop/Content.tsx
 // attractionInfoContent 不帶 candidate 欄位的說明)。與其在同一個元件裡
 // 用 candidate 是否存在去判斷該渲染哪一組按鈕,拆成獨立元件讓兩邊各自的
 // 操作集合單純、不互相污染,之後任一邊要新增/調整專屬按鈕也不需要擔心
@@ -27,7 +28,7 @@ import styles from './AttractionInfoPanel.module.css'
 //
 // 2026-08:移除「探索周邊」按鈕(原本縮放地圖到這個景點區域的完整範圍,
 // 對應的 handleExploreAttraction/placesQueryRadiusMeters 已一併從
-// DesktopLayout.tsx/geoAttractionClick.ts 移除)——使用者要求拿掉,散策
+// desktop/Content.tsx 與 geoAttractionClick.ts(已刪)移除)——使用者要求拿掉,散策
 // 羅盤的「附近景點」清單(見下方 nearby)已經是目前主要的延伸探索入口,
 // 不需要另一顆會改變地圖視角的按鈕並存。
 //
@@ -40,62 +41,47 @@ import styles from './AttractionInfoPanel.module.css'
 // 預覽),不需要先拆解共用外框的職責邊界。
 export function AttractionInfoPanel({
   attraction,
-  cfg,
+  dataSource,
   onClose,
   shiftBy,
   nearby,
   onSelectNearby,
   onHoverNearby,
-  usePublicPlaceDetails,
   onCategoryFilterChange,
   nearbyOnly,
 }: {
   attraction: GeoAttraction | null
-  // cfg:attraction.placeId 有值時,用來呼叫 fetchGeoPlaceDetails 補查
-  // 「地點照片漸進補圖機制」的雙來源照片(見下方 placeDetails effect 的
-  // 完整說明)——沒有 placeId 的 attraction(舊資料,尚未補上 place_id)
-  // 不會用到這個 prop,但型別上仍列為必填,理由同 PlacePanel 系列元件
-  // 一貫要求呼叫端傳入 cfg 的既有慣例,不做成 optional 讓「忘記傳」這種
-  // 情況能在編譯期被抓到,而不是等到執行期才發現查詢悄悄被跳過。
-  cfg: ClientConfig
+  // dataSource:資料存取層實例,attraction.placeId 有值時用它的 geoPlaceDetails 補查「地點照片漸進補圖機制」的
+  // 雙來源照片(見下方 placeDetails effect 的完整說明)。端點由實例決定:登入版打 /internal、公開展示頁
+  // (InteractiveExploreMap)傳訪客版打免登入的 /public——這個元件不自己依 cfg.token 猜測,也不再有
+  // usePublicPlaceDetails 旗標(2026-10 收進資料存取層)。
+  dataSource: PlanAiDataSource
   onClose: () => void
   // shiftBy:理由同 PlacePanel.tsx 的同名 prop——右緣可能同時有
-  // GeoHotelSidebar 與對話浮動小匡,由呼叫端判斷目前實際被哪個佔用後
+  // geo-planning/desktop/ResultList 與對話浮動小匡,由呼叫端判斷目前實際被哪個佔用後
   // 傳入對應值,把卡片推到它左側。
   shiftBy?: 'none' | 'hotel' | 'chat'
   // nearby:散策羅盤「附近景點」清單——目前地圖可視範圍內離這個錨點最近
-  // 的候選景點,依距離由近到遠排序,由呼叫端(DesktopLayout.tsx)算好
+  // 的候選景點,依距離由近到遠排序,由呼叫端(desktop/Content.tsx)算好
   // 傳入(見該處 nearbyAttractions 的說明),這個元件不自己查詢/排序。
   // undefined 或空陣列時不顯示這個區塊——理由同 badges.length > 0 的既有
   // 判斷,沒有內容時不留一個空標題。
   nearby?: { attraction: GeoAttraction; minutes: number }[]
-  // onSelectNearby:點擊清單項目觸發——呼叫端(DesktopLayout.tsx)開啟
+  // onSelectNearby:點擊清單項目觸發——呼叫端(desktop/Content.tsx)開啟
   // 這個精選點自己的「地點」卡片(PlacePanel,見 openedNearbyAttraction
   // 的完整說明),疊在這張主題卡左側,不是切換掉它。
   onSelectNearby?: (attraction: GeoAttraction) => void
   // onHoverNearby:滑鼠移入/移出清單項目時觸發(移出傳 null)——地圖上
   // 對應的精選點圓點會暫時升級成完整照片呈現(見
-  // useAttractionOverlays.ts 的 hoveredCuratedId/setHovered 完整說明),
+  // attractionGlowLayer.ts 的 hoveredCuratedId/setHovered 完整說明),
   // 讓使用者不用點擊就能先看一眼「這是哪裡」,滑開後地圖自動收回圓點。
   // 跟 onSelectNearby(點擊,開啟地點卡)是兩個獨立的互動:hover 是
   // 「順便看一眼」,click 才是「我要進一步看這個」的明確意圖。
   onHoverNearby?: (attraction: GeoAttraction | null) => void
-  // usePublicPlaceDetails:true 時改打 fetchPublicGeoPlaceDetails(免登入
-  // 版,見該函式與後端 handlePublicGeoPlaceDetails/
-  // publicPlaceDetailsAllowlist 的完整說明)而非 fetchGeoPlaceDetails——
-  // 供沒有真正登入態的公開展示頁使用(見
-  // web/src/home/InteractiveExploreMap.tsx 的完整說明),讓固定示範資料也能
-  // 顯示 Google/Pexels 雙來源照片輪播,不會像一般的 fetchGeoPlaceDetails
-  // 那樣打 /internal/* 必定被 internalAuth 拒絕。由呼叫端明確指定要用
-  // 哪支端點,這個元件不自己依 cfg.token 是否為 null 猜測——避免把
-  // 「訪客」跟「公開展示頁」這兩個目前恰好重疊、但概念上不同的情境
-  // 混為一談(訪客也可能出現在其他將來會走一般端點的情境)。預設 false
-  // (或不傳),維持原本走 fetchGeoPlaceDetails 的行為。
-  usePublicPlaceDetails?: boolean
   // onCategoryFilterChange:「附近景點」分類篩選變動時觸發(含清單本身
-  // 因切換 attraction 被重置回 null)——讓呼叫端(DesktopLayout.tsx/
+  // 因切換 attraction 被重置回 null)——讓呼叫端(desktop/Content.tsx/
   // InteractiveExploreMap.tsx)能把地圖上精選點圓點的顯示範圍(見
-  // useAttractionOverlays.ts 的 revealedAttractionNames)同步套用同一個
+  // attractionGlowLayer.ts 的 revealedAttractionNames)同步套用同一個
   // 篩選條件,使用者選「甜點/茶屋」時,地圖上應該只看得到甜點/茶屋類的
   // 圓點,跟清單篩選結果一致,不是清單篩了、地圖卻仍顯示全部精選點。
   onCategoryFilterChange?: (category: CuratedCategory | null) => void
@@ -111,13 +97,13 @@ export function AttractionInfoPanel({
   // null)——卡片裡只剩一個「附近景點」標題卻沒有任何項目沒有意義,理由
   // 同下方 nearby.length > 0 的既有判斷。另外精簡模式用不到照片,跳過
   // placeDetails 查詢,不白打一次 place-details 端點。預設 false(或不傳)
-  // 維持完整卡片,其餘呼叫端(DesktopLayout.tsx/正式城市頁)完全不受影響。
+  // 維持完整卡片,其餘呼叫端(desktop/Content.tsx/正式城市頁)完全不受影響。
   nearbyOnly?: boolean
 }) {
   // placeDetails:attraction.placeId 有值時,查一次「地點照片」的雙來源
   // 照片(Google/Pexels,見 handleGeoPlaceDetails 的完整說明)——不重新
-  // 發明呼叫邏輯,透過 placeDetailsCache.ts 的 fetchPlaceDetailsCached
-  // 走同一支底層端點(fetchGeoPlaceDetails/fetchPublicGeoPlaceDetails),
+  // 發明呼叫邏輯,透過 placeDetailsCache.ts 的 fetchPlaceDetailsCachedVia
+  // 搭配資料存取層實例(requireGeoPlaceDetails)走同一支底層端點,
   // 取回的 googlePhotoUrls/pexelsPhotoUrls 交給 PhotoCarousel 顯示。
   //
   // 2026-10 改用 fetchPlaceDetailsCached 取代直接呼叫
@@ -162,7 +148,7 @@ export function AttractionInfoPanel({
     // 的說明)。
     if (!placeId || nearbyOnly) return
     let cancelled = false
-    fetchPlaceDetailsCached(cfg, placeId, usePublicPlaceDetails ?? false)
+    fetchPlaceDetailsCachedVia((id) => requireGeoPlaceDetails(dataSource, id), placeId)
       .then((details) => {
         if (!cancelled) setPlaceDetails(details)
       })
@@ -177,7 +163,7 @@ export function AttractionInfoPanel({
     return () => {
       cancelled = true
     }
-  }, [cfg, placeId, usePublicPlaceDetails, nearbyOnly])
+  }, [dataSource, placeId, nearbyOnly])
 
   // activeCategoryFilter:「附近景點」清單上方分類下拉選單目前選中的
   // 分類——null 代表不篩選(顯示全部)。attraction 切換(nearby 清單整批

@@ -279,7 +279,7 @@
    AttractionInfoPanel.tsx 該處呼叫端的說明:圖示保留原本「快速掃視時的
    辨識線索」用途,小圓點額外提供跟地圖上同分類圓點一致的顏色線索,兩者
    分工。顏色靠 :global(.geo-attraction-curated-dot-*)(見
-   ExploreMap.module.css 的既有定義)生效,這裡只定義圓點本身的形狀/
+   PlanMap.module.css 的既有定義)生效,這裡只定義圓點本身的形狀/
    尺寸——不重複定義一次顏色規則,直接沿用地圖圓點那組 class,兩處顏色
    永遠保持同步。 */
 .nearbyCategoryDot {

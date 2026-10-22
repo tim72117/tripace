@@ -3,15 +3,15 @@
    .closeBtn/.body/.shiftedHotel/.shiftedChat(見這兩個檔案改動前的開頭
    說明:「兩份卡片外觀相同是巧合不是共用,各自獨立維護」)——這個假設
    在這次「level 4/5 地標地點卡要並存疊在主題卡左側」的需求裡不再成立:
-   兩張卡片的定位規則需要保持精確同步(見 DesktopLayout.tsx
+   兩張卡片的定位規則需要保持精確同步(見 desktop/Content.tsx
    attractionPanelRightPx/nearbyInfoPanelRightPx 的說明),逐字複製一份
    容易在其中一邊修改時忘記同步另一邊。抽成這個共用外框後,定位/避讓/
    關閉鍵/捲動容器只有一份實作,兩張卡片各自的內容(照片/名稱/簡介/
    按鈕組)透過 children 傳入,不受影響。 */
 .panel {
   position: absolute;
-  /* top 用 CSS 變數(預設 64px)——正式 App(DesktopLayout.tsx 掛的
-     ExploreMap.tsx)地圖上方有城市搜尋框/類別標籤列這排固定 UI,
+  /* top 用 CSS 變數(預設 64px)——正式 App(desktop/Content.tsx 掛的
+     PlanMap.tsx)地圖上方有城市搜尋框/類別標籤列這排固定 UI,
      卡片頂部需要留這段距離避免重疊;NativeMapBase.tsx 這條「最小
      原生地圖」路線(InteractiveExploreMap.tsx/JiufenPage.tsx 用)沒有這排
      UI,卡片跟地圖邊框的間距不需要跟著留這麼多(2026-09 實測回報

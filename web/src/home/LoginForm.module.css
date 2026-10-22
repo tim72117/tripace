@@ -1,7 +1,7 @@
 /* LoginFormField:蓋掉 components/FormField.module.css 的 .field 規則
    ——那組規則用 var(--ios-card)/var(--color-dark),會跟著 App 登入後的
    深色模式 token 變化,但 LoginForm 是登入前的畫面(渲染在
-   App.tsx 的 .app-theme-root 底下,見 PhoneContent.tsx 的 isGuest 分支)
+   App.tsx 的 .app-theme-root 底下,見 phone/Content.tsx 的 isGuest 分支)
    ,理應維持固定淺色、不受深色模式影響(對齊 HomePage.css/ProductPage.css
    這類公開頁面各自獨立的視覺語言,不隨登入後 App 的偏好切換)。
 

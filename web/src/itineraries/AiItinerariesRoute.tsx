@@ -76,7 +76,7 @@ function useListItineraries(): SampleItinerary[] {
 // 同樣只改外顯文字,不動元件/目錄命名。
 //
 // 這是公開的展示頁(跟 /ai-plan 展示頁同性質),不需要登入;外殼的做法對齊
-// home/plan-ai-sim/AIPlanTimelinePage.tsx:自己掛 app-theme-root + data-theme、
+// home/plan-ai-sim/Content.tsx:自己掛 app-theme-root + data-theme、
 // 用 useThemeToggle 的暫時日夜切換(不寫 localStorage)、頂部用首頁同一組
 // 浮動導覽按鈕(SiteNavButtons)。
 //

@@ -191,7 +191,7 @@ export function TimelineDemo({ dark }: { dark: boolean }) {
 
           {/* 時間軸卡——全新 UI(地圖上沒有這個東西,見上方檔頭說明),用
               直式時段列表模擬正式產品 MultiTrackTimeline 的「每天時段排
-              景點」概念(見 DesktopLayout.tsx 的 MultiTrackTimeline 掛載
+              景點」概念(見 desktop/Content.tsx 的 MultiTrackTimeline 掛載
               處),但大幅簡化成純展示用的靜態時段條,不是真的時間刻度尺
               或可拖曳元件。2026-09:使用者要求「時間軸放在地圖中」——
               改成 position: absolute 疊在 .demoMapWrap 右下角的半透明

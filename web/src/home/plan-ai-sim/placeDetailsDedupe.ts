@@ -25,7 +25,7 @@
 // 上限 100 筆:一次行程候選通常 < 30 筆,100 足夠;超過時淘汰最舊的。
 //
 // 共用範圍:AskPage 與時間軸不一定拿到同一個資料來源實例(例如展示頁的
-// AIPlanTimelinePage 自己 new 一個 askPageDataSource,LivePlanLayer 另外
+// plan-ai-sim/Content 自己 new 一個 askPageDataSource,LivePlanLayer 另外
 // new 一個給時間軸),所以記憶體不放在工廠閉包裡,而是依 scopeKey
 // (模組層級登錄表)共用——同一個後端 + 同一個身分(token)就共用同一份。
 
@@ -40,11 +40,20 @@ export const PLACE_DETAILS_MAX_ENTRIES = 100
 export interface PlaceDetailsDedupeOptions {
   ttlMs?: number
   maxEntries?: number
+  // shouldRemember:成功結果要不要記憶,預設規則是第 4、5 點(found === false、photoRefreshPending 不記)。
+  // 地圖光暈與詳情卡共用的快取(geo-planning/placeDetailsCache.ts)用「一律記憶、不過期」的設定,兩邊是同一套機制、不同政策。
+  shouldRemember?: (value: unknown) => boolean
+}
+
+const defaultShouldRemember = (value: unknown) => {
+  const v = value as PlaceDetailsLike
+  return v.found !== false && v.photoRefreshPending !== true
 }
 
 export class PlaceDetailsDedupe {
   private readonly ttlMs: number
   private readonly maxEntries: number
+  private readonly shouldRemember: (value: unknown) => boolean
   private readonly done = new Map<string, { value: unknown; expiresAt: number }>()
   private readonly inflight = new Map<string, Promise<unknown>>()
   // generation:clear() 時遞增,讓 clear 之前就發出的請求完成後不會寫回記憶。
@@ -53,6 +62,21 @@ export class PlaceDetailsDedupe {
   constructor(opts: PlaceDetailsDedupeOptions = {}) {
     this.ttlMs = opts.ttlMs ?? PLACE_DETAILS_TTL_MS
     this.maxEntries = opts.maxEntries ?? PLACE_DETAILS_MAX_ENTRIES
+    this.shouldRemember = opts.shouldRemember ?? defaultShouldRemember
+  }
+
+  // peek:同步讀已記憶且未過期的結果(不發請求),沒有回 undefined。
+  peek<T>(placeId: string): T | undefined {
+    const hit = this.done.get(placeId)
+    if (!hit) return undefined
+    if (hit.expiresAt > Date.now()) return hit.value as T
+    this.done.delete(placeId)
+    return undefined
+  }
+
+  // replace:只在已記憶時覆寫(例如照片重試查到新結果寫回);沒記憶過就不動,避免把沒查過的資料塞進來。
+  replace(placeId: string, value: unknown) {
+    if (this.done.has(placeId)) this.remember(placeId, value)
   }
 
   get<T extends PlaceDetailsLike>(placeId: string, fetcher: () => Promise<T>): Promise<T> {
@@ -68,7 +92,7 @@ export class PlaceDetailsDedupe {
     const p = fetcher().then(
       (value) => {
         if (this.inflight.get(placeId) === p) this.inflight.delete(placeId)
-        if (gen === this.generation && value.found !== false && value.photoRefreshPending !== true) {
+        if (gen === this.generation && this.shouldRemember(value)) {
           this.remember(placeId, value)
         }
         return value

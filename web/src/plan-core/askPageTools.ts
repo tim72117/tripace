@@ -271,7 +271,7 @@ export interface AskPageCtx {
 }
 
 // AskPageInput——AskPage.tsx 的 input prop 型別,TripPlanPage.tsx/
-// AIPlanTimelinePage.tsx 呼叫 useAskPageBridge<AskPageInput> 時共用
+// home/plan-ai-sim/Content.tsx 呼叫 useAskPageBridge<AskPageInput> 時共用
 // 同一份定義,不是各自重複宣告這個聯集(先前只有 candidates/explore/text
 // 三種時兩邊各自宣告一份還可接受,新增 region/transport 兩種後繼續各自
 // 重複宣告容易漏改其中一處)。六種成員對應 AskPage.tsx 內部元件

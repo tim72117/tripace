@@ -23,7 +23,7 @@ const ZOOM_OUT_ENABLED = false
 // 層,時間軸要共用相同的,只有資料層不一樣」。這裡新增的進階互動 props
 // (onRemoveStop/onTransitModeChange)全部選填,型別直接對齊
 // plan-core/PlanTimelineView.tsx 同名 prop 的用法,理由同該檔案對應
-// prop 的既有說明:模擬層(AIPlanTimelinePage.tsx 的 handedOver === false
+// prop 的既有說明:模擬層(home/plan-ai-sim/Content.tsx 的 handedOver === false
 // 分支)完全不傳這些 prop,外觀與行為不變;只有 TripPlanPage.tsx 的
 // horizontalTimeline 分支會傳入真正接上 removeStep/
 // refreshTransitForStop 的實作。
@@ -50,7 +50,7 @@ const ZOOM_OUT_ENABLED = false
 //
 // 只負責模擬層(handedOver === false)的手機版畫面——桌面版與交接後的
 // 真實層(LivePlanLayer)完全不受影響,繼續走 PlanTimelineView,見
-// AIPlanTimelinePage.tsx 呼叫處的完整說明。
+// home/plan-ai-sim/Content.tsx 呼叫處的完整說明。
 //
 // 只畫 stop 節點:跟縱向 PlanTimelineView 不同,這個元件刻意不處理
 // section(Day 分隔)/message(對話訊息)這些節點類型本身的卡片——方案二
@@ -61,13 +61,13 @@ const ZOOM_OUT_ENABLED = false
 // 一個橫向卡位。
 
 export interface HorizontalPlanTimelineProps {
-  // steps——跟 AIPlanTimelinePage.tsx 的 PlanStep[]（toRenderList 產出的
+  // steps——跟 home/plan-ai-sim/Content.tsx 的 PlanStep[]（toRenderList 產出的
   // 扁平陣列）同一份資料,未經過濾/排序，這個元件自己只挑出 type ===
   // 'stop' 的節點處理，其餘類型直接忽略（見上方檔頭說明）。
   steps: PlanNode[]
   selectedStopId: string | null
   // onSelectStop——點卡片/時間尺、或橫向捲動偵測到新的置中卡片時觸發。
-  // 取代縱向版本 onPanToStop/onHoverStop 的角色：呼叫端(AIPlanTimelinePage.tsx)
+  // 取代縱向版本 onPanToStop/onHoverStop 的角色：呼叫端(home/plan-ai-sim/Content.tsx)
   // 接到這個回調後要同時更新 selectedStopId 跟 hoverStopId（兩者都指向
   // 同一顆地圖圓點），確保 usePlanStopMarkers 的地圖連動行為跟改動前一致
   // ——這裡不自己分「選取」跟「hover」兩種語意，手機版橫向卡片列本來就
@@ -76,7 +76,7 @@ export interface HorizontalPlanTimelineProps {
   // onSelectThemeChild——2026-10 新增(使用者明確要求「主題點」概念:
   // 「點下點的時候在地圖上出現小圓點」)。點擊主題卡(node.children 有
   // 內容時,見該欄位的完整說明)底下某個子景點 chip 時觸發,帶上主題
-  // 節點 id 與被點的子景點資料,讓呼叫端(AIPlanTimelinePage.tsx)決定
+  // 節點 id 與被點的子景點資料,讓呼叫端(home/plan-ai-sim/Content.tsx)決定
   // 要不要在地圖上額外顯示這個子景點的小圓點(見該頁 expandedThemeId
   // 的完整說明)。選填——不傳時子景點 chip 仍會渲染,只是點擊沒有任何
   // 效果(對齊其餘選填互動 prop 的既有模式,例如 onRemoveStop)。
@@ -84,12 +84,12 @@ export interface HorizontalPlanTimelineProps {
   // onOpenPhotos——點擊卡片照片時開啟全螢幕 Lightbox 放大瀏覽,對齊
   // 縱向版 PlanTimelineView 同名 prop 的既有用法(見該元件呼叫處
   // stopThumbPhotoBtn 的完整說明)——這裡不自己管理 Lightbox 的開關
-  // 狀態,外層 AIPlanTimelinePage.tsx 已經有現成的 lightboxPhotos
+  // 狀態,外層 home/plan-ai-sim/Content.tsx 已經有現成的 lightboxPhotos
   // state/setLightboxPhotos,兩個時間軸元件共用同一個 Lightbox 覆蓋層。
   onOpenPhotos: (photos: { photos: string[]; alt: string }) => void
   // onHeightChange——這個元件自己(.wrap,含時間尺+卡片列+底部留白)的
   // 實際渲染高度,每次真的改變就回報一次(例如照片陸續載入進來讓卡片
-  // 變高)。供外層 AIPlanTimelinePage.tsx 用來計算地圖視覺中心該往上
+  // 變高)。供外層 home/plan-ai-sim/Content.tsx 用來計算地圖視覺中心該往上
   // 偏移多少(使用者明確要求「讓地圖中心在上半部分的中心」——扣掉這塊
   // 高度之後,剩餘可視區域的正中心),不是這個元件自己需要知道的資訊,
   // 純粹上報用。 */
@@ -104,7 +104,7 @@ export interface HorizontalPlanTimelineProps {
   // onPanToStop——選填:卡片左下角顯示一顆「移動到此」按鈕,點擊時呼叫
   // 並傳入這個節點的 id。2026-10 新增(使用者明確要求「選擇圖卡時不要
   // 移動地圖中心,標誌地點就好,另外做一個 icon,移動到該點」)——取代
-  // 原本「選中卡片就自動 panTo」的做法(見 AIPlanTimelinePage.tsx
+  // 原本「選中卡片就自動 panTo」的做法(見 home/plan-ai-sim/Content.tsx
   // panToStopId 的完整說明:選取跟移動地圖視角拆成兩個分開的動作)。
   // 省略時不會渲染這顆按鈕,對齊 onRemoveStop 的既有選填慣例——桌面版
   // PlanTimelineView.tsx 不受影響(這個元件本來就只給手機版用)。
@@ -178,7 +178,7 @@ export interface HorizontalPlanTimelineProps {
   // 工具分開,並做自動串接」)原樣轉傳給 AskPage 的 onBack prop(見該
   // 元件 CityPanel 的完整說明:「返回上一層」按鈕)。選填,理由同
   // onAskPageDone——不是每個呼叫端都需要這個功能(例如
-  // AIPlanTimelinePage.tsx 的展示頁劇本不支援真正的國家/城市串接)。
+  // home/plan-ai-sim/Content.tsx 的展示頁劇本不支援真正的國家/城市串接)。
   onAskPageBack?: (countryIds?: string[]) => void
   // dataSource/askPageInput——showAskPage 為 true 時傳給 AskPage 顯示
   // 候選景點卡片所需的兩樣東西(見 AskPage.tsx AskPageProps 的完整
@@ -204,7 +204,7 @@ export interface HorizontalPlanTimelineProps {
   //
   // 這個元件有三個呼叫端,對詢問頁的需求不同:
   //   TripPlanPage(/app 推論態)——真實互動,用正式的 AskPage。
-  //   AIPlanTimelinePage(播放態)——自動演示,置換成 ScriptedAskPage
+  //   plan-ai-sim/Content(播放態)——自動演示,置換成 ScriptedAskPage
   //     (劇本指定選哪幾張、演出點擊特效、時間到自己送出)。
   //   AiPlanPhoneDemoScreen(小展示)——目前不顯示詢問頁。
   // 省略時用正式的 AskPage(非受控預設),對齊這個元件 showAskPage/
@@ -524,7 +524,7 @@ export function HorizontalPlanTimeline({
   // 大片空白,滿版才符合「這是畫面上唯一內容」的直覺。
   // 2026-10(第二輪,使用者明確要求「安排中時就加入一張卡片,只是這張
   // 卡片沒有資料時就呈現骨架卡」):骨架卡現在就是 stops 陣列裡的一筆
-  // 真實節點(loading:true、沒有資料,見 AIPlanTimelinePage.tsx
+  // 真實節點(loading:true、沒有資料,見 home/plan-ai-sim/Content.tsx
   // ws.onmessage thinking 分支的完整說明),不再是額外獨立渲染的一塊,
   // 不需要再加上 isGenerating 的 +1 補償——stops.length 本身已經涵蓋
   // 骨架卡。
@@ -714,7 +714,7 @@ export function HorizontalPlanTimeline({
   // lastStopIdRef——2026-10 修正「骨架卡轉成地點時沒有拉到中間,要等
   // 下一輪才生效」:原本這個 effect 判斷「該不該捲」(isGenerating 剛
   // 轉 false)跟「該捲去哪」(讀 selectedStopId)分別來自兩個不同步的
-  // 來源——selectedStopId 是由上層(AIPlanTimelinePage)另一個 effect
+  // 來源——selectedStopId 是由上層(plan-ai-sim/Content)另一個 effect
   // 在偵測到新站點後才非同步呼叫 setSelectedStopId 更新,這個更新發生
   // 在「下一次」渲染,不是跟 isGenerating 轉 false 同一個 commit。這個
   // effect 執行當下讀到的 selectedStopId prop 因此還是上一張卡的舊值,
@@ -746,7 +746,7 @@ export function HorizontalPlanTimeline({
     // 使用者仍在主動回看先前的站點,自動捲動應該持續讓位,不要把使用者
     // 正在看的畫面搶走——直到使用者自己捲回/點回最新卡片(此時
     // selectedStopId 自然等於 lastStopId),或整段劇本重新開始(見
-    // AIPlanTimelinePage.tsx reset 分支,時間軸清空後 stops 歸零,
+    // home/plan-ai-sim/Content.tsx reset 分支,時間軸清空後 stops 歸零,
     // lastStopId 變成 null,這個判斷自然不再適用)才恢復自動捲動。
     if (selectedStopId !== lastStopId) return
     const isEdgeCard = true
@@ -1675,7 +1675,7 @@ export function HorizontalPlanTimeline({
               卡片沒有資料時就呈現骨架卡」:骨架卡不再是這裡額外獨立
               渲染的一塊(原本的 generatingTip 區塊,靠 isGenerating 旗標
               判斷要不要補一張寫死骨架樣式的卡片)——現在骨架卡就是
-              stops 陣列裡的一筆真實節點(AIPlanTimelinePage.tsx
+              stops 陣列裡的一筆真實節點(home/plan-ai-sim/Content.tsx
               ws.onmessage 在 thinking 階段插入的 loading:true 空白
               佔位節點,見該處的完整說明),上方 .map(segments...) 迴圈
               本身已經處理了它(node.loading 時全部欄位換成 shimmer

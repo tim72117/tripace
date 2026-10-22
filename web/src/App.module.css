@@ -1,7 +1,7 @@
 /* App.tsx 專屬樣式(CSS Modules)。命名省略前綴(.webApp 對應原本的
    .web-app)——import 時已經有明確的命名空間,不需要重複加前綴。 */
 
-/* 手機版(< 768px):單頁全螢幕切換(見 PhoneContent),寬度撐滿視窗——不再
+/* 手機版(< 768px):單頁全螢幕切換(見 phone/Content),寬度撐滿視窗——不再
    模擬一個居中的手機外框(原本 max-width: 480px + margin: 0 auto),改成
    真正滿版視窗寬,跟桌面版(下方 media query)用同一種「撐滿視窗」邏輯,
    高度統一用 100dvh(行動瀏覽器網址列高度變化時的可視高度)。桌面斷點
@@ -16,7 +16,7 @@
   flex-direction: column;
   height: 100dvh;
   background: var(--ios-bg);
-  /* 手機版導覽抽屜欄(PhoneNavDrawer)/設定面板(PhoneContent.tsx 的
+  /* 手機版導覽抽屜欄(PhoneNavDrawer)/設定面板(phone/Content.tsx 的
      .settingsPanel)都是用 position: absolute + transform 位移到畫面外
      來做「收合」狀態,而不是條件卸載(理由見各自檔案的說明:唯有元件全程
      留在 DOM 上,CSS transition 才能播放開關動畫)。沒有這行 overflow:
@@ -45,11 +45,11 @@
      就是既有的實際狀況:垂直捲動一律由各元件自己的捲動容器負責(例如
      PhoneBottomSheet.tsx 的 .bodyScrollable,只在需要捲動的那個內層
      元素上局部切換成 auto + pan-y,範圍小、可控),水平滑動手勢
-     (PhoneNavDrawer 側邊抽屜、PhoneContent.tsx 的 onMainTouchStart 等)
+     (原本的 PhoneNavDrawer 側邊抽屜等)
      本來就是元件自己監聽 touchstart/touchmove 用 JS 判斷座標實作,從不
      依賴瀏覽器原生 touch-action 才能運作,.webApp 這層本身沒有自己的
      overflow 捲動需求,不需要放行任何原生手勢。子層(例如
-     ExploreMap.module.css 的地圖容器)有自己的 touch-action 宣告時,
+     PlanMap.module.css 的地圖容器)有自己的 touch-action 宣告時,
      CSS 層疊規則下子層設定優先於父層,不會被這裡覆蓋掉,地圖原本的
      縮放/平移手勢不受影響。 */
   touch-action: none;

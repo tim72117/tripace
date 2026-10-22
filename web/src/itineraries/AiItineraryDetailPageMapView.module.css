@@ -1,5 +1,5 @@
 /* AiItineraryDetailPageMapView 專屬樣式——地圖全幅背景 + 側欄式時間軸,
-   版面語言比照 home/plan-ai-sim/AIPlanTimelinePage.tsx 桌面版的「左地圖/
+   版面語言比照 home/plan-ai-sim/Content.tsx 桌面版的「左地圖/
    右資訊欄」做法,但這裡沒有漂浮導覽按鈕/輸入膠囊那些機制,只需要
    地圖背景、回上一頁連結、側欄面板三塊。配色沿用既有 --ios- 與 --color-
    開頭的 token 慣例。 */
@@ -255,7 +255,7 @@
 /* panel——側欄式時間軸面板,桌面版貼右側、上下撐滿;手機版退回滿版
    下半部,地圖佔上半部固定高度(見下方 responsive 區塊)。刻意不給
    實色背景鋪滿整個面板高度——只在卡片本身(PlanTimelineView 既有
-   樣式)上有底色,地圖從卡片之間的留白透出來,呼應 AIPlanTimelinePage.tsx
+   樣式)上有底色,地圖從卡片之間的留白透出來,呼應 home/plan-ai-sim/Content.tsx
    「浮空疊在地圖上」的既有視覺語言,不做成不透明側欄。 */
 .panel {
   position: absolute;
@@ -303,7 +303,7 @@
 /* timelineScroll——疊加在 PlanTimelineView 自己的 .scroll 上,補上這個
    面板需要的捲動行為。.panel 本身是 absolute 定位、上下撐滿,.header
    是固定高度的 flex:none,時間軸要佔滿剩餘空間並自己負責捲動,理由
-   同 AIPlanTimelinePage.tsx 的 .timelineScroll。 */
+   同 home/plan-ai-sim/Content.tsx 的 .timelineScroll。 */
 .timelineScroll {
   flex: 1;
   min-height: 0;
@@ -312,7 +312,7 @@
 }
 
 /* timelineEndMarker——疊在地圖背景上方,共用元件預設的淺灰色文字在這種
-   背景下可能對比不足,加文字陰影提高可讀性,理由同 AIPlanTimelinePage.tsx
+   背景下可能對比不足,加文字陰影提高可讀性,理由同 home/plan-ai-sim/Content.tsx
    的 .timelineEndMarker。 */
 .timelineEndMarker {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);

@@ -5,7 +5,7 @@ import styles from './PlanPhoneDatePickerSheet.module.css'
 
 // SHEET_SNAP_POINTS:單段模式(只有一個值)——這層 sheet 的內容是一份
 // 可捲動的日期清單,不需要像資訊卡那樣多段吸附展開/收合,對齊
-// PlanPhoneListDrawer.tsx/PhoneTripsDrawer.tsx 這類「單段、往下拖
+// geo-planning/phone/ResultList.tsx/trip/phone/TripList.tsx 這類「單段、往下拖
 // 到底就整個關閉」的既有用法(見 PhoneBottomSheet.tsx 對 isSingleStop 的
 // 說明,單段模式下 atMaxExpansion 恆為 true,.body 自動可原生捲動,見
 // PlanPhoneDatePickerSheet.module.css 的說明)。離頂部 420px——

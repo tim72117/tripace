@@ -1,5 +1,5 @@
-/* PlanOverlayPanelWide——寬螢幕(>=1024px)側欄樣式,見 .tsx 開頭的完整
-   設計理由。跟 PlanOverlayPanel.module.css 的桌面 .panel 是同一種疊加
+/* PlanOverlayPanelWide——寬螢幕(>=1024px)側欄樣式,見 PlanOverlayPanel.tsx 開頭
+   wide 分支的完整設計理由。跟 PlanOverlayPanel.module.css 的桌面 .panel 是同一種疊加
    模式(position: absolute 貼齊右緣、地圖維持滿版不被擠壓,使用者明確
    要求「地圖一樣要滿版」)——只有候選卡片排列方式(見 AskPage.module.css
    .directionScrollerStacked)不同,版面定位邏輯刻意不重新發明一套。 */
@@ -33,7 +33,7 @@
 
    2026-10(code review 發現,side-effect 修正):CSS Module 無法直接
    import TS 常數,top/width/bottom 這三個數字仍然要在這裡手動維護,
-   但 TS 那一側(AIPlanTimelinePage.tsx 的安全區矩形、
+   但 TS 那一側(home/plan-ai-sim/Content.tsx 的安全區矩形、
    WideLayoutDebugOverlay.tsx 的除錯框線)已經改成從
    planOverlayGeometry.ts 匯入同一份 SIDEBAR_TOP/SIDEBAR_WIDTH/
    COMPOSER_BAND_HEIGHT 常數——這份重複過去曾經造成兩次真實漂移

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 // 該檔案)實際顯示中」的獨立狀態——不改動既有 geoSelection.ts(主題卡/
 // PlacePanel 那套互斥狀態機仍照舊運作,這裡刻意不合併進去,見「新建獨立
 // reducer/hook」的決定),但補上 geoSelection 本身沒有涵蓋的部分:搜尋
-// 結果側欄(GeoHotelSidebar)這類卡片跟主題卡/地點卡之間「誰出現時要
+// 結果側欄(geo-planning/desktop/ResultList)這類卡片跟主題卡/地點卡之間「誰出現時要
 // 清空誰」的規則。
 //
 // 每張卡片登記時帶一個固定的 order(數字越小越靠右,供
@@ -75,7 +75,7 @@ export function useInfoCardStack(): InfoCardStack {
 }
 
 // useInfoCardStackSync:把「某個外部值是否存在」跟 InfoCardStack 的登記
-// 動作接起來的通用膠水——DesktopLayout.tsx 原本用三個各自獨立的
+// 動作接起來的通用膠水——desktop/Content.tsx 原本用三個各自獨立的
 // useEffect 分別把 geoHotelSidebarVisible/geoAttractionContent/
 // nearbyInfoContent 這三個既有 state 登記進 infoCardStack,這裡收斂成
 // 一個可重用、可獨立測試的 hook,呼叫端只需要描述「這張卡片的 id/order/
@@ -84,7 +84,7 @@ export function useInfoCardStack(): InfoCardStack {
 //
 // 額外的 onExclusivePresent:僅在這張卡片是 exclusive、且這次從
 // 不存在→存在(上升緣,不是每次重渲染都觸發)時呼叫一次——供
-// DesktopLayout.tsx 的搜尋結果側欄使用:搜尋結果一出現時,除了登記進
+// desktop/Content.tsx 的搜尋結果側欄使用:搜尋結果一出現時,除了登記進
 // infoCardStack(讓其他卡片的登記被清空),還要額外呼叫
 // geo.clearSelection() 把主題卡自己的實際內容 state 也真的清空(登記簿
 // 被清空不會自動連動實際 state,見 InfoCardStack 的完整說明)。不是每張

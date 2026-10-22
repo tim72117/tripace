@@ -1,4 +1,4 @@
-import type { PlanAction } from './AIPlanTimelinePage'
+import type { PlanAction } from './planAction'
 import type { PlanSimSource } from './planSimSource'
 import { DEMO_SCRIPT } from './demoScript'
 

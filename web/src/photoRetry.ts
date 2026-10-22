@@ -40,7 +40,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 // fetchPlaceDetailsWithPhotoRetry — 2026-10 code review 發現的真正缺口:
-// geo-planning/ExploreMap.tsx 裡「直接點擊地圖上 Google 原生 POI 圖標」
+// geo-planning/PlanMap.tsx 裡「直接點擊地圖上 Google 原生 POI 圖標」
 // 與「點擊非主題點地標、查到 placeId 後打 Google Place Details」這兩處
 // (handleAttractionClickRouted 的 d.placeId 分支、原生 POI click
 // listener)都是單純呼叫一次 fetchPlaceDetails 就直接回報結果給呼叫端,
@@ -56,7 +56,7 @@ function sleep(ms: number): Promise<void> {
 // 直接點擊 Google 原生 POI 圖標完全沒有對應的 GeoAttraction 物件可以
 // retro,不能直接套用 fetchPoiContent 的介面,故需要一支更底層、以
 // GeoPlaceDetails 本身為操作對象的版本,讓 fetchPoiContent 改為基於
-// 它實作,也讓 ExploreMap.tsx 這兩處能直接呼叫同一套重試邏輯,不再各自
+// 它實作,也讓 PlanMap.tsx 這兩處能直接呼叫同一套重試邏輯,不再各自
 // 停在「查一次就結束」。
 //
 // 回傳 Promise(resolve 最終結果,含重試後的最新照片),onUpdate(第二

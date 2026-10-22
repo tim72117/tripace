@@ -97,7 +97,7 @@
 }
 
 /* addCandidateGroup:複合按鈕(split button)的外層 wrapper——對齊
-   GeoHotelSidebar 卡片「+」按鈕的加入候選籃動作,但這裡是獨立卡片底部的
+   geo-planning/desktop/ResultList 卡片「+」按鈕的加入候選籃動作,但這裡是獨立卡片底部的
    完整按鈕(文字+圖示),不是側欄清單裡那種縮成一顆圓形圖示鈕的密集
    排版——這張卡片本身版面較寬鬆,用完整按鈕更符合「這是這張卡片的主要
    操作」的份量。左半邊(addCandidateBtn,加入目前旅程)/右半邊
@@ -200,7 +200,7 @@
 
 /* dateMenu/dateMenuItem:候選沒有排定日期、但行程本身已有排定日期時,
    按下「加入 {tripName}」先展開的懸浮下拉選單——每一項是既有日期(格式同
-   GeoCandidateSidebar.tsx 的 dayGroupLabel)或最下面的「其他日期」。
+   geo-planning/desktop/CandidateList.tsx 的 dayGroupLabel)或最下面的「其他日期」。
    position: absolute 貼齊 .addCandidateWrap(見上方)正下方,疊在卡片其餘
    內容之上,不推擠版面——跟原生 <select> 下拉選單的疊層行為一致。
    z-index 只需高於同一張卡片內其餘內容(卡片本身在 .panel 已有 z-index:2

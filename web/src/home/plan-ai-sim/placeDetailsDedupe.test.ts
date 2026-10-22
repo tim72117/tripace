@@ -202,7 +202,7 @@ describe('合併情境', () => {
   it('詢問頁並發查 N 個候選,確認後時間軸(另一個實例)再查其中幾個:總請求數 = 不同 placeId 數', async () => {
     apiMock.fetchPlanAiPlaceDetailsAny.mockImplementation(async (_cfg: unknown, id: string) => ({ found: true, name: id }))
     const askDs = createPlanAiPublicDataSource('http://x')
-    const timelineDs = createPlanAiPublicDataSource('http://x') // 不同實例,模擬 AIPlanTimelinePage / LivePlanLayer
+    const timelineDs = createPlanAiPublicDataSource('http://x') // 不同實例,模擬 plan-ai-sim/Content / LivePlanLayer
     const ids = ['a', 'b', 'c', 'd', 'e']
     await Promise.all(ids.map((id) => askDs.placeDetails(id)))
     await Promise.all(['b', 'd'].map((id) => timelineDs.placeDetails(id)))
@@ -231,5 +231,18 @@ describe('合併情境', () => {
     await expect(ds.placeDetails('p1')).rejects.toThrow('429')
     await expect(ds.placeDetails('p1')).resolves.toMatchObject({ found: true })
     expect(apiMock.fetchPlanAiPlaceDetailsAny).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('PlaceDetailsDedupe — 地圖光暈共用快取用到的選項', () => {
+  it('shouldRemember 可覆寫預設政策;peek 同步讀、replace 只覆寫已記憶的', async () => {
+    const d = new PlaceDetailsDedupe({ shouldRemember: () => true })
+    const fetcher = vi.fn().mockResolvedValue({ found: false, v: 1 })
+    await d.get('p', fetcher)
+    expect(d.peek('p')).toEqual({ found: false, v: 1 })
+    d.replace('p', { found: false, v: 2 })
+    expect(d.peek('p')).toEqual({ found: false, v: 2 })
+    d.replace('never', { v: 3 })
+    expect(d.peek('never')).toBeUndefined()
   })
 })

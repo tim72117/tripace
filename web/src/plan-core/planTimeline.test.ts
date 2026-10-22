@@ -381,7 +381,7 @@ describe('removeNode', () => {
   })
 
   it('opts.allowRemoving:true 時,已標記 removing:true 的節點仍能被真正摘除', () => {
-    // 這是 removeStep(TripPlanPage.tsx/AIPlanTimelinePage.tsx 都有同一套
+    // 這是 removeStep(TripPlanPage.tsx/Content.tsx 都有同一套
     // 兩段式流程,見這兩處呼叫端的完整說明)「完成移除」那一步的真實使用
     // 情境:先標記 removing:true 觸發淡出動畫,動畫播完後用
     // allowRemoving:true 呼叫 removeNode 做真正的摘除——這個旗標曾經

@@ -1,8 +1,8 @@
 // DesktopShared:桌面版與手機版都會用到的 UI 小塊,從 App.tsx 拆出來獨立成
-// 檔案——這些東西不屬於「純桌面版佈局」(見 DesktopLayout.tsx),因為手機版
+// 檔案——這些東西不屬於「純桌面版佈局」(見 desktop/Content.tsx),因為手機版
 // 的 PhoneNavDrawer/SettingsScreen(見 PhoneNavDrawer.tsx/PhoneScreens.tsx)
-// 也需要引用它們;若整批併入 DesktopLayout.tsx,會讓手機版檔案跟
-// DesktopLayout.tsx 互相 import 對方,形成循環依賴。獨立成第三份檔案,
+// 也需要引用它們;若整批併入 desktop/Content.tsx,會讓手機版檔案跟
+// desktop/Content.tsx 互相 import 對方,形成循環依賴。獨立成第三份檔案,
 // 兩邊都單向 import 這裡,不互相依賴。
 
 // PanelMode:桌面版 side panel 目前顯示的內容;null 代表收合(主區全寬)。
@@ -13,9 +13,9 @@
 // 橫滑試做,見 RecommendedPlacesRow——都已整個移除,含入口與實作。)
 // 'trips'/'timeline'/'pace'/'geo-outline':正式導覽項目,所有
 // 使用者都能在 rail 上看到(依各自的 *_ENABLED flag),渲染邏輯直接使用
-// DesktopTripList/MultiTrackTimeline/PaceChart+PaceRouteMap、
-// GeoCandidateSidebar/GeoOutlinePanel,見
-// DesktopLayout.tsx / PhoneContent.tsx / PhoneNavDrawer.tsx,不屬於這組
+// trip/desktop/TripList/MultiTrackTimeline/PaceChart+PaceRouteMap、
+// geo-planning/desktop/CandidateList/PlanMap,見
+// desktop/Content.tsx / phone/Content.tsx / PhoneNavDrawer.tsx,不屬於這組
 // 共用的 demo 面板。
 // 'demo-route-editor':旅程分享/路徑編輯器試做(見 docs/ 同一輪討論的
 // 雜誌式編輯介面構想與 artifact mockup)——目前只做右側雜誌內容編輯區
@@ -30,7 +30,7 @@ export type PanelMode =
 
 // 規劃地圖(geo-outline)已不再有獨立的 feature flag——使用者明確要求
 // 「規劃不需要 feature flag 了」,它現在是核心功能(手機版的預設起始
-// 畫面,見 PhoneContent.tsx 的 drawerMode 說明),不該再能被部署環境變數
+// 畫面,見 phone/Content.tsx 的 drawerMode 說明),不該再能被部署環境變數
 // 關閉。原本的 GEO_OUTLINE_ENABLED/VITE_FEATURE_GEO_OUTLINE 已移除,
 // PANEL_REGISTRY 的 'geo-outline' 項目改成固定 enabled: true(見下方)。
 
@@ -54,12 +54,14 @@ export const PACE_ENABLED = import.meta.env.VITE_FEATURE_PACE === 'true'
 // 開關方向一致,不需要呼叫端記住「這個特別相反」。
 export const TIME_DRAG_ENABLED = import.meta.env.VITE_FEATURE_TIME_DRAG === 'true'
 
-// ROUTE_LINE_ENABLED——「規劃行程」對話小匡標頭列路徑開關的開關(見
-// DesktopLayout.tsx 的完整說明:開啟時地圖上依時間軸順序把所有已排入
-// 的景點連成一條完整路線)。同 TIME_DRAG_ENABLED 一套編譯時 feature
-// flag 機制(使用者明確要求「這個開關加上 feature flag」),預設關閉,
-// 只在明確設為字串 "true" 時才啟用——flag 關閉時,標頭列上的路徑開關
-// icon 本身就不會渲染,不是「icon 在但點了沒反應」。
+// ROUTE_LINE_ENABLED——地圖上「整條路線」(依時間軸順序把所有已排入的景點連成一條完整路線)的開關。
+// 四個入口(/ai-plan、登入後手機、登入後桌面)全部由這個 flag 控制(2026-10,使用者明確要求「整條路線全都用
+// feature flag 控制」;原本只控制登入後桌面標頭列的路徑開關 icon,其餘入口根本不畫):
+//   - flag 關閉:四個入口都不畫整條路線;登入後桌面標頭列的路徑開關 icon 也不渲染(不是渲染了但點了沒反應)。
+//   - flag 開啟:登入後桌面由使用者點標頭列的 icon 切換(預設不顯示,見 desktop/Content.tsx);沒有切換入口的
+//     /ai-plan 與登入後手機,有站點時就畫。
+// 同 TIME_DRAG_ENABLED 一套編譯時 feature flag 機制(使用者要求「這個開關加上 feature flag」),預設關閉,
+// 只在明確設為字串 "true" 時才啟用。
 export const ROUTE_LINE_ENABLED = import.meta.env.VITE_FEATURE_ROUTE_LINE === 'true'
 
 
@@ -71,7 +73,7 @@ export const ROUTE_LINE_ENABLED = import.meta.env.VITE_FEATURE_ROUTE_LINE === 't
 // 查詢這段交通的時間/距離,取代原本「後端依直線距離自動決定」的預設值。
 //
 // 只有正式頁面(/app、/trip-plan,見 TripPlanPage.tsx)接這個功能——
-// /ai-plan 展示頁(AIPlanTimelinePage.tsx)固定接純前端假資料
+// /ai-plan 展示頁(home/plan-ai-sim/Content.tsx)固定接純前端假資料
 // (planAiFakeDataSource.transitEstimate),沒有後端可以重新查詢,不接這個
 // flag 對應的 callback,PlanTimelineView 在沒收到對應 callback 時膠囊
 // 维持原本純展示、不可點擊(見該元件 onTransitModeChange prop 的完整
@@ -131,12 +133,12 @@ export const DEMO_CHAT_ENABLED = import.meta.env.VITE_FEATURE_DEMO_CHAT === 'tru
 // (預設關閉的 demo-route-editor/demo-chat 試做功能用這個 slot)。
 // width 只有 float 用到,決定浮動卡片寬度
 // (見 FloatingPanel.tsx)。requiresTrip 給 rail 按鈕
-// 的 disabled 判斷用(見 DesktopRail.tsx)。
+// 的 disabled 判斷用(見 desktop/Nav.tsx)。
 //
 // 這張表存在的理由:先前 panelMode 的行為判斷散落在至少 5 個地方
 // (這裡的白名單、side panel 是否展開的判斷式、.wide 樣式字串拼接、side
 // panel 內容 ternary、main 區 ternary),新增一種模式要同步改 5 處,曾經
-// 因為漏改其中一處出過 bug。現在只需要改這張表跟 DesktopLayout.tsx 的
+// 因為漏改其中一處出過 bug。現在只需要改這張表跟 desktop/Content.tsx 的
 // render 分支各一次,其餘地方(PANEL_MODES 白名單、isPanelMode())都是
 // 從這張表衍生,不會漏改。
 export type PanelSlot = 'float' | 'main-replace'
@@ -162,11 +164,11 @@ export const PANEL_REGISTRY: Record<Exclude<PanelMode, null>, PanelSpec> = {
 
 // isPanelMode/PANEL_MODES(驗證 URL 路徑參數 /app/:panelMode 是否合法)
 // 2026-10 隨這段路徑參數本身一併移除——使用者明確要求「展開側欄不需要
-// 變更路由」,panelMode 改回純本地 UI state(見 DesktopLayout.tsx 的完整
+// 變更路由」,panelMode 改回純本地 UI state(見 desktop/Content.tsx 的完整
 // 說明),不再有網址輸入需要驗證,這兩個輔助定義失去存在理由,一併刪除
 // 而非留著當死碼。
 
-// DrawerMode:手機版分頁列(PhoneTabBar.tsx 底部常駐 + PhoneSideTools.tsx
+// DrawerMode:手機版分頁列(phone/Nav.tsx 底部常駐 + PhoneSideTools.tsx
 // 右側小圖示)/主顯示區可切換到的模式——即 PanelMode 扣掉 null 與
 // demo-route-editor(該模式只有桌面版路徑編輯器試做才有實作,見
 // DEMO_ROUTE_EDITOR_ENABLED 的說明,手機版故意不支援)。原本定義在

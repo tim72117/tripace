@@ -9,15 +9,17 @@
 //    任何同步用的 setter。
 // 2. 這次新增的清空功能——呼叫 setGeocodeCandidates([]) 之後,
 //    geocodeCandidates 與 searchResults 應該一起變成空陣列。這是
-//    GeoOutlinePhoneListDrawer.onClose/桌面版 GeoHotelSidebar.onClose
-//    實際呼叫的同一顆 setter,見 GeoOutlinePhoneView.tsx/DesktopLayout.tsx
+//    phone/ResultList.onClose/桌面版 geo-planning/desktop/ResultList.onClose
+//    實際呼叫的同一顆 setter,見 PlanPhoneView.tsx/desktop/Content.tsx
 //    對應 onClose 的說明。
+import { createPlanAiApiDataSource } from '../home/plan-ai-sim/planAiApiDataSource'
 import { describe, it, expect } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useGeoPlanningState } from './useGeoPlanningState'
 import type { ClientConfig, GeoGeocodeCandidate, GeoSearchResult } from '../api'
 
 const cfg: ClientConfig = { baseURL: 'http://localhost', token: 'test-token' }
+const dataSource = createPlanAiApiDataSource(cfg)
 
 const fakeCandidate: GeoGeocodeCandidate = {
   name: '測試地點',
@@ -30,7 +32,7 @@ const fakeCandidate: GeoGeocodeCandidate = {
 
 describe('useGeoPlanningState：geocodeCandidates 與 searchResults 的衍生關係', () => {
   it('setGeocodeCandidates 寫入後，searchResults 同步反映轉型後的內容', () => {
-    const { result } = renderHook(() => useGeoPlanningState({ cfg, tripID: 'trip_1' }))
+    const { result } = renderHook(() => useGeoPlanningState({ cfg, dataSource, tripID: 'trip_1' }))
 
     expect(result.current.geocodeCandidates).toEqual([])
     expect(result.current.searchResults).toEqual([])
@@ -51,14 +53,14 @@ describe('useGeoPlanningState：geocodeCandidates 與 searchResults 的衍生關
   })
 
   it('清空 geocodeCandidates（如清單抽屜/候選籃側欄關閉時呼叫）後，searchResults 也一併變成空陣列', () => {
-    const { result } = renderHook(() => useGeoPlanningState({ cfg, tripID: 'trip_1' }))
+    const { result } = renderHook(() => useGeoPlanningState({ cfg, dataSource, tripID: 'trip_1' }))
 
     act(() => {
       result.current.setGeocodeCandidates([fakeCandidate])
     })
     expect(result.current.searchResults).toHaveLength(1)
 
-    // 對應 GeoOutlinePhoneListDrawer.onClose / GeoHotelSidebar.onClose
+    // 對應 phone/ResultList.onClose / geo-planning/desktop/ResultList.onClose
     // 實際呼叫的同一顆 setter——清空唯一資料來源,地圖 marker 與清單/
     // 候選籃側欄應該一起消失。
     act(() => {
@@ -95,7 +97,7 @@ describe('useGeoPlanningState：patchGeocodeCandidateText/patchGeocodeCandidateP
   }
 
   it('晚到的 A 查詢結果不會蓋掉已經切換顯示的 B 卡片內容', () => {
-    const { result } = renderHook(() => useGeoPlanningState({ cfg, tripID: 'trip_1' }))
+    const { result } = renderHook(() => useGeoPlanningState({ cfg, dataSource, tripID: 'trip_1' }))
 
     // 使用者連續快速點選 A、B 兩個候選(對應地圖上點兩顆不同 marker)。
     act(() => {
@@ -135,7 +137,7 @@ describe('useGeoPlanningState：patchGeocodeCandidateText/patchGeocodeCandidateP
   })
 
   it('晚到的 A 照片查詢不會蓋掉已經切換顯示的 B 卡片照片', () => {
-    const { result } = renderHook(() => useGeoPlanningState({ cfg, tripID: 'trip_1' }))
+    const { result } = renderHook(() => useGeoPlanningState({ cfg, dataSource, tripID: 'trip_1' }))
 
     act(() => {
       result.current.selectSearchResult(placeResultA)

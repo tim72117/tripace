@@ -39,6 +39,10 @@ var knownRoutePatterns = []*regexp.Regexp{
 	// 明確要求「路由不要加 ai」,從原本的 /ai-itineraries 改名(見
 	// web/src/App.tsx 對應路由的完整說明)。
 	regexp.MustCompile(`^/itineraries(/[^/]+)?$`),
+	// /momiji-front:紅葉前線視覺示意頁(2026-10 新增,見 web/src/App.tsx
+	// MomijiFrontPage import 處與 web/src/momiji-front/MomijiFrontPage.tsx
+	// 的完整說明),公開頁、不需要登入。
+	regexp.MustCompile(`^/momiji-front$`),
 	// /u/:handle/:slug:部落客發文正式頁面(2026-10,見 web/src/App.tsx
 	// 對應路由與 web/src/blog/BlogArticlePage.tsx 的完整說明)——取代原本
 	// 固定的 /demo/theme-page demo 路徑。

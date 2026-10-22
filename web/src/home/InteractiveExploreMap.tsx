@@ -1,8 +1,9 @@
+import { getPlanAiPublicDataSource } from './plan-ai-sim/planAiPublicDataSource'
+import { requireAttractionsByCity, requireGeoPlaceDetails, requirePhotoAssets } from './plan-ai-sim/planAiDataSource'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ClientConfig, GeoAttraction } from '../api'
-import { fetchPublicGeoAttractions, fetchPublicGeoPlaceDetails, fetchPublicGeoPlacePhotoAssets } from '../api'
+import type { GeoAttraction } from '../api'
 import { NativeMapBase, type MapHandle } from '../geo-planning/NativeMapBase'
-import { useAttractionOverlays } from '../geo-planning/useAttractionOverlays'
+import { useSharedDrawLayer } from '../geo-planning/mapDrawLayer/useSharedDrawLayer'
 import { AttractionInfoPanel } from '../geo-planning/AttractionInfoPanel'
 import { PlanPhoneInfoSheet } from '../geo-planning/PlanPhoneInfoSheet'
 import { PlacePanel } from '../geo-planning/PlacePanel'
@@ -16,38 +17,13 @@ import type { Theme } from '../theme'
 import { BASE_URL } from '../AppCommon'
 import { trackEvent } from '../analytics'
 import styles from './InteractiveExploreMap.module.css'
+import { SIMPLE_MAP_ID } from '../geo-planning/mapStyleIds'
 
-// GUEST_CFG:這個頁面是登入前的公開展示頁,沒有使用者自己的 JWT
-// ——token 傳 null(走訪客,見 api.ts ClientConfig 的完整說明)。baseURL
-// 沿用 AppCommon.tsx 的 BASE_URL(建置時 VITE_API_BASE,或退回目前頁面
-// origin)——這個頁面會真的發 API 請求(見下方 fetchPublicGeoAttractions/
-// AttractionInfoPanel 的 usePublicPlaceDetails),空字串會被 request()
-// 解讀成相對路徑,在本機開發(Vite dev server 跟後端 API server 通常
-// 不同 port)下打不到正確的後端,必須改用正確的 baseURL。
-const GUEST_CFG: ClientConfig = { baseURL: BASE_URL, token: null }
-
-// LANDING_MAP_ID:這個展示頁專用的 Cloud Style Map ID——正式規劃功能
-// (ExploreMap.tsx/GeoOutlinePhoneView.tsx 等)沒有傳 mapId 給
-// NativeMapBase,沿用預設的 VITE_GOOGLE_MAPS_MAP_ID;這個展示頁改用
-// VITE_GOOGLE_MAPS_LANDING_MAP_ID,對應完全不顯示任何 Google 原生 POI
-// 標籤的樣式(見 docs/map-style/*-simple.json 的樣式快照)——
-// 2026-10 使用者明確要求「所有的 POI 都關閉」,pointOfInterest 父層
-// 關閉標籤後不再重新開啟任何子分類(原本還留著 landmark/recreation/
-// entertainment 三類標籤,現已一併移除)。這個城市介紹頁只想呈現我們
-// 自建的主題點光暈,不需要 Google 原生底圖的任何商家/地標圖標干擾
-// 視覺焦點。
-//
-// 這份 JSON 只是 Google Cloud Console → Maps Platform → Map Management
-// 後台設定的快照記錄,repo 裡改這個檔案本身不會讓地圖實際變化——要讓
-// 新設定真正生效,需要登入 Console 找到 VITE_GOOGLE_MAPS_LANDING_MAP_ID
-// 對應的 Map Style,手動移除 pointOfInterest.landmark/recreation/
-// entertainment 這三條重新開啟標籤的規則,讓它們維持 pointOfInterest
-// 父層的 label.visible:false。
-//
-// 環境變數未設定時 LANDING_MAP_ID 是 undefined,NativeMapBase 的 mapId
-// prop 會自動退回 VITE_GOOGLE_MAPS_MAP_ID(見該檔案 mapId 的說明),不會
-// 讓地圖建立失敗。
-const LANDING_MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_LANDING_MAP_ID as string | undefined
+// publicDataSource:這個頁面是登入前的公開展示頁,沒有使用者自己的 JWT:用訪客版資料存取層實例(打免登入的 /public)——
+// 景點區域、地點詳情、照片補圖都走它。baseURL 沿用 AppCommon.tsx 的 BASE_URL(建置時 VITE_API_BASE,或退回目前頁面
+// origin):空字串會被 request() 解讀成相對路徑,在本機開發(Vite dev server 跟後端 API server 通常不同 port)下
+// 打不到正確的後端。
+const publicDataSource = getPlanAiPublicDataSource(BASE_URL)
 
 // FALLBACK_CENTER:資料尚未從 API 載入完成前的暫定地圖中心——只在第一次
 // 渲染、attractions 還是空陣列時短暫使用,資料載入完成後 INITIAL_CENTER
@@ -123,7 +99,7 @@ function zoomToFitBounds(
 const INITIAL_ZOOM = 15
 
 // InteractiveExploreMap:landing page(登入前)的試做展示頁——非滿版地圖,
-// 共用登入後畫面在用的同一批元件(ExploreMap/AttractionInfoPanel),不是
+// 共用登入後畫面在用的同一批元件(PlanMap/AttractionInfoPanel),不是
 // 重新刻一份簡化版——這樣之後正式功能有任何視覺/互動調整,這個展示頁
 // 會自動跟著更新,不需要另外維護一份重複邏輯。原檔名/元件名沿用
 // 「KiyomizuDemoPage」是歷史命名(最初只做京都清水寺一個城市,且定位是
@@ -145,13 +121,13 @@ const INITIAL_ZOOM = 15
 // 處理。
 //
 // 版面:外層 .stage 是這個展示頁自己的容器,固定高度、position:relative
-// ——ExploreMap/AttractionInfoPanel 內部的浮動卡片都是 position:absolute
+// ——PlanMap/AttractionInfoPanel 內部的浮動卡片都是 position:absolute
 // 疊在最近的 relative 祖先上,沒有這層容器,卡片會直接疊到整個瀏覽器
 // 視窗,而不是「非滿版」的這個區塊裡。
 //
 // initialCenter 刻意不在第一次渲染就給定值,改用 useState+useEffect
-// 延後一輪才賦值(對齊 GeoOutlinePanel.tsx 正式流程「查詢中先傳
-// undefined,查完才給值」的既有模式)——這是繞開 ExploreMap.tsx 建圖
+// 延後一輪才賦值(對齊 PlanMap.tsx 正式流程「查詢中先傳
+// undefined,查完才給值」的既有模式)——這是繞開 PlanMap.tsx 建圖
 // effect 在 React.StrictMode 下的一個已知競態,完整原因見本檔案先前
 // 版本的說明,這裡維持同一套迴避手法。這個延後現在跟「等 attractions
 // 真的從 API 查回來」是同一件事的兩個面向,不需要分開處理:center 改成
@@ -320,7 +296,7 @@ export function InteractiveExploreMap({
   // (hover 仍可臨時升級成照片)」。使用者對 ScrollTimeline.tsx 嵌入式
   // 小地圖的要求:「主題點只有在主題點的苗點才顯示圓形圖,其他時候顯示
   // 小圓點」——捲到別的錨點時,沒人在看的主題點不該繼續用 56px 照片圓
-  // 搶走目前錨點的視覺焦點。實作見 useAttractionOverlays.ts 的
+  // 搶走目前錨點的視覺焦點。實作見 attractionGlowLayer.ts 的
   // themePhotoOnlyWhenFocused/focusedThemeId 與 geoAttractionOverlay.ts
   // 的 setThemePhotoCollapsed。未傳/false 時一字不變:下方傳給 hook 的
   // 開關為 false,hook 對每顆 overlay 的 setThemePhotoCollapsed(false)
@@ -365,7 +341,7 @@ export function InteractiveExploreMap({
   // 的 AttractionInfoPanel(絕對定位疊在地圖右緣的浮動卡片)還是手機版
   // 的 PlanPhoneInfoSheet(從畫面下方滑入的 bottom sheet)。這個
   // 展示頁先前固定只用桌面版卡片,手機瀏覽器開啟時版面/觸控體驗跟正式
-  // 功能手機版不一致,現在跟 DesktopLayout.tsx/GeoOutlinePhoneView.tsx
+  // 功能手機版不一致,現在跟 desktop/Content.tsx/GeoOutlinePhoneView.tsx
   // 一樣依螢幕寬度切換,兩邊共用同一套 useThemeAttractionSelection 狀態
   // (見下方),只是渲染成哪個元件不同。PlanPhoneInfoSheet 已支援
   // nearby/onSelectNearby/categoryFilter(見該元件的完整說明),手機版
@@ -387,9 +363,9 @@ export function InteractiveExploreMap({
   const [attractions, setAttractions] = useState<GeoAttraction[]>([])
   useEffect(() => {
     let cancelled = false
-    fetchPublicGeoAttractions(GUEST_CFG, city)
-      .then((res) => {
-        if (!cancelled) setAttractions(res.attractions)
+    requireAttractionsByCity(publicDataSource, city)
+      .then((list) => {
+        if (!cancelled) setAttractions(list)
       })
       .catch(() => {
         // 查詢失敗維持空陣列,見上方欄位說明。
@@ -497,7 +473,7 @@ export function InteractiveExploreMap({
 
   // openThemeId:目前顯示哪個主題點的介紹卡。
   // 2026-10 修正(使用者明確要求):原本用 name(人類可讀名稱)當 key,
-  // 跟 ExploreMap 的 onAttractionSelect 回呼(見下方)拿到的
+  // 跟 PlanMap 的 onAttractionSelect 回呼(見下方)拿到的
   // GeoAttraction.name 直接比對——但 name 不保證全域唯一(先前已知現有
   // 重複資料案例:資料庫裡同一個地點因為 sync 工具比對缺陷,出現過
   // 新舊兩筆同名但 id 不同的記錄,見 CHANGELOG 相關條目),用 name 當
@@ -532,7 +508,7 @@ export function InteractiveExploreMap({
 
   // useThemeAttractionSelection:主題卡開著時跟它並存/附掛的一組狀態
   // (poiContent/hoveredAttraction/categoryFilter)與對應的 reset/
-  // infoCardStack 登記邏輯,抽成跟 DesktopLayout.tsx 共用的 hook(見該
+  // infoCardStack 登記邏輯,抽成跟 desktop/Content.tsx 共用的 hook(見該
   // 檔案的完整說明)——原本這裡是四份各自獨立手寫的 state,兩邊容易
   // 各自漏寫其中一個 reset effect(2026-09 實測踩過:展示頁漏了
   // hoveredCuratedId/activeNearbyCategoryFilter 的 reset,導致切換
@@ -551,16 +527,16 @@ export function InteractiveExploreMap({
     infoCardStack,
   } = useThemeAttractionSelection(
     openThemeId,
-    useCallback((placeId: string) => fetchPublicGeoPlaceDetails(GUEST_CFG, placeId), []),
-    useCallback((placeId: string) => fetchPublicGeoPlacePhotoAssets(GUEST_CFG, placeId), []),
+    useCallback((placeId: string) => requireGeoPlaceDetails(publicDataSource, placeId), []),
+    useCallback((placeId: string) => requirePhotoAssets(publicDataSource, placeId), []),
   )
 
-  // handleAttractionSelect:地圖上點擊任一地標時觸發(見 ExploreMap.tsx 的
-  // onAttractionSelect prop 對這個角色的完整說明——useAttractionOverlays
+  // handleAttractionSelect:地圖上點擊任一地標時觸發(見 PlanMap.tsx 的
+  // onAttractionSelect prop 對這個角色的完整說明——attractionGlow 圖層
   // 對主題點/非主題點一視同仁都會呼叫這個 callback,分流判斷要由呼叫端
   // 自己做)。isTheme 為 true(這兩個主題點之一)時切換 openThemeId;
   // 其餘(精選點)時開/換並存的 poiContent,對稱
-  // DesktopLayout.tsx handleAttractionOpenPlaceDetails/
+  // desktop/Content.tsx handleAttractionOpenPlaceDetails/
   // handleAttractionOpenPlaceWithoutGoogle 的並存行為,只是這裡固定不查
   // Google、無需依「主題卡是否已開」分岔互斥/並存路徑——這個展示頁的
   // AttractionInfoPanel 一律可以有(使用者點過主題點)或没有(尚未點過)
@@ -584,7 +560,7 @@ export function InteractiveExploreMap({
   const handleAttractionSelect = useCallback((a: GeoAttraction) => {
     // trackEvent:landing page 地圖互動追蹤(見 web/src/analytics.ts 的
     // 完整說明)——這是唯一的地圖點擊進入點(主題點/精選點都會經過這裡,
-    // 見上方 useAttractionOverlays 的 onAttractionSelect),不需要在
+    // 見上方 attractionGlow 的 onSelect),不需要在
     // openPoiContent/setOpenThemeId 各自分開埋一次。
     trackEvent('landing_map_attraction_click', { attraction_name: a.name, is_theme: a.isTheme })
     if (a.isTheme) {
@@ -606,8 +582,8 @@ export function InteractiveExploreMap({
     [openTheme],
   )
 
-  // revealedAttractionNames:對齊 DesktopLayout.tsx 的
-  // revealedAttractionNames 行為(見該處與 useAttractionOverlays.ts 的
+  // revealedAttractionNames:對齊 desktop/Content.tsx 的
+  // revealedAttractionNames 行為(見該處與 attractionGlowLayer.ts 的
   // 說明)——只有目前打開的主題點底下的精選點才揭露,沒點開任何主題點
   // 時是空集合,地圖上不顯示任何精選點標記。先前這裡固定用兩組精選點
   // 名稱的聯集(ALL_REVEALED),一進頁面地圖上就會顯示全部精選點,跟正式
@@ -641,8 +617,8 @@ export function InteractiveExploreMap({
 
   // mapHandle:NativeMapBase 只做原生建圖(見該檔案開頭的完整說明),不
   // 內建任何 overlay/marker——這個展示頁需要的唯一附掛行為是主題/精選點
-  // overlay(useAttractionOverlays),故在這裡自己接住 onHandleChange 交出
-  // 的 MapHandle,再往下傳給 useAttractionOverlays。跟 ExploreMap.tsx 內部
+  // overlay(經 useSharedDrawLayer 的 attractionGlow 繪製),故在這裡自己接住 onHandleChange 交出
+  // 的 MapHandle,再往下傳給 useSharedDrawLayer。跟 PlanMap.tsx 內部
   // 原本的 mapRef/mapReady 是元件自己的 state 不同,這裡是从子元件
   // (NativeMapBase)回報上來的。
   const [mapHandle, setMapHandle] = useState<MapHandle>({ mapRef: { current: null }, mapReady: false, mapVersion: 0 })
@@ -690,7 +666,7 @@ export function InteractiveExploreMap({
   // 每次渲染重新算一次即可,不需要額外狀態。
   // focusedThemePoint:focusedTheme 比對到的主題點本身——focusedThemeMatched
   // 由它衍生(語意不變),2026-10 另外供 focusedThemeId(見下方
-  // useAttractionOverlays 呼叫處)取 id 用,沿用同一個比對式、不重新發明。
+  // useSharedDrawLayer 的 attractionGlow 呼叫處)取 id 用,沿用同一個比對式、不重新發明。
   const focusedThemePoint = focusedTheme ? themePoints.find((t) => t.attraction.name === focusedTheme) : undefined
   const focusedThemeMatched = !!focusedThemePoint
   const lastFocusedThemeRef = useRef<string | undefined>(undefined)
@@ -732,7 +708,7 @@ export function InteractiveExploreMap({
 
   // focusedAttractionId:2026-10 新增——focusedCenter 指定的座標若剛好
   // 跟地圖上某個「精選點」(isTheme===false)的座標相同,把那個精選點的
-  // id 交給 useAttractionOverlays 的 focusedAttractionId(見該 prop 與
+  // id 交給 attractionGlow 的 focusedAttractionId(見該 prop 與
   // geoAttractionOverlay.ts 的 focused 欄位完整說明),讓它改畫「素色
   // 小圓點」造型,表達「這一顆就是時間軸正在講的那一站」。使用者需求:
   // 「苗點在精選點時,該點要變成(素色小圓點)圖標」——ScrollTimeline.tsx
@@ -786,38 +762,32 @@ export function InteractiveExploreMap({
     }
   }, [openCardOnFocus])
 
-  useAttractionOverlays({
+  // 景點光暈走共用繪製層(useSharedDrawLayer,與 /ai-plan、登入後同一個宿主);這個展示頁沒有站點、藍點等其他功能層,
+  // 只傳 attractionGlow。端點由資料存取層實例決定:這是登入前的公開展示頁,用訪客版(/public)。
+  useSharedDrawLayer({
     mapRef: mapHandle.mapRef,
     mapReady: mapHandle.mapReady,
     mapVersion: mapHandle.mapVersion,
-    attractions,
-    revealedAttractionNames,
-    onAttractionSelect: handleAttractionSelect,
-    hoveredCuratedId: hoveredAttraction?.id ?? null,
-    // GUEST_CFG/usePublicPlaceDetails=true——這是登入前的公開展示頁,
-    // 打 fetchPublicGeoPlaceDetails(/public/geo/place-details),理由同
-    // 這個檔案其餘呼叫端(AttractionInfoPanel/handleAttractionSelect
-    // 附近的既有 fetchPublicGeoPlaceDetails 呼叫)一致的判斷邏輯。
-    cfg: GUEST_CFG,
-    usePublicPlaceDetails: true,
-    // 手機版 bottom sheet 開啟期間隱藏地圖上對應主題點的 overlay(見
-    // useAttractionOverlays.ts 的 hiddenAttractionId 完整說明)——桌面版
-    // 走 AttractionInfoPanel 並存顯示,不受影響,固定傳 null。
-    hiddenAttractionId: !isDesktop ? openThemeId : null,
-    // focusedAttractionId:見上方推導處的完整說明——只有 focusedCenter
-    // 有值(ScrollTimeline.tsx)且座標對應到既有精選點時才有值,其餘
-    // 呼叫端恆為 null,useAttractionOverlays 對 null 的處理就是全部
-    // setFocused(false),等同既有行為。
-    focusedAttractionId,
-    // themePhotoOnlyWhenFocused/focusedThemeId:見該 prop 開頭的完整說明
-    // ——只有 ScrollTimeline.tsx 開啟;其餘呼叫端開關為 undefined,hook
-    // 內部等同全部 setThemePhotoCollapsed(false)(no-op),主題點恆顯示
-    // 照片的既有行為不變。focusedThemeId 直接沿用 focusedThemePoint(跟
-    // focusedThemeMatched 同一個比對式),不另外發明一套「主題點是否被
-    // 聚焦」的判斷;只在開關開著時才傳,關著時固定 null,避免既有呼叫端
-    // 多一個會變動的依賴值觸發 hook 內部 effect(即使是 no-op)。
-    themePhotoOnlyWhenFocused,
-    focusedThemeId: themePhotoOnlyWhenFocused ? (focusedThemePoint?.attraction.id ?? null) : null,
+    theme,
+    currentPosition: null,
+    attractionGlow: {
+      attractions,
+      revealedAttractionNames,
+      onSelect: handleAttractionSelect,
+      hoveredCuratedId: hoveredAttraction?.id ?? null,
+      placeDetails: (id) => requireGeoPlaceDetails(publicDataSource, id),
+      photoAssets: (pid) => requirePhotoAssets(publicDataSource, pid),
+      // 手機版 bottom sheet 開啟期間隱藏地圖上對應主題點的光暈(見 attractionGlowLayer 的說明)——桌面版走
+      // AttractionInfoPanel 並存顯示,不受影響,固定傳 null。
+      hiddenAttractionId: !isDesktop ? openThemeId : null,
+      // focusedAttractionId:見上方推導處的完整說明——只有 focusedCenter 有值(ScrollTimeline.tsx)且座標對應到既有
+      // 精選點時才有值,其餘呼叫端恆為 null。
+      focusedAttractionId,
+      // themePhotoOnlyWhenFocused/focusedThemeId:只有 ScrollTimeline.tsx 開啟;其餘呼叫端開關為 undefined,主題點恆顯示
+      // 照片。focusedThemeId 沿用 focusedThemePoint(跟 focusedThemeMatched 同一個比對式),關著時固定 null。
+      themePhotoOnlyWhenFocused,
+      focusedThemeId: themePhotoOnlyWhenFocused ? (focusedThemePoint?.attraction.id ?? null) : null,
+    },
   })
 
   return (
@@ -847,14 +817,14 @@ export function InteractiveExploreMap({
           // 的完整說明),不跟著切換的話,使用者手動選了「夜間模式」但
           // 地圖底圖仍是淺色(或反過來),UI 跟地圖會對不起來。
           theme={theme}
-          mapId={LANDING_MAP_ID}
+          mapId={SIMPLE_MAP_ID}
           onHandleChange={handleMapHandleChange}
         >
           {/* AttractionInfoPanel/PlanPhoneInfoSheet(主題卡,依
               isDesktop 二選一)、PlacePanel(點「附近景點」開的地點卡,
               桌面版限定,見下方說明)都改用 children 掛入
-              NativeMapBase——對齊 DesktopLayout.tsx/GeoOutlinePhoneView.tsx
-              的組合方式(見兩者 ExploreMap 的 children 說明),這些卡片
+              NativeMapBase——對齊 desktop/Content.tsx/GeoOutlinePhoneView.tsx
+              的組合方式(見兩者 PlanMap 的 children 說明),這些卡片
               都不是掛在地圖元件上的東西(地圖建立方式跟卡片無關),但
               語意上統一表達成「這些是附掛在這個地圖上的浮動 UI」,三個
               平台(桌機/手機/展示頁)用同一種掛入慣例。 */}
@@ -863,19 +833,18 @@ export function InteractiveExploreMap({
               {openTheme && (
                 <AttractionInfoPanel
                   attraction={openTheme.attraction}
-                  cfg={GUEST_CFG}
+                  dataSource={publicDataSource}
                   onClose={() => setOpenThemeId(null)}
                   nearby={nearbyList}
                   // onSelectNearby:點擊「附近景點」清單項目——跟地圖上
                   // 直接點擊精選點地標(見 handleAttractionSelect)是同一個
                   // 目的地(開並存的 PlacePanel),故直接重用
-                  // openPoiContent,對稱 DesktopLayout.tsx
+                  // openPoiContent,對稱 desktop/Content.tsx
                   // handleSelectNearbyAttraction 的行為(理由同該函式
                   // 說明)。
                   onSelectNearby={openPoiContent}
                   onHoverNearby={handleHoverNearby}
                   onCategoryFilterChange={setActiveNearbyCategoryFilter}
-                  usePublicPlaceDetails
                   nearbyOnly={themeCardNearbyOnly}
                 />
               )}
@@ -884,10 +853,10 @@ export function InteractiveExploreMap({
                   content={poiContent}
                   onClose={() => setPoiContent(null)}
                   // shiftBy 不傳(維持預設,貼右緣)——這個展示頁沒有
-                  // GeoHotelSidebar/對話小匡會佔用右緣,不需要
-                  // DesktopLayout.tsx 那套動態判斷。style 用
+                  // geo-planning/desktop/ResultList/對話小匡會佔用右緣,不需要
+                  // desktop/Content.tsx 那套動態判斷。style 用
                   // stackedInfoCardRightPx 搭配上方 infoCardStack 的
-                  // presentOrders(跟 DesktopLayout.tsx 同一套掛入模式,見
+                  // presentOrders(跟 desktop/Content.tsx 同一套掛入模式,見
                   // useInfoCardStack.ts 的完整說明)算出動態 right——不在
                   // 這裡另外重算一次「主題卡存不存在」的判斷式,直接讀
                   // infoCardStack 這個唯一的登記簿。主題卡沒開著時(理論上
@@ -911,14 +880,13 @@ export function InteractiveExploreMap({
                   該檔案的完整說明),跟桌面版 AttractionInfoPanel 共用同一批
                   資料(nearbyList/activeNearbyCategoryFilter,見上方
                   useThemeAttractionSelection 的說明),只是呈現成觸控版的
-                  chip 列+清單。usePublicPlaceDetails 對稱桌面版的
+                  chip 列+清單。資料存取層實例(publicDataSource)對稱桌面版的
                   AttractionInfoPanel 用法。 */}
               <PlanPhoneInfoSheet
                 content={null}
                 attraction={openTheme?.attraction ?? null}
-                cfg={GUEST_CFG}
+                dataSource={publicDataSource}
                 onClose={() => setOpenThemeId(null)}
-                usePublicPlaceDetails
                 nearby={nearbyList}
                 onSelectNearby={openPoiContent}
                 onHoverNearby={handleHoverNearby}
@@ -938,7 +906,7 @@ export function InteractiveExploreMap({
                 <PlanPhoneInfoSheet
                   content={poiContent}
                   attraction={null}
-                  cfg={GUEST_CFG}
+                  dataSource={publicDataSource}
                   onClose={() => setPoiContent(null)}
                   requireAuth={handleRequireAuth}
                 />

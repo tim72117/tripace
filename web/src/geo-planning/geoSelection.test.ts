@@ -33,7 +33,7 @@ describe('geoSelectionReducer', () => {
     expect(next).toEqual({ kind: 'info', key: 'hotel:測試飯店', content: hotelContent })
   })
 
-  // 對應「點擊地圖上 Google 原生 POI 圖標」情境(DesktopLayout.tsx 的
+  // 對應「點擊地圖上 Google 原生 POI 圖標」情境(desktop/Content.tsx 的
   // onPoiSelect)——這是唯一刻意不帶 key 的來源,沒有對應的自建
   // hotel/place/attraction 資料,不需要同步標記側欄清單的選取樣式。
   it('SELECT_INFO 未帶 key 時,key 為 undefined(對應原生 POI 點擊)', () => {

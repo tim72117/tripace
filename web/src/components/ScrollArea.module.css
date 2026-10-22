@@ -14,7 +14,7 @@
    全站根容器設成 touch-action: none 擋雙指縮放,但這個全域共用的捲動
    容器本身如果沒有另外宣告 touch-action,子元素未設定時會被父層的 none
    影響、理論上垂直捲動也會被擋住,但實測發現對話視窗(ChatScreen.tsx)、
-   旅程清單(PhoneTripsDrawer.tsx)這些用 .screen-body 的畫面反而還是能
+   旅程清單(trip/phone/TripList.tsx)這些用 .screen-body 的畫面反而還是能
    雙指縮放(使用者實測回報)——這代表 touch-action: none 在沒有更明確
    宣告的情況下,某些瀏覽器對「祖先鏈中間完全沒有任何一層明確宣告
    touch-action,只在最頂層根容器設定」的繼承路徑處理不夠可靠,必須在

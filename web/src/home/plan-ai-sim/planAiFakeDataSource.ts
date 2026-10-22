@@ -7,7 +7,7 @@
 //
 // id 兼作 placeId——這份假資料池本來就只有 id(PooledAttraction.id),
 // 沒有 Google placeId 的概念,呼叫端(attractionTools.ts/
-// AIPlanTimelinePage.tsx)拿到的 placeId 字串其實就是 attractionPool.ts
+// home/plan-ai-sim/Content.tsx)拿到的 placeId 字串其實就是 attractionPool.ts
 // 裡的 id,placeDetails 直接用它精確查找即可,不需要另外維護一套 id
 // 對應表。
 
@@ -43,7 +43,7 @@ const REAL_PHOTOS: Record<string, string> = {
 }
 
 // FAKE_QUERY_DELAY_MS — 人為固定延遲,讓 fakePlaceDetails/fakeTransitEstimate
-// 這兩個 async 函式不要「同步查完立刻 return」。呼叫端(AIPlanTimelinePage.tsx
+// 這兩個 async 函式不要「同步查完立刻 return」。呼叫端(home/plan-ai-sim/Content.tsx
 // 的 resolveAttractionForStep/refreshTransitForStop)在呼叫這兩個函式之前
 // 都會先把對應節點標成 loading:true(縮圖轉圈/交通列轉圈,見
 // HorizontalPlanTimeline.tsx、plan-core/PlanTimelineView.tsx 的 thumbSpinner/
@@ -96,7 +96,7 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
 // 行為對齊真後端 fetchPlanAiPlaceDetailsAny。googlePhotoUrls 只在
 // REAL_PHOTOS 表裡有對應項目時才給(見該常數的完整說明)——其餘假資料
 // 池條目仍用 thumbBg/thumbIcon(CSS 漸層+emoji)當縮圖,呼叫端
-// (AIPlanTimelinePage.tsx)在沒有 googlePhotoUrls 時本來就會 fallback
+// (home/plan-ai-sim/Content.tsx)在沒有 googlePhotoUrls 時本來就會 fallback
 // 顯示 thumbIcon,不需要另外處理。
 async function fakePlaceDetails(placeId: string): Promise<PlanAiPlaceDetailsResult> {
   await delay(FAKE_QUERY_DELAY_MS)

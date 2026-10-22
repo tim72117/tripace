@@ -2,6 +2,48 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.39.0 — 2026-10-23
+
+規劃地圖的前端大重構，加上新頁面「紅葉前線」：`/ai-plan`（手機與桌面）、登入後手機、登入後桌面四個入口改成同一組分層架構，同層同功能的元件用同檔名放在各自目錄（`home/plan-ai-sim/`、`phone/`、`desktop/`），並共用同一個資料存取層、統一繪製層與狀態 hook。新增 `/momiji-front`（含 SEO meta 與 sitemap）。**無資料庫結構變更；後端只動 SEO meta 對照表與路由白名單。** 前端的檔案改名、搬移、刪除都是內部符號，沒有對外公開的 API 破壞，但舊檔名（`PhoneContent`、`DesktopLayout`、`ExploreMap` 等）已不存在，查舊註解或文件請用新名稱。
+
+### 新增
+
+- **分層架構與同名元件**：每個入口都是 `Content`（狀態擁有者）→ `PlanLayout`（容器）→ `PlanOverlayLayout`（地圖層加疊加層外殼）→ `LivePlanLayer`（把規劃面板接上入口）→ `PlanMap`。DOM 骨架統一為 `data-slot` 契約（`plan-core/overlayDom.ts`、`OverlayShell.tsx`），各層共同介面定義在 `plan-core/layerContracts.ts` 與 `currentLocationContract.ts`，`layerContracts.test.tsx` 以型別斷言檢查（編譯期，單跑 vitest 不會失敗，需靠 `tsc`）。
+- **資料存取層統一（`PlanAiDataSource`）**：地圖與規劃領域的後端查詢（地點詳情、照片、搜尋、景點區域、地理編碼）全部走注入的實例，登入版打 `/internal`、訪客版打 `/public`、假資料版給播放態；元件與 hook 不再自己挑端點。`TripPlanPage` 的 `dataSource` 與 `store` 改為必填。
+- **統一繪製層擴充**：站點圓點、目前位置藍點、景點光暈、轉乘虛線、整條路線、搜尋結果、旅程 entry 全由 `useSharedDrawLayer` 掛上同一個宿主；首頁展示頁（`InteractiveExploreMap`）的光暈也改走這一層，原本只有它有的「主題卡開啟時隱藏、時間軸聚焦、只有聚焦的主題點顯示照片」三組狀態併進 `attractionGlowLayer`。
+- **站點平移拆成兩件事**：`useFirstStopAutoPan`（首站自動平移，四個入口全部套用；`/ai-plan` 的模擬態與推論態各一個實例）與 `useStopPan`（卡片「移動到此」，只分手機與桌面）；`usePanWithFirstStopPriority` 讓首站平移優先於目前位置平移。
+- **目前位置：同名同介面的三個實體**：`home/plan-ai-sim/`、`phone/`、`desktop/` 各一個 `useCurrentLocation`（`/ai-plan` 已授權才靜默取、不跳授權；登入後直接問），共用狀態機在 `plan-core/currentLocation.ts`；`useGeoOutlineMapState` 不再碰瀏覽器定位，只回報 `locationWanted`。
+- **登入後手機的安全區**：疊加層的 `safe-area` 節點標出搜尋框下方到面板上方（top 120px、bottom 454px，數字沿用 `/ai-plan` 手機版的估算），首站與搜尋的平移落在這個範圍中心；面板收起（沒有面積）時 `panMapTo` 退回直接 `panTo`。
+- **站點檢視狀態統一**：推論態與登入後都用 `usePlanStopsState` 與 `maskPlanStopsView`（空檢視即不繪製），選取為受控且雙向同步；`/ai-plan` 的模擬態（`useSimulatedStopsView`）與推論態各持有一個完整實例，交接時整個換掉。
+- **整條路線由 `ROUTE_LINE_ENABLED` 控制四個入口**（原本只控制登入後桌面的開關 icon）：flag 關閉四處都不畫；開啟後登入後桌面由開關切換，`/ai-plan` 與登入後手機有站點就畫。
+- **新頁面 `/momiji-front`（紅葉前線）**：依日本気象株式会社 2026 年紅葉見頃預測日內插的全日本變色動畫。SEO：`seo_meta.go` 的 `seoMetaByPath` 新增專屬 title／description／canonical，`sitemap.xml` 加入該路徑，頁面補 `WebPage` 與 `BreadcrumbList` JSON-LD，並加上視覺隱藏、與畫面同源的文字版摘要（標題、14 個都市的預測見頃日、資料來源）。伺服器路由白名單 `static.go` 同步新增。
+- **測試**：`attractionGlowSupport.test.tsx`（光暈照片查詢與標籤避讓）、`PlanPhoneView.mapWiring.test.tsx`（地圖接線）、三個 `useCurrentLocation` 的測試、`useSimulatedStopsView.test.tsx`、`usePanWithFirstStopPriority` 與 `/momiji-front` 的 SEO 測試等；修復項目的測試都做過「拿掉修復會失敗」的驗證。
+
+### 修正
+
+- **交接後模擬劇本沒有停止**：`handover()` 沒有讓 `usePlanSimSocket` 的 `start` 變 false，劇本計時器繼續對已清空的時間軸插入站點與備註。
+- **`/ai-plan` 探索半徑算錯**：`useMapViewport` 的 zoom 固定從 12 起算，`/ai-plan` 以 zoom 14 建圖，直接按「探索」會用 4 倍半徑查詢；改為以地圖目前的 zoom 與 bounds 播種。
+- **探索查詢取消後舊回應會讓景點復活**：`runExploreQuery` 補上請求編號。
+- **`useLocateWhenWanted` 在 `wanted` 快速切換時重複寫入並重複平移**：改用每次 effect 的執行編號丟棄舊結果。
+- **首站平移被目前位置平移蓋掉**：位置晚到時不再把剛平移到首站的地圖拉走（藍點照常畫）。
+- **`/ai-plan` 推論態沒有首站自動平移**，與登入後不一致；登入後桌面首站平移原本吃沒遮蔽的站點，面板沒打開就可能讓地圖跳走，改吃遮蔽後的站點。
+- **`NativeMapBase` 建圖進行中依賴變動，地圖可能永遠不建**：取消時交還 `buildingRef` 旗標。
+- **placeDetails 去重機制重複**：`geo-planning/placeDetailsCache.ts` 改用 `PlaceDetailsDedupe`（不同端點、不同政策，同一套機制）。
+
+### 變更
+
+- **檔案改名與搬移（舊名已不存在）**：`PhoneContent`／`DesktopLayout`／`DesktopRail`／`PhoneTabBar` 改為 `phone/Content`、`desktop/PlanLayout`、`desktop/Nav`、`phone/Nav` 等；`ExploreMap`、`GeoOutlinePanel`、`GeoCandidateSidebar`、`GeoHotelSidebar`、`PlanPhoneListDrawer` 等由 `PlanMap` 與 `geo-planning/{desktop,phone}/` 的 `ResultList`／`CandidateList` 取代；`home/plan-ai-sim/AIPlanTimelinePage.tsx` 由 `Content.tsx` 取代。
+- **小檔案合併**：`geoSelectedKey`（含原 `geoMarkerSelection`）、`overlayDom`（含原 `composerSlot`）、`mapMarkerLayer/planStops`（原 `types`／`reducer`／`planStopsToPoints`）、`useMapEvents`（原 `useMapIdle`／`useMapViewport`）、`exploreQuery`（原 `exploreMapConstants`／`attractionQueryRadius`／`geoAreaSearchState`）、`plan-core/currentLocation`（原 `getCurrentPosition`／`useLocateWhenWanted`）。
+- **刪除沒有正式使用端的死碼**：`useAttractionOverlays`、`useLiveStopsView`、`PlanStopsView`、`useAiPlanCurrentLocation`、`useCurrentLocationMarker`、`usePlanRouteLine`、`usePlanTransitHoverLine`、`usePlanRoutePolyline`、`useMapPoiClick`、`useSearchResultMarkers`、`useTripEntryMarkers`、`mapMarkerLayer/index.ts`、`geoAttractionClick`、`geoAttractionZoomState`、`MobileMapReveal`、`planSimScrollSource` 等，連同專屬測試。
+- **文件**：`web/showcase-demo/public/marker-layers.html`（架構文件，含四張架構圖文字與對照表，新檔）、`docs/terminology.md`、`docs/frontend-click-actions.md`、`docs/audit-*.md` 同步更新；`audit-functional.md` 的 F47（光暈整批重建）移到已解決。
+- 約 170 個檔案的過時註解更正為現況名稱。
+
+### 其他
+
+- **已知未處理（code review 清單）**：桌面規劃面板加寬到 560px 後資訊卡避讓值（368px）沒跟著改；手機「附近景點」地點卡選日期後可能靜默失敗（`handleScheduleFromDateSheet` 讀 `geo.infoContent`）；`suppressNextIdle` 旗標在目標已在中心時可能洩漏；`/ai-plan` 推論態固定用訪客版資料存取層；`placeDetailsCache` 沒有身分區分；三個 `Content` 沒有整合測試；`phone/` 與 `desktop/` 的 `useCurrentLocation` 目前內容相同。
+- **既有失敗測試**：`PlacePanel.test.tsx` 的兩個日期選擇器案例（找不到特定日期按鈕）在本次異動前就失敗，與本次無關。
+- **本次沒有在瀏覽器實測**；驗證只有型別檢查、單元測試與 `vite build`。
+
 ## v0.38.0 — 2026-10-21
 
 新增一組可線上調整的 Google 地理成本設定（照片張數上限、照片有效天數、地點詳情快取時效），並把地點詳情（`places.get`）收斂成統一快取加並發去重；首頁手機版展示重做版面並加上單一圓形遮罩的進退場動畫。**含資料庫結構變更（新增 `geo_settings` 表、`place_details_cache` 新增 `photo_count` 欄位，皆由 `AutoMigrate` 只增不改，不需手動遷移）。無破壞性 API 變更，但 `tripace-cli` 的 `-api` 預設值改為正式機（見「變更」）。**

@@ -66,7 +66,7 @@ function ScrollRestoration() {
 // 靜態 import 會讓 Vite 把所有路由元件塞進同一個模組圖,不管使用者當下
 // 訪問哪一條路徑,瀏覽器都會抓到全部頁面元件各自的程式碼(在 HomePage.tsx
 // 這類獨立頁面上尤其明顯,使用者只是想看首頁,卻連帶載入了
-// PhoneContent/CliAuthPage 等完全不相關的元件)。lazy() 讓 Vite/Rollup
+// phone/Content/CliAuthPage 等完全不相關的元件)。lazy() 讓 Vite/Rollup
 // 把每個元件拆成獨立 chunk,只在真正導航到對應路由時才動態 import,首次
 // 載入的 JS 體積只包含這條路由實際需要的程式碼。Suspense fallback 給
 // null(空白瞬間),因為這些都是整頁級的路由切換,chunk 載入通常在使用者
@@ -83,9 +83,9 @@ const CliAuthPage = lazy(() => import('./home/CliAuthPage').then((m) => ({ defau
 const DeviceAuthPage = lazy(() => import('./home/DeviceAuthPage').then((m) => ({ default: m.DeviceAuthPage })))
 const PublicViewScreen = lazy(() => import('./trip/PublicViewScreen').then((m) => ({ default: m.PublicViewScreen })))
 const PacePage = lazy(() => import('./pace/PacePage').then((m) => ({ default: m.PacePage })))
-const PhoneContent = lazy(() => import('./PhoneContent').then((m) => ({ default: m.PhoneContent })))
+const PhoneContent = lazy(() => import('./phone/Content').then((m) => ({ default: m.Content })))
 const NotFoundPage = lazy(() => import('./home/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
-// AIPlanTimelinePage(plan-ai-sim):獨立公開頁,從 plan-ai-sim 分支原封
+// home/plan-ai-sim/Content:獨立公開頁,從 plan-ai-sim 分支原封
 // 不動搬過來的「AI 安排行程」模擬展示原型(見 home/plan-ai-sim/ 目錄的
 // 完整說明)。固定接純前端假資料(attractionPool.ts),不需要登入、不
 // 依賴任何需要 token 的後端端點,故放進 home/ 底下跟其餘公開行銷頁同一
@@ -98,7 +98,12 @@ const TripPlanRoute = lazy(() => import('./trip-plan/TripPlanRoute').then((m) =>
 // 改名,使用者明確要求「web/src/ai-itineraries 路徑簡化」,見該檔案的
 // 完整說明),見該檔案的完整說明。
 const AiItinerariesRoute = lazy(() => import('./itineraries/AiItinerariesRoute').then((m) => ({ default: m.AiItinerariesRoute })))
-const PlanAiSimPage = lazy(() => import('./home/plan-ai-sim/AIPlanTimelinePage').then((m) => ({ default: m.AIPlanTimelinePage })))
+// MomijiFrontPage:紅葉前線視覺示意頁(2026-10 新增,使用者提供示意頁
+// 要求做成獨立頁面、地圖沿用 itineraries 的滿版地圖),公開頁,整個功能
+// 在 momiji-front/ 這個獨立目錄。伺服器端 static.go knownRoutePatterns
+// 也要有 /momiji-front,否則正式環境直接重新整理會 404。
+const MomijiFrontPage = lazy(() => import('./momiji-front/MomijiFrontPage').then((m) => ({ default: m.MomijiFrontPage })))
+const PlanAiSimPage = lazy(() => import('./home/plan-ai-sim/Content').then((m) => ({ default: m.Content })))
 // BlogArticlePage:部落客發文正式頁面(2026-10 從主題介紹頁內容規格化
 // 試做轉正,見 showcase-demo 構想頁 /ideas/product-direction-5-publishing-tool(原產品方向腦力激盪文件)
 // 「發文工具產品線」的完整說明;原始規格設計見 docs/
@@ -161,14 +166,14 @@ function KeyboardShrinkGuard({ className, dataTheme, children }: { className: st
   )
 }
 
-// App.tsx 只保留路由判斷(App() 本身)——PhoneContent(含 PhoneNavDrawer 導覽
-// 抽屜)搬到 PhoneContent.tsx、PacePage(原 PublicPaceDemoPage)搬到
+// App.tsx 只保留路由判斷(App() 本身)——phone/Content(含 PhoneNavDrawer 導覽
+// 抽屜)搬到 phone/Content.tsx、PacePage(原 PublicPaceDemoPage)搬到
 // pace/ 目錄、useIsDesktop 搬到 AppCommon.tsx(供多處共用),讓這裡回到
 // 單純的「進入點依路徑分派」職責。
 //
 // 改用 react-router-dom(v7)的 <BrowserRouter>/<Routes>/<Route> 取代原本
 // window.location.pathname 手寫字串比對——目的是讓 /app 底下的 panelMode
-// (見 DesktopLayout.tsx/PhoneContent.tsx)能反映到網址上,瀏覽器上一頁/
+// (見 desktop/Content.tsx、phone/Content.tsx)能反映到網址上,瀏覽器上一頁/
 // 下一頁、重新整理、分享連結都能還原到對應畫面。路由本身只負責「依路徑
 // 分派到哪個頁面元件」,不涉及登入狀態/旅程選擇(activeTrip 仍是
 // useAppState() 管理的獨立 state,不進 URL,維持原樣)。
@@ -223,7 +228,7 @@ export function App() {
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
           {/* /ai-plan:「AI 安排行程」模擬展示獨立公開頁,見
-              home/plan-ai-sim/AIPlanTimelinePage.tsx 開頭的完整說明——
+              home/plan-ai-sim/Content.tsx 開頭的完整說明——
               固定接純前端假資料,不需要登入,跟其餘公開行銷頁同一層級。
               路由本身使用者明確要求改為 /ai-plan(先前是 /plan-ai,
               /plan-ai-sim 之後),純粹是對外呈現的路徑改名,元件所在
@@ -258,6 +263,9 @@ export function App() {
               404(即使前端路由本身定義正確),這是實際發生過的教訓。 */}
           <Route path="/itineraries" element={<AiItinerariesRoute />} />
           <Route path="/itineraries/:id" element={<AiItinerariesRoute />} />
+          {/* /momiji-front:紅葉前線視覺示意頁(見 MomijiFrontPage import
+              處的說明),static.go knownRoutePatterns 要同步有這條。 */}
+          <Route path="/momiji-front" element={<MomijiFrontPage />} />
           {/* /u/:handle/:slug:部落客發文正式頁面(2026-10,見
               BlogArticlePage.tsx 開頭說明)——不再是固定讀單一 slug 的
               demo 路徑,改依網址路徑參數(作者 handle + 文章 slug)渲染
@@ -296,7 +304,7 @@ export function App() {
           />
           {/* /cli-auth 路徑:`tripace-cli login --web` 開瀏覽器落地的核准頁面
               (見 CliAuthPage.tsx)。與 /public/{token} 一樣是獨立於主要 App
-              狀態機之外的頁面,不套用 PhoneContent 那套登入/旅程/聊天畫面
+              狀態機之外的頁面,不套用 phone/Content 那套登入/旅程/聊天畫面
               切換邏輯。 */}
           <Route
             path="/cli-auth"
@@ -349,7 +357,7 @@ export function App() {
               panel 展開哪個面板(旅程列表/規劃/時間軸/路徑/AI 規劃)由網址
               驅動,讓重新整理/瀏覽器上一頁下一頁/分享連結都能還原到對應
               面板。使用者明確要求「展開側欄不需要變更路由」——改回純本地
-              UI state(見 DesktopLayout.tsx 的 panelMode state 完整說明),
+              UI state(見 desktop/Content.tsx 的 panelMode state 完整說明),
               側欄展開狀態不再反映在網址上,這條路徑參數不再需要,整段移除
               只保留 /app 本身。這是刻意的行為取捨:重新整理、分享
               /app/timeline 這類連結、瀏覽器上一頁下一頁,現在都不再能還原
@@ -375,8 +383,8 @@ export function App() {
               NotFoundPage——跟上面註解宣稱的「一律收合」不符,比收合更
               嚴重(是真正的 404,不是看得懂的收合畫面)。
               這裡補回一條只接受單層路徑片段的相容路由,忽略
-              panelMode 參數本身(不會把它傳給 PhoneContent,
-              DesktopLayout.tsx 的 panelMode state 初始值固定是
+              panelMode 參數本身(不會把它傳給 phone/Content,
+              desktop/Content.tsx 的 panelMode state 初始值固定是
               null/收合),純粹讓這批舊網址繼續落在跟 /app 本身一樣的
               畫面,不再是 404。元素內容跟上面 /app 那條路由完全相同。 */}
           <Route
@@ -388,7 +396,7 @@ export function App() {
             }
           />
           {/* catch-all:真正找不到對應路由的路徑,渲染 404 頁面(NotFoundPage)。
-              原本這裡是「除了上面幾條路徑,其他都走 PhoneContent」,讓任何
+              原本這裡是「除了上面幾條路徑,其他都走 phone/Content」,讓任何
               打錯字/失效連結的網址都顯得像正常畫面——這對 SEO 是個陷阱:
               後端 static.go 對這類路徑一律回 200(見該檔案的判斷邏輯),等於
               Google 會把找不到的頁面當成有效內容索引。現在前後端同步改為

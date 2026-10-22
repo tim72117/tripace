@@ -1,3 +1,5 @@
+import { localStoragePlanTimelineStore } from '../plan-core/planTimelineStorage'
+import { getPlanAiApiDataSource } from '../home/plan-ai-sim/planAiApiDataSource'
 import { useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAppState } from '../hooks/useAppState'
@@ -8,10 +10,10 @@ import styles from './TripPlanRoute.module.css'
 // TripPlanRoute — /trip-plan 獨立路由的頁面外殼。
 //
 // 原本 AI 規劃掛在 /app/plan-ai(共用 /app/:panelMode? 的面板系統,
-// 依賴 DesktopLayout/DesktopMain 提供版面與捲動容器)。這裡改成完全
+// 依賴 desktop/Content/DesktopMain 提供版面與捲動容器)。這裡改成完全
 // 獨立的頁面:自己管深色模式 token(app-theme-root + data-theme)、
 // 捲動容器,不依賴 /app 底下任何版面機制;架構仿照
-// home/plan-ai-sim/AIPlanTimelinePage.tsx,但日夜模式沿用登入後 App
+// home/plan-ai-sim/Content.tsx,但日夜模式沿用登入後 App
 // 本身的偏好(useAppState 的 theme),不是展示頁那種純前端暫時切換。
 //
 // 登入模式仿照 home/CliAuthPage.tsx:訪客可到達這個網址,頁面內自己用
@@ -44,7 +46,7 @@ export function TripPlanRoute() {
         <Link to="/app" className={styles.brand}>Tripace</Link>
         <span className={styles.title}>AI 規劃</span>
       </header>
-      <TripPlanPage cfg={cfg} scrollContainerRef={scrollRef} />
+      <TripPlanPage cfg={cfg} dataSource={getPlanAiApiDataSource(cfg)} store={localStoragePlanTimelineStore} scrollContainerRef={scrollRef} />
     </div>
   )
 }

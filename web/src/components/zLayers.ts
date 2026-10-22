@@ -6,7 +6,7 @@
 // 跟功能列/其他 sheet 的疊放關係時,改的是「引用哪個具名常數」,不是去算一個
 // 新數字跟誰比大小、也不用擔心改了一處會不會不小心跟另一處撞號或排序反了。
 //
-// 這裡解決的是「跟底部常駐功能列(PhoneTabBar.tsx)的相對疊放關係」這一層
+// 這裡解決的是「跟底部常駐功能列(phone/Nav.tsx)的相對疊放關係」這一層
 // ——10 個 bottom sheet 裡,大多數(設定頁/對話/配速/行程清單/地點清單)是
 // 各自獨立開關、彼此之間沒有嚴格的疊放順序要求,只需要知道「蓋過功能列」
 // 或「被功能列蓋住」這兩種語意,共用同一個具名層級即可;只有
@@ -16,7 +16,7 @@
 // ——這裡只提供那個堆疊「整體」該從哪個 z-index 開始往上疊的起點
 // (SHEET_STACK_BASE),堆疊內部每一層實際的偏移量由 useSheetStack 算。
 //
-// PhoneTabBar.module.css 的 .bar 本身的 z-index(目前是 35)不搬進這裡
+// phone/Nav.module.css 的 .bar 本身的 z-index(目前是 35)不搬進這裡
 // 用常數表達——那份 CSS 檔案跟這裡是不同語言(CSS vs TypeScript),硬要
 // 共用需要額外的建置工具支援(例如 CSS Modules 的 :export,這個專案目前
 // 沒有這套機制),這裡的 TAB_BAR 常數只是一份「給 TypeScript 讀者看」的
@@ -24,7 +24,7 @@
 //
 // 2026-10 補充(code review 發現的設計缺口修正):雖然 TypeScript 端
 // 仍無法避免這份複製值,但「CSS 檔案之間彼此寫死數字各自為政」這一半
-// 問題已經解決——PhoneTabBar.module.css 改成讀取
+// 問題已經解決——phone/Nav.module.css 改成讀取
 // components/zLayers.css 定義的 CSS 自訂屬性 var(--z-tab-bar),不再
 // 自己寫死 35,往後 CSS 端若要調整這個層級,只需要改 zLayers.css 一處,
 // 見該檔案的完整說明。
@@ -32,27 +32,27 @@ export const Z_LAYERS = {
   // BELOW_TAB_BAR_1/BELOW_TAB_BAR_2——這兩個 sheet 都甘願被底部功能列
   // 蓋住(例如使用者展開功能列「清單」/「時間軸」分頁時,不需要連功能列
   // 本身都蓋過去),但兩者之間仍有明確的相對順序——原始數值是
-  // trip/PhoneTripsDrawer.tsx(旅程清單)用 33、timeline/PhoneTimelineDrawer.tsx
+  // trip/phone/TripList.tsx(旅程清單)用 33、timeline/PhoneTimelineDrawer.tsx
   // (時間軸)用 13,代表旅程清單原本就設計成疊在時間軸之上(兩者
-  // open state 彼此獨立,理論上可能同時開啟,見 PhoneContent.tsx 的
+  // open state 彼此獨立,理論上可能同時開啟,見 phone/Content.tsx 的
   // tripsDrawerOpen/timelineDrawerOpen 說明),這裡保留這個相對順序、
   // 只是改成具名常數,不是把兩者合併成同一層級(合併會意外改變原本的
   // 疊放行為,不在這次「把裸數字換成具名常數」的範圍內)。
   BELOW_TAB_BAR_2: 13,
   BELOW_TAB_BAR_1: 33,
-  // TAB_BAR——PhoneTabBar.module.css 的 .bar 本身(見上方完整說明,兩邊
+  // TAB_BAR——phone/Nav.module.css 的 .bar 本身(見上方完整說明,兩邊
   // 數值需要保持一致,目前都是 35)。這裡列出來純粹是給閱讀這份常數表的
-  // 人一個完整的對照全貌,程式碼不會真的 import 這個值去設 PhoneTabBar
+  // 人一個完整的對照全貌,程式碼不會真的 import 這個值去設 phone/Nav
   // 自己的 z-index(那份 CSS 本來就寫死,不透過這裡)。
   TAB_BAR: 35,
   // ABOVE_TAB_BAR——這個 sheet 要蓋過底部功能列(使用者正在跟它互動的
   // 期間,功能列被完全蓋住比較不會讓使用者誤以為還能點功能列切換畫面)。
-  // 對應設定頁/對話小匡/配速面板/geo-planning/PlanPhoneTripListDrawer.tsx
+  // 對應設定頁/對話小匡/配速面板/geo-planning/phone/CandidateList.tsx
   // (行程清單)——這三個是各自獨立開關、不屬於 useSheetStack 管理的堆疊,
   // 彼此之間沒有嚴格的疊放順序要求(使用者操作流程上不會同時開啟兩個以上,
   // 見各自檔案的 open state 管理),共用同一個層級即可,不需要再往上細分。
   //
-  // geo-planning/PlanPhoneListDrawer.tsx(地點清單)雖然語意上也是「蓋過
+  // geo-planning/phone/ResultList.tsx(地點清單)雖然語意上也是「蓋過
   // 功能列」,但它同時是 PLAN_SHEET_STACK 這組堆疊裡最底層的一員(見下方
   // 完整說明),直接共用 PLAN_SHEET_STACK.list 這個具名層級,不重複引用
   // ABOVE_TAB_BAR——兩者數值相同(都是 36)是刻意設計成同一個起點,不是

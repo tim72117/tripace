@@ -1,12 +1,12 @@
-// planOverlayGeometry.ts — PlanOverlayPanelWide 側欄版面的幾何常數單一
+// planOverlayGeometry.ts — PlanOverlayPanel wide 側欄版面的幾何常數單一
 // 來源。2026-10(code review 發現:側欄幾何常數在三處手動複製——
-// PlanOverlayPanelWide.module.css、AIPlanTimelinePage.tsx 的安全區矩形
+// PlanOverlayPanelWide.module.css、home/plan-ai-sim/Content.tsx 的安全區矩形
 // 內聯樣式、WideLayoutDebugOverlay.tsx 的除錯疊圖——且這個重複在同一輪
 // 改動裡已經造成兩次真實漂移 bug:SIDEBAR_TOP 曾經漏改一次,.panel 的
 // bottom 也曾經跟 debug 框線不同步)。
 //
 // CSS Module 沒辦法直接 import TS 常數,所以這裡只統一 TS 這一側的兩個
-// 消費者(AIPlanTimelinePage.tsx 的安全區矩形、WideLayoutDebugOverlay.tsx
+// 消費者(home/plan-ai-sim/Content.tsx 的安全區矩形、WideLayoutDebugOverlay.tsx
 // 的除錯框線)——CSS 那一份(PlanOverlayPanelWide.module.css 的
 // .panel/.composerSlot)仍然要手動保持數值一致,但現在只需要對照這一處
 // 來源,不是三處互相對照。

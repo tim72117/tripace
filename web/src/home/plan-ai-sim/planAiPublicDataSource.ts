@@ -2,8 +2,12 @@ import {
   fetchPlanAiAttractionSearch,
   fetchPlanAiPlaceDetailsAny,
   fetchPlanAiPlaceSearch,
+  fetchPublicGeoAttractionByID,
+  fetchPublicGeoAttractions,
+  fetchPublicGeoPlaceDetails,
   fetchPublicGeoPlacePhotoAssets,
   type ClientConfig,
+  type GeoAttraction,
 } from '../../api'
 import { getSharedPlaceDetailsDedupe } from './placeDetailsDedupe'
 import type { PlanAiDataSource, PlanAiSearchNearbyResult } from './planAiDataSource'
@@ -54,7 +58,7 @@ async function searchNearbyByCoords(cfg: ClientConfig, lat: number, lng: number)
 
 export function createPlanAiPublicDataSource(baseURL: string): PlanAiDataSource {
   const cfg = guestCfg(baseURL)
-  // 去重(見 placeDetailsDedupe.ts):AIPlanTimelinePage 的 askPageDataSource 與
+  // 去重(見 placeDetailsDedupe.ts):plan-ai-sim/Content 的 askPageDataSource 與
   // LivePlanLayer 的 publicDataSource 是兩個不同實例,所以記憶依 baseURL 共用。
   const dedupe = getSharedPlaceDetailsDedupe(`public|${baseURL}`)
   return {
@@ -86,6 +90,18 @@ export function createPlanAiPublicDataSource(baseURL: string): PlanAiDataSource 
     transitEstimate: () =>
       Promise.reject(new Error('訪客模式沒有交通時間估算:後端沒有 /public/geo/plan-ai/transit-estimate 公開端點')),
     photoAssets: (placeId) => fetchPublicGeoPlacePhotoAssets(cfg, placeId),
+    geoPlaceDetails: (placeId) => fetchPublicGeoPlaceDetails(cfg, placeId),
+    attractionsByCity: async (city) => (await fetchPublicGeoAttractions(cfg, city)).attractions ?? [],
+    attractionByID: (id) => fetchPublicGeoAttractionByID(cfg, id),
+    // 訪客沒有 token,/internal 會 401,改打後端已開放的免登入端點(查自家資料庫、
+    // 免費、有 IP 節流)。api.ts 沒有訪客版包裝函式,fetch 就放在這個資料存取層裡。
+    nearbyAttractionAreas: async (lat, lng, radiusMeters) => {
+      const params = new URLSearchParams({ lat: String(lat), lng: String(lng), radius: String(radiusMeters) })
+      const res = await fetch(`${cfg.baseURL.replace(/\/+$/, '')}/public/geo/attractions/nearby-only?${params}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const body = (await res.json()) as { attractions?: GeoAttraction[] }
+      return body.attractions ?? []
+    },
     searchNearby: async (input) => {
       if ('coords' in input) {
         return searchNearbyByCoords(cfg, input.coords.lat, input.coords.lng)
@@ -97,4 +113,16 @@ export function createPlanAiPublicDataSource(baseURL: string): PlanAiDataSource 
       return searchNearbyByCoords(cfg, result.lat, result.lng)
     },
   }
+}
+
+// getPlanAiPublicDataSource——依 baseURL 共用同一個訪客版實例(理由同 getPlanAiApiDataSource)。
+const sharedPublicDataSources = new Map<string, PlanAiDataSource>()
+
+export function getPlanAiPublicDataSource(baseURL: string): PlanAiDataSource {
+  let ds = sharedPublicDataSources.get(baseURL)
+  if (!ds) {
+    ds = createPlanAiPublicDataSource(baseURL)
+    sharedPublicDataSources.set(baseURL, ds)
+  }
+  return ds
 }

@@ -1,10 +1,10 @@
 /* ThemePointDemo:見 ThemePointDemo.tsx 開頭的完整說明。地標本身的視覺
    規格(光暈/圓形地標圖/佔位圓/精選點圓點/標籤)直接照抄
-   ExploreMap.module.css 對應規則(.geo-attraction-glow/
+   PlanMap.module.css 對應規則(.geo-attraction-glow/
    -landmark-placeholder/-curated-dot/-label)的數值,不重新設計一套——
    使用者明確要求「要跟實際的樣式一樣」。這裡不用 :global() 包 class
    名稱(那是給 Google Maps OverlayView 動態插入的 innerHTML 用的字串
-   class,ExploreMap.module.css 特有的作法),這裡是一般 React JSX,直接
+   class,PlanMap.module.css 特有的作法),這裡是一般 React JSX,直接
    用 CSS Modules 的 camelCase 具名 class 即可,兩者只是宣告方式不同,
    視覺數值完全相同。
    外層容器(.demo)不套用 --ios-* 或 --color-* 這組 token(那些只在
@@ -105,7 +105,7 @@
   opacity: 0.22;
 }
 
-/* demoPoi/demoTheme:對齊 ExploreMap.module.css 的 .geo-attraction-overlay
+/* demoPoi/demoTheme:對齊 PlanMap.module.css 的 .geo-attraction-overlay
    ——position:absolute,用 transform 把視覺重心對準座標點(flex column
    置中排列光暈/圓/標籤)。這裡座標直接寫進 inline style 的 left/top
    (ThemePointDemo.tsx 傳入的 POI_LIST/THEME_POINT 像素值),CSS 只負責
@@ -230,7 +230,7 @@
 
 /* demoDot{Tea,Restaurant,Craft,Street}:店家分類配色,數值照抄
    .geo-attraction-curated-dot-{tea,restaurant,craft,street}——見
-   geoCuratedCategoryStub.ts/ExploreMap.module.css 對應規則的完整說明,
+   geoCuratedCategoryStub.ts/PlanMap.module.css 對應規則的完整說明,
    這裡不重複展開理由,只搬數值。ThemePointDemo.tsx 用
    styles[`demoDot${Category}`] 動態組出這幾個 camelCase class 名稱
    (CSS Modules 把 kebab-case 選擇器編譯成物件 key 時,這裡直接手寫

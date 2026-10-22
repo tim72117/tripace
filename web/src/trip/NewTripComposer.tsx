@@ -4,8 +4,8 @@ import { isSubmitEnter } from '../AppCommon'
 import { Button } from '../components/Button'
 import styles from './NewTripComposer.module.css'
 
-// NewTripComposer:「新增旅程」輸入列——DesktopTripList.tsx(桌面版側欄)、
-// PhoneTripsDrawer.tsx(手機版抽屜)原本各自把這段 <input>+<Button> 結構、
+// NewTripComposer:「新增旅程」輸入列——trip/desktop/TripList.tsx(桌面版側欄)、
+// trip/phone/TripList.tsx(手機版抽屜)原本各自把這段 <input>+<Button> 結構、
 // isSubmitEnter/Escape 取消判斷複製貼上一份(唯一差異只有外層容器的
 // className,兩處視覺與行為完全一致),收斂成這個共用元件,不屬於
 // components/ 底下的全站基礎元件(不是任何地方都用得到的通用元件),

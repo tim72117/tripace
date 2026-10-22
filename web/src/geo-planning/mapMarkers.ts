@@ -1,12 +1,12 @@
-// mapMarkers.ts——從 ExploreMap.tsx 抽出來的 marker 內容產生邏輯,全部
-// 是不吃 React state 的純函式,原本卡在 ExploreMap.tsx 的 module scope
+// mapMarkers.ts——從 PlanMap.tsx 抽出來的 marker 內容產生邏輯,全部
+// 是不吃 React state 的純函式,原本卡在 PlanMap.tsx 的 module scope
 // 裡跟主元件擠在同一個 1300+ 行的檔案。搬過來的理由單純是「這批函式彼此
 // 互相呼叫(svgStringToElement 被其餘四個 xxxMarkerContent 共用、
 // candidateBadgeSvg 被 hotel/place 兩者共用),邏輯上是同一個小主題」,
 // 跟主元件的地圖生命週期/查詢邏輯沒有交集,搬動本身不改變任何行為。
 
 // candidateBadgeSvg:「已加入候選籃」的小勾選徽章 fragment,綠底 + 白色
-// 勾勾,疊在 marker 右上角——跟 ExploreMap.module.css 的
+// 勾勾,疊在 marker 右上角——跟 PlanMap.module.css 的
 // .geo-attraction-overlay-candidate 是同一套視覺語言。cx/cy 是徽章圓心
 // 座標,由呼叫端依自己的 viewBox 尺寸決定要疊在哪個角落——兩邊呼叫端
 // (飯店/推薦地點)的圖示尺寸不同,由呼叫端決定位置比在這裡寫死一組
@@ -142,8 +142,8 @@ export function searchResultMarkerContent(
 // 光暈的顏色),已修正成真正的 accent。這個函式本身是刻意設計成不吃
 // React state 的純函式(見檔案開頭說明),不能自己讀 CSS 變數決定顏色
 // (--color-accent 依主題變化,純函式沒有 DOM 存取權),故改成由呼叫端
-// (useTripEntryMarkers.ts,有 mapRef 可以透過 getDiv() 讀取實際計算值)
-// 解析好顏色字串再傳入,理由同 useAttractionOverlays.ts 對
+// (PlanMap 等呼叫端,有 mapRef 可以透過 getDiv() 讀取實際計算值)
+// 解析好顏色字串再傳入,理由同 attractionGlowLayer.ts 對
 // --ios-sand 的讀取方式,兩者是同一套模式。
 export function tripEntryMarkerContent(selected: boolean, color: string): SVGElement {
   const size = selected ? 30 : 24
@@ -180,7 +180,7 @@ export type PlanStopMarkerState = 'base' | 'hover' | 'selected'
 //
 // state——三態而非 selected 布林:selectedStopId 與 hoverStopId 是兩個
 // 獨立的 state,點選 A 之後把滑鼠掃到 B,兩顆會同時強調,必須分辨得出
-// 哪顆才是自己點選的。故不沿用 geoMarkerSelection.ts isMarkerSelected
+// 哪顆才是自己點選的。故不沿用 geoSelectedKey.ts isMarkerSelected
 // 那套把 selectedKey/hoverKey 收斂成單一布林值的做法。四種邏輯組合對應
 // 三種視覺(selected 優先,見 usePlanStopMarkers 的對應規則),「selected
 // 且同時 hover」落在 'selected'——已經錨定的東西不該因為滑鼠經過而變。
@@ -277,7 +277,7 @@ export function planStopMarkerSvgString(
   // 的注意力」,selected 是「一個收束的定點」。
   const haloRadius = state === 'selected' ? 17 : 21
   const haloOpacity = state === 'selected' ? 0.16 : 0.22
-  // .ps-halo/.ps-ripple 這兩個 class 的動畫定義在 ExploreMap.module.css
+  // .ps-halo/.ps-ripple 這兩個 class 的動畫定義在 PlanMap.module.css
   // 的 :global 區塊(含 prefers-reduced-motion 的退化),不內嵌 <style>
   // 進這段 SVG——理由見該處的完整說明(內嵌會讓每顆強調態 marker 都往
   // document 注入一份重複的 @keyframes)。
@@ -338,7 +338,7 @@ export function planStopMarkerContent(
 // 範圍視覺,這裡固定一個尺寸,不是真的依 GeolocationPosition.accuracy
 // 動態計算範圍——初始中心點這個情境不需要精確到那個程度)+ 白色描邊的
 // 實心藍點,純裝飾用途,不需要选中態(這顆點不能被使用者點選觸發任何
-// 互動,見 useCurrentLocationMarker.ts 的完整說明)。
+// 互動,見 currentLocationLayer 的完整說明)。
 export function currentLocationMarkerContent(): SVGElement {
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">' +

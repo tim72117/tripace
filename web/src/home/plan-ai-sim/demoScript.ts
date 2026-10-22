@@ -3,7 +3,7 @@
 // 的完整定義)專用的獨立劇本,2026-10 新增(使用者明確要求「小展示只留
 // 5 個」景點站)。
 //
-// 刻意不跟播放態(/ai-plan 展示頁,AIPlanTimelinePage.tsx)共用
+// 刻意不跟播放態(/ai-plan 展示頁,home/plan-ai-sim/Content.tsx)共用
 // planSimScript.ts 的 PLAN_SIM_SCRIPT,也不讓 createPlanSimFakeSource/
 // createPlanSimScrollSource 新增「要播幾站」這種參數去讀同一份劇本切出
 // 子集合——使用者明確要求兩者是分離的概念(小展示/播放態各自獨立,不是
@@ -27,7 +27,7 @@
 // 有詢問頁,要同時補上 AiPlanPhoneDemoScreen 的 AskPage 接線,不是只把
 // 這一則加回來。
 
-import type { PlanAction } from './AIPlanTimelinePage'
+import type { PlanAction } from './planAction'
 
 export const DEMO_SCRIPT: PlanAction[] = [
   {

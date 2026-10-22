@@ -1,0 +1,114 @@
+/* desktop/Nav.tsx 專屬樣式(CSS Modules)。命名省略掉原本的 desktop-rail-
+   前綴(例如 .buttons 對應原本的 .desktop-rail-buttons,.btn 對應
+   .desktop-rail-btn)——import 時已經有明確的命名空間。
+
+   .rail/.expanded(原全域字串 .desktop-rail/.desktop-rail.expanded)現在
+   併入這份檔案雜湊化——DesktopUserMenu.module.css 原本用 :global()
+   依賴這兩個全域名稱偵測外層容器是收合還是展開,現在改成 desktop/Nav
+   直接把 expanded 這個 boolean 當 prop 傳給 DesktopUserMenu(見
+   DesktopUserMenu.tsx 的 expanded prop),不再靠 CSS 選擇器猜測「自己被
+   放進哪個容器」,故這裡不再需要保留全域字串命名。
+
+   .desktop-rail-btn-demo* 這 3 條規則雖然語意上屬於 demo 分類,但結構上
+   內嵌在核心 rail 按鈕樣式中間,為了避免非連續切割增加維護風險,一併
+   搬進這份檔案,不獨立分類。 */
+
+.rail {
+  flex: 0 0 48px;
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--ios-card);
+  border-right: 1px solid var(--ios-sep);
+  min-height: 0;
+  padding: 8px 0;
+  transition: flex-basis 0.18s ease, width 0.18s ease;
+  overflow: hidden;
+}
+.rail.expanded {
+  flex-basis: 180px;
+  width: 180px;
+}
+
+.buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+.btn {
+  position: relative;
+  width: 100%;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ios-gray);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.rail.expanded .btn {
+  justify-content: flex-start;
+  padding: 0 16px;
+}
+.rail.expanded .btn > svg {
+  flex: 0 0 auto;
+}
+.btnLabel {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ios-gray);
+}
+.btn:hover:not(:disabled) {
+  background: var(--ios-bg);
+  color: var(--color-accent);
+}
+.btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+.btn:disabled {
+  color: var(--ios-sep);
+  cursor: not-allowed;
+}
+/* 啟用中的圖示:左緣 accent 豎條 + 淡底色標記(比照 VSCode activity bar)。 */
+.btn.active {
+  color: var(--color-accent);
+  background: var(--ios-bg);
+}
+.btn.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--color-accent);
+}
+/* 試做用導覽項目(?demo）與正式功能的視覺區隔:一條細分隔線,
+   按鈕本身圖示顏色也偏淡一階,一眼可辨識是實驗性質、非正式功能。 */
+.divider {
+  width: 24px;
+  height: 1px;
+  margin: 6px auto;
+  background: var(--ios-sep);
+}
+.btnDemo {
+  color: var(--ios-gray);
+  opacity: 0.75;
+}
+.btnDemo:hover:not(:disabled) {
+  opacity: 1;
+}
+.btnDemo.active {
+  opacity: 1;
+}

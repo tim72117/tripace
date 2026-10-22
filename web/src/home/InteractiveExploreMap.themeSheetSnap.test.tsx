@@ -15,7 +15,7 @@
 // 才能驗證兩條路徑最終呈現的段位是否一致、正確——不能只相信「程式碼
 // 看起來共用同一段邏輯」就跳過這層驗證。
 //
-// mock 手法比照 ExploreMap.attractionClick.test.tsx(同一份慣例:mock
+// mock 手法比照 PlanMap.attractionClick.test.tsx(同一份慣例:mock
 // @googlemaps/js-api-loader、mock ./geoAttractionOverlay 的
 // getAttractionOverlayClass 截住點擊 callback、mock ../api 的查詢函式),
 // 額外 mock window.matchMedia 讓 useIsDesktop 回傳 false(走手機版分支,
@@ -88,7 +88,7 @@ vi.mock('../api', async (importOriginal) => {
 
 // FakeOverlay:記錄每個 attraction 建構時傳入的 onClick,供測試直接呼叫
 // 模擬點擊地圖上的主題點地標——不觸碰真正的 Google Maps OverlayView/DOM,
-// 理由同 ExploreMap.attractionClick.test.tsx 開頭的說明。
+// 理由同 PlanMap.attractionClick.test.tsx 開頭的說明。
 let clickHandlers: Map<string, (attraction: GeoAttraction) => void> = new Map()
 class FakeOverlay {
   constructor(
@@ -142,7 +142,7 @@ vi.mock('../geo-planning/geoAttractionOverlay', () => ({
 // isVisible/建圖 effect 的完整說明:`if (!isVisible && !mapRef.current)
 // return`)——jsdom 沒有實作 ResizeObserver,若只給一個空操作的假實作
 // (observe 什麼都不做),isVisible 會永遠停在初始值 false,地圖永遠
-// 不會真的建立,連帶 useAttractionOverlays 也不會建立任何 overlay,
+// 不會真的建立,連帶 useSharedDrawLayer 的 attractionGlow 也不會建立任何 overlay,
 // 「點擊地圖上的主題點」這條路徑就完全測不到(這份測試最初卡住正是
 // 這個原因)。改成 observe() 被呼叫時同步立即觸發一次回報非零尺寸的
 // callback,模擬容器一開始就是可見的情境。

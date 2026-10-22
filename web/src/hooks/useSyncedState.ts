@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from 'react'
 // 取代容易踩坑的「setState(updater) 內把結果賦值給外部變數、setState
 // 呼叫完緊接著讀那個變數」模式。
 //
-// 背景(真實 bug,見 AIPlanTimelinePage.tsx 的 insertAttractionAfter 早期
+// 背景(真實 bug,見 home/plan-ai-sim/Content.tsx 的 insertAttractionAfter 早期
 // 版本):setState(updater) 呼叫本身雖然同步返回,但傳入的 updater 函式
 // **不保證**在該次呼叫當下就被執行——React 18 對「非 React 事件系統
 // 觸發的 setState」(例如原生 WebSocket onmessage、setTimeout、第三方
@@ -32,7 +32,7 @@ export function useSyncedState<S>(initial: S | (() => S)) {
   // 在 render 期間直接讀寫 ref(而非用 useEffect 同步)——這是 React
   // 官方認可的「latest ref」模式,讀寫的是同一個 ref 物件本身,不觸發
   // 額外重渲染,也不像 useEffect 那樣要等 commit 完成才執行(理由同
-  // AIPlanTimelinePage.tsx 那次踩坑分析:若改用 useEffect 同步 ref,
+  // home/plan-ai-sim/Content.tsx 那次踩坑分析:若改用 useEffect 同步 ref,
   // 短時間內連續兩次呼叫 commit 時,第二次呼叫可能發生在 effect 還沒
   // 跑之前,讀到的仍是舊值)。
   if (ref.current !== state) ref.current = state

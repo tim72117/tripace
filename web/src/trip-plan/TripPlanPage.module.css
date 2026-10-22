@@ -1,11 +1,11 @@
 /* TripPlanPage.module.css — /app 底下正式「AI 安排行程」功能頁面的樣式。
-   從 plan-ai/AIPlanTimelinePage.module.css(展示原型樣式,使用者明確
+   從 home/plan-ai-sim/Content.module.css(展示原型樣式,使用者明確
    要求不要修改那份檔案)複製後改寫——只保留 TripPlanPage.tsx 實際會
    用到的規則,拿掉模擬相關按鈕的樣式(.replayBtn/.testBtnGroup/
    .testRemoveBtn/.dayTabs/.dayTab/.dayTabActive/.betaTag,這個正式功能
    頁面不再有「開啟模擬」「重播」「下一步」「測試按鈕」與 Day 1/Day 2
    分頁,也不是還在測試的 BETA 功能)。CSS Modules 各自獨立,不 import
-   交叉引用 AIPlanTimelinePage.module.css——兩份檔案各自完整、互不依賴,
+   交叉引用 home/plan-ai-sim/Content.module.css——兩份檔案各自完整、互不依賴,
    日後其中一份調整不會意外波及另一份。
 
    走登入後正式 App 的 --ios-* token 系統(見 base-ui.css),跟原型同一
@@ -19,7 +19,7 @@
 
 .page {
   width: 100%;
-  /* 2026-09:改用 DesktopMain 的 unboundedScroll(見 DesktopLayout.tsx
+  /* 2026-09:改用 DesktopMain 的 unboundedScroll(見 desktop/Content.tsx
      對 plan-ai 傳入這兩個 prop 的完整說明)後,捲動權收在外層 .main
      身上,.page 不再需要自己是 flex: 1 1 auto 的獨立捲動容器/管
      overflow——改成自然高度(min-height: 100%,讓背景色至少撐滿可視
@@ -38,13 +38,13 @@
 /* pageTransparentBackground——疊加在 .page 上,拿掉實色背景(見
    TripPlanPage.tsx transparentBackground prop 的完整說明)。只有
    /ai-plan 展示頁的 LivePlanLayer 這個呼叫端會套用,讓底下
-   AIPlanTimelinePage 的 NativeMapBase(交接前後同一個地圖實例)能
+   plan-ai-sim/Content 的 NativeMapBase(交接前後同一個地圖實例)能
    透出來,不被這個元件自己的實色背景蓋住。 */
 .pageTransparentBackground {
   background: transparent;
 }
 
-/* compact:放進對話浮動小匡(DesktopLayout.tsx 的 chat-popover)時疊加
+/* compact:放進對話浮動小匡(desktop/Content.tsx 的 chat-popover)時疊加
    的 modifier。
    上面 .page 的 min-height:100% + 自然高度 + 不管 overflow,成立的前提
    是「外層有人接手捲動」——/app/plan-ai 那條路徑由 DesktopMain 的
@@ -284,13 +284,13 @@
 /* composer——這裡只留「定位」(貼底、寬度、z-index),膠囊外觀(背景/
    邊框/陰影/圓角/padding)與輸入框、送出鈕的樣式已經搬到共用元件
    components/Composer.tsx(見該檔頭的完整背景說明:跟展示頁
-   AIPlanTimelinePage.module.css 原本各自維護一份、曾經因此跑出字級
+   home/plan-ai-sim/Content.module.css 原本各自維護一份、曾經因此跑出字級
    不一致的 bug),這裡透過 TripPlanPage.tsx 呼叫 <Composer
    className={styles.composer}> 把這組定位 class 疊加上去——共用元件
    不管「放在哪裡」,只管「長什麼樣子」。
 
    2026-09 改用 position: sticky 取代 position: absolute 相對 .page
-   定位:改用 DesktopMain 的 unboundedScroll 後(見 DesktopLayout.tsx 對
+   定位:改用 DesktopMain 的 unboundedScroll 後(見 desktop/Content.tsx 對
    plan-ai 傳入這兩個 prop 的完整說明),真正的捲動容器是外層 .main,
    .page 本身不再固定高度、會隨內容自然增長——absolute 相對 .page 會讓
    這顆膠囊跟著內容底部往下移動,而不是固定貼在視窗底部。sticky 相對
@@ -330,7 +330,7 @@
 }
 
 /* inSlot——輸入框被傳送進版面外殼的插槽(見 ComposerPortal.tsx、
-   plan-core/composerSlot.ts)後的覆寫。插槽本身已負責貼底置中、寬度與
+   plan-core/overlayDom.ts)後的覆寫。插槽本身已負責貼底置中、寬度與
    層級,輸入框只要填滿它,不能再自己定位或留外距。
    wrapperClassName 帶著 .compact(讓「.compact .input」這類後代選擇器
    照常命中),所以要把 .compact 的 height:100% 與 .compact .composer 的

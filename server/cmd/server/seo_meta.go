@@ -123,6 +123,16 @@ func buildSeoMetaByPath(baseURL string) map[string]seoMeta {
 			canonical:   baseURL + "/product",
 			image:       "",
 		},
+		// /momiji-front:紅葉前線視覺示意頁(2026-10 新增)。頁面主體是 canvas 地圖動畫,沒有自己的代表圖,image 留空
+		// 沿用 defaultImage。title/description 必須跟 web/src/momiji-front/momijiSeo.ts 的 SEO_TITLE /
+		// SEO_DESCRIPTION 逐字相同(那邊只負責 <title> 與 JSON-LD,其餘標籤以這裡為唯一事實來源);
+		// web/src/momiji-front/momijiSeo.test.ts 會直接讀這個檔案比對,改一邊忘了另一邊測試會失敗。
+		"/momiji-front": {
+			title:       "【2026日本紅葉】賞楓時間預測攻略｜各地見頃日一次看 | Tripace",
+			description: "【2026日本紅葉】賞楓時間預測攻略！依日本氣象株式會社預測日，從札幌到鹿兒島 14 個主要都市的見頃日一次看，並標出知名賞楓景點，可播放整季楓葉由北往南變色的過程。其餘地區為依預測日內插的示意。",
+			canonical:   baseURL + "/momiji-front",
+			image:       "",
+		},
 		"/ai-plan": {
 			title:       "AI 安排行程模擬——輸入需求，看時間軸怎麼排出來 | Tripace",
 			description: "輸入想去的地方與天數，看 AI 怎麼即時把景點排進每日時間軸，交通方式與停留時間自動補上。這是 Tripace AI 規劃行程功能的互動模擬，實際體驗不需要登入。",
@@ -345,7 +355,7 @@ func blogArticleSEOMeta(st *store.Store, baseURL, handle, slug string) (seoMeta,
 	// internal/api/content_page.go isJSONObject)時,fields 維持零值,
 	// 下面的 title/description 都會是空字串——比照
 	// applySEOMeta 對 title 的既有處理方式,讓 strings.Replace
-	// 换成空字串而非直接 panic 或擋下整個頁面渲染,寧可 SEO meta 退化
+	// 換成空字串而非直接 panic 或擋下整個頁面渲染,寧可 SEO meta 退化
 	// 成空字串也不要讓這個邊界情況影響到文章內容本身的正常顯示。
 	_ = json.Unmarshal([]byte(page.Content), &fields)
 

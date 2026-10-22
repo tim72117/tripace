@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { SignalHigh, Wifi, BatteryFull } from 'lucide-react'
 import type { PlanSimSource } from './plan-ai-sim/planSimSource'
 import { HorizontalPlanTimeline } from './plan-ai-sim/HorizontalPlanTimeline'
-import { usePlanSimSocket } from './plan-ai-sim/AIPlanTimelinePage'
+import { usePlanSimSocket } from './plan-ai-sim/usePlanSimSocket'
 import { PhoneDemoLayout } from './PhoneDemoLayout'
 import demoMapSrc from './assets/ai-plan-demo-map.png'
 import styles from './AiPlanPhoneDemoScreen.module.css'
@@ -11,10 +11,10 @@ import styles from './AiPlanPhoneDemoScreen.module.css'
 // 顯示的展示畫面(方案 B,2026-10 使用者明確確認:「試做B我試試看效果」)。
 //
 // 背景:這個小展示原本用 <iframe src="/ai-plan?embedded=1"> 整頁嵌入
-// AIPlanTimelinePage.tsx,後來 AIPlanTimelinePage 的地圖換成真實互動
+// home/plan-ai-sim/Content.tsx,後來 plan-ai-sim/Content 的地圖換成真實互動
 // 地圖(NativeMapBase,見該檔案的完整說明)後,使用者希望小展示改回
 // 「靜態圖片地圖 + 模擬元件」——但若直接把這個元件(非 iframe)嵌進
-// 功能介紹頁再用 CSS transform:scale() 縮小,AIPlanTimelinePage 現有的
+// 功能介紹頁再用 CSS transform:scale() 縮小,plan-ai-sim/Content 現有的
 // 響應式版面(@media (max-width: 767px) 手機斷點)會判斷錯誤:
 // media query 看的是瀏覽器真實視窗寬度,不是縮放後的視覺尺寸,縮小後的
 // 外框在桌面瀏覽器裡仍然會套用桌面版版面規則,版面會跟手機外框的形狀
@@ -22,13 +22,13 @@ import styles from './AiPlanPhoneDemoScreen.module.css'
 //
 // 這個元件採用「方案 B」解法:整個版面寫死成手機尺寸(不依賴任何
 // @media 判斷),專門只給這個固定尺寸的手機外框使用,不透過 iframe、
-// 也不是整頁 AIPlanTimelinePage 的縮小版——只共用它的劇本模擬邏輯
+// 也不是整頁 plan-ai-sim/Content 的縮小版——只共用它的劇本模擬邏輯
 // (usePlanSimSocket,已改成 export 供這裡 import,見該函式宣告處的
 // 完整說明),地圖、composer、頂部導覽列等版面相關的部分都是這裡重新
 // 寫的簡化版,不是原頁面的複製貼上。
 //
 // 地圖用存好的靜態圖片(assets/ai-plan-demo-map.png,跟
-// AIPlanTimelinePage.tsx 先前 NativeMapBase 用的 CENTER/ZOOM 同一組
+// home/plan-ai-sim/Content.tsx 先前 NativeMapBase 用的 CENTER/ZOOM 同一組
 // 構圖參數,2026-10 用 Static Maps API 產生並存檔),不是即時 API 呼叫
 // ——這個小展示本身在功能介紹頁上是裝飾性質的縮圖,不需要每次頁面
 // 載入都重新打一次 API 或掛載完整的 Maps JS SDK。

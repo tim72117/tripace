@@ -3,7 +3,7 @@
    不再各自維護一套版面規則——兩邊原本各寫一份,交接後手機版因此出現
    「輸入框貼在頂端」「整張地圖拉不動」(見下方 .passThrough)。
 
-   這份檔案收納的規則,原本散在 AIPlanTimelinePage.module.css:
+   這份檔案收納的規則,原本散在 home/plan-ai-sim/Content.module.css:
    .navSpacer、.mapSafeArea、.timelinePanel(桌面側欄/手機 flex 子項)與
    交接後的事件穿透。設計背景(為什麼安全區用 absolute 四邊宣告而非
    flex、為什麼 navSpacer 是人工估算)記在各 class 上。 */
@@ -176,7 +176,7 @@
    都正常,用 Chrome DevTools elementFromPoint 查證後確認是被地圖蓋住:
    這個容器原本是 position: static,static 元素不建立 stacking
    context,疊層規則上必然輸給任何 position: absolute 的同層內容
-   ——AIPlanTimelinePage.tsx 的 .mapBackdrop 正是 position: absolute,
+   ——home/plan-ai-sim/Content.tsx 的 .mapLayer 正是 position: absolute,
    地圖內部(Google Maps SDK 自己掛的 .gm-style 相關節點)又有自己的
    z-index,整組蓋在這個 static 容器上面,跟 DOM 先後順序或這裡的
    z-index 數值都無關——static 元素本來就不參與 z-index 排序。
@@ -202,7 +202,18 @@
      PlanOverlayPanel 底下的插槽——兩者不在同一棵 DOM 子樹,不是父子
      關係,導致 composer 繼承到 .passThrough 的 pointer-events: none
      卻沒有任何規則寫回 auto,整個輸入框看得到但點不到。直接在插槽
-     本身補上 auto,不依賴呼叫端(TripPlanPage/AIPlanTimelinePage)各自
+     本身補上 auto,不依賴呼叫端(TripPlanPage/plan-ai-sim/Content)各自
      記得處理——這個插槽本來就是「放輸入框的地方」,本來就該能互動。 */
   pointer-events: auto;
+}
+
+/* overlay——手機版(!isDesktop)導覽列佔位與面板的外殼,對齊共同 DOM 骨架(plan-core/overlayDom.ts)。
+   刻意不定位、不設 z-index、不改 pointer-events:只是 .page(flex column)與 .panel 之間多一層
+   flex column 容器,版面與包之前相同——.panel 的 flex: 1 改成吃滿這一層,這一層吃滿 .page 剩餘高度;
+   .safeArea 的 absolute 定位仍以 .page 為基準(這層不是定位容器)。 */
+.overlay {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }

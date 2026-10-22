@@ -1,4 +1,4 @@
-// useAskPageBridge — 從 TripPlanPage.tsx/AIPlanTimelinePage.tsx 抽出的
+// useAskPageBridge — 從 TripPlanPage.tsx/Content.tsx 抽出的
 // 共用狀態機:「顯示詢問頁、等待使用者選完、把結果回傳給呼叫端」這組
 // Promise 橋接邏輯在兩個檔案裡原本幾乎一模一樣(見各自 openAskPage/
 // handleAskPageDone 宣告處的完整說明),分別各寫一份除了重複程式碼,
@@ -28,7 +28,7 @@
 //
 // Input 泛型:TripPlanPage.tsx 支援 { candidates } | { explore } 兩種
 // 輸入(真實 AI 工具呼叫,見 askPageTools.ts AskPageCtx 的完整說明),
-// AIPlanTimelinePage.tsx 的展示頁劇本(planSimFakeSource.ts)固定只給
+// home/plan-ai-sim/Content.tsx 的展示頁劇本(planSimFakeSource.ts)固定只給
 // { candidates }(劇本內容是寫死的,見該檔案的完整說明,不適合依賴
 // 即時地圖中心/使用者位置的探查模式)——用泛型讓兩邊各自代入自己需要
 // 的輸入型別,不互相遷就。

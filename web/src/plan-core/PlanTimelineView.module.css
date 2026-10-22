@@ -17,7 +17,7 @@
    容器查詢,見下方 responsive 區塊開頭的完整說明)——讓這層成為容器
    查詢的尺寸容器,下面 @container (max-width: 767px) 的規則依這層的
    實際寬度切換,不是依瀏覽器視窗寬度。既有呼叫端(TripPlanPage.tsx/
-   AIPlanTimelinePage.tsx 透過 scrollClassName 疊加 .compactScroll/
+   home/plan-ai-sim/Content.tsx 透過 scrollClassName 疊加 .compactScroll/
    .timelineScroll 等)的寬度決定方式不變,這裡只是多宣告這個元素本身
    是一個尺寸容器,不影響它原有的版面行為。 */
 .scroll {
@@ -957,7 +957,7 @@
      pill)在桌面版都用 justify-content: center 定位,在窄欄裡 pill
      內容遠比 28px 寬,置中會讓它向左右兩邊溢出、貼齊視窗最左緣(使用者
      實機截圖回報「手機版的路程估算要往右邊移動」——這段修正原本只存在
-     於展示頁 home/plan-ai-sim/AIPlanTimelinePage.module.css,拆分這個
+     於展示頁 home/plan-ai-sim/Content.module.css,拆分這個
      共用元件時一併補上,讓正式頁 /app 也修好同一個 bug,不再各自維護
      不同步的兩份)。改成 justify-content: flex-start 只會讓虛線(原本
      沒設 left,水平位置依附 flex 排列)跟著 pill 一起偏移到最左邊,

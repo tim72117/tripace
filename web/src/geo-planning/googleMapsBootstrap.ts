@@ -1,7 +1,7 @@
 import { setOptions } from '@googlemaps/js-api-loader'
 import type { Theme } from '../theme'
 
-// googleMapsBootstrap.ts:ExploreMap.tsx 與 NativeMapBase.tsx 都各自需要
+// googleMapsBootstrap.ts:PlanMap.tsx 與 NativeMapBase.tsx 都各自需要
 // 「把這個 App 的 Theme 轉成 Google Maps colorScheme」與「setOptions 只
 // 呼叫一次」這兩件跟任何單一元件內部狀態都無關的純邏輯——原本兩個檔案
 // 各自複製一份完全相同的實作,任何一邊修正(例如 colorScheme 的退化
@@ -9,7 +9,7 @@ import type { Theme } from '../theme'
 // 模組,兩個元件都改成呼叫這裡,不再各自維護一份。
 //
 // 只抽這兩個純函式,不嘗試把整個建圖 effect(useEffect 內的 guard/
-// cancelled/buildingRef 等狀態機邏輯)合併成一個共用 hook——ExploreMap.tsx
+// cancelled/buildingRef 等狀態機邏輯)合併成一個共用 hook——PlanMap.tsx
 // 的建圖 effect 還耦合了 gestureHandling、restriction.strictBounds、
 // zoom_changed/bounds_changed/idle 等一系列只有它需要的監聽器與旅程查詢
 // 副作用,NativeMapBase.tsx 則是刻意的最小子集(見該檔案開頭說明),

@@ -165,7 +165,7 @@ interface RouteMeta {
 // PACE_PUBLIC_LINK_TOKEN:未登入的公開分享頁(/demo/pace,見
 // pace/PacePage.tsx)讀取固定展示旅程用的公開分享連結 token。由
 // VITE_PACE_PUBLIC_LINK_TOKEN 決定(見 .env.development)。登入後的正式
-// 介面(DesktopLayout.tsx)不使用這個 token——跟時間軸(Timeline)同一套
+// 介面(desktop/Content.tsx)不使用這個 token——跟時間軸(Timeline)同一套
 // 邏輯,改讀登入使用者目前選取的旅程(見下方 tripID prop 與
 // useEffect),不綁定固定旅程,也不需要經過公開連結機制。
 // export:pace/PacePage.tsx 掛載 PaceRouteMap 時也需要同一把 token(公開
@@ -398,7 +398,7 @@ export function PaceChart({
   onRouteChange,
   savedEntry,
 }: {
-  // cfg:登入後正式介面(DesktopLayout.tsx)傳入自己的 ClientConfig,改走
+  // cfg:登入後正式介面(desktop/Content.tsx)傳入自己的 ClientConfig,改走
   // 認證過的 fetchEntries 讀取資料。不傳時走公開連結 token(見下方
   // useEffect),依 publicToken 是否有值決定用哪一個 token(見該 prop
   // 說明)。
@@ -415,7 +415,7 @@ export function PaceChart({
   // 的 demo 展示旅程專用,/demo/pace 那個獨立示範頁在用),維持該頁既有行為
   // 不變。
   publicToken?: string
-  // onCheckpointClick:通知父層(DesktopLayout.tsx 登入後正式介面)使用者
+  // onCheckpointClick:通知父層(desktop/Content.tsx 登入後正式介面)使用者
   // 點了哪個檢查站,讓地圖(PaceRouteMap)能平移過去、進入手動微調座標模式。
   // 可選是因為 pace/PacePage.tsx(/demo/pace 公開分享頁)刻意不接這套
   // 互動(寫入座標需要登入身分,不該出現在公開頁),掛載時不傳這個 prop。
@@ -425,7 +425,7 @@ export function PaceChart({
   // checkpoint 清單(entry id,依 order 排序),但地圖跟這個元件是分開掛載
   // 的兩個 sibling(桌面版側欄+主區、手機版抽屜+主顯示區皆然),資料只有
   // 這裡有,故用這個 callback 把「目前這一段有哪些 checkpoint」往上鏡像給
-  // 共同的父層(DesktopLayout.tsx/PhoneContent.tsx),再由父層轉傳給
+  // 共同的父層(desktop/Content.tsx、phone/Content.tsx),再由父層轉傳給
   // PaceRouteMap——同一套模式比照 ChatScreen 的 onTimelineData 鏡像
   // 機制。可選是因為 pace/PacePage.tsx 公開分享頁沒有相鄰的地圖
   // 元件可以接收這份資料,不需要傳。
@@ -641,7 +641,7 @@ export function PaceChart({
     }
   }
 
-  // 跟時間軸(DesktopLayout.tsx 的「選擇一趟旅程後顯示時間軸。」)
+  // 跟時間軸(desktop/Content.tsx 的「選擇一趟旅程後顯示時間軸。」)
   // 同一套邏輯:登入後正式介面還沒選旅程時,只顯示提示,不當成錯誤、
   // 也不用「載入中」那組畫面(根本沒有發出任何請求)。
   if (cfg && !tripID) {

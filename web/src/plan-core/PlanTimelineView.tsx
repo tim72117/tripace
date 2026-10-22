@@ -166,10 +166,10 @@ const TRANSIT_MODE_OPTIONS: { mode: string; label: string; icon: LucideIcon }[] 
 // 不屬於時間軸視圖。
 //
 // 之所以現在拆出來,是為了讓 /ai-plan 展示頁(home/plan-ai-sim/
-// AIPlanTimelinePage.tsx)有機會重用同一份渲染邏輯——該檔案原本是獨立
+// home/plan-ai-sim/Content.tsx)有機會重用同一份渲染邏輯——該檔案原本是獨立
 // 複製的一份幾乎相同的 JSX,任何 UI 調整(例如 2026-10 新增的多圖瀏覽)
 // 都必須兩邊分別修改才會同時生效。拆分本身分兩階段:第一階段只整理
-// TripPlanPage.tsx(使用者當時明確要求先不要動 AIPlanTimelinePage.tsx);
+// TripPlanPage.tsx(使用者當時明確要求先不要動 home/plan-ai-sim/Content.tsx);
 // 第二階段(同一天,使用者明確要求「展示頁使用 PlanTimelineView」)
 // 展示頁也改接這個共用元件——兩個頁面的差異(結尾文案、捲動容器歸屬、
 // 「回到最新」按鈕定位方式)透過 endMarkerMessage/scrollClassName/
@@ -217,7 +217,7 @@ export interface PlanTimelineViewProps {
   // hideEmptyState——選填,預設 false。2026-10 /ai-plan 展示頁使用者
   // 要求「移除還沒開始對話的空畫面」:時間軸完全空白、isThinking 還是
   // false 的那段期間(這個展示頁是打字動畫播完才把 isThinking 的來源
-  // isGenerating 設成 true,見 AIPlanTimelinePage.tsx 的完整說明,這段
+  // isGenerating 設成 true,見 home/plan-ai-sim/Content.tsx 的完整說明,這段
   // 空窗期不是一閃即逝,使用者看得到完整的引導文字畫面),希望這段
   // 期間時間軸主顯示區保持空白,不要出現引導文字。
   // 不能直接把 isThinking 傳 true 代替(治標不治本的捷徑):isThinking
@@ -230,7 +230,7 @@ export interface PlanTimelineViewProps {
   hideEmptyState?: boolean
   // endMarkerMessage——選填,生成結束後顯示在時間軸底部的文案,預設
   // 「目前安排到這裡」(對齊正式頁 TripPlanPage.tsx 開放式、可持續對話
-  // 調整行程的語意)。展示頁 AIPlanTimelinePage.tsx 原本固定顯示
+  // 調整行程的語意)。展示頁 home/plan-ai-sim/Content.tsx 原本固定顯示
   // 「行程結束」(劇本播完、語意上是一段有限的展示跑完了,跟正式頁
   // 「隨時可以繼續安排」的語意不同)——2026-10 code review 發現拆分
   // 當下把這段文字寫死成正式頁的版本,展示頁因此文案被覆蓋,改成這個
@@ -242,7 +242,7 @@ export interface PlanTimelineViewProps {
   onPanToStop: (step: PlanNode) => void
   // onRemoveStop——選填:卡片右上角顯示一顆刪除按鈕,點擊時呼叫並傳入
   // 這個節點的 id。選填而非必填,是因為這個元件也被 /ai-plan 展示頁
-  // (home/plan-ai-sim/AIPlanTimelinePage.tsx,使用者明確要求不要修改
+  // (home/plan-ai-sim/Content.tsx,使用者明確要求不要修改
   // 那份檔案行為,見 TripPlanPage.tsx 檔頭的完整說明)共用——展示頁不
   // 傳這個 prop 就不會出現刪除按鈕,維持原本的行為不受影響。正式功能頁
   // (TripPlanPage.tsx)原本只能透過 AI 對話下指令間接呼叫 removeStep
@@ -300,7 +300,7 @@ export interface PlanTimelineViewProps {
   // 沒有後端可以依指定 mode 重新查詢,不接這個 prop;只有 /app、
   // /trip-plan(TripPlanPage.tsx)接了 fetchPlanAiTransitEstimate 的真實
   // 後端,才提供這個 callback。重新查詢、更新 transitFromPrev 的實際
-  // 邏輯交給呼叫端决定,這個元件只負責「使用者選了哪一個」這個通知。
+  // 邏輯交給呼叫端決定,這個元件只負責「使用者選了哪一個」這個通知。
   onTransitModeChange?: (stopId: string, mode: string) => void
   // renderStopCard——選填:替換掉這個元件預設的 .stopCard 渲染(縮圖/
   // 名稱/描述/tags/刪除按鈕那一整塊),改由呼叫端提供的函式決定要畫
@@ -365,7 +365,7 @@ export interface PlanTimelineViewProps {
   // scrollClassName——選填,疊加在這個元件自己的 .scroll 上。兩個呼叫端
   // 的捲動模型完全不同:正式頁 TripPlanPage.tsx 的 .page 是自然高度、
   // 捲動權收在外層 <main>(unboundedScroll),.scroll 本身不需要
-  // overflow-y/padding-bottom;展示頁 AIPlanTimelinePage.tsx 的 .page 是
+  // overflow-y/padding-bottom;展示頁 home/plan-ai-sim/Content.tsx 的 .page 是
   // height:100dvh + overflow:hidden 的固定視窗容器,.scroll 自己才是
   // 真正的捲動容器,需要 overflow-y:auto,composer 又是 position:absolute
   // 蓋在內容上方,還需要額外的 padding-bottom 讓最後一張卡片捲到底時
@@ -380,7 +380,7 @@ export interface PlanTimelineViewProps {
   // position:sticky(相對「最近的捲動祖先」貼齊,見該 class 的完整
   // 說明),這個寫法要求 .jumpPillWrap 的某個祖先元素本身是可捲動的
   // ——正式頁 TripPlanPage.tsx 符合這個前提(捲動祖先是外層 <main>,
-  // 整棵 .page 樹都在它底下)。但展示頁 AIPlanTimelinePage.tsx 的
+  // 整棵 .page 樹都在它底下)。但展示頁 home/plan-ai-sim/Content.tsx 的
   // .jumpPillWrap 是 PlanTimelineView 自己 .scroll(透過 scrollClassName
   // 取得 overflow-y:auto)的手足元素、不是它的子孫——sticky 完全沒有
   // 可依附的捲動容器,按鈕會變成普通區塊顯示、不再浮動貼齊畫面底部
@@ -403,9 +403,9 @@ export interface PlanTimelineViewProps {
   jumpPillContent?: ReactNode
   // endMarkerClassName——選填,疊加在這個元件自己的 .endMarker 上。跟
   // scrollClassName/jumpPillWrapClassName 同一種需要的理由:2026-10
-  // /ai-plan 展示頁(AIPlanTimelinePage.tsx)讀者回報「── 行程結束 ──」
+  // /ai-plan 展示頁(home/plan-ai-sim/Content.tsx)讀者回報「── 行程結束 ──」
   // 文字顯示不清楚——.endMarker 用共用 token(--ios-gray)的淺灰色文字,
-  // 在展示頁疊在地圖背景上方(見 AIPlanTimelinePage.module.css 的
+  // 在展示頁疊在地圖背景上方(見 home/plan-ai-sim/Content.module.css 的
   // .timelineScroll 說明,這裡整個時間軸浮在地圖底圖之上)
   // 時,地圖紋理當背景、文字本身又淡,對比度不足。正式頁(/app)的
   // .endMarker 疊在純色頁面背景上,同樣的顏色沒有這個問題,不能直接

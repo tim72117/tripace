@@ -4,12 +4,12 @@ import type { RefObject } from 'react'
 // useElementHeight——2026-10 新增(使用者明確要求「有什麼方法可以確保
 // bottom sheet 如果是在功能列後面,標頭不會被遮蔽,也不用功能列改動
 // 高度,就要重新確認」「我要穩定根本的處理方式」):取代目前散落各處把
-// PhoneTabBar.module.css 的 .tab 高度(64px)當作寫死數字複製貼上的做法
-// (PhoneTripsDrawer.tsx/PhoneTimelineDrawer.tsx/PhoneSideTools.module.css/
+// phone/Nav.module.css 的 .tab 高度(64px)當作寫死數字複製貼上的做法
+// (trip/phone/TripList.tsx/PhoneTimelineDrawer.tsx/PhoneSideTools.module.css/
 // PlanPhoneView.module.css 都各自寫一份 64px,靠人工記得同步,每個檔案
 // 的註解都承認「調整這裡要一併同步那幾處」)——用 ResizeObserver 量測
 // 參照元素的真實 clientHeight,回傳值永遠反映瀏覽器實際算出來的高度,
-// 不是任何人手動維護的數字。PhoneTabBar 之後不管怎麼改版面(加一行
+// 不是任何人手動維護的數字。phone/Nav 之後不管怎麼改版面(加一行
 // 文案、換字級、調整 padding),所有依賴這個 hook 的呼叫端都會自動拿到
 // 正確的新高度,不需要回頭檢查/修改任何依賴它的程式碼。
 //
@@ -33,7 +33,7 @@ export function useElementHeight(ref: RefObject<HTMLElement | null>): number {
 
     // typeof ResizeObserver === 'undefined'——這個專案的測試環境
     // (vitest + jsdom)原生不實作 ResizeObserver,沒有這層防禦的話,
-    // 任何掛載了使用這個 hook 的元件(例如 PhoneContent.tsx)的測試都會
+    // 任何掛載了使用這個 hook 的元件(例如 phone/Content.tsx)的測試都會
     // 直接噴 ReferenceError。真實瀏覽器(含所有主流行動瀏覽器)都支援
     // 這個 API,這裡純粹是讓同一份程式碼能同時在兩種環境下運作,不是
     // 為了支援舊瀏覽器的 polyfill——沒有 ResizeObserver 時退化成只有

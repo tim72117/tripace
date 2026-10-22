@@ -17,7 +17,7 @@ import styles from './DesktopInfoCard.module.css'
 // 加上這個寬度、再加上下面的 STACK_GAP_PX。呼叫端不需要另外複製這些
 // 數字,CSS/間距若之後調整,這裡跟著改一處即可,不會有多處各自寫死的
 // 數字彼此不同步——DESKTOP_INFO_CARD_STACK_GAP_PX 原本是
-// DesktopLayout.tsx 自己散落的字面值(12px),沒有共用來源,這裡一併
+// desktop/Content.tsx 自己散落的字面值(12px),沒有共用來源,這裡一併
 // 收進來一起匯出,讓「兩張卡片並存疊放」這整組定位規則(寬度/基準/間距
 // 三個數字)只有一個權威來源,不是寬度共用了、間距卻各自繼續各寫一份。
 export const DESKTOP_INFO_CARD_WIDTH_PX = 340
@@ -27,7 +27,7 @@ export const DESKTOP_INFO_CARD_STACK_GAP_PX = 12
 // stackedInfoCardRightPx:多張 DesktopInfoCard 並存疊放時,某一張卡片
 // 該貼齊的 right 值——用「順位陣列」取代舊有「nearbyInfoPanelRightPx
 // 假設主題卡一定已開」那種針對特定卡片組合寫死的公式(見這個檔案改動
-// 前的版本,與 DesktopLayout.tsx 對應公式的說明)。每一類卡片(主題卡/
+// 前的版本,與 desktop/Content.tsx 對應公式的說明)。每一類卡片(主題卡/
 // 並存地點卡/未來可能的第三類)固定分配一個順位數字(數字越小越靠右),
 // 渲染時只看「目前哪些順位的卡片實際有出現」(presentOrders),把這張卡
 // 前面(順位更小)實際存在的卡片數量算出來,乘上一張卡的佔用寬度
@@ -36,7 +36,7 @@ export const DESKTOP_INFO_CARD_STACK_GAP_PX = 12
 // 組合各自寫一條公式,也不需要任何卡片的存在與否依賴另一張卡的狀態。
 //
 // baseRightPx:預設 DESKTOP_INFO_CARD_BASE_RIGHT_PX,呼叫端若因為飯店
-// 側欄/對話小匡等因素需要把整組卡片疊放再往左推(見 DesktopLayout.tsx
+// 側欄/對話小匡等因素需要把整組卡片疊放再往左推(見 desktop/Content.tsx
 // infoPanelShiftBy 的說明),可傳入已經算好的起始 right 值取代預設值。
 export function stackedInfoCardRightPx(
   order: number,

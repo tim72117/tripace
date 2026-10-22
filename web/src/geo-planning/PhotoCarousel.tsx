@@ -41,7 +41,7 @@ export function PhotoCarousel({
   fallbackUrl?: string
   alt: string
   // onLayoutChange:通知呼叫端目前是否渲染成「手機版多圖橫滑」
-  // (isMobileSwipe)——手機版呼叫端(GeoOutlinePhoneInfoSheet.tsx)的
+  // (isMobileSwipe)——手機版呼叫端(PlanPhoneInfoSheet.tsx)的
   // 外層容器 .imageWrap 原本固定留 16px 左右 padding(給單張圖片/
   // placeholder 用的視覺留白),但這個 padding 套用到多圖橫滑軌道上時,
   // 會讓整條軌道跟卡片外緣之間多出一圈間隙,不是真正貼齊——使用者明確
@@ -178,7 +178,7 @@ function MobileSwipeStrip({ photos, alt }: { photos: string[]; alt: string }) {
   // (activeIndex===photos.length-1)時,軌道對應那一側才留一點間距
   // ——使用者明確要求「第一張顯示時左邊要有間隙、滑到最後一張時右邊
   // 要有間隙」,左右對稱規則,但滑到中間任一張時軌道整體要真正貼齊
-  // 卡片外緣,不能一直留白(見呼叫端 GeoOutlinePhoneInfoSheet 的
+  // 卡片外緣,不能一直留白(見呼叫端 PlanPhoneInfoSheet 的
   // .imageWrapSwipe 說明,那層外框本身已經不留 padding)。用既有的
   // activeIndex(IntersectionObserver 判斷的目前主要顯示張數)當條件,
   // 不需要另外監聽 scrollLeft——activeIndex 對應到第一/最後張時,視覺
@@ -251,7 +251,7 @@ function MobileSwipeStrip({ photos, alt }: { photos: string[]; alt: string }) {
 //
 // 用 createPortal 掛到 document.body,不是直接內嵌在呼叫端(PlacePanel/
 // AttractionInfoPanel)的 JSX 樹裡——.lightboxOverlay 的 position: fixed
-// 理論上該相對整個視窗定位,但這張卡片現在是掛在地圖元件(ExploreMap/
+// 理論上該相對整個視窗定位,但這張卡片現在是掛在地圖元件(PlanMap/
 // NativeMapBase)的 children 裡(見這兩個檔案的完整說明),巢狀在較深的
 // DOM 樹層級,一旦祖先鏈上任何一層意外引入 transform/filter/will-change
 // 等會建立新包含區塊的屬性,fixed 定位就會改成相對那層祖先,不再是整個

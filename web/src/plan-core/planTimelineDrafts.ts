@@ -4,7 +4,7 @@
 //
 // 架構決策:不改動 planTimelineStorage.ts 既有的 PlanTimelineStore 介面
 // 契約(readRev/loadTimelineWithRev/saveTimeline 三個方法的行為完全不變,
-// /app、DesktopLayout.tsx 等既有呼叫端繼續用固定 key 的
+// /app、desktop/Content.tsx 等既有呼叫端繼續用固定 key 的
 // localStoragePlanTimelineStore,不受任何影響)——而是在它之上疊加一層
 // 獨立模組:
 //   1. 這裡新增一組「行程清單」的 localStorage key(DRAFTS_INDEX_KEY),
@@ -42,7 +42,7 @@ export const DRAFTS_INDEX_KEY = 'tripace.planTimeline.drafts'
 // 草稿 id 組成完整 key(見 draftTimelineKey)。跟現有單一草稿的固定 key
 // (PLAN_TIMELINE_STORAGE_KEY = 'tripace.planTimeline')刻意分開在不同的
 // key 空間下,不會互相覆蓋或混淆——目前使用中的「單一草稿」情境
-// (/app、DesktopLayout.tsx)完全不會讀寫到這個前綴底下的任何 key。
+// (/app、desktop/Content.tsx)完全不會讀寫到這個前綴底下的任何 key。
 const DRAFT_TIMELINE_KEY_PREFIX = 'tripace.planTimeline.draft.'
 
 export function draftTimelineKey(draftId: string): string {

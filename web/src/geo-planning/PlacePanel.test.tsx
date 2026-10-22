@@ -12,7 +12,7 @@
 //     點選日期格子即視為確定,改呼叫新的 onSchedule(candidate, date) 回報
 //     使用者選定的日期,不呼叫 onAddCandidate(這個流程完全取代原本的
 //     一鍵加入,不是先加入候選籃、之後才補日期——因為候選籃裡的「已排入
-//     行程」分組本來就要有日期才有意義,見 GeoCandidateSidebar.tsx 的
+//     行程」分組本來就要有日期才有意義,見 geo-planning/desktop/CandidateList.tsx 的
 //     dayGroupKey/NO_DATE_GROUP 分組邏輯)。日曆 UI 原本是原生
 //     <input type="date"> + 「確定」按鈕,使用者明確要求改成月曆格線浮動匡
 //     (react-day-picker),點日期格子直接生效,不再需要「確定」按鈕/日期
@@ -20,13 +20,13 @@
 //   - 右半邊複合按鈕(onAddAndReveal,PanelLeft icon)不受這個需求影響,
 //     維持現有的「直接加入候選籃 + 側欄 highlight」行為不變——這顆按鈕的
 //     語意本來就是「先丟進候選籃,之後再從候選籃那邊處理日期」(見
-//     GeoCandidateSidebar.tsx 的「從候選加入」/NoDateDayHead 入口),不需要
+//     geo-planning/desktop/CandidateList.tsx 的「從候選加入」/NoDateDayHead 入口),不需要
 //     在這裡也跳日曆。
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PlacePanel, type PlaceInfoContent } from './PlacePanel'
-import type { GeoCandidate } from './GeoCandidateSidebar'
+import type { GeoCandidate } from './geoCandidateHelpers'
 
 
 // pickCalendarDate:react-day-picker 的日期格子沒有穩定的 test id,只有
@@ -192,14 +192,14 @@ describe('PlacePanel「加入行程」按鈕的日期選擇', () => {
 //     上面那組測試的行為,直接展開日曆浮動匡,不跳下拉選單——沒有任何
 //     既有日期可以列,選單只會是空的,沒有意義。
 //   - 行程本身已有排定日期(scheduledDates 非空)→ 按下按鈕先展開一個下拉
-//     選單,列出 scheduledDates 每一天(用跟 GeoCandidateSidebar.tsx
+//     選單,列出 scheduledDates 每一天(用跟 geo-planning/desktop/CandidateList.tsx
 //     dayGroupLabel 一致的「M/D」格式顯示),選單最下面多一個「其他日期」
 //     選項:
 //       - 點選單裡的某一天 → 直接呼叫 onSchedule(candidate, 那一天的
 //         ISO 日期字串),選單收合,不會再跳日曆。
 //       - 點「其他日期」→ 選單收合、改展開日曆浮動匡(跟原本沒有既有日期
 //         時同一份 UI),點選日期格子直接呼叫 onSchedule。
-// scheduledDates 由呼叫端(DesktopLayout.tsx)傳入,格式為 YYYY-MM-DD 字串
+// scheduledDates 由呼叫端(desktop/Content.tsx)傳入,格式為 YYYY-MM-DD 字串
 // 陣列,這個元件不需要知道這些日期是怎麼算出來的。
 const SCHEDULED_DATES = ['2026-08-16', '2026-08-17']
 

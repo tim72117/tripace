@@ -6,7 +6,7 @@ import { fetchPoiContent, useThemeAttractionSelection } from './useThemeAttracti
 // useThemeAttractionSelection.test.ts——驗證這支 hook 要解決的核心問題:
 // 主題卡切換(themeKey 變動)時,poiContent/hoveredAttraction/
 // categoryFilter 三者都要一併清空(見該檔案開頭的完整說明:這是
-// DesktopLayout.tsx/InteractiveExploreMap.tsx 兩邊原本各自手寫、容易漏寫其中
+// desktop/Content.tsx/InteractiveExploreMap.tsx 兩邊原本各自手寫、容易漏寫其中
 // 一個 reset 的部分),以及 openPoiContent 的查詢/fallback 流程。
 function attraction(overrides: Partial<GeoAttraction> = {}): GeoAttraction {
   return { name: '忠僕茶屋', lat: 34.99, lng: 135.78, isTheme: false, ...overrides }
@@ -56,7 +56,7 @@ describe('useThemeAttractionSelection', () => {
     expect(result.current.hoveredAttraction).not.toBeNull()
   })
 
-  it('themeKey 是物件參照時,重複點擊同一主題點(新物件、內容相同)仍會觸發 reset——這是 DesktopLayout.tsx 需要的行為:使用者重新點擊已開啟的主題點地標,要清空並存卡回到乾淨狀態', () => {
+  it('themeKey 是物件參照時,重複點擊同一主題點(新物件、內容相同)仍會觸發 reset——這是 desktop/Content.tsx 需要的行為:使用者重新點擊已開啟的主題點地標,要清空並存卡回到乾淨狀態', () => {
     const fetchPlaceDetails = vi.fn()
     const { result, rerender } = renderHook(
       ({ themeKey }) => useThemeAttractionSelection(themeKey, fetchPlaceDetails),
@@ -214,7 +214,7 @@ describe('useThemeAttractionSelection', () => {
   })
 })
 
-// fetchPoiContent——GeoOutlinePhoneView.tsx(手機版附近景點清單)直接
+// fetchPoiContent——PlanPhoneView.tsx(手機版附近景點清單)直接
 // 共用這支函式本身,不接整支 useThemeAttractionSelection(見該函式的
 // 完整說明),故獨立驗證它的查詢/fallback 規則。
 describe('fetchPoiContent', () => {

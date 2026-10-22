@@ -209,7 +209,7 @@ const ITEMS: {
   // 同步),status 仍標 'draft'——這只是構想文案/發想稿,不是可互動的
   // 完整雛形(不像構想一/三那樣有假資料卡片牆或面板可以點)。複用的既有
   // 基礎:VITE_FEATURE_PACE 控制的「路徑」(配速表)功能
-  // (DesktopShared.tsx PACE_ENABLED、PhoneContent.tsx 的「路徑」rail
+  // (DesktopShared.tsx PACE_ENABLED、phone/Content.tsx 的「路徑」rail
   // 按鈕),實際運作在 web/src/pace/PaceRouteMap.tsx + 後端
   // server/internal/api/pace_route.go(已串接 Google Routes API 算路徑)。
   // 構想七——3 星:有明確差異化價值(沿路徑排行程,不是單點湊順序),且
@@ -388,7 +388,7 @@ const ITEMS: {
 // 分鐘+一句話簡介),清單與地圖圓點 hover 雙向連動。對應的使用者可見
 // 頁面:/jiufen、/kyoto-kiyomizu、/tainan-anping 等城市主題介紹頁
 // (web/src/home/InteractiveExploreMap.tsx)以及主要行程規劃頁 /trip-plan、
-// /app(web/src/geo-planning/ExploreMap.tsx + DesktopLayout.tsx)。
+// /app(web/src/geo-planning/ExploreMap.tsx + desktop/Content.tsx)。
 const ARCHIVED_ITEMS: {
   title: string
   desc: string

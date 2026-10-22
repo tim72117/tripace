@@ -36,7 +36,7 @@
    這幾個變數,把地圖容器的真實 layout 尺寸(不是 transform: scale()
    那種只改視覺呈現、不影響版面佔用空間的縮放)一次切到滿版、拿掉圓角
    陰影讓它看起來像貼齊螢幕邊緣的全螢幕地圖——地圖內部
-   (NativeMapBase/ExploreMap 的 .map 是 width:100%/height:100%,見該
+   (NativeMapBase/PlanMap 的 .map 是 width:100%/height:100%,見該
    檔案的完整說明)會跟著父容器真正變大,搭配
    google.maps.event.trigger(map, 'resize')(見 NativeMapBase.tsx
    建圖 effect 的既有機制)重新計算版面,不會像 transform 那樣被

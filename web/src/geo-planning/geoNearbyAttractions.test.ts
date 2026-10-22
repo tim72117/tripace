@@ -3,8 +3,8 @@ import type { GeoAttraction } from '../api'
 import { computeNearbyAttractions, filterNearbyByCategory, nearbyCategoriesPresent } from './geoNearbyAttractions'
 
 // geoNearbyAttractions.test.ts——「附近景點」清單純邏輯(距離排序、分類
-// 篩選規則)的回歸測試,這三支函式是 DesktopLayout.tsx/AttractionInfoPanel.tsx/
-// InteractiveExploreMap.tsx 原本各自寫死、之後 GeoOutlinePhoneView.tsx 手機版
+// 篩選規則)的回歸測試,這三支函式是 desktop/Content.tsx/AttractionInfoPanel.tsx/
+// InteractiveExploreMap.tsx 原本各自寫死、之後 PlanPhoneView.tsx 手機版
 // 也共用的唯一真相來源(見該檔案開頭的完整說明)。
 function attraction(overrides: Partial<GeoAttraction> = {}): GeoAttraction {
   return { name: '忠僕茶屋', lat: 34.99, lng: 135.78, isTheme: false, ...overrides }

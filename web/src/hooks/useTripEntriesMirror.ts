@@ -1,5 +1,5 @@
 // useTripEntriesMirror — 訂閱一個旅程的行程條目(entries)與即時更新事件,
-// 供「時間軸」側欄(DesktopLayout 的 panelMode='timeline' → MultiTrackTimeline、
+// 供「時間軸」側欄(desktop/Content 的 panelMode='timeline' → MultiTrackTimeline、
 // 手機版 PhoneNavDrawer 的同名分頁)直接使用。
 //
 // 2026-10 新增,從 chat/ChatScreen.tsx 搬出來——原本這份資料是 ChatScreen

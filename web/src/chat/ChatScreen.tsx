@@ -38,7 +38,7 @@ function mergeTripEntriesById(base: TripEntry[], incoming: TripEntry[]): TripEnt
 }
 
 // DesktopTimelineMirror:桌面版時間軸所需的資料快照,由 ChatScreen 透過
-// desktopChat.onTimelineData 鏡像給外層 DesktopContent(見下方 useEffect)。
+// desktopChat.onTimelineData 鏡像給外層 desktop/Content(見下方 useEffect)。
 // refetchEntries 讓 side panel 裡的 MultiTrackTimeline 在手動編輯(onEntryUpdated)
 // 後能觸發 ChatScreen 內部重抓,不必讓 panel 自己另開一份資料來源。
 export type DesktopTimelineMirror = {
@@ -48,7 +48,7 @@ export type DesktopTimelineMirror = {
   refetchEntries: () => void
 }
 
-// desktopChat:非 undefined 時代表目前在桌面模式(由 DesktopContent 傳入)——
+// desktopChat:非 undefined 時代表目前在桌面模式(由 desktop/Content 傳入)——
 // 主區不渲染時間軸、改把時間軸資料透過 onTimelineData 鏡像給外層 side panel。
 // 手機路徑完全不傳這個 prop,行為與改版前一致。
 export interface DesktopChatOptions {
@@ -60,7 +60,7 @@ export function ChatScreen({
   trip,
   user,
   // onBack/onOpenDrawer/mobileHeader:navbar 移除後(見下方 JSX 的說明)
-  // 這三個 prop 在元件內部已經沒有消費點,但簽章保留不動——PhoneContent.tsx
+  // 這三個 prop 在元件內部已經沒有消費點,但簽章保留不動——phone/Content.tsx
   // 仍在傳值,屬於手機版既有 API 的一部分,不在這次「移除桌面對話小匡
   // navbar」的範圍內清理,解構時用底線前綴避免 noUnusedParameters 報錯。
   onBack: _onBack,
@@ -72,7 +72,7 @@ export function ChatScreen({
 }: {
   cfg: ClientConfig
   // trip:可不傳——對話小匡在使用者尚未選定/建立旅程時仍要能用(見
-  // DesktopLayout.tsx 的 chat-popover 說明,唯一入口不再強制先選旅程)。
+  // desktop/Content.tsx 的 chat-popover 說明,唯一入口不再強制先選旅程)。
   // 無 trip 時,所有綁在 trip.id 上的資料流(歷史訊息/entries/WebSocket/
   // clientToolsBatches 持久化)與旅程專屬功能(成員/分享)一律跳過,只保留
   // onagentBridge 對話本身可用——這是刻意的簡化邊界,不是把整個元件重新
@@ -81,13 +81,13 @@ export function ChatScreen({
   user: User
   onBack: () => void
   // onOpenDrawer:手機版專用,左上角按鈕改成開啟左側導覽抽屜(旅程列表/配速表/
-  // 設定入口,見 PhoneContent.tsx 的 PhoneNavDrawer),不再直接呼叫 onBack
+  // 設定入口,見 phone/Content.tsx 的 PhoneNavDrawer),不再直接呼叫 onBack
   // 清空 activeTrip——抽屜裡本來就能選別的旅程或關閉抽屜留在原地,不需要
   // 一顆單純「回列表」的按鈕。只在 !desktopChat(手機版)時使用;桌面版
   // ChatScreen 沒有這顆抽屜,維持原本點左上角呼叫 onBack 的行為不變。
   onOpenDrawer?: () => void
   // mobileHeader:手機版專用,非 undefined 時完全不渲染這裡的 navbar——
-  // 手機版統一改用主顯示區的 MainNavBar(見 PhoneContent.tsx),分享/成員/
+  // 手機版統一改用主顯示區的 MainNavBar(見 phone/Content.tsx),分享/成員/
   // 使用者頭像則收攏到 PhoneNavDrawer 抽屜欄分頁列右上角(見該檔案的
   // 說明),ChatScreen 自己不再需要畫任何一種 navbar。'main'/'drawer' 兩個
   // 值目前只用來跟 undefined(桌面版,維持原行為在這裡渲染 navbar)區分,
@@ -103,12 +103,12 @@ export function ChatScreen({
   onTimelineData?: (data: DesktopTimelineMirror) => void
   desktopChat?: DesktopChatOptions
   // open:這個對話疊加層目前是否真的顯示給使用者看(手機版由
-  // PhoneContent.tsx 的 chatSheetOpen 傳入;桌面版對話小匡永遠掛載且
-  // 常駐可見,見 DesktopLayout.tsx 的 .chatPopoverHidden 說明,不需要
+  // phone/Content.tsx 的 chatSheetOpen 傳入;桌面版對話小匡永遠掛載,
+  // 見 desktop/Content.tsx 的 chat-popover 說明,不需要
   // 這個 prop 判斷,不傳時預設 undefined、視同不自動聚焦)。
   //
   // FE23:原本輸入框用 <input autoFocus>,但 ChatScreen 走 keepMounted
-  // 常駐掛載(見 PhoneContent.tsx 對 chatElement 的說明,避免每次開關
+  // 常駐掛載(見 phone/Content.tsx 對 chatElement 的說明,避免每次開關
   // 對話都重新連線 WebSocket)。切換旅程時 key={activeTrip?.id} 改變,
   // 觸發整個 ChatScreen 重新掛載——即使當下對話疊加層是關閉的
   // (chatSheetOpen === false,靠 translateY 位移到畫面外,見
@@ -294,7 +294,7 @@ export function ChatScreen({
   // 確保內容已經填入)已存在,才捲動。
   //
   // 依賴陣列刻意用 !!desktopChat(布林值)而非 desktopChat 本身:desktopChat
-  // 是 App.tsx 用內聯物件字面量 {{ onTimelineData }} 傳入的 prop,DesktopContent
+  // 是 App.tsx 用內聯物件字面量 {{ onTimelineData }} 傳入的 prop,desktop/Content
   // 每次重新渲染都會建立一個新的物件參照,即使邏輯上未改變。若依賴陣列放
   // desktopChat 物件本身,只要父層重渲染(可能很頻繁),React 就會判定依賴
   // 變了、重跑這個 effect、把使用者剛手動往上拉的位置強制捲回底部——這正是
@@ -310,7 +310,7 @@ export function ChatScreen({
   }, [loaded, !!desktopChat])
 
   // 把時間軸所需的 state(entries/updatingEntryIDs/taskPlaceholders)鏡像給
-  // 外層的時間軸 UI——桌面版是 DesktopContent 的 side panel(desktopChat.
+  // 外層的時間軸 UI——桌面版是 desktop/Content 的 side panel(desktopChat.
   // onTimelineData),手機版是 PhoneNavDrawer 的時間軸分頁(onTimelineData,
   // 對齊桌面版,時間軸不再是 ChatScreen 自己的右側抽屜)。兩者資料形狀相同
   // (DesktopTimelineMirror),讓外層的 MultiTrackTimeline 與這裡的主區共用
@@ -527,8 +527,8 @@ export function ChatScreen({
   return (
     <>
       {/* mobileHeader === undefined 只會發生在桌面模式(desktopChat,見
-          該 prop 的說明——PhoneContent.tsx 呼叫時一定帶 'main'/'drawer',
-          唯一不傳的呼叫端是 DesktopLayout.tsx)。桌面模式不渲染 navbar——
+          該 prop 的說明——phone/Content.tsx 呼叫時一定帶 'main'/'drawer',
+          唯一不傳的呼叫端是 desktop/Content.tsx)。桌面模式不渲染 navbar——
           對話小匡(chatPopoverOpen)外層已經有跟其他浮動卡片一致的右上角
           關閉按鈕(見 FloatingPanel.tsx),不需要再疊一層「返回」按鈕/
           標題列。原本掛在這裡的 TripMenu(含

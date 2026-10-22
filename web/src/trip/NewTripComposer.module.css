@@ -1,6 +1,6 @@
 /* NewTripComposer.tsx 專屬樣式(CSS Modules)。原本是 base-ui.css 的全域
-   class .new-trip-composer,數值原封不動搬進來——只被 DesktopTripList.tsx/
-   PhoneTripsDrawer.tsx 兩處使用,語意上專屬旅程列表,不符合「跨多個不相關
+   class .new-trip-composer,數值原封不動搬進來——只被 trip/desktop/TripList.tsx/
+   trip/phone/TripList.tsx 兩處使用,語意上專屬旅程列表,不符合「跨多個不相關
    功能模組共用」的全站基礎樣式定義,故從 base-ui.css 移出,隨元件本身
    封裝成 CSS Module(見 NewTripComposer.tsx 的說明)。 */
 .composer {

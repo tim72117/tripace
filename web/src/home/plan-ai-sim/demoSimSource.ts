@@ -16,7 +16,7 @@
 // 遇到這則動作時直接跳過等待、照常繼續播放,不需要像 planSimFakeSource.ts
 // 那樣準備這個參數。
 
-import type { PlanAction } from './AIPlanTimelinePage'
+import type { PlanAction } from './planAction'
 import type { PlanSimSource } from './planSimSource'
 import { DEMO_SCRIPT } from './demoScript'
 

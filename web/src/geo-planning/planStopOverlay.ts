@@ -8,7 +8,7 @@ import { planStopMarkerSvgString, svgStringToElement, type PlanStopMarkerState }
 // jozankei-1day 跟 tainan-chikan-2day(simple 樣式、帶 mapId、走
 // AdvancedMarkerElement)之後,明確要求兩者的強調態視覺(靶心光暈/漣漪
 // 動畫)要一致——而靜態 icon 圖片內部的 SVG 節點不能套用外部 CSS
-// keyframe 動畫(.ps-halo/.ps-ripple,定義在 ExploreMap.module.css),
+// keyframe 動畫(.ps-halo/.ps-ripple,定義在 PlanMap.module.css),
 // 改用 google.maps.OverlayView:它跟 AdvancedMarkerElement 一樣是真正的
 // DOM(div),CSS 動畫能正常套用,同時跟舊版 Marker 一樣不要求地圖帶
 // mapId(OverlayView 本身只是把任意 DOM 貼在地圖投影算出的像素座標上,

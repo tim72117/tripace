@@ -1,4 +1,4 @@
-import type { GeoSelectedKey } from './GeoHotelSidebar'
+import type { GeoSelectedKey } from './geoSelectedKey'
 import type { PlaceInfoContent } from './PlacePanel'
 import type { GeoAttraction } from '../api'
 
@@ -69,22 +69,22 @@ export function geoSelectionReducer(state: GeoSelection, action: GeoSelectionAct
 
 export const GEO_SELECTION_NONE: GeoSelection = { kind: 'none' }
 
-// GeoPanTarget:桌面版(DesktopLayout.tsx 的 geoPanTarget)/手機版
-// (GeoOutlinePhoneView.tsx 的 panTarget)共用的「移動地圖」目標型別——
+// GeoPanTarget:桌面版(desktop/Content.tsx 的 geoPanTarget)/手機版
+// (PlanPhoneView.tsx 的 panTarget)共用的「移動地圖」目標型別——
 // 兩邊各自持有獨立的 state(不同元件實例,不合併成同一份記憶體),但
 // 型別定義完全相同,曾經因為各自宣告一次而在其中一邊漏加欄位(見
-// onlyIfOutOfView 的完整說明,ExploreMap.tsx 對這個欄位的說明),
+// onlyIfOutOfView 的完整說明,PlanMap.tsx 對這個欄位的說明),
 // 抽出共用型別後之後新增欄位只需要改一處,不會再有兩邊定義漂移的風險。
 //
-// radiusMeters:只有桌面版「探索周邊」按鈕(見 DesktopLayout.tsx 的
+// radiusMeters:只有桌面版「探索周邊」按鈕(見 desktop/Content.tsx 的
 // handleExploreAttraction)會帶,手機版目前沒有對應功能,但型別仍保留
 // 這個欄位——手機版的 setPanTarget 呼叫端不帶這個欄位即可,不影響
 // 型別共用。
 //
-// onlyIfOutOfView:見 ExploreMap.tsx 對這個欄位的完整說明——true 時
+// onlyIfOutOfView:見 PlanMap.tsx 對這個欄位的完整說明——true 時
 // 先檢查該座標是否已經在可視範圍內,在範圍內就跳過這次移動。
 //
-// 刻意沒有 suppressQuery(ExploreMap 的 panTarget prop 有這個欄位):走
+// 刻意沒有 suppressQuery(PlanMap 的 panTarget prop 有這個欄位):走
 // 這個型別的目標在 useGeoOutlineMapState/GeoOutlinePanel 轉成內部
 // panRequest 時一律被設成 suppressQuery: true——「從外部指定一個已知座標
 // 要對齊過去」這個語意本身就不該觸發「搜尋這個區域」。加上這個欄位只會

@@ -7,7 +7,7 @@ import { useInfoCardStack, useInfoCardStackSync, type InfoCardStack } from './us
 import type { CuratedCategory } from './geoCuratedCategoryStub'
 
 // useThemeAttractionSelection:主題卡(AttractionInfoPanel)開著時,跟它
-// 並存/附掛的一組狀態與 reset 邏輯——DesktopLayout.tsx(正式功能)與
+// 並存/附掛的一組狀態與 reset 邏輯——desktop/Content.tsx(正式功能)與
 // InteractiveExploreMap.tsx(公開展示頁)原本各自獨立手寫了一份幾乎同構的
 // 版本(poiContent/nearbyInfoContent、hoveredAttraction/
 // hoveredNearbyAttraction、activeCategoryFilter、三個依主題切換 reset 的
@@ -29,7 +29,7 @@ import type { CuratedCategory } from './geoCuratedCategoryStub'
 //     正式版是 geoSelection 互斥 reducer 的一個分支,展示頁是純本地
 //     useState,若連 setter 都收進來,這支 hook 就要處理「受控/非受控」
 //     兩種模式,參數會爆炸)。
-//   - 手機版(GeoOutlinePhoneView.tsx)不接整支——手機版沒有
+//   - 手機版(PlanPhoneView.tsx)不接整支——手機版沒有
 //     hoveredAttraction(觸控沒有 hover)、也沒有 infoCardStack 對應的並排
 //     定位概念(手機版是 sheet 堆疊,顯示真相來源是 useSheetStack,兩套
 //     互相獨立),硬接整支只會多出兩個沒人消費的死欄位。手機版只共用
@@ -38,7 +38,7 @@ import type { CuratedCategory } from './geoCuratedCategoryStub'
 //     ——兩邊的 pool 來源、null vs 空 Set 語意本來就刻意不同(正式版是
 //     地圖可視範圍查詢結果,展示頁是固定城市查詢的全部非主題點;2026-09
 //     以前正式版還會額外 slice 前 5 筆,現已拿掉這個上限,見
-//     DesktopLayout.tsx NEARBY_ATTRACTION_LIMIT 的完整說明,兩邊現在都是
+//     desktop/Content.tsx NEARBY_ATTRACTION_LIMIT 的完整說明,兩邊現在都是
 //     不限筆數、只依距離排序),硬抽會需要 excludeSelf/revealMode 這類
 //     旗標,反而讓呼叫端比原本的兩份各自 8-10 行 useMemo 更難讀。這兩塊
 //     沒有 effect、沒有時序問題,不會像 reset effect 那樣「忘了寫就出
@@ -49,7 +49,7 @@ import type { CuratedCategory } from './geoCuratedCategoryStub'
 //   - handleAttractionOpenPlaceDetails/handleAttractionOpenPlaceWithoutGoogle
 //     的「主題卡開著→並存;沒開著→走 geo.selectPoi 互斥路徑」分岔——
 //     展示頁刻意沒有互斥路徑(精選點一律走並存),這個分岔邏輯留在
-//     DesktopLayout.tsx,只是分岔的兩個分支都改呼叫這支 hook 回傳的
+//     desktop/Content.tsx,只是分岔的兩個分支都改呼叫這支 hook 回傳的
 //     setPoiContent。
 // PHOTO_RETRY_DELAY_MS/PHOTO_RETRY_MAX_ATTEMPTS:後端 handleGeoPlaceDetails
 // 的漸進補圖是背景 goroutine(見該函式的完整說明),這次查詢的回應不會
@@ -81,14 +81,14 @@ import type { CuratedCategory } from './geoCuratedCategoryStub'
 // 內容、附加 attraction.summary;沒有 placeId 或查詢失敗時退回
 // attractionToInfoContent」這段查詢邏輯本身,抽成不依賴 React state 的
 // 獨立函式——供這支 hook 的 openPoiContent(桌面版/展示頁的並存地點卡)
-// 與 GeoOutlinePhoneView.tsx(手機版附近景點清單,push 一層新 sheet
+// 與 PlanPhoneView.tsx(手機版附近景點清單,push 一層新 sheet
 // 顯示,見該檔案的完整說明)共用同一段查詢/fallback 規則,不需要手機版
 // 也接整支 useThemeAttractionSelection(手機版沒有 hoveredAttraction/
 // infoCardStack 這兩個概念,見下方檔頭說明,硬接會多出死欄位)。
 //
 // 2026-10:「查詳情+沒圖時重試」這段核心邏輯已經抽到 ../photoRetry 的
 // fetchPlaceDetailsWithPhotoRetry(見該函式的完整說明——code review
-// 發現 geo-planning/ExploreMap.tsx 有兩處點擊查詢完全沒有接上這套重試,
+// 發現 geo-planning/PlanMap.tsx 有兩處點擊查詢完全沒有接上這套重試,
 // 查一次沒圖就永遠沒圖),這裡改成呼叫它,只保留「用 GeoAttraction 包一層
 // fallback/組 PlaceInfoContent」這段 fetchPoiContent 特有的部分——所有
 // 使用 placeId 查詢地點詳情的入口(主題卡/附近景點/原生 POI 點擊/非主題
@@ -102,7 +102,7 @@ import type { CuratedCategory } from './geoCuratedCategoryStub'
 // 等文字)不被沒圖時的重試拖慢顯示時機:呼叫端應該用這個 callback 觸發
 // 「顯示卡片」,而不是等整個 Promise resolve,重試只補新的照片結果,不
 // 該延後卡片出現的時間點。呼叫端若同時需要在 onUpdate 第一次呼叫時做
-// 「開卡」這類只該發生一次的動作(例如 GeoOutlinePhoneView.tsx 的
+// 「開卡」這類只該發生一次的動作(例如 PlanPhoneView.tsx 的
 // sheetStack.push),自行用一個旗標判斷「這是不是第一次呼叫」,這支函式
 // 不假設呼叫端的用途。
 //
@@ -168,7 +168,7 @@ export function useThemeAttractionSelection(
   // themeKey:目前開著哪張主題卡的唯讀識別——依賴陣列直接比較這個值本身
   // (React 用 Object.is),故呼叫端要自己決定「什麼樣的值變動才代表換了
   // 一個主題點」:
-  //   - 正式版(DesktopLayout.tsx)傳 geoAttractionContent 這個物件本身
+  //   - 正式版(desktop/Content.tsx)傳 geoAttractionContent 這個物件本身
   //     (不是 .name 字串)——geoSelection reducer 每次 SELECT_ATTRACTION
   //     都會 dispatch 一個新物件(見 useGeoPlanningState.ts 的完整說明),
   //     用物件參照比對才能保留「使用者重新點擊同一個主題點地標,也要
@@ -194,13 +194,13 @@ export function useThemeAttractionSelection(
   fetchPhotoAssets?: (placeId: string) => Promise<GeoPlacePhotoAssets>,
   // extraAttractionPresent:'attraction' order 0 這個位置,除了 themeKey
   // 本身之外還有沒有其他分支也算「這個位置有卡片」——正式版
-  // (DesktopLayout.tsx)的 geoInfoContent(PlacePanel)跟 geoAttractionContent
+  // (desktop/Content.tsx)的 geoInfoContent(PlacePanel)跟 geoAttractionContent
   // (AttractionInfoPanel)是同一個 geoSelection 互斥狀態機的兩個分支(見
   // geoSelection.ts 開頭說明),渲染的是同一個「主題卡這個位置」,只是這支
   // hook 只認得 themeKey(對應 geoAttractionContent),不知道呼叫端還有
   // geoInfoContent 這個分支存在。
   //
-  // 2026-09 前的版本沒有這個參數,呼叫端(DesktopLayout.tsx)改成自己
+  // 2026-09 前的版本沒有這個參數,呼叫端(desktop/Content.tsx)改成自己
   // 對同一個 id 'attraction' 再呼叫一次 useInfoCardStackSync、傳入涵蓋
   // 兩個分支的布林值,靠「後呼叫的 useInfoCardStackSync 覆蓋先呼叫的」
   // 這個未明文保證的 effect 執行順序讓自己的登記「贏過」這支 hook 內部

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { BASE_URL } from '../AppCommon'
-import { ApiError, fetchPublicGeoAttractionByID, type ClientConfig } from '../api'
+import { ApiError } from '../api'
+import { getPlanAiPublicDataSource } from '../home/plan-ai-sim/planAiPublicDataSource'
+import { requireAttractionByID } from '../home/plan-ai-sim/planAiDataSource'
 import type { SampleStop } from './types'
 
-// GUEST_CFG——讀取已建檔地標的公開資料是訪客動作,不需要使用者自己的
-// JWT,token 傳 null,理由同 AiItineraryDetailPage.tsx 的 GUEST_CFG。
-const GUEST_CFG: ClientConfig = { baseURL: BASE_URL, token: null }
+// publicDataSource——讀取已建檔地標的公開資料是訪客動作,不需要使用者自己的 JWT:用訪客版資料存取層實例(理由同
+// AiItineraryDetailPage.tsx 的訪客設定)。
+const publicDataSource = getPlanAiPublicDataSource(BASE_URL)
 
 // useStopAttractionDetails——2026-10 新增,使用者明確要求「地點用 POI
 // 取得圖片」「可以直接用現有端點從 attraction 取得」:行程站點
@@ -50,7 +52,7 @@ export function useStopAttractionDetails(stops: SampleStop[]): Record<string, St
     for (const stop of stops) {
       const key = stopKeyOf(stop)
       if (!key) continue
-      fetchPublicGeoAttractionByID(GUEST_CFG, key)
+      requireAttractionByID(publicDataSource, key)
         .then((res) => {
           if (cancelled) return
           if (!res.googlePhotoUrls || res.googlePhotoUrls.length === 0) return

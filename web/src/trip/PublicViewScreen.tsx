@@ -50,7 +50,7 @@ function hasPaceData(entries: Entry[]): boolean {
 // 並排,比照 pace/PacePage.tsx 的桌面分支),取代原本精簡的卡片清單
 // (PublicPaceList,已移除)——這裡不帶上方功能列(navbar),因為
 // PublicViewScreen 本身已經有自己的 navbar(旅程名稱標題),不需要疊兩層。
-// checkpoints 狀態提升到這裡,理由同 DesktopLayout.tsx/PhoneContent.tsx:
+// checkpoints 狀態提升到這裡,理由同 desktop/Content.tsx、phone/Content.tsx:
 // PaceChart(抽屜/側欄)與 PaceRouteMap(地圖)是分開掛載的 sibling,靠
 // PaceChart 的 onRouteChange 把目前選取的段落鏡像上來再轉傳給地圖。
 // publicToken 直接傳這個分享頁自己的 token(見 PaceChart.tsx 的 publicToken
@@ -111,7 +111,7 @@ export function PublicViewScreen({ token }: { token: string }) {
 
   // 路徑模式且真的有路徑資料時,改用抽屜欄+地圖的滿版結構(見
   // PublicPaceDrawerMap 的說明)——那套結構自己已經佔滿整個畫面(比照
-  // PacePhoneSwipe.tsx/DesktopLayout.tsx 的定位方式),不需要再包一層這裡
+  // PacePhoneSwipe.tsx/desktop/Content.tsx 的定位方式),不需要再包一層這裡
   // 的 .navbar/ScrollArea,也不會有新增旅程的輸入列(路徑模式不接寫入
   // 互動,理由同時間軸模式以外的其餘邏輯不變)。
   if (data && data.entries.length > 0 && data.viewMode === 'pace' && hasPaceData(data.entries)) {

@@ -1,8 +1,8 @@
 // geoAttractionOverlay.ts 的點擊目標範圍——2026-10 使用者明確要求「地圖上
 // 精選點,要點文字也能打開」(原本只有圖示/圓點本身可點,文字標籤刻意不
 // 綁點擊,見 renderContent() 內原本的說明)。這裡直接測這個類別本身組出的
-// DOM 與綁定的事件,不透過 useAttractionOverlays hook(那是另一個檔案的
-// 職責,見 useAttractionOverlays.test.tsx),也不透過完整 ExploreMap 掛載
+// DOM 與綁定的事件,不透過 attractionGlowLayer 功能層(那是另一個檔案的
+// 職責,見 attractionGlowLayer.test.ts),也不透過完整 PlanMap 掛載
 // (成本高很多,且會混進地圖建圖等不相關邏輯)。
 //
 // google.maps.OverlayView 需要在呼叫 getAttractionOverlayClass() 之前就
@@ -118,7 +118,7 @@ describe('geoAttractionOverlay — 點擊目標範圍(圖示/圓點 + 文字標�
   // 2026-10 新增(使用者實機回報「地圖上的主題點縮圖圓圈,點選的時候
   // 不能觸發按到底下的 POI」):click 事件冒泡到地圖容器時,會被
   // Google Maps SDK 自己的事件委派依座標解讀成底層 POI 的點擊,一併
-  // 觸發 ExploreMap.tsx 的 map.addListener('click', ...)——這跟我們
+  // 觸發 PlanMap.tsx 的 map.addListener('click', ...)——這跟我們
   // 自建 DOM 元素的 click 監聽是兩套獨立事件系統,只要 click 事件繼續
   // 往上冒泡,不管我們自己的 onClick 有沒有正確觸發,底層 POI 的點擊
   // 判斷都還是會一併發生。這裡驗證的是「DOM 事件冒泡有沒有被正確

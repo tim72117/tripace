@@ -17,7 +17,7 @@
    處理,不再派發給 React 的 onTouchMove,導致整張卡片絕大部分面積
    (標頭/圖片/內容)完全無法觸發拖曳收合/展開手勢,只剩下拖曳把手那一
    小條還能拖(使用者實測回報「介紹卡變成不能拉動了」)——跟「整張卡片
-   都能拖曳」(對齊 PlanPhoneListDrawer.tsx,使用者明確要求)的目標
+   都能拖曳」(對齊 geo-planning/phone/ResultList.tsx,使用者明確要求)的目標
    衝突,取捨後拿掉這個覆寫,簡介文字改靠 body 的 overflow-y: auto 處理
    捲動(理由同 components/PhoneBottomSheet.tsx 的 .body 說明)。 */
 /* padding-bottom:2026-10 修正(原本 12px)——這個值原本是「標頭(名稱/

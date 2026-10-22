@@ -34,6 +34,7 @@
 - **驗證狀態**：CONFIRMED。
 - **建議修法**：`ScrollTimeline` 補上手機版延遲掛載的等效機制（例如沿用 `useIsDesktop` 判斷，手機版先顯示靜態縮圖、使用者互動後才真正掛載 `InteractiveExploreMap`），或在 `TainanChikanPage.tsx` 層面針對手機版另外處理。
 - **現況（2026-10-08 複核）**：`TainanPage.tsx`（台南安平頁）也已改套用 `ScrollTimeline`（原本的 `MobileMapReveal` 包裹連同 `useScrollProgress` 一併移除），同一個問題現在同時影響 `/tainan-chikan` 與 `/tainan-anping` 兩個路由；原敘述「跟同層的 `TainanPage.tsx` 行為不一致」已過時——`TainanPage.tsx` 現在跟 `TainanChikanPage.tsx` 行為一致（都無條件載入），不一致的對照組只剩尚未套用 `ScrollTimeline` 的 `KyotoPage.tsx`/`JiufenPage.tsx`。`ScrollTimeline` 本身仍未補上延遲掛載機制，問題尚未修復。
+- **現況（2026-10-23 補註）**：`MobileMapReveal.tsx` 與其 CSS 已刪除（沒有任何頁面再 import，死碼清理）；本項描述的是「各城市頁改用 `ScrollTimeline` 後地圖常駐載入」，與該檔案是否存在無關，仍待處理。
 - **現況（2026-10-16 複核）**：仍未修復，且範圍擴大：`JiufenPage.tsx:286`、`KyotoPage.tsx:297`、`TainanPage.tsx:265`、`TainanChikanPage.tsx:415` 四個城市頁現在全部套用 `ScrollTimeline`，`ScrollTimeline.tsx` 仍無任何 `useIsDesktop`／`isDesktop`／延遲掛載判斷，`InteractiveExploreMap` 於 `ScrollTimeline.tsx` 的 `.mapPanelBody` 內一律掛載。前一則複核所說「尚未套用的 `KyotoPage.tsx`/`JiufenPage.tsx`」對照組已不存在；`MobileMapReveal.tsx` 檔案仍在 `web/src/home/`，但已沒有任何頁面 import 它。
 
 ### F44 🟡 進度點導覽（跳到任一站/跳回地圖）被拿掉，沒有替代方案
@@ -59,14 +60,6 @@
 - **驗證狀態**：CONFIRMED。
 - **建議修法**：評估讓 `ScrollTimeline` 改用/擴充 `useScrollProgress`，或至少把兩者的核心判斷邏輯抽成同一個底層函式共用。
 - **現況（2026-10-16 複核）**：仍成立。`ScrollTimeline.tsx:182` 仍是自建的 `IntersectionObserver`（`rootMargin: '-45% 0px -45% 0px'`）；`hooks/useScrollProgress.ts` 仍存在，目前唯一的使用者是 `blog/BlogArticlePage.tsx:502`，四個城市頁都已不再使用它。兩份「目前捲動區段」邏輯並存的狀況未變。行號已更新。
-
-### F47 ⚪ `revealedAttractionNames` 變動時，地圖標記整批銷毀重建，而非差異更新
-- **位置**：`web/src/geo-planning/useAttractionOverlays.ts:189-208`（overlay 建立 effect，依 `filteredAttractions` 陣列參照變動觸發）
-- **問題**：`filteredAttractions` 只要參照改變（例如揭露範圍從一個主題點換成另一個），effect 就對所有既有 overlay 呼叫 `setMap(null)`、再對新的 `filteredAttractions` 整批 `new OverlayClass(...)`，沒有針對「仍然存在於新舊兩份清單」的項目做差異重用。
-- **觸發情境**：在景點數量較多的城市，每次揭露範圍變動（捲動切換主題/精選點聚焦）都會重新配置數十個 DOM 節點、重新綁定每個節點的 click/mousedown/touchstart 監聽器，而非只處理真正新增/移除的項目。
-- **驗證狀態**：CONFIRMED。
-- **建議修法**：改成依 id 做差異比對，只新增/移除真正變動的 overlay，其餘沿用既有實例並只更新需要變動的屬性（如 `setFocused`/`setSelected`）。
-- **現況（2026-10-16 複核）**：仍未修復：`useAttractionOverlays.ts:189-208` 的 effect 仍在依賴變動時對 `overlaysRef.current` 全部 `setMap(null)`，再對 `filteredAttractions` 整批 `new OverlayClass(...)`，沒有差異更新。
 
 ### F48 ⚪ `SHOW_NEARBY_LIST_BUTTON=false` 讓整條 `'nearby'` 模式成為跨兩個檔案的死碼
 - **位置**：`web/src/home/ScrollTimeline.tsx:81`（常數定義）、連動 `openCardOnFocus`/`themeCardNearbyOnly` 在 `web/src/home/InteractiveExploreMap.tsx` 的對應分支
@@ -240,7 +233,7 @@
 - **首次記錄**：`docs/architecture-review-2026-07.md`「3.1 結構與狀態管理」。文件同時記錄「幾乎完全平鋪」「無 router」的舊評估已不準確：目前已出現 domain 分層目錄（`admin/`、`clienttools/`、`geo-planning/`、`sdk-proposals/`、`trip/`），且已導入 `react-router-dom`，仍有大量檔案留在根目錄，並非嚴格分層。
 - **現況（2026-08-16）**：本次未安排 verifier 覆核，狀態延續原記錄。
 - **建議修法**：引入狀態管理（Context + useReducer 或 Zustand），消除 prop drilling；伺服器狀態改用 TanStack Query；加 code splitting（`lazy`/`Suspense`）。
-- **現況（2026-10-16 複核）**：部分已改善：已導入 code splitting，`web/src/App.tsx:74-81` 起各頁面改用 `React.lazy`＋`Suspense`，「零 code splitting」已過時。仍成立：沒有全域狀態管理方案（`createContext` 只在 `ScrollTimeline`、`PhoneBottomSheet`、`plan-core/composerSlot.ts` 等局部使用），`App.tsx:176` 的 `useAppState()` 仍回傳大型 props 並以 `ContentProps`（`PhoneContent.tsx:104`）逐層傳遞；`web/package.json` 沒有 TanStack Query／Zustand，伺服器狀態仍是手寫 fetch。
+- **現況（2026-10-16 複核）**：部分已改善：已導入 code splitting，`web/src/App.tsx:74-81` 起各頁面改用 `React.lazy`＋`Suspense`，「零 code splitting」已過時。仍成立：沒有全域狀態管理方案（`createContext` 只在 `ScrollTimeline`、`PhoneBottomSheet`、`plan-core/overlayDom.ts`（原 `plan-core/composerSlot.ts`，已併入）等局部使用），`App.tsx:181` 的 `useAppState()` 仍回傳大型 props 並以 `ContentProps`（`AppCommon.tsx` 定義，`phone/Content.tsx:80`；原 `PhoneContent.tsx:104`）逐層傳遞；`web/package.json` 沒有 TanStack Query／Zustand，伺服器狀態仍是手寫 fetch。
 
 ### F28 🟡 記憶化嚴重不足，`Timeline.tsx` 等元件零 `useMemo`/`useCallback`/`memo`
 - **位置**：`web/src/timeline/Timeline.tsx`（記錄當時路徑為 `web/src/Timeline.tsx`，該檔案已搬到 `timeline/` 子目錄，539 行）等 7 個元件；`web/src/`（99 處 inline `style={{...}}`）
@@ -387,6 +380,11 @@
 - **複核結果（2026-08-16）**：目前所有呼叫路徑都先經過 `bucket == ""` 檢查才會碰到 `client`，現況不可觸發，純屬潛在地雷、非現存 bug，暫不需修復，僅記錄提醒未來重構此檔案時留意此隱性耦合。
 - **現況（2026-10-16 複核）**：結論仍正確。補充：`Uploader` 內部欄位已由 `client` 改為 `store`（`photostorage.go:96`），`Upload`／`UploadDataURI`／`Delete` 仍先檢查 `u.bucket == ""`（:184、:227、:310）才碰 `u.store`，`New("")` 回傳零值 `&Uploader{}` 的行為不變。
 
+### 已解決（2026-10-22）：F47 `revealedAttractionNames` 變動時，地圖標記整批銷毀重建
+- 原問題：`useAttractionOverlays.ts` 的 overlay 建立 effect 在 `filteredAttractions` 參照改變時對全部 overlay `setMap(null)` 再整批重建。
+- 修復方式：首頁展示 `InteractiveExploreMap` 改走共用繪製層（`useSharedDrawLayer` 的 `attractionGlow`），`useAttractionOverlays.ts` 已刪除。宿主 `mapDrawLayer/diff.ts` 依景點 key 比對，只新增/移除真正變動的光暈，狀態（選取、候選、hover、隱藏、聚焦、主題照片收起）以 `stateKey` 原地套用。
+- 確認方式：複核程式碼（`attractionGlowLayer.ts`、`mapDrawLayer/diff.ts`）與單元測試（`attractionGlowLayer.test.ts`）；尚未在瀏覽器實測大量景點的切換效能。
+
 ### 已解決：私有依賴 `github.com/tim72117/want v0.0.2`
 - **原始問題**：私有依賴需要 `GH_PAT` 才能拉取，構成單點失效風險，並帶入 `go-rod/rod` 等間接依賴。
 - **修復確認**：`server/internal/wanttools/` 對 `want/types` 的引用已改為本地定義（見該套件的 `wanttypes.go`），`want` 已從 `go.mod`/`go.sum` 完全移除。連帶讓 4 支 Dockerfile 的 `GH_PAT` build-arg、5 個 GitHub Actions workflow 的對應設定都不再需要。`internal/wanttools/` 本身沒有被任何 binary import（`go list -deps` 對 `cmd/server`/`cmd/adminserver`/`cmd/cli` 驗證過皆為空），是保留下來的舊 want 對話系統工具實作，未被刪除（`docs/PROJECT_HEALTH_REVIEW.md` 記錄確認日期 2026-08-14）。
@@ -394,9 +392,9 @@
 
 ### 已解決：`web/src/App.tsx`（1295 行）技術債
 - **原始問題**：單一檔案 1295 行，是前端最大的技術債訊號。
-- **修復確認**：`App.tsx` 目前只有 112 行。內容已拆成 `AppCommon`/`DesktopLayout`/`PhoneContent`/`PhoneNavDrawer`/`SettingsScreen` 等元件，且導入 React Router 後只剩路由骨架（`PhoneNavDrawer` 之後已整個移除，功能併入 `PhoneTabBar`/`PhoneSideTools`/`TripManageModal`，見 `docs/terminology.md`；此處記錄的是本次拆分確認當下的狀態）。
+- **修復確認**：`App.tsx` 目前只有 112 行。內容已拆成 `AppCommon`/`DesktopLayout`/`PhoneContent`/`PhoneNavDrawer`/`SettingsScreen` 等元件，且導入 React Router 後只剩路由骨架（`PhoneNavDrawer` 之後已整個移除，功能併入 `PhoneTabBar`/`PhoneSideTools`/`TripManageModal`，見 `docs/terminology.md`；此處記錄的是本次拆分確認當下的狀態。這些元件後來陸續改名：`DesktopLayout` → `desktop/Content.tsx`、`PhoneContent` → `phone/Content.tsx`、`PhoneTabBar` → `phone/Nav.tsx`）。
 - **確認方式**：程式碼複核（`docs/PROJECT_HEALTH_REVIEW.md`）。
-- **現況（2026-10-16 複核）**：「`App.tsx` 目前只有 112 行」已不準確——`web/src/App.tsx` 現為 423 行（新增 `React.lazy` 各頁面路由、`ErrorBoundary` 與大量說明註解），但 1295 行的單一巨檔問題仍然已解決（元件仍拆在 `AppCommon`/`DesktopLayout`/`PhoneContent` 等檔，現存最大的前端檔案是 `home/plan-ai-sim/AIPlanTimelinePage.tsx` 約 2022 行）。
+- **現況（2026-10-16 複核）**：「`App.tsx` 目前只有 112 行」已不準確——`web/src/App.tsx` 現為 423 行（新增 `React.lazy` 各頁面路由、`ErrorBoundary` 與大量說明註解），但 1295 行的單一巨檔問題仍然已解決（元件仍拆在 `AppCommon`/`DesktopLayout`/`PhoneContent` 等檔，現存最大的前端檔案是 `home/plan-ai-sim/AIPlanTimelinePage.tsx` 約 2022 行；2026-10-23 補註：該檔後來改名為 `home/plan-ai-sim/Content.tsx`，並把 `PlanAction`、`usePlanSimSocket`、`useSimulatedStopsView` 等抽出，現約 947 行，上述 `DesktopLayout` 也已改名為 `desktop/Content.tsx`）。
 
 ### 已解決：過時架構/API 文件（`docs/API.md`、`docs/ARCHITECTURE.md` 等）
 - **原始問題**：`docs/API.md` 認證章節過時、`docs/ARCHITECTURE.md` 自專案第一天後未再更新，兩者連同 `docs/ROADMAP.md`、`server/README.md`、`docs/pace-demo-data-audit.md` 描述的是「iOS + Mock 後端 + 訊息分類 + RAG 向量檢索」的早期構想，與現行架構已非同一系統。

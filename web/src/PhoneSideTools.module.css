@@ -1,15 +1,15 @@
-/* tools:疊在畫面右側下方,bottom 距離避開底部常駐列(PhoneTabBar.tsx)
-   再加一些間距,不重疊。position: absolute 掛在 .mainArea
-   (PhoneContent.tsx)內,跟隨主畫面而非全域固定——理由同
+/* tools:疊在畫面右側下方,bottom 距離避開底部常駐列(phone/Nav.tsx)
+   再加一些間距,不重疊。position: absolute 掛在 .container
+   (phone/Content.tsx)內,跟隨主畫面而非全域固定——理由同
    GeoOutlinePhoneView.tsx 的疊加按鈕群組。
    2026-10 改用 var(--tab-bar-height)(使用者明確要求「有辦法確保
    bottom sheet 如果是在功能列後面,標頭不會被遮蔽,也不用功能列改動
    高度就要重新確認」,見 hooks/useElementHeight.ts 的完整說明)——
-   取代原本寫死的 64px,這個 CSS 自訂屬性由 PhoneContent.tsx 的
-   .mainArea 容器提供(沿 DOM 樹繼承下來),值是用 ResizeObserver
-   即時量出的 PhoneTabBar.tsx 真實高度。不疊加
+   取代原本寫死的 64px,這個 CSS 自訂屬性由 phone/Content.tsx 的
+   .container 容器提供(沿 DOM 樹繼承下來),值是用 ResizeObserver
+   即時量出的 phone/Nav.tsx 真實高度。不疊加
    env(safe-area-inset-bottom)(code review 發現的回歸修正,見
-   trip/PhoneTripsDrawer.tsx 的 SHEET_BOTTOM 完整說明):
+   trip/phone/TripList.tsx 的 SHEET_BOTTOM 完整說明):
    var(--tab-bar-height) 量到的是 .bar 完整外框高度,本身已經內含
    safe-area,重複疊加會讓避讓距離算錯。 */
 .tools {

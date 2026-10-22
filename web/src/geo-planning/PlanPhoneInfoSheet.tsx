@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { Check, Plus, X } from 'lucide-react'
-import type { ClientConfig, GeoAttraction, GeoPlaceDetails } from '../api'
-import { fetchGeoPlaceDetails, fetchPublicGeoPlaceDetails } from '../api'
+import type { GeoAttraction, GeoPlaceDetails } from '../api'
+import { requireGeoPlaceDetails, type PlanAiDataSource } from '../home/plan-ai-sim/planAiDataSource'
 import type { PlaceInfoContent } from './PlacePanel'
 import { attractionBadges } from './geoInfoContent'
 import { candidateHasScheduledDate, type GeoCandidate } from './geoCandidateHelpers'
@@ -37,7 +37,7 @@ const ADDED_HINT_MS = 1200
 //     顯示,使用者可以再往上拉到 SHEET_SNAP_POINTS[1] 或靠 .body 的
 //     overflow-y: auto 捲動看更多)。離頂部距離 320px(2026-10 使用者
 //     明確要求「中間段統一離頂320px」,原本是 400,跟
-//     PlanPhoneListDrawer.tsx/PhoneContent.tsx 的「規劃」小匡一併從
+//     geo-planning/phone/ResultList.tsx、phone/Content.tsx 的「規劃」小匡一併從
 //     400 改成 320)。
 // [1] 滿版/展開狀態:完整內容,離頂部距離比索引 0 更小(展開更多)。
 // TODO(使用者稍後決定合理數值):暫時估算。
@@ -57,7 +57,7 @@ const SHEET_SNAP_POINTS = [320, 80]
 // components/PhoneBottomSheet.tsx 的具名工廠元件 StandaloneSheet(見該
 // 檔案的完整說明;原本曾經用字串 mode="snap" 這類參數區分不同拖曳語意,
 // 現在已經改成 snapPoints/minHeightPx 兩個數值參數決定段落、不再有
-// mode 這個 prop),對齊 PlanPhoneListDrawer.tsx
+// mode 這個 prop),對齊 geo-planning/phone/ResultList.tsx
 // 「整張卡片都能拖曳,不限頂部把手」的觸控區域(使用者明確要求),但
 // 「拖曳到底」的語意跟地點清單不同,不是滑出畫面消失,而是收合成只剩
 // head 標題列並保留在畫面上(使用者明確要求)——用 SHEET_SNAP_POINTS
@@ -103,7 +103,7 @@ const SHEET_SNAP_POINTS = [320, 80]
 // 搬到 PlanPhoneView.tsx(見該檔案 handlePickScheduledDate/
 // handleConfirmDate 對應的接線),這個元件只保留「加入成功後短暫顯示打勾
 // 提示」這件事——呼叫端透過 addFlashTrigger 這個計數器 prop(比照
-// GeoOutlinePhoneCandidateDrawer.tsx 的 flashTrigger 既有模式)通知這個
+// phone/CandidateList.tsx 的 flashTrigger 既有模式)通知這個
 // 元件「剛剛成功排入某天了」,由這裡統一 dispatch 'added',不論觸發來源
 // 是候選已有日期直接加入、還是透過兩層 sheet 選定日期,都走同一個入口,
 // 不會有「同一段業務邏輯在兩個地方各寫一份」的問題。
@@ -113,7 +113,7 @@ const SHEET_SNAP_POINTS = [320, 80]
 export function PlanPhoneInfoSheet({
   content,
   attraction,
-  cfg,
+  dataSource,
   onClose,
   onAddCandidate,
   onOpenDatePicker,
@@ -121,7 +121,6 @@ export function PlanPhoneInfoSheet({
   addFlashTrigger,
   onDraggingDownChange,
   onSnapIndexChange,
-  usePublicPlaceDetails,
   nearby,
   onSelectNearby,
   onHoverNearby,
@@ -130,12 +129,10 @@ export function PlanPhoneInfoSheet({
 }: {
   content: PlaceInfoContent | null
   attraction: GeoAttraction | null
-  // cfg:attraction.placeId 有值時,用來呼叫 fetchGeoPlaceDetails 補查
-  // 「地點照片漸進補圖機制」的雙來源照片——理由同桌面版
-  // AttractionInfoPanel.tsx 的同名 prop,兩邊是同一套邏輯的桌面/手機版
-  // 各自實作(手機版走 bottom sheet,無法直接共用同一個元件),見下方
-  // placeDetails effect 的完整說明。
-  cfg: ClientConfig
+  // dataSource:資料存取層實例,attraction.placeId 有值時用它的 geoPlaceDetails 補查「地點照片漸進補圖機制」的
+  // 雙來源照片——理由同桌面版 AttractionInfoPanel.tsx 的同名 prop(兩邊是同一套邏輯的桌面/手機版各自實作),
+  // 端點由實例決定,不再有 usePublicPlaceDetails 旗標。
+  dataSource: PlanAiDataSource
   onClose: () => void
   // onAddCandidate:候選已有排定日期時直接加入候選籃(純前端,不寫入
   // 後端)——理由同桌面版 PlacePanel.tsx 的同名 prop。這條路徑完全不
@@ -157,7 +154,7 @@ export function PlanPhoneInfoSheet({
   requireAuth?: () => void
   // addFlashTrigger:呼叫端(PlanPhoneView.tsx)每次候選成功排入
   // 某天後遞增這個計數器,通知這個元件觸發「已加入」的短暫打勾提示——
-  // 比照 GeoOutlinePhoneCandidateDrawer.tsx 的 flashTrigger 既有模式。
+  // 比照 phone/CandidateList.tsx 的 flashTrigger 既有模式。
   // 選定日期、呼叫 onSchedule 寫入候選這段邏輯已經搬到
   // PlanPhoneView.tsx(由日期清單 sheet/日曆 sheet 的 callback
   // 觸發,見該檔案 handlePickScheduledDate/handleConfirmDate 對應的
@@ -183,17 +180,6 @@ export function PlanPhoneInfoSheet({
   // 縮到最小」的資訊卡視覺不符(使用者實測回報「資訊卡最小時,地點就
   // 恢復大小」)。
   onSnapIndexChange?: (index: number) => void
-  // usePublicPlaceDetails:true 時改打 fetchPublicGeoPlaceDetails(免登入
-  // 版,見該函式與後端 handlePublicGeoPlaceDetails/
-  // publicPlaceDetailsAllowlist 的完整說明)而非 fetchGeoPlaceDetails——
-  // 理由與用法同桌面版 AttractionInfoPanel.tsx 的同名 prop:供沒有真正
-  // 登入態的公開展示頁(手機螢幕寬度下的 InteractiveExploreMap.tsx)使用,
-  // 讓固定示範資料也能顯示 Google/Pexels 雙來源照片輪播,不會像一般的
-  // fetchGeoPlaceDetails 那樣打 /internal/* 必定被 internalAuth 拒絕。
-  // 由呼叫端明確指定要用哪支端點,這個元件不自己依 cfg.token 是否為
-  // null 猜測。預設 false(或不傳),維持原本走 fetchGeoPlaceDetails 的
-  // 行為。
-  usePublicPlaceDetails?: boolean
   // nearby:「附近景點」清單——只有主題卡(attraction 有值且 isTheme 為
   // true)才有意義,理由與資料形狀對稱桌面版 AttractionInfoPanel.tsx 的
   // 同名 prop(由呼叫端 PlanPhoneView.tsx 算好傳入,見該檔案
@@ -370,8 +356,7 @@ export function PlanPhoneInfoSheet({
     setPlaceDetails(null)
     if (!attractionPlaceId) return
     let cancelled = false
-    const fetcher = usePublicPlaceDetails ? fetchPublicGeoPlaceDetails : fetchGeoPlaceDetails
-    fetcher(cfg, attractionPlaceId)
+    requireGeoPlaceDetails(dataSource, attractionPlaceId)
       .then((details) => {
         if (!cancelled) setPlaceDetails(details)
       })
@@ -384,7 +369,7 @@ export function PlanPhoneInfoSheet({
     return () => {
       cancelled = true
     }
-  }, [cfg, attractionPlaceId, usePublicPlaceDetails])
+  }, [dataSource, attractionPlaceId])
 
   // nearbyCategoryPresent/filteredNearby:分類篩選——沿用
   // geoNearbyAttractions.ts 的共用純函式(見該檔案開頭說明),邏輯與
@@ -461,7 +446,7 @@ export function PlanPhoneInfoSheet({
     // 觸發),resolveActiveIndex() 內的 getBoundingClientRect() 會強制
     // 瀏覽器同步 reflow,直接在每次 scroll 事件裡都算一次會造成不必要的
     // 效能成本,節流成每個 frame 最多算一次(理由同
-    // useAttractionOverlays.ts 的 resolveLabelCollisions)。
+    // geoAttractionOverlay.ts 的 resolveLabelCollisions)。
     let rafId: number | null = null
     function handleScroll() {
       if (rafId != null) return
@@ -547,7 +532,7 @@ export function PlanPhoneInfoSheet({
   // 底部常駐導覽列上面、蓋住它,不是讓開空間避開——維持 bottom: 0 貼齊
   // 螢幕最底,兩者本來就該重疊,只是疊放順序要反過來(資訊卡在上)。
   // 改引用 PLAN_SHEET_STACK.info(2026-10,見 zLayers.ts 的完整說明,
-  // 取代原本寫死的 37)——比 PlanPhoneListDrawer.tsx 用的
+  // 取代原本寫死的 37)——比 geo-planning/phone/ResultList.tsx 用的
   // PLAN_SHEET_STACK.list 高一階:點清單項目打開資訊卡時(useSheetStack
   // 接線,見 PlanPhoneView.tsx 的 sheetStack 說明),兩者會同時 open,
   // zIndex 需要明確排序資訊卡在清單之上,不能只靠 JSX 渲染順序。

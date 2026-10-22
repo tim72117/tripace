@@ -3,10 +3,10 @@ import { haversineMeters, walkMinutesEstimate } from './geoDistance'
 import { curatedCategoryOf, type CuratedCategory } from './geoCuratedCategoryStub'
 
 // geoNearbyAttractions:「附近景點」清單的純邏輯部分(距離排序、分類篩選
-// 規則)——DesktopLayout.tsx(算 nearby 清單本身)與 AttractionInfoPanel.tsx
+// 規則)——desktop/Content.tsx(算 nearby 清單本身)與 AttractionInfoPanel.tsx
 // (算 nearbyCategoryPresent/filteredNearby)原本各自把這幾段算式寫死在
-// 各自的 useMemo 裡,完全沒有共用,GeoOutlinePhoneView.tsx/
-// GeoOutlinePhoneInfoSheet.tsx 要新增附近景點清單時只能重新抄一份或
+// 各自的 useMemo 裡,完全沒有共用,PlanPhoneView.tsx/
+// PlanPhoneInfoSheet.tsx 要新增附近景點清單時只能重新抄一份或
 // import 桌面版檔案(職責邊界混亂)。這裡抽出來的三支都是零 React/DOM
 // 依賴的純函式,不涉及互動邏輯/UI 呈現(那些桌面/手機本來就不同,刻意
 // 不抽,見各自呼叫端的說明)。
@@ -17,10 +17,10 @@ export interface NearbyAttraction {
 }
 
 // computeNearbyAttractions:算出離 anchor 最近的 limit 個候選,依步行
-// 分鐘數由近到遠排序——對齊 DesktopLayout.tsx 原本 nearbyAttractions
+// 分鐘數由近到遠排序——對齊 desktop/Content.tsx 原本 nearbyAttractions
 // useMemo 的邏輯(排除錨點自身,理由同該處說明:錨點本身不該出現在自己
 // 的附近清單裡)。pool 由呼叫端決定來源(桌面版是地圖可視範圍查詢結果,
-// 手機版比照桌面版傳 ExploreMap 的 onAttractionsChange 拿到的同一批
+// 手機版比照桌面版傳 PlanMap 的 onAttractionsChange 拿到的同一批
 // 資料,展示頁是固定城市查詢的全部非主題點,見各自呼叫端的說明),這支
 // 函式不關心資料怎麼來的。
 export function computeNearbyAttractions(

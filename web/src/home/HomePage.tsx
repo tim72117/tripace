@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ScrollPlanDemo } from './ScrollPlanDemo'
 import { trackEvent } from '../analytics'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons'
+import { FORECAST_YEAR } from '../momiji-front/momijiForecast'
 import './HomePage.css'
 
 // HomePage — 網站首頁("/" 路由)。原本以京都東山探索路線的捲動視差敘事
@@ -195,6 +196,24 @@ export function HomePage() {
                 <svg className="destination-arrow" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </span>
               <span className="destination-desc">帶孩子的九份夜晚散步——基山街小吃、豎崎路燈籠石階、阿妹茶樓喝茶，一趟實際走過的夜遊紀錄</span>
+            </a>
+            {/* 紅葉前線(2026-10 新增)——獨立的互動展示頁(見 App.tsx
+                /momiji-front 與 momiji-front/MomijiFrontPage.tsx):依日本氣象
+                的紅葉預測日,看楓葉由北往南轉紅的動畫。清單項目用攻略式標題
+                (使用者要求「類似 最全【2026日本紅葉】完整預測攻略!賞楓時間」
+                的寫法),不加 destination-tag。 */}
+            <a
+              className="destination-item"
+              href="/momiji-front"
+              onClick={() => trackEvent('landing_destination_click', { destination: `${FORECAST_YEAR} 紅葉預測` })}
+            >
+              <span className="destination-row">
+                <span className="destination-name">
+                  日本 · {FORECAST_YEAR} 紅葉預測
+                </span>
+                <svg className="destination-arrow" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </span>
+              <span className="destination-desc">【{FORECAST_YEAR}日本紅葉】賞楓時間預測攻略！北海道到九州各地見頃日一次看，附知名賞楓景點</span>
             </a>
           </div>
         </div>

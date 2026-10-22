@@ -19,11 +19,11 @@ import styles from './ThemePointDemo.module.css';
 // 避免變成「卡片裡面又包一層卡片」的視覺巢狀。
 //
 // 樣式直接沿用正式地圖上主題點/精選點的真實視覺規格(geoAttractionOverlay.ts
-// renderContent() 產生的 DOM 結構、ExploreMap.module.css 的
+// renderContent() 產生的 DOM 結構、PlanMap.module.css 的
 // .geo-attraction-glow/-landmark-photo/-landmark-placeholder/
 // -curated-dot/-label)——使用者明確要求「要跟實際的樣式一樣」,故用
 // 同樣的 DOM 結構(div 光暈+img/placeholder 圓+label 標籤),搭配真實
-// CSS Module(ThemePointDemo.module.css 直接照抄 ExploreMap.module.css
+// CSS Module(ThemePointDemo.module.css 直接照抄 PlanMap.module.css
 // 對應規則的數值,理由見該檔案開頭說明)。座標系是像素絕對定位(容器
 // 320×320px),因為真實地圖上的地標本來就是像素座標(投影後的螢幕座標),
 // 不是抽象比例座標,改用像素定位更貼近真實情境的視覺尺度感(56px 圓在
@@ -191,7 +191,7 @@ export function ThemePointDemo({ dark }: { dark: boolean }) {
 
         {/* 精選點——結構對齊 geoAttractionOverlay.ts renderContent() 的
             精選點分支(未 hover 時只畫 .demoDot 圓點+標籤,不帶照片),
-            配色沿用 ExploreMap.module.css 的 -tea/-restaurant/-craft/
+            配色沿用 PlanMap.module.css 的 -tea/-restaurant/-craft/
             -street 四個分類 modifier(這裡用 styles[`demoDot${category}`]
             動態組 CSS Modules 的 class 名稱,因為分類是執行期字串,不能
             寫死成 JSX 裡的固定 className)。

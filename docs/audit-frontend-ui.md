@@ -4,7 +4,7 @@
 >
 > **與其他稽核檔的分工**：本檔收前端介面層發現——UI 邏輯錯誤、元件生命週期、設計模式/抽象品質、視覺設計、樣式一致性。後端/跨層架構債歸 `audit-functional.md`；有安全後果的一律歸 `audit-security.md`。
 >
-> 2026-10-16 複核：對照 main @ 4f14828 逐項檢查，已移除 10 項已修復/已過時的發現。（注意：2026-08 掃描後多個元件已改名搬移，下文原始 file:line 引用中的 `GeoOutlinePhoneView`/`GeoOutlinePhoneInfoSheet`/`GeoOutlinePhoneListDrawer`/`GeoOutlineMap` 現為 `geo-planning/PlanPhoneView`/`PlanPhoneInfoSheet`/`PlanPhoneListDrawer`/`ExploreMap`，`useSheetStack` 現位於 `components/`；各項「現況」已標註目前位置。）
+> 2026-10-16 複核：對照 main @ 4f14828 逐項檢查，已移除 10 項已修復/已過時的發現。（注意：2026-08 掃描後多個元件已改名搬移，下文原始 file:line 引用中的 `GeoOutlinePhoneView`/`GeoOutlinePhoneInfoSheet`/`GeoOutlinePhoneListDrawer`/`GeoOutlineMap` 現為 `geo-planning/PlanPhoneView`/`PlanPhoneInfoSheet`/`geo-planning/phone/ResultList`/`geo-planning/NativeMapBase`（原 `ExploreMap.tsx` 已刪除，建圖統一走 NativeMapBase；2026-10-23 重新定位），`useSheetStack` 現位於 `components/`；各項「現況」已標註目前位置。）
 
 ---
 
@@ -21,6 +21,8 @@
 
 **現況（2026-10-16 複核）**：仍存在。元件已改名為 `geo-planning/ExploreMap.tsx`：`:600` colorScheme 比對放行、`:601` `if (buildingRef.current) return` 擋下，`buildingRef` 僅在 `:636` 設 true、`:797`（`.catch`）重置，成功路徑仍不重置（`:792-796` 註解還刻意寫「成功路徑不解除」）。姊妹元件 `geo-planning/NativeMapBase.tsx:199-210` 已用「成功路徑 `buildingRef.current = false`」修掉同一個問題（註解記載 2026-09 實測日夜切換無效），可直接照抄。
 
+**現況（2026-10-23 複核）**：`geo-planning/ExploreMap.tsx` 已刪除（`geo-planning/` 下找不到），上述舊位置（`:600`、`:601`、`:636`、`:797`）不再存在；建圖統一走 `NativeMapBase.tsx`，該檔已用成功路徑重置 `buildingRef`，原問題實質上隨檔案移除而消失，待下次掃描確認後移入「已複核為安全/已解決」。
+
 **FE22 🟠 搜尋進行中關閉清單，結果回來會憑空彈出資訊卡**
 `GeoOutlinePhoneView.tsx:381`、`GeoOutlinePanel.tsx:327-347`、`useSheetStack.ts:62`。清單 `onClose` 只 `closeAll()`、不取消在途查詢；唯一解回來時 `onSearchResultSelect`/`onSearchResultsChange` 都呼叫 `sheetStack.replace`，而 `replace` 在空堆疊時等同 push——資訊卡自己跳出來，`setGeocodeCandidates` 還把剛清掉的地圖 marker 補回去。修法：關閉時遞增 search epoch 丟棄舊結果，並讓 `replace` 在空堆疊時不動作。
 
@@ -29,7 +31,7 @@
 **FE26 🟡 資訊卡在日期 sheet 疊上來時仍是 topmost**
 `GeoOutlinePhoneView.tsx:417-453`。`GeoOutlinePhoneInfoSheet` 沒有 `isTopmost`/`stackOffsetPx` prop 可轉傳（`GeoOutlinePhoneInfoSheet.tsx:252-263`），堆疊到第三層時它仍 `isTopmost=true`：不套 `pointer-events:none`、照常接拖曳，可在日期 sheet 未覆蓋區域被拖走。修法：比照清單補上兩個 prop。
 
-**現況（2026-10-16 複核）**：仍存在。現位置：`geo-planning/PlanPhoneView.tsx:618-662`（`<PlanPhoneInfoSheet>` 沒有傳 `isTopmost`/`stackOffsetPx`）；`geo-planning/PlanPhoneInfoSheet.tsx:557-565` 使用 `StandaloneSheet`（`components/PhoneBottomSheet.tsx:1119-1123`，型別上排除 `isTopmost`/`stackOffsetPx`，恆為 topmost）；對照 `PlanPhoneListDrawer.tsx:160, 190-194, 262-263` 已有這兩個 prop。
+**現況（2026-10-16 複核）**：仍存在。現位置：`geo-planning/PlanPhoneView.tsx:618-662`（`<PlanPhoneInfoSheet>` 沒有傳 `isTopmost`/`stackOffsetPx`）；`geo-planning/PlanPhoneInfoSheet.tsx:557-565` 使用 `StandaloneSheet`（`components/PhoneBottomSheet.tsx:1119-1123`，型別上排除 `isTopmost`/`stackOffsetPx`，恆為 topmost）；對照 `geo-planning/phone/ResultList.tsx:160, 190-194, 262-263` 已有這兩個 prop。
 
 **FE27 🟡 補查照片回來會把資訊卡拉回中間段**
 `GeoOutlinePhoneInfoSheet.tsx:161-164`。重設 effect 依賴 `content`/`attraction` 物件參照，`PATCH_INFO_CONTENT`（文字/照片補查）產生新物件 → `setActiveSnapIndex(1)` 把使用者剛拖到滿版/收合的卡片彈回中間，`dispatchAddUi({reset})` 讓「已加入」打勾提早消失。修法：依賴改 `content?.placeId`/`name` 等穩定鍵。
@@ -52,28 +54,30 @@
 依性價比排序（改動小、效益大者在前）。
 
 **FE9 🟡 「`activeSnapIndex` state + open 時重設」逐字重複 4 處**
-`PhoneContent.tsx:105-108`、`GeoOutlinePhoneListDrawer.tsx:205-208`、`timeline/PhoneTimelineDrawer.tsx:63-66`、`GeoOutlinePhoneInfoSheet.tsx:160-164`——四處相同的 `useState(1)` + `useEffect(open 時重設)`，註解互相引用「理由同 XX」。修法：`PhoneBottomSheet` 新增非受控模式（`defaultSnapIndex` 由容器內部持有、open 轉 true 自動重設），受控 props 保留給真正需要外部觀察的呼叫端（目前只有資訊卡，見 FE12）。範圍：小。
+`phone/Content.tsx:105-108`、`GeoOutlinePhoneListDrawer.tsx:205-208`、`timeline/PhoneTimelineDrawer.tsx:63-66`、`GeoOutlinePhoneInfoSheet.tsx:160-164`——四處相同的 `useState(1)` + `useEffect(open 時重設)`，註解互相引用「理由同 XX」。修法：`PhoneBottomSheet` 新增非受控模式（`defaultSnapIndex` 由容器內部持有、open 轉 true 自動重設），受控 props 保留給真正需要外部觀察的呼叫端（目前只有資訊卡，見 FE12）。範圍：小。
 
-**現況（2026-10-16 複核）**：仍存在，位置與數量更新：`geo-planning/PlanPhoneListDrawer.tsx:219-222`、`geo-planning/PlanPhoneTripListDrawer.tsx:157-160`（新增的第二處同樣寫法，另有 `restoreTrigger` effect `:161-165`）、`timeline/PhoneTimelineDrawer.tsx:77-80`（變數名 `snapIndex`）、`PhoneContent.tsx:208`（`chatSnapIndex` 初值 2）；`PlanPhoneInfoSheet.tsx:298-302` 已改為 render 期間比對的變體（見 FE27）。`PhoneBottomSheet` 仍沒有 `defaultSnapIndex` 非受控模式。
+**現況（2026-10-16 複核）**：仍存在，位置與數量更新：`geo-planning/PhoneResultList.tsx:219-222`、`geo-planning/PhoneCandidateList.tsx:157-160`（新增的第二處同樣寫法，另有 `restoreTrigger` effect `:161-165`）、`timeline/PhoneTimelineDrawer.tsx:77-80`（變數名 `snapIndex`）、`phone/Content.tsx:208`（`chatSnapIndex` 初值 2）；`PlanPhoneInfoSheet.tsx:298-302` 已改為 render 期間比對的變體（見 FE27）。`PhoneBottomSheet` 仍沒有 `defaultSnapIndex` 非受控模式。
+
+**現況（2026-10-23 複核）**：仍存在，位置因檔案搬移與改名重新定位：`geo-planning/phone/ResultList.tsx:213-216`（原 `PhoneResultList.tsx`）、`geo-planning/phone/CandidateList.tsx:155-158`（原 `PhoneCandidateList.tsx`；`restoreTrigger` effect 在 `:162-165`）、`timeline/PhoneTimelineDrawer.tsx:77-80`（變數名 `snapIndex`）；`phone/Content.tsx` 的 `chatSnapIndex` 已不存在，現在同樣寫法的是 `settingsSnapIndex`（`:194-197`）與 `paceSnapIndex`（`:198-201`），各自搭配 `useEffect` 在 `inSettings`／`paceSheetOpen` 轉 true 時重設為 1。`PhoneBottomSheet` 仍沒有 `defaultSnapIndex` 非受控模式。
 
 **FE10 🟡 z-index 階梯與 `panelStyle` 樣板散落 9 檔**
-`{ position:'absolute', left:0, right:0, bottom:0, zIndex:X }` 幾乎逐字重複 6 次（z 值 13/33/35/36/37/38/39 分散在 `PhoneContent`/`GeoOutlinePhoneListDrawer`/`GeoOutlinePhoneCandidateDrawer`/`GeoOutlinePhoneInfoSheet`/`GeoOutlinePhoneDatePickerSheet`/`GeoOutlinePhoneDateCalendarSheet`/`PhoneTripsDrawer`/`PhoneTimelineDrawer`/`PhoneTabBar`），「誰疊誰上面」這個全域不變量要翻 9 個檔案的註解才拼得出來。修法：`components/sheetLayers.ts` 常數表 + `sheetPanelStyle(layer)` helper，註解從 9 份縮成 1 份。範圍：小。與 FE5（z-index 脫隊）同根因，一併處理。
+`{ position:'absolute', left:0, right:0, bottom:0, zIndex:X }` 幾乎逐字重複 6 次（z 值 13/33/35/36/37/38/39 分散在 `PhoneContent`/`GeoOutlinePhoneListDrawer`/`GeoOutlinePhoneCandidateDrawer`/`GeoOutlinePhoneInfoSheet`/`GeoOutlinePhoneDatePickerSheet`/`GeoOutlinePhoneDateCalendarSheet`/`PhoneTripList`/`PhoneTimelineDrawer`/`PhoneNav`），「誰疊誰上面」這個全域不變量要翻 9 個檔案的註解才拼得出來。修法：`components/sheetLayers.ts` 常數表 + `sheetPanelStyle(layer)` helper，註解從 9 份縮成 1 份。範圍：小。與 FE5（z-index 脫隊）同根因，一併處理。
 
-**現況（2026-10-16 複核）**：部分修復（PARTIAL）。z-index 常數表那一半已落地：`components/zLayers.ts` 的 `Z_LAYERS`（`BELOW_TAB_BAR_1/2`、`TAB_BAR`、`ABOVE_TAB_BAR`）與 `PLAN_SHEET_STACK`/`PLAN_SHEET_BACKDROP`，`components/zLayers.css` 的 `--z-tab-bar` 供 `PhoneTabBar.module.css:28` 使用，各 sheet 已改引用具名常數。仍在的是 `panelStyle` 樣板：沒有 `sheetPanelStyle(layer)` helper，`{ position, left:0, right:0, bottom:0, zIndex }` 仍逐字散落於 `PhoneContent.tsx:500,552,632`、`geo-planning/PlanPhoneListDrawer.tsx:260`、`PlanPhoneTripListDrawer.tsx:220`、`PlanPhoneInfoSheet.tsx:562`、`PlanPhoneDatePickerSheet.tsx:95`、`PlanPhoneDateCalendarSheet.tsx:81`、`trip/PhoneTripsDrawer.tsx:125`、`timeline/PhoneTimelineDrawer.tsx:101`，且 `backdropStyle` 的 `position: fixed; inset: 0; background: rgba(0,0,0,0.32)` 也重複於三個 sheet。
+**現況（2026-10-16 複核）**：部分修復（PARTIAL）。z-index 常數表那一半已落地：`components/zLayers.ts` 的 `Z_LAYERS`（`BELOW_TAB_BAR_1/2`、`TAB_BAR`、`ABOVE_TAB_BAR`）與 `PLAN_SHEET_STACK`/`PLAN_SHEET_BACKDROP`，`components/zLayers.css` 的 `--z-tab-bar` 供 `phone/Nav.module.css:28` 使用，各 sheet 已改引用具名常數。仍在的是 `panelStyle` 樣板：沒有 `sheetPanelStyle(layer)` helper，`{ position, left:0, right:0, bottom:0, zIndex }` 仍逐字散落於 `phone/Content.tsx:500,552,632`、`geo-planning/PhoneResultList.tsx:260`、`geo-planning/phone/CandidateList.tsx:220`、`PlanPhoneInfoSheet.tsx:562`、`PlanPhoneDatePickerSheet.tsx:95`、`PlanPhoneDateCalendarSheet.tsx:81`、`trip/PhoneTripList.tsx:125`、`timeline/PhoneTimelineDrawer.tsx:101`，且 `backdropStyle` 的 `position: fixed; inset: 0; background: rgba(0,0,0,0.32)` 也重複於三個 sheet。
 
 **FE11 ⚪ 死參數與過期註解（本次盤點）**
 - `GeoOutlinePhoneInfoSheet.tsx:260-261` 同時傳 `backdropStyle` 與 `showBackdrop={false}`——backdropStyle 是死參數。
-- 引用已刪除元件的註解：`PhoneNavDrawer` **41 處 / 17 檔**（含 `App.tsx:71`、`PhoneContent.tsx` 多處、`DesktopShared.tsx`、`ChatScreen.tsx`、多份 CSS）；`RecommendedPlacesMap.tsx`（`pace/PaceRouteMap.module.css:2,20` 等 4 處）；`TripsScreen`、`TimelineMainView`、不存在的 `PhoneFloatCard`（`PhoneContent.tsx:150,156` 還寫著「下一步接回」）；已移除的 prop/識別字 `maxHeightVh`、`mainChatSlotNode`/`chatParkingNode`、`useDragToClose`、`useKeyboardInsetDebug`。
+- 引用已刪除元件的註解：`PhoneNavDrawer` **41 處 / 17 檔**（含 `App.tsx:71`、`phone/Content.tsx` 多處、`DesktopShared.tsx`、`ChatScreen.tsx`、多份 CSS）；`RecommendedPlacesMap.tsx`（`pace/PaceRouteMap.module.css:2,20` 等 4 處）；`TripsScreen`、`TimelineMainView`、不存在的 `PhoneFloatCard`（`phone/Content.tsx:150,156` 還寫著「下一步接回」）；已移除的 prop/識別字 `maxHeightVh`、`mainChatSlotNode`/`chatParkingNode`、`useDragToClose`、`useKeyboardInsetDebug`。
 - 未使用 export：`DesktopShared.tsx` 的 `PanelSlot`/`PanelSpec`、`ChatScreen.tsx:54` 的 `DesktopChatOptions` 可降為非 export。
 - 命名不符：`components/useKeyboardInset.ts` 檔內唯一 export 是 `useKeyboardShrink`。
 - ✅ debug 殘留已清乾淨：`console.log('[listDrawer] dispatch')` 確認不存在。
 
-**現況（2026-10-16 複核）**：除 debug 殘留外仍存在，數字與位置更新：（1）`geo-planning/PlanPhoneInfoSheet.tsx:563-564` 仍同時傳 `backdropStyle` 與 `showBackdrop={false}`；（2）`PhoneNavDrawer` 註解現為 38 處 / 21 檔；`RecommendedPlacesMap` 殘留於 `DesktopShared.tsx:12`、`pace/PaceRouteMap.module.css:2,20`、`recommended-places/RecommendedPlaces.module.css:6`（`pace/PaceMap.css` 已清掉，見 FE7）；`PhoneContent.tsx:92`（`TripsScreen`）、`:281,287`（`PhoneFloatCard`「下一步接回」）、`timeline/PhoneTimelineDrawer.tsx:10`（`TimelineMainView`）；`maxHeightVh`/`mainChatSlotNode`/`chatParkingNode`/`useDragToClose`/`useKeyboardInsetDebug` 仍有 6 處註解提及；（3）`DesktopShared.tsx:153,155` 的 `PanelSlot`/`PanelSpec` 與 `chat/ChatScreen.tsx:54` 的 `DesktopChatOptions` 仍 export 但無外部引用；（4）`components/useKeyboardInset.ts:71` 唯一 export 仍是 `useKeyboardShrink`。
+**現況（2026-10-16 複核）**：除 debug 殘留外仍存在，數字與位置更新：（1）`geo-planning/PlanPhoneInfoSheet.tsx:563-564` 仍同時傳 `backdropStyle` 與 `showBackdrop={false}`；（2）`PhoneNavDrawer` 註解現為 38 處 / 21 檔；`RecommendedPlacesMap` 殘留於 `DesktopShared.tsx:12`、`pace/PaceRouteMap.module.css:2,20`、`recommended-places/RecommendedPlaces.module.css:6`（`pace/PaceMap.css` 已清掉，見 FE7）；`phone/Content.tsx:92`（`TripsScreen`）、`:281,287`（`PhoneFloatCard`「下一步接回」）、`timeline/PhoneTimelineDrawer.tsx:10`（`TimelineMainView`）；`maxHeightVh`/`mainChatSlotNode`/`chatParkingNode`/`useDragToClose`/`useKeyboardInsetDebug` 仍有 6 處註解提及；（3）`DesktopShared.tsx:153,155` 的 `PanelSlot`/`PanelSpec` 與 `chat/ChatScreen.tsx:54` 的 `DesktopChatOptions` 仍 export 但無外部引用；（4）`components/useKeyboardInset.ts:71` 唯一 export 仍是 `useKeyboardShrink`。
 
 **FE12 🟡 資訊卡 snap 狀態「半受控」，同一個值鏡像 3 層**
 `GeoOutlinePhoneInfoSheet.tsx:160-176` 自己持有 `activeSnapIndex` → useEffect 回報 → `GeoOutlinePhoneView` 存 `infoSheetSnapIndex`/`infoSheetDraggingDown` → 推導 `forceCollapsed` → 清單再用 `preForceSnapIndexRef`/`wasForcedRef` 翻譯回自己的 snapIndex——一個「第幾段」跨 3 元件、4 份 state、2 個 ref，實測 bug 註解（「鬆手就恢復大小」）正是這條鏈的產物。修法：兩層 snapIndex 都提升到 `GeoOutlinePhoneView`（堆疊擁有者），連動規則寫成純函式 `deriveStackSnapIndexes(...)` 並補測試。與 FE9 高度相關，連著改。範圍：中。
 
-**現況（2026-10-16 複核）**：仍存在。現位置：`geo-planning/PlanPhoneInfoSheet.tsx:298`（自持 `activeSnapIndex`）、`:329-331`（useEffect 回報 `onSnapIndexChange`）→ `geo-planning/PlanPhoneView.tsx:378-379`（`infoSheetDraggingDown`/`infoSheetSnapIndex`）、`:662`、`:802-` 推導 `forceCollapsed` → `geo-planning/PlanPhoneListDrawer.tsx:224-240`（`preForceSnapIndexRef`/`wasForcedRef`）；`deriveStackSnapIndexes` 不存在。
+**現況（2026-10-16 複核）**：仍存在。現位置：`geo-planning/PlanPhoneInfoSheet.tsx:298`（自持 `activeSnapIndex`）、`:329-331`（useEffect 回報 `onSnapIndexChange`）→ `geo-planning/PlanPhoneView.tsx:378-379`（`infoSheetDraggingDown`/`infoSheetSnapIndex`）、`:662`、`:802-` 推導 `forceCollapsed` → `geo-planning/PhoneResultList.tsx:224-240`（`preForceSnapIndexRef`/`wasForcedRef`）；`deriveStackSnapIndexes` 不存在。
 
 **FE15 ⚪ 三個查詢入口的 dispatch 組合檔內重複**
 `GeoOutlinePhoneView.tsx:317-346`，`onSearch` 與 `onSearchStart` 後 4 行相同。檔內抽 `beginSearch()` 即可，不要跨平台抽（共用規則已在 `geoCategoryTagsState`）。範圍：小。
@@ -111,11 +115,11 @@
 **FE18 🟡 狀態回饋缺口（對照 skill 清單）**
 - **沒有 toast/snackbar**：「加入候選成功」「儲存座標成功」各處自己發明臨時 highlight 手法——skill「狀態要看得見」最大缺口。
 - **載入中不統一**：`PhoneBottomSheet` spinner、`GeoOutlineMap` Loader2、`TripManageModal`/`PublicViewScreen` 純文字「載入中…」三種呈現。
-- **hover 缺失**：19 檔有 `cursor: pointer` 卻無任何 `:hover`，含共用基礎元件 `components/Button`/`IconButton`/`ListRow`/`PhoneBottomSheet` 與 `PhoneTabBar`/`TripManageModal`/`SettingsDialog`/`ThemeToggle`——桌面版滑過毫無回饋。
+- **hover 缺失**：19 檔有 `cursor: pointer` 卻無任何 `:hover`，含共用基礎元件 `components/Button`/`IconButton`/`ListRow`/`PhoneBottomSheet` 與 `PhoneNav`/`TripManageModal`/`SettingsDialog`/`ThemeToggle`——桌面版滑過毫無回饋。
 - **disabled 不一致**：`Button`/`IconButton` 用 `cursor: default` 而非 skill 明列的 `not-allowed`（全專案 `not-allowed` 只在 demo 出現過一次）。
 - `prefers-reduced-motion` 8 個有動畫的檔案只覆蓋 6 個；`focus-visible` 僅 11/66 檔。
 
-**現況（2026-10-16 複核）**：大致仍存在，細節更新：（1）全專案沒有 toast/snackbar 共用元件（`components/` 下無此類檔案）；（2）hover：`components/Button.module.css`、`IconButton.module.css`、`ListRow.module.css`、`PhoneBottomSheet.module.css`、`PhoneTabBar.module.css`、`trip/TripManageModal.module.css`、`user/SettingsDialog.module.css` 皆有 `cursor: pointer` 而 `:hover` 數為 0（`components/PanelHead.module.css:32` 已有 `.closeBtn:hover`，屬個案）；（3）`Button.module.css`/`IconButton.module.css`/`TripManageModal.module.css` 仍有 `cursor: default`，`not-allowed` 已在 `DesktopRail`/`GeoHotelSidebar`/`GeoCandidateSidebar`/`HorizontalPlanTimeline` 各出現一次，但基礎元件仍未採用；（4）`focus-visible` 目前 19 個 CSS 檔、`prefers-reduced-motion` 16 個 CSS 檔有寫（分母檔案數已與原統計不同，覆蓋率落差是否仍在未逐檔重算）。
+**現況（2026-10-16 複核）**：大致仍存在，細節更新：（1）全專案沒有 toast/snackbar 共用元件（`components/` 下無此類檔案）；（2）hover：`components/Button.module.css`、`IconButton.module.css`、`ListRow.module.css`、`PhoneBottomSheet.module.css`、`phone/Nav.module.css`、`trip/TripManageModal.module.css`、`user/SettingsDialog.module.css` 皆有 `cursor: pointer` 而 `:hover` 數為 0（`components/PanelHead.module.css:32` 已有 `.closeBtn:hover`，屬個案）；（3）`Button.module.css`/`IconButton.module.css`/`TripManageModal.module.css` 仍有 `cursor: default`，`not-allowed` 已在 `DesktopNav`/`DesktopResultList`/`DesktopCandidateList`/`HorizontalPlanTimeline` 各出現一次，但基礎元件仍未採用；（4）`focus-visible` 目前 19 個 CSS 檔、`prefers-reduced-motion` 16 個 CSS 檔有寫（分母檔案數已與原統計不同，覆蓋率落差是否仍在未逐檔重算）。
 
 **FE19 🟡 尺寸/層級魔數**
 - 圓角 10 種無規律（卡片同時存在 10/12/18/20px，另有 31px/28px 一次性魔數）——建議收斂 `--r-sm/md/lg/pill` 4 階。
@@ -169,34 +173,36 @@
 
 **現況（2026-08-30 複核）**：`GeoOutlinePhoneListDrawer` 已改 `bottom: 0; zIndex: 36`；`PhoneTimelineDrawer` **仍是 z-index 13**（本次掃描 FE10 的 9 檔盤點確認）。定位錨點三分問題在多層 sheet 堆疊框架落地後仍存在，修法併入 FE10 的 `sheetLayers.ts` 常數表方案一起處理。
 
-**現況（2026-10-16 複核）**：部分修復（PARTIAL）。`timeline/PhoneTimelineDrawer.tsx:101` 現引用 `Z_LAYERS.BELOW_TAB_BAR_2`（`components/zLayers.ts`，值仍是 13，註解刻意保留「旅程清單 33 疊在時間軸 13 之上」的相對順序）；常數表已存在（見 FE10），故「裸數字」已解決，但 13 與其他 sheet 的落差（13/33 < 35 TAB_BAR < 36 ABOVE_TAB_BAR）依然存在，定位錨點也仍混用 `position: absolute`（`PhoneContent`/`PhoneTimelineDrawer`/`PhoneTripsDrawer`/`PlanPhoneListDrawer`）與 `position: fixed`（`PlanPhoneInfoSheet`/`PlanPhoneDatePickerSheet`/`PlanPhoneDateCalendarSheet`）兩種。
+**現況（2026-10-16 複核）**：部分修復（PARTIAL）。`timeline/PhoneTimelineDrawer.tsx:101` 現引用 `Z_LAYERS.BELOW_TAB_BAR_2`（`components/zLayers.ts`，值仍是 13，註解刻意保留「旅程清單 33 疊在時間軸 13 之上」的相對順序）；常數表已存在（見 FE10），故「裸數字」已解決，但 13 與其他 sheet 的落差（13/33 < 35 TAB_BAR < 36 ABOVE_TAB_BAR）依然存在，定位錨點也仍混用 `position: absolute`（`PhoneContent`/`PhoneTimelineDrawer`/`PhoneTripList`/`PhoneResultList`）與 `position: fixed`（`PlanPhoneInfoSheet`/`PlanPhoneDatePickerSheet`/`PlanPhoneDateCalendarSheet`）兩種。
 
 ### FE6 🟡 `useGeoPlanningState` 回傳大聯集物件，平台專屬欄位無型別區分
 
-桌面專屬（`pickingDayKey`/`draggingCandidate`/`hoverKey`）與雙平台共用欄位混在同一扁平回傳物件，呼叫端靠註解判斷哪些欄位「手機版不解構就好」；`DesktopLayout.tsx` 對葉元件的逐一透傳達 12 個 prop 且中間層不消費。另有 `pickingDayKey` 被 `DesktopLayout.tsx` 的 useEffect 越權直接清空（違反 hook 自我管理 state 的封裝原則）。
+桌面專屬（`pickingDayKey`/`draggingCandidate`/`hoverKey`）與雙平台共用欄位混在同一扁平回傳物件，呼叫端靠註解判斷哪些欄位「手機版不解構就好」；`desktop/Content.tsx` 對葉元件的逐一透傳達 12 個 prop 且中間層不消費。另有 `pickingDayKey` 被 `desktop/Content.tsx` 的 useEffect 越權直接清空（違反 hook 自我管理 state 的封裝原則）。
 
 修法：依用途拆命名空間（`geo.selection`/`geo.basket`/`geo.desktopOnly`）或葉元件直接收整個 geo 物件；`pickingDayKey` 清空邏輯下放回 hook 內部。
 
-**現況（2026-08-30 複核）**：仍存在（回傳已達 40 欄位、橫跨四個子域）。本次掃描給出更精準的修法：整體聯集設計有充分理由**不硬拆成 4 個 hook**，只把註解已標記「僅桌面版使用」的 `pickingDayKey`/`onlyCandidates`/`draggingCandidate`/`handlePickFromCandidate`/`hoverKey` 抽成 `useGeoDesktopExtras(base)` 由 `DesktopLayout` 單獨呼叫（`useGeoPlanningState.ts:367-389, 438-444`）。
+**現況（2026-08-30 複核）**：仍存在（回傳已達 40 欄位、橫跨四個子域）。本次掃描給出更精準的修法：整體聯集設計有充分理由**不硬拆成 4 個 hook**，只把註解已標記「僅桌面版使用」的 `pickingDayKey`/`onlyCandidates`/`draggingCandidate`/`handlePickFromCandidate`/`hoverKey` 抽成 `useGeoDesktopExtras(base)` 由 `DesktopContent` 單獨呼叫（`useGeoPlanningState.ts:367-389, 438-444`）。
 
-**現況（2026-10-16 複核）**：部分修復（PARTIAL），範圍縮小。已修：`pickingDayKey`/`onlyCandidates`/`handlePickFromCandidate` 隨「從候選加入」整套移除（`geo-planning/useGeoPlanningState.ts:386-391` 有說明），`DesktopLayout.tsx` 對 `pickingDayKey` 的越權清空 useEffect 也已不存在（`DesktopLayout.tsx:564` 註解）。仍在：回傳仍是單一扁平聯集物件（`useGeoPlanningState.ts:395-450` 約 36 個欄位），桌面專屬的 `draggingCandidate`（`:392, 441`）與 `hoverKey`（`:72, 411`）仍混在其中，無 `useGeoDesktopExtras`，也無型別區分；嚴重度可視為 🟡 偏低。
+**現況（2026-10-16 複核）**：部分修復（PARTIAL），範圍縮小。已修：`pickingDayKey`/`onlyCandidates`/`handlePickFromCandidate` 隨「從候選加入」整套移除（`geo-planning/useGeoPlanningState.ts:386-391` 有說明），`desktop/Content.tsx` 對 `pickingDayKey` 的越權清空 useEffect 也已不存在（`desktop/Content.tsx:564` 註解）。仍在：回傳仍是單一扁平聯集物件（`useGeoPlanningState.ts:395-450` 約 36 個欄位），桌面專屬的 `draggingCandidate`（`:392, 441`）與 `hoverKey`（`:72, 411`）仍混在其中，無 `useGeoDesktopExtras`，也無型別區分；嚴重度可視為 🟡 偏低。
 
 ### FE7 ⚪ 低優先項目彙整
 
-- **`manageTrip` state 與 modal 渲染區塊**在 `PhoneContent.tsx`/`DesktopLayout.tsx` 逐字重複——可抽共用元件。
+- **`manageTrip` state 與 modal 渲染區塊**在 `phone/Content.tsx`/`desktop/Content.tsx` 逐字重複——可抽共用元件。
 - **`DrawerMode`/`PanelMode`** 型別衍生（`Exclude`）與執行期 if 各自表達同一條排除規則——可收斂進 `PANEL_REGISTRY` 加欄位。
-- **`PhoneContent.tsx`/`DesktopLayout.tsx` 巨大三元運算式鏈**可拆成 render 函式（純可讀性，不建議上 state machine——路由已是單一事實來源）。
+- **`phone/Content.tsx`/`desktop/Content.tsx` 巨大三元運算式鏈**可拆成 render 函式（純可讀性，不建議上 state machine——路由已是單一事實來源）。
 - **地圖容器尺寸撐開時機**：依賴父層 flex 層層撐開，首繪 reflow 期間建圖可能讀到非最終尺寸，SDK 事後 resize 校正產生一次可感知跳動——可用 ResizeObserver 或固定高度佔位改善。
 - **`.rp-modal-body` 缺 `touch-action`**：繼承到 `none` 時手機上長清單可能捲不動；且繞過了 `ScrollArea.tsx` 訂下的「捲動容器收斂單一元件」慣例。
 
-**現況（2026-10-16 複核）**：逐項複核結果——（1）`manageTrip` 重複：仍存在，`PhoneContent.tsx:125, 647-665` 與 `DesktopLayout.tsx:105, 1053-1070` 的 modal 渲染區塊仍逐字重複；（2）`DrawerMode`/`PanelMode`：仍存在，`DesktopShared.tsx:192` 的 `Exclude<PanelMode, 'demo-route-editor' | 'demo-chat' | null>` 與 `PANEL_REGISTRY`（`:162`）仍各自表達；（3）三元運算式鏈：仍存在，`DesktopLayout.tsx:795-841` 的 `panelMode === 'trips' ? … : 'timeline' ? … : 'pace' ? … : 'geo-outline' ?` 仍是長鏈；（4）地圖容器尺寸：部分修復，`geo-planning/ExploreMap.tsx:834-850` 已加 ResizeObserver 觸發 resize，但 `pace/PaceRouteMap.tsx` 仍無（未再發現實際跳動回報，保留為低優先）；（5）`.rp-modal-body`（`base-ui.css:268-272`）仍無 `touch-action`。其餘條目（`onOpenTimeline` 三處透傳、`pace/PaceMap.css:2` 過期註解、`useGeoPlanningState.ts` 檔頭註解）已不再適用，已移除。
+**現況（2026-10-16 複核）**：逐項複核結果——（1）`manageTrip` 重複：仍存在，`phone/Content.tsx:125, 647-665` 與 `desktop/Content.tsx:105, 1053-1070` 的 modal 渲染區塊仍逐字重複；（2）`DrawerMode`/`PanelMode`：仍存在，`DesktopShared.tsx:192` 的 `Exclude<PanelMode, 'demo-route-editor' | 'demo-chat' | null>` 與 `PANEL_REGISTRY`（`:162`）仍各自表達；（3）三元運算式鏈：仍存在，`desktop/Content.tsx:795-841` 的 `panelMode === 'trips' ? … : 'timeline' ? … : 'pace' ? … : 'geo-outline' ?` 仍是長鏈；（4）地圖容器尺寸：部分修復，`geo-planning/ExploreMap.tsx:834-850` 已加 ResizeObserver 觸發 resize，但 `pace/PaceRouteMap.tsx` 仍無（未再發現實際跳動回報，保留為低優先）；（5）`.rp-modal-body`（`base-ui.css:268-272`）仍無 `touch-action`。其餘條目（`onOpenTimeline` 三處透傳、`pace/PaceMap.css:2` 過期註解、`useGeoPlanningState.ts` 檔頭註解）已不再適用，已移除。
+
+**現況（2026-10-23 複核）**：行號重新定位，結論不變——（1）`manageTrip` 重複：仍存在，state 在 `phone/Content.tsx:103`／`desktop/Content.tsx:79`，modal 渲染區塊在 `phone/Content.tsx:573-581`／`desktop/Content.tsx:989-998`，仍逐字重複；（2）`DrawerMode`／`PanelMode`：仍存在，`DesktopShared.tsx:183` 的 `Exclude<PanelMode, 'demo-route-editor' | 'demo-chat' | null>` 與 `PANEL_REGISTRY`（`:153`）仍各自表達；（3）三元運算式鏈：仍存在，`desktop/Content.tsx:635-694` 的 `panelMode === 'trips' ? … : 'timeline' ? … : 'pace' ? … : 'geo-outline' ? … : null` 仍是長鏈；（4）地圖容器尺寸：部分修復，`ExploreMap.tsx` 已刪除，現由 `geo-planning/NativeMapBase.tsx:300-317` 的 ResizeObserver 追蹤容器尺寸，`pace/PaceRouteMap.tsx` 仍無；（5）`.rp-modal-body`（`base-ui.css:268-272`）仍無 `touch-action`。
 
 ---
 
 ## 已複核為安全/已解決的項目
 
 - ✅ **FE21 登出沒有清 `activeTrip`**——`onLogout` 已補 `setActiveTrip(null)` 並清除 `LS_DEFAULT_TRIP`，新增 `useAppState.test.ts` 覆蓋。
-- ✅ **FE23 切旅程會彈出鍵盤**——`ChatScreen` 輸入框移除 `autoFocus`，改由 `open` prop 轉為 true 時的 effect 手動聚焦，`PhoneContent.tsx` 已傳入 `open={chatSheetOpen}`。
+- ✅ **FE23 切旅程會彈出鍵盤**——`ChatScreen` 輸入框移除 `autoFocus`，改由 `open` prop 轉為 true 時的 effect 手動聚焦，`phone/Content.tsx` 已傳入 `open={chatSheetOpen}`。
 - ✅ **FE24 類別標籤連點的結果亂序覆蓋**——`runPlacesQuery` 已加入 `placesQueryRequestIdRef`，`.then`/`.catch` 回來時比對 requestId 只採最新一筆。
 - ✅ **FE8 `geoListDrawerState` reducer 已退化成死碼**——`geoListDrawerState.ts`/`geoListDrawerState.test.ts` 已刪除，`GeoOutlinePhoneView.tsx`（現為 `geo-planning/PlanPhoneView.tsx`）改用單純的 `listLoading` useState。
 - ✅ **FE16（局部）夜間模式 attraction 地圖標籤淺底看不見**——`GeoOutlineMap.module.css` 的 `.geo-attraction-label`/`.geo-attraction-landmark-placeholder`/光暈已改用 `--ios-sand`/`--ios-card` token（含 `color-mix()`），`useAttractionOverlays.ts`（範圍圓圈）、`mapMarkers.ts`/`useTripEntryMarkers.ts`（trip entry marker 改讀 `--color-accent`）同步修正；`PhoneSideTools.module.css`/`PlanPhoneView.module.css` 的毛玻璃浮動鈕後來已改用 `--ios-glass-bg`（見 FE16 現況），Timeline/PaceRouteMap/PaceChart 等其餘破格項目仍未處理。
@@ -204,6 +210,6 @@
 - ✅ **手機版規劃地圖條件式掛載導致首開閃動**——`GeoOutlinePhoneView` 隨分頁切換整個卸載重掛、Google Maps 每次重跑建圖流程。已改為常駐主畫面（commit b9edc6e），並經 in-app 導航實測確認元件跨分頁切換不再 remount。
 - ✅ **四個手機版抽屜拖曳手勢逐字重複**——已抽 `hooks/useDragToClose.ts` 收斂，後續再演進為 `components/PhoneBottomSheet.tsx` 共用容器（含三段式吸附）。
 - ✅ **候選籃「返回候選」/「刪除已排入行程」錯誤處理兩檔重複**——已收斂進 `useGeoPlanningState.ts` 的 `handleReturnToCandidate`/`handleRemoveCandidate`（logTag 參數化，比照 `handleScheduleCandidate` 先例）。**（2026-10 更新：`onReturnToCandidate`/`handleReturnToCandidate` 已隨候選籃候選中清單/返回候選功能整個移除，不只是當年那次收斂重複的狀態，目前只剩 `handleRemoveCandidate`。）**
-- ✅ **PhoneTabBar 被 bottom sheet 蓋住**——z-index 疊層順序問題，底部導覽列提升至 35 修復；後續多層 sheet 堆疊框架又將「清單/資訊卡刻意蓋過導覽列」改為新的預期行為（見各 sheet 的 panelStyle 註解）。
+- ✅ **PhoneNav 被 bottom sheet 蓋住**——z-index 疊層順序問題，底部導覽列提升至 35 修復；後續多層 sheet 堆疊框架又將「清單/資訊卡刻意蓋過導覽列」改為新的預期行為（見各 sheet 的 panelStyle 註解）。
 - ✅ **ChatScreen Portal 投影目標切換競態**——`chatParkingNode` 常駐備援容器機制驗證有效；其後架構再演進為 keepMounted children（commit f6a6f66），Portal 機制已整體移除。
 - ✅ **`:global(.citySearch)` 選擇器從未生效**——Vite CSS Modules 雜湊命名使 `:global()` 完整 token 比對失敗，改用 `[class*='_citySearch_']` 屬性子字串選擇器（前後底線界定 token 邊界）修復。

@@ -1,0 +1,239 @@
+/* MomijiFrontPage——滿版地圖 + 楓葉 canvas + 左上資訊 + 底部播放控制。
+   版面沿用 itineraries 詳情頁:.root 撐滿視窗、地圖鋪滿整頁(z-index 0),
+   固定在頂端的站台導覽(SiteNavButtons,底緣約 52px)疊在最上層。 */
+.root {
+  --momiji-accent: #c4283a;
+  --momiji-track: #d9d3c4;
+  --momiji-panel: rgba(250, 247, 240, 0.9);
+  --momiji-ink: #2b2620;
+  --momiji-muted: #6f675a;
+  position: relative;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--ios-bg);
+  color: var(--momiji-ink);
+  font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
+}
+.root[data-momiji-dark='true'] {
+  --momiji-accent: #ef5a5f;
+  --momiji-track: #2a363f;
+  --momiji-panel: rgba(17, 25, 32, 0.88);
+  --momiji-ink: #ece6da;
+  --momiji-muted: #96a0a6;
+}
+
+/* mapBackdrop——跟 itineraries 的 .mapBackdrop 同一個做法:absolute + inset:0
+   撐滿 .root,不要另外加 position:relative(會覆蓋掉 absolute 讓高度塌縮,
+   見 AiItineraryDetailPageMapView.module.css 同名 class 的完整說明)。 */
+.mapBackdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+/* leafCanvas——由 MomijiCanvasOverlay 掛進 Google Maps 的 overlayLayer
+   (和圖磚同一個 transform 容器,縮放/平移天生同步)。位置與尺寸由
+   MomijiCanvasOverlay.layout() 以 inline style 設定(可視範圍外擴一圈),
+   這裡只留不變的部分。pointer-events: none 讓地圖照常接收手勢。 */
+.leafCanvas {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* hud——左上角日期與進度,往下讓出固定導覽列(約 52px)的位置。 */
+.hud {
+  position: absolute;
+  top: 72px;
+  left: 16px;
+  z-index: 2;
+  pointer-events: none;
+  padding: 10px 14px 12px;
+  border-radius: 14px;
+  background: var(--momiji-panel);
+  box-shadow: 0 1px 2px rgba(40, 30, 10, 0.06), 0 8px 24px rgba(40, 30, 10, 0.12);
+  backdrop-filter: blur(6px);
+}
+.date {
+  font-size: clamp(24px, 6.4vw, 34px);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.day {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--momiji-muted);
+  font-variant-numeric: tabular-nums;
+}
+.pct {
+  color: var(--momiji-accent);
+  font-weight: 600;
+}
+.legend {
+  margin-top: 8px;
+  width: 128px;
+  font-size: 11px;
+  color: var(--momiji-muted);
+}
+.legendBar {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #3e8046, #96b03a, #e8c03a, #ec7c2a, #cc2c34, #96162a);
+  margin-bottom: 4px;
+}
+.legendTicks {
+  display: flex;
+  justify-content: space-between;
+}
+/* source——資料出處小字,寬度跟著 HUD(不撐開面板)。 */
+.source {
+  margin-top: 8px;
+  max-width: 180px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--momiji-muted);
+}
+
+/* controls——底部置中的播放控制列(播放鍵/日期滑桿/倍速)。 */
+.controls {
+  position: absolute;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 2;
+  width: min(640px, calc(100% - 32px));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 18px;
+  background: var(--momiji-panel);
+  box-shadow: 0 1px 2px rgba(40, 30, 10, 0.06), 0 8px 30px rgba(40, 30, 10, 0.16);
+  backdrop-filter: blur(8px);
+}
+.playBtn {
+  appearance: none;
+  border: 0;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: var(--momiji-ink);
+  color: var(--ios-bg);
+}
+.playBtn:focus-visible,
+.slider:focus-visible,
+.speedBtn:focus-visible {
+  outline: 2px solid var(--momiji-accent);
+  outline-offset: 2px;
+}
+.sliderWrap {
+  flex: 1;
+  min-width: 0;
+}
+.slider {
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--momiji-accent) var(--p, 0%), var(--momiji-track) var(--p, 0%));
+}
+.slider::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--momiji-track);
+}
+.slider::-moz-range-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--momiji-accent);
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--momiji-panel);
+  border: 2px solid var(--momiji-accent);
+  margin-top: -7px;
+}
+.slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--momiji-panel);
+  border: 2px solid var(--momiji-accent);
+}
+.sliderLabels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--momiji-muted);
+  font-variant-numeric: tabular-nums;
+}
+.speed {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--momiji-track);
+}
+.speedBtn {
+  appearance: none;
+  border: 0;
+  min-width: 34px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--momiji-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.speedBtn[aria-pressed='true'] {
+  background: var(--momiji-panel);
+  color: var(--momiji-ink);
+}
+
+@media (max-width: 440px) {
+  .hud {
+    left: 12px;
+  }
+  .legend {
+    width: 96px;
+  }
+  .controls {
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .speedBtn {
+    min-width: 30px;
+    padding: 6px;
+  }
+}
+
+/* srOnly——視覺上隱藏、但保留在 DOM 的文字版摘要(給爬蟲與螢幕閱讀器,見 MomijiFrontPage.tsx 的說明)。
+   用 clip 手法而不是 display:none/visibility:hidden,後兩者會連輔助科技也一併隱藏。 */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

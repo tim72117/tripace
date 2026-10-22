@@ -1,0 +1,57 @@
+/* desktop/Content.tsx 專屬樣式(CSS Modules)。原本的浮動卡片外殼(.panel/
+   .left/.right/.close 等)已抽成獨立元件 FloatingPanel(見 FloatingPanel.tsx/
+   FloatingPanel.module.css),這裡只保留真的只有這個檔案在用、且不屬於
+   「浮動卡片外殼」本身的樣式(時間軸內容排版、對話小匡的特殊定位覆蓋)。 */
+
+.timelinePanel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.timelineScroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 4px 8px 12px;
+}
+
+/* pacePanel:配速表檢查站清單的捲動容器——原本跟 pace/PacePage.tsx/
+   trip/PublicViewScreen.tsx 共用同一個全域 class(.desktop-sidepanel-pace),
+   但那兩個公開頁用的是舊版「側欄+主區地圖」外殼(.desktop-sidepanel.wide),
+   這裡用的是新版 FloatingPanel 外殼,三者只是內容捲動行為剛好一樣、
+   彼此並不相關,故拆開各自獨立定義(pace/PacePage.module.css 與
+   trip/PublicViewScreen.module.css 各自也有一份同名規則),不再共用
+   同一份、靠巧合維持一致。 */
+.pacePanel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  /* 捲到底/頂繼續同方向捲動時,不要把剩餘手勢交給外層(整個側欄/頁面)
+     去彈跳——限制在這個容器自己裡面處理。 */
+  overscroll-behavior-y: contain;
+}
+.pacePanel :global(.pace-chart) {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow-y: visible;
+  max-width: none;
+  margin: 0;
+  /* .pace-chart 原本的 padding: 18px 16px 40px 是手機滿版寬度情境下訂的,
+     搬進這個較窄的側欄後左右 16px 顯得太擠、跟邊緣幾乎貼齊,這裡加大左右
+     間距讓內容有明顯留白。 */
+  padding-left: 24px;
+  padding-right: 24px;
+}
+/* Day1/Day2 路線分頁按鈕是 .pace-chart 裡的第一個元素,搬進側欄後緊貼側欄
+   頂端(側欄本身沒有額外 header 撐開間距),補上頂部間距避免按鈕貼齊邊緣。 */
+.pacePanel :global(.pace-route-tabs) {
+  margin-top: 12px;
+}
+
+/* destinationPromptWrap 已移除(2026-10)——它對應的「想去哪裡?」對話
+   氣泡整個功能都已移除。教訓留在這裡:這個定位曾由這裡用手算的
+   top/right 數值對齊 .citySearch/.citySearchAiBtn,實際畫面量測後仍然
+   對不準,根因是跨 CSS Modules 檔案的手動像素耦合本來就脆弱,任一邊
+   版面改動就會失真。 */

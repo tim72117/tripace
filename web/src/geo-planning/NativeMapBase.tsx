@@ -3,7 +3,7 @@ import { importLibrary } from '@googlemaps/js-api-loader'
 import type { ReactNode } from 'react'
 import type { Theme } from '../theme'
 import { ensureOptionsSet, themeToColorScheme } from './googleMapsBootstrap'
-import cssStyles from './ExploreMap.module.css'
+import cssStyles from './PlanMap.module.css'
 
 // NativeMapBase——只做「建立一個 Google Map 實例」這件事的最小元件,不掛
 // 任何搜尋框/類別標籤/景點 overlay/marker/panTarget 等行為。這是
@@ -11,17 +11,18 @@ import cssStyles from './ExploreMap.module.css'
 // 附掛在地圖上的元件/行為要能拆出來,依需求組裝到不同地圖實體上)。
 //
 // 呼叫端透過 onReady(mapRef, mapReady) 拿到 MapHandle 形狀的兩個值,再自行
-// 把 useAttractionOverlays/useSearchResultMarkers/useTripEntryMarkers 等
-// 「掛載式」hook 組裝上去——這個元件本身完全不知道、也不需要知道呼叫端
+// 把 useSharedDrawLayer(統一繪製層:attractionGlow/searchResults/tripEntries 等功能層)
+// 等「掛載式」hook 組裝上去——這個元件本身完全不知道、也不需要知道呼叫端
 // 會掛什麼上來。
 //
 // 刻意先只做展示頁(InteractiveExploreMap.tsx)需要的最小原生配置子集
 // (center/zoom/restrictBounds/showZoomControl/theme)——不是要在這裡
-// 重建 ExploreMap.tsx 全部的建圖選項(mapId/gestureHandling 等目前先
-// 對齊過去,其餘如 resize 保險措施、click 監聽器等屬於「行為」而非「原生
-// 配置」的部分不搬過來,呼叫端需要時應該用掛載的方式另外加,而非塞回
-// 這個元件)。themeToColorScheme/ensureOptionsSet 兩個純函式與
-// ExploreMap.tsx 共用同一份實作(見 googleMapsBootstrap.ts 的完整說明),
+// 重建 PlanMap.tsx 全部的建圖選項(mapId/gestureHandling 等目前先
+// 對齊過去)。現況補充:這個元件目前已內建 POI click 監聽器(onPoiClick,
+// 攔截底圖 POI 圖標並交出 placeId)、rebuildOnThemeChange(theme 改變時是否
+// 重建地圖)與 preserveViewOnResize(容器尺寸改變時保留視野的 resize 處理),
+// 供 PlanMap 兩份實作沿用;其餘「行為」仍應由呼叫端用掛載的方式另外加。themeToColorScheme/ensureOptionsSet 兩個純函式與
+// PlanMap.tsx 共用同一份實作(見 googleMapsBootstrap.ts 的完整說明),
 // 不在這裡重複定義。
 
 export interface MapHandle {
@@ -29,7 +30,7 @@ export interface MapHandle {
   mapReady: boolean
   // mapVersion:每次真的建立一個新的 google.maps.Map 實例就遞增——
   // 單靠 mapReady 這個布林值不足以讓呼叫端的掛載式 hook(如
-  // useAttractionOverlays)正確偵測到「地圖被整個重建了,要把 overlay
+  // attractionGlowLayer.ts)正確偵測到「地圖被整個重建了,要把 overlay
   // 重新掛到新實例上」:theme 改變觸發重建時,importLibrary('maps')
   // 通常已經被前一次呼叫快取住,幾乎瞬間 resolve,導致
   // setMapReady(false)(重建開始)跟緊接著的 setMapReady(true)(重建
@@ -42,6 +43,12 @@ export interface MapHandle {
   // 每次重建保證是一個新的數字,呼叫端可以拿它當 useEffect 依賴,
   // 不會被批次處理合併成看不出變化的同一個值。
   mapVersion: number
+  // error:建圖失敗的原因(沒有 API key、載入地圖模組失敗等);正常時為 null。
+  // 2026-10 新增——NativeMapBase 自己會畫一個失敗畫面,但錯誤原本是內部 state,
+  // 呼叫端看不到。PlanMap 這類自己有控制項(搜尋框、類別標籤)的呼叫端需要在地圖
+  // 壞掉時隱藏它們,所以交出來。選填:既有呼叫端自己初始化 handle(例如
+  // `{ mapRef, mapReady: false, mapVersion: 0 }`)不用跟著改。
+  error?: string | null
 }
 
 export function NativeMapBase({
@@ -55,9 +62,12 @@ export function NativeMapBase({
   styles,
   onHandleChange,
   onPoiClick,
+  rebuildOnThemeChange = true,
+  preserveViewOnResize = false,
+  strictRestriction = false,
   children,
 }: {
-  // center:undefined 代表呼叫端還在決定初始中心(對齊 ExploreMap.tsx
+  // center:undefined 代表呼叫端還在決定初始中心(對齊 PlanMap.tsx
   // initialCenter 的既有慣例,見該 prop 的完整說明),建圖要等待。
   center: { lat: number; lng: number } | undefined
   zoom?: number
@@ -70,7 +80,7 @@ export function NativeMapBase({
   showZoomControl?: boolean
   theme?: Theme
   // mapId:不傳時退回 VITE_GOOGLE_MAPS_MAP_ID(見下方建圖 options 的既有
-  // 行為,ExploreMap.tsx/GeoOutlinePhoneView.tsx 等正式規劃功能呼叫端
+  // 行為,PlanMap.tsx/PlanPhoneView.tsx 等正式規劃功能呼叫端
   // 都不傳,沿用原樣式不受影響)。InteractiveExploreMap.tsx(landing page
   // 系列城市介紹頁的展示地圖)傳入另一個 Cloud Style Map ID(見該檔案
   // 呼叫處的說明,不顯示餐廳/旅宿 POI 的樣式,docs/map-style/*-no-food-
@@ -92,14 +102,35 @@ export function NativeMapBase({
   // mapReady 才是驅動重渲染的 state,呼叫端要能在 mapReady 變 true 的
   // 那次重渲染中同步拿到最新的 mapRef.current。
   onHandleChange?: (handle: MapHandle) => void
+  // rebuildOnThemeChange:theme 改變時要不要重建地圖,預設 true(既有行為)。
+  // 2026-10 新增。雲端樣式(mapId)的 colorScheme「只能在建圖時設定」(見
+  // @types/google.maps 的 MapOptions.colorScheme 說明),所以要讓地圖跟著明暗換色只能
+  // 重建;但重建會讓視角回到初始 center/zoom,且呼叫端沒有支援 mapVersion 的圖層會留在
+  // 舊地圖上。PlanMap 目前建圖後從不重建(見 PlanMap.mapEvents.test.tsx 記錄的
+  // 現況),換成 NativeMapBase 組合時傳 false 維持原樣;第一次建圖不受影響。
+  rebuildOnThemeChange?: boolean
+  // preserveViewOnResize:容器尺寸改變時的 resize 處理方式,預設 false(既有行為)。
+  // 2026-10 新增。
+  //   - false(預設):只在容器「從隱藏變可見」時補一次 resize,並把中心設回初始 center。
+  //   - true(給 PlanMap 用,對齊它原本自己的 ResizeObserver):每次「非零」尺寸回報都補
+  //     resize(側欄收合、視窗調整等容器縮放,Maps SDK 不會自己重新量測,不補會停在舊尺寸
+  //     或灰色圖磚),並把中心設回「目前」的中心——使用者可能已經拖曳/搜尋移動過地圖,拿
+  //     初始座標會把畫面拉回原點。尺寸為 0(元素被隱藏或卸載)時不處理,此時 resize 只會
+  //     讓 Maps 把畫布尺寸記成 0。
+  preserveViewOnResize?: boolean
+  // strictRestriction:restrictBounds 的 strictBounds 值,預設 false(既有行為:只鎖拖曳範圍,
+  // 不鎖縮放下限,使用者仍能縮小到看見範圍外)。2026-10 新增:PlanMap 原本傳 true
+  // (連縮放下限一起鎖),換成 NativeMapBase 組合時傳 true 維持原樣。沒有 restrictBounds
+  // 時沒有作用。
+  strictRestriction?: boolean
   // onPoiClick:攔截使用者點擊底圖上 Google 原生繪製的 POI 圖標(如餐廳、
   // 景點——見 google.maps.IconMouseEvent 的說明,MapMouseEvent 的擴充,
   // 只有點到 POI 圖標時 event 才會多出 placeId 欄位)時觸發,並呼叫
   // event.stop() 阻止 Google 預設彈出的小資訊卡——這個元件本身不知道、
   // 也不需要知道呼叫端拿到 placeId 後想做什麼(查詳情、開自己的卡片、
   // 或單純不理會),只負責把這個原生事件攔下來、把 placeId 往上交出去。
-  // 對齊 ExploreMap.tsx 的同名攔截邏輯(見該檔案 click 監聽器的完整
-  // 說明)——差別是 ExploreMap 內部直接呼叫 fetchGeoPlaceDetails 查完整
+  // 對齊 PlanMap.tsx 的同名攔截邏輯(見該檔案 click 監聽器的完整
+  // 說明)——差別是 PlanMap 內部直接呼叫 fetchGeoPlaceDetails 查完整
   // 資料才觸發 callback,這裡刻意只做「攔截+交出 placeId」這一層最小
   // 動作,查詢與後續行為完全交給呼叫端決定,理由同這個元件檔案開頭
   // 「只做原生配置」的既有取捨:查詢屬於呼叫端的業務邏輯,不屬於地圖
@@ -138,10 +169,12 @@ export function NativeMapBase({
   const [isVisible, setIsVisible] = useState(false)
   // onPoiClickRef:建圖 effect 依賴陣列不含 onPoiClick(避免呼叫端每次
   // 重渲染傳入新的內聯函式參照時觸發不必要的重建),click 監聽器內透過
-  // .current 讀取最新版本——理由同 ExploreMap.tsx 對 onPoiSelectRef 等
+  // .current 讀取最新版本——理由同 PlanMap.tsx 對 onPoiSelectRef 等
   // 一系列 ref 包裝的完整說明。
   const onPoiClickRef = useRef(onPoiClick)
   onPoiClickRef.current = onPoiClick
+  const preserveViewOnResizeRef = useRef(preserveViewOnResize)
+  preserveViewOnResizeRef.current = preserveViewOnResize
 
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined
 
@@ -156,6 +189,7 @@ export function NativeMapBase({
     // 容器暫時不可見也不清除、不重建,下方 ResizeObserver effect 會在
     // 容器重新可見時補一次 resize,不需要整個重建。
     if (!isVisible && !mapRef.current) return
+    if (mapRef.current && !rebuildOnThemeChange) return
     const colorScheme = themeToColorScheme(theme ?? null)
     if (mapRef.current && builtColorSchemeRef.current === colorScheme) return
     if (buildingRef.current) return
@@ -171,7 +205,11 @@ export function NativeMapBase({
     ensureOptionsSet(apiKey)
     Promise.all([importLibrary('maps'), importLibrary('marker')])
       .then(([{ Map }]) => {
-        if (cancelled || !containerRef.current) return
+        if (cancelled) return
+        if (!containerRef.current) {
+          buildingRef.current = false
+          return
+        }
         mapRef.current = new Map(containerRef.current, {
           center,
           zoom,
@@ -194,7 +232,7 @@ export function NativeMapBase({
           // (無法縮小到能看見範圍外的畫面),false/省略則是官方文件記載的
           // 「彈簧」效果,只限制拖曳能到的位置,不限制縮放層級。這個展示頁
           // 只是要防止使用者拖到空白區域,不需要連帶鎖死縮放。
-          ...(restrictBounds ? { restriction: { latLngBounds: restrictBounds, strictBounds: false } } : {}),
+          ...(restrictBounds ? { restriction: { latLngBounds: restrictBounds, strictBounds: strictRestriction } } : {}),
         })
         builtColorSchemeRef.current = colorScheme
         setMapVersion((v) => v + 1)
@@ -226,15 +264,19 @@ export function NativeMapBase({
         })
       })
       .catch((e) => {
-        buildingRef.current = false
+        // 這一輪已被取消時,旗標由新一輪的 effect 持有,不能在這裡清掉
+        if (!cancelled) buildingRef.current = false
         setErr(e instanceof Error ? e.message : String(e))
       })
 
     return () => {
       cancelled = true
+      // 建圖進行中依賴就變了(例如手機版容器尺寸短暫為 0 使 isVisible 翻轉):舊的非同步結果回來時會因 cancelled 提早
+      // return、不會重設旗標,新一輪又被 `if (buildingRef.current) return` 擋住,地圖就永遠不會建。所以取消時交還旗標。
+      buildingRef.current = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKey, center, theme, zoom, minZoom, mapId, styles, isVisible])
+  }, [apiKey, center, theme, zoom, minZoom, mapId, styles, isVisible, rebuildOnThemeChange, strictRestriction])
 
   // 通知呼叫端的唯一進入點——依賴 mapVersion(state,見該欄位的完整
   // 說明)而非只依賴 mapReady:theme 改變觸發重建時,importLibrary('maps')
@@ -243,7 +285,7 @@ export function NativeMapBase({
   // setMapReady(true) 會被 React 18 自動批次處理(automatic batching)
   // 合併進同一次 commit,呼叫端只看得到最終值 true、沒有真的經歷
   // false→true 的邊緣,導致下游依賴 mapReady 的 useEffect(如
-  // useAttractionOverlays.ts 那個重新掛載 overlay 到新地圖實例的
+  // attractionGlowLayer.ts 那個重新掛載 overlay 到新地圖實例的
   // effect)完全不會重新執行(2026-09 實測:日夜切換後主題點的自訂
   // overlay 全部消失,只剩 Google 原生 pin,追蹤到這裡才發現問題出在
   // 批次處理把中間狀態吃掉)。mapVersion 每次重建保證遞增成新數字,
@@ -251,9 +293,9 @@ export function NativeMapBase({
   // mapVersion 的變化仍會讓這個 effect 重新執行、把最新的
   // mapReady/mapVersion 一併傳給呼叫端。
   useEffect(() => {
-    onHandleChange?.({ mapRef, mapReady, mapVersion })
+    onHandleChange?.({ mapRef, mapReady, mapVersion, error: err })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, mapVersion])
+  }, [mapReady, mapVersion, err])
 
   // ResizeObserver:持續追蹤容器是否有實際尺寸,同步進 isVisible
   // state——呼叫端可能用 CSS(display: none/hidden 屬性)暫時隱藏這個
@@ -277,7 +319,15 @@ export function NativeMapBase({
       if (!entry) return
       const { width, height } = entry.contentRect
       const nowVisible = width > 0 && height > 0
-      if (!wasVisible && nowVisible && mapRef.current) {
+      if (preserveViewOnResizeRef.current) {
+        // 每次非零尺寸回報都補 resize,中心設回「目前」的中心(見 preserveViewOnResize)。
+        const map = mapRef.current
+        if (nowVisible && map) {
+          const current = map.getCenter()
+          google.maps.event.trigger(map, 'resize')
+          if (current) map.setCenter(current)
+        }
+      } else if (!wasVisible && nowVisible && mapRef.current) {
         google.maps.event.trigger(mapRef.current, 'resize')
         if (center) mapRef.current.setCenter(center)
       }

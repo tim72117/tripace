@@ -22,7 +22,6 @@ import {
 import { useAskPageBridge } from '../plan-core/useAskPageBridge'
 import { AskPage } from '../home/plan-ai-sim/AskPage'
 import { PlanTimelineView } from '../plan-core/PlanTimelineView'
-import { createPlanAiApiDataSource } from '../home/plan-ai-sim/planAiApiDataSource'
 // HorizontalPlanTimeline——2026-10(手機版共用時間軸重構):原本只給
 // /ai-plan 展示頁「模擬層」用的橫向卡片時間軸,現在也供這個元件的
 // horizontalTimeline 分支使用(見該 prop 的完整說明)——使用者明確要求
@@ -38,7 +37,7 @@ import { uiStateStore } from '../plan-core/uiStateStore'
 import { createAttractionPoolStore, type AttractionPoolStore } from '../plan-core/attractionPoolStore'
 import { Composer } from '../components/Composer'
 import { ComposerPortal } from './ComposerPortal'
-import { ComposerSlotContext } from '../plan-core/composerSlot'
+import { ComposerSlotContext } from '../plan-core/overlayDom'
 import { stopLookupFailed,
   getTimeDragBounds,
   insertAfter,
@@ -50,13 +49,13 @@ import { stopLookupFailed,
   type PlanNodeData,
   type PlanTimeline,
 } from '../plan-core/planTimeline'
-import { localStoragePlanTimelineStore, type PlanTimelineStore } from '../plan-core/planTimelineStorage'
+import type { PlanTimelineStore } from '../plan-core/planTimelineStorage'
 import styles from './TripPlanPage.module.css'
 
 // TripPlanPage — 「AI 安排行程」正式功能頁面,對應 /app 底下的正式導覽
 // 系統(有真實登入態,見下方 cfg 參數的完整說明)。
 //
-// 這個檔案是從 plan-ai/AIPlanTimelinePage.tsx(展示原型,對應獨立路由
+// 這個檔案是從 plan-ai/Content.tsx(展示原型,對應獨立路由
 // /plan-ai,使用者明確要求不要修改那份檔案)拆分出來的正式版本——原型
 // 混雜了兩種東西:(1) 真正可複用的邏輯:onagent 對話橋接、時間軸 JSX
 // 渲染、右上角小地圖、planTimeline.ts/attractionTools.ts 這兩個純函式
@@ -80,7 +79,7 @@ import styles from './TripPlanPage.module.css'
 const REMOVE_FADE_MS = 320
 
 // NOTE_STYLES — 備註分類 → 顏色/圖示的固定對照表,直接沿用原型的既有
-// 設計(見 AIPlanTimelinePage.tsx 同名常數的完整說明:視覺樣式怎麼對應
+// 設計(見 home/plan-ai-sim/Content.tsx 同名常數的完整說明:視覺樣式怎麼對應
 // 分類是行程安排元件自己的決定,不是 attractionTools.ts 的 add_note 工具
 // 該內建的邏輯)。
 const NOTE_STYLES: Record<string, { color: string; noteIcon: string }> = {
@@ -153,7 +152,7 @@ function isRateLimitedError(err: unknown): boolean {
 
 // resolveAttractionForStep — add_attraction 帶 placeId 時,查詢真實地點
 // 資料並寫回節點(單段查詢 GET /internal/geo/plan-ai/place-details-any,見原型
-// AIPlanTimelinePage.tsx 同名函式的完整說明,邏輯原封不動搬過來,額外
+// home/plan-ai-sim/Content.tsx 同名函式的完整說明,邏輯原封不動搬過來,額外
 // 加上 429 限流時的單次延遲重試,見 isRateLimitedError 的完整說明)。
 //
 // onSettled——插入當下的佔位卡不帶 lat/lng(座標要等這支函式查完才有),
@@ -258,7 +257,7 @@ function resolveAttractionForStep(
 
 // refreshTransitForStop — 重新計算 stopId 這個 stop 節點的
 // transitFromPrev(見 planTimeline.ts TransitInfo 的完整說明),邏輯原封
-// 不動搬自原型 AIPlanTimelinePage.tsx 同名函式——呼叫時機、先掛 loading
+// 不動搬自原型 home/plan-ai-sim/Content.tsx 同名函式——呼叫時機、先掛 loading
 // 佔位狀態再背景查詢的理由,完整說明見該處。
 // forceMode——選填,預設 undefined(維持原本「後端依直線距離自動決定」的
 // 行為)。2026-10 新增:使用者明確要求「交通時間的膠囊可以選擇交通方式」
@@ -353,8 +352,8 @@ function useTripPlanTimeline(
   // (stale closure):cfg 不變時 dataSource 換了也不會更新,新插入的
   // 站點會打到舊的存取層。一併移除參數,依賴陣列才不會再誤列。
   dataSource: PlanAiDataSource,
-  suppressAutoScrollRef?: MutableRefObject<boolean>,
-  store: PlanTimelineStore = localStoragePlanTimelineStore,
+  suppressAutoScrollRef: MutableRefObject<boolean> | undefined,
+  store: PlanTimelineStore,
 ) {
   // 初值改成 loadTimeline(見 plan-core/planTimelineStorage.ts 的完整
   // 說明)——2026-10 使用者明確要求規劃內容要持久化到前端。useSyncedState
@@ -692,7 +691,7 @@ function useTripPlanTimeline(
 }
 
 // PLAN_AI_ONAGENT_APP_ID/PLAN_AI_ONAGENT_URL——正式功能對話窗專用的
-// onagent app,對齊原型的既有設定(見 AIPlanTimelinePage.tsx 同名常數的
+// onagent app,對齊原型的既有設定(見 home/plan-ai-sim/Content.tsx 同名常數的
 // 完整說明)。維持跟原型相同的 app id/url 設定來源——這兩個檔案目前共用
 // 同一個 onagent app(工具清單相同:search_attraction/add_attraction/
 // add_note/list_itinerary),若日後正式功能要有自己獨立的 app(例如要
@@ -725,7 +724,7 @@ export type PlanAiChatStatus = 'connecting' | 'ready' | 'closed'
 // usePlanAiChatBridge — 連上 plan-ai-timeline 這個 onagent app,註冊
 // search_attraction/add_attraction 等工具(見 attractionTools.ts),讓
 // 對話框輸入的文字能真的驅動 LLM 推論、呼叫工具、把結果異動進時間軸。
-// 邏輯整段對齊原型 AIPlanTimelinePage.tsx 同名 hook(見該處的完整
+// 邏輯整段對齊原型 home/plan-ai-sim/Content.tsx 同名 hook(見該處的完整
 // 說明),差別只在:
 //   - 不再需要跟 usePlanSimSocket 共享同一組 insertAttractionAfter/
 //     setNoteForStop——這裡改成呼叫端(TripPlanPage 主體,透過
@@ -1129,7 +1128,7 @@ function usePlanAiChatBridge(
 // (attractionTools.ts)操作的是這個元件內部的 timeline state,不是
 // 後端的 trip_entry_* 資料,沒有「寫入哪一個真實行程」這個概念,使用者
 // 明確要求「plan ai 不需要 trip id」,不必先選定一趟旅程才能使用這個
-// 功能(呼叫端 DesktopRail.tsx 對應拿掉 requiresTrip)。原本還有獨立的
+// 功能(呼叫端 desktop/Nav.tsx 對應拿掉 requiresTrip)。原本還有獨立的
 // tripName prop 顯示行程名稱/「未命名行程」,使用者明確要求不要顯示
 // (外層桌面版 rail、手機版 sheet 標頭已經各自有行程情境,這裡不需要
 // 再重複),連同 prop 一併移除,呼叫端不再傳入。
@@ -1176,7 +1175,7 @@ export function TripPlanPage(props: {
   //   - /trip-plan 全頁:沒有地圖可移動,省略這個 prop,行為維持原樣
   //     (只做卡片高亮)。
   //   - 地圖規劃的對話小匡:外面就是整張地圖,傳入後點卡片會把地圖
-  //     平移到該站(見 DesktopLayout.tsx 傳入時的完整說明)。
+  //     平移到該站(見 desktop/Content.tsx 傳入時的完整說明)。
   // 元件自己不 import 任何地圖模組,維持「時間軸就只是時間軸」,不因為
   // 其中一個使用情境多了地圖就把地圖依賴帶進所有情境。
   onPanToStop?: (stop: { lat: number; lng: number }) => void
@@ -1187,30 +1186,31 @@ export function TripPlanPage(props: {
   // 選填,理由同 onPanToStop:/trip-plan 全頁沒有地圖,省略即可。
   //
   // 注意這個元件在對話小匡裡是常駐掛載的(FloatingPanel 只用 display:none
-  // 隱藏,見 DesktopLayout.tsx 對那個設計的完整說明——為的是避免每次開關
+  // 隱藏,見 desktop/Content.tsx 對那個設計的完整說明——為的是避免每次開關
   // 都重建 WebSocket 連線)。所以小匡「關閉」期間這裡仍會持續回報(AI 還
   // 在串流、背景座標回填都會讓清單變動),呼叫端收到的 state 也不會歸零。
-  // 圓點要不要顯示因此完全由呼叫端決定(見 DesktopLayout.tsx 傳給
-  // ExploreMap 時的顯示判斷),這個元件不負責那件事。
+  // 圓點要不要顯示因此完全由呼叫端決定(見 desktop/Content.tsx 傳給
+  // PlanMap 時的顯示判斷),這個元件不負責那件事。
   //
   // 這些回調不需要穩定的 identity:元件內部已用 useStableCallback 隔離
   // (見下方 reportStops 與 selectStop),呼叫端的函式參照不會進任何
   // 依賴陣列,傳 inline 箭頭函式是安全的。
   onStopsChange?: (stops: PlanStopMarker[]) => void
   // dataSource——地點查詢的存取層(見 home/plan-ai-sim/planAiDataSource.ts
-  // 的完整說明)。選填,省略時用需登入的真後端實作(/app 的既有行為)。
+  // 的完整說明)。必填(2026-10):原本選填、省略時內部預設用需登入的真後端實作(/app 的既有行為),但靠隱藏預設值
+  // 決定打哪個端點容易在新入口漏傳(訪客入口漏傳就會連噴 401),改成每個入口(各自的 LivePlanLayer)明確傳。
   //
   // 2026-10 新增(使用者明確要求「把存取層定義介面,用不同的實作抽換」、
   // 「展示內用公開的」):/ai-plan 展示頁交接後走的是這個元件,但那是
   // 未登入的訪客——原本固定用 createPlanAiApiDataSource 打 /internal/*,
   // 實機連噴 401(照片 8 次、交通 2 次),卡片的照片與交通時間全部補不
-  // 上來。改由呼叫端注入:LivePlanLayer 傳公開實作,/app 用預設值。
+  // 上來。改由呼叫端注入:/ai-plan 的 LivePlanLayer 傳公開實作,登入後的 LivePlanLayer 與 /trip-plan 傳登入版實作。
   //
   // 三份實作各自對應一種情境,不是一份實作內部判斷 cfg.token:
   //   planAiFakeDataSource           展示頁播放態(純前端劇本)
   //   createPlanAiPublicDataSource   展示頁推論態(訪客,/public/*)
   //   createPlanAiApiDataSource      /app(需登入,/internal/*)
-  dataSource?: PlanAiDataSource
+  dataSource: PlanAiDataSource
   // selectedStopId/onSelectedStopChange——目前選中哪一站。三種合法組合:
   //   - 兩個都傳:受控。以 selectedStopId 為準,元件自己不存狀態,每次
   //     使用者點選都呼叫 onSelectedStopChange(地圖對話小匡用這個)。
@@ -1224,7 +1224,7 @@ export function TripPlanPage(props: {
   // 判斷用 !== undefined 而不是 != null。
   //
   // 2026-10 從「元件自己管理 + 單向上報」改成受控:原本的寫法讓呼叫端
-  // (DesktopLayout)另外存一份 selectedPlanStopId 給地圖用,兩份之間只有
+  // (desktop/Content)另外存一份 selectedPlanStopId 給地圖用,兩份之間只有
   // 子→父的單向同步,而地圖那側點圓點時是直接寫父層那份——製造出一個
   // 回不來的狀態:
   //   點卡片 A(兩份都 A)→ 點地圖圓點 B(父=B、子仍 A,畫面同時兩個
@@ -1283,28 +1283,28 @@ export function TripPlanPage(props: {
   onSendPromptReady?: (sendPrompt: (text: string) => Promise<boolean>) => void
   // store——2026-10 新增:時間軸持久化的落地方式,取代原本直接 import
   // planTimelineStorage.ts 三個函式呼叫的寫法(見 PlanTimelineStore 介面
-  // 的完整說明)。預設 localStoragePlanTimelineStore,行為與原本完全一致
-  // ——/app、DesktopLayout.tsx、/ai-plan 展示頁交接後的 LivePlanLayer
-  // 等既有呼叫端都不用改、也不用傳這個 prop,全部共用同一份
-  // localStorage 草稿(/ai-plan 排的內容,之後打開 /app 看得到同一份,
-  // 使用者明確要求的行為)。這個元件本身不需要知道背後實際怎麼存,只需要
+  // 的完整說明)。必填(2026-10):原本選填、省略時內部預設用 localStoragePlanTimelineStore,但靠隱藏預設值決定
+  // 存在哪裡容易在新入口漏傳(跟 dataSource 同樣的理由),改成每個入口(各自的 LivePlanLayer 與 /trip-plan 的
+  // TripPlanRoute)明確傳。登入後兩個入口與 /trip-plan 傳 localStoragePlanTimelineStore,/ai-plan 依有沒有
+  // 草稿傳 localStoragePlanTimelineStore 或草稿專屬的 store——全部共用同一份 localStorage 草稿
+  // (/ai-plan 排的內容,之後打開 /app 看得到同一份,使用者明確要求的行為)。這個元件本身不需要知道背後實際怎麼存,只需要
   // 呼叫 store.readRev()/loadTimelineWithRev()/saveTimeline() 這三個
   // 介面方法,實際讀寫邏輯(含既有的 rev 機制、失敗語意)完全收斂在
   // store 實作裡——未來若有情境需要不持久化,傳入
   // planTimelineStorage.ts 現成的 noopPlanTimelineStore 即可。
-  store?: PlanTimelineStore
+  store: PlanTimelineStore
   // transparentBackground——2026-10 新增:讓 .page 的實色背景
   // (var(--ios-bg))變透明,疊加在呼叫端自己的背景之上。
   //
   // 存在的理由:/ai-plan 展示頁的 LivePlanLayer 把這個元件塞進
   // .timelinePanel(刻意「浮空」、沒有自己背景色的側欄,見該 class 的
   // 完整說明,讓底下的 NativeMapBase 透出來)——但 .page 原本預設帶
-  // 實色背景(給 /app 整頁、或 DesktopLayout.tsx 對話小匡 .chatPopover
+  // 實色背景(給 /app 整頁、或 desktop/Content.tsx 對話小匡 .chatPopover
   // 這類情境使用,那裡需要一塊不透明的卡片底色),交接後整個蓋住了
   // 底下的地圖,只看得到這個元件自己的空狀態提示文字(實機回報「試試
   // 看時背景是空白的」,背景其實是這段文字,不是真的空白)。
   //
-  // 預設 false(維持原本不透明背景)——/app、DesktopLayout.tsx 等既有
+  // 預設 false(維持原本不透明背景)——/app、desktop/Content.tsx 等既有
   // 呼叫端不用改、不用傳這個 prop,行為完全不變。只有 LivePlanLayer
   // 這個呼叫端需要透明背景,不要把這個行為改成 compact 的隱含效果
   // (compact 本身是「放進固定高度容器」的版面語意,跟「背景要不要
@@ -1313,7 +1313,7 @@ export function TripPlanPage(props: {
   transparentBackground?: boolean
   // hideEmptyState——透傳給內部 PlanTimelineView 同名 prop(見該元件該
   // prop 的完整說明)。預設 false(顯示 emptyStateMessage 那段「想去哪
-  // 裡玩?」文案)——/app、DesktopLayout.tsx 等既有呼叫端不用改、行為
+  // 裡玩?」文案)——/app、desktop/Content.tsx 等既有呼叫端不用改、行為
   // 不變。/ai-plan 展示頁的 LivePlanLayer 傳 true:地圖已經在交接前
   // 用模擬腳本畫出過站點,交接後時間軸從空狀態重新開始時,這段對一般
   // /app 使用者合理的引導文案在這裡反而多餘(使用者剛看完展示、直接
@@ -1328,7 +1328,7 @@ export function TripPlanPage(props: {
   // 呈現,不是另外接一套資料邏輯。
   //
   // 預設 false(維持現狀渲染 PlanTimelineView)——/app、
-  // DesktopLayout.tsx 等既有呼叫端不用改、不用傳這個 prop,行為完全
+  // desktop/Content.tsx 等既有呼叫端不用改、不用傳這個 prop,行為完全
   // 不變。目前唯一會傳 true 的呼叫端是 home/plan-ai-sim/LivePlanLayer.tsx
   // (手機版時傳入,見該檔案的完整說明),對應 /ai-plan 展示頁交接後的
   // 真實層手機版畫面。
@@ -1342,7 +1342,7 @@ export function TripPlanPage(props: {
   // React key 讓這個元件整個重新掛載(見該檔案的完整說明),這個元件
   // 自己不需要知道「草稿」這個概念存在,只負責在使用者點擊時通知。
   //
-  // 選填且預設不出現:/app、DesktopLayout.tsx、/trip-plan 全頁等既有
+  // 選填且預設不出現:/app、desktop/Content.tsx、/trip-plan 全頁等既有
   // 呼叫端都不傳,行為完全不變——這顆按鈕目前只服務 /ai-plan 這一個
   // 入口(見呼叫端 LivePlanLayer.tsx 的 NEW_TRIP_DRAFT_ENABLED feature
   // flag,預設關閉,定義在 DesktopShared.tsx)。不只看 horizontalTimeline
@@ -1366,7 +1366,7 @@ export function TripPlanPage(props: {
   // 一種」交給呼叫端決定,這個元件只負責在掛載時把它顯示出來。日後若
   // 有情境需要一進來就問交通方式或顯示一則文字,不需要再加第二個 prop。
   //
-  // 選填且預設不顯示——/app、DesktopLayout.tsx、/trip-plan 全頁等既有
+  // 選填且預設不顯示——/app、desktop/Content.tsx、/trip-plan 全頁等既有
   // 呼叫端都不傳,行為完全不變(/app 的使用者是自己主動來排行程的,
   // 一進來就被塞一張選單並不合理;/ai-plan 的使用者剛看完展示、正在
   // 「換我試試看」的當下,那張選單才是接得上的下一步)。
@@ -1381,7 +1381,7 @@ export function TripPlanPage(props: {
     cfg, compact, visible = true, scrollContainerRef, onPanToStop, onStopsChange, dataSource,
     selectedStopId: controlledSelectedStopId, onSelectedStopChange,
     onHoverStopChange, onHoverTransitChange, onSendPromptReady,
-    store = localStoragePlanTimelineStore,
+    store,
     transparentBackground = false,
     hideEmptyState = false,
     horizontalTimeline = false,
@@ -1396,8 +1396,8 @@ export function TripPlanPage(props: {
   // 下方 AskPage 的 stacked prop:桌面縱向分支(非 horizontalTimeline)
   // 側欄改用縱向堆疊的候選/選項列表,取代橫向捲動(使用者明確要求「所有
   // 的詢問項目都要換」,2026-10 新增)。這個元件本身目前沒有獨立的
-  // PlanOverlayPanelWide 側欄外殼(那是 /ai-plan 展示頁 PlanDemoLayout
-  // 專用的 layout 元件),只影響 AskPage 內部候選卡片的排列方式。
+  // 寬螢幕側欄外殼(那是 /ai-plan 展示頁 PlanLayout 經 PlanOverlayLayout
+  // 渲染的 PlanOverlayPanel wide 分支),只影響 AskPage 內部候選卡片的排列方式。
   const isWide = useIsWide()
 
   // suppressNextAutoScrollRef——使用者明確要求「刪除的時候不要自動移動
@@ -1420,7 +1420,7 @@ export function TripPlanPage(props: {
   // useMemo 避免每次 render 都建立新物件——它會進 HorizontalPlanTimeline
   // 內部 effect 的依賴陣列(AskPage 用 dataSource 當依賴),參照不穩定
   // 會讓那個 effect 每次 render 都重跑。
-  const planAiDataSource = useMemo(() => dataSource ?? createPlanAiApiDataSource(cfg), [dataSource, cfg])
+  const planAiDataSource = dataSource
   const { steps, timelineRef, insertAttractionAfter, setNoteForStop, removeStep, dragStopTime, resyncFromStorage, retryStopLookup, setTimeline } = useTripPlanTimeline(planAiDataSource, suppressNextAutoScrollRef, store)
 
   // getStepsForBridge——usePlanAiChatBridge 的 getSteps 需要讀到「當下
@@ -1469,7 +1469,7 @@ export function TripPlanPage(props: {
   //
   // 狀態機本身(顯示詢問頁、等待使用者選完才 resolve 的 Promise)抽成
   // 共用 hook useAskPageBridge(見該檔案開頭的完整設計理由)——這裡跟
-  // AIPlanTimelinePage.tsx 原本各自內嵌一份幾乎相同的邏輯,現在改成
+  // home/plan-ai-sim/Content.tsx 原本各自內嵌一份幾乎相同的邏輯,現在改成
   // 呼叫同一份實作,差異只在 Input 泛型:這裡用完整的 AskPageInput(見
   // 該型別的完整說明),展示頁劇本固定只給 { candidates }。text 形態見
   // 下方 onAssistantMessage 呼叫處與 AskPage.tsx input 聯集「第四輪」
@@ -1879,7 +1879,7 @@ export function TripPlanPage(props: {
 
   const [chatInput, setChatInput] = useState('')
 
-  // composerSlot——版面外殼提供的輸入框插槽(見 plan-core/composerSlot.ts)。
+  // composerSlot——版面外殼提供的輸入框插槽(見 plan-core/overlayDom.ts)。
   // 不在外殼裡時是 undefined,輸入框維持原位渲染,行為不變。
   const composerSlot = useContext(ComposerSlotContext)
   // latestAgentMessage state 已撤回 HorizontalPlanTimeline.tsx 內部
@@ -1895,7 +1895,7 @@ export function TripPlanPage(props: {
   // 站點。
   //
   // 受控/非受控雙模式(見上方 props 對這兩個欄位的完整說明):呼叫端傳了
-  // selectedStopId 就以它為準(地圖對話小匡,狀態住在 DesktopLayout,
+  // selectedStopId 就以它為準(地圖對話小匡,狀態住在 desktop/Content,
   // 地圖與時間軸共用同一份),沒傳就用這個內部 state(/trip-plan 全頁)。
   //
   // 這個狀態現在同時驅動地圖上對應小圓點的強調樣式——2026-10 之前曾經
@@ -1955,7 +1955,7 @@ export function TripPlanPage(props: {
   // 變動而非單一使用者動作,沒有一個「事件」可以掛。
   //
   // useStableCallback 包一層,讓依賴陣列只剩真正的資料(mapStops)——呼叫端
-  // 若傳 inline 箭頭函式(DesktopLayout 這個檔案的既有風格就是這樣寫,
+  // 若傳 inline 箭頭函式(desktop/Content 這個檔案的既有風格就是這樣寫,
   // 例如 onPanToStop),每次 render 的新 identity 會讓 effect 重跑 →
   // setState → 父層 render → 又是新 identity,形成無窮迴圈。包過之後
   // 呼叫端傳什麼都安全,不需要依賴「恰好傳了 setState」這個隱性契約。
@@ -2040,7 +2040,7 @@ export function TripPlanPage(props: {
   // 型別層面上這裡沒有強制「compact 為 false 時必須傳
   // scrollContainerRef」(props 物件欄位很多,改成 discriminated
   // union 會讓每個欄位都要在兩個分支各寫一次,改動成本不成比例)——
-  // 目前只有 DesktopLayout.tsx 兩處呼叫,全頁版已經正確傳入,若之後
+  // 目前只有 desktop/Content.tsx 兩處呼叫,全頁版已經正確傳入,若之後
   // 新增第三個呼叫端忘記傳,後果是悄悄 fallback 到 .scroll(不會捲動
   // 的那個),不是編譯期錯誤,屬於已知、可接受的設計取捨,留意即可。
   const getScroller = useCallback((): HTMLElement | null => {
@@ -2133,7 +2133,7 @@ export function TripPlanPage(props: {
   // <Route path="/app/:panelMode?">)外層已經透過 KeyboardShrinkGuard
   // 疊加了這個全域 class(見 App.tsx 該處的完整說明),深色模式 token
   // (base-ui.css)已經生效。這個元件是掛在 /app 底下的正式功能頁面,
-  // 不像原型 AIPlanTimelinePage.tsx 是完全獨立於 /app 之外的路由
+  // 不像原型 home/plan-ai-sim/Content.tsx 是完全獨立於 /app 之外的路由
   // (/plan-ai,不經過那層外層 wrapper)——在這裡重複掛一次會變成巢狀
   // 兩層 .app-theme-root,徒增混淆(兩層各自的 data-theme 屬性若不同步
   // 還可能出現不一致的深色模式判斷)。
@@ -2207,7 +2207,7 @@ export function TripPlanPage(props: {
           dataSource={planAiDataSource}
           steps={steps}
           selectedStopId={selectedStopId}
-          // onSelectStop——對齊 home/plan-ai-sim/AIPlanTimelinePage.tsx
+          // onSelectStop——對齊 home/plan-ai-sim/Content.tsx
           // 既有呼叫端的用法(見該處的完整說明):點卡片/捲動置中視同
           // 「選取」,這裡只需要通知 selectStop(受控/非受控雙模式的
           // 統一寫入口,見該函式的完整說明),不需要額外同步 hoverStopId
@@ -2235,7 +2235,7 @@ export function TripPlanPage(props: {
            使用者看不到任何可以點的東西,而開啟方那側若在等 Promise
            (工具呼叫的既有路徑)就永遠等不到結果。
            跟 /ai-plan 播放態桌面分支先前踩過的是同一類問題(見
-           home/plan-ai-sim/AIPlanTimelinePage.tsx 該分支的完整說明:
+           home/plan-ai-sim/Content.tsx 該分支的完整說明:
            桌面不渲染 AskPage 導致整段劇本停在第 0 步)。
            處理方式也對齊手機版與那一頁:詢問頁與時間軸互斥顯示,同一塊
            版面空間用條件渲染切換,不需要額外的過場或狀態。 */
@@ -2327,7 +2327,7 @@ export function TripPlanPage(props: {
 
       {/* newDraftBtn——「新行程」按鈕(見 onNewDraft prop 的完整說明)。
           只在 horizontalTimeline(交接後手機版橫向時間軸)且呼叫端有傳
-          onNewDraft 時才渲染——/app、/trip-plan 全頁、DesktopLayout.tsx
+          onNewDraft 時才渲染——/app、/trip-plan 全頁、desktop/Content.tsx
           的對話小匡都不受影響,見該 prop 的完整說明。放在 composer
           正上方,對齊使用者明確要求的「對話輸入匣上方」位置。 */}
       {horizontalTimeline && onNewDraft && (
@@ -2369,7 +2369,7 @@ export function TripPlanPage(props: {
             送出去→傳回來渲染」的繞路,HorizontalPlanTimeline 自己算
             自己用即可。 */}
         {/* Composer——共用輸入膠囊外框(components/Composer.tsx,見該檔頭
-            的完整背景說明:原本這裡跟展示頁 AIPlanTimelinePage.tsx 各自
+            的完整背景說明:原本這裡跟展示頁 home/plan-ai-sim/Content.tsx 各自
             維護一份膠囊 CSS,查證「播放態跟推論態輸入匡文字樣式有沒有
             一樣」時發現字級不一致,抽成共用元件避免未來再次不同步)。
             這裡只傳真實業務邏輯需要的 props,膠囊造型/輸入框/送出鈕的

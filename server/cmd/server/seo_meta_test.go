@@ -263,6 +263,34 @@ func TestApplySEOMeta_ProductPageHasOwnSEOMetaButFallsBackToDefaultImage(t *test
 	}
 }
 
+// /momiji-front(2026-10 新增):有自己的 title/description/canonical,沒有代表圖所以 og:image 沿用 defaultImage。
+// 同時確認首頁原本的 canonical 與 title 已被取代掉(取代沒生效時 Google 會把它當成首頁的重複內容)。
+func TestApplySEOMeta_MomijiFrontPageHasOwnSEOMeta(t *testing.T) {
+	html := readRealIndexHTML(t)
+
+	out := string(applySEOMeta(html, "/momiji-front", nil))
+	meta := seoMetaByPath["/momiji-front"]
+
+	if !strings.Contains(out, `<link rel="canonical" href="https://tripace.io/momiji-front" />`) {
+		t.Error("/momiji-front 的輸出沒有包含自己的 canonical")
+	}
+	if strings.Contains(out, `<link rel="canonical" href="https://tripace.io/" />`) {
+		t.Error("/momiji-front 的輸出仍包含指向首頁的 canonical,取代沒有生效")
+	}
+	if !strings.Contains(out, "<title>"+meta.title+"</title>") {
+		t.Error("/momiji-front 的輸出沒有包含自己的 <title>")
+	}
+	if strings.Contains(out, defaultTitle) {
+		t.Error("/momiji-front 的輸出仍包含首頁的 title")
+	}
+	if !strings.Contains(out, `<meta property="og:image" content="`+defaultImage+`" />`) {
+		t.Error("/momiji-front 沒有自己的代表圖,og:image 應該沿用 defaultImage")
+	}
+	if strings.Contains(out, `content=""`) {
+		t.Error("/momiji-front 的輸出裡出現空的 content 屬性")
+	}
+}
+
 // 端對端驗證:透過真正的 http.Handler(staticHandler(),不是直接呼叫
 // applySEOMeta)送出真實 HTTP 請求,確認整條路徑(含 Content-Type header
 // 設定、200 狀態碼)都正確串起來,不是只有 applySEOMeta 這個函式本身

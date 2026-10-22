@@ -1,7 +1,7 @@
 /* HorizontalPlanTimeline.module.css — /ai-plan 展示頁手機版專用的橫向
    卡片時間尺樣式（方案二），視覺語言比照 Fable Artifact 試做稿的配色/
    圓角/字級層級，但整合進專案既有的 --ios-* token 系統（見
-   AIPlanTimelinePage.module.css 開頭的既有說明：這個頁面走登入後正式
+   home/plan-ai-sim/Content.module.css 開頭的既有說明：這個頁面走登入後正式
    App 的 --ios-* 系統，不是 home/ 城市介紹頁那套 --paper/--ink 紙感
    系統），不寫死 hex 色碼——深色模式沿用 base-ui.css 既有的
    .app-theme-root 機制，這個模組不需要自己另外寫一份 @media
@@ -9,7 +9,7 @@
 
 /* position: relative——實機測試發現的真實 bug:這個元件原本完全沒有
    定位屬性,CSS 繪製順序是「無定位元素先畫、有定位元素後畫」,導致整條
-   卡片列被畫在 AIPlanTimelinePage.module.css 的 .mapBackdrop(position:
+   卡片列被畫在 home/plan-ai-sim/Content.module.css 的 .mapBackdrop(position:
    absolute; z-index: 0)底下,看不見(只有帶 transform 的
    .cardSelected 意外建立了自己的堆疊環境而跑到地圖上面,造成「只看到
    選中的那張卡疊在畫面頂部」的詭異現象)。補上 position: relative,
@@ -17,7 +17,7 @@
    relative 疊在地圖之上的既有做法。
    2026-10 一度移除 margin-top: auto,改靠 .mapSafeArea 那個 flex: 1
    的手足元素把自己推到底部。後來 .mapSafeArea 因為幾何量測錯誤改成
-   position: absolute(見 AIPlanTimelinePage.module.css 該 class 的
+   position: absolute(見 home/plan-ai-sim/Content.module.css 該 class 的
    完整說明),退出了 flex 流,這塊推力跟著消失,時間軸就掉回容器中段
    ——使用者實機回報「手機板的時間軸位置跑掉了」。
 

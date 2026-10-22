@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { PanelLeft, Plus } from 'lucide-react'
-import { dayGroupLabel, type GeoCandidate } from './GeoCandidateSidebar'
+import { dayGroupLabel, type GeoCandidate } from './geoCandidateHelpers'
 import { candidateHasScheduledDate } from './geoCandidateHelpers'
 import { DatePickerPopover } from './DatePickerPopover'
 import { PhotoCarousel } from './PhotoCarousel'
@@ -8,25 +8,25 @@ import { DesktopInfoCard } from './DesktopInfoCard'
 import styles from './PlacePanel.module.css'
 
 // PlacePanel:一張浮動卡片,絕對定位疊在地圖上方,貼齊主顯示區右緣
-// (即 GeoHotelSidebar 左側),與主顯示區同高、四周留出間距,不像
-// GeoHotelSidebar/GeoCandidateSidebar 那樣佔用一份平行的 flex 版面
-// 空間。故渲染位置放在 .desktop-main(見 DesktopLayout.tsx,該容器已有
-// position: relative)底下、跟 GeoOutlinePanel 同層,而非跟
-// GeoHotelSidebar 同層。
+// (即 geo-planning/desktop/ResultList 左側),與主顯示區同高、四周留出間距,不像
+// geo-planning/desktop/ResultList/desktop/CandidateList 那樣佔用一份平行的 flex 版面
+// 空間。故渲染位置放在 .desktop-main(見 desktop/Content.tsx,該容器已有
+// position: relative)底下、跟 PlanMap 同層,而非跟
+// geo-planning/desktop/ResultList 同層。
 //
-// 有兩個觸發來源,呼叫端(DesktopLayout.tsx)統一轉成 PlaceInfoContent 後
+// 有兩個觸發來源,呼叫端(desktop/Content.tsx)統一轉成 PlaceInfoContent 後
 // 才傳進來,這個元件不需要知道資料原始來自哪裡:
-//  1. 地點清單(GeoHotelSidebar「地點」分頁)點擊項目本體——刻意不移動
+//  1. 地點清單(geo-planning/desktop/ResultList「地點」分頁)點擊項目本體——刻意不移動
 //     地圖(不再 setGeoPanTarget),理由:原本點擊會讓地圖平移過去,但
 //     那個互動假設「使用者想看這個地點在地圖上的位置」,這次要的是
 //     「先看介紹內容」,不需要地圖跟著動,尤其地圖目前顯示的範圍可能就是
 //     使用者刻意瀏覽的範圍,點清單項目把它搬走反而打斷瀏覽。地圖上直接
-//     點自訂地標圖示(useAttractionOverlays.ts 的 handleAttractionClick)維持
+//     點自訂地標圖示(useAttractionClickRouting.ts 的 handleAttractionClick)維持
 //     原本「放大到該範圍+查附近推薦」的行為不變——那是使用者已經在
 //     地圖上、明確想放大看這個地點的意圖,跟清單點擊是兩種不同情境。
-//  2. 點擊底圖上 Google 原生繪製的 POI 圖標(見 ExploreMap.tsx 攔截
+//  2. 點擊底圖上 Google 原生繪製的 POI 圖標(見 PlanMap.tsx 攔截
 //     IconMouseEvent、event.stop() 停用預設 InfoWindow 後改查
-//     fetchGeoPlaceDetails)——這種來源沒有知名度分級/景點數量/範圍
+//     地點詳情,走 fetchPlaceDetailsCachedVia + requireGeoPlaceDetails)——這種來源沒有知名度分級/景點數量/範圍
 //     半徑這些只有自建 district 資料才有的欄位,改顯示 Google 評分。
 export interface PlaceInfoContent {
   name: string
@@ -54,7 +54,7 @@ export interface PlaceInfoContent {
   // 時,我們自己寫的介紹文字——跟上面的 summary(這個來源本身的主要簡介,
   // 例如 poiInfoContent 帶的是 Google editorialSummary)是兩個獨立欄位、
   // 分開顯示,不互相覆蓋。只有「點擊地圖上非主題點地標」這個來源(見
-  // DesktopLayout.tsx 的 handleAttractionOpenPlaceDetails/ExploreMap.tsx
+  // desktop/Content.tsx 的 handleAttractionOpenPlaceDetails/PlanMap.tsx
   // 的 onAttractionOpenPlaceDetails)會帶值——這種情況下卡片主要內容查的
   // 是 Google Place Details(含評分、雙來源照片),但這個地點同時也是
   // 我們手動整理過介紹文字的景點區域,若只顯示 Google 資料,原本人工
@@ -66,7 +66,7 @@ export interface PlaceInfoContent {
   // 介紹為輔的情境,是純 attraction 介紹本身)。
   attractionSummary?: string
   badges: string[]
-  // candidate:這張卡片對應的候選籃項目——由呼叫端(DesktopLayout.tsx)
+  // candidate:這張卡片對應的候選籃項目——由呼叫端(desktop/Content.tsx)
   // 在兩個觸發來源(側欄「地點」清單點擊/點擊地圖上 Google 原生 POI
   // 圖標)各自組好傳入,這個元件不需要知道資料原始形狀差異,只負責在
   // 有值時顯示「加入候選」按鈕、按下時原封不動往上回報。undefined 代表
@@ -89,15 +89,15 @@ export function PlacePanel({
 }: {
   content: PlaceInfoContent | null
   onClose: () => void
-  // shiftBy:右緣可能同時有 GeoHotelSidebar(飯店/附近推薦清單,見
+  // shiftBy:右緣可能同時有 geo-planning/desktop/ResultList(飯店/附近推薦清單,見
   // FloatingPanel.tsx 的 side="right")與對話浮動小匡(見
-  // DesktopLayout.tsx 的 .chatPopover),兩者都跟這張卡片預設的定位
-  // 重疊——由呼叫端(DesktopLayout.tsx)判斷目前右緣實際被哪個佔用、
+  // desktop/Content.tsx 的 .chatPopover),兩者都跟這張卡片預設的定位
+  // 重疊——由呼叫端(desktop/Content.tsx)判斷目前右緣實際被哪個佔用、
   // 傳入對應值,把卡片推到它左側。'chat' 偏移量大於 'hotel'(對話小匡
   // 較寬),兩者都存在時呼叫端只會傳其中較寬的那個,不是疊加,詳見
   // PlacePanel.module.css 的 .shiftedHotel/.shiftedChat。
   shiftBy?: 'none' | 'hotel' | 'chat'
-  // style:2026-08 新增的逃生艙——目前唯一的用途是 DesktopLayout.tsx
+  // style:2026-08 新增的逃生艙——目前唯一的用途是 desktop/Content.tsx
   // 讓「附近景點」點擊後開的第二個 PlacePanel 執行個體,動態算出要
   // 疊在 AttractionInfoPanel 左側多少距離(這個距離還要疊加
   // infoPanelShiftBy 本身是否已經因為飯店側欄/對話小匡而往左推,是三種
@@ -105,39 +105,39 @@ export function PlacePanel({
   // 字面值——那樣可讀性反而更差)。用 style(而非再擴充 shiftBy)是因為
   // 這個位移量是執行期算出來的數字,不是有限枚舉。
   style?: React.CSSProperties
-  // onAddCandidate:「加入候選」按鈕觸發,理由同 GeoHotelSidebar 卡片上
+  // onAddCandidate:「加入候選」按鈕觸發,理由同 geo-planning/desktop/ResultList 卡片上
   // 既有的同名 callback——這裡刻意不做「已在候選籃裡就不顯示按鈕」的
   // 判斷,重複加入由呼叫端的候選籃 state 用內容比對去重(見
-  // DesktopLayout.tsx 的 onAddCandidate 說明),這個元件不需要知道候選籃
+  // desktop/Content.tsx 的 onAddCandidate 說明),這個元件不需要知道候選籃
   // 目前的完整內容。按下直接加入候選籃(純前端,不寫入後端)——刻意不像
-  // GeoHotelSidebar.tsx 的 AddCandidateButton 那樣展開日期選擇,使用者
+  // geo-planning/desktop/ResultList.tsx 的 AddCandidateButton 那樣展開日期選擇,使用者
   // 明確要求「地點介紹」的加入候選維持單純的一鍵加入,日期改到已排入
-  // 行程分組的「從候選加入」入口(見 GeoCandidateSidebar.tsx)再指定。
+  // 行程分組的「從候選加入」入口(見 geo-planning/desktop/CandidateList.tsx)再指定。
   // 按下時的行為依候選是否已有排定日期分岔(見 candidateHasScheduledDate/
   // handleAddClick):已有日期時直接呼叫這個 callback;沒有日期時改在原地
   // 展開日期選擇 UI,選好日期按確定後改呼叫下面的 onSchedule,不呼叫這個
   // callback——「加入候選籃」跟「排進行程的哪一天」在沒有日期可用時,
   // 對使用者而言是同一個決定,不該先無日期地塞進候選籃、之後才回頭補,
   // 那樣「已排入行程」分組會多一輪「未排定日期」的中繼狀態(見
-  // GeoCandidateSidebar.tsx 的 dayGroupKey/NO_DATE_GROUP 分組邏輯)。
+  // geo-planning/desktop/CandidateList.tsx 的 dayGroupKey/NO_DATE_GROUP 分組邏輯)。
   onAddCandidate?: (candidate: GeoCandidate) => void
   // onSchedule:候選沒有已排定日期時,日期選擇 UI 選好日期按「確定」觸發
-  // ——把候選跟選定的日期一起回報給呼叫端(DesktopLayout.tsx),由它決定
+  // ——把候選跟選定的日期一起回報給呼叫端(desktop/Content.tsx),由它決定
   // 怎麼寫入(理由同 createEntryFromCandidate 需要 cfg/tripID,這個元件
   // 沒有,也不該有)。
   onSchedule?: (candidate: GeoCandidate, date: string) => void
   // onAddAndReveal:複合按鈕右半邊(只有 PanelLeft icon)觸發——跟左半邊
   // onAddCandidate 一樣是單純加入候選籃(同一個動作、不涉及日期選擇),
   // 差別只在於這顆按鈕額外承諾「加入後讓使用者看得到剛加的項目」:候選籃
-  // 側欄(GeoCandidateSidebar)在這個複合按鈕能被按到的情境下(panelMode
+  // 側欄(geo-planning/desktop/CandidateList)在這個複合按鈕能被按到的情境下(panelMode
   // === 'geo-outline')本來就已經展開顯示,沒有獨立的「收合/展開」開關
   // 可以在這個情境下額外觸發,故這裡改成呼叫端在側欄上打一個短暫的
-  // highlight 動畫(見 DesktopLayout.tsx 的 geoCandidateFlashTrigger),
+  // highlight 動畫(見 desktop/Content.tsx 的 geoCandidateFlashTrigger),
   // 讓使用者感覺到「東西加進候選籃了、去左邊看」。這個元件不知道呼叫端
   // 具體怎麼做視覺提示,只負責原封不動往上回報使用者按了這顆按鈕。
   onAddAndReveal?: (candidate: GeoCandidate) => void
   // requireAuth:公開展示頁(InteractiveExploreMap.tsx)專用的登入導轉
-  // ——這個元件同時被正式版(DesktopLayout.tsx,已登入)與公開展示頁
+  // ——這個元件同時被正式版(desktop/Content.tsx,已登入)與公開展示頁
   // (未登入訪客)共用,但「加入行程」原本的三路分岔(見下方 handleAddClick
   // 完整說明)全部走 onAddCandidate/onSchedule 這兩個 optional callback,
   // 公開展示頁沒有候選籃/行程可以真的寫入,原本兩個 callback 都不傳,
@@ -148,10 +148,10 @@ export function PlacePanel({
   // 的既有呼叫方式)時完全不影響原本行為。 */
   requireAuth?: () => void
   // scheduledDates:行程本身目前已排定的日期清單(YYYY-MM-DD),由呼叫端
-  // (DesktopLayout.tsx)算好傳入——這個元件不需要知道怎麼從候選籃/行程
+  // (desktop/Content.tsx)算好傳入——這個元件不需要知道怎麼從候選籃/行程
   // entries 推導出這份清單。候選沒有自己的日期、但行程已有排定日期時,
   // 「加入行程」改先跳下拉選單列出這些日期(格式比照
-  // GeoCandidateSidebar.tsx 的 dayGroupLabel),而不是直接展開日曆——
+  // geo-planning/desktop/CandidateList.tsx 的 dayGroupLabel),而不是直接展開日曆——
   // 多數情況下使用者是把新地點加進「已經在排的行程」,列出既有日期讓
   // 一鍵選比每次都要重新開日曆挑日期快。undefined 或空陣列都視為「沒有
   // 既有日期可選」,行為退回原本直接展開日曆,見 handleAddClick。使用者
@@ -161,7 +161,7 @@ export function PlacePanel({
 }) {
   // addUiMode:「加入行程」按下、候選沒有排定日期時展開的 UI 狀態
   // ——'closed' 沒有展開任何東西、'menu' 展開既有日期下拉選單、'calendar'
-  // 展開日期選擇 UI(比照 GeoCandidateSidebar.tsx NoDateDayHead 的既有樣式
+  // 展開日期選擇 UI(比照 geo-planning/desktop/CandidateList.tsx NoDateDayHead 的既有樣式
   // 慣例)。用 content 的參照當依賴重置——切換到別的地點介紹卡時,不該讓
   // 上一張卡片展開的 UI 殘留在新內容上。
   const [addUiMode, setAddUiMode] = useState<'closed' | 'menu' | 'calendar'>('closed')
@@ -322,7 +322,7 @@ export function PlacePanel({
               </div>
               {/* 既有日期懸浮選單:候選沒有排定日期、但行程本身已有排定
                   日期時,按下「加入 {tripName}」先展開,列出 scheduledDates
-                  每一天(格式同 GeoCandidateSidebar.tsx 的 dayGroupLabel)+
+                  每一天(格式同 geo-planning/desktop/CandidateList.tsx 的 dayGroupLabel)+
                   一個「其他日期」選項,見 scheduledDates prop 的說明。
                   絕對定位疊在按鈕下方,不推擠卡片其餘內容。 */}
               {addUiMode === 'menu' && (

@@ -8,7 +8,7 @@ import styles from './PhoneBottomSheet.module.css'
 // SheetHead:標準 head slot 版面骨架(左側標題區 + 右側動作列 + 關閉鈕),
 // 供呼叫端直接帶入 PhoneBottomSheet 的 head prop——使用者明確要求「用
 // 相同樣式的 head」,原本 geo-planning/GeoOutlinePhoneListDrawer.tsx、
-// timeline/PhoneTimelineDrawer.tsx、trip/PhoneTripsDrawer.tsx
+// timeline/PhoneTimelineDrawer.tsx、trip/phone/TripList.tsx
 // 各自在呼叫端重複刻一份同樣結構的 JSX(或完全不帶 head、只能靠拖曳
 // 關閉),收斂成這個元件,往後新增一個 bottom sheet 只需要帶
 // title/onClose 兩個 prop。
@@ -360,7 +360,7 @@ export const PHONE_BOTTOM_SHEET_EXIT_MS = 350
 const SNAP_TOLERANCE_PX = 60
 
 // PhoneBottomSheet:手機版由下往上彈出的 bottom sheet 共用容器——抽出自
-// trip/PhoneTripsDrawer.tsx、geo-planning/GeoOutlinePhoneListDrawer.tsx、
+// trip/phone/TripList.tsx、geo-planning/GeoOutlinePhoneListDrawer.tsx、
 // geo-planning/GeoOutlinePhoneInfoSheet.tsx 三份原本各自複製貼上的
 // backdrop/panel/dragHandle 外殼與拖曳手勢邏輯,收斂成這一個元件,往後
 // 新增一個 bottom sheet 或調整拖曳手感只需要改一處。
@@ -398,7 +398,7 @@ const SNAP_TOLERANCE_PX = 60
 // - 總段數 1(只有 snapPoints 且長度 1,沒有 minHeightPx):退化成原本
 //   的'slide-close'語意——固定展開程度,只能往下拖,超過門檻(見
 //   onTouchEnd)直接呼叫 onClose,沒有更低的段可以吸附。對齊
-//   PhoneTripsDrawer.tsx/GeoOutlinePhoneListDrawer.tsx 原本用的
+//   trip/phone/TripList.tsx/GeoOutlinePhoneListDrawer.tsx 原本用的
 //   useDragToClose 行為。
 // - 總段數 >= 2:在這些段落之間拖曳吸附,對齊 GeoOutlinePhoneInfoSheet.tsx
 //   原本的展開/收合雙態手勢,泛化成任意段數(參考 Vaul 的 snap points
@@ -458,7 +458,7 @@ export interface PhoneBottomSheetProps {
   // React 拔掉。用於呼叫端把某個需要維持連線/內部 state 的元件(例如
   // ChatScreen,要避免每次開關對話都重新連線 WebSocket)直接放進
   // children 的情境——這樣不需要額外透過 React Portal 把該元件從別處
-  // 投影進來(見 PhoneContent.tsx 對話疊加層原本的 mainChatSlotNode/
+  // 投影進來(見 phone/Content.tsx 對話疊加層原本的 mainChatSlotNode/
   // createPortal 設計),避免 portal 內容在 React 元件樹上跟這個元件是
   // 平行兄弟節點、導致觸控事件無法沿 React 樹冒泡到這裡的
   // onTouchStart/onTouchMove/onTouchEnd(使用者實測回報「對話疊加層只有
@@ -606,10 +606,10 @@ export function PhoneBottomSheet({
   //
   // 第三輪修正(code review 抓到):window.innerHeight 只對 position:
   // fixed 的呼叫端(目前只有 GeoOutlinePhoneInfoSheet.tsx)才正確——其餘
-  // 傳 minHeightPx 的呼叫端(PhoneContent.tsx/
+  // 傳 minHeightPx 的呼叫端(phone/Content.tsx/
   // GeoOutlinePhoneCandidateDrawer.tsx/GeoOutlinePhoneListDrawer.tsx/
   // PhoneTimelineDrawer.tsx)panelStyle 都是 position: absolute,定位
-  // 基準是各自的 position: relative 祖先容器(例如 .mainArea),不是視窗
+  // 基準是各自的 position: relative 祖先容器(例如 .container),不是視窗
   // ——這些容器的高度可能因為安全區域、上方固定列等因素而小於
   // window.innerHeight,若整個方案固定改用視窗高度,minHeightAsTop 算出
   // 的「離頂部距離」會對不上這些呼叫端的實際定位基準,收合段的實際像素
@@ -643,7 +643,7 @@ export function PhoneBottomSheet({
   //
   // containerRef 需要跟 panelRef 的掛載同一輪 commit 完成賦值,
   // useElementHeight 的 useEffect 才能在第一次執行時就讀到正確的
-  // ref.current(理由同 PhoneContent.tsx 的 tabBarRef:直接掛在
+  // ref.current(理由同 phone/Content.tsx 的 tabBarRef:直接掛在
   // forwardRef 上、跟隨 React commit phase 同步賦值,不是事後才由某個
   // effect 去設置——後者會因為 useElementHeight 的依賴陣列是穩定的
   // ref 物件本身,第一次執行時讀到 null 就不會再重新 observe)。改成
@@ -666,7 +666,7 @@ export function PhoneBottomSheet({
   // 回報「旅程清單/行程清單收合段被壓縮成 35px,預期 80-100px」)——
   // 下方 minHeightAsTop 的計算公式(containerHeight - minHeightPx)原本
   // 隱含假設 panelStyle.bottom 恆為 0(也就是面板貼齊容器底部),但
-  // trip/PhoneTripsDrawer.tsx/timeline/PhoneTimelineDrawer.tsx 這類
+  // trip/phone/TripList.tsx/timeline/PhoneTimelineDrawer.tsx 這類
   // 呼叫端的 bottom 其實是 var(--tab-bar-height)(非 0,用來避開底部
   // 常駐功能列),導致算出來的可視高度變成
   // minHeightPx - panelBottomPx,不是設計意圖的 minHeightPx。
@@ -690,7 +690,7 @@ export function PhoneBottomSheet({
   // 這裡的重新量測時機只在 open 切換或 window resize 時觸發,sheet
   // 已經開啟期間若 panelStyle.bottom 背後的 CSS 自訂屬性(例如
   // --tab-bar-height)獨立變化(不伴隨 window resize 事件,例如
-  // PhoneTabBar 因內容/字級變化改變自身高度),panelBottomPx 不會
+  // phone/Nav 因內容/字級變化改變自身高度),panelBottomPx 不會
   // 重新量測,停留舊值——ResizeObserver 無法直接監聽 CSS 自訂屬性
   // 變化(它只能偵測元素尺寸變化,而 --tab-bar-height 改變時
   // .panel 自己的尺寸不一定跟著變,只有位置變),沒有瀏覽器原生 API
@@ -771,7 +771,7 @@ export function PhoneBottomSheet({
   const bodyElRef = useRef<HTMLDivElement | null>(null)
 
   // hasOpenedRef:是否曾經真正 open 過——keepMounted 的呼叫端(如
-  // PhoneContent.tsx 的對話疊加層)首次掛載時 open 就是 false,這個元件
+  // phone/Content.tsx 的對話疊加層)首次掛載時 open 就是 false,這個元件
   // 從第一次 render 開始就要位移到畫面外(translateY(100vh))。實測發現
   // 這個「從未開啟過、掛載當下就要在畫面外」的情境,即使 transform 算出
   // 的值正確,套用了 transition 動畫屬性後,瀏覽器仍會在某些情況下把
@@ -954,7 +954,7 @@ export function PhoneBottomSheet({
   // 首次出現時整張卡片從螢幕下方滑入,而不是原地长高。位移量用 100vh
   // (不是 100%)——CSS transform: translateY(百分比) 是相對於元素自身
   // 高度計算,不是相對螢幕/視窗高度;keepMounted 的呼叫端(見
-  // PhoneContent.tsx 的對話疊加層)在 open=false 時面板仍會渲染,但這時
+  // phone/Content.tsx 的對話疊加層)在 open=false 時面板仍會渲染,但這時
   // .panelCollapsed 可能讓 .body 隱藏、面板實際高度縮得很小,100% 换算
   // 出來的實際位移距離遠遠不夠把面板推出可視範圍,導致「使用者實測
   // 回報一開啟手機版對話匡就一直陰在畫面上,點關閉也沒反應」——面板其實
@@ -1113,8 +1113,8 @@ export function PhoneBottomSheet({
 // GeoOutlinePhoneView.tsx,讓它連動下層的 GeoOutlinePhoneListDrawer 縮小
 // (見該 prop 原始的完整說明)——「是否在堆疊裡」跟「要不要回報拖曳狀態」
 // 是兩件獨立的事,不該因為共用同一顆具名元件就被迫綁在一起。
-// 對應現有呼叫端:設定頁/配速面板/PhoneTripsDrawer/PhoneTimelineDrawer
-// (常駐掛載)、GeoOutlinePhoneInfoSheet/PlanPhoneTripListDrawer(children
+// 對應現有呼叫端:設定頁/配速面板/trip/phone/TripList/PhoneTimelineDrawer
+// (常駐掛載)、GeoOutlinePhoneInfoSheet/geo-planning/phone/CandidateList(children
 // 條件式卸載或本身條件式掛載)。
 export function StandaloneSheet(
   props: Omit<PhoneBottomSheetProps, 'exitDurationMs' | 'keepMounted' | 'isTopmost' | 'stackOffsetPx'>,
@@ -1141,7 +1141,7 @@ export function StackedSheet(
 // 說明)。固定帶 keepMounted,不接受 exitDurationMs——keepMounted 時
 // shouldRender 恆為 true,不會真的卸載,exitDurationMs 的延遲邏輯永遠
 // 不會被用到,乾脆不讓呼叫端傳入以免誤會這裡也有退場延遲可以調。
-// 對應現有呼叫端:對話小匡(PhoneContent.tsx 的 chatSheetOpen)。
+// 對應現有呼叫端:對話小匡(phone/Content.tsx 的 chatSheetOpen)。
 export function PersistentSheet(
   props: Omit<PhoneBottomSheetProps, 'exitDurationMs' | 'keepMounted' | 'isTopmost' | 'stackOffsetPx' | 'onDraggingDownChange'>,
 ) {

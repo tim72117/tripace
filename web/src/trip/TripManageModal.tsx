@@ -15,11 +15,11 @@ import styles from './TripManageModal.module.css'
 // TripManageModal:旅程管理彈窗,合併原本分開的 ShareModal(分享連結)與
 // MembersScreen(成員管理),再加上原本掛在 ChatScreen navbar 的 TripMenu
 // (開啟時自動進入)——三者都是「對某一個旅程的管理操作」,合併成單一
-// 入口(旅程列表每筆項目的「管理」按鈕,見 DesktopTripList.tsx 的
+// 入口(旅程列表每筆項目的「管理」按鈕,見 trip/desktop/TripList.tsx 的
 // onManage),取代原本三個分散的觸發點。
 //
 // 用 .rp-modal-head/.rp-modal-body 骨架(而非原本 ShareModal/MembersScreen
-// 各自帶的 .navbar/.screen-body)——這個彈窗是疊在 DesktopLayout.tsx 的
+// 各自帶的 .navbar/.screen-body)——這個彈窗是疊在 desktop/Content.tsx 的
 // .rp-modal 置中卡片裡渲染,.navbar/.screen-body 是給獨立全螢幕頁面設計的
 // 高度公式,套進置中卡片裡跟同樣用 .rp-modal 骨架的 SettingsDialog 間距
 // 對不齊(這是實際發生過的視覺不一致,不是預防性寫法)。

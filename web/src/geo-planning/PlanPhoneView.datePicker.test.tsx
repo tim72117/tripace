@@ -12,15 +12,15 @@
 //      日曆 sheet 選定日期後兩層都關閉。
 //   4. 加入成功後打勾提示(Check icon)不論走哪條路徑都正常運作。
 //
-// mock 掉 ExploreMap(理由同其餘 PlanPhoneView.*.test.tsx——這批
+// mock 掉 PlanMap(理由同其餘 PlanPhoneView.*.test.tsx——這批
 // 測試不驗證地圖/查詢本身怎麼運作),直接暴露 onSearchResultSelect 讓
 // 測試手動選中一個候選。GeoOutlinePanel.tsx 已退役(見
 // useGeoOutlineMapState.ts 的完整說明),onSearchResultSelect 現在是
-// ExploreMap 的直接 prop(接的是 outlineMapState.onSearchResultSelect,
+// PlanMap 的直接 prop(接的是 outlineMapState.onSearchResultSelect,
 // 即 hook 內部的 handleGeocodeCandidateSelect)——但 onTripEntriesChange
-// 不再流向 ExploreMap,它是 useGeoOutlineMapState 的輸入參數,在 hook
+// 不再流向 PlanMap,它是 useGeoOutlineMapState 的輸入參數,在 hook
 // 內部的 useEffect 裡被呼叫(查 tripID 對應的 entries 時,見該檔案的
-// 完整說明),故無法再用同一招從 ExploreMap 的 props 攔截。改成 mock
+// 完整說明),故無法再用同一招從 PlanMap 的 props 攔截。改成 mock
 // fetchEntries(這個 hook 真正發出查詢的 API 函式),讓它回傳假資料,
 // 驅動真實的「查詢完成 → onTripEntriesChange → geo 寫入 candidates」
 // 完整鏈路,而不是繞過 hook 直接呼叫 callback——這樣才能讓
@@ -56,13 +56,13 @@ vi.mock('../api', async (importOriginal) => {
 
 let capturedOnSearchResultSelect: ((r: GeoSearchResult) => void) | undefined
 
-vi.mock('./ExploreMap', () => ({
-  ExploreMap: (props: {
+vi.mock('./PlanMap', () => ({
+  PlanMap: (props: {
     onSearchResultSelect?: (r: GeoSearchResult) => void
     children?: React.ReactNode
   }) => {
     capturedOnSearchResultSelect = props.onSearchResultSelect
-    // children(PlanPhoneInfoSheet)改掛入 ExploreMap 後(見
+    // children(PlanPhoneInfoSheet)改掛入 PlanMap 後(見
     // PlanPhoneView.tsx 的完整說明),這個 mock 必須真的渲染
     // children,否則資訊卡永遠不會出現在測試的 DOM 樹裡。
     return props.children ?? null
@@ -195,7 +195,7 @@ describe('PlanPhoneView：加入行程的日期選擇 sheet 流程', () => {
     // geo.scheduledDates 非空)——useGeoOutlineMapState 內部的 tripID
     // effect 在元件掛載時就會呼叫這支函式,mock 要在 renderView() 之前
     // 設定好回傳值,才能讓掛載當下的第一次查詢直接帶出這批資料(理由見
-    // 上方檔案開頭的完整說明:onTripEntriesChange 已不再是 ExploreMap
+    // 上方檔案開頭的完整說明:onTripEntriesChange 已不再是 PlanMap
     // 的 prop,必須透過這支底層 API 函式驅動真實的資料流)。
     fetchEntriesMock.mockResolvedValueOnce([
       { id: 'entry_1', title: '既有安排', lat: 25.05, lng: 121.58, location: '', start: '2026-09-05', startTime: '', kind: 'activity' } as never,

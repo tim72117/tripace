@@ -22,7 +22,7 @@
 // 這個實作內部,消費端(usePlanSimSocket)跟 UI(AskPage.tsx)都不需要
 // 知道這件事發生過。
 
-import type { PlanAction } from './AIPlanTimelinePage'
+import type { PlanAction } from './planAction'
 import type { AskPageCandidate, AskPageSelection } from '../../plan-core/askPageTools'
 import type { PlanSimSource } from './planSimSource'
 import { PLAN_SIM_SCRIPT } from './planSimScript'

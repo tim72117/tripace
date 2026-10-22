@@ -1,4 +1,11 @@
 import {
+  fetchGeoAttractionsOnlyNearby,
+  fetchGeoAttractions,
+  fetchGeoGeocode,
+  fetchGeoPlaceDetails,
+  fetchGeoPlacePhoto,
+  fetchGeoPlaceText,
+  fetchPublicGeoAttractionByID,
   fetchGeoPlacePhotoAssets,
   fetchPlanAiAttractionSearch,
   fetchPlanAiPlaceDetailsAny,
@@ -17,7 +24,7 @@ import type { PlanAiDataSource, PlanAiSearchNearbyResult } from './planAiDataSou
 // 讀取的資料由前端提供;進到自動撥放時,則用使用 api 讀取後端的方式」)。
 //
 // 在這之前 PlanAiDataSource 只有假資料一份實作,而且被 import 寫死在
-// AIPlanTimelinePage.tsx 裡——介面存在但沒有第二個實作,抽換能力是空的。
+// home/plan-ai-sim/Content.tsx 裡——介面存在但沒有第二個實作,抽換能力是空的。
 // 真後端這條路徑當時只存在於 /app 的 TripPlanPage.tsx,它直接 import
 // api.ts 的 fetchPlanAi* 系列,沒有走這個介面,兩邊各寫各的。
 //
@@ -30,8 +37,12 @@ import type { PlanAiDataSource, PlanAiSearchNearbyResult } from './planAiDataSou
 // 需要登入:這些端點都在 /internal/ 底下。未登入時 request() 會丟
 // ApiError(401),由呼叫端既有的錯誤處理接(resolveAttractionForStep
 // 的 catch 會讓那一站維持 loading:false、不帶真實資料,不會整頁壞掉)。
-// 這也是為什麼公開展示頁(/ai-plan、首頁小展示)固定用假資料實作——
-// 那些頁面不需要登入就能看,打這些端點只會拿到 401。
+// 這也是為什麼公開展示頁不直接用這份實作:首頁小展示與 /ai-plan 的播放態
+// (劇本)用假資料實作 planAiFakeDataSource;/ai-plan 的詢問頁與推論態
+// (見 home/plan-ai-sim/Content.tsx 與 LivePlanLayer.tsx)用訪客版
+// planAiPublicDataSource(打 /public/*)。那些頁面不需要登入就能看,
+// 打這些端點只會拿到 401。只有登入後頁面,以及 Content.tsx 在有 token 時
+// 的景點光暈查詢才用這份。
 // searchNearbyByCoords——「依座標查鄰近候選」這一段邏輯(呼叫
 // fetchPlanAiAttractionSearch、過濾沒有 placeId 的候選、轉成
 // PlanAiNearbyCandidate 形狀)同時被 query 模式(先查地名拿到座標)與
@@ -66,6 +77,16 @@ export function createPlanAiApiDataSource(cfg: ClientConfig): PlanAiDataSource {
     // 自己決定用哪一種交通方式,行為跟假資料實作一致。
     transitEstimate: (from, to, forceMode) => fetchPlanAiTransitEstimate(cfg, from, to, forceMode),
     photoAssets: (placeId) => fetchGeoPlacePhotoAssets(cfg, placeId),
+    geoPlaceDetails: (placeId) => fetchGeoPlaceDetails(cfg, placeId),
+    attractionsByCity: async (city) => (await fetchGeoAttractions(cfg, city)).attractions ?? [],
+    attractionByID: (id) => fetchPublicGeoAttractionByID(cfg, id),
+    placePhoto: (placeId, name) => fetchGeoPlacePhoto(cfg, placeId, name),
+    placeText: (placeId) => fetchGeoPlaceText(cfg, placeId),
+    geocode: (query, center, mode, radiusMeters) => fetchGeoGeocode(cfg, query, center, mode, radiusMeters),
+    nearbyAttractionAreas: async (lat, lng, radiusMeters) => {
+      const r = await fetchGeoAttractionsOnlyNearby(cfg, lat, lng, radiusMeters)
+      return r.attractions ?? []
+    },
     // searchNearby——見 PlanAiDataSource.searchNearby 的完整說明。
     // query 模式對齊 attractionTools.ts createSearchAttraction 的既有
     // 兩段式邏輯(先查地名座標,再查鄰近候選);coords 模式跳過第一段,
@@ -81,4 +102,20 @@ export function createPlanAiApiDataSource(cfg: ClientConfig): PlanAiDataSource {
       return searchNearbyByCoords(cfg, result.lat, result.lng)
     },
   }
+}
+
+// getPlanAiApiDataSource——依 baseURL + token 共用同一個登入版實例(2026-10)。ClientConfig 只有這兩個欄位,實例
+// 是無狀態的轉接(去重記憶本來就依同一組 key 共用),所以同一組設定不需要各處各建一個:入口、地圖元件、規劃面板
+// 呼叫它拿到同一個實例,身分也穩定(適合放進依賴陣列),不必每處都寫 useMemo(() => create…(cfg), [baseURL, token])。
+// 測試要自己組實例時仍可用 createPlanAiApiDataSource。
+const sharedApiDataSources = new Map<string, PlanAiDataSource>()
+
+export function getPlanAiApiDataSource(cfg: ClientConfig): PlanAiDataSource {
+  const key = `${cfg.baseURL}|${cfg.token ?? ''}`
+  let ds = sharedApiDataSources.get(key)
+  if (!ds) {
+    ds = createPlanAiApiDataSource(cfg)
+    sharedApiDataSources.set(key, ds)
+  }
+  return ds
 }

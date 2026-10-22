@@ -5,8 +5,11 @@ import { PlanTimelineView } from '../plan-core/PlanTimelineView'
 import { toRenderList } from '../plan-core/planTimeline'
 import { Lightbox } from '../geo-planning/PhotoCarousel'
 import { NativeMapBase, type MapHandle } from '../geo-planning/NativeMapBase'
+import { SIMPLE_MAP_ID } from '../geo-planning/mapStyleIds'
 import { usePlanStopMarkers, type PlanStopMarker } from '../geo-planning/usePlanStopMarkers'
-import { usePlanRoutePolyline, type RoutePolylineSegment } from '../geo-planning/usePlanRoutePolyline'
+import type { RoutePolylineSegment } from '../geo-planning/mapDrawLayer/featureLayers/routePolylineLayer'
+import { useMapDrawLayer } from '../geo-planning/mapDrawLayer'
+import { routePolylineLayer } from '../geo-planning/mapDrawLayer/featureLayers/routePolylineLayer'
 import { toPlanTimeline } from './catalog'
 import { createRenderItineraryStopCard } from './renderItineraryStopCard'
 import { createRenderOnsenAutumnStopCard } from './renderOnsenAutumnStopCard'
@@ -180,7 +183,7 @@ function MapleVignette({ dark = false }: { dark?: boolean }) {
 
 // AiItineraryDetailPageMapView — 「台南赤崁兩日遊」試作用的地圖基底展示版面
 // (2026-10 新增)。使用者明確要求「先在其中一份行程試作一個加入地圖基底的
-// 展示頁」,設計方向比照 /ai-plan 展示頁(home/plan-ai-sim/AIPlanTimelinePage.tsx)
+// 展示頁」,設計方向比照 /ai-plan 展示頁(home/plan-ai-sim/Content.tsx)
 // 的版面語言:整頁地圖全幅背景 + 側欄式時間軸,不是原本
 // AiItineraryDetailPage.tsx 那種單欄唱讀排版。
 //
@@ -190,29 +193,18 @@ function MapleVignette({ dark = false }: { dark?: boolean }) {
 // 的實作方式,只是把這個版本拆成同目錄的獨立檔案,讓兩種版面各自的 JSX
 // 不互相糾纏,純粹是程式組織考量,不是路由層級的分流。
 //
-// 地圖基底沿用 AIPlanTimelinePage.tsx 的標準用法:NativeMapBase 只建立地圖
+// 地圖基底沿用 home/plan-ai-sim/Content.tsx 的標準用法:NativeMapBase 只建立地圖
 // 實例(center/zoom/mapId/onHandleChange),usePlanStopMarkers 把站點畫成
 // 圓點並處理選取/hover 視覺——這兩者都是「只做原生配置/圖層」的最小元件,
 // 這裡的職責只是組裝,不重新實作地圖邏輯。
 //
 // 時間軸直接重用 PlanTimelineView(跟唯讀版本、/ai-plan、/trip-plan 都是
-// 同一份渲染邏輯),疊成側欄面板蓋在地圖上方——對齊 AIPlanTimelinePage.tsx
+// 同一份渲染邏輯),疊成側欄面板蓋在地圖上方——對齊 home/plan-ai-sim/Content.tsx
 // 桌面版「左地圖/右資訊欄」的做法,但這裡沒有該頁面複雜的串流生成/拖拉/
 // 備註等機制,是純讀展示,所以不傳 onRemoveStop/getStopTimeDragBounds 等
 // 編輯類 props,跟 AiItineraryDetailPage.tsx 原本唯讀版本的取捨一致。
 
 const ZOOM = 15
-
-// SIMPLE_MAP_ID——2026-10 新增,使用者明確要求「換成簡單版的地圖」:改傳
-// VITE_GOOGLE_MAPS_LANDING_MAP_ID(對齊 home/InteractiveExploreMap.tsx
-// LANDING_MAP_ID 的既有用法,見該檔案的完整說明)取代預設的
-// VITE_GOOGLE_MAPS_MAP_ID——這個 Cloud Style Map ID 關閉所有 Google
-// 原生 POI 標籤(商家/地標/景點圖示),只留路網與地名,讓畫面焦點集中在
-// 我們自己畫的站點圓點跟側欄卡片上,不被底圖原生的密集圖示分散注意力。
-// 這個展示頁是訪客瀏覽範例行程的唯讀場景,不需要正式規劃功能(ExploreMap.tsx
-// 等)那種完整 POI 細節。環境變數未設定時 NativeMapBase 的 mapId prop
-// 會自動退回 VITE_GOOGLE_MAPS_MAP_ID,不會讓地圖建立失敗。
-const SIMPLE_MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_LANDING_MAP_ID as string | undefined
 
 // fallbackCenterOf——這個地圖版面原本把 CENTER 寫死成台南赤崁座標,只能
 // 服務單一行程(tainan-chikan-2day)。2026-10 新增二子坪(erziping-1day)
@@ -271,7 +263,7 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
   // 前端 id 白名單——是否走手繪樣式變成資料驅動,不是程式碼寫死特定
   // 行程。mapStyles 傳 undefined(而非空陣列)給 NativeMapBase 的 styles
   // prop 時,代表「沒有 inline styles」,該元件會退回原本的 mapId 分支
-  // (見該元件 styles prop 的完整說明,空陣列在 JS styles 系統裡语意是
+  // (見該元件 styles prop 的完整說明,空陣列在 JS styles 系統裡語意是
   // 「有樣式規則但規則是空的」,跟 undefined「完全不使用這個機制」不同,
   // 這裡刻意用 undefined 避免混淆)。
   const isHandDrawn = itinerary.mapStyle === 'hand-drawn'
@@ -339,13 +331,13 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
 
   // mapHandle——NativeMapBase 建圖完成後回報的控制代碼,usePlanStopMarkers
   // 需要 mapRef/mapReady 才能把站點 marker 掛到這個地圖實例上,寫法對齊
-  // AIPlanTimelinePage.tsx 的既有用法。
+  // home/plan-ai-sim/Content.tsx 的既有用法。
   const [mapHandle, setMapHandle] = useState<MapHandle>({ mapRef: { current: null }, mapReady: false, mapVersion: 0 })
   const handleMapHandleChange = useCallback((handle: MapHandle) => {
     setMapHandle(handle)
   }, [])
 
-  // mapStops——只取已經有座標的 stop 節點,理由同 AIPlanTimelinePage.tsx
+  // mapStops——只取已經有座標的 stop 節點,理由同 home/plan-ai-sim/Content.tsx
   // 的 mapStops:section/message 本來就不是地點,沒有座標的節點畫不出來。
   // 2026-10 擴充:美食清單各筆若已查到座標(foodSpotDetails,見
   // useFoodSpotDetails.ts 的完整說明),一併併入同一個陣列,用同一個
@@ -389,24 +381,26 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
       .map(([, path], dayIndex) => ({ dayIndex, path }))
   }, [steps])
 
-  usePlanRoutePolyline({
+  // 手繪路線改由統一繪製層的功能層畫出(見 geo-planning/mapDrawLayer/types.ts)。
+  const drawLayers = useMemo(() => [routePolylineLayer({ segments: routeSegments })], [routeSegments])
+  useMapDrawLayer({
     mapRef: mapHandle.mapRef,
     mapReady: mapHandle.mapReady,
     mapVersion: mapHandle.mapVersion,
-    segments: routeSegments,
+    layers: drawLayers,
   })
 
   usePlanStopMarkers({
     mapRef: mapHandle.mapRef,
     mapReady: mapHandle.mapReady,
     mapVersion: mapHandle.mapVersion,
-    stops: mapStops,
-    selectedStopId,
-    hoverStopId,
-    // onStopClick——點地圖圓點時反向高亮時間軸對應項目,這是使用者要求
+    points: mapStops,
+    selectedId: selectedStopId,
+    hoverId: hoverStopId,
+    // onPointClick——點地圖圓點時反向高亮時間軸對應項目,這是使用者要求
     // 的雙向連動:點時間軸卡片→setSelectedStopId(見下方 onPanToStop)；
     // 點地圖圓點→同一個 state,兩個方向共用同一份事實來源。
-    onStopClick: (id) => setSelectedStopId(id),
+    onPointClick: (id) => setSelectedStopId(id),
     // useAdvancedMarkers: !isHandDrawn——2026-10 新增,使用者回報定山溪
     // (jozankei-1day,mapStyle:'hand-drawn')地圖報錯「地圖在初始化時
     // 未使用有效的地圖 ID,因此將無法使用進階標記」:hand-drawn 樣式

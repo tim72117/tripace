@@ -32,7 +32,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   success?: boolean
   // compact:取代原本 base-ui.css 的 `.new-trip-composer .btn-primary`
   // 父層選擇器覆寫(見 Button.module.css .primary.compact 的說明)——
-  // 目前僅 primary 用到(DesktopTripList.tsx/PhoneTripsDrawer.tsx 的
+  // 目前僅 primary 用到(trip/desktop/TripList.tsx/trip/phone/TripList.tsx 的
   // 「新增旅程」輸入列按鈕),同理不開放給其他 variant(base-ui.css 沒有
   // 定義過 secondary/danger 的緊湊版本)。
   compact?: boolean

@@ -8,7 +8,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PlacePanel, type PlaceInfoContent } from './PlacePanel'
-import type { GeoCandidate } from './GeoCandidateSidebar'
+import type { GeoCandidate } from './geoCandidateHelpers'
 
 const SCHEDULED_DATES = ['2026-08-16', '2026-08-17']
 

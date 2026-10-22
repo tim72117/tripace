@@ -7,7 +7,7 @@ import {
 } from './DesktopInfoCard'
 
 // DesktopInfoCard.test.ts——驗證 stackedInfoCardRightPx 這個順位陣列
-// 定位公式的行為,取代原本 DesktopLayout.tsx 的
+// 定位公式的行為,取代原本 desktop/Content.tsx 的
 // nearbyInfoPanelRightPx = attractionPanelRightPx + 340 + 12 這條假設
 // 主題卡一定已開的固定公式(見 DesktopInfoCard.tsx 的完整說明)。重點
 // 驗證「缺席的卡片後面的卡片會自動往右滑補位」這個行為,這正是改用

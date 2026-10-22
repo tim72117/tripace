@@ -57,7 +57,7 @@ export interface ScriptedAskPageProps {
   // planAiFakeDataSource,見檔頭的完整說明。
   dataSource: PlanAiDataSource
   // candidates——要顯示的候選景點卡片,來自劇本的 PlanAction.candidates
-  // (見 AIPlanTimelinePage.tsx 該欄位的完整說明)。
+  // (見 home/plan-ai-sim/Content.tsx 該欄位的完整說明)。
   candidates: AskPageCandidate[]
   // picks——要依序演出被點擊的 placeId,陣列順序就是點擊順序。空陣列
   // 是合法的(開了選單但一張都沒點,之後送出空選擇)。值必須是
@@ -81,11 +81,11 @@ export interface ScriptedAskPageProps {
   // stacked——候選卡片改成縱向上下堆疊,取代預設的橫向捲動列。2026-10
   // 新增(使用者明確要求「桌面版的詢問視窗候選改在右側、上下排列」):
   // 桌面版這個元件是渲染在右上角固定寬度的面板裡(見
-  // AIPlanTimelinePage.tsx isDesktop 分支的完整說明),欄位不寬但可以
+  // home/plan-ai-sim/Content.tsx isDesktop 分支的完整說明),欄位不寬但可以
   // 往下延伸,縱向清單比橫向捲動更適合這個版面;手機版維持原本的橫向
   // 捲動(見 AskPage.module.css .directionScroller 的完整說明:跟
   // HorizontalPlanTimeline.tsx 的橫向卡片列是同一套滑動手感,不能悄悄
-  // 改掉)。預設 false,呼叫端(AIPlanTimelinePage.tsx)依 isDesktop 決定
+  // 改掉)。預設 false,呼叫端(home/plan-ai-sim/Content.tsx)依 isDesktop 決定
   // 要不要傳 true——只影響這個展示頁,不動正式 AskPage.tsx 的任何路徑。
   stacked?: boolean
 }
