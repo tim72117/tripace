@@ -1,0 +1,623 @@
+/* 業主控制台——淺色為主的商業工具介面(面向外部廣告業主/聯盟行銷
+   夥伴,跟內部 admin 後台的純深色工具感、主站的紙感和風都不同,這裡
+   需要的是「專業、可信賴」的商業後台質感)。色彩/字級/間距全部收斂成
+   CSS 變數,元件樣式一律透過變數取值,不手寫新數值——對齊
+   frontend-design-guidelines 的「一致性」要求。 */
+
+:root {
+  --bg: #f7f8fb;
+  --surface: #ffffff;
+  --surface-sunken: #f1f3f8;
+  --border: #e2e5ec;
+  --border-strong: #c9cedb;
+  --text: #171a21;
+  --text-muted: #6b7180;
+  --text-faint: #9aa0b0;
+  --accent: #3454d1;
+  --accent-hover: #2943ad;
+  --accent-soft: #e8ecfc;
+  --danger: #c23b3b;
+  --danger-soft: #fbe8e8;
+
+  /* 狀態色——campaign/plan 的 status 各自有語意,不是統一灰階 pill
+     (見 frontend-design-guidelines「狀態要看得見」:選中態/進行中態
+     要有明確樣式,顏色不是唯一線索,故每個狀態同時换了色相與圖示)。 */
+  --status-draft-fg: #6b7180;
+  --status-draft-bg: #eef0f4;
+  --status-scheduled-fg: #1d5fd1;
+  --status-scheduled-bg: #e4edfd;
+  --status-active-fg: #1a8a56;
+  --status-active-bg: #e3f6ec;
+  --status-paused-fg: #b36a12;
+  --status-paused-bg: #fbeedb;
+  --status-ended-fg: #595e6b;
+  --status-ended-bg: #e9eaee;
+  --status-published-fg: #1a8a56;
+  --status-published-bg: #e3f6ec;
+
+  --shadow-sm: 0 1px 2px rgba(23, 26, 33, 0.06);
+  --shadow-md: 0 4px 16px rgba(23, 26, 33, 0.08);
+  --radius: 10px;
+  --radius-sm: 6px;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --surface: #181b22;
+    --surface-sunken: #14161c;
+    --border: #2a2f3a;
+    --border-strong: #3a4150;
+    --text: #e9eaf0;
+    --text-muted: #9aa1ad;
+    --text-faint: #6b7180;
+    --accent: #7b93f5;
+    --accent-hover: #93a8f7;
+    --accent-soft: #232a4a;
+    --danger: #e8716f;
+    --danger-soft: #3a2224;
+
+    --status-draft-fg: #9aa1ad;
+    --status-draft-bg: #23262f;
+    --status-scheduled-fg: #7ea6f5;
+    --status-scheduled-bg: #1c2a47;
+    --status-active-fg: #5fcf95;
+    --status-active-bg: #1a3328;
+    --status-paused-fg: #e2a855;
+    --status-paused-bg: #3a2c15;
+    --status-ended-fg: #9aa1ad;
+    --status-ended-bg: #23262f;
+    --status-published-fg: #5fcf95;
+    --status-published-bg: #1a3328;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.4);
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans TC', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+h1 {
+  font-size: 1.375rem;
+}
+h2 {
+  font-size: 1rem;
+}
+
+/* ---- 版面 ---- */
+
+.app-shell {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header-who {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.partner-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.partner-avatar {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* ---- 按鈕 ---- */
+
+button {
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 1.1rem;
+  cursor: pointer;
+  transition:
+    background 0.14s ease,
+    transform 0.08s ease,
+    box-shadow 0.14s ease;
+}
+button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button.secondary {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+}
+button.secondary:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  border-color: var(--text-faint);
+}
+
+button.danger {
+  background: var(--surface);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+}
+button.danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+
+/* ---- 表單 ---- */
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: 0.875rem;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.7rem;
+  color: var(--text);
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+}
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: var(--text-faint);
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+select {
+  cursor: pointer;
+}
+textarea {
+  resize: vertical;
+  min-height: 4.5rem;
+  line-height: 1.5;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+.field label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.field-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.field-row .field {
+  flex: 1;
+  min-width: 10rem;
+}
+
+.form-panel {
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+/* ---- 卡片/容器 ---- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 1.5rem;
+}
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.1rem;
+}
+
+/* ---- 分頁籤 ---- */
+
+.tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.tabs button {
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0.65rem 0.25rem;
+  margin-right: 1.25rem;
+}
+.tabs button:hover:not(:disabled) {
+  background: transparent;
+  color: var(--text);
+}
+.tabs button.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ---- 可點擊列(活動/方案列表) ---- */
+
+.row-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.row-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.95rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.row-item:last-child {
+  border-bottom: none;
+}
+
+/* row-item-clickable——可點擊進入詳情的列。<button> 重置成跟
+   <div> 外觀一致,只加 cursor/hover 提示這整行可點(對齊
+   frontend-design-guidelines:可點擊元素要有 cursor:pointer 與 hover
+   回饋)。 */
+.row-item-clickable {
+  width: 100%;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 0.95rem 0.6rem;
+  margin: 0 -0.6rem;
+  transition: background 0.12s ease;
+}
+.row-item-clickable:hover {
+  background: var(--surface-sunken);
+}
+.row-item-clickable:active {
+  transform: none; /* 整行點擊不需要按鈕的位移回饋,避免內容跳動 */
+}
+.row-item-clickable:last-child {
+  border-bottom: none;
+}
+
+.row-title {
+  font-weight: 600;
+  font-size: 0.925rem;
+}
+.row-sub {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 0.15rem;
+}
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+/* ---- 狀態標籤 ---- */
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.25rem 0.65rem;
+  border-radius: 100px;
+  white-space: nowrap;
+}
+.status-pill::before {
+  content: '';
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+.status-pill[data-status='draft'] {
+  color: var(--status-draft-fg);
+  background: var(--status-draft-bg);
+}
+.status-pill[data-status='scheduled'] {
+  color: var(--status-scheduled-fg);
+  background: var(--status-scheduled-bg);
+}
+.status-pill[data-status='active'] {
+  color: var(--status-active-fg);
+  background: var(--status-active-bg);
+}
+.status-pill[data-status='paused'] {
+  color: var(--status-paused-fg);
+  background: var(--status-paused-bg);
+}
+.status-pill[data-status='ended'] {
+  color: var(--status-ended-fg);
+  background: var(--status-ended-bg);
+}
+.status-pill[data-status='published'] {
+  color: var(--status-published-fg);
+  background: var(--status-published-bg);
+}
+
+/* status-select——活動詳情頁的狀態下拉,外觀比照 status-pill 的配色,
+   讓「目前狀態」跟「可以改成什麼狀態」視覺上是同一個語意系統,而非
+   切換成完全不同風格的表單元件。 */
+.status-select {
+  font-weight: 700;
+  border-radius: 100px;
+  padding: 0.4rem 1.6rem 0.4rem 0.9rem;
+  border-color: var(--border-strong);
+}
+
+/* ---- 文字狀態 ---- */
+
+.error-text {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--danger);
+  font-size: 0.825rem;
+  background: var(--danger-soft);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  margin: 0 0 0.85rem;
+}
+
+.empty-state {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 2.5rem 1rem;
+  font-size: 0.875rem;
+}
+
+.loading-state {
+  color: var(--text-faint);
+  text-align: center;
+  padding: 2.5rem 1rem;
+  font-size: 0.875rem;
+}
+
+/* ---- 麵包屑返回 ---- */
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.825rem;
+  font-weight: 600;
+  padding: 0.3rem 0;
+  margin-bottom: 1.25rem;
+  cursor: pointer;
+}
+.back-link:hover:not(:disabled) {
+  background: none;
+  color: var(--accent);
+}
+
+/* ---- 登入畫面 ---- */
+
+.auth-shell {
+  max-width: 400px;
+  margin: 4.5rem auto 0;
+  padding: 0 1.5rem;
+}
+.auth-intro {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  margin: 0 0 1.25rem;
+}
+
+/* ---- 方案細節展開區 ----
+   參考使用者分享的真實旅行社團體行程卡片(出發日/團費並排的資訊卡、
+   帶 ✓ 的行程亮點清單、CTA 按鈕),用同一套視覺語彙呈現業主填寫的
+   方案細節——讓業主在填表當下就能預覽前台大致會呈現的資訊密度,
+   而非只看到一堆裸資料。 */
+
+.plan-detail {
+  padding: 0.25rem 0.6rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+/* plan-departures——出發日梯次清單(2026-10 取代原本單一出發日的
+   plan-fare-card,見 PlanDetail.departures 的完整說明:真實旅行社
+   行程常有多個梯次,各自獨立報價)。 */
+.plan-departures {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.plan-days-badge {
+  align-self: flex-start;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 0.2rem 0.6rem;
+  border-radius: 100px;
+}
+.plan-departures-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.5rem;
+}
+.plan-departure-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+}
+.plan-departure-date {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.plan-departure-weekday {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.plan-departure-price {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+/* departure-row——建立/編輯方案表單裡,單一梯次的輸入列(見
+   CreateAdPlanForm 的 addDeparture/removeDeparture)。 */
+.departure-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+@media (max-width: 560px) {
+  .departure-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.plan-desc {
+  font-size: 0.85rem;
+  color: var(--text);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.plan-highlights {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.plan-highlights li {
+  font-size: 0.85rem;
+  padding-left: 1.3rem;
+  position: relative;
+}
+.plan-highlights li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--status-active-fg);
+  font-weight: 700;
+}
+
+.plan-cta-row {
+  display: flex;
+}
+.plan-cta-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 0.6rem 1.25rem;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: background 0.14s ease;
+}
+.plan-cta-link:hover {
+  background: var(--accent-hover);
+}
+.plan-cta-link-disabled {
+  background: var(--surface-sunken);
+  color: var(--text-faint);
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}

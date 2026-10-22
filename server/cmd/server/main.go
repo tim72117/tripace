@@ -444,6 +444,16 @@ func main() {
 	// /public/plan-ai/ 這個前綴,不影響 /public/{token} 的 SPA fallback
 	// 路由。
 	mux.Handle("/public/plan-ai/", srv.Routes())
+	// /public/ad-plans(見 internal/api/ad_plans_public.go
+	// handlePublicAdPlans 的完整說明)——業主投放方案的公開讀取端點,供
+	// 主題介紹頁(KyotoPage.tsx 等)依 placement 查詢要顯示的方案。
+	// 2026-10 新增時,見上面 /public/geo/ 與 /public/blog/ 兩段註解反覆
+	// 強調的同一個陷阱:只在 internal/api/api.go 的 Routes() 裡
+	// mux.HandleFunc 註冊是不夠的,這裡的外層 mux 用白名單式前綴轉發,
+	// 沒有明確轉發的新路徑一律落到下面的 SPA fallback(回 200 +
+	// index.html,不是顯眼的 404),是正式環境會靜默故障、本機測試
+	// 時第一次就踩到的既定陷阱——這裡補上避免重蹈覆轍。
+	mux.Handle("/public/ad-plans", srv.Routes())
 
 	// 管理後台(/admin/api/*)預設拆分成獨立的 cmd/adminserver binary/
 	// Cloud Run 服務(見 server/cmd/adminserver/main.go),那條部署路徑

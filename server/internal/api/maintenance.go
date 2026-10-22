@@ -873,3 +873,56 @@ func (s *Server) handleMaintenanceFieldMaskSet(w http.ResponseWriter, r *http.Re
 		"appliesWithinSec": int(ratelimits.RefreshInterval / time.Second),
 	})
 }
+
+// POST /internal/maintenance/partners
+// Body: {"email": "既有 Tripace 使用者的 email", "name": "業主對外顯示名稱"}
+//
+// 供 tripace-cli 的 partner-grant 指令使用——把一個既有的一般 Tripace
+// 使用者帳號標記為廣告業主/聯盟行銷夥伴身分(見 store.partnerRow、
+// internal/partnerconsole 的完整說明:partner 控制台不再有獨立的
+// register/login,改成消費一般使用者 JWT,「誰是業主」完全由這張
+// partners 表的 user_id 關聯決定)。
+//
+// 這是純內部維運操作,目前沒有自助申請流程(2026-10 明確決定延後)——
+// 能打到這支端點代表呼叫端已經通過 tripace-cli 的一般登入(跟其餘
+// maintenance 端點同一套權限假設:能拿到 CLI token 的人就有權限,
+// 不額外加 email 白名單這類二次授權機制,理由同本檔案開頭「維運端點」
+// 的完整說明)。
+//
+// Email 對應的使用者不存在時回 404;這個使用者已經是業主時回 409
+// (ErrAlreadyExists,理由同 CreateContentPage 的既有慣例:先查後建,
+// 避免解析跨 driver 不一致的 unique constraint 錯誤字串)——呼叫端
+// (CLI)據此分辨「這個帳號打錯了」還是「已經開通過,不用重複執行」。
+func (s *Server) handleMaintenancePartnerGrant(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Email string `json:"email"`
+		Name  string `json:"name"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	email := strings.TrimSpace(strings.ToLower(in.Email))
+	name := strings.TrimSpace(in.Name)
+	if email == "" || name == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "email、name 皆為必填")
+		return
+	}
+
+	user, _, err := s.store.FindUserByEmail(email)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "not_found", "找不到 email 為「"+email+"」的 Tripace 使用者,請先確認此帳號已在主站註冊過")
+		return
+	}
+
+	partner, err := s.store.CreatePartner(user.ID, name)
+	if err != nil {
+		if err == store.ErrAlreadyExists {
+			writeErr(w, http.StatusConflict, "already_exists", "這個使用者已經是業主,不需要重複開通")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "create_failed", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, partner)
+}
