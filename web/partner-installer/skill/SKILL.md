@@ -27,12 +27,23 @@ description: 協助廣告業主/聯盟行銷夥伴透過 partner-cli 登入 Trip
 
 `partner-cli` 的登入身分**跟 Tripace 主站一般使用者帳號是同一套**（不是獨立的業主密碼系統）——業主必須先在 `https://tripace.shuttle.tools`（或本機開發環境）用 email/password 註冊過一般帳號，並由內部窗口透過 `tripace-cli partner-grant` 開通業主身分，才能用這支 CLI 操作：
 
+**優先用瀏覽器核准登入，不要請使用者把密碼貼進對話或指令裡**：
+
+```bash
+partner-cli login -web -api <partnerserver URL> -main-api <主站 URL>
+```
+
+執行後會自動開啟瀏覽器到核准頁面（若沒有自動開啟，會印出網址讓使用者手動開），使用者在瀏覽器登入並按下核准，CLI 就會收到登入憑證。整個過程密碼不會經過終端機。`login` 沒給 `-email`/`-password` 時預設就是這個流程，`-web` 可以省略。5 分鐘內沒核准會逾時，重新執行即可。
+
+只有使用者明確要求、或環境無法開瀏覽器時，才改用帳密登入：
+
 ```bash
 partner-cli login -email <email> -password <password> -api <partnerserver URL> -main-api <主站 URL>
 ```
 
 - `-api`：partner 控制台後端（`partnerserver`）的 URL，正式環境與主站同源部署時，`-main-api` 可以省略（會自動退回等於 `-api`）。
-- `-main-api`：主站登入端點（`/v1/auth/login`）所在的 URL——只有 `partnerserver` 跟主站用不同網域/port 部署時才需要分開指定（例如本機開發環境常見 `partnerserver` 跑在 `:8083`、主站跑在 `:8080`，這時兩個旗標都要給）。
+- `-main-api`：主站登入端點（`/v1/auth/login`、`/v1/cli-auth/*`）所在的 URL——只有 `partnerserver` 跟主站用不同網域/port 部署時才需要分開指定（例如本機開發環境常見 `partnerserver` 跑在 `:8083`、主站跑在 `:8080`，這時兩個旗標都要給）。
+- `-console`：核准頁面所在的前端網址，只有本機開發前端跟主站 API 不同 origin 時才需要，正式環境不用給。
 
 **不確定 `-api`/`-main-api` 該填什麼時，優先詢問使用者這兩項服務目前部署在哪裡**，不要自行猜測網址。
 
@@ -66,10 +77,10 @@ partner-cli campaign list
 ### 3. 修改活動基本資料（含投放頁面）
 
 ```bash
-partner-cli campaign update -id <活動ID> -name <活動名稱> [-placement <投放頁面slug>] [-start YYYY-MM-DD] [-end YYYY-MM-DD]
+partner-cli campaign update -id <活動ID> [-name <活動名稱>] [-placement <投放頁面slug>] [-start YYYY-MM-DD] [-end YYYY-MM-DD]
 ```
 
-**這是全量替換，不是部分欄位合併**——`-name` 必填，且若只想改其中一項（例如只改 `-placement`），其他欄位也要一併帶上目前的值重新傳入（先用 `campaign list` 或 `campaign status` 查出目前完整的活動資料），不然會把沒帶的欄位清空（例如沒帶 `-start` 會把開始日期清空）。這是目前唯一能設定/修改投放頁面（`placement`）的指令，不需要再引導使用者到網頁版控制台操作。
+**只會修改有給的旗標，沒給的欄位保留原值**——例如只改投放頁面就只給 `-placement`，名稱和檔期不會被動到。至少要給一個旗標。想清空某個欄位時明確傳空字串（例如 `-placement ""`）。這是設定/修改投放頁面（`placement`）的指令，不需要引導使用者到網頁版控制台操作。
 
 ### 4. 查詢可投放頁面
 
@@ -109,11 +120,16 @@ partner-cli campaign delete -id <活動ID>
 ### 1. 建立方案
 
 ```bash
-partner-cli plan create -campaign <活動ID> -title <方案標題> [-category <分類>] [-detail <JSON字串>]
+partner-cli plan create -campaign <活動ID> -title <方案標題> [-category <分類>] [方案內容旗標]
 ```
 
 - `-category`：選填，自由字串，例如 `display`、`deeplink`、`group_tour`，用來分類方案性質，後端不驗證合法值。
-- `-detail`：選填，一份 JSON 字串，描述方案的實際呈現內容。**這是最容易出錯的地方，下一節「detail 欄位的正確格式」務必照著填**，不要自行發明欄位名稱。
+- 方案內容（選填）有三種給法，**優先用前兩種，不要手寫 JSON 字串**（引號、`\n`、`$` 跳脫和中文轉碼都很容易出錯）：
+  1. **結構化旗標**（CLI 會自己組 JSON 並檢查格式）：`-departure "日期|星期|團費"`（可重複，每個旗標一個梯次，例如 `-departure "2026-10-27|星期二|$21,900"`；星期可留空 `"2026-10-27||$21,900"`）、`-highlight "文字"`（可重複，每個旗標一行亮點）、`-days`、`-original-price`、`-desc`、`-cta-label`、`-landing-url`。含 `$`、`|` 或空白的值要加引號，bash 用單引號最單純。
+  2. **`-detail-file <路徑>`**：從 UTF-8 檔案讀整份 JSON，`-` 代表從 stdin 讀。內容多或含中文時最穩，先把 JSON 寫成 UTF-8 檔案再傳路徑。Windows PowerShell 5.1 的 `>` 預設存成 UTF-16，CLI 會偵測到並提示改存 UTF-8。
+  3. `-detail '<JSON字串>'`：整份 JSON 字串，與 `-detail-file` 擇一。
+- 欄位名稱與格式必須照下一節「detail 欄位的正確格式」，不要自行發明欄位名稱。CLI 會檢查型別（例如 `price` 給純數字會被拒絕）並對未知欄位印出警告。
+- CLI 與後端都會拒絕含亂碼字元（U+FFFD）的文字，避免中文被 shell 轉錯碼後默默存進去。遇到這個錯誤時，改用 `-detail-file` 或請使用者到網頁版控制台輸入。
 
 新建立的方案狀態固定是 `draft`，一樣要手動轉成 `published` 才會顯示在前台（見「轉換方案狀態」）。
 
@@ -142,7 +158,7 @@ partner-cli plan create -campaign <活動ID> -title <方案標題> [-category <�
 - `landingUrl`：若要讓方案卡片顯示「可點擊的 CTA 按鈕」，這個欄位必須有值；沒有填的話，即使填了 `ctaLabel` 也不會顯示任何按鈕（因為沒有連結可以點）。
 - 所有欄位皆為選填——沒有要用到的欄位可以完全省略，不需要填空字串佔位。
 
-**組這個 JSON 字串時要特別注意跳脫**：在 shell 指令列傳遞含雙引號的 JSON 字串時，依照使用者的作業系統/shell（bash 用單引號包整個字串最單純，PowerShell 需要額外處理雙引號跳脫），協助使用者時應先確認他們在用哪種終端機再給出對應的引號寫法，避免 JSON 字串被 shell 截斷或跳脫錯誤導致 `-detail` 不是合法 JSON 而被拒絕。
+**要手寫 JSON 字串（`-detail`）時要特別注意跳脫**：在 shell 指令列傳遞含雙引號的 JSON 字串時，依照使用者的作業系統/shell（bash 用單引號包整個字串最單純，PowerShell 需要額外處理雙引號跳脫），先確認他們在用哪種終端機再給出對應的引號寫法。能用結構化旗標或 `-detail-file` 就不要走這條路。
 
 ### 3. 列出某活動底下的方案
 
@@ -153,10 +169,17 @@ partner-cli plan list -campaign <活動ID>
 ### 4. 更新既有方案
 
 ```bash
-partner-cli plan update -id <方案ID> -title <方案標題> [-category <分類>] [-detail <JSON字串>]
+partner-cli plan update -id <方案ID> [-title <方案標題>] [-category <分類>] [方案內容旗標]
 ```
 
-**這是全量替換，不是部分欄位合併**——`-title` 必填，且若要保留原本的 `detail` 內容只改其中一項，需要先用 `plan list` 查出目前完整的 detail JSON，在那份 JSON 的基礎上修改後整份重新傳入，而不是只傳要改的那一兩個欄位（那樣會把其他欄位清空）。
+**只會修改有給的旗標，沒給的欄位保留原值**，至少要給一個旗標。方案內容旗標的行為：
+- 結構化旗標只覆蓋有給的欄位，其他欄位保留。例如 `plan update -id <方案ID> -desc "新說明"` 只改說明，梯次、亮點、價格都不動。
+- `-departure` 一旦出現，就用這次給的全部梯次**取代**現有的所有梯次（要保留舊梯次就要一併重新給）；`-highlight` 同理。
+- 給 `-detail`/`-detail-file` 則**整份取代**現有內容，沒寫進去的欄位會消失。
+- 給空字串（例如 `-desc ""`）會移除該欄位。
+- 若現有內容本身已含亂碼，只改其他欄位會被擋下並提示，這時用 `-detail-file` 整份重新提供。
+
+成功時回傳更新後的完整方案物件，不需要再另外跑 `plan list` 確認。
 
 ### 5. 轉換方案狀態
 
@@ -167,7 +190,7 @@ partner-cli plan status -id <方案ID> -status <draft|published>
 只有 `published` 狀態、且所屬活動是 `active` 狀態，方案才會出現在對應的前台頁面上——兩個條件缺一不可。協助使用者除錯「為什麼我的方案沒有顯示在網頁上」時，依序檢查：
 1. 方案本身的 `status` 是否為 `published`（用 `plan list` 確認）。
 2. 所屬活動的 `status` 是否為 `active`（用 `campaign list` 確認）。
-3. 活動是否有設定正確的投放頁面（`placement`）——用 `campaign placements` 查出合法 slug，再用 `campaign update -id <活動ID> -name <活動名稱> -placement <slug>`（記得帶上其他目前的欄位值，見第二節第 3 點的全量替換說明）修正。
+3. 活動是否有設定正確的投放頁面（`placement`）——用 `campaign placements` 查出合法 slug，再用 `campaign update -id <活動ID> -placement <slug>` 修正（只會改投放頁面，名稱和檔期不變）。
 
 ### 6. 刪除方案
 
@@ -191,8 +214,8 @@ partner-cli version
 2. 確認使用者已經有 Tripace 一般帳號、且已被內部窗口開通業主身分（`tripace-cli partner-grant`）——這不是 `partner-cli` 能自助完成的前置條件。
 3. 執行 `partner-cli login -email ... -password ... -api ... [-main-api ...]` 登入，確認回傳業主資訊而非錯誤訊息。
 4. 執行 `partner-cli campaign create -name ...` 建立活動，記下回傳的 `id`。
-5. 執行 `partner-cli plan create -campaign <活動ID> -title ... -detail '<JSON>'` 建立方案，`detail` 格式務必照第三節「detail 欄位的正確格式」填寫，`price` 用帶格式字串、`departures` 用陣列支援多梯次。
+5. 執行 `partner-cli plan create -campaign <活動ID> -title ... -departure "日期|星期|團費" -highlight "..." ...` 建立方案（優先用結構化旗標或 `-detail-file`，欄位格式見第三節「detail 欄位的正確格式」），團費用帶格式字串、多個梯次就重複 `-departure`。
 6. 方案內容確認無誤後，執行 `partner-cli plan status -id <方案ID> -status published` 發布。
 7. 執行 `partner-cli campaign status -id <活動ID> -status active` 啟用活動——方案要出現在前台，活動跟方案兩者的狀態都要到位（`active` + `published`），缺一不可。
 8. 若方案沒有出現在前台頁面，依序檢查方案狀態、活動狀態、活動的投放頁面（`placement`，用 `campaign placements` 查合法清單、`campaign update` 設定）三項。
-9. 需要調整方案內容時用 `plan update`（全量替換，先查出既有 detail 再修改重傳）；需要下架時把對應的 `campaign status`/`plan status` 改回非 `active`/`published` 的狀態，而非直接刪除（除非使用者明確要求永久移除）。
+9. 需要調整方案內容時用 `plan update`（只改有給的旗標，沒給的保留）；需要下架時把對應的 `campaign status`/`plan status` 改回非 `active`/`published` 的狀態，而非直接刪除（除非使用者明確要求永久移除）。

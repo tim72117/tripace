@@ -51,9 +51,16 @@ func (c *httpClient) do(method, path string, body any) (map[string]any, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	var result map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
 		return nil, err
+	}
+	// 刪除成功回 204 空內容,不能硬解析 JSON。
+	result := map[string]any{}
+	if len(bytes.TrimSpace(raw)) > 0 {
+		if err := json.Unmarshal(raw, &result); err != nil {
+			return nil, err
+		}
 	}
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("server error %d: %v", resp.StatusCode, result)

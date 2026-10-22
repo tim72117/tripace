@@ -2,27 +2,12 @@
 // 比照 server/cmd/cli(一般使用者/維運用的 tripace-cli)的設計精神,
 // 但服務的是不同的身分與不同的 API:
 //
-//   - 身分:業主用自己的 Tripace 帳號(email/password)登入(見 login.go),
-//     不走 tripace-cli 的瀏覽器核准/device code 流程——業主本來就是
-//     用密碼登入 web/partner,CLI 直接接受密碼旗標最直覺。
+//   - 身分:用自己的 Tripace 帳號登入(見 login.go),預設走瀏覽器核准
+//     (-web),也支援 -email/-password。
 //   - API:只打 partnerserver 的 /partner/api/*(campaign/plan 的
 //     CRUD),不碰 /internal/*、/v1/trips 等一般使用者或維運端點。
 //
-// 子命令:
-//
-//	login            -email ... -password ... [-api partnerserver URL] [-main-api 主站 URL]
-//	campaign list
-//	campaign create  -name 文字 [-start YYYY-MM-DD] [-end YYYY-MM-DD]
-//	campaign status  -id ID -status draft|scheduled|active|paused|ended
-//	campaign delete  -id ID
-//	plan list        -campaign 活動ID
-//	plan create      -campaign 活動ID -title 文字 [-category 文字] [-detail JSON]
-//	plan update      -id ID -title 文字 [-category 文字] [-detail JSON]
-//	plan status      -id ID -status draft|published
-//	plan delete      -id ID
-//	version
-//
-// 所有輸出為 JSON。
+// 子命令與旗標見 usage()。所有輸出為 JSON。
 package main
 
 import (
@@ -70,16 +55,21 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `partner-cli — 廣告業主控制台的終端機工具
 
 子命令:
-  login              -email ... -password ... [-api partnerserver URL] [-main-api 主站 URL]
+  login              [-web | -email ... -password ...] [-api partnerserver URL] [-main-api 主站 URL] [-console 前端 origin]
   campaign list      [-api ...]
   campaign create    -name 文字 [-placement slug] [-start YYYY-MM-DD] [-end YYYY-MM-DD] [-api ...]
-  campaign update    -id ID -name 文字 [-placement slug] [-start YYYY-MM-DD] [-end YYYY-MM-DD] [-api ...]
+  campaign update    -id ID [-name 文字] [-placement slug] [-start YYYY-MM-DD] [-end YYYY-MM-DD] [-api ...]   (沒給的欄位保留原值)
   campaign status    -id ID -status draft|scheduled|active|paused|ended [-api ...]
   campaign placements [-api ...]
   campaign delete    -id ID [-api ...]
   plan list        -campaign 活動ID [-api ...]
-  plan create      -campaign 活動ID -title 文字 [-category 文字] [-detail JSON] [-api ...]
-  plan update      -id ID -title 文字 [-category 文字] [-detail JSON] [-api ...]
+  plan create      -campaign 活動ID -title 文字 [-category 文字] [方案內容旗標] [-api ...]
+  plan update      -id ID [-title 文字] [-category 文字] [方案內容旗標] [-api ...]   (沒給的欄位保留原值)
+
+方案內容旗標(create/update 共用):
+  -detail JSON | -detail-file 檔案(UTF-8,'-' 為 stdin)   整份內容
+  -departure "日期|星期|團費"(可重複)  -highlight 文字(可重複)
+  -days  -original-price  -desc  -cta-label  -landing-url
   plan status      -id ID -status draft|published [-api ...]
   plan delete      -id ID [-api ...]
   version`)
@@ -173,6 +163,11 @@ func cmdCampaignCreate(args []string) {
 	if *name == "" {
 		fatal("campaign create 需要 -name")
 	}
+	for label, v := range map[string]string{"-name": *name, "-placement": *placement} {
+		if err := cleanText(label, v); err != nil {
+			fatal("campaign create: %v", err)
+		}
+	}
 
 	c := newHTTPClient(*apiURLFlag)
 	res, err := c.do("POST", "/partner/api/campaigns", map[string]string{
@@ -184,32 +179,53 @@ func cmdCampaignCreate(args []string) {
 	output(res)
 }
 
-// cmdCampaignUpdate 走 PUT /partner/api/campaigns/{id}(見
-// partnerconsole.go updateCampaign 的完整說明:全量替換,不是部分欄位
-// 合併,-name 必填)——這是目前唯一能設定/修改 placement(投放頁面)的
-// 端點,2026-10 補上對應 CLI 指令前,CLI 使用者完全無法設定投放頁面,
-// 必須中途切換到網頁版控制台操作,流程不完整。
+// cmdCampaignUpdate 只改有給旗標的欄位:先讀出現有活動,沒給的欄位沿用原值
+// 再整份送 PUT(後端仍是全量替換)。明確傳空字串(例如 -placement "")代表
+// 清空該欄位。
 func cmdCampaignUpdate(args []string) {
 	fs := flag.NewFlagSet("campaign update", flag.ExitOnError)
 	id := fs.String("id", "", "活動 ID（必填）")
-	name := fs.String("name", "", "活動名稱（必填）")
-	placement := fs.String("placement", "", "投放頁面 slug（選填，例如 kyoto-kiyomizu；留空會清空目前設定的投放頁面）")
-	start := fs.String("start", "", "開始日期 YYYY-MM-DD（選填）")
-	end := fs.String("end", "", "結束日期 YYYY-MM-DD（選填）")
+	name := fs.String("name", "", "活動名稱（選填，沒給就保留原值）")
+	placement := fs.String("placement", "", "投放頁面 slug（選填，沒給就保留原值；給空字串會清空）")
+	start := fs.String("start", "", "開始日期 YYYY-MM-DD（選填，沒給就保留原值）")
+	end := fs.String("end", "", "結束日期 YYYY-MM-DD（選填，沒給就保留原值）")
 	apiURLFlag := fs.String("api", "http://localhost:8082", "partnerserver URL")
 	_ = fs.Parse(args)
+	visited := visitedFlags(fs)
 
 	if *id == "" {
 		fatal("campaign update 需要 -id")
 	}
-	if *name == "" {
-		fatal("campaign update 需要 -name")
+	if !visited["name"] && !visited["placement"] && !visited["start"] && !visited["end"] {
+		fatal("campaign update 至少要指定一個要修改的欄位（-name/-placement/-start/-end），沒給的欄位會保留原值")
+	}
+	if visited["name"] && *name == "" {
+		fatal("campaign update: -name 不能是空字串")
 	}
 
 	c := newHTTPClient(*apiURLFlag)
-	res, err := c.do("PUT", "/partner/api/campaigns/"+*id, map[string]string{
-		"name": *name, "placement": *placement, "startDate": *start, "endDate": *end,
-	})
+	cur, err := c.do("GET", "/partner/api/campaigns/"+*id, nil)
+	if err != nil {
+		fatal("campaign update: 讀取現有活動失敗: %v", err)
+	}
+	next := map[string]string{
+		"name":      strField(cur, "name"),
+		"placement": strField(cur, "placement"),
+		"startDate": strField(cur, "startDate"),
+		"endDate":   strField(cur, "endDate"),
+	}
+	for flagName, key := range map[string]string{"name": "name", "placement": "placement", "start": "startDate", "end": "endDate"} {
+		if visited[flagName] {
+			next[key] = map[string]string{"name": *name, "placement": *placement, "start": *start, "end": *end}[flagName]
+		}
+	}
+	for key, v := range next {
+		if err := cleanText(key, v); err != nil {
+			fatal("campaign update: %v", err)
+		}
+	}
+
+	res, err := c.do("PUT", "/partner/api/campaigns/"+*id, next)
 	if err != nil {
 		fatal("campaign update: %v", err)
 	}
@@ -277,9 +293,10 @@ func cmdPlanCreate(args []string) {
 	campaignID := fs.String("campaign", "", "活動 ID（必填）")
 	title := fs.String("title", "", "方案標題（必填）")
 	category := fs.String("category", "", "方案分類（選填，例如 display/deeplink/sponsorship）")
-	detail := fs.String("detail", "", "方案內容 JSON 字串（選填，不帶時為空物件）")
+	df := registerDetailFlags(fs)
 	apiURLFlag := fs.String("api", "http://localhost:8082", "partnerserver URL")
 	_ = fs.Parse(args)
+	visited := visitedFlags(fs)
 
 	if *campaignID == "" {
 		fatal("plan create 需要 -campaign")
@@ -287,16 +304,19 @@ func cmdPlanCreate(args []string) {
 	if *title == "" {
 		fatal("plan create 需要 -title")
 	}
-	if *detail != "" {
-		var probe any
-		if err := json.Unmarshal([]byte(*detail), &probe); err != nil {
-			fatal("plan create: -detail 不是合法 JSON: %v", err)
+	for label, v := range map[string]string{"-title": *title, "-category": *category} {
+		if err := cleanText(label, v); err != nil {
+			fatal("plan create: %v", err)
 		}
+	}
+	detail, _, err := df.build("", visited, os.Stdin)
+	if err != nil {
+		fatal("plan create: %v", err)
 	}
 
 	c := newHTTPClient(*apiURLFlag)
 	res, err := c.do("POST", "/partner/api/campaigns/"+*campaignID+"/plans", map[string]string{
-		"title": *title, "category": *category, "detail": *detail,
+		"title": *title, "category": *category, "detail": detail,
 	})
 	if err != nil {
 		fatal("plan create: %v", err)
@@ -304,38 +324,59 @@ func cmdPlanCreate(args []string) {
 	output(res)
 }
 
-// cmdPlanUpdate 走 PUT /partner/api/plans/{id}(見 partnerconsole.go
-// updateAdPlan 的完整說明:全量替換,不是部分欄位合併)——跟
-// cmdPlanCreate 一樣要求 -title 必填、-detail 整串替換,不做「先查
-// 現有值再合併未指定欄位」這種隱式邏輯,避免過度工程(CLI 使用情境
-// 下,使用者通常是改完整份 detail JSON 一次送出,不是零散改單一
-// 欄位)。
+// cmdPlanUpdate 只改有給旗標的欄位:先讀出現有方案,沒給的欄位沿用原值,
+// detail 的結構化旗標(-departure/-days/...)只覆蓋有給的那幾個欄位。
+// 給 -detail/-detail-file 則整份取代現有內容。
 func cmdPlanUpdate(args []string) {
 	fs := flag.NewFlagSet("plan update", flag.ExitOnError)
 	id := fs.String("id", "", "方案 ID（必填）")
-	title := fs.String("title", "", "方案標題（必填）")
-	category := fs.String("category", "", "方案分類（選填）")
-	detail := fs.String("detail", "", "方案內容 JSON 字串（選填，整串替換現有內容）")
+	title := fs.String("title", "", "方案標題（選填，沒給就保留原值）")
+	category := fs.String("category", "", "方案分類（選填，沒給就保留原值）")
+	df := registerDetailFlags(fs)
 	apiURLFlag := fs.String("api", "http://localhost:8082", "partnerserver URL")
 	_ = fs.Parse(args)
+	visited := visitedFlags(fs)
 
 	if *id == "" {
 		fatal("plan update 需要 -id")
 	}
-	if *title == "" {
-		fatal("plan update 需要 -title")
+	if !visited["title"] && !visited["category"] && !df.any(visited) {
+		fatal("plan update 至少要指定一個要修改的欄位（-title/-category 或任一個方案內容旗標），沒給的欄位會保留原值")
 	}
-	if *detail != "" {
-		var probe any
-		if err := json.Unmarshal([]byte(*detail), &probe); err != nil {
-			fatal("plan update: -detail 不是合法 JSON: %v", err)
-		}
+	if visited["title"] && *title == "" {
+		fatal("plan update: -title 不能是空字串")
 	}
 
 	c := newHTTPClient(*apiURLFlag)
-	res, err := c.do("PUT", "/partner/api/plans/"+*id, map[string]string{
-		"title": *title, "category": *category, "detail": *detail,
-	})
+	cur, err := c.do("GET", "/partner/api/plans/"+*id, nil)
+	if err != nil {
+		fatal("plan update: 讀取現有方案失敗: %v", err)
+	}
+	next := map[string]string{
+		"title":    strField(cur, "title"),
+		"category": strField(cur, "category"),
+		"detail":   strField(cur, "detail"),
+	}
+	if visited["title"] {
+		next["title"] = *title
+	}
+	if visited["category"] {
+		next["category"] = *category
+	}
+	detail, changed, err := df.build(next["detail"], visited, os.Stdin)
+	if err != nil {
+		fatal("plan update: %v", err)
+	}
+	if changed {
+		next["detail"] = detail
+	}
+	for key, v := range next {
+		if err := cleanText(key, v); err != nil {
+			fatal("plan update: %v", err)
+		}
+	}
+
+	res, err := c.do("PUT", "/partner/api/plans/"+*id, next)
 	if err != nil {
 		fatal("plan update: %v", err)
 	}
@@ -379,6 +420,11 @@ func cmdPlanDelete(args []string) {
 }
 
 // --- helpers ---------------------------------------------------------------
+
+func strField(m map[string]any, key string) string {
+	s, _ := m[key].(string)
+	return s
+}
 
 func output(v any) {
 	b, err := json.MarshalIndent(v, "", "  ")

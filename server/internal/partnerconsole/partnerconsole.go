@@ -24,6 +24,8 @@ package partnerconsole
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/tim72117/tripace/internal/auth"
 	"github.com/tim72117/tripace/internal/model"
@@ -64,6 +66,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /partner/api/campaigns/{campaignID}/plans", h.withPartner(h.listAdPlans))
 	mux.HandleFunc("POST /partner/api/campaigns/{campaignID}/plans", h.withPartner(h.createAdPlan))
+	mux.HandleFunc("GET /partner/api/plans/{id}", h.withPartner(h.getAdPlan))
 	mux.HandleFunc("PUT /partner/api/plans/{id}", h.withPartner(h.updateAdPlan))
 	mux.HandleFunc("PUT /partner/api/plans/{id}/status", h.withPartner(h.setAdPlanStatus))
 	mux.HandleFunc("DELETE /partner/api/plans/{id}", h.withPartner(h.deleteAdPlan))
@@ -167,6 +170,10 @@ func (h *Handler) createCampaign(w http.ResponseWriter, r *http.Request, p *Part
 		writeErr(w, http.StatusBadRequest, "bad_request", "name is required")
 		return
 	}
+	if hasBadText(body.Name, body.Placement, body.StartDate, body.EndDate) {
+		writeErr(w, http.StatusBadRequest, "invalid_text", badTextMessage)
+		return
+	}
 	c, err := h.Store.CreateCampaign(p.ID, body.Name, body.Placement, body.StartDate, body.EndDate)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal", "failed to create campaign")
@@ -190,6 +197,10 @@ func (h *Handler) updateCampaign(w http.ResponseWriter, r *http.Request, p *Part
 	var body createCampaignRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
 		writeErr(w, http.StatusBadRequest, "bad_request", "name is required")
+		return
+	}
+	if hasBadText(body.Name, body.Placement, body.StartDate, body.EndDate) {
+		writeErr(w, http.StatusBadRequest, "invalid_text", badTextMessage)
 		return
 	}
 	if err := h.Store.UpdateCampaignForPartner(p.ID, id, body.Name, body.Placement, body.StartDate, body.EndDate); err != nil {
@@ -265,12 +276,25 @@ func (h *Handler) createAdPlan(w http.ResponseWriter, r *http.Request, p *Partne
 		writeErr(w, http.StatusBadRequest, "bad_request", "title is required")
 		return
 	}
+	if hasBadText(body.Category, body.Title, body.Detail) {
+		writeErr(w, http.StatusBadRequest, "invalid_text", badTextMessage)
+		return
+	}
 	plan, err := h.Store.CreateAdPlanForPartner(p.ID, campaignID, body.Category, body.Title, body.Detail)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "not_found", "campaign not found")
 		return
 	}
 	writeJSON(w, http.StatusCreated, plan)
+}
+
+func (h *Handler) getAdPlan(w http.ResponseWriter, r *http.Request, p *Partner) {
+	plan, err := h.Store.GetAdPlanForPartner(p.ID, r.PathValue("id"))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "not_found", "plan not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
 }
 
 func (h *Handler) updateAdPlan(w http.ResponseWriter, r *http.Request, p *Partner) {
@@ -280,11 +304,20 @@ func (h *Handler) updateAdPlan(w http.ResponseWriter, r *http.Request, p *Partne
 		writeErr(w, http.StatusBadRequest, "bad_request", "title is required")
 		return
 	}
+	if hasBadText(body.Category, body.Title, body.Detail) {
+		writeErr(w, http.StatusBadRequest, "invalid_text", badTextMessage)
+		return
+	}
 	if err := h.Store.UpdateAdPlanForPartner(p.ID, id, body.Category, body.Title, body.Detail); err != nil {
 		writeErr(w, http.StatusNotFound, "not_found", "plan not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"id": id})
+	plan, err := h.Store.GetAdPlanForPartner(p.ID, id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "not_found", "plan not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
 }
 
 func (h *Handler) setAdPlanStatus(w http.ResponseWriter, r *http.Request, p *Partner) {
@@ -320,6 +353,19 @@ func (h *Handler) deleteAdPlan(w http.ResponseWriter, r *http.Request, p *Partne
 }
 
 // --- helpers ---------------------------------------------------------------
+
+const badTextMessage = "text contains invalid characters (U+FFFD); the client likely sent a mis-encoded string — resend as UTF-8"
+
+// hasBadText 擋下已經損壞的文字:Go 的 JSON 解碼會把非法 UTF-8 位元組靜默
+// 換成 U+FFFD,不擋的話亂碼會被當成正常內容存進資料庫,且無法還原。
+func hasBadText(ss ...string) bool {
+	for _, s := range ss {
+		if !utf8.ValidString(s) || strings.ContainsRune(s, utf8.RuneError) {
+			return true
+		}
+	}
+	return false
+}
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
