@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react'
 import { api, getToken, type AdPlan, type Campaign, type Partner, type Placement } from './api'
+import Select from './Select'
+import DateInput from './DateInput'
+
+const CAMPAIGN_STATUS_OPTIONS = ['draft', 'scheduled', 'active', 'paused', 'ended'].map((s) => ({ value: s, label: s }))
+const UNSET_PLACEMENT_OPTION = { value: '', label: '（尚未指定）' }
 
 // usePlacements——取代原先寫死在這個檔案裡的 PLACEMENT_OPTIONS 清單
 // (2026-10 改動),改成打 GET /partner/api/placements 查詢後端唯一一份
@@ -92,7 +97,7 @@ function AuthScreen({ onAuthed }: { onAuthed: (p: Partner) => void }) {
     <div className="app-shell" style={{ maxWidth: 400 }}>
       <h1>業主控制台</h1>
       <div className="card">
-        <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: 0 }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: 0 }}>
           使用你的 Tripace 帳號登入。若尚未擁有業主權限，請聯絡內部窗口開通。
         </p>
         <form onSubmit={handleSubmit}>
@@ -137,7 +142,7 @@ function Console({ partner, onLogout }: { partner: Partner; onLogout: () => void
     <div className="app-shell">
       <div className="app-header">
         <h1 style={{ marginBottom: 0 }}>業主控制台</h1>
-        <div className="who">
+        <div className="partner-badge">
           {partner.name}
           <button
             className="secondary"
@@ -229,22 +234,24 @@ function CampaignsPanel() {
       ) : campaigns.length === 0 ? (
         <p className="empty-state">還沒有任何活動，點右上角「+ 新增活動」建立第一個</p>
       ) : (
-        campaigns.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            className="campaign-row campaign-row-clickable"
-            onClick={() => setSelectedCampaignID(c.id)}
-          >
-            <div>
-              <div>{c.name}</div>
-              <div style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>
-                {c.startDate || '未設定開始日'} — {c.endDate || '未設定結束日'}
+        <div className="row-list">
+          {campaigns.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className="row-item row-item-clickable"
+              onClick={() => setSelectedCampaignID(c.id)}
+            >
+              <div>
+                <div className="row-title">{c.name}</div>
+                <div className="row-sub">
+                  {c.startDate || '未設定開始日'} — {c.endDate || '未設定結束日'}
+                </div>
               </div>
-            </div>
-            <span className="status-pill">{c.status}</span>
-          </button>
-        ))
+              <span className="status-pill" data-status={c.status}>{c.status}</span>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -338,36 +345,28 @@ function CampaignDetail({ campaignID, onBack }: { campaignID: string; onBack: ()
                 {campaign.startDate || '未設定開始日'} — {campaign.endDate || '未設定結束日'}
               </div>
             </div>
-            <select
+            <Select
               className="status-select"
               value={campaign.status}
               disabled={statusSubmitting}
-              onChange={(e) => handleStatusChange(e.target.value)}
-              aria-label="活動狀態"
-            >
-              <option value="draft">draft</option>
-              <option value="scheduled">scheduled</option>
-              <option value="active">active</option>
-              <option value="paused">paused</option>
-              <option value="ended">ended</option>
-            </select>
+              onChange={handleStatusChange}
+              ariaLabel="活動狀態"
+              options={CAMPAIGN_STATUS_OPTIONS}
+            />
           </div>
 
           <div className="field" style={{ maxWidth: '20rem' }}>
-            <label htmlFor="campaign-detail-placement">投放頁面</label>
-            <select
+            <label htmlFor="campaign-detail-placement" id="campaign-detail-placement-label">
+              投放頁面
+            </label>
+            <Select
               id="campaign-detail-placement"
+              labelId="campaign-detail-placement-label"
               value={campaign.placement ?? ''}
               disabled={statusSubmitting}
-              onChange={(e) => handlePlacementChange(e.target.value)}
-            >
-              <option value="">（尚未指定）</option>
-              {placements.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              onChange={handlePlacementChange}
+              options={[UNSET_PLACEMENT_OPTION, ...placements]}
+            />
             {campaign.status === 'active' && campaign.placement && (
               <p className="row-sub" style={{ marginTop: '0.3rem' }}>
                 已發布的方案現在會顯示在「{placementLabel}」頁面上
@@ -677,11 +676,10 @@ function CreateAdPlanForm({ campaignID, onCreated }: { campaignID: string; onCre
         <label>出發日梯次（選填，可新增多個）</label>
         {detail.departures.map((dep, i) => (
           <div className="departure-row" key={i}>
-            <input
-              type="date"
-              aria-label={`梯次 ${i + 1} 出發日`}
+            <DateInput
+              ariaLabel={`梯次 ${i + 1} 出發日`}
               value={dep.date}
-              onChange={(e) => updateDeparture(i, 'date', e.target.value)}
+              onChange={(v) => updateDeparture(i, 'date', v)}
             />
             <input
               aria-label={`梯次 ${i + 1} 星期幾`}
@@ -791,24 +789,25 @@ function CreateCampaignForm({ onCreated }: { onCreated: () => void }) {
         <input id="campaign-name" value={name} onChange={(e) => setName(e.target.value)} required />
       </div>
       <div className="field">
-        <label htmlFor="campaign-placement">投放頁面（選填，之後可以再編輯）</label>
-        <select id="campaign-placement" value={placement} onChange={(e) => setPlacement(e.target.value)}>
-          <option value="">（尚未指定）</option>
-          {placements.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+        <label htmlFor="campaign-placement" id="campaign-placement-label">
+          投放頁面（選填，之後可以再編輯）
+        </label>
+        <Select
+          id="campaign-placement"
+          labelId="campaign-placement-label"
+          value={placement}
+          onChange={setPlacement}
+          options={[UNSET_PLACEMENT_OPTION, ...placements]}
+        />
       </div>
       <div className="field-row">
         <div className="field">
           <label htmlFor="campaign-start">開始日期</label>
-          <input id="campaign-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          <DateInput id="campaign-start" value={startDate} onChange={setStartDate} />
         </div>
         <div className="field">
           <label htmlFor="campaign-end">結束日期</label>
-          <input id="campaign-end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          <DateInput id="campaign-end" value={endDate} onChange={setEndDate} />
         </div>
       </div>
       {error && <p className="error-text">{error}</p>}
