@@ -93,7 +93,9 @@
 cd server
 go build ./... && go vet ./... && go test ./... -count=1
 go test -race ./internal/api ./internal/apigateway ./internal/store ./internal/geo -count=1
-test "$(go test ./cmd/server/ -list 'TestApplySEOMeta|TestStaticHandler' | grep -c '^Test')" = "9"
+# SEO 測試數量檢查已改成「下限 + 通過數等於列出數」(2026-10-23,v0.39.1,見 Dockerfile 的 SEO_TEST_MIN),不再寫死個數;
+# 這裡只列出目前符合的測試數,應 >= 10:
+go test ./cmd/server/ -list 'TestApplySEOMeta|TestStaticHandler' | grep -c '^Test'
 SEO_META_TEST_REQUIRE_REAL_BUILD=1 go test ./cmd/server/ -run 'TestApplySEOMeta|TestStaticHandler' -count=1
 gofmt -l .
 

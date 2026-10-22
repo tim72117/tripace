@@ -142,20 +142,35 @@ COPY --from=admin-build /webadmin/dist/. /src/server/cmd/server/webadmin/dist/
 # 2026-10 code review 抓到:go test -run 的 pattern 對不到任何測試時
 # (例如測試改名、拼字打錯),只會印一行「no tests to run」並仍然以
 # exit code 0 結束,不會讓這個 RUN 步驟失敗——Docker build 會誤以為
-# 驗證通過,實際上這組測試完全沒有被執行過。兩道防線補上這個洞:
-# 1. 先用 go test -list 把 pattern 應該比對到的測試名稱列出來,用 grep
-#    -c 確認剛好對到 9 個(跟下面實際要跑的測試數量一致——2026-10 新增
-#    部落格文章動態 SEO meta(blogArticleSEOMeta,/u/{handle}/{slug}
-#    路徑,含 og:image 優先用 heroPhotoId、退回 heroStandalonePhotoId
-#    的測試)後從 5 個增加到 9 個,新增/刪除測試時記得同步這個數字),
-#    對不到就讓這一步直接失敗,而不是等 go test 本身默默跳過。
-# 2. SEO_META_TEST_REQUIRE_REAL_BUILD=1 讓 readRealIndexHTML(見
-#    seo_meta_test.go)在這個階段原本該 skip 的情況(web/dist/index.html
-#    讀取失敗、或仍是 placeholder)直接判定測試失敗,而不是放行──這個
-#    階段理論上一定拿得到真實建置產物(見上方 COPY --from=web-build 的
-#    說明),不該出現 skip。
-RUN cd /src/server && test "$(go test ./cmd/server/ -list 'TestApplySEOMeta|TestStaticHandler' | grep -c '^Test')" = "9"
-RUN cd /src/server && SEO_META_TEST_REQUIRE_REAL_BUILD=1 go test ./cmd/server/ -run 'TestApplySEOMeta|TestStaticHandler' -v
+# 驗證通過,實際上這組測試完全沒有被執行過。
+#
+# 這道檢查原本寫成「-list 對到的測試剛好 N 個」,但每次新增符合
+# TestApplySEOMeta/TestStaticHandler 的測試都得回來手動改數字,忘了就讓部署
+# 在這一步失敗——實際發生過兩次:v0.33.0(從 5 個增加到 9 個時),以及 v0.39.0
+# (新增紅葉前線頁 /momiji-front 的 SEO 測試後增加到 10 個)。改成不用手動
+# 同步的兩道防線:
+# 1. 下限而非等號:-list 對到的測試至少 SEO_TEST_MIN 個(目前 10),擋下
+#    「測試被刪掉或改名導致 pattern 對到的變少甚至 0 個」;新增測試不會讓它
+#    失敗,下限只有在刻意刪除測試時才需要往下調。
+# 2. 跑完之後「通過數 = 列出的數量」:每個被列出的測試都必須真的執行並通過,
+#    SKIP(例如讀到 placeholder index.html 被判定成還沒 build)或 FAIL 都會
+#    讓數量對不上而失敗,不再依賴一個寫死的數字。
+# SEO_META_TEST_REQUIRE_REAL_BUILD=1 讓 readRealIndexHTML(見 seo_meta_test.go)
+# 在這個階段原本該 skip 的情況(web/dist/index.html 讀取失敗、或仍是
+# placeholder)直接判定測試失敗,而不是放行——這個階段理論上一定拿得到真實
+# 建置產物(見上方 COPY --from=web-build 的說明),不該出現 skip。
+# 輸出用 echo 印出來保留 -v 的逐項結果,方便從 CI 日誌看到哪些測試跑了。
+RUN cd /src/server && \
+    SEO_TEST_MIN=10 && \
+    SEO_TEST_PATTERN='TestApplySEOMeta|TestStaticHandler' && \
+    listed="$(go test ./cmd/server/ -list "$SEO_TEST_PATTERN" | grep -c '^Test')" && \
+    echo "SEO 測試列出 $listed 個(下限 $SEO_TEST_MIN)" && \
+    test "$listed" -ge "$SEO_TEST_MIN" && \
+    out="$(SEO_META_TEST_REQUIRE_REAL_BUILD=1 go test ./cmd/server/ -run "$SEO_TEST_PATTERN" -v)" && \
+    echo "$out" && \
+    passed="$(echo "$out" | grep -c '^--- PASS')" && \
+    echo "SEO 測試通過 $passed 個" && \
+    test "$passed" = "$listed"
 
 # 靜態編譯:關 CGO 產出不依賴 libc 的單一執行檔,可放進極小的 base image。
 RUN cd /src/server && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
