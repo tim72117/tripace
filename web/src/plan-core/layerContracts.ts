@@ -12,6 +12,7 @@ import type { PlanPanelStopsBinding } from './usePlanStopsState'
 //   第 4 層  LivePlanLayer      推論層:把規劃面板內容(PlanPanelContent)接上這個入口
 //   第 5 層  PlanMap            地圖元件(NativeMapBase + 統一繪製層),/ai-plan 一份、登入後手機與桌面共用一份
 //
+// 行程詳情頁(itineraries/)也有第 2、3、5 層的同名元件(PlanLayout、PlanOverlayLayout、PlanMap),沒有第 4 層(不接真實 AI)。
 // 這個檔案定義各層「所有入口都必須滿足」的最小介面(Contract)。各入口的元件 props 以它為基礎再補入口特有的欄位:
 // 共同的部分只有一份定義,新入口或日後調整時,TypeScript 會在不符合契約的實作上直接報錯,不必靠註解維持一致。
 // 契約只定義「跨入口一致」的欄位;入口特有的欄位(例如手機的 tabBarHeight、桌面的 shifted、/ai-plan 的 wide)留在各自的 Props。

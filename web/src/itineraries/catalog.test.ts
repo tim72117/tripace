@@ -104,6 +104,40 @@ describe('toPlanTimeline', () => {
     // 第二天之前會多一個分隔節點(section)
     expect(list.filter((n) => n.type === 'section').length).toBeGreaterThanOrEqual(1)
   })
+  it('stop.transit 轉成該站的 transitFromPrev(上一站到這一站的交通),沒填的站沒有', () => {
+    const it = make({
+      id: 'x',
+      stops: [
+        stop({ time: '09:00', name: 'A' }),
+        stop({ time: '11:00', name: 'B', transit: { mode: '電車', minutes: 20, note: '搭 JR 嵯峨野線' } }),
+        stop({ time: '13:00', name: 'C' }),
+      ],
+    })
+    const stops = toRenderList(toPlanTimeline(it).timeline).filter((n) => n.type === 'stop')
+    expect(stops[0].transitFromPrev).toBeUndefined()
+    expect(stops[1].transitFromPrev).toEqual({ mode: '電車', minutes: 20, note: '搭 JR 嵯峨野線' })
+    expect(stops[2].transitFromPrev).toBeUndefined()
+  })
+  it('沒填 transit 時,同一天相鄰且都有座標的站用直線距離估計;人工填的優先;跨天與沒座標的站不畫', () => {
+    const it = make({
+      id: 'x', days: 2,
+      stops: [
+        stop({ day: 1, time: '09:00', name: 'A', lat: 18, lng: 100 }),
+        stop({ day: 1, time: '10:00', name: 'B', lat: 18.0045, lng: 100 }),
+        stop({ day: 1, time: '11:00', name: 'C', lat: 18.0045, lng: 100, transit: { mode: '電車', note: '搭 JR' } }),
+        stop({ day: 1, time: '12:00', name: 'D' }),
+        stop({ day: 1, time: '13:00', name: 'E', lat: 18, lng: 100 }),
+        stop({ day: 2, time: '09:00', name: 'F', lat: 18.0045, lng: 100 }),
+      ],
+    })
+    const s = toRenderList(toPlanTimeline(it).timeline).filter((n) => n.type === 'stop')
+    expect(s[0].transitFromPrev).toBeUndefined()
+    expect(s[1].transitFromPrev).toMatchObject({ mode: '步行', minutes: 6, distance: '500m' })
+    expect(s[2].transitFromPrev).toEqual({ mode: '電車', note: '搭 JR' })
+    expect(s[3].transitFromPrev).toBeUndefined()
+    expect(s[4].transitFromPrev).toBeUndefined()
+    expect(s[5].transitFromPrev).toBeUndefined()
+  })
   it('同一天時間倒退的站被略過並回報,其餘照常轉出', () => {
     const it = make({ id: 'x', stops: [stop({ time: '10:00', name: 'A' }), stop({ time: '09:00', name: 'B' }), stop({ time: '11:00', name: 'C' })] })
     const { timeline, skipped } = toPlanTimeline(it)

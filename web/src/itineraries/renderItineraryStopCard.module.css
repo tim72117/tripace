@@ -169,3 +169,59 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* lodgingBanner——住宿錨點橫幅(見 .tsx createRenderItineraryStopCard
+   的完整說明)。刻意跟 .stopCard 的版式徹底不同(窄長橫條,不是縮圖+
+   文字兩欄的景點卡),使用者明確要求「把樣式跟景點分開」——一眼就能
+   分辨「這是過夜錨點」而不是「這是一個要去的景點」,不需要讀完文字
+   內容才能分辨兩者差異。用虛線邊框(而非 .stopCard 的實線)呼應
+   「這不是一個要去的地方,是貫穿這幾天的背景狀態」的語意,比較低調,
+   不會在時間軸上搶過真正景點卡片的視覺焦點。 */
+.lodgingBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 460px;
+  padding: 10px 16px;
+  background: color-mix(in srgb, var(--ios-sand) 10%, var(--ios-card));
+  border: 1px dashed var(--ios-sand);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.lodgingBanner:hover {
+  background: color-mix(in srgb, var(--ios-sand) 18%, var(--ios-card));
+}
+.lodgingBanner:focus-visible {
+  outline: 2px solid var(--ios-sand);
+  outline-offset: 2px;
+}
+.lodgingIcon {
+  flex: none;
+  font-size: 18px;
+  line-height: 1;
+}
+.lodgingBody {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.lodgingSpan {
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ios-sand);
+  letter-spacing: 0.02em;
+}
+.lodgingName {
+  min-width: 0;
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

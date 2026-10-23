@@ -1,0 +1,69 @@
+/* itineraries/PlanOverlayLayout.module.css——見 PlanOverlayLayout.tsx 的說明。數值原本在
+   AiItineraryDetailPageMapView.module.css 的 .panel,搬到外殼這裡。 */
+
+/* mapLayer——地圖層,撐滿頁面(.page 是 position: relative)。不設 z-index。 */
+.mapLayer {
+  position: absolute;
+  inset: 0;
+}
+
+/* controls-slot 這頁不渲染(showControlsSlot=false),留著只為滿足 OverlayClassNames。 */
+.controlsSlot {
+  display: none;
+}
+
+/* overlay——透明座標系,safe-area 與 panel 都以它定位。pointer-events: none:空白處讓地圖拖曳穿透。 */
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* panel——桌面貼右側、上下撐滿的時間軸面板;底色是由右向左漸層到透明,地圖從卡片之間露出來。 */
+.panel {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 420px;
+  background: linear-gradient(to left, var(--ios-bg) 55%, transparent 100%);
+  pointer-events: auto;
+}
+
+/* safe-area——沒被面板蓋住的地圖範圍(桌面:面板左邊)。看不見、不吃事件。 */
+.safeArea {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 420px;
+  pointer-events: none;
+}
+
+/* composer-slot——這頁沒有輸入列,是空節點。 */
+.composerSlot {
+  display: none;
+}
+
+/* 手機版:地圖留在上方 45dvh,面板佔下方,不透明底色(窄螢幕沒有多餘寬度讓地圖從側邊透出來)。 */
+@media (max-width: 767px) {
+  .panel {
+    top: 45dvh;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    background: var(--ios-bg);
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    box-shadow: 0 -8px 24px -12px rgba(0, 0, 0, 0.3);
+  }
+  .safeArea {
+    right: 0;
+    bottom: auto;
+    height: 45dvh;
+  }
+}

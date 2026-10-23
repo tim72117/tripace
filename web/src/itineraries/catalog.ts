@@ -1,6 +1,7 @@
 // catalog.ts — 範例行程清單的純函式:排序、篩選、從資料算出篩選選項、轉成時間軸。
 // 全部是不碰 React/不碰全域狀態的純函式,可以單獨測試;registry.ts 負責把
 // itineraries/*.ts 收進來,這裡只吃陣列。
+import { estimateTransit } from './estimateTransit'
 import { createEmptyTimeline, insertAfter, type PlanTimeline } from '../plan-core/planTimeline'
 import type { SampleItinerary } from './types'
 
@@ -106,6 +107,25 @@ export function toPlanTimeline(it: SampleItinerary): { timeline: PlanTimeline; s
   const skipped: string[] = []
   it.stops.forEach((stop, i) => {
     const id = `${it.id}-s${i}`
+    // lodgingDuration——住宿站(kind === '住宿')若帶 checkOutDay,把
+    // duration 換成「Day N–M」這種橫跨天數的區間文字,取代原本單一的
+    // 「過夜」字樣(見 types.ts SampleStop.checkOutDay 的完整說明:
+    // 使用者明確要求「住宿是錨點,有開始結束日」)。PlanNode/
+    // PlanTimelineView 本身不需要知道「住宿」這個概念,這裡只是把
+    // checkOutDay 這份額外資訊編碼進既有的 duration 欄位傳下去——
+    // renderItineraryStopCard.tsx 偵測 kind === '住宿' 時直接把這段
+    // 文字當成卡片上顯示的天數區間用,不需要改動 PlanNodeData 新增
+    // 欄位(那是 /app、/trip-plan 等正式功能共用的核心資料結構,這個
+    // 「住宿橫跨天數」的概念目前只有這個展示用的範例行程系統需要)。
+    const lodgingDuration =
+      stop.kind === '住宿' && stop.checkOutDay != null && stop.checkOutDay !== (stop.day ?? 1)
+        ? `Day ${stop.day ?? 1}–${stop.checkOutDay}`
+        : stop.duration
+    const prevStop = i > 0 ? it.stops[i - 1] : undefined
+    const estimateFromPrev =
+      prevStop && (prevStop.day ?? 1) === (stop.day ?? 1) && prevStop.lat != null && prevStop.lng != null && stop.lat != null && stop.lng != null
+        ? estimateTransit({ lat: prevStop.lat, lng: prevStop.lng }, { lat: stop.lat, lng: stop.lng })
+        : undefined
     const result = insertAfter(
       timeline,
       anchorId,
@@ -115,9 +135,13 @@ export function toPlanTimeline(it: SampleItinerary): { timeline: PlanTimeline; s
         time: stop.time,
         name: stop.name,
         kind: stop.kind,
-        duration: stop.duration,
+        duration: lodgingDuration,
         desc: stop.desc,
         googlePhotoUrls: stop.photos,
+        placeId: stop.placeId,
+        // 人工填的 transit 優先;沒填時,同一天內前一站與這一站都有座標,就用直線距離粗估(見 estimateTransit.ts)。
+        // 跨天的第一站、沒有座標的站不畫(沒有「上一站」可比)。
+        transitFromPrev: stop.transit ?? estimateFromPrev,
         lat: stop.lat,
         lng: stop.lng,
         // 沒有照片時卡片縮圖的備用樣式(見 PlanTimelineView 的縮圖渲染)。

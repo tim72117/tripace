@@ -46,6 +46,12 @@ var publicAttractionsCityAllowlist = map[string]bool{
 	"九份":  true, // JiufenPage.tsx 開頭嵌入 KiyomizuDemoPage(參數化為 city prop)
 	"台南":  true, // TainanPage.tsx 開頭嵌入 InteractiveExploreMap(參數化為 city prop)
 	"定山溪": true, // 北海道定山溪賞楓試做頁(見 docs/research-hokkaido-jozankei-autumn-theme-2026-09.md),同樣是 InteractiveExploreMap 嵌入
+	"清邁":  true, // 2026-10 新增,使用者明確要求「用 useSharedDrawLayer 繪製尼曼文青咖啡巷為主題點光暈」:
+	// web/src/itineraries/AiItineraryDetailPageMapView.tsx(精選行程展示頁的地圖版面,chiangmai-3day 等
+	// mapStyle 有值的行程)新增 attractionGlow 查詢,用同一支公開端點查該行程所在城市已建檔的景點區域。
+	// 跟上面幾個固定主題介紹頁的使用情境不同(那些是單一固定城市寫死在頁面裡),這裡是依行程資料動態查
+	// (cityNameOf 從 SampleItinerary.region 解析),但授權機制完全相同——仍然只走純資料庫查詢、不觸發
+	// 任何計費的外部 API 呼叫,城市層級白名單同樣足夠。
 }
 
 // handleGeoAttractionsByCity 是 GET /public/geo/attractions 的核心邏輯,

@@ -29,37 +29,49 @@ export interface SampleStop {
   // 必填,理由同 kind。
   duration: string
   desc?: string
-  // photos——照片網址(依序,第一張是縮圖),靜態寫死的情境用(例如
-  // tainan-chikan-2day 現有的真實遊記照片,見該行程的完整說明)。跟
-  // attractionId(下方)是兩種不同的照片來源,一個站點通常只用其中一種
-  // ——attractionId 有值時渲染端(useStopAttractionDetails.ts)會用即時
-  // 查到的 Google 照片取代這裡的靜態網址,見該欄位的完整說明。
+  // photos——照片網址(依序,第一張是縮圖),靜態寫死的情境用(例如 tainan-chikan-2day 現有的真實遊記照片)。
+  // 有 placeId(下方)且資料存取層查到照片時,以查到的為準。
   photos?: string[]
-  // attractionId——選填,2026-10 新增(使用者明確要求「地點用 POI 取得
-  // 圖片」「可以直接用現有端點從 attraction 取得」):這一站若已經是
-  // attractions 表裡的一筆建檔地標(例如透過 tripace-cli attraction add
-  // 建檔、attraction photo-update 補過 Google 照片),填這裡的 attraction
-  // id(lmk_xxx)即可,渲染時透過 useStopAttractionDetails.ts 呼叫
-  // fetchPublicGeoAttractionByID(見該函式的完整說明)即時查出最新的
-  // googlePhotoUrls,不需要把查詢結果的照片網址複製貼上寫死存進
-  // photos——那種做法會讓行程資料跟 photo_assets 的實際狀態脫鉤(例如
-  // attraction photo-update 重新執行換了新照片,或該筆 photo_assets 記錄
-  // 過期/被清除,寫死的舊網址不會跟著更新或失效退回),資料應該只有一份
-  // 來源(attractions/photo_assets 表),不是在行程 JSON 裡存一份快照。
-  // 設計哲學對齊 SampleFoodSpot.photoPlaceId(美食清單用 Google Place ID
-  // 即時查,見該欄位的完整說明)——這裡改用 attractionId 而非 placeId,
-  // 是因為這一站本身就已經是自家 attractions 表的一筆記錄,直接用現成的
-  // GET /public/geo/attraction/{id} 端點查(同時拿得到 name/summary/
-  // googlePhotoUrls),不需要像美食清單那樣額外引入 Google Place ID 這個
-  // 間接層。
-  attractionId?: string
-  // lat/lng——座標,要嘛兩個都給、要嘛都不給。attractionId 有值時仍需要
+  // placeId——選填:這一站的 Google Place ID。有值時,頁面經資料存取層(PlanAiDataSource.placeDetails)查地點資料,
+  // 把座標與照片寫回這一站的時間軸節點——與 /ai-plan、登入後「站點由 placeId 解析出座標與照片」同一條路徑
+  // (plan-core/resolveAttractionForStep)。名稱與說明維持行程作者寫的 name/desc,不被查詢結果覆蓋。
+  // 已建檔地標(tripace-cli attraction add)的 place_id 可直接沿用;地點資料與照片因此只有一份來源。
+  placeId?: string
+  // lat/lng——座標,要嘛兩個都給、要嘛都不給。placeId 有值時仍需要
   // 在這裡重複填一次(不是從 attraction 查詢結果自動帶入)——這兩個欄位
   // 驅動的是時間軸/地圖站點本身的定位(toPlanTimeline 轉換、地圖 marker
   // 位置),在查詢完成前(甚至查詢失敗時)就需要有值,不能依賴一個可能
   // 還沒回來的非同步查詢結果。
   lat?: number
   lng?: number
+  // transit——選填:從「上一站」到這一站的交通方式。時間軸會在兩站之間畫交通膠囊(與 /ai-plan、登入後同一個元件)。
+  // 精選行程是人工撰寫的靜態資料,沒有 Routes 查詢結果,所以 minutes、distance 都可以省略,膠囊只顯示有值的部分;
+  // note 是班次、轉乘之類的文字備註,顯示在膠囊下方。mode 對應圖示:步行、公車、捷運、開車、電車、巴士(其他當步行)。
+  // 第一站沒有上一站,填了也不會顯示。
+  transit?: {
+    mode: string
+    minutes?: number
+    distance?: string
+    note?: string
+  }
+  // checkOutDay——選填,2026-10 新增(使用者明確要求「住宿通常是錨點,
+  // 會有開始結束日」「住宿用特別的卡片來表示天數,不要開很多張卡片」):
+  // 只有 kind === '住宿' 的站才有意義。這一筆住宿從 day(入住日)連續
+  // 住到 checkOutDay(退房日,含),資料本身只需要寫這一筆——不需要像
+  // 過去那樣每晚各自重複一筆幾乎一樣的「住宿」站(同一間旅館連住多晚
+  // 會重複出現好幾張幾乎一樣的卡片)。
+  //
+  // 渲染端(renderItineraryStopCard.tsx)偵測 kind === '住宿' 時,改走
+  // 跟一般景點卡完全不同的樣式(錨點橫幅,不是縮圖+文字的景點卡版式)
+  // ——使用者明確要求「把樣式跟景點分開」,不是沿用同一套卡片外觀只是
+  // 換個文字。這一筆仍然只插入时間軸一次(在 day 當天,見
+  // catalog.ts toPlanTimeline 的完整說明),checkOutDay 只是多帶一個
+  // 「這段住宿橫跨到哪一天」的資訊,不代表還要在中間每一天各自插入
+  // 節點。
+  //
+  // 省略(undefined)時,這一站若是住宿類型,視為只住這一天(day 本身),
+  // 不橫跨——向下相容既有只住一晚的住宿站寫法。
+  checkOutDay?: number
 }
 
 // SampleFoodSpot——行程旁的「美食清單」一筆資料(2026-10 新增,使用者

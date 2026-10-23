@@ -102,7 +102,7 @@ export interface PlanAiDataSource {
   // 獨立抽換,用相同的方式對接取得資料,包含地點資訊、圖片」)。
   //
   // 原本只有 placeDetails/transitEstimate 在介面裡,照片是 /app 正式頁
-  // 自己直接呼叫 fetchGeoPlacePhotoAssets 補的(見 TripPlanPage.tsx
+  // 自己直接呼叫 fetchGeoPlacePhotoAssets 補的(見 plan-core/resolveAttractionForStep.ts
   // resolveAttractionForStep 的第七個參數),展示頁則完全沒有這條路徑
   // ——照片網址直接寫在 attractionPool.ts 的假資料裡。兩邊各走各的,
   // 介面因此不完整:換一份實作換不掉照片的來源。

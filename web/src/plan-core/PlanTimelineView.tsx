@@ -887,6 +887,50 @@ export function PlanTimelineView({
                               onOpenPhotos: () => onOpenPhotos({ photos: usablePhotos, alt: p.name ?? '' }),
                               onRemove: onRemoveStop ? () => onRemoveStop(p.id) : undefined,
                             })
+                          ) : p.kind === '住宿' ? (
+                            // 住宿卡片類型——kind === '住宿' 的站不是「要去的景點」,是貫穿幾天的過夜錨點,
+                            // 用窄長的虛線橫幅表示,不畫縮圖與描述。區間文字取 p.duration(例如「Day 3–4」、「過夜」)。
+                            // 互動(選取、hover 連動地圖)與一般卡片相同。
+                            <div
+                              className={`${styles.lodgingBanner} ${p.id === selectedStopId ? styles.lodgingBannerSelected : ''}`}
+                              role={p.lat != null && p.lng != null ? 'button' : undefined}
+                              tabIndex={p.lat != null && p.lng != null ? 0 : undefined}
+                              onClick={() => onPanToStop(p)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') onPanToStop(p)
+                              }}
+                              onMouseEnter={() => onHoverStop?.(p.id)}
+                              onMouseLeave={() => onHoverStop?.(null)}
+                              onFocus={() => onHoverStop?.(p.id)}
+                              onBlur={() => onHoverStop?.(null)}
+                            >
+                              {usablePhotos.length > 0 ? (
+                                // 有照片:用圓形縮圖取代🛏️圖示;點縮圖開 Lightbox(不冒泡成平移)。載入失敗時記進 failedPhotoUrls,
+                                // 下次渲染退回🛏️。
+                                <button
+                                  type="button"
+                                  className={styles.lodgingPhotoBtn}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    onOpenPhotos({ photos: usablePhotos, alt: p.name ?? '' })
+                                  }}
+                                  aria-label={usablePhotos.length > 1 ? `瀏覽 ${usablePhotos.length} 張照片` : '放大檢視照片'}
+                                >
+                                  <img
+                                    src={usablePhotos[0]}
+                                    alt={p.name}
+                                    className={styles.lodgingPhoto}
+                                    onError={() => markPhotoFailed(usablePhotos[0])}
+                                  />
+                                </button>
+                              ) : (
+                                <span className={styles.lodgingIcon} aria-hidden="true">🛏️</span>
+                              )}
+                              <div className={styles.lodgingBody}>
+                                <span className={styles.lodgingSpan}>{p.duration}</span>
+                                <span className={styles.lodgingName}>{p.name}</span>
+                              </div>
+                            </div>
                           ) : (
                             <div
                               className={`${styles.stopCard} ${p.id === selectedStopId ? styles.stopCardSelected : ''}`}

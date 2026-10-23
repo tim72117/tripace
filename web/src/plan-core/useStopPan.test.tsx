@@ -1,7 +1,7 @@
 // useStopPan:卡片「移動到此」的平移,只分手機與桌面(/ai-plan 手機與登入桌面使用);首站自動平移見 useFirstStopAutoPan.test.tsx。
 import { describe, it, expect, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { resolveStopPanTarget, usePhoneStopPan, useDesktopStopPan } from './useStopPan'
+import { resolveStopPanTarget, usePhoneStopPan, useDesktopStopPan, useStopCardClick } from './useStopPan'
 
 const stops = [
   { id: 'a', lat: 1, lng: 2 },
@@ -58,5 +58,33 @@ describe('useDesktopStopPan', () => {
     const { result } = renderHook(() => useDesktopStopPan({ enabled: false, pan }))
     result.current.panToStop({ lat: 7, lng: 8 })
     expect(pan).not.toHaveBeenCalled()
+  })
+})
+
+describe('useStopCardClick', () => {
+  it('有座標:先選取該站,再把座標交給 pan', () => {
+    const select = vi.fn()
+    const pan = vi.fn()
+    const { result } = renderHook(() => useStopCardClick({ select, pan }))
+    result.current({ id: 'a', lat: 1, lng: 2 })
+    expect(select).toHaveBeenCalledWith('a')
+    expect(pan).toHaveBeenCalledWith({ lat: 1, lng: 2 })
+  })
+
+  it('沒有座標(查詢中的佔位卡):連選取都不做', () => {
+    const select = vi.fn()
+    const pan = vi.fn()
+    const { result } = renderHook(() => useStopCardClick({ select, pan }))
+    result.current({ id: 'x', lat: null, lng: 2 })
+    result.current({ id: 'y' })
+    expect(select).not.toHaveBeenCalled()
+    expect(pan).not.toHaveBeenCalled()
+  })
+
+  it('沒有注入 pan:只選取、不平移', () => {
+    const select = vi.fn()
+    const { result } = renderHook(() => useStopCardClick({ select }))
+    result.current({ id: 'a', lat: 1, lng: 2 })
+    expect(select).toHaveBeenCalledWith('a')
   })
 })

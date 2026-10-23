@@ -32,6 +32,39 @@ import styles from './renderItineraryStopCard.module.css'
 export function createRenderItineraryStopCard(isPlayful: boolean) {
   return function renderItineraryStopCard(step: PlanNode, ctx: StopCardRenderContext) {
     if (step.type !== 'stop') return null
+
+    // 住宿錨點橫幅——2026-10 新增,使用者明確要求「住宿用特別的卡片來
+    // 表示天數，幫我想一個呈現方式，不要開很多張卡片」「住宿通常是
+    // 錨點，會有開始結束日」「把樣式跟景點分開」:kind === '住宿' 時
+    // 完全不走下面的縮圖+文字景點卡版式,改成窄長的橫幅樣式(見
+    // .module.css 的 .lodgingBanner 完整說明),用 step.duration 顯示
+    // 的區間文字(見 catalog.ts toPlanTimeline 對 lodgingDuration 的
+    // 完整說明,例如「Day 3–4」)取代單一時間點的語意——一筆資料只
+    // 渲染一次,不會因為連住多晚而重複出現好幾張幾乎一樣的卡片。
+    if (step.kind === '住宿') {
+      return (
+        <div
+          className={styles.lodgingBanner}
+          role="button"
+          tabIndex={0}
+          onClick={ctx.onClick}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') ctx.onClick()
+          }}
+          onMouseEnter={ctx.onMouseEnter}
+          onMouseLeave={ctx.onMouseLeave}
+          onFocus={ctx.onFocus}
+          onBlur={ctx.onBlur}
+        >
+          <span className={styles.lodgingIcon} aria-hidden="true">🛏️</span>
+          <div className={styles.lodgingBody}>
+            <span className={styles.lodgingSpan}>{step.duration}</span>
+            <span className={styles.lodgingName}>{step.name}</span>
+          </div>
+        </div>
+      )
+    }
+
     const cardClass = [
       styles.stopCard,
       isPlayful ? styles.stopCardPlayful : '',

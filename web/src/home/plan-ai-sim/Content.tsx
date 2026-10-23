@@ -31,7 +31,7 @@ import { useAskPageBridge } from '../../plan-core/useAskPageBridge'
 // 一模一樣的副本(唯一差異是死碼清理時拿掉的一個已確認恆為 no-op 的
 // 判斷式,兩份行為完全等價),是從 plan-ai-sim 分支原封不動搬過來時一併
 // 帶進來的重複檔案。
-import { getTimeDragBounds, type PlanNode } from '../../plan-core/planTimeline'
+import { getTimeDragBounds } from '../../plan-core/planTimeline'
 import type { MapHandle } from '../../geo-planning/NativeMapBase'
 // SafeAreaDebugOverlay——地圖安全區的除錯疊圖(開發工具,用
 // ?debugSafeArea=1 開啟,見該檔案檔頭的完整說明)。
@@ -51,7 +51,7 @@ const WideLayoutDebugOverlay = lazy(() =>
   import('./WideLayoutDebugOverlay').then((m) => ({ default: m.WideLayoutDebugOverlay })),
 )
 import { useMapSafeArea } from '../../geo-planning/useMapSafeArea'
-import { usePhoneStopPan } from '../../plan-core/useStopPan'
+import { useDesktopStopPan, usePhoneStopPan, useStopCardClick } from '../../plan-core/useStopPan'
 import { useFirstStopAutoPan } from '../../plan-core/useFirstStopAutoPan'
 import styles from './Content.module.css'
 import { SIMPLE_MAP_ID } from '../../geo-planning/mapStyleIds'
@@ -129,8 +129,6 @@ const DEBUG_TARGET = { lat: 23.0009, lng: 120.2024 }
 // PlanStep,對齊既有命名),實際上就是 planTimeline.ts 的 PlanNode——
 // 底層儲存已經改成 PlanTimeline(鏈結串列,見該檔案開頭的完整背景
 // 說明),不再是普通陣列。這裡只是型別別名,不重新宣告欄位。
-type PlanStep = PlanNode
-
 // ASK_PAGE_CONFIRM_DELAY_MS——最後一張候選被「點」完之後,再停多久才演出
 // 按下「確認選擇」(見 ScriptedAskPage.tsx confirmAfterMs 的完整說明)。
 //
@@ -465,11 +463,12 @@ export function Content() {
   const expandedThemeNode = expandedThemeId != null ? timelineRef.current.nodes.get(expandedThemeId) : undefined
 
   // 站點平移兩件事分開(都在 plan-core):
-  //   首站自動平移 useFirstStopAutoPan  四個入口全部套用,不分裝置;平移用 mapSafeArea.panToWithinSafeArea(依安全區算中心)
+  //   首站自動平移 useFirstStopAutoPan  只有手機(桌面的鏡頭統一只由點選圖卡移動);平移用 mapSafeArea.panToWithinSafeArea(依安全區算中心)
   //   卡片「移動到此」 usePhoneStopPan   只分手機與桌面;這頁只有手機有(桌面側欄沒有這顆按鈕),產生的 panToStopId 注入 LivePlanLayer
   // 首站自動平移:模擬態與推論態各一個實例,各自一次性(latch 不跨實例,交接後推論態的第一站仍會平移,與登入後一致)。
-  // 非 wide 的桌面疊加版面(768–1023px)沒有安全區,維持不平移。「移動到此」只在模擬態啟用(推論態的選取不搶鏡頭)。
-  const firstStopPanAllowed = !isDesktop || isWide
+  // 桌面點選圖卡(useDesktopStopPan)任何狀態都平移(模擬態、推論態、wide 與非 wide);非 wide 的疊加版面(768–1023px)
+  // 沒有安全區節點,panToWithinSafeArea 退回直接 panTo。手機的「移動到此」仍只在模擬態啟用(推論態的選取不搶鏡頭)。
+  const firstStopPanAllowed = !isDesktop
   const mapPanReady = mapHandle.mapReady && !!mapHandle.mapRef.current
   useFirstStopAutoPan({
     stops: simulated.stops,
@@ -558,10 +557,11 @@ export function Content() {
   // 仍需要這個 state 讓介面完整,不是只為了展示頁去改共用元件的介面。
   const [lightboxPhotos, setLightboxPhotos] = useState<{ photos: string[]; alt: string } | null>(null)
 
-  const panToStop = useCallback((step: PlanStep) => {
-    if (step.lat == null || step.lng == null) return
-    setSelectedStopId(step.id)
-  }, [setSelectedStopId])
+  const { panToStop: panDesktopToStop } = useDesktopStopPan({
+    enabled: isDesktop,
+    pan: mapSafeArea.panToWithinSafeArea,
+  })
+  const panToStop = useStopCardClick({ select: setSelectedStopId, pan: panDesktopToStop })
 
   // scrollToLatest — 直接捲到最底。.scroll 底部已留 128px 給漂浮膠囊,
   // 捲到底時最新的節點/呼吸點會停在膠囊上方,不會卡在視窗邊緣。原本
@@ -724,7 +724,7 @@ export function Content() {
         safeAreaRef={mapSafeArea.safeAreaElRef}
         passThrough
       >
-        <LivePlanLayer selectedStopId={selectedStopId} tripPlanProps={live.tripPlanProps} />
+        <LivePlanLayer selectedStopId={selectedStopId} tripPlanProps={live.tripPlanProps} onPanToStop={isDesktop ? panDesktopToStop : undefined} />
       </PlanLayout>
     ) : (
       <PlanLayout

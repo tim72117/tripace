@@ -922,7 +922,7 @@ export interface GeoPlanAiPlaceDetailsAnyResult {
   // photoRefreshPending:對齊後端 handlePublicGeoPlaceDetailsAny 的完整
   // 說明(兩條分支——已建檔 attraction 命中/Google fallback——都會回傳
   // 這個欄位)。用途與 GeoPlaceDetails.photoRefreshPending 相同,見該
-  // 欄位的完整說明:讓 TripPlanPage.tsx 的 resolveAttractionForStep 只在
+  // 欄位的完整說明:讓 plan-core/resolveAttractionForStep.ts 的 resolveAttractionForStep 只在
   // 後端真的觸發補圖時才啟動重試,不盲目重試。
   photoRefreshPending?: boolean
 }

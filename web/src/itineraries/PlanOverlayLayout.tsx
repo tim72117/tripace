@@ -1,0 +1,37 @@
+import type { Ref } from 'react'
+import { OverlayShell, type OverlayClassNames } from '../plan-core/OverlayShell'
+import type { PlanOverlayLayoutContract } from '../plan-core/layerContracts'
+import styles from './PlanOverlayLayout.module.css'
+
+// PlanOverlayLayout(src/itineraries/)——行程詳情頁(地圖版面)的「地圖加疊加 UI」外殼。
+//
+// 與 /ai-plan(home/plan-ai-sim/)、登入後手機(phone/)、登入後桌面(desktop/)的 PlanOverlayLayout 同名同層級:
+// 同層同功能用同檔名、放不同目錄,各入口一個實體,都是共用 plan-core/OverlayShell 的薄包裝,長出同一套
+// data-slot 骨架(見 plan-core/overlayDom.ts):
+//   map-layer → overlay(safe-area、panel(children、composer-slot))
+// 地圖放 map-layer,行程標題與時間軸放 panel。
+//
+// 這頁特有的部分:
+//   - 沒有控制項插槽(showControlsSlot=false)與輸入列(composer-slot 是空節點)。
+//   - 樣式(PlanOverlayLayout.module.css):桌面 panel 貼右側 420px,safe-area 是它左邊;手機 panel 在下方、地圖在上方 45dvh。
+//   - safeAreaRef:接在 safe-area 節點上,給 useMapSafeArea 之類需要「沒被面板蓋住的地圖範圍」的消費端。
+export interface PlanOverlayLayoutProps extends PlanOverlayLayoutContract {
+  safeAreaRef?: Ref<HTMLDivElement>
+}
+
+const CLASS_NAMES: OverlayClassNames = {
+  mapLayer: styles.mapLayer,
+  controlsSlot: styles.controlsSlot,
+  overlay: styles.overlay,
+  panel: styles.panel,
+  safeArea: styles.safeArea,
+  composerSlot: styles.composerSlot,
+}
+
+export function PlanOverlayLayout({ mapBackground, safeAreaRef, children }: PlanOverlayLayoutProps) {
+  return (
+    <OverlayShell classNames={CLASS_NAMES} mapBackground={mapBackground} showControlsSlot={false} safeAreaRef={safeAreaRef}>
+      {children}
+    </OverlayShell>
+  )
+}

@@ -1,8 +1,9 @@
 import type { FeatureLayer } from '../types'
 
-// RoutePolylineSegment——一條路徑線段:依「天」分段(day 1 一條、day 2 一條...),
-// 不是整趟行程一條單一路徑。
+// RoutePolylineSegment——一條路徑線段。dayIndex 決定顏色(不同天不同色)。
+// id 選填:呼叫端每天一條時可省略(用 dayIndex 當 id);一天內有多段(例如每段交通一條)時必須各給唯一 id。
 export interface RoutePolylineSegment {
+  id?: string
   dayIndex: number
   path: { lat: number; lng: number }[]
 }
@@ -26,8 +27,8 @@ export function routePolylineLayer({ segments }: { segments: RoutePolylineSegmen
       // 不足兩點畫不出線,舊 hook 也是直接略過;不產生 drawable,宿主會自動移除舊的那條。
       .filter((seg) => seg.path.length >= 2)
       .map((seg) => ({
-        // 用 dayIndex 當 id:同一天資料變動時原地更新,不會整批重畫。
-        id: `day-${seg.dayIndex}`,
+        // 用 seg.id(沒給時用 dayIndex)當 id:同一段資料變動時原地更新,不會整批重畫。
+        id: seg.id ?? `day-${seg.dayIndex}`,
         group: 'routePolyline' as const,
         kind: 'polyline' as const,
         path: seg.path,

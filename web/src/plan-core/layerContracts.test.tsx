@@ -10,9 +10,11 @@ import type {
 import type { PlanLayoutProps as AiPlanLayoutProps } from '../home/plan-ai-sim/PlanLayout'
 import type { PlanLayoutProps as PhonePlanLayoutProps } from '../phone/PlanLayout'
 import type { PlanLayoutProps as DesktopPlanLayoutProps } from '../desktop/PlanLayout'
+import type { PlanLayoutProps as ItinerariesPlanLayoutProps } from '../itineraries/PlanLayout'
 import type { PlanOverlayLayoutProps as AiPlanOverlayLayoutProps } from '../home/plan-ai-sim/PlanOverlayLayout'
 import type { PlanOverlayLayoutProps as PhonePlanOverlayLayoutProps } from '../phone/PlanOverlayLayout'
 import type { PlanOverlayLayoutProps as DesktopPlanOverlayLayoutProps } from '../desktop/PlanOverlayLayout'
+import type { PlanOverlayLayoutProps as ItinerariesPlanOverlayLayoutProps } from '../itineraries/PlanOverlayLayout'
 import type { LivePlanLayerProps as AiLivePlanLayerProps } from '../home/plan-ai-sim/LivePlanLayer'
 import type { LivePlanLayerProps as PhoneLivePlanLayerProps } from '../phone/LivePlanLayer'
 import type { LivePlanLayerProps as DesktopLivePlanLayerProps } from '../desktop/LivePlanLayer'
@@ -29,12 +31,14 @@ export type _L2 = [
   Satisfies<AiPlanLayoutProps, PlanLayoutContract>,
   Satisfies<PhonePlanLayoutProps, PlanLayoutContract>,
   Satisfies<DesktopPlanLayoutProps, PlanLayoutContract>,
+  Satisfies<ItinerariesPlanLayoutProps, PlanLayoutContract>,
 ]
 // 第 3 層 PlanOverlayLayout
 export type _L3 = [
   Satisfies<AiPlanOverlayLayoutProps, PlanOverlayLayoutContract>,
   Satisfies<PhonePlanOverlayLayoutProps, PlanOverlayLayoutContract>,
   Satisfies<DesktopPlanOverlayLayoutProps, PlanOverlayLayoutContract>,
+  Satisfies<ItinerariesPlanOverlayLayoutProps, PlanOverlayLayoutContract>,
 ]
 // 第 4 層 LivePlanLayer
 export type _L4 = [

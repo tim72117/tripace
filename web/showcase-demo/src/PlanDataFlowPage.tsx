@@ -27,10 +27,13 @@ import styles from './PlanDataFlowPage.module.css'
 //     成功才更新 state)
 //   - PlanTimelineStore 的介面或實作數量改變
 //   - UI 層或地圖層開始直接呼叫領域層函式(那代表分層被打破,圖要改)
-//   - PlanSelection 的成員增減,或它被某一層獨佔持有(目前是三個消費端
-//     共用的唯一一份,那是刻意的設計,見頁面上同名段落)
-//   - PlanAiDataSource 的方法增減,或多一份實作(目前兩份:純前端假資料、
-//     真後端 API)
+//   - 站點檢視實例(plan-core/usePlanStopsState 與 home/plan-ai-sim/useSimulatedStopsView)
+//     的成員增減,或選取(PlanSelection)改回由某一層共用持有(目前是每個實例
+//     各持有自己的一份,交接時整個換掉,見頁面上「檢視狀態在哪一層」段落)
+//   - PlanAiDataSource 的方法增減,或多一份實作(目前三份:純前端假資料、
+//     訪客版 /public、登入版 /internal)
+//   - 四個入口(/ai-plan 手機與桌面、登入後手機、登入後桌面)的接法改變
+//     (見「四個入口的接法」表)
 
 // LAYERS——領域層與狀態層。抽成陣列而不是在 JSX 裡寫死兩次,
 // 讓盒子的 y 座標由索引算出來,調整間距時不用逐個改數字。
@@ -45,7 +48,7 @@ const LAYERS: { y: number; title: string; body: string; sub: string; accent?: bo
   {
     y: 524,
     title: '狀態層  持有兩種狀態:行程資料 + 檢視狀態',
-    body: 'useSyncedState → PlanTimeline(會持久化、AI 讀得到)　usePlanSelection → selectedStopId / hoverStopId(都不會)',
+    body: 'useSyncedState → PlanTimeline(會持久化、AI 讀得到)　站點檢視實例 → stops / selectedStopId / hoverStopId(都不會)',
     sub: 'ref 同步讀:WebSocket onmessage 在 React 事件系統外,需要 commit 當下就拿到結果',
   },
 ]
@@ -70,9 +73,8 @@ export function PlanDataFlowPage() {
             三種輸入來源(①②③)最終都匯流到同一個領域層；④ 只在開頁時跑一次。
             持久化<strong>不是平行的一層</strong>，它住在 <code>{'commitTimeline'}</code> 包裝層裡，
             夾在「算出新資料」與「更新記憶體」之間。
-            下半部是兩種性質不同的東西：投影層的 <code>{'stops'}</code> 是從 timeline 衍生的（可整個抽換），
-            <code>{'PlanSelection'}</code> 則是三個消費端共用的唯一一份——
-            不是三份在互相同步，是同一份被三邊讀寫。
+            下半部是「站點檢視實例」：模擬態與推論態各是一個完整的實例（站點加自己的選取），
+            交接時整個換掉，不是兩份在互相同步；登入後只有推論態那一種，與 /ai-plan 推論態是同一個 hook。
           </p>
           <figure className={styles.figure}>
             <svg
@@ -277,9 +279,9 @@ export function PlanDataFlowPage() {
                 markerEnd="url(#pdfArrow)"
                 transform="rotate(180 648 582)"
               />
-              {/* ===== 投影層(站點檢視的兩個實作,現為 plan-core/usePlanStopsState.ts 的 maskPlanStopsView / usePlanStopsState 一帶)=====
-                  2026-10:檢視狀態從這裡抽走了,現在只剩 kind + stops。
-                  原本叫「推論層」,但真正的推論在最上面的輸入來源。 */}
+              {/* ===== 站點檢視實例(兩種,交接時整個換掉)=====
+                  左:模擬態 useSimulatedStopsView(站點從 timeline 投影,選取自己持有)。
+                  右:推論態與登入後 usePlanStopsState(站點與轉乘配對由規劃面板回報,選取自己持有)。 */}
               <rect
                 x="8"
                 y="598"
@@ -292,13 +294,12 @@ export function PlanDataFlowPage() {
                 strokeOpacity="0.3"
               />
               <text x="20" y="618" fontSize="11.5" fontWeight="700" fill="currentColor">
-                站點檢視實例　模擬態 / 推論態
+                站點檢視實例 ①　模擬態 useSimulatedStopsView(只有 /ai-plan 交接前)
               </text>
               <text x="20" y="636" fontSize="10.5" fill="currentColor" fillOpacity="0.68">
-                模擬態 useSimulatedStopsView 從 timeline 篩出有座標的 stop;推論態 usePlanStopsState 收規劃面板回報的站點
+                stops 從 timeline 篩出有座標的 stop　＋　自己持有的 PlanSelection
               </text>
 
-              {/* ===== 檢視狀態(跟投影層平行;它不是投影出來的)===== */}
               <rect
                 x="448"
                 y="598"
@@ -312,16 +313,16 @@ export function PlanDataFlowPage() {
                 strokeWidth="2"
               />
               <text x="460" y="618" fontSize="11.5" fontWeight="700" fill="currentColor">
-                檢視狀態　PlanSelection {'{ selectedStopId, hoverStopId }'}
+                站點檢視實例 ②　usePlanStopsState(/ai-plan 推論態＋登入後手機、桌面)
               </text>
               <text x="460" y="636" fontSize="10.5" fill="currentColor" fillOpacity="0.68">
-                唯一一份,三個消費端讀寫同一個——不是三份在同步
+                stops · hoverTransitPair · tripPlanProps(規劃面板回報)＋自己持有的 PlanSelection
               </text>
 
               {/* 兩條往下的線 */}
               <line x1="220" y1="654" x2="220" y2="690" stroke="currentColor" strokeOpacity="0.55" strokeWidth="1.5" markerEnd="url(#pdfArrow)" />
               <line x1="660" y1="654" x2="660" y2="690" stroke="currentColor" strokeOpacity="0.55" strokeWidth="1.5" markerEnd="url(#pdfArrow)" />
-              {/* 檢視狀態橫跨兩個消費端:往左也拉一條 */}
+              {/* 右邊那個實例也給 UI 層:selectedStopId 受控傳給規劃面板,雙向同步 */}
               <path
                 d="M660 654 L660 672 L220 672"
                 fill="none"
@@ -331,7 +332,7 @@ export function PlanDataFlowPage() {
                 strokeDasharray="4 3"
               />
               <text x="228" y="668" fontSize="9.5" fill="currentColor" fillOpacity="0.55">
-                同一份 selection 也給 UI
+                選取受控,面板與地圖雙向同步
               </text>
 
               {/* ===== 兩個消費端 ===== */}
@@ -365,30 +366,30 @@ export function PlanDataFlowPage() {
                 strokeOpacity="0.3"
               />
               <text x="460" y="710" fontSize="11.5" fill="currentColor">
-                地圖層　useMapMarkerLayer
+                地圖層　PlanMap → useSharedDrawLayer(統一繪製層)
               </text>
               <text x="460" y="728" fontSize="10.5" fill="currentColor" fillOpacity="0.68">
-                讀 stops + selectedId　寫 onSelectedChange → 同一個 setter
+                讀 maskPlanStopsView(stops, selectedId…)　寫 onStopClick → 同一個 setter
               </text>
 
             </svg>
           </figure>
           <p className={styles.caption}>
-            兩個粗框各自是一種「唯一」：領域層是唯一能改
-            <code className={styles.code}>PlanTimeline</code> 的地方；
-            <code className={styles.code}>PlanSelection</code> 是唯一一份檢視狀態。
+            粗框的領域層是唯一能改 <code className={styles.code}>PlanTimeline</code> 的地方；
+            粗框的 <code className={styles.code}>usePlanStopsState</code> 是 /ai-plan 推論態與登入後共用的同一個 hook。
             UI 層只 <code className={styles.code}>import type</code>，沒有 import 任何函式——分工靠這一點保證，不是靠約定。
-            虛線框的包裝層只有 <code className={styles.code}>/app</code>(TripPlanPage)有；
+            虛線框的包裝層只有正式頁面(<code className={styles.code}>TripPlanPage</code>，登入後與 /ai-plan 推論態都是它)有；
             <code className={styles.code}>/ai-plan</code> 的模擬層沒有 store，用裸的
             <code className={styles.code}>useSyncedState</code>，所以重新整理後是空的。
           </p>
           <p className={styles.caption}>
-            <strong>為什麼叫「投影層」不叫「推論層」</strong>(2026-10 改名)：
-            真正的推論(AI 決定排哪些站)發生在最上面的輸入來源——
-            <code className={styles.code}>PlanSimSource</code> 的劇本播放、onagent 的工具呼叫。
-            中間這一層做的是<strong>投影</strong>：把 <code className={styles.code}>PlanTimeline</code> 這份真相
-            篩成消費端要的形狀(地圖只要有座標的 stop 的 id/lat/lng/name，丟掉備註、交通、children)。
-            投影是單向、唯讀、可重算的衍生——丟掉重算一次結果一樣，不持有任何東西。
+            <strong>為什麼叫「站點檢視實例」</strong>(2026-10 改名，取代原本的「投影層」與 <code className={styles.code}>PlanStopsView</code> 介面)：
+            真正的推論(AI 決定排哪些站)發生在最上面的輸入來源。這一層持有的是地圖與時間軸要看的那組狀態：
+            站點(<code className={styles.code}>stops</code>)加使用者在看哪一站(<code className={styles.code}>PlanSelection</code>)。
+            模擬態的 <code className={styles.code}>stops</code> 是從 <code className={styles.code}>PlanTimeline</code> 單向投影出來的(只留有座標的 stop，
+            丟掉備註、交通)；推論態與登入後的 <code className={styles.code}>stops</code> 則由規劃面板(<code className={styles.code}>TripPlanPage</code>)
+            經 <code className={styles.code}>tripPlanProps</code> 的四個回呼回報上來。兩種實例形狀相同，
+            <code className={styles.code}>Content</code> 依 <code className={styles.code}>handedOver</code> 擇一使用。
           </p>
           <p className={styles.caption}>
             <strong>為什麼叫「領域層」不叫「資料層」</strong>(2026-10 改名)：
@@ -417,7 +418,9 @@ export function PlanDataFlowPage() {
                 <td><code className={styles.code}>PlanAction</code> 串流</td>
                 <td>
                   <strong>高</strong>——<code className={styles.code}>PlanSimSource</code> 只有
-                  onMessage / onError / close 三個方法，換工廠函式即可。目前兩個實作：計時器版(/product 功能卡)、捲動版(首頁展示)。
+                  onMessage / onError / close 三個方法，換工廠函式即可。目前三個實作：<code className={styles.code}>planSimFakeSource</code>
+                  (/ai-plan 播放態，計時器，支援「詢問頁暫停」)、<code className={styles.code}>demoSimSource</code>(/product 小展示，計時器)、
+                  <code className={styles.code}>demoScrollSource</code>(首頁展示，捲動位置推進)。
                 </td>
               </tr>
               <tr>
@@ -427,6 +430,8 @@ export function PlanDataFlowPage() {
                 <td>
                   中——工具定義抽在 <code className={styles.code}>attractionTools.ts</code>，
                   但 <code className={styles.code}>AgentBridge</code> 直接在頁面裡建立、handler 是就地閉包，換推論平台要動到頁面。
+                  <code className={styles.code}>TripPlanPage</code> 的 <code className={styles.code}>dataSource</code> 與 <code className={styles.code}>store</code> 現在是必填，
+                  由各入口的 <code className={styles.code}>LivePlanLayer</code> 明確傳入。
                 </td>
               </tr>
               <tr>
@@ -458,9 +463,9 @@ export function PlanDataFlowPage() {
           <figure className={styles.figure}>
             <svg
               className={styles.diagram}
-              viewBox="0 0 880 260"
+              viewBox="0 0 880 300"
               role="img"
-              aria-label="讀取層流程：插入佔位節點後，透過 PlanAiDataSource 補上詳情與照片，再 updateNode 寫回"
+              aria-label="讀取層流程：插入佔位節點後，透過 PlanAiDataSource(假資料、訪客版、登入版三份實作)補上詳情與照片，再 updateNode 寫回"
             >
               <defs>
                 <marker id="pdfArrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
@@ -477,24 +482,30 @@ export function PlanDataFlowPage() {
 
               <line x1="440" y1="60" x2="440" y2="88" stroke="currentColor" strokeOpacity="0.55" strokeWidth="1.5" markerEnd="url(#pdfArrow2)" />
 
-              <rect x="8" y="88" width="864" height="74" rx="8" fill="currentColor" fillOpacity="0.1" stroke="currentColor" strokeOpacity="0.55" strokeWidth="2" />
+              <rect x="8" y="88" width="864" height="112" rx="8" fill="currentColor" fillOpacity="0.1" stroke="currentColor" strokeOpacity="0.55" strokeWidth="2" />
               <text x="20" y="110" fontSize="12" fontWeight="700" fill="currentColor">
-                ② 讀取層　PlanAiDataSource {'{ placeDetails, transitEstimate, photoAssets? }'}
+                ② 讀取層　PlanAiDataSource {'{ placeDetails, transitEstimate, photoAssets?, geoPlaceDetails?, nearbyAttractionAreas?, … }'}
               </text>
               <text x="20" y="130" fontSize="10.5" fill="currentColor" fillOpacity="0.8">
-                planAiFakeDataSource　純前端,attractionPool.ts 的 10 筆台南景點。公開頁不需登入
+                planAiFakeDataSource　純前端,attractionPool.ts 的 10 筆台南景點。/ai-plan 播放態的時間軸用
               </text>
               <text x="20" y="148" fontSize="10.5" fill="currentColor" fillOpacity="0.8">
-                createPlanAiApiDataSource(cfg)　打 /internal/geo/plan-ai/* 與 place-photo-assets,需登入
+                createPlanAiPublicDataSource　打 /public/*,不需登入。/ai-plan 的詢問頁、推論態、首頁展示的光暈與詳情卡用
+              </text>
+              <text x="20" y="166" fontSize="10.5" fill="currentColor" fillOpacity="0.8">
+                createPlanAiApiDataSource(cfg)　打 /internal/*,需登入。登入後手機與桌面用
+              </text>
+              <text x="20" y="188" fontSize="10.5" fill="currentColor" fillOpacity="0.62">
+                訪客版與登入版共用 PlaceDetailsDedupe(進行中共用、成功短期記憶、失敗不記);元件與 hook 不自己挑端點,一律吃注入的實例
               </text>
 
-              <line x1="440" y1="162" x2="440" y2="190" stroke="currentColor" strokeOpacity="0.55" strokeWidth="1.5" markerEnd="url(#pdfArrow2)" />
+              <line x1="440" y1="200" x2="440" y2="228" stroke="currentColor" strokeOpacity="0.55" strokeWidth="1.5" markerEnd="url(#pdfArrow2)" />
 
-              <rect x="8" y="190" width="864" height="52" rx="8" fill="currentColor" fillOpacity="0.04" stroke="currentColor" strokeOpacity="0.3" />
-              <text x="20" y="212" fontSize="12" fontWeight="700" fill="currentColor">
+              <rect x="8" y="228" width="864" height="52" rx="8" fill="currentColor" fillOpacity="0.04" stroke="currentColor" strokeOpacity="0.3" />
+              <text x="20" y="250" fontSize="12" fontWeight="700" fill="currentColor">
                 ③ 寫回　updateNode(timeline, id, {'{ name, lat, lng, summary, photos, loading: false }'})
               </text>
-              <text x="20" y="230" fontSize="10.5" fill="currentColor" fillOpacity="0.68">
+              <text x="20" y="268" fontSize="10.5" fill="currentColor" fillOpacity="0.68">
                 回到領域層的純函式——讀取層不自己改資料,查完交給 setTimeline 寫回
               </text>
             </svg>
@@ -507,53 +518,64 @@ export function PlanDataFlowPage() {
             同時 <code className={styles.code}>usePlanSimSocket</code> 的
             <code className={styles.code}>dataSource</code> 從寫死的 import 改成參數注入（預設假資料）。
           </p>
+          <p className={styles.caption}>
+            2026-10(後端查詢統一走資料存取層)：地圖與規劃領域原本散在元件與 hook 裡的後端查詢，全部改成呼叫注入的實例，
+            端點由實例決定，不再用 <code className={styles.code}>cfg</code> 加旗標選端點。介面新增選填方法
+            <code className={styles.code}>geoPlaceDetails</code>(完整地點詳情，與 <code className={styles.code}>placeDetails</code> 是不同端點與形狀)、
+            <code className={styles.code}>placePhoto</code>、<code className={styles.code}>placeText</code>、<code className={styles.code}>geocode</code>、
+            <code className={styles.code}>attractionsByCity</code>、<code className={styles.code}>attractionByID</code>、
+            <code className={styles.code}>nearbyAttractionAreas</code>、<code className={styles.code}>searchNearby</code>；
+            實例沒實作時，呼叫端用 <code className={styles.code}>requireXxx</code> 取用，會得到 rejected Promise 而不是例外。
+            還沒收進來的是行程資料領域(<code className={styles.code}>fetchTrips</code>、<code className={styles.code}>fetchEntries</code> 等)。
+          </p>
         </div>
 
         <div className={styles.section}>
-          <h2 className={styles.sectionTitle}>為什麼檢視狀態不放在投影層</h2>
+          <h2 className={styles.sectionTitle}>檢視狀態在哪一層：三個階段的演變</h2>
           <p className={styles.lead}>
-            2026-10 改動：<code className={styles.code}>selectedStopId</code> /
-            <code className={styles.code}>hoverStopId</code> 原本住在每個投影實作各自的
-            <code className={styles.code}>useState</code> 裡，現在抽成獨立的
-            <code className={styles.code}>PlanSelection</code>。
+            <code className={styles.code}>selectedStopId</code> / <code className={styles.code}>hoverStopId</code>
+            (<code className={styles.code}>PlanSelection</code>)不是推論的產物——不持久化、不進 AI 的工具、重新整理後不該還在。
+            它放在哪一層，2026-10 改了兩次；現在的做法是<strong>跟著站點檢視實例走</strong>。
           </p>
           <table className={styles.table}>
             <thead>
               <tr>
                 <th></th>
-                <th>綁在投影實作裡(舊)</th>
-                <th>獨立一份(現在)</th>
+                <th>① 綁在投影實作裡</th>
+                <th>② 獨立一份、頁面共用</th>
+                <th>③ 跟著實例走(現在)</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td>交接時清空</td>
-                <td>靠「換掉實例」的副作用隱含達成，讀程式碼看不出來</td>
-                <td><code className={styles.code}>selection.clear()</code> 明確一行</td>
+                <td>誰持有</td>
+                <td>每個投影實作各自的 <code className={styles.code}>useState</code></td>
+                <td>頁面一份 <code className={styles.code}>usePlanSelection</code>，模擬與真實來源共用</td>
+                <td>每個站點檢視實例各一份；<code className={styles.code}>/ai-plan</code> 兩個實例，登入後一個</td>
               </tr>
               <tr>
-                <td>替換投影來源但保留現況</td>
-                <td><strong>做不到</strong>——換來源等於選取被丟掉</td>
+                <td>交接時</td>
+                <td>靠「換掉實例」的副作用隱含清空，讀程式碼看不出來</td>
+                <td>明確呼叫 <code className={styles.code}>selection.clear()</code></td>
+                <td>整個實例換掉(<code className={styles.code}>handedOver ? live : simulated</code>)，新實例初值就是 null，沒有 <code className={styles.code}>clear</code></td>
+              </tr>
+              <tr>
+                <td>替換來源但保留現況</td>
+                <td><strong>做不到</strong></td>
                 <td>不呼叫 clear 就好</td>
+                <td><strong>不支援</strong>——要的話得把選取搬回頁面</td>
               </tr>
               <tr>
-                <td>點一張卡的代價</td>
-                <td>整個 source 物件換新參照，下游以 source 為依賴的 effect 全部重跑</td>
-                <td>只有 selection 改變，不碰投影層</td>
+                <td>來源狀態怎麼切換</td>
+                <td>實例當 state 存快照</td>
+                <td>實例當 state 存快照，靠兩個 effect 在 stops 變動時同步(漏同步就是「真實推論沒有地圖點」那次 bug)</td>
+                <td>兩個 hook 都無條件呼叫，用 <code className={styles.code}>handedOver</code> 擇一，沒有快照也沒有同步 effect</td>
               </tr>
               <tr>
-                <td>同步 effect 依賴</td>
-                <td>
-                  stops + selectedStopId + hoverStopId
-                  （曾踩 <code className={styles.code}>Maximum update depth exceeded</code>，
-                  修法是不依賴整個物件——那是在補這個設計的破口）
-                </td>
-                <td>只剩 stops</td>
-              </tr>
-              <tr>
-                <td>語意</td>
-                <td>宣稱選取跟 stops 是同一種東西</td>
-                <td>選取不持久化、AI 看不到，跟 stops 性質不同</td>
+                <td>與登入後的關係</td>
+                <td>各寫各的</td>
+                <td>登入後用 <code className={styles.code}>usePlanStopsState</code>(自己持有選取)，/ai-plan 用另一條路</td>
+                <td>推論態與登入後是<strong>同一個 hook</strong>，差別只剩 /ai-plan 前面多一個模擬態實例</td>
               </tr>
             </tbody>
           </table>
@@ -576,7 +598,7 @@ export function PlanDataFlowPage() {
             </thead>
             <tbody>
               <tr>
-                <td><code className={styles.code}>/app</code> TripPlanPage</td>
+                <td>登入後手機／桌面(<code className={styles.code}>LivePlanLayer</code> → <code className={styles.code}>TripPlanPage</code>)</td>
                 <td>localStorage</td>
                 <td>包 resync + save，寫磁碟成功才更新 state</td>
                 <td>內容保留</td>
@@ -588,8 +610,8 @@ export function PlanDataFlowPage() {
                 <td>清空(刻意：展示不該污染真實行程)</td>
               </tr>
               <tr>
-                <td>交接後 LivePlanLayer</td>
-                <td>localStorage 或 draft</td>
+                <td><code className={styles.code}>/ai-plan</code> 推論態(交接後 <code className={styles.code}>LivePlanLayer</code>)</td>
+                <td>localStorage 或 draft(「新行程」按鈕開新草稿)</td>
                 <td>同 TripPlanPage(內部就是它)</td>
                 <td>內容保留</td>
               </tr>
@@ -605,11 +627,70 @@ export function PlanDataFlowPage() {
           <ol className={styles.flowList}>
             <li>使用者往回捲 → <code className={styles.code}>ScrollPlanDemo.handleScroll</code> 算出捲動進度</li>
             <li>呼叫 <code className={styles.code}>advanceTo(index)</code></li>
-            <li><code className={styles.code}>planSimScrollSource</code> 判斷跨出當天 → <code className={styles.code}>emit({"{ type: 'reset_day', day }"})</code></li>
+            <li><code className={styles.code}>demoScrollSource</code> 判斷跨出當天 → <code className={styles.code}>emit({"{ type: 'reset_day', day }"})</code></li>
             <li><code className={styles.code}>usePlanSimSocket.onMessage</code> 收到 → <code className={styles.code}>setTimeline(prev =&gt; removeDay(prev, day))</code></li>
             <li><code className={styles.code}>commitTimeline</code> 寫入 state 與 ref</li>
-            <li>兩個投影同時更新：時間軸卡片消失、地圖圓點消失</li>
+            <li>站點檢視實例的 <code className={styles.code}>stops</code> 更新：時間軸卡片消失、地圖圓點消失</li>
           </ol>
+        </div>
+
+        <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>四個入口的接法</h2>
+          <p className={styles.lead}>
+            /ai-plan(手機與桌面共用同一個 <code className={styles.code}>Content</code>)、登入後手機、登入後桌面，
+            每個入口都是同一組分層(<code className={styles.code}>Content</code> → <code className={styles.code}>PlanLayout</code> →
+            <code className={styles.code}>PlanOverlayLayout</code> → <code className={styles.code}>LivePlanLayer</code> →
+            <code className={styles.code}>PlanMap</code>)，同名元件放在 <code className={styles.code}>home/plan-ai-sim/</code>、
+            <code className={styles.code}>phone/</code>、<code className={styles.code}>desktop/</code>。下表只列跟資料流有關的差異；
+            完整對照見 <code className={styles.code}>public/marker-layers.html</code>。
+          </p>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>入口</th>
+                <th>站點檢視實例</th>
+                <th>資料存取層</th>
+                <th>store</th>
+                <th>站點可見條件</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code className={styles.code}>/ai-plan</code> 模擬態</td>
+                <td><code className={styles.code}>useSimulatedStopsView</code></td>
+                <td>假資料(時間軸)、訪客版(詢問頁)</td>
+                <td><strong>無</strong></td>
+                <td>恆為 true</td>
+              </tr>
+              <tr>
+                <td><code className={styles.code}>/ai-plan</code> 推論態</td>
+                <td><code className={styles.code}>usePlanStopsState</code></td>
+                <td>訪客版(固定)</td>
+                <td>localStorage 或 draft</td>
+                <td>恆為 true(規劃面板不收起)</td>
+              </tr>
+              <tr>
+                <td>登入後手機</td>
+                <td><code className={styles.code}>usePlanStopsState</code></td>
+                <td>登入版</td>
+                <td>localStorage</td>
+                <td><code className={styles.code}>chatSheetOpen</code>，收起時傳空檢視</td>
+              </tr>
+              <tr>
+                <td>登入後桌面</td>
+                <td><code className={styles.code}>usePlanStopsState</code></td>
+                <td>登入版</td>
+                <td>localStorage</td>
+                <td><code className={styles.code}>chatPopoverVisible</code>，關閉時傳空檢視</td>
+              </tr>
+            </tbody>
+          </table>
+          <p className={styles.caption}>
+            「不該畫就傳空檢視」是四個入口同一條路徑(<code className={styles.code}>maskPlanStopsView</code>)，
+            差別只在可見條件各自對應面板的開關狀態。首站自動平移(<code className={styles.code}>useFirstStopAutoPan</code>)
+            只有手機入口有；桌面（/ai-plan wide 與登入後）的鏡頭統一只由點選圖卡移動(<code className={styles.code}>useDesktopStopPan</code>)，
+            平移實作各自注入。
+          </p>
         </div>
 
         <div className={styles.section}>
@@ -620,16 +701,23 @@ export function PlanDataFlowPage() {
             </span>
             原本 <code className={styles.code}>mapMarkerPointsKey</code> 直接讀
             <code className={styles.code}>timelineRef.current.nodes.get(id)</code> 拿主題點的子景點，
-            而且只在 <code className={styles.code}>kind === 'simulated'</code> 時讀——交接到真實層之後
+            而且只在來源是模擬時讀——交接到真實層之後
             timeline 住在 <code className={styles.code}>TripPlanPage</code> 內部、外層讀不到，主題點的展開能力整個消失。
             現已改為 <code className={styles.code}>PlanStopMarker</code> 帶
-            <code className={styles.code}>children</code>，由兩邊的投影各自填好，地圖那側不再需要分支。
+            <code className={styles.code}>children</code>，由模擬態與推論態的站點檢視實例各自填好，地圖那側不再需要分支。
           </div>
           <div className={styles.note}>
             <span className={styles.noteTitle}>兩條路徑的中間層完全分開</span>
             模擬層不接持久化，真實層不接 <code className={styles.code}>PlanSimSource</code>。
             兩者在領域層才匯流。目前沒問題，但若要做「展示的行程存下來繼續編輯」，
             把 noop store 換成 draft 實作即可——介面已經備好。
+          </div>
+          <div className={styles.note}>
+            <span className={styles.noteTitle}>三個 Content 沒有整合測試</span>
+            <code className={styles.code}>home/plan-ai-sim/Content.tsx</code>、<code className={styles.code}>phone/Content.tsx</code>、
+            <code className={styles.code}>desktop/Content.tsx</code> 是各入口的狀態擁有者，交接、首站平移、目前位置、站點遮蔽的接線
+            只靠子層的單元測試守住(例如 <code className={styles.code}>PlanPhoneView.mapWiring.test.tsx</code>)。
+            這一層是這次重構最容易靜默回歸的地方。
           </div>
           <div className={styles.note}>
             <span className={styles.noteTitle}>noopPlanTimelineStore 零消費端</span>

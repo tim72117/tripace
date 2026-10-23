@@ -32,7 +32,6 @@ import { type PanelMode, DEBUG_PANEL_ENABLED, PANEL_REGISTRY, ROUTE_LINE_ENABLED
 import { RouteEditor } from '../demo/RouteEditor'
 import { Nav as DesktopNav } from './Nav'
 import { LivePlanLayer } from './LivePlanLayer'
-import { useFirstStopAutoPan, usePanWithFirstStopPriority } from '../plan-core/useFirstStopAutoPan'
 import { useCurrentLocation } from './useCurrentLocation'
 import { useDesktopStopPan } from '../plan-core/useStopPan'
 import { PlanLayout } from './PlanLayout'
@@ -165,16 +164,13 @@ export function Content(props: ContentProps) {
   // (GeoOutlinePhoneView.tsx)呼叫同一個 hook,不再各自實作一份形狀
   // 相似但容易跑出不一致的版本。
   const geo = useGeoPlanningState({ cfg, dataSource, tripID: activeTrip?.id })
-  // 站點平移兩件事分開(plan-core):首站自動平移(四個入口都有)與卡片「移動到此」(只分手機與桌面,這裡是桌面版)。
-  // 兩者共用同一條平移路徑 panStopTarget——宣告式 geo.setPanTarget(見下方 LivePlanLayer 處對 nonce 等欄位的說明);
-  // 卡片的 panToStop 注入 LivePlanLayer。地圖就緒前 panTarget 由消費端保留,所以首站的 ready 恆為 true。
+  // 桌面版的鏡頭移動統一只由「點選圖卡」觸發(plan-core 的 useDesktopStopPan):沒有首站自動平移,也沒有定位後自動平移。
+  // 平移走宣告式 geo.setPanTarget(見下方 LivePlanLayer 處對 nonce 等欄位的說明);卡片的 panToStop 注入 LivePlanLayer。
   const panStopTarget = useCallback(
     (target: { lat: number; lng: number }) => geo.setPanTarget({ lat: target.lat, lng: target.lng, nonce: Date.now() }),
     [geo.setPanTarget],
   )
   const { panToStop } = useDesktopStopPan({ enabled: true, pan: panStopTarget })
-  // 首站平移優先於目前位置平移(見 usePanWithFirstStopPriority)。
-  const { panToFirstStop, panToLocation } = usePanWithFirstStopPriority(panStopTarget)
   const geoSelectedKey = geo.selectedKey
   const geoInfoContent = geo.infoContent
   const geoAttractionContent = geo.attractionContent
@@ -443,9 +439,8 @@ export function Content(props: ContentProps) {
     ...outlineBindingFrom(geo),
   })
   // 目前位置(藍點):是否要取由 outlineMapState.locationWanted 判斷(旅程沒有座標),怎麼取是這個入口自己的 useCurrentLocation
-  // (desktop/useCurrentLocation,與 phone/、home/plan-ai-sim/ 同名同介面)。取到後平移過去,走 geo.setPanTarget(宣告式、
-  // 抑制平移後的額外查詢)。
-  const { currentPosition } = useCurrentLocation({ wanted: outlineMapState.locationWanted, onLocated: panToLocation })
+  // (desktop/useCurrentLocation,與 phone/、home/plan-ai-sim/ 同名同介面)。取到後只畫藍點,不自動平移(桌面鏡頭只由點選圖卡移動)。
+  const { currentPosition } = useCurrentLocation({ wanted: outlineMapState.locationWanted })
   // timelineMirror:時間軸側欄(panelMode === 'timeline' 的 MultiTrackTimeline)
   // 需要的行程條目資料。
   //
@@ -540,10 +535,6 @@ export function Content(props: ContentProps) {
 
   // visibleStopsView:傳給地圖的站點檢視,規劃面板關閉時整組遮蔽(桌面、手機共用,見 maskPlanStopsView)。
   const visibleStopsView = maskPlanStopsView({ stops, selectedStopId, hoverStopId, hoverTransitPair }, chatPopoverVisible)
-  // 首站自動平移吃遮蔽後的站點:規劃面板常駐掛載,載入時 TripPlanPage 可能從 localStorage 還原行程並回報站點,
-  // 面板沒打開就平移會讓地圖在使用者沒要求時跳走(也會蓋掉旅程中心與目前位置的平移)。面板可見後第一次有站點才平移,
-  // 與登入後手機(PlanPhoneView 收到的就是遮蔽後的站點)一致。
-  useFirstStopAutoPan({ stops: visibleStopsView.stops, enabled: true, ready: true, pan: panToFirstStop })
 
   // nav:最左側導覽列(desktop/Nav),交給容器 PlanLayout 排在主顯示區之前。
   const nav = (

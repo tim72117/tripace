@@ -1,24 +1,29 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, CalendarDays, MapPin } from 'lucide-react'
+import { BASE_URL } from '../AppCommon'
+import type { GeoAttraction } from '../api'
 import { PlanTimelineView } from '../plan-core/PlanTimelineView'
-import { toRenderList } from '../plan-core/planTimeline'
 import { Lightbox } from '../geo-planning/PhotoCarousel'
-import { NativeMapBase, type MapHandle } from '../geo-planning/NativeMapBase'
+import type { MapHandle } from '../geo-planning/NativeMapBase'
 import { SIMPLE_MAP_ID } from '../geo-planning/mapStyleIds'
-import { usePlanStopMarkers, type PlanStopMarker } from '../geo-planning/usePlanStopMarkers'
-import type { RoutePolylineSegment } from '../geo-planning/mapDrawLayer/featureLayers/routePolylineLayer'
-import { useMapDrawLayer } from '../geo-planning/mapDrawLayer'
+import type { PlanStopMarker } from '../geo-planning/usePlanStopMarkers'
+import { useMapSafeArea } from '../geo-planning/useMapSafeArea'
+import { useStopCardClick } from '../plan-core/useStopPan'
 import { routePolylineLayer } from '../geo-planning/mapDrawLayer/featureLayers/routePolylineLayer'
-import { toPlanTimeline } from './catalog'
-import { createRenderItineraryStopCard } from './renderItineraryStopCard'
+import { getPlanAiPublicDataSource } from '../home/plan-ai-sim/planAiPublicDataSource'
+import { requireAttractionsByCity, requireGeoPlaceDetails, requirePhotoAssets } from '../home/plan-ai-sim/planAiDataSource'
 import { createRenderOnsenAutumnStopCard } from './renderOnsenAutumnStopCard'
 import { MAPLE_LEAF_PATH, MAPLE_STEM_PATH } from './mapleLeafPath'
 import { renderAnchorIcon } from './renderAnchorIcon'
-import { HAND_DRAWN_MAP_STYLE, HAND_DRAWN_MAP_STYLE_DARK } from './handDrawnMapStyle'
+import { maskPlanStopsView, usePlanSelection } from '../plan-core/usePlanStopsState'
+import { routeSegmentsFromSteps } from './routeSegments'
+import { PlanLayout } from './PlanLayout'
+import { PlanOverlayLayout } from './PlanOverlayLayout'
+import { PlanMap } from './PlanMap'
 import { FoodSpotPanel } from './FoodSpotPanel'
 import { useFoodSpotDetails } from './useFoodSpotDetails'
-import { useStopAttractionDetails } from './useStopAttractionDetails'
+import { useResolvedItineraryTimeline } from './useResolvedItineraryTimeline'
 import type { SampleItinerary } from './types'
 import styles from './AiItineraryDetailPageMapView.module.css'
 
@@ -63,7 +68,7 @@ const FOOD_MARKER_GLYPH =
 
 // FOOD_MARKER_SIZE——2026-10 新增,使用者回報「圖案太小了」:美食
 // marker 整顆圓點(含上方的 FOOD_MARKER_GLYPH)放大到 22px(預設
-// 14px 的約 1.6 倍),傳給 usePlanStopMarkers 的 PlanStopMarker.size
+// 14px 的約 1.6 倍),傳給統一繪製層的 PlanStopMarker.size
 // (見該欄位與 mapMarkers.ts planStopMarkerContent size 參數的完整
 // 說明)——viewBox 固定不變,只放大 <svg> 外層的 width/height,圓點
 // 本體跟 glyph 會一起等比縮放,不需要重新調整任何座標。時間軸站點
@@ -194,7 +199,7 @@ function MapleVignette({ dark = false }: { dark?: boolean }) {
 // 不互相糾纏,純粹是程式組織考量,不是路由層級的分流。
 //
 // 地圖基底沿用 home/plan-ai-sim/Content.tsx 的標準用法:NativeMapBase 只建立地圖
-// 實例(center/zoom/mapId/onHandleChange),usePlanStopMarkers 把站點畫成
+// 實例(center/zoom/mapId/onHandleChange),統一繪製層(useSharedDrawLayer 的 planStopLayer)把站點畫成
 // 圓點並處理選取/hover 視覺——這兩者都是「只做原生配置/圖層」的最小元件,
 // 這裡的職責只是組裝,不重新實作地圖邏輯。
 //
@@ -219,53 +224,39 @@ function fallbackCenterOf(itinerary: SampleItinerary): { lat: number; lng: numbe
   return first ? { lat: first.lat!, lng: first.lng! } : { lat: 22.9965, lng: 120.2 }
 }
 
+// publicDataSource——讀取已建檔景點區域(attractions)是訪客動作,不需要
+// 使用者自己的 JWT:用訪客版資料存取層實例,理由同 useStopAttractionDetails.ts
+// 的同名常數。
+const publicDataSource = getPlanAiPublicDataSource(BASE_URL)
+
+// cityNameOf——從 SampleItinerary.region(格式固定是「國家・城市」,見
+// types.ts 該欄位的完整說明與 itineraries.test.ts 的格式驗證)取出城市
+// 名,對應 attractions 表的 cityName 欄位(tripace-cli attraction add
+// -city 建檔時用的同一組字典,見 attraction add 的既有慣例)——不是另外
+// 發明一個城市對照表,直接拆解既有欄位已經足夠。用最後一個「・」分段,
+// 不是用 split 取固定索引,避免國家名本身含有這個分隔字元時取錯段落
+// (目前的資料都只有一個分隔字元,但用「取最後一段」比「取索引 1」更
+// 穩健)。
+function cityNameOf(region: string): string {
+  const parts = region.split('・')
+  return parts[parts.length - 1] ?? region
+}
+
 // dark——頁面目前是不是夜間模式(由 AiItinerariesRoute 的 useThemeToggle 決定,
 // 經 AiItineraryDetailPage 傳進來)。必須明確傳給 NativeMapBase 的 theme:
-// 不傳的話它拿到 null,走 mapId 的地圖會永遠用預設淺色;手繪配色則另外依
-// dark 切換日夜兩份 styles(見 handDrawnMapStyle.ts HAND_DRAWN_DARK_COLORS)。
+// 不傳的話它拿到 null,走 mapId 的地圖會永遠用預設淺色。
 export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itinerary: SampleItinerary; dark?: boolean }) {
-  // stopAttractionDetails——帶 attractionId 的站點即時查到的 Google 照片
-  // (見 useStopAttractionDetails.ts 的完整說明),key 是 attractionId 本身。
-  const stopAttractionDetails = useStopAttractionDetails(itinerary.stops)
-  // steps——toPlanTimeline 把 stop.photos(靜態欄位)直接存進每個節點的
-  // googlePhotoUrls(見 catalog.ts 的完整說明),這裡在轉換完成後逐一比對
-  // 原始 itinerary.stops 陣列,帶 attractionId 且查詢結果非空時用即時
-  // 查到的照片覆蓋掉靜態的 photos——查詢中/查詢失敗/沒有 attractionId
-  // 的站點維持原本 googlePhotoUrls 不變,不會因為這個機制讓原本有靜態
-  // photos 的行程(例如 tainan-chikan-2day)受到任何影響。
-  //
-  // 用 id 對照(而非陣列索引)配對:toRenderList 會在跨天行程裡插入
-  // day-divider 虛擬節點(見該函式 DAY_DIVIDER_ID_PREFIX 的完整說明),
-  // rendered 陣列的索引因此不等於 itinerary.stops 的索引——必須靠 id
-  // 命名規則固定是 `${itinerary.id}-s${i}`(見 catalog.ts toPlanTimeline
-  // 的完整說明)反查回對應的原始 stop,不能直接假設兩個陣列同位對齊
-  // (單日行程如 jozankei-1day 沒有分隔線、索引剛好對齊,容易誤以為通用,
-  // 但多日行程會直接配錯站)。
-  const steps = useMemo(() => {
-    const rendered = toRenderList(toPlanTimeline(itinerary).timeline)
-    return rendered.map((step) => {
-      const m = /^.+-s(\d+)$/.exec(step.id)
-      const stopIndex = m ? Number(m[1]) : -1
-      const attractionId = itinerary.stops[stopIndex]?.attractionId
-      const live = attractionId ? stopAttractionDetails[attractionId] : undefined
-      return live ? { ...step, googlePhotoUrls: live.photos } : step
-    })
-  }, [itinerary, stopAttractionDetails])
+  // steps——時間軸資料。站點座標與照片經資料存取層解析(placeId → placeDetails),與 /ai-plan、登入後同一條路徑,
+  // 見 useResolvedItineraryTimeline.ts。
+  const steps = useResolvedItineraryTimeline(itinerary)
   // center——依這份行程自己的站點動態算,不再是寫死的台南座標(見
   // fallbackCenterOf 的完整說明)。useMemo 依賴 itinerary.id 而非整個
   // itinerary 物件,避免 stops 陣列每次 render 若非穩定參照時造成不必要
   // 的重新計算(雖然目前呼叫端都是穩定參照,但座標運算的輸入語意上就是
   // 「這是哪一份行程」,用 id 當依賴更準確)。
   const center = useMemo(() => fallbackCenterOf(itinerary), [itinerary.id])
-  // isHandDrawn——這份行程是否要走手繪可愛風樣式,2026-10 改版(使用者
-  // 明確要求「做成獨立通用的元件」):改讀行程資料本身的 mapStyle 欄位
-  // (見 types.ts 的完整說明),取代原本寫死的 HAND_DRAWN_ITINERARY_IDS
-  // 前端 id 白名單——是否走手繪樣式變成資料驅動,不是程式碼寫死特定
-  // 行程。mapStyles 傳 undefined(而非空陣列)給 NativeMapBase 的 styles
-  // prop 時,代表「沒有 inline styles」,該元件會退回原本的 mapId 分支
-  // (見該元件 styles prop 的完整說明,空陣列在 JS styles 系統裡語意是
-  // 「有樣式規則但規則是空的」,跟 undefined「完全不使用這個機制」不同,
-  // 這裡刻意用 undefined 避免混淆)。
+  // isHandDrawn——行程資料的 mapStyle 欄位(見 types.ts)是否為 'hand-drawn'。地圖底圖一律用 SIMPLE_MAP_ID,
+  // 這個值不再換底圖,只當 isPlayfulUI 的預設值。
   const isHandDrawn = itinerary.mapStyle === 'hand-drawn'
   // isPlayfulUI——2026-10 新增,使用者明確要求「圖卡加入一些手繪卡通
   // 樣式,活潑一點」「外框做得像古城風格的遊戲地圖邊框」,後續明確拍板
@@ -284,24 +275,12 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
   // 沒設定這個欄位的既有行程行為不變。是否渲染仍由 isPlayfulUI 把關,
   // borderStyle 只決定主題。
   const isMapleBorder = itinerary.borderStyle === 'maple-leaf'
-  // renderStopCard——套用手繪卡通樣式的卡片渲染(見
-  // renderItineraryStopCard.tsx createRenderItineraryStopCard 的完整
-  // 說明),依 isPlayfulUI 決定,不是 isHandDrawn。useMemo 依賴
-  // isPlayfulUI(穩定的布林值,同一份行程掛載期間不會變動),避免每次
-  // render 都重新建立一個新函式參照傳給 PlanTimelineView,造成不必要
-  // 的子樹重渲染。
-  //
-  // 2026-10 新增 cardTheme 分支(見 types.ts SampleItinerary.cardTheme 的
-  // 完整說明):行程資料明確宣告 cardTheme:'onsen-autumn' 時改用
-  // renderOnsenAutumnStopCard.tsx 的秋日泡湯主題卡片(目前只有
-  // jozankei-1day),完全取代 playful/standard 那一組——主題卡自己有一套
-  // 暖色紙張配色,不會再疊 .stopCardPlayful 的蠟筆描邊。未設定
-  // cardTheme 的行程走原本的 createRenderItineraryStopCard(isPlayfulUI),
-  // 行為跟新增欄位前完全一樣。
+  // renderStopCard——一般行程不傳,直接用 PlanTimelineView 的預設景點卡(與 /ai-plan、登入後同一張卡);
+  // 只有行程資料宣告 cardTheme:'onsen-autumn'(目前只有 jozankei-1day)時才換成秋日泡湯主題卡。
   const cardTheme = itinerary.cardTheme
   const renderStopCard = useMemo(
-    () => (cardTheme === 'onsen-autumn' ? createRenderOnsenAutumnStopCard() : createRenderItineraryStopCard(isPlayfulUI)),
-    [cardTheme, isPlayfulUI],
+    () => (cardTheme === 'onsen-autumn' ? createRenderOnsenAutumnStopCard() : undefined),
+    [cardTheme],
   )
   // foodSpots——2026-10 改版,使用者明確要求「將目前模擬的資料改成串接
   // 真的 API 資料」:小豪洲沙茶爐中山店/阿蓮牛肉湯這兩筆已經用 CLI
@@ -324,24 +303,62 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
   // `${itinerary.id}-s${i}`,美食清單 id 是 content JSON foodSpots 裡的
   // `food-1`/`food-2` 等),PlanTimelineView 用這個值跟時間軸卡片自己的
   // id 比對時,美食清單的 id 不會誤命中任何時間軸卡片,FoodSpotPanel 同理。
-  const [selectedStopId, setSelectedStopId] = useState<string | null>(null)
-  const [hoverStopId, setHoverStopId] = useState<string | null>(null)
+  // 選取與 hover 用共用的 usePlanSelection(plan-core/usePlanStopsState,/ai-plan 模擬態、登入後也是它的同一份狀態形狀)。
+  const { selectedStopId, hoverStopId, setSelectedStopId, setHoverStopId } = usePlanSelection()
   const [lightbox, setLightbox] = useState<{ photos: string[]; alt: string } | null>(null)
   const mountedIdsRef = useRef<Set<string>>(new Set())
 
-  // mapHandle——NativeMapBase 建圖完成後回報的控制代碼,usePlanStopMarkers
-  // 需要 mapRef/mapReady 才能把站點 marker 掛到這個地圖實例上,寫法對齊
-  // home/plan-ai-sim/Content.tsx 的既有用法。
+  // attractions——這份行程所在城市已建檔的景點區域(見 attractionGlow
+  // 的完整說明,目前只用來畫主題點光暈,例如清邁行程的「尼曼文青咖啡巷」
+  // ——使用者明確要求「用 useSharedDrawLayer 繪製尼曼文青咖啡巷為主題點
+  // 光暈」)。做法對齊 home/InteractiveExploreMap.tsx 同一套
+  // requireAttractionsByCity 查詢。這個地圖版面目前只有少數行程
+  // (mapStyle 有值)會走到,查詢範圍是整個城市、不特別篩選跟這份行程
+  // 站點有沒有關聯——跟 InteractiveExploreMap 的既有行為一致,地圖上
+  // 本來就會顯示這個城市全部已建檔的主題點/景點,不是只顯示跟當前行程
+  // 站點重疊的那幾個。
+  const [attractions, setAttractions] = useState<GeoAttraction[]>([])
+  useEffect(() => {
+    let cancelled = false
+    requireAttractionsByCity(publicDataSource, cityNameOf(itinerary.region))
+      .then((res) => {
+        if (!cancelled) setAttractions(res)
+      })
+      .catch((err) => {
+        // 查詢失敗(例如這個城市尚未建檔任何景點區域)不影響行程本身的
+        // 顯示——主題點光暈是錦上添花的疊加資訊,不是這個頁面的核心內容,
+        // 失敗時維持空陣列(attractionGlowLayer 不畫任何東西)即可,不需要
+        // 整頁顯示錯誤。
+        console.error('[AiItineraryDetailPageMapView] requireAttractionsByCity 失敗:', err)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [itinerary.region])
+
+  // attractionPlaceDetails/attractionPhotoAssets——穩定參照包起來的查詢
+  // 函式,傳給 attractionGlowLayer 的 placeDetails/photoAssets(主題點
+  // 展開後查詢內部子景點/照片用)。做法對齊 InteractiveExploreMap.tsx
+  // 同樣的 useCallback 包法。
+  const attractionPlaceDetails = useCallback((placeId: string) => requireGeoPlaceDetails(publicDataSource, placeId), [])
+  const attractionPhotoAssets = useCallback((placeId: string) => requirePhotoAssets(publicDataSource, placeId), [])
+
+  // mapHandle——NativeMapBase 建圖完成後回報的控制代碼,統一繪製層需要 mapRef/mapReady
+  // 才能把站點 marker 掛到這個地圖實例上,寫法對齊 home/plan-ai-sim/Content.tsx 的既有用法。
   const [mapHandle, setMapHandle] = useState<MapHandle>({ mapRef: { current: null }, mapReady: false, mapVersion: 0 })
   const handleMapHandleChange = useCallback((handle: MapHandle) => {
     setMapHandle(handle)
   }, [])
+  // 點選圖卡的鏡頭移動:與 /ai-plan、登入後桌面同一個共用處理(plan-core 的 useStopCardClick)——選取該站並平移到
+  // 沒被面板蓋住的地圖範圍中心(PlanOverlayLayout 的 safe-area 節點,經 useMapSafeArea 讀)。
+  const mapSafeArea = useMapSafeArea(mapHandle.mapRef)
+  const panToStop = useStopCardClick({ select: setSelectedStopId, pan: mapSafeArea.panToWithinSafeArea })
 
   // mapStops——只取已經有座標的 stop 節點,理由同 home/plan-ai-sim/Content.tsx
   // 的 mapStops:section/message 本來就不是地點,沒有座標的節點畫不出來。
   // 2026-10 擴充:美食清單各筆若已查到座標(foodSpotDetails,見
   // useFoodSpotDetails.ts 的完整說明),一併併入同一個陣列,用同一個
-  // usePlanStopMarkers 圖層畫出來——不建立第二個 marker 圖層,理由同上方
+  // 站點圖層(planStopLayer)畫出來——不建立第二個 marker 圖層,理由同上方
   // selectedStopId 的完整說明,這兩種點本質上是「同一張地圖上可被選取
   // 的地點」,沒有必要拆成兩套獨立的畫點/選取邏輯。
   const mapStops = useMemo<PlanStopMarker[]>(() => {
@@ -358,87 +375,51 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
     return [...stopMarkers, ...foodMarkers]
   }, [steps, foodSpots, foodSpotDetails])
 
-  // routeSegments——2026-10 新增,使用者分享步道導覽圖參考圖「繪製像
-  // 這樣的路徑看看」,先做視覺雛形:依 day 把時間軸站點(不含美食清單,
-  // 美食是旁支候選、不排進主路徑動線)分組,每天各自一條直線連接的
-  // 路徑(見 usePlanRoutePolyline.ts 的完整說明,這一版刻意不打 Routes
-  // API 算真實道路路徑,只是視覺方向雛形)。day 省略時視為第 1 天,
-  // 理由同 SampleStop.day 的既有慣例。dayIndex 從 0 開始(對齊
-  // usePlanRoutePolyline 的 ROUTE_COLORS 陣列索引),不是直接用 day
-  // 數值——day 可能不是從 1 連續遞增(雖然目前行程資料都是),用「依
-  // 排序後出現順序」決定顏色索引更穩健。
-  const routeSegments = useMemo<RoutePolylineSegment[]>(() => {
-    const byDay = new Map<number, { lat: number; lng: number }[]>()
-    for (const s of steps) {
-      if (s.type !== 'stop' || s.lat == null || s.lng == null) continue
-      const day = s.day ?? 1
-      const path = byDay.get(day) ?? []
-      path.push({ lat: s.lat, lng: s.lng })
-      byDay.set(day, path)
-    }
-    return [...byDay.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([, path], dayIndex) => ({ dayIndex, path }))
-  }, [steps])
+  // routeSegments——有交通膠囊的那一段才畫線,規則見 routeSegments.ts。
+  const routeSegments = useMemo(() => routeSegmentsFromSteps(steps), [steps])
 
-  // 手繪路線改由統一繪製層的功能層畫出(見 geo-planning/mapDrawLayer/types.ts)。
-  const drawLayers = useMemo(() => [routePolylineLayer({ segments: routeSegments })], [routeSegments])
-  useMapDrawLayer({
-    mapRef: mapHandle.mapRef,
-    mapReady: mapHandle.mapReady,
-    mapVersion: mapHandle.mapVersion,
-    layers: drawLayers,
-  })
-
-  usePlanStopMarkers({
-    mapRef: mapHandle.mapRef,
-    mapReady: mapHandle.mapReady,
-    mapVersion: mapHandle.mapVersion,
-    points: mapStops,
-    selectedId: selectedStopId,
-    hoverId: hoverStopId,
-    // onPointClick——點地圖圓點時反向高亮時間軸對應項目,這是使用者要求
-    // 的雙向連動:點時間軸卡片→setSelectedStopId(見下方 onPanToStop)；
-    // 點地圖圓點→同一個 state,兩個方向共用同一份事實來源。
-    onPointClick: (id) => setSelectedStopId(id),
-    // useAdvancedMarkers: !isHandDrawn——2026-10 新增,使用者回報定山溪
-    // (jozankei-1day,mapStyle:'hand-drawn')地圖報錯「地圖在初始化時
-    // 未使用有效的地圖 ID,因此將無法使用進階標記」:hand-drawn 樣式
-    // 用 inline MapTypeStyle、不帶 mapId(見上方 NativeMapBase styles
-    // prop 的完整說明),而 AdvancedMarkerElement 強制要求 mapId 才能
-    // 顯示,兩者在平台層級互斥。改傳 false 讓 hand-drawn 行程改走舊版
-    // google.maps.Marker(見 usePlanStopMarkers.ts useAdvancedMarkers
-    // 參數的完整說明)。isHandDrawn 為 false 的行程(simple 地圖樣式,
-    // 帶 mapId)維持原本的 AdvancedMarkerElement,不受影響。
-    useAdvancedMarkers: !isHandDrawn,
-  })
+  // 站點圓點與手繪路線都由統一繪製層畫出:站點圓點走 useSharedDrawLayer 的 planStopLayer(與 /ai-plan、登入後
+  // 同一個宿主與功能層),手繪路線是只有這一頁用的功能層(routePolylineLayer),經 extraLayers 傳入。
+  //   - 站點(含美食清單的 glyph 與 size)、選取、hover 都由這頁自己持有(受控),點地圓點只回報意圖
+  //     (onPointClick):點時間軸卡片 → setSelectedStopId(見下方 onPanToStop);點地圖圓點 → 同一個 state,
+  //     兩個方向共用同一份事實來源(使用者要求的雙向連動)。
+  // stopsView——站點檢視,與其他入口同一種帶入方式:站點、選取、hover、轉乘配對四個欄位(欄位名與 PlanMap 的 prop 同名),
+  // 經 maskPlanStopsView 遮蔽後直接展開給 PlanMap。這頁的站點是靜態行程(解析後的行程轉出的 mapStops),面板永遠顯示,
+  // 所以 visible 恆為 true;沒有轉乘膠囊 hover 的來源(hoverTransitPair 恆為 null)。
+  const stopsView = useMemo(
+    () => maskPlanStopsView({ stops: mapStops, selectedStopId, hoverStopId, hoverTransitPair: null }, true),
+    [mapStops, selectedStopId, hoverStopId],
+  )
+  const attractionGlow = useMemo(() => ({
+    attractions,
+    onSelect: () => {},
+    placeDetails: attractionPlaceDetails,
+    photoAssets: attractionPhotoAssets,
+  }), [attractions, attractionPlaceDetails, attractionPhotoAssets])
+  const drawExtraLayers = useMemo(() => [routePolylineLayer({ segments: routeSegments })], [routeSegments])
 
   return (
-    <main className={styles.page}>
-      <div className={styles.mapBackdrop}>
-        <NativeMapBase
-          center={center}
-          zoom={ZOOM}
-          theme={dark ? 'dark' : 'light'}
-          {...(isHandDrawn ? { styles: dark ? HAND_DRAWN_MAP_STYLE_DARK : HAND_DRAWN_MAP_STYLE } : { mapId: SIMPLE_MAP_ID })}
-          onHandleChange={handleMapHandleChange}
-        />
-        {isPlayfulUI && (isMapleBorder ? <MapleVignette dark={dark} /> : <MapVignette dark={dark} />)}
-      </div>
-      {isPlayfulUI && (isMapleBorder ? <MapleLeafBorder /> : <TreasureScrollBorder />)}
-
-      <Link to="/itineraries" className={styles.back}><ArrowLeft size={14} strokeWidth={2} />所有範例行程</Link>
-
-      <FoodSpotPanel
-        spots={foodSpots}
-        detailsById={foodSpotDetails}
-        selectedSpotId={selectedStopId}
-        onSelectSpot={setSelectedStopId}
-        onHoverSpot={setHoverStopId}
-        isPlayful={isPlayfulUI}
-      />
-
-      <div className={styles.panel}>
+    <PlanLayout>
+      <PlanOverlayLayout
+        safeAreaRef={mapSafeArea.safeAreaElRef}
+        mapBackground={
+          <div className={styles.mapBackdrop}>
+            <PlanMap
+              center={center}
+              zoom={ZOOM}
+              theme={dark ? 'dark' : 'light'}
+              mapId={SIMPLE_MAP_ID}
+              {...stopsView}
+              onStopClick={setSelectedStopId}
+              attractionGlow={attractionGlow}
+              extraLayers={drawExtraLayers}
+              onHandleChange={handleMapHandleChange}
+            >
+              {isPlayfulUI && (isMapleBorder ? <MapleVignette dark={dark} /> : <MapVignette dark={dark} />)}
+            </PlanMap>
+          </div>
+        }
+      >
         <header className={styles.header}>
           <h1 className={styles.title}>{itinerary.title}</h1>
           <div className={styles.meta}>
@@ -457,7 +438,7 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
           onHoverStop={setHoverStopId}
           showJumpPill={false}
           onJumpToLatest={() => {}}
-          onPanToStop={(step) => setSelectedStopId(step.id)}
+          onPanToStop={panToStop}
           onOpenPhotos={setLightbox}
           mountedIdsRef={mountedIdsRef}
           scrollClassName={styles.timelineScroll}
@@ -466,9 +447,21 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
           renderAnchorIcon={renderAnchorIcon}
           anchorDotSize={22}
         />
-      </div>
+      </PlanOverlayLayout>
+      {isPlayfulUI && (isMapleBorder ? <MapleLeafBorder /> : <TreasureScrollBorder />)}
+
+      <Link to="/itineraries" className={styles.back}><ArrowLeft size={14} strokeWidth={2} />所有範例行程</Link>
+
+      <FoodSpotPanel
+        spots={foodSpots}
+        detailsById={foodSpotDetails}
+        selectedSpotId={selectedStopId}
+        onSelectSpot={setSelectedStopId}
+        onHoverSpot={setHoverStopId}
+        isPlayful={isPlayfulUI}
+      />
 
       {lightbox && <Lightbox photos={lightbox.photos} alt={lightbox.alt} onClose={() => setLightbox(null)} />}
-    </main>
+    </PlanLayout>
   )
 }

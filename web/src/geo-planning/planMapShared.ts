@@ -7,7 +7,7 @@ import {
   type SearchResultsInput,
   type TripEntriesInput,
 } from './mapDrawLayer/useSharedDrawLayer'
-import type { LatLng } from './mapDrawLayer/types'
+import type { FeatureLayer, LatLng } from './mapDrawLayer/types'
 import type { HoverTransitPair } from './mapMarkerLayer/planStops'
 import type { PlanStopMarker } from './usePlanStopMarkers'
 
@@ -79,6 +79,7 @@ export function usePlanMapDrawing({
   tripEntries,
   searchResults,
   attractionGlow,
+  extraLayers,
 }: PlanMapSharedProps & {
   mapRef: React.RefObject<google.maps.Map | null>
   mapReady: boolean
@@ -86,6 +87,8 @@ export function usePlanMapDrawing({
   tripEntries?: TripEntriesInput
   searchResults?: SearchResultsInput
   attractionGlow?: AttractionGlowInput
+  // 各入口自己額外的功能層(例如行程詳情頁的每天手繪路線),原樣交給統一繪製層。
+  extraLayers?: FeatureLayer[]
 }) {
   return useSharedDrawLayer({
     mapRef,
@@ -104,5 +107,6 @@ export function usePlanMapDrawing({
     tripEntries,
     searchResults,
     attractionGlow,
+    extraLayers,
   })
 }

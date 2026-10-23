@@ -55,3 +55,24 @@ export function useDesktopStopPan({ enabled, pan }: { enabled: boolean; pan: (ta
   )
   return { panToStop }
 }
+
+// useStopCardClick——「點選圖卡」的共用處理:高亮該站並(有注入 pan 時)平移地圖到那一站。
+// 時間軸站點卡(PlanTimelineView 的 onPanToStop)的點擊都走這個:TripPlanPage(推論態、登入後兩個入口)與 /ai-plan
+// 模擬態的 Content 各自注入自己的 select 與 pan,點卡片的行為只有這一份。
+// 沒有座標的節點直接略過、連高亮都不做:查詢中的佔位卡(座標要等查完才有)點了不該有任何反應。
+export function useStopCardClick({
+  select,
+  pan,
+}: {
+  select: (stopId: string) => void
+  pan?: (target: LatLng) => void
+}) {
+  return useCallback(
+    (step: { id: string; lat?: number | null; lng?: number | null }) => {
+      if (step.lat == null || step.lng == null) return
+      select(step.id)
+      pan?.({ lat: step.lat, lng: step.lng })
+    },
+    [select, pan],
+  )
+}

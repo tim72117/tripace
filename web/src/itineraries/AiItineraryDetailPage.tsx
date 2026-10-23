@@ -9,7 +9,6 @@ import { Lightbox } from '../geo-planning/PhotoCarousel'
 import { SiteNavBrand } from '../home/SiteNavButtons'
 import { findItinerary, isSampleItineraryShape, toPlanTimeline } from './catalog'
 import { AiItineraryDetailPageMapView } from './AiItineraryDetailPageMapView'
-import { createRenderItineraryStopCard } from './renderItineraryStopCard'
 import { renderAnchorIcon } from './renderAnchorIcon'
 import type { SampleItinerary } from './types'
 import styles from './AiItineraryDetailPage.module.css'
@@ -18,14 +17,6 @@ import styles from './AiItineraryDetailPage.module.css'
 // 的 JWT,token 傳 null,理由同 web/src/blog/BlogArticlePage.tsx 的
 // GUEST_CFG。
 const GUEST_CFG: ClientConfig = { baseURL: BASE_URL, token: null }
-
-// STANDARD_RENDER_STOP_CARD——這個檔案裡唯讀卡片牆版面用的地點卡渲染,
-// 固定走非手繪版(isPlayful=false)——能走到這段 JSX 的行程一定沒有
-// itinerary.mapStyle(有的話前面已經 return AiItineraryDetailPageMapView
-// 了,見下方完整說明),手繪卡通樣式目前只服務走地圖版面的行程。模組
-// 層級常數而非每次 render 呼叫 createRenderItineraryStopCard(false),
-// 避免每次重渲染都建立新函式參照傳給 PlanTimelineView。
-const STANDARD_RENDER_STOP_CARD = createRenderItineraryStopCard(false)
 
 type ApiFetchState =
   | { kind: 'loading' }
@@ -201,7 +192,6 @@ export function AiItineraryDetailPage({ items, id, dark = false }: { items: Samp
         onPanToStop={(step) => setSelectedStopId(step.id)}
         onOpenPhotos={setLightbox}
         mountedIdsRef={mountedIdsRef}
-        renderStopCard={STANDARD_RENDER_STOP_CARD}
         renderAnchorIcon={renderAnchorIcon}
         anchorDotSize={22}
       />

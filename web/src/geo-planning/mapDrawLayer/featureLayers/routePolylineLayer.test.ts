@@ -16,6 +16,11 @@ const seg = (dayIndex: number, n = 2, base = 0): RoutePolylineSegment => ({
 const polys = (segments: RoutePolylineSegment[]) => routePolylineLayer({ segments }).drawables as PolylineDrawable[]
 
 describe('routePolylineLayer 純函式', () => {
+  it('segment 帶 id 時用它當 drawable id,同一天可以有多段;沒給時用 dayIndex', () => {
+    const ids = polys([{ ...seg(0), id: 'seg-a' }, { ...seg(0), id: 'seg-b' }, seg(1)]).map((p) => p.id)
+    expect(ids).toEqual(['seg-a', 'seg-b', 'day-1'])
+  })
+
   it('id 固定為 routePolyline;空 segments 回傳空陣列', () => {
     const layer = routePolylineLayer({ segments: [] })
     expect(layer.id).toBe('routePolyline')

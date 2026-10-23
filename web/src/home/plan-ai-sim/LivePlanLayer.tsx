@@ -74,9 +74,13 @@ import { createDraftPlanTimelineStore, startNewDraft } from '../../plan-core/pla
 // 對 selectedStopId 的說明。
 // cfg 的來源(三個入口的 LivePlanLayer 刻意不同):這裡自己用 useGuestClientConfig() 讀(訪客容許沒登入,有 token 就帶上),
 // 登入後的兩個 LivePlanLayer 則由入口傳進來(一定有 token)。這是授權策略的差別,不合併。
-export type LivePlanLayerProps = LivePlanLayerContract
+// onPanToStop——選填:點時間軸站點卡時,把該站座標交給入口平移地圖(桌面版;手機的橫向時間軸沒有點卡片平移,
+// 平移走卡片角落的「移動到此」按鈕)。沒傳就點卡片只選取、不平移。
+export type LivePlanLayerProps = LivePlanLayerContract & {
+  onPanToStop?: (stop: { lat: number; lng: number }) => void
+}
 
-export function LivePlanLayer({ selectedStopId, tripPlanProps }: LivePlanLayerProps) {
+export function LivePlanLayer({ selectedStopId, tripPlanProps, onPanToStop }: LivePlanLayerProps) {
   // activeDraftId——null 代表「還在用舊的固定單一草稿」(/app 共用的
   // localStoragePlanTimelineStore,見下方 store 的完整說明),非 null
   // 代表使用者已經按過至少一次「新行程」,目前指向 planTimelineDrafts.ts
@@ -170,6 +174,7 @@ export function LivePlanLayer({ selectedStopId, tripPlanProps }: LivePlanLayerPr
       // 只需要決定要不要給它這個能力。
       onNewDraft={NEW_TRIP_DRAFT_ENABLED ? handleNewDraft : undefined}
       selectedStopId={selectedStopId}
+      onPanToStop={onPanToStop}
       {...tripPlanProps}
     />
   )
