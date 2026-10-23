@@ -21,7 +21,7 @@ beforeEach(() => {
   placeDetails.mockReset()
 })
 
-const stopsOf = (steps: ReturnType<typeof useResolvedItineraryTimeline>) => steps.filter((n) => n.type === 'stop')
+const stopsOf = (steps: ReturnType<typeof useResolvedItineraryTimeline>['steps']) => steps.filter((n) => n.type === 'stop')
 
 describe('useResolvedItineraryTimeline', () => {
   it('起點是行程檔案的座標;帶 placeId 的站查到後座標與照片以資料存取層為準,名稱與說明不變', async () => {
@@ -30,10 +30,10 @@ describe('useResolvedItineraryTimeline', () => {
     })
     const it = make([stop({ name: 'A', placeId: 'pid_a', lat: 1, lng: 2 }), stop({ time: '10:00', name: 'B', lat: 3, lng: 4 })])
     const { result } = renderHook(() => useResolvedItineraryTimeline(it))
-    expect(stopsOf(result.current)[0]).toMatchObject({ lat: 1, lng: 2 })
-    await waitFor(() => expect(stopsOf(result.current)[0]).toMatchObject({ lat: 10, lng: 20, googlePhotoUrls: ['https://x/p.jpg'] }))
-    expect(stopsOf(result.current)[0]).toMatchObject({ name: 'A', desc: 'A說明', placeId: 'pid_a' })
-    expect(stopsOf(result.current)[1]).toMatchObject({ name: 'B', lat: 3, lng: 4 })
+    expect(stopsOf(result.current.steps)[0]).toMatchObject({ lat: 1, lng: 2 })
+    await waitFor(() => expect(stopsOf(result.current.steps)[0]).toMatchObject({ lat: 10, lng: 20, googlePhotoUrls: ['https://x/p.jpg'] }))
+    expect(stopsOf(result.current.steps)[0]).toMatchObject({ name: 'A', desc: 'A說明', placeId: 'pid_a' })
+    expect(stopsOf(result.current.steps)[1]).toMatchObject({ name: 'B', lat: 3, lng: 4 })
     expect(placeDetails).toHaveBeenCalledTimes(1)
     expect(placeDetails).toHaveBeenCalledWith('pid_a')
   })
@@ -47,7 +47,7 @@ describe('useResolvedItineraryTimeline', () => {
     const { result } = renderHook(() => useResolvedItineraryTimeline(it))
     await waitFor(() => expect(placeDetails).toHaveBeenCalledTimes(2))
     await new Promise((r) => setTimeout(r, 20))
-    const s = stopsOf(result.current)
+    const s = stopsOf(result.current.steps)
     expect(s[0]).toMatchObject({ name: 'A', lat: 1, lng: 2 })
     expect(s[1]).toMatchObject({ name: 'B', lat: 3, lng: 4 })
     expect(s[0].failed).toBeFalsy()
@@ -58,8 +58,8 @@ describe('useResolvedItineraryTimeline', () => {
     placeDetails.mockResolvedValue({ found: true, name: 'X', lat: 10, lng: 20, googlePhotoUrls: [] })
     const it = make([stop({ name: 'A', placeId: 'pid_a', lat: 1, lng: 2, photos: ['https://x/static.jpg'] })])
     const { result } = renderHook(() => useResolvedItineraryTimeline(it))
-    await waitFor(() => expect(stopsOf(result.current)[0]).toMatchObject({ lat: 10, lng: 20 }))
-    expect(stopsOf(result.current)[0].googlePhotoUrls).toEqual(['https://x/static.jpg'])
+    await waitFor(() => expect(stopsOf(result.current.steps)[0]).toMatchObject({ lat: 10, lng: 20 }))
+    expect(stopsOf(result.current.steps)[0].googlePhotoUrls).toEqual(['https://x/static.jpg'])
   })
 
   it('同 id 的內容換版(靜態版換成資料庫版):時間軸跟著換,重新解析', async () => {
@@ -67,9 +67,9 @@ describe('useResolvedItineraryTimeline', () => {
     const v1 = make([stop({ name: 'A', lat: 1, lng: 2 })])
     const v2 = make([stop({ name: 'A2', placeId: 'pid_new', lat: 3, lng: 4 })])
     const { result, rerender } = renderHook(({ it }) => useResolvedItineraryTimeline(it), { initialProps: { it: v1 } })
-    expect(stopsOf(result.current)[0]).toMatchObject({ name: 'A', lat: 1, lng: 2 })
+    expect(stopsOf(result.current.steps)[0]).toMatchObject({ name: 'A', lat: 1, lng: 2 })
     rerender({ it: v2 })
-    await waitFor(() => expect(stopsOf(result.current)[0]).toMatchObject({ name: 'A2', lat: 10, lng: 20 }))
+    await waitFor(() => expect(stopsOf(result.current.steps)[0]).toMatchObject({ name: 'A2', lat: 10, lng: 20 }))
     expect(placeDetails).toHaveBeenCalledWith('pid_new')
   })
 
@@ -82,7 +82,7 @@ describe('useResolvedItineraryTimeline', () => {
     rerender({ it: v2 })
     resolveOld({ found: true, name: 'OLD', lat: 99, lng: 99, googlePhotoUrls: ['https://x/old.jpg'] })
     await new Promise((r) => setTimeout(r, 20))
-    expect(stopsOf(result.current)[0]).toMatchObject({ lat: 3, lng: 4 })
-    expect(stopsOf(result.current)[0].googlePhotoUrls).toBeUndefined()
+    expect(stopsOf(result.current.steps)[0]).toMatchObject({ lat: 3, lng: 4 })
+    expect(stopsOf(result.current.steps)[0].googlePhotoUrls).toBeUndefined()
   })
 })

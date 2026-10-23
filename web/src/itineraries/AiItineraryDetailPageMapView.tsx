@@ -19,6 +19,7 @@ import { PlanOverlayLayout } from './PlanOverlayLayout'
 import { PlanMap } from './PlanMap'
 import { FoodSpotPanel } from './FoodSpotPanel'
 import { useFoodSpotDetails } from './useFoodSpotDetails'
+import { ImportToPlanButton } from './ImportToPlanButton'
 import { initialCenterOf } from './initialCenter'
 import { useCityAttractionGlow } from './useCityAttractionGlow'
 import { useResolvedItineraryTimeline } from './useResolvedItineraryTimeline'
@@ -215,7 +216,7 @@ const ZOOM = 15
 export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itinerary: SampleItinerary; dark?: boolean }) {
   // steps——時間軸資料。站點座標與照片經資料存取層解析(placeId → placeDetails),與 /ai-plan、登入後同一條路徑,
   // 見 useResolvedItineraryTimeline.ts。
-  const steps = useResolvedItineraryTimeline(itinerary)
+  const { steps, timeline } = useResolvedItineraryTimeline(itinerary)
   // center——依這份行程自己的站點動態算(見 initialCenter.ts)。依賴整個 itinerary 物件:同 id 的內容換版(靜態版換成資料庫版)
   // 時中心要跟著更新;呼叫端(AiItineraryDetailPage)給的是穩定參照,不會每次 render 重算。
   const center = useMemo(() => initialCenterOf(itinerary), [itinerary])
@@ -354,6 +355,7 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
             <span className={styles.metaItem}><CalendarDays size={13} strokeWidth={2} />{itinerary.days} 天 · {itinerary.stops.length} 站</span>
           </div>
           <p className={styles.summary}>{itinerary.summary}</p>
+          <ImportToPlanButton timeline={timeline} />
         </header>
         <PlanTimelineView
           steps={steps}

@@ -402,6 +402,67 @@
    (吸附計算時當作卡片右邊緣往右多了這段距離),等於把吸附目標本身
    往右移到留白區中間,放開後才會真的停在有留白的位置,不會被吸回死貼
    邊界。數值跟 .trailingSpacer 的寬度一致,讓吸附點落在留白區正中間。 */
+/* lodgingCard——住宿的窄版錨點卡(見 HorizontalPlanTimeline.tsx 的住宿分支)。覆寫 .card 的固定高度:高度跟著內容,在卷軸列
+   (align-items: stretch)內用 align-self: center 垂直置中;寬度、scroll-snap、圓角仍沿用 .card,所以一次滑一張的節奏不變。
+   虛線邊加沙色淡底,對齊縱向 PlanTimelineView 的住宿橫幅。 */
+.lodgingCard {
+  height: auto;
+  align-self: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--ios-sand) 10%, var(--ios-card));
+  border: 1px dashed var(--ios-sand);
+}
+/* dayBadge 在窄版卡裡改成文件流(靜態定位),不然會蓋住內容;左對齊在內容上方。 */
+.lodgingDayBadge {
+  position: static;
+  align-self: flex-start;
+}
+.lodgingRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 28px; /* 讓出右上角移除鈕 */
+}
+.lodgingIcon {
+  flex: none;
+  font-size: 22px;
+  line-height: 1;
+}
+.lodgingThumb {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.lodgingBody {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lodgingSpan {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ios-sand);
+  letter-spacing: 0.02em;
+}
+.lodgingName {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 「移動到此」在窄版卡裡排在列尾,不再絕對定位在左下角。 */
+.lodgingPanToBtn {
+  position: static;
+  flex: none;
+}
+
 .edgeCard {
   scroll-snap-align: end;
   scroll-margin-right: 16px;

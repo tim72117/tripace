@@ -1324,6 +1324,84 @@ export function HorizontalPlanTimeline({
               )
             }
 
+            // 住宿卡片——kind === '住宿' 的站不是「要去的景點」,是貫穿幾天的過夜錨點(見縱向版 PlanTimelineView 的住宿橫幅)。
+            // 手機版做成窄版錨點卡:寬度與卷軸吸附跟其他卡一致(維持一次滑一張的節奏),高度縮到內容高度並在卷軸列內垂直置中,
+            // 視覺上比景點卡低一階;沿用縱向橫幅的視覺語言(虛線邊、沙色淡底、🛏️ 或照片縮圓、區間文字取 duration,例如「Day 3–4」)。
+            // 只出現一次(入住日當天),不帶照片橫幅、時間範圍、描述與交通膠囊(交通資訊這一版不顯示);互動與其他卡一致:
+            // 點整張卡選取、選填的移除與「移動到此」按鈕。時間尺不給它比例長度的段落(過夜沒有可解析的停留時長,
+            // parseDurationMinutes 回 null,版面上只佔 MIN_SEGMENT_MINUTES)。
+            if (node.kind === '住宿') {
+              const lodgingPhoto = node.googlePhotoUrls?.find((u) => !failedPhotoUrls.has(u))
+              return (
+                <div
+                  key={node.id}
+                  ref={(el) => {
+                    if (el) {
+                      cardRefs.current.set(node.id, el)
+                      mountedIdsRef.current.add(node.id)
+                    } else {
+                      cardRefs.current.delete(node.id)
+                    }
+                  }}
+                  className={`${styles.card} ${styles.lodgingCard} ${justMounted ? styles.cardSlideIn : ''} ${isSingleCard ? styles.singleCard : ''} ${isEdgeCard ? styles.edgeCard : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-current={isSelected ? 'true' : undefined}
+                  onClick={() => handleSelect(node.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      handleSelect(node.id)
+                    }
+                  }}
+                >
+                  {showDayBadge && <span className={`${styles.dayBadge} ${styles.lodgingDayBadge}`}>Day {day}</span>}
+                  <div className={styles.lodgingRow}>
+                    {lodgingPhoto ? (
+                      <img
+                        src={lodgingPhoto}
+                        alt=""
+                        className={styles.lodgingThumb}
+                        onError={() => markPhotoFailed(lodgingPhoto)}
+                      />
+                    ) : (
+                      <span className={styles.lodgingIcon} aria-hidden="true">🛏️</span>
+                    )}
+                    <div className={styles.lodgingBody}>
+                      <span className={styles.lodgingSpan}>{node.duration}</span>
+                      <span className={styles.lodgingName}>{node.name}</span>
+                    </div>
+                    {onPanToStop && (
+                      <button
+                        type="button"
+                        className={`${styles.panToBtn} ${styles.lodgingPanToBtn}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onPanToStop(node.id)
+                        }}
+                        aria-label={`在地圖上移動到「${node.name ?? '這一站'}」`}
+                      >
+                        📍
+                      </button>
+                    )}
+                  </div>
+                  {onRemoveStop && (
+                    <button
+                      type="button"
+                      className={styles.removeBtn}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onRemoveStop(node.id)
+                      }}
+                      aria-label={`移除「${node.name ?? '這一站'}」`}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )
+            }
+
             return (
               <div
                 key={node.id}

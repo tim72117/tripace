@@ -18,7 +18,7 @@ const publicDataSource = getPlanAiPublicDataSource(BASE_URL)
 // plan-core/resolveAttractionForStep,站點座標的取得路徑只有一條。keepContent:名稱與說明維持行程作者寫的。
 // 同一個 placeId 出現在多站(例如連住同一個園區)由資料存取層去重,只打一次後端。
 //
-// 回傳 steps(攤平成渲染清單,含跨天分隔)。行程物件一換(換成另一份行程,或同一份行程的內容換版——例如先用靜態版掛載、
+// 回傳 steps(攤平成渲染清單,含跨天分隔)與 timeline(解析後的時間軸本體,「帶入我的規劃」把它寫進規劃草稿用)。行程物件一換(換成另一份行程,或同一份行程的內容換版——例如先用靜態版掛載、
 // API 回來後換成資料庫版,兩者 id 相同)就重新建立並重新解析;舊的解析請求以 cancelled 旗標擋掉,不會回寫到新內容。
 export function useResolvedItineraryTimeline(itinerary: SampleItinerary) {
   const [timeline, setTimeline] = useState<PlanTimeline>(() => toPlanTimeline(itinerary).timeline)
@@ -47,5 +47,6 @@ export function useResolvedItineraryTimeline(itinerary: SampleItinerary) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itinerary])
 
-  return useMemo(() => toRenderList(timeline), [timeline])
+  const steps = useMemo(() => toRenderList(timeline), [timeline])
+  return { steps, timeline }
 }
