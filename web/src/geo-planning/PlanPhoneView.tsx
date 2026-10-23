@@ -5,7 +5,7 @@ import { useCurrentLocation } from '../phone/useCurrentLocation'
 import type { ClientConfig, GeoAttraction } from '../api'
 import type { Trip } from '../trip/types'
 import type { User } from '../user/types'
-import type { Theme } from '../theme'
+import type { ResolvedTheme } from '../theme'
 import { Avatar } from '../AppCommon'
 import { PlanMap, EXPLORE_CATEGORY } from './PlanMap'
 import { outlineBindingFrom, useGeoOutlineMapState } from './useGeoOutlineMapState'
@@ -203,7 +203,7 @@ export function PlanPhoneView({
   // PlanMap 決定建圖時的 colorScheme,見
   // PlanMap.tsx 對這個 prop 的完整說明。這個元件本身不消費 theme,
   // 純轉傳。
-  theme?: Theme
+  theme?: ResolvedTheme
   // exploreTrigger/onExploreActiveChange:2026-10「探索」標籤從疊在地圖
   // 左上角的類別標籤列搬到 phone/Nav.tsx 底部常駐功能列(使用者明確
   // 要求),這個元件因此不再自己持有探索的開關邏輯,改成單純轉傳——

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useSystemPrefersDark } from './useSystemPrefersDark'
 
 // useThemeToggle:城市介紹頁(KyotoPage/JiufenPage/TainanPage)共用的日夜
 // 切換邏輯——原本三份檔案各自貼了一份逐字相同的 theme/systemPrefersDark
@@ -23,15 +24,7 @@ function isCurrentlyDark(t: 'dark' | 'light' | null, systemPrefersDark: boolean)
 // 時機的需求)。
 export function useThemeToggle() {
   const [theme, setTheme] = useState<'dark' | 'light' | null>(null)
-  const [systemPrefersDark, setSystemPrefersDark] = useState(false)
-
-  useEffect(() => {
-    const mql = window.matchMedia('(prefers-color-scheme: dark)')
-    setSystemPrefersDark(mql.matches)
-    const handleChange = (e: MediaQueryListEvent) => setSystemPrefersDark(e.matches)
-    mql.addEventListener('change', handleChange)
-    return () => mql.removeEventListener('change', handleChange)
-  }, [])
+  const systemPrefersDark = useSystemPrefersDark()
 
   const dark = isCurrentlyDark(theme, systemPrefersDark)
   const toggleTheme = () => setTheme(dark ? 'light' : 'dark')

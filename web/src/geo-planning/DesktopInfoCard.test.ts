@@ -43,7 +43,7 @@ describe('stackedInfoCardRightPx', () => {
     expect(stackedInfoCardRightPx(0, new Set([0, 1, 2]))).toBe(DESKTOP_INFO_CARD_BASE_RIGHT_PX)
   })
 
-  it('baseRightPx 可由呼叫端覆寫(例如飯店側欄/對話小匡佔用右緣時的起始值)', () => {
+  it('baseRightPx 可由呼叫端覆寫(例如飯店側欄/規劃面板佔用右緣時的起始值)', () => {
     expect(stackedInfoCardRightPx(1, new Set([0, 1]), 368)).toBe(368 + SLOT_WIDTH)
   })
 })

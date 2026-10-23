@@ -36,7 +36,7 @@ export const DESKTOP_INFO_CARD_STACK_GAP_PX = 12
 // 組合各自寫一條公式,也不需要任何卡片的存在與否依賴另一張卡的狀態。
 //
 // baseRightPx:預設 DESKTOP_INFO_CARD_BASE_RIGHT_PX,呼叫端若因為飯店
-// 側欄/對話小匡等因素需要把整組卡片疊放再往左推(見 desktop/Content.tsx
+// 側欄/規劃面板等因素需要把整組卡片疊放再往左推(見 desktop/Content.tsx
 // infoPanelShiftBy 的說明),可傳入已經算好的起始 right 值取代預設值。
 export function stackedInfoCardRightPx(
   order: number,
@@ -58,15 +58,15 @@ export function DesktopInfoCard({
 }: {
   onClose: () => void
   // shiftBy/style:理由與既有用法完全同 PlacePanel.tsx 對應 prop 的
-  // 說明——shiftBy 是呼叫端依飯店側欄/對話小匡是否佔用右緣算出的三段式
+  // 說明——shiftBy 是呼叫端依飯店側欄/規劃面板是否佔用右緣算出的三段式
   // 固定值,style 是「附近景點/level4-5 地標」並存卡片需要的動態 right
   // 位移逃生艙,兩者理論上不會同時傳(呼叫端目前的用法各自只用其中一種),
   // 但同時傳入時 style 的 CSS 優先序高於 class,以 style 為準。
-  shiftBy?: 'none' | 'hotel' | 'chat'
+  shiftBy?: 'none' | 'hotel' | 'planPanel'
   style?: React.CSSProperties
   children: ReactNode
 }) {
-  const shiftClass = shiftBy === 'chat' ? ` ${styles.shiftedChat}` : shiftBy === 'hotel' ? ` ${styles.shiftedHotel}` : ''
+  const shiftClass = shiftBy === 'planPanel' ? ` ${styles.shiftedPlanPanel}` : shiftBy === 'hotel' ? ` ${styles.shiftedHotel}` : ''
   return (
     <div className={`${styles.panel}${shiftClass}`} style={style}>
       <button type="button" className={styles.closeBtn} onClick={onClose} title="關閉">

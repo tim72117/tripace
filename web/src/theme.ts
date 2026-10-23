@@ -20,3 +20,8 @@ export function getTheme(): Theme {
   const v = localStorage.getItem(THEME_KEY)
   return v === 'dark' || v === 'light' ? v : null
 }
+
+// ResolvedTheme——已經決定好的深色/淺色(沒有「跟隨系統」這一態)。地圖元件(三份 PlanMap、PlanPhoneView)的 theme 只收這個:
+// 地圖的 colorScheme 只能在建圖時設定(NativeMapBase 預設在 theme 改變時重建,登入後的 PlanMap 傳 rebuildOnThemeChange=false 不重建),所以呼叫端要先把三態的 Theme 解析成明確值(見
+// hooks/useResolvedTheme.ts),地圖不自己判斷系統偏好。
+export type ResolvedTheme = 'dark' | 'light'

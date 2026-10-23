@@ -44,16 +44,16 @@
   background: transparent;
 }
 
-/* compact:放進對話浮動小匡(desktop/Content.tsx 的 chat-popover)時疊加
+/* compact:放進規劃面板(desktop/Content.tsx 的 規劃面板)時疊加
    的 modifier。
    上面 .page 的 min-height:100% + 自然高度 + 不管 overflow,成立的前提
    是「外層有人接手捲動」——/app/plan-ai 那條路徑由 DesktopMain 的
-   unboundedScroll 負責(見上方註解)。但小匡這個情境沒有任何祖先在管
+   unboundedScroll 負責(見上方註解)。但規劃面板這個情境沒有任何祖先在管
    捲動,而 FloatingPanel 的 .panel 是 overflow:hidden,結果是內容一路
    往下撐、超出的部分直接被裁掉,完全捲不動(使用者實際回報「上下滾動
    的卷軸沒有作用」)。
    這裡改回「自己就是固定高度的 flex 容器」:height:100% 讓它剛好填滿
-   小匡(不是 min-height,那會讓它被內容撐長回到原本的問題),
+   規劃面板(不是 min-height,那會讓它被內容撐長回到原本的問題),
    min-height:0 讓底下的 .compactScroll 能正確縮小並產生捲動
    (flex 子元素預設 min-height:auto 不會小於內容,少這行捲動一樣不會
    發生)。
@@ -92,8 +92,8 @@
    的 scrollClassName prop),讓它在 compact 模式下真正接手垂直捲動。
    明確鎖 overflow-x:hidden——只設 overflow-y 會讓水平軸也變成 auto
    (規範預設行為),內容稍微超寬就能左右拖曳。
-   scrollbar-width/scrollbar-color/::-webkit-scrollbar*:使用者回報小匡
-   的捲軸太粗——瀏覽器原生捲軸(通常 15-17px)在只有 440px 寬的小匡裡
+   scrollbar-width/scrollbar-color/::-webkit-scrollbar*:使用者回報規劃面板
+   的捲軸太粗——瀏覽器原生捲軸(通常 15-17px)在只有 440px 寬的規劃面板裡
    比例失調。改用細捲軸,視覺語言沿用桌面版同類浮動卡片的既有慣例
    (geo-planning/DesktopInfoCard.module.css 的 .body,同樣是「疊在地圖
    上方的固定寬度浮動卡片 + 內部捲動」情境),不是這次重新發明一套:
@@ -149,7 +149,7 @@
    的 jumpPillWrap;:global(.jumpPillWrap) 要求 DOM 元素帶有字面上
    的 jumpPillWrap 這個 class,但 DOM 裡從來沒有這個 class,選擇器
    永遠選不到任何東西。這代表第一輪到這裡為止調整的所有數值
-   (bottom:68px→80px、height 覆寫與否)全部從未真正生效過,小匡
+   (bottom:68px→80px、height 覆寫與否)全部從未真正生效過,規劃面板
    裡的按鈕全程仍是原始的 position:sticky;bottom:98px,這正是幾輪
    截圖來回「改了數字但畫面沒變」的真正原因。
    正確修法:不跨檔案選取,只用這份檔案自己的 local class

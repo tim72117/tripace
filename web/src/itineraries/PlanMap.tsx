@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { resolveMapCenter } from '../geo-planning/mapCenter'
 import { NativeMapBase, type MapHandle } from '../geo-planning/NativeMapBase'
 import { useMapHandle, usePlanMapDrawing, type PlanMapSharedProps } from '../geo-planning/planMapShared'
 import type { AttractionGlowInput } from '../geo-planning/mapDrawLayer/useSharedDrawLayer'
@@ -18,10 +19,7 @@ import type { PlanStopMarker } from '../geo-planning/usePlanStopMarkers'
 //   - attractionGlow:主題點光暈(資料由頁面查好傳進來)。
 //   - extraLayers:每天一條的手繪路線(routePolylineLayer)。
 //   - children:疊在地圖畫布上的裝飾(暈影),放在地圖外框之內。
-export interface PlanMapProps extends Omit<PlanMapSharedProps, 'theme'> {
-  // theme:這頁會隨日夜切換重建地圖(NativeMapBase 的 theme),所以收窄成 NativeMapBase 吃的值。
-  theme?: 'dark' | 'light'
-  center: { lat: number; lng: number } | undefined
+export interface PlanMapProps extends PlanMapSharedProps {
   zoom?: number
   mapId?: string
   stops: PlanStopMarker[]
@@ -32,7 +30,7 @@ export interface PlanMapProps extends Omit<PlanMapSharedProps, 'theme'> {
 }
 
 export function PlanMap({
-  center,
+  initialCenter,
   zoom,
   mapId,
   theme,
@@ -60,7 +58,7 @@ export function PlanMap({
   })
   return (
     <>
-      <NativeMapBase center={center} zoom={zoom} theme={theme} mapId={mapId} onHandleChange={handleChange} />
+      <NativeMapBase center={resolveMapCenter(initialCenter)} zoom={zoom} theme={theme} mapId={mapId} onHandleChange={handleChange} />
       {children}
     </>
   )

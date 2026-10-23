@@ -1,6 +1,6 @@
 /* DesktopInfoCard:桌面版浮動資訊卡共用外框——原本 PlacePanel.module.css
    與 AttractionInfoPanel.module.css 各自維護一份逐字重複的 .panel/
-   .closeBtn/.body/.shiftedHotel/.shiftedChat(見這兩個檔案改動前的開頭
+   .closeBtn/.body/.shiftedHotel/.shiftedPlanPanel(見這兩個檔案改動前的開頭
    說明:「兩份卡片外觀相同是巧合不是共用,各自獨立維護」)——這個假設
    在這次「level 4/5 地標地點卡要並存疊在主題卡左側」的需求裡不再成立:
    兩張卡片的定位規則需要保持精確同步(見 desktop/Content.tsx
@@ -37,7 +37,7 @@
 .panel.shiftedHotel {
   right: 364px;
 }
-.panel.shiftedChat {
+.panel.shiftedPlanPanel {
   right: 368px;
 }
 

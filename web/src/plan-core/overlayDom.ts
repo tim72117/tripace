@@ -52,7 +52,7 @@ export function panelContentRoot(panel: Element | null | undefined): Element | n
   return [...panel.children].find((c) => !c.hasAttribute('data-slot')) ?? null
 }
 
-// ComposerSlotContext——版面外殼(home/plan-ai-sim/PlanOverlayPanel.tsx)
+// ComposerSlotContext——版面外殼(home/plan-ai-sim/desktop、wide 的 PlanOverlayPanel.tsx)
 // 提供的「輸入框插槽」DOM 節點。
 //
 // 外殼只管版面(定位、事件穿透、安全區),輸入框的位置挖成一個 slot 讓各層

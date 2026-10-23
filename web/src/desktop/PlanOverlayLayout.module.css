@@ -19,6 +19,10 @@
 .overlay {
   position: absolute;
   inset: 0;
+}
+
+/* passThrough——疊加層(與裡面的面板,pointer-events 會繼承)不接收指標事件,空白處讓地圖拖曳穿透;傳 passThrough 才加上。 */
+.passThrough {
   pointer-events: none;
 }
 
@@ -27,7 +31,7 @@
 }
 
 /* panel——固定 560px、貼齊右緣、上下撐滿的透明側欄(地圖左側完全露出)。top: 72px 讓出漂浮導覽列
-   (同 /ai-plan 桌面側欄)。pointer-events: none:空白處讓地圖拖曳穿透,真正要互動的內容
+   (同 /ai-plan 桌面側欄)。穿透由 passThrough 參數控制(overlay 加 .passThrough,panel 繼承):空白處讓地圖拖曳穿透,真正要互動的內容
    (TripPlanPage 透明背景模式下的卡片、composer、按鈕)自己設回 auto。z-index: 3 蓋過地圖,
    低於資訊卡與 sheet。 */
 .panel {
@@ -41,7 +45,6 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  pointer-events: none;
 }
 
 /* shifted——搜尋結果側欄(寬 340、right 12)同時顯示時往左推到它的左側之外(12 + 340 + 12)。 */

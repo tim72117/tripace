@@ -15,7 +15,7 @@ export interface PanelHeadProps {
   title: string
   onClose?: () => void
   // headerAction——選填,2026-10 新增:使用者明確要求「規劃行程標頭列
-  // 加上開關路徑的 icon」(地圖右上角「規劃行程」對話小匡,見
+  // 加上開關路徑的 icon」(地圖右上角「規劃行程」規劃面板,見
   // desktop/Content.tsx 的完整說明)。渲染在標題文字之後、關閉按鈕之前
   // (若有的話),只在呼叫端真的傳入時才多佔用這個位置——其餘呼叫端
   // (trips/timeline/pace/geo-outline 等)不傳就完全不受影響,維持

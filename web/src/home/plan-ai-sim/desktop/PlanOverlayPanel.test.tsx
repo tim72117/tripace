@@ -6,25 +6,9 @@
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
 import { PlanOverlayPanel } from './PlanOverlayPanel'
-import { ComposerPortal } from '../../trip-plan/ComposerPortal'
-import { ComposerSlotContext } from '../../plan-core/overlayDom'
+import { ComposerPortal } from '../../../trip-plan/ComposerPortal'
+import { ComposerSlotContext } from '../../../plan-core/overlayDom'
 import { useContext } from 'react'
-
-describe('PlanOverlayPanel wide', () => {
-  it('面板 + 插槽同層手足、不帶 data-slot 標記,composer 經 context 也能 portal 進插槽', () => {
-    const { container } = render(
-      <PlanOverlayPanel wide composer={<span data-testid="c" />}>
-        <div />
-      </PlanOverlayPanel>,
-    )
-    expect(container.children).toHaveLength(2)
-    const [panel, slot] = Array.from(container.children)
-    expect(panel.className).toMatch(/panel/)
-    expect(slot.className).toMatch(/composerSlot/)
-    expect(panel.hasAttribute('data-slot')).toBe(false)
-    expect(slot.querySelector('[data-testid="c"]')).not.toBeNull()
-  })
-})
 
 describe('PlanOverlayPanel 結構', () => {
   // 2026-10(第三輪)使用者明確要求「composer 區位要跟 UI 區的元素一起

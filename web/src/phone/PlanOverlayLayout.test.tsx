@@ -10,11 +10,13 @@ import { createPortal } from 'react-dom'
 import { useState } from 'react'
 import { PlanOverlayLayout } from './PlanOverlayLayout'
 
+const noopRef = () => {}
+
 function Harness({ open }: { open: boolean }) {
   const [slot, setSlot] = useState<HTMLDivElement | null>(null)
   return (
     <>
-      <PlanOverlayLayout open={open} onControlsSlotChange={setSlot}>
+      <PlanOverlayLayout open={open} safeAreaRef={noopRef} onControlsSlotChange={setSlot}>
         <div data-testid="panel-content">面板</div>
       </PlanOverlayLayout>
       {slot && createPortal(<input data-testid="search-box" />, slot)}
@@ -26,7 +28,7 @@ describe('PlanOverlayLayout 控制項插槽', () => {
   it('掛載後把插槽元素交給 onControlsSlotChange,卸載時回報 null', () => {
     const onChange = vi.fn()
     const { unmount } = render(
-      <PlanOverlayLayout open onControlsSlotChange={onChange}>
+      <PlanOverlayLayout open safeAreaRef={noopRef} onControlsSlotChange={onChange}>
         <div />
       </PlanOverlayLayout>,
     )
@@ -37,7 +39,7 @@ describe('PlanOverlayLayout 控制項插槽', () => {
 
   it('沒傳 onControlsSlotChange 也能正常渲染', () => {
     const { getByTestId } = render(
-      <PlanOverlayLayout open>
+      <PlanOverlayLayout open safeAreaRef={noopRef}>
         <div data-testid="panel-content" />
       </PlanOverlayLayout>,
     )
@@ -61,5 +63,27 @@ describe('PlanOverlayLayout 控制項插槽', () => {
     const overlay = getByTestId('panel-content').parentElement!.parentElement!
     expect(overlay.contains(slot)).toBe(false)
     expect(slot.parentElement).toBe(overlay.parentElement)
+  })
+})
+
+describe('PlanOverlayLayout 安全區', () => {
+  it('safeAreaRef(必填)接在 safe-area 節點上', () => {
+    const ref = vi.fn()
+    const { container } = render(
+      <PlanOverlayLayout open safeAreaRef={ref}>
+        <div />
+      </PlanOverlayLayout>,
+    )
+    expect(ref).toHaveBeenCalledWith(container.querySelector('[data-slot="safe-area"]'))
+  })
+})
+
+describe('PlanOverlayLayout passThrough', () => {
+  it('passThrough 只在指定時才讓 overlay 加上不接收指標事件的 class', () => {
+    const a = render(<PlanOverlayLayout open safeAreaRef={noopRef}><div /></PlanOverlayLayout>)
+    expect(a.container.querySelector('[data-slot="overlay"]')!.className).not.toMatch(/passThrough/)
+    a.unmount()
+    const b = render(<PlanOverlayLayout open passThrough safeAreaRef={noopRef}><div /></PlanOverlayLayout>)
+    expect(b.container.querySelector('[data-slot="overlay"]')!.className).toMatch(/passThrough/)
   })
 })

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useResolvedTheme } from '../hooks/useResolvedTheme'
 import { Helmet } from 'react-helmet-async'
 import { Compass, ListPlus, Route, Sparkles } from 'lucide-react'
 import { ChatScreen, type DesktopTimelineMirror } from '../chat/ChatScreen'
@@ -78,6 +79,8 @@ const PACE_SHEET_MIN_HEIGHT = 100
 // 全部改成疊加在地圖上的浮動卡片),手機版這裡刻意不比照,維持原本
 // 「分頁決定主顯示內容」的版型。
 export function Content(props: ContentProps) {
+  // mapTheme:地圖只收明確的 'dark' | 'light'(日夜切換時重建),三態的 props.theme(null = 跟隨系統)先解析成明確值。
+  const mapTheme = useResolvedTheme(props.theme)
   const { cfg, activeTrip, setActiveTrip } = props
   // tabBarRef/tabBarHeight——2026-10 新增(使用者明確要求「有辦法確保
   // bottom sheet 如果是在功能列後面,標頭不會被遮蔽,也不用功能列改動
@@ -351,7 +354,7 @@ export function Content(props: ContentProps) {
   //
   // trip 允許是 undefined(不要求 activeTrip 存在才渲染)——使用者明確
   // 要求「手機版的對話跟桌面版用一樣的」,對齊桌面版 desktop/Content.tsx
-  // 的 chat-popover 既有行為(ChatScreen 本身已經支援無 trip 也能對話,
+  // 的 規劃面板 既有行為(ChatScreen 本身已經支援無 trip 也能對話,
   // 見該元件 trip prop 的說明):沒選旅程時依然能開啟對話,不需要先選/
   // 建立旅程。key 比照桌面版加上 activeTrip?.id ?? 'no-trip',確保「無
   // 旅程對話」跟「某個旅程的對話」是各自獨立的掛載週期,避免沿用前一個
@@ -415,6 +418,7 @@ export function Content(props: ContentProps) {
             打開面板之前就已經準備好、打開時直接看到。 */}
         <PlanOverlayLayout
           open={chatSheetOpen}
+          passThrough
           onControlsSlotChange={setControlsSlotEl}
           safeAreaRef={safeAreaRef}
           mapBackground={
@@ -426,7 +430,7 @@ export function Content(props: ContentProps) {
               onOpenSettings={() => setInSettings(true)}
               onOpenTimeline={TIMELINE_ENABLED ? () => setTimelineDrawerOpen(true) : undefined}
               onOpenTrips={() => setTripsDrawerOpen(true)}
-              theme={props.theme}
+              theme={mapTheme}
               exploreTrigger={exploreTrigger}
               onExploreActiveChange={setExploreActive}
               tripListDrawerTrigger={tripListDrawerTrigger}

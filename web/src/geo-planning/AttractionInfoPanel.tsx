@@ -58,9 +58,9 @@ export function AttractionInfoPanel({
   dataSource: PlanAiDataSource
   onClose: () => void
   // shiftBy:理由同 PlacePanel.tsx 的同名 prop——右緣可能同時有
-  // geo-planning/desktop/ResultList 與對話浮動小匡,由呼叫端判斷目前實際被哪個佔用後
+  // geo-planning/desktop/ResultList 與規劃面板,由呼叫端判斷目前實際被哪個佔用後
   // 傳入對應值,把卡片推到它左側。
-  shiftBy?: 'none' | 'hotel' | 'chat'
+  shiftBy?: 'none' | 'hotel' | 'planPanel'
   // nearby:散策羅盤「附近景點」清單——目前地圖可視範圍內離這個錨點最近
   // 的候選景點,依距離由近到遠排序,由呼叫端(desktop/Content.tsx)算好
   // 傳入(見該處 nearbyAttractions 的說明),這個元件不自己查詢/排序。

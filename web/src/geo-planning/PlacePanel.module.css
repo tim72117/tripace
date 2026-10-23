@@ -1,4 +1,4 @@
-/* panel/shiftedHotel/shiftedChat/closeBtn/body:桌面版浮動資訊卡共用外框
+/* panel/shiftedHotel/shiftedPlanPanel/closeBtn/body:桌面版浮動資訊卡共用外框
    ——已抽成 DesktopInfoCard.tsx + DesktopInfoCard.module.css,這個檔案
    只保留卡片內容本身的樣式(照片/文字/按鈕組),見該元件開頭對「為什麼
    從各自獨立一份改成共用」的完整說明。 */

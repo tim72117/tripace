@@ -641,8 +641,10 @@ export function PlanDataFlowPage() {
             每個入口都是同一組分層(<code className={styles.code}>Content</code> → <code className={styles.code}>PlanLayout</code> →
             <code className={styles.code}>PlanOverlayLayout</code> → <code className={styles.code}>LivePlanLayer</code> →
             <code className={styles.code}>PlanMap</code>)，同名元件放在 <code className={styles.code}>home/plan-ai-sim/</code>、
-            <code className={styles.code}>phone/</code>、<code className={styles.code}>desktop/</code>。下表只列跟資料流有關的差異；
-            完整對照見 <code className={styles.code}>public/marker-layers.html</code>。
+            <code className={styles.code}>phone/</code>、<code className={styles.code}>desktop/</code>。/ai-plan 的第 4 層有兩個呼叫端：
+            推論態是 <code className={styles.code}>LivePlanLayer</code>，模擬態(交接前)是 <code className={styles.code}>SimPlanLayer</code>；
+            行程詳情頁(<code className={styles.code}>itineraries/</code>)也用同一組分層，但沒有第 4 層。
+            下表只列跟資料流有關的差異；完整對照見 <code className={styles.code}>public/marker-layers.html</code>。
           </p>
           <table className={styles.table}>
             <thead>

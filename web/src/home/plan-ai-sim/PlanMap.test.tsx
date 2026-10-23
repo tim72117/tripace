@@ -67,7 +67,7 @@ const lastDraw = () => drawArgs[drawArgs.length - 1] as {
 const stops = [{ id: 'a', lat: 1, lng: 2 }]
 
 function renderMap(props: Partial<React.ComponentProps<typeof PlanMap>> = {}) {
-  return render(<PlanMap center={{ lat: 1, lng: 2 }} zoom={14} stops={stops} {...props} />)
+  return render(<PlanMap initialCenter={{ lat: 1, lng: 2 }} zoom={14} stops={stops} {...props} />)
 }
 
 beforeEach(() => {
@@ -82,12 +82,12 @@ beforeEach(() => {
 })
 
 describe('PlanMap 建圖', () => {
-  it('用 NativeMapBase 建圖:center、zoom、mapId 原樣傳入;不傳 theme(不因主題重建)', () => {
-    renderMap({ mapId: 'MAP' })
+  it('用 NativeMapBase 建圖:initialCenter(經 resolveMapCenter)、zoom、mapId、theme 傳入(日夜切換時重建地圖)', () => {
+    renderMap({ mapId: 'MAP', theme: 'dark' })
     expect(baseProps!.center).toEqual({ lat: 1, lng: 2 })
     expect(baseProps!.zoom).toBe(14)
     expect(baseProps!.mapId).toBe('MAP')
-    expect(baseProps!.theme).toBeUndefined()
+    expect(baseProps!.theme).toBe('dark')
   })
 
   it('children 渲染在地圖容器內(同 PlanMap 的 children)', () => {

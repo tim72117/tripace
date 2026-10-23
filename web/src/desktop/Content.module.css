@@ -1,7 +1,7 @@
 /* desktop/Content.tsx 專屬樣式(CSS Modules)。原本的浮動卡片外殼(.panel/
    .left/.right/.close 等)已抽成獨立元件 FloatingPanel(見 FloatingPanel.tsx/
    FloatingPanel.module.css),這裡只保留真的只有這個檔案在用、且不屬於
-   「浮動卡片外殼」本身的樣式(時間軸內容排版、對話小匡的特殊定位覆蓋)。 */
+   「浮動卡片外殼」本身的樣式(時間軸內容排版、規劃面板的特殊定位覆蓋)。 */
 
 .timelinePanel {
   flex: 1 1 auto;

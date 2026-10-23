@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useParams, useLocation } from 'react-router-dom'
 import { useAppState } from './hooks/useAppState'
 import { ErrorBoundary } from './ErrorBoundary'
 import { useKeyboardShrink } from './components/useKeyboardInset'
@@ -90,7 +90,6 @@ const NotFoundPage = lazy(() => import('./home/NotFoundPage').then((m) => ({ def
 // 完整說明)。固定接純前端假資料(attractionPool.ts),不需要登入、不
 // 依賴任何需要 token 的後端端點,故放進 home/ 底下跟其餘公開行銷頁同一
 // 層級,不是 /app 底下需要登入的正式功能。
-const TripPlanRoute = lazy(() => import('./trip-plan/TripPlanRoute').then((m) => ({ default: m.TripPlanRoute })))
 // AiItinerariesRoute:「精選行程」展示(清單 + 點進去的時間軸,2026-10
 // 使用者明確要求頁面文案從「AI 排好的範例行程」改成「精選行程」,元件/
 // 目錄名稱維持不變,純粹是對外文案改名),
@@ -274,9 +273,8 @@ export function App() {
               BlogArticlePage。 */}
           <Route path="/u/:handle/:slug" element={<BlogArticleRoute />} />
           {/* /blog/photos:部落客上傳圖片管理頁(見 blog/PhotoManagerPage.tsx
-              開頭的完整說明)——需登入,比照 /trip-plan(TripPlanRoute)的
-              既有模式:訪客可到達這個網址,頁面內自己用 useAppState() 判斷
-              isGuest 並內嵌登入表單,不是擋下或導轉。這個專案沒有
+              開頭的完整說明)——需登入:訪客可到達這個網址,頁面內自己用
+              useAppState() 判斷 isGuest 並內嵌登入表單,不是擋下或導轉。這個專案沒有
               <RequireAuth> 這類包裝元件的先例,沿用這個既有做法。務必記得
               同步 server/cmd/server/static.go 的 knownRoutePatterns(見
               /ai-plan 路由註解提過的教訓)——2026-10 補上這份同步(先前
@@ -343,15 +341,6 @@ export function App() {
               </div>
             }
           />
-          {/* /trip-plan 路徑:登入後的 AI 規劃,獨立頁面(原 /app/plan-ai)。
-              外殼自己管深色模式與捲動、訪客時內嵌登入表單,見
-              trip-plan/TripPlanRoute.tsx。server/cmd/server/static.go 的
-              knownRoutePatterns 已同步新增。 */}
-          <Route path="/trip-plan" element={<TripPlanRoute />} />
-          {/* 舊網址 /app/plan-ai 已搬到 /trip-plan:轉址保留書籤與外部連結。
-              React Router 依特異度排序,靜態路徑本來就優先於下方
-              /app/:legacyPanelMode 這個相容路由,放在它前面只是明確表達意圖。 */}
-          <Route path="/app/plan-ai" element={<Navigate to="/trip-plan" replace />} />
           {/* /app 路徑:主要應用畫面本體(套 iPhone 外框,寬螢幕自動切桌面版佈局)。
               2026-10:原本這裡是 /app/:panelMode? 選填路徑參數,桌面版 side
               panel 展開哪個面板(旅程列表/規劃/時間軸/路徑/AI 規劃)由網址

@@ -1,11 +1,10 @@
 import { CTA_AFTER_STOPS, usePlanSimSocket } from './usePlanSimSocket'
 import { useSimulatedStopsView } from './useSimulatedStopsView'
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { ROUTE_LINE_ENABLED, TIME_DRAG_ENABLED } from '../../DesktopShared'
+import { ROUTE_LINE_ENABLED } from '../../DesktopShared'
 import { useThemeToggle } from '../../hooks/useThemeToggle'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../SiteNavButtons'
 import { trackEvent } from '../../analytics'
-import { planAiFakeDataSource } from './planAiFakeDataSource'
 import { getPlanAiPublicDataSource } from './planAiPublicDataSource'
 import { getPlanAiApiDataSource } from './planAiApiDataSource'
 import { BASE_URL } from '../../AppCommon'
@@ -14,11 +13,13 @@ import { maskPlanStopsView, usePlanStopsState } from '../../plan-core/usePlanSto
 import { useGuestClientConfig } from '../../plan-core/clientConfig'
 import { useCurrentLocation } from './useCurrentLocation'
 import { createPlanSimFakeSource } from './planSimFakeSource'
-import { PlanTimelineView } from '../../plan-core/PlanTimelineView'
-import { Composer } from '../../components/Composer'
 import { LivePlanLayer } from './LivePlanLayer'
+import { SimPlanLayer } from './SimPlanLayer'
+import { SimComposer } from './SimComposer'
 import { PlanLayout } from './PlanLayout'
-import { HorizontalPlanTimeline } from './HorizontalPlanTimeline'
+import { PlanOverlayLayout as PhonePlanOverlayLayout } from './phone/PlanOverlayLayout'
+import { PlanOverlayLayout as DesktopPlanOverlayLayout } from './desktop/PlanOverlayLayout'
+import { PlanOverlayLayout as WidePlanOverlayLayout } from './wide/PlanOverlayLayout'
 import { ScriptedAskPage } from './ScriptedAskPage'
 import { useIsDesktop } from '../../hooks/useIsDesktop'
 import { useIsWide } from '../../hooks/useIsWide'
@@ -31,7 +32,6 @@ import { useAskPageBridge } from '../../plan-core/useAskPageBridge'
 // 一模一樣的副本(唯一差異是死碼清理時拿掉的一個已確認恆為 no-op 的
 // 判斷式,兩份行為完全等價),是從 plan-ai-sim 分支原封不動搬過來時一併
 // 帶進來的重複檔案。
-import { getTimeDragBounds } from '../../plan-core/planTimeline'
 import type { MapHandle } from '../../geo-planning/NativeMapBase'
 // SafeAreaDebugOverlay——地圖安全區的除錯疊圖(開發工具,用
 // ?debugSafeArea=1 開啟,見該檔案檔頭的完整說明)。
@@ -53,7 +53,6 @@ const WideLayoutDebugOverlay = lazy(() =>
 import { useMapSafeArea } from '../../geo-planning/useMapSafeArea'
 import { useDesktopStopPan, usePhoneStopPan, useStopCardClick } from '../../plan-core/useStopPan'
 import { useFirstStopAutoPan } from '../../plan-core/useFirstStopAutoPan'
-import styles from './Content.module.css'
 import { SIMPLE_MAP_ID } from '../../geo-planning/mapStyleIds'
 
 // CENTER/ZOOM——地圖初始中心與縮放層級,數值沿用原本 StaticMapBackdrop.tsx
@@ -469,6 +468,8 @@ export function Content() {
   // 桌面點選圖卡(useDesktopStopPan)任何狀態都平移(模擬態、推論態、wide 與非 wide);非 wide 的疊加版面(768–1023px)
   // 沒有安全區節點,panToWithinSafeArea 退回直接 panTo。手機的「移動到此」仍只在模擬態啟用(推論態的選取不搶鏡頭)。
   const firstStopPanAllowed = !isDesktop
+  // 地圖加疊加 UI 的外殼依螢幕擇一(三個實體同名同介面,見 overlayLayoutProps.ts):≥1024px 側欄、768–1023px 疊加、其餘手機。
+  const OverlayLayout = isWide ? WidePlanOverlayLayout : isDesktop ? DesktopPlanOverlayLayout : PhonePlanOverlayLayout
   const mapPanReady = mapHandle.mapReady && !!mapHandle.mapRef.current
   useFirstStopAutoPan({
     stops: simulated.stops,
@@ -664,10 +665,10 @@ export function Content() {
   const mapBackground = (
     <>
       <PlanMap
-        center={CENTER}
+        initialCenter={CENTER}
         zoom={ZOOM}
         mapId={SIMPLE_MAP_ID}
-        theme={theme}
+        theme={dark ? 'dark' : 'light'}
         {...visibleStopsView}
         // 整條路線:四個入口共用 ROUTE_LINE_ENABLED 控制(見 DesktopShared.tsx);這頁沒有切換入口,flag 開啟就畫。
         showPlanRouteLine={ROUTE_LINE_ENABLED}
@@ -713,226 +714,56 @@ export function Content() {
         (模擬 vs 真實 AI,見下方 handedOver 判斷的完整說明)決定要傳哪組
         passThrough/composer/children,layout 本身不關心這個決策。 */}
     {handedOver ? (
-      <PlanLayout
-        embedded={embedded}
-        theme={theme}
+      <PlanLayout embedded={embedded} theme={theme} nav={navButtons} debugOverlay={wideDebugOverlay}>
+      <OverlayLayout
         mapBackground={mapBackground}
-        nav={navButtons}
-        wide={isWide}
-        debugOverlay={wideDebugOverlay}
-        isDesktop={isDesktop}
         safeAreaRef={mapSafeArea.safeAreaElRef}
         passThrough
       >
         <LivePlanLayer selectedStopId={selectedStopId} tripPlanProps={live.tripPlanProps} onPanToStop={isDesktop ? panDesktopToStop : undefined} />
+      </OverlayLayout>
       </PlanLayout>
     ) : (
-      <PlanLayout
-        embedded={embedded}
-        theme={theme}
+      <PlanLayout embedded={embedded} theme={theme} nav={navButtons} debugOverlay={wideDebugOverlay}>
+      <OverlayLayout
         mapBackground={mapBackground}
-        nav={navButtons}
-        wide={isWide}
-        debugOverlay={wideDebugOverlay}
-        isDesktop={isDesktop}
         safeAreaRef={mapSafeArea.safeAreaElRef}
-        composer={(
-          // Composer——共用輸入膠囊外框(components/Composer.tsx,見該檔頭
-          // 的完整背景說明)。這個展示頁的特有邏輯(假打字動畫唯讀、
-          // composerCollapsed 後整個切換成「讓我試看看」CTA)留在這裡
-          // 透過 props 組裝,共用元件不知道這些概念。
-          //
-          // presentational——2026-10 使用者明確要求:「composer 應該用
-          // 一個展示態來表達,而不是單純關閉送出,展示態的時候送出樣式
-          // 要正常,但是不能點送出」(見 Composer.tsx 該 prop 的完整
-          // 說明)。這個展示頁從「打字動畫進行中」到「排完一站都還沒到
-          // 第 5 站」整段期間,送出鈕全程都是這個狀態——輸入框是純展示
-          // 用的假打字動畫(見 typedPrompt 的完整說明),不接受真的輸入、
-          // 不會真的送出任何請求,但視覺上應該完全像一個「正常、能用」
-          // 的輸入框,不該讓訪客一眼看出「這是灰掉的假東西」。取代先前
-          // 「預設 disabled 淡化,打字中那一刻另外疊加 sendBtnActive
-          // 抵銷淡化樣式」的拼湊寫法——那個寫法只覆蓋了「打字中」這一
-          // 個特例,排完第一站後到第 5 站之前這段期間其實仍然是淡化的,
-          // 跟「送出鈕全程該是正常樣式」的真正意圖不符,改用
-          // presentational 後不再需要特例判斷,整段期間自然一致。
-          //
-          // 2026-10(第三輪):「讓我試看看」出現時(composerCollapsed 且
-          // 尚未 handedOver)輸入框整個從 DOM 移除、按鈕置中顯示(使用者
-          // 明確要求「按鈕置中,移除輸入匡」)——取代先前「輸入框收合
-          // 讓位、按鈕展開動畫」的版本(見 .module.css .composerCta 的
-          // 完整說明:那一版同一顆 <button> 疊加 class 做 width
-          // transition,這版輸入框是條件渲染、不是 class 切換,沒有連續
-          // 的寬度狀態可以 transition,改用 opacity 淡入)。交接後
-          // (handedOver)輸入框恢復渲染、開放輸入,不再是 presentational
-          // ——這時是正式功能,真的要能送出。(現況:這個 Composer 只渲染在
-          // 播放態的 PlanLayout;交接後的輸入框改由 LivePlanLayer 內的
-          // TripPlanPage 經 ComposerSlotContext portal 進 composer 插槽,
-          // 這裡的 handedOver 分支只是殘留。)
-          <Composer
-            bare={composerCollapsed && !handedOver}
-            hideInput={composerCollapsed && !handedOver}
-            inputRowClassName={styles.inputRow}
-            ariaLabel={handedOver ? '描述你想要的行程' : '輸入指令(僅供展示)'}
-            placeholder={handedOver ? '想去哪裡玩?例如:台南兩天一夜' : undefined}
-            value={handedOver ? userPrompt : typedPrompt}
-            onChange={handedOver ? setUserPrompt : undefined}
-            readOnly={!handedOver}
-            presentational={!handedOver && !composerCollapsed}
-            // composerCta——排程結束後出現的行動呼籲按鈕,文案「讓我試
-            // 看看」(2026-10 從「立即使用」改,使用者明確要求),點擊要
-            // 導向登入頁面(/app,對齊首頁 SiteNavCta 的「登入」按鈕同樣
-            // 指向 /app——未登入時 /app 本身就會顯示登入畫面,見
-            // phone/Content.tsx 的既有行為,不需要另外一個獨立的 /login
-            // 路由)。仍是同一顆送出鈕(進行中是箭頭 icon,結束後疊上
-            // .composerCta 變成文字按鈕)——這顆按鈕本身的身分沒有變,
-            // 只有旁邊的輸入框從「收合」改成「整個移除」(見上方完整
-            // 說明)。排到第 5 站前透過 presentational 擋下 onSubmit,
-            // 不需要額外判斷 composerCollapsed 才能呼叫 navigate——
-            // onSubmit 只有在不是 presentational 時才會真的被呼叫。
-            onSubmit={handover}
-            sendButtonAriaLabel={composerCollapsed ? '讓我試看看' : '送出'}
-            sendButtonClassName={composerCollapsed ? styles.composerCta : ''}
-            sendButton={composerCollapsed ? '讓我試看看' : undefined}
+        composer={
+          <SimComposer
+            composerCollapsed={composerCollapsed}
+            handedOver={handedOver}
+            typedPrompt={typedPrompt}
+            userPrompt={userPrompt}
+            setUserPrompt={setUserPrompt}
+            handover={handover}
           />
-        )}
+        }
       >
-      {isDesktop ? (
-      /* 桌面版的詢問頁(2026-10 使用者明確要求「桌面版的要顯示 ask
-         page」):劇本播到 open_ask_page 時取代縱向時間軸,跟手機版
-         「顯示 AskPage 時取代卡片列」是同一種處理(見
-         HorizontalPlanTimeline.tsx showAskPage 分支)。
-         在這之前桌面版完全沒有渲染 AskPage,而劇本第一則就是
-         open_ask_page——planSimFakeSource 等著使用者選擇,畫面上卻沒有
-         任何可以點的東西,整段劇本停在第 0 步(實機確認:桌面版時間軸
-         全空、一張卡片都沒有)。
-         dataSource 用假資料實作,理由同下方手機版分支的完整說明。
-
-         2026-10 改成置換 ScriptedAskPage(使用者明確定調「播放態不會有
-         真實互動」、「所以是要做在被置換的原件上,與正式使用的不一樣」):
-         這一頁是播放態,渲染的是播放態專用那一份(見 ScriptedAskPage.tsx
-         檔頭的完整說明:劇本指定選哪幾張、依序演出點擊特效、時間到自己
-         送出),不是正式的 AskPage。正式那一份完全沒有為了展示而加的
-         分支,它只服務真實互動。
-         兩者的 onDone 形狀一致,所以在這裡是直接互換,呼叫端其餘程式碼
-         不需要知道換了哪一份。 */
-      showAskPage ? (
-      renderScriptedAskPage()
-      ) : (
-      <PlanTimelineView
-        // onRetryStop——見上方 retryStopLookup 的完整說明:標了 failed
-        // 就要給得出脫離的路。
-        onRetryStop={retryStopLookup}
+      <SimPlanLayer
+        isDesktop={isDesktop}
         steps={steps}
-        isThinking={isGenerating}
+        isGenerating={isGenerating}
         emptyStateMessage={emptyStateMessage}
-        hideEmptyState
-        endMarkerMessage="行程結束"
-        selectedStopId={selectedStopId}
-        // onHoverStop——卡片 hover/移出時更新 hoverStopId,讓地圖圓點能
-        // 跟著 hover 強調(見上方 hoverStopId state 的完整說明)。
-        onHoverStop={setHoverStopId}
-        showJumpPill={showJumpPill}
-        onJumpToLatest={jumpToLatest}
-        onPanToStop={panToStop}
-        // getStopTimeDragBounds/onDragStopTime——見 dragStopTime 的完整
-        // 說明。這兩個 prop 同時存在才會啟用拖拉手勢(見
-        // PlanTimelineView.tsx handlePointerDown 開頭的判斷)。
-        // TIME_DRAG_ENABLED——feature flag(見 DesktopShared.tsx 同名
-        // 常數的完整說明),關閉時兩個 prop 都不傳。
-        getStopTimeDragBounds={TIME_DRAG_ENABLED ? (stopId) => getTimeDragBounds(timelineRef.current, stopId) : undefined}
-        onDragStopTime={TIME_DRAG_ENABLED ? dragStopTime : undefined}
-        onOpenPhotos={setLightboxPhotos}
-        mountedIdsRef={mountedIdsRef}
-        scrollRef={scrollRef}
-        onScroll={handleScroll}
-        scrollClassName={styles.timelineScroll}
-        jumpPillWrapClassName={styles.timelineJumpPillWrap}
-        endMarkerClassName={styles.timelineEndMarker}
-      />
-      )
-      ) : (
-      // 手機版(模擬中)——改用橫向卡片時間軸(方案二設計稿的落地,見
-      // HorizontalPlanTimeline.tsx 檔頭的完整說明),取代縱向
-      // PlanTimelineView。onSelectStop 同時寫入 selectedStopId 跟
-      // hoverStopId(而不是只設 selectedStopId)——這兩個 state 一起餵給
-      // 上方 useMapMarkerLayer(見該處呼叫的完整說明),地圖圓點的
-      // 「選取」樣式實際上同時看這兩個值的其中之一命中(見 mapMarkers.ts/
-      // PlanStopMarkerState 的既有邏輯),縱向版本原本是「點擊卡片→
-      // selectedStopId」「hover 卡片→hoverStopId」各自觸發,手機版橫向
-      // 卡片沒有滑鼠 hover 這件事,只有「捲到/點到哪一站」這一種事件。
-      // mapMarkerLayer/mapMarkers.ts 的三態邏輯是 selected 優先於
-      // hover(見 PlanStopMarkerState 的完整說明:兩者同時命中同一個 id
-      // 時最終呈現 'selected'),只設 selectedStopId 其實已經足夠讓地圖
-      // 圓點呈現「選取」高亮;這裡連同 hoverStopId 一併更新純粹是為了
-      // 不留下舊的 hoverStopId 殘留(例如使用者先前在桌面寬度下 hover
-      // 過某一站、之後縮小視窗切換成手機版橫向卡片,殘留的 hoverStopId
-      // 理論上不該發生但避免有這種邊界情況殘留失準的圓點狀態)。
-      // focusLatest(2026-10 修正,使用者實機回報「自動播放時第二個
-      // 景點後沒有自動往下一個滑動」):這個 prop 名稱雖然原本是為了
-      // 「第一張卡滿版、後面壓縮堆疊」這組視覺效果設計的,但那組卡片
-      // 寬度縮放邏輯後來已經被取代(見 HorizontalPlanTimeline.tsx
-      // isSingleCard 的完整說明:目前只有「只剩一張卡」這個寬度例外,
-      // 其餘卡片一律固定寬度,焦點改用捲動位置表達,不是寬度差異)——
-      // focusLatest 現在的唯一實際作用,只剩下開關「骨架轉正式卡時
-      // 自動捲動到最新站點」這個自動捲動 effect(見該檔案
-      // justFinishedGenerating 的完整說明),不會再帶來任何卡片縮放的
-      // 副作用。原本這裡沒有傳這個 prop,套用元件預設值 false,整個
-      // 自動捲動 effect 的第一行 `if (!focusLatest) return` 直接讓
-      // 自動捲動在這個完整展示頁上完全不會啟動——不是只影響第二站
-      // 以後,是從第一站就沒有自動捲動,只是使用者在只有一張卡時不易
-      // 察覺,到第二站需要真正捲動才會注意到。改成跟首頁 demo
-      // (AiPlanPhoneDemoScreen.tsx)一致,啟用自動捲動到最新完成站點。
-      <>
-      <HorizontalPlanTimeline
-        // showAskPage/askPageInput/onAskPageDone/dataSource——見
-        // 上方 state 宣告處的完整說明。dataSource 用假資料實作(預設值
-        // planAiFakeDataSource,這裡顯式傳入對齊 usePlanSimSocket 呼叫處
-        // 的同一份實例,理由同該處說明:這個展示頁不需要登入就能看,
-        // 不能打需要登入的後端端點)。
+        timelineRef={timelineRef}
+        dragStopTime={dragStopTime}
+        retryStopLookup={retryStopLookup}
         showAskPage={showAskPage}
         askPageInput={askPageInput}
-        onAskPageDone={handleAskPageDone}
-        dataSource={planAiFakeDataSource}
-        // renderAskPage——置換成播放態專用那一份(見
-        // HorizontalPlanTimeline.tsx 該 prop 與 ScriptedAskPage.tsx 檔頭
-        // 的完整說明)。桌面分支也是同一份,兩種版面一致。
-        renderAskPage={renderScriptedAskPage}
-        onRetryStop={retryStopLookup}
-        steps={steps}
+        handleAskPageDone={handleAskPageDone}
+        renderScriptedAskPage={renderScriptedAskPage}
         selectedStopId={selectedStopId}
-        focusLatest
-        onSelectStop={(stopId) => {
-          setSelectedStopId(stopId)
-          setHoverStopId(stopId)
-        }}
-        // onSelectThemeChild——2026-10 新增(見 HorizontalPlanTimeline.tsx
-        // 該 prop 的完整說明)。只設定 selectedStopId(選中主題卡本身,
-        // 連帶觸發 expandedThemeId 的 effect 展開範圍圓圈+子景點小點,見
-        // 該 effect 的完整說明)。
-        //
-        // 2026-10(第二輪,使用者明確要求「手機板觸發地圖中心移動跟標示
-        // 目標點都要用捲動中心點觸發,不要用點選觸發」):不再呼叫
-        // setHoverStopId(child.id)——地圖 panTo 的 effect 已經改成只讀
-        // selectedStopId(見該 effect 的完整說明),hoverStopId 不再驅動
-        // 任何地圖行為,這裡設定它只會是沒有視覺效果的殘留狀態,拿掉。
-        onSelectThemeChild={(parentId) => {
-          setSelectedStopId(parentId)
-        }}
-        // onOpenPhotos——跟桌面版 PlanTimelineView 共用同一個 Lightbox
-        // 覆蓋層(見上方 lightboxPhotos state 的完整說明),兩個時間軸
-        // 元件都只負責「觸發開啟」,實際渲染/關閉邏輯統一收在這個頁面
-        // 層級,不重複實作。
-        onOpenPhotos={setLightboxPhotos}
-        isGenerating={isGenerating}
-        // onPanToStop——2026-10 新增(使用者明確要求「選擇圖卡時不要
-        // 移動地圖中心,標誌地點就好,另外做一個 icon,移動到該點」):
-        // 卡片角落新增的「移動到此」按鈕觸發,見 panToStopId 的完整
-        // 說明。選填 prop,省略時卡片不會渲染這顆按鈕(對齊
-        // onRemoveStop/onTransitModeChange 等既有選填 prop 的慣例)。
-        onPanToStop={panToStopId}
+        setSelectedStopId={setSelectedStopId}
+        setHoverStopId={setHoverStopId}
+        panToStop={panToStop}
+        panToStopId={panToStopId}
+        scrollRef={scrollRef}
+        handleScroll={handleScroll}
+        showJumpPill={showJumpPill}
+        jumpToLatest={jumpToLatest}
+        mountedIdsRef={mountedIdsRef}
+        setLightboxPhotos={setLightboxPhotos}
       />
-      </>
-      )}
+      </OverlayLayout>
       </PlanLayout>
     )}
     {lightboxPhotos && (

@@ -32,7 +32,7 @@ const stops = [{ id: 's1', lat: 1, lng: 2 }]
 describe('itineraries PlanMap', () => {
   it('NativeMapBase 拿到 center、zoom、mapId、theme;children 渲染在地圖旁', () => {
     const { getByTestId } = render(
-      <PlanMap center={{ lat: 1, lng: 2 }} zoom={15} mapId="m" theme="dark" stops={stops}>
+      <PlanMap initialCenter={{ lat: 1, lng: 2 }} zoom={15} mapId="m" theme="dark" stops={stops}>
         <div data-testid="vignette" />
       </PlanMap>,
     )
@@ -44,7 +44,7 @@ describe('itineraries PlanMap', () => {
     const onStopClick = vi.fn()
     const extra = [{ id: 'x', drawables: [] }]
     render(
-      <PlanMap center={undefined} stops={stops} selectedStopId="s1" hoverStopId="s2" onStopClick={onStopClick} extraLayers={extra} />,
+      <PlanMap initialCenter={undefined} stops={stops} selectedStopId="s1" hoverStopId="s2" onStopClick={onStopClick} extraLayers={extra} />,
     )
     const args = drawArgs[drawArgs.length - 1] as { stopDots: Record<string, unknown>; currentPosition: unknown; routeLine: { enabled: boolean }; extraLayers: unknown }
     expect(args.stopDots).toMatchObject({ stops, selectedId: 's1', hoverId: 's2', onPointClick: onStopClick })
@@ -55,7 +55,7 @@ describe('itineraries PlanMap', () => {
 
   it('地圖就緒後把 MapHandle 交給統一繪製層與 onHandleChange', () => {
     const onHandleChange = vi.fn()
-    render(<PlanMap center={undefined} stops={stops} onHandleChange={onHandleChange} />)
+    render(<PlanMap initialCenter={undefined} stops={stops} onHandleChange={onHandleChange} />)
     const handle: MapHandle = { mapRef: { current: {} as google.maps.Map }, mapReady: true, mapVersion: 1 }
     act(() => baseProps?.onHandleChange?.(handle))
     expect(onHandleChange).toHaveBeenCalledWith(handle)

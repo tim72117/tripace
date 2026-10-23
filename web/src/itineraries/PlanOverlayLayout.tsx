@@ -1,4 +1,3 @@
-import type { Ref } from 'react'
 import { OverlayShell, type OverlayClassNames } from '../plan-core/OverlayShell'
 import type { PlanOverlayLayoutContract } from '../plan-core/layerContracts'
 import styles from './PlanOverlayLayout.module.css'
@@ -14,9 +13,9 @@ import styles from './PlanOverlayLayout.module.css'
 // 這頁特有的部分:
 //   - 沒有控制項插槽(showControlsSlot=false)與輸入列(composer-slot 是空節點)。
 //   - 樣式(PlanOverlayLayout.module.css):桌面 panel 貼右側 420px,safe-area 是它左邊;手機 panel 在下方、地圖在上方 45dvh。
+//   - passThrough:疊加層不攔截指標事件(共同契約的參數),Content 傳 true,地圖在面板空白處仍可拖曳。
 //   - safeAreaRef:接在 safe-area 節點上,給 useMapSafeArea 之類需要「沒被面板蓋住的地圖範圍」的消費端。
 export interface PlanOverlayLayoutProps extends PlanOverlayLayoutContract {
-  safeAreaRef?: Ref<HTMLDivElement>
 }
 
 const CLASS_NAMES: OverlayClassNames = {
@@ -28,9 +27,16 @@ const CLASS_NAMES: OverlayClassNames = {
   composerSlot: styles.composerSlot,
 }
 
-export function PlanOverlayLayout({ mapBackground, safeAreaRef, children }: PlanOverlayLayoutProps) {
+const PASS_THROUGH_CLASS_NAMES: OverlayClassNames = { ...CLASS_NAMES, overlay: `${styles.overlay} ${styles.passThrough}` }
+
+export function PlanOverlayLayout({ mapBackground, safeAreaRef, passThrough, children }: PlanOverlayLayoutProps) {
   return (
-    <OverlayShell classNames={CLASS_NAMES} mapBackground={mapBackground} showControlsSlot={false} safeAreaRef={safeAreaRef}>
+    <OverlayShell
+      classNames={passThrough ? PASS_THROUGH_CLASS_NAMES : CLASS_NAMES}
+      mapBackground={mapBackground}
+      showControlsSlot={false}
+      safeAreaRef={safeAreaRef}
+    >
       {children}
     </OverlayShell>
   )

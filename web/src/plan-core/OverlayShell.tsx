@@ -1,6 +1,6 @@
 import { useState, type ReactNode, type Ref } from 'react'
 import { ComposerSlotContext, OVERLAY_SLOT, slotAttr } from './overlayDom'
-// OverlayShell——手機版「地圖加疊加 UI」外殼的共用實作。/ai-plan(home/plan-ai-sim/PlanOverlayLayout)
+// OverlayShell——手機版「地圖加疊加 UI」外殼的共用實作。/ai-plan(home/plan-ai-sim/phone/PlanOverlayLayout)
 // 與登入後手機版(src/phone/PlanOverlayLayout)、登入後桌面版(src/desktop/PlanOverlayLayout)各寫一份幾乎相同的程式,現在相同的部分收在這裡:
 //
 //   map-layer          地圖層(mapBackground)

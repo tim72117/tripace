@@ -237,11 +237,11 @@ function useTripPlanTimeline(
   // revRef——這個實例手上這份 timeline 對應的持久化版次(見
   // planTimelineStorage.ts 的 PersistedTimeline.rev)。
   //
-  // 存在的理由:TripPlanPage 會同時有兩份實例掛載——地圖對話小匡是常駐
+  // 存在的理由:TripPlanPage 會同時有兩份實例掛載——地圖規劃面板是常駐
   // 掛載的(FloatingPanel 只用 display:none 隱藏,為的是不重建 WebSocket
   // 連線),而切到 /trip-plan 時全頁版也會掛上來。兩份各自在掛載當下
   // 讀一次 localStorage 之後就不再重讀,於是:在全頁版規劃完切回地圖,
-  // 小匡那份仍是掛載時的舊內容(常常是空的),它下一次寫入就會把剛剛
+  // 規劃面板那份仍是掛載時的舊內容(常常是空的),它下一次寫入就會把剛剛
   // 規劃好的內容整個蓋掉——實際會遺失使用者資料。
   //
   // 用版次而非 storage 事件:storage 事件只在「其他分頁」觸發,同一個
@@ -264,7 +264,7 @@ function useTripPlanTimeline(
   // resyncFromStorage——把另一份實例寫入的較新內容讀回來,並讓版次跟上。
   //
   // 兩個呼叫時機:(a) commitTimeline 寫入前(確保以最新內容為基準計算);
-  // (b) 小匡從隱藏轉為可見時(純顯示的情境沒有寫入可攔截——小匡被
+  // (b) 規劃面板從隱藏轉為可見時(純顯示的情境沒有寫入可攔截——規劃面板被
   // display:none 隱藏期間使用者在全頁版規劃了幾站,重新顯示時畫面會
   // 一直停在舊內容)。
   //
@@ -999,7 +999,7 @@ export function TripPlanPage(props: {
   // compact——2026-10 新增:這個元件現在有兩個使用情境,版面需求不同。
   //   - /trip-plan(預設,compact 省略):整頁顯示,捲動權在外層
   //     DesktopMain(unboundedScroll),.page 自己是自然高度。
-  //   - 地圖規劃的對話浮動小匡(compact):沒有任何祖先在管捲動,且
+  //   - 地圖規劃的規劃面板(compact):沒有任何祖先在管捲動,且
   //     FloatingPanel 的 .panel 是 overflow:hidden——.page 必須自己變成
   //     固定高度的 flex 容器、讓時間軸區塊接手捲動,否則內容會一路往下
   //     撐、超出的部分被裁掉且完全捲不動(使用者實際回報的 bug)。
@@ -1007,12 +1007,12 @@ export function TripPlanPage(props: {
   // 元件放進哪種容器,不需要執行期量測,理由同 DesktopMain 的 unbounded
   // prop 取代原本 :has() 被動偵測的既有決定。
   compact?: boolean
-  // visible——這個實例此刻在畫面上看不看得見。只有 compact(對話小匡)
-  // 需要傳:那張小匡是常駐掛載、用 display:none 隱藏的,元件不會因為
+  // visible——這個實例此刻在畫面上看不看得見。只有 compact(規劃面板)
+  // 需要傳:那張規劃面板是常駐掛載、用 display:none 隱藏的,元件不會因為
   // 「關閉」而卸載,所以無從用掛載時機去重讀持久化內容。
   //
   // 從隱藏轉為可見時,把另一份實例(/trip-plan 全頁版)在這期間寫入的
-  // 內容讀回來——否則小匡會一直顯示它掛載當下的舊時間軸(見
+  // 內容讀回來——否則規劃面板會一直顯示它掛載當下的舊時間軸(見
   // useTripPlanTimeline 的 resyncFromStorage 與 revRef 的完整說明)。
   // 省略時視為永遠可見,維持原本行為(全頁版靠掛載/卸載就足夠)。
   visible?: boolean
@@ -1021,7 +1021,7 @@ export function TripPlanPage(props: {
   // scrollToLatest/handleScroll 的完整說明)。
   //   - /trip-plan 全頁:呼叫端傳入指向 DesktopMain(<main>)的 ref,
   //     捲動權在那個撐滿視窗的外層容器(unboundedScroll)。
-  //   - 地圖規劃的對話小匡(compact):不傳——元件內部的 scrollRef
+  //   - 地圖規劃的規劃面板(compact):不傳——元件內部的 scrollRef
   //     (指向 .scroll,compact 模式下疊加 .compactScroll 接手捲動)本身
   //     就是真正的捲動容器,fallback 用它自己。
   // 選填且不要求呼叫端一定要配 compact 傳——兩者語意不同,compact 決定
@@ -1036,7 +1036,7 @@ export function TripPlanPage(props: {
   // 兩個使用情境對「點了卡片之後該發生什麼」的答案不同——
   //   - /trip-plan 全頁:沒有地圖可移動,省略這個 prop,行為維持原樣
   //     (只做卡片高亮)。
-  //   - 地圖規劃的對話小匡:外面就是整張地圖,傳入後點卡片會把地圖
+  //   - 地圖規劃的規劃面板:外面就是整張地圖,傳入後點卡片會把地圖
   //     平移到該站(見 desktop/Content.tsx 傳入時的完整說明)。
   // 元件自己不 import 任何地圖模組,維持「時間軸就只是時間軸」,不因為
   // 其中一個使用情境多了地圖就把地圖依賴帶進所有情境。
@@ -1047,9 +1047,9 @@ export function TripPlanPage(props: {
   //
   // 選填,理由同 onPanToStop:/trip-plan 全頁沒有地圖,省略即可。
   //
-  // 注意這個元件在對話小匡裡是常駐掛載的(FloatingPanel 只用 display:none
+  // 注意這個元件在規劃面板裡是常駐掛載的(FloatingPanel 只用 display:none
   // 隱藏,見 desktop/Content.tsx 對那個設計的完整說明——為的是避免每次開關
-  // 都重建 WebSocket 連線)。所以小匡「關閉」期間這裡仍會持續回報(AI 還
+  // 都重建 WebSocket 連線)。所以規劃面板「關閉」期間這裡仍會持續回報(AI 還
   // 在串流、背景座標回填都會讓清單變動),呼叫端收到的 state 也不會歸零。
   // 圓點要不要顯示因此完全由呼叫端決定(見 desktop/Content.tsx 傳給
   // PlanMap 時的顯示判斷),這個元件不負責那件事。
@@ -1075,7 +1075,7 @@ export function TripPlanPage(props: {
   dataSource: PlanAiDataSource
   // selectedStopId/onSelectedStopChange——目前選中哪一站。三種合法組合:
   //   - 兩個都傳:受控。以 selectedStopId 為準,元件自己不存狀態,每次
-  //     使用者點選都呼叫 onSelectedStopChange(地圖對話小匡用這個)。
+  //     使用者點選都呼叫 onSelectedStopChange(地圖規劃面板用這個)。
   //   - 兩個都不傳:非受控,元件用內部 state 自理(/trip-plan 全頁)。
   //   - 只傳 onSelectedStopChange:非受控但通知呼叫端——元件自己管狀態,
   //     呼叫端只是想知道。語意同 <input onChange> 不給 value。
@@ -1107,7 +1107,7 @@ export function TripPlanPage(props: {
   //
   // 注意:這個回調直接接到 PlanTimelineView 的 onHoverStop,「滑鼠離開」
   // 以外的任何方式讓卡片消失都不會補送一次 null——元素被 display:none
-  // 隱藏(小匡關閉時就是這樣,見上方 onStopsChange 的說明)不產生
+  // 隱藏(規劃面板關閉時就是這樣,見上方 onStopsChange 的說明)不產生
   // onMouseLeave。呼叫端若把它存成 state,需要自己處理這個殘留。
   onHoverStopChange?: (id: string | null) => void
   // onHoverTransitChange——滑鼠移到時間軸「交通膠囊」上時回報這段交通
@@ -1146,8 +1146,7 @@ export function TripPlanPage(props: {
   // store——2026-10 新增:時間軸持久化的落地方式,取代原本直接 import
   // planTimelineStorage.ts 三個函式呼叫的寫法(見 PlanTimelineStore 介面
   // 的完整說明)。必填(2026-10):原本選填、省略時內部預設用 localStoragePlanTimelineStore,但靠隱藏預設值決定
-  // 存在哪裡容易在新入口漏傳(跟 dataSource 同樣的理由),改成每個入口(各自的 LivePlanLayer 與 /trip-plan 的
-  // TripPlanRoute)明確傳。登入後兩個入口與 /trip-plan 傳 localStoragePlanTimelineStore,/ai-plan 依有沒有
+  // 存在哪裡容易在新入口漏傳(跟 dataSource 同樣的理由),改成每個入口(各自的 LivePlanLayer)明確傳。登入後兩個入口傳 localStoragePlanTimelineStore,/ai-plan 依有沒有
   // 草稿傳 localStoragePlanTimelineStore 或草稿專屬的 store——全部共用同一份 localStorage 草稿
   // (/ai-plan 排的內容,之後打開 /app 看得到同一份,使用者明確要求的行為)。這個元件本身不需要知道背後實際怎麼存,只需要
   // 呼叫 store.readRev()/loadTimelineWithRev()/saveTimeline() 這三個
@@ -1161,7 +1160,7 @@ export function TripPlanPage(props: {
   // 存在的理由:/ai-plan 展示頁的 LivePlanLayer 把這個元件塞進
   // .timelinePanel(刻意「浮空」、沒有自己背景色的側欄,見該 class 的
   // 完整說明,讓底下的 NativeMapBase 透出來)——但 .page 原本預設帶
-  // 實色背景(給 /app 整頁、或 desktop/Content.tsx 對話小匡 .chatPopover
+  // 實色背景(給 /app 整頁、或 desktop/Content.tsx 規劃面板 規劃面板
   // 這類情境使用,那裡需要一塊不透明的卡片底色),交接後整個蓋住了
   // 底下的地圖,只看得到這個元件自己的空狀態提示文字(實機回報「試試
   // 看時背景是空白的」,背景其實是這段文字,不是真的空白)。
@@ -1170,7 +1169,7 @@ export function TripPlanPage(props: {
   // 呼叫端不用改、不用傳這個 prop,行為完全不變。只有 LivePlanLayer
   // 這個呼叫端需要透明背景,不要把這個行為改成 compact 的隱含效果
   // (compact 本身是「放進固定高度容器」的版面語意,跟「背景要不要
-  // 透明」是兩件互相獨立的事,混在一起會讓對話小匡那個情境意外跟著
+  // 透明」是兩件互相獨立的事,混在一起會讓規劃面板那個情境意外跟著
   // 變透明)。
   transparentBackground?: boolean
   // hideEmptyState——透傳給內部 PlanTimelineView 同名 prop(見該元件該
@@ -1757,7 +1756,7 @@ export function TripPlanPage(props: {
   // 站點。
   //
   // 受控/非受控雙模式(見上方 props 對這兩個欄位的完整說明):呼叫端傳了
-  // selectedStopId 就以它為準(地圖對話小匡,狀態住在 desktop/Content,
+  // selectedStopId 就以它為準(地圖規劃面板,狀態住在 desktop/Content,
   // 地圖與時間軸共用同一份),沒傳就用這個內部 state(/trip-plan 全頁)。
   //
   // 這個狀態現在同時驅動地圖上對應小圓點的強調樣式——2026-10 之前曾經
@@ -1851,7 +1850,7 @@ export function TripPlanPage(props: {
   //
   // 2026-10:原本這裡只做選取——/trip-plan 全頁右上角的小地圖移除後,
   // 「pan」這個動作就沒有對象了,函式名稱留著但實際上不再移動任何東西。
-  // 現在這個元件嵌進地圖規劃的對話小匡,外面就是整張地圖,名稱重新名實
+  // 現在這個元件嵌進地圖規劃的規劃面板,外面就是整張地圖,名稱重新名實
   // 相符:座標交給呼叫端,由它決定怎麼移動(見 onPanToStop 參數的完整
   // 說明)。
   //
@@ -1868,17 +1867,17 @@ export function TripPlanPage(props: {
   // 下方)往上爬,靠「找到的 <main> 就是真正在捲動的那個」這個假設找
   // 捲動容器——這個假設只在 /trip-plan 全頁成立。
   // (2026-10 code review 二次修正:這裡原本誤寫成「地圖規劃的對話
-  // 小匡完全沒有 <main> 祖先,closest('main') 永遠回傳 null」——
+  // 規劃面板完全沒有 <main> 祖先,closest('main') 永遠回傳 null」——
   // 實際上 FloatingPanel 是 DesktopMain 的子孫,DOM 樹裡確實有
   // <main> 祖先,closest('main') 抓得到它,不是回傳 null。真正的
   // 問題是那個 <main> 的 unboundedScroll 只在 panelMode==='plan-ai'
-  // 時才為 true,對話小匡存在的其餘 panelMode 下,這個 <main> 不會
+  // 時才為 true,規劃面板存在的其餘 panelMode 下,這個 <main> 不會
   // 真正接手捲動、scroll 事件不會在它身上觸發——closest('main') 抓到
   // 的是「存在但錯的」捲動容器,不是抓不到。結論跟修法不變:這組
-  // 機制(自動捲到底、跟隨判斷、按鈕顯示)在小匡裡一樣會失效,只是
+  // 機制(自動捲到底、跟隨判斷、按鈕顯示)在規劃面板裡一樣會失效,只是
   // 失效的具體原因不是「找不到 main」,而是「找到的 main 不會動」。)
   // 改成優先讀呼叫端傳入的 scrollContainerRef(見該 prop 的完整說明):
-  // 全頁版傳 DesktopMain 的 <main> ref,小匡版不傳、fallback 用
+  // 全頁版傳 DesktopMain 的 <main> ref,規劃面板版不傳、fallback 用
   // scrollRef.current 本身(compact 模式下就是真正接手捲動的
   // .compactScroll,見該 class 的完整說明)——兩條路徑各自對應自己
   // 真正的捲動容器,不再靠 closest 猜。
@@ -1957,7 +1956,7 @@ export function TripPlanPage(props: {
   }, [getScroller, planAiChat.isThinking])
 
   // 捲動事件發生在 getScroller() 回傳的容器上,不是 .scroll 本身(全頁版
-  // 是外層 <main>,小匡版是 .compactScroll 自己——見 getScroller 的完整
+  // 是外層 <main>,規劃面板版是 .compactScroll 自己——見 getScroller 的完整
   // 說明)。JSX 沒辦法直接在父層元件渲染的 <main> 上掛 onScroll,兩種
   // 情況都統一改用 effect 手動加/移除原生事件監聽器,邏輯一致不分支。
   useEffect(() => {
@@ -2164,7 +2163,7 @@ export function TripPlanPage(props: {
         // 完整說明)——整頁模式維持不傳,捲動權留在外層 DesktopMain。
         scrollClassName={compact ? styles.compactScroll : undefined}
         // compact 模式下改用 absolute 定位覆寫共用元件預設的 sticky
-        // (見 .compactJumpPillWrap 的完整說明:sticky 在小匡裡會黏錯
+        // (見 .compactJumpPillWrap 的完整說明:sticky 在規劃面板裡會黏錯
         // 容器,導致「回到最新」按鈕位置跑掉)——整頁模式維持不傳,
         // 沿用共用元件本身 sticky 相對 <main> 貼齊的既有行為。
         jumpPillWrapClassName={compact ? styles.compactJumpPillWrap : undefined}
@@ -2185,7 +2184,7 @@ export function TripPlanPage(props: {
       {/* newDraftBtn——「新行程」按鈕(見 onNewDraft prop 的完整說明)。
           只在 horizontalTimeline(交接後手機版橫向時間軸)且呼叫端有傳
           onNewDraft 時才渲染——/app、/trip-plan 全頁、desktop/Content.tsx
-          的對話小匡都不受影響,見該 prop 的完整說明。放在 composer
+          的規劃面板都不受影響,見該 prop 的完整說明。放在 composer
           正上方,對齊使用者明確要求的「對話輸入匣上方」位置。 */}
       {horizontalTimeline && onNewDraft && (
         <button

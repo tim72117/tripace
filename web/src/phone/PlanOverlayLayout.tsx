@@ -1,4 +1,4 @@
-import { lazy, Suspense, type Ref } from 'react'
+import { lazy, Suspense } from 'react'
 import { OverlayShell, type OverlayClassNames } from '../plan-core/OverlayShell'
 import { isLayoutDebugEnabled } from '../layoutDebugFlag'
 import type { PlanOverlayLayoutContract } from '../plan-core/layerContracts'
@@ -29,15 +29,15 @@ const PlanLayoutDebugOverlay = lazy(() =>
 //   - safe-area 洞:範圍是沒被搜尋框與底部規劃面板蓋住的地圖(樣式見 PlanOverlayLayout.module.css .safeArea),
 //     呼叫端經 safeAreaRef 取得,交給 PlanPhoneView → PlanMap 的 panTarget 平移(首站、搜尋)落在這個範圍中心。
 // PlanOverlayLayoutProps——滿足共同契約 PlanOverlayLayoutContract(plan-core/layerContracts.ts),加手機特有的
-// open(hidden 保持掛載)、控制項插槽回報、安全區 ref。
+// open(hidden 保持掛載)、控制項插槽回報(安全區 ref 在共同契約)。
 export interface PlanOverlayLayoutProps extends PlanOverlayLayoutContract {
   open: boolean
   onControlsSlotChange?: (el: HTMLDivElement | null) => void
-  safeAreaRef?: Ref<HTMLDivElement>
 }
 
 export function PlanOverlayLayout({
   open,
+  passThrough,
   mapBackground,
   onControlsSlotChange,
   safeAreaRef,
@@ -46,7 +46,7 @@ export function PlanOverlayLayout({
   const debug = isLayoutDebugEnabled(window.location.search)
   return (
     <OverlayShell
-      classNames={CLASS_NAMES}
+      classNames={passThrough ? PASS_THROUGH_CLASS_NAMES : CLASS_NAMES}
       mapBackground={mapBackground}
       onControlsSlotChange={onControlsSlotChange}
       open={open}
@@ -74,3 +74,5 @@ const CLASS_NAMES: OverlayClassNames = {
   safeArea: styles.safeArea,
   composerSlot: styles.composerSlot,
 }
+
+const PASS_THROUGH_CLASS_NAMES: OverlayClassNames = { ...CLASS_NAMES, overlay: `${styles.overlay} ${styles.passThrough}` }

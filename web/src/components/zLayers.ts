@@ -47,7 +47,7 @@ export const Z_LAYERS = {
   TAB_BAR: 35,
   // ABOVE_TAB_BAR——這個 sheet 要蓋過底部功能列(使用者正在跟它互動的
   // 期間,功能列被完全蓋住比較不會讓使用者誤以為還能點功能列切換畫面)。
-  // 對應設定頁/對話小匡/配速面板/geo-planning/phone/CandidateList.tsx
+  // 對應設定頁/規劃面板/配速面板/geo-planning/phone/CandidateList.tsx
   // (行程清單)——這三個是各自獨立開關、不屬於 useSheetStack 管理的堆疊,
   // 彼此之間沒有嚴格的疊放順序要求(使用者操作流程上不會同時開啟兩個以上,
   // 見各自檔案的 open state 管理),共用同一個層級即可,不需要再往上細分。

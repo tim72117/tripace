@@ -1,4 +1,4 @@
-/* PlanOverlayPanelWide——寬螢幕(>=1024px)側欄樣式,見 PlanOverlayPanel.tsx 開頭
+/* PlanOverlayPanelWide——寬螢幕(>=1024px)側欄樣式,見 wide/PlanOverlayPanel.tsx 開頭
    wide 分支的完整設計理由。跟 PlanOverlayPanel.module.css 的桌面 .panel 是同一種疊加
    模式(position: absolute 貼齊右緣、地圖維持滿版不被擠壓,使用者明確
    要求「地圖一樣要滿版」)——只有候選卡片排列方式(見 AskPage.module.css

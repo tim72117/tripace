@@ -2,6 +2,55 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.39.2 — 2026-10-23
+
+延續 v0.39.0 的分層架構重構：行程詳情頁（`/itineraries/:id` 地圖版面）併入同一組分層與資料存取層，外層元件的分工與參數統一，桌面版鏡頭改成只由點選圖卡移動，並移除 `/trip-plan` 獨立頁面。**無資料庫結構變更；後端只動兩處（`static.go` 拿掉 `/trip-plan` 的已知路由、`geo_outline_public.go` 的公開景點城市白名單加入「清邁」）。**
+
+> **不相容變更**（依版號慣例通常會升 minor，這次依使用者決定走 patch）：`/trip-plan` 路由與 `/app/plan-ai` 轉址消失；`SampleStop.attractionId` 改為 `placeId`；`PlanMap`（/ai-plan、行程詳情頁）的 `center` prop 改名為 `initialCenter`；`shiftBy` 的 `'chat'` 值改為 `'planPanel'`；`PlanMap` 的 `chatButtonOverlay` prop 移除；各 `PlanOverlayLayout` 的 `safeAreaRef` 變必填。
+
+### 新增
+
+- **行程詳情頁併入分層架構**：`itineraries/` 底下新增同名的 `PlanLayout`、`PlanOverlayLayout`、`PlanMap`（沒有第 4 層，這頁不接真實 AI）；站點與選取走 `usePlanSelection`、`maskPlanStopsView`，繪製走共用的 `usePlanMapDrawing`。
+- **站點座標與照片經資料存取層解析**：行程站點可帶 `placeId`，`useResolvedItineraryTimeline` 先用行程檔案的座標轉成時間軸，再經訪客版資料存取層 `placeDetails` 解析座標與照片寫回節點，名稱與說明維持行程作者寫的。原本在 `TripPlanPage` 的 `resolveAttractionForStep` 搬到 `plan-core/` 與 `TripPlanPage` 共用，新增 `keepContent` 選項（查不到不標失敗、無照片不覆蓋靜態照片）。
+- **時間軸新增「住宿」卡片類型**（`PlanTimelineView`，共用元件）：`kind === '住宿'` 的站畫成窄長虛線橫幅（區間文字取 `duration`，有照片時以圓形縮圖取代🛏️）；呼叫端傳 `renderStopCard` 時仍整張替換。一般行程不再傳 `renderStopCard`，改用預設景點卡。
+- **交通膠囊與路線線段**：`SampleStop` 新增選填 `transit`（`mode`、`minutes`、`distance`、`note`）；沒填時由 `estimateTransit` 依直線距離粗估（≤1200m 步行、≤5km 公車、其餘開車，兩站不到 100m 不畫）。地圖只在有交通膠囊的那一段畫線（`routeSegments`），`routePolylineLayer` 的線段新增選填 `id`。
+- **`useStopCardClick`**：點選圖卡的「選取加平移」抽成共用 hook，`TripPlanPage`、/ai-plan 模擬態、行程詳情頁共用。
+- **/ai-plan 的 `PlanOverlayLayout` 依螢幕拆成三個同名同介面的實體**（`home/plan-ai-sim/` 的 `phone/`、`desktop/`、`wide/`），`Content` 依 `isDesktop`、`isWide` 擇一；`PlanOverlayPanel` 也拆成 `desktop/`、`wide/` 兩份。
+- **/ai-plan 模擬態抽成獨立元件**：`SimPlanLayer`（時間軸與詢問頁）、`SimComposer`（假輸入膠囊），呈現層，狀態仍在 `Content`。
+- **光暈資料來源拆成獨立 hook**：共同形狀 `AttractionGlowSource`；行程詳情頁的 `useCityAttractionGlow`、/ai-plan 的 `useAttractionGlow`（登入後那份仍內建在 `PlanMap`）。
+- **外層契約**：`PlanOverlayLayoutContract` 新增必填 `safeAreaRef` 與選填 `passThrough`；事件穿透改用 `passThrough` 參數控制（原本寫死在 CSS），登入後手機、桌面與行程詳情頁一律傳 `passThrough`，行為不變。登入後桌面新增 `safeAreaRef`，點選圖卡的鏡頭落在安全區（右側面板與導覽列之外）中心。
+- **初始中心共通來源**：三份 `PlanMap` 統一用 `initialCenter`（`undefined` 等待、`null` 預設起點、座標直接用）；`centerOfPoints`（經緯度平均）給登入後的 `tripCenter` 與行程詳情頁共用，行程詳情頁取第一天的站點（全部平均在跨區域行程會落在空地）。
+- **`theme` 統一只收 `'dark' | 'light'`**：新增 `ResolvedTheme`、`useResolvedTheme`（把三態的 `Theme` 解析成明確值）、`useSystemPrefersDark`（`useThemeToggle` 也改用）。
+- **測試**：`useStopCardClick`、住宿橫幅、`estimateTransit`、`routeSegments`、`useResolvedItineraryTimeline`（含同 id 內容換版與舊請求不回寫）、`initialCenter`、`useCityAttractionGlow`、`useResolvedTheme`、`SimPlanLayer`、`SimComposer`、各 `PlanOverlayLayout` 的 `safeAreaRef` 與 `passThrough`，以及契約與 DOM 骨架測試。
+
+### 變更
+
+- **桌面版鏡頭統一只由點選圖卡移動**：登入後桌面移除首站自動平移與定位後自動平移（藍點照常畫）；/ai-plan 桌面也不做首站自動平移，改成任何狀態（模擬態、推論態）點圖卡都平移，`LivePlanLayer` 補上選填的 `onPanToStop`。手機版不變。
+- **`PlanLayout` 只管外框**：/ai-plan 的 `PlanLayout` 不再在內部渲染 `PlanOverlayLayout`（原本要轉傳六個 props），改由 `Content` 把 `PlanOverlayLayout` 放進它的 children，五個入口同一種組合方式。
+- **/ai-plan 的 `PlanMap` 現在把 `theme` 傳給 `NativeMapBase`**，日夜切換時地圖會重建一次（原本不重建）；登入後仍傳 `rebuildOnThemeChange={false}`，三份的重建行為尚未統一。登入後選「跟隨系統」時，建圖當下改由前端解析成明確值（原本交給 Google 的 `FOLLOW_SYSTEM`），建圖後系統深淺色切換不再讓地圖跟著變。
+- **清掉舊「對話浮動小匡」遺留**：`chatPopoverOpen`、`chatPopoverVisible` 改名 `planPanelOpen`、`planPanelVisible`；資訊卡避讓值與樣式改名（`'planPanel'`、`.shiftedPlanPanel`）；刪除沒有呼叫端的 `chatButtonOverlay` 與包住 AI 按鈕的透明殼；註解統一改稱「規劃面板」。行為不變。
+- **行程詳情頁的地圖版面一律用 `SIMPLE_MAP_ID`**（帶 mapId）；`mapStyle: 'hand-drawn'` 現在只影響卡片與邊框的活潑樣式預設，不再換底圖。
+- 清邁三日遊範例：大象保護園區、兩個市場、古城區、尼曼文青咖啡巷、卜阿潼瀑布補上 `placeId`；8 段 `transit` 為隨意填的預設值，內容未查證。
+
+### 移除
+
+- **`/trip-plan` 獨立頁面與 `/app/plan-ai` 轉址**：刪除 `TripPlanRoute`（含 CSS）與兩條路由，`static.go` 拿掉 `^/trip-plan$`。`trip-plan/` 目錄保留（`PlanPanelContent`、`TripPlanPage` 仍被三個 `LivePlanLayer` 使用）；`TripPlanPage` 的 `visible` 與非 compact（全頁）版面現在沒有呼叫端，尚未清理。
+- `useStopAttractionDetails`（`attractionId` 改為 `placeId` 後由 `useResolvedItineraryTimeline` 取代）。
+
+### 修正（本版內引入又在 code review 修掉的）
+
+- 行程詳情頁的時間軸與初始中心原本只依賴 `itinerary.id`，同 id 的內容換版（靜態版換成資料庫版）時停在舊內容；改依賴整個 `itinerary` 物件。
+- 行程詳情頁初始中心原本取全部站點平均，清邁行程打開是一片空地；改取第一天的站點。
+- `resolveAttractionForStep` 搬出後補上 `keepContent` 兩個邊界：查不到不標 `failed`（否則卡片名稱會被換成「未能取得地點資料」）、查到但沒有照片時不覆蓋靜態 `photos`。
+
+### 已知限制與未處理
+
+- 桌面（768–1023px）與 wide（≥1024px）之間拖動視窗時，`/ai-plan` 的 `LivePlanLayer` 與地圖會重掛（三個實體是不同元件型別）。
+- /ai-plan 與行程詳情頁日夜切換會重建地圖、鏡頭回到初始位置；登入後不重建。
+- 交通膠囊只在轉成時間軸時用靜態座標估計一次，座標解析後不重算；只帶 `placeId`、不帶座標的站沒有估計膠囊。
+- `geo-planning/PlacePanel.test.tsx` 有 2 個測試寫死 2026 年 8 月日期，在其他月份會失敗（與本版異動無關）。
+- 光暈資料來源：登入後那份仍內建在 `PlanMap`，沒有拆成獨立 hook。
+
 ## v0.39.1 — 2026-10-23
 
 修正 v0.39.0 部署失敗。**只改 `Dockerfile`，無程式行為、資料庫或對外介面變更。**

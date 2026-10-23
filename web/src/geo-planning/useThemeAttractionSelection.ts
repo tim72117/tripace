@@ -45,7 +45,7 @@ import type { CuratedCategory } from './geoCuratedCategoryStub'
 //     bug」,留在各自檔案更清楚。
 //   - searchResults 登記/`geo.setGeocodeCandidates([])` 反向清空——正式
 //     版獨有(搜尋框),展示頁沒有這個第三方卡片。
-//   - shiftBy/attractionPanelRightPx——展示頁沒有對話小匡/飯店側欄。
+//   - shiftBy/attractionPanelRightPx——展示頁沒有規劃面板/飯店側欄。
 //   - handleAttractionOpenPlaceDetails/handleAttractionOpenPlaceWithoutGoogle
 //     的「主題卡開著→並存;沒開著→走 geo.selectPoi 互斥路徑」分岔——
 //     展示頁刻意沒有互斥路徑(精選點一律走並存),這個分岔邏輯留在

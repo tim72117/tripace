@@ -12,7 +12,7 @@ const PlanLayoutDebugOverlay = lazy(() =>
 
 // PlanOverlayLayout(src/desktop/)——登入後桌面版的規劃疊加層外殼。
 //
-// 與 /ai-plan(home/plan-ai-sim/PlanOverlayLayout.tsx)、登入後手機版(src/phone/PlanOverlayLayout.tsx)同名同層級:
+// 與 /ai-plan(home/plan-ai-sim/{phone,desktop,wide}/PlanOverlayLayout.tsx)、登入後手機版(src/phone/PlanOverlayLayout.tsx)同名同層級:
 // 同層同功能的元件用同檔名、放不同目錄,各入口一個實體,三份都是共用 plan-core/OverlayShell 的薄包裝,
 // 長出同一套 data-slot 骨架(見 plan-core/overlayDom.ts):
 //   map-layer → overlay(panel(safe-area、children、composer-slot))
@@ -37,17 +37,20 @@ export interface PlanOverlayLayoutProps extends PlanOverlayLayoutContract {
 export function PlanOverlayLayout({
   open,
   shifted,
+  passThrough,
   mapBackground,
+  safeAreaRef,
   actions,
   children,
 }: PlanOverlayLayoutProps) {
   const debug = isLayoutDebugEnabled(window.location.search)
   return (
     <OverlayShell
-      classNames={shifted ? SHIFTED_CLASS_NAMES : CLASS_NAMES}
+      classNames={classNamesFor(shifted, passThrough)}
       mapBackground={mapBackground}
       showControlsSlot={false}
       open={open}
+      safeAreaRef={safeAreaRef}
       overlayEnd={
         debug
           ? ({ overlayEl, panelEl, composerSlotEl }) => (
@@ -79,4 +82,10 @@ const SHIFTED_CLASS_NAMES: OverlayClassNames = {
   ...CLASS_NAMES,
   panel: `${styles.panel} ${styles.shifted}`,
   safeArea: `${styles.safeArea} ${styles.safeAreaShifted}`,
+}
+
+// classNamesFor——shifted(搜尋結果側欄同時顯示,panel 左移)與 passThrough(overlay 不接收指標事件,panel 繼承)兩個維度各自獨立。
+function classNamesFor(shifted: boolean, passThrough: boolean | undefined): OverlayClassNames {
+  const base = shifted ? SHIFTED_CLASS_NAMES : CLASS_NAMES
+  return passThrough ? { ...base, overlay: `${styles.overlay} ${styles.passThrough}` } : base
 }

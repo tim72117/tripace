@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, CalendarDays, MapPin } from 'lucide-react'
-import { BASE_URL } from '../AppCommon'
-import type { GeoAttraction } from '../api'
 import { PlanTimelineView } from '../plan-core/PlanTimelineView'
 import { Lightbox } from '../geo-planning/PhotoCarousel'
 import type { MapHandle } from '../geo-planning/NativeMapBase'
@@ -11,8 +9,6 @@ import type { PlanStopMarker } from '../geo-planning/usePlanStopMarkers'
 import { useMapSafeArea } from '../geo-planning/useMapSafeArea'
 import { useStopCardClick } from '../plan-core/useStopPan'
 import { routePolylineLayer } from '../geo-planning/mapDrawLayer/featureLayers/routePolylineLayer'
-import { getPlanAiPublicDataSource } from '../home/plan-ai-sim/planAiPublicDataSource'
-import { requireAttractionsByCity, requireGeoPlaceDetails, requirePhotoAssets } from '../home/plan-ai-sim/planAiDataSource'
 import { createRenderOnsenAutumnStopCard } from './renderOnsenAutumnStopCard'
 import { MAPLE_LEAF_PATH, MAPLE_STEM_PATH } from './mapleLeafPath'
 import { renderAnchorIcon } from './renderAnchorIcon'
@@ -23,6 +19,8 @@ import { PlanOverlayLayout } from './PlanOverlayLayout'
 import { PlanMap } from './PlanMap'
 import { FoodSpotPanel } from './FoodSpotPanel'
 import { useFoodSpotDetails } from './useFoodSpotDetails'
+import { initialCenterOf } from './initialCenter'
+import { useCityAttractionGlow } from './useCityAttractionGlow'
 import { useResolvedItineraryTimeline } from './useResolvedItineraryTimeline'
 import type { SampleItinerary } from './types'
 import styles from './AiItineraryDetailPageMapView.module.css'
@@ -211,37 +209,6 @@ function MapleVignette({ dark = false }: { dark?: boolean }) {
 
 const ZOOM = 15
 
-// fallbackCenterOf——這個地圖版面原本把 CENTER 寫死成台南赤崁座標,只能
-// 服務單一行程(tainan-chikan-2day)。2026-10 新增二子坪(erziping-1day)
-// 後改成依行程自己的站點座標動態算中心點:取第一個有 lat/lng 的站點當
-// 中心——不是算全部站點的平均值,因為這裡假設行程站點彼此距離不遠(都是
-// 同一個區域的一日/多日遊),用第一站當中心已經足夠讓畫面框住大部分站點,
-// 不需要為了精確置中引入更複雜的 bounds 計算。完全沒有座標的行程(理論上
-// 不會發生在這個地圖版面——只有已經有座標的行程會走這裡)時退回台南赤崁
-// 的原始座標,避免 NativeMapBase 收到 undefined center 而整個不建圖。
-function fallbackCenterOf(itinerary: SampleItinerary): { lat: number; lng: number } {
-  const first = itinerary.stops.find((s) => s.lat != null && s.lng != null)
-  return first ? { lat: first.lat!, lng: first.lng! } : { lat: 22.9965, lng: 120.2 }
-}
-
-// publicDataSource——讀取已建檔景點區域(attractions)是訪客動作,不需要
-// 使用者自己的 JWT:用訪客版資料存取層實例,理由同 useStopAttractionDetails.ts
-// 的同名常數。
-const publicDataSource = getPlanAiPublicDataSource(BASE_URL)
-
-// cityNameOf——從 SampleItinerary.region(格式固定是「國家・城市」,見
-// types.ts 該欄位的完整說明與 itineraries.test.ts 的格式驗證)取出城市
-// 名,對應 attractions 表的 cityName 欄位(tripace-cli attraction add
-// -city 建檔時用的同一組字典,見 attraction add 的既有慣例)——不是另外
-// 發明一個城市對照表,直接拆解既有欄位已經足夠。用最後一個「・」分段,
-// 不是用 split 取固定索引,避免國家名本身含有這個分隔字元時取錯段落
-// (目前的資料都只有一個分隔字元,但用「取最後一段」比「取索引 1」更
-// 穩健)。
-function cityNameOf(region: string): string {
-  const parts = region.split('・')
-  return parts[parts.length - 1] ?? region
-}
-
 // dark——頁面目前是不是夜間模式(由 AiItinerariesRoute 的 useThemeToggle 決定,
 // 經 AiItineraryDetailPage 傳進來)。必須明確傳給 NativeMapBase 的 theme:
 // 不傳的話它拿到 null,走 mapId 的地圖會永遠用預設淺色。
@@ -249,12 +216,9 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
   // steps——時間軸資料。站點座標與照片經資料存取層解析(placeId → placeDetails),與 /ai-plan、登入後同一條路徑,
   // 見 useResolvedItineraryTimeline.ts。
   const steps = useResolvedItineraryTimeline(itinerary)
-  // center——依這份行程自己的站點動態算,不再是寫死的台南座標(見
-  // fallbackCenterOf 的完整說明)。useMemo 依賴 itinerary.id 而非整個
-  // itinerary 物件,避免 stops 陣列每次 render 若非穩定參照時造成不必要
-  // 的重新計算(雖然目前呼叫端都是穩定參照,但座標運算的輸入語意上就是
-  // 「這是哪一份行程」,用 id 當依賴更準確)。
-  const center = useMemo(() => fallbackCenterOf(itinerary), [itinerary.id])
+  // center——依這份行程自己的站點動態算(見 initialCenter.ts)。依賴整個 itinerary 物件:同 id 的內容換版(靜態版換成資料庫版)
+  // 時中心要跟著更新;呼叫端(AiItineraryDetailPage)給的是穩定參照,不會每次 render 重算。
+  const center = useMemo(() => initialCenterOf(itinerary), [itinerary])
   // isHandDrawn——行程資料的 mapStyle 欄位(見 types.ts)是否為 'hand-drawn'。地圖底圖一律用 SIMPLE_MAP_ID,
   // 這個值不再換底圖,只當 isPlayfulUI 的預設值。
   const isHandDrawn = itinerary.mapStyle === 'hand-drawn'
@@ -308,40 +272,8 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
   const [lightbox, setLightbox] = useState<{ photos: string[]; alt: string } | null>(null)
   const mountedIdsRef = useRef<Set<string>>(new Set())
 
-  // attractions——這份行程所在城市已建檔的景點區域(見 attractionGlow
-  // 的完整說明,目前只用來畫主題點光暈,例如清邁行程的「尼曼文青咖啡巷」
-  // ——使用者明確要求「用 useSharedDrawLayer 繪製尼曼文青咖啡巷為主題點
-  // 光暈」)。做法對齊 home/InteractiveExploreMap.tsx 同一套
-  // requireAttractionsByCity 查詢。這個地圖版面目前只有少數行程
-  // (mapStyle 有值)會走到,查詢範圍是整個城市、不特別篩選跟這份行程
-  // 站點有沒有關聯——跟 InteractiveExploreMap 的既有行為一致,地圖上
-  // 本來就會顯示這個城市全部已建檔的主題點/景點,不是只顯示跟當前行程
-  // 站點重疊的那幾個。
-  const [attractions, setAttractions] = useState<GeoAttraction[]>([])
-  useEffect(() => {
-    let cancelled = false
-    requireAttractionsByCity(publicDataSource, cityNameOf(itinerary.region))
-      .then((res) => {
-        if (!cancelled) setAttractions(res)
-      })
-      .catch((err) => {
-        // 查詢失敗(例如這個城市尚未建檔任何景點區域)不影響行程本身的
-        // 顯示——主題點光暈是錦上添花的疊加資訊,不是這個頁面的核心內容,
-        // 失敗時維持空陣列(attractionGlowLayer 不畫任何東西)即可,不需要
-        // 整頁顯示錯誤。
-        console.error('[AiItineraryDetailPageMapView] requireAttractionsByCity 失敗:', err)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [itinerary.region])
-
-  // attractionPlaceDetails/attractionPhotoAssets——穩定參照包起來的查詢
-  // 函式,傳給 attractionGlowLayer 的 placeDetails/photoAssets(主題點
-  // 展開後查詢內部子景點/照片用)。做法對齊 InteractiveExploreMap.tsx
-  // 同樣的 useCallback 包法。
-  const attractionPlaceDetails = useCallback((placeId: string) => requireGeoPlaceDetails(publicDataSource, placeId), [])
-  const attractionPhotoAssets = useCallback((placeId: string) => requirePhotoAssets(publicDataSource, placeId), [])
+  // 光暈資料:依行程所在城市查已建檔的景點區域(獨立 hook,見 useCityAttractionGlow.ts)。
+  const { attractionGlow } = useCityAttractionGlow(itinerary.region)
 
   // mapHandle——NativeMapBase 建圖完成後回報的控制代碼,統一繪製層需要 mapRef/mapReady
   // 才能把站點 marker 掛到這個地圖實例上,寫法對齊 home/plan-ai-sim/Content.tsx 的既有用法。
@@ -390,22 +322,17 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
     () => maskPlanStopsView({ stops: mapStops, selectedStopId, hoverStopId, hoverTransitPair: null }, true),
     [mapStops, selectedStopId, hoverStopId],
   )
-  const attractionGlow = useMemo(() => ({
-    attractions,
-    onSelect: () => {},
-    placeDetails: attractionPlaceDetails,
-    photoAssets: attractionPhotoAssets,
-  }), [attractions, attractionPlaceDetails, attractionPhotoAssets])
   const drawExtraLayers = useMemo(() => [routePolylineLayer({ segments: routeSegments })], [routeSegments])
 
   return (
     <PlanLayout>
       <PlanOverlayLayout
         safeAreaRef={mapSafeArea.safeAreaElRef}
+        passThrough
         mapBackground={
           <div className={styles.mapBackdrop}>
             <PlanMap
-              center={center}
+              initialCenter={center}
               zoom={ZOOM}
               theme={dark ? 'dark' : 'light'}
               mapId={SIMPLE_MAP_ID}

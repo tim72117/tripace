@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { useStableCallback } from '../hooks/useStableCallback'
 import type { MapHandle } from './NativeMapBase'
+import type { ResolvedTheme } from '../theme'
 import {
   useSharedDrawLayer,
   type AttractionGlowInput,
@@ -47,6 +48,13 @@ export function useMapHandle(onHandleChange?: (handle: MapHandle) => void) {
 // 兩邊 PlanMap 共同的 prop。站點的選取與 hover 完全由呼叫端持有(受控),地圖只依狀態畫,點圓點時用
 // onStopClick 回報。
 export interface PlanMapSharedProps {
+  // initialCenter——建圖用的初始中心,三份 PlanMap 同一個名字、同一種語意(登入後的 geo-planning/PlanMap 自己宣告同名 prop):
+  //   - undefined:呼叫端還在決定(例如登入後在查旅程有沒有既有地點),地圖先不建;
+  //   - null:沒有可用座標,退回預設起點(mapCenter.ts 的 DEFAULT_MAP_CENTER);
+  //   - 座標:直接使用。
+  // 都經 resolveMapCenter 轉成 NativeMapBase 吃的 center(只接受座標或 undefined)。初始中心由各入口的 Content(或它的狀態
+  // hook)決定,不經第 4 層:登入後是 useGeoOutlineMapState 的 tripCenter,/ai-plan 是固定的台南座標,行程詳情頁是依站點算的中心。
+  initialCenter?: LatLng | null
   stops?: PlanStopMarker[]
   selectedStopId?: string | null
   hoverStopId?: string | null
@@ -54,7 +62,18 @@ export interface PlanMapSharedProps {
   onStopClick?: (id: string) => void
   showPlanRouteLine?: boolean
   currentPosition?: LatLng | null
-  theme?: string | null
+  // theme:只收明確的 'dark' | 'light'(傳給 NativeMapBase 的 colorScheme 只能在建圖時設定,預設日夜切換時重建;登入後的 PlanMap 傳 rebuildOnThemeChange=false 不重建);三態的 Theme 先經 hooks/useResolvedTheme 解析。
+  theme?: ResolvedTheme
+}
+
+// AttractionGlowSource——各入口「光暈資料從哪來」的獨立 hook 共同的回傳形狀(2026-10-23):
+//   attractionGlow:交給統一繪製層的光暈輸入(景點區域清單、placeDetails、photoAssets);
+//   controls:這個來源需要的地圖控制項(例如「探索」按鈕),沒有就不傳,由 PlanMap 放進地圖容器。
+// 三個入口的實作各自放在獨立 hook(行程詳情頁 itineraries/useCityAttractionGlow、/ai-plan home/plan-ai-sim/useAttractionGlow;
+// 登入後的來源目前仍內建在 geo-planning/PlanMap),入口與形狀一致,實作各自維持原樣。
+export interface AttractionGlowSource {
+  attractionGlow: AttractionGlowInput
+  controls?: ReactNode
 }
 
 const NO_STOPS: PlanStopMarker[] = []

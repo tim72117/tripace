@@ -43,11 +43,11 @@ interface PersistedTimeline {
   headId: string | null
   nodes: [string, PlanNode][]
   // rev — 每次寫入遞增的版次。用來讓「同時掛載的多份 TripPlanPage」
-  // (地圖對話小匡常駐掛載 + /app/plan-ai 全頁,切到該分頁時兩份同時
+  // (地圖規劃面板常駐掛載 + /app/plan-ai 全頁,切到該分頁時兩份同時
   // 存在)判斷「我手上這份是不是已經被另一份覆寫過了」。
   //
   // 沒有這個欄位時曾經是真實的資料遺失路徑:兩份各自在掛載當下讀一次
-  // localStorage 後就不再重讀,在全頁版規劃完切回地圖,小匡那份仍是
+  // localStorage 後就不再重讀,在全頁版規劃完切回地圖,規劃面板那份仍是
   // 掛載時的舊內容(常是空的),它下一次寫入就把剛規劃好的全部蓋掉。
   rev?: number
 }

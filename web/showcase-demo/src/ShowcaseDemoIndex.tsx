@@ -387,7 +387,7 @@ const ITEMS: {
 // 揭露周邊精選點(小地點),介紹卡內附「附近景點」清單(分類圖示+距離
 // 分鐘+一句話簡介),清單與地圖圓點 hover 雙向連動。對應的使用者可見
 // 頁面:/jiufen、/kyoto-kiyomizu、/tainan-anping 等城市主題介紹頁
-// (web/src/home/InteractiveExploreMap.tsx)以及主要行程規劃頁 /trip-plan、
+// (web/src/home/InteractiveExploreMap.tsx)以及主要行程規劃頁
 // /app(web/src/geo-planning/ExploreMap.tsx + desktop/Content.tsx)。
 const ARCHIVED_ITEMS: {
   title: string
@@ -396,7 +396,7 @@ const ARCHIVED_ITEMS: {
 }[] = [
   {
     title: '散策羅盤（主題點/精選點鄰近揭露機制）',
-    desc: '地圖探索頁的既有功能:點開主題點(大地標)後,依步行分鐘數揭露周邊精選點(小地點),主題介紹卡內附「附近景點」清單(分類圖示+距離分鐘+簡介),清單與地圖圓點雙向連動;點擊精選點開「地點卡」(與飯店/推薦地點共用)。已實作上線,對應頁面:/jiufen、/kyoto-kiyomizu、/tainan-anping、/trip-plan、/app。前端核心邏輯:web/src/geo-planning/useAttractionOverlays.ts(主題點/精選點揭露邏輯),另見同目錄 ExploreMap.tsx、AttractionInfoPanel.tsx、geoNearbyAttractions.ts、geoAttractionOverlay.ts、web/src/home/InteractiveExploreMap.tsx。後端資料模型:server/internal/model/model.go 的 Attraction.IsTheme/RadiusMeters 欄位。',
+    desc: '地圖探索頁的既有功能:點開主題點(大地標)後,依步行分鐘數揭露周邊精選點(小地點),主題介紹卡內附「附近景點」清單(分類圖示+距離分鐘+簡介),清單與地圖圓點雙向連動;點擊精選點開「地點卡」(與飯店/推薦地點共用)。已實作上線,對應頁面:/jiufen、/kyoto-kiyomizu、/tainan-anping、/app。前端核心邏輯:web/src/geo-planning/useAttractionOverlays.ts(主題點/精選點揭露邏輯),另見同目錄 ExploreMap.tsx、AttractionInfoPanel.tsx、geoNearbyAttractions.ts、geoAttractionOverlay.ts、web/src/home/InteractiveExploreMap.tsx。後端資料模型:server/internal/model/model.go 的 Attraction.IsTheme/RadiusMeters 欄位。',
     docLinks: [
       'docs/terminology.md（「主題點／精選點」條目）',
       'docs/research-curated-attraction-relationships-2026-08.md（「散策羅盤」命名與視覺方向定案由來）',

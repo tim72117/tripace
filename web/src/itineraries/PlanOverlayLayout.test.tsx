@@ -4,7 +4,7 @@ import { render } from '@testing-library/react'
 import { PlanOverlayLayout } from './PlanOverlayLayout'
 import { describeSlotTree } from '../plan-core/overlayDom'
 
-function renderLayout(safeAreaRef?: React.Ref<HTMLDivElement>) {
+function renderLayout(safeAreaRef: React.Ref<HTMLDivElement> = () => {}) {
   return render(
     <PlanOverlayLayout mapBackground={<div data-testid="map" />} safeAreaRef={safeAreaRef}>
       <div data-testid="content" />
@@ -28,5 +28,15 @@ describe('itineraries PlanOverlayLayout', () => {
     const ref = vi.fn()
     const { container } = renderLayout(ref)
     expect(ref).toHaveBeenCalledWith(container.querySelector('[data-slot="safe-area"]'))
+  })
+})
+
+describe('itineraries PlanOverlayLayout passThrough', () => {
+  it('passThrough 只在指定時才讓 overlay 加上 class', () => {
+    const a = render(<PlanOverlayLayout safeAreaRef={() => {}}><div /></PlanOverlayLayout>)
+    expect(a.container.querySelector('[data-slot="overlay"]')!.className).not.toMatch(/passThrough/)
+    a.unmount()
+    const b = render(<PlanOverlayLayout safeAreaRef={() => {}} passThrough><div /></PlanOverlayLayout>)
+    expect(b.container.querySelector('[data-slot="overlay"]')!.className).toMatch(/passThrough/)
   })
 })

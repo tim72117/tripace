@@ -49,11 +49,10 @@ var knownRoutePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^/u/[^/]+/[^/]+$`),
 	// /blog/photos:部落客圖片管理頁(2026-10 新增,見
 	// web/src/blog/PhotoManagerPage.tsx 的完整說明)——需要登入才能實際
-	// 使用,但路由本身跟 /trip-plan 等既有頁面一樣不攔截訪客(頁面內部
+	// 使用,但路由本身跟 /app 等既有頁面一樣不攔截訪客(頁面內部
 	// 自行判斷 isGuest 顯示登入表單),故訪客直接造訪這個網址時,前端
 	// router 本身仍要能接手渲染,不能被這裡擋成 404。
 	regexp.MustCompile(`^/blog/photos$`),
-	regexp.MustCompile(`^/trip-plan$`),
 	regexp.MustCompile(`^/app(/[^/]+)?$`),
 	// /dev/layouts:開發用的版型目錄頁(2026-10 新增,見
 	// web/src/blog/LayoutGalleryPage.tsx 的完整說明)——陳列

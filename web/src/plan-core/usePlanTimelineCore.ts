@@ -93,7 +93,7 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
 
   // resyncFromStorage — 把另一個實例寫入的較新內容讀回來。
   //
-  // 只在 persist 模式有意義:兩份 TripPlanPage 實例(常駐的對話小匡 +
+  // 只在 persist 模式有意義:兩份 TripPlanPage 實例(常駐的規劃面板 +
   // /app/plan-ai 全頁)共用同一個 localStorage key,各自掛載時讀一次後
   // 就不再重讀,不同步的話後寫的會把先寫的蓋掉。見 planTimelineStorage
   // 的 rev 機制說明。

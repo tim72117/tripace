@@ -12,10 +12,13 @@
   display: none;
 }
 
-/* overlay——透明座標系,safe-area 與 panel 都以它定位。pointer-events: none:空白處讓地圖拖曳穿透。 */
+/* overlay——透明座標系,safe-area 與 panel 都以它定位。穿透由 passThrough 參數控制(.passThrough):空白處讓地圖拖曳穿透。 */
 .overlay {
   position: absolute;
   inset: 0;
+}
+
+.passThrough {
   pointer-events: none;
 }
 

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ReactNode, Ref } from 'react'
 import type { PlanPanelStopsBinding } from './usePlanStopsState'
 
 // layerContracts——規劃地圖「較大分層元件」的共同介面(2026-10)。
@@ -33,6 +33,13 @@ export interface PlanLayoutContract {
 export interface PlanOverlayLayoutContract {
   // 地圖層內容(NativeMapBase 與地圖元件 PlanMap 就放這裡);沒傳就不渲染 map-layer。
   mapBackground?: ReactNode
+  // 安全區節點的 ref(safe-area:沒被面板蓋住的地圖範圍)。必填:每個入口的鏡頭平移(首站、搜尋、點選圖卡)都要避開面板,
+  // 讀這個節點算落點(useMapSafeArea、PlanMap 的 panTarget)。沒面積時(overlay 收起)平移退回直接 panTo。
+  safeAreaRef: Ref<HTMLDivElement>
+  // passThrough——疊加層(面板)不接收指標事件,讓空白處的拖曳/縮放穿透到底下的地圖;要互動的內容自己把 pointer-events 設回 auto。
+  // 統一用這個參數控制(不寫死在樣式裡):不傳就是會攔截。登入後手機、桌面與行程詳情頁一律傳 true;/ai-plan 推論態傳 true,
+  // 模擬態不傳(內容沒有為穿透做準備)。wide 側欄(桌面滑鼠操作,不覆蓋地圖)收下但不使用。
+  passThrough?: boolean
   children: ReactNode
 }
 

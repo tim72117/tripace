@@ -12,12 +12,12 @@ import styles from './FloatingPanel.module.css'
 //
 // 從 desktop/Content.module.css 的 .panel/.left/.right/.close 抽成獨立元件
 // ——原本 panelMode 浮動卡片(trips/timeline/pace/geo-outline)與
-// 對話小匡(chat-popover)各自在 desktop/Content.tsx 內聯組出「外層 div +
+// 規劃面板各自在 desktop/Content.tsx 內聯組出「外層 div +
 // 絕對定位疊加的關閉按鈕」,現在收斂成單一元件,呼叫端只需要決定
 // side/width 與要不要顯示 title/onClose。
 //
 // title/onClose 是選填的——geo-planning/desktop/CandidateList/trip/desktop/TripList 目前自己
-// 在內容裡渲染標題列(見 PanelHead),不需要外殼再重複一份;chat-popover
+// 在內容裡渲染標題列(見 PanelHead),不需要外殼再重複一份;規劃面板
 // 沒有標題文字,只需要關閉按鈕。三種組合(有 title+onClose、只有
 // onClose、都沒有)都支援。
 export interface FloatingPanelProps {
@@ -32,7 +32,7 @@ export interface FloatingPanelProps {
   title?: string
   // headerAction——選填,只在有 title 時才有意義(轉發給 PanelHead,見
   // 該元件同名 prop 的完整說明)。只傳 onClose、不傳 title 的呼叫端
-  // (chat-popover 等)用不到這個插槽——那種情況下標題列整個不存在,
+  // (規劃面板 等)用不到這個插槽——那種情況下標題列整個不存在,
   // 沒有地方可以放這個 icon。
   headerAction?: React.ReactNode
   onClose?: () => void

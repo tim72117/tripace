@@ -1,4 +1,5 @@
 import type { GeoPlanningState } from './useGeoPlanningState'
+import { centerOfPoints } from './mapCenter'
 import { requireGeocode, requirePlacePhoto, requirePlaceText, type PlanAiDataSource } from '../home/plan-ai-sim/planAiDataSource'
 import { useEffect, useState } from 'react'
 import type { ClientConfig, GeoGeocodeCandidate, GeoPlaceText, GeoSearchResult, GeoTripEntry } from '../api'
@@ -199,9 +200,7 @@ export function useGeoOutlineMapState({
           setLocationWanted(true)
           return
         }
-        const latSum = mapped.reduce((sum, e) => sum + e.lat, 0)
-        const lngSum = mapped.reduce((sum, e) => sum + e.lng, 0)
-        setTripCenter({ lat: latSum / mapped.length, lng: lngSum / mapped.length })
+        setTripCenter(centerOfPoints(mapped))
       })
       .catch(() => {
         if (cancelled) return

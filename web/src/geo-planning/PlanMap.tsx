@@ -7,7 +7,7 @@ import { Hotel, Loader2, MapPin, Search, Sparkles, UtensilsCrossed } from 'lucid
 import { ExploreTagButton, SearchThisAreaButton } from './ExploreControls'
 import type { GeoSelectedKey } from './geoSelectedKey'
 import { isSubmitEnter } from '../AppCommon'
-import type { Theme } from '../theme'
+import type { ResolvedTheme } from '../theme'
 import { useFitToGeocodeResults } from './useFitToGeocodeResults'
 import type { PlanStopMarker } from './usePlanStopMarkers'
 import { resolveMapCenter } from './mapCenter'
@@ -68,7 +68,6 @@ export function PlanMap({
   searching,
   searchError,
   onOpenChat,
-  chatButtonOverlay,
   showZoomControl = true,
   searchRightSlot,
   controlsPortalTarget,
@@ -135,11 +134,8 @@ export function PlanMap({
   onSearch?: () => void
   searching?: boolean
   searchError?: string | null
-  // onOpenChat:搜尋框左側 AI 按鈕,是右側對話欄收合時的快捷展開入口。沒接就不顯示按鈕。
+  // onOpenChat:搜尋框左側 AI 按鈕,打開規劃面板(AI 規劃對話與時間軸)。沒接就不顯示按鈕。
   onOpenChat?: () => void
-  // chatButtonOverlay:疊在 AI 按鈕正下方的任意內容(定位基準是按鈕本身的透明 anchor,
-  // 不必跨容器算像素)。目前沒有呼叫端傳入,保留為通用出口;anchor 常駐掛載,不吃版面。
-  chatButtonOverlay?: ReactNode
   // showZoomControl:右下角縮放按鈕,預設 true;手機版可傳 false(本來就能雙指縮放)。
   // 只在建圖當下讀取。
   showZoomControl?: boolean
@@ -230,7 +226,7 @@ export function PlanMap({
   geocodeCandidates?: GeoGeocodeCandidate[]
   // theme:深色/淺色偏好,建圖時決定 colorScheme(只能在建圖當下設定)。
   // 這裡傳 rebuildOnThemeChange={false},建圖後主題改變不重建地圖。預設跟隨系統。
-  theme?: Theme
+  theme?: ResolvedTheme
   // children:附掛在地圖容器內的浮動 UI(主題卡/地點卡等),由呼叫端組裝;對齊 NativeMapBase 的 children。
   children?: ReactNode
 }) {
@@ -399,22 +395,17 @@ export function PlanMap({
       {!err && onCityChange && onSearch && (
         <div className={styles.citySearch}>
           {onOpenChat && (
-            // anchor 是透明的 position:relative 容器,只給 chatButtonOverlay 一個貼齊按鈕的定位基準,
-            // 不改變按鈕在 flex 版面裡的尺寸。
-            <div className={styles.citySearchAiBtnAnchor}>
-              <button
-                type="button"
-                className={styles.citySearchAiBtn}
-                onClick={onOpenChat}
-                title="開啟對話(Beta)"
-                aria-label="開啟對話(Beta)"
-              >
-                <Sparkles size={16} aria-hidden="true" />
-                {/* BETA 標示:同 desktop/Nav 的 plan-ai 按鈕,功能仍在測試中。 */}
-                <span className={styles.citySearchAiBtnBetaTag}>BETA</span>
-              </button>
-              {chatButtonOverlay}
-            </div>
+            <button
+              type="button"
+              className={styles.citySearchAiBtn}
+              onClick={onOpenChat}
+              title="開啟對話(Beta)"
+              aria-label="開啟對話(Beta)"
+            >
+              <Sparkles size={16} aria-hidden="true" />
+              {/* BETA 標示:同 desktop/Nav 的 plan-ai 按鈕,功能仍在測試中。 */}
+              <span className={styles.citySearchAiBtnBetaTag}>BETA</span>
+            </button>
           )}
           <input
             className={styles.citySearchInput}

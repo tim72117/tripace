@@ -17,7 +17,9 @@ function make(stops: SampleStop[]): SampleItinerary {
   return { id: 'x', title: 'x', region: 'r', days: 1, categories: [], summary: 's', addedAt: '2026-10-01', stops }
 }
 
-beforeEach(() => placeDetails.mockReset())
+beforeEach(() => {
+  placeDetails.mockReset()
+})
 
 const stopsOf = (steps: ReturnType<typeof useResolvedItineraryTimeline>) => steps.filter((n) => n.type === 'stop')
 
@@ -58,5 +60,29 @@ describe('useResolvedItineraryTimeline', () => {
     const { result } = renderHook(() => useResolvedItineraryTimeline(it))
     await waitFor(() => expect(stopsOf(result.current)[0]).toMatchObject({ lat: 10, lng: 20 }))
     expect(stopsOf(result.current)[0].googlePhotoUrls).toEqual(['https://x/static.jpg'])
+  })
+
+  it('同 id 的內容換版(靜態版換成資料庫版):時間軸跟著換,重新解析', async () => {
+    placeDetails.mockResolvedValue({ found: true, name: 'X', lat: 10, lng: 20, googlePhotoUrls: [] })
+    const v1 = make([stop({ name: 'A', lat: 1, lng: 2 })])
+    const v2 = make([stop({ name: 'A2', placeId: 'pid_new', lat: 3, lng: 4 })])
+    const { result, rerender } = renderHook(({ it }) => useResolvedItineraryTimeline(it), { initialProps: { it: v1 } })
+    expect(stopsOf(result.current)[0]).toMatchObject({ name: 'A', lat: 1, lng: 2 })
+    rerender({ it: v2 })
+    await waitFor(() => expect(stopsOf(result.current)[0]).toMatchObject({ name: 'A2', lat: 10, lng: 20 }))
+    expect(placeDetails).toHaveBeenCalledWith('pid_new')
+  })
+
+  it('內容換版時,舊內容還沒回來的解析結果不會寫進新內容', async () => {
+    let resolveOld: (v: unknown) => void = () => {}
+    placeDetails.mockImplementationOnce(() => new Promise((r) => { resolveOld = r }))
+    const v1 = make([stop({ name: 'A', placeId: 'pid_old', lat: 1, lng: 2 })])
+    const v2 = make([stop({ name: 'A', lat: 3, lng: 4 })])
+    const { result, rerender } = renderHook(({ it }) => useResolvedItineraryTimeline(it), { initialProps: { it: v1 } })
+    rerender({ it: v2 })
+    resolveOld({ found: true, name: 'OLD', lat: 99, lng: 99, googlePhotoUrls: ['https://x/old.jpg'] })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(stopsOf(result.current)[0]).toMatchObject({ lat: 3, lng: 4 })
+    expect(stopsOf(result.current)[0].googlePhotoUrls).toBeUndefined()
   })
 })

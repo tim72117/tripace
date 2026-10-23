@@ -853,7 +853,7 @@ export function InteractiveExploreMap({
                   content={poiContent}
                   onClose={() => setPoiContent(null)}
                   // shiftBy 不傳(維持預設,貼右緣)——這個展示頁沒有
-                  // geo-planning/desktop/ResultList/對話小匡會佔用右緣,不需要
+                  // geo-planning/desktop/ResultList/規劃面板會佔用右緣,不需要
                   // desktop/Content.tsx 那套動態判斷。style 用
                   // stackedInfoCardRightPx 搭配上方 infoCardStack 的
                   // presentOrders(跟 desktop/Content.tsx 同一套掛入模式,見

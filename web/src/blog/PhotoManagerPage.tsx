@@ -13,12 +13,10 @@ import { BlogProfileSettings } from './BlogProfileSettings'
 import { trackEvent } from '../analytics'
 import styles from './PhotoManagerPage.module.css'
 
-// PhotoManagerPage——/blog/photos 路由的頁面外殼,仿照 trip-plan/TripPlanRoute.tsx
-// 「需要登入才能使用」的既有模式(見該檔案開頭的完整說明):訪客可以到達
+// PhotoManagerPage——/blog/photos 路由的頁面外殼,「需要登入才能使用」的模式:訪客可以到達
 // 這個網址,頁面內自己用 useAppState() 取 cfg/isGuest/onAuthed,isGuest 時
 // 內嵌 LoginForm,不是未登入就擋下或導轉到別的路由。這個專案沒有
-// <RequireAuth> 這類包裝元件的先例,沿用 TripPlanRoute 這個既有做法,不
-// 自己發明新機制。
+// <RequireAuth> 這類包裝元件的先例,不自己發明新機制。
 //
 // POLLING_INTERVAL_MS:上傳後輪詢列表,直到這張圖片的狀態變成
 // ready/failed 為止——任務規格允許「簡單的提示使用者稍後重新整理」或

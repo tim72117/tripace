@@ -50,7 +50,7 @@ function SelectableTimeline({
   )
 }
 
-describe('selectedStopId 受控模式(地圖對話小匡)', () => {
+describe('selectedStopId 受控模式(地圖規劃面板)', () => {
   it('外部(點地圖圓點)改成 B 之後,再點卡片 A 能正確回到 A', () => {
     let setFromMap: ((id: string | null) => void) | null = null
 

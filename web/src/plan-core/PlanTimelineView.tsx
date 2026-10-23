@@ -390,13 +390,13 @@ export interface PlanTimelineViewProps {
   // 依賴 sticky。
   jumpPillWrapClassName?: string
   // jumpPillClassName——選填,疊加在按鈕本身(.jumpPill)上。2026-10
-  // 新增:正式頁對話小匡(compact)使用者要求「太扁太寬,且要用 icon
-  // 不要用文字的箭頭」——小匡只有 440px 寬,文字膠囊(padding:8px 16px
+  // 新增:正式頁規劃面板(compact)使用者要求「太扁太寬,且要用 icon
+  // 不要用文字的箭頭」——規劃面板只有 440px 寬,文字膠囊(padding:8px 16px
   // + 「↓ 回到最新」五個字)比例上太寬太扁;全頁版維持原本的文字膠囊,
   // 不需要跟著改。
   jumpPillClassName?: string
   // jumpPillContent——選填,覆寫按鈕內部內容(預設「↓ 回到最新」文字)。
-  // 跟 jumpPillClassName 搭配使用:小匡版傳一個只有 icon 的 ReactNode,
+  // 跟 jumpPillClassName 搭配使用:規劃面板版傳一個只有 icon 的 ReactNode,
   // 不重新定義另一顆按鈕元件——這個元件仍然只有一個 <button>,只是
   // 內容跟外觀由呼叫端決定,維持「這個元件不知道自己在哪種容器裡」的
   // 既有設計慣例(同 scrollClassName/jumpPillWrapClassName)。

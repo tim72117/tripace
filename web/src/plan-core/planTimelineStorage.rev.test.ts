@@ -5,9 +5,9 @@ import type { PlanTimeline } from './planTimeline'
 
 // 版次(rev)機制的回歸測試——針對一個實際的資料遺失路徑:
 //
-// TripPlanPage 會同時有兩份實例掛載(地圖對話小匡常駐掛載 + 切到
+// TripPlanPage 會同時有兩份實例掛載(地圖規劃面板常駐掛載 + 切到
 // /app/plan-ai 時的全頁版)。兩份各自在掛載當下讀一次 localStorage 之後
-// 就不再重讀,於是在全頁版規劃完切回地圖,小匡那份仍是掛載時的舊內容
+// 就不再重讀,於是在全頁版規劃完切回地圖,規劃面板那份仍是掛載時的舊內容
 // (常常是空的),它下一次寫入就會把剛規劃好的全部蓋掉。
 //
 // rev 讓後寫的那一方能先察覺「我手上這份已經過期」,改以磁碟上的較新
@@ -40,7 +40,7 @@ describe('planTimelineStorage 的版次機制', () => {
   })
 
   it('另一份實例寫入後,落後的那份能從版次看出自己過期', () => {
-    // 實例一(小匡)掛載:讀到空的,記住版次 0
+    // 實例一(規劃面板)掛載:讀到空的,記住版次 0
     const instanceOneRev = readRev()
     expect(instanceOneRev).toBe(0)
 

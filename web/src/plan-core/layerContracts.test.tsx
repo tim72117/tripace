@@ -11,7 +11,8 @@ import type { PlanLayoutProps as AiPlanLayoutProps } from '../home/plan-ai-sim/P
 import type { PlanLayoutProps as PhonePlanLayoutProps } from '../phone/PlanLayout'
 import type { PlanLayoutProps as DesktopPlanLayoutProps } from '../desktop/PlanLayout'
 import type { PlanLayoutProps as ItinerariesPlanLayoutProps } from '../itineraries/PlanLayout'
-import type { PlanOverlayLayoutProps as AiPlanOverlayLayoutProps } from '../home/plan-ai-sim/PlanOverlayLayout'
+import type { PlanOverlayLayoutProps as AiPlanPhoneOverlayLayoutProps } from '../home/plan-ai-sim/phone/PlanOverlayLayout'
+import type { AiPlanOverlayLayoutProps } from '../home/plan-ai-sim/overlayLayoutProps'
 import type { PlanOverlayLayoutProps as PhonePlanOverlayLayoutProps } from '../phone/PlanOverlayLayout'
 import type { PlanOverlayLayoutProps as DesktopPlanOverlayLayoutProps } from '../desktop/PlanOverlayLayout'
 import type { PlanOverlayLayoutProps as ItinerariesPlanOverlayLayoutProps } from '../itineraries/PlanOverlayLayout'
@@ -35,6 +36,7 @@ export type _L2 = [
 ]
 // 第 3 層 PlanOverlayLayout
 export type _L3 = [
+  Satisfies<AiPlanPhoneOverlayLayoutProps, PlanOverlayLayoutContract>,
   Satisfies<AiPlanOverlayLayoutProps, PlanOverlayLayoutContract>,
   Satisfies<PhonePlanOverlayLayoutProps, PlanOverlayLayoutContract>,
   Satisfies<DesktopPlanOverlayLayoutProps, PlanOverlayLayoutContract>,

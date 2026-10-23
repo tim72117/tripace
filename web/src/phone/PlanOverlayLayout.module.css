@@ -4,7 +4,7 @@
 
 /* overlay——疊在 .container(phone/Content.module.css,position: relative)
    的滿版地圖上方,底部讓開 phone/Nav(--tab-bar-height 由 phone/Content.tsx
-   寫在 .container 上,CSS 自訂屬性往下繼承)。pointer-events: none:面板本身
+   寫在 .container 上,CSS 自訂屬性往下繼承)。穿透由 passThrough 參數控制(加上 .passThrough,見下):面板本身
    不攔截點擊,地圖拖曳與搜尋框等控制項仍可操作;TripPlanPage 在
    transparentBackground 模式下已把真正需要互動的子元素(卡片、composer)
    設回 auto(見 TripPlanPage.module.css .compactBottom)。
@@ -16,6 +16,10 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+/* passThrough——疊加層(與裡面的面板,pointer-events 會繼承)不接收指標事件;傳 passThrough 才加上。 */
+.passThrough {
   pointer-events: none;
 }
 

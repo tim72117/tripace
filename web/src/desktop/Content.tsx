@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { useResolvedTheme } from '../hooks/useResolvedTheme'
 import { Route, RouteOff, X } from 'lucide-react'
 import type { ApiCall, WsEvent } from '../api'
 import { onApiCall, onWsEvent } from '../api'
@@ -56,6 +57,8 @@ import styles from './Content.module.css'
 // 桌面版/手機版共用同一份。
 
 export function Content(props: ContentProps) {
+  // mapTheme:地圖只收明確的 'dark' | 'light'(日夜切換時重建),三態的 props.theme(null = 跟隨系統)先解析成明確值。
+  const mapTheme = useResolvedTheme(props.theme)
   const { cfg, activeTrip, setActiveTrip } = props
   // dataSource:登入後的資料存取層實例(打 /internal),地點詳情、照片補圖與資訊卡都走它;同一組 baseURL + token
   // 共用同一個實例(見 getPlanAiApiDataSource)。
@@ -95,11 +98,11 @@ export function Content(props: ContentProps) {
   const setPanelMode = useCallback((mode: Exclude<PanelMode, null>) => {
     setPanelModeState((prev) => (prev === mode ? null : mode))
   }, [])
-  // chatPopoverOpen:地圖右上角城市搜尋框旁 AI 按鈕觸發的對話浮動小匡
-  // 開關——沒有常駐對話欄,ChatScreen 只在這個小匡開啟時才掛載(見下方
+  // planPanelOpen:地圖右上角城市搜尋框旁 AI 按鈕觸發的規劃面板
+  // 開關——沒有常駐對話欄,ChatScreen 只在這個規劃面板開啟時才掛載(見下方
   // render 邏輯),這是使用者存取對話功能的唯一入口。
-  const [chatPopoverOpen, setChatPopoverOpen] = useState(false)
-  // stops/selectedStopId/hoverStopId:對話小匡裡 AI 規劃時間軸
+  const [planPanelOpen, setPlanPanelOpen] = useState(false)
+  // stops/selectedStopId/hoverStopId:規劃面板裡 AI 規劃時間軸
   // 已安排的站點(2026-10 新增,使用者明確要求「開啟對話若是有安排景點,
   // 地圖上出現小圓點」)。時間軸資料住在 TripPlanPage 裡,而地圖是它的
   // 兄弟節點,故由 TripPlanPage 透過三個回調上報到這一層,再往下傳給
@@ -115,14 +118,14 @@ export function Content(props: ContentProps) {
   // onPanToStop 傳的就是 inline 箭頭函式)。這裡直接傳 setter 只是剛好
   // 夠用,不是必要條件。
   //
-  // 小匡「關閉」時 TripPlanPage 並沒有卸載——FloatingPanel 是常駐掛載、
+  // 規劃面板「關閉」時 TripPlanPage 並沒有卸載——FloatingPanel 是常駐掛載、
   // 只用 display:none 隱藏(見下方該元件的完整說明,為的是不要每次開關
-  // 都重建 WebSocket 連線)。所以這三個 state 在小匡隱藏期間仍會持續
+  // 都重建 WebSocket 連線)。所以這三個 state 在規劃面板隱藏期間仍會持續
   // 更新,而且 hover 還收不到「滑鼠離開」事件(被 display:none 隱藏的
   // 元素不產生 onMouseLeave),值會一直停在最後懸停的那一站。
   //
-  // 因此下方傳給 PlanMap 時一律用 chatPopoverVisible 遮蔽(使用者確認
-  // 「只在小匡開啟時顯示」),而不是加清除 effect:那樣會讓「關閉小匡」
+  // 因此下方傳給 PlanMap 時一律用 planPanelVisible 遮蔽(使用者確認
+  // 「只在規劃面板開啟時顯示」),而不是加清除 effect:那樣會讓「關閉規劃面板」
   // 多出一次不必要的 state 寫入與重渲染,重新開啟時還要等 TripPlanPage
   // 重新回報才會出現圓點,中間有一瞬間的空窗。
   const { stops, selectedStopId, hoverStopId, hoverTransitPair, setSelectedStopId, tripPlanProps } = usePlanStopsState()
@@ -446,7 +449,7 @@ export function Content(props: ContentProps) {
   //
   // 2026-10:改用 useTripEntriesMirror 自己撈(見該 hook 的完整說明)——
   // 原本這份資料是 ChatScreen 透過 desktopChat.onTimelineData 鏡像過來的,
-  // 但對話小匡的內容已經換成 TripPlanPage(AI 規劃時間軸),ChatScreen 不
+  // 但規劃面板的內容已經換成 TripPlanPage(AI 規劃時間軸),ChatScreen 不
   // 再常駐掛載,側欄不能再依賴「對話剛好有掛載且剛好撈過」這件事。使用者
   // 確認「讓它自己撈資料,不再依賴對話」。
   //
@@ -457,6 +460,9 @@ export function Content(props: ContentProps) {
     activeTrip?.id ?? null,
     activeTrip ? activeTrip.ownerID === props.user.id : false,
   )
+  // safeAreaRef:疊加層的 safe-area 節點(沒被右側規劃面板與導覽列蓋住的地圖)。傳給 PlanOverlayLayout 掛上節點,同一個 ref
+  // 交給 PlanMap 的 panTarget 平移(點選圖卡),讓目標落在安全區中心而不是整張地圖的中心。
+  const safeAreaRef = useRef<HTMLDivElement>(null)
   const todayRef = useRef<HTMLDivElement>(null as unknown as HTMLDivElement)
 
   // showDebugPanel/calls/wsEvents:原本 DebugApp.tsx(?debug 獨立工作台)裡的
@@ -478,16 +484,16 @@ export function Content(props: ContentProps) {
   // 字串比對。
   const panelSpec = panelMode ? PANEL_REGISTRY[panelMode] : undefined
 
-  // chatPopoverVisible:對話小匡此刻實際上看不看得見。小匡本身的
+  // planPanelVisible:規劃面板此刻實際上看不看得見。規劃面板本身的
   // display:none 判斷與「地圖上的規劃站點小圓點要不要顯示」共用這一個
-  // 變數——兩者必須永遠一致(圓點是小匡內容的延伸,小匡看不見時圓點就是
+  // 變數——兩者必須永遠一致(圓點是規劃面板內容的延伸,規劃面板看不見時圓點就是
   // 孤兒),各自寫一次判斷遲早會漂移。
   //
-  // 單看 chatPopoverOpen 不夠:切到 main-replace 的分頁(demo-route-editor/
-  // demo-chat)時小匡會被隱藏,但 chatPopoverOpen 本身維持 true
+  // 單看 planPanelOpen 不夠:切到 main-replace 的分頁(demo-route-editor/
+  // demo-chat)時規劃面板會被隱藏,但 planPanelOpen 本身維持 true
   // ——那是刻意的(見下方 FloatingPanel 的完整說明:常駐掛載、不重建
   // WebSocket 連線),所以「開啟」與「看得見」在這裡不是同一件事。
-  const chatPopoverVisible = chatPopoverOpen && panelSpec?.slot !== 'main-replace'
+  const planPanelVisible = planPanelOpen && panelSpec?.slot !== 'main-replace'
 
   // 2026-10 squash rebase 修正:這裡原本還有兩段死碼——
   // (1) onTimelineData/desktopChat(useCallback+useMemo 包的
@@ -508,16 +514,16 @@ export function Content(props: ContentProps) {
   // 結果出現時現在會真正關閉主題卡/地點卡(見上方 infoCardStack 那組
   // effect 的完整說明,兩者改成互斥而非並存推擠),geo-planning/desktop/ResultList 存在
   // 時主題卡/地點卡不可能同時存在,'hotel' 這個分支因此變成永遠不會被
-  // 觸發的死代碼,已移除——只剩對話浮動小匡(chatPopoverOpen)這個仍然是
+  // 觸發的死代碼,已移除——只剩規劃面板(planPanelOpen)這個仍然是
   // 「並存推擠」而非互斥的情境。'none' 代表右緣沒有東西需要避開,維持
   // 貼齊 16px。'hotel' 仍保留在 shiftBy 的型別定義裡(DesktopInfoCard.tsx/
   // AttractionInfoPanel.tsx/PlacePanel.tsx),因為那是這幾個元件對外公開
   // 介面的一部分,這裡只是不再產生這個值,不代表其餘呼叫端不能使用。
-  const infoPanelShiftBy: 'none' | 'hotel' | 'chat' = chatPopoverOpen ? 'chat' : 'none'
+  const infoPanelShiftBy: 'none' | 'hotel' | 'planPanel' = planPanelOpen ? 'planPanel' : 'none'
   // attractionPanelRightPx:AttractionInfoPanel(主題卡)整組並存疊放的
-  // 起始 right 基準——依 infoPanelShiftBy 是否已經因為對話小匡往左推,
+  // 起始 right 基準——依 infoPanelShiftBy 是否已經因為規劃面板往左推,
   // 對應 16/368 兩種(理由見上方 infoPanelShiftBy 的說明)。
-  const attractionPanelRightPx = infoPanelShiftBy === 'chat' ? 368 : DESKTOP_INFO_CARD_BASE_RIGHT_PX
+  const attractionPanelRightPx = infoPanelShiftBy === 'planPanel' ? 368 : DESKTOP_INFO_CARD_BASE_RIGHT_PX
   // nearbyInfoPanelRightPx:改用 stackedInfoCardRightPx(見
   // DesktopInfoCard.tsx 的完整說明)搭配上方 infoCardStack 的
   // presentOrders,取代原本「nearbyInfoPanelRightPx =
@@ -534,7 +540,7 @@ export function Content(props: ContentProps) {
   )
 
   // visibleStopsView:傳給地圖的站點檢視,規劃面板關閉時整組遮蔽(桌面、手機共用,見 maskPlanStopsView)。
-  const visibleStopsView = maskPlanStopsView({ stops, selectedStopId, hoverStopId, hoverTransitPair }, chatPopoverVisible)
+  const visibleStopsView = maskPlanStopsView({ stops, selectedStopId, hoverStopId, hoverTransitPair }, planPanelVisible)
 
   // nav:最左側導覽列(desktop/Nav),交給容器 PlanLayout 排在主顯示區之前。
   const nav = (
@@ -749,15 +755,15 @@ export function Content(props: ContentProps) {
               />
             </FloatingPanel>
           )}
-          {/* chat-popover:對話浮動小匡,由地圖右上角城市搜尋框旁的 AI
+          {/* 規劃面板:規劃面板,由地圖右上角城市搜尋框旁的 AI
               按鈕觸發(見 PlanMap.tsx 的 onOpenChat),疊在搜尋框
               正下方——沒有常駐對話欄,這是使用者存取對話的唯一入口
-              (見 chatPopoverOpen 宣告處的說明)。
-              疊加層 PlanOverlayLayout 永遠掛載,只用 open={chatPopoverVisible}
+              (見 planPanelOpen 宣告處的說明)。
+              疊加層 PlanOverlayLayout 永遠掛載,只用 open={planPanelVisible}
               (hidden)隱藏——使用者明確要求桌面版也改成常駐掛載,對齊手機版
               phone/Content.tsx 的 chatElement 同一套「永遠
-              掛載、只切換顯示」設計,避免小匡每次開關都讓內容卸載重掛、
-              WebSocket 重新連線(原本 {chatPopoverOpen && (...)} 這種
+              掛載、只切換顯示」設計,避免規劃面板每次開關都讓內容卸載重掛、
+              WebSocket 重新連線(原本 {planPanelOpen && (...)} 這種
               條件渲染,關閉就等於解除掛載)。
 
               2026-10:內容從 ChatScreen(走 tripace app 的 trip_entry_*
@@ -773,11 +779,11 @@ export function Content(props: ContentProps) {
               跨行程的單一份資料,存在 localStorage(見
               plan-core/planTimelineStorage.ts 的完整說明:使用者確認
               「不要跟 trip 有關聯」「共用同一份,兩處看到一樣的內容」),
-              切換旅程不該讓它重新掛載、清掉正在進行的規劃。這也表示
-              /trip-plan(2026-10 已從 /app/plan-ai 搬成獨立路由,見
-              trip-plan/TripPlanRoute.tsx)與這張小匡看到的是同一條
-              時間軸。 */}
+              切換旅程不該讓它重新掛載、清掉正在進行的規劃。(原本還有獨立頁面 /trip-plan 與這張
+              規劃面板共用同一條時間軸,該頁面已於 2026-10-23 移除。) */}
           <PlanOverlayLayout
+            safeAreaRef={safeAreaRef}
+            passThrough
             // mapBackground:地圖放進疊加層的 map-layer 插槽(與 /ai-plan、登入後手機版同一套骨架)。
             // main-replace slot 取代整個主顯示區時沒有地圖,傳 undefined 就不渲染 map-layer。
             mapBackground={
@@ -801,6 +807,7 @@ export function Content(props: ContentProps) {
                   <div className={outlineMapStyles.mapArea}>
                     <PlanMap
                       cfg={cfg}
+                      safeAreaRef={safeAreaRef}
                       initialCenter={outlineMapState.initialCenter}
                       currentPosition={currentPosition}
                       tripEntries={outlineMapState.tripEntries}
@@ -808,7 +815,7 @@ export function Content(props: ContentProps) {
                       // onStopClick 讓點地圖圓點回頭選中對應的時間軸卡片(selectedStopId 是兩邊共用的唯一事實來源),跟
                       // 「點卡片 → 地圖移動過去」互為反向操作。
                       {...visibleStopsView}
-                      showPlanRouteLine={ROUTE_LINE_ENABLED && chatPopoverVisible && showPlanRouteLine}
+                      showPlanRouteLine={ROUTE_LINE_ENABLED && planPanelVisible && showPlanRouteLine}
                       onStopClick={setSelectedStopId}
                       city={geoSearchCity}
                       onCityChange={setGeoSearchCity}
@@ -839,7 +846,7 @@ export function Content(props: ContentProps) {
                         dispatchCategoryTags({ type: 'search-started' })
                       }}
                       hideCategoryTags={categoryTagsState.hidden}
-                      onOpenChat={() => setChatPopoverOpen(true)}
+                      onOpenChat={() => setPlanPanelOpen(true)}
                       onGeocodeCandidatesChange={outlineMapState.onGeocodeCandidatesChange}
                       onAttractionSelect={geo.selectAttraction}
                       onAttractionsChange={setGeoAttractions}
@@ -855,7 +862,7 @@ export function Content(props: ContentProps) {
                       candidateKeys={geo.candidateKeys}
                       hoverKey={geo.hoverKey}
                       geocodeCandidates={outlineMapState.geocodeCandidates}
-                      theme={props.theme}
+                      theme={mapTheme}
                     >
                       <AttractionInfoPanel
                         attraction={geoAttractionContent}
@@ -885,7 +892,7 @@ export function Content(props: ContentProps) {
                           AttractionInfoPanel(主題卡)同時並存,疊在它左側,
                           而不是切換掉它。style 算出的 right 值疊加了
                           infoPanelShiftBy 本身可能已經因為飯店側欄/對話
-                          小匡往左推的偏移量,確保三者(飯店側欄/對話小匡、
+                          規劃面板往左推的偏移量,確保三者(飯店側欄/規劃面板、
                           主題卡、這張地點卡)不會互相重疊。 */}
                       {nearbyInfoContent && (
                         <PlacePanel
@@ -905,8 +912,8 @@ export function Content(props: ContentProps) {
               )
             }
             // open:main-replace slot(demo-route-editor/demo-chat)取代整個主顯示區,底下沒有地圖可疊,
-            // 用 chatPopoverVisible 隱藏 overlay(元件仍掛載,不重建 WebSocket,見 chatPopoverOpen 說明)。
-            open={chatPopoverVisible}
+            // 用 planPanelVisible 隱藏 overlay(元件仍掛載,不重建 WebSocket,見 planPanelOpen 說明)。
+            open={planPanelVisible}
             // shifted:搜尋結果側欄同時顯示時往左推,避免兩者疊在一起。
             shifted={geoHotelSidebarVisible}
             // actions:路徑開關(2026-10,使用者明確要求「登入後的介面規劃行程標頭列加上開關路徑的icon,
@@ -926,7 +933,7 @@ export function Content(props: ContentProps) {
                     {showPlanRouteLine ? <Route size={16} strokeWidth={2} /> : <RouteOff size={16} strokeWidth={2} />}
                   </button>
                 )}
-                <button type="button" className={planOverlayActionClass} onClick={() => setChatPopoverOpen(false)} aria-label="關閉" title="關閉">
+                <button type="button" className={planOverlayActionClass} onClick={() => setPlanPanelOpen(false)} aria-label="關閉" title="關閉">
                   <X size={16} strokeWidth={2} />
                 </button>
               </>
@@ -960,7 +967,7 @@ export function Content(props: ContentProps) {
                 完整說明)。點卡片是明確的使用者動作,每次都該有反應。 */}
             <LivePlanLayer
               cfg={cfg}
-              visible={chatPopoverVisible}
+              visible={planPanelVisible}
               onPanToStop={panToStop}
               selectedStopId={selectedStopId}
               tripPlanProps={tripPlanProps}

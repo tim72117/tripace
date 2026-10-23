@@ -1141,7 +1141,7 @@ export function StackedSheet(
 // 說明)。固定帶 keepMounted,不接受 exitDurationMs——keepMounted 時
 // shouldRender 恆為 true,不會真的卸載,exitDurationMs 的延遲邏輯永遠
 // 不會被用到,乾脆不讓呼叫端傳入以免誤會這裡也有退場延遲可以調。
-// 對應現有呼叫端:對話小匡(phone/Content.tsx 的 chatSheetOpen)。
+// 對應現有呼叫端:規劃面板(phone/Content.tsx 的 chatSheetOpen)。
 export function PersistentSheet(
   props: Omit<PhoneBottomSheetProps, 'exitDurationMs' | 'keepMounted' | 'isTopmost' | 'stackOffsetPx' | 'onDraggingDownChange'>,
 ) {

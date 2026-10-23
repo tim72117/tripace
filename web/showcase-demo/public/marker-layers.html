@@ -132,7 +132,7 @@
   <div class="grid">
     <section class="panel">
       <h2><span class="tag ai">/ai-plan 手機</span>地圖元件 PlanMap 掛圖層,頁面只持有狀態</h2>
-      <p>home/plan-ai-sim/Content 持有狀態、傳 prop 給地圖元件 PlanMap(與登入後的 PlanMap 同名、同層級,各自實作)。PlanMap 用 NativeMapBase 建圖（推論態的 children 是 ExploreControls：「探索」與「搜尋這個區域」按鈕），經 usePlanMapDrawing 掛 useSharedDrawLayer：currentLocationLayer 一律掛；planStopLayer、transitHoverLineLayer、routeLineLayer 因為有 stopDots 都放進 layers（整條路線只在 enabled 時畫）；attractionGlowLayer 因為恆傳 attractionGlow 而掛，但景點清單在非推論態是空的所以沒有東西可畫；tripEntryLayer、searchResultLayer 在 /ai-plan 不傳資料所以不掛。MapHandle 經 PlanMap 內的 useMapHandle 回報給 Content（安全區平移用）。NativeMapBase 只傳 center、zoom、mapId、onHandleChange（加 children），沒有傳 theme 與 onPoiClick。</p>
+      <p>home/plan-ai-sim/Content 持有狀態、傳 prop 給地圖元件 PlanMap(與登入後的 PlanMap 同名、同層級,各自實作)。PlanMap 用 NativeMapBase 建圖（推論態的 children 是 ExploreControls：「探索」與「搜尋這個區域」按鈕），經 usePlanMapDrawing 掛 useSharedDrawLayer：currentLocationLayer 一律掛；planStopLayer、transitHoverLineLayer、routeLineLayer 因為有 stopDots 都放進 layers（整條路線只在 enabled 時畫）；attractionGlowLayer 因為恆傳 attractionGlow 而掛，但景點清單在非推論態是空的所以沒有東西可畫；tripEntryLayer、searchResultLayer 在 /ai-plan 不傳資料所以不掛。MapHandle 經 PlanMap 內的 useMapHandle 回報給 Content（安全區平移用）。NativeMapBase 傳 center（由 initialCenter 經 resolveMapCenter 轉出）、zoom、mapId、theme（只收 dark / light，日夜切換時重建地圖）、onHandleChange（加 children），沒有傳 onPoiClick。光暈資料（景點區域加「探索」控制項）來自獨立 hook useAttractionGlow。</p>
       <div class="scroll">
         <svg viewBox="0 0 620 1404" role="img" aria-label="/ai-plan(圖層由地圖元件 PlanMap 掛) 推論態:Content 持有狀態(模擬態與推論態兩個站點檢視實例、各種 hook),渲染 PlanLayout › PlanOverlayLayout › OverlayShell;PlanMap 用 NativeMapBase 建圖、useMapHandle 回報 MapHandle,並經 usePlanMapDrawing 掛 useSharedDrawLayer(planStopLayer、currentLocationLayer、transitHoverLineLayer、routeLineLayer、attractionGlowLayer)畫在地圖上;useExploreQueries 只回傳景點資料餵光暈;safe-area 由 OverlayShell 渲染"><defs>
           <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#5b6673"/></marker>
@@ -148,15 +148,15 @@
 <text x="34" y="131.5" style="font-size:11px">visibleStopsView = maskPlanStopsView(…, stopsVisible 恆 true)</text>
 <text x="34" y="147.0" style="font-size:11px">usePlanSimSocket(start = promptTyped &amp;&amp; !handedOver)→ steps → simulated</text>
 <text x="34" y="162.5" style="font-size:11px">useFirstStopAutoPan ×2:模擬態 enabled = !handedOver、推論態 enabled = handedOver</text>
-<text class="m" x="34" y="178.0" style="font-size:11px">   firstStopPanAllowed = !isDesktop || isWide;兩個實例各自一次性</text>
+<text class="m" x="34" y="178.0" style="font-size:11px">   firstStopPanAllowed = !isDesktop(桌面不做);兩個實例各自一次性</text>
 <text x="34" y="193.5" style="font-size:11px">usePhoneStopPan:卡片「移動到此」,只手機、只模擬態 → panToStopId</text>
 <text class="m" x="34" y="209.0" style="font-size:11px">   → HorizontalPlanTimeline 的 onPanToStop;expandedChildren ← expandedThemeId</text>
-<text x="34" y="224.5" style="font-size:11px">useMapSafeArea(兩種螢幕都有)→ safeAreaElRef → PlanLayout.safeAreaRef</text>
+<text x="34" y="224.5" style="font-size:11px">useMapSafeArea(兩種螢幕都有)→ safeAreaElRef → PlanOverlayLayout.safeAreaRef</text>
 <text x="34" y="240.0" style="font-size:11px">useCurrentLocation({ wanted: handedOver }):已授權才靜默取、不移動鏡頭</text>
 <text x="34" y="255.5" style="font-size:11px">attractionDataSource = token ? 登入版 : 訪客版</text>
 <path class="ln" d="M360,276 V498" marker-end="url(#a1)"/>
 <path class="back-ai" d="M430,498 V276" marker-end="url(#a2)"/>
-<text class="m" x="350" y="294" text-anchor="end" style="font-size:11px">center、zoom、mapId、theme、currentPosition</text>
+<text class="m" x="350" y="294" text-anchor="end" style="font-size:11px">initialCenter、zoom、mapId、theme、currentPosition</text>
 <text class="m" x="350" y="308" text-anchor="end" style="font-size:11px">stops、selectedStopId、hoverStopId、hoverTransitPair</text>
 <text class="m" x="350" y="322" text-anchor="end" style="font-size:11px">(後四個由 {...visibleStopsView} 展開)</text>
 <text class="m" x="350" y="336" text-anchor="end" style="font-size:11px">showPlanRouteLine(= ROUTE_LINE_ENABLED)</text>
@@ -187,7 +187,7 @@
 <text class="m" x="48" y="556" style="font-size:11px">回報 MapHandle,再轉給 Content</text>
 <text class="m" x="48" y="569" style="font-size:11px">(安全區平移用)</text>
 <rect class="ai-box" x="38" y="596" width="240" height="98" rx="6"/>
-<text class="b" x="48" y="614" style="font-size:11px">useExploreQueries</text>
+<text class="b" x="48" y="614" style="font-size:11px">useAttractionGlow → useExploreQueries</text>
 <text class="m" x="48" y="630" style="font-size:11px">只回傳 attractions 資料,不直接畫</text>
 <text class="m" x="48" y="645" style="font-size:11px">推論態且有 dataSource 才傳,</text>
 <text class="m" x="48" y="660" style="font-size:11px">否則空清單;「探索」按鈕才查</text>
@@ -241,7 +241,7 @@
 <path class="ln-ai" d="M441,926 V952" marker-end="url(#a2)"/>
 <text class="m" x="449" y="942" style="font-size:11px">畫站點、藍點、虛線、光暈</text>
 <rect class="box" x="26" y="1036" width="568" height="26" rx="6"/>
-<text class="m" x="36" y="1053" style="font-size:11px">controls-slot(此頁未使用:PlanLayout 沒轉傳 onControlsSlotChange)</text>
+<text class="m" x="36" y="1053" style="font-size:11px">controls-slot(此頁未使用:Content 沒傳 onControlsSlotChange)</text>
 <rect class="back-ai" x="26" y="1072" width="568" height="296" rx="8" style="stroke-width:1.1"/>
 <text class="b" x="36" y="1088" style="font-size:11px;paint-order:stroke;stroke:var(--box2);stroke-width:5px;stroke-linejoin:round;">overlay(OverlayShell 渲染)</text>
 <rect class="eff" x="34" y="1098" width="552" height="22" rx="4"/>
@@ -249,16 +249,16 @@
 <rect class="box" x="34" y="1128" width="552" height="104" rx="6" style="stroke:#16a34a;stroke-width:1.6;stroke-dasharray:5 4;fill:var(--box)"/>
 <text class="b" x="44" y="1146" style="font-size:11px">safe-area(OverlayShell 渲染,overlay 的直接子節點)</text>
 <text class="m" x="44" y="1163" style="font-size:11px">手機版 .safeArea:absolute,top 72、bottom 454、left/right 0(估算值,PlanOverlayPanel.module.css)</text>
-<text class="m" x="44" y="1178" style="font-size:11px">ref 路徑:Content mapSafeArea.safeAreaElRef → PlanLayout.safeAreaRef</text>
+<text class="m" x="44" y="1178" style="font-size:11px">ref 路徑:Content mapSafeArea.safeAreaElRef → PlanOverlayLayout.safeAreaRef</text>
 <text class="m" x="44" y="1193" style="font-size:11px">   → PlanOverlayLayout → OverlayShell(PlanMap 本身不收 safeAreaRef)</text>
 <text class="m" x="44" y="1208" style="font-size:11px">useMapSafeArea 讀它算鏡頭中心;兩個 useFirstStopAutoPan 平移到該中心</text>
 <rect class="box" x="34" y="1240" width="552" height="112" rx="6"/>
 <text class="b" x="44" y="1257" style="font-size:11px">panel(children + composer-slot)</text>
-<text class="m" x="44" y="1274" style="font-size:11px">模擬態:HorizontalPlanTimeline(onPanToStop ← panToStopId)</text>
+<text class="m" x="44" y="1274" style="font-size:11px">模擬態:SimPlanLayer(手機 HorizontalPlanTimeline)</text>
 <text class="m" x="44" y="1289" style="font-size:11px">推論態:LivePlanLayer(selectedStopId、tripPlanProps ← live)</text>
 <rect class="eff" x="42" y="1306" width="536" height="38" rx="4"/>
 <text x="50" y="1322" style="font-size:11px">composer-slot</text>
-<text class="m" x="50" y="1336" style="font-size:11px">模擬態才傳 composer(Composer);推論態 passThrough、不傳</text>
+<text class="m" x="50" y="1336" style="font-size:11px">模擬態才傳 composer(SimComposer);推論態 passThrough、不傳</text>
 </svg>
       </div>
     </section>
@@ -281,12 +281,12 @@
 <text class="m" x="34" y="134">hoverTransitPair 取自 live(模擬態不回報)</text>
 <text class="m" x="34" y="150">usePlanSimSocket(start = promptTyped &amp;&amp; !handedOver) → steps → simulated</text>
 <text class="m" x="34" y="166">useFirstStopAutoPan ×2,各自一次性:模擬態 enabled = !handedOver、</text>
-<text class="m" x="34" y="182">推論態 enabled = handedOver;皆需 firstStopPanAllowed = !isDesktop || isWide</text>
+<text class="m" x="34" y="182">推論態 enabled = handedOver;皆需 firstStopPanAllowed = !isDesktop(桌面不做)</text>
 <text class="m" x="34" y="198">useMapSafeArea(mapHandle.mapRef) → safeAreaElRef、panToWithinSafeArea(手機也有)</text>
-<text class="m" x="34" y="214">safeAreaElRef → PlanLayout 的 safeAreaRef(PlanMap 不收 safeAreaRef)</text>
+<text class="m" x="34" y="214">safeAreaElRef → PlanOverlayLayout 的 safeAreaRef(PlanMap 不收 safeAreaRef)</text>
 <text class="m" x="34" y="230">useCurrentLocation({ wanted: handedOver }) → currentPosition</text>
 <text class="m" x="34" y="246">attractionDataSource ← 有 token 用登入版、沒有用訪客版</text>
-<text class="m" x="34" y="262">桌面沒有 usePhoneStopPan(「移動到此」只在手機)</text>
+<text class="m" x="34" y="262">桌面:點選圖卡經 useStopCardClick + useDesktopStopPan 平移</text>
 <rect class="back-ai" x="4" y="292" width="612" height="1027" rx="10" style="stroke-width:1.1"/>
 <rect class="back-ai" x="10" y="310" width="600" height="934" rx="9" style="stroke-width:1.1"/>
 <rect class="back-ai" x="16" y="328" width="588" height="696" rx="8" style="stroke-width:1.1"/>
@@ -351,15 +351,15 @@
 <text class="m" x="34" y="1121">非 wide(768–1023px):沒有此節點,safeAreaElRef.current 為 null,</text>
 <text class="m" x="34" y="1136">panMapTo 退回直接 panTo;點圖卡照樣平移</text>
 <rect class="box" x="20" y="1162" width="580" height="70" rx="6"/>
-<text class="b" x="34" y="1182">PlanOverlayPanel(桌面側欄,地圖左側露出)</text>
-<text class="m" x="34" y="1200">wide:PlanOverlayPanelWide 樣式,top/bottom 讓出導覽列與 composer 帶</text>
+<text class="b" x="34" y="1182">desktop/PlanOverlayPanel(桌面側欄,地圖左側露出)</text>
+<text class="m" x="34" y="1200">wide/PlanOverlayPanel:PlanOverlayPanelWide 樣式,top/bottom 讓出導覽列與 composer 帶</text>
 <text class="m" x="34" y="1217">children:時間軸(模擬態)/ LivePlanLayer(推論態);composer 為手足插槽</text>
-<text class="m" x="34" y="1262">Content → PlanLayout:mapBackground(含 PlanMap)、</text>
+<text class="m" x="34" y="1262">Content → PlanOverlayLayout:mapBackground(含 PlanMap)、</text>
 <text class="m" x="34" y="1277">wide = isWide、isDesktop、safeAreaRef = mapSafeArea.safeAreaElRef</text>
-<text class="m" x="34" y="1292">nav、debugOverlay 是 PlanLayout 另外的插槽;</text>
+<text class="m" x="34" y="1292">nav、debugOverlay 是 PlanLayout(外框)的插槽;</text>
 <text class="m" x="34" y="1307">桌面與 wide 沒有 controls-slot 與 overlay 外殼</text>
 <path class="ln" d="M40,276 V492" marker-end="url(#e1)"/>
-<text class="m" x="48" y="382">center、zoom、mapId</text>
+<text class="m" x="48" y="382">initialCenter、zoom、mapId</text>
 <path class="ln" d="M268,660 H276 V276" marker-end="url(#e1)"/>
 <text class="m" x="268" y="436" text-anchor="end">onHandleChange(MapHandle)</text>
 <text class="m" x="268" y="451" text-anchor="end">經 useMapHandle 轉給 Content</text>
@@ -549,7 +549,7 @@
       <p>站點檢視、useGeoPlanningState、useGeoOutlineMapState、目前位置、點選圖卡平移都在 desktop/Content,直接傳進 PlanMap,沒有 PlanPhoneView。PlanMap 本身與手機版是同一個元件,所以抽出的狀態與事件 hook 完全相同,畫在頁面下方的「登入後共用」區塊,這裡不重畫。以下一張圖只畫有差別的部分。</p>
       <p><b>圖一:狀態、UI 層與圖層。</b>沒有 portal,控制項原地渲染;規劃面板是 desktop/PlanOverlayLayout(與其他入口同檔名不同目錄,同一套 data-slot 骨架,地圖在它的 map-layer 裡);整條路線在四個入口都由 ROUTE_LINE_ENABLED 控制，只有桌面有切換開關：旗標開啟、面板可見且使用者按下面板頂端的路徑開關時才有線。</p>
       <div class="scroll">
-        <svg viewBox="0 0 620 1571" role="img" aria-label="登入後桌面版的狀態與 UI 層:desktop/Content 持有狀態(站點、geo、目前位置、平移、遮蔽後的站點檢視、整條路線旗標),渲染 PlanLayout 與規劃疊加層 desktop/PlanOverlayLayout;狀態直接傳給 PlanMap,控制項原地渲染,不傳 safeAreaRef;疊加層 panel 內是 LivePlanLayer;PlanMap 內掛 NativeMapBase、統一繪製層(七層加宿主)與 useExploreQueries 查景點,最後畫在 google.maps.Map 上"><defs>
+        <svg viewBox="0 0 620 1571" role="img" aria-label="登入後桌面版的狀態與 UI 層:desktop/Content 持有狀態(站點、geo、目前位置、平移、遮蔽後的站點檢視、整條路線旗標),渲染 PlanLayout 與規劃疊加層 desktop/PlanOverlayLayout;狀態直接傳給 PlanMap,控制項原地渲染,safeAreaRef 同時交給 PlanOverlayLayout 與 PlanMap(點選圖卡的平移落在安全區中心);疊加層 panel 內是 LivePlanLayer;PlanMap 內掛 NativeMapBase、統一繪製層(七層加宿主)與 useExploreQueries 查景點,最後畫在 google.maps.Map 上"><defs>
           <marker id="f1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#5b6673"/></marker>
           <marker id="f2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b45309"/></marker>
         </defs>
@@ -562,16 +562,16 @@
           <text class="m" x="34" y="68">點卡片、點地圖圓點都寫同一個 selectedStopId;tripPlanProps 為四個回呼</text>
           <text x="34" y="85" style="font-size:12px">useGeoPlanningState → geo(setPanTarget、selectedKey 等)</text>
           <text x="34" y="102" style="font-size:12px">useGeoOutlineMapState → tripEntries、locationWanted、panTarget</text>
-          <text x="34" y="119" style="font-size:12px">useCurrentLocation({ wanted: locationWanted, onLocated: panToLocation })</text>
-          <text class="m" x="34" y="136">→ currentPosition;取到後經 geo.setPanTarget 平移</text>
+          <text x="34" y="119" style="font-size:12px">useCurrentLocation({ wanted: locationWanted })</text>
+          <text class="m" x="34" y="136">→ currentPosition;只畫藍點,不自動平移</text>
           <text x="34" y="153" style="font-size:12px">useDesktopStopPan → panToStop(注入 LivePlanLayer 的 onPanToStop)</text>
-          <text x="34" y="170" style="font-size:12px">usePanWithFirstStopPriority → panToFirstStop、panToLocation</text>
-          <text x="34" y="187" style="font-size:12px">useFirstStopAutoPan({ stops: visibleStopsView.stops })</text>
-          <text class="m" x="34" y="204">吃遮蔽後站點:面板可見後第一次有站點才平移(經 geo.setPanTarget)</text>
-          <text x="34" y="221" style="font-size:12px">chatPopoverVisible = chatPopoverOpen &amp;&amp; slot !== 'main-replace'</text>
-          <text x="34" y="238" style="font-size:12px">visibleStopsView = maskPlanStopsView(檢視四件, chatPopoverVisible)</text>
+          <text x="34" y="170" style="font-size:12px">桌面沒有首站自動平移,定位後也不自動平移</text>
+          <text x="34" y="187" style="font-size:12px">鏡頭統一只由點選圖卡移動(useDesktopStopPan)</text>
+          <text class="m" x="34" y="204">panToStop 經 geo.setPanTarget,落在 safeAreaRef 中心</text>
+          <text x="34" y="221" style="font-size:12px">planPanelVisible = planPanelOpen &amp;&amp; slot !== 'main-replace'</text>
+          <text x="34" y="238" style="font-size:12px">visibleStopsView = maskPlanStopsView(檢視四件, planPanelVisible)</text>
           <text class="m" x="34" y="255">面板關閉 = 整組檢視重置(selected、hover 一併清掉,不只 stops 空陣列)</text>
-          <text x="34" y="272" style="font-size:12px">showPlanRouteLine = ROUTE_LINE_ENABLED &amp;&amp; chatPopoverVisible &amp;&amp; 開關狀態</text>
+          <text x="34" y="272" style="font-size:12px">showPlanRouteLine = ROUTE_LINE_ENABLED &amp;&amp; planPanelVisible &amp;&amp; 開關狀態</text>
           <text class="m" x="20" y="303">↓ 傳入 PlanMap:visibleStopsView(四件已遮蔽)、theme、</text>
           <text class="m" x="20" y="319">   showPlanRouteLine、currentPosition、tripEntries、</text>
           <text class="m" x="20" y="335">   panTarget(geo.setPanTarget 寫入)、geocodeCandidates</text>
@@ -604,8 +604,8 @@
           <rect class="box" x="28" y="831" width="250" height="80" rx="6"/>
           <text class="b" x="42" y="851" style="font-size:11px">usePanTarget</text>
           <text class="m" x="42" y="867">吃 panTarget、bounds、zoom</text>
-          <text class="m" x="42" y="883">desktop 不傳 safeAreaRef</text>
-          <text class="m" x="42" y="899">給 PlanMap → 直接 panTo</text>
+          <text class="m" x="42" y="883">desktop 傳 safeAreaRef</text>
+          <text class="m" x="42" y="899">給 PlanMap → 落在安全區中心</text>
           <rect class="box" x="28" y="919" width="250" height="64" rx="6"/>
           <text class="b" x="42" y="939" style="font-size:11px">其餘掛載式 hook(見下方共用區塊)</text>
           <text class="m" x="42" y="955">useMapViewport、useMapIdle</text>
@@ -643,15 +643,15 @@
           <text class="m" x="312" y="1016">組合、比對、畫出;重建後重掛;強調色由本層讀</text>
           <rect class="box" x="20" y="1064" width="540" height="96" rx="6"/>
           <text class="b" x="34" y="1084" style="font-size:11px">OverlayShell 桌面參數(plan-core/OverlayShell)</text>
-          <text class="m" x="34" y="1100">open={chatPopoverVisible}:用 hidden 隱藏,children 保持掛載</text>
+          <text class="m" x="34" y="1100">open={planPanelVisible}:用 hidden 隱藏,children 保持掛載</text>
           <text class="m" x="34" y="1116">shifted={geoHotelSidebarVisible}:搜尋結果側欄同時顯示時,</text>
           <text class="m" x="34" y="1132">panel 推到 right: 364px</text>
           <text class="m" x="34" y="1148">showControlsSlot={false}:沒有 controls-slot,搜尋框原地渲染</text>
           <rect class="box" x="20" y="1168" width="540" height="80" rx="6" style="stroke:#16a34a;stroke-width:1.6;stroke-dasharray:5 4;fill:var(--box)"/>
           <text class="b" x="34" y="1188">safe-area(overlay 的直接子節點)</text>
           <text class="m" x="34" y="1204">top 72、right 560(搜尋結果側欄同時顯示時 right 924)</text>
-          <text class="m" x="34" y="1220">存在但沒有使用端:desktop 不傳 safeAreaRef 給 PlanMap</text>
-          <text class="m" x="34" y="1236">→ usePanTarget 直接 panTo;?debugSafeArea=1 有除錯疊圖</text>
+          <text class="m" x="34" y="1220">使用端:desktop/Content 把同一個 safeAreaRef 傳給 PlanMap</text>
+          <text class="m" x="34" y="1236">→ usePanTarget 落在安全區中心;?debugSafeArea=1 有除錯疊圖</text>
           <rect class="app-box" x="20" y="1256" width="540" height="64" rx="6"/>
           <text class="b" x="34" y="1276">actions(panel 頂端圓形按鈕)</text>
           <text class="m" x="34" y="1292">路徑開關:ROUTE_LINE_ENABLED 為真才渲染 → setShowPlanRouteLine</text>
@@ -660,7 +660,7 @@
           <text class="b" x="34" y="1348">LivePlanLayer(desktop/)→ lazy PlanPanelContent + Suspense</text>
           <text x="34" y="1364" style="font-size:11px">dataSource = getPlanAiApiDataSource(cfg)(登入版)</text>
           <text x="34" y="1380" style="font-size:11px">store = localStoragePlanTimelineStore</text>
-          <text x="34" y="1396" style="font-size:11px">visible = chatPopoverVisible;onPanToStop = panToStop</text>
+          <text x="34" y="1396" style="font-size:11px">visible = planPanelVisible;onPanToStop = panToStop</text>
           <text class="m" x="34" y="1412">selectedStopId 受控(地圖與時間軸共用);tripPlanProps 四個回呼</text>
           <text class="m" x="34" y="1428">是 PlanOverlayLayout 的 panel children</text>
           <rect class="box" x="20" y="1492" width="580" height="67" rx="6"/>
@@ -687,7 +687,7 @@
 
   <section class="panel" style="margin-top:20px">
     <h2><span class="tag app">新架構</span>統一繪製層:功能層組合在同一個宿主裡</h2>
-    <p>地圖上原生繪製的東西(marker、圓圈、線)由同一層管理。功能層是純函式,只把資料轉成「要畫什麼」;宿主 useMapDrawLayer 負責組合、依 id 比對、畫出、疊放順序、地圖重建後重掛與清理。程式在 <code>geo-planning/mapDrawLayer/</code>。功能層共八個,在 mapDrawLayer/featureLayers/:planStopLayer(行程站點圓點)、currentLocationLayer(藍點)、routeLineLayer(整條路線)、transitHoverLineLayer(轉乘 hover 虛線)、tripEntryLayer(行程 entry 旗子)、searchResultLayer(搜尋結果標記)、attractionGlowLayer(景點光暈)這七個由共用子層 useSharedDrawLayer 組合,routePolylineLayer(手繪路線,每天一條)只給 itineraries 詳情頁,經共用子層的 extraLayers 傳入;attractionGlowSupport.ts 是光暈的支援檔(照片排程與標籤避讓的 hook),不是功能層。七個共用功能層加宿主呼叫與強調色讀取（useAccentColor）收在共用子層 useSharedDrawLayer，呼叫它的接線處有四個：登入後的 PlanMap 與 /ai-plan 的 PlanMap（都經 planMapShared 的 usePlanMapDrawing；/ai-plan 的 Content 只傳 prop，不呼叫圖層 hook）、首頁展示頁 InteractiveExploreMap（直接呼叫，只傳 attractionGlow）、行程詳情頁 AiItineraryDetailPageMapView（直接呼叫：站點圓點走 planStopLayer，含美食清單的自訂 glyph 與 size；手繪路線 routePolylineLayer 經 extraLayers 傳入）。extraLayers 現在只有行程詳情頁用。宿主支援 marker、circle、polyline、overlay 四種繪製項目；marker 一律用 AdvancedMarkerElement，所以掛宿主的地圖都必須帶 mapId（行程詳情頁用 SIMPLE_MAP_ID）。</p>
+    <p>地圖上原生繪製的東西(marker、圓圈、線)由同一層管理。功能層是純函式,只把資料轉成「要畫什麼」;宿主 useMapDrawLayer 負責組合、依 id 比對、畫出、疊放順序、地圖重建後重掛與清理。程式在 <code>geo-planning/mapDrawLayer/</code>。功能層共八個,在 mapDrawLayer/featureLayers/:planStopLayer(行程站點圓點)、currentLocationLayer(藍點)、routeLineLayer(整條路線)、transitHoverLineLayer(轉乘 hover 虛線)、tripEntryLayer(行程 entry 旗子)、searchResultLayer(搜尋結果標記)、attractionGlowLayer(景點光暈)這七個由共用子層 useSharedDrawLayer 組合,routePolylineLayer(手繪路線,每段交通一條)只給 itineraries 詳情頁,經共用子層的 extraLayers 傳入;attractionGlowSupport.ts 是光暈的支援檔(照片排程與標籤避讓的 hook),不是功能層。七個共用功能層加宿主呼叫與強調色讀取（useAccentColor）收在共用子層 useSharedDrawLayer，呼叫它的接線處有四個：登入後的 PlanMap 與 /ai-plan 的 PlanMap（都經 planMapShared 的 usePlanMapDrawing；/ai-plan 的 Content 只傳 prop，不呼叫圖層 hook）、首頁展示頁 InteractiveExploreMap（直接呼叫，只傳 attractionGlow）、行程詳情頁 AiItineraryDetailPageMapView（直接呼叫：站點圓點走 planStopLayer，含美食清單的自訂 glyph 與 size；手繪路線 routePolylineLayer 經 extraLayers 傳入）。extraLayers 現在只有行程詳情頁用。宿主支援 marker、circle、polyline、overlay 四種繪製項目；marker 一律用 AdvancedMarkerElement，所以掛宿主的地圖都必須帶 mapId（行程詳情頁用 SIMPLE_MAP_ID）。</p>
     <div class="scroll">
       <svg viewBox="0 0 1210 1012" role="img" aria-label="統一繪製層:八個功能層(共用子層 useSharedDrawLayer 組合 planStopLayer、currentLocationLayer、transitHoverLineLayer、routeLineLayer、tripEntryLayer、searchResultLayer、attractionGlowLayer 七個,routePolylineLayer 只給 itineraries)由四個接線處使用:登入後 PlanMap、/ai-plan 的 PlanMap、home/InteractiveExploreMap 經過共用子層,行程詳情頁也經共用子層(extraLayers 傳 routePolylineLayer) useMapDrawLayer,再畫在 NativeMapBase 建立的 google.maps.Map 上;地圖上方另有各入口自己的 UI 疊加層"><defs>
 <marker id="d1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#5b6673"/></marker>
@@ -697,7 +697,7 @@
 <text class="m" x="232" y="16">接線處</text>
 <rect class="eff" x="20" y="26" width="200" height="46" rx="4"/>
 <text x="30" y="44">routePolylineLayer</text>
-<text class="m" x="30" y="60">每天一條線,顏色輪替</text>
+<text class="m" x="30" y="60">每段交通一條線,依天數換色</text>
 <text class="m" x="20" y="84">↓ 以下 7 個由共用子層組合</text>
 <rect class="eff" x="20" y="94" width="200" height="46" rx="4"/>
 <text x="30" y="112">planStopLayer</text>
@@ -727,7 +727,7 @@
 <text class="b" x="242" y="46">AiItineraryDetailPageMapView</text>
 <text class="m" x="242" y="64">itineraries 頁,經共用子層</text>
 <text class="m" x="242" y="80">站點走 planStopLayer;extraLayers 傳</text>
-<text class="m" x="242" y="96">routePolylineLayer(每天一條手繪線)</text>
+<text class="m" x="242" y="96">routePolylineLayer(手繪路線)</text>
 <text class="m" x="242" y="112">地圖一律帶 mapId(simple 樣式)</text>
 <path class="ln" d="M220,49 H232" marker-end="url(#d1)"/>
 <path class="ln-app" d="M512,120 H542" marker-end="url(#d2)"/>
@@ -860,8 +860,8 @@
 <text x="820" y="798">(搜尋框、標籤原地畫在 PlanMap 內)</text>
 <text x="820" y="814">overlay &gt; panel:右側 560px 透明側欄(top 72)</text>
 <text class="m" x="820" y="830">搜尋結果側欄開啟時 panel 左移(right 364)</text>
-<text class="m" x="820" y="846">safe-area:top 72、right 560(左移時 924),尚無使用端</text>
-<text class="m" x="820" y="862">鏡頭由 usePanTarget 直接 panTo</text>
+<text class="m" x="820" y="846">safe-area:top 72、right 560(左移時 924),點圖卡平移的目標</text>
+<text class="m" x="820" y="862">鏡頭由 usePanTarget 落在安全區中心</text>
 <rect class="box" x="20" y="900" width="1160" height="98" rx="6"/>
 <text class="b" x="34" y="920">疊放順序表 GROUP_Z(marker 數字越大越上面;線只和線比較;數值集中在 zOrder.ts)</text>
 <text class="m" x="34" y="938">藍點 1 &lt; 搜尋結果 10 &lt; 行程 entry 20 &lt; 子景點小點 25 &lt; 站點 30 &lt; 定位結果與選中站點 998 &lt; hover 站點、選中的搜尋結果與 entry 999</text>
@@ -877,25 +877,100 @@
     <span><i class="d"></i>往回:點擊等事件回報</span>
   </div>
 
-  <h3>同一層級的元件:兩邊同名</h3>
-  <p class="lede" style="margin-bottom:8px">同一個層級的元件在兩邊用同一個名字,靠資料夾區分。疊加外殼的共同部分(骨架、輸入列插槽邏輯)已收進共用的 plan-core/OverlayShell,三個入口(/ai-plan、登入後手機、登入後桌面)各一份同名的 PlanOverlayLayout,都只是薄包裝(各自的樣式與特有項目)。例外:/ai-plan 的 PlanOverlayLayout 只有手機版面走 OverlayShell,桌面與 wide 版面改渲染 PlanOverlayPanel(沒有 controls-slot 與 overlay 外殼,wide 另渲染一個 safe-area 節點,不帶 overlay 與 panel 的 data-slot)。</p>
+  <h3>同一層級的元件:各入口同名</h3>
+  <p class="lede" style="margin-bottom:8px">同一個層級的元件在兩邊用同一個名字,靠資料夾區分。疊加外殼的共同部分(骨架、輸入列插槽邏輯)已收進共用的 plan-core/OverlayShell,三個入口(/ai-plan、登入後手機、登入後桌面)各一份同名的 PlanOverlayLayout,都只是薄包裝(各自的樣式與特有項目)。/ai-plan 的 PlanOverlayLayout 依螢幕分成三個同名同介面的實體(home/plan-ai-sim/ 的 phone/、desktop/、wide/),由 Content 依 isDesktop、isWide 擇一渲染:只有 phone/ 走 OverlayShell;desktop/(768–1023px)與 wide/(≥1024px)改渲染各自的 PlanOverlayPanel(沒有 controls-slot 與 overlay 外殼,wide 另渲染一個 safe-area 節點,不帶 overlay 與 panel 的 data-slot)。</p>
   <div class="scroll">
     <table style="min-width:520px">
-      <thead><tr><th>層級</th><th>名稱</th><th>/ai-plan</th><th>登入後手機</th><th>登入後桌面</th></tr></thead>
+      <thead><tr><th>層級</th><th>名稱</th><th>/ai-plan</th><th>登入後手機</th><th>登入後桌面</th><th>行程詳情頁</th></tr></thead>
       <tbody>
-        <tr><td>容器</td><td><code>PlanLayout</code></td><td>home/plan-ai-sim/PlanLayout.tsx(容器、導覽列、除錯疊圖)</td><td>src/phone/PlanLayout.tsx(只管容器與 --tab-bar-height;phone/Content 把內容放進來)</td><td>src/desktop/PlanLayout.tsx(容器:DesktopLayoutShell + 導覽列 + DesktopMain,排版積木與 pace/PublicViewScreen 共用)</td></tr>
-        <tr><td>疊加外殼</td><td><code>PlanOverlayLayout</code></td><td>home/plan-ai-sim/PlanOverlayLayout.tsx(薄包裝:樣式、導覽列佔位、passThrough)</td><td>src/phone/PlanOverlayLayout.tsx(薄包裝:樣式、open、除錯疊圖)</td><td>src/desktop/PlanOverlayLayout.tsx(薄包裝:透明側欄樣式、open、shifted、頂端按鈕列;沒有 controls-slot)</td></tr>
-        <tr><td>共用外殼</td><td><code>OverlayShell</code></td><td colspan="3">plan-core/OverlayShell.tsx:map-layer、controls-slot、overlay &gt; (safe-area、panel &gt; composer-slot)的 DOM,加輸入列插槽的狀態與 ComposerSlotContext</td></tr>
-        <tr><td>推論層(規劃面板接線)</td><td><code>LivePlanLayer</code></td><td>home/plan-ai-sim/LivePlanLayer.tsx(訪客 cfg、固定訪客版資料存取層、草稿 store)</td><td>src/phone/LivePlanLayer.tsx(登入版資料存取層、受控選取)</td><td>src/desktop/LivePlanLayer.tsx(登入版資料存取層、visible、onPanToStop、受控選取)</td></tr>
-        <tr><td>地圖元件</td><td><code>PlanMap</code></td><td>home/plan-ai-sim/PlanMap.tsx</td><td>geo-planning/PlanMap.tsx</td><td>同左(同一個)</td></tr>
-        <tr><td>應用入口</td><td><code>Content</code></td><td>home/plan-ai-sim/Content.tsx(export function Content,原 AIPlanTimelinePage.tsx)</td><td>src/phone/Content.tsx(export function Content)</td><td>src/desktop/Content.tsx(export function Content,原 DesktopLayout.tsx)</td></tr>
-        <tr><td>導覽</td><td><code>Nav</code></td><td>(無)</td><td>src/phone/Nav.tsx(底部導覽列,原 PhoneTabBar)</td><td>src/desktop/Nav.tsx(左側圖示列,原 DesktopRail)</td></tr>
-        <tr><td>旅程列表</td><td><code>TripList</code></td><td>(無)</td><td>src/trip/phone/TripList.tsx(原 PhoneTripsDrawer)</td><td>src/trip/desktop/TripList.tsx(原 DesktopTripList)</td></tr>
-        <tr><td>搜尋結果清單</td><td><code>ResultList</code></td><td>(無)</td><td>geo-planning/phone/ResultList.tsx(原 PlanPhoneListDrawer)</td><td>geo-planning/desktop/ResultList.tsx(原 GeoHotelSidebar)</td></tr>
-        <tr><td>候選籃清單</td><td><code>CandidateList</code></td><td>(無)</td><td>geo-planning/phone/CandidateList.tsx(原 PlanPhoneTripListDrawer)</td><td>geo-planning/desktop/CandidateList.tsx(原 GeoCandidateSidebar)</td></tr>
+        <tr><td>容器</td><td><code>PlanLayout</code></td><td>home/plan-ai-sim/PlanLayout.tsx(只管外框:容器、主題、嵌入、導覽列、除錯疊圖)</td><td>src/phone/PlanLayout.tsx(只管容器與 --tab-bar-height;phone/Content 把內容放進來)</td><td>src/desktop/PlanLayout.tsx(容器:DesktopLayoutShell + 導覽列 + DesktopMain,排版積木與 pace/PublicViewScreen 共用)</td><td>src/itineraries/PlanLayout.tsx(只是滿版的 &lt;main&gt; 容器)</td></tr>
+        <tr><td>疊加外殼</td><td><code>PlanOverlayLayout</code></td><td>home/plan-ai-sim/{phone,desktop,wide}/PlanOverlayLayout.tsx(三個同名同介面的實體,Content 依 isDesktop、isWide 擇一;phone/ 是 OverlayShell 薄包裝:樣式、導覽列佔位、passThrough)</td><td>src/phone/PlanOverlayLayout.tsx(薄包裝:樣式、open、除錯疊圖)</td><td>src/desktop/PlanOverlayLayout.tsx(薄包裝:透明側欄樣式、open、shifted、頂端按鈕列;沒有 controls-slot)</td><td>src/itineraries/PlanOverlayLayout.tsx(OverlayShell 薄包裝:沒有控制項插槽與輸入列)</td></tr>
+        <tr><td>共用外殼</td><td><code>OverlayShell</code></td><td colspan="4">plan-core/OverlayShell.tsx:map-layer、controls-slot、overlay &gt; (safe-area、panel &gt; composer-slot)的 DOM,加輸入列插槽的狀態與 ComposerSlotContext</td></tr>
+        <tr><td>推論層(規劃面板接線)</td><td><code>LivePlanLayer</code></td><td>推論態:home/plan-ai-sim/LivePlanLayer.tsx(訪客 cfg、固定訪客版資料存取層、草稿 store)。模擬態(交接前)是同一層的另一個呼叫端:home/plan-ai-sim/SimPlanLayer.tsx(桌面 PlanTimelineView、手機 HorizontalPlanTimeline 加詢問頁)與 SimComposer.tsx(輸入列用 composer prop 傳假輸入膠囊);兩者是呈現層,狀態與 hook 仍由 Content 持有</td><td>src/phone/LivePlanLayer.tsx(登入版資料存取層、受控選取)</td><td>src/desktop/LivePlanLayer.tsx(登入版資料存取層、visible、onPanToStop、受控選取)</td><td>(無:這頁不接真實 AI 對話,時間軸內容由頁面直接放進 panel)</td></tr>
+        <tr><td>地圖元件</td><td><code>PlanMap</code></td><td>home/plan-ai-sim/PlanMap.tsx</td><td>geo-planning/PlanMap.tsx</td><td>同左(同一個)</td><td>src/itineraries/PlanMap.tsx(NativeMapBase 加 planMapShared,extraLayers 傳每段交通的手繪路線)</td></tr>
+        <tr><td>應用入口</td><td><code>Content</code></td><td>home/plan-ai-sim/Content.tsx(export function Content,原 AIPlanTimelinePage.tsx)</td><td>src/phone/Content.tsx(export function Content)</td><td>src/desktop/Content.tsx(export function Content,原 DesktopLayout.tsx)</td><td>src/itineraries/AiItineraryDetailPageMapView.tsx(狀態擁有者)</td></tr>
+        <tr><td>導覽</td><td><code>Nav</code></td><td>(無)</td><td>src/phone/Nav.tsx(底部導覽列,原 PhoneTabBar)</td><td>src/desktop/Nav.tsx(左側圖示列,原 DesktopRail)</td><td>(無)</td></tr>
+        <tr><td>旅程列表</td><td><code>TripList</code></td><td>(無)</td><td>src/trip/phone/TripList.tsx(原 PhoneTripsDrawer)</td><td>src/trip/desktop/TripList.tsx(原 DesktopTripList)</td><td>(無)</td></tr>
+        <tr><td>搜尋結果清單</td><td><code>ResultList</code></td><td>(無)</td><td>geo-planning/phone/ResultList.tsx(原 PlanPhoneListDrawer)</td><td>geo-planning/desktop/ResultList.tsx(原 GeoHotelSidebar)</td><td>(無)</td></tr>
+        <tr><td>候選籃清單</td><td><code>CandidateList</code></td><td>(無)</td><td>geo-planning/phone/CandidateList.tsx(原 PlanPhoneTripListDrawer)</td><td>geo-planning/desktop/CandidateList.tsx(原 GeoCandidateSidebar)</td><td>(無)</td></tr>
       </tbody>
     </table>
   </div>
+
+  
+  <h3>各層的參數差異</h3>
+  <p class="lede" style="margin-bottom:8px">同一層的元件名字與骨架一致，但各入口的 props 並不相同。下面只列「不是每個入口都有」的差異；共同契約在 plan-core/layerContracts.ts。這些差異有的是各入口外框與資料來源的實際需求，有的是尚未統一的部分（統一方向見這一節最後一段）。</p>
+  <p class="lede" style="margin-bottom:8px"><b>第 2 層 PlanLayout</b>（共同契約只有 children）</p>
+  <div class="scroll">
+    <table style="min-width:520px">
+      <thead><tr><th>參數</th><th>/ai-plan</th><th>登入後手機</th><th>登入後桌面</th><th>行程詳情頁</th></tr></thead>
+      <tbody>
+        <tr><td>embedded(嵌入時隱藏 nav)、theme(data-theme)、debugOverlay</td><td>有</td><td></td><td></td><td></td></tr>
+        <tr><td>nav</td><td>選填</td><td></td><td>必填</td><td></td></tr>
+        <tr><td>tabBarHeight、展開 HTML 屬性</td><td></td><td>有(tabBarHeight 必填)</td><td></td><td></td></tr>
+        <tr><td>unbounded、debugPanel</td><td></td><td></td><td>有</td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="lede" style="margin:12px 0 8px"><b>第 3 層 PlanOverlayLayout</b>（共同契約：mapBackground?、safeAreaRef（必填）、passThrough?、children）</p>
+  <div class="scroll">
+    <table style="min-width:620px">
+      <thead><tr><th>參數</th><th>/ai-plan phone</th><th>/ai-plan desktop</th><th>/ai-plan wide</th><th>登入後手機</th><th>登入後桌面</th><th>行程詳情頁</th></tr></thead>
+      <tbody>
+        <tr><td>safeAreaRef</td><td>必填,接在 safe-area</td><td>必填,收下但不渲染節點</td><td>必填,接在安全區節點</td><td>必填,接在 safe-area(2026-10-23 起)</td><td>必填,接在 safe-area(2026-10-23 起)</td><td>必填,接在 safe-area</td></tr>
+        <tr><td>passThrough(契約,選填)</td><td>有(推論態傳)</td><td>有(推論態傳)</td><td>收下不使用</td><td>有(Content 一律傳)</td><td>有(Content 一律傳)</td><td>有(Content 傳)</td></tr>
+        <tr><td>composer</td><td>有</td><td>有</td><td>有</td><td></td><td></td><td></td></tr>
+        <tr><td>onControlsSlotChange</td><td>有</td><td></td><td></td><td>有</td><td></td><td></td></tr>
+        <tr><td>open(hidden 保持掛載)</td><td></td><td></td><td></td><td>必填</td><td>必填</td><td></td></tr>
+        <tr><td>shifted、actions</td><td></td><td></td><td></td><td></td><td>有</td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="lede" style="margin:12px 0 8px"><b>第 4 層 LivePlanLayer</b>（共同契約：selectedStopId、tripPlanProps；行程詳情頁沒有這一層；/ai-plan 另有模擬態的呼叫端 SimPlanLayer，見表後說明）</p>
+  <div class="scroll">
+    <table style="min-width:520px">
+      <thead><tr><th>參數</th><th>/ai-plan</th><th>登入後手機</th><th>登入後桌面</th></tr></thead>
+      <tbody>
+        <tr><td>cfg</td><td>不收(自己用 useGuestClientConfig 讀訪客設定)</td><td>必填(由入口傳)</td><td>必填(由入口傳)</td></tr>
+        <tr><td>visible</td><td></td><td></td><td>必填</td></tr>
+        <tr><td>onPanToStop</td><td>選填(桌面才傳)</td><td></td><td>必填</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="lede" style="margin:8px 0 8px">/ai-plan 的模擬態(交接前)與推論態是同一層的兩個呼叫端，渲染在同一個位置(PlanOverlayLayout 的 children)，由 Content 依 handedOver 擇一；模擬態是 SimPlanLayer 與 SimComposer（呈現層，props 是 Content 傳下來的狀態與回呼，不滿足 LivePlanLayerContract，因為模擬態的狀態在 Content、不經 tripPlanProps 回報）：</p>
+  <div class="scroll">
+    <table style="min-width:520px">
+      <thead><tr><th>項目</th><th>推論態(LivePlanLayer)</th><th>模擬態(SimPlanLayer、SimComposer)</th></tr></thead>
+      <tbody>
+        <tr><td>內容</td><td>PlanPanelContent → TripPlanPage(真實 AI 對話與時間軸)</td><td>桌面 PlanTimelineView、手機 HorizontalPlanTimeline,加 ScriptedAskPage(詢問頁);劇本由 usePlanSimSocket 播放</td></tr>
+        <tr><td>站點檢視</td><td>usePlanStopsState(live)</td><td>useSimulatedStopsView(simulated)</td></tr>
+        <tr><td>輸入列</td><td>輸入框經 ComposerSlotContext portal 進插槽</td><td>composer prop 傳假輸入膠囊(打字動畫、唯讀,排完後變「讓我試看看」按鈕)</td></tr>
+        <tr><td>passThrough</td><td>傳</td><td>不傳(內容沒有為穿透做準備)</td></tr>
+        <tr><td>點卡片平移</td><td>經 onPanToStop(桌面才傳)</td><td>桌面用 useStopCardClick + useDesktopStopPan;手機用 usePhoneStopPan 的「移動到此」按鈕(只在模擬態)</td></tr>
+        <tr><td>首站自動平移</td><td>推論態實例(手機)</td><td>模擬態實例(手機),兩個實例各自一次</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="lede" style="margin:12px 0 8px"><b>第 5 層 PlanMap</b>（共同 PlanMapSharedProps：initialCenter、stops、selectedStopId、hoverStopId、hoverTransitPair、onStopClick、showPlanRouteLine、currentPosition、theme）</p>
+  <div class="scroll">
+    <table style="min-width:520px">
+      <thead><tr><th>參數</th><th>/ai-plan</th><th>登入後(手機、桌面共用)</th><th>行程詳情頁</th></tr></thead>
+      <tbody>
+        <tr><td>地圖初始中心</td><td>initialCenter(共同,2026-10-23 起)</td><td>initialCenter</td><td>initialCenter(共同)</td></tr>
+        <tr><td>其他初始設定</td><td>zoom、mapId</td><td>restrictBounds</td><td>zoom、mapId</td></tr>
+        <tr><td>theme 型別</td><td>'dark' | 'light'(共同,2026-10-23 起)</td><td>'dark' | 'light'</td><td>'dark' | 'light'(共同)</td></tr>
+        <tr><td>cfg</td><td></td><td>必填</td><td></td></tr>
+        <tr><td>搜尋框、類別標籤、city、onSearch 等控制項(約 20 個)</td><td></td><td>有</td><td></td></tr>
+        <tr><td>controlsPortalTarget</td><td>有</td><td>有</td><td></td></tr>
+        <tr><td>光暈資料來源(共同形狀 AttractionGlowSource：attractionGlow 加選填 controls)</td><td>獨立 hook home/plan-ai-sim/useAttractionGlow(PlanMap 傳 attractionDataSource、liveLayersEnabled 給它)</td><td>仍內建在 PlanMap(onAttractionsChange、revealedAttractionNames、initialAttractions、hoveredCuratedId、onAttractionSelect 等),尚未拆出</td><td>獨立 hook itineraries/useCityAttractionGlow(頁面呼叫,結果以 attractionGlow 傳入 PlanMap)</td></tr>
+        <tr><td>panTarget、safeAreaRef(宣告式平移)</td><td></td><td>有</td><td></td></tr>
+        <tr><td>tripEntries、搜尋結果相關</td><td></td><td>有</td><td></td></tr>
+        <tr><td>extraLayers</td><td></td><td></td><td>有(每段交通的手繪路線)</td></tr>
+        <tr><td>onHandleChange、children</td><td>有</td><td>children</td><td>有</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="lede" style="margin:12px 0 8px">統一方向：第 2 層各入口的專屬參數是外框的實際需求，不必拉平；第 3 層：safeAreaRef 在 /ai-plan 三個實體與登入後手機都已改為必填（這些入口都有平移要避開面板），safeAreaRef 已寫進共同契約 PlanOverlayLayoutContract 為必填，五個入口（/ai-plan 三個實體、登入後手機與桌面、行程詳情頁）都必須傳，還沒統一的是 open；第 5 層登入後那份是一個元件包整套搜尋與控制，與另外兩份薄版本的介面差距最大，最不容易統一。</p>
 
   <h3>兩邊共用的功能(已搬到同一層)</h3>
   <p class="lede" style="margin-bottom:8px">相同功能原本兩邊各寫一份,現在收在共用的位置;各邊只剩自己特有的部分。</p>
@@ -903,14 +978,14 @@
     <table style="min-width:520px">
       <thead><tr><th>功能</th><th>共用實作</th><th>/ai-plan</th><th>登入後</th></tr></thead>
       <tbody>
-        <tr><td>疊加外殼</td><td><code>OverlayShell</code><br>plan-core/</td><td>PlanOverlayLayout 薄包裝(樣式、導覽列佔位、passThrough)</td><td>手機、桌面各一份 PlanOverlayLayout 薄包裝(手機:樣式、open、除錯疊圖;桌面:透明側欄樣式、open、shifted)</td></tr>
+        <tr><td>疊加外殼</td><td><code>OverlayShell</code><br>plan-core/</td><td>PlanOverlayLayout 薄包裝(樣式、導覽列佔位、passThrough)</td><td>手機、桌面各一份 PlanOverlayLayout 薄包裝(手機:樣式、open、passThrough、除錯疊圖;桌面:透明側欄樣式、open、shifted、passThrough)</td></tr>
         <tr><td>規劃面板內容(含橫向時間軸規則)</td><td><code>PlanPanelContent</code><br>trip-plan/</td><td>LivePlanLayer 用它,再傳草稿儲存、公開資料來源(固定訪客版)、新行程、受控的 selectedStopId</td><td>phone/ 與 desktop/ 的 LivePlanLayer 用它(lazy 載入),再傳登入版資料存取層、store、受控的 selectedStopId、tripPlanProps;桌面另傳 visible 與 onPanToStop</td></tr>
         <tr><td>站點檢視狀態</td><td><code>usePlanStopsState</code> / <code>usePlanSelection</code><br>plan-core/(橫向時間軸:三個入口都不傳 horizontalTimeline,由 PlanPanelContent 預設 <code>!useIsDesktop()</code> 決定,手機橫向、桌面直向)</td><td>/ai-plan 推論態用 usePlanStopsState;模擬態的 useSimulatedStopsView 內部用 usePlanSelection 自己持有選取(兩個實例,交接時整個置換)</td><td>登入後手機與桌面的 Content 用 usePlanStopsState(站點、選取、hover、轉乘配對,加 TripPlanPage 的四個回呼)</td></tr>
         <tr><td>取得目前位置</td><td><code>getCurrentPositionOrNull</code>、<code>useLocateWhenWanted</code><br>plan-core/currentLocation.ts;介面 <code>UseCurrentLocation</code> 在 currentLocationContract.ts</td><td>三個入口各自的 useCurrentLocation 共用它:/ai-plan 的先查權限、已授權才取;登入後的直接問(會跳授權提示)</td><td>同左</td></tr>
         <tr><td>地圖元件內部接線</td><td><code>useMapHandle</code>、<code>usePlanMapDrawing</code><br>geo-planning/planMapShared.ts</td><td colspan="2">兩邊的 PlanMap 都用:接 NativeMapBase 的 MapHandle(身分不變的 mapRef,地圖重建時內容換新),把共同 prop(stops、selectedStopId、hoverStopId、hoverTransitPair、onStopClick、showPlanRouteLine、currentPosition、theme)轉成統一繪製層的輸入;兩邊共同的 prop 型別也定義在這裡(PlanMapSharedProps)</td></tr>
         <tr><td>公開頁的 ClientConfig</td><td><code>useGuestClientConfig</code>、<code>readAuthToken</code><br>plan-core/clientConfig.ts</td><td>LivePlanLayer(推論態的 TripPlanPage)與 home/plan-ai-sim/Content(地圖圖層查資料)原本各寫一份,現在都用它</td><td>不使用(登入後的 cfg 由 useAppState 提供,token 來源是同一個 localStorage key)</td></tr>
         <tr><td>除錯疊圖的繪製零件</td><td><code>DebugFrame</code>、<code>DebugDot</code>、<code>debugLabelStyle</code> 等<br>plan-core/debugOverlayParts.tsx</td><td>SafeAreaDebugOverlay、WideLayoutDebugOverlay 用它的樣式(Wide 原本同一組樣式寫了四次)</td><td>PlanLayoutDebugOverlay 用它的框、圓點與量範圍工具</td></tr>
-        <tr><td>平移到可視範圍</td><td><code>panMapTo</code><br>geo-planning/panMapTo.ts</td><td>useMapSafeArea(panToWithinSafeArea)呼叫它:依安全區洞算中心再 panTo</td><td>usePanTarget 呼叫它;新增選填的 safeAreaRef,有就移到安全區中心,沒傳就是直接 map.panTo(登入後手機已接線:phone/Content → PlanPhoneView → PlanMap → usePanTarget;桌面沒傳,仍直接 panTo)</td></tr>
+        <tr><td>平移到可視範圍</td><td><code>panMapTo</code><br>geo-planning/panMapTo.ts</td><td>useMapSafeArea(panToWithinSafeArea)呼叫它:依安全區洞算中心再 panTo</td><td>usePanTarget 呼叫它;新增選填的 safeAreaRef,有就移到安全區中心,沒傳就是直接 map.panTo(登入後手機已接線:phone/Content → PlanPhoneView → PlanMap → usePanTarget;桌面也已接線:desktop/Content → PlanOverlayLayout 與 PlanMap → usePanTarget)</td></tr>
         <tr><td>首站自動平移(只有手機兩個入口)</td><td>plan-core/useFirstStopAutoPan.ts:第一站出現且地圖就緒時平移一次(一次性 latch);怎麼平移由入口注入 pan</td><td colspan="2">/ai-plan 手機:注入 mapSafeArea.panToWithinSafeArea(模擬態與推論態各一個實例、各自一次);登入後手機:注入 geo.setPanTarget 的包裝(宣告式,地圖就緒前由消費端保留),吃遮蔽後的站點(面板可見後第一次有站點才平移),並經 usePanWithFirstStopPriority 讓首站平移優先於目前位置平移。兩個桌面入口沒有首站自動平移(桌面鏡頭只由點選圖卡移動)</td></tr>
         <tr><td>卡片「移動到此」(只分手機與桌面)</td><td>plan-core/useStopPan.ts:usePhoneStopPan(收 stopId,查站點或展開主題點子景點,依安全區平移)、useDesktopStopPan(收座標,交給注入的 pan)</td><td colspan="2">登入後桌面用 useDesktopStopPan(pan = geo.setPanTarget)產生 panToStop,注入 LivePlanLayer 的 onPanToStop;/ai-plan 手機用 usePhoneStopPan(只在模擬態),產生的 panToStopId 注入 HorizontalPlanTimeline 的 onPanToStop(/ai-plan 的 LivePlanLayer 沒有 onPanToStop);/ai-plan 桌面不平移;登入後手機沒有這顆按鈕</td></tr>
         <tr><td>附近景點的查詢半徑</td><td><code>radiusForZoom</code><br>geo-planning/exploreQuery.ts</td><td colspan="2">useExploreQueries(按鈕觸發的查詢,兩邊共用)</td></tr>
@@ -925,9 +1000,9 @@
   </div>
 
   <h3>共同 DOM 骨架(data-slot 契約)</h3>
-  <p class="lede" style="margin-bottom:0">/ai-plan 手機與登入後手機各自有自己的容器與樣式(登入後桌面的骨架相同,只是容器是 DesktopMain、沒有 controls-slot),疊加外殼共用 OverlayShell,最外層容器(兩邊 class 都叫 <code>.container</code>)底下長出同一套 DOM 配置,用 <code>data-slot</code> 屬性標示(定義在 <code>plan-core/overlayDom.ts</code>,兩邊是否一致由 <code>overlayDom.contract.test.tsx</code> 把關)。位置、尺寸、z-index 不在契約內,由各自的 CSS 決定。要在 panel 裡找內容根(例如除錯疊圖量時間軸範圍)時,用 <code>panelContentRoot</code> 略過帶 data-slot 的骨架節點,不要用 <code>firstElementChild</code>(safe-area 洞排在最前面)。下面的樹對 /ai-plan 只有手機版面成立:/ai-plan 的桌面與 wide 走 PlanOverlayPanel,沒有 controls-slot 與 overlay 外殼。</p>
+  <p class="lede" style="margin-bottom:0">/ai-plan 手機與登入後手機各自有自己的容器與樣式(登入後桌面的骨架相同,只是容器是 DesktopMain、沒有 controls-slot),疊加外殼共用 OverlayShell,最外層容器(兩邊 class 都叫 <code>.container</code>)底下長出同一套 DOM 配置,用 <code>data-slot</code> 屬性標示(定義在 <code>plan-core/overlayDom.ts</code>,兩邊是否一致由 <code>overlayDom.contract.test.tsx</code> 把關)。位置、尺寸、z-index 不在契約內,由各自的 CSS 決定。要在 panel 裡找內容根(例如除錯疊圖量時間軸範圍)時,用 <code>panelContentRoot</code> 略過帶 data-slot 的骨架節點,不要用 <code>firstElementChild</code>(safe-area 洞排在最前面)。下面的樹對 /ai-plan 只有手機版面成立:/ai-plan 的桌面(desktop/)與 wide(wide/)實體走各自的 PlanOverlayPanel,沒有 controls-slot 與 overlay 外殼。</p>
   <pre class="tree">container(data-slot="container";class 兩邊都叫 .container)
-  /ai-plan:PlanLayout 渲染   登入後手機、桌面:各自的 PlanLayout 渲染(phone/Content、desktop/Content 把內容放進來)
+  /ai-plan:PlanLayout 渲染(只管外框:容器、主題、nav、除錯疊圖;Content 把 PlanOverlayLayout 放進它的 children)   登入後手機、桌面:各自的 PlanLayout 渲染(phone/Content、desktop/Content 把內容放進來)
   底下三塊由「外殼元件」渲染  兩邊都叫 PlanOverlayLayout(薄包裝,共用 plan-core/OverlayShell)
 ├─ map-layer        地圖層   /ai-plan:放 PlanMap(內部 NativeMapBase),z-index 0、自成 stacking context
 │                            登入後手機:放 PlanPhoneView(內含 PlanMap 與資訊卡),刻意不設 z-index,sheet 才能蓋過疊加層
@@ -936,7 +1011,7 @@
 └─ overlay          疊加層   /ai-plan:含導覽列佔位 72px、不定位   登入後手機:底部讓開 TabBar、可整個 hidden   登入後桌面:absolute 滿版透明座標系,可整個 hidden
    ├─ safe-area         看不見的「地圖主顯示區」(overlay 的直接子節點,用 overlay 座標系標出沒被面板蓋住的範圍)
    │                    /ai-plan 手機:面板上方,useMapSafeArea 讀它算鏡頭中心;/ai-plan wide:側欄左邊(同樣帶 data-slot,由 PlanOverlayLayout 渲染)
-   │                    登入後手機:面板上方(top 120px、bottom 454px),safeAreaRef 經 PlanPhoneView → PlanMap → usePanTarget,首站與搜尋的平移落在此範圍中心   登入後桌面:側欄左邊(top 72、right 560,側欄讓位時 right 924),無使用端
+   │                    登入後手機:面板上方(top 120px、bottom 454px),safeAreaRef 經 PlanPhoneView → PlanMap → usePanTarget,首站與搜尋的平移落在此範圍中心   登入後桌面:側欄左邊(top 72、right 560,側欄讓位時 right 924),點圖卡平移用它
    └─ panel         規劃面板
       ├─ (內容)         時間軸 / TripPlanPage,不屬於骨架
       └─ composer-slot  輸入列插槽(內容元件用 ComposerSlotContext portal 進來)</pre>
@@ -949,7 +1024,7 @@
         <tr><td>站點圓點圖層</td><td><code>planStopLayer</code>,經共用子層 <code>useSharedDrawLayer</code> 畫出</td><td>同左,兩邊共用同一個功能層(舊的 <code>usePlanStopMarkers</code> 已沒有呼叫端、保留未刪;<code>useMapMarkerLayer</code> 已刪除)</td></tr>
         <tr><td>掛在哪一層</td><td>地圖元件(PlanMap)</td><td>地圖元件(PlanMap),同一個層級</td></tr>
         <tr><td>誰建地圖</td><td>PlanMap 內部用 NativeMapBase,把 MapHandle 回報給頁面(onHandleChange)</td><td class="diff">PlanMap 內部也用 NativeMapBase,自己接 onHandleChange,不對外交出 handle</td></tr>
-        <tr><td>主題改變</td><td class="diff">PlanMap 沒把 theme 傳給 NativeMapBase,不會因主題而重建(theme 有傳給共用繪製層讀強調色)</td><td class="diff">不重建:傳 rebuildOnThemeChange=false,已有地圖時主題改變直接略過建圖</td></tr>
+        <tr><td>主題改變</td><td class="diff">PlanMap 把 theme(只收 dark / light)傳給 NativeMapBase,日夜切換時重建地圖(2026-10-23 起;原本不傳),也傳給共用繪製層讀強調色</td><td class="diff">不重建:傳 rebuildOnThemeChange=false,已有地圖時主題改變直接略過建圖</td></tr>
         <tr><td>容器尺寸變化</td><td>預設:只在隱藏變可見時補 resize,中心回初始 center</td><td>傳 preserveViewOnResize:每次非零尺寸都補 resize,中心保留目前位置</td></tr>
         <tr><td>狀態擁有者</td><td>Content 的 usePlanStopsState(推論態);模擬態另有 useSimulatedStopsView,兩個實例同時存在,由 handedOver 擇一</td><td>phone/Content 的 usePlanStopsState(含 selectedStopId、hoverStopId;選取部分與 /ai-plan 的 usePlanSelection 是同一份實作)</td></tr>
         <tr><td>點的資料</td><td>TripPlanPage 回報的 PlanStopMarker,共用子層以 planStopsToPoints 轉成 MapMarkerPoint:有 children 的是主題點(kind: theme),其餘是一般站點</td><td>同左。兩邊資料來源相同,唯一的規格差別是必填的 kind,從 children 推導,不需要資料另外帶</td></tr>
@@ -968,7 +1043,7 @@
         <tr><td>點到地點後</td><td>沒有 useAttractionClickRouting,也沒有 onPoiClick</td><td>useAttractionClickRouting:主題點走 onAttractionSelect;非主題點有 placeId 就查 Place Details,失敗或沒有 placeId 改走 onAttractionOpenPlaceWithoutGoogle;底圖 POI 走 handlePoiClick</td></tr>
         <tr><td>建圖失敗</td><td>NativeMapBase 自己顯示「地圖載入失敗」覆蓋層</td><td>同樣由 NativeMapBase 顯示覆蓋層;PlanMap 另讀 MapHandle.error,有錯誤時不渲染標籤、搜尋框與按鈕</td></tr>
         <tr><td>restrictBounds 鎖定</td><td>預設 strictBounds=false</td><td>傳 strictRestriction,有 restrictBounds 時 strictBounds=true</td></tr>
-        <tr><td>PlanMap 本身</td><td>home/plan-ai-sim/PlanMap.tsx:NativeMapBase 加 useMapHandle、useMapViewport、useMapIdle、useExploreQueries、ExploreControls,以及 usePlanMapDrawing(→ 共用子層)</td><td>NativeMapBase 加 useMapHandle、useMapViewport、useMapIdle、useExploreQueries、useAttractionClickRouting、usePanTarget、useFitToGeocodeResults 與 usePlanMapDrawing(→ 共用子層:站點、藍點、轉乘虛線、整條路線、行程 entry、搜尋結果、光暈);常數在 exploreQuery.ts,舊的完整實作 PlanMapLegacy.tsx 已刪除</td></tr>
+        <tr><td>PlanMap 本身</td><td>home/plan-ai-sim/PlanMap.tsx:NativeMapBase 加 useMapHandle、useAttractionGlow(獨立 hook,內含 useMapViewport、useMapIdle、useExploreQueries、ExploreControls),以及 usePlanMapDrawing(→ 共用子層)</td><td>NativeMapBase 加 useMapHandle、useMapViewport、useMapIdle、useExploreQueries、useAttractionClickRouting、usePanTarget、useFitToGeocodeResults 與 usePlanMapDrawing(→ 共用子層:站點、藍點、轉乘虛線、整條路線、行程 entry、搜尋結果、光暈);常數在 exploreQuery.ts,舊的完整實作 PlanMapLegacy.tsx 已刪除</td></tr>
       </tbody>
     </table>
   </div>
@@ -988,17 +1063,17 @@
 <tr><td>站點檢視:hover hoverStopId</td><td class="diff">模擬態:自動跟著最新排出的站;推論態:規劃面板經 onHoverStopChange 回報</td><td>同左</td><td class="diff">規劃面板經 onHoverStopChange 回報</td><td class="diff">同手機</td></tr>
 <tr><td>站點檢視:轉乘配對 hoverTransitPair</td><td class="diff">只有推論態有(規劃面板經 onHoverTransitChange 回報);模擬態沒有這個事件</td><td>同左</td><td class="diff">規劃面板經 onHoverTransitChange 回報</td><td class="diff">同手機</td></tr>
 <tr><td>站點檢視:遮蔽機制</td><td>四欄相同:maskPlanStopsView(檢視, 可見條件)——條件為 true 傳原檢視,否則傳空檢視(空陣列、選取與 hover 與轉乘配對為 null),圖層自己清掉 marker</td><td>同左</td><td>同左</td><td>同左</td></tr>
-<tr><td>站點檢視:可見條件</td><td class="diff">恆為 true(stopsVisible;規劃面板不收起)</td><td>同左</td><td class="diff">chatSheetOpen(底部「規劃」tab 是否開啟)</td><td class="diff">chatPopoverVisible(規劃面板是否可見)</td></tr>
-<tr><td>整條路線</td><td class="diff">ROUTE_LINE_ENABLED(環境變數 VITE_FEATURE_ROUTE_LINE)開啟就畫;沒有切換入口</td><td class="diff">同左</td><td class="diff">同左:flag 開啟就畫;沒有切換入口</td><td class="diff">flag 開啟後,由面板頂端的路徑開關切換,預設關;還要 chatPopoverVisible(面板可見)才畫;flag 關閉時開關不渲染</td></tr>
+<tr><td>站點檢視:可見條件</td><td class="diff">恆為 true(stopsVisible;規劃面板不收起)</td><td>同左</td><td class="diff">chatSheetOpen(底部「規劃」tab 是否開啟)</td><td class="diff">planPanelVisible(規劃面板是否可見)</td></tr>
+<tr><td>整條路線</td><td class="diff">ROUTE_LINE_ENABLED(環境變數 VITE_FEATURE_ROUTE_LINE)開啟就畫;沒有切換入口</td><td class="diff">同左</td><td class="diff">同左:flag 開啟就畫;沒有切換入口</td><td class="diff">flag 開啟後,由面板頂端的路徑開關切換,預設關;還要 planPanelVisible(面板可見)才畫;flag 關閉時開關不渲染</td></tr>
 <tr><td>轉乘 hover 虛線</td><td class="diff">有(只有推論態):LivePlanLayer 把 TripPlanPage 的轉乘膠囊 hover 回報給頁面(usePlanStopsState),再傳給 PlanMap;播放態沒有</td><td>同左</td><td class="diff">有:transitHoverLineLayer(共用子層內),兩端站點同時變 hover 態</td><td>有(同手機)</td></tr>
-<tr><td>目前位置藍點<br><small>取得定位的函式兩邊共用:getCurrentPositionOrNull(plan-core/)</small></td><td class="diff">home/plan-ai-sim/useCurrentLocation:只在推論態(wanted)、且瀏覽器已授權定位才有座標(先查權限,已授權才靜默取得,不跳授權提示,不移動鏡頭)</td><td>同左</td><td class="diff">phone/useCurrentLocation:useGeoOutlineMapState 判斷 locationWanted(旅程沒有座標),入口取座標、畫藍點、取到後手機經 geo.setPanTarget 平移(首站已平移過就不再因定位平移);桌面只畫藍點、不自動平移</td><td class="diff">desktop/useCurrentLocation:同名同介面,目前與手機版內容完全相同(只有註解不同),政策可獨立調整;onLocated 同樣受 usePanWithFirstStopPriority 約束</td></tr>
+<tr><td>目前位置藍點<br><small>取得定位的函式兩邊共用:getCurrentPositionOrNull(plan-core/)</small></td><td class="diff">home/plan-ai-sim/useCurrentLocation:只在推論態(wanted)、且瀏覽器已授權定位才有座標(先查權限,已授權才靜默取得,不跳授權提示,不移動鏡頭)</td><td>同左</td><td class="diff">phone/useCurrentLocation:useGeoOutlineMapState 判斷 locationWanted(旅程沒有座標),入口取座標、畫藍點、取到後手機經 geo.setPanTarget 平移(首站已平移過就不再因定位平移);桌面只畫藍點、不自動平移</td><td class="diff">desktop/useCurrentLocation:同名同介面,目前與手機版內容完全相同(只有註解不同),政策可獨立調整;桌面入口沒有傳 onLocated(定位後不自動平移);手機的 onLocated 受 usePanWithFirstStopPriority 約束</td></tr>
 <tr><td>景點區域光暈</td><td class="diff">useExploreQueries(只在推論態;按地圖左上「探索」才查,移動後按「搜尋這個區域」重查;與登入後共用同一個 hook,按鈕元件取自同一個 ExploreControls.tsx;交接後 liveLayersEnabled 才啟用)</td><td>同左</td><td class="diff">useExploreQueries(探索標籤或「搜尋這個區域」才查,與 /ai-plan 共用);繪製同樣經統一繪製層的 attractionGlow。useAttractionOverlays 已刪除,首頁展示 InteractiveExploreMap 也改走共用繪製層</td><td>同左(同一個 PlanMap)</td></tr>
 <tr><td>鏡頭移動</td><td class="diff">useMapSafeArea → panMapTo(依安全區洞算中心再 panTo)。「移動到此」(useStopPan)只在模擬態;首站自動平移(useFirstStopAutoPan)模擬態與推論態各一次</td><td class="diff">useMapSafeArea → panMapTo。桌面不做首站自動平移;點選圖卡任何狀態都平移(useDesktopStopPan + panToWithinSafeArea):wide(≥1024px)落在左側剩餘空間,非 wide 疊加版面(768–1023px)退回直接 panTo</td><td class="diff">usePanTarget → panMapTo(吃 outlineMapState.panTarget;傳疊加層的 safeAreaRef,目標落在安全區中心;帶 radiusMeters 時走 fitBounds)。首站自動平移 useFirstStopAutoPan 注入 geo.setPanTarget(PlanPhoneView 內);沒有「移動到此」</td><td class="diff">usePanTarget → panMapTo(同手機)。只有點選圖卡(useDesktopStopPan)注入 geo.setPanTarget;沒有首站自動平移</td></tr>
 <tr><td>規劃面板內容</td><td class="diff">PlanPanelContent(由 LivePlanLayer 渲染):橫向時間軸;另傳草稿儲存、公開資料來源、新行程、受控的 selectedStopId(與登入後相同,選取雙向同步)</td><td>同左,但橫向時間軸關閉(依螢幕:horizontalTimeline = !isDesktop)</td><td class="diff">PlanPanelContent(經 phone/LivePlanLayer,lazy 載入):橫向時間軸由 PlanPanelContent 依螢幕決定(手機橫向),LivePlanLayer 不傳;另傳登入版資料存取層、store、受控的 selectedStopId 與 tripPlanProps;不傳 visible 與 onPanToStop</td><td class="diff">PlanPanelContent(經 desktop/LivePlanLayer,lazy),放在 desktop/PlanOverlayLayout 的 panel;橫向時間軸同樣由 PlanPanelContent 依螢幕決定(桌面直向);另傳登入版資料存取層、store、visible、onPanToStop、受控 selectedStopId 與 tripPlanProps(來自 usePlanStopsState);路徑開關與關閉鈕在 panel 頂端</td></tr>
         <tr><td>搜尋框、標籤、頭像、「搜尋這個區域」</td><td class="diff">沒有</td><td class="diff">沒有</td><td class="diff">用 portal 放進 PlanOverlayLayout 的控制項插槽(phone/Content 轉傳 controlsPortalTarget)</td><td class="diff">原地渲染在地圖上(沒傳 controlsPortalTarget)</td></tr>
-<tr><td>UI 疊加層(蓋在地圖上方)</td><td class="diff">PlanOverlayLayout 薄包裝 + 共用的 OverlayShell:同一套 data-slot 骨架。controls-slot 目前是空的,overlay 內的 safe-area 由 useMapSafeArea 量,輸入列在 composer-slot;另有導覽列佔位</td><td class="diff">沒有手機版的 controls-slot 與 overlay 外殼:PlanOverlayPanel 側欄(面板與輸入列插槽是同層手足);wide(≥1024px)是同一個元件加 wide 參數(換一份側欄樣式),安全區是左側剩餘空間</td><td class="diff">PlanOverlayLayout 薄包裝 + 共用的 OverlayShell:同一套 data-slot 骨架。map-layer 放 PlanPhoneView、controls-slot 放搜尋框等(PlanMap 用 portal)、overlay 內的 safe-area 節點標出搜尋框下方到面板上方(top 120px、bottom 454px),是首站與搜尋平移的目標,panel 內是規劃面板與輸入列</td><td class="diff">desktop/Content:搜尋框等原地渲染在地圖上;規劃面板是 desktop/PlanOverlayLayout(OverlayShell 的薄包裝:map-layer 放 PlanMap、overlay 內 panel 是透明側欄,composer-slot 排在 panel 最後;沒有 controls-slot)、側欄;safe-area 標出側欄左邊(尚無使用端),?debugSafeArea=1 有除錯疊圖</td></tr>
-        <tr><td>強調色 useAccentColor</td><td colspan="4">四欄相同:由共用子層自己讀(地圖容器的 <code>--color-accent</code>),各功能層共用;接線處只傳 <code>theme</code>。/ai-plan 頁面沒把 theme 傳給 NativeMapBase,但有傳給共用子層。</td></tr>
-        <tr><td>地圖樣式與主題</td><td class="diff">SIMPLE_MAP_ID(簡化樣式);PlanMap 沒把 theme 傳給 NativeMapBase,不重建(theme 有傳給共用繪製層)</td><td>同左</td><td class="diff">VITE_GOOGLE_MAPS_MAP_ID;傳 theme,但 rebuildOnThemeChange=false,不重建</td><td>同左</td></tr>
+<tr><td>UI 疊加層(蓋在地圖上方)</td><td class="diff">PlanOverlayLayout 薄包裝 + 共用的 OverlayShell:同一套 data-slot 骨架。controls-slot 目前是空的,overlay 內的 safe-area 由 useMapSafeArea 量,輸入列在 composer-slot;另有導覽列佔位</td><td class="diff">沒有手機版的 controls-slot 與 overlay 外殼:desktop/ 的 PlanOverlayPanel 側欄(面板與輸入列插槽是同層手足);wide(≥1024px)是 wide/ 的 PlanOverlayLayout 與同名的 PlanOverlayPanel(換一份側欄樣式),安全區是左側剩餘空間</td><td class="diff">PlanOverlayLayout 薄包裝 + 共用的 OverlayShell:同一套 data-slot 骨架。map-layer 放 PlanPhoneView、controls-slot 放搜尋框等(PlanMap 用 portal)、overlay 內的 safe-area 節點標出搜尋框下方到面板上方(top 120px、bottom 454px),是首站與搜尋平移的目標,panel 內是規劃面板與輸入列</td><td class="diff">desktop/Content:搜尋框等原地渲染在地圖上;規劃面板是 desktop/PlanOverlayLayout(OverlayShell 的薄包裝:map-layer 放 PlanMap、overlay 內 panel 是透明側欄,composer-slot 排在 panel 最後;沒有 controls-slot)、側欄;safe-area 標出側欄左邊(點圖卡平移用),?debugSafeArea=1 有除錯疊圖</td></tr>
+        <tr><td>強調色 useAccentColor</td><td colspan="4">四欄相同:由共用子層自己讀(地圖容器的 <code>--color-accent</code>),各功能層共用;接線處只傳 <code>theme</code>。三份 PlanMap 的 theme 都只收 dark / light;/ai-plan 與行程詳情頁傳給 NativeMapBase 時日夜切換會重建地圖,登入後傳 rebuildOnThemeChange=false 不重建。</td></tr>
+        <tr><td>地圖樣式與主題</td><td class="diff">SIMPLE_MAP_ID(簡化樣式);PlanMap 傳 theme 給 NativeMapBase,日夜切換時重建(也傳給共用繪製層)</td><td>同左</td><td class="diff">VITE_GOOGLE_MAPS_MAP_ID;傳 theme,但 rebuildOnThemeChange=false,不重建</td><td>同左</td></tr>
 <tr><td>資料存取層與 store</td><td class="diff">模擬態:時間軸用假資料、詢問頁用訪客版,無 store;推論態:固定訪客版(登入也不換),localStorage 或草稿(「新行程」)</td><td>同左</td><td class="diff">登入版(getPlanAiApiDataSource(cfg)),localStorage</td><td>同手機</td></tr>
 <tr><td>模擬器生命週期</td><td class="diff">usePlanSimSocket(start = promptTyped &amp;&amp; !handedOver):交接後停止並清空,不再對時間軸插入</td><td>同左</td><td>不適用(沒有模擬態)</td><td>不適用</td></tr>
 <tr><td>extraLayers</td><td colspan="4">useSharedDrawLayer 的選填參數(接線處額外的功能層):四個規劃入口都沒傳,只有行程詳情頁傳 routePolylineLayer</td></tr>
@@ -1025,7 +1100,7 @@
     <p style="margin:10px 0 0"><b>登入後手機補上安全區、光暈改走共用繪製層、兩份地點詳情快取收斂(2026-10)。</b>(1) 登入後手機:phone/PlanOverlayLayout 的 safe-area 節點原本是滿版佔位、沒有使用端;現在標出搜尋框下方到面板上方(top 120px、bottom 454px,數字對齊 /ai-plan 手機版),phone/Content 持有 safeAreaRef 傳給 PlanPhoneView → PlanMap → usePanTarget,首站自動平移與搜尋的平移都會落在這個範圍中心而不是被底部面板蓋住。panMapTo 新增:安全區沒有面積(面板用 hidden 收起)時視為沒有安全區,直接 panTo。(2) InteractiveExploreMap(首頁展示)原本自己用 useAttractionOverlays 畫光暈,現在改走 useSharedDrawLayer 的 attractionGlow,與四個入口同一個宿主;原本只有它有的三組狀態(手機主題卡開啟時隱藏、時間軸聚焦的精選點畫成小圓點、只有聚焦的主題點顯示照片)併進 attractionGlowLayer,不傳就全部關閉。useAttractionOverlays.ts 與它的測試已刪除(行為由 attractionGlowLayer 與 scheduleOverlayPhotos 的測試涵蓋)。(3) 兩份「地點詳情快取」:資料存取層 placeDetails(place-details-any)的去重與 geo-planning/placeDetailsCache.ts(geo/place-details)是不同端點與形狀的兩份資料,不能合成一份;但機制重複,現在 placeDetailsCache 改用同一個 PlaceDetailsDedupe 類別(新增 peek、replace、shouldRemember 選項,政策設為一律記憶、不過期),兩邊是同一套機制、不同政策。</p>
     <p style="margin:10px 0 0"><b>目前位置:判斷邏輯各自拉出,同名同介面(2026-10)。</b>使用者明確要求「判斷邏輯各自拉出實作不同的實體,但用相同的命名跟介面」。目前位置藍點的畫法早就共用(統一繪製層的 currentLocationLayer),但「何時取、要不要跳授權、取到後做什麼」原本是兩套互不相干的實作:/ai-plan 的 useAiPlanCurrentPosition(permissions.query,已授權才靜默取)與登入後寫在 useGeoOutlineMapState 裡的 tryLocateCurrentPosition(直接問、取到順便平移),後者還和旅程中心的判斷混在一起。現在:plan-core/currentLocationContract.ts 定義介面 UseCurrentLocation(輸入 wanted、onLocated,輸出 currentPosition、request);三個入口各一個同名實體 home/plan-ai-sim/useCurrentLocation(已授權才靜默取)、phone/useCurrentLocation 與 desktop/useCurrentLocation(直接問,會跳授權提示),共用的狀態機(wanted 變 true 取一次、變 false 清空、卸載後不寫入)在 plan-core/useLocateWhenWanted,各實體只提供自己的取座標政策;layerContracts.test.tsx 以型別斷言確認三個都符合介面。useGeoOutlineMapState 不再碰瀏覽器定位,只回報 locationWanted(旅程沒有任何帶座標的行程、沒有旅程或查詢失敗時為 true),入口把它當 wanted 傳給自己的 useCurrentLocation,取到後經 geo.setPanTarget 平移(一樣是 suppressQuery: true)。行為差異:旅程切換時若 locationWanted 一直是 true,不會重新定位(座標沿用);登入後手機的定位平移現在也會依安全區落點。順手刪除沒有使用端的 useAiPlanCurrentLocation(含它的 useCurrentLocationMarker,畫法早已改走共用繪製層)。</p>
     <p style="margin:10px 0 0"><b>交接時置換整個實例,推論態與登入後同一個 hook(2026-10)。</b>使用者先後明確要求「交接的時候要置換整個實例」「先不要管模擬,模擬就用自己的實例,統一推論態跟登入後」。/ai-plan 原本只有一份 PlanSelection 讓兩個來源共用、交接時 selection.clear(),來源再由 planSource state 持有快照、靠兩個 effect 在 stops 變動時同步(漏同步就是「真實推論沒有地圖點」那次 bug)。現在:模擬態 useSimulatedStopsView 自己持有站點與選取(不與任何實例共用);推論態直接用 plan-core 的 usePlanStopsState,與登入後手機、桌面是同一個 hook(站點、選取、hover、轉乘配對與 TripPlanPage 四個回呼 tripPlanProps 一次持有);兩個 hook 都無條件呼叫,handedOver(單向 state)決定使用哪一個,view = handedOver ? live : simulated 是衍生值。handover() 只清時間軸並設 handedOver,不清選取(live 是全新實例)。刪除:useLiveStopsView(已被 usePlanStopsState 取代,轉乘配對本來就在裡面)、PlanStopsView 介面與 planStopsView.ts、planSource state 與兩個同步 effect、PlanSelection.clear。取捨:舊設計為了「替換推論層但要保留現況」把選取放在來源之外,這個情境不再支援。模擬態的自動選取最新插入站、一次同步的行為不變(有新測試)。沒有在瀏覽器實測交接前後的選取與地圖點。</p>
-    <p style="margin:10px 0 0"><b>站點檢視四個入口都走 maskPlanStopsView(2026-10)。</b>使用者明確要求「都用空陣列不繪製的邏輯」。登入後手機與桌面原本就用 maskPlanStopsView(面板收起時傳空檢視、圖層清掉 marker);/ai-plan 原本把站點直接傳給 PlanMap。現在 /ai-plan 也經 maskPlanStopsView 取得 visibleStopsView 再展開傳給 PlanMap,四個入口是同一條路徑,差別只剩「可見條件」:登入後手機 chatSheetOpen、桌面 chatPopoverVisible、/ai-plan 恆為 true(規劃面板不收起)。條件留在 Content 的呼叫處(stopsVisible),日後 /ai-plan 有會蓋住地圖或收起面板的狀態時只改那個值。行為不變。</p>
+    <p style="margin:10px 0 0"><b>站點檢視四個入口都走 maskPlanStopsView(2026-10)。</b>使用者明確要求「都用空陣列不繪製的邏輯」。登入後手機與桌面原本就用 maskPlanStopsView(面板收起時傳空檢視、圖層清掉 marker);/ai-plan 原本把站點直接傳給 PlanMap。現在 /ai-plan 也經 maskPlanStopsView 取得 visibleStopsView 再展開傳給 PlanMap,四個入口是同一條路徑,差別只剩「可見條件」:登入後手機 chatSheetOpen、桌面 planPanelVisible、/ai-plan 恆為 true(規劃面板不收起)。條件留在 Content 的呼叫處(stopsVisible),日後 /ai-plan 有會蓋住地圖或收起面板的狀態時只改那個值。行為不變。</p>
     <p style="margin:10px 0 0"><b>站點檢視狀態在四欄對照表裡分開列(2026-10)。</b>使用者要求「把這些狀態分開列」。原本「站點檢視狀態」「站點什麼時候畫」兩列把持有方式、各個欄位、遮蔽機制、可見條件寫在同一格,四欄其實已經是同一個機制(maskPlanStopsView)卻看起來各做各的。現在拆成七列:持有方式、站點 stops 的來源、選取 selectedStopId、hover hoverStopId、轉乘配對 hoverTransitPair、遮蔽機制、可見條件。只有真的不同的格子標差異色:/ai-plan 兩欄因為有模擬態與推論態兩個實例而不同,可見條件三種各自對應入口的面板開關狀態;遮蔽機制四欄相同,不標差異。</p>
     <p style="margin:10px 0 0"><b>整條路線四個入口都由 feature flag 控制(2026-10)。</b>使用者明確要求「整條路線全都用 feature flag 控制」。ROUTE_LINE_ENABLED(VITE_FEATURE_ROUTE_LINE,預設關)原本只決定登入後桌面標頭列路徑開關的 icon 渲不渲染,/ai-plan 與登入後手機根本不傳 showPlanRouteLine、不畫。現在四個入口都以它為準:flag 關閉,四個入口都不畫整條路線(桌面的開關 icon 也不渲染);flag 開啟,登入後桌面由開關切換(預設不顯示),/ai-plan 與登入後手機沒有切換入口,有站點就畫。PlanPhoneView 新增 showPlanRouteLine prop 轉給 PlanMap。這是我對「全都用 feature flag 控制」的解讀:沒有幫手機與 /ai-plan 加切換按鈕;若要它們也能由使用者開關,要另外做 UI。沒有在瀏覽器實測(需要設環境變數)。</p>
     <p style="margin:10px 0 0"><b>小檔案合併(2026-10)。</b>使用者要求把「邏輯不同、但各環境都已經共用,而且被同一個檔案同時引用」的小檔案合併。條件用 import 圖驗證:三個入口(/ai-plan、登入後手機、登入後桌面)的 Content 都追得到,且合併的檔案有同一個 import 它們的檔案。合併六組:geoSelectedKey 加 geoMarkerSelection(項目識別鍵與選取判斷,光暈、搜尋結果、旅程 entry 三個功能層都同時用)→ geoSelectedKey.ts;overlayDom 加 composerSlot(輸入列插槽的 data-slot 與 context,OverlayShell 與 PlanOverlayPanel 同時用)→ overlayDom.ts;mapMarkerLayer 的 types、reducer、planStopsToPoints(站點圓點資料模型,useSharedDrawLayer 同時用)→ mapMarkerLayer/planStops.ts;useMapIdle 加 useMapViewport(兩份 PlanMap 都同時用)→ useMapEvents.ts;exploreMapConstants、attractionQueryRadius、geoAreaSearchState(探索查詢參數,useExploreQueries 同時用)→ exploreQuery.ts;getCurrentPosition 加 useLocateWhenWanted(三個 useCurrentLocation 同時用)→ plan-core/currentLocation.ts。對應測試一併合併(planStops.test.ts、exploreQuery.test.ts)。沒有合併:layerContracts 與 currentLocationContract(沒有同時 import 兩者的檔案)、uiStateStore 與 attractionPoolStore(資料與用途不同)、placeDetailsCache 與 photoRetry(不同層)、五個繪製功能層(各自獨立,一層一檔是目錄慣例)。表中提到這些檔案的地方已改成新檔名。</p>
@@ -1033,8 +1108,15 @@
     <p style="margin:10px 0 0"><b>code review 修正、死碼清理與補測試(2026-10)。</b>(1) code review 修正:交接給推論態時,usePlanSimSocket 的 start 帶 !handedOver,模擬劇本計時器會停止,不再對已清空的時間軸插入站點;useMapViewport(geo-planning/useMapEvents.ts)以地圖目前的 zoom 與 bounds 播種,修正 /ai-plan 的探索半徑一開始用錯值;useExploreQueries 的 runExploreQuery 加請求編號,取消後晚到的回應被丟棄;plan-core/currentLocation.ts 的 useLocateWhenWanted 用每次 effect 的執行編號丟棄舊結果;plan-core/useFirstStopAutoPan.ts 新增 usePanWithFirstStopPriority,讓首站平移優先於目前位置平移,PlanPhoneView 與 desktop/Content 都用它;NativeMapBase 在建圖被取消時交還 buildingRef 旗標,避免之後永遠不再建圖。(2) 已刪除的死碼(以 ls 確認不存在):geo-planning/mapMarkerLayer/index.ts、usePlanRouteLine、usePlanTransitHoverLine、usePlanRoutePolyline、useMapPoiClick、geoAttractionClick、geoAttractionZoomState、useSearchResultMarkers、useTripEntryMarkers,以及 home/MobileMapReveal、home/plan-ai-sim/planSimScrollSource、phone/Content.module.css;useMapMarkerLayer、useCurrentLocationMarker、useAiPlanCurrentLocation 先前也已不在。usePlanStopMarkers.ts 當時仍在而且仍是行程詳情頁的現役實作（其他檔案只引用它的 PlanStopMarker 型別）；此後該頁已改走共用子層，這個 hook 與 planStopOverlay.ts 已沒有呼叫端（保留未刪），見 2026-10-23 的「行程詳情頁改用共用子層」一則。(3) 新增測試:geo-planning/mapDrawLayer/featureLayers/attractionGlowSupport.test.tsx(光暈支援 hook)、geo-planning/PlanPhoneView.mapWiring.test.tsx(手機版地圖接線)。以上仍只有 jsdom 與 mock 層的測試。<br></p>
     <p style="margin:10px 0 0"><b>架構圖與對照表依現行程式重畫(2026-10-23)。</b>用五個獨立審查者逐段核對本頁與程式的差異後修正。六張 SVG 都重畫：四張入口圖補上 Content 層（兩個站點檢視實例由 handedOver 擇一、maskPlanStopsView、兩個 useFirstStopAutoPan 實例、目前位置、平移）、PlanLayout 與 OverlayShell 的巢狀層級、LivePlanLayer 與 PlanPanelContent、safeAreaRef 的傳遞路徑；登入後手機補上 PlanPhoneView 內部（geo state、useCurrentLocation、平移鏈）；hook 圖補 useFitToGeocodeResults 與 usePlanMapDrawing 並改正輸入（dataSource 取代 cfg）；統一繪製層圖補上 tripEntry、searchResult、attractionGlow 三個功能層與 useAccentColor、useAttractionGlowEffects，接線處改成四個（加 InteractiveExploreMap，當時行程詳情頁的站點圓點仍用舊 hook，之後已改走共用子層，見下一則）。對照表約 30 處修正，新增「資料存取層與 store」「模擬器生命週期」兩列。重畫後用 headless Chrome 渲染逐張檢視過（沒有方塊重疊，修掉一行被裁切的標籤），但沒有在真實瀏覽器各種視窗寬度實測；手機寬度（390px）頁面本身有橫向溢出，壓縮前就存在，不是這次造成的。</p>
     <p style="margin:10px 0 0"><b>桌面版鏡頭統一只由點選圖卡移動(2026-10-23)。</b>使用者要求「桌面版的鏡頭移動統一用點選圖卡」。登入後桌面（desktop/Content）移除首站自動平移（useFirstStopAutoPan）與 usePanWithFirstStopPriority，目前位置取到後只畫藍點、不再平移；卡片平移仍是 useDesktopStopPan 注入 geo.setPanTarget。/ai-plan 桌面也不再做首站自動平移（firstStopPanAllowed 改為只看是否手機），改成桌面任何狀態（模擬態、推論態、wide 與非 wide）點選圖卡（PlanTimelineView 的 onPanToStop）除了選取都用 useDesktopStopPan 注入 mapSafeArea.panToWithinSafeArea 平移（wide 落在左側剩餘空間，非 wide 沒有安全區節點，退回直接 panTo）；手機的「移動到此」仍只在模擬態。手機版不變（首站自動平移加定位平移）。plan-core 的 useFirstStopAutoPan、usePanWithFirstStopPriority 現在只有手機入口使用。</p>
-    <p style="margin:10px 0 0"><b>行程詳情頁的時間軸資料與卡片(2026-10-23)。</b>(1) 站點座標與照片：行程站點可帶 placeId（SampleStop.placeId，取代曾短暫存在的 attractionId），頁面的 useResolvedItineraryTimeline 先用行程檔案的座標轉成時間軸節點，再經訪客版資料存取層 placeDetails，以 plan-core/resolveAttractionForStep 解析座標與照片寫回節點（keepContent 選項：名稱與說明維持行程作者寫的），與 /ai-plan、登入後走同一條路徑；這個解析函式原本在 trip-plan/TripPlanPage，搬到 plan-core 共用；useStopAttractionDetails 已刪除。(2) 一般行程的景點卡不再傳 renderStopCard，直接用 PlanTimelineView 預設卡（只有 cardTheme 為 onsen-autumn 的行程仍傳主題卡）；住宿成為時間軸的卡片類型：PlanTimelineView 對 kind 為「住宿」的站畫窄長虛線橫幅（區間文字取 duration，有照片時以圓形縮圖取代🛏️圖示），呼叫端傳 renderStopCard 時仍整張替換；這是共用元件，所有入口只要站點 kind 是「住宿」都會變橫幅。(3) 交通膠囊：SampleStop 新增選填 transit（mode、minutes、distance、note，代表從上一站到這一站），toPlanTimeline 轉成節點的 transitFromPrev；沒填時同一天相鄰且都有座標的站由 itineraries/estimateTransit.ts 用直線距離粗估（規則與後端 geo_plan_ai.go 相同：1200m 內步行、5km 內公車、其餘開車；兩站不到 100m 不畫），人工填的優先；估計只在轉成時間軸時算一次，座標解析完成後不重算，也不能點選換交通方式。清邁三日遊（chiangmai-3day）隨意填了 8 段 transit 當預設值，內容未查證。(3.5) 路線線段：行程詳情頁的地圖只在有交通膠囊（transitFromPrev）的那一段畫線（前一站到這一站一條，顏色依這一站的天數，邏輯在 itineraries/routeSegments.ts；膠囊查詢中、沒座標的不畫），不再是每天一條貫穿所有站的線；routePolylineLayer 的 segment 新增選填 id，一天內有多段時各給唯一 id。(4) 點選圖卡的選取加平移抽成 plan-core/useStopCardClick，TripPlanPage、/ai-plan 模擬態與行程詳情頁共用。</p>
-    <p style="margin:10px 0 0"><b>行程詳情頁改用共用子層(2026-10-23)。</b>使用者要求「讓 itineraries 的繪製點共用 useSharedDrawLayer」。行程詳情頁（AiItineraryDetailPageMapView）原本站點圓點用舊 hook usePlanStopMarkers、手繪路線直接用宿主；現在整頁走 useSharedDrawLayer：站點（含美食清單的自訂 glyph 與 size）、選取、hover 由頁面自己持有，經 stopDots 傳入，點地圖圓點回報 onPointClick；手繪路線 routePolylineLayer 經 extraLayers 傳入（extraLayers 第一次有呼叫端）。行程詳情頁的地圖一律帶 mapId（SIMPLE_MAP_ID），marker 一律用 AdvancedMarkerElement；不再支援行內樣式（不帶 mapId）的手繪底圖，所以宿主沒有、也不加 DOM OverlayView 路徑（曾做過 advancedMarkers 選項與 domMarkerOverlay.ts，使用者決定不要，已移除）。行程資料的 mapStyle: 'hand-drawn' 現在只影響卡片與邊框的活潑樣式預設（playfulUI 預設值），不再換底圖。行程詳情頁不再呼叫舊 hook usePlanStopMarkers；它與 planStopOverlay.ts 目前沒有呼叫端（死碼），先保留不刪，PlanStopMarker 型別仍從 usePlanStopMarkers.ts 匯出。行程詳情頁也用同一組分層元件（itineraries/ 底下同名檔案）：頁面元件 AiItineraryDetailPageMapView 持有狀態（第 1 層），渲染 PlanLayout（容器，data-slot="container"）→ PlanOverlayLayout → 地圖元件 PlanMap（NativeMapBase 加 planMapShared 的 useMapHandle 與 usePlanMapDrawing，extraLayers 傳每天路線、attractionGlow 傳主題點光暈）；頁面不再直接呼叫 useSharedDrawLayer；沒有第 4 層 LivePlanLayer（這頁不接真實 AI 對話，時間軸內容由頁面直接放進 panel）。站點與其他入口同一種帶入方式：選取與 hover 用 plan-core 的 usePlanSelection，站點檢視（stops、selectedStopId、hoverStopId、hoverTransitPair）經 maskPlanStopsView 後展開給 PlanMap（站點的座標與照片和其他入口走同一條路徑：行程站點帶 placeId，頁面的 useResolvedItineraryTimeline 把行程轉成時間軸節點，再經資料存取層 placeDetails 用 plan-core 的 resolveAttractionForStep 解析座標與照片寫回節點，名稱與說明維持行程作者寫的；這個解析函式原本在 TripPlanPage，現在搬到 plan-core 與 TripPlanPage 共用。查詢前與失敗時用行程檔案的座標；visible 恆為 true、hoverTransitPair 恆為 null）。點選圖卡與其他入口共用 plan-core 的 useStopCardClick（選取加平移，同時被 TripPlanPage 與 /ai-plan 模擬態使用）。版面：新增 <code>itineraries/PlanOverlayLayout.tsx</code>（與其他入口同名同層級，共用 OverlayShell 的薄包裝，長出同一套 data-slot 骨架 map-layer → overlay(safe-area、panel(composer-slot))，沒有控制項插槽），地圖放 map-layer，標題與時間軸放 panel；面板的定位樣式從頁面 CSS 搬到外殼 CSS，safe-area 節點由頁面的 useMapSafeArea 讀，點選圖卡時平移到它的中心。<b>沒有在瀏覽器實測行程詳情頁</b>（需要 Google Maps API 金鑰）；一個已知的視覺差異風險是強調色現在由共用子層從地圖容器讀 --color-accent，舊 hook 的讀法可能略有不同。</p>
+    <p style="margin:10px 0 0"><b>光暈資料來源拆成獨立 hook(2026-10-23)。</b>三個入口的光暈資料（景點區域、placeDetails、photoAssets）來源本來就不同：登入後是 PlanMap 內建的 useExploreQueries 加搜尋框、類別標籤、探索、搜尋這個區域四個觸發入口，並有 onAttractionSelect、revealedAttractionNames 等與側欄雙向連動的外部控制；/ai-plan 只有探索那一支、且只在推論態啟用；行程詳情頁由頁面依城市一次查好。這次先統一形狀並把各自的實作放進獨立 hook，行為不變：geo-planning/planMapShared.ts 新增 AttractionGlowSource（attractionGlow：交給統一繪製層的輸入；controls：這個來源需要的地圖控制項，例如探索按鈕）；行程詳情頁的實作搬到 itineraries/useCityAttractionGlow.ts（頁面呼叫，結果以 attractionGlow 傳入 PlanMap，沒有控制項）；/ai-plan 的實作從 PlanMap 內搬到 home/plan-ai-sim/useAttractionGlow.tsx（PlanMap 呼叫，回傳 attractionGlow 與探索控制項）。登入後那份因為與 panTarget 的 suppressNextIdle、搜尋與類別標籤狀態、onAttractionsChange 回報、useMapIdle 糾纏，且沒有 Content 層整合測試，這次沒有拆，仍內建在 geo-planning/PlanMap。</p>
+    <p style="margin:10px 0 0"><b>PlanMap 的 theme 統一只收 dark / light(2026-10-23)。</b>三份 PlanMap(與 PlanPhoneView)的 theme 統一為 <code>ResolvedTheme = 'dark' | 'light'</code>(theme.ts 新增,放進 PlanMapSharedProps),不再收 null 或任意字串：地圖的 colorScheme 只能在建圖時設定，theme 改變就重建地圖，所以地圖不自己判斷系統偏好。登入後的 theme 原本是三態 Theme(null = 跟隨系統)，由 phone/Content、desktop/Content 先用新的 hooks/useResolvedTheme 解析成明確值再傳下去(null 依 prefers-color-scheme,系統切換時 hook 的值會跟著變；系統偏好的監聽抽成共用的 hooks/useSystemPrefersDark,useThemeToggle 也改用它)。行為變化:(1) /ai-plan 的 PlanMap 原本不把 theme 傳給 NativeMapBase(日夜切換不重建地圖，只用來讀強調色)，現在也傳，切換日夜時地圖會重建一次，與行程詳情頁一致；(2) 登入後的 PlanMap 仍傳 rebuildOnThemeChange=false，建圖後主題改變不重建，所以「theme 改變就重建」並不適用於登入後那份，三份 PlanMap 的重建行為尚未統一；另外選「跟隨系統」時，建圖當下原本交給 Google 的 FOLLOW_SYSTEM(之後系統切換會自動跟)，現在改成建圖當下解析出的明確值，建圖後系統深淺色切換地圖不會再跟著變。</p>
+    <p style="margin:10px 0 0"><b>行程詳情頁兩個修正(2026-10-23,code review 發現)。</b>(1) useResolvedItineraryTimeline 的 effect 原本只依賴 itinerary.id，AiItineraryDetailPage 先用靜態版掛載、API 回來後換成同 id 的資料庫版時，時間軸與中心停在舊內容；改成依賴整個 itinerary 物件（舊內容未回來的解析請求以 cancelled 旗標擋掉，不會寫進新內容），center 的 useMemo 也一樣，並補了同 id 換版與舊請求不回寫兩個測試（改回 [itinerary.id] 這兩個測試會失敗）。(2) 初始中心改成取第一天的站點，理由見下一則。</p>
+    <p style="margin:10px 0 0"><b>地圖初始中心用共通來源(2026-10-23)。</b>三份 PlanMap 的初始中心統一叫 initialCenter（/ai-plan、行程詳情頁原本叫 center），語意同一種：undefined = 還在決定、地圖先不建；null = 沒有可用座標，退回預設起點；座標 = 直接用，都經 resolveMapCenter 轉成 NativeMapBase 的 center；initialCenter 放進 PlanMapSharedProps。中心由各入口的 Content（或它的狀態 hook）決定，不經第 4 層 LivePlanLayer：登入後是 useGeoOutlineMapState 的 tripCenter，/ai-plan 是固定的台南座標，行程詳情頁依行程站點算。算法也共用：geo-planning/mapCenter.ts 新增 centerOfPoints（各點經緯度平均，沒有點回 null），登入後依旅程既有地點算 tripCenter、行程詳情頁依「第一天」有座標的站點算中心（itineraries/initialCenter.ts 的 initialCenterOf）都用它。行程詳情頁一度改成全部站點平均，但清邁這類跨區域行程（古城附近加上相距約 38km 的山區園區）的平均中心離最近的站約 10km，zoom 15 打開是一片空地，所以改成只取第一天；第一天沒有座標時用最早一天有座標的站點。</p>
+    <p style="margin:10px 0 0"><b>模擬態抽成獨立元件(2026-10-23)。</b>/ai-plan 在第 4 層有兩個呼叫端，原本只有推論態有元件（LivePlanLayer），模擬態行內寫在 Content.tsx。現在抽成 home/plan-ai-sim/SimPlanLayer.tsx（時間軸與詢問頁：桌面 PlanTimelineView、手機 HorizontalPlanTimeline，劇本播到詢問頁時改渲染 ScriptedAskPage）與 SimComposer.tsx（輸入列：假輸入膠囊）；Content 只剩 handedOver ? &lt;LivePlanLayer /&gt; : &lt;SimPlanLayer /&gt; 加 composer={&lt;SimComposer /&gt;} 二選一，Content.tsx 少約 160 行。這兩個是呈現層：劇本播放（usePlanSimSocket）、站點檢視（useSimulatedStopsView，地圖也要讀）、捲動跟隨、拖拉改時間等 hook 仍在 Content，經 props 傳下去，所以不滿足 LivePlanLayerContract（推論態的狀態在 TripPlanPage，經 tripPlanProps 回報給 Content）；要連狀態也搬進來，得先重新切分這些 hook 與地圖共用的站點檢視，沒有做。各補了測試（SimPlanLayer 驗證桌面／手機／詢問頁三種渲染與回呼接線；SimComposer 驗證模擬中唯讀、排完後只剩按鈕、交接後變真輸入框）。</p>
+    <p style="margin:10px 0 0"><b>清掉舊的對話浮動小匡遺留(2026-10-23)。</b>登入後桌面的規劃面板早已是 PlanOverlayLayout 的 panel（地圖右上角 AI 按鈕打開），但程式裡還留著舊小匡的名字，這次只改名與清理，行為不變：desktop/Content 的 chatPopoverOpen、chatPopoverVisible 改名為 planPanelOpen、planPanelVisible；資訊卡避讓值 shiftBy 的 'chat' 改為 'planPanel'（PlacePanel、AttractionInfoPanel、DesktopInfoCard，樣式 .shiftedChat 改 .shiftedPlanPanel）；PlanMap 刪掉沒有呼叫端的 chatButtonOverlay 與包住 AI 按鈕的透明殼（按鈕本身保留，onOpenChat 仍是打開規劃面板的入口）；各檔註解裡的「對話小匡」「chat-popover」「.chatPopover」改成規劃面板。仍保留的舊東西：chat/ChatScreen.tsx（舊版對話框，由 VITE_FEATURE_DEMO_CHAT 開啟的 demo-chat 分頁使用，註解仍提到小匡）；手機版的「規劃」小匡指的是手機底部面板，沒有改。</p>
+    <p style="margin:10px 0 0"><b>移除 /trip-plan 獨立頁面(2026-10-23)。</b>移除 /trip-plan 路由與頁面外殼 TripPlanRoute（含 CSS），以及舊網址 /app/plan-ai 轉址到 /trip-plan 的路由（現在 /app/plan-ai 落到 /app/:legacyPanelMode 相容路由）；server/cmd/server/static.go 的 knownRoutePatterns 拿掉 ^/trip-plan$。trip-plan/ 目錄保留：PlanPanelContent、TripPlanPage、ComposerPortal 仍被三個 LivePlanLayer 使用，是推論態的對話與時間軸本體。連帶：TripPlanPage 的 visible（面板隱藏時重讀持久化內容）原本是為了與全頁版共用同一份草稿，全頁版移除後沒有第二個實例，目前仍保留未簡化；TripPlanPage 的非 compact（全頁）版面也不再有呼叫端，尚未清理。</p>
+    <p style="margin:10px 0 0"><b>外層分工統一(2026-10-23)。</b>第 2 層 PlanLayout 只管外框（容器 data-slot="container"、主題、nav、TabBar 或桌面外殼、除錯面板），第 3 層 PlanOverlayLayout 只管地圖與面板的區域劃分（map-layer、safe-area、panel 等，OverlayShell 薄包裝），兩者由 Content 組合：<code>&lt;PlanLayout&gt;&lt;PlanOverlayLayout mapBackground&gt;內容&lt;/PlanOverlayLayout&gt;&lt;/PlanLayout&gt;</code>，五個入口（含行程詳情頁）同一種寫法。原本只有 /ai-plan 的 PlanLayout 在內部渲染 PlanOverlayLayout，所以要收 mapBackground、wide、isDesktop、safeAreaRef、composer、passThrough 再轉傳；現在這些 props 改由 Content 直接傳給 PlanOverlayLayout，PlanLayout 只剩 embedded、theme、nav、debugOverlay。之後 /ai-plan 的 PlanOverlayLayout 也依螢幕拆成 phone/、desktop/、wide/ 三個同名同介面的實體（共同 props 型別 AiPlanOverlayLayoutProps，Content 以 isWide ? wide : isDesktop ? desktop : phone 擇一，isDesktop、wide 兩個 prop 因此移除），PlanOverlayPanel 也拆成 desktop/ 與 wide/ 兩份。共同契約 PlanOverlayLayoutContract 新增 safeAreaRef（最初是選填，後來升為必填，見本則最後），desktop/PlanOverlayLayout 也接收並轉給 OverlayShell。仍不一致的：open（hidden 保持掛載）只有登入後兩個入口有，控制項插槽只有兩個手機版有，composer 在 /ai-plan 是 prop、登入後走 ComposerSlotContext，除錯疊圖各自接法不同，/ai-plan 的 desktop/、wide/ 實體不經 OverlayShell。 登入後手機的 PlanOverlayLayout 的 safeAreaRef 也改為必填（型別強制呼叫端傳，phone/Content 本來就有傳），並補一個測試確認 ref 接在 safe-area 節點上。 登入後桌面的 safeAreaRef 也改為必填：desktop/Content 新增 safeAreaRef，傳給 PlanOverlayLayout（掛在 safe-area 節點）與 PlanMap（panTarget 的平移用），所以桌面點選圖卡的鏡頭現在落在安全區（右側面板與導覽列之外的地圖）中心，不再是整張地圖的中心；測試補了 ref 接在 safe-area 節點上。 最後 safeAreaRef 升為共同契約的必填欄位（原本契約是選填，各入口自己宣告必填），phone、desktop、/ai-plan 的重複宣告拿掉，行程詳情頁本來就有傳，不需改動。 事件穿透也統一用參數控制：passThrough 進共同契約（選填，預設會攔截），不再寫死在樣式裡——登入後手機、桌面與行程詳情頁原本 .overlay 一律 pointer-events: none（panel 繼承），現在改成各自 PlanOverlayLayout 收 passThrough、加上 .passThrough class，三個 Content 都傳 passThrough，行為不變；/ai-plan 推論態傳、模擬態不傳（模擬態內容沒有為穿透做準備），wide 側欄收下不使用。各入口測試補了 passThrough 才加 class 的案例。</p>
+    <p style="margin:10px 0 0"><b>行程詳情頁併入同一組分層(2026-10-23)。</b>行程詳情頁(itineraries/)也用這組分層元件，同名檔案放在 itineraries/：頁面元件 AiItineraryDetailPageMapView 持有狀態(第 1 層)，渲染 PlanLayout(容器，data-slot="container")→ PlanOverlayLayout(OverlayShell 薄包裝，沒有控制項插槽)→ PlanMap(NativeMapBase 加 planMapShared 的 useMapHandle 與 usePlanMapDrawing，頁面不再直接呼叫 useSharedDrawLayer)；沒有第 4 層 LivePlanLayer，因為這頁不接真實 AI 對話。與其他入口共用的部分：(1) 站點檢視——選取與 hover 用 usePlanSelection，站點檢視經 maskPlanStopsView 展開給 PlanMap；(2) 站點座標與照片的取得路徑——行程站點帶 placeId，useResolvedItineraryTimeline 把行程轉成時間軸節點，再經資料存取層 placeDetails 用 plan-core/resolveAttractionForStep 解析寫回(這個函式原本在 TripPlanPage，搬到 plan-core 與 TripPlanPage 共用，keepContent 選項讓名稱與說明維持行程作者寫的)；(3) 點選圖卡——plan-core/useStopCardClick(選取加平移)由 TripPlanPage、/ai-plan 模擬態與這頁共用，平移走 useMapSafeArea 讀 PlanOverlayLayout 的 safe-area 節點。這頁特有的是 extraLayers 傳入的每段交通一條的手繪路線 routePolylineLayer。layerContracts.test.tsx 以編譯期斷言確認 PlanLayout、PlanOverlayLayout 滿足契約。展示內容(住宿卡、交通膠囊、清邁行程資料)不屬於這份架構文件的範圍。</p>
   </div>
 </main>
 

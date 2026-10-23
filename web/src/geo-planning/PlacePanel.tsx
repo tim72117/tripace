@@ -90,17 +90,17 @@ export function PlacePanel({
   content: PlaceInfoContent | null
   onClose: () => void
   // shiftBy:右緣可能同時有 geo-planning/desktop/ResultList(飯店/附近推薦清單,見
-  // FloatingPanel.tsx 的 side="right")與對話浮動小匡(見
-  // desktop/Content.tsx 的 .chatPopover),兩者都跟這張卡片預設的定位
+  // FloatingPanel.tsx 的 side="right")與規劃面板(見
+  // desktop/Content.tsx 的 planPanelOpen),兩者都跟這張卡片預設的定位
   // 重疊——由呼叫端(desktop/Content.tsx)判斷目前右緣實際被哪個佔用、
-  // 傳入對應值,把卡片推到它左側。'chat' 偏移量大於 'hotel'(對話小匡
+  // 傳入對應值,把卡片推到它左側。'planPanel' 偏移量大於 'hotel'(規劃面板
   // 較寬),兩者都存在時呼叫端只會傳其中較寬的那個,不是疊加,詳見
-  // PlacePanel.module.css 的 .shiftedHotel/.shiftedChat。
-  shiftBy?: 'none' | 'hotel' | 'chat'
+  // PlacePanel.module.css 的 .shiftedHotel/.shiftedPlanPanel。
+  shiftBy?: 'none' | 'hotel' | 'planPanel'
   // style:2026-08 新增的逃生艙——目前唯一的用途是 desktop/Content.tsx
   // 讓「附近景點」點擊後開的第二個 PlacePanel 執行個體,動態算出要
   // 疊在 AttractionInfoPanel 左側多少距離(這個距離還要疊加
-  // infoPanelShiftBy 本身是否已經因為飯店側欄/對話小匡而往左推,是三種
+  // infoPanelShiftBy 本身是否已經因為飯店側欄/規劃面板而往左推,是三種
   // shiftBy 組合各自的動態值,不適合再展開成更多固定的 shiftBy enum
   // 字面值——那樣可讀性反而更差)。用 style(而非再擴充 shiftBy)是因為
   // 這個位移量是執行期算出來的數字,不是有限枚舉。
