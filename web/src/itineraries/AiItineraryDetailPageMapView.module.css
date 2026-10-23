@@ -285,6 +285,83 @@
   color: var(--color-dark);
 }
 
+/* importBtn——「帶入我的規劃」按鈕(ImportToPlanButton.tsx),放在標題區的摘要下方。pill 形、強調色底,是這個面板唯一的主要
+   動作;停用(行程沒有任何站)時淡化、不可點。importError 是寫入失敗時按鈕下方的訊息。 */
+.importWrap {
+  margin-top: 12px;
+}
+.importBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--color-accent, var(--ios-blue));
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.importBtn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+.importBtn:focus-visible {
+  outline: 2px solid var(--color-accent, var(--ios-blue));
+  outline-offset: 2px;
+}
+.importBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.importConfirm {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--ios-bg);
+  border: 1px solid var(--ios-sep, rgba(0, 0, 0, 0.12));
+  box-shadow: 0 6px 20px -8px rgba(0, 0, 0, 0.3);
+}
+.importConfirmText {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--color-dark);
+}
+.importConfirmActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.importConfirmCancel,
+.importConfirmOk {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.importConfirmCancel {
+  border: 1px solid var(--ios-sep, rgba(0, 0, 0, 0.18));
+  color: var(--color-dark);
+  background: transparent;
+}
+.importConfirmOk {
+  border: none;
+  color: #fff;
+  background: #c0392b;
+}
+.importConfirmCancel:focus-visible,
+.importConfirmOk:focus-visible {
+  outline: 2px solid var(--ios-blue);
+  outline-offset: 2px;
+}
+.importError {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #c0392b;
+}
+
 /* timelineScroll——疊加在 PlanTimelineView 自己的 .scroll 上,補上這個
    面板需要的捲動行為。.panel 本身是 absolute 定位、上下撐滿,.header
    是固定高度的 flex:none,時間軸要佔滿剩餘空間並自己負責捲動,理由

@@ -1208,6 +1208,7 @@ src/components/(planning/ 以外,全站共用):Skeleton(SkeletonBlock/Lines/Regi
       <li><b>輸入匡取代「我要直接說明」。</b>景點候選頁的按鈕與展開說明面板移除,詢問頁開著時直接從下方輸入匡打字回答(提示文字依畫面變動,規則集中在 composerMode.ts)。理由:少一層展開,回答方式與一般對話一致。</li>
       <li><b>候選頁可返回。</b>查詢中與景點候選帶 back 資訊,返回時原地換回當時的城市頁並中止查詢;詢問頁狀態合併為單一 AskPageState,轉移各一次 setState。</li>
       <li><b>詢問匡與輸入列融合改預設啟用。</b>由試做轉正,/ai-plan 手機版 panel 一律掛 .fuse(不再需要網址參數);跨 CSS Module 用元件自己宣告的 data 屬性當掛點(不依賴 DOM 層數),整組包在 @supports selector(:has(*)) 裡,文字氣泡與播放態沒有掛點、不套用。</li>
+      <li><b>行程詳情頁可帶入我的規劃。</b>標題區的「帶入我的規劃」(itineraries/ImportToPlanButton.tsx)把頁面那份 PlanTimeline(天結構、站點、住宿原樣)經 importToPlanDraft.ts 寫進登入後規劃面板的草稿(planning/timeline/storage.ts 的 localStoragePlanTimelineStore,固定 key),成功後前往 /app;草稿已有內容時展開頁內確認列才取代,寫入失敗顯示訊息、不跳轉。理由:行程與規劃面板資料規格一致,直接寫入、不經 LivePlanLayer。</li>
     </ul>
   </div>
 </main>

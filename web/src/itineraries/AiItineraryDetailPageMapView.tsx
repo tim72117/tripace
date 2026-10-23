@@ -23,6 +23,7 @@ import { PlanOverlayLayout } from './PlanOverlayLayout'
 import { PlanMap } from './PlanMap'
 import { FoodSpotPanel } from './FoodSpotPanel'
 import { useFoodSpotDetails } from './useFoodSpotDetails'
+import { ImportToPlanButton } from './ImportToPlanButton'
 import { initialCenterOf } from './initialCenter'
 import { useCityAttractionGlow } from './useCityAttractionGlow'
 import { dayCountOf, stopCountOf } from './catalog'
@@ -377,6 +378,7 @@ export function AiItineraryDetailPageMapView({ itinerary, timeline, dark = false
             <span className={styles.metaItem}><CalendarDays size={13} strokeWidth={2} />{dayCountOf(itinerary)} 天 · {stopCountOf(itinerary)} 站</span>
           </div>
           <p className={styles.summary}>{itinerary.summary}</p>
+          <ImportToPlanButton timeline={timeline} />
         </header>
         <PlanTimelineView
           timeline={timeline}
