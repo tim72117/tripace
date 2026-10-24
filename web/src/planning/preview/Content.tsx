@@ -93,14 +93,14 @@ const DEBUG_TARGET = { lat: 23.0009, lng: 120.2024 }
 // 直接 dispatch 更新 steps 這個 state 陣列,畫面即時反應——這是使用者
 // 明確要求的「結構化前端結構,讓上面的元素可以被新增跟刪除,並反應在
 // 畫面上」「提供接口讓 agent 傳進來的訊息可以異動結構資料」的具體實作:
-// steps state + planActionToInsert/insertAttractionAfter 就是這個
+// steps state + planActionToInsert/addStop 就是這個
 // 「接口」,只要來源送對格式的 action 訊息(不論是這支模擬 WS、之後
 // 真正接上的 LLM 推論,或甚至是手動測試時透過 devtools console 呼叫
 // dispatch),都能驅動同一套畫面更新邏輯,不需要為不同來源另外寫一份
 // 渲染程式碼。
 //
 // add_stop 訊息若帶 placeId(見 PlanAction 型別的完整說明),代表「AI
-// 呼叫了查地點工具」——插入後 insertAttractionAfter 內部用這個 id 呼叫
+// 呼叫了查地點工具」——插入後 addStop 內部用這個 id 呼叫
 // fetchPlanAiPlaceDetailsAny(GET /internal/geo/plan-ai/place-details-any)取得
 // 真正的地點名稱/簡介/照片,這是「把 place_id 串到前端、前端用 id 呼叫
 // 端點顯示景點」這個需求的具體落地,不是後端直接把完整資料內嵌進訊息裡。
@@ -347,7 +347,7 @@ function ContentInner() {
   // handedOver——是否已交接給推論態(單向,見 handover)。宣告在 usePlanSimSocket 之前:交接後要讓模擬停止播放
   // (下方傳給它的 start 帶 !handedOver),否則劇本計時器繼續對已清空的時間軸插入站點與備註(code review 發現)。
   const [handedOver, setHandedOver] = useState(false)
-  const { timeline, nodeStatus, messages, isGenerating, timelineRef, dragStopTime, clearTimeline, clearConversation, latestInsertedStopIdRef, retryStopLookup } = usePlanSimSocket(
+  const { timeline, nodeStatus, messages, isGenerating, timelineRef, setStopTime, clearTimeline, clearConversation, latestInsertedStopIdRef, retryStop } = usePlanSimSocket(
     DEBUG_SAFE_AREA ? false : promptTyped && !handedOver,
     createPlanSimSource,
   )
@@ -769,8 +769,8 @@ function ContentInner() {
         isGenerating={isGenerating}
         emptyStateMessage={emptyStateMessage}
         timelineRef={timelineRef}
-        dragStopTime={dragStopTime}
-        retryStopLookup={retryStopLookup}
+        setStopTime={setStopTime}
+        retryStop={retryStop}
         showAskPage={showAskPage}
         askPageInput={askPageInput}
         handleAskPageDone={handleAskPageDone}

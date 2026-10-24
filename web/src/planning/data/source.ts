@@ -103,7 +103,7 @@ export interface PlanAiDataSource {
     to: { lat: number; lng: number },
     // forceMode——選填,指定交通方式(walking/driving/transit 等)。
     // 2026-10 補進介面:/app 的 TripPlanPage 讓使用者手動切換交通方式
-    // (見該元件 onTransitModeChange 的完整說明),省略時由實作自己決定
+    // (見該元件 onSetStopTransitMode 的完整說明),省略時由實作自己決定
     // ——真後端交給後端判斷,假資料固定回傳同一組。
     forceMode?: string,
   ): Promise<PlanAiTransitEstimateResult>

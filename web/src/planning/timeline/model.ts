@@ -612,7 +612,7 @@ function takeOut(timeline: PlanTimeline, loc: { dayIdx: number; idx: number }): 
 
 // removeNode — 移除一個節點。找不到 id 回 anchor_not_found。
 // 「是否已在淡出動畫中、不要重複移除」不是領域層的事:淡出狀態(removing)在節點狀態表(status.ts),
-// 由呼叫端(TripPlanPage/usePlanSimSocket 的 removeStep)先查狀態表擋下重複移除、動畫結束後才呼叫這個函式真正摘除。
+// 由呼叫端(TripPlanPage/usePlanSimSocket 的 removeStop,即 usePlanTimelineCore.removeStop)先查狀態表擋下重複移除、動畫結束後才呼叫這個函式真正摘除。
 // 若這次移除讓最後一天變空,把那個空的最後一天一併去掉(別留下沒內容的「Day N」標題);事先就空著的天(addDay 加的)不受影響。
 export function removeNode(timeline: PlanTimeline, id: string): RemoveNodeResult {
   const loc = locate(timeline, id)
@@ -646,7 +646,7 @@ export function removeDay(timeline: PlanTimeline, day: number): PlanTimeline {
 }
 
 // AddDayResult——addDay 的結果:成功時帶「實際插入的位置」(day:從 1 起算,dayId:新的一天的 id),呼叫端不必自己再算一次
-// (過去 TripPlanPage 的 addDayToTimeline 自己重算 clamp,與這裡的規則是兩份複製,改一邊會悄悄分歧)。
+// (過去 TripPlanPage 的 addDayToTimeline(現為 usePlanTimelineCore.addDay)自己重算 clamp,與這裡的規則是兩份複製,改一邊會悄悄分歧)。
 export type AddDayResult =
   | { ok: true; timeline: PlanTimeline; day: number; dayId: string }
   | { ok: false; error: InsertAfterError }

@@ -9,6 +9,7 @@ import { LODGING_FALLBACK_NAME, resolveLodging } from './resolved'
 import { useResolvedRefs } from '../data/PlanDataProvider'
 import { nodeStatusOf, type NodeStatusMap } from './status'
 import { DEFAULT_NOTE_CATEGORY, NOTE_STYLES, TRANSIT_MODE_CHOICES } from './presentation'
+import type { PlanOperations } from './operations'
 import styles from './PlanTimelineView.module.css'
 
 // TIME_DRAG_MINUTES_PER_STEP/TIME_DRAG_PX_PER_STEP——anchorDot 拖拉調整
@@ -79,11 +80,11 @@ export function defaultStartMinutesForDrag(bounds: TimeDragBounds): number {
 }
 
 // DragState——目前正在拖拉中的節點與即時預覽值(見 anchorDot 拖拉手勢
-// 的完整說明)。放在這個元件自己的 state 裡,不透過 onDragStopTime 每次
+// 的完整說明)。放在這個元件自己的 state 裡,不透過 onSetStopTime 每次
 // 位移都即時回報給呼叫端——拖拉中途的高頻位移如果每次都呼叫呼叫端的
 // setTimeline(進而觸發整個時間軸重新計算 toRenderList、存檔到
 // localStorage),會造成不必要的效能負擔與存檔頻率;真正的提交只在
-// pointer up 那一刻呼叫一次 onDragStopTime,過程中的即時顯示純粹是
+// pointer up 那一刻呼叫一次 onSetStopTime,過程中的即時顯示純粹是
 //這個元件內部的 state,不影響外部的 timeline 資料。
 interface DragState {
   stopId: string
@@ -145,7 +146,7 @@ const TRANSIT_MODE_ICONS: Record<string, LucideIcon> = {
   巴士: Bus,
 }
 
-// TRANSIT_MODE_OPTIONS——交通方式選單(onTransitModeChange,使用者明確
+// TRANSIT_MODE_OPTIONS——交通方式選單(onSetStopTransitMode,使用者明確
 // 要求「交通時間的膠囊可以選擇交通方式」)的四個選項,對齊後端
 // geo_plan_ai.go estimateTransitMode/metersPerMinuteFor/iconForTransitMode
 // 認得的字串值——'大眾運輸' 故意不列入這份清單:它在後端是跟 '公車' 完全
@@ -251,11 +252,11 @@ export interface PlanTimelineViewProps {
   // (planning/preview/Content.tsx,使用者明確要求不要修改
   // 那份檔案行為,見 TripPlanPage.tsx 檔頭的完整說明)共用——展示頁不
   // 傳這個 prop 就不會出現刪除按鈕,維持原本的行為不受影響。正式功能頁
-  // (TripPlanPage.tsx)原本只能透過 AI 對話下指令間接呼叫 removeStep
+  // (TripPlanPage.tsx)原本只能透過 AI 對話下指令間接呼叫 removeStop
   // (remove_attraction 工具,見 planning/conversation/tools.ts 的完整說明)移除
   // 景點,使用者明確要求「也要可以從介面上刪除」,這裡補上直接的 UI
   // 入口,呼叫同一條底層路徑。
-  onRemoveStop?: (id: string) => void
+  onRemoveStop?: (...args: Parameters<PlanOperations['removeStop']>) => void
   // onRetryStop——選填:地點資料查詢失敗的站點(節點狀態表的 failed——見 status.ts,或重整後有 placeId 沒座標——見
   // 該欄位的完整說明)上顯示一顆「重試」按鈕,點擊時呼叫並傳入節點 id。
   //
@@ -267,8 +268,8 @@ export interface PlanTimelineViewProps {
   //
   // 選填的理由同 onRemoveStop:不傳就不會出現按鈕(例如唯讀的精選行程
   // 頁、或展示頁的播放態,那些情境沒有可重試的查詢)。
-  onRetryStop?: (id: string) => void
-  // getStopTimeDragBounds/onDragStopTime——anchorDot(時間軸小圓點)
+  onRetryStop?: (...args: Parameters<PlanOperations['retryStop']>) => void
+  // getStopTimeDragBounds/onSetStopTime——anchorDot(時間軸小圓點)
   // 拖拉調整時間的入口(使用者明確要求「時間軸的小圓點可以拖拉,上下
   // 拉動時調整時間,半小時為刻度」)。兩者都選填且必須同時存在才會啟用
   // 拖拉(見下方 handlePointerDown 的判斷)——跟 onRemoveStop 一樣的
@@ -277,12 +278,13 @@ export interface PlanTimelineViewProps {
   //
   // 拆成兩個函式而非一個「拖拉開始時」的單一 callback:getStopTimeDragBounds
   // 是同步的純查詢(不需要觸發任何狀態更新,拖拉手勢開始的當下就要立刻
-  // 拿到範圍才能在第一次 pointermove 就正確 clamp),onDragStopTime 是
+  // 拿到範圍才能在第一次 pointermove 就正確 clamp),onSetStopTime 是
   // 拖拉結束時的提交動作——兩者的呼叫時機跟性質完全不同,合併成一個
   // callback 反而要呼叫端自己判斷「這次呼叫是查詢還是提交」,不如拆開
   // 清楚。
   getStopTimeDragBounds?: (stopId: string) => TimeDragBounds
-  onDragStopTime?: (stopId: string, newTime: string) => void
+  // 參數取自 PlanOperations.setStopTime(見 operations.ts);回傳值(是否寫入成功)視圖不需要,所以是 void。
+  onSetStopTime?: (...args: Parameters<PlanOperations['setStopTime']>) => void
   // onHoverStop——滑鼠移入/移出站點卡時回報是哪一站(移出時傳 null),
   // 2026-10 新增:使用者明確要求「滑鼠移動到介紹卡時,地圖圓加強顯示」。
   // 選填——/ai-plan 展示頁等沒有地圖的使用情境不需要這個回報。
@@ -293,7 +295,7 @@ export interface PlanTimelineViewProps {
   // 選填,理由同 onHoverStop——/ai-plan 展示頁等沒有地圖的使用情境不
   // 需要這個回報。
   onHoverTransit?: (pair: { fromId: string; toId: string } | null) => void
-  // onTransitModeChange——使用者點開交通膠囊的選單、選了另一種交通方式
+  // onSetStopTransitMode——使用者點開交通膠囊的選單、選了另一種交通方式
   // 時觸發(2026-10 新增,使用者明確要求「交通時間的膠囊可以選擇交通
   // 方式」)。帶這段交通「到達站」的 id(stopId,對齊 TransitInfo 掛在
   // 到達站自己身上的既有設計,見該介面的完整說明)與使用者選定的新
@@ -307,7 +309,7 @@ export interface PlanTimelineViewProps {
   // (TripPlanPage.tsx)接了 fetchPlanAiTransitEstimate 的真實
   // 後端,才提供這個 callback。重新查詢、更新 transitFromPrev 的實際
   // 邏輯交給呼叫端決定,這個元件只負責「使用者選了哪一個」這個通知。
-  onTransitModeChange?: (stopId: string, mode: string) => void
+  onSetStopTransitMode?: (stopId: string, mode: string) => void
   // renderStopCard——選填:替換掉這個元件預設的 .stopCard 渲染(縮圖/
   // 名稱/描述/tags/刪除按鈕那一整塊),改由呼叫端提供的函式決定要畫
   // 什麼(使用者明確要求「讓時間軸元件的地點卡類似用插槽的方式讓外部
@@ -337,7 +339,7 @@ export interface PlanTimelineViewProps {
   // itineraries 展示頁,不影響 /app 等正式規劃頁面)。
   // 跟 renderStopCard 不同,這個插槽不是「替換掉」anchorDot 的渲染——
   // anchorDot 本身的拖拉手勢/進場動畫/選取狀態樣式(見上方
-  // getStopTimeDragBounds/onDragStopTime 的完整說明)仍由這個元件
+  // getStopTimeDragBounds/onSetStopTime 的完整說明)仍由這個元件
   // 自己管理,呼叫端只負責提供「要疊在圓點正中央的視覺內容」(通常是
   // 一個小 icon),回傳 null 時這個節點的圓點維持原本的空心圓點樣式。
   // 未傳這個 prop 時行為與新增這個插槽之前完全相同。
@@ -441,10 +443,10 @@ export function PlanTimelineView({
   onRemoveStop,
   onRetryStop,
   getStopTimeDragBounds,
-  onDragStopTime,
+  onSetStopTime,
   onHoverStop,
   onHoverTransit,
-  onTransitModeChange,
+  onSetStopTransitMode,
   renderStopCard,
   hoveredStopIdForCard,
   renderAnchorIcon,
@@ -500,7 +502,7 @@ export function PlanTimelineView({
   const [dragState, setDragState] = useState<DragState | null>(null)
 
   // openTransitMenuStopId——目前正展開交通方式選單的那段交通膠囊所屬的
-  // stopId(見 onTransitModeChange prop 的完整說明:到達站的 id),null
+  // stopId(見 onSetStopTransitMode prop 的完整說明:到達站的 id),null
   // 代表沒有任何選單展開。同一時間只會有一個選單展開——點開其中一個會
   // 直接覆蓋這個值,等同先關掉前一個(不需要額外邏輯處理「兩個選單同時
   // 展開」這種情況,直接用單一值自然互斥)。
@@ -562,9 +564,9 @@ export function PlanTimelineView({
     //     代表要把這個值定下來,即使沒有拖出任何位移也要提交,否則這個
     //     站點會永遠停在「沒有時間」(使用者實際回報的症狀)。
     if (state.previewMinutes !== state.startMinutes || state.hadNoInitialTime) {
-      onDragStopTime?.(state.stopId, minutesToTime(state.previewMinutes))
+      onSetStopTime?.(state.stopId, minutesToTime(state.previewMinutes))
     }
-  }, [handlePointerMove, onDragStopTime])
+  }, [handlePointerMove, onSetStopTime])
 
   // handlePointerDown——掛在 anchorDot 本身的 onPointerDown。用原生
   // document 層級的 pointermove/pointerup 監聽(而非 React 合成事件的
@@ -577,7 +579,7 @@ export function PlanTimelineView({
   // 捲動/選取文字手勢搶走(這張卡片所在的 .scroll 容器本身是可以捲動
   // 的,拖拉圓點這個動作不該連帶觸發頁面捲動)。
   const handlePointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>, stopId: string, currentTime: string | undefined) => {
-    if (!getStopTimeDragBounds || !onDragStopTime) return
+    if (!getStopTimeDragBounds || !onSetStopTime) return
     e.preventDefault()
     e.stopPropagation()
     const bounds = getStopTimeDragBounds(stopId)
@@ -606,7 +608,7 @@ export function PlanTimelineView({
     document.addEventListener('pointermove', handlePointerMove)
     document.addEventListener('pointerup', handlePointerUp)
     document.addEventListener('pointercancel', handlePointerUp)
-  }, [getStopTimeDragBounds, onDragStopTime, handlePointerMove, handlePointerUp])
+  }, [getStopTimeDragBounds, onSetStopTime, handlePointerMove, handlePointerUp])
 
   const hasMessages = (messages?.length ?? 0) > 0
 
@@ -749,14 +751,14 @@ export function PlanTimelineView({
                       <div className={styles.transitAxis}>
                         <div className={styles.transitDashAbove} />
                         <div className={styles.transitDashBelow} />
-                        {/* canPickMode——只有呼叫端提供 onTransitModeChange
+                        {/* canPickMode——只有呼叫端提供 onSetStopTransitMode
                             且這段交通資訊已經查詢完成(非 loading)才可以
                             點開選單(見該 prop 的完整說明:/ai-plan 展示頁
                             沒有提供這個 callback,膠囊維持原本純展示)。
                             loading 中不可點——這時 transit.mode 還沒有
                             確定值,選單裡「目前選中」的高亮也無從判斷。 */}
                         {(() => {
-                          const canPickMode = !!onTransitModeChange && !transit.loading
+                          const canPickMode = !!onSetStopTransitMode && !transit.loading
                           const menuOpen = openTransitMenuStopId === p.id
                           return (
                             <div
@@ -850,7 +852,7 @@ export function PlanTimelineView({
                                       className={`${styles.transitModeOption} ${transit.mode === mode ? styles.transitModeOptionActive : ''}`}
                                       onClick={() => {
                                         setOpenTransitMenuStopId(null)
-                                        onTransitModeChange?.(p.id, mode)
+                                        onSetStopTransitMode?.(p.id, mode)
                                       }}
                                     >
                                       <OptionIcon size={14} strokeWidth={2.2} aria-hidden />
@@ -873,7 +875,7 @@ export function PlanTimelineView({
                     // isDraggingThis——這個節點目前是否正在被拖拉中(見
                     // DragState 的完整說明)。顯示的時間用拖拉中的即時
                     // 預覽值,不是 p.time 本身——p.time 要等 pointer up
-                    // 真正提交(onDragStopTime)、父層的 timeline 更新後
+                    // 真正提交(onSetStopTime)、父層的 timeline 更新後
                     // 才會變,拖拉過程中(放開前)這裡顯示的是這個元件
                     // 自己 state 裡的暫時值。
                     const isDraggingThis = dragState?.stopId === p.id
@@ -907,7 +909,7 @@ export function PlanTimelineView({
                               之間出現斷裂。 */}
                           {(!isLastRow || isThinking) && <div className={styles.axisLineBelow} />}
                           {/* onPointerDown 只在 getStopTimeDragBounds/
-                              onDragStopTime 都有傳入時才會真的啟動拖拉
+                              onSetStopTime 都有傳入時才會真的啟動拖拉
                               (見 handlePointerDown 開頭的判斷),未傳入
                               時這裡仍然安全地掛著處理器、但函式內部立刻
                               return,不影響既有(/ai-plan 展示頁)的
@@ -917,7 +919,7 @@ export function PlanTimelineView({
                               能拖拉時出現(見 .anchorDotDraggable 的
                               完整說明)。 */}
                           <div
-                            className={`${styles.anchorDot} ${mountedClass} ${justMounted ? styles.anchorPop : ''} ${getStopTimeDragBounds && onDragStopTime ? styles.anchorDotDraggable : ''} ${isDraggingThis ? styles.anchorDotDragging : ''} ${anchorDotSize != null ? styles.anchorDotWithIcon : ''}`}
+                            className={`${styles.anchorDot} ${mountedClass} ${justMounted ? styles.anchorPop : ''} ${getStopTimeDragBounds && onSetStopTime ? styles.anchorDotDraggable : ''} ${isDraggingThis ? styles.anchorDotDragging : ''} ${anchorDotSize != null ? styles.anchorDotWithIcon : ''}`}
                             // style 的 translateY——見 dragTranslateY 的
                             // 完整說明,只在這個節點正在被拖拉時套用,其餘
                             // 時候維持 undefined(不覆寫 CSS 既有的

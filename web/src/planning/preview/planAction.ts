@@ -81,7 +81,7 @@ export interface PlanAction {
   // attractions、places、farFromNext——這一站是「主題點」或候選卡時底下包含的景點,只存 id,
   // 直接對齊 timeline/model.ts PlanNodeData.attractions/places/farFromNext 的完整說明:
   // 名稱、座標、摘要、照片不在劇本裡,執行時經資料存取層用 id 查(模擬態是 planAiFakeDataSource)。
-  // planActionToInsert 原樣轉傳給 insertAttractionAfter 的 data,不做任何轉換。
+  // planActionToInsert 原樣轉傳給 addStop 的 data,不做任何轉換。
   attractions?: string[]
   places?: string[]
   farFromNext?: string[]
@@ -111,10 +111,10 @@ export interface PlanAction {
   // 的(見 planning/preview/Content 下方 removeWumiao 測試按鈕的完整說明)。
   // add_note 訊息(見下方 ws.onmessage 的完整說明)重用這個欄位表達
   // 「要把備註寫在哪個既有節點身上」,語意上等同 conversation/tools.ts
-  // AttractionStepsCtx.addNote 的 anchorId 參數。
+  // AttractionStepsCtx.setStopNote 的 anchorId 參數。
   //
   // 2026-09:找不到對應節點時的行為改成跟 onagent 路徑(add_attraction
-  // 的 anchorId)完全一致——直接讓 insertAttractionAfter 回傳
+  // 的 anchorId)完全一致——直接讓 addStop 回傳
   // anchor_not_found 錯誤,由呼叫端(見 usePlanSimSocket 的 ws.onmessage)
   // 拋出例外。使用者明確要求「模擬的部分也完全走這個路徑,不要有
   // 例外」:原本這裡有一套「找不到就退回 append 到最後一筆」的寬容

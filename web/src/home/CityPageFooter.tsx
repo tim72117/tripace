@@ -29,7 +29,7 @@ export function CityPageFooter({ accentColor }: { accentColor: AccentColorProp }
       </div>
       <a
         className={styles.poweredby}
-        href="https://onagent.shuttle.tools"
+        href="https://onagents.dev"
         target="_blank"
         rel="noreferrer"
       >

@@ -113,9 +113,9 @@ describe('guardCtx:過期的 ctx 工具呼叫失敗且不改時間軸', () => {
     })
     const { ctx: rawCtx } = createPlanAiCtx({
       getTimeline: () => timeline,
-      insertAttraction: insert,
-      addNote: vi.fn(),
-      removeStep: vi.fn(),
+      addStop: insert,
+      setStopNote: vi.fn(),
+      removeStop: vi.fn(),
       addDay: vi.fn(),
       moveDay: vi.fn(),
       setLodging: vi.fn(),

@@ -238,7 +238,7 @@ export function HomePage() {
         </div>
         <a
           className="kyoto-footer-poweredby"
-          href="https://onagent.shuttle.tools"
+          href="https://onagents.dev"
           target="_blank"
           rel="noreferrer"
         >

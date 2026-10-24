@@ -989,7 +989,7 @@ export interface GeoPlanAiTransitEstimateResult {
 // handlePublicGeoTransitEstimate 的完整說明)——2026-09 使用者明確要求
 // 「交通預估時間不要讓 AI 推論產生,而是建立兩個點時,前端自己將兩點
 // 送到後端,由後端預估時間」,這支函式就是那個「前端自己送」的落地:
-// 呼叫端(planning/preview/Content.tsx insertAttractionAfter)在插入 stop
+// 呼叫端(planning/preview/Content.tsx addStop)在插入 stop
 // 節點且前面已有另一個 stop 節點時主動呼叫,不是 LLM 或任何推論路徑
 // 觸發的。mode 是選填參數,省略時由後端依直線距離自動決定一個預設值。
 // 需登入——理由與 cfg.token 的要求同 fetchPlanAiPlaceSearch 的完整說明

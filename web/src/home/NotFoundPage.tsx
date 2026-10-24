@@ -76,7 +76,7 @@ export function NotFoundPage() {
         </div>
         <a
           className="legal-footer-poweredby"
-          href="https://onagent.shuttle.tools"
+          href="https://onagents.dev"
           target="_blank"
           rel="noreferrer"
         >

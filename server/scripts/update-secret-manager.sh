@@ -524,22 +524,22 @@ fi
 #
 #    這個 app 的 URL 2026-09 起不再有獨立的 VITE_PLAN_AI_ONAGENT_URL——
 #    共用上面 tripace app 的 VITE_ONAGENT_URL(deploy-cloudrun.yml 同一個
-#    --build-arg,固定值 https://onagent.shuttle.tools,不是機密,不進
+#    --build-arg,固定值 https://onagents.dev,不是機密,不進
 #    Secret Manager),這裡不處理。
 #
 #    只支援貼上既有值(理由同上方 VITE_ONAGENT_APP_KEY 段落——onagent
 #    平台的 apiKey 只能用 onagent CLI 另外核發,這支腳本沒有呼叫 onagent
 #    CLI 的能力)——要換 key 時,先對正式平台跑 `onagent key issue
-#    plan-ai-timeline -api https://onagent.shuttle.tools` 拿到明文,重發
+#    plan-ai-timeline -api https://onagents.dev` 拿到明文,重發
 #    會讓舊 key 立刻失效,再回來這裡貼上。同時記得到 onagent 平台確認
 #    plan-ai-timeline app 的 Allowed origin 已設為正式站網域(`onagent app
 #    origin set plan-ai-timeline <正式站網域> -api
-#    https://onagent.shuttle.tools`)——未設定或設成別的網域會讓所有
+#    https://onagents.dev`)——未設定或設成別的網域會讓所有
 #    WebSocket 連線 fail-closed,即使 apiKey 正確也連不上。只在
 #    -plan-ai-onagent 或不帶參數(全部處理)時執行。
 # -----------------------------------------------------------------------------
 if [[ "${DO_PLAN_AI_ONAGENT}" == "1" ]]; then
-  upsert_secret "VITE_PLAN_AI_ONAGENT_APP_KEY" "VITE_PLAN_AI_ONAGENT_APP_KEY(onagent plan-ai-timeline app 的 apiKey,先跑 onagent key issue plan-ai-timeline -api https://onagent.shuttle.tools 取得)"
+  upsert_secret "VITE_PLAN_AI_ONAGENT_APP_KEY" "VITE_PLAN_AI_ONAGENT_APP_KEY(onagent plan-ai-timeline app 的 apiKey,先跑 onagent key issue plan-ai-timeline -api https://onagents.dev 取得)"
   echo
 fi
 

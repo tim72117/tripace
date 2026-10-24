@@ -3,7 +3,7 @@ package api
 // geo_outline_public_transit_estimate_test.go 測
 // GET /public/geo/transit-estimate(handlePublicGeoTransitEstimate)——
 // 免登入版、兩點間交通方式/時間/距離的模擬預估,供 /plan-ai 的
-// insertAttractionAfter 在插入第二個站點後自動查詢用(見該 handler 的
+// addStop 在插入第二個站點後自動查詢用(見該 handler 的
 // 完整說明)。
 
 import (

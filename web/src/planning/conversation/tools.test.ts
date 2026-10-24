@@ -1,6 +1,6 @@
 // tools.test.ts —目前只針對 remove_attraction 補測試:
 // parseRemoveAttractionArgs 的參數驗證,以及 removeAttraction 這個
-// ClientTool 在 ctx.removeStep 回傳 ok:false(id 不存在)時,是否如預期
+// ClientTool 在 ctx.removeStop 回傳 ok:false(id 不存在)時,是否如預期
 // throw 出人類可讀的錯誤訊息,而不是靜默吞掉。其餘既有工具
 // (search_attraction/add_attraction/add_note/list_itinerary)目前沒有
 // 既有測試檔案可比照,這裡不額外補——範圍限定在這次新增的 remove_attraction。
@@ -11,9 +11,9 @@ import { STALE_READ_MESSAGE, structureSignature, addAttraction, addDayTool, list
 function makeCtx(overrides: Partial<AttractionStepsCtx> = {}): AttractionStepsCtx {
   return {
     getTimeline: () => createEmptyTimeline(),
-    insertAttractionAfter: vi.fn(),
-    addNote: vi.fn(),
-    removeStep: vi.fn(async () => ({ ok: true as const })),
+    addStop: vi.fn(),
+    setStopNote: vi.fn(),
+    removeStop: vi.fn(async () => ({ ok: true as const })),
     addDay: vi.fn(async () => ({ ok: true as const, day: 1, dayCount: 1 })),
     moveDay: vi.fn(async () => ({ ok: true as const, dayCount: 1 })),
     setLodging: vi.fn(async () => ({ ok: true as const, lodgingId: 'l1', created: true, removed: false, days: [1], dayCount: 1 })),
@@ -23,24 +23,24 @@ function makeCtx(overrides: Partial<AttractionStepsCtx> = {}): AttractionStepsCt
 }
 
 describe('removeAttraction', () => {
-  it('缺少 id 時直接 throw,不呼叫 ctx.removeStep', async () => {
-    const removeStep = vi.fn()
-    const ctx = makeCtx({ removeStep })
+  it('缺少 id 時直接 throw,不呼叫 ctx.removeStop', async () => {
+    const removeStop = vi.fn()
+    const ctx = makeCtx({ removeStop })
     await expect(removeAttraction.handle({}, ctx)).rejects.toThrow('缺少 id')
-    expect(removeStep).not.toHaveBeenCalled()
+    expect(removeStop).not.toHaveBeenCalled()
   })
 
-  it('id 存在時呼叫 ctx.removeStep 並立即回傳成功(不等待動畫)', async () => {
-    const removeStep = vi.fn(async () => ({ ok: true as const }))
-    const ctx = makeCtx({ removeStep })
+  it('id 存在時呼叫 ctx.removeStop 並立即回傳成功(不等待動畫)', async () => {
+    const removeStop = vi.fn(async () => ({ ok: true as const }))
+    const ctx = makeCtx({ removeStop })
     const result = await removeAttraction.handle({ id: 'n2' }, ctx)
-    expect(removeStep).toHaveBeenCalledWith('n2')
+    expect(removeStop).toHaveBeenCalledWith('n2')
     expect(result).toEqual({ id: 'n2', removed: true })
   })
 
-  it('ctx.removeStep 回傳 ok:false(id 不存在)時,把錯誤訊息原樣 throw 給呼叫端', async () => {
+  it('ctx.removeStop 回傳 ok:false(id 不存在)時,把錯誤訊息原樣 throw 給呼叫端', async () => {
     const ctx = makeCtx({
-      removeStep: vi.fn(async () => ({
+      removeStop: vi.fn(async () => ({
         ok: false as const,
         error: { code: 'anchor_not_found' as const, message: '找不到 id 為 "not-exist" 的節點,無法移除。' },
       })),
@@ -49,10 +49,10 @@ describe('removeAttraction', () => {
   })
 
   it('raw args 裡 id 不是 string 時視為缺漏(空字串),一律 throw', async () => {
-    const removeStep = vi.fn()
-    const ctx = makeCtx({ removeStep })
+    const removeStop = vi.fn()
+    const ctx = makeCtx({ removeStop })
     await expect(removeAttraction.handle({ id: 123 }, ctx)).rejects.toThrow('缺少 id')
-    expect(removeStep).not.toHaveBeenCalled()
+    expect(removeStop).not.toHaveBeenCalled()
   })
 })
 
@@ -85,13 +85,13 @@ describe('addDayTool / moveDayTool / add_attraction 的 day', () => {
     await expect(moveDayTool.handle({ fromDay: 5, toDay: 1 }, ctx)).rejects.toThrow('目前時間軸有 2 天')
   })
 
-  it('add_attraction 的 day 參數傳進 insertAttractionAfter,不合法就省略', async () => {
-    const insertAttractionAfter = vi.fn(async () => ({ ok: true as const, id: 'x' }))
-    const ctx = makeCtx({ insertAttractionAfter })
+  it('add_attraction 的 day 參數傳進 addStop,不合法就省略', async () => {
+    const addStop = vi.fn(async () => ({ ok: true as const, id: 'x' }))
+    const ctx = makeCtx({ addStop })
     await addAttraction.handle({ placeId: 'p', anchorId: null, day: 2 }, ctx)
-    expect(insertAttractionAfter).toHaveBeenLastCalledWith(null, expect.objectContaining({ day: 2, placeId: 'p' }))
+    expect(addStop).toHaveBeenLastCalledWith(null, expect.objectContaining({ day: 2, placeId: 'p' }))
     await addAttraction.handle({ placeId: 'p', day: 0 }, ctx)
-    expect(insertAttractionAfter).toHaveBeenLastCalledWith(null, expect.objectContaining({ day: undefined }))
+    expect(addStop).toHaveBeenLastCalledWith(null, expect.objectContaining({ day: undefined }))
   })
 
   it('list_itinerary 回傳依天分組的結構:每天一組 { day, steps },空的天也出現(steps 為空陣列)', async () => {

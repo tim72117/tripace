@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from 'react'
 // 取代容易踩坑的「setState(updater) 內把結果賦值給外部變數、setState
 // 呼叫完緊接著讀那個變數」模式。
 //
-// 背景(真實 bug,見 planning/preview/Content.tsx 的 insertAttractionAfter 早期
+// 背景(真實 bug,見 planning/preview/Content.tsx 的 addStop 早期
 // 版本):setState(updater) 呼叫本身雖然同步返回,但傳入的 updater 函式
 // **不保證**在該次呼叫當下就被執行——React 18 對「非 React 事件系統
 // 觸發的 setState」(例如原生 WebSocket onmessage、setTimeout、第三方

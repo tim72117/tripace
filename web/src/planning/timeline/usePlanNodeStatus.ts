@@ -15,7 +15,7 @@ import {
 //
 // 為什麼 state 與 ref 並存:setStatus 常在非 React 事件(WebSocket onmessage、setTimeout、fetch 的 then)裡
 // 呼叫,而且「重複移除要擋下」這類判斷需要「現在就拿到最新值」——所以寫入先改 ref(同步、一定是最新),
-// 再 setState 通知畫面;statusRef 讓呼叫端同步讀取(例如 removeStep 檢查節點是否已在 removing)。
+// 再 setState 通知畫面;statusRef 讓呼叫端同步讀取(例如 removeStop 檢查節點是否已在 removing)。
 //
 // 修剪:timeline 變動時,把已經不在時間軸裡的節點的狀態丟掉(節點被移除、時間軸被清空或被另一份實例的內容換掉)。
 // 修剪讀的是 timelineRef(useSyncedState 的 ref,同步寫入、永遠是最新),不是 render 當下的 timeline 參數:

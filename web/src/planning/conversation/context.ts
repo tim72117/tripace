@@ -23,17 +23,10 @@ import {
   STALE_READ_MESSAGE,
   structureSignature,
   type AttractionStepsCtx,
+  type PlanAiOperationName,
 } from './tools'
-import {
-  hasNode,
-  removeNode,
-  type InsertAfterResult,
-  type LodgingResult,
-  type MoveDayResult,
-  type PlanNodeData,
-  type PlanTimeline,
-  type SetLodgingByDaysResult,
-} from '../timeline/model'
+import { hasNode, removeNode, type PlanTimeline } from '../timeline/model'
+import type { PlanOperations } from '../timeline/operations'
 
 export const MAX_DAY_JUMP = 5
 
@@ -43,17 +36,11 @@ export function dayLimitMessage(label: string, day: number | undefined, dayCount
   return `${label}=${day} 超過上限:目前時間軸有 ${dayCount} 天,一次最多只能往後跳 ${MAX_DAY_JUMP} 天(目標天不得超過第 ${dayCount + MAX_DAY_JUMP} 天)。請改用 ${dayCount + 1} 到 ${dayCount + MAX_DAY_JUMP} 之間的天數,或先用 add_day 逐步補天。`
 }
 
-export interface PlanAiCtxDeps {
+// PlanAiCtxDeps——底層時間軸操作直接 Pick 自 PlanOperations(名稱與簽章都與 usePlanTimelineCore 一致,呼叫端可原樣傳
+// core 的方法);ctx(AttractionStepsCtx)對外用同名方法包一層把關,簽章較寬的理由見 tools.ts AttractionStepsCtx 上方說明。
+export interface PlanAiCtxDeps extends Pick<PlanOperations, PlanAiOperationName> {
   // getTimeline——讀「當下最新」的時間軸(同步反映剛 commit 的內容)。
   getTimeline: () => PlanTimeline
-  insertAttraction: (anchorId: string | null, newId: string, data: PlanNodeData) => InsertAfterResult
-  addNote: (anchorId: string, text: string, category: string | undefined) => InsertAfterResult
-  // removeStep——回傳 true 代表這次真的觸發移除(見 TripPlanPage removeStep)。
-  removeStep: (id: string) => boolean
-  addDay: (atDay: number | undefined) => { ok: true; day: number; dayCount: number } | { ok: false; error: { message: string } }
-  moveDay: (fromDay: number, toDay: number) => MoveDayResult & { dayCount: number }
-  setLodging: (args: { placeId: string; days: number[]; name?: string; lodgingId?: string }) => SetLodgingByDaysResult
-  removeLodging: (lodgingId: string) => LodgingResult
   // newId——新節點 id 產生器,測試可注入固定值。
   newId?: () => string
 }
@@ -100,25 +87,25 @@ export function createPlanAiCtx(deps: PlanAiCtxDeps): PlanAiCtx {
       lastReadSignature = currentSignature()
       return timeline
     },
-    insertAttractionAfter: async (anchorId, step) => {
+    addStop: async (anchorId, step) => {
       ensureFreshRead()
       assertDayLimit('day', step.day)
-      const result = deps.insertAttraction(anchorId, newId(), step)
+      const result = deps.addStop(anchorId, newId(), step)
       if (!result.ok) return { ok: false, error: result.error }
       markWritten()
       return { ok: true, id: result.insertedId }
     },
-    addNote: async (anchorId, text, category) => {
+    setStopNote: async (anchorId, text, category) => {
       ensureFreshRead()
-      const result = deps.addNote(anchorId, text, category)
+      const result = deps.setStopNote(anchorId, text, category)
       if (!result.ok) return { ok: false, error: result.error }
       markWritten()
       return { ok: true, id: result.insertedId }
     },
-    // removeStep——見 AttractionStepsCtx.removeStep:底層回傳 boolean(id 不存在或已在移除中為 false)。
-    removeStep: async (id) => {
+    // removeStop——見 AttractionStepsCtx.removeStop:底層回傳 boolean(id 不存在或已在移除中為 false)。
+    removeStop: async (id) => {
       ensureFreshRead()
-      if (!deps.removeStep(id)) {
+      if (!deps.removeStop(id)) {
         return {
           ok: false,
           error: { code: 'anchor_not_found', message: `找不到 id 為 "${id}" 的節點,無法移除(可能不存在,或正在移除中)。` },

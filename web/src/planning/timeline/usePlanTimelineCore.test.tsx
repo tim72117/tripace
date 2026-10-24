@@ -34,10 +34,10 @@ describe('基本操作(無 store,純記憶體)', () => {
   it('插入節點後時間軸依序反映出來', () => {
     const { result } = renderHook(() => usePlanTimelineCore())
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', name: '赤崁樓' })
+      result.current.addStop(null, 'a', { type: 'stop', name: '赤崁樓' })
     })
     act(() => {
-      result.current.insertAttractionAfter('a', 'b', { type: 'stop', name: '安平古堡' })
+      result.current.addStop('a', 'b', { type: 'stop', name: '安平古堡' })
     })
     expect(namesOf(result.current.timeline)).toEqual(['赤崁樓', '安平古堡'])
   })
@@ -48,22 +48,22 @@ describe('基本操作(無 store,純記憶體)', () => {
     // 初值是空的,不會讀到使用者的草稿
     expect(listNodes(result.current.timeline)).toHaveLength(0)
     act(() => {
-      result.current.insertAttractionAfter(null, 'sim', { type: 'stop', name: '模擬腳本的站' })
+      result.current.addStop(null, 'sim', { type: 'stop', name: '模擬腳本的站' })
     })
     expect(namesOf(result.current.timeline)).toEqual(['模擬腳本的站'])
     expect(namesOf(loadTimeline())).toEqual(['使用者排的'])
   })
 
-  it('setNoteForStop 把備註寫在既有節點上,找不到節點回 anchor_not_found', () => {
+  it('setStopNote 把備註寫在既有節點上,找不到節點回 anchor_not_found', () => {
     const { result } = renderHook(() => usePlanTimelineCore())
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', name: '赤崁樓' })
+      result.current.addStop(null, 'a', { type: 'stop', name: '赤崁樓' })
     })
     let ok = false
-    let missing: ReturnType<typeof result.current.setNoteForStop> | undefined
+    let missing: ReturnType<typeof result.current.setStopNote> | undefined
     act(() => {
-      ok = result.current.setNoteForStop('a', '傍晚人少', 'tip').ok
-      missing = result.current.setNoteForStop('不存在', 'x', undefined)
+      ok = result.current.setStopNote('a', '傍晚人少', 'tip').ok
+      missing = result.current.setStopNote('不存在', 'x', undefined)
     })
     expect(ok).toBe(true)
     expect(getNode(result.current.timeline, 'a')?.note).toEqual({ text: '傍晚人少', category: 'tip' })
@@ -74,7 +74,7 @@ describe('基本操作(無 store,純記憶體)', () => {
   it('clearTimeline 清空所有節點', () => {
     const { result } = renderHook(() => usePlanTimelineCore())
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', name: '赤崁樓' })
+      result.current.addStop(null, 'a', { type: 'stop', name: '赤崁樓' })
     })
     act(() => {
       result.current.clearTimeline()
@@ -82,19 +82,19 @@ describe('基本操作(無 store,純記憶體)', () => {
     expect(listNodes(result.current.timeline)).toHaveLength(0)
   })
 
-  it('removeNodeNow 同步摘除節點,找不到回 ok:false 且 state 不變', () => {
+  it('removeStopNow 同步摘除節點,找不到回 ok:false 且 state 不變', () => {
     const { result } = renderHook(() => usePlanTimelineCore())
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', name: '赤崁樓' })
-      result.current.insertAttractionAfter('a', 'b', { type: 'stop', name: '安平古堡' })
+      result.current.addStop(null, 'a', { type: 'stop', name: '赤崁樓' })
+      result.current.addStop('a', 'b', { type: 'stop', name: '安平古堡' })
     })
     let removed = false
     let missing = true
     act(() => {
-      removed = result.current.removeNodeNow('a').ok
+      removed = result.current.removeStopNow('a').ok
       // 同一 tick 立刻讀得到
       expect(namesOf(result.current.timelineRef.current)).toEqual(['安平古堡'])
-      missing = result.current.removeNodeNow('不存在').ok
+      missing = result.current.removeStopNow('不存在').ok
     })
     expect(removed).toBe(true)
     expect(missing).toBe(false)
@@ -111,9 +111,9 @@ describe('onStopInserted 契約', () => {
       seen.push(namesOf(result.current.timelineRef.current))
     })
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', name: '赤崁樓', placeId: 'p1' })
+      result.current.addStop(null, 'a', { type: 'stop', name: '赤崁樓', placeId: 'p1' })
       // 骨架:沒 placeId、沒座標也觸發,過濾由呼叫端負責
-      result.current.insertAttractionAfter('a', 'b', { type: 'stop' })
+      result.current.addStop('a', 'b', { type: 'stop' })
     })
     expect(onStopInserted).toHaveBeenCalledTimes(2)
     expect(onStopInserted).toHaveBeenNthCalledWith(1, 'a', expect.objectContaining({ name: '赤崁樓' }))
@@ -127,7 +127,7 @@ describe('onStopInserted 契約', () => {
     const { result } = renderHook(() => usePlanTimelineCore({ onStopInserted }))
     let ok = true
     act(() => {
-      ok = result.current.insertAttractionAfter('不存在的錨點', 'a', { type: 'stop', name: 'X' }).ok
+      ok = result.current.addStop('不存在的錨點', 'a', { type: 'stop', name: 'X' }).ok
     })
     expect(ok).toBe(false)
     expect(onStopInserted).not.toHaveBeenCalled()
@@ -162,7 +162,7 @@ describe('注入 localStorage store', () => {
     const { result } = renderHook(() => usePlanTimelineCore({ store: localStoragePlanTimelineStore }))
     expect(namesOf(result.current.timeline)).toEqual(['先前排的'])
     act(() => {
-      result.current.insertAttractionAfter('n-先前排的', 'b', { type: 'stop', name: '新增的' })
+      result.current.addStop('n-先前排的', 'b', { type: 'stop', name: '新增的' })
     })
     expect(namesOf(loadTimeline())).toEqual(['先前排的', '新增的'])
   })
@@ -187,12 +187,12 @@ describe('注入 localStorage store', () => {
     const a = renderHook(() => usePlanTimelineCore({ store: localStoragePlanTimelineStore }))
     const b = renderHook(() => usePlanTimelineCore({ store: localStoragePlanTimelineStore }))
     act(() => {
-      a.result.current.insertAttractionAfter(null, 'x', { type: 'stop', name: 'A 寫的' })
+      a.result.current.addStop(null, 'x', { type: 'stop', name: 'A 寫的' })
     })
     // b 還停在掛載時的空內容
     expect(listNodes(b.result.current.timeline)).toHaveLength(0)
     act(() => {
-      b.result.current.insertAttractionAfter('x', 'y', { type: 'stop', name: 'B 寫的' })
+      b.result.current.addStop('x', 'y', { type: 'stop', name: 'B 寫的' })
     })
     // b 先追上磁碟再插入,沒有把 A 的內容蓋掉
     expect(namesOf(b.result.current.timeline)).toEqual(['A 寫的', 'B 寫的'])
@@ -203,7 +203,7 @@ describe('注入 localStorage store', () => {
     const a = renderHook(() => usePlanTimelineCore({ store: localStoragePlanTimelineStore }))
     const b = renderHook(() => usePlanTimelineCore({ store: localStoragePlanTimelineStore }))
     act(() => {
-      a.result.current.insertAttractionAfter(null, 'x', { type: 'stop', name: 'A 寫的' })
+      a.result.current.addStop(null, 'x', { type: 'stop', name: 'A 寫的' })
     })
     const raw = localStorage.getItem(PLAN_TIMELINE_STORAGE_KEY)
     act(() => {
@@ -221,7 +221,7 @@ describe('注入 localStorage store', () => {
     }
     const { result } = renderHook(() => usePlanTimelineCore({ store: failing }))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', name: '赤崁樓' })
+      result.current.addStop(null, 'a', { type: 'stop', name: '赤崁樓' })
     })
     expect(listNodes(result.current.timeline)).toHaveLength(0)
     expect(listNodes(result.current.timelineRef.current)).toHaveLength(0)
@@ -250,7 +250,7 @@ describe('插入後的背景查詢預設流程', () => {
     const dataSource = fakeDataSource()
     const { result } = renderHook(() => usePlanTimelineCore({ dataSource }))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', placeId: 'p1' })
+      result.current.addStop(null, 'a', { type: 'stop', placeId: 'p1' })
     })
     expect(result.current.nodeStatusRef.current.get('a')?.loading).toBe(true)
     expect(dataSource.placeDetails).toHaveBeenCalledWith('p1')
@@ -264,12 +264,12 @@ describe('插入後的背景查詢預設流程', () => {
     const dataSource = fakeDataSource()
     const { result } = renderHook(() => usePlanTimelineCore({ dataSource }))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', withCoords('A', 1, 2))
+      result.current.addStop(null, 'a', withCoords('A', 1, 2))
     })
     await settle()
     dataSource.transitEstimate.mockClear()
     act(() => {
-      result.current.insertAttractionAfter('a', 'b', { type: 'stop', placeId: 'p2' })
+      result.current.addStop('a', 'b', { type: 'stop', placeId: 'p2' })
     })
     await settle()
     await settle()
@@ -281,8 +281,8 @@ describe('插入後的背景查詢預設流程', () => {
     const dataSource = fakeDataSource()
     const { result } = renderHook(() => usePlanTimelineCore({ dataSource }))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', withCoords('A', 1, 2))
-      result.current.insertAttractionAfter('a', 'b', { ...withCoords('B', 3, 4), placeId: 'p2' })
+      result.current.addStop(null, 'a', withCoords('A', 1, 2))
+      result.current.addStop('a', 'b', { ...withCoords('B', 3, 4), placeId: 'p2' })
     })
     await settle()
     expect(dataSource.placeDetails).not.toHaveBeenCalled()
@@ -295,7 +295,7 @@ describe('插入後的背景查詢預設流程', () => {
     const onStopInserted = vi.fn()
     const { result } = renderHook(() => usePlanTimelineCore({ dataSource, onStopInserted }))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop' })
+      result.current.addStop(null, 'a', { type: 'stop' })
     })
     expect(dataSource.placeDetails).not.toHaveBeenCalled()
     expect(dataSource.transitEstimate).not.toHaveBeenCalled()
@@ -307,7 +307,7 @@ describe('插入後的背景查詢預設流程', () => {
     const opts: PlanTimelineCoreOptions = { dataSource, needsLookup: (d) => !!d.placeId }
     const { result } = renderHook(() => usePlanTimelineCore(opts))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { ...withCoords('劇本名', 1, 2), placeId: 'p1' })
+      result.current.addStop(null, 'a', { ...withCoords('劇本名', 1, 2), placeId: 'p1' })
     })
     await settle()
     expect(dataSource.placeDetails).toHaveBeenCalledWith('p1')
@@ -318,7 +318,7 @@ describe('插入後的背景查詢預設流程', () => {
     const onStopInserted = vi.fn()
     const { result } = renderHook(() => usePlanTimelineCore({ onStopInserted }))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', placeId: 'p1' })
+      result.current.addStop(null, 'a', { type: 'stop', placeId: 'p1' })
     })
     expect(result.current.nodeStatusRef.current.size).toBe(0)
     expect(onStopInserted).toHaveBeenCalledTimes(1)
@@ -342,7 +342,7 @@ describe('插入後的背景查詢預設流程', () => {
       }),
     )
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', placeId: 'p1' })
+      result.current.addStop(null, 'a', { type: 'stop', placeId: 'p1' })
     })
     expect(order).toEqual(['lookup', 'inserted'])
     expect(hasAtCallback).toBe(true)
@@ -354,10 +354,10 @@ describe('插入後的背景查詢預設流程', () => {
     dataSource.placeDetails.mockImplementation(() => new Promise((r) => (release = r)))
     const { result } = renderHook(() => usePlanTimelineCore({ dataSource }))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', placeId: 'p1' })
+      result.current.addStop(null, 'a', { type: 'stop', placeId: 'p1' })
     })
     act(() => {
-      result.current.removeNodeNow('a')
+      result.current.removeStopNow('a')
     })
     release({ found: true, name: 'X', summary: '', lat: 1, lng: 1 })
     await settle()
@@ -371,7 +371,7 @@ describe('插入後的背景查詢預設流程', () => {
     dataSource.placeDetails.mockImplementation(() => new Promise((r) => (release = r)))
     const { result, unmount } = renderHook(() => usePlanTimelineCore({ dataSource }))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', placeId: 'p1' })
+      result.current.addStop(null, 'a', { type: 'stop', placeId: 'p1' })
     })
     const ref = result.current.timelineRef
     unmount()
@@ -385,8 +385,8 @@ describe('插入後的背景查詢預設流程', () => {
     const dataSource = fakeDataSource()
     const { result } = renderHook(() => usePlanTimelineCore({ dataSource }))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', withCoords('A', 1, 2))
-      result.current.insertAttractionAfter('a', 'b', { type: 'stop' })
+      result.current.addStop(null, 'a', withCoords('A', 1, 2))
+      result.current.addStop('a', 'b', { type: 'stop' })
       result.current.setStatus('b', { loading: true })
     })
     await settle()
@@ -402,18 +402,18 @@ describe('插入後的背景查詢預設流程', () => {
   })
 })
 
-describe('retryStopLookup 與掛載重試', () => {
+describe('retryStop 與掛載重試', () => {
   it('失敗標 failed;重試時回到 loading,成功後收掉 failed 並寫回資料', async () => {
     const dataSource = fakeDataSource()
     dataSource.placeDetails.mockRejectedValueOnce(new Error('boom'))
     const { result } = renderHook(() => usePlanTimelineCore({ dataSource }))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', placeId: 'p1' })
+      result.current.addStop(null, 'a', { type: 'stop', placeId: 'p1' })
     })
     await settle()
     expect(result.current.nodeStatus.get('a')).toEqual({ failed: true })
     act(() => {
-      result.current.retryStopLookup('a')
+      result.current.retryStop('a')
     })
     expect(result.current.nodeStatusRef.current.get('a')).toEqual({ loading: true })
     await settle()
@@ -425,17 +425,17 @@ describe('retryStopLookup 與掛載重試', () => {
     const dataSource = fakeDataSource()
     const a = renderHook(() => usePlanTimelineCore({ dataSource }))
     act(() => {
-      a.result.current.insertAttractionAfter(null, 'a', withCoords('A', 1, 2))
+      a.result.current.addStop(null, 'a', withCoords('A', 1, 2))
     })
     act(() => {
-      a.result.current.retryStopLookup('a')
-      a.result.current.retryStopLookup('不存在')
+      a.result.current.retryStop('a')
+      a.result.current.retryStop('不存在')
     })
     expect(dataSource.placeDetails).not.toHaveBeenCalled()
     const b = renderHook(() => usePlanTimelineCore())
     act(() => {
-      b.result.current.insertAttractionAfter(null, 'a', { type: 'stop', placeId: 'p' })
-      b.result.current.retryStopLookup('a')
+      b.result.current.addStop(null, 'a', { type: 'stop', placeId: 'p' })
+      b.result.current.retryStop('a')
     })
     expect(b.result.current.nodeStatusRef.current.size).toBe(0)
   })
@@ -469,7 +469,7 @@ describe('retryStopLookup 與掛載重試', () => {
   })
 })
 
-describe('removeStep 兩階段移除', () => {
+describe('removeStop 兩階段移除', () => {
   beforeEach(() => {
     vi.useFakeTimers()
   })
@@ -480,9 +480,9 @@ describe('removeStep 兩階段移除', () => {
   function setupThree(options: PlanTimelineCoreOptions = {}) {
     const hook = renderHook(() => usePlanTimelineCore(options))
     act(() => {
-      hook.result.current.insertAttractionAfter(null, 'a', withCoords('A', 1, 1))
-      hook.result.current.insertAttractionAfter('a', 'b', withCoords('B', 2, 2))
-      hook.result.current.insertAttractionAfter('b', 'c', withCoords('C', 3, 3))
+      hook.result.current.addStop(null, 'a', withCoords('A', 1, 1))
+      hook.result.current.addStop('a', 'b', withCoords('B', 2, 2))
+      hook.result.current.addStop('b', 'c', withCoords('C', 3, 3))
     })
     return hook
   }
@@ -491,7 +491,7 @@ describe('removeStep 兩階段移除', () => {
     const { result } = setupThree()
     let ok = false
     act(() => {
-      ok = result.current.removeStep('b')
+      ok = result.current.removeStop('b')
     })
     expect(ok).toBe(true)
     expect(result.current.nodeStatus.get('b')?.removing).toBe(true)
@@ -515,7 +515,7 @@ describe('removeStep 兩階段移除', () => {
     const { result } = setupThree()
     let results: boolean[] = []
     act(() => {
-      results = [result.current.removeStep('b'), result.current.removeStep('b'), result.current.removeStep('不存在')]
+      results = [result.current.removeStop('b'), result.current.removeStop('b'), result.current.removeStop('不存在')]
     })
     expect(results).toEqual([true, false, false])
   })
@@ -528,7 +528,7 @@ describe('removeStep 兩階段移除', () => {
     })
     dataSource.transitEstimate.mockClear()
     act(() => {
-      result.current.removeStep('b')
+      result.current.removeStop('b')
     })
     await act(async () => {
       await vi.advanceTimersByTimeAsync(REMOVE_FADE_MS)
@@ -541,7 +541,7 @@ describe('removeStep 兩階段移除', () => {
     const onBeforeMutate = vi.fn()
     const { result } = setupThree({ onBeforeMutate })
     act(() => {
-      result.current.removeStep('b')
+      result.current.removeStop('b')
     })
     expect(onBeforeMutate).toHaveBeenCalledTimes(1)
     act(() => {
@@ -553,7 +553,7 @@ describe('removeStep 兩階段移除', () => {
   it('removeFadeMs 選項可調整淡出時長', () => {
     const { result } = setupThree({ removeFadeMs: 50 })
     act(() => {
-      result.current.removeStep('b')
+      result.current.removeStop('b')
       vi.advanceTimersByTime(50)
     })
     expect(namesOf(result.current.timeline)).toEqual(['A', 'C'])
@@ -564,7 +564,7 @@ describe('removeStep 兩階段移除', () => {
     const { result, unmount } = setupThree({ dataSource })
     const ref = result.current.timelineRef
     act(() => {
-      result.current.removeStep('b')
+      result.current.removeStop('b')
     })
     dataSource.transitEstimate.mockClear()
     unmount()
@@ -576,13 +576,13 @@ describe('removeStep 兩階段移除', () => {
   it('淡出期間時間軸被清空又以同一個 id 重新插入:舊計時器不會誤殺新節點', () => {
     const { result } = setupThree()
     act(() => {
-      result.current.removeStep('b')
+      result.current.removeStop('b')
     })
     act(() => {
       result.current.clearTimeline()
     })
     act(() => {
-      result.current.insertAttractionAfter(null, 'b', withCoords('B2', 9, 9))
+      result.current.addStop(null, 'b', withCoords('B2', 9, 9))
     })
     act(() => {
       vi.advanceTimersByTime(REMOVE_FADE_MS)
@@ -591,19 +591,19 @@ describe('removeStep 兩階段移除', () => {
   })
 })
 
-describe('dragStopTime', () => {
+describe('setStopTime', () => {
   it('寫入新時間並回 true,與前一站的交通重新估算', async () => {
     const dataSource = fakeDataSource()
     const { result } = renderHook(() => usePlanTimelineCore({ dataSource }))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { ...withCoords('A', 1, 1), time: '09:00' })
-      result.current.insertAttractionAfter('a', 'b', { ...withCoords('B', 2, 2), time: '10:00' })
+      result.current.addStop(null, 'a', { ...withCoords('A', 1, 1), time: '09:00' })
+      result.current.addStop('a', 'b', { ...withCoords('B', 2, 2), time: '10:00' })
     })
     await settle()
     dataSource.transitEstimate.mockClear()
     let ok = false
     act(() => {
-      ok = result.current.dragStopTime('b', '10:30')
+      ok = result.current.setStopTime('b', '10:30')
       // 同一 tick 立刻讀得到
       expect(getNode(result.current.timelineRef.current, 'b')?.time).toBe('10:30')
     })
@@ -616,11 +616,11 @@ describe('dragStopTime', () => {
     const onBeforeMutate = vi.fn()
     const { result } = renderHook(() => usePlanTimelineCore({ onBeforeMutate }))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', name: 'A', time: '09:00' })
+      result.current.addStop(null, 'a', { type: 'stop', name: 'A', time: '09:00' })
     })
     let results: boolean[] = []
     act(() => {
-      results = [result.current.dragStopTime('a', '25:00'), result.current.dragStopTime('a', '9:5'), result.current.dragStopTime('不存在', '10:00')]
+      results = [result.current.setStopTime('a', '25:00'), result.current.setStopTime('a', '9:5'), result.current.setStopTime('不存在', '10:00')]
     })
     expect(results).toEqual([false, false, false])
     expect(getNode(result.current.timeline, 'a')?.time).toBe('09:00')
@@ -631,8 +631,8 @@ describe('dragStopTime', () => {
     const calls: string[] = []
     const { result } = renderHook(() => usePlanTimelineCore({ onBeforeMutate: () => calls.push(`before:${getNode(result.current.timelineRef.current, 'a')?.time}`) }))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', name: 'A', time: '09:00' })
-      result.current.dragStopTime('a', '09:30')
+      result.current.addStop(null, 'a', { type: 'stop', name: 'A', time: '09:00' })
+      result.current.setStopTime('a', '09:30')
     })
     expect(calls).toEqual(['before:09:00'])
     expect(getNode(result.current.timeline, 'a')?.time).toBe('09:30')
@@ -642,25 +642,25 @@ describe('dragStopTime', () => {
     saveTimeline(timelineWith('A'), 0)
     const { result } = renderHook(() => usePlanTimelineCore({ store: localStoragePlanTimelineStore }))
     act(() => {
-      result.current.dragStopTime('n-A', '11:00')
+      result.current.setStopTime('n-A', '11:00')
     })
     expect(getNode(loadTimeline(), 'n-A')?.time).toBe('11:00')
   })
 })
 
 describe('天與住宿操作', () => {
-  it('addDayToTimeline:回報領域層實際插入的第幾天與總天數;不合法的 atDay 回錯誤且不改動', () => {
+  it('addDay:回報領域層實際插入的第幾天與總天數;不合法的 atDay 回錯誤且不改動', () => {
     const { result } = renderHook(() => usePlanTimelineCore())
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', name: 'A' })
+      result.current.addStop(null, 'a', { type: 'stop', name: 'A' })
     })
-    let r1: ReturnType<typeof result.current.addDayToTimeline> | undefined
-    let r2: ReturnType<typeof result.current.addDayToTimeline> | undefined
-    let r3: ReturnType<typeof result.current.addDayToTimeline> | undefined
+    let r1: ReturnType<typeof result.current.addDay> | undefined
+    let r2: ReturnType<typeof result.current.addDay> | undefined
+    let r3: ReturnType<typeof result.current.addDay> | undefined
     act(() => {
-      r1 = result.current.addDayToTimeline(undefined)
-      r2 = result.current.addDayToTimeline(99) // 超過「天數 + 1」視為加在最後面
-      r3 = result.current.addDayToTimeline(0)
+      r1 = result.current.addDay(undefined)
+      r2 = result.current.addDay(99) // 超過「天數 + 1」視為加在最後面
+      r3 = result.current.addDay(0)
     })
     expect(r1).toEqual({ ok: true, day: 2, dayCount: 2 })
     expect(r2).toEqual({ ok: true, day: 3, dayCount: 3 })
@@ -668,48 +668,48 @@ describe('天與住宿操作', () => {
     expect(result.current.timeline.days).toHaveLength(3)
   })
 
-  it('moveDayInTimeline:整天移動(連同節點);超出範圍回錯誤與目前天數', () => {
+  it('moveDay:整天移動(連同節點);超出範圍回錯誤與目前天數', () => {
     const { result } = renderHook(() => usePlanTimelineCore())
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', name: 'A' })
-      result.current.addDayToTimeline(undefined)
-      result.current.insertAttractionAfter('a', 'b', { type: 'stop', name: 'B', day: 2 })
+      result.current.addStop(null, 'a', { type: 'stop', name: 'A' })
+      result.current.addDay(undefined)
+      result.current.addStop('a', 'b', { type: 'stop', name: 'B', day: 2 })
     })
-    let moved: ReturnType<typeof result.current.moveDayInTimeline> | undefined
-    let bad: ReturnType<typeof result.current.moveDayInTimeline> | undefined
+    let moved: ReturnType<typeof result.current.moveDay> | undefined
+    let bad: ReturnType<typeof result.current.moveDay> | undefined
     act(() => {
-      moved = result.current.moveDayInTimeline(2, 1)
-      bad = result.current.moveDayInTimeline(1, 5)
+      moved = result.current.moveDay(2, 1)
+      bad = result.current.moveDay(1, 5)
     })
     expect(moved).toMatchObject({ ok: true, dayCount: 2 })
     expect(namesOf(result.current.timeline)).toEqual(['B', 'A'])
     expect(bad).toMatchObject({ ok: false, dayCount: 2 })
   })
 
-  it('setLodgingInTimeline/removeLodgingFromTimeline:新增、更新、移除住宿,失敗不改動', () => {
+  it('setLodging/removeLodging:新增、更新、移除住宿,失敗不改動', () => {
     const { result } = renderHook(() => usePlanTimelineCore())
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', name: 'A' })
-      result.current.addDayToTimeline(undefined)
+      result.current.addStop(null, 'a', { type: 'stop', name: 'A' })
+      result.current.addDay(undefined)
     })
-    let set: ReturnType<typeof result.current.setLodgingInTimeline> | undefined
+    let set: ReturnType<typeof result.current.setLodging> | undefined
     act(() => {
-      set = result.current.setLodgingInTimeline({ placeId: 'hotel-1', days: [1, 2], name: '旅館' })
+      set = result.current.setLodging({ placeId: 'hotel-1', days: [1, 2], name: '旅館' })
     })
     expect(set).toMatchObject({ ok: true, created: true })
     expect(result.current.timeline.lodgings).toHaveLength(1)
-    let bad: ReturnType<typeof result.current.setLodgingInTimeline> | undefined
+    let bad: ReturnType<typeof result.current.setLodging> | undefined
     act(() => {
-      bad = result.current.setLodgingInTimeline({ placeId: 'hotel-2', days: [9] })
+      bad = result.current.setLodging({ placeId: 'hotel-2', days: [9] })
     })
     expect(bad?.ok).toBe(false)
     expect(result.current.timeline.lodgings).toHaveLength(1)
     const lodgingId = set && set.ok ? set.lodgingId : ''
-    let removed: ReturnType<typeof result.current.removeLodgingFromTimeline> | undefined
-    let missing: ReturnType<typeof result.current.removeLodgingFromTimeline> | undefined
+    let removed: ReturnType<typeof result.current.removeLodging> | undefined
+    let missing: ReturnType<typeof result.current.removeLodging> | undefined
     act(() => {
-      removed = result.current.removeLodgingFromTimeline(lodgingId)
-      missing = result.current.removeLodgingFromTimeline('不存在')
+      removed = result.current.removeLodging(lodgingId)
+      missing = result.current.removeLodging('不存在')
     })
     expect(removed?.ok).toBe(true)
     expect(missing?.ok).toBe(false)
@@ -719,7 +719,7 @@ describe('天與住宿操作', () => {
   it('有 store 時天與住宿操作會持久化;存檔失敗時不推進 state', () => {
     const { result } = renderHook(() => usePlanTimelineCore({ store: localStoragePlanTimelineStore }))
     act(() => {
-      result.current.addDayToTimeline(undefined)
+      result.current.addDay(undefined)
     })
     expect(loadTimeline().days).toHaveLength(1)
     const failing: PlanTimelineStore = {
@@ -729,7 +729,7 @@ describe('天與住宿操作', () => {
     }
     const f = renderHook(() => usePlanTimelineCore({ store: failing }))
     act(() => {
-      f.result.current.addDayToTimeline(undefined)
+      f.result.current.addDay(undefined)
     })
     expect(f.result.current.timeline.days).toHaveLength(0)
   })
@@ -740,13 +740,13 @@ describe('插入有座標的站點到兩站之間:下一站的交通也要補算
     const dataSource = fakeDataSource()
     const { result } = renderHook(() => usePlanTimelineCore({ dataSource }))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', withCoords('A', 1, 1))
-      result.current.insertAttractionAfter('a', 'c', withCoords('C', 3, 3))
+      result.current.addStop(null, 'a', withCoords('A', 1, 1))
+      result.current.addStop('a', 'c', withCoords('C', 3, 3))
     })
     await settle()
     dataSource.transitEstimate.mockClear()
     act(() => {
-      result.current.insertAttractionAfter('a', 'b', withCoords('B', 2, 2))
+      result.current.addStop('a', 'b', withCoords('B', 2, 2))
     })
     await settle()
     expect(dataSource.transitEstimate).toHaveBeenCalledWith({ lat: 1, lng: 1 }, { lat: 2, lng: 2 }, undefined)
@@ -768,15 +768,15 @@ function toggleableStore() {
 }
 
 describe('存檔失敗時結果要反映失敗', () => {
-  it('insertAttractionAfter:回 ok:false(save_failed),不觸發背景查詢與 onStopInserted', () => {
+  it('addStop:回 ok:false(save_failed),不觸發背景查詢與 onStopInserted', () => {
     const { ctl, store } = toggleableStore()
     ctl.failing = true
     const dataSource = fakeDataSource()
     const onStopInserted = vi.fn()
     const { result } = renderHook(() => usePlanTimelineCore({ store, dataSource, onStopInserted }))
-    let r: ReturnType<typeof result.current.insertAttractionAfter> | undefined
+    let r: ReturnType<typeof result.current.addStop> | undefined
     act(() => {
-      r = result.current.insertAttractionAfter(null, 'a', { type: 'stop', placeId: 'p1' })
+      r = result.current.addStop(null, 'a', { type: 'stop', placeId: 'p1' })
     })
     expect(r?.ok).toBe(false)
     expect(r && !r.ok ? r.error.code : undefined).toBe('save_failed')
@@ -785,52 +785,52 @@ describe('存檔失敗時結果要反映失敗', () => {
     expect(result.current.nodeStatusRef.current.size).toBe(0)
   })
 
-  it('setNoteForStop/removeNodeNow/天與住宿操作:存檔失敗一律回 ok:false 且不改動', () => {
+  it('setStopNote/removeStopNow/天與住宿操作:存檔失敗一律回 ok:false 且不改動', () => {
     const { ctl, store } = toggleableStore()
     const { result } = renderHook(() => usePlanTimelineCore({ store }))
     let lodgingId = ''
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', name: 'A' })
-      result.current.addDayToTimeline(undefined)
-      const set = result.current.setLodgingInTimeline({ placeId: 'h', days: [1] })
+      result.current.addStop(null, 'a', { type: 'stop', name: 'A' })
+      result.current.addDay(undefined)
+      const set = result.current.setLodging({ placeId: 'h', days: [1] })
       if (set.ok) lodgingId = set.lodgingId
     })
     const before = result.current.timelineRef.current
     ctl.failing = true
     const results: { ok: boolean }[] = []
     act(() => {
-      results.push(result.current.setNoteForStop('a', '備註', undefined))
-      results.push(result.current.removeNodeNow('a'))
-      results.push(result.current.addDayToTimeline(undefined))
-      results.push(result.current.moveDayInTimeline(1, 2))
-      results.push(result.current.setLodgingInTimeline({ placeId: 'h2', days: [2] }))
-      results.push(result.current.removeLodgingFromTimeline(lodgingId))
+      results.push(result.current.setStopNote('a', '備註', undefined))
+      results.push(result.current.removeStopNow('a'))
+      results.push(result.current.addDay(undefined))
+      results.push(result.current.moveDay(1, 2))
+      results.push(result.current.setLodging({ placeId: 'h2', days: [2] }))
+      results.push(result.current.removeLodging(lodgingId))
     })
     expect(results.map((x) => x.ok)).toEqual([false, false, false, false, false, false])
     expect(result.current.timelineRef.current).toBe(before)
   })
 
-  it('dragStopTime:存檔失敗回 false,不重算交通', async () => {
+  it('setStopTime:存檔失敗回 false,不重算交通', async () => {
     const { ctl, store } = toggleableStore()
     const dataSource = fakeDataSource()
     const { result } = renderHook(() => usePlanTimelineCore({ store, dataSource }))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { ...withCoords('A', 1, 1), time: '09:00' })
-      result.current.insertAttractionAfter('a', 'b', { ...withCoords('B', 2, 2), time: '10:00' })
+      result.current.addStop(null, 'a', { ...withCoords('A', 1, 1), time: '09:00' })
+      result.current.addStop('a', 'b', { ...withCoords('B', 2, 2), time: '10:00' })
     })
     await settle()
     dataSource.transitEstimate.mockClear()
     ctl.failing = true
     let ok = true
     act(() => {
-      ok = result.current.dragStopTime('b', '10:30')
+      ok = result.current.setStopTime('b', '10:30')
     })
     expect(ok).toBe(false)
     expect(getNode(result.current.timeline, 'b')?.time).toBe('10:00')
     expect(dataSource.transitEstimate).not.toHaveBeenCalled()
   })
 
-  describe('removeStep 第二階段存檔失敗', () => {
+  describe('removeStop 第二階段存檔失敗', () => {
     beforeEach(() => {
       vi.useFakeTimers()
     })
@@ -843,9 +843,9 @@ describe('存檔失敗時結果要反映失敗', () => {
       const dataSource = fakeDataSource()
       const { result } = renderHook(() => usePlanTimelineCore({ store, dataSource }))
       act(() => {
-        result.current.insertAttractionAfter(null, 'a', withCoords('A', 1, 1))
-        result.current.insertAttractionAfter('a', 'b', withCoords('B', 2, 2))
-        result.current.insertAttractionAfter('b', 'c', withCoords('C', 3, 3))
+        result.current.addStop(null, 'a', withCoords('A', 1, 1))
+        result.current.addStop('a', 'b', withCoords('B', 2, 2))
+        result.current.addStop('b', 'c', withCoords('C', 3, 3))
       })
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0)
@@ -853,7 +853,7 @@ describe('存檔失敗時結果要反映失敗', () => {
       dataSource.transitEstimate.mockClear()
       ctl.failing = true
       act(() => {
-        result.current.removeStep('b')
+        result.current.removeStop('b')
       })
       expect(result.current.nodeStatus.get('b')?.removing).toBe(true)
       await act(async () => {
@@ -866,7 +866,7 @@ describe('存檔失敗時結果要反映失敗', () => {
       ctl.failing = false
       let again = false
       act(() => {
-        again = result.current.removeStep('b')
+        again = result.current.removeStop('b')
       })
       expect(again).toBe(true)
       await act(async () => {
@@ -884,8 +884,8 @@ describe('交通估算的卸載保護', () => {
     dataSource.transitEstimate.mockImplementation(() => new Promise((r) => (release = r)))
     const { result, unmount } = renderHook(() => usePlanTimelineCore({ store: localStoragePlanTimelineStore, dataSource }))
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', withCoords('A', 1, 1))
-      result.current.insertAttractionAfter('a', 'b', withCoords('B', 2, 2))
+      result.current.addStop(null, 'a', withCoords('A', 1, 1))
+      result.current.addStop('a', 'b', withCoords('B', 2, 2))
     })
     expect(getNode(result.current.timelineRef.current, 'b')?.transitFromPrev).toEqual({ loading: true })
     const ref = result.current.timelineRef

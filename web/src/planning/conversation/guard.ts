@@ -6,7 +6,7 @@
 //      不是 OPEN 之後不再派發;SSE 的 shutdown 會 es.close(),且 transport 的 onMessage 是同步派發。所以 close() 之後
 //      「新的」assistant_message/tool_call/error 基本上不會再進來——但這是瀏覽器行為的推論,不是 SDK 的保證。
 //   2. close() 不會取消「已經在跑」的工具:handleToolCall 是 `await handler(args)`,close() 當下已經進了 handler 的工具
-//      (例如 search_attraction 還在等網路,回來後才呼叫 ctx.insertAttractionAfter)會照常往下執行並寫入時間軸;
+//      (例如 search_attraction 還在等網路,回來後才呼叫 ctx.addStop)會照常往下執行並寫入時間軸;
 //      它最後的 tool_result 只會被 write() 塞進已無人 flush 的 queue。這才是停止之後仍可能改動行程的真實缺口。
 //   3. onError 也可能在 close() 之後被呼叫:SSE 的 POST 失敗回報(onSendFailed → opts.onError)是 fetch 非同步完成後才發生,
 //      與 transport 是否已關閉無關。

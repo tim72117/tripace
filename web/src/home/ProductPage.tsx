@@ -125,7 +125,7 @@ export function ProductPage() {
         </div>
         <a
           className="product-footer-onagent"
-          href="https://onagent.shuttle.tools"
+          href="https://onagents.dev"
           target="_blank"
           rel="noreferrer"
         >

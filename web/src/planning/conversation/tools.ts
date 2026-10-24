@@ -8,7 +8,7 @@
 //
 // 與模擬 WS 腳本路徑(plan-ai-sim 分支)的關係:完全獨立、不共用——
 // 使用者已確認這兩條路徑不交集(見設計討論)。這裡的 add_attraction 直接
-// 呼叫 ctx.insertAttractionAfter 異動時間軸,不透過 WS action 訊息協議,
+// 呼叫 ctx.addStop 異動時間軸,不透過 WS action 訊息協議,
 // 因為 onagent bridge 本身就是即時雙向的工具呼叫通道,不需要再包一層
 // 自訂的 WS 訊息格式去模擬同一件事。
 //
@@ -17,7 +17,7 @@
 // (LLM)傳的 time 是幾點,新卡片一律排最後面,導致時間軸畫面上出現時間
 // 忽前忽後的錯亂順序(見 timeline/model.ts 開頭的完整背景說明)。改成鏈結
 // 串列資料結構(timeline/model.ts)後,插入操作收斂成「行程安排元件」
-// (planning/preview/Content.tsx)透過 ctx.insertAttractionAfter 提供的單一
+// (planning/preview/Content.tsx)透過 ctx.addStop 提供的單一
 // 介面——這個工具不再自己組陣列、自己決定位置,而是明確指定 anchorId
 // (要插在哪個既有節點後面,null 代表插在最前面),由該介面統一驗證時間
 // 是否落在合理範圍、決定實際插入位置。
@@ -77,37 +77,38 @@ import type { ClientTool } from '../../sdk-proposals/arrayTools'
 import { defineTool } from '../../sdk-proposals/defineTool'
 import { fetchPlanAiAttractionSearch, fetchPlanAiPlaceSearch, type ClientConfig } from '../../api'
 import { lodgingDayNumbers, lodgingsOf, type InsertAfterError, type PlanNodeData, type PlanTimeline } from '../timeline/model'
+import type { PlanOperationNames } from '../timeline/operations'
 
 // AttractionStepsCtx — add_attraction 需要的 context:一個能讀取時間軸
 // 現況、並且插入新節點的口子。刻意不是完整的 planning/preview/Content state
 // (不含 isGenerating/following 等其餘 UI state),只暴露這個工具真正
 // 需要的最小介面,理由同 tripEntryAdd.ts 的 TripEntryAddCtx 設計說明。
 //
-// insertAttractionAfter 是這裡唯一的寫入口——「機制跟介面由行程安排
+// addStop 是這裡唯一的寫入口——「機制跟介面由行程安排
 // 元件提供」:鏈結串列的構建、時間驗證、prevId/nextId 維護全部收在
 // planning/preview/Content.tsx(呼叫 timeline/model.ts 的 insertAfter),這個
 // 工具檔案只負責把 args 轉成呼叫這個介面所需的形狀、以及把失敗結果轉成
 // 拋給 LLM 的錯誤訊息,不自己碰鏈結細節。
-// addNote——同樣由行程安排元件提供,但不是「插入新節點」這種操作,而是
+// setStopNote——同樣由行程安排元件提供,但不是「插入新節點」這種操作,而是
 // 語意層級的「把一則備註寫在某個既有景點節點上」方法(對齊
 // planning/preview/Content.tsx 的 addNoteToTimeline)。這是使用者明確要求的
 // 兩層架構:排程元件本身提供操作資料的方法(addNoteToTimeline),LLM 的
 // 工具透過這些方法操作排程內的資料,不是工具自己組好 PlanNodeData 形狀
-// 直接丟給底層的 insertAttractionAfter。
+// 直接丟給底層的 addStop。
 //
 // 2026-09 重構(這次):使用者明確要求「備註寫在景點的節點上」——note
 // 不再是鏈結串列裡獨立插入的節點,改成掛在既有節點自己身上的欄位(見
 // timeline/model.ts NoteInfo 的完整說明)。
 //
 // 2026-09 再次修正:這裡原本用 stopId 這個獨立命名指稱「要附加備註的
-// 既有節點 id」,跟 insertAttractionAfter 的 anchorId 是同一種東西——
+// 既有節點 id」,跟 addStop 的 anchorId 是同一種東西——
 // 都是「時間軸上某個既有節點的 id」,只是插入節點時代表「接在它後面」、
 // 這裡代表「附加在它身上」。使用者明確要求「agent tool 發出的參數名稱
 // 保持一致,像是要附加在節點上的就要用 anchorId,不要創造多餘的命名」
 // ——統一改回 anchorId,不因為語意細節不同就另外發明一個名字,LLM 與
 // 這個檔案的呼叫端只需要記住一種「指向既有節點」的參數名。
 //
-// 型別是 string(不像 insertAttractionAfter 的 anchorId 是
+// 型別是 string(不像 addStop 的 anchorId 是
 // string | null)——這裡沒有「插在時間軸最前面」這種語意,備註一定要有
 // 明確的掛載對象,不存在「沒有目標節點的備註」這種情境,故不開放 null。
 //
@@ -116,38 +117,49 @@ import { lodgingDayNumbers, lodgingsOf, type InsertAfterError, type PlanNodeData
 // 只傳語意層級的 category 字串,不需要知道視覺樣式怎麼對照。回傳值不再
 // 是新節點 id(沒有新節點被建立),而是被寫入備註的那個 anchorId 本身,
 // 方便 LLM 確認操作對象。
-// removeStep——讓 remove_attraction 工具能把時間軸上某個既有節點摘除。
-// 跟 insertAttractionAfter/addNote 一樣是語意層級的方法,由行程安排元件
+// removeStop——讓 remove_attraction 工具能把時間軸上某個既有節點摘除。
+// 跟 addStop/setStopNote 一樣是語意層級的方法,由行程安排元件
 // (planning/timeline/usePlanTimelineCore)提供,這個工具檔案不自己碰
 // 鏈結細節。
 //
-// 2026-10 新增:底層 removeStep(TripPlanPage.tsx)原本是給 UI 之後接新
+// 2026-10 新增:底層的移除函式(當時叫 removeStep、在 TripPlanPage.tsx,現為 usePlanTimelineCore.removeStop)原本是給 UI 之後接新
 // 入口預留的能力,本身是 fire-and-forget(無回傳值,也不檢查 id 是否
 // 存在——直接呼叫 removeNode,對不存在的 id 這個純函式本身會原樣返回、
 // 靜默不做事,見 timeline/model.ts removeNode 的完整說明)。但工具呼叫
 // 這一層需要能分辨「id 不存在」這種呼叫方式錯誤,回報清楚的錯誤訊息
-// 給 LLM(對齊 addNote 對 anchor_not_found 的既有處理慣例),不能讓
+// 給 LLM(對齊 setStopNote 對 anchor_not_found 的既有處理慣例),不能讓
 // LLM 以為移除成功、但實際上什麼都沒發生。故這個方法的回傳型別複用
 // InsertAfterError(沿用既有的 anchor_not_found 錯誤碼——「要操作的
 // 節點 id 不存在」是同一種語意,不需要為 remove 另外發明一個錯誤碼),
-// 呼叫端(TripPlanPage.tsx)在真的呼叫 removeStep 之前,要先自行檢查
+// 呼叫端(TripPlanPage.tsx)在真的呼叫 removeStop 之前,要先自行檢查
 // timelineRef.current.nodes.has(id),不存在就回傳 ok:false,存在才
-// 觸發 removeStep 並立即回傳 ok:true——不等待 REMOVE_FADE_MS 淡出動畫
+// 觸發 removeStop 並立即回傳 ok:true——不等待 REMOVE_FADE_MS 淡出動畫
 // 播完,因為 LLM 只需要知道「移除指令已受理」,不需要、也不該等待純
 // 視覺動畫結束才收到工具回應。
-export interface AttractionStepsCtx {
+//
+// 命名約束(2026-10 操作層命名統一):寫入方法的名字必須與 timeline/operations.ts 的 PlanOperations 一致
+// (extends PlanOperationNames<PlanAiOperationName> 在編譯期檢查),但簽章刻意比 PlanOperations 寬/不同,所以不直接 Pick:
+//   - 全部回傳 Promise:工具層是 async,實作端(conversation/context.ts)還要先過「行動前先確認目前行程」與天數上限把關,
+//     失敗用 throw 或 ok:false 回報給 LLM;
+//   - addStop 不收 newId(新節點 id 由 ctx 實作端產生),回傳 { ok, id } 而不是整份 InsertAfterResult(不把時間軸回給工具);
+//   - setStopNote 同理只回 { ok, id };removeStop 把 boolean 轉成 ok:false + anchor_not_found 錯誤;
+//   - moveDay 只回 { ok, dayCount },setLodging 不回 timeline——LLM 只需要摘要。
+// 底層(PlanAiCtxDeps)則直接 Pick<PlanOperations, PlanAiOperationName>,名稱與簽章都與 core 相同。
+export type PlanAiOperationName = 'addStop' | 'setStopNote' | 'removeStop' | 'addDay' | 'moveDay' | 'setLodging' | 'removeLodging'
+
+export interface AttractionStepsCtx extends PlanOperationNames<PlanAiOperationName> {
   // getTimeline——讀取目前的時間軸(依天分組的 PlanTimeline):list_itinerary 據此輸出依天分組的結構,structureSignature 據此算簽名。
   getTimeline: () => PlanTimeline
-  insertAttractionAfter: (
+  addStop: (
     anchorId: string | null,
     step: NewStopInput,
   ) => Promise<{ ok: true; id: string } | { ok: false; error: InsertAfterError }>
-  addNote: (
+  setStopNote: (
     anchorId: string,
     text: string,
     category: string | undefined,
   ) => Promise<{ ok: true; id: string } | { ok: false; error: InsertAfterError }>
-  removeStep: (
+  removeStop: (
     id: string,
   ) => Promise<{ ok: true } | { ok: false; error: InsertAfterError }>
   // addDay/moveDay——天的操作(見 timeline/model.ts addDay/moveDay):天是時間軸的結構(days 陣列),不是站點上的欄位,
@@ -175,12 +187,12 @@ export interface AttractionStepsCtx {
   removeLodging: (lodgingId: string) => Promise<{ ok: true } | { ok: false; error: { message: string } }>
 }
 
-// NewStopInput — add_attraction 透過 ctx.insertAttractionAfter 交給呼叫端的新站點資料:以領域層的 PlanNodeData 為基礎,
+// NewStopInput — add_attraction 透過 ctx.addStop 交給呼叫端的新站點資料:以領域層的 PlanNodeData 為基礎,
 // 只開放工具實際會寫入的欄位(不含 id——id 由呼叫端產生;也不含 transitFromPrev/attractions/places 等由系統維護的欄位,
 // AI 的工具路徑不該能直接寫入它們)。原本這裡自己宣告一份「結構相容的最小子集」(PlanStepLike),理由是避免循環依賴,
 // 但 timeline/model.ts 是純領域層、並不依賴本檔案,那個理由早已過時,而且內容幾乎就是 PlanNodeData 的複本,改欄位要改兩處。
 // day——放進第幾天(從 1 起算,時間軸依所在的天補上;list_itinerary 一併回傳)。placeId——addAttraction 插入佔位節點時標記
-// 這筆需要背景反查(「查詢中」不是節點資料:由 ctx.insertAttractionAfter 的實作端在節點狀態表標 loading)。
+// 這筆需要背景反查(「查詢中」不是節點資料:由 ctx.addStop 的實作端在節點狀態表標 loading)。
 export type NewStopInput = Pick<
   PlanNodeData,
   'type' | 'day' | 'time' | 'duration' | 'kind' | 'name' | 'desc' | 'thumbBg' | 'thumbIcon' | 'tags' | 'lat' | 'lng' | 'placeId' | 'note'
@@ -311,7 +323,7 @@ export function createSearchAttraction(
       // 2026-09 使用者明確要求「LLM 選擇的時候用 placeId」——這裡回傳
       // placeId(給 add_attraction 用來查詢完整資料)、name/summary/
       // category(給 LLM 判斷要不要推薦、怎麼用自然語言描述這個候選),
-      // 拿掉 lat/lng——這些欄位插入行程時由 insertAttractionAfter 呼叫
+      // 拿掉 lat/lng——這些欄位插入行程時由 addStop 呼叫
       // fetchPlanAiPlaceDetailsAny 反查取得,不需要 LLM 中途攜帶。
       // 沒有 placeId 的候選(理論上不該出現,後端已經在
       // handlePublicGeoAttractionSearch 內部過濾掉沒有 place_id 的
@@ -380,7 +392,7 @@ export function createSearchAttraction(
 // 2026-09 第四次重構:使用者進一步釐清「不用帶其他資訊,只要加入檢查
 // 通過就回覆 LLM,前端再接著做反查,只是 LLM 不用管後半段」——這裡不再
 // await 任何後端查詢,只用 placeId 插入一個佔位節點,
-// 立刻回傳成功。反查完全移到 ctx.insertAttractionAfter 內部背景執行,
+// 立刻回傳成功。反查完全移到 ctx.addStop 內部背景執行,
 // 這個工具呼叫本身的耗時只剩「鏈結插入 + 時間範圍驗證」這個同步、免費
 // 的本地運算,不再受任何 Google API 限流影響,LLM 可以放心連續呼叫多次
 // add_attraction 而不會遇到限流錯誤。
@@ -392,7 +404,7 @@ export function createSearchAttraction(
 // 資料庫 id 可用),這個設計撐不住,撤回改回 placeId(見檔頭「第四/五次
 // 重構」的完整說明)。
 //
-// 2026-09 第六次重構(這次,回到 placeId):插入後 insertAttractionAfter
+// 2026-09 第六次重構(這次,回到 placeId):插入後 addStop
 // 直接呼叫 fetchPlanAiPlaceDetailsAny(placeId)單段查詢——該端點內部
 // 本來就會優先查一次資料庫 attraction(見 handlePublicGeoPlaceDetailsAny
 // 的完整說明,查得到就優先用資料庫資料,查不到才 fallback 查 Google),
@@ -431,16 +443,16 @@ function parseAddAttractionArgs(raw: unknown): AddAttractionArgs {
 }
 
 // addAttraction — 新增工具:只用 placeId 插入一個
-// 佔位節點(見 ctx.insertAttractionAfter 的完整說明——這裡傳入的 data
+// 佔位節點(見 ctx.addStop 的完整說明——這裡傳入的 data
 // 不含 name/lat/lng,呼叫端負責識別「有 placeId 但沒有 name」代表
 // 需要背景反查,並在節點狀態表標 loading),不 await 任何後端查詢,立刻透過
-// ctx.insertAttractionAfter(anchorId 指定的位置)插入時間軸並回傳。
+// ctx.addStop(anchorId 指定的位置)插入時間軸並回傳。
 //
 // placeId 缺漏時直接 throw——這代表 LLM 沒有先呼叫 search_attraction
 // 查到有效 placeId 就直接猜測呼叫,是使用方式錯誤,讓錯誤透過 defineTool
 // 既有的錯誤處理路徑往上拋,回報給 LLM 知道需要先查詢。
 //
-// insertAttractionAfter 回傳 ok:false 時(anchor_not_found/
+// addStop 回傳 ok:false 時(anchor_not_found/
 // invalid_time_format/time_out_of_range,見 timeline/model.ts 的
 // InsertAfterErrorCode)同樣直接 throw,把該介面組好的人類可讀錯誤
 // 訊息原樣帶出去——LLM 收到這個錯誤後,該知道要嘛換一個錨點、要嘛調整
@@ -459,7 +471,7 @@ export const addAttraction: ClientTool<AttractionStepsCtx> = defineTool(
     if (!args.placeId) {
       throw new Error('缺少 placeId,請先用 search_attraction 查詢地點資料。')
     }
-    const result = await ctx.insertAttractionAfter(args.anchorId, {
+    const result = await ctx.addStop(args.anchorId, {
       type: 'stop',
       time: args.time,
       day: args.day,
@@ -468,7 +480,7 @@ export const addAttraction: ClientTool<AttractionStepsCtx> = defineTool(
       // (.stopName,見 planning/preview/Content.tsx 的渲染邏輯)直接輸出
       // p.name,留空會讓卡片顯示一個沒有標題、只有底下「查詢地點中…」
       // 小標籤的空白狀態,體驗不佳。查詢完成後(見
-      // planning/preview/Content.tsx insertAttractionAfter 觸發的
+      // planning/preview/Content.tsx addStop 觸發的
       // resolveAttractionForStep)這個佔位值會被真實地點名稱覆蓋。
       name: '查詢中…',
     })
@@ -482,15 +494,15 @@ export const addAttraction: ClientTool<AttractionStepsCtx> = defineTool(
 // AddNoteArgs/parseAddNoteArgs — add_note 的 args 型別與 runtime 驗證。
 // anchorId 必填(要把備註寫在哪個既有景點節點上——某次 add_attraction
 // 呼叫成功後回傳的 id;命名對齊 AddAttractionArgs.anchorId,見
-// AttractionStepsCtx.addNote 的完整說明:兩者都是「時間軸上某個既有
+// AttractionStepsCtx.setStopNote 的完整說明:兩者都是「時間軸上某個既有
 // 節點的 id」,不因為插入節點/附加在節點上這個語意差異另外發明命名。
 // 這裡沒有「省略代表插在最前面」這種語意,備註一定要有明確的掛載
 // 對象,故型別是必填的 string,不像 add_attraction 的 anchorId 允許
 // null);text 必填(備註內容本身,LLM 用來解釋「為什麼這樣安排」的
 // 自然語言說明);category 選填,語意層級的分類字串(例如「取捨考量/
 // 一般提醒/花費估算/天氣考量」,實際合法值與對應的顏色/圖示由
-// ctx.addNote 的實作端——行程安排元件——決定,見
-// AttractionStepsCtx.addNote 的完整說明,這個檔案不內建、不驗證
+// ctx.setStopNote 的實作端——行程安排元件——決定,見
+// AttractionStepsCtx.setStopNote 的完整說明,這個檔案不內建、不驗證
 // 分類表)。
 interface AddNoteArgs {
   anchorId: string
@@ -514,8 +526,8 @@ function parseAddNoteArgs(raw: unknown): AddNoteArgs {
 // 2026-09 重構(這次):使用者明確要求「排程元件提供一個操作資料的
 // 方法,LLM 的工具透過這些方法操作排程內的資料」——這個工具本身不再
 // 決定 note 該對應什麼顏色/圖示(原本內建一份 NOTE_STYLES 對照表直接
-// 組 PlanNodeData 丟給 ctx.insertAttractionAfter 插入獨立節點),改成
-// 呼叫 ctx.addNote(語意層級的方法,由 planning/preview/Content.tsx 的
+// 組 PlanNodeData 丟給 ctx.addStop 插入獨立節點),改成
+// 呼叫 ctx.setStopNote(語意層級的方法,由 planning/preview/Content.tsx 的
 // addNoteToTimeline 提供,見該函式的完整說明)——「把備註寫在哪個節點
 // 上、分類要怎麼轉譯成視覺樣式」完全交給行程安排元件決定,這個工具
 // 檔案只負責把 LLM 的 args 轉成呼叫這個語意層級方法所需的形狀,不自己
@@ -524,7 +536,7 @@ function parseAddNoteArgs(raw: unknown): AddNoteArgs {
 //
 // anchorId/text 缺漏時直接 throw——沒有掛載對象或空白備註都沒有意義,
 // 讓錯誤透過 defineTool 既有的錯誤處理路徑往上拋,回報給 LLM 知道需要
-// 補齊參數再重試。ctx.addNote 回傳 ok:false 時(anchor_not_found,
+// 補齊參數再重試。ctx.setStopNote 回傳 ok:false 時(anchor_not_found,
 // anchorId 不是時間軸上既有節點的 id)同樣直接 throw,原樣帶出人類可讀
 // 錯誤訊息。
 export const addNote: ClientTool<AttractionStepsCtx> = defineTool(
@@ -537,7 +549,7 @@ export const addNote: ClientTool<AttractionStepsCtx> = defineTool(
     if (!args.text) {
       throw new Error('缺少備註內容(text),請提供要顯示的說明文字。')
     }
-    const result = await ctx.addNote(args.anchorId, args.text, args.category)
+    const result = await ctx.setStopNote(args.anchorId, args.text, args.category)
     if (!result.ok) {
       throw new Error(result.error.message)
     }
@@ -561,12 +573,12 @@ function parseRemoveAttractionArgs(raw: unknown): RemoveAttractionArgs {
 
 // removeAttraction — 新增工具:讓 LLM 能把時間軸上某一站整個移除(對齊
 // 使用者需求「刪除已經排入時間軸的景點」)。id 缺漏時直接 throw(同其餘
-// 工具對必填參數缺漏的既有處理慣例)。ctx.removeStep 回傳 ok:false 時
+// 工具對必填參數缺漏的既有處理慣例)。ctx.removeStop 回傳 ok:false 時
 // (anchor_not_found,id 不是時間軸上既有節點的 id)同樣直接 throw,把
 // 人類可讀錯誤訊息原樣帶出去——不讓 LLM 誤以為移除已經生效。
 //
 // 立即回傳(不等待 REMOVE_FADE_MS 淡出動畫播完)——見
-// AttractionStepsCtx.removeStep 的完整說明,LLM 只需要知道移除指令已經
+// AttractionStepsCtx.removeStop 的完整說明,LLM 只需要知道移除指令已經
 // 受理,不需要、也不該等待純視覺動畫結束。
 export const removeAttraction: ClientTool<AttractionStepsCtx> = defineTool(
   'remove_attraction',
@@ -575,7 +587,7 @@ export const removeAttraction: ClientTool<AttractionStepsCtx> = defineTool(
     if (!args.id) {
       throw new Error('缺少 id,請提供要移除的景點節點 id(add_attraction 回傳的 id,或 list_itinerary 查詢結果裡的 id)。')
     }
-    const result = await ctx.removeStep(args.id)
+    const result = await ctx.removeStop(args.id)
     if (!result.ok) {
       throw new Error(result.error.message)
     }

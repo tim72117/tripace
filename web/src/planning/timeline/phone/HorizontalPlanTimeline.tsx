@@ -6,6 +6,7 @@ import { nodeStatusOf, type NodeStatusMap } from '../status'
 import { DEFAULT_NOTE_CATEGORY, NOTE_CATEGORY_META, TRANSIT_MODE_CHOICES } from '../presentation'
 import { LODGING_FALLBACK_NAME, resolveLodging, resolveNodeRefChildren } from '../resolved'
 import { usePlanData, useResolvedRefs } from '../../data/PlanDataProvider'
+import type { PlanOperations } from '../operations'
 import styles from './HorizontalPlanTimeline.module.css'
 
 // ZOOM_OUT_ENABLED——2026-10 使用者先要求「讓時間尺有 zoom in/zoom out
@@ -23,15 +24,15 @@ const ZOOM_OUT_ENABLED = false
 // 同時也是「交接後真實層」(LivePlanLayer 內部的 TripPlanPage,手機版時
 // 傳 horizontalTimeline)手機版的渲染元件——使用者明確要求「兩個不同的
 // 層,時間軸要共用相同的,只有資料層不一樣」。這裡新增的進階互動 props
-// (onRemoveStop/onTransitModeChange)全部選填,型別直接對齊
+// (onRemoveStop/onSetStopTransitMode)全部選填,型別直接對齊
 // planning/timeline/PlanTimelineView.tsx 同名 prop 的用法,理由同該檔案對應
 // prop 的既有說明:模擬層(planning/preview/Content.tsx 的 handedOver === false
 // 分支)完全不傳這些 prop,外觀與行為不變;只有 TripPlanPage.tsx 的
-// horizontalTimeline 分支會傳入真正接上 removeStep/
+// horizontalTimeline 分支會傳入真正接上 removeStop/
 // refreshTransitForStop 的實作。
 //
 // 2026-10(第二輪,使用者明確要求「圖卡上不要時間」):卡片上原本的
-// 時間顯示(.timeRange)連同選填的 getStopTimeDragBounds/onDragStopTime
+// 時間顯示(.timeRange)連同選填的 getStopTimeDragBounds/onSetStopTime
 // 點擊彈出時間微調彈層那整套互動,一併整個移除——這套互動機制走的是
 // TIME_DRAG_ENABLED feature flag(VITE_FEATURE_TIME_DRAG 環境變數,
 // 預設未設定即為 false),目前沒有任何環境真正啟用它,拿掉不影響任何
@@ -102,7 +103,7 @@ export interface HorizontalPlanTimelineProps {
   // onLatestMessageChange prop 已移除(2026-10,使用者明確指出泡泡
   // 「不應該放在輸入匡區」)——泡泡改由這個元件自己用下方 latestMessage
   // 直接渲染(見 agentBubbleRow 的完整說明),不再需要回報給呼叫端。
-  onRemoveStop?: (stopId: string) => void
+  onRemoveStop?: (...args: Parameters<PlanOperations['removeStop']>) => void
   // onPanToStop——選填:卡片左下角顯示一顆「移動到此」按鈕,點擊時呼叫
   // 並傳入這個節點的 id。2026-10 新增(使用者明確要求「選擇圖卡時不要
   // 移動地圖中心,標誌地點就好,另外做一個 icon,移動到該點」)——取代
@@ -111,14 +112,14 @@ export interface HorizontalPlanTimelineProps {
   // 省略時不會渲染這顆按鈕,對齊 onRemoveStop 的既有選填慣例——桌面版
   // PlanTimelineView.tsx 不受影響(這個元件本來就只給手機版用)。
   onPanToStop?: (stopId: string) => void
-  // onTransitModeChange——選填:點擊卡片頂部的交通資訊列(.transitRow)
+  // onSetStopTransitMode——選填:點擊卡片頂部的交通資訊列(.transitRow)
   // 彈出一個簡易選單讓使用者切換交通方式,選了之後呼叫並傳入這個節點的
   // id(到達站,對齊 TransitInfo 掛在到達站自己身上的既有設計)與選定的
   // mode 字串。視覺/字串值對齊 PlanTimelineView.tsx 的
   // TRANSIT_MODE_OPTIONS/canPickMode 既有邏輯(見下方 TRANSIT_MODE_OPTIONS
   // 的完整說明),但不照搬那邊的 DOM 結構——沒有傳這個 prop 時
   // .transitRow 維持原本純展示、不可點擊,模擬層的外觀完全不變。
-  onTransitModeChange?: (stopId: string, mode: string) => void
+  onSetStopTransitMode?: (stopId: string, mode: string) => void
   // isGenerating——2026-10 新增(使用者明確要求「模擬的部分也加入推論中
   // 的信號,讓圖卡佔位先出現」):對齊縱向版 PlanTimelineView.tsx 的
   // isThinking,「AI 正在排下一站、還沒有這一站的具體資料」這個比
@@ -220,7 +221,7 @@ export interface HorizontalPlanTimelineProps {
   //
   // 2026-10（review 發現）：這個元件原本對 failed 零處理,而手機版
   // 的 /app 走的正是這條橫向路徑——手機使用者實際上拿不到重試入口。
-  onRetryStop?: (id: string) => void
+  onRetryStop?: (...args: Parameters<PlanOperations['retryStop']>) => void
   // nodeStatus——選填:節點執行狀態表(loading/failed/removing,見 planning/timeline/status.ts)。卡片的骨架(查詢中)
   // 與查詢失敗樣式讀這裡;省略時視同所有節點都沒有狀態(只剩資料本身可判斷的失敗:有 placeId 沒座標)。
   nodeStatus?: NodeStatusMap
@@ -452,7 +453,7 @@ function TransitIcon({ mode }: { mode: string | undefined }) {
   )
 }
 
-// TRANSIT_MODE_OPTIONS——交通方式選單選項(見 onTransitModeChange prop 的完整說明)。字串值與縱向時間軸共用同一份
+// TRANSIT_MODE_OPTIONS——交通方式選單選項(見 onSetStopTransitMode prop 的完整說明)。字串值與縱向時間軸共用同一份
 // (planning/timeline/presentation.ts 的 TRANSIT_MODE_CHOICES,對齊後端 geo_plan_ai.go 認得的中文字串);
 // 這裡不帶圖示(橫向選單目前只顯示文字)。
 const TRANSIT_MODE_OPTIONS = TRANSIT_MODE_CHOICES
@@ -466,7 +467,7 @@ export function HorizontalPlanTimeline({
   onHeightChange,
   onRemoveStop,
   onPanToStop,
-  onTransitModeChange,
+  onSetStopTransitMode,
   isGenerating = false,
   focusLatest = false,
   dimmed: dimmedProp,
@@ -645,7 +646,7 @@ export function HorizontalPlanTimeline({
   }, [])
 
   // openTransitMenuStopId——目前展開交通方式選單的那張卡片所屬的
-  // stopId(見 onTransitModeChange prop 的完整說明),null 代表沒有任何
+  // stopId(見 onSetStopTransitMode prop 的完整說明),null 代表沒有任何
   // 選單展開。對齊縱向版 PlanTimelineView.tsx openTransitMenuStopId 的
   // 同一種「單一值互斥」設計(見該處的完整說明)。
   const [openTransitMenuStopId, setOpenTransitMenuStopId] = useState<string | null>(null)
@@ -1587,11 +1588,11 @@ export function HorizontalPlanTimeline({
                 )}
 
                 {transit && (() => {
-                  // canPickMode——只有呼叫端提供 onTransitModeChange 且
+                  // canPickMode——只有呼叫端提供 onSetStopTransitMode 且
                   // 這段交通資訊已查詢完成(非 loading)才能點開選單,
                   // 對齊縱向版 PlanTimelineView.tsx canPickMode 的同一個
                   // 判斷(見該處完整說明)。
-                  const canPickMode = !!onTransitModeChange && !transit.loading
+                  const canPickMode = !!onSetStopTransitMode && !transit.loading
                   const menuOpen = openTransitMenuStopId === node.id
                   return (
                     <div
@@ -1645,7 +1646,7 @@ export function HorizontalPlanTimeline({
                               className={`${styles.transitModeOption} ${transit.mode === mode ? styles.transitModeOptionActive : ''}`}
                               onClick={() => {
                                 setOpenTransitMenuStopId(null)
-                                onTransitModeChange?.(node.id, mode)
+                                onSetStopTransitMode?.(node.id, mode)
                               }}
                             >
                               <TransitIcon mode={mode} />

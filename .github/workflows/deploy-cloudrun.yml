@@ -150,7 +150,7 @@ jobs:
             --build-arg VITE_GOOGLE_MAPS_MAP_ID=${{ steps.maps_map_id.outputs.map_id }} \
             --build-arg VITE_GOOGLE_MAPS_LANDING_MAP_ID=${{ steps.maps_landing_map_id.outputs.landing_map_id }} \
             --build-arg VITE_ONAGENT_APP_KEY=${{ steps.onagent_key.outputs.key }} \
-            --build-arg VITE_ONAGENT_URL="https://onagent.shuttle.tools" \
+            --build-arg VITE_ONAGENT_URL="https://onagents.dev" \
             --build-arg VITE_GOOGLE_OAUTH_CLIENT_ID=${{ steps.google_oauth_client_id.outputs.client_id }} \
             --build-arg VITE_PLAN_AI_ONAGENT_APP_KEY=${{ steps.plan_ai_onagent_key.outputs.key }} \
             --build-arg VITE_SITE_BASE_URL="https://tripace.io" \

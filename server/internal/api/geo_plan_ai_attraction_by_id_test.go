@@ -159,7 +159,7 @@ func TestHandlePublicGeoAttractionByID_HasFreshPhotoAsset_ReturnsGCSURL(t *testi
 // TestHandlePublicGeoAttractionByID_NoPlaceID_OmitsPlaceIDField 驗證未
 // 建檔 place_id 的景點(人工建檔當下沒有查到對應地點,見
 // model.Attraction.PlaceID 的完整說明)回應裡不會出現 placeId 這個 key,
-// 供前端 insertAttractionAfter 判斷「這筆沒有 placeId,不需要再查
+// 供前端 addStop 判斷「這筆沒有 placeId,不需要再查
 // place-details-any 補強」。
 func TestHandlePublicGeoAttractionByID_NoPlaceID_OmitsPlaceIDField(t *testing.T) {
 	s := newTestServerForAttractionByID(t)

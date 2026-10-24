@@ -5,7 +5,7 @@
 // 背景:原始(plan-ai-sim 分支)版本是後端 handlePlanSimWS
 // (plan_sim_demo.go)透過 WebSocket 逐步推播固定腳本(planSimScript)的
 // 每一則 PlanAction,前端 usePlanSimSocket 的 ws.onmessage 收到後統一
-// 轉呼叫 insertAttractionAfter/setNoteForStop 等處理函式。那條 WS 路徑
+// 轉呼叫 addStop/setStopNote 等處理函式。那條 WS 路徑
 // 在 main 分支已改成需登入、搬到別的路徑。使用者明確要求:這個獨立
 // 公開頁不打任何後端,改用純前端計時器逐步播放同一份劇本;同時要求
 // 「不要改動到前端串接方式」——即 usePlanSimSocket 內收到訊息之後的

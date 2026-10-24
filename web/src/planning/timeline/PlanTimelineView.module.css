@@ -188,7 +188,7 @@
   overflow: hidden;
 }
 /* anchorDotDraggable——只在呼叫端真的傳入 getStopTimeDragBounds/
-   onDragStopTime 時才加這個 class(見該處 onPointerDown 的完整說明),
+   onSetStopTime 時才加這個 class(見該處 onPointerDown 的完整說明),
    /ai-plan 展示頁沒傳這兩個 prop 就不會有這個 class、維持原本完全
    靜態的外觀。用加大透明熱區(::before 偽元素,視覺上圓點大小不變,
    只是互動範圍變大)解決 12x12px 原始尺寸太小、不利拖拉操作的問題;
@@ -581,7 +581,7 @@
   color: var(--ios-gray);
 }
 
-/* transitPillClickable——只在呼叫端提供 onTransitModeChange 時疊加(見
+/* transitPillClickable——只在呼叫端提供 onSetStopTransitMode 時疊加(見
    PlanTimelineView.tsx canPickMode 的完整說明),讓使用者在滑鼠懸停時
    能感覺到這顆膠囊現在可以點擊,跟純展示用的膠囊(/ai-plan 展示頁)在
    視覺上有區別——否則使用者會對著一顆看起來一樣的膠囊點了沒反應。 */

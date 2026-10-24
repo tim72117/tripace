@@ -108,7 +108,7 @@ export function PlanDataFlowPage() {
                 {
                   x: 448,
                   label: '③ 使用者直接操作',
-                  lines: ['時間軸 UI 的回呼', 'dragStopTime', 'onRemoveStop', '→ on* 事件'],
+                  lines: ['時間軸 UI 的回呼', 'setStopTime', 'onRemoveStop', '→ on* 事件'],
                 },
                 {
                   x: 668,
@@ -178,13 +178,13 @@ export function PlanDataFlowPage() {
                 轉換:各來源的事件 → 領域層函式呼叫
               </text>
               <text x="20" y="232" fontSize="11" fill="currentColor" fillOpacity="0.72">
-                ① usePlanSimSocket.onMessage　add_stop→insertAttractionAfter · remove_step→removeStep · reset→createEmptyTimeline · reset_day→removeDay
+                ① usePlanSimSocket.onMessage　add_stop→addStop · remove_step→removeStop · reset→createEmptyTimeline · reset_day→removeDay
               </text>
               <text x="20" y="250" fontSize="11" fill="currentColor" fillOpacity="0.72">
-                ② 工具 handler　add_attraction→insertAttractionAfter · add_note→insertAfter · remove_attraction→removeStep
+                ② 工具 handler　add_attraction→addStop · add_note→setStopNote(updateNode) · remove_attraction→removeStop
               </text>
               <text x="20" y="268" fontSize="11" fill="currentColor" fillOpacity="0.72">
-                ③ UI 回呼　dragStopTime→updateNode · onRemoveStop→removeStep(兩階段,第二階段 removeNode)　　④ 初始化　整份載入當作起始 state
+                ③ UI 回呼　setStopTime→updateNode · onRemoveStop→removeStop(兩階段,第二階段 removeNode)　　④ 初始化　整份載入當作起始 state
               </text>
 
               <line
@@ -390,7 +390,7 @@ export function PlanDataFlowPage() {
             <code className={styles.code}>{'{ ok: false, error: { code: \'save_failed\' } }'}</code>；
             插入站點、備註、移除節點、天與住宿操作等包裝方法都有傳，所以 AI 工具(<code className={styles.code}>planning/conversation/context.ts</code>)
             既有的 ok:false 分支會如實回報，不會謊稱成功。
-            <code className={styles.code}>removeStep</code> 是兩階段(先標 removing 淡出，計時器到了才摘除)：
+            <code className={styles.code}>removeStop</code> 是兩階段(先標 removing 淡出，計時器到了才摘除)：
             第二階段存檔失敗時會把 removing 清掉，節點恢復可見、可以再移一次；但 remove_attraction 工具在第一階段就已回 ok:true，
             第二階段的失敗目前不會回報給 AI。
           </p>
@@ -486,7 +486,7 @@ export function PlanDataFlowPage() {
               </defs>
               <rect x="8" y="8" width="864" height="52" rx="8" fill="currentColor" fillOpacity="0.04" stroke="currentColor" strokeOpacity="0.3" />
               <text x="20" y="30" fontSize="12" fontWeight="700" fill="currentColor">
-                ① 插入佔位節點　insertAttractionAfter({'{ placeId, loading: true }'})
+                ① 插入佔位節點　addStop({'{ placeId, loading: true }'})
               </text>
               <text x="20" y="48" fontSize="10.5" fill="currentColor" fillOpacity="0.68">
                 卡片立刻出現(骨架狀態),不等查詢回來——使用者馬上看到「這一站排進去了」

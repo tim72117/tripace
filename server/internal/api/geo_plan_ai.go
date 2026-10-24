@@ -21,7 +21,7 @@ import (
 // geo_plan_ai.go — plan-ai(AI 規劃行程)專用的查詢端點,服務正式功能
 // (web/src/planning/panel/TripPlanPage.tsx)透過 web/src/plan-core/
 // attractionTools.ts 這層 onagent 工具資料層發出的查詢:search_attraction/
-// add_attraction 工具,以及 insertAttractionAfter 的背景反查/交通預估。
+// add_attraction 工具,以及 addStop 的背景反查/交通預估。
 //
 // 2026-09:這批端點原本掛在 /public/geo/* 免登入路徑上——任何訪客都能
 // 呼叫,等於把「消耗 Google Places 計費配額」這件事開放給任何人,且無法
@@ -356,7 +356,7 @@ func (s *Server) handlePublicGeoAttractionSearch(w http.ResponseWriter, r *http.
 // 用 attraction id 走點選附近景點那樣的流程」,對齊散策羅盤「點選附近
 // 景點」(useThemeAttractionSelection.ts 的 fetchPoiContent)的兩段式
 // 查詢:先用 attraction 本身資料(這支端點回傳的 name/summary)當底,
-// 呼叫端(AIPlanTimelinePage.tsx 的 insertAttractionAfter)再視這筆資料
+// 呼叫端(planning/timeline/usePlanTimelineCore.ts 的 addStop)再視這筆資料
 // 是否帶 placeId 決定要不要另外呼叫 GET /internal/geo/plan-ai/place-details-any
 // 查 Google 補強——不是這支端點自己做這個補強,職責分開:這支端點只
 // 單純查表,不含任何外部 API 呼叫,不受任何限流保護,因為查表不需要。
@@ -540,7 +540,7 @@ const (
 // 移除後端 llm 產生的預估時間信號」:LLM/推論路徑完全不會、也不應該
 // 知道這支端點的存在或自己算出交通時間,交通卡片的時間資訊 100% 由
 // 前端在插入第二個站點後主動呼叫這裡取得(見 AIPlanTimelinePage.tsx
-// insertAttractionAfter 的完整說明——插入 stop 節點且前面已有另一個
+// addStop 的完整說明——插入 stop 節點且前面已有另一個
 // stop 節點時,前端自動呼叫這支端點補上一張 transit 卡片)。
 //
 // mode 為選填查詢參數——未提供或提供無法辨識的值時,依 estimateTransitMode

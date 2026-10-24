@@ -19,19 +19,19 @@ function setup(initial: PlanTimeline = createEmptyTimeline()) {
   let seq = 0
   const { ctx, ensureFreshRead } = createPlanAiCtx({
     getTimeline: () => state.timeline,
-    insertAttraction: (anchorId, newId, data) => {
+    addStop: (anchorId, newId, data) => {
       const r = insertAfter(state.timeline, anchorId, data, newId)
       if (r.ok) state.timeline = r.timeline
       return r
     },
-    addNote: (anchorId, text, category) => {
+    setStopNote: (anchorId, text, category) => {
       const node = state.timeline.days.flatMap((d) => d.nodes).find((n) => n.id === anchorId)
       if (!node) return { ok: false, error: { code: 'anchor_not_found', message: 'nf' } }
       state.timeline = updateNode(state.timeline, anchorId, { note: { text, category } })
       return { ok: true, timeline: state.timeline, insertedId: anchorId }
     },
-    // 仿 TripPlanPage.removeStep:只標記,節點稍後才由 land() 摘除(淡出動畫)
-    removeStep: (id) => state.timeline.days.some((d) => d.nodes.some((n) => n.id === id)),
+    // 仿 TripPlanPage.removeStop:只標記,節點稍後才由 land() 摘除(淡出動畫)
+    removeStop: (id) => state.timeline.days.some((d) => d.nodes.some((n) => n.id === id)),
     addDay: (atDay) => {
       const r = addDay(state.timeline, atDay)
       if (!r.ok) return { ok: false, error: r.error }
@@ -85,7 +85,7 @@ describe('AI 自己的寫入算已讀', () => {
     await listItinerary.handle({}, h.ctx)
     const a = (await add(h.ctx, { time: '09:00' })) as { id: string }
     await addDayTool.handle({}, h.ctx)
-    await h.ctx.addNote(a.id, '備註', undefined)
+    await h.ctx.setStopNote(a.id, '備註', undefined)
     await add(h.ctx, { day: 2, time: '10:00' })
     expect(h.state.timeline.days).toHaveLength(2)
   })

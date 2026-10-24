@@ -31,8 +31,8 @@ export interface SimPlanLayerProps {
   isGenerating: boolean
   emptyStateMessage: string
   timelineRef: SimSocket['timelineRef']
-  dragStopTime: SimSocket['dragStopTime']
-  retryStopLookup: SimSocket['retryStopLookup']
+  setStopTime: SimSocket['setStopTime']
+  retryStop: SimSocket['retryStop']
   // 詢問頁(劇本播到 open_ask_page 時取代時間軸)
   showAskPage: boolean
   askPageInput: ComponentProps<typeof HorizontalPlanTimeline>['askPageInput']
@@ -61,8 +61,8 @@ export function SimPlanLayer({
   isGenerating,
   emptyStateMessage,
   timelineRef,
-  dragStopTime,
-  retryStopLookup,
+  setStopTime,
+  retryStop,
   showAskPage,
   askPageInput,
   handleAskPageDone,
@@ -103,9 +103,9 @@ export function SimPlanLayer({
     renderScriptedAskPage()
     ) : (
     <PlanTimelineView
-      // onRetryStop——見上方 retryStopLookup 的完整說明:標了 failed
+      // onRetryStop——見上方 retryStop 的完整說明:標了 failed
       // 就要給得出脫離的路。
-      onRetryStop={retryStopLookup}
+      onRetryStop={retryStop}
       timeline={timeline}
       nodeStatus={nodeStatus}
       messages={messages}
@@ -120,13 +120,13 @@ export function SimPlanLayer({
       showJumpPill={showJumpPill}
       onJumpToLatest={jumpToLatest}
       onPanToStop={panToStop}
-      // getStopTimeDragBounds/onDragStopTime——見 dragStopTime 的完整
+      // getStopTimeDragBounds/onSetStopTime——見 setStopTime 的完整
       // 說明。這兩個 prop 同時存在才會啟用拖拉手勢(見
       // PlanTimelineView.tsx handlePointerDown 開頭的判斷)。
       // TIME_DRAG_ENABLED——feature flag(見 DesktopShared.tsx 同名
       // 常數的完整說明),關閉時兩個 prop 都不傳。
       getStopTimeDragBounds={TIME_DRAG_ENABLED ? (stopId) => getTimeDragBounds(timelineRef.current, stopId) : undefined}
-      onDragStopTime={TIME_DRAG_ENABLED ? dragStopTime : undefined}
+      onSetStopTime={TIME_DRAG_ENABLED ? setStopTime : undefined}
       onOpenPhotos={setLightboxPhotos}
       mountedIdsRef={mountedIdsRef}
       scrollRef={scrollRef}
@@ -180,7 +180,7 @@ export function SimPlanLayer({
       // HorizontalPlanTimeline.tsx 該 prop 與 ScriptedAskPage.tsx 檔頭
       // 的完整說明)。桌面分支也是同一份,兩種版面一致。
       renderAskPage={renderScriptedAskPage}
-      onRetryStop={retryStopLookup}
+      onRetryStop={retryStop}
       timeline={timeline}
       nodeStatus={nodeStatus}
       selectedStopId={selectedStopId}
@@ -212,7 +212,7 @@ export function SimPlanLayer({
       // 移動地圖中心,標誌地點就好,另外做一個 icon,移動到該點」):
       // 卡片角落新增的「移動到此」按鈕觸發,見 panToStopId 的完整
       // 說明。選填 prop,省略時卡片不會渲染這顆按鈕(對齊
-      // onRemoveStop/onTransitModeChange 等既有選填 prop 的慣例)。
+      // onRemoveStop/onSetStopTransitMode 等既有選填 prop 的慣例)。
       onPanToStop={panToStopId}
     />
     </>

@@ -56,7 +56,7 @@ const REAL_PHOTOS: Record<string, string> = {
 //
 // 與 planSimFakeSource.ts 的播放節奏相容:劇本每則 action 之間本來就有
 // randomDelayMs()(900~1500ms)的 thinking 停頓,這裡的延遲是在
-// insertAttractionAfter 同步插入節點「之後」才背景觸發的非同步查詢,跑在
+// addStop 同步插入節點「之後」才背景觸發的非同步查詢,跑在
 // 下一則 action 送出前的這段間隔之內,不會拖慢或打亂劇本本身的播放節奏。
 //
 // 2026-10 從 650ms 調到 280ms(使用者明確要求「縮短地點卡的延遲時間」):

@@ -51,12 +51,9 @@ import {
   insertAfter,
   listNodes,
   lodgingsOf,
-  type LodgingResult,
-  type MoveDayResult,
-  type SetLodgingByDaysResult,
-  type PlanNodeData,
   type PlanTimeline,
 } from '../timeline/model'
+import type { PlanOperations } from '../timeline/operations'
 import { routeSegmentsFromTimeline, type RouteSegment } from '../timeline/segments'
 import type { PlanTimelineStore } from '../timeline/storage'
 import styles from './TripPlanPage.module.css'
@@ -155,15 +152,15 @@ export type PlanAiChatStatus = 'connecting' | 'ready' | 'closed'
 // 對話框輸入的文字能真的驅動 LLM 推論、呼叫工具、把結果異動進時間軸。
 // 邏輯整段對齊原型 planning/preview/Content.tsx 同名 hook(見該處的完整
 // 說明),差別只在:
-//   - 不再需要跟 usePlanSimSocket 共享同一組 insertAttractionAfter/
-//     setNoteForStop——這裡改成呼叫端(TripPlanPage 主體,透過
+//   - 不再需要跟 usePlanSimSocket 共享同一組 addStop/
+//     setStopNote——這裡改成呼叫端(TripPlanPage 主體,透過
 //     usePlanTimelineCore)自己提供,原型裡兩條路徑共用同一組函式的
 //     說明在這裡已經不適用(正式功能只有這一條路徑)。
 //   - createAttractionToolsList(cfg) 的 cfg 改成呼叫端傳入的真實登入態
 //     設定(見下方 TripPlanPage 對 cfg 參數的完整說明),不是原型的
 //     GUEST_CFG 免登入假資料查詢路徑。
 //
-// getSteps/insertAttraction/addNote 用 ref 包一層(理由同原型的完整
+// getSteps/addStop/setStopNote 用 ref 包一層(理由同原型的完整
 // 說明)——這幾個函式來自呼叫端每次 render 產生的新閉包,若直接放進
 // useEffect 依賴陣列會導致每次重渲染都重新建立一次 WebSocket 連線。
 // resetBridgeTurnState——丟棄「目前這一輪推論」的前端狀態:思考中(ref 與 state 同步寫)、待配對佇列、還在等 postPlanAiChat 的送出。
@@ -186,19 +183,16 @@ export function resetBridgeTurnState(s: {
 function usePlanAiChatBridge(
   cfg: ClientConfig,
   getTimeline: () => PlanTimeline,
-  insertAttraction: (
-    anchorId: string | null,
-    newId: string,
-    data: PlanNodeData,
-  ) => ReturnType<typeof insertAfter>,
-  addNote: (anchorId: string, text: string, category: string | undefined) => ReturnType<typeof insertAfter>,
-  removeStep: (removedId: string) => boolean,
+  // addStop/setStopNote/removeStop——站點操作,名稱與型別取自 PlanOperations(見 timeline/operations.ts)。
+  addStop: PlanOperations['addStop'],
+  setStopNote: PlanOperations['setStopNote'],
+  removeStop: PlanOperations['removeStop'],
   // addDay/moveDay——天的操作(add_day/move_day 工具的底層,見 usePlanTimelineCore)。
-  addDay: (atDay: number | undefined) => { ok: true; day: number; dayCount: number } | { ok: false; error: { message: string } },
-  moveDay: (fromDay: number, toDay: number) => MoveDayResult & { dayCount: number },
+  addDay: PlanOperations['addDay'],
+  moveDay: PlanOperations['moveDay'],
   // setLodging/removeLodging——住宿的操作(set_lodging/remove_lodging 工具的底層,見 usePlanTimelineCore)。
-  setLodgingInTimeline: (args: { placeId: string; days: number[]; name?: string; lodgingId?: string }) => SetLodgingByDaysResult,
-  removeLodgingFromTimeline: (lodgingId: string) => LodgingResult,
+  setLodging: PlanOperations['setLodging'],
+  removeLodging: PlanOperations['removeLodging'],
   // userSelectionRef——使用者最近一次在詢問頁的選擇(見
   // planning/conversation/asktools.ts UserSelectionRecord 的完整說明)。
   //
@@ -217,7 +211,7 @@ function usePlanAiChatBridge(
   // place id」)改成非同步、帶候選清單、回傳選擇結果:讓這個 hook 內部
   // 組裝的 AgentBridge 工具表(見下方 askPageCtx)能呼叫呼叫端
   // (TripPlanPage 本體)的「開詢問頁並等待使用者選擇」邏輯,對齊
-  // insertAttraction/addNote/removeStep 這幾個既有參數的同一個模式——
+  // addStop/setStopNote/removeStop 這幾個既有參數的同一個模式——
   // 這個 hook 不自己持有詢問頁顯示狀態或候選清單,只是把呼叫端傳進來的
   // 函式接到 open_ask_page 工具的 ctx 上。
   //
@@ -290,24 +284,24 @@ function usePlanAiChatBridge(
   // setBridgeEpoch 之後 effect cleanup 要等下一次 commit 才跑,中間這段視窗舊世代的事件不能還有效。
   const guardRef = useRef<BridgeGuard | null>(null)
   const getTimelineRef = useRef(getTimeline)
-  const insertAttractionRef = useRef(insertAttraction)
-  const addNoteRef = useRef(addNote)
-  const removeStepRef = useRef(removeStep)
+  const addStopRef = useRef(addStop)
+  const setStopNoteRef = useRef(setStopNote)
+  const removeStopRef = useRef(removeStop)
   const addDayRef = useRef(addDay)
   const moveDayRef = useRef(moveDay)
-  const setLodgingRef = useRef(setLodgingInTimeline)
-  const removeLodgingRef = useRef(removeLodgingFromTimeline)
+  const setLodgingRef = useRef(setLodging)
+  const removeLodgingRef = useRef(removeLodging)
   const openAskPageRef = useRef(openAskPage)
   const appendMessageRef = useRef(appendMessage)
   useEffect(() => {
     getTimelineRef.current = getTimeline
-    insertAttractionRef.current = insertAttraction
-    addNoteRef.current = addNote
-    removeStepRef.current = removeStep
+    addStopRef.current = addStop
+    setStopNoteRef.current = setStopNote
+    removeStopRef.current = removeStop
     addDayRef.current = addDay
     moveDayRef.current = moveDay
-    setLodgingRef.current = setLodgingInTimeline
-    removeLodgingRef.current = removeLodgingFromTimeline
+    setLodgingRef.current = setLodging
+    removeLodgingRef.current = removeLodging
     openAskPageRef.current = openAskPage
     appendMessageRef.current = appendMessage
   })
@@ -336,7 +330,7 @@ function usePlanAiChatBridge(
     // 回傳的 urlMissing 顯示明確提示,不是留一個看起來正常、實際永遠沒有
     // 回應的連線狀態。
     if (!apiKey || !PLAN_AI_ONAGENT_WS_URL) return
-    // ctx——同原型的完整說明:insertAttractionAfter/addNote 轉接同步
+    // ctx——同原型的完整說明:addStop/setStopNote 轉接同步
     // 回傳值成這個 ctx 介面期望的 Promise 形狀(async 函式回傳非 Promise
     // 值會被自動裝箱,不需要刻意包 Promise.resolve)。
     // guard——這個 effect(一個 bridge 實例)的世代防護,見 planning/conversation/guard.ts 的完整說明(含 @onagent/bridge close() 語意的結論)。
@@ -348,11 +342,11 @@ function usePlanAiChatBridge(
     // getTimeline 只有 list_itinerary 用(記下簽名),內部流程(交通重算、背景補查)讀的是 getTimelineRef,不會誤記讀取。
     const { ctx: rawCtx, ensureFreshRead } = createPlanAiCtx({
       getTimeline: () => getTimelineRef.current(),
-      insertAttraction: (anchorId, newId, data) => insertAttractionRef.current(anchorId, newId, data),
-      addNote: (anchorId, text, category) => addNoteRef.current(anchorId, text, category),
-      // removeStep——見 AttractionStepsCtx.removeStep 的完整說明:底層回傳 boolean,內部用 removeNode 的結構化結果同時判斷
-      // 「id 不存在」與「id 已經在移除中(淡出動畫播放期間)」兩種情況(見 usePlanTimelineCore.removeStep)。
-      removeStep: (id) => removeStepRef.current(id),
+      addStop: (anchorId, newId, data) => addStopRef.current(anchorId, newId, data),
+      setStopNote: (anchorId, text, category) => setStopNoteRef.current(anchorId, text, category),
+      // removeStop——見 AttractionStepsCtx.removeStop 的完整說明:底層回傳 boolean,內部用 removeNode 的結構化結果同時判斷
+      // 「id 不存在」與「id 已經在移除中(淡出動畫播放期間)」兩種情況(見 usePlanTimelineCore.removeStop)。
+      removeStop: (id) => removeStopRef.current(id),
       addDay: (atDay) => addDayRef.current(atDay),
       moveDay: (fromDay, toDay) => moveDayRef.current(fromDay, toDay),
       setLodging: (args) => setLodgingRef.current(args),
@@ -364,7 +358,7 @@ function usePlanAiChatBridge(
     // 上方 ctx(AttractionStepsCtx,時間軸資料操作)之外的另一個 ctx,
     // 職責分離(UI 顯示狀態控制 + 等待使用者輸入)。openAskPage 是呼叫端
     // (TripPlanPage 本體)傳入的函式,參照可能隨每次 render 改變,透過
-    // openAskPageRef 間接呼叫(理由同 insertAttractionRef 等其餘 ctx
+    // openAskPageRef 間接呼叫(理由同 addStopRef 等其餘 ctx
     // 方法:這個 effect 的依賴陣列只有 [apiKey, cfg],不能把會隨 render
     // 變動的函式參照直接寫進 closure)。
     //
@@ -810,7 +804,7 @@ export function TripPlanPage(props: {
   // 時間軸要共用相同的,只有資料層不一樣」):true 時內部改渲染
   // HorizontalPlanTimeline(/ai-plan 展示頁模擬層原本專用的橫向卡片
   // 時間軸),取代預設的縱向 PlanTimelineView——兩個元件背後接的資料
-  // (removeStep/getTimeDragBounds/dragStopTime/refreshTransitForStop
+  // (removeStop/getTimeDragBounds/setStopTime/refreshTransitForStop
   // 等既有邏輯,見下方渲染區塊的完整說明)完全相同,只是改用橫向視覺
   // 呈現,不是另外接一套資料邏輯。
   //
@@ -889,7 +883,7 @@ export function TripPlanPage(props: {
 
   // suppressNextAutoScrollRef——使用者明確要求「刪除的時候不要自動移動
   // 到最新」:下方 scrollToLatest 的 effect 只依賴 steps 陣列本身是否
-  // 變動(見該處完整說明),刪除景點時 usePlanTimelineCore 的 removeStep
+  // 變動(見該處完整說明),刪除景點時 usePlanTimelineCore 的 removeStop
   // 會讓 steps 重新計算兩次(標記 removing:true 當下一次、320ms 後真正
   // 摘除一次,見該函式完整說明),這個 effect 本來分辨不出「這次 steps
   // 變動是刪除造成的,還是 AI 新增內容造成的」,一律視為「有新內容,跟隨
@@ -917,16 +911,16 @@ export function TripPlanPage(props: {
     timeline,
     timelineRef,
     nodeStatus,
-    insertAttractionAfter,
-    setNoteForStop,
-    removeStep,
-    addDayToTimeline,
-    moveDayInTimeline,
-    setLodgingInTimeline,
-    removeLodgingFromTimeline,
-    dragStopTime,
+    addStop,
+    setStopNote,
+    removeStop,
+    addDay,
+    moveDay,
+    setLodging,
+    removeLodging,
+    setStopTime,
     resyncFromStorage,
-    retryStopLookup,
+    retryStop,
     setTimeline,
   } = usePlanTimelineCore({
     store,
@@ -943,8 +937,8 @@ export function TripPlanPage(props: {
   //
   // 2026-09 修正(code review 發現):原本這裡讀一個額外的 stepsRef,靠
   // useEffect(() => { stepsRef.current = steps }, [steps]) 同步——這個
-  // useEffect 要等 React commit 完成才會執行,而 insertAttractionAfter/
-  // setNoteForStop 是透過 useSyncedState 的 commitTimeline 同步寫入
+  // useEffect 要等 React commit 完成才會執行,而 addStop/
+  // setStopNote 是透過 useSyncedState 的 commitTimeline 同步寫入
   // timelineRef(見該 hook 開頭的完整說明:這正是它存在的理由,避免
   // 「setState 呼叫完緊接著讀,結果還沒算好」這類真實踩過的 bug)。
   // 兩者之間有一個 render/commit 的時間差:LLM 連續呼叫 add_attraction
@@ -967,9 +961,9 @@ export function TripPlanPage(props: {
   const addNoteToTimeline = useCallback(
     (anchorId: string, text: string, category?: string): ReturnType<typeof insertAfter> => {
       const resolvedCategory = resolveNoteCategory(category)
-      return setNoteForStop(anchorId, text, resolvedCategory)
+      return setStopNote(anchorId, text, resolvedCategory)
     },
-    [setNoteForStop],
+    [setStopNote],
   )
 
   // showAskPage/askPageInput/openAskPage/handleAskPageDone——2026-10
@@ -1007,7 +1001,7 @@ export function TripPlanPage(props: {
   // usePlanAiChatBridge 在這個元件裡宣告在它下面(而且它的 ctx 需要
   // handleAskPageDone 之前就定義好的那幾個函式),JavaScript 不能在
   // 宣告前使用。用 ref 間接取用,寫法對齊同檔案 openAskPageRef /
-  // insertAttractionRef 等既有 ref 處理同一個順序問題的方式。
+  // addStopRef 等既有 ref 處理同一個順序問題的方式。
   const sendPromptRef = useRef<((text: string) => Promise<boolean>) | null>(null)
 
   // uiStateStore 同步——把「使用者目前在哪一個畫面、畫面上有哪些選項」
@@ -1366,13 +1360,13 @@ export function TripPlanPage(props: {
   const planAiChat = usePlanAiChatBridge(
     cfg,
     getTimelineForBridge,
-    insertAttractionAfter,
+    addStop,
     addNoteToTimeline,
-    removeStep,
-    addDayToTimeline,
-    moveDayInTimeline,
-    setLodgingInTimeline,
-    removeLodgingFromTimeline,
+    removeStop,
+    addDay,
+    moveDay,
+    setLodging,
+    removeLodging,
     userSelectionRef,
     attractionPool,
     openAskPage,
@@ -1595,8 +1589,8 @@ export function TripPlanPage(props: {
   // 跟隨狀態從 false 翻成 true 的那一刻,這個 effect 也會被觸發去捲動。
   //
   // suppressNextAutoScrollRef——消費掉就立刻歸零(見該 ref 宣告處/
-  // usePlanTimelineCore removeStep 的完整說明):只跳過「這一次」被標記
-  // 的 steps 變動,不是整段期間都不捲動——旗標只在 removeStep 真正呼叫
+  // usePlanTimelineCore removeStop 的完整說明):只跳過「這一次」被標記
+  // 的 steps 變動,不是整段期間都不捲動——旗標只在 removeStop 真正呼叫
   // setTimeline 前才會被設成 true,消費後立刻清掉,才能讓再下一次真正
   // 的新內容(例如使用者緊接著送出訊息、AI 新增了景點)照常觸發捲動。
   useEffect(() => {
@@ -1690,10 +1684,10 @@ export function TripPlanPage(props: {
       {/* horizontalTimeline——見該 prop 的完整說明:true 時改渲染
           HorizontalPlanTimeline(橫向卡片時間軸,原本是 /ai-plan 展示頁
           模擬層專用),false(預設)維持現狀渲染縱向 PlanTimelineView。
-          兩個分支背後接的互動邏輯(removeStep/refreshTransitForStop)
+          兩個分支背後接的互動邏輯(removeStop/refreshTransitForStop)
           大致相同,只是其中一部分（showJumpPill/jumpPillContent 等
           「回到最新」相關的 UI、onHoverTransit/mountedIdsRef 進場動畫、
-          getTimeDragBounds/dragStopTime 拖拉調時間)是縱向版專屬、沒有
+          getTimeDragBounds/setStopTime 拖拉調時間)是縱向版專屬、沒有
           對應概念的互動,HorizontalPlanTimeline 本身沒有這些 prop(見該
           元件檔頭的完整說明:它刻意不處理這類縱向專屬的版面語意——
           2026-10 使用者明確要求「圖卡上不要時間」,把卡片上原本對齊
@@ -1730,7 +1724,7 @@ export function TripPlanPage(props: {
           onAskPageBack={handleAskPageBack}
           // onRetryStop——手機版橫向時間軸也要有重試入口(review 發現:
           // /app 手機版走的是這條路徑,原本拿不到按鈕)。
-          onRetryStop={retryStopLookup}
+          onRetryStop={retryStop}
           timeline={timeline}
           nodeStatus={nodeStatus}
           selectedStopId={selectedStopId}
@@ -1744,8 +1738,8 @@ export function TripPlanPage(props: {
           // onHoverStop/onHoverTransit 這組 prop,手機版橫向卡片列本來
           // 就沒有滑鼠 hover 這件事,對齊該元件檔頭說明)。
           onSelectStop={selectStop}
-          onRemoveStop={removeStep}
-          onTransitModeChange={
+          onRemoveStop={removeStop}
+          onSetStopTransitMode={
             TRANSIT_MODE_SELECT_ENABLED
               ? (stopId, mode) => refreshTransitForStop({ stopId, dataSource: planAiDataSource, setTimeline, getTimeline: () => timelineRef.current, forceMode: mode })
               : undefined
@@ -1782,20 +1776,20 @@ export function TripPlanPage(props: {
         // onRemoveStop——介面上直接刪除景點的入口(使用者明確要求「之前
         // 做的景點刪除,也要可以從介面上刪除」,之前只有透過 AI 對話下
         // 指令觸發 remove_attraction 工具這一條路徑)。直接呼叫同一個
-        // removeStep(usePlanTimelineCore),跟 remove_attraction 工具走
+        // removeStop(usePlanTimelineCore),跟 remove_attraction 工具走
         // 的是同一條底層路徑,不是另外做一套——不需要額外的 existence
         // 檢查,因為這裡的 id 一定來自目前畫面上正在渲染的 steps,不會
-        // 是使用者手打、可能不存在的任意字串(對齊 ctx.removeStep 那邊
+        // 是使用者手打、可能不存在的任意字串(對齊 ctx.removeStop 那邊
         // 才需要防呆的理由:那邊的 id 來自 LLM,可能瞎猜或引用已經不
         // 存在的舊 id)。回傳值(是否真的觸發移除)在這裡不需要特別
         // 處理——理論上不會是 false,就算是,使用者再點一次也沒有副
         // 作用。
-        onRemoveStop={removeStep}
+        onRemoveStop={removeStop}
         // onRetryStop——地點查詢失敗的站點上那顆「重試」按鈕(見
-        // retryStopLookup 與 PlanTimelineView 該 prop 的完整說明)。
-        onRetryStop={retryStopLookup}
+        // retryStop 與 PlanTimelineView 該 prop 的完整說明)。
+        onRetryStop={retryStop}
         nodeStatus={nodeStatus}
-        // getStopTimeDragBounds/onDragStopTime——時間軸小圓點拖拉調整
+        // getStopTimeDragBounds/onSetStopTime——時間軸小圓點拖拉調整
         // 時間的入口(使用者明確要求「時間軸的小圓點可以拖拉,上下拉動
         // 時調整時間,半小時為刻度」)。getStopTimeDragBounds 直接讀
         // timelineRef.current(理由同 getTimelineForBridge 等其餘讀取「當下
@@ -1809,10 +1803,10 @@ export function TripPlanPage(props: {
         // 判斷「兩者都存在才啟用拖拉」(見該函式開頭的判斷),不需要在
         // 這裡另外包一層條件邏輯。
         getStopTimeDragBounds={TIME_DRAG_ENABLED ? (stopId) => getTimeDragBounds(timelineRef.current, stopId) : undefined}
-        onDragStopTime={TIME_DRAG_ENABLED ? dragStopTime : undefined}
+        onSetStopTime={TIME_DRAG_ENABLED ? setStopTime : undefined}
         onHoverStop={onHoverStopChange}
         onHoverTransit={onHoverTransitChange}
-        // onTransitModeChange——使用者點開交通膠囊的選單、選了另一種交通
+        // onSetStopTransitMode——使用者點開交通膠囊的選單、選了另一種交通
         // 方式時觸發(使用者明確要求「交通時間的膠囊可以選擇交通方式」)。
         // 重新呼叫 refreshTransitForStop,帶上使用者選定的 mode(forceMode
         // 參數,見該函式的完整說明)——沿用跟「插入新站」「前一站更新」
@@ -1825,7 +1819,7 @@ export function TripPlanPage(props: {
         // 純展示、不可點擊(見該元件 render 區塊的完整說明),不需要在
         // 這裡另外包一層條件邏輯,對齊 TIME_DRAG_ENABLED 兩個 prop 的既有
         // 寫法。
-        onTransitModeChange={
+        onSetStopTransitMode={
           TRANSIT_MODE_SELECT_ENABLED
             ? (stopId, mode) => refreshTransitForStop({ stopId, dataSource: planAiDataSource, setTimeline, getTimeline: () => timelineRef.current, forceMode: mode })
             : undefined

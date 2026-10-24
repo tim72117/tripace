@@ -48,7 +48,7 @@ describe('TripPlanPage 式接線', () => {
     const { result } = renderHook(() => useTripPlanLike())
     act(() => {
       result.current.appendMessage({ id: 'm1', text: '一' })
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', name: 'A', lat: 1, lng: 1 })
+      result.current.addStop(null, 'a', { type: 'stop', name: 'A', lat: 1, lng: 1 })
       result.current.appendMessage({ id: 'm2', text: '二' })
     })
     expect(result.current.messages.map((m) => !!m.stale)).toEqual([true, false])
@@ -58,7 +58,7 @@ describe('TripPlanPage 式接線', () => {
     const { result } = renderHook(() => useTripPlanLike())
     act(() => {
       result.current.appendMessage({ id: 'm1', text: '一' })
-      result.current.insertAttractionAfter('不存在', 'a', { type: 'stop', name: 'A' })
+      result.current.addStop('不存在', 'a', { type: 'stop', name: 'A' })
     })
     expect(result.current.messages[0].stale).toBeFalsy()
   })
@@ -84,10 +84,10 @@ describe('TripPlanPage 式接線', () => {
     const a = renderHook(() => useTripPlanLike())
     const b = renderHook(() => useTripPlanLike())
     act(() => {
-      a.result.current.insertAttractionAfter(null, 'x', { type: 'stop', name: 'A 寫的' })
+      a.result.current.addStop(null, 'x', { type: 'stop', name: 'A 寫的' })
     })
     act(() => {
-      b.result.current.insertAttractionAfter('x', 'y', { type: 'stop', name: 'B 寫的' })
+      b.result.current.addStop('x', 'y', { type: 'stop', name: 'B 寫的' })
     })
     expect(listNodes(loadTimeline()).map((n) => n.name)).toEqual(['A 寫的', 'B 寫的'])
     // 面板從隱藏轉可見:resyncFromStorage 讀回另一個實例的內容
@@ -106,19 +106,19 @@ describe('TripPlanPage 式接線:自動捲動抑制', () => {
     vi.useRealTimers()
   })
 
-  it('removeStep 設旗標兩次(標 removing、摘除),dragStopTime 一次;刪除後重新整理仍不復活', () => {
+  it('removeStop 設旗標兩次(標 removing、摘除),setStopTime 一次;刪除後重新整理仍不復活', () => {
     const { result } = renderHook(() => useTripPlanLike())
     act(() => {
-      result.current.insertAttractionAfter(null, 'a', { type: 'stop', name: 'A', time: '09:00' })
-      result.current.insertAttractionAfter('a', 'b', { type: 'stop', name: 'B', time: '10:00' })
+      result.current.addStop(null, 'a', { type: 'stop', name: 'A', time: '09:00' })
+      result.current.addStop('a', 'b', { type: 'stop', name: 'B', time: '10:00' })
     })
     expect(result.current.suppressCount.current).toBe(0)
     act(() => {
-      result.current.dragStopTime('b', '10:30')
+      result.current.setStopTime('b', '10:30')
     })
     expect(result.current.suppressCount.current).toBe(1)
     act(() => {
-      result.current.removeStep('a')
+      result.current.removeStop('a')
     })
     expect(result.current.suppressCount.current).toBe(2)
     act(() => {

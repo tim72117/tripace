@@ -955,7 +955,7 @@
   position: relative;
 }
 
-/* transitRowClickable——只在呼叫端提供 onTransitModeChange 時疊加(見
+/* transitRowClickable——只在呼叫端提供 onSetStopTransitMode 時疊加(見
    HorizontalPlanTimeline.tsx canPickMode 的完整說明),跟純展示用的交通列
    在視覺上有區別,理由對齊縱向版 .transitPillClickable 的既有說明。 */
 .transitRowClickable {
@@ -986,7 +986,7 @@
 }
 
 /* transitModeMenu——交通方式選單,2026-10 新增(見 HorizontalPlanTimeline.tsx
-   onTransitModeChange prop 的完整說明)。視覺語言對齊縱向版
+   onSetStopTransitMode prop 的完整說明)。視覺語言對齊縱向版
    PlanTimelineView.module.css 的 .transitModeMenu(卡片式彈層、同樣的
    圓角/陰影/token),不照搬 DOM 結構——這裡疊在交通列正下方,z-index
    需要高於卡片其餘內容與相鄰卡片(卡片列用 overflow: hidden 但彈層本身
@@ -1038,7 +1038,7 @@
 }
 
 /* timeEditWrap——.timeRange 改成可點擊 <button>(見
-   HorizontalPlanTimeline.tsx getStopTimeDragBounds/onDragStopTime prop 的
+   HorizontalPlanTimeline.tsx getStopTimeDragBounds/onSetStopTime prop 的
    完整說明)時的定位容器,.timeEditPopover 相對它絕對定位展開。 */
 .timeEditWrap {
   position: relative;

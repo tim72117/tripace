@@ -1108,6 +1108,25 @@
   </div>
   <p class="lede" style="margin:10px 0 0">限制:Polyline 只會畫直線段,弧線是 16 段取樣出來的近似,取樣點數固定、不隨縮放調整;線寬、透明度、箭頭間距都是螢幕像素值,不隨縮放變;三個功能層共用 routeArc.ts 的同一組常數,hover 虛線才會準確疊在整條路線上,要改弧度就改那裡,不要在單一功能層另訂。</p>
 
+  <h3>時間軸操作的名稱與介面(2026-10-24)</h3>
+  <p class="lede" style="margin-bottom:10px">同一個操作原本在各層叫法不同(Stop／Step／Node／Attraction 混用,insert／add／drag 混用,核心還帶 ToTimeline、InTimeline 後綴)。現在站點一律叫 Stop、動詞統一,核心 hook、LLM 工具 ctx、模擬態、視圖 props 用同一組名稱,並由 <code>planning/timeline/operations.ts</code> 的 <code>PlanOperations</code> 介面約束。領域層 <code>timeline/model.ts</code> 的純函式(insertAfter、removeNode、updateNode…)是資料結構操作,不在統一範圍;LLM 工具名稱(add_attraction 等)是對外契約,維持不變。</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>操作</th><th>統一名稱(PlanOperations)</th><th>核心 usePlanTimelineCore</th><th>LLM 工具 ctx</th><th>LLM 工具名(不變)</th><th>視圖 props</th></tr></thead>
+      <tbody>
+        <tr><td>新增站點</td><td><code>addStop</code></td><td>同名</td><td>同名(簽章較寬:回 Promise、先過新鮮度把關、id 由 ctx 產生)</td><td>add_attraction</td><td>—</td></tr>
+        <tr><td>移除站點</td><td><code>removeStop</code>(兩階段:先標 removing 淡出,再摘除)</td><td>同名;內部 <code>removeStopNow</code> 不在介面</td><td>同名</td><td>remove_attraction</td><td><code>onRemoveStop</code></td></tr>
+        <tr><td>改時間</td><td><code>setStopTime</code></td><td>同名</td><td>—</td><td>—</td><td><code>onSetStopTime</code></td></tr>
+        <tr><td>備註</td><td><code>setStopNote</code></td><td>同名</td><td>同名</td><td>add_note</td><td>—</td></tr>
+        <tr><td>重試查詢</td><td><code>retryStop</code></td><td>同名</td><td>—</td><td>—</td><td><code>onRetryStop</code></td></tr>
+        <tr><td>交通方式</td><td>(不在介面)</td><td>—</td><td>—</td><td>—</td><td><code>onSetStopTransitMode</code></td></tr>
+        <tr><td>天</td><td><code>addDay</code>、<code>moveDay</code></td><td>同名(領域函式以別名匯入避免相撞)</td><td>同名(多回 dayCount)</td><td>add_day、move_day</td><td>—</td></tr>
+        <tr><td>住宿</td><td><code>setLodging</code>、<code>removeLodging</code></td><td>同名</td><td>同名</td><td>set_lodging、remove_lodging</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="lede" style="margin:10px 0 0"><b>規劃中(尚未實作):雙向串接。</b>目標是每種呼叫對象(LLM、模擬劇本、直向與橫向視圖)各有一層同名 <code>adapter</code>、實作各異,只呼叫 <code>PlanOperations</code>(指令方向),並透過另一個介面(暫名 <code>PlanUpdates</code>,時間軸快照加事件)收到回應(回應方向);範圍從時間軸擴大到選取與 hover、對話、詢問頁、景點池、鏡頭、探索、草稿。現況只完成命名統一與 <code>PlanOperations</code>;回應方向目前仍是散落的回呼(<code>onStopInserted</code>、<code>onStopsChange</code>、<code>onRouteSegmentsChange</code>、<code>tripPlanProps</code>)。</p>
+
   <h3>五欄對照:/ai-plan(手機分推論態與播放態、桌面)與登入後(手機、桌面)</h3>
   <p class="lede" style="margin-bottom:10px">/ai-plan 的手機與桌面是同一個頁面元件,靠 isDesktop 與 isWide 切版面;頁面內再依 handedOver 分兩態:<b>播放態</b>(SimPlanLayer 播固定劇本,假資料、對話與時間軸不持久化、沒有真實 AI、沒有停止鈕)與<b>推論態</b>(LivePlanLayer 渲染 TripPlanPage,有 AI 連線與工具、時間軸存檔)。手機的兩態差異大,各佔一欄;桌面兩態的差別寫在同一格(「播放態:…;推論態:…」)。登入後手機與桌面是兩個不同的入口(planning/member/phone/Content、planning/member/desktop/Content)包同一個 PlanMap,只有推論那一種。有底色的列是欄間有差別的項目。表格較寬,窄螢幕可左右捲動。<br>2026-10-24 已校:站點來源與子景點解析改向 PlanDataProvider 的共用 store 取(各入口「時間軸 → PlanStopMarker[]」的投影仍各自一份)、對話純記憶體(conversationStore 已移除)。<b>之後可能再過時的:</b>連線與轉乘(交通改衍生資料尚未進行)。</p>
   <div class="scroll">
@@ -1140,7 +1159,7 @@
 <tr><td>資料存取層<br><small>地點查詢、交通估算、景點與照片</small></td><td class="diff">訪客版 getPlanAiPublicDataSource(BASE_URL)(planning/data/public.ts),登入也不換:地點與景點走免登入端點;<b>沒有交通估算</b>(transitEstimate 直接 reject,時間軸不顯示交通膠囊)。光暈查詢另外有 token 就換登入版</td><td class="diff">假資料版 planAiFakeDataSource(planning/data/fake.ts):固定取 attractionPool 的 10 筆台南景點,不打後端;有假的交通估算。詢問頁(ScriptedAskPage)用訪客版</td><td class="diff">同手機(播放態用假資料版、推論態用訪客版)</td><td class="diff">登入版 getPlanAiApiDataSource(cfg)(planning/data/api.ts),有交通估算</td><td class="diff">同登入後手機</td></tr>
 <tr><td>時間軸持久化</td><td class="diff">localStoragePlanTimelineStore(key <code>tripace.planTimeline</code>,附 rev 版本檢查);與登入後用同一個 key。「新行程」(flag)改走 createDraftPlanTimelineStore,每份草稿各自一個 key。存檔失敗(saveTimeline 回 null)時不推進記憶體,包裝方法回 ok:false(code save_failed),AI 工具如實回報</td><td class="diff">不持久化:usePlanTimelineCore 不傳 store,只在記憶體;交接時 clearTimeline 清空</td><td class="diff">播放態:同手機播放態;推論態:localStoragePlanTimelineStore(沒有草稿功能)</td><td class="diff">localStoragePlanTimelineStore(同一個 key)</td><td class="diff">同登入後手機</td></tr>
 <tr><td>對話持久化</td><td class="diff">不持久化:TripPlanPage 用 usePlanConversation(),只在記憶體、重整就沒有,獨立於時間軸;換草稿靠 LivePlanLayer 的 key 整個重新掛載而清空</td><td class="diff">不持久化:usePlanSimSocket 內的 usePlanConversation(),劇本訊息只在記憶體;交接時 clearConversation</td><td class="diff">同手機兩欄</td><td class="diff">同 /ai-plan 推論態(記憶體)</td><td class="diff">同登入後手機(記憶體)</td></tr>
-<tr><td>執行狀態(loading、failed、removing)</td><td class="diff">usePlanTimelineCore → usePlanNodeStatus 的獨立狀態表(planning/timeline/status.ts,不存檔,重整為空;節點只留行程資料);真實地點查詢,掛載時對失敗的站重試(retryFailedOnMount)</td><td class="diff">同一個 hook,查詢走假資料(needsLookupForScript 決定哪些站要查);視圖拿得到重試函式 retryStopLookup,不在掛載時重試</td><td class="diff">同手機兩欄</td><td class="diff">同 /ai-plan 推論態(登入版資料存取層)</td><td class="diff">同登入後手機</td></tr>
+<tr><td>執行狀態(loading、failed、removing)</td><td class="diff">usePlanTimelineCore → usePlanNodeStatus 的獨立狀態表(planning/timeline/status.ts,不存檔,重整為空;節點只留行程資料);真實地點查詢,掛載時對失敗的站重試(retryFailedOnMount)</td><td class="diff">同一個 hook,查詢走假資料(needsLookupForScript 決定哪些站要查);視圖拿得到重試函式 retryStop,不在掛載時重試</td><td class="diff">同手機兩欄</td><td class="diff">同 /ai-plan 推論態(登入版資料存取層)</td><td class="diff">同登入後手機</td></tr>
 <tr><td>AI 連線與工具、停止</td><td class="diff">有:TripPlanPage 的 usePlanAiChatBridge 以 AgentBridge 連 onagent(app plan-ai-timeline,SSE;需 VITE_ONAGENT_URL 與 app key,缺了輸入列停用)。工具 = planning/conversation/tools.ts(add_attraction、add_note、remove_attraction、add_day、move_day、set_lodging、remove_lodging、list_itinerary、search_attraction、get_attraction_pool、get_user_selection、get_ui_state)加 planning/conversation/asktools.ts(open_ask_page、ask_travel_country、ask_travel_city、ask_transport_mode;onagent 端的工具定義 yaml 在 web/tools/plan-ai/,原 server/tools/);推論中送出鈕換成「停止」(stopPrompt,以 bridge 世代作廢回呼,onagent 沒有取消單次推論的協議);cfg 是 useGuestClientConfig(訪客),搜尋工具走訪客端點</td><td class="diff">無:沒有真實 AI、沒有工具呼叫、沒有停止鈕。usePlanSimSocket 依 planSimFakeSource 的固定劇本(planSimScript:add_stop、add_note、add_message、open_ask_page)按計時插入時間軸</td><td class="diff">播放態:同手機播放態;推論態:同手機推論態</td><td class="diff">同推論態的連線與工具,cfg 是登入後由入口傳的登入設定</td><td class="diff">同登入後手機</td></tr>
 <tr><td>模擬器生命週期</td><td>不適用(推論態沒有模擬器)</td><td class="diff">usePlanSimSocket(start = promptTyped &amp;&amp; !handedOver):交接後停止並清空,不再對時間軸插入</td><td class="diff">播放態同手機播放態;推論態不適用</td><td>不適用(沒有播放態)</td><td>不適用</td></tr>
 <tr><td>extraLayers</td><td colspan="5">useSharedDrawLayer 的選填參數(接線處額外的功能層):2026-10-24 起沒有入口再傳(行程詳情頁的連線改走 routeSegments);usePlanMapDrawing 已不再轉傳這個參數</td></tr>
@@ -1168,7 +1187,10 @@
       <li><b>驗證狀況。</b>多數改動只有 jsdom 與 mock 層測試;連線樣式與錨點對齊有在瀏覽器截圖量測,其餘版面互動沒有實測。</li>
       <li><b>目錄重整成 web/src/planning/。</b>原本分散在 plan-core、geo-planning、home/plan-ai-sim、trip-plan、phone、desktop 的程式依職責收成 shared、timeline、conversation、data、map、place、explore、panel、preview、member,檔名去掉目錄已表達的前綴;同層同功能仍同檔名、靠目錄區分。</li>
       <li><b>資料來源上移到根部共用 store。</b>各入口用 PlanDataProvider 決定一次資料存取層,每個實例一個 store(TTL 5 分鐘、背景重取、失敗 30 秒後才重查);取代 useResolvedNodeRefs 的三層快取,讓同一個 id 全頁只查一次、只有一份狀態。</li>
-      <li><b>存檔失敗回 ok:false。</b>commitTimeline 存檔失敗時不推進記憶體,包裝方法回 ok:false(save_failed),AI 工具如實回報而不是謊稱成功;removeStep 第二階段失敗會清掉 removing,讓節點能再移一次。</li>
+      <li><b>存檔失敗回 ok:false。</b>commitTimeline 存檔失敗時不推進記憶體,包裝方法回 ok:false(save_failed),AI 工具如實回報而不是謊稱成功;removeStop 第二階段失敗會清掉 removing,讓節點能再移一次。</li>
+      <li><b>操作層命名統一,用介面約束。</b>站點名詞一律 Stop,動詞統一為 add／remove／set／retry／move,核心、LLM 工具 ctx、模擬態、視圖 props 同名;以 <code>PlanOperations</code> 約束。LLM 工具名是對外契約,維持不變。理由:同一個操作在各層叫法不同,接線散在各頁面,改一處容易漏另一處。</li>
+      <li><b>雙向串接是下一步方向。</b>每個對象一層同名 adapter,指令與回應都走同一層,範圍涵蓋所有動作;分階段(命名統一→盤點全部動作→抽 adapter),抽 adapter 前先補從元件介面做 CRUD 的整合測試當安全網。</li>
+      <li><b>onagent 正式機位址改為 onagents.dev。</b>CI 的 <code>VITE_ONAGENT_URL</code> 與網站五個「Powered by onagent」連結一起改;同一台服務,金鑰與 Allowed origin 沿用。</li>
       <li><b>文件站改名 handbook。</b>原 web/showcase-demo 改為 web/handbook(系統文件站),本頁與架構圖頁都在這裡維護。</li>
     </ul>
   </div>

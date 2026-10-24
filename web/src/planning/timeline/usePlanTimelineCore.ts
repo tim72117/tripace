@@ -4,16 +4,18 @@ import type { PlanAiDataSource } from '../data/source'
 import { usePlanNodeStatus } from './usePlanNodeStatus'
 import { resolveAttractionForStep } from './resolveAttractionForStep'
 import { refreshTransitAround, refreshTransitForStop } from './transit'
+import type { AddDayResult, MoveDayWithCountResult, PlanOperations, SetLodgingArgs } from './operations'
+// 領域層的 addDay/moveDay/removeLodging 以別名匯入:本 hook 對外的操作方法依 PlanOperations 命名,與它們同名。
 import {
-  addDay,
+  addDay as modelAddDay,
   createEmptyTimeline,
   getNode,
   hasNode,
   insertAfter,
   listNodes,
-  moveDay,
+  moveDay as modelMoveDay,
   nextStopOf,
-  removeLodging,
+  removeLodging as modelRemoveLodging,
   removeNode,
   setLodgingByDays,
   stopLookupFailed,
@@ -21,10 +23,10 @@ import {
   type InsertAfterError,
   type LodgingError,
   type LodgingResult,
-  type MoveDayResult,
   type PlanNodeData,
   type PlanTimeline,
   type RemoveNodeError,
+  type RemoveNodeResult,
   type SetLodgingByDaysResult,
 } from './model'
 import type { PlanTimelineStore } from './storage'
@@ -48,10 +50,6 @@ function saveFailedError<E>(): E {
   return { code: SAVE_FAILED_CODE, message: SAVE_FAILED_MESSAGE } as E
 }
 
-// AddDayInTimelineResult——addDayToTimeline 的結果:day 是領域層 addDay 回報的「實際插入的第幾天」(呼叫端不要自己再算),
-// dayCount 是新增後的總天數。
-export type AddDayInTimelineResult = { ok: true; day: number; dayCount: number } | { ok: false; error: { message: string } }
-
 // PlanTimelineCoreDataSource——結構相容的最小資料來源:core 只用到地點詳情與交通估算,呼叫端傳完整的資料存取層實例也可以。
 export type PlanTimelineCoreDataSource = Pick<PlanAiDataSource, 'placeDetails' | 'transitEstimate'>
 
@@ -67,12 +65,15 @@ export type PlanTimelineCoreDataSource = Pick<PlanAiDataSource, 'placeDetails' |
 // 與 PlanTimelineView(純渲染)的分工:那邊負責「把時間軸畫出來」,這邊負責「時間軸怎麼變動」。
 // 兩者都不知道訊號來自計時器腳本還是 onagent WebSocket——那是最外層各自的事。
 //
-// 目前已提供:commitTimeline、setTimeline、insertAttractionAfter(含插入後的背景查詢預設流程)、
-// followUpStop、setNoteForStop、clearTimeline、removeNodeNow、removeStep(兩階段)、dragStopTime、
-// retryStopLookup(含選用的掛載重試)、resyncFromStorage,以及伴生的節點狀態表
+// 操作方法的命名與簽章由 operations.ts 的 PlanOperations 約束(回傳型別 PlanTimelineCore 延伸它),AI ctx、模擬態、
+// 視圖 props 都用同一組名字。
+//
+// 目前已提供:commitTimeline、setTimeline、addStop(含插入後的背景查詢預設流程)、
+// followUpStop、setStopNote、clearTimeline、removeStopNow、removeStop(兩階段)、setStopTime、
+// retryStop(含選用的掛載重試)、resyncFromStorage,以及伴生的節點狀態表
 // (nodeStatus/nodeStatusRef/setStatus,見 usePlanNodeStatus)。
 //
-// 天與住宿操作(addDayToTimeline/moveDayInTimeline/setLodgingInTimeline/removeLodgingFromTimeline)是
+// 天與住宿操作(addDay/moveDay/setLodging/removeLodging)是
 // commitTimeline + 領域函式的薄包裝,AI 的 add_day/move_day/set_lodging/remove_lodging 工具的底層。
 // AI ctx 的 assertFreshRead 等把關留在 usePlanAiChatBridge,不進這裡;對話是獨立的 hook(usePlanConversation),
 // 由使用端自己組合,core 只提供 onStopInserted 這個接線點讓呼叫端做「新增站點讓舊訊息淡化」。
@@ -104,13 +105,13 @@ export interface PlanTimelineCoreOptions {
   //   - 順序:commit 完成 → 預設的插入後流程(有 dataSource 才有:反查地點或重算交通,見 followUpStop)→ 這個回呼。
   //     回呼內讀 timelineRef 一定看得到剛插入的節點。
   //   - 這是呼叫端的接線點:對話淡化(staleAll,話題推進、舊訊息淡化)放這裡;core 不知道對話存在。
-  //   - 呼叫是同步的,回呼內丟例外會讓 insertAttractionAfter 往外丟(插入本身已生效)。
+  //   - 呼叫是同步的,回呼內丟例外會讓 addStop 往外丟(插入本身已生效)。
   onStopInserted?: (id: string, data: PlanNodeData) => void
-  // onBeforeMutate — removeStep/dragStopTime 在「即將讓時間軸/狀態變動」前同步呼叫(removeStep 兩次:標 removing 當下、
+  // onBeforeMutate — removeStop/setStopTime 在「即將讓時間軸/狀態變動」前同步呼叫(removeStop 兩次:標 removing 當下、
   // 淡出後摘除當下)。TripPlanPage 用它設 suppressAutoScrollRef(這次變動不是新內容,不要自動捲到最新);
   // 不需要的使用端(模擬態)不傳。
   onBeforeMutate?: () => void
-  // removeFadeMs — removeStep 的淡出時長,預設 REMOVE_FADE_MS(與 CSS 同值)。測試或不同視圖要不同節奏時才傳。
+  // removeFadeMs — removeStop 的淡出時長,預設 REMOVE_FADE_MS(與 CSS 同值)。測試或不同視圖要不同節奏時才傳。
   removeFadeMs?: number
   // retryFailedOnMount — 掛載後自動重查「沒拿到地點資料」的站點(stopLookupFailed:有 placeId 但沒座標),只跑一次。
   // 因為節點狀態表不持久化,重整後 failed 旗標沒了,靠資料本身判斷。需要持久化(store)的使用端(TripPlanPage)開;
@@ -118,7 +119,30 @@ export interface PlanTimelineCoreOptions {
   retryFailedOnMount?: boolean
 }
 
-export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
+// PlanTimelineCore——usePlanTimelineCore 的回傳型別:操作方法(addStop/removeStop/setStopTime…)由 PlanOperations 約束
+// (見 operations.ts:各層同名、簽章以這裡為準),其餘是狀態、節點狀態表與 core 專屬的低階入口。
+type SyncedTimeline = ReturnType<typeof useSyncedState<PlanTimeline>>
+type NodeStatusApi = ReturnType<typeof usePlanNodeStatus>
+export interface PlanTimelineCore extends PlanOperations {
+  timeline: PlanTimeline
+  timelineRef: SyncedTimeline[0]
+  // nodeStatus/nodeStatusRef/setStatus — 節點執行狀態表及其寫入函式(見 usePlanNodeStatus)。
+  nodeStatus: NodeStatusApi['nodeStatus']
+  nodeStatusRef: NodeStatusApi['nodeStatusRef']
+  setStatus: NodeStatusApi['setStatus']
+  commitTimeline: <R>(
+    compute: (current: PlanTimeline) => { next?: PlanTimeline; result: R },
+    onSaveFailed?: (result: R, current: PlanTimeline) => R,
+  ) => R
+  setTimeline: (updater: PlanTimeline | ((prev: PlanTimeline) => PlanTimeline)) => void
+  followUpStop: (id: string, data: PlanNodeData) => void
+  clearTimeline: () => void
+  // removeStopNow——removeStop 的第二階段(同步摘除、無淡出),不在 PlanOperations:UI/AI 一律走兩階段的 removeStop。
+  removeStopNow: (id: string) => RemoveNodeResult
+  resyncFromStorage: () => void
+}
+
+export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}): PlanTimelineCore {
   const { store, onStopInserted, retryFailedOnMount = false } = options
 
   // 用 ref 持有最新的 store、dataSource 與回呼:避免呼叫端每次 render 的新參照讓下面的 useCallback 全部換新
@@ -149,7 +173,7 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
   // revRef — 這個實例手上這份對應的持久化版次;沒有 store 時不會用到。
   const revRef = useRef(initialRef.current.rev)
 
-  // mountedRef — 供背景查詢(地點補查的 429 延遲重試、removeStep 的淡出計時器)判斷「元件是否已卸載」。
+  // mountedRef — 供背景查詢(地點補查的 429 延遲重試、removeStop 的淡出計時器)判斷「元件是否已卸載」。
   // 只檢查節點是否還在時間軸沒辦法涵蓋卸載:卸載後 timelineRef 不會被清空,節點依然「存在」。
   // Strict Mode 的 mount → cleanup → mount 會讓它先 false 再回 true,最終維持 true。
   const mountedRef = useRef(true)
@@ -189,7 +213,7 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
   //
   // onSaveFailed(選填)——存檔失敗時把 compute 的 result 換成「反映失敗」的版本(第二個參數是沒被改動的當下時間軸)。
   // 不傳就原樣回傳 compute 的 result:這時呼叫端拿到的 result 可能是 ok:true,卻其實沒生效——所以凡是結果會往外回報
-  // (AI 工具、需要據此決定後續動作)的包裝方法都要傳,本檔的 insertAttractionAfter/天與住宿操作等皆已處理。
+  // (AI 工具、需要據此決定後續動作)的包裝方法都要傳,本檔的 addStop/天與住宿操作等皆已處理。
   const commitTimeline = useCallback(
     <R,>(
       compute: (current: PlanTimeline) => { next?: PlanTimeline; result: R },
@@ -239,7 +263,7 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
   //   2. 否則有座標 → 直接 refreshTransitAround(自己與下一站一起重算,理由見該處註解);
   //   3. 否則什麼都不查,順手把狀態表的 loading 收掉(骨架卡原地補成完整資料時需要;插入新節點時本來就沒有 loading,是 no-op)。
   // 沒有 dataSource 時整段略過。故意不 await、不影響呼叫端回傳值:插入本身立即返回,查詢延遲只體現在卡片從佔位轉成完整內容。
-  // 匯出給「繞過 insertAttractionAfter 原地補資料」的呼叫端(模擬態的骨架卡轉正式站點)重用同一段流程。
+  // 匯出給「繞過 addStop 原地補資料」的呼叫端(模擬態的骨架卡轉正式站點)重用同一段流程。
   const followUpStop = useCallback(
     (id: string, data: PlanNodeData) => {
       const ds = dataSourceRef.current
@@ -276,10 +300,10 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
     [setTimeline, setStatus, isStopGone, isUnmounted, timelineRef],
   )
 
-  // insertAttractionAfter — 在 anchorId 之後插入一個節點。成功才進入插入後流程:
+  // addStop — 在 anchorId 之後插入一個節點。成功才進入插入後流程:
   // 預設背景查詢(followUpStop,有 dataSource 才有)→ onStopInserted(契約見該選項)。
   // 純粹是時間軸操作;新增景點讓舊訊息淡化是對話的事,由呼叫端經 onStopInserted 自己處理。
-  const insertAttractionAfter = useCallback(
+  const addStop = useCallback(
     (anchorId: string | null, newId: string, data: PlanNodeData): ReturnType<typeof insertAfter> => {
       const result = commitTimeline<ReturnType<typeof insertAfter>>(
         (current) => {
@@ -300,10 +324,10 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
     [commitTimeline, followUpStop],
   )
 
-  // retryStopLookup — 重新查詢某一站的地點資料(使用者點卡片的「重試」、掛載後自動重試共用)。
+  // retryStop — 重新查詢某一站的地點資料(使用者點卡片的「重試」、掛載後自動重試共用)。
   // 走跟插入當下完全相同的 resolveAttractionForStep(含 429 單次延遲重試),開始時它會在狀態表標
   // { loading: true, failed: false },卡片立刻回到「查詢中」。沒有 dataSource、節點不存在/不是 stop/沒 placeId 時不做事。
-  const retryStopLookup = useCallback(
+  const retryStop = useCallback(
     (stopId: string) => {
       const ds = dataSourceRef.current
       const node = getNode(timelineRef.current, stopId)
@@ -335,14 +359,14 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
     if (!retryFailedOnMount || retriedOnMountRef.current) return
     retriedOnMountRef.current = true
     for (const node of listNodes(timelineRef.current)) {
-      if (stopLookupFailed(node, nodeStatusRef.current.get(node.id))) retryStopLookup(node.id)
+      if (stopLookupFailed(node, nodeStatusRef.current.get(node.id))) retryStop(node.id)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // setNoteForStop — 把備註寫在既有節點自己身上(不是插入新節點)。找不到節點回 anchor_not_found。
+  // setStopNote — 把備註寫在既有節點自己身上(不是插入新節點)。找不到節點回 anchor_not_found。
   // 分類 fallback(例如預設 info)屬於呼叫端的決定,這裡原樣寫入。
-  const setNoteForStop = useCallback(
+  const setStopNote = useCallback(
     (anchorId: string, text: string, category: string | undefined): ReturnType<typeof insertAfter> => {
       return commitTimeline<ReturnType<typeof insertAfter>>(
         (current) => {
@@ -363,10 +387,10 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
     [commitTimeline],
   )
 
-  // removeNodeNow — 同步摘除節點,不含淡出動畫。
-  // 為之後的兩階段 removeStep 預留:第一階段標 removing(節點狀態表)、淡出結束後呼叫這支真正摘除。
+  // removeStopNow — 同步摘除節點,不含淡出動畫。
+  // 是兩階段 removeStop 的第二階段:第一階段標 removing(節點狀態表)、淡出結束後呼叫這支真正摘除。
   // 找不到節點、或有 store 時存檔失敗(code save_failed)回 { ok: false }(state 不變)。
-  const removeNodeNow = useCallback(
+  const removeStopNow = useCallback(
     (id: string): ReturnType<typeof removeNode> => {
       return commitTimeline<ReturnType<typeof removeNode>>(
         (current) => {
@@ -386,8 +410,8 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
     commitTimeline(() => ({ next: createEmptyTimeline(), result: undefined }))
   }, [commitTimeline])
 
-  // removeStep — 移除節點的兩階段流程:先在狀態表標 removing 觸發 CSS 淡出,等 removeFadeMs 後才真的摘除
-  // (removeNodeNow 的同步摘除是第二階段),摘除後補算下一站的交通(它的上一站變了,removeNode 已清掉舊的
+  // removeStop — 移除節點的兩階段流程:先在狀態表標 removing 觸發 CSS 淡出,等 removeFadeMs 後才真的摘除
+  // (removeStopNow 的同步摘除是第二階段),摘除後補算下一站的交通(它的上一站變了,removeNode 已清掉舊的
   // transitFromPrev,這裡重查新的兩站之間)。
   //
   // 回傳 true = 這次呼叫真的觸發了移除;false = 節點不存在,或狀態表已標 removing(淡出期間重複呼叫擋下)。
@@ -400,7 +424,7 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
   //     reset 後劇本以同一個 id 重播時,若不擋,舊計時器會誤殺新節點。
   // onBeforeMutate 在兩個時間點都會呼叫(標 removing 當下、摘除當下):這兩次更新各自會讓畫面重算一次,
   // 呼叫端的自動捲動 effect 就會跑兩次,兩次都要告訴它「這不是新內容」。
-  const removeStep = useCallback(
+  const removeStop = useCallback(
     (removedId: string): boolean => {
       if (!hasNode(timelineRef.current, removedId)) return false
       if (nodeStatusRef.current.get(removedId)?.removing) return false
@@ -411,7 +435,7 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
         if (!nodeStatusRef.current.get(removedId)?.removing) return
         const nextId = nextStopOf(timelineRef.current, removedId)?.id
         onBeforeMutateRef.current?.()
-        const removed = removeNodeNow(removedId)
+        const removed = removeStopNow(removedId)
         if (!removed.ok) {
           // 摘除沒生效(有 store 時存檔失敗):節點還在時間軸,必須收掉 removing,否則它會一直維持淡出後看不見、
           // 又因「已在移除中」被擋下而移不掉的狀態。收掉後使用者/AI 可以再試一次。
@@ -426,15 +450,15 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
       }, removeFadeMsRef.current)
       return true
     },
-    [nodeStatusRef, removeNodeNow, setStatus, setTimeline, isUnmounted, timelineRef],
+    [nodeStatusRef, removeStopNow, setStatus, setTimeline, isUnmounted, timelineRef],
   )
 
-  // dragStopTime — 時間軸小圓點拖拉後「真正提交」某一站的新時間。拖拉中的即時預覽、clamp 在合法範圍、
+  // setStopTime — 時間軸小圓點拖拉後「真正提交」某一站的新時間。拖拉中的即時預覽、clamp 在合法範圍、
   // 吸附 30 分鐘刻度都在視圖的拖拉手勢裡完成,這裡不重複檢查前後站的範圍(拖拉中範圍不變,呼叫端手勢層負責在外部變動時
   // 結束手勢);只擋「格式不是 HH:MM」與「節點不存在/不是 stop」這兩種防禦性情況,回傳 false(有 store 時存檔失敗也回 false)。
   // 寫入後這一站與前一站的交通重新估算(同其他「前一站關聯有變動就重查」的慣例,沒有 dataSource 則略過)。
   // onBeforeMutate 在寫入前呼叫(TripPlanPage 用來抑制自動捲動)。
-  const dragStopTime = useCallback(
+  const setStopTime = useCallback(
     (stopId: string, newTime: string): boolean => {
       const node = getNode(timelineRef.current, stopId)
       if (!node || node.type !== 'stop' || !TIME_PATTERN.test(newTime)) return false
@@ -452,14 +476,14 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
     [commitTimeline, setTimeline, isUnmounted, timelineRef],
   )
 
-  // addDayToTimeline/moveDayInTimeline——天的操作。走 commitTimeline(有 store 時寫入前追上磁碟、存檔失敗不推進記憶體),
+  // addDay/moveDay——天的操作(領域層 modelAddDay/modelMoveDay 的薄包裝,即 model.ts 的 addDay/moveDay)。走 commitTimeline(有 store 時寫入前追上磁碟、存檔失敗不推進記憶體),
   // 用的是「當下最新」的時間軸而不是呼叫端(AI)讀到的舊快照。atDay 不合法或 moveDay 超出範圍時不改動並回傳錯誤;
 // 存檔失敗同樣回 ok:false(code save_failed),住宿操作亦同。
-  const addDayToTimeline = useCallback(
-    (atDay: number | undefined): AddDayInTimelineResult => {
-      return commitTimeline<AddDayInTimelineResult>(
+  const addDay = useCallback(
+    (atDay: number | undefined): AddDayResult => {
+      return commitTimeline<AddDayResult>(
         (current) => {
-          const added = addDay(current, atDay)
+          const added = modelAddDay(current, atDay)
           if (!added.ok) return { result: { ok: false, error: added.error } }
           return { next: added.timeline, result: { ok: true, day: added.day, dayCount: added.timeline.days.length } }
         },
@@ -468,11 +492,11 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
     },
     [commitTimeline],
   )
-  const moveDayInTimeline = useCallback(
-    (fromDay: number, toDay: number): MoveDayResult & { dayCount: number } => {
-      return commitTimeline<MoveDayResult & { dayCount: number }>(
+  const moveDay = useCallback(
+    (fromDay: number, toDay: number): MoveDayWithCountResult => {
+      return commitTimeline<MoveDayWithCountResult>(
         (current) => {
-          const moved = moveDay(current, fromDay, toDay)
+          const moved = modelMoveDay(current, fromDay, toDay)
           if (!moved.ok) return { result: { ...moved, dayCount: current.days.length } }
           return { next: moved.timeline, result: { ...moved, dayCount: moved.timeline.days.length } }
         },
@@ -482,9 +506,9 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
     [commitTimeline],
   )
 
-  // setLodgingInTimeline/removeLodgingFromTimeline——住宿操作。天數轉天 id 與 upsert 在領域層 setLodgingByDays;失敗時不改動。
-  const setLodgingInTimeline = useCallback(
-    (args: { placeId: string; days: number[]; name?: string; lodgingId?: string }): SetLodgingByDaysResult => {
+  // setLodging/removeLodging——住宿操作。天數轉天 id 與 upsert 在領域層 setLodgingByDays;失敗時不改動。
+  const setLodging = useCallback(
+    (args: SetLodgingArgs): SetLodgingByDaysResult => {
       return commitTimeline<SetLodgingByDaysResult>(
         (current) => {
           const result = setLodgingByDays(current, args)
@@ -495,11 +519,11 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
     },
     [commitTimeline],
   )
-  const removeLodgingFromTimeline = useCallback(
+  const removeLodging = useCallback(
     (lodgingId: string): LodgingResult => {
       return commitTimeline<LodgingResult>(
         (current) => {
-          const result = removeLodging(current, lodgingId)
+          const result = modelRemoveLodging(current, lodgingId)
           return result.ok ? { next: result.timeline, result } : { result }
         },
         () => ({ ok: false, error: saveFailedError<LodgingError>() }),
@@ -517,18 +541,18 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}) {
     setStatus,
     commitTimeline,
     setTimeline,
-    insertAttractionAfter,
+    addStop,
     followUpStop,
-    setNoteForStop,
+    setStopNote,
     clearTimeline,
-    removeNodeNow,
-    removeStep,
-    dragStopTime,
-    retryStopLookup,
-    addDayToTimeline,
-    moveDayInTimeline,
-    setLodgingInTimeline,
-    removeLodgingFromTimeline,
+    removeStopNow,
+    removeStop,
+    setStopTime,
+    retryStop,
+    addDay,
+    moveDay,
+    setLodging,
+    removeLodging,
     resyncFromStorage,
   }
 }

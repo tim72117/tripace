@@ -76,7 +76,7 @@ export const ROUTE_LINE_ENABLED = import.meta.env.VITE_FEATURE_ROUTE_LINE === 't
 // /ai-plan 展示頁(planning/preview/Content.tsx)固定接純前端假資料
 // (planning/data/fake.ts 的 transitEstimate),沒有後端可以重新查詢,不接這個
 // flag 對應的 callback,PlanTimelineView 在沒收到對應 callback 時膠囊
-// 维持原本純展示、不可點擊(見該元件 onTransitModeChange prop 的完整
+// 维持原本純展示、不可點擊(見該元件 onSetStopTransitMode prop 的完整
 // 說明),flag 開關本身不影響展示頁的行為。
 //
 // 同 TIME_DRAG_ENABLED/ROUTE_LINE_ENABLED 一套

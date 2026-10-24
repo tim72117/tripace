@@ -133,7 +133,7 @@ export const PLAN_SIM_SCRIPT: PlanAction[] = [
   // note-reconsider——2026-10 使用者明確要求併入主題點的三則備註(原本
   // 各自掛在 stop-datianhou/stop-wumiao/stop-wintermelon 身上)合併成
   // 一則。一個節點只能有一則 note(見 timeline/model.ts NoteInfo 的完整
-  // 說明:note?: NoteInfo 是單數欄位,setNoteForStop 用 updateNode 整個
+  // 說明:note?: NoteInfo 是單數欄位,setStopNote 用 updateNode 整個
   // 覆蓋——連續對同一個 id 送三則 add_note,只有最後一則會真的留下來,
   // 不是三則並存),這些站點合併成同一張主題卡後,原本三則各自獨立的
   // 備註不能繼續各自送出,改成一次寫成一段完整的提醒文字。category 選

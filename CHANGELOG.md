@@ -2,6 +2,27 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.40.1 — 2026-10-24
+
+延續 v0.40.0：時間軸操作層的命名統一並加上介面約束，onagent 正式機位址改為 `onagents.dev`，文件同步。**無資料庫結構變更；LLM 工具名稱、yaml、thought 不變（不需要重推 onagent）。**
+
+> **內部不相容變更**（只影響前端內部呼叫，依使用者決定走 patch）：`usePlanTimelineCore` 與 AI 工具 ctx 的方法改名；視圖 props `onDragStopTime`、`onTransitModeChange` 改名。
+
+### 變更
+
+- **操作層命名統一**：站點名詞一律 Stop，動詞統一；核心 hook、AI 工具 ctx、模擬態、視圖 props 用同一組名稱——`insertAttractionAfter`／`insertAttraction`→`addStop`、`removeStep`→`removeStop`（內部 `removeNodeNow`→`removeStopNow`）、`dragStopTime`→`setStopTime`（`onDragStopTime`→`onSetStopTime`）、`setNoteForStop`／ctx `addNote`→`setStopNote`、`retryStopLookup`→`retryStop`、`addDayToTimeline`→`addDay`、`moveDayInTimeline`→`moveDay`、`setLodgingInTimeline`→`setLodging`、`removeLodgingFromTimeline`→`removeLodging`、`onTransitModeChange`→`onSetStopTransitMode`。領域層 `model.ts` 的純函式不改名。
+- **`PlanOperations` 介面**（`planning/timeline/operations.ts`）：列出 9 個操作的簽章；`usePlanTimelineCore` 的回傳型別、AI 底層 `PlanAiCtxDeps` 以它約束；簽章較寬的 AI 工具 ctx 只以 `PlanOperationNames` 約束方法名（名稱約束、不是簽章保護，註解已寫明）。視圖 props 的參數型別由它衍生。
+- **onagent 正式機位址改為 `https://onagents.dev`**（同一台服務，金鑰與 Allowed origin 沿用）：`deploy-cloudrun.yml` 的 `VITE_ONAGENT_URL`、`update-secret-manager.sh` 與 `.env.example` 的說明，以及網站五個「Powered by onagent」連結。
+- **文件**：`marker-layers.html` 新增「時間軸操作的名稱與介面」對照表與「規劃中：雙向串接」說明，重要決策紀錄補 3 條；`/plan-data-flow` 的舊名稱同步。
+
+### 已知未處理
+
+- 雙向 adapter 串接（指令方向 `PlanOperations`、回應方向 `PlanUpdates`，範圍涵蓋所有動作）只完成命名與第一個介面，後續分階段進行。
+- `web/tools/onagent-tools.yaml` 的 BackendDispatch 仍指向 `https://tripace.shuttle.tools`（該網域整站 301 轉址到 `tripace.io`），POST 遇到轉址的處理待確認。
+- 本機 `onagent-cli-setup` skill 說明仍寫舊網域 `onagent.shuttle.tools`。
+- `PlacePanel.test.tsx` 有 2 個日曆測試失敗，找不到固定日期的按鈕，與本版改動無關（疑與日期有關）。
+- 上線前事項同 v0.40.0（正式機推送 `web/tools/plan-ai/` 的工具與 thought、`itinerary_pages` 轉新格式）。
+
 ## v0.40.0 — 2026-10-24
 
 規劃時間軸的資料結構與前端目錄大幅重整：時間軸改成依天分組、節點不再存 `day`，執行狀態與對話搬出節點，資料來源上移到根部共用 store，三個入口的地圖連線統一，前端規劃程式收進 `web/src/planning/`。**本版含破壞性變更；無資料庫結構變更，但資料庫 `itinerary_pages` 的內容格式與 onagent 工具定義需要在上線前處理（見最後一節）。**
