@@ -1,12 +1,12 @@
-import type { PlanNode } from '../plan-core/planTimeline'
-import type { StopCardRenderContext } from '../plan-core/PlanTimelineView'
+import type { PlanNode } from '../planning/timeline/model'
+import type { StopCardRenderContext } from '../planning/timeline/PlanTimelineView'
 import styles from './renderItineraryStopCard.module.css'
 
 // createRenderItineraryStopCard——itineraries 專屬的地點卡渲染(2026-10
 // 新增,使用者明確要求「置換成 ai-itineraries 的版本，圖片放大一點」),
 // 透過 PlanTimelineView 的 renderStopCard 插槽接上(見該 prop/
 // StopCardRenderContext 的完整說明),不修改共用元件本身的 .stopCard
-// 樣式——那會連動影響 /app、/trip-plan 等所有正式功能頁面。
+// 樣式——那會連動影響 /app、/ai-plan 等所有正式功能頁面。
 //
 // 縮圖 96px/標題 19px,比正式頁預設的 64px/17px 明顯放大(約 1.5 倍)
 // ——這是展示頁(訪客瀏覽範例行程,不是實際規劃工具),希望縮圖本身

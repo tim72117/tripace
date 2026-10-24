@@ -6,7 +6,7 @@
 //
 // 每個工具各自一個檔案(recommend_nearby.go、geocode.go、…),這個檔案只放
 // 所有工具共用的 BackendDispatch request/response 協定形狀,見
-// server/tools/onagent-tools.yaml 的 backendDispatch 欄位、
+// web/tools/onagent-tools.yaml 的 backendDispatch 欄位、
 // docs/backend-dispatch-integration-guide-2026-08-10.md 與
 // docs/backend-tool-dispatch-design-2026-08-08.md(皆在 onagent repo,
 // c:\www\my\agent——這個套件只存在於 tripace 這側,故不重複那些文件)。

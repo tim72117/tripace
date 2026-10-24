@@ -50,7 +50,7 @@ function hasPaceData(entries: Entry[]): boolean {
 // 並排,比照 pace/PacePage.tsx 的桌面分支),取代原本精簡的卡片清單
 // (PublicPaceList,已移除)——這裡不帶上方功能列(navbar),因為
 // PublicViewScreen 本身已經有自己的 navbar(旅程名稱標題),不需要疊兩層。
-// checkpoints 狀態提升到這裡,理由同 desktop/Content.tsx、phone/Content.tsx:
+// checkpoints 狀態提升到這裡,理由同 planning/member/desktop/Content.tsx、planning/member/phone/Content.tsx:
 // PaceChart(抽屜/側欄)與 PaceRouteMap(地圖)是分開掛載的 sibling,靠
 // PaceChart 的 onRouteChange 把目前選取的段落鏡像上來再轉傳給地圖。
 // publicToken 直接傳這個分享頁自己的 token(見 PaceChart.tsx 的 publicToken

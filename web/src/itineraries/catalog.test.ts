@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { listNodes } from '../plan-core/planTimeline'
+import { listNodes } from '../planning/timeline/model'
 import {
   allNodesOf, coverPhotoOf, dayCountOf, deriveFilters, filterItineraries, findItinerary, sortByNewest, stopCountOf, toPlanTimeline,
 } from './catalog'

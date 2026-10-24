@@ -2,20 +2,20 @@
 // mock 掉 NativeMapBase 與 useSharedDrawLayer,只驗證元件把什麼交給誰。
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
-import type { MapHandle } from '../geo-planning/NativeMapBase'
+import type { MapHandle } from '../planning/map/NativeMapBase'
 import { PlanMap } from './PlanMap'
 
 type BaseProps = { center?: unknown; zoom?: number; mapId?: string; theme?: unknown; onHandleChange?: (h: MapHandle) => void }
 let baseProps: BaseProps | null = null
 const drawArgs: Record<string, unknown>[] = []
 
-vi.mock('../geo-planning/NativeMapBase', () => ({
+vi.mock('../planning/map/NativeMapBase', () => ({
   NativeMapBase: (props: BaseProps) => {
     baseProps = props
     return <div data-testid="native-map" />
   },
 }))
-vi.mock('../geo-planning/mapDrawLayer/useSharedDrawLayer', () => ({
+vi.mock('../planning/map/draw/useSharedDrawLayer', () => ({
   useSharedDrawLayer: (args: Record<string, unknown>) => {
     drawArgs.push(args)
     return { expandedThemeId: null }

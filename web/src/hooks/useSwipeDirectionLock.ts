@@ -3,7 +3,7 @@ import type { TouchEvent as ReactTouchEvent } from 'react'
 
 // useSwipeDirectionLock——2026-10 抽出:原本這套「位移閾值 + 水平/垂直
 // 比例判定 + 鎖定後 stopPropagation()」的手勢仲裁邏輯,只寫在
-// geo-planning/PhotoCarousel.tsx 的 MobileSwipeStrip 裡(解決「橫滑照片
+// planning/place/PhotoCarousel.tsx 的 MobileSwipeStrip 裡(解決「橫滑照片
 // 時不能連動觸發外層 PhoneBottomSheet 垂直拖曳」的衝突,見該檔案原本
 // touchStateRef 的完整說明)——使用者詢問「react-native-gesture-handler
 // 的做法可以套用在網頁上嗎」,調查後確認該函式庫本身依賴 React Native

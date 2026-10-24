@@ -8,9 +8,9 @@ import styles from './AiPlanPhoneDemo.module.css';
 //
 // 2026-10(方案 B,使用者明確確認「試做B我試試看效果」)改用
 // AiPlanPhoneDemoScreen 直接渲染,取代原本 <iframe src="/ai-plan?embedded=1">
-// 整頁嵌入的做法——背景:home/plan-ai-sim/Content.tsx 的地圖換成真實互動地圖
+// 整頁嵌入的做法——背景:planning/preview/Content.tsx 的地圖換成真實互動地圖
 // (NativeMapBase)後,使用者希望這個小展示改回「靜態圖片地圖 + 模擬
-// 元件」,但若直接嵌入 plan-ai-sim/Content 本體再用 transform:scale()
+// 元件」,但若直接嵌入 planning/preview/Content 本體再用 transform:scale()
 // 縮小,該頁面依賴 @media (max-width: 767px) 判斷手機版版面,media
 // query 看的是瀏覽器真實視窗寬度而非縮放後的視覺尺寸,縮小後仍會在
 // 桌面瀏覽器裡套用桌面版版面規則、跟手機外框形狀衝突。

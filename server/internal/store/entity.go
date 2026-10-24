@@ -113,7 +113,7 @@ type attractionRow struct {
 func (attractionRow) TableName() string { return "attractions" }
 
 // blogProfileRow 是「部落客公開身份」設定——2026-10 新增,見
-// showcase-demo 構想頁 /ideas/product-direction-5-publishing-tool(原產品方向腦力激盪文件)「發文工具
+// handbook 構想頁 /ideas/product-direction-5-publishing-tool(原產品方向腦力激盪文件)「發文工具
 // 產品線」的完整說明:讓使用者可以用一個人類可讀、URL 安全的 handle
 // (例如 "tim72117")發表文章(content_pages,見該 entity 的完整說明),
 // 而不是把內部隨機 UserID(usr_xxx 格式,見 userRow)直接曝露在公開
@@ -145,7 +145,7 @@ type blogProfileRow struct {
 func (blogProfileRow) TableName() string { return "blog_profiles" }
 
 // uploadedPhotoRow 是「使用者上傳圖片」(部落客發文用)的原圖記錄——
-// 2026-10 新增,見 showcase-demo 構想頁 /ideas/product-direction-5-publishing-tool(原產品方向腦力激盪文件)
+// 2026-10 新增,見 handbook 構想頁 /ideas/product-direction-5-publishing-tool(原產品方向腦力激盪文件)
 // 「發文工具產品線」:使用者寫部落格文章(content_pages,見
 // contentPageRow 的完整說明)時,自行上傳的圖片先落地成原圖記錄,之後
 // 再非同步產生縮圖/內文大圖等衍生版本(見 photoVariantRow)。

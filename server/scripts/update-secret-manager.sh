@@ -18,7 +18,7 @@
 # Google 登入 GSI 模式與後端 idtoken.Validate 共用的 OAuth 用戶端 ID,見
 # server/internal/auth/google.go)、VITE_PLAN_AI_ONAGENT_APP_KEY(「AI
 # 規劃」功能專用的獨立 onagent app plan-ai-timeline 的 apiKey,見
-# web/src/trip-plan/TripPlanPage.tsx 的完整說明,跟 VITE_ONAGENT_APP_KEY
+# web/src/planning/panel/TripPlanPage.tsx 的完整說明,跟 VITE_ONAGENT_APP_KEY
 # 是完全不同的兩個 app)是八組獨立的金鑰/識別碼,
 # 不同用途、不同申請/輪替方式,互不影響。這支腳本目前是 Cloud Run
 # (shuttle-045094509 專案)唯一設定它們的地方,故一併整合進來,不另外開
@@ -515,7 +515,7 @@ fi
 
 # -----------------------------------------------------------------------------
 # 6. VITE_PLAN_AI_ONAGENT_APP_KEY —— 「AI 規劃」功能(/app/plan-ai,見
-#    web/src/trip-plan/TripPlanPage.tsx)專用的獨立 onagent app
+#    web/src/planning/panel/TripPlanPage.tsx)專用的獨立 onagent app
 #    (plan-ai-timeline)的 apiKey,跟上面 VITE_ONAGENT_APP_KEY(tripace app)
 #    是完全不同的兩個 app、兩把互不相關的 key,見 TripPlanPage.tsx
 #    PLAN_AI_ONAGENT_APP_ID 的完整說明。透過 Dockerfile 的 web-build 階段

@@ -1,7 +1,7 @@
-import { centerOfPoints } from '../geo-planning/mapCenter'
+import { centerOfPoints } from '../planning/map/mapCenter'
 import type { SampleItinerary } from './types'
 
-// initialCenterOf——行程詳情頁地圖的初始中心:取「第一天」有座標的站點,用共通算法(geo-planning/mapCenter.ts 的 centerOfPoints,
+// initialCenterOf——行程詳情頁地圖的初始中心:取「第一天」有座標的站點,用共通算法(planning/map/mapCenter.ts 的 centerOfPoints,
 // 與登入後依旅程既有地點算中心同一個)算中心;第一天沒有任何座標時改用最早一天有座標的站點;完全沒有座標回 null,由 PlanMap
 // 退回預設起點。
 //

@@ -74,7 +74,7 @@ type TaskEntryReadyFn func(tripID string, taskID int, entryID string)
 
 // TripEntryPayload 是 entry_query 查到、要推播給前端旅程清單表格的一筆條目,
 // 欄位對齊前端 TripEntry(web/src/clienttools/tripEntryTools.ts)與
-// server/tools/clienttools.yaml 裡 trip_entry_add/trip_entry_list 的欄位
+// web/tools/clienttools.yaml 裡 trip_entry_add/trip_entry_list 的欄位
 // 命名(title/date/time/note),而非 model.Entry 的 start/startTime 命名——
 // 這樣前端收到後不需要再做一次欄位名稱轉換,可直接當 TripEntry 使用。
 type TripEntryPayload struct {

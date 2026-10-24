@@ -23,7 +23,7 @@ type TripListBatchesCtx = {
   getAllBatches: () => TripBatches
 }
 
-// BatchSummary — 一個批次的摘要,形狀對齊 server/tools/clienttools.yaml
+// BatchSummary — 一個批次的摘要,形狀對齊 web/tools/clienttools.yaml
 // 裡 trip_list_batches 的 returns 定義(key/count/firstDate/lastDate/
 // sampleTitles)。目標是讓 LLM 光看這份摘要就能判斷「這批大概是什麼」、
 // 決定要不要沿用這個 key,不需要為此另外呼叫 trip_entry_list 把整批內容
@@ -59,7 +59,7 @@ function summarizeBatch(key: string, entries: TripBatches[string]): BatchSummary
 // listTripBatches：分頁列出目前所有批次的摘要,純邏輯,不含 React 依賴,不
 // 改動 allBatches。分頁邏輯比照 listTripEntries(見 ./tripEntryList.ts)——
 // 先算出完整的批次摘要陣列,再依 offset/limit slice。offset/limit 在
-// server/tools/clienttools.yaml 標成必填,但這裡仍防禦性地處理「缺漏或型別
+// web/tools/clienttools.yaml 標成必填,但這裡仍防禦性地處理「缺漏或型別
 // 不可信」的情況——offset 缺漏或無效值一律回退到 0(從頭查);limit 缺漏或
 // 無效值(含 0、負數)一律回退到批次總數(等同「這次查全部」,也避免
 // limit<=0 時 slice 出空陣列讓 LLM 誤以為批次是空的)。offset 超出批次數量
@@ -76,7 +76,7 @@ export function listTripBatches(
   return { result: { batches: batches.slice(offset, offset + limit), total } }
 }
 
-// TripListBatchesArgs — trip_list_batches 的 args 型別,對齊 server/tools/
+// TripListBatchesArgs — trip_list_batches 的 args 型別,對齊 web/tools/
 // clienttools.yaml 的 parameters schema(offset/limit 皆必填)。跟
 // TripEntryListArgs(見 tripEntryList.ts)同樣的取捨:offset/limit 仍宣告
 // 成 unknown,「防禦性轉型」留給 listTripBatches 內部的 asNonNegativeInt

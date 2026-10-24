@@ -1,6 +1,6 @@
 // guestId.ts — 未登入訪客的穩定識別碼。
 //
-// 背景:/ai-plan 展示頁(home/plan-ai-sim/LivePlanLayer.tsx)讓未登入訪客
+// 背景:/ai-plan 展示頁(planning/preview/LivePlanLayer.tsx)讓未登入訪客
 // 體驗真實 AI 對話排行程,送出的訊息會打 POST /internal/plan-ai/chat 存檔
 // (見 server/internal/api/plan_ai_chat.go)。那支端點原本直接擋掉未登入
 // 請求,理由是後端 userFor() 對沒有合法 JWT 的請求一律回退成固定共用的
@@ -35,7 +35,7 @@ function randomGuestId(): string {
 // getGuestId — 取得(必要時建立)這個瀏覽器的訪客識別碼。
 //
 // 讀寫失敗(localStorage 被停用、無痕模式配額等)一律降級成每次呼叫都
-// 重新生成一個新 id——理由同 plan-core/planTimelineStorage.ts saveTimeline
+// 重新生成一個新 id——理由同 planning/timeline/storage.ts saveTimeline
 // 的既有降級慣例:持久化是加值功能,失敗時這次請求仍然應該能送出(降級
 // 的代價只是「這次之後重整頁面會換一個新 id」,不是整個功能不可用)。
 export function getGuestId(): string {

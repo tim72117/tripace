@@ -17,7 +17,7 @@
 // 呼叫的訪客查詢端點(search_attraction 工具查 place-search/
 // attraction-search、AskPage 背景補完整資料查 place-details-any),
 // ask_travel_region/ask_transport_mode 兩支工具本身不打後端(選項由
-// LLM 自己傳入或後端固定列舉,見 askPageTools.ts 開頭「第五輪」的完整
+// LLM 自己傳入或後端固定列舉,見 planning/conversation/asktools.ts 開頭「第五輪」的完整
 // 說明),不需要額外的端點整合測試。
 //
 // 執行方式:需要本機 localhost:8080 真的跑著(含真實 PostgreSQL、

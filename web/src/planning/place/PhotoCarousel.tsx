@@ -1,0 +1,350 @@
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useIsDesktop } from '../../hooks/useIsDesktop'
+import { useSwipeDirectionLock } from '../../hooks/useSwipeDirectionLock'
+import styles from './PhotoCarousel.module.css'
+
+// PhotoCarousel:PlacePanel.tsx 照片顯示區域的抽出元件——「點擊地圖上
+// Google 原生 POI 圖標」這個來源(poiInfoContent,見 infoContent.ts)的
+// 後端回應是 Google 照片的多圖清單(見 handleGeoPlaceDetails 的說明,
+// 2026-09 已移除 Pexels 讀圖來源),這個元件依照片數量與裝置類型分別
+// 呈現:
+//   0 張:顯示 placeholder(沿用既有 .photoPlaceholder 樣式)。
+//   1 張:直接顯示單張 <img>,不顯示任何互動控制項——維持跟改版前完全
+//     一樣的單圖體驗,其餘來源(地點清單/候選籃項目,只有單一 photoUrl)
+//     走的就是這條路徑。
+//   2 張以上,依裝置分兩套完全不同的互動模式(桌面滑鼠點擊/手機觸控滑動
+//     是不同的操作語彙,不應該用同一套 UI 硬套兩種裝置):
+//     - 桌面版(useIsDesktop 為 true):卡片內只顯示第一張縮圖,點擊後
+//       彈出全螢幕 Lightbox,可用左右箭頭/鍵盤方向鍵切換,點背景或關閉
+//       鈕收起。
+//     - 手機版:卡片內直接是可橫向自由捲動的圖片列(純 overflow-x: auto,
+//       不用 scroll-snap,也不是 onTouchEnd 判斷門檻後才切頁的離散式
+//       邏輯),手指滑多少、圖片就跟著移動多少,鬆手後停在滑到的位置,
+//       不會自動吸附對齊到某一張的邊界——使用者明確要求「圖片滑動,
+//       不用吸附」,不額外疊加左右按鈕,這是原生相簿常見的自由捲動
+//       操作方式,手機版使用者不需要瞄準小按鈕。頁碼用圓點呈現(以
+//       IntersectionObserver 判斷目前捲動到哪一張最靠近可視範圍中心)。
+//
+// fallbackUrl:googlePhotoUrls 清單為空時的相容 fallback——PlaceInfoContent.
+// photoUrl(見該型別的說明)本身可能是單一舊格式來源(地點清單/候選籃
+// 項目)的唯一照片,這個元件統一收斂「該顯示什麼」的判斷,呼叫端
+// (PlacePanel.tsx)不需要自己判斷要不要繞過這個元件直接畫 <img>。
+export function PhotoCarousel({
+  googlePhotoUrls,
+  fallbackUrl,
+  alt,
+  onLayoutChange,
+}: {
+  googlePhotoUrls?: string[]
+  fallbackUrl?: string
+  alt: string
+  // onLayoutChange:通知呼叫端目前是否渲染成「手機版多圖橫滑」
+  // (isMobileSwipe)——手機版呼叫端(PlanPhoneInfoSheet.tsx)的
+  // 外層容器 .imageWrap 原本固定留 16px 左右 padding(給單張圖片/
+  // placeholder 用的視覺留白),但這個 padding 套用到多圖橫滑軌道上時,
+  // 會讓整條軌道跟卡片外緣之間多出一圈間隙,不是真正貼齊——使用者明確
+  // 要求「有圖片的邊邊軌道不能有空隙」,軌道整體要貼齊外框,圓角+間距
+  // 效果改由 .swipeItem 逐張處理(像相簿卡片一張張滑,同樣是使用者
+  // 明確要求)。PhotoCarousel 本身不知道外層容器套了多少 padding,故
+  // 不用固定負 margin 硬編碼去抵銷,改由呼叫端根據這個回呼決定要不要
+  // 套 padding——桌面版(PlacePanel.tsx)固定滿版顯示,不需要這個
+  // 機制,不傳這個 prop 即可。
+  onLayoutChange?: (isMobileSwipe: boolean) => void
+}) {
+  // photos:googlePhotoUrls 沒有值時,退回 fallbackUrl 組成的單張清單——
+  // 這是唯一會用到 fallbackUrl 的分支,一旦 googlePhotoUrls 有值就完全
+  // 採用它,不會把 fallbackUrl 混進去(避免同一張圖因為剛好也是 photoUrl
+  // 又被清單重複列出)。
+  const photos = (googlePhotoUrls?.length ?? 0) > 0 ? googlePhotoUrls! : fallbackUrl ? [fallbackUrl] : []
+
+  const isDesktop = useIsDesktop()
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+
+  // isMobileSwipe:對應下方 MobileSwipeStrip 實際被渲染的條件(!isDesktop
+  // 且 photos.length > 1)——用同一個判斷式算出來,避免跟下方分支各自
+  // 判斷卻不小心寫出不一致的條件。放在所有 early return 之前(Hooks
+  // 規則不允許在 early return 之後呼叫 hook),統一算好結果、用單一
+  // useEffect 通知呼叫端(見 onLayoutChange 的完整說明)。
+  const isMobileSwipe = !isDesktop && photos.length > 1
+  useEffect(() => {
+    onLayoutChange?.(isMobileSwipe)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobileSwipe])
+
+  // 目前沒有任何照片時,不區分「這個地點本來就沒有照片」跟「照片還在
+  // 背景查詢/重試中」——兩種情況顯示同一個帶載入動畫的 placeholder(見
+  // .photoPlaceholder 的完整說明),不額外接一個「是否查詢中」的旗標。
+  if (photos.length === 0) {
+    return (
+      <div className={styles.wrap}>
+        <div className={styles.photoPlaceholder} />
+      </div>
+    )
+  }
+
+  if (photos.length === 1) {
+    return (
+      <div className={styles.wrap}>
+        <img className={styles.photo} src={photos[0]} alt={alt} />
+      </div>
+    )
+  }
+
+  if (isDesktop) {
+    return (
+      <>
+        <button type="button" className={styles.desktopTrigger} onClick={() => setLightboxOpen(true)}>
+          <img className={styles.photo} src={photos[0]} alt={alt} />
+          <span className={styles.counter}>{photos.length} 張照片</span>
+        </button>
+        {lightboxOpen && (
+          <Lightbox photos={photos} alt={alt} onClose={() => setLightboxOpen(false)} />
+        )}
+      </>
+    )
+  }
+
+  return <MobileSwipeStrip photos={photos} alt={alt} />
+}
+
+// MobileSwipeStrip:手機版橫向並排滑動列——純 overflow-x: auto 自由捲動
+// (手指移動多少、圖片就跟著移動多少,鬆手後停在滑到的位置),不是量測
+// 滑動距離、超過門檻才離散切換一整張的邏輯,也不用 scroll-snap 鬆手後
+// 強制吸附回某一張的邊界(使用者明確要求「圖片滑動,不用吸附」,快速
+// 滑動時吸附動作會有一段跳動位移,不是想要的手感)。用 IntersectionObserver
+// 觀察哪一張目前捲進可視範圍內最多,更新圓點頁碼的 active 狀態——因為
+// 沒有吸附,圖片可能停在兩張之間,intersectionRatio 不會有一張精準
+// 到 1,取比例最高的那一張仍然是合理的「目前主要看到哪張」判斷依據。
+function MobileSwipeStrip({ photos, alt }: { photos: string[]; alt: string }) {
+  const [activeIndex, setActiveIndex] = useState(0)
+  const trackRef = useRef<HTMLDivElement | null>(null)
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([])
+
+  // 方向鎖定:這張橫滑軌道通常嵌在 PhoneBottomSheet(可上下拖曳收合/
+  // 展開的底部面板)裡,兩者的觸控手勢(水平滑照片 vs 垂直拖曳卡片)
+  // 目前共用同一批原生觸控事件——PhoneBottomSheet 的 onTouchStart/Move/
+  // End 是掛在 .panel 上的 React 合成事件,靠事件冒泡接收,若這裡完全
+  // 不處理,手指按在照片上開始滑動時,事件會冒泡上去同時觸發卡片拖曳,
+  // 使用者實測回報希望「左右滑動照片時鎖住上下拖動」。
+  //
+  // 2026-10 改用共用 hook hooks/useSwipeDirectionLock.ts(見該檔案的
+  // 完整說明,移植自 react-native-gesture-handler 的方向鎖定概念)取代
+  // 原本寫在這裡的一份位移閾值+方向比例判斷——判斷邏輯不變(水平為主
+  // 鎖定後 stopPropagation() 擋冒泡,垂直為主完全不攔截),只是抽成可
+  // 被其他元件複用的通用邏輯,不再是這個檔案專屬的實作細節。
+  const { onTouchStart, onTouchMove, onTouchEnd } = useSwipeDirectionLock('horizontal')
+
+  // observerRef:目前掛載中的 IntersectionObserver 實例——registerObserver
+  // 改回傳 void(不是 cleanup 函式)是因為專案的 React 版本是 18.3.1(見
+  // package.json),還不支援 React 19 才新增的「callback ref 可以回傳
+  // cleanup 函式,卸載時自動呼叫」語法,React 18 會把任何非 undefined
+  // 的回傳值當成用法錯誤,在 console 印出
+  // 「Warning: Unexpected return value from a callback ref in div.」
+  // (實測踩到的警告,見這次修正的完整說明)。改用這個 ref 自己手動記住
+  // observer 實例,在 registerObserver 每次被呼叫、node 變成 null(元件
+  // 卸載或 track 換掉)時自己呼叫 disconnect(),達到同樣的清理效果,
+  // 不依賴 React 19 才有的語法。
+  const observerRef = useRef<IntersectionObserver | null>(null)
+  function registerObserver(node: HTMLDivElement | null) {
+    trackRef.current = node
+    observerRef.current?.disconnect()
+    observerRef.current = null
+    if (!node) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // 取交集比例最高的那一張當作目前顯示中的頁面——沒有 scroll-snap
+        // 強制吸附,圖片可能停在兩張之間,不會有任何一張的 intersectionRatio
+        // 精準到 1,但比例最高的那張仍然最接近「使用者目前主要在看哪張」。
+        let bestIndex = -1
+        let bestRatio = 0
+        for (const entry of entries) {
+          const idx = itemRefs.current.indexOf(entry.target as HTMLDivElement)
+          if (idx !== -1 && entry.intersectionRatio > bestRatio) {
+            bestRatio = entry.intersectionRatio
+            bestIndex = idx
+          }
+        }
+        if (bestIndex !== -1) setActiveIndex(bestIndex)
+      },
+      { root: node, threshold: [0.5, 0.75, 1] },
+    )
+    itemRefs.current.forEach((el) => el && observer.observe(el))
+    observerRef.current = observer
+  }
+
+  // edgePadding:只有目前顯示第一張(activeIndex===0)或最後一張
+  // (activeIndex===photos.length-1)時,軌道對應那一側才留一點間距
+  // ——使用者明確要求「第一張顯示時左邊要有間隙、滑到最後一張時右邊
+  // 要有間隙」,左右對稱規則,但滑到中間任一張時軌道整體要真正貼齊
+  // 卡片外緣,不能一直留白(見呼叫端 PlanPhoneInfoSheet 的
+  // .imageWrapSwipe 說明,那層外框本身已經不留 padding)。用既有的
+  // activeIndex(IntersectionObserver 判斷的目前主要顯示張數)當條件,
+  // 不需要另外監聽 scrollLeft——activeIndex 對應到第一/最後張時,視覺
+  // 上就是「使用者看到的是那一張」,已經足夠對應這個需求。這兩個
+  // padding 只加在軌道(.swipeTrack)本身,不影響 .swipeItem 各自的
+  // 寬度計算基準(flex 子項目的 calc(100% - 16px)是相對容器內容框
+  // 寬度,padding 屬於容器本身,兩者本來就分開處理,只是首尾項目的
+  // flexBasis 需要額外扣掉對應側的 padding,見下方 itemStyle)。
+  const isFirstActive = activeIndex === 0
+  const isLastActive = activeIndex === photos.length - 1
+  const leadingPadding = isFirstActive ? 16 : 0
+  const trailingPadding = isLastActive ? 16 : 0
+
+  return (
+    <div className={styles.wrap}>
+      <div
+        className={styles.swipeTrack}
+        ref={registerObserver}
+        style={{ paddingLeft: leadingPadding, paddingRight: trailingPadding }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+      >
+        {photos.map((url, i) => {
+          // 首尾項目「不」需要額外覆寫寬度——.swipeItem 的基準值
+          // calc(100% - 16px)裡的 100%,對 flex item 而言本來就是
+          // 相對「.swipeTrack 內容框(content-box)寬度」計算,而
+          // .swipeTrack 的 padding 已經內縮了這個內容框(見上方
+          // leadingPadding/trailingPadding),所以首/尾張的 100%
+          // 基準本身就已經比中間張少了 16px,維持同一份 calc(100% -
+          // 16px)就能讓首尾張露出的遠景寬度跟中間張一致(都是 16px)。
+          // 之前這裡誤以為 padding 縮減內容框跟 calc 裡的 16px 是
+          // 「兩件各自獨立要扣的東西」,額外疊加了一次 16px(變成
+          // calc(100% - 32px)),導致首/尾張顯示時該張圖片明顯比
+          // 其他張窄一截、右側露出的遠景寬度也跟著變成 32px,兩種
+          // 視覺瑕疵都是這裡多扣一次造成的,拿掉這段 inline override
+          // 即可回到跟中間張一致的比例。
+          return (
+            <div
+              key={url + i}
+              className={styles.swipeItem}
+              ref={(el) => {
+                itemRefs.current[i] = el
+              }}
+            >
+              <img className={styles.photo} src={url} alt={alt} />
+            </div>
+          )
+        })}
+      </div>
+      <div className={styles.dots} role="tablist" aria-label="照片頁碼">
+        {photos.map((url, i) => (
+          <span
+            key={url + i}
+            role="tab"
+            aria-selected={i === activeIndex}
+            className={`${styles.dot}${i === activeIndex ? ` ${styles.dotActive}` : ''}`}
+          />
+        ))}
+      </div>
+      <span className={styles.counter}>{activeIndex + 1} / {photos.length}</span>
+    </div>
+  )
+}
+
+// Lightbox:桌面版點擊卡片縮圖後彈出的全螢幕檢視層——左右箭頭/鍵盤方向
+// 鍵切換,點背景或右上角關閉鈕收起。桌面版用滑鼠操作,箭頭按鈕比觸控
+// 滑動手勢更符合滑鼠使用者的操作習慣,故桌面/手機在這裡刻意採用不同的
+// 切換方式,而非同一套邏輯套用到兩種裝置。
+//
+// 用 createPortal 掛到 document.body,不是直接內嵌在呼叫端(PlacePanel/
+// AttractionInfoPanel)的 JSX 樹裡——.lightboxOverlay 的 position: fixed
+// 理論上該相對整個視窗定位,但這張卡片現在是掛在地圖元件(PlanMap/
+// NativeMapBase)的 children 裡(見這兩個檔案的完整說明),巢狀在較深的
+// DOM 樹層級,一旦祖先鏈上任何一層意外引入 transform/filter/will-change
+// 等會建立新包含區塊的屬性,fixed 定位就會改成相對那層祖先,不再是整個
+// 視窗——實際發生過這個問題(照片放大後卡在卡片原本位置,沒有真正貼齊
+// 視窗置中,見這次修正前的截圖)。掛到 body 讓這個檢視層完全脫離卡片的
+// DOM 巢狀關係,不管呼叫端未來套在多深的容器裡,都能保證真正覆蓋整個
+// 視窗置中顯示,不用逐一排查每一層祖先有沒有踩到這個 CSS 限制。
+// 2026-10 改成 export:規劃面板的時間軸縮圖卡片(planning/panel/TripPlanPage.tsx)需要
+// 比照地圖版的多圖瀏覽——但卡片本身是 64px 圓形小縮圖,套用整個
+// PhotoCarousel(含手機橫滑排版、desktopTrigger 按鈕樣式)會撐破圓形
+// 版型,故只重用這支全螢幕 Lightbox(桌機/手機都適用,原本就是鍵盤/點擊
+// 操作,不特別區分裝置),縮圖本身維持現有圓形版型,點擊時另外開啟它。
+export function Lightbox({ photos, alt, onClose }: { photos: string[]; alt: string; onClose: () => void }) {
+  const [index, setIndex] = useState(0)
+
+  // photos 為空陣列時直接不渲染——這支元件現在是獨立 export 出去的
+  // 共用元件,呼叫端目前都只在 photoUrl 確定存在時才會開啟它,但這個
+  // 前提對 Lightbox 自己來說是隱性的,沒有任何型別層級的保證。少了這層
+  // 防護,goTo() 的 next % photos.length 會算出 NaN(0 取模),
+  // photos[NaN] 是 undefined,導致渲染出一個 src 為 undefined 的
+  // <img>,而不是安全地不顯示或自動關閉(2026-10 code review 發現)。
+  if (photos.length === 0) return null
+
+  function goTo(next: number) {
+    setIndex((next + photos.length) % photos.length)
+  }
+
+  return createPortal(
+    <div
+      className={styles.lightboxOverlay}
+      onClick={onClose}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft') goTo(index - 1)
+        else if (e.key === 'ArrowRight') goTo(index + 1)
+        else if (e.key === 'Escape') onClose()
+      }}
+      role="dialog"
+      aria-modal="true"
+      tabIndex={-1}
+      ref={(el) => el?.focus()}
+    >
+      <button
+        type="button"
+        className={styles.lightboxCloseBtn}
+        onClick={(e) => {
+          e.stopPropagation()
+          onClose()
+        }}
+        aria-label="關閉"
+      >
+        <X size={22} strokeWidth={2} />
+      </button>
+      <img
+        className={styles.lightboxImg}
+        src={photos[index]}
+        alt={alt}
+        onClick={(e) => e.stopPropagation()}
+      />
+      {/* 左右切換箭頭/頁碼只在有 2 張以上照片時才顯示——2026-10 這支
+          Lightbox 多了一個只有 1 張照片也會開啟的呼叫端(見上方 export
+          說明新增的規劃面板時間軸縮圖用法,使用者明確要求「一張的
+          時候也要」能點開放大看),1 張時沒有「上一張/下一張」可切換,
+          顯示這些控制項只會讓人誤以為還有更多照片。 */}
+      {photos.length > 1 && (
+        <>
+          <button
+            type="button"
+            className={`${styles.lightboxNavBtn} ${styles.lightboxNavBtnPrev}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              goTo(index - 1)
+            }}
+            aria-label="上一張照片"
+          >
+            <ChevronLeft size={24} strokeWidth={2} />
+          </button>
+          <button
+            type="button"
+            className={`${styles.lightboxNavBtn} ${styles.lightboxNavBtnNext}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              goTo(index + 1)
+            }}
+            aria-label="下一張照片"
+          >
+            <ChevronRight size={24} strokeWidth={2} />
+          </button>
+        </>
+      )}
+      {photos.length > 1 && (
+        <span className={styles.lightboxCounter}>{index + 1} / {photos.length}</span>
+      )}
+    </div>,
+    document.body,
+  )
+}

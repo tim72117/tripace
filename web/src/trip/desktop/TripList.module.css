@@ -53,7 +53,7 @@
   outline-offset: -2px;
 }
 /* 管理圖示鈕:預設淡出,hover 整列時才顯現(常駐圖示會讓密集的旅程清單
-   看起來雜亂),對齊 geo-planning/desktop/CandidateList 等側欄清單項目常見的「hover
+   看起來雜亂),對齊 planning/place/desktop/CandidateList 等側欄清單項目常見的「hover
    才顯示次要動作」慣例。 */
 .itemAction {
   flex: 0 0 auto;
@@ -89,7 +89,7 @@
   background: var(--ios-sep);
 }
 /* 旅程項目的圖示徽章:取代原本的實心色塊大頭貼(Avatar),改用無色圖示
-   (MapPin/Plus,見 desktop/Content.tsx),跟手機版 PhoneNavDrawer.module.css
+   (MapPin/Plus,見 planning/member/desktop/Content.tsx),跟手機版 PhoneNavDrawer.module.css
    的 .tripItem/.newTripIcon 同一種低調視覺調性。 */
 .icon {
   width: 38px;

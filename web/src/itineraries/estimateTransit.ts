@@ -1,5 +1,5 @@
-import { haversineMeters } from '../geo-planning/geoDistance'
-import type { TransitInfo } from '../plan-core/planTimeline'
+import { haversineMeters } from '../planning/map/distance'
+import type { TransitInfo } from '../planning/timeline/model'
 
 // estimateTransit——行程詳情頁沒有人工填交通方式(SampleStop.transitFromPrev)的相鄰兩站,用直線距離粗估一段交通膠囊。
 //

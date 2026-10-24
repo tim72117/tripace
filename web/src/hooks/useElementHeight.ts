@@ -33,7 +33,7 @@ export function useElementHeight(ref: RefObject<HTMLElement | null>): number {
 
     // typeof ResizeObserver === 'undefined'——這個專案的測試環境
     // (vitest + jsdom)原生不實作 ResizeObserver,沒有這層防禦的話,
-    // 任何掛載了使用這個 hook 的元件(例如 phone/Content.tsx)的測試都會
+    // 任何掛載了使用這個 hook 的元件(例如 planning/member/phone/Content.tsx)的測試都會
     // 直接噴 ReferenceError。真實瀏覽器(含所有主流行動瀏覽器)都支援
     // 這個 API,這裡純粹是讓同一份程式碼能同時在兩種環境下運作,不是
     // 為了支援舊瀏覽器的 polyfill——沒有 ResizeObserver 時退化成只有

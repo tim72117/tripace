@@ -28,7 +28,7 @@ type TripEntryListCtx = {
 // ——LLM 查詢一個尚未新增過任何項目的 key 是合理情境(例如剛從
 // trip_list_batches 得知某 key 存在但這批目前是空的,或誤用了不存在的
 // key),不視為錯誤、不 throw,直接回報空結果讓 LLM 自行判斷。offset/limit
-// 在 server/tools/clienttools.yaml 標成必填,但這裡仍防禦性地處理「缺漏或
+// 在 web/tools/clienttools.yaml 標成必填,但這裡仍防禦性地處理「缺漏或
 // 型別不可信」的情況——offset 缺漏或無效值一律回退到 0(從頭查);limit
 // 缺漏或無效值(含 0、負數)一律回退到該批清單長度(等同「這次查全部」,也
 // 避免 limit<=0 時 slice 出空陣列讓 LLM 誤以為清單是空的)。offset 超出清單
@@ -48,7 +48,7 @@ export function listTripEntries(
   return { result: { entries: entries.slice(offset, offset + limit), total } }
 }
 
-// TripEntryListArgs — trip_entry_list 的 args 型別,對齊 server/tools/
+// TripEntryListArgs — trip_entry_list 的 args 型別,對齊 web/tools/
 // clienttools.yaml 的 parameters schema(key/offset/limit 皆必填,但這裡
 // offset/limit 仍宣告成可能是任意 unknown 值——LLM 實際傳回來的數字參數
 // 不保證是原生 number,見 tripEntryTools.ts 的 asNonNegativeInt 說明;把

@@ -44,7 +44,7 @@ export function MessageBubble({
     <div className={`${styles.group} ${mine ? styles.mine : ''}`} data-msg-id={msg.id}>
       <div className={`${styles.bubble} ${mine ? styles.mine : ''} ${msg.pending ? styles.pending : ''} ${bare ? styles.bare : ''}`}>
         {/* 助手回答泡泡不顯示作者名(不出現「助手」);對齊 iOS MessageRow。
-            .sub 是全站共用的字幕樣式(見 styles.css,desktop/Content.tsx/
+            .sub 是全站共用的字幕樣式(見 styles.css,planning/member/desktop/Content.tsx/
             PhoneScreens.tsx/MembersScreen.tsx 都有用),刻意不搬進這個
             module,維持全域字串 className。 */}
         {!mine && !isAnswer && msg.authorName && (

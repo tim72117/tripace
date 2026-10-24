@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BASE_URL } from '../AppCommon'
 import type { GeoAttraction } from '../api'
-import type { AttractionGlowSource } from '../geo-planning/planMapShared'
-import { getPlanAiPublicDataSource } from '../home/plan-ai-sim/planAiPublicDataSource'
-import { requireAttractionsByCity, requireGeoPlaceDetails, requirePhotoAssets } from '../home/plan-ai-sim/planAiDataSource'
+import type { AttractionGlowSource } from '../planning/map/planMapShared'
+import { getPlanAiPublicDataSource } from '../planning/data/public'
+import { requireAttractionsByCity, requireGeoPlaceDetails, requirePhotoAssets } from '../planning/data/source'
 
 // publicDataSource——讀取已建檔景點區域(attractions)是訪客動作,不需要使用者自己的 JWT:用訪客版資料存取層實例
 // (理由同 AiItineraryDetailPage.tsx 的訪客設定)。

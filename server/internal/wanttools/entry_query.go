@@ -114,7 +114,7 @@ func (t *QueryEntriesTool) Call(args ToolArguments, ctx ToolContext) ([]ResultCo
 }
 
 // toTripEntryPayloads 把 store 查到的 model.Entry 轉成前端 TripEntry 格式
-// (TripEntryPayload,見 sink.go),欄位對齊 server/tools/clienttools.yaml 的
+// (TripEntryPayload,見 sink.go),欄位對齊 web/tools/clienttools.yaml 的
 // title/date/time/note 命名——date 取 model.Entry.Start、time 取 StartTime
 // (model.Entry 的日期/時刻本就分開存放,直接對應,不需另外拆解字串)。
 // Note 是 *string(可為 nil),nil 時轉成空字串,對齊 TripEntry.note 恆為 string

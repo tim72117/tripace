@@ -395,7 +395,7 @@ func main() {
 	// internal/api/onagent_dispatch.go 開頭說明。跟上面三個前綴一樣要明確
 	//轉給 srv.Routes(),否則會落到下方 staticHandler()的 SPA fallback
 	// (對任何未知路徑都回 200 + index.html,表面上「有回應」但完全沒有
-	// 真正處理請求——這正是 server/tools/onagent-tools.yaml 開頭警告過的
+	// 真正處理請求——這正是 web/tools/onagent-tools.yaml 開頭警告過的
 	// 那個陷阱,這次在新增這個路由時實際踩到)。
 	mux.Handle("/onagent/", srv.Routes())
 	// /public/geo/ — GET /public/geo/place-details(見

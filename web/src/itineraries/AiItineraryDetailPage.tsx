@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, CalendarDays, MapPin } from 'lucide-react'
 import { BASE_URL } from '../AppCommon'
 import { ApiError, fetchPublicItineraryPage, type ClientConfig } from '../api'
-import { PlanTimelineView } from '../plan-core/PlanTimelineView'
-import { PlanDataProvider } from '../plan-core/PlanDataProvider'
+import { PlanTimelineView } from '../planning/timeline/PlanTimelineView'
+import { PlanDataProvider } from '../planning/data/PlanDataProvider'
 import { publicDataSource, useResolvedItineraryTimeline } from './useResolvedItineraryTimeline'
-import { Lightbox } from '../geo-planning/PhotoCarousel'
+import { Lightbox } from '../planning/place/PhotoCarousel'
 import { SiteNavBrand } from '../home/SiteNavButtons'
 import { dayCountOf, findItinerary, isSampleItineraryShape, stopCountOf } from './catalog'
 import { AiItineraryDetailPageMapView } from './AiItineraryDetailPageMapView'
@@ -80,7 +80,7 @@ function useApiBackedItinerary(id: string): ApiFetchState {
 // AiItineraryDetailPage — 點進某一份範例行程後的畫面:標題與簡介在上方,下面是
 // 完整的時間軸(跨天有日期分隔)。
 //
-// 時間軸直接用 plan-core/PlanTimelineView——跟 AI 規劃(/trip-plan、地圖對話匡)
+// 時間軸直接用 planning/timeline/PlanTimelineView——跟 AI 規劃(/ai-plan、登入後 /app 的地圖對話匡)
 // 用的是同一個元件,所以訪客在這裡看到的就是真實 AI 規劃出來的樣子;範例資料經
 // catalog.toPlanTimeline 轉成它吃的格式。這裡是唯讀展示:不傳任何編輯類的選填
 // props(刪除、拖拉改時間、換交通方式),卡片只有點選高亮與開照片。

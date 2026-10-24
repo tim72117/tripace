@@ -13,7 +13,7 @@ import styles from './ScrollArea.module.css'
 //      overscroll-behavior 數值跟這裡刻意一致,但 overflow 開關本身
 //      屬於 PhoneBottomSheet 自己的拖曳手勢交接邏輯,語意上不是單純的
 //      「捲動容器」,勉強抽出來只會讓兩邊都變得更難懂)。
-//   2) geo-planning/GeoOutlinePhoneCandidateDrawer.tsx 的 .list。
+//   2) 候選籃抽屜(現 planning/place/phone/CandidateList.tsx)的 .list。
 //   3) base-ui.css 的全域 .screen-body(至少 8 處呼叫端直接用字串
 //      className="screen-body" 或樣板字串組合引用,不是透過 CSS Modules
 //      import,型別系統完全無法檢查這些字串有沒有打錯字或忘記加)。
@@ -21,7 +21,7 @@ import styles from './ScrollArea.module.css'
 // 唯一真理來源——往後同一類 bug(某處還能雙指縮放)只需要改這一個檔案,
 // 不用再排查是哪一套捲動容器實作漏改。呼叫端不應該再自己宣告
 // touch-action/overflow-y 相關的 CSS(除非有明確、記錄在案的特殊理由,
-// 例如 GeoOutlinePhoneCandidateDrawer.tsx 的 .list 有自己的 padding
+// 例如 planning/place/phone/CandidateList.tsx 的 .list 有自己的 padding
 // 語意,見該檔案的說明,選擇不套用這個元件)。
 export interface ScrollAreaProps {
   children: ReactNode

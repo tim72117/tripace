@@ -1,0 +1,58 @@
+# onagent 平台上 plan-ai-timeline app 的 ask_travel_country tool 定義
+# ——見 search_attraction.yaml 開頭的完整說明(app 背景、新版 CLI 格式
+# 規則、為何拆成獨立檔案)。
+#
+# 2026-10(第十輪,使用者明確要求「將國家與地區的工具分開,並做自動
+# 串接」):取代原本單一的 ask_travel_region(level 參數在「選國家」
+# 「選城市」兩層之間切換)——拆成這支獨立的國家選單工具,跟
+# ask_travel_city(城市選單)互相獨立,不共用參數。選完國家後,前端會
+# 自動接著顯示該國的城市清單,你不需要在使用者選完國家後再呼叫
+# ask_travel_city 問城市。
+#
+# 這個工具是前端 ClientTool(見 web/src/planning/conversation/asktools.ts 的
+# 完整實作),不是 BackendDispatch 型——跟 open_ask_page 一樣由
+# AgentBridge WebSocket 轉交給瀏覽器分頁執行。
+#
+# kind: query——回傳值(「選單已顯示、正在等待使用者點選」這句話)必須
+# 被 LLM 看到,它才知道這一輪該停下來等,不是重複呼叫。
+#
+# 單選(跟 open_ask_page 的 candidates 可複選不同):一次只會去一個
+# 國家。
+#
+# 推送(需要 onagent CLI,見 .claude/skills/onagent-cli-setup):
+#   onagent tool create -api <onagent 後端 URL> plan-ai-timeline web/tools/plan-ai/ask_travel_country.yaml
+
+name: ask_travel_country
+description: >-
+  打開「詢問頁」，顯示國家選項讓使用者直接點選一個，取代文字一來一回
+  詢問「想去哪個國家」。適合使用者還沒決定國家時主動呼叫；使用者已
+  明確說出國家名稱時改用 ask_travel_city 直接問城市，不要呼叫這支。
+  選項是前端固定清單，不能自訂內容，只能用 countryIds 篩選。
+  呼叫這個工具之後這一輪你的工作就結束了——選單會顯示在畫面上，但這個
+  工具不等使用者點選，也不會把他選了什麼回傳給你：
+  工具會立刻回傳「選單已顯示、正在等待使用者點選」，不會等使用者選完，
+  也不會把使用者選了什麼回傳給你。這一輪你已經做完該做的事，不需要
+  重複呼叫這個工具、改個說法再問一次、或用文字追問要選哪一個。使用者
+  點選之後，前端會自動接著顯示該國的城市清單讓使用者選，你不需要介入；
+  使用者選完國家後，畫面會自動接著顯示該國的城市清單——這個串接由
+  前端自己完成，不會送訊息給你、也不需要你再呼叫 ask_travel_city。
+kind: query
+parameters:
+  type: object
+  properties:
+    countryIds:
+      type: array
+      description: >-
+        選填，篩選/排序要顯示的國家，省略顯示全部 22 個。合法值：
+        taiwan 台灣（國內旅遊，全部22縣市）、japan 日本、korea 韓國、
+        thailand 泰國、vietnam 越南、singapore 新加坡、malaysia 馬來
+        西亞、hongkong 香港、macau 澳門、china 中國大陸、philippines
+        菲律賓、indonesia 印尼、cambodia 柬埔寨、australia 澳洲、
+        newzealand 紐西蘭、usa 美國、canada 加拿大、uk 英國、france
+        法國、italy 義大利、germany 德國、turkey 土耳其。不要用清單
+        外的值。
+      items:
+        type: string
+    reason:
+      type: string
+      description: 選填，一句話說明這次詢問的意圖，會取代畫面上原本固定的標題文字「要去哪個國家?」（例如「先決定要去哪個國家玩吧」）。

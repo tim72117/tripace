@@ -10,13 +10,13 @@ import styles from './FloatingPanel.module.css'
 // 感」,貼齊邊界會讓這塊看起來像版面裡緊鄰的一欄,而非真的浮在主顯示
 // 之上的卡片。
 //
-// 從 desktop/Content.module.css 的 .panel/.left/.right/.close 抽成獨立元件
+// 從 planning/member/desktop/Content.module.css 的 .panel/.left/.right/.close 抽成獨立元件
 // ——原本 panelMode 浮動卡片(trips/timeline/pace/geo-outline)與
-// 規劃面板各自在 desktop/Content.tsx 內聯組出「外層 div +
+// 規劃面板各自在 planning/member/desktop/Content.tsx 內聯組出「外層 div +
 // 絕對定位疊加的關閉按鈕」,現在收斂成單一元件,呼叫端只需要決定
 // side/width 與要不要顯示 title/onClose。
 //
-// title/onClose 是選填的——geo-planning/desktop/CandidateList/trip/desktop/TripList 目前自己
+// title/onClose 是選填的——planning/place/desktop/CandidateList/trip/desktop/TripList 目前自己
 // 在內容裡渲染標題列(見 PanelHead),不需要外殼再重複一份;規劃面板
 // 沒有標題文字,只需要關閉按鈕。三種組合(有 title+onClose、只有
 // onClose、都沒有)都支援。
@@ -26,7 +26,7 @@ export interface FloatingPanelProps {
   // height:'default' 對齊原本 .panel 的 top:12px/bottom:12px(trips/
   // timeline/pace/geo-outline 等 panelMode 浮動卡片);'info' 對齊
   // PlacePanel/AttractionInfoPanel 的高度(top:64px/bottom:16px,原
-  // .infoPanelHeight),目前只有 desktop/Content.tsx 包 geo-planning/desktop/ResultList 的
+  // .infoPanelHeight),目前只有 planning/member/desktop/Content.tsx 包 planning/place/desktop/ResultList 的
   // 那個 FloatingPanel 用到。
   height?: 'default' | 'info'
   title?: string

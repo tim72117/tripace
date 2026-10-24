@@ -1,7 +1,7 @@
 /* FloatingPanel.tsx 專屬樣式(CSS Modules)。命名省略掉原本的
    floating-panel- 前綴——import 時已經有明確的命名空間。
 
-   取代原本各自獨立定義的 desktop/Content.module.css 的 .panel/.left/
+   取代原本各自獨立定義的 planning/member/desktop/Content.module.css 的 .panel/.left/
    .right/.close/規劃面板,以及各側欄 module.css 各自的
    .head/.title/.closeBtn——同一套視覺語言只定義一次,呼叫端不再各自
    組一份幾乎一樣的 CSS。 */
@@ -35,7 +35,7 @@
 
 /* infoHeight:容器高度改成跟地點卡(AttractionInfoPanel/PlacePanel,見
    兩者 module.css 的 .panel:top:64px、bottom:16px)一致——目前只有
-   geo-planning/desktop/ResultList 用(使用者明確要求跟地點卡容器高度對齊),原本 .panel
+   planning/place/desktop/ResultList 用(使用者明確要求跟地點卡容器高度對齊),原本 .panel
    預設的 top:12px/bottom:12px 在這裡不適用,改用這個 modifier 覆蓋。 */
 .infoHeight {
   top: 64px;

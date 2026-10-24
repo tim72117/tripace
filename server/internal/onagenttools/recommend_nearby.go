@@ -10,7 +10,7 @@ import (
 	"github.com/tim72117/tripace/internal/geo"
 )
 
-// maxRadiusMeters 對齊 server/tools/onagent-tools.yaml 裡 radius_meters
+// maxRadiusMeters 對齊 web/tools/onagent-tools.yaml 裡 radius_meters
 // 參數 description 宣稱的上限("最大 50000")——原本這個上限只存在於給 LLM
 // 看的文字說明裡,後端完全沒有實際擋值,任何呼叫端(包含未來可能繞過
 // onagent、直接打這支端點的請求)傳超過 50000 或負數都會直接送進
@@ -58,7 +58,7 @@ func HandleRecommendNearby(w http.ResponseWriter, r *http.Request) {
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	client := geo.New(apiKey)
 
-	// timeoutMs from the schema config (server/tools/onagent-tools.yaml)
+	// timeoutMs from the schema config (web/tools/onagent-tools.yaml)
 	// governs how long onagent itself waits before treating this call as
 	// tool_unavailable — this context timeout just needs to stay safely
 	// under that so a slow Google response fails as a clean tripace-side

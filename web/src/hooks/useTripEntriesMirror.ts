@@ -1,5 +1,5 @@
 // useTripEntriesMirror — 訂閱一個旅程的行程條目(entries)與即時更新事件,
-// 供「時間軸」側欄(desktop/Content 的 panelMode='timeline' → MultiTrackTimeline、
+// 供「時間軸」側欄(planning/member/desktop/Content 的 panelMode='timeline' → MultiTrackTimeline、
 // 手機版 PhoneNavDrawer 的同名分頁)直接使用。
 //
 // 2026-10 新增,從 chat/ChatScreen.tsx 搬出來——原本這份資料是 ChatScreen
@@ -9,7 +9,7 @@
 // 搭便車,不想重複撈一次。
 //
 // 使用者明確要求把對話視窗的內容換成 AI 規劃時間軸(見
-// trip-plan/TripPlanPage.tsx)之後,ChatScreen 不再是這份資料的消費者,
+// planning/panel/TripPlanPage.tsx)之後,ChatScreen 不再是這份資料的消費者,
 // 「側欄的時間軸要有資料」就不該再依賴「對話視窗剛好有掛載且剛好撈過」
 // 這件事——使用者確認「讓它自己撈資料,不再依賴對話」。抽成這個 hook 之後
 // 兩者關係正確:側欄自己宣告它需要什麼資料,不經過任何中介鏡像。

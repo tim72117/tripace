@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { PlanOverlayLayout } from './PlanOverlayLayout'
-import { describeSlotTree } from '../plan-core/overlayDom'
+import { describeSlotTree } from '../planning/shared/overlayDom'
 
 function renderLayout(safeAreaRef: React.Ref<HTMLDivElement> = () => {}) {
   return render(

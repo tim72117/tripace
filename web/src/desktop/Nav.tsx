@@ -14,7 +14,7 @@ import {
 } from '../DesktopShared'
 import styles from './Nav.module.css'
 
-// desktop/Nav:桌面版最左側的導覽圖示列——從 desktop/Content.tsx 抽出獨立
+// desktop/Nav:桌面版最左側的導覽圖示列——從 planning/member/desktop/Content.tsx 抽出獨立
 // 成檔案,原本就是完整獨立的函式,搬移純粹是移動程式碼位置,不涉及邏輯
 // 重組。內部渲染 DesktopUserMenu(左下角使用者選單),兩者的耦合關係
 // 維持不變。
@@ -35,7 +35,7 @@ export interface NavProps {
   // showDebugPanel/onToggleDebugPanel:API/WS 狀態面板(原 DebugApp.tsx 的
   // DebugPanel)的開關狀態——獨立於 panelMode 之外的一個 boolean,不是三態
   // 切換的一員,因為這個面板是疊加顯示、不取代 side panel 或 .desktop-main
-  // 的內容(見 desktop/Content.tsx 渲染邏輯裡 showDebugPanel 的用法)。
+  // 的內容(見 planning/member/desktop/Content.tsx 渲染邏輯裡 showDebugPanel 的用法)。
   showDebugPanel: boolean
   onToggleDebugPanel: () => void
   // className/style:比照 ScrollArea/Button 等其餘共用元件的既有慣例,
@@ -67,7 +67,7 @@ export const Nav = forwardRef<HTMLElement, NavProps>(function Nav(
 ) {
   // expanded:rail 從純 icon(48px)展開成帶文字標籤的寬版——純 UI 狀態,
   // 跟對話功能完全無關(規劃面板的開關由地圖上的 AI 按鈕獨立控制,見
-  // PlanMap.tsx 的 onOpenChat),不提升到 desktop/Content.tsx,
+  // PlanMap.tsx 的 onOpenChat),不提升到 planning/member/desktop/Content.tsx,
   // 留在這個元件自己管理。展開時每顆按鈕在 icon 旁多顯示一個文字標籤
   // (.desktop-rail-btn-label),讓使用者不需要靠 title 提示 hover 才知道
   // 每顆圖示的功能——理由同一般 IDE/工具列「圖示列可展開成帶標籤側欄」

@@ -7,7 +7,7 @@
 // 獨立成檔案(而非留在 BlogArticlePage.tsx 元件內部)的理由:這是
 // 純粹的資料轉換邏輯(輸入扁平陣列、輸出分組結構),不涉及 DOM/React
 // 渲染,拆開才能直接寫單元測試覆蓋容錯分支(落單 anchor、巢狀 start、
-// 未閉合 start),對齊 plan-core/planTimeline.ts 把純資料邏輯獨立出來
+// 未閉合 start),對齊 planning/timeline/model.ts 把純資料邏輯獨立出來
 // 測試的既有慣例。
 import type { ScrollTimelineAnchorBlock, ScrollTimelineStartBlock, ThemePageBlock } from './types'
 

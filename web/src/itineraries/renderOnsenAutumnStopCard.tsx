@@ -1,5 +1,5 @@
-import type { PlanNode } from '../plan-core/planTimeline'
-import type { StopCardRenderContext } from '../plan-core/PlanTimelineView'
+import type { PlanNode } from '../planning/timeline/model'
+import type { StopCardRenderContext } from '../planning/timeline/PlanTimelineView'
 import { MAPLE_LEAF_PATH, MAPLE_STEM_PATH } from './mapleLeafPath'
 import styles from './renderOnsenAutumnStopCard.module.css'
 

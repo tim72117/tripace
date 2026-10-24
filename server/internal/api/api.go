@@ -174,7 +174,7 @@ type Server struct {
 	//
 	// 2026-09:這兩支端點已搬到 internalAuth 底下(原本掛在 /public/geo/*
 	// 免登入),但限流**刻意保留**——現在的理由不是「防匿名訪客濫用」,而是
-	// **防 LLM 工具呼叫迴圈**:唯一呼叫端是 plan-core/attractionTools.ts
+	// **防 LLM 工具呼叫迴圈**:唯一呼叫端是 planning/conversation/tools.ts
 	// 的 search_attraction 工具,由 LLM 自主決定何時呼叫、呼叫幾次。稽核
 	// 記錄過真實 log:LLM 撞到同一個錯誤後會反覆重試同一次查詢,沒有任何
 	// 前端節流能擋(重試決策發生在 LLM 端,不在前端)。少了這層拒絕型
@@ -940,7 +940,7 @@ func (s *Server) Routes() http.Handler {
 	// 需登入的 /internal/geo/plan-ai/*(見下方 internalMux 的該區塊)。
 	//
 	// 2026-10:其中 place-search/attraction-search 兩支(/ai-plan 展示頁
-	// 排行程的最低需求,見 web/src/home/plan-ai-sim/LivePlanLayer.tsx
+	// 排行程的最低需求,見 web/src/planning/preview/LivePlanLayer.tsx
 	// 開頭 TODO 第1項的完整說明)重新開放為公開端點——/ai-plan 展示頁
 	// 讓訪客直接體驗真實 AI 對話排行程,訪客沒有 JWT,原本掛在需登入的
 	// /internal/geo/plan-ai/* 會讓這兩支工具呼叫一律 401、排不出任何
@@ -965,7 +965,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /public/geo/plan-ai/place-details-any", withGeoQueryIPThrottle(s, s.handlePublicGeoPlaceDetailsAny))
 	// POST /public/plan-ai/chat、/public/plan-ai/chat/reply——2026-10 新增
 	// (使用者明確要求「/internal/plan-ai/chat 要沒登入時也可以做」):
-	// /ai-plan 展示頁(web/src/home/plan-ai-sim/LivePlanLayer.tsx)讓訪客
+	// /ai-plan 展示頁(web/src/planning/preview/LivePlanLayer.tsx)讓訪客
 	// 體驗真實 AI 對話排行程,訪客沒有 JWT,掛在 internalAuth 底下的
 	// /internal/plan-ai/chat 會讓這支呼叫一律 401(internalAuth 本身在
 	// 沒有合法 Authorization header 時就直接擋下,見該中間件的完整
@@ -1028,7 +1028,7 @@ func (s *Server) Routes() http.Handler {
 
 	// 註:AI 規劃時間軸的「模擬推論 WebSocket」(handlePlanSimWS)不在這個
 	// 分支上——它只服務試作原型(web/src/plan-ai/AIPlanTimelinePage.tsx),
-	// 不是正式功能(web/src/trip-plan/TripPlanPage.tsx)的一部分,正式功能
+	// 不是正式功能(web/src/planning/panel/TripPlanPage.tsx)的一部分,正式功能
 	// 走真實 onagent 對話。那支端點與整個試作原型保存在 plan-ai-sim 分支,
 	// 之後若要一併上線,需要連同 plan_sim_demo.go 與 plan-ai/ 目錄一起接
 	// 回來,並在這裡補上路由註冊(它必須註冊在這個 mux 而非下方的
@@ -1064,9 +1064,9 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("GET /internal/geo/place-photo-assets", s.handleGeoPlacePhotoAssets)
 
 	// plan-ai — AI 規劃行程功能專用的查詢端點(見 geo_plan_ai.go 開頭的
-	// 完整說明),同時服務正式功能(web/src/trip-plan/TripPlanPage.tsx)與
+	// 完整說明),同時服務正式功能(web/src/planning/panel/TripPlanPage.tsx)與
 	// 試作原型(web/src/plan-ai/AIPlanTimelinePage.tsx)——兩者共用
-	// web/src/plan-core/attractionTools.ts 這層 onagent 工具資料層,由它
+	// web/src/planning/conversation/tools.ts 這層 onagent 工具資料層,由它
 	// 呼叫這批端點。
 	//
 	// 獨立成 /internal/geo/plan-ai/* 子命名空間、不混進上面那批
@@ -1417,7 +1417,7 @@ func (s *Server) handleResetTripData(w http.ResponseWriter, r *http.Request) {
 
 // tripEntryBody 是前端旅程清單「儲存」動作的請求/回應共用形狀,欄位對齊前端
 // TripEntry(web/src/clienttools/tripEntryTools.ts 的 {id, title, date, time,
-// note})與 server/tools/clienttools.yaml 的 trip_entry_add/trip_entry_update
+// note})與 web/tools/clienttools.yaml 的 trip_entry_add/trip_entry_update
 // 命名——這三個端點是給前端「儲存」按鈕呼叫的一般 REST API(逐筆
 // upsert),不經過 wanttools/want 那套 LLM 工具註冊機制,故欄位命名直接對齊
 // 前端型別即可,不需要跟 entry_query.go 的 TripEntryPayload 共用型別

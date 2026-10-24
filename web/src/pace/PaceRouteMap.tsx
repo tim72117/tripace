@@ -10,7 +10,7 @@ import type { Checkpoint } from './PaceChart'
 // 中心選點圖釘+儲存座標這套互動(見下方 PaceRouteMap 的 selectedEntry/
 // onSelectedEntryDone props)。定義在這裡(而非呼叫端的頁面元件)是因為
 // 這個型別描述的是 PaceRouteMap 的 props 形狀,由這個元件的擁有者決定,
-// 兩個呼叫端(desktop/Content.tsx 的正式介面、以及後續若有其他頁面)都從
+// 兩個呼叫端(planning/member/desktop/Content.tsx 的正式介面、以及後續若有其他頁面)都從
 // 這裡 import,不是各自為政各自定義一份。
 export interface SelectedEntry {
   id: string
@@ -135,7 +135,7 @@ export function PaceRouteMap({
   onEntrySaved,
 }: {
   // checkpoints:目前選取的那一段路線(PaceChart 的 route.checkpoints,依
-  // order 排序),由共同的父層(desktop/Content.tsx、phone/Content.tsx)透過
+  // order 排序),由共同的父層(planning/member/desktop/Content.tsx、planning/member/phone/Content.tsx)透過
   // PaceChart 的 onRouteChange 鏡像過來——取代原本寫死的 4 筆 entry
   // 常數,改成真的跟著使用者目前選取的旅程/路段變動。第一筆/最後一筆當
   // origin/destination,中間的當 intermediates,直接對應後端
@@ -148,17 +148,17 @@ export function PaceRouteMap({
   // undefined 時代表這個元件掛載在「訪客沒有登入身分」的情境,路線計算改
   // 打免登入的 POST /v1/public/{token}/compute-route(見下方路線 effect
   // 的說明),不再嘗試帶 JWT 打 /internal/entries/compute-route(訪客本來
-  // 就沒有 token,一定會被 401)。登入後的正式介面(desktop/Content.tsx/
-  // phone/Content.tsx)不傳這個 prop,維持原本走 /internal/* 的行為。
+  // 就沒有 token,一定會被 401)。登入後的正式介面(planning/member/desktop/Content.tsx/
+  // planning/member/phone/Content.tsx)不傳這個 prop,維持原本走 /internal/* 的行為。
   publicToken?: string
-  // selectedEntry:使用者在側欄點擊的檢查站(見 desktop/Content.tsx 登入後
+  // selectedEntry:使用者在側欄點擊的檢查站(見 planning/member/desktop/Content.tsx 登入後
   // 正式介面的 pace 面板),非 null 時才顯示中央選點圖釘與「儲存座標」
   // 按鈕。可選是因為 pace/PacePage.tsx(/demo/pace 公開分享頁)刻意
   // 不接這套互動(寫入座標需要登入身分,不該出現在公開頁),掛載這個元件
   // 時完全不傳這兩個 props。
   selectedEntry?: SelectedEntry | null
   // onSelectedEntryDone:儲存成功後通知父層清掉 selectedEntry,收起圖釘與
-  // 儲存按鈕——state 本身放在父層(desktop/Content.tsx),這個元件不擅自持有。
+  // 儲存按鈕——state 本身放在父層(planning/member/desktop/Content.tsx),這個元件不擅自持有。
   onSelectedEntryDone?: () => void
   // onEntrySaved:儲存座標成功後,把「哪一筆 entry、存了什麼座標」往上通知
   // ——這裡的 saveLatLng 是直接打 PATCH .../latlng,不會讓側欄的 PaceChart

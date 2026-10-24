@@ -2,7 +2,7 @@
 // 依關鍵字查詢示意圖——跟 internal/geo(Google Places,綁定實際地點/
 // place_id)是完全獨立的資料來源:Pexels 是純關鍵字比對的圖庫服務,
 // 查詢結果不保證是「該地點的真實照片」,只是攝影師上傳時標記的相關圖片,
-// 見 server/tools/onagent-tools.yaml 開頭對兩者定位差異的說明。
+// 見 web/tools/onagent-tools.yaml 開頭對兩者定位差異的說明。
 //
 // 這個套件目前只負責查詢本身,不含快取邏輯(呼叫端自行決定要不要接上
 // internal/store 的 GetCachedPexelsPhoto/SetCachedPexelsPhoto)。

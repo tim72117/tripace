@@ -12,7 +12,7 @@ import type {
 // BlogArticlePage.tsx 的 JSX 渲染——分組結果本身(哪些 block 被收進
 // 哪個 anchor、容錯規則是否正確)是純資料轉換,渲染只是把分組結果原樣
 // 組裝成 JSX,不需要重複用 React 測試工具驗證,對齊
-// plan-core/PlanTimelineView.test.ts 只測純函式的既有做法。
+// planning/timeline/PlanTimelineView.test.ts 只測純函式的既有做法。
 
 function paragraph(id: string, text = id): ParagraphBlock {
   return { id, kind: 'paragraph', text }

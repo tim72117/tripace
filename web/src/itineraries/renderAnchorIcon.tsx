@@ -1,8 +1,8 @@
 import { Building2, Camera, MapPin, ShoppingBag, UtensilsCrossed } from 'lucide-react'
-import type { PlanNode } from '../plan-core/planTimeline'
+import type { PlanNode } from '../planning/timeline/model'
 
 // ICON_BY_KIND——2026-10 新增,使用者明確要求「在時間軸的元件放進對應
-// 地點的 icon」(軸線上的小圓點,見 plan-core/PlanTimelineView.tsx
+// 地點的 icon」(軸線上的小圓點,見 planning/timeline/PlanTimelineView.tsx
 // renderAnchorIcon prop 的完整說明)。對應 SampleStop.kind 的常見值
 // (景點/美食/展館/購物/住宿,見 types.ts SampleStop.kind 的完整說明),
 // 不是窮舉所有可能字串——kind 本身是自由文字(不是寫死的 union 型別,

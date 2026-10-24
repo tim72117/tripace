@@ -11,8 +11,8 @@ import styles from './DesktopUserMenu.module.css'
 // 桌面版左下方使用者設定入口:頭像 + 名稱一列,點擊展開 popover 選單。
 // 已登入時選單只有「設定」(開啟 SettingsDialog)、「登出」兩項精簡項目;
 // 訪客狀態維持原邏輯不變,popover 顯示登入表單(LoginForm)。
-// 從 desktop/Content.tsx 抽出獨立成檔案——原本在 desktop/Nav 底下就地定義,
-// 但本身是完整獨立、自帶 state(open)的元件,搬出來讓 desktop/Content.tsx
+// 從 planning/member/desktop/Content.tsx 抽出獨立成檔案——原本在 desktop/Nav 底下就地定義,
+// 但本身是完整獨立、自帶 state(open)的元件,搬出來讓 planning/member/desktop/Content.tsx
 // 專注在整體佈局骨架,不需要為了讀懂側欄結構而一併讀完使用者選單的
 // popover 互動細節。
 export function DesktopUserMenu({

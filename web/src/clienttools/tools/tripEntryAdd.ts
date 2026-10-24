@@ -34,7 +34,7 @@ export function newTripEntryId(): string {
 // addTripEntry：新增一筆旅程 entry 的純邏輯,不含 React 依賴。輸入目前的
 // allBatches(所有批次)+ 要操作的 key + LLM 傳來的 args,回傳更新後的整個
 // allBatches 與要回報給 LLM 的 result。key 對應的批次若原本不存在,視為
-// LLM 開了一個新批次,直接建立(見 server/tools/clienttools.yaml「多批次
+// LLM 開了一個新批次,直接建立(見 web/tools/clienttools.yaml「多批次
 // (key)支援」——key 由 LLM 自訂字串,不要求前端事先存在才能新增)。維持
 // export 讓這段邏輯可以被單獨測試,或未來被其他前端工具(例如非 WS bridge
 // 的手動編輯 UI)獨立復用,不需要經過 ClientTool/ToolContext 這層協定包裝。
@@ -55,7 +55,7 @@ export function addTripEntry(
   return { allBatches: nextAllBatches, result: { id: entry.id, key, title: entry.title, date: entry.date } }
 }
 
-// TripEntryAddArgs — trip_entry_add 的 args 型別,對齊 server/tools/
+// TripEntryAddArgs — trip_entry_add 的 args 型別,對齊 web/tools/
 // clienttools.yaml 裡這個工具的 parameters schema(key 必填,title/date/
 // time/note 皆為字串、選填)。宣告這個型別本身不會驗證任何東西——真正的
 // runtime 驗證在下面的 parseTripEntryAddArgs,型別只是「parse 完之後長什麼

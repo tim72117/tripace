@@ -103,7 +103,7 @@ export function useAppState() {
 
   // useMemo——cfg 的 identity 必須只在 token 真的變動時才改變。這個物件
   // 會被往下傳給整個 App 的所有消費端,其中有些把它放進 useEffect 的依賴
-  // 陣列(例如 trip-plan/TripPlanPage.tsx 的 usePlanAiChatBridge,用
+  // 陣列(例如 planning/panel/TripPlanPage.tsx 的 usePlanAiChatBridge,用
   // [apiKey, cfg] 決定要不要重建 onagent WebSocket 連線)。
   //
   // 2026-10 修正一個實際發生的 bug:原本這裡是每次 render 都重新產生一個

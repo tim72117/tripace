@@ -28,10 +28,10 @@
     顏色有問題」),收斂成 token 後才能在深色模式下換成對比度足夠的
     版本。 */
   --ios-ai-message-bg: #F3EFFA;   /* 對話訊息氣泡底色(藕紫,淡)——
-    /plan-ai(home/plan-ai-sim/Content.tsx)對話訊息氣泡專用(時間軸最下方的對話,見 plan-core/planConversation.ts),
+    /plan-ai(planning/preview/Content.tsx)對話訊息氣泡專用(時間軸最下方的對話,見 planning/conversation/messages.ts),
     刻意跟 --ios-sand(景點/生成位置的橘色系)、note 的橘色系拉開,避免
     使用者把「AI 說的話」誤認成行程備註或地點標記。原本這兩個值直接
-    寫死在 home/plan-ai-sim/Content.module.css 的 .messageBubble 裡,深色模式
+    寫死在 planning/preview/Content.module.css 的 .messageBubble 裡,深色模式
     下會維持同一組淺色值不變,跟深色卡片(--ios-card 深色版 #26211D)
     放在一起顯得突兀刺眼,收斂成 token 才能在深色模式下換成對比度足夠
     的版本(同 --ios-sand 收斂成 token 的理由)。 */
@@ -40,7 +40,7 @@
     原本各檔案寫死淺色,深色模式下圖示色(--color-dark)變淺,淺底淺字看不清。 */
 }
 
-/* 登入後 App(phone/Content.tsx/desktop/Content.tsx 及底下畫面)的深色模式
+/* 登入後 App(planning/member/phone/Content.tsx/desktop/Content.tsx 及底下畫面)的深色模式
    token——掛載點是 App.tsx 的 .app-theme-root(見該檔案說明,只包住 /app
    路由本身;/public/:token、/demo/pace 這類公開分享頁固定寫死
    data-theme="light",不吃這裡的深色 token)。
@@ -154,7 +154,7 @@ body {
      該出現在一個看起來像原生 App 的介面裡。
      2026-10 從 overscroll-behavior-y 改成不分軸向的 overscroll-behavior
      (使用者實機回報「拉動不是你拉動的元素時,整個畫面會離開視窗,然後
-     又彈回來」):原本只鎖垂直方向,手機版橫向卡片列(home/plan-ai-sim/
+     又彈回來」):原本只鎖垂直方向,手機版橫向卡片列(planning/timeline/phone/
      HorizontalPlanTimeline.tsx)或地圖(NativeMapBase)這類有水平拖曳
      手勢的區域,若觸控沒有被內層元素完全吃掉,iOS Safari 仍會在水平
      方向觸發整頁彈性拉伸——跟垂直方向的下拉重新整理是同一類「瀏覽器
@@ -210,13 +210,13 @@ pre {
   color: #d4d4d8;
 }
 
-/* ---- 置中卡片彈窗骨架(.rp-modal*):desktop/Content(分享/成員彈窗、原
+/* ---- 置中卡片彈窗骨架(.rp-modal*):planning/member/desktop/Content(分享/成員彈窗、原
    RecommendedPlacesModal)與 SettingsDialog 共用。原為 recommend_nearby
    查詢完成後彈出的 RecommendedPlacesModal 所用,對齊 .ask-user-backdrop
    的浮層模式但用置中卡片(內容是可捲動清單,不適合底部 sheet)。該彈窗
    已移除(推薦景點改成掛在觸發它的訊息底下顯示,見 ChatScreen.tsx
    MessageBubble),但這組樣式繼續由桌面版「設定」dialog(SettingsDialog)
-   與旅程列表的分享/成員彈窗(desktop/Content.tsx)沿用,故保留。 ---- */
+   與旅程列表的分享/成員彈窗(planning/member/desktop/Content.tsx)沿用,故保留。 ---- */
 /* position: fixed(2026-10 修正,原為 absolute)——absolute 時 inset: 0
    是相對最近的 position: relative 祖先元素的「完整內容高度」,不是
    瀏覽器可視範圍。PhotoManagerPage.module.css 的 .root 本身是
@@ -225,8 +225,8 @@ pre {
    背景遮罩鋪的是整個清單的完整高度,彈窗置中位置落在清單中點,不是
    使用者目前視線所在的可視範圍內,體感是「彈窗跑到別的地方」。改成
    fixed 讓它永遠相對瀏覽器視窗定位,不受任何捲動容器的內容高度影響,
-   這是彈窗的標準做法,不影響其他既有呼叫端(desktop/Content/
-   phone/Content/SettingsDialog)的視覺效果——那些情境下 body 本身是
+   這是彈窗的標準做法,不影響其他既有呼叫端(planning/member/desktop/Content/
+   planning/member/phone/Content/SettingsDialog)的視覺效果——那些情境下 body 本身是
    一般的 document 捲動,fixed 跟原本的 absolute 行為一致。 */
 .rp-modal-backdrop {
   position: fixed;
@@ -285,9 +285,9 @@ pre {
   }
 }
 
-/* ---- 桌面版「設定」dialog(SettingsDialog,見 desktop/Content.tsx):骨架沿用
+/* ---- 桌面版「設定」dialog(SettingsDialog,見 planning/member/desktop/Content.tsx):骨架沿用
    .rp-modal-backdrop/.rp-modal(遮罩、置中、圓角、陰影、進場動畫皆相同),
-   只疊加覆寫 position 為 fixed。原因:SettingsDialog 是從 desktop/Content
+   只疊加覆寫 position 為 fixed。原因:SettingsDialog 是從 planning/member/desktop/Content
    頂層(.desktop-layout 的兄弟節點)渲染,而非像原本的 RecommendedPlacesModal
    那樣渲染在有 position: relative 的 .desktop-main 內部——若沿用 absolute+inset:0,
    會相對到更上層(甚至沒有 relative 祖先時相對 initial containing block),

@@ -21,8 +21,8 @@ import styles from './SettingsDialog.module.css'
 // (登出已是選單裡的獨立項目)。疊加 .settings-dialog-backdrop 只覆寫 position
 // 從 absolute 改為 fixed:.rp-modal-backdrop 原本用 absolute+inset:0 是相對
 // 最近的 relative 祖先(.desktop-main)定位,只蓋住右側聊天區;這裡是從
-// desktop/Content.tsx 頂層渲染,需要蓋住整個桌面版佈局(含左側側欄),且不能被
-// .desktop-layout 的 overflow: hidden 裁切,故改用 fixed。從 desktop/Content.tsx
+// planning/member/desktop/Content.tsx 頂層渲染,需要蓋住整個桌面版佈局(含左側側欄),且不能被
+// .desktop-layout 的 overflow: hidden 裁切,故改用 fixed。從 planning/member/desktop/Content.tsx
 // 抽出獨立成檔案,搬移純粹是移動程式碼位置,不涉及邏輯重組。
 export function SettingsDialog({
   cfg,

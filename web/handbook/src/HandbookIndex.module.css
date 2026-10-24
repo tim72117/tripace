@@ -1,0 +1,161 @@
+/* HandbookIndex.tsx 專屬樣式(CSS Modules)。這是
+   產品方向腦力激盪(/ideas/product-direction-*)六項構想的
+   雛形試做入口頁——只給內部查看用,不是正式對外頁面,視覺簡潔即可,不需要
+   比照 HomePage.tsx 那套紙感視覺語言做到位。 */
+.page {
+  min-height: 100vh;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  padding: 32px 20px 80px;
+}
+.inner {
+  max-width: 720px;
+  margin: 0 auto;
+}
+.heading {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+.subheading {
+  font-size: 14px;
+  color: var(--ios-gray);
+  margin: 0 0 28px;
+  line-height: 1.6;
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.item {
+  display: block;
+  padding: 16px 18px;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease;
+}
+.item:hover {
+  border-color: var(--color-accent);
+}
+/* itemIndented——附錄/子項目縮排樣式(2026-10 新增,對應構想六底下
+   「贊助模式」「業主自助控制台」兩個附錄的從屬關係)。靠左側縮排
+   + 一條垂直引導線 + 較淡的邊框/背景,表達「隸屬於上一個主項目」,
+   不是跟主項目平起平坐的獨立清單項——比單純改標題文字(原本構想六
+   附錄只靠「構想六附錄：」字首表達從屬)更能一眼看出層級關係。 */
+.itemIndented {
+  margin-left: 24px;
+  padding: 12px 16px;
+  background: transparent;
+  border-color: var(--ios-sep);
+  border-left: 2px solid var(--color-accent);
+  border-radius: 8px;
+}
+.itemTitle {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.itemStatus {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ios-active);
+  color: var(--ios-gray);
+}
+.itemStatusReady {
+  background: color-mix(in srgb, var(--ios-green) 15%, transparent);
+  color: var(--ios-green);
+}
+.itemDesc {
+  font-size: 13px;
+  color: var(--ios-gray);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* .itemPriority/.itemPriorityMuted——2026-10 新增(使用者明確要求「用
+   星等標示優先序」,後續再要求「優先序用三顆星就好,用黃色系」)。
+   實心星用傳統星等評分慣用的金黃色(#ffb020,跟 AdAdminDemoPage 機票
+   浮動價格用的同一個黃色系——這個子專案目前沒有現成的黃色 token,沿用
+   既有頁面已經出現過的同一個色值,不是另外發明一個新的黃色),未達成
+   的星等用低對比的 --ios-sep 填色,兩者疊在同一行用 ★ 字元堆疊,不用
+   三個獨立 <span> 画三顆星圖示——這個雛形頁面本身夠簡潔,不需要為了
+   星星符號載入圖示字型或 SVG。letter-spacing 稍微拉開,★ 字元預設間距
+   偏擠,連在一起會糊成一團看不出數量。 */
+.itemPriority {
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: #ffb020;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.itemPriorityMuted {
+  color: var(--ios-sep);
+}
+
+/* 封存區——2026-10 新增(見 HandbookIndex.tsx 的完整說明):視覺上要
+   跟上方「構想清單」明確區分開,表達「這些已經做完了,不是待辦清單」的
+   語意,所以刻意不沿用 .item/.itemStatus 那套(狀態標籤/星等/hover 邊框
+   強調互動性),改用較低調、接近唯讀文件區塊的樣式——標題用灰階而非
+   深色強調,項目用虛線分隔不用卡片邊框,不做 hover 效果(本來就不可
+   點擊)。 */
+.archiveHeading {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ios-gray);
+  margin: 40px 0 4px;
+  padding-top: 24px;
+  border-top: 1px solid var(--ios-sep);
+}
+.archiveSubheading {
+  font-size: 13px;
+  color: var(--ios-gray);
+  margin: 0 0 16px;
+  line-height: 1.6;
+}
+.archiveList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.archiveItem {
+  display: block;
+  padding: 14px 16px;
+  background: transparent;
+  border: 1px dashed var(--ios-sep);
+  border-radius: 10px;
+}
+.archiveItemTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ios-gray);
+  margin: 0 0 4px;
+}
+.archiveItemDesc {
+  font-size: 13px;
+  color: var(--ios-gray);
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+.archiveDocList {
+  list-style: disc;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--ios-gray);
+  line-height: 1.6;
+}

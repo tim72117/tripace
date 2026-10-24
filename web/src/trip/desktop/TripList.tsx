@@ -9,7 +9,7 @@ import styles from './TripList.module.css'
 
 // 桌面版側欄旅程列表:複用 useTripsState(與手機版 PhoneNavDrawer 的
 // 旅程列表分頁共用抓取/建立邏輯),只是呈現方式改成緊湊的側欄列表項目,
-// 選中的旅程有高亮(.desktop-trip-item.active)。從 desktop/Content.tsx
+// 選中的旅程有高亮(.desktop-trip-item.active)。從 planning/member/desktop/Content.tsx
 // 抽出獨立成檔案,搬移純粹是移動程式碼位置,不涉及邏輯重組。
 export function TripList({
   cfg,
@@ -24,7 +24,7 @@ export function TripList({
   // TripManageModal.tsx)原本掛在 ChatScreen navbar 的三個分散入口,現在
   // 規劃面板可能無 trip(見 ChatScreen.tsx trip prop 的說明),合併成單一
   // 動作移到旅程本來就存在的地方——旅程列表每一筆項目上。呼叫端
-  // (desktop/Content.tsx)負責開啟合併後的 TripManageModal。
+  // (planning/member/desktop/Content.tsx)負責開啟合併後的 TripManageModal。
   onManage: (t: Trip) => void
 }) {
   const {

@@ -2,10 +2,10 @@
 // 名稱與說明維持行程作者寫的;照片不寫進節點。
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
-import { PlanDataProvider } from '../plan-core/PlanDataProvider'
-import type { PlanAiDataSource } from '../plan-core/dataSource'
+import { PlanDataProvider } from '../planning/data/PlanDataProvider'
+import type { PlanAiDataSource } from '../planning/data/source'
 import type { ReactNode } from 'react'
-import { listNodes } from '../plan-core/planTimeline'
+import { listNodes } from '../planning/timeline/model'
 import { makeItinerary as make, stop as baseStop } from './testUtils'
 
 const placeDetails = vi.fn()
@@ -96,7 +96,7 @@ describe('useResolvedItineraryTimeline', () => {
     const { result } = renderHook(() => ({ tl: useResolvedItineraryTimeline(it), ds }), { wrapper })
     await waitFor(() => expect(stopsOf(result.current.tl)[0]).toMatchObject({ lat: 10, lng: 20 }))
     const before = result.current.tl
-    const { getPlanDataStore } = await import('../plan-core/planDataStore')
+    const { getPlanDataStore } = await import('../planning/data/store')
     getPlanDataStore(ds).request('place', 'someone_else')
     await new Promise((r) => setTimeout(r, 20))
     expect(result.current.tl).toBe(before)

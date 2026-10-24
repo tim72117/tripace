@@ -1,6 +1,6 @@
 # assistant_agent.go 備份（刪除前存檔，2026-08-11）
 
-> 這份文件是 `server/internal/llm/assistant_agent.go` 在刪除前的完整原始碼備份，供日後需要重新參考 want 版 assistant thought 內容時查閱。刪除原因：前端對話已完全改接 onagent 平台（`server/tools/onagent-tools.yaml`），want 框架的 `handleAssist`/`handleQuery`/`handlePublicAssist` 三條入口皆已無任何前端呼叫方，整套 want 對話系統（`internal/llm/assistant_agent.go`、`want_analyzer.go`、`clienttools_agent.go`、`want_pool.go`、`mock_analyzer.go`、`internal/api/clienttools_ws.go`/`clienttools_http.go`、`internal/clienttools` package、`internal/protocol/message.go`、`server/tools/clienttools.yaml`、`cmd/dumpthought`、`cmd/agentbench`）一併移除。`internal/wanttools/` 目錄下的工具實作（entry_query/geocode/recommend_nearby/ask_user/ask_choice/task_plan 等）刻意保留原始碼，即使目前無任何註冊點呼叫。
+> 這份文件是 `server/internal/llm/assistant_agent.go` 在刪除前的完整原始碼備份，供日後需要重新參考 want 版 assistant thought 內容時查閱。刪除原因：前端對話已完全改接 onagent 平台（`web/tools/onagent-tools.yaml`），want 框架的 `handleAssist`/`handleQuery`/`handlePublicAssist` 三條入口皆已無任何前端呼叫方，整套 want 對話系統（`internal/llm/assistant_agent.go`、`want_analyzer.go`、`clienttools_agent.go`、`want_pool.go`、`mock_analyzer.go`、`internal/api/clienttools_ws.go`/`clienttools_http.go`、`internal/clienttools` package、`internal/protocol/message.go`、`web/tools/clienttools.yaml`、`cmd/dumpthought`、`cmd/agentbench`）一併移除。`internal/wanttools/` 目錄下的工具實作（entry_query/geocode/recommend_nearby/ask_user/ask_choice/task_plan 等）刻意保留原始碼，即使目前無任何註冊點呼叫。
 
 ```go
 package llm
@@ -62,7 +62,7 @@ const todayThought = `
 
 // keyThought 教 LLM 怎麼判斷/選用旅程清單的批次(key)——trip_entry_add/
 // trip_entry_update/trip_entry_list 都需要這個必填參數(見
-// server/tools/clienttools.yaml 開頭「多批次(key)支援」註解)。放在
+// web/tools/clienttools.yaml 開頭「多批次(key)支援」註解)。放在
 // addThought 之前,讓下面「情況 A」提到「見上方『批次(key)怎麼選』」時
 // 順序對得上。trip_entry_delete 不在白名單裡(見本檔案 init() 的說明),
 // 但這段仍適用其他三個工具。
@@ -91,14 +91,14 @@ const keyThought = `
 // 注意(clienttools 化):entry_add 已換成 trip_entry_add——這是一個轉發到
 // 瀏覽器分頁 React state 執行的工具(不寫 Postgres,見 server/internal/
 // clienttools/tool.go),欄位比 entry_add 精簡很多(title/date/time/note,
-// 見 server/tools/clienttools.yaml),沒有 location/kind/taskID,date 也
+// 見 web/tools/clienttools.yaml),沒有 location/kind/taskID,date 也
 // 不是英文語詞而是要 LLM 自己換算好的絕對日期('YYYY-MM-DD')。以下規則已
 // 配合改寫;entry_query 仍是原本的查詢工具(未動),用來判斷新增/更新/跳過
 // 與地點所在區域,查到的結果仍可讀。
 //
 // 注意(多批次 key 化):trip_entry_add/trip_entry_update/trip_entry_list
 // 現在都多了一個必填的 key 參數,代表旅程清單分成哪一批(見
-// server/tools/clienttools.yaml 開頭「多批次(key)支援」註解)。以下
+// web/tools/clienttools.yaml 開頭「多批次(key)支援」註解)。以下
 // keyThought 段落教 LLM 怎麼判斷/選用 key,addThought/updateThought 的
 // 工具呼叫範例也都要帶上 key。
 const addThought = `
@@ -288,14 +288,14 @@ func init() {
 		Role: "assistant",
 		// entry_add/entry_update 移除(改用下面兩個 trip_entry_* 取代——這兩個
 		// 由 clienttools 機制轉發到瀏覽器分頁執行,不再直接寫 Postgres,詳見
-		// server/internal/clienttools/tool.go、server/tools/clienttools.yaml)。
+		// server/internal/clienttools/tool.go、web/tools/clienttools.yaml)。
 		// entry_present/entry_delete 這次同樣移除(不再是直接寫/讀 Postgres 給
 		// LLM 自己讀的工具);entry_query 保留但已改造(見 entry_query.go 開頭
 		// 註解)——查詢範圍仍由 LLM 決定,但查到的結果改成整批推播到前端表格,
 		// 不再組成文字回給 LLM 讀,LLM 只會拿到一句簡短確認文字。
 		// geocode/recommend_nearby/ask_user/ask_choice/task_plan 維持原樣、
 		// 繼續走原本直接寫 DB 或呼叫外部 API 的路徑,不受這次改動影響。
-		// trip_entry_add/trip_entry_update 名稱與參數對齊 server/tools/
+		// trip_entry_add/trip_entry_update 名稱與參數對齊 web/tools/
 		// clienttools.yaml 宣告(title/date/time/note 等英文欄位),與下方
 		// addThought/updateThought 教 LLM 用的 entry_add 中文欄位風格
 		// (item/start/startTime/kind...)不同,故下面的 Thought 文字亦配合改寫。

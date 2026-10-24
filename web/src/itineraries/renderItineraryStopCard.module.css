@@ -1,5 +1,5 @@
 /* renderItineraryStopCard.tsx 專屬樣式——itineraries 展示頁放大版
-   地點卡(見該檔案的完整說明)。版型對齊 plan-core/PlanTimelineView.module.css
+   地點卡(見該檔案的完整說明)。版型對齊 planning/timeline/PlanTimelineView.module.css
    的 .stopCard(縮圖+文字兩欄橫排),縮圖 96px/標題 19px 比正式頁預設的
    64px/17px 明顯放大,其餘(背景色/邊框/圓角/陰影/選取狀態)沿用同一套
    --ios- 開頭 token,視覺語言一致,不是另起一套配色。

@@ -144,7 +144,7 @@ type Attraction struct {
 	PlaceID *string `json:"placeId,omitempty"`
 	// Category 是「附近景點」清單用的店家分類(散策羅盤用語,如
 	// 甜點/茶屋、餐廳、工藝、街景),可為 nil——取代前端原本
-	// web/src/geo-planning/geoCuratedCategoryStub.ts 那張純前端寫死的
+	// web/src/planning/place/geoCuratedCategoryStub.ts 那張純前端寫死的
 	// name→分類對照表(NAME_TO_CURATED_CATEGORY,只涵蓋已手動填過的
 	// 少數店家,新建檔的景點不會自動有分類、名稱沒填進那張表就沒有圖示,
 	// 這正是「附近景點有些沒有 icon」的根因)。空字串比照 Summary 既有

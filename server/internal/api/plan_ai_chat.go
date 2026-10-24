@@ -61,7 +61,7 @@ func (s *Server) userOrGuestFor(r *http.Request) (model.User, bool) {
 	return model.User{ID: guestID, Name: "訪客"}, true
 }
 
-// plan_ai_chat.go — AI 規劃對話(/app 的 web/src/trip-plan/TripPlanPage.tsx)
+// plan_ai_chat.go — AI 規劃對話(/app 的 web/src/planning/panel/TripPlanPage.tsx)
 // 訊息先經過 tripace 自家後端這一段的端點。
 //
 // 背景:TripPlanPage.tsx 原本直接拿瀏覽器可見的

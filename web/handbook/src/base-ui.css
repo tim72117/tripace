@@ -1,0 +1,284 @@
+/* 全站基礎樣式:CSS 變數、reset、以及真正跨多個元件共用的全域 class
+   (.grow/.section-title/.empty/.rp-modal 系列/
+   .settings-dialog 系列/pre)。從原本單一巨大的 styles.css 拆出——這些
+   規則不屬於任何單一元件,拆進單一元件的 CSS Module 會打斷共用關係
+   (變成要嘛重複定義、要嘛互相 import),故獨立成這份依性質命名的檔案,
+   由 main.tsx 全域 import 一次。 */
+
+:root {
+  --ios-blue: #7C6F5B;      /* 大地棕：主要互動色 */
+  --ios-bg: #F7F3EC;        /* 暖紙色背景——對齊首頁 --paper */
+  --ios-card: #FDFCFA;      /* 卡片白 */
+  --ios-sep: #E2DDD7;       /* 暖灰分隔線 */
+  --ios-gray: #9E9488;      /* 暖灰文字 */
+  --ios-green: #5C6B57;     /* 苔綠（成功）——對齊首頁 --moss */
+  --ios-red: #C0604A;       /* 磚紅（錯誤） */
+  --color-accent: #8B3A2F;  /* 硃紅強調色——對齊首頁 --vermilion */
+  --color-dark: #3D3530;    /* 深棕文字 */
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --tl-trip-color: #8B3A2F; /* 旅程主軸色（硃紅） */
+  --ios-active: #f5f5f7;         /* .row:active 底色 */
+  --ios-red-bg: #fff3f2;         /* components/Banner.tsx 底色 */
+  --ios-red-border: #ffd9d6;     /* components/Banner.tsx 邊框 */
+  --btn-primary-disabled: #D9C4AA; /* components/Button.tsx variant="primary" disabled 底色 */
+  --ios-sand: #C4956A; /* 暖沙棕——景點區域地圖光暈/佔位圓/範圍圓圈、
+    行程 entry marker 旗子、推薦地點裝飾漸層共用色,見 base-ui.css 開頭
+    深色 token 區塊的說明。原本 8 個檔案各自硬寫這個十六進位色碼、完全
+    不跟隨夜間模式切換(使用者實測回報「夜間版 attraction 底圖上的點
+    顏色有問題」),收斂成 token 後才能在深色模式下換成對比度足夠的
+    版本。 */
+  --ios-ai-message-bg: #F3EFFA;   /* 對話訊息氣泡底色(藕紫,淡)——
+    /plan-ai(planning/preview/Content.tsx)時間軸上獨立的 message 節點專用,
+    刻意跟 --ios-sand(景點/生成位置的橘色系)、note 的橘色系拉開,避免
+    使用者把「AI 說的話」誤認成行程備註或地點標記。原本這兩個值直接
+    寫死在 planning/preview/Content.module.css 的 .messageBubble 裡,深色模式
+    下會維持同一組淺色值不變,跟深色卡片(--ios-card 深色版 #26211D)
+    放在一起顯得突兀刺眼,收斂成 token 才能在深色模式下換成對比度足夠
+    的版本(同 --ios-sand 收斂成 token 的理由)。 */
+  --ios-ai-message-text: #5F5079; /* 對話訊息氣泡文字色(藕紫,深) */
+  --ios-glass-bg: rgba(245, 242, 237, 0.92); /* 地圖上毛玻璃浮動按鈕底色——
+    原本各檔案寫死淺色,深色模式下圖示色(--color-dark)變淺,淺底淺字看不清。 */
+}
+
+/* 登入後 App(planning/member/phone/Content.tsx/DesktopContent.tsx 及底下畫面)的深色模式
+   token——掛載點是 App.tsx 的 .app-theme-root(見該檔案說明,只包住 /app
+   路由本身;/public/:token、/demo/pace 這類公開分享頁固定寫死
+   data-theme="light",不吃這裡的深色 token)。
+
+   結構沿用 home/HomePage.css(原 KyotoExploreBloom.css)/LegalPage.css 已有
+   的四段式寫法,但 scope 換成 .app-theme-root:
+     1. 上面的 :root 區塊——淺色預設值(不動)。
+     2. @media (prefers-color-scheme: dark) 搭配
+        .app-theme-root:not([data-theme="light"])——使用者沒有明確選過
+        主題(theme === null,未掛 data-theme 屬性)時,跟隨系統偏好。
+        :not([data-theme="light"]) 這個守衛是必要的:沒有它,使用者手動選了
+        「日間模式」(data-theme="light")、但系統本身是深色時,這條
+        media query 選擇器一樣會命中 .app-theme-root(它沒有檢查
+        data-theme 屬性值,只檢查 prefers-color-scheme),蓋掉使用者的
+        明確選擇。
+     3. .app-theme-root[data-theme="dark"]——使用者手動選「夜間模式」,
+        不論系統偏好為何都套用深色,數值跟第 2 段完全一致。
+     4. [data-theme="light"] 不需要額外寫規則——它只是「不套用上面的深色
+        media query」,token 自然維持 :root 定義的淺色值。 */
+@media (prefers-color-scheme: dark) {
+  .app-theme-root:not([data-theme="light"]) {
+    --ios-blue: #B3A692;
+    --ios-bg: #1C1815;
+    --ios-card: #26211D;
+    --ios-sep: #3A332C;
+    --ios-gray: #8A8072;
+    --ios-green: #8FA089;
+    --ios-red: #E08668;
+    --color-accent: #D97A63;
+    --color-dark: #EDE6D8;
+    --tl-trip-color: #D97A63;
+    --ios-active: #332C26;
+    --ios-red-bg: #3A2420;
+    --ios-red-border: #5A342C;
+    --btn-primary-disabled: #4A3E30;
+    --ios-sand: #D9A97D;
+    --ios-ai-message-bg: #2E2838;
+    --ios-ai-message-text: #C9BEDD;
+    --ios-glass-bg: rgba(38, 33, 29, 0.88);
+  }
+  /* body 本身不是 .app-theme-root 的後代(是其祖先/兄弟,見 App.tsx 的
+     DOM 結構說明),所以上面那組 --ios-bg 覆寫不會影響 body { background }
+     這條規則實際解析到的值——body 仍會拿到 :root 的淺色 --ios-bg。
+     結果是頁面邊緣、尚未被 .app-theme-root 完全填滿的縫隙(例如視覺
+     視窗因為地址列收合/展開而露出的底部空隙)會看到一塊突兀的亮色。
+     這裡直接覆寫 body 的 background 跟隨系統深色偏好——只有在 body 內
+     實際掛了 .app-theme-root(即 /app 路由)時才生效,/public/:token、
+     /demo/pace、首頁等公開頁面各自用自己的 class(.kyoto-bloom/
+     .legal-bloom/.product-page)當深色 scope,不依賴 body 的
+     background,不受這條規則影響。 */
+  body:has(.app-theme-root:not([data-theme="light"])) {
+    background: #1C1815;
+  }
+}
+.app-theme-root[data-theme="dark"] {
+  --ios-blue: #B3A692;
+  --ios-bg: #1C1815;
+  --ios-card: #26211D;
+  --ios-sep: #3A332C;
+  --ios-gray: #8A8072;
+  --ios-green: #8FA089;
+  --ios-red: #E08668;
+  --color-accent: #D97A63;
+  --color-dark: #EDE6D8;
+  --tl-trip-color: #D97A63;
+  --ios-active: #332C26;
+  --ios-red-bg: #3A2420;
+  --ios-red-border: #5A342C;
+  --btn-primary-disabled: #4A3E30;
+  --ios-sand: #D9A97D;
+  --ios-ai-message-bg: #2E2838;
+  --ios-ai-message-text: #C9BEDD;
+  --ios-glass-bg: rgba(38, 33, 29, 0.88);
+}
+/* 使用者手動選「夜間模式」時,同理覆寫 body 的 background——理由同上方
+   media query 內的說明,:has() 守衛確保只在 body 內確實掛著
+   data-theme="dark" 的 .app-theme-root 時才生效。 */
+body:has(.app-theme-root[data-theme="dark"]) {
+  background: #1C1815;
+}
+
+* {
+  box-sizing: border-box;
+  /* 關掉手機瀏覽器(尤其 iOS Safari/Chrome for Android)點擊可互動元素
+     (含容器包著 <input>/<button> 的情況,如規劃地圖的搜尋框)時預設會
+     短暫閃一層灰色半透明疊色的內建行為——使用者回報「搜尋匡按下的瞬間
+     會有灰色陰影」,這是瀏覽器原生 tap highlight,不是我們自己的 CSS
+     造成的,全域關閉不影響原本設計好的 active/hover 樣式(那些是元件
+     自己明確定義的規則,不受這個屬性影響)。 */
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  /* 同 body 的 overscroll-behavior-y 說明——部分瀏覽器(尤其 Chrome for
+     Android)的下拉重新整理判斷是看 html 這層,只設 body 不夠保險,兩層
+     都鎖。 */
+  overscroll-behavior-y: none;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  /* 鎖住瀏覽器原生的下拉重新整理/整頁彈性拉伸(overscroll bounce)——這個
+     app 本身內部到處都是自己管理捲動的容器(components/ScrollArea.tsx、
+     components/PhoneBottomSheet.tsx 的 .body 等),但瀏覽器原生的
+     「整頁下拉」手勢是在 body/html 這層攔截的,內層容器各自的 overflow
+     設定並不會連帶擋掉它。手機版導覽抽屜欄/設定面板等疊層都是用觸控手勢
+     操作,下拉重新整理誤觸發會直接把整個 App 狀態重置掉,體驗上完全不
+     該出現在一個看起來像原生 App 的介面裡。 */
+  overscroll-behavior-y: none;
+}
+
+/* .grow/.name/.sub 這三個 class 繼續留在這裡當全站 utility class——
+   trip/desktop/TripList.tsx
+   (旅程項目,自己的 .item 結構,不是 .list/.row)/DesktopUserMenu.tsx
+   (頭像列 .trigger,同樣不是 .list/.row)這兩處呼叫端仍在用字串
+   className="grow"/"name"/"sub",且各自的 module CSS 靠
+   :global(.grow)/:global(.name)/:global(.sub) 疊加覆寫出不同排版(見
+   trip/desktop/TripList.module.css/DesktopUserMenu.module.css 的說明)——這兩處
+   的項目結構(圓形圖示徽章+管理鈕、rail 收合/展開切換頭像位置等)跟
+   ListRow 的 icon+title+subtitle+trailing 五段式插槽不同,不適合套用
+   ListRow,故評估後維持原本直接引用全域字串 class 的寫法,不強行遷移。
+   .grow 本身(flex:1 撐滿剩餘空間 + min-width:0 讓子層 text-overflow:
+   ellipsis 生效)不限定任何祖先 class,任何 flex row 裡放一塊「文字可能
+   過長要截斷」的內容都用得到。.name/.sub 原本的字級/顏色是巢狀在
+   .row .name/.row .sub 之下,隨 .row 一起移除——這裡不需要另外補一條
+   空規則宣告 .name/.sub 存在,className="name"/"sub" 只是 DOM 上的字串
+   屬性值,trip/desktop/TripList.module.css/DesktopUserMenu.module.css 的
+   :global(.name)/:global(.sub) 選擇器直接比對這個字串即可命中,不需要
+   這份檔案先幫它們定義一條(哪怕是空的)規則。 */
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.section-title {
+  padding: 18px 16px 6px;
+  font-size: 15px;
+  color: var(--ios-gray);
+  text-transform: uppercase;
+}
+
+.empty {
+  text-align: center;
+  color: var(--ios-gray);
+  padding: 40px 20px;
+  font-size: 16px;
+}
+
+/* ChatScreen 的助理回答(react-markdown)可能渲染 <pre> 程式碼區塊,
+   MessageBubble.module.css 的 .text.markdown pre 只補了 background/padding,
+   margin/white-space/color 仍倚賴這裡的基底設定,不可搬移。 */
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #d4d4d8;
+}
+
+/* ---- 置中卡片彈窗骨架(.rp-modal*):DesktopContent(分享/成員彈窗、原
+   RecommendedPlacesModal)與 SettingsDialog 共用。原為 recommend_nearby
+   查詢完成後彈出的 RecommendedPlacesModal 所用,對齊 .ask-user-backdrop
+   的浮層模式但用置中卡片(內容是可捲動清單,不適合底部 sheet)。該彈窗
+   已移除(推薦景點改成掛在觸發它的訊息底下顯示,見 ChatScreen.tsx
+   MessageBubble),但這組樣式繼續由桌面版「設定」dialog(SettingsDialog)
+   與旅程列表的分享/成員彈窗(planning/member/desktop/Content.tsx)沿用,故保留。 ---- */
+.rp-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: rgba(0, 0, 0, 0.4);
+  animation: rp-modal-fade 0.2s ease;
+}
+.rp-modal {
+  width: 100%;
+  max-width: 420px;
+  max-height: 80%;
+  background: var(--ios-bg);
+  border-radius: 18px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  animation: rp-modal-pop 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.rp-modal-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 8px 14px 16px;
+  background: var(--ios-card);
+  border-bottom: 1px solid var(--ios-sep);
+}
+.rp-modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-dark);
+}
+.rp-modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+@keyframes rp-modal-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes rp-modal-pop {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rp-modal-backdrop,
+  .rp-modal {
+    animation: none;
+  }
+}
+
+/* ---- 桌面版「設定」dialog(SettingsDialog,見 planning/member/desktop/Content.tsx):骨架沿用
+   .rp-modal-backdrop/.rp-modal(遮罩、置中、圓角、陰影、進場動畫皆相同),
+   只疊加覆寫 position 為 fixed。原因:SettingsDialog 是從 DesktopContent
+   頂層(.desktop-layout 的兄弟節點)渲染,而非像原本的 RecommendedPlacesModal
+   那樣渲染在有 position: relative 的 .desktop-main 內部——若沿用 absolute+inset:0,
+   會相對到更上層(甚至沒有 relative 祖先時相對 initial containing block),
+   且 .desktop-layout 本身設有 overflow: hidden,side bar 只有 272px 寬,
+   都可能讓彈窗被裁切或跑位。改用 fixed 可確保無論掛在哪一層 DOM,
+   都能穩定蓋滿整個視窗、疊在桌面版佈局最上層。 ---- */
+.settings-dialog-backdrop {
+  position: fixed;
+  z-index: 200;
+}
+.settings-dialog {
+  max-width: 520px;
+}

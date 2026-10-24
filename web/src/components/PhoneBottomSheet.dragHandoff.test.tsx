@@ -3,7 +3,7 @@
 // 辦法測試來」「測試拉動不同位置 head or body，往上或往下有沒有正確」)。
 //
 // 這是這個檔案第一份真正驗證「觸控拖曳手勢」的測試——既有的
-// geo-planning/phone/ResultList.forceCollapsed.test.tsx 刻意把
+// planning/place/phone/ResultList.forceCollapsed.test.tsx 刻意把
 // PhoneBottomSheet/SheetBody 整組 mock 掉,明確寫著「這個測試不驗證真實
 // 觸控拖曳手勢,那是 PhoneBottomSheet 自己的職責」——但翻遍專案沒有任何
 // 一份測試真的去補這份職責,這份檔案補上這個缺口。
@@ -29,7 +29,7 @@ import { useState } from 'react'
 import { render, fireEvent } from '@testing-library/react'
 import { PhoneBottomSheet, SheetBody, SheetHead } from './PhoneBottomSheet'
 
-// MIN_HEIGHT_PX/SNAP_POINTS——對齊實際呼叫端(geo-planning/phone/ResultList.tsx/
+// MIN_HEIGHT_PX/SNAP_POINTS——對齊實際呼叫端(planning/place/phone/ResultList.tsx/
 // PlanPhoneInfoSheet.tsx)用的三段式數值(minHeightPx=100,
 // snapPoints=[400, 80]),不是隨便湊的測試用數字——這組數值換算出的
 // stops 陣列有收合段(索引 0)、中間段(索引 1)、最大展開段(索引 2)
@@ -44,7 +44,7 @@ function touch(clientY: number, clientX = 0) {
 }
 
 // Harness——受控包裝,模擬呼叫端持有 activeSnapIndex/onSnapIndexChange
-// 這組 state(對齊 geo-planning/phone/ResultList.tsx 等實際呼叫端的既有用法)。
+// 這組 state(對齊 planning/place/phone/ResultList.tsx 等實際呼叫端的既有用法)。
 // onClose/onSnapIndexChange 額外接 vi.fn() spy,供測試斷言呼叫次數與
 // 參數。
 function ThreeStopHarness({

@@ -1,23 +1,23 @@
-import { getPlanAiPublicDataSource } from './plan-ai-sim/planAiPublicDataSource'
-import { requireAttractionsByCity, requireGeoPlaceDetails, requirePhotoAssets } from './plan-ai-sim/planAiDataSource'
+import { getPlanAiPublicDataSource } from '../planning/data/public'
+import { requireAttractionsByCity, requireGeoPlaceDetails, requirePhotoAssets } from '../planning/data/source'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { GeoAttraction } from '../api'
-import { NativeMapBase, type MapHandle } from '../geo-planning/NativeMapBase'
-import { useSharedDrawLayer } from '../geo-planning/mapDrawLayer/useSharedDrawLayer'
-import { AttractionInfoPanel } from '../geo-planning/AttractionInfoPanel'
-import { PlanPhoneInfoSheet } from '../geo-planning/PlanPhoneInfoSheet'
-import { PlacePanel } from '../geo-planning/PlacePanel'
+import { NativeMapBase, type MapHandle } from '../planning/map/NativeMapBase'
+import { useSharedDrawLayer } from '../planning/map/draw/useSharedDrawLayer'
+import { AttractionInfoPanel } from '../planning/place/AttractionInfoPanel'
+import { PlanPhoneInfoSheet } from '../planning/map/phone/PlanPhoneInfoSheet'
+import { PlacePanel } from '../planning/place/PlacePanel'
 import { useIsDesktop } from '../hooks/useIsDesktop'
-import { stackedInfoCardRightPx } from '../geo-planning/DesktopInfoCard'
-import { useThemeAttractionSelection } from '../geo-planning/useThemeAttractionSelection'
-import { curatedCategoryOf } from '../geo-planning/geoCuratedCategoryStub'
-import { computeNearbyAttractions } from '../geo-planning/geoNearbyAttractions'
+import { stackedInfoCardRightPx } from '../planning/place/DesktopInfoCard'
+import { useThemeAttractionSelection } from '../planning/explore/useThemeAttractionSelection'
+import { curatedCategoryOf } from '../planning/place/curatedCategoryStub'
+import { computeNearbyAttractions } from '../planning/explore/nearbyAttractions'
 import { ThemeToggle } from '../user/ThemeToggle'
 import type { Theme } from '../theme'
 import { BASE_URL } from '../AppCommon'
 import { trackEvent } from '../analytics'
 import styles from './InteractiveExploreMap.module.css'
-import { SIMPLE_MAP_ID } from '../geo-planning/mapStyleIds'
+import { SIMPLE_MAP_ID } from '../planning/map/mapStyleIds'
 
 // publicDataSource:這個頁面是登入前的公開展示頁,沒有使用者自己的 JWT:用訪客版資料存取層實例(打免登入的 /public)——
 // 景點區域、地點詳情、照片補圖都走它。baseURL 沿用 AppCommon.tsx 的 BASE_URL(建置時 VITE_API_BASE,或退回目前頁面
@@ -297,7 +297,7 @@ export function InteractiveExploreMap({
   // 小地圖的要求:「主題點只有在主題點的苗點才顯示圓形圖,其他時候顯示
   // 小圓點」——捲到別的錨點時,沒人在看的主題點不該繼續用 56px 照片圓
   // 搶走目前錨點的視覺焦點。實作見 attractionGlowLayer.ts 的
-  // themePhotoOnlyWhenFocused/focusedThemeId 與 geoAttractionOverlay.ts
+  // themePhotoOnlyWhenFocused/focusedThemeId 與 planning/place/attractionOverlay.ts
   // 的 setThemePhotoCollapsed。未傳/false 時一字不變:下方傳給 hook 的
   // 開關為 false,hook 對每顆 overlay 的 setThemePhotoCollapsed(false)
   // 是 no-op,正式城市頁的主題點繼續恆顯示照片。
@@ -341,7 +341,7 @@ export function InteractiveExploreMap({
   // 的 AttractionInfoPanel(絕對定位疊在地圖右緣的浮動卡片)還是手機版
   // 的 PlanPhoneInfoSheet(從畫面下方滑入的 bottom sheet)。這個
   // 展示頁先前固定只用桌面版卡片,手機瀏覽器開啟時版面/觸控體驗跟正式
-  // 功能手機版不一致,現在跟 desktop/Content.tsx/GeoOutlinePhoneView.tsx
+  // 功能手機版不一致,現在跟 planning/member/desktop/Content.tsx/planning/map/phone/PlanPhoneView.tsx
   // 一樣依螢幕寬度切換,兩邊共用同一套 useThemeAttractionSelection 狀態
   // (見下方),只是渲染成哪個元件不同。PlanPhoneInfoSheet 已支援
   // nearby/onSelectNearby/categoryFilter(見該元件的完整說明),手機版
@@ -508,7 +508,7 @@ export function InteractiveExploreMap({
 
   // useThemeAttractionSelection:主題卡開著時跟它並存/附掛的一組狀態
   // (poiContent/hoveredAttraction/categoryFilter)與對應的 reset/
-  // infoCardStack 登記邏輯,抽成跟 desktop/Content.tsx 共用的 hook(見該
+  // infoCardStack 登記邏輯,抽成跟 planning/member/desktop/Content.tsx 共用的 hook(見該
   // 檔案的完整說明)——原本這裡是四份各自獨立手寫的 state,兩邊容易
   // 各自漏寫其中一個 reset effect(2026-09 實測踩過:展示頁漏了
   // hoveredCuratedId/activeNearbyCategoryFilter 的 reset,導致切換
@@ -536,7 +536,7 @@ export function InteractiveExploreMap({
   // 對主題點/非主題點一視同仁都會呼叫這個 callback,分流判斷要由呼叫端
   // 自己做)。isTheme 為 true(這兩個主題點之一)時切換 openThemeId;
   // 其餘(精選點)時開/換並存的 poiContent,對稱
-  // desktop/Content.tsx handleAttractionOpenPlaceDetails/
+  // planning/member/desktop/Content.tsx handleAttractionOpenPlaceDetails/
   // handleAttractionOpenPlaceWithoutGoogle 的並存行為,只是這裡固定不查
   // Google、無需依「主題卡是否已開」分岔互斥/並存路徑——這個展示頁的
   // AttractionInfoPanel 一律可以有(使用者點過主題點)或没有(尚未點過)
@@ -582,7 +582,7 @@ export function InteractiveExploreMap({
     [openTheme],
   )
 
-  // revealedAttractionNames:對齊 desktop/Content.tsx 的
+  // revealedAttractionNames:對齊 planning/member/desktop/Content.tsx 的
   // revealedAttractionNames 行為(見該處與 attractionGlowLayer.ts 的
   // 說明)——只有目前打開的主題點底下的精選點才揭露,沒點開任何主題點
   // 時是空集合,地圖上不顯示任何精選點標記。先前這裡固定用兩組精選點
@@ -709,7 +709,7 @@ export function InteractiveExploreMap({
   // focusedAttractionId:2026-10 新增——focusedCenter 指定的座標若剛好
   // 跟地圖上某個「精選點」(isTheme===false)的座標相同,把那個精選點的
   // id 交給 attractionGlow 的 focusedAttractionId(見該 prop 與
-  // geoAttractionOverlay.ts 的 focused 欄位完整說明),讓它改畫「素色
+  // planning/place/attractionOverlay.ts 的 focused 欄位完整說明),讓它改畫「素色
   // 小圓點」造型,表達「這一顆就是時間軸正在講的那一站」。使用者需求:
   // 「苗點在精選點時,該點要變成(素色小圓點)圖標」——ScrollTimeline.tsx
   // 的錨點用 center prop 直接指定座標時(見該檔案 AnchorMeta.center 的
@@ -823,7 +823,7 @@ export function InteractiveExploreMap({
           {/* AttractionInfoPanel/PlanPhoneInfoSheet(主題卡,依
               isDesktop 二選一)、PlacePanel(點「附近景點」開的地點卡,
               桌面版限定,見下方說明)都改用 children 掛入
-              NativeMapBase——對齊 desktop/Content.tsx/GeoOutlinePhoneView.tsx
+              NativeMapBase——對齊 planning/member/desktop/Content.tsx/planning/map/phone/PlanPhoneView.tsx
               的組合方式(見兩者 PlanMap 的 children 說明),這些卡片
               都不是掛在地圖元件上的東西(地圖建立方式跟卡片無關),但
               語意上統一表達成「這些是附掛在這個地圖上的浮動 UI」,三個
@@ -839,7 +839,7 @@ export function InteractiveExploreMap({
                   // onSelectNearby:點擊「附近景點」清單項目——跟地圖上
                   // 直接點擊精選點地標(見 handleAttractionSelect)是同一個
                   // 目的地(開並存的 PlacePanel),故直接重用
-                  // openPoiContent,對稱 desktop/Content.tsx
+                  // openPoiContent,對稱 planning/member/desktop/Content.tsx
                   // handleSelectNearbyAttraction 的行為(理由同該函式
                   // 說明)。
                   onSelectNearby={openPoiContent}
@@ -853,10 +853,10 @@ export function InteractiveExploreMap({
                   content={poiContent}
                   onClose={() => setPoiContent(null)}
                   // shiftBy 不傳(維持預設,貼右緣)——這個展示頁沒有
-                  // geo-planning/desktop/ResultList/規劃面板會佔用右緣,不需要
-                  // desktop/Content.tsx 那套動態判斷。style 用
+                  // planning/place/desktop/ResultList/規劃面板會佔用右緣,不需要
+                  // planning/member/desktop/Content.tsx 那套動態判斷。style 用
                   // stackedInfoCardRightPx 搭配上方 infoCardStack 的
-                  // presentOrders(跟 desktop/Content.tsx 同一套掛入模式,見
+                  // presentOrders(跟 planning/member/desktop/Content.tsx 同一套掛入模式,見
                   // useInfoCardStack.ts 的完整說明)算出動態 right——不在
                   // 這裡另外重算一次「主題卡存不存在」的判斷式,直接讀
                   // infoCardStack 這個唯一的登記簿。主題卡沒開著時(理論上
@@ -874,9 +874,9 @@ export function InteractiveExploreMap({
               {/* 手機版主題卡:改用 PlanPhoneInfoSheet(從畫面下方
                   滑入的 bottom sheet,見該元件開頭完整說明)——attraction
                   傳主題點本身,content 固定傳 null(這個展示頁沒有「附近
-                  景點」以外的獨立地點卡來源,不像 GeoOutlinePhoneView.tsx
+                  景點」以外的獨立地點卡來源,不像 PlanPhoneView.tsx
                   的 content 對應搜尋結果/推薦地點)。nearby/onSelectNearby/
-                  categoryFilter 對齊 GeoOutlinePhoneView.tsx 的接線(見
+                  categoryFilter 對齊 PlanPhoneView.tsx 的接線(見
                   該檔案的完整說明),跟桌面版 AttractionInfoPanel 共用同一批
                   資料(nearbyList/activeNearbyCategoryFilter,見上方
                   useThemeAttractionSelection 的說明),只是呈現成觸控版的
@@ -895,11 +895,11 @@ export function InteractiveExploreMap({
               />
               {/* 手機版精選點地點卡:點「附近景點」清單項目後開啟——重用
                   同一個 PlanPhoneInfoSheet 元件疊在主題卡上面(對齊
-                  GeoOutlinePhoneView.tsx 'nearby-place' sheet 疊在 'info'
+                  PlanPhoneView.tsx 'nearby-place' sheet 疊在 'info'
                   之上的模式,見該檔案 SheetEntry 的完整說明),content 傳
                   poiContent(useThemeAttractionSelection 已經查好/組裝完成
                   的 PlaceInfoContent,不需要元件內部再查一次)。這個展示頁
-                  沒有 GeoOutlinePhoneView.tsx 那套 sheetStack 堆疊基礎設施,
+                  沒有 PlanPhoneView.tsx 那套 sheetStack 堆疊基礎設施,
                   改用「poiContent 是否有值」直接當渲染條件——效果等價:
                   兩者都是「有沒有東西可以顯示這張卡片」當唯一真相來源。 */}
               {poiContent && (

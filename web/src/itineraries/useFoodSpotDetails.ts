@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BASE_URL } from '../AppCommon'
 import type { ClientConfig, GeoPlaceDetails } from '../api'
-import { fetchPlaceDetailsCached } from '../geo-planning/placeDetailsCache'
+import { fetchPlaceDetailsCached } from '../planning/data/cache'
 import type { SampleFoodSpot } from './types'
 
 // GUEST_CFG——讀取已建檔地點的公開資料是訪客動作,不需要使用者自己的
@@ -22,7 +22,7 @@ export interface FoodSpotDetails {
 // 與照片),一次解決「要圖片」跟「要座標」兩個需求,不必分別打兩次
 // 不同的查詢。
 //
-// 走 geo-planning/placeDetailsCache.ts 的 fetchPlaceDetailsCached(對齊
+// 走 planning/data/cache.ts 的 fetchPlaceDetailsCached(對齊
 // 使用者「用現有的有快取端點」的要求),跟地圖上其他景點查詢共用同一份
 // 模組級快取/in-flight 去重機制,詳見該檔案開頭的完整說明。
 //

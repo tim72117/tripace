@@ -7,7 +7,7 @@
 // styles 選項(google.maps.Map 的 styles 參數),直接在程式碼裡定義完整
 // 配色/地物規則,不需要 Console 存取權限。
 //
-// 重要限制(見 geo-planning/NativeMapBase.tsx styles prop 的完整說明):
+// 重要限制(見 planning/map/NativeMapBase.tsx styles prop 的完整說明):
 // Google 官方文件規定 mapId(Cloud-based styling)與 inline styles 兩者
 // 互斥——地圖一旦帶 mapId,Console 設定的 Cloud Style 會覆蓋/忽略這裡的
 // inline styles。使用這份樣式的呼叫端必須把這個陣列傳給 NativeMapBase

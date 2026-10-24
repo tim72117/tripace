@@ -2,17 +2,17 @@ import { useEffect, useRef } from 'react'
 import type { ReactNode, Ref } from 'react'
 
 // ListItemCard:帶左側視覺元素的清單項目卡片——全專案通用基礎元件,
-// 2026-10 從 geo-planning/GeoListItemCard.tsx 抽出來(原名字帶 Geo
+// 2026-10 從舊 geo-planning/GeoListItemCard.tsx(該目錄現已併入 planning/)抽出來(原名字帶 Geo
 // 前綴,只給地圖地點清單用;使用者明確要求做成不限定模組、用通用命名
 // 的共用元件)。視覺結構:可點擊卡片本體(leading 插槽 + 名稱/地址,可
 // 截斷)+ 選取樣式 class + 右側插槽(badge/trailing)。
 //
 // 2026-10 二次修正:原本左側固定是「照片或佔位圖」兩態,內建
-// IntersectionObserver 延遲載入邏輯,且耦合 geo-planning 專屬的
+// IntersectionObserver 延遲載入邏輯,且耦合地圖規劃領域專屬的
 // ClientConfig/fetchGeoPlacePhoto——使用者進一步要求「左側可以放圖片
 // 或 icon」,改成完全通用的 leading 插槽,呼叫端自己決定放 <img>、
 // 佔位圖、還是 icon 圓圈,這個元件不再內建任何一種固定的左側視覺邏輯,
-// 也不再認識任何 geo-planning 的型別或 API——延遲載入照片這件事(連同
+// 也不再認識任何地圖規劃領域的型別或 API——延遲載入照片這件事(連同
 // IntersectionObserver)完全變成呼叫端的責任:呼叫端自己決定 leading
 // 插槽的內容要不要分階段載入,這個元件只負責排版「leading + 名稱/
 // 地址 + badge + trailing」這個固定骨架。

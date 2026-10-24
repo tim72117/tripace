@@ -2,7 +2,7 @@
 // 全部是不碰 React/不碰全域狀態的純函式,可以單獨測試;registry.ts 負責把
 // itineraries/*.ts 收進來,這裡只吃陣列。
 import { estimateTransit } from './estimateTransit'
-import { countNodes, type PlanNode, type PlanTimeline } from '../plan-core/planTimeline'
+import { countNodes, type PlanNode, type PlanTimeline } from '../planning/timeline/model'
 import type { SampleItinerary } from './types'
 
 // sortByNewest——依上架日期由新到舊;同一天的維持傳入順序(穩定排序),

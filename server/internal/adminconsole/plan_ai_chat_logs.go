@@ -1,5 +1,5 @@
 // AI 規劃對話訊息記錄(GET /admin/api/plan-ai-chat-logs)。顯示所有使用者的
-// 所有 AI 規劃對話訊息(/trip-plan,web/src/trip-plan/TripPlanPage.tsx),
+// 所有 AI 規劃對話訊息(/trip-plan,web/src/planning/panel/TripPlanPage.tsx),
 // 依 CreatedAt 降冪排序(最新在前)——是一張列出全部訊息的表格,類似 log
 // 瀏覽器,不是先選使用者才看單一對話。讀取來源是
 // server/internal/store/plan_ai_chat.go 寫入的 plan_ai_chat_messages 表。

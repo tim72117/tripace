@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import { BASE_URL } from '../AppCommon'
-import { getPlanAiPublicDataSource } from '../home/plan-ai-sim/planAiPublicDataSource'
-import { createEmptyTimeline, listNodes, lodgingsOf, type PlanTimeline } from '../plan-core/planTimeline'
-import { useResolvedRefs } from '../plan-core/PlanDataProvider'
+import { getPlanAiPublicDataSource } from '../planning/data/public'
+import { createEmptyTimeline, listNodes, lodgingsOf, type PlanTimeline } from '../planning/timeline/model'
+import { useResolvedRefs } from '../planning/data/PlanDataProvider'
 import { toPlanTimeline } from './catalog'
 import type { SampleItinerary } from './types'
 
@@ -11,7 +11,7 @@ import type { SampleItinerary } from './types'
 export const publicDataSource = getPlanAiPublicDataSource(BASE_URL)
 
 // useResolvedItineraryTimeline——行程詳情頁「唯一一份」時間軸資料(2026-10 重構:原本座標由
-// resolveAttractionForStep 寫回節點、頁面另有一份沒解析的時間軸,現在只留一份、座標從共用的 planDataStore 取)。
+// resolveAttractionForStep 寫回節點、頁面另有一份沒解析的時間軸,現在只留一份、座標從共用的資料存取層 store(planning/data/store.ts)取)。
 //
 // 起點是 toPlanTimeline(itinerary):站點座標先用行程檔案寫的值(查詢前、查詢失敗時的備用,地圖與時間軸立刻有東西)。
 // 帶 placeId 的站點,store 查到座標就以 store 為準(資料存取層是權威)並蓋在節點上;名稱與說明維持行程作者寫的

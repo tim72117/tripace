@@ -4,7 +4,7 @@
    疊加。
 
    定位(貼底置中、寬度、z-index)不在這裡——由呼叫端外層的插槽容器
-   負責(home/plan-ai-sim/PlanOverlayPanel.module.css 的 composerSlot/
+   負責(planning/preview/PlanOverlayPanel.module.css 的 composerSlot/
    composerSlotMobile),這裡只有膠囊本身的造型,寬度填滿外層插槽。 */
 .composer {
   width: 100%;

@@ -1,7 +1,7 @@
 # 多角色設計討論流程規則
 
 這份文件記錄一套「多角色輪流發言、逐輪收斂至共識」的設計討論方法，抽取自
-行程規劃設計討論（showcase-demo 構想頁 `/ideas/design-overview`，原 `docs/trip-planning-design-discussion.md` 已改寫成構想頁；行程規劃引導介面討論，15 項構想
+行程規劃設計討論（handbook 構想頁 `/ideas/design-overview`，原 `docs/trip-planning-design-discussion.md` 已改寫成構想頁；行程規劃引導介面討論，15 項構想
 全數達成共識）的實際運作方式。下次要開一輪新的設計討論時，把這份文件當
 開場規則直接套用，不需要重新發明流程。
 

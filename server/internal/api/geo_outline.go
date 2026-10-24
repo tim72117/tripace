@@ -1010,7 +1010,7 @@ type photoAssetsOnlyResponse struct {
 //
 // 純讀 photo_assets 目前狀態,不觸發任何點擊計數/漸進補圖決策——供前端
 // 「查完地點詳情發現沒有照片,原地重試幾次看背景補圖是否已經完成」這種
-// 情境使用(見 web/src/geo-planning/useThemeAttractionSelection.ts
+// 情境使用(見 web/src/planning/explore/useThemeAttractionSelection.ts
 // fetchPoiContent 的 PHOTO_RETRY_* 完整說明)。
 //
 // 這支端點刻意跟 handleGeoPlaceDetails 完全分開,不是後者的一個查詢

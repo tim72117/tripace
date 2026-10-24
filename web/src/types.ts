@@ -1,7 +1,7 @@
 // 與 Go server 的 model.go / docs/API.md 嚴格對齊的型別。
 // 任何欄位改動都應同步這裡與後端,前端才能忠實反映後端回應。
 //
-// 這裡只留 Entry——被 timeline/geo-planning/chat/trip 等幾乎所有領域
+// 這裡只留 Entry——被 timeline/planning/chat/trip 等幾乎所有領域
 // 共用的核心資料實體,沒有明確的單一功能歸屬,不適合搬進任何一個功能
 // 目錄。其餘型別已依領域拆分:Trip 見 trip/types.ts,User/TripRole/
 // Member/Profile/Me/AuthResponse 見 user/types.ts,Message 見

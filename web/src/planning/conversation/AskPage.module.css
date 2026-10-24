@@ -1,0 +1,663 @@
+/* AskPage.tsx 專屬樣式。.bubble 的外觀數值直接複製
+   DestinationPrompt.module.css 的 .questionBubble(半透明模糊+描邊,
+   見該檔案的完整說明:使用者明確要求「不要底色」,拿掉實色填滿改成
+   輕量半透明+backdrop-filter,讓底下地圖隱約透出來)。
+   .directionGrid/.directionCard 系列同樣直接複製 DestinationPrompt
+   既有的 2×2 照片複選網格數值(見該檔案 directionGrid 區塊的完整
+   說明)。不用 composes 共用那份 class,理由同專案其他地方的既有
+   先例(例如 planning/panel/TripPlanPage.module.css 的 .agentBubble):兩者
+   定位基準/版面脈絡不同,直接複製一份數值相近但獨立的規則比較單純,
+   不需要處理兩種不同容器座標系的耦合。 */
+
+/* position: relative——2026-10 補上(同一個先前在 PlanOverlayPanel.module.css
+   .composerSlotMobile 踩過的疊層陷阱,見該處的完整說明:position: static
+   元素不建立 stacking context,疊層規則上必然輸給任何 position: absolute
+   的同層內容)。這條不是這次點擊失效的真正根因(見下方 pointer-events
+   的完整說明),但維持加上,對齊這個專案在類似巢狀情境下的既有慣例,
+   避免疊層問題在其他座標下仍然發生。
+
+   pointer-events: auto——2026-10 查證「點擊候選卡片沒有反應」的真正
+   根因:這個元件掛載在 HorizontalPlanTimeline.module.css 的 .wrap 內部
+   (showAskPage 為 true 時的條件渲染分支,取代原本的 .scroller 卡片
+   列),而那個外層 .wrap 整個容器是 pointer-events: none(見該檔案該
+   class 的完整說明:只有 .ruler/.scroller 這兩個「真正需要互動的子
+   元素」各自明確設回 auto,讓手機版空白處的地圖拖曳手勢能穿透)。
+   AskPage 取代的是 .scroller 那個分支,但自己的 CSS 完全沒有設回
+   pointer-events: auto,導致整個詢問頁(含卡片按鈕)繼承到 none、所有
+   點擊事件穿透到底下的地圖,不是 z-index 疊層問題(DevTools
+   elementFromPoint 查到底下的地圖元素,表面現象容易誤判成疊層被蓋住,
+   但 opacity/可見度/層級都正常,純粹是指標事件被繼承的 none 擋住)。 */
+.wrap {
+  position: relative;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+/* wrapStacked——stacked 模式(寬螢幕側欄,見 PlanOverlayPanelWide.module.css
+   .panel 的完整說明:固定高度的 flex column 容器)專用的高度限制,疊加在
+   .wrap 之上、不是取代它(對齊 .directionScrollerStacked 等既有組合 class
+   的既有模式)——只在這個情境套用,不影響其餘六處共用 .wrap 的呼叫點
+   (手機版橫向卡片列、text 模式氣泡、非 wide 桌面版等,它們的父層不是
+   固定高度容器,.wrap 原本依內容自然撐高的行為必須維持不變)。
+
+   2026-10(實機回報的真實 bug 修法第二輪):第一輪曾經直接改 .wrap 本身
+   加 height: 100% + 拿掉 justify-content: center,全域套用後發現會把
+   其餘六處呼叫點的氣泡位置一併搞壞(justify-content: center 原本在
+   「.wrap 高度由內容決定」的情境下沒有可觀察效果,一旦 .wrap 變成固定
+   滿版高度,center 就會把內容推到容器正中央而非貼齊頂部——這正是候選
+   景點卡片那次「位置跑到螢幕中間偏下」的真正成因)。改成只在 stacked
+   情境疊加的獨立 class,不動 .wrap 本身的既有定義,避免同一個修法的
+   連帶副作用波及其他五種渲染分支。
+
+   align-items/justify-content 都改 flex-start——stacked 模式下 .bubble
+   要貼齊側欄頂部由上往下排列(候選清單用剩餘高度捲動,見
+   .directionScrollerStacked 的完整說明),不是水平或垂直置中飄在側欄
+   中段。 */
+.wrapStacked {
+  /* align-items: stretch(flex 預設值,這裡明確寫出來)——.bubble 要
+     撐滿 .wrap 給出的高度,.directionScrollerStacked 的 flex: 1 才有
+     真正的空間可以伸展,不是被壓成幾乎看不見的高度。2026-10(實機
+     回報的真實 bug 修法第三輪):第二輪曾經寫 align-items: flex-start,
+     直覺以為「候選清單該貼齊頂部」,但 align-items 控制的是交叉軸
+     (這裡 .wrap 是預設 flex-direction: row,交叉軸是垂直方向)子項目
+     要不要被拉伸——flex-start 的效果是「子項目依內容自然高度,不拉伸」,
+     這會讓 .bubble 的 max-height: 100% 這個上限形同虛設(.bubble 自己
+     從不會被撐到接近那個上限),連帶讓它內部 flex: 1 的
+     .directionScrollerStacked 在一個只有 127px 高的 .bubble 裡被壓成
+     4px(實機量測到的真實數字,候選卡片全部擠在一條看不見的細縫裡)。
+     「候選清單該貼齊頂部」這個視覺意圖改由 .bubble 內部的
+     flex-direction: column(見 .bubbleStacked 的完整說明)天然達成
+     ——不需要 .wrap 這層的 align-items 幫忙,那是完全不同層級的版面
+     語意,不該混在一起用同一個屬性處理。 */
+  align-items: stretch;
+  justify-content: flex-start;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.bubble {
+  width: 100%;
+  border: 1px solid var(--ios-sep);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--ios-card) 55%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  padding: 16px 16px 14px;
+}
+
+/* bubbleStacked——同 .wrapStacked 的完整說明(第二輪修法:改成只在
+   stacked 情境疊加的獨立 class,不動 .bubble 本身,避免波及其他五種
+   渲染分支)。.bubble 要能在固定高度的父層(.wrapStacked)裡收縮,
+   才能把剩餘高度正確讓給 .directionScrollerStacked 當捲動區域,而不是
+   依內容自然撐高、超出側欄邊線(.question/.actions 已各自設
+   flex-shrink: 0,維持原本高度不變)。 */
+.bubbleStacked {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 100%;
+}
+
+.question {
+  margin: 0 0 12px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--color-dark);
+  text-align: center;
+  /* flex-shrink: 0——.bubble 改成 flex column 後(見該 class 的完整
+     說明),標題不該被壓縮,高度固定由內容決定。 */
+  flex-shrink: 0;
+}
+
+/* directionScroller——橫向捲動單卡列,取代原本的 2×2 .directionGrid
+   (使用者明確要求「用左右滑動的」)。手法沿用
+   HorizontalPlanTimeline.module.css 的 .scroller(見該檔案 .scroller
+   的完整說明):overflow-x: auto + scroll-snap-type: x mandatory +
+   隱藏捲軸,單卡 .directionCard 各自 scroll-snap-align: center 吸附
+   置中——同一個頁面情境下兩種卡片列的滑動手感該一致,不是另外發明
+   一套捲動機制。 */
+.directionScroller {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 2px;
+  margin: -2px;
+}
+.directionScroller::-webkit-scrollbar {
+  display: none;
+}
+
+/* directionScrollerStacked——寬螢幕(>=1024px)側欄改用縱向堆疊的候選
+   清單,取代橫向捲動(使用者明確要求「寬版裝置的詢問匡選項改上下
+   排列」)。2026-10 新增(ScriptedAskPage.tsx stacked prop,目前只有
+   /ai-plan 展示頁的桌面寬螢幕分支會加這個 class,正式版 AskPage.tsx
+   的 CandidatesPanel 尚未接上)。
+   overflow-x 改 hidden(縱向清單不該有橫向捲動),scroll-snap 相關屬性
+   在縱向排列下語意不同(見下方 .directionCard.directionCardStacked
+   的完整說明:捲動軸向跟著改成 y),不直接沿用橫向的設定值。 */
+.directionScrollerStacked {
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  /* flex: 1 1 0 + min-height: 0——取代原本的 max-height: 100%(實機
+     回報過的真實 bug:清單超出側欄邊線,見 .wrap/.bubble 改成 flex
+     column 處的完整說明)。max-height: 100% 只在父層是固定高度容器
+     時才有效果,但這裡的父層(.bubble)原本是依內容自然撐高,兩者
+     互為因果地「永遠量不出一個有限的 100%」。現在 .bubble 已經改成
+     flex column 且 min-height: 0,這裡改用 flex: 1 主動跟
+     .question/.actions(已設 flex-shrink: 0)分配剩餘空間,是在 flex
+     容器裡「吃滿剩下的高度、超出就自己捲動」的標準寫法。 */
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.directionCard {
+  position: relative;
+  flex: 0 0 auto;
+  /* width——固定寬度(而非原本 grid 模式下靠 1fr 自動均分撐滿兩欄):
+     橫向捲動列需要每張卡有明確寬度,捲動軌道的總寬度才會超出容器、
+     真的能捲動,不是像 grid 那樣讓格線自己分配可用空間。140px 搭配
+     下方 aspect-ratio 10/7 算出的高度,跟原本 2×2 網格單格大小接近,
+     維持差不多的卡片尺寸觀感。 */
+  width: 140px;
+  padding: 0;
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--ios-active);
+  cursor: pointer;
+  aspect-ratio: 10 / 7;
+  scroll-snap-align: center;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.directionCard:hover {
+  border-color: var(--ios-blue);
+  transform: translateY(-1px);
+}
+
+/* directionCardStacked——.directionScrollerStacked 底下的候選卡片:
+   橫式列表樣式(圖片在左、文字在右),取代橫向捲動模式的「照片鋪底、
+   文字疊加在底部漸層上」(見 .directionCard/.directionPhoto/
+   .directionLabel 的既有說明)。使用者明確要求「卡片改成橫式佈局
+   （圖片在左、文字在右），標準列表樣式」。
+   width/aspect-ratio 都改掉:橫式列表撐滿容器寬度、高度由內容決定,
+   不再是固定寬度搭配 10/7 比例的小方塊。flex 排列文字區,圖片區固定
+   寬高當縮圖——跟 .directionLabel 原本的「壓在照片上」完全不同的版面
+   語意,靠組合 class(.directionPhotoStacked/.directionLabelStacked)
+   個別覆寫,不是整個換一套獨立命名的卡片元件:勾選態
+   (.directionCardChecked)、check icon(.directionCheck)等既有樣式
+   仍然原樣適用,只有圖文排列方式不同。 */
+.directionCardStacked {
+  width: 100%;
+  flex: 0 0 auto;
+  aspect-ratio: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  scroll-snap-align: start;
+}
+
+.directionPhoto {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* directionPhotoStacked——縮圖尺寸固定,不再鋪滿整張卡片(見
+   .directionCardStacked 的完整說明)。有獨立的圓角(卡片本身是
+   overflow: hidden,但 stacked 模式下圖片不貼齊卡片邊緣,需要自己的
+   border-radius 才會圓角)。 */
+.directionPhotoStacked {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+}
+
+/* directionPhotoPlaceholder——沒有照片時的佔位縮圖(2026-10,使用者
+   明確指出「手機版的有留空間,桌面版的連空間都沒有」):跟
+   .directionPhotoStacked 同尺寸(56px 方形、8px 圓角),維持圖文並排的
+   版面對齊——沒有照片時若完全不渲染任何縮圖元素,整行會變成只剩文字
+   靠左顯示,跟有照片的項目排列不整齊。用通用的地圖釘子 icon(MapPin,
+   跟 CountryPanel/CityPanel 既有的 .regionIcon 同一顆圖示),不依景點
+   類型顯示不同圖示——候選資料目前整條鏈路都沒有攜帶類型欄位(使用者
+   明確要求「先改成通用的地圖釘子佔位圖,最小改動先解決沒有空間的
+   問題」,類型區分留待之後有需要再擴充)。背景色沿用 .directionCard
+   的既有底色(--ios-active),不是另外設計一個新顏色。 */
+.directionPhotoPlaceholder {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ios-active);
+  color: var(--ios-gray);
+}
+
+/* directionCardChecked——已勾選:藍色外框加粗,右上角顯示勾
+   (.directionCheck)。用 box-shadow 補粗框而不是加粗 border,避免
+   勾選時卡片尺寸被撐動。 */
+.directionCardChecked {
+  border-color: var(--ios-blue);
+  box-shadow: 0 0 0 2px var(--ios-blue);
+}
+.directionCheck {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  box-sizing: content-box;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--ios-blue);
+  color: #fff;
+}
+
+/* directionLabel——壓在照片底部的類型名稱。用由下往上的深色漸層墊底,
+   白字在任何照片上都讀得清楚(不假設照片底部是暗的)。 */
+.directionLabel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 18px 10px 7px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0));
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+}
+
+/* directionLabelStacked——取代上面絕對定位疊加的版本:正常文件流,
+   跟縮圖(.directionPhotoStacked)左右並排,不需要漸層墊底(字不是疊在
+   照片上)。right: 28px 讓出 .directionCheck(絕對定位在卡片右上角,
+   勾選態時才出現)的空間,避免文字跟勾選圖示重疊。 */
+.directionLabelStacked {
+  position: static;
+  flex: 1;
+  min-width: 0;
+  padding: 0 28px 0 0;
+  background: none;
+  color: var(--color-dark);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  /* flex-shrink: 0——理由同 .question:「不用了」/「確認選擇」按鈕列
+     不該被壓縮,高度固定由內容決定,把剩餘高度讓給候選清單區域。 */
+  flex-shrink: 0;
+}
+
+.optionBtn {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-dark);
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.optionBtn:hover {
+  background: var(--ios-active);
+  border-color: var(--ios-blue);
+}
+
+/* directionConfirm——「開始規劃」:停用時降低透明度並取消 hover 回饋;
+   可按時用 --ios-blue 邊框與文字色,與一般選項膠囊區隔出「這是確認
+   動作」。 */
+.directionConfirm {
+  border-color: var(--ios-blue);
+  color: var(--ios-blue);
+}
+.directionConfirm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: var(--ios-sep);
+  color: var(--color-dark);
+}
+.directionConfirm:disabled:hover {
+  background: transparent;
+}
+
+/* ===== 純文字對話氣泡(messageBubble)===== */
+/* 2026-10(使用者明確要求「後端的純文字對話也統一在 ask page 裡面
+   顯示對話氣泡」):從 HorizontalPlanTimeline.module.css 的
+   agentBubble 系列搬過來,數值原樣保留——這裡取代的是舊版「軸線頁
+   上方疊一個獨立泡泡」的做法,改成跟 candidates/explore 模式共用
+   .wrap 外層容器,底色沿用同一套半透明模糊處理(同 .bubble 的理由,
+   DestinationPrompt.module.css .questionBubble 的既有數值)。 */
+.messageBubble {
+  position: relative;
+  width: 100%;
+  padding: 10px 30px 10px 14px;
+  border-radius: 4px 16px 16px 16px;
+  border: 1px solid var(--ios-sep);
+  background: color-mix(in srgb, var(--ios-ai-message-bg) 55%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  color: var(--ios-ai-message-text);
+  font-size: 16px;
+  line-height: 1.55;
+  max-height: 60vh;
+  overflow: auto;
+  transition: opacity 0.25s ease, background 0.25s ease;
+}
+
+.messageMarkdown > :first-child { margin-top: 0; }
+.messageMarkdown > :last-child { margin-bottom: 0; }
+.messageMarkdown p { margin: 6px 0; }
+.messageMarkdown ul,
+.messageMarkdown ol { margin: 6px 0; padding-left: 20px; }
+.messageMarkdown li { margin: 2px 0; }
+.messageMarkdown code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  background: var(--ios-sep);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.messageMarkdown pre {
+  background: var(--ios-sep);
+  padding: 8px 10px;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.messageMarkdown pre code { background: none; padding: 0; }
+.messageMarkdown a { color: var(--ios-blue); }
+.messageMarkdown h1,
+.messageMarkdown h2,
+.messageMarkdown h3 {
+  font-size: 17px;
+  margin: 6px 0 4px;
+  color: var(--ios-ai-message-text);
+}
+
+.messageBubbleStale {
+  opacity: 0.55;
+}
+
+.messageCloseBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ios-gray);
+  cursor: pointer;
+}
+.messageCloseBtn:hover {
+  background: var(--ios-active);
+  color: var(--color-dark);
+}
+
+/* ===== 旅遊區域(RegionPanel)===== */
+/* 2026-10 新增(使用者明確要求「使用相同的 ask page 外殼,但是內部的
+   詢問元件可以搭配不同的工具顯示不同的項目」)。.regionCard 跟
+   .directionCard 共用同一個 .directionScroller 橫向捲動容器,但這裡
+   沒有照片可疊(區域選項由 LLM 傳文字,不經過背景查詢完整資料),改用
+   圖示+文字的直式卡片,寬度比照片卡窄一些——純文字內容不需要照片卡
+   那麼大的面積。單選+點選即送出(見 RegionPanel 的完整說明),不需要
+   像 .directionCard 那樣有已選中樣式。 */
+.regionCard {
+  flex: 0 0 auto;
+  width: 112px;
+  min-height: 84px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px 10px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  background: var(--ios-active);
+  color: var(--color-dark);
+  cursor: pointer;
+  scroll-snap-align: center;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.regionCard:hover {
+  border-color: var(--ios-blue);
+  transform: translateY(-1px);
+}
+
+/* regionCardStacked——.directionScrollerStacked 底下的國家/城市卡片:
+   橫式列表樣式,對齊 .directionCardStacked 的設計(使用者明確要求
+   「所有的詢問項目都要換」,2026-10 新增)。icon 在左、名稱在右,不再是
+   icon 在上名稱在下的直欄小方塊。 */
+.regionCardStacked {
+  width: 100%;
+  flex: 0 0 auto;
+  min-height: 0;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  scroll-snap-align: start;
+}
+.regionIcon {
+  color: var(--ios-blue);
+}
+.regionName {
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+}
+.regionNameStacked {
+  text-align: left;
+}
+.regionSummary {
+  font-size: 11px;
+  color: var(--ios-gray);
+  text-align: center;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ===== 交通方式(TransportPanel)===== */
+/* .transportRow 不用橫向捲動(跟 .directionScroller 不同)——交通方式
+   選項數量固定且少(最多五種,見 ALL_TRANSPORT_MODES),用 flex-wrap
+   讓它們平鋪,不需要捲動手勢。 */
+.transportRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+/* transportRowStacked——寬螢幕側欄改縱向排列(使用者明確要求「所有的
+   詢問項目都要換」,2026-10 新增),對齊 .directionScrollerStacked/
+   CountryPanel/CityPanel 的同一種版面決策。 */
+.transportRowStacked {
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
+.transportCard {
+  flex: 0 0 auto;
+  width: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 8px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 12px;
+  background: var(--ios-active);
+  color: var(--color-dark);
+  cursor: pointer;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.transportCard:hover {
+  border-color: var(--ios-blue);
+  transform: translateY(-1px);
+  color: var(--ios-blue);
+}
+
+/* transportCardStacked——橫式列表樣式,跟 .directionCardStacked/
+   .regionCardStacked 同一種版面語意(icon 在左、文字在右),取代直欄
+   小方塊。 */
+.transportCardStacked {
+  width: 100%;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+}
+.transportLabel {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ---- 播放態的腳本點擊特效 ---------------------------------------------
+   只有 ScriptedAskPage.tsx(見該檔案檔頭的完整說明:播放態專用、置換
+   正式 AskPage 的那一份)會用到這兩個 class,正式的 CandidatesPanel
+   沒有「被程式點擊」這種狀態。
+
+   樣式放在這個檔案而不是另開一份 ScriptedAskPage.module.css——特效是
+   疊在 .directionCard 上的,要蓋掉它的 transform/box-shadow,跟它同一
+   份檔案才能靠宣告順序自然勝出(CSS Module 的 class 是檔案私有的,
+   跨檔案的後代/覆寫選擇器根本不會命中,見 TripPlanPage.module.css
+   `.compact .input` 那個失效案例)。 */
+
+/* scriptedPicking——卡片剛被「點中」的瞬間:向上彈一下並放大,配一圈
+   強光暈。要夠顯眼才看得出這是一次點擊動作(使用者明確要求「發出顯眼
+   的特效」),所以用的是 scale 1.08 加兩層 box-shadow,比正式路徑
+   hover 的 translateY(-1px) 明顯得多。
+
+   animation 不是 transition——transition 需要狀態停留才有終點,而這裡
+   的 picking 只存在 PICK_EFFECT_MS 這一瞬間(見 ScriptedAskPage.tsx
+   該常數的完整說明:440ms,必須與這裡的 duration 一致),用 keyframes
+   表達「彈出去再回來」這個完整來回。 */
+.scriptedPicking {
+  animation: scriptedPick 440ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* z-index——彈起來的卡片要蓋在相鄰卡片上方,否則放大的部分會被旁邊
+     那張的邊框切掉。.directionCard 已經是 position: relative,直接
+     疊 z-index 即可。 */
+  z-index: 2;
+}
+
+@keyframes scriptedPick {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 var(--ios-blue);
+  }
+  45% {
+    transform: scale(1.08) translateY(-3px);
+    box-shadow: 0 0 0 3px var(--ios-blue), 0 10px 24px -6px rgba(0, 0, 0, 0.45);
+  }
+  100% {
+    transform: scale(1);
+    /* 收在 2px——那正是 .directionCardChecked 的 box-shadow,特效結束
+       時卡片已經是「已勾選」狀態,動畫終點對齊那個靜態外觀才不會在
+       animation 結束的那一格跳一下。 */
+    box-shadow: 0 0 0 2px var(--ios-blue);
+  }
+}
+
+/* scriptedRipple——從卡片中心擴散出去的一圈,視覺上代表「這裡被點了
+   一下」。疊在卡片內部(.directionCard 是 position: relative、
+   overflow: hidden,所以漣漪會被裁在卡片範圍內,不會溢出到相鄰卡片)。
+
+   pointer-events: none——純裝飾,不該攔到任何事件。播放態雖然沒有互動,
+   但這個元素疊在照片與標題上方,留著命中測試沒有意義。 */
+.scriptedRipple {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  border-radius: 999px;
+  background: var(--ios-blue);
+  pointer-events: none;
+  animation: scriptedRipple 440ms ease-out forwards;
+}
+
+@keyframes scriptedRipple {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.55;
+  }
+  100% {
+    /* 12 倍約 288px,大於卡片對角線(140×98),所以漣漪會完整掠過整張
+       卡片再消失,不是在中間就淡掉。 */
+    transform: scale(12);
+    opacity: 0;
+  }
+}
+
+/* 使用者偏好減少動態時不播這兩個特效——對齊全站既有的
+   prefers-reduced-motion 處理(見 base-ui.css 等)。勾選狀態本身
+   (.directionCardChecked 的外框與勾)仍然會一張一張出現,所以「選了
+   哪幾個」這個資訊沒有因此丟失,只是不再有彈跳與漣漪。 */
+@media (prefers-reduced-motion: reduce) {
+  .scriptedPicking {
+    animation: none;
+  }
+  .scriptedRipple {
+    display: none;
+  }
+}
+
+/* scriptedPressing——播放態演出「確認選擇」被按下的那一刻(見
+   ScriptedAskPage.tsx CONFIRM_PRESS_MS 的完整說明:260ms,必須與這裡的
+   duration 一致)。只有播放態那一份會用到,正式路徑的按鈕用的是原生
+   :active 回饋。
+
+   往下壓 + 縮一點,是實體按鈕被按下的語彙;不另外加光暈——這顆按鈕本身
+   已經是 accent 實心底(.directionConfirm),再加光會變成一團亮色,看不出
+   「壓下去」這個動作。 */
+.scriptedPressing {
+  animation: scriptedPress 260ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes scriptedPress {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(0.94) translateY(1px);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scriptedPressing {
+    animation: none;
+  }
+}

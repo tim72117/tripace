@@ -1,12 +1,12 @@
-import { OverlayShell, type OverlayClassNames } from '../plan-core/OverlayShell'
-import type { PlanOverlayLayoutContract } from '../plan-core/layerContracts'
+import { OverlayShell, type OverlayClassNames } from '../planning/shared/OverlayShell'
+import type { PlanOverlayLayoutContract } from '../planning/shared/layerContracts'
 import styles from './PlanOverlayLayout.module.css'
 
 // PlanOverlayLayout(src/itineraries/)——行程詳情頁(地圖版面)的「地圖加疊加 UI」外殼。
 //
-// 與 /ai-plan(home/plan-ai-sim/)、登入後手機(phone/)、登入後桌面(desktop/)的 PlanOverlayLayout 同名同層級:
-// 同層同功能用同檔名、放不同目錄,各入口一個實體,都是共用 plan-core/OverlayShell 的薄包裝,長出同一套
-// data-slot 骨架(見 plan-core/overlayDom.ts):
+// 與 /ai-plan(planning/preview/)、登入後手機(planning/member/phone/)、登入後桌面(planning/member/desktop/)的 PlanOverlayLayout 同名同層級:
+// 同層同功能用同檔名、放不同目錄,各入口一個實體,都是共用 planning/shared/OverlayShell 的薄包裝,長出同一套
+// data-slot 骨架(見 planning/shared/overlayDom.ts):
 //   map-layer → overlay(safe-area、panel(children、composer-slot))
 // 地圖放 map-layer,行程標題與時間軸放 panel。
 //

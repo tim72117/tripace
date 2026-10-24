@@ -60,7 +60,7 @@ export function ProductPage() {
           位置手動同步兩邊的規則。 */}
       <SiteNavBrand />
       <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
-      {/* /app 內建登入/註冊表單(未登入時顯示,見 phone/Content.tsx 的
+      {/* /app 內建登入/註冊表單(未登入時顯示,見 planning/member/phone/Content.tsx 的
           LoginCard/LoginForm),專案沒有獨立的 /login、/register 頁面,
           故單一 CTA 直接指向 /app,不分登入/註冊兩種連結。這裡只有一顆
           固定 CTA,不需要指定 slot(見 SiteNavCta 的 slot prop 說明,

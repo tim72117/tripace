@@ -1,8 +1,8 @@
 /* PhoneBottomSheet.tsx 專屬樣式(CSS Modules)。backdrop/panel 的基礎
    視覺語言(上緣圓角、拖曳把手、box-shadow)比照三份原始檔案
    (trip/phone/TripList.module.css、
-   geo-planning/GeoOutlinePhoneListDrawer.module.css、
-   geo-planning/GeoOutlinePhoneInfoSheet.module.css)彼此一致的部分——
+   planning/place/phone/ResultList.module.css、
+   planning/map/phone/PlanPhoneInfoSheet.module.css)彼此一致的部分——
    定位相關屬性(position/z-index/left/right/bottom/background)不在這裡
    寫死,由呼叫端透過 panelStyle/backdropStyle 傳入(見
    PhoneBottomSheet.tsx 的說明)。
@@ -30,7 +30,7 @@
    atMaxExpansion 的說明。
 
    will-change: transform——修正實際發生過的瀏覽器渲染 bug:keepMounted
-   的呼叫端(見 phone/Content.tsx 的對話疊加層)首次掛載、open 一開始就是
+   的呼叫端(見 planning/member/phone/Content.tsx 的對話疊加層)首次掛載、open 一開始就是
    false 的情況下,DevTools 檢查發現 computed style 的 transform 數值
    完全正確(translateY(calc(0px + 100vh))),但瀏覽器沒有真正把這個
    位移套用到畫面上(元素視覺上仍佔滿整個螢幕),直到在 DevTools 手動
@@ -170,7 +170,7 @@
 
 /* head/titleArea/headActions/closeBtn:標準 head slot 版面骨架(左側
    標題區 + 右側動作列),供 PhoneBottomSheet.tsx 匯出的 SheetHead 元件
-   使用——原本 geo-planning/GeoOutlinePhoneListDrawer.module.css、
+   使用——原本 planning/place/phone/ResultList.module.css、
    timeline/PhoneTimelineDrawer.module.css 各自定義同一組樣式,使用者
    明確要求「用相同樣式的 head」,收斂成這裡一份共用定義,不繼續讓每個
    呼叫端各自複製貼上。
@@ -182,7 +182,7 @@
    (關閉鈕 + 選填的 actions 插槽同一排的 wrapper)。
    align-items 從 center 改成 flex-start——.titleArea 現在可能是多行
    內容(名稱/副標/badges/chip 列疊在一起,見
-   GeoOutlinePhoneInfoSheet.tsx 的實際用法),垂直置中對多行內容會讓
+   planning/map/phone/PlanPhoneInfoSheet.tsx 的實際用法),垂直置中對多行內容會讓
    .headActions 的關閉鈕卡在內容中段,改成從頂部對齊,單行標題時視覺
    差異可忽略(仍有 padding-top 4px 維持跟內容的間距觀感)。
    不是所有呼叫端都用這組標準樣式(例如 trip/phone/TripList.tsx
@@ -198,7 +198,7 @@
 
 .titleArea {
   /* min-width: 0——flex item 預設的 min-width:auto 會讓內容(尤其是
-     GeoOutlinePhoneInfoSheet.tsx 的長名稱/badges)撐開寬度、把
+     planning/map/phone/PlanPhoneInfoSheet.tsx 的長名稱/badges)撐開寬度、把
      .headActions 擠出可視範圍,改成 0 讓它能正常隨容器寬度換行/截斷。 */
   min-width: 0;
   flex: 1;
@@ -207,7 +207,7 @@
 /* .title——純文字標題的既有樣式。SheetHead(PhoneBottomSheet.tsx)內部
    用 typeof title === 'string' 判斷,字串時自動包一層套用這個 class,
    維持既有六個呼叫端原本的視覺不變;title 是自訂 JSX(例如
-   GeoOutlinePhoneInfoSheet.tsx 的名稱+副標+badges 複合結構)時不會套用
+   planning/map/phone/PlanPhoneInfoSheet.tsx 的名稱+副標+badges 複合結構)時不會套用
    這個 class,排版交給呼叫端自己決定,避免單一文字樣式覆蓋掉整段
    複合內容。 */
 .title {

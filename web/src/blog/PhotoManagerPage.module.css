@@ -1,6 +1,6 @@
-/* PhotoManagerPage——外殼版面對齊 trip-plan/TripPlanRoute.module.css
-   (同一種「獨立路由頁面,自己管深色模式 token+捲動容器」的既有模式,見
-   TripPlanRoute.tsx 開頭的完整說明),不重新發明一套版面語言。 */
+/* PhotoManagerPage——外殼版面沿用「獨立路由頁面,自己管深色模式 token+
+   捲動容器」的既有模式(最早取自 /trip-plan 獨立頁的 TripPlanRoute,
+   該路由與檔案已移除),不重新發明一套版面語言。 */
 
 .root {
   /* SiteNavButtons.css 依賴的中性變數名(--paper/--paper-dim/--ink/

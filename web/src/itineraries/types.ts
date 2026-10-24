@@ -11,16 +11,16 @@
 //   - 資料格式有檢查(見 itineraries.test.ts 對 registry 的驗證),加錯格式會
 //     在測試階段就失敗,不會到畫面才壞掉。
 
-import type { PlanTimeline } from '../plan-core/planTimeline'
+import type { PlanTimeline } from '../planning/timeline/model'
 
-// 行程裡的站點與天數直接使用時間軸的資料結構(plan-core/planTimeline.ts 的 PlanTimeline / PlanDay / PlanNode / PlanNodeData),
+// 行程裡的站點與天數直接使用時間軸的資料結構(planning/timeline/model.ts 的 PlanTimeline / PlanDay / PlanNode / PlanNodeData),
 // 不再有自己的站點型別與轉換層:範例檔案寫的就是時間軸本身,載入時不需要轉換。寫法規則(欄位語意見 PlanNodeData):
 //   - 每個節點必須有穩定唯一的 id 與 type:'stop';time("HH:MM",同一天內由早到晚遞增)、name、kind(景點/美食/展館/購物/住宿…,
 //     卡片固定把一行組成「停留時間 · 類型」,少了會顯示孤零零的「·」)、duration("1h"、"1.5h";住宿寫「過夜」)必填。
 //   - 節點屬於哪一天由它所在的 PlanDay 決定,不寫 day 欄位。
 //   - googlePhotoUrls:照片網址(第一張是縮圖),靜態寫死用;有 placeId 且資料存取層查到照片時以查到的為準。
 //   - placeId:Google Place ID。有值時頁面經資料存取層(PlanAiDataSource.placeDetails)查地點資料,把座標與照片寫回該節點
-//     (plan-core/resolveAttractionForStep,與 /ai-plan、登入後同一條路徑);名稱與說明維持作者寫的 name/desc。
+//     (planning/timeline/resolveAttractionForStep,與 /ai-plan、登入後同一條路徑);名稱與說明維持作者寫的 name/desc。
 //   - lat/lng:要嘛兩個都給、要嘛都不給;有 placeId 時仍要寫(查詢完成前與查詢失敗時地圖/時間軸定位靠它)。
 //   - transitFromPrev:選填,同一天裡上一站到這一站的交通(靜態資料沒有 Routes 查詢結果,minutes/distance 可省略,note 是班次
 //     轉乘之類的備註);沒寫時由 catalog.ts 依相鄰兩站座標用直線距離粗估。mode 對應圖示:步行、公車、捷運、開車、電車、巴士。
@@ -38,7 +38,7 @@ import type { PlanTimeline } from '../plan-core/planTimeline'
 //
 // photoPlaceId(而非 photoUrl)——使用者明確要求「圖片用 map 取特定
 // POI 取得」:不在資料裡存死的圖片網址,而是存 Google Place ID,渲染時
-// 透過 geo-planning/placeDetailsCache.ts 的 fetchPlaceDetailsCached 查出
+// 透過 planning/data/cache.ts 的 fetchPlaceDetailsCached 查出
 // 對應相片(對齊 docs/research-route-path-planning-2026-10.md 已經確認
 // 過的合規結論:Places Photo 取得的照片沒有限定一定要搭地圖顯示,但
 // photo name 不能快取、要嘛現查現用),見 useFoodSpotDetails.ts 的完整
@@ -79,7 +79,7 @@ export interface SampleItinerary {
   addedAt: string
   // coverPhoto——清單卡片封面;省略時顯示預設圖示(節點不存照片網址,清單頁不會從站點補圖)。
   coverPhoto?: string
-  // timeline——這份行程的時間軸,直接就是 plan-core 的 PlanTimeline(依天分組:days[0] 是 Day 1,每天有穩定 id 與依序的節點)。
+  // timeline——這份行程的時間軸,直接就是 planning/timeline/model.ts 的 PlanTimeline(依天分組:days[0] 是 Day 1,每天有穩定 id 與依序的節點)。
   // 總天數是 timeline.days.length(見 catalog.ts dayCountOf),不另外存。寫法規則見檔案開頭的說明。
   timeline: PlanTimeline
   // foodSpots——選填,見 SampleFoodSpot 的完整說明。只有少數行程(目前

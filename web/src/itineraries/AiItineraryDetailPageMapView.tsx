@@ -1,23 +1,23 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, CalendarDays, MapPin } from 'lucide-react'
-import { PlanTimelineView } from '../plan-core/PlanTimelineView'
-import { listNodes, lodgingsOf, type PlanTimeline } from '../plan-core/planTimeline'
-import { lodgingMapMarkers } from '../plan-core/useResolvedNodeRefs'
-import { useResolvedRefs } from '../plan-core/PlanDataProvider'
-import { Lightbox } from '../geo-planning/PhotoCarousel'
-import type { MapHandle } from '../geo-planning/NativeMapBase'
-import { SIMPLE_MAP_ID } from '../geo-planning/mapStyleIds'
-import type { PlanStopMarker } from '../geo-planning/usePlanStopMarkers'
-import { useMapSafeArea } from '../geo-planning/useMapSafeArea'
-import { useStopCardClick } from '../plan-core/useStopPan'
-import { useFirstStopAutoPan } from '../plan-core/useFirstStopAutoPan'
+import { PlanTimelineView } from '../planning/timeline/PlanTimelineView'
+import { listNodes, lodgingsOf, type PlanTimeline } from '../planning/timeline/model'
+import { lodgingMapMarkers } from '../planning/timeline/resolved'
+import { useResolvedRefs } from '../planning/data/PlanDataProvider'
+import { Lightbox } from '../planning/place/PhotoCarousel'
+import type { MapHandle } from '../planning/map/NativeMapBase'
+import { SIMPLE_MAP_ID } from '../planning/map/mapStyleIds'
+import type { PlanStopMarker } from '../planning/map/marker/planStops'
+import { useMapSafeArea } from '../planning/map/useMapSafeArea'
+import { useStopCardClick } from '../planning/map/useStopPan'
+import { useFirstStopAutoPan } from '../planning/map/useFirstStopAutoPan'
 import { useIsDesktop } from '../hooks/useIsDesktop'
 import { createRenderOnsenAutumnStopCard } from './renderOnsenAutumnStopCard'
 import { MAPLE_LEAF_PATH, MAPLE_STEM_PATH } from './mapleLeafPath'
 import { renderAnchorIcon } from './renderAnchorIcon'
-import { maskPlanStopsView, usePlanSelection } from '../plan-core/usePlanStopsState'
-import { routeSegmentsFromTimeline } from '../plan-core/routeSegments'
+import { maskPlanStopsView, usePlanSelection } from '../planning/timeline/usePlanStopsState'
+import { routeSegmentsFromTimeline } from '../planning/timeline/segments'
 import { PlanLayout } from './PlanLayout'
 import { PlanOverlayLayout } from './PlanOverlayLayout'
 import { PlanMap } from './PlanMap'
@@ -190,7 +190,7 @@ function MapleVignette({ dark = false }: { dark?: boolean }) {
 
 // AiItineraryDetailPageMapView — 「台南赤崁兩日遊」試作用的地圖基底展示版面
 // (2026-10 新增)。使用者明確要求「先在其中一份行程試作一個加入地圖基底的
-// 展示頁」,設計方向比照 /ai-plan 展示頁(home/plan-ai-sim/Content.tsx)
+// 展示頁」,設計方向比照 /ai-plan 展示頁(planning/preview/Content.tsx)
 // 的版面語言:整頁地圖全幅背景 + 側欄式時間軸,不是原本
 // AiItineraryDetailPage.tsx 那種單欄唱讀排版。
 //
@@ -200,13 +200,13 @@ function MapleVignette({ dark = false }: { dark?: boolean }) {
 // 的實作方式,只是把這個版本拆成同目錄的獨立檔案,讓兩種版面各自的 JSX
 // 不互相糾纏,純粹是程式組織考量,不是路由層級的分流。
 //
-// 地圖基底沿用 home/plan-ai-sim/Content.tsx 的標準用法:NativeMapBase 只建立地圖
+// 地圖基底沿用 planning/preview/Content.tsx 的標準用法:NativeMapBase 只建立地圖
 // 實例(center/zoom/mapId/onHandleChange),統一繪製層(useSharedDrawLayer 的 planStopLayer)把站點畫成
 // 圓點並處理選取/hover 視覺——這兩者都是「只做原生配置/圖層」的最小元件,
 // 這裡的職責只是組裝,不重新實作地圖邏輯。
 //
-// 時間軸直接重用 PlanTimelineView(跟唯讀版本、/ai-plan、/trip-plan 都是
-// 同一份渲染邏輯),疊成側欄面板蓋在地圖上方——對齊 home/plan-ai-sim/Content.tsx
+// 時間軸直接重用 PlanTimelineView(跟唯讀版本、/ai-plan、登入後 /app 都是
+// 同一份渲染邏輯),疊成側欄面板蓋在地圖上方——對齊 planning/preview/Content.tsx
 // 桌面版「左地圖/右資訊欄」的做法,但這裡沒有該頁面複雜的串流生成/拖拉/
 // 備註等機制,是純讀展示,所以不傳 onRemoveStop/getStopTimeDragBounds 等
 // 編輯類 props,跟 AiItineraryDetailPage.tsx 原本唯讀版本的取捨一致。
@@ -275,7 +275,7 @@ export function AiItineraryDetailPageMapView({ itinerary, timeline, dark = false
   // `${itinerary.id}-s${i}`,美食清單 id 是 content JSON foodSpots 裡的
   // `food-1`/`food-2` 等),PlanTimelineView 用這個值跟時間軸卡片自己的
   // id 比對時,美食清單的 id 不會誤命中任何時間軸卡片,FoodSpotPanel 同理。
-  // 選取與 hover 用共用的 usePlanSelection(plan-core/usePlanStopsState,/ai-plan 模擬態、登入後也是它的同一份狀態形狀)。
+  // 選取與 hover 用共用的 usePlanSelection(planning/timeline/usePlanStopsState,/ai-plan 模擬態、登入後也是它的同一份狀態形狀)。
   const { selectedStopId, hoverStopId, setSelectedStopId, setHoverStopId } = usePlanSelection()
   const [lightbox, setLightbox] = useState<{ photos: string[]; alt: string } | null>(null)
   const mountedIdsRef = useRef<Set<string>>(new Set())
@@ -284,12 +284,12 @@ export function AiItineraryDetailPageMapView({ itinerary, timeline, dark = false
   const { attractionGlow } = useCityAttractionGlow(itinerary.region)
 
   // mapHandle——NativeMapBase 建圖完成後回報的控制代碼,統一繪製層需要 mapRef/mapReady
-  // 才能把站點 marker 掛到這個地圖實例上,寫法對齊 home/plan-ai-sim/Content.tsx 的既有用法。
+  // 才能把站點 marker 掛到這個地圖實例上,寫法對齊 planning/preview/Content.tsx 的既有用法。
   const [mapHandle, setMapHandle] = useState<MapHandle>({ mapRef: { current: null }, mapReady: false, mapVersion: 0 })
   const handleMapHandleChange = useCallback((handle: MapHandle) => {
     setMapHandle(handle)
   }, [])
-  // 點選圖卡的鏡頭移動:與 /ai-plan、登入後桌面同一個共用處理(plan-core 的 useStopCardClick)——選取該站並平移到
+  // 點選圖卡的鏡頭移動:與 /ai-plan、登入後桌面同一個共用處理(planning/map/useStopPan.ts 的 useStopCardClick)——選取該站並平移到
   // 沒被面板蓋住的地圖範圍中心(PlanOverlayLayout 的 safe-area 節點,經 useMapSafeArea 讀)。
   const mapSafeArea = useMapSafeArea(mapHandle.mapRef)
   const panToStop = useStopCardClick({ select: setSelectedStopId, pan: mapSafeArea.panToWithinSafeArea })
@@ -307,7 +307,7 @@ export function AiItineraryDetailPageMapView({ itinerary, timeline, dark = false
     pan: mapSafeArea.panToWithinSafeArea,
   })
 
-  // mapStops——只取已經有座標的 stop 節點,理由同 home/plan-ai-sim/Content.tsx
+  // mapStops——只取已經有座標的 stop 節點,理由同 planning/preview/Content.tsx
   // 的 mapStops:section/message 本來就不是地點,沒有座標的節點畫不出來。
   // 2026-10 擴充:美食清單各筆若已查到座標(foodSpotDetails,見
   // useFoodSpotDetails.ts 的完整說明),一併併入同一個陣列,用同一個
@@ -325,11 +325,11 @@ export function AiItineraryDetailPageMapView({ itinerary, timeline, dark = false
         foodMarkers.push({ id: spot.id, lat: d.lat, lng: d.lng, name: spot.name, glyph: FOOD_MARKER_GLYPH, size: FOOD_MARKER_SIZE })
       }
     }
-    // 旅館圓點:座標由 placeId 查到才有,帶 lodging 旗標(不參與路線),樣式見 LODGING_MARKER_GLYPH。
+    // 旅館圓點:座標由 placeId 查到才有,樣式見 LODGING_MARKER_GLYPH;連線只由行程節點切段,旅館不在線上。
     return [...stopMarkers, ...lodgingMapMarkers(lodgings, lodgingRefs), ...foodMarkers]
   }, [steps, lodgings, lodgingRefs, foodSpots, foodSpotDetails])
 
-  // routeSegments——站點之間的連線:有交通膠囊的那一段才畫,規則在 plan-core/routeSegments.ts(三個入口共用,
+  // routeSegments——站點之間的連線:有交通膠囊的那一段才畫,規則在 planning/timeline/segments.ts(三個入口共用,
   // 2026-10-24 起與 /ai-plan、登入後同一個 routeLineLayer、同一個主題強調色;原本這頁依天換色的 routePolylineLayer 已移除)。
   // 這頁沒有功能開關,一律傳給 PlanMap。
   const routeSegments = useMemo(() => routeSegmentsFromTimeline(timeline), [timeline])

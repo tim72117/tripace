@@ -1,8 +1,8 @@
 // useSheetStack:管理多個 PhoneBottomSheet 之間的開啟順序與「原路返回」
 // 行為的堆疊(navigation stack)——這次要解決的具體問題是地理輪廓底圖
-// 手機版(geo-planning/GeoOutlinePhoneView.tsx)的一個真實 bug:地點清單
-// 抽屜(GeoOutlinePhoneListDrawer)打開後,點清單項目會直接關閉清單、打開
-// 資訊卡(GeoOutlinePhoneInfoSheet),但資訊卡的關閉鈕只是清空選取狀態
+// 手機版(現 planning/map/phone/PlanPhoneView.tsx)的一個真實 bug:地點清單
+// 抽屜(現 planning/place/phone/ResultList.tsx)打開後,點清單項目會直接關閉清單、打開
+// 資訊卡(現 planning/map/phone/PlanPhoneInfoSheet.tsx),但資訊卡的關閉鈕只是清空選取狀態
 // (geo.clearSelection),完全沒有「回到清單」這個動作——使用者從清單點
 // 進資訊卡,關掉資訊卡後清單不會自動重新打開,體感是「東西憑空消失」。
 //
@@ -13,7 +13,7 @@
 // 記憶,無法表達「原路返回」,只能表達「該顯示哪個固定畫面」。
 //
 // 泛型 T 由呼叫端決定堆疊項目的形狀(例如
-// GeoOutlinePhoneView.tsx 會定義一個 union type,區分清單/資訊卡/候選籃/
+// PlanPhoneView.tsx 會定義一個 union type,區分清單/資訊卡/候選籃/
 // 旅程清單/時間軸五種項目,各自帶各自需要的資料),這個 hook 本身不關心
 // T 的內容,只負責陣列本身的 push/pop/replace/clear 操作與「目前最上層是
 // 誰」的衍生值——保持這個 hook 對「sheet 的種類有哪些」完全無知,新增/
@@ -40,7 +40,7 @@ export interface UseSheetStackResult<T> {
   replace: (entry: T) => void
   // closeAll:清空整個堆疊,回到「什麼都沒開」的狀態——用於使用者主動
   // 觸發一個跟目前導覽路徑無關的新動作時(例如重新搜尋,見
-  // GeoOutlinePhoneView.tsx 對應的說明),不該讓舊的堆疊殘留造成困惑。
+  // PlanPhoneView.tsx 對應的說明),不該讓舊的堆疊殘留造成困惑。
   closeAll: () => void
   // depth:堆疊項目數——供呼叫端(PhoneBottomSheet 的 isTopmost prop)
   // 判斷某個特定項目是不是堆疊中的最後一個,不需要自己重新算 stack.length。

@@ -1,0 +1,288 @@
+/* planning/preview/Content.module.css — 「AI 安排行程」時間軸展示原型的樣式。
+   走登入後正式 App 的 --ios-* token 系統(見 base-ui.css),不是 home/
+   底下城市介紹頁那套 --paper/--ink 紙感和風系統——這個頁面示範的是
+   正式產品功能的雛形,視覺語言理應跟正式 App 一致,而不是公開行銷頁。
+   --ios-sand(#C4956A/#D9A97D)在 base-ui.css 已經存在,直接沿用當作
+   「目前生成位置」的專屬色,不需要新增全域 token。
+   2026-09:額外補上 --paper/--paper-dim/--ink/--vermilion/
+   --vermilion-soft/--line/--card-shadow 這組 token——使用者明確要求
+   「上方功能列採用跟首頁一樣的漂浮按鈕」,直接沿用共用元件
+   home/SiteNavButtons.tsx,但該元件的樣式(SiteNavButtons.css)完全
+   依賴這組 home/ 城市介紹頁系統的 token(見該檔案開頭的說明:HomePage.css
+   /ProductPage.css 等根元素都定義了這組值,SiteNavButtons.css 直接讀,
+   不限定只能掛在特定 scope class 下)。這個頁面原本完全沒有定義這組
+   token,加上去讓 SiteNavButtons 能正確套色,不影響頁面其餘部分(仍然
+   全部用 --ios-* 系統),數值抄自 HomePage.css 的淺色/深色兩組定義,
+   保持跟首頁一致的視覺。
+
+   2026-10:時間軸視圖本體(捲動內容/卡片/軸線/交通/備註/訊息/骨架/
+   「回到最新」按鈕)的 JSX 已改用共用元件 planning/timeline/PlanTimelineView.tsx
+   渲染(使用者明確要求「展示頁使用 PlanTimelineView」,讓正式頁
+   planning/panel/TripPlanPage.tsx 跟這個展示頁共用同一份時間軸渲染邏輯,
+   不再各自維護一份容易脫節的複製),對應樣式也隨之改吃
+   planning/timeline/PlanTimelineView.module.css,原本這裡那一大批時間軸相關
+   class(.row/.stopCard/.transitRow/.noteRow/.messageRow/.tipRow/
+   .skeletonRow/.jumpPill/.emptyState/.inner/.shimmer 等)已經搬過去,
+   這份檔案只留下外殼本身仍在使用的樣式:.page、composer 輸入框、
+   右上角小地圖、.timelineScroll(見該 class 的完整說明)。
+
+   .scroll 本身兩邊捲動模型不同,不能照搬共用元件的基礎定義:正式頁
+   .page 是自然高度、捲動權收在外層 <main>(unboundedScroll),這個
+   元件的 .scroll 只是流動內容;展示頁 .page 是 height:100dvh +
+   overflow:hidden 的固定視窗容器,.scroll 自己才是真正的捲動容器。
+   拆分時一度沒意識到這個差異,把共用元件 .scroll 寫死成正式頁需要的
+   樣子(沒有 overflow-y),導致展示頁完全失去捲動能力(使用者實測
+   回報「展示頁往下安排時不能往下拉了」)。修法:PlanTimelineView 新增
+   scrollClassName prop,呼叫端各自疊加自己需要的樣式——這裡的
+   .timelineScroll 就是補給展示頁的那份。 */
+
+/* .container/.pageEmbedded/.mapLayer 已搬到 PlanLayout.module.css
+   (2026-10,使用者明確要求「先重構播放態的layout」,見該檔案開頭的
+   完整說明)——根容器、地圖背景容器這兩塊版面骨架現在由 PlanLayout
+   元件統一管理,不再是這個檔案的職責。
+
+   pageEmbedded:被當 iframe 嵌進其他頁面時(見 planning/preview/Content 的
+   isEmbedded),內部捲動區隱藏捲軸把手,捲動功能不受影響。這條規則
+   留在這裡(而非跟著 .pageEmbedded 本體搬過去)——.timelineScroll 是
+   這個檔案的 local class,透過 scrollClassName prop 傳給
+   PlanTimelineView,PlanLayout.module.css 看不到這裡 hash 化後的
+   class 名稱,後代選擇器必須留在同時看得到兩個 local class 的檔案裡
+   才會生效。外層的 .pageEmbedded 用 :global() 標記,因為它實際上是
+   PlanLayout.module.css 匯出、套用在 planning/preview/Content.tsx 渲染出
+   的最外層 DOM 節點上的 class,對這個檔案來說是外來的全域 class 名稱,
+   不是這裡自己定義的 local class。 */
+:global(.pageEmbedded) .timelineScroll { scrollbar-width: none; }
+:global(.pageEmbedded) .timelineScroll::-webkit-scrollbar { display: none; }
+
+/* navSpacer/mapSafeArea/timelinePanel 已移到 PlanOverlayPanel.module.css
+   (定位 + 事件穿透 + 地圖安全區,模擬層與真實層共用)。 */
+
+/* ---------- 時間軸捲動容器覆寫(見檔案開頭的完整說明) ----------
+   疊加在 PlanTimelineView 自己的 .scroll 上(透過 scrollClassName
+   prop),補上展示頁需要、但共用元件基礎定義沒有的 overflow-y/padding
+   ——這個頁面的 .page 是 height:100dvh + overflow:hidden 的固定視窗
+   容器,.scroll 自己才是真正會捲動的那層。 */
+.timelineScroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* overflow-x: hidden(2026-10,使用者明確指出「時間軸出現捲軸,樣式
+     不好看,而且有橫向」,實機回報的真實 bug)——.transitAxis 裡的
+     .transitPill(交通段文字 pill,例如「步行 2 分‧129m」)刻意比它
+     自己 28px 寬的軸線欄還寬,靠 overflow: visible 讓內容視覺上溢出、
+     疊在卡片旁邊顯示(見 PlanTimelineView.module.css .transitAxis 一帶
+     的完整說明,這段溢出本身是刻意的既有設計)。寬螢幕側欄(560px)的
+     .inner 可用寬度(扣掉左右 padding 後)比這批卡片版面假設的寬度窄
+     一截,溢出的 pill 因此把 .timelineScroll 的 scrollWidth 撐大過
+     clientWidth,觸發瀏覽器原生橫向捲軸——那條捲軸樣式跟整體深色
+     設計不搭,而且時間軸本來就不該支援橫向捲動(使用者看的是縱向
+     清單)。overflow-x: hidden 只裁掉超出 .timelineScroll 邊界的那一小
+     截溢出內容,不影響 pill 在卡片範圍內的正常顯示,也不影響
+     overflow-y 的縱向捲動行為。 */
+  overflow-x: hidden;
+  /* padding-top 72px——.header 已移除(見上方「頂部狀態藥丸」說明),
+     內容區直接貼齊 .page 頂端,會被 fixed 定位的 SiteNavBrand/
+     SiteNavThemeToggle/SiteNavCta 蓋住第一張卡片。這幾顆漂浮按鈕統一
+     是 top: 16px + height: 36px(見 SiteNavButtons.css),底部落在約
+     52px 處,72px 留了一截視覺呼吸空間,不是貼著按鈕下緣。PlanTimelineView
+     自己的 .scroll 已經有 padding: 40px 0 24px 當基礎值,這裡用具名
+     屬性個別覆寫 padding-top/padding-bottom,不整個覆寫 padding
+     簡寫,避免意外清掉共用元件日後可能調整的左右值(目前左右本來就是
+     0,不受影響)。 */
+  padding-top: 72px;
+  /* 底部多留一截,不被漂浮膠囊(.composer,position: absolute)蓋住最後
+     幾張卡片——膠囊本身高度約在 64px 上下(含 padding),128px 留了
+     充裕的緩衝空間讓使用者往下捲到底時最後一張卡片仍完全可見。 */
+  padding-bottom: 128px;
+  /* scrollbar-width/scrollbar-color/::-webkit-scrollbar*(2026-10,
+     使用者明確指出「直的捲軸太粗」,確認方向「保留但改細、深色主題
+     配色」)——瀏覽器原生捲軸(通常 15-17px)在這個寬度固定 560px 的
+     側欄裡比例失調,跟整體深色設計也不搭。做法對齊既有先例
+     planning/panel/TripPlanPage.module.css 的 .compactScroll(同樣是「疊在
+     地圖上方的固定寬度浮動卡片 + 內部捲動」情境,見該處的完整說明:
+     scrollbar-width:thin 是 Firefox 標準屬性,webkit 系要另外用
+     ::-webkit-scrollbar 系列偽元素,兩者都要寫才能涵蓋主流瀏覽器),
+     不是重新發明一套。只隱藏視覺上的粗細、改細既有配色,不是隱藏捲軸
+     本身——桌面版使用者習慣看到捲軸存在來判斷「還有更多內容」,只是
+     嫌它太粗。 */
+  scrollbar-width: thin;
+  scrollbar-color: var(--ios-gray) transparent;
+}
+.timelineScroll::-webkit-scrollbar {
+  width: 6px;
+}
+.timelineScroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.timelineScroll::-webkit-scrollbar-thumb {
+  background-color: var(--ios-gray);
+  border-radius: 999px;
+}
+.timelineScroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-dark);
+}
+
+/* timelineJumpPillWrap——疊加在 PlanTimelineView 自己的 .jumpPillWrap 上
+   (透過 jumpPillWrapClassName prop),覆寫成跟拆分前一致的 absolute
+   定位,不依賴 position:sticky。共用元件的 .jumpPillWrap 用 sticky 相對
+   「最近的捲動祖先」貼齊——這個寫法在正式頁 TripPlanPage.tsx 成立,
+   因為真正的捲動祖先是外層 <main>,整棵 .page 樹都在它底下;但這個
+   展示頁的 .jumpPillWrap 是 PlanTimelineView 自己 .scroll(見
+   .timelineScroll)的手足元素、不是子孫,sticky 完全沒有可依附的捲動
+   容器,按鈕會變成普通區塊顯示、不再浮動貼齊畫面底部(2026-10 code
+   review 抓到的回歸)。改回相對 .page(position:relative)的 absolute
+   定位,跟拆分前完全一致。 */
+.timelineJumpPillWrap {
+  /* 共用元件 .jumpPillWrap 的 display:flex; justify-content:center 只
+     在容器本身有寬度時才能讓子元素置中——但 position:absolute 且未設
+     width 的容器會收縮成內容寬度(fit-content),justify-content 沒有
+     多餘空間可以置中,實測會貼齊 .page 最左側(2026-10 code review
+     修正時先只蓋 position/bottom、沒蓋寬度相關屬性,導致按鈕跑到畫面
+     最左邊,不是原本置中的位置)。改成明確的 left:50%+
+     transform:translateX(-50%),對齊拆分前的既有寫法,不依賴 flex
+     置中。 */
+  position: absolute;
+  left: 50%;
+  bottom: 172px;
+  transform: translateX(-50%);
+  height: auto;
+}
+
+/* timelineEndMarker——疊加在 PlanTimelineView 自己的 .endMarker 上
+   (透過 endMarkerClassName prop,見該元件該 prop 的完整說明)。共用
+   元件的 .endMarker 用 --ios-gray(淺灰色)文字,在正式頁(/app)疊在
+   純色頁面背景上沒有問題,但這個展示頁的時間軸整段浮在地圖底圖之上(見 .timelineScroll 的完整說明)——使用者回報「行程
+   結束」這行字顯示不清楚:地圖紋理當背景、文字本身又淡,對比度不足,
+   不能直接改共用元件的 .endMarker(會連動影響正式頁)。加一層文字
+   陰影提高可讀性,不改變文字顏色本身——陰影比改顏色更穩妥,因為地圖
+   底下深淺不一(道路/水域/街廓的亮度差很大),固定改成某一種顏色在
+   某些區域可能反而更不清楚,陰影能在亮暗兩種底色下都加強文字邊界。 */
+.timelineEndMarker {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 0 1px rgba(0, 0, 0, 0.3);
+}
+
+/* ---------- Composer ---------- */
+
+/* composer——這裡只留「定位」(由 PlanOverlayPanel 的 composer slot
+   負責貼底置中、寬度、z-index,這裡填滿插槽寬度即可),膠囊外觀(背景/
+   邊框/陰影/圓角/padding)、輸入框、送出鈕基礎造型已經搬到共用元件
+   components/Composer.tsx(見該檔頭的完整背景說明:跟正式頁
+   planning/panel/TripPlanPage.module.css 原本各自維護一份、曾經因此跑出
+   字級不一致的 bug)。這裡只保留這個展示頁特有的轉場/狀態樣式
+   (composerBare/composerCta/sendBtnActive),透過
+   planning/preview/Content.tsx 呼叫 <Composer className={styles.composer}
+   sendButtonClassName={...}> 疊加上去。 */
+.composer {
+  width: 100%;
+  box-sizing: border-box;
+}
+/* composerBare——「讓我試看看」按鈕獨自出現時,Composer 元件的 bare
+   prop 已經處理掉膠囊外觀(背景/邊框/陰影/padding 歸零,見該元件
+   .composerBare 的完整說明),這裡不需要再疊加任何東西,className
+   保留只是讓呼叫端(planning/preview/Content.tsx)維持既有的條件渲染寫法
+   對齊,沒有實際樣式內容。 */
+/* sendBtn——排程進行中固定顯示的箭頭送出鈕,基礎圓形造型(width/
+   height/border-radius/background/color)已經在共用元件
+   components/Composer.module.css 裡定義。這裡只補這個展示頁特有的
+   transition 宣告——過渡動畫的起點/終點屬性清單必須存在於實際渲染的
+   元素上,共用元件的基礎 .sendBtn 不知道「這個展示頁需要按鈕展開
+   動畫」這件事(composerCta 疊加時 max-width/padding/background-color
+   要變化),所以這組 transition 留在這裡,靠 CSS class 疊加
+   (sendButtonClassName,見 planning/preview/Content.tsx 呼叫處)套用到
+   共用元件渲染出的同一顆 <button> 上。
+   max-width 36px(跟共用元件 .sendBtn 的基礎 width: 36px 一致,當作
+   展開動畫的起點)——使用者明確要求「要有按鈕展開動畫」,.composerCta
+   疊加時展開到 420px(見該 class 的完整說明)。 */
+.sendBtn {
+  max-width: 36px;
+  overflow: hidden;
+  transition:
+    max-width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    padding 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 0.35s ease;
+}
+/* sendBtnActive 已移除——2026-10(使用者明確要求「composer 應該用一個
+   展示態來表達,而不是單純關閉送出,展示態的時候送出樣式要正常,但是
+   不能點送出」):改用共用元件 Composer 的 presentational prop(見
+   components/Composer.tsx 該 prop 的完整說明),打字動畫進行中整段
+   期間(不只是「打完字那一刻」)送出鈕的樣式都維持正常、不套用
+   disabled 淡化,不再需要這個只覆蓋單一時間點的補丁 class。 */
+
+/* inputRow——planning/preview/Content.tsx 透過 inputRowClassName 疊加這個
+   class 到共用元件 Composer 的 <form> 上。justify-content: center:
+   「讓我試看看」出現時(composerCollapsed 且未 handedOver)輸入框整個
+   從 DOM 移除(見 planning/preview/Content.tsx hideInput 處的完整說明),
+   這個 <form> 此時只剩送出鈕一個子元素,預設的 flex-start 會讓它貼齊
+   左側(跟輸入框原本左對齊的視覺習慣一致,但使用者明確要求「按鈕置
+   中」)。輸入框還在時(composerCollapsed 為 false)這個屬性不影響
+   原本的左右排列,因為共用元件 .inputWrap 的 flex:1 會撐滿剩餘空間,
+   justify-content 沒有多餘空間可以作用。 */
+.inputRow {
+  justify-content: center;
+}
+
+/* composerCta——排程結束後出現的「讓我試看看」行動呼籲按鈕(見
+   planning/preview/Content.tsx 該處的完整說明)。
+   2026-10(第三輪):輸入框此時完全從 DOM 移除(不再是「收合讓位」,
+   見 .inputRow 的 justify-content 與 planning/preview/Content.tsx 條件渲染
+   的完整說明),.composerCta 因此不再需要靠 width: 100% 撐滿輸入框
+   讓出的空間——但使用者明確要求「按鈕要寬點」,不要退回純粹由文字
+   內容撐開的窄按鈕:改成 width: 100%(相對 .inputRow 此時唯一的子項
+   這塊可用寬度撐滿)+ max-width 420px 當上限,在寬螢幕上是一顆份量
+   足夠的主要行動呼籲按鈕,窄螢幕上仍會隨 .composer 的
+   max-width:calc(100vw - 48px) 一起等比例收窄,不會撐爆版面(見
+   .composer 的完整說明——這正是先前「外框出現左右卷軸」的根因,
+   min-width:0 是避免同一問題再次發生的必要條件)。
+   因為輸入框是整個移除(不是 width transition),這裡改用 opacity
+   淡入取代原本的展開動畫——按鈕是全新掛載的 DOM 節點,沒有「從小圓鈕
+   展開成長條」的連續狀態可以 transition,淡入是這種「瞬間出現」情境
+   更合適的動畫語言。 */
+/* 2026-10(使用者明確要求「用跟開始探索一樣大的按鈕跟文字大小」):
+   垂直尺寸改用 padding 撐高(對齊 HomePage.css .hero-cta 的
+   padding: 15px 34px),取代原本固定的 height: 44px——字級本來就已經
+   是 15px、圓角繼承自 .sendBtn 的 999px,跟 hero-cta 一致,只有高度
+   算法不同(固定 height vs padding 撐開),改成同一種算法兩者的按鈕
+   本體粗細才會真的一致,不是兩個不同算法湊出的相近數字。左右 padding
+   維持原本 24px,不跟著 hero-cta 的 34px 改——這顆按鈕寬度是
+   width:100% 撐滿 composer 可用寬度(見上方 .sendBtn 基準值的完整
+   說明),不是像 hero-cta 那樣由左右 padding 本身撐開寬度,兩者的左右
+   padding 語意不同,沿用原本數值。 */
+.composerCta {
+  max-width: 420px;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  padding: 15px 24px;
+  font-size: 15px;
+  background: var(--color-accent);
+  /* 2026-10 使用者明確要求「按鈕內的文字要統一為白色」、「紅色字統一
+     搭配淺色」:原本沒有設定 color,繼承外層的 --ink(深色),配在
+     accent 底上對比不足。深色模式下白字對比 3.04:1 的已知取捨見
+     AiPlanPhoneDemo.module.css 的 .tryItCtaOutside。 */
+  color: #fff;
+  animation: composerCtaFadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes composerCtaFadeIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* ---------- animations ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .page * {
+    animation-duration: 0.01ms !important;
+    /* transition 也一併壓到近乎瞬間——膠囊收合(.composerCta 展開動畫)
+       是用 transition 而非 animation 實作的,不加這一行減少動態偏好下
+       它仍會播完整的 0.35s 展開。 */
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+  }
+}
+
+/* ---------- responsive (phone) ---------- */
+
+@media (max-width: 767px) {
+}

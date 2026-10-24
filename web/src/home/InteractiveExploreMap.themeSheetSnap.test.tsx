@@ -1,9 +1,9 @@
 // InteractiveExploreMap(landing 頁互動地圖)手機版主題卡的初始段位——
 // 2026-10 使用者明確要求「主題點預設最小段,精選點預設中間段」(見
-// GeoOutlinePhoneInfoSheet.tsx activeSnapIndex 宣告旁的完整說明)。
+// planning/map/phone/PlanPhoneInfoSheet.tsx activeSnapIndex 宣告旁的完整說明)。
 //
-// 這份測試存在的理由:單獨掛載 GeoOutlinePhoneInfoSheet(見
-// GeoOutlinePhoneInfoSheet.snapIndex.test.tsx)只驗證了「這個元件收到
+// 這份測試存在的理由:單獨掛載 PlanPhoneInfoSheet(見
+// PlanPhoneInfoSheet.snapIndex.test.tsx)只驗證了「這個元件收到
 // attraction prop 時自己的初始化邏輯」,但使用者實際操作時關心的是「從
 // 外面(這個展示頁的完整互動流程)剛打開時」的段位——主題點有兩種真實
 // 開啟路徑:(1)使用者點擊地圖上的主題點地標(handleAttractionSelect →
@@ -16,10 +16,10 @@
 // 看起來共用同一段邏輯」就跳過這層驗證。
 //
 // mock 手法比照 PlanMap.attractionClick.test.tsx(同一份慣例:mock
-// @googlemaps/js-api-loader、mock ./geoAttractionOverlay 的
+// @googlemaps/js-api-loader、mock ../planning/place/attractionOverlay 的
 // getAttractionOverlayClass 截住點擊 callback、mock ../api 的查詢函式),
 // 額外 mock window.matchMedia 讓 useIsDesktop 回傳 false(走手機版分支,
-// 這份測試只關心 GeoOutlinePhoneInfoSheet,不關心桌面版 AttractionInfoPanel)。
+// 這份測試只關心 PlanPhoneInfoSheet,不關心桌面版 AttractionInfoPanel)。
 import { StrictMode } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
@@ -123,7 +123,7 @@ class FakeOverlay {
   }
 }
 
-vi.mock('../geo-planning/geoAttractionOverlay', () => ({
+vi.mock('../planning/place/attractionOverlay', () => ({
   getAttractionOverlayClass: () => FakeOverlay,
 }))
 
@@ -184,7 +184,7 @@ beforeEach(() => {
   vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-api-key')
   vi.stubEnv('VITE_GOOGLE_MAPS_MAP_ID', 'test-map-id')
   // useIsDesktop 讀 matchMedia(min-width: 768px)——固定回傳 false,讓這個
-  // 展示頁走手機版的 GeoOutlinePhoneInfoSheet 分支(見該 hook 的完整說明)。
+  // 展示頁走手機版的 PlanPhoneInfoSheet 分支(見該 hook 的完整說明)。
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches: false,
     media: query,

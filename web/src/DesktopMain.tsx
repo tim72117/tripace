@@ -11,10 +11,10 @@ import styles from './DesktopMain.module.css'
 //
 // 原本用 :has() 被動偵測子孫節點是否包含 .pace-route-map-wrap/
 // .geo-outline-panel-wrap 來決定要不要拿掉寬度上限——改成明確的
-// unbounded prop,理由:grep 過三處呼叫端(desktop/Content.tsx/
+// unbounded prop,理由:grep 過三處呼叫端(planning/member/desktop/Content.tsx/
 // pace/PacePage.tsx/trip/PublicViewScreen.tsx 的 PublicPaceDrawerMap),
 // 全部在渲染 <DesktopMain> 的當下就已經確定會不會放地圖類內容——
-// desktop/Content.tsx 由 panelSpec?.slot === 'main-replace' 這個既有分支
+// planning/member/desktop/Content.tsx 由 panelSpec?.slot === 'main-replace' 這個既有分支
 // 判斷式決定(main-replace 時渲染 RouteEditor/TripPlanPage,不會有
 // geo-outline-panel-wrap;其餘情況固定渲染 PlanMap,一定有),
 // PacePage.tsx/PublicViewScreen.tsx 則是無條件固定渲染 PaceRouteMap。
@@ -46,7 +46,7 @@ export interface DesktopMainProps {
 }
 
 // forwardRef——比照 ScrollArea.tsx/Button.tsx 既有慣例保留轉發能力。
-// 2026-10:desktop/Content.tsx 現在會用到這個 ref(desktopMainRef,傳給
+// 2026-10:planning/member/desktop/Content.tsx 現在會用到這個 ref(desktopMainRef,傳給
 // TripPlanPage 的 scrollContainerRef prop,讓全頁版「回到最新」機制
 // 量測/監聽真正捲動的 <main>,見該檔案的完整說明)——這裡原本的註解
 // 寫著「目前沒有呼叫端需要」已經過時,更新為反映實際使用情況。

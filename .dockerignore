@@ -30,3 +30,7 @@ web/admin/dist/
 .git/
 .gitignore
 **/.DS_Store
+
+# web/handbook(系統文件站)與 web/tools(onagent 工具定義,只用 CLI 手動推送)不參與正式映像建置
+web/handbook/
+web/tools/

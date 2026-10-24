@@ -10,7 +10,7 @@ const WIDE_BREAKPOINT = 1024
 // isDesktop 決定「要不要用桌面版面」,isWide 決定「桌面版面裡要不要再
 // 進一步切換成並排側欄」——不是同一個斷點的兩種取值,也不把 1024px
 // 寫進 useIsDesktop 取代 768px,那會讓 768px~1023px 這段寬度的既有桌面
-// 使用者(desktop/Content.tsx 等跟這次 wide 改動無關的畫面)被誤判成手機版。
+// 使用者(planning/member/desktop/Content.tsx 等跟這次 wide 改動無關的畫面)被誤判成手機版。
 //
 // 獨立成 hook 而非直接寫在呼叫端:理由同 useIsDesktop 的既有先例,日後
 // 若有其他畫面需要同一個斷點判斷,不需要重新發明一次 matchMedia 監聽

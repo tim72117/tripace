@@ -561,7 +561,7 @@ export function ScrollTimeline({
                   就會自動生效;不在資料庫裡的錨點(神農街等)地圖上本來就
                   沒有對應標記,單純移動視角,不會憑空多出一顆點。
                   (2026-10 第二版:聚焦造型改成深紅色淚滴圖釘,見
-                  geoAttractionOverlay.ts renderFocusedPin。)
+                  planning/place/attractionOverlay.ts renderFocusedPin。)
                   themePhotoOnlyWhenFocused(2026-10,使用者要求「主題點只有
                   在主題點的苗點才顯示圓形圖,其他時候顯示小圓點」):只有
                   目前錨點指定的主題點(focusedTheme 比對到的那顆)顯示圓形

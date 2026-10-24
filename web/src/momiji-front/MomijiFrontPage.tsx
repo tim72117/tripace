@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { Pause, Play } from 'lucide-react'
-import { NativeMapBase, type MapHandle } from '../geo-planning/NativeMapBase'
+import { NativeMapBase, type MapHandle } from '../planning/map/NativeMapBase'
 import { useThemeToggle } from '../hooks/useThemeToggle'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../home/SiteNavButtons'
 import { HAND_DRAWN_MAP_STYLE, HAND_DRAWN_MAP_STYLE_DARK } from '../itineraries/handDrawnMapStyle'

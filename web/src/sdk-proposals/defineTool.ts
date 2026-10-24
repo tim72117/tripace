@@ -23,7 +23,7 @@
 // 手動呼叫 asString(args.key)、asNonNegativeInt(args.offset, 0) 這類防禦性
 // 轉型 helper,把 unknown 挖成自己要的形狀——這件事編譯期完全沒有檢查,少寫、
 // 打錯欄位名稱,TypeScript 不會報錯,只有 runtime 才會發現(甚至可能默默
-// fallback 成空字串/預設值,不會顯式報錯,更難察覺)。跟 server/tools/
+// fallback 成空字串/預設值,不會顯式報錯,更難察覺)。跟 web/tools/
 // clienttools.yaml 定義的 parameters schema 之間也完全靠人工對齊,沒有
 // 自動化的一致性檢查。
 //

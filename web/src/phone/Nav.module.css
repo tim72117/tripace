@@ -1,7 +1,7 @@
-/* bar:底部常駐導覽列——position: absolute 掛在 .container(phone/Content.tsx)
-   內,不佔 flex 版面空間(理由同 geo-planning/GeoOutlinePhoneView.tsx 的
+/* bar:底部常駐導覽列——position: absolute 掛在 .container(planning/member/phone/Content.tsx)
+   內,不佔 flex 版面空間(理由同 planning/map/phone/PlanPhoneView.tsx 的
    candidateBtn 等疊加按鈕),各主畫面(地圖/地圖等)需要自行留
-   padding-bottom 避免視覺上被蓋住,見 GeoOutlinePhoneView.module.css 的
+   padding-bottom 避免視覺上被蓋住,見 PlanPhoneView.module.css 的
    調整。padding-bottom 用 safe-area-inset-bottom 避開 iPhone home
    indicator(需要 index.html 的 viewport-fit=cover 才會生效,否則
    iOS Safari 一律算成 0)——方向與原本 PhoneNavDrawer.module.css 的
@@ -36,7 +36,7 @@
    overflow-x: auto 橫向捲動——底部列項目固定就 3 個,不需要捲動,等寬
    排列更符合一般 App 底部導覽列的慣例。高度維持 64px 不受 .bar 的
    safe-area padding-bottom 影響,圖示置中在這個固定高度內——這個數值
-   同時是其他手機版元件(GeoOutlinePhoneView/PhoneSideTools/
+   同時是其他手機版元件(PlanPhoneView/PhoneSideTools/
    trip/phone/TripList 等)預留底部空間避開功能列的依據,調整這裡要一併
    同步那幾處。 */
 .tab {
@@ -108,7 +108,7 @@
 }
 
 /* tabIconActive:選中的分頁除了變色,額外加陰影做視覺區分(使用者要求
-   「被點選的要有陰影」)——陰影視覺語言對齊 GeoOutlinePhoneView.module.css
+   「被點選的要有陰影」)——陰影視覺語言對齊 planning/map/phone/PlanPhoneView.module.css
    的 candidateBtn/listBtn 等浮動圓按鈕(同一套 box-shadow 數值),讓
    選中的分頁圖示看起來像微微浮起。 */
 .tabIconActive {

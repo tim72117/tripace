@@ -428,7 +428,7 @@ export interface GeoAttraction {
   // id:資料庫路徑(model.Attraction.ID)才有值——即時查 Google Places 的
   // 後備路徑(geo.District)沒有資料庫 id 概念,固定不帶。2026-09 新增,
   // 供 /plan-ai 的 search_attraction/add_attraction 工具流程使用(見
-  // attractionTools.ts 的完整說明),前端可以用這個 id 呼叫
+  // planning/conversation/tools.ts 的完整說明),前端可以用這個 id 呼叫
   // GET /internal/geo/plan-ai/attraction/{id} 取得完整資料,不需要中途攜帶
   // name/summary/photoUrl/placeId 這些欄位。
   id?: string
@@ -455,7 +455,7 @@ export interface GeoAttraction {
   // 才會有值——即時查 Google Places 的結果沒有分級資訊,固定不帶這個
   // 欄位。前端依此決定隨縮放層級顯示哪些粒度,見 PlanMap.tsx。
   level?: number
-  // isTheme:是否為「主題點」(散策羅盤用語,見 geo-planning/mapDrawLayer/featureLayers/attractionGlowLayer.ts
+  // isTheme:是否為「主題點」(散策羅盤用語,見 planning/map/draw/layers/attractionGlowLayer.ts
   // 的完整說明)——後端 model.Attraction.IsTheme 新增欄位,與 level 並存
   // (level 保留給 zoom 顯示門檻/知名度描述使用,不再依賴 level===1 判斷
   // 主題點)。跟 level 不同,這個欄位後端固定回傳(沒有 omitempty),即時
@@ -563,7 +563,7 @@ export function fetchPublicGeoAttractionByID(cfg: ClientConfig, id: string) {
 // components/ListItemCard.tsx 依 placeId 觸發的延遲查詢(fetchGeoPlacePhoto,
 // 捲進可視範圍才查),原本這裡的 photoUrl 只是「前幾筆候選的即時預覽」,
 // 已確認目前渲染路徑實際上都是走 placeId 延遲查詢(見
-// geo-planning/desktop/ResultList.tsx/GeoOutlinePhoneListDrawer.tsx),移除這個欄位不影響
+// planning/place/desktop/ResultList.tsx/planning/place/phone/ResultList.tsx),移除這個欄位不影響
 // 任何畫面顯示。
 //
 // primaryType/category:原本是另外獨立的 GeoPlace 型別才有的欄位——
@@ -680,11 +680,11 @@ export function fetchGeoAttractionsOnlyNearby(cfg: ClientConfig, lat: number, ln
 // state 與 callback(這是實際發生過的問題:三者行為逐漸各自演化,飯店
 // 清單意外變成即時依可視範圍過濾,導致清單項目點擊後永遠已經在畫面
 // 內、地圖移動邏輯形同虛設)。kind 判別欄位保留「這筆結果原本是哪種
-// 來源」,供分組標題(見 geo-planning/desktop/ResultList.tsx 的「搜尋結果/飯店/附近
+// 來源」,供分組標題(見 planning/place/desktop/ResultList.tsx 的「搜尋結果/飯店/附近
 // 推薦」分段標題)、marker 圖示樣式(見 mapMarkers.ts 的
 // searchResultMarkerContent)、加入候選籃時要組成的 GeoCandidate 判別
 // 欄位(hotel/place 才能加入候選籃,geocode 不能,見
-// geoCandidateHelpers.ts 的 GeoCandidate 型別)使用。
+// planning/place/candidateHelpers.ts 的 GeoCandidate 型別)使用。
 //
 // 欄位全部盡量共用、只有各自來源才有的欄位設為 optional——photoUrl 只有
 // hotel(GeoHotel,查詢完成時就同步帶照片,見該型別的說明)會有值;
@@ -720,7 +720,7 @@ export function geocodeCandidateToSearchResult(c: GeoGeocodeCandidate): GeoSearc
 }
 
 // GeoTripEntry:旅程本身已有座標的 entry,轉成地理輪廓底圖圖層通用的
-// name/lat/lng 形狀,供 PlanMap 畫 marker、geo-planning/desktop/CandidateList
+// name/lat/lng 形狀,供 PlanMap 畫 marker、planning/place/desktop/CandidateList
 // 顯示用——欄位命名對齊 GeoHotel/GeoPlace(而非直接重用 Entry,因為
 // Entry 的欄位是 title/location,語意上屬於旅程資料,不是地理圖層資料,
 // 混用會讓兩套型別的職責模糊)。id 保留供候選籃移除比對用(entry 有
@@ -732,7 +732,7 @@ export interface GeoTripEntry {
   lng: number
   location?: string | null
   kind?: string | null
-  // start/startTime:對齊 Entry 的同名欄位,供 geo-planning/desktop/CandidateList 的
+  // start/startTime:對齊 Entry 的同名欄位,供 planning/place/desktop/CandidateList 的
   // 「已排入行程」分組依日期歸類、仿構想 5 原型日層架的呈現方式(見該
   // 元件說明)——沒有 start 的 entry(尚未排定日期)歸進「未排定日期」
   // 分組,理由同 Timeline.tsx 對無日期 entry 的處理。
@@ -843,7 +843,7 @@ export interface GeoPlanAiPlaceSearchResult {
 // 或 GET /public/geo/plan-ai/place-search(未登入訪客版,見後端
 // handlePublicGeoPlaceSearch 的完整說明——兩個路徑共用同一支 handler,
 // 訪客版額外疊加 IP 節流,見 api.go withGeoQueryIPThrottle 的完整說明)
-// ——供 plan-core/attractionTools.ts 的 search_attraction 工具查詢任意
+// ——供 planning/conversation/tools.ts 的 search_attraction 工具查詢任意
 // 地名取得座標,不限於資料庫裡已建檔的固定景點池。
 //
 // 2026-10 訂正:這支函式原本寫死打 /internal/geo/plan-ai/place-search,
@@ -922,7 +922,7 @@ export interface GeoPlanAiPlaceDetailsAnyResult {
   // photoRefreshPending:對齊後端 handlePublicGeoPlaceDetailsAny 的完整
   // 說明(兩條分支——已建檔 attraction 命中/Google fallback——都會回傳
   // 這個欄位)。用途與 GeoPlaceDetails.photoRefreshPending 相同,見該
-  // 欄位的完整說明:讓 plan-core/resolveAttractionForStep.ts 的 resolveAttractionForStep 只在
+  // 欄位的完整說明:讓 planning/timeline/resolveAttractionForStep.ts 的 resolveAttractionForStep 只在
   // 後端真的觸發補圖時才啟動重試,不盲目重試。
   photoRefreshPending?: boolean
 }
@@ -932,7 +932,7 @@ export interface GeoPlanAiPlaceDetailsAnyResult {
 // fetchPublicGeoPlaceDetails 差異在於後者只能查 publicPlaceDetailsAllowlist
 // 裡固定收錄的那批 placeId(為散策羅盤等固定展示頁設計),這支函式可以查
 // 任意 placeId,供 /plan-ai 的 add_attraction 工具、AskPage.tsx 候選卡片
-// 背景補完整資料使用(見 attractionTools.ts/AskPage.tsx 的完整說明:LLM
+// 背景補完整資料使用(見 planning/conversation/tools.ts/AskPage.tsx 的完整說明:LLM
 // 只需要記住 placeId,插入/顯示時由前端這裡重新查詢完整資料,不需要在
 // 兩次工具呼叫之間原封不動複製貼上 name/lat/lng/summary)。
 // 2026-10 比照 fetchPlanAiPlaceSearch/fetchPlanAiAttractionSearch 依 token
@@ -975,7 +975,7 @@ export function fetchPlanAiAttractionByID(cfg: ClientConfig, id: string) {
 
 // GeoPlanAiTransitEstimateResult:fetchPlanAiTransitEstimate 的回應
 // 形狀——對齊後端 handlePublicGeoTransitEstimate 的 JSON 輸出,也對齊
-// PlanNodeData 的 transit 節點既有欄位(見 planTimeline.ts 的完整
+// PlanNodeData 的 transit 節點既有欄位(見 planning/timeline/model.ts 的完整
 // 說明),呼叫端可以直接把這個結果塞進 transit 節點的資料。
 export interface GeoPlanAiTransitEstimateResult {
   mode: string
@@ -989,7 +989,7 @@ export interface GeoPlanAiTransitEstimateResult {
 // handlePublicGeoTransitEstimate 的完整說明)——2026-09 使用者明確要求
 // 「交通預估時間不要讓 AI 推論產生,而是建立兩個點時,前端自己將兩點
 // 送到後端,由後端預估時間」,這支函式就是那個「前端自己送」的落地:
-// 呼叫端(home/plan-ai-sim/Content.tsx insertAttractionAfter)在插入 stop
+// 呼叫端(planning/preview/Content.tsx insertAttractionAfter)在插入 stop
 // 節點且前面已有另一個 stop 節點時主動呼叫,不是 LLM 或任何推論路徑
 // 觸發的。mode 是選填參數,省略時由後端依直線距離自動決定一個預設值。
 // 需登入——理由與 cfg.token 的要求同 fetchPlanAiPlaceSearch 的完整說明
@@ -1031,7 +1031,7 @@ export interface PlanAiChatResult {
 //
 // 依 cfg.token 是否存在決定打哪條路徑——有 token 打需登入版(對齊既有
 // 行為,保留 internalAuth 的保護範圍不變);沒有 token 時改打公開版,
-// 讓 /ai-plan 展示頁的未登入訪客(見 home/plan-ai-sim/LivePlanLayer.tsx
+// 讓 /ai-plan 展示頁的未登入訪客(見 planning/preview/LivePlanLayer.tsx
 // 開頭「訪客無法真的排行程」那段 TODO 的完整說明)能送出對話——
 // request() 本身已經在沒有 token 時自動附加 X-Guest-Id header(見該
 // 函式的完整說明),這裡只需要決定打哪個路徑,不需要重複處理身分資訊。
@@ -1066,7 +1066,7 @@ export function postPlanAiChatReply(cfg: ClientConfig, conversationID: string, m
 
 // fetchGeoPlacePhoto:GET /internal/geo/place-details 的 photoOnly=1 模式
 // (見後端 handleGeoPlaceDetails 的說明)——只查/回傳照片,不含 name/
-// address/rating/summary,供 geo-planning/desktop/ResultList.tsx 搜尋結果清單的延遲載入
+// address/rating/summary,供 planning/place/desktop/ResultList.tsx 搜尋結果清單的延遲載入
 // 使用(GeocodeCandidateItem,項目捲進可視範圍才觸發)。跟一般的
 // fetchGeoPlaceDetails 是同一支後端端點、同一套快取,只是這個模式下
 // 快取未命中時只試 Pexels、不 fallback 較貴的 Google GetPlaceDetails/
@@ -1132,7 +1132,7 @@ export function updateEntry(cfg: ClientConfig, entryID: string, input: UpdateEnt
 // 新條目的 id。跟上面 createTripEntry(POST /v1/trips/{id}/entries)是完全
 // 不同的兩支端點:createTripEntry 對齊「旅程清單」表格功能(TripEntry 形狀,
 // title/date/time/note,無座標概念);這支對齊 model.Entry(跟
-// updateEntry/fetchEntries 同一份資料),供 geo-planning/desktop/CandidateList 把候選籃
+// updateEntry/fetchEntries 同一份資料),供 planning/place/desktop/CandidateList 把候選籃
 // 項目(飯店/景點/推薦地點)拖進日層架、真正寫成一筆行程 entry 時使用——
 // 這支端點本身不接受 lat/lng,寫完後要另外呼叫 setEntryLatLng 補上座標。
 export interface RecordEntryInput {
@@ -1143,7 +1143,7 @@ export interface RecordEntryInput {
   endTime?: string
   location?: string
   // kind:條目類型("stay"|"flight"|"activity"|"note"|"car"|"restaurant"|
-  // "ticket",對齊 model.Entry.Kind)——geo-planning/desktop/CandidateList.tsx 把候選籃
+  // "ticket",對齊 model.Entry.Kind)——planning/place/desktop/CandidateList.tsx 把候選籃
   // 項目(飯店/景點/推薦地點)拖進日層架時,帶入該候選原本的分類,讓新
   // entry 保留分類資訊(不帶則後端建立時不分類,沿用既有行為)。
   kind?: string
@@ -1173,7 +1173,7 @@ export function setEntryLatLng(cfg: ClientConfig, entryID: string, lat: number, 
 
 // 對齊後端 DELETE /internal/entries/{id}(handleInternalDeleteEntry)——刪除
 // 單一 model.Entry(跟 recordEntry/setEntryLatLng/updateEntry 同一份資料,
-// 不是 TripEntry「旅程清單」表格的 deleteTripEntry)。供 geo-planning/desktop/CandidateList
+// 不是 TripEntry「旅程清單」表格的 deleteTripEntry)。供 planning/place/desktop/CandidateList
 // 「返回候選」按鈕使用:已排入行程的項目(kind==='entry')退回候選籃時,
 // 該筆 entry 已經是真正的資料庫記錄,只從前端候選籃 state 移除不夠(見
 // onRemove 既有行為,重新整理頁面/onTripEntriesChange 重新查詢時又會出現)
@@ -1287,7 +1287,7 @@ export function fetchPublicView(baseURL: string, token: string) {
 // 現在同時服務城市介紹頁與部落客發文,命名不該只停留在前者),這支
 // 前端函式沿用呼叫端既有名稱不變,只同步後端路徑。供部落客發文頁面
 // (web/src/blog/BlogArticlePage.tsx,2026-10 從主題介紹頁試做轉正,見
-// showcase-demo 構想頁 /ideas/product-direction-5-publishing-tool 構想五)
+// handbook 構想頁 /ideas/product-direction-5-publishing-tool 構想五)
 // 讀取已發布的規格化內容。只回傳 status=published 的頁面,草稿一律
 // 404(ApiError),對齊公開端點不應曝露未發布內容的設計。
 //

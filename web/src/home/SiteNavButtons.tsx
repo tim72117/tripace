@@ -36,7 +36,7 @@ export interface SiteNavBrandProps {
       安平」),標示目前在哪個城市頁,不是連結。HomePage/ProductPage 都
       不需要這個標籤(省略時只顯示「Tripace」)。 */
   pageLabel?: string
-  /** 2026-09 因應 plan-ai-sim 展示頁新增——該頁需要在品牌標記/頁面
+  /** 2026-09 因應 AI 安排行程展示頁(/ai-plan,planning/preview/)新增——該頁需要在品牌標記/頁面
       標籤右邊接著顯示一顆「正在安排行程…」狀態藥丸,使用者明確要求
       「不要放在功能列上，要放在台南兩日遊右邊」,即緊跟在 pageLabel
       後面、同一個 fixed 定位的 .site-nav-brand-row 裡,而不是另外
@@ -55,7 +55,7 @@ export interface SiteNavBrandProps {
 export function SiteNavBrand({ href = '/', pageLabel, extra }: SiteNavBrandProps) {
   if (!pageLabel) {
     // 2026-09 code review 抓到:這裡原本沒有 pageLabel 時直接 return,
-    // 完全忽略 extra prop——目前唯一傳 extra 的呼叫端(home/plan-ai-sim/Content.tsx)
+    // 完全忽略 extra prop——目前唯一傳 extra 的呼叫端(planning/preview/Content.tsx)
     // 剛好一定會帶 pageLabel 所以沒觸發,但只要未來有呼叫端只傳 extra、
     // 不傳 pageLabel,內容就會被靜默吞掉且沒有任何錯誤提示。改成一併
     // 檢查 extra,只要兩者都沒有才走純文字的最簡短路徑。

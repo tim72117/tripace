@@ -8,7 +8,7 @@ import styles from './PhoneDemoLayout.module.css'
 // 地圖背景/時間軸容器/composer 站位這四塊排版區塊直接混在
 // AiPlanPhoneDemoScreen.tsx 的 JSX 裡,這裡抽成獨立元件,只管「容器
 // 放哪裡、多大」,不含任何資料或互動邏輯——對齊
-// plan-ai-sim/PlanLayout.tsx(播放態 /ai-plan 完整展示頁用的對應
+// planning/preview/PlanLayout.tsx(播放態 /ai-plan 完整展示頁用的對應
 // 元件,同一輪重構先完成的那份)的同一種「挖洞組合」設計哲學,但這是
 // 給這個手機展示框自己專用的獨立版本,刻意不跟 PlanLayout/
 // PlanOverlayPanel 共用或繼承——三者服務的容器尺寸、定位方式完全不同

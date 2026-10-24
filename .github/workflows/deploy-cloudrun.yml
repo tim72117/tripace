@@ -127,7 +127,7 @@ jobs:
       # onagent 平台上「AI 規劃」功能(/app/plan-ai)專用的獨立 app
       # (plan-ai-timeline)的 apiKey，跟上面的 VITE_ONAGENT_APP_KEY
       # (tripace app)是完全不同的兩個 app、兩把互不相關的 key，見
-      # web/src/trip-plan/TripPlanPage.tsx PLAN_AI_ONAGENT_APP_ID 的完整
+      # web/src/planning/panel/TripPlanPage.tsx PLAN_AI_ONAGENT_APP_ID 的完整
       # 說明。apiKey 只顯示一次、重發會讓舊 key 立刻失效，不支援現場申請，
       # 只能貼上既有值寫入 Secret Manager(見
       # server/scripts/update-secret-manager.sh 的 -plan-ai-onagent 選項)。

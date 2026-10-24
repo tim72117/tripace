@@ -470,7 +470,7 @@ function TaskPlaceholderCard({ placeholder }: { placeholder: TaskPlaceholder }) 
 // 卡片在 .updating 狀態會加 isolation: isolate(見 Timeline.module.css),
 // 建立獨立的 stacking context,若這個表單留在卡片子樹內,.backdrop 的
 // z-index:80 會被關在卡片自己的堆疊層級裡,蓋不過其他用明確 z-index 定位、
-// 但層級在 DOM 樹更外層的疊層(例如 phone/Content.tsx 的帳號設定面板
+// 但層級在 DOM 樹更外層的疊層(例如 planning/member/phone/Content.tsx 的帳號設定面板
 // .settingsPanel,z-index:41)——實際發生過編輯地點時帳號設定畫面從底下
 // 透出來的 bug,portal 出去才能確保這個表單永遠蓋在最上層。
 function EditEntrySheet({

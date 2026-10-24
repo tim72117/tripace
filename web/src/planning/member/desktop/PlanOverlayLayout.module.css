@@ -1,0 +1,118 @@
+/* planning/member/desktop/PlanOverlayLayout.module.css——見 PlanOverlayLayout.tsx 的完整說明。
+   數值對齊 planning/preview/PlanOverlayPanel(Wide).module.css 的桌面側欄,但這是登入後桌面自己的一份。 */
+
+/* mapLayer——地圖層(共同 DOM 骨架)。絕對定位撐滿 DesktopMain(position: relative);刻意不設
+   z-index、不是 stacking context:裡面的資訊卡要能蓋過疊加層與側欄(同登入後手機版)。 */
+.mapLayer {
+  position: absolute;
+  inset: 0;
+  /* flex column:地圖外框(PlanMap.module.css 的 .wrap,flex: 1 1 auto)原本是 DesktopMain(flex column)
+     的子項,靠 flex 撐滿高度;搬進 map-layer 後要由這裡接手同樣的 flex column,否則 .wrap 高度塌成 0、
+     地圖只剩 PlanMap 自己的最小高度(實測 320px)。 */
+  display: flex;
+  flex-direction: column;
+}
+
+/* overlay——疊在 DesktopMain 上的透明座標系(absolute 滿版),safe-area 與 panel 都以它定位。不設 z-index,
+   不是 stacking context(panel 的 z-index 直接參與 DesktopMain 的層級)。pointer-events: none:空白處讓地圖
+   拖曳穿透,要互動的內容自己設回 auto。 */
+.overlay {
+  position: absolute;
+  inset: 0;
+}
+
+/* passThrough——疊加層(與裡面的面板,pointer-events 會繼承)不接收指標事件,空白處讓地圖拖曳穿透;傳 passThrough 才加上。 */
+.passThrough {
+  pointer-events: none;
+}
+
+.overlay[hidden] {
+  display: none;
+}
+
+/* panel——固定 560px、貼齊右緣、上下撐滿的透明側欄(地圖左側完全露出)。top: 72px 讓出漂浮導覽列
+   (同 /ai-plan 桌面側欄)。穿透由 passThrough 參數控制(overlay 加 .passThrough,panel 繼承):空白處讓地圖拖曳穿透,真正要互動的內容
+   (TripPlanPage 透明背景模式下的卡片、composer、按鈕)自己設回 auto。z-index: 3 蓋過地圖,
+   低於資訊卡與 sheet。 */
+.panel {
+  position: absolute;
+  top: 72px;
+  right: 0;
+  bottom: 0;
+  width: 560px;
+  max-width: calc(100vw - 96px);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* shifted——搜尋結果側欄(寬 340、right 12)同時顯示時往左推到它的左側之外(12 + 340 + 12)。 */
+.shifted {
+  right: 364px;
+  max-width: calc(100vw - 444px);
+}
+
+/* composerSlot——排在 panel 文件流最後一項(對齊登入後手機版,不是 absolute);底部留白對齊 /ai-plan 的
+   composer 下緣間距。pointer-events: auto——輸入列要能點。 */
+.composerSlot {
+  flex: none;
+  padding: 0 16px 20px;
+  pointer-events: auto;
+}
+
+/* 桌面版不渲染 controls-slot,保留 class 只為滿足共用型別。 */
+.controlsSlot {
+  display: none;
+}
+
+/* safeArea——看不見的「地圖主顯示區」:overlay 座標系裡沒被面板蓋住的範圍。面板是 top: 72px(讓出導覽列)、
+   貼右緣 560px 的側欄,所以安全區是它的左邊:top: 72px、right: 560px(面板往左讓開搜尋結果側欄時 right 跟著推到
+   364 + 560)。數值與 .panel 同一組(與 /ai-plan wide 的 planOverlayGeometry.ts 的 SIDEBAR_TOP、SIDEBAR_WIDTH
+   同值);桌面版目前沒有使用端(不量安全區),只是用與其他入口相同的方式把範圍標出來。 */
+.safeArea {
+  position: absolute;
+  top: 72px;
+  left: 0;
+  right: 560px;
+  bottom: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.safeAreaShifted {
+  right: 924px;
+}
+
+/* actions——側欄頂端的小按鈕列(路徑開關、關閉),靠右,排在 panel 文件流最前面。面板透明,按鈕各自帶底色。 */
+.actions {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 0 16px 6px;
+  pointer-events: auto;
+}
+
+.actionBtn {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--ios-card);
+  color: var(--ios-gray);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+}
+
+.actionBtn:hover {
+  background: var(--ios-bg);
+}
+
+/* aria-pressed="true"(路徑開關開啟中)——用強調色跟未開啟時區分。 */
+.actionBtn[aria-pressed="true"] {
+  color: var(--ios-sand);
+}

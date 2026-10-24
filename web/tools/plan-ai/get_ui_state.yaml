@@ -1,0 +1,51 @@
+# onagent 平台上 plan-ai-timeline app 的 get_ui_state tool 定義——
+# 見 search_attraction.yaml 開頭的完整說明(app 背景、新版 CLI 格式規則、
+# 為何拆成獨立檔案)。
+#
+# 2026-10 新增(使用者明確要求「在前端維護一個使用者目前在哪一個畫面,
+# 選了那些項目的資訊,提供一個新的工具讓 AI 讀取」)。
+#
+# 存在的理由:open_ask_page / ask_travel_country / ask_travel_city /
+# ask_transport_mode 這幾支都是「開啟選單就回傳、不等使用者選完」(見
+# web/src/planning/conversation/asktools.ts 的 askPageOpenedResult),所以 LLM
+# 開完選單那一輪就結束了。下一輪被叫起來時它無從得知使用者卡在哪一步
+# ——還沒選?選到一半?早就選完了?沒有這份資訊它只能猜,或是重複呼叫
+# 同一個開選單的工具(實機踩過的迴圈)。
+#
+# 跟其餘兩支查詢工具的分工(三者回答不同的問題,刻意不合併):
+#   get_user_selection  使用者最近「完成」的那一次選擇是什麼
+#   get_attraction_pool 這次對話查過哪些景點(placeId → 名稱對照)
+#   get_ui_state        使用者「現在」正在看什麼畫面(此時此刻)
+#
+# 無參數(parameters.properties 為空物件)——一次回傳完整的當下畫面狀態,
+# 沒有「要查哪個部分」的語意。
+#
+# kind: query——LLM 需要看到查詢結果才能決定下一步,不能是 action
+# (fire-and-forget)。
+#
+# 推送(需要 onagent CLI,見 .claude/skills/onagent-cli-setup):
+#   onagent tool create -api <onagent 後端 URL> plan-ai-timeline web/tools/plan-ai/get_ui_state.yaml
+
+name: get_ui_state
+description: >-
+  查詢使用者此刻正在看什麼畫面、畫面上有哪些選項、已經選到哪裡。開啟
+  選單的工具都是送出就結束、不等使用者點選，所以你下一輪被叫起來時並
+  不知道使用者進行到哪一步——需要判斷「他還沒選／正在選／已經選完」時
+  呼叫這支。
+
+  回傳 screen（timeline 行程時間軸、沒有選單開著／country 國家選單／
+  city 城市選單／attractions 感興趣景點候選／transport 交通方式選單／
+  message 你的文字回覆氣泡）、title（畫面上實際顯示的標題）、options
+  （畫面上有哪些選項，各有 id 與 name）、selected（已選取的項目）、
+  updatedAt（這份狀態的記錄時間）。
+
+  何時呼叫：
+  1. 你剛開過選單、這一輪又被叫起來，想知道使用者是否已經完成選擇。
+  2. 收到使用者的訊息但不確定他指的是畫面上哪個選項時。
+
+  screen 為 timeline 表示目前沒有任何選單開著。不要因為讀到某個選單還
+  開著就重複呼叫開啟它的工具——選單已經在畫面上，使用者正在看。
+kind: query
+parameters:
+  type: object
+  properties: {}

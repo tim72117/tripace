@@ -1,7 +1,7 @@
 /* App.tsx 專屬樣式(CSS Modules)。命名省略前綴(.webApp 對應原本的
    .web-app)——import 時已經有明確的命名空間,不需要重複加前綴。 */
 
-/* 手機版(< 768px):單頁全螢幕切換(見 phone/Content),寬度撐滿視窗——不再
+/* 手機版(< 768px):單頁全螢幕切換(見 planning/member/phone/Content),寬度撐滿視窗——不再
    模擬一個居中的手機外框(原本 max-width: 480px + margin: 0 auto),改成
    真正滿版視窗寬,跟桌面版(下方 media query)用同一種「撐滿視窗」邏輯,
    高度統一用 100dvh(行動瀏覽器網址列高度變化時的可視高度)。桌面斷點
@@ -16,7 +16,7 @@
   flex-direction: column;
   height: 100dvh;
   background: var(--ios-bg);
-  /* 手機版導覽抽屜欄(PhoneNavDrawer)/設定面板(phone/Content.tsx 的
+  /* 手機版導覽抽屜欄(PhoneNavDrawer)/設定面板(planning/member/phone/Content.tsx 的
      .settingsPanel)都是用 position: absolute + transform 位移到畫面外
      來做「收合」狀態,而不是條件卸載(理由見各自檔案的說明:唯有元件全程
      留在 DOM 上,CSS transition 才能播放開關動畫)。沒有這行 overflow:
@@ -28,13 +28,13 @@
      瀏覽器原生觸控手勢,含雙指縮放(pinch-zoom)與水平/垂直平移。原本
      靠各個 PhoneBottomSheet 呼叫端(地圖/清單/對話疊加層等)各自宣告
      touch-action,使用者實測發現逐一補的方式會漏(例如對話疊加層
-     ChatScreen、候選籃抽屜 GeoOutlinePhoneCandidateDrawer 都還能雙指
+     ChatScreen、候選籃抽屜(現 planning/place/phone/CandidateList.tsx)都還能雙指
      放大)——index.html 的 viewport user-scalable=no 只鎖住瀏覽器層級的
      整頁縮放手勢,不影響個別 DOM 元素能不能被瀏覽器辨識出獨立的
      pinch 手勢並觸發其他副作用,兩者是不同機制,只設定 viewport 不足夠。
      曾經先試過 pan-y(規範上定義為「只允許垂直平移」,理論上應該隱含
      排除縮放與水平平移),但使用者實測發現兩個問題:一是候選籃抽屜
-     (GeoOutlinePhoneCandidateDrawer.module.css 的 .panel,同樣是
+     (當時候選籃樣式檔的 .panel,同樣是
      touch-action: pan-y)雙指縮放依然會讓面板跑版,而地點清單
      (PhoneBottomSheet.module.css 的 .panel,touch-action: none)卻能
      正確擋住——兩者的差異就是 none 跟 pan-y,證實 pan-y 在實際瀏覽器

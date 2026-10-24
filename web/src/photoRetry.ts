@@ -1,8 +1,8 @@
 // photoRetry.ts — 「查到地點資料但沒有照片時,原地重試幾次等背景補圖
 // 完成」這個策略的共用常數與純函式判斷邏輯。
 //
-// 2026-10 code review 發現:地圖版 geo-planning/useThemeAttractionSelection.ts
-// 的 retryWithPhotoAssetsOnly 跟 AI 規劃版 trip-plan/TripPlanPage.tsx 的
+// 2026-10 code review 發現:地圖版 planning/explore/useThemeAttractionSelection.ts
+// 的 retryWithPhotoAssetsOnly 跟 AI 規劃版 planning/panel/TripPlanPage.tsx 的
 // retryPhotoOnly 是兩份幾乎一模一樣的重試邏輯複製——PHOTO_RETRY_DELAY_MS/
 // PHOTO_RETRY_MAX_ATTEMPTS 數值相同、「是否已經有照片」的判斷邏輯相同、
 // 連解釋理由的註解都幾乎一樣。這是使用者明確要求「AI 規劃版採用一樣的
@@ -40,7 +40,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 // fetchPlaceDetailsWithPhotoRetry — 2026-10 code review 發現的真正缺口:
-// geo-planning/PlanMap.tsx 裡「直接點擊地圖上 Google 原生 POI 圖標」
+// planning/map/PlanMap.tsx 裡「直接點擊地圖上 Google 原生 POI 圖標」
 // 與「點擊非主題點地標、查到 placeId 後打 Google Place Details」這兩處
 // (handleAttractionClickRouted 的 d.placeId 分支、原生 POI click
 // listener)都是單純呼叫一次 fetchPlaceDetails 就直接回報結果給呼叫端,

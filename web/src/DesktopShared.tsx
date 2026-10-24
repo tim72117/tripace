@@ -1,8 +1,8 @@
 // DesktopShared:桌面版與手機版都會用到的 UI 小塊,從 App.tsx 拆出來獨立成
-// 檔案——這些東西不屬於「純桌面版佈局」(見 desktop/Content.tsx),因為手機版
+// 檔案——這些東西不屬於「純桌面版佈局」(見 planning/member/desktop/Content.tsx),因為手機版
 // 的 PhoneNavDrawer/SettingsScreen(見 PhoneNavDrawer.tsx/PhoneScreens.tsx)
-// 也需要引用它們;若整批併入 desktop/Content.tsx,會讓手機版檔案跟
-// desktop/Content.tsx 互相 import 對方,形成循環依賴。獨立成第三份檔案,
+// 也需要引用它們;若整批併入 planning/member/desktop/Content.tsx,會讓手機版檔案跟
+// planning/member/desktop/Content.tsx 互相 import 對方,形成循環依賴。獨立成第三份檔案,
 // 兩邊都單向 import 這裡,不互相依賴。
 
 // PanelMode:桌面版 side panel 目前顯示的內容;null 代表收合(主區全寬)。
@@ -14,8 +14,8 @@
 // 'trips'/'timeline'/'pace'/'geo-outline':正式導覽項目,所有
 // 使用者都能在 rail 上看到(依各自的 *_ENABLED flag),渲染邏輯直接使用
 // trip/desktop/TripList/MultiTrackTimeline/PaceChart+PaceRouteMap、
-// geo-planning/desktop/CandidateList/PlanMap,見
-// desktop/Content.tsx / phone/Content.tsx / PhoneNavDrawer.tsx,不屬於這組
+// planning/place/desktop/CandidateList/PlanMap,見
+// planning/member/desktop/Content.tsx / planning/member/phone/Content.tsx / PhoneNavDrawer.tsx,不屬於這組
 // 共用的 demo 面板。
 // 'demo-route-editor':旅程分享/路徑編輯器試做(見 docs/ 同一輪討論的
 // 雜誌式編輯介面構想與 artifact mockup)——目前只做右側雜誌內容編輯區
@@ -30,7 +30,7 @@ export type PanelMode =
 
 // 規劃地圖(geo-outline)已不再有獨立的 feature flag——使用者明確要求
 // 「規劃不需要 feature flag 了」,它現在是核心功能(手機版的預設起始
-// 畫面,見 phone/Content.tsx 的 drawerMode 說明),不該再能被部署環境變數
+// 畫面,見 planning/member/phone/Content.tsx 的 drawerMode 說明),不該再能被部署環境變數
 // 關閉。原本的 GEO_OUTLINE_ENABLED/VITE_FEATURE_GEO_OUTLINE 已移除,
 // PANEL_REGISTRY 的 'geo-outline' 項目改成固定 enabled: true(見下方)。
 
@@ -44,7 +44,7 @@ export type PanelMode =
 export const TIMELINE_ENABLED = import.meta.env.VITE_FEATURE_TIMELINE === 'true'
 export const PACE_ENABLED = import.meta.env.VITE_FEATURE_PACE === 'true'
 
-// TIME_DRAG_ENABLED——時間軸小圓點拖拉調整時間的開關(plan-core/
+// TIME_DRAG_ENABLED——時間軸小圓點拖拉調整時間的開關(planning/timeline/
 // PlanTimelineView.tsx anchorDot 的拖拉手勢,見該檔案 DragState 的完整
 // 說明)。同 TIMELINE_ENABLED/PACE_ENABLED 一套編譯時 feature flag
 // 機制,預設關閉,只在明確設為字串 "true" 時才啟用——使用者明確要求
@@ -58,7 +58,7 @@ export const TIME_DRAG_ENABLED = import.meta.env.VITE_FEATURE_TIME_DRAG === 'tru
 // 四個入口(/ai-plan、登入後手機、登入後桌面)全部由這個 flag 控制(2026-10,使用者明確要求「整條路線全都用
 // feature flag 控制」;原本只控制登入後桌面標頭列的路徑開關 icon,其餘入口根本不畫):
 //   - flag 關閉:四個入口都不畫整條路線;登入後桌面標頭列的路徑開關 icon 也不渲染(不是渲染了但點了沒反應)。
-//   - flag 開啟:登入後桌面由使用者點標頭列的 icon 切換(預設不顯示,見 desktop/Content.tsx);沒有切換入口的
+//   - flag 開啟:登入後桌面由使用者點標頭列的 icon 切換(預設不顯示,見 planning/member/desktop/Content.tsx);沒有切換入口的
 //     /ai-plan 與登入後手機,有站點時就畫。
 // 同 TIME_DRAG_ENABLED 一套編譯時 feature flag 機制(使用者要求「這個開關加上 feature flag」),預設關閉,
 // 只在明確設為字串 "true" 時才啟用。
@@ -72,9 +72,9 @@ export const ROUTE_LINE_ENABLED = import.meta.env.VITE_FEATURE_ROUTE_LINE === 't
 // 的選填查詢參數,後端早已支援、不需要改動)以使用者指定的 mode 重新
 // 查詢這段交通的時間/距離,取代原本「後端依直線距離自動決定」的預設值。
 //
-// 只有正式頁面(/app、/trip-plan,見 TripPlanPage.tsx)接這個功能——
-// /ai-plan 展示頁(home/plan-ai-sim/Content.tsx)固定接純前端假資料
-// (planAiFakeDataSource.transitEstimate),沒有後端可以重新查詢,不接這個
+// 只有正式頁面(登入後 /app,見 planning/panel/TripPlanPage.tsx)接這個功能——
+// /ai-plan 展示頁(planning/preview/Content.tsx)固定接純前端假資料
+// (planning/data/fake.ts 的 transitEstimate),沒有後端可以重新查詢,不接這個
 // flag 對應的 callback,PlanTimelineView 在沒收到對應 callback 時膠囊
 // 维持原本純展示、不可點擊(見該元件 onTransitModeChange prop 的完整
 // 說明),flag 開關本身不影響展示頁的行為。
@@ -84,9 +84,9 @@ export const ROUTE_LINE_ENABLED = import.meta.env.VITE_FEATURE_ROUTE_LINE === 't
 export const TRANSIT_MODE_SELECT_ENABLED = import.meta.env.VITE_FEATURE_TRANSIT_MODE_SELECT === 'true'
 
 // NEW_TRIP_DRAFT_ENABLED——/ai-plan 展示頁交接後手機版對話區,composer
-// 上方「新行程」按鈕的開關(2026-10 新增,見 home/plan-ai-sim/
+// 上方「新行程」按鈕的開關(2026-10 新增,見 planning/preview/
 // LivePlanLayer.tsx 的完整說明:點擊後把目前草稿歸檔進行程清單、開始
-// 一份全新的空白草稿,舊草稿保留在 plan-core/planTimelineDrafts.ts 管理
+// 一份全新的空白草稿,舊草稿保留在 planning/timeline/drafts.ts 管理
 // 的清單裡,供未來「叫出舊行程清單」UI 使用——這一輪只做「新增」這個
 // 動作本身)。
 //
@@ -117,7 +117,7 @@ export const DEMO_ROUTE_EDITOR_ENABLED = import.meta.env.VITE_FEATURE_DEMO_ROUTE
 // app 的 trip_entry_* 工具、以批次表格呈現結果)的試做分頁開關。
 //
 // 2026-10:地圖規劃的對話視窗改成渲染 AI 規劃時間軸
-// (trip-plan/TripPlanPage.tsx,走 plan-ai-timeline app)之後,舊的
+// (planning/panel/TripPlanPage.tsx,走 plan-ai-timeline app)之後,舊的
 // ChatScreen 失去原本的入口——使用者明確要求「舊的對話框移動到 demo
 // 分頁」,不是刪除:那套 trip_entry_* 工具鏈(新增/查詢/更新/刪除行程
 // 條目、批次表格 UI)是另一種仍有參考價值的互動模式,保留成試做分頁
@@ -138,7 +138,7 @@ export const DEMO_CHAT_ENABLED = import.meta.env.VITE_FEATURE_DEMO_CHAT === 'tru
 // 這張表存在的理由:先前 panelMode 的行為判斷散落在至少 5 個地方
 // (這裡的白名單、side panel 是否展開的判斷式、.wide 樣式字串拼接、side
 // panel 內容 ternary、main 區 ternary),新增一種模式要同步改 5 處,曾經
-// 因為漏改其中一處出過 bug。現在只需要改這張表跟 desktop/Content.tsx 的
+// 因為漏改其中一處出過 bug。現在只需要改這張表跟 planning/member/desktop/Content.tsx 的
 // render 分支各一次,其餘地方(PANEL_MODES 白名單、isPanelMode())都是
 // 從這張表衍生,不會漏改。
 export type PanelSlot = 'float' | 'main-replace'
@@ -164,7 +164,7 @@ export const PANEL_REGISTRY: Record<Exclude<PanelMode, null>, PanelSpec> = {
 
 // isPanelMode/PANEL_MODES(驗證 URL 路徑參數 /app/:panelMode 是否合法)
 // 2026-10 隨這段路徑參數本身一併移除——使用者明確要求「展開側欄不需要
-// 變更路由」,panelMode 改回純本地 UI state(見 desktop/Content.tsx 的完整
+// 變更路由」,panelMode 改回純本地 UI state(見 planning/member/desktop/Content.tsx 的完整
 // 說明),不再有網址輸入需要驗證,這兩個輔助定義失去存在理由,一併刪除
 // 而非留著當死碼。
 

@@ -2,7 +2,7 @@ import { Wand2, Layers, CalendarClock } from 'lucide-react';
 import { ThemePointDemo } from './ThemePointDemo';
 import { TimelineDemo } from './TimelineDemo';
 import { AiPlanPhoneDemo } from './AiPlanPhoneDemo';
-import { createDemoSimSource } from './plan-ai-sim/demoSimSource';
+import { createDemoSimSource } from '../planning/preview/demoSimSource';
 import { trackEvent } from '../analytics';
 // 樣式仍住在 ProductPage.css(.product-features / .product-feature-card
 // 那組,連同三個展示元件各自的規則)——由這個共用元件自己 import,

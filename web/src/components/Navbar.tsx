@@ -14,7 +14,7 @@ import styles from './Navbar.module.css'
 // 用過 .navbar .icon-btn(IconButton 的 square prop 是為這個情境保留的
 // 尺寸規格,見該檔案的說明,但目前沒有人用),也沒有任何呼叫端用過
 // navbar-hidden 這個 modifier——ChatScreen.tsx 的註解「navbar 移除後」
-// 指的是它自己不再渲染任何一種 navbar(改用 phone/Content.tsx 的
+// 指的是它自己不再渲染任何一種 navbar(改用 planning/member/phone/Content.tsx 的
 // MainNavBar/PhoneBottomSheet 的 SheetHead),不是「navbar 曾經用
 // hidden 狀態」,grep 全專案(含 .tsx/.css)找不到 navbar-hidden 除了
 // base-ui.css 自己的定義之外的任何引用。

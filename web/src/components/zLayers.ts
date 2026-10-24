@@ -10,7 +10,7 @@
 // ——10 個 bottom sheet 裡,大多數(設定頁/對話/配速/行程清單/地點清單)是
 // 各自獨立開關、彼此之間沒有嚴格的疊放順序要求,只需要知道「蓋過功能列」
 // 或「被功能列蓋住」這兩種語意,共用同一個具名層級即可;只有
-// geo-planning/useSheetStack.ts 管理的那三層(地點資訊卡/日期選單/日曆)
+// components/useSheetStack.ts(由 planning/map/phone/PlanPhoneView.tsx 使用)管理的那三層(地點資訊卡/日期選單/日曆)
 // 彼此之間有嚴格的疊放順序(後開啟的必須疊在先開啟的之上),這組關係延伸到
 // useSheetStack.ts 自己內部處理(見該檔案的完整說明),不是這裡能表達的
 // ——這裡只提供那個堆疊「整體」該從哪個 z-index 開始往上疊的起點
@@ -34,7 +34,7 @@ export const Z_LAYERS = {
   // 本身都蓋過去),但兩者之間仍有明確的相對順序——原始數值是
   // trip/phone/TripList.tsx(旅程清單)用 33、timeline/PhoneTimelineDrawer.tsx
   // (時間軸)用 13,代表旅程清單原本就設計成疊在時間軸之上(兩者
-  // open state 彼此獨立,理論上可能同時開啟,見 phone/Content.tsx 的
+  // open state 彼此獨立,理論上可能同時開啟,見 planning/member/phone/Content.tsx 的
   // tripsDrawerOpen/timelineDrawerOpen 說明),這裡保留這個相對順序、
   // 只是改成具名常數,不是把兩者合併成同一層級(合併會意外改變原本的
   // 疊放行為,不在這次「把裸數字換成具名常數」的範圍內)。
@@ -47,12 +47,12 @@ export const Z_LAYERS = {
   TAB_BAR: 35,
   // ABOVE_TAB_BAR——這個 sheet 要蓋過底部功能列(使用者正在跟它互動的
   // 期間,功能列被完全蓋住比較不會讓使用者誤以為還能點功能列切換畫面)。
-  // 對應設定頁/規劃面板/配速面板/geo-planning/phone/CandidateList.tsx
+  // 對應設定頁/規劃面板/配速面板/planning/place/phone/CandidateList.tsx
   // (行程清單)——這三個是各自獨立開關、不屬於 useSheetStack 管理的堆疊,
   // 彼此之間沒有嚴格的疊放順序要求(使用者操作流程上不會同時開啟兩個以上,
   // 見各自檔案的 open state 管理),共用同一個層級即可,不需要再往上細分。
   //
-  // geo-planning/phone/ResultList.tsx(地點清單)雖然語意上也是「蓋過
+  // planning/place/phone/ResultList.tsx(地點清單)雖然語意上也是「蓋過
   // 功能列」,但它同時是 PLAN_SHEET_STACK 這組堆疊裡最底層的一員(見下方
   // 完整說明),直接共用 PLAN_SHEET_STACK.list 這個具名層級,不重複引用
   // ABOVE_TAB_BAR——兩者數值相同(都是 36)是刻意設計成同一個起點,不是
@@ -61,7 +61,7 @@ export const Z_LAYERS = {
   ABOVE_TAB_BAR: 36,
 } as const
 
-// PLAN_SHEET_STACK——geo-planning/PlanPhoneView.tsx 的「加入行程」流程
+// PLAN_SHEET_STACK——planning/map/phone/PlanPhoneView.tsx 的「加入行程」流程
 // 堆疊(地點清單 → 資訊卡 → 日期選單 → 日曆,最多四層同時存在,見該檔案
 // SheetEntry 型別的完整說明)固定的疊放順序表。
 //
@@ -76,7 +76,7 @@ export const Z_LAYERS = {
 // 這也是為什麼這張表直接用具名欄位(而非 useSheetStack 提供一個依
 // stack.indexOf(entry) 動態算的輔助函式)——useSheetStack 本身是泛型
 // hook,完全不知道呼叫端的 T 長什麼樣子、也不該知道「地點清單該疊在
-// 資訊卡下面」這種屬於 geo-planning 這個領域的知識,這份對應表只適合
+// 資訊卡下面」這種屬於地圖規劃(planning/)這個領域的知識,這份對應表只適合
 // 放在知道這些語意的呼叫端這一側維護。
 export const PLAN_SHEET_STACK = {
   list: 36,

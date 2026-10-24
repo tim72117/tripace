@@ -52,7 +52,7 @@ func newTestServerWithFakeGeoGatewayForRoutes(t *testing.T, fakeGateway *fakeSea
 // TestPublicGeoPlanAiPlaceSearch_NoAuth_NotUnauthorized 驗證訪客(完全不帶
 // Authorization header)打 GET /public/geo/plan-ai/place-search 能得到
 // 正常的 200 回應,不是 internalAuth 那組 401——這是這次改動要修的
-// /ai-plan 展示頁核心問題(見 web/src/home/plan-ai-sim/LivePlanLayer.tsx
+// /ai-plan 展示頁核心問題(見 web/src/planning/preview/LivePlanLayer.tsx
 // 開頭 TODO 第1項)。
 func TestPublicGeoPlanAiPlaceSearch_NoAuth_NotUnauthorized(t *testing.T) {
 	fakeGateway := &fakeSearchTextGateway{responses: []string{placesJSON("安平古堡")}}

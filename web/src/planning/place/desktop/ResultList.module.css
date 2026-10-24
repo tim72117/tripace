@@ -1,0 +1,241 @@
+/* sidebar:寬度/絕對定位由外層 FloatingPanel(side="right",見
+   ../FloatingPanel.tsx 與 planning/member/desktop/Content.tsx 的呼叫處)控制,漂浮在主顯示
+   右緣之上——這裡只負責填滿外層容器與內部排版,不再自己決定寬度/定位
+   方式,也不設 border-left:已改用圓角+陰影暗示「漂浮在主顯示上方」,
+   不需要邊框分隔線。 */
+.sidebar {
+  height: 100%;
+  background: var(--ios-card);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 頂部標題列已改用共用元件 PanelHead(見 ../PanelHead.tsx),不再自己
+   定義 head/title/closeBtn。overflow-y 留在 .list(而非 .sidebar)——
+   .sidebar 要固定高度容納 PanelHead(不隨內容捲動),只有 .list 這個
+   清單本體區域需要可以捲動。 */
+.list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--ios-gray);
+  font-size: 13px;
+}
+
+/* placesCategoryHead:「附近推薦」分頁在 placesCategory 有值時(地圖上方
+   類別標籤查詢的結果)顯示的小標題,標明目前清單對應哪個類別——理由見
+   planning/place/desktop/ResultList.tsx 該處的說明。跟 .empty 共用同一種次要文字色/字級
+   語氣,只是靠左對齊、當作清單上方的區塊標籤,不是置中的空狀態提示。 */
+.placesCategoryHead {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ios-gray);
+  letter-spacing: 0.02em;
+}
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+}
+
+.item:hover {
+  background: var(--ios-bg);
+}
+
+/* itemSelected:目前被選中(點擊過、地圖已平移過去)的項目——視覺語言
+   比照 desktop/Nav 的 .desktop-rail-btn.active(左緣 accent 豎條 +
+   淡底色),讓使用者一眼認出這是同一套「目前選中」的介面慣例。 */
+.itemSelected {
+  background: var(--ios-bg);
+}
+
+.itemSelected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--color-accent);
+}
+
+.itemBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.addBtn {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--ios-bg);
+  color: var(--color-accent);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.addBtn:hover {
+  background: var(--color-accent);
+  /* 2026-10 使用者明確要求「紅色字統一搭配淺色」:原本用
+     var(--ios-card)(卡片白),深色模式下那個 token 變成 #26211D
+     深褐,等於深色字配 accent 紅底。固定白字,兩種模式一致。
+     深色模式對比 3.04:1 的已知取捨見 AiPlanPhoneDemo.module.css
+     的 .tryItCtaOutside。 */
+  color: #fff;
+}
+
+/* addCandidateWrap/addCandidatePopover/addCandidateDateInput/
+   addCandidateConfirmBtn/addCandidateSkipBtn/addCandidateErr:
+   AddCandidateButton 的日期選擇彈出層(見 planning/place/desktop/ResultList.tsx 該元件的
+   說明)——「+」按鈕本身維持原本的 .addBtn 樣式,展開的彈出層絕對定位
+   疊在卡片右上方(不佔用清單版面、不推擠其他項目),寫法比照
+   planning/place/desktop/CandidateList.module.css 的 .dayDateEdit,只是改成浮動卡片而非
+   原地展開(這裡的清單項目較窄,原地展開容易把日期輸入擠到換行)。 */
+.addCandidateWrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.addCandidatePopover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 5;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  width: 168px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 10px;
+  background: var(--ios-card);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.addCandidateDateInput {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--ios-sep);
+  border-radius: 8px;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  font-size: 12px;
+}
+
+.addCandidateDateInput:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.addCandidateConfirmBtn {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-accent);
+  /* 2026-10 使用者明確要求「紅色字統一搭配淺色」:原本用
+     var(--ios-card)(卡片白),深色模式下那個 token 變成 #26211D
+     深褐,等於深色字配 accent 紅底。固定白字,兩種模式一致。
+     深色模式對比 3.04:1 的已知取捨見 AiPlanPhoneDemo.module.css
+     的 .tryItCtaOutside。 */
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.addCandidateConfirmBtn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.addCandidateConfirmBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.addCandidateSkipBtn {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--ios-gray);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.addCandidateSkipBtn:hover {
+  background: var(--ios-bg);
+  color: var(--color-dark);
+}
+
+.addCandidateErr {
+  font-size: 11px;
+  color: var(--ios-red);
+}
+
+.itemPhoto,
+.itemPhotoPlaceholder {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.itemPhotoPlaceholder {
+  background: linear-gradient(135deg, #5A8A6A, #9E9488);
+}
+
+.itemInfo {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.itemName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemAddress {
+  font-size: 11px;
+  color: var(--ios-gray);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

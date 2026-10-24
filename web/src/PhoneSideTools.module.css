@@ -1,11 +1,11 @@
 /* tools:疊在畫面右側下方,bottom 距離避開底部常駐列(phone/Nav.tsx)
    再加一些間距,不重疊。position: absolute 掛在 .container
-   (phone/Content.tsx)內,跟隨主畫面而非全域固定——理由同
-   GeoOutlinePhoneView.tsx 的疊加按鈕群組。
+   (planning/member/phone/Content.tsx)內,跟隨主畫面而非全域固定——理由同
+   planning/map/phone/PlanPhoneView.tsx 的疊加按鈕群組。
    2026-10 改用 var(--tab-bar-height)(使用者明確要求「有辦法確保
    bottom sheet 如果是在功能列後面,標頭不會被遮蔽,也不用功能列改動
    高度就要重新確認」,見 hooks/useElementHeight.ts 的完整說明)——
-   取代原本寫死的 64px,這個 CSS 自訂屬性由 phone/Content.tsx 的
+   取代原本寫死的 64px,這個 CSS 自訂屬性由 planning/member/phone/Content.tsx 的
    .container 容器提供(沿 DOM 樹繼承下來),值是用 ResizeObserver
    即時量出的 phone/Nav.tsx 真實高度。不疊加
    env(safe-area-inset-bottom)(code review 發現的回歸修正,見
@@ -23,7 +23,7 @@
 }
 
 /* toolBtn:圓形浮動按鈕,視覺語言沿用
-   geo-planning/GeoOutlinePhoneView.module.css 的 candidateBtn/listBtn
+   planning/map/phone/PlanPhoneView.module.css 的 candidateBtn/listBtn
    ——毛玻璃圓形卡片,跟該檔案的疊加按鈕群組維持一致的手機版視覺系統。
    尺寸(44px)也跟著那邊統一(使用者回報左右小按鈕大小不一致,原本這裡
    是 36px、candidateBtn/listBtn 是 44px)。 */

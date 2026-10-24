@@ -21,7 +21,7 @@ import { ListRow } from '../components/ListRow'
 // 見該檔案開頭的說明。
 //
 // 不再自己渲染 navbar(標題+返回箭頭)——外殼改由呼叫端
-// (phone/Content.tsx)用共用容器 components/PhoneBottomSheet.tsx 的具名
+// (planning/member/phone/Content.tsx)用共用容器 components/PhoneBottomSheet.tsx 的具名
 // 工廠元件 StandaloneSheet 包住,標題/關閉鈕交給該元件的 head slot,理由
 // 同 trip/phone/TripList.tsx(同一套 bottom sheet 模式,不在內容元件裡
 // 重複刻一份標頭),onBack prop 因此移除(關閉改由 PhoneBottomSheet 的
@@ -32,7 +32,7 @@ import { ListRow } from '../components/ListRow'
 // LoginForm 需要的 baseURL 還在用)。
 //
 // 2026-10 移除這個元件原本自己包的 <ScrollArea>(code review 發現的
-// 巢狀誤用):phone/Content.tsx 呼叫這個元件時,外層已經用
+// 巢狀誤用):planning/member/phone/Content.tsx 呼叫這個元件時,外層已經用
 // StandaloneSheet 的 <SheetBody> 包住(見該處呼叫的完整說明),
 // SettingsScreen 內部又自己包一層 ScrollArea,形成兩層各自管理
 // overflow/touch-action 的捲動容器——這正是

@@ -2,6 +2,50 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.40.0 — 2026-10-24
+
+規劃時間軸的資料結構與前端目錄大幅重整：時間軸改成依天分組、節點不再存 `day`，執行狀態與對話搬出節點，資料來源上移到根部共用 store，三個入口的地圖連線統一，前端規劃程式收進 `web/src/planning/`。**本版含破壞性變更；無資料庫結構變更，但資料庫 `itinerary_pages` 的內容格式與 onagent 工具定義需要在上線前處理（見最後一節）。**
+
+> **不相容變更**（0.x 階段依版號慣例升 minor）：
+> - `PlanTimeline` 由鏈結串列改成 `{ days: PlanDay[]; lodgings?: PlanLodging[] }`；節點不再存 `day`（讀取時補衍生值），`PlanNodeType` 只剩 `'stop'`（`message`、`section` 移除）。節點的 `loading`／`failed`／`removing`／`googlePhotoUrls`／`children` 等欄位移除，主題子景點改存 `attractions`（景點區域 id）與 `places`（placeId）兩個 id 陣列。
+> - 行程詳情頁的 `SampleItinerary` 直接帶 `timeline: PlanTimeline`，`SampleStop`、`days`／`stops` 欄位移除；16 個範例檔已轉。
+> - 前端規劃相關目錄全部搬進 `web/src/planning/`（`plan-core`、`geo-planning`、`trip-plan`、`home/plan-ai-sim`、`desktop/`、`phone/` 的規劃檔案），非元件的檔名去前綴；舊 import 路徑全部失效。`itineraries/` 沒有移動。
+> - `web/showcase-demo` 改名為 `web/handbook`（系統文件站）；`server/tools` 移到 `web/tools`（onagent 工具定義與 thought，推送指令路徑隨之改變）。
+> - 對話改成純記憶體，不再持久化；`conversationStore`、`PlanMessage.ephemeral` 移除。
+> - `PlanMapSharedProps.showPlanRouteLine` 改為 `routeSegments`；`routePolylineLayer`、`itineraries/routeSegments` 移除；`useSharedDrawLayer` 的 `extraLayers` 參數移除。
+> - `HorizontalPlanTimeline` 的 `dataSource` prop、`PlanTimelineView` 的 `resolvedRefs` prop 移除，改由 `PlanDataProvider` 提供；`usePlanTimelineCore` 的 `commitTimeline` 在存檔失敗時回 `ok:false`（錯誤碼 `save_failed`）。
+
+### 新增
+
+- **依天分組的時間軸領域層**（`planning/timeline/model.ts`）：`addDay`／`removeDay`／`moveDay`、住宿（`lodgings`）系列函式；AI 工具新增 `add_day`、`move_day`、`set_lodging`、`remove_lodging`，`list_itinerary` 回傳依天分組並帶住宿，`add_attraction` 可指定天（相鄰天最多跳 5 天）。
+- **共用 `usePlanTimelineCore`**：/ai-plan 模擬態、推論態與 `TripPlanPage` 的插入、移除、拖曳時間、交通重算、重試全部收斂成同一份；執行狀態另放 `planNodeStatus`（記憶體，不存檔）。
+- **資料來源上移**：`PlanDataProvider` 與共用 store（每個資料存取層實例一個，各入口根部提供）；5 分鐘 TTL、回到前景與每分鐘檢查過期重取、失敗 30 秒後才重查、補照片迴圈；行程詳情頁只剩一份時間軸。
+- **AI 把關**：停止鈕世代防護（`bridgeGuard`）、行動前先 `list_itinerary`（`planAiCtx`）、連線重建時重設「AI 思考中」；輸入列推論中改為停止鈕。
+- **連線統一為 `routeLineLayer`**：一段一條、只畫有交通膠囊的那一段、顏色一律用主題強調色、畫成弧線（弧度為弦長 12%）、線寬 2.5px、箭頭依段長分級且不出現在起點；深色主題光暈。
+- **圓形 marker 以圓心對準座標**（`MarkerDrawable.anchor`，預設 `bottom`，圓形一律 `center`）。
+- **測試 script 依模組分區**：`test:core`／`test:map`／`test:plan`／`test:itinerary`／`test:ui`／`test:changed`；`.claude/CLAUDE.md` 補測試怎麼跑。
+- **文件站**：`marker-layers.html` 改成五欄對照（/ai-plan 手機分推論態與播放態）、新增 `planning/` 目錄樹與重要決策紀錄，並掛上文件站路由 `/marker-layers`；`/plan-data-flow` 補共用 store 與存檔失敗說明。
+
+### 修正
+
+- 在兩站之間插入已有座標的站時，下一站的交通沒有補算（連帶地圖線消失）。
+- 存檔失敗（例如 localStorage 滿了）時，AI 工具仍回報成功；`removeStep` 第二階段失敗後節點卡成看不見又移不掉。
+- 交通估算回來時沒檢查元件是否已卸載，「新行程」重新掛載後會寫進舊草稿。
+- 資料 store 的 TTL 實際不生效；TTL 重取與補照片迴圈互卡；沒座標的地點詳情被快取 5 分鐘導致重試無效。
+- 換 token 或重新登入後輸入框一直停在「AI 思考中」。
+- 線的端點與站點圓點偏移（圓點圓心比座標高約 7px）。
+
+### 移除
+
+- 死碼：`usePlanStopMarkers` hook 與 `planStopOverlay`、沒人讀的 `lodging` 旗標管線、`arcPolylinePath`、`moveNode`／`setNodeDay`／`lodgingsOnDay`、`staleOtherMessages`、舊的 `planAiDataSource` 轉出外殼、`useResolvedNodeRefs` 的三層快取（檔案改名為 `timeline/resolved.ts`，只剩純函式）。
+- 去掉 geo 前綴與 `GeoOutline` 用語的檔名與 hook：`useGeoOutlineMapState`→`useMapState`、`useGeoPlanningState`→`usePlanningState`、`geoSelection`→`explore/selection` 等；API 回應型別（`GeoAttraction` 等）不動。
+
+### 上線前要做的事（目前只做在本機）
+
+- **onagent 正式機**：推送 `web/tools/plan-ai/` 的 `add_attraction`、`list_itinerary`、`add_day`、`move_day`、`set_lodging`、`remove_lodging` 與 `thought.md`（`onagent tool create`／`onagent app thought set`，路徑已從 `server/tools` 改為 `web/tools`）；確認正式機支援 `/sse`（前端 `@onagent/bridge` 0.2.0 改用 `transport: 'sse'`）。
+- **資料庫 `itinerary_pages`** 的內容要整份轉成新格式（`stops`＋`days` → `timeline.days[].nodes[]`、每站加 id 與 type、去掉 `day` 與照片網址、`photos` 改 placeId）；本機只有 `jozankei-1day` 已轉。舊草稿（localStorage）的相容處理另行排程。
+- **已知未處理**：AI 移除站點時第一階段先回成功，存檔失敗要等淡出後才知道；`PlacePanel.test.tsx` 有 2 個既有失敗。
+
 ## v0.39.2 — 2026-10-23
 
 延續 v0.39.0 的分層架構重構：行程詳情頁（`/itineraries/:id` 地圖版面）併入同一組分層與資料存取層，外層元件的分工與參數統一，桌面版鏡頭改成只由點選圖卡移動，並移除 `/trip-plan` 獨立頁面。**無資料庫結構變更；後端只動兩處（`static.go` 拿掉 `/trip-plan` 的已知路由、`geo_outline_public.go` 的公開景點城市白名單加入「清邁」）。**

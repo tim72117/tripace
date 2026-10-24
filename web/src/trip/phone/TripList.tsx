@@ -8,7 +8,7 @@ import { NewTripComposer } from '../NewTripComposer'
 import styles from './TripList.module.css'
 
 // trip/phone/TripList:清單列表獨立抽屜,由下往上彈出(bottom sheet),由
-// phone/Content.tsx 的「清單」入口(底部常駐列/空狀態按鈕,見該檔案的
+// planning/member/phone/Content.tsx 的「清單」入口(底部常駐列/空狀態按鈕,見該檔案的
 // tripsDrawerOpen state)開關,只有一種內容:瀏覽/新增清單。
 //
 // 外殼(backdrop/panel/dragHandle)與拖曳關閉手勢(向下拖超過門檻關閉)
@@ -23,14 +23,14 @@ import styles from './TripList.module.css'
 // 適應不同裝置高度)。這個檔案是兩段模式(收合/展開),展開段本身不是
 // 貼頂的最大展開,語意上是「中間」位置——2026-10 使用者明確要求「只有
 // 兩段的、位置在中間的也算」,從原本的 200 改成 320,跟地點清單/地點
-// 資訊卡/「規劃」小匡的中段統一(見 phone/Content.tsx
+// 資訊卡/「規劃」小匡的中段統一(見 planning/member/phone/Content.tsx
 // CHAT_SHEET_SNAP_POINTS 的完整說明)。
 const SHEET_TOP = 320
 // SHEET_BOTTOM:2026-10 改用 var(--tab-bar-height)(使用者明確要求「有
 // 辦法確保 bottom sheet 如果是在功能列後面,標頭不會被遮蔽,也不用功能
 // 列改動高度就要重新確認」「我要穩定根本的處理方式」,見
 // hooks/useElementHeight.ts 的完整說明)——取代原本寫死的 64px,這個
-// CSS 自訂屬性由 phone/Content.tsx 用 ResizeObserver 即時量出
+// CSS 自訂屬性由 planning/member/phone/Content.tsx 用 ResizeObserver 即時量出
 // phone/Nav.tsx 的真實高度並寫在這個元件的定位祖先(.container)上,
 // phone/Nav 之後不管怎麼改版面(加一行文案、換字級、調整 padding)
 // 都不需要回頭修改這裡,不再是兩個檔案各自寫一份數字、靠人工同步。

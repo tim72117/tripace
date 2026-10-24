@@ -4,7 +4,7 @@
 
    沒有任何 class 需要 :global()——沒有其他檔案的 CSS 選擇器需要從外部
    偵測這裡的 class,DemoPanel 本身也沒有被其他元件以 CSS 選擇器方式
-   跨檔案引用(desktop/Content.tsx 只是 import 元件本身、傳 props,不是靠
+   跨檔案引用(planning/member/desktop/Content.tsx 只是 import 元件本身、傳 props,不是靠
    className 耦合)。
 
    注意:原本的 .debug-head .h-title 規則在目前的 .tsx 裡完全沒有對應的

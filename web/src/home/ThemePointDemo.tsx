@@ -18,7 +18,7 @@ import styles from './ThemePointDemo.module.css';
 // 資料的 title/description),不重複渲染第二份;外層卡片外觀也拿掉,
 // 避免變成「卡片裡面又包一層卡片」的視覺巢狀。
 //
-// 樣式直接沿用正式地圖上主題點/精選點的真實視覺規格(geoAttractionOverlay.ts
+// 樣式直接沿用正式地圖上主題點/精選點的真實視覺規格(planning/place/attractionOverlay.ts
 // renderContent() 產生的 DOM 結構、PlanMap.module.css 的
 // .geo-attraction-glow/-landmark-photo/-landmark-placeholder/
 // -curated-dot/-label)——使用者明確要求「要跟實際的樣式一樣」,故用
@@ -189,7 +189,7 @@ export function ThemePointDemo({ dark }: { dark: boolean }) {
           <path className={styles.demoWater} d="M -10 -10 L 60 -10 C 75 10, 70 35, 50 45 C 25 55, -10 40, -10 20 Z" />
         </svg>
 
-        {/* 精選點——結構對齊 geoAttractionOverlay.ts renderContent() 的
+        {/* 精選點——結構對齊 planning/place/attractionOverlay.ts renderContent() 的
             精選點分支(未 hover 時只畫 .demoDot 圓點+標籤,不帶照片),
             配色沿用 PlanMap.module.css 的 -tea/-restaurant/-craft/
             -street 四個分類 modifier(這裡用 styles[`demoDot${category}`]
@@ -218,7 +218,7 @@ export function ThemePointDemo({ dark }: { dark: boolean }) {
           )
         })}
 
-        {/* 主題點——結構對齊 geoAttractionOverlay.ts renderContent() 的
+        {/* 主題點——結構對齊 planning/place/attractionOverlay.ts renderContent() 的
             主題點分支(光暈+圓形地標照片+標籤)。THEME_POINT_PHOTO 是
             Pexels 示意圖(非赤崁樓實景,理由同 JiufenPage.tsx/KyotoPage.tsx
             既有慣例:多數站點也是示意圖,見這兩個檔案開頭的完整說明)

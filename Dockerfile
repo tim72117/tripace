@@ -73,7 +73,7 @@ ENV VITE_ONAGENT_URL=${VITE_ONAGENT_URL}
 ARG VITE_GOOGLE_OAUTH_CLIENT_ID
 ENV VITE_GOOGLE_OAUTH_CLIENT_ID=${VITE_GOOGLE_OAUTH_CLIENT_ID}
 # VITE_PLAN_AI_ONAGENT_APP_KEY:「AI 規劃」功能(/app/plan-ai,見
-# web/src/trip-plan/TripPlanPage.tsx)專用的獨立 onagent app
+# web/src/planning/panel/TripPlanPage.tsx)專用的獨立 onagent app
 # (plan-ai-timeline)的 apiKey,跟上面 VITE_ONAGENT_APP_KEY(tripace app)
 # 是完全不同的兩個 app、兩把互不相關的 key,見 TripPlanPage.tsx
 # PLAN_AI_ONAGENT_APP_ID 的完整說明。放 Secret Manager,由

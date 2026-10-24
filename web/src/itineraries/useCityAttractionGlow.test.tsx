@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 
 const attractionsByCity = vi.fn()
-vi.mock('../home/plan-ai-sim/planAiPublicDataSource', () => ({
+vi.mock('../planning/data/public', () => ({
   getPlanAiPublicDataSource: () => ({
     attractionsByCity: (city: string) => attractionsByCity(city),
     geoPlaceDetails: vi.fn(),

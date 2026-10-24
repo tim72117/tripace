@@ -1,6 +1,6 @@
 import type { SampleItinerary } from '../types'
 
-// 由雛形(web/showcase-demo/src/itineraryShowcaseData.ts,已搬出成獨立子專案)遷移過來的範例行程。這一份只有
+// 由雛形(web/handbook/src/itineraryShowcaseData.ts,已搬出成獨立子專案)遷移過來的範例行程。這一份只有
 // 站名、時間與一句說明,沒有照片與座標——清單與詳細頁會用預設圖示代替;之後有了
 // 照片/座標,直接在這個檔案補上 googlePhotoUrls/lat/lng 即可。
 const itinerary: SampleItinerary = {

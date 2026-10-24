@@ -1,0 +1,51 @@
+# onagent 平台上 plan-ai-timeline app 的 get_user_selection tool 定義——
+# 見 search_attraction.yaml 開頭的完整說明(app 背景、新版 CLI 格式規則、
+# 為何拆成獨立檔案)。
+#
+# 2026-10 新增(使用者明確要求「選好的景點,多一個工具讓 LLM 存取,選完
+# 送出時,送出使用者已經選擇,使用查詢工具取得」)。
+#
+# 存在的理由:open_ask_page/ask_travel_country/ask_travel_city/
+# ask_transport_mode 四個詢問
+# 頁工具已改成「開啟選單就回傳,不等使用者選完」(見
+# web/src/planning/conversation/asktools.ts 的 askPageOpenedResult),所以使用者
+# 選了什麼不再透過那四支工具的回傳值回到 LLM 手上。這支工具是 LLM 取得
+# 選擇結果的唯一管道。
+#
+# 為什麼不直接把結果塞進一則訊息:訊息是對話歷史的一部分,每一輪都會被
+# 重送;選擇結果可能有好幾個地點、各自帶名稱與摘要,塞進訊息會讓對話
+# 歷史快速膨脹。做成工具的話,LLM 只在真的需要時查一次。
+#
+# 目前只保留最新一次選擇(使用者明確要求「先做存最新的一次」),新的選擇
+# 直接覆蓋舊的。
+#
+# 無參數(parameters.properties 為空物件)——每次呼叫都回傳最新一次的
+# 選擇記錄。
+#
+# kind: query——LLM 需要看到查詢結果才能決定下一步(選了城市通常接著排
+# 行程,選了景點通常接著 add_attraction),不能是 action(fire-and-forget)。
+#
+# 推送(需要 onagent CLI,見 .claude/skills/onagent-cli-setup):
+#   onagent tool create -api <onagent 後端 URL> plan-ai-timeline web/tools/plan-ai/get_user_selection.yaml
+
+name: get_user_selection
+description: >-
+  查詢使用者在選單上最近一次完成的選擇。open_ask_page /
+  ask_travel_country / ask_travel_city / ask_transport_mode 只負責把選單
+  顯示在畫面上，
+  不回傳使用者選了什麼——選擇結果一律透過這個工具查詢。
+
+  回傳 kind（選單類型：region 旅遊區域、attractions 感興趣地點、
+  transport 交通方式，據此判斷下一步該做什麼）、items（選中項目，
+  含 name、placeId / attractionId、value）、selectedAt。
+
+  何時呼叫：使用者說他選好了，或你要依他的選擇繼續安排但手上只有
+  識別碼、缺名稱時。
+
+  回報「沒有任何選擇記錄」表示他還沒選完——不要反覆呼叫等待，也不要
+  用文字追問，直接結束這一輪。景點只有 placeId 沒有 name 時改用
+  get_attraction_pool 對照。
+kind: query
+parameters:
+  type: object
+  properties: {}

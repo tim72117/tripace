@@ -1,0 +1,28 @@
+/* PlanOverlayLayout 的地圖層與控制項插槽。定位基準是 PlanLayout 的 .container(position: relative)。 */
+
+/* mapLayer——地圖層(三個 PlanOverlayLayout 實體 phone/、desktop/、wide/ 共用):
+   鋪滿 .container,z-index:0 確保互動地圖不會蓋過任何功能性元素。wide 模式
+   (>=1024px,見 wide/PlanOverlayPanel.tsx 與 PlanOverlayPanelWide.module.css)沿用同一條規則,不
+   另外改成 flex 擠壓——使用者明確要求「地圖一樣要滿版」:寬螢幕側欄
+   仍是疊加在地圖上方(跟桌面版 PlanOverlayPanel 同一種模式),不是把
+   地圖容器實際擠窄。側欄佔用的範圍改由「安全可視區」(planning/preview/Content.tsx
+   wide 模式下接上 mapSafeArea.safeAreaElRef 那塊矩形,排除右側側欄
+   寬度)處理,不是版面層級的擠壓。 */
+.mapLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+/* controlsSlot——地圖控制項插槽(共同 DOM 骨架,見 planning/shared/overlayDom.ts)。滿版疊在地圖上方、
+   不攔截事件,子元素設回 auto;/ai-plan 目前沒有控制項,是空的。 */
+.controlsSlot {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.controlsSlot > * {
+  pointer-events: auto;
+}

@@ -19,7 +19,7 @@ import (
 )
 
 // geo_plan_ai.go — plan-ai(AI 規劃行程)專用的查詢端點,服務正式功能
-// (web/src/trip-plan/TripPlanPage.tsx)透過 web/src/plan-core/
+// (web/src/planning/panel/TripPlanPage.tsx)透過 web/src/plan-core/
 // attractionTools.ts 這層 onagent 工具資料層發出的查詢:search_attraction/
 // add_attraction 工具,以及 insertAttractionAfter 的背景反查/交通預估。
 //
@@ -67,7 +67,7 @@ const publicPlaceSearchEndpoint = ratelimits.EndpointPublicPlaceSearch
 
 // GET /internal/geo/plan-ai/place-search?query={文字}
 //
-// 通用地名文字查詢——供 plan-core/attractionTools.ts 的 search_attraction
+// 通用地名文字查詢——供 planning/conversation/tools.ts 的 search_attraction
 // 工具(見該檔案的完整說明)查詢任意地名取得座標,不限於資料庫裡已人工
 // 建檔的固定景點池。
 // 跟 handlePublicGeoAttractions(查整個城市清單)是互補而非取代的關係:
@@ -202,7 +202,7 @@ const minNearbyAttractionResults = 10
 
 // GET /internal/geo/plan-ai/attraction-search?lat={緯度}&lng={經度}
 //
-// 鄰近景點候選查詢(需登入)——供 plan-core/attractionTools.ts 的 search_attraction 工具
+// 鄰近景點候選查詢(需登入)——供 planning/conversation/tools.ts 的 search_attraction 工具
 // (見 attractionTools.ts 的完整說明)取得「這個座標附近有哪些可以推薦
 // 給使用者的景點」。查詢策略分兩層:
 //

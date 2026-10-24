@@ -46,7 +46,7 @@ export function updateTripEntry(
   return { allBatches: nextAllBatches, result: { updated: id } }
 }
 
-// TripEntryUpdateArgs — trip_entry_update 的 args 型別,對齊 server/tools/
+// TripEntryUpdateArgs — trip_entry_update 的 args 型別,對齊 web/tools/
 // clienttools.yaml 的 parameters schema(key、id 必填,title/date/time/note
 // 皆選填)。time/note 刻意保留 unknown(而非轉成 string)——updateTripEntry
 // 內部用 `args.time !== undefined` 判斷「這個欄位有沒有被傳」跟「被傳成

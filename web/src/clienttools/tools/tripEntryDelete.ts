@@ -38,7 +38,7 @@ export function deleteTripEntry(
   return { allBatches: nextAllBatches, result: { deleted: id } }
 }
 
-// TripEntryDeleteArgs — trip_entry_delete 的 args 型別,對齊 server/tools/
+// TripEntryDeleteArgs — trip_entry_delete 的 args 型別,對齊 web/tools/
 // clienttools.yaml 的 parameters schema(key、id 皆必填)。
 type TripEntryDeleteArgs = {
   key: string
