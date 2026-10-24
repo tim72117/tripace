@@ -17,7 +17,7 @@ import { useAttractionGlow } from './useAttractionGlow'
 //
 // 兩邊共用的接線在 geo-planning/planMapShared.ts:useMapHandle(接 NativeMapBase 的 MapHandle)與
 // usePlanMapDrawing(把共同 prop 轉成統一繪製層的輸入);共同的 prop 名稱與語意見 PlanMapSharedProps
-// (stops / selectedStopId / hoverStopId / hoverTransitPair / onStopClick / showPlanRouteLine /
+// (stops / selectedStopId / hoverStopId / hoverTransitPair / onStopClick / routeSegments /
 // currentPosition / theme)。另外 controlsPortalTarget / children / onHandleChange 也與登入後同名。
 //
 // 目前是「薄實作」:
@@ -54,7 +54,7 @@ export function PlanMap({
   hoverStopId,
   hoverTransitPair,
   onStopClick,
-  showPlanRouteLine,
+  routeSegments,
   currentPosition,
   liveLayersEnabled = false,
   attractionDataSource,
@@ -78,7 +78,7 @@ export function PlanMap({
     hoverStopId,
     hoverTransitPair,
     onStopClick,
-    showPlanRouteLine,
+    routeSegments,
     attractionGlow,
   })
   const expandedChange = useStableCallback((id: string | null) => onExpandedThemeIdChange?.(id))

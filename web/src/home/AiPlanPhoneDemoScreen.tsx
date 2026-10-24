@@ -3,6 +3,9 @@ import { SignalHigh, Wifi, BatteryFull } from 'lucide-react'
 import type { PlanSimSource } from './plan-ai-sim/planSimSource'
 import { HorizontalPlanTimeline } from './plan-ai-sim/HorizontalPlanTimeline'
 import { usePlanSimSocket } from './plan-ai-sim/usePlanSimSocket'
+import { listNodes } from '../plan-core/planTimeline'
+import { PlanDataProvider } from '../plan-core/PlanDataProvider'
+import { planAiFakeDataSource } from './plan-ai-sim/planAiFakeDataSource'
 import { PhoneDemoLayout } from './PhoneDemoLayout'
 import demoMapSrc from './assets/ai-plan-demo-map.png'
 import styles from './AiPlanPhoneDemoScreen.module.css'
@@ -100,7 +103,7 @@ export function AiPlanPhoneDemoScreen({
   // 檔頭說明),站點是靠呼叫端(ScrollPlanDemo.tsx)的 advanceTo(progress)
   // 依捲動位置推進,不是建立來源後自動播完,started 本身只決定「要不要
   // 建立這個來源」這一層。
-  const { steps, isGenerating, source } = usePlanSimSocket(started, createSource)
+  const { timeline, nodeStatus, isGenerating, source } = usePlanSimSocket(started, createSource)
   useEffect(() => { onSource?.(source) }, [source, onSource])
 
   // selectedStopId——2026-10(使用者明確要求「功能介紹的小展示換成
@@ -119,10 +122,10 @@ export function AiPlanPhoneDemoScreen({
   // 即可。
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null)
   useEffect(() => {
-    const stops = steps.filter((s) => s.type === 'stop')
+    const stops = listNodes(timeline).filter((s) => s.type === 'stop')
     const latest = stops[stops.length - 1]
     if (latest) setSelectedStopId(latest.id)
-  }, [steps])
+  }, [timeline])
 
   // mapBackground——見 PhoneDemoLayout.tsx mapBackground 插槽的完整
   // 說明。地圖用存好的靜態圖片(見檔頭說明),不即時呼叫 API。
@@ -177,8 +180,8 @@ export function AiPlanPhoneDemoScreen({
       statusBar={statusBar}
       // caption 插槽另外帶上 timelineHint——2026-10(使用者明確要求「往下
       // 捲動的字放在時間軸還沒顯示的區域」,只有 stacked=frameless 才有):
-      // steps.length === 0 時,把提示文字絕對定位在時間軸那塊區域置中
-      // (見 .timelineHint),第一張卡片長出來後(steps.length > 0)自動
+      // timeline 還沒有任何一天時,把提示文字絕對定位在時間軸那塊區域置中
+      // (見 .timelineHint),第一張卡片長出來後(出現第一天之後)自動
       // 消失。為什麼放在 caption 插槽而不是 timeline 插槽:首頁有單一
       // 圓形遮罩蓋在地圖與時間軸(z=2)之上、caption(z=3)之下(見
       // ScrollPlanDemo.module.css .stickyRevealMask),提示文字寫在
@@ -187,7 +190,7 @@ export function AiPlanPhoneDemoScreen({
       // .screen(位置 relative),不會被 .captionStacked 的 overflow:
       // hidden 裁掉。
       caption={
-        stacked && steps.length === 0 ? (
+        stacked && timeline.days.length === 0 ? (
           <>
             {caption}
             <p className={styles.timelineHint}>往下捲動，看 AI 排出一天的行程</p>
@@ -210,16 +213,20 @@ export function AiPlanPhoneDemoScreen({
       // 刪除 CSS class 的重複死碼,一併清除,不留在 composer 插槽裡)。
       // 不傳 composer,插槽不會渲染,.timelineSlot 的 padding-bottom
       // 維持原有數值撐出相同的版面空間(視覺位置不變)。
+      // 資料存取層在這個展示的根部決定一次:假資料(純前端,不打後端),時間軸向 PlanDataProvider 的共用 store 取解析結果。
       timeline={(
-        <HorizontalPlanTimeline
-          steps={steps}
-          selectedStopId={selectedStopId}
-          onSelectStop={setSelectedStopId}
-          onOpenPhotos={() => {}}
-          isGenerating={isGenerating}
-          focusLatest={focusLatest}
-          stackedLayout={stacked}
-        />
+        <PlanDataProvider dataSource={planAiFakeDataSource}>
+          <HorizontalPlanTimeline
+            timeline={timeline}
+            nodeStatus={nodeStatus}
+            selectedStopId={selectedStopId}
+            onSelectStop={setSelectedStopId}
+            onOpenPhotos={() => {}}
+            isGenerating={isGenerating}
+            focusLatest={focusLatest}
+            stackedLayout={stacked}
+          />
+        </PlanDataProvider>
       )}
     />
   )

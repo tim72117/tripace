@@ -268,6 +268,11 @@ export interface AskPageCtx {
   // getUiState——使用者目前在哪一個畫面、選了哪些項目(見
   // plan-core/uiStateStore.ts 的完整說明)。供 get_ui_state 工具讀取。
   getUiState: () => PlanUiState
+  // ensureFreshRead——選填:行動前先確認目前行程的把關(見 attractionTools.ts structureSignature)。詢問工具(open_ask_page/ask_*)
+  // 執行前先同步呼叫它,行程在上次 list_itinerary 之後有變動(或沒讀過)就 throw,讓工具回錯誤給 LLM。必須在工具這一層同步檢查:
+  // ask_travel_* 與 ask_transport_mode 是 fire-and-forget(`void ctx.askXxx(...)` 後立刻回成功),放在 ctx 方法內 throw 只會變成沒人接的
+  // rejected Promise,工具仍回「已成功執行」(實際發生過)。
+  ensureFreshRead?: () => void
 }
 
 // AskPageInput——AskPage.tsx 的 input prop 型別,TripPlanPage.tsx/
@@ -428,6 +433,7 @@ export const openAskPage: ClientTool<AskPageCtx> = defineTool(
   'open_ask_page',
   parseOpenAskPageArgs,
   async (args, ctx) => {
+    ctx.ensureFreshRead?.()
     // 2026-10 改成「開啟選單就回傳」,不等使用者選完(使用者明確要求
     // 「LLM 不用等待,目前實作都是一步接一步,使用者選完會再觸發下一次
     // 推論」、「先不要接新推論,發出景點工具後就先停下來」)。
@@ -480,6 +486,7 @@ export const askTravelCountry: ClientTool<AskPageCtx> = defineTool(
   'ask_travel_country',
   parseAskTravelCountryArgs,
   async (args, ctx) => {
+    ctx.ensureFreshRead?.()
     void ctx.askTravelCountry(args)
     return askPageOpenedResult('ask_travel_country')
   },
@@ -516,6 +523,7 @@ export const askTravelCity: ClientTool<AskPageCtx> = defineTool(
   'ask_travel_city',
   parseAskTravelCityArgs,
   async (args, ctx) => {
+    ctx.ensureFreshRead?.()
     if (!args) {
       throw new Error('countryId 為必填,請先用 ask_travel_country 確認國家,或直接帶上已知的 countryId。')
     }
@@ -551,6 +559,7 @@ export const askTransportMode: ClientTool<AskPageCtx> = defineTool(
   'ask_transport_mode',
   parseAskTransportModeArgs,
   async (args, ctx) => {
+    ctx.ensureFreshRead?.()
     // 同 ask_travel_region:不等待、回 { opened: true },避免 LLM 把
     // null 讀成「使用者沒選」而重問(見該工具的完整說明)。
     void ctx.askTransportMode(args.modes, args.reason)

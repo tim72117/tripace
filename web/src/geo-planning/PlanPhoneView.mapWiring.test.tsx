@@ -58,20 +58,21 @@ beforeEach(() => {
 })
 
 describe('PlanPhoneView 對 PlanMap 的接線', () => {
-  it('stops/selectedStopId/hoverStopId/hoverTransitPair/onStopClick/showPlanRouteLine/safeAreaRef 原樣轉給 PlanMap', () => {
+  it('stops/selectedStopId/hoverStopId/hoverTransitPair/onStopClick/routeSegments/safeAreaRef 原樣轉給 PlanMap', () => {
     const stops = [stop('a', 25.0, 121.5)]
     const hoverTransitPair = { fromId: 'a', toId: 'b' }
     const onStopClick = vi.fn()
     const safeAreaRef = { current: document.createElement('div') }
+    const routeSegments = [{ id: 'a->b', from: { lat: 25.0, lng: 121.5 }, to: { lat: 25.1, lng: 121.6 } }]
     render(
-      ui({ stops, selectedStopId: 'a', hoverStopId: 'b', hoverTransitPair, onStopClick, showPlanRouteLine: true, safeAreaRef }),
+      ui({ stops, selectedStopId: 'a', hoverStopId: 'b', hoverTransitPair, onStopClick, routeSegments, safeAreaRef }),
     )
     expect(captured.stops).toBe(stops)
     expect(captured.selectedStopId).toBe('a')
     expect(captured.hoverStopId).toBe('b')
     expect(captured.hoverTransitPair).toBe(hoverTransitPair)
     expect(captured.onStopClick).toBe(onStopClick)
-    expect(captured.showPlanRouteLine).toBe(true)
+    expect(captured.routeSegments).toBe(routeSegments)
     expect(captured.safeAreaRef).toBe(safeAreaRef)
   })
 
@@ -79,7 +80,7 @@ describe('PlanPhoneView 對 PlanMap 的接線', () => {
     render(ui())
     expect(captured.stops).toBeUndefined()
     expect(captured.selectedStopId).toBeUndefined()
-    expect(captured.showPlanRouteLine).toBeUndefined()
+    expect(captured.routeSegments).toBeUndefined()
   })
 
   it('currentPosition 由 useCurrentLocation 提供並傳給 PlanMap', () => {

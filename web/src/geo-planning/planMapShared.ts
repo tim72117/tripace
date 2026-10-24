@@ -8,7 +8,8 @@ import {
   type SearchResultsInput,
   type TripEntriesInput,
 } from './mapDrawLayer/useSharedDrawLayer'
-import type { FeatureLayer, LatLng } from './mapDrawLayer/types'
+import type { LatLng } from './mapDrawLayer/types'
+import type { RouteLineSegment } from './mapDrawLayer/featureLayers/routeLineLayer'
 import type { HoverTransitPair } from './mapMarkerLayer/planStops'
 import type { PlanStopMarker } from './usePlanStopMarkers'
 
@@ -60,7 +61,10 @@ export interface PlanMapSharedProps {
   hoverStopId?: string | null
   hoverTransitPair?: HoverTransitPair | null
   onStopClick?: (id: string) => void
-  showPlanRouteLine?: boolean
+  // routeSegments:地圖上站點之間要畫的連線段(plan-core/routeSegments.ts 的 routeSegmentsFromTimeline 切出來的;
+  // RouteSegment 結構相容 RouteLineSegment)。沒傳或空陣列就不畫。2026-10-24 取代原本的 showPlanRouteLine 布林:
+  // 規劃入口的功能開關(ROUTE_LINE_ENABLED / 桌面的路徑開關)語意保留在各入口——開關關閉時不傳段;行程詳情頁一律傳。
+  routeSegments?: RouteLineSegment[]
   currentPosition?: LatLng | null
   // theme:只收明確的 'dark' | 'light'(傳給 NativeMapBase 的 colorScheme 只能在建圖時設定,預設日夜切換時重建;登入後的 PlanMap 傳 rebuildOnThemeChange=false 不重建);三態的 Theme 先經 hooks/useResolvedTheme 解析。
   theme?: ResolvedTheme
@@ -80,7 +84,7 @@ const NO_STOPS: PlanStopMarker[] = []
 
 // usePlanMapDrawing——把 PlanMap 的共同 prop 轉成統一繪製層的輸入並呼叫它。
 //   selectedStopId → selectedId、hoverStopId → hoverId、onStopClick → onPointClick、
-//   showPlanRouteLine → routeLine.enabled、沒傳 currentPosition → null(不畫藍點)。
+//   routeSegments 原樣轉給統一繪製層(沒傳就不畫線)、沒傳 currentPosition → null(不畫藍點)。
 // tripEntries、searchResults 只有登入後有資料,傳了才交給統一繪製層。
 // 回傳 expandedThemeId:目前展開的主題點 id(選中有 children 的站點時),沒有展開為 null。
 export function usePlanMapDrawing({
@@ -94,11 +98,10 @@ export function usePlanMapDrawing({
   hoverStopId,
   hoverTransitPair,
   onStopClick,
-  showPlanRouteLine = false,
+  routeSegments,
   tripEntries,
   searchResults,
   attractionGlow,
-  extraLayers,
 }: PlanMapSharedProps & {
   mapRef: React.RefObject<google.maps.Map | null>
   mapReady: boolean
@@ -106,8 +109,6 @@ export function usePlanMapDrawing({
   tripEntries?: TripEntriesInput
   searchResults?: SearchResultsInput
   attractionGlow?: AttractionGlowInput
-  // 各入口自己額外的功能層(例如行程詳情頁的每天手繪路線),原樣交給統一繪製層。
-  extraLayers?: FeatureLayer[]
 }) {
   return useSharedDrawLayer({
     mapRef,
@@ -122,10 +123,9 @@ export function usePlanMapDrawing({
       hoverTransitPair,
       onPointClick: onStopClick,
     },
-    routeLine: { enabled: showPlanRouteLine },
+    routeSegments,
     tripEntries,
     searchResults,
     attractionGlow,
-    extraLayers,
   })
 }

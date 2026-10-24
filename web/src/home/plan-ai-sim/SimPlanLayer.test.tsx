@@ -28,7 +28,8 @@ beforeEach(() => {
 function props(over: Partial<SimPlanLayerProps> = {}): SimPlanLayerProps {
   return {
     isDesktop: false,
-    steps: [],
+    timeline: { days: [] },
+    messages: [],
     isGenerating: false,
     emptyStateMessage: '',
     timelineRef: { current: { nodes: new Map(), headId: null } },
@@ -87,5 +88,13 @@ describe('SimPlanLayer', () => {
     const h = horizontalProps[0] as { showAskPage: boolean; renderAskPage: unknown }
     expect(h.showAskPage).toBe(true)
     expect(h.renderAskPage).toBe(p.renderScriptedAskPage)
+  })
+
+  it('桌面:把對話訊息交給縱向時間軸渲染在最下方;手機橫向時間軸不渲染對話(不收 messages)', () => {
+    const messages = [{ id: 'm', text: '劇本旁白' }]
+    render(<SimPlanLayer {...props({ isDesktop: true, messages })} />)
+    expect(verticalProps[0].messages).toBe(messages)
+    render(<SimPlanLayer {...props({ isDesktop: false, messages })} />)
+    expect(horizontalProps[0]).not.toHaveProperty('messages')
   })
 })

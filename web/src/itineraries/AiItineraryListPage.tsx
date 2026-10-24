@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { CalendarDays, MapPin, Sparkles } from 'lucide-react'
-import { coverPhotoOf, deriveFilters, filterItineraries } from './catalog'
+import { coverPhotoOf, dayCountOf, deriveFilters, filterItineraries, stopCountOf } from './catalog'
 import type { SampleItinerary } from './types'
 import styles from './AiItineraryListPage.module.css'
 
@@ -72,7 +72,7 @@ export function AiItineraryListPage({ items }: { items: SampleItinerary[] }) {
                       <div className={styles.title}>{it.title}</div>
                       <div className={styles.meta}>
                         <span className={styles.metaItem}><MapPin size={12} strokeWidth={2} />{it.region}</span>
-                        <span className={styles.metaItem}><CalendarDays size={12} strokeWidth={2} />{it.days} 天 · {it.stops.length} 站</span>
+                        <span className={styles.metaItem}><CalendarDays size={12} strokeWidth={2} />{dayCountOf(it)} 天 · {stopCountOf(it)} 站</span>
                       </div>
                       <p className={styles.summary}>{it.summary}</p>
                       <div className={styles.tags}>

@@ -48,3 +48,26 @@ describe('planAiFakeDataSource.searchNearby', () => {
     expect(result).toEqual({ found: true, candidates: [] })
   })
 })
+
+// 劇本(planSimScript/demoScript)的 places 只存 id,名稱/說明/座標/縮圖樣式由假資料來源的 placeDetails 回答。
+describe('planAiFakeDataSource.placeDetails 回答劇本 places 的 id', () => {
+  it('回名稱、摘要、座標與佔位縮圖樣式', async () => {
+    const r = await planAiFakeDataSource.placeDetails('attr-fuji-meatball')
+    expect(r).toMatchObject({ found: true, name: '福記肉圓', lat: 22.9969, lng: 120.1981 })
+    expect(r.summary).toBeTruthy()
+    expect(r.thumbIcon).toBeTruthy()
+    expect(r.thumbBg).toBeTruthy()
+  })
+
+  it('劇本原本內嵌、與景點池不同的值(大天后宮、祀典武廟)由假資料來源覆寫回答', async () => {
+    const d = await planAiFakeDataSource.placeDetails('attr-datianhou')
+    expect(d).toMatchObject({ name: '祀典大天后宮', lat: 22.9966, lng: 120.2016 })
+    const w = await planAiFakeDataSource.placeDetails('attr-wumiao')
+    expect(w).toMatchObject({ name: '祀典武廟', lat: 22.9966, lng: 120.2022 })
+  })
+
+  it('有實拍照片的 id 帶 googlePhotoUrls,查無的 id found:false', async () => {
+    expect((await planAiFakeDataSource.placeDetails('attr-chikanlou')).googlePhotoUrls?.length).toBe(1)
+    expect(await planAiFakeDataSource.placeDetails('attr-not-exist')).toEqual({ found: false })
+  })
+})

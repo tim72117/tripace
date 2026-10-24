@@ -51,7 +51,8 @@ export interface PlanStopMarker {
   size?: number
   // children——選填,2026-10 新增(使用者明確要求交接前後「套用相同的
   // 元件跟地圖互動」)。這一站底下的子景點(主題點展開後圍成一圈的
-  // 那些點,見 planTimeline.ts PlanNodeData.children 的完整說明)。
+  // 那些點,見 planTimeline.ts PlanNodeData.attractions/places 的完整說明;這裡是執行時
+  // 經資料存取層解析後的地圖投影,不是節點資料)。
   //
   // 在這之前 PlanStopMarker 不帶這個欄位,plan-ai-sim/Content 因此只能
   // 繞過站點檢視實例、直接讀 timelineRef 拿 children,而且只在
@@ -61,6 +62,9 @@ export interface PlanStopMarker {
   // 改成由各自的投影實作填好這個欄位:兩種來源產出同一種形狀,地圖那側
   // 不再需要「這是模擬還是真實」的分支,交接前後行為一致。
   children?: { id: string; lat: number; lng: number; name?: string }[]
+  // lodging——選填:這個點是旅館(PlanTimeline.lodgings,座標由 placeId 執行時查),不是時間軸上的站。
+  // 旅館畫成一般圓點(通常帶 glyph/size),但不參與整條路線的線段(見 routeLineLayer)。
+  lodging?: boolean
 }
 
 // zIndexForState——強調中的圓點要疊在其他圓點之上。建立 marker 與同步

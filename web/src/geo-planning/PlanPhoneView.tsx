@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useState } from 'react'
+import type { RouteLineSegment } from './mapDrawLayer/featureLayers/routeLineLayer'
 import { Timeline } from 'lucide-react'
 import { useFirstStopAutoPan, usePanWithFirstStopPriority } from '../plan-core/useFirstStopAutoPan'
 import { useCurrentLocation } from '../phone/useCurrentLocation'
@@ -168,7 +169,7 @@ export function PlanPhoneView({
   hoverStopId,
   hoverTransitPair,
   onStopClick,
-  showPlanRouteLine,
+  routeSegments,
   safeAreaRef,
   controlsPortalTarget,
 }: {
@@ -244,8 +245,8 @@ export function PlanPhoneView({
   hoverStopId?: string | null
   hoverTransitPair?: { fromId: string; toId: string } | null
   onStopClick?: (id: string) => void
-  // showPlanRouteLine:整條路線,原封不動轉給 PlanMap;由入口依 ROUTE_LINE_ENABLED 決定。
-  showPlanRouteLine?: boolean
+  // routeSegments:站點之間的連線段,原封不動轉給 PlanMap;由入口依 ROUTE_LINE_ENABLED 決定要不要傳。
+  routeSegments?: RouteLineSegment[]
   // safeAreaRef:疊加層的 safe-area 節點(phone/PlanOverlayLayout 提供),轉給 PlanMap 讓平移避開底部面板;見 usePanTarget。
   safeAreaRef?: React.RefObject<Element | null>
   // controlsPortalTarget:搜尋框、類別標籤、頭像、「搜尋這個區域」鈕要 portal 進哪裡。由呼叫端提供
@@ -581,7 +582,7 @@ export function PlanPhoneView({
           selectedStopId={selectedStopId}
           hoverStopId={hoverStopId}
           hoverTransitPair={hoverTransitPair}
-          showPlanRouteLine={showPlanRouteLine}
+          routeSegments={routeSegments}
           onStopClick={onStopClick}
           onActiveCategoryChange={(category) => onExploreActiveChange?.(category === EXPLORE_CATEGORY)}
           showZoomControl={false}

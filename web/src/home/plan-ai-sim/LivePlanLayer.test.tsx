@@ -6,6 +6,7 @@ import { render } from '@testing-library/react'
 let received: Record<string, unknown> = {}
 const noCbs = {
   onStopsChange: vi.fn(),
+  onRouteSegmentsChange: vi.fn(),
   onSelectedStopChange: vi.fn(),
   onHoverStopChange: vi.fn(),
   onHoverTransitChange: vi.fn(),
@@ -27,6 +28,7 @@ describe('LivePlanLayer', () => {
   it('四個回報原樣轉給 PlanPanelContent:站點、選取、hover、轉乘膠囊 hover', () => {
     const cbs = {
       onStopsChange: vi.fn(),
+      onRouteSegmentsChange: vi.fn(),
       onSelectedStopChange: vi.fn(),
       onHoverStopChange: vi.fn(),
       onHoverTransitChange: vi.fn(),
@@ -52,6 +54,7 @@ describe('LivePlanLayer', () => {
     render(<LivePlanLayer selectedStopId={null} tripPlanProps={noCbs} />)
     expect(received.cfg).toBeTruthy()
     expect(received.store).toBeTruthy()
+    expect('conversationStore' in received).toBe(false) // 對話純記憶體,不再傳 store
     expect(received.dataSource).toBeTruthy()
   })
 

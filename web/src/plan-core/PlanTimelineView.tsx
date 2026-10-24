@@ -1,9 +1,14 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, MutableRefObject, PointerEvent as ReactPointerEvent, Ref, ReactNode, UIEventHandler } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Bus, Car, Footprints, TrainFront } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { minutesToTime, stopLookupFailed, type PlanNode, type TimeDragBounds } from './planTimeline'
+import { listNodes, lodgingSpanLabel, lodgingsOf, lodgingsStartingOnDay, minutesToTime, stopLookupFailed, withDay, type PlanLodging, type PlanNode, type PlanTimeline, type TimeDragBounds } from './planTimeline'
+import type { PlanMessage } from './planConversation'
+import { LODGING_FALLBACK_NAME, resolveLodging } from './useResolvedNodeRefs'
+import { useResolvedRefs } from './PlanDataProvider'
+import { nodeStatusOf, type NodeStatusMap } from './planNodeStatus'
+import { DEFAULT_NOTE_CATEGORY, NOTE_STYLES, TRANSIT_MODE_CHOICES } from './planPresentation'
 import styles from './PlanTimelineView.module.css'
 
 // TIME_DRAG_MINUTES_PER_STEP/TIME_DRAG_PX_PER_STEP——anchorDot 拖拉調整
@@ -15,6 +20,7 @@ import styles from './PlanTimelineView.module.css'
 // 不順可以調整這個常數。往下拖(位移量為正)時間變晚,往上拖時間變早
 // ——對齊時間軸「上早下晚」的既有版面直覺(見 toRenderList 由上到下
 // 依時間順序排列的既有設計)。
+
 const TIME_DRAG_MINUTES_PER_STEP = 30
 const TIME_DRAG_PX_PER_STEP = 18
 
@@ -150,12 +156,10 @@ const TRANSIT_MODE_ICONS: Record<string, LucideIcon> = {
 // 命中的 key 一律 fallback Footprints,跟後端「查不到就當步行」的語意
 // 一致,這裡顯式列出 Footprints 只是為了選單本身要能畫出這個選項的圖示,
 // 不是新增一條後端沒有的規則。
-const TRANSIT_MODE_OPTIONS: { mode: string; label: string; icon: LucideIcon }[] = [
-  { mode: '步行', label: '步行', icon: Footprints },
-  { mode: '公車', label: '公車', icon: Bus },
-  { mode: '捷運', label: '捷運', icon: TrainFront },
-  { mode: '開車', label: '開車', icon: Car },
-]
+const TRANSIT_MODE_OPTIONS: { mode: string; label: string; icon: LucideIcon }[] = TRANSIT_MODE_CHOICES.map((choice) => ({
+  ...choice,
+  icon: TRANSIT_MODE_ICONS[choice.mode] ?? Footprints,
+}))
 
 // PlanTimelineView — 2026-10 從 trip-plan/TripPlanPage.tsx 拆出來的時間軸
 // 視圖本體(使用者明確要求「先將正式畫面的排程時間軸UI拆成獨立元件」),
@@ -176,15 +180,7 @@ const TRANSIT_MODE_OPTIONS: { mode: string; label: string; icon: LucideIcon }[] 
 // jumpPillWrapClassName 這幾個選填 prop 讓呼叫端各自覆寫,不靠在這裡
 // 分支判斷「現在是哪個頁面」。
 //
-// NOTE_STYLES——備註分類→顏色/圖示的固定對照表,原本定義在
-// TripPlanPage.tsx,跟著 JSX 一起搬過來,因為只有這裡的渲染邏輯會用到。
-const NOTE_STYLES: Record<string, { color: string; noteIcon: string }> = {
-  consideration: { color: 'var(--ios-gray)', noteIcon: '✦' },
-  info: { color: 'var(--ios-sand)', noteIcon: 'ⓘ' },
-  cost: { color: 'var(--ios-green)', noteIcon: '💰' },
-  weather: { color: 'var(--ios-blue)', noteIcon: '☁︎' },
-}
-const DEFAULT_NOTE_CATEGORY = 'info'
+// NOTE_STYLES(備註分類→顏色/圖示)與交通方式選項已抽到 planPresentation.ts,與 TripPlanPage/橫向時間軸共用同一份。
 
 // StopCardRenderContext——renderStopCard 插槽收到的輔助資訊/回呼,見該
 // prop 的完整說明。欄位刻意只給插槽實作會需要的東西,不是把整個元件
@@ -200,6 +196,8 @@ export interface StopCardRenderContext {
   // 透過 hoveredStopIdForCard prop 傳入的「目前 hover 中的 id」跟這張
   // 卡片自己的 id 比對結果,見該 prop 的完整說明。
   isHovered: boolean
+  // loading——這一站正在查詢地點資料(來自節點狀態表,見 PlanTimelineViewProps.nodeStatus);沒有狀態表時固定 false。
+  loading: boolean
   usablePhotos: string[]
   onClick: () => void
   onMouseEnter: () => void
@@ -211,7 +209,9 @@ export interface StopCardRenderContext {
 }
 
 export interface PlanTimelineViewProps {
-  steps: PlanNode[]
+  // timeline——依天分組的時間軸本身。視圖自己依 timeline.days 迭代:每一天先畫「Day N」標題列(key 用 day.id),再畫該天的節點;
+  // 空的天只畫標題。不再吃攤平、夾著虛擬「Day N」節點的清單。
+  timeline: PlanTimeline
   isThinking: boolean
   emptyStateMessage: string
   // hideEmptyState——選填,預設 false。2026-10 /ai-plan 展示頁使用者
@@ -228,6 +228,12 @@ export interface PlanTimelineViewProps {
   // 文字區塊而汙染它。改成獨立的 hideEmptyState prop,只影響
   // .emptyState 這一處渲染,不影響 isThinking 的其他既有用途。
   hideEmptyState?: boolean
+  // messages——選填,規劃對話的訊息(AI 回覆、連線錯誤,見 planConversation.ts),依發生順序由舊到新。
+  // 2026-10-24 對話從時間軸獨立出來:訊息不再是天裡的節點、沒有位置資訊,所以一律渲染在時間軸最下方
+  // (所有天與站點之後、「AI 思考中」呼吸點之前)。過去的訊息大多本來就接在最後面,這是唯一的位置變化;
+  // 每則的 markup/淡化樣式沿用原本的 message 列:stale 的收合成單行淡化純文字,新鮮的用 markdown 完整渲染。
+  // 不傳或空陣列就什麼都不畫(行程詳情頁這類唯讀入口不傳)。
+  messages?: PlanMessage[]
   // endMarkerMessage——選填,生成結束後顯示在時間軸底部的文案,預設
   // 「目前安排到這裡」(對齊正式頁 TripPlanPage.tsx 開放式、可持續對話
   // 調整行程的語意)。展示頁 home/plan-ai-sim/Content.tsx 原本固定顯示
@@ -250,7 +256,7 @@ export interface PlanTimelineViewProps {
   // 景點,使用者明確要求「也要可以從介面上刪除」,這裡補上直接的 UI
   // 入口,呼叫同一條底層路徑。
   onRemoveStop?: (id: string) => void
-  // onRetryStop——選填:地點資料查詢失敗的站點(PlanNodeData.failed,見
+  // onRetryStop——選填:地點資料查詢失敗的站點(節點狀態表的 failed——見 planNodeStatus.ts,或重整後有 placeId 沒座標——見
   // 該欄位的完整說明)上顯示一顆「重試」按鈕,點擊時呼叫並傳入節點 id。
   //
   // 2026-10 新增(使用者明確要求「失敗就標記該階段為錯誤,介面上做可以
@@ -412,16 +418,21 @@ export interface PlanTimelineViewProps {
   // 改 .endMarker 本身(會連動影響正式頁)。疊加這個 class 讓展示頁
   // 自己覆寫顏色/加文字陰影提高對比,不影響共用元件的基礎樣式。
   endMarkerClassName?: string
+  // nodeStatus——選填:節點執行狀態表(loading/failed/removing,見 planNodeStatus.ts,usePlanNodeStatus 的回傳)。
+  // 卡片的查詢中轉圈、查詢失敗與重試鈕、移除淡出都讀這裡;沒有狀態表的呼叫端(例如唯讀的精選行程頁)不傳,
+  // 視同所有節點都沒有狀態。
+  nodeStatus?: NodeStatusMap
 }
 
 // PlanTimelineView — 純渲染元件,不持有自己的 state/effect(scroll 追蹤、
 // 429 重試、照片重試等邏輯仍留在呼叫端),只依賴傳入的 props 畫出時間軸
 // 與「回到最新」浮動按鈕。
 export function PlanTimelineView({
-  steps,
+  timeline,
   isThinking,
   emptyStateMessage,
   hideEmptyState = false,
+  messages,
   endMarkerMessage = '目前安排到這裡',
   selectedStopId,
   showJumpPill,
@@ -447,7 +458,13 @@ export function PlanTimelineView({
   jumpPillClassName,
   jumpPillContent,
   endMarkerClassName,
+  nodeStatus,
 }: PlanTimelineViewProps) {
+  // resolvedRefs——id → 解析結果(key 是 placeId / attraction id):住宿橫幅依旅館 placeId 查名稱(查不到退回旅館自己的 name,
+  // 再退回「住宿」),站點卡片的照片取 resolvedRefs.get(node.placeId)?.googlePhotoUrls(照片不存在節點上)。
+  // 向 PlanDataProvider 的共用 store 取(2026-10:原本由呼叫端解析後以 resolvedRefs prop 傳入),所以需要在 Provider 底下使用。
+  const timelineNodes = useMemo(() => listNodes(timeline), [timeline])
+  const resolvedRefs = useResolvedRefs(timelineNodes, lodgingsOf(timeline))
   // failedPhotoUrls——載入失敗(404/403/過期/網路錯誤)的照片 URL 集合。
   //
   // 2026-10 使用者實際回報:縮圖位置出現破圖 icon 疊著 alt 文字(例如
@@ -591,6 +608,58 @@ export function PlanTimelineView({
     document.addEventListener('pointercancel', handlePointerUp)
   }, [getStopTimeDragBounds, onDragStopTime, handlePointerMove, handlePointerUp])
 
+  const hasMessages = (messages?.length ?? 0) > 0
+
+  // lastRowId——最後一列的 id(最後一天的最後一個節點;最後一天是空的就是那一天的 id),當呼吸點的 key:最後一列變了就重新掛載。
+  const lastDay = timeline.days[timeline.days.length - 1]
+  // 最下方有訊息時,最後一列是最新那則訊息(呼吸點跟著它重新掛載,對應過去訊息節點是最後一列的行為)。
+  const lastRowId = hasMessages
+    ? messages![messages!.length - 1].id
+    : lastDay
+      ? (lastDay.nodes[lastDay.nodes.length - 1]?.id ?? lastDay.id)
+      : null
+
+  // renderLodgingBanner——住宿橫幅:旅館的第一個停留日(入住日)那天最上面、Day 標題底下畫一條,連住的後續天不重複。
+  // 內容是 🛏️ + 旅館名稱 + 停留區間(「Day 2–4」,由天的位置推算)。窄長虛線橫幅,低調不搶景點卡的視覺焦點。
+  // 旅館不是 stop:沒有時間、不能拖拉、不參與交通膠囊;選取與 hover 與一般卡片共用同一組(id 是旅館 id,地圖上有對應的圓點)。
+  // 點擊時有座標才平移(選取 + 鏡頭移動),呼叫端收到的是合成的最小節點(id/name/lat/lng);沒座標(沒有 placeId 或還沒查到)不反應。
+  const renderLodgingBanner = (lodging: PlanLodging) => {
+    const view = resolveLodging(lodging, resolvedRefs)
+    const name = view.name ?? LODGING_FALLBACK_NAME
+    const clickable = view.lat != null && view.lng != null
+    const select = () => onPanToStop({ id: lodging.id, type: 'stop', name, lat: view.lat, lng: view.lng })
+    return (
+      <div key={`lodging-${lodging.id}`} className={`${styles.row} ${styles.lodgingRow} ${styles.mountFadeIn}`}>
+        <div className={styles.lodgingBannerWrap}>
+          <div
+            className={`${styles.lodgingBanner} ${lodging.id === selectedStopId ? styles.lodgingBannerSelected : ''}`}
+            data-lodging-id={lodging.id}
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            onClick={clickable ? select : undefined}
+            onKeyDown={
+              clickable
+                ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') select()
+                  }
+                : undefined
+            }
+            onMouseEnter={() => onHoverStop?.(lodging.id)}
+            onMouseLeave={() => onHoverStop?.(null)}
+            onFocus={() => onHoverStop?.(lodging.id)}
+            onBlur={() => onHoverStop?.(null)}
+          >
+            <span className={styles.lodgingIcon} aria-hidden="true">🛏️</span>
+            <div className={styles.lodgingBody}>
+              <span className={styles.lodgingSpan}>{lodgingSpanLabel(timeline, lodging)}</span>
+              <span className={styles.lodgingName}>{name}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <>
       <div className={`${styles.scroll} ${scrollClassName ?? ''}`} ref={scrollRef} onScroll={onScroll}>
@@ -599,13 +668,29 @@ export function PlanTimelineView({
               isThinking 為 true 時不顯示——那個情況下面已經有呼吸點/
               骨架卡(.tipRow)傳達「正在安排」的狀態,不需要空狀態文字跟
               生成動畫同時出現互相干擾。 */}
-          {steps.length === 0 && !isThinking && !hideEmptyState && (
+          {timeline.days.length === 0 && !hasMessages && !isThinking && !hideEmptyState && (
             <div className={styles.emptyState}>
               <span className={styles.emptyStateIcon}>✦</span>
               <p className={styles.emptyStateText}>{emptyStateMessage}</p>
             </div>
           )}
-          {steps.map((p, idx) => {
+          {timeline.days.map((day, dayIdx) => {
+            // 「Day N」標題列:每一天(含 Day 1 與空的天)都先畫一列,標題用天在 days 裡的位置算,不是 id。
+            const isLastDay = dayIdx === timeline.days.length - 1
+            return (
+              <Fragment key={day.id}>
+                <div className={`${styles.row} ${styles.sectionRow} ${styles.mountFadeIn}`}>
+                  <div className={styles.sectionBand}>
+                    <span className={styles.sectionLabel}>{`Day ${dayIdx + 1}`}</span>
+                  </div>
+                </div>
+                {lodgingsStartingOnDay(timeline, day.id).map(renderLodgingBanner)}
+                {day.nodes.map((node, idx) => {
+            // 補上衍生的 day(存進時間軸的節點不帶 day),卡片與回呼拿到的節點跟過去一致。
+            const p = withDay(node, dayIdx + 1)
+            // isLastRow——整條時間軸最後一個節點(最後一天的最後一個):它下方沒有下一列,軸線不往下延伸(除非還在生成中)。
+            // 底下還有對話訊息時也不算最後一列:軸線要接到訊息列(訊息渲染在時間軸最下方)。
+            const isLastRow = isLastDay && idx === day.nodes.length - 1 && !hasMessages
             // justMounted:這個節點是不是「第一次」出現在畫面上——用 id
             // 是否已經記錄過判斷,不是用陣列 index,插入到中間的節點
             // 才能正確觸發進場動畫。
@@ -614,23 +699,18 @@ export function PlanTimelineView({
             const mountedClass = styles.mountFadeIn
             // removingClass:套在每個節點最外層的 .row 容器上,CSS 同時
             // 做透明度淡出跟高度塌縮。
-            const removingClass = p.removing ? styles.removingFade : ''
+            const status = nodeStatusOf(nodeStatus, p.id)
+            const removingClass = status.removing ? styles.removingFade : ''
             // usablePhotos——濾掉已知載入失敗的 URL(見 failedPhotoUrls
             // 的完整說明)。整組都失敗時長度為 0,縮圖的判斷式自然退回
             // thumbIcon + thumbBg 佔位,跟「這個地點本來就沒有照片」是
             // 同一條路徑,不需要額外的錯誤樣式。Lightbox 收到的也是這份
             // 濾過的清單,不會點開後翻到破圖。
-            const usablePhotos = p.googlePhotoUrls?.filter((u) => !failedPhotoUrls.has(u)) ?? []
-
-            if (p.type === 'section') {
-              return (
-                <div key={p.id} className={`${styles.row} ${styles.sectionRow} ${mountedClass} ${removingClass}`}>
-                  <div className={styles.sectionBand}>
-                    <span className={styles.sectionLabel}>{p.label}</span>
-                  </div>
-                </div>
-              )
-            }
+            // 照片來自 resolvedRefs(以 placeId 解析的執行時結果),不在節點上。
+            const photoUrls = p.placeId ? resolvedRefs.get(p.placeId)?.googlePhotoUrls : undefined
+            const usablePhotos = photoUrls?.filter((u) => !failedPhotoUrls.has(u)) ?? []
+            // lookupFailed——地點資料沒拿到(狀態表的 failed,或重整後「有 placeId 沒座標」,見 stopLookupFailed)。
+            const lookupFailed = stopLookupFailed(p, status)
 
             if (p.type === 'stop') {
               // transitFromPrev(見 planTimeline.ts TransitInfo 的完整
@@ -682,7 +762,7 @@ export function PlanTimelineView({
                             <div
                               className={`${mountedClass} ${justMounted ? styles.pillExpand : ''} ${styles.transitPill} ${canPickMode ? styles.transitPillClickable : ''}`}
                               // onMouseEnter/Leave——見 onHoverTransit 的
-                              // 完整說明。p.prevId 是這段交通的起點
+                              // 完整說明。起點是同一天裡前一個 stop
                               // (transit 掛在到達站 p 自己身上,見
                               // planTimeline.ts TransitInfo 的完整說明),
                               // p.id 是終點。prevId 理論上不會是 null
@@ -690,7 +770,15 @@ export function PlanTimelineView({
                               // 允許,防禦性地在 null 時不觸發 hover——
                               // 沒有起點就沒有線可畫。
                               onMouseEnter={() => {
-                                if (p.prevId) onHoverTransit?.({ fromId: p.prevId, toId: p.id })
+                                // 起點:同一天裡往前最近的 stop(不跨天)。
+                                let fromId: string | null = null
+                                for (let i = idx - 1; i >= 0; i--) {
+                                  if (day.nodes[i].type === 'stop') {
+                                    fromId = day.nodes[i].id
+                                    break
+                                  }
+                                }
+                                if (fromId) onHoverTransit?.({ fromId, toId: p.id })
                               }}
                               onMouseLeave={() => onHoverTransit?.(null)}
                               // role="button"/tabIndex/onKeyDown——這個
@@ -813,11 +901,11 @@ export function PlanTimelineView({
                           className={styles.axisCol}
                           style={anchorDotSize != null ? ({ '--anchor-dot-size': `${anchorDotSize}px` } as CSSProperties) : undefined}
                         >
-                          {idx > 0 && <div className={styles.axisLineAbove} />}
+                          <div className={styles.axisLineAbove} />
                           {/* axisLineBelow——「還有下一個節點」或「正在生成中」
                               任一成立時都畫出來,避免最後一張卡片下方到呼吸點
                               之間出現斷裂。 */}
-                          {(idx < steps.length - 1 || isThinking) && <div className={styles.axisLineBelow} />}
+                          {(!isLastRow || isThinking) && <div className={styles.axisLineBelow} />}
                           {/* onPointerDown 只在 getStopTimeDragBounds/
                               onDragStopTime 都有傳入時才會真的啟動拖拉
                               (見 handlePointerDown 開頭的判斷),未傳入
@@ -878,6 +966,7 @@ export function PlanTimelineView({
                             renderStopCard(p, {
                               isSelected: p.id === selectedStopId,
                               isHovered: p.id === hoveredStopIdForCard,
+                              loading: !!status.loading,
                               usablePhotos,
                               onClick: () => onPanToStop(p),
                               onMouseEnter: () => onHoverStop?.(p.id),
@@ -887,50 +976,6 @@ export function PlanTimelineView({
                               onOpenPhotos: () => onOpenPhotos({ photos: usablePhotos, alt: p.name ?? '' }),
                               onRemove: onRemoveStop ? () => onRemoveStop(p.id) : undefined,
                             })
-                          ) : p.kind === '住宿' ? (
-                            // 住宿卡片類型——kind === '住宿' 的站不是「要去的景點」,是貫穿幾天的過夜錨點,
-                            // 用窄長的虛線橫幅表示,不畫縮圖與描述。區間文字取 p.duration(例如「Day 3–4」、「過夜」)。
-                            // 互動(選取、hover 連動地圖)與一般卡片相同。
-                            <div
-                              className={`${styles.lodgingBanner} ${p.id === selectedStopId ? styles.lodgingBannerSelected : ''}`}
-                              role={p.lat != null && p.lng != null ? 'button' : undefined}
-                              tabIndex={p.lat != null && p.lng != null ? 0 : undefined}
-                              onClick={() => onPanToStop(p)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') onPanToStop(p)
-                              }}
-                              onMouseEnter={() => onHoverStop?.(p.id)}
-                              onMouseLeave={() => onHoverStop?.(null)}
-                              onFocus={() => onHoverStop?.(p.id)}
-                              onBlur={() => onHoverStop?.(null)}
-                            >
-                              {usablePhotos.length > 0 ? (
-                                // 有照片:用圓形縮圖取代🛏️圖示;點縮圖開 Lightbox(不冒泡成平移)。載入失敗時記進 failedPhotoUrls,
-                                // 下次渲染退回🛏️。
-                                <button
-                                  type="button"
-                                  className={styles.lodgingPhotoBtn}
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    onOpenPhotos({ photos: usablePhotos, alt: p.name ?? '' })
-                                  }}
-                                  aria-label={usablePhotos.length > 1 ? `瀏覽 ${usablePhotos.length} 張照片` : '放大檢視照片'}
-                                >
-                                  <img
-                                    src={usablePhotos[0]}
-                                    alt={p.name}
-                                    className={styles.lodgingPhoto}
-                                    onError={() => markPhotoFailed(usablePhotos[0])}
-                                  />
-                                </button>
-                              ) : (
-                                <span className={styles.lodgingIcon} aria-hidden="true">🛏️</span>
-                              )}
-                              <div className={styles.lodgingBody}>
-                                <span className={styles.lodgingSpan}>{p.duration}</span>
-                                <span className={styles.lodgingName}>{p.name}</span>
-                              </div>
-                            </div>
                           ) : (
                             <div
                               className={`${styles.stopCard} ${p.id === selectedStopId ? styles.stopCardSelected : ''}`}
@@ -955,7 +1000,7 @@ export function PlanTimelineView({
                                 className={`${styles.stopThumb} ${justMounted ? styles.thumbPop : ''}`}
                                 style={{ background: usablePhotos.length ? undefined : p.thumbBg }}
                               >
-                                {p.loading ? (
+                                {status.loading ? (
                                   <span className={styles.thumbSpinner} aria-label="查詢地點資料中" />
                                 ) : usablePhotos.length ? (
                                   // 縮圖本身維持只顯示第一張(64px 圓形版型)。
@@ -1008,14 +1053,13 @@ export function PlanTimelineView({
                                       印出「查詢地點中…」與「查詢失敗」兩個
                                       標籤。目前寫入點維持互斥,但靠呼叫端
                                       紀律不如讓渲染層自己保證優先序。 */}
-                                  {p.loading ? (
+                                  {status.loading ? (
                                     <span className={styles.loadingTag}>查詢地點中…</span>
-                                  ) : stopLookupFailed(p) ? (
+                                  ) : lookupFailed ? (
                                     <span className={styles.failedTag}>地點資料查詢失敗</span>
                                   ) : null}
                                   {/* failed——地點資料查詢失敗(見
-                                      planTimeline.ts PlanNodeData.failed 的
-                                      完整說明)。標在 meta 列而不是蓋掉整張
+                                      planNodeStatus.ts 的 failed)。標在 meta 列而不是蓋掉整張
                                       卡:這一站的時間/類型仍然是使用者排定
                                       的有效內容,只有「它是哪個地點」沒查到。 */}
                                 </div>
@@ -1027,8 +1071,8 @@ export function PlanTimelineView({
                                     卻已經停止查詢的卡(使用者明確要求「不要有
                                     任何失敗前會有的暫時性狀態跟文字」)。 */}
                                 <div className={styles.stopName}>
-                                  {stopLookupFailed(p) ? '未能取得地點資料' : p.name}
-                                  {stopLookupFailed(p) && onRetryStop && (
+                                  {lookupFailed ? '未能取得地點資料' : p.name}
+                                  {lookupFailed && onRetryStop && (
                                     <button
                                       type="button"
                                       className={styles.retryBtn}
@@ -1083,37 +1127,36 @@ export function PlanTimelineView({
               )
             }
 
-            // message——LLM/使用者的對話訊息(見 planTimeline.ts
-            // PlanNodeType 的完整說明),時間軸上自己獨立的一列,不依附
-            // 任何 stop 卡片。新的 stop 節點插入後(p.stale === true)
-            // 收合成一行淡化的小字,不整個移除。
-            if (p.type === 'message') {
-              return (
-                <div key={p.id} className={`${styles.row} ${styles.messageRow} ${mountedClass} ${removingClass}`}>
-                  <div />
-                  <div className={styles.messageAxisCol}>
-                    <div className={styles.messageAxisLine} />
-                  </div>
-                  <div className={styles.messageWrap}>
-                    <div className={`${styles.messageBubble} ${p.stale ? styles.messageBubbleStale : ''}`}>
-                      {/* stale(收合淡化態)是單行省略號截斷的純文字——
-                          markdown 排版在那個高度/寬度下沒有意義。新鮮態
-                          才用 ReactMarkdown 渲染完整內容。 */}
-                      {p.stale ? (
-                        p.text
-                      ) : (
-                        <div className={styles.messageMarkdown}>
-                          <ReactMarkdown>{p.text ?? ''}</ReactMarkdown>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )
-            }
-
             return null
+                })}
+              </Fragment>
+            )
           })}
+
+          {/* messages——對話訊息,渲染在時間軸最下方(見 messages prop 的完整說明)。
+              列自己獨立,不依附任何 stop 卡片;stale 收合成一行淡化小字,不整個移除。 */}
+          {messages?.map((m) => (
+            <div key={m.id} data-tl-message className={`${styles.row} ${styles.messageRow} ${styles.mountFadeIn}`}>
+              <div />
+              <div className={styles.messageAxisCol}>
+                <div className={styles.messageAxisLine} />
+              </div>
+              <div className={styles.messageWrap}>
+                <div className={`${styles.messageBubble} ${m.stale ? styles.messageBubbleStale : ''}`}>
+                  {/* stale(收合淡化態)是單行省略號截斷的純文字——
+                      markdown 排版在那個高度/寬度下沒有意義。新鮮態
+                      才用 ReactMarkdown 渲染完整內容。 */}
+                  {m.stale ? (
+                    m.text
+                  ) : (
+                    <div className={styles.messageMarkdown}>
+                      <ReactMarkdown>{m.text}</ReactMarkdown>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
 
           {/* isThinking——onagent 對話推論中(唯一的「AI 正在做事」訊號
               來源)。 */}
@@ -1121,7 +1164,7 @@ export function PlanTimelineView({
             // key 綁「目前最後一個節點的 id」,讓「最後一個節點變了」
             // 等同「呼吸點換了位置」,強制 React 卸掉舊的 tipRow 重新掛
             // 一個,CSS 動畫才會隨之重播。
-            <Fragment key={`tip-after-${steps.length > 0 ? steps[steps.length - 1].id : 'empty'}`}>
+            <Fragment key={`tip-after-${lastRowId ?? 'empty'}`}>
               <div data-tl-tip className={`${styles.row} ${styles.tipRow}`}>
                 <div />
                 <div className={styles.tipAxis}>
@@ -1133,7 +1176,7 @@ export function PlanTimelineView({
               </div>
               {/* 骨架卡——呼吸點下方的「即將出現的內容」預告,只在已經有
                   節點之後才顯示。 */}
-              {steps.length > 0 && (
+              {timeline.days.length > 0 && (
                 <div aria-hidden="true" className={`${styles.row} ${styles.stopRow} ${styles.skeletonRow}`}>
                   <div />
                   <div className={styles.axisCol}>
@@ -1157,7 +1200,7 @@ export function PlanTimelineView({
                 </div>
               )}
             </Fragment>
-          ) : steps.length > 0 ? (
+          ) : timeline.days.length > 0 ? (
             <div className={`${styles.endMarker} ${styles.endFade} ${endMarkerClassName ?? ''}`}>── {endMarkerMessage} ──</div>
           ) : null}
         </div>

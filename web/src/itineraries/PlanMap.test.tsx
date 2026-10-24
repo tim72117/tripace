@@ -40,17 +40,16 @@ describe('itineraries PlanMap', () => {
     expect(getByTestId('vignette')).toBeTruthy()
   })
 
-  it('共同 prop 轉成統一繪製層的輸入:站點、選取、hover、點圓點回報,沒有藍點與整條路線', () => {
+  it('共同 prop 轉成統一繪製層的輸入:站點、選取、hover、點圓點回報、連線段(routeSegments),沒有藍點', () => {
     const onStopClick = vi.fn()
-    const extra = [{ id: 'x', drawables: [] }]
+    const segments = [{ id: 'a->b', from: { lat: 1, lng: 2 }, to: { lat: 3, lng: 4 } }]
     render(
-      <PlanMap initialCenter={undefined} stops={stops} selectedStopId="s1" hoverStopId="s2" onStopClick={onStopClick} extraLayers={extra} />,
+      <PlanMap initialCenter={undefined} stops={stops} selectedStopId="s1" hoverStopId="s2" onStopClick={onStopClick} routeSegments={segments} />,
     )
-    const args = drawArgs[drawArgs.length - 1] as { stopDots: Record<string, unknown>; currentPosition: unknown; routeLine: { enabled: boolean }; extraLayers: unknown }
+    const args = drawArgs[drawArgs.length - 1] as { stopDots: Record<string, unknown>; currentPosition: unknown; routeSegments: unknown }
     expect(args.stopDots).toMatchObject({ stops, selectedId: 's1', hoverId: 's2', onPointClick: onStopClick })
     expect(args.currentPosition).toBeNull()
-    expect(args.routeLine.enabled).toBe(false)
-    expect(args.extraLayers).toBe(extra)
+    expect(args.routeSegments).toBe(segments)
   })
 
   it('地圖就緒後把 MapHandle 交給統一繪製層與 onHandleChange', () => {

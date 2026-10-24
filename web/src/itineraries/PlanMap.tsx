@@ -3,7 +3,6 @@ import { resolveMapCenter } from '../geo-planning/mapCenter'
 import { NativeMapBase, type MapHandle } from '../geo-planning/NativeMapBase'
 import { useMapHandle, usePlanMapDrawing, type PlanMapSharedProps } from '../geo-planning/planMapShared'
 import type { AttractionGlowInput } from '../geo-planning/mapDrawLayer/useSharedDrawLayer'
-import type { FeatureLayer } from '../geo-planning/mapDrawLayer/types'
 import type { PlanStopMarker } from '../geo-planning/usePlanStopMarkers'
 
 // PlanMap(行程詳情頁版)——行程詳情頁的「地圖元件」,與 /ai-plan(home/plan-ai-sim/PlanMap)、登入後
@@ -17,14 +16,14 @@ import type { PlanStopMarker } from '../geo-planning/usePlanStopMarkers'
 // 這頁特有的:
 //   - 地圖一律帶 mapId(AdvancedMarkerElement 需要),由頁面傳入。
 //   - attractionGlow:主題點光暈(資料由頁面查好傳進來)。
-//   - extraLayers:每天一條的手繪路線(routePolylineLayer)。
 //   - children:疊在地圖畫布上的裝飾(暈影),放在地圖外框之內。
+// 連線(routeSegments)走共同 prop,與 /ai-plan、登入後同一個 routeLineLayer(2026-10-24 統一;原本這頁用 extraLayers 掛
+// 依天換色的 routePolylineLayer,已移除)。
 export interface PlanMapProps extends PlanMapSharedProps {
   zoom?: number
   mapId?: string
   stops: PlanStopMarker[]
   attractionGlow?: AttractionGlowInput
-  extraLayers?: FeatureLayer[]
   onHandleChange?: (handle: MapHandle) => void
   children?: ReactNode
 }
@@ -38,8 +37,8 @@ export function PlanMap({
   selectedStopId,
   hoverStopId,
   onStopClick,
+  routeSegments,
   attractionGlow,
-  extraLayers,
   onHandleChange,
   children,
 }: PlanMapProps) {
@@ -53,8 +52,8 @@ export function PlanMap({
     selectedStopId,
     hoverStopId,
     onStopClick,
+    routeSegments,
     attractionGlow,
-    extraLayers,
   })
   return (
     <>

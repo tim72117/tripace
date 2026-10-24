@@ -1,5 +1,4 @@
 import type { AskPageCandidate } from '../../plan-core/askPageTools'
-import { type PlanThemeChild } from '../../plan-core/planTimeline'
 
 // PlanAction — 後端 GET /public/plan-sim/ws(或日後任何真正的 agent
 // 推論來源)推播的訊息形狀,對應 server/internal/api/plan_sim_ws.go 的
@@ -54,8 +53,7 @@ export interface PlanAction {
   // 的那一天」,前面幾天維持原樣,視覺上就是「這一天的安排被收回去」。
   // 搭配來源端把播放進度倒回那一天的第一步(見 planSimScrollSource.ts
   // advanceTo 的回退分支),再往下捲時這一天會重新一站一站排出來。
-  type: 'thinking' | 'reset' | 'reset_day' | 'add_section' | 'add_stop' | 'add_transit' | 'add_note' | 'add_message' | 'remove_step' | 'open_ask_page' | 'done'
-  label?: string
+  type: 'thinking' | 'reset' | 'reset_day' | 'add_stop' | 'add_transit' | 'add_note' | 'add_message' | 'remove_step' | 'open_ask_page' | 'done'
   id?: string
   time?: string
   // day——這個 stop 屬於行程的第幾天,對齊 planTimeline.ts PlanNodeData.day
@@ -80,19 +78,19 @@ export interface PlanAction {
   placeId?: string
   lat?: number
   lng?: number
-  // children——2026-10 新增(使用者明確要求「鄰近的景點不用每個都安排
-  // 時間點,而是集合的概念」):這一站是一個「主題點」,底下包含多個
-  // 不獨立佔用時間軸時間點的子景點,直接對齊 planTimeline.ts
-  // PlanNodeData.children/PlanThemeChild 的完整說明——這裡只是讓
-  // planSimScript.ts 能在劇本層表達這個欄位,planActionToInsert 原樣
-  // 轉傳給 insertAttractionAfter 的 data,不做任何轉換。
-  children?: PlanThemeChild[]
+  // attractions、places、farFromNext——這一站是「主題點」或候選卡時底下包含的景點,只存 id,
+  // 直接對齊 planTimeline.ts PlanNodeData.attractions/places/farFromNext 的完整說明:
+  // 名稱、座標、摘要、照片不在劇本裡,執行時經資料存取層用 id 查(模擬態是 planAiFakeDataSource)。
+  // planActionToInsert 原樣轉傳給 insertAttractionAfter 的 data,不做任何轉換。
+  attractions?: string[]
+  places?: string[]
+  farFromNext?: string[]
   // candidateCards——2026-10 新增(使用者明確要求「製作多個候選點的
   // 圖卡」「可選的狀態跟地點集合是不一樣的,原本的卡片要換成是多個
   // 小格子的樣子」),直接對齊 planTimeline.ts
   // PlanNodeData.candidateCards 的完整說明——這裡同樣只是讓
   // planSimScript.ts 能在劇本層表達這個欄位,planActionToInsert 原樣
-  // 轉傳,不做任何轉換(跟 children 的既有做法一致)。
+  // 轉傳,不做任何轉換(跟 attractions/places 的既有做法一致)。
   candidateCards?: boolean
   icon?: string
   mode?: string

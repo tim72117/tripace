@@ -1,7 +1,7 @@
 import { haversineMeters } from '../geo-planning/geoDistance'
 import type { TransitInfo } from '../plan-core/planTimeline'
 
-// estimateTransit——行程詳情頁沒有人工填交通方式(SampleStop.transit)的相鄰兩站,用直線距離粗估一段交通膠囊。
+// estimateTransit——行程詳情頁沒有人工填交通方式(SampleStop.transitFromPrev)的相鄰兩站,用直線距離粗估一段交通膠囊。
 //
 // 規則與速度對齊後端 server/internal/api/geo_plan_ai.go 的 estimateTransitMode / metersPerMinuteFor /
 // formatTransitDistance(/ai-plan 的模擬估計同一份):<=1200m 步行、<=5km 公車、其餘開車;

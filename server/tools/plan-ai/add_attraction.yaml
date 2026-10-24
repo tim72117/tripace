@@ -9,22 +9,19 @@ name: add_attraction
 description: >-
   把一個景點加入行程時間軸。
 
-  呼叫這支工具之前，每一次都必須先呼叫 list_itinerary 讀取最新的已安排
-  地點，再據此決定 anchorId 與 time——即使你覺得記得目前排了什麼，也要
-  先查。時間軸不只有你會動它（使用者可以自己刪除站點、拖曳調整時間），
-  你記憶中的狀態隨時可能已經過期。連續加入多站時每一站都要重新查一次，
-  因為你每次插入都會改變時間軸。
+  行動前先 list_itinerary 讀現況，再決定 anchorId、time、day。還沒讀
+  過、或使用者改動行程（刪站、拖曳改時間）後才需要重讀；你自己剛做的
+  變更不用重讀，可直接加下一站。一次只呼叫一個改動工具，成功後再呼叫
+  下一個（同一輪平行呼叫彼此看不到結果，易用過期參數失敗）。
 
-  placeId 必須是 search_attraction 的 nearby
-  清單回傳過的 placeId，或使用者剛提到的地點本身查詢結果的 placeId，
-  不要自己編造。anchorId 是要插在哪個既有節點「後面」——省略或傳 "null"
-  代表插在最前面；要接在某個已加入的站點之後，傳那個站點呼叫成功後回傳
-  結果裡的 id 欄位（不是 placeId——這兩者是不同的識別碼，不能互相
-  替代）。呼叫成功後會回傳 {"id": "...", "time": "...", "anchorId":
-  "..."}，請記住這個 id，之後要接在這一站後面時當 anchorId 使用。time
-  選填，格式 "HH:MM"。若回傳錯誤（例如時間不在合理範圍、錨點不存在），
-  錯誤訊息會直接告知合理的邊界值、或目前時間軸上實際可用的 anchorId
-  清單，請依照建議調整參數後重試，不要用完全相同的參數再呼叫一次。
+  placeId 必須是 search_attraction 回傳過的 placeId，或使用者提到的
+  地點本身查詢結果的 placeId，不可編造。anchorId 是要插在哪個節點
+  「後面」，省略或 "null" 代表該天最前面；要接在已加入的站點後，傳
+  該站成功後回傳的 id（不是 placeId）。time 選填 "HH:MM"。day 選填
+  （第幾天，從 1 起算），省略時放進 anchorId 所在那天，天數不足會自動
+  補；一次最多往後跳 5 天（不得超過目前天數 + 5），超過會回傳錯誤。成功回傳 {"id","time","anchorId","day"}，之後當 anchorId 用。
+  回傳錯誤時，依訊息建議的邊界值或可用 anchorId 調整後重試，不要用相同
+  參數再呼叫。
 kind: query
 parameters:
   type: object
@@ -38,5 +35,8 @@ parameters:
     time:
       type: string
       description: 到達時間，格式 "HH:MM"，選填。
+    day:
+      type: integer
+      description: 放進第幾天（從 1 起算），選填；省略時放進 anchorId 所在的那一天。
   required:
     - placeId

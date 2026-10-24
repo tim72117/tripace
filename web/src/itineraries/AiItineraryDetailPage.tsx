@@ -4,10 +4,11 @@ import { ArrowLeft, CalendarDays, MapPin } from 'lucide-react'
 import { BASE_URL } from '../AppCommon'
 import { ApiError, fetchPublicItineraryPage, type ClientConfig } from '../api'
 import { PlanTimelineView } from '../plan-core/PlanTimelineView'
-import { toRenderList } from '../plan-core/planTimeline'
+import { PlanDataProvider } from '../plan-core/PlanDataProvider'
+import { publicDataSource, useResolvedItineraryTimeline } from './useResolvedItineraryTimeline'
 import { Lightbox } from '../geo-planning/PhotoCarousel'
 import { SiteNavBrand } from '../home/SiteNavButtons'
-import { findItinerary, isSampleItineraryShape, toPlanTimeline } from './catalog'
+import { dayCountOf, findItinerary, isSampleItineraryShape, stopCountOf } from './catalog'
 import { AiItineraryDetailPageMapView } from './AiItineraryDetailPageMapView'
 import { renderAnchorIcon } from './renderAnchorIcon'
 import type { SampleItinerary } from './types'
@@ -17,6 +18,7 @@ import styles from './AiItineraryDetailPage.module.css'
 // 的 JWT,token 傳 null,理由同 web/src/blog/BlogArticlePage.tsx 的
 // GUEST_CFG。
 const GUEST_CFG: ClientConfig = { baseURL: BASE_URL, token: null }
+
 
 type ApiFetchState =
   | { kind: 'loading' }
@@ -85,7 +87,16 @@ function useApiBackedItinerary(id: string): ApiFetchState {
 //
 // 找不到 id(網址打錯、或行程被下架)時顯示「找不到這份行程」並導回清單,不是
 // 空白頁。
-export function AiItineraryDetailPage({ items, id, dark = false }: { items: SampleItinerary[]; id: string; dark?: boolean }) {
+export function AiItineraryDetailPage(props: { items: SampleItinerary[]; id: string; dark?: boolean }) {
+  // 資料存取層在這個頁面的根部決定一次:訪客版(讀取已發布行程是訪客動作,不需要使用者的 JWT)。
+  return (
+    <PlanDataProvider dataSource={publicDataSource}>
+      <AiItineraryDetailPageContent {...props} />
+    </PlanDataProvider>
+  )
+}
+
+function AiItineraryDetailPageContent({ items, id, dark = false }: { items: SampleItinerary[]; id: string; dark?: boolean }) {
   // apiState——2026-10 改版,使用者明確要求「做成獨立通用的元件,透過
   // 讀取後端端點資料來呈現不同地點」:每份行程都無條件查詢 API(見
   // useApiBackedItinerary 的完整說明),不再有 enabled 旗標/前端白名單。
@@ -99,7 +110,9 @@ export function AiItineraryDetailPage({ items, id, dark = false }: { items: Samp
   // 可用時,才需要顯示 loading 畫面(見下方判斷)。
   const itinerary = apiState.kind === 'ready' ? apiState.itinerary : staticItinerary
 
-  const steps = useMemo(() => (itinerary ? toRenderList(toPlanTimeline(itinerary).timeline) : []), [itinerary])
+  // timeline——這個頁面唯一一份時間軸(一般版面與地圖版面共用):站點座標從 PlanDataProvider 的共用 store 取
+  // (見 useResolvedItineraryTimeline);旅館名稱與站點照片則由 PlanTimelineView 自己向同一個 store 取。
+  const timeline = useResolvedItineraryTimeline(itinerary ?? undefined)
   const [selectedStopId, setSelectedStopId] = useState<string | null>(null)
   const [lightbox, setLightbox] = useState<{ photos: string[]; alt: string } | null>(null)
   // 記錄已播過進場動畫的節點 id(PlanTimelineView 的必填 prop);展示頁一次載入
@@ -160,7 +173,7 @@ export function AiItineraryDetailPage({ items, id, dark = false }: { items: Samp
     return (
       <>
         {headBrand}
-        <AiItineraryDetailPageMapView itinerary={itinerary} dark={dark} />
+        <AiItineraryDetailPageMapView itinerary={itinerary} timeline={timeline} dark={dark} />
       </>
     )
   }
@@ -173,7 +186,7 @@ export function AiItineraryDetailPage({ items, id, dark = false }: { items: Samp
         <h1 className={styles.title}>{itinerary.title}</h1>
         <div className={styles.meta}>
           <span className={styles.metaItem}><MapPin size={13} strokeWidth={2} />{itinerary.region}</span>
-          <span className={styles.metaItem}><CalendarDays size={13} strokeWidth={2} />{itinerary.days} 天 · {itinerary.stops.length} 站</span>
+          <span className={styles.metaItem}><CalendarDays size={13} strokeWidth={2} />{dayCountOf(itinerary)} 天 · {stopCountOf(itinerary)} 站</span>
         </div>
         <div className={styles.tags}>
           {itinerary.categories.map((c) => <span key={c} className={styles.tag}>{c}</span>)}
@@ -181,7 +194,7 @@ export function AiItineraryDetailPage({ items, id, dark = false }: { items: Samp
         <p className={styles.summary}>{itinerary.summary}</p>
       </header>
       <PlanTimelineView
-        steps={steps}
+        timeline={timeline}
         isThinking={false}
         emptyStateMessage=""
         hideEmptyState

@@ -146,7 +146,7 @@ export function AskPage({ dataSource, input, onDone, onBack, stacked }: AskPageP
   // 直接短路回傳,不進外殼的 .bubble/.question/.actions 結構(文字氣泡
   // 用自己的 .messageBubble,視覺語言不同於候選/選項卡片)。關閉氣泡
   // 視同使用者「不用了」,統一走 onDone([]) 切回軸線頁——這則文字本身
-  // 已經在 onAssistantMessage 當下被插入時間軸的 message 節點存檔,
+  // 已經在 onAssistantMessage 當下被寫進獨立的對話狀態(plan-core/planConversation.ts,記憶體),
   // 不需要這裡另外回報什麼。
   if ('text' in input) {
     return (

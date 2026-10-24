@@ -92,7 +92,7 @@ function create(map: google.maps.Map, d: Drawable, lookup: (id: string) => Drawa
         position: d.position,
         map,
         title: d.title,
-        content: d.createContent(),
+        content: applyMarkerAnchor(d.createContent(), d.anchor),
         zIndex: z,
         // gmpClickable 必須明確開啟,AdvancedMarkerElement 預設不接受點擊事件;只能在建立時決定。
         gmpClickable: !!d.clickable,
@@ -136,8 +136,11 @@ function update(inst: Instance, d: Drawable): Instance {
     marker.zIndex = z
     let contentKey = inst.contentKey
     if (inst.contentKey !== d.contentKey) {
-      marker.content = (d as MarkerDrawable).createContent({ previousContentKey: inst.contentKey })
+      marker.content = applyMarkerAnchor((d as MarkerDrawable).createContent({ previousContentKey: inst.contentKey }), d.anchor)
       contentKey = d.contentKey
+    } else if (marker.content instanceof Element) {
+      // 內容沒換、但 anchor 可能變了(anchor 在簽章 data 裡,改變才會進到 update):對既有內容重新套用位移。
+      applyMarkerAnchor(marker.content, d.anchor)
     }
     return { ...inst, ...sig, contentKey }
   }
@@ -156,6 +159,17 @@ function update(inst: Instance, d: Drawable): Instance {
     return { ...inst, ...sig, onDispose: d.onDispose }
   }
   return inst
+}
+
+// applyMarkerAnchor——依 MarkerDrawable.anchor 調整 content 的位移(見 types.ts 的 anchor 說明)。
+// AdvancedMarkerElement 把 content 的底部中央放在座標上;'center' 時對 content 套 translateY(50%),整個內容往下移
+// 自己高度的一半,圓心就落在座標上。用 transform 而不是改 layout:layout box 不變,Google 的定位與 hit target
+// (點擊事件以 content 本身為目標往上冒泡到 marker,gmp-click 照常觸發)都不受影響;content 內部的光暈/漣漪動畫
+// (.ps-halo/.ps-ripple)作用在 SVG 內的 circle,與根元素的 transform 互不干擾。'bottom'(或沒傳)清掉位移。
+function applyMarkerAnchor<T extends Element>(content: T, anchor: MarkerDrawable['anchor']): T {
+  const style = (content as unknown as { style?: CSSStyleDeclaration }).style
+  if (style) style.transform = anchor === 'center' ? 'translateY(50%)' : ''
+  return content
 }
 
 function dispose(inst: Instance) {

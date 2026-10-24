@@ -3,12 +3,13 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { useMapDrawLayer } from '../index'
 import { GROUP_Z } from '../zOrder'
-import { routeLineLayer } from './routeLineLayer'
+import { routeLineLayer, type RouteLineSegment } from './routeLineLayer'
 
 class FakePolyline {
   static all: FakePolyline[] = []
   options: Record<string, unknown>
   map: unknown
+  updates = 0
   constructor(opts: Record<string, unknown>) {
     this.options = { ...opts }
     this.map = opts.map
@@ -16,6 +17,7 @@ class FakePolyline {
   }
   setOptions(o: Record<string, unknown>) {
     Object.assign(this.options, o)
+    this.updates++
   }
   setMap(m: unknown) {
     this.map = m
@@ -26,11 +28,10 @@ class FakePolyline {
 }
 const visible = () => FakePolyline.all.filter((p) => p.map != null)
 
-const A = { id: 'a', lat: 1, lng: 2 }
-const B = { id: 'b', lat: 3, lng: 4 }
-const C = { id: 'c', lat: 5, lng: 6 }
+const AB: RouteLineSegment = { id: 'a->b', from: { lat: 1, lng: 2 }, to: { lat: 3, lng: 4 } }
+const BC: RouteLineSegment = { id: 'b->c', from: { lat: 3, lng: 4 }, to: { lat: 5, lng: 6 } }
 
-type P = { stops: { id: string; lat: number; lng: number }[]; enabled: boolean }
+type P = { segments: RouteLineSegment[] }
 function setup(init: P) {
   const ref = { current: { tag: 'map' } as unknown as google.maps.Map | null }
   return renderHook(
@@ -44,30 +45,42 @@ beforeEach(() => {
 })
 
 describe('routeLineLayer + useMapDrawLayer', () => {
-  it('畫出一條 polyline,zIndex 為 GROUP_Z.routeLine,樣式帶上', () => {
-    setup({ stops: [A, B], enabled: true })
-    expect(visible()).toHaveLength(1)
-    const o = visible()[0].options
-    expect(o.zIndex).toBe(GROUP_Z.routeLine)
-    expect(o.strokeColor).toBe('#abc')
-    expect(o.path).toEqual([
-      { lat: 1, lng: 2 },
-      { lat: 3, lng: 4 },
-    ])
+  it('每段畫光暈 + 顏色線兩條 polyline,zIndex 分別為 GROUP_Z.routeCasing / routeLine(光暈在下),樣式帶上,路徑是弧線', () => {
+    setup({ segments: [AB] })
+    expect(visible()).toHaveLength(2)
+    const [casing, line] = visible()
+    expect(casing.options.zIndex).toBe(GROUP_Z.routeCasing)
+    expect(line.options.zIndex).toBe(GROUP_Z.routeLine)
+    expect(GROUP_Z.routeCasing).toBeLessThan(GROUP_Z.routeLine)
+    expect(line.options.strokeColor).toBe('#abc')
+    expect(line.options.clickable).toBe(false)
+    const path = line.options.path as { lat: number; lng: number }[]
+    expect(path[0]).toEqual({ lat: 1, lng: 2 })
+    expect(path[path.length - 1]).toEqual({ lat: 3, lng: 4 })
+    expect(path.length).toBeGreaterThan(2)
+    expect(casing.options.path).toEqual(line.options.path)
   })
 
-  it('關閉後被移除', () => {
-    const h = setup({ stops: [A, B], enabled: true })
-    h.rerender({ stops: [A, B], enabled: false })
+  it('段清空後全部移除', () => {
+    const h = setup({ segments: [AB, BC] })
+    expect(visible()).toHaveLength(4)
+    h.rerender({ segments: [] })
     expect(visible()).toHaveLength(0)
   })
 
-  it('站點增加時原地更新(不重建)', () => {
-    const h = setup({ stops: [A, B], enabled: true })
-    const first = visible()[0]
-    h.rerender({ stops: [A, B, C], enabled: true })
-    expect(FakePolyline.all).toHaveLength(1)
-    expect(visible()[0]).toBe(first)
-    expect(first.options.path).toHaveLength(3)
+  it('加一段只新建那一段的兩條;改一段的座標只原地更新那一段,不重建', () => {
+    const h = setup({ segments: [AB] })
+    const [casing, line] = visible()
+    h.rerender({ segments: [AB, BC] })
+    expect(FakePolyline.all).toHaveLength(4)
+    expect(visible()[0]).toBe(casing)
+    expect(visible()[1]).toBe(line)
+    expect(line.updates).toBe(0)
+
+    h.rerender({ segments: [AB, { ...BC, to: { lat: 7, lng: 8 } }] })
+    expect(FakePolyline.all).toHaveLength(4)
+    expect(FakePolyline.all.map((p) => p.updates)).toEqual([0, 0, 1, 1])
+    const path = FakePolyline.all[3].options.path as { lat: number; lng: number }[]
+    expect(path[path.length - 1]).toEqual({ lat: 7, lng: 8 })
   })
 })

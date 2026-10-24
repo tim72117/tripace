@@ -288,14 +288,21 @@ describe('useSharedDrawLayer 轉乘 hover 虛線', () => {
     expect(visibleLines()).toHaveLength(0)
   })
 
-  it('有轉乘配對:畫一條連接兩端站點的虛線(強調色)', () => {
+  // 連線路徑是弧線取樣(routeArc.ts):兩端點是站點本身,中間多了取樣點;這裡只驗兩端,弧線形狀由 routeArc.test 驗。
+  const endpoints = (path: unknown) => {
+    const p = path as { lat: number; lng: number }[]
+    return [p[0], p[p.length - 1]]
+  }
+
+  it('有轉乘配對:畫一條連接兩端站點的虛線(強調色),路徑是弧線', () => {
     setup(withPair({ fromId: 'a', toId: 'b' }))
     const lines = visibleLines()
     expect(lines).toHaveLength(1)
-    expect(lines[0].opts.path).toEqual([
+    expect(endpoints(lines[0].opts.path)).toEqual([
       { lat: 1, lng: 2 },
       { lat: 3, lng: 2 },
     ])
+    expect((lines[0].opts.path as unknown[]).length).toBeGreaterThan(2)
     expect(JSON.stringify(lines[0].opts.icons)).toContain('#8B3A2F')
   })
 
@@ -304,7 +311,7 @@ describe('useSharedDrawLayer 轉乘 hover 虛線', () => {
     const line = visibleLines()[0]
     hook.rerender({ ...props, ...withPair({ fromId: 'b', toId: 'c' }) })
     expect(visibleLines()[0]).toBe(line)
-    expect(line.opts.path).toEqual([
+    expect(endpoints(line.opts.path)).toEqual([
       { lat: 3, lng: 2 },
       { lat: 5, lng: 2 },
     ])
@@ -333,46 +340,59 @@ describe('useSharedDrawLayer 轉乘 hover 虛線', () => {
   })
 })
 
-// ===== 整條路線(從登入後的 extraLayers 搬進共用子層) =====
+// ===== 站點之間的連線(routeSegments;2026-10-24 三個入口統一,一段一條、主題強調色) =====
 
-describe('useSharedDrawLayer 整條路線', () => {
+describe('useSharedDrawLayer 連線(routeSegments)', () => {
   const stops = [
     { id: 'a', lat: 1, lng: 2 },
     { id: 'b', lat: 3, lng: 4 },
     { id: 'c', lat: 5, lng: 6 },
   ]
-  const withRoute = (enabled: boolean): Partial<Props> => ({ stopDots: { stops }, routeLine: { enabled } })
+  const AB = { id: 'a->b', from: { lat: 1, lng: 2 }, to: { lat: 3, lng: 4 } }
+  const BC = { id: 'b->c', from: { lat: 3, lng: 4 }, to: { lat: 5, lng: 6 } }
+  const withRoute = (segments?: (typeof AB)[]): Partial<Props> => ({ stopDots: { stops }, routeSegments: segments })
 
-  it('沒傳 routeLine 或 enabled 為 false:不畫線', () => {
+  it('沒傳 routeSegments 或空陣列:不畫線', () => {
     setup({ stopDots: { stops } })
     expect(visibleLines()).toHaveLength(0)
-    setup(withRoute(false))
+    setup(withRoute([]))
     expect(visibleLines()).toHaveLength(0)
   })
 
-  it('enabled 為 true:依站點順序連成一條線,顏色是強調色', () => {
-    setup(withRoute(true), '#123456')
+  it('傳段才畫:每段光暈 + 顏色線兩條 polyline,顏色線是強調色、路徑兩端是段的起訖座標(弧線)', () => {
+    setup(withRoute([AB, BC]), '#123456')
     const lines = visibleLines()
-    expect(lines).toHaveLength(1)
-    expect(lines[0].opts.path).toEqual([
-      { lat: 1, lng: 2 },
-      { lat: 3, lng: 4 },
-      { lat: 5, lng: 6 },
-    ])
-    expect(lines[0].opts.strokeColor).toBe('#123456')
+    expect(lines).toHaveLength(4)
+    const colored = lines.filter((l) => l.opts.strokeColor === '#123456')
+    expect(colored).toHaveLength(2)
+    const path = colored[0].opts.path as { lat: number; lng: number }[]
+    expect(path[0]).toEqual({ lat: 1, lng: 2 })
+    expect(path[path.length - 1]).toEqual({ lat: 3, lng: 4 })
+    expect(path.length).toBeGreaterThan(2)
+    // 光暈與顏色線同一份路徑。
+    const casing = lines.find((l) => l !== colored[0] && l !== colored[1])!
+    expect(casing.opts.path).toEqual(path)
   })
 
-  it('開關切換:線出現又消失,站點圓點不受影響', () => {
-    const { hook, props } = setup(withRoute(false))
-    hook.rerender({ ...props, ...withRoute(true) })
-    expect(visibleLines()).toHaveLength(1)
-    hook.rerender({ ...props, ...withRoute(false) })
+  it('段由無變有、由有變無:線出現又消失,站點圓點不受影響', () => {
+    const { hook, props } = setup(withRoute(undefined))
+    hook.rerender({ ...props, ...withRoute([AB]) })
+    expect(visibleLines()).toHaveLength(2)
+    hook.rerender({ ...props, ...withRoute(undefined) })
     expect(visibleLines()).toHaveLength(0)
     expect(visibleMarkers()).toHaveLength(3)
   })
 
-  it('不足兩個站點:不畫線', () => {
-    setup({ stopDots: { stops: stops.slice(0, 1) }, routeLine: { enabled: true } })
+  it('dark 傳遞:theme 為 dark 時光暈是黑色,否則白色;主題切換時原地更新', () => {
+    const { hook, props } = setup({ ...withRoute([AB]), theme: 'light' }, '#123456')
+    const casing = () => visibleLines().find((l) => l.opts.strokeColor !== '#123456')!
+    expect(casing().opts.strokeColor).toBe('#ffffff')
+    hook.rerender({ ...props, theme: 'dark' })
+    expect(casing().opts.strokeColor).toBe('#000000')
+  })
+
+  it('沒有 stopDots:就算傳段也不畫(連線與站點圓點一起出現)', () => {
+    setup({ routeSegments: [AB] })
     expect(visibleLines()).toHaveLength(0)
   })
 })

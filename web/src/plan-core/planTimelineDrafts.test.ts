@@ -9,10 +9,10 @@ import type { PlanTimeline } from './planTimeline'
 import { createEmptyTimeline } from './planTimeline'
 import { LEGACY_DRAFT_ID, readDraftsIndex, startNewDraft } from './planTimelineDrafts'
 
-// isTimelineEmpty 只看 headId,測試用最小的非空時間軸即可,不需要走完整
+// isTimelineEmpty 看有沒有任何節點,測試用最小的非空時間軸即可,不需要走完整
 // 的 insertAfter。
 function nonEmptyTimeline(): PlanTimeline {
-  return { nodes: new Map(), headId: 'n1' }
+  return { days: [{ id: 'd1', nodes: [{ id: 'n1', type: 'stop' }] }] }
 }
 
 // 自備記憶體版 localStorage:這個專案的 vitest + jsdom 環境下全域

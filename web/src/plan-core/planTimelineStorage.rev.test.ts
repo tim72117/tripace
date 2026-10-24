@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { loadTimeline, loadTimelineWithRev, readRev, saveTimeline, PLAN_TIMELINE_STORAGE_KEY } from './planTimelineStorage'
-import { createEmptyTimeline, insertAfter } from './planTimeline'
+import { createEmptyTimeline, insertAfter, listNodes } from './planTimeline'
 import type { PlanTimeline } from './planTimeline'
 
 // 版次(rev)機制的回歸測試——針對一個實際的資料遺失路徑:
@@ -20,7 +20,7 @@ function timelineWith(name: string): PlanTimeline {
 }
 
 function namesOf(t: PlanTimeline): string[] {
-  return [...t.nodes.values()].map((n) => n.name ?? '')
+  return listNodes(t).map((n) => n.name ?? '')
 }
 
 describe('planTimelineStorage 的版次機制', () => {

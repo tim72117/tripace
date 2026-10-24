@@ -21,9 +21,9 @@
 // 概念」(見 planTimeline.ts PlanNodeData.day 的完整說明)之後,又要求
 // 「跨天不用插入 section,排程元件自動新增分隔線」:原本用一串
 // add_section 手動插入「上午/中午/下午/傍晚/晚餐」這種子分段標題,
-// 現在全部拿掉,不再有任何子分段——分天的視覺分隔線完全交給
-// toRenderList 依 day 欄位變化自動產生(見該函式的完整說明),這裡只需
-// 要老實標好每一站屬於第幾天,不需要再手動插入任何 section 節點。
+// 現在全部拿掉,不再有任何子分段——「Day N」標題由視圖依時間軸的 days 自己畫
+// (見 PlanTimelineView/HorizontalPlanTimeline),這裡只需
+// 要老實標好每一站屬於第幾天,不需要再手動插入任何分段節點。
 //
 // 武廟愛玉/日安良食鳳凰卷/義豐冬瓜茶是使用者明確要求加入的三站(分別
 // 對應 attractionPool.ts 新增的
@@ -115,8 +115,9 @@ export const PLAN_SIM_SCRIPT: PlanAction[] = [
   // 的景點不用每個都安排時間點,而是集合的概念」。原本赤崁樓/祀典大
   // 天后宮/武廟愛玉/日安良食鳳凰卷/祀典武廟/義豐冬瓜茶是六筆獨立的
   // add_stop(各自佔用時間軸一個時間點),合併成一筆「赤崁樓周邊」主題
-  // 卡,六個景點收進 children(見 planTimeline.ts PlanNodeData.children/
-  // PlanThemeChild 的完整說明)——子景點不再各自帶 time/duration,只有
+  // 卡,六個景點收進 places(只存 placeId,見 planTimeline.ts PlanNodeData.attractions/
+  // places 的完整說明;原本內嵌的名稱/說明/座標已搬到 planAiFakeDataSource.ts,
+  // 執行時用 id 查)——子景點不再各自帶 time/duration,只有
   // 這張主題卡本身佔用 08:30 起算的一個時間區段。duration 抓六站原本
   // 各自停留時間加總的概估值(1h + 30分 + 20分 + 15分 + 45分 + 10分 ≈
   // 3h 緩衝進步行銜接時間)。
@@ -127,49 +128,7 @@ export const PLAN_SIM_SCRIPT: PlanAction[] = [
     tags: ['08:30 開館'],
     placeId: 'attr-chikanlou',
     lat: 23.0009, lng: 120.2024,
-    children: [
-      {
-        id: 'stop-chikanlou', name: '赤崁樓',
-        desc: '荷蘭時期普羅民遮城遺址，紅磚拱廊與燕尾脊並存，是台南地標之一。',
-        thumbBg: 'linear-gradient(135deg, #C4956A, #8B3A2F)', thumbIcon: '🏯',
-        placeId: 'attr-chikanlou', lat: 23.0009, lng: 120.2024,
-      },
-      {
-        id: 'stop-datianhou', name: '祀典大天后宮',
-        desc: '1663年創建，原明寧靖王府邸，全台唯一官建列入祀典的媽祖廟，國定古蹟。',
-        thumbBg: 'linear-gradient(135deg, #B85C4A, #8B3A2F)', thumbIcon: '⛩️',
-        placeId: 'attr-datianhou', lat: 22.9966, lng: 120.2016,
-      },
-      {
-        id: 'stop-wumiao-aiyu', name: '武廟愛玉',
-        desc: '祀典武廟廟埕旁的老字號愛玉冰攤，純手工洗愛玉，酸甜檸檬愛玉是招牌。',
-        thumbBg: 'linear-gradient(135deg, #C4B15A, #8B7A2F)', thumbIcon: '🍧',
-        placeId: 'attr-wumiao-aiyu', lat: 23.0007, lng: 120.2025,
-      },
-      // stop-fenghuangjuan——2026-10 使用者明確要求「鳳凰卷也是」:原本
-      // 獨立一筆 add_stop(見下方 git 歷史),併入這個主題點的子景點。
-      {
-        id: 'stop-fenghuangjuan', name: '日安良食鳳凰卷',
-        desc: '永福路老字號糕餅鋪，鳳凰卷酥皮薄脆內餡濃郁，是府城傳統伴手禮之一。',
-        thumbBg: 'linear-gradient(135deg, #D9B87D, #A67C4A)', thumbIcon: '🥐',
-        placeId: 'attr-riann-fenghuangjuan', lat: 23.0008, lng: 120.2026,
-      },
-      // stop-wumiao/stop-wintermelon——2026-10 使用者明確要求「武廟
-      // 冬瓜茶都是」:原本兩筆獨立 add_stop(見下方 git 歷史),併入這個
-      // 主題點的子景點。
-      {
-        id: 'stop-wumiao', name: '祀典武廟',
-        desc: '全台祀典關帝廟，國定古蹟，紅牆是「出磚入石」砌法代表案例。',
-        thumbBg: 'linear-gradient(135deg, #C0604A, #8B3A2F)', thumbIcon: '⛩️',
-        placeId: 'attr-wumiao', lat: 22.9966, lng: 120.2022,
-      },
-      {
-        id: 'stop-wintermelon', name: '義豐冬瓜茶',
-        desc: '永福路百年老店，古法熬煮冬瓜磚現煮冬瓜茶，逛廟後解渴的在地首選。',
-        thumbBg: 'linear-gradient(135deg, #B8934A, #6B4A2E)', thumbIcon: '🥤',
-        placeId: 'attr-yifeng-wintermelon', lat: 23.0005, lng: 120.2023,
-      },
-    ],
+    places: ['attr-chikanlou', 'attr-datianhou', 'attr-wumiao-aiyu', 'attr-riann-fenghuangjuan', 'attr-wumiao', 'attr-yifeng-wintermelon'],
   },
   // note-reconsider——2026-10 使用者明確要求併入主題點的三則備註(原本
   // 各自掛在 stop-datianhou/stop-wumiao/stop-wintermelon 身上)合併成
@@ -190,12 +149,12 @@ export const PLAN_SIM_SCRIPT: PlanAction[] = [
   // 的狀態跟地點集合是不一樣的,原本的卡片要換成是多個小格子的樣子」:
   // 原本單一地點的「阿堂鹹粥」改成候選卡(candidateCards: true,見
   // planTimeline.ts PlanNodeData.candidateCards 的完整說明)。跟既有的
-  // 「主題點」(children 但 candidateCards 省略,例如孔廟+孔廟商圈合併
+  // 「主題點」(places 但 candidateCards 省略,例如孔廟+孔廟商圈合併
   // 的「孔廟周邊」)不是同一種卡片外觀——主題點是一張正常卡片(時間/
   // 名稱/描述齊全)底下再附一排子景點 chip,候選卡則是整張卡片完全
   // 不顯示 time/name/desc,直接是並列的候選格子本身(見
   // HorizontalPlanTimeline.tsx candidateCards 渲染分支的完整說明)。
-  // 候選資料仍共用 children 這個既有欄位(阿堂鹹粥本身+新增的福記肉圓
+  // 候選資料仍共用 places 這個欄位(阿堂鹹粥本身+新增的福記肉圓
   // attr-fuji-meatball,見 attractionPool.ts 該筆的完整說明),只是
   // candidateCards 這個旗標切換了卡片要用哪一種方式呈現這份資料。
   {
@@ -205,28 +164,12 @@ export const PLAN_SIM_SCRIPT: PlanAction[] = [
     placeId: 'attr-atang',
     lat: 22.9976, lng: 120.1975,
     candidateCards: true,
-    children: [
-      {
-        id: 'stop-lunch-atang', name: '阿堂鹹粥',
-        desc: '虱目魚粥與土魠魚羹的在地經典早午餐店，用餐時間常需排隊。',
-        thumbBg: 'linear-gradient(135deg, #D9A97D, #C4956A)', thumbIcon: '🍚',
-        placeId: 'attr-atang', lat: 22.9976, lng: 120.1975,
-      },
-      // farFromNext: true——2026-10 使用者明確要求「用福記肉圓做看看」
-      // 示範「出現選擇時,有比較遠的行程時,要有一個標誌讓使用者知道,
-      // 可能需要調整後續時間」(見 PlanThemeChild.farFromNext 的完整
-      // 說明)。福記肉圓(22.9969, 120.1981)到下一站神農街(22.9987,
-      // 120.1971)直線距離約 225m,比另一個候選阿堂鹹粥(22.9976,
-      // 120.1975)到神農街的約 129m 遠將近一倍,適合當這個提示的示範
-      // 案例。
-      {
-        id: 'stop-lunch-fuji', name: '福記肉圓',
-        desc: '傳承多代的在地肉圓老店，外皮Q彈內餡扎實，淋上特調醬汁是台南經典小吃代表之一。',
-        thumbBg: 'linear-gradient(135deg, #C97B4A, #8B4A2F)', thumbIcon: '🥟',
-        placeId: 'attr-fuji-meatball', lat: 22.9969, lng: 120.1981,
-        farFromNext: true,
-      },
-    ],
+    places: ['attr-atang', 'attr-fuji-meatball'],
+    // farFromNext——2026-10 使用者明確要求示範「出現選擇時,有比較遠的行程時,要有一個標誌讓使用者知道,
+    // 可能需要調整後續時間」。福記肉圓(22.9969, 120.1981)到下一站神農街(22.9987, 120.1971)直線距離約 225m,
+    // 比阿堂鹹粥(22.9976, 120.1975)到神農街的約 129m 遠將近一倍,適合當示範案例。
+    // 子景點改成純 id 之後,這個旗標由節點上的 farFromNext id 清單表達(見 PlanNodeData.farFromNext)。
+    farFromNext: ['attr-fuji-meatball'],
   },
   // stop-shennong——使用者明確要求「改為兩日遊 第一天下午去神農街」,
   // 原本排在收尾「晚上」時段,移到 Day 1,接在午餐之後,對應
@@ -243,7 +186,7 @@ export const PLAN_SIM_SCRIPT: PlanAction[] = [
   // attractionPool.ts 的 attr-confucius-temple/
   // attr-confucius-temple-cultural-zone,理由見檔頭「移除安平加入孔廟」
   // 「加入孔廟商圈」的完整說明),合併成一筆「孔廟周邊」主題卡,兩個
-  // 景點收進 children(見 planTimeline.ts PlanNodeData.children/
+  // 景點收進 places(見 planTimeline.ts PlanNodeData.places/
   // PlanThemeChild 的完整說明)。duration 抓兩站原本各自停留時間加總的
   // 概估值(1h + 1h ≈ 2h)。
   {
@@ -253,20 +196,7 @@ export const PLAN_SIM_SCRIPT: PlanAction[] = [
     tags: ['免費開放參觀'],
     placeId: 'attr-confucius-temple',
     lat: 22.9908, lng: 120.2035,
-    children: [
-      {
-        id: 'stop-confucius-temple', name: '孔廟',
-        desc: '1665 年創建的全台首學，紅牆綠瓦與百年老樹環繞，是台南人文歷史的重要地標。',
-        thumbBg: 'linear-gradient(135deg, #8B7A2F, #4A3626)', thumbIcon: '🏛️',
-        placeId: 'attr-confucius-temple', lat: 22.9908, lng: 120.2035,
-      },
-      {
-        id: 'stop-confucius-zone', name: '孔廟商圈',
-        desc: '府中街一帶的文創聚落，老屋改建的選物店、手作工坊與小吃攤交錯，適合孔廟後接著散步逛街。',
-        thumbBg: 'linear-gradient(135deg, #C4956A, #8B7A2F)', thumbIcon: '🛍️',
-        placeId: 'attr-confucius-temple-cultural-zone', lat: 22.9902, lng: 120.2039,
-      },
-    ],
+    places: ['attr-confucius-temple', 'attr-confucius-temple-cultural-zone'],
   },
   { type: 'add_note', id: 'note-3', afterId: 'stop-confucius-area', category: 'weather', text: '下午降雨機率 60%，園區內有不少樹蔭可以躲雨' },
   // stop-literature-museum/stop-fire-museum——使用者明確要求「吃完中飯

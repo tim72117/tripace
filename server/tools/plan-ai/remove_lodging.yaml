@@ -1,0 +1,29 @@
+# onagent 平台上 plan-ai-timeline app 的 remove_lodging tool 定義——見
+# search_attraction.yaml 開頭的完整說明(app 背景、新版 CLI 格式規則、
+# 為何拆成獨立檔案)。
+#
+# 住宿是獨立於各天景點的資料(見 set_lodging.yaml),移除一筆旅館用這支(不是 remove_attraction)。
+# description 平台上限 600 字元,改完請重新估算長度。
+#
+# 推送(需要 onagent CLI,見 .claude/skills/onagent-cli-setup):
+#   onagent tool create -api <onagent 後端 URL> plan-ai-timeline server/tools/plan-ai/remove_lodging.yaml
+
+name: remove_lodging
+description: >-
+  移除一筆住宿（旅館）。lodgingId 是 list_itinerary 回傳的 lodgings 裡
+  該旅館的 id，不是 placeId，也不是景點節點 id。住宿是獨立於各天景點的
+  資料，要移除住宿用這支，不要用 remove_attraction。
+
+  呼叫前先 list_itinerary 確認目前有哪些旅館。id 不存在會回傳錯誤，請
+  查現況後重試，不要用相同參數再呼叫。成功回傳
+  {"removed":true,"lodgingId"}。只想改旅館住的天數時用 set_lodging，不需要
+  先移除。
+kind: query
+parameters:
+  type: object
+  properties:
+    lodgingId:
+      type: string
+      description: 要移除的旅館 id（list_itinerary 的 lodgings 裡的 id）。
+  required:
+    - lodgingId

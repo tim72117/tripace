@@ -19,6 +19,7 @@ import { LivePlanLayer } from './LivePlanLayer'
 const cfg = { baseURL: 'http://x', token: 't' }
 const tripPlanProps = {
   onStopsChange: vi.fn(),
+  onRouteSegmentsChange: vi.fn(),
   onSelectedStopChange: vi.fn(),
   onHoverStopChange: vi.fn(),
   onHoverTransitChange: vi.fn(),
@@ -34,6 +35,7 @@ describe('LivePlanLayer(登入後手機版)', () => {
     await waitFor(() => expect(received.cfg).toBe(cfg))
     expect(received.dataSource).toBe(getPlanAiApiDataSource(cfg))
     expect(received.store).toBe(localStoragePlanTimelineStore)
+    expect('conversationStore' in received).toBe(false) // 對話純記憶體,不再傳 store
     expect('horizontalTimeline' in received).toBe(false)
     expect(received.selectedStopId).toBe('s1')
   })

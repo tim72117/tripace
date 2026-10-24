@@ -88,7 +88,7 @@ describe('usePlanMapDrawing', () => {
     theme?: string | null
     currentPosition: unknown
     stopDots: Record<string, unknown>
-    routeLine: { enabled: boolean }
+    routeSegments?: unknown
     tripEntries?: unknown
     searchResults?: unknown
   }
@@ -121,11 +121,12 @@ describe('usePlanMapDrawing', () => {
     expect(first).toEqual([])
   })
 
-  it('showPlanRouteLine 變成 routeLine.enabled,預設 false', () => {
+  it('routeSegments 原樣交給統一繪製層;沒傳就是 undefined(不畫線)', () => {
     renderHook(() => usePlanMapDrawing({ ...map, stops }))
-    expect(last().routeLine).toEqual({ enabled: false })
-    renderHook(() => usePlanMapDrawing({ ...map, stops, showPlanRouteLine: true }))
-    expect(last().routeLine).toEqual({ enabled: true })
+    expect(last().routeSegments).toBeUndefined()
+    const segments = [{ id: 'a->b', from: { lat: 1, lng: 2 }, to: { lat: 3, lng: 4 } }]
+    renderHook(() => usePlanMapDrawing({ ...map, stops, routeSegments: segments }))
+    expect(last().routeSegments).toBe(segments)
   })
 
   it('目前位置:沒傳(或 undefined)就是 null(不畫藍點)', () => {

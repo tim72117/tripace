@@ -52,11 +52,14 @@ describe('transitHoverLineLayer + useMapDrawLayer', () => {
     setup({ fromId: 'a', toId: 'b' })
     expect(visible()).toHaveLength(1)
     expect(visible()[0].options).toMatchObject({
-      path: [{ lat: 1, lng: 2 }, { lat: 3, lng: 4 }],
       zIndex: GROUP_Z.transitHoverLine,
       strokeOpacity: 0,
       clickable: false,
     })
+    // 路徑是弧線取樣:兩端是站點本身(形狀由 routeArc.test 驗)。
+    const path = visible()[0].options.path as { lat: number; lng: number }[]
+    expect(path[0]).toEqual({ lat: 1, lng: 2 })
+    expect(path[path.length - 1]).toEqual({ lat: 3, lng: 4 })
   })
 
   it('hover 離開:線被移除', () => {
@@ -71,6 +74,8 @@ describe('transitHoverLineLayer + useMapDrawLayer', () => {
     hook.rerender(render({ fromId: 'b', toId: 'c' }))
     expect(FakePolyline.all).toHaveLength(1)
     expect(visible()[0]).toBe(first)
-    expect(first.options.path).toEqual([{ lat: 3, lng: 4 }, { lat: 5, lng: 6 }])
+    const path = first.options.path as { lat: number; lng: number }[]
+    expect(path[0]).toEqual({ lat: 3, lng: 4 })
+    expect(path[path.length - 1]).toEqual({ lat: 5, lng: 6 })
   })
 })

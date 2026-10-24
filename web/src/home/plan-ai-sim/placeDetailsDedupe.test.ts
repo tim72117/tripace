@@ -19,7 +19,9 @@ import {
 import { createPlanAiApiDataSource } from './planAiApiDataSource'
 import { createPlanAiPublicDataSource } from './planAiPublicDataSource'
 
-type Details = { found: boolean; name?: string; googlePhotoUrls?: string[]; photoRefreshPending?: boolean }
+type Details = { found: boolean; name?: string; googlePhotoUrls?: string[]; photoRefreshPending?: boolean; lat?: number; lng?: number }
+// 會被記憶的結果必須帶可用座標(規則第 6 點),測試資料一律附上。
+const COORDS = { lat: 25, lng: 121 }
 
 function deferred<T>() {
   let resolve!: (v: T) => void
@@ -51,7 +53,7 @@ describe('PlaceDetailsDedupe(隔離)', () => {
 
   it('已完成結果記憶:第二次不發請求', async () => {
     const d = new PlaceDetailsDedupe()
-    const fetcher = vi.fn(async () => ({ found: true, name: 'X' }))
+    const fetcher = vi.fn(async () => ({ found: true, name: 'X', ...COORDS }))
     await d.get('p1', fetcher)
     const r = await d.get('p1', fetcher)
     expect(fetcher).toHaveBeenCalledTimes(1)
@@ -78,7 +80,7 @@ describe('PlaceDetailsDedupe(隔離)', () => {
     def.reject(new Error('boom'))
     await expect(a).rejects.toThrow('boom')
     await expect(b).rejects.toThrow('boom')
-    const f2 = vi.fn(async () => ({ found: true }))
+    const f2 = vi.fn(async () => ({ found: true, ...COORDS }))
     await d.get('p1', f2)
     expect(f2).toHaveBeenCalledTimes(1)
   })
@@ -93,7 +95,7 @@ describe('PlaceDetailsDedupe(隔離)', () => {
     def.resolve({ found: true, googlePhotoUrls: [], photoRefreshPending: true })
     await Promise.all([a, b])
 
-    const f2 = vi.fn(async (): Promise<Details> => ({ found: true, googlePhotoUrls: ['u.jpg'] }))
+    const f2 = vi.fn(async (): Promise<Details> => ({ found: true, googlePhotoUrls: ['u.jpg'], ...COORDS }))
     const r = await d.get('p1', f2)
     expect(f2).toHaveBeenCalledTimes(1) // 重新發請求
     expect(r.googlePhotoUrls).toEqual(['u.jpg'])
@@ -104,7 +106,7 @@ describe('PlaceDetailsDedupe(隔離)', () => {
 
   it('photoRefreshPending:false 照常記憶', async () => {
     const d = new PlaceDetailsDedupe()
-    const f = vi.fn(async (): Promise<Details> => ({ found: true, photoRefreshPending: false }))
+    const f = vi.fn(async (): Promise<Details> => ({ found: true, photoRefreshPending: false, ...COORDS }))
     await d.get('p1', f)
     await d.get('p1', f)
     expect(f).toHaveBeenCalledTimes(1)
@@ -118,9 +120,25 @@ describe('PlaceDetailsDedupe(隔離)', () => {
     expect(f).toHaveBeenCalledTimes(2)
   })
 
+  it('found:true 但沒有可用座標(lat/lng 缺)不記憶:重試能真的重發、拿到有座標的結果', async () => {
+    const d = new PlaceDetailsDedupe()
+    const f = vi.fn<() => Promise<Details & { lat?: number; lng?: number }>>()
+      .mockResolvedValueOnce({ found: true, name: 'X' })
+      .mockResolvedValueOnce({ found: true, name: 'X', lat: 1 })
+      .mockResolvedValueOnce({ found: true, name: 'X', lat: 1, lng: 2 })
+    expect((await d.get('p1', f)).lat).toBeUndefined()
+    expect((await d.get('p1', f)).lng).toBeUndefined() // 只有 lat 也不算可用座標
+    const r = await d.get('p1', f)
+    expect(f).toHaveBeenCalledTimes(3)
+    expect(r).toMatchObject({ lat: 1, lng: 2 })
+    // 有座標之後才記憶
+    await d.get('p1', f)
+    expect(f).toHaveBeenCalledTimes(3)
+  })
+
   it('不同 placeId 互不影響', async () => {
     const d = new PlaceDetailsDedupe()
-    const f = vi.fn(async () => ({ found: true }))
+    const f = vi.fn(async () => ({ found: true, ...COORDS }))
     await Promise.all([d.get('a', f), d.get('b', f)])
     expect(f).toHaveBeenCalledTimes(2)
     await Promise.all([d.get('a', f), d.get('b', f)])
@@ -129,7 +147,7 @@ describe('PlaceDetailsDedupe(隔離)', () => {
 
   it('上限淘汰:超過 maxEntries 淘汰最舊的', async () => {
     const d = new PlaceDetailsDedupe({ maxEntries: 2 })
-    const f = vi.fn(async () => ({ found: true }))
+    const f = vi.fn(async () => ({ found: true, ...COORDS }))
     await d.get('a', f)
     await d.get('b', f)
     await d.get('c', f) // 淘汰 a
@@ -143,7 +161,7 @@ describe('PlaceDetailsDedupe(隔離)', () => {
 
   it('有效期過期後重發', async () => {
     const d = new PlaceDetailsDedupe()
-    const f = vi.fn(async () => ({ found: true }))
+    const f = vi.fn(async () => ({ found: true, ...COORDS }))
     await d.get('a', f)
     vi.advanceTimersByTime(PLACE_DETAILS_TTL_MS - 1)
     await d.get('a', f)
@@ -155,7 +173,7 @@ describe('PlaceDetailsDedupe(隔離)', () => {
 
   it('clear() 清掉記憶與進行中;clear 前發出的請求完成後不寫回', async () => {
     const d = new PlaceDetailsDedupe()
-    const f = vi.fn(async () => ({ found: true }))
+    const f = vi.fn(async () => ({ found: true, ...COORDS }))
     await d.get('a', f)
     d.clear()
     await d.get('a', f)
@@ -167,7 +185,7 @@ describe('PlaceDetailsDedupe(隔離)', () => {
     d.clear()
     def.resolve({ found: true })
     await p
-    const f3 = vi.fn(async () => ({ found: true }))
+    const f3 = vi.fn(async () => ({ found: true, ...COORDS }))
     await d.get('z', f3)
     expect(f3).toHaveBeenCalledTimes(1)
   })
@@ -200,7 +218,7 @@ describe('資料來源工廠(隔離)', () => {
 
 describe('合併情境', () => {
   it('詢問頁並發查 N 個候選,確認後時間軸(另一個實例)再查其中幾個:總請求數 = 不同 placeId 數', async () => {
-    apiMock.fetchPlanAiPlaceDetailsAny.mockImplementation(async (_cfg: unknown, id: string) => ({ found: true, name: id }))
+    apiMock.fetchPlanAiPlaceDetailsAny.mockImplementation(async (_cfg: unknown, id: string) => ({ found: true, name: id, ...COORDS }))
     const askDs = createPlanAiPublicDataSource('http://x')
     const timelineDs = createPlanAiPublicDataSource('http://x') // 不同實例,模擬 plan-ai-sim/Content / LivePlanLayer
     const ids = ['a', 'b', 'c', 'd', 'e']
@@ -212,7 +230,7 @@ describe('合併情境', () => {
   it('第一次 pending、稍後再查拿到照片', async () => {
     apiMock.fetchPlanAiPlaceDetailsAny
       .mockResolvedValueOnce({ found: true, googlePhotoUrls: [], photoRefreshPending: true })
-      .mockResolvedValueOnce({ found: true, googlePhotoUrls: ['p.jpg'] })
+      .mockResolvedValueOnce({ found: true, googlePhotoUrls: ['p.jpg'], ...COORDS })
     const ds = createPlanAiApiDataSource({ baseURL: 'http://x', token: 't' })
     const first = await ds.placeDetails('p1')
     expect((first as Details).photoRefreshPending).toBe(true)

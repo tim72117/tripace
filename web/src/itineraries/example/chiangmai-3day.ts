@@ -54,6 +54,12 @@ import type { SampleItinerary } from '../types'
 // 古城區附近——使用者確認這是同一段住宿安排的正確名稱,取代原本
 // Day 5(12/7)入住的 MIND Villa,checkOutDay 設為 7(住到 12/9)。
 //
+// 2026-10-24(住宿獨立存放):住宿不再是天裡 kind 為「住宿」的節點與 checkOutDay,改寫在 timeline.lodgings——
+// 每筆旅館記錄停留的天 id(含入住日與退房日),視圖在入住日最上面畫一條住宿橫幅。
+// Moose Hotel Nimman 住 Day 1–2、大象保護園區住 Day 3–4、Hostel One Art & Gallery 住 Day 5–7。
+// 旅館座標與名稱由 placeId 執行時查:目前只有大象保護園區有 placeId,另外兩間沒有 placeId,
+// 只顯示橫幅(用 name),地圖上不會有圓點,補上 placeId 後才會出現。
+//
 // mapStyle: 'simple'——沿用上一版的既有說明:地圖基底展示版面,簡化版
 // Google 地圖樣式,沒有搭配特定主題裝飾。座標全部用
 // tripace-cli geocode 查過(-region th):「大象保護園區」統一用「大象
@@ -64,47 +70,85 @@ const itinerary: SampleItinerary = {
   id: 'chiangmai-3day',
   title: '清邁深度十日遊',
   region: '泰國・清邁',
-  days: 10,
   categories: ['文青', '美食', '自然景觀'],
   summary: '從尼曼區的悠閒落腳，到大象保護園區的三天深度體驗，再到古城市場、瀑布、僧侶步道與南奔一日遊——放慢腳步，走進清邁的日常生活感。',
   addedAt: '2026-10-22',
   mapStyle: 'simple',
-  stops: [
-    // Day 1(12/3,四)~Day 2(12/4,五)——入住 Moose Hotel Nimman,合併成
-    // 一筆,checkOutDay: 2 表示住到 Day 2(見上方第四輪改版說明)。
-    { day: 1, time: '15:00', duration: '過夜', name: 'Moose Hotel Nimman', kind: '住宿', desc: '落腳尼曼區,附近就是文青咖啡廳與設計小店聚集的街區', lat: 18.7995128, lng: 98.9667643, checkOutDay: 2 },
-    // Day 3(12/5,六)——抵達大象保護園區,下午先參加活動,再入住園區本身
-    // (大象自然公園本身提供現場住宿形式,不是另一處獨立的旅館,故住宿
-    // 站點沿用同一組座標)。
-    { day: 3, time: '14:00', duration: '3h', name: '大象保護園區', kind: '活動', desc: '從清邁市區前往,友善保育形式的大象園區,不騎乘', placeId: 'ChIJj21Ja6g62jARFSuw0w8gLNs', transit: { mode: '開車', minutes: 90, distance: '58km', note: '從清邁市區包車前往,車程約 1.5 小時' }, lat: 19.2171729, lng: 98.8600380 },
-    // Day 3-4(12/5~12/6)——園區住宿,合併成一筆,checkOutDay: 4。
-    { day: 3, time: '18:00', duration: '過夜', name: '大象保護園區', kind: '住宿', desc: '園區本身提供現場住宿,連住兩晚', placeId: 'ChIJj21Ja6g62jARFSuw0w8gLNs', lat: 19.2171729, lng: 98.8600380, checkOutDay: 4 },
-    // Day 4(12/6,日)——整天都在園區。
-    { day: 4, time: '09:00', duration: '8h', name: '大象保護園區', kind: '活動', desc: '餵食、洗澡、近距離互動,整天深度體驗', placeId: 'ChIJj21Ja6g62jARFSuw0w8gLNs', lat: 19.2171729, lng: 98.8600380 },
-    // Day 5(12/7,一)——上午收尾園區行程,轉往市區入住,下午逛市場,晚上古城漫步。
-    { day: 5, time: '09:00', duration: '2h', name: '大象保護園區', kind: '活動', desc: '最後一個上午,結束三天的保護園區行程', placeId: 'ChIJj21Ja6g62jARFSuw0w8gLNs', lat: 19.2171729, lng: 98.8600380 },
-    { day: 5, time: '13:00', duration: '1.5h', name: 'Waroros Market', kind: '購物', desc: '清邁最大的傳統市場之一,緊鄰湄平河', placeId: 'ChIJUXF8Lzo72jARQGy1_Bh_wCQ', transit: { mode: '開車', minutes: 80, distance: '58km', note: '園區結束後包車回市區' }, lat: 18.7901454, lng: 99.0007242 },
-    { day: 5, time: '15:00', duration: '1.5h', name: 'Muang Mai Market 泰國傳統市場', kind: '景點', desc: '走訪傳統市場,觀察當地居民的日常生活與消費方式,認識泰國常見的水果、蔬菜、香料及在地食材,並與台灣的市場文化及農產品比較', placeId: 'ChIJDy9D4Ls62jARdI3rznLcqEY', lat: 18.7964702, lng: 98.9987861 },
-    { day: 5, time: '19:00', duration: '1.5h', name: '古城漫步', kind: '景點', desc: '晚餐後若還有體力,在古城內隨興散步', placeId: 'ChIJdcghNKI62jAR9iY55KuPO50', lat: 18.7878054, lng: 98.9933677 },
-    // 入住圖卡放在當天最後(使用者明確要求「入住的圖卡都放在當天最後」)。
-    // Day 5-7(12/7~12/9)——Hostel One Art & Gallery,合併成一筆,
-    // checkOutDay: 7(見上方第五輪改版說明)。
-    { day: 5, time: '20:30', duration: '過夜', name: 'Hostel One Art & Gallery', kind: '住宿', desc: '逛完市場、古城漫步後回來辦理入住,古城區內的藝廊風青旅', lat: 18.7832655, lng: 98.9825892, checkOutDay: 7 },
-    // Day 6(12/8,二)——早上瀑布,下午藝術村,晚上再逛一次古城。
-    { day: 6, time: '08:00', duration: '3h', name: '卜阿潼瀑布(黏黏瀑布)', kind: '景點', desc: '石灰岩質地特殊,踩在瀑布岩面上不會滑,可以直接攀爬戲水', transit: { mode: '開車', minutes: 80, distance: '62km', note: '建議包車或租車,單程約 1 小時 20 分' }, placeId: 'ChIJu1M68-cb2jARc3Tlb3ICDkw', lat: 19.0694446, lng: 99.079073 },
-    { day: 6, time: '14:00', duration: '2h', name: 'Baan Kang Wat', kind: '景點', desc: '藝術村社區,觀察在地藝術家的創作與藝術欣賞', transit: { mode: '開車', minutes: 60, distance: '35km' }, lat: 18.7761906, lng: 98.9483622 },
-    { day: 6, time: '19:00', duration: '1.5h', name: '古城漫步', kind: '景點', desc: '晚餐後在古城內隨興散步', placeId: 'ChIJdcghNKI62jAR9iY55KuPO50', lat: 18.7878054, lng: 98.9933677 },
-    // Day 7(12/9,三)——下午湄平河遊船,晚上河畔晚餐(避開市區塞車時段)。
-    { day: 7, time: '15:00', duration: '2h', name: '湄平河遊河', kind: '景點', desc: '搭船遊湄平河,從水上欣賞清邁市區風光', lat: 18.7806926, lng: 99.0047984 },
-    { day: 7, time: '18:00', duration: '1.5h', name: '湄平河畔晚餐', kind: '美食', desc: '提早用餐,避開市區晚間塞車時段', lat: 18.7806926, lng: 99.0047984 },
-    // Day 8(12/10,四)——南奔一日遊,跨區域一整天行程。
-    { day: 8, time: '09:00', duration: '8h', name: '南奔一日遊', kind: '景點', desc: '清邁南邊的古老府城,孟王朝發源地,步調比清邁市區更悠閒', transit: { mode: '開車', minutes: 40, distance: '25km', note: '建議包車,單程約 40 分' }, lat: 18.5744357, lng: 99.0036972 },
-    // Day 9(12/11,五)——早上僧侶步道,下午回民宿,晚上尼曼區。
-    { day: 9, time: '08:00', duration: '3h', name: 'Wat Pha Lat 僧侶步道', kind: '景點', desc: '素貼山半山腰的叢林步道,沿途經過瀑布與小寺廟,僧侶日常行走的路線', transit: { mode: '開車', minutes: 45, distance: '26km' }, lat: 18.79632, lng: 98.94347 },
-    { day: 9, time: '18:00', duration: '2h', name: '尼曼區漫步', kind: '購物', desc: '文青咖啡廳與設計小店聚集的時髦街區,晚上逛街吃飯', transit: { mode: '公車', minutes: 15, distance: '2.6km', note: '搭雙條車(紅色小巴)' }, placeId: 'ChIJSeLRHWM62jARNbDigb8iLEo', lat: 18.8002767, lng: 98.9676373 },
-    // Day 10(12/12,六)——早上文創市集。
-    { day: 10, time: '09:00', duration: '2h', name: '真心文創市集', kind: '購物', desc: 'Jing Jai Market,假日限定的文創市集,在地設計小物與有機農產', transit: { mode: '公車', minutes: 15, distance: '3.0km', note: '雙條車或叫車' }, lat: 18.806253, lng: 98.9953026 },
-  ],
+  timeline: {
+    days: [
+      {
+        id: 'chiangmai-3day-d1',
+        nodes: [
+        ],
+      },
+      {
+        id: 'chiangmai-3day-d2',
+        nodes: [
+
+        ],
+      },
+      {
+        id: 'chiangmai-3day-d3',
+        nodes: [
+        { id: 'chiangmai-3day-s1', type: 'stop', time: '14:00', duration: '3h', name: '大象保護園區', kind: '活動', desc: '從清邁市區前往,友善保育形式的大象園區,不騎乘', placeId: 'ChIJj21Ja6g62jARFSuw0w8gLNs', transitFromPrev: { mode: '開車', minutes: 90, distance: '58km', note: '從清邁市區包車前往,車程約 1.5 小時' }, lat: 19.2171729, lng: 98.8600380 },
+        ],
+      },
+      {
+        id: 'chiangmai-3day-d4',
+        nodes: [
+        { id: 'chiangmai-3day-s3', type: 'stop', time: '09:00', duration: '8h', name: '大象保護園區', kind: '活動', desc: '餵食、洗澡、近距離互動,整天深度體驗', placeId: 'ChIJj21Ja6g62jARFSuw0w8gLNs', lat: 19.2171729, lng: 98.8600380 },
+        ],
+      },
+      {
+        id: 'chiangmai-3day-d5',
+        nodes: [
+        { id: 'chiangmai-3day-s4', type: 'stop', time: '09:00', duration: '2h', name: '大象保護園區', kind: '活動', desc: '最後一個上午,結束三天的保護園區行程', placeId: 'ChIJj21Ja6g62jARFSuw0w8gLNs', lat: 19.2171729, lng: 98.8600380 },
+          { id: 'chiangmai-3day-s5', type: 'stop', time: '13:00', duration: '1.5h', name: 'Waroros Market', kind: '購物', desc: '清邁最大的傳統市場之一,緊鄰湄平河', placeId: 'ChIJUXF8Lzo72jARQGy1_Bh_wCQ', transitFromPrev: { mode: '開車', minutes: 80, distance: '58km', note: '園區結束後包車回市區' }, lat: 18.7901454, lng: 99.0007242 },
+          { id: 'chiangmai-3day-s6', type: 'stop', time: '15:00', duration: '1.5h', name: 'Muang Mai Market 泰國傳統市場', kind: '景點', desc: '走訪傳統市場,觀察當地居民的日常生活與消費方式,認識泰國常見的水果、蔬菜、香料及在地食材,並與台灣的市場文化及農產品比較', placeId: 'ChIJDy9D4Ls62jARdI3rznLcqEY', lat: 18.7964702, lng: 98.9987861 },
+          { id: 'chiangmai-3day-s7', type: 'stop', time: '19:00', duration: '1.5h', name: '古城漫步', kind: '景點', desc: '晚餐後若還有體力,在古城內隨興散步', placeId: 'ChIJdcghNKI62jAR9iY55KuPO50', lat: 18.7878054, lng: 98.9933677 },
+        ],
+      },
+      {
+        id: 'chiangmai-3day-d6',
+        nodes: [
+        { id: 'chiangmai-3day-s9', type: 'stop', time: '08:00', duration: '3h', name: '卜阿潼瀑布(黏黏瀑布)', kind: '景點', desc: '石灰岩質地特殊,踩在瀑布岩面上不會滑,可以直接攀爬戲水', transitFromPrev: { mode: '開車', minutes: 80, distance: '62km', note: '建議包車或租車,單程約 1 小時 20 分' }, placeId: 'ChIJu1M68-cb2jARc3Tlb3ICDkw', lat: 19.0694446, lng: 99.079073 },
+          { id: 'chiangmai-3day-s10', type: 'stop', time: '14:00', duration: '2h', name: 'Baan Kang Wat', kind: '景點', desc: '藝術村社區,觀察在地藝術家的創作與藝術欣賞', transitFromPrev: { mode: '開車', minutes: 60, distance: '35km' }, lat: 18.7761906, lng: 98.9483622 },
+          { id: 'chiangmai-3day-s11', type: 'stop', time: '19:00', duration: '1.5h', name: '古城漫步', kind: '景點', desc: '晚餐後在古城內隨興散步', placeId: 'ChIJdcghNKI62jAR9iY55KuPO50', lat: 18.7878054, lng: 98.9933677 },
+        ],
+      },
+      {
+        id: 'chiangmai-3day-d7',
+        nodes: [
+        { id: 'chiangmai-3day-s12', type: 'stop', time: '15:00', duration: '2h', name: '湄平河遊河', kind: '景點', desc: '搭船遊湄平河,從水上欣賞清邁市區風光', lat: 18.7806926, lng: 99.0047984 },
+          { id: 'chiangmai-3day-s13', type: 'stop', time: '18:00', duration: '1.5h', name: '湄平河畔晚餐', kind: '美食', desc: '提早用餐,避開市區晚間塞車時段', lat: 18.7806926, lng: 99.0047984 },
+        ],
+      },
+      {
+        id: 'chiangmai-3day-d8',
+        nodes: [
+        { id: 'chiangmai-3day-s14', type: 'stop', time: '09:00', duration: '8h', name: '南奔一日遊', kind: '景點', desc: '清邁南邊的古老府城,孟王朝發源地,步調比清邁市區更悠閒', transitFromPrev: { mode: '開車', minutes: 40, distance: '25km', note: '建議包車,單程約 40 分' }, lat: 18.5744357, lng: 99.0036972 },
+        ],
+      },
+      {
+        id: 'chiangmai-3day-d9',
+        nodes: [
+        { id: 'chiangmai-3day-s15', type: 'stop', time: '08:00', duration: '3h', name: 'Wat Pha Lat 僧侶步道', kind: '景點', desc: '素貼山半山腰的叢林步道,沿途經過瀑布與小寺廟,僧侶日常行走的路線', transitFromPrev: { mode: '開車', minutes: 45, distance: '26km' }, lat: 18.79632, lng: 98.94347 },
+          { id: 'chiangmai-3day-s16', type: 'stop', time: '18:00', duration: '2h', name: '尼曼區漫步', kind: '購物', desc: '文青咖啡廳與設計小店聚集的時髦街區,晚上逛街吃飯', transitFromPrev: { mode: '公車', minutes: 15, distance: '2.6km', note: '搭雙條車(紅色小巴)' }, placeId: 'ChIJSeLRHWM62jARNbDigb8iLEo', lat: 18.8002767, lng: 98.9676373 },
+        ],
+      },
+      {
+        id: 'chiangmai-3day-d10',
+        nodes: [
+        { id: 'chiangmai-3day-s17', type: 'stop', time: '09:00', duration: '2h', name: '真心文創市集', kind: '購物', desc: 'Jing Jai Market,假日限定的文創市集,在地設計小物與有機農產', transitFromPrev: { mode: '公車', minutes: 15, distance: '3.0km', note: '雙條車或叫車' }, lat: 18.806253, lng: 98.9953026 },
+        ],
+      },
+    ],
+    lodgings: [
+      { id: 'chiangmai-3day-lodging-moose', placeId: 'ChIJR9KKTPA72jARvp8PqCWRLLU', name: 'Moose Hotel Nimman', dayIds: ['chiangmai-3day-d1', 'chiangmai-3day-d2'], note: { text: '落腳尼曼區,附近就是文青咖啡廳與設計小店聚集的街區' } },
+      { id: 'chiangmai-3day-lodging-elephant', placeId: 'ChIJj21Ja6g62jARFSuw0w8gLNs', name: '大象保護園區', dayIds: ['chiangmai-3day-d3', 'chiangmai-3day-d4'], note: { text: '園區本身提供現場住宿,連住兩晚' } },
+      { id: 'chiangmai-3day-lodging-hostelone', placeId: 'ChIJkYy1xu872jARmKjd06asdBI', name: 'Hostel One Art & Gallery', dayIds: ['chiangmai-3day-d5', 'chiangmai-3day-d6', 'chiangmai-3day-d7'], note: { text: '逛完市場、古城漫步後回來辦理入住,古城區內的藝廊風青旅' } },
+    ],
+  },
 }
 
 export default itinerary

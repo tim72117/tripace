@@ -1,9 +1,11 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { stopLookupFailed, type PlanNode, type NoteInfo, type PlanThemeChild, type TransitInfo } from '../../plan-core/planTimeline'
+import { listNodes, lodgingSpanLabel, lodgingsOf, lodgingsStartingOnDay, stopLookupFailed, withDay, type PlanLodging, type PlanNode, type PlanTimeline, type NoteInfo, type PlanThemeChild, type TransitInfo } from '../../plan-core/planTimeline'
 import type { AskPageInput, AskPageSelection } from '../../plan-core/askPageTools'
 import { AskPage } from './AskPage'
-import type { PlanAiDataSource } from './planAiDataSource'
-import { planAiFakeDataSource } from './planAiFakeDataSource'
+import { nodeStatusOf, type NodeStatusMap } from '../../plan-core/planNodeStatus'
+import { DEFAULT_NOTE_CATEGORY, NOTE_CATEGORY_META, TRANSIT_MODE_CHOICES } from '../../plan-core/planPresentation'
+import { LODGING_FALLBACK_NAME, resolveLodging, resolveNodeRefChildren } from '../../plan-core/useResolvedNodeRefs'
+import { usePlanData, useResolvedRefs } from '../../plan-core/PlanDataProvider'
 import styles from './HorizontalPlanTimeline.module.css'
 
 // ZOOM_OUT_ENABLED——2026-10 使用者先要求「讓時間尺有 zoom in/zoom out
@@ -53,7 +55,7 @@ const ZOOM_OUT_ENABLED = false
 // home/plan-ai-sim/Content.tsx 呼叫處的完整說明。
 //
 // 只畫 stop 節點:跟縱向 PlanTimelineView 不同,這個元件刻意不處理
-// section(Day 分隔)/message(對話訊息)這些節點類型本身的卡片——方案二
+// section(Day 標題)/message(對話訊息)這些節點類型本身的卡片——方案二
 // 設計稿本來就只聚焦在「站點卡片橫向滑動+時間尺」這個核心互動,訊息
 // 氣泡/分段標題硬塞進同一條橫向列只會讓時間尺的時間軸語意變得混亂
 // (這兩種節點沒有「停留時長」的概念)。Day 分界改成每張卡片自己帶一個
@@ -61,10 +63,10 @@ const ZOOM_OUT_ENABLED = false
 // 一個橫向卡位。
 
 export interface HorizontalPlanTimelineProps {
-  // steps——跟 home/plan-ai-sim/Content.tsx 的 PlanStep[]（toRenderList 產出的
-  // 扁平陣列）同一份資料,未經過濾/排序，這個元件自己只挑出 type ===
-  // 'stop' 的節點處理，其餘類型直接忽略（見上方檔頭說明）。
-  steps: PlanNode[]
+  // timeline——依天分組的時間軸本身(跟縱向 PlanTimelineView 的 timeline 同一個型別),這個元件自己依 timeline.days
+  // 挑出 type === 'stop' 的節點處理,其餘類型直接忽略（見上方檔頭說明）。空的天會補一張「空天佔位卡」,
+  // 它的站點 id 就是那一天的 PlanDay.id:選到空天時 onSelectStop 收到的是 day.id,selectedStopId 等於某個 day.id 就視為選了那一天。
+  timeline: PlanTimeline
   selectedStopId: string | null
   // onSelectStop——點卡片/時間尺、或橫向捲動偵測到新的置中卡片時觸發。
   // 取代縱向版本 onPanToStop/onHoverStop 的角色：呼叫端(home/plan-ai-sim/Content.tsx)
@@ -74,7 +76,7 @@ export interface HorizontalPlanTimelineProps {
   // 沒有滑鼠 hover 這件事，「捲到哪張卡」本身就等同「選取哪一站」。
   onSelectStop: (stopId: string) => void
   // onSelectThemeChild——2026-10 新增(使用者明確要求「主題點」概念:
-  // 「點下點的時候在地圖上出現小圓點」)。點擊主題卡(node.children 有
+  // 「點下點的時候在地圖上出現小圓點」)。點擊主題卡(node 的 attractions/places 有
   // 內容時,見該欄位的完整說明)底下某個子景點 chip 時觸發,帶上主題
   // 節點 id 與被點的子景點資料,讓呼叫端(home/plan-ai-sim/Content.tsx)決定
   // 要不要在地圖上額外顯示這個子景點的小圓點(見該頁 expandedThemeId
@@ -120,7 +122,7 @@ export interface HorizontalPlanTimelineProps {
   // isGenerating——2026-10 新增(使用者明確要求「模擬的部分也加入推論中
   // 的信號,讓圖卡佔位先出現」):對齊縱向版 PlanTimelineView.tsx 的
   // isThinking,「AI 正在排下一站、還沒有這一站的具體資料」這個比
-  // node.loading(單一已存在站點正在查詢詳細資料)更前面的狀態——
+  // status.loading(單一已存在站點正在查詢詳細資料)更前面的狀態——
   // isGenerating 為 true 時,卡片列尾端補一張呼吸點+骨架卡,預告「還有
   // 一站正在生成」,steps 為空(還沒有任何站點)時不顯示骨架卡,只顯示
   // 呼吸點本身(見下方渲染邏輯,對齊縱向版同一條件判斷)。選填,省略時
@@ -180,9 +182,8 @@ export interface HorizontalPlanTimelineProps {
   // onAskPageDone——不是每個呼叫端都需要這個功能(例如
   // home/plan-ai-sim/Content.tsx 的展示頁劇本不支援真正的國家/城市串接)。
   onAskPageBack?: (countryIds?: string[]) => void
-  // dataSource/askPageInput——showAskPage 為 true 時傳給 AskPage 顯示
-  // 候選景點卡片所需的兩樣東西(見 AskPage.tsx AskPageProps 的完整
-  // 說明)。兩者都選填:這個元件本身可能在完全不會開詢問頁的情境下
+  // askPageInput——showAskPage 為 true 時傳給 AskPage 顯示候選景點卡片所需
+  // 的輸入(AskPage 用的 dataSource 改由 PlanDataProvider 提供,見元件內 usePlanData)。選填:這個元件本身可能在完全不會開詢問頁的情境下
   // 掛載(例如只是純展示捲動、showAskPage 固定 false 的呼叫端),這種
   // 情況不需要呼叫端準備這兩個值。showAskPage 為 true 卻沒有傳
   // askPageInput 時,AskPage 收到空候選清單,顯示一個沒有候選卡片、
@@ -195,7 +196,6 @@ export interface HorizontalPlanTimelineProps {
   // 不需要知道兩種模式的差異。2026-10(第二輪,使用者明確要求「後端的
   // 純文字對話也統一在 ask page 裡面顯示對話氣泡」)新增 text 形態,
   // 見 AskPage.tsx input 聯集與該檔案「第四輪」的完整說明。
-  dataSource?: PlanAiDataSource
   askPageInput?: AskPageInput
   // renderAskPage——2026-10(使用者明確要求「ask page 內的感興趣的景點
   // 詢問,可以用挖洞的方式,再撥放態置換成可以由腳本控制的原件」、
@@ -221,6 +221,9 @@ export interface HorizontalPlanTimelineProps {
   // 2026-10（review 發現）：這個元件原本對 failed 零處理,而手機版
   // 的 /app 走的正是這條橫向路徑——手機使用者實際上拿不到重試入口。
   onRetryStop?: (id: string) => void
+  // nodeStatus——選填:節點執行狀態表(loading/failed/removing,見 plan-core/planNodeStatus.ts)。卡片的骨架(查詢中)
+  // 與查詢失敗樣式讀這裡;省略時視同所有節點都沒有狀態(只剩資料本身可判斷的失敗:有 placeId 沒座標)。
+  nodeStatus?: NodeStatusMap
   // stackedLayout——2026-10 新增,見 .wrapStacked 的完整說明:首頁
   // frameless 展示的 stacked 模式下傳 true,關掉 .wrap 內建的
   // margin-top: auto 貼底機制(那是 /ai-plan 完整展示頁 .timelinePanel
@@ -342,13 +345,8 @@ function formatTimeRange(seg: StopSegment): string {
 //      既有畫面），不存在「為了一致性保留舊圖示」的理由。
 // 分類字串本身（consideration/info/cost/weather）與配色 token 仍然
 // 直接對齊 TripPlanPage.tsx 的 NOTE_STYLES，只有圖示呈現方式不同。
-const NOTE_CATEGORY_META: Record<string, { colorVar: string; icon: 'star' | 'info' | 'cost' | 'weather' }> = {
-  consideration: { colorVar: 'var(--ios-gray)', icon: 'star' },
-  info: { colorVar: 'var(--ios-sand)', icon: 'info' },
-  cost: { colorVar: 'var(--ios-green)', icon: 'cost' },
-  weather: { colorVar: 'var(--ios-blue)', icon: 'weather' },
-}
-const DEFAULT_NOTE_CATEGORY = 'info'
+// 對照表本身(NOTE_CATEGORY_META、DEFAULT_NOTE_CATEGORY)已抽到 plan-core/planPresentation.ts,與縱向時間軸/TripPlanPage 共用同一份;
+// 這個檔案只保留橫向卡片專屬的圖示繪製(下方 NoteIcon)。
 
 function resolveNoteMeta(note: NoteInfo) {
   return NOTE_CATEGORY_META[note.category ?? ''] ?? NOTE_CATEGORY_META[DEFAULT_NOTE_CATEGORY]
@@ -454,29 +452,13 @@ function TransitIcon({ mode }: { mode: string | undefined }) {
   )
 }
 
-// TRANSIT_MODE_OPTIONS——交通方式選單選項,2026-10 新增(見
-// onTransitModeChange prop 的完整說明)。字串值直接對齊
-// plan-core/PlanTimelineView.tsx 的 TRANSIT_MODE_OPTIONS/後端
-// geo_plan_ai.go estimateTransitMode/iconForTransitMode 認得的同一組中文
-// 字串('步行'|'公車'|'捷運'|'開車')——不是重新發明一組新字串,也不是
-// 照抄模擬資料來源的英文 mode 值:這個選單的呼叫端(TripPlanPage.tsx
-// 透過 onTransitModeChange 接 refreshTransitForStop)最終會把選定的 mode
-// 原樣送給真實後端查詢,送一個後端不認得的字串只會讓後端 fallback 成
-// 步行(見 geo_plan_ai.go metersPerMinuteFor 的 default case),不是使用者
-// 選的那個方式。不從 PlanTimelineView.tsx import 這份清單——那個檔案
-// 本次改動範圍明確排除(見該檔案這次重構的檔頭說明),且它目前沒有
-// export 這個常數,這裡用同樣的字串值各自宣告一份更安全,不是「容易脫鉤
-// 的手動重新宣告型別」(字串值本身就是跟後端字典對齊的常數,沒有型別可以
-// import)。
-const TRANSIT_MODE_OPTIONS: { mode: string; label: string }[] = [
-  { mode: '步行', label: '步行' },
-  { mode: '公車', label: '公車' },
-  { mode: '捷運', label: '捷運' },
-  { mode: '開車', label: '開車' },
-]
+// TRANSIT_MODE_OPTIONS——交通方式選單選項(見 onTransitModeChange prop 的完整說明)。字串值與縱向時間軸共用同一份
+// (plan-core/planPresentation.ts 的 TRANSIT_MODE_CHOICES,對齊後端 geo_plan_ai.go 認得的中文字串);
+// 這裡不帶圖示(橫向選單目前只顯示文字)。
+const TRANSIT_MODE_OPTIONS = TRANSIT_MODE_CHOICES
 
 export function HorizontalPlanTimeline({
-  steps,
+  timeline,
   selectedStopId,
   onSelectStop,
   onSelectThemeChild,
@@ -491,10 +473,10 @@ export function HorizontalPlanTimeline({
   showAskPage: showAskPageProp,
   onAskPageDone,
   onAskPageBack,
-  dataSource,
   askPageInput,
   renderAskPage,
   onRetryStop,
+  nodeStatus,
   stackedLayout = false,
 }: HorizontalPlanTimelineProps) {
   // showAskPageState/showAskPageSetter——受控/非受控雙模式(對齊
@@ -508,11 +490,44 @@ export function HorizontalPlanTimeline({
   const [internalShowAskPage, setInternalShowAskPage] = useState(false)
   const showAskPage = showAskPageProp ?? internalShowAskPage
   const handleAskPageDone = onAskPageDone ?? (() => setInternalShowAskPage(false))
-  const askPageDataSource = dataSource ?? planAiFakeDataSource
+  // 資料存取層與解析結果都向 PlanDataProvider 取(2026-10:原本由 dataSource prop 傳入、內部自己起一個解析 hook 實例)。
+  const { dataSource: askPageDataSource } = usePlanData()
+  // resolvedRefs——主題點/候選卡底下的 attractions/places id 經資料存取層查回來的顯示資料(只在執行時)。
+  const allNodes = useMemo(() => listNodes(timeline), [timeline])
+  // 旅館的 placeId 一併解析(名稱顯示在住宿卡上),見 plan-core/useResolvedNodeRefs.ts 的「住宿」一節。
+  const lodgings = lodgingsOf(timeline)
+  const resolvedRefs = useResolvedRefs(allNodes, lodgings)
 
-  // stops——只取 type === 'stop' 的節點，見檔頭說明。section/message
-  // 節點在這個元件裡完全不渲染。
-  const stops = useMemo(() => steps.filter((s): s is PlanNode & { type: 'stop' } => s.type === 'stop'), [steps])
+  // stops——只取 type === 'stop' 的節點，見檔頭說明。對話訊息(獨立於時間軸的 PlanConversation)在這個元件裡完全不渲染。
+  //
+  // 空的天(沒有任何 stop):沒有卡片就沒辦法滑過去、也選不到。為每個空的天補一個「佔位站點」(id 沿用那一天的 PlanDay.id、day 為
+  // 它是第幾天),讓它跟一般卡片走同一套卷軸/吸附/置中偵測/選取;渲染時用 emptyDayIds 辨認並畫成「這一天還沒有行程」
+  // 的佔位卡(見下方 emptyDay 分支)。選取它時 onSelectStop 收到的是 day.id,呼叫端找不到對應站點,不會移動地圖。
+  //
+  // 住宿卡(PlanTimeline.lodgings):同樣的做法再用一次——旅館不是 stop,但要能滑到、能選取,所以在它入住日(第一個停留日)
+  // 那天第一張卡之前合成一個佔位項目(id 就是旅館 id、day 為入住日、沒有 time/duration),用 lodgingById 辨認並畫成窄版住宿卡
+  // (見下方 lodging 分支);連住的後續天不重複。佔位項目沒有時間,所以不影響時間尺(buildSegments 算出的 startMinutes 為 null,
+  // dayHasTime 不計它);也不是真的 stop,onSelectStop 收到旅館 id,呼叫端的地圖若有同 id 的旅館圓點(座標由 placeId 查)
+  // 就選取並平移,沒有座標就不會移動。同一天有多筆旅館(換旅館那天)依 lodgings 順序各一張。
+  const { stops, emptyDayIds, lodgingById } = useMemo(() => {
+    const out: PlanNode[] = []
+    const empty = new Set<string>()
+    const lodgingMap = new Map<string, PlanLodging>()
+    timeline.days.forEach((day, i) => {
+      for (const l of lodgingsStartingOnDay(timeline, day.id)) {
+        lodgingMap.set(l.id, l)
+        out.push({ id: l.id, type: 'stop', day: i + 1, name: l.name })
+      }
+      const dayStops = day.nodes.filter((n) => n.type === 'stop')
+      if (dayStops.length === 0) {
+        empty.add(day.id)
+        out.push({ id: day.id, type: 'stop', day: i + 1, name: `Day ${i + 1}` })
+      } else {
+        for (const n of dayStops) out.push(withDay(n, i + 1))
+      }
+    })
+    return { stops: out as (PlanNode & { type: 'stop' })[], emptyDayIds: empty, lodgingById: lodgingMap }
+  }, [timeline])
   const segments = useMemo(() => buildSegments(stops), [stops])
 
   // isSingleCard——2026-10 使用者明確要求「只有單張卡片時要滿版」:
@@ -1232,6 +1247,11 @@ export function HorizontalPlanTimeline({
         <div className={styles.scrollerTrack}>
           {segments.map((seg, idx) => {
             const node = seg.node
+            // status——這一站的執行狀態(查詢中/失敗),來自狀態表,不在節點上。
+            const status = nodeStatusOf(nodeStatus, node.id)
+            // themeChildren——節點只存 id(attractions/places),名稱、座標、照片是執行時經資料存取層
+            // 解析的結果(resolvedRefs,見 plan-core/useResolvedNodeRefs.ts);查詢完成前是只有 id 的最小項目。
+            const themeChildren = resolveNodeRefChildren(node, resolvedRefs)
             const isSelected = node.id === selectedStopId
             const transit: TransitInfo | undefined = node.transitFromPrev
             const day = node.day ?? 1
@@ -1262,6 +1282,78 @@ export function HorizontalPlanTimeline({
             // 的完整說明)跟卡片固定尺寸外觀(.card 本身的寬高/圓角/
             // 卷軸吸附設定),其餘單一地點卡才有意義的內容
             // (photoBanner/交通資訊/刪除按鈕等)全部不渲染。
+            // lodging——住宿卡(見上方 stops 的說明):窄版、虛線邊(同空天佔位卡的「不是要去的地方」語言),
+            // 只有 Day 標籤(這天第一張卡時)、🛏️、旅館名稱(placeId 查到的優先,再 name,再「住宿」)與停留區間(「Day 2–4」)。
+            // 沒有照片/時間/交通/按鈕;點擊與一般卡片一樣置中並選取。
+            const lodging = lodgingById.get(node.id)
+            if (lodging) {
+              const lodgingName = resolveLodging(lodging, resolvedRefs).name ?? LODGING_FALLBACK_NAME
+              return (
+                <div
+                  key={node.id}
+                  ref={(el) => {
+                    if (el) {
+                      cardRefs.current.set(node.id, el)
+                      mountedIdsRef.current.add(node.id)
+                    } else {
+                      cardRefs.current.delete(node.id)
+                    }
+                  }}
+                  className={`${styles.card} ${styles.lodgingCard} ${justMounted ? styles.cardSlideIn : ''} ${isEdgeCard ? styles.edgeCard : ''}`}
+                  data-lodging-id={lodging.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-current={isSelected ? 'true' : undefined}
+                  onClick={() => handleSelect(node.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      handleSelect(node.id)
+                    }
+                  }}
+                >
+                  {showDayBadge && <span className={styles.dayBadge}>Day {day}</span>}
+                  <div className={styles.lodgingBody}>
+                    <span className={styles.lodgingIcon} aria-hidden="true">🛏️</span>
+                    <span className={styles.lodgingName}>{lodgingName}</span>
+                    <span className={styles.lodgingSpan}>{lodgingSpanLabel(timeline, lodging)}</span>
+                  </div>
+                </div>
+              )
+            }
+            // emptyDay——空的一天的佔位卡(見上方 stops 的說明):只有 Day 標籤與一句說明,沒有照片/時間/交通/按鈕。
+            if (emptyDayIds.has(node.id)) {
+              return (
+                <div
+                  key={node.id}
+                  ref={(el) => {
+                    if (el) {
+                      cardRefs.current.set(node.id, el)
+                      mountedIdsRef.current.add(node.id)
+                    } else {
+                      cardRefs.current.delete(node.id)
+                    }
+                  }}
+                  className={`${styles.card} ${styles.emptyDayCard} ${justMounted ? styles.cardSlideIn : ''} ${isSingleCard ? styles.singleCard : ''} ${isEdgeCard ? styles.edgeCard : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-current={isSelected ? 'true' : undefined}
+                  onClick={() => handleSelect(node.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      handleSelect(node.id)
+                    }
+                  }}
+                >
+                  <span className={styles.dayBadge}>Day {day}</span>
+                  <div className={styles.emptyDayBody}>
+                    <span className={styles.emptyDayTitle}>這一天還沒有行程</span>
+                    <span className={styles.emptyDayHint}>跟 AI 說想怎麼排這一天，或回到地圖挑地點加入</span>
+                  </div>
+                </div>
+              )
+            }
             if (node.candidateCards) {
               return (
                 <div
@@ -1278,7 +1370,7 @@ export function HorizontalPlanTimeline({
                 >
                   {showDayBadge && <span className={styles.dayBadge}>Day {day}</span>}
                   <div className={styles.candidateGrid} role="list" aria-label={`${node.name ?? '候選地點'}的候選地點`}>
-                    {(node.children ?? []).map((child) => {
+                    {themeChildren.map((child) => {
                       const childPhoto = child.googlePhotoUrls?.[0]
                       return (
                         <button
@@ -1383,7 +1475,7 @@ export function HorizontalPlanTimeline({
                     佔位區塊不可點擊(沒有照片可供 Lightbox 開啟),故用
                     <div> 而非 <button>。
                     2026-10(第三輪,使用者明確要求「規劃中要跟縱向版
-                    一樣要有載入站位」):node.loading 為 true 時(這個
+                    一樣要有載入站位」):status.loading 為 true 時(這個
                     stop 帶 placeId、正在背景查詢真實地點資料,見
                     PlanNodeData.loading 的完整說明)優先顯示查詢中佔位,
                     不是照片也不是 thumbBg/thumbIcon 佔位——那兩者是
@@ -1396,7 +1488,7 @@ export function HorizontalPlanTimeline({
                     shimmer 色塊語言(見下方渲染邏輯與 .shimmer 的完整
                     說明)。 */}
                 {(() => {
-                  if (node.loading) {
+                  if (status.loading) {
                     // 2026-10 使用者明確要求「不要用圓圈的圖片載入,用
                     // 骨架佔位圖」:改用跟 generatingTip 骨架卡同一套
                     // shimmer 長條/色塊語言(見 .skeletonThumb/.shimmer
@@ -1411,7 +1503,9 @@ export function HorizontalPlanTimeline({
                       />
                     )
                   }
-                  const usablePhotos = node.googlePhotoUrls?.filter((u) => !failedPhotoUrls.has(u)) ?? []
+                  // 照片來自 resolvedRefs(以 placeId 解析的執行時結果),不在節點上。
+                  const photoUrls = node.placeId ? resolvedRefs.get(node.placeId)?.googlePhotoUrls : undefined
+                  const usablePhotos = photoUrls?.filter((u) => !failedPhotoUrls.has(u)) ?? []
                   if (usablePhotos.length > 0) {
                     return (
                       <button
@@ -1565,7 +1659,7 @@ export function HorizontalPlanTimeline({
                 })()}
 
                 {/* loadingTag——2026-10(第五輪,使用者明確要求「地點
-                    推論中的站位卡片加入待辦」):node.loading 為 true
+                    推論中的站位卡片加入待辦」):status.loading 為 true
                     時在站名正上方補一行查詢中提示,對齊縱向版
                     PlanTimelineView.tsx p.loading 時顯示
                     styles.loadingTag 的既有語意(見該元件 .loadingTag
@@ -1586,7 +1680,7 @@ export function HorizontalPlanTimeline({
                     已經足夠表達「查詢中」,不需要額外文字提示重複同一件
                     事。loadingTag 文字提示保留(對齊縱向版同時顯示文字
                     提示+骨架視覺的既有做法,不是兩者互斥的二選一)。 */}
-                {node.loading ? (
+                {status.loading ? (
                   <>
                     {/* 2026-10 使用者明確要求「載入中不要出現查詢地點中的
                         文字」:loadingTag 整個移除,不分骨架佔位階段
@@ -1597,8 +1691,8 @@ export function HorizontalPlanTimeline({
                     <div className={`${styles.skeletonLine} ${styles.skeletonLineName} ${styles.shimmer}`} aria-hidden="true" />
                     <div className={`${styles.skeletonLine} ${styles.skeletonLineDesc} ${styles.shimmer}`} aria-hidden="true" />
                   </>
-                ) : stopLookupFailed(node) ? (
-                  /* 地點資料查詢失敗(見 planTimeline.ts PlanNodeData.failed
+                ) : stopLookupFailed(node, status) ? (
+                  /* 地點資料查詢失敗(見 planNodeStatus.ts 的 failed
                      的完整說明)。
                      2026-10（review 發現）：這個分支原本不存在——failed 的
                      節點會掉進下面的 else,顯示 node.name 那個插入當下寫死
@@ -1632,11 +1726,11 @@ export function HorizontalPlanTimeline({
                   </>
                 ) : (
                   <>
-                    <div className={styles.name}>{node.name ?? node.label ?? '未命名景點'}</div>
+                    <div className={styles.name}>{node.name ?? '未命名景點'}</div>
                     {node.desc && <p className={styles.desc}>{node.desc}</p>}
                     {/* 2026-10 使用者明確要求「主題點」概念(「鄰近的
                         景點不用每個都安排時間點,而是集合的概念」):
-                        node.children 存在時(見 PlanNodeData.children/
+                        node 有 attractions/places 時(見 PlanNodeData.attractions/
                         PlanThemeChild 的完整說明),這張卡是一個主題
                         卡,底下列出子景點清單——每個子景點只顯示
                         icon+名稱(chip 樣式),不是完整卡片外觀,因為
@@ -1647,9 +1741,9 @@ export function HorizontalPlanTimeline({
                         避免冒泡觸發外層卡片的 onClick(那會變成
                         handleSelect(node.id),選到主題卡本身而不是
                         子景點)。 */}
-                    {node.children && node.children.length > 0 && (
+                    {themeChildren.length > 0 && (
                       <div className={styles.themeChildren} role="list" aria-label={`${node.name ?? '主題點'}包含的景點`}>
-                        {node.children.map((child) => (
+                        {themeChildren.map((child) => (
                           <button
                             key={child.id}
                             type="button"
@@ -1678,9 +1772,9 @@ export function HorizontalPlanTimeline({
               stops 陣列裡的一筆真實節點(home/plan-ai-sim/Content.tsx
               ws.onmessage 在 thinking 階段插入的 loading:true 空白
               佔位節點,見該處的完整說明),上方 .map(segments...) 迴圈
-              本身已經處理了它(node.loading 時全部欄位換成 shimmer
+              本身已經處理了它(status.loading 時全部欄位換成 shimmer
               骨架樣式,見上方 photoBanner/timeRange/name 等各處的
-              node.loading 渲染分支),不需要在這裡重複渲染第二套骨架
+              status.loading 渲染分支),不需要在這裡重複渲染第二套骨架
               卡片。這個改動同時修正了先前因為骨架卡獨立於 stops 之外
               造成的一整串時機問題(selectedStopId 不同步、單卡滿版被
               撐歪、捲動慢一拍等)——骨架卡現在跟其他卡片走完全相同的

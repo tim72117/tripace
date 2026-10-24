@@ -1,21 +1,25 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { screen, fireEvent } from '@testing-library/react'
+import { dataSourceFromRefs, renderWithPlanData as render } from './planDataTestUtils'
 import { PlanTimelineView } from './PlanTimelineView'
-import type { PlanNode } from './planTimeline'
+import type { PlanLodging, PlanNode, PlanThemeChild } from './planTimeline'
+import { timelineOf } from './planTimelineTestUtils'
 
-// 住宿卡片類型:kind === '住宿' 的站畫成窄長橫幅(區間文字取 duration、不畫縮圖與描述),其他站維持一般景點卡;
-// 互動(點擊平移、hover 連動)與一般卡片一致;呼叫端傳 renderStopCard 時仍整張替換。
+// 住宿橫幅(PlanTimeline.lodgings):旅館的第一個停留日(入住日)那天最上面畫一條,連住的後續天不重複;
+// 名稱依序取 placeId 解析結果、旅館自己的 name、「住宿」;互動(點擊平移、hover 連動)與一般卡片一致。
 
-function stop(id: string, over: Partial<PlanNode>): PlanNode {
-  return { id, prevId: null, nextId: null, type: 'stop', name: id, time: '10:00', duration: '1 小時', kind: '景點', desc: `${id}描述`, lat: 1, lng: 2, ...over } as PlanNode
+function stop(id: string, over: Partial<PlanNode> = {}): PlanNode {
+  return { id, type: 'stop', name: id, time: '10:00', duration: '1 小時', kind: '景點', desc: `${id}描述`, lat: 1, lng: 2, ...over } as PlanNode
 }
 
-function renderTimeline(steps: PlanNode[], extra: Record<string, unknown> = {}) {
+// resolved——旅館 placeId 的解析結果:視圖向 PlanDataProvider 的 store 取,這裡用回答這些 id 的資料來源提供(結果在查詢回來後才出現)。
+function renderTimeline(lodgings: PlanLodging[], resolved?: ReadonlyMap<string, PlanThemeChild>, extra: Record<string, unknown> = {}) {
   const onPanToStop = vi.fn()
   const onHoverStop = vi.fn()
+  const timeline = { ...timelineOf([stop('s1', { day: 1 }), stop('s2', { day: 2 }), stop('s3', { day: 3 })]), lodgings }
   const utils = render(
     <PlanTimelineView
-      steps={steps}
+      timeline={timeline}
       isThinking={false}
       emptyStateMessage=""
       selectedStopId={null}
@@ -27,48 +31,81 @@ function renderTimeline(steps: PlanNode[], extra: Record<string, unknown> = {}) 
       mountedIdsRef={{ current: new Set() }}
       {...extra}
     />,
+    resolved ? dataSourceFromRefs(resolved) : undefined,
   )
   return { ...utils, onPanToStop, onHoverStop }
 }
 
-describe('PlanTimelineView 住宿卡片類型', () => {
-  const steps = [
-    stop('s1', { kind: '景點' }),
-    stop('h1', { kind: '住宿', duration: 'Day 3–4', desc: '不該出現的描述' }),
-  ]
+const resolved = (entries: [string, PlanThemeChild][]) => new Map(entries)
 
-  it('住宿站畫成橫幅:顯示區間與名稱,不畫描述;景點站維持一般卡片(有描述)', () => {
-    renderTimeline(steps)
-    expect(screen.getByText('Day 3–4')).toBeTruthy()
-    expect(screen.getByText('h1')).toBeTruthy()
-    expect(screen.queryByText('不該出現的描述')).toBeNull()
-    expect(screen.getByText('s1描述')).toBeTruthy()
+describe('PlanTimelineView 住宿橫幅', () => {
+  const lodgings: PlanLodging[] = [{ id: 'l1', placeId: 'p1', name: '作者寫的名稱', dayIds: ['d2', 'd3'] }]
+
+  it('只在入住日(第一個停留日)畫一次,連住的後續天不重複;顯示區間文字', () => {
+    const { container } = renderTimeline(lodgings)
+    expect(container.querySelectorAll('[data-lodging-id="l1"]')).toHaveLength(1)
+    expect(screen.getByText('Day 2–3')).toBeTruthy()
+    // 橫幅在 Day 2 標題之後、Day 2 第一張卡之前
+    const html = container.innerHTML
+    expect(html.indexOf('Day 2')).toBeLessThan(html.indexOf('data-lodging-id="l1"'))
+    expect(html.indexOf('data-lodging-id="l1"')).toBeLessThan(html.indexOf('s2描述'))
+    expect(html.indexOf('data-lodging-id="l1"')).toBeLessThan(html.indexOf('Day 3'))
   })
 
-  it('點住宿橫幅會平移到該站,hover 會回報該站 id', () => {
-    const { onPanToStop, onHoverStop } = renderTimeline(steps)
-    const banner = screen.getByText('h1').closest('[role="button"]') as HTMLElement
+  it('名稱:placeId 查到的優先,查不到退回 name,再退回「住宿」', async () => {
+    const { unmount } = renderTimeline(lodgings, resolved([['p1', { id: 'p1', name: '查到的名稱', lat: 5, lng: 6 }]]))
+    expect(await screen.findByText('查到的名稱')).toBeTruthy()
+    unmount()
+    const second = renderTimeline(lodgings)
+    expect(screen.getByText('作者寫的名稱')).toBeTruthy()
+    second.unmount()
+    renderTimeline([{ id: 'l2', dayIds: ['d1'] }])
+    expect(screen.getByText('住宿')).toBeTruthy()
+  })
+
+  it('同一天入住兩間(換旅館那天)各畫一條', () => {
+    const { container } = renderTimeline([
+      { id: 'a', name: 'A', dayIds: ['d1', 'd2'] },
+      { id: 'b', name: 'B', dayIds: ['d2', 'd3'] },
+    ])
+    expect(container.querySelectorAll('[data-lodging-id]')).toHaveLength(2)
+    expect(screen.getByText('Day 1–2')).toBeTruthy()
+    expect(screen.getByText('Day 2–3')).toBeTruthy()
+  })
+
+  it('有座標時點橫幅會選取並平移(收到旅館 id 與座標),hover 回報旅館 id', async () => {
+    const { onPanToStop, onHoverStop } = renderTimeline(lodgings, resolved([['p1', { id: 'p1', name: '查到的名稱', lat: 5, lng: 6 }]]))
+    const banner = (await screen.findByText('查到的名稱')).closest('[role="button"]') as HTMLElement
     fireEvent.mouseEnter(banner)
-    expect(onHoverStop).toHaveBeenCalledWith('h1')
+    expect(onHoverStop).toHaveBeenCalledWith('l1')
     fireEvent.click(banner)
-    expect(onPanToStop).toHaveBeenCalledWith(expect.objectContaining({ id: 'h1' }))
+    expect(onPanToStop).toHaveBeenCalledWith(expect.objectContaining({ id: 'l1', lat: 5, lng: 6 }))
   })
 
-  it('住宿有照片時,橫幅用縮圖取代🛏️,點縮圖開照片而不是平移', () => {
-    const onOpenPhotos = vi.fn()
-    const { onPanToStop } = renderTimeline(
-      [stop('h1', { kind: '住宿', duration: 'Day 3–4', googlePhotoUrls: ['https://x/a.jpg'] })],
-      { onOpenPhotos },
-    )
-    expect(screen.queryByText('🛏️')).toBeNull()
-    fireEvent.click(screen.getByLabelText('放大檢視照片'))
-    expect(onOpenPhotos).toHaveBeenCalledWith({ photos: ['https://x/a.jpg'], alt: 'h1' })
+  it('沒有座標(沒查到)時不可點、不平移', () => {
+    const { onPanToStop } = renderTimeline(lodgings)
+    const banner = screen.getByText('作者寫的名稱').closest('[data-lodging-id]') as HTMLElement
+    expect(banner.getAttribute('role')).toBeNull()
+    fireEvent.click(banner)
     expect(onPanToStop).not.toHaveBeenCalled()
   })
 
-  it('呼叫端傳 renderStopCard 時整張替換,住宿也不例外', () => {
-    renderTimeline(steps, { renderStopCard: (s: PlanNode) => <div>自訂-{s.id}</div> })
-    expect(screen.getByText('自訂-h1')).toBeTruthy()
-    expect(screen.queryByText('Day 3–4')).toBeNull()
+  it('沒有住宿時不畫橫幅;kind 為「住宿」的站不再有特殊畫法(普通景點卡)', () => {
+    const timeline = timelineOf([stop('x', { kind: '住宿', desc: '一般描述' })])
+    const { container } = render(
+      <PlanTimelineView
+        timeline={timeline}
+        isThinking={false}
+        emptyStateMessage=""
+        selectedStopId={null}
+        showJumpPill={false}
+        onJumpToLatest={() => {}}
+        onPanToStop={() => {}}
+        onOpenPhotos={() => {}}
+        mountedIdsRef={{ current: new Set() }}
+      />,
+    )
+    expect(container.querySelector('[data-lodging-id]')).toBeNull()
+    expect(screen.getByText('一般描述')).toBeTruthy()
   })
 })

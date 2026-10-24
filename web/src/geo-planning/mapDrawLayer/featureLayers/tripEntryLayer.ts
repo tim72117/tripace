@@ -27,6 +27,8 @@ export function tripEntryLayer(input: {
       kind: 'marker',
       position: { lat: e.lat, lng: e.lng },
       title: e.name,
+      // 旗子畫在圓底裡,整體是圓形,圓心就是座標(見 types.ts 的 anchor 說明)。
+      anchor: 'center',
       contentKey: `${selected}|${accentColor}`,
       createContent: () => tripEntryMarkerContent(selected, accentColor),
     }

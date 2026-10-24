@@ -12,15 +12,14 @@
 // isGenerating=true 或推論過一次之後永久維持,見 showZoomOut 的完整
 // 說明)是兩條完全獨立的渲染路徑,分開測試。
 import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
+import { renderWithPlanData as render } from '../../plan-core/planDataTestUtils'
 import { HorizontalPlanTimeline } from './HorizontalPlanTimeline'
 import type { PlanNode } from '../../plan-core/planTimeline'
+import { timelineOf } from '../../plan-core/planTimelineTestUtils'
 
 function stopNode(overrides: Partial<PlanNode> & { id: string }): PlanNode {
   return {
     type: 'stop',
-    prevId: null,
-    nextId: null,
     ...overrides,
   }
 }
@@ -38,7 +37,7 @@ describe('HorizontalPlanTimeline 時間尺寬度/數量契約', () => {
       ]
       const { container } = render(
         <HorizontalPlanTimeline
-          steps={steps}
+          timeline={timelineOf(steps)}
           selectedStopId={null}
           onSelectStop={noop}
           onOpenPhotos={noop}
@@ -57,7 +56,7 @@ describe('HorizontalPlanTimeline 時間尺寬度/數量契約', () => {
       ]
       const { container } = render(
         <HorizontalPlanTimeline
-          steps={steps}
+          timeline={timelineOf(steps)}
           selectedStopId="d2-a"
           onSelectStop={noop}
           onOpenPhotos={noop}
@@ -91,7 +90,7 @@ describe('HorizontalPlanTimeline 時間尺寬度/數量契約', () => {
       ]
       const { container } = render(
         <HorizontalPlanTimeline
-          steps={steps}
+          timeline={timelineOf(steps)}
           selectedStopId="d1-a"
           onSelectStop={noop}
           onOpenPhotos={noop}
@@ -120,7 +119,7 @@ describe('HorizontalPlanTimeline 時間尺寬度/數量契約', () => {
       ]
       const { container } = render(
         <HorizontalPlanTimeline
-          steps={steps}
+          timeline={timelineOf(steps)}
           selectedStopId="d1-a"
           onSelectStop={noop}
           onOpenPhotos={noop}
@@ -165,7 +164,7 @@ describe('HorizontalPlanTimeline 時間尺寬度/數量契約', () => {
       ]
       const { container, rerender } = render(
         <HorizontalPlanTimeline
-          steps={steps}
+          timeline={timelineOf(steps)}
           selectedStopId="d1-a"
           onSelectStop={noop}
           onOpenPhotos={noop}
@@ -176,7 +175,7 @@ describe('HorizontalPlanTimeline 時間尺寬度/數量契約', () => {
 
       rerender(
         <HorizontalPlanTimeline
-          steps={steps}
+          timeline={timelineOf(steps)}
           selectedStopId="d1-a"
           onSelectStop={noop}
           onOpenPhotos={noop}

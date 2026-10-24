@@ -2,7 +2,7 @@
 // 全部是不碰 React/不碰全域狀態的純函式,可以單獨測試;registry.ts 負責把
 // itineraries/*.ts 收進來,這裡只吃陣列。
 import { estimateTransit } from './estimateTransit'
-import { createEmptyTimeline, insertAfter, type PlanTimeline } from '../plan-core/planTimeline'
+import { countNodes, type PlanNode, type PlanTimeline } from '../plan-core/planTimeline'
 import type { SampleItinerary } from './types'
 
 // sortByNewest——依上架日期由新到舊;同一天的維持傳入順序(穩定排序),
@@ -70,10 +70,11 @@ export function isSampleItineraryShape(v: unknown): v is SampleItinerary {
     typeof obj.id === 'string' &&
     typeof obj.title === 'string' &&
     typeof obj.region === 'string' &&
-    typeof obj.days === 'number' &&
     typeof obj.summary === 'string' &&
     Array.isArray(obj.categories) &&
-    Array.isArray(obj.stops)
+    typeof obj.timeline === 'object' &&
+    obj.timeline !== null &&
+    Array.isArray((obj.timeline as { days?: unknown }).days)
   )
 }
 
@@ -89,73 +90,54 @@ export function mergeWithApiItineraries(staticItems: SampleItinerary[], apiItems
   return sortByNewest([...apiItems, ...staticItems.filter((it) => !apiIds.has(it.id))])
 }
 
-// coverPhotoOf——封面:明確指定的優先,否則取第一個有照片的站的第一張,都沒有就 null。
+// coverPhotoOf——封面:只用行程明確指定的 coverPhoto,沒有就 null(清單頁顯示預設圖示)。節點裡不存照片網址(照片經 placeId 由資料存取層
+// 查,清單頁沒有這層查詢),所以不再退回「第一站的第一張照片」。
 export function coverPhotoOf(it: SampleItinerary): string | null {
-  return it.coverPhoto ?? it.stops.find((s) => s.photos && s.photos.length > 0)?.photos?.[0] ?? null
+  return it.coverPhoto ?? null
 }
 
-// toPlanTimeline——把範例行程轉成時間軸元件(plan-core/PlanTimelineView)吃的
-// PlanTimeline:依序把每一站接在最後。跨天的分隔線由 toRenderList 依 day 自動
-// 產生,這裡不用插。
-//
-// 插入失敗(時間格式錯、同一天時間沒有遞增)時跳過那一站而不是整份壞掉,並回報
-// 在 skipped 裡——畫面仍能顯示其餘站點;資料本身的正確性由 itineraries.test.ts
-// 對所有已登錄行程的驗證保證,正常情況 skipped 一定是空的。
-export function toPlanTimeline(it: SampleItinerary): { timeline: PlanTimeline; skipped: string[] } {
-  let timeline = createEmptyTimeline()
-  let anchorId: string | null = null
-  const skipped: string[] = []
-  it.stops.forEach((stop, i) => {
-    const id = `${it.id}-s${i}`
-    // lodgingDuration——住宿站(kind === '住宿')若帶 checkOutDay,把
-    // duration 換成「Day N–M」這種橫跨天數的區間文字,取代原本單一的
-    // 「過夜」字樣(見 types.ts SampleStop.checkOutDay 的完整說明:
-    // 使用者明確要求「住宿是錨點,有開始結束日」)。PlanNode/
-    // PlanTimelineView 本身不需要知道「住宿」這個概念,這裡只是把
-    // checkOutDay 這份額外資訊編碼進既有的 duration 欄位傳下去——
-    // renderItineraryStopCard.tsx 偵測 kind === '住宿' 時直接把這段
-    // 文字當成卡片上顯示的天數區間用,不需要改動 PlanNodeData 新增
-    // 欄位(那是 /app、/trip-plan 等正式功能共用的核心資料結構,這個
-    // 「住宿橫跨天數」的概念目前只有這個展示用的範例行程系統需要)。
-    const lodgingDuration =
-      stop.kind === '住宿' && stop.checkOutDay != null && stop.checkOutDay !== (stop.day ?? 1)
-        ? `Day ${stop.day ?? 1}–${stop.checkOutDay}`
-        : stop.duration
-    const prevStop = i > 0 ? it.stops[i - 1] : undefined
-    const estimateFromPrev =
-      prevStop && (prevStop.day ?? 1) === (stop.day ?? 1) && prevStop.lat != null && prevStop.lng != null && stop.lat != null && stop.lng != null
-        ? estimateTransit({ lat: prevStop.lat, lng: prevStop.lng }, { lat: stop.lat, lng: stop.lng })
-        : undefined
-    const result = insertAfter(
-      timeline,
-      anchorId,
-      {
-        type: 'stop',
-        day: stop.day ?? 1,
-        time: stop.time,
-        name: stop.name,
-        kind: stop.kind,
-        duration: lodgingDuration,
-        desc: stop.desc,
-        googlePhotoUrls: stop.photos,
-        placeId: stop.placeId,
-        // 人工填的 transit 優先;沒填時,同一天內前一站與這一站都有座標,就用直線距離粗估(見 estimateTransit.ts)。
-        // 跨天的第一站、沒有座標的站不畫(沒有「上一站」可比)。
-        transitFromPrev: stop.transit ?? estimateFromPrev,
-        lat: stop.lat,
-        lng: stop.lng,
-        // 沒有照片時卡片縮圖的備用樣式(見 PlanTimelineView 的縮圖渲染)。
-        thumbBg: 'var(--ios-active)',
-        thumbIcon: '📍',
-      },
-      id,
-    )
-    if (result.ok) {
-      timeline = result.timeline
-      anchorId = id
-    } else {
-      skipped.push(`${stop.name}(${result.error.code})`)
-    }
+// dayCountOf——行程總天數(時間軸的天數,不另外存欄位)。
+export function dayCountOf(it: SampleItinerary): number {
+  return it.timeline.days.length
+}
+
+// stopCountOf——行程的站數。時間軸的節點只剩 stop(PlanNodeType),直接用領域層的 countNodes。
+export function stopCountOf(it: SampleItinerary): number {
+  return countNodes(it.timeline)
+}
+
+// allNodesOf——行程裡依序的所有節點(跨天攤平),給只需要「有哪些站」的使用端(封面、初始地圖中心、景點光暈城市等)。
+// 刻意不改用領域層的 listNodes:listNodes 會替每個節點補上衍生的 day,而 itineraries.test.ts 要驗「存下來的原始節點沒有 day 欄位」,
+// 需要拿到未經加工的節點(這裡回傳的是資料本身)。
+export function allNodesOf(it: SampleItinerary): PlanNode[] {
+  return it.timeline.days.flatMap((d) => d.nodes)
+}
+
+// toPlanTimeline——行程的時間軸本身就是 PlanTimeline(資料規格與 /ai-plan、登入後一致,不需要轉換),這裡只做載入時的補值,
+// 回傳新物件、不改動 registry 裡的原始資料:
+//   - lodgings(住宿)原樣帶過去(旅館的名稱、座標、照片由視圖與地圖執行時經 placeId 查,不在這裡補值)。
+//   - transitFromPrev:人工寫的優先;沒寫時,同一天內前一個 stop 與這一站都有座標,就用直線距離粗估(見 estimateTransit.ts,
+//     同步、不打 API)。每天第一站、沒有座標的站不畫。
+//   - thumbBg/thumbIcon:沒有照片時卡片縮圖的備用樣式(見 PlanTimelineView 的縮圖渲染);資料有寫就尊重資料。
+// 時間格式、同一天時間遞增、id 唯一等資料正確性由 itineraries.test.ts 對所有已登錄行程的驗證保證。
+export function toPlanTimeline(it: SampleItinerary): { timeline: PlanTimeline } {
+  const days = it.timeline.days.map((day) => {
+    let prevStop: PlanNode | undefined
+    const nodes = day.nodes.map((node) => {
+      if (node.type !== 'stop') return node
+      const estimateFromPrev =
+        prevStop && prevStop.lat != null && prevStop.lng != null && node.lat != null && node.lng != null
+          ? estimateTransit({ lat: prevStop.lat, lng: prevStop.lng }, { lat: node.lat, lng: node.lng })
+          : undefined
+      prevStop = node
+      return {
+        ...node,
+        transitFromPrev: node.transitFromPrev ?? estimateFromPrev,
+        thumbBg: node.thumbBg ?? 'var(--ios-active)',
+        thumbIcon: node.thumbIcon ?? '📍',
+      }
+    })
+    return { ...day, nodes }
   })
-  return { timeline, skipped }
+  return { timeline: { ...it.timeline, days } }
 }

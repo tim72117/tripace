@@ -1,16 +1,32 @@
 import { describe, it, expect } from 'vitest'
 import {
+  addDay,
+  countNodes,
   createEmptyTimeline,
+  getNode,
   getTimeDragBounds,
+  hasNode,
   insertAfter,
+  isTimelineEmpty,
+  listNodes,
   minutesToTime,
+  moveDay,
+  moveNode,
+  nextStopOf,
+  prevStopOf,
   removeDay,
   removeNode,
-  stripEphemeralNodes,
-  toRenderList,
+  setNodeDay,
+  lastAppendTarget,
   updateNode,
   type PlanTimeline,
 } from './planTimeline'
+import { addedDay } from './planTimelineTestUtils'
+
+// ids——依順序列出真實節點的 id。
+function ids(timeline: PlanTimeline): string[] {
+  return listNodes(timeline).map((n) => n.id)
+}
 
 // stop — 組一筆 stop 型 PlanNodeData 的簡寫,測試裡大量重複用到,只帶
 // 測試實際關心的 name/time 欄位,其餘欄位留空(型別上都是 optional)。
@@ -30,8 +46,8 @@ describe('insertAfter', () => {
     const result = insertAfter(empty, null, stop('赤崁樓', '08:30'), 'n1')
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.timeline.headId).toBe('n1')
-    expect(toRenderList(result.timeline).map((n) => n.name)).toEqual(['赤崁樓'])
+    expect(ids(result.timeline)[0]).toBe('n1')
+    expect(listNodes(result.timeline).map((n) => n.name)).toEqual(['赤崁樓'])
   })
 
   it('anchorId 為 null 插在既有時間軸最前面,原本的 head 被推到後面', () => {
@@ -40,11 +56,11 @@ describe('insertAfter', () => {
     const t2 = insertAfter(t1.timeline, null, stop('祀典武廟', '08:00'), 'n2')
     expect(t2.ok).toBe(true)
     if (!t2.ok) return
-    expect(t2.timeline.headId).toBe('n2')
-    expect(toRenderList(t2.timeline).map((n) => n.name)).toEqual(['祀典武廟', '赤崁樓'])
+    expect(ids(t2.timeline)).toEqual(['n2', 'n1'])
+    expect(listNodes(t2.timeline).map((n) => n.name)).toEqual(['祀典武廟', '赤崁樓'])
   })
 
-  it('依序插入三筆(皆 append 在前一筆之後),鏈結順序與 toRenderList 一致', () => {
+  it('依序插入三筆(皆 append 在前一筆之後),順序與 listNodes 一致', () => {
     let timeline: PlanTimeline = createEmptyTimeline()
     const r1 = insertAfter(timeline, null, stop('赤崁樓', '08:30'), 'n1')
     if (!r1.ok) throw new Error('setup failed')
@@ -56,19 +72,12 @@ describe('insertAfter', () => {
     if (!r3.ok) throw new Error('setup failed')
     timeline = r3.timeline
 
-    expect(toRenderList(timeline).map((n) => n.name)).toEqual(['赤崁樓', '祀典武廟', '大天后宮'])
+    expect(listNodes(timeline).map((n) => n.name)).toEqual(['赤崁樓', '祀典武廟', '大天后宮'])
 
-    // 鏈結本身的 prevId/nextId 也要正確,不是只有 toRenderList 的結果
-    // 剛好對——這裡直接檢查每個節點的指標,確保雙向鏈結完整。
-    const n1 = timeline.nodes.get('n1')!
-    const n2 = timeline.nodes.get('n2')!
-    const n3 = timeline.nodes.get('n3')!
-    expect(n1).toMatchObject({ prevId: null, nextId: 'n2' })
-    expect(n2).toMatchObject({ prevId: 'n1', nextId: 'n3' })
-    expect(n3).toMatchObject({ prevId: 'n2', nextId: null })
+    expect(ids(timeline)).toEqual(['n1', 'n2', 'n3'])
   })
 
-  it('插入在中間(anchor 不是最後一筆),前後節點的指標都正確更新', () => {
+  it('插入在中間(anchor 不是最後一筆),順序正確', () => {
     let timeline: PlanTimeline = createEmptyTimeline()
     const r1 = insertAfter(timeline, null, stop('赤崁樓', '08:00'), 'n1')
     if (!r1.ok) throw new Error('setup failed')
@@ -83,10 +92,8 @@ describe('insertAfter', () => {
     if (!r3.ok) return
     timeline = r3.timeline
 
-    expect(toRenderList(timeline).map((n) => n.name)).toEqual(['赤崁樓', '祀典武廟', '大天后宮'])
-    expect(timeline.nodes.get('n1')).toMatchObject({ prevId: null, nextId: 'n3' })
-    expect(timeline.nodes.get('n3')).toMatchObject({ prevId: 'n1', nextId: 'n2' })
-    expect(timeline.nodes.get('n2')).toMatchObject({ prevId: 'n3', nextId: null })
+    expect(listNodes(timeline).map((n) => n.name)).toEqual(['赤崁樓', '祀典武廟', '大天后宮'])
+    expect(ids(timeline)).toEqual(['n1', 'n3', 'n2'])
   })
 
   it('anchorId 找不到對應節點時回傳 anchor_not_found 錯誤,時間軸不變', () => {
@@ -144,7 +151,7 @@ describe('insertAfter', () => {
     if (result.ok) return
     expect(result.error.code).toBe('time_out_of_range')
     // 驗證失敗不應該真的插入,鏈結維持插入前的樣子。
-    expect(toRenderList(timeline).map((n) => n.name)).toEqual(['赤崁樓', '大天后宮'])
+    expect(listNodes(timeline).map((n) => n.name)).toEqual(['赤崁樓', '大天后宮'])
     // 訊息要帶明確的指引跟必要資訊(使用者明確要求):具體的邊界時間值、
     // 對應節點的 id/名稱,不能只說「太早」——這樣呼叫端(LLM)才能不用
     // 猜測就直接算出下一次該用的時間或錨點。
@@ -219,19 +226,19 @@ describe('insertAfter', () => {
     expect(result.ok).toBe(true)
   })
 
-  it('錨點是 section(沒有時間)時,時間驗證改往前後找最近的 stop', () => {
+  it('錨點是沒有時間的 stop 時,時間驗證改往前後找最近有時間的 stop', () => {
     let timeline: PlanTimeline = createEmptyTimeline()
     const r1 = insertAfter(timeline, null, stop('赤崁樓', '08:00'), 'n1')
     if (!r1.ok) throw new Error('setup failed')
     timeline = r1.timeline
-    const r2 = insertAfter(timeline, 'n1', { type: 'section' as const, label: '午餐' }, 'sec1')
+    const r2 = insertAfter(timeline, 'n1', stop('午餐'), 'sec1')
     if (!r2.ok) throw new Error('setup failed')
     timeline = r2.timeline
     const r3 = insertAfter(timeline, 'sec1', stop('大天后宮', '12:00'), 'n2')
     if (!r3.ok) throw new Error('setup failed')
     timeline = r3.timeline
 
-    // 插在 section(sec1)後面,時間必須落在 n1(08:00)與 n2(12:00)之間——
+    // 插在沒有時間的 sec1 後面,時間必須落在 n1(08:00)與 n2(12:00)之間——
     // 09:00 合法。
     const okResult = insertAfter(timeline, 'sec1', stop('祀典武廟', '09:00'), 'n3')
     expect(okResult.ok).toBe(true)
@@ -253,20 +260,15 @@ describe('insertAfter', () => {
     timeline = r2.timeline
     // n2(大天后宮)手動掛一筆 transitFromPrev,模擬它跟 n1(赤崁樓)之間
     // 已經查過交通資訊。
-    timeline = {
-      ...timeline,
-      nodes: new Map(timeline.nodes).set('n2', {
-        ...timeline.nodes.get('n2')!,
-        transitFromPrev: { icon: '🚶', mode: '步行', minutes: 5, distance: '300m' },
-      }),
-    }
+    timeline = updateNode(timeline, 'n2', { transitFromPrev: { icon: '🚶', mode: '步行', minutes: 5, distance: '300m' } })
 
     const r3 = insertAfter(timeline, 'n1', stop('祀典武廟'), 'n3')
     if (!r3.ok) throw new Error('setup failed')
 
     // n2 現在的前一站變成 n3(祀典武廟),原本記錄的「跟赤崁樓之間」的
     // 交通資訊不再對應正確的兩站,必須被清空。
-    expect(r3.timeline.nodes.get('n2')).toMatchObject({ prevId: 'n3', transitFromPrev: undefined })
+    expect(ids(r3.timeline)).toEqual(['n1', 'n3', 'n2'])
+    expect(getNode(r3.timeline, 'n2')?.transitFromPrev).toBeUndefined()
   })
 
   describe('day(多天行程)', () => {
@@ -334,13 +336,12 @@ describe('removeNode', () => {
     const removed = removeNode(timeline, 'n2')
     if (!removed.ok) throw new Error('remove failed')
     timeline = removed.timeline
-    expect(toRenderList(timeline).map((n) => n.name)).toEqual(['赤崁樓', '大天后宮'])
-    expect(timeline.nodes.get('n1')).toMatchObject({ nextId: 'n3' })
-    expect(timeline.nodes.get('n3')).toMatchObject({ prevId: 'n1' })
-    expect(timeline.nodes.has('n2')).toBe(false)
+    expect(listNodes(timeline).map((n) => n.name)).toEqual(['赤崁樓', '大天后宮'])
+    expect(ids(timeline)).toEqual(['n1', 'n3'])
+    expect(hasNode(timeline, 'n2')).toBe(false)
   })
 
-  it('移除 head 節點後,headId 正確轉移到下一個節點', () => {
+  it('移除第一個節點後,下一個節點成為第一個', () => {
     let timeline: PlanTimeline = createEmptyTimeline()
     const r1 = insertAfter(timeline, null, stop('赤崁樓'), 'n1')
     if (!r1.ok) throw new Error('setup failed')
@@ -352,8 +353,8 @@ describe('removeNode', () => {
     const removed = removeNode(timeline, 'n1')
     if (!removed.ok) throw new Error('remove failed')
     timeline = removed.timeline
-    expect(timeline.headId).toBe('n2')
-    expect(toRenderList(timeline).map((n) => n.name)).toEqual(['祀典武廟'])
+    expect(ids(timeline)[0]).toBe('n2')
+    expect(listNodes(timeline).map((n) => n.name)).toEqual(['祀典武廟'])
   })
 
   it('移除不存在的 id 時回傳 anchor_not_found 結構化錯誤', () => {
@@ -365,29 +366,7 @@ describe('removeNode', () => {
     expect(result.error.code).toBe('anchor_not_found')
   })
 
-  it('移除已標記 removing:true 的節點時回傳 already_removing 結構化錯誤', () => {
-    let timeline: PlanTimeline = createEmptyTimeline()
-    const r1 = insertAfter(timeline, null, stop('赤崁樓'), 'n1')
-    if (!r1.ok) throw new Error('setup failed')
-    timeline = r1.timeline
-    timeline = updateNode(timeline, 'n1', { removing: true })
-
-    const result = removeNode(timeline, 'n1')
-    expect(result.ok).toBe(false)
-    if (result.ok) return
-    expect(result.error.code).toBe('already_removing')
-    // 原本的節點仍在(真正摘除延遲到動畫播完,這裡只驗證沒有被誤摘除)。
-    expect(timeline.nodes.has('n1')).toBe(true)
-  })
-
-  it('opts.allowRemoving:true 時,已標記 removing:true 的節點仍能被真正摘除', () => {
-    // 這是 removeStep(TripPlanPage.tsx/Content.tsx 都有同一套
-    // 兩段式流程,見這兩處呼叫端的完整說明)「完成移除」那一步的真實使用
-    // 情境:先標記 removing:true 觸發淡出動畫,動畫播完後用
-    // allowRemoving:true 呼叫 removeNode 做真正的摘除——這個旗標曾經
-    // 漏掉,導致 already_removing 檢查誤判這次合法呼叫,節點永遠卡在
-    // removing:true 不會真的消失(實際發生過的 regression,見
-    // RemoveNodeResult/removeNode opts.allowRemoving 的完整說明)。
+  it('移除第一站後,後面的節點接上(「已在淡出、不要重複移除」改由節點狀態表擋,領域層不再有 already_removing)', () => {
     let timeline: PlanTimeline = createEmptyTimeline()
     const r1 = insertAfter(timeline, null, stop('赤崁樓'), 'n1')
     if (!r1.ok) throw new Error('setup failed')
@@ -395,13 +374,12 @@ describe('removeNode', () => {
     const r2 = insertAfter(timeline, 'n1', stop('祀典武廟'), 'n2')
     if (!r2.ok) throw new Error('setup failed')
     timeline = r2.timeline
-    timeline = updateNode(timeline, 'n1', { removing: true })
 
-    const result = removeNode(timeline, 'n1', { allowRemoving: true })
+    const result = removeNode(timeline, 'n1')
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.timeline.nodes.has('n1')).toBe(false)
-    expect(result.timeline.headId).toBe('n2')
+    expect(hasNode(result.timeline, 'n1')).toBe(false)
+    expect(ids(result.timeline)[0]).toBe('n2')
   })
 
   it('移除中間站點後,新的下一站 transitFromPrev 被清空(舊資料不再對應正確的兩站)', () => {
@@ -417,25 +395,20 @@ describe('removeNode', () => {
     timeline = r3.timeline
     // n3(大天后宮)手動掛一筆 transitFromPrev,模擬它跟 n2(祀典武廟)
     // 之間已經查過交通資訊。
-    timeline = {
-      ...timeline,
-      nodes: new Map(timeline.nodes).set('n3', {
-        ...timeline.nodes.get('n3')!,
-        transitFromPrev: { icon: '🚶', mode: '步行', minutes: 5, distance: '300m' },
-      }),
-    }
+    timeline = updateNode(timeline, 'n3', { transitFromPrev: { icon: '🚶', mode: '步行', minutes: 5, distance: '300m' } })
 
     const removed = removeNode(timeline, 'n2')
     if (!removed.ok) throw new Error('remove failed')
     timeline = removed.timeline
     // n3 現在的前一站變成 n1(赤崁樓),原本記錄的「跟祀典武廟之間」的
     // 交通資訊不再對應正確的兩站,必須被清空。
-    expect(timeline.nodes.get('n3')).toMatchObject({ prevId: 'n1', transitFromPrev: undefined })
+    expect(ids(timeline)).toEqual(['n1', 'n3'])
+    expect(getNode(timeline, 'n3')?.transitFromPrev).toBeUndefined()
   })
 })
 
 describe('updateNode', () => {
-  it('合併更新指定欄位,不影響鏈結位置', () => {
+  it('合併更新指定欄位,不影響位置', () => {
     let timeline: PlanTimeline = createEmptyTimeline()
     const r1 = insertAfter(timeline, null, stop('赤崁樓', '08:00'), 'n1')
     if (!r1.ok) throw new Error('setup failed')
@@ -445,17 +418,22 @@ describe('updateNode', () => {
     timeline = r2.timeline
 
     timeline = updateNode(timeline, 'n1', { desc: '荷蘭時期普羅民遮城遺址' })
-    expect(timeline.nodes.get('n1')).toMatchObject({ name: '赤崁樓', desc: '荷蘭時期普羅民遮城遺址', nextId: 'n2' })
-    expect(toRenderList(timeline).map((n) => n.name)).toEqual(['赤崁樓', '祀典武廟'])
+    expect(getNode(timeline, 'n1')).toMatchObject({ name: '赤崁樓', desc: '荷蘭時期普羅民遮城遺址' })
+    expect(ids(timeline)).toEqual(['n1', 'n2'])
+    expect(listNodes(timeline).map((n) => n.name)).toEqual(['赤崁樓', '祀典武廟'])
   })
 })
 
-describe('toRenderList', () => {
-  it('空時間軸回傳空陣列', () => {
-    expect(toRenderList(createEmptyTimeline())).toEqual([])
+// 依天分組的讀取:時間軸本身就是 days,視圖自己依 days 畫「Day N」標題;這裡驗證每個節點落在哪一天、順序如何。
+describe('依天分組', () => {
+  const dayIds = (t: PlanTimeline) => t.days.map((d) => d.nodes.map((n) => n.id))
+
+  it('空時間軸沒有任何天', () => {
+    expect(createEmptyTimeline().days).toEqual([])
+    expect(listNodes(createEmptyTimeline())).toEqual([])
   })
 
-  it('day 不同的相鄰 stop 之間自動插入跨天分隔線(不需要呼叫端手動送 section)', () => {
+  it('不同天的站各自放進自己那一天,listNodes 帶上衍生的 day', () => {
     let timeline: PlanTimeline = createEmptyTimeline()
     const r1 = insertAfter(timeline, null, stopOnDay('赤崁樓', '08:00', 1), 'n1')
     if (!r1.ok) throw new Error('setup failed')
@@ -464,15 +442,14 @@ describe('toRenderList', () => {
     if (!r2.ok) throw new Error('setup failed')
     timeline = r2.timeline
 
-    const rendered = toRenderList(timeline)
-    expect(rendered.map((n) => ({ type: n.type, id: n.id, name: n.name }))).toEqual([
-      { type: 'stop', id: 'n1', name: '赤崁樓' },
-      { type: 'section', id: 'day-divider-2', name: undefined },
-      { type: 'stop', id: 'n2', name: '孔廟' },
+    expect(dayIds(timeline)).toEqual([['n1'], ['n2']])
+    expect(listNodes(timeline).map((n) => ({ type: n.type, id: n.id, day: n.day }))).toEqual([
+      { type: 'stop', id: 'n1', day: 1 },
+      { type: 'stop', id: 'n2', day: 2 },
     ])
   })
 
-  it('同一天內(day 相同或都省略)不插入任何分隔線', () => {
+  it('同一天內(day 相同或都省略)只有一天', () => {
     let timeline: PlanTimeline = createEmptyTimeline()
     const r1 = insertAfter(timeline, null, stop('赤崁樓', '08:00'), 'n1')
     if (!r1.ok) throw new Error('setup failed')
@@ -481,10 +458,10 @@ describe('toRenderList', () => {
     if (!r2.ok) throw new Error('setup failed')
     timeline = r2.timeline
 
-    expect(toRenderList(timeline).map((n) => n.id)).toEqual(['n1', 'n2'])
+    expect(dayIds(timeline)).toEqual([['n1', 'n2']])
   })
 
-  it('連續三天的行程,依序插入 Day 2/Day 3 兩條分隔線', () => {
+  it('連續三天的行程,依序放進三天', () => {
     let timeline: PlanTimeline = createEmptyTimeline()
     const r1 = insertAfter(timeline, null, stopOnDay('赤崁樓', '08:00', 1), 'n1')
     if (!r1.ok) throw new Error('setup failed')
@@ -496,17 +473,10 @@ describe('toRenderList', () => {
     if (!r3.ok) throw new Error('setup failed')
     timeline = r3.timeline
 
-    const rendered = toRenderList(timeline)
-    expect(rendered.map((n) => n.id)).toEqual(['n1', 'day-divider-2', 'n2', 'day-divider-3', 'n3'])
+    expect(dayIds(timeline)).toEqual([['n1'], ['n2'], ['n3']])
   })
 
-  it('day 非遞增(接在較後一天的站之後)也要插入分隔線,不能被靜默併入前一段', () => {
-    // 這是實際修過的 bug 的回歸測試:toRenderList 原本只在
-    // nodeDay > currentDay 時插入分隔線,day 變小(非遞增)的情況完全
-    // 不會插入、currentDay 也不會回退,該站會被誤渲染成前一天的一部分。
-    // insertAfter 本身不驗證跨天的先後順序(day 不同時直接跳過時間比較,
-    // 見 nearestStopNode 的完整說明),所以這種非遞增鏈結是合法可達的
-    // 狀態,不是只存在於理論上。
+  it('錨點在較後一天、但指定較前的天:放進那一天的最後面,天的順序不變', () => {
     let timeline: PlanTimeline = createEmptyTimeline()
     const r1 = insertAfter(timeline, null, stopOnDay('赤崁樓', '08:00', 1), 'n1')
     if (!r1.ok) throw new Error('setup failed')
@@ -514,13 +484,13 @@ describe('toRenderList', () => {
     const r2 = insertAfter(timeline, 'n1', stopOnDay('孔廟', '09:00', 2), 'n2')
     if (!r2.ok) throw new Error('setup failed')
     timeline = r2.timeline
-    // 刻意接在 day 2 的 n2 之後,卻插入一筆 day 1 的站。
+    // 錨點是第 2 天的 n2,卻指定第 1 天:放進第 1 天最後面(不會被併進第 2 天)。
     const r3 = insertAfter(timeline, 'n2', stopOnDay('武廟愛玉', '10:00', 1), 'n3')
     if (!r3.ok) throw new Error('setup failed')
     timeline = r3.timeline
 
-    const rendered = toRenderList(timeline)
-    expect(rendered.map((n) => n.id)).toEqual(['n1', 'day-divider-2', 'n2', 'day-divider-1', 'n3'])
+    expect(dayIds(timeline)).toEqual([['n1', 'n3'], ['n2']])
+    expect(getNode(timeline, 'n3')?.day).toBe(1)
   })
 })
 
@@ -618,7 +588,6 @@ describe('removeDay', () => {
       data:
         | ReturnType<typeof stopOnDay>
         | ReturnType<typeof stop>
-        | { type: 'message'; text: string }
       id: string
     }>,
   ) {
@@ -633,21 +602,6 @@ describe('removeDay', () => {
     return timeline
   }
 
-  // ids — 把時間軸依鏈結順序走訪成 id 陣列,驗證「剩下哪些、順序對不對」。
-  // 不用 toRenderList——那會插入衍生的 Day 分隔線,不是真實節點。
-  function ids(timeline: PlanTimeline): string[] {
-    const out: string[] = []
-    let cursor = timeline.headId
-    const seen = new Set<string>()
-    while (cursor !== null) {
-      if (seen.has(cursor)) throw new Error('鏈結成環')
-      seen.add(cursor)
-      out.push(cursor)
-      cursor = timeline.nodes.get(cursor)?.nextId ?? null
-    }
-    return out
-  }
-
   it('移除中間那一天,前後兩天接起來', () => {
     const timeline = build([
       { data: stopOnDay('赤崁樓', '08:30', 1), id: 'd1a' },
@@ -658,24 +612,23 @@ describe('removeDay', () => {
     ])
     const result = removeDay(timeline, 2)
     expect(ids(result)).toEqual(['d1a', 'd1b', 'd3a'])
-    // 鏈結要雙向一致——只改 nextId 沒改 prevId 的話往回走會斷掉。
-    expect(result.nodes.get('d3a')?.prevId).toBe('d1b')
-    expect(result.nodes.get('d1b')?.nextId).toBe('d3a')
+    // 之後的天往前補位:原本的第 3 天變成第 2 天。
+    expect(getNode(result, 'd3a')?.day).toBe(2)
+    expect(result.days).toHaveLength(2)
   })
 
-  it('移除第一天時 headId 往後移', () => {
+  it('移除第一天時,後面的天往前補位', () => {
     const timeline = build([
       { data: stopOnDay('赤崁樓', '08:30', 1), id: 'd1a' },
       { data: stopOnDay('午餐', '11:30', 1), id: 'd1b' },
       { data: stopOnDay('孔廟', '09:00', 2), id: 'd2a' },
     ])
     const result = removeDay(timeline, 1)
-    expect(result.headId).toBe('d2a')
     expect(ids(result)).toEqual(['d2a'])
-    expect(result.nodes.get('d2a')?.prevId).toBeNull()
+    expect(getNode(result, 'd2a')?.day).toBe(1)
   })
 
-  it('移除最後一天,前一天的 nextId 歸 null', () => {
+  it('移除最後一天,只剩前面的天', () => {
     const timeline = build([
       { data: stopOnDay('赤崁樓', '08:30', 1), id: 'd1a' },
       { data: stopOnDay('孔廟', '09:00', 2), id: 'd2a' },
@@ -683,7 +636,7 @@ describe('removeDay', () => {
     ])
     const result = removeDay(timeline, 2)
     expect(ids(result)).toEqual(['d1a'])
-    expect(result.nodes.get('d1a')?.nextId).toBeNull()
+    expect(result.days).toHaveLength(1)
   })
 
   it('移除唯一的一天,時間軸變空', () => {
@@ -692,24 +645,8 @@ describe('removeDay', () => {
       { data: stopOnDay('午餐', '11:30', 1), id: 'd1b' },
     ])
     const result = removeDay(timeline, 1)
-    expect(result.headId).toBeNull()
-    expect(result.nodes.size).toBe(0)
-  })
-
-  it('message 節點跟著它前面那個 stop 的天數一起被移除', () => {
-    // message 自己沒有 day 欄位,歸屬靠前一個 stop 決定(見 removeDay
-    // 的完整說明)。d2note 夾在兩個 day 2 的站點之間,應該一起消失;
-    // d1note 在 day 1 的站點之後,要留下來。
-    const timeline = build([
-      { data: stopOnDay('赤崁樓', '08:30', 1), id: 'd1a' },
-      { data: { type: 'message' as const, text: '第一天的備註' }, id: 'd1note' },
-      { data: stopOnDay('孔廟', '09:00', 2), id: 'd2a' },
-      { data: { type: 'message' as const, text: '第二天的備註' }, id: 'd2note' },
-      { data: stopOnDay('文學館', '11:20', 2), id: 'd2b' },
-      { data: stopOnDay('安平古堡', '09:30', 3), id: 'd3a' },
-    ])
-    const result = removeDay(timeline, 2)
-    expect(ids(result)).toEqual(['d1a', 'd1note', 'd3a'])
+    expect(isTimelineEmpty(result)).toBe(true)
+    expect(countNodes(result)).toBe(0)
   })
 
   it('沒有 day 欄位的節點視為第一天', () => {
@@ -728,9 +665,7 @@ describe('removeDay', () => {
     expect(removeDay(timeline, 5)).toBe(timeline)
   })
 
-  it('連續多站同屬一天時全部移除(鏈結要一路跳過,不是只跳一格)', () => {
-    // 這個案例守住 skipForward/skipBackward 的迴圈——只跳一格的實作
-    // 會讓 d1a.nextId 指向 d2b(同樣已被刪除的 id),走訪時就會斷掉。
+  it('連續多站同屬一天時全部移除', () => {
     const timeline = build([
       { data: stopOnDay('赤崁樓', '08:30', 1), id: 'd1a' },
       { data: stopOnDay('孔廟', '09:00', 2), id: 'd2a' },
@@ -741,7 +676,7 @@ describe('removeDay', () => {
     ])
     const result = removeDay(timeline, 2)
     expect(ids(result)).toEqual(['d1a', 'd3a'])
-    expect(result.nodes.size).toBe(2)
+    expect(countNodes(result)).toBe(2)
   })
 
   it('空的時間軸呼叫不會爆,原樣返回', () => {
@@ -750,85 +685,294 @@ describe('removeDay', () => {
   })
 })
 
-describe('stripEphemeralNodes', () => {
-  // message — 組一筆 message 型 PlanNodeData 的簡寫,供這組測試使用。
-  function message(text: string, ephemeral?: boolean) {
-    return { type: 'message' as const, text, ephemeral }
+describe('天是結構(days)', () => {
+  function build(items: Array<{ id: string; day: number; time: string }>) {
+    let timeline: PlanTimeline = createEmptyTimeline()
+    let anchor: string | null = null
+    for (const it of items) {
+      const r = insertAfter(timeline, anchor, stopOnDay(it.id, it.time, it.day), it.id)
+      if (!r.ok) throw new Error(r.error.message)
+      timeline = r.timeline
+      anchor = it.id
+    }
+    return timeline
   }
 
-  it('沒有任何 ephemeral 節點時,原樣返回同一個物件參照', () => {
-    const r1 = insertAfter(createEmptyTimeline(), null, stop('赤崁樓'), 'n1')
-    if (!r1.ok) throw new Error('setup failed')
-    const r2 = insertAfter(r1.timeline, 'n1', message('AI 的話'), 'm1')
-    if (!r2.ok) throw new Error('setup failed')
-    const timeline = r2.timeline
-    expect(stripEphemeralNodes(timeline)).toBe(timeline)
+  it('存進時間軸的節點不帶 day,讀取時依所在天補上', () => {
+    const t = build([{ id: 'a', day: 1, time: '09:00' }, { id: 'b', day: 2, time: '09:00' }])
+    expect(t.days).toHaveLength(2)
+    expect(t.days[1].nodes[0]).not.toHaveProperty('day')
+    expect(getNode(t, 'b')?.day).toBe(2)
+    expect(listNodes(t).map((n) => n.day)).toEqual([1, 2])
   })
 
-  it('中間單一 ephemeral 節點,前後節點直接銜接(對齊 removeNode 的鏈結接續行為)', () => {
+  it('insertAfter 指定的天不夠時補空的天', () => {
+    const t = build([{ id: 'a', day: 3, time: '09:00' }])
+    expect(t.days).toHaveLength(3)
+    expect(getNode(t, 'a')?.day).toBe(3)
+    expect(t.days.map((d) => d.nodes.map((n) => n.id))).toEqual([[], [], ['a']])
+  })
+
+  it('沒指定 day 時放進錨點所在的那一天', () => {
+    let t = build([{ id: 'a', day: 2, time: '09:00' }])
+    const r = insertAfter(t, 'a', { type: 'stop', name: 'B', time: '10:00' }, 'b')
+    if (!r.ok) throw new Error('setup failed')
+    t = r.timeline
+    expect(getNode(t, 'b')?.day).toBe(2)
+  })
+
+  it('時間順序只在同一天內檢查,每天可以各自從清晨開始', () => {
+    const t = build([{ id: 'a', day: 1, time: '20:00' }, { id: 'b', day: 2, time: '08:00' }])
+    expect(ids(t)).toEqual(['a', 'b'])
+  })
+
+  describe('prevStopOf / nextStopOf', () => {
+    it('同一天內找前後 stop,不跨天', () => {
+      const t = build([{ id: 'a', day: 1, time: '09:00' }, { id: 'b', day: 1, time: '10:00' }, { id: 'c', day: 2, time: '09:00' }])
+      expect(prevStopOf(t, 'b')?.id).toBe('a')
+      expect(nextStopOf(t, 'a')?.id).toBe('b')
+      expect(prevStopOf(t, 'c')).toBeUndefined()
+      expect(nextStopOf(t, 'b')).toBeUndefined()
+      expect(prevStopOf(t, 'not-exist')).toBeUndefined()
+    })
+  })
+
+  describe('addDay', () => {
+    it('預設加在最後面,是空的天,有自己的 id', () => {
+      const t = addedDay(build([{ id: 'a', day: 1, time: '09:00' }]), undefined, 'dx')
+      expect(t.days).toHaveLength(2)
+      expect(t.days[1]).toEqual({ id: 'dx', nodes: [] })
+      expect(t.days.map((d) => d.nodes.map((n) => n.id))).toEqual([['a'], []])
+    })
+
+    it('指定位置時插在那裡,原本那天與之後順延', () => {
+      const t0 = build([{ id: 'a', day: 1, time: '09:00' }, { id: 'b', day: 2, time: '09:00' }])
+      const t = addedDay(t0, 2, 'new')
+      expect(t.days.map((d) => d.id)[1]).toBe('new')
+      expect(getNode(t, 'b')?.day).toBe(3)
+    })
+
+    it('位置超過天數 + 1 視為加在最後面;空時間軸可以直接加第一天', () => {
+      expect(addedDay(build([{ id: 'a', day: 1, time: '09:00' }]), 9).days).toHaveLength(2)
+      expect(addedDay(createEmptyTimeline()).days).toHaveLength(1)
+    })
+
+    it('空的天不算內容;最後一個站被移除時,同一次變空的最後一天會一起去掉,事先加的空天不受影響', () => {
+      let t = addedDay(build([{ id: 'a', day: 1, time: '09:00' }, { id: 'b', day: 2, time: '09:00' }]))
+      expect(t.days).toHaveLength(3)
+      const r = removeNode(t, 'b')
+      if (!r.ok) throw new Error('remove failed')
+      t = r.timeline
+      // b 所在的第 2 天不是最後一天(後面還有事先加的空天),所以保留
+      expect(t.days).toHaveLength(3)
+      expect(isTimelineEmpty(addedDay(createEmptyTimeline()))).toBe(true)
+    })
+  })
+
+  describe('addDay 回傳實際插入位置', () => {
+    it('省略 atDay:day 是新的最後一天,dayId 是新天的 id', () => {
+      const r = addDay(build([{ id: 'a', day: 1, time: '09:00' }]), undefined, 'dx')
+      expect(r).toMatchObject({ ok: true, day: 2, dayId: 'dx' })
+    })
+
+    it('指定位置:day 就是插入的位置;超過天數 + 1 時回傳實際夾住後的位置(不是請求值)', () => {
+      const t0 = build([{ id: 'a', day: 1, time: '09:00' }, { id: 'b', day: 2, time: '09:00' }])
+      expect(addDay(t0, 1, 'x')).toMatchObject({ ok: true, day: 1, dayId: 'x' })
+      expect(addDay(t0, 9, 'y')).toMatchObject({ ok: true, day: 3, dayId: 'y' })
+    })
+
+    it('atDay 不合法(NaN/小數/0/負數/Infinity)回 invalid_day,不丟例外也不改時間軸', () => {
+      const t0 = build([{ id: 'a', day: 1, time: '09:00' }])
+      for (const bad of [NaN, 1.5, 0, -2, Infinity]) {
+        const r = addDay(t0, bad)
+        expect(r.ok).toBe(false)
+        if (!r.ok) expect(r.error.code).toBe('invalid_day')
+      }
+    })
+  })
+
+  describe('invalid_day:day 不合法時 insertAfter/moveNode/setNodeDay 回結構化錯誤', () => {
+    const t0 = build([{ id: 'a', day: 1, time: '09:00' }, { id: 'b', day: 2, time: '09:00' }])
+    const data = { type: 'stop' as const, name: 'x' }
+
+    it('insertAfter 的 data.day', () => {
+      for (const bad of [NaN, 1.5, 0, -1, Infinity]) {
+        const r = insertAfter(t0, null, { ...data, day: bad }, 'n')
+        expect(r.ok).toBe(false)
+        if (!r.ok) expect(r.error.code).toBe('invalid_day')
+      }
+      // 省略 day 與合法 day 不受影響
+      expect(insertAfter(t0, null, data, 'n1').ok).toBe(true)
+      expect(insertAfter(t0, null, { ...data, day: 3 }, 'n2').ok).toBe(true)
+    })
+
+    it('moveNode 的 toDay', () => {
+      for (const bad of [NaN, 2.5, 0, -1]) {
+        const r = moveNode(t0, 'a', null, bad)
+        expect(r.ok).toBe(false)
+        if (!r.ok) expect(r.error.code).toBe('invalid_day')
+      }
+    })
+
+    it('setNodeDay 的 day', () => {
+      for (const bad of [NaN, 2.5, 0, -1]) {
+        const r = setNodeDay(t0, 'a', bad)
+        expect(r.ok).toBe(false)
+        if (!r.ok) expect(r.error.code).toBe('invalid_day')
+      }
+    })
+  })
+
+  describe('removeNode 修剪最後一個空天', () => {
+    it('移除讓最後一天變空 → 那一天一併去掉(不留空的 Day N 標題)', () => {
+      const t0 = build([{ id: 'a', day: 1, time: '09:00' }, { id: 'b', day: 2, time: '09:00' }])
+      const r = removeNode(t0, 'b')
+      if (!r.ok) throw new Error('remove failed')
+      expect(r.timeline.days).toHaveLength(1)
+      expect(r.timeline.days.map((d) => d.nodes.map((n) => n.id))).toEqual([['a']])
+    })
+  })
+
+  describe('moveNode', () => {
+    it('同一天內調換順序,檢查時間順序', () => {
+      const t = build([{ id: 'a', day: 1, time: '09:00' }, { id: 'b', day: 1, time: '10:00' }, { id: 'c', day: 1, time: '11:00' }])
+      const bad = moveNode(t, 'c', null)
+      expect(bad.ok).toBe(false)
+      if (!bad.ok) expect(bad.error.code).toBe('time_out_of_range')
+      expect(ids(t)).toEqual(['a', 'b', 'c']) // 失敗時原時間軸不變
+    })
+
+    it('移到另一天的最前面(錨點為 null + toDay),節點屬於新的一天,transitFromPrev 作廢', () => {
+      let t = build([{ id: 'a', day: 1, time: '09:00' }, { id: 'b', day: 1, time: '10:00' }, { id: 'c', day: 2, time: '11:00' }])
+      t = updateNode(t, 'b', { transitFromPrev: { mode: '步行', minutes: 5 } })
+      const r = moveNode(t, 'b', null, 2)
+      if (!r.ok) throw new Error(r.error.message)
+      expect(ids(r.timeline)).toEqual(['a', 'b', 'c'])
+      expect(getNode(r.timeline, 'b')?.day).toBe(2)
+      expect(getNode(r.timeline, 'b')?.transitFromPrev).toBeUndefined()
+      expect(getNode(r.timeline, 'c')?.transitFromPrev).toBeUndefined()
+    })
+
+    it('錨點或節點找不到、錨點是自己、違反時間順序時回傳錯誤;沒有時間的節點可以移到錨點後面', () => {
+      const t = build([{ id: 'a', day: 1, time: '09:00' }, { id: 'b', day: 1, time: '10:00' }])
+      expect(moveNode(t, 'x', null).ok).toBe(false)
+      expect(moveNode(t, 'a', 'nope').ok).toBe(false)
+      expect(moveNode(t, 'a', 'a').ok).toBe(false)
+      // a(09:00)移到 b(10:00)後面違反同一天的時間順序 → 失敗,時間軸不變
+      const bad = moveNode(t, 'a', 'b')
+      expect(bad.ok).toBe(false)
+      // 沒有時間限制的節點(沒填 time 的 stop)可以移到錨點後面
+      const withMsg = insertAfter(t, 'a', { type: 'stop', name: '自由活動' }, 'm')
+      if (!withMsg.ok) throw new Error('setup failed')
+      const moved = moveNode(withMsg.timeline, 'm', 'b')
+      if (!moved.ok) throw new Error(moved.error.message)
+      expect(ids(moved.timeline)).toEqual(['a', 'b', 'm'])
+    })
+  })
+
+  describe('setNodeDay', () => {
+    it('改到另一天,放在依時間排序的位置', () => {
+      const t = build([{ id: 'a', day: 1, time: '09:00' }, { id: 'b', day: 2, time: '08:00' }, { id: 'c', day: 2, time: '12:00' }, { id: 'x', day: 1, time: '10:00' }])
+      const r = setNodeDay(t, 'x', 2)
+      if (!r.ok) throw new Error(r.error.message)
+      expect(ids(r.timeline)).toEqual(['a', 'b', 'x', 'c'])
+      expect(getNode(r.timeline, 'x')?.day).toBe(2)
+    })
+
+    it('天數不夠時補空的天;找不到節點回錯誤', () => {
+      const t = build([{ id: 'a', day: 1, time: '09:00' }])
+      const r = setNodeDay(t, 'a', 3)
+      if (!r.ok) throw new Error(r.error.message)
+      expect(r.timeline.days).toHaveLength(3)
+      expect(getNode(r.timeline, 'a')?.day).toBe(3)
+      expect(setNodeDay(t, 'nope', 2).ok).toBe(false)
+    })
+  })
+
+  it('updateNode 的 patch.day 會被忽略(改天要用 setNodeDay)', () => {
+    const t = build([{ id: 'a', day: 1, time: '09:00' }])
+    const next = updateNode(t, 'a', { day: 5, name: '新名稱' })
+    expect(getNode(next, 'a')).toMatchObject({ day: 1, name: '新名稱' })
+    expect(next.days).toHaveLength(1)
+  })
+})
+
+describe('moveDay', () => {
+  function threeDays() {
     let timeline: PlanTimeline = createEmptyTimeline()
-    const r1 = insertAfter(timeline, null, stop('赤崁樓'), 'n1')
-    if (!r1.ok) throw new Error('setup failed')
-    timeline = r1.timeline
-    const r2 = insertAfter(timeline, 'n1', message('連線錯誤', true), 'm1')
-    if (!r2.ok) throw new Error('setup failed')
-    timeline = r2.timeline
-    const r3 = insertAfter(timeline, 'm1', stop('祀典武廟'), 'n2')
-    if (!r3.ok) throw new Error('setup failed')
-    timeline = r3.timeline
+    let anchor: string | null = null
+    for (const [id, day] of [['a', 1], ['b', 2], ['c', 3]] as const) {
+      const r = insertAfter(timeline, anchor, { type: 'stop', name: id, time: '09:00', day }, id)
+      if (!r.ok) throw new Error(r.error.message)
+      timeline = r.timeline
+      anchor = id
+    }
+    return timeline
+  }
 
-    const stripped = stripEphemeralNodes(timeline)
-    expect(toRenderList(stripped).map((n) => n.name)).toEqual(['赤崁樓', '祀典武廟'])
-    expect(stripped.nodes.get('n1')).toMatchObject({ nextId: 'n2' })
-    expect(stripped.nodes.get('n2')).toMatchObject({ prevId: 'n1' })
-    expect(stripped.nodes.has('m1')).toBe(false)
-    // 傳入的 timeline 本身不受影響(只影響存檔用的這份副本)——畫面渲染
-    // 看到的 timeline 仍然保留這則錯誤訊息。
-    expect(timeline.nodes.has('m1')).toBe(true)
+  it('把第 3 天移到第 1 天:順序重排,站點的 day 與分隔線跟著重算,天的 id 不變', () => {
+    const t = threeDays()
+    const idsBefore = t.days.map((d) => d.id)
+    const r = moveDay(t, 3, 1)
+    if (!r.ok) throw new Error(r.error.message)
+    expect(ids(r.timeline)).toEqual(['c', 'a', 'b'])
+    expect(getNode(r.timeline, 'c')?.day).toBe(1)
+    expect(getNode(r.timeline, 'b')?.day).toBe(3)
+    expect(r.timeline.days.map((d) => d.id)).toEqual([idsBefore[2], idsBefore[0], idsBefore[1]])
+    expect(r.timeline.days.map((d) => d.nodes.map((n) => n.id))).toEqual([['c'], ['a'], ['b']])
   })
 
-  it('連續相鄰兩個 ephemeral 節點,摘除後前後節點仍正確銜接', () => {
-    let timeline: PlanTimeline = createEmptyTimeline()
-    const r1 = insertAfter(timeline, null, stop('赤崁樓'), 'n1')
-    if (!r1.ok) throw new Error('setup failed')
-    timeline = r1.timeline
-    const r2 = insertAfter(timeline, 'n1', message('第一次失敗', true), 'm1')
-    if (!r2.ok) throw new Error('setup failed')
-    timeline = r2.timeline
-    const r3 = insertAfter(timeline, 'm1', message('第二次失敗', true), 'm2')
-    if (!r3.ok) throw new Error('setup failed')
-    timeline = r3.timeline
-    const r4 = insertAfter(timeline, 'm2', stop('祀典武廟'), 'n2')
-    if (!r4.ok) throw new Error('setup failed')
-    timeline = r4.timeline
-
-    const stripped = stripEphemeralNodes(timeline)
-    expect(toRenderList(stripped).map((n) => n.name)).toEqual(['赤崁樓', '祀典武廟'])
-    expect(stripped.nodes.get('n1')).toMatchObject({ nextId: 'n2' })
-    expect(stripped.nodes.get('n2')).toMatchObject({ prevId: 'n1' })
-    expect(stripped.nodes.has('m1')).toBe(false)
-    expect(stripped.nodes.has('m2')).toBe(false)
+  it('往後移:第 1 天移到第 2 天,中間的天往前補位', () => {
+    const r = moveDay(threeDays(), 1, 2)
+    if (!r.ok) throw new Error(r.error.message)
+    expect(ids(r.timeline)).toEqual(['b', 'a', 'c'])
   })
 
-  it('ephemeral 節點正好是 headId 時,headId 正確轉移到下一個節點', () => {
-    let timeline: PlanTimeline = createEmptyTimeline()
-    const r1 = insertAfter(timeline, null, message('歡迎訊息', true), 'm1')
-    if (!r1.ok) throw new Error('setup failed')
-    timeline = r1.timeline
-    const r2 = insertAfter(timeline, 'm1', stop('赤崁樓'), 'n1')
-    if (!r2.ok) throw new Error('setup failed')
-    timeline = r2.timeline
-
-    const stripped = stripEphemeralNodes(timeline)
-    expect(stripped.headId).toBe('n1')
-    expect(toRenderList(stripped).map((n) => n.name)).toEqual(['赤崁樓'])
+  it('fromDay 等於 toDay 原樣回傳同一個時間軸', () => {
+    const t = threeDays()
+    const r = moveDay(t, 2, 2)
+    expect(r.ok && r.timeline === t).toBe(true)
   })
 
-  it('整條時間軸只有 ephemeral 節點時,摘除後變成空時間軸', () => {
-    const r1 = insertAfter(createEmptyTimeline(), null, message('唯一一則錯誤', true), 'm1')
+  it('超出範圍或不是整數:回傳錯誤並說明目前有幾天;空時間軸也回錯誤', () => {
+    const t = threeDays()
+    for (const [from, to] of [[0, 1], [1, 4], [2.5, 1], [-1, 2]] as const) {
+      const r = moveDay(t, from, to)
+      expect(r.ok).toBe(false)
+      if (!r.ok) expect(r.error.message).toContain('3 天')
+    }
+    expect(moveDay(createEmptyTimeline(), 1, 1).ok).toBe(false)
+  })
+})
+
+describe('lastAppendTarget(接在整條時間軸最後面)', () => {
+  it('完全沒有天:沒有錨點、第 1 天', () => {
+    expect(lastAppendTarget(createEmptyTimeline())).toEqual({ anchorId: null, day: 1 })
+  })
+
+  it('最後一天有節點:錨點是那一天最後一個節點,day 是那一天', () => {
+    const r1 = insertAfter(createEmptyTimeline(), null, { type: 'stop', name: 'A', time: '09:00' }, 'a')
     if (!r1.ok) throw new Error('setup failed')
-    const stripped = stripEphemeralNodes(r1.timeline)
-    expect(stripped.headId).toBeNull()
-    expect(stripped.nodes.size).toBe(0)
+    const t = insertAfter(r1.timeline, 'a', { type: 'stop', name: 'B', time: '10:00' }, 'm')
+    if (!t.ok) throw new Error(t.error.message)
+    expect(lastAppendTarget(t.timeline)).toEqual({ anchorId: 'm', day: 1 })
+  })
+
+  it('最後一天是空的:錨點為 null、day 是那一天;接上去的節點就放進那一天', () => {
+    const base = insertAfter(createEmptyTimeline(), null, { type: 'stop', name: 'A', time: '09:00' }, 'a')
+    if (!base.ok) throw new Error('setup failed')
+    const t = addedDay(base.timeline, undefined, 'd-two')
+    const target = lastAppendTarget(t)
+    expect(target).toEqual({ anchorId: null, day: 2 })
+    const r = insertAfter(t, target.anchorId, { type: 'stop', name: 'B', time: '10:00', day: target.day }, 'm')
+    if (!r.ok) throw new Error(r.error.message)
+    expect(r.timeline.days.map((d) => d.nodes.map((n) => n.id))).toEqual([['a'], ['m']])
+  })
+
+  it('錨點用 day-divider-N 這種舊的虛擬 id 不再被特別處理,視為找不到錨點', () => {
+    const t = addedDay(createEmptyTimeline(), undefined, 'd-one')
+    const r = insertAfter(t, 'day-divider-1', { type: 'stop', name: 'A' }, 'a')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error.code).toBe('anchor_not_found')
   })
 })

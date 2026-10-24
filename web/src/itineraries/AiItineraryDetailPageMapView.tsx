@@ -2,18 +2,22 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, CalendarDays, MapPin } from 'lucide-react'
 import { PlanTimelineView } from '../plan-core/PlanTimelineView'
+import { listNodes, lodgingsOf, type PlanTimeline } from '../plan-core/planTimeline'
+import { lodgingMapMarkers } from '../plan-core/useResolvedNodeRefs'
+import { useResolvedRefs } from '../plan-core/PlanDataProvider'
 import { Lightbox } from '../geo-planning/PhotoCarousel'
 import type { MapHandle } from '../geo-planning/NativeMapBase'
 import { SIMPLE_MAP_ID } from '../geo-planning/mapStyleIds'
 import type { PlanStopMarker } from '../geo-planning/usePlanStopMarkers'
 import { useMapSafeArea } from '../geo-planning/useMapSafeArea'
 import { useStopCardClick } from '../plan-core/useStopPan'
-import { routePolylineLayer } from '../geo-planning/mapDrawLayer/featureLayers/routePolylineLayer'
+import { useFirstStopAutoPan } from '../plan-core/useFirstStopAutoPan'
+import { useIsDesktop } from '../hooks/useIsDesktop'
 import { createRenderOnsenAutumnStopCard } from './renderOnsenAutumnStopCard'
 import { MAPLE_LEAF_PATH, MAPLE_STEM_PATH } from './mapleLeafPath'
 import { renderAnchorIcon } from './renderAnchorIcon'
 import { maskPlanStopsView, usePlanSelection } from '../plan-core/usePlanStopsState'
-import { routeSegmentsFromSteps } from './routeSegments'
+import { routeSegmentsFromTimeline } from '../plan-core/routeSegments'
 import { PlanLayout } from './PlanLayout'
 import { PlanOverlayLayout } from './PlanOverlayLayout'
 import { PlanMap } from './PlanMap'
@@ -21,7 +25,7 @@ import { FoodSpotPanel } from './FoodSpotPanel'
 import { useFoodSpotDetails } from './useFoodSpotDetails'
 import { initialCenterOf } from './initialCenter'
 import { useCityAttractionGlow } from './useCityAttractionGlow'
-import { useResolvedItineraryTimeline } from './useResolvedItineraryTimeline'
+import { dayCountOf, stopCountOf } from './catalog'
 import type { SampleItinerary } from './types'
 import styles from './AiItineraryDetailPageMapView.module.css'
 
@@ -212,10 +216,14 @@ const ZOOM = 15
 // dark——頁面目前是不是夜間模式(由 AiItinerariesRoute 的 useThemeToggle 決定,
 // 經 AiItineraryDetailPage 傳進來)。必須明確傳給 NativeMapBase 的 theme:
 // 不傳的話它拿到 null,走 mapId 的地圖會永遠用預設淺色。
-export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itinerary: SampleItinerary; dark?: boolean }) {
-  // steps——時間軸資料。站點座標與照片經資料存取層解析(placeId → placeDetails),與 /ai-plan、登入後同一條路徑,
-  // 見 useResolvedItineraryTimeline.ts。
-  const steps = useResolvedItineraryTimeline(itinerary)
+export function AiItineraryDetailPageMapView({ itinerary, timeline, dark = false }: { itinerary: SampleItinerary; timeline: PlanTimeline; dark?: boolean }) {
+  // timeline——頁面(AiItineraryDetailPage)那一份唯一的時間軸:站點座標已從共用 store 蓋上,見 useResolvedItineraryTimeline.ts。
+  // steps——依序列出全部節點(不含天的標題),給地圖標記、鏡頭、路線這些「查節點」用途;視圖本身吃 timeline。
+  const steps = useMemo(() => listNodes(timeline), [timeline])
+  // lodgings/lodgingRefs——住宿(PlanTimeline.lodgings)的 placeId 經訪客版資料存取層解析(與站點座標同一條路徑):
+  // 名稱給時間軸的住宿橫幅,座標給下方 mapStops 的旅館圓點。
+  const lodgings = lodgingsOf(timeline)
+  const lodgingRefs = useResolvedRefs(steps, lodgings)
   // center——依這份行程自己的站點動態算(見 initialCenter.ts)。依賴整個 itinerary 物件:同 id 的內容換版(靜態版換成資料庫版)
   // 時中心要跟著更新;呼叫端(AiItineraryDetailPage)給的是穩定參照,不會每次 render 重算。
   const center = useMemo(() => initialCenterOf(itinerary), [itinerary])
@@ -285,6 +293,19 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
   // 沒被面板蓋住的地圖範圍中心(PlanOverlayLayout 的 safe-area 節點,經 useMapSafeArea 讀)。
   const mapSafeArea = useMapSafeArea(mapHandle.mapRef)
   const panToStop = useStopCardClick({ select: setSelectedStopId, pan: mapSafeArea.panToWithinSafeArea })
+  // 首站自動平移:手機才有(桌面的鏡頭統一只由點選圖卡移動,規則同 /ai-plan、登入後);與其他入口同一個共用 hook,
+  // 依安全區把第一站移到沒被面板蓋住的地圖中心。stops 取時間軸第一個有座標的站(不含美食清單)。
+  const isDesktop = useIsDesktop()
+  const firstStopTargets = useMemo(() => {
+    const first = steps.find((s) => s.type === 'stop' && s.lat != null && s.lng != null)
+    return first ? [{ lat: first.lat!, lng: first.lng! }] : []
+  }, [steps])
+  useFirstStopAutoPan({
+    stops: firstStopTargets,
+    enabled: !isDesktop,
+    ready: mapHandle.mapReady && !!mapHandle.mapRef.current,
+    pan: mapSafeArea.panToWithinSafeArea,
+  })
 
   // mapStops——只取已經有座標的 stop 節點,理由同 home/plan-ai-sim/Content.tsx
   // 的 mapStops:section/message 本來就不是地點,沒有座標的節點畫不出來。
@@ -304,14 +325,17 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
         foodMarkers.push({ id: spot.id, lat: d.lat, lng: d.lng, name: spot.name, glyph: FOOD_MARKER_GLYPH, size: FOOD_MARKER_SIZE })
       }
     }
-    return [...stopMarkers, ...foodMarkers]
-  }, [steps, foodSpots, foodSpotDetails])
+    // 旅館圓點:座標由 placeId 查到才有,帶 lodging 旗標(不參與路線),樣式見 LODGING_MARKER_GLYPH。
+    return [...stopMarkers, ...lodgingMapMarkers(lodgings, lodgingRefs), ...foodMarkers]
+  }, [steps, lodgings, lodgingRefs, foodSpots, foodSpotDetails])
 
-  // routeSegments——有交通膠囊的那一段才畫線,規則見 routeSegments.ts。
-  const routeSegments = useMemo(() => routeSegmentsFromSteps(steps), [steps])
+  // routeSegments——站點之間的連線:有交通膠囊的那一段才畫,規則在 plan-core/routeSegments.ts(三個入口共用,
+  // 2026-10-24 起與 /ai-plan、登入後同一個 routeLineLayer、同一個主題強調色;原本這頁依天換色的 routePolylineLayer 已移除)。
+  // 這頁沒有功能開關,一律傳給 PlanMap。
+  const routeSegments = useMemo(() => routeSegmentsFromTimeline(timeline), [timeline])
 
-  // 站點圓點與手繪路線都由統一繪製層畫出:站點圓點走 useSharedDrawLayer 的 planStopLayer(與 /ai-plan、登入後
-  // 同一個宿主與功能層),手繪路線是只有這一頁用的功能層(routePolylineLayer),經 extraLayers 傳入。
+  // 站點圓點與連線都由統一繪製層畫出:站點圓點走 useSharedDrawLayer 的 planStopLayer、連線走 routeLineLayer
+  // (與 /ai-plan、登入後同一個宿主與功能層)。
   //   - 站點(含美食清單的 glyph 與 size)、選取、hover 都由這頁自己持有(受控),點地圓點只回報意圖
   //     (onPointClick):點時間軸卡片 → setSelectedStopId(見下方 onPanToStop);點地圖圓點 → 同一個 state,
   //     兩個方向共用同一份事實來源(使用者要求的雙向連動)。
@@ -322,7 +346,6 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
     () => maskPlanStopsView({ stops: mapStops, selectedStopId, hoverStopId, hoverTransitPair: null }, true),
     [mapStops, selectedStopId, hoverStopId],
   )
-  const drawExtraLayers = useMemo(() => [routePolylineLayer({ segments: routeSegments })], [routeSegments])
 
   return (
     <PlanLayout>
@@ -339,7 +362,7 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
               {...stopsView}
               onStopClick={setSelectedStopId}
               attractionGlow={attractionGlow}
-              extraLayers={drawExtraLayers}
+              routeSegments={routeSegments}
               onHandleChange={handleMapHandleChange}
             >
               {isPlayfulUI && (isMapleBorder ? <MapleVignette dark={dark} /> : <MapVignette dark={dark} />)}
@@ -351,12 +374,12 @@ export function AiItineraryDetailPageMapView({ itinerary, dark = false }: { itin
           <h1 className={styles.title}>{itinerary.title}</h1>
           <div className={styles.meta}>
             <span className={styles.metaItem}><MapPin size={13} strokeWidth={2} />{itinerary.region}</span>
-            <span className={styles.metaItem}><CalendarDays size={13} strokeWidth={2} />{itinerary.days} 天 · {itinerary.stops.length} 站</span>
+            <span className={styles.metaItem}><CalendarDays size={13} strokeWidth={2} />{dayCountOf(itinerary)} 天 · {stopCountOf(itinerary)} 站</span>
           </div>
           <p className={styles.summary}>{itinerary.summary}</p>
         </header>
         <PlanTimelineView
-          steps={steps}
+          timeline={timeline}
           isThinking={false}
           emptyStateMessage=""
           hideEmptyState

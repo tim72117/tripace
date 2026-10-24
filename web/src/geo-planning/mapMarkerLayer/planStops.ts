@@ -47,6 +47,8 @@ export interface MapMarkerPoint {
   glyph?: string
   /** 整顆圓點渲染尺寸,預設 14px——對齊 PlanStopMarker.size 的既有用法。 */
   size?: number
+  /** 這個點是旅館(對齊 PlanStopMarker.lodging):不參與整條路線的線段。 */
+  lodging?: boolean
   /** 只在 kind:'theme' 時有意義。選中這個點時,若 children 非空,
    *  expandedThemeId 這個衍生值會指向這個點(見 resolveExpandedThemeId 的完整
    *  說明,取代 useThemeRadiusCircle.ts THEME_RADIUS_METERS 固定半徑
@@ -127,6 +129,7 @@ export function planStopsToPoints(stops: PlanStopMarker[]): MapMarkerPoint[] {
       name: s.name,
       ...(s.glyph !== undefined ? { glyph: s.glyph } : {}),
       ...(s.size !== undefined ? { size: s.size } : {}),
+      ...(s.lodging ? { lodging: true } : {}),
     }
     if (s.children && s.children.length > 0) {
       return { ...base, kind: 'theme' as const, children: s.children }

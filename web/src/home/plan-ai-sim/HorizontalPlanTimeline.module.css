@@ -1301,7 +1301,7 @@
 }
 
 /* agentBubbleStale——新站點插入後這則被標記為「已被後續動作取代」
-   (見 planTimeline.ts staleOtherAgentMessages),降低不透明度表達,
+   (見 plan-core/planConversation.ts staleAllMessages),降低不透明度表達,
    不收合成一行——那會讓輸入框上下跳動。 */
 .agentBubbleStale {
   opacity: 0.55;
@@ -1358,3 +1358,79 @@
   flex: none;
 }
 .retryBtn:hover { background: var(--ios-red-bg); }
+
+/* lodgingCard——住宿卡(見 HorizontalPlanTimeline.tsx 的 lodging 分支):窄版的 .card(寬度約一般卡的一半,同樣的高度、
+   圓角與卷軸吸附),排在入住日那天第一張卡之前。虛線邊與淡底表示「這不是要去的地方,是貫穿這幾天的背景狀態」,
+   選中時邊線變實線(語言同空天佔位卡與桌面版住宿橫幅)。內容垂直置中。 */
+.lodgingCard {
+  width: 42%;
+  max-width: 150px;
+  border: 1px dashed var(--ios-sand);
+  background: color-mix(in srgb, var(--ios-sand) 8%, var(--ios-card));
+  align-items: center;
+  justify-content: center;
+}
+.lodgingCard[aria-current='true'] {
+  border-style: solid;
+}
+.lodgingBody {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  text-align: center;
+}
+.lodgingIcon {
+  font-size: 22px;
+  line-height: 1;
+}
+.lodgingName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-dark);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.lodgingSpan {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ios-sand);
+  letter-spacing: 0.02em;
+}
+
+/* emptyDayCard——空的一天的佔位卡(見 HorizontalPlanTimeline.tsx 的 emptyDay 分支):沿用 .card 的寬高、圓角與卷軸吸附,
+   內容置中;虛線邊與淡底表示「這裡還沒有東西」,選中時邊線變實線(對齊住宿橫幅的虛線語言)。 */
+.emptyDayCard {
+  border: 1px dashed var(--ios-sand);
+  background: color-mix(in srgb, var(--ios-sand) 8%, var(--ios-card));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.emptyDayCard[aria-current='true'] {
+  border-style: solid;
+}
+.emptyDayBody {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0 24px;
+  text-align: center;
+}
+.emptyDayTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-dark);
+}
+.emptyDayHint {
+  font-size: 12px;
+  color: var(--ios-gray);
+  line-height: 1.5;
+}

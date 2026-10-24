@@ -24,6 +24,8 @@ import { Z_LAYERS } from '../components/zLayers'
 import { useElementHeight } from '../hooks/useElementHeight'
 import { Nav as PhoneNav } from './Nav'
 import { LivePlanLayer } from './LivePlanLayer'
+import { PlanDataProvider } from '../plan-core/PlanDataProvider'
+import { getPlanAiApiDataSource } from '../home/plan-ai-sim/planAiApiDataSource'
 import { PhoneSideTools } from '../PhoneSideTools'
 import type { Trip } from '../trip/types'
 
@@ -138,7 +140,7 @@ export function Content(props: ContentProps) {
   // 都寫同一個 state,不會出現兩邊各自高亮不同站。
   // 狀態本身(站點、選取、hover、轉乘配對與 TripPlanPage 的四個回呼)在共用的 plan-core/usePlanStopsState,
   // 登入後桌面(desktop/Content)同樣使用。
-  const { stops, selectedStopId, hoverStopId, hoverTransitPair, setSelectedStopId, tripPlanProps } = usePlanStopsState()
+  const { stops, routeSegments, selectedStopId, hoverStopId, hoverTransitPair, setSelectedStopId, tripPlanProps } = usePlanStopsState()
   const [paceSheetOpen, setPaceSheetOpen] = useState(false)
   // exploreActive/exploreTrigger:2026-10「探索」標籤從疊在地圖左上角
   // 搬到底部常駐功能列(使用者明確要求),這兩個 state 是這個元件與
@@ -437,15 +439,19 @@ export function Content(props: ContentProps) {
               onTripListDrawerActiveChange={setTripListDrawerOpen}
               // 站點檢視:規劃面板關閉時整組遮蔽,見 maskPlanStopsView(桌面、手機共用)。
               {...visibleStopsView}
-              // 整條路線:四個入口共用 ROUTE_LINE_ENABLED 控制(見 DesktopShared.tsx);手機沒有切換入口,flag 開啟就畫。
-              showPlanRouteLine={ROUTE_LINE_ENABLED}
+              // 連線段:四個入口共用 ROUTE_LINE_ENABLED 控制(見 DesktopShared.tsx);手機沒有切換入口,flag 開啟就傳
+              // (與站點檢視同樣只在面板開啟時傳,關閉時不畫線)。
+              routeSegments={ROUTE_LINE_ENABLED && chatSheetOpen ? routeSegments : undefined}
               safeAreaRef={safeAreaRef}
               controlsPortalTarget={controlsSlotEl}
               onStopClick={setSelectedStopId}
             />
           }
         >
-          <LivePlanLayer cfg={cfg} selectedStopId={selectedStopId} tripPlanProps={tripPlanProps} />
+          {/* 資料存取層在入口根部決定一次:登入版(打 /internal),底下的時間軸、地圖投影與詢問頁共用同一個 store */}
+          <PlanDataProvider dataSource={getPlanAiApiDataSource(cfg)}>
+            <LivePlanLayer cfg={cfg} selectedStopId={selectedStopId} tripPlanProps={tripPlanProps} />
+          </PlanDataProvider>
         </PlanOverlayLayout>
         {/* PhoneSideTools:右側下方路徑+demo-* 小圖示,跨所有主畫面模式
             共用(不是規劃地圖專屬),見該元件開頭說明。 */}

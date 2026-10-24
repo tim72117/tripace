@@ -37,6 +37,8 @@ export function searchResultLayer(input: {
       kind: 'marker',
       position: { lat: r.lat, lng: r.lng },
       title: r.name,
+      // 三種搜尋結果標記都是圓形(旅館小圓點、地點/定位結果的圓底圖示),圓心就是座標(見 types.ts 的 anchor 說明)。
+      anchor: 'center',
       contentKey: `${r.kind}|${r.category ?? ''}|${selected}|${candidate}|${index ?? ''}`,
       createContent: () => searchResultMarkerContent(r, selected, candidate, index),
       clickable: true,

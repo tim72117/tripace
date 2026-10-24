@@ -5,12 +5,13 @@ import { AgentBridge } from '@onagent/bridge'
 import { TIME_DRAG_ENABLED, TRANSIT_MODE_SELECT_ENABLED } from '../DesktopShared'
 import { ApiError, fetchPlanAiAttractionSearch, postPlanAiChat, postPlanAiChatReply, type ClientConfig } from '../api'
 import { Lightbox } from '../geo-planning/PhotoCarousel'
-import { resolveAttractionForStep } from '../plan-core/resolveAttractionForStep'
 import { toAgentBridgeTools } from '../sdk-proposals/toAgentBridgeTools'
 import { useStableCallback } from '../hooks/useStableCallback'
-import { useSyncedState } from '../hooks/useSyncedState'
 import { useIsWide } from '../hooks/useIsWide'
-import { createAttractionToolsList, type AttractionStepsCtx, type PlanStepLike } from '../plan-core/attractionTools'
+import { createAttractionToolsList } from '../plan-core/attractionTools'
+import { createPlanAiCtx } from '../plan-core/planAiCtx'
+import { resolveNoteCategory } from '../plan-core/planPresentation'
+import { createBridgeGuard, createSendSequence, guardCallback, guardCtx, type BridgeGuard } from '../plan-core/bridgeGuard'
 import {
   createAskPageToolsList,
   type AskPageCtx,
@@ -20,9 +21,15 @@ import {
   type AskPageSelection,
 } from '../plan-core/askPageTools'
 import { useAskPageBridge } from '../plan-core/useAskPageBridge'
+import { lodgingMapMarkers, resolveMapChildren } from '../plan-core/useResolvedNodeRefs'
+import { useResolvedRefs } from '../plan-core/PlanDataProvider'
+import { refreshTransitForStop } from '../plan-core/refreshTransit'
+import { usePlanTimelineCore } from '../plan-core/usePlanTimelineCore'
 import { useStopCardClick } from '../plan-core/useStopPan'
 import { AskPage } from '../home/plan-ai-sim/AskPage'
 import { PlanTimelineView } from '../plan-core/PlanTimelineView'
+import { usePlanConversation } from '../plan-core/usePlanConversation'
+import type { PlanMessage } from '../plan-core/planConversation'
 // HorizontalPlanTimeline——2026-10(手機版共用時間軸重構):原本只給
 // /ai-plan 展示頁「模擬層」用的橫向卡片時間軸,現在也供這個元件的
 // horizontalTimeline 分支使用(見該 prop 的完整說明)——使用者明確要求
@@ -39,16 +46,18 @@ import { createAttractionPoolStore, type AttractionPoolStore } from '../plan-cor
 import { Composer } from '../components/Composer'
 import { ComposerPortal } from './ComposerPortal'
 import { ComposerSlotContext } from '../plan-core/overlayDom'
-import { stopLookupFailed,
+import {
   getTimeDragBounds,
   insertAfter,
-  removeNode,
-  staleOtherAgentMessages,
-  toRenderList,
-  updateNode,
+  listNodes,
+  lodgingsOf,
+  type LodgingResult,
+  type MoveDayResult,
+  type SetLodgingByDaysResult,
   type PlanNodeData,
   type PlanTimeline,
 } from '../plan-core/planTimeline'
+import { routeSegmentsFromTimeline, type RouteSegment } from '../plan-core/routeSegments'
 import type { PlanTimelineStore } from '../plan-core/planTimelineStorage'
 import styles from './TripPlanPage.module.css'
 
@@ -74,21 +83,7 @@ import styles from './TripPlanPage.module.css'
 // UI,不是先做一個沒有資料支撐的分頁殼子——這裡先用單一連續時間軸涵蓋
 // 整趟行程,是刻意的簡化取捨,不是遺漏。
 
-// REMOVE_FADE_MS — 淡出動畫時長,必須跟 .module.css 的 .removingFade
-// 過渡時間一致(理由同原型同名常數的完整說明)。
-const REMOVE_FADE_MS = 320
-
-// NOTE_STYLES — 備註分類 → 顏色/圖示的固定對照表,直接沿用原型的既有
-// 設計(見 home/plan-ai-sim/Content.tsx 同名常數的完整說明:視覺樣式怎麼對應
-// 分類是行程安排元件自己的決定,不是 attractionTools.ts 的 add_note 工具
-// 該內建的邏輯)。
-const NOTE_STYLES: Record<string, { color: string; noteIcon: string }> = {
-  consideration: { color: 'var(--ios-gray)', noteIcon: '✦' },
-  info: { color: 'var(--ios-sand)', noteIcon: 'ⓘ' },
-  cost: { color: 'var(--ios-green)', noteIcon: '💰' },
-  weather: { color: 'var(--ios-blue)', noteIcon: '☁︎' },
-}
-const DEFAULT_NOTE_CATEGORY = 'info'
+// 備註分類(NOTE_STYLES/DEFAULT_NOTE_CATEGORY)已抽到 plan-core/planPresentation.ts,與兩個時間軸視圖共用同一份。
 
 // PlanStep — 對外沿用的節點型別名稱,實際上就是 planTimeline.ts 的
 // PlanNode(見該檔案的完整背景說明),這裡只是型別別名,不重新宣告欄位。
@@ -117,440 +112,12 @@ const DEFAULT_NOTE_CATEGORY = 'info'
 const CITY_ATTRACTION_TYPES = ['tourist_attraction', 'historical_landmark', 'museum', 'park']
 
 
-// refreshTransitForStop — 重新計算 stopId 這個 stop 節點的
-// transitFromPrev(見 planTimeline.ts TransitInfo 的完整說明),邏輯原封
-// 不動搬自原型 home/plan-ai-sim/Content.tsx 同名函式——呼叫時機、先掛 loading
-// 佔位狀態再背景查詢的理由,完整說明見該處。
-// forceMode——選填,預設 undefined(維持原本「後端依直線距離自動決定」的
-// 行為)。2026-10 新增:使用者明確要求「交通時間的膠囊可以選擇交通方式」
-// (見 TRANSIT_MODE_SELECT_ENABLED 的完整說明),PlanTimelineView 的
-// onTransitModeChange 選了新 mode 後呼叫這個函式重新查詢,帶上使用者
-// 指定的字串——fetchPlanAiTransitEstimate 的 mode 參數本來就是選填的
-// (後端 geo_plan_ai.go 早已支援),這裡只是多一個呼叫路徑,不需要改動
-// 這支函式其餘的查詢/佔位/失敗處理邏輯。
-function refreshTransitForStop(
-  stopId: string,
-  // dataSource——取代原本直接收 cfg 再呼叫 fetchPlanAiTransitEstimate
-  // (2026-10,見這個元件 dataSource prop 的完整說明:展示頁交接後是
-  // 未登入訪客,固定打 /internal/* 會噴 401)。
-  dataSource: PlanAiDataSource,
-  setTimeline: React.Dispatch<React.SetStateAction<PlanTimeline>>,
-  getTimeline: () => PlanTimeline,
-  forceMode?: string,
-) {
-  const timeline = getTimeline()
-  const stopNode = timeline.nodes.get(stopId)
-  if (!stopNode || stopNode.type !== 'stop' || stopNode.lat == null || stopNode.lng == null) return
-  const prevNode = stopNode.prevId != null ? timeline.nodes.get(stopNode.prevId) : null
-  if (!prevNode || prevNode.type !== 'stop' || prevNode.lat == null || prevNode.lng == null) {
-    setTimeline((prev) => updateNode(prev, stopId, { transitFromPrev: undefined }))
-    return
-  }
-
-  const prevId = prevNode.id
-  setTimeline((prev) => updateNode(prev, stopId, { transitFromPrev: { loading: true } }))
-
-  const from = { lat: prevNode.lat, lng: prevNode.lng }
-  const to = { lat: stopNode.lat, lng: stopNode.lng }
-  dataSource.transitEstimate(from, to, forceMode)
-    .then((estimate) => {
-      setTimeline((prev) => {
-        // 這一站可能已經被移除,或它的前一站在查詢期間又再次變動——此時
-        // 直接放棄更新,理由同原型同名函式的完整說明。
-        const current = prev.nodes.get(stopId)
-        if (!current || current.prevId !== prevId) return prev
-        return updateNode(prev, stopId, {
-          transitFromPrev: {
-            loading: false,
-            icon: estimate.icon,
-            mode: estimate.mode,
-            minutes: estimate.minutes,
-            distance: estimate.distance,
-          },
-        })
-      })
-    })
-    .catch(() => {
-      // 查詢失敗——清空 transitFromPrev,不留一張永遠轉圈的交通卡卡住
-      // 畫面,理由同原型同名函式的完整說明。
-      setTimeline((prev) => {
-        const current = prev.nodes.get(stopId)
-        if (!current || current.prevId !== prevId) return prev
-        return updateNode(prev, stopId, { transitFromPrev: undefined })
-      })
-    })
-}
-
-// useTripPlanTimeline — 時間軸的 state 管理:插入/更新/移除節點、備註,
-// 完全由使用者跟 onagent 對話後才逐步產生內容。
-//
-// 這是原型 usePlanSimSocket 拿掉模擬 WebSocket 連線(不連任何
-// /public/plan-sim/ws,不播放固定腳本)之後剩下的部分——insertAttractionAfter/
-// setNoteForStop 這兩個「機制跟介面由行程安排元件提供」的核心介面原封
-// 保留,只是不再有 usePlanSimSocket 那個 simEnabled 分支與 ws.onmessage
-// 的訊息轉譯邏輯。時間軸永遠從空的 createEmptyTimeline() 起點開始,沒有
-// 任何預設節點或固定劇本可以「開啟模擬」重播。
-//
-// timeline 用 useSyncedState(理由同原型的完整說明)取代單純的
-// useState——insertAttractionAfter/setNoteForStop 的呼叫來源是 AgentBridge
-// 的原生事件,完全在 React 事件系統之外,需要「commit 呼叫當下就同步
-// 拿到結果」這個保證。
-// suppressAutoScrollRef——選填,見呼叫端(TripPlanPage 本體)同名 ref 的
-// 完整說明:刪除景點時讓 removeStep 觸發的 steps 變動不要被誤判成
-// 「有新內容」而自動捲動到最新。這個 hook 自己不讀取/不關心這個旗標
-// 的值,只是在因為刪除而呼叫 setTimeline 之前把它設成 true——消費與
-// 歸零是呼叫端(scrollToLatest 的 effect)的職責,這裡不耦合捲動邏輯
-// 本身,只負責在正確的時間點同步發出「這次不是新內容」的訊號。
-function useTripPlanTimeline(
-  // dataSource——地點/交通/照片查詢的存取層(見這個元件 dataSource prop
-  // 的完整說明)。原本這支 hook 直接用 cfg 呼叫 api.ts 的 fetchPlanAi*
-  // 系列,固定打 /internal/*;展示頁交接後是未登入訪客,那些呼叫一律
-  // 401,卡片的照片與交通時間補不上來。
-  //
-  // 2026-10:原本第一個參數是 cfg: ClientConfig,改用 dataSource 之後
-  // 這支 hook 內部已完全不需要它(所有查詢都經過 dataSource),但參數
-  // 留著沒移除,三個 useCallback 的依賴陣列也還列著 cfg。那讓
-  // insertAttractionAfter 捕捉掛載時那一份 dataSource 不再重建
-  // (stale closure):cfg 不變時 dataSource 換了也不會更新,新插入的
-  // 站點會打到舊的存取層。一併移除參數,依賴陣列才不會再誤列。
-  dataSource: PlanAiDataSource,
-  suppressAutoScrollRef: MutableRefObject<boolean> | undefined,
-  store: PlanTimelineStore,
-) {
-  // 初值改成 loadTimeline(見 plan-core/planTimelineStorage.ts 的完整
-  // 說明)——2026-10 使用者明確要求規劃內容要持久化到前端。useSyncedState
-  // 接受 lazy initializer,直接傳函式參照即可(只在第一次掛載時執行一次,
-  // 不會每次 render 都讀一次 localStorage)。沒存過/資料損毀時 loadTimeline
-  // 自己會回傳空時間軸,行為跟原本的 createEmptyTimeline 一致。
-  // 初始內容與版次用同一次讀取取得(loadTimelineWithRev),不是分別呼叫
-  // loadTimeline() 與 readRev()——後者是兩次獨立的 localStorage 讀取,
-  // 理論上另一實例可在兩者之間寫入,於是讀到「舊 timeline + 新 rev」,
-  // 這份實例會誤判自己最新、下次寫入直接覆蓋。見該函式的完整說明。
-  //
-  // 用 ref 保存初值:Strict Mode 會雙重 render,放進 useState/useRef 的
-  // initializer 參數會被求值兩次(第二次的結果丟棄),這裡讓它確實只讀
-  // 一次。
-  const initialRef = useRef<{ timeline: PlanTimeline; rev: number } | null>(null)
-  if (initialRef.current === null) initialRef.current = store.loadTimelineWithRev()
-  const [timelineRef, timeline, rawCommitTimeline] = useSyncedState<PlanTimeline>(initialRef.current.timeline)
-
-  // revRef——這個實例手上這份 timeline 對應的持久化版次(見
-  // planTimelineStorage.ts 的 PersistedTimeline.rev)。
-  //
-  // 存在的理由:TripPlanPage 會同時有兩份實例掛載——地圖規劃面板是常駐
-  // 掛載的(FloatingPanel 只用 display:none 隱藏,為的是不重建 WebSocket
-  // 連線),而切到 /trip-plan 時全頁版也會掛上來。兩份各自在掛載當下
-  // 讀一次 localStorage 之後就不再重讀,於是:在全頁版規劃完切回地圖,
-  // 規劃面板那份仍是掛載時的舊內容(常常是空的),它下一次寫入就會把剛剛
-  // 規劃好的內容整個蓋掉——實際會遺失使用者資料。
-  //
-  // 用版次而非 storage 事件:storage 事件只在「其他分頁」觸發,同一個
-  // 分頁內的兩份實例互相寫入是收不到的,正好不涵蓋這個情境。
-  const revRef = useRef(initialRef.current.rev)
-
-  // commitTimeline——包一層 rawCommitTimeline,在每次「真的有寫入」時
-  // 順手存檔。選在這一層攔截而非各個呼叫端自己記得存,理由:時間軸的
-  // 所有異動(insertAttractionAfter/setNoteForStop/removeStep/背景查詢
-  // 回填 resolveAttractionForStep、refreshTransitForStop 等)最終都經過
-  // 這個函式,是唯一能涵蓋全部寫入路徑的單一攔截點——漏接任何一條都會
-  // 出現「畫面有、重整後不見」的不一致。
-  //
-  // 只在 next !== undefined(compute 真的要求寫入)時存檔:insertAfter
-  // 驗證失敗那類「算完發現不該寫」的呼叫不會給 next(見 useSyncedState
-  // 的完整說明),那種情況 state 沒變,不需要重複存一份一樣的內容。
-  //
-  // 不動 useSyncedState 本身——那是多處共用的通用 hook,把持久化塞進去
-  // 會讓所有使用者都背上這個跟它無關的職責。
-  // resyncFromStorage——把另一份實例寫入的較新內容讀回來,並讓版次跟上。
-  //
-  // 兩個呼叫時機:(a) commitTimeline 寫入前(確保以最新內容為基準計算);
-  // (b) 規劃面板從隱藏轉為可見時(純顯示的情境沒有寫入可攔截——規劃面板被
-  // display:none 隱藏期間使用者在全頁版規劃了幾站,重新顯示時畫面會
-  // 一直停在舊內容)。
-  //
-  // 用 rawCommitTimeline 而非 commitTimeline:這裡的語意是「把磁碟內容
-  // 讀進記憶體」,不是「產生新內容」。走 commitTimeline 會把剛讀回來的
-  // 東西原封不動寫回去並讓 rev +1,害另一份實例無端判定自己過期、觸發
-  // 一次無意義的重讀,兩份實例可能互相推高版次。
-  const resyncFromStorage = useCallback(() => {
-    const diskRev = store.readRev()
-    if (diskRev <= revRef.current) return
-    const { timeline: fresh, rev } = store.loadTimelineWithRev()
-    revRef.current = rev
-    rawCommitTimeline<void>(() => ({ next: fresh, result: undefined }))
-  }, [rawCommitTimeline, store])
-
-  const commitTimeline = useCallback(
-    <R,>(compute: (current: PlanTimeline) => { next?: PlanTimeline; result: R }): R => {
-      // 寫入前先無條件追上磁碟——跟 resyncFromStorage 走同一條路徑,只是
-      // 這裡的觸發時機是「即將寫入」。這樣下面的 current 保證已經是最新,
-      // 不需要在 compute 內部分「用自己的還是用磁碟的」兩種 base。
-      resyncFromStorage()
-      return rawCommitTimeline<R>((current) => {
-        const outcome = compute(current)
-        if (outcome.next !== undefined) {
-          const saved = store.saveTimeline(outcome.next, revRef.current)
-          if (saved === null) {
-            // 存檔失敗(配額/無痕/localStorage 被停用)。刻意不推進 state:
-            // 若讓記憶體套用這次異動而磁碟沒有,版次會宣稱「我跟磁碟一致」,
-            // 實際上記憶體多了一筆沒存到的內容——之後另一個實例寫入時,
-            // 這份會以它為基準重算,那筆異動就靜默消失了。寧可這次操作
-            // 看起來沒生效(使用者會重試),也不要製造一個會在實例間
-            // 互相抹掉內容的不一致狀態。
-            return { result: outcome.result }
-          }
-          revRef.current = saved
-        }
-        return outcome
-      })
-    },
-    [rawCommitTimeline, resyncFromStorage, store],
-  )
-
-  const setTimeline = useCallback((updater: PlanTimeline | ((prev: PlanTimeline) => PlanTimeline)) => {
-    commitTimeline((current) => ({
-      next: typeof updater === 'function' ? (updater as (prev: PlanTimeline) => PlanTimeline)(current) : updater,
-      result: undefined,
-    }))
-  }, [commitTimeline])
-
-  // mountedRef——resolveAttractionForStep 的 429 限流重試(見該函式的
-  // 完整說明)用 window.setTimeout 延後 3 秒才重查,若這段等待期間
-  // 使用者切到其他 rail 分頁(這個元件整個卸載),原本沒有任何機制阻止
-  // 計時器照常觸發、對已卸載元件多打一次沒有消費者在等的 API 請求
-  // ——用 fable 審閱時發現的問題。只檢查「節點是否還存在於 timeline
-  // 裡」(見 insertAttractionAfter 呼叫 resolveAttractionForStep 時傳入
-  // 的 isCancelled)沒辦法涵蓋這個情況,因為元件卸載後 timelineRef 指向
-  // 的內容不會被清空、節點依然「存在」。
-  const mountedRef = useRef(true)
-  useEffect(() => {
-    mountedRef.current = true
-    return () => { mountedRef.current = false }
-  }, [])
-
-  // insertAttractionAfter — 對齊原型 usePlanSimSocket 同名函式的介面與
-  // 邏輯(見該處的完整說明):統一呼叫 planTimeline.ts 的 insertAfter 做
-  // 驗證與插入,新插入的是 stop 節點時順帶淡化其他對話訊息節點
-  // (staleOtherAgentMessages),插入成功且帶 placeId 佔位時背景查詢真實
-  // 地點資料,查完後觸發交通卡重新計算。
-  // retryStopLookup——重新查詢某一站的地點資料。
-  //
-  // 2026-10 新增(使用者明確要求「介面上做可以重試,重整後要進行重試」)。
-  // 兩個入口共用這一支:
-  //   1. 使用者點卡片上的「重試」按鈕(PlanTimelineView 的 onRetryStop)
-  //   2. 掛載後掃出 failed 的站點自動重查(見下方 effect)
-  //
-  // 走的是跟插入當下完全相同的 resolveAttractionForStep 路徑(含 429
-  // 限流的單次延遲重試、照片獨立重試),不另外實作一套——否則重試的
-  // 行為會跟首次查詢不一致。
-  //
-  // 先把節點設回 loading:true/failed:false 再查:卡片立刻回到「查詢中」
-  // 的視覺狀態,使用者看得出按鈕有反應;查詢結果由
-  // resolveAttractionForStep 自己寫回(成功清 failed、失敗重新標記)。
-  const retryStopLookup = useCallback(
-    (stopId: string) => {
-      const node = timelineRef.current.nodes.get(stopId)
-      if (!node || node.type !== 'stop' || !node.placeId) return
-      setTimeline((prev) => updateNode(prev, stopId, { loading: true, failed: false }))
-      resolveAttractionForStep(
-        stopId,
-        node.placeId,
-        (placeId) => dataSource.placeDetails(placeId),
-        setTimeline,
-        () => !mountedRef.current || !timelineRef.current.nodes.has(stopId),
-        () => refreshTransitForStop(stopId, dataSource, setTimeline, () => timelineRef.current),
-        false,
-        (placeId) => dataSource.photoAssets?.(placeId) ?? Promise.resolve({}),
-      )
-    },
-    [dataSource, setTimeline, timelineRef],
-  )
-
-  // 掛載後自動重試 failed 的站點(使用者明確要求「重整後要進行重試」)。
-  //
-  // failed 是會被持久化的欄位(刻意跟 loading/removing 相反,見
-  // planTimeline.ts 該欄位的完整說明)——所以重整後讀回來的時間軸仍然
-  // 帶著上次失敗的標記,這個 effect 負責消化它們。
-  //
-  // 空依賴陣列、只跑一次:這是「掛載時的補救」,不是持續監看。之後的
-  // 失敗各自由使用者按重試處理,若改成盯著 steps 跑,一個持續失敗的
-  // 站點會變成無限重試迴圈(每次失敗都重新寫 state、又觸發這個 effect)。
-  const retriedOnMountRef = useRef(false)
-  useEffect(() => {
-    if (retriedOnMountRef.current) return
-    retriedOnMountRef.current = true
-    for (const [id, node] of timelineRef.current.nodes) {
-      if (stopLookupFailed(node)) retryStopLookup(id)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const insertAttractionAfter = useCallback(
-    (anchorId: string | null, newId: string, data: PlanNodeData): ReturnType<typeof insertAfter> => {
-      const result = commitTimeline<ReturnType<typeof insertAfter>>((current) => {
-        const inserted = insertAfter(current, anchorId, data, newId)
-        if (!inserted.ok) return { result: inserted }
-        if (data.type !== 'stop') return { next: inserted.timeline, result: inserted }
-        return { next: staleOtherAgentMessages(inserted.timeline, newId), result: inserted }
-      })
-      if (result.ok && data.placeId && data.loading) {
-        resolveAttractionForStep(
-          newId,
-          data.placeId,
-          (placeId) => dataSource.placeDetails(placeId),
-          setTimeline,
-          // isCancelled——用 fable 審閱時發現這裡原本固定回傳 false,
-          // 429 限流重試新增的 3 秒延遲視窗被打開後,若這個節點在等待
-          // 期間已經被移除(removeStep)查不到、或整個元件已卸載
-          // (mountedRef,見該處的完整說明),就不該再觸發重試,避免對
-          // 已經沒有意義的節點多打一次 API、或寫入已卸載元件的 state。
-          () => !mountedRef.current || !timelineRef.current.nodes.has(newId),
-          () => refreshTransitForStop(newId, dataSource, setTimeline, () => timelineRef.current),
-          false,
-          (placeId) => dataSource.photoAssets?.(placeId) ?? Promise.resolve({}),
-        )
-      } else if (result.ok && data.type === 'stop' && data.lat != null && data.lng != null) {
-        refreshTransitForStop(newId, dataSource, setTimeline, () => timelineRef.current)
-      }
-      return result
-    },
-    [dataSource, commitTimeline, setTimeline, timelineRef],
-  )
-
-  // setNoteForStop — 對齊原型同名函式的介面與邏輯(見該處的完整說明):
-  // 把備註寫在既有節點自己身上,不是插入新節點。
-  const setNoteForStop = useCallback(
-    (anchorId: string, text: string, category: string | undefined): ReturnType<typeof insertAfter> => {
-      return commitTimeline<ReturnType<typeof insertAfter>>((current) => {
-        if (!current.nodes.has(anchorId)) {
-          return {
-            result: {
-              ok: false,
-              error: { code: 'anchor_not_found', message: `找不到 id 為 "${anchorId}" 的節點,無法在它身上寫入備註。` },
-            },
-          }
-        }
-        const next = updateNode(current, anchorId, { note: { text, category } })
-        return { next, result: { ok: true, timeline: next, insertedId: anchorId } }
-      })
-    },
-    [commitTimeline],
-  )
-
-  // removeStep — 移除一個節點,先標記 removing 觸發 CSS 淡出動畫,真正
-  // 從鏈結摘除延遲到動畫播完後才做(理由同原型 REMOVE_FADE_MS 的完整
-  // 說明)。兩個呼叫端:onagent 的 remove_attraction 工具(見
-  // ctx.removeStep 的完整說明),以及時間軸卡片右上角的刪除按鈕(見
-  // PlanTimelineView.tsx onRemoveStop prop 的完整說明)。
-  //
-  // 回傳值:true 代表這次呼叫真的有觸發移除(節點存在且尚未在移除中),
-  // false 代表節點不存在或已經 removing:true——呼叫端(ctx.removeStep)
-  // 據此判斷要不要回報成功給 LLM,不再自己用 getSteps().some() 另外猜測
-  // 一次(那樣的外部檢查看不到 removing:true 這個中間狀態,見
-  // removeNode/RemoveNodeResult 的完整說明)。這裡呼叫 removeNode 純粹是
-  // 為了借用它的「是否存在/是否已在移除中」判斷,實際摘除鏈結的動作仍在
-  // 下方 setTimeout 裡才真正發生——這裡只先標記 removing,不把 removeNode
-  // 回傳的 timeline 拿來用。
-  //
-  // suppressAutoScrollRef.current = true 這兩處(標記 removing 當下、
-  // 320ms 後真正摘除當下)都要設——這兩次 setTimeline 呼叫各自會讓
-  // steps 重新計算一次,對應呼叫端 scrollToLatest 的 effect 就會跑兩次,
-  // 兩次都要告訴它「這不是新內容,不要自動捲動」(見該 ref 在呼叫端的
-  // 完整說明),只設其中一次會讓另一次仍然觸發捲動。
-  const removeStep = useCallback((removedId: string): boolean => {
-    const check = removeNode(timelineRef.current, removedId)
-    if (!check.ok) return false
-    if (suppressAutoScrollRef) suppressAutoScrollRef.current = true
-    setTimeline((prev) => updateNode(prev, removedId, { removing: true }))
-    setTimeout(() => {
-      const nextId = timelineRef.current.nodes.get(removedId)?.nextId
-      if (suppressAutoScrollRef) suppressAutoScrollRef.current = true
-      setTimeline((prev) => {
-        // allowRemoving:true——這裡呼叫的節點必然已經是上面那行剛標記的
-        // removing:true,是這個兩段式流程「完成移除」的第二步,不是外部
-        // 重複呼叫(見 removeNode opts.allowRemoving 的完整說明;曾經
-        // 漏掉這個旗標,導致 already_removing 檢查誤判這次合法呼叫,
-        // 真正的摘除永遠不會執行,節點卡在 removing:true 佔位不消失)。
-        const result = removeNode(prev, removedId, { allowRemoving: true })
-        return result.ok ? result.timeline : prev
-      })
-      if (nextId != null) refreshTransitForStop(nextId, dataSource, setTimeline, () => timelineRef.current)
-    }, REMOVE_FADE_MS)
-    return true
-  }, [dataSource, setTimeline, timelineRef, suppressAutoScrollRef])
-
-  // dragStopTime — 拖拉時間軸小圓點調整某一站的時間(使用者明確要求
-  // 「時間軸的小圓點可以拖拉,上下拉動時調整時間,半小時為刻度」,見
-  // PlanTimelineView.tsx anchorDot 拖拉手勢的完整說明)。這裡只負責
-  // 「真正提交」這一步:拖拉過程中的即時預覽、clamp 在合法範圍內、
-  // 吸附到 30 分鐘刻度,都在 PlanTimelineView.tsx 的拖拉手勢裡完成,
-  // 這裡收到的 newTime 已經是驗證過、合法的最終值,不需要再重複呼叫
-  // getTimeDragBounds 檢查一次——拖拉互動中途就一直在同一個範圍內,
-  // 不會有「放開瞬間範圍突然變了」的競態(時間軸在拖拉期間唯一可能的
-  // 外部變動是 onagent 對話新增/刪除節點,但那會改變這個節點的
-  // prevId/nextId、連帶讓合法範圍跟著變,此時呼叫端應該直接結束拖拉
-  // 手勢而非提交一個基於舊範圍算出的值——這個決策留在拖拉手勢層,見
-  // 該處完整說明)。
-  //
-  // 回傳值:true 代表真的寫入了(對齊 removeStep 的既有慣例,呼叫端
-  // 拖拉手勢不特別需要用這個回傳值做分支,但保留一致的介面形狀);
-  // false 代表節點不存在或不是 stop(防禦性處理,理論上不會發生,拖拉
-  // 手勢只會對畫面上正在渲染的既有 stop 節點啟動)。
-  const dragStopTime = useCallback((stopId: string, newTime: string): boolean => {
-    const node = timelineRef.current.nodes.get(stopId)
-    if (!node || node.type !== 'stop') return false
-    // suppressAutoScrollRef——使用者明確要求「調整時間時,不要跑到最
-    // 下面,只有 LLM 增加新景點的時候才觸發」:理由同 removeStep 既有的
-    // 同名標記(見該處完整說明)——下方 scrollToLatest 的自動捲動 effect
-    // 只依賴 steps 陣列是否改變,不分辨「這次改變是新增景點還是調整
-    // 既有站點的時間」,拖拉時間後 commitTimeline 一樣會讓 steps 變成
-    // 新參照、觸發那個 effect。在真正提交前標記為 true,讓那個 effect
-    // 跳過這一次,之後使用者若再送出訊息讓 AI 新增景點,旗標已經被消費
-    // 掉(見該 effect 開頭「消費後立刻歸零」的邏輯),照常捲動。
-    if (suppressAutoScrollRef) suppressAutoScrollRef.current = true
-    commitTimeline<void>((current) => ({ next: updateNode(current, stopId, { time: newTime }), result: undefined }))
-    // 這一站的時間變了,它跟前一站之間的交通資訊(transitFromPrev)基於
-    // 舊時間估算,理論上交通「距離/方式」本身不受時間影響(只跟兩點
-    // 座標有關),但對齊 removeStep/insertAttractionAfter 既有的「這個
-    // stop 的前一站關聯有變動就重新查一次」慣例,拖拉時間後也視為同一類
-    // 變動觸發重新查——即使結果通常跟之前相同,保持行為一致比省這一次
-    // API 呼叫更重要(理由同 refreshTransitForStop 開頭列出的呼叫時機)。
-    refreshTransitForStop(stopId, dataSource, setTimeline, () => timelineRef.current)
-    return true
-  }, [dataSource, commitTimeline, setTimeline, timelineRef, suppressAutoScrollRef])
-
-  // useMemo——toRenderList 每次呼叫都回傳新陣列(見 planTimeline.ts 的
-  // 實作,沿著鏈結走訪重新 push 一次),若不做 memo,每次 render(含跟
-  // 時間軸內容完全無關的 re-render,例如使用者在輸入框打字造成的
-  // chatInput state 變化)都會產生新的 steps 參考,連帶讓依賴它的
-  // useEffect(下方 scrollToLatest 的自動捲動邏輯)誤判「時間軸內容
-  // 變了」而觸發——用 fable 審閱時發現的實際症狀:使用者停在最底部
-  // 打字時,畫面會被强制 smooth-scroll 往上跳一段,並因此被踢出跟隨
-  // 模式。只有 timeline 這個真正的資料本身改變時才需要重新攤平。
-  const steps = useMemo(() => toRenderList(timeline), [timeline])
-
-  return {
-    steps,
-    timeline,
-    timelineRef,
-    insertAttractionAfter,
-    setNoteForStop,
-    removeStep,
-    dragStopTime,
-    resyncFromStorage,
-    // retryStopLookup——地點查詢失敗的站點重新查詢(見該函式的完整
-    // 說明)。匯出給呼叫端接到 PlanTimelineView 的 onRetryStop。
-    retryStopLookup,
-    // setTimeline——2026-10 新增匯出:使用者明確要求「交通時間的膠囊可以
-    // 選擇交通方式」,呼叫端(TripPlanPage 本體)的 onTransitModeChange
-    // handler 需要直接呼叫 refreshTransitForStop(stopId, cfg, setTimeline,
-    // ...)重新查詢指定 mode 的交通資訊——這支函式簽名要求的
-    // setTimeline 跟這個 hook 內部其餘呼叫(insertAttractionAfter 等)用
-    // 的是同一份,不需要另外包一層。之前沒有匯出純粹是因為沒有呼叫端
-    // 需要在 hook 外部直接呼叫它。
-    setTimeline,
-  }
-}
+// 時間軸的 state 與全部「改動邏輯」(插入與插入後的背景查詢、備註、兩階段移除、拖拉改時間、重試與掛載重試、
+// 天與住宿操作、store 持久化與多實例版次同步)2026-10 收斂到共用的 plan-core/usePlanTimelineCore,本檔不再有自己的一份
+// (原 useTripPlanTimeline 與 /ai-plan 模擬態的 usePlanSimSocket 逐行重複,見 docs/research-timeline-core-comparison-2026-10.md)。
+// 本檔在呼叫處(TripPlanPage 本體)傳入的選項:store(永遠寫存檔)、dataSource、retryFailedOnMount(狀態表不持久化,
+// 重整後由資料判斷要重查的站)、onBeforeMutate(接 suppressNextAutoScrollRef:刪除/拖拉時間不是新內容,不要自動捲動)、
+// onStopInserted(新增站點代表話題推進,把對話裡還新鮮的訊息淡化)。
 
 // PLAN_AI_ONAGENT_APP_ID/PLAN_AI_ONAGENT_URL——正式功能對話窗專用的
 // onagent app,對齊原型的既有設定(見 home/plan-ai-sim/Content.tsx 同名常數的
@@ -590,7 +157,7 @@ export type PlanAiChatStatus = 'connecting' | 'ready' | 'closed'
 // 說明),差別只在:
 //   - 不再需要跟 usePlanSimSocket 共享同一組 insertAttractionAfter/
 //     setNoteForStop——這裡改成呼叫端(TripPlanPage 主體,透過
-//     useTripPlanTimeline)自己提供,原型裡兩條路徑共用同一組函式的
+//     usePlanTimelineCore)自己提供,原型裡兩條路徑共用同一組函式的
 //     說明在這裡已經不適用(正式功能只有這一條路徑)。
 //   - createAttractionToolsList(cfg) 的 cfg 改成呼叫端傳入的真實登入態
 //     設定(見下方 TripPlanPage 對 cfg 參數的完整說明),不是原型的
@@ -599,9 +166,26 @@ export type PlanAiChatStatus = 'connecting' | 'ready' | 'closed'
 // getSteps/insertAttraction/addNote 用 ref 包一層(理由同原型的完整
 // 說明)——這幾個函式來自呼叫端每次 render 產生的新閉包,若直接放進
 // useEffect 依賴陣列會導致每次重渲染都重新建立一次 WebSocket 連線。
+// resetBridgeTurnState——丟棄「目前這一輪推論」的前端狀態:思考中(ref 與 state 同步寫)、待配對佇列、還在等 postPlanAiChat 的送出。
+// 連線 effect 的 cleanup(cfg 換參照/按停止/卸載,舊世代已 expire)與 stopPrompt 都呼叫它:舊世代 expire 之後它的回覆與 onError
+// 都會被 guardCallback 丟掉、永遠不會來,不在這裡收回思考中,輸入框就會一直卡在「AI 思考中」。
+// sendSeq.invalidate() 讓 await 中的送出回來後不再 push 佇列、不轉發到重建後的新連線(否則新連線收到舊送出,狀態又對不上)。
+// 抽成獨立函式方便單獨測試(見 bridgeReconnectReset.test.ts)。
+export function resetBridgeTurnState(s: {
+  isThinkingRef: { current: boolean }
+  pendingChatRef: { current: number[] }
+  sendSeq: { invalidate(): void }
+  setIsThinking: (v: boolean) => void
+}) {
+  s.sendSeq.invalidate()
+  s.pendingChatRef.current = []
+  s.isThinkingRef.current = false
+  s.setIsThinking(false)
+}
+
 function usePlanAiChatBridge(
   cfg: ClientConfig,
-  getSteps: () => PlanStepLike[],
+  getTimeline: () => PlanTimeline,
   insertAttraction: (
     anchorId: string | null,
     newId: string,
@@ -609,6 +193,12 @@ function usePlanAiChatBridge(
   ) => ReturnType<typeof insertAfter>,
   addNote: (anchorId: string, text: string, category: string | undefined) => ReturnType<typeof insertAfter>,
   removeStep: (removedId: string) => boolean,
+  // addDay/moveDay——天的操作(add_day/move_day 工具的底層,見 usePlanTimelineCore)。
+  addDay: (atDay: number | undefined) => { ok: true; day: number; dayCount: number } | { ok: false; error: { message: string } },
+  moveDay: (fromDay: number, toDay: number) => MoveDayResult & { dayCount: number },
+  // setLodging/removeLodging——住宿的操作(set_lodging/remove_lodging 工具的底層,見 usePlanTimelineCore)。
+  setLodgingInTimeline: (args: { placeId: string; days: number[]; name?: string; lodgingId?: string }) => SetLodgingByDaysResult,
+  removeLodgingFromTimeline: (lodgingId: string) => LodgingResult,
   // userSelectionRef——使用者最近一次在詢問頁的選擇(見
   // plan-core/askPageTools.ts UserSelectionRecord 的完整說明)。
   //
@@ -663,11 +253,14 @@ function usePlanAiChatBridge(
   // 其實沒有更新(實機重現:城市選單還開著時直接打字「我要去大阪」,
   // LLM 查完景點呼叫 open_ask_page 卻被吞掉,畫面卡在舊的城市選單)。
   resolveAskPage: (selected: AskPageSelection[]) => void,
+  // appendMessage——把一則訊息寫進獨立的對話狀態(plan-core/usePlanConversation.ts)。AI 的純文字回覆、
+  // onError 與 sendPrompt 失敗的連線錯誤訊息都走這裡,不再插入時間軸節點(訊息只依發生順序、沒有位置)。
+  appendMessage: (message: PlanMessage) => void,
 ) {
   const apiKey = import.meta.env.VITE_PLAN_AI_ONAGENT_APP_KEY as string | undefined
   const [status, setStatus] = useState<PlanAiChatStatus>('connecting')
   // isThinking——從 sendPrompt 呼叫那一刻開始 true,到收到第一個
-  // onAssistantMessage 或 onError 為止轉回 false,接給呼吸點/骨架卡那組
+  // onAssistantMessage 或 onError、或連線重建(停止/cfg 換參照/卸載,見 resetBridgeTurnState)為止轉回 false,接給呼吸點/骨架卡那組
   // 思考動畫用(理由同原型的完整說明)。
   const [isThinking, setIsThinking] = useState(false)
   // isThinkingRef——sendPrompt(useCallback,依賴陣列只有 [cfg])需要讀到
@@ -688,17 +281,35 @@ function usePlanAiChatBridge(
     isThinkingRef.current = isThinking
   }, [isThinking])
   const bridgeRef = useRef<AgentBridge | null>(null)
-  const getStepsRef = useRef(getSteps)
+  // bridgeEpoch/sendSeqRef——「停止」用(見 stopPrompt):AgentBridge 沒有取消單次推論的協議(只有 prompt 與 close),
+  // 所以停止的做法是丟棄這次推論——關掉目前的連線(推論中的工具呼叫與回覆不再進來)並用 bridgeEpoch 觸發 effect 重連;
+  // sendSeqRef 讓還在等 postPlanAiChat 的送出在停止後不再轉發給 onagent。
+  const [bridgeEpoch, setBridgeEpoch] = useState(0)
+  const sendSeqRef = useRef(createSendSequence())
+  // guardRef——目前這個 bridge 世代的防護(見 plan-core/bridgeGuard.ts)。stopPrompt 要「立刻」expire 它:
+  // setBridgeEpoch 之後 effect cleanup 要等下一次 commit 才跑,中間這段視窗舊世代的事件不能還有效。
+  const guardRef = useRef<BridgeGuard | null>(null)
+  const getTimelineRef = useRef(getTimeline)
   const insertAttractionRef = useRef(insertAttraction)
   const addNoteRef = useRef(addNote)
   const removeStepRef = useRef(removeStep)
+  const addDayRef = useRef(addDay)
+  const moveDayRef = useRef(moveDay)
+  const setLodgingRef = useRef(setLodgingInTimeline)
+  const removeLodgingRef = useRef(removeLodgingFromTimeline)
   const openAskPageRef = useRef(openAskPage)
+  const appendMessageRef = useRef(appendMessage)
   useEffect(() => {
-    getStepsRef.current = getSteps
+    getTimelineRef.current = getTimeline
     insertAttractionRef.current = insertAttraction
     addNoteRef.current = addNote
     removeStepRef.current = removeStep
+    addDayRef.current = addDay
+    moveDayRef.current = moveDay
+    setLodgingRef.current = setLodgingInTimeline
+    removeLodgingRef.current = removeLodgingFromTimeline
     openAskPageRef.current = openAskPage
+    appendMessageRef.current = appendMessage
   })
 
   // conversationIDRef——這個對話在整個 TripPlanPage 掛載期間延用同一個
@@ -728,36 +339,27 @@ function usePlanAiChatBridge(
     // ctx——同原型的完整說明:insertAttractionAfter/addNote 轉接同步
     // 回傳值成這個 ctx 介面期望的 Promise 形狀(async 函式回傳非 Promise
     // 值會被自動裝箱,不需要刻意包 Promise.resolve)。
-    const ctx: AttractionStepsCtx = {
-      getSteps: () => getStepsRef.current(),
-      insertAttractionAfter: async (anchorId, step) => {
-        const newId = `agent-${crypto.randomUUID()}`
-        const result = insertAttractionRef.current(anchorId, newId, step)
-        return result.ok ? { ok: true, id: result.insertedId } : { ok: false, error: result.error }
-      },
-      addNote: async (anchorId, text, category) => {
-        const result = addNoteRef.current(anchorId, text, category)
-        return result.ok ? { ok: true, id: result.insertedId } : { ok: false, error: result.error }
-      },
-      // removeStep——見 AttractionStepsCtx.removeStep 的完整說明:底層
-      // removeStep(useTripPlanTimeline)現在回傳 boolean(見該函式的完整
-      // 說明),內部用 removeNode 的結構化結果同時判斷「id 不存在」與
-      // 「id 已經在移除中(removing:true,淡出動畫播放期間)」兩種情況,
-      // 這裡不再自己用 getStepsRef().some() 另外猜測一次——舊寫法只檢查
-      // 「是否還是時間軸上的既有節點」,看不到 removing:true 這個中間
-      // 狀態,導致動畫播放期間對同一 id 重複呼叫 remove_attraction 都會
-      // 誤判成功(見 removeNode/RemoveNodeResult 的完整說明)。
-      removeStep: async (id) => {
-        const removed = removeStepRef.current(id)
-        if (!removed) {
-          return {
-            ok: false,
-            error: { code: 'anchor_not_found', message: `找不到 id 為 "${id}" 的節點,無法移除(可能不存在,或正在移除中)。` },
-          }
-        }
-        return { ok: true }
-      },
-    }
+    // guard——這個 effect(一個 bridge 實例)的世代防護,見 plan-core/bridgeGuard.ts 的完整說明(含 @onagent/bridge close() 語意的結論)。
+    // 之後所有 bridge 回呼與 ctx 方法都要經過它:停止/重連/卸載後留下的舊世代事件與還在跑的工具一律失效。
+    const guard = createBridgeGuard()
+    guardRef.current = guard
+    // 行動前先確認目前行程、AI 自己的寫入算已讀、天數上限——全部收在 createPlanAiCtx(見 plan-core/planAiCtx.ts 的完整說明,可單獨測試)。
+    // 底層函式用 ref 間接呼叫(理由見上方各 ref),getTimeline 讀 getTimelineRef(同步反映剛 commit 的內容,不經過 render)。
+    // getTimeline 只有 list_itinerary 用(記下簽名),內部流程(交通重算、背景補查)讀的是 getTimelineRef,不會誤記讀取。
+    const { ctx: rawCtx, ensureFreshRead } = createPlanAiCtx({
+      getTimeline: () => getTimelineRef.current(),
+      insertAttraction: (anchorId, newId, data) => insertAttractionRef.current(anchorId, newId, data),
+      addNote: (anchorId, text, category) => addNoteRef.current(anchorId, text, category),
+      // removeStep——見 AttractionStepsCtx.removeStep 的完整說明:底層回傳 boolean,內部用 removeNode 的結構化結果同時判斷
+      // 「id 不存在」與「id 已經在移除中(淡出動畫播放期間)」兩種情況(見 usePlanTimelineCore.removeStep)。
+      removeStep: (id) => removeStepRef.current(id),
+      addDay: (atDay) => addDayRef.current(atDay),
+      moveDay: (fromDay, toDay) => moveDayRef.current(fromDay, toDay),
+      setLodging: (args) => setLodgingRef.current(args),
+      removeLodging: (lodgingId) => removeLodgingRef.current(lodgingId),
+    })
+    // guardCtx——過期的世代呼叫任何 ctx 方法都 throw,晚到的工具呼叫失敗而不是寫入時間軸。
+    const ctx = guardCtx(guard, rawCtx)
     // askPageCtx——見 plan-core/askPageTools.ts 開頭的完整說明:獨立於
     // 上方 ctx(AttractionStepsCtx,時間軸資料操作)之外的另一個 ctx,
     // 職責分離(UI 顯示狀態控制 + 等待使用者輸入)。openAskPage 是呼叫端
@@ -791,7 +393,10 @@ function usePlanAiChatBridge(
     // (使用者按下選擇的那一刻,見該函式的完整說明)——串接本來就不需要
     // LLM 參與,它全部發生在前端,LLM 在開啟第一個選單時這一輪就已經
     // 結束了。
-    const askPageCtx: AskPageCtx = {
+    const askPageCtx: AskPageCtx = guardCtx(guard, {
+      // 詢問工具(open_ask_page/ask_*)同樣要先確認目前行程:詢問的內容常常取決於已經排了什麼。檢查放在工具層(ensureFreshRead,
+      // 見 AskPageCtx.ensureFreshRead:ask_* 是 fire-and-forget,在這些方法裡 throw 不會讓工具失敗)。
+      ensureFreshRead,
       openAskPage: (input) => openAskPageRef.current(input),
       askTravelCountry: async (input) => {
         void openAskPageRef.current({ country: input })
@@ -819,11 +424,14 @@ function usePlanAiChatBridge(
       // 的完整說明)。讀 module 單例而非 React state,理由同上方
       // getUserSelection 的 ref:這個 ctx 只在建立 AgentBridge 時組一次。
       getUiState: () => uiStateStore.get(),
-    }
+    } satisfies AskPageCtx)
     const bridge = new AgentBridge({
       url: PLAN_AI_ONAGENT_WS_URL,
       appId: PLAN_AI_ONAGENT_APP_ID,
       apiKey,
+      // SSE 傳輸(@onagent/bridge 0.2.0 起):下行 Server-Sent Events、上行 HTTP POST,過得了會擋 WebSocket Upgrade 的代理;sseUrl 預設由
+      // url 換算(ws→http、結尾 /ws→/sse)。
+      transport: 'sse',
       // tools——合併兩份各自獨立的工具表(各自搭配各自的 ctx 型別,見
       // toAgentBridgeTools<Ctx> 的泛型簽名與 askPageTools.ts 開頭的完整
       // 說明):attractionTools 負責時間軸資料操作,askPageTools 負責
@@ -836,25 +444,24 @@ function usePlanAiChatBridge(
         ...toAgentBridgeTools(createAttractionToolsList(cfg, (places) => attractionPool.put(places)), ctx),
         ...toAgentBridgeTools(createAskPageToolsList(), askPageCtx),
       },
-      // onAssistantMessage/onError——把文字插入成獨立的 message 節點(見
-      // planTimeline.ts PlanNodeType 的完整說明),不是附屬在某個景點卡上
-      // 的引言,對齊原型的既有設計(理由見該處的完整說明)。
+      // onAssistantMessage/onError——把文字寫進獨立的對話狀態(plan-core/planConversation.ts,
+      // 2026-10-24 起不再是時間軸裡的 message 節點:對話有自己的狀態、只在記憶體,訊息只依發生順序、沒有所在天或站點),
+      // 桌面時間軸把它們渲染在最下方。
       //
       // 2026-10(使用者明確要求「後端的純文字對話也統一在 ask page 裡面
-      // 顯示對話氣泡」):除了寫進時間軸節點(存檔用途不變),額外呼叫
+      // 顯示對話氣泡」):除了寫進對話,額外呼叫
       // openAskPage({ text }) 讓畫面自動切到 AskPage 顯示這則文字——
       // 對齊 LLM 呼叫 open_ask_page 工具時的同一條「切到詢問頁」路徑,
       // 只是這裡是元件自己直接觸發,不經過工具呼叫。不 await 這個呼叫:
       // openAskPage 回傳的 Promise 要等使用者關閉氣泡(onDone)才會
       // resolve,但這裡只是要「顯示」,不需要像 open_ask_page 工具那樣
       // 等待結果再做下一步。
-      onAssistantMessage: (text) => {
+      // 兩個回呼都包 guardCallback:過期世代(使用者已按停止)的晚到事件直接丟掉,不 append、不開詢問頁、不碰 pendingChatRef
+      // (stopPrompt 剛清空它,過期回呼再 shift 會讓下一輪回覆錯位配對)。
+      onAssistantMessage: guardCallback(guard, (text: string) => {
         isThinkingRef.current = false
         setIsThinking(false)
-        const steps = getStepsRef.current()
-        const lastId = steps.length > 0 ? steps[steps.length - 1].id : null
-        const newId = `agent-msg-${crypto.randomUUID()}`
-        insertAttractionRef.current(lastId, newId, { type: 'message', text })
+        appendMessageRef.current({ id: `agent-msg-${crypto.randomUUID()}`, text })
         openAskPageRef.current({ text })
 
         // postPlanAiChatReply——fire-and-forget:把 onagent 這則回覆存檔。
@@ -873,8 +480,8 @@ function usePlanAiChatBridge(
             console.warn('postPlanAiChatReply 失敗(不影響對話顯示):', err)
           })
         }
-      },
-      onError: (err) => {
+      }),
+      onError: guardCallback(guard, (err: { message: string }) => {
         isThinkingRef.current = false
         setIsThinking(false)
         // 跟 onAssistantMessage 一樣要 shift 掉佇列最早一筆——bridge
@@ -882,14 +489,8 @@ function usePlanAiChatBridge(
         // 若不清掉,這筆 pending 會永遠卡在佇列最前面,後續每一則真正
         // 收到的回覆都會錯位配對到它(見 pendingChatRef 的完整說明)。
         pendingChatRef.current.shift()
-        const steps = getStepsRef.current()
-        const lastId = steps.length > 0 ? steps[steps.length - 1].id : null
-        const newId = `agent-msg-${crypto.randomUUID()}`
-        // ephemeral: true——跟 sendPrompt 的錯誤訊息同樣性質(見該處的
-        // 完整說明):這是這次連線失敗的系統通知,不是真正的對話內容,
-        // 不該被持久化。
-        insertAttractionRef.current(lastId, newId, { type: 'message', text: `(連線錯誤: ${err.message})`, ephemeral: true })
-      },
+        appendMessageRef.current({ id: `agent-msg-${crypto.randomUUID()}`, text: `(連線錯誤: ${err.message})` })
+      }),
     })
     bridgeRef.current = bridge
     setStatus('connecting')
@@ -898,18 +499,24 @@ function usePlanAiChatBridge(
     const t = window.setTimeout(() => setStatus('ready'), 500)
     return () => {
       window.clearTimeout(t)
+      // 先 expire 再 close:close() 不會取消已在跑的工具(見 bridgeGuard.ts),世代標記過期才擋得住它們後續的 ctx 呼叫。
+      guard.expire()
+      if (guardRef.current === guard) guardRef.current = null
+      // 世代過期後這一輪的回覆不會再來(被 guardCallback 丟掉),一併收回思考中與待配對佇列——cfg 換參照(換 token、重新登入)
+      // 時 effect 也會重建,不只停止;漏掉的話輸入框會卡在「AI 思考中」(見 resetBridgeTurnState)。
+      resetBridgeTurnState({ isThinkingRef, pendingChatRef, sendSeq: sendSeqRef.current, setIsThinking })
       bridge.close()
       bridgeRef.current = null
       setStatus('closed')
     }
-  }, [apiKey, cfg])
+  }, [apiKey, cfg, bridgeEpoch])
 
   // sendPrompt——送出訊息前先呼叫自家後端 postPlanAiChat(見該函式與
   // server/internal/api/plan_ai_chat.go 的完整說明):後端驗證、
   // rate-limit、存記錄,回傳正規化後的 content。只有這一步成功,才把
   // 「後端回傳的 content」(不是使用者原始輸入)轉發給 onagent——這一步
   // 失敗(429 rate_limited/400 content_too_long 等)時不轉發,改用跟
-  // onError 相同的機制(插入一則 message 節點)顯示錯誤,讓使用者看到
+  // onError 相同的機制(寫進對話的一則訊息)顯示錯誤,讓使用者看到
   // 合理的提示,不是靜默吞掉或讓對話卡住。
   //
   // 並發保護:isThinking 期間直接拒絕新的 sendPrompt(呼叫端的 input/
@@ -940,18 +547,19 @@ function usePlanAiChatBridge(
     // 要避免的時序依賴。同步寫入才是真正對時序不敏感的第二層防線。
     isThinkingRef.current = true
     setIsThinking(true)
+    const seq = sendSeqRef.current.begin()
     try {
       const result = await postPlanAiChat(cfg, trimmed, conversationIDRef.current)
       conversationIDRef.current = result.conversationID
+      // 等後端回應期間使用者按了停止(stopPrompt 已遞增 sendSeqRef):訊息已存檔但不再轉發給 onagent。
+      if (!sendSeqRef.current.isCurrent(seq)) return false
       pendingChatRef.current.push(result.messageID)
       bridgeRef.current?.prompt(result.content)
       return true
     } catch (err) {
+      if (!sendSeqRef.current.isCurrent(seq)) return false
       isThinkingRef.current = false
       setIsThinking(false)
-      const steps = getStepsRef.current()
-      const lastId = steps.length > 0 ? steps[steps.length - 1].id : null
-      const newId = `agent-msg-${crypto.randomUUID()}`
       // 錯誤文案:ApiError.message 本身就是後端已經給好的繁體中文訊息
       // (例如 rate_limited→「訊息送得太快了,請稍後再試」、
       // content_too_long→「訊息內容過長,最多 500 字」,見
@@ -959,14 +567,25 @@ function usePlanAiChatBridge(
       // 重新組文案;非 ApiError(連線層級失敗,例如網路斷線)才用通用的
       // 連線錯誤措辭,對齊既有 onError 的措辭風格。
       const errText = err instanceof ApiError ? err.message : '(訊息送出失敗,請檢查網路連線後再試一次)'
-      // ephemeral: true——使用者明確要求「錯誤訊息不要寫持久化」(見
-      // PlanNodeData.ephemeral 的完整說明):這則訊息只對這次 session
-      // 有意義,重新整理頁面不該還留著上次送出失敗的提示。畫面渲染/
-      // staleOtherAgentMessages 淡化邏輯不受影響,只有存檔時會被跳過。
-      insertAttractionRef.current(lastId, newId, { type: 'message', text: errText, ephemeral: true })
+      appendMessageRef.current({ id: `agent-msg-${crypto.randomUUID()}`, text: errText })
       return false
     }
   }, [cfg, resolveAskPage])
+
+  // stopPrompt——推論中按「停止」:丟棄這次推論,回到可以再送出的狀態。沒有在推論時什麼都不做。
+  // 清掉 pending 佇列(這次的回覆不會再來,不清會讓下一則回覆錯位配對)、放棄畫面上未操作完的詢問頁(同 sendPrompt),
+  // 再遞增 bridgeEpoch 讓連線 effect 關掉舊連線並重連;conversationIDRef 保留,對話仍是同一個。
+  const stopPrompt = useCallback(() => {
+    if (!isThinkingRef.current) return
+    // 立刻讓舊世代過期:之後舊 bridge 的回呼與還在跑的工具都失效,不等 effect cleanup(見 guardRef)。
+    guardRef.current?.expire()
+    // bridgeRef 先清掉:到下一次 effect 建好新 bridge 之前,sendPrompt 不會把訊息送到這個即將關閉的舊連線。
+    bridgeRef.current = null
+    // 同步重設(不等 cleanup):停止鈕按下的當下輸入框就要恢復;cleanup 之後再重設一次是冪等的。
+    resetBridgeTurnState({ isThinkingRef, pendingChatRef, sendSeq: sendSeqRef.current, setIsThinking })
+    resolveAskPage([])
+    setBridgeEpoch((e) => e + 1)
+  }, [resolveAskPage])
 
   return {
     apiKeyMissing: !apiKey,
@@ -976,6 +595,7 @@ function usePlanAiChatBridge(
     status,
     isThinking,
     sendPrompt,
+    stopPrompt,
   }
 }
 
@@ -1013,7 +633,7 @@ export function TripPlanPage(props: {
   //
   // 從隱藏轉為可見時,把另一份實例(/trip-plan 全頁版)在這期間寫入的
   // 內容讀回來——否則規劃面板會一直顯示它掛載當下的舊時間軸(見
-  // useTripPlanTimeline 的 resyncFromStorage 與 revRef 的完整說明)。
+  // usePlanTimelineCore 的 resyncFromStorage 與 revRef 的完整說明)。
   // 省略時視為永遠可見,維持原本行為(全頁版靠掛載/卸載就足夠)。
   visible?: boolean
   // scrollContainerRef——2026-10 新增:真正接手捲動的 DOM 節點,取代原本
@@ -1058,6 +678,10 @@ export function TripPlanPage(props: {
   // (見下方 reportStops 與 selectStop),呼叫端的函式參照不會進任何
   // 依賴陣列,傳 inline 箭頭函式是安全的。
   onStopsChange?: (stops: PlanStopMarker[]) => void
+  // onRouteSegmentsChange——2026-10-24 新增:地圖上站點之間要畫的連線段(有交通膠囊的那一段才畫,規則在
+  // plan-core/routeSegments.ts,三個入口共用)有變動時回報,呼叫端依功能開關決定要不要傳給 PlanMap 畫。
+  // 回報時機與 onStopsChange 相同(資料變動而非單一事件,走 useEffect),同樣用 useStableCallback 隔離呼叫端的函式參照。
+  onRouteSegmentsChange?: (segments: RouteSegment[]) => void
   // dataSource——地點查詢的存取層(見 home/plan-ai-sim/planAiDataSource.ts
   // 的完整說明)。必填(2026-10):原本選填、省略時內部預設用需登入的真後端實作(/app 的既有行為),但靠隱藏預設值
   // 決定打哪個端點容易在新入口漏傳(訪客入口漏傳就會連噴 401),改成每個入口(各自的 LivePlanLayer)明確傳。
@@ -1151,8 +775,8 @@ export function TripPlanPage(props: {
   // (/ai-plan 排的內容,之後打開 /app 看得到同一份,使用者明確要求的行為)。這個元件本身不需要知道背後實際怎麼存,只需要
   // 呼叫 store.readRev()/loadTimelineWithRev()/saveTimeline() 這三個
   // 介面方法,實際讀寫邏輯(含既有的 rev 機制、失敗語意)完全收斂在
-  // store 實作裡——未來若有情境需要不持久化,傳入
-  // planTimelineStorage.ts 現成的 noopPlanTimelineStore 即可。
+  // store 實作裡。這個元件永遠會寫存檔;沒有「不持久化」的 store(曾有的 noopPlanTimelineStore 存檔回 null
+  // 會讓記憶體時間軸永遠不更新,已刪除)——要純記憶體的時間軸用 usePlanTimelineCore 不傳 store 的模式。
   store: PlanTimelineStore
   // transparentBackground——2026-10 新增:讓 .page 的實色背景
   // (var(--ios-bg))變透明,疊加在呼叫端自己的背景之上。
@@ -1239,7 +863,7 @@ export function TripPlanPage(props: {
   initialAskPage?: AskPageInput
 }) {
   const {
-    cfg, compact, visible = true, scrollContainerRef, onPanToStop, onStopsChange, dataSource,
+    cfg, compact, visible = true, scrollContainerRef, onPanToStop, onStopsChange, onRouteSegmentsChange, dataSource,
     selectedStopId: controlledSelectedStopId, onSelectedStopChange,
     onHoverStopChange, onHoverTransitChange, onSendPromptReady,
     store,
@@ -1263,13 +887,13 @@ export function TripPlanPage(props: {
 
   // suppressNextAutoScrollRef——使用者明確要求「刪除的時候不要自動移動
   // 到最新」:下方 scrollToLatest 的 effect 只依賴 steps 陣列本身是否
-  // 變動(見該處完整說明),刪除景點時 useTripPlanTimeline 的 removeStep
+  // 變動(見該處完整說明),刪除景點時 usePlanTimelineCore 的 removeStep
   // 會讓 steps 重新計算兩次(標記 removing:true 當下一次、320ms 後真正
   // 摘除一次,見該函式完整說明),這個 effect 本來分辨不出「這次 steps
   // 變動是刪除造成的,還是 AI 新增內容造成的」,一律視為「有新內容,跟隨
   // 到底」而觸發捲動——對刪除這個動作而言是不想要的副作用(使用者可能
   // 正在瀏覽中段內容點擊刪除,刪完卻被強制捲到最底,失去原本瀏覽的
-  // 位置)。這個 ref 建立在這裡(呼叫端),傳給 useTripPlanTimeline,讓
+  // 位置)。這個 ref 建立在這裡(呼叫端),傳給 usePlanTimelineCore,讓
   // 它在每次因為刪除而呼叫 setTimeline 之前都主動設定,effect 讀到後
   // 消費掉、跳過這一次——不用「時間差」猜測兩次 setTimeline 的順序
   // (那種做法在不同瀏覽器的排程下不可靠),而是讓真正觸發 setTimeline
@@ -1277,14 +901,42 @@ export function TripPlanPage(props: {
   const suppressNextAutoScrollRef = useRef(false)
 
   // planAiDataSource——存取層實例(見 dataSource prop 的完整說明)。
-  // 宣告在 useTripPlanTimeline 之前:那支 hook 現在要收它當參數。
+  // 宣告在 usePlanTimelineCore 之前:那支 hook 現在要收它當參數。
   // useMemo 避免每次 render 都建立新物件——它會進 HorizontalPlanTimeline
   // 內部 effect 的依賴陣列(AskPage 用 dataSource 當依賴),參照不穩定
   // 會讓那個 effect 每次 render 都重跑。
   const planAiDataSource = dataSource
-  const { steps, timelineRef, insertAttractionAfter, setNoteForStop, removeStep, dragStopTime, resyncFromStorage, retryStopLookup, setTimeline } = useTripPlanTimeline(planAiDataSource, suppressNextAutoScrollRef, store)
+  // 對話狀態——獨立於時間軸、純記憶體不持久化(元件卸載/換草稿重新掛載即清空),桌面時間軸渲染在最下方。
+  // 宣告在時間軸之前:staleAll 要接進時間軸 core 的 onStopInserted(新增站點讓舊訊息淡化;兩個資料層彼此不知道對方存在,
+  // 唯一的連動就在這個接線點)。
+  const { messages, appendMessage, staleAll: staleAllMessages } = usePlanConversation()
 
-  // getStepsForBridge——usePlanAiChatBridge 的 getSteps 需要讀到「當下
+  const {
+    timeline,
+    timelineRef,
+    nodeStatus,
+    insertAttractionAfter,
+    setNoteForStop,
+    removeStep,
+    addDayToTimeline,
+    moveDayInTimeline,
+    setLodgingInTimeline,
+    removeLodgingFromTimeline,
+    dragStopTime,
+    resyncFromStorage,
+    retryStopLookup,
+    setTimeline,
+  } = usePlanTimelineCore({
+    store,
+    dataSource: planAiDataSource,
+    retryFailedOnMount: true,
+    onBeforeMutate: () => {
+      suppressNextAutoScrollRef.current = true
+    },
+    onStopInserted: staleAllMessages,
+  })
+
+  // getTimelineForBridge——usePlanAiChatBridge 的 getTimeline 需要讀到「當下
   // 最新」的節點清單,不能綁死成某一次 render 時的閉包。
   //
   // 2026-09 修正(code review 發現):原本這裡讀一個額外的 stepsRef,靠
@@ -1302,17 +954,17 @@ export function TripPlanPage(props: {
   // 的記憶去猜時間軸現況才新增的(見 attractionTools.ts 的完整說明),
   // 若它自己讀到的也是過期資料,等於沒有真正解決那個問題。
   //
-  // 改成直接讀 timelineRef.current 即時算 toRenderList——timelineRef 是
+  // 改成直接讀 timelineRef.current——timelineRef 是
   // useSyncedState 保證同步寫入的 ref,不經過 useEffect 這個中間層,
   // 沒有這個時間差。
-  const getStepsForBridge = useCallback((): PlanStepLike[] => toRenderList(timelineRef.current), [timelineRef])
+  const getTimelineForBridge = useCallback((): PlanTimeline => timelineRef.current, [timelineRef])
 
   // addNoteToTimeline — 對齊原型同名函式的介面與邏輯(見該處的完整
   // 說明):對外暴露的「把一則備註寫在既有節點上」程式介面,category
   // 未提供或不在 NOTE_STYLES 表列範圍內時 fallback 成 DEFAULT_NOTE_CATEGORY。
   const addNoteToTimeline = useCallback(
     (anchorId: string, text: string, category?: string): ReturnType<typeof insertAfter> => {
-      const resolvedCategory = category && NOTE_STYLES[category] ? category : DEFAULT_NOTE_CATEGORY
+      const resolvedCategory = resolveNoteCategory(category)
       return setNoteForStop(anchorId, text, resolvedCategory)
     },
     [setNoteForStop],
@@ -1456,10 +1108,9 @@ export function TripPlanPage(props: {
   // 就被一張「要去哪個國家?」的全幅選單蓋住,還得先關掉才看得到自己
   // 排好的東西。
   //
-  // 判斷用「有沒有 stop 節點」而不是 nodes.size > 0:時間軸裡還有
-  // message 節點(LLM 的對話訊息,見 planTimeline.ts PlanNodeType 的
-  // 完整說明),只有訊息、沒有任何站點時仍然算「還沒有行程」,該照常
-  // 開這個詢問頁。
+  // 判斷用「有沒有 stop 節點」:只有對話訊息(2026-10-24 起獨立成
+  // PlanConversation,不在時間軸裡)、沒有任何站點時仍然算「還沒有行程」,
+  // 該照常開這個詢問頁。
   //
   // 2026-10(第二輪,使用者明確要求「全部行程都刪除時要觸發開啟選擇」):
   // 這個 effect 原本只在掛載時跑一次,改成盯著「目前有幾個站點」。
@@ -1473,9 +1124,8 @@ export function TripPlanPage(props: {
   // 「刪到空」跟「一開始就空」對使用者來說是同一件事,沒有理由只處理
   // 其中一種。
   //
-  // 判斷用「有沒有 stop 節點」而不是 nodes.size > 0:時間軸裡還有
-  // message 節點(LLM 的對話訊息,見 planTimeline.ts PlanNodeType 的
-  // 完整說明),只有訊息、沒有任何站點時仍然算「還沒有行程」。
+  // 判斷用「有沒有 stop 節點」:只有對話訊息、沒有任何站點時仍然算「還沒有行程」
+  // (對話已獨立於時間軸,見 plan-core/planConversation.ts)。
   //
   // 已經有詢問頁開著時不會被搶佔:useAskPageBridge.openAskPage 對
   // 「已有 pending」直接忽略(見該函式的完整說明),所以使用者正在看
@@ -1484,7 +1134,9 @@ export function TripPlanPage(props: {
   // 刪到空之後使用者自己按「不用了」關掉選單,不會再被開啟一次:
   // stopCount 維持 0、依賴沒有變動,effect 不重跑。只有再次從「有站點」
   // 變成 0 才會再觸發。
-  const stopCount = useMemo(() => steps.filter((s) => s.type === 'stop').length, [steps])
+  // allNodes——依序列出全部節點(不含天的標題),給「查節點」類用途(是否有站點、解析主題點引用、地圖站點)。
+  const allNodes = useMemo(() => listNodes(timeline), [timeline])
+  const stopCount = useMemo(() => allNodes.filter((s) => s.type === 'stop').length, [allNodes])
   useEffect(() => {
     if (!initialAskPage) return
     if (stopCount > 0) return
@@ -1711,14 +1363,19 @@ export function TripPlanPage(props: {
   )
   const planAiChat = usePlanAiChatBridge(
     cfg,
-    getStepsForBridge,
+    getTimelineForBridge,
     insertAttractionAfter,
     addNoteToTimeline,
     removeStep,
+    addDayToTimeline,
+    moveDayInTimeline,
+    setLodgingInTimeline,
+    removeLodgingFromTimeline,
     userSelectionRef,
     attractionPool,
     openAskPage,
     resolveAskPage,
+    appendMessage,
   )
 
   // reportSendPromptReady——見 onSendPromptReady 參數的完整說明,
@@ -1776,6 +1433,10 @@ export function TripPlanPage(props: {
     onSelectedStopChange?.(id)
   })
 
+  // resolvedRefs——主題點底下的 attractions/places id 經資料存取層解析的結果(只在執行時,不存回節點)。
+  // 旅館(PlanTimeline.lodgings)的 placeId 一併解析:名稱給住宿橫幅/住宿卡,座標給下方 mapStops 的旅館圓點。
+  const lodgings = lodgingsOf(timeline)
+  const resolvedRefs = useResolvedRefs(allNodes, lodgings)
   // mapStops——回報給外層地圖畫小圓點的站點清單(見 onStopsChange 參數的
   // 完整說明)。
   //
@@ -1786,19 +1447,18 @@ export function TripPlanPage(props: {
   // 只負責畫點的圖層(見 usePlanStopMarkers 對 PlanStopMarker.lat/lng
   // 必填的說明)。
   //
-  // 2026-10 補上 children(使用者明確要求交接前後「套用相同的元件跟
+  // 2026-10 補上 children(執行時解析結果,使用者明確要求交接前後「套用相同的元件跟
   // 地圖互動」):主題點展開後的子景點。原本這裡不回報,所以 /ai-plan
   // 交接到真實層之後,地圖上所有站點都變成單純的景點圓點,主題點
   // 展開的能力消失——那不是刻意的設計,是這份投影漏了一個欄位。
   // 只收已經查到座標的子景點,理由同上方對父節點的處理。
+  // 旅館的圓點(lodgingMapMarkers):座標由 placeId 執行時查,查到才有;排在站點之後,帶 lodging 旗標,不參與路線線段。
   const mapStops = useMemo(
-    () =>
-      steps
+    () => [
+      ...allNodes
         .filter((s) => s.type === 'stop' && s.lat != null && s.lng != null)
         .map((s) => {
-          const children = (s.children ?? [])
-            .filter((c) => c.lat != null && c.lng != null)
-            .map((c) => ({ id: c.id, lat: c.lat!, lng: c.lng!, name: c.name }))
+          const children = resolveMapChildren(s, resolvedRefs)
           return {
             id: s.id,
             lat: s.lat!,
@@ -1807,7 +1467,9 @@ export function TripPlanPage(props: {
             ...(children.length > 0 ? { children } : {}),
           }
         }),
-    [steps],
+      ...lodgingMapMarkers(lodgings, resolvedRefs),
+    ],
+    [allNodes, resolvedRefs, lodgings],
   )
 
   // 把站點清單往上報。這一個必須走 useEffect(不像選取狀態改成事件驅動,
@@ -1825,6 +1487,13 @@ export function TripPlanPage(props: {
     reportStops(mapStops)
   }, [mapStops, reportStops])
 
+  // routeSegments——地圖連線段(見 onRouteSegmentsChange 的說明):直接從時間軸切,座標來自節點本身(與 mapStops 同一份)。
+  const routeSegments = useMemo(() => routeSegmentsFromTimeline(timeline), [timeline])
+  const reportRouteSegments = useStableCallback((segments: RouteSegment[]) => { onRouteSegmentsChange?.(segments) })
+  useEffect(() => {
+    reportRouteSegments(routeSegments)
+  }, [routeSegments, reportRouteSegments])
+
   // 選取狀態不走 useEffect 上報(站點清單那個仍然走,見上方說明)——
   // 改在 selectStop 裡直接通知。原本用 effect 依賴 [selectedStopId] 上報,
   // 那正是「點卡片 A → 點地圖圓點 B → 再點卡片 A 回不去」那個 bug 的
@@ -1836,7 +1505,7 @@ export function TripPlanPage(props: {
   // 縮圖時開啟全螢幕瀏覽,null 代表未開啟。縮圖本身維持 64px 圓形版型
   // 不變,只在點擊時另開這個全螢幕層,理由見下方縮圖 onClick 的完整說明。
   // visible 從 false 轉 true 時重讀持久化內容——見 visible prop 與
-  // useTripPlanTimeline 的 resyncFromStorage 的完整說明。依賴只有 visible:
+  // usePlanTimelineCore 的 resyncFromStorage 的完整說明。依賴只有 visible:
   // resyncFromStorage 自己會先比對版次,沒有更新就直接 return,重複呼叫
   // 無副作用。
   useEffect(() => {
@@ -1924,7 +1593,7 @@ export function TripPlanPage(props: {
   // 跟隨狀態從 false 翻成 true 的那一刻,這個 effect 也會被觸發去捲動。
   //
   // suppressNextAutoScrollRef——消費掉就立刻歸零(見該 ref 宣告處/
-  // useTripPlanTimeline removeStep 的完整說明):只跳過「這一次」被標記
+  // usePlanTimelineCore removeStep 的完整說明):只跳過「這一次」被標記
   // 的 steps 變動,不是整段期間都不捲動——旗標只在 removeStep 真正呼叫
   // setTimeline 前才會被設成 true,消費後立刻清掉,才能讓再下一次真正
   // 的新內容(例如使用者緊接著送出訊息、AI 新增了景點)照常觸發捲動。
@@ -1934,9 +1603,9 @@ export function TripPlanPage(props: {
       return
     }
     if (!followingRef.current) return
-    if (steps.length === 0) return
+    if (timeline.days.length === 0 && messages.length === 0) return
     scrollToLatest()
-  }, [steps, scrollToLatest])
+  }, [timeline, messages, scrollToLatest])
 
   // 只有「使用者往上捲、且離底部超過 80px」才退出跟隨。程式觸發的平滑
   // 捲動(往下)與新節點撐高內容(scrollTop 不變)都不會讓它誤判成離開。
@@ -2035,11 +1704,11 @@ export function TripPlanPage(props: {
           // HorizontalPlanTimeline 內部自己處理(它本來就自己算出
           // latestMessage,之前只是把結果送出去給這裡渲染,現在不需要
           // 這段繞路),見該檔案的完整說明。
-          // showAskPage/onAskPageDone/askPageInput/dataSource——見
+          // showAskPage/onAskPageDone/askPageInput——見
           // 上方 state 宣告處的完整說明:提升到這一層,讓程式與 AI 工具
-          // 共用同一份狀態。dataSource 用真後端實作(createPlanAiApiDataSource,
-          // 見該函式的完整說明),這裡是正式對話頁,candidates 的
-          // placeId 是真實 Google Place ID,查詢要打真後端。
+          // 共用同一份狀態。資料存取層(詢問頁候選查詢、id 解析)由入口根部的
+          // PlanDataProvider 提供,不再傳 dataSource prop;這個頁面的 dataSource
+          // prop 只剩交通預估、站點地點查詢等「寫回節點」的用途,與 Provider 是同一個實例。
           // isGenerating——2026-10(使用者明確指出「推論態推論中是不是
           // 動畫沒有對齊播放態」後查出的真實落差):這裡原本完全沒傳這個
           // prop,預設 false,AI 思考中時卡片列尾端的呼吸點+骨架卡
@@ -2060,8 +1729,8 @@ export function TripPlanPage(props: {
           // onRetryStop——手機版橫向時間軸也要有重試入口(review 發現:
           // /app 手機版走的是這條路徑,原本拿不到按鈕)。
           onRetryStop={retryStopLookup}
-          dataSource={planAiDataSource}
-          steps={steps}
+          timeline={timeline}
+          nodeStatus={nodeStatus}
           selectedStopId={selectedStopId}
           // onSelectStop——對齊 home/plan-ai-sim/Content.tsx
           // 既有呼叫端的用法(見該處的完整說明):點卡片/捲動置中視同
@@ -2076,7 +1745,7 @@ export function TripPlanPage(props: {
           onRemoveStop={removeStep}
           onTransitModeChange={
             TRANSIT_MODE_SELECT_ENABLED
-              ? (stopId, mode) => refreshTransitForStop(stopId, planAiDataSource, setTimeline, () => timelineRef.current, mode)
+              ? (stopId, mode) => refreshTransitForStop({ stopId, dataSource: planAiDataSource, setTimeline, getTimeline: () => timelineRef.current, forceMode: mode })
               : undefined
           }
           onOpenPhotos={setLightboxPhotos}
@@ -2098,7 +1767,9 @@ export function TripPlanPage(props: {
         <AskPage dataSource={planAiDataSource} input={askPageInput} onDone={handleAskPageDone} stacked={isWide} />
       ) : (
       <PlanTimelineView
-        steps={steps}
+        timeline={timeline}
+        // messages——對話訊息,時間軸最下方渲染(見 PlanTimelineView messages prop);手機橫向時間軸不渲染對話。
+        messages={messages}
         isThinking={planAiChat.isThinking}
         emptyStateMessage={emptyStateMessage}
         hideEmptyState={hideEmptyState}
@@ -2109,7 +1780,7 @@ export function TripPlanPage(props: {
         // onRemoveStop——介面上直接刪除景點的入口(使用者明確要求「之前
         // 做的景點刪除,也要可以從介面上刪除」,之前只有透過 AI 對話下
         // 指令觸發 remove_attraction 工具這一條路徑)。直接呼叫同一個
-        // removeStep(useTripPlanTimeline),跟 remove_attraction 工具走
+        // removeStep(usePlanTimelineCore),跟 remove_attraction 工具走
         // 的是同一條底層路徑,不是另外做一套——不需要額外的 existence
         // 檢查,因為這裡的 id 一定來自目前畫面上正在渲染的 steps,不會
         // 是使用者手打、可能不存在的任意字串(對齊 ctx.removeStep 那邊
@@ -2121,10 +1792,11 @@ export function TripPlanPage(props: {
         // onRetryStop——地點查詢失敗的站點上那顆「重試」按鈕(見
         // retryStopLookup 與 PlanTimelineView 該 prop 的完整說明)。
         onRetryStop={retryStopLookup}
+        nodeStatus={nodeStatus}
         // getStopTimeDragBounds/onDragStopTime——時間軸小圓點拖拉調整
         // 時間的入口(使用者明確要求「時間軸的小圓點可以拖拉,上下拉動
         // 時調整時間,半小時為刻度」)。getStopTimeDragBounds 直接讀
-        // timelineRef.current(理由同 getStepsForBridge 等其餘讀取「當下
+        // timelineRef.current(理由同 getTimelineForBridge 等其餘讀取「當下
         // 最新」時間軸狀態的既有模式——拖拉手勢本身在 PlanTimelineView
         // 內部管理,每次拖拉開始時才查一次範圍,不需要訂閱 state 變化)。
         //
@@ -2153,7 +1825,7 @@ export function TripPlanPage(props: {
         // 寫法。
         onTransitModeChange={
           TRANSIT_MODE_SELECT_ENABLED
-            ? (stopId, mode) => refreshTransitForStop(stopId, planAiDataSource, setTimeline, () => timelineRef.current, mode)
+            ? (stopId, mode) => refreshTransitForStop({ stopId, dataSource: planAiDataSource, setTimeline, getTimeline: () => timelineRef.current, forceMode: mode })
             : undefined
         }
         onOpenPhotos={setLightboxPhotos}
@@ -2238,7 +1910,10 @@ export function TripPlanPage(props: {
           // urlMissing——見 PLAN_AI_ONAGENT_WS_URL 的完整說明:跟
           // apiKeyMissing 一樣視為「對話功能目前無法使用」,一起鎖定
           // 輸入框。
-          disabled={planAiChat.apiKeyMissing || planAiChat.urlMissing || planAiChat.isThinking}
+          disabled={planAiChat.apiKeyMissing || planAiChat.urlMissing}
+          // 推論中:輸入框鎖住,送出鈕換成「停止」(見 Composer 的 busy/onStop)。
+          busy={planAiChat.isThinking}
+          onStop={planAiChat.stopPrompt}
           onSubmit={() => {
             // isThinking 時直接不處理(即使按鈕已 disabled,form 仍可能
             // 被 Enter 鍵觸發 submit,這裡是跟按鈕 disabled 對齊的第二

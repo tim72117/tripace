@@ -1,21 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import { toRenderList } from '../plan-core/planTimeline'
+import { listNodes } from '../plan-core/planTimeline'
 import {
-  coverPhotoOf, deriveFilters, filterItineraries, findItinerary, sortByNewest, toPlanTimeline,
+  allNodesOf, coverPhotoOf, dayCountOf, deriveFilters, filterItineraries, findItinerary, sortByNewest, stopCountOf, toPlanTimeline,
 } from './catalog'
-import type { SampleItinerary, SampleStop } from './types'
+import type { SampleItinerary } from './types'
+import { stop, timelineOf } from './testUtils'
 
-function make(over: Partial<SampleItinerary> & { id: string }): SampleItinerary {
+// stops:帶 day 的扁平站點,依 day 分組成時間軸(見 testUtils.ts)。
+function make(over: Partial<Omit<SampleItinerary, 'timeline'>> & { id: string; stops?: ReturnType<typeof stop>[]; days?: number }): SampleItinerary {
+  const { stops, days, ...rest } = over
   return {
-    title: over.id, region: '台灣・台南', days: 1, categories: ['美食'], summary: 's', addedAt: '2026-10-01',
-    stops: [stop({ name: 'A' })],
-    ...over,
+    title: over.id, region: '台灣・台南', categories: ['美食'], summary: 's', addedAt: '2026-10-01',
+    timeline: timelineOf(stops ?? [stop({ name: 'A' })], days ?? 1),
+    ...rest,
   }
-}
-
-// 測試用的站:kind/duration 是必填欄位,給預設值,只在需要時覆寫。
-function stop(over: Partial<SampleStop> & { name: string }): SampleStop {
-  return { time: '09:00', kind: '景點', duration: '1h', ...over }
 }
 
 describe('sortByNewest', () => {
@@ -78,9 +76,8 @@ describe('findItinerary / coverPhotoOf', () => {
     expect(findItinerary(items, 'a')?.id).toBe('a')
     expect(findItinerary(items, 'zzz')).toBeNull()
   })
-  it('封面:明確指定的優先,否則取第一個有照片的站的第一張,都沒有回 null', () => {
+  it('封面:只用明確指定的 coverPhoto,沒有回 null(節點不存照片網址,不從站點補圖)', () => {
     expect(coverPhotoOf(make({ id: 'a', coverPhoto: 'https://x/cover.jpg' }))).toBe('https://x/cover.jpg')
-    expect(coverPhotoOf(make({ id: 'a', stops: [stop({ time: '09:00', name: 'A' }), stop({ time: '10:00', name: 'B', photos: ['https://x/b1.jpg', 'https://x/b2.jpg'] })] }))).toBe('https://x/b1.jpg')
     expect(coverPhotoOf(make({ id: 'a' }))).toBeNull()
   })
 })
@@ -90,47 +87,45 @@ describe('toPlanTimeline', () => {
     const it = make({
       id: 'x', days: 2,
       stops: [
-        stop({ day: 1, time: '09:00', name: 'A', kind: '景點', duration: '1h', desc: 'da', photos: ['https://x/a.jpg'], lat: 1, lng: 2 }),
+        stop({ day: 1, time: '09:00', name: 'A', kind: '景點', duration: '1h', desc: 'da', lat: 1, lng: 2 }),
         stop({ day: 1, time: '11:00', name: 'B' }),
         stop({ day: 2, time: '09:00', name: 'C' }),
       ],
     })
-    const { timeline, skipped } = toPlanTimeline(it)
-    expect(skipped).toEqual([])
-    const list = toRenderList(timeline)
-    const stops = list.filter((n) => n.type === 'stop')
+    const { timeline } = toPlanTimeline(it)
+    const stops = listNodes(timeline).filter((n) => n.type === 'stop')
     expect(stops.map((n) => n.name)).toEqual(['A', 'B', 'C'])
-    expect(stops[0]).toMatchObject({ kind: '景點', duration: '1h', desc: 'da', googlePhotoUrls: ['https://x/a.jpg'], lat: 1, lng: 2 })
-    // 第二天之前會多一個分隔節點(section)
-    expect(list.filter((n) => n.type === 'section').length).toBeGreaterThanOrEqual(1)
+    expect(stops[0]).toMatchObject({ kind: '景點', duration: '1h', desc: 'da', lat: 1, lng: 2 })
+    // 依天分組:兩天,第一天兩站、第二天一站(「Day N」標題由視圖依 days 畫,時間軸裡沒有分隔節點)
+    expect(timeline.days.map((d) => d.nodes.length)).toEqual([2, 1])
   })
-  it('stop.transit 轉成該站的 transitFromPrev(上一站到這一站的交通),沒填的站沒有', () => {
+  it('stop.transitFromPrev 帶進該站的 transitFromPrev(上一站到這一站的交通),沒填的站沒有', () => {
     const it = make({
       id: 'x',
       stops: [
         stop({ time: '09:00', name: 'A' }),
-        stop({ time: '11:00', name: 'B', transit: { mode: '電車', minutes: 20, note: '搭 JR 嵯峨野線' } }),
+        stop({ time: '11:00', name: 'B', transitFromPrev: { mode: '電車', minutes: 20, note: '搭 JR 嵯峨野線' } }),
         stop({ time: '13:00', name: 'C' }),
       ],
     })
-    const stops = toRenderList(toPlanTimeline(it).timeline).filter((n) => n.type === 'stop')
+    const stops = listNodes(toPlanTimeline(it).timeline).filter((n) => n.type === 'stop')
     expect(stops[0].transitFromPrev).toBeUndefined()
     expect(stops[1].transitFromPrev).toEqual({ mode: '電車', minutes: 20, note: '搭 JR 嵯峨野線' })
     expect(stops[2].transitFromPrev).toBeUndefined()
   })
-  it('沒填 transit 時,同一天相鄰且都有座標的站用直線距離估計;人工填的優先;跨天與沒座標的站不畫', () => {
+  it('沒填 transitFromPrev 時,同一天相鄰且都有座標的站用直線距離估計;人工填的優先;跨天與沒座標的站不畫', () => {
     const it = make({
       id: 'x', days: 2,
       stops: [
         stop({ day: 1, time: '09:00', name: 'A', lat: 18, lng: 100 }),
         stop({ day: 1, time: '10:00', name: 'B', lat: 18.0045, lng: 100 }),
-        stop({ day: 1, time: '11:00', name: 'C', lat: 18.0045, lng: 100, transit: { mode: '電車', note: '搭 JR' } }),
+        stop({ day: 1, time: '11:00', name: 'C', lat: 18.0045, lng: 100, transitFromPrev: { mode: '電車', note: '搭 JR' } }),
         stop({ day: 1, time: '12:00', name: 'D' }),
         stop({ day: 1, time: '13:00', name: 'E', lat: 18, lng: 100 }),
         stop({ day: 2, time: '09:00', name: 'F', lat: 18.0045, lng: 100 }),
       ],
     })
-    const s = toRenderList(toPlanTimeline(it).timeline).filter((n) => n.type === 'stop')
+    const s = listNodes(toPlanTimeline(it).timeline).filter((n) => n.type === 'stop')
     expect(s[0].transitFromPrev).toBeUndefined()
     expect(s[1].transitFromPrev).toMatchObject({ mode: '步行', minutes: 6, distance: '500m' })
     expect(s[2].transitFromPrev).toEqual({ mode: '電車', note: '搭 JR' })
@@ -138,15 +133,31 @@ describe('toPlanTimeline', () => {
     expect(s[4].transitFromPrev).toBeUndefined()
     expect(s[5].transitFromPrev).toBeUndefined()
   })
-  it('同一天時間倒退的站被略過並回報,其餘照常轉出', () => {
-    const it = make({ id: 'x', stops: [stop({ time: '10:00', name: 'A' }), stop({ time: '09:00', name: 'B' }), stop({ time: '11:00', name: 'C' })] })
-    const { timeline, skipped } = toPlanTimeline(it)
-    expect(skipped).toHaveLength(1)
-    expect(skipped[0]).toContain('B')
-    expect(toRenderList(timeline).filter((n) => n.type === 'stop').map((n) => n.name)).toEqual(['A', 'C'])
+  it('lodgings 原樣帶過去,載入補值不丟掉住宿', () => {
+    const it = make({ id: 'x', days: 3, stops: [stop({ day: 1, name: 'A' })] })
+    it.timeline = { ...it.timeline, lodgings: [{ id: 'l1', placeId: 'p1', name: '飯店', dayIds: ['d1', 'd2'] }] }
+    expect(toPlanTimeline(it).timeline.lodgings).toEqual([{ id: 'l1', placeId: 'p1', name: '飯店', dayIds: ['d1', 'd2'] }])
   })
-  it('時間格式不對的站被略過', () => {
-    const { skipped } = toPlanTimeline(make({ id: 'x', stops: [stop({ time: '9點', name: 'A' })] }))
-    expect(skipped).toHaveLength(1)
+  it('沒有照片時補縮圖備用樣式,資料有寫的尊重資料;不改動 registry 裡的原始資料', () => {
+    const it = make({ id: 'x', stops: [stop({ name: 'A' }), stop({ time: '10:00', name: 'B', thumbIcon: '🍜' })] })
+    const before = JSON.stringify(it)
+    const s = listNodes(toPlanTimeline(it).timeline).filter((n) => n.type === 'stop')
+    expect(s[0]).toMatchObject({ thumbBg: 'var(--ios-active)', thumbIcon: '📍' })
+    expect(s[1].thumbIcon).toBe('🍜')
+    expect(JSON.stringify(it)).toBe(before)
+  })
+  it('空的天保留在時間軸裡(有 Day 分隔但沒有站點)', () => {
+    const t = toPlanTimeline(make({ id: 'x', days: 3 })).timeline
+    expect(t.days).toHaveLength(3)
+    expect(t.days[2].nodes).toEqual([])
+  })
+})
+
+describe('dayCountOf / stopCountOf / allNodesOf', () => {
+  it('天數是時間軸的天數;站數只算 stop;allNodesOf 跨天依序攤平', () => {
+    const it = make({ id: 'x', days: 3, stops: [stop({ day: 1, name: 'A' }), stop({ day: 1, time: '10:00', name: 'B' }), stop({ day: 3, name: 'C' })] })
+    expect(dayCountOf(it)).toBe(3)
+    expect(stopCountOf(it)).toBe(3)
+    expect(allNodesOf(it).map((n) => n.name)).toEqual(['A', 'B', 'C'])
   })
 })

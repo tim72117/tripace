@@ -76,7 +76,7 @@
 import type { ClientTool } from '../sdk-proposals/arrayTools'
 import { defineTool } from '../sdk-proposals/defineTool'
 import { fetchPlanAiAttractionSearch, fetchPlanAiPlaceSearch, type ClientConfig } from '../api'
-import type { InsertAfterError } from './planTimeline'
+import { lodgingDayNumbers, lodgingsOf, type InsertAfterError, type PlanNodeData, type PlanTimeline } from './planTimeline'
 
 // AttractionStepsCtx — add_attraction 需要的 context:一個能讀取時間軸
 // 現況、並且插入新節點的口子。刻意不是完整的 plan-ai-sim/Content state
@@ -118,7 +118,7 @@ import type { InsertAfterError } from './planTimeline'
 // 方便 LLM 確認操作對象。
 // removeStep——讓 remove_attraction 工具能把時間軸上某個既有節點摘除。
 // 跟 insertAttractionAfter/addNote 一樣是語意層級的方法,由行程安排元件
-// (TripPlanPage.tsx 的 useTripPlanTimeline)提供,這個工具檔案不自己碰
+// (plan-core/usePlanTimelineCore)提供,這個工具檔案不自己碰
 // 鏈結細節。
 //
 // 2026-10 新增:底層 removeStep(TripPlanPage.tsx)原本是給 UI 之後接新
@@ -136,10 +136,11 @@ import type { InsertAfterError } from './planTimeline'
 // 播完,因為 LLM 只需要知道「移除指令已受理」,不需要、也不該等待純
 // 視覺動畫結束才收到工具回應。
 export interface AttractionStepsCtx {
-  getSteps: () => PlanStepLike[]
+  // getTimeline——讀取目前的時間軸(依天分組的 PlanTimeline):list_itinerary 據此輸出依天分組的結構,structureSignature 據此算簽名。
+  getTimeline: () => PlanTimeline
   insertAttractionAfter: (
     anchorId: string | null,
-    step: Omit<PlanStepLike, 'id'>,
+    step: NewStopInput,
   ) => Promise<{ ok: true; id: string } | { ok: false; error: InsertAfterError }>
   addNote: (
     anchorId: string,
@@ -149,49 +150,61 @@ export interface AttractionStepsCtx {
   removeStep: (
     id: string,
   ) => Promise<{ ok: true } | { ok: false; error: InsertAfterError }>
+  // addDay/moveDay——天的操作(見 planTimeline.ts addDay/moveDay):天是時間軸的結構(days 陣列),不是站點上的欄位,
+  // 所以新增與調整順序各是獨立的操作。回傳目前的天數方便 LLM 接著規劃;moveDay 的天數超出範圍時 ok:false 並帶人類可讀的訊息。
+  addDay: (
+    atDay: number | undefined,
+  ) => Promise<{ ok: true; day: number; dayCount: number } | { ok: false; error: { message: string } }>
+  moveDay: (
+    fromDay: number,
+    toDay: number,
+  ) => Promise<{ ok: true; dayCount: number } | { ok: false; error: { message: string } }>
+  // setLodging/removeLodging——住宿的操作(見 planTimeline.ts PlanTimeline.lodgings 與 setLodgingByDays/removeLodging):住宿是獨立於
+  // 天裡站點的另一份資料。AI 想的是「第幾天」,days 原樣交給 ctx,由 ctx 在「行動前先確認目前行程」把關之後,用當下最新的時間軸
+  // 轉成天的 id 並 upsert(lodgingId 優先,沒給就依 placeId:同一間旅館已有記錄視為更新它的停留日;days 為空陣列代表移除)。
+  // 天數超出範圍等失敗回 ok:false 帶人類可讀的訊息(工具層轉成 throw)。
+  setLodging: (args: {
+    placeId: string
+    days: number[]
+    name?: string
+    lodgingId?: string
+  }) => Promise<
+    | { ok: true; lodgingId: string; created: boolean; removed: boolean; days: number[]; dayCount: number }
+    | { ok: false; error: { message: string } }
+  >
+  removeLodging: (lodgingId: string) => Promise<{ ok: true } | { ok: false; error: { message: string } }>
 }
 
-// PlanStepLike — 這個檔案不 import home/plan-ai-sim/Content.tsx 的 PlanStep
-// (避免循環依賴:home/plan-ai-sim/Content.tsx 需要 import 這裡定義的工具),
-// 改宣告一個結構相容的最小子集——只列出 add_attraction 實際會寫入的
-// 欄位。呼叫端(home/plan-ai-sim/Content.tsx)實際操作的是完整的 PlanStep,
-// 但因為 TypeScript 結構化型別,傳一個「需要的比較少」的型別進去,
-// 呼叫端只要在型別上相容(額外欄位視為 optional 或由呼叫端自己補齊)
-// 就能接受,不需要這裡知道 PlanStep 完整的形狀。
-export interface PlanStepLike {
-  id: string
-  // 'message'——LLM/使用者的對話訊息節點(見 planTimeline.ts
-  // PlanNodeType 的完整說明),getSteps() 回傳的時間軸節點裡可能包含
-  // 這種型別,型別上要能相容,即使目前的工具(search_attraction/
-  // add_attraction/add_note/list_itinerary)都不會主動讀寫它。
-  type: 'section' | 'stop' | 'message'
-  // label——section 節點的分段標題(如「上午」「下午」),stop 節點
-  // 不使用這個欄位。見 listItinerary 對這個欄位的完整說明:目前排程
-  // 流程本身不會自動插入 section 節點,但回傳格式仍保留這個欄位,讓
-  // LLM 若真的查到一個 section 節點時,至少能認出它是分段標記而非
-  // 資料缺漏。
-  label?: string
-  time?: string
-  duration?: string
-  kind?: string
-  name?: string
-  desc?: string
-  thumbBg?: string
-  thumbIcon?: string
-  tags?: string[]
-  lat?: number
-  lng?: number
-  // placeId/loading——addAttraction(見該常數的完整說明)插入佔位節點
-  // 時需要的兩個欄位:placeId 標記這筆需要背景反查,loading 驅動 UI
-  // 顯示查詢中狀態(見 home/plan-ai-sim/Content.tsx PlanNodeData 對應欄位的
-  // 完整說明)。
-  placeId?: string
-  loading?: boolean
-  // note——這個節點自己的備註(見 planTimeline.ts NoteInfo 的完整說明),
-  // addNote(見該常數的完整說明)透過 ctx.addNote 寫入既有節點的這個
-  // 欄位,不是插入新節點。
-  note?: { text: string; category?: string }
+// NewStopInput — add_attraction 透過 ctx.insertAttractionAfter 交給呼叫端的新站點資料:以領域層的 PlanNodeData 為基礎,
+// 只開放工具實際會寫入的欄位(不含 id——id 由呼叫端產生;也不含 transitFromPrev/attractions/places 等由系統維護的欄位,
+// AI 的工具路徑不該能直接寫入它們)。原本這裡自己宣告一份「結構相容的最小子集」(PlanStepLike),理由是避免循環依賴,
+// 但 planTimeline.ts 是純領域層、並不依賴本檔案,那個理由早已過時,而且內容幾乎就是 PlanNodeData 的複本,改欄位要改兩處。
+// day——放進第幾天(從 1 起算,時間軸依所在的天補上;list_itinerary 一併回傳)。placeId——addAttraction 插入佔位節點時標記
+// 這筆需要背景反查(「查詢中」不是節點資料:由 ctx.insertAttractionAfter 的實作端在節點狀態表標 loading)。
+export type NewStopInput = Pick<
+  PlanNodeData,
+  'type' | 'day' | 'time' | 'duration' | 'kind' | 'name' | 'desc' | 'thumbBg' | 'thumbIcon' | 'tags' | 'lat' | 'lng' | 'placeId' | 'note'
+>
+
+// structureSignature/STALE_READ_MESSAGE——「行動前先確認目前行程」的把關(使用者明確要求:每次行動前都要先確認目前行程)。
+// 簽名只取 list_itinerary 讓 LLM 據以決定 anchorId/time/day 的結構資訊(天數、每個節點的 id、所在天、time,以及每筆旅館的 id 與停留的天),不含名稱與備註——背景補查地點
+// 資料(名稱從「查詢中…」變成真名)不該讓簽名失效,否則 LLM 永遠追不上。呼叫端(TripPlanPage 的 ctx)在 list_itinerary 讀取時記下
+// 簽名,之後每個會改動行程的工具(add_attraction/add_note/remove_attraction/add_day/move_day/set_lodging/remove_lodging)執行前比對:簽名不同(包含 LLM
+// 自己剛插入的站、使用者刪站或拖曳改時間、一次都沒讀過)就拒絕並回 STALE_READ_MESSAGE,要求先呼叫 list_itinerary。
+export function structureSignature(timeline: PlanTimeline): string {
+  // 每一天先放一個天的標記(空的天也算結構:add_day/move_day 會讓簽名改變),再放該天每個節點的 id/所在天/time。
+  const daysPart = timeline.days
+    .map((d, i) => [`D${i + 1}`, ...d.nodes.map((n) => `${n.id}|${i + 1}|${n.time ?? ''}`)].join(';'))
+    .join(';')
+  // 旅館(id 與停留的第幾天,依位置算:改天順序或刪天都會讓簽名改變,LLM 得重讀才能再動旅館)。沒有旅館時不加任何內容,
+  // 維持沒有住宿的時間軸簽名與過去相同(空時間軸仍是空字串)。
+  const lodgings = lodgingsOf(timeline)
+  if (lodgings.length === 0) return daysPart
+  const lodgingPart = lodgings.map((l) => `L:${l.id}|${lodgingDayNumbers(timeline, l).join(',')}`).join(';')
+  return `${daysPart};${lodgingPart}`
 }
+export const STALE_READ_MESSAGE =
+  '行程在你上次查詢之後有變動（或你還沒查過），為避免用過期的資料操作，這次沒有執行。請先呼叫 list_itinerary 讀取目前的行程，再依最新的 id、day、time 重新呼叫這個工具。'
 
 // SearchAttractionArgs/parseSearchAttractionArgs — search_attraction 的
 // args 型別與 runtime 驗證,對齊 onagent 平台的 tool schema——這個 schema
@@ -366,7 +379,7 @@ export function createSearchAttraction(
 //
 // 2026-09 第四次重構:使用者進一步釐清「不用帶其他資訊,只要加入檢查
 // 通過就回覆 LLM,前端再接著做反查,只是 LLM 不用管後半段」——這裡不再
-// await 任何後端查詢,只用 placeId 插入一個 loading:true 的佔位節點,
+// await 任何後端查詢,只用 placeId 插入一個佔位節點,
 // 立刻回傳成功。反查完全移到 ctx.insertAttractionAfter 內部背景執行,
 // 這個工具呼叫本身的耗時只剩「鏈結插入 + 時間範圍驗證」這個同步、免費
 // 的本地運算,不再受任何 Google API 限流影響,LLM 可以放心連續呼叫多次
@@ -398,6 +411,8 @@ interface AddAttractionArgs {
   placeId: string
   anchorId: string | null
   time?: string
+  // day——選填,放進第幾天(從 1 起算,不夠會補空的天);省略時放進錨點所在的那天(沒有錨點是第 1 天)。
+  day?: number
 }
 function parseAddAttractionArgs(raw: unknown): AddAttractionArgs {
   const r = (raw ?? {}) as Record<string, unknown>
@@ -408,13 +423,17 @@ function parseAddAttractionArgs(raw: unknown): AddAttractionArgs {
     placeId: typeof r.placeId === 'string' ? r.placeId : '',
     anchorId,
     time: typeof r.time === 'string' && r.time ? r.time : undefined,
+    day: (() => {
+      const n = typeof r.day === 'string' ? Number(r.day) : r.day
+      return typeof n === 'number' && Number.isInteger(n) && n >= 1 ? n : undefined
+    })(),
   }
 }
 
-// addAttraction — 新增工具:只用 placeId 插入一個 loading:true 的
+// addAttraction — 新增工具:只用 placeId 插入一個
 // 佔位節點(見 ctx.insertAttractionAfter 的完整說明——這裡傳入的 data
 // 不含 name/lat/lng,呼叫端負責識別「有 placeId 但沒有 name」代表
-// 需要背景反查並補上 loading 狀態),不 await 任何後端查詢,立刻透過
+// 需要背景反查,並在節點狀態表標 loading),不 await 任何後端查詢,立刻透過
 // ctx.insertAttractionAfter(anchorId 指定的位置)插入時間軸並回傳。
 //
 // placeId 缺漏時直接 throw——這代表 LLM 沒有先呼叫 search_attraction
@@ -443,8 +462,8 @@ export const addAttraction: ClientTool<AttractionStepsCtx> = defineTool(
     const result = await ctx.insertAttractionAfter(args.anchorId, {
       type: 'stop',
       time: args.time,
+      day: args.day,
       placeId: args.placeId,
-      loading: true,
       // name 給一個通用佔位文字(而非留 undefined)——卡片標題
       // (.stopName,見 home/plan-ai-sim/Content.tsx 的渲染邏輯)直接輸出
       // p.name,留空會讓卡片顯示一個沒有標題、只有底下「查詢地點中…」
@@ -456,7 +475,7 @@ export const addAttraction: ClientTool<AttractionStepsCtx> = defineTool(
     if (!result.ok) {
       throw new Error(result.error.message)
     }
-    return { id: result.id, time: args.time, anchorId: args.anchorId }
+    return { id: result.id, time: args.time, anchorId: args.anchorId, day: args.day }
   },
 )
 
@@ -581,32 +600,160 @@ export const removeAttraction: ClientTool<AttractionStepsCtx> = defineTool(
 // time_out_of_range 這類需要對照現況才能修正的錯誤後,能主動查一次
 // 現有時間軸,而不是憑對話記憶猜測、或反覆用同樣的錯誤參數重試。
 //
-// 這個時間軸目前是一條扁平的鏈結串列,沒有「第一天/第二天」這種分日
-// 概念(見 planTimeline.ts 的完整說明)——回傳的清單就是實際儲存的
-// 單一順序,不含任何分日資訊,LLM 若要在對話裡維持「第幾天」的概念,
-// 需要自己從 time 欄位或先前對話脈絡推斷,這個工具不提供額外的分組。
+// 回傳是依天分組的結構(對應時間軸本身的 days):每一天一個 { day, steps },day 從 1 起算,空的天也會出現(steps 為空陣列),
+// LLM 因此能直接看到「第幾天有哪些站」,不必從 time 欄位或對話脈絡推斷;要在空的天加站就用 add_attraction 的 day 參數
+// (anchorId 省略或 null),要接在某一站後面就帶那一站的 id。
 //
 // 回傳形狀只挑 LLM 真正需要拿來組下一次工具呼叫參數的欄位(id/type/
-// time/name/note),不是把 PlanStepLike 完整欄位(thumbBg/thumbIcon/
+// time/kind/duration/placeId/name/note),不是把 PlanStepLike 完整欄位(thumbBg/thumbIcon/
 // tags/lat/lng 等純視覺呈現用的欄位)都吐出去——那些欄位對 LLM 決定
 // anchorId、判斷時間順序毫無幫助,徒增回應大小與 LLM 需要解析的雜訊。
-// section 節點(label,分段標題,目前排程流程未使用)沒有 time,一併
-// 帶出 label 讓 LLM 至少能辨認這是分段標記,不是漏掉沒處理。
 export const listItinerary: ClientTool<AttractionStepsCtx> = defineTool(
   'list_itinerary',
   () => ({}),
   async (_args, ctx) => {
-    const steps = ctx.getSteps()
+    const timeline = ctx.getTimeline()
     return {
-      steps: steps.map((s) => ({
-        id: s.id,
-        type: s.type,
-        time: s.time,
-        name: s.name,
-        label: s.label,
-        note: s.note,
+      // lodgings——住宿(獨立於各天的站點):每筆旅館的 id、placeId、name 與停留的第幾天(含入住日與退房日,由天的位置推算)。
+      // 要改停留日用 set_lodging(帶這裡的 id 或同一個 placeId),要移除用 remove_lodging。
+      lodgings: lodgingsOf(timeline).map((l) => ({
+        id: l.id,
+        placeId: l.placeId,
+        name: l.name,
+        days: lodgingDayNumbers(timeline, l),
+      })),
+      days: timeline.days.map((d, i) => ({
+        day: i + 1,
+        steps: d.nodes.map((s) => ({
+          id: s.id,
+          time: s.time,
+          // kind/duration/placeId——讓 LLM「理解現有安排」:每站是什麼性質(景點/美食/住宿)、排多久,以及 placeId 用來避免重複加入同一個地點。
+          kind: s.kind,
+          duration: s.duration,
+          placeId: s.placeId,
+          name: s.name,
+          note: s.note,
+        })),
       })),
     }
+  },
+)
+
+// AddDayArgs/parseAddDayArgs — add_day 的 args:atDay 選填(從 1 起算,新的一天要成為第幾天,原本那天與之後順延;
+// 省略、0、空字串、非整數或超過「目前天數 + 1」都視為加在最後面,寬鬆處理的理由同 add_attraction 的 anchorId)。
+interface AddDayArgs {
+  atDay?: number
+}
+function parseAddDayArgs(raw: unknown): AddDayArgs {
+  const r = (raw ?? {}) as Record<string, unknown>
+  const n = typeof r.atDay === 'string' ? Number(r.atDay) : r.atDay
+  return { atDay: typeof n === 'number' && Number.isInteger(n) && n >= 1 ? n : undefined }
+}
+
+// addDayTool — 新增一個空的天(之後用 add_attraction 的 day 參數把景點排進去)。回傳新的一天是第幾天與目前總天數。
+export const addDayTool: ClientTool<AttractionStepsCtx> = defineTool(
+  'add_day',
+  parseAddDayArgs,
+  async (args, ctx) => {
+    const result = await ctx.addDay(args.atDay)
+    if (!result.ok) throw new Error(result.error.message)
+    return { day: result.day, dayCount: result.dayCount }
+  },
+)
+
+// MoveDayArgs/parseMoveDayArgs — move_day 的 args:fromDay、toDay 必填(都從 1 起算的整數)。缺漏或不是整數直接 throw。
+interface MoveDayArgs {
+  fromDay: number
+  toDay: number
+}
+function parseMoveDayArgs(raw: unknown): MoveDayArgs {
+  const r = (raw ?? {}) as Record<string, unknown>
+  const toInt = (v: unknown) => {
+    const n = typeof v === 'string' ? Number(v) : v
+    return typeof n === 'number' && Number.isInteger(n) ? n : NaN
+  }
+  return { fromDay: toInt(r.fromDay), toDay: toInt(r.toDay) }
+}
+
+// moveDayTool — 調整天的順序:把第 fromDay 天整天(含所有站點)移到第 toDay 天的位置,中間的天順延。
+// 天數缺漏或超出範圍時 throw,訊息說明目前有幾天,讓 LLM 先用 list_itinerary 確認再重試。
+export const moveDayTool: ClientTool<AttractionStepsCtx> = defineTool(
+  'move_day',
+  parseMoveDayArgs,
+  async (args, ctx) => {
+    if (Number.isNaN(args.fromDay) || Number.isNaN(args.toDay)) {
+      throw new Error('缺少或不合法的 fromDay/toDay,兩個都必須是從 1 起算的整數(第幾天)。')
+    }
+    const result = await ctx.moveDay(args.fromDay, args.toDay)
+    if (!result.ok) {
+      throw new Error(result.error.message)
+    }
+    return { fromDay: args.fromDay, toDay: args.toDay, dayCount: result.dayCount }
+  },
+)
+
+// SetLodgingArgs/parseSetLodgingArgs — set_lodging 的 args:placeId 必填(旅館的 Google Place ID)、days 必填(從 1 起算的第幾天,
+// 含入住日與退房日,可以不連續;空陣列代表移除這筆旅館)、name/lodgingId 選填。缺漏或型別不對由 handler throw,訊息直接告訴 LLM 怎麼改。
+interface SetLodgingArgs {
+  placeId: string
+  days: number[] | null
+  name?: string
+  lodgingId?: string
+}
+function parseSetLodgingArgs(raw: unknown): SetLodgingArgs {
+  const r = (raw ?? {}) as Record<string, unknown>
+  const days = Array.isArray(r.days)
+    ? r.days.map((d) => {
+        const n = typeof d === 'string' ? Number(d) : d
+        return typeof n === 'number' && Number.isInteger(n) ? n : NaN
+      })
+    : null
+  return {
+    placeId: typeof r.placeId === 'string' ? r.placeId.trim() : '',
+    days,
+    name: typeof r.name === 'string' && r.name.trim() ? r.name.trim() : undefined,
+    lodgingId: typeof r.lodgingId === 'string' && r.lodgingId.trim() ? r.lodgingId.trim() : undefined,
+  }
+}
+
+// setLodgingTool — 設定住宿(旅館住哪幾天)。住宿是獨立的資料,不是天裡的站點:不要用 add_attraction 加住宿站。
+// 同一個 placeId(或 lodgingId)已有旅館時是更新它的停留日(upsert);days 傳空陣列代表移除。
+// 天數超出範圍時 throw,訊息說明目前有幾天(同 move_day),讓 LLM 先用 list_itinerary 確認再重試。
+export const setLodgingTool: ClientTool<AttractionStepsCtx> = defineTool(
+  'set_lodging',
+  parseSetLodgingArgs,
+  async (args, ctx) => {
+    if (!args.placeId) {
+      throw new Error('缺少 placeId,請提供旅館的 Google Place ID(search_attraction 查到的 placeId)。')
+    }
+    if (args.days === null || args.days.some((d) => Number.isNaN(d))) {
+      throw new Error('缺少或不合法的 days,必須是從 1 起算的整數陣列(第幾天,含入住日與退房日);傳空陣列代表移除這筆旅館。')
+    }
+    const result = await ctx.setLodging({ placeId: args.placeId, days: args.days, name: args.name, lodgingId: args.lodgingId })
+    if (!result.ok) throw new Error(result.error.message)
+    if (result.removed) return { removed: true, lodgingId: result.lodgingId }
+    return { lodgingId: result.lodgingId, days: result.days, updated: !result.created, dayCount: result.dayCount }
+  },
+)
+
+// RemoveLodgingArgs — remove_lodging 的 args:lodgingId 必填(list_itinerary 的 lodgings 裡的 id)。
+interface RemoveLodgingArgs {
+  lodgingId: string
+}
+function parseRemoveLodgingArgs(raw: unknown): RemoveLodgingArgs {
+  const r = (raw ?? {}) as Record<string, unknown>
+  return { lodgingId: typeof r.lodgingId === 'string' ? r.lodgingId.trim() : '' }
+}
+
+// removeLodgingTool — 移除一筆住宿。id 不存在時 throw,訊息列出目前的住宿 id。
+export const removeLodgingTool: ClientTool<AttractionStepsCtx> = defineTool(
+  'remove_lodging',
+  parseRemoveLodgingArgs,
+  async (args, ctx) => {
+    if (!args.lodgingId) throw new Error('缺少 lodgingId,請提供要移除的住宿 id(list_itinerary 回傳的 lodgings 裡的 id)。')
+    const result = await ctx.removeLodging(args.lodgingId)
+    if (!result.ok) throw new Error(result.error.message)
+    return { removed: true, lodgingId: args.lodgingId }
   },
 )
 
@@ -631,5 +778,5 @@ export function createAttractionToolsList(
   // onPlacesFound——見 createSearchAttraction 同名參數的完整說明。
   onPlacesFound?: Parameters<typeof createSearchAttraction>[1],
 ): ClientTool<AttractionStepsCtx>[] {
-  return [createSearchAttraction(cfg, onPlacesFound), addAttraction, addNote, removeAttraction, listItinerary]
+  return [createSearchAttraction(cfg, onPlacesFound), addAttraction, addNote, removeAttraction, addDayTool, moveDayTool, setLodgingTool, removeLodgingTool, listItinerary]
 }

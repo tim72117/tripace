@@ -1,11 +1,12 @@
 import type { PlanAction } from './planAction'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSyncedState } from '../../hooks/useSyncedState'
+import { useEffect, useRef, useState } from 'react'
+import { usePlanTimelineCore } from '../../plan-core/usePlanTimelineCore'
 import { planAiFakeDataSource } from './planAiFakeDataSource'
 import type { PlanAiDataSource } from './planAiDataSource'
 import { createPlanSimFakeSource } from './planSimFakeSource'
 import type { PlanSimSource } from './planSimSource'
-import { createEmptyTimeline, removeDay, insertAfter, removeNode, staleOtherAgentMessages, toRenderList, updateNode, type PlanNodeData, type PlanTimeline } from '../../plan-core/planTimeline'
+import { usePlanConversation } from '../../plan-core/usePlanConversation'
+import { createEmptyTimeline, removeDay, lastAppendTarget, updateNode, type PlanNodeData, type PlanTimeline, countNodes, hasNode } from '../../plan-core/planTimeline'
 
 // STEP_ADD_TYPES——需要走 planActionToInsert(插入新節點)的訊息型別。
 // 2026-09 重構:'add_note' 移出這個集合——note 不再是插入到時間軸裡的
@@ -14,12 +15,10 @@ import { createEmptyTimeline, removeDay, insertAfter, removeNode, staleOtherAgen
 // setNoteForStop(見該處的完整說明),不再經過 planActionToInsert 這個
 // 「組出插入用三元組」的轉換路徑——沒有新節點被插入,自然不需要它。
 //
-// 'add_message'——2026-09 加入這個集合,跟 add_note 的方向相反:LLM/
-// 使用者的對話訊息(見 planTimeline.ts PlanNodeType 的 'message' 完整
-// 說明)是真正插入時間軸的獨立節點,不是掛在某個既有節點身上的欄位,故
-// 走跟 add_section/add_stop 完全一樣的插入路徑,不需要像 add_note 那樣
-// 另外特判。
-const STEP_ADD_TYPES: ReadonlySet<PlanAction['type']> = new Set(['add_section', 'add_stop', 'add_message'])
+// 'add_message'——2026-10-24 移出這個集合:對話訊息不再是時間軸節點,改寫進獨立的對話狀態
+// (plan-core/planConversation.ts,由這個 hook 內的 usePlanConversation 持有,模擬態不持久化),
+// ws.onmessage 另外特判這個型別、直接 appendMessage,不經過 planActionToInsert。
+const STEP_ADD_TYPES: ReadonlySet<PlanAction['type']> = new Set(['add_stop'])
 
 // planActionToInsert — 把一則新增類 PlanAction 轉成 insertAttractionAfter
 // 需要的 (anchorId, newId, data) 三元組,不實際執行插入——純函式,呼叫端
@@ -49,17 +48,9 @@ function planActionToInsert(
   action: PlanAction,
 ): { anchorId: string | null; newId: string; data: PlanNodeData } | null {
   if (!STEP_ADD_TYPES.has(action.type)) return null
-  const id = action.id ?? `${action.type}-${timeline.nodes.size}`
-  // nodeType——'add_message' 對應 planTimeline.ts 的 'message' 節點型別
-  // (見該型別的完整說明),不是 stop 也不是 section。
-  const nodeType = action.type === 'add_section' ? 'section' : action.type === 'add_message' ? 'message' : 'stop'
+  const id = action.id ?? `${action.type}-${countNodes(timeline)}`
   const data: PlanNodeData = {
-    type: nodeType,
-    label: action.label,
-    // text——message 節點自己的訊息內容(見 PlanNodeData.text 的完整
-    // 說明),沿用跟 add_note 相同的 action.text 欄位,不另外發明新欄位
-    // 名稱。
-    text: action.text,
+    type: 'stop',
     time: action.time,
     day: action.day,
     duration: action.duration,
@@ -70,212 +61,37 @@ function planActionToInsert(
     thumbIcon: action.thumbIcon,
     tags: action.tags,
     placeId: action.placeId,
-    // loading:add_stop 訊息帶 placeId 時,這筆先以「查詢中」狀態
-    // 掛進時間軸(縮圖/敘事文字用訊息本身的假資料佔位,見下方渲染邏輯),
-    // insertAttractionAfter 內部另外用這個 placeId 查完真實資料後
-    // (見 resolveAttractionForStep 的完整說明),再更新這筆節點把
-    // loading 轉 false、photoUrl/desc 換成真實內容——這裡不是同步查完
-    // 才 append,是「先掛佔位卡、查到再補上」,才能忠實呈現「AI 呼叫
-    // 工具查詢中」這個過程本身,而不是讓使用者只看到查完的結果、跳過
-    // 中間狀態。
-    loading: action.type === 'add_stop' && !!action.placeId,
+    // placeId:add_stop 訊息帶 placeId 時,insertAttractionAfter 內部另外用它查完真實資料
+    // (見 plan-core/resolveAttractionForStep.ts),查詢期間在節點狀態表標 loading(縮圖/敘事文字先用訊息本身的
+    // 假資料佔位)——是「先掛佔位卡、查到再補上」,才能忠實呈現「AI 呼叫工具查詢中」這個過程。節點本身不帶 loading。
     lat: action.lat,
     lng: action.lng,
-    children: action.children,
+    attractions: action.attractions,
+    places: action.places,
+    farFromNext: action.farFromNext,
     candidateCards: action.candidateCards,
   }
-  const renderedForAppend = toRenderList(timeline)
-  const lastId = renderedForAppend.length > 0 ? renderedForAppend[renderedForAppend.length - 1].id : null
-  const anchorId = action.afterId ?? lastId
-  return { anchorId, newId: id, data }
+  // 沒帶 afterId 時接在整條時間軸最後面:錨點是最後一個節點(最後一天是空的就沒有錨點),
+  // 天在劇本沒指定時沿用最後一天,這樣放進空的最後一天也不會掉回第 1 天。
+  if (action.afterId != null) return { anchorId: action.afterId, newId: id, data }
+  const tail = lastAppendTarget(timeline)
+  return { anchorId: tail.anchorId, newId: id, data: { ...data, day: data.day ?? tail.day } }
 }
 
-// REMOVE_FADE_MS — 淡出動畫時長,前端(.module.css 的 removingFade)與
-// 這裡的延遲時間必須一致:CSS 決定「看起來」的過渡時間,這個常數決定
-// 「動畫播完後多久真的把節點從時間軸移除」,兩者對不上會出現「畫面還沒
-// 淡完節點就消失」或「淡完了節點還占著版面空間」的落差。
-const REMOVE_FADE_MS = 320
+// needsLookupForScript——模擬劇本的站點(add_stop)自帶座標與 placeId,仍要向(假)資料來源查一次地點,
+// 呈現「AI 呼叫工具查詢中」的過程,所以只要有 placeId 就查;共用 core 的預設是「有 placeId 且沒座標」。
+// 兩段淡出時長(REMOVE_FADE_MS)已搬到 plan-core/usePlanTimelineCore.ts,與 CSS 同值的說明在那裡。
+function needsLookupForScript(data: PlanNodeData): boolean {
+  return !!data.placeId
+}
 
 // CTA_AFTER_STOPS——模擬排到第幾站時,把輸入膠囊的送出鈕換成「立即
 // 使用」行動呼籲按鈕(見下方 composerCollapsed 的完整說明)。
 export const CTA_AFTER_STOPS = 5
 
-// resolveAttractionForStep — add_attraction 帶 placeId 時,單段查詢取得
-// 真實地點資料:呼叫 GET /internal/geo/plan-ai/place-details-any(fetchPlaceDetails,
-// 見 handlePublicGeoPlaceDetailsAny 的完整說明)取得 name/summary/
-// photoUrl/lat/lng。
-//
-// 2026-09 這是「回到 placeId」重構的一部分(見 attractionTools.ts 檔頭
-// 「第四/五/六次重構」的完整說明)——原本(短暫存在過)的兩段式查詢
-// (先查資料庫 attraction、若帶 place_id 再疊加查 Google 補強)已經不
-// 需要:place-details-any 端點內部本來就會優先查一次資料庫 attraction
-// (查得到就優先用資料庫資料,查不到才 fallback 查 Google),這支函式
-// 因此簡化成單一次查詢,不再需要 fetchAttraction 參數或任何「疊加」
-// 邏輯。
-//
-// isCancelled:呼叫端傳入,查詢完成時若已經是「這次已不算數」的狀態
-// 就不寫回 state,理由同 resolvePlaceForStep 的同名參數。
-//
-// onSettled:2026-09 真實踩坑記錄——add_attraction(onagent 對話路徑)
-// 插入的佔位卡一開始不帶 lat/lng(座標要等這支函式查完才有,對比模擬
-// WS 腳本路徑 planActionToInsert 的固定資料本身就帶座標),若
-// maybeInsertTransitBefore(現已改名 refreshTransitForStop,見該函式的
-// 完整說明)的觸發判斷留在 insertAttractionAfter 插入當下同步檢查
-// data.lat/data.lng,onagent 路徑插入的節點必然沒有座標、判斷恆為
-// false,導致交通卡從未被觸發過——這裡改成在這次查詢完成(不論成功或
-// 失敗)之後才呼叫這個 callback,讓呼叫端(insertAttractionAfter)在
-// 這個時間點才觸發交通查詢。單段查詢下「查詢完成」就等同「座標定案」,
-// 不再需要區分「所有查詢動作都做完」這種多段情境。
-function resolveAttractionForStep(
-  stepId: string,
-  placeId: string,
-  fetchPlaceDetails: (placeId: string) => Promise<{ found?: boolean; name?: string; summary?: string; googlePhotoUrls?: string[]; lat?: number; lng?: number; attractionId?: string }>,
-  setTimeline: React.Dispatch<React.SetStateAction<PlanTimeline>>,
-  isCancelled: () => boolean,
-  onSettled: (lat: number, lng: number) => void,
-) {
-  fetchPlaceDetails(placeId)
-    .then((details) => {
-      if (isCancelled()) return
-      if (details.found === false || details.lat == null || details.lng == null) {
-        // 查無此地(理論上不該發生,placeId 應該總是有效——來自
-        // search_attraction 查到的候選或使用者剛查過的地名)——退回
-        // 訊息本身帶的假資料,不留在「查詢中」的狀態卡住,理由同
-        // resolvePlaceForStep 的同類分支。這裡沒有可用的座標,不呼叫
-        // onSettled——沒有座標就無從估算交通時間,理由同
-        // refreshTransitForStop 本身「沒有座標就清空」的既有判斷。
-        setTimeline((prev) => updateNode(prev, stepId, { loading: false, failed: true }))
-        return
-      }
-      setTimeline((prev) => updateNode(prev, stepId, {
-        loading: false,
-        // failed 明確清掉——這次(可能是重試)成功了,節點不該還留著
-        // 上一次的失敗標記。
-        failed: false,
-        name: details.name,
-        desc: details.summary,
-        googlePhotoUrls: details.googlePhotoUrls,
-        lat: details.lat,
-        lng: details.lng,
-        placeId,
-      }))
-      onSettled(details.lat, details.lng)
-    })
-    .catch(() => {
-      if (isCancelled()) return
-      setTimeline((prev) => updateNode(prev, stepId, { loading: false, failed: true }))
-    })
-}
-
-// refreshTransitForStop — 重新計算 stopId 這個 stop 節點的
-// transitFromPrev(見 planTimeline.ts TransitInfo 的完整說明)。
-//
-// 2026-09 取代原本的 maybeInsertTransitBefore:原本交通卡是獨立插入
-// 鏈結的 'transit' 節點,靠鏈結位置隱含表達「這張卡屬於哪兩站」,移除
-// 中間站時會讓兩張舊交通卡黏在一起、都指向已經消失的站(見
-// planTimeline.ts TransitInfo 開頭引用的完整踩坑記錄)。改成資料直接掛
-// 在「到達站」(stopId 這一站)身上後,「這張交通卡屬於哪兩站」變成
-// stopId 本身與它目前的 prevId,關係顯式且唯一,不再需要另一個節點
-// 型別。
-//
-// 呼叫時機——任何造成 stopId 這一站「前一站」改變的操作之後都要呼叫:
-//   1. 插入新 stop 節點成功、座標定案時(原 maybeInsertTransitBefore 的
-//      觸發點)——呼叫 refreshTransitForStop(newId, ...)。
-//   2. 移除一個 stop 節點後,若它的 nextId 也是 stop——那一站的前一站
-//      變了(removeNode 已經同步清空它的 transitFromPrev,見該函式的
-//      完整說明),呼叫 refreshTransitForStop(nextId, ...) 重新查一次
-//      新的兩站之間的交通。
-//   3. 前一站座標更新時(resolveAttractionForStep 第二段 place 查詢
-//      覆蓋座標)——若這一站的 nextId 是 stop,它的 transitFromPrev 是
-//      基於舊座標算的,同樣需要重新查(使用者明確要求「當前一個站點有
-//      異動時,要觸發重新推估」)。
-//
-// 用 getTimeline()(而非讀取某個 React state)取得呼叫當下的最新鏈結,
-// 理由同原 maybeInsertTransitBefore 對 timelineRef.current 的既有說明:
-// 呼叫這個函式的時間點通常是 commitTimeline 已經完成之後,需要讀到最新
-// 結果,不能仰賴可能還沒 flush 的 React state。
-//
-// 前一站不是 stop(例如是 section/note,或沒有前一站)或沒有座標(反查
-// 地點資料尚未完成的 loading 中節點),直接把 transitFromPrev 清成
-// undefined,不查詢——沒有兩個明確座標就無從估算,不勉強留著一張資料
-// 不全的卡片或殘留舊資料。
-function refreshTransitForStop(
-  stopId: string,
-  setTimeline: React.Dispatch<React.SetStateAction<PlanTimeline>>,
-  getTimeline: () => PlanTimeline,
-  // dataSource——讀取層(見 planAiDataSource.ts 的完整說明)。2026-10
-  // 從寫死的 planAiFakeDataSource import 改成參數注入,讓這條路徑跟
-  // 推論層一樣可以整個抽換:公開展示頁注入假資料實作,登入後的自動
-  // 播放注入真後端實作。
-  dataSource: PlanAiDataSource,
-) {
-  const timeline = getTimeline()
-  const stopNode = timeline.nodes.get(stopId)
-  if (!stopNode || stopNode.type !== 'stop' || stopNode.lat == null || stopNode.lng == null) return
-  const prevNode = stopNode.prevId != null ? timeline.nodes.get(stopNode.prevId) : null
-  // (prevNode.day ?? 1) !== (stopNode.day ?? 1)——使用者明確要求「排程
-  // 元件加入日的概念」後,跨天(day 不同)的前後兩站不該顯示交通卡:
-  // 中間隔了一夜,不是使用者會實際移動的路線,「走路 X 分鐘」這種數字
-  // 沒有意義。跟「前一站不是 stop/沒有座標」同樣視為沒有可比較的前一
-  // 站,直接清空 transitFromPrev、不查詢。省略 day 視為第 1 天,理由同
-  // planTimeline.ts PlanNodeData.day 的完整說明。
-  if (
-    !prevNode ||
-    prevNode.type !== 'stop' ||
-    prevNode.lat == null ||
-    prevNode.lng == null ||
-    (prevNode.day ?? 1) !== (stopNode.day ?? 1)
-  ) {
-    setTimeline((prev) => updateNode(prev, stopId, { transitFromPrev: undefined }))
-    return
-  }
-
-  // 2026-09:先掛 loading:true 的佔位狀態再背景查詢,是使用者明確要求
-  // 「路程推估前端載入中要做一點動畫」的直接落地——後端加了
-  // 800~1500ms 的故意延遲(見 plan_sim_ws.go transitEstimateMinDelay/
-  // transitEstimateMaxDelay 的完整說明)讓查詢感更真實,若不先掛佔位,
-  // 使用者會看著站點卡片插入後有一段空白等待期,不知道系統正在做什麼
-  // ——這跟 stop 節點本身「先掛查詢中佔位卡、查完再補上真實資料」(見
-  // resolveAttractionForStep 的完整說明)是同一種使用者體感設計。
-  const prevId = prevNode.id
-  setTimeline((prev) => updateNode(prev, stopId, { transitFromPrev: { loading: true } }))
-
-  const from = { lat: prevNode.lat, lng: prevNode.lng }
-  const to = { lat: stopNode.lat, lng: stopNode.lng }
-  dataSource.transitEstimate(from, to)
-    .then((estimate) => {
-      setTimeline((prev) => {
-        // 這一站可能已經被使用者操作移除,或它的前一站在查詢期間又
-        // 再次變動(見上方呼叫時機第 2/3 點——若查詢期間又觸發了一次
-        // 新的 refreshTransitForStop,這次的結果已經過時),此時直接
-        // 放棄更新,理由同其餘背景查詢完成後的既有「重新確認節點仍
-        // 存在」慣例(見 resolveAttractionForStep 的完整說明)。
-        const current = prev.nodes.get(stopId)
-        if (!current || current.prevId !== prevId) return prev
-        return updateNode(prev, stopId, {
-          transitFromPrev: {
-            loading: false,
-            icon: estimate.icon,
-            mode: estimate.mode,
-            minutes: estimate.minutes,
-            distance: estimate.distance,
-          },
-        })
-      })
-    })
-    .catch(() => {
-      // 查詢失敗(網路問題)——清空 transitFromPrev,不留一張永遠轉圈的
-      // 交通卡卡住畫面。理由同其餘背景查詢失敗時的既有降級慣例:交通卡
-      // 是加值資訊,查不到就維持沒有這張卡的狀態,不阻塞或干擾主要的
-      // 行程安排流程。同樣先確認這一站與前一站的關係沒有在查詢期間變動
-      // 過,理由同上方 .then 分支。
-      setTimeline((prev) => {
-        const current = prev.nodes.get(stopId)
-        if (!current || current.prevId !== prevId) return prev
-        return updateNode(prev, stopId, { transitFromPrev: undefined })
-      })
-    })
-}
+// 站點的真實地點資料查詢(resolveAttractionForStep)用 plan-core 共用的那一份:2026-10 之前這裡有一份私有副本
+// (沒有 429 限流重試、不保留內容),現在與 /app、行程詳情頁同一條路徑。loading/failed 寫進本 hook 持有的節點狀態表
+// (usePlanNodeStatus),名稱/說明/座標寫回節點,照片由視圖經 useResolvedNodeRefs 以 placeId 解析。
 
 // usePlanSimSocket — 連上模擬 AI 推論輸出的 WebSocket(見上方檔案開頭
 // 的完整說明),把收到的每則 PlanAction 轉成插入操作、交給
@@ -318,60 +134,39 @@ export function usePlanSimSocket(
   // 的呼叫端自己注入 createPlanAiApiDataSource(cfg)。
   dataSource: PlanAiDataSource = planAiFakeDataSource,
 ) {
-  // timeline 改用 useSyncedState(見該 hook 開頭的完整背景說明)取代單純
-  // 的 useState——insertAttractionAfter(下方)呼叫來源是 AgentBridge 的
-  // 原生 WebSocket onmessage,完全在 React 事件系統之外,需要「commit
-  // 呼叫當下就同步拿到結果」這個保證,而不是仰賴 useState 的 updater
-  // 會同步執行(這個假設在這個呼叫場景下不成立,見該 hook 開頭引用的
-  // 真實踩坑記錄)。setTimeline 仍保留給不需要同步讀結果的異動(remove_step
-  // 標記 removing、resolvePlaceForStep 背景補資料),用回原生 setState
-  // 語意即可,不需要 commit 那一層。
-  const [timelineRef, timeline, commitTimeline] = useSyncedState<PlanTimeline>(createEmptyTimeline)
-  const setTimeline = useCallback((updater: PlanTimeline | ((prev: PlanTimeline) => PlanTimeline)) => {
-    commitTimeline((current) => ({
-      next: typeof updater === 'function' ? (updater as (prev: PlanTimeline) => PlanTimeline)(current) : updater,
-      result: undefined,
-    }))
-  }, [commitTimeline])
+  // 對話(模擬劇本的 add_message)——獨立於時間軸的狀態,不傳 store = 純記憶體不持久化
+  // (公開頁的自動播放腳本不該污染使用者真實的對話存檔,理由同這裡的時間軸不持久化)。
+  // 宣告在時間軸之前:新增站點讓舊訊息淡化(staleAll)要接進時間軸 core 的 onStopInserted。
+  const { messages, conversationRef, appendMessage, staleAll, clearConversation } = usePlanConversation()
 
-  // dragStopTime——時間軸小圓點拖拉調整時間(使用者明確要求「時間軸的
-  // 小圓點可以拖拉,上下拉動時調整時間,半小時為刻度」,原本只在正式頁
-  // trip-plan/TripPlanPage.tsx 實作,這份展示原型檔案刻意沒有跟進——
-  // 使用者後續明確要求「解除之前不改的限制」,把這個互動能力補到展示頁
-  // 也能體驗)。寫法對齊 TripPlanPage.tsx 同名函式的設計,差異只在這份
-  // 檔案沒有 cfg/後端呼叫,refreshTransitForStop 的簽名少一個參數(見
-  // 該函式在這個檔案的完整說明)。
-  const dragStopTime = useCallback((stopId: string, newTime: string): boolean => {
-    const node = timelineRef.current.nodes.get(stopId)
-    if (!node || node.type !== 'stop') return false
-    setTimeline((prev) => updateNode(prev, stopId, { time: newTime }))
-    refreshTransitForStop(stopId, setTimeline, () => timelineRef.current, dataSource)
-    return true
-  }, [setTimeline, timelineRef, dataSource])
-  // retryStopLookup——地點查詢失敗的站點重新查詢。
-  //
-  // 2026-10（review 發現）：這個檔案的 resolveAttractionForStep 失敗分支
-  // 跟 TripPlanPage 一樣標記 failed(兩邊逐行一致),但這裡原本**沒有任何
-  // 消化路徑**——沒有重試入口、也沒有掛載重試,節點就永久停在錯誤狀態。
-  // 那讓 failed 標記變成淨負面:改動前至少還會顯示劇本自帶的假資料名稱
-  // (見 resolveAttractionForStep 失敗分支的既有註解「退回訊息本身帶的
-  // 假資料」),標了 failed 卻無從恢復反而更糟。
-  //
-  // 寫法對齊 TripPlanPage 的同名函式:先把節點設回 loading 讓使用者看得出
-  // 按鈕有反應,查詢結果由 resolveAttractionForStep 自己寫回。
-  const retryStopLookup = useCallback((stopId: string) => {
-    const node = timelineRef.current.nodes.get(stopId)
-    if (!node || node.type !== 'stop' || !node.placeId) return
-    setTimeline((prev) => updateNode(prev, stopId, { loading: true, failed: false }))
-    resolveAttractionForStep(
-      stopId,
-      node.placeId,
-      (placeId) => dataSource.placeDetails(placeId),
-      setTimeline,
-      () => !timelineRef.current.nodes.has(stopId),
-      () => refreshTransitForStop(stopId, setTimeline, () => timelineRef.current, dataSource),
-    )
-  }, [setTimeline, timelineRef, dataSource])
+  // 時間軸狀態與鏈結操作全部由共用的 usePlanTimelineCore 持有(2026-10 收斂:原本這裡自己有一份 useSyncedState、
+  // insertAttractionAfter、setNoteForStop、removeStep、dragStopTime、retryStopLookup、clearTimeline,與 /app 的
+  // TripPlanPage 逐行重複,見 docs/research-timeline-core-comparison-2026-10.md)。
+  //   - 不傳 store = 純記憶體不持久化(公開頁的自動播放腳本不該蓋掉使用者在 /app 排好的真實草稿);
+  //   - dataSource:地點詳情/交通估算用假資料(預設 planAiFakeDataSource),要接真後端的呼叫端自己注入;
+  //   - needsLookup:劇本的站點自帶座標與 placeId,仍要走一次查詢呈現「AI 查地點」的過程,所以只要有 placeId 就查
+  //     (core 預設是「有 placeId 且沒座標」);
+  //   - onStopInserted:新增站點代表話題已經推進,把還「新鮮」的對話訊息淡化(使用者明確要求「新景點加入後要淡化」);
+  //   - 不傳 onBeforeMutate(模擬態沒有自動捲動抑制,橫向軸用 useSimulatedStopsView 的選取跟隨)、不開 retryFailedOnMount
+  //     (不持久化,重整即清空,沒有殘留的失敗站點)。
+  const {
+    timeline,
+    timelineRef,
+    nodeStatus,
+    setStatus,
+    setTimeline,
+    insertAttractionAfter,
+    followUpStop,
+    setNoteForStop,
+    removeStep,
+    dragStopTime,
+    retryStopLookup,
+    clearTimeline,
+  } = usePlanTimelineCore({
+    dataSource,
+    needsLookup: needsLookupForScript,
+    onStopInserted: staleAll,
+  })
 
   // isGenerating 初始值為 false——要等 start 變 true(打字動畫播完、
   // 視同「使用者送出」)才開始安排,見上方 usePlanSimSocket 的完整說明。
@@ -390,125 +185,6 @@ export function usePlanSimSocket(
   // WebSocket onmessage,見上方 useSyncedState 的完整說明),ref 讀寫
   // 本身沒有這個時機疑慮。
   const latestInsertedStopIdRef = useRef<string | null>(null)
-
-  // insertAttractionAfter — 這是使用者明確要求的「機制跟介面由行程
-  // 安排元件提供」的落地:不管是 add_attraction 工具(attractionTools.ts)
-  // 還是下方模擬 WS 腳本路徑(ws.onmessage),都不自己組節點、自己呼叫
-  // insertAfter,而是統一呼叫這裡暴露的介面,把 anchorId/節點資料交給
-  // planTimeline.ts 的 insertAfter 統一驗證與插入(時間是否落在合理
-  // 範圍、錨點是否存在,見該函式的完整說明)。這是使用者要求「模擬的
-  // 部分也完全走這個路徑,不要有例外」的直接體現——兩條路徑不再各自
-  // 維護一份插入邏輯,驗證失敗時的行為也完全一致(見下方呼叫端如何
-  // 處理 result.ok === false)。
-  //
-  // 用 commitTimeline(useSyncedState 提供,見該 hook 的完整背景說明)
-  // 取代手寫的「讀 ref → 算 → 寫 ref → setState」四步——這個 hook 就是
-  // 把這四步收斂成的固定寫法,存在的理由正是這裡先前踩過的真實 bug
-  // (add_attraction 曾經每次呼叫都以「Cannot read properties of
-  // undefined (reading 'ok')」失敗,根因是誤以為 setState(updater) 的
-  // updater 會同步執行)。compute 函式直接讀 current(保證是目前為止
-  // 所有已提交更新疊加後的最新 timeline)同步算出 insertAfter 的結果,
-  // 驗證失敗時不給 next(對應 useSyncedState 的「compute 不給 next 就不
-  // 寫入」語意),commitTimeline 保證回傳值就是這次呼叫當下算出的
-  // InsertAfterResult,不會是 undefined。
-  //
-  // id 由呼叫端決定並傳進來,這裡不重新生成——這個介面只負責「插入到
-  // 哪裡、驗不驗證得過」,不負責「這個節點該叫什麼 id」這種跟呼叫端
-  // 資料來源相關的細節(onagent 路徑用 agent-${attractionId}-
-  // ${Date.now()},模擬 WS 路徑沿用後端腳本給的 action.id)。
-  //
-  // 插入成功後,若這筆帶 placeId 且是 loading 佔位狀態(見
-  // attractionTools.ts addAttraction 的完整背景說明——LLM 只傳
-  // placeId,不等任何後端查詢完成就回覆成功),在這裡背景觸發
-  // fetchPlanAiPlaceDetailsAny 補上完整資料,理由與寫法對稱既有的
-  // resolvePlaceForStep(模擬 WS 路徑原本自己觸發的同類邏輯,現在收斂
-  // 到這裡統一處理,兩條路徑不用各自記得要觸發)——差別只在這裡查的是
-  // 不受白名單限制的 place-details-any,且查詢完成後用 setTimeline
-  // (而非 commitTimeline)寫回,因為這個背景更新不需要任何呼叫端同步
-  // 拿到結果。
-  //
-  // 故意不 await 這個背景查詢、也不讓它影響 insertAttractionAfter 的
-  // 回傳值——插入本身只做本地鏈結運算,立即返回,不因為等待或觸發
-  // Google API 查詢而受限流影響,查詢延遲對使用者體感是卡片從佔位轉成
-  // 完整內容,不是整個呼叫失敗。
-  const insertAttractionAfter = useCallback(
-    (anchorId: string | null, newId: string, data: PlanNodeData): ReturnType<typeof insertAfter> => {
-      const result = commitTimeline<ReturnType<typeof insertAfter>>((current) => {
-        const inserted = insertAfter(current, anchorId, data, newId)
-        if (!inserted.ok) return { result: inserted }
-        // 新增一個景點(stop)就代表話題已經推進——把時間軸上其他還
-        // 「新鮮」的對話訊息節點(message,見 planTimeline.ts PlanNodeType
-        // 的完整說明)一併淡化(見 staleOtherAgentMessages 的完整說明,
-        // 使用者明確要求「新景點加入後要淡化」)。只在新插入的是 stop
-        // 時才觸發——插入 message 節點本身不代表話題推進,不該讓其他
-        // message(包括它自己)跟著被標記成 stale。
-        if (data.type !== 'stop') return { next: inserted.timeline, result: inserted }
-        return { next: staleOtherAgentMessages(inserted.timeline, newId), result: inserted }
-      })
-      if (result.ok && data.placeId && data.loading) {
-        resolveAttractionForStep(
-          newId,
-          data.placeId,
-          (placeId) => dataSource.placeDetails(placeId),
-          setTimeline,
-          () => false,
-          // onSettled——onagent 路徑插入的佔位卡一開始沒有座標(座標要
-          // 等這支函式查完才有),交通查詢要等查詢完成、座標確定之後
-          // 才觸發。refreshTransitForStop 自己會從 timeline 重新讀取
-          // 這個節點目前的座標,不需要 onSettled 傳入的 lat/lng(這裡
-          // 忽略,只借用它「查詢已完成」這個時機訊號)。
-          () => refreshTransitForStop(newId, setTimeline, () => timelineRef.current, dataSource),
-        )
-      } else if (result.ok && data.type === 'stop' && data.lat != null && data.lng != null) {
-        // 模擬 WS 腳本路徑(planActionToInsert)的固定資料本身就帶座標,
-        // 插入當下即可同步觸發,不需要等任何背景查詢——理由同上方
-        // onGotCoordinates 的完整說明,兩條路徑只是「座標何時可用」不同,
-        // 觸發交通查詢這件事本身沒有差異。
-        refreshTransitForStop(newId, setTimeline, () => timelineRef.current, dataSource)
-      }
-      return result
-    },
-    [commitTimeline, setTimeline],
-  )
-
-  // setNoteForStop — 把一則備註寫在某個既有節點自己身上(見 planTimeline.ts
-  // NoteInfo 的完整說明),不是插入新節點——使用者明確要求「備註寫在
-  // 景點的節點上」。用 commitTimeline(而非 setTimeline)取得跟
-  // insertAttractionAfter 一致的「呼叫當下同步拿到結果」保證,理由同該
-  // 函式的完整說明(呼叫來源同樣可能來自 AgentBridge 原生事件,完全在
-  // React 事件系統之外)。
-  //
-  // 參數命名 anchorId(而非原本的 stopId)——使用者明確要求「agent tool
-  // 發出的參數名稱保持一致,像是要附加在節點上的就要用 anchorId,不要
-  // 創造多餘的命名」:這裡跟 insertAttractionAfter 的 anchorId 是同一種
-  // 東西,都是「時間軸上某個既有節點的 id」,只是這裡是必填(不是
-  // string | null——沒有「插在最前面」這種語意,備註一定要有明確的
-  // 掛載對象),不因為語意細節不同就另外發明命名。
-  //
-  // 回傳型別對齊 insertAttractionAfter(ReturnType<typeof insertAfter>)
-  // ——沒有新節點被建立,insertedId 這裡填入被寫入備註的 anchorId 本身,
-  // 讓呼叫端(attractionTools.ts 的 add_note 工具)能用同一種「id 代表
-  // 這次操作影響了哪個節點」的語意回報給 LLM,不需要為了這個操作另外
-  // 發明一種結果形狀。anchorId 不是時間軸上既有節點時,回傳
-  // anchor_not_found(語意上就是「找不到指定的節點」,沿用既有的
-  // InsertAfterErrorCode,不需要為這裡另外新增一個錯誤代碼)。
-  const setNoteForStop = useCallback(
-    (anchorId: string, text: string, category: string | undefined): ReturnType<typeof insertAfter> => {
-      return commitTimeline<ReturnType<typeof insertAfter>>((current) => {
-        if (!current.nodes.has(anchorId)) {
-          return {
-            result: {
-              ok: false,
-              error: { code: 'anchor_not_found', message: `找不到 id 為 "${anchorId}" 的節點,無法在它身上寫入備註。` },
-            },
-          }
-        }
-        const next = updateNode(current, anchorId, { note: { text, category } })
-        return { next, result: { ok: true, timeline: next, insertedId: anchorId } }
-      })
-    },
-    [commitTimeline],
-  )
 
   useEffect(() => {
     // start 轉 false 時清空並停止——原本是直接 return(不清),因為
@@ -578,14 +254,12 @@ export function usePlanSimSocket(
           // 同一個 id,見 PlanAction.nextId 的完整說明)——之後真正的
           // add_stop 訊息到達時(見下方),改用 updateNode 原地把這筆
           // 節點補上完整資料,而不是插入另一筆新節點。沒有 name/time/
-          // placeId/lat/lng,HorizontalPlanTimeline 依 node.loading 且
+          // placeId/lat/lng,HorizontalPlanTimeline 依狀態表的 loading 且
           // 沒有資料的狀態自然渲染成骨架卡樣式(見該元件對 loading 節點
           // 的渲染邏輯),不需要額外的 isGenerating 分支渲染一塊獨立的
           // 骨架卡。錨點用目前時間軸最後一筆(跟 planActionToInsert 預設
           // 行為一致),接在已生成內容之後。
-          const rendered = toRenderList(timelineRef.current)
-          const anchorNode = rendered.length > 0 ? rendered[rendered.length - 1] : null
-          const anchorId = anchorNode?.id ?? null
+          const { anchorId, day: anchorDay } = lastAppendTarget(timelineRef.current)
           // day——2026-10 使用者明確回報「第二天時,時間軸線會一直換成
           // 第一日又回來」:這筆空白佔位節點原本沒有帶 day,渲染層
           // (HorizontalPlanTimeline.tsx currentDay)用 node.day ?? 1
@@ -598,11 +272,12 @@ export function usePlanSimSocket(
           // 情況下等真正資料到達時 updateNode 會覆蓋這裡的暫定值,不會
           // 錯誤停留在舊的 day)。沒有錨點(時間軸完全空白)時沿用原本
           // 預設第一天的語意。
-          const anchorDay = (anchorNode && anchorNode.type === 'stop' ? anchorNode.day : undefined) ?? 1
-          const result = insertAttractionAfter(anchorId, action.nextId, { type: 'stop', loading: true, day: anchorDay })
+          const result = insertAttractionAfter(anchorId, action.nextId, { type: 'stop', day: anchorDay })
           if (!result.ok) {
             throw new Error(result.error.message)
           }
+          // 骨架卡:在狀態表標 loading(節點本身只是空的行程資料)。等真正的 add_stop 資料補上後清掉。
+          setStatus(action.nextId, { loading: true })
         }
         return
       }
@@ -620,8 +295,10 @@ export function usePlanSimSocket(
       // reset:清空時間軸(見 PlanAction.type 對這則訊息的完整說明)。
       // 來源在「使用者往回捲」時先送這則,再重播到目標進度。isGenerating
       // 已經在上面統一設成 false,這裡不需要重複設定。
+      // 對話也一併清空:往回捲重播時訊息會依劇本重新出現,留著舊的會殘留「還沒播到」的訊息。
       if (action.type === 'reset') {
         setTimeline(createEmptyTimeline())
+        clearConversation()
         return
       }
       // reset_day:只清掉指定的那一天(見 PlanAction.type 的完整說明)。
@@ -633,40 +310,17 @@ export function usePlanSimSocket(
         setTimeline((prev) => removeDay(prev, day))
         return
       }
-      // remove_step:先標記 removing(觸發 CSS 淡出),真正從鏈結摘除
-      // 延遲到動畫播完後才做(見 removeNode/REMOVE_FADE_MS 的完整
-      // 說明)——不然節點會瞬間消失,看不到淡出過程。這段標記邏輯不透過
-      // insertAttractionAfter(那個介面只負責插入),直接用 setTimeline
-      // 呼叫 updateNode,理由同模擬路徑其餘非插入類異動(移除本來就不是
-      // 「機制跟介面由行程安排元件提供」這個要求要收斂的對象——那個要求
-      // 針對的是插入邏輯不能有兩份,移除邏輯只有這一條路徑,沒有重複可言)。
+      // remove_step:兩階段移除(標 removing 觸發淡出,動畫播完才摘除並補算下一站交通)由共用 core 的 removeStep 負責,
+      // 內含重複指示擋下、卸載保護與 reset 後同 id 重播不誤殺;劇本保證 id 合法,回傳值不需要處理。
       if (action.type === 'remove_step' && action.removedId) {
-        const removedId = action.removedId
-        setTimeline((prev) => updateNode(prev, removedId, { removing: true }))
-        setTimeout(() => {
-          if (cancelled) return
-          // 移除前記下 nextId——removeNode 本身已經同步清空這個節點(若
-          // 是 stop)的 transitFromPrev(見該函式的完整說明),這裡摘除
-          // 後還要背景重新查一次「新的前一站→這一站」的交通,理由同
-          // refreshTransitForStop 開頭列出的呼叫時機第 2 點(使用者明確
-          // 要求「當前一個站點有異動時,要觸發重新推估」)。
-          const nextId = timelineRef.current.nodes.get(removedId)?.nextId
-          // removeNode 現在回傳結構化結果(見該函式/RemoveNodeResult 的
-          // 完整說明,這份原型檔案本身不受那次異動影響,純粹配合新的
-          // 回傳型別簽名)——找不到節點或已被移除時原樣保留 prev,不是
-          // 行為變更。allowRemoving:true 是必要的:這裡呼叫的節點必然
-          // 是上面那行剛標記的 removing:true,是這個兩段式流程「完成
-          // 移除」的第二步,不帶這個旗標會被新版 removeNode 的
-          // already_removing 檢查誤判成重複移除而拒絕,導致節點永遠
-          // 卡在 removing:true 佔位不消失(見 removeNode
-          // opts.allowRemoving 的完整說明,這是曾經實際發生過的
-          // regression)。
-          setTimeline((prev) => {
-            const result = removeNode(prev, removedId, { allowRemoving: true })
-            return result.ok ? result.timeline : prev
-          })
-          if (nextId != null) refreshTransitForStop(nextId, setTimeline, () => timelineRef.current, dataSource)
-        }, REMOVE_FADE_MS)
+        removeStep(action.removedId)
+        return
+      }
+      // add_message:對話訊息寫進獨立的對話狀態(見 STEP_ADD_TYPES 的說明),不動時間軸。id 重複(reset_day 重播同一段劇本)
+      // 時 appendMessage 原樣忽略——訊息沒有所在天的資訊(使用者決定只依時間順序),reset_day 清不掉「那一天的訊息」,
+      // 重播時同一則訊息是 no-op;這只影響模擬態桌面對話氣泡的淡化狀態,不會重複顯示。
+      if (action.type === 'add_message') {
+        appendMessage({ id: action.id ?? `msg-${conversationRef.current.messages.length}`, text: action.text ?? '' })
         return
       }
       // add_note:不再插入新節點(見 STEP_ADD_TYPES 的完整說明,note 已
@@ -694,32 +348,16 @@ export function usePlanSimSocket(
       // 只有在真的找不到對應佔位節點時(理論上不該發生,thinking 一定
       // 先於對應的 action 送達,但防禦性地保留 fallback,避免未來劇本
       // 資料若有 thinking 被跳過的情況時整個卡住)才退回原本的插入路徑。
-      if (action.type === 'add_stop' && action.id && timelineRef.current.nodes.has(action.id)) {
+      if (action.type === 'add_stop' && action.id && hasNode(timelineRef.current, action.id)) {
         const toUpdate = planActionToInsert(timelineRef.current, action)
         if (!toUpdate) return
-        // staleOtherAgentMessages——理由同 insertAttractionAfter 對新插入
-        // stop 的既有處理(見該函式呼叫處的完整說明):佔位節點原地轉成
-        // 真正的地點站,同樣代表話題已經推進,其他還「新鮮」的對話訊息
-        // 節點要一併淡化,不能因為這裡走的是 updateNode 而非插入新節點
-        // 就漏掉這個效果。
-        setTimeline((prev) => staleOtherAgentMessages(updateNode(prev, action.id!, toUpdate.data), action.id!))
-        // insertAttractionAfter 原本插入成功後,若帶 placeId 且是 loading
-        // 佔位狀態會背景觸發 resolveAttractionForStep 補資料(見該函式
-        // 的完整說明)——這裡繞過 insertAttractionAfter 直接 updateNode,
-        // 需要自己重做這一段背景查詢觸發,否則帶 placeId 的佔位卡永遠
-        // 不會真的查到完整資料。
-        if (toUpdate.data.placeId && toUpdate.data.loading) {
-          resolveAttractionForStep(
-            action.id,
-            toUpdate.data.placeId,
-            (placeId) => dataSource.placeDetails(placeId),
-            setTimeline,
-            () => false,
-            () => refreshTransitForStop(action.id!, setTimeline, () => timelineRef.current, dataSource),
-          )
-        } else if (toUpdate.data.lat != null && toUpdate.data.lng != null) {
-          refreshTransitForStop(action.id, setTimeline, () => timelineRef.current, dataSource)
-        }
+        setTimeline((prev) => updateNode(prev, action.id!, toUpdate.data))
+        // 淡化對話訊息——理由同 insertAttractionAfter 對新插入 stop 的既有處理:佔位節點原地轉成真正的地點站,
+        // 同樣代表話題已經推進,不能因為這裡走的是 updateNode 而非插入新節點就漏掉這個效果。
+        staleAll()
+        // 繞過 insertAttractionAfter 原地補資料,需要自己接上插入後的背景流程(反查地點/重算交通/收掉骨架的 loading):
+        // 用 core 的 followUpStop,與插入路徑同一段邏輯,否則帶 placeId 的佔位卡永遠不會查到完整資料。
+        followUpStop(action.id, toUpdate.data)
         // 2026-10 使用者明確回報「骨架卡轉成地點時就要拉到中間,目前是
         // 要等下一個骨架時才拉往中間」:見下方 latestInsertedStopIdRef
         // 的完整說明——這裡原地補資料,id 本來就沒變,同樣要記下來讓
@@ -727,7 +365,7 @@ export function usePlanSimSocket(
         latestInsertedStopIdRef.current = action.id
         return
       }
-      // 新增類 action(含 add_message,見 STEP_ADD_TYPES 的完整說明):
+      // 新增類 action(目前只有 add_stop,見 STEP_ADD_TYPES 的完整說明):
       // 統一走 planActionToInsert + insertAttractionAfter
       // (見兩者的完整說明)——不再有模擬路徑專屬的 insertAfter 呼叫或
       // 「錨點找不到就退回 append 到最後一筆」的寬容降級,驗證失敗時
@@ -764,22 +402,15 @@ export function usePlanSimSocket(
     }
   }, [start])
 
-  const steps = toRenderList(timeline)
-
-  // clearTimeline——把時間軸清空。
-  //
-  // 「讓我試看看」按鈕用(使用者明確要求交接時清空時間軸):模擬跑完
-  // 幾站之後使用者決定自己試,展示用的那幾站要先清掉,不能讓他以為
-  // 那是自己排的。這個頁面的時間軸不持久化(純展示),所以只要清掉
-  // 記憶體這份即可。
-  const clearTimeline = useCallback(() => {
-    commitTimeline(() => ({ next: createEmptyTimeline(), result: undefined }))
-  }, [commitTimeline])
-
   return {
-    steps,
     timeline,
     timelineRef,
+    // nodeStatus——節點執行狀態表,傳給時間軸視圖(PlanTimelineView/HorizontalPlanTimeline 的 nodeStatus prop)。
+    nodeStatus,
+    // messages/clearConversation——模擬劇本 add_message 寫進的對話(獨立於時間軸、不持久化,
+    // 交接給推論層時由呼叫端 clearConversation,對應 clearTimeline)。
+    messages,
+    clearConversation,
     isGenerating,
     insertAttractionAfter,
     setNoteForStop,

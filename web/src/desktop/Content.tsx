@@ -33,6 +33,7 @@ import { type PanelMode, DEBUG_PANEL_ENABLED, PANEL_REGISTRY, ROUTE_LINE_ENABLED
 import { RouteEditor } from '../demo/RouteEditor'
 import { Nav as DesktopNav } from './Nav'
 import { LivePlanLayer } from './LivePlanLayer'
+import { PlanDataProvider } from '../plan-core/PlanDataProvider'
 import { useCurrentLocation } from './useCurrentLocation'
 import { useDesktopStopPan } from '../plan-core/useStopPan'
 import { PlanLayout } from './PlanLayout'
@@ -128,7 +129,7 @@ export function Content(props: ContentProps) {
   // 「只在規劃面板開啟時顯示」),而不是加清除 effect:那樣會讓「關閉規劃面板」
   // 多出一次不必要的 state 寫入與重渲染,重新開啟時還要等 TripPlanPage
   // 重新回報才會出現圓點,中間有一瞬間的空窗。
-  const { stops, selectedStopId, hoverStopId, hoverTransitPair, setSelectedStopId, tripPlanProps } = usePlanStopsState()
+  const { stops, routeSegments, selectedStopId, hoverStopId, hoverTransitPair, setSelectedStopId, tripPlanProps } = usePlanStopsState()
   // hoverStopId:滑鼠正懸停在哪一張站點卡上(2026-10 新增,使用者
   // 明確要求「滑鼠移動到介紹卡時,地圖圓加強顯示」)。命名用 hover* 而非
   // hovered*,對齊 PlanMap 既有的 hoverKey。
@@ -815,7 +816,8 @@ export function Content(props: ContentProps) {
                       // onStopClick 讓點地圖圓點回頭選中對應的時間軸卡片(selectedStopId 是兩邊共用的唯一事實來源),跟
                       // 「點卡片 → 地圖移動過去」互為反向操作。
                       {...visibleStopsView}
-                      showPlanRouteLine={ROUTE_LINE_ENABLED && planPanelVisible && showPlanRouteLine}
+                      // 連線段(2026-10-24 取代 showPlanRouteLine 布林):開關語意不變——flag 開啟、面板可見、使用者按下路徑開關時才傳段。
+                      routeSegments={ROUTE_LINE_ENABLED && planPanelVisible && showPlanRouteLine ? routeSegments : undefined}
                       onStopClick={setSelectedStopId}
                       city={geoSearchCity}
                       onCityChange={setGeoSearchCity}
@@ -965,13 +967,16 @@ export function Content(props: ContentProps) {
                 「點卡片 A → 手動拖曳地圖 → 再點卡片 A」會因為座標沒變
                 而完全不觸發,地圖不動(見 GeoPanTarget 對這個欄位的
                 完整說明)。點卡片是明確的使用者動作,每次都該有反應。 */}
-            <LivePlanLayer
-              cfg={cfg}
-              visible={planPanelVisible}
-              onPanToStop={panToStop}
-              selectedStopId={selectedStopId}
-              tripPlanProps={tripPlanProps}
-            />
+            {/* 資料存取層在入口根部決定一次:登入版(打 /internal),底下的時間軸、地圖投影與詢問頁共用同一個 store */}
+            <PlanDataProvider dataSource={dataSource}>
+              <LivePlanLayer
+                cfg={cfg}
+                visible={planPanelVisible}
+                onPanToStop={panToStop}
+                selectedStopId={selectedStopId}
+                tripPlanProps={tripPlanProps}
+              />
+            </PlanDataProvider>
           </PlanOverlayLayout>
       </PlanLayout>
       {settingsOpen && (

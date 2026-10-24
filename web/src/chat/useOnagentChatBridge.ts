@@ -64,6 +64,8 @@ export function useOnagentChatBridge(
       url: WS_URL,
       appId: APP_ID,
       apiKey,
+      // SSE 傳輸(@onagent/bridge 0.2.0 起),理由同 TripPlanPage 的 AgentBridge。
+      transport: 'sse',
       tools: toAgentBridgeTools(
         [tripEntryAdd, tripEntryList, tripListBatches, tripEntryDelete, tripEntryUpdate],
         onagentToolContext,

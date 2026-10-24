@@ -1,13 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { initialCenterOf } from './initialCenter'
-import type { SampleItinerary, SampleStop } from './types'
-
-function stop(over: Partial<SampleStop> & { name: string }): SampleStop {
-  return { time: '09:00', kind: '景點', duration: '1h', ...over }
-}
-function make(stops: SampleStop[]): SampleItinerary {
-  return { id: 'x', title: 'x', region: 'r', days: 1, categories: [], summary: 's', addedAt: '2026-10-01', stops }
-}
+import { makeItinerary as make, stop } from './testUtils'
 
 describe('initialCenterOf', () => {
   it('取第一天有座標的站點的中心,不被後面天數、相距很遠的站點拉走', () => {

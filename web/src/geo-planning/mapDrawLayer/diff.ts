@@ -17,7 +17,8 @@ export function signatureOf(d: Drawable): Signature {
     case 'marker':
       return {
         structure: `marker|clickable:${d.clickable ? 1 : 0}`,
-        data: JSON.stringify([d.group, d.position, d.title ?? null, d.contentKey]),
+        // anchor 進 data:錨點改變時宿主要重新套用位移(update),不需要重建。
+        data: JSON.stringify([d.group, d.position, d.title ?? null, d.contentKey, d.anchor ?? 'bottom']),
       }
     case 'circle':
       return { structure: 'circle', data: JSON.stringify([d.group, d.center, d.radiusMeters, d.options ?? null]) }

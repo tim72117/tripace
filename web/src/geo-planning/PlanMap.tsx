@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
+import type { RouteLineSegment } from './mapDrawLayer/featureLayers/routeLineLayer'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoPlaceDetails, GeoSearchResult, GeoTripEntry } from '../api'
@@ -59,7 +60,7 @@ export function PlanMap({
   selectedStopId,
   hoverStopId,
   hoverTransitPair,
-  showPlanRouteLine = false,
+  routeSegments,
   onStopClick,
   onMapReady,
   city,
@@ -121,8 +122,9 @@ export function PlanMap({
   // hoverTransitPair:懸停在時間軸交通膠囊時,該段交通的兩端站點 id;
   // 兩點顯示 hover 態並以虛線連接(見 mapDrawLayer/featureLayers/transitHoverLineLayer.ts)。
   hoverTransitPair?: { fromId: string; toId: string } | null
-  // showPlanRouteLine:規劃標頭列路徑開關的狀態,為 true 時畫出所有站點的連線。預設 false。
-  showPlanRouteLine?: boolean
+  // routeSegments:站點之間要畫的連線段(見 planMapShared 的 PlanMapSharedProps)。登入後桌面由標頭列的路徑開關決定要不要傳;
+  // 沒傳就不畫。
+  routeSegments?: RouteLineSegment[]
   onStopClick?: (id: string) => void
   // onMapReady:地圖實例建好、可顯示內容時呼叫(mapReady/mapVersion 變動時觸發),
   // 讓呼叫端把「要等地圖畫好才出現」的 UI 延後,避免地圖還是空白時先冒出懸空卡片。
@@ -326,7 +328,7 @@ export function PlanMap({
     hoverStopId,
     hoverTransitPair,
     onStopClick,
-    showPlanRouteLine,
+    routeSegments,
     // 行程 entry 旗子與搜尋結果標記只有登入後有資料,/ai-plan 不傳。
     tripEntries: { entries: tripEntries, selectedKey, hoverKey },
     searchResults: { results: searchResults, selectedKey, hoverKey, candidateKeys, onSelect: onSearchResultSelect },

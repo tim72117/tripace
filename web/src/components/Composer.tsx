@@ -58,6 +58,10 @@ export interface ComposerProps {
   //   樣式,沒辦法只攔截點擊、不影響外觀),而是讓 onSubmit 內部直接
   //   不呼叫呼叫端傳入的 onSubmit。
   presentational?: boolean
+  // busy/onStop——進行中(例如 AI 推論中):輸入框鎖住;有傳 onStop 時送出鈕換成「停止」(方形圖示、可點、呼叫 onStop,
+  // 不送出表單),沒傳 onStop 時送出鈕跟 disabled 一樣不能點。跟 disabled 的差別:disabled 是整顆都不能用(含停止)。
+  busy?: boolean
+  onStop?: () => void
   // onSubmit——使用者按下送出鈕或在輸入框按 Enter。省略時、或
   // presentational 為 true 時,<form> 的 submit 事件仍會被攔截(避免
   // 瀏覽器真的送出表單跳轉頁面),但不會呼叫這個 callback。
@@ -93,6 +97,8 @@ export function Composer({
   readOnly = false,
   disabled = false,
   presentational = false,
+  busy = false,
+  onStop,
   onSubmit,
   bare = false,
   sendButton,
@@ -103,6 +109,7 @@ export function Composer({
   hideInput = false,
   className,
 }: ComposerProps) {
+  const stopMode = busy && !!onStop && !disabled
   return (
     <div className={[styles.composer, bare ? styles.composerBare : '', className].filter(Boolean).join(' ')}>
       <div className={styles.composerInner}>
@@ -126,22 +133,27 @@ export function Composer({
                 value={value}
                 onChange={onChange ? (e) => onChange(e.target.value) : undefined}
                 readOnly={readOnly}
-                disabled={disabled}
+                disabled={disabled || busy}
               />
             </div>
           )}
           <button
-            type="submit"
-            aria-label={sendButtonAriaLabel}
+            type={stopMode ? 'button' : 'submit'}
+            aria-label={stopMode ? '停止' : sendButtonAriaLabel}
             className={[styles.sendBtn, sendButtonClassName].filter(Boolean).join(' ')}
-            disabled={disabled}
+            disabled={disabled || (busy && !onStop)}
+            onClick={stopMode ? onStop : undefined}
           >
-            {sendButton ?? (
+            {stopMode ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--ios-bg)" aria-hidden="true">
+                <rect x="5" y="5" width="14" height="14" rx="2.5" />
+              </svg>
+            ) : (sendButton ?? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ios-bg)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="19" x2="12" y2="5" />
                 <polyline points="5 12 12 5 19 12" />
               </svg>
-            )}
+            ))}
           </button>
         </form>
       </div>

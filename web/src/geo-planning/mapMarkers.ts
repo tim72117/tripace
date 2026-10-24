@@ -203,6 +203,9 @@ export type PlanStopMarkerState = 'base' | 'hover' | 'selected'
 // layout box 完全相同——AdvancedMarkerElement 以 content 底部中央錨定
 // 座標,畫布尺寸若隨狀態改變,圓心會跟著跳位(tripEntry 旗子 24→30 就
 // 有這個問題,是既有慣例但這裡順手避掉)。
+// 2026-10-24 補充:統一繪製層的 marker drawable 現在都帶 anchor: 'center'
+// (宿主對 content 套 translateY(50%),圓心對準座標,見 mapDrawLayer/types.ts),
+// 所以圓心不再比座標高 7px、與連線端點對齊;畫布固定的理由不變。
 // planStopMarkerSvgString——跟 planStopMarkerContent 完全相同的繪圖邏輯,
 // 差別只在回傳 SVG 字串而不是解析好的 DOM 元素。2026-10 新增,使用者
 // 明確要求「hand-drawn 改用普通標記(非 Advanced Marker)」,當時改走

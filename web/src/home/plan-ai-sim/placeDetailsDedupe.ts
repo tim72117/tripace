@@ -19,6 +19,10 @@
 // 5. found === false 也不記憶。理由:它可能是暫時性的(剛建檔、後端
 //    Google 查詢暫時查無),記住會把短暫的負面結果放大成 5 分鐘;且
 //    查無結果不會出現在正常流程(placeId 來自候選清單),重查成本極低。
+// 6. found:true 但沒有可用座標(lat/lng 任一缺)也不記憶(2026-10 修正)。
+//    理由:呼叫端(resolveAttractionForStep 等)拿到沒座標的結果會判定失敗
+//    並重試;若記住這份結果,5 分鐘內的重試(含重新掛載後的重試)都會拿到
+//    同一份沒座標的快取,重試等於沒做。
 //
 // TTL 5 分鐘:涵蓋「詢問頁顯示候選 -> 使用者看完確認」的合理間隔,又短
 // 到地點資料(名稱/簡介/照片網址)變更時不會久久看到舊值。
@@ -32,6 +36,8 @@
 export interface PlaceDetailsLike {
   found?: boolean
   photoRefreshPending?: boolean
+  lat?: number
+  lng?: number
 }
 
 export const PLACE_DETAILS_TTL_MS = 5 * 60 * 1000
@@ -40,14 +46,19 @@ export const PLACE_DETAILS_MAX_ENTRIES = 100
 export interface PlaceDetailsDedupeOptions {
   ttlMs?: number
   maxEntries?: number
-  // shouldRemember:成功結果要不要記憶,預設規則是第 4、5 點(found === false、photoRefreshPending 不記)。
+  // shouldRemember:成功結果要不要記憶,預設規則是第 4、5、6 點(found === false、photoRefreshPending、沒有可用座標不記)。
   // 地圖光暈與詳情卡共用的快取(geo-planning/placeDetailsCache.ts)用「一律記憶、不過期」的設定,兩邊是同一套機制、不同政策。
   shouldRemember?: (value: unknown) => boolean
 }
 
 const defaultShouldRemember = (value: unknown) => {
   const v = value as PlaceDetailsLike
-  return v.found !== false && v.photoRefreshPending !== true
+  return v.found !== false && v.photoRefreshPending !== true && hasUsableCoords(v)
+}
+
+// hasUsableCoords——lat/lng 兩者都是有限數字才算「可用座標」(規則第 6 點)。
+function hasUsableCoords(v: PlaceDetailsLike): boolean {
+  return typeof v.lat === 'number' && Number.isFinite(v.lat) && typeof v.lng === 'number' && Number.isFinite(v.lng)
 }
 
 export class PlaceDetailsDedupe {

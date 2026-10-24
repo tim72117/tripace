@@ -19,6 +19,8 @@ export function currentLocationLayer(input: { position: { lat: number; lng: numb
         // 只取 lat/lng,避免呼叫端傳入帶有多餘欄位的物件影響比對。
         position: { lat: position.lat, lng: position.lng },
         title: '目前位置',
+        // 藍點是圓形,圓心就是座標(見 types.ts 的 anchor 說明)。
+        anchor: 'center',
         // 內容與座標無關,contentKey 固定:座標改變時只移動位置,不重做 DOM。
         contentKey: 'current-location-dot',
         createContent: currentLocationMarkerContent,

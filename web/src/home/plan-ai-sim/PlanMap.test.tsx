@@ -62,7 +62,7 @@ const lastDraw = () => drawArgs[drawArgs.length - 1] as {
   theme?: string | null
   currentPosition: unknown
   stopDots: Record<string, unknown>
-  routeLine?: { enabled: boolean }
+  routeSegments?: unknown
 }
 const stops = [{ id: 'a', lat: 1, lng: 2 }]
 
@@ -138,17 +138,18 @@ describe('PlanMap 統一繪製層', () => {
     expect(dots.onPointClick).toBe(onStopClick)
   })
 
-  it('theme、currentPosition 交給 useSharedDrawLayer;showPlanRouteLine 變成 routeLine.enabled', () => {
-    renderMap({ theme: 'dark', currentPosition: { lat: 3, lng: 4 }, showPlanRouteLine: true })
+  it('theme、currentPosition、routeSegments 原樣交給 useSharedDrawLayer', () => {
+    const segments = [{ id: 'a->b', from: { lat: 1, lng: 2 }, to: { lat: 3, lng: 4 } }]
+    renderMap({ theme: 'dark', currentPosition: { lat: 3, lng: 4 }, routeSegments: segments })
     expect(lastDraw().theme).toBe('dark')
     expect(lastDraw().currentPosition).toEqual({ lat: 3, lng: 4 })
-    expect(lastDraw().routeLine).toEqual({ enabled: true })
+    expect(lastDraw().routeSegments).toBe(segments)
   })
 
-  it('沒傳 currentPosition:交 null(不畫藍點);沒傳 showPlanRouteLine:路線不畫', () => {
+  it('沒傳 currentPosition:交 null(不畫藍點);沒傳 routeSegments:不畫線', () => {
     renderMap()
     expect(lastDraw().currentPosition).toBeNull()
-    expect(lastDraw().routeLine).toEqual({ enabled: false })
+    expect(lastDraw().routeSegments).toBeUndefined()
   })
 
   it('回報目前展開的主題點 id(onExpandedThemeIdChange)', () => {

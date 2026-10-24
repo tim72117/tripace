@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { HoverTransitPair } from '../geo-planning/mapMarkerLayer/planStops'
 import type { PlanStopMarker } from '../geo-planning/usePlanStopMarkers'
+import type { RouteSegment } from './routeSegments'
 
 // PlanSelection——「使用者現在在看哪一站」這組檢視狀態(選取、hover)。
 //
@@ -22,10 +23,10 @@ export function usePlanSelection(): PlanSelection {
   return { selectedStopId, hoverStopId, setSelectedStopId, setHoverStopId }
 }
 
-// usePlanStopsState——規劃面板(TripPlanPage)回報的站點,加上選取與 hover,加上轉乘膠囊 hover:
+// usePlanStopsState——規劃面板(TripPlanPage)回報的站點與連線段,加上選取與 hover,加上轉乘膠囊 hover:
 // 登入後手機(phone/Content)與登入後桌面(desktop/Content)原本各寫四個 useState,現在共用。
 //
-// 資料流:TripPlanPage 透過 tripPlanProps 的四個回呼把站點、選取、hover、轉乘配對寫進來,地圖元件
+// 資料流:TripPlanPage 透過 tripPlanProps 的五個回呼把站點、連線段、選取、hover、轉乘配對寫進來,地圖元件
 // (PlanMap)只讀這些狀態、點圓點時用 setSelectedStopId 寫回——selectedStopId 是地圖與時間軸共用的
 // 唯一事實來源,點卡片與點地圖圓點都寫同一個 state,不會出現兩邊各自高亮不同站。
 //
@@ -35,17 +36,22 @@ export function usePlanStopsState() {
   return { ...useReportedStops(selection), ...selection }
 }
 
-// useReportedStops——usePlanStopsState 去掉「自己持有 selection」的那一半:站點、轉乘膠囊 hover 與
+// useReportedStops——usePlanStopsState 去掉「自己持有 selection」的那一半:站點、連線段、轉乘膠囊 hover 與
 // tripPlanProps,選取與 hover 寫進呼叫端傳入的 selection。/ai-plan 的 selection 由頁面持有(模擬來源
 // 與真實來源共用同一份,交接時要清空),所以走這個;登入後直接用 usePlanStopsState。
+//
+// routeSegments(2026-10-24):地圖上站點之間要畫的連線段,由 TripPlanPage 依時間軸切(plan-core/routeSegments.ts,
+// 有交通膠囊的那一段才畫)經 onRouteSegmentsChange 回報;入口依功能開關決定要不要傳給 PlanMap。
 export function useReportedStops(selection: Pick<PlanSelection, 'setSelectedStopId' | 'setHoverStopId'>) {
   const [stops, setStops] = useState<PlanStopMarker[]>([])
+  const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([])
   const [hoverTransitPair, setHoverTransitPair] = useState<HoverTransitPair | null>(null)
 
   const { setSelectedStopId, setHoverStopId } = selection
   const tripPlanProps = useMemo(
     () => ({
       onStopsChange: setStops,
+      onRouteSegmentsChange: setRouteSegments,
       onSelectedStopChange: setSelectedStopId,
       onHoverStopChange: setHoverStopId,
       onHoverTransitChange: setHoverTransitPair,
@@ -53,7 +59,7 @@ export function useReportedStops(selection: Pick<PlanSelection, 'setSelectedStop
     [setSelectedStopId, setHoverStopId],
   )
 
-  return { stops, hoverTransitPair, tripPlanProps }
+  return { stops, routeSegments, hoverTransitPair, tripPlanProps }
 }
 
 // maskPlanStopsView——面板(規劃面板)關閉時,遮蔽要傳給地圖的站點檢視(2026-10 從登入後手機 phone/Content 與桌面
@@ -78,7 +84,7 @@ export function maskPlanStopsView(view: PlanStopsViewProps, visible: boolean): P
 }
 
 // PlanPanelStopsProps:useReportedStops 回傳的 tripPlanProps 的型別——規劃面板(PlanPanelContent / TripPlanPage)把站點、
-// 選取、hover、轉乘配對回報給入口用的四個回呼,各入口的 LivePlanLayer 用它當 prop 型別。
+// 連線段、選取、hover、轉乘配對回報給入口用的五個回呼,各入口的 LivePlanLayer 用它當 prop 型別。
 export type PlanPanelStopsProps = ReturnType<typeof useReportedStops>['tripPlanProps']
 
 // PlanPanelStopsBinding——三個入口的 LivePlanLayer(/ai-plan、登入後手機、登入後桌面)共同的「站點檢視接線」props:

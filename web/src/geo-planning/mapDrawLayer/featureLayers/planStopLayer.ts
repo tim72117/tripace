@@ -86,6 +86,8 @@ export function planStopLayer({
       kind: 'marker',
       position: { lat: p.lat, lng: p.lng },
       title: p.name,
+      // 圓點的圓心就是座標(見 types.ts 的 anchor 說明;2026-10-24 修正連線端點與圓點對不齊)。
+      anchor: 'center',
       contentKey: `${state}|${accentColor}|${p.glyph ?? ''}|${p.size ?? ''}`,
       createContent: (ctx?: ContentContext) => {
         const previousState = ctx?.previousContentKey?.split('|')[0]
@@ -126,6 +128,7 @@ export function planStopLayer({
         kind: 'marker',
         position: { lat: child.lat, lng: child.lng },
         title: child.name,
+        anchor: 'center',
         contentKey: `theme-child-dot|${accentColor}`,
         createContent: () => themeChildDot(accentColor),
       })

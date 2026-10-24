@@ -1,9 +1,8 @@
-import type { ComponentProps, MutableRefObject, ReactNode } from 'react'
+import { type ComponentProps, type MutableRefObject, type ReactNode } from 'react'
 import { PlanTimelineView } from '../../plan-core/PlanTimelineView'
 import { getTimeDragBounds } from '../../plan-core/planTimeline'
 import { TIME_DRAG_ENABLED } from '../../DesktopShared'
 import { HorizontalPlanTimeline } from './HorizontalPlanTimeline'
-import { planAiFakeDataSource } from './planAiFakeDataSource'
 import type { usePlanSimSocket } from './usePlanSimSocket'
 import styles from './Content.module.css'
 
@@ -23,7 +22,12 @@ type SimSocket = ReturnType<typeof usePlanSimSocket>
 
 export interface SimPlanLayerProps {
   isDesktop: boolean
-  steps: SimSocket['steps']
+  timeline: SimSocket['timeline']
+  // nodeStatus——節點執行狀態表(loading/failed/removing),原樣交給兩種時間軸視圖。
+  nodeStatus: SimSocket['nodeStatus']
+  // messages——模擬劇本的對話訊息(獨立於時間軸,見 plan-core/planConversation.ts),桌面縱向時間軸渲染在最下方;
+  // 手機橫向時間軸不渲染對話。
+  messages: SimSocket['messages']
   isGenerating: boolean
   emptyStateMessage: string
   timelineRef: SimSocket['timelineRef']
@@ -51,7 +55,9 @@ export interface SimPlanLayerProps {
 
 export function SimPlanLayer({
   isDesktop,
-  steps,
+  timeline,
+  nodeStatus,
+  messages,
   isGenerating,
   emptyStateMessage,
   timelineRef,
@@ -100,7 +106,9 @@ export function SimPlanLayer({
       // onRetryStop——見上方 retryStopLookup 的完整說明:標了 failed
       // 就要給得出脫離的路。
       onRetryStop={retryStopLookup}
-      steps={steps}
+      timeline={timeline}
+      nodeStatus={nodeStatus}
+      messages={messages}
       isThinking={isGenerating}
       emptyStateMessage={emptyStateMessage}
       hideEmptyState
@@ -162,21 +170,19 @@ export function SimPlanLayer({
     // (AiPlanPhoneDemoScreen.tsx)一致,啟用自動捲動到最新完成站點。
     <>
     <HorizontalPlanTimeline
-      // showAskPage/askPageInput/onAskPageDone/dataSource——見
-      // 上方 state 宣告處的完整說明。dataSource 用假資料實作(預設值
-      // planAiFakeDataSource,這裡顯式傳入對齊 usePlanSimSocket 呼叫處
-      // 的同一份實例,理由同該處說明:這個展示頁不需要登入就能看,
-      // 不能打需要登入的後端端點)。
+      // showAskPage/askPageInput/onAskPageDone——見上方 state 宣告處的完整說明。
+      // 資料存取層(假資料實作:這個展示頁不需要登入就能看,不能打需要登入的後端端點)由 Content 在根部的
+      // PlanDataProvider 決定,視圖不再收 dataSource prop。
       showAskPage={showAskPage}
       askPageInput={askPageInput}
       onAskPageDone={handleAskPageDone}
-      dataSource={planAiFakeDataSource}
       // renderAskPage——置換成播放態專用那一份(見
       // HorizontalPlanTimeline.tsx 該 prop 與 ScriptedAskPage.tsx 檔頭
       // 的完整說明)。桌面分支也是同一份,兩種版面一致。
       renderAskPage={renderScriptedAskPage}
       onRetryStop={retryStopLookup}
-      steps={steps}
+      timeline={timeline}
+      nodeStatus={nodeStatus}
       selectedStopId={selectedStopId}
       focusLatest
       onSelectStop={(stopId) => {

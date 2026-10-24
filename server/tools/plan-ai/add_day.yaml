@@ -1,0 +1,30 @@
+# onagent 平台上 plan-ai-timeline app 的 add_day tool 定義——見
+# search_attraction.yaml 開頭的完整說明(app 背景、新版 CLI 格式規則、
+# 為何拆成獨立檔案)。
+#
+# 時間軸的「天」是結構(每天一個陣列),不是站點上的欄位;這支工具新增一個
+# 空的天,之後用 add_attraction 的 day 參數把景點排進去。
+#
+# 推送(需要 onagent CLI,見 .claude/skills/onagent-cli-setup):
+#   onagent tool create -api <onagent 後端 URL> plan-ai-timeline server/tools/plan-ai/add_day.yaml
+
+name: add_day
+description: >-
+  在行程時間軸新增一個空的天。atDay 是新的一天要成為「第幾天」（從 1
+  起算）——原本在那個位置的天與之後的天會依序往後順延一天；省略就加在
+  最後面。超過「目前天數 + 1」也視為加在最後面，不會憑空補出中間的空天。
+  一次最多往後跳 5 天（atDay 不得超過目前天數 + 5），超過會回傳錯誤。
+
+  新增後這一天是空的，要用 add_attraction 並帶 day 參數把景點排進去。
+  呼叫成功回傳 {"day": 新的一天是第幾天, "dayCount": 目前總天數}。
+
+  不確定目前有幾天、每天排了什麼時，先呼叫 list_itinerary 查現況。
+  景點若是使用者新指定了更多天數的行程（例如原本排 2 天、使用者說改成
+  3 天），先用這支工具補上天，再安排景點。
+kind: query
+parameters:
+  type: object
+  properties:
+    atDay:
+      type: integer
+      description: 新的一天要成為第幾天（從 1 起算的整數）；省略代表加在最後面。

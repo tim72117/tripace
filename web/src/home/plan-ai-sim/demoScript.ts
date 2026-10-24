@@ -42,44 +42,7 @@ export const DEMO_SCRIPT: PlanAction[] = [
     tags: ['08:30 開館'],
     placeId: 'attr-chikanlou',
     lat: 23.0009, lng: 120.2024,
-    children: [
-      {
-        id: 'stop-chikanlou', name: '赤崁樓',
-        desc: '荷蘭時期普羅民遮城遺址，紅磚拱廊與燕尾脊並存，是台南地標之一。',
-        thumbBg: 'linear-gradient(135deg, #C4956A, #8B3A2F)', thumbIcon: '🏯',
-        placeId: 'attr-chikanlou', lat: 23.0009, lng: 120.2024,
-      },
-      {
-        id: 'stop-datianhou', name: '祀典大天后宮',
-        desc: '1663年創建，原明寧靖王府邸，全台唯一官建列入祀典的媽祖廟，國定古蹟。',
-        thumbBg: 'linear-gradient(135deg, #B85C4A, #8B3A2F)', thumbIcon: '⛩️',
-        placeId: 'attr-datianhou', lat: 22.9966, lng: 120.2016,
-      },
-      {
-        id: 'stop-wumiao-aiyu', name: '武廟愛玉',
-        desc: '祀典武廟廟埕旁的老字號愛玉冰攤，純手工洗愛玉，酸甜檸檬愛玉是招牌。',
-        thumbBg: 'linear-gradient(135deg, #C4B15A, #8B7A2F)', thumbIcon: '🍧',
-        placeId: 'attr-wumiao-aiyu', lat: 23.0007, lng: 120.2025,
-      },
-      {
-        id: 'stop-fenghuangjuan', name: '日安良食鳳凰卷',
-        desc: '永福路老字號糕餅鋪，鳳凰卷酥皮薄脆內餡濃郁，是府城傳統伴手禮之一。',
-        thumbBg: 'linear-gradient(135deg, #D9B87D, #A67C4A)', thumbIcon: '🥐',
-        placeId: 'attr-riann-fenghuangjuan', lat: 23.0008, lng: 120.2026,
-      },
-      {
-        id: 'stop-wumiao', name: '祀典武廟',
-        desc: '全台祀典關帝廟，國定古蹟，紅牆是「出磚入石」砌法代表案例。',
-        thumbBg: 'linear-gradient(135deg, #C0604A, #8B3A2F)', thumbIcon: '⛩️',
-        placeId: 'attr-wumiao', lat: 22.9966, lng: 120.2022,
-      },
-      {
-        id: 'stop-wintermelon', name: '義豐冬瓜茶',
-        desc: '永福路百年老店，古法熬煮冬瓜磚現煮冬瓜茶，逛廟後解渴的在地首選。',
-        thumbBg: 'linear-gradient(135deg, #B8934A, #6B4A2E)', thumbIcon: '🥤',
-        placeId: 'attr-yifeng-wintermelon', lat: 23.0005, lng: 120.2023,
-      },
-    ],
+    places: ['attr-chikanlou', 'attr-datianhou', 'attr-wumiao-aiyu', 'attr-riann-fenghuangjuan', 'attr-wumiao', 'attr-yifeng-wintermelon'],
   },
   {
     type: 'add_note', id: 'note-reconsider', afterId: 'stop-chikanlou-area', category: 'consideration',
@@ -92,21 +55,8 @@ export const DEMO_SCRIPT: PlanAction[] = [
     placeId: 'attr-atang',
     lat: 22.9976, lng: 120.1975,
     candidateCards: true,
-    children: [
-      {
-        id: 'stop-lunch-atang', name: '阿堂鹹粥',
-        desc: '虱目魚粥與土魠魚羹的在地經典早午餐店，用餐時間常需排隊。',
-        thumbBg: 'linear-gradient(135deg, #D9A97D, #C4956A)', thumbIcon: '🍚',
-        placeId: 'attr-atang', lat: 22.9976, lng: 120.1975,
-      },
-      {
-        id: 'stop-lunch-fuji', name: '福記肉圓',
-        desc: '傳承多代的在地肉圓老店，外皮Q彈內餡扎實，淋上特調醬汁是台南經典小吃代表之一。',
-        thumbBg: 'linear-gradient(135deg, #C97B4A, #8B4A2F)', thumbIcon: '🥟',
-        placeId: 'attr-fuji-meatball', lat: 22.9969, lng: 120.1981,
-        farFromNext: true,
-      },
-    ],
+    places: ['attr-atang', 'attr-fuji-meatball'],
+    farFromNext: ['attr-fuji-meatball'],
   },
   {
     type: 'add_stop', id: 'stop-shennong', time: '13:30', day: 1, duration: '停留 2h', kind: '景點・散策',
@@ -122,20 +72,7 @@ export const DEMO_SCRIPT: PlanAction[] = [
     tags: ['免費開放參觀'],
     placeId: 'attr-confucius-temple',
     lat: 22.9908, lng: 120.2035,
-    children: [
-      {
-        id: 'stop-confucius-temple', name: '孔廟',
-        desc: '1665 年創建的全台首學，紅牆綠瓦與百年老樹環繞，是台南人文歷史的重要地標。',
-        thumbBg: 'linear-gradient(135deg, #8B7A2F, #4A3626)', thumbIcon: '🏛️',
-        placeId: 'attr-confucius-temple', lat: 22.9908, lng: 120.2035,
-      },
-      {
-        id: 'stop-confucius-zone', name: '孔廟商圈',
-        desc: '府中街一帶的文創聚落，老屋改建的選物店、手作工坊與小吃攤交錯，適合孔廟後接著散步逛街。',
-        thumbBg: 'linear-gradient(135deg, #C4956A, #8B7A2F)', thumbIcon: '🛍️',
-        placeId: 'attr-confucius-temple-cultural-zone', lat: 22.9902, lng: 120.2039,
-      },
-    ],
+    places: ['attr-confucius-temple', 'attr-confucius-temple-cultural-zone'],
   },
   { type: 'add_note', id: 'note-3', afterId: 'stop-confucius-area', category: 'weather', text: '下午降雨機率 60%，園區內有不少樹蔭可以躲雨' },
   {

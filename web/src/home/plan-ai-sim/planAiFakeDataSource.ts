@@ -91,6 +91,29 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
   return R * 2 * Math.asin(Math.sqrt(h))
 }
 
+// SCRIPT_PLACE_OVERRIDES——劇本原本內嵌在子景點(舊 PlanNodeData.children)的顯示資料,
+// 與 attractionPool.ts 同 id 的條目不一致的部分。節點改成只存 id 之後(planSimScript.ts 的
+// places: [...]),名稱/說明/座標必須由這裡回答,否則展示畫面會悄悄變成池子裡另一組值:
+//   - attr-datianhou:劇本寫「祀典大天后宮」、1663 年創建的完整說明,座標 22.9966,120.2016
+//     (池子是較短的「大天后宮」,座標 23.0006,120.1998,離實際位置較遠)
+//   - attr-wumiao:劇本的說明文字與座標 22.9966,120.2022(池子座標 23.0006,120.2024)
+// 其餘劇本子景點(赤崁樓、武廟愛玉、鳳凰卷、冬瓜茶、阿堂、福記、孔廟、孔廟商圈)內嵌值與池子完全
+// 相同,不需要覆寫。覆寫只作用在 placeDetails,不改池子本身——search_attraction 與 searchNearby
+// 的既有行為(attractionPool.ts 的值)維持不變。
+const SCRIPT_PLACE_OVERRIDES: Record<string, { name?: string; desc?: string; lat?: number; lng?: number }> = {
+  'attr-datianhou': {
+    name: '祀典大天后宮',
+    desc: '1663年創建，原明寧靖王府邸，全台唯一官建列入祀典的媽祖廟，國定古蹟。',
+    lat: 22.9966,
+    lng: 120.2016,
+  },
+  'attr-wumiao': {
+    desc: '全台祀典關帝廟，國定古蹟，紅牆是「出磚入石」砌法代表案例。',
+    lat: 22.9966,
+    lng: 120.2022,
+  },
+}
+
 // fakePlaceDetails — add_attraction 插入後的背景反查:用 placeId(即
 // attractionPool.ts 的 id)精確查找完整資料。查無結果時 found:false,
 // 行為對齊真後端 fetchPlanAiPlaceDetailsAny。googlePhotoUrls 只在
@@ -103,7 +126,17 @@ async function fakePlaceDetails(placeId: string): Promise<PlanAiPlaceDetailsResu
   const hit = getAttractionById(placeId)
   if (!hit) return { found: false }
   const photo = REAL_PHOTOS[placeId]
-  return { found: true, name: hit.name, summary: hit.desc, lat: hit.lat, lng: hit.lng, googlePhotoUrls: photo ? [photo] : undefined }
+  const o = SCRIPT_PLACE_OVERRIDES[placeId]
+  return {
+    found: true,
+    name: o?.name ?? hit.name,
+    summary: o?.desc ?? hit.desc,
+    lat: o?.lat ?? hit.lat,
+    lng: o?.lng ?? hit.lng,
+    googlePhotoUrls: photo ? [photo] : undefined,
+    thumbBg: hit.thumbBg,
+    thumbIcon: hit.thumbIcon,
+  }
 }
 
 // fakeTransitEstimate — 用 haversineKm 抓直線距離,依距離門檻挑一個

@@ -20,7 +20,7 @@
 //   3. createDraftPlanTimelineStore(key) 回傳一個完整符合
 //      PlanTimelineStore 介面的實例,呼叫端(LivePlanLayer.tsx)把它當
 //      TripPlanPage 的 store prop 傳入即可——TripPlanPage/
-//      useTripPlanTimeline 完全不需要知道「多份草稿」這件事存在,它們
+//      usePlanTimelineCore 完全不需要知道「多份草稿」這件事存在,它們
 //      看到的永遠只是「一個 store」,跟現有單一草稿的使用方式一模一樣。
 //
 // 「新行程」動作(startNewDraft)本身只做兩件事:(a) 把目前這份草稿的
@@ -28,10 +28,10 @@
 // 目前使用中的那一份;(b) 產生一個新的草稿 id 回傳給呼叫端(新草稿是
 // 空白的,不會先進清單,等它有內容後才由下一次「新行程」歸檔)。
 // 呼叫端(LivePlanLayer.tsx)拿到新 id 後,透過 React key 讓 TripPlanPage
-// 整個重新掛載,改用指向新 id 的 store——不需要 useTripPlanTimeline 內部
+// 整個重新掛載,改用指向新 id 的 store——不需要 usePlanTimelineCore 內部
 // 支援「執行中途切換 store」這種複雜狀態轉移。
 
-import type { PlanTimeline } from './planTimeline'
+import { isTimelineEmpty, type PlanTimeline } from './planTimeline'
 import { readRevForKey, loadTimelineWithRevForKey, saveTimelineForKey, type PlanTimelineStore } from './planTimelineStorage'
 
 // DRAFTS_INDEX_KEY——行程草稿清單,沿用專案既有的 tripace.* 前綴慣例
@@ -112,14 +112,6 @@ function archiveDraft(summary: DraftSummary): void {
   writeDraftsIndex(next)
 }
 
-// isTimelineEmpty——判斷一份時間軸是否完全沒有內容(headId 為 null,
-// 鏈結串列沒有任何節點)。startNewDraft 用這個判斷決定要不要把目前這份
-// 加進清單——一份完全空白的草稿(使用者可能才剛打開 /ai-plan、還沒排
-// 任何東西就按了「新行程」)不值得佔一筆清單紀錄,避免清單被大量空白
-// 項目灌爆。
-function isTimelineEmpty(timeline: PlanTimeline): boolean {
-  return timeline.headId === null
-}
 
 // startNewDraft——「新行程」按鈕的核心邏輯。
 //
@@ -143,7 +135,7 @@ export function startNewDraft(currentDraftId: string | null, currentTimeline: Pl
     archiveDraft({ id: currentDraftId ?? LEGACY_DRAFT_ID, createdAt: Date.now() })
   }
   // 新草稿不在這裡記進清單:它還是空白的,而清單只收「有內容」的草稿
-  // (見 isTimelineEmpty)。等使用者在它上面排了東西、之後又按「新行程」
+  // (見 planTimeline.ts 的 isTimelineEmpty:完全沒有節點,空的天不算內容)。等使用者在它上面排了東西、之後又按「新行程」
   // 時,上面的歸檔分支會以這個 id 把它加進去。
   //
   // 曾經在這裡先寫入一筆(想讓「目前使用中」也可追溯),但那筆空白項目

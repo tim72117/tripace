@@ -271,8 +271,11 @@
 .stopCard:hover { border-color: var(--ios-sand); }
 .stopCard:focus-visible { outline: 2px solid var(--ios-sand); outline-offset: 2px; }
 
-/* lodgingBanner——住宿卡片類型(kind === '住宿'):過夜錨點,不是要去的景點。窄長虛線橫幅,
-   低調不搶景點卡的視覺焦點。 */
+/* lodgingRow/lodgingBanner——住宿橫幅(PlanTimeline.lodgings):旅館的入住日那天最上面、Day 標題底下,
+   過夜錨點,不是要去的景點。窄長虛線橫幅,低調不搶景點卡的視覺焦點。放在卡片欄(第三欄),
+   與景點卡左緣對齊;虛線表示「這不是一個要去的地方,是貫穿這幾天的背景狀態」。 */
+.lodgingRow { margin: -8px 0 20px; }
+.lodgingBannerWrap { grid-column: 3; padding-left: 12px; min-width: 0; }
 .lodgingBanner {
   display: flex;
   align-items: center;
@@ -290,18 +293,6 @@
 .lodgingBannerSelected { border-style: solid; }
 .lodgingBanner:focus-visible { outline: 2px solid var(--ios-sand); outline-offset: 2px; }
 .lodgingIcon { flex: none; font-size: 18px; line-height: 1; }
-.lodgingPhotoBtn {
-  flex: none;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  overflow: hidden;
-  cursor: pointer;
-  background: var(--ios-active);
-}
-.lodgingPhoto { width: 100%; height: 100%; object-fit: cover; display: block; }
 .lodgingBody { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 8px; }
 .lodgingSpan { flex: none; font-size: 12px; font-weight: 700; color: var(--ios-sand); letter-spacing: 0.02em; }
 .lodgingName {

@@ -20,8 +20,8 @@
 // 存會整份資料遺失、而且不會報錯。這裡轉成 [key, value] 陣列再存,讀回來
 // 重建成 Map——這正是這個元件存在的核心價值,呼叫端不需要各自記得處理。
 
-import type { PlanNode, PlanTimeline } from './planTimeline'
-import { createEmptyTimeline, stripEphemeralNodes } from './planTimeline'
+import type { PlanDay, PlanLodging, PlanNode, PlanTimeline } from './planTimeline'
+import { createEmptyTimeline } from './planTimeline'
 
 // STORAGE_KEY 沿用專案既有的 tripace.* 前綴慣例(見 assistLang.ts 的
 // ASSIST_LANG_KEY、hooks/useAppState.ts 的 AUTH_* 系列)。
@@ -29,19 +29,28 @@ export const PLAN_TIMELINE_STORAGE_KEY = 'tripace.planTimeline'
 
 // STORAGE_VERSION — 寫入時一併存進去,讀取時不符就整份丟棄、回到空時間軸。
 // PlanNodeData 的欄位會隨功能演進增減(見該介面的完整說明,光是 2026-09~10
-// 就加過 day/googlePhotoUrls/note/transitFromPrev 等欄位),舊版殘留在
+// 就加過 day/note/transitFromPrev 等欄位),舊版殘留在
 // localStorage 的資料結構對不上新版程式碼時,與其讓畫面渲染出半殘的節點
 // (例如缺 type 欄位導致 PlanTimelineView 的分支判斷全部落空),不如直接
 // 當成沒有資料。版本號只在「結構不相容」時才需要進位,純粹新增選填欄位
-// 不需要動它(舊資料少那個欄位,讀回來是 undefined,跟沒設定過一樣)。
-const STORAGE_VERSION = 1
+// 不需要動它(舊資料少那個欄位,讀回來是 undefined,跟沒設定過一樣)。2026-10 把 loading/failed/removing/
+// googlePhotoUrls 搬出節點也沒有進位:新格式只是「少欄位」,舊草稿多出來的那幾個欄位在載入時丟掉
+// (見 dropLegacyRuntimeFields),不需要整份作廢。
+const STORAGE_VERSION = 2
+// 版本 1(鏈結串列:headId + nodes entries,節點帶 prevId/nextId/day)讀進來時轉成現在的依天分組格式(見 migrateV1),
+// 寫出一律是版本 2——使用者已存的草稿不會因為結構改版而消失。
+const LEGACY_LINKED_LIST_VERSION = 1
 
 // PersistedTimeline — 實際寫進 localStorage 的形狀。nodes 從 Map 轉成
 // entries 陣列(見檔頭說明),其餘欄位原樣。
 interface PersistedTimeline {
   version: number
-  headId: string | null
-  nodes: [string, PlanNode][]
+  days?: { id: string; nodes: PlanNode[] }[]
+  // 住宿(2026-10-24 起獨立存放,見 PlanTimeline.lodgings);舊草稿沒有這個欄位。
+  lodgings?: PlanLodging[]
+  // 版本 1 的欄位(只讀,見 migrateV1)。
+  headId?: string | null
+  nodes?: [string, PlanNode & { prevId?: string | null; nextId?: string | null }][]
   // rev — 每次寫入遞增的版次。用來讓「同時掛載的多份 TripPlanPage」
   // (地圖規劃面板常駐掛載 + /app/plan-ai 全頁,切到該分頁時兩份同時
   // 存在)判斷「我手上這份是不是已經被另一份覆寫過了」。
@@ -80,23 +89,64 @@ export function readRev(): number {
   return readRevForKey(PLAN_TIMELINE_STORAGE_KEY)
 }
 
-// sanitizeNode — 把「暫態 UI 狀態」欄位清掉再存。
-//
-// loading:表示「正在向後端查詢這個地點的真實資料」(見 PlanNodeData 的
-// 完整說明),那次查詢隨著頁面關閉就結束了,重整後沒有任何進行中的請求會
-// 把它翻回 false——若原樣存回,使用者會看到一張永遠轉圈、永遠不會變成
-// 真實內容的佔位卡。
-//
-// removing:表示「已收到移除指示,正在播放淡出動畫」,真正的摘除由呼叫端
-// 在動畫結束後延遲執行(見 removeNode 的完整說明)。頁面關閉時那個
-// setTimeout 一起消失,重整後這個節點會永遠停在「淡出中」的視覺狀態、
-// 卻再也不會被摘除。
-//
-// 兩者都是「只在這次 session 內有意義」的狀態,不屬於該被持久化的規劃
-// 內容本身,故存檔時一律丟棄,讀回來就是一般的已完成節點。
-function sanitizeNode(node: PlanNode): PlanNode {
-  const { loading: _loading, removing: _removing, ...rest } = node
-  return rest
+// dropLegacyRuntimeFields——舊草稿的節點可能帶「執行狀態與查詢結果」欄位,載入時一律丟掉:
+//   loading/removing  只在當次畫面有意義(查詢與淡出計時器隨頁面關閉消失),照舊存回會變成永遠轉圈、永遠淡出不掉的節點;
+//   failed            改由獨立的節點狀態表(planNodeStatus.ts,不持久化)表達。重整後的「失敗」由資料本身判斷:
+//                     有 placeId 但沒座標(stopLookupFailed),載入後的掛載重試會重查,不需要存「失敗」這個結果;
+//   googlePhotoUrls   照片一律是執行時經資料存取層查回來的結果(Google 照片網址有時效,存下來的拷貝可能已失效),
+//                     站點照片由 useResolvedNodeRefs 以 placeId 解析,不放在節點上。
+// 存檔時不需要再特地剝(型別已經沒有這些欄位,節點上不會有),所以只在載入這一側處理。
+// 沒有這些欄位時原樣回傳同一個物件。
+const LEGACY_RUNTIME_FIELDS = ['loading', 'failed', 'removing', 'googlePhotoUrls'] as const
+function dropLegacyRuntimeFields(node: PlanNode): PlanNode {
+  if (!LEGACY_RUNTIME_FIELDS.some((k) => k in node)) return node
+  const rest = { ...node } as Record<string, unknown>
+  for (const k of LEGACY_RUNTIME_FIELDS) delete rest[k]
+  return rest as unknown as PlanNode
+}
+
+// migrateLegacyNode——載入時套在每個節點上的舊資料轉換:子景點 children 轉 id、丟掉執行狀態欄位。
+function migrateLegacyNode(node: PlanNode): PlanNode {
+  return dropStaleTransitLoading(dropLegacyRuntimeFields(migrateLegacyChildren(node)))
+}
+
+// dropStaleTransitLoading——節點的 transitFromPrev.loading === true 是「交通資訊查詢中」的暫時狀態(見 TransitInfo.loading):
+// 查詢是記憶體裡的非同步動作,若查詢途中就關掉頁面,存下來的 loading:true 永遠沒有人把它翻回來,重開後交通膠囊會一直轉圈。
+// 載入時把 loading 為 true 的 transitFromPrev 整個清掉(沒有任何查詢結果可保留,等同「從沒查過」,
+// 之後該站的前一站有變動或使用者操作時會重新查詢);loading 為 false/沒有的(已有結果)原樣保留。
+function dropStaleTransitLoading(node: PlanNode): PlanNode {
+  if (node.transitFromPrev?.loading !== true) return node
+  const { transitFromPrev: _transit, ...rest } = node
+  void _transit
+  return rest as PlanNode
+}
+
+// migrateLegacyChildren——舊草稿的節點可能帶 children(內嵌名稱、座標、照片、縮圖樣式的子景點
+// 物件陣列,現已移除,節點改存 id 的 attractions/places,見 PlanNodeData)。讀進來時:
+//   - 有 placeId 的子景點,placeId 收進 places(與節點既有 places 合併去重),
+//   - 標了 farFromNext 的子景點,其 placeId 收進節點的 farFromNext id 清單(保留候選卡的警示徽章),
+//   - 其餘內嵌資料(名稱、座標、照片、縮圖)丟掉,執行時由資料存取層用 id 重查,
+//   - children 欄位本身移除。
+// 沒有 placeId 的子景點無從查詢,直接丟掉。形狀不對(children 不是陣列、項目不是物件)一律當作沒有,
+// 不丟例外——舊資料的毛病不該讓整份草稿載入失敗。
+function migrateLegacyChildren(node: PlanNode): PlanNode {
+  if (!('children' in node)) return node
+  const { children, ...rest } = node as PlanNode & { children?: unknown }
+  const places = [...(Array.isArray(rest.places) ? rest.places : [])]
+  const far = [...(Array.isArray(rest.farFromNext) ? rest.farFromNext : [])]
+  if (Array.isArray(children)) {
+    for (const c of children) {
+      if (!c || typeof c !== 'object') continue
+      const { placeId, farFromNext } = c as { placeId?: unknown; farFromNext?: unknown }
+      if (typeof placeId !== 'string' || placeId === '') continue
+      if (!places.includes(placeId)) places.push(placeId)
+      if (farFromNext === true && !far.includes(placeId)) far.push(placeId)
+    }
+  }
+  const out: PlanNode = { ...rest }
+  if (places.length > 0) out.places = places
+  if (far.length > 0) out.farFromNext = far
+  return out
 }
 
 // saveTimeline 把時間軸寫進 localStorage。
@@ -119,23 +169,15 @@ function sanitizeNode(node: PlanNode): PlanNode {
 export function saveTimelineForKey(key: string, timeline: PlanTimeline, baseRev = 0): number | null {
   const nextRev = baseRev + 1
   try {
-    // ephemeral 節點整個不寫入(見 PlanNodeData.ephemeral 的完整說明:
-    // sendPrompt 送出失敗時插入的錯誤訊息節點,只對這次 session 有
-    // 意義,不該永久留存)——跟 sanitizeNode 清掉單一暫態欄位
-    // (loading/removing)不同,這裡要丟棄的是整個節點;ephemeral 節點
-    // 跟其他所有節點一樣是鏈結串列的一份子(有 prevId/nextId),直接
-    // filter 掉會留下指向不存在節點的孤兒指標,必須用 stripEphemeralNodes
-    // 正確摘除、讓前後節點重新銜接(見該函式的完整說明)。只處理要存檔
-    // 的這份副本,傳入的 timeline 本身不受影響——呼叫端記憶體裡的畫面
-    // 渲染用 timeline 不變,錯誤訊息仍正常顯示,只是不會被存進
-    // localStorage。
-    const sanitizedTimeline = stripEphemeralNodes(timeline)
+    // 時間軸裡只剩 stop 節點(2026-10-24 起對話訊息獨立成 PlanConversation,
+    // 只存在記憶體、不持久化,見 usePlanConversation.ts),這裡只存行程。
     const payload: PersistedTimeline = {
       version: STORAGE_VERSION,
-      headId: sanitizedTimeline.headId,
-      nodes: [...sanitizedTimeline.nodes.entries()].map(([id, node]) => [id, sanitizeNode(node)]),
+      days: timeline.days.map((d) => ({ id: d.id, nodes: d.nodes })),
       rev: nextRev,
     }
+    const lodgings = timeline.lodgings
+    if (lodgings && lodgings.length > 0) payload.lodgings = lodgings
     localStorage.setItem(key, JSON.stringify(payload))
     return nextRev
   } catch {
@@ -159,44 +201,170 @@ export function saveTimeline(timeline: PlanTimeline, baseRev = 0): number | null
 // parseTimeline — 把一份已經讀出來的 raw 字串解析成 PlanTimeline。
 // 抽出來讓 loadTimeline 與 loadTimelineWithRev 共用同一次 getItem 的
 // 結果(見後者的說明),驗證邏輯只有這一份。
-function parseTimeline(raw: string | null): PlanTimeline {
+// migrateV1——版本 1(鏈結串列)轉成依天分組:沿 headId 走訪,stop 依自己的 day 決定放進哪一天(省略視為第 1 天),
+// day 欄位不再存進節點。天數不連續時補空的天。
+// 舊草稿裡 type 為 'section'(已移除的「分段標題」型別)的節點直接丟掉,不放進任何一天。
+// isLegacySection——舊版的 'section' 節點(PlanNodeType 已不含這個型別,所以用字串比對)。
+function isLegacySection(node: { type: string }): boolean {
+  return node.type === 'section'
+}
+
+// 回傳 null 代表資料損毀(呼叫端據此備份原始內容再回空時間軸);headId 為空的合法空草稿回空時間軸而不是 null。
+function migrateV1(p: PersistedTimeline): PlanTimeline | null {
+  if (!Array.isArray(p.nodes)) return null
+  if (p.headId !== null && typeof p.headId !== 'string') return null
+  type Legacy = PlanNode & { prevId?: string | null; nextId?: string | null }
+  const nodes = new Map<string, Legacy>()
+  for (const entry of p.nodes) {
+    if (!Array.isArray(entry) || entry.length !== 2) return null
+    const [id, node] = entry
+    if (typeof id !== 'string' || !node || typeof node !== 'object') return null
+    if (typeof node.id !== 'string' || typeof node.type !== 'string') return null
+    if (node.prevId != null && typeof node.prevId !== 'string') return null
+    if (node.nextId != null && typeof node.nextId !== 'string') return null
+    nodes.set(id, node)
+  }
+  if (p.headId == null) return createEmptyTimeline()
+  if (!nodes.has(p.headId)) return null
+
+  const buckets: PlanNode[][] = []
+  let currentDay = 1
+  let cursor: string | null | undefined = p.headId
+  const visited = new Set<string>()
+  while (cursor != null) {
+    if (visited.has(cursor)) break
+    visited.add(cursor)
+    const legacy = nodes.get(cursor)
+    if (!legacy) break
+    const { prevId: _prev, nextId: _next, day, ...rest } = legacy
+    void _prev
+    void _next
+    if (legacy.type === 'stop') currentDay = day ?? 1
+    if (isLegacySection(legacy)) {
+      cursor = legacy.nextId
+      continue
+    }
+    const dayIdx = Math.max(0, currentDay - 1)
+    while (buckets.length <= dayIdx) buckets.push([])
+    buckets[dayIdx].push(migrateLegacyNode(rest as PlanNode))
+    cursor = legacy.nextId
+  }
+  return liftLegacyLodgings(buckets.map((ns, i) => ({ id: `d_legacy${i + 1}`, nodes: ns })), [])
+}
+
+// liftLegacyLodgings——舊草稿裡 kind 為「住宿」的 stop(住宿尚未獨立成 PlanTimeline.lodgings 之前的形式)轉成住宿記錄:
+// placeId/name/note 帶過去,id 沿用節點 id,dayIds 是該節點所在天到 checkOutDay(舊資料是「第幾天」的數字,含頭含尾,
+// 沒填或不合理只住當天)對應的天 id;轉完從該天的 nodes 移除。沒有舊式住宿站時原樣回傳(days 參照不變)。
+// 讀出來的節點型別已不含 checkOutDay,這裡用結構斷言取舊欄位。
+function liftLegacyLodgings(days: PlanDay[], lodgings: PlanLodging[]): PlanTimeline {
+  const lifted: PlanLodging[] = []
+  const nextDays = days.map((d, dayIdx) => {
+    if (!d.nodes.some((n) => n.type === 'stop' && n.kind === '住宿')) return d
+    const nodes: PlanNode[] = []
+    for (const n of d.nodes) {
+      if (n.type !== 'stop' || n.kind !== '住宿') {
+        nodes.push(n)
+        continue
+      }
+      const checkOut = (n as { checkOutDay?: unknown }).checkOutDay
+      const last = typeof checkOut === 'number' && Number.isInteger(checkOut) && checkOut > dayIdx + 1 ? Math.min(checkOut, days.length) : dayIdx + 1
+      const lodging: PlanLodging = { id: n.id, dayIds: days.slice(dayIdx, last).map((x) => x.id) }
+      if (n.placeId) lodging.placeId = n.placeId
+      if (n.name) lodging.name = n.name
+      if (n.note) lodging.note = n.note
+      lifted.push(lodging)
+    }
+    return { ...d, nodes }
+  })
+  const all = [...lodgings, ...lifted]
+  return all.length > 0 ? { days: nextDays, lodgings: all } : { days: nextDays }
+}
+
+// parseLodgings——讀回住宿清單:單筆形狀不對就丟掉那一筆(不像節點那樣整份作廢,住宿只是附屬資料);
+// dayIds 只留存在於 days 的天,留不下任何一天的整筆丟掉,避免指向不存在天的孤兒資料。
+function parseLodgings(raw: unknown, days: PlanDay[]): PlanLodging[] {
+  if (!Array.isArray(raw)) return []
+  const known = new Set(days.map((d) => d.id))
+  const seen = new Set<string>()
+  const out: PlanLodging[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const l = item as Partial<PlanLodging>
+    if (typeof l.id !== 'string' || seen.has(l.id) || !Array.isArray(l.dayIds)) continue
+    const dayIds = l.dayIds.filter((x): x is string => typeof x === 'string' && known.has(x))
+    if (dayIds.length === 0) continue
+    seen.add(l.id)
+    const lodging: PlanLodging = { id: l.id, dayIds }
+    if (typeof l.placeId === 'string') lodging.placeId = l.placeId
+    if (typeof l.name === 'string') lodging.name = l.name
+    if (l.note && typeof l.note === 'object' && typeof l.note.text === 'string') lodging.note = l.note
+    out.push(lodging)
+  }
+  return out
+}
+
+// tryParseTimeline——解析一份 raw:成功回 PlanTimeline(沒有存過/合法的空草稿是空時間軸),
+// 回 null 代表「有內容但解析失敗」(JSON 壞掉、形狀對不上、版本不認得、id 重複)——呼叫端要把這份 raw 備份起來再回空時間軸。
+function tryParseTimeline(raw: string | null): PlanTimeline | null {
   try {
     if (!raw) return createEmptyTimeline()
     const parsed = JSON.parse(raw) as unknown
-    if (!parsed || typeof parsed !== 'object') return createEmptyTimeline()
+    if (!parsed || typeof parsed !== 'object') return null
     const p = parsed as Partial<PersistedTimeline>
-    if (p.version !== STORAGE_VERSION) return createEmptyTimeline()
-    if (!Array.isArray(p.nodes)) return createEmptyTimeline()
-    if (p.headId !== null && typeof p.headId !== 'string') return createEmptyTimeline()
+    if (p.version === LEGACY_LINKED_LIST_VERSION) return migrateV1(p as PersistedTimeline)
+    if (p.version !== STORAGE_VERSION) return null
+    if (!Array.isArray(p.days)) return null
 
-    const nodes = new Map<string, PlanNode>()
-    for (const entry of p.nodes) {
-      if (!Array.isArray(entry) || entry.length !== 2) return createEmptyTimeline()
-      const [id, node] = entry
-      // 逐筆檢查節點本身最低限度的必要欄位——id/type 缺一不可(渲染層
-      // 的分支判斷、鏈結走訪都依賴它們),prevId/nextId 必須是 string 或
-      // null(toRenderList 沿著 nextId 走訪,型別不對會無限迴圈或中斷)。
-      if (typeof id !== 'string' || !node || typeof node !== 'object') return createEmptyTimeline()
-      const n = node as Partial<PlanNode>
-      if (typeof n.id !== 'string' || typeof n.type !== 'string') return createEmptyTimeline()
-      if (n.prevId !== null && typeof n.prevId !== 'string') return createEmptyTimeline()
-      if (n.nextId !== null && typeof n.nextId !== 'string') return createEmptyTimeline()
-      nodes.set(id, node as PlanNode)
+    const days: PlanTimeline['days'] = []
+    const seenIds = new Set<string>()
+    const seenDayIds = new Set<string>()
+    for (const d of p.days) {
+      if (!d || typeof d !== 'object' || typeof d.id !== 'string' || !Array.isArray(d.nodes)) return null
+      // 天的 id 必須唯一:住宿(dayIds)與視圖都靠天 id 對應,重複的 id 會讓兩天被當成同一天,代表資料損毀。
+      if (seenDayIds.has(d.id)) return null
+      seenDayIds.add(d.id)
+      const dayNodes: PlanNode[] = []
+      for (const node of d.nodes) {
+        if (!node || typeof node !== 'object') return null
+        const n = node as Partial<PlanNode>
+        if (typeof n.id !== 'string' || typeof n.type !== 'string') return null
+        if (isLegacySection(n as { type: string })) continue // 舊草稿的 section 節點直接丟掉
+        if (seenIds.has(n.id)) return null // 節點 id 必須唯一,重複代表資料損毀
+        seenIds.add(n.id)
+        dayNodes.push(migrateLegacyNode(node as PlanNode))
+      }
+      days.push({ id: d.id, nodes: dayNodes })
     }
-
-    // headId 指向的節點必須真的存在——不一致代表資料損毀(例如存檔過程
-    // 中途失敗),整份丟棄比渲染一條走訪不到任何節點的空時間軸清楚。
-    if (p.headId !== null && !nodes.has(p.headId)) return createEmptyTimeline()
-
-    return { nodes, headId: p.headId }
+    return liftLegacyLodgings(days, parseLodgings(p.lodgings, days))
   } catch {
-    return createEmptyTimeline()
+    return null
   }
+}
+
+// backupKeyOf——解析失敗時原始內容的備份位置。
+export function backupKeyOf(key: string): string {
+  return `${key}.backup`
+}
+
+// parseTimeline — 把一份已經讀出來的 raw 字串解析成 PlanTimeline(loadTimeline 與 loadTimelineWithRev 共用同一次 getItem 的結果)。
+// 解析失敗(整份丟棄、回空時間軸)之前,先把原始 raw 備份到 `<key>.backup` 並 console.warn:
+// 否則下一次寫入(新的空草稿)會把壞掉的原始資料蓋掉,使用者手上若還有救回的可能(例如只是新版程式碼讀不懂舊格式)就永遠沒了。
+// 備份寫入失敗(配額/停用)不丟例外——備份是盡力而為,不能讓載入流程因此中斷。
+function parseTimeline(raw: string | null, key: string): PlanTimeline {
+  const parsed = tryParseTimeline(raw)
+  if (parsed) return parsed
+  console.warn(`[planTimelineStorage] ${key} 的內容無法解析,已丟棄並回到空時間軸;原始內容備份在 ${backupKeyOf(key)}`)
+  try {
+    if (raw) localStorage.setItem(backupKeyOf(key), raw)
+  } catch {
+    // 見上方說明:備份失敗靜默忽略。
+  }
+  return createEmptyTimeline()
 }
 
 export function loadTimelineForKey(key: string): PlanTimeline {
   try {
-    return parseTimeline(localStorage.getItem(key))
+    return parseTimeline(localStorage.getItem(key), key)
   } catch {
     return createEmptyTimeline()
   }
@@ -209,7 +377,7 @@ export function loadTimeline(): PlanTimeline {
 // loadTimelineWithRev — 一次 getItem 同時取得內容與版次,兩者保證來自
 // 同一份快照。
 //
-// 呼叫端(useTripPlanTimeline 的初始化)若分別呼叫 loadTimeline() 與
+// 呼叫端(usePlanTimelineCore 的初始化)若分別呼叫 loadTimeline() 與
 // readRev(),那是兩次獨立的讀取:理論上另一個實例可以在兩次之間寫入,
 // 於是讀到「舊 timeline + 新 rev」,這份實例會誤判自己是最新的、下次
 // 寫入就覆蓋掉別人的內容。同分頁是單執行緒、兩行之間沒有 await/yield
@@ -229,7 +397,7 @@ export function loadTimelineWithRevForKey(key: string): { timeline: PlanTimeline
   } catch {
     // 解析失敗時 rev 維持 0,parseTimeline 也會回空時間軸,兩者一致。
   }
-  return { timeline: parseTimeline(raw), rev }
+  return { timeline: parseTimeline(raw, key), rev }
 }
 
 export function loadTimelineWithRev(): { timeline: PlanTimeline; rev: number } {
@@ -248,14 +416,14 @@ export function clearTimeline(): void {
 }
 
 // PlanTimelineStore — 把「持久化怎麼做」抽成可替換的介面,取代原本
-// useTripPlanTimeline 直接 import 這個檔案三個函式(readRev/
+// usePlanTimelineCore 直接 import 這個檔案三個函式(readRev/
 // loadTimelineWithRev/saveTimeline)呼叫的寫法。
 //
 // 存在的理由(2026-10,/ai-plan 展示頁交接給真實 TripPlanPage 之後):
 // 那個展示入口(LivePlanLayer.tsx)複用正式功能的 TripPlanPage,但不該
 // 寫進使用者真正的 localStorage 草稿——訪客在展示頁試玩的內容,不該
 // 跟著使用者下次打開 /app 時殘留的規劃內容混在一起。原本考慮用一個
-// `persist: boolean` 開關,但那樣 useTripPlanTimeline 內部每個讀寫點都要
+// `persist: boolean` 開關,但那樣 usePlanTimelineCore 內部每個讀寫點都要
 // 多一層 if(persist) 判斷,且「不持久化」要做到什麼程度(讀到底要不要
 // 回空、寫入要不要假裝成功)容易每個呼叫端各自詮釋不一致。改成介面:
 // 呼叫端只決定「用哪一種 store」,讀寫邏輯本身(含現有的 rev 機制、
@@ -276,18 +444,6 @@ export const localStoragePlanTimelineStore: PlanTimelineStore = {
   saveTimeline: (timeline, baseRev) => saveTimeline(timeline, baseRev),
 }
 
-// noopPlanTimelineStore — 完全不碰 localStorage 的 store:讀永遠回空
-// 時間軸、寫永遠回傳 null(saveTimeline 既有的「存檔失敗」語意——呼叫端
-// 本來就不會在這個情況下推進 revRef 或做任何特殊處理,見
-// useTripPlanTimeline.commitTimeline 的完整說明),不需要額外改動呼叫端
-// 的判斷邏輯。2026-10:/ai-plan 展示頁的 LivePlanLayer 第一輪曾經傳這個
-// store 讓交接後不持久化,第二輪使用者明確要求改回跟 /app 共用同一份
-// localStorage 草稿,該呼叫端現在不傳這個 prop(退回 TripPlanPage 的
-// 預設值)。這個 store 目前沒有任何呼叫端在用,保留著是因為未來若有其他
-// 情境需要「完全不持久化」的 TripPlanPage 實例,這裡已經有現成可用的
-// 實作,不需要重新發明。
-export const noopPlanTimelineStore: PlanTimelineStore = {
-  readRev: () => 0,
-  loadTimelineWithRev: () => ({ timeline: createEmptyTimeline(), rev: 0 }),
-  saveTimeline: () => null,
-}
+// 沒有「不持久化」的 store:曾經有過 noopPlanTimelineStore(讀永遠回空、存檔永遠回 null),但它是個陷阱——
+// 提交遇到 null 的語意是「存檔失敗,不推進記憶體 state」,拿它給時間軸會讓記憶體時間軸永遠不更新。2026-10 刪除,
+// 要純記憶體的時間軸請不要傳 store 給 usePlanTimelineCore(它走完全不經過 store 的路徑)。

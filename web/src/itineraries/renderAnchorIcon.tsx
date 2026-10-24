@@ -17,8 +17,8 @@ const ICON_BY_KIND: Record<string, typeof MapPin> = {
 }
 
 // renderAnchorIcon——傳給 PlanTimelineView 的 renderAnchorIcon 插槽(見
-// 該 prop 的完整說明)。只有 type==='stop' 的節點才畫 icon,section/
-// message 節點(轉場分隔線、對話訊息)沒有對應的地點類型,回傳 null
+// 該 prop 的完整說明)。只有 type==='stop' 的節點才畫 icon,舊的 section
+// 節點(轉場分隔線)沒有對應的地點類型,回傳 null
 // 讓圓點維持空心樣式——這兩種節點本來就不會真的出現在這個插槽的呼叫
 // 路徑上(anchorDot 只存在於 stop 節點的渲染分支),但型別上
 // PlanNode 仍是聯集型別,保守判斷。icon 尺寸固定 11px(見

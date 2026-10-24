@@ -113,10 +113,12 @@ export function LivePlanLayer({ selectedStopId, tripPlanProps, onPanToStop }: Li
   }, [store, activeDraftId])
 
   // mountKey——activeDraftId 改變時,靠 React key 讓 TripPlanPage 整個
-  // 重新掛載,改用新的 store 從頭初始化(見該元件 useTripPlanTimeline 的
+  // 重新掛載,改用新的 store 從頭初始化(見該元件 usePlanTimelineCore 的
   // initialRef 寫法:store 只在掛載當下讀一次,不支援執行中途換掉背後的
   // key 空間)。null 時給一個固定字串,不是 TripPlanPage 本身需要知道的
   // 概念,純粹是這裡用來控制掛載時機的實作細節。
+  // 對話(usePlanConversation)是純記憶體、跟著 TripPlanPage 的生命週期,所以這個 key 換掉重新掛載時,
+  // 對話也一併清空(「新行程」換草稿時對話重置靠的就是這點,有測試固定)。
   const mountKey = activeDraftId ?? 'legacy'
   // 橫向時間軸(2026-10 使用者明確要求「兩個不同的層,時間軸要共用相同的,
   // 只有資料層不一樣」):手機版讓交接後的真實層跟交接前的模擬層共用同一個

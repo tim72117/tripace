@@ -15,7 +15,7 @@ import styles from './renderOnsenAutumnStopCard.module.css'
 // JSX 條件分支糾纏在一起。
 //
 // 設計上最大的差異是「不依賴照片」:jozankei-1day 的站點目前沒有
-// photos 欄位(早期草稿用的 Pexels/Wikimedia 占位圖不是真實 GCS 資產,
+// googlePhotoUrls 欄位(早期草稿用的 Pexels/Wikimedia 占位圖不是真實 GCS 資產,
 // 刻意沒寫進資料庫),所以縮圖區在沒有照片時不是退回一顆 📍,而是依
 // 站點 kind 畫一個主題圖樣(OnsenThumbGlyph:景點→楓葉、美食→溫泉
 // 饅頭、其他→溫泉記號 ♨ 的三條蒸氣),底下疊一層緩慢上升的蒸氣動畫
@@ -110,7 +110,7 @@ export function createRenderOnsenAutumnStopCard() {
         onBlur={ctx.onBlur}
       >
         <div className={styles.thumb}>
-          {step.loading ? (
+          {ctx.loading ? (
             <span className={styles.thumbSpinner} aria-label="查詢地點資料中" />
           ) : hasPhoto ? (
             <button

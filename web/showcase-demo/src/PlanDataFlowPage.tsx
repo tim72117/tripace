@@ -42,7 +42,7 @@ const LAYERS: { y: number; title: string; body: string; sub: string; accent?: bo
     y: 352,
     title: '領域層  plan-core/planTimeline.ts　← 唯一能改資料的地方',
     body: 'createEmptyTimeline · insertAfter · removeNode · removeDay · updateNode · staleOtherAgentMessages',
-    sub: '純函式:吃一份 timeline、回傳新的一份。不碰 React / DOM / 網路。toRenderList 是唯讀投影',
+    sub: '純函式:吃一份 timeline、回傳新的一份。不碰 React / DOM / 網路。PlanTimeline = { days, lodgings? },讀取用 listNodes 等唯讀函式',
     accent: true,
   },
   {
@@ -387,7 +387,7 @@ export function PlanDataFlowPage() {
             真正的推論(AI 決定排哪些站)發生在最上面的輸入來源。這一層持有的是地圖與時間軸要看的那組狀態：
             站點(<code className={styles.code}>stops</code>)加使用者在看哪一站(<code className={styles.code}>PlanSelection</code>)。
             模擬態的 <code className={styles.code}>stops</code> 是從 <code className={styles.code}>PlanTimeline</code> 單向投影出來的(只留有座標的 stop，
-            丟掉備註、交通)；推論態與登入後的 <code className={styles.code}>stops</code> 則由規劃面板(<code className={styles.code}>TripPlanPage</code>)
+            丟掉備註、交通；主題點的子景點小點與旅館點由 <code className={styles.code}>useResolvedNodeRefs</code> 以識別碼執行時查回，查不到就沒有點)；推論態與登入後的 <code className={styles.code}>stops</code> 則由規劃面板(<code className={styles.code}>TripPlanPage</code>)
             經 <code className={styles.code}>tripPlanProps</code> 的四個回呼回報上來。兩種實例形狀相同，
             <code className={styles.code}>Content</code> 依 <code className={styles.code}>handedOver</code> 擇一使用。
           </p>
@@ -707,6 +707,9 @@ export function PlanDataFlowPage() {
             timeline 住在 <code className={styles.code}>TripPlanPage</code> 內部、外層讀不到，主題點的展開能力整個消失。
             現已改為 <code className={styles.code}>PlanStopMarker</code> 帶
             <code className={styles.code}>children</code>，由模擬態與推論態的站點檢視實例各自填好，地圖那側不再需要分支。
+            2026-10-24 起節點本身不再存子景點快照(只存 <code className={styles.code}>attractions</code> / <code className={styles.code}>places</code> 識別碼)，
+            <code className={styles.code}>children</code> 與旅館點(<code className={styles.code}>lodging</code> 旗標)都是 <code className={styles.code}>resolveMapChildren</code>、
+            <code className={styles.code}>lodgingMapMarkers</code> 用查回的結果算出來的。
           </div>
           <div className={styles.note}>
             <span className={styles.noteTitle}>兩條路徑的中間層完全分開</span>

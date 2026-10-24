@@ -28,7 +28,7 @@
     顏色有問題」),收斂成 token 後才能在深色模式下換成對比度足夠的
     版本。 */
   --ios-ai-message-bg: #F3EFFA;   /* 對話訊息氣泡底色(藕紫,淡)——
-    /plan-ai(home/plan-ai-sim/Content.tsx)時間軸上獨立的 message 節點專用,
+    /plan-ai(home/plan-ai-sim/Content.tsx)對話訊息氣泡專用(時間軸最下方的對話,見 plan-core/planConversation.ts),
     刻意跟 --ios-sand(景點/生成位置的橘色系)、note 的橘色系拉開,避免
     使用者把「AI 說的話」誤認成行程備註或地點標記。原本這兩個值直接
     寫死在 home/plan-ai-sim/Content.module.css 的 .messageBubble 裡,深色模式

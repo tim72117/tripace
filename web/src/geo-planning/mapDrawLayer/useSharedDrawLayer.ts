@@ -10,7 +10,7 @@ import { attractionGlowLayer, filterRevealedAttractions } from './featureLayers/
 import { useAttractionGlowEffects, useAttractionGlowRegistry } from './featureLayers/attractionGlowSupport'
 import { currentLocationLayer } from './featureLayers/currentLocationLayer'
 import { planStopLayer } from './featureLayers/planStopLayer'
-import { routeLineLayer } from './featureLayers/routeLineLayer'
+import { routeLineLayer, type RouteLineSegment } from './featureLayers/routeLineLayer'
 import { searchResultLayer } from './featureLayers/searchResultLayer'
 import { tripEntryLayer } from './featureLayers/tripEntryLayer'
 import { transitHoverLineLayer } from './featureLayers/transitHoverLineLayer'
@@ -25,7 +25,8 @@ import type { FeatureLayer, LatLng } from './types'
 //   - 行程 entry 旗子(tripEntries;從 useTripEntryMarkers 遷移進來)
 //   - 搜尋結果標記(searchResults;從 useSearchResultMarkers 遷移進來;fitBounds 鏡頭動作不在這裡)
 //   - 轉乘 hover 虛線(同樣由 stopDots 的 hoverTransitPair 驅動;原本登入後以 extraLayers 傳入)
-//   - 整條路線(routeLine.enabled 控制;原本登入後以 extraLayers 傳入。沒傳就不畫)
+//   - 站點之間的連線(routeSegments:要畫的段清單,沒傳或空陣列就不畫;2026-10-24 起三個入口統一,
+//     段由 plan-core/routeSegments.ts 切,顏色是主題強調色、深色主題光暈用黑)
 // 兩邊各自還有不一樣的功能層,用 extraLayers 傳進來,和共用的功能層
 // 一起交給同一個宿主。之後兩邊共同遷移的功能層(例如搜尋結果)也加在這裡,兩邊就同時有。
 //
@@ -86,6 +87,8 @@ export type AttractionGlowInput = {
 }
 
 const NO_ATTRACTIONS: GeoAttraction[] = []
+// 沒傳 routeSegments 時用同一個空陣列(身分穩定,layers 的 useMemo 不會因此重算)。
+const NO_SEGMENTS: RouteLineSegment[] = []
 
 export function sharedFeatureLayers({ currentPosition }: { currentPosition: LatLng | null }): FeatureLayer[] {
   return [currentLocationLayer({ position: currentPosition })]
@@ -98,7 +101,7 @@ export function useSharedDrawLayer({
   theme,
   currentPosition,
   stopDots,
-  routeLine,
+  routeSegments = NO_SEGMENTS,
   tripEntries,
   searchResults,
   attractionGlow,
@@ -114,8 +117,9 @@ export function useSharedDrawLayer({
   currentPosition: LatLng | null
   // 行程站點圓點。沒傳就不畫站點。
   stopDots?: StopDotsInput
-  // 整條路線:沒傳或 enabled 為 false 就不畫。需要 stopDots 提供站點。
-  routeLine?: { enabled: boolean }
+  // 站點之間的連線:要畫的段(plan-core/routeSegments.ts 切出來的),沒傳或空陣列就不畫。
+  // 與 stopDots 一起畫(hover 虛線要疊在同一段上),沒有 stopDots 時也不畫線。
+  routeSegments?: RouteLineSegment[]
   // 行程 entry 旗子。沒傳就不畫。
   tripEntries?: TripEntriesInput
   // 搜尋結果標記。沒傳就不畫。
@@ -130,7 +134,7 @@ export function useSharedDrawLayer({
   const stopsKey = (stops ?? [])
     .map((s) => {
       const children = (s.children ?? []).map((c) => `${c.id}:${c.lat}:${c.lng}:${c.name ?? ''}`).join(';')
-      return `${s.id}|${s.lat}|${s.lng}|${s.name ?? ''}|${s.glyph ?? ''}|${s.size ?? ''}|${children}`
+      return `${s.id}|${s.lat}|${s.lng}|${s.name ?? ''}|${s.glyph ?? ''}|${s.size ?? ''}|${s.lodging ? 'L' : ''}|${children}`
     })
     .join(',')
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -171,7 +175,8 @@ export function useSharedDrawLayer({
   const supportsHover = stopDots?.supportsHover
   // 強調色由這一層自己讀(站點選中色、主題點圓圈、路線、虛線都用),接線處不用再傳。
   const accentColor = useAccentColor({ mapRef, mapReady, theme, mapVersion })
-  const routeLineEnabled = routeLine?.enabled ?? false
+  // 連線光暈的顏色跟主題走(淺色白、深色黑,見 routeStyle.ts);theme 沒傳或非 'dark' 視為淺色。
+  const dark = theme === 'dark'
   const hasStopDots = stopDots != null
 
   const layers = useMemo(
@@ -191,7 +196,7 @@ export function useSharedDrawLayer({
             }),
             // 轉乘 hover 虛線與站點圓點同一組資料(站點、轉乘配對、強調色),跟著 stopDots 一起畫。
             transitHoverLineLayer({ stops: points, hoverTransitPair, accentColor }),
-            routeLineLayer({ stops: points, enabled: routeLineEnabled, accentColor }),
+            routeLineLayer({ segments: routeSegments, accentColor, dark }),
           ]
         : []),
       ...(entries ? [tripEntryLayer({ entries, selectedKey: entrySelectedKey, hoverKey: entryHoverKey, accentColor })] : []),
@@ -235,7 +240,8 @@ export function useSharedDrawLayer({
       hoverTransitPair,
       supportsHover,
       accentColor,
-      routeLineEnabled,
+      dark,
+      routeSegments,
       onPointClick,
       onSelectedChange,
       entries,

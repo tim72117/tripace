@@ -27,8 +27,8 @@ export type DrawGroup =
   | 'planStop'
   | 'planStopSelected'
   | 'planStopHover'
+  | 'routeCasing'
   | 'routeLine'
-  | 'routePolyline'
   | 'transitHoverLine'
   | 'attractionGlow'
 
@@ -51,6 +51,12 @@ export interface MarkerDrawable extends DrawableBase {
   // 可以據此判斷「從哪個狀態變過來」(例如行程站點從 base 變成強調態才播進場動畫);第一次建立時
   // 沒有前一個 key。不需要的功能層直接忽略參數。
   createContent: (ctx?: ContentContext) => Element
+  // anchor:content 的哪一點對準座標(2026-10-24)。AdvancedMarkerElement 預設以 content 的「底部中央」錨定座標
+  // (圖釘語意:尖端在座標上);但本專案的 marker 全是圓形(站點圓點、旅館/美食點、主題子景點小點、藍點、搜尋結果、
+  // 行程 entry 的圓底旗子),圓心才是座標,底部錨定會讓圓心比座標高半個畫布(14px 畫布約 7px),與連線端點對不齊
+  // (使用者回報「路線沒有跟地點對齊」)。'center' 讓宿主把 content 往下位移半個高度,圓心對準座標。
+  // 沒傳維持 'bottom'(Google 預設),將來若有尖端形狀的 marker 就用這個。
+  anchor?: 'bottom' | 'center'
   // clickable:預設不可點。gmpClickable 只能在建立時決定,所以這個值改變會重建 marker。
   clickable?: boolean
   // onClick 收到的是功能層內的原始 id(不含前綴)。宿主永遠呼叫最新的那個函式。

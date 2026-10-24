@@ -401,3 +401,42 @@ describe('askTransportMode.handle', () => {
     expect(askTransportModeCtx).toHaveBeenCalledWith(['car', 'walk'], undefined)
   })
 })
+
+describe('ensureFreshRead(行動前先確認目前行程)', () => {
+  const stale = () => {
+    throw new Error('請先呼叫 list_itinerary')
+  }
+
+  it('詢問工具在 ensureFreshRead 丟錯時回錯誤給 LLM,且不呼叫對應的 ctx 方法——包含 fire-and-forget 的 ask_*', async () => {
+    const ctxOpen = vi.fn(async () => [])
+    const ctxCountry = vi.fn(async () => null)
+    const ctxCity = vi.fn(async () => null)
+    const ctxTransport = vi.fn(async () => null)
+    const ctx = makeCtx({
+      ensureFreshRead: stale,
+      openAskPage: ctxOpen,
+      askTravelCountry: ctxCountry,
+      askTravelCity: ctxCity,
+      askTransportMode: ctxTransport,
+    })
+
+    await expect(openAskPage.handle({ candidates: [{ placeId: 'p', name: 'n' }] }, ctx)).rejects.toThrow('list_itinerary')
+    await expect(askTravelCountry.handle({}, ctx)).rejects.toThrow('list_itinerary')
+    await expect(askTravelCity.handle({ countryId: 'jp' }, ctx)).rejects.toThrow('list_itinerary')
+    await expect(askTransportMode.handle({ modes: ['walking'] }, ctx)).rejects.toThrow('list_itinerary')
+    expect(ctxOpen).not.toHaveBeenCalled()
+    expect(ctxCountry).not.toHaveBeenCalled()
+    expect(ctxCity).not.toHaveBeenCalled()
+    expect(ctxTransport).not.toHaveBeenCalled()
+  })
+
+  it('ensureFreshRead 沒丟錯(或沒提供)時照常執行', async () => {
+    const ctxAsk = vi.fn(async () => null)
+    const ensureFreshRead = vi.fn()
+    await askTravelCountry.handle({}, makeCtx({ ensureFreshRead, askTravelCountry: ctxAsk }))
+    expect(ensureFreshRead).toHaveBeenCalledTimes(1)
+    expect(ctxAsk).toHaveBeenCalledTimes(1)
+    await askTravelCountry.handle({}, makeCtx({ askTravelCountry: ctxAsk }))
+    expect(ctxAsk).toHaveBeenCalledTimes(2)
+  })
+})
