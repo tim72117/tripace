@@ -96,8 +96,8 @@ describe('selectionReducer', () => {
     expect(selectionReducer(afterAttraction, { type: 'CLEAR' })).toEqual({ kind: 'none' })
   })
 
-  // 對應「搜尋候選文字/照片平行回補」情境(onGeocodeCandidateText/
-  // onGeocodeCandidatePhoto)——PATCH_INFO_CONTENT 只更新部分欄位,
+  // 對應「地點文字/照片平行回補」情境(usePlanningState.ts 的 placeTextFetch/
+  // placePhotoFetch effect)——PATCH_INFO_CONTENT 只更新部分欄位,
   // 不影響其餘已顯示的內容。
   it('PATCH_INFO_CONTENT 在 info 狀態下局部更新 content', () => {
     const afterInfo = selectionReducer(GEO_SELECTION_NONE, {

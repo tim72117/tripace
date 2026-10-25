@@ -6,7 +6,7 @@ import type { RefObject } from 'react'
 // 問題:手機版(非 stacked)的詢問頁依內容撐高,國家/城市卡、景點照片卡、交通小方塊高度都不同,換步驟時面板上下
 // 瞬間跳一截(Fable UX review 建議 D)。做法:
 //   - 隨時記住 .bubble 目前的高度(每次 commit 量一次,加上 ResizeObserver 追蹤兩次 commit 之間的變化,例如面板
-//     內部自己展開輸入框、動畫進行中的高度)。
+//     內部內容自己變高變矮、動畫進行中的高度)。
 //   - stepKey 變了(換步驟)時,在 layout effect(新內容已在 DOM、還沒畫出來)量新高度,用 WAAPI 從舊高度動到新高度,
 //     期間 .bubble 暫時 overflow: hidden(長高時新內容由下往上露出,不會溢出氣泡外框),結束或取消時還原。
 //   - 第一次掛載不動(沒有「舊高度」);prefers-reduced-motion 跳過;disabled(寬螢幕側欄,固定高度)整個跳過;
@@ -34,8 +34,8 @@ export function useHeightTransition(
   const animRef = useRef<{ anim: Animation; el: HTMLElement; restore: () => void } | null>(null)
   const observerRef = useRef<{ ro: ResizeObserver; el: HTMLElement } | null>(null)
 
-  // observe——ResizeObserver 跟著目前的 .bubble。換面板元件時 .bubble 會是新的元素;面板內部自己換畫面(例如
-  // 「我要直接說明」展開)也會換掉 .bubble 而不經過這個 hook 所在元件的重繪,所以另外用 MutationObserver 盯著 DOM
+  // observe——ResizeObserver 跟著目前的 .bubble。換面板元件時 .bubble 會是新的元素;面板內部自己換畫面(過去的例子是
+  // 已移除的「我要直接說明」展開;現在任何不經過 stepKey 的內部換畫面都一樣)也會換掉 .bubble 而不經過這個 hook 所在元件的重繪,所以另外用 MutationObserver 盯著 DOM
   // 結構變化重新掛上(見下方)。已經從 DOM 移除的舊元素回報的 0 高度不採用。
   const observe = (el: HTMLElement | null) => {
     if (observerRef.current?.el === el) return

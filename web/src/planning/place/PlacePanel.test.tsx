@@ -22,12 +22,23 @@
 //     語意本來就是「先丟進候選籃,之後再從候選籃那邊處理日期」(見
 //     planning/place/desktop/CandidateList.tsx 的「從候選加入」/NoDateDayHead 入口),不需要
 //     在這裡也跳日曆。
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PlacePanel, type PlaceInfoContent } from './PlacePanel'
 import type { GeoCandidate } from './candidateHelpers'
 
+
+// 日曆預設顯示「今天」所在月份,測試點選的日期(2026/8/27)不能隨真實日期漂移,
+// 所以固定系統時間為 2026-08-10。只 mock Date(不碰 setTimeout 等),
+// 避免干擾 userEvent / waitFor 的非同步排程。
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-08-10T12:00:00'))
+})
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 // pickCalendarDate:react-day-picker 的日期格子沒有穩定的 test id,只有
 // aria-label(格式「YYYY年M月D日 星期X」,見 DatePickerPopover 渲染出的

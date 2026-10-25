@@ -11,7 +11,7 @@
    不會跟著變。在 .app-theme-root 上再宣告一次,深色才會用深色 --ios-* 重算。
    使用端可以在任何祖先元素覆寫這兩個變數(例如深色照片上的骨架)。
 
-   高光的混色方向沿用時間軸 .shimmer 的既有取捨:淺色往卡片白混(柔和的
+   高光的混色方向沿用時間軸原本 .shimmer(已移除)的取捨:淺色往卡片白混(柔和的
    亮帶),深色往暖灰混(往白混在深色底上會像一條刺眼的白光)。 */
 :global(:root),
 :global(.app-theme-root) {
@@ -29,8 +29,9 @@
   --skeleton-highlight: color-mix(in srgb, var(--ios-sep) 55%, var(--ios-gray));
 }
 
-/* sweep:淡色掃光——手法與節奏沿用 PlanTimelineView 的 .shimmer(400% 寬
-   漸層、1.4s 由右往左位移),不需要額外 DOM 或偽元素。 */
+/* sweep:淡色掃光——手法與節奏源自 PlanTimelineView 原本的 .shimmer(該
+   class 已移除、改用這裡):400% 寬漸層、1.4s 由右往左位移,不需要額外 DOM
+   或偽元素。 */
 .sweep {
   background-color: var(--skeleton-base);
   background-image: linear-gradient(

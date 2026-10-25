@@ -18,7 +18,8 @@ import { useHoverLock } from './useHoverLock'
 // - DOM 放在標題之後、選項之前:Tab 順序 返回 → 關閉 → 選項 → 操作列,與視覺上「頂列由左到右、再往下」的閱讀順序一致;
 //   換步驟後焦點落在標題(見 AskPage),下一個 Tab 就是同一列右邊的關閉鈕。
 // - 標題留空:只要任一角落有圖示鈕,標題左右都預留同寬(.questionWithControls)——國家頁只有關閉鈕也要留左邊,標題才維持置中。
-// actionsPinned——寬螢幕側欄把操作列推到氣泡底部(DescribePanel 用,見 .actionsPinned)。
+// actionsPinned——寬螢幕側欄把操作列推到氣泡底部(見 AskPage.module.css 的 .actionsPinned)。原本的使用者
+// DescribePanel(「我要直接說明」說明面板)已移除;目前沒有呼叫端傳 true,保留為選項。
 export interface AskShellProps {
   stacked?: boolean
   question: ReactNode

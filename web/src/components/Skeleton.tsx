@@ -4,11 +4,13 @@ import styles from './Skeleton.module.css'
 
 // Skeleton:全專案共用的「載入中站位」零件組——2026-10 新增。
 //
-// 為什麼要有這組:專案各處已經各自寫了十幾份佔位(時間軸的 .shimmer/
-// skeletonCard、橫向時間軸的 horizontalShimmer、對話頁的 askSkeletonPulse、
-// 行程清單/詳情頁的 skeletonText + 呼吸、PhotoCarousel 的佔位掃光、
-// LateTextSkeleton……),每份各自抄一次漸層、深色模式覆寫與
-// reduced-motion 處理,視覺語彙也不一(有掃光、有明暗呼吸、有轉圈)。
+// 為什麼要有這組:新增前專案各處各自寫了十幾份佔位(縱橫兩版時間軸的
+// 掃光與轉圈、對話頁的呼吸、行程清單/詳情頁的 skeletonText + 呼吸、
+// PhotoCarousel 的佔位掃光、LateTextSkeleton 自己的長條……),每份各自抄
+// 一次漸層、深色模式覆寫與 reduced-motion 處理,視覺語彙也不一(有掃光、
+// 有明暗呼吸、有轉圈)。上面列舉的這些私有實作已改用這組零件並移除
+// (個別歷史見各使用端的註解與 CHANGELOG);home/、blog/ 頁面的圖片掃光
+// 等仍是各自實作,尚未併入。
 // 這組零件把視覺統一為「淡色掃光」,顏色集中在 Skeleton.module.css 的
 // --skeleton-base/--skeleton-highlight(亮暗各一組),reduced-motion 一律退成
 // 靜態底色。
@@ -145,8 +147,9 @@ export type SkeletonLinesProps = {
 }
 
 // SkeletonLines:N 行文字長條。每一行是一個高度 = lineHeight 的容器,
-// 長條在裡面垂直置中(做法同 planning/place/LateTextSkeleton:不用 margin
-// 置中,避免相鄰 margin 折疊讓總高不足)。外框高度因此可預期:
+// 長條在裡面垂直置中(做法源自 planning/place/LateTextSkeleton 原本自己的
+// 長條,該檔現在改用這個元件:不用 margin 置中,避免相鄰 margin 折疊讓
+// 總高不足)。外框高度因此可預期:
 // lines × lineHeight + (lines − 1) × gap,使用端只要讓 lineHeight 等於真文字
 // 的行高,載入前後就不會跳。
 export function SkeletonLines({

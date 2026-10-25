@@ -1512,7 +1512,7 @@ export function HorizontalPlanTimeline({
                     PlanTimelineView 用轉圈 spinner 表達這個中間狀態,
                     改成骨架佔位;現況是鋪共用 SkeletonBlock
                     (components/Skeleton,掃光/深色/reduced-motion 由它
-                    處理),原本的 .thumbSpinner/.shimmer 都已移除。 */}
+                    處理),本檔 CSS 原本的轉圈與掃光樣式都已移除。 */}
                 {(() => {
                   if (status.loading) {
                     // 2026-10 使用者明確要求「不要用圓圈的圖片載入,用

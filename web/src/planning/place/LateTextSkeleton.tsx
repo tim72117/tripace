@@ -6,6 +6,11 @@ import { SkeletonBlock, SkeletonLines, SkeletonRegion } from '../../components/S
 // 「這個地點還沒有簡介資料。」與空的徽章列,讓使用者知道是「還在載」而
 // 不是「沒有資料」。
 //
+// 檔名是歷史名稱:取自「晚到的文字」(late text,見 infoContent.ts 的
+// reservesLateTextSlots)這個情境,但實際匯出的是 SummarySkeleton 與
+// BadgeSkeleton 兩個元件,檔名與匯出對不上。改名(連同 import 端)屬於較大
+// 的改動,留待之後處理。
+//
 // 2026-10 改用共用零件(components/Skeleton.tsx):掃光顏色、深色模式與
 // reduced-motion 都交給共用元件,這裡只決定尺寸。
 //

@@ -886,17 +886,21 @@
 ├─ timeline/      時間軸:model(領域層)、storage(PlanTimelineStore)、drafts、transit、segments、status、presentation、
 │                 usePlanTimelineCore、usePlanStopsState、usePlanNodeStatus、resolved(原 useResolvedNodeRefs)、PlanTimelineView;phone/HorizontalPlanTimeline
 ├─ conversation/  對話與 AI 工具:messages、guard、context、tools、asktools、usePlanConversation、uiStateStore;
-│                 詢問頁 AskPage、useAskPageBridge(等待/換頁)、askTransition、useHoverLock、useHeightTransition(換步驟轉場與高度過渡)
+│                 詢問頁 AskPage、useAskPageBridge(等待/換頁)、askTransition、useHoverLock、useHeightTransition(換步驟轉場與高度過渡);
+│                 詢問頁零件 AskShell(氣泡外殼:標題、返回/關閉鈕、操作列)、AskOptionList、RegionOption、TransportOption、
+│                 CandidateCard;播放態的 ScriptedAskPage
 ├─ data/          資料存取層:source(介面)、api(登入版)、public(訪客版)、fake(假資料)、dedupe、cache、store(共用 store)、PlanDataProvider
 ├─ map/           地圖:PlanMap(登入後)、NativeMapBase、planMapShared、usePanTarget、useStopPan、useFirstStopAutoPan 等
 │  ├─ draw/       統一繪製層宿主(compose、diff、zOrder、useSharedDrawLayer);layers/ 放各功能層
 │  ├─ marker/     planStops(PlanStopMarker → MapMarkerPoint)
 │  └─ phone/      PlanPhoneView 與手機 sheet
-├─ place/         地點資訊卡與清單:PlacePanel、DesktopInfoCard、PhotoCarousel;desktop/、phone/ 各一份 ResultList、CandidateList
+├─ place/         地點資訊卡與清單:PlacePanel、DesktopInfoCard、PhotoCarousel、LateTextSkeleton(簡介/徽章晚到時的骨架,匯出 SummarySkeleton、BadgeSkeleton);desktop/、phone/ 各一份 ResultList、CandidateList
 ├─ explore/       探索與選取:selection、exploreQuery、useExploreQueries、useAttractionGlow、ExploreControls
 ├─ panel/         規劃面板:TripPlanPage、PlanPanelContent、ComposerPortal、useAskPageFlow(詢問頁的前端串接:國家→城市→查景點、返回(城市→國家、景點候選/查詢中→城市)、輸入匡直接說明 submitAskPageText)、composerMode(輸入匡提示文字/鎖定/送出路徑依畫面決定)
 ├─ preview/       /ai-plan:Content、PlanLayout、PlanMap、LivePlanLayer、SimPlanLayer、模擬來源;desktop/、phone/、wide/ 三個 PlanOverlayLayout
-└─ member/        登入後:useMapState、usePlanningState;desktop/、phone/ 各一組 Content、PlanLayout、PlanOverlayLayout、LivePlanLayer</pre>
+└─ member/        登入後:useMapState、usePlanningState;desktop/、phone/ 各一組 Content、PlanLayout、PlanOverlayLayout、LivePlanLayer
+
+src/components/(planning/ 以外,全站共用):Skeleton(SkeletonBlock/Lines/Region/Mask 載入站位)、FramedImage(固定外框圖片:佔位、淡入、失敗佔位)</pre>
 
   <h3>同一層級的元件:各入口同名</h3>
   <p class="lede" style="margin-bottom:8px">同一個層級的元件在兩邊用同一個名字,靠資料夾區分。疊加外殼的共同部分(骨架、輸入列插槽邏輯)已收進共用的 planning/shared/OverlayShell,三個入口(/ai-plan、登入後手機、登入後桌面)各一份同名的 PlanOverlayLayout,都只是薄包裝(各自的樣式與特有項目)。/ai-plan 的 PlanOverlayLayout 依螢幕分成三個同名同介面的實體(planning/preview/ 的 phone/、desktop/、wide/),由 Content 依 isDesktop、isWide 擇一渲染:只有 phone/ 走 OverlayShell;desktop/(768–1023px)與 wide/(≥1024px)改渲染各自的 PlanOverlayPanel(沒有 controls-slot 與 overlay 外殼,wide 另渲染一個 safe-area 節點,不帶 overlay 與 panel 的 data-slot)。</p>
@@ -905,7 +909,7 @@
       <thead><tr><th>層級</th><th>名稱</th><th>/ai-plan</th><th>登入後手機</th><th>登入後桌面</th><th>行程詳情頁</th></tr></thead>
       <tbody>
         <tr><td>容器</td><td><code>PlanLayout</code></td><td>planning/preview/PlanLayout.tsx(只管外框:容器、主題、嵌入、導覽列、除錯疊圖)</td><td>planning/member/phone/PlanLayout.tsx(只管容器與 --tab-bar-height;planning/member/phone/Content 把內容放進來)</td><td>planning/member/desktop/PlanLayout.tsx(容器:DesktopLayoutShell + 導覽列 + DesktopMain,排版積木與 pace/PacePage、trip/PublicViewScreen 共用)</td><td>src/itineraries/PlanLayout.tsx(只是滿版的 &lt;main&gt; 容器)</td></tr>
-        <tr><td>疊加外殼</td><td><code>PlanOverlayLayout</code></td><td>planning/preview/{phone,desktop,wide}/PlanOverlayLayout.tsx(三個同名同介面的實體,Content 依 isDesktop、isWide 擇一;phone/ 是 OverlayShell 薄包裝:樣式、導覽列佔位、passThrough)</td><td>planning/member/phone/PlanOverlayLayout.tsx(薄包裝:樣式、open、除錯疊圖)</td><td>planning/member/desktop/PlanOverlayLayout.tsx(薄包裝:透明側欄樣式、open、shifted、頂端按鈕列;沒有 controls-slot)</td><td>src/itineraries/PlanOverlayLayout.tsx(OverlayShell 薄包裝:沒有控制項插槽與輸入列)</td></tr>
+        <tr><td>疊加外殼</td><td><code>PlanOverlayLayout</code></td><td>planning/preview/{phone,desktop,wide}/PlanOverlayLayout.tsx(三個同名同介面的實體,Content 依 isDesktop、isWide 擇一;phone/ 是 OverlayShell 薄包裝:樣式、導覽列佔位、passThrough,panel 一律掛 .fuse 融合詢問匡與輸入列)</td><td>planning/member/phone/PlanOverlayLayout.tsx(薄包裝:樣式、open、除錯疊圖)</td><td>planning/member/desktop/PlanOverlayLayout.tsx(薄包裝:透明側欄樣式、open、shifted、頂端按鈕列;沒有 controls-slot)</td><td>src/itineraries/PlanOverlayLayout.tsx(OverlayShell 薄包裝:沒有控制項插槽與輸入列)</td></tr>
         <tr><td>共用外殼</td><td><code>OverlayShell</code></td><td colspan="4">planning/shared/OverlayShell.tsx:map-layer、controls-slot、overlay &gt; (safe-area、panel &gt; composer-slot)的 DOM,加輸入列插槽的狀態與 ComposerSlotContext</td></tr>
         <tr><td>推論層(規劃面板接線)</td><td><code>LivePlanLayer</code></td><td>推論態:planning/preview/LivePlanLayer.tsx(訪客 cfg、固定訪客版資料存取層、草稿 store)。模擬態(交接前)是同一層的另一個呼叫端:planning/preview/SimPlanLayer.tsx(桌面 PlanTimelineView、手機 HorizontalPlanTimeline 加詢問頁)與 SimComposer.tsx(輸入列用 composer prop 傳假輸入膠囊);兩者是呈現層,狀態與 hook 仍由 Content 持有</td><td>planning/member/phone/LivePlanLayer.tsx(登入版資料存取層、受控選取)</td><td>planning/member/desktop/LivePlanLayer.tsx(登入版資料存取層、visible、onPanToStop、受控選取)</td><td>(無:這頁不接真實 AI 對話,時間軸內容由頁面直接放進 panel)</td></tr>
         <tr><td>地圖元件</td><td><code>PlanMap</code></td><td>planning/preview/PlanMap.tsx</td><td>planning/map/PlanMap.tsx</td><td>同左(同一個)</td><td>src/itineraries/PlanMap.tsx(NativeMapBase 加 planMapShared 的 usePlanMapDrawing;連線走共同的 routeSegments prop,不再用 extraLayers)</td></tr>
@@ -1128,6 +1132,13 @@
   </div>
   <p class="lede" style="margin:10px 0 0"><b>規劃中(尚未實作):雙向串接。</b>目標是每種呼叫對象(LLM、模擬劇本、直向與橫向視圖)各有一層同名 <code>adapter</code>、實作各異,只呼叫 <code>PlanOperations</code>(指令方向),並透過另一個介面(暫名 <code>PlanUpdates</code>,時間軸快照加事件)收到回應(回應方向);範圍從時間軸擴大到選取與 hover、對話、詢問頁、景點池、鏡頭、探索、草稿。現況只完成命名統一與 <code>PlanOperations</code>;回應方向目前仍是散落的回呼(<code>onStopInserted</code>、<code>onStopsChange</code>、<code>onRouteSegmentsChange</code>、<code>tripPlanProps</code>)。</p>
 
+  <h3>詢問頁的狀態模型與流程(conversation/ 與 panel/,2026-10-25)</h3>
+  <p class="lede" style="margin-bottom:6px"><b>狀態。</b><code>planning/conversation/useAskPageBridge.ts</code> 用單一個帶標籤的聯集 <code>AskPageState</code> = <code>{ status: 'closed' }</code>｜<code>{ status: 'open', input }</code> 當唯一狀態來源,<code>showAskPage</code>/<code>askPageInput</code> 只是由它衍生的唯讀值。原本是兩個獨立的 useState,轉移時要連續呼叫兩個 setter,「旗標開著但 input 是舊值」這類中間態型別上允許;改成聯集後四個轉移各只做一次 setState,中間態在型別上不存在。等待(resolve)放在 ref,與狀態綁定維護:有等待 ⇔ 狀態是 open,任何時刻最多一個等待。</p>
+  <p class="lede" style="margin-bottom:6px"><b>四個轉移。</b><code>openAskPage</code>(開新頁、建立等待;已有等待時不搶佔,直接以空陣列結束自己這次呼叫)、<code>replaceAskPage</code>(原地換 input、不結束等待,沒有等待時不做事並回 false;給返回與「查詢中 → 候選」用)、<code>advanceAskPage</code>(以本步的選擇結束目前等待、同一次更新換到下一步並建立新等待,全程維持 open,不閃回時間軸)、<code>handleAskPageDone</code>(結束等待並關閉)。每個等待帶遞增的 id(<code>pendingId()</code>;replace 不換 id,open/advance 會換),非同步流程用它判斷「開始時的那個等待是否還在」。</p>
+  <p class="lede" style="margin-bottom:6px"><b>選完城市 → 查景點(<code>planning/panel/useAskPageFlow.ts</code>)。</b>查詢在 150ms(<code>CITY_LOOKUP_LOADING_DELAY_MS</code>)內回來就直接從城市頁 advance 成景點候選,不經過查詢中,這段期間重複點擊被擋掉;超過才 advance 成「查詢中」,查詢中至少顯示 300ms(<code>CITY_LOOKUP_LOADING_MIN_MS</code>),之後以 replace 原地換成候選;15 秒(<code>CITY_LOOKUP_TIMEOUT_MS</code>)逾時視同查無結果並中止請求。查無候選時收起詢問頁回到時間軸。等待 id 已不同(使用者打字送出、按關閉)時,晚到的結果不再塞回畫面。</p>
+  <p class="lede" style="margin-bottom:6px"><b>返回。</b>查詢中與景點候選的 input 帶 <code>back: { city }</code>(當時的城市頁 input),返回時 replace 回那個城市頁,並中止進行中的查詢(清掉三個計時器、abort);只靠等待 id 擋不住,因為 replace 不換 id。城市頁返回國家頁同樣走 replace(原本用 openAskPage 會被不搶佔保護吞掉,按了沒反應)。</p>
+  <p class="lede" style="margin-bottom:10px"><b>輸入匡。</b>取代原本候選頁的「我要直接說明」按鈕與說明面板。<code>planning/panel/composerMode.ts</code> 的純函式依目前畫面決定提示文字、是否鎖住、送出路徑:國家/城市/交通/景點候選/探查算「在等使用者」,送出走 <code>submitAskPageText</code>(以空陣列結束目前詢問頁,文字當成新訊息送出;推論中先排隊,這一輪結束後自動送);查詢中與純文字氣泡不算。鎖定規則:推論中鎖住(送出鈕換成停止),但有在等使用者的詢問頁時不鎖,讓使用者能直接打字回答。</p>
+
   <h3>五欄對照:/ai-plan(手機分推論態與播放態、桌面)與登入後(手機、桌面)</h3>
   <p class="lede" style="margin-bottom:10px">/ai-plan 的手機與桌面是同一個頁面元件,靠 isDesktop 與 isWide 切版面;頁面內再依 handedOver 分兩態:<b>播放態</b>(SimPlanLayer 播固定劇本,假資料、對話與時間軸不持久化、沒有真實 AI、沒有停止鈕)與<b>推論態</b>(LivePlanLayer 渲染 TripPlanPage,有 AI 連線與工具、時間軸存檔)。手機的兩態差異大,各佔一欄;桌面兩態的差別寫在同一格(「播放態:…;推論態:…」)。登入後手機與桌面是兩個不同的入口(planning/member/phone/Content、planning/member/desktop/Content)包同一個 PlanMap,只有推論那一種。有底色的列是欄間有差別的項目。表格較寬,窄螢幕可左右捲動。<br>2026-10-24 已校:站點來源與子景點解析改向 PlanDataProvider 的共用 store 取(各入口「時間軸 → PlanStopMarker[]」的投影仍各自一份)、對話純記憶體(conversationStore 已移除)。<b>之後可能再過時的:</b>連線與轉乘(交通改衍生資料尚未進行)。</p>
   <div class="scroll">
@@ -1154,7 +1165,7 @@
 <tr><td>住宿與旅館點</td><td class="diff">有:set_lodging、remove_lodging 工具寫入 timeline.lodgings(獨立於各天節點之外);旅館點由 lodgingMapMarkers 用 useResolvedRefs(共用 store)的解析結果取座標;不參與連線</td><td class="diff">無:劇本沒有任何住宿</td><td class="diff">播放態:無;推論態:同手機推論態</td><td class="diff">有(同 /ai-plan 推論態,資料存取層為登入版)</td><td class="diff">有(同登入後手機)</td></tr>
 <tr><td>輸入列(composer)</td><td class="diff">TripPlanPage 內的 Composer,經 ComposerPortal 放進 composer 插槽;真實送出,推論中輸入框鎖住、送出鈕換成「停止」</td><td class="diff">SimComposer(同一個 Composer 的展示模式):自動打字「幫我排台南兩天一夜的行程」、唯讀;排滿 5 站(CTA_AFTER_STOPS)或播完後收合成「讓我試看看」按鈕,按下即交接。沒有停止鈕</td><td class="diff">同手機兩欄(播放態用 SimComposer,推論態用 TripPlanPage 的 Composer;放在桌面側欄的 composer 插槽)</td><td class="diff">同 /ai-plan 推論態(TripPlanPage 的 Composer,放在 composer-slot,有停止鈕)</td><td class="diff">同登入後手機(composer-slot 排在 panel 最後)</td></tr>
 <tr><td>搜尋框、標籤、頭像、「搜尋這個區域」</td><td class="diff" colspan="3">無(只有推論態的 ExploreControls,見「景點區域光暈」列)</td><td class="diff">用 portal 放進 PlanOverlayLayout 的控制項插槽(planning/member/phone/Content 轉傳 controlsPortalTarget)</td><td class="diff">原地渲染在地圖上(沒傳 controlsPortalTarget)</td></tr>
-<tr><td>UI 疊加層(蓋在地圖上方)</td><td class="diff" colspan="2">planning/preview/phone/PlanOverlayLayout(薄包裝)+ 共用的 OverlayShell:同一套 data-slot 骨架;controls-slot 目前是空的,safe-area 由 useMapSafeArea 量;另有導覽列佔位。播放態有 composer 內容(SimComposer),推論態傳 passThrough、輸入列由 TripPlanPage 放</td><td class="diff">沒有手機版的 controls-slot 與 overlay 外殼:desktop/ 的 PlanOverlayPanel 側欄(面板與輸入列插槽是同層手足);wide(≥1024px)是 wide/ 的 PlanOverlayLayout 與同名的 PlanOverlayPanel(換一份側欄樣式),安全區是左側剩餘空間</td><td class="diff">PlanOverlayLayout 薄包裝 + 共用的 OverlayShell:同一套 data-slot 骨架。map-layer 放 PlanPhoneView、controls-slot 放搜尋框等(PlanMap 用 portal)、overlay 內的 safe-area 節點標出搜尋框下方到面板上方(top 120px、bottom 454px),是首站與搜尋平移的目標,panel 內是規劃面板與輸入列</td><td class="diff">planning/member/desktop/Content:搜尋框等原地渲染在地圖上;規劃面板是 planning/member/desktop/PlanOverlayLayout(OverlayShell 的薄包裝:map-layer 放 PlanMap、overlay 內 panel 是透明側欄,composer-slot 排在 panel 最後;沒有 controls-slot);safe-area 標出側欄左邊(點圖卡平移用),?debugSafeArea=1 有除錯疊圖</td></tr>
+<tr><td>UI 疊加層(蓋在地圖上方)</td><td class="diff" colspan="2">planning/preview/phone/PlanOverlayLayout(薄包裝)+ 共用的 OverlayShell:同一套 data-slot 骨架;controls-slot 目前是空的,safe-area 由 useMapSafeArea 量;另有導覽列佔位。播放態有 composer 內容(SimComposer),推論態傳 passThrough、輸入列由 TripPlanPage 放。panel 一律掛 .fuse(詢問匡與輸入列融合,屬性掛點加 @supports selector(:has(*)),文字氣泡與播放態不套用)</td><td class="diff">沒有手機版的 controls-slot 與 overlay 外殼:desktop/ 的 PlanOverlayPanel 側欄(面板與輸入列插槽是同層手足);wide(≥1024px)是 wide/ 的 PlanOverlayLayout 與同名的 PlanOverlayPanel(換一份側欄樣式),安全區是左側剩餘空間</td><td class="diff">PlanOverlayLayout 薄包裝 + 共用的 OverlayShell:同一套 data-slot 骨架。map-layer 放 PlanPhoneView、controls-slot 放搜尋框等(PlanMap 用 portal)、overlay 內的 safe-area 節點標出搜尋框下方到面板上方(top 120px、bottom 454px),是首站與搜尋平移的目標,panel 內是規劃面板與輸入列</td><td class="diff">planning/member/desktop/Content:搜尋框等原地渲染在地圖上;規劃面板是 planning/member/desktop/PlanOverlayLayout(OverlayShell 的薄包裝:map-layer 放 PlanMap、overlay 內 panel 是透明側欄,composer-slot 排在 panel 最後;沒有 controls-slot);safe-area 標出側欄左邊(點圖卡平移用),?debugSafeArea=1 有除錯疊圖</td></tr>
 <tr><td>強調色 useAccentColor</td><td colspan="5">五欄相同:由共用子層自己讀(地圖容器的 <code>--color-accent</code>),各功能層共用;接線處只傳 <code>theme</code>。三份 PlanMap 的 theme 都只收 dark / light;/ai-plan 傳給 NativeMapBase 時日夜切換會重建地圖,登入後傳 rebuildOnThemeChange=false 不重建。</td></tr>
 <tr><td>地圖樣式與主題</td><td class="diff" colspan="3">SIMPLE_MAP_ID(簡化樣式);PlanMap 傳 theme 給 NativeMapBase,日夜切換時重建(也傳給共用繪製層)</td><td class="diff">未傳 mapId,NativeMapBase 退回 VITE_GOOGLE_MAPS_MAP_ID;傳 theme,但 rebuildOnThemeChange=false,不重建</td><td>同左</td></tr>
 <tr><td>資料存取層<br><small>地點查詢、交通估算、景點與照片</small></td><td class="diff">訪客版 getPlanAiPublicDataSource(BASE_URL)(planning/data/public.ts),登入也不換:地點與景點走免登入端點;<b>沒有交通估算</b>(transitEstimate 直接 reject,時間軸不顯示交通膠囊)。光暈查詢另外有 token 就換登入版</td><td class="diff">假資料版 planAiFakeDataSource(planning/data/fake.ts):固定取 attractionPool 的 10 筆台南景點,不打後端;有假的交通估算。詢問頁(ScriptedAskPage)用訪客版</td><td class="diff">同手機(播放態用假資料版、推論態用訪客版)</td><td class="diff">登入版 getPlanAiApiDataSource(cfg)(planning/data/api.ts),有交通估算</td><td class="diff">同登入後手機</td></tr>
@@ -1193,6 +1204,10 @@
       <li><b>雙向串接是下一步方向。</b>每個對象一層同名 adapter,指令與回應都走同一層,範圍涵蓋所有動作;分階段(命名統一→盤點全部動作→抽 adapter),抽 adapter 前先補從元件介面做 CRUD 的整合測試當安全網。</li>
       <li><b>onagent 正式機位址改為 onagents.dev。</b>CI 的 <code>VITE_ONAGENT_URL</code> 與網站五個「Powered by onagent」連結一起改;同一台服務,金鑰與 Allowed origin 沿用。</li>
       <li><b>文件站改名 handbook。</b>原 web/showcase-demo 改為 web/handbook(系統文件站),本頁與架構圖頁都在這裡維護。</li>
+      <li><b>載入站位統一為共用元件、淡色掃光。</b>原本各處各寫一份(掃光、明暗呼吸、轉圈),各自處理深色與減少動態;改為 components/Skeleton(Block/Lines/Region/Mask)與 FramedImage,視覺一律淡色掃光,顏色集中在 --skeleton-base/--skeleton-highlight,減少動態時退成靜態底色。理由:視覺語彙一致、只維護一份。</li>
+      <li><b>輸入匡取代「我要直接說明」。</b>景點候選頁的按鈕與展開說明面板移除,詢問頁開著時直接從下方輸入匡打字回答(提示文字依畫面變動,規則集中在 composerMode.ts)。理由:少一層展開,回答方式與一般對話一致。</li>
+      <li><b>候選頁可返回。</b>查詢中與景點候選帶 back 資訊,返回時原地換回當時的城市頁並中止查詢;詢問頁狀態合併為單一 AskPageState,轉移各一次 setState。</li>
+      <li><b>詢問匡與輸入列融合改預設啟用。</b>由試做轉正,/ai-plan 手機版 panel 一律掛 .fuse(不再需要網址參數);跨 CSS Module 用元件自己宣告的 data 屬性當掛點(不依賴 DOM 層數),整組包在 @supports selector(:has(*)) 裡,文字氣泡與播放態沒有掛點、不套用。</li>
     </ul>
   </div>
 </main>

@@ -4,38 +4,43 @@
 
 ## v0.41.0 — 2026-10-25
 
-詢問頁（選國家、城市、景點、交通方式）大幅改版，全站「載入中站位」統一成共用元件，並讓資料未到時外框不再跳動。**無資料庫結構變更；LLM 工具、yaml、thought 不變（不需重推 onagent）。**
+詢問頁（選國家、城市、景點、交通方式）大幅改版，全站「載入中站位」統一成共用元件，並讓資料未到時外框不再跳動。**無資料庫結構變更；環境變數、網址參數、localStorage key、LLM 工具、yaml、thought 皆不變（不需重推 onagent）。**
 
-> **內部不相容變更**（只影響前端內部呼叫）：移除 `AskPage` 的 `onDescribe` 與「我要直接說明」按鈕／面板、`HorizontalPlanTimeline` 的 `onAskPageDescribe`、`AskActions`、`planning/shared/fuseFlag`；`useAskPageBridge` 的 `showAskPage`／`askPageInput` 改為由單一狀態 `AskPageState` 衍生；`useListItineraries` 改回傳 `{ items, loading }` 並抽成獨立檔；`SkeletonRegion` 不再帶 `aria-busy`；`PlaceInfoContent` 新增 `textStatus`／`photoStatus`；`createPlanAiApiDataSource` 之外的測試資料來源改為全 stub。
+> **內部不相容變更**（只影響前端內部呼叫，0.x 階段依版號慣例升 minor）：
+> - `useMapState` 移除 `onGeocodeCandidateText`／`onGeocodeCandidatePhoto` 參數（`outlineBindingFrom` 同步拿掉），`selectedCandidate` 改選填且不再使用；地點簡介與照片的補查移到 `usePlanningState`，依 `PlaceInfoContent.textStatus`／`photoStatus` 為 `'pending'` 觸發，並以 placeId 暫存（上限 100 筆）。
+> - `usePlanningState` 的 `patchGeocodeCandidateText` 只在簡介查詢中才寫入、且只更新 `summary`／`badges`（原本會整包覆蓋候選資料）；`patchGeocodeCandidatePhoto(placeId, null)` 改標 `photoStatus: 'none'`。
+> - `useAskPageBridge` 新增 `askPage`／`replaceAskPage`／`advanceAskPage`／`pendingId`，`showAskPage`／`askPageInput` 改由單一狀態 `AskPageState`（closed｜open 帶 input）衍生；關閉後 `askPageInput` 回到掛載時的預設值（原本殘留最後一次 input）。
+> - `ListItemCard` 的照片改由 `FramedImage` 渲染（外框為 span，同時套 `photoClassName` 與 `placeholderClassName`）；`SimComposer` 的 `handedOver`／`userPrompt`／`setUserPrompt` 改選填且不再使用。
+> - 多個 CSS module class 與 keyframes 被共用骨架取代而移除（見「移除」），只有各檔自己引用，無跨檔引用者。
 
 ### 新增
 
 - **詢問頁**：
-  - 換步驟依方向轉場（前進從右、返回從左；寬螢幕側欄向上浮起；減少動態時只淡入），換頁後焦點移到標題（只在焦點不在輸入匡時），手機版面板高度平滑過渡。
+  - 換步驟依方向轉場（前進從右、返回從左；寬螢幕側欄向上浮起；減少動態時只淡入），換頁後焦點移到標題（僅在焦點不在輸入匡時），手機版面板高度平滑過渡。
   - 換頁後原位置卡片不再套 hover（`useHoverLock`）。
-  - 城市頁與景點候選頁（含查詢中）左上角返回箭頭；所有詢問頁右上角關閉鈕取代「不用了」；查詢中也能關閉。
-  - 選完城市不再閃回時間軸：詢問頁全程不關閉；查詢 150ms 內回來直接換、超過才顯示「查詢中」且至少 300ms；景點查詢 15 秒逾時（視同無結果）。
-  - 輸入匡提示文字隨畫面變動（`composerMode.ts`，每句不超過 12 個全形字），詢問頁等待使用者時輸入匡可直接輸入並走詢問頁送出，取代原本的「我要直接說明」。
-  - 手機 `/ai-plan` 推論態詢問匡與下方輸入列融合成一體（`PlanOverlayPanel.module.css` 的 `.fuse`，以屬性掛點加 `@supports selector(:has(*))`，詢問匡與輸入列兩邊都存在才生效，文字氣泡與播放態不套用）。
-  - 抽出共用元件 `AskShell`、`AskOptionList`、`RegionOption`、`TransportOption`、`CandidateCard`；`AskPage` 由 753 行降到約 666 行。
+  - 城市頁與景點候選頁（含查詢中）左上角返回箭頭；詢問頁右上角關閉鈕取代「不用了」文字按鈕（aria-label 不變）；查詢中也能關閉。
+  - 選完城市不再閃回時間軸：詢問頁全程不關閉；景點查詢 150ms 內回來直接換、超過才顯示「查詢中」且至少 300ms；景點查詢 15 秒逾時（視同無結果）。
+  - 輸入匡提示文字隨畫面變動（`composerMode.ts`，預設「請輸入想去的地方」、思考中「AI 思考中…」、未設定 key 時「對話功能調整中，請稍候」，每句不超過 12 個全形字）；詢問頁等待使用者時輸入匡可直接輸入並走詢問頁送出（`submitAskPageText`）。
+  - 手機 `/ai-plan` 推論態詢問匡與下方輸入列融合成一體（`PlanOverlayPanel.module.css` 的 `.fuse`，以屬性掛點——`AskShell` 的 `data-ask-part` 與 `Composer` 的 `data-composer-part`——加 `@supports selector(:has(*))`，詢問匡與輸入列兩邊都存在才生效，文字氣泡與播放態不套用）。
+  - 抽出共用元件 `AskShell`、`AskOptionList`、`RegionOption`、`TransportOption`、`CandidateCard`（`ScriptedAskPage` 也共用 `CandidateCard`）。
 - **共用載入站位元件**（`components/`）：`SkeletonBlock`、`SkeletonLines`、`SkeletonRegion`、`SkeletonMask`（遮罩真內容、不改盒模型）、`FramedImage`（固定外框、佔位、淡入、失敗佔位、`pending`、`unstyled`、外框 `ref`）；統一「淡色掃光」，減少動態時退成靜態底色。
-- **版面站位**（資料未到、圖片載入中或失敗時外框尺寸不變）：縱向與橫向時間軸（站點卡文字行、交通膠囊、縮圖、照片橫幅）、地點資訊卡（桌面與手機：評分、簡介預留）、照片輪播、結果清單縮圖、行程詳情頁與城市頁照片（`photoSize`）、行程清單與詳情頁標頭骨架、部落格縮圖、分享連結 QR、推薦地點卡。
-- **地點資訊**：簡介載入中顯示骨架、失敗顯示「簡介載入失敗。」、真的沒有才顯示「還沒有簡介資料」；照片有明確狀態（查詢中掃光、沒有／失敗靜態佔位）；已查到的簡介與照片以 placeId 暫存，重開卡片不再閃骨架或重打請求。
-- **測試與文件**：時間軸 CRUD 元件整合測試（28 個）、`docs/research-plan-actions-inventory-2026-10.md`（全部動作與回應方向盤點）；測試 script 依模組分區（`test:core`／`map`／`plan`／`itinerary`／`ui`／`changed`）。
+- **版面站位**（資料未到、圖片載入中或失敗時外框尺寸不變）：縱向與橫向時間軸（站點卡文字行、交通膠囊、縮圖、照片橫幅）、地點資訊卡（桌面與手機：評分與簡介預留）、照片輪播、結果清單縮圖、行程詳情頁與城市頁照片（`photoSize`）、行程清單與詳情頁標頭骨架、部落格縮圖、分享連結 QR、推薦地點卡。
+- **地點資訊**：簡介載入中顯示骨架、失敗顯示「簡介載入失敗。」、真的沒有才顯示「還沒有簡介資料」；照片有明確狀態（查詢中掃光、沒有或失敗為靜態佔位）；已查到的簡介與照片以 placeId 暫存，重開卡片不再閃骨架或重打請求。
+- **測試與文件**：時間軸 CRUD 元件整合測試（28 個：14 個情境，直向與橫向各跑一次）、`docs/research-plan-actions-inventory-2026-10.md`（全部動作與回應方向盤點）；handbook 補上本輪新增元件、詢問頁狀態模型與「載入佔位該用哪個」。
 
 ### 修正
 
 - 詢問頁「返回上一層」按了沒反應（橋接層「已有等待就忽略新呼叫」擋掉了返回；桌面版原本沒傳 `onBack`）。
-- 換步驟時搶走輸入匡焦點；高度過渡在動畫中又換步驟會讓 `overflow` 永久 hidden；滑入動畫在同一步驟重播。
-- 橫向時間軸旅館入住日剛好是空天時「Day N」出現兩次；候選縮圖網址失效破圖；照片橫幅沒有淡入。
+- 換步驟時搶走輸入匡焦點；高度過渡在動畫中又換步驟會讓 `overflow` 永久 hidden；滑入動畫在同一步驟內重播。
+- 橫向時間軸旅館入住日剛好是空天時「Day N」出現兩次；候選縮圖網址失效破圖；照片橫幅沒有淡入；按「重試」時清空失敗照片網址，短暫斷網後可重新載入。
 - 地點簡介與照片：同一地點重開卡片照片永遠掃光、確定沒照片也一直掃光、簡介重開每次重打請求、`patchGeocodeCandidateText` 覆蓋完整候選資料。
-- 站點卡縮圖底色為漸層時查詢中沒有任何載入提示（約 40 筆資料）；行程清單 API 卡住時停在無限骨架（改 10 秒逾時）。
+- 站點卡縮圖底色為漸層時查詢中沒有任何載入提示（約 40 筆資料）；行程清單 API 卡住時停在無限骨架（改 10 秒逾時），失敗或逾時也會結束骨架。
 - 播放態詢問頁 `onDone` 回傳的 `attractionId` 永遠是 undefined。
-- `DatePickerPopover` 補位日期可被點選（現為不可點，仍固定 6 列）。
+- `DatePickerPopover` 補位日期可被點選（現為不可點，仍固定 6 列）；`PlacePanel` 日期測試不再依賴今天的日期。
 
 ### 移除
 
-- 「我要直接說明」按鈕與面板、`AskActions`、`?fuse=1` 開關、多處被取代的掃光與呼吸動畫（`shimmer`、`horizontalShimmer`、`askSkeletonPulse`、`lateTextShimmer`、`photoPlaceholderShimmer`、`listSkeletonPulse`、`detailSkeletonPulse`、`itineraryThumbPulse`、`onsenThumbPulse` 等）。
+- 詢問頁「不用了」文字按鈕（改為右上角關閉鈕）、站點縮圖與交通列的轉圈 spinner（`.thumbSpinner`）、被共用骨架取代的掃光動畫（`shimmer`、`horizontalShimmer`、`horizontalSkeletonFade`、`photoPlaceholderShimmer`、`itineraryThumbSpin`、`onsenThumbSpin`）。
 
 ### 已知未處理
 
@@ -43,8 +48,7 @@
 - 排隊的輸入匡說明在推論結束時自動送出，可能關掉 LLM 剛開的詢問頁、按停止或重連後仍會送出。
 - 「新行程」按鈕（`VITE_FEATURE_NEW_TRIP_DRAFT=true`）會夾在融合後的詢問匡與輸入列之間。
 - 有標籤的站點卡在資料補齊後仍會長高約 36px；縮圖載入失敗一律顯示通用圖示（不再保留各卡片主題佔位）。
-- 桌面與寬螢幕、登入後手機與播放態尚未套用融合；`moveDay` 的錯誤沒有 `code`。
-- `PlacePanel.test.tsx` 有 2 個測試依賴固定日期「2026年8月27日」，過了該日期後失敗（與本版改動無關）。
+- 桌面與寬螢幕、登入後手機與播放態尚未套用融合；`moveDay` 的錯誤沒有 `code`；`planning/place/LateTextSkeleton.tsx` 的檔名與匯出（`SummarySkeleton`、`BadgeSkeleton`）對不上。
 - 本版多數畫面僅以元件測試與讀程式驗證，尚未在瀏覽器逐項實測。
 
 ## v0.40.1 — 2026-10-24

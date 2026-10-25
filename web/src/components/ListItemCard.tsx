@@ -21,8 +21,9 @@ import { FramedImage } from './FramedImage'
 // styles:呼叫端各自的 CSS Modules 物件——class 命名慣例固定(item/
 // itemSelected/itemBody/itemInfo/itemName/itemAddress),只有視覺樣式
 // 由呼叫端決定,這個元件不內建任何一份預設樣式,也不規定 leading 插槽
-// 本身要用哪個 class(呼叫端自己決定 itemPhoto/itemPhotoPlaceholder 或
-// 任何其他 class)。
+// 本身要用哪個 class(用 PhotoLeading 時,外框 class 由呼叫端傳入的
+// photoClassName/placeholderClassName 決定;現有呼叫端(place/ 桌面與手機 ResultList)兩者都傳 itemPhoto,
+// 原本的 .itemPhotoPlaceholder 已移除)。
 export function ListItemCard({
   name,
   address,

@@ -11,6 +11,7 @@
   - `test:plan` → src/planning 的 panel、preview、member 加 src/home(各入口與面板接線)
   - `test:itinerary` → src/itineraries(行程詳情頁)
   - `test:ui` → components、hooks、blog、momiji-front、trip
+    - 另含 src/recommended-places(推薦地點元件,原本不屬於任何分組)
   - `test:changed` → 只跑與未提交改動相關的測試(不確定範圍時先用這個)
 - 改共用層(planning/shared、planning/timeline、planning/map/draw)、跨多個模組、或收尾/提交前:跑完整 `npm test` 加型別檢查。
 - `npm run test:integration` 需要本機 server(含 PostgreSQL)在跑,沒起 server 不要跑,失敗不代表程式有問題;`test:e2e:*` 是 playwright,需要時才跑。

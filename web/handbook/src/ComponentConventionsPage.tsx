@@ -143,6 +143,101 @@ export function ComponentConventionsPage() {
         </div>
 
         <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>載入佔位該用哪個？</h2>
+          <p className={styles.subheading} style={{ marginBottom: 10 }}>
+            2026-10 起全站載入站位統一為淡色掃光，零件在{' '}
+            <code className={styles.code}>components/Skeleton.tsx</code> 與{' '}
+            <code className={styles.code}>components/FramedImage.tsx</code>
+            ，不要再自己寫一份漸層、深色覆寫或 reduced-motion 處理。
+          </p>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>情境</th>
+                <th>元件</th>
+                <th>說明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>一塊色塊（縮圖、徽章、按鈕位置）</td>
+                <td>
+                  <code className={styles.code}>SkeletonBlock</code>
+                </td>
+                <td>
+                  width／height／aspectRatio／radius 可調；預設 aria-hidden，「載入中」交給外層宣告。
+                  animation='none' 是靜態底色，用在「沒有資料、不是還在載」的佔位
+                </td>
+              </tr>
+              <tr>
+                <td>N 行文字</td>
+                <td>
+                  <code className={styles.code}>SkeletonLines</code>
+                </td>
+                <td>行寬用固定比例（不隨機）；lineHeight 設成真文字的行高，載入前後高度不跳</td>
+              </tr>
+              <tr>
+                <td>一組骨架要對讀屏宣告一次「載入中」</td>
+                <td>
+                  <code className={styles.code}>SkeletonRegion</code>
+                </td>
+                <td>
+                  label 必填；內層 display:contents，外框 className 的 flex／grid 直接作用在子骨架上
+                </td>
+              </tr>
+              <tr>
+                <td>直接渲染真卡片，載入中把內容遮成骨架</td>
+                <td>
+                  <code className={styles.code}>SkeletonMask</code>
+                </td>
+                <td>
+                  只改顏色、背景、可見度，不碰盒模型，載入前後外框必然一樣大；遮罩中要維持可見的元素加{' '}
+                  <code className={styles.code}>skeleton-keep</code> class（
+                  <code className={styles.code}>SKELETON_KEEP_CLASS</code>）或{' '}
+                  <code className={styles.code}>data-skeleton-keep</code>，整個子樹保留原樣
+                </td>
+              </tr>
+              <tr>
+                <td>圖片（固定外框＋佔位＋淡入＋失敗佔位）</td>
+                <td>
+                  <code className={styles.code}>FramedImage</code>
+                </td>
+                <td>
+                  外框尺寸在 src 載入前就決定，四種狀態外框不變，狀態寫在 data-status。尺寸與圓角要完全交給
+                  className 時用 unstyled
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <table className={styles.table} style={{ marginTop: 10 }}>
+            <tbody>
+              <tr>
+                <td style={{ width: '40%' }}>覆寫骨架顏色</td>
+                <td>
+                  在任一祖先覆寫 <code className={styles.code}>--skeleton-base</code>（底色）與{' '}
+                  <code className={styles.code}>--skeleton-highlight</code>（高光）。兩者都只能是單一顏色：
+                  掃光層把它們當漸層的 color stop 與 background-color 用，塞漸層進去整個失效（底色透明、沒有掃光）。
+                  FramedImage 的靜態佔位底要放漸層或 transparent 時，改用{' '}
+                  <code className={styles.code}>--framed-image-placeholder-bg</code>
+                </td>
+              </tr>
+              <tr>
+                <td>FramedImage 的 pending 與 idle</td>
+                <td>
+                  沒有 src 時：pending=true（還在查 src）顯示掃光；pending=false 是 idle（確定沒有圖或不查），
+                  顯示靜態佔位加中性圖示、不掃光。有 src 時 pending 被忽略，以下載狀態為準；下載失敗也是靜態佔位，
+                  表示「已經停了、不是還在載」
+                </td>
+              </tr>
+              <tr>
+                <td>減少動態（prefers-reduced-motion）</td>
+                <td>掃光一律退成靜態底色（拿掉漸層，不只停動畫）；FramedImage 載入完成不淡入。使用端不必另外處理</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div className={styles.section}>
           <h2 className={styles.sectionTitle}>無障礙補強待辦清單</h2>
           <p className={styles.subheading} style={{ marginBottom: 10 }}>
             對齊文件「可及性一併補齊」——Fable review 指出多處缺少

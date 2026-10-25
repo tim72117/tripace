@@ -50,9 +50,11 @@ import styles from './FramedImage.module.css'
 // (SkeletonBlock 的 background-color 與漸層 color stop)使用,只能是單一
 // 顏色;塞漸層進去,掃光層的 computed 值整個失效(底色透明、沒有掃光)。
 //
-// 既有各處的同類做法(PhotoCarousel CarouselImg、行程清單 .coverImg 與
-// renderItineraryStopCard .stopThumbImg 的 data-loaded/data-failed、
-// ListItemCard 的 PhotoLeading)都可以逐步改用這個元件。
+// 目前使用端:PhotoCarousel(CarouselImg 與 0 張佔位)、ListItemCard 的
+// PhotoLeading、AI 行程清單封面、renderItineraryStopCard/
+// renderOnsenAutumnStopCard 縮圖、FoodSpotPanel、時間軸縱橫兩版的縮圖。
+// 原本各自寫的 .coverImg、.stopThumbImg 的 data-loaded/data-failed 等做法
+// 已改用這個元件;home/ 城市頁的 img[data-loaded] 淡色底是另一套,尚未併入。
 
 export type FramedImageStatus = 'idle' | 'loading' | 'loaded' | 'error'
 

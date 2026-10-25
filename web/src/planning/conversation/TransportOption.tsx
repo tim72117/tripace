@@ -2,8 +2,8 @@ import { Bike, Bus, Car, PersonStanding } from 'lucide-react'
 import type { TransportMode } from './asktools'
 import styles from './AskPage.module.css'
 
-// TRANSPORT_META——每種交通方式固定的圖示與中文標籤(內容同 AskPage.tsx 的
-// TRANSPORT_MODE_META,待接線時 AskPage.tsx 應改用這份)。
+// TRANSPORT_META——每種交通方式固定的圖示與中文標籤,AskPage.tsx 的交通方式步驟
+// 直接用 TransportOption 渲染(原本 AskPage.tsx 內的 TRANSPORT_MODE_META 已移除,以這份為唯一來源)。
 export const TRANSPORT_META: Record<TransportMode, { label: string; Icon: typeof Car }> = {
   walk: { label: '步行', Icon: PersonStanding },
   scooter: { label: '機車', Icon: Bike },

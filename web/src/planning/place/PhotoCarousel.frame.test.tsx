@@ -1,8 +1,8 @@
 // PhotoCarousel 的固定尺寸站位——照片「還沒有 / 下載中 / 已載入 / 下載
 // 失敗」四種狀態外框都要在、class 不變,佔位元素只在內層切換,避免圖片
 // 出現或失敗時卡片高度改變、下方內容跳動(見 PhotoCarousel.tsx 的
-// CarouselImg 說明)。jsdom 不做版面計算,這裡只斷言 DOM 結構與 class,
-// 實際像素量測見回報中的 Playwright 數據。
+// CarouselImg 說明)。jsdom 不做版面計算,這裡只斷言 DOM 結構與 class
+// (結構契約);實際像素高度不在本測試範圍,需要時另以瀏覽器量測。
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import { PhotoCarousel, CarouselImg } from './PhotoCarousel'

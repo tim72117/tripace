@@ -15,7 +15,7 @@
     "test:map": "vitest run src/planning/map src/planning/place src/planning/explore",
     "test:plan": "vitest run src/planning/panel src/planning/preview src/planning/member src/home",
     "test:itinerary": "vitest run src/itineraries",
-    "test:ui": "vitest run src/components src/hooks src/blog src/momiji-front src/trip",
+    "test:ui": "vitest run src/components src/hooks src/blog src/momiji-front src/trip src/recommended-places",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e:mockllm": "playwright test tests/e2e-mock-llm.spec.ts",
     "test:e2e:geo-outline": "playwright test tests/e2e-geo-outline.spec.ts"

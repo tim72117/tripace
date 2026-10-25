@@ -1,7 +1,7 @@
 /* FramedImage(見 FramedImage.tsx 檔頭說明)。
    外框尺寸由 inline style(width/height/aspect-ratio)決定,狀態只寫在
    data-status 上;佔位層與 <img> 都絕對定位疊在外框裡,不參與排版
-   (做法同 planning/place/PhotoCarousel.module.css 的 .photoFrame)。 */
+   (源自 PhotoCarousel 原本的 .photoFrame 做法,該 class 已移除、改由這裡提供)。 */
 .frame {
   position: relative;
   display: block;
