@@ -60,6 +60,12 @@ type attractionResponse struct {
 	// 只有走資料庫路徑、且該筆有設定值時才會有值,即時查 Google Places 的
 	// 後備路徑沒有分類概念,固定不帶。
 	Category string `json:"category,omitempty"`
+	// CityName/Tags:同 ID,只有走資料庫路徑才會有值。前端據此判斷能否查詢
+	// 「周邊同標籤地點」(見 handleGeoAttractionTagNeighbors)——只有 id
+	// 非空、且有 tags 的人工建檔地點才支援這個功能。Tags 由關聯表
+	// attraction_tags 組回(見 model.Attraction.Tags 的完整說明)。
+	CityName string   `json:"cityName,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
 }
 
 // toAttractionResponse 把 model.Attraction(資料庫路徑的人工建檔紀錄)轉
@@ -92,6 +98,8 @@ func toAttractionResponse(a model.Attraction) attractionResponse {
 		RadiusMeters: a.RadiusMeters,
 		Level:        a.Level,
 		IsTheme:      a.IsTheme,
+		CityName:     a.CityName,
+		Tags:         a.Tags,
 	}
 	if a.Summary != nil {
 		ar.Summary = *a.Summary

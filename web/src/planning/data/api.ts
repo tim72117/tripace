@@ -1,5 +1,6 @@
 import {
   fetchGeoAttractionsOnlyNearby,
+  fetchGeoAttractionTagNeighbors,
   fetchGeoAttractions,
   fetchGeoGeocode,
   fetchGeoPlaceDetails,
@@ -87,6 +88,7 @@ export function createPlanAiApiDataSource(cfg: ClientConfig): PlanAiDataSource {
       const r = await fetchGeoAttractionsOnlyNearby(cfg, lat, lng, radiusMeters)
       return r.attractions ?? []
     },
+    attractionTagNeighbors: async (id, tag) => (await fetchGeoAttractionTagNeighbors(cfg, id, tag)).attractions ?? [],
     // searchNearby——見 PlanAiDataSource.searchNearby 的完整說明。
     // query 模式對齊 conversation/tools.ts createSearchAttraction 的既有
     // 兩段式邏輯(先查地名座標,再查鄰近候選);coords 模式跳過第一段,

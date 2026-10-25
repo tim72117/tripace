@@ -203,6 +203,13 @@ func (c *httpClient) attractionUpdateTheme(id string, isTheme bool) (any, error)
 	return c.do("PATCH", "/internal/maintenance/attractions/"+id+"/theme", map[string]any{"isTheme": isTheme})
 }
 
+// attractionSetTags 對齊 PUT /internal/maintenance/attractions/{id}/tags
+// （見 server/internal/api/maintenance.go）——整組覆寫一筆景點的標籤,供
+// attraction tag 子命令使用。
+func (c *httpClient) attractionSetTags(id string, tags []string) (any, error) {
+	return c.do("PUT", "/internal/maintenance/attractions/"+id+"/tags", map[string]any{"tags": tags})
+}
+
 // contentPageCreate/List/Get/Update/Publish/Delete 對齊
 // POST/GET/PUT/PATCH/DELETE /internal/maintenance/content-pages(見
 // server/internal/api/content_page.go)。content 收 map[string]any(已經

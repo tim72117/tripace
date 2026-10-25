@@ -177,6 +177,7 @@ func buildResources(c *httpClient, apiURL string) []resource {
 				{verb: "update", run: func(args []string) { cmdAttractionUpdate(c, args) }, usage: "tripace-cli attraction update -id 地標ID [-lat 緯度 -lng 經度 | -place 文字 [-region 國碼]] [-field 欄位名 -value 新內容]"},
 				{verb: "set-place-id", run: func(args []string) { cmdAttractionSetPlaceID(c, args) }, usage: "tripace-cli attraction set-place-id -id 地標ID (-place-id ID | -place 文字 [-region 國碼])"},
 				{verb: "set-theme", run: func(args []string) { cmdAttractionSetTheme(c, args) }, usage: "tripace-cli attraction set-theme -id 地標ID -theme=true|false"},
+				{verb: "tag", run: func(args []string) { cmdAttractionTag(c, args) }, usage: "tripace-cli attraction tag -id 地標ID -tags \"標籤1,標籤2\"(整組覆寫，空字串清空)"},
 				{verb: "photo-update", run: func(args []string) { cmdAttractionUpdatePhoto(apiURL, args) }, usage: "tripace-cli attraction photo-update -id 地標ID [-query 文字] [-place-id ID]"},
 				{verb: "sync-setup", run: func(args []string) { cmdAttractionSyncSetup(c, args) }, usage: "tripace-cli attraction sync-setup -target 正式站網址"},
 				{verb: "sync", run: func(args []string) { cmdAttractionSync(c, args) }, usage: "tripace-cli attraction sync -direction push|pull [-allow-delete] [-apply] [-retry]"},
@@ -909,6 +910,36 @@ func cmdAttractionSetTheme(c *httpClient, args []string) {
 	res, err := c.attractionUpdateTheme(*id, *isTheme)
 	if err != nil {
 		fatal("attraction set-theme: %v", err)
+	}
+	output(res)
+}
+
+// cmdAttractionTag 整組覆寫一筆景點的標籤——走
+// PUT /internal/maintenance/attractions/{id}/tags(見
+// server/internal/api/maintenance.go 與 httpClient.attractionSetTags 的
+// 完整說明)。-tags 用逗號分隔多個標籤,整組覆寫(不是新增/移除單一標籤),
+// 對齊 SetAttractionTags 的「先刪後插」語意;帶空字串會清空該筆景點的
+// 所有標籤。
+func cmdAttractionTag(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("attraction tag", flag.ExitOnError)
+	id := fs.String("id", "", "地標 ID（必填）")
+	tags := fs.String("tags", "", "逗號分隔的標籤清單，整組覆寫既有標籤（可為空字串以清空）")
+	_ = fs.Parse(args)
+	if *id == "" {
+		fatal("attraction tag 需要 -id")
+	}
+
+	var tagList []string
+	for _, t := range strings.Split(*tags, ",") {
+		t = strings.TrimSpace(t)
+		if t != "" {
+			tagList = append(tagList, t)
+		}
+	}
+
+	res, err := c.attractionSetTags(*id, tagList)
+	if err != nil {
+		fatal("attraction tag: %v", err)
 	}
 	output(res)
 }

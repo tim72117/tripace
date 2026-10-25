@@ -23,6 +23,7 @@
 
 import type {
   GeoAttraction,
+  GeoAttractionTagNeighbor,
   GeoGeocodeCandidate,
   GeoPlaceDetails,
   GeoPlaceText,
@@ -164,6 +165,11 @@ export interface PlanAiDataSource {
   // useExploreQueries)只依賴這個方法,不自己挑端點、不自己 fetch。
   // 選填:假資料版沒有這個概念(播放態不查光暈),沒實作時呼叫端視為「沒有資料」。
   nearbyAttractionAreas?(lat: number, lng: number, radiusMeters: number): Promise<GeoAttraction[]>
+  // attractionTagNeighbors——同城市、帶有指定標籤的其他已建檔景點,依與 id 這筆的距離由近到遠(最多 5 筆,
+  // 見後端 handleGeoAttractionTagNeighbors)。供 AttractionInfoPanel 點擊標籤 chip 時查詢「周邊同標籤地點」。
+  // 後端只有登入版端點(/internal/geo/attractions/{id}/tag-neighbors),所以只有登入版實例實作;訪客版與假資料版
+  // 不實作,AttractionInfoPanel 據此不顯示可點擊的標籤。
+  attractionTagNeighbors?(id: string, tag: string): Promise<GeoAttractionTagNeighbor[]>
 }
 
 // requireGeoPlaceDetails、requirePhotoAssets——呼叫選填方法時的統一入口:實例沒有實作(例如假資料版)就回傳

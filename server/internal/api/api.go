@@ -1056,6 +1056,7 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("GET /internal/geo/attractions", s.handleGeoAttractions)
 	internalMux.HandleFunc("GET /internal/geo/attractions/nearby", s.handleGeoAttractionsNearby)
 	internalMux.HandleFunc("GET /internal/geo/attractions/nearby-only", s.handleGeoAttractionsOnlyNearby)
+	internalMux.HandleFunc("GET /internal/geo/attractions/{id}/tag-neighbors", s.handleGeoAttractionTagNeighbors)
 	internalMux.HandleFunc("GET /internal/geo/geocode", s.handleGeoGeocode)
 	internalMux.HandleFunc("GET /internal/geo/place-details", s.handleGeoPlaceDetails)
 	// GET /internal/geo/place-photo-assets:純讀 photo_assets,不觸發點擊
@@ -1124,6 +1125,7 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/field", s.handleMaintenanceAttractionUpdateField)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/place-id", s.handleMaintenanceAttractionUpdatePlaceID)
 	internalMux.HandleFunc("PATCH /internal/maintenance/attractions/{id}/theme", s.handleMaintenanceAttractionUpdateTheme)
+	internalMux.HandleFunc("PUT /internal/maintenance/attractions/{id}/tags", s.handleMaintenanceAttractionSetTags)
 	// 主題介紹頁/部落格文章管理端點(content_page.go)——只給 tripace-cli
 	// content-page 系列指令用,公開讀取在上面 mux 區塊的
 	// /v1/content-pages/{slug}。這組端點依請求是否標示 official 決定

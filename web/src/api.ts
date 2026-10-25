@@ -431,6 +431,8 @@ export interface GeoAttraction {
   // planning/conversation/tools.ts 的完整說明),前端可以用這個 id 呼叫
   // GET /internal/geo/plan-ai/attraction/{id} 取得完整資料,不需要中途攜帶
   // name/summary/photoUrl/placeId 這些欄位。
+  // 也用來判斷能不能查詢「周邊同標籤地點」(見
+  // fetchGeoAttractionTagNeighbors),沒有 id 就代表不是資料庫記錄,無從查起。
   id?: string
   name: string
   lat: number
@@ -481,6 +483,12 @@ export interface GeoAttraction {
   // 建檔的景點不會自動有分類。curatedCategoryOf 仍保留那張表當作這個
   // 欄位缺值時的過渡期 fallback,見該函式的完整說明。
   category?: string
+  // tags:人工建檔時標注的標籤(如「寺廟」「世界遺產」),用來查詢
+  // 「周邊同標籤地點」(見 fetchGeoAttractionTagNeighbors)。即時查
+  // Google Places 的路徑沒有這個欄位。
+  tags?: string[]
+  // cityName:所屬城市,同 tags 只有資料庫路徑才有值。
+  cityName?: string
 }
 
 // GeoHotel:地理輪廓底圖上疊加的飯店圖層單筆結果,對齊後端
@@ -667,6 +675,29 @@ export function fetchGeoAttractionsOnlyNearby(cfg: ClientConfig, lat: number, ln
     cfg,
     'GET',
     `/internal/geo/attractions/nearby-only?${params.toString()}`,
+  )
+}
+
+// GeoAttractionTagNeighbor:「周邊同標籤地點」單筆結果,對齊後端
+// handleGeoAttractionTagNeighbors 的回應(見 server/internal/api/geo_outline.go)
+// ——形狀就是 GeoAttraction(後端共用 attractionResponse,照片同樣走
+// placeId + place-details),id 一定有值(只查資料庫記錄),外加後端已算好、
+// 依距離排序的 distanceKm(公里,四捨五入到小數一位),前端不需要自己算
+// Haversine。
+export interface GeoAttractionTagNeighbor extends GeoAttraction {
+  id: string
+  distanceKm: number
+}
+
+// 對齊 server 的 GET /internal/geo/attractions/{id}/tag-neighbors
+// (handleGeoAttractionTagNeighbors)——查詢與 id 同城市、帶有指定標籤的
+// 其他地點,依距離由近到遠排序,最多回傳 5 筆(後端常數
+// maxTagNeighbors)。供 AttractionInfoPanel 點擊標籤時使用。
+export function fetchGeoAttractionTagNeighbors(cfg: ClientConfig, id: string, tag: string) {
+  return request<{ tag: string; attractions: GeoAttractionTagNeighbor[] }>(
+    cfg,
+    'GET',
+    `/internal/geo/attractions/${encodeURIComponent(id)}/tag-neighbors?tag=${encodeURIComponent(tag)}`,
   )
 }
 

@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"time"
 
@@ -323,13 +324,11 @@ func toAttractionResponses(in []geo.District) []attractionResponse {
 // 「最佳匹配」,對城市/觀光區/商圈這類口語化地名(不是門牌地址)常常
 // 直接查無結果或答非所問,且沒有候選清單可退——這是實際回報過的體驗
 // 問題(規劃分頁很容易找不到地點)。Places Text Search 偏向地標/商家/
-// 觀光區查詢,且能回傳多筆候選(見下方 maxGeoGeocodeCandidates),讓
-// 使用者自己從地圖上標出來的候選點裡挑對的那一個,不用完全依賴系統
-// 猜中「使用者說的到底是哪個地方」。entry_geocode.go 的
-// handleGeocodeEntry 是另一支獨立端點,查詢情境是「橋樑/道路」這類
-// Places Text Search 支援較弱的地理要素,不受這次變更影響,仍沿用
-// Geocoding API(見該檔案的說明)。
-//
+// 觀光區查詢,且能回傳多筆候選(見下方 maxCandidates),讓使用者自己
+// 從地圖上標出來的候選點裡挑對的那一個,不用完全依賴系統猜中「使用者
+// 說的到底是哪個地方」。entry_geocode.go 的 handleGeocodeEntry 是另一支
+// 獨立端點,查詢情境是「橋樑/道路」這類 Places Text Search 支援較弱的
+// 地理要素,不受這次變更影響,仍沿用 Geocoding API(見該檔案的說明)。
 // maxGeoGeocodeCandidates:對齊 geo.Client.Search 的官方硬性上限(見該
 // 函式的說明)——不是額外的節流,單純把後端請求到的候選筆數上限跟
 // Google 這支 API 本身能給到的上限拉齊,讓使用者能看到 Text Search
@@ -730,6 +729,83 @@ func (s *Server) handleGeoAttractionsOnlyNearby(w http.ResponseWriter, r *http.R
 	writeJSON(w, http.StatusOK, map[string]any{
 		"attractions": attractions,
 	})
+}
+
+// maxTagNeighbors 是 handleGeoAttractionTagNeighbors 回傳筆數上限——「顯示
+// 周邊相同標籤地點」是側欄快速瀏覽用的清單,不是完整搜尋結果,只需要
+// 依距離排序最近的幾筆(見 docs/TRIP_PLANNING_DESIGN_DISCUSSION.md 對
+// 這個功能範圍的既有設計討論:同城市內、依距離排序、只顯示前幾筆,
+// 避免地點過於分散時仍硬要塞一長串清單)。
+const maxTagNeighbors = 5
+
+// GET /internal/geo/attractions/{id}/tag-neighbors?tag={標籤}
+//
+// 供 AttractionInfoPanel「顯示周邊相同標籤地點」使用:查同一個城市底下
+// 帶有指定標籤的其他地點,依與目前地點的距離由近到遠排序,只回傳前
+// maxTagNeighbors 筆(見該常數說明)。回傳的地點不含 {id} 本身——這支
+// 端點的語意是「其他」帶相同標籤的地點,不是「所有」帶這個標籤的地點,
+// 呼叫端不需要自己再過濾掉當前這筆。
+//
+// tag 由查詢參數傳入(而非直接查詢 {id} 這筆地點的全部標籤、逐一各自
+// 回傳一批鄰居)——AttractionInfoPanel 一次只顯示使用者點擊的其中一個
+// 標籤徽章底下的周邊地點,由前端決定要查哪個標籤,不是由後端一次算好
+// 全部標籤各自的鄰居清單(那樣多數情況下是白算,使用者通常只會點開
+// 其中一兩個標籤看看)。
+func (s *Server) handleGeoAttractionTagNeighbors(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少地標 ID")
+		return
+	}
+	tag := r.URL.Query().Get("tag")
+	if tag == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少 tag 查詢參數")
+		return
+	}
+
+	origin, err := s.store.GetAttraction(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "not_found", "找不到這筆景點資料")
+		return
+	}
+
+	candidates, err := s.store.ListAttractionsByTagInCity(origin.CityName, tag)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+
+	// tagNeighborResponse:attractionResponse(見 geo_types.go,照片走
+	// placeId + place-details,不再有靜態照片欄位)再多一個 distanceKm
+	// ——後端已算好、依距離排序,前端不需要自己算 Haversine。
+	type tagNeighborResponse struct {
+		attractionResponse
+		DistanceKm float64 `json:"distanceKm"`
+	}
+	neighbors := make([]tagNeighborResponse, 0, len(candidates))
+	for _, c := range candidates {
+		if c.ID == id {
+			continue
+		}
+		neighbors = append(neighbors, tagNeighborResponse{
+			attractionResponse: toAttractionResponse(c),
+			// 距離沿用 geo_plan_ai.go 的 haversineMeters(與前端
+			// geoDistance.ts 同一套算法),不另外維護一份公里版本。
+			DistanceKm: haversineMeters(origin.Lat, origin.Lng, c.Lat, c.Lng) / 1000,
+		})
+	}
+	sort.Slice(neighbors, func(i, j int) bool { return neighbors[i].DistanceKm < neighbors[j].DistanceKm })
+	if len(neighbors) > maxTagNeighbors {
+		neighbors = neighbors[:maxTagNeighbors]
+	}
+	for i := range neighbors {
+		neighbors[i].DistanceKm = roundTo1Decimal(neighbors[i].DistanceKm)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tag": tag, "attractions": neighbors})
+}
+
+func roundTo1Decimal(v float64) float64 {
+	return math.Round(v*10) / 10
 }
 
 // placeDetailsResponse 是 GET /internal/geo/place-details 回應的單一地點

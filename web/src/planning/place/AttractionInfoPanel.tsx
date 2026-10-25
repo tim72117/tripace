@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import type { GeoAttraction, GeoPlaceDetails } from '../../api'
+import type { GeoAttraction, GeoAttractionTagNeighbor, GeoPlaceDetails } from '../../api'
 import { attractionBadges } from './infoContent'
 import { fetchPlaceDetailsCachedVia, getCachedPlaceDetails } from '../data/cache'
 import { requireGeoPlaceDetails, type PlanAiDataSource } from '../data/source'
@@ -223,6 +223,43 @@ export function AttractionInfoPanel({
     [nearby, activeCategoryFilter],
   )
 
+  // activeTag/tagNeighbors:點擊某個標籤 chip 後,查詢並顯示同城市、同標籤的其他已建檔景點(依距離排序,
+  // 見 PlanAiDataSource.attractionTagNeighbors)。只有資料庫路徑(有 id)且資料存取層實作了這個方法(目前只有
+  // 登入版)時才顯示可點擊的標籤;attraction 切換時重置,避免殘留上一筆地點的查詢結果。清單項目沿用
+  // 「附近景點」的 onSelectNearby/onHoverNearby(點擊開地點卡、hover 讓地圖上的圓點升級顯示),不另開一套互動。
+  const attractionId = attraction?.id
+  const canQueryTagNeighbors = !!attractionId && !!dataSource.attractionTagNeighbors
+  const [activeTag, setActiveTag] = useState<string | null>(null)
+  const [tagNeighbors, setTagNeighbors] = useState<GeoAttractionTagNeighbor[]>([])
+  const [tagNeighborsLoading, setTagNeighborsLoading] = useState(false)
+  useEffect(() => {
+    setActiveTag(null)
+    setTagNeighbors([])
+  }, [attractionId])
+  useEffect(() => {
+    if (!activeTag || !attractionId || !dataSource.attractionTagNeighbors) {
+      setTagNeighbors([])
+      setTagNeighborsLoading(false)
+      return
+    }
+    let cancelled = false
+    setTagNeighborsLoading(true)
+    dataSource
+      .attractionTagNeighbors(attractionId, activeTag)
+      .then((list) => {
+        if (!cancelled) setTagNeighbors(list)
+      })
+      .catch(() => {
+        if (!cancelled) setTagNeighbors([])
+      })
+      .finally(() => {
+        if (!cancelled) setTagNeighborsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [dataSource, attractionId, activeTag])
+
   if (!attraction) return null
   // 精簡模式(nearbyOnly,見該 prop 說明)沒有清單可顯示時整張卡不渲染。
   const hasNearby = !!nearby && nearby.length > 0
@@ -396,6 +433,44 @@ export function AttractionInfoPanel({
           <p className={styles.summary}>{attraction.summary}</p>
         ) : (
           <p className={styles.summaryEmpty}>這個地點還沒有簡介資料。</p>
+        )}
+        {canQueryTagNeighbors && attraction.tags && attraction.tags.length > 0 && (
+          <div className={styles.tagRow}>
+            {attraction.tags.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                aria-pressed={activeTag === tag}
+                className={`${styles.tagChip}${activeTag === tag ? ` ${styles.tagChipActive}` : ''}`}
+                onClick={() => setActiveTag((t) => (t === tag ? null : tag))}
+              >
+                #{tag}
+              </button>
+            ))}
+          </div>
+        )}
+        {activeTag && (
+          <div className={styles.tagNeighbors}>
+            {tagNeighborsLoading ? (
+              <p className={styles.tagNeighborsEmpty}>搜尋中…</p>
+            ) : tagNeighbors.length > 0 ? (
+              tagNeighbors.map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  className={styles.tagNeighborItem}
+                  onClick={() => onSelectNearby?.(n)}
+                  onMouseEnter={() => onHoverNearby?.(n)}
+                  onMouseLeave={() => onHoverNearby?.(null)}
+                >
+                  <span className={styles.tagNeighborName}>{n.name}</span>
+                  <span className={styles.tagNeighborDistance}>{n.distanceKm} 公里</span>
+                </button>
+              ))
+            ) : (
+              <p className={styles.tagNeighborsEmpty}>附近沒有其他「{activeTag}」地點。</p>
+            )}
+          </div>
         )}
         {nearbySection}
       </div>

@@ -133,6 +133,10 @@ GOWORK=off go run ./cmd/cli attraction set-place-id -id lmk_xxx -place "安平�
 # 設定/取消是否為主題點
 GOWORK=off go run ./cmd/cli attraction set-theme -id lmk_xxx -theme=true
 
+# 整組覆寫一筆景點的標籤(逗號分隔;-tags "" 清空)——前端景點介紹卡點標籤
+# 可查同城市、同標籤的周邊地點
+GOWORK=off go run ./cmd/cli attraction tag -id lmk_xxx -tags "寺廟,世界遺產"
+
 # 重新透過 Google Places 查詢一次地標照片並回寫(存進 photo_assets，不再
 # 寫回已移除的 attractions.photo_url 欄位)；-place-id 可覆寫查詢用的
 # place_id，-query 可覆寫查詢關鍵字

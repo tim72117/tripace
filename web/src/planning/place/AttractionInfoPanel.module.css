@@ -312,3 +312,94 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* tagRow/tagChip(.tagChipActive):地點的標籤清單,點擊可切換「周邊同
+   標籤地點」查詢(見 AttractionInfoPanel.tsx 的 activeTag)——視覺上跟
+   .badge 區隔開(badge 是唯讀的中繼資料,tagChip 是可點擊的互動元素),
+   用主要互動色 --ios-blue 表示可互動、選中態用實心底色標示目前查詢中的標籤。 */
+.tagRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+}
+
+.tagChip {
+  padding: 3px 10px;
+  border: 1px solid var(--ios-blue);
+  border-radius: 10px;
+  background: none;
+  color: var(--ios-blue);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.tagChip:hover {
+  background: color-mix(in srgb, var(--ios-blue) 12%, transparent);
+}
+
+.tagChipActive,
+.tagChipActive:hover {
+  background: var(--ios-blue);
+  color: var(--ios-card);
+}
+
+/* tagNeighbors/tagNeighborItem/tagNeighborName/tagNeighborDistance/
+   tagNeighborsEmpty:點擊 tagChip 後展開的「周邊同標籤地點」清單(見
+   PlanAiDataSource.attractionTagNeighbors),依距離由近到遠——後端已排序
+   好,前端不需要再排一次。點擊/hover 沿用「附近景點」的互動(見
+   AttractionInfoPanel.tsx 的說明)。 */
+.tagNeighbors {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0 0;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--ios-bg);
+}
+
+.tagNeighborItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-dark);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.tagNeighborItem:hover {
+  background: color-mix(in srgb, var(--ios-blue) 10%, transparent);
+}
+
+.tagNeighborName {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tagNeighborDistance {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ios-blue);
+  font-variant-numeric: tabular-nums;
+}
+
+.tagNeighborsEmpty {
+  margin: 0;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--ios-gray);
+}

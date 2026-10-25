@@ -502,6 +502,33 @@ func (s *Server) handleMaintenanceAttractionUpdateTheme(w http.ResponseWriter, r
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "isTheme": in.IsTheme})
 }
 
+// PUT /internal/maintenance/attractions/{id}/tags
+// Body: {"tags": ["寺廟", "世界遺產"]}
+//
+// 供 tripace-cli 的 attraction tag 指令設定一筆景點區域的完整標籤集合
+// (見 store.SetAttractionTags 的說明)——PUT(覆蓋整個集合)而非 POST
+// (逐一新增)或 PATCH(局部調整),對齊呼叫端每次都傳入「這筆地點現在
+// 該有的完整標籤清單」的語意,不是增量操作。tags 未帶或為空陣列時視為
+// 清空該地點的所有標籤,不視為錯誤輸入。
+func (s *Server) handleMaintenanceAttractionSetTags(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "缺少景點 ID")
+		return
+	}
+	var in struct {
+		Tags []string `json:"tags"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := s.store.SetAttractionTags(id, in.Tags); err != nil {
+		writeErr(w, http.StatusInternalServerError, "update_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "tags": in.Tags})
+}
+
 // requireRateLimitAdmin——限流設定的管理權限檢查。
 //
 // 2026-10（review 發現）：這兩支端點原本只靠 internalMux 的 internalAuth
