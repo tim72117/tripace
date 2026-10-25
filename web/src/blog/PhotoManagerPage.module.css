@@ -98,7 +98,12 @@
    變化,搭配 .thumbImage 的 object-fit: contain。 */
 .thumbWrap {
   position: relative;
+  /* 站位:圖片尚未載入/載入失敗時外框也要有固定高度,否則整個 grid 會在
+     圖片陸續載入時跳動。有 width/height 時由 inline aspect-ratio 覆寫成
+     原圖比例,沒有時退回 4:3;max-height 仍限制極端長寬比。 */
+  aspect-ratio: 4 / 3;
   max-height: 280px;
+  overflow: hidden;
   background: var(--ios-sep);
   display: flex;
   align-items: center;
@@ -106,6 +111,7 @@
 }
 .thumbImage {
   width: 100%;
+  height: 100%;
   max-height: 280px;
   object-fit: contain;
   display: block;

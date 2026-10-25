@@ -8,6 +8,7 @@ import { PlanDataProvider } from '../planning/data/PlanDataProvider'
 import { publicDataSource, useResolvedItineraryTimeline } from './useResolvedItineraryTimeline'
 import { Lightbox } from '../planning/place/PhotoCarousel'
 import { SiteNavBrand } from '../home/SiteNavButtons'
+import { SkeletonMask } from '../components/Skeleton'
 import { dayCountOf, findItinerary, isSampleItineraryShape, stopCountOf } from './catalog'
 import { AiItineraryDetailPageMapView } from './AiItineraryDetailPageMapView'
 import { renderAnchorIcon } from './renderAnchorIcon'
@@ -119,14 +120,26 @@ function AiItineraryDetailPageContent({ items, id, dark = false }: { items: Samp
   // 整份行程,不需要這個機制做任何事,給一個永遠空的 ref 即可。
   const mountedIdsRef = useRef<Set<string>>(new Set())
 
+  // 載入中(只有 API 才有、沒有靜態版本的行程):用 SkeletonMask 包住跟一般版面同一份
+  // 標頭 JSX(ItineraryHeader,標題/meta/標籤/簡介),佔位文字撐出相近高度,遮罩只改
+  // 顏色不改盒模型,資料到了直接換成真內容,不再是一行置中的「載入中...」之後整頁長出
+  // 標頭。走地圖版面(mapStyle)的行程資料到了會換成整頁地圖,那是版面類型本身的切換,
+  // 骨架只能先對齊一般版面。<main> 不加 aria-busy:會壓住 SkeletonMask 自己 role="status"
+  // 的通知(見 Skeleton.tsx SkeletonMask 說明)。
   if (!itinerary && apiState.kind === 'loading') {
     return (
       <main className={styles.page}>
         <SiteNavBrand pageLabel="精選行程" />
         <Link to="/itineraries" className={styles.back}><ArrowLeft size={14} strokeWidth={2} />所有範例行程</Link>
-        <div className={styles.notFound}>
-          <p className={styles.notFoundTitle}>載入中...</p>
-        </div>
+        <SkeletonMask loading label="行程載入中">
+          <ItineraryHeader
+            title="行程標題載入中"
+            region="地區名稱"
+            stats="0 天 · 0 站"
+            tags={['類型', '類型']}
+            summary="行程簡介載入中,這段文字只用來撐出跟真實簡介相近的高度,不會被看見。這段文字只用來撐出跟真實簡介相近的高度,不會被看見。"
+          />
+        </SkeletonMask>
       </main>
     )
   }
@@ -182,17 +195,13 @@ function AiItineraryDetailPageContent({ items, id, dark = false }: { items: Samp
     <main className={styles.page}>
       {headBrand}
       <Link to="/itineraries" className={styles.back}><ArrowLeft size={14} strokeWidth={2} />所有範例行程</Link>
-      <header className={styles.header}>
-        <h1 className={styles.title}>{itinerary.title}</h1>
-        <div className={styles.meta}>
-          <span className={styles.metaItem}><MapPin size={13} strokeWidth={2} />{itinerary.region}</span>
-          <span className={styles.metaItem}><CalendarDays size={13} strokeWidth={2} />{dayCountOf(itinerary)} 天 · {stopCountOf(itinerary)} 站</span>
-        </div>
-        <div className={styles.tags}>
-          {itinerary.categories.map((c) => <span key={c} className={styles.tag}>{c}</span>)}
-        </div>
-        <p className={styles.summary}>{itinerary.summary}</p>
-      </header>
+      <ItineraryHeader
+        title={itinerary.title}
+        region={itinerary.region}
+        stats={`${dayCountOf(itinerary)} 天 · ${stopCountOf(itinerary)} 站`}
+        tags={itinerary.categories}
+        summary={itinerary.summary}
+      />
       <PlanTimelineView
         timeline={timeline}
         isThinking={false}
@@ -210,5 +219,30 @@ function AiItineraryDetailPageContent({ items, id, dark = false }: { items: Samp
       />
       {lightbox && <Lightbox photos={lightbox.photos} alt={lightbox.alt} onClose={() => setLightbox(null)} />}
     </main>
+  )
+}
+
+// ItineraryHeader——一般版面的標頭(標題/meta/標籤/簡介),真內容與載入中骨架共用同一份
+// JSX,外框尺寸因此一致。meta 文字各包一層 <span>,讓 SkeletonMask 遮罩時呈現長條而
+// 不是只剩圖示色塊(對真內容排版沒有影響)。
+function ItineraryHeader({ title, region, stats, tags, summary }: {
+  title: string
+  region: string
+  stats: string
+  tags: string[]
+  summary: string
+}) {
+  return (
+    <header className={styles.header}>
+      <h1 className={styles.title}>{title}</h1>
+      <div className={styles.meta}>
+        <span className={styles.metaItem}><MapPin size={13} strokeWidth={2} /><span>{region}</span></span>
+        <span className={styles.metaItem}><CalendarDays size={13} strokeWidth={2} /><span>{stats}</span></span>
+      </div>
+      <div className={styles.tags}>
+        {tags.map((c, i) => <span key={`${c}-${i}`} className={styles.tag}>{c}</span>)}
+      </div>
+      <p className={styles.summary}>{summary}</p>
+    </header>
   )
 }

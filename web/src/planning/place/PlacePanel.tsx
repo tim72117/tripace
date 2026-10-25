@@ -5,6 +5,8 @@ import { candidateHasScheduledDate } from './candidateHelpers'
 import { DatePickerPopover } from './DatePickerPopover'
 import { PhotoCarousel } from './PhotoCarousel'
 import { DesktopInfoCard } from './DesktopInfoCard'
+import { reservesLateTextSlots } from './infoContent'
+import { BadgeSkeleton, SummarySkeleton } from './LateTextSkeleton'
 import styles from './PlacePanel.module.css'
 
 // PlacePanel:一張浮動卡片,絕對定位疊在地圖上方,貼齊主顯示區右緣
@@ -40,12 +42,12 @@ export interface PlaceInfoContent {
   // placeId:2026-08 起,推薦地點(GeoPlace)不再帶 eager photoUrl(後端
   // 照片查詢改成背景預熱快取,見 server 端 handleGeoPlacesNearby 的
   // 說明),故這張卡片開啟時若 photoUrl 未知、但有 placeId,呼叫端
-  // (usePlanningState.ts 的 infoContentPhotoFetch effect)會另外呼叫
+  // (usePlanningState.ts 的 placePhotoFetch effect)會另外呼叫
   // fetchGeoPlacePhoto 補查、查到後用 PATCH_INFO_CONTENT 補上——這個
   // 元件本身不主動發起查詢(維持純展示,理由同其餘 PlaceInfoContent 欄位
   // 的設計),只是要保留這個欄位讓呼叫端知道「這張卡片有沒有東西可補查」。
-  // geocode(搜尋結果)本身已經有另一套獨立的文字/照片補查流程(見
-  // planning/member/useMapState.ts 的 selectedCandidate effect),不依賴這個欄位。
+  // 2026-10 起照片與文字一樣由卡片內容驅動(見下方 photoStatus/textStatus),
+  // useMapState.ts 不再另外依 selectedCandidate 補查照片。
   placeId?: string
   googlePhotoUrls?: string[]
   subtitle?: string
@@ -66,6 +68,26 @@ export interface PlaceInfoContent {
   // 介紹為輔的情境,是純 attraction 介紹本身)。
   attractionSummary?: string
   badges: string[]
+  // textStatus:Google 地點文字(簡介、評分)查詢的進度——開卡時只有名稱與
+  // 地址、文字要等 place-text 查詢回來才補上的來源(searchResultInfoContent/
+  // candidateInfoContent 裡有 placeId 的 place,見 infoContent.ts)一開始是
+  // 'pending',由 planning/member/usePlanningState.ts 的 placeTextFetch
+  // effect 發起查詢:成功補上文字並清成 undefined,失敗設成 'failed'。
+  // undefined 代表文字已經是最終結果(查完了,或這個來源本來就同步帶齊/
+  // 不查文字)——此時 summary 空白才是真的「還沒有簡介資料」。卡片
+  // (PlacePanel/PlanPhoneInfoSheet)在 'pending' 時把簡介與徽章列換成骨架,
+  // 'failed' 時顯示「簡介載入失敗。」。
+  textStatus?: 'pending' | 'failed'
+  // photoStatus:照片查詢的進度,語意對齊 textStatus(單一欄位,避免「查詢中」
+  // 「失敗」「確定沒照片」出現不可能的組合)——
+  //   'pending':有 placeId、開卡時還沒有照片,usePlanningState.ts 的
+  //     placePhotoFetch effect 會去查(searchResultInfoContent/candidateInfoContent
+  //     的 place、attractionToInfoContent 有 placeId 時)。PhotoCarousel 掃光。
+  //   'none':查完了,這個地點沒有照片。'failed':查詢失敗。兩者都是靜態佔位。
+  //   undefined:照片已是最終結果(同步帶齊,或這個來源根本沒有東西可查:行程
+  //     entry、geocode、沒有 placeId、資料存取層沒有 placePhoto)。沒有照片時同樣
+  //     是靜態佔位,不掃光。
+  photoStatus?: 'pending' | 'failed' | 'none'
   // candidate:這張卡片對應的候選籃項目——由呼叫端(planning/member/desktop/Content.tsx)
   // 在兩個觸發來源(側欄「地點」清單點擊/點擊地圖上 Google 原生 POI
   // 圖標)各自組好傳入,這個元件不需要知道資料原始形狀差異,只負責在
@@ -226,6 +248,11 @@ export function PlacePanel({
   if (!content) return null
 
   const candidate = content.candidate
+  const reserveTextSlots = reservesLateTextSlots(content)
+  const textPending = content.textStatus === 'pending'
+  // 文字查詢中也要保留三行高度(骨架高度 = 三行),即使來源不符合
+  // reservesLateTextSlots(實務上 pending 一定有 placeId,這裡只是保險)。
+  const reservedClass = reserveTextSlots || textPending ? ` ${styles.summaryReserved}` : ''
 
   // handleAddClick:「加入 {tripName}」按下時的三路分岔——候選已有排定
   // 日期(candidateHasScheduledDate)直接呼叫 onAddCandidate,維持既有行為;
@@ -268,22 +295,35 @@ export function PlacePanel({
           googlePhotoUrls={content.googlePhotoUrls}
           fallbackUrl={content.photoUrl}
           alt={content.name}
+          photoStatus={content.photoStatus}
         />
       </div>
       <div className={styles.content}>
         <h2 className={styles.name}>{content.name}</h2>
         {content.subtitle && <span className={styles.landmarkName}>{content.subtitle}</span>}
-        {content.badges.length > 0 && (
+        {/* 徽章列/簡介預留空間:見 reservesLateTextSlots 的說明——評分、簡介
+            晚到的地點先保留徽章列高度與簡介三行高度,資料補上時不推擠下方
+            的「加入行程」按鈕組。 */}
+        {(content.badges.length > 0 || reserveTextSlots || textPending) && (
           <div className={styles.metaRow}>
+            {textPending && content.badges.length === 0 && <BadgeSkeleton />}
             {content.badges.map((b) => (
               <span key={b} className={styles.badge}>{b}</span>
             ))}
           </div>
         )}
+        {/* 簡介三態:文字查詢中(textPending)顯示骨架;查完有簡介顯示簡介;
+            查詢失敗顯示「簡介載入失敗。」;查完但真的沒有簡介才顯示「還沒有
+            簡介資料」。四者共用同一組外框 class(summaryReserved 三行高),
+            切換時下方按鈕組不跳動。 */}
         {content.summary ? (
-          <p className={styles.summary}>{content.summary}</p>
+          <p className={`${styles.summary}${reservedClass}`}>{content.summary}</p>
+        ) : textPending ? (
+          <SummarySkeleton className={`${styles.summaryEmpty}${reservedClass}`} />
         ) : (
-          <p className={styles.summaryEmpty}>這個地點還沒有簡介資料。</p>
+          <p className={`${styles.summaryEmpty}${reservedClass}`}>
+            {content.textStatus === 'failed' ? '簡介載入失敗。' : '這個地點還沒有簡介資料。'}
+          </p>
         )}
         {/* attractionIntro:見 PlaceInfoContent.attractionSummary 的完整
             說明——只有這個地點同時也是人工建檔的景點區域時才會有值,獨立

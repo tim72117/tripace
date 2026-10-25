@@ -12,6 +12,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AskPage } from './AskPage'
+import styles from './AskPage.module.css'
 import type { PlanAiDataSource } from '../data/source'
 
 function makeDataSource(overrides: Partial<PlanAiDataSource> = {}): PlanAiDataSource {
@@ -121,7 +122,7 @@ describe('AskPage explore 模式', () => {
         onDone={() => {}}
       />,
     )
-    await waitFor(() => expect(screen.getByText('不用了')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: '不用了' })).toBeInTheDocument())
   })
 
   it('searchNearby 查詢失敗時,降級成空候選,不報錯', async () => {
@@ -134,7 +135,7 @@ describe('AskPage explore 模式', () => {
         onDone={() => {}}
       />,
     )
-    await waitFor(() => expect(screen.getByText('不用了')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: '不用了' })).toBeInTheDocument())
   })
 })
 
@@ -143,7 +144,7 @@ describe('AskPage text 模式', () => {
     const dataSource = makeDataSource()
     render(<AskPage dataSource={dataSource} input={{ text: '要不要先安排午餐?' }} onDone={() => {}} />)
     expect(screen.getByText('要不要先安排午餐?')).toBeInTheDocument()
-    expect(screen.queryByText('不用了')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '不用了' })).not.toBeInTheDocument()
     expect(screen.queryByText('確認選擇')).not.toBeInTheDocument()
   })
 
@@ -219,7 +220,7 @@ describe('AskPage country 模式(ask_travel_country)', () => {
     render(
       <AskPage dataSource={dataSource} input={{ country: {} }} onDone={onDone} />,
     )
-    await user.click(screen.getByText('不用了'))
+    await user.click(screen.getByRole('button', { name: '不用了' }))
     expect(onDone).toHaveBeenCalledWith([])
   })
 })
@@ -277,7 +278,7 @@ describe('AskPage city 模式(ask_travel_city)', () => {
         onBack={() => {}}
       />,
     )
-    expect(screen.queryByText('返回上一層')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '返回上一層' })).not.toBeInTheDocument()
   })
 
   it('有 back(前端自動從國家層串接而來)但沒有傳 onBack prop 時,也不顯示「返回上一層」', () => {
@@ -289,7 +290,7 @@ describe('AskPage city 模式(ask_travel_city)', () => {
         onDone={() => {}}
       />,
     )
-    expect(screen.queryByText('返回上一層')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '返回上一層' })).not.toBeInTheDocument()
   })
 
   it('有 back 且有 onBack prop 時顯示「返回上一層」,點擊時用 back.countryIds 呼叫 onBack,不呼叫 onDone', async () => {
@@ -305,9 +306,32 @@ describe('AskPage city 模式(ask_travel_city)', () => {
         onBack={onBack}
       />,
     )
-    await user.click(screen.getByText('返回上一層'))
+    await user.click(screen.getByRole('button', { name: '返回上一層' }))
     expect(onBack).toHaveBeenCalledWith(['japan', 'korea'])
     expect(onDone).not.toHaveBeenCalled()
+  })
+
+  it('返回是氣泡左上角的圖示鈕(在標題之前、不在操作列),關閉是右上角圖示鈕(在標題之後),標題左右留空;沒有操作列', () => {
+    const dataSource = makeDataSource()
+    const { container } = render(
+      <AskPage
+        dataSource={dataSource}
+        input={{ city: { countryId: 'japan', back: {} } }}
+        onDone={() => {}}
+        onBack={() => {}}
+      />,
+    )
+    const btn = screen.getByRole('button', { name: '返回上一層' })
+    expect(btn.className).toBe(styles.backBtn)
+    expect(btn.textContent).toBe('')
+    expect(btn.nextElementSibling?.tagName).toBe('P')
+    expect(btn.nextElementSibling?.className).toContain(styles.questionWithControls)
+    const close = screen.getByRole('button', { name: '不用了' })
+    expect(close.className).toBe(styles.closeBtn)
+    expect(close.textContent).toBe('')
+    expect(btn.nextElementSibling?.nextElementSibling).toBe(close)
+    expect(container.querySelector(`.${styles.actions}`)).toBeNull()
+    expect(screen.queryByText('不用了')).toBeNull()
   })
 
   it('back 的 countryIds 本身是 undefined(選國家時沒有篩選過)時,onBack 收到 undefined', async () => {
@@ -322,7 +346,7 @@ describe('AskPage city 模式(ask_travel_city)', () => {
         onBack={onBack}
       />,
     )
-    await user.click(screen.getByText('返回上一層'))
+    await user.click(screen.getByRole('button', { name: '返回上一層' }))
     expect(onBack).toHaveBeenCalledWith(undefined)
   })
 
@@ -337,7 +361,7 @@ describe('AskPage city 模式(ask_travel_city)', () => {
         onDone={onDone}
       />,
     )
-    await user.click(screen.getByText('不用了'))
+    await user.click(screen.getByRole('button', { name: '不用了' }))
     expect(onDone).toHaveBeenCalledWith([])
   })
 })
@@ -370,7 +394,7 @@ describe('AskPage transport 模式(ask_transport_mode)', () => {
     const dataSource = makeDataSource()
     const onDone = vi.fn()
     render(<AskPage dataSource={dataSource} input={{ transport: ['walk'] }} onDone={onDone} />)
-    await user.click(screen.getByText('不用了'))
+    await user.click(screen.getByRole('button', { name: '不用了' }))
     expect(onDone).toHaveBeenCalledWith([])
   })
 })
@@ -465,5 +489,199 @@ describe('AskPage reason 欄位(取代各面板標題)', () => {
     const dataSource = makeDataSource()
     render(<AskPage dataSource={dataSource} input={{ transport: ['walk'] }} onDone={() => {}} />)
     expect(screen.getByText('這段要怎麼移動?')).toBeInTheDocument()
+  })
+})
+
+// 2026-10:操作列的「不用了」文字鈕改成氣泡右上角的關閉圖示鈕(AskShell 的 onClose),aria-label/title 沿用「不用了」,
+// 點擊同樣以空陣列結束詢問頁。以下逐一確認四個面板:右上角有關閉鈕、操作列不再有「不用了」文字、點關閉呼叫 onDone([])。
+describe('AskPage 右上角關閉鈕(取代操作列的「不用了」)', () => {
+  function closeBtn() {
+    return screen.getByRole('button', { name: '不用了' })
+  }
+  function expectCornerClose(container: HTMLElement) {
+    const btn = closeBtn()
+    expect(btn.className).toBe(styles.closeBtn)
+    expect(btn.getAttribute('title')).toBe('不用了')
+    expect(btn.textContent).toBe('')
+    // 標題之後;標題左右對稱留空
+    expect(btn.previousElementSibling?.tagName).toBe('P')
+    expect(btn.previousElementSibling?.className).toContain(styles.questionWithControls)
+    // 操作列(若有)裡沒有「不用了」文字鈕
+    const actions = container.querySelector(`.${styles.actions}`)
+    if (actions) expect(actions.textContent).not.toContain('不用了')
+    expect(screen.queryByText('不用了')).toBeNull()
+  }
+
+  it('國家頁:只有關閉鈕(沒有返回),標題仍左右留空;沒有操作列;點關閉 onDone([])', async () => {
+    const user = userEvent.setup()
+    const onDone = vi.fn()
+    const { container } = render(<AskPage dataSource={makeDataSource()} input={{ country: {} }} onDone={onDone} />)
+    expectCornerClose(container)
+    expect(screen.queryByRole('button', { name: '返回上一層' })).toBeNull()
+    expect(container.querySelector(`.${styles.actions}`)).toBeNull()
+    await user.click(closeBtn())
+    expect(onDone).toHaveBeenCalledTimes(1)
+    expect(onDone).toHaveBeenCalledWith([])
+  })
+
+  it('城市頁(有 back + onBack):同時有返回與關閉,各自觸發各自的 callback', async () => {
+    const user = userEvent.setup()
+    const onDone = vi.fn()
+    const onBack = vi.fn()
+    const { container } = render(
+      <AskPage dataSource={makeDataSource()} input={{ city: { countryId: 'japan', back: {} } }} onDone={onDone} onBack={onBack} />,
+    )
+    expectCornerClose(container)
+    await user.click(screen.getByRole('button', { name: '返回上一層' }))
+    expect(onBack).toHaveBeenCalledTimes(1)
+    expect(onDone).not.toHaveBeenCalled()
+    await user.click(closeBtn())
+    expect(onDone).toHaveBeenCalledWith([])
+    expect(onBack).toHaveBeenCalledTimes(1)
+  })
+
+  it('交通頁:關閉鈕;沒有操作列;點關閉 onDone([])', async () => {
+    const user = userEvent.setup()
+    const onDone = vi.fn()
+    const { container } = render(<AskPage dataSource={makeDataSource()} input={{ transport: ['walk', 'car'] }} onDone={onDone} />)
+    expectCornerClose(container)
+    expect(container.querySelector(`.${styles.actions}`)).toBeNull()
+    await user.click(closeBtn())
+    expect(onDone).toHaveBeenCalledWith([])
+  })
+
+  // 2026-10:「我要直接說明」按鈕與展開的說明面板已移除,改由下方輸入匡直接說明(見 planning/panel/composerMode.ts)。
+  it('景點候選頁:關閉鈕;操作列只剩「確認選擇」(沒有「我要直接說明」);點關閉 onDone([])(即使已勾選)', async () => {
+    const user = userEvent.setup()
+    const onDone = vi.fn()
+    const { container } = render(
+      <AskPage dataSource={makeDataSource()} input={{ candidates: [{ placeId: 'p1', name: '赤崁樓' }] }} onDone={onDone} />,
+    )
+    expectCornerClose(container)
+    const actions = container.querySelector(`.${styles.actions}`)!
+    expect(Array.from(actions.querySelectorAll('button')).map((b) => b.textContent)).toEqual(['確認選擇'])
+    expect(screen.queryByRole('button', { name: '我要直接說明' })).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
+    await user.click(await screen.findByRole('button', { name: /赤崁樓/ }))
+    await user.click(closeBtn())
+    expect(onDone).toHaveBeenCalledWith([])
+  })
+
+  it('景點查詢中(explore 查詢中):沿用既有行為,沒有關閉鈕也沒有操作列', () => {
+    const searchNearby = vi.fn(() => new Promise<never>(() => {}))
+    const { container } = render(
+      <AskPage dataSource={makeDataSource({ searchNearby })} input={{ explore: { destination: '台南' } }} onDone={() => {}} />,
+    )
+    // 標題(role=status)+ 骨架區(SkeletonRegion,role=status)。
+    expect(screen.getAllByRole('status').length).toBe(2)
+    expect(screen.queryByRole('button', { name: '不用了' })).toBeNull()
+    expect(container.querySelector(`.${styles.actions}`)).toBeNull()
+  })
+
+  it('選完城市的景點查詢中({ loading: true }):右上角有關閉鈕(不用了),點了以空陣列結束;沒有操作列', async () => {
+    const user = userEvent.setup()
+    const onDone = vi.fn()
+    const { container } = render(
+      <AskPage dataSource={makeDataSource()} input={{ candidates: [], reason: '正在查詢台南的景點…', loading: true }} onDone={onDone} />,
+    )
+    expectCornerClose(container)
+    expect(container.querySelector(`.${styles.actions}`)).toBeNull()
+    await user.click(closeBtn())
+    expect(onDone).toHaveBeenCalledWith([])
+  })
+
+  it('景點查詢中的骨架卡用共用 Skeleton(SkeletonRegion + 3 塊 SkeletonBlock,140px、10/7、圓角 12px)', () => {
+    const { container } = render(
+      <AskPage dataSource={makeDataSource()} input={{ candidates: [], reason: '正在查詢台南的景點…', loading: true }} onDone={() => {}} />,
+    )
+    const region = screen.getByRole('status', { name: '景點查詢中' })
+    expect(region.getAttribute('data-skeleton')).toBe('region')
+    expect(region.className).toContain(styles.directionScroller)
+    const blocks = container.querySelectorAll('[data-skeleton="block"]')
+    expect(blocks.length).toBe(3)
+    for (const b of blocks) {
+      const el = b as HTMLElement
+      expect(el.style.width).toBe('140px')
+      expect(el.style.aspectRatio).toBe('10 / 7')
+      expect(el.style.borderRadius).toBe('12px')
+      expect(el.className).toContain(styles.skeletonCard)
+    }
+  })
+
+  it('純文字氣泡的 .messageCloseBtn 不受影響(仍是 title「關閉」的小關閉鈕)', () => {
+    render(<AskPage dataSource={makeDataSource()} input={{ text: 'hi' }} onDone={() => {}} />)
+    expect(screen.getByTitle('關閉').className).toBe(styles.messageCloseBtn)
+    expect(screen.queryByRole('button', { name: '不用了' })).toBeNull()
+  })
+})
+
+// 2026-10:景點候選頁(含查詢中)由城市頁選完城市進來時,input 帶 back(要回去的城市頁 input,只有前端
+// useAskPageFlow 會設),左上角顯示與城市頁一致的「返回上一層」圖示鈕;LLM 直接開的候選頁、探查模式沒有 back,不顯示。
+describe('AskPage 景點候選頁的返回上一層(back)', () => {
+  const BACK = { city: { countryId: 'taiwan', back: {} } }
+
+  it('candidates 帶 back 且有 onBack:左上角返回鈕(在標題之前),點了呼叫 onBack 不呼叫 onDone;關閉鈕並存', async () => {
+    const user = userEvent.setup()
+    const onDone = vi.fn()
+    const onBack = vi.fn()
+    render(
+      <AskPage
+        dataSource={makeDataSource()}
+        input={{ candidates: [{ placeId: 'p1', name: '赤崁樓' }], reason: '選擇感興趣的景點', back: BACK }}
+        onDone={onDone}
+        onBack={onBack}
+      />,
+    )
+    const btn = screen.getByRole('button', { name: '返回上一層' })
+    expect(btn.className).toBe(styles.backBtn)
+    expect(btn.nextElementSibling?.tagName).toBe('P')
+    expect(btn.nextElementSibling?.className).toContain(styles.questionWithControls)
+    expect(screen.getByRole('button', { name: '不用了' }).className).toBe(styles.closeBtn)
+    await user.click(btn)
+    expect(onBack).toHaveBeenCalledTimes(1)
+    expect(onDone).not.toHaveBeenCalled()
+  })
+
+  it('查詢中({ loading: true })帶 back:返回鈕與關閉鈕左右並存', async () => {
+    const user = userEvent.setup()
+    const onDone = vi.fn()
+    const onBack = vi.fn()
+    render(
+      <AskPage
+        dataSource={makeDataSource()}
+        input={{ candidates: [], reason: '正在查詢台南的景點…', loading: true, back: BACK }}
+        onDone={onDone}
+        onBack={onBack}
+      />,
+    )
+    const back = screen.getByRole('button', { name: '返回上一層' })
+    const close = screen.getByRole('button', { name: '不用了' })
+    expect(back.nextElementSibling?.nextElementSibling).toBe(close)
+    await user.click(back)
+    expect(onBack).toHaveBeenCalledTimes(1)
+    expect(onDone).not.toHaveBeenCalled()
+  })
+
+  it('candidates 沒有 back(LLM 直接 open_ask_page):不顯示返回鈕', () => {
+    render(
+      <AskPage dataSource={makeDataSource()} input={{ candidates: [{ placeId: 'p1', name: '赤崁樓' }] }} onDone={() => {}} onBack={() => {}} />,
+    )
+    expect(screen.queryByRole('button', { name: '返回上一層' })).toBeNull()
+  })
+
+  it('帶 back 但沒傳 onBack:不顯示返回鈕', () => {
+    render(
+      <AskPage dataSource={makeDataSource()} input={{ candidates: [{ placeId: 'p1', name: '赤崁樓' }], back: BACK }} onDone={() => {}} />,
+    )
+    expect(screen.queryByRole('button', { name: '返回上一層' })).toBeNull()
+  })
+
+  it('explore:不顯示返回鈕(查完後也沒有)', async () => {
+    const searchNearby = vi.fn().mockResolvedValue({ found: true, candidates: [{ placeId: 'p1', name: '赤崁樓' }] })
+    render(
+      <AskPage dataSource={makeDataSource({ searchNearby })} input={{ explore: { destination: '台南' } }} onDone={() => {}} onBack={() => {}} />,
+    )
+    await waitFor(() => expect(screen.getByRole('button', { name: /赤崁樓/ })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: '返回上一層' })).toBeNull()
   })
 })

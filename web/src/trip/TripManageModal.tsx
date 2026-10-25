@@ -206,14 +206,14 @@ function ShareSection({
               {copied ? '✅ 已複製' : '複製連結'}
             </Button>
           </div>
-          {qrDataURL && (
-            <>
-              <div className="section-title">QR Code</div>
-              <div className={styles.qrBox}>
-                <img src={qrDataURL} alt="分享連結 QR Code" className={styles.qrImage} />
-              </div>
-            </>
-          )}
+          <div className="section-title">QR Code</div>
+          <div className={styles.qrBox}>
+            {qrDataURL ? (
+              <img src={qrDataURL} alt="分享連結 QR Code" className={styles.qrImage} />
+            ) : (
+              <div className={styles.qrImage} data-testid="qr-placeholder" aria-hidden="true" />
+            )}
+          </div>
           {isOwner && (
             <>
               <div className={styles.toggleRow}>

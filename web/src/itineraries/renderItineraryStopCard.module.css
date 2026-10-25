@@ -97,14 +97,18 @@
   line-height: 1;
   background: var(--ios-bg);
 }
-.stopThumbImg {
-  width: 100%;
+/* thumbFrame——共用 FramedImage 的外框,絕對定位鋪滿 .stopThumb(圖片不參與排版:
+   直式照片曾用自己的比例把卡片撐高 164px→172px)。用 .stopThumb > .thumbFrame 提高
+   權重,蓋過 FramedImage 自己 .frame 的 position:relative,不依賴 CSS 載入順序。
+   載入中掃光/淡入/失敗佔位與 reduced-motion 都由 FramedImage 處理。 */
+.stopThumb > .thumbFrame {
+  position: absolute;
+  inset: 0;
   height: 100%;
-  object-fit: cover;
-  display: block;
 }
 .stopThumbPhotoBtn {
-  position: relative;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   padding: 0;
@@ -127,20 +131,6 @@
   line-height: 18px;
   text-align: center;
   font-variant-numeric: tabular-nums;
-}
-
-.thumbSpinner {
-  width: 20px;
-  height: 20px;
-  border-radius: 999px;
-  border: 2px solid var(--ios-sep);
-  border-top-color: var(--ios-sand);
-  animation: itineraryThumbSpin 0.8s linear infinite;
-}
-@keyframes itineraryThumbSpin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .stopBody {

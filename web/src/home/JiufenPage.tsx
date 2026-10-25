@@ -10,6 +10,7 @@ import { trackEvent } from '../analytics';
 import { SITE_SEO_BASE_URL } from '../AppCommon';
 import './JiufenPage.css';
 import './ScrollTimelineContainer.css';
+import type { PhotoSize } from './cityPageTypes'
 
 // SEO_TITLE/SEO_DESCRIPTION/SEO_URL:這個頁面專屬的文案。
 // 2026-10 修正(兩輪):description/canonical/og:*/twitter:* 這幾個標籤
@@ -84,6 +85,7 @@ const STOPS = [
     name: '基隆山與大肚美人山',
     desc: '第三紀砂頁岩夾雜金瓜石礦脈，山勢陡峭、腹地狹小——這個地形限制決定了聚落只能沿等高線層疊而建，而不是像平地城鎮那樣棋盤式展開。所有後面的敘事都源自這個「沒有平地可蓋」的物理條件。',
     photo: `${LANDING_ASSETS_BASE}/jiufen/n0.jpg`,
+    photoSize: [940, 529],
     credit: 'Stijn Dijkstra / Pexels',
     layout: 'stacked',
   },
@@ -93,6 +95,7 @@ const STOPS = [
     name: '九份地名由來',
     desc: '陡峭地形讓早期只有極少數移民願意落腳，相傳因聚落僅有九戶人家、外出採買習慣「一次購足九份」而得名——地名本身就是地形限制人口規模的證據。',
     photo: `${LANDING_ASSETS_BASE}/jiufen/n1.jpg`,
+    photoSize: [940, 529],
     credit: 'Marek Piwnicki / Pexels',
     layout: 'stacked',
   },
@@ -102,6 +105,7 @@ const STOPS = [
     name: '小金瓜露頭與砂金發現',
     desc: '1890年代劉銘傳築鐵路工人在基隆河發現砂金，往上游追溯到小金瓜礦脈——地質構造直接觸發了整個淘金熱潮的起點，聚落自此從邊陲山村變成礦業重鎮。',
     photo: `${LANDING_ASSETS_BASE}/jiufen/n2.jpg`,
+    photoSize: [940, 627],
     credit: 'Chen Te / Pexels',
     layout: 'stacked',
   },
@@ -111,6 +115,7 @@ const STOPS = [
     name: '豎崎路',
     desc: '坡度太陡無法行車，逼出了石階步道成為聚落唯一的垂直動線，也決定了後來茶樓、店家沿石階兩側層疊而建的空間邏輯——地形逼出建築形式的代表案例。',
     photo: `${LANDING_ASSETS_BASE}/jiufen/n3.jpg`,
+    photoSize: [433, 650],
     credit: 'Sophie Otto / Pexels',
     layout: 'side',
   },
@@ -120,6 +125,7 @@ const STOPS = [
     name: '輕便路與運礦軌道',
     desc: '礦業全盛期（1930年代日治）為了把礦石運下山，沿等高線鑿出的運輸路徑，後來轉型為聚落的水平向主街，商店沿線發展，成為橫向的空間骨架。',
     photo: `${LANDING_ASSETS_BASE}/jiufen/n4.jpg`,
+    photoSize: [900, 600],
     credit: 'JinBoTwn / Wikimedia Commons, CC BY-SA 4.0（已裁切）',
     layout: 'stacked',
   },
@@ -129,6 +135,7 @@ const STOPS = [
     name: '昇平戲院',
     desc: '礦業帶來的人口與財富催生的娛樂需求，全台最早的戲院之一，見證礦業經濟頂峰時期一夜聚集數千礦工的繁華榮景。',
     photo: `${LANDING_ASSETS_BASE}/jiufen/n5.jpg`,
+    photoSize: [640, 480],
     credit: 'Kwb / Wikimedia Commons, Public Domain',
     layout: 'stacked',
   },
@@ -138,6 +145,7 @@ const STOPS = [
     name: '台陽公司停採',
     desc: '1971年金礦枯竭、礦脈耗盡，直接導致聚落人口外移、幾乎成為空城——地質資源的終結，是整條因果鏈的轉折點。',
     photo: `${LANDING_ASSETS_BASE}/jiufen/n6.jpg`,
+    photoSize: [940, 626],
     credit: 'Emman Marcial / Pexels',
     layout: 'stacked',
   },
@@ -147,10 +155,11 @@ const STOPS = [
     name: '悲情城市取景與觀光轉型',
     desc: '1989年侯孝賢電影意外帶動觀光復甦，原本因地形而生的礦業聚落景觀（層疊石階、狹窄街屋），轉為觀光賣點，茶樓文化重新繁盛——完成地質、礦業、衰敗、人文觀光的完整因果閉環。',
     photo: `${LANDING_ASSETS_BASE}/jiufen/n7.jpg`,
+    photoSize: [433, 650],
     credit: 'Wei86 Travel / Pexels',
     layout: 'side',
   },
-] as const;
+] as const satisfies readonly ({ photoSize: PhotoSize } & Record<string, unknown>)[];
 
 // 2026-10 套用 ScrollTimeline(見該元件開頭的完整說明,改造範本是
 // TainanPage.tsx/TainanChikanPage.tsx 的既有改造模式)取代原本
@@ -294,7 +303,14 @@ export function JiufenPage() {
             <article className="jiufen-stop">
               <div className={`jiufen-stop-inner jiufen-stop-inner--${stop.layout}`}>
                 <div className="jiufen-stop-photo">
-                  <img src={stop.photo} alt={stop.name} loading="lazy" />
+                  <img
+                    src={stop.photo}
+                    alt={stop.name}
+                    width={stop.photoSize[0]}
+                    height={stop.photoSize[1]}
+                    loading="lazy"
+                    onLoad={(e) => { e.currentTarget.dataset.loaded = 'true' }}
+                  />
                   <span className="jiufen-stop-credit">Photo: {stop.credit}</span>
                 </div>
                 <div className="jiufen-stop-text">

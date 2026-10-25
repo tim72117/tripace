@@ -3,7 +3,8 @@ import { Check, Plus, X } from 'lucide-react'
 import type { GeoAttraction, GeoPlaceDetails } from '../../../api'
 import { requireGeoPlaceDetails, type PlanAiDataSource } from '../../data/source'
 import type { PlaceInfoContent } from '../../place/PlacePanel'
-import { attractionBadges } from '../../place/infoContent'
+import { attractionBadges, reservesLateTextSlots } from '../../place/infoContent'
+import { BadgeSkeleton, SummarySkeleton } from '../../place/LateTextSkeleton'
 import { candidateHasScheduledDate, type GeoCandidate } from '../../place/candidateHelpers'
 import { reduceAddCandidateUiState, initialAddCandidateUiState } from '../../explore/addCandidateState'
 import { StandaloneSheet, SheetBody } from '../../../components/PhoneBottomSheet'
@@ -351,8 +352,11 @@ export function PlanPhoneInfoSheet({
   // early return 之前),遵守 Hooks 規則。
   const attractionPlaceId = attraction?.placeId
   const [placeDetails, setPlaceDetails] = useState<GeoPlaceDetails | null>(null)
+  // placeDetailsFailed:查詢失敗——照片佔位改成靜態,理由同 AttractionInfoPanel.tsx 的 detailsFailed。
+  const [placeDetailsFailed, setPlaceDetailsFailed] = useState(false)
   useEffect(() => {
     setPlaceDetails(null)
+    setPlaceDetailsFailed(false)
     if (!attractionPlaceId) return
     let cancelled = false
     requireGeoPlaceDetails(dataSource, attractionPlaceId)
@@ -360,6 +364,7 @@ export function PlanPhoneInfoSheet({
         if (!cancelled) setPlaceDetails(details)
       })
       .catch(() => {
+        if (!cancelled) setPlaceDetailsFailed(true)
         // 查詢失敗不視為錯誤,維持 null——PhotoCarousel 沒有 fallbackUrl
         // 可退,查詢失敗就是顯示 placeholder,理由同 AttractionInfoPanel.tsx
         // (2026-09 使用者明確要求「不再使用 landmarkPhotoUrl」,不用
@@ -495,6 +500,14 @@ export function PlanPhoneInfoSheet({
   // 欄位。2026-09 已移除 Pexels 讀圖來源,照片只會來自 Google。
   const photoUrl = attraction ? undefined : content!.photoUrl
   const googlePhotoUrls = attraction ? (attractionPlaceId ? placeDetails?.googlePhotoUrls : undefined) : content!.googlePhotoUrls
+  // photoStatus:見 PlaceInfoContent.photoStatus——主題點(attraction)由上方
+  // placeDetails effect 查詢,查詢中才掃光,查到/失敗/沒有 placeId 都是最終結果;
+  // 其餘來源沿用卡片內容自己的 photoStatus(usePlanningState 負責查)。
+  const photoStatus = attraction
+    ? attractionPlaceId && !placeDetails
+      ? placeDetailsFailed ? 'failed' : 'pending'
+      : undefined
+    : content!.photoStatus
   const subtitle = attraction
     ? attraction.landmarkName && attraction.landmarkName !== attraction.name
       ? attraction.landmarkName
@@ -503,6 +516,16 @@ export function PlanPhoneInfoSheet({
   const summary = attraction ? attraction.summary : content!.summary
   const badges = attraction ? attractionBadges(attraction) : content!.badges
   const candidate = attraction ? undefined : content!.candidate
+  // reserveTextSlots:評分/簡介可能晚到的地點(見 reservesLateTextSlots 的
+  // 說明)先保留徽章列與簡介三行的高度——標頭的徽章列晚出現會把整個標頭
+  // 撐高、連帶把照片與簡介往下推,這裡讓資料補上前後外框高度一致。
+  const reserveTextSlots = !attraction && reservesLateTextSlots(content!)
+  // textPending/textFailed:Google 地點文字查詢的進度(見
+  // PlaceInfoContent.textStatus)——主題點(attraction)的簡介是同步帶進來的,
+  // 沒有查詢中狀態。
+  const textPending = !attraction && content!.textStatus === 'pending'
+  const textFailed = !attraction && content!.textStatus === 'failed'
+  const reservedClass = reserveTextSlots || textPending ? ` ${styles.summaryReserved}` : ''
 
   // handleAddClick:「加入 {tripName}」按下時的分岔——理由同桌面版
   // PlacePanel.tsx 的 handleAddClick,見上方元件說明。候選已有排定
@@ -568,8 +591,9 @@ export function PlanPhoneInfoSheet({
                 的渲染處),不在這裡顯示,避免同一個 subtitle 欄位在兩種
                 卡片類型上語意不同、卻共用同一個渲染位置造成混淆。 */}
             {attraction && subtitle && <span className={styles.subtitle}>{subtitle}</span>}
-            {badges.length > 0 && (
+            {(badges.length > 0 || reserveTextSlots || textPending) && (
               <div className={styles.metaRow}>
+                {textPending && badges.length === 0 && <BadgeSkeleton />}
                 {badges.map((b) => (
                   <span key={b} className={styles.badge}>{b}</span>
                 ))}
@@ -696,13 +720,21 @@ export function PlanPhoneInfoSheet({
             googlePhotoUrls={googlePhotoUrls}
             fallbackUrl={photoUrl}
             alt={name}
+            photoStatus={photoStatus}
             onLayoutChange={setIsMobileSwipe}
           />
         </div>
+        {/* 簡介三態:理由同桌面版 PlacePanel.tsx 的同一處——查詢中骨架、
+            失敗「簡介載入失敗。」、查完沒有才是「還沒有簡介資料」,外框
+            class 相同不跳動。 */}
         {summary ? (
-          <p className={styles.summary}>{summary}</p>
+          <p className={`${styles.summary}${reservedClass}`}>{summary}</p>
+        ) : textPending ? (
+          <SummarySkeleton className={`${styles.summaryEmpty}${reservedClass}`} />
         ) : (
-          <p className={styles.summaryEmpty}>這個地點還沒有簡介資料。</p>
+          <p className={`${styles.summaryEmpty}${reservedClass}`}>
+            {textFailed ? '簡介載入失敗。' : '這個地點還沒有簡介資料。'}
+          </p>
         )}
         {/* 精選點(attraction 為 null)的地址——2026-10 使用者明確要求從
             標頭(名稱下方)搬到簡介下面。只有這個分支會顯示(主題點的

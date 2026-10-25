@@ -111,7 +111,12 @@ export function Composer({
 }: ComposerProps) {
   const stopMode = busy && !!onStop && !disabled
   return (
-    <div className={[styles.composer, bare ? styles.composerBare : '', className].filter(Boolean).join(' ')}>
+    // data-composer-part="root"——跨 CSS Module 的穩定掛點:手機版詢問匡與輸入列融合
+    // (planning/preview/PlanOverlayPanel.module.css .fuse)用它找輸入列根節點,不依賴 DOM 層數。不帶任何樣式。
+    <div
+      className={[styles.composer, bare ? styles.composerBare : '', className].filter(Boolean).join(' ')}
+      data-composer-part="root"
+    >
       <div className={styles.composerInner}>
         <form
           className={[styles.inputRow, inputRowClassName].filter(Boolean).join(' ')}

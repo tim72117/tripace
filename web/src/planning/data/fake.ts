@@ -44,9 +44,9 @@ const REAL_PHOTOS: Record<string, string> = {
 // FAKE_QUERY_DELAY_MS — 人為固定延遲,讓 fakePlaceDetails/fakeTransitEstimate
 // 這兩個 async 函式不要「同步查完立刻 return」。呼叫端(planning/preview/Content.tsx
 // 的 resolveAttractionForStep/refreshTransitForStop)在呼叫這兩個函式之前
-// 都會先把對應節點標成 loading:true(縮圖轉圈/交通列轉圈,見
-// HorizontalPlanTimeline.tsx、planning/timeline/PlanTimelineView.tsx 的 thumbSpinner/
-// transitRow),若這裡不延遲、單一個 microtask 就 resolve,loading 狀態存在
+// 都會先把對應節點標成 loading:true(縮圖骨架掃光/交通列轉圈,見
+// planning/timeline/phone/HorizontalPlanTimeline.tsx、planning/timeline/PlanTimelineView.tsx
+// 的 status.loading 分支與 transitRow),若這裡不延遲、單一個 microtask 就 resolve,loading 狀態存在
 // 的時間短到使用者在實機上完全看不到這個效果——這是純展示頁,不需要真的
 // 模擬網路延遲的隨機抖動,固定一個合理數值即可。
 //

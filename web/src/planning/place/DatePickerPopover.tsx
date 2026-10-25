@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { DayPicker } from 'react-day-picker'
 import { zhTW } from 'react-day-picker/locale'
 import 'react-day-picker/style.css'
@@ -34,12 +35,19 @@ export function DatePickerPopover({
   onSelect: (date: string) => void
 }) {
   const selectedDate = value ? new Date(`${value}T00:00:00`) : undefined
+  // month:目前顯示的月份(受控)——用來判斷哪些格子是前後月份的補位日期。
+  // 初始顯示已選日期所在月份,沒有就是本月(同 DayPicker 未受控時的預設)。
+  const [month, setMonth] = useState<Date>(() => selectedDate ?? new Date())
+  const isOutsideDay = (date: Date) =>
+    date.getFullYear() !== month.getFullYear() || date.getMonth() !== month.getMonth()
   return (
     <div className={styles.wrap}>
       <DayPicker
         mode="single"
         locale={zhTW}
         selected={selectedDate}
+        month={month}
+        onMonthChange={setMonth}
         onSelect={(date) => {
           if (!date) return
           const y = date.getFullYear()
@@ -48,6 +56,17 @@ export function DatePickerPopover({
           onSelect(`${y}-${m}-${d}`)
         }}
         showOutsideDays
+        // fixedWeeks:每個月一律畫 6 週——不同月份跨 4~6 週,不固定的話切換
+        // 月份時日曆外框高度會變,往上展開的浮層(PlacePanel 的
+        // calendarPopoverOpenUp)上緣跟著跳,翻月按鈕也會從滑鼠底下跑掉。
+        // PlacePanel 估算浮層高度時本來就是用 6 週算。
+        fixedWeeks
+        // 補位日期不可點(2026-10):fixedWeeks + showOutsideDays 讓 4~5 週的月份
+        // 也畫滿 6 列,多出來的前後月份日期只是站位;若可點,一次點選就可能選到
+        // 下個月(或上個月)。設成 disabled 保留原本淡色外觀與 6 列高度,只是不能點
+        // ——要選那個月的日期請先翻月。手機版 PlanPhoneDateCalendarSheet 用同一個
+        // 元件,行為一致。
+        disabled={isOutsideDay}
         classNames={{ root: styles.root }}
       />
     </div>

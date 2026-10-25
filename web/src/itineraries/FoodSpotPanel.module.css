@@ -121,11 +121,13 @@
   font-size: 32px;
   background: var(--ios-active);
 }
-.thumbImg {
-  width: 100%;
+/* thumbFrame——共用 FramedImage 的外框,絕對定位鋪滿 .thumb(手繪版的 .playfulBadge
+   畫在它之後、疊在上面)。.thumb > .thumbFrame 提高權重,蓋過 FramedImage 的
+   position:relative。淡入/失敗佔位/reduced-motion 由 FramedImage 處理。 */
+.thumb > .thumbFrame {
+  position: absolute;
+  inset: 0;
   height: 100%;
-  object-fit: cover;
-  display: block;
 }
 
 .body {

@@ -885,7 +885,8 @@
 ├─ shared/        跨入口共用:OverlayShell、layerContracts、overlayDom、config(原 clientConfig)、currentLocation、debugOverlayParts
 ├─ timeline/      時間軸:model(領域層)、storage(PlanTimelineStore)、drafts、transit、segments、status、presentation、
 │                 usePlanTimelineCore、usePlanStopsState、usePlanNodeStatus、resolved(原 useResolvedNodeRefs)、PlanTimelineView;phone/HorizontalPlanTimeline
-├─ conversation/  對話與 AI 工具:messages、guard、context、tools、asktools、usePlanConversation、AskPage、uiStateStore
+├─ conversation/  對話與 AI 工具:messages、guard、context、tools、asktools、usePlanConversation、uiStateStore;
+│                 詢問頁 AskPage、useAskPageBridge(等待/換頁)、askTransition、useHoverLock、useHeightTransition(換步驟轉場與高度過渡)
 ├─ data/          資料存取層:source(介面)、api(登入版)、public(訪客版)、fake(假資料)、dedupe、cache、store(共用 store)、PlanDataProvider
 ├─ map/           地圖:PlanMap(登入後)、NativeMapBase、planMapShared、usePanTarget、useStopPan、useFirstStopAutoPan 等
 │  ├─ draw/       統一繪製層宿主(compose、diff、zOrder、useSharedDrawLayer);layers/ 放各功能層
@@ -893,7 +894,7 @@
 │  └─ phone/      PlanPhoneView 與手機 sheet
 ├─ place/         地點資訊卡與清單:PlacePanel、DesktopInfoCard、PhotoCarousel;desktop/、phone/ 各一份 ResultList、CandidateList
 ├─ explore/       探索與選取:selection、exploreQuery、useExploreQueries、useAttractionGlow、ExploreControls
-├─ panel/         規劃面板:TripPlanPage、PlanPanelContent、ComposerPortal
+├─ panel/         規劃面板:TripPlanPage、PlanPanelContent、ComposerPortal、useAskPageFlow(詢問頁的前端串接:國家→城市→查景點、返回(城市→國家、景點候選/查詢中→城市)、輸入匡直接說明 submitAskPageText)、composerMode(輸入匡提示文字/鎖定/送出路徑依畫面決定)
 ├─ preview/       /ai-plan:Content、PlanLayout、PlanMap、LivePlanLayer、SimPlanLayer、模擬來源;desktop/、phone/、wide/ 三個 PlanOverlayLayout
 └─ member/        登入後:useMapState、usePlanningState;desktop/、phone/ 各一組 Content、PlanLayout、PlanOverlayLayout、LivePlanLayer</pre>
 

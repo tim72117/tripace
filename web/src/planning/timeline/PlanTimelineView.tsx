@@ -10,6 +10,8 @@ import { useResolvedRefs } from '../data/PlanDataProvider'
 import { nodeStatusOf, type NodeStatusMap } from './status'
 import { DEFAULT_NOTE_CATEGORY, NOTE_STYLES, TRANSIT_MODE_CHOICES } from './presentation'
 import type { PlanOperations } from './operations'
+import { SkeletonBlock } from '../../components/Skeleton'
+import { FramedImage } from '../../components/FramedImage'
 import styles from './PlanTimelineView.module.css'
 
 // TIME_DRAG_MINUTES_PER_STEP/TIME_DRAG_PX_PER_STEP——anchorDot 拖拉調整
@@ -493,6 +495,18 @@ export function PlanTimelineView({
       return next
     })
   }, [])
+  // retryStop——按「重試」時先清空失敗網址集合,再交給呼叫端的 onRetryStop。
+  // failedPhotoUrls 只增不減,短暫斷網時失敗的縮圖會一直退回 icon 直到重新掛載;重試是使用者
+  // 明確表示「再試一次」的時機,讓已記錄的網址都有機會重載(仍失敗的會在 onError 時再被記回去)。
+  // 清整組而非只清這一站:查詢失敗的站點在按重試當下通常還沒有解析出的照片網址(resolvedRefs
+  // 沒有它的資料),無從得知要清哪幾個;斷網恢復也是整頁共通的狀況。代價只是其他已破圖的縮圖各重載一次。
+  const retryStop = useCallback(
+    (...args: Parameters<PlanOperations['retryStop']>) => {
+      setFailedPhotoUrls((prev) => (prev.size ? new Set() : prev))
+      onRetryStop?.(...args)
+    },
+    [onRetryStop],
+  )
 
   // dragState——見 DragState 型別的完整說明。null 代表目前沒有任何節點
   // 在被拖拉。用 useState(而非 ref)是因為 previewMinutes 的變化需要
@@ -713,6 +727,8 @@ export function PlanTimelineView({
             const usablePhotos = photoUrls?.filter((u) => !failedPhotoUrls.has(u)) ?? []
             // lookupFailed——地點資料沒拿到(狀態表的 failed,或重整後「有 placeId 沒座標」,見 stopLookupFailed)。
             const lookupFailed = stopLookupFailed(p, status)
+            // metaText——停留時間與類型只串有值的部分:查詢中的空白佔位節點兩者都沒有,原本會印出一個孤零零的「 · 」。
+            const metaText = [p.duration, p.kind].filter(Boolean).join(' · ')
 
             if (p.type === 'stop') {
               // transitFromPrev(見 model.ts TransitInfo 的完整
@@ -804,11 +820,17 @@ export function PlanTimelineView({
                                 }
                               }}
                             >
-                              {/* 查詢中(loading:true)只顯示轉圈動畫,不
-                                  顯示任何文字,重用 stop 卡片查詢中狀態
-                                  既有的 thumbSpinner 動畫。 */}
+                              {/* 查詢中(loading:true):圖示位置放同尺寸(14px)的小轉圈,文字位置放一條淡色佔位條,
+                                  讓膠囊在查詢中就接近查完的寬度與固定高度(.transitPill 定高),結果到了只換內容、
+                                  外框不從一顆小圓點突然撐成長膠囊。 */}
                               {transit.loading ? (
-                                <span className={styles.thumbSpinner} aria-label="查詢交通資訊中" />
+                                <>
+                                  {/* role="img":aria-label 掛在沒有角色的 span(generic)上很多讀屏不唸;img 角色讓這段
+                                      「查詢交通資訊中」被當成一個有名稱的圖示唸出,不影響版面。 */}
+                                  <span className={styles.transitSpinner} role="img" aria-label="查詢交通資訊中" />
+                                  {/* 圓角只由 radius 給(SkeletonBlock 一律輸出 inline border-radius,class 裡寫了也會被蓋掉)。 */}
+                                  <SkeletonBlock className={styles.transitTextPlaceholder} radius={6} />
+                                </>
                               ) : (
                                 <>
                                   {(() => {
@@ -1003,7 +1025,9 @@ export function PlanTimelineView({
                                 style={{ background: usablePhotos.length ? undefined : p.thumbBg }}
                               >
                                 {status.loading ? (
-                                  <span className={styles.thumbSpinner} aria-label="查詢地點資料中" />
+                                  // 查詢中:整個 64px 圓形縮圖鋪共用骨架掃光(原本是中間一顆 18px 轉圈 .thumbSpinner,
+                                  // 2026-10 統一成 components/Skeleton 的站位語彙)。「查詢中」的文字提示在 meta 列的 loadingTag。
+                                  <SkeletonBlock width="100%" height="100%" radius="full" />
                                 ) : usablePhotos.length ? (
                                   // 縮圖本身維持只顯示第一張(64px 圓形版型)。
                                   // 只要有照片就能點擊開啟全螢幕 Lightbox 放大
@@ -1035,10 +1059,13 @@ export function PlanTimelineView({
                                         下次渲染 usablePhotos 就會濾掉它;整組都
                                         失敗時整張縮圖退回 thumbIcon + thumbBg
                                         佔位,不是破圖疊 alt 文字。 */}
-                                    <img
+                                    {/* FramedImage(components/FramedImage):外框鋪滿 64px 圓形(圓角由 .stopThumb 裁切),
+                                        下載期間是同尺寸的骨架掃光,載入完成才淡入,快取命中的補判也在元件內處理。 */}
+                                    <FramedImage
                                       src={usablePhotos[0]}
-                                      alt={p.name}
-                                      className={styles.stopThumbImg}
+                                      alt={p.name ?? ''}
+                                      width="100%"
+                                      height="100%"
                                       onError={() => markPhotoFailed(usablePhotos[0])}
                                     />
                                     {usablePhotos.length > 1 && (
@@ -1048,8 +1075,13 @@ export function PlanTimelineView({
                                 ) : p.thumbIcon}
                               </div>
                               <div className={styles.stopBody}>
+                                {/* 卡片文字區一律先站位(meta 一行、名稱一行、描述兩行,見 .stopMeta/.stopName/
+                                    .stopDesc 的 min-height):查詢中還沒有的欄位畫淡色佔位條,資料到了只換內容,
+                                    卡片高度不變;失敗時同樣佔住這幾行。 */}
                                 <div className={styles.stopMeta}>
-                                  {p.duration} · {p.kind}
+                                  {/* metaText 包成 span(僅在有值時):讓 .loadingTag/.failedTag 能用 :first-child 判斷
+                                      「前面沒有 meta 文字」而不留左邊距(純文字節點不算進 :first-child)。 */}
+                                  {metaText && <span>{metaText}</span>}
                                   {/* loading 與 failed 互斥顯示(review 建議):
                                       兩個獨立的 && 在兩者同時為真時會同時
                                       印出「查詢地點中…」與「查詢失敗」兩個
@@ -1073,7 +1105,16 @@ export function PlanTimelineView({
                                     卻已經停止查詢的卡(使用者明確要求「不要有
                                     任何失敗前會有的暫時性狀態跟文字」)。 */}
                                 <div className={styles.stopName}>
-                                  {lookupFailed ? '未能取得地點資料' : p.name}
+                                  {lookupFailed ? (
+                                    '未能取得地點資料'
+                                  ) : p.name ? (
+                                    p.name
+                                  ) : status.loading ? (
+                                    // display/verticalAlign 走 inline:共用 SkeletonBlock 的 .block 是 display:block,
+                                    // 跟這裡的 class 同為單一 class 權重,誰贏取決於 CSS 載入順序;用 inline 一次定案,
+                                    // 不在 module.css 拉高選擇器權重跟共用元件搶。圓角同理只由 radius 給。
+                                    <SkeletonBlock className={styles.textPlaceholderName} radius={6} style={{ display: 'inline-block', verticalAlign: 'middle' }} />
+                                  ) : null}
                                   {lookupFailed && onRetryStop && (
                                     <button
                                       type="button"
@@ -1082,14 +1123,25 @@ export function PlanTimelineView({
                                         // 停止冒泡:卡片本身有點擊行為
                                         // (選取/panTo),按重試不該連帶觸發。
                                         e.stopPropagation()
-                                        onRetryStop(p.id)
+                                        retryStop(p.id)
                                       }}
                                     >
                                       重試
                                     </button>
                                   )}
                                 </div>
-                                <div className={styles.stopDesc}>{p.desc}</div>
+                                {p.desc ? (
+                                  <div className={styles.stopDesc}>{p.desc}</div>
+                                ) : (
+                                  <div className={`${styles.stopDesc} ${styles.stopDescEmpty}`} aria-hidden="true">
+                                    {status.loading && (
+                                      <>
+                                        <SkeletonBlock className={styles.textPlaceholderDesc} radius={6} />
+                                        <SkeletonBlock className={styles.textPlaceholderDescShort} radius={6} />
+                                      </>
+                                    )}
+                                  </div>
+                                )}
                                 {p.tags && p.tags.length > 0 && (
                                   <div className={styles.stopTags}>
                                     {p.tags.map((tag) => (
@@ -1190,12 +1242,19 @@ export function PlanTimelineView({
                     <div className={styles.skeletonAnchor} />
                   </div>
                   <div className={styles.stopCardWrap}>
+                    {/* 骨架卡外框(.skeletonCard 虛線框)沿用,內容用共用 SkeletonBlock 組:縮圖 64px 圓、
+                        meta/名稱/描述三條長條(寬 34%/58%/88%、高 10/15/12px,同原本比例)。
+                        外框刻意用一般 div 而不是 SkeletonRegion:整列是 aria-hidden 的預告(不打斷讀屏),
+                        role=status/aria-busy 在這裡本來就不生效;若之後有人拿掉外層 aria-hidden,
+                        status 會變成每輪推論唸一次「下一站安排中」。
+                        原本 SkeletonRegion 內層是 display:contents 的包裝,拿掉後子元素直接是 .skeletonCard
+                        的子項,排版不變。 */}
                     <div className={styles.skeletonCard}>
-                      <div className={`${styles.skeletonThumb} ${styles.shimmer}`} />
+                      <SkeletonBlock width={64} height={64} radius="full" />
                       <div className={styles.skeletonBody}>
-                        <div className={`${styles.skeletonLine} ${styles.skeletonLineMeta} ${styles.shimmer}`} />
-                        <div className={`${styles.skeletonLine} ${styles.skeletonLineTitle} ${styles.shimmer}`} />
-                        <div className={`${styles.skeletonLine} ${styles.skeletonLineDesc} ${styles.shimmer}`} />
+                        <SkeletonBlock width="34%" height={10} radius={6} />
+                        <SkeletonBlock width="58%" height={15} radius={6} />
+                        <SkeletonBlock width="88%" height={12} radius={6} />
                       </div>
                     </div>
                   </div>

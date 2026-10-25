@@ -7,18 +7,6 @@
   flex: 0 0 auto;
 }
 
-.photo,
-.photoPlaceholder {
-  width: 100%;
-  height: 160px;
-  object-fit: cover;
-  display: block;
-}
-
-.photoPlaceholder {
-  background: linear-gradient(135deg, var(--ios-sand), var(--ios-gray));
-}
-
 .content {
   padding: 14px 16px 18px;
   display: flex;
@@ -43,6 +31,10 @@
   flex-wrap: wrap;
   gap: 6px;
   margin: 6px 0 2px;
+  /* min-height:一顆 .badge 的高度(11px 字+上下 3px padding)——評分晚到
+     的地點會先渲染空的 .metaRow 站位(見 PlacePanel.tsx 的
+     reservesLateTextSlots),徽章補上時列高不變。 */
+  min-height: 19px;
 }
 
 .badge {
@@ -66,6 +58,14 @@
   font-size: 13px;
   line-height: 1.6;
   color: var(--ios-gray);
+}
+
+/* summaryReserved:簡介可能晚到的地點(見 PlacePanel.tsx 的
+   reservesLateTextSlots)固定保留三行高度——「還沒有簡介」一行與補上的
+   Google 簡介(通常二到三行)外框一樣高,下方按鈕組不會跳動。超過三行的
+   長簡介才會再撐高。 */
+.summaryReserved {
+  min-height: calc(13px * 1.6 * 3);
 }
 
 /* attractionIntro/attractionIntroTitle/attractionIntroText:見

@@ -79,7 +79,9 @@
   box-sizing: border-box;
 }
 
+/* position: relative——左上角返回圖示鈕(.backBtn)、右上角關閉圖示鈕(.closeBtn)的定位基準。 */
 .bubble {
+  position: relative;
   width: 100%;
   border: 1px solid var(--ios-sep);
   border-radius: 16px;
@@ -112,6 +114,102 @@
   /* flex-shrink: 0——.bubble 改成 flex column 後(見該 class 的完整
      說明),標題不該被壓縮,高度固定由內容決定。 */
   flex-shrink: 0;
+}
+
+/* questionWithControls——氣泡角落有圖示鈕(左上 .backBtn、右上 .closeBtn 任一)時,標題左右各留同樣的空間:不被圖示蓋到,
+   且兩側對稱讓文字仍置中於氣泡(只有關閉鈕的國家頁也要留左邊)。數值 = 圖示鈕內緣(6px + 44px)減去氣泡左右內距 16px,
+   再多 2px 間隙。 */
+.questionWithControls {
+  padding: 0 36px;
+  /* 留空後手機 390 寬每行約 14 個中文字(原本約 19 個),長標題較早換行;balance 讓兩行長度接近,不會剩一兩個字孤零零掛在第二行。 */
+  text-wrap: balance;
+}
+
+/* backBtn / closeBtn——氣泡角落的圖示鈕:左上「返回上一層」(AskShell 的 onBack,目前只有城市頁)、
+   右上「不用了」關閉鈕(AskShell 的 onClose,國家/城市/交通/景點頁)。兩顆共用尺寸與狀態,只差左右位置與平常的顏色。
+   44×44 點擊範圍,垂直中心對齊第一行標題(氣泡上內距 16px + 標題行高約一半 ≈ 28px = top 6px + 44/2);左右各距氣泡 6px,彼此對稱。
+   平常只有圖示,hover 才出現淡底並轉 --ios-blue;按下維持淡底;focus-visible 給明確外框。
+   hover 規則同其他按鈕:只給真的有 hover 的裝置、且指標已動過(.hoverLocked 見 useHoverLock.ts)。
+   顏色全走變數,深色主題跟著變。 */
+.backBtn,
+.closeBtn {
+  position: absolute;
+  top: 6px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-dark);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.backBtn {
+  left: 6px;
+}
+/* 關閉是次要動作:平常用 --ios-gray(同純文字氣泡的 .messageCloseBtn),比返回箭頭低一階。 */
+.closeBtn {
+  right: 6px;
+  color: var(--ios-gray);
+}
+@media (hover: hover) {
+  .wrap:not(.hoverLocked) .backBtn:hover,
+  .wrap:not(.hoverLocked) .closeBtn:hover {
+    background: var(--ios-active);
+    color: var(--ios-blue);
+  }
+}
+.backBtn:active,
+.closeBtn:active {
+  background: var(--ios-active);
+}
+.backBtn:focus-visible,
+.closeBtn:focus-visible {
+  outline: 2px solid var(--ios-blue);
+  outline-offset: -2px;
+}
+/* cornerBtnStatic——播放態(ScriptedAskPage)畫的同外觀關閉圖示:不是控制項,不可點也不出現 hover。 */
+.cornerBtnStatic {
+  cursor: default;
+  pointer-events: none;
+}
+
+/* questionLoading——查詢中的標題(探查模式查候選、選完城市查景點):前面一顆自轉的 Loader2(同 PlanMap 搜尋鈕的
+   查詢中語彙),讓「系統正在處理」看得見,不只是一行靜止的字。圖示是標題的子元素,不受轉場 .bubble > :not(.backBtn):not(.closeBtn) 的動畫
+   宣告覆蓋。減少動態時不轉。 */
+.questionLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+/* skeletonCard——查詢中骨架卡(共用 SkeletonBlock,見 components/Skeleton.tsx)只補邊框:尺寸、圓角由 SkeletonBlock 的
+   width/aspectRatio/radius 給(對齊 .directionCard 的 140px、10/7、12px),掃光與 reduced-motion 由共用元件處理。
+   border-box 與 .directionCard 一致,外框含邊框仍是 140×98。 */
+.skeletonCard {
+  box-sizing: border-box;
+  border: 1px solid var(--ios-sep);
+}
+.loadingIcon {
+  flex-shrink: 0;
+  color: var(--ios-blue);
+  animation: askLoadingSpin 800ms linear infinite;
+}
+@keyframes askLoadingSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loadingIcon {
+    animation: none;
+  }
 }
 
 /* directionScroller——橫向捲動單卡列,取代原本的 2×2 .directionGrid
@@ -180,9 +278,18 @@
   scroll-snap-align: center;
   transition: border-color 0.12s ease, transform 0.12s ease;
 }
-.directionCard:hover {
-  border-color: var(--ios-blue);
-  transform: translateY(-1px);
+/* hover 回饋只給「真的有 hover 的裝置」(觸控會黏住)且指標已動過的畫面(.hoverLocked 見 useHoverLock.ts)。 */
+@media (hover: hover) {
+  .wrap:not(.hoverLocked) .directionCard:not(.directionCardStatic):hover {
+    border-color: var(--ios-blue);
+    transform: translateY(-1px);
+  }
+}
+
+/* directionCardStatic——不可點的候選卡(CandidateCard as="div",播放態 ScriptedAskPage):沒有 pointer 游標,
+   上面的 hover 規則也以 :not(.directionCardStatic) 排除,不出現藍框與上浮。 */
+.directionCardStatic {
+  cursor: default;
 }
 
 /* directionCardStacked——.directionScrollerStacked 底下的候選卡片:
@@ -319,9 +426,12 @@
   cursor: pointer;
   transition: background-color 0.12s ease, border-color 0.12s ease;
 }
-.optionBtn:hover {
-  background: var(--ios-active);
-  border-color: var(--ios-blue);
+/* hover 回饋只給「真的有 hover 的裝置」(觸控會黏住)且指標已動過的畫面(.hoverLocked 見 useHoverLock.ts)。 */
+@media (hover: hover) {
+  .wrap:not(.hoverLocked) .optionBtn:hover {
+    background: var(--ios-active);
+    border-color: var(--ios-blue);
+  }
 }
 
 /* directionConfirm——「開始規劃」:停用時降低透明度並取消 hover 回饋;
@@ -339,6 +449,13 @@
 }
 .directionConfirm:disabled:hover {
   background: transparent;
+}
+
+/* actionsPinned——寬螢幕側欄把操作列推到氣泡底部(AskShell 的 actionsPinned)。原本只有「我要直接說明」展開的說明面板
+   使用,該面板 2026-10 已移除;AskShell 仍保留這個選項,樣式一併保留。 */
+.actionsPinned {
+  margin-top: auto;
+  padding-top: 12px;
 }
 
 /* ===== 純文字對話氣泡(messageBubble)===== */
@@ -446,9 +563,12 @@
   scroll-snap-align: center;
   transition: border-color 0.12s ease, transform 0.12s ease;
 }
-.regionCard:hover {
-  border-color: var(--ios-blue);
-  transform: translateY(-1px);
+/* hover 回饋只給「真的有 hover 的裝置」(觸控會黏住)且指標已動過的畫面(.hoverLocked 見 useHoverLock.ts)。 */
+@media (hover: hover) {
+  .wrap:not(.hoverLocked) .regionCard:hover {
+    border-color: var(--ios-blue);
+    transform: translateY(-1px);
+  }
 }
 
 /* regionCardStacked——.directionScrollerStacked 底下的國家/城市卡片:
@@ -520,10 +640,13 @@
   cursor: pointer;
   transition: border-color 0.12s ease, transform 0.12s ease;
 }
-.transportCard:hover {
-  border-color: var(--ios-blue);
-  transform: translateY(-1px);
-  color: var(--ios-blue);
+/* hover 回饋只給「真的有 hover 的裝置」(觸控會黏住)且指標已動過的畫面(.hoverLocked 見 useHoverLock.ts)。 */
+@media (hover: hover) {
+  .wrap:not(.hoverLocked) .transportCard:hover {
+    border-color: var(--ios-blue);
+    transform: translateY(-1px);
+    color: var(--ios-blue);
+  }
 }
 
 /* transportCardStacked——橫式列表樣式,跟 .directionCardStacked/
@@ -659,5 +782,87 @@
 @media (prefers-reduced-motion: reduce) {
   .scriptedPressing {
     animation: none;
+  }
+}
+
+/* hoverLocked——換到這個畫面後、指標還沒動過:不畫 hover 樣式(實際規則在各卡片的 :not(.hoverLocked) 選擇器)。 */
+.hoverLocked {
+  /* 只是標記 class,不放樣式 */
+}
+
+/* transition——換步驟的轉場外殼(AskPage.tsx 的外層,askTransition.ts 判斷方向)。
+   display: contents:不產生自己的盒子,不影響 .wrap 的版面與 .wrapStacked 的 100% 高度。
+   只讓 .bubble 底下的內容(標題、選項列、按鈕)依方向滑入,氣泡外殼不動——使用者看到「殼還在、內容換了」,
+   一眼知道已換到下一步(前進從右滑入、返回從左滑入;寬螢幕側欄是縱向列表,改成由下往上輕微浮起)。
+   第一次掛載沒有方向(data-direction='none'),不播放。
+   只在換步驟那一刻播:.bubble 直接子元素的滑入動畫一結束(animationend),AskPage 就把方向清回 none,
+   同一步驟內之後才插入的子元素(查詢中換成候選時的卡片列、操作列)不會再滑入一次。
+   角落的返回與關閉圖示鈕(.backBtn/.closeBtn)排除在外:它們是外殼的固定控制項,不跟著內容滑動。
+   ⚠️ 動畫名稱必須直接寫在每條 animation 宣告裡:CSS Modules 只會改寫宣告裡的字面 keyframes 名稱,
+   放進自訂屬性(var())的名稱不會被改寫,會找不到對應的 @keyframes 而完全不播。 */
+.transition {
+  display: contents;
+}
+.transition[data-direction='forward'] .bubble > :not(.backBtn):not(.closeBtn) {
+  animation: askSlideForward 220ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.transition[data-direction='back'] .bubble > :not(.backBtn):not(.closeBtn) {
+  animation: askSlideBack 220ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.transition[data-stacked='true'][data-direction='forward'] .bubble > :not(.backBtn):not(.closeBtn),
+.transition[data-stacked='true'][data-direction='back'] .bubble > :not(.backBtn):not(.closeBtn) {
+  animation: askRise 220ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+/* 換頁後焦點移到標題(程式導向的焦點不需要外框)。 */
+.question:focus {
+  outline: none;
+}
+
+@keyframes askSlideForward {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes askSlideBack {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes askRise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes askFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 減少動態:拿掉位移,只留短暫淡入(選擇器要與上面的 stacked 規則一樣具體,才蓋得過去)。 */
+@media (prefers-reduced-motion: reduce) {
+  .transition[data-direction='forward'] .bubble > :not(.backBtn):not(.closeBtn),
+  .transition[data-direction='back'] .bubble > :not(.backBtn):not(.closeBtn),
+  .transition[data-stacked='true'][data-direction='forward'] .bubble > :not(.backBtn):not(.closeBtn),
+  .transition[data-stacked='true'][data-direction='back'] .bubble > :not(.backBtn):not(.closeBtn) {
+    animation: askFade 120ms ease both;
   }
 }

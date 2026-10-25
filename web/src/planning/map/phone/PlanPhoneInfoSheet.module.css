@@ -136,6 +136,10 @@
   flex-wrap: wrap;
   gap: 6px;
   margin: 6px 0 2px;
+  /* min-height:一顆 .badge 的高度——評分晚到的地點先渲染空的 .metaRow
+     站位(見 PlanPhoneInfoSheet.tsx 的 reserveTextSlots),徽章補上時
+     標頭高度不變,不會把下方照片往下推。 */
+  min-height: 19px;
 }
 
 .badge {
@@ -159,6 +163,12 @@
   font-size: 13px;
   line-height: 1.6;
   color: var(--ios-gray);
+}
+
+/* summaryReserved:簡介可能晚到的地點固定保留三行高度(理由同
+   PlacePanel.module.css 的同名 class),簡介補上時下方地址不會跳動。 */
+.summaryReserved {
+  min-height: calc(13px * 1.6 * 3);
 }
 
 /* placeAddress:精選點(content 分支)的地址——2026-10 使用者明確要求從

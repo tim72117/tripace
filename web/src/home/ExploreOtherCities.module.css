@@ -71,11 +71,14 @@
   color: var(--explore-accent);
 }
 
+/* aspect-ratio 固定外框;background 是圖片下載前/載入失敗時看到的淡色佔位底,
+   載入完成後被 object-fit: cover 的照片完全蓋住。 */
 .photo {
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
   display: block;
+  background: var(--paper-dim, rgba(0, 0, 0, 0.05));
 }
 
 .body {

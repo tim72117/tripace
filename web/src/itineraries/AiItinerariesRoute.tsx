@@ -1,71 +1,14 @@
-import { useEffect, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { useParams } from 'react-router-dom'
-import { BASE_URL } from '../AppCommon'
-import { fetchPublicItineraryPageList, type ClientConfig } from '../api'
 import { useThemeToggle } from '../hooks/useThemeToggle'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../home/SiteNavButtons'
 import { SAMPLE_ITINERARIES } from './registry'
-import { isSampleItineraryShape, mergeWithApiItineraries } from './catalog'
-import type { SampleItinerary } from './types'
+import { useListItineraries } from './useListItineraries'
 import { AiItineraryListPage } from './AiItineraryListPage'
 import { AiItineraryDetailPage } from './AiItineraryDetailPage'
 import styles from './AiItinerariesRoute.module.css'
 
-// GUEST_CFG——讀取已發布範例行程清單是公開頁面的訪客動作,理由同
-// AiItineraryDetailPage.tsx 的 GUEST_CFG。
-const GUEST_CFG: ClientConfig = { baseURL: BASE_URL, token: null }
-
-// SHOW_EXAMPLE_ITINERARIES_ENABLED——2026-10 新增,使用者明確要求「排
-// 好的行程清單,用參數控制要不要顯示範例,預設關閉」:同 DesktopShared.tsx
-// TIMELINE_ENABLED/PACE_ENABLED 那套編譯時 feature flag 機制(部署環境
-// 變數,預設關閉,只在明確設為字串 "true" 時才啟用),不是另外發明一套
-// ——只是放在這裡而非 DesktopShared.tsx,因為那個檔案服務的是 /app 規劃
-// UI 的面板開關,跟這個獨立的範例行程展示頁(/itineraries)是不同功能、
-// 不同關注點,放這裡保持就近維護。
-//
-// 只影響清單頁(AiItineraryListPage)要不要把 registry.ts 的靜態
-// SAMPLE_ITINERARIES 併進清單——不影響詳細頁(AiItineraryDetailPage):
-// 關閉這個旗標後,example/*.ts 裡的行程仍然可以透過直接網址
-// (/itineraries/erziping-1day 這類)瀏覽,只是不會出現在清單頁讓訪客
-// 隨意逛到,理由是這些仍是真實、完整、測試過的範例行程內容,只是「清單
-// 預設只秀資料庫正式發布的行程」這個呈現策略改變,不是要把這些行程
-// 整個下架。
-const SHOW_EXAMPLE_ITINERARIES_ENABLED = import.meta.env.VITE_FEATURE_SHOW_EXAMPLE_ITINERARIES === 'true'
-
-// useListItineraries——清單頁顯示的行程 = (視 SHOW_EXAMPLE_ITINERARIES_ENABLED
-// 決定要不要併入)靜態 registry.ts + 已發布進資料庫的行程(見
-// mergeWithApiItineraries 的完整說明)。2026-10 新增——清單頁原本只讀
-// SAMPLE_ITINERARIES,從沒打過 fetchPublicItineraryPageList,導致透過
-// CLI 發布的行程(例如 tainan-chikan-2day、jozankei-1day)雖然詳細頁能
-// 看到,卻不會出現在 /itineraries 清單上(使用者回報「沒有看到」才發現
-// 這個落差)。查詢失敗(網路層級問題、500 等)時直接退回純靜態清單(或
-// 空清單,視旗標而定),不讓清單頁整頁壞掉——清單頁本來就能在沒有任何
-// API 行程的情況下正常運作。
-function useListItineraries(): SampleItinerary[] {
-  const [apiItems, setApiItems] = useState<SampleItinerary[]>([])
-
-  useEffect(() => {
-    let cancelled = false
-    fetchPublicItineraryPageList(GUEST_CFG)
-      .then((res) => {
-        if (cancelled) return
-        const items = res.itineraryPages
-          .map((p) => p.content)
-          .filter(isSampleItineraryShape)
-        setApiItems(items)
-      })
-      .catch((err) => {
-        if (cancelled) return
-        console.error('[AiItinerariesRoute] fetchPublicItineraryPageList 失敗:', err)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  return mergeWithApiItineraries(SHOW_EXAMPLE_ITINERARIES_ENABLED ? SAMPLE_ITINERARIES : [], apiItems)
-}
+// useListItineraries(清單資料來源,含逾時處理)見 useListItineraries.ts。
 
 // AiItinerariesRoute — 「精選行程」展示的頁面外殼,同時服務
 // /itineraries(清單)與 /itineraries/:id(點進去的詳細頁)。2026-10
@@ -98,7 +41,7 @@ function useListItineraries(): SampleItinerary[] {
 export function AiItinerariesRoute() {
   const { theme, dark, toggleTheme } = useThemeToggle()
   const { id } = useParams<{ id: string }>()
-  const listItems = useListItineraries()
+  const { items: listItems, loading: listLoading } = useListItineraries()
 
   return (
     <div className={`${styles.root} app-theme-root`} data-theme={theme ?? undefined}>
@@ -113,7 +56,7 @@ export function AiItinerariesRoute() {
       )}
       <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
       <SiteNavCta href="/app">登入</SiteNavCta>
-      {id ? <AiItineraryDetailPage items={SAMPLE_ITINERARIES} id={id} dark={dark} /> : <AiItineraryListPage items={listItems} />}
+      {id ? <AiItineraryDetailPage items={SAMPLE_ITINERARIES} id={id} dark={dark} /> : <AiItineraryListPage items={listItems} loading={listLoading} />}
     </div>
   )
 }

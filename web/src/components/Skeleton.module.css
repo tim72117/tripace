@@ -1,0 +1,279 @@
+/* Skeleton 共用站位(見 Skeleton.tsx 檔頭說明)。
+   ------------------------------------------------------------------------
+   顏色 token 集中在這裡:--skeleton-base(底色)、--skeleton-highlight(掃光
+   高光),亮暗各一組。為什麼不寫進 base-ui.css:這組 token 只有骨架用得到,
+   跟著元件走(誰 import 了 Skeleton 才載入);掛載點比照 base-ui.css 的
+   四段式寫法(:root 給 /app 以外的頁面、.app-theme-root 給 /app,深色分
+   「跟系統」與「手動選夜間」兩條)。
+   為什麼同一份宣告要同時掛在 :root 與 .app-theme-root:自訂屬性裡的 var()
+   是在「宣告所在的元素」上解析的——只掛 :root 的話,--skeleton-base 會用
+   :root 的淺色 --ios-sep 算完再往下繼承,.app-theme-root 換成深色 token 也
+   不會跟著變。在 .app-theme-root 上再宣告一次,深色才會用深色 --ios-* 重算。
+   使用端可以在任何祖先元素覆寫這兩個變數(例如深色照片上的骨架)。
+
+   高光的混色方向沿用時間軸 .shimmer 的既有取捨:淺色往卡片白混(柔和的
+   亮帶),深色往暖灰混(往白混在深色底上會像一條刺眼的白光)。 */
+:global(:root),
+:global(.app-theme-root) {
+  --skeleton-base: var(--ios-sep);
+  --skeleton-highlight: color-mix(in srgb, var(--ios-sep) 35%, var(--ios-card));
+}
+@media (prefers-color-scheme: dark) {
+  :global(.app-theme-root:not([data-theme="light"])) {
+    --skeleton-base: var(--ios-sep);
+    --skeleton-highlight: color-mix(in srgb, var(--ios-sep) 55%, var(--ios-gray));
+  }
+}
+:global(.app-theme-root[data-theme="dark"]) {
+  --skeleton-base: var(--ios-sep);
+  --skeleton-highlight: color-mix(in srgb, var(--ios-sep) 55%, var(--ios-gray));
+}
+
+/* sweep:淡色掃光——手法與節奏沿用 PlanTimelineView 的 .shimmer(400% 寬
+   漸層、1.4s 由右往左位移),不需要額外 DOM 或偽元素。 */
+.sweep {
+  background-color: var(--skeleton-base);
+  background-image: linear-gradient(
+    90deg,
+    var(--skeleton-base) 25%,
+    var(--skeleton-highlight) 37%,
+    var(--skeleton-base) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeletonSweep 1.4s ease infinite;
+}
+
+/* still:靜態底色——animation='none',或「沒有資料/已失敗」這類不是還在
+   載的佔位。 */
+.still {
+  background-color: var(--skeleton-base);
+}
+
+@keyframes skeletonSweep {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+.block {
+  display: block;
+  flex: none;
+  max-width: 100%;
+}
+
+/* lines:每一行固定佔 --skeleton-line-height,長條在行內垂直置中
+   (做法同 planning/place/LateTextSkeleton 的 .line)。 */
+.lines {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+.line {
+  display: flex;
+  align-items: center;
+  height: var(--skeleton-line-height, 1.4em);
+}
+.bar {
+  display: block;
+  height: var(--skeleton-bar-height, 0.7em);
+  border-radius: 4px;
+}
+
+/* contents:不產生盒子的包裝(SkeletonRegion 內層、SkeletonMask 兩層),
+   讓包裝不影響使用端的 flex/grid 排版。 */
+.contents {
+  display: contents;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- SkeletonMask ----------
+   只改顏色、背景、可見度,絕不改 padding/margin/border 寬度/display/尺寸
+   (理由見 Skeleton.tsx 的 SkeletonMask 說明)。用 !important 是刻意的:
+   遮罩是一個要蓋過真卡片任何 class(含 .card .title 這種較高權重)的
+   「狀態覆寫」,不用 !important 就得跟每個使用端比權重。
+   逃生口:.skeleton-keep 或 [data-skeleton-keep] 本身與其子孫都排除。 */
+.maskLoading {
+  pointer-events: none;
+  user-select: none;
+  cursor: default;
+}
+
+/* 掃光漸層放在變數裡,reduced-motion 時只要把變數換成 none,不用把下面那串
+   長選擇器在 media query 裡再抄一次(動畫名稱則不能放變數:CSS Modules 不會
+   改寫 var() 裡的 keyframes 名稱)。
+   為什麼宣告在「每個子孫」(.maskLoading *)而不是 .maskLoading 本身:自訂
+   屬性值裡的 var() 是在「宣告所在的元素」上解析、再把結果往下繼承的。宣告在
+   .maskLoading 上,--skeleton-base/--skeleton-highlight 就在遮罩外層被算死,
+   使用端在遮罩內的卡片上覆寫 --skeleton-base(例如深色照片上的卡片)時,
+   底色(background-color 直接用 var)會變、掃光漸層卻不跟著變。在每個子孫
+   重新宣告,漸層就用「使用處」的 --skeleton-base 算。 */
+.maskLoading * {
+  --skeleton-mask-sweep: linear-gradient(
+    90deg,
+    var(--skeleton-base) 25%,
+    var(--skeleton-highlight) 37%,
+    var(--skeleton-base) 63%
+  );
+}
+
+/* 文字一律透明:套在所有子孫上(不只列舉的標籤)——專案卡片很多用
+   <div class="title"> 直接放文字,只列舉 p/span 會漏掉。color 只是顏色,
+   對任何元素都不影響排版;外層卡片的框線/底色(div 的 border、background)
+   刻意不動,遮罩後外框輪廓仍在。 */
+.maskLoading *:not(
+    :global(.skeleton-keep),
+    :global(.skeleton-keep) *,
+    [data-skeleton-keep],
+    [data-skeleton-keep] *
+  ) {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  text-shadow: none !important;
+  text-decoration-color: transparent !important;
+}
+
+/* 文字類元素(含按鈕)連邊框/陰影顏色一起透明(只改顏色,寬度不變),
+   不然會剩一圈空心框線。
+   刻意不用 box-decoration-break: clone:它會讓換行的 inline 元素在每個斷行
+   片段都重複 padding/border,盒子尺寸跟真內容不同,違反「不改盒模型」。
+   代價:多行 inline 文字(span/a)用預設的 slice,掃光漸層是「整段攤平後
+   切片」畫在各行上,各行的高光位置不會同步,但盒子尺寸與真內容一致。 */
+.maskLoading
+  :is(p, span, a, button, li, h1, h2, h3, h4, h5, h6, label, small, strong, em, time, dt, dd, figcaption):not(
+    :global(.skeleton-keep),
+    :global(.skeleton-keep) *,
+    [data-skeleton-keep],
+    [data-skeleton-keep] *
+  ) {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 以下依賴 :has() 的規則包在 @supports selector(:has(*)) 裡。不包的話,不支援
+   :has() 的瀏覽器會把整條規則(含同一個選擇器清單裡的其他選擇器)丟掉,
+   遮罩就只剩「文字透明」——整塊空白,看不出在載入。不支援時的退化見下方
+   @supports not 區塊。 */
+@supports selector(:has(*)) {
+  /* 掃光底只鋪在「最內層」的文字元素上,兩種情況:
+     1. 列舉的文字標籤,且裡面沒有其他會被遮的元素(避免 li > span 兩層
+        掃光疊在一起、各跑各的速度);
+     2. 任何「只有文字、沒有子元素」的元素(:not(:has(*)):not(:empty)),
+        涵蓋 <div class="title">文字</div> 這種寫法;空的 div(排版用的
+        間隔、分隔線)是 :empty,不會被誤鋪成色塊。
+     文字與圖示混排的 div(例如「10:30 · 景點 <svg>」)只會文字透明、圖示
+     變色塊,不鋪整條底——要長條外觀時把文字包一層 <span>。 */
+  .maskLoading
+    :is(
+      :is(p, span, a, button, li, h1, h2, h3, h4, h5, h6, label, small, strong, em, time, dt, dd, figcaption):not(
+        :has(:is(p, span, a, button, li, h1, h2, h3, h4, h5, h6, label, small, strong, em, time, dt, dd, figcaption, img, svg))
+      ),
+      :not(:has(*)):not(:empty)
+    ):not(
+    :global(.skeleton-keep),
+    :global(.skeleton-keep) *,
+    [data-skeleton-keep],
+    [data-skeleton-keep] *
+  ) {
+    background-color: var(--skeleton-base) !important;
+    background-image: var(--skeleton-mask-sweep) !important;
+    background-size: 400% 100% !important;
+    animation: skeletonSweep 1.4s ease infinite;
+  }
+
+  /* 區塊級文字(p、li、h1–h6、只含文字的 div 等)整塊鋪底會變成一大片
+     色板,跟「一行一條」的骨架差很多。用 mask-image 以 1lh(一行行高)為
+     單位切成一條條橫條,行與行之間留空——mask 只影響可見度,不影響排版。
+     mask-origin/mask-clip 設 content-box:預設 border-box 會從 padding 外緣
+     開始切,有 padding(或固定高度大於內容)時每一條都跟文字行錯開;改從
+     內容區開始切,第一條對齊第一行文字,padding 區也不會露出半條。
+     只在支援 lh 單位時才切(@supports):不支援時若照寫,mask-size 那條會被
+     丟掉、退回 auto(整個盒子大小),結果是整塊只剩中間一條,反而更怪;
+     包起來後不支援 lh 就是整塊鋪底(仍然正確,只是比較粗)。
+     只套在區塊級標籤:inline 的 span/a 盒子高度是字體內容區不是行高,用
+     1lh 切會錯位。 */
+  @supports (height: 1lh) {
+    .maskLoading div:not(:has(*)):not(:empty):not(
+    :global(.skeleton-keep),
+    :global(.skeleton-keep) *,
+    [data-skeleton-keep],
+    [data-skeleton-keep] *
+  ),
+    .maskLoading
+      :is(p, li, h1, h2, h3, h4, h5, h6, dt, dd, figcaption):not(
+        :has(:is(p, span, a, button, li, h1, h2, h3, h4, h5, h6, label, small, strong, em, time, dt, dd, figcaption, img, svg))
+      ):not(
+    :global(.skeleton-keep),
+    :global(.skeleton-keep) *,
+    [data-skeleton-keep],
+    [data-skeleton-keep] *
+  ) {
+      -webkit-mask-image: linear-gradient(to bottom, transparent 18%, #000 18%, #000 82%, transparent 82%);
+      mask-image: linear-gradient(to bottom, transparent 18%, #000 18%, #000 82%, transparent 82%);
+      -webkit-mask-size: 100% 1lh;
+      mask-size: 100% 1lh;
+      -webkit-mask-repeat: repeat-y;
+      mask-repeat: repeat-y;
+      -webkit-mask-origin: content-box;
+      mask-origin: content-box;
+      -webkit-mask-clip: content-box;
+      mask-clip: content-box;
+    }
+  }
+}
+
+/* 不支援 :has() 的退化:找不出「最內層」文字元素,改成所有列舉的文字標籤
+   都鋪「單色」底(文字已透明)——不掃光、不切行。用單色而不是掃光漸層,
+   是因為 li > span 這種巢狀會兩層疊在一起,單色疊單色看起來仍是同一塊,
+   漸層疊漸層則會各跑各的。結果是「整塊鋪底」:文字所在的區塊變成單色
+   色塊,只含純文字的 <div>(沒有包 span)維持文字透明、不鋪底。 */
+@supports not selector(:has(*)) {
+  .maskLoading :is(p, span, a, button, li, h1, h2, h3, h4, h5, h6, label, small, strong, em, time, dt, dd, figcaption):not(
+    :global(.skeleton-keep),
+    :global(.skeleton-keep) *,
+    [data-skeleton-keep],
+    [data-skeleton-keep] *
+  ) {
+    background-color: var(--skeleton-base) !important;
+    background-image: none !important;
+  }
+}
+
+/* img:把圖片畫到框外(object-position),框內只剩底色——不用
+   visibility/opacity,因為那兩個會連底色一起藏掉。 */
+.maskLoading img:not(:global(.skeleton-keep), :global(.skeleton-keep) *, [data-skeleton-keep], [data-skeleton-keep] *) {
+  object-position: -200vw 0 !important;
+  background: var(--skeleton-base) !important;
+}
+
+/* svg:子圖形隱藏(visibility 不影響排版),svg 本身鋪底色。 */
+.maskLoading svg:not(:global(.skeleton-keep), :global(.skeleton-keep) *, [data-skeleton-keep], [data-skeleton-keep] *) {
+  background: var(--skeleton-base) !important;
+  border-radius: 4px;
+}
+.maskLoading svg:not(:global(.skeleton-keep), :global(.skeleton-keep) *, [data-skeleton-keep], [data-skeleton-keep] *) > * {
+  visibility: hidden;
+}
+
+/* reduced-motion:一律退成靜態底色(拿掉漸層,不只是停動畫——停在
+   某一格的漸層仍可能露出一條高光)。 */
+@media (prefers-reduced-motion: reduce) {
+  .sweep {
+    animation: none;
+    background-image: none;
+  }
+  /* 漸層拿掉後 background-position 動畫看不出任何變化,不必再逐一停動畫
+     (也就不會誤停真卡片自己的動畫)。 */
+  .maskLoading * {
+    --skeleton-mask-sweep: none;
+  }
+}

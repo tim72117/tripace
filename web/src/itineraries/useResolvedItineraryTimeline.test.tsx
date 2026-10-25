@@ -101,4 +101,16 @@ describe('useResolvedItineraryTimeline', () => {
     await new Promise((r) => setTimeout(r, 20))
     expect(result.current.tl).toBe(before)
   })
+
+  // 住宿先站位:旅館(timeline.lodgings)是行程檔案的靜態資料,第一次 render 就要在,不能等 placeDetails 回來——
+  // 否則時間軸的住宿橫幅會晚一步插進來,把後面所有站點卡往下推。
+  it('旅館在第一次 render 就帶著作者寫的名稱與天數,不等地點查詢;查詢回來也不改動 lodgings', async () => {
+    placeDetails.mockReturnValue(new Promise(() => {}))
+    const lodgings = [{ id: 'l1', placeId: 'pid_h', name: '作者寫的旅館', dayIds: ['d1'] }]
+    const base = make([stop({ name: 'A', placeId: 'pid_a', lat: 1, lng: 2 })])
+    const it = { ...base, timeline: { ...base.timeline, lodgings } }
+    const { result } = renderHook(() => useResolvedItineraryTimeline(it), { wrapper })
+    expect(result.current.lodgings).toEqual(lodgings)
+    expect(placeDetails).toHaveBeenCalledWith('pid_h')
+  })
 })

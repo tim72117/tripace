@@ -300,8 +300,22 @@ export interface AskPageCtx {
 // 沒有各自獨立宣告 reason(候選數量太少不需要另開欄位),直接掛在
 // candidates/country/city/transport 這幾個 input 成員上(text 模式是
 // 純文字氣泡本身沒有「標題」概念,不需要 reason)。
+//
+// loading——2026-10 新增,只由前端自己設(parseOpenAskPageArgs 不會產生):選完城市後、景點還在查的「查詢中」畫面
+// (見 planning/panel/useAskPageFlow.ts)。candidates 此時是空陣列,AskPage 顯示查詢中的外殼(同 explore 查詢中),
+// 查完由呼叫端原地換成真正的候選——放在 candidates 成員上而不是另開一種 input,讓查詢中與候選是同一個步驟
+// (轉場層級相同、同一個 CandidatesPanel,換成候選時標題與氣泡不重新滑入,只有卡片與按鈕出現)。
+//
+// back——2026-10 新增(使用者要求「選擇感興趣地點也要可以往前一頁」),與 loading 一樣只由前端自己設
+// (parseOpenAskPageArgs 不會產生):選完城市後開出的查詢中/景點候選帶上「當時的城市頁 input」,AskPage 據此在左上角
+// 顯示「返回上一層」,useAskPageFlow 的 handleAskPageBack 用 replaceAskPage 原樣換回那個城市頁(countryId、cityIds 篩選、
+// 城市頁自己的 back 都一併重現,所以回到城市頁後仍可再返回國家頁)。做法對齊 AskPageCityInput.back:物件存在與否才是
+// 「能不能返回」的判斷依據。LLM 直接 open_ask_page 開的候選與 explore 沒有 back。
+export interface AskPageCandidatesBack {
+  city: AskPageCityInput
+}
 export type AskPageInput =
-  | { candidates: AskPageCandidate[]; reason?: string }
+  | { candidates: AskPageCandidate[]; reason?: string; loading?: boolean; back?: AskPageCandidatesBack }
   | { explore: AskPageExplore; reason?: string }
   | { country: AskPageCountryInput }
   | { city: AskPageCityInput }

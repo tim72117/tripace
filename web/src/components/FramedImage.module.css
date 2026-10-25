@@ -1,0 +1,57 @@
+/* FramedImage(見 FramedImage.tsx 檔頭說明)。
+   外框尺寸由 inline style(width/height/aspect-ratio)決定,狀態只寫在
+   data-status 上;佔位層與 <img> 都絕對定位疊在外框裡,不參與排版
+   (做法同 planning/place/PhotoCarousel.module.css 的 .photoFrame)。 */
+.frame {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  flex: none;
+  max-width: 100%;
+}
+
+.layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* placeholder:沒有 src/失敗時的靜態佔位——底色沿用骨架 token(見
+   Skeleton.module.css),圖示用暖灰,兩種主題都自然。
+   用 background 簡寫(不是 background-color):--framed-image-placeholder-bg
+   可以是漸層或 transparent(例如佔位要透出外層卡片的漸層底);沒設時退回
+   --skeleton-base。即使使用端誤把漸層塞進 --skeleton-base,簡寫也能接受,
+   佔位不會變成透明(掃光層仍只能吃單色,見 FramedImage.tsx 檔頭)。 */
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--framed-image-placeholder-bg, var(--skeleton-base, var(--ios-sep)));
+  color: var(--ios-gray);
+}
+
+.icon {
+  flex: none;
+  opacity: 0.8;
+}
+
+.img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  opacity: 0;
+  transition: opacity 0.25s ease-out;
+}
+
+.imgLoaded {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .img {
+    transition: none;
+  }
+}

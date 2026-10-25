@@ -25,6 +25,10 @@ export function searchResultInfoContent(r: GeoSearchResult): PlaceInfoContent {
     placeId: r.placeId,
     subtitle: r.address,
     badges: [],
+    // 有 placeId 才會去查文字(見 PlaceInfoContent.textStatus 的說明)。
+    textStatus: r.placeId != null ? 'pending' : undefined,
+    // 照片:有 placeId、又還沒有照片才要查(見 PlaceInfoContent.photoStatus)。
+    photoStatus: r.placeId != null && !r.photoUrl ? 'pending' : undefined,
     candidate: searchResultToCandidate(r),
   }
 }
@@ -116,13 +120,18 @@ export function attractionToInfoContent(attraction: GeoAttraction): PlaceInfoCon
     // photoUrl 不再讀 attraction.landmarkPhotoUrl(2026-09 使用者明確
     // 要求「完全不要使用 landmarkPhotoUrl」)——固定 undefined,有
     // placeId 時交給 PlaceInfoContent.placeId 說明裡提到的既有機制
-    // (usePlanningState.ts 的 infoContentPhotoFetch effect)自動呼叫
+    // (usePlanningState.ts 的 placePhotoFetch effect)自動呼叫
     // fetchGeoPlacePhoto 補查,那支端點跟主題介紹卡(AttractionInfoPanel.tsx)
     // 是同一套 photo_assets 資料來源(見後端 applyPhotoAssetsAsSource 的
     // 完整說明),不是另外重新發明一條查詢路徑。沒有 placeId 的地點(舊
     // 資料,尚未補上 place_id)固定顯示 placeholder,不回退任何舊表資料。
     photoUrl: undefined,
     placeId: attraction.placeId,
+    // 有 placeId 時照片待查(usePlanningState 的 placePhotoFetch 會查)。注意:
+    // 不經過 usePlanningState 顯示的呼叫端(例如桌面版第二張 PlacePanel 的
+    // nearbyInfoContent、useThemeAttractionSelection 的 poiContent)沒有人查,
+    // 要自己把它改成最終狀態,否則會一直掃光。
+    photoStatus: attraction.placeId != null ? 'pending' : undefined,
     subtitle: attraction.landmarkName && attraction.landmarkName !== attraction.name
       ? attraction.landmarkName
       : undefined,
@@ -148,12 +157,38 @@ export function candidateInfoContent(c: Exclude<GeoCandidate, { kind: 'attractio
   }
   // hotel 候選有 photoUrl(GeoHotel 查詢完成時就同步帶照片);place 候選
   // 用 placeId(見 GeoGeocodeCandidate/GeoCandidate 的說明),交給
-  // usePlanningState.ts 的 infoContentPhotoFetch effect 補查。
+  // usePlanningState.ts 的 placePhotoFetch effect 補查;文字(簡介、
+  // 評分)同樣由 placeTextFetch effect 補查,故有 placeId 時 textStatus 是
+  // 'pending'。
+  const placeId = c.kind === 'place' ? c.placeId : undefined
   return {
     name: c.name,
     photoUrl: c.kind === 'hotel' ? c.photoUrl : undefined,
-    placeId: c.kind === 'place' ? c.placeId : undefined,
+    placeId,
     subtitle: c.address,
     badges: [],
+    textStatus: placeId != null ? 'pending' : undefined,
+    photoStatus: placeId != null ? 'pending' : undefined,
   }
+}
+
+// reservesLateTextSlots:這張資訊卡的評分徽章/簡介是否可能「卡片開了之後才
+// 補上」——Google 地點來源(有 placeId、不是人工建檔景點)開卡時通常只有
+// 名稱+地址,評分與簡介要等 place-text 查詢回來才 PATCH 進來(見
+// planning/member/usePlanningState.ts 的 patchGeocodeCandidateText),中間
+// 這段時間若不預留空間,徽章列冒出來、簡介從一行變三行時,下方內容(加入
+// 行程按鈕、照片、地址)會整塊往下跳。呼叫端(PlacePanel/
+// PlanPhoneInfoSheet)用這個判斷要不要固定保留徽章列高度與簡介最小高度。
+// 人工建檔景點(candidate.kind==='attraction')的文字是同步帶進來的,不需要
+// 預留,避免短簡介下方多出一塊空白。
+//
+// 刻意只看 placeId、不看 textStatus(2026-10 評估後的取捨):文字查完
+// (textStatus 變 undefined)但確實沒有評分/簡介時,若此時才收起空徽章列
+// (19px),下方的照片、簡介、按鈕會在使用者眼前往上跳一次——跟「先站位、
+// 資料到了也不推擠」的原則相反。保留空列的代價只是一條固定的空白,比查完
+// 才跳動好;訪客版(沒有 placeText,開卡就知道不會有文字)理論上可以一開始
+// 就不預留,但這需要卡片內容另外帶「這個來源不查文字」的資訊,目前不值得為
+// 這 19px 多開一個欄位,維持一致的版面。
+export function reservesLateTextSlots(content: PlaceInfoContent): boolean {
+  return content.placeId != null && content.candidate?.kind !== 'attraction'
 }

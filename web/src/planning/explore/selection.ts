@@ -30,8 +30,8 @@ export type GeoSelectionAction =
   | { type: 'SELECT_ATTRACTION'; key: GeoSelectedKey; data: GeoAttraction }
   | { type: 'SELECT_INFO'; key?: GeoSelectedKey; content: PlaceInfoContent }
   // PATCH_INFO_CONTENT:只有目前選取狀態是 'info' 時才生效,用來局部更新
-  // 已顯示卡片的部分欄位(見 onGeocodeCandidateText/onGeocodeCandidatePhoto
-  // 的既有用法——文字/照片是兩支平行請求,誰先回來就只更新自己負責的
+  // 已顯示卡片的部分欄位(見 planning/member/usePlanningState.ts 的
+  // placeTextFetch/placePhotoFetch——文字/照片是兩支平行請求,誰先回來就只更新自己負責的
   // 欄位,不覆蓋對方,也不該在使用者已經切到別的選取項目後才回來時誤更新
   // 到不相關的卡片上)。若目前不是 'info' 狀態(例如使用者在請求還沒回來
   // 前就切到別的地點),這個 action 直接被忽略,不會意外把某個不相關的

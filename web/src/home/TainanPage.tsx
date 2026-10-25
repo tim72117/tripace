@@ -10,6 +10,7 @@ import { trackEvent } from '../analytics';
 import { SITE_SEO_BASE_URL } from '../AppCommon';
 import './TainanPage.css';
 import './ScrollTimelineContainer.css';
+import type { PhotoSize } from './cityPageTypes'
 
 // LANDING_ASSETS_BASE:見 JiufenPage.tsx 對應常數的完整說明,同一個公開
 // 可讀 GCS bucket(shuttle-tripace-web-assets),landing/{城市 slug}/
@@ -76,6 +77,8 @@ const STOPS: {
   desc: string
   layout: 'stacked'
   photo?: string
+  // photoSize——照片原始寬高(px),給 <img width/height> 預留高度,理由同 KyotoPage.tsx STOPS 的同名欄位。
+  photoSize?: PhotoSize
   credit?: string
 }[] = [
   {
@@ -87,6 +90,7 @@ const STOPS: {
     desc: '1624年荷蘭東印度公司選址於此構築熱蘭遮城——台江內海的潟湖地形提供了天然良港，讓這裡成為全台最早的對外貿易據點。城堡本身是整條敘事的起點：先有港口，才有之後所有的聚落與商業發展。',
     layout: 'stacked',
     photo: `${LANDING_ASSETS_BASE}/tainan/n1.jpg`,
+    photoSize: [1600, 1067],
     credit: 'CEphoto, Uwe Aranas / Wikimedia Commons, CC BY-SA 3.0',
   },
   {
@@ -100,6 +104,7 @@ const STOPS: {
     desc: '1874年牡丹社事件後，清廷派沈葆楨來台籌辦海防，1876年建成全台第一座西式砲臺——法國工程師設計、以熱蘭遮城磚材混合洋式紅磚砌成，配備英國阿姆斯壯大砲。安平在失去港口地位之前，最後一次以軍事要地之姿站上歷史舞台。',
     layout: 'stacked',
     photo: `${LANDING_ASSETS_BASE}/tainan/n8.jpg`,
+    photoSize: [1600, 900],
     credit: 'Aa940325 / Wikimedia Commons, CC BY-SA 4.0',
   },
   {
@@ -114,6 +119,7 @@ const STOPS: {
     desc: '19世紀末台江內海逐漸淤積成陸，安平失去了深水港的地位，商業重心轉往台南市區——地質變遷直接改寫了這座聚落的角色，從貿易門戶轉為以老街生活機能為主的地方。',
     layout: 'stacked',
     photo: `${LANDING_ASSETS_BASE}/tainan/n2.jpg`,
+    photoSize: [1600, 838],
     credit: '1930年代安平港景（作者不詳）/ Wikimedia Commons, Public Domain',
   },
   {
@@ -125,6 +131,7 @@ const STOPS: {
     desc: '老榕樹盤根錯節包覆廢棄倉庫建築，是港口機能外移後閒置空間被自然重新接管的具體見證——樹根與磚牆纏繞的樣貌，成了安平歷史軸線上最直觀的時間痕跡。',
     layout: 'stacked',
     photo: `${LANDING_ASSETS_BASE}/tainan/n3.jpg`,
+    photoSize: [1600, 1200],
     credit: 'Sun Taro / Wikimedia Commons, CC BY-SA 2.0',
   },
   {
@@ -139,6 +146,7 @@ const STOPS: {
     desc: '港口貿易帶來的人潮與財富，在老街兩側沉澱成百年老店群聚——林永泰興蜜餞行、同記安平豆花、義豐冬瓜茶，各自傳承數代，是安平從貿易港口轉型為生活聚落後，商業活動留下的具體痕跡。',
     layout: 'stacked',
     photo: `${LANDING_ASSETS_BASE}/tainan/n4.jpg`,
+    photoSize: [1600, 1200],
     credit: 'Chongkian / Wikimedia Commons, CC BY-SA 4.0',
   },
   {
@@ -151,6 +159,7 @@ const STOPS: {
     desc: '清代福州海壇鎮標水師班兵會館，安平五館中唯一留存至今的一座——曾一度荒廢、轉為民宅，1975年由市府收購整建，現今開放參觀並展售文創商品，是安平巷弄裡另一種「老屋找到新角色」的具體見證，跟運河淤積後整座聚落的轉型軌跡一脈相承。',
     layout: 'stacked',
     photo: `${LANDING_ASSETS_BASE}/tainan/n7.jpg`,
+    photoSize: [1600, 1200],
     credit: 'Pbdragonwang / Wikimedia Commons, CC BY-SA 3.0',
   },
 ]
@@ -276,7 +285,14 @@ export function TainanPage() {
                 <div className="tainan-stop-photo">
                   {'photo' in stop ? (
                     <>
-                      <img src={stop.photo} alt={stop.name} loading="lazy" />
+                      <img
+                        src={stop.photo}
+                        alt={stop.name}
+                        width={stop.photoSize?.[0]}
+                        height={stop.photoSize?.[1]}
+                        loading="lazy"
+                        onLoad={(e) => { e.currentTarget.dataset.loaded = 'true' }}
+                      />
                       <span className="tainan-stop-credit">Photo: {stop.credit}</span>
                     </>
                   ) : (

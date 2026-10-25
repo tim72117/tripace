@@ -198,7 +198,7 @@ export function ResultList({
                     loadKey={r.placeId}
                     onLoadPhoto={handleLoadPhoto}
                     photoClassName={styles.itemPhoto}
-                    placeholderClassName={styles.itemPhotoPlaceholder}
+                    placeholderClassName={styles.itemPhoto}
                   />
                 }
                 selected={selectedKey === key}

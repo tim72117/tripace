@@ -35,6 +35,10 @@
   font-size: 12px;
   color: var(--ios-gray);
 }
+/* chip:font: inherit + 明確的 line-height——<button> 的字型/行高預設來自瀏覽器
+   UA 樣式(不繼承),骨架用的 <span class="chip"> 則繼承頁面字型,兩者不設就會
+   字寬、行高不同,骨架與真膠囊的尺寸對不上。font 簡寫要寫在 font-size/line-height
+   之前,不然會把它們重設回繼承值。 */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -44,7 +48,9 @@
   border-radius: 999px;
   background: transparent;
   color: var(--color-dark);
+  font: inherit;
   font-size: 13px;
+  line-height: normal;
   cursor: pointer;
   transition: background-color 0.12s ease, border-color 0.12s ease;
 }
@@ -98,25 +104,11 @@
   outline-offset: 2px;
 }
 
-/* cover——固定 16:9。圖片用絕對定位鋪滿並由 overflow: hidden 裁切,而不是
-   height: 100%:後者對「高度 auto 的容器」沒有約束力,直式照片會用自己的原始
-   比例把整個封面(連同整排卡片)撐高。 */
+/* cover——共用 FramedImage 的外框(見 AiItineraryListPage.tsx CardContent):固定 16:9
+   (FramedImage 也以 inline aspect-ratio 給同一個值)。圖片絕對定位鋪滿、不參與排版,
+   直式照片不會把封面撐高;載入淡入、失敗佔位、reduced-motion 由 FramedImage 處理。 */
 .cover {
-  position: relative;
   aspect-ratio: 16 / 9;
-  overflow: hidden;
-  background: var(--ios-active);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.coverImg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
 }
 .coverFallback {
   color: var(--ios-gray);

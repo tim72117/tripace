@@ -202,17 +202,15 @@
   color: var(--ios-red);
 }
 
-.itemPhoto,
-.itemPhotoPlaceholder {
+/* itemPhoto:縮圖外框(PhotoLeading → components/FramedImage 的外框 class)。
+   只決定尺寸與圓角;佔位、下載中掃光、淡入、失敗佔位都由 FramedImage 處理,
+   原本的 .itemPhotoPlaceholder 與綠棕漸層底色已移除(會被 FramedImage 的
+   佔位層完全蓋住)。 */
+.itemPhoto {
   flex: 0 0 44px;
   width: 44px;
   height: 44px;
   border-radius: 10px;
-  object-fit: cover;
-}
-
-.itemPhotoPlaceholder {
-  background: linear-gradient(135deg, #5A8A6A, #9E9488);
 }
 
 .itemInfo {

@@ -185,6 +185,12 @@
   object-fit: contain;
   display: block;
 }
+/* 圖片載入前的佔位:<img> 帶 width/height(照片原始尺寸,見 STOPS 的 photoSize),
+   瀏覽器在下載前就能依比例算出高度,外框不會從 0 撐開;載入完成前(onLoad 會標
+   data-loaded)先鋪一層淡色底,載入失敗時也維持同一塊尺寸。 */
+.kyoto-page .kyoto-stop-photo img:not([data-loaded]) {
+  background: var(--paper-dim, rgba(0, 0, 0, 0.05));
+}
 
 /* kyoto-stop-meta/index/kind — 數值對齊 HomePage.css 的 .stop-kicker/
    .stop-index/.stop-kind(gap 14px、index font-size 13px letter-spacing

@@ -136,14 +136,18 @@ export function AttractionInfoPanel({
   // (如 nearby 清單本身)變動重新渲染時,placeId 不變不需要重查。
   // cancelled flag 防止查詢完成前使用者已經切換到另一個 attraction(或
   // 關閉卡片)時,結果誤植到目前顯示的卡片上——理由同
-  // usePlanningState.ts 的 infoContentPhotoFetch effect 一貫的競態
+  // usePlanningState.ts 的 placePhotoFetch effect 一貫的競態
   // 保護寫法。
   const placeId = attraction?.placeId
   const [placeDetails, setPlaceDetails] = useState<GeoPlaceDetails | null>(
     () => (placeId ? getCachedPlaceDetails(placeId) ?? null : null),
   )
+  // detailsFailed:這次查詢失敗——照片佔位改成靜態(photoStatus 'failed'),
+  // 不再因為「沒有照片」一律掃光而永遠像在載入。
+  const [detailsFailed, setDetailsFailed] = useState(false)
   useEffect(() => {
     setPlaceDetails(placeId ? getCachedPlaceDetails(placeId) ?? null : null)
+    setDetailsFailed(false)
     // nearbyOnly 時不查——精簡模式沒有照片輪播,查了也用不到(見該 prop
     // 的說明)。
     if (!placeId || nearbyOnly) return
@@ -153,6 +157,7 @@ export function AttractionInfoPanel({
         if (!cancelled) setPlaceDetails(details)
       })
       .catch(() => {
+        if (!cancelled) setDetailsFailed(true)
         // 查詢失敗不視為錯誤,維持 null——PhotoCarousel 沒有 fallbackUrl
         // 可退,查詢失敗就是顯示 placeholder(見上方說明,使用者明確要求
         // 不再用資料庫舊圖墊底)。公開展示頁若查到不在後端白名單內的
@@ -371,6 +376,8 @@ export function AttractionInfoPanel({
         <PhotoCarousel
           googlePhotoUrls={placeId ? placeDetails?.googlePhotoUrls : undefined}
           alt={attraction.landmarkName ?? attraction.name}
+          // 查詢中才掃光;查到(不論有沒有照片)、失敗、沒有 placeId 都是最終結果。
+          photoStatus={placeId && !placeDetails ? (detailsFailed ? 'failed' : 'pending') : undefined}
         />
       </div>
       <div className={styles.content}>

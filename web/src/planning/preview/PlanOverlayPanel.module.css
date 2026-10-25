@@ -217,3 +217,51 @@
   display: flex;
   flex-direction: column;
 }
+
+/* fuse——詢問匡與輸入列融合(phone/PlanOverlayLayout.tsx 一律掛上,2026-10-25 由 ?fuse=1 試做轉正):
+   手機推論態的詢問匡(AskShell 的 .bubble)與下方輸入列(Composer 的根節點)無縫拼成一體。
+   只拼接、不改兩者內部外觀(背景、模糊、字型、按鈕都保留)。
+
+   掛點(跨 CSS Module 寫不出雜湊 class,改用各元件自己宣告的屬性,不依賴 DOM 層數):
+     [data-ask-part='transition']——AskPage 的轉場外殼(display: contents),用來找它的父層(時間軸容器)歸零間隙
+     [data-ask-part='wrap'] / [data-ask-part='bubble']——AskShell 的 .wrap / .bubble(只有一般詢問匡有)
+     [data-composer-part='root']——components/Composer.tsx 的根節點
+   排除範圍:純文字對話氣泡(AskPage 的 messageBubble,背景不同、有最大高度與捲動、過期半透明)不走 AskShell、
+   沒有掛點;播放態的 ScriptedAskPage 也沒有掛點——兩者整組規則都不套用。
+
+   兩邊同時命中才改:每條規則都以同一個閘門開頭——.fuse 底下同時有詢問匡 bubble 與輸入列插槽裡的 Composer 根節點。
+   少了任一邊(例如沒有詢問頁、輸入框不在插槽裡),整組規則都不命中,不會只改一邊留下懸空的方角。
+   整組包在 @supports selector(:has(*)) 裡:閘門靠 :has,不支援的瀏覽器整組不套(避免只套到不需要 :has 的那一半)。
+
+   陰影只留一道:輸入列自己的往下陰影(0 12px 32px -12px,負擴散只落在底邊),
+   詢問匡的陰影(0 8px 28px,往下偏移)拿掉——留著會投在接縫與輸入列上,看起來仍是兩塊。
+   背景各自保留(半透明詢問匡在上、實色輸入列在下),接縫的深淺差由輸入列上邊框(--ios-sep)承接。
+
+   已知:VITE_FEATURE_NEW_TRIP_DRAFT 開啟時,「新行程」按鈕(TripPlanPage 的 .newDraftBtn)在 .page 的文件流裡位於
+   時間軸與輸入列插槽之間,會夾在已拼接的兩塊中間;目前未處理,待決定按鈕位置。 */
+@supports selector(:has(*)) {
+  @media (max-width: 767px) {
+    /* 間隙歸零:時間軸容器(詢問頁轉場外殼的父層)的 padding-bottom 與詢問頁 .wrap 的 padding-bottom。 */
+    .fuse:has([data-ask-part='bubble']):has([data-slot='composer-slot'] [data-composer-part='root']) :has(> [data-ask-part='transition']) {
+      padding-bottom: 0;
+    }
+    .fuse:has([data-ask-part='bubble']):has([data-slot='composer-slot'] [data-composer-part='root']) [data-ask-part='wrap'] {
+      padding-bottom: 0;
+    }
+
+    /* 詢問匡:取消下圓角、下邊框、陰影。 */
+    .fuse:has([data-ask-part='bubble']):has([data-slot='composer-slot'] [data-composer-part='root']) [data-ask-part='bubble'] {
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      border-bottom: none;
+      box-shadow: none;
+    }
+
+    /* 輸入列:取消上圓角,上邊框當分隔線。 */
+    .fuse:has([data-ask-part='bubble']):has([data-slot='composer-slot'] [data-composer-part='root']) [data-slot='composer-slot'] [data-composer-part='root'] {
+      border-top-left-radius: 0;
+      border-top-right-radius: 0;
+      border-top: 1px solid var(--ios-sep);
+    }
+  }
+}

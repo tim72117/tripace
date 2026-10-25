@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { FramedImage } from '../../components/FramedImage'
 import { useIsDesktop } from '../../hooks/useIsDesktop'
 import { useSwipeDirectionLock } from '../../hooks/useSwipeDirectionLock'
 import styles from './PhotoCarousel.module.css'
@@ -10,7 +11,8 @@ import styles from './PhotoCarousel.module.css'
 // 後端回應是 Google 照片的多圖清單(見 handleGeoPlaceDetails 的說明,
 // 2026-09 已移除 Pexels 讀圖來源),這個元件依照片數量與裝置類型分別
 // 呈現:
-//   0 張:顯示 placeholder(沿用既有 .photoPlaceholder 樣式)。
+//   0 張:同尺寸佔位——photoStatus==='pending'(還在查)掃光,其餘(確定沒照片、
+//     查詢失敗、本來就不查)是靜態佔位,見下方說明。
 //   1 張:直接顯示單張 <img>,不顯示任何互動控制項——維持跟改版前完全
 //     一樣的單圖體驗,其餘來源(地點清單/候選籃項目,只有單一 photoUrl)
 //     走的就是這條路徑。
@@ -36,6 +38,7 @@ export function PhotoCarousel({
   fallbackUrl,
   alt,
   onLayoutChange,
+  photoStatus,
 }: {
   googlePhotoUrls?: string[]
   fallbackUrl?: string
@@ -52,6 +55,9 @@ export function PhotoCarousel({
   // 套 padding——桌面版(PlacePanel.tsx)固定滿版顯示,不需要這個
   // 機制,不傳這個 prop 即可。
   onLayoutChange?: (isMobileSwipe: boolean) => void
+  // photoStatus:照片查詢進度(語意同 PlaceInfoContent.photoStatus)——只影響
+  // 0 張照片時的佔位:'pending' 掃光,其餘(含 undefined)靜態佔位。
+  photoStatus?: 'pending' | 'failed' | 'none'
 }) {
   // photos:googlePhotoUrls 沒有值時,退回 fallbackUrl 組成的單張清單——
   // 這是唯一會用到 fallbackUrl 的分支,一旦 googlePhotoUrls 有值就完全
@@ -73,13 +79,15 @@ export function PhotoCarousel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMobileSwipe])
 
-  // 目前沒有任何照片時,不區分「這個地點本來就沒有照片」跟「照片還在
-  // 背景查詢/重試中」——兩種情況顯示同一個帶載入動畫的 placeholder(見
-  // .photoPlaceholder 的完整說明),不額外接一個「是否查詢中」的旗標。
+  // 目前沒有任何照片時,依 photoStatus 區分「還在查」與「已確定沒有」:只有
+  // 'pending' 掃光(FramedImage pending);查完沒照片('none')、查詢失敗
+  // ('failed')、或呼叫端沒有查詢(undefined,已是最終結果)都是靜態佔位
+  // ——2026-10 以前一律掃光,確定沒照片的地點會永遠像在載入。外框仍是 160px
+  // 高的同一個 .wrap/FramedImage,掃光 → 靜態、照片從無到有時節點與尺寸不變。
   if (photos.length === 0) {
     return (
       <div className={styles.wrap}>
-        <div className={styles.photoPlaceholder} />
+        <FramedImage alt={alt} height={160} pending={photoStatus === 'pending'} />
       </div>
     )
   }
@@ -87,7 +95,7 @@ export function PhotoCarousel({
   if (photos.length === 1) {
     return (
       <div className={styles.wrap}>
-        <img className={styles.photo} src={photos[0]} alt={alt} />
+        <CarouselImg src={photos[0]} alt={alt} />
       </div>
     )
   }
@@ -96,7 +104,7 @@ export function PhotoCarousel({
     return (
       <>
         <button type="button" className={styles.desktopTrigger} onClick={() => setLightboxOpen(true)}>
-          <img className={styles.photo} src={photos[0]} alt={alt} />
+          <CarouselImg src={photos[0]} alt={alt} />
           <span className={styles.counter}>{photos.length} 張照片</span>
         </button>
         {lightboxOpen && (
@@ -107,6 +115,16 @@ export function PhotoCarousel({
   }
 
   return <MobileSwipeStrip photos={photos} alt={alt} />
+}
+
+// CarouselImg:輪播裡每一張圖片的固定尺寸外框——2026-10 改成薄包裝,
+// 實作交給共用的 components/FramedImage(它的原型就是這裡原本的 CarouselImg):
+// 外框固定 160px 高(跟 0 張時的佔位一樣),下載中掃光、載入完成淡入、
+// 失敗顯示同尺寸靜態佔位+ImageOff,三種狀態外框尺寸都不變;src 換一張
+// 時重回 loading;快取命中的補判也由 FramedImage 處理。狀態寫在外框的
+// data-status 上。
+export function CarouselImg({ src, alt }: { src: string; alt: string }) {
+  return <FramedImage src={src} alt={alt} height={160} />
 }
 
 // MobileSwipeStrip:手機版橫向並排滑動列——純 overflow-x: auto 自由捲動
@@ -224,7 +242,7 @@ function MobileSwipeStrip({ photos, alt }: { photos: string[]; alt: string }) {
                 itemRefs.current[i] = el
               }}
             >
-              <img className={styles.photo} src={url} alt={alt} />
+              <CarouselImg src={url} alt={alt} />
             </div>
           )
         })}

@@ -1,6 +1,11 @@
+import { useState } from 'react'
+import type { CSSProperties } from 'react'
 import type { PlanNode } from '../planning/timeline/model'
 import type { StopCardRenderContext } from '../planning/timeline/PlanTimelineView'
 import { MAPLE_LEAF_PATH, MAPLE_STEM_PATH } from './mapleLeafPath'
+import { FramedImage } from '../components/FramedImage'
+import type { FramedImageStatus } from '../components/FramedImage'
+import { photoButtonLabel } from './renderItineraryStopCard'
 import styles from './renderOnsenAutumnStopCard.module.css'
 
 // createRenderOnsenAutumnStopCard——「秋日泡湯」主題的地點卡渲染(2026-10
@@ -21,7 +26,7 @@ import styles from './renderOnsenAutumnStopCard.module.css'
 // 饅頭、其他→溫泉記號 ♨ 的三條蒸氣),底下疊一層緩慢上升的蒸氣動畫
 // (SteamWisps),讓每張卡片在沒有照片的狀態下仍然有份量感。真的有
 // 照片時(ctx.usablePhotos 非空)縮圖區仍正常顯示照片+放大按鈕,行為
-// 對齊既有卡片,只是不再畫圖樣。
+// 對齊既有卡片,只是不再畫圖樣;照片載入完成後也不再渲染蒸氣(見 OnsenThumb)。
 //
 // 互動接法(onClick/hover/focus/鍵盤 Enter/Space)跟既有卡片完全一致,
 // 這張卡片只換皮不換骨——訪客在這份行程的點選/連動體驗不應該因為
@@ -94,7 +99,6 @@ export function createRenderOnsenAutumnStopCard() {
   return function renderOnsenAutumnStopCard(step: PlanNode, ctx: StopCardRenderContext) {
     if (step.type !== 'stop') return null
     const cardClass = [styles.card, ctx.isSelected ? styles.cardSelected : ''].filter(Boolean).join(' ')
-    const hasPhoto = ctx.usablePhotos.length > 0
     return (
       <div
         className={cardClass}
@@ -109,29 +113,7 @@ export function createRenderOnsenAutumnStopCard() {
         onFocus={ctx.onFocus}
         onBlur={ctx.onBlur}
       >
-        <div className={styles.thumb}>
-          {ctx.loading ? (
-            <span className={styles.thumbSpinner} aria-label="查詢地點資料中" />
-          ) : hasPhoto ? (
-            <button
-              type="button"
-              className={styles.thumbPhotoBtn}
-              onClick={(e) => {
-                e.stopPropagation()
-                ctx.onOpenPhotos()
-              }}
-              aria-label={ctx.usablePhotos.length > 1 ? `瀏覽 ${ctx.usablePhotos.length} 張照片` : '放大檢視照片'}
-            >
-              <img src={ctx.usablePhotos[0]} alt={step.name} className={styles.thumbImg} />
-              {ctx.usablePhotos.length > 1 && <span className={styles.thumbPhotoCount}>{ctx.usablePhotos.length}</span>}
-            </button>
-          ) : (
-            <>
-              <SteamWisps />
-              <OnsenThumbGlyph kind={step.kind ?? ''} />
-            </>
-          )}
-        </div>
+        <OnsenThumb step={step} ctx={ctx} />
         <div className={styles.body}>
           {/* cornerLeaf——文字區右上角一小片金黃楓葉,純裝飾(aria-hidden),
               跟地圖外框四角的楓葉叢呼應,讓卡片跟相框是同一個季節的東西。 */}
@@ -155,4 +137,54 @@ export function createRenderOnsenAutumnStopCard() {
       </div>
     )
   }
+}
+
+// OnsenThumb——縮圖區。抽成元件是因為要用 state 追蹤照片載入狀態(renderStopCard
+// 插槽在 PlanTimelineView 的 render 裡被當成一般函式呼叫,裡面不能用 hook)。
+//
+// 外框 .thumb 尺寸由卡片撐開,不隨狀態變動。圖片交給共用 FramedImage(絕對定位
+// 鋪滿外框):查詢中用 pending 掃光、沒照片顯示主題圖樣(OnsenThumbGlyph)、照片
+// 載入完成淡入、失敗顯示同尺寸失敗佔位。--skeleton-base: transparent(有效的單色)
+// 讓楓紅漸層與蒸氣透出來,佔位也一樣透明。
+//   - 蒸氣(SteamWisps)畫在底層;照片載入完成後就整個不渲染——照片不透明地蓋在
+//     上面,蒸氣看不見卻仍在無限跑動畫,白耗合成/重繪。下載中與失敗時照樣渲染
+//     (那兩個狀態佔位是透明的,蒸氣看得到)。
+//   - 照片按鈕是透明疊層,名稱帶站名;照片載入失敗後隱藏(理由同
+//     renderItineraryStopCard.tsx 的 StopThumb),換成別張照片時重置。
+function OnsenThumb({ step, ctx }: { step: PlanNode; ctx: StopCardRenderContext }) {
+  const src = ctx.loading ? undefined : ctx.usablePhotos[0]
+  // 只記錄「哪一個 src 落在哪個終態」:src 換了,舊紀錄自然不再適用,不用另外重置。
+  const [settled, setSettled] = useState<{ src: string; status: FramedImageStatus } | null>(null)
+  const settledStatus = src !== undefined && settled?.src === src ? settled.status : null
+  const photoShown = settledStatus === 'loaded'
+  const failed = settledStatus === 'error'
+  return (
+    <div className={styles.thumb}>
+      {!photoShown && <SteamWisps />}
+      <FramedImage
+        className={styles.thumbFrame}
+        style={{ '--skeleton-base': 'transparent' } as CSSProperties}
+        src={src}
+        pending={ctx.loading}
+        alt=""
+        placeholder={<OnsenThumbGlyph kind={step.kind ?? ''} />}
+        onLoad={() => src && setSettled({ src, status: 'loaded' })}
+        onError={() => src && setSettled({ src, status: 'error' })}
+        {...(ctx.loading ? { role: 'status', 'aria-label': '查詢地點資料中' } : { 'aria-hidden': true })}
+      />
+      {!ctx.loading && ctx.usablePhotos.length > 0 && !failed && (
+        <button
+          type="button"
+          className={styles.thumbPhotoBtn}
+          onClick={(e) => {
+            e.stopPropagation()
+            ctx.onOpenPhotos()
+          }}
+          aria-label={photoButtonLabel(step.name, ctx.usablePhotos.length)}
+        >
+          {ctx.usablePhotos.length > 1 && <span className={styles.thumbPhotoCount}>{ctx.usablePhotos.length}</span>}
+        </button>
+      )}
+    </div>
+  )
 }

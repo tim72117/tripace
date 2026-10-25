@@ -10,6 +10,7 @@ import { trackEvent } from '../analytics';
 import { SITE_SEO_BASE_URL } from '../AppCommon';
 import './KyotoPage.css';
 import './ScrollTimelineContainer.css';
+import type { PhotoSize } from './cityPageTypes'
 
 // LANDING_ASSETS_BASE — 同 JiufenPage.tsx 的說明,同一個公開可讀 GCS
 // bucket(shuttle-tripace-web-assets),landing/{城市 slug}/n{編號}.jpg 目錄
@@ -82,6 +83,8 @@ const STOPS: {
   name: string
   desc: string
   photo: string
+  // photoSize——照片原始寬高(px),給 <img width/height> 讓瀏覽器在圖片載入前就依比例預留高度,避免載入後撐開版面。
+  photoSize: PhotoSize
   layout: 'stacked'
   theme?: string
   center?: { lat: number; lng: number }
@@ -92,6 +95,7 @@ const STOPS: {
     name: '清水寺',
     desc: '778年僧延鎮於音羽山中腹結庵祀觀音，798年坂上田村麻呂建佛殿成為敕願寺。山中湧泉音羽の滝自創建以來持續湧流——陡峭的懸崖地形，逼出了「舞台造」這種懸空木構工法，讓正殿得以立於山腹而不需削平地形。',
     photo: `${LANDING_ASSETS_BASE}/kyoto/n1.jpg`,
+    photoSize: [505, 900],
     layout: 'stacked',
     // theme:資料庫裡確認的主題點(isTheme=true),見
     // docs/attraction-theme-points-2026-09.md 第 26 行。
@@ -103,6 +107,7 @@ const STOPS: {
     name: '產寧坂・二年坂',
     desc: '清水寺參拜者必經的山麓坡道——地形限制下唯一可行的參道，因而自然發展成帶狀商店街，1976年指定為重要傳統的建造物群保存地區。人潮沿著地形走出的這條路，成了整條路線的空間骨架。',
     photo: `${LANDING_ASSETS_BASE}/kyoto/n2.jpg`,
+    photoSize: [600, 900],
     layout: 'stacked',
     // center:不在 docs/attraction-theme-points-2026-09.md 精選點清單裡
     // 逐字對應的記錄(清單裡是分開的「二年坂」「產寧坂・三年坂」),座標
@@ -116,6 +121,7 @@ const STOPS: {
     name: '八坂の塔（法観寺）',
     desc: '由出土瓦當樣式推斷創建可溯及7世紀。塔身立於山麓緩坡，在周邊低矮町家群中格外醒目，成為東山天際線的視覺地標——也是產寧坂北端通往祇園途中，一個明確的方向指標。',
     photo: `${LANDING_ASSETS_BASE}/kyoto/n3.jpg`,
+    photoSize: [600, 900],
     layout: 'stacked',
     // center:docs/attraction-theme-points-2026-09.md 精選點清單裡確認
     // 有記錄(isTheme=false),座標用 OpenStreetMap Nominatim 查詢
@@ -128,6 +134,7 @@ const STOPS: {
     name: '高台寺',
     desc: '1606年豐臣秀吉正室北政所（寧寧）為弔念秀吉建立，德川家康因政治考量提供鉅額資助。與清水寺、八坂の塔同屬沿東山山麓分布的寺院系列——地形宜建寺的邏輯，在這裡延續。',
     photo: `${LANDING_ASSETS_BASE}/kyoto/n4.jpg`,
+    photoSize: [600, 900],
     layout: 'stacked',
     // center:docs/attraction-theme-points-2026-09.md 精選點清單裡確認
     // 有記錄(isTheme=false),座標用 OpenStreetMap Nominatim 查詢
@@ -140,6 +147,7 @@ const STOPS: {
     name: '圓山公園',
     desc: '1871年明治神佛分離政策下，原屬八坂神社、雙林寺等的境內地被收公；1886年開設為京都第一座近代公園。這片土地從寺院境內轉為公共空間，正是承接了前面幾座寺院所留下的空間脈絡。',
     photo: `${LANDING_ASSETS_BASE}/kyoto/n5.jpg`,
+    photoSize: [780, 520],
     layout: 'stacked',
     // center:docs/attraction-theme-points-2026-09.md 精選點清單裡確認
     // 有記錄(isTheme=false),座標用 OpenStreetMap Nominatim 查詢
@@ -152,6 +160,7 @@ const STOPS: {
     name: '八坂神社',
     desc: '社傳天神降臨於東山山麓的祇園林，選址與山麓森林直接相關。祇園祭起源可溯及869年的疫病祈禳，970年左右成為固定年度祭典——香火鼎盛的參拜人潮，即將沿著神社正門向外匯聚。',
     photo: `${LANDING_ASSETS_BASE}/kyoto/n6.jpg`,
+    photoSize: [600, 900],
     layout: 'stacked',
     // theme:資料庫裡確認的主題點(isTheme=true),見
     // docs/attraction-theme-points-2026-09.md 第 26 行。
@@ -163,6 +172,7 @@ const STOPS: {
     name: '祇園・花見小路',
     desc: '江戶初期作為八坂神社參拜與賞花客的休憩茶屋聚落發展，水茶屋逐漸轉為夜間營業的お茶屋，藝妓文化由此形成。地形決定了寺院的位置，信仰帶來了人潮，人潮聚集出了茶屋——最終，長成了獨特的人文藝能。',
     photo: `${LANDING_ASSETS_BASE}/kyoto/n7.jpg`,
+    photoSize: [642, 900],
     layout: 'stacked',
     // center:docs/attraction-theme-points-2026-09.md 精選點清單裡確認
     // 有記錄(isTheme=false),座標用 OpenStreetMap Nominatim 查詢「一力亭
@@ -307,7 +317,14 @@ export function KyotoPage() {
             <article className="kyoto-stop">
               <div className={`kyoto-stop-inner kyoto-stop-inner--${stop.layout}`}>
                 <div className="kyoto-stop-photo">
-                  <img src={stop.photo} alt={stop.name} loading="lazy" />
+                  <img
+                    src={stop.photo}
+                    alt={stop.name}
+                    width={stop.photoSize[0]}
+                    height={stop.photoSize[1]}
+                    loading="lazy"
+                    onLoad={(e) => { e.currentTarget.dataset.loaded = 'true' }}
+                  />
                 </div>
                 <div className="kyoto-stop-text">
                   <div className="kyoto-stop-meta">

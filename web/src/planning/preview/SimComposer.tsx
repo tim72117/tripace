@@ -6,16 +6,19 @@ import styles from './Content.module.css'
 // 與 SimPlanLayer 一起是 /ai-plan 模擬態在第 4 層的呼叫端:Content 依 handedOver,模擬態渲染 SimPlanLayer 並把這個元件
 // 當 composer 傳給 PlanOverlayLayout;推論態的輸入框則由 LivePlanLayer 內的 TripPlanPage 經 ComposerSlotContext portal
 // 進同一個插槽。這個元件是展示用的假輸入膠囊(假打字動畫唯讀,排完後變「讓我試看看」按鈕),狀態由 Content 持有。
+// 這個元件只在模擬態(!handedOver)渲染,所以沒有「交接後變成真的輸入框」的分支(先前留著的 handedOver 分支永遠到不了,已移除)。
 export interface SimComposerProps {
   composerCollapsed: boolean
-  handedOver: boolean
   typedPrompt: string
-  userPrompt: string
-  setUserPrompt: (value: string) => void
   handover: () => void
+  // handedOver/userPrompt/setUserPrompt——已不使用:Content.tsx 目前仍會傳入(不在這次修改範圍),保留成選填只為相容,
+  // 之後清 Content.tsx 時一併移除。
+  handedOver?: boolean
+  userPrompt?: string
+  setUserPrompt?: (value: string) => void
 }
 
-export function SimComposer({ composerCollapsed, handedOver, typedPrompt, userPrompt, setUserPrompt, handover }: SimComposerProps) {
+export function SimComposer({ composerCollapsed, typedPrompt, handover }: SimComposerProps) {
   return (
     // Composer——共用輸入膠囊外框(components/Composer.tsx,見該檔頭
     // 的完整背景說明)。這個展示頁的特有邏輯(假打字動畫唯讀、
@@ -36,28 +39,18 @@ export function SimComposer({ composerCollapsed, handedOver, typedPrompt, userPr
     // 跟「送出鈕全程該是正常樣式」的真正意圖不符,改用
     // presentational 後不再需要特例判斷,整段期間自然一致。
     //
-    // 2026-10(第三輪):「讓我試看看」出現時(composerCollapsed 且
-    // 尚未 handedOver)輸入框整個從 DOM 移除、按鈕置中顯示(使用者
-    // 明確要求「按鈕置中,移除輸入匡」)——取代先前「輸入框收合
-    // 讓位、按鈕展開動畫」的版本(見 .module.css .composerCta 的
-    // 完整說明:那一版同一顆 <button> 疊加 class 做 width
-    // transition,這版輸入框是條件渲染、不是 class 切換,沒有連續
-    // 的寬度狀態可以 transition,改用 opacity 淡入)。交接後
-    // (handedOver)輸入框恢復渲染、開放輸入,不再是 presentational
-    // ——這時是正式功能,真的要能送出。(現況:這個 Composer 只渲染在
-    // 播放態的 PlanLayout;交接後的輸入框改由 LivePlanLayer 內的
-    // TripPlanPage 經 ComposerSlotContext portal 進 composer 插槽,
-    // 這裡的 handedOver 分支只是殘留。)
+    // 2026-10(第三輪):「讓我試看看」出現時(composerCollapsed)輸入框整個從 DOM 移除、按鈕置中顯示(使用者
+    // 明確要求「按鈕置中,移除輸入匡」)——取代先前「輸入框收合讓位、按鈕展開動畫」的版本(見 .module.css
+    // .composerCta 的完整說明:輸入框是條件渲染、不是 class 切換,沒有連續的寬度狀態可以 transition,改用 opacity 淡入)。
+    // 交接後的真輸入框不在這裡:改由 LivePlanLayer 內的 TripPlanPage 經 ComposerSlotContext portal 進 composer 插槽。
     <Composer
-      bare={composerCollapsed && !handedOver}
-      hideInput={composerCollapsed && !handedOver}
+      bare={composerCollapsed}
+      hideInput={composerCollapsed}
       inputRowClassName={styles.inputRow}
-      ariaLabel={handedOver ? '描述你想要的行程' : '輸入指令(僅供展示)'}
-      placeholder={handedOver ? '想去哪裡玩?例如:台南兩天一夜' : undefined}
-      value={handedOver ? userPrompt : typedPrompt}
-      onChange={handedOver ? setUserPrompt : undefined}
-      readOnly={!handedOver}
-      presentational={!handedOver && !composerCollapsed}
+      ariaLabel="輸入指令(僅供展示)"
+      value={typedPrompt}
+      readOnly
+      presentational={!composerCollapsed}
       // composerCta——排程結束後出現的行動呼籲按鈕,文案「讓我試
       // 看看」(2026-10 從「立即使用」改,使用者明確要求),點擊要
       // 導向登入頁面(/app,對齊首頁 SiteNavCta 的「登入」按鈕同樣

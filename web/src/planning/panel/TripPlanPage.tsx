@@ -16,11 +16,11 @@ import {
   createAskPageToolsList,
   type AskPageCtx,
   type AskPageInput,
-  type AskPageCandidate,
   type UserSelectionRecord,
   type AskPageSelection,
 } from '../conversation/asktools'
 import { useAskPageBridge } from '../conversation/useAskPageBridge'
+import { useAskPageFlow } from './useAskPageFlow'
 import { lodgingMapMarkers, resolveMapChildren } from '../timeline/resolved'
 import { useResolvedRefs } from '../data/PlanDataProvider'
 import { refreshTransitForStop } from '../timeline/transit'
@@ -40,11 +40,12 @@ import type { PlanMessage } from '../conversation/messages'
 import { HorizontalPlanTimeline } from '../timeline/phone/HorizontalPlanTimeline'
 import type { PlanStopMarker } from '../map/marker/planStops'
 import type { PlanAiDataSource } from '../data/source'
-import { findTravelCityById, findTravelCountry, listTravelCities, listTravelCountries } from '../conversation/travelRegionData'
+import { listTravelCities, listTravelCountries } from '../conversation/travelRegionData'
 import { uiStateStore } from '../conversation/uiStateStore'
 import { createAttractionPoolStore, type AttractionPoolStore } from '../conversation/attractionPoolStore'
 import { Composer } from '../../components/Composer'
 import { ComposerPortal } from './ComposerPortal'
+import { COMPOSER_PLACEHOLDER_UNAVAILABLE, composerModeFor, routeComposerSubmit } from './composerMode'
 import { ComposerSlotContext } from '../shared/overlayDom'
 import {
   getTimeDragBounds,
@@ -86,7 +87,7 @@ import styles from './TripPlanPage.module.css'
 // PlanNode(見該檔案的完整背景說明),這裡只是型別別名,不重新宣告欄位。
 
 // CITY_ATTRACTION_TYPES——「選完城市 → 自動查該城市附近候選」那一步要查
-// 哪些地點類型(見 handleAskPageDone 該段的呼叫處)。
+// 哪些地點類型(見下方 useAskPageFlow 的 searchCityAttractions)。
 //
 // 2026-10 新增(使用者明確要求「自動的只查詢觀光地點」):在這之前這次
 // 呼叫完全不帶 types,等於不篩類型——Google Nearby Search 回的是該座標
@@ -749,7 +750,7 @@ export function TripPlanPage(props: {
   // 2026-10:那個氣泡功能已整個移除,目前沒有任何呼叫端傳這個 prop。
   // 保留它而不刪除——它是選填的通用出口,而「外部 UI 要送出一句話」
   // 這個需求本身沒有消失(選完景點自動送 prompt 就是同一類動作,只是
-  // 那條走的是元件內部的 sendPromptRef)。
+  // 那條走的是元件內部的 useAskPageFlow)。
   //
   // 用 callback 而非把 sendPrompt 放進某個呼叫端能讀到的 ref/context:
   // 這個元件目前對外的既有模式都是「呼叫端傳 callback 進來、這裡在對的
@@ -990,19 +991,9 @@ export function TripPlanPage(props: {
   // 一起宣告在後面)——這個 hook 需要在呼叫當下就拿到 openAskPage 當
   // 第六個參數,JavaScript 變數必須先宣告才能在同一個函式作用域的
   // 後續程式碼裡使用,順序不能顛倒。
-  const { showAskPage, askPageInput, openAskPage, handleAskPageDone: resolveAskPage } = useAskPageBridge<AskPageInput>({
-    candidates: [],
-  })
+  const askPageBridge = useAskPageBridge<AskPageInput>({ candidates: [] })
+  const { showAskPage, askPageInput, openAskPage, handleAskPageDone: resolveAskPage } = askPageBridge
 
-  // sendPromptRef——planAiChat.sendPrompt 的間接參照。
-  //
-  // 2026-10 新增(「選完景點 → 送出 prompt」,見 handleAskPageDone 該
-  // 分支的完整說明):handleAskPageDone 要呼叫 sendPrompt,但
-  // usePlanAiChatBridge 在這個元件裡宣告在它下面(而且它的 ctx 需要
-  // handleAskPageDone 之前就定義好的那幾個函式),JavaScript 不能在
-  // 宣告前使用。用 ref 間接取用,寫法對齊同檔案 openAskPageRef /
-  // addStopRef 等既有 ref 處理同一個順序問題的方式。
-  const sendPromptRef = useRef<((text: string) => Promise<boolean>) | null>(null)
 
   // uiStateStore 同步——把「使用者目前在哪一個畫面、畫面上有哪些選項」
   // 寫進那份 LLM 可讀的狀態(見 planning/conversation/uiStateStore.ts 的完整說明)。
@@ -1151,212 +1142,6 @@ export function TripPlanPage(props: {
   // 「這次對話的工作記憶」這個定位。
   const attractionPool = useMemo(() => createAttractionPoolStore(), [])
 
-  // handleAskPageDone——使用者在詢問頁按下選擇之後。
-  //
-  // 除了結束目前這個詢問(resolveAskPage),還負責前端自己的串接——
-  // 2026-10(第十輪,使用者明確要求「將國家與地區的工具分開,並做自動
-  // 串接」)現在有兩段串接:
-  //   1. 選完國家後,自動開啟該國的城市清單(帶 back,見
-  //      AskPageCityInput 的完整說明,讓使用者能從城市層按「返回上一
-  //      層」重新看到剛剛那份國家清單)。
-  //   2. 選完城市後,自動查那個城市的鄰近候選、接著開啟景點選單(使用者
-  //      明確指出「選完城市不是就是查這個城市鄰近候選嗎」)——這段
-  //      邏輯沒有變,只是判斷條件從 'region' in askPageInput 改成
-  //      'city' in askPageInput(原本單一的 ask_travel_region 拆成
-  //      ask_travel_country/ask_travel_city 兩支獨立工具,askPageInput
-  //      的形態跟著拆成 country/city 兩種,見 AskPageInput 的完整
-  //      說明)。
-  //
-  // 這兩段串接都不需要 LLM 參與——它們原本(等待模式時代)寫在
-  // askTravelRegion 的 handler 裡,靠 await 等使用者選完;改成不等待
-  // 之後搬到這裡。LLM 那一輪推論在開啟第一個選單時就結束了,之後的
-  // 查詢與後續選單都是前端自己做的。
-  //
-  // 刻意不在這裡觸發新一輪推論(使用者明確要求「先不要接新推論」)：
-  // 選單開出來之後就停著,使用者選了什麼目前不往下送。
-  const handleAskPageDone = useCallback(
-    (selected: AskPageSelection[]) => {
-      // 先結束目前這個詢問,畫面才會收起來。
-      resolveAskPage(selected)
-
-      // 純文字氣泡不是一次「選擇」,不該寫進 userSelectionRef
-      // (2026-10 修正):AskPageInput 的 text 形態是 LLM 的文字回覆,
-      // 它的關閉鈕也走 onDone([])。不擋掉的話,使用者剛選完城市、
-      // 接著關掉一則文字氣泡,就會把那次真實的選擇覆寫成
-      // { kind: 'attractions', items: [] }——get_user_selection 會回報
-      // 「最近選了景點但一個都沒選」,剛剛的城市選擇無聲消失。
-      if ('text' in askPageInput) return
-
-      // 記下這次選擇,供 get_user_selection 查詢(見 userSelectionRef
-      // 的完整說明)。kind 由當下詢問頁的形態決定——LLM 要據此判斷
-      // 接下來該做什麼,光看 items 分不出是選了國家、城市還是景點。
-      // country/city 這兩種形態都歸為 UserSelectionRecord 的 'region'
-      // kind(LLM 不需要區分「選的是國家還是城市」,只要知道「這是一次
-      // 地點相關的選擇」)。
-      //
-      // name 從當下畫面上的候選清單回查:selected 只帶 id,但 LLM 讀
-      // 不懂 placeId,也無法用它跟使用者溝通。
-      const selectionKind: UserSelectionRecord['kind'] =
-        'country' in askPageInput || 'city' in askPageInput
-          ? 'region'
-          : 'transport' in askPageInput ? 'transport' : 'attractions'
-      // name 的來源依形態而異(2026-10 修正:原本只從 candidates 回查,
-      // 所以 region 形態永遠拿不到名稱——而那正是這次新串接流程的主
-      // 路徑。LLM 拿到一個裸的 city id 無法用自然語言回應「好,那我們
-      // 來排台南的行程」,那正是 name 這個欄位存在的理由)。
-      //   candidates——從當下畫面上的候選清單回查
-      //   country/city——從 travelRegionData 查國家/城市名
-      //     (findTravelCountry/findTravelCityById)
-      //   transport——交通方式本身就是人類可讀的值,放進 value
-      //   explore——候選是 AskPage 內部自己查的,呼叫端拿不到,仍是
-      //             undefined(要修得讓 AskPage 回報實際候選,改動較大)
-      const candidateNames = new Map(
-        ('candidates' in askPageInput ? askPageInput.candidates : []).map((c) => [c.placeId, c.name]),
-      )
-      userSelectionRef.current = {
-        kind: selectionKind,
-        items: selected.map((sel) => {
-          // transport——選中的是交通方式,不是地點。useAskPageBridge 借用
-          // placeId 欄位表達「選中項目的識別碼」(見該檔案檔頭的 trade-off
-          // 說明),但 UserSelectionRecord 有專屬的 value 欄位,到這一層
-          // 就該轉換回去——否則 LLM 會讀到一個叫 placeId 的 'car',跟
-          // 工具說明書上的 value 對不上,容易誤判成地點 ID。
-          if (selectionKind === 'transport') {
-            return { value: sel.placeId, name: sel.placeId }
-          }
-          if (selectionKind === 'region') {
-            const name = 'country' in askPageInput
-              ? findTravelCountry(sel.placeId)?.name
-              : findTravelCityById(sel.placeId)?.name
-            return { value: sel.placeId, name }
-          }
-          return {
-            placeId: sel.placeId,
-            attractionId: sel.attractionId,
-            name: candidateNames.get(sel.placeId),
-          }
-        }),
-        selectedAt: new Date().toISOString(),
-      }
-
-      // 選完感興趣景點 → 送出一句 prompt 請 AI 依這些地點安排行程。
-      //
-      // 2026-10 新增(使用者明確要求「選完感興趣景點後,送出 prompt,
-      // 已經選好地點,依據這些地點安排行程」):在這之前,使用者選完
-      // 景點就沒有下文了——選擇被記進 userSelectionRef,但沒有任何東西
-      // 去叫 AI 動起來(當時使用者明確要求「先不要接新推論」,所以這條
-      // 路徑是刻意留空的;現在要接上了)。
-      //
-      // 走 sendPrompt 而不是自己呼叫 postPlanAiChat:那是「使用者送出
-      // 一句話」的既有唯一入口(見 usePlanAiChatBridge sendPrompt 的
-      // 完整說明,含 conversationID 延續、isThinking 併發保護、訊息
-      // 寫入時間軸),繞過它等於另外實作一套,兩條路徑的行為會不一致。
-      // (已移除的「想去哪裡?」氣泡選完城市後送出那句話,走的也是同一個
-      // 管道。)
-      //
-      // prompt 刻意不寫出地點名稱(2026-10 改動,使用者明確要求「送出的
-      // prompt 不要寫地點,讓 AI 用工具讀取使用者選取的」):改成叫 LLM
-      // 自己呼叫 get_user_selection 查。
-      //
-      // 第一版是把名稱直接串進 prompt(`我已經選好地點了:A、B。`),
-      // 想省掉一次工具呼叫的來回。改掉的理由:
-      //   1. 名稱不是穩定的識別碼。LLM 拿到「台北101購物中心」這種字串,
-      //      要排進行程還是得自己 place-search 查一次回 placeId(實機
-      //      驗證時觀察到的真實行為),所謂「少一次來回」並沒有發生,
-      //      只是把工具呼叫換成了搜尋呼叫,而且搜尋會消耗 Google 配額。
-      //      get_user_selection 回的是 placeId + attractionId + name 三者
-      //      齊備,可以直接拿去 add_attraction。
-      //   2. 選擇內容寫進 prompt 就固定在對話歷史裡了。之後使用者改了
-      //      選擇,歷史裡那句舊的還在,LLM 可能照舊的排。工具是現查的,
-      //      永遠反映最新一次。
-      //   3. explore 模式本來就拿不到名稱(候選由 AskPage 內部查,見上方
-      //      candidateNames 的既有說明),原本要為它寫一條只帶數量的
-      //      分支。改成一律讓 LLM 查之後,兩種形態走同一句 prompt,
-      //      不需要分支。
-      //
-      // 2026-10(使用者明確要求「不要有其他指示,告知選好開始安排行程
-      // 就好」):文案從一長串「依據感興趣地點安排整套行程、以它們為
-      // 起點補上順路景點與用餐休息、不要推估步調」的完整指示,收斂成
-      // 一句單純的告知。上面幾輪歷史演進記錄的那些額外指示(依據而非
-      // 只排、不要推估步調等)不是因為不重要而被拿掉——而是這次使用者
-      // 明確要求交給 thought.md(system prompt)統一管理:LLM 收到
-      // 「使用者說選好了」這類訊息時該呼叫 get_user_selection,以及
-      // 排行程時的步調/完整度等規則,應該是整個 agent 一貫的行為準則,
-      // 不該為了這一個特定觸發路徑重複寫一次又臭又長的 inline 指示。
-      // 這個取捨的代價:若 thought.md 日後沒有同步維護這些規則,這裡的
-      // 極簡文案不會再提醒 LLM,需要靠 thought.md 本身的完整度兜底,
-      // 不是這裡的 prompt。
-      if ('candidates' in askPageInput || 'explore' in askPageInput) {
-        // 一個都沒選(使用者按「不用了」)→ 不送 prompt。那是明確的
-        // 「這批我都不要」,不該解讀成「幫我排這些」(見 AskPage.tsx
-        // 檔頭對空陣列語意的完整說明)。
-        if (selected.length === 0) return
-        void sendPromptRef.current?.('我已經選好感興趣的地點了,請幫我安排行程。')
-        return
-      }
-
-      // 選完國家 → 自動開啟該國城市清單,帶 back 讓使用者能返回這份
-      // 國家清單(見 AskPageCityInput.back 的完整說明)。
-      if ('country' in askPageInput) {
-        const selectedCountryId = selected[0]?.placeId
-        if (!selectedCountryId) return
-        void openAskPage({
-          city: { countryId: selectedCountryId, back: { countryIds: askPageInput.country.countryIds } },
-        })
-        return
-      }
-
-      // 選完城市 → 自動查該城市鄰近候選、接著開啟景點選單。
-      if (!('city' in askPageInput)) return
-      const selectedCity = selected[0]?.placeId
-      if (!selectedCity) return
-      const city = findTravelCityById(selectedCity)
-      if (!city) return
-
-      void (async () => {
-        let candidates: AskPageCandidate[] = []
-        try {
-          const { attractions } = await fetchPlanAiAttractionSearch(
-            cfg,
-            city.lat,
-            city.lng,
-            CITY_ATTRACTION_TYPES,
-          )
-          candidates = attractions
-            .filter((a) => !!a.placeId)
-            .map((a) => ({ placeId: a.placeId!, name: a.name, summary: a.summary }))
-        } catch {
-          // 查詢失敗就不開第二個選單,理由同其餘查詢失敗的既有降級
-          // 慣例:使用者看到的是「選完城市之後沒有下文」,而不是一個
-          // 空的候選清單或整頁錯誤。
-          return
-        }
-        if (candidates.length === 0) return
-        // reason——這次 openAskPage 是前端自己觸發的,沒有 LLM 提供的
-        // reason 可用,固定用「選擇感興趣的景點」。
-        //
-        // 2026-10 改動(使用者明確要求「不要用 台北有哪些景點?,用
-        // 選擇感興趣的景點」):原本是用選定城市的名稱動態組
-        // `${city.name}有哪些景點?`。那句話是個「問句」,但這張畫面要
-        // 使用者做的事是「從這幾張卡片裡挑」——標題講的應該是接下來
-        // 要做的動作,不是一個它自己不會回答的問題。城市名稱也不需要
-        // 再講一次:使用者上一步才剛選過那個城市。
-        void openAskPage({ candidates, reason: '選擇感興趣的景點' })
-      })()
-    },
-    [resolveAskPage, askPageInput, cfg, openAskPage],
-  )
-
-  // handleAskPageBack——CityPanel 的「返回上一層」按鈕觸發(見
-  // AskPage.tsx CityPanel 的完整說明)。不是結束詢問(不呼叫
-  // resolveAskPage),單純重新開一個國家層的詢問頁,countryIds 原樣
-  // 重現選國家當時的篩選結果。
-  const handleAskPageBack = useCallback(
-    (countryIds?: string[]) => {
-      void openAskPage({ country: { countryIds } })
-    },
-    [openAskPage],
-  )
   const planAiChat = usePlanAiChatBridge(
     cfg,
     getTimelineForBridge,
@@ -1384,14 +1169,25 @@ export function TripPlanPage(props: {
     reportSendPromptReady(planAiChat.sendPrompt)
   }, [planAiChat.sendPrompt, reportSendPromptReady])
 
-  // sendPromptRef 的填值——見該 ref 的完整說明。跟上面那個 effect 填的
-  // 是同一個函式,只是一個給呼叫端(onSendPromptReady)、一個給這個元件
-  // 內部宣告順序在前面的 handleAskPageDone 用。
-  useEffect(() => {
-    sendPromptRef.current = planAiChat.sendPrompt
-  }, [planAiChat.sendPrompt])
-
   const [chatInput, setChatInput] = useState('')
+
+  // 詢問頁「使用者操作之後」的串接(選完國家 → 城市、選完城市 → 查景點、選完景點 → 請 AI 排行程、返回上一層、
+  // 詢問頁開著時用下方輸入匡直接說明)——見 useAskPageFlow.ts 的完整說明(2026-10 從這裡抽出去,才能單獨測試)。
+  // 詢問頁開著時從輸入匡送出的文字(submitAskPageText)最後沒送出去(後端拒絕、網路錯誤)時放回輸入框(輸入框已有內容
+  // 就不覆蓋),使用者不用重打;推論中則由 useAskPageFlow 先記下、這一輪結束後自動送出(見該檔案 submitAskPageText 的說明)。
+  const { handleAskPageDone, handleAskPageBack, submitAskPageText } = useAskPageFlow({
+    bridge: askPageBridge,
+    searchCityAttractions: async (city) => {
+      const { attractions } = await fetchPlanAiAttractionSearch(cfg, city.lat, city.lng, CITY_ATTRACTION_TYPES)
+      return attractions
+        .filter((a) => !!a.placeId)
+        .map((a) => ({ placeId: a.placeId!, name: a.name, summary: a.summary }))
+    },
+    sendPrompt: planAiChat.sendPrompt,
+    isThinking: planAiChat.isThinking,
+    userSelectionRef,
+    onAskPageTextNotSent: (text) => setChatInput((current) => (current.trim() ? current : text)),
+  })
 
   // composerSlot——版面外殼提供的輸入框插槽(見 planning/shared/overlayDom.ts)。
   // 不在外殼裡時是 undefined,輸入框維持原位渲染,行為不變。
@@ -1637,18 +1433,19 @@ export function TripPlanPage(props: {
     scrollToLatest()
   }, [scrollToLatest])
 
-  // emptyStateMessage/placeholder——對齊原型的既有文案與設計取捨(見該
+  // emptyStateMessage——對齊原型的既有文案與設計取捨(見該
   // 處的完整說明):漂浮膠囊只留 input 本身,時間軸完全空白時的引導
   // 文字放進主顯示區(.scroll/.inner)當空狀態文案。isGenerating(原型
   // 的模擬腳本生成中狀態)在這裡不存在——正式功能只有 onagent 對話一種
   // 「AI 正在做事」的訊號來源,即 planAiChat.isThinking。
   const emptyStateMessage = '想去哪裡玩？跟我說說你的想法，我可以幫你查景點、安排行程。'
-  // isThinking 期間鎖定輸入框(見下方 input/button 的 disabled 與
-  // sendPrompt 的完整說明:pendingChatRef 的 FIFO 配對依賴「任何時刻最多
-  // 一筆 pending」才成立,AgentBridge 的回呼協議本身不帶 requestId,
-  // 允許並發送出會讓佇列配對錯位),文案對齊這個限制,不再鼓勵「隨時
-  // 打斷」。
-  const placeholder = planAiChat.isThinking ? 'AI 思考中，請稍候…' : '想調整哪裡？'
+  // composerMode——輸入框的提示文字、是否鎖住、送出路徑,依目前畫面決定(規則與測試見 composerMode.ts)。
+  // isThinking 期間鎖定輸入框(sendPrompt 的完整說明:pendingChatRef 的 FIFO 配對依賴「任何時刻最多
+  // 一筆 pending」才成立,AgentBridge 的回呼協議本身不帶 requestId,允許並發送出會讓佇列配對錯位);
+  // 例外是「有等待使用者的詢問頁」(國家/城市/交通/景點候選/探查):LLM 開詢問頁時推論仍在進行,但使用者要能
+  // 直接打字回答,送出改走 submitAskPageText(結束詢問頁、推論中排隊等這一輪結束再送,不會並發)。
+  // 2026-10 起取代景點候選頁的「我要直接說明」按鈕與說明面板。
+  const composerMode = composerModeFor({ isThinking: planAiChat.isThinking, ask: showAskPage ? askPageInput : null })
 
   // app-theme-root——這裡刻意不掛載:/app 路由本身(App.tsx 的
   // <Route path="/app/:panelMode?">)外層已經透過 KeyboardShrinkGuard
@@ -1710,7 +1507,7 @@ export function TripPlanPage(props: {
           // prop,預設 false,AI 思考中時卡片列尾端的呼吸點+骨架卡
           // shimmer(見 HorizontalPlanTimeline.tsx 該 prop 的完整說明)
           // 永遠不會出現,只有 composer 的 placeholder 文字會變成「AI
-          // 思考中」(見下方 placeholder 變數),跟 /ai-plan 展示頁播放態
+          // 思考中」(見下方 composerMode),跟 /ai-plan 展示頁播放態
           // (usePlanSimSocket 的 isGenerating,見該函式的完整說明)視覺
           // 不對齊。直接沿用 planAiChat.isThinking——語意範圍比模擬來源
           // 的 isGenerating 略寬(後者只在下一步確定是 add_stop 時才設
@@ -1760,7 +1557,13 @@ export function TripPlanPage(props: {
            桌面不渲染 AskPage 導致整段劇本停在第 0 步)。
            處理方式也對齊手機版與那一頁:詢問頁與時間軸互斥顯示,同一塊
            版面空間用條件渲染切換,不需要額外的過場或狀態。 */
-        <AskPage dataSource={planAiDataSource} input={askPageInput} onDone={handleAskPageDone} stacked={isWide} />
+        <AskPage
+          dataSource={planAiDataSource}
+          input={askPageInput}
+          onDone={handleAskPageDone}
+          onBack={handleAskPageBack}
+          stacked={isWide}
+        />
       ) : (
       <PlanTimelineView
         timeline={timeline}
@@ -1902,19 +1705,27 @@ export function TripPlanPage(props: {
           className={styles.composer}
           value={chatInput}
           onChange={setChatInput}
-          placeholder={planAiChat.apiKeyMissing || planAiChat.urlMissing ? '對話功能調整中，請稍後再試' : placeholder}
+          placeholder={planAiChat.apiKeyMissing || planAiChat.urlMissing ? COMPOSER_PLACEHOLDER_UNAVAILABLE : composerMode.placeholder}
           // urlMissing——見 PLAN_AI_ONAGENT_WS_URL 的完整說明:跟
           // apiKeyMissing 一樣視為「對話功能目前無法使用」,一起鎖定
           // 輸入框。
           disabled={planAiChat.apiKeyMissing || planAiChat.urlMissing}
-          // 推論中:輸入框鎖住,送出鈕換成「停止」(見 Composer 的 busy/onStop)。
-          busy={planAiChat.isThinking}
+          // 推論中:輸入框鎖住,送出鈕換成「停止」(見 Composer 的 busy/onStop)。有等待使用者的詢問頁時不鎖
+          // (composerMode.busy 為 false),此時送出鈕是一般的送出、沒有停止鈕。
+          busy={composerMode.busy}
           onStop={planAiChat.stopPrompt}
           onSubmit={() => {
-            // isThinking 時直接不處理(即使按鈕已 disabled,form 仍可能
-            // 被 Enter 鍵觸發 submit,這裡是跟按鈕 disabled 對齊的第二
-            // 道防線,理由同 sendPrompt 內部的併發保護說明)。
-            if (!chatInput.trim() || planAiChat.isThinking) return
+            // routeComposerSubmit(見 composerMode.ts):空白或鎖住時不處理(即使按鈕已換成停止,form 仍可能
+            // 被 Enter 鍵觸發 submit,這裡是跟 busy 對齊的第二道防線,理由同 sendPrompt 內部的併發保護說明)。
+            const route = routeComposerSubmit(chatInput, composerMode)
+            if (route === 'ignore') return
+            if (route === 'askPage') {
+              // 詢問頁開著:先清空輸入框,沒送出去時由 onAskPageTextNotSent 放回。
+              const text = chatInput
+              setChatInput('')
+              submitAskPageText(text)
+              return
+            }
             // 等 sendPrompt 的結果決定要不要清空輸入框(見該函式回傳值
             // 的完整說明)——不再送出後立刻同步清空,避免後端拒絕
             // (429/400)或網路錯誤時使用者剛打的文字憑空消失。

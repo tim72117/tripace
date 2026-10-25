@@ -302,6 +302,7 @@
   object-fit: cover;
   border-radius: 16px;
   box-shadow: var(--card-shadow);
+  background: var(--paper-dim);
 }
 @media (max-width: 640px) {
   .theme-page-demo-hero[data-hero-photo="true"] {
@@ -361,6 +362,7 @@
   border-radius: 50%;
   object-fit: cover;
   flex: none;
+  background: var(--paper-dim);
 }
 .theme-page-demo-author-name {
   font-weight: 600;

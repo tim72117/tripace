@@ -43,7 +43,10 @@ describe('PhotoCarousel — 0/1 張圖(桌面/手機共用同一種顯示,不受
     mockMatchMedia(true)
     const { container } = render(<PhotoCarousel alt="測試地點" />)
 
-    expect(screen.queryByRole('img')).toBeNull()
+    // 沒有 photoStatus(已是最終結果)= 確定沒照片:靜態佔位外框本身帶
+    // role="img" + alt 當 aria-label(FramedImage idle),但沒有任何 <img>。
+    const placeholder = screen.getByRole('img', { name: '測試地點' })
+    expect(placeholder.getAttribute('data-status')).toBe('idle')
     expect(container.querySelector('img')).toBeNull()
   })
 

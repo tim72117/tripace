@@ -6,7 +6,7 @@
 // Promise 會不會被靜默遺棄。
 import { describe, expect, it } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
-import { useAskPageBridge } from './useAskPageBridge'
+import { useAskPageBridge, type AskPageState } from './useAskPageBridge'
 import type { AskPageCandidate, AskPageSelection } from './asktools'
 
 describe('useAskPageBridge', () => {
@@ -123,5 +123,172 @@ describe('useAskPageBridge', () => {
       })
     }).not.toThrow()
     await expect(promise).resolves.toEqual([{ placeId: 'p1' }])
+  })
+
+  // replaceAskPage——「原地換頁、不結束等待」(城市頁按「返回上一層」回到國家頁用):openAskPage 在有 pending 時會忽略新呼叫,
+  // 返回若走 openAskPage 會被吞掉、按了沒反應。
+  describe('replaceAskPage', () => {
+    it('有 pending 時:只換 askPageInput,showAskPage 維持 true,原本的 Promise 仍然 pending、之後由 handleAskPageDone resolve', async () => {
+      const { result } = renderHook(() => useAskPageBridge<{ step: string }>({ step: 'init' }))
+      let first!: Promise<AskPageSelection[]>
+      let settled = false
+      act(() => {
+        first = result.current.openAskPage({ step: 'city' })
+      })
+      first.then(() => { settled = true })
+      let replaced = false
+      act(() => {
+        replaced = result.current.replaceAskPage({ step: 'country' })
+      })
+      expect(replaced).toBe(true)
+      expect(result.current.askPageInput).toEqual({ step: 'country' })
+      expect(result.current.showAskPage).toBe(true)
+      await Promise.resolve()
+      expect(settled).toBe(false)
+      act(() => {
+        result.current.handleAskPageDone([{ placeId: 'jp' }])
+      })
+      await expect(first).resolves.toEqual([{ placeId: 'jp' }])
+    })
+
+    it('沒有 pending 時是 no-op:回傳 false,不打開詢問頁、不改 input(不能憑空開出一個沒人等待的畫面)', () => {
+      const { result } = renderHook(() => useAskPageBridge<{ step: string }>({ step: 'init' }))
+      let replaced = true
+      act(() => {
+        replaced = result.current.replaceAskPage({ step: 'country' })
+      })
+      expect(replaced).toBe(false)
+      expect(result.current.showAskPage).toBe(false)
+      expect(result.current.askPageInput).toEqual({ step: 'init' })
+    })
+  })
+
+  // advanceAskPage——「結束這一步、立刻換到下一步」:resolve 目前的等待,同一個 commit 換成下一步並建立新的等待,
+  // 中間 showAskPage 不會變回 false(選完城市接著顯示「查詢中」用,不閃回時間軸)。任何時刻最多一個 pending。
+  describe('advanceAskPage', () => {
+    it('resolve 目前的 Promise、換成新 input、showAskPage 維持 true,並回傳新的 pending Promise', async () => {
+      const { result } = renderHook(() => useAskPageBridge<{ step: string }>({ step: 'init' }))
+      let first!: Promise<AskPageSelection[]>
+      act(() => {
+        first = result.current.openAskPage({ step: 'city' })
+      })
+      let second!: Promise<AskPageSelection[]>
+      act(() => {
+        second = result.current.advanceAskPage([{ placeId: 'tainan' }], { step: 'loading' })
+      })
+      await expect(first).resolves.toEqual([{ placeId: 'tainan' }])
+      expect(result.current.showAskPage).toBe(true)
+      expect(result.current.askPageInput).toEqual({ step: 'loading' })
+      let secondSettled = false
+      second.then(() => { secondSettled = true })
+      await Promise.resolve()
+      expect(secondSettled).toBe(false)
+      // 新的等待也照常被 openAskPage 的「不搶佔」保護:背景文字不能蓋掉查詢中/候選畫面。
+      let intruder!: Promise<AskPageSelection[]>
+      act(() => {
+        intruder = result.current.openAskPage({ step: 'text' })
+      })
+      await expect(intruder).resolves.toEqual([])
+      expect(result.current.askPageInput).toEqual({ step: 'loading' })
+      act(() => {
+        result.current.handleAskPageDone([])
+      })
+      await expect(second).resolves.toEqual([])
+      expect(result.current.showAskPage).toBe(false)
+    })
+
+    it('沒有 pending 時等同 openAskPage', () => {
+      const { result } = renderHook(() => useAskPageBridge<{ step: string }>({ step: 'init' }))
+      act(() => {
+        void result.current.advanceAskPage([], { step: 'loading' })
+      })
+      expect(result.current.showAskPage).toBe(true)
+      expect(result.current.askPageInput).toEqual({ step: 'loading' })
+    })
+  })
+
+  // 狀態模型合併(2026-10):showAskPage/askPageInput 由單一個 askPage(closed | open 帶 input)衍生。
+  // 快照每一次 render 的 [askPage, showAskPage, askPageInput],證明整段流程沒有任何一次 render 落在中間態
+  // (旗標開著但 input 是舊值/旗標關了 input 還在),而且每個轉移恰好產生一次 render、直接到達目標狀態。
+  describe('單一狀態模型:不存在中間態', () => {
+    type Input = { step: string }
+    const DEFAULT: Input = { step: 'init' }
+
+    function renderRecorded() {
+      const renders: Array<{ askPage: AskPageState<Input>; show: boolean; input: Input }> = []
+      // 每次 render 傳新的預設值字面值:關閉時的 askPageInput 仍要是同一個參照(掛載時那個)。
+      const hook = renderHook(() => {
+        const bridge = useAskPageBridge<Input>({ ...DEFAULT })
+        renders.push({ askPage: bridge.askPage, show: bridge.showAskPage, input: bridge.askPageInput })
+        return bridge
+      })
+      return { ...hook, renders }
+    }
+
+    function step(renders: ReturnType<typeof renderRecorded>['renders'], fn: () => void) {
+      const before = renders.length
+      act(fn)
+      return renders.slice(before)
+    }
+
+    it('open → replace → advance → done:每個轉移恰好一次 render,且每次 render 的 [show, input] 都對得上 askPage', () => {
+      const { result, renders } = renderRecorded()
+      const closedInput = renders[0].input
+
+      const afterOpen = step(renders, () => { void result.current.openAskPage({ step: 'city' }) })
+      const afterReplace = step(renders, () => { result.current.replaceAskPage({ step: 'country' }) })
+      const afterAdvance = step(renders, () => { void result.current.advanceAskPage([{ placeId: 'x' }], { step: 'loading' }) })
+      const afterDone = step(renders, () => { result.current.handleAskPageDone([]) })
+
+      expect(afterOpen.map((r) => r.askPage)).toEqual([{ status: 'open', input: { step: 'city' } }])
+      expect(afterReplace.map((r) => r.askPage)).toEqual([{ status: 'open', input: { step: 'country' } }])
+      expect(afterAdvance.map((r) => r.askPage)).toEqual([{ status: 'open', input: { step: 'loading' } }])
+      expect(afterDone.map((r) => r.askPage)).toEqual([{ status: 'closed' }])
+
+      for (const r of renders) {
+        if (r.askPage.status === 'open') {
+          expect(r.show).toBe(true)
+          expect(r.input).toBe(r.askPage.input)
+        } else {
+          expect(r.show).toBe(false)
+          expect(r.input).toBe(closedInput)
+        }
+      }
+      // 關閉後 input 不殘留上一頁的值(舊模型關閉後 askPageInput 仍是 { step: 'loading' })。
+      expect(result.current.askPageInput).toEqual(DEFAULT)
+      expect(result.current.askPageInput).toBe(closedInput)
+    })
+
+    it('被忽略的呼叫(pending 中的 openAskPage、沒有 pending 的 replaceAskPage)不產生任何 render', () => {
+      const { result, renders } = renderRecorded()
+      expect(step(renders, () => { result.current.replaceAskPage({ step: 'x' }) })).toEqual([])
+      step(renders, () => { void result.current.openAskPage({ step: 'city' }) })
+      expect(step(renders, () => { void result.current.openAskPage({ step: 'text' }) })).toEqual([])
+      expect(result.current.askPageInput).toEqual({ step: 'city' })
+    })
+
+    it('pendingId:open/advance 開新的等待會換 id,replace 不換,結束後為 null', () => {
+      const { result } = renderRecorded()
+      expect(result.current.pendingId()).toBeNull()
+      act(() => { void result.current.openAskPage({ step: 'city' }) })
+      const first = result.current.pendingId()
+      expect(first).not.toBeNull()
+      act(() => { result.current.replaceAskPage({ step: 'country' }) })
+      expect(result.current.pendingId()).toBe(first)
+      act(() => { void result.current.advanceAskPage([], { step: 'loading' }) })
+      const second = result.current.pendingId()
+      expect(second).not.toBeNull()
+      expect(second).not.toBe(first)
+      act(() => { result.current.handleAskPageDone([]) })
+      expect(result.current.pendingId()).toBeNull()
+    })
+
+    it('型別上不可能表達中間態(tsc 驗證)', () => {
+      // @ts-expect-error closed 不帶 input
+      const closedWithInput: AskPageState<Input> = { status: 'closed', input: { step: 'stale' } }
+      // @ts-expect-error open 一定要有 input
+      const openWithoutInput: AskPageState<Input> = { status: 'open' }
+      expect([closedWithInput, openWithoutInput]).toHaveLength(2)
+    })
   })
 })

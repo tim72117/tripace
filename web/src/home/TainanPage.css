@@ -205,6 +205,13 @@
   height: auto;
   max-height: 70vh;
   object-fit: contain;
+  display: block;
+}
+/* 圖片載入前的佔位:<img> 帶 width/height(照片原始尺寸,見 STOPS 的 photoSize),
+   瀏覽器在下載前就能依比例算出高度,外框不會從 0 撐開;載入完成前(onLoad 會標
+   data-loaded)先鋪一層淡色底,載入失敗時也維持同一塊尺寸。 */
+.tainan-stop-photo img:not([data-loaded]) {
+  background: linear-gradient(135deg, var(--brick-soft), var(--tide));
 }
 
 .tainan-stop-photo-label {

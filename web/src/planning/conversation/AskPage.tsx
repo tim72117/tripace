@@ -1,9 +1,18 @@
-import { useEffect, useState } from 'react'
-import { Bike, Bus, Car, Check, MapPin, PersonStanding, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Loader2, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import type { PlanAiDataSource } from '../data/source'
+import { AskShell } from './AskShell'
+import { SkeletonBlock, SkeletonRegion } from '../../components/Skeleton'
+import { AskOptionList } from './AskOptionList'
+import { RegionOption } from './RegionOption'
+import { TransportOption } from './TransportOption'
+import { CandidateCard } from './CandidateCard'
+import { useHeightTransition } from './useHeightTransition'
+import { askDirectionBetween, askLayerOf } from './askTransition'
 import type {
   AskPageCandidate,
+  AskPageCandidatesBack,
   AskPageCityInput,
   AskPageCountryInput,
   AskPageExplore,
@@ -50,7 +59,8 @@ import styles from './AskPage.module.css'
 // state。onDone 現在帶一個 AskPageSelection[] 參數(取代舊版無參數的
 // onDone()):「確認選擇」按鈕回傳使用者勾選的候選(對應的 attractionId
 // 從已查到的詳細資料帶出,查無資料的候選只回傳 placeId);「不用了」
-// 按鈕(使用者明確要求取代舊版「都可以」的語意)回傳空陣列,讓呼叫端
+// (使用者明確要求取代舊版「都可以」的語意;2026-10 起是氣泡右上角的關閉圖示鈕,aria-label 仍為「不用了」,
+// 見 AskShell 的 onClose)回傳空陣列,讓呼叫端
 // (open_ask_page 工具)知道使用者明確拒絕了這批候選,不是隨便選了
 // 一個。呼叫端(TripPlanPage.tsx 的 askPageCtx)把這個陣列轉成
 // AskPageSelection[] resolve 掉 open_ask_page 回傳給 LLM 的 Promise。
@@ -92,7 +102,7 @@ import styles from './AskPage.module.css'
 // CandidatesPanel 複選(可以同時選好幾個景點,「確認選擇」按鈕才送出),
 // RegionPanel/TransportPanel 單選且點選當下就直接送出(不需要再按一次
 // 確認——單選情境下「點了就是選了」比「點了還要再按確認」更直覺,少一
-// 次操作),只保留一個「不用了」按鈕。
+// 次操作),只保留「不用了」(氣泡右上角的關閉圖示鈕,見 AskShell 的 onClose)。
 
 // CandidateDetails——每筆候選背景查詢完成後補上的完整資料,只保留這個
 // 卡片畫面實際會用到的欄位(名稱/簡介/照片/attractionId),不是整份
@@ -120,14 +130,13 @@ export interface AskPageProps {
   // 並把這個陣列轉發給等待中的 open_ask_page/ask_travel_country/
   // ask_travel_city/ask_transport_mode 工具呼叫。
   onDone: (selected: AskPageSelection[]) => void
-  // onBack——2026-10(第十輪)只有 CityPanel 在 input.city.back 有值時
-  // 會用到(見 CityPanel 的完整說明:「返回上一層」按鈕),選填——
+  // onBack——「返回上一層」圖示鈕。兩處會用到:CityPanel(input.city.back 有值,帶 back.countryIds 呼叫)與
+  // 2026-10 起的景點候選/查詢中(input.back 有值,即由城市頁選完城市進來,不帶參數呼叫)。選填——
   // planning/preview/Content.tsx 的展示頁劇本不支援這個互動(劇本內容固定,
   // 沒有真正的國家/城市串接流程),不傳就不渲染這顆按鈕。跟 onDone 不
   // 同:onDone 結束整個詢問(resolve 掉等待中的工具呼叫),onBack 只是
-  // 换另一個 input 重新開一個詢問頁,不結束任何東西——呼叫端
-  // (TripPlanPage.tsx)收到後呼叫 openAskPage({ country: { countryIds }
-  // }),不是 resolveAskPage。
+  // 原地換回上一層的 input,不結束任何東西——呼叫端(useAskPageFlow 的 handleAskPageBack)
+  // 依目前的 input 決定回哪一層,用 replaceAskPage 換頁,不是 resolveAskPage。
   onBack?: (countryIds?: string[]) => void
   // stacked——寬螢幕側欄(PlanOverlayPanel 的 wide 分支,見該元件的完整說明)改用
   // 縱向堆疊的橫式列表,取代預設的橫向捲動小卡(使用者明確要求「所有的
@@ -140,7 +149,78 @@ export interface AskPageProps {
   stacked?: boolean
 }
 
-export function AskPage({ dataSource, input, onDone, onBack, stacked }: AskPageProps) {
+// AskPage——外層只負責「換步驟時的轉場」(內容滑入 + 手機版面板高度過渡):判斷前進或返回的方向,用 display: contents 的外殼標出
+// data-direction,內容(標題、選項、按鈕)依方向滑入,外殼氣泡本身不動(見 AskPage.module.css 的 .transition)。
+// 方向由 askTransition.ts 依步驟層級(國家→城市→景點)判斷;換步驟後把焦點移到新的標題,
+// 讓鍵盤與讀屏使用者知道畫面已換。實際的面板渲染在 AskPageContent。
+export function AskPage(props: AskPageProps) {
+  const layer = askLayerOf(props.input)
+  // 「依 props 變化調整 state」的標準寫法:層級變了才在 render 中 setState 一次,方向存在 state 裡,
+  // 之後同一步驟內的重繪方向不變(不會在動畫進行中被清掉)。第一次掛載沒有方向。
+  const [nav, setNav] = useState<{ layer: number | undefined; direction: ReturnType<typeof askDirectionBetween> }>({
+    layer,
+    direction: 'none',
+  })
+  if (nav.layer !== layer) setNav({ layer, direction: askDirectionBetween(nav.layer, layer) })
+
+  const rootRef = useRef<HTMLDivElement>(null)
+  // 換步驟後把焦點移到新標題——只在「焦點本來就沒有落在別處」時才移:
+  //   - document.activeElement 是 body/null:剛點的卡片隨舊面板一起被移除,焦點掉回 body(最常見的情況);
+  //   - 焦點仍在詢問頁根節點內:使用者正在操作詢問頁本身。
+  // 其餘情況(例如使用者正在下方輸入匡打字,詢問頁開著時輸入匡不鎖)AI 推進頁面不能搶焦點,否則字會打到別處/消失。
+  // tabindex="-1" 只為了讓 <p> 可以被程式聚焦,標題 blur 後就移除,不留殘留。blur 監聽刻意不在 effect cleanup 移除:
+  // 轉場結束時 direction 會清回 none(見下方 animationend 監聽)讓這個 effect 重跑,那時標題可能還在聚焦中,
+  // 清掉監聽會讓 tabindex 永遠留著;監聽掛在元素上、once,元素被移除就跟著回收。
+  useEffect(() => {
+    if (nav.direction === 'none') return
+    const root = rootRef.current
+    const title = root?.querySelector('p')
+    if (!root || !title) return
+    const active = document.activeElement
+    const focusIsFree = !active || active === document.body || root.contains(active)
+    if (!focusIsFree) return
+    title.setAttribute('tabindex', '-1')
+    title.addEventListener('blur', () => title.removeAttribute('tabindex'), { once: true })
+    title.focus({ preventScroll: true })
+  }, [nav.layer, nav.direction])
+
+  // 手機版面板高度過渡:換步驟(input 換了)時 .bubble 高度從舊值平滑動到新值,不上下跳(見 useHeightTransition.ts)。
+  // 寬螢幕側欄(stacked)是固定高度,不需要。
+  useHeightTransition(rootRef, props.input, { selector: `.${styles.bubble}`, disabled: props.stacked })
+
+  // 滑入只在換步驟那一刻播:CSS 對 .bubble 的「直接子元素」套方向動畫,若方向一直留著,同一步驟內之後才插入的子元素
+  // (例如查詢中換成候選時新出現的卡片列、操作列)也會再滑入一次。所以 .bubble 直接子元素的滑入動畫一結束,就把方向清回
+  // none(之後同一步驟內的重繪方向仍穩定是 none;下一次換層級才再有方向)。只認 .bubble 直接子元素,卡片內部、查詢中
+  // 圖示(無限旋轉,不會結束)等其他動畫不影響。選這個做法而不是「只對掛載時已存在的子元素播放」:後者要逐一標記子元素,
+  // 而子元素是各面板自己渲染的,標記會散落各處。
+  // 用原生監聽而不是 React 的 onAnimationEnd:React 在沒有 AnimationEvent 的環境(jsdom)會改聽 webkit 前綴事件名稱,
+  // 行為跟瀏覽器不一致;原生 animationend 在兩邊都一樣。
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    const onEnd = (e: Event) => {
+      const target = e.target as HTMLElement | null
+      if (!target?.parentElement?.matches('[data-ask-part="bubble"]')) return
+      setNav((n) => (n.direction === 'none' ? n : { ...n, direction: 'none' }))
+    }
+    root.addEventListener('animationend', onEnd)
+    return () => root.removeEventListener('animationend', onEnd)
+  }, [])
+
+  return (
+    <div
+      ref={rootRef}
+      className={styles.transition}
+      data-ask-part="transition"
+      data-direction={nav.direction}
+      data-stacked={props.stacked ? 'true' : undefined}
+    >
+      <AskPageContent {...props} />
+    </div>
+  )
+}
+
+function AskPageContent({ dataSource, input, onDone, onBack, stacked }: AskPageProps) {
   // text 模式(見上方檔頭「第四輪」的完整說明):純文字對話氣泡,沒有
   // 候選卡片/選取/確認這些互動,跟其餘模式的渲染邏輯完全不共用,在這裡
   // 直接短路回傳,不進外殼的 .bubble/.question/.actions 結構(文字氣泡
@@ -183,7 +263,7 @@ export function AskPage({ dataSource, input, onDone, onBack, stacked }: AskPageP
     return <TransportPanel modes={input.transport} reason={input.reason} onDone={onDone} stacked={stacked} />
   }
 
-  return <CandidatesPanel dataSource={dataSource} input={input} onDone={onDone} stacked={stacked} />
+  return <CandidatesPanel dataSource={dataSource} input={input} onDone={onDone} onBack={onBack} stacked={stacked} />
 }
 
 // CandidatesPanel——感興趣地點:候選景點照片卡片,可複選,「確認選擇」
@@ -194,11 +274,15 @@ function CandidatesPanel({
   dataSource,
   input,
   onDone,
+  onBack,
   stacked,
 }: {
   dataSource: PlanAiDataSource
-  input: { candidates: AskPageCandidate[]; reason?: string } | { explore: AskPageExplore; reason?: string }
+  input:
+    | { candidates: AskPageCandidate[]; reason?: string; loading?: boolean; back?: AskPageCandidatesBack }
+    | { explore: AskPageExplore; reason?: string }
   onDone: (selected: AskPageSelection[]) => void
+  onBack?: () => void
   stacked?: boolean
 }) {
   const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>([])
@@ -218,6 +302,20 @@ function CandidatesPanel({
   // candidates 是呼叫端傳入的 prop(不該被這個元件直接修改),查詢結果
   // 另外用自己的 state 管理,渲染時兩者合併讀取(見下方 JSX)。
   const [details, setDetails] = useState<Map<string, CandidateDetails>>(new Map())
+  // 2026-10:呼叫端可以原地換掉 input(選完城市先給「查詢中」{ loading: true },查完換成真正的候選,見
+  // planning/panel/useAskPageFlow.ts),這個元件不會重新掛載——用「依 props 調整 state」的標準寫法,input 換了
+  // 就以新的 input 重設候選與選取(candidates/exploring 原本只在掛載時從 input 初始化一次)。
+  const [prevInput, setPrevInput] = useState(input)
+  if (prevInput !== input) {
+    setPrevInput(input)
+    setCandidates('candidates' in input ? input.candidates : [])
+    setSelectedPlaceIds([])
+    setExploring('explore' in input)
+  }
+  const loading = exploring || ('candidates' in input && !!input.loading)
+  // handleBack——由城市頁選完城市進來的查詢中/候選(input.back 有值,見 asktools.ts AskPageCandidatesBack)才有返回;
+  // LLM 直接開的候選與 explore 沒有。呼叫端(useAskPageFlow.handleAskPageBack)依目前 input 的 back 換回城市頁,不需要參數。
+  const handleBack = 'candidates' in input && input.back && onBack ? () => onBack() : undefined
 
   function toggleCandidate(placeId: string) {
     setSelectedPlaceIds((prev) => (prev.includes(placeId) ? prev.filter((x) => x !== placeId) : [...prev, placeId]))
@@ -228,7 +326,7 @@ function CandidatesPanel({
   // 新的 AskPage 實例,input 在這個元件的生命週期內不會變)。
   // searchNearby 未提供(dataSource 沒有實作這個選填方法)或查詢失敗
   // 時,candidates 維持空陣列——使用者會看到一個沒有候選卡片、只剩
-  // 「不用了」按鈕可按的空狀態,不會整頁壞掉。
+  // 右上角「不用了」關閉鈕可按的空狀態,不會整頁壞掉。
   useEffect(() => {
     if (!('explore' in input)) return
     const explore = input.explore
@@ -324,89 +422,77 @@ function CandidatesPanel({
   // 了/確認選擇」按鈕沒有意義,使用者此刻唯一能做的事是等待,對齊整個
   // 專案「查詢中顯示明確提示,不留一片空白」的既有慣例(見
   // frontend-design-guidelines 的「狀態要看得見」一節)。
-  if (exploring) {
+  // 選完城市後的「查詢中」({ loading: true })也走同一個外殼——同一個步驟、同一個 CandidatesPanel,查完換成候選時
+  // .wrap/.bubble/標題/卡片列容器沿用同一批 DOM(標題文字換掉、骨架換成卡片,不重新滑入),只有按鈕列是新出現的。
+  // 選完城市的查詢中(input.loading)有右上角關閉鈕(2026-10:查詢掛住時原本只能等,現在可以「不用了」以 onDone([]) 結束,
+  // 語意同其他頁的關閉;逾時另見 useAskPageFlow 的 CITY_LOOKUP_TIMEOUT_MS)。explore 查詢中沿用既有行為,不給關閉鈕。
+  // role="status":讀屏會唸出查詢中,查完換成候選標題時也會唸出新的文字。
+  // 查詢中與候選兩個分支都回傳同一個 <AskShell>(同型別、同位置),React 沿用同一批 DOM 與 AskShell 內的 hover 鎖定狀態。
+  if (loading) {
     return (
-      <div className={styles.wrap}>
-        <div className={styles.bubble}>
-          <p className={styles.question}>{input.reason ?? '正在附近探查地點…'}</p>
-        </div>
-      </div>
+      <AskShell
+        stacked={stacked}
+        loading
+        onBack={handleBack}
+        onClose={'candidates' in input && input.loading ? () => onDone([]) : undefined}
+        question={
+          <>
+            <Loader2 size={16} strokeWidth={2.5} className={styles.loadingIcon} aria-hidden="true" />
+            {input.reason ?? '正在附近探查地點…'}
+          </>
+        }
+      >
+        {/* 骨架卡——手機版先佔住照片卡那一列的高度,查完換成真正的卡片時面板只多出按鈕列,不會先縮成一行字再撐開
+            (縮了又長的上下晃動,正是高度過渡要避免的)。寬螢幕側欄是固定高度,不需要。 */}
+        {/* 共用 Skeleton:SkeletonRegion 本身就是卡片列容器(內層 display:contents,flex 排版直接作用在骨架上),
+            SkeletonBlock 的尺寸與圓角對齊 .directionCard(140px、10/7、12px),邊框由 .skeletonCard 補上。 */}
+        {!stacked && (
+          <SkeletonRegion label="景點查詢中" className={styles.directionScroller}>
+            {[0, 1, 2].map((i) => (
+              <SkeletonBlock key={i} width={140} aspectRatio="10 / 7" radius={12} className={styles.skeletonCard} />
+            ))}
+          </SkeletonRegion>
+        )}
+      </AskShell>
     )
   }
 
   return (
-    <div className={[styles.wrap, stacked ? styles.wrapStacked : ''].filter(Boolean).join(' ')}>
-      <div className={[styles.bubble, stacked ? styles.bubbleStacked : ''].filter(Boolean).join(' ')}>
-        <p className={styles.question}>{input.reason ?? '要安排這些地點嗎?'}</p>
-        <div className={[styles.directionScroller, stacked ? styles.directionScrollerStacked : ''].filter(Boolean).join(' ')}>
-          {candidates.map((candidate) => {
-            const checked = selectedPlaceIds.includes(candidate.placeId)
-            const detail = details.get(candidate.placeId)
-            return (
-              <button
-                key={candidate.placeId}
-                type="button"
-                aria-pressed={checked}
-                className={[
-                  styles.directionCard,
-                  stacked ? styles.directionCardStacked : '',
-                  checked ? styles.directionCardChecked : '',
-                ].filter(Boolean).join(' ')}
-                onClick={() => toggleCandidate(candidate.placeId)}
-              >
-                {detail?.photoUrl ? (
-                  <img
-                    src={detail.photoUrl}
-                    alt=""
-                    className={[styles.directionPhoto, stacked ? styles.directionPhotoStacked : ''].filter(Boolean).join(' ')}
-                  />
-                ) : (
-                  // stacked 模式的佔位縮圖——使用者明確指出「手機版的有
-                  // 留空間,桌面版的連空間都沒有」:橫向捲動模式下卡片本身
-                  // 是固定尺寸的方塊(見 .directionCard 的完整說明),沒有
-                  // 照片時卡片仍維持同樣大小、只是內容空白,視覺上像是
-                  // 「有留空間」;stacked 模式是圖文並排的列表樣式,沒有
-                  // <img> 時沒有東西撐出縮圖寬度,整行會變成只剩文字靠左,
-                  // 跟有照片的項目排列不整齊。這裡補一個跟
-                  // .directionPhotoStacked 同尺寸的佔位色塊,維持版面
-                  // 對齊。用通用的地圖釘子 icon(MapPin,跟 CountryPanel/
-                  // CityPanel 既有的 .regionIcon 同一顆圖示,不是另外引入
-                  // 新圖示),不依景點類型(餐廳/公園/景點等)顯示不同圖示
-                  // ——AskPageCandidate/CandidateDetails 目前整條資料鏈路
-                  // 都沒有攜帶類型欄位(2026-10,使用者明確要求「先改成
-                  // 通用的地圖釘子佔位圖,最小改動先解決沒有空間的問題」,
-                  // 類型區分留待之後有需要再擴充資料結構)。只在 stacked
-                  // 模式顯示——橫向捲動模式本來就有「留空間」的效果,不
-                  // 需要額外補一個佔位圖示。
-                  stacked && (
-                    <span className={styles.directionPhotoPlaceholder} aria-hidden="true">
-                      <MapPin size={20} strokeWidth={2} />
-                    </span>
-                  )
-                )}
-                <span className={[styles.directionLabel, stacked ? styles.directionLabelStacked : ''].filter(Boolean).join(' ')}>
-                  {detail?.loading ? '查詢中…' : (detail?.name ?? candidate.name ?? '未命名地點')}
-                </span>
-                {checked && <Check size={14} strokeWidth={3} className={styles.directionCheck} />}
-              </button>
-            )
-          })}
-        </div>
-        <div className={styles.actions}>
-          <button type="button" className={styles.optionBtn} onClick={() => onDone([])}>
-            不用了
-          </button>
-          <button
-            type="button"
-            className={`${styles.optionBtn} ${styles.directionConfirm}`}
-            disabled={selectedPlaceIds.length === 0}
-            onClick={handleConfirm}
-          >
-            {selectedPlaceIds.length > 0 ? `確認選擇(${selectedPlaceIds.length})` : '確認選擇'}
-          </button>
-        </div>
-      </div>
-    </div>
+    <AskShell
+      stacked={stacked}
+      question={input.reason ?? '要安排這些地點嗎?'}
+      onBack={handleBack}
+      onClose={() => onDone([])}
+      // 操作列只有「確認選擇」。2026-10:原本的「我要直接說明」按鈕(展開說明面板)已移除,改由下方輸入匡直接說明
+      // (詢問頁開著時輸入匡不鎖、提示文字引導,見 planning/panel/composerMode.ts)。
+      actions={
+        <button
+          type="button"
+          className={`${styles.optionBtn} ${styles.directionConfirm}`}
+          disabled={selectedPlaceIds.length === 0}
+          onClick={handleConfirm}
+        >
+          {selectedPlaceIds.length > 0 ? `確認選擇(${selectedPlaceIds.length})` : '確認選擇'}
+        </button>
+      }
+    >
+      <AskOptionList stacked={stacked}>
+        {candidates.map((candidate) => {
+          const detail = details.get(candidate.placeId)
+          return (
+            <CandidateCard
+              key={candidate.placeId}
+              name={detail?.name ?? candidate.name}
+              loading={detail?.loading}
+              photoUrl={detail?.photoUrl}
+              checked={selectedPlaceIds.includes(candidate.placeId)}
+              stacked={stacked}
+              onToggle={() => toggleCandidate(candidate.placeId)}
+            />
+          )
+        })}
+      </AskOptionList>
+    </AskShell>
   )
 }
 
@@ -442,29 +528,17 @@ function CountryPanel({
   // 函式的完整說明:uiStateStore 要算出同一份清單,兩邊各寫一份會不一致)。
   const countries = listTravelCountries(input.countryIds)
   return (
-    <div className={[styles.wrap, stacked ? styles.wrapStacked : ''].filter(Boolean).join(' ')}>
-      <div className={[styles.bubble, stacked ? styles.bubbleStacked : ''].filter(Boolean).join(' ')}>
-        <p className={styles.question}>{input.reason ?? '要去哪個國家?'}</p>
-        <div className={[styles.directionScroller, stacked ? styles.directionScrollerStacked : ''].filter(Boolean).join(' ')}>
-          {countries.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className={[styles.regionCard, stacked ? styles.regionCardStacked : ''].filter(Boolean).join(' ')}
-              onClick={() => onDone([{ placeId: c.id }])}
-            >
-              <MapPin size={18} strokeWidth={2} className={styles.regionIcon} />
-              <span className={[styles.regionName, stacked ? styles.regionNameStacked : ''].filter(Boolean).join(' ')}>{c.name}</span>
-            </button>
-          ))}
-        </div>
-        <div className={styles.actions}>
-          <button type="button" className={styles.optionBtn} onClick={() => onDone([])}>
-            不用了
-          </button>
-        </div>
-      </div>
-    </div>
+    <AskShell
+      stacked={stacked}
+      question={input.reason ?? '要去哪個國家?'}
+      onClose={() => onDone([])}
+    >
+      <AskOptionList stacked={stacked}>
+        {countries.map((c) => (
+          <RegionOption key={c.id} name={c.name} stacked={stacked} onSelect={() => onDone([{ placeId: c.id }])} />
+        ))}
+      </AskOptionList>
+    </AskShell>
   )
 }
 
@@ -498,50 +572,24 @@ function CityPanel({
   // listTravelCities——理由同 RegionPanel 的 listTravelCountries。
   const cities = listTravelCities(input.countryId, input.cityIds)
   const question = input.reason ?? (country ? `${country.name}要去哪裡?` : '要安排哪個城市?')
+  const back = input.back
   return (
-    <div className={[styles.wrap, stacked ? styles.wrapStacked : ''].filter(Boolean).join(' ')}>
-      <div className={[styles.bubble, stacked ? styles.bubbleStacked : ''].filter(Boolean).join(' ')}>
-        <p className={styles.question}>{question}</p>
-        <div className={[styles.directionScroller, stacked ? styles.directionScrollerStacked : ''].filter(Boolean).join(' ')}>
-          {cities.map((city) => (
-            <button
-              key={city.id}
-              type="button"
-              className={[styles.regionCard, stacked ? styles.regionCardStacked : ''].filter(Boolean).join(' ')}
-              onClick={() => onDone([{ placeId: city.id }])}
-            >
-              <MapPin size={18} strokeWidth={2} className={styles.regionIcon} />
-              <span className={[styles.regionName, stacked ? styles.regionNameStacked : ''].filter(Boolean).join(' ')}>{city.name}</span>
-            </button>
-          ))}
-        </div>
-        <div className={styles.actions}>
-          {input.back && onBack && (
-            <button type="button" className={styles.optionBtn} onClick={() => onBack(input.back!.countryIds)}>
-              返回上一層
-            </button>
-          )}
-          <button type="button" className={styles.optionBtn} onClick={() => onDone([])}>
-            不用了
-          </button>
-        </div>
-      </div>
-    </div>
+    <AskShell
+      stacked={stacked}
+      question={question}
+      onBack={back && onBack ? () => onBack(back.countryIds) : undefined}
+      onClose={() => onDone([])}
+    >
+      <AskOptionList stacked={stacked}>
+        {cities.map((city) => (
+          <RegionOption key={city.id} name={city.name} stacked={stacked} onSelect={() => onDone([{ placeId: city.id }])} />
+        ))}
+      </AskOptionList>
+    </AskShell>
   )
 }
 
-// TRANSPORT_MODE_META——每種交通方式固定的圖示與中文標籤(見
-// planning/conversation/asktools.ts TransportMode 的完整說明:LLM 只傳值本身,
-// 不自訂顯示文字,避免每次呼叫顯示字樣不一致)。
-const TRANSPORT_MODE_META: Record<TransportMode, { label: string; Icon: typeof Car }> = {
-  walk: { label: '步行', Icon: PersonStanding },
-  scooter: { label: '機車', Icon: Bike },
-  car: { label: '開車', Icon: Car },
-  transit: { label: '大眾運輸', Icon: Bus },
-  bike: { label: '腳踏車', Icon: Bike },
-}
-
-// TransportPanel——交通方式:固定列舉(見 TRANSPORT_MODE_META),modes
+// TransportPanel——交通方式:固定列舉(圖示與中文標籤見 TransportOption.tsx 的 TRANSPORT_META),modes
 // 參數決定顯示哪些、依什麼順序(見 asktools.ts
 // parseAskTransportModeArgs 的完整說明),單選、點選當下直接送出。跟
 // RegionPanel 同樣不需要背景查詢完整資料。
@@ -557,31 +605,16 @@ function TransportPanel({
   stacked?: boolean
 }) {
   return (
-    <div className={[styles.wrap, stacked ? styles.wrapStacked : ''].filter(Boolean).join(' ')}>
-      <div className={[styles.bubble, stacked ? styles.bubbleStacked : ''].filter(Boolean).join(' ')}>
-        <p className={styles.question}>{reason ?? '這段要怎麼移動?'}</p>
-        <div className={[styles.transportRow, stacked ? styles.transportRowStacked : ''].filter(Boolean).join(' ')}>
-          {modes.map((mode) => {
-            const meta = TRANSPORT_MODE_META[mode]
-            return (
-              <button
-                key={mode}
-                type="button"
-                className={[styles.transportCard, stacked ? styles.transportCardStacked : ''].filter(Boolean).join(' ')}
-                onClick={() => onDone([{ placeId: mode }])}
-              >
-                <meta.Icon size={22} strokeWidth={2} />
-                <span className={styles.transportLabel}>{meta.label}</span>
-              </button>
-            )
-          })}
-        </div>
-        <div className={styles.actions}>
-          <button type="button" className={styles.optionBtn} onClick={() => onDone([])}>
-            不用了
-          </button>
-        </div>
-      </div>
-    </div>
+    <AskShell
+      stacked={stacked}
+      question={reason ?? '這段要怎麼移動?'}
+      onClose={() => onDone([])}
+    >
+      <AskOptionList stacked={stacked} variant="transport">
+        {modes.map((mode) => (
+          <TransportOption key={mode} mode={mode} stacked={stacked} onSelect={() => onDone([{ placeId: mode }])} />
+        ))}
+      </AskOptionList>
+    </AskShell>
   )
 }

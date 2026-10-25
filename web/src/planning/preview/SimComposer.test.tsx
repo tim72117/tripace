@@ -1,4 +1,4 @@
-// SimComposer——模擬層的輸入列:展示用假輸入膠囊,排完後變「讓我試看看」按鈕,交接後恢復成真的輸入框。
+// SimComposer——模擬層的輸入列:展示用假輸入膠囊,排完後變「讓我試看看」按鈕。只在模擬態渲染(交接後的輸入框由 TripPlanPage 提供)。
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import { SimComposer, type SimComposerProps } from './SimComposer'
@@ -6,10 +6,7 @@ import { SimComposer, type SimComposerProps } from './SimComposer'
 function setup(over: Partial<SimComposerProps> = {}) {
   const props: SimComposerProps = {
     composerCollapsed: false,
-    handedOver: false,
     typedPrompt: '台南兩日遊',
-    userPrompt: '使用者輸入',
-    setUserPrompt: vi.fn(),
     handover: vi.fn(),
     ...over,
   }
@@ -33,12 +30,4 @@ describe('SimComposer', () => {
     expect(props.handover).toHaveBeenCalledTimes(1)
   })
 
-  it('交接後(handedOver):輸入框是真的,顯示並回報使用者輸入', () => {
-    const { getByLabelText, props } = setup({ handedOver: true })
-    const input = getByLabelText('描述你想要的行程') as HTMLInputElement
-    expect(input.value).toBe('使用者輸入')
-    expect(input.readOnly).toBe(false)
-    fireEvent.change(input, { target: { value: '台北' } })
-    expect(props.setUserPrompt).toHaveBeenCalledWith('台北')
-  })
 })

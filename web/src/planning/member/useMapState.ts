@@ -1,8 +1,8 @@
 import type { GeoPlanningState } from './usePlanningState'
 import { centerOfPoints } from '../map/mapCenter'
-import { requireGeocode, requirePlacePhoto, requirePlaceText, type PlanAiDataSource } from '../data/source'
+import { requireGeocode, type PlanAiDataSource } from '../data/source'
 import { useEffect, useState } from 'react'
-import type { ClientConfig, GeoGeocodeCandidate, GeoPlaceText, GeoSearchResult, GeoTripEntry } from '../../api'
+import type { ClientConfig, GeoGeocodeCandidate, GeoSearchResult, GeoTripEntry } from '../../api'
 import { fetchEntries, geocodeCandidateToSearchResult } from '../../api'
 import { useStableCallback } from '../../hooks/useStableCallback'
 import type { GeoPanTarget } from '../explore/selection'
@@ -45,8 +45,6 @@ export function useMapState({
   city,
   onSearchResultSelect,
   onSearchResultsChange,
-  onGeocodeCandidateText,
-  onGeocodeCandidatePhoto,
   onTripEntriesChange,
   externalGeocodeCandidateSelect,
   panTarget: externalPanTarget,
@@ -54,18 +52,15 @@ export function useMapState({
   refetchTripEntriesTrigger,
   geocodeCandidates,
   setGeocodeCandidates,
-  selectedCandidate,
   setSelectedCandidate,
 }: {
-  // cfg:查旅程 entry 用;地點搜尋與搜尋結果補照片、補文字走 dataSource(資料存取層實例)。
+  // cfg:查旅程 entry 用;地點搜尋走 dataSource(資料存取層實例)。
   cfg: ClientConfig
   dataSource: PlanAiDataSource
   tripID?: string | null
   city: string
   onSearchResultSelect?: (result: GeoSearchResult) => void
   onSearchResultsChange?: (results: GeoSearchResult[]) => void
-  onGeocodeCandidateText?: (placeId: string, text: GeoPlaceText) => void
-  onGeocodeCandidatePhoto?: (placeId: string, photoUrl: string | null) => void
   onTripEntriesChange?: (entries: GeoTripEntry[]) => void
   externalGeocodeCandidateSelect?: GeoSearchResult | null
   // GeoPanTarget(planning/explore/selection.ts)——2026-10 改用共用型別,不再在這裡
@@ -78,7 +73,9 @@ export function useMapState({
   refetchTripEntriesTrigger?: number
   geocodeCandidates: GeoGeocodeCandidate[]
   setGeocodeCandidates: (candidates: GeoGeocodeCandidate[]) => void
-  selectedCandidate: GeoSearchResult | null
+  // selectedCandidate:目前這個 hook 只寫不讀(照片/文字補查已搬到
+  // usePlanningState,見下方說明);保留在參數裡讓 outlineBindingFrom 的接線形狀不變。
+  selectedCandidate?: GeoSearchResult | null
   setSelectedCandidate: (candidate: GeoSearchResult | null) => void
 }) {
   const [loading, setLoading] = useState(false)
@@ -150,28 +147,10 @@ export function useMapState({
     setSelectedCandidate(r)
   })
 
-  useEffect(() => {
-    const placeId = selectedCandidate?.placeId
-    if (!placeId) return
-    const name = selectedCandidate.name
-    let cancelled = false
-    requirePlaceText(dataSource, placeId)
-      .then((text) => {
-        if (cancelled) return
-        onGeocodeCandidateText?.(placeId, text)
-      })
-      .catch(() => {})
-    requirePlacePhoto(dataSource, placeId, name)
-      .then((result) => {
-        if (cancelled) return
-        onGeocodeCandidatePhoto?.(placeId, result.googlePhotoUrls?.[0] ?? null)
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCandidate?.placeId])
+  // 選定搜尋結果後的文字(簡介、評分)與照片補查都不在這裡:2026-10 起改由
+  // usePlanningState.ts 的 placeTextFetch/placePhotoFetch effect 依卡片內容的
+  // textStatus/photoStatus 驅動。原本這裡只在 selectedCandidate.placeId 變動時
+  // 查照片,同一地點關卡重開(placeId 沒變)就不會再查,卡片永遠掃光。
 
   useEffect(() => {
     if (!externalGeocodeCandidateSelect) return
@@ -279,14 +258,11 @@ export function useMapState({
 }
 
 // outlineBindingFrom——useMapState 與 usePlanningState 之間固定的接線(2026-10 從桌面
-// planning/member/desktop/Content.tsx 與手機 PlanPhoneView.tsx 各一份相同的十行欄位抽出):搜尋結果補文字/補照片寫回 geo、旅程 entry 與
+// planning/member/desktop/Content.tsx 與手機 PlanPhoneView.tsx 各一份相同的十行欄位抽出):旅程 entry 與
 // 地圖移動目標、候選清單與選取狀態都是 geo(usePlanningState)持有的,兩個入口對這組的接法完全一樣。呼叫端展開這個
 // 物件,再補各自不同的欄位(tripID、city、searchTrigger、onSearchResultSelect/onSearchResultsChange 的入口特有行為)。
 export function outlineBindingFrom(geo: GeoPlanningState) {
   return {
-    onGeocodeCandidateText: (placeId: string, text: GeoPlaceText) => geo.patchGeocodeCandidateText(placeId, text),
-    onGeocodeCandidatePhoto: (placeId: string, photoUrl: string | null) =>
-      geo.patchGeocodeCandidatePhoto(placeId, photoUrl),
     onTripEntriesChange: geo.onTripEntriesChange,
     externalGeocodeCandidateSelect: geo.searchResultSelect,
     panTarget: geo.panTarget,

@@ -62,38 +62,101 @@
 // 這個優先序是刻意的:已經在等待使用者操作的互動,比任何之後才到達
 // 的顯示請求更重要,不能被後來者打斷。
 
+// 2026-10(狀態模型合併):原本 showAskPage(布林)與 askPageInput 是兩個獨立的 useState,每次轉移要連續呼叫兩個
+// setter——「旗標開著但 input 是舊值」「旗標關了 input 還在」這類中間態只是剛好被 React 批次更新蓋掉,型別上完全
+// 允許。改成單一個帶標籤的聯集 AskPageState(closed | open 帶 input),四個轉移(open/replace/advance/done)各自
+// 只做一次 setState,中間態在型別上就不存在。showAskPage/askPageInput 保留成由它衍生的唯讀值,呼叫端不用改;
+// 關閉時 askPageInput 固定回到掛載時的預設值(同一個參照,不會因為呼叫端每次 render 傳新的字面值而變動)。
+//
+// 等待(resolve)仍然放 ref(理由見上方),但跟狀態綁在一起維護:有 pending ⇔ state 是 open。每個等待帶一個
+// 遞增的 id(pendingId()),非同步流程(useAskPageFlow 查景點)用它判斷「我開始時的那個等待是否還在」——
+// 期間被別的方式結束或換成新的等待,id 就不同了。
+
 import { useCallback, useRef, useState } from 'react'
 import type { AskPageSelection } from './asktools'
 
+export type AskPageState<Input> = { status: 'closed' } | { status: 'open'; input: Input }
+
+const CLOSED: { status: 'closed' } = { status: 'closed' }
+
 export interface AskPageBridge<Input> {
+  // askPage——詢問頁的唯一狀態來源。
+  askPage: AskPageState<Input>
+  // showAskPage/askPageInput——由 askPage 衍生的唯讀值(相容既有呼叫端)。關閉時 askPageInput 是預設值。
   showAskPage: boolean
   askPageInput: Input
   openAskPage: (input: Input) => Promise<AskPageSelection[]>
   handleAskPageDone: (selected: AskPageSelection[]) => void
+  // replaceAskPage——原地換頁、不結束等待:只在有 pending 時換掉 input,resolve 原封不動(之後照常由
+  // handleAskPageDone 結束)。給「返回上一層」用:城市頁還在等待時,openAskPage 會被上面的不搶佔保護吞掉,
+  // 返回按了沒反應(2026-10 修正)。沒有 pending 時不做事、回傳 false——沒有人在等的畫面不該憑空開出來。
+  replaceAskPage: (input: Input) => boolean
+  // advanceAskPage——結束這一步、立刻換到下一步:以 selected resolve 目前的等待,同一次更新換成 input 並建立新的
+  // 等待,詢問頁全程維持 open(不閃回時間軸)。任何時刻仍然最多一個 pending;沒有 pending 時等同 openAskPage。
+  advanceAskPage: (selected: AskPageSelection[], input: Input) => Promise<AskPageSelection[]>
+  // pendingId——目前等待的識別碼,沒有等待時為 null。replaceAskPage 不換 id;open/advance 開新的等待會換。
+  pendingId: () => number | null
+}
+
+interface Pending {
+  id: number
+  resolve: (selected: AskPageSelection[]) => void
 }
 
 export function useAskPageBridge<Input>(defaultInput: Input): AskPageBridge<Input> {
-  const [showAskPage, setShowAskPage] = useState(false)
-  const [askPageInput, setAskPageInput] = useState<Input>(defaultInput)
-  const askPageResolveRef = useRef<((selected: AskPageSelection[]) => void) | null>(null)
+  const [askPage, setAskPage] = useState<AskPageState<Input>>(CLOSED)
+  // 只取掛載時的預設值:呼叫端常傳字面值({ candidates: [] }),每次 render 都是新參照。
+  const [closedInput] = useState(defaultInput)
+  const pendingRef = useRef<Pending | null>(null)
+  const nextIdRef = useRef(0)
 
-  const openAskPage = useCallback((input: Input): Promise<AskPageSelection[]> => {
-    // 已有 pending 的呼叫——見上方「2026-10 訂正」的完整說明,不搶佔。
-    if (askPageResolveRef.current) {
-      return Promise.resolve([])
-    }
-    setAskPageInput(input)
-    setShowAskPage(true)
+  const startPending = useCallback((): Promise<AskPageSelection[]> => {
+    const id = ++nextIdRef.current
     return new Promise((resolve) => {
-      askPageResolveRef.current = resolve
+      pendingRef.current = { id, resolve }
     })
   }, [])
 
+  const openAskPage = useCallback((input: Input): Promise<AskPageSelection[]> => {
+    // 已有 pending 的呼叫——見上方「2026-10 訂正」的完整說明,不搶佔。
+    if (pendingRef.current) {
+      return Promise.resolve([])
+    }
+    setAskPage({ status: 'open', input })
+    return startPending()
+  }, [startPending])
+
   const handleAskPageDone = useCallback((selected: AskPageSelection[]) => {
-    askPageResolveRef.current?.(selected)
-    askPageResolveRef.current = null
-    setShowAskPage(false)
+    const prev = pendingRef.current
+    pendingRef.current = null
+    prev?.resolve(selected)
+    setAskPage(CLOSED)
   }, [])
 
-  return { showAskPage, askPageInput, openAskPage, handleAskPageDone }
+  const replaceAskPage = useCallback((input: Input): boolean => {
+    if (!pendingRef.current) return false
+    setAskPage({ status: 'open', input })
+    return true
+  }, [])
+
+  const advanceAskPage = useCallback((selected: AskPageSelection[], input: Input): Promise<AskPageSelection[]> => {
+    const prev = pendingRef.current
+    pendingRef.current = null
+    prev?.resolve(selected)
+    setAskPage({ status: 'open', input })
+    return startPending()
+  }, [startPending])
+
+  const pendingId = useCallback(() => pendingRef.current?.id ?? null, [])
+
+  return {
+    askPage,
+    showAskPage: askPage.status === 'open',
+    askPageInput: askPage.status === 'open' ? askPage.input : closedInput,
+    openAskPage,
+    handleAskPageDone,
+    replaceAskPage,
+    advanceAskPage,
+    pendingId,
+  }
 }

@@ -1,5 +1,5 @@
-import { requirePlacePhoto, type PlanAiDataSource } from '../data/source'
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { requirePlacePhoto, requirePlaceText, type PlanAiDataSource } from '../data/source'
+import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import type { ClientConfig, GeoAttraction, GeoGeocodeCandidate, GeoPlaceDetails, GeoPlaceText, GeoSearchResult, GeoTripEntry } from '../../api'
 import { deleteEntry, geocodeCandidateToSearchResult } from '../../api'
 import { itemKey, type GeoSelectedKey } from '../explore/selectedKey'
@@ -44,6 +44,82 @@ import { selectionReducer, GEO_SELECTION_NONE, type GeoPanTarget } from '../expl
 // 也回傳 searchResultSelect state 供兩邊 useMapState 的
 // externalGeocodeCandidateSelect 參數使用,不提供直接 dispatch 的簡化
 // 版本。
+// PlaceInfoMemory:同一個資料存取層內,以 placeId 記住「已經查到的地點文字與
+// 照片」,並讓同一個 placeId 的進行中請求共用同一個 Promise(2026-10)。
+//
+// 為什麼放在 hook 裡而不是資料存取層(data/api.ts)的模組層去重:重開卡片時
+// 要「同步」把已查到的簡介/照片帶回卡片內容(開卡當下就不是骨架/掃光),這
+// 需要同步讀取已記住的結果;資料存取層介面只有回傳 Promise 的方法,模組層
+// 去重只能省請求、省不了那一格骨架。實例跟著 dataSource 換(useMemo),登入
+// 身分改變不會讀到上一個身分的結果。
+//
+// 記憶規則(對齊 data/dedupe.ts 的原則):
+// - 進行中共用:同一個 placeId 同時只發一個請求(也擋掉 StrictMode 開發模式
+//   effect 跑兩次的重複請求)。settle 後立刻移除。
+// - 只記「有內容」的成功結果:文字要有簡介或評分、照片要真的有網址。失敗
+//   與空結果不記——失敗要能重開重試;沒照片可能是後端還在背景補,下次再查
+//   可能就有。
+// - 上限 PLACE_INFO_MEMORY_MAX 筆,超過淘汰最舊的;不設 TTL——頁面存活期間
+//   同一地點的簡介/評分/照片不會變到需要重查。
+const PLACE_INFO_MEMORY_MAX = 100
+
+interface PlaceInfoMemory {
+  text: Map<string, GeoPlaceText>
+  textInflight: Map<string, Promise<GeoPlaceText>>
+  photo: Map<string, string>
+  photoInflight: Map<string, Promise<string | null>>
+}
+
+function createPlaceInfoMemory(): PlaceInfoMemory {
+  return { text: new Map(), textInflight: new Map(), photo: new Map(), photoInflight: new Map() }
+}
+
+function rememberBounded<V>(map: Map<string, V>, key: string, value: V) {
+  map.delete(key)
+  map.set(key, value)
+  while (map.size > PLACE_INFO_MEMORY_MAX) {
+    const oldest = map.keys().next().value
+    if (oldest === undefined) break
+    map.delete(oldest)
+  }
+}
+
+// sharedFetch:進行中共用 + 成功且 shouldRemember 才記憶,失敗原樣往上拋。
+function sharedFetch<V>(
+  inflight: Map<string, Promise<V>>,
+  done: Map<string, V>,
+  key: string,
+  fetcher: () => Promise<V>,
+  shouldRemember: (v: V) => boolean,
+): Promise<V> {
+  const pending = inflight.get(key)
+  if (pending) return pending
+  const p = fetcher().then(
+    (value) => {
+      if (inflight.get(key) === p) inflight.delete(key)
+      if (shouldRemember(value)) rememberBounded(done, key, value)
+      return value
+    },
+    (err) => {
+      if (inflight.get(key) === p) inflight.delete(key)
+      throw err
+    },
+  )
+  inflight.set(key, p)
+  return p
+}
+
+// textPatchOf:文字查詢結果只補簡介與評分徽章(沿用 poiInfoContent 的組裝
+// 規則),名稱/地址/candidate/照片維持開卡時的值——見 patchGeocodeCandidateText 的說明。
+function textPatchOf(text: GeoPlaceText): Pick<PlaceInfoContent, 'summary' | 'badges'> {
+  const { summary, badges } = poiInfoContent(text)
+  return { summary, badges }
+}
+
+function hasTextContent(text: GeoPlaceText): boolean {
+  return !!text.summary || text.rating != null
+}
+
 export function usePlanningState({
   cfg,
   dataSource,
@@ -64,6 +140,32 @@ export function usePlanningState({
     geoSelection.kind === 'attraction' || geoSelection.kind === 'info' ? (geoSelection.key ?? null) : null
   const infoContent = geoSelection.kind === 'info' ? geoSelection.content : null
   const attractionContent = geoSelection.kind === 'attraction' ? geoSelection.data : null
+
+  // placeInfoMemory/hydrateContent:開卡時先用已記住的文字與照片補齊卡片內容
+  // (見上方 PlaceInfoMemory 的說明)——同一地點重開時簡介、評分、照片當下就在,
+  // 不再先退回骨架/掃光;資料存取層根本沒有實作 placeText/placePhoto(訪客版)
+  // 時,把對應旗標直接清成 undefined,開卡第一個畫面就不出現永遠不會結束的骨架。
+  // 只處理旗標仍是 'pending' 的欄位,同步帶齊內容的來源不受影響。
+  const placeInfoMemory = useMemo(() => createPlaceInfoMemory(), [dataSource])
+  const hydrateContent = useCallback(
+    (c: PlaceInfoContent): PlaceInfoContent => {
+      const placeId = c.placeId
+      if (!placeId) return c
+      let next = c
+      if (c.textStatus === 'pending') {
+        const text = placeInfoMemory.text.get(placeId)
+        if (!dataSource.placeText) next = { ...next, textStatus: undefined }
+        else if (text) next = { ...next, ...textPatchOf(text), textStatus: undefined }
+      }
+      if (c.photoStatus === 'pending') {
+        const url = placeInfoMemory.photo.get(placeId)
+        if (!dataSource.placePhoto) next = { ...next, photoStatus: undefined }
+        else if (url) next = { ...next, photoUrl: url, photoStatus: undefined }
+      }
+      return next
+    },
+    [placeInfoMemory, dataSource],
+  )
 
   // geoPanTarget:候選籃/清單點擊/探索周邊要移動地圖到的目標——見
   // planning/explore/selection.ts 的 GeoPanTarget 型別說明。
@@ -252,8 +354,8 @@ export function usePlanningState({
     dispatchGeoSelection({ type: 'SELECT_ATTRACTION', key: itemKey('attraction', a), data: a })
   }, [])
   const selectSearchResult = useCallback((r: GeoSearchResult) => {
-    dispatchGeoSelection({ type: 'SELECT_INFO', key: itemKey(r.kind, r), content: searchResultInfoContent(r) })
-  }, [])
+    dispatchGeoSelection({ type: 'SELECT_INFO', key: itemKey(r.kind, r), content: hydrateContent(searchResultInfoContent(r)) })
+  }, [hydrateContent])
   // selectPoi 的第二參數 attraction:有值時代表這次點擊來源同時也是地圖
   // 上的景點區域地標(見 PlanMap.tsx 的 onAttractionOpenPlaceDetails
   // 完整說明),把 attraction.summary 附加到 PlaceInfoContent.attractionSummary
@@ -269,8 +371,8 @@ export function usePlanningState({
   const selectPlaceContent = useCallback((content: PlaceInfoContent) => {
     // 刻意不帶 key——沒有對應的自建 hotel/place/attraction 資料,沒有
     // 側欄清單項目需要同步標記選取樣式,理由見 GeoSelection 型別的說明。
-    dispatchGeoSelection({ type: 'SELECT_INFO', content })
-  }, [])
+    dispatchGeoSelection({ type: 'SELECT_INFO', content: hydrateContent(content) })
+  }, [hydrateContent])
   // selectPoi 的第二參數 attraction:有值時代表這次點擊來源同時也是地圖
   // 上的景點區域地標(見 PlanMap.tsx 的 onAttractionOpenPlaceDetails
   // 完整說明),把 attraction.summary 附加到 PlaceInfoContent.attractionSummary
@@ -291,72 +393,150 @@ export function usePlanningState({
   // 繞過那個 effect、直接呼叫這兩個函式的路徑),連續快速點擊兩個不同
   // 候選(例如地圖上先點 A marker、還沒等文字/照片查完就點 B marker)時,
   // A 的查詢結果就可能在 B 已經顯示之後才回來、誤蓋掉 B 卡片的內容。
-  // 這裡補上跟下方 infoContentPhotoFetch(同檔案,推薦地點資訊卡的照片
-  // 補查)一致的雙重確認模式:patch 內部比對 prev.placeId !== placeId
+  // 這裡補上跟下方 placePhotoFetch(同檔案,資訊卡的照片補查)一致的雙重確認模式:patch 內部比對 prev.placeId !== placeId
   // 才套用,即使呼叫端的 cancelled flag 意外失效,這裡仍是最後一道防線。
   const patchGeocodeCandidateText = useCallback((placeId: string, text: GeoPlaceText) => {
-    // 文字通常先回來,用 poiInfoContent 的形狀升級成完整文字版本(名稱/
-    // 地址/評分/簡介),但不動 photoUrl(可能還沒查完,也可能是另一支
-    // 請求已經先回來設好的值)——2026-10 起 GeoPlaceDetails/poiInfoContent
-    // 已經不帶 photoUrl(見該型別/函式的完整說明),這裡改成展開
-    // poiInfoContent 的結果後,再用 prev.photoUrl 覆寫回去,不用組一個
-    // GeoPlaceDetails 不再支援的欄位傳進去。
+    // 文字查詢回來:只補簡介與評分徽章(沿用 poiInfoContent 的組裝規則),
+    // 並把 textStatus 清成 undefined(查詢完成,見 PlaceInfoContent.textStatus)。
+    // 名稱/地址/candidate/照片維持開卡時的值——2026-10 起不再整包展開
+    // poiInfoContent:那會用 Places 文字查詢組出的簡化 candidate(沒有
+    // placeId/primaryType)蓋掉搜尋結果原本較完整的 candidate,而候選籃
+    // 項目(candidateInfoContent 刻意不帶 candidate,見該函式說明)也會因此
+    // 冒出「加入候選」按鈕。
+    //
+    // 除了 placeId,也要求卡片的 textStatus 仍是 'pending'(2026-10 補上,與
+    // markPlaceTextFailed 對稱):同一個 placeId 的卡片若已被換成同步就帶齊文字
+    // 的內容(例如改點同一地點的 Google POI),晚到的查詢結果不能蓋掉它。
+    const patch = textPatchOf(text)
     dispatchGeoSelection({
       type: 'PATCH_INFO_CONTENT',
       patch: (prev) =>
-        prev.placeId !== placeId ? prev : { ...prev, ...poiInfoContent(text), photoUrl: prev.photoUrl },
+        prev.placeId !== placeId || prev.textStatus !== 'pending' ? prev : { ...prev, ...patch, textStatus: undefined },
     })
   }, [])
+  // markPlaceTextFailed:文字查詢失敗——textStatus 設成 'failed',卡片改顯示
+  // 「簡介載入失敗。」,不永遠停在骨架。placeId 二次確認理由同上。
+  const markPlaceTextFailed = useCallback((placeId: string) => {
+    dispatchGeoSelection({
+      type: 'PATCH_INFO_CONTENT',
+      patch: (prev) => (prev.placeId !== placeId || prev.textStatus !== 'pending' ? prev : { ...prev, textStatus: 'failed' }),
+    })
+  }, [])
+  // patchGeocodeCandidatePhoto:手動補照片(查到網址 → photoUrl,photoStatus 清成
+  // undefined;null → 'none')。2026-10 起照片改由下方 placePhotoFetch effect 依
+  // 卡片內容驅動,useMapState 不再呼叫這支,保留供呼叫端/測試直接補照片。
   const patchGeocodeCandidatePhoto = useCallback((placeId: string, photoUrl: string | null) => {
     dispatchGeoSelection({
       type: 'PATCH_INFO_CONTENT',
-      patch: (prev) => (prev.placeId !== placeId ? prev : { ...prev, photoUrl: photoUrl ?? undefined }),
+      patch: (prev) =>
+        prev.placeId !== placeId
+          ? prev
+          : photoUrl
+            ? { ...prev, photoUrl, photoStatus: undefined }
+            : { ...prev, photoStatus: prev.photoUrl || prev.googlePhotoUrls?.length ? undefined : 'none' },
     })
   }, [])
 
-  // infoContentPhotoFetch:推薦地點(GeoGeocodeCandidate)資訊卡開啟時的
-  // 照片延遲補查——這支查詢不帶 eager photoUrl(後端照片查詢改成背景
-  // 預熱快取,見 server 端 handleGeoPlacesNearby 的說明),這張卡片
-  // (PlacePanel/PlanPhoneInfoSheet)本身是純展示元件、沒有
-  // IntersectionObserver 延遲載入機制(不像 components/ListItemCard.tsx,
-  // 理由是資訊卡一開啟就整張可見,不需要捲動觸發的節流),故改在這裡用
-  // useEffect 主動補查一次。
+  // placePhotoFetch:地點資訊卡的照片補查——卡片內容的 photoStatus==='pending'
+  // (見 PlaceInfoContent.photoStatus 與 infoContent.ts 哪些來源會設成 pending)
+  // 就查一次 place-photo:查到 → photoUrl + undefined、查到但沒有 → 'none'、
+  // 失敗 → 'failed'。
   //
-  // 條件:content.placeId 有值(見 PlaceInfoContent.placeId 的完整說明,
-  // 只有 place 來源才有)且 photoUrl 目前是 undefined(還沒查過)。用
-  // fetchedPlaceIdsRef 記錄「這個 placeId 已經查過」(不論查到與否),
-  // 避免同一張卡片因為其他欄位變動重新渲染時重複觸發查詢,也避免查到
-  // 「沒有照片」的結果後,因為 photoUrl 維持 undefined 而無限重查。
+  // 2026-10 改寫(取代原本的 infoContentPhotoFetch + fetchedPlaceIdsRef,以及
+  // useMapState.ts 依 selectedCandidate.placeId 變動才查的照片 effect):舊寫法用
+  // fetchedPlaceIdsRef 記「這個 placeId 查過了」就不再查,但重開同一地點時卡片
+  // 內容重新組出來、photoUrl 又是 undefined,結果永遠掃光。現在跟文字一樣「由
+  // 卡片內容本身說還在等照片」驅動,旗標與查詢一定成對;查到的網址記在
+  // placeInfoMemory,重開時 hydrateContent 直接帶回,不重打請求。
   //
-  // 競態保護:用 cancelled flag(同 useMapState.ts 既有的
-  // selectedCandidate effect 手法)——使用者若在查詢完成前已經切換到
-  // 另一張卡片,查詢結果不應該誤植到新卡片上;patch 內部再用 placeId
-  // 比對目前實際顯示的卡片(而非只靠 cancelled flag)雙重確認,理由同
-  // patchGeocodeCandidatePhoto 系列 callback 一貫的保守寫法。
-  const fetchedPlaceIdsRef = useRef<Set<string>>(new Set())
+  // 依賴 placeId+photoStatus:同一個 pending 地點重複開卡沿用同一次查詢(進行
+  // 中共用,StrictMode 也只打一次);關卡或換地點時 cleanup 取消,patch 內部再
+  // 比對 placeId 與 photoStatus 雙重確認。
+  const pendingPhotoPlaceId = infoContent?.photoStatus === 'pending' ? infoContent.placeId : undefined
+  const pendingPhotoName = infoContent?.name ?? ''
   useEffect(() => {
-    const placeId = infoContent?.placeId
-    if (!placeId || infoContent.photoUrl !== undefined) return
-    if (fetchedPlaceIdsRef.current.has(placeId)) return
-    fetchedPlaceIdsRef.current.add(placeId)
+    if (!pendingPhotoPlaceId) return
+    const placeId = pendingPhotoPlaceId
+    const settle = (next: Pick<PlaceInfoContent, 'photoUrl' | 'photoStatus'>) =>
+      dispatchGeoSelection({
+        type: 'PATCH_INFO_CONTENT',
+        patch: (prev) => (prev.placeId !== placeId || prev.photoStatus !== 'pending' ? prev : { ...prev, ...next }),
+      })
+    if (!dataSource.placePhoto) {
+      settle({ photoStatus: undefined })
+      return
+    }
     let cancelled = false
-    requirePlacePhoto(dataSource, placeId, infoContent.name)
-      .then((result) => {
+    sharedFetch(
+      placeInfoMemory.photoInflight,
+      placeInfoMemory.photo,
+      placeId,
+      () => requirePlacePhoto(dataSource, placeId, pendingPhotoName).then((r) => r.googlePhotoUrls?.[0] ?? null),
+      (url) => url != null,
+    ).then(
+      (url) => {
         if (cancelled) return
-        dispatchGeoSelection({
-          type: 'PATCH_INFO_CONTENT',
-          patch: (prev) => (prev.placeId !== placeId ? prev : { ...prev, photoUrl: result.googlePhotoUrls?.[0] ?? undefined }),
-        })
-      })
-      .catch(() => {
-        // 查詢失敗不視為錯誤,維持無圖——理由同這個檔案其餘查詢失敗的
-        // 既有慣例,靜默處理即可,使用者不會因此看到任何錯誤訊息。
-      })
+        settle(url ? { photoUrl: url, photoStatus: undefined } : { photoStatus: 'none' })
+      },
+      () => {
+        if (!cancelled) settle({ photoStatus: 'failed' })
+      },
+    )
     return () => {
       cancelled = true
     }
+    // 名稱只是查詢參數,不需要因為名稱變動重查。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [infoContent?.placeId, infoContent?.photoUrl, dataSource])
+  }, [pendingPhotoPlaceId, dataSource, placeInfoMemory])
+
+  // placeTextFetch:Google 地點資訊卡的文字(簡介、評分)補查——開卡時
+  // textStatus==='pending'(見 PlaceInfoContent.textStatus 與 infoContent.ts
+  // 哪些來源會設成 pending)就查一次 place-text,成功 patchGeocodeCandidateText
+  // (清成 undefined)、失敗 markPlaceTextFailed('failed')。資料存取層沒有
+  // 實作 placeText(訪客版)時,hydrateContent 開卡當下就清成 undefined;這裡
+  // 的同一個判斷只是給直接 dispatch SELECT_INFO、沒經過 hydrateContent 的路徑。
+  //
+  // 2026-10 從 useMapState.ts 的 selectedCandidate effect 搬過來:那邊只在
+  // selectedCandidate.placeId 變動時查,同一個地點關卡後重開(placeId 沒變)
+  // 不會再查、候選籃點開的 Google 地點也從來不查,卡片若帶著 pending 旗標
+  // 就會永遠停在骨架。改成由「卡片內容本身說還在等文字」驅動,旗標與查詢
+  // 一定成對。依賴 placeId+textStatus:同一個 pending 地點重複開卡(內容
+  // 物件換了、兩者都沒變)沿用進行中的那次查詢;關卡(infoContent 變 null)
+  // 或換地點時 cleanup 取消舊查詢,patch 內部再比對 placeId 與 textStatus 雙重確認。
+  //
+  // 查詢經 placeInfoMemory 去重:同一個 placeId 進行中的請求共用(StrictMode
+  // 雙重 effect、A→B→A 往返時 A 還沒回來都不重打——第二次開 A 拿到的就是同一個
+  // 地點同一次查詢的結果);有內容的結果記住,重開時 hydrateContent 直接帶回。
+  const pendingTextPlaceId = infoContent?.textStatus === 'pending' ? infoContent.placeId : undefined
+  useEffect(() => {
+    if (!pendingTextPlaceId) return
+    const placeId = pendingTextPlaceId
+    if (!dataSource.placeText) {
+      dispatchGeoSelection({
+        type: 'PATCH_INFO_CONTENT',
+        patch: (prev) => (prev.placeId !== placeId || prev.textStatus !== 'pending' ? prev : { ...prev, textStatus: undefined }),
+      })
+      return
+    }
+    let cancelled = false
+    sharedFetch(
+      placeInfoMemory.textInflight,
+      placeInfoMemory.text,
+      placeId,
+      () => requirePlaceText(dataSource, placeId),
+      hasTextContent,
+    ).then(
+      (text) => {
+        if (!cancelled) patchGeocodeCandidateText(placeId, text)
+      },
+      () => {
+        if (!cancelled) markPlaceTextFailed(placeId)
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [pendingTextPlaceId, dataSource, placeInfoMemory, patchGeocodeCandidateText, markPlaceTextFailed])
 
   // selectCandidateFromBasket:候選籃/清單抽屜裡任何一項被點擊——開資訊
   // 卡並移動地圖到該點為中心(見兩邊原本 selectGeoCandidate/onSelect 的
@@ -368,14 +548,14 @@ export function usePlanningState({
     dispatchGeoSelection({
       type: 'SELECT_INFO',
       key: c.kind === 'entry' ? null : itemKey(c.kind, c),
-      content: candidateInfoContent(c),
+      content: hydrateContent(candidateInfoContent(c)),
     })
     // nonce:點清單項目是明確的使用者動作,連續點同一項(例如中間手動
     // 拖曳過地圖、想回到原位)每次都該移動。少了它的話座標沒變、消費端
     // 的 effect 依賴全都沒變,地圖不會動——見 GeoPanTarget 對這個欄位的
     // 完整說明。
     setPanTarget({ lat: c.lat, lng: c.lng, nonce: Date.now() })
-  }, [])
+  }, [hydrateContent])
 
   const clearSelection = useCallback(() => {
     dispatchGeoSelection({ type: 'CLEAR' })

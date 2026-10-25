@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
-import { Check, MapPin } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { X } from 'lucide-react'
 import type { AskPageCandidate, AskPageSelection } from './asktools'
 import type { PlanAiDataSource } from '../data/source'
+import { CandidateCard } from './CandidateCard'
 import styles from './AskPage.module.css'
 
 // ScriptedAskPage.tsx — 播放態專用的候選景點詢問頁,用來「置換」正式的
@@ -115,6 +116,12 @@ export function ScriptedAskPage({
   // 不清的話最後一張會一直停在特效結束的狀態上。
   const [pickingId, setPickingId] = useState<string | null>(null)
   const [details, setDetails] = useState<Map<string, CandidateDetail>>(new Map())
+  // detailsRef——演出時間線的計時器在掛載當下排程,閉包裡的 details 是當時的空 Map;送出時要讀「背景查詢完成後」
+  // 最新的資料才帶得出 attractionId,所以每次 details 變動後(commit 後)同步到 ref,計時器讀 ref。
+  const detailsRef = useRef(details)
+  useEffect(() => {
+    detailsRef.current = details
+  }, [details])
   // confirmPressing——「確認選擇」正在演出被按下的那一刻。跟 pickingId
   // 同一個道理:只在那一瞬間為 true,特效播完就清掉。
   const [confirmPressing, setConfirmPressing] = useState(false)
@@ -164,7 +171,7 @@ export function ScriptedAskPage({
   // 一次清完:選單收起後不該再有計時器去改一個已卸載元件的 state,
   // 也不該對已經 resolve 的 Promise 再呼叫一次 onDone。
   //
-  // 依賴刻意不列 picks/candidates/details/onDone 這些參照:呼叫端每次
+  // 依賴刻意不列 picks/candidates/details/onDone 這些參照(details 改由 detailsRef 讀最新值):呼叫端每次
   // 開詢問頁都是重新掛載一個新的實例(理由同正式 AskPage 的 effect),
   // 劇本內容在一次詢問的生命週期內不會變;把陣列或函式列進依賴,只會
   // 在父元件重算參照時把整條時間線重跑一遍。改用 picksKey 這個字串值
@@ -198,7 +205,7 @@ export function ScriptedAskPage({
           setConfirmPressing(true)
           timers.push(
             setTimeout(() => {
-              onDone(picks.map((placeId) => ({ placeId, attractionId: details.get(placeId)?.attractionId })))
+              onDone(picks.map((placeId) => ({ placeId, attractionId: detailsRef.current.get(placeId)?.attractionId })))
             }, CONFIRM_PRESS_MS),
           )
         }, pressAt),
@@ -219,61 +226,47 @@ export function ScriptedAskPage({
   // 演出少了結尾那一下,而且畫面跟正式版長得不一樣,違背「播放態演的
   // 要是真實畫面」這個前提。
   //
-  // 卡片與按鈕都用 div 而非 button(正式版是 button):這裡沒有任何真的
+  // 卡片與按鈕都用 div 而非 button(正式版是 button;卡片 as="div" 另帶 .directionCardStatic,不出現 pointer 與 hover):這裡沒有任何真的
   // 點擊行為,做成 button 會讓它們在鍵盤導覽裡可以 focus、在輔助技術上
   // 被報成可操作的控制項,而它們其實不是。文字內容本身是這段演出的實際
   // 內容,螢幕閱讀器讀得到才對,所以不加 aria-hidden。
+  //
+  // 「不用了」:正式版已改成氣泡右上角的關閉圖示鈕(AskShell 的 onClose),這裡畫同 class(.closeBtn)的 X 讓兩邊外觀一致,
+  // 加 .cornerBtnStatic 取消游標與 hover(不可點)。仍是 div 不是 button(理由同上);整顆 aria-hidden:它是純裝飾,
+  // 先前用 role="img" + aria-label 會被讀屏唸成「不用了,圖像」,反而像一個可操作的東西。
+  // 標題加 .questionWithControls 左右對稱留空,同正式版。
   return (
     <div className={[styles.wrap, stacked ? styles.wrapStacked : ''].filter(Boolean).join(' ')}>
       <div className={[styles.bubble, stacked ? styles.bubbleStacked : ''].filter(Boolean).join(' ')}>
-        <p className={styles.question}>{reason ?? '要安排這些地點嗎?'}</p>
+        <p className={`${styles.question} ${styles.questionWithControls}`}>{reason ?? '要安排這些地點嗎?'}</p>
+        <div className={`${styles.closeBtn} ${styles.cornerBtnStatic}`} aria-hidden="true">
+          <X size={20} strokeWidth={2.25} aria-hidden="true" />
+        </div>
         <div className={[styles.directionScroller, stacked ? styles.directionScrollerStacked : ''].filter(Boolean).join(' ')}>
           {candidates.map((candidate) => {
             const checked = selected.includes(candidate.placeId)
             const picking = pickingId === candidate.placeId
             const detail = details.get(candidate.placeId)
             return (
-              <div
+              <CandidateCard
                 key={candidate.placeId}
-                className={[
-                  styles.directionCard,
-                  stacked ? styles.directionCardStacked : '',
-                  checked ? styles.directionCardChecked : '',
-                  picking ? styles.scriptedPicking : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
+                as="div"
+                name={detail?.name ?? candidate.name}
+                loading={detail?.loading}
+                photoUrl={detail?.photoUrl}
+                checked={checked}
+                stacked={stacked}
+                className={picking ? styles.scriptedPicking : ''}
               >
-                {detail?.photoUrl ? (
-                  <img
-                    src={detail.photoUrl}
-                    alt=""
-                    className={[styles.directionPhoto, stacked ? styles.directionPhotoStacked : ''].filter(Boolean).join(' ')}
-                  />
-                ) : (
-                  // stacked 模式的佔位縮圖——理由同 AskPage.tsx
-                  // CandidatesPanel 同一處的完整說明,兩邊共用同一份
-                  // AskPage.module.css,樣式邏輯保持一致。
-                  stacked && (
-                    <span className={styles.directionPhotoPlaceholder} aria-hidden="true">
-                      <MapPin size={20} strokeWidth={2} />
-                    </span>
-                  )
-                )}
-                <span className={[styles.directionLabel, stacked ? styles.directionLabelStacked : ''].filter(Boolean).join(' ')}>
-                  {detail?.loading ? '查詢中…' : (detail?.name ?? candidate.name ?? '未命名地點')}
-                </span>
-                {checked && <Check size={14} strokeWidth={3} className={styles.directionCheck} />}
                 {/* 點擊漣漪——從卡片中心擴散出去的一圈,標示「這裡剛被
                     點了一下」。只在 picking 的那一刻渲染,動畫播完隨著
                     pickingId 清掉一起移除,不留在 DOM 裡。 */}
                 {picking && <span className={styles.scriptedRipple} aria-hidden="true" />}
-              </div>
+              </CandidateCard>
             )
           })}
         </div>
         <div className={styles.actions}>
-          <div className={styles.optionBtn}>不用了</div>
           <div
             className={[
               styles.optionBtn,

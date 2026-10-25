@@ -562,12 +562,8 @@
 
 /* cardSlideIn——2026-10 新增(使用者明確要求「每張新卡片發位時都要
    從右側滑到左側」):套在 justMounted 的卡片上(見
-   HorizontalPlanTimeline.tsx mountedIdsRef 的完整說明),對齊骨架卡
-   horizontalSkeletonFade 的滑入方向(見該 class 的完整說明:從右側
-   translateX(8px) 滑入),讓「骨架卡滑入→轉成完整卡」整段過程的位移
-   方向一致,不會一個往右一個往左造成視覺上的方向矛盾。位移量比骨架卡
-   稍大(16px vs 8px)——完整卡片內容更豐富,稍大的位移在視覺上更容易
-   被注意到是「剛剛出現」,而不是跟骨架卡的滑入幅度分不出差異。 */
+   HorizontalPlanTimeline.tsx mountedIdsRef 的完整說明),從右側滑入。
+   (原本對照的獨立骨架卡 horizontalSkeletonFade 已隨骨架卡改成真卡片而移除。) */
 .cardSlideIn {
   animation: cardSlideInFromRight 0.32s cubic-bezier(0.4, 0, 0.2, 1) backwards;
 }
@@ -694,12 +690,7 @@
   flex: none;
 }
 
-.photoBannerImg {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
+/* 橫幅照片本身改用 components/FramedImage(佔位/淡入/失敗),原 .photoBannerImg 已移除。 */
 
 .photoBannerCount {
   position: absolute;
@@ -735,8 +726,9 @@
 
 /* thumbSpinner/horizontalThumbSpin(轉圈查詢中動畫)已整個移除——2026-10
    使用者明確要求「不要用圓圈的圖片載入,用骨架佔位圖」,node.loading 時
-   改用 .photoBannerPlaceholder 疊加 .shimmer(見下方該 class 的完整
-   說明與 HorizontalPlanTimeline.tsx 該處渲染邏輯)。 */
+   改用 .photoBannerPlaceholder 外框內鋪共用 SkeletonBlock(2026-10 起
+   由 components/Skeleton 提供掃光,原本這裡的 .shimmer 已移除;見
+   HorizontalPlanTimeline.tsx 該處渲染邏輯)。 */
 
 /* ===== 推論中信號(呼吸點+骨架卡) ===== */
 /* generatingTip——2026-10 新增(見 HorizontalPlanTimeline.tsx isGenerating
@@ -763,7 +755,7 @@
    class 處的完整說明。 */
 
 /* rulerTrackGenerating——2026-10(第五輪,使用者明確要求「用骨架卡那種
-   流動光線看看」):改用跟下方 .shimmer 同一套手法(放大 background-size
+   流動光線看看」):改用跟骨架掃光(原 .shimmer,現為 components/Skeleton)同一套手法(放大 background-size
    的漸層 + background-position 位移做出一道亮帶橫向掃過),取代第四輪
    的 box-shadow 外發光。用 ::after 疊一層(而非直接改 .rulerTrack 的
    background)——.rulerTrack 本身的 --ios-sep 底色要保留(子元素
@@ -806,35 +798,6 @@
   100% { background-position: 0 0; }
 }
 
-/* skeletonCard——骨架卡本身,沿用 .card 的外框尺寸(寬度/高度/圓角/
-   padding),讓預告的輪廓跟即將出現的真卡片對得上,但邊框改虛線、內容
-   全部換成 shimmer 長條,對齊縱向版 .skeletonCard/.skeletonRow 的
-   「越往下越不確定」視覺原則(這裡是「越往右越不確定」)。
-   opacity: 0.6 比縱向版的 0.45 稍高——橫向卡片本身尺寸較大,過低的
-   不透明度在這個尺寸下看起來像是渲染錯誤,而非刻意的「預告中」語意。 */
-.skeletonCard {
-  flex: 0 0 auto;
-  width: 78%;
-  max-width: 320px;
-  height: var(--horizontal-timeline-card-height);
-  box-sizing: border-box;
-  background: var(--ios-card);
-  border: 1px dashed var(--ios-sep);
-  border-radius: 18px;
-  padding: 14px 16px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  opacity: 0.6;
-  animation: horizontalSkeletonFade 0.4s ease-out 0.25s backwards;
-  /* scroll-snap-align: center——2026-10 新增,對齊 .card 的同一設定。
-     骨架卡現在也需要能被捲動置中顯示,之前漏了這個屬性。 */
-  scroll-snap-align: center;
-}
-@keyframes horizontalSkeletonFade {
-  from { opacity: 0; transform: translateX(8px); }
-}
-
 /* cardFocused/cardCompact 已整個移除——2026-10(第三輪,使用者明確
    要求「不要縮小卡片,統一用位置處理」):前兩輪分別試過「改變卡片
    寬度」(最新一張滿版、其餘縮小)跟「改變不透明度」做視覺區分,但
@@ -857,89 +820,11 @@
   max-width: none;
 }
 
-/* skeletonThumb——對應 .photoBanner(120px 高的照片橫幅)的佔位,同樣用
-   負邊距頂滿卡片上緣與左右邊。 */
-.skeletonThumb {
-  margin: -14px -16px 0;
-  width: calc(100% + 32px);
-  height: 120px;
-  border-radius: 18px 18px 0 0;
-  flex: none;
-}
-
-/* skeletonDayBadge——對應 .dayBadge(左上角「Day N」徽章)的佔位,固定
-   小色塊,不需要像 .skeletonLine 那樣隨機寬度(徽章文字長度本身固定
-   在很小的範圍內,不像站名/時間需要表現「長度不定」)。 */
-.skeletonDayBadge {
-  width: 44px;
-  height: 18px;
-  border-radius: 999px;
-  background: var(--ios-sep);
-  opacity: 0.6;
-}
-
-/* skeletonLine——對應 .timeRange/.name 的文字長條佔位,寬度比例分別
-   對齊兩者的一般長度(時間字串短、站名較長)。 */
-.skeletonLine {
-  border-radius: 6px;
-}
-.skeletonLineTime { width: 30%; height: 13px; }
-.skeletonLineName { width: 70%; height: 19px; }
-/* skeletonLineDesc——2026-10 新增(使用者明確要求「每一個站點的推論都
-   要推論中的信號」):單站 node.loading 時描述文字的骨架長條,寬度對齊
-   真實 .desc 兩行內文的一般長度(比站名更寬,因為 .desc 本身限制兩行
-   顯示,見 .desc 的完整說明)。 */
-.skeletonLineDesc { width: 90%; height: 13px; }
-
-/* .cardFocused .skeletonLineTime/.skeletonLineName/.skeletonLineDesc
-   這三條規則已移除——2026-10(使用者明確要求「不要縮小卡片,統一用
-   位置處理」):那是上一輪「骨架卡滿版時加寬內部文字長條」的殘留
-   規則,.cardFocused 這個 class 本身已經整個移除(見該處的完整
-   說明),骨架卡現在維持固定的 78%/320px 寬度,.skeletonLineTime/
-   .skeletonLineName/.skeletonLineDesc 原本的比例(以窄版卡片為基準
-   設計)本來就適用,不需要額外的滿版覆蓋規則。 */
-
-/* shimmer——由左至右掃過的高光,對齊縱向版 PlanTimelineView.module.css
-   .shimmer 的既有視覺語言與深色模式混色取捨,這裡獨立宣告一份(而非
-   跨檔案共用 class)——兩個元件各自的 .module.css scope 本來就不互通
-   (CSS Modules 的 class 名稱是各自檔案局部的),沒有共用的機制,寫法
-   比照抄一份是這個專案既有的慣例(對照 .thumbSpinner 跟縱向版同名
-   spinner 各自獨立定義的既有先例)。 */
-.shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--ios-sep) 25%,
-    color-mix(in srgb, var(--ios-sep) 35%, var(--ios-card)) 37%,
-    var(--ios-sep) 63%
-  );
-  background-size: 400% 100%;
-  animation: horizontalShimmer 1.4s ease infinite;
-}
-:global(.app-theme-root[data-theme="dark"]) .shimmer {
-  background-image: linear-gradient(
-    90deg,
-    var(--ios-sep) 25%,
-    color-mix(in srgb, var(--ios-sep) 55%, var(--ios-gray)) 37%,
-    var(--ios-sep) 63%
-  );
-}
-@media (prefers-color-scheme: dark) {
-  :global(.app-theme-root:not([data-theme="light"])) .shimmer {
-    background-image: linear-gradient(
-      90deg,
-      var(--ios-sep) 25%,
-      color-mix(in srgb, var(--ios-sep) 55%, var(--ios-gray)) 37%,
-      var(--ios-sep) 63%
-    );
-  }
-}
-@keyframes horizontalShimmer {
-  0% { background-position: 100% 0; }
-  100% { background-position: 0 0; }
-}
+/* 骨架卡相關樣式(.skeletonCard/.skeletonThumb/.skeletonDayBadge/.skeletonLine 系列、
+   horizontalSkeletonFade)與 .shimmer/horizontalShimmer 已移除——2026-10:骨架卡早已改成
+   stops 裡 loading 的真卡片(.card),其中的佔位改用 components/Skeleton 的 SkeletonBlock。 */
 @media (prefers-reduced-motion: reduce) {
   .rulerTrackGenerating::after { animation: none; }
-  .shimmer { animation: none; }
 }
 
 /* ===== 交通方式（移到卡片頂部） ===== */

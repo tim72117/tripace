@@ -7,6 +7,8 @@ import { DEFAULT_NOTE_CATEGORY, NOTE_CATEGORY_META, TRANSIT_MODE_CHOICES } from 
 import { LODGING_FALLBACK_NAME, resolveLodging, resolveNodeRefChildren } from '../resolved'
 import { usePlanData, useResolvedRefs } from '../../data/PlanDataProvider'
 import type { PlanOperations } from '../operations'
+import { SkeletonBlock } from '../../../components/Skeleton'
+import { FramedImage } from '../../../components/FramedImage'
 import styles from './HorizontalPlanTimeline.module.css'
 
 // ZOOM_OUT_ENABLED——2026-10 使用者先要求「讓時間尺有 zoom in/zoom out
@@ -644,6 +646,16 @@ export function HorizontalPlanTimeline({
       return next
     })
   }, [])
+  // retryStop——按「重試」時先清空失敗網址集合再交給 onRetryStop,理由同縱向版
+  // PlanTimelineView 的 retryStop(集合只增不減,短暫斷網後要有機會重載;查詢失敗的站點
+  // 按重試當下通常還沒有照片網址可對應,所以清整組)。
+  const retryStop = useCallback(
+    (...args: Parameters<PlanOperations['retryStop']>) => {
+      setFailedPhotoUrls((prev) => (prev.size ? new Set() : prev))
+      onRetryStop?.(...args)
+    },
+    [onRetryStop],
+  )
 
   // openTransitMenuStopId——目前展開交通方式選單的那張卡片所屬的
   // stopId(見 onSetStopTransitMode prop 的完整說明),null 代表沒有任何
@@ -700,7 +712,8 @@ export function HorizontalPlanTimeline({
   // 兩個獨立 effect 同時各自搶著呼叫 scrollIntoView 本來就不該共存,
   // 合併後更安全:
   //   - isGenerating 為 true 時(focusLatest 模式下,骨架卡正顯示),
-  //     捲到骨架卡(skeletonCardRef,見該 ref 的完整說明)。
+  //     捲到骨架卡(當時的 skeletonCardRef,現已移除;骨架卡現在是 stops
+  //     裡的一筆 loading 節點,見下方第四輪說明)。
   //   - isGenerating 為 false 時,維持原本「外部選取狀態改變時捲到
   //     對應真實卡片」的既有邏輯(方案二設計稿「雙向連動」地圖→卡片
   //     這一半,見 selectedStopId 的完整說明)。
@@ -1323,6 +1336,8 @@ export function HorizontalPlanTimeline({
               )
             }
             // emptyDay——空的一天的佔位卡(見上方 stops 的說明):只有 Day 標籤與一句說明,沒有照片/時間/交通/按鈕。
+            // Day 標籤跟其他卡片一樣只畫在「這天第一張卡」(showDayBadge):旅館入住日剛好是空天時,住宿卡排在佔位卡前面
+            // 且已經畫了「Day N」,佔位卡原本固定再畫一次,同一天會出現兩個標籤(2026-10 修正)。
             if (emptyDayIds.has(node.id)) {
               return (
                 <div
@@ -1347,7 +1362,7 @@ export function HorizontalPlanTimeline({
                     }
                   }}
                 >
-                  <span className={styles.dayBadge}>Day {day}</span>
+                  {showDayBadge && <span className={styles.dayBadge}>Day {day}</span>}
                   <div className={styles.emptyDayBody}>
                     <span className={styles.emptyDayTitle}>這一天還沒有行程</span>
                     <span className={styles.emptyDayHint}>跟 AI 說想怎麼排這一天，或回到地圖挑地點加入</span>
@@ -1372,7 +1387,8 @@ export function HorizontalPlanTimeline({
                   {showDayBadge && <span className={styles.dayBadge}>Day {day}</span>}
                   <div className={styles.candidateGrid} role="list" aria-label={`${node.name ?? '候選地點'}的候選地點`}>
                     {themeChildren.map((child) => {
-                      const childPhoto = child.googlePhotoUrls?.[0]
+                      // 已知失效的網址(failedPhotoUrls)跳過,改用下一張或 thumbBg/thumbIcon 佔位,不顯示破圖。
+                      const childPhoto = child.googlePhotoUrls?.find((u) => !failedPhotoUrls.has(u))
                       return (
                         <button
                           key={child.id}
@@ -1385,7 +1401,16 @@ export function HorizontalPlanTimeline({
                           }}
                         >
                           {childPhoto ? (
-                            <img src={childPhoto} alt="" className={styles.candidateThumb} />
+                            // FramedImage:同一個 .candidateThumb 外框(圓角 14px 以 radius 傳入,inline 圓角會蓋過 class),
+                            // 載入中掃光、載入完成淡入;失敗時記入 failedPhotoUrls,下次渲染退回下方的 thumbIcon 佔位。
+                            <FramedImage
+                              src={childPhoto}
+                              alt=""
+                              width="100%"
+                              radius={14}
+                              className={styles.candidateThumb}
+                              onError={() => markPhotoFailed(childPhoto)}
+                            />
                           ) : (
                             <div className={styles.candidateThumb} style={{ background: child.thumbBg }} aria-hidden="true">
                               {child.thumbIcon}
@@ -1484,24 +1509,23 @@ export function HorizontalPlanTimeline({
                     知道」的中間狀態。
                     2026-10(第四輪,使用者明確要求「不要用圓圈的圖片
                     載入,用骨架佔位圖」):原本這裡對齊縱向版
-                    PlanTimelineView 用轉圈 spinner(.thumbSpinner)表達
-                    這個中間狀態,改成跟下方 generatingTip 骨架卡同一套
-                    shimmer 色塊語言(見下方渲染邏輯與 .shimmer 的完整
-                    說明)。 */}
+                    PlanTimelineView 用轉圈 spinner 表達這個中間狀態,
+                    改成骨架佔位;現況是鋪共用 SkeletonBlock
+                    (components/Skeleton,掃光/深色/reduced-motion 由它
+                    處理),原本的 .thumbSpinner/.shimmer 都已移除。 */}
                 {(() => {
                   if (status.loading) {
                     // 2026-10 使用者明確要求「不要用圓圈的圖片載入,用
-                    // 骨架佔位圖」:改用跟 generatingTip 骨架卡同一套
-                    // shimmer 長條/色塊語言(見 .skeletonThumb/.shimmer
-                    // 的完整說明),取代原本的轉圈 spinner
-                    // (.thumbSpinner,已移除),讓「這一站還在查詢」跟
-                    // 「卷軸尾端還有一站正在生成」用同一種視覺語彙表達,
-                    // 不是兩套不同風格的載入提示並存。
+                    // 骨架佔位圖」:取代原本的轉圈 spinner,改用共用
+                    // SkeletonBlock,讓「這一站還在查詢」跟其他骨架佔位
+                    // 用同一種視覺語彙表達,不是兩套不同風格的載入提示並存。
+                    // 外框沿用 .photoBannerPlaceholder(負邊距貼齊卡片頂端、120px 高),裡面鋪共用 SkeletonBlock
+                    // (components/Skeleton,掃光/深色/reduced-motion 由它處理);不把 class 直接給 SkeletonBlock,
+                    // 因為它的 max-width:100% 會壓掉這裡 calc(100% + 32px) 的寬度。
                     return (
-                      <div
-                        className={`${styles.photoBannerPlaceholder} ${styles.shimmer}`}
-                        aria-hidden="true"
-                      />
+                      <div className={styles.photoBannerPlaceholder} aria-hidden="true">
+                        <SkeletonBlock width="100%" height="100%" radius="18px 18px 0 0" />
+                      </div>
                     )
                   }
                   // 照片來自 resolvedRefs(以 placeId 解析的執行時結果),不在節點上。
@@ -1518,10 +1542,13 @@ export function HorizontalPlanTimeline({
                         }}
                         aria-label={usablePhotos.length > 1 ? `瀏覽 ${usablePhotos.length} 張照片` : '放大檢視照片'}
                       >
-                        <img
+                        {/* FramedImage 鋪滿 .photoBanner(120px 橫幅,圓角由按鈕裁切):下載中掃光、載入完成淡入,
+                            失敗時記入 failedPhotoUrls 退回下一張或 thumbBg/thumbIcon 佔位。 */}
+                        <FramedImage
                           src={usablePhotos[0]}
                           alt={node.name ?? ''}
-                          className={styles.photoBannerImg}
+                          width="100%"
+                          height="100%"
                           onError={() => markPhotoFailed(usablePhotos[0])}
                         />
                         {usablePhotos.length > 1 && (
@@ -1672,9 +1699,9 @@ export function HorizontalPlanTimeline({
                     node.name/node.desc(模擬腳本本身已經寫好的假資料,
                     例如「赤崁樓」「荷蘭時期普羅民遮城遺址...」),只有
                     上方照片橫幅走骨架佔位,文字卻立即顯示完整內容,兩者
-                    不一致。改成 loading 時站名/描述都換成骨架長條(見
-                    .skeletonLine 的完整說明),跟照片橫幅、外層
-                    generatingTip 骨架卡用同一套視覺語言,傳達「這一站
+                    不一致。改成 loading 時站名/描述都換成骨架長條(現為
+                    共用 SkeletonBlock,見下方),跟照片橫幅用同一套
+                    視覺語言,傳達「這一站
                     的所有資訊都還在查詢中」,不是只有圖片不確定、文字卻
                     已經確定。查詢完成(loading 轉 false)後才顯示真實
                     站名/描述,loadingTag 提示文字一併移除——骨架長條本身
@@ -1689,8 +1716,9 @@ export function HorizontalPlanTimeline({
                         placeId 詳細資料那種(見 PlanNodeData.loading 的
                         完整說明)——骨架長條本身已經足夠表達「查詢中」,
                         使用者不需要額外的文字提示。 */}
-                    <div className={`${styles.skeletonLine} ${styles.skeletonLineName} ${styles.shimmer}`} aria-hidden="true" />
-                    <div className={`${styles.skeletonLine} ${styles.skeletonLineDesc} ${styles.shimmer}`} aria-hidden="true" />
+                    {/* 站名/描述長條:共用 SkeletonBlock,寬 70%/90%、高 19/13px(同原本 .skeletonLineName/-Desc)。 */}
+                    <SkeletonBlock width="70%" height={19} radius={6} />
+                    <SkeletonBlock width="90%" height={13} radius={6} />
                   </>
                 ) : stopLookupFailed(node, status) ? (
                   /* 地點資料查詢失敗(見 planning/timeline/status.ts 的 failed
@@ -1717,7 +1745,7 @@ export function HorizontalPlanTimeline({
                             // 不要冒泡觸發外層卡片的 onClick(選取/捲動
                             // 置中)。
                             e.stopPropagation()
-                            onRetryStop(node.id)
+                            retryStop(node.id)
                           }}
                         >
                           重試
@@ -1773,8 +1801,8 @@ export function HorizontalPlanTimeline({
               stops 陣列裡的一筆真實節點(planning/preview/Content.tsx
               ws.onmessage 在 thinking 階段插入的 loading:true 空白
               佔位節點,見該處的完整說明),上方 .map(segments...) 迴圈
-              本身已經處理了它(status.loading 時全部欄位換成 shimmer
-              骨架樣式,見上方 photoBanner/timeRange/name 等各處的
+              本身已經處理了它(status.loading 時全部欄位換成共用
+              SkeletonBlock 骨架,見上方 photoBanner/timeRange/name 等各處的
               status.loading 渲染分支),不需要在這裡重複渲染第二套骨架
               卡片。這個改動同時修正了先前因為骨架卡獨立於 stops 之外
               造成的一整串時機問題(selectedStopId 不同步、單卡滿版被

@@ -1,5 +1,8 @@
+import { useState } from 'react'
+import type { CSSProperties } from 'react'
 import type { PlanNode } from '../planning/timeline/model'
 import type { StopCardRenderContext } from '../planning/timeline/PlanTimelineView'
+import { FramedImage } from '../components/FramedImage'
 import styles from './renderItineraryStopCard.module.css'
 
 // createRenderItineraryStopCard——itineraries 專屬的地點卡渲染(2026-10
@@ -54,30 +57,7 @@ export function createRenderItineraryStopCard(isPlayful: boolean) {
         onFocus={ctx.onFocus}
         onBlur={ctx.onBlur}
       >
-        <div className={styles.stopThumb} style={{ background: ctx.usablePhotos.length ? undefined : step.thumbBg }}>
-          {ctx.loading ? (
-            <span className={styles.thumbSpinner} aria-label="查詢地點資料中" />
-          ) : ctx.usablePhotos.length ? (
-            <button
-              type="button"
-              className={styles.stopThumbPhotoBtn}
-              onClick={(e) => {
-                e.stopPropagation()
-                ctx.onOpenPhotos()
-              }}
-              aria-label={ctx.usablePhotos.length > 1 ? `瀏覽 ${ctx.usablePhotos.length} 張照片` : '放大檢視照片'}
-            >
-              <img src={ctx.usablePhotos[0]} alt={step.name} className={styles.stopThumbImg} />
-              {ctx.usablePhotos.length > 1 && <span className={styles.stopThumbPhotoCount}>{ctx.usablePhotos.length}</span>}
-            </button>
-          ) : (
-            step.thumbIcon
-          )}
-          {/* playfulBadge——手繪版才有的小貼紙裝飾,純視覺,不影響互動或
-              資訊內容,呼應「活潑一點」的要求。aria-hidden:裝飾性質,
-              螢幕閱讀器不需要唸出來。 */}
-          {isPlayful && <span className={styles.playfulBadge} aria-hidden="true">📍</span>}
-        </div>
+        <StopThumb step={step} ctx={ctx} isPlayful={isPlayful} />
         <div className={styles.stopBody}>
           <div className={styles.stopMeta}>{step.duration} · {step.kind}</div>
           <div className={styles.stopName}>{step.name}</div>
@@ -86,4 +66,78 @@ export function createRenderItineraryStopCard(isPlayful: boolean) {
       </div>
     )
   }
+}
+
+// isSingleColorBackground——thumbBg 是不是「單一顏色」(而不是漸層/圖片)。
+// 資料裡大多數 thumbBg 是 linear-gradient(...);--skeleton-base 會被共用掃光層
+// 用在 background-color 與漸層 color stop,只能放單色,塞漸層進去 computed
+// 值整個失效(底色透明、沒有掃光)。判斷寬鬆:有 gradient(/url(/image-set(
+// 就不算單色,其餘(#hex、rgb()、var(--x)、color-mix() 等)都視為顏色。
+export function isSingleColorBackground(bg: string | undefined): bg is string {
+  if (!bg) return false
+  return !/(gradient|url|image-set|image)\(/i.test(bg)
+}
+
+// 照片按鈕的名稱:帶站名(改用 FramedImage 前,img 的 alt 是 step.name);沒有站名時
+// 退回不帶站名的舊文字。溫泉卡(renderOnsenAutumnStopCard.tsx)共用這份。
+export function photoButtonLabel(name: string | undefined, count: number): string {
+  if (!name) return count > 1 ? `瀏覽 ${count} 張照片` : '放大檢視照片'
+  return count > 1 ? `瀏覽「${name}」的 ${count} 張照片` : `放大檢視「${name}」的照片`
+}
+
+// StopThumb——縮圖區。抽成元件(而不是寫在 render 函式裡)是因為要用 state 追蹤
+// 「目前這張照片載入失敗了」:renderStopCard 插槽是在 PlanTimelineView 的 render
+// 裡被當成一般函式呼叫的,裡面不能用 hook。
+//
+// 外框 .stopThumb 尺寸由卡片撐開(寬 112px、高度 stretch),不隨狀態變動,背景
+// 就是 thumbBg(漸層或單色)。圖片交給共用 FramedImage(絕對定位鋪滿外框):查詢中
+// (ctx.loading)用 pending 顯示掃光、沒照片顯示 thumbIcon 佔位、照片載入完成淡入、
+// 失敗顯示同尺寸失敗佔位。
+//   - 佔位底色(--framed-image-placeholder-bg)一律 transparent,透出外框的 thumbBg。
+//   - 掃光底色(--skeleton-base)只在 thumbBg 是單色時才帶(見 isSingleColorBackground);
+//     漸層時不帶,掃光用共用 token。
+//   - 照片按鈕是透明疊層,只負責點擊放大與張數角標;圖片本身的替代文字由按鈕的
+//     aria-label 承擔(帶站名),所以 alt 留空。照片載入失敗後隱藏按鈕(縮圖已是
+//     失敗佔位,點了只會開一個載不出來的燈箱);換成別張照片時重置。
+//     StopCardRenderContext 沒有回報失敗的管道(usablePhotos 由 PlanTimelineView 自己
+//     過濾),所以在卡片內自行追蹤,不動共用元件。
+function StopThumb({ step, ctx, isPlayful }: { step: PlanNode; ctx: StopCardRenderContext; isPlayful: boolean }) {
+  const src = ctx.loading ? undefined : ctx.usablePhotos[0]
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  const failed = src !== undefined && failedSrc === src
+  const frameVars = {
+    '--framed-image-placeholder-bg': 'transparent',
+    ...(isSingleColorBackground(step.thumbBg) ? { '--skeleton-base': step.thumbBg } : {}),
+  } as CSSProperties
+  return (
+    <div className={styles.stopThumb} style={{ background: step.thumbBg }}>
+      <FramedImage
+        className={styles.thumbFrame}
+        style={frameVars}
+        src={src}
+        pending={ctx.loading}
+        alt=""
+        placeholder={step.thumbIcon}
+        onError={() => setFailedSrc(src ?? null)}
+        {...(ctx.loading ? { role: 'status', 'aria-label': '查詢地點資料中' } : { 'aria-hidden': true })}
+      />
+      {!ctx.loading && ctx.usablePhotos.length > 0 && !failed && (
+        <button
+          type="button"
+          className={styles.stopThumbPhotoBtn}
+          onClick={(e) => {
+            e.stopPropagation()
+            ctx.onOpenPhotos()
+          }}
+          aria-label={photoButtonLabel(step.name, ctx.usablePhotos.length)}
+        >
+          {ctx.usablePhotos.length > 1 && <span className={styles.stopThumbPhotoCount}>{ctx.usablePhotos.length}</span>}
+        </button>
+      )}
+      {/* playfulBadge——手繪版才有的小貼紙裝飾,純視覺,不影響互動或
+          資訊內容,呼應「活潑一點」的要求。aria-hidden:裝飾性質,
+          螢幕閱讀器不需要唸出來。 */}
+      {isPlayful && <span className={styles.playfulBadge} aria-hidden="true">📍</span>}
+    </div>
+  )
 }

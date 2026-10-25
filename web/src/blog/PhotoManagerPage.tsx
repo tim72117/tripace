@@ -374,7 +374,10 @@ function PhotoCard({
       tabIndex={status === 'ready' ? 0 : undefined}
       title={status === 'pending' ? '處理中,請稍候' : status === 'failed' ? '處理失敗' : '點擊設定裁切焦點'}
     >
-      <div className={styles.thumbWrap}>
+      <div
+        className={styles.thumbWrap}
+        style={photo.width && photo.height ? { aspectRatio: `${photo.width} / ${photo.height}` } : undefined}
+      >
         <img
           src={thumbURL}
           alt=""

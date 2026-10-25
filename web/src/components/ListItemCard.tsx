@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode, Ref } from 'react'
+import { FramedImage } from './FramedImage'
 
 // ListItemCard:帶左側視覺元素的清單項目卡片——全專案通用基礎元件,
 // 2026-10 從舊 geo-planning/GeoListItemCard.tsx(該目錄現已併入 planning/)抽出來(原名字帶 Geo
@@ -96,8 +97,7 @@ export function useLazyPhotoObserver({
   // 查詢、把結果寫回自己持有的快取。
   onLoadPhoto?: (key: string) => void
 }) {
-  // HTMLElement(而非 HTMLDivElement)——這個 ref 同時要能掛在 <img>
-  // (有照片時)或 <div>(佔位圖時)上,見下方 PhotoLeading 的用法。
+  // HTMLElement:通用型別,PhotoLeading 掛在 FramedImage 的外框 <span> 上。
   const ref = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
@@ -122,12 +122,27 @@ export function useLazyPhotoObserver({
 }
 
 // PhotoLeading:leading 插槽最常見的用法——照片(已知時)或佔位圖
-// (未知/查無時),搭配 useLazyPhotoObserver 的延遲載入。不是
+// (未知/查無/載入失敗時),搭配 useLazyPhotoObserver 的延遲載入。不是
 // ListItemCard 本身的一部分,只是把「三個呼叫端都要重複寫一次 ref +
 // <img>/佔位圖」這段樣板收斂成一個可選的輔助元件;呼叫端也可以完全不用
-// 這個,直接傳自己的 icon 圓圈給 leading。className 由呼叫端傳入兩個
-// class(photoClassName/placeholderClassName),對齊各自 CSS Modules 的
-// itemPhoto/itemPhotoPlaceholder 命名慣例。
+// 這個,直接傳自己的 icon 圓圈給 leading。
+//
+// 2026-10 改用共用的 FramedImage(固定外框+佔位+淡入+失敗佔位,見
+// FramedImage.tsx 檔頭):原本在 <img>/<div> 兩種元素間切換,圖片載入
+// 失敗會露出破圖圖示。現在永遠是同一個外框元素:
+//   - 外框 class = photoClassName + placeholderClassName(兩者都套、所有
+//     狀態不變;現有呼叫端兩個 class 的樣式本來就相同,尺寸由它們決定)。
+//   - 外框尺寸完全交給呼叫端 class:用 FramedImage 的 unstyled,不輸出
+//     預設的 inline width:100% 與 border-radius:0,避免蓋過 class 的
+//     44px/10px 圓角(原本靠 style 傳 undefined 蓋掉預設值,是隱性契約)。
+//   - IntersectionObserver 的 ref 掛在 FramedImage 轉出的外框 ref 上。
+//   - photoUrl 還是 undefined 時:observer 尚未觸發 → 靜態佔位;已觸發
+//     onLoadPhoto(呼叫端正在查)→ pending 掃光;查到 null → 靜態佔位。
+//   - 有照片:下載中掃光、完成淡入;失敗退回同尺寸佔位(ImageOff 圖示)。
+//   - 同一實例換 loadKey,或 photoUrl 被重設回 undefined:requested 歸零
+//     (回到「還沒進視窗」的靜態佔位),observer 由 useLazyPhotoObserver 依
+//     [loadKey, photoUrl] 重建,進視窗後才重新掃光。
+// 對呼叫端的介面不變。
 export function PhotoLeading({
   name,
   photoUrl,
@@ -143,10 +158,39 @@ export function PhotoLeading({
   photoClassName: string
   placeholderClassName: string
 }) {
-  const ref = useLazyPhotoObserver({ loadKey, photoUrl, onLoadPhoto })
-  return photoUrl ? (
-    <img ref={ref as Ref<HTMLImageElement>} className={photoClassName} src={photoUrl} alt={name} loading="lazy" />
-  ) : (
-    <div ref={ref as Ref<HTMLDivElement>} className={placeholderClassName} />
+  // requested:observer 已觸發 onLoadPhoto、呼叫端正在查照片(photoUrl 仍
+  // undefined 時才有意義),用來決定佔位要不要掃光。
+  const [requested, setRequested] = useState(false)
+  // 依 prop 調整 state(render 期間比對,不用 effect——effect 會先用舊的
+  // requested 畫一幀掃光):loadKey 換了、或 photoUrl 從已知值回到 undefined,
+  // 代表要重新等進視窗,requested 歸零。
+  const resetKey = `${loadKey ?? ''}|${photoUrl === undefined ? 'unknown' : 'known'}`
+  const [prevResetKey, setPrevResetKey] = useState(resetKey)
+  if (prevResetKey !== resetKey) {
+    setPrevResetKey(resetKey)
+    setRequested(false)
+  }
+  const ref = useLazyPhotoObserver({
+    loadKey,
+    photoUrl,
+    onLoadPhoto: onLoadPhoto
+      ? (key) => {
+          setRequested(true)
+          onLoadPhoto(key)
+        }
+      : undefined,
+  })
+  const frameClassName =
+    photoClassName === placeholderClassName ? photoClassName : `${photoClassName} ${placeholderClassName}`
+  return (
+    <FramedImage
+      ref={ref as Ref<HTMLSpanElement>}
+      className={frameClassName}
+      unstyled
+      src={photoUrl}
+      alt={name}
+      pending={photoUrl === undefined && requested}
+      loading="lazy"
+    />
   )
 }

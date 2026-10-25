@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Star, MapPin, ImageOff } from 'lucide-react'
 import styles from './RecommendedPlaces.module.css'
 
@@ -81,11 +82,14 @@ function RatingStars({ rating, userRatingCount }: { rating: number; userRatingCo
 }
 
 export function RecommendedPlaceCard({ place }: { place: RecommendedPlace }) {
+  // 圖片載入失敗時退回佔位圖;外框 .photo 固定 150px 高,成功/失敗/未提供都同尺寸。
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  const showImg = !!place.photoUrl && failedUrl !== place.photoUrl
   return (
     <div className={styles.card}>
-      <div className={styles.photo} style={place.photoUrl ? undefined : { background: placeholderGradient(place.name) }}>
-        {place.photoUrl ? (
-          <img src={place.photoUrl} alt={place.name} loading="lazy" />
+      <div className={styles.photo} style={showImg ? undefined : { background: placeholderGradient(place.name) }}>
+        {showImg ? (
+          <img src={place.photoUrl} alt={place.name} loading="lazy" onError={() => setFailedUrl(place.photoUrl ?? null)} />
         ) : (
           <div className={styles.photoPlaceholder}>
             <ImageOff size={20} strokeWidth={1.5} />

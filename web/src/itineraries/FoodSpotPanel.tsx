@@ -1,4 +1,6 @@
+import type { CSSProperties } from 'react'
 import { UtensilsCrossed } from 'lucide-react'
+import { FramedImage } from '../components/FramedImage'
 import type { SampleFoodSpot } from './types'
 import type { FoodSpotDetails } from './useFoodSpotDetails'
 import styles from './FoodSpotPanel.module.css'
@@ -79,8 +81,18 @@ export function FoodSpotPanel({
               onFocus={() => onHoverSpot(spot.id)}
               onBlur={() => onHoverSpot(null)}
             >
+              {/* 縮圖(外框 .thumb 固定 80×80):圖片交給共用 FramedImage(絕對定位鋪滿外框)
+                  ——照片還沒查到時顯示 🍽️ 佔位(靜態,不用 pending:查詢失敗時 detailsById
+                  不會留下這筆,用「查無資料」判斷會永遠停在掃光),查到後掃光→淡入,載入
+                  失敗顯示同尺寸失敗佔位。佔位底色沿用原本的 --ios-active。 */}
               <div className={styles.thumb}>
-                {photoUrl ? <img src={photoUrl} alt={spot.name} className={styles.thumbImg} /> : <span aria-hidden="true">🍽️</span>}
+                <FramedImage
+                  className={styles.thumbFrame}
+                  style={{ '--skeleton-base': 'var(--ios-active)' } as CSSProperties}
+                  src={photoUrl}
+                  alt={spot.name}
+                  placeholder={<span aria-hidden="true">🍽️</span>}
+                />
                 {isPlayful && <span className={styles.playfulBadge} aria-hidden="true">🍴</span>}
               </div>
               <div className={styles.body}>
