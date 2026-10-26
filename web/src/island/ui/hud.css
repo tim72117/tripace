@@ -1,0 +1,294 @@
+/* 完整版島(/island)的 HUD 樣式。暖色玻璃面板,疊在全螢幕的 WebGL 舞台上。
+   所有規則都限定在 .island-root 之內(原本 island-demo 的 html/body/* 全域規則已移除),
+   不會影響主網站其他頁面。stop-label 是 CSS2DRenderer 插在舞台內的元素,同樣在 .island-root 之下。 */
+.island-root {
+  --ink: #fff7ea;
+  --muted: rgba(255, 247, 234, 0.7);
+  --accent: #ffc15a;
+  --lantern: #d63a2f;
+  --panel: rgba(22, 17, 34, 0.68);
+  --panel-line: rgba(255, 193, 90, 0.28);
+  position: fixed; inset: 0; z-index: 1; overflow: hidden;
+  background: #14112a; color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.island-root *, .island-root *::before, .island-root *::after { box-sizing: border-box; }
+
+/* 視覺隱藏、但保留在 DOM 的文字摘要(給爬蟲與螢幕閱讀器)——clip 手法,不用 display:none */
+.island-sr {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+.island-root .island-stage {
+  position: absolute;
+  inset: 0;
+}
+.island-root button {
+  font: inherit;
+  color: inherit;
+}
+.island-root .cta {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ff7a3c, var(--lantern));
+  color: #fff;
+  font-weight: 700;
+  font-size: 13.5px;
+  text-decoration: none;
+  box-shadow: 0 6px 22px rgba(214, 58, 47, 0.45);
+}
+.island-root .cta:hover {
+  filter: brightness(1.08);
+}
+.island-root .controls {
+  position: absolute;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(720px, calc(100% - 24px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 20px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  backdrop-filter: blur(12px);
+}
+.island-root .btn {
+  appearance: none;
+  border: 1px solid var(--panel-line);
+  background: rgba(255, 255, 255, 0.07);
+  padding: 8px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.island-root .btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.island-root .btn.is-on {
+  background: var(--accent);
+  color: #2a1a00;
+  border-color: transparent;
+}
+.island-root .btn-play {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 15px;
+  background: var(--accent);
+  color: #2a1a00;
+  border: 0;
+  flex: none;
+}
+.island-root .time {
+  flex: 1;
+  min-width: 0;
+}
+.island-root .time-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.island-root .time-row strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.island-root .time-row span {
+  font-size: 12px;
+  color: var(--accent);
+}
+.island-root input[type='range'] {
+  width: 100%;
+  margin: 4px 0 0;
+  accent-color: var(--accent);
+}
+.island-root .info-card {
+  position: absolute;
+  right: 14px;
+  top: 68px;
+  width: min(340px, calc(100% - 28px));
+  padding: 16px 18px 14px;
+  border-radius: 18px;
+  background: rgba(22, 17, 34, 0.82);
+  border: 1px solid var(--panel-line);
+  backdrop-filter: blur(14px);
+}
+.island-root .info-card[hidden] {
+  display: none;
+}
+.island-root .card-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.island-root .card-idx {
+  font-size: 13px;
+  color: var(--accent);
+}
+.island-root .card-idx span {
+  color: var(--muted);
+}
+.island-root .info-card h2 {
+  margin: 4px 28px 8px 0;
+  font-size: 21px;
+}
+.island-root .card-blurb {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  color: var(--accent);
+}
+.island-root .card-excerpt {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.island-root .card-by {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.island-root .card-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.island-root .card-nav button {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-line);
+  background: rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+  font-size: 13px;
+}
+.island-root .card-nav button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.island-root .stop-label {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 6px;
+  border-radius: 999px;
+  background: rgba(22, 17, 34, 0.72);
+  border: 1px solid var(--panel-line);
+  color: var(--ink);
+  font-size: 12.5px;
+  cursor: pointer;
+  pointer-events: auto;
+  transform: translateY(-4px);
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+  white-space: nowrap;
+}
+.island-root .stop-label-idx {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--lantern);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.island-root .stop-label em {
+  font-style: normal;
+  color: var(--muted);
+  font-size: 11px;
+}
+.island-root .stop-label.is-active {
+  border-color: var(--accent);
+}
+.island-root .stop-label.is-selected {
+  background: var(--accent);
+  color: #2a1a00;
+  transform: translateY(-8px) scale(1.06);
+}
+.island-root .stop-label.is-selected em {
+  color: rgba(42, 26, 0, 0.7);
+}
+.island-root .issues {
+  position: absolute;
+  left: 14px;
+  bottom: 96px;
+  max-width: 420px;
+  padding: 10px 12px;
+  border: 2px solid #ff5a5a;
+  border-radius: 10px;
+  background: rgba(60, 0, 0, 0.85);
+  font: 12px/1.5 ui-monospace, monospace;
+}
+.island-root .issues[hidden] {
+  display: none;
+}
+.island-root .island-debug {
+  position: absolute;
+  left: 14px;
+  bottom: 150px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  font: 11px ui-monospace, monospace;
+  color: #9f9;
+}
+.island-root .island-fatal {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 24px;
+  font-size: 16px;
+  line-height: 1.7;
+}
+@media (max-width: 700px) {
+  .island-root .cta {
+    top: auto;
+    bottom: 96px;
+    right: 12px;
+    font-size: 12.5px;
+    padding: 8px 13px;
+  }
+  .island-root .info-card {
+    top: auto;
+    bottom: 150px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+  }
+  .island-root .controls {
+    gap: 6px;
+    padding: 8px 10px;
+  }
+  .island-root .btn {
+    padding: 7px 9px;
+    font-size: 12px;
+  }
+  .island-root .time-row strong {
+    font-size: 17px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .island-root .stop-label {
+    transition: none;
+  }
+}

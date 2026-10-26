@@ -1,0 +1,23 @@
+/* 首頁精選行程(FeaturedItineraries.tsx):區塊、列表與項目樣式全部沿用 HomePage.css 的 .destinations 系列,
+   這裡只補「骨架列」與「看全部」連結。.kyoto-bloom 前綴與 HomePage.css 一致(同一個 scope)。 */
+
+/* 骨架列:高度對齊一個真實項目(名稱 + 一行簡介 + 上下 padding),資料到了外框不跳動。 */
+.kyoto-bloom .featured-itinerary-skeleton {
+  min-height: 94px;
+  justify-content: center;
+  pointer-events: none;
+}
+.kyoto-bloom .featured-itinerary-skeleton:hover { padding-left: 4px; }
+
+.kyoto-bloom .featured-itineraries-all {
+  display: inline-block;
+  margin-top: 28px;
+  font-size: 14px;
+  color: var(--vermilion);
+  text-decoration: none;
+}
+.kyoto-bloom .featured-itineraries-all:hover,
+.kyoto-bloom .featured-itineraries-all:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}

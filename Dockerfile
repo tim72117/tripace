@@ -149,7 +149,7 @@ COPY --from=admin-build /webadmin/dist/. /src/server/cmd/server/webadmin/dist/
 # 在這一步失敗——實際發生過兩次:v0.33.0(從 5 個增加到 9 個時),以及 v0.39.0
 # (新增紅葉前線頁 /momiji-front 的 SEO 測試後增加到 10 個)。改成不用手動
 # 同步的兩道防線:
-# 1. 下限而非等號:-list 對到的測試至少 SEO_TEST_MIN 個(目前 10),擋下
+# 1. 下限而非等號:-list 對到的測試至少 SEO_TEST_MIN 個(目前 11),擋下
 #    「測試被刪掉或改名導致 pattern 對到的變少甚至 0 個」;新增測試不會讓它
 #    失敗,下限只有在刻意刪除測試時才需要往下調。
 # 2. 跑完之後「通過數 = 列出的數量」:每個被列出的測試都必須真的執行並通過,
@@ -161,7 +161,7 @@ COPY --from=admin-build /webadmin/dist/. /src/server/cmd/server/webadmin/dist/
 # 建置產物(見上方 COPY --from=web-build 的說明),不該出現 skip。
 # 輸出用 echo 印出來保留 -v 的逐項結果,方便從 CI 日誌看到哪些測試跑了。
 RUN cd /src/server && \
-    SEO_TEST_MIN=10 && \
+    SEO_TEST_MIN=11 && \
     SEO_TEST_PATTERN='TestApplySEOMeta|TestStaticHandler' && \
     listed="$(go test ./cmd/server/ -list "$SEO_TEST_PATTERN" | grep -c '^Test')" && \
     echo "SEO 測試列出 $listed 個(下限 $SEO_TEST_MIN)" && \

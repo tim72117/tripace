@@ -5,6 +5,7 @@ import { PRODUCT_DIRECTION_3 } from './product-direction-3-planning-modes'
 import { PRODUCT_DIRECTION_4 } from './product-direction-4-ai-automation'
 import { PRODUCT_DIRECTION_5 } from './product-direction-5-publishing-tool'
 import { PRODUCT_DIRECTION_6 } from './product-direction-6-ad-system'
+import { PRODUCT_DIRECTION_7 } from './product-direction-7-article-island'
 import { PRODUCT_DIRECTION_COMMON } from './product-direction-common-observations'
 import { PRODUCT_AD_ADMIN_UI } from './product-ad-placement-admin-ui'
 import { WANT_TRAVELER_1 } from './want-traveler-1-couple'
@@ -34,6 +35,7 @@ export const PRODUCT_IDEAS: IdeaDoc[] = [
   PRODUCT_DIRECTION_4,
   PRODUCT_DIRECTION_5,
   PRODUCT_DIRECTION_6,
+  PRODUCT_DIRECTION_7,
   PRODUCT_DIRECTION_COMMON,
   PRODUCT_AD_ADMIN_UI,
   WANT_TRAVELER_1,

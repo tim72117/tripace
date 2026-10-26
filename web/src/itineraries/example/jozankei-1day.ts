@@ -10,12 +10,11 @@ import type { SampleItinerary } from '../types'
 // 關閉」+「先把定山溪設定寫回 example」,這份檔案的用途是資料庫故障時的
 // 離線備援,以及本機開發/測試不依賴資料庫就能檢視這份行程的完整內容。
 //
-// mapStyle/playfulUI/borderStyle/cardTheme 四個欄位的完整說明見 types.ts
+// mapStyle/playfulUI/cardTheme 三個欄位的完整說明見 types.ts
 // SampleItinerary 對應欄位。這份行程用手繪地圖配色(mapStyle)與秋日泡湯主題
-// 卡片(cardTheme);2026-10-17 起移除了楓葉相框(不設 borderStyle),並把
-// playfulUI 設為 false——只拿掉 borderStyle 的話,外框會退回預設的寶藏地圖
-// (指北針+羊皮紙),那是使用者先前明確不要的,所以要連 playfulUI 一起關掉
-// 才不會畫任何外框。
+// 卡片(cardTheme);playfulUI 設為 false——外框裝飾只剩寶藏地圖(指北針+羊皮紙)
+// 一種(楓葉相框已於 2026-10-27 移除),那是使用者先前明確不要的,所以要關掉
+// playfulUI 才不會畫任何外框。
 //
 // stops[].googlePhotoUrls 是寫死的 GCS 落地網址快照(建檔當下 tripace-cli
 // attraction photo-update 查到的 Google 照片)——資料庫版本的這些站點

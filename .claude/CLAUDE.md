@@ -10,7 +10,7 @@
   - `test:map` → src/planning 的 map、place、explore(地圖、繪製層、連線、地點與探索)
   - `test:plan` → src/planning 的 panel、preview、member 加 src/home(各入口與面板接線)
   - `test:itinerary` → src/itineraries(行程詳情頁)
-  - `test:ui` → components、hooks、blog、momiji-front、trip
+  - `test:ui` → components、hooks、blog、momiji-front、island、trip
     - 另含 src/recommended-places(推薦地點元件,原本不屬於任何分組)
   - `test:changed` → 只跑與未提交改動相關的測試(不確定範圍時先用這個)
 - 改共用層(planning/shared、planning/timeline、planning/map/draw)、跨多個模組、或收尾/提交前:跑完整 `npm test` 加型別檢查。

@@ -14,7 +14,6 @@ import { useStopCardClick } from '../planning/map/useStopPan'
 import { useFirstStopAutoPan } from '../planning/map/useFirstStopAutoPan'
 import { useIsDesktop } from '../hooks/useIsDesktop'
 import { createRenderOnsenAutumnStopCard } from './renderOnsenAutumnStopCard'
-import { MAPLE_LEAF_PATH, MAPLE_STEM_PATH } from './mapleLeafPath'
 import { renderAnchorIcon } from './renderAnchorIcon'
 import { maskPlanStopsView, usePlanSelection } from '../planning/timeline/usePlanStopsState'
 import { routeSegmentsFromTimeline } from '../planning/timeline/segments'
@@ -122,72 +121,6 @@ function MapVignette({ dark = false }: { dark?: boolean }) {
   return <div className={dark ? `${styles.scrollSheet} ${styles.scrollSheetDark}` : styles.scrollSheet} aria-hidden="true" />
 }
 
-// ===== 楓葉相框(borderStyle:'maple-leaf',2026-10 新增)。使用者要求
-// 定山溪溫泉街紅葉散策一日遊(jozankei-1day)的地圖外框改成「楓葉相框」
-// ——這份行程的主題是紅葉季散策(紅色吊橋、免費足湯、山洞觀音),寶藏
-// 地圖的指北針/羊皮紙跟它的氣氛不搭。架構完全比照 TreasureScrollBorder/
-// MapVignette 這一對(見上方完整說明),只換主題:
-//   1. MapleVignette(.mapleSheet)——暖橘色左右暈影,同樣只淡化左右、
-//      上下不淡化,放在 .mapBackdrop 內部跟地圖畫布同一層級。
-//   2. MapleLeafBorder(.mapleFrame)——四個角落各一叢楓葉(MapleLeafCorner,
-//      SVG),取代指北針;是 .page 的直接子層、z-index 高於兩側面板,
-//      pointer-events:none,跟 .scrollFrame 同一套定位/堆疊規則。
-// 走哪一對由 itinerary.borderStyle 決定(見 types.ts 的完整說明),未設定
-// 時退回寶藏地圖那一對,其餘行程完全不受影響。
-
-// MAPLE_LEAF_PATH/MAPLE_STEM_PATH——楓葉輪廓常數,2026-10 抽到
-// mapleLeafPath.ts 跟秋日泡湯卡片主題共用(見該檔案的完整說明)。
-
-// MapleLeaf——一片楓葉,呼叫端用 SVG transform 決定位置/角度/大小,
-// 顏色由 className 決定(.mapleLeafRed/.mapleLeafOrange/.mapleLeafGold,
-// 紅/橘/金三種秋色,見 .module.css 的完整說明)。
-function MapleLeaf({ className, transform }: { className: string; transform: string }) {
-  return (
-    <g className={className} transform={transform}>
-      <path d={MAPLE_LEAF_PATH} />
-      <path d={MAPLE_STEM_PATH} className={styles.mapleStem} />
-    </g>
-  )
-}
-
-// MapleLeafCorner——一叢楓葉(四片:一大三小,紅橘金交錯),畫在
-// 160x160 viewBox、以左上角 (0,0) 為根部向外散開。四個角落共用同一組
-// 幾何,右上/左下/右下靠 CSS transform 鏡射(.mapleCornerTr 等),不
-// 另外畫三套座標——鏡射後的葉片方向在這個尺度下看不出「不自然」,
-// 維護成本低很多。preserveAspectRatio 用 xMidYMid slice 而非 none,
-// 跟 CompassRose 的慣例一致,避免寬螢幕下被拉扁。
-function MapleLeafCorner({ cornerClassName }: { cornerClassName: string }) {
-  return (
-    <svg className={`${styles.mapleCorner} ${cornerClassName}`} viewBox="0 0 160 160" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-      <MapleLeaf className={styles.mapleLeafGold} transform="translate(112 44) rotate(70) scale(0.5) translate(-50 -50)" />
-      <MapleLeaf className={styles.mapleLeafOrange} transform="translate(90 20) rotate(35) scale(0.62) translate(-50 -50)" />
-      <MapleLeaf className={styles.mapleLeafGold} transform="translate(26 104) rotate(-75) scale(0.58) translate(-50 -50)" />
-      <MapleLeaf className={styles.mapleLeafOrange} transform="translate(52 72) rotate(-20) scale(0.5) translate(-50 -50)" />
-      <MapleLeaf className={styles.mapleLeafRed} transform="translate(40 36) rotate(-35) scale(0.9) translate(-50 -50)" />
-    </svg>
-  )
-}
-
-// MapleLeafBorder——楓葉相框的邊框裝飾容器(對應 TreasureScrollBorder),
-// 四角各一叢楓葉。z-index/pointer-events 規則同 .scrollFrame(見
-// .mapleFrame 的完整說明)。
-function MapleLeafBorder() {
-  return (
-    <div className={styles.mapleFrame} aria-hidden="true">
-      <MapleLeafCorner cornerClassName={styles.mapleCornerTl} />
-      <MapleLeafCorner cornerClassName={styles.mapleCornerTr} />
-      <MapleLeafCorner cornerClassName={styles.mapleCornerBl} />
-      <MapleLeafCorner cornerClassName={styles.mapleCornerBr} />
-    </div>
-  )
-}
-
-// MapleVignette——暖橘色左右暈影(對應 MapVignette),疊在地圖畫布正
-// 上方、兩側面板之下。
-function MapleVignette({ dark = false }: { dark?: boolean }) {
-  return <div className={dark ? `${styles.mapleSheet} ${styles.mapleSheetDark}` : styles.mapleSheet} aria-hidden="true" />
-}
-
 // AiItineraryDetailPageMapView — 「台南赤崁兩日遊」試作用的地圖基底展示版面
 // (2026-10 新增)。使用者明確要求「先在其中一份行程試作一個加入地圖基底的
 // 展示頁」,設計方向比照 /ai-plan 展示頁(planning/preview/Content.tsx)
@@ -240,13 +173,6 @@ export function AiItineraryDetailPageMapView({ itinerary, timeline, dark = false
   // playfulUI)維持原本「手繪地圖配色自動連帶活潑卡片/邊框」的既有
   // 行為不被這次改動破壞,新加入的行程則可以兩個欄位各自獨立宣告。
   const isPlayfulUI = itinerary.playfulUI ?? isHandDrawn
-  // isMapleBorder——2026-10 新增,地圖外框裝飾走楓葉相框還是寶藏地圖
-  // (見 types.ts SampleItinerary.borderStyle 與上方「楓葉相框」的完整
-  // 說明)。只有明確設定 'maple-leaf' 才走楓葉那一對;未設定或
-  // 'treasure-map' 都走原本的 TreasureScrollBorder/MapVignette,確保
-  // 沒設定這個欄位的既有行程行為不變。是否渲染仍由 isPlayfulUI 把關,
-  // borderStyle 只決定主題。
-  const isMapleBorder = itinerary.borderStyle === 'maple-leaf'
   // foodSpots——2026-10 改版,使用者明確要求「將目前模擬的資料改成串接
   // 真的 API 資料」:小豪洲沙茶爐中山店/阿蓮牛肉湯這兩筆已經用 CLI
   // (itinerary-page set)寫進 tainan-chikan-2day 的 itinerary_pages
@@ -370,7 +296,7 @@ export function AiItineraryDetailPageMapView({ itinerary, timeline, dark = false
               routeSegments={routeSegments}
               onHandleChange={handleMapHandleChange}
             >
-              {isPlayfulUI && (isMapleBorder ? <MapleVignette dark={dark} /> : <MapVignette dark={dark} />)}
+              {isPlayfulUI && <MapVignette dark={dark} />}
             </PlanMap>
           </div>
         }
@@ -404,7 +330,7 @@ export function AiItineraryDetailPageMapView({ itinerary, timeline, dark = false
           anchorDotSize={22}
         />
       </PlanOverlayLayout>
-      {isPlayfulUI && (isMapleBorder ? <MapleLeafBorder /> : <TreasureScrollBorder />)}
+      {isPlayfulUI && <TreasureScrollBorder />}
 
       <Link to="/itineraries" className={styles.back}><ArrowLeft size={14} strokeWidth={2} />所有範例行程</Link>
 

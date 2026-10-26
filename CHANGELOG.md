@@ -2,6 +2,33 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.43.0 — 2026-10-27
+
+夜遊九份島（互動 3D 旅遊小島）從獨立原型轉為正式功能，完整版掛在 `/island`、縮小版放進首頁 hero；首頁「目的地」下方新增精選行程；sitemap 動態補上行程詳情頁；移除行程詳情頁的楓葉相框。**無資料庫結構變更；環境變數、網址參數、localStorage key、LLM 工具、yaml、thought 皆不變（不需重推 onagent）。有一個新的 npm 相依（`three@0.170.0`，`web/package-lock.json` 已更新），部署前需要 `npm ci`。**
+
+> **內部不相容變更**（0.x 階段依版號慣例升 minor）：
+> - `SampleItinerary.borderStyle` 欄位（`'treasure-map' | 'maple-leaf'`）從 `itineraries/types.ts` 移除，地圖外框裝飾固定為寶藏地圖（`playfulUI` 為真時畫指北針與暈影）。資料庫 `itinerary_pages` 內容若仍帶 `borderStyle` 會被忽略，不影響顯示。
+
+### 新增
+
+- **夜遊九份島 `/island`**（`web/src/island/`，原 `web/island-demo/` 獨立子專案搬入主網站）：依部落客文章「夜遊九份」（4 站）生成的低多邊形小島（three.js），傍晚到夜晚、紅燈籠沿步道一盞一盞亮起；可旋轉縮放、點站看資訊卡、時間滑桿與播放、導覽模式、下載附署名的分享圖、「用 Tripace 排我的九份」按鈕。網址參數 `?t=19:30`、`?q=low|mid|high`、`?debug`。three 只在這一頁與首頁 hero 的獨立 lazy chunk 載入。
+  - server 同步：`static.go` 的 `knownRoutePatterns` 加 `/island`；`seo_meta.go` 的 `seoMetaByPath` 加 `/island` 的專屬 title／description／canonical（`web/src/island/seo.ts` 的 `SEO_TITLE`／`SEO_DESCRIPTION` 必須與它逐字相同，`seo.test.ts` 直接讀該檔比對）；`Dockerfile` 的 `SEO_TEST_MIN` 由 10 調為 11。
+- **首頁 hero 縮小版 3D 島**（`web/src/home/heroIsland/`）：固定光照（亮色夕陽、暗色夜晚燈籠全亮）、背景透明、只自動旋轉、30fps、頁面 load 後閒置才載入、離開畫面暫停、減少動態時只畫靜止一幀；省流量、沒有 WebGL、版位太小或建立失敗時整個收起，hero 文字回到垂直置中。桌機文字在左、島在右，窄螢幕上下疊；整座島是連結，連到 `/island`。
+- **首頁精選行程**（`web/src/home/FeaturedItineraries.tsx`）：目的地區塊下方，資料庫已發布的行程最多 3 筆（沿用 `useListItineraries`，依上架日期由新到舊），文字列表樣式（標題、「N 天 · M 站」標籤、簡介、箭頭），底下「看全部精選行程」連到 `/itineraries`；載入中一列骨架，載入結束沒有行程就整節不畫。埋點 `landing_featured_itinerary_click`、`landing_featured_itinerary_all_click`。
+- **sitemap**（`server/cmd/server/sitemap.go`）：回應 `/sitemap.xml` 時，在靜態檔之後補上資料庫已發布的行程詳情頁 `/itineraries/{slug}`（已存在的 `<loc>` 不重複；讀取資料庫失敗退回靜態檔）；靜態 `web/public/sitemap.xml` 新增 `/itineraries` 與 `/island`。
+- **文件**：`docs/island/`（實作計劃、視覺規劃、首頁 hero 整合計畫，附 `island-demo` 到新位置的路徑對照）、handbook 構想七「文章變島」頁、`web/src/island/README.md`；`test:ui` 分組納入 `src/island`（`web/package.json`、`.claude/CLAUDE.md`）。
+
+### 移除
+
+- 行程詳情頁的**楓葉相框**（`MapleLeaf`、`MapleLeafCorner`、`MapleLeafBorder`、`MapleVignette` 與全部 `.maple*` 樣式）與 `SampleItinerary.borderStyle`（見上方不相容變更）。秋日泡湯主題卡（`cardTheme: 'onsen-autumn'`）與 `mapleLeafPath.ts`（卡片上的楓葉圖樣）保留。
+
+### 已知未處理
+
+- 首頁精選行程：目前沒有「精選」欄位，只是最新 3 份；每次進首頁多打一次 `/v1/itinerary-pages`，內容由前端載入、爬蟲看不到；與上方目的地區塊的上下留白疊加後的視覺未在瀏覽器確認；`HomePage.heroIsland.test.tsx` 未攔截這個請求。
+- 首頁 hero 縮小島與 `/island` 在實機上的版面、暗色配色、幀率與場景建構耗時尚未實際量測或檢視。
+- 資料庫裡的 `jozankei-1day` 與 `kyushu-yufuin-beppu-4day` 在正式站仍是舊格式（`stops` 扁平陣列），不符 `isSampleItineraryShape`，詳細頁與清單會濾掉；本機資料庫的 `jozankei-1day` 已換成新格式。
+- `/itineraries` 清單頁沒有專屬 SEO meta；靜態範例行程沒有動態 meta，也不在 sitemap。
+
 ## v0.42.0 — 2026-10-26
 
 地圖站點圓點旁常駐站名，桌面時間軸的預設景點卡也能顯示主題點的子景點 chip（與手機共用同一個元件），文件站新增「時間軸架構」頁。**無資料庫結構變更；環境變數、網址參數、localStorage key、LLM 工具、yaml、thought 皆不變（不需重推 onagent）；無不相容變更。**

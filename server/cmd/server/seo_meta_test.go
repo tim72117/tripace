@@ -291,6 +291,33 @@ func TestApplySEOMeta_MomijiFrontPageHasOwnSEOMeta(t *testing.T) {
 	}
 }
 
+// /island(2026-10 新增):有自己的 title/description/canonical,沒有代表圖所以 og:image 沿用 defaultImage。
+func TestApplySEOMeta_IslandPageHasOwnSEOMeta(t *testing.T) {
+	html := readRealIndexHTML(t)
+
+	out := string(applySEOMeta(html, "/island", nil))
+	meta := seoMetaByPath["/island"]
+
+	if !strings.Contains(out, `<link rel="canonical" href="https://tripace.io/island" />`) {
+		t.Error("/island 的輸出沒有包含自己的 canonical")
+	}
+	if strings.Contains(out, `<link rel="canonical" href="https://tripace.io/" />`) {
+		t.Error("/island 的輸出仍包含指向首頁的 canonical,取代沒有生效")
+	}
+	if !strings.Contains(out, "<title>"+meta.title+"</title>") {
+		t.Error("/island 的輸出沒有包含自己的 <title>")
+	}
+	if strings.Contains(out, defaultTitle) {
+		t.Error("/island 的輸出仍包含首頁的 title")
+	}
+	if !strings.Contains(out, `<meta property="og:image" content="`+defaultImage+`" />`) {
+		t.Error("/island 沒有自己的代表圖,og:image 應該沿用 defaultImage")
+	}
+	if strings.Contains(out, `content=""`) {
+		t.Error("/island 的輸出裡出現空的 content 屬性")
+	}
+}
+
 // 端對端驗證:透過真正的 http.Handler(staticHandler(),不是直接呼叫
 // applySEOMeta)送出真實 HTTP 請求,確認整條路徑(含 Content-Type header
 // 設定、200 狀態碼)都正確串起來,不是只有 applySEOMeta 這個函式本身

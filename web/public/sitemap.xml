@@ -53,6 +53,24 @@
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
+
+  <!-- /itineraries:精選行程清單頁(見 web/src/itineraries/)。各行程詳情頁 /itineraries/{slug} 是資料庫裡
+       已發佈的內容,會隨時新增或下架,所以不寫在這個靜態檔裡——伺服器回應 /sitemap.xml 時動態補上
+       (見 server/cmd/server/sitemap.go)。 -->
+  <url>
+    <loc>https://tripace.io/itineraries</loc>
+    <lastmod>2026-10-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <!-- /island:夜遊九份島(2026-10 新增,見 web/src/island/IslandPage.tsx),由部落客文章生成的互動 3D 旅遊小島。
+       SEO meta 由 server/cmd/server/seo_meta.go 的 seoMetaByPath 輸出。 -->
+  <url>
+    <loc>https://tripace.io/island</loc>
+    <lastmod>2026-10-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
   <url>
     <loc>https://tripace.io/privacy</loc>
     <lastmod>2026-08-26</lastmod>

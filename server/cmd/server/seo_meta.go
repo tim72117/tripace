@@ -133,6 +133,15 @@ func buildSeoMetaByPath(baseURL string) map[string]seoMeta {
 			canonical:   baseURL + "/momiji-front",
 			image:       "",
 		},
+		// /island:夜遊九份島(2026-10 新增)。頁面主體是 WebGL 3D 場景,沒有自己的代表圖,image 留空沿用 defaultImage。
+		// title/description 必須跟 web/src/island/seo.ts 的 SEO_TITLE / SEO_DESCRIPTION 逐字相同(那邊只負責 <title>
+		// 與頁面文字摘要,其餘標籤以這裡為唯一事實來源);web/src/island/seo.test.ts 會直接讀這個檔案比對。
+		"/island": {
+			title:       "夜遊九份島——把一篇遊記變成一座會亮燈的島 | Tripace",
+			description: "傍晚上山，看九份的紅燈籠沿著石階一盞一盞亮起。這是依據部落客遊記〈夜遊九份〉做成的低多邊形小島，可以旋轉、拖動時間、逐站閱讀，並下載附署名的分享圖。",
+			canonical:   baseURL + "/island",
+			image:       "",
+		},
 		"/ai-plan": {
 			title:       "AI 安排行程模擬——輸入需求，看時間軸怎麼排出來 | Tripace",
 			description: "輸入想去的地方與天數，看 AI 怎麼即時把景點排進每日時間軸，交通方式與停留時間自動補上。這是 Tripace AI 規劃行程功能的互動模擬，實際體驗不需要登入。",

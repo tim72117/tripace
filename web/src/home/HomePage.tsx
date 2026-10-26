@@ -3,6 +3,9 @@ import { ScrollPlanDemo } from './ScrollPlanDemo'
 import { trackEvent } from '../analytics'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons'
 import { FORECAST_YEAR } from '../momiji-front/momijiForecast'
+import { HeroIsland } from './heroIsland/HeroIsland'
+import { FeaturedItineraries } from './FeaturedItineraries'
+import { heroIslandAvailableAtStart } from './heroIsland/available'
 import './HomePage.css'
 
 // HomePage — 網站首頁("/" 路由)。原本以京都東山探索路線的捲動視差敘事
@@ -44,6 +47,10 @@ export function HomePage() {
     return () => mq.removeEventListener('change', onChange)
   }, [])
   const isCurrentlyDark = (t: 'dark' | 'light' | null) => (t === null ? systemPrefersDark : t === 'dark')
+  // islandOff——縮小版 3D 島不可用(省流量、沒有 WebGL、版位太小、建立失敗)時由 HeroIsland 通知,
+  // 整個島收起、hero 文字組回到垂直置中的原樣(不留空白骨架),見 heroIsland/HeroIsland.tsx。
+  // 初始值就同步判斷(省流量、沒有 WebGL),不等 load 之後——否則 hero 版面會在 1~3 秒後從靠上跳回置中(見 available.ts)。
+  const [islandOff, setIslandOff] = useState(() => !heroIslandAvailableAtStart())
 
   return (
     <div className="kyoto-bloom" ref={rootRef} data-theme={theme ?? undefined}>
@@ -76,7 +83,7 @@ export function HomePage() {
       >
         功能介紹
       </SiteNavCta>
-      <section className="hero">
+      <section className={`hero${islandOff ? ' is-island-off' : ''}`}>
         <svg className="hero-ridge" viewBox="0 0 1200 300" preserveAspectRatio="none">
           <path
             d="M0,300 L0,220 Q120,140 260,190 T520,150 Q620,110 720,170 T980,140 Q1080,120 1200,180 L1200,300 Z"
@@ -88,6 +95,10 @@ export function HomePage() {
           />
         </svg>
 
+        {/* hero-copy——2026-10 新增的包裝:把原本四個文字元素(順序不變)包成一組,
+            讓桌機可以左右並排(文字在左、縮小版 3D 島在右)、窄螢幕上下疊(文字在上、島在下)。
+            DOM 順序文字在前、島在後,所以閱讀與 Tab 順序都是「標題 → 開始探索 → 島」。 */}
+        <div className="hero-copy">
         <div className="hero-eyebrow">Travel Planning</div>
         <h1 className="hero-title">走進一個地方<br /><em>而不只是到過</em></h1>
         <p className="hero-sub">從地景、歷史、人文到日常生活，探索城市與自然之間那些容易錯過的風景。</p>
@@ -106,6 +117,11 @@ export function HomePage() {
             <svg viewBox="0 0 16 16" fill="none"><path d="M8 3v9M4.5 9L8 12.5 11.5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </a>
         </div>
+        </div>
+        {/* 縮小版 3D 島(設計與取捨見 docs/island/hero-integration-plan.md):
+            載入在頁面 load 完成後的閒置時間,首屏不下載 three;不可用時 onUnavailable 收起整個島。
+            整座島是連結,連到完整版的 /island 頁。 */}
+        {!islandOff && <HeroIsland dark={isCurrentlyDark(theme)} onUnavailable={() => setIslandOff(true)} />}
       </section>
 
       {/* ScrollPlanDemo——捲動式 AI 規劃展示(雛形):使用者往下捲時,
@@ -218,6 +234,9 @@ export function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* 精選行程:目的地清單下方,資料庫已發布的行程(最多 3 筆)加「看全部」連結,見 FeaturedItineraries.tsx。 */}
+      <FeaturedItineraries />
 
       {/* footer——結構對齊全站既有的頁尾慣例(品牌名、法律資訊列、信用
           背書連結,見 ProductPage.tsx/LegalPage.tsx 各自的 footer)。這個

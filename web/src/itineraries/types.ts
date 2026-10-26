@@ -109,39 +109,22 @@ export interface SampleItinerary {
   // 邊框」(erziping-1day,預設兩者同時為真但各自獨立宣告)。未設定
   // (undefined)視為 false,走標準樣式。
   playfulUI?: boolean
-  // borderStyle——選填,2026-10 新增(使用者要求定山溪紅葉散策行程的
-  // 地圖外框換成「楓葉相框」,不要再用尋寶地圖的指北針/羊皮紙):控制
-  // playfulUI 為真時,地圖外框裝飾(AiItineraryDetailPageMapView.tsx 的
-  // 邊框容器 + 暈影這一對)走哪一種主題——跟 playfulUI(是否要有裝飾)
-  // 是不同維度:playfulUI 決定「要不要裝飾」,borderStyle 決定「裝飾長
-  // 什麼樣」;playfulUI 為 false 的行程不論 borderStyle 設什麼都不會
-  // 畫任何外框。
-  //   - 'treasure-map':寶藏地圖風(TreasureScrollBorder 指北針 +
-  //     MapVignette 羊皮紙米黃左右暈影),未設定(undefined)時的預設值
-  //     ——tainan-chikan-2day/erziping-1day 等既有行程都沒設定這個欄位,
-  //     行為跟新增欄位前完全一樣。
-  //   - 'maple-leaf':紅葉楓葉相框(MapleLeafBorder 四角楓葉叢 +
-  //     MapleVignette 暖橘左右暈影),目前只有 jozankei-1day 透過
-  //     itinerary_pages content JSON 設定(用 CLI itinerary-page set 寫入,
-  //     做法同 foodSpots/mapStyle,見 SampleFoodSpot 的完整說明)。
-  borderStyle?: 'treasure-map' | 'maple-leaf'
   // cardTheme——選填,2026-10 新增(使用者要求定山溪紅葉散策行程的地點
   // 卡做成「秋日泡湯風格」的專屬卡片樣式):控制時間軸地點卡
   // (PlanTimelineView 的 renderStopCard 插槽)走哪一套主題卡片,由
   // AiItineraryDetailPageMapView.tsx 讀取。跟 playfulUI 的關係是「覆蓋」
   // 而非「疊加」:有設定 cardTheme 的行程,卡片完全改走該主題的渲染器,
-  // playfulUI 只剩下控制地圖外框裝飾(借 borderStyle 決定主題)的作用,
+  // playfulUI 只剩下控制地圖外框裝飾(寶藏地圖指北針與暈影)的作用,
   // 不會再套 renderItineraryStopCard.tsx 的 .stopCardPlayful 蠟筆描邊
   // ——主題卡自己已經有一整套配色/邊框/質感,再疊一層會打架。
   //   - 'onsen-autumn':秋日泡湯風(renderOnsenAutumnStopCard.tsx,暖色
   //     和紙底、楓紅/鏽橘/深褐配色、縮圖區蒸氣動畫 + 依 kind 切換的
   //     楓葉/溫泉饅頭/溫泉記號圖樣),目前只有 jozankei-1day 透過
   //     itinerary_pages content JSON 設定(用 CLI itinerary-page set 寫入,
-  //     做法同 borderStyle)。這套不依賴站點照片——jozankei-1day 的站點
+  //     做法同 foodSpots/mapStyle,見 SampleFoodSpot 的完整說明)。這套不依賴站點照片——jozankei-1day 的站點
   //     目前沒有 googlePhotoUrls 欄位,主題靠配色/質感/圖樣撐起識別度;真的有
   //     照片時縮圖區仍會正常顯示照片,只是圖樣改為不渲染。
-  //   未設定(undefined)的行程走原本的 createRenderItineraryStopCard(isPlayfulUI)
-  //   (tainan-chikan-2day/erziping-1day 等既有行程都沒設定),行為跟
-  //   新增欄位前完全一樣。
+  //   未設定(undefined)的行程用 PlanTimelineView 的預設景點卡(與 /ai-plan、
+  //   登入後同一張卡;tainan-chikan-2day/erziping-1day 等既有行程都沒設定)。
   cardTheme?: 'onsen-autumn'
 }

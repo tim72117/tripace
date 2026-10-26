@@ -1,0 +1,113 @@
+// stops.ts——四站建築、CSS2D 標籤、點選碰撞代理、窗戶/招牌隨燈籠一起亮。
+//
+// 站點建築數量少(4 棟),直接用 buildModel 的 Group,保留 model.ts 的 sway 動畫(布條、燈籠擺動)。
+// 重要:model.ts 的材質是「全域共用快取」(同色同發光色共用一個材質),所以發光部件在這裡先
+// clone 材質再調 emissiveIntensity,否則一調就會讓島上所有同色模型一起變亮。
+import * as THREE from 'three'
+import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
+import type { IslandStop } from '../logic/articleToIsland'
+import { animateModel, buildModel, type BuiltModel, type Model3D } from './model'
+
+export type StopView = {
+  index: number
+  stop: IslandStop
+  root: THREE.Group
+  built: BuiltModel
+  glowMats: Array<{ m: THREE.MeshStandardMaterial; base: number }>
+  label: CSS2DObject
+  labelEl: HTMLElement
+  proxy: THREE.Mesh
+  center: THREE.Vector3 // 建築包圍盒中心(世界)
+  topY: number
+}
+
+export type Stops = {
+  group: THREE.Group
+  views: StopView[]
+  update(time: number, glowPerStop: ReadonlyArray<number>, activeIndex: number, selectedIndex: number): void
+  pick(raycaster: THREE.Raycaster): number
+}
+
+// buildStops——stops 必須是「島上實際顯示的站」(先用 logic/articleToIsland 的 displayableStops 過濾),
+// 這樣 views[i].index === i,場景與 HUD 的「第 i 站」才指向同一站。下面對沒有版面/模型的站直接跳過只是最後一道防線。
+export function buildStops(
+  stops: ReadonlyArray<IslandStop>,
+  models: Record<string, Model3D>,
+  heightAt: (x: number, z: number) => number,
+  onLabelClick: (index: number) => void,
+): Stops {
+  const group = new THREE.Group()
+  const views: StopView[] = []
+
+  stops.forEach((stop, index) => {
+    const a = stop.anchor
+    if (!a || !models[a.model]) return
+    const built = buildModel(models[a.model])
+    const root = built.root
+    const sc = a.scale ?? 1
+    root.scale.setScalar(sc)
+    root.rotation.y = a.rotY ?? 0
+    root.position.set(a.x, a.y ?? heightAt(a.x, a.z), a.z)
+    root.updateMatrixWorld(true)
+
+    const glowMats: StopView['glowMats'] = []
+    root.traverse((o) => {
+      const mesh = o as THREE.Mesh
+      if (!mesh.isMesh) return
+      const mat = mesh.material as THREE.MeshStandardMaterial
+      if (mat.emissive && mat.emissive.getHex() !== 0) {
+        const c = mat.clone()
+        mesh.material = c
+        glowMats.push({ m: c, base: mat.emissiveIntensity || 0.6 })
+      }
+      // 很小的部件不投影,省陰影 pass 的繪製呼叫
+      const size = new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3())
+      if (Math.max(size.x, size.y, size.z) < 0.5) mesh.castShadow = false
+    })
+    group.add(root)
+
+    const box = new THREE.Box3().setFromObject(root)
+    const center = box.getCenter(new THREE.Vector3())
+    const size = box.getSize(new THREE.Vector3())
+
+    // 隱形碰撞代理:Raycaster 不看材質可見性,用一個包圍盒大小的透明方塊當點選目標
+    const proxy = new THREE.Mesh(
+      new THREE.BoxGeometry(size.x, size.y, size.z),
+      new THREE.MeshBasicMaterial({ visible: false }),
+    )
+    proxy.position.copy(center)
+    proxy.userData.stopIndex = index
+    group.add(proxy)
+
+    // 標籤
+    const el = document.createElement('button')
+    el.className = 'stop-label'
+    el.type = 'button'
+    el.innerHTML = `<span class="stop-label-idx">${stop.index || index + 1}</span><span class="stop-label-name">${stop.name}</span><em>${stop.time}</em>`
+    el.addEventListener('click', (e) => { e.stopPropagation(); onLabelClick(index) })
+    const label = new CSS2DObject(el)
+    label.position.set(center.x, box.max.y + 1.2, center.z)
+    group.add(label)
+
+    views.push({ index, stop, root, built, glowMats, label, labelEl: el, proxy, center, topY: box.max.y })
+  })
+
+  return {
+    group,
+    views,
+    update(time, glowPerStop, activeIndex, selectedIndex) {
+      for (const v of views) {
+        animateModel(v.built, 0, 0, time)
+        const g = glowPerStop[v.index] ?? 0
+        // 夜晚放大倍率配合 ACES 色調映射才有「亮」的感覺(數值需看畫面調)
+        for (const gm of v.glowMats) gm.m.emissiveIntensity = gm.base * (0.2 + 2.2 * g)
+        v.labelEl.classList.toggle('is-active', v.index === activeIndex)
+        v.labelEl.classList.toggle('is-selected', v.index === selectedIndex)
+      }
+    },
+    pick(raycaster) {
+      const hits = raycaster.intersectObjects(views.map((v) => v.proxy), false)
+      return hits.length ? (hits[0].object.userData.stopIndex as number) : -1
+    },
+  }
+}

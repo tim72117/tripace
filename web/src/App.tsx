@@ -101,6 +101,10 @@ const AiItinerariesRoute = lazy(() => import('./itineraries/AiItinerariesRoute')
 // 要求做成獨立頁面、地圖沿用 itineraries 的滿版地圖),公開頁,整個功能
 // 在 momiji-front/ 這個獨立目錄。伺服器端 static.go knownRoutePatterns
 // 也要有 /momiji-front,否則正式環境直接重新整理會 404。
+// IslandPage:夜遊九份島(2026-10 新增,由 island-demo 搬進 src 轉為正式)——部落客文章「夜遊九份」
+// 生成的互動 3D 旅遊小島(完整版),公開頁,整個功能在 island/ 這個獨立目錄,three 在獨立 lazy chunk。
+// 伺服器端 static.go knownRoutePatterns 與 seo_meta.go 也要有 /island,否則正式環境直接重新整理會 404 / 沒有專屬 SEO。
+const IslandPage = lazy(() => import('./island/IslandPage').then((m) => ({ default: m.IslandPage })))
 const MomijiFrontPage = lazy(() => import('./momiji-front/MomijiFrontPage').then((m) => ({ default: m.MomijiFrontPage })))
 const PlanAiSimPage = lazy(() => import('./planning/preview/Content').then((m) => ({ default: m.Content })))
 // BlogArticlePage:部落客發文正式頁面(2026-10 從主題介紹頁內容規格化
@@ -265,6 +269,9 @@ export function App() {
           {/* /momiji-front:紅葉前線視覺示意頁(見 MomijiFrontPage import
               處的說明),static.go knownRoutePatterns 要同步有這條。 */}
           <Route path="/momiji-front" element={<MomijiFrontPage />} />
+          {/* /island:夜遊九份島(見 IslandPage import 處的說明),static.go knownRoutePatterns
+              與 seo_meta.go 要同步有這條。 */}
+          <Route path="/island" element={<IslandPage />} />
           {/* /u/:handle/:slug:部落客發文正式頁面(2026-10,見
               BlogArticlePage.tsx 開頭說明)——不再是固定讀單一 slug 的
               demo 路徑,改依網址路徑參數(作者 handle + 文章 slug)渲染

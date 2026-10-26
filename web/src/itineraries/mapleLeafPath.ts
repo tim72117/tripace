@@ -1,9 +1,6 @@
-// mapleLeafPath.ts——楓葉 SVG 路徑常數(2026-10 新增)。原本只有
-// AiItineraryDetailPageMapView.tsx 的楓葉相框(MapleLeafBorder)在用,
-// 2026-10 新增秋日泡湯卡片主題(renderOnsenAutumnStopCard.tsx)後,卡片
-// 上的楓葉圖樣也要用同一組幾何,所以抽到這個獨立小模組——不能直接從
-// AiItineraryDetailPageMapView.tsx export:那個檔案本身就 import 卡片
-// 渲染器,反向引用會形成循環依賴。
+// mapleLeafPath.ts——楓葉 SVG 路徑常數(2026-10 新增)。目前只有秋日泡湯卡片主題
+// (renderOnsenAutumnStopCard.tsx)用它畫卡片上的楓葉圖樣。原本地圖外框的楓葉相框
+// (MapleLeafBorder)也共用這組幾何,2026-10-27 該相框移除,留下這個獨立小模組。
 //
 // MAPLE_LEAF_PATH——單片楓葉輪廓,100x100 座標系、葉心在 (50,50)、葉柄
 // 朝下(76→94)。五裂掌狀、鋸齒尖角用折線畫,配合 stroke-linejoin:round

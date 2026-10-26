@@ -4,9 +4,7 @@
    版型骨架對齊 renderItineraryStopCard.module.css 的 .stopCard(左側方形
    縮圖 112px + 右側文字,max-width 460px,縮圖頂到卡片左/上/下邊緣),
    讓這張卡片在同一個時間軸版面裡的尺寸/節奏跟其他行程一致;但配色
-   刻意不沿用 --ios- 系列 token,改用一組秋夜溫泉街的暖色票,跟地圖外框
-   的楓葉相框(AiItineraryDetailPageMapView.module.css 的 .mapleLeafRed
-   等)同一個色系:
+   刻意不沿用 --ios- 系列 token,改用一組秋夜溫泉街的暖色票:
      #c8361e 楓紅  #a4321c 深楓紅  #e8742a 鏽橘  #e6a832 金黃
      #7a2a12 深褐(描邊/標籤底)  #4a2316 墨褐(標題字)  #6b4a3a 淺褐(內文)
      #fbf2e5 → #f3e0c6 和紙米色(卡片底)
@@ -189,8 +187,7 @@
 }
 
 /* glyph——縮圖區正中的主題圖樣(楓葉/溫泉饅頭/溫泉記號,見 .tsx
-   OnsenThumbGlyph 的完整說明)。金黃填色 + 深褐描邊,跟楓葉相框的
-   .mapleLeafGold 同一組配色;加一點深色投影讓它從楓紅底色上浮起來。 */
+   OnsenThumbGlyph 的完整說明)。金黃填色 + 深褐描邊;加一點深色投影讓它從楓紅底色上浮起來。 */
 .glyph {
   position: relative;
   width: 64px;

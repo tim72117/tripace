@@ -130,98 +130,6 @@
   stroke-linejoin: round;
 }
 
-/* ===== 楓葉相框(borderStyle:'maple-leaf',2026-10 新增,見 .tsx
-   MapleLeafBorder/MapleVignette 的完整說明)。結構完全對應上方的捲軸
-   寶藏地圖外框那一對——.mapleFrame 對應 .scrollFrame(邊框裝飾容器,
-   .page 直接子層、z-index:3),.mapleSheet 對應 .scrollSheet(暈影,
-   留在 .mapBackdrop 內部)——只換主題配色:紅葉季的秋色,#c8361e 楓紅、
-   #e8742a 橘紅、#e6a832 金黃、#7a2a12 深褐葉脈/描邊,暈影用偏橘的
-   暖色 rgba(226, 120, 58, …) 而不是羊皮紙米黃。
-   跟 .scrollFrame 一樣:這些都是 .page 或 .mapBackdrop 的子層,只在
-   子層自己身上宣告 position:absolute,絕對不要回頭去碰 .mapBackdrop 的
-   position(見上方 mapBackdropCastle 被移除的完整說明)。 */
-
-/* mapleFrame——楓葉相框的邊框裝飾容器,規則同 .scrollFrame:撐滿
-   .page、pointer-events:none、z-index:3 高於兩側面板,overflow:hidden
-   讓四角楓葉叢可以用負值偏移「掛在畫面外緣」只露出一部分,看起來像
-   葉子從相框邊緣探進來,而不是整叢貼在畫面裡。 */
-.mapleFrame {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-/* mapleSheet——暖橘暈影:只在左右兩側往內漸淡,上下完全不淡化,
-   理由同 .scrollSheet(使用者先前拍板的決定,這裡不重開)。透明度比
-   羊皮紙暈影略低——橘色比米黃搶眼,同樣 0.6 會把兩側站點蓋得太重。 */
-.mapleSheet {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to right, rgba(226, 120, 58, 0.5) 0%, rgba(226, 120, 58, 0) 14%, rgba(226, 120, 58, 0) 86%, rgba(226, 120, 58, 0.5) 100%);
-  pointer-events: none;
-}
-
-/* mapleCorner——一叢楓葉的 SVG 外框,四角共用同一組幾何(以左上角為
-   根部向外散開),靠 transform 鏡射到其他三個角(見 .tsx
-   MapleLeafCorner 的完整說明)。尺寸 180px、往外偏移 -28px,讓葉叢約
-   有六分之一掛在畫面外;右上角會跟側欄面板的標題區(.header 上方
-   72px 留白)相鄰,偏移量刻意讓葉片只碰到留白、不壓到標題文字。 */
-.mapleCorner {
-  position: absolute;
-  width: 180px;
-  height: 180px;
-  opacity: 0.94;
-  filter: drop-shadow(0 3px 5px rgba(90, 30, 10, 0.35));
-}
-.mapleCornerTl {
-  top: -28px;
-  left: -28px;
-}
-.mapleCornerTr {
-  top: -28px;
-  right: -28px;
-  transform: scaleX(-1);
-}
-.mapleCornerBl {
-  bottom: -28px;
-  left: -28px;
-  transform: scaleY(-1);
-}
-.mapleCornerBr {
-  bottom: -28px;
-  right: -28px;
-  transform: scale(-1, -1);
-}
-
-/* 楓葉三色:填色各自不同,描邊/葉柄統一深褐,讓三種顏色的葉子疊在
-   一起時輪廓仍然分得開(紅橘相鄰沒有描邊會糊成一片)。 */
-.mapleLeafRed {
-  fill: #c8361e;
-  stroke: #7a2a12;
-  stroke-width: 2;
-  stroke-linejoin: round;
-}
-.mapleLeafOrange {
-  fill: #e8742a;
-  stroke: #7a2a12;
-  stroke-width: 2;
-  stroke-linejoin: round;
-}
-.mapleLeafGold {
-  fill: #e6a832;
-  stroke: #7a2a12;
-  stroke-width: 2;
-  stroke-linejoin: round;
-}
-.mapleStem {
-  fill: none;
-  stroke: #7a2a12;
-  stroke-width: 3;
-  stroke-linecap: round;
-}
-
 /* back——2026-10 修正(使用者回報「左上角文字重疊了」,實機截圖確認
    這顆「所有範例行程」連結跟 AiItinerariesRoute.tsx 的 SiteNavBrand
    (fixed 定位,left:16px/top:16px/z-index:200,見 SiteNavButtons.css
@@ -330,36 +238,12 @@
     width: 56px;
     height: 56px;
   }
-  /* mapleCorner 手機版:時間軸面板從 45dvh 起鋪到底、不透明底色,
-     下方兩角的楓葉會直接壓在卡片上——隱藏下方兩角,只留上方兩角
-     (地圖區域),並縮小避免跟 SiteNavBrand/.back 連結搶太多空間。 */
-  .mapleCorner {
-    width: 120px;
-    height: 120px;
-  }
-  .mapleCornerTl,
-  .mapleCornerTr {
-    top: -20px;
-  }
-  .mapleCornerTl {
-    left: -20px;
-  }
-  .mapleCornerTr {
-    right: -20px;
-  }
-  .mapleCornerBl,
-  .mapleCornerBr {
-    display: none;
-  }
 }
 
 /* 夜間模式的暈影:跟暗色地圖(handDrawnMapStyle.ts HAND_DRAWN_DARK_COLORS)融在一起,
    邊緣淡出成暖褐近黑,而不是淺米色/亮橘的亮邊。放在檔案最後,靠順序覆蓋同
-   特異度的 .scrollSheet/.mapleSheet 的 background。 */
+   特異度的 .scrollSheet 的 background。 */
 .scrollSheetDark {
   background: linear-gradient(to right, rgba(18, 14, 10, 0.65) 0%, rgba(18, 14, 10, 0) 12%, rgba(18, 14, 10, 0) 88%, rgba(18, 14, 10, 0.65) 100%);
-}
-.mapleSheetDark {
-  background: linear-gradient(to right, rgba(120, 48, 16, 0.45) 0%, rgba(120, 48, 16, 0) 14%, rgba(120, 48, 16, 0) 86%, rgba(120, 48, 16, 0.45) 100%);
 }
 

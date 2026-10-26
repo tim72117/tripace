@@ -18,6 +18,11 @@
      縮放的手感,同時在寬螢幕鎖住上限(40px)。 */
   --edge-pad: clamp(16px, 6vw, 40px);
 
+  /* 縮小版 3D 島(.hero-island)的光暈與地面陰影顏色——亮暗各一套,見下方 hero 縮小島區塊的說明。
+     亮色:米白光暈把島從暖米色頁面托起來(不用灰或冷色,會髒);陰影用 --ink 同色系。
+     暗色:島是藍紫夜景、頁面是暖深棕,用夜空藍紫的光暈在島後挖一小塊「夜空」,陰影改成燈籠紅的倒影。 */
+  --island-halo: rgba(255, 250, 242, 0.85); --island-shadow: rgba(43, 36, 32, 0.22); --island-shadow-glow: transparent;
+
   /* z-index 疊放順序(由上到下,數字大的蓋在數字小的上面)——集中列在
      這裡是唯一的完整疊放關係說明,而非分散在各條規則裡各自寫一小段。
      新增浮動/固定定位元素時,先看這份清單決定該落在哪一層,不要另外
@@ -26,24 +31,30 @@
                               常駐畫面角落的固定按鈕,必須蓋過其餘所有
                               內容。
        --z-base        (1)   .destinations / .kyoto-footer ——僅需高於
-                              預設的 static 疊放順序,無特殊蓋放需求。 */
+                              預設的 static 疊放順序,無特殊蓋放需求。
+     .hero 內部的局部分層(.hero 設了 isolation:isolate,這三層只在 hero 內互相比較,
+     不會跟上面的全域層級競爭):.hero-ridge 0(山稜裝飾)< .hero-stage 1(縮小版 3D 島)
+     < .hero-copy 2(標題、副標、按鈕——文字永遠在最上層,島不會蓋住它)。 */
   --z-fixed-ui: 200;
   --z-base: 1;
 }
 
 @media (prefers-color-scheme: dark) {
   .kyoto-bloom {
+    --island-halo: rgba(43, 47, 90, 0.45); --island-shadow: rgba(214, 58, 47, 0.20); --island-shadow-glow: rgba(255, 193, 90, 0.06);
     --paper: #1C1815; --paper-dim: #14110F; --ink: #EDE6D8; --ink-soft: #B8AD9C;
     --vermilion: #D97A63; --vermilion-soft: #E89A85; --moss: #8FA089; --line: #443C34;
     --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
   }
 }
 .kyoto-bloom[data-theme="dark"] {
+  --island-halo: rgba(43, 47, 90, 0.45); --island-shadow: rgba(214, 58, 47, 0.20); --island-shadow-glow: rgba(255, 193, 90, 0.06);
   --paper: #1C1815; --paper-dim: #14110F; --ink: #EDE6D8; --ink-soft: #B8AD9C;
   --vermilion: #D97A63; --vermilion-soft: #E89A85; --moss: #8FA089; --line: #443C34;
   --card-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.7);
 }
 .kyoto-bloom[data-theme="light"] {
+  --island-halo: rgba(255, 250, 242, 0.85); --island-shadow: rgba(43, 36, 32, 0.22); --island-shadow-glow: transparent;
   --paper: #F7F3EC; --paper-dim: #EFE9DC; --ink: #2B2420; --ink-soft: #5A5148;
   --vermilion: #8B3A2F; --vermilion-soft: #B85C4A; --moss: #5C6B57; --line: #C9BFA8;
   --card-shadow: 0 24px 60px -24px rgba(43, 36, 32, 0.45);
@@ -132,6 +143,95 @@
 .kyoto-bloom .hero-actions { display: inline-flex; align-items: center; gap: 16px; }
 
 .kyoto-bloom .hero-ridge { position: absolute; bottom: 0; left: 0; width: 100%; height: 40%; opacity: 0.5; pointer-events: none; }
+
+/* ---------- hero 縮小版 3D 島 ----------
+   2026-10 新增。設計與取捨(三種方案比較、為什麼並排、效能預算)見
+   docs/island/hero-integration-plan.md;React 端見 heroIsland/HeroIsland.tsx。
+   結構:section.hero > svg.hero-ridge(z0)+ div.hero-copy(z2)+ div.hero-stage(z1)> a.hero-island
+   (光暈/地面陰影/canvas 容器;2026-10 移除了島下方的說明文字,島用滿整個版位)。
+   尺寸完全由 CSS 決定(canvas 只是填進已有尺寸的容器),載入前後版面不動,島造成的 CLS 為 0
+   (推論,待用 Performance 面板實測)。
+   .hero-stage 是 size container,島用 cqw/cqh 取「剩下的寬與高」;剩不到 200px 時整個島讓位,
+   JS 讀到容器邊長 0 就不載入並通知收起(is-island-off)。cqw/cqh 需要 Chrome 105+/Safari 16+,
+   更舊的瀏覽器落到 min(86vw, 360px) 的退路寬度。 */
+.kyoto-bloom .hero { isolation: isolate; }
+.kyoto-bloom .hero-ridge { z-index: 0; }
+.kyoto-bloom .hero-copy {
+  position: relative; z-index: 2;
+  display: flex; flex-direction: column; align-items: center;
+}
+
+/* 島開啟時:窄螢幕/平板——文字靠上、島吃剩下的高度。is-island-off 時完全不套用,hero 維持原本的垂直置中。 */
+.kyoto-bloom .hero:not(.is-island-off) {
+  justify-content: flex-start;
+  padding-top: calc(var(--site-nav-h, 52px) + clamp(16px, 4vh, 40px));
+  padding-bottom: clamp(16px, 3vh, 32px);
+}
+.kyoto-bloom .hero-stage {
+  position: relative; z-index: 1;
+  flex: 1 1 0; min-height: 0; width: 100%;
+  margin-top: clamp(12px, 3vh, 32px);
+  container-type: size;
+  display: grid; place-items: center;
+}
+.kyoto-bloom .hero-island {
+  position: relative; display: block;
+  width: min(86vw, 360px); aspect-ratio: 1 / 1;
+  color: inherit; text-decoration: none;
+}
+@supports (width: 1cqw) {
+  .kyoto-bloom .hero-island { --island: min(100cqw, 100cqh, 440px); width: var(--island); }
+}
+@container (max-height: 200px) {
+  .kyoto-bloom .hero-island { display: none; }
+}
+
+/* 光暈:島後面的柔和底色(亮色=米白托起、暗色=一小塊夜空藍紫) */
+.kyoto-bloom .hero-island-halo {
+  position: absolute; inset: -8%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, var(--island-halo), transparent 72%);
+  opacity: 0.6; transition: opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* 地面陰影:壓扁的橢圓。島底在正方形內約 80~85% 的位置(推論,待實測微調) */
+.kyoto-bloom .hero-island-shadow {
+  position: absolute; left: 50%; top: 82%; width: 62%; height: 9%;
+  border-radius: 50%; pointer-events: none; filter: blur(6px);
+  background: radial-gradient(closest-side, var(--island-shadow), transparent),
+              radial-gradient(closest-side, var(--island-shadow-glow), transparent 140%);
+  transform: translate(-50%, -50%) scale(0.82); opacity: 0.6;
+  transition: transform 1.2s cubic-bezier(0.22, 1, 0.36, 1), opacity 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* canvas 容器:MiniIsland 把 canvas 插在這裡(absolute、pointer-events:none,不接收任何指標事件) */
+.kyoto-bloom .hero-island-canvas {
+  position: absolute; inset: 0; display: block;
+  opacity: 0; transform: translateY(14px) scale(0.94);
+  transition: opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1), transform 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.kyoto-bloom .hero-island.is-ready .hero-island-halo { opacity: 1; }
+.kyoto-bloom .hero-island.is-ready .hero-island-shadow { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+.kyoto-bloom .hero-island.is-ready .hero-island-canvas { opacity: 1; transform: none; }
+
+.kyoto-bloom .hero-island:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 6px; border-radius: 24px; }
+/* hover:島微微浮起、陰影放大。沒有可見的文字提示可點,所以靠 cursor 與這個回饋(觸控裝置沒有 hover) */
+@media (hover: hover) {
+  .kyoto-bloom .hero-island.is-ready:hover .hero-island-canvas { transform: translateY(-4px); }
+  .kyoto-bloom .hero-island:hover .hero-island-shadow { transform: translate(-50%, -50%) scale(1.06); }
+}
+
+/* 桌機並排:左文右島。窄於 1024px 或直式視窗(長寬比 < 5:4)維持上面的上下疊 */
+@media (min-width: 1024px) and (min-aspect-ratio: 5/4) {
+  .kyoto-bloom .hero:not(.is-island-off) {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: clamp(32px, 4vw, 72px); align-items: center;
+    padding-inline: max(var(--edge-pad), calc((100vw - 1180px) / 2));
+    padding-bottom: clamp(32px, 8vh, 80px);
+    text-align: left;
+  }
+  .kyoto-bloom .hero:not(.is-island-off) .hero-copy { align-items: flex-start; }
+  .kyoto-bloom .hero:not(.is-island-off) .hero-sub { max-width: 30em; }
+  .kyoto-bloom .hero-stage { height: min(calc(100dvh - 180px), 600px); margin-top: 2dvh; }
+  .kyoto-bloom .hero-island { --island: min(100cqw, 100cqh, 560px); }
+}
 
 /* ---------- destinations ---------- */
 

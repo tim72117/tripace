@@ -43,6 +43,9 @@ var knownRoutePatterns = []*regexp.Regexp{
 	// MomijiFrontPage import 處與 web/src/momiji-front/MomijiFrontPage.tsx
 	// 的完整說明),公開頁、不需要登入。
 	regexp.MustCompile(`^/momiji-front$`),
+	// /island:夜遊九份島(2026-10 新增,由部落客文章生成的互動 3D 旅遊小島,見 web/src/App.tsx
+	// IslandPage import 處與 web/src/island/IslandPage.tsx 的完整說明),公開頁、不需要登入。
+	regexp.MustCompile(`^/island$`),
 	// /u/:handle/:slug:部落客發文正式頁面(2026-10,見 web/src/App.tsx
 	// 對應路由與 web/src/blog/BlogArticlePage.tsx 的完整說明)——取代原本
 	// 固定的 /demo/theme-page demo 路徑。
@@ -126,6 +129,11 @@ func staticHandler(st *store.Store) http.Handler {
 		}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// /sitemap.xml:靜態檔加上資料庫裡已發佈的行程詳情頁(見 sitemap.go)。
+		// 內嵌檔案不存在(開發機 placeholder)時 serveSitemap 回傳 false,走下面原本的流程。
+		if r.URL.Path == "/sitemap.xml" && serveSitemap(w, sub, st) {
+			return
+		}
 		// 嘗試直接找檔案;找到就直接回傳。
 		f, err := sub.Open(strings.TrimPrefix(r.URL.Path, "/"))
 		if err == nil {
