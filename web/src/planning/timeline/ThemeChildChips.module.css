@@ -1,0 +1,29 @@
+/* .chips/.chip——主題點底下的子景點 chip 列:只用小標籤呈現(icon 加名稱),不是完整卡片外觀,
+   因為子景點沒有自己的時間/交通資訊可以撐起一張卡。數量不固定,所以自然換行(flex-wrap),
+   不做橫向捲動列表。chip 本身不換行(white-space: nowrap):文字一長是 chip 變寬,不是在 pill 裡折成兩行。 */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ios-sep);
+  background: var(--ios-bg);
+  color: var(--ios-blue);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chip:hover {
+  border-color: var(--ios-sand);
+}
+.chip:focus-visible {
+  outline: 2px solid var(--ios-blue);
+  outline-offset: 2px;
+}

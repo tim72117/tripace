@@ -1,4 +1,4 @@
-import { planStopMarkerContent, type PlanStopMarkerState } from '../../mapMarkers'
+import { planStopMarkerContent, withMarkerLabel, type PlanStopMarkerState } from '../../mapMarkers'
 import { resolveExpandedThemeId, type HoverTransitPair, type MapMarkerPoint } from '../../marker/planStops'
 import type { CircleDrawable, ContentContext, DrawGroup, Drawable, FeatureLayer, MarkerDrawable } from '../types'
 
@@ -6,7 +6,7 @@ import type { CircleDrawable, ContentContext, DrawGroup, Drawable, FeatureLayer,
 // 純函式:把站點資料與「選中、hover」狀態轉成要畫的東西,不碰 google.maps。
 //
 // 畫什麼:
-//   - 每個站點一個圓點 marker。外觀三態(base、hover、selected),狀態寫進 contentKey 與疊放群組:
+//   - 每個站點一個圓點 marker,圓點右側常駐站點名稱(withMarkerLabel)。外觀三態(base、hover、selected),狀態寫進 contentKey 與疊放群組:
 //     選中蓋過一般站點、hover 再蓋過選中(群組數值在 zOrder.ts)。
 //   - 選中主題點(或它的子景點)時,另畫 200 公尺範圍圓圈,以及每個子景點一顆小圓點。
 //
@@ -88,11 +88,12 @@ export function planStopLayer({
       title: p.name,
       // 圓點的圓心就是座標(見 types.ts 的 anchor 說明;2026-10-24 修正連線端點與圓點對不齊)。
       anchor: 'center',
-      contentKey: `${state}|${accentColor}|${p.glyph ?? ''}|${p.size ?? ''}`,
+      // 名稱也進 contentKey:常駐名稱標籤(withMarkerLabel)是內容的一部分,名稱改變才會重建內容。
+      contentKey: `${state}|${accentColor}|${p.glyph ?? ''}|${p.size ?? ''}|${p.name ?? ''}`,
       createContent: (ctx?: ContentContext) => {
         const previousState = ctx?.previousContentKey?.split('|')[0]
         const entering = previousState === 'base' && state !== 'base'
-        return planStopMarkerContent(state, accentColor, entering, p.glyph, p.size)
+        return withMarkerLabel(planStopMarkerContent(state, accentColor, entering, p.glyph, p.size), p.name)
       },
       clickable: true,
       onClick: () => {

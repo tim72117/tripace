@@ -9,6 +9,7 @@ import { usePlanData, useResolvedRefs } from '../../data/PlanDataProvider'
 import type { PlanOperations } from '../operations'
 import { SkeletonBlock } from '../../../components/Skeleton'
 import { FramedImage } from '../../../components/FramedImage'
+import { ThemeChildChips } from '../ThemeChildChips'
 import styles from './HorizontalPlanTimeline.module.css'
 
 // ZOOM_OUT_ENABLED——2026-10 使用者先要求「讓時間尺有 zoom in/zoom out
@@ -1770,25 +1771,12 @@ export function HorizontalPlanTimeline({
                         避免冒泡觸發外層卡片的 onClick(那會變成
                         handleSelect(node.id),選到主題卡本身而不是
                         子景點)。 */}
-                    {themeChildren.length > 0 && (
-                      <div className={styles.themeChildren} role="list" aria-label={`${node.name ?? '主題點'}包含的景點`}>
-                        {themeChildren.map((child) => (
-                          <button
-                            key={child.id}
-                            type="button"
-                            role="listitem"
-                            className={styles.themeChildChip}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              onSelectThemeChild?.(node.id, child)
-                            }}
-                          >
-                            {child.thumbIcon && <span aria-hidden="true">{child.thumbIcon}</span>}
-                            <span>{child.name ?? child.id}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    <ThemeChildChips
+                      items={themeChildren}
+                      ariaLabel={`${node.name ?? '主題點'}包含的景點`}
+                      className={styles.themeChildren}
+                      onSelect={(child) => onSelectThemeChild?.(node.id, child)}
+                    />
                   </>
                 )}
               </div>

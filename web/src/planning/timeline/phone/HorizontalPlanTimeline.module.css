@@ -1032,38 +1032,9 @@
   overflow: hidden;
 }
 
-/* .themeChildren/.themeChildChip——2026-10 新增(使用者明確要求「主題
-   點」概念:鄰近景點合併成一張主題卡,底下列出子景點,見
-   HorizontalPlanTimeline.tsx node.children 渲染處的完整說明)。子景點
-   只用小 chip 呈現(icon+名稱),不是完整卡片外觀——子景點沒有自己的
-   時間/交通資訊可以撐起一張卡片,這裡只需要讓使用者看到「這個主題點
-   底下有哪些地方」並能個別點擊觸發地圖圓點。allow 自然換行
-   (flex-wrap),不強制塞進單行被裁切——子景點數量不固定,寫死的
-   橫向捲動列表在這個小範圍內反而增加操作複雜度。 */
+/* .themeChildren——主題點的子景點 chip 列在卡片裡的外距(chip 本身的樣式在 planning/timeline/ThemeChildChips)。 */
 .themeChildren {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
   margin-top: 2px;
-}
-.themeChildChip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--ios-sep);
-  background: var(--ios-bg);
-  color: var(--ios-blue);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  /* white-space: nowrap——chip 本身不換行(文字一長就讓這個 chip
-     本身變寬,而不是文字在 chip 內部折成兩行破壞 pill 形狀)。 */
-  white-space: nowrap;
-}
-.themeChildChip:hover {
-  border-color: var(--ios-sand);
 }
 
 /* ===== 備註（依分類上色+線條圖示） ===== */

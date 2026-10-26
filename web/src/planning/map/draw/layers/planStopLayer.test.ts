@@ -6,11 +6,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { CircleDrawable, MarkerDrawable } from '../types'
 import type { MapMarkerPoint } from '../../marker/planStops'
 
-const content = vi.hoisted(() => ({ calls: [] as unknown[][] }))
+const content = vi.hoisted(() => ({ calls: [] as unknown[][], labelCalls: [] as unknown[][] }))
 vi.mock('../../mapMarkers', () => ({
   planStopMarkerContent: (...args: unknown[]) => {
     content.calls.push(args)
     return document.createElement('i')
+  },
+  // withMarkerLabel 用假的:記錄收到的名稱,原樣回傳內容(真實行為見 mapMarkers.label.test.ts)。
+  withMarkerLabel: (el: Element, name: string | undefined) => {
+    content.labelCalls.push([name])
+    return el
   },
 }))
 
@@ -35,6 +40,7 @@ const stop = (l: ReturnType<typeof layer>, id: string) => markers(l).find((m) =>
 
 beforeEach(() => {
   content.calls = []
+  content.labelCalls = []
 })
 
 describe('planStopLayer 基本', () => {
@@ -95,6 +101,14 @@ describe('planStopLayer 內容與進場動畫', () => {
     expect(key({}, { glyph: '<g/>' })).not.toBe(base)
     expect(key({}, { size: 20 })).not.toBe(base)
     expect(key({ accentColor: '#000000' })).not.toBe(base)
+  })
+
+  it('圓點內容經 withMarkerLabel 帶上站點名稱;名稱改變 contentKey 跟著變(標籤才會更新)', () => {
+    const l = layer({ points: [pt('a', { name: '赤崁樓' })] })
+    stop(l, 'a').createContent()
+    expect(content.labelCalls).toEqual([['赤崁樓']])
+    const key = (name: string) => stop(layer({ points: [pt('a', { name })] }), 'a').contentKey
+    expect(key('赤崁樓')).not.toBe(key('安平古堡'))
   })
 
   it('第一次建立:用當下狀態畫,不播進場動畫(entering 為 false),並帶上 glyph 與 size', () => {

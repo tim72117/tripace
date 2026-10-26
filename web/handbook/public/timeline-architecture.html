@@ -1,0 +1,190 @@
+<title>時間軸架構</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* 版面:資料結構圖、使用端圖、對照表、變更紀錄;沿用 marker-layers.html 的配色與元件。
+     配色:中性灰藍底,/ai-plan 用青綠、登入後用琥珀,兩個強調色只用來區分兩邊。 */
+  :root {
+    --bg: #f5f6f7;
+    --fg: #1d2530;
+    --muted: #5b6673;
+    --line: #c9d0d8;
+    --box: #ffffff;
+    --box2: #eef1f4;
+    --ai: #0f766e;
+    --ai-soft: #d7efec;
+    --app: #b45309;
+    --app-soft: #f8e6cf;
+    --warn: #b42318;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12171d;
+      --fg: #e6ebf0;
+      --muted: #97a3b0;
+      --line: #36414e;
+      --box: #1b222b;
+      --box2: #232c37;
+      --ai: #4fd1c5;
+      --ai-soft: #17332f;
+      --app: #f0a24b;
+      --app-soft: #3a2a14;
+      --warn: #ff8a7a;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12171d;
+    --fg: #e6ebf0;
+    --muted: #97a3b0;
+    --line: #36414e;
+    --box: #1b222b;
+    --box2: #232c37;
+    --ai: #4fd1c5;
+    --ai-soft: #17332f;
+    --app: #f0a24b;
+    --app-soft: #3a2a14;
+    --warn: #ff8a7a;
+    color-scheme: dark;
+  }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    line-height: 1.6;
+    padding-block: 28px 56px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  main { max-width: 1320px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 6px; text-wrap: balance; }
+  h2 { font-size: 16px; margin: 0 0 4px; }
+  .lede { color: var(--muted); margin: 0 0 22px; max-width: 70ch; }
+  /* 四個入口圖:自動分欄,頁面夠寬時兩張並排一排(每張卡最小 490px)。 */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 490px), 1fr)); gap: 14px; }
+  @media (min-width: 2200px) {
+    main { max-width: 2400px; }
+    .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    main > :not(.grid) { max-width: 1180px; }
+  }
+  .panel { background: var(--box2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 10px 8px; min-width: 0; }
+  .panel p { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 99px; margin-right: 6px; }
+  .tag.ai { background: var(--ai-soft); color: var(--ai); }
+  .tag.app { background: var(--app-soft); color: var(--app); }
+  .scroll { overflow-x: auto; }
+  svg { display: block; width: 100%; height: auto; min-width: 420px; font-size: 13px; color: var(--fg); }
+  svg text { fill: var(--fg); }
+  svg .m { fill: var(--muted); font-size: 12px; }
+  svg .b { font-weight: 700; }
+  .box { fill: var(--box); stroke: var(--line); stroke-width: 1.2; }
+  .ai-box { fill: var(--ai-soft); stroke: var(--ai); stroke-width: 1.4; }
+  .app-box { fill: var(--app-soft); stroke: var(--app); stroke-width: 1.4; }
+  .eff { fill: var(--box); stroke: var(--line); stroke-width: 1; }
+  .ln { stroke: var(--fg); stroke-width: 1.4; fill: none; }
+  .ln-ai { stroke: var(--ai); stroke-width: 1.6; fill: none; }
+  .ln-app { stroke: var(--app); stroke-width: 1.6; fill: none; }
+  .back-ai { stroke: var(--ai); stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; }
+  .back-app { stroke: var(--app); stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin: 10px 0 0; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 26px; border-top: 2px solid var(--fg); }
+  .legend i.d { border-top-style: dashed; }
+  h3 { font-size: 15px; margin: 30px 0 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 640px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; background: var(--box2); }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  .diff { color: var(--warn); font-weight: 600; }
+  .note { margin-top: 20px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--box); font-size: 13px; color: var(--muted); max-width: 90ch; }
+  .note b { color: var(--fg); }
+  table.fourcol { min-width: 0; table-layout: auto; }
+  table.fourcol td:first-child { white-space: normal; min-width: 112px; max-width: 168px; }
+  table.fourcol td, table.fourcol th { padding: 7px 8px; }
+  pre.tree { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; line-height: 1.55; background: var(--box); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin: 10px 0 0; overflow-x: auto; color: var(--fg); }
+  code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; background: var(--box2); padding: 0 4px; border-radius: 3px; }
+  .theme-toggle {
+    position: fixed;
+    top: max(12px, env(safe-area-inset-top, 0px));
+    right: max(12px, env(safe-area-inset-right, 0px));
+    z-index: 10;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: var(--box);
+    color: var(--fg);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+  }
+  .theme-toggle:hover { background: var(--box2); }
+  .theme-toggle:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
+</style>
+
+<button type="button" id="theme-toggle" class="theme-toggle" aria-label="切換日夜模式"></button>
+
+<main>
+  <h1>時間軸:資料結構與使用端</h1>
+  <p class="lede">時間軸的資料是 planning/timeline/model.ts 的 PlanTimeline（依天分組的 PlanNode 陣列，另有獨立的住宿清單），五個使用端共用同一份結構與同一組純函式；檢視元件有兩個：桌面直向的 PlanTimelineView、手機橫向的 HorizontalPlanTimeline。各端差別只在「誰持有狀態」「資料從哪來」「用哪個檢視」。</p>
+
+  <div class="grid">
+    <section class="panel">
+      <h2><span class="tag ai">資料</span>PlanTimeline：依天分組</h2>
+      <p>順序就是 days 與每天 nodes 的陣列順序；交通、備註、子景點 id 掛在 stop 自己身上，所以 removeNode 不需要知道它們的存在。住宿不是節點，是獨立的 lodgings 清單，各自記錄停留哪幾天。</p>
+      <div class="scroll"><svg viewBox="0 0 620 330" role="img" aria-label="時間軸資料結構:PlanTimeline 含 days 與 lodgings,每天是節點陣列,交通、備註、子景點 id 掛在 stop 身上,節點執行狀態另存狀態表"><defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs><rect class="box" x="20" y="14" width="580" height="34" rx="6"/><text class="b" x="310" y="36" text-anchor="middle">PlanTimeline { days: PlanDay[], lodgings?: PlanLodging[] }</text><rect class="ai-box" x="20" y="72" width="270" height="56" rx="6"/><text class="b" x="155" y="96" text-anchor="middle">PlanDay 1</text><text class="m" x="155" y="114" text-anchor="middle">nodes: [stop A, stop B]</text><rect class="ai-box" x="330" y="72" width="270" height="56" rx="6"/><text class="b" x="465" y="96" text-anchor="middle">PlanDay 2</text><text class="m" x="465" y="114" text-anchor="middle">nodes: [stop C, …]</text><line class="ln" x1="155" y1="48" x2="155" y2="72" marker-end="url(#ar)"/><line class="ln" x1="465" y1="48" x2="465" y2="72" marker-end="url(#ar)"/><text class="m" x="20" y="150">天的順序 = days 陣列順序;天內順序 = nodes 陣列順序(沒有前後指標)</text><rect class="eff" x="150" y="168" width="320" height="30" rx="6"/><text x="310" y="187" text-anchor="middle">transitFromPrev(同一天上一站→這一站的交通)</text><rect class="eff" x="150" y="204" width="320" height="30" rx="6"/><text x="310" y="223" text-anchor="middle">note(一則備註)</text><rect class="eff" x="150" y="240" width="320" height="30" rx="6"/><text x="310" y="259" text-anchor="middle">attractions / places(子景點 id 清單,不佔時間點)</text><path class="ln" d="M155 128 L155 183 L150 183" marker-end="url(#ar)"/><text class="m" x="20" y="288">stop 身上掛交通、備註、子景點 id;移除 stop 時一起消失</text><text class="m" x="20" y="306">節點的執行狀態(loading、failed、removing)不在節點上,在 NodeStatusMap(status.ts)</text><text class="m" x="20" y="324">操作都是純函式:insertAfter、removeNode、removeDay、addDay、moveDay、updateNode、getTimeDragBounds</text></svg></div>
+    </section>
+    <section class="panel">
+      <h2><span class="tag app">使用端</span>五個入口的擁有者、資料來源與檢視</h2>
+      <p>登入後與 /ai-plan 推論態都是同一個 TripPlanPage（經 PlanPanelContent，依螢幕決定橫向或直向）；模擬態與首頁展示是劇本；行程詳情頁把靜態範例轉成時間軸。</p>
+      <div class="scroll"><svg viewBox="0 0 620 510" role="img" aria-label="時間軸的五個使用端:各自的狀態擁有者、資料來源與檢視元件"><defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs><text class="b" x="20" y="18">狀態擁有者</text><text class="b" x="232" y="18">資料來源</text><text class="b" x="404" y="18">檢視元件</text><text class="m" x="20" y="40">登入後 桌面/手機</text><rect class="ai-box" x="20" y="46" width="192" height="66" rx="6"/><text class="b" x="116.0" y="67.0" text-anchor="middle">member/desktop|phone/LivePlanLayer</text><text class="m" x="116.0" y="83.0" text-anchor="middle">→ PlanPanelContent</text><text class="m" x="116.0" y="99.0" text-anchor="middle">→ TripPlanPage(持有狀態)</text><line class="ln" x1="212" y1="79" x2="232" y2="79" marker-end="url(#ar)"/><rect class="box" x="232" y="46" width="152" height="66" rx="6"/><text class="" x="308.0" y="75.0" text-anchor="middle">登入版資料存取層</text><text class="m" x="308.0" y="91.0" text-anchor="middle">localStorage 草稿</text><line class="ln" x1="384" y1="79" x2="404" y2="79" marker-end="url(#ar)"/><rect class="eff" x="404" y="46" width="196" height="66" rx="6"/><text class="b" x="502.0" y="75.0" text-anchor="middle">桌面:PlanTimelineView</text><text class="m" x="502.0" y="91.0" text-anchor="middle">手機:HorizontalPlanTimeline</text><text class="m" x="20" y="136">/ai-plan 推論態</text><rect class="ai-box" x="20" y="142" width="192" height="66" rx="6"/><text class="b" x="116.0" y="163.0" text-anchor="middle">preview/LivePlanLayer</text><text class="m" x="116.0" y="179.0" text-anchor="middle">→ PlanPanelContent</text><text class="m" x="116.0" y="195.0" text-anchor="middle">→ TripPlanPage(持有狀態)</text><line class="ln" x1="212" y1="175" x2="232" y2="175" marker-end="url(#ar)"/><rect class="box" x="232" y="142" width="152" height="66" rx="6"/><text class="" x="308.0" y="171.0" text-anchor="middle">公開版資料存取層</text><text class="m" x="308.0" y="187.0" text-anchor="middle">(訪客)</text><line class="ln" x1="384" y1="175" x2="404" y2="175" marker-end="url(#ar)"/><rect class="eff" x="404" y="142" width="196" height="66" rx="6"/><text class="b" x="502.0" y="163.0" text-anchor="middle">桌面:PlanTimelineView</text><text class="m" x="502.0" y="179.0" text-anchor="middle">手機:HorizontalPlanTimeline</text><text class="m" x="502.0" y="195.0" text-anchor="middle">(!isDesktop)</text><text class="m" x="20" y="232">/ai-plan 模擬態</text><rect class="ai-box" x="20" y="238" width="192" height="66" rx="6"/><text class="b" x="116.0" y="259.0" text-anchor="middle">preview/Content</text><text class="m" x="116.0" y="275.0" text-anchor="middle">usePlanSimSocket 播劇本</text><text class="m" x="116.0" y="291.0" text-anchor="middle">→ SimPlanLayer(只呈現)</text><line class="ln" x1="212" y1="271" x2="232" y2="271" marker-end="url(#ar)"/><rect class="box" x="232" y="238" width="152" height="66" rx="6"/><text class="" x="308.0" y="267.0" text-anchor="middle">planAiFakeDataSource</text><text class="m" x="308.0" y="283.0" text-anchor="middle">不寫 localStorage</text><line class="ln" x1="384" y1="271" x2="404" y2="271" marker-end="url(#ar)"/><rect class="eff" x="404" y="238" width="196" height="66" rx="6"/><text class="b" x="502.0" y="267.0" text-anchor="middle">桌面:PlanTimelineView</text><text class="m" x="502.0" y="283.0" text-anchor="middle">手機:HorizontalPlanTimeline</text><text class="m" x="20" y="328">首頁手機展示</text><rect class="ai-box" x="20" y="334" width="192" height="66" rx="6"/><text class="b" x="116.0" y="363.0" text-anchor="middle">AiPlanPhoneDemoScreen</text><text class="m" x="116.0" y="379.0" text-anchor="middle">(home/)</text><line class="ln" x1="212" y1="367" x2="232" y2="367" marker-end="url(#ar)"/><rect class="box" x="232" y="334" width="152" height="66" rx="6"/><text class="" x="308.0" y="371.0" text-anchor="middle">靜態劇本資料</text><line class="ln" x1="384" y1="367" x2="404" y2="367" marker-end="url(#ar)"/><rect class="eff" x="404" y="334" width="196" height="66" rx="6"/><text class="b" x="502.0" y="371.0" text-anchor="middle">手機:HorizontalPlanTimeline</text><text class="m" x="20" y="424">行程詳情頁</text><rect class="app-box" x="20" y="430" width="192" height="66" rx="6"/><text class="b" x="116.0" y="459.0" text-anchor="middle">AiItineraryDetailPageMapView</text><text class="m" x="116.0" y="475.0" text-anchor="middle">useResolvedItineraryTimeline</text><line class="ln" x1="212" y1="463" x2="232" y2="463" marker-end="url(#ar)"/><rect class="box" x="232" y="430" width="152" height="66" rx="6"/><text class="" x="308.0" y="459.0" text-anchor="middle">SampleItinerary</text><text class="m" x="308.0" y="475.0" text-anchor="middle">→ catalog.toPlanTimeline</text><line class="ln" x1="384" y1="463" x2="404" y2="463" marker-end="url(#ar)"/><rect class="eff" x="404" y="430" width="196" height="66" rx="6"/><text class="b" x="502.0" y="451.0" text-anchor="middle">PlanTimelineView</text><text class="m" x="502.0" y="467.0" text-anchor="middle">renderStopCard 插槽:</text><text class="m" x="502.0" y="483.0" text-anchor="middle">onsen 主題才換卡</text></svg></div>
+    </section>
+  </div>
+
+  <h3>PlanNodeData 欄位</h3>
+  <div class="scroll"><table class="fourcol"><thead><tr><th>類別</th><th>欄位</th></tr></thead><tbody><tr><td>識別與內容</td><td>name、desc、kind(景點/美食…)、tags、placeId</td></tr><tr><td>時間</td><td>day、time(HH:MM)、duration(自由格式字串);沒有結束時間欄位</td></tr><tr><td>位置</td><td>lat、lng</td></tr><tr><td>縮圖</td><td>thumbBg、thumbIcon(照片網址不在節點上,經 placeId 由資料存取層解析)</td></tr><tr><td>交通</td><td>transitFromPrev: TransitInfo { mode、minutes、distance、icon、note、loading }——掛在到達站</td></tr><tr><td>備註</td><td>note: NoteInfo { text、category }——一站只有一則</td></tr><tr><td>子景點</td><td>attractions、places(id 清單,另有 farFromNext)——節點只存 id,名稱、座標、簡介、照片執行時經資料存取層解析成 PlanThemeChild</td></tr><tr><td>執行狀態</td><td>不在節點上:loading、failed、removing 存在狀態表 NodeStatusMap(status.ts)。節點上只有 candidateCards(候選卡版型)</td></tr><tr><td>節點型別</td><td>目前只有 stop。天的分隔是 PlanDay、住宿是 lodgings、對話是 planning/conversation/messages,都不是時間軸節點</td></tr></tbody></table></div>
+
+  <h3>兩個檢視元件的差異</h3>
+  <div class="scroll"><table><thead><tr><th></th><th>PlanTimelineView</th><th>HorizontalPlanTimeline</th></tr></thead><tbody><tr><td>方向</td><td>垂直</td><td>水平卷軸(scroll-snap,一次一張)</td></tr><tr><td>用在</td><td>桌面(/ai-plan、登入後、行程詳情頁)</td><td>手機(/ai-plan、登入後、首頁展示)</td></tr><tr><td>站點卡</td><td>預設景點卡;<code>renderStopCard</code> 插槽可整張替換</td><td>固定尺寸卡片(高度讀 <code>--horizontal-timeline-card-height</code>),沒有卡片插槽</td></tr><tr><td>住宿</td><td><code>.lodgingBanner</code> 窄長虛線橫幅(PlanTimelineView.tsx)</td><td><code>.lodgingCard</code> 窄版住宿卡(寬度約一般卡的一半、同高,HorizontalPlanTimeline.tsx 的 lodging 分支)</td></tr><tr><td>拖拉改時間</td><td>圓點可拖(TIME_DRAG_ENABLED 與兩個回呼同時傳入才啟用)</td><td>無</td></tr><tr><td>子景點 chip</td><td>預設卡有(共用元件 <code>ThemeChildChips</code>,planning/timeline/);自訂卡(<code>renderStopCard</code>)自己決定畫不畫</td><td>有(同一個 <code>ThemeChildChips</code>)</td></tr></tbody></table></div>
+
+  <h3>持久化</h3>
+  <div class="note"><b>PlanTimelineStore</b>（planning/timeline/storage.ts）三個方法：readRev、loadTimelineWithRev、saveTimeline(timeline, baseRev)。實作有兩個：<code>localStoragePlanTimelineStore</code>（key <code>tripace.planTimeline</code>，Map 序列化成 [key, value] 陣列，帶 rev 做衝突偵測，寫入失敗回 null）與 <code>noopPlanTimelineStore</code>（不存）。登入後用 localStorage 版；多份草稿由 planning/timeline/drafts.ts 的索引（<code>tripace.planTimeline.drafts</code>）管理，每份草稿有自己的 store。不跟行程（trip）綁定，是跨行程的單一草稿。</div>
+
+  <h3>已知狀況</h3>
+  <div class="note"><b>usePlanTimelineCore：</b>planning/timeline/usePlanTimelineCore.ts 是時間軸的資料層 hook（state、同步提交、注入式持久化、基本操作），由 TripPlanPage 與 usePlanSimSocket 使用。<br><b>子景點的顯示：</b>預設景點卡與手機橫向時間軸都用 <code>ThemeChildChips</code> 畫子景點 chip；點 chip 的行為由各入口經 <code>onSelectThemeChild</code> 決定（登入後與 /ai-plan 選中主題卡本身，行程詳情頁選取該子景點）。</div>
+
+  <h3>變更紀錄</h3>
+  <div class="note"><b>2026-10-24 建立，2026-10-26 依目錄重整後的實際位置（planning/timeline/）與子景點 chip 共用元件訂正。</b>內容依 model.ts、storage.ts、PlanTimelineView.tsx、各入口 LivePlanLayer／SimPlanLayer 與 itineraries 的現況整理。</div>
+</main>
+
+<script>
+  // 日夜切換:沒選過時跟隨系統(CSS 的 prefers-color-scheme),按下後寫入 data-theme
+  // 並記在 localStorage(失敗時照常運作,只是重新整理後不保留)。
+  (function () {
+    var root = document.documentElement
+    var btn = document.getElementById('theme-toggle')
+    var KEY = 'timeline-architecture.theme'
+    var mq = window.matchMedia('(prefers-color-scheme: dark)')
+    function effective() { return root.getAttribute('data-theme') || (mq.matches ? 'dark' : 'light') }
+    function render() {
+      var dark = effective() === 'dark'
+      var label = dark ? '切換成日間模式' : '切換成夜間模式'
+      btn.textContent = dark ? '\u2600' : '\u263E'
+      btn.setAttribute('aria-label', label)
+      btn.title = label
+    }
+    try {
+      var saved = localStorage.getItem(KEY)
+      if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved)
+    } catch (e) {}
+    btn.addEventListener('click', function () {
+      var next = effective() === 'dark' ? 'light' : 'dark'
+      root.setAttribute('data-theme', next)
+      try { localStorage.setItem(KEY, next) } catch (e) {}
+      render()
+    })
+    if (mq.addEventListener) mq.addEventListener('change', render)
+    render()
+  })()
+</script>

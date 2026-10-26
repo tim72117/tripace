@@ -15,6 +15,7 @@ import { ItineraryMonopolyPage } from './ItineraryMonopolyPage'
 import { ItineraryPlayfulMapPage } from './ItineraryPlayfulMapPage'
 import { PlanDataFlowPage } from './PlanDataFlowPage'
 import { MarkerLayersPage } from './MarkerLayersPage'
+import { TimelineArchitecturePage } from './TimelineArchitecturePage'
 import { IdeasIndexPage } from './ideas/IdeasIndexPage'
 import { IdeaPage } from './ideas/IdeaPage'
 
@@ -44,6 +45,7 @@ export function App() {
         <Route path="/ad-affiliate-compare" element={<AdAffiliateComparePage />} />
         <Route path="/plan-data-flow" element={<PlanDataFlowPage />} />
         <Route path="/marker-layers" element={<MarkerLayersPage />} />
+        <Route path="/timeline-architecture" element={<TimelineArchitecturePage />} />
         <Route path="/ideas" element={<IdeasIndexPage />} />
         <Route path="/ideas/:id" element={<IdeaPage />} />
       </Routes>

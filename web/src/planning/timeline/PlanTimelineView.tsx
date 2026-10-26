@@ -3,15 +3,16 @@ import type { CSSProperties, MutableRefObject, PointerEvent as ReactPointerEvent
 import ReactMarkdown from 'react-markdown'
 import { Bus, Car, Footprints, TrainFront } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { listNodes, lodgingSpanLabel, lodgingsOf, lodgingsStartingOnDay, minutesToTime, stopLookupFailed, withDay, type PlanLodging, type PlanNode, type PlanTimeline, type TimeDragBounds } from './model'
+import { listNodes, lodgingSpanLabel, lodgingsOf, lodgingsStartingOnDay, minutesToTime, stopLookupFailed, withDay, type PlanLodging, type PlanNode, type PlanThemeChild, type PlanTimeline, type TimeDragBounds } from './model'
 import type { PlanMessage } from '../conversation/messages'
-import { LODGING_FALLBACK_NAME, resolveLodging } from './resolved'
+import { LODGING_FALLBACK_NAME, resolveLodging, resolveNodeRefChildren } from './resolved'
 import { useResolvedRefs } from '../data/PlanDataProvider'
 import { nodeStatusOf, type NodeStatusMap } from './status'
 import { DEFAULT_NOTE_CATEGORY, NOTE_STYLES, TRANSIT_MODE_CHOICES } from './presentation'
 import type { PlanOperations } from './operations'
 import { SkeletonBlock } from '../../components/Skeleton'
 import { FramedImage } from '../../components/FramedImage'
+import { ThemeChildChips } from './ThemeChildChips'
 import styles from './PlanTimelineView.module.css'
 
 // TIME_DRAG_MINUTES_PER_STEP/TIME_DRAG_PX_PER_STEP——anchorDot 拖拉調整
@@ -249,6 +250,10 @@ export interface PlanTimelineViewProps {
   showJumpPill: boolean
   onJumpToLatest: () => void
   onPanToStop: (step: PlanNode) => void
+  // onSelectThemeChild——選填:點主題點(節點帶 attractions/places)卡片上的子景點 chip 時呼叫(帶父節點 id 與被點的子景點)。
+  // chip 列由預設景點卡畫(planning/timeline/ThemeChildChips,與手機橫向時間軸同一個元件);沒傳時 chip 仍顯示、點了沒有反應。
+  // 自訂卡片(renderStopCard)不經過這裡,要不要畫 chip 由它自己決定。
+  onSelectThemeChild?: (parentId: string, child: PlanThemeChild) => void
   // onRemoveStop——選填:卡片右上角顯示一顆刪除按鈕,點擊時呼叫並傳入
   // 這個節點的 id。選填而非必填,是因為這個元件也被 /ai-plan 展示頁
   // (planning/preview/Content.tsx,使用者明確要求不要修改
@@ -442,6 +447,7 @@ export function PlanTimelineView({
   showJumpPill,
   onJumpToLatest,
   onPanToStop,
+  onSelectThemeChild,
   onRemoveStop,
   onRetryStop,
   getStopTimeDragBounds,
@@ -1142,6 +1148,12 @@ export function PlanTimelineView({
                                     )}
                                   </div>
                                 )}
+                                <ThemeChildChips
+                                  items={resolveNodeRefChildren(p, resolvedRefs)}
+                                  ariaLabel={`${p.name ?? '主題點'}包含的景點`}
+                                  className={styles.themeChildren}
+                                  onSelect={(child) => onSelectThemeChild?.(p.id, child)}
+                                />
                                 {p.tags && p.tags.length > 0 && (
                                   <div className={styles.stopTags}>
                                     {p.tags.map((tag) => (

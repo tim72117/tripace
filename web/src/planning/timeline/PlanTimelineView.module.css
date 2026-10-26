@@ -462,6 +462,10 @@
   flex-direction: column;
   justify-content: space-around;
 }
+.themeChildren {
+  /* 主題點的子景點 chip 列(樣式在 planning/timeline/ThemeChildChips),與上方描述隔開。 */
+  margin-top: 6px;
+}
 /* textPlaceholder*——文字還沒到時的淡色佔位條,高度比字級略矮、置於該行行高內,不改變行高本身。
    元素本身是共用 SkeletonBlock(components/Skeleton,掃光與深色/reduced-motion 由它處理),這裡只給尺寸。
    圓角(radius={6})與名稱那條的 inline-block/vertical-align 由 tsx 以 inline 給:SkeletonBlock 一律輸出

@@ -29,7 +29,7 @@ describe('HorizontalPlanTimeline 子景點(只存 id,執行時解析)', () => {
     const { container } = renderTimeline([
       { id: 't', type: 'stop', name: '孔廟周邊', time: '09:00', duration: '停留 2h', day: 1, places: ['attr-confucius-temple', 'attr-confucius-temple-cultural-zone'] },
     ])
-    expect(container.querySelectorAll('[class*="themeChildChip"]')).toHaveLength(2)
+    expect(container.querySelectorAll('[role="list"][aria-label="孔廟周邊包含的景點"] > button')).toHaveLength(2)
     expect(screen.getByText('attr-confucius-temple')).toBeTruthy()
     await waitFor(() => expect(screen.getByText('孔廟商圈')).toBeTruthy())
     expect(screen.getByText('孔廟')).toBeTruthy()

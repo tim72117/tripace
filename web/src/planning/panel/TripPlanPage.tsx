@@ -1576,6 +1576,8 @@ export function TripPlanPage(props: {
         showJumpPill={showJumpPill}
         onJumpToLatest={jumpToLatest}
         onPanToStop={panToStop}
+        // onSelectThemeChild——桌面預設卡的子景點 chip:選中主題卡本身(展開範圍圓圈與子景點小點),與手機版同語意。
+        onSelectThemeChild={(parentId) => selectStop(parentId)}
         // onRemoveStop——介面上直接刪除景點的入口(使用者明確要求「之前
         // 做的景點刪除,也要可以從介面上刪除」,之前只有透過 AI 對話下
         // 指令觸發 remove_attraction 工具這一條路徑)。直接呼叫同一個

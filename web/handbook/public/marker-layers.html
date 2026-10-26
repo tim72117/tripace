@@ -1208,6 +1208,7 @@ src/components/(planning/ 以外,全站共用):Skeleton(SkeletonBlock/Lines/Regi
       <li><b>輸入匡取代「我要直接說明」。</b>景點候選頁的按鈕與展開說明面板移除,詢問頁開著時直接從下方輸入匡打字回答(提示文字依畫面變動,規則集中在 composerMode.ts)。理由:少一層展開,回答方式與一般對話一致。</li>
       <li><b>候選頁可返回。</b>查詢中與景點候選帶 back 資訊,返回時原地換回當時的城市頁並中止查詢;詢問頁狀態合併為單一 AskPageState,轉移各一次 setState。</li>
       <li><b>詢問匡與輸入列融合改預設啟用。</b>由試做轉正,/ai-plan 手機版 panel 一律掛 .fuse(不再需要網址參數);跨 CSS Module 用元件自己宣告的 data 屬性當掛點(不依賴 DOM 層數),整組包在 @supports selector(:has(*)) 裡,文字氣泡與播放態沒有掛點、不套用。</li>
+      <li><b>站點圓點常駐名稱標籤。</b>planStopLayer 的圓點內容經 mapMarkers.ts 的 withMarkerLabel 包一層與 svg 同寬高的 div,名稱絕對定位貼在圓點右側(行內 style、文字節點放入、單行最寬 140px 省略),不改內容尺寸,anchor:'center' 照樣對準圓心;名稱進 contentKey。理由:原本只有 title,手機沒有 hover 看不到站名。限制:站點標籤沒有避讓,密集時會重疊;尚未在瀏覽器確認外觀。</li>
     </ul>
   </div>
 </main>

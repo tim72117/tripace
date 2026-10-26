@@ -320,6 +320,47 @@ export function planStopMarkerContent(
   return svgStringToElement(planStopMarkerSvgString(state, color, entering, glyphSvg, size))
 }
 
+// withMarkerLabel——在 marker 內容旁邊加一個常駐的文字標籤(行程站點圓點用:原本只有滑鼠移上去才出現的 title,手機沒有 hover
+// 就完全看不到名字)。做法:外面包一個跟 svg 同寬同高的 div(position: relative),標籤用絕對定位貼在右側、垂直置中,
+// 所以標籤不影響 marker 內容的尺寸,錨點計算維持不變(planStopLayer 用 anchor: 'center',draw/index.ts 的 applyMarkerAnchor 依內容高度
+// 位移,包殼與 svg 同高,圓心照樣對準座標);svg 的光暈與漣漪動畫
+// (overflow: visible)照樣畫在原位。沒有名稱時原樣回傳 svg(不包殼)。
+// 標籤樣式全部用行內 style(marker 內容在 Google 地圖自己的 DOM 裡,不吃 CSS Modules):深色字加白色描邊式光暈,淺色與深色底圖
+// 都看得清楚;單行、最寬 140px、超出用省略號;左邊多留 10px 讓出選中態的光暈圈。
+// 點名稱與點圓點一致:標籤是 marker 內容的後代,點擊事件冒泡到 marker 觸發同一個 gmp-click(選中該站)、title 提示也一樣,
+// 所以標籤要接收指標事件(pointerEvents auto)、游標與圓點相同(pointer);穿透到底下的地圖會讓手機上點名字沒反應。
+// 代價:標籤蓋住的範圍(最寬 140px)點下去算點這顆站點,不再穿透給底下的其他標記或地圖。
+export function withMarkerLabel(svg: SVGElement, name: string | undefined): Element {
+  const label = name?.trim()
+  if (!label) return svg
+  const wrap = document.createElement('div')
+  wrap.style.position = 'relative'
+  wrap.style.width = `${svg.getAttribute('width') ?? 14}px`
+  wrap.style.height = `${svg.getAttribute('height') ?? 14}px`
+  const text = document.createElement('span')
+  text.textContent = label
+  Object.assign(text.style, {
+    position: 'absolute',
+    left: 'calc(100% + 10px)',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    maxWidth: '140px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontSize: '12px',
+    fontWeight: '600',
+    lineHeight: '1.2',
+    color: '#3D3530',
+    textShadow: '0 0 3px #FDFCFA, 0 0 3px #FDFCFA, 0 0 2px #FDFCFA',
+    pointerEvents: 'auto',
+    cursor: 'pointer',
+  })
+  text.className = 'ps-label'
+  wrap.append(svg, text)
+  return wrap
+}
+
 // currentLocationMarkerContent:使用者目前位置的標記——2026-09 新增,
 // 沿用市場慣例的「藍色圓點」樣式(Google Maps/手機原生地圖的既有視覺
 // 語言,使用者一看就知道這是自己的位置),不是這個 codebase 自創的圖示

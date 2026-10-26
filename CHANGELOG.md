@@ -2,6 +2,29 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.42.0 — 2026-10-26
+
+地圖站點圓點旁常駐站名，桌面時間軸的預設景點卡也能顯示主題點的子景點 chip（與手機共用同一個元件），文件站新增「時間軸架構」頁。**無資料庫結構變更；環境變數、網址參數、localStorage key、LLM 工具、yaml、thought 皆不變（不需重推 onagent）；無不相容變更。**
+
+### 新增
+
+- **地圖站名標籤**：行程站點圓點右側常駐站點名稱（單行、最寬 140px、超出省略號；`planning/map/mapMarkers.ts` 新增 `withMarkerLabel`，`planStopLayer` 套用，名稱併入 `contentKey`，名稱改變才重建）。手機沒有 hover，原本看不到站名。點名稱與點圓點一致（同一個 `gmp-click`、游標相同）。畫在三個入口共用的圖層上，所以 /ai-plan、登入後、行程詳情頁同時生效。已知限制：標籤沒有避讓，站點密集時會重疊；標籤蓋住的範圍點下去算點該站點。
+- **子景點 chip 共用元件** `planning/timeline/ThemeChildChips`（由手機橫向時間軸原本的 chip 抽出，樣式不變）：手機橫向時間軸與桌面 `PlanTimelineView` 的預設景點卡都用它。
+- **桌面預設景點卡新增子景點 chip**：節點帶 `attractions`／`places` 時，預設卡下方列出子景點（名稱經資料存取層解析，解析前顯示 id）。`PlanTimelineView` 新增選填屬性 `onSelectThemeChild(parentId, child)`；登入後（`TripPlanPage`）與 /ai-plan（`SimPlanLayer`）選中主題卡本身（與手機版一致），行程詳情頁選取該子景點。自訂卡（`renderStopCard`）不經過這裡。
+- **行程詳情頁的主題點**：站點標記帶上 `children`（`resolveMapChildren`），選中主題點或點卡片上的子景點 chip 時，地圖展開範圍圓圈與子景點小點（與 /ai-plan、登入後同一套繪製）。`itineraries/example/` 目前沒有行程使用 `attractions`／`places`，實際要等有行程寫了這兩個欄位才看得到。
+- **文件站**：新增路由 `/timeline-architecture` 與目錄項目，嵌入 `timeline-architecture.html`（時間軸的資料結構、五個入口的擁有者與資料來源、兩個檢視元件的差異）；`marker-layers.html` 補站名標籤說明。
+
+### 修改
+
+- 行程詳情頁不再為主題點另換自訂卡（`createRenderItineraryStopCard` 目前沒有任何呼叫端，函式與其註解仍在，另案處理）。
+- 手機橫向時間軸的 chip 改呼叫共用元件，外觀與行為不變（刪除該檔自己的 `.themeChildChip` 樣式，只留卡片內外距）。
+
+### 已知未處理
+
+- 站名標籤的外觀（深色底圖的對比、密集重疊）尚未在瀏覽器確認。
+- 桌面點 chip 在登入後與 /ai-plan 只選中主題卡本身（不指定子景點），與行程詳情頁選取子景點不同。
+- `ThemeChildChips` 沿用手機版寫法：`<button role="listitem">`（螢幕閱讀器當清單項目而非按鈕），尚未改成 `<li>` 包 `<button>`。
+
 ## v0.41.0 — 2026-10-25
 
 詢問頁（選國家、城市、景點、交通方式）大幅改版，全站「載入中站位」統一成共用元件，並讓資料未到時外框不再跳動。**無資料庫結構變更；環境變數、網址參數、localStorage key、LLM 工具、yaml、thought 皆不變（不需重推 onagent）。**

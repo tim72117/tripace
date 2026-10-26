@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, CalendarDays, MapPin } from 'lucide-react'
 import { PlanTimelineView } from '../planning/timeline/PlanTimelineView'
 import { listNodes, lodgingsOf, type PlanTimeline } from '../planning/timeline/model'
-import { lodgingMapMarkers } from '../planning/timeline/resolved'
+import { lodgingMapMarkers, resolveMapChildren } from '../planning/timeline/resolved'
 import { useResolvedRefs } from '../planning/data/PlanDataProvider'
 import { Lightbox } from '../planning/place/PhotoCarousel'
 import type { MapHandle } from '../planning/map/NativeMapBase'
@@ -220,10 +220,10 @@ export function AiItineraryDetailPageMapView({ itinerary, timeline, dark = false
   // timeline——頁面(AiItineraryDetailPage)那一份唯一的時間軸:站點座標已從共用 store 蓋上,見 useResolvedItineraryTimeline.ts。
   // steps——依序列出全部節點(不含天的標題),給地圖標記、鏡頭、路線這些「查節點」用途;視圖本身吃 timeline。
   const steps = useMemo(() => listNodes(timeline), [timeline])
-  // lodgings/lodgingRefs——住宿(PlanTimeline.lodgings)的 placeId 經訪客版資料存取層解析(與站點座標同一條路徑):
-  // 名稱給時間軸的住宿橫幅,座標給下方 mapStops 的旅館圓點。
+  // lodgings/resolvedRefs——住宿(PlanTimeline.lodgings)的 placeId 與主題點底下的 attractions/places 經訪客版資料存取層解析
+  // (與站點座標同一條路徑、同一個共用 store):旅館座標給下方 mapStops 的旅館圓點;子景點的名稱給卡片 chip、座標給主題點展開。
   const lodgings = lodgingsOf(timeline)
-  const lodgingRefs = useResolvedRefs(steps, lodgings)
+  const resolvedRefs = useResolvedRefs(steps, lodgings)
   // center——依這份行程自己的站點動態算(見 initialCenter.ts)。依賴整個 itinerary 物件:同 id 的內容換版(靜態版換成資料庫版)
   // 時中心要跟著更新;呼叫端(AiItineraryDetailPage)給的是穩定參照,不會每次 render 重算。
   const center = useMemo(() => initialCenterOf(itinerary), [itinerary])
@@ -247,13 +247,6 @@ export function AiItineraryDetailPageMapView({ itinerary, timeline, dark = false
   // 沒設定這個欄位的既有行程行為不變。是否渲染仍由 isPlayfulUI 把關,
   // borderStyle 只決定主題。
   const isMapleBorder = itinerary.borderStyle === 'maple-leaf'
-  // renderStopCard——一般行程不傳,直接用 PlanTimelineView 的預設景點卡(與 /ai-plan、登入後同一張卡);
-  // 只有行程資料宣告 cardTheme:'onsen-autumn'(目前只有 jozankei-1day)時才換成秋日泡湯主題卡。
-  const cardTheme = itinerary.cardTheme
-  const renderStopCard = useMemo(
-    () => (cardTheme === 'onsen-autumn' ? createRenderOnsenAutumnStopCard() : undefined),
-    [cardTheme],
-  )
   // foodSpots——2026-10 改版,使用者明確要求「將目前模擬的資料改成串接
   // 真的 API 資料」:小豪洲沙茶爐中山店/阿蓮牛肉湯這兩筆已經用 CLI
   // (itinerary-page set)寫進 tainan-chikan-2day 的 itinerary_pages
@@ -277,6 +270,13 @@ export function AiItineraryDetailPageMapView({ itinerary, timeline, dark = false
   // id 比對時,美食清單的 id 不會誤命中任何時間軸卡片,FoodSpotPanel 同理。
   // 選取與 hover 用共用的 usePlanSelection(planning/timeline/usePlanStopsState,/ai-plan 模擬態、登入後也是它的同一份狀態形狀)。
   const { selectedStopId, hoverStopId, setSelectedStopId, setHoverStopId } = usePlanSelection()
+  // renderStopCard——一般行程不傳,直接用 PlanTimelineView 的預設景點卡(與 /ai-plan、登入後同一張卡,主題點的子景點 chip
+  // 也由預設卡畫,見 planning/timeline/ThemeChildChips);只有行程資料宣告 cardTheme:'onsen-autumn'(目前只有 jozankei-1day)時
+  // 才換成秋日泡湯主題卡。
+  const cardTheme = itinerary.cardTheme
+  const renderStopCard = useMemo(() => (cardTheme === 'onsen-autumn' ? createRenderOnsenAutumnStopCard() : undefined), [cardTheme])
+  // 點子景點 chip:選取該子景點(地圖展開它所屬的主題點,見 planStops.ts 的 resolveExpandedThemeId)。
+  const selectThemeChild = useCallback((_parentId: string, child: { id: string }) => setSelectedStopId(child.id), [setSelectedStopId])
   const [lightbox, setLightbox] = useState<{ photos: string[]; alt: string } | null>(null)
   const mountedIdsRef = useRef<Set<string>>(new Set())
 
@@ -317,7 +317,12 @@ export function AiItineraryDetailPageMapView({ itinerary, timeline, dark = false
   const mapStops = useMemo<PlanStopMarker[]>(() => {
     const stopMarkers = steps
       .filter((s) => s.type === 'stop' && s.lat != null && s.lng != null)
-      .map((s) => ({ id: s.id, lat: s.lat!, lng: s.lng!, name: s.name }))
+      .map((s) => {
+        // 主題點:已查到座標的子景點掛在 children,選中主題點(或點卡片上的子景點 chip)時由 planStopLayer 展開
+        // 範圍圓圈與子景點小點,與 /ai-plan、登入後同一套(見 planning/map/marker/planStops.ts)。沒有就不帶這個欄位。
+        const children = resolveMapChildren(s, resolvedRefs)
+        return { id: s.id, lat: s.lat!, lng: s.lng!, name: s.name, ...(children.length > 0 ? { children } : {}) }
+      })
     const foodMarkers: PlanStopMarker[] = []
     for (const spot of foodSpots) {
       const d = foodSpotDetails[spot.id]
@@ -326,8 +331,8 @@ export function AiItineraryDetailPageMapView({ itinerary, timeline, dark = false
       }
     }
     // 旅館圓點:座標由 placeId 查到才有,樣式見 LODGING_MARKER_GLYPH;連線只由行程節點切段,旅館不在線上。
-    return [...stopMarkers, ...lodgingMapMarkers(lodgings, lodgingRefs), ...foodMarkers]
-  }, [steps, lodgings, lodgingRefs, foodSpots, foodSpotDetails])
+    return [...stopMarkers, ...lodgingMapMarkers(lodgings, resolvedRefs), ...foodMarkers]
+  }, [steps, lodgings, resolvedRefs, foodSpots, foodSpotDetails])
 
   // routeSegments——站點之間的連線:有交通膠囊的那一段才畫,規則在 planning/timeline/segments.ts(三個入口共用,
   // 2026-10-24 起與 /ai-plan、登入後同一個 routeLineLayer、同一個主題強調色;原本這頁依天換色的 routePolylineLayer 已移除)。
@@ -394,6 +399,7 @@ export function AiItineraryDetailPageMapView({ itinerary, timeline, dark = false
           scrollClassName={styles.timelineScroll}
           endMarkerClassName={styles.timelineEndMarker}
           renderStopCard={renderStopCard}
+          onSelectThemeChild={selectThemeChild}
           renderAnchorIcon={renderAnchorIcon}
           anchorDotSize={22}
         />

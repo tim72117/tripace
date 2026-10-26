@@ -120,6 +120,8 @@ export function SimPlanLayer({
       showJumpPill={showJumpPill}
       onJumpToLatest={jumpToLatest}
       onPanToStop={panToStop}
+      // onSelectThemeChild——桌面預設卡的子景點 chip:與下方手機版同語意,選中主題卡本身(展開範圍圓圈與子景點小點)。
+      onSelectThemeChild={(parentId) => setSelectedStopId(parentId)}
       // getStopTimeDragBounds/onSetStopTime——見 setStopTime 的完整
       // 說明。這兩個 prop 同時存在才會啟用拖拉手勢(見
       // PlanTimelineView.tsx handlePointerDown 開頭的判斷)。
