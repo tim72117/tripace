@@ -430,8 +430,8 @@ export function MomijiFrontPage() {
           疊加層面板(見該檔案的完整說明),CSS class 透過 overlay 建構子
           直接設定在它擁有的 canvas DOM 節點上(見該處的完整說明)。 */}
 
-      {/* 景點行程摘要卡片:點到有精選行程的景點徽章(目前是定山溪)時出現。標題、
-          地區、天數、站數與簡介來自 itineraries/example/<id>.ts(見 spotItinerary.ts),
+      {/* 景點行程摘要卡片:點到有精選行程的景點徽章時出現(有哪些景點見 momijiSpots.ts 的 itineraryId)。標題、
+          地區、天數、站數與簡介來自 itineraries/example/momiji/<id>.ts(見 spotItinerary.ts),
           「查看完整行程」連到 /itineraries/<id>。資料還在載入或載不到時仍顯示景點名稱與連結。 */}
       <SpotListPanel
         entries={SPOT_LIST_ENTRIES}

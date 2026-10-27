@@ -1,4 +1,4 @@
-import type { SampleItinerary } from '../types'
+import type { SampleItinerary } from '../../types'
 
 // 範例行程:定山溪溫泉街紅葉散策一日遊(北海道)。2026-10 新增——這份檔案
 // 是目前資料庫(itinerary_pages,slug jozankei-1day)內容的靜態備份,不是

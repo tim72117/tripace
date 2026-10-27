@@ -1,6 +1,6 @@
 // spotItinerary.ts——紅葉景點對應的精選行程:延遲載入與連結。
 //
-// 行程資料沿用 itineraries/example/<id>.ts(registry.ts 用 eager glob 收全部,
+// 行程資料沿用 itineraries/example/momiji/<id>.ts(紅葉主題行程集中放這個子目錄;registry.ts 用 eager glob 收全部,
 // 這裡改用「非 eager」glob):只有使用者點開某個景點時才載入那一份檔案,紅葉頁
 // 本身不會因此變大。檔名即行程 id 的約定與 registry.ts 一致。
 //
@@ -11,7 +11,7 @@
 import { isSampleItineraryShape } from '../itineraries/catalog'
 import type { SampleItinerary } from '../itineraries/types'
 
-const loaders = import.meta.glob<{ default: unknown }>('../itineraries/example/*.ts')
+const loaders = import.meta.glob<{ default: unknown }>('../itineraries/example/momiji/*.ts')
 
 export function itineraryPath(id: string): string {
   return `/itineraries/${id}`

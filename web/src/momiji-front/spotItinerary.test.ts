@@ -17,6 +17,23 @@ describe('景點對應的精選行程', () => {
       expect(await loadSpotItinerary(s.itineraryId!), s.name).not.toBeNull()
     }
   })
+  it('有行程的景點與行程 id 的對應(紅葉景點 12 個、各自對一份行程)', () => {
+    const linked = Object.fromEntries(MOMIJI_SPOTS.filter((x) => x.itineraryId).map((x) => [x.id, x.itineraryId]))
+    expect(linked).toEqual({
+      jozankei: 'jozankei-1day',
+      oirase: 'oirase-1day',
+      kakunodate: 'kakunodate-1day',
+      nikko: 'nikko-2day',
+      hakone: 'hakone-2day',
+      kawaguchiko: 'kawaguchiko-1day',
+      kurobe: 'unazuki-1day',
+      kamikochi: 'kamikochi-1day',
+      arashiyama: 'kyoto-arashiyama-1day',
+      tofukuji: 'kyoto-higashiyama-1day',
+      yoshino: 'yoshino-1day',
+      miyajima: 'miyajima-1day',
+    })
+  })
   it('不存在的行程 id 回 null,不丟錯', async () => {
     expect(await loadSpotItinerary('no-such-itinerary')).toBeNull()
   })

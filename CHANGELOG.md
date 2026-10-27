@@ -2,6 +2,31 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.45.1 — 2026-10-27
+
+紅葉前線的賞楓景點新增 11 個精選行程連結（原本只有定山溪），行程靜態檔改放 `example/momiji/` 子目錄；每份新行程的左側「相關資訊」區塊帶「紅葉前線」連結。**無資料庫結構變更；環境變數、網址參數、localStorage key、LLM 工具、yaml、thought 皆不變（不需重推 onagent）；無新的 npm 相依；無不相容變更**（`example/` 內的行程檔搬了位置，但都經 `registry.ts` 的 glob 載入，沒有程式直接匯入這些檔案的路徑）。
+
+### 新增
+
+- **11 份紅葉主題精選行程**（`web/src/itineraries/example/momiji/`）：`kyoto-arashiyama-1day`、`kyoto-higashiyama-1day`、`nikko-2day`、`hakone-2day`、`kawaguchiko-1day`、`miyajima-1day`、`oirase-1day`、`kakunodate-1day`、`yoshino-1day`、`kamikochi-1day`、`unazuki-1day`。站點的名稱、座標、`placeId` 都對應資料庫已建立的景點，同一區不排時間的周邊景點放在站點的 `attractions`（景點 id）。每份都帶 `sidebar`（延伸閱讀 → 紅葉前線）。這些檔案是資料庫 `itinerary_pages` 內容的靜態備份：行程頁以 API 為優先、查無才退回這裡；紅葉前線的景點卡片只讀這裡。
+- 紅葉前線 `momijiSpots.ts` 的 12 個景點（原本 1 個）有 `itineraryId`，點開出現行程摘要卡片；`spotItinerary.test.ts` 新增「12 個景點與行程 id 的對應」測試。
+
+### 修改
+
+- 行程靜態檔搬進子目錄：`jozankei-1day.ts` 從 `example/` 移到 `example/momiji/`（內容不變，只改型別匯入路徑）。`registry.ts` 的 glob 改成 `./example/**/*.ts`（含子目錄）；紅葉前線 `spotItinerary.ts` 的 glob 只讀 `example/momiji/`。
+- `MomijiFrontPage.tsx` 的卡片註解不再寫死景點數量。
+
+### 資料（不在程式碼內）
+
+- 景點：12 個主題點加周邊精選點（含吉野山、上高地）共新增 86 筆，已用 `attraction sync` 推到正式站。景點同步只搬景點表，照片沒有一起搬，新增景點尚未補圖。
+- 行程：11 份已用 `itinerary-page add` 寫進正式站資料庫並發佈；修改行程內容時資料庫與靜態檔要一起改。
+
+### 已知未處理
+
+- 行程的時間與時長是依地理順序粗排，沒核對營業時間與交通時間；站間偏緊的有：奧入瀨 十和田湖 → 蔦沼（約 16 公里、只留 30 分鐘）、角館 抱返り渓谷 → 田澤湖（約 12 公里、只留 30 分鐘），嵐山與上高地有幾處站間 0 分鐘銜接。
+- `spotItinerary.ts` 的 glob 只讀 `example/momiji/`，之後紅葉景點若要接到其他目錄的行程檔需一併調整。
+- 11 份行程沒有交通資訊（`transitFromPrev`）；畫面（側欄、站點卡片、地圖）沒有在瀏覽器逐項確認。
+
 ## v0.45.0 — 2026-10-27
 
 夜遊九份島後方改成一整面有菱角的峭壁山壁（九份依山而建），島的地形資料新增斜坡與貼坡擺放；首頁九份頁移除 KKday 聯盟卡片；行程詳情頁左側不再有全站預設連結。**無資料庫結構變更；環境變數、網址參數、localStorage key、LLM 工具、yaml、thought 皆不變（不需重推 onagent）；無新的 npm 相依。**
