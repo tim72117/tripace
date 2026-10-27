@@ -1,4 +1,5 @@
 import type { PlanNode, PlanTimeline } from './model'
+import { isWalkingTransit } from './presentation'
 
 // routeSegments——地圖上「站點之間的連線」要畫哪幾段(2026-10-24,三個入口統一)。
 //
@@ -23,6 +24,8 @@ export interface RouteSegment {
   toId: string
   from: { lat: number; lng: number }
   to: { lat: number; lng: number }
+  // walking——這一段是步行(isWalkingTransit):true 才有這個欄位,地圖畫腳印而不是實線;其他交通方式不帶。
+  walking?: true
 }
 
 function coordOf(node: PlanNode): { lat: number; lng: number } | null {
@@ -39,7 +42,16 @@ export function routeSegmentsFromTimeline(timeline: PlanTimeline): RouteSegment[
       if (prev && node.transitFromPrev) {
         const from = coordOf(prev)
         const to = coordOf(node)
-        if (from && to) segments.push({ id: `${prev.id}->${node.id}`, fromId: prev.id, toId: node.id, from, to })
+        if (from && to) {
+          segments.push({
+            id: `${prev.id}->${node.id}`,
+            fromId: prev.id,
+            toId: node.id,
+            from,
+            to,
+            ...(isWalkingTransit(node.transitFromPrev) ? { walking: true as const } : {}),
+          })
+        }
       }
       prev = node
     }

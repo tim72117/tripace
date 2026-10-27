@@ -1,4 +1,5 @@
 import type { PolylineDrawable } from '../types'
+import { FOOTPRINT_LEFT, FOOTPRINT_RIGHT, footprintSpacing } from './footprintIcon'
 
 // routeStyle——連線(站點之間的線)共用的樣式(2026-10,連線樣式柔化)。
 //
@@ -112,5 +113,55 @@ export function dottedLineOptions(color: string): PolylineOptions {
         repeat: DOTTED_REPEAT,
       },
     ],
+  }
+}
+
+// 步行段:只有腳印,沒有線(不畫實線、光暈,連底線也沒有)。沿路徑交錯排列左右腳印(footprintIcon.ts,間距與大小隨縮放,
+// 見 footprintSpacing)。腳印填強調色、描一圈淡邊(深色底圖用黑、淺色用白),在複雜底圖上也讀得出來。左右腳 offset 錯開
+// 一步(各自 repeat 兩步),起點不貼著圓點。
+//
+// 沒有底線之後,路徑短到放不下一步時(icons 的像素 offset 超出路徑長度就畫不出來)整段會消失。所以呼叫端傳路徑在螢幕上的
+// 長度 pathPx:不到兩步(stepPx*2,再乘 ZOOM_ROUNDING_MARGIN)就改用百分比位置各放一隻腳印(35%、65%,不重複),短段至少看得到一對腳印。
+// 沒傳 pathPx 就一律走沿路重複。
+// 傳進來的 zoom 是取整後的等級(useSharedDrawLayer 的 useRoundedZoom),實際縮放可能比它大最多 0.5 級,
+// 路徑的螢幕長度因此最多被高估 2^0.5 倍;判斷「放不放得下」時把門檻乘上這個係數,寧可多走百分比位置也不要
+// 讓右腳被推到路徑外畫不出來。
+export const ZOOM_ROUNDING_MARGIN = Math.SQRT2
+export const FOOTPRINT_SHORT_LEFT_OFFSET = '35%'
+export const FOOTPRINT_SHORT_RIGHT_OFFSET = '65%'
+
+// metersToPixels——公尺長度換成螢幕像素(Web Mercator:zoom 0 時赤道每像素 156543.03392 公尺,隨緯度與縮放縮小)。
+export function metersToPixels(meters: number, lat: number, zoom: number): number {
+  const metersPerPixel = (156543.03392 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom
+  return meters / metersPerPixel
+}
+
+export function routeFootprintOptions(
+  color: string,
+  { dark = false, zoom, pathPx }: { dark?: boolean; zoom: number; pathPx?: number },
+): PolylineOptions {
+  const { stepPx, repeatPx, scale } = footprintSpacing(zoom)
+  const icon = (path: string) => ({
+    path,
+    scale,
+    fillColor: color,
+    fillOpacity: ROUTE_STROKE_OPACITY,
+    strokeColor: dark ? '#000000' : '#ffffff',
+    strokeOpacity: 0.7,
+    strokeWeight: 0.8,
+  })
+  const fitsRepeat = pathPx === undefined || pathPx >= stepPx * 2 * ZOOM_ROUNDING_MARGIN
+  return {
+    // strokeOpacity 0:線本身不畫,只有 icons(腳印)。
+    strokeOpacity: 0,
+    icons: fitsRepeat
+      ? [
+          { icon: icon(FOOTPRINT_LEFT), offset: `${Math.round(stepPx / 2)}px`, repeat: `${Math.round(repeatPx)}px` },
+          { icon: icon(FOOTPRINT_RIGHT), offset: `${Math.round(stepPx * 1.5)}px`, repeat: `${Math.round(repeatPx)}px` },
+        ]
+      : [
+          { icon: icon(FOOTPRINT_LEFT), offset: FOOTPRINT_SHORT_LEFT_OFFSET },
+          { icon: icon(FOOTPRINT_RIGHT), offset: FOOTPRINT_SHORT_RIGHT_OFFSET },
+        ],
   }
 }

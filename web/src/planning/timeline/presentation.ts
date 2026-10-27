@@ -55,3 +55,15 @@ export const TRANSIT_MODE_CHOICES: { mode: string; label: string }[] = [
   { mode: '捷運', label: '捷運' },
   { mode: '開車', label: '開車' },
 ]
+
+// VEHICLE_TRANSIT_MODES——交通膠囊顯示「車輛」圖示的 mode(縱向時間軸 PlanTimelineView 的 TRANSIT_MODE_ICONS 的鍵,要同步):
+// 開車、公車、捷運、大眾運輸,以及精選行程人工撰寫的電車、巴士。不在這張表的 mode(含沒有 mode)一律當步行,
+// 對齊後端 iconForTransitMode「查不到就當步行」與膠囊回退 Footprints 的語意。
+const VEHICLE_TRANSIT_MODES = new Set(['開車', '公車', '捷運', '大眾運輸', '電車', '巴士'])
+
+// isWalkingTransit——這段交通是不是步行(地圖連線據此畫腳印,與膠囊的 Footprints 圖示同一個判斷)。
+// 查詢中(loading)還不知道交通方式,回 false:不然會先畫腳印、查到開車再換成實線,線的樣子會閃一下。
+export function isWalkingTransit(transit: { loading?: boolean; mode?: string }): boolean {
+  if (transit.loading) return false
+  return !VEHICLE_TRANSIT_MODES.has(transit.mode ?? '')
+}

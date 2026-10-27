@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { routeLineLayer, type RouteLineSegment } from './routeLineLayer'
 import { arcChordMeters, arcPath } from './routeArc'
-import { ROUTE_STROKE_WEIGHT, routeArrowOffsets, routeCasingOptions, routeStrokeOptions } from './routeStyle'
+import { FOOTPRINT_LEFT, FOOTPRINT_RIGHT, footprintSpacing } from './footprintIcon'
+import { ROUTE_STROKE_WEIGHT, metersToPixels, routeArrowOffsets, routeCasingOptions, routeStrokeOptions } from './routeStyle'
 import { composeLayers } from '../compose'
 import { signatureOf } from '../diff'
 import type { PolylineDrawable } from '../types'
@@ -82,5 +83,86 @@ describe('routeLineLayer', () => {
       'routeLine:a->b:casing',
       'routeLine:a->b',
     ])
+  })
+
+  describe('步行段(walking)畫腳印', () => {
+    const walk = (id: string, from: [number, number], to: [number, number]): RouteLineSegment => ({ ...seg(id, from, to), walking: true })
+    const W = walk('w', [25, 121], [25.003, 121])
+    // LONG——約 2.2 公里,在 zoom 13~17 都放得下好幾步(W 約 333 公尺,縮小後會短到放不下一步)。
+    const LONG = walk('long', [25, 121], [25.02, 121])
+
+    it('只有一個 drawable(沒有光暈),id 是段 id、group routeLine、路徑與實線段同一條弧線', () => {
+      const ds = polys([W])
+      expect(ds.map((d) => [d.id, d.group])).toEqual([['w', 'routeLine']])
+      expect(ds[0].path).toEqual(arcPath(W.from, W.to))
+    })
+
+    it('左右腳兩組 icons 交錯、repeat 相同(兩步)、顏色取強調色,沒有圓頭與箭頭', () => {
+      const icons = polys([W], { accentColor: '#123456' })[0].options?.icons ?? []
+      expect(icons.map((i) => i.icon?.path)).toEqual([FOOTPRINT_LEFT, FOOTPRINT_RIGHT])
+      expect(icons[0].repeat).toBe(icons[1].repeat)
+      expect(parseFloat(icons[1].offset as string)).toBeGreaterThan(parseFloat(icons[0].offset as string))
+      expect(icons.every((i) => i.icon?.fillColor === '#123456')).toBe(true)
+    })
+
+    it('間距與大小隨 zoom:拉近腳印變大、間距變寬;不傳 zoom 用基準等級', () => {
+      const repeatAt = (zoom?: number) => {
+        const layer = routeLineLayer({ segments: [LONG], accentColor: '#f00', zoom })
+        return parseFloat(((layer.drawables[0] as PolylineDrawable).options?.icons ?? [])[0].repeat as string)
+      }
+      expect(repeatAt(17)).toBeGreaterThan(repeatAt(15))
+      expect(repeatAt(13)).toBeLessThan(repeatAt(15))
+      expect(repeatAt(undefined)).toBe(repeatAt(15))
+      expect(repeatAt(15)).toBe(Math.round(footprintSpacing(15).repeatPx))
+    })
+
+    it('腳印沒有線:strokeOpacity 為 0(不畫實線也不留底線),只剩 icons', () => {
+      const o = polys([W])[0].options
+      expect(o?.strokeOpacity).toBe(0)
+      expect(o?.icons?.length).toBe(2)
+    })
+
+    it('路徑夠長:沿路重複排列(有 repeat、像素 offset)', () => {
+      const icons = polys([LONG])[0].options?.icons ?? []
+      expect(icons.every((i) => typeof i.repeat === 'string')).toBe(true)
+      expect(icons.every((i) => (i.offset as string).endsWith('px'))).toBe(true)
+    })
+
+    it('路徑短到放不下一步:改用百分比位置各放一隻腳印、不重複,短段才不會因為沒有底線而消失', () => {
+      const SHORT = walk('s', [25, 121], [25.0003, 121]) // 約 33 公尺,zoom 15 約 8px
+      const icons = polys([SHORT])[0].options?.icons ?? []
+      expect(icons.map((i) => i.icon?.path)).toEqual([FOOTPRINT_LEFT, FOOTPRINT_RIGHT])
+      expect(icons.map((i) => i.offset)).toEqual(['35%', '65%'])
+      expect(icons.every((i) => i.repeat === undefined)).toBe(true)
+    })
+
+    it('拉近到同一段夠長時,又回到沿路重複(依 zoom 判斷)', () => {
+      const SEG = walk('m', [25, 121], [25.00225, 121]) // 約 250 公尺:zoom 13 約 14px、zoom 18 約 462px
+      const at = (zoom: number) => (routeLineLayer({ segments: [SEG], accentColor: '#f00', zoom }).drawables[0] as PolylineDrawable).options?.icons?.[0]
+      expect(at(13)?.repeat).toBeUndefined()
+      expect(typeof at(18)?.repeat).toBe('string')
+    })
+
+    it('混合時:非步行段仍是光暈加實線,不受 zoom 影響', () => {
+      const ds = routeLineLayer({ segments: [W, AB], accentColor: '#f00', zoom: 18 }).drawables as PolylineDrawable[]
+      expect(ds.map((d) => d.id)).toEqual(['w', 'a->b:casing', 'a->b'])
+      expect(ds[2].options).toEqual(routeStrokeOptions('#f00', { arrowOffsets: routeArrowOffsets(arcChordMeters(AB.from, AB.to)) }))
+    })
+
+    it('深淺色:腳印邊線顏色跟 dark 切換;zoom 改變簽章跟著變(宿主才會更新)', () => {
+      const edge = (dark: boolean) => polys([W], { dark })[0].options?.icons?.[0].icon?.strokeColor
+      expect(edge(false)).toBe('#ffffff')
+      expect(edge(true)).toBe('#000000')
+      const sig = (zoom: number) => signatureOf(routeLineLayer({ segments: [W], accentColor: '#f00', zoom }).drawables[0]).data
+      expect(sig(16)).not.toBe(sig(15))
+    })
+  })
+
+  describe('metersToPixels', () => {
+    it('赤道 zoom 0 每像素約 156543 公尺;每放大一級像素數加倍;緯度越高同樣公尺長度的像素越多', () => {
+      expect(metersToPixels(156543.03392, 0, 0)).toBeCloseTo(1, 5)
+      expect(metersToPixels(1000, 0, 11)).toBeCloseTo(metersToPixels(1000, 0, 10) * 2, 5)
+      expect(metersToPixels(1000, 60, 10)).toBeGreaterThan(metersToPixels(1000, 0, 10))
+    })
   })
 })

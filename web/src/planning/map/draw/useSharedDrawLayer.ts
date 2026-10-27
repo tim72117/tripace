@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { GeoAttraction, GeoPlaceDetails, GeoSearchResult, GeoTripEntry } from '../../../api'
 import type { GeoSelectedKey } from '../../explore/selectedKey'
 import { useStableCallback } from '../../../hooks/useStableCallback'
@@ -9,6 +9,7 @@ import { attractionGlowLayer, filterRevealedAttractions } from './layers/attract
 import { useAttractionGlowEffects, useAttractionGlowRegistry } from './layers/attractionGlowSupport'
 import { currentLocationLayer } from './layers/currentLocationLayer'
 import { planStopLayer } from './layers/planStopLayer'
+import { FOOTPRINT_REFERENCE_ZOOM } from './layers/footprintIcon'
 import { routeLineLayer, type RouteLineSegment } from './layers/routeLineLayer'
 import { searchResultLayer } from './layers/searchResultLayer'
 import { tripEntryLayer } from './layers/tripEntryLayer'
@@ -94,6 +95,21 @@ export function sharedFeatureLayers({ currentPosition }: { currentPosition: LatL
   return [currentLocationLayer({ position: currentPosition })]
 }
 
+// useRoundedZoom——地圖縮放等級取整(Google 的縮放可以是小數,觸控縮放中會連續變動):取整後只有跨級才換值,
+// 連線的腳印不會每個畫格重算。地圖還沒就緒(或沒有 getZoom,例如測試用的假地圖)時回基準等級。
+function useRoundedZoom(mapRef: React.RefObject<google.maps.Map | null>, mapReady: boolean, mapVersion: number): number {
+  const [zoom, setZoom] = useState(FOOTPRINT_REFERENCE_ZOOM)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!mapReady || !map || typeof map.getZoom !== 'function') return
+    const read = () => setZoom(Math.round(map.getZoom() ?? FOOTPRINT_REFERENCE_ZOOM))
+    read()
+    const listener = map.addListener('zoom_changed', read)
+    return () => listener.remove()
+  }, [mapRef, mapReady, mapVersion])
+  return zoom
+}
+
 export function useSharedDrawLayer({
   mapRef,
   mapReady,
@@ -175,6 +191,8 @@ export function useSharedDrawLayer({
   // 連線光暈的顏色跟主題走(淺色白、深色黑,見 routeStyle.ts);theme 沒傳或非 'dark' 視為淺色。
   const dark = theme === 'dark'
   const hasStopDots = stopDots != null
+  // 腳印的間距隨縮放:取整後的等級,只有整級變動才重算連線(見 useRoundedZoom)。
+  const zoom = useRoundedZoom(mapRef, mapReady, mapVersion)
 
   const layers = useMemo(
     () => [
@@ -193,7 +211,7 @@ export function useSharedDrawLayer({
             }),
             // 轉乘 hover 虛線與站點圓點同一組資料(站點、轉乘配對、強調色),跟著 stopDots 一起畫。
             transitHoverLineLayer({ stops: points, hoverTransitPair, accentColor }),
-            routeLineLayer({ segments: routeSegments, accentColor, dark }),
+            routeLineLayer({ segments: routeSegments, accentColor, dark, zoom }),
           ]
         : []),
       ...(entries ? [tripEntryLayer({ entries, selectedKey: entrySelectedKey, hoverKey: entryHoverKey, accentColor })] : []),
@@ -237,6 +255,7 @@ export function useSharedDrawLayer({
       supportsHover,
       accentColor,
       dark,
+      zoom,
       routeSegments,
       onPointClick,
       onSelectedChange,
