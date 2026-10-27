@@ -38,12 +38,10 @@ export interface PlanStopMarker {
  *
  *  - 'attraction':一般站點/景點,三態(base/hover/selected)。
  *  - 'theme':主題點/聚合點——選中時展開範圍圓圈+children 顯示
- *    (取代原本 useThemeRadiusCircle 需要外部另外算 expandedThemeNode
- *    再傳 center/children 進來的做法,這裡只要點本身帶 children,內部
- *    用 selectedId 衍生判斷要不要展開)。
+ *    (不需要外部另外算「展開哪個主題點」再傳 center/children 進來:
+ *    只要點本身帶 children,內部用 selectedId 衍生判斷要不要展開)。
  *  - 'themeChild':主題點展開後的子景點——純展示小點,無法獨立被選取/
- *    hover(對齊 useThemeRadiusCircle 原本「子景點小點完全是純展示用
- *    途,沒有 onClick」的既有限制,這裡延續而非擴大範圍)。
+ *    hover(子景點小點完全是純展示用途,沒有 onClick)。
  *  - 'featured':精選點(itineraries/AiItineraryDetailPageMapView.tsx
  *    美食清單點的語意延伸,跟一般站點共用選取焦點但可能需要視覺區分)。
  *  - 'custom':保留給未來擴充、這份型別還沒預先命名的點類型,搭配
@@ -52,8 +50,7 @@ export interface PlanStopMarker {
 export type MapPointKind = 'attraction' | 'theme' | 'themeChild' | 'featured' | 'custom'
 
 /** MapMarkerPoint——單一個點的完整資料。children 只在 kind:'theme' 時
- *  有意義,驅動範圍圓圈+子景點小點(取代 useThemeRadiusCircle.ts
- *  ThemeChildPoint 的獨立型別,子景點直接巢狀在父點底下,不需要外部
+ *  有意義,驅動範圍圓圈+子景點小點(子景點直接巢狀在父點底下,不需要外部
  *  另外維護一份「目前展開到哪個主題點」的狀態去關聯兩者)。 */
 export interface MapMarkerPoint {
   id: string
@@ -68,8 +65,7 @@ export interface MapMarkerPoint {
   size?: number
   /** 只在 kind:'theme' 時有意義。選中這個點時,若 children 非空,
    *  expandedThemeId 這個衍生值會指向這個點(見 resolveExpandedThemeId 的完整
-   *  說明,取代 useThemeRadiusCircle.ts THEME_RADIUS_METERS 固定半徑
-   *  的既有設計,這裡延續)。 */
+   *  說明;範圍圓圈用固定半徑)。 */
   children?: MapMarkerChildPoint[]
 }
 
