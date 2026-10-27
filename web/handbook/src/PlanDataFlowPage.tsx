@@ -58,8 +58,8 @@ export function PlanDataFlowPage() {
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
-        <Link to="/" className={styles.back}>
-          ← 回雛形列表
+        <Link to="/category/system-docs" className={styles.back}>
+          ← 回系統文件
         </Link>
         <h1 className={styles.heading}>行程資料的分層架構</h1>
         <p className={styles.subheading}>

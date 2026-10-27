@@ -37,4 +37,9 @@ export const IDEA_GROUPS: IdeaGroupMeta[] = [
     title: '研究發想',
     blurb: '景點敘事、路徑規劃、旅伴媒合等主題的研究與點子整理。',
   },
+  {
+    id: 'system-maintenance',
+    title: '系統維護',
+    blurb: '資料同步、維運操作與工具缺口的紀錄與構想,例如景點同步的選定欄位覆蓋。',
+  },
 ]

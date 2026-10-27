@@ -25,7 +25,7 @@ export function AdAffiliateComparePage() {
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
-        <Link to="/" className={styles.back}>
+        <Link to="/category/prototypes" className={styles.back}>
           ← 回雛形列表
         </Link>
         <h1 className={styles.heading}>廣告與聯盟行銷方案比較</h1>

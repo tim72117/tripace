@@ -19,7 +19,7 @@ export function AdSystemPage() {
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
-        <Link to="/" className={styles.back}>
+        <Link to="/category/prototypes" className={styles.back}>
           ← 回雛形列表
         </Link>
         <h1 className={styles.heading}>廣告投放系統</h1>

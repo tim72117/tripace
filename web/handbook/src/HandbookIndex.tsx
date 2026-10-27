@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { getCategory } from './categories'
 import styles from './HandbookIndex.module.css'
 
 // HandbookIndex:產品方向腦力激盪(/ideas/product-direction-*,原 docs/brainstorm 文件已改寫成構想頁)
@@ -426,19 +427,47 @@ const ARCHIVED_ITEMS: {
   },
 ]
 
-export function HandbookIndex() {
+// 首頁分類(見 categories.ts)——ITEMS 依這兩個規則分到兩個分類頁:
+//   - 標題以「內部文件」開頭 → 系統文件(連同下方封存區)
+//   - path 是 /ideas(構想總覽)→ 不列在這裡,它對應「構想」分類
+//   - 其餘(構想一~二十一的雛形與登記項目)→ 點子開發
+export type ItemMode = 'prototypes' | 'system-docs'
+
+function itemMode(item: { path: string; title: string }): ItemMode | null {
+  if (item.path === '/ideas') return null
+  return item.title.startsWith('內部文件') ? 'system-docs' : 'prototypes'
+}
+
+export function itemsOfMode(mode: ItemMode) {
+  return ITEMS.filter((i) => itemMode(i) === mode)
+}
+
+// itemCountOfMode——分類卡片上顯示的篇數;系統文件另外加上封存區的項目。
+export function itemCountOfMode(mode: ItemMode): number {
+  return itemsOfMode(mode).length + (mode === 'system-docs' ? ARCHIVED_ITEMS.length : 0)
+}
+
+export function HandbookIndex({ mode }: { mode: ItemMode }) {
+  const category = getCategory(mode)
+  const items = itemsOfMode(mode)
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
-        <h1 className={styles.heading}>產品方向雛形試做</h1>
+        <Link to="/" className={styles.back}>← 首頁</Link>
+        <h1 className={styles.heading}>{category?.title ?? '產品方向雛形試做'}</h1>
         <p className={styles.subheading}>
+          {mode === 'system-docs' ? category?.blurb : null}
+          {mode === 'prototypes' ? (
+            <>
           構想一～六對應產品方向腦力激盪（/ideas/product-direction-*），構想七/八是後續延伸的獨立構想，
           構想九以後是掃描 docs/ 底下其他文件找出的構想登記（僅簡短列出 + 對應構想頁連結，非完整雛形）。
           原本散在 docs/ 的構想文件已改寫成一個構想一頁，總覽見「構想總覽」。
           這些頁面純供內部查看，不對外公開連結，資料皆為前端假資料，沒有真實後端串接。
+            </>
+          ) : null}
         </p>
         <ul className={styles.list}>
-          {ITEMS.map((item) => {
+          {items.map((item) => {
             // path 空字串——2026-10 新增(見構想七的完整說明):還沒建立
             // 對應頁面的佔位登記項目,刻意不給真實路由。用 <div> 而非
             // <Link> 渲染,避免 <Link to=""> 的相對路徑行為(會連回目前
@@ -491,6 +520,8 @@ export function HandbookIndex() {
           })}
         </ul>
 
+        {mode === 'system-docs' && (
+          <>
         {/* 封存區——2026-10 新增:使用者要求登記「散策羅盤」這個已實作
             上線的既有功能,跟上面「構想一~二十一」的雛形/發想性質不同
             (封存區是「已經做完、不需要再推進」的歸檔/備查用途),視覺上
@@ -516,6 +547,8 @@ export function HandbookIndex() {
             </li>
           ))}
         </ul>
+          </>
+        )}
       </div>
     </div>
   )

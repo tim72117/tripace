@@ -1,5 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
 import { getIdea, ideasOfGroup } from './registry'
+import { categoryOfGroup } from '../categories'
 import { IDEA_GROUPS } from './groups'
 import styles from './IdeaPage.module.css'
 
@@ -34,6 +35,7 @@ export function IdeaPage() {
   }
 
   const group = IDEA_GROUPS.find((g) => g.id === idea.group)
+  const category = categoryOfGroup(idea.group)
   const siblings = ideasOfGroup(idea.group)
   const index = siblings.findIndex((s) => s.id === idea.id)
   const prev = index > 0 ? siblings[index - 1] : undefined
@@ -42,7 +44,7 @@ export function IdeaPage() {
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
-        <Link to="/ideas" className={styles.back}>← 構想總覽{group ? `／${group.title}` : ''}</Link>
+        <Link to={category ? `/category/${category.id}` : '/ideas'} className={styles.back}>← {category ? category.title : '構想總覽'}{group ? `／${group.title}` : ''}</Link>
 
         <header className={styles.header}>
           <h1 className={styles.title}>{idea.title}</h1>

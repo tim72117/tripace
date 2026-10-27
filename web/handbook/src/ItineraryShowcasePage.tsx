@@ -22,7 +22,7 @@ export function ItineraryShowcasePage() {
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
-        <Link to="/" className={styles.back}>
+        <Link to="/category/prototypes" className={styles.back}>
           ← 回雛形列表
         </Link>
         <h1 className={styles.heading}>AI 排過的主題行程</h1>

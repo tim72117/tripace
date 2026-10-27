@@ -102,7 +102,7 @@ export function ItineraryPlayfulMapPage() {
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
-        <Link to="/" className={styles.back}>
+        <Link to="/category/prototypes" className={styles.back}>
           ← 回雛形列表
         </Link>
         <h1 className={styles.heading}>構想一附錄四：尋寶手帳攤開頁</h1>

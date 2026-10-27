@@ -26,7 +26,7 @@ export function PostComposerPage() {
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
-        <Link to="/" className={styles.back}>
+        <Link to="/category/prototypes" className={styles.back}>
           ← 回雛形列表
         </Link>
         <h1 className={styles.heading}>發文工具：圖片處理＋AI 產文</h1>

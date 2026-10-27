@@ -14,7 +14,7 @@ export function ComponentConventionsPage() {
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
-        <Link to="/" className={styles.back}>
+        <Link to="/category/prototypes" className={styles.back}>
           ← 回雛形列表
         </Link>
         <h1 className={styles.heading}>手機版手勢型元件使用規範</h1>

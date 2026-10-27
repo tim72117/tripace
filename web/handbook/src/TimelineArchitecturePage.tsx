@@ -7,7 +7,7 @@ export function TimelineArchitecturePage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <div style={{ padding: '8px 16px', borderBottom: '1px solid rgba(128,128,128,.3)', fontSize: 14 }}>
-        <Link to="/">← 回文件目錄</Link>
+        <Link to="/category/system-docs">← 回系統文件</Link>
       </div>
       <iframe
         title="時間軸架構文件"

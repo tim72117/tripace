@@ -125,7 +125,7 @@ export function ItineraryPosterPage() {
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
-        <Link to="/" className={styles.back}>
+        <Link to="/category/prototypes" className={styles.back}>
           ← 回雛形列表
         </Link>
         <h1 className={styles.heading}>構想一附錄二：版面化行程懶人包</h1>

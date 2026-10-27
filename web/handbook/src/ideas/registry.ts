@@ -6,6 +6,7 @@ import { AI_PLANNING_VISION_IDEAS } from './ai-planning-vision'
 import { DESIGN_DISCUSSION_IDEAS } from './design-discussion'
 import { RESEARCH_IDEAS } from './research'
 import { AUDIT_IDEAS } from './audit'
+import { SYSTEM_MAINTENANCE_IDEAS } from './system-maintenance'
 
 export const ALL_IDEAS: IdeaDoc[] = [
   ...PRODUCT_IDEAS,
@@ -15,6 +16,7 @@ export const ALL_IDEAS: IdeaDoc[] = [
   ...DESIGN_DISCUSSION_IDEAS,
   ...RESEARCH_IDEAS,
   ...AUDIT_IDEAS,
+  ...SYSTEM_MAINTENANCE_IDEAS,
 ]
 
 export function getIdea(id: string): IdeaDoc | undefined {

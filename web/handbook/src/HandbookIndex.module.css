@@ -159,3 +159,14 @@
   color: var(--ios-gray);
   line-height: 1.6;
 }
+
+.back {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--ios-gray);
+  text-decoration: none;
+  margin-bottom: 18px;
+}
+.back:hover {
+  color: var(--color-accent);
+}

@@ -56,7 +56,7 @@ export function RoutePathMapSkeletonPage() {
   return (
     <div className={styles.page}>
       <div className={styles.inner}>
-        <Link to="/" className={styles.back}>
+        <Link to="/category/prototypes" className={styles.back}>
           ← 回雛形列表
         </Link>
         <h1 className={styles.heading}>構想一附錄：地圖基底介面骨架雛形</h1>
