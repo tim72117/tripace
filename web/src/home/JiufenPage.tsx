@@ -55,15 +55,6 @@ const SEO_URL = `${SITE_SEO_BASE_URL}/jiufen`
 // 動到前端 repo。
 const LANDING_ASSETS_BASE = 'https://storage.googleapis.com/shuttle-tripace-web-assets/landing'
 
-// KKDAY_AFFILIATE_URL:KKpartners 後台「專屬連結」工具產生的聯盟 Deeplink
-// (cid=tripace-27468,UD1=homepage 對應放置版位,UD2=jiufen 對應景點),
-// 目標是九份/野柳/十分/平溪一日遊+夜遊行程商品頁。點擊與成交會歸因到
-// Tripace 的 KKday 聯盟帳號,30 天追蹤效期內完成訂購才算佣金(見 KKday
-// 聯盟行銷計畫合作協議)。這是本站第一個上線的聯盟行銷版位,先手動建立
-// 單一 Deeplink 驗證追蹤機制可用,之後若要幫更多景點各自掛連結,再考慮
-// 批量產生或申請 KKpartners API(目前僅開放精選合作夥伴申請,無公開文件)。
-const KKDAY_AFFILIATE_URL = 'https://www.kkday.com/zh-tw/product/2287-jiufen-yehliu-shifen-pingxi-day-tour-night-tour-from-taipei?cid=tripace-27468&ud1=homepage&ud2=jiufen'
-
 // 各站照片多數取自 Pexels(https://www.pexels.com),見對應攝影師署名——非
 // 九份實景照,是地形/建築/氛圍相近的示意用圖,待有實際景點照片時再替換。
 // 以下站點例外,已換成 Wikimedia Commons 的實景照(見各站 credit 標註)：
@@ -327,30 +318,6 @@ export function JiufenPage() {
         ))}
       </ScrollTimeline>
       </div>
-
-      {/* 2026-10 新增:聯盟行銷 Deeplink 卡片(KKday),見上方 KKDAY_AFFILIATE_URL
-          常數的完整說明。外觀完全自訂、貼合本頁紙感和風設計(對應之前廣告
-          方案比較構想裡「Deeplink 版型完全自主」的結論),不是 KKday 提供的
-          制式橫幅。rel="noopener" 防止新分頁透過 window.opener 操作本頁;
-          target="_blank" 讓使用者離開本站完成訂購時,Tripace 分頁仍保留——
-          聯盟連結設計上就是要讓使用者「離開並在對方網站完成購買」,不可用
-          iframe 嵌入對方頁面(會被追蹤 cookie 機制與多數平台條款擋下)。 */}
-      <section className="jiufen-affiliate-card">
-        <a
-          href={KKDAY_AFFILIATE_URL}
-          target="_blank"
-          rel="noopener"
-          className="jiufen-affiliate-link"
-          onClick={() => trackEvent('affiliate_link_click', { page: 'jiufen', partner: 'kkday', position: 'homepage' })}
-        >
-          <span className="jiufen-affiliate-icon">🎫</span>
-          <span className="jiufen-affiliate-text">
-            <span className="jiufen-affiliate-title">九份・野柳・十分・平溪一日遊</span>
-            <span className="jiufen-affiliate-sub">含夜遊選項・台北出發・KKday 合作行程</span>
-          </span>
-          <span className="jiufen-affiliate-arrow">→</span>
-        </a>
-      </section>
 
       <section className="jiufen-final-cta">
         <h2>把九份的故事，排進你的下一趟行程</h2>

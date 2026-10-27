@@ -4,7 +4,7 @@ import { sanitizeAd, sanitizeSections } from './sidebarData'
 
 // 靜態行程檔(example/*.ts)裡寫的 sidebar 資料:畫面端會丟掉不合格的項目,但作者應該在寫的
 // 當下就發現寫錯,所以這裡要求「一個都不能被丟掉」,連到其他行程的連結也必須指向真的存在的行程。
-// 目前沒有靜態行程設定 sidebar(預設連結見 sidebarDefaults.ts),有人加了就會被檢查到。
+// 目前沒有靜態行程設定 sidebar,有人加了就會被檢查到。
 describe('靜態行程的 sidebar 資料', () => {
   it('有設定 sidebar 的行程:區段與連結都通過畫面端檢查、站內行程連結存在、廣告合格', () => {
     const ids = new Set(SAMPLE_ITINERARIES.map((it) => it.id))

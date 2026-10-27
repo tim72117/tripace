@@ -68,8 +68,8 @@ export interface SampleFoodSpot {
 
 // SampleSidebar——選填,行程頁左側「相關資訊」區塊的內容(連結與廣告),跟 foodSpots/
 // cardTheme 一樣是 content JSON 的擴充欄位,可以用 CLI(itinerary-page set)寫進資料庫,
-// 也可以直接寫在 example/*.ts。沒設定(undefined)時整個區塊用全站預設:預設連結
-// (sidebarDefaults.ts,目前只有紅葉前線)+ 預設廣告(sidebarAd.ts)。
+// 也可以直接寫在 example/*.ts。沒設定(undefined)時沒有任何連結(沒有全站預設連結);
+// 廣告則用全站預設(sidebarAd.ts,目前沒有)。連結與廣告都沒有時整個區塊不顯示。
 //
 // 渲染端(sidebarData.ts resolveSidebar)會檢查內容,不合格的項目直接丟掉,不會原樣輸出:
 //   - 連結只收站內路徑(以單一 / 開頭,不含空白與反斜線);要連外部網址不在這個欄位的範圍。
@@ -98,7 +98,7 @@ export interface SampleSidebarAd {
 }
 
 export interface SampleSidebar {
-  // sections——有值(是陣列)時取代預設區塊(sidebarDefaults.ts),內容完全由資料決定;空陣列代表不顯示任何連結區塊。
+  // sections——連結區段;沒寫(或不是陣列)就沒有連結,內容完全由資料決定;空陣列代表不顯示任何連結區塊。
   sections?: SampleSidebarSection[]
   // ad——undefined:用全站預設廣告(sidebarAd.ts,沒有預設就不顯示);null:這份行程不顯示廣告;物件:這份行程自己的廣告。
   // 沒有廣告時整個版位(含「廣告」標示)都不渲染,不留預留框。

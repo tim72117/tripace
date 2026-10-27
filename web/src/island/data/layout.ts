@@ -21,6 +21,7 @@
 // 讓旅人走石階時能平順爬升，而不是在階地邊緣瞬間跳上去（見 docs/visual-plan.md 的契約建議）。
 
 import type { IslandLayout, LightKey, Placement, Pt, StopAnchor } from './layoutTypes'
+import { heightAt } from '../logic/terrain'
 
 // ---------------------------------------------------------------------------
 // 固定種子亂數
@@ -109,6 +110,26 @@ const TERRACES = [
   { outline: T4, y: 9.5, color: '#a39a7a' }, // 茶樓前的石板小廣場
 ]
 
+// 島後方(北側)整面山壁:九份依山而建,背後就是山。輪廓沿島北緣(向內縮 6% 留出邊),前緣是一條橫向的直線;
+// 前緣接在階地後緣(y=6),以 60° 陡坡快速升高,坡頂之後夾在 y1 成山頂。
+// 低端 y0 等於 T2 的高度,與階地交界沒有縫(heightAt 取兩者較高者)。
+const SLOPE_RUN = 4 // 水平坡長
+const SLOPE_DEG = 60
+const WALL_FRONT_Z = -16 // 山壁輪廓只收島輪廓上 z 小於這個值(北側)的點
+const WALL_INSET = 0.94
+const SLOPES = [
+  {
+    outline: OUTLINE.filter(([, z]) => z < WALL_FRONT_Z).map(([x, z]) => [round2(x * WALL_INSET), round2(z * WALL_INSET)] as Pt),
+    from: [0, -18] as Pt,
+    to: [0, -18 - SLOPE_RUN] as Pt,
+    y0: 6,
+    y1: 6 + SLOPE_RUN * Math.tan((SLOPE_DEG * Math.PI) / 180),
+    color: '#7e9558',
+    // 有菱角的峭壁:稜面約 10/2^3 = 1.25 格,陡面岩色,內部頂點最多往上長 0.55(heightAt 不含這個起伏)
+    crag: { seed: 11, amp: 0.55, detail: 3, rockColor: '#8f8372' },
+  },
+]
+
 function inPoly(x: number, z: number, poly: Pt[]): boolean {
   let inside = false
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -119,11 +140,9 @@ function inPoly(x: number, z: number, poly: Pt[]): boolean {
   return inside
 }
 
-// 某點的地表高度：取包含它的最高階地
+// 某點的地表高度：取包含它的最高階地或斜坡
 export function groundY(x: number, z: number): number {
-  let y = 0
-  for (const t of TERRACES) if (inPoly(x, z, t.outline)) y = Math.max(y, t.y)
-  return y
+  return heightAt({ topY: 0, terraces: TERRACES, slopes: SLOPES }, x, z)
 }
 
 // ---------------------------------------------------------------------------
@@ -266,13 +285,16 @@ const placed: Circle[] = []
 const scatter: Placement[] = []
 
 // 腳印在同一層平面上（周圍取樣點的高度都一樣，避免卡進上一層的牆或懸在下一層邊緣）
+// 峭壁的岩面會往上鼓(crag),所以腳印不得壓到斜坡輪廓內,否則物件會被岩面穿過
+const onSlope = (x: number, z: number) => SLOPES.some((sl) => inPoly(x, z, sl.outline))
+
 function flatFootprint(x: number, z: number, r: number, y: number): boolean {
-  if (!inPoly(x, z, OUTLINE)) return false
+  if (!inPoly(x, z, OUTLINE) || onSlope(x, z)) return false
   for (let k = 0; k < 8; k++) {
     const a = (k / 8) * TAU
     const px = x + Math.cos(a) * r
     const pz = z + Math.sin(a) * r
-    if (!inPoly(px, pz, OUTLINE) || groundY(px, pz) !== y) return false
+    if (!inPoly(px, pz, OUTLINE) || onSlope(px, pz) || groundY(px, pz) !== y) return false
   }
   return true
 }
@@ -542,10 +564,28 @@ const LIGHTING: LightKey[] = [
 
 // ---------------------------------------------------------------------------
 
+// 10) 峭壁岩塊(試做):直接貼在 60° 山壁上,tilt 讓它對齊坡面法線(面朝 +z),略埋進坡裡。
+// 在所有 tryPlace 之後才放,不影響前面用亂數決定的擺放。
+{
+  const x = 8
+  const z = -20
+  scatter.push({
+    model: 'deco-cliff-rock',
+    x,
+    z,
+    y: round2(groundY(x, z) - 0.25),
+    rotY: 0.6,
+    scale: 2.2,
+    tilt: [Math.PI / 3, 0],
+    seed: 4242,
+  })
+}
+
 export const ISLAND_LAYOUT: IslandLayout = {
   outline: OUTLINE,
   topY: 0,
   terraces: TERRACES,
+  slopes: SLOPES,
   sea: { y: -3.5, color: '#2a4f78' },
   thickness: 7,
   river: { points: [], width: 2.5 },

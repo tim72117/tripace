@@ -73,13 +73,12 @@ describe('sanitizeAd', () => {
 })
 
 describe('resolveSidebar', () => {
-  it('沒有 sidebar 欄位:用全站預設連結(目前只有紅葉前線),沒有預設廣告就沒有廣告', () => {
+  it('沒有 sidebar 欄位:沒有任何連結(沒有全站預設),也沒有廣告', () => {
     const r = resolveSidebar(base(), null)
-    expect(r.sections).toHaveLength(1)
-    expect(r.sections[0].links.map((l) => [l.label, l.to])).toEqual([['紅葉前線', '/momiji-front']])
+    expect(r.sections).toEqual([])
     expect(r.ad).toBeNull()
   })
-  it('sections 有值:完全由資料決定,取代預設連結', () => {
+  it('sections 有值:連結完全由資料決定', () => {
     const r = resolveSidebar(base({ sections: [{ heading: '延伸閱讀', links: [{ label: '另一份行程', to: '/itineraries/other' }] }] }), null)
     expect(r.sections).toHaveLength(1)
     expect(r.sections[0].links.map((l) => l.to)).toEqual(['/itineraries/other'])
@@ -87,13 +86,13 @@ describe('resolveSidebar', () => {
   it('sections 是空陣列:明確不顯示任何連結區塊', () => {
     expect(resolveSidebar(base({ sections: [] }), null).sections).toEqual([])
   })
-  it('sections 裡的壞資料被丟掉、不退回預設連結', () => {
+  it('sections 裡的壞資料被丟掉', () => {
     const r = resolveSidebar(base({ sections: [{ heading: 'A', links: [{ label: 'x', to: 'https://evil.com' }] }] }), null)
     expect(r.sections).toEqual([])
   })
-  it('sections 不是陣列(壞資料)視為沒設定,走預設連結', () => {
+  it('sections 不是陣列(壞資料)視為沒設定:沒有連結', () => {
     const bad = base({ sections: 'oops' as unknown as never })
-    expect(resolveSidebar(bad, null).sections[0].links[0].to).toBe('/momiji-front')
+    expect(resolveSidebar(bad, null).sections).toEqual([])
   })
   it('ad:undefined 用全站預設、物件用自己的、null 不顯示版位', () => {
     expect(resolveSidebar(base(), GOOD_AD).ad).toEqual(GOOD_AD)

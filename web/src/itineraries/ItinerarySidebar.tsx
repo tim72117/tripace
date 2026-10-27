@@ -6,7 +6,7 @@ import type { SampleItinerary, SampleSidebarAd } from './types'
 import styles from './ItinerarySidebar.module.css'
 
 // ItinerarySidebar——行程頁左側的「相關資訊」區塊:站內連結 + 廣告版位。內容由資料決定:
-// 行程的 sidebar 欄位優先,沒設定用全站預設(sidebarDefaults.ts/sidebarAd.ts),見 sidebarData.ts。
+// 連結只來自行程的 sidebar 欄位(沒設定就沒有連結);廣告沒設定時用全站預設(sidebarAd.ts)。見 sidebarData.ts。
 //
 // placement 決定它在頁面裡怎麼放(同一份內容、三種擺法):
 //   - rail:一般單欄版。寬螢幕貼在置中欄位的左邊(捲動時黏住),窄螢幕接在內容下方。

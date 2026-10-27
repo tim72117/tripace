@@ -15,10 +15,19 @@ function renderSidebar(defaultAd?: Parameters<typeof ItinerarySidebar>[0]['defau
 }
 
 describe('ItinerarySidebar', () => {
-  it('沒有 sidebar 資料時顯示預設連結(紅葉前線),是站內路徑', () => {
-    renderSidebar(null)
-    expect(screen.getByRole('link', { name: /紅葉前線/ })).toHaveAttribute('href', '/momiji-front')
+  it('沒有 sidebar 資料也沒有廣告時整個區塊不出現(沒有全站預設連結)', () => {
+    const { container } = renderSidebar(null)
+    expect(container.querySelector('aside')).toBeNull()
+    expect(screen.queryByRole('link')).toBeNull()
+  })
+  it('有 sidebar.sections 時顯示資料指定的連結(站內路徑)', () => {
+    const withData = makeItinerary([], {
+      id: 'cur', title: '目前行程', region: '北海道', categories: [],
+      sidebar: { sections: [{ heading: '延伸閱讀', links: [{ label: '紅葉前線', to: '/momiji-front' }] }] },
+    })
+    renderSidebar(null, withData)
     expect(screen.getByRole('heading', { name: '延伸閱讀' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /紅葉前線/ })).toHaveAttribute('href', '/momiji-front')
   })
   it('沒有廣告時整個版位都不出現(沒有「廣告」標示、沒有預留框)', () => {
     renderSidebar(null)
@@ -35,7 +44,7 @@ describe('ItinerarySidebar', () => {
     expect(screen.queryByText('廣告版位')).toBeNull()
   })
   it('整個區塊有「相關資訊」的 landmark 名稱', () => {
-    renderSidebar(null)
+    renderSidebar({ href: 'https://example.com/p', imageUrl: 'https://example.com/a.png', alt: '贊助商' })
     expect(screen.getByRole('complementary', { name: '相關資訊' })).toBeInTheDocument()
   })
   it('行程資料的 sidebar.sections 取代預設連結,壞連結不會渲染', () => {

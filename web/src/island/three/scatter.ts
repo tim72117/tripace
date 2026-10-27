@@ -36,6 +36,8 @@ export function buildScatter(
   const m4 = new THREE.Matrix4()
   const q = new THREE.Quaternion()
   const e = new THREE.Euler()
+  const qTilt = new THREE.Quaternion()
+  const eTilt = new THREE.Euler()
   const s = new THREE.Vector3()
   const pos = new THREE.Vector3()
 
@@ -47,6 +49,8 @@ export function buildScatter(
       const sc = (p.scale ?? 1) * (0.93 + r() * 0.14)
       e.set(0, p.rotY ?? r() * Math.PI * 2, 0)
       q.setFromEuler(e)
+      // 貼坡:先繞自己的上方轉 rotY,再整個傾斜到坡面法線
+      if (p.tilt) q.premultiply(qTilt.setFromEuler(eTilt.set(p.tilt[0], 0, p.tilt[1])))
       m4.compose(pos.set(p.x, p.y, p.z), q, s.set(sc, sc, sc))
       return m4.clone()
     })

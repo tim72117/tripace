@@ -2,6 +2,34 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.45.0 — 2026-10-27
+
+夜遊九份島後方改成一整面有菱角的峭壁山壁（九份依山而建），島的地形資料新增斜坡與貼坡擺放；首頁九份頁移除 KKday 聯盟卡片；行程詳情頁左側不再有全站預設連結。**無資料庫結構變更；環境變數、網址參數、localStorage key、LLM 工具、yaml、thought 皆不變（不需重推 onagent）；無新的 npm 相依。**
+
+> **內部不相容變更**（0.x 階段依版號慣例升 minor）：
+>
+> - 移除 `web/src/itineraries/sidebarDefaults.ts` 與其匯出的 `DEFAULT_SIDEBAR_SECTIONS`：行程頁沒有設定 `sidebar.sections` 時不再顯示預設的「延伸閱讀／紅葉前線」連結，改為沒有連結（連結與廣告都沒有時整個區塊不渲染）。要顯示連結請在行程資料的 `sidebar.sections` 寫明。已確認專案內沒有其他引用。
+> - 移除九份頁（`JiufenPage`）的 KKday 聯盟行銷 Deeplink 卡片與常數 `KKDAY_AFFILIATE_URL`、CSS 類別 `.jiufen-affiliate-*`，以及埋點 `affiliate_link_click`（`partner: 'kkday'`）。這是使用者看得到的版位移除，不是純內部重構。
+
+### 新增
+
+- **夜遊九份島：斜坡（`layout.slopes`）**（`island/logic/terrain.ts`、`data/layoutTypes.ts`）：每塊是頂視圖多邊形加方向線（`from`→`to`）與高度（`y0`→`y1`），沿方向線線性升高、兩端夾住；`heightAt` 取階地與斜坡裡最高者，所以路徑、站點、旅人、散落物都自動貼著斜坡。`validateLayout` 檢查輪廓點數與自交、`from`/`to` 重合、高度不得低於 `topY`、頂點超出島輪廓（警告）。
+- **夜遊九份島：整面後山壁**（`island/data/layout.ts` 的 `SLOPES`）：沿島北緣（向內縮 6%）橫跨整個島寬，前緣接階地後緣（y=6），以 60° 陡升約 4 格（高度約 12.9），之後夾住成平坦山頂。角度由 `SLOPE_DEG`、`SLOPE_RUN` 決定。
+- **有菱角的峭壁外觀（`crag`）**（`three/terrain.ts` 的 `slopeGeometry`、新檔 `logic/delaunay.ts`）：頂面是「輪廓上每隔 `10/2^detail` 一個點＋內部抖動格點」的 Delaunay 三角剖分，所以稜面大小一致；內部頂點只往上長（最多 `amp`），輪廓上不動、往內依距離淡入，與相鄰地面、裙邊不裂縫；陡面用岩色、平緩處用草色，每片明暗不同；側壁沿輪廓分格並朝外凸出。非索引三角形、平面著色。頂面三角形排在緩衝區最前面，`geometry.groups[0]` 標出範圍。`validateLayout` 要求 `detail` 是 0~5 的整數、`amp` 不小於 0；凹形輪廓加峭壁給警告（Delaunay 不保證密閉）。注意 `heightAt` 不含起伏，畫面岩面最多比它高 `amp`。
+- **貼坡擺放（`Placement.tilt`）**（`three/scatter.ts`、`logic/scatterResolve.ts`）：`tilt: [rotX, rotZ]`（弧度）讓物件的「上方」對齊坡面法線，再繞自己的上方轉 `rotY`；有 `tilt` 的物件不做「腳印等高」檢查，且可埋進坡面最多 `MAX_SINK`（1 格）。`validateLayout` 要求 `tilt` 是有限數字。
+- **新模型 `deco-cliff-rock`**：有稜有角的峭壁岩塊，由旋轉過的方塊、四稜柱、四角錐疊成；目前在山壁上試放一顆（`layout.ts` 的第 10 步，放在所有亂數擺放之後，不影響其他散落物的位置）。
+
+### 修改
+
+- 夜遊九份島散落物（房子、樹、竹叢等）的擺放不得壓到斜坡輪廓內（`flatFootprint` 新增 `onSlope`），避免被岩面穿過；北側原本的部分擺放因此改變。
+- 行程詳情頁左側「相關資訊」區塊：沒有 `sidebar` 資料也沒有廣告時整個區塊不出現；`aside` 的「相關資訊」landmark 只在區塊存在時才有。
+
+### 已知未處理
+
+- 未在瀏覽器逐項確認：首頁縮小島島底有幾根尖刺狀岩片（`/island` 沒看到；縮小島與主畫面共用同一套建島程式，疑為原本的島底岩造型，未查證是否為本次改動造成）；峭壁岩塊埋進坡面的接縫（相機最近距離限制，無法特寫）；夜色下山壁偏暗、稜面對比低。
+- 山壁只有一顆試放的岩塊，尚無沿山壁自動擺放岩塊的規則；陡坡上（60°）不能放房子，需要之後做地基柱或整地。
+- 地形仍是階地、斜坡、河等各自建網格，只有 `heightAt` 共用；尚未烘成共同的高度場，階地與斜坡交界仍靠「剛好等高」避免縫。
+
 ## v0.44.0 — 2026-10-27
 
 紅葉前線頁新增北海道降雪與地面積雪、右側賞楓景點清單、景點行程摘要卡片，模擬起始日改為「今天」；行程詳情頁左側新增由資料控制的相關資訊區塊（站內連結與廣告版位）。**無資料庫結構變更（`itinerary_pages` 內容 JSON 新增選填欄位 `sidebar`，不需遷移）；環境變數、網址參數、localStorage key、LLM 工具、yaml、thought 皆不變（不需重推 onagent）；無新的 npm 相依；無不相容變更。**

@@ -6,9 +6,8 @@
 //   - 連結只收站內路徑,擋掉 javascript:、data:、//外部網址、含空白或反斜線的字串。
 //   - 廣告的 href 與 imageUrl 只收 https。
 //   - 數量與文字長度有上限,避免一份壞資料把側欄撐爆。
-// 沒設定 sidebar(或欄位型別不對)時,退回全站預設連結(sidebarDefaults.ts)。
+// 沒設定 sidebar(或欄位型別不對)時沒有任何連結(不顯示),沒有全站預設連結:要顯示就在行程資料裡寫。
 
-import { DEFAULT_SIDEBAR_SECTIONS } from './sidebarDefaults'
 import type { SampleItinerary, SampleSidebarAd } from './types'
 
 export const MAX_SECTIONS = 4
@@ -96,7 +95,7 @@ export function sanitizeAd(raw: unknown): SampleSidebarAd | null {
 export function resolveSidebar(itinerary: SampleItinerary, defaultAd: SampleSidebarAd | null): ResolvedSidebar {
   const data = itinerary.sidebar
   const manual = data != null && typeof data === 'object' && Array.isArray(data.sections)
-  const sections: ResolvedSection[] = manual ? sanitizeSections(data!.sections) : [...DEFAULT_SIDEBAR_SECTIONS]
+  const sections: ResolvedSection[] = manual ? sanitizeSections(data!.sections) : []
 
   // ad:undefined 用全站預設(沒有預設就不顯示);null 明確不顯示;其他(物件或壞資料)當作這份行程
   // 自己的廣告,沒通過檢查就不顯示,不退回全站預設——作者既然寫了就不該默默換成別的廣告。

@@ -15,6 +15,9 @@ export type Placement = {
   scale?: number // 預設 1
   seed?: number // 同款模型的小變化(顏色/縮放抖動)用的亂數種子
   y?: number // 腳底高度(放在階梯平台上時用,預設 0 = 最低的地面)
+  // 貼著斜坡:物件的「上方」先繞 X、Z 軸傾斜(弧度,Euler XZ),再繞自己的上方轉 rotY。有填就視為刻意放在坡面上,
+  // 不做「腳印等高」檢查。例如 60° 峭壁面朝 +z:[Math.PI / 3, 0]。
+  tilt?: [number, number]
 }
 
 // StopAnchor:部落客文章的一站在島上的位置與外觀。stopId 對應文章 stop 區塊的 id
@@ -43,6 +46,12 @@ export type LightKey = {
   lanternGlow: number // 0~1,燈籠/窗戶自發光強度(夜晚高)
 }
 
+// 斜坡的峭壁外觀:頂面用「輪廓上每隔 10/2^detail 一個點 + 內部抖動格點」做 Delaunay 剖分(detail 0~5,
+// 越大稜面越碎),內部頂點依 seed 隨機往上長最多 amp,做出有菱角的岩面;輪廓上的點不動、往內依距離淡入,
+// 與裙邊、相鄰地面不裂縫。陡面用 rockColor,平緩處用斜坡自己的色。
+// 注意:heightAt(物件貼地用)不含這個起伏,畫面上的岩面最多比 heightAt 高 amp;輪廓建議是凸形(見 validateLayout)。
+export type SlopeCrag = { seed: number; amp: number; detail: number; rockColor?: string }
+
 export type IslandLayout = {
   // 島的輪廓(頂視圖多邊形,順時針),島體會由它擠出成一塊厚地。
   outline: Pt[]
@@ -50,6 +59,9 @@ export type IslandLayout = {
   // terraces:階梯式平台(九份是依山而建的山城,高處的步道與建築在上層)。每塊是一個頂視圖多邊形
   // 加上頂面高度 y;渲染層把它們擠出疊在島體上,形成層層往上的階地。不填 = 一整塊平地。
   terraces?: Array<{ outline: Pt[]; y: number; color?: string }>
+  // slopes:斜面(山坡)。每塊是頂視圖多邊形,地面高度沿 from→to 方向線性從 y0 升到 y1(方向線外夾在兩端)。
+  // 與階地並列:任一點的高度取階地與斜坡裡最高者。兩端建議等於相鄰階地的高度,才不會有縫。
+  slopes?: Array<{ outline: Pt[]; from: Pt; to: Pt; y0: number; y1: number; color?: string; crag?: SlopeCrag }>
   // sea:島外(或島邊低處)的海面,選填;九份的遠景是海,夜晚有海面反光。
   sea?: { y: number; color: string }
   thickness: number // 島的厚度(泥土層深度),島底可以參差

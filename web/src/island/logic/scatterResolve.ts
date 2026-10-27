@@ -19,8 +19,10 @@ export type ResolveOpts = {
 
 // 物件可墊高的上限(格):蒸氣、掛在牆上的燈等。
 export const MAX_RAISE = 4
+// 貼坡物件可埋進坡面的深度上限(格)。
+export const MAX_SINK = 1
 
-type Ctx = Pick<IslandLayout, 'outline' | 'topY' | 'terraces' | 'stops' | 'river'>
+type Ctx = Pick<IslandLayout, 'outline' | 'topY' | 'terraces' | 'slopes' | 'stops' | 'river'>
 
 export function resolveScatter(
   scatter: ReadonlyArray<Placement>,
@@ -45,11 +47,13 @@ export function resolveScatter(
     // 階地邊緣:中心與四個方向的取樣點高度必須一致,否則物件會一半懸空
     const h = heightAt(layout, p.x, p.z)
     const around = [[r, 0], [-r, 0], [0, r], [0, -r]].map(([dx, dz]) => heightAt(layout, p.x + dx, p.z + dz))
-    if (around.some((a) => Math.abs(a - h) > 1e-6)) { drop('騎在階地邊緣'); continue }
+    if (!p.tilt && around.some((a) => Math.abs(a - h) > 1e-6)) { drop('騎在階地邊緣'); continue }
     // y 的規則:契約的 y 是「腳底高度」。放在攤位上方的蒸氣這類物件會刻意把 y 墊高,所以
     // 只要 y 落在「地面到地面上方 MAX_RAISE」之間就保留;沒填或不合理(低於地面、高得離譜)
     // 一律以地面高度為準,不剔除、仍保留位置。
-    const raised = p.y !== undefined && p.y >= h - 1e-6 && p.y <= h + MAX_RAISE
+    // 貼坡(tilt)的物件可以刻意埋進坡面一點(最多 MAX_SINK 格)
+    const sink = p.tilt ? MAX_SINK : 1e-6
+    const raised = p.y !== undefined && p.y >= h - sink && p.y <= h + MAX_RAISE
     kept.push({ ...p, y: raised ? p.y! : h })
   }
   return { kept, dropped }
