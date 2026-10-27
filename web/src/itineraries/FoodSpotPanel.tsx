@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { UtensilsCrossed } from 'lucide-react'
 import { FramedImage } from '../components/FramedImage'
 import type { SampleFoodSpot } from './types'
@@ -40,6 +40,7 @@ export function FoodSpotPanel({
   onSelectSpot,
   onHoverSpot,
   isPlayful = false,
+  footer,
 }: {
   spots: SampleFoodSpot[]
   detailsById: Record<string, FoodSpotDetails>
@@ -47,6 +48,8 @@ export function FoodSpotPanel({
   onSelectSpot: (id: string) => void
   onHoverSpot: (id: string | null) => void
   isPlayful?: boolean
+  // footer——接在清單下方、同一個捲動區裡的額外內容(行程頁放左側相關資訊區塊)。
+  footer?: ReactNode
 }) {
   if (spots.length === 0) return null
   return (
@@ -107,6 +110,7 @@ export function FoodSpotPanel({
           )
         })}
       </div>
+      {footer}
     </div>
   )
 }

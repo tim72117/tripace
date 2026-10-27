@@ -14,10 +14,15 @@ export interface MomijiSpot {
   kind: string
   lat: number
   lng: number
+  // itineraryId——選填:這個景點有一份編排好的精選行程(id 對應
+  // itineraries/example/<id>.ts 與 /itineraries/<id>)。有值的景點在地圖上可點,
+  // 點開顯示行程摘要卡片並連到完整行程頁(見 spotItinerary.ts)。沒有值的景點
+  // 只是標示。momijiSeo/資料完整性測試會檢查每個 id 都真的載得到行程。
+  itineraryId?: string
 }
 
 export const MOMIJI_SPOTS: ReadonlyArray<MomijiSpot> = [
-  { id: 'jozankei', name: '定山溪', area: '北海道', kind: '溫泉溪谷', lat: 42.9667, lng: 141.1667 },
+  { id: 'jozankei', name: '定山溪', area: '北海道', kind: '溫泉溪谷', lat: 42.9667, lng: 141.1667, itineraryId: 'jozankei-1day' },
   { id: 'oirase', name: '奧入瀨溪流', area: '青森', kind: '溪谷', lat: 40.5, lng: 140.95 },
   { id: 'kakunodate', name: '角館', area: '秋田', kind: '武家屋敷', lat: 39.5983, lng: 140.5633 },
   { id: 'urabandai', name: '裏磐梯', area: '福島', kind: '湖沼', lat: 37.65, lng: 140.08 },

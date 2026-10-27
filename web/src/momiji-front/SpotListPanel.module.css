@@ -1,0 +1,127 @@
+/* SpotListPanel——右側景點清單。顏色用 .root(MomijiFrontPage.module.css)定義的
+   --momiji-* 變數,CSS 變數會沿 DOM 繼承,深色模式自動跟著換。
+   位置:右上、避開固定導覽列(約 52px);底部留出播放控制列與 Google 縮放鈕的空間。 */
+.panel {
+  position: absolute;
+  top: 72px;
+  right: 16px;
+  z-index: 2;
+  width: min(260px, calc(100% - 32px));
+  max-height: calc(100% - 72px - 104px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  background: var(--momiji-panel);
+  color: var(--momiji-ink);
+  box-shadow: 0 1px 2px rgba(40, 30, 10, 0.06), 0 8px 24px rgba(40, 30, 10, 0.14);
+  backdrop-filter: blur(8px);
+}
+
+.header {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  text-align: left;
+}
+.title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--momiji-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0 6px 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.row {
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 7px 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.row:hover,
+.row[aria-current='true'] {
+  background: var(--momiji-track);
+}
+.name {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.meta {
+  font-size: 11px;
+  color: var(--momiji-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.link {
+  flex: none;
+  padding: 5px 10px;
+  border: 1px solid var(--momiji-accent);
+  border-radius: 999px;
+  color: var(--momiji-accent);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.link:hover {
+  background: var(--momiji-accent);
+  color: var(--ios-bg, #fff);
+}
+
+.header:focus-visible,
+.row:focus-visible,
+.link:focus-visible {
+  outline: 2px solid var(--momiji-accent);
+  outline-offset: 2px;
+}
+
+/* 手機寬度:改貼在播放控制列上方(控制列約 70px 高、離底 16px),不跟左上的 HUD 疊在同一位置;
+   展開時最高佔 40% 視窗高度,選取景點後由元件自動收合(SpotListPanel.tsx),不擋住移過去的景點。 */
+@media (max-width: 767px) {
+  .panel {
+    top: auto;
+    bottom: 96px;
+    right: 12px;
+    width: calc(100% - 24px);
+    max-height: 40dvh;
+  }
+}

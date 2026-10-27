@@ -1,6 +1,8 @@
 /* AiItineraryDetailPage 專屬樣式。配色全用既有 --ios-* / --color-* token。
    頂部有浮動導覽按鈕(底緣約 52px),所以 padding-top 72px 讓出位置。 */
 .page {
+  /* position: relative——寬螢幕時左側相關資訊(ItinerarySidebar rail)絕對定位到這個欄位的左邊。 */
+  position: relative;
   max-width: 720px;
   margin: 0 auto;
   padding: 72px 20px 80px;

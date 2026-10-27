@@ -21,6 +21,7 @@ import { PlanLayout } from './PlanLayout'
 import { PlanOverlayLayout } from './PlanOverlayLayout'
 import { PlanMap } from './PlanMap'
 import { FoodSpotPanel } from './FoodSpotPanel'
+import { ItinerarySidebar } from './ItinerarySidebar'
 import { useFoodSpotDetails } from './useFoodSpotDetails'
 import { initialCenterOf } from './initialCenter'
 import { useCityAttractionGlow } from './useCityAttractionGlow'
@@ -341,7 +342,9 @@ export function AiItineraryDetailPageMapView({ itinerary, timeline, dark = false
         onSelectSpot={setSelectedStopId}
         onHoverSpot={setHoverStopId}
         isPlayful={isPlayfulUI}
+        footer={<ItinerarySidebar itinerary={itinerary} placement="inline" />}
       />
+      {foodSpots.length === 0 && <ItinerarySidebar itinerary={itinerary} placement="panel" />}
 
       {lightbox && <Lightbox photos={lightbox.photos} alt={lightbox.alt} onClose={() => setLightbox(null)} />}
     </PlanLayout>

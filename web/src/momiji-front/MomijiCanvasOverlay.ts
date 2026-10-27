@@ -8,7 +8,7 @@
 // (先前兩輪那樣做都有延遲)。不要掛 floatPane——它不在 transform 容器內,
 // 縮放時不會跟著動。
 //
-// 不用 1800 個 Marker:marker 是真 DOM 節點,pan/zoom 時要逐一 layout,
+// 不用幾百個 Marker(楓葉 300 叢、每叢 2~3 片,加上景點與飛葉):marker 是真 DOM 節點,pan/zoom 時要逐一 layout,
 // 這個數量遠比單張 canvas 吃資源。
 //
 // canvas 的位置/尺寸:overlayLayer 的座標系是「div pixel」(fromLatLngToDivPixel
@@ -17,7 +17,9 @@
 // 原點重設)時才重新定位,避免每個 frame 重設 canvas 尺寸把畫布清掉。
 // 葉子動畫(熟度漸變/搖擺/飛葉)本身仍由外部 rAF 迴圈驅動。
 
-const OVERSCAN = 0.25
+// 2026-10 由 0.25 降到 0.1:canvas 面積約少 36%(光柵化/合成是降雪效能瓶頸),
+// 代價是拖曳時更早觸發重新定位(layout 的 inside 判斷),重新定位本身很便宜。
+const OVERSCAN = 0.1
 
 // google.maps.OverlayView 要等 Maps SDK 載入後才存在,class 不能在模組載入時
 // 就 extends 它(會 ReferenceError: google is not defined)。改成工廠函式,

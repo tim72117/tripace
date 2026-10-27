@@ -66,6 +66,45 @@ export interface SampleFoodSpot {
   priceRange?: string
 }
 
+// SampleSidebar——選填,行程頁左側「相關資訊」區塊的內容(連結與廣告),跟 foodSpots/
+// cardTheme 一樣是 content JSON 的擴充欄位,可以用 CLI(itinerary-page set)寫進資料庫,
+// 也可以直接寫在 example/*.ts。沒設定(undefined)時整個區塊用全站預設:預設連結
+// (sidebarDefaults.ts,目前只有紅葉前線)+ 預設廣告(sidebarAd.ts)。
+//
+// 渲染端(sidebarData.ts resolveSidebar)會檢查內容,不合格的項目直接丟掉,不會原樣輸出:
+//   - 連結只收站內路徑(以單一 / 開頭,不含空白與反斜線);要連外部網址不在這個欄位的範圍。
+//   - 廣告的 href 與 imageUrl 只收 https。
+//   - 區段、連結數量與文字長度有上限(見 sidebarData.ts 的常數)。
+export interface SampleSidebarLink {
+  label: string
+  // to——站內路徑,例如 '/momiji-front'、'/itineraries/hokkaido-5day'。
+  to: string
+  // hint——選填,標籤下方的小字說明。
+  hint?: string
+}
+
+export interface SampleSidebarSection {
+  heading: string
+  links: SampleSidebarLink[]
+}
+
+export interface SampleSidebarAd {
+  // href——點擊後前往的網址(https)。連結會帶 rel="sponsored"、新分頁開啟。
+  href: string
+  // imageUrl——廣告圖片(https),版位比例 6:5(約 300×250)。
+  imageUrl: string
+  // alt——圖片替代文字,也是螢幕閱讀器念出的連結名稱。
+  alt: string
+}
+
+export interface SampleSidebar {
+  // sections——有值(是陣列)時取代預設區塊(sidebarDefaults.ts),內容完全由資料決定;空陣列代表不顯示任何連結區塊。
+  sections?: SampleSidebarSection[]
+  // ad——undefined:用全站預設廣告(sidebarAd.ts,沒有預設就不顯示);null:這份行程不顯示廣告;物件:這份行程自己的廣告。
+  // 沒有廣告時整個版位(含「廣告」標示)都不渲染,不留預留框。
+  ad?: SampleSidebarAd | null
+}
+
 export interface SampleItinerary {
   // id——網址用的識別碼(/itineraries/:id),小寫英數與連字號,全部行程不可重複。
   id: string
@@ -127,4 +166,6 @@ export interface SampleItinerary {
   //   未設定(undefined)的行程用 PlanTimelineView 的預設景點卡(與 /ai-plan、
   //   登入後同一張卡;tainan-chikan-2day/erziping-1day 等既有行程都沒設定)。
   cardTheme?: 'onsen-autumn'
+  // sidebar——選填,左側相關資訊區塊的連結與廣告,見 SampleSidebar 的完整說明。
+  sidebar?: SampleSidebar
 }

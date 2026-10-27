@@ -35,13 +35,24 @@ export function daysBetween(from: Date, to: Date): number {
   return Math.round((to.getTime() - from.getTime()) / DAY_MS)
 }
 
-// 模擬的起訖日完全由預測資料推導:最早的預測見頃日往前推 RIPEN_DAYS 當第 0 天
-// (這一天全國都還是綠的),最晚的預測見頃日當最後一天(這一天全國都轉紅)。
+// 模擬的起訖日:第 0 天是「今天」(2026-10 使用者要求「起始日設定為當天」,
+// 原本是最早見頃日往前推 RIPEN_DAYS 天的固定日期),所以打開頁面看到的第一
+// 幀就是今天各地的狀態——離見頃日已經不到 RIPEN_DAYS 天的地方一開始就已經
+// 轉色。最後一天是最晚的預測見頃日(這一天全國都轉紅)。
 const peakDates = CITY_FORECASTS.map((c) => monthDayToDate(c.momiji.peak))
-const firstPeak = new Date(Math.min(...peakDates.map((d) => d.getTime())))
 const lastPeak = new Date(Math.max(...peakDates.map((d) => d.getTime())))
-const SEASON_START = new Date(firstPeak)
-SEASON_START.setDate(SEASON_START.getDate() - RIPEN_DAYS)
+
+// resolveSeasonStart——今天(本地 0 點)當起點;但預測資料是特定年份
+// (FORECAST_YEAR),今天若已經不早於最晚見頃日(例如隔年再開頁面),退到
+// 最後一天的前一天,至少保住 TOTAL_DAYS ≥ 1,頁面會顯示全國已轉紅。
+export function resolveSeasonStart(today: Date, last: Date): Date {
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  if (start.getTime() < last.getTime()) return start
+  const fallback = new Date(last)
+  fallback.setDate(fallback.getDate() - 1)
+  return fallback
+}
+const SEASON_START = resolveSeasonStart(new Date(), lastPeak)
 
 // TOTAL_DAYS——整段模擬跨幾天(第 0 天到第 TOTAL_DAYS 天)。
 export const TOTAL_DAYS = daysBetween(SEASON_START, lastPeak)

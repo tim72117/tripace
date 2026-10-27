@@ -125,9 +125,28 @@
   background: var(--momiji-ink);
   color: var(--ios-bg);
 }
+/* snowBtn——北海道降雪開關,沿用倍速鈕的膠囊語言;按下時反白成墨色(同播放鍵)。 */
+.snowBtn {
+  appearance: none;
+  border: 0;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: var(--momiji-track);
+  color: var(--momiji-muted);
+}
+.snowBtn[aria-pressed='true'] {
+  background: var(--momiji-ink);
+  color: var(--ios-bg);
+}
 .playBtn:focus-visible,
 .slider:focus-visible,
-.speedBtn:focus-visible {
+.speedBtn:focus-visible,
+.snowBtn:focus-visible {
   outline: 2px solid var(--momiji-accent);
   outline-offset: 2px;
 }
@@ -236,4 +255,92 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* spotCard——景點行程摘要卡片。桌機放右上(避開左上 HUD 與固定導覽列),手機貼在
+   播放控制列上方、左右各留 16px。 */
+.spotCard {
+  position: absolute;
+  top: 72px;
+  right: 16px;
+  z-index: 3;
+  width: min(320px, calc(100% - 32px));
+  padding: 14px 16px 14px;
+  border-radius: 16px;
+  background: var(--momiji-panel);
+  color: var(--momiji-ink);
+  box-shadow: 0 1px 2px rgba(40, 30, 10, 0.06), 0 10px 32px rgba(40, 30, 10, 0.2);
+  backdrop-filter: blur(8px);
+}
+/* 768px 以上:右側有景點清單(SpotListPanel,寬 260px、右緣 16px),卡片往左讓開 12px,不蓋住清單。 */
+@media (min-width: 768px) {
+  .spotCard {
+    right: calc(16px + 260px + 12px);
+  }
+}
+.spotCardClose {
+  appearance: none;
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--momiji-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.spotCardEyebrow {
+  font-size: 11px;
+  color: var(--momiji-muted);
+  letter-spacing: 0.04em;
+}
+.spotCardTitle {
+  margin: 2px 28px 0 0;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.spotCardMeta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--momiji-muted);
+}
+.spotCardSummary {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.spotCardLink {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--momiji-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.spotCardClose:focus-visible,
+.spotCardLink:focus-visible {
+  outline: 2px solid var(--momiji-accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 440px) {
+  .spotCard {
+    top: auto;
+    right: 16px;
+    left: 16px;
+    bottom: 96px;
+    width: auto;
+  }
 }

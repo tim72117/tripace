@@ -1,0 +1,140 @@
+/* ItinerarySidebar——見 ItinerarySidebar.tsx。配色只用既有的 --ios-* / --color-* token,
+   深淺色自動跟著頁面的 app-theme-root。 */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.heading {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ios-gray);
+}
+.links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: var(--ios-card);
+  border: 1px solid var(--ios-sep);
+  color: var(--color-dark);
+  text-decoration: none;
+}
+.link:hover {
+  border-color: var(--ios-blue);
+}
+.link:focus-visible {
+  outline: 2px solid var(--ios-blue);
+  outline-offset: 2px;
+}
+.linkLabel {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.linkHint {
+  font-size: 12px;
+  color: var(--ios-gray);
+}
+
+/* 廣告版位(有廣告才渲染):固定 6:5(約 300×250 的常見版位比例),上方固定標示「廣告」。 */
+.ad {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.adLabel {
+  font-size: 11px;
+  color: var(--ios-gray);
+  letter-spacing: 0.08em;
+}
+.adLink {
+  display: block;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--ios-sep);
+}
+.adImg {
+  display: block;
+  width: 100%;
+  aspect-ratio: 6 / 5;
+  object-fit: cover;
+}
+
+/* rail(一般單欄版):窄螢幕接在內容下方。 */
+.railWrap {
+  margin-top: 32px;
+}
+.rail {
+  max-width: 360px;
+}
+/* 寬螢幕:貼在 720px 置中欄位的左邊。外層撐滿 .page 高度(.page 是 position: relative),
+   內層 sticky,長行程捲動時側欄跟著黏住。1320px 是欄位(含 padding)加兩側 240px +
+   24px 間距都放得下的最小寬度。 */
+@media (min-width: 1320px) {
+  .railWrap {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: calc(100% + 24px);
+    width: 240px;
+    margin-top: 0;
+  }
+  .rail {
+    position: sticky;
+    top: 88px;
+    max-width: none;
+  }
+}
+
+/* panel(地圖版,沒有美食清單):左側面板,位置與漸層風格同 FoodSpotPanel。
+   padding-top 106px 讓開左上的「所有範例行程」返回連結。 */
+.panel {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 300px;
+  padding: 106px 18px 24px 20px;
+  background: linear-gradient(to right, var(--ios-bg) 55%, transparent 100%);
+  overflow-y: auto;
+}
+
+/* inline(地圖版,有美食清單):放在 FoodSpotPanel 的捲動區裡、清單下方。 */
+.inline {
+  margin-top: 24px;
+}
+
+/* panel 只有連結沒有清單內容,不值得在窄的地圖上佔 300px:地圖版右側時間軸已佔 420px,
+   視窗不到 1024px 時左側再放面板,可見的地圖就只剩一條縫(而且 safe-area 沒扣掉面板)。
+   inline 跟著美食面板(768px 以下隱藏)。 */
+@media (max-width: 1023px) {
+  .panel {
+    display: none;
+  }
+}
+@media (max-width: 767px) {
+  .inline {
+    display: none;
+  }
+}

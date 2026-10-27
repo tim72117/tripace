@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
-import { Pause, Play } from 'lucide-react'
+import { Pause, Play, Snowflake } from 'lucide-react'
 import { NativeMapBase, type MapHandle } from '../planning/map/NativeMapBase'
 import { useThemeToggle } from '../hooks/useThemeToggle'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../home/SiteNavButtons'
@@ -11,6 +11,14 @@ import {
 import { createMomijiRenderer } from './momijiRenderer'
 import { createMomijiCanvasOverlay, type MomijiCanvasOverlay } from './MomijiCanvasOverlay'
 import { CITY_FORECASTS, FORECAST_SOURCE } from './momijiForecast'
+import { MOMIJI_SPOTS, type MomijiSpot } from './momijiSpots'
+import { SPOT_LABEL_FONT, nearestWithin } from './spotHit'
+import { itineraryPath, loadSpotItinerary } from './spotItinerary'
+import { SpotListPanel } from './SpotListPanel'
+import { spotListEntries } from './spotList'
+import { trackEvent } from '../analytics'
+import type { SampleItinerary } from '../itineraries/types'
+import { dayCountOf, stopCountOf } from '../itineraries/catalog'
 import { SITE_SEO_BASE_URL } from '../AppCommon'
 import { SEO_DESCRIPTION, SEO_TITLE } from './momijiSeo'
 import styles from './MomijiFrontPage.module.css'
@@ -54,6 +62,14 @@ function isNarrowScreen(): boolean {
 
 const SPEEDS = [1, 2, 4] as const
 
+// 可點的景點(有精選行程的)與點擊命中半徑:手指點擊比滑鼠不準,半徑取 18px。
+const LINKED_SPOTS = MOMIJI_SPOTS.filter((s): s is MomijiSpot & { itineraryId: string } => !!s.itineraryId)
+const SPOT_HIT_RADIUS_PX = 18
+// 從清單點景點時地圖移過去的縮放等級:夠近能看清楚該景點與附近的標示,又不會一下子放太大。
+const SPOT_FOCUS_ZOOM = 8
+// 清單內容只依資料檔,不隨狀態變,模組載入時整理一次。
+const SPOT_LIST_ENTRIES = spotListEntries(MOMIJI_SPOTS)
+
 // SEO_TITLE/SEO_DESCRIPTION/SEO_URL:這個頁面專屬的文案。<title> 與 JSON-LD 由前端宣告;description、canonical、
 // og:*、twitter:* 由 server/cmd/server/seo_meta.go 的 seoMetaByPath 在 server 端統一輸出(唯一事實來源,見 main.tsx 對
 // HelmetProvider 的說明——前端再宣告一份會讓 <head> 同時存在兩份互相矛盾的標籤)。SEO_TITLE 與 SEO_DESCRIPTION 必須跟
@@ -78,12 +94,21 @@ export function MomijiFrontPage() {
   const playingRef = useRef(!prefersReducedMotion)
   const speedRef = useRef<number>(1)
   const scrubbingRef = useRef(false)
-  const snapRef = useRef(false)
+  // 初值 true:第 0 天是今天,各地不一定還是綠色,第一個真正畫出的 frame
+  // 要直接顯示今天的熟度,不能從綠色花一秒漸變上去(renderer.draw 回傳非
+  // null 時會自動清掉這個旗標,地圖還沒準備好前會一直保持)。
+  const snapRef = useRef(true)
   const darkRef = useRef(dark)
   darkRef.current = dark
   const [playing, setPlayingState] = useState(!prefersReducedMotion)
   const [speed, setSpeedState] = useState<number>(1)
   const [hud, setHud] = useState({ day: 0, pct: 0 })
+  // 北海道降雪/積雪開關(2026-10 北海道初雪後加,畫在楓葉 canvas 裡、剪裁在北海道
+  // 輪廓內,見 momijiRenderer.drawSnow);減少動態偏好時預設關閉,不持久化。
+  // 跟 dark 一樣用 ref 鏡射給 rAF 迴圈讀。
+  const [snowing, setSnowing] = useState(!prefersReducedMotion)
+  const snowingRef = useRef(snowing)
+  snowingRef.current = snowing
 
   const mapHandleRef = useRef<MapHandle | null>(null)
   // overlayRef/overlayMapRef——MomijiCanvasOverlay 實例與它目前掛載的
@@ -111,6 +136,109 @@ export function MomijiFrontPage() {
     overlayRef.current.setMap(map)
     setOverlayVersion((v) => v + 1)
   }, [])
+
+  // ===== 景點點擊:顯示精選行程摘要卡片 =====
+  // 楓葉層是 pointer-events:none 的 canvas,徽章本身收不到點擊;改監聽地圖的
+  // click/mousemove,用 overlay 的 projection 把點擊位置與每個可點景點都換成
+  // 容器像素,找半徑內最近的(見 spotHit.ts)。監聽器掛在 overlayVersion 變動的
+  // effect 裡(地圖重建時換掛新地圖),cleanup 會移除舊的——StrictMode 下
+  // mount/unmount/mount 也能重新掛回。
+  const [activeSpot, setActiveSpot] = useState<(MomijiSpot & { itineraryId: string }) | null>(null)
+  const [activeItinerary, setActiveItinerary] = useState<SampleItinerary | null>(null)
+  const [itineraryLoading, setItineraryLoading] = useState(false)
+
+  useEffect(() => {
+    const map = mapHandleRef.current?.mapRef.current
+    if (!map || overlayVersion === 0) return
+    // 名稱文字的寬度:用跟繪製(momijiRenderer.drawSpots)同一個字型量,文字
+    // 區域也算可點(見 spotHit.ts)。每個名稱只量一次。拿不到 2D context 時
+    // 退回只有徽章圓形可點。
+    const measureCtx = document.createElement('canvas').getContext('2d')
+    if (measureCtx) measureCtx.font = SPOT_LABEL_FONT
+    const labelWidths = new Map<string, number>()
+    const labelWidth = (name: string) => {
+      if (!measureCtx) return undefined
+      let w = labelWidths.get(name)
+      if (w === undefined) {
+        w = measureCtx.measureText(name).width
+        labelWidths.set(name, w)
+      }
+      return w
+    }
+    const hitSpot = (latLng: google.maps.LatLng | null | undefined) => {
+      const proj = overlayRef.current?.getProjection()
+      if (!proj || !latLng) return null
+      const click = proj.fromLatLngToContainerPixel(latLng)
+      if (!click) return null
+      const pts = LINKED_SPOTS.flatMap((sp) => {
+        const p = proj.fromLatLngToContainerPixel(new google.maps.LatLng(sp.lat, sp.lng))
+        return p ? [{ id: sp.id, x: p.x, y: p.y, labelWidth: labelWidth(sp.name) }] : []
+      })
+      const id = nearestWithin(pts, click.x, click.y, SPOT_HIT_RADIUS_PX)
+      return id ? LINKED_SPOTS.find((sp) => sp.id === id) ?? null : null
+    }
+    let hovering = false
+    const onClick = map.addListener('click', (e: google.maps.MapMouseEvent) => {
+      const sp = hitSpot(e.latLng)
+      setActiveSpot(sp)
+      if (sp) trackEvent('momiji_spot_click', { spot: sp.name, itinerary: sp.itineraryId })
+    })
+    const onMove = map.addListener('mousemove', (e: google.maps.MapMouseEvent) => {
+      const over = hitSpot(e.latLng) !== null
+      if (over !== hovering) {
+        hovering = over
+        map.setOptions({ draggableCursor: over ? 'pointer' : null })
+      }
+    })
+    return () => {
+      onClick.remove()
+      onMove.remove()
+      map.setOptions({ draggableCursor: null })
+    }
+  }, [overlayVersion])
+
+  // 從右側清單選景點:地圖移到該景點(放大到至少 SPOT_FOCUS_ZOOM);有精選行程的
+  // 同時開啟摘要卡片(跟點地圖上的徽章一樣),沒有行程的只移動地圖並關掉舊卡片。
+  const selectSpotFromList = useCallback((id: string) => {
+    const spot = MOMIJI_SPOTS.find((sp) => sp.id === id)
+    if (!spot) return
+    const map = mapHandleRef.current?.mapRef.current
+    if (map) {
+      map.panTo({ lat: spot.lat, lng: spot.lng })
+      if ((map.getZoom() ?? 0) < SPOT_FOCUS_ZOOM) map.setZoom(SPOT_FOCUS_ZOOM)
+    }
+    const linked = LINKED_SPOTS.find((sp) => sp.id === id) ?? null
+    setActiveSpot(linked)
+    trackEvent('momiji_spot_list_click', { spot: spot.name, linked: linked !== null })
+  }, [])
+  const openItineraryFromList = useCallback((id: string) => {
+    const sp = LINKED_SPOTS.find((s) => s.id === id)
+    if (sp) trackEvent('momiji_spot_itinerary_open', { spot: sp.name, itinerary: sp.itineraryId, from: 'list' })
+  }, [])
+
+  // 點開景點後載入行程摘要(沒點之前完全不載入,見 spotItinerary.ts)
+  useEffect(() => {
+    setActiveItinerary(null)
+    if (!activeSpot) {
+      setItineraryLoading(false)
+      return
+    }
+    let cancelled = false
+    setItineraryLoading(true)
+    loadSpotItinerary(activeSpot.itineraryId)
+      .then((it) => { if (!cancelled) setActiveItinerary(it) })
+      .catch((err) => console.warn('[MomijiFrontPage] 載入景點行程失敗:', err))
+      .finally(() => { if (!cancelled) setItineraryLoading(false) })
+    return () => { cancelled = true }
+  }, [activeSpot])
+
+  // Esc 關閉卡片
+  useEffect(() => {
+    if (!activeSpot) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setActiveSpot(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [activeSpot])
 
   const sliderRef = useRef<HTMLInputElement>(null)
 
@@ -191,7 +319,7 @@ export function MomijiFrontPage() {
       const env = windEnvelope(frac, { active: windOn, scrubbing: scrubbingRef.current })
       const pct = renderer.draw(ctx, w, h, dpr, { projection, zoom, originX: overlay.originX, originY: overlay.originY }, {
         dt, now: ts / 1000, time, day, frac, windU, env, windOn, playing: playingRef.current,
-        snap: snapRef.current, dark: darkRef.current,
+        snap: snapRef.current, dark: darkRef.current, snowing: snowingRef.current,
       })
       if (pct != null) snapRef.current = false
 
@@ -210,7 +338,9 @@ export function MomijiFrontPage() {
     // 補畫,若 render 自己排下一個 rAF,每次 draw() 都會多開一條永久迴圈。
     const loop = (ts: number) => {
       raf = requestAnimationFrame(loop)
-      render(ts)
+      // Maps 的 draw() 可能已在這一幀用較晚的 performance.now() 同步畫過(onDraw);這個 rAF 的 ts 不比它晚,
+      // 再畫一次只會讓整幀(含雪)畫兩次、dt 重複計算。
+      if (ts > last) render(ts)
     }
     raf = requestAnimationFrame(loop)
     // onDraw——見 MomijiCanvasOverlay.onDraw 的完整說明:Maps 的投影/
@@ -270,6 +400,13 @@ export function MomijiFrontPage() {
             </li>
           ))}
         </ul>
+        <ul>
+          {LINKED_SPOTS.map((sp) => (
+            <li key={sp.id}>
+              <a href={itineraryPath(sp.itineraryId)} tabIndex={-1}>{sp.name}({sp.area})的精選行程</a>
+            </li>
+          ))}
+        </ul>
         <p>
           資料來源:{FORECAST_SOURCE.publisher}「{FORECAST_SOURCE.title}」,{FORECAST_SOURCE.announcedOn} 發表。各地中間日期為內插的視覺示意,非官方逐日預報。
         </p>
@@ -292,6 +429,38 @@ export function MomijiFrontPage() {
           改由 MomijiCanvasOverlay 在 onAdd() 時自己建立、掛進 Maps 的
           疊加層面板(見該檔案的完整說明),CSS class 透過 overlay 建構子
           直接設定在它擁有的 canvas DOM 節點上(見該處的完整說明)。 */}
+
+      {/* 景點行程摘要卡片:點到有精選行程的景點徽章(目前是定山溪)時出現。標題、
+          地區、天數、站數與簡介來自 itineraries/example/<id>.ts(見 spotItinerary.ts),
+          「查看完整行程」連到 /itineraries/<id>。資料還在載入或載不到時仍顯示景點名稱與連結。 */}
+      <SpotListPanel
+        entries={SPOT_LIST_ENTRIES}
+        activeId={activeSpot?.id ?? null}
+        onSelect={selectSpotFromList}
+        onOpenItinerary={openItineraryFromList}
+      />
+
+      {activeSpot && (
+        <aside className={styles.spotCard} role="region" aria-label={`${activeSpot.name}的精選行程`}>
+          <button type="button" className={styles.spotCardClose} onClick={() => setActiveSpot(null)} aria-label="關閉">×</button>
+          <div className={styles.spotCardEyebrow}>{activeSpot.area} · {activeSpot.kind}</div>
+          <div className={styles.spotCardTitle}>{activeItinerary?.title ?? activeSpot.name}</div>
+          {activeItinerary && (
+            <div className={styles.spotCardMeta}>
+              {activeItinerary.region} · {dayCountOf(activeItinerary)} 天 · {stopCountOf(activeItinerary)} 站
+            </div>
+          )}
+          {itineraryLoading && <div className={styles.spotCardMeta}>載入行程中…</div>}
+          {activeItinerary?.summary && <p className={styles.spotCardSummary}>{activeItinerary.summary}</p>}
+          <a
+            className={styles.spotCardLink}
+            href={itineraryPath(activeSpot.itineraryId)}
+            onClick={() => trackEvent('momiji_spot_itinerary_open', { spot: activeSpot.name, itinerary: activeSpot.itineraryId })}
+          >
+            查看完整行程
+          </a>
+        </aside>
+      )}
 
       <div className={styles.hud} aria-live="off">
         <div className={styles.date}>{formatMonthDay(dateOfDay(hud.day), '月')}日</div>
@@ -351,6 +520,16 @@ export function MomijiFrontPage() {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          className={styles.snowBtn}
+          aria-pressed={snowing}
+          aria-label={snowing ? '關閉北海道降雪' : '開啟北海道降雪'}
+          title="北海道降雪"
+          onClick={() => setSnowing((s) => !s)}
+        >
+          <Snowflake size={16} />
+        </button>
       </div>
     </div>
   )

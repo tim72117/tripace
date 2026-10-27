@@ -27,10 +27,17 @@
 import { getLeafPath } from './leafShape'
 import { CITY_FORECASTS } from './momijiForecast'
 import { MOMIJI_SPOTS } from './momijiSpots'
+import { SPOT_LABEL_FONT, SPOT_LABEL_OFFSET_X } from './spotHit'
 import {
   SCREEN_DIR, cityPeakDay, effectiveDay, leafColor, leafTarget, linePoint, mulberry32, redShare,
   type MomijiField,
 } from './momijiFrontModel'
+import { HOKKAIDO_PATCHES, HOKKAIDO_RING, patchGrowth } from './hokkaidoSnow'
+import {
+  FLAKE_ALPHA, FLAKE_BUCKETS, FLAKE_FALL_SPEED_PX_S, FLAKE_RADIUS_PX, FLAKE_STRIDE, FLAKE_TRAIL_SEC, F_DEPTH, F_Y,
+  COVER_CACHE_STEP, bucketMidDepth, createSnowFlakes, createSnowState, flakeBucket, flakeDrawX, lerpRange, pointInPolyPx, setSnowCacheSig,
+  shiftFlakes, stepFlakes, stepSnowState, syncFlakeCount, type SnowBox, type SnowCacheSig,
+} from './snowfall'
 
 export interface RenderTick {
   dt: number // 秒
@@ -44,6 +51,38 @@ export interface RenderTick {
   playing: boolean
   snap: boolean // true=所有楓葉直接重設到目標熟度,不做漸變(重播、跳回起點時)
   dark: boolean
+  snowing: boolean // 北海道降雪開關(漸強/漸弱與積雪累積/融化由 snowfall.ts 狀態機處理)
+}
+
+// ===== 北海道降雪/積雪的配色與可調參數(數量/速度等在 snowfall.ts、hokkaidoSnow.ts)=====
+// 積雪斑塊:中間大部分不透明的「平台」+ 很快的邊緣衰減(不是棉花球/雲),零星散在陸地上
+// (數量/大小在 hokkaidoSnow.ts)。斑塊畫在離屏快取,每幀只 drawImage 一次(見 drawSnow)。
+const SPRITE_PX = 48
+const SPRITE_PLATEAU = 0.7 // 半徑比例,這以內完全不透明
+// 雪片:依深度分 3 組,遠→近由淡藍灰到白(白雪上才不會消失),短拖尾沿下落方向。
+const FLAKE_TRAIL_ALPHA = 0.5
+const SNOW_COLORS = {
+  light: { patch: '246,250,255', flake: ['rgb(176,200,228)', 'rgb(222,234,246)', 'rgb(255,255,255)'] },
+  dark: { patch: '234,241,252', flake: ['rgb(190,210,236)', 'rgb(226,236,250)', 'rgb(250,252,255)'] },
+}
+
+// makeSnowSprite——平台 + 快速衰減邊緣的圓形,畫一次重複貼。
+function makeSnowSprite(rgb: string): HTMLCanvasElement {
+  const c = document.createElement('canvas')
+  c.width = SPRITE_PX
+  c.height = SPRITE_PX
+  const ctx = c.getContext('2d')
+  if (ctx) {
+    const r = SPRITE_PX / 2
+    const g = ctx.createRadialGradient(r, r, 0, r, r, r)
+    g.addColorStop(0, `rgba(${rgb},1)`)
+    g.addColorStop(SPRITE_PLATEAU, `rgba(${rgb},1)`)
+    g.addColorStop(0.88, `rgba(${rgb},0.35)`)
+    g.addColorStop(1, `rgba(${rgb},0)`)
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, SPRITE_PX, SPRITE_PX)
+  }
+  return c
 }
 
 interface Streak {
@@ -139,11 +178,65 @@ export function createMomijiRenderer(field: MomijiField) {
   }
 
   // leafLatLngs——每片葉子的經緯度只需要包成一次 google.maps.LatLng
-  // 物件(建構子開銷不算小,1800 片葉子每 frame 重建一次不划算),跟
+  // 物件(建構子開銷不算小,300 叢楓葉每 frame 重建一次不划算),跟
   // 原本 wx/wy 快取世界座標的用意相同,只是現在快取的是 LatLng 物件
   // 本身,換算像素的工作交給 fromLatLngToDivPixel 當下即時算(見下方
   // draw 的完整說明)。
   let leafLatLngs: google.maps.LatLng[] | null = null
+
+  // ===== 北海道降雪/積雪狀態(見 snowfall.ts、hokkaidoSnow.ts)=====
+  // 輪廓與斑塊的 LatLng 跟楓葉一樣只包一次;ringPx 是輪廓投影結果的預配置緩衝,
+  // 每幀只對抽稀後的輪廓點與斑塊呼叫 fromLatLngToDivPixel。
+  const snowState = createSnowState()
+  let snowInitialized = false
+  const flakes = createSnowFlakes()
+  let ringLatLngs: google.maps.LatLng[] | null = null
+  let patchLatLngs: google.maps.LatLng[] | null = null
+  const ringPx = new Float32Array(HOKKAIDO_RING.length * 2)
+  const snowBox: SnowBox = { x0: 0, y0: 0, x1: 0, y1: 0 }
+  const sprites = { light: null as HTMLCanvasElement | null, dark: null as HTMLCanvasElement | null }
+  // 積雪離屏快取:只涵蓋「北海道 bbox ∩ 畫布」那塊,簽名(snowfall.ts setSnowCacheSig)變了才重畫。
+  let patchCache: HTMLCanvasElement | null = null
+  let patchCacheCtx: CanvasRenderingContext2D | null = null
+  const cacheSig: SnowCacheSig = { ax: NaN, ay: NaN, bx: NaN, by: NaN, coverQ: -1, dark: false, width: 0, height: 0, dpr: 0 }
+  const cacheRect = { x: 0, y: 0, w: 0, h: 0 } // 畫布 CSS 座標
+
+  // rebuildPatchCache——把目前 cover 下長出來的斑塊畫進離屏 canvas(座標 = 畫布座標 − cacheRect 原點)。
+  function rebuildPatchCache(
+    proj: google.maps.MapCanvasProjection, ox: number, oy: number, unit: number, k: number, cover: number,
+    latLngs: google.maps.LatLng[], sprite: HTMLCanvasElement,
+  ) {
+    patchCache ??= document.createElement('canvas')
+    patchCacheCtx ??= patchCache.getContext('2d')
+    const c = patchCacheCtx
+    if (!c) return
+    const pw = Math.ceil(cacheRect.w * k)
+    const ph = Math.ceil(cacheRect.h * k)
+    // 設定 width/height 會清空;尺寸沒變就 clearRect(便宜很多)。
+    if (patchCache.width !== pw || patchCache.height !== ph) {
+      patchCache.width = pw
+      patchCache.height = ph
+    } else {
+      c.setTransform(1, 0, 0, 1, 0, 0)
+      c.clearRect(0, 0, pw, ph)
+    }
+    c.setTransform(k, 0, 0, k, -cacheRect.x * k, -cacheRect.y * k)
+    for (let i = 0; i < HOKKAIDO_PATCHES.length; i++) {
+      const pt = HOKKAIDO_PATCHES[i]
+      const g = patchGrowth(cover, pt.threshold)
+      if (g <= 0) continue
+      const p = proj.fromLatLngToDivPixel(latLngs[i])
+      if (!p) continue
+      const x = p.x - ox
+      const y = p.y - oy
+      const rx = pt.rx * unit * g
+      const ry = pt.ry * unit * g
+      if (x + rx < cacheRect.x || x - rx > cacheRect.x + cacheRect.w || y + ry < cacheRect.y || y - ry > cacheRect.y + cacheRect.h) continue
+      c.globalAlpha = pt.alpha * g
+      c.drawImage(sprite, x - rx, y - ry, rx * 2, ry * 2)
+    }
+    c.globalAlpha = 1
+  }
 
   // draw——畫一個 frame。回傳目前轉紅的百分比;投影還沒準備好時回傳
   // null,呼叫端這時不要推進時間。
@@ -185,6 +278,7 @@ export function createMomijiRenderer(field: MomijiField) {
         f.x -= ox - lastOriginX
         f.y -= oy - lastOriginY
       }
+      shiftFlakes(flakes, ox - lastOriginX, oy - lastOriginY)
       lastOriginX = ox
       lastOriginY = oy
     }
@@ -290,9 +384,124 @@ export function createMomijiRenderer(field: MomijiField) {
     ctx.globalAlpha = 1
 
     drawWind(ctx, t.windU, t.env, t.now, unit, k, toScreen, colors, streaks)
+    // 雪在楓葉/飛葉/風之後、都市標籤與景點徽章之前:標籤與徽章不能被雪蓋住。
+    drawSnow(ctx, width, height, k, proj, ox, oy, unit, t)
     drawCities(ctx, t.time, k, toScreen, t.dark, colors.accent)
     drawSpots(ctx, k, toScreen, t.dark, colors.accent)
     return redShare(disp)
+  }
+
+  // drawSnow——北海道降雪與積雪。不用 ctx.clip(每個繪製都要過遮罩,是光柵化的大成本):
+  // 積雪斑塊本來就生成在輪廓內,畫進離屏快取每幀貼一次;雪片逐片做點在多邊形判斷
+  // (pointInPolyPx),只畫在陸地上的。北海道完全不在畫布內時整段跳過(含粒子更新)。
+  function drawSnow(
+    ctx: CanvasRenderingContext2D, width: number, height: number, k: number,
+    proj: google.maps.MapCanvasProjection, ox: number, oy: number, unit: number, t: RenderTick,
+  ) {
+    // 第一次畫時開關是關的(例如系統設為減少動態):積雪量直接從 0 開始,不要先顯示初始積雪再融掉。
+    if (!snowInitialized) {
+      snowInitialized = true
+      if (!t.snowing) {
+        snowState.cover = 0
+        snowState.intensity = 0
+      }
+    }
+    stepSnowState(snowState, t.dt, t.snowing)
+    const { intensity, cover } = snowState
+    if (intensity <= 0.001 && cover <= 0.001) return
+
+    ringLatLngs ??= HOKKAIDO_RING.map(([lng, lat]) => new google.maps.LatLng(lat, lng))
+    patchLatLngs ??= HOKKAIDO_PATCHES.map((p) => new google.maps.LatLng(p.lat, p.lng))
+    let bx0 = Infinity
+    let by0 = Infinity
+    let bx1 = -Infinity
+    let by1 = -Infinity
+    for (let i = 0; i < ringLatLngs.length; i++) {
+      const p = proj.fromLatLngToDivPixel(ringLatLngs[i])
+      if (!p) return
+      const x = p.x - ox
+      const y = p.y - oy
+      ringPx[i * 2] = x
+      ringPx[i * 2 + 1] = y
+      if (x < bx0) bx0 = x
+      if (x > bx1) bx1 = x
+      if (y < by0) by0 = y
+      if (y > by1) by1 = y
+    }
+    if (bx1 < 0 || by1 < 0 || bx0 > width || by0 > height) return
+    const mode = t.dark ? 'dark' : 'light'
+    const colors = SNOW_COLORS[mode]
+    const sprite = (sprites[mode] ??= makeSnowSprite(colors.patch))
+    const n = ringLatLngs.length
+
+    // 積雪:簽名沒變就直接貼快取;變了(平移/縮放/cover 跨階/換色)才重畫斑塊。
+    if (cover > 0.001) {
+      const mid = (n >> 1) * 2
+      if (setSnowCacheSig(cacheSig, ringPx[0], ringPx[1], ringPx[mid], ringPx[mid + 1], cover, t.dark, width, height, k)) {
+        cacheRect.x = Math.max(0, Math.floor(bx0))
+        cacheRect.y = Math.max(0, Math.floor(by0))
+        cacheRect.w = Math.min(width, Math.ceil(bx1)) - cacheRect.x
+        cacheRect.h = Math.min(height, Math.ceil(by1)) - cacheRect.y
+        // 用簽名裡的量化值畫(不是這一刻的原始 cover):快取內容要完全由簽名決定,否則 cover 在同一階內繼續增加
+        // (例如 0.675 → 0.7)時簽名不變、不會重建,畫面就一直停在重建當下的舊值。
+        rebuildPatchCache(proj, ox, oy, unit, k, cacheSig.coverQ * COVER_CACHE_STEP, patchLatLngs, sprite)
+      }
+      if (patchCache && cacheRect.w > 0 && cacheRect.h > 0) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
+        const pw = Math.ceil(cacheRect.w * k)
+        const ph = Math.ceil(cacheRect.h * k)
+        ctx.drawImage(patchCache, 0, 0, pw, ph, Math.round(cacheRect.x * k), Math.round(cacheRect.y * k), pw, ph)
+      }
+    }
+
+    // 雪片:活動範圍 = 輪廓 bbox ∩ 畫布;只畫落在輪廓內的;3 個深度組各一個 path。
+    if (intensity > 0.001) {
+      snowBox.x0 = Math.max(0, bx0)
+      snowBox.y0 = Math.max(0, by0)
+      snowBox.x1 = Math.min(width, bx1)
+      snowBox.y1 = Math.min(height, by1)
+      syncFlakeCount(flakes, snowBox)
+      stepFlakes(flakes, t.dt, t.now, snowBox)
+      const { data, count } = flakes
+      ctx.setTransform(k, 0, 0, k, 0, 0)
+      ctx.lineCap = 'round'
+      for (let b = 0; b < FLAKE_BUCKETS; b++) {
+        const md = bucketMidDepth(b)
+        const alpha = lerpRange(FLAKE_ALPHA, md) * intensity
+        const r = lerpRange(FLAKE_RADIUS_PX, md)
+        const trail = lerpRange(FLAKE_FALL_SPEED_PX_S, md) * FLAKE_TRAIL_SEC * (0.5 + md)
+        ctx.fillStyle = colors.flake[b]
+        ctx.strokeStyle = colors.flake[b]
+        ctx.lineWidth = r * 0.9
+        // 拖尾
+        ctx.globalAlpha = alpha * FLAKE_TRAIL_ALPHA
+        ctx.beginPath()
+        for (let i = 0; i < count; i++) {
+          const o = i * FLAKE_STRIDE
+          if (flakeBucket(data[o + F_DEPTH]) !== b) continue
+          const x = flakeDrawX(data, i, t.now)
+          const y = data[o + F_Y]
+          if (!pointInPolyPx(ringPx, n, x, y)) continue
+          ctx.moveTo(x, y)
+          ctx.lineTo(x, y - trail)
+        }
+        ctx.stroke()
+        // 圓點
+        ctx.globalAlpha = alpha
+        ctx.beginPath()
+        for (let i = 0; i < count; i++) {
+          const o = i * FLAKE_STRIDE
+          if (flakeBucket(data[o + F_DEPTH]) !== b) continue
+          const x = flakeDrawX(data, i, t.now)
+          const y = data[o + F_Y]
+          if (!pointInPolyPx(ringPx, n, x, y)) continue
+          ctx.moveTo(x + r, y)
+          ctx.arc(x, y, r, 0, Math.PI * 2)
+        }
+        ctx.fill()
+      }
+      ctx.globalAlpha = 1
+    }
   }
 
   // drawCities——14 個預測都市的標示:圓點 + 「都市名 預測日」。預測日還沒到
@@ -341,7 +550,7 @@ export function createMomijiRenderer(field: MomijiField) {
   ) {
     ctx.setTransform(k, 0, 0, k, 0, 0)
     const leaf = getLeafPath()
-    ctx.font = '700 12px -apple-system, "Hiragino Sans", "PingFang TC", sans-serif'
+    ctx.font = SPOT_LABEL_FONT
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
     ctx.lineJoin = 'round'
@@ -360,11 +569,22 @@ export function createMomijiRenderer(field: MomijiField) {
       ctx.fillStyle = accent
       ctx.fill(leaf)
       ctx.setTransform(k, 0, 0, k, 0, 0)
+      // 有精選行程的景點(可點,見 spotItinerary.ts):徽章右上角加一顆實心小點,
+      // 跟只有標示的景點區分。
+      if (sp.itineraryId) {
+        ctx.beginPath()
+        ctx.arc(x + 7.5, y - 7.5, 3.5, 0, Math.PI * 2)
+        ctx.fillStyle = accent
+        ctx.fill()
+        ctx.lineWidth = 1.5
+        ctx.strokeStyle = dark ? '#111920' : '#faf7f0'
+        ctx.stroke()
+      }
       ctx.lineWidth = 3.5
       ctx.strokeStyle = dark ? 'rgba(16,26,33,0.9)' : 'rgba(250,247,240,0.95)'
-      ctx.strokeText(sp.name, x + 13, y)
+      ctx.strokeText(sp.name, x + SPOT_LABEL_OFFSET_X, y)
       ctx.fillStyle = accent
-      ctx.fillText(sp.name, x + 13, y)
+      ctx.fillText(sp.name, x + SPOT_LABEL_OFFSET_X, y)
     }
     ctx.setTransform(k, 0, 0, k, 0, 0)
     ctx.textBaseline = 'alphabetic'

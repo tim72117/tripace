@@ -220,11 +220,10 @@
   .header {
     padding: 16px 16px 10px;
   }
-  /* back——手機版同樣要避開 SiteNavBrand(fixed 定位,見桌面版 .back
-     的完整說明)的淨空需求,理由不變,數值配合手機版 SiteNavButtons.css
-     的實際留白(16px)微調。 */
+  /* back——手機版同樣要避開 SiteNavBrand(fixed 定位在 top:16px、left:16px,
+     高約 36px)的淨空需求:維持桌面版的 top:58px(品牌列正下方),只把 left 微調成 12px。
+     原本這裡是 top:16px,等於把返回鈕蓋在品牌列正上方,兩者疊成一團。 */
   .back {
-    top: 16px;
     left: 12px;
   }
   /* scrollCompass 手機版:左側美食面板在手機版隱藏(見 FoodSpotPanel.module.css

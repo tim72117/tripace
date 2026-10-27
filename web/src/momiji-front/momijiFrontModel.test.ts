@@ -1,4 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+// 模擬起點取決於「今天」(momijiFrontModel.ts resolveSeasonStart):固定系統日期,TOTAL_DAYS 與日期相關的測試
+// 才不會隨執行當天變動(12/8 之後 TOTAL_DAYS 變小,寫死第 3~5 天的測試就會失敗)。vi.hoisted 在其他 import
+// 之前執行,模組載入時算出的 SEASON_START 才吃得到這個假日期;只假造 Date,計時器照常。
+vi.hoisted(() => {
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 9, 27, 12) })
+})
 import { JAPAN_LAND } from './japanLand'
 import { CITY_FORECASTS, FORECAST_SOURCE } from './momijiForecast'
 import { MOMIJI_SPOTS } from './momijiSpots'
@@ -6,7 +13,7 @@ import {
   AXIS_DIR, DAY_SEC, HOLD_SEC, RIPEN_DAYS, TOTAL_DAYS, WIND_PART,
   advanceClock, cityPeakDay, createJapanField, createMomijiField, dateOfDay, dayState, daysBetween, effectiveDay,
   forecastPeakDay, formatMonthDay, leafRgb, leafTarget, linePoint, monthDayToDate, mulberry32, pointInRing, rawU, redShare,
-  windEnvelope,
+  resolveSeasonStart, windEnvelope,
 } from './momijiFrontModel'
 
 const SQUARE = [[0, 0], [10, 0], [10, 10], [0, 10]] as const
@@ -37,11 +44,17 @@ describe('時鐘', () => {
     expect(dayState(3 + 0.95).windU).toBeCloseTo(1.3)
     expect(dayState(TOTAL_DAYS)).toMatchObject({ day: TOTAL_DAYS, frac: 0 })
   })
-  it('日期由預測資料推導:最早見頃日(札幌 11/4)往前 RIPEN_DAYS 天是第 0 天,最晚見頃日(和歌山 12/12)是最後一天', () => {
-    expect(formatMonthDay(dateOfDay(0), '/')).toBe('10/17')
+  it('起始日是今天(測試固定在 2026-10-27),最後一天是最晚見頃日(和歌山 12/12)', () => {
+    expect(formatMonthDay(dateOfDay(0), '/')).toBe('10/27')
     expect(formatMonthDay(dateOfDay(TOTAL_DAYS), '/')).toBe('12/12')
-    expect(TOTAL_DAYS).toBe(56)
-    expect(formatMonthDay(dateOfDay(15), '月')).toBe('11月1')
+    expect(TOTAL_DAYS).toBe(46)
+  })
+  it('resolveSeasonStart:今天(本地 0 點)當起點;已過最晚見頃日時退到終點前一天', () => {
+    const last = new Date(2026, 11, 12)
+    expect(resolveSeasonStart(new Date(2026, 9, 27, 15, 30), last)).toEqual(new Date(2026, 9, 27))
+    expect(resolveSeasonStart(new Date(2026, 11, 11, 23, 59), last)).toEqual(new Date(2026, 11, 11))
+    expect(resolveSeasonStart(new Date(2026, 11, 12), last)).toEqual(new Date(2026, 11, 11))
+    expect(resolveSeasonStart(new Date(2027, 2, 1), last)).toEqual(new Date(2026, 11, 11))
   })
   it('風的強度:吹風段兩端趨近 0、中間最強;凍結為 0;拖動時固定 0.5(風停段除外)', () => {
     const on = { active: true, scrubbing: false }
@@ -216,13 +229,14 @@ describe('預測資料檔', () => {
     expect(by('kyoto').momiji.peak).toBe('12-11')
     expect(by('fukuoka').ginkgo.peak).toBe('11-28')
   })
-  it('日期格式 MM-DD 且都在模擬範圍內', () => {
+  it('日期格式 MM-DD,且不晚於最後一天', () => {
+    // 起點是今天,見頃日是第幾天取決於執行當天(已經過了見頃日的都市是負數,
+    // 葉子直接全紅),所以只檢查上界;最晚的那個剛好是最後一天。
     for (const c of CITY_FORECASTS) {
       expect(c.momiji.peak).toMatch(/^\d{2}-\d{2}$/)
-      const d = cityPeakDay(c.momiji.peak)
-      expect(d).toBeGreaterThanOrEqual(RIPEN_DAYS)
-      expect(d).toBeLessThanOrEqual(TOTAL_DAYS)
+      expect(cityPeakDay(c.momiji.peak)).toBeLessThanOrEqual(TOTAL_DAYS)
     }
+    expect(Math.max(...CITY_FORECASTS.map((c) => cityPeakDay(c.momiji.peak)))).toBe(TOTAL_DAYS)
   })
 })
 

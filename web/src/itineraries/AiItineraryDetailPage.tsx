@@ -11,6 +11,7 @@ import { SiteNavBrand } from '../home/SiteNavButtons'
 import { SkeletonMask } from '../components/Skeleton'
 import { dayCountOf, findItinerary, isSampleItineraryShape, stopCountOf } from './catalog'
 import { AiItineraryDetailPageMapView } from './AiItineraryDetailPageMapView'
+import { ItinerarySidebar } from './ItinerarySidebar'
 import { renderAnchorIcon } from './renderAnchorIcon'
 import type { SampleItinerary } from './types'
 import styles from './AiItineraryDetailPage.module.css'
@@ -217,6 +218,7 @@ function AiItineraryDetailPageContent({ items, id, dark = false }: { items: Samp
         renderAnchorIcon={renderAnchorIcon}
         anchorDotSize={22}
       />
+      <ItinerarySidebar itinerary={itinerary} placement="rail" />
       {lightbox && <Lightbox photos={lightbox.photos} alt={lightbox.alt} onClose={() => setLightbox(null)} />}
     </main>
   )

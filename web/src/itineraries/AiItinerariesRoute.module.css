@@ -8,3 +8,18 @@
   color: var(--color-dark);
   font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", "PingFang TC", sans-serif;
 }
+
+/* 左上角品牌列(SiteNavBrand 的 .site-nav-brand-row:Tripace + 行程標題)是 fixed 定位、
+   沒有長度限制,行程標題長時(手機寬度)會一路延伸到右上角的登入/主題按鈕底下。這裡只在行程頁
+   限制:品牌列最寬到「視窗寬度減去右側兩顆按鈕與間距」(168px),標題超出時顯示省略號。
+   用 :global 是因為這兩個 class 定義在共用的 SiteNavButtons.css(全域 class),不動它以免
+   影響其他頁面。 */
+.root :global(.site-nav-brand-row) {
+  max-width: calc(100vw - 168px);
+}
+.root :global(.site-nav-brand-page) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
