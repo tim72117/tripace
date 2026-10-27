@@ -56,15 +56,6 @@ const SEO_URL = `${SITE_SEO_BASE_URL}/jiufen`
 // 動到前端 repo。
 const LANDING_ASSETS_BASE = 'https://storage.googleapis.com/shuttle-tripace-web-assets/landing'
 
-// KKDAY_AFFILIATE_URL:KKpartners 後台「專屬連結」工具產生的聯盟 Deeplink
-// (cid=tripace-27468,UD1=homepage 對應放置版位,UD2=jiufen 對應景點),
-// 目標是九份/野柳/十分/平溪一日遊+夜遊行程商品頁。點擊與成交會歸因到
-// Tripace 的 KKday 聯盟帳號,30 天追蹤效期內完成訂購才算佣金(見 KKday
-// 聯盟行銷計畫合作協議)。這是本站第一個上線的聯盟行銷版位,先手動建立
-// 單一 Deeplink 驗證追蹤機制可用,之後若要幫更多景點各自掛連結,再考慮
-// 批量產生或申請 KKpartners API(目前僅開放精選合作夥伴申請,無公開文件)。
-const KKDAY_AFFILIATE_URL = 'https://www.kkday.com/zh-tw/product/2287-jiufen-yehliu-shifen-pingxi-day-tour-night-tour-from-taipei?cid=tripace-27468&ud1=homepage&ud2=jiufen'
-
 // 各站照片多數取自 Pexels(https://www.pexels.com),見對應攝影師署名——非
 // 九份實景照,是地形/建築/氛圍相近的示意用圖,待有實際景點照片時再替換。
 // 以下站點例外,已換成 Wikimedia Commons 的實景照(見各站 credit 標註)：
@@ -329,44 +320,11 @@ export function JiufenPage() {
       </ScrollTimeline>
       </div>
 
-      {/* 2026-10 新增,2026-10 第二輪改版套用 SponsoredPlanCard 的卡片
-          視覺語彙(見該元件 .css 的完整說明:eyebrow 標籤/標題/CTA膠囊
-          按鈕這套語彙)——跟下方動態投放的 SponsoredPlanCard 在同一個
-          頁面上並存時,讓讀者感覺是「同一套廣告系統的兩種呈現」而非
-          兩種毫不相干的介面風格。內容結構仍維持「單行連結」而非完整
-          資訊卡(沒有梯次/亮點等欄位)——這是刻意的,因為 KKday
-          Deeplink 本質上就是固定的單一聯盟連結,不是像 SponsoredPlanCard
-          那樣有結構化的出發日/團費等資料可以展示,硬套那套版型只會
-          生出一堆空欄位。rel="noopener" 防止新分頁透過 window.opener
-          操作本頁;target="_blank" 讓使用者離開本站完成訂購時,Tripace
-          分頁仍保留——聯盟連結設計上就是要讓使用者「離開並在對方網站
-          完成購買」,不可用 iframe 嵌入對方頁面(會被追蹤 cookie 機制
-          與多數平台條款擋下)。 */}
-      <section className="jiufen-affiliate-card">
-        <span className="jiufen-affiliate-eyebrow">合作推薦</span>
-        <div className="jiufen-affiliate-body">
-          <span className="jiufen-affiliate-icon">🎫</span>
-          <span className="jiufen-affiliate-text">
-            <span className="jiufen-affiliate-title">九份・野柳・十分・平溪一日遊</span>
-            <span className="jiufen-affiliate-sub">含夜遊選項・台北出發・KKday 合作行程</span>
-          </span>
-        </div>
-        <a
-          href={KKDAY_AFFILIATE_URL}
-          target="_blank"
-          rel="noopener"
-          className="jiufen-affiliate-cta"
-          onClick={() => trackEvent('affiliate_link_click', { page: 'jiufen', partner: 'kkday', position: 'homepage' })}
-        >
-          查看票價
-        </a>
-      </section>
-
       {/* 2026-10 新增:業主自助控制台(web/partner)投放的方案(見
-          SponsoredPlanCard.tsx 的完整說明)。跟上面寫死的 KKday
-          Deeplink 卡片並存,不是取代關係——那是人工挑選、長期固定的
-          聯盟行銷連結,這裡是業主自己透過控制台管理、可隨時更新/下架
-          的動態投放內容,兩者服務不同情境,放在同一個頁面互不衝突。
+          SponsoredPlanCard.tsx 的完整說明)。v0.45.0 已移除這個頁面
+          原本寫死的 KKday 聯盟行銷 Deeplink 卡片(人工挑選、長期固定
+          的連結,見該版 CHANGELOG 的完整說明),這裡只保留業主自己
+          透過控制台管理、可隨時更新/下架的動態投放內容。
           placement="jiufen" 對應這個頁面自己的路由 slug。 */}
       <SponsoredPlanCard placement="jiufen" />
 
