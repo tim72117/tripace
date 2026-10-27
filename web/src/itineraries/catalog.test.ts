@@ -138,6 +138,22 @@ describe('toPlanTimeline', () => {
     it.timeline = { ...it.timeline, lodgings: [{ id: 'l1', placeId: 'p1', name: '飯店', dayIds: ['d1', 'd2'] }] }
     expect(toPlanTimeline(it).timeline.lodgings).toEqual([{ id: 'l1', placeId: 'p1', name: '飯店', dayIds: ['d1', 'd2'] }])
   })
+  // 原本(SampleStop 時代)toPlanTimeline 要逐欄把 note、children 轉進節點;現在節點本身就是 PlanNode,
+  // 這裡確認載入補值是展開原節點、不會漏掉這些欄位(主題點的子景點改為 attractions/places id 清單)。
+  it('站點的 note 與主題點的 attractions/places 原樣帶過去,不增加時間軸站數', () => {
+    const it = make({
+      id: 'x',
+      stops: [
+        stop({ time: '09:00', name: 'A', note: { text: '17:00 閉館', category: 'info' }, attractions: ['lmk_1'], places: ['p1', 'p2'] }),
+        stop({ time: '11:00', name: 'B' }),
+      ],
+    })
+    const s = listNodes(toPlanTimeline(it).timeline).filter((n) => n.type === 'stop')
+    expect(s).toHaveLength(2)
+    expect(s[0]).toMatchObject({ note: { text: '17:00 閉館', category: 'info' }, attractions: ['lmk_1'], places: ['p1', 'p2'] })
+    expect(s[1].note).toBeUndefined()
+    expect(s[1].attractions).toBeUndefined()
+  })
   it('沒有照片時補縮圖備用樣式,資料有寫的尊重資料;不改動 registry 裡的原始資料', () => {
     const it = make({ id: 'x', stops: [stop({ name: 'A' }), stop({ time: '10:00', name: 'B', thumbIcon: '🍜' })] })
     const before = JSON.stringify(it)
