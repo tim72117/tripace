@@ -5,6 +5,7 @@ import { ScrollHint } from './ScrollHint';
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { CityPageFooter } from './CityPageFooter';
 import { ExploreOtherCities } from './ExploreOtherCities';
+import { SponsoredPlanCard } from './SponsoredPlanCard';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { trackEvent } from '../analytics';
 import { SITE_SEO_BASE_URL } from '../AppCommon';
@@ -328,29 +329,46 @@ export function JiufenPage() {
       </ScrollTimeline>
       </div>
 
-      {/* 2026-10 新增:聯盟行銷 Deeplink 卡片(KKday),見上方 KKDAY_AFFILIATE_URL
-          常數的完整說明。外觀完全自訂、貼合本頁紙感和風設計(對應之前廣告
-          方案比較構想裡「Deeplink 版型完全自主」的結論),不是 KKday 提供的
-          制式橫幅。rel="noopener" 防止新分頁透過 window.opener 操作本頁;
-          target="_blank" 讓使用者離開本站完成訂購時,Tripace 分頁仍保留——
-          聯盟連結設計上就是要讓使用者「離開並在對方網站完成購買」,不可用
-          iframe 嵌入對方頁面(會被追蹤 cookie 機制與多數平台條款擋下)。 */}
+      {/* 2026-10 新增,2026-10 第二輪改版套用 SponsoredPlanCard 的卡片
+          視覺語彙(見該元件 .css 的完整說明:eyebrow 標籤/標題/CTA膠囊
+          按鈕這套語彙)——跟下方動態投放的 SponsoredPlanCard 在同一個
+          頁面上並存時,讓讀者感覺是「同一套廣告系統的兩種呈現」而非
+          兩種毫不相干的介面風格。內容結構仍維持「單行連結」而非完整
+          資訊卡(沒有梯次/亮點等欄位)——這是刻意的,因為 KKday
+          Deeplink 本質上就是固定的單一聯盟連結,不是像 SponsoredPlanCard
+          那樣有結構化的出發日/團費等資料可以展示,硬套那套版型只會
+          生出一堆空欄位。rel="noopener" 防止新分頁透過 window.opener
+          操作本頁;target="_blank" 讓使用者離開本站完成訂購時,Tripace
+          分頁仍保留——聯盟連結設計上就是要讓使用者「離開並在對方網站
+          完成購買」,不可用 iframe 嵌入對方頁面(會被追蹤 cookie 機制
+          與多數平台條款擋下)。 */}
       <section className="jiufen-affiliate-card">
-        <a
-          href={KKDAY_AFFILIATE_URL}
-          target="_blank"
-          rel="noopener"
-          className="jiufen-affiliate-link"
-          onClick={() => trackEvent('affiliate_link_click', { page: 'jiufen', partner: 'kkday', position: 'homepage' })}
-        >
+        <span className="jiufen-affiliate-eyebrow">合作推薦</span>
+        <div className="jiufen-affiliate-body">
           <span className="jiufen-affiliate-icon">🎫</span>
           <span className="jiufen-affiliate-text">
             <span className="jiufen-affiliate-title">九份・野柳・十分・平溪一日遊</span>
             <span className="jiufen-affiliate-sub">含夜遊選項・台北出發・KKday 合作行程</span>
           </span>
-          <span className="jiufen-affiliate-arrow">→</span>
+        </div>
+        <a
+          href={KKDAY_AFFILIATE_URL}
+          target="_blank"
+          rel="noopener"
+          className="jiufen-affiliate-cta"
+          onClick={() => trackEvent('affiliate_link_click', { page: 'jiufen', partner: 'kkday', position: 'homepage' })}
+        >
+          查看票價
         </a>
       </section>
+
+      {/* 2026-10 新增:業主自助控制台(web/partner)投放的方案(見
+          SponsoredPlanCard.tsx 的完整說明)。跟上面寫死的 KKday
+          Deeplink 卡片並存,不是取代關係——那是人工挑選、長期固定的
+          聯盟行銷連結,這裡是業主自己透過控制台管理、可隨時更新/下架
+          的動態投放內容,兩者服務不同情境,放在同一個頁面互不衝突。
+          placement="jiufen" 對應這個頁面自己的路由 slug。 */}
+      <SponsoredPlanCard placement="jiufen" />
 
       <section className="jiufen-final-cta">
         <h2>把九份的故事，排進你的下一趟行程</h2>

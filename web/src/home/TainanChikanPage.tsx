@@ -4,6 +4,7 @@ import { ScrollTimeline } from './ScrollTimeline';
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { CityPageFooter } from './CityPageFooter';
 import { ExploreOtherCities } from './ExploreOtherCities';
+import { SponsoredPlanCard } from './SponsoredPlanCard';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { trackEvent } from '../analytics';
 import { SITE_SEO_BASE_URL } from '../AppCommon';
@@ -473,6 +474,13 @@ export function TainanChikanPage() {
         })}
       </ScrollTimeline>
       </div>
+
+      {/* 2026-10 新增:業主自助控制台(web/partner)投放的方案(見
+          SponsoredPlanCard.tsx 的完整說明)。placement="tainan-chikan"
+          對應這個頁面自己的路由 slug——理由同 TainanPage.tsx 同一段
+          註解:補齊 web/partner 的 PLACEMENT_OPTIONS 清單裡原本就列出、
+          但這個頁面一直沒有實際掛載的選項。 */}
+      <SponsoredPlanCard placement="tainan-chikan" />
 
       <section className="tainan-chikan-final-cta">
         <h2>把赤崁・府城的行程，排進你的下一趟旅行</h2>

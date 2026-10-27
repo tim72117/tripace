@@ -5,6 +5,7 @@ import { ScrollHint } from './ScrollHint';
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from './SiteNavButtons';
 import { CityPageFooter } from './CityPageFooter';
 import { ExploreOtherCities } from './ExploreOtherCities';
+import { SponsoredPlanCard } from './SponsoredPlanCard';
 import { useThemeToggle } from '../hooks/useThemeToggle';
 import { trackEvent } from '../analytics';
 import { SITE_SEO_BASE_URL } from '../AppCommon';
@@ -313,6 +314,15 @@ export function TainanPage() {
         ))}
       </ScrollTimeline>
       </div>
+
+      {/* 2026-10 新增:業主自助控制台(web/partner)投放的方案(見
+          SponsoredPlanCard.tsx 的完整說明)。placement="tainan-anping"
+          對應這個頁面自己的路由 slug——web/partner 的 PLACEMENT_OPTIONS
+          清單原本就把這個 slug 列為可選項,但這個頁面一直沒有實際掛載
+          這個元件(2026-10 code review 抓到的缺口:業主選了這個選項,
+          活動/方案建好發布後也永遠不會顯示,且沒有任何錯誤訊息),
+          補上讓清單裡的選項真正生效,比照九份/京都頁的既有接法。 */}
+      <SponsoredPlanCard placement="tainan-anping" />
 
       <section className="tainan-final-cta">
         <h2>把安平的故事，排進你的下一趟行程</h2>

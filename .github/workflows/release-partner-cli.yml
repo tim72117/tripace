@@ -1,0 +1,121 @@
+name: Release partner-cli
+
+# 業主專用 CLI(server/cmd/partner-cli)的跨平台發布流程,比照
+# agent 專案 .github/workflows/release-onagent.yml 的既有模式——打
+# windows/darwin/linux × amd64/arm64 的靜態編譯二進位檔,包裝成
+# tar.gz(linux/darwin)/zip(windows),上傳成 GitHub Release 的 assets。
+# web/partner-installer(npx tripace-partner-cli-setup)在安裝/升級時
+# 從這個 release 下載對應平台的 binary,不 bundle 進 npm 套件本身。
+#
+# 跟 onagent 版本的差異:Tripace 的 go.mod(github.com/tim72117/tripace)
+# 沒有私有依賴(internal/wanttools 已移除對私有 want repo 的依賴,見
+# go.mod 完整說明),不需要 GOPRIVATE/GH_PAT 設定,比 onagent 的 CI 簡單。
+
+on:
+  push:
+    tags:
+      - 'partner-cli-v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.3'
+
+      - name: Download dependencies
+        working-directory: server
+        run: go mod download
+
+      - name: Build partner-cli binary
+        working-directory: server
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          # 靜態編譯(關 CGO),跨平台交叉編譯不需要對應平台的 C
+          # toolchain,比照 cmd/server 的 Dockerfile build 慣例。
+          # -X main.version 把觸發這次 build 的 tag(GITHUB_REF_NAME,
+          # 例如 partner-cli-v0.1.0)注入 cmd/partner-cli 的 version
+          # 變數,`partner-cli version` 才不用每次發版手動改寫死字串。
+          mkdir -p ../dist
+          BINARY_NAME=partner-cli-${{ matrix.goos }}-${{ matrix.goarch }}
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+          go build -trimpath -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" -o "../dist/${BINARY_NAME}" ./cmd/partner-cli
+          echo "BINARY_NAME=${BINARY_NAME}" >> "$GITHUB_ENV"
+
+      - name: Package release asset
+        working-directory: dist
+        run: |
+          # linux/darwin 慣例用 tar.gz,windows 慣例用 zip。
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            ASSET_NAME="partner-cli-${{ matrix.goos }}-${{ matrix.goarch }}.zip"
+            zip "${ASSET_NAME}" "${BINARY_NAME}"
+          else
+            ASSET_NAME="partner-cli-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz"
+            tar -czf "${ASSET_NAME}" "${BINARY_NAME}"
+          fi
+          echo "ASSET_NAME=${ASSET_NAME}" >> "$GITHUB_ENV"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: partner-cli-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/${{ env.ASSET_NAME }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # workflow_dispatch 手動觸發(非 push tag)時 github.ref 不是
+          # refs/tags/*,action-gh-release 會找不到 tag 而失敗,所以這裡
+          # 明確指定 tag_name:是 tag push 就用該 tag,手動觸發則
+          # fallback 成 "partner-cli-manual-<run number>" 草稿,方便
+          # 事後自行整理成正式 release。
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('partner-cli-manual-{0}', github.run_number) }}
+          draft: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            ---
+            **注意 / Note**: 這些是未簽章(unsigned)、未經 notarize 的執行檔。
+            - macOS:直接執行可能會被 Gatekeeper 擋下,需要到「系統設定 > 隱私權與安全性」允許,或執行 `xattr -d com.apple.quarantine <binary>` 移除隔離屬性。
+            - Windows:SmartScreen 可能會顯示「Windows 已保護您的電腦」的警告,需點選「其他資訊」→「仍要執行」。
+            使用前請自行評估來源信任度。這支 CLI 僅供廣告業主/聯盟行銷夥伴操作自己在
+            Tripace 的廣告活動與方案內容,不含其他權限。

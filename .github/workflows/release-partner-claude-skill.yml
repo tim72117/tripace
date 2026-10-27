@@ -1,0 +1,89 @@
+name: Release @tripace/partner-claude-skill
+
+# 觸發方式:推 partner-claude-skill-v<版本> 的 tag(例如
+# partner-claude-skill-v0.0.1),或手動 workflow_dispatch。tag 觸發讀的是
+# tag 所指 commit 上的 workflow 檔,不需要這個檔案存在於預設分支。
+# 先在一般 commit 把 web/partner-installer/package.json 的 version 調好,
+# tag 的版本必須與它一致(見下方檢查)。npm 發布不可逆(版本不能重用),
+# 但這裡只暫存,最後仍要由人核准,所以 tag 觸發的風險已被把關。
+# tag 前綴與 release-partner-cli.yml 的 partner-cli-v* 不會互相匹配。
+on:
+  push:
+    tags:
+      - 'partner-claude-skill-v*'
+  workflow_dispatch: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # npm Trusted Publishing (OIDC) 需要的權限——讓這個 job 能跟
+      # GitHub 要一個短期身分 token，npm 拿這個 token 去核對
+      # npmjs.com/package/@tripace/partner-claude-skill 設定頁裡的
+      # Trusted Publisher 設定(repo + 這個 workflow 檔名必須完全吻
+      # 合)。好處是不需要 NPM_TOKEN 這種長期有效的密鑰存在 repo
+      # secrets 裡，也不受本機帳號 2FA/recovery code 問題影響——這條
+      # 路徑完全不經過本機 npm login。
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 沒有 Go build 步驟——這個套件不 bundle partner-cli binary，
+      # bin/cli.js 在安裝時才去打 GitHub Releases API 抓
+      # release-partner-cli.yml 發布的最新版本，跟這個 npm 套件本身
+      # 何時發布無關。
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update npm to a Trusted-Publishing-capable version
+        run: npm install -g npm@latest
+
+      - name: Check tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: web/partner-installer
+        run: |
+          tag_version="${GITHUB_REF_NAME#partner-claude-skill-v}"
+          pkg_version=$(node -p "require('./package.json').version")
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "::error::tag 的版本 $tag_version 與 package.json 的版本 $pkg_version 不一致"
+            exit 1
+          fi
+
+      - name: Check version isn't already published
+        working-directory: web/partner-installer
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_ENV"
+          if npm view "@tripace/partner-claude-skill@$version" version >/dev/null 2>&1; then
+            echo "::error::@tripace/partner-claude-skill@$version is already on npm — bump package.json's version first."
+            exit 1
+          fi
+
+      # 只暫存、不直接上架:這個套件的 Trusted Publisher 沒有勾選
+      # 「Allow npm publish」,CI 只能 stage,最後要由人用 2FA 核准才會
+      # 對外公開(供應鏈把關)。沒有 NODE_AUTH_TOKEN,身分來自上面的
+      # id-token(OIDC),需要 npmjs.com 該套件的 Trusted Publisher 設定
+      # 對上這個 repo 與 workflow 檔名。
+      - name: Stage on npm
+        working-directory: web/partner-installer
+        run: npm stage publish --access public
+
+      - name: Show next step
+        working-directory: web/partner-installer
+        run: |
+          {
+            echo "### 已暫存到 npm,尚未對外公開"
+            echo
+            echo "套件 @tripace/partner-claude-skill@${{ env.version }} 在暫存區,需要本人核准才會上架:"
+            echo '```'
+            echo "npx -y npm@12 stage list @tripace/partner-claude-skill"
+            echo "npx -y npm@12 stage approve <stage-id>"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          npm stage list @tripace/partner-claude-skill || true
