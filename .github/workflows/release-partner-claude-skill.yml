@@ -1,0 +1,66 @@
+name: Release @tripace/partner-claude-skill
+
+# Manual-only on purpose, same reasoning as agent 專案的
+# release-claude-skill.yml:發布到 npm 是不可逆操作(版本可以 unpublish
+# 但不能重用),所以不自動跟著 tag push 跑。先在一般 commit 裡把
+# web/partner-installer/package.json 的 version 往前調,確認好要發的
+# 版本之後,再手動觸發這支 workflow。
+on:
+  workflow_dispatch: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # npm Trusted Publishing (OIDC) 需要的權限——讓這個 job 能跟
+      # GitHub 要一個短期身分 token，npm 拿這個 token 去核對
+      # npmjs.com/package/@tripace/partner-claude-skill 設定頁裡的
+      # Trusted Publisher 設定(repo + 這個 workflow 檔名必須完全吻
+      # 合)。好處是不需要 NPM_TOKEN 這種長期有效的密鑰存在 repo
+      # secrets 裡，也不受本機帳號 2FA/recovery code 問題影響——這條
+      # 路徑完全不經過本機 npm login。
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 沒有 Go build 步驟——這個套件不 bundle partner-cli binary，
+      # bin/cli.js 在安裝時才去打 GitHub Releases API 抓
+      # release-partner-cli.yml 發布的最新版本，跟這個 npm 套件本身
+      # 何時發布無關。
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update npm to a Trusted-Publishing-capable version
+        run: npm install -g npm@latest
+
+      - name: Check version isn't already published
+        working-directory: web/partner-installer
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_ENV"
+          if npm view "@tripace/partner-claude-skill@$version" version >/dev/null 2>&1; then
+            echo "::error::@tripace/partner-claude-skill@$version is already on npm — bump package.json's version first."
+            exit 1
+          fi
+
+      - name: Publish to npm
+        working-directory: web/partner-installer
+        # No NODE_AUTH_TOKEN — npm detects the OIDC id-token permission
+        # above and authenticates via Trusted Publishing instead.
+        # Requires the Trusted Publisher config on
+        # npmjs.com/package/@tripace/partner-claude-skill to list this
+        # exact repo + workflow filename.
+        run: npm publish --access public
+
+      - name: Show published version
+        run: |
+          echo "### 已發布" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "npx -p @tripace/partner-claude-skill@${{ env.version }} tripace-partner-cli-setup" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

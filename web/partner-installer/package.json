@@ -1,0 +1,26 @@
+{
+  "name": "@tripace/partner-claude-skill",
+  "version": "0.0.1",
+  "private": false,
+  "description": "Claude Code skill installer for tripace-partner-cli-setup — downloads the matching partner-cli binary for your platform on install. For Tripace advertiser/affiliate partners operating their own campaigns via CLI.",
+  "type": "module",
+  "bin": {
+    "tripace-partner-cli-setup": "bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "skill"
+  ],
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tim72117/tripace.git",
+    "directory": "web/partner-installer"
+  },
+  "keywords": [
+    "claude-code",
+    "claude-skill",
+    "tripace",
+    "partner-cli"
+  ]
+}

@@ -1,0 +1,209 @@
+/* SponsoredPlanCard——主題景點頁的業主投放方案卡片(見 .tsx 開頭說明)。
+   刻意不綁定任何單一城市頁的色票變數(例如 JiufenPage.css 的
+   --vermilion)——這個元件被多個城市頁共用,各頁的 accent 色彩不同,
+   改用一組獨立、中性的配色,視覺上明確區隔於頁面主敘事內容(對齊
+   frontend-design-guidelines:新增元素不該跟既有重點搶注意力,同時
+   也要讓讀者清楚分辨「這是合作推薦」而非頁面本身的編輯內容)。 */
+
+/* max-width/border-radius/padding 對齊各主題頁寫死聯盟卡片的既有
+   尺寸(見 JiufenPage.css 的 .jiufen-affiliate-card:720px 容器寬度、
+   1rem 圓角)——2026-10 code review 時使用者指出兩張卡片並排時邊寬/
+   圓角不一致,統一成同一組數值,讓「同一套廣告系統」的視覺語言不只
+   是標籤/按鈕風格一致,連容器尺寸本身也對齊。 */
+.sponsored-plan-card {
+  max-width: 720px;
+  margin: 1.5rem auto 0;
+  padding: 1.25rem 1.4rem;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 1rem;
+  background: rgba(0, 0, 0, 0.02);
+  color: #171a21;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* 深色模式——2026-10 code review 抓到:原本只處理 prefers-color-scheme
+   (系統偏好),但各主題頁(JiufenPage.css 等)的深色模式是靠使用者
+   手動切換出來的 [data-theme="dark"] 屬性,不是單純跟隨系統設定——
+   手動切換時 prefers-color-scheme 這個 media query 不會生效,導致
+   CTA 按鈕等元素深色模式樣式完全沒套用,卡片背景色(繼承頁面
+   --paper 等變數)已經變深,但按鈕文字顏色卡在淺色模式的設定值,
+   讀起來幾乎看不清楚(文字色跟背景色太接近)。這裡補齊
+   [data-theme="dark"]/[data-theme="light"] 兩種屬性選擇器,覆蓋率
+   對齊 prefers-color-scheme,而非只處理系統偏好這一種觸發路徑。
+   選擇器用 [data-theme="dark"] 而非 .jiufen-page[data-theme="dark"]
+   這種綁定特定頁面 class 的寫法——這個元件會被多個主題頁共用(見
+   檔案開頭說明),不該假設自己一定活在某個特定頁面的 DOM 結構裡,
+   只要祖先鏈上任何層級有這個屬性就生效。 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .sponsored-plan-card {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.03);
+    color: #e9eaf0;
+  }
+}
+[data-theme='dark'] .sponsored-plan-card {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: #e9eaf0;
+}
+
+.sponsored-plan-eyebrow {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #b36a12;
+  opacity: 0.85;
+}
+
+.sponsored-plan-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+/* sponsored-plan-departures——出發日梯次清單(2026-10 取代原本單一
+   出發日的 sponsored-plan-fare,見 web/partner/src/App.tsx 的
+   PlanDetail.departures 完整說明:真實旅行社行程常有多個梯次,各自
+   獨立報價)。 */
+.sponsored-plan-departures {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.sponsored-plan-days-badge {
+  align-self: flex-start;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .sponsored-plan-days-badge {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+[data-theme='dark'] .sponsored-plan-days-badge {
+  background: rgba(255, 255, 255, 0.08);
+}
+.sponsored-plan-departures-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: 0.5rem;
+}
+.sponsored-plan-departure-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.65rem 0.8rem;
+  background: rgba(0, 0, 0, 0.035);
+  border-radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .sponsored-plan-departure-chip {
+    background: rgba(255, 255, 255, 0.05);
+  }
+}
+[data-theme='dark'] .sponsored-plan-departure-chip {
+  background: rgba(255, 255, 255, 0.05);
+}
+.sponsored-plan-departure-date {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.sponsored-plan-departure-weekday {
+  font-size: 0.72rem;
+  font-weight: 500;
+  opacity: 0.65;
+}
+.sponsored-plan-departure-price {
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+.sponsored-plan-original-price {
+  font-size: 0.72rem;
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.sponsored-plan-desc {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  opacity: 0.85;
+}
+
+.sponsored-plan-highlights {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.sponsored-plan-highlights li {
+  font-size: 0.88rem;
+  padding-left: 1.3rem;
+  position: relative;
+}
+.sponsored-plan-highlights li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  font-weight: 700;
+  color: #1a8a56;
+}
+
+.sponsored-plan-cta {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.6rem 1.3rem;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  background: rgba(0, 0, 0, 0.04);
+  color: #171a21;
+  font-weight: 700;
+  font-size: 0.88rem;
+  text-decoration: none;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+.sponsored-plan-cta:hover {
+  transform: translateY(-1px);
+  border-color: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .sponsored-plan-cta {
+    border-color: rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.06);
+    color: #e9eaf0;
+  }
+  :root:not([data-theme='light']) .sponsored-plan-cta:hover {
+    border-color: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.12);
+  }
+}
+[data-theme='dark'] .sponsored-plan-cta {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e9eaf0;
+}
+[data-theme='dark'] .sponsored-plan-cta:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sponsored-plan-cta {
+    transition: none;
+  }
+}
+

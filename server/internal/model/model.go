@@ -182,14 +182,14 @@ type BlogProfile struct {
 // 的原圖尺寸),nil 代表「尚未設定/尚未知道」,不是 0 這種容易跟合法
 // 數值混淆的魔術值。
 type UploadedPhoto struct {
-	ID          string         `json:"id"`
-	OwnerID     string         `json:"ownerId"`
-	OriginalURL string         `json:"originalUrl"`
-	Status      string         `json:"status"` // "pending" | "ready" | "failed"
-	FocalX      *float64       `json:"focalX,omitempty"`
-	FocalY      *float64       `json:"focalY,omitempty"`
-	Width       *int           `json:"width,omitempty"`
-	Height      *int           `json:"height,omitempty"`
+	ID          string   `json:"id"`
+	OwnerID     string   `json:"ownerId"`
+	OriginalURL string   `json:"originalUrl"`
+	Status      string   `json:"status"` // "pending" | "ready" | "failed"
+	FocalX      *float64 `json:"focalX,omitempty"`
+	FocalY      *float64 `json:"focalY,omitempty"`
+	Width       *int     `json:"width,omitempty"`
+	Height      *int     `json:"height,omitempty"`
 	// Note 是給管理者自己看的備註(例如「基山街入口」),純文字、可為
 	// 空——跟 ImageBlock.alt(讀屏器/SEO 用)是兩回事,這裡不會出現在
 	// 任何公開渲染結果裡,只在 CLI/管理介面查詢列表時顯示,方便事後

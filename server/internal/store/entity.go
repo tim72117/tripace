@@ -194,14 +194,14 @@ func (blogProfileRow) TableName() string { return "blog_profiles" }
 // 留空;不像 photoVariantRow 的 Width/Height 是「衍生版本產生時就
 // 必然知道的明確尺寸」,不需要 nullable。
 type uploadedPhotoRow struct {
-	ID          string    `gorm:"primaryKey;column:id"`
-	OwnerID     string    `gorm:"column:owner_id;not null;index"`
-	OriginalURL string    `gorm:"column:original_url;not null"`
-	Status      string    `gorm:"column:status;not null;default:pending"`
-	FocalX      *float64  `gorm:"column:focal_x"` // 可為 NULL,見上方型別說明
-	FocalY      *float64  `gorm:"column:focal_y"` // 可為 NULL,同上
-	Width       *int      `gorm:"column:width"`   // 可為 NULL,解析完成前未知
-	Height      *int      `gorm:"column:height"`  // 可為 NULL,同上
+	ID          string   `gorm:"primaryKey;column:id"`
+	OwnerID     string   `gorm:"column:owner_id;not null;index"`
+	OriginalURL string   `gorm:"column:original_url;not null"`
+	Status      string   `gorm:"column:status;not null;default:pending"`
+	FocalX      *float64 `gorm:"column:focal_x"` // 可為 NULL,見上方型別說明
+	FocalY      *float64 `gorm:"column:focal_y"` // 可為 NULL,同上
+	Width       *int     `gorm:"column:width"`   // 可為 NULL,解析完成前未知
+	Height      *int     `gorm:"column:height"`  // 可為 NULL,同上
 	// Note 用 not null default '' 而非 *string——見 model.UploadedPhoto.Note
 	// 的完整說明,這是純文字備註,跟 Status 等欄位同樣用「空字串代表未設定」
 	// 的既有慣例(對照 contentPageRow.Status 用裸字串的既有說明),不需要
