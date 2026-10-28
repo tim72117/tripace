@@ -1,11 +1,15 @@
 name: Release @tripace/partner-claude-skill
 
-# Manual-only on purpose, same reasoning as agent 專案的
-# release-claude-skill.yml:發布到 npm 是不可逆操作(版本可以 unpublish
-# 但不能重用),所以不自動跟著 tag push 跑。先在一般 commit 裡把
-# packages/partner-installer/package.json 的 version 往前調,確認好要發的
-# 版本之後,再手動觸發這支 workflow。
+# 觸發方式:推 main 上的 partner-claude-skill-v<版本> tag(例如
+# partner-claude-skill-v0.0.2)自動發布,或手動 workflow_dispatch。
+# 發布到 npm 是不可逆操作(版本不能重用),所以先在一般 commit 把
+# packages/partner-installer/package.json 的 version 調好,tag 的版本必須
+# 與它一致(見下方檢查)。tag 前綴與主站部署的 v*、release-partner-cli.yml
+# 的 partner-cli-v* 互不匹配。
 on:
+  push:
+    tags:
+      - 'partner-claude-skill-v*'
   workflow_dispatch: {}
 
 jobs:
@@ -38,6 +42,17 @@ jobs:
 
       - name: Update npm to a Trusted-Publishing-capable version
         run: npm install -g npm@latest
+
+      - name: Check tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: packages/partner-installer
+        run: |
+          tag_version="${GITHUB_REF_NAME#partner-claude-skill-v}"
+          pkg_version=$(node -p "require('./package.json').version")
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "::error::tag 的版本 $tag_version 與 package.json 的版本 $pkg_version 不一致"
+            exit 1
+          fi
 
       - name: Check version isn't already published
         working-directory: packages/partner-installer
