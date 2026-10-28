@@ -299,7 +299,7 @@ type geoGeocodeCandidateResponse struct {
 // 轉換,抽成這支函式避免三處各寫一份。
 //
 // 2026-10:移除原本的背景照片預熱。它每次搜尋後
-// 最多下載 3 張照片並上傳 GCS,寫進沒有任何讀取端的表(place_pexels_photos),
+// 最多下載 3 張照片並上傳 GCS,寫進沒有任何讀取端的表(place_pexels_photos,該表已移除),
 // 前端的照片顯示是走 fetchGeoPlacePhoto 對 placeId 的延遲查詢,與它無關。
 func (s *Server) geoGeocodeCandidateResponses(places []geo.Place) []geoGeocodeCandidateResponse {
 	// placeId:供前端(GeoOutlinePanel.tsx 的 handleGeocodeCandidateSelect)
@@ -1455,7 +1455,7 @@ func (s *Server) fetchAndCachePlaceDetails(ctx context.Context, requestPath, pla
 	}
 
 	// 2026-09 移除 Pexels 讀圖來源——這裡原本會同步查一次 Pexels、寫進
-	// place_pexels_photos(供之後點擊判斷 hasExistingPexelsPhoto/漸進補圖
+	// place_pexels_photos(該表已移除;供之後點擊判斷 hasExistingPexelsPhoto/漸進補圖
 	// 節奏使用),但最終顯示給使用者看的照片欄位一律由 applyPhotoAssetsAsSource
 	// 決定,Pexels 這段查詢從未真正影響過回應內容,拿掉不改變任何使用者
 	// 可見行為。

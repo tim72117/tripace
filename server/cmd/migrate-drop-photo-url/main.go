@@ -16,6 +16,10 @@
 //     移除。
 //   - public_links.view_mode——公開連結的檢視模式(時間軸/配速表),隨
 //     「路徑」功能整個移除。
+//   - place_details_cache.photo_url——舊版快取的圖片網址,程式裡的 struct
+//     欄位早已移除(圖片來源改 photo_assets),但資料庫欄位當時沒有一併刪除。
+//   - 另外 DROP TABLE:pexels_photo_cache、place_pexels_photos(Pexels
+//     圖源已停用,沒有任何讀寫端)。
 //
 // (place_details_cache.new_photo_count/google_photo_target_count 兩欄
 // 已在先前執行完畢並從本工具移除,見 git 歷史。)
@@ -81,9 +85,14 @@ func main() {
 
 	columns := []columnToDrop{
 		{table: "attractions", column: "photo_url"},
+		{table: "place_details_cache", column: "photo_url"},
 		// 2026-10:公開連結的 view_mode(時間軸/配速表)隨「路徑」功能整個移除。
 		{table: "public_links", column: "view_mode"},
 	}
+
+	// tablesToDrop:Pexels 圖源 2026-10 停用後,對應的 Go struct 與讀寫程式碼
+	// 都已移除、沒有任何讀寫端的兩張表(AutoMigrate 不會自動刪表)。
+	tables := []string{"pexels_photo_cache", "place_pexels_photos"}
 
 	// -dry-run 時完全不連線資料庫——理由同 cmd/migrate-photo-assets 的
 	// 既有慣例:dry-run 應該是「連 DATABASE_URL 是否正確都還沒驗證」也能
@@ -92,6 +101,9 @@ func main() {
 	if *dryRun {
 		for _, c := range columns {
 			fmt.Printf("[dry-run] 將會執行: ALTER TABLE %s DROP COLUMN %s;\n", c.table, c.column)
+		}
+		for _, t := range tables {
+			fmt.Printf("[dry-run] 將會執行: DROP TABLE %s;\n", t)
 		}
 		fmt.Println("[dry-run] 未實際連線資料庫,不會做任何檢查或變更。")
 		return
@@ -117,5 +129,17 @@ func main() {
 			log.Fatalf("DROP COLUMN %s.%s 失敗: %v", c.table, c.column, err)
 		}
 		fmt.Printf("完成:%s.%s 欄位已刪除。\n", c.table, c.column)
+	}
+
+	for _, t := range tables {
+		if !st.HasTable(t) {
+			fmt.Printf("%s 資料表已經不存在,無需任何動作(冪等,安全結束)。\n", t)
+			continue
+		}
+		fmt.Printf("執行: DROP TABLE %s;\n", t)
+		if err := st.DropTable(t); err != nil {
+			log.Fatalf("DROP TABLE %s 失敗: %v", t, err)
+		}
+		fmt.Printf("完成:%s 資料表已刪除。\n", t)
 	}
 }

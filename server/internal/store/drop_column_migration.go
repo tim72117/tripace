@@ -17,6 +17,8 @@ package store
 //     計數器決定要不要補圖,但「已補張數追上目標值」後即使 photo_assets
 //     裡的照片已經過期也永遠不會重新觸發,新機制改成直接查
 //     photo_assets 的新鮮度狀態,不再需要這兩個計數器)。
+//   - place_details_cache.photo_url(舊版快取的圖片網址,圖片來源已改 photo_assets)。
+//   - public_links.view_mode(公開連結的檢視模式,隨「路徑」功能移除)。
 
 // HasColumn 回報 table(資料庫實際的表名字串,例如 "attractions")目前
 // 是否還有 column 欄位——底層透過 GORM Migrator().HasColumn(對 Postgres
@@ -39,4 +41,19 @@ func (s *Store) HasColumn(table, column string) bool {
 // 保持職責單一。
 func (s *Store) DropColumn(table, column string) error {
 	return s.db.Migrator().DropColumn(table, column)
+}
+
+// HasTable 回報 table(資料庫實際的表名字串)目前是否存在,同 HasColumn
+// 傳字串而非 row struct 的理由。
+func (s *Store) HasTable(table string) bool {
+	return s.db.Migrator().HasTable(table)
+}
+
+// DropTable 真正執行 DROP TABLE table——不可逆的 schema 變更,同
+// DropColumn 的使用前提:呼叫端應先用 HasTable 確認仍存在、且已確認過
+// -dry-run 的輸出。涵蓋的表(對應的 Go struct 都已移除,AutoMigrate
+// 不會自動刪表):pexels_photo_cache、place_pexels_photos(Pexels 圖源
+// 2026-10 已停用,沒有任何讀寫端)。
+func (s *Store) DropTable(table string) error {
+	return s.db.Migrator().DropTable(table)
 }

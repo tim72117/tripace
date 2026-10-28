@@ -87,7 +87,7 @@ type attractionRow struct {
 	// PlaceID:對應這個景點區域的 Google Place ID,可為 NULL——人工建檔時
 	// 若沒有透過 -place/-place-id 指定(或建檔當下查無對應地點)就不會有
 	// 值。有值時前端改用「地點照片漸進補圖機制」(place_details_cache/
-	// google_place_photos/place_pexels_photos 三張表,見這幾個型別的完整
+	// google_place_photos 等表(原本還有 place_pexels_photos,已移除),見這幾個型別的完整
 	// 說明)取得的 Google/Pexels 雙來源照片陣列顯示。2026-10 徹底移除
 	// PhotoURL 這個相容欄位(資料庫 photo_url 欄位本身也已經 DROP COLUMN,
 	// 見 cmd/migrate-drop-photo-url 的完整說明)——PlaceID 為 NULL 的
@@ -351,28 +351,6 @@ type photoCacheRow struct {
 
 func (photoCacheRow) TableName() string { return "photo_cache" }
 
-// pexelsPhotoCacheRow 快取 Pexels Search API 查到的示意圖(見
-// 已移除的 server/internal/pexels,Pexels 來源 2026-10 已停用,見 git 歷史)——同一個查詢字串重複被查詢時直接
-// 吃快取,不重新打 Pexels API。
-//
-// 主鍵刻意是 search_query(搜尋時用的原始字串,如 attraction-add 用
-// CityName+Name 組成的查詢字串),而非任何 Google place_id——Pexels 是
-// 純關鍵字比對的圖庫服務,搜尋結果不綁定任何地點識別碼,search_query
-// 才是這裡唯一有意義、可重現的快取鍵(同 photoCacheRow 用 place_id 當
-// 主鍵是同一種思路:用「查詢當下唯一能重現這次結果的識別值」當鍵)。
-//
-// PageURL 是這張照片在 pexels.com 的原始頁面網址(非下載連結)——依
-// Pexels License 的建議保留可追溯到來源的連結,供日後需要核對/移除
-// 特定照片時使用,不是要在畫面上顯示署名(目前產品未實作署名 UI)。
-type pexelsPhotoCacheRow struct {
-	SearchQuery string    `gorm:"primaryKey;column:search_query"`
-	ImageURL    string    `gorm:"column:image_url;not null"`
-	PageURL     string    `gorm:"column:page_url;not null"`
-	FetchedAt   time.Time `gorm:"column:fetched_at;not null"`
-}
-
-func (pexelsPhotoCacheRow) TableName() string { return "pexels_photo_cache" }
-
 // placeDetailsCacheRow 快取 Google Places Place Details 查詢結果(見
 // server/internal/geo/places.go 的 GetPlaceDetails)——供「使用者點擊
 // 地圖上 Google 原生 POI 圖標」情境使用,同一個地點短期內重複被點擊時
@@ -427,7 +405,7 @@ func (placeDetailsCacheRow) TableName() string { return "place_details_cache" }
 // 的說明),不是圖片內容本身(那是 photoCacheRow 的職責,見該型別說明
 // 「place_details_cache 是上層產物,photo_cache 是它可能依賴的下層快取」)。
 //
-// 跟 Pexels 的照片分成獨立的 placePexelsPhotoRow 表,不是同一張表加一個
+// 原本跟 Pexels 的照片分成獨立的 place_pexels_photos 表(已移除),不是同一張表加一個
 // 「來源」欄位——兩者要存的欄位本來就不一樣(Pexels 依授權條款需要額外
 // 保留 PageURL 可追溯來源,Google 這邊沒有這個需求),且兩者是要「同時
 // 並列顯示」的兩份獨立清單,不是互斥的單一選擇,分表比同一張表用
@@ -444,21 +422,6 @@ type googlePlacePhotoRow struct {
 }
 
 func (googlePlacePhotoRow) TableName() string { return "google_place_photos" }
-
-// placePexelsPhotoRow 存放同一個 POI 點擊情境下,從 Pexels 取得的照片,
-// 與 googlePlacePhotoRow 同時並列顯示、互不取代(見該型別的完整說明)。
-// PageURL 是這張照片在 pexels.com 的原始頁面網址(非下載連結)——依
-// Pexels License 的建議保留可追溯到來源的連結,同 pexelsPhotoCacheRow
-// 的說明。
-type placePexelsPhotoRow struct {
-	PlaceID    string    `gorm:"primaryKey;column:place_id"`
-	PhotoIndex int       `gorm:"primaryKey;column:photo_index"`
-	PhotoURL   string    `gorm:"column:photo_url;not null"`
-	PageURL    string    `gorm:"column:page_url;not null"`
-	FetchedAt  time.Time `gorm:"column:fetched_at;not null"`
-}
-
-func (placePexelsPhotoRow) TableName() string { return "place_pexels_photos" }
 
 // photoAssetRow — 2026-09 新增,全站共通的圖檔落地紀錄表。動機:
 // google_place_photos/photo_cache 兩張表目前實務上存的是完整 base64
@@ -483,8 +446,7 @@ func (placePexelsPhotoRow) TableName() string { return "place_pexels_photos" }
 // 同一張原始照片被查詢過不同尺寸的情況。
 //
 // Source 記錄這張圖片的原始來源("google"/"pexels"),供之後需要依授權
-// 條款分開處理、或排查特定來源圖片時使用——理由同 placePexelsPhotoRow
-// 保留 PageURL 可追溯來源的既有慣例。
+// 條款分開處理、或排查特定來源圖片時使用。
 //
 // ExpiresAt:2026-09 使用者明確要求「設定過期 1 週」——這批圖是從既有
 // base64 快取一次性遷移落地,不像 attractions.photo_url 那樣是人工

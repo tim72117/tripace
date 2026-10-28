@@ -67,7 +67,7 @@ func TestHandleMaintenanceAttractionSchema_ReturnsFieldList(t *testing.T) {
 	}
 	// attractionRow 的欄位集合（見 server/internal/store/entity.go:66-85），
 	// 逐一確認都出現在回傳的欄位清單裡，而不是只檢查陣列非空。
-	wantCols := []string{"id", "name", "city_name", "lat", "lng", "level", "radius_meters", "summary", "photo_url", "updated_at"}
+	wantCols := []string{"id", "name", "city_name", "lat", "lng", "level", "radius_meters", "summary", "updated_at"}
 	gotCols := map[string]bool{}
 	for _, f := range fields {
 		m, ok := f.(map[string]any)

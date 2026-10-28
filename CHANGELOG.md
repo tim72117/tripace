@@ -2,6 +2,20 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.48.1 — 2026-10-28
+
+清掉 Pexels 圖源與已移除欄位的資料庫殘留（解決 v0.48.0「已知未處理」的兩張表）。
+
+### 變更
+
+- 景點同步的 schema 欄位清單（`GET /internal/maintenance/sync/attractions/schema`）移除早已不存在的 `photo_url`。
+- 移除 `pexels_photo_cache`、`place_pexels_photos` 兩張表的 struct、`AutoMigrate`/`schema_check` 項目與兩個死方法（`GetCachedPexelsPhoto`、`SetCachedPexelsPhoto`）。
+- `cmd/migrate-drop-photo-url` 擴充：新增 `DROP TABLE` 支援（`store.HasTable`/`DropTable`），清單為 `attractions.photo_url`、`place_details_cache.photo_url`（之前漏列）、`public_links.view_mode` 三個欄位與上述兩張表。**資料庫尚未執行**，需先部署本版再執行 workflow，並以 `-dry-run=false` 傳參（空字串會被預設值 `-dry-run` 蓋掉）。
+
+### 測試
+
+- 新增 `store` 的 `HasTable`/`DropTable`/`HasColumn` 測試（`DropColumn` 因 SQLite 驅動限制無法在測試環境驗證）。
+
 ## v0.48.0 — 2026-10-28
 
 移除「路徑（配速表）」功能、舊版對話系統（ChatScreen / wanttools）與 Pexels 圖源，並整理 CHANGELOG。

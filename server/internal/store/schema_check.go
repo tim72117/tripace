@@ -46,7 +46,7 @@ func schemaCheckTargets() []any {
 		&userRow{}, &tripRow{}, &entryRow{}, &memberLink{}, &publicLinkRow{},
 		&cliAuthSessionRow{},
 		&attractionRow{}, &contentPageRow{}, &itineraryPageRow{}, &blogProfileRow{}, &uploadedPhotoRow{}, &photoVariantRow{}, &photoCacheRow{}, &placeDetailsCacheRow{},
-		&googlePlacePhotoRow{}, &placePexelsPhotoRow{}, &pexelsPhotoCacheRow{},
+		&googlePlacePhotoRow{},
 		&apiRequestLogRow{}, &geoAPICallLogRow{}, &geoRateLimitRow{},
 	}
 }

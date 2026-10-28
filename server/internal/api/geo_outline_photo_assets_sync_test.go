@@ -4,7 +4,7 @@ package api
 // 功能用的「單點地點介紹」端點)補圖節奏觸發後,是否正確把新照片背景
 // 寫入 photo_assets(見 backgroundFillPlacePhoto 的完整說明),以及顯示
 // 時是否無條件以 photo_assets 的內容決定回應(查到就用、查無/過期就
-// 清空,不回退 google_place_photos/place_pexels_photos 這兩張舊表——見
+// 清空,不回退 google_place_photos 與(已移除的)place_pexels_photos 舊表——見
 // applyPhotoAssetsAsSource 的完整說明,統一遵循的規則,不再有「正式
 // 端點才給回退」的例外)。
 //

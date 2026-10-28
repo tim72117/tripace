@@ -51,7 +51,6 @@ var attractionSchemaFields = []attractionsync.SchemaField{
 	{Name: "level", Type: "int"},
 	{Name: "radius_meters", Type: "int"},
 	{Name: "summary", Type: "*string"},
-	{Name: "photo_url", Type: "*string"},
 	{Name: "created_at", Type: "time.Time"},
 	{Name: "updated_at", Type: "time.Time"},
 }
