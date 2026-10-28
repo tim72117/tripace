@@ -64,25 +64,18 @@ jobs:
             exit 1
           fi
 
-      # 只暫存、不直接上架:這個套件的 Trusted Publisher 沒有勾選
-      # 「Allow npm publish」,CI 只能 stage(直接 npm publish 會回 404),
-      # 最後要由人用 2FA 核准才會對外公開(供應鏈把關)。沒有 NODE_AUTH_TOKEN,
-      # 身分來自上面的 id-token(OIDC),需要 npmjs.com 該套件的 Trusted
-      # Publisher 設定對上這個 repo 與 workflow 檔名。
-      - name: Stage on npm
+      - name: Publish to npm
         working-directory: packages/partner-installer
-        run: npm stage publish --access public
+        # No NODE_AUTH_TOKEN — npm detects the OIDC id-token permission
+        # above and authenticates via Trusted Publishing instead.
+        # Requires the Trusted Publisher config on
+        # npmjs.com/package/@tripace/partner-claude-skill to list this
+        # exact repo + workflow filename.
+        run: npm publish --access public
 
-      - name: Show next step
-        working-directory: packages/partner-installer
+      - name: Show published version
         run: |
-          {
-            echo "### 已暫存到 npm,尚未對外公開"
-            echo
-            echo "套件 @tripace/partner-claude-skill@${{ env.version }} 在暫存區,需要本人核准才會上架:"
-            echo '```'
-            echo "npx -y npm@12 stage list @tripace/partner-claude-skill"
-            echo "npx -y npm@12 stage approve <stage-id>"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-          npm stage list @tripace/partner-claude-skill || true
+          echo "### 已發布" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "npx -p @tripace/partner-claude-skill@${{ env.version }} tripace-partner-cli-setup" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
