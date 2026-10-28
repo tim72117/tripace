@@ -25,7 +25,7 @@ description: 協助廣告業主/聯盟行銷夥伴透過 partner-cli 登入 Trip
 
 > 以下與後續章節為了簡潔，一律直接寫 `partner-cli login`、`partner-cli campaign list` 等指令；實際執行時請替換成上一步判斷出來的完整路徑，例如 `${CLAUDE_SKILL_DIR}/bin/partner-cli-linux-amd64 login -email ... -password ...`，而不是直接執行裸指令 `partner-cli`。
 
-`partner-cli` 的登入身分**跟 Tripace 主站一般使用者帳號是同一套**（不是獨立的業主密碼系統）——業主必須先在 `https://tripace.io`（或本機開發環境）用 email/password 註冊過一般帳號，並由內部窗口透過 `tripace-cli partner-grant` 開通業主身分，才能用這支 CLI 操作：
+`partner-cli` 的登入身分**跟 Tripace 主站一般使用者帳號是同一套**（不是獨立的業主密碼系統）——業主必須先在 `https://tripace.io`（或本機開發環境）用 email/password 註冊過一般帳號，並由 Tripace 內部人員開通業主身分，才能用這支 CLI 操作（開通要提供登入用的 email）：
 
 **優先用瀏覽器核准登入，不要請使用者把密碼貼進對話或指令裡**：
 
@@ -50,7 +50,7 @@ partner-cli login -email <email> -password <password> -api https://tripace.io
 登入成功後，`partner-cli login` 會自動打一次 `/partner/api/me` 驗證這個帳號確實有業主身分：
 - 如果印出業主資訊（`id`/`name`/`status` 等），代表登入與業主身分驗證都成功，可以繼續後續操作。
 - 如果顯示帳號密碼錯誤，請使用者確認帳密是否正確（跟主站一般帳號共用）。
-- 如果顯示「這個帳號似乎沒有業主權限」，代表帳密正確但尚未被開通業主身分，請使用者聯絡內部窗口透過 `tripace-cli partner-grant -email <email> -name <業主名稱>` 開通，不是這支 CLI 本身能自助申請的（目前沒有自助申請流程）。
+- 如果顯示 `partner_not_enabled`（「這個帳號尚未開通業主身分」），代表登入成功但帳號還沒開通業主。把訊息裡的帳號識別與登入用的 email 轉告使用者，請他提供給 Tripace 申請開通，開通後直接繼續操作即可（不需要重新登入）。這不是 CLI 能自助完成的，也不要請使用者自己執行 `tripace-cli`（那是內部工具）。
 
 ## 二、管理廣告活動（campaign）
 
@@ -229,7 +229,7 @@ partner-cli version
 ## 完整流程總覽
 
 1. 判斷目前平台，呼叫安裝時已下載到 `${CLAUDE_SKILL_DIR}/bin/partner-cli-<os>-<arch>[.exe]` 的執行檔；若目前平台沒有對應版本，告知使用者此 skill 目前沒有對應執行檔，不要自行編譯或安裝。
-2. 確認使用者已經有 Tripace 一般帳號、且已被內部窗口開通業主身分（`tripace-cli partner-grant`）——這不是 `partner-cli` 能自助完成的前置條件。
+2. 確認使用者已經有 Tripace 一般帳號、且已被 Tripace 開通業主身分——這不是 `partner-cli` 能自助完成的前置條件，未開通時登入會回 `partner_not_enabled`。
 3. 執行 `partner-cli login -web -api https://tripace.io` 登入，確認回傳業主資訊而非錯誤訊息。
 4. 執行 `partner-cli campaign create -name ...` 建立活動，記下回傳的 `id`。
 5. 執行 `partner-cli plan create -campaign <活動ID> -title ... -departure "日期|星期|團費" -highlight "..." ...` 建立方案（優先用結構化旗標或 `-detail-file`，欄位格式見第三節「detail 欄位的正確格式」），團費用帶格式字串、多個梯次就重複 `-departure`。

@@ -23,6 +23,7 @@ package partnerconsole
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"regexp"
 	"strings"
@@ -81,9 +82,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 //  3. 用 Claims.Sub(一般使用者 ID)查 Store.FindPartnerByUserID——
 //     查得到代表這個使用者有業主身分,查不到代表沒有。
 //
-// 任一步驟失敗(沒有 token、JWT 無效、使用者不是業主)一律回 401,不
-// 洩漏是哪一步失敗——fail-closed,對齊 adminconsole.withAdmin 的既有
-// 設計哲學。
+// 沒有 token、JWT 無效、查詢出錯一律回 401,不洩漏是哪一步失敗——
+// fail-closed,對齊 adminconsole.withAdmin 的既有設計哲學。唯一例外是第 3
+// 步確定「查無業主」:此時 JWT 已驗證通過,對方只是還沒開通,回 403
+// partner_not_enabled 並附申請說明與帳號識別(只含他自己的資訊),讓業主
+// 知道該怎麼辦,而不是看到無從判斷的 401。
 func (h *Handler) withPartner(next func(http.ResponseWriter, *http.Request, *Partner)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, err := auth.ParseBearer(r.Header.Get("Authorization"))
@@ -97,6 +100,13 @@ func (h *Handler) withPartner(next func(http.ResponseWriter, *http.Request, *Par
 			return
 		}
 		p, err := h.Store.FindPartnerByUserID(claims.Sub)
+		if errors.Is(err, store.ErrNotFound) {
+			// token 有效(使用者自己的身分)但還沒開通業主:回 403 並說明怎麼辦、
+			// 附上帳號識別供申請。只在 JWT 驗證通過後才會走到這裡,不洩漏他人資訊。
+			writeErr(w, http.StatusForbidden, "partner_not_enabled",
+				"這個帳號尚未開通業主身分。請聯絡 Tripace 申請開通,並提供登入用的 email;帳號識別:"+claims.Sub)
+			return
+		}
 		if err != nil {
 			writeErr(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
 			return

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -274,5 +275,30 @@ func TestPlanLandingURLRejectsDangerousSchemesAndNormalizesKKdayCategory(t *test
 	code, plan := env.do("usr_a", "POST", path, map[string]string{"title": "t", "category": " KKday ", "detail": `{"cid":"abc","landingUrl":"https://www.kkday.com/x"}`})
 	if code != http.StatusCreated || plan["category"] != "kkday" {
 		t.Fatalf("分類應統一成 kkday: %d %v", code, plan["category"])
+	}
+}
+
+// 登入成功(JWT 有效)但還沒開通業主身分:回 403 partner_not_enabled 並附申請說明與帳號識別;
+// 沒有 token 或 token 無效仍是 401。
+func TestNonPartnerGetsGuidance(t *testing.T) {
+	env := newEnv(t, "usr_a")
+	signer := auth.NewSigner("test-secret", time.Hour)
+	tok, err := signer.Sign("usr_plain", "一般使用者")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.tokens["usr_plain"] = tok
+
+	code, res := env.do("usr_plain", "GET", "/partner/api/me", nil)
+	if code != http.StatusForbidden || errCode(res) != "partner_not_enabled" {
+		t.Fatalf("非業主: %d %v,應回 403 partner_not_enabled", code, res)
+	}
+	msg, _ := res["error"].(map[string]any)["message"].(string)
+	if !strings.Contains(msg, "usr_plain") || !strings.Contains(msg, "email") {
+		t.Fatalf("訊息應含帳號識別與申請說明: %q", msg)
+	}
+
+	if code, _ := env.do("nobody", "GET", "/partner/api/me", nil); code != http.StatusUnauthorized {
+		t.Fatalf("無效 token = %d,應回 401", code)
 	}
 }

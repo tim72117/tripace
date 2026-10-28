@@ -2,6 +2,16 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.47.1 — 2026-10-28
+
+業主身分尚未開通時，回應明確說明該怎麼辦。
+
+### 變更
+
+- **非業主帳號呼叫 `/partner/api/*` 改回 403 `partner_not_enabled`**（原為 401 `not authenticated`）：訊息說明「帳號尚未開通業主身分，請聯絡 Tripace 並提供登入用 email」並附帳號識別。只有 JWT 驗證通過但查無業主時才回 403；沒有 token、token 無效、查詢錯誤仍是 401。
+- **`partner-cli login` 在帳號未開通時結束代碼改為 1**（原為 0）並印出申請說明，不再提示內部工具 `tripace-cli partner-grant`；業主網頁登入頁直接顯示後端訊息。依賴 `login` 永遠成功的腳本需調整。
+- skill 套件 `SKILL.md` 同步：遇到 `partner_not_enabled` 時轉告使用者向 Tripace 申請，不再提內部指令。
+
 ## v0.47.0 — 2026-10-28
 
 這一版把廣告業主控制台併入主服務（與主站同網域 `tripace.io`），業主可投放 KKday 聯盟方案，行程頁側欄可依行程投放，並整理 partner 套件與發布流程。

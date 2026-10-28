@@ -66,9 +66,11 @@ func cmdLogin(args []string) {
 	c := newHTTPClient(*apiURLFlag)
 	me, err := c.do("GET", "/partner/api/me", nil)
 	if err != nil {
-		fmt.Println("已登入,但這個帳號似乎沒有業主權限(呼叫 /partner/api/me 失敗):", err)
-		fmt.Println("請確認內部窗口已經透過 `tripace-cli partner-grant` 開通此帳號。")
-		return
+		fmt.Println("已登入,但無法取得業主身分:", err)
+		if strings.Contains(err.Error(), "partner_not_enabled") {
+			fmt.Println("這個帳號還沒開通業主身分,請把上面的帳號識別與登入用的 email 提供給 Tripace 申請開通,開通後再執行任何指令即可(不需要重新登入)。")
+		}
+		os.Exit(1)
 	}
 	output(map[string]any{"status": "logged_in", "partner": me})
 }

@@ -158,8 +158,12 @@ export const api = {
       return await api.me()
     } catch (err) {
       clearToken()
+      if (err instanceof ApiError && err.status === 403) {
+        // 後端的訊息已含申請方式與帳號識別,直接顯示。
+        throw err
+      }
       if (err instanceof ApiError && err.status === 401) {
-        throw new ApiError(401, '這個帳號沒有業主權限，請確認使用正確的帳號，或聯絡內部窗口申請開通')
+        throw new ApiError(401, '登入狀態無效，請重新登入')
       }
       throw err
     }
