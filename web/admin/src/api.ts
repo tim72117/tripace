@@ -145,6 +145,12 @@ export interface SchemaCheck {
 export interface SchemaCheckResponse {
   ok: boolean
   tables: SchemaCheck[]
+  // Tables that exist in the database but have no matching Go struct
+  // (store.OrphanTables) — e.g. a table whose struct was deleted but whose
+  // DROP TABLE never ran. AutoMigrate only creates tables, never drops
+  // them, and the per-table check above starts from the structs, so these
+  // can't show up there.
+  orphanTables: string[]
 }
 
 // One row of the Google Places API rate limit config. Mirrors

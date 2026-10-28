@@ -2,6 +2,20 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.48.2 — 2026-10-28
+
+Schema check 能列出資料庫裡「沒有對應 struct」的遺留表。
+
+### 變更
+
+- **`GET /admin/api/schema-check` 回應新增 `orphanTables`**（`store.OrphanTables`）：資料庫有、但沒有任何 struct 對應的資料表（沒有時為空陣列）；有遺留表時整體 `ok` 為 false。原本的檢查只從 struct 出發，struct 刪掉但 `DROP TABLE` 沒執行的表永遠看不到。
+- 管理後台 Schema check 頁顯示遺留表清單。
+- `schemaCheckTargets` 補上漏列的 7 張正式表（`ad_plans`、`campaigns`、`geo_field_masks`、`geo_settings`、`partners`、`photo_assets`、`plan_ai_chat_messages`）；它們之前從未被檢查過，部署後若有欄位漂移會首次顯示。
+
+### 測試
+
+- `store`：全新資料庫無遺留表（同時鎖住 `schemaCheckTargets` 與 `AutoMigrate` 清單須鏡像）、偵測無 struct 的表、`DropTable` 後消失；`adminconsole`：端點帶出 `orphanTables` 且為空陣列。
+
 ## v0.48.1 — 2026-10-28
 
 清掉 Pexels 圖源與已移除欄位的資料庫殘留（解決 v0.48.0「已知未處理」的兩張表）。

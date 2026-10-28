@@ -1,6 +1,11 @@
 package store
 
-import "gorm.io/gorm"
+import (
+	"sort"
+	"strings"
+
+	"gorm.io/gorm"
+)
 
 // SchemaCheck 是單一資料表的 struct 定義 vs 實際資料庫欄位的比對結果——
 // 供 adminconsole 的 schema-check 端點使用,讓管理員能主動發現「GORM
@@ -46,8 +51,10 @@ func schemaCheckTargets() []any {
 		&userRow{}, &tripRow{}, &entryRow{}, &memberLink{}, &publicLinkRow{},
 		&cliAuthSessionRow{},
 		&attractionRow{}, &contentPageRow{}, &itineraryPageRow{}, &blogProfileRow{}, &uploadedPhotoRow{}, &photoVariantRow{}, &photoCacheRow{}, &placeDetailsCacheRow{},
-		&googlePlacePhotoRow{},
+		&googlePlacePhotoRow{}, &photoAssetRow{},
 		&apiRequestLogRow{}, &geoAPICallLogRow{}, &geoRateLimitRow{},
+		&geoFieldMaskRow{}, &geoSettingRow{}, &planAiChatMessageRow{},
+		&partnerRow{}, &campaignRow{}, &adPlanRow{},
 	}
 }
 
@@ -66,6 +73,42 @@ func (s *Store) CheckSchema() ([]SchemaCheck, error) {
 		out = append(out, check)
 	}
 	return out, nil
+}
+
+// OrphanTables 列出資料庫裡「沒有對應任何 struct」的資料表,依名稱排序。
+//
+// CheckSchema 只會從 schemaCheckTargets 的 struct 出發去查對應的表,所以
+// 「struct 已經刪掉、但資料表一直沒有 DROP」的遺留表永遠不會出現在檢查
+// 結果裡(AutoMigrate 只會建表、不會刪表)。這支方法反過來從資料庫實際
+// 有哪些表出發,扣掉 schemaCheckTargets 涵蓋的表,剩下的就是遺留表,補上
+// 那個盲點。
+//
+// 依賴 schemaCheckTargets 與 Open() 裡的 AutoMigrate 清單保持鏡像(見該
+// 函式註解);兩者漂移時,漏列在 schemaCheckTargets 的正式表會被誤報成
+// 遺留表——TestOrphanTables_NoneAfterOpen 就是用來抓這種漂移。SQLite 的
+// 內部表(sqlite_ 開頭)不算。
+func (s *Store) OrphanTables() ([]string, error) {
+	tables, err := s.db.Migrator().GetTables()
+	if err != nil {
+		return nil, err
+	}
+	known := make(map[string]bool, len(schemaCheckTargets()))
+	for _, dst := range schemaCheckTargets() {
+		stmt := &gorm.Statement{DB: s.db}
+		if err := stmt.Parse(dst); err != nil {
+			return nil, err
+		}
+		known[stmt.Schema.Table] = true
+	}
+	orphans := make([]string, 0)
+	for _, t := range tables {
+		if known[t] || strings.HasPrefix(t, "sqlite_") {
+			continue
+		}
+		orphans = append(orphans, t)
+	}
+	sort.Strings(orphans)
+	return orphans, nil
 }
 
 func checkOneSchema(db *gorm.DB, migrator gorm.Migrator, dst any) (SchemaCheck, error) {

@@ -14,11 +14,14 @@ import (
 )
 
 // schemaCheckResponse 是 GET /admin/api/schema-check 的回應格式。Ok 為
-// 整體結果(所有表都 ok 才是 true),Tables 依 store.CheckSchema 的順序
-// (即 Open() 裡 AutoMigrate 清單的順序)逐表列出。
+// 整體結果(所有表都 ok 且沒有遺留表才是 true),Tables 依 store.CheckSchema
+// 的順序(即 Open() 裡 AutoMigrate 清單的順序)逐表列出。OrphanTables 是
+// 資料庫裡沒有對應 struct 的遺留表(見 store.OrphanTables),永遠是陣列
+// (沒有時是空陣列,不是 null)。
 type schemaCheckResponse struct {
-	Ok     bool                `json:"ok"`
-	Tables []store.SchemaCheck `json:"tables"`
+	Ok           bool                `json:"ok"`
+	Tables       []store.SchemaCheck `json:"tables"`
+	OrphanTables []string            `json:"orphanTables"`
 }
 
 func (h *Handler) checkSchema(w http.ResponseWriter, r *http.Request, _ *Admin) {
@@ -27,12 +30,17 @@ func (h *Handler) checkSchema(w http.ResponseWriter, r *http.Request, _ *Admin) 
 		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
-	ok := true
+	orphans, err := h.Store.OrphanTables()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
+		return
+	}
+	ok := len(orphans) == 0
 	for _, c := range checks {
 		if !c.Ok {
 			ok = false
 			break
 		}
 	}
-	writeJSON(w, http.StatusOK, schemaCheckResponse{Ok: ok, Tables: checks})
+	writeJSON(w, http.StatusOK, schemaCheckResponse{Ok: ok, Tables: checks, OrphanTables: orphans})
 }

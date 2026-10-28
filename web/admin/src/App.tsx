@@ -688,6 +688,7 @@ function AttractionMissingPlaceIDTab({ onLoggedOut }: { onLoggedOut: () => void 
 // manually inspecting information_schema per table.
 function SchemaCheckTab({ onLoggedOut }: { onLoggedOut: () => void }) {
   const [tables, setTables] = useState<SchemaCheck[] | null>(null)
+  const [orphanTables, setOrphanTables] = useState<string[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -697,6 +698,7 @@ function SchemaCheckTab({ onLoggedOut }: { onLoggedOut: () => void }) {
     try {
       const res = await api.checkSchema()
       setTables(res.tables)
+      setOrphanTables(res.orphanTables ?? [])
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         onLoggedOut()
@@ -730,6 +732,13 @@ function SchemaCheckTab({ onLoggedOut }: { onLoggedOut: () => void }) {
             {problemCount === 0
               ? `All ${tables.length} tables match their struct definitions.`
               : `${problemCount} of ${tables.length} tables have drifted from their struct definitions.`}
+          </p>
+        )}
+        {tables !== null && (
+          <p className={orphanTables.length === 0 ? 'muted' : 'error-cell'}>
+            {orphanTables.length === 0
+              ? 'No leftover tables (every table in the database has a matching struct).'
+              : `${orphanTables.length} leftover table${orphanTables.length === 1 ? '' : 's'} with no matching struct (never dropped): ${orphanTables.join(', ')}`}
           </p>
         )}
         <div className="table-scroll">
