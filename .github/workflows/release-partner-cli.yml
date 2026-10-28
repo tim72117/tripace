@@ -4,7 +4,7 @@ name: Release partner-cli
 # agent 專案 .github/workflows/release-onagent.yml 的既有模式——打
 # windows/darwin/linux × amd64/arm64 的靜態編譯二進位檔,包裝成
 # tar.gz(linux/darwin)/zip(windows),上傳成 GitHub Release 的 assets。
-# web/partner-installer(npx tripace-partner-cli-setup)在安裝/升級時
+# packages/partner-installer(npx tripace-partner-cli-setup)在安裝/升級時
 # 從這個 release 下載對應平台的 binary,不 bundle 進 npm 套件本身。
 #
 # 跟 onagent 版本的差異:Tripace 的 go.mod(github.com/tim72117/tripace)

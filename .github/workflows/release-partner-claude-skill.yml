@@ -3,7 +3,7 @@ name: Release @tripace/partner-claude-skill
 # Manual-only on purpose, same reasoning as agent 專案的
 # release-claude-skill.yml:發布到 npm 是不可逆操作(版本可以 unpublish
 # 但不能重用),所以不自動跟著 tag push 跑。先在一般 commit 裡把
-# web/partner-installer/package.json 的 version 往前調,確認好要發的
+# packages/partner-installer/package.json 的 version 往前調,確認好要發的
 # 版本之後,再手動觸發這支 workflow。
 on:
   workflow_dispatch: {}
@@ -40,7 +40,7 @@ jobs:
         run: npm install -g npm@latest
 
       - name: Check version isn't already published
-        working-directory: web/partner-installer
+        working-directory: packages/partner-installer
         run: |
           version=$(node -p "require('./package.json').version")
           echo "version=$version" >> "$GITHUB_ENV"
@@ -50,7 +50,7 @@ jobs:
           fi
 
       - name: Publish to npm
-        working-directory: web/partner-installer
+        working-directory: packages/partner-installer
         # No NODE_AUTH_TOKEN — npm detects the OIDC id-token permission
         # above and authenticates via Trusted Publishing instead.
         # Requires the Trusted Publisher config on
