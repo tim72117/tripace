@@ -8,7 +8,7 @@ import type { IdeaGroupId } from './ideas/types'
 //     構想群組(ideas/groups.ts),清單由 IdeasIndexPage 依群組渲染。
 //   - 點子開發、系統文件:內容是 HandbookIndex.tsx 的 ITEMS(雛形頁與內部文件)與封存區,
 //     用 ITEM_MODE 指到 HandbookIndex 的顯示模式。
-export type HandbookCategoryId = 'ideas' | 'prototypes' | 'system-docs' | 'system-maintenance' | 'audit'
+export type HandbookCategoryId = 'ideas' | 'prototypes' | 'system-docs' | 'system-maintenance' | 'audit' | 'research'
 
 export interface HandbookCategory {
   id: HandbookCategoryId
@@ -47,6 +47,12 @@ export const HANDBOOK_CATEGORIES: HandbookCategory[] = [
     title: '稽核文件',
     blurb: '程式碼盤點與稽核:成本控制、快取涵蓋範圍、一致性與安全性檢查。',
     groupIds: ['audit'],
+  },
+  {
+    id: 'research',
+    title: '研究',
+    blurb: '外部專案的技術架構研究:拆解做法、整理可借鏡到 tripace 的設計。',
+    groupIds: ['tech-research'],
   },
 ]
 

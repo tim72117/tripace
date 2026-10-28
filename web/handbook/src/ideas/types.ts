@@ -15,6 +15,7 @@ export type IdeaGroupId =
   | 'research'           // 研究類發想
   | 'audit'              // 稽核報告(程式碼盤點、成本/安全/一致性檢查;本頁即原始文件)
   | 'system-maintenance' // 系統維護(資料同步、維運操作、工具缺口等構想與紀錄)
+  | 'tech-research'      // 技術研究(外部專案的架構拆解等,首頁「研究」分類)
 
 export interface IdeaGroupMeta {
   id: IdeaGroupId

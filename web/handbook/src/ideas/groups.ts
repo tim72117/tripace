@@ -42,4 +42,9 @@ export const IDEA_GROUPS: IdeaGroupMeta[] = [
     title: '系統維護',
     blurb: '資料同步、維運操作與工具缺口的紀錄與構想,例如景點同步的選定欄位覆蓋。',
   },
+  {
+    id: 'tech-research',
+    title: '外部專案技術研究',
+    blurb: '拆解外部專案的技術架構,整理可借鏡到 tripace 的做法;第一份是開源瀏覽器 MMO World of ClaudeCraft。',
+  },
 ]
