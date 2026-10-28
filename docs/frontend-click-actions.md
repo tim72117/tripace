@@ -1,6 +1,6 @@
 # 前端可點擊元素行為清單
 
-列出 `web/src` 底下各畫面中「點下去會觸發某個行為」的元素與其行為,供快速查閱某個按鈕/卡片點下去實際會發生什麼事。次要/demo 用途的檔案(`DemoPanel.tsx`、`clienttools/`、`PublicPaceDemoPage.tsx` 等)只簡略帶過。
+列出 `web/src` 底下各畫面中「點下去會觸發某個行為」的元素與其行為,供快速查閱某個按鈕/卡片點下去實際會發生什麼事。次要/demo 用途的檔案(`DemoPanel.tsx`等)只簡略帶過。
 
 這份清單是特定時間點的快照,程式碼變動後不會自動同步——若發現條目與實際行為不符,以程式碼為準,並回來更新這份文件。
 
@@ -26,7 +26,6 @@
 
 - Rail「行程列表」圖示鈕｜切換疊加顯示旅程列表（`trip/desktop/TripList.tsx`）(不影響主顯示區)
 - Rail「時間軸」圖示鈕｜切到 `timeline` 面板(未選行程時停用)
-- Rail「路徑」圖示鈕｜切到 `pace` 面板(配速表)
 - Rail「規劃」圖示鈕｜切到 `geo-outline` 面板(地理輪廓底圖)
 - Rail(`?demo` 模式限定)試做按鈕群｜切到對應 demo 面板
 - Rail(`?demo`)「API / WS 狀態面板」開關鈕｜顯示/隱藏 debug 面板
@@ -74,24 +73,11 @@
 - 導航小箭頭圖示連結｜開新分頁前往 Google 地圖導航該地點
 - 編輯表單「取消」/「儲存」按鈕｜關閉不儲存 / 呼叫 API 更新條目
 
-## ChatScreen.tsx(對話主畫面)
+## ChatScreen.tsx / MessageBubble.tsx(已移除)
 
-- Navbar(手機版)左上角按鈕｜開啟導覽抽屜
-- Navbar(桌面版)左上角返回箭頭｜返回清空選取行程
-- Navbar「⋯」行程選單｜開關「開啟時自動進入」設定
-- Navbar「分享」圖示鈕(僅 owner)｜開啟分享彈窗
-- Navbar「成員」圖示鈕｜開啟成員管理頁
-- 輸入列「推薦附近景點」閃電圖示鈕｜直接送出「推薦附近的景點」訊息
-- 輸入列「送出」按鈕｜送出訊息
-- 詢問補值面板(agent 詢問缺資訊時彈出)「取消」/「確定」/各選項按鈕｜取消或送出使用者回覆
+舊的對話主畫面（`web/src/chat/`：`ChatScreen.tsx`、`MessageBubble.tsx`、`AskSheets.tsx`）已整個刪除，原本記錄在此的 Navbar、輸入列、詢問補值面板、訊息附加資料面板等點擊行為不再存在。現行 AI 規劃對話改由 `planning/panel/TripPlanPage.tsx`（onagent `plan-ai-timeline` app）提供，其點擊行為尚未收錄於本清單。
 
-## MessageBubble.tsx(訊息泡泡與附加資料)
-
-- 「推薦景點/旅程清單」摺疊區塊觸發按鈕｜展開/收合附加資料面板
-- 旅程清單表格 checkbox、列本體點擊｜勾選/取消勾選要刪除的項目
-- 「刪除(N)」按鈕｜刪除勾選的項目
-
-## phone/Content.tsx / phone/Nav.tsx / PhoneSideTools.tsx / trip/phone/TripList.tsx(手機版導覽)
+## phone/Nav.tsx / trip/phone/TripList.tsx(手機版導覽)
 
 `PhoneNavDrawer.tsx` 已整個移除（分享/成員/開啟時自動進入合併進
 `TripManageModal`）。規劃地圖現為唯一常駐主畫面，不再有可切換的分頁，
@@ -100,20 +86,9 @@
 
 - 底部常駐列「旅程」按鈕｜開啟/收合旅程列表抽屜（`trip/phone/TripList.tsx`）
 - 底部常駐列「對話」按鈕｜開啟對話疊加層（`PhoneBottomSheet`，`chatSheetOpen`）
-- 右側工具列（`PhoneSideTools.tsx`）「路徑」圖示按鈕｜開啟配速表疊加層（`paceSheetOpen`）
 - 旅程列表抽屜「新增旅程」/既有旅程項目｜新增或切換旅程
 - 旅程列表項目「管理」按鈕｜開啟 `TripManageModal`（分享連結/成員/開啟時自動進入）
-- 疊加層（旅程列表/對話/配速表/設定/地點清單）向下拖曳｜關閉疊加層
-
-## PaceChart.tsx / PaceRouteMap.tsx(配速表)
-
-- 路線分頁標籤按鈕｜切換顯示不同路段
-- 「分享這個路徑」按鈕｜複製固定展示頁連結
-- 檢查站卡片點擊｜平移地圖到該座標(無座標時先呼叫後端 geocode 補座標)
-- 「回到目前位置」圖示鈕｜地圖平移回使用者目前位置
-- 「模擬移動」/「停止模擬」按鈕｜開關沿路線模擬移動的測試功能
-- 「導航模式」按鈕｜開關地圖跟隨行進方向旋轉
-- 選點圖釘＋「儲存座標」按鈕｜呼叫 API 儲存目前圖釘座標
+- 疊加層（旅程列表/對話/設定/地點清單）向下拖曳｜關閉疊加層
 
 ## SettingsScreen.tsx(手機版設定整頁)
 
@@ -127,7 +102,6 @@
 - 返回箭頭｜關閉彈窗
 - 「複製連結」按鈕/圖示鈕｜複製公開連結到剪貼簿
 - 「允許訪客新增行程」開關(僅 owner)｜切換公開連結是否可編輯
-- 顯示模式分段按鈕(僅 owner)｜切換公開頁呈現方式(時間軸/路徑)
 - 「撤銷連結」按鈕(僅 owner)｜刪除目前的公開連結
 - 「建立公開連結」按鈕(僅 owner)｜建立新的公開分享連結
 
@@ -140,7 +114,4 @@
 ## 次要/demo 用途檔案(簡略)
 
 - `DemoPanel.tsx`:debug 面板的清空紀錄等按鈕
-- `clienttools/`:ClientToolsBridge/onagent 串接試做頁的連線/送出按鈕
-- `PublicPaceDemoPage.tsx`:固定示範資料頁,互動同 `PaceChart`/`PaceRouteMap`
-- `PacePhoneSwipe.tsx`:手機版配速表滑動抽屜,互動同導覽抽屜拖曳手勢＋`PaceChart`檢查站點擊
 - `DeviceAuthPage.tsx` / `CliAuthPage.tsx`:CLI 登入核准頁的「核准」按鈕

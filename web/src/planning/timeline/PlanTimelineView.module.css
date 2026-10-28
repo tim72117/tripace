@@ -562,7 +562,7 @@
   transition: opacity 0.25s ease, padding 0.25s ease, font-size 0.25s ease, background 0.25s ease;
 }
 /* messageMarkdown——新鮮態用 ReactMarkdown 渲染 LLM 回覆文字,對齊
-   chat/MessageBubble.module.css 既有 .text.markdown 的收斂間距寫法。 */
+   原 chat/MessageBubble.module.css(已移除)的 .text.markdown 收斂間距寫法。 */
 .messageMarkdown > :first-child { margin-top: 0; }
 .messageMarkdown > :last-child { margin-bottom: 0; }
 .messageMarkdown p { margin: 6px 0; }

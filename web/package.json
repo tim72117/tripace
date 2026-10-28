@@ -17,7 +17,6 @@
     "test:itinerary": "vitest run src/itineraries",
     "test:ui": "vitest run src/components src/hooks src/blog src/momiji-front src/island src/trip src/recommended-places",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:e2e:mockllm": "playwright test tests/e2e-mock-llm.spec.ts",
     "test:e2e:geo-outline": "playwright test tests/e2e-geo-outline.spec.ts"
   },
   "dependencies": {

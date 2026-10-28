@@ -31,12 +31,12 @@ export interface ScrollAreaProps {
   // 相關屬性等),但不應該在裡面重新宣告 overflow-y/touch-action(那樣
   // 會蓋掉這裡的設定,失去單一真理來源的意義)。
   className?: string
-  // style:inline 樣式(至少 OnagentBridgeDemo.tsx 需要 padding: 16 這種
+  // style:inline 樣式(原 OnagentBridgeDemo.tsx,已移除,曾需要 padding: 16 這種
   // 一次性的內聯覆寫,不值得為它新增一個 CSS Module class)。
   style?: CSSProperties
 }
 
-// forwardRef——至少 ChatScreen.tsx(x2)、PublicViewScreen.tsx、
+// forwardRef——(原 ChatScreen.tsx 已移除)PublicViewScreen.tsx、
 // PhoneTimelineDrawer.tsx 這幾處呼叫端需要抓到這個 DOM 節點的 ref 做
 // 捲動位置控制(例如開啟時自動捲到「今天」那一列、新訊息進來捲到底部),
 // 沒有 ref 轉發這個元件就無法取代原本直接掛 ref 在 div 上的寫法。

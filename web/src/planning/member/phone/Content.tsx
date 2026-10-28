@@ -1,18 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useResolvedTheme } from '../../../hooks/useResolvedTheme'
 import { Helmet } from 'react-helmet-async'
-import { Compass, ListPlus, Route, Sparkles } from 'lucide-react'
-import { ChatScreen, type DesktopTimelineMirror } from '../../../chat/ChatScreen'
+import { Compass, ListPlus, Sparkles } from 'lucide-react'
+import { useTripEntriesMirror } from '../../../hooks/useTripEntriesMirror'
 import { type ContentProps } from '../../../AppCommon'
 import { useIsDesktop } from '../../../hooks/useIsDesktop'
 import { useTripsState } from '../../../hooks/useTripsState'
 import { LoginForm, LoginCard } from '../../../home/LoginForm'
-import { TIMELINE_ENABLED, PACE_ENABLED, ROUTE_LINE_ENABLED } from '../../../DesktopShared'
+import { TIMELINE_ENABLED, ROUTE_LINE_ENABLED } from '../../../DesktopShared'
 import { Content as DesktopContent } from '../desktop/Content'
 import { SettingsScreen } from '../../../user/SettingsScreen'
 import { TripManageDialog } from '../../../trip/TripManageDialog'
-import { PaceRouteMap, type SelectedEntry } from '../../../pace/PaceRouteMap'
-import type { Checkpoint } from '../../../pace/PaceChart'
 import { PlanPhoneView } from '../../map/phone/PlanPhoneView'
 import { TripList as PhoneTripList } from '../../../trip/phone/TripList'
 import { PhoneTimelineDrawer } from '../../../timeline/PhoneTimelineDrawer'
@@ -26,20 +24,7 @@ import { Nav as PhoneNav } from '../../../phone/Nav'
 import { LivePlanLayer } from './LivePlanLayer'
 import { PlanDataProvider } from '../../data/PlanDataProvider'
 import { getPlanAiApiDataSource } from '../../data/api'
-import { PhoneSideTools } from '../../../PhoneSideTools'
 import type { Trip } from '../../../trip/types'
-
-// 時間軸鏡像資料的初始值(尚未收到 ChatScreen 鏡像前,或未選擇旅程時使用)
-// ——跟 planning/member/desktop/Content.tsx 的 EMPTY_TIMELINE_MIRROR 同一份形狀,手機版這裡
-// 需要自己一份是因為抽屜欄的時間軸分頁(PhoneNavDrawer.tsx)跟桌面版的
-// side panel 各自獨立掛載,不共用同一個 React tree,無法共用同一個常數
-// 參照(但值本身完全一樣)。
-const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
-  entries: [],
-  updatingEntryIDs: new Set<string>(),
-  taskPlaceholders: [],
-  refetchEntries: () => {},
-}
 
 // 設定頁 bottom sheet 面板頂部離定位祖先頂端的距離(px)——見
 // components/PhoneBottomSheet.tsx 的說明,定位數值(bottom/z-index)見
@@ -52,34 +37,20 @@ const EMPTY_TIMELINE_MIRROR: DesktopTimelineMirror = {
 // (12px),不再只貼齊下緣。
 const SETTINGS_SHEET_TOP = 12
 // SETTINGS_SHEET_MIN_HEIGHT:設定頁收合段的固定高度(px)——2026-10 新增
-// (使用者明確要求「除了選單類的，其他都加入最小段」),跟 PACE_SHEET_MIN_HEIGHT
-// 同值。
+// (使用者明確要求「除了選單類的，其他都加入最小段」),。
 const SETTINGS_SHEET_MIN_HEIGHT = 100
-// 配速表 bottom sheet 的離頂部距離(px)——比設定頁/地點清單更高
-// (數值更小)。2026-10 從 60 改成 12,理由同上方 SETTINGS_SHEET_TOP 的
-// 完整說明。(規劃面板已改成透明疊加層,不再是 sheet,不用這個常數。)
-const CHAT_SHEET_TOP = 12
-// PACE_SHEET_MIN_HEIGHT:配速表疊加層收合段的固定高度(px)——2026-10
-// 新增(使用者明確要求「除了選單類的，其他都加入最小段」,配速表不屬於
-// 選單類,日期選單/日曆才是)。
-const PACE_SHEET_MIN_HEIGHT = 100
 
 // planning/member/phone/Content:手機版(寬度 < 768px)主要應用狀態切換器——登入畫面/桌面版
 // 導轉/聊天室/設定,見 App.tsx App() 的 /app 路由分支。
-// 導覽:底部常駐 phone/Nav.tsx(旅程/時間軸/規劃)+ 右側小圖示
-// PhoneSideTools.tsx(路徑/demo-*),不需要先開抽屜才看得到分頁——取代
-// 原本各自獨立的整頁 TripsScreen、ChatScreen 自己的右側時間軸抽屜,與
+// 導覽:底部常駐 phone/Nav.tsx(旅程/時間軸/規劃),不需要先開抽屜才看得到分頁——取代
+// 原本各自獨立的整頁 TripsScreen、原 ChatScreen 自己的右側時間軸抽屜(已移除),與
 // PhoneNavDrawer 側滑抽屜的分頁列。旅程列表獨立成 trip/phone/TripList 抽屜
 // (由底部列「旅程」按鈕開關),分享/成員/開啟時自動進入合併成
 // TripManageModal,入口在該抽屜每筆旅程項目的「管理」按鈕,對齊桌面版
 // trip/desktop/TripList.tsx 的 onManage 心智模型。
 //
-// 主顯示區:選到的分頁是 'pace' 時顯示 PaceRouteMap(地圖),'geo-outline'
-// 顯示規劃地圖,其餘情況顯示 ChatScreen(有選旅程)或空白提示(沒有)
-// ——'trips'/'timeline' 分頁不影響主顯示。桌面版 planning/member/desktop/Content 已改版
-// (見該檔案的說明:主顯示固定是規劃地圖,pace/trips/timeline/geo-outline
-// 全部改成疊加在地圖上的浮動卡片),手機版這裡刻意不比照,維持原本
-// 「分頁決定主顯示內容」的版型。
+// 主顯示區:規劃地圖常駐為主畫面,對話/時間軸/設定等都是疊加層(見下方
+// chatSheetOpen 的說明)。
 export function Content(props: ContentProps) {
   // mapTheme:地圖只收明確的 'dark' | 'light'(日夜切換時重建),三態的 props.theme(null = 跟隨系統)先解析成明確值。
   const mapTheme = useResolvedTheme(props.theme)
@@ -87,7 +58,7 @@ export function Content(props: ContentProps) {
   // tabBarRef/tabBarHeight——2026-10 新增(使用者明確要求「有辦法確保
   // bottom sheet 如果是在功能列後面,標頭不會被遮蔽,也不用功能列改動
   // 高度就要重新確認」「我要穩定根本的處理方式」):取代底下
-  // trip/phone/TripList.tsx/PhoneTimelineDrawer.tsx/PhoneSideTools.module.css/
+  // trip/phone/TripList.tsx/PhoneTimelineDrawer.tsx/
   // PlanPhoneView.module.css 各自把 phone/Nav.module.css 的 .tab 高度
   // (64px)寫死複製貼上的做法——用 hooks/useElementHeight.ts 的
   // ResizeObserver 量出 phone/Nav 的真實高度,寫進 .container 的 CSS
@@ -120,9 +91,9 @@ export function Content(props: ContentProps) {
   // 的 onOpenTimeline),不經過路由導航,純粹是這個元件內部的疊加狀態
   // (使用者要求「時間軸不用獨立路由」)。
   const [timelineDrawerOpen, setTimelineDrawerOpen] = useState(false)
-  // chatSheetOpen/paceSheetOpen:對話/配速表改成疊加層開關,同
+  // chatSheetOpen:對話改成疊加層開關,同
   // timelineDrawerOpen 同一套模式——使用者明確要求「規劃地圖常駐為主
-  // 畫面,對話/配速表都改成跟地點清單/設定頁一樣的 PhoneBottomSheet 疊加
+  // 畫面,對話改成跟地點清單/設定頁一樣的 PhoneBottomSheet 疊加
   // 層」,不再是「分頁決定主顯示內容」的版型(舊版 drawerMode/
   // effectiveMainMode 整組邏輯隨這次調整移除,不再需要路徑參數驅動主畫面
   // 切換——規劃地圖是唯一常駐的主畫面,/app/:panelMode 這個路由現在只供
@@ -141,7 +112,6 @@ export function Content(props: ContentProps) {
   // 狀態本身(站點、選取、hover、轉乘配對與 TripPlanPage 的四個回呼)在共用的 planning/timeline/usePlanStopsState,
   // 登入後桌面(planning/member/desktop/Content)同樣使用。
   const { stops, routeSegments, selectedStopId, hoverStopId, hoverTransitPair, setSelectedStopId, tripPlanProps } = usePlanStopsState()
-  const [paceSheetOpen, setPaceSheetOpen] = useState(false)
   // exploreActive/exploreTrigger:2026-10「探索」標籤從疊在地圖左上角
   // 搬到底部常駐功能列(使用者明確要求),這兩個 state 是這個元件與
   // PlanPhoneView.tsx 之間的橋接——exploreActive 是 PlanMap.tsx
@@ -190,20 +160,16 @@ export function Content(props: ContentProps) {
       setTripsDrawerOpen(true)
     }
   }, [tripListDrawerOpen])
-  // settingsSnapIndex/paceSnapIndex:2026-10 新增(使用者明確要求「除了
-  // 選單類的，其他都加入最小段」)——設定頁/配速表原本是單段模式(往下拖
+  // settingsSnapIndex:2026-10 新增(使用者明確要求「除了
+  // 選單類的，其他都加入最小段」)——設定頁原本是單段模式(往下拖
   // 到底直接 onClose),改成跟對話疊加層同一套兩段式吸附(索引 0 是收合段
-  // SETTINGS_SHEET_MIN_HEIGHT/PACE_SHEET_MIN_HEIGHT,索引 1 是展開段)。
+  // SETTINGS_SHEET_MIN_HEIGHT,索引 1 是展開段)。
   // 日期選單/日曆(PlanPhoneDatePickerSheet.tsx/PlanPhoneDateCalendarSheet.tsx)
   // 是選單性質,排除在這次調整範圍外,維持單段往下拖到底關閉。
   const [settingsSnapIndex, setSettingsSnapIndex] = useState(1)
   useEffect(() => {
     if (inSettings) setSettingsSnapIndex(1)
   }, [inSettings])
-  const [paceSnapIndex, setPaceSnapIndex] = useState(1)
-  useEffect(() => {
-    if (paceSheetOpen) setPaceSnapIndex(1)
-  }, [paceSheetOpen])
   // onOpenTrips:底部常駐列「旅程」按鈕——開啟獨立的旅程抽屜
   // (trip/phone/TripList.tsx),已開啟時再點一次視為收合(toggle)。
   const onOpenTrips = () => {
@@ -243,32 +209,15 @@ export function Content(props: ContentProps) {
     submitCreate,
   } = useTripsState(cfg, selectTrip)
 
-  // timelineMirror:ChatScreen 透過 onTimelineData 鏡像過來的時間軸資料,
-  // 供抽屜欄的時間軸分頁(PhoneNavDrawer.tsx)顯示——跟桌面版
-  // planning/member/desktop/Content 的同名 state 是同一套機制,見該檔案的說明。用
-  // useCallback 包 setter 傳給 ChatScreen,理由同 planning/member/desktop/Content 的
-  // desktopChat useMemo:避免每次重渲染都建立新的函式參照,導致 ChatScreen
-  // 內鏡像資料的 effect 每次都重新觸發。
-  const [timelineMirror, setTimelineMirror] = useState<DesktopTimelineMirror>(EMPTY_TIMELINE_MIRROR)
-  const onTimelineData = useCallback((data: DesktopTimelineMirror) => {
-    setTimelineMirror(data)
-  }, [])
-  // selectedEntry:配速表「點卡片→地圖平移→手動微調→儲存座標」互動用,
-  // 跟桌面版 planning/member/desktop/Content 同一套設計(見該檔案的說明)。
-  const [selectedEntry, setSelectedEntry] = useState<SelectedEntry | null>(null)
-  // paceCheckpoints:'pace' 分頁(PaceChart)目前選取的那一段 checkpoint
-  // 清單,透過 onRouteChange 鏡像過來,轉傳給主顯示區的 PaceRouteMap(地圖)
-  // ——同一套模式比照桌面版 planning/member/desktop/Content.tsx。PaceChart 目前還沒接回
-  // PhoneFloatCard(下一步),setPaceCheckpoints 暫時沒有呼叫端,底線前綴
-  // 避免 noUnusedLocals 報錯,paceCheckpoints 本身仍被 PaceRouteMap 讀取。
-  const [paceCheckpoints, _setPaceCheckpoints] = useState<Checkpoint[]>([])
-  // savedEntry:PaceRouteMap 手動拖曳選點、儲存座標成功後回報的結果,轉傳給
-  // PaceChart 讓它就地更新自己的 checkpointsBySegment(見 PaceChart.tsx 的
-  // savedEntry prop 說明)——同一套模式比照桌面版 planning/member/desktop/Content.tsx。
-  // PaceChart 目前還沒接回 PhoneFloatCard(下一步),savedEntry 暫時沒有
-  // 讀取端,底線前綴避免 noUnusedLocals 報錯,setSavedEntry 仍被
-  // PaceRouteMap 的 onEntrySaved 呼叫。
-  const [_savedEntry, setSavedEntry] = useState<{ id: string; lat: number; lng: number } | null>(null)
+  // timelineMirror:時間軸抽屜(PhoneTimelineDrawer)需要的行程條目資料——
+  // 改用 useTripEntriesMirror 自己撈,跟桌面版 planning/member/desktop/Content
+  // 同一套(原本由隱藏掛載的 ChatScreen 透過 onTimelineData 鏡像過來,
+  // 已移除)。isOwner 判斷同桌面版:非擁有者 api.fetchEntries 會失敗,不如不打。
+  const timelineMirror = useTripEntriesMirror(
+    cfg,
+    activeTrip?.id ?? null,
+    activeTrip ? activeTrip.ownerID === props.user.id : false,
+  )
 
   // titleHelmet:2026-10 新增——/app 這個登入後正式功能頁原本沒有自己的
   // <title>,SPA 內部換頁(例如從其他頁面透過前端路由導到 /app)後瀏覽器
@@ -307,10 +256,9 @@ export function Content(props: ContentProps) {
     )
   }
 
-  // bottomTabs/sideTools:底部常駐列(phone/Nav.tsx)/右側小圖示群組
-  // (PhoneSideTools.tsx)各自的項目清單——每個項目自帶 onClick,直接開啟
-  // 對應的疊加層(使用者明確要求「規劃地圖常駐為主畫面,對話/配速表都
-  // 改成疊加層」,不再是切換分頁模式,見上方 chatSheetOpen/paceSheetOpen
+  // bottomTabs:底部常駐列(phone/Nav.tsx)的項目清單——每個項目自帶 onClick,直接開啟
+  // 對應的疊加層(使用者明確要求「規劃地圖常駐為主畫面,對話
+  // 改成疊加層」,不再是切換分頁模式,見上方 chatSheetOpen
   // 的說明)。
   // 2026-10 修正:「行程」「旅程」兩顆按鈕合併成同一個群組功能,統一
   // 命名——整體概念叫「行程」,原本的「旅程」(切換/選擇不同旅程的清單,
@@ -345,35 +293,6 @@ export function Content(props: ContentProps) {
     // 關閉入口就是這顆 tab 再點一次。
     { key: 'plan-ai', icon: Sparkles, title: '規劃', active: chatSheetOpen, onClick: () => setChatSheetOpen((v) => !v), beta: true },
   ]
-  const sideTools: { key: string; icon: typeof Route; title: string; onClick: () => void }[] = [
-    ...(PACE_ENABLED ? [{ key: 'pace', icon: Route, title: '路徑', onClick: () => setPaceSheetOpen(true) }] : []),
-  ]
-  // chatElement:ChatScreen 的唯一掛載點,固定用同一個 JSX 呼叫,直接放在
-  // 下方對話疊加層 PhoneBottomSheet 的 children 裡(該元件傳
-  // keepMounted,即使 chatSheetOpen 為 false 也不卸載,避免每次關閉對話
-  // 都重新連線 WebSocket——理由與原本改用 React Portal 投影的目的相同,
-  // 但不再需要 portal,見該處呼叫的說明)。
-  //
-  // trip 允許是 undefined(不要求 activeTrip 存在才渲染)——使用者明確
-  // 要求「手機版的對話跟桌面版用一樣的」,對齊桌面版 planning/member/desktop/Content.tsx
-  // 的 規劃面板 既有行為(ChatScreen 本身已經支援無 trip 也能對話,
-  // 見該元件 trip prop 的說明):沒選旅程時依然能開啟對話,不需要先選/
-  // 建立旅程。key 比照桌面版加上 activeTrip?.id ?? 'no-trip',確保「無
-  // 旅程對話」跟「某個旅程的對話」是各自獨立的掛載週期,避免沿用前一個
-  // 旅程殘留的 WebSocket/訊息 state。
-  const chatElement = (
-    <ChatScreen
-      key={activeTrip?.id ?? 'no-trip'}
-      cfg={cfg}
-      trip={activeTrip ?? undefined}
-      user={props.user}
-      onBack={() => setActiveTrip(null)}
-      mobileHeader="main"
-      onTimelineData={onTimelineData}
-      open={chatSheetOpen}
-    />
-  )
-
   // visibleStopsView:傳給地圖的站點檢視,規劃面板關閉時整組遮蔽(桌面、手機共用,見 maskPlanStopsView)。
   const visibleStopsView = maskPlanStopsView({ stops, selectedStopId, hoverStopId, hoverTransitPair }, chatSheetOpen)
 
@@ -394,7 +313,7 @@ export function Content(props: ContentProps) {
           frame 的落差,肉眼看不出來,不需要額外的 loading 態處理。 */}
       <PlanLayout tabBarHeight={tabBarHeight}>
         {/* 規劃地圖:唯一常駐的主畫面(使用者明確要求,見上方
-            chatSheetOpen/paceSheetOpen 的說明),不再隨分頁切換卸載重掛
+            chatSheetOpen 的說明),不再隨分頁切換卸載重掛
             ——理由同對齊桌面版 PlanMap 永遠掛載的既有模式
             (planning/member/desktop/Content.tsx)。搜尋框/使用者頭像/候選籃按鈕由
             PlanPhoneView 自己疊在地圖上方。activeTrip 供候選籃
@@ -453,9 +372,6 @@ export function Content(props: ContentProps) {
             <LivePlanLayer cfg={cfg} selectedStopId={selectedStopId} tripPlanProps={tripPlanProps} />
           </PlanDataProvider>
         </PlanOverlayLayout>
-        {/* PhoneSideTools:右側下方路徑+demo-* 小圖示,跨所有主畫面模式
-            共用(不是規劃地圖專屬),見該元件開頭說明。 */}
-        <PhoneSideTools tools={sideTools} />
         {/* phone/Nav:底部常駐導覽列(行程/旅程/探索/AI 規劃),取代原本
             要開 PhoneNavDrawer 抽屜才看得到的分頁列,見該元件開頭說明。
             tripsDrawerOpen/onOpenTrips 現在是 bottomTabs 陣列裡的「旅程」
@@ -489,10 +405,8 @@ export function Content(props: ContentProps) {
         {/* 時間軸 bottom sheet,由規劃地圖左下角「時間軸」按鈕開關
             (timelineDrawerOpen,見上方說明)——同樣渲染在 .container 內部、
             跟 phone/Nav 同一層,理由同上方 trip/phone/TripList 的說明
-            (定位基準要一致,才不會蓋住底部功能列)。timelineMirror 是
-            ChatScreen 透過 onTimelineData 鏡像過來的資料,不論目前主畫面
-            顯示什麼都持續更新(ChatScreen 永遠掛載在下方對話疊加層的
-            children 裡,見該處 chatElement 的說明)。 */}
+            (定位基準要一致,才不會蓋住底部功能列)。timelineMirror 由
+            useTripEntriesMirror 自己撈(見上方說明)。 */}
         <PhoneTimelineDrawer
           open={timelineDrawerOpen}
           onClose={() => setTimelineDrawerOpen(false)}
@@ -544,41 +458,6 @@ export function Content(props: ContentProps) {
             setTheme={props.setTheme}
           />
         </SheetBody>
-      </StandaloneSheet>
-      {/* 對話換成 AI 規劃後 ChatScreen 仍隱藏掛載——時間軸抽屜的
-          timelineMirror 資料來源是它的 onTimelineData(見上方說明)。 */}
-      <div hidden>{chatElement}</div>
-      {/* 配速表:同上方設定頁,改用具名工廠元件 StandaloneSheet(2026-10)
-          渲染滿版疊加層,由右側小圖示「路徑」按鈕開關(paceSheetOpen)。跟
-          對話不同,PaceRouteMap 不需要永遠掛載+portal 投影這套機制(沒有
-          WebSocket 之類需要避免重連的成本),sheet 關閉時直接卸載,開啟時
-          才掛載,維持原本條件式掛載的既有行為。
-          2026-10 新增 minHeightPx/activeSnapIndex/onSnapIndexChange
-          (使用者明確要求「除了選單類的，其他都加入最小段」),理由同
-          設定頁、見上方 paceSnapIndex 的完整說明——原本評估配速表是
-          地圖類內容、收合用途不大而不套用,這次使用者明確要求除選單類
-          外全部加入,一併補上。 */}
-      <StandaloneSheet
-        open={paceSheetOpen}
-        onClose={() => setPaceSheetOpen(false)}
-        snapPoints={[CHAT_SHEET_TOP]}
-        minHeightPx={PACE_SHEET_MIN_HEIGHT}
-        activeSnapIndex={paceSnapIndex}
-        onSnapIndexChange={setPaceSnapIndex}
-        panelStyle={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: Z_LAYERS.ABOVE_TAB_BAR }}
-        showBackdrop={false}
-        head={<SheetHead title={activeTrip?.name ?? 'Tripace'} onClose={() => setPaceSheetOpen(false)} />}
-      >
-        {paceSheetOpen && (
-          <SheetBody>
-            <PaceRouteMap
-              checkpoints={paceCheckpoints}
-              selectedEntry={selectedEntry}
-              onSelectedEntryDone={() => setSelectedEntry(null)}
-              onEntrySaved={setSavedEntry}
-            />
-          </SheetBody>
-        )}
       </StandaloneSheet>
       {/* manageTrip:旅程管理彈窗,對齊桌面版 planning/member/desktop/Content.tsx 的同名
           渲染邏輯——用 base-ui.css 既有的 .rp-modal*(置中卡片彈窗骨架)

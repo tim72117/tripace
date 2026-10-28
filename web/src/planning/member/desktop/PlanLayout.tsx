@@ -8,8 +8,7 @@ import { OVERLAY_SLOT, slotAttr } from '../../shared/overlayDom'
 // 同一個層級、同一個名字,都渲染 data-slot="container" 的容器(見 planning/shared/overlayDom.ts),疊加層(PlanOverlayLayout)
 // 與地圖都在容器底下。
 //
-// 桌面版的容器由兩個通用積木組成(DesktopLayoutShell 是橫向 flex 的最外層、DesktopMain 是右側主顯示區,pace/PacePage、
-// trip/PublicViewScreen 也用它們,所以積木本身留在 src/ 根目錄):
+// 桌面版的容器由兩個通用積木組成(DesktopLayoutShell 是橫向 flex 的最外層、DesktopMain 是右側主顯示區,所以積木本身留在 src/ 根目錄):
 //   - nav:最左側導覽列(desktop/Nav),排在主顯示區之前。
 //   - children:主顯示區的內容(地圖與疊加層、浮動卡片、資訊卡等),放進 DesktopMain。
 //   - unbounded:是否拿掉主顯示區的寬度上限、滿版鋪底(地圖類內容用,見 DesktopMain.tsx 對 unbounded 的說明)。

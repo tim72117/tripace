@@ -118,7 +118,7 @@ export function onWsEvent(fn: WsListener): () => void {
   return wsListeners.subscribe(fn)
 }
 
-// emitWsEvent 供 ChatScreen 的 ws.onmessage 呼叫,把每則收到的原始訊息記一筆,
+// emitWsEvent 供旅程 WebSocket 的 onmessage 呼叫(原 ChatScreen,已移除),把每則收到的原始訊息記一筆,
 // 供 DebugPanel 顯示「後端主動發出的介面更新事件」。
 export function emitWsEvent(raw: Record<string, unknown>) {
   const evt: WsEvent = {
@@ -404,22 +404,6 @@ export function fetchEntries(cfg: ClientConfig, tripID: string) {
     'GET',
     `/v1/trips/${encodeURIComponent(tripID)}/entries`,
   ).then((r) => r.entries)
-}
-
-// geocodeEntry:對齊 server 的 POST /internal/entries/{id}/geocode
-// (handleGeocodeEntry,見 entry_geocode.go)——用這筆 entry 現有的 title
-// 當查詢字串,伺服器端呼叫 Geocoding API 查出座標後自動寫回 entry。用途:
-// 配速表(PaceChart.tsx)點擊尚未有座標的檢查站卡片時,先呼叫這支端點
-// 補上座標,成功後才把結果(lat/lng)交給地圖(PaceRouteMap.tsx)平移
-// 過去——理由是「點卡片→地圖平移」這個既有互動假設 lat/lng 已知,沒座標
-// 的卡片不能直接套用同一條路徑,得先補資料才有座標可以平移。
-export function geocodeEntry(cfg: ClientConfig, entryID: string) {
-  return request<{ entryID: string; query: string; address: string; lat: number; lng: number }>(
-    cfg,
-    'POST',
-    `/internal/entries/${encodeURIComponent(entryID)}/geocode`,
-    {},
-  )
 }
 
 // 地理輪廓底圖(構想 6,見 docs/TRIP_PLANNING_DESIGN_DISCUSSION.md)用:
@@ -1195,7 +1179,7 @@ export function resetTripData(cfg: ClientConfig, tripID: string) {
   )
 }
 
-// ---- 旅程清單「儲存」按鈕專用的逐筆 upsert API(見 ChatScreen.tsx 的儲存邏輯)。
+// ---- 旅程清單「儲存」按鈕專用的逐筆 upsert API(原 ChatScreen.tsx 的儲存邏輯,已移除)。
 // 對齊後端 server/internal/api/api.go 新增的 handleCreateTripEntry/
 // handleUpdateTripEntry/handleDeleteTripEntry,body/回應形狀直接沿用
 // TripEntry 的欄位命名(title/date/time/note),不像 updateEntry() 那樣需要
@@ -1239,23 +1223,19 @@ export function deleteTripEntry(cfg: ClientConfig, tripID: string, entryID: stri
   )
 }
 
-// PublicLinkViewMode:公開分享頁要顯示「時間軸」還是「配速表」，對齊
-// server/internal/store 的 view_mode 欄位（"pace" 以外一律視為 "timeline"）。
-export type PublicLinkViewMode = 'timeline' | 'pace'
-
-// 建立（或取得已有）旅程公開連結。viewMode 不傳時後端預設為 'timeline'。
-export function createPublicLink(cfg: ClientConfig, tripID: string, editable: boolean, viewMode?: PublicLinkViewMode) {
-  return request<{ linkToken: string; editable: boolean; viewMode: PublicLinkViewMode }>(
+// 建立（或取得已有）旅程公開連結。
+export function createPublicLink(cfg: ClientConfig, tripID: string, editable: boolean) {
+  return request<{ linkToken: string; editable: boolean }>(
     cfg,
     'POST',
     `/v1/trips/${encodeURIComponent(tripID)}/public-link`,
-    { editable, viewMode },
+    { editable },
   )
 }
 
 // 取得旅程公開連結資訊。
 export function getPublicLink(cfg: ClientConfig, tripID: string) {
-  return request<{ linkToken: string; editable: boolean; viewMode: PublicLinkViewMode }>(
+  return request<{ linkToken: string; editable: boolean }>(
     cfg,
     'GET',
     `/v1/trips/${encodeURIComponent(tripID)}/public-link`,
@@ -1276,7 +1256,7 @@ export function fetchPublicView(baseURL: string, token: string) {
   return fetch(`${baseURL}/v1/public/${encodeURIComponent(token)}`)
     .then(async (r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
-      return r.json() as Promise<{ tripID: string; tripName: string; editable: boolean; viewMode: PublicLinkViewMode; entries: Entry[] }>
+      return r.json() as Promise<{ tripID: string; tripName: string; editable: boolean; entries: Entry[] }>
     })
 }
 

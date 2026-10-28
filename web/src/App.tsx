@@ -82,7 +82,6 @@ const TermsPage = lazy(() => import('./home/TermsPage').then((m) => ({ default: 
 const CliAuthPage = lazy(() => import('./home/CliAuthPage').then((m) => ({ default: m.CliAuthPage })))
 const DeviceAuthPage = lazy(() => import('./home/DeviceAuthPage').then((m) => ({ default: m.DeviceAuthPage })))
 const PublicViewScreen = lazy(() => import('./trip/PublicViewScreen').then((m) => ({ default: m.PublicViewScreen })))
-const PacePage = lazy(() => import('./pace/PacePage').then((m) => ({ default: m.PacePage })))
 const PhoneContent = lazy(() => import('./planning/member/phone/Content').then((m) => ({ default: m.Content })))
 const NotFoundPage = lazy(() => import('./home/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
 // planning/preview/Content:獨立公開頁,最早從 plan-ai-sim 這個 git 分支
@@ -174,8 +173,8 @@ function KeyboardShrinkGuard({ className, dataTheme, children }: { className: st
 }
 
 // App.tsx 只保留路由判斷(App() 本身)——planning/member/phone/Content(含 PhoneNavDrawer 導覽
-// 抽屜)搬到 planning/member/phone/Content.tsx、PacePage(原 PublicPaceDemoPage)搬到
-// pace/ 目錄、useIsDesktop 搬到 AppCommon.tsx(供多處共用),讓這裡回到
+// 抽屜)搬到 planning/member/phone/Content.tsx、
+// useIsDesktop 搬到 AppCommon.tsx(供多處共用),讓這裡回到
 // 單純的「進入點依路徑分派」職責。
 //
 // 改用 react-router-dom(v7)的 <BrowserRouter>/<Routes>/<Route> 取代原本
@@ -343,21 +342,6 @@ export function App() {
               </div>
             }
           />
-          {/* /demo/pace 路徑:配速表 demo 的公開分享頁(見 PaceChart.tsx 的
-              「分享這個配速表」按鈕)。這是固定示範資料(花東193公路),不是真實
-              使用者旅程,不需要登入、不涉及任何真實資料權限問題——跟 /public/{token}
-              那套給真實旅程用的公開分享是分開的機制,不走後端建立/驗證 token 那套
-              流程,單純是一個固定網址。 */}
-          {/* data-theme="light" 寫死,理由同 /public/:token——固定示範資料的
-              公開分享頁,不受訪問者 App 內深色模式偏好影響。 */}
-          <Route
-            path="/demo/pace"
-            element={
-              <div className={styles.webApp} data-theme="light">
-                <PacePage />
-              </div>
-            }
-          />
           {/* /app 路徑:主要應用畫面本體(套 iPhone 外框,寬螢幕自動切桌面版佈局)。
               2026-10:原本這裡是 /app/:panelMode? 選填路徑參數,桌面版 side
               panel 展開哪個面板(旅程列表/規劃/時間軸/路徑/AI 規劃)由網址
@@ -384,7 +368,7 @@ export function App() {
           />
           {/* 2026-10 code review 抓到:/app/:panelMode? 這條路徑參數整段
               移除後,先前分享/加入書籤的舊深連結(/app/trips、
-              /app/geo-outline、/app/timeline、/app/pace、/app/plan-ai)
+              /app/geo-outline、/app/timeline、/app/plan-ai)
               不會再落在 /app 收合,而是直接命中下方的 catch-all,顯示
               NotFoundPage——跟上面註解宣稱的「一律收合」不符,比收合更
               嚴重(是真正的 404,不是看得懂的收合畫面)。

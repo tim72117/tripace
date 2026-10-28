@@ -5,9 +5,7 @@ import type { ApiCall, WsEvent } from '../../../api'
 import { onApiCall, onWsEvent } from '../../../api'
 import { getPlanAiApiDataSource } from '../../data/api'
 import { requireGeoPlaceDetails, requirePhotoAssets } from '../../data/source'
-import { ChatScreen } from '../../../chat/ChatScreen'
 import { MultiTrackTimeline } from '../../../timeline/Timeline'
-import { PaceChart } from '../../../pace/PaceChart'
 import { DemoPanel } from '../../../demo/DemoPanel'
 import { ResultList as DesktopResultList } from '../../place/desktop/ResultList'
 import { PlacePanel } from '../../place/PlacePanel'
@@ -47,7 +45,7 @@ import type { Trip } from '../../../trip/types'
 import styles from './Content.module.css'
 
 // planning/member/desktop/Content:桌面版(寬度 >= 768px)專屬佈局元件——左側邊欄(旅程列表 +
-// 使用者選單)+ 右側 ChatScreen 主要區塊,類似 Slack/Discord 的旅程側欄
+// 使用者選單)+ 右側主要區塊(原 ChatScreen,已移除),類似 Slack/Discord 的旅程側欄
 // 模式。PanelMode/LangSelect/TokenDisplay/useTripsState
 // 這些「桌面/手機共用」的部分不在這裡,分別在 DesktopShared.tsx/
 // AppCommon.tsx——避免這裡跟手機版檔案(planning/member/phone/Content.tsx/PhoneNavDrawer.tsx/
@@ -100,8 +98,8 @@ export function Content(props: ContentProps) {
     setPanelModeState((prev) => (prev === mode ? null : mode))
   }, [])
   // planPanelOpen:地圖右上角城市搜尋框旁 AI 按鈕觸發的規劃面板
-  // 開關——沒有常駐對話欄,ChatScreen 只在這個規劃面板開啟時才掛載(見下方
-  // render 邏輯),這是使用者存取對話功能的唯一入口。
+  // 開關——沒有常駐對話欄,規劃面板(TripPlanPage)只在開啟時才顯示(見下方
+  // render 邏輯),這是使用者存取對話功能的唯一入口(原 ChatScreen 已移除)。
   const [planPanelOpen, setPlanPanelOpen] = useState(false)
   // stops/selectedStopId/hoverStopId:規劃面板裡 AI 規劃時間軸
   // 已安排的站點(2026-10 新增,使用者明確要求「開啟對話若是有安排景點,
@@ -450,7 +448,7 @@ export function Content(props: ContentProps) {
   //
   // 2026-10:改用 useTripEntriesMirror 自己撈(見該 hook 的完整說明)——
   // 原本這份資料是 ChatScreen 透過 desktopChat.onTimelineData 鏡像過來的,
-  // 但規劃面板的內容已經換成 TripPlanPage(AI 規劃時間軸),ChatScreen 不
+  // 但規劃面板的內容已經換成 TripPlanPage(AI 規劃時間軸),ChatScreen(已移除)不
   // 再常駐掛載,側欄不能再依賴「對話剛好有掛載且剛好撈過」這件事。使用者
   // 確認「讓它自己撈資料,不再依賴對話」。
   //
@@ -490,20 +488,19 @@ export function Content(props: ContentProps) {
   // 變數——兩者必須永遠一致(圓點是規劃面板內容的延伸,規劃面板看不見時圓點就是
   // 孤兒),各自寫一次判斷遲早會漂移。
   //
-  // 單看 planPanelOpen 不夠:切到 main-replace 的分頁(demo-route-editor/
-  // demo-chat)時規劃面板會被隱藏,但 planPanelOpen 本身維持 true
+  // 單看 planPanelOpen 不夠:切到 main-replace 的分頁(demo-route-editor)
+  // 時規劃面板會被隱藏,但 planPanelOpen 本身維持 true
   // ——那是刻意的(見下方 FloatingPanel 的完整說明:常駐掛載、不重建
   // WebSocket 連線),所以「開啟」與「看得見」在這裡不是同一件事。
   const planPanelVisible = planPanelOpen && panelSpec?.slot !== 'main-replace'
 
   // 2026-10 squash rebase 修正:這裡原本還有兩段死碼——
   // (1) onTimelineData/desktopChat(useCallback+useMemo 包的
-  //     { onTimelineData } 物件,原本傳給 ChatScreen 讓它鏡像時間軸
+  //     { onTimelineData } 物件,原本傳給 ChatScreen(已移除)讓它鏡像時間軸
   //     資料回來,搭配一個已不存在的 setTimelineMirror setter)——
   //     timelineMirror 現在改用 useTripEntriesMirror 自己撈(見上方
   //     該 hook 呼叫處的完整說明,使用者確認「讓它自己撈資料,不再依賴
-  //     對話」),ChatScreen 也不再常駐掛載,這整套鏡像機制已經失效,
-  //     下方渲染 ChatScreen 處也已經不再傳 desktopChat prop。
+  //     對話」),ChatScreen 也不再常駐掛載(現已整個移除),這整套鏡像機制已經失效。
   // (2) 一段「離開規劃分頁或切換旅程時收起第二側欄」的 effect(呼叫
   //     geo.setPickingDayKey(null))——候選籃候選中清單/候選匡整套
   //     機制已經移除(見 usePlanningState.ts 的完整說明),
@@ -587,40 +584,23 @@ export function Content(props: ContentProps) {
             panelMode === 'demo-route-editor' ? (
               // demo-route-editor 只做桌面版(手機版 PhoneNavDrawer 不
               // 提供對應分頁),直接在這裡渲染。main-replace slot 目前
-              // 有這個試做功能與下面的 demo-chat 兩種模式
-              // (原本還有 demo-onagent,經 DemoPanelContent 共用邏輯
-              // 渲染,已整個移除,含入口與實作)。
+              // 只有這個試做功能(原本還有 demo-onagent、demo-chat,
+              // 已整個移除,含入口與實作)。
               <RouteEditor />
-            ) : panelMode === 'demo-chat' ? (
-              // demo-chat:舊版對話框(走 tripace app 的 trip_entry_*
-              // 工具)——地圖規劃的對話視窗 2026-10 改成渲染 AI 規劃
-              // 時間軸之後,這套保留成試做分頁,見 DesktopShared.tsx
-              // DEMO_CHAT_ENABLED 的完整說明。
-              //
-              // 這裡不再傳 desktopChat:時間軸側欄的資料來源已經改成
-              // useTripEntriesMirror 自己撈(見該 hook 的完整說明),
-              // 不再依賴 ChatScreen 鏡像過來,兩者脫鉤。
-              <ChatScreen
-                key={activeTrip?.id ?? 'no-trip'}
-                cfg={cfg}
-                trip={activeTrip ?? undefined}
-                user={props.user}
-                onBack={() => setActiveTrip(null)}
-              />
             ) : null
           ) : (
             // main-replace 以外的所有情況(含 panelMode === null、'trips'/
-            // 'timeline'/'pace'/'geo-outline'):主顯示固定是規劃地圖——
-            // 這四種正式功能現在改成浮動卡片疊加在地圖上(見下方
+            // 'timeline'/'geo-outline'):主顯示固定是規劃地圖——
+            // 這三種正式功能現在改成浮動卡片疊加在地圖上(見下方
             // panelMode 浮動卡片的 FloatingPanel),不再取代主顯示,故這裡不需要再檢查
             // activeTrip/panelMode 的組合,地圖永遠掛載。
             null
           )}
-          {/* panelMode 浮動卡片:trips/timeline/pace/geo-outline 這四種正式
+          {/* panelMode 浮動卡片:trips/timeline/geo-outline 這三種正式
               功能的內容(見 PANEL_REGISTRY 的 slot: 'float'),疊在地圖左緣
               上方,不佔用 flex 版面空間、不推擠地圖——沿用跟
-              planning/place/desktop/ResultList 一致的 FloatingPanel 外殼。不傳 title——四種
-              內容元件(trip/desktop/TripList/MultiTrackTimeline/PaceChart/
+              planning/place/desktop/ResultList 一致的 FloatingPanel 外殼。不傳 title——三種
+              內容元件(trip/desktop/TripList/MultiTrackTimeline/
               planning/place/desktop/CandidateList)各自 header 排版不同,不逐一加專屬標題,
               FloatingPanel 只在右上角疊加共用的關閉按鈕,收起卡片(同
               再點一次 rail 圖示的行為;2026-10 panelMode 改回本地 state
@@ -671,10 +651,6 @@ export function Content(props: ContentProps) {
                       />
                     )}
                   </div>
-                </div>
-              ) : panelMode === 'pace' ? (
-                <div className={styles.pacePanel}>
-                  <PaceChart cfg={cfg} tripID={activeTrip?.id} />
                 </div>
               ) : panelMode === 'geo-outline' ? (
                 <DesktopCandidateList
@@ -771,9 +747,8 @@ export function Content(props: ContentProps) {
               工具、批次表格 UI)換成 TripPlanPage(AI 規劃時間軸,走
               plan-ai-timeline app)——使用者明確要求「將 ai plan 的規劃
               時間軸功能加到地圖規劃的對話功能內」「對話內的工具不需要
-              了,直接使用 ai plan 的 app 及工具」。舊的 ChatScreen 不是
-              刪除,搬到 demo-chat 試做分頁保留(見 DesktopShared.tsx
-              DEMO_CHAT_ENABLED 的完整說明)。
+              了,直接使用 ai plan 的 app 及工具」。舊的 ChatScreen(已移除)與
+              桌面版試做分頁(demo-chat,已移除)都不存在了。
 
               TripPlanPage 不需要 trip(使用者明確要求「plan ai 不需要
               trip id」),也不需要 key={activeTrip?.id}——它的時間軸是
@@ -913,7 +888,7 @@ export function Content(props: ContentProps) {
                 </>
               )
             }
-            // open:main-replace slot(demo-route-editor/demo-chat)取代整個主顯示區,底下沒有地圖可疊,
+            // open:main-replace slot(demo-route-editor)取代整個主顯示區,底下沒有地圖可疊,
             // 用 planPanelVisible 隱藏 overlay(元件仍掛載,不重建 WebSocket,見 planPanelOpen 說明)。
             open={planPanelVisible}
             // shifted:搜尋結果側欄同時顯示時往左推,避免兩者疊在一起。
@@ -990,7 +965,7 @@ export function Content(props: ContentProps) {
         />
       )}
       {/* manageTrip:旅程管理彈窗(分享連結/成員/開啟時自動進入),原本掛在
-          ChatScreen navbar 的三個分散入口(TripMenu/分享按鈕/成員按鈕)
+          ChatScreen(已移除)navbar 的三個分散入口(TripMenu/分享按鈕/成員按鈕)
           合併成這一個,搬到旅程列表觸發——用 base-ui.css 既有的
           .rp-modal*(置中卡片彈窗骨架,跟 SettingsDialog 同一套)包住,
           TripManageModal 本身用 .rp-modal-head/.rp-modal-body 渲染內容

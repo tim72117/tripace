@@ -115,7 +115,7 @@ type SheetEntry =
 // 項目),不是再開一層 bottom sheet——理由見該元件開頭的說明:抽屜可以
 // 佔滿畫面高度,比 bottom sheet(必須跟地圖並存可見、高度受限 60vh)更
 // 適合放得下「已排入行程」日層架內容。地圖固定不動的底層 + 側邊滑入
-// 抽屜,對齊 pace/PacePhoneSwipe.tsx 的既有先例。
+// 抽屜。
 //
 // 行程清單相關 state 對照桌面版 planning/member/desktop/Content.tsx 的同名 geo* state,
 // 只是拿掉桌面版才需要的中介 state draggingCandidate(手機版不支援拖曳

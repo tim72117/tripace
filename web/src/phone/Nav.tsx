@@ -6,11 +6,10 @@ import styles from './Nav.module.css'
 // 抽屜裡的分頁列(.tabs),不需要先開抽屜才看得到分頁。項目由呼叫端
 // (planning/member/phone/Content.tsx)的 tabs 陣列決定,目前是:行程(開啟候選籃/行程抽屜;
 // 尚未選擇清單時改為先開 trip/phone/TripList 讓使用者選)、探索(觸發探索面板)、
-// 規劃(切換對話 PhoneBottomSheet 疊加層,帶 BETA 標記)——路徑(pace)改放
-// PhoneSideTools.tsx 右側小圖示,不在這裡。
+// 規劃(切換對話 PhoneBottomSheet 疊加層,帶 BETA 標記)。
 //
 // 規劃地圖已是唯一常駐主畫面,不再有可切換的分頁模式(使用者明確要求,見
-// planning/member/phone/Content.tsx 的 chatSheetOpen/paceSheetOpen 說明)——這裡的每個項目
+// planning/member/phone/Content.tsx 的 chatSheetOpen 說明)——這裡的每個項目
 // 各自是獨立開關的疊加層,不是互斥的分頁,active 狀態因此改成呼叫端直接
 // 傳 boolean,不再需要比對「目前選中哪個 mode」。
 // 2026-10 修正:

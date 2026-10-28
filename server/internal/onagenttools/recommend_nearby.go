@@ -19,7 +19,7 @@ const maxRadiusMeters = 50000
 
 // HandleRecommendNearby executes the same "resolve place name to
 // coordinates, then Nearby Search around it" flow as
-// wanttools.RecommendNearbyTool.Call, but driven by onagent's dispatch
+// the legacy want-framework RecommendNearbyTool (wanttools, removed; see git history), but driven by onagent's dispatch
 // request shape instead of want's types.ToolArguments, and returning
 // directly in the response body instead of via ctx.EmitToolResult (onagent
 // has no want-side result-accumulation mechanism to feed — the whole point

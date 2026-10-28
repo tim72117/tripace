@@ -56,7 +56,7 @@
    比照 Button.tsx 的 compact prop 取代
    `.new-trip-composer .btn-primary` 巢狀覆寫的先例。
    .navbar 本身已遷移成 components/Navbar.tsx(見該元件說明),目前該元件
-   的兩個呼叫端(OnagentBridgeDemo.tsx/PublicViewScreen.tsx)left/right
+   的兩個呼叫端(原 OnagentBridgeDemo.tsx[已移除]/PublicViewScreen.tsx)left/right
    slot 都還是空佔位,沒有放 IconButton,所以這個 square prop 目前沒有
    呼叫端會傳 true,但保留它是因為 base-ui.css 原本明確定義過這個尺寸
    規格,不該借這次機會砍掉「Navbar 的 left/right slot 未來若放圖示鈕該

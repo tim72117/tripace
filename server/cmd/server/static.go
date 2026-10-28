@@ -31,7 +31,6 @@ var knownRoutePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^/public/[^/]+$`),
 	regexp.MustCompile(`^/cli-auth$`),
 	regexp.MustCompile(`^/device$`),
-	regexp.MustCompile(`^/demo/pace$`),
 	regexp.MustCompile(`^/ai-plan$`),
 	// /ai-plan/live:推論態,見 web/src/planning/preview/LiveContent.tsx
 	// 開頭的完整說明(2026-10 從 /ai-plan 內部 handedOver 切換拆成獨立路由)。

@@ -7,7 +7,7 @@ dist
 # 磁碟版本綁定,不應提交進版控。
 tsconfig.tsbuildinfo
 
-# Playwright(tests/e2e-mock-llm.spec.ts)執行後產生的暫存輸出:失敗截圖、
+# Playwright 執行後產生的暫存輸出:失敗截圖、
 # trace.zip、HTML 報表。每次執行都會重新產生,不應提交進版控。
 test-results
 playwright-report

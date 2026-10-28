@@ -6,7 +6,7 @@ import styles from './PlanLayout.module.css'
 // PlanLayout(登入後手機版)——最外層容器,對應 /ai-plan 的 planning/preview/PlanLayout:同一個層級、
 // 同一個名字,都渲染 data-slot="container" 的容器(骨架見 planning/shared/overlayDom.ts)。
 // 兩邊是各自實作的元件(放在不同資料夾):這一份只管容器本身,內容(地圖與疊加外殼 PlanOverlayLayout、
-// phone/Nav、PhoneSideTools、各個 sheet)由呼叫端(planning/member/phone/Content)當 children 放進來。
+// phone/Nav、各個 sheet)由呼叫端(planning/member/phone/Content)當 children 放進來。
 //
 // tabBarHeight——phone/Nav 量到的真實高度(px),寫成 CSS 自訂屬性 --tab-bar-height。寫在這個容器
 // (phone/Nav 跟所有需要避開它的 bottom sheet 共用的定位祖先)上,自訂屬性沿 DOM 樹往下繼承,

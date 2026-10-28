@@ -53,14 +53,10 @@ ENV VITE_GOOGLE_MAPS_MAP_ID=${VITE_GOOGLE_MAPS_MAP_ID}
 # 介紹頁地圖從未真正套用過這份客製化樣式。
 ARG VITE_GOOGLE_MAPS_LANDING_MAP_ID
 ENV VITE_GOOGLE_MAPS_LANDING_MAP_ID=${VITE_GOOGLE_MAPS_LANDING_MAP_ID}
-# VITE_ONAGENT_APP_KEY:onagent 平台(tripace app)的 apiKey,同上放 Secret
-# Manager,由 deploy-cloudrun.yml 讀出後當 --build-arg 傳入。
 # VITE_ONAGENT_URL:onagent 平台位址,不是機密(見 web/.env.production.local
 # 的說明),但正式站與本機開發指向不同網址,同樣需要在 build 時期決定,
 # 故一併用 build-arg 傳入,不寫死在 Dockerfile 裡。
-ARG VITE_ONAGENT_APP_KEY
 ARG VITE_ONAGENT_URL
-ENV VITE_ONAGENT_APP_KEY=${VITE_ONAGENT_APP_KEY}
 ENV VITE_ONAGENT_URL=${VITE_ONAGENT_URL}
 # VITE_GOOGLE_OAUTH_CLIENT_ID:Google 帳號登入(GSI 模式,LoginForm.tsx/
 # useGoogleSignIn.ts)用的 OAuth 用戶端 ID——不是機密（Google OAuth client
@@ -74,8 +70,7 @@ ARG VITE_GOOGLE_OAUTH_CLIENT_ID
 ENV VITE_GOOGLE_OAUTH_CLIENT_ID=${VITE_GOOGLE_OAUTH_CLIENT_ID}
 # VITE_PLAN_AI_ONAGENT_APP_KEY:「AI 規劃」功能(/app/plan-ai,見
 # web/src/planning/panel/TripPlanPage.tsx)專用的獨立 onagent app
-# (plan-ai-timeline)的 apiKey,跟上面 VITE_ONAGENT_APP_KEY(tripace app)
-# 是完全不同的兩個 app、兩把互不相關的 key,見 TripPlanPage.tsx
+# (plan-ai-timeline)的 apiKey,見 TripPlanPage.tsx
 # PLAN_AI_ONAGENT_APP_ID 的完整說明。放 Secret Manager,由
 # deploy-cloudrun.yml 讀出後當 --build-arg 傳入。
 #

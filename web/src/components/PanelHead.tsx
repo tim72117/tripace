@@ -18,7 +18,7 @@ export interface PanelHeadProps {
   // 加上開關路徑的 icon」(地圖右上角「規劃行程」規劃面板,見
   // planning/member/desktop/Content.tsx 的完整說明)。渲染在標題文字之後、關閉按鈕之前
   // (若有的話),只在呼叫端真的傳入時才多佔用這個位置——其餘呼叫端
-  // (trips/timeline/pace/geo-outline 等)不傳就完全不受影響,維持
+  // (trips/timeline/geo-outline 等)不傳就完全不受影響,維持
   // 原本只有「標題+關閉按鈕」兩個元素的版面。
   headerAction?: React.ReactNode
   // className/style:比照 ScrollArea/Button 等其餘共用元件的既有慣例,

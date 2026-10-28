@@ -39,7 +39,7 @@
   color: var(--color-dark);
 }
 
-/* left/right slot 的佔位寬度——原本兩處呼叫端(OnagentBridgeDemo.tsx/
+/* left/right slot 的佔位寬度——原本兩處呼叫端(OnagentBridgeDemo.tsx[已移除]/
    PublicViewScreen.tsx)都手寫 `<span style={{ width: 36 }} />` 讓中間
    標題視覺置中(即使左右都還沒有真的按鈕),這裡收進元件內部統一處理,
    呼叫端不用自己重複這個內聯樣式。36px 是原始數值,未特別對齊

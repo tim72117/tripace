@@ -1,7 +1,7 @@
 // Package tripsvc 是 entry 的「行程服務層」:把記錄、更新條目的邏輯集中於此,
 // 作為單一真實來源。
 //
-// 設計原則:LLM 工具(wanttools)與 CLI 都只薄薄呼叫本層,不各自重刻。
+// 設計原則:LLM 工具(onagenttools)與 CLI 都只薄薄呼叫本層,不各自重刻。
 package tripsvc
 
 import (

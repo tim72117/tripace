@@ -6,10 +6,9 @@
 // 在跑(server :8080 + web dev server,見 web/.env.development 的
 // VITE_API_BASE),用 E2E_BASE_URL 環境變數指向實際的 web dev server port
 // (預設值對齊 playwright.config.ts 的 5173;本機若因埠號衝突漂移到其他 port,
-// 執行前需另外設定)。跟 e2e-mock-llm.spec.ts 不同,這支測試不需要 mock LLM
-// ——規劃分頁的互動完全不經過 AI/want orchestrator,純粹是前端 state +
-// 後端 CRUD API,故可以直接對著開發者平常在跑的正式 dev 環境測試,不需要
-// 額外啟動一整組隔離的 mockllm/server/web。
+// 執行前需另外設定)。這支測試不需要 mock LLM
+// ——規劃分頁的互動完全不經過 AI,純粹是前端 state + 後端 CRUD API,
+// 故可以直接對著開發者平常在跑的 dev 環境測試。
 //
 // 涵蓋範圍(對齊使用者要求「每個可以點擊拉動的元件,都測試操作會產生的互動」):
 //   1. Rail 圖示切到「規劃」分頁

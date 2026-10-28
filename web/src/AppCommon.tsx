@@ -8,7 +8,7 @@ import { Banner } from './components/Banner'
 import styles from './AppCommon.module.css'
 
 // AppCommon:App.tsx 拆出來的共用工具/元件/常數/型別,供 App.tsx 本身、
-// 以及 ChatScreen.tsx/CliAuthPage.tsx 等其他檔案共同 import——這些原本
+// 以及 CliAuthPage.tsx 等其他檔案(原 ChatScreen.tsx 已移除)共同 import——這些原本
 // 寄生在 App.tsx 底下,但語意上不屬於「App 這個進入點元件」,獨立成自己
 // 的檔案避免其他檔案得為了一顆 ErrorBanner 就 import 整支 1500+ 行的
 // App.tsx。useIsDesktop/useAppState/useTripsState 已移到 hooks/ 目錄

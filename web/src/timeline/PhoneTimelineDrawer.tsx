@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { DesktopTimelineMirror } from '../chat/ChatScreen'
+import type { useTripEntriesMirror } from '../hooks/useTripEntriesMirror'
 import type { ClientConfig } from '../api'
 import { MultiTrackTimeline } from './Timeline'
 import { StandaloneSheet, SheetBody, SheetHead } from '../components/PhoneBottomSheet'
@@ -11,17 +11,16 @@ import { Z_LAYERS } from '../components/zLayers'
 // 地圖(planning/map/phone/PlanPhoneView.tsx)專屬的入口(左下角按鈕,見該檔案的
 // onOpenTimeline),疊在地圖上方顯示,不切換網址、不離開規劃地圖主畫面。
 //
-// 只顯示時間軸內容本身(唯讀清單),不含 ChatScreen 的對話輸入列——已與
+// 只顯示時間軸內容本身(唯讀清單),不含對話輸入列(原 ChatScreen,已移除)——已與
 // 使用者確認,想發訊息需要先關閉這個 sheet、回到對話畫面,不在 sheet 內
-// 提供輸入功能,理由是 ChatScreen 只有一份掛載點(見 planning/member/phone/Content.tsx 的
-// chatElement 說明),同時放進兩個地方的 children 會讓架構複雜化,不符合
+// 提供輸入功能,理由是(原)對話元件只有一份掛載點,同時放進兩個地方的 children 會讓架構複雜化,不符合
 // 「時間軸只是規劃地圖的輔助檢視」這個新定位。
 //
 // 外殼(backdrop/panel/dragHandle)與拖曳關閉手勢改用共用容器
 // components/PhoneBottomSheet.tsx,對齊 trip/phone/TripList.tsx 的既有
 // 用法(同一套 bottom sheet 模式)。可拖曳收合到只顯示標頭(minHeightPx/
 // activeSnapIndex,見下方)——當初是為了排查「對話疊加層內容區拖不動」
-// 問題而加的對照組(時間軸內容區 MultiTrackTimeline 跟 ChatScreen 的
+// 問題而加的對照組(時間軸內容區 MultiTrackTimeline 跟原 ChatScreen(已移除)的
 // 訊息列表一樣用 ScrollArea(前身是全域 .screen-body class),驗證同樣
 // 結構在這裡能正常拖動整張卡片,藉此排除這個捲動容器本身的嫌疑,見
 // planning/member/phone/Content.tsx 對話疊加層 keepMounted 的說明),驗證後使用者要求
@@ -65,7 +64,7 @@ export function PhoneTimelineDrawer({
   open: boolean
   onClose: () => void
   tripName: string
-  timelineMirror: DesktopTimelineMirror
+  timelineMirror: ReturnType<typeof useTripEntriesMirror>
   editCfg: ClientConfig | undefined
 }) {
   const todayRef = useRef<HTMLDivElement>(null as unknown as HTMLDivElement)
@@ -129,7 +128,7 @@ export function PhoneTimelineDrawer({
               updatingIDs={timelineMirror.updatingEntryIDs}
               taskPlaceholders={timelineMirror.taskPlaceholders}
               cfg={editCfg}
-              onEntryUpdated={timelineMirror.refetchEntries}
+              onEntryUpdated={timelineMirror.refetch}
             />
           </div>
         </SheetBody>

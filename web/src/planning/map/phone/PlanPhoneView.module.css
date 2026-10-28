@@ -1,8 +1,7 @@
 /* wrap:.container(planning/member/phone/Content.module.css)是 flex column 容器,
    height: 100% 本身無法讓這個元件撐滿剩餘空間——沒有 flex: 1 1 auto,
    高度只會退回內容自然高度(PlanMap 的 min-height: 320px),不會
-   隨外層可用空間變動。理由同 pace/PaceRouteMap.module.css 的
-   .pace-route-map-wrap(同樣掛在 .container 底下的地圖容器)。display: flex
+   隨外層可用空間變動。display: flex
    是必要的第二步:PlanMap.module.css 的 .wrap 本身是
    flex: 1 1 auto,只有在父層是 flex 容器時才會生效撐滿——這裡不用
    position: absolute; inset: 0 是因為還要保留 position: relative 給

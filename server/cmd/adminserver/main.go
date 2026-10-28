@@ -1,7 +1,7 @@
 // Command adminserver 是管理後台(/admin/api/*)的獨立進入點——與 cmd/server
 // 完全分開編譯、分開部署,不共用同一個 binary,達成程式碼層面的隔離(見
 // server/internal/adminconsole 這個套件只依賴 internal/auth、internal/model、
-// internal/store,完全不依賴 internal/llm、internal/api、internal/wanttools
+// internal/store,完全不依賴 internal/llm、internal/api
 // 等主業務套件,故能單獨編譯成這支獨立 binary)。DATABASE_URL 目前與
 // cmd/server 指向同一個 Postgres(共用資料,不是各自獨立的資料來源)。
 //

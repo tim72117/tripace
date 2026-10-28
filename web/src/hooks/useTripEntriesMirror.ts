@@ -2,7 +2,7 @@
 // 供「時間軸」側欄(planning/member/desktop/Content 的 panelMode='timeline' → MultiTrackTimeline、
 // 手機版 PhoneNavDrawer 的同名分頁)直接使用。
 //
-// 2026-10 新增,從 chat/ChatScreen.tsx 搬出來——原本這份資料是 ChatScreen
+// 2026-10 新增,從 chat/ChatScreen.tsx(已移除)搬出來——原本這份資料是 ChatScreen
 // 自己撈(api.fetchEntries)、自己訂閱旅程 WebSocket,再透過
 // desktopChat.onTimelineData 這個 callback「鏡像」給外層的側欄。那是因為
 // 歷史上 ChatScreen 本來就需要這份資料(它自己要渲染時間軸),側欄只是順便

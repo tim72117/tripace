@@ -66,7 +66,7 @@ type Me struct {
 }
 
 // PresentedEntry 是查詢回答附帶、要展示給使用者的結構化條目。
-// 形狀與 llm.AssistEntry / wanttools.PresentedEntry 一致,讓前端用同一套列表渲染。
+// 形狀與 llm.AssistEntry 一致,讓前端用同一套列表渲染。
 type PresentedEntry struct {
 	Title     string `json:"title"`
 	Start     string `json:"start"`
@@ -288,8 +288,7 @@ type Entry struct {
 	Lng       *float64 `json:"lng,omitempty"`     // 經度
 	// PlaceID 是這組座標對應的 Google Place ID,供之後跟 Places API 其他
 	// 已快取的資料(如 photo_cache/place_details_cache)關聯比對用——只有
-	// 座標來自後端呼叫 Geocoding API 查詢時才會有值(見
-	// handleGeocodeEntry);手動在地圖上拖曳選點存座標(見
+	// 座標來自後端呼叫 Geocoding API 查詢時才會有值;手動在地圖上拖曳選點存座標(見
 	// handleInternalSetLatLng)沒有對應的 place_id 可知,此時為 nil,且會
 	// 明確清空先前可能存在的舊值——座標已經改到別處,保留舊 place_id
 	// 只會造成錯誤的關聯,不留下不一致的殘留資料。

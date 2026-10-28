@@ -61,7 +61,6 @@ Owner/Editor
   │    tripID: "trip_001",
   │    tripName: "東京之旅",
   │    editable: false,
-  │    viewMode: "timeline",
   │    entries: [ ... ]
   │  }
   │
@@ -114,7 +113,6 @@ Step 5: 組合回應
     tripID: "trip_001",
     tripName: "...",
     editable: false,
-    viewMode: "timeline",
     entries: [ ... ]
   }
 
@@ -132,7 +130,7 @@ Step 6: 前端渲染
 
 沒有過期時間、沒有停用旗標、沒有訪問次數上限——**連結建立後永久有效**，唯一的撤銷方式是 `DELETE`（見第 3 節）。
 
-唯一的變化維度是 `editable`（可寫/唯讀）與 `viewMode`（timeline/pace），兩者都可在連結存續期間隨時切換。
+唯一的變化維度是 `editable`（可寫/唯讀），可在連結存續期間隨時切換。(原本還有 `viewMode`(timeline/pace),2026-10 隨「路徑」功能移除。)
 
 ## 6. 完整的 URL 流程
 
@@ -292,7 +290,6 @@ Response 200:
   "tripID": "trip_001",
   "tripName": "東京之旅 2026",
   "editable": false,
-  "viewMode": "timeline",
   "entries": [
     {
       "id": "entry_001",
@@ -331,10 +328,10 @@ Response 404: 連結不存在或已刪除
 
 `editable` 欄位、DB 欄位、`POST`/`GET /v1/trips/{id}/public-link` 的讀寫 API、`web/src/trip/TripManageModal.tsx` 的 UI 開關都還在，切換後也會被存下來，但沒有任何後端路徑會讀這個旗標做權限判斷——公開連結頁面（`GET /v1/public/{token}`）只回傳資料供閱讀，訪客端沒有對話/寫入介面。
 
-前端對話（`ChatScreen.tsx`）走 onagent 平台（`web/src/chat/useOnagentChatBridge.ts`），採全域單一連線（`APP_ID = 'tripace'`），不區分「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」，因此公開連結目前沒有任何授權寫入的路徑。
+前端對話（`web/src/planning/panel/TripPlanPage.tsx`）走 onagent 平台（`AgentBridge`，app 為 `plan-ai-timeline`），採全域單一連線（`PLAN_AI_ONAGENT_APP_ID = 'plan-ai-timeline'`），不區分「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」，因此公開連結目前沒有任何授權寫入的路徑。
 
 `POST /v1/public/{token}/compute-route`（`handlePublicComputeRoute`）不受此影響，仍然存在、只做路線計算、不寫入資料，並限制 `entryIDs` 必須屬於該 token 對應的行程。
 
-**待辦**：若要讓公開連結支援匿名寫入協作，需要在 `useOnagentChatBridge`／onagent 的 dispatch 協定裡補上「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」這組上下文，並在 `internal/onagenttools` 對應的寫入類工具裡加入授權檢查——目前完全沒有這層機制。
+**待辦**：若要讓公開連結支援匿名寫入協作，需要在 `TripPlanPage` 的 `AgentBridge`／onagent 的 dispatch 協定裡補上「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」這組上下文，並在 `internal/onagenttools` 對應的寫入類工具裡加入授權檢查——目前完全沒有這層機制。
 
-相關程式碼：`server/internal/api/public_link.go`、`server/internal/store/entity.go` 的 `publicLinkRow.Editable`、`web/src/trip/TripManageModal.tsx`（UI 開關）、`web/src/chat/useOnagentChatBridge.ts`。
+相關程式碼：`server/internal/api/public_link.go`、`server/internal/store/entity.go` 的 `publicLinkRow.Editable`、`web/src/trip/TripManageModal.tsx`（UI 開關）、`web/src/planning/panel/TripPlanPage.tsx`。

@@ -19,7 +19,7 @@
 // (反過來,ClientToolsBridge.ts 的 ClientTool/ToolContext 才是「代入具體
 // Ctx 型別後、以這裡的泛型型別實例化」的結果,見該檔案的型別定義處說明。)
 //
-// 動機:目前每個工具檔案(../clienttools/tools/ 底下)都要自己在 handle 內部
+// 動機:目前每個工具檔案(原 ../clienttools/tools/ 底下,已移除;現見 planning/conversation/tools.ts)都要自己在 handle 內部
 // 手動呼叫 asString(args.key)、asNonNegativeInt(args.offset, 0) 這類防禦性
 // 轉型 helper,把 unknown 挖成自己要的形狀——這件事編譯期完全沒有檢查,少寫、
 // 打錯欄位名稱,TypeScript 不會報錯,只有 runtime 才會發現(甚至可能默默
@@ -37,7 +37,7 @@
 //      不同步。
 //
 //   2. 不綁定任何第三方 schema 驗證庫(zod/valibot 等)——SDK 保持零依賴,
-//      parseArgs 可以是最陽春的手寫函式(像 tripEntryAdd.ts 示範的),也
+//      parseArgs 可以是最陽春的手寫函式(像 planning/conversation/tools.ts 示範的),也
 //      可以是 zod schema 的 .parse 方法包一層;消費者自己選擇要不要引入
 //      額外依賴,defineTool 本身不替他們決定。
 //
@@ -62,7 +62,7 @@ import type { ClientTool } from './arrayTools'
 //
 // handle 參數刻意不用「Ctx extends void ? 一個參數 : 兩個參數」這種條件型別
 // 寫法——條件型別要等 Ctx 完全確定才能展開判斷分支,但既有呼叫端(見
-// ../clienttools/tools/ 底下的工具檔案)只顯式指定 Args 這一個型別參數
+// 原 ../clienttools/tools/ 底下的工具檔案,已移除)只顯式指定 Args 這一個型別參數
 // (defineTool<TripEntryAddArgs>(...)),是想讓 TypeScript 從第三個參數
 // handle 本身反推 Ctx,兩者互相依賴,條件型別解不出來,會導致這些既有呼叫點
 // 全部型別報錯(型別參數只給一個時 Ctx 被視為預設值 void,handle 就被要求

@@ -352,7 +352,7 @@ type photoCacheRow struct {
 func (photoCacheRow) TableName() string { return "photo_cache" }
 
 // pexelsPhotoCacheRow 快取 Pexels Search API 查到的示意圖(見
-// server/internal/pexels 的完整說明)——同一個查詢字串重複被查詢時直接
+// 已移除的 server/internal/pexels,Pexels 來源 2026-10 已停用,見 git 歷史)——同一個查詢字串重複被查詢時直接
 // 吃快取,不重新打 Pexels API。
 //
 // 主鍵刻意是 search_query(搜尋時用的原始字串,如 attraction-add 用
@@ -570,16 +570,11 @@ func (planAiChatMessageRow) TableName() string { return "plan_ai_chat_messages" 
 
 // publicLinkRow 是行程公開分享連結，一個行程最多一條。
 type publicLinkRow struct {
-	ID        string `gorm:"primaryKey;column:id"`
-	TripID    string `gorm:"uniqueIndex;column:trip_id;not null"`
-	LinkToken string `gorm:"uniqueIndex;column:link_token;not null"`
-	CreatedBy string `gorm:"column:created_by;not null"`
-	Editable  bool   `gorm:"column:editable;not null;default:false"`
-	// ViewMode:公開頁要顯示「時間軸」還是「配速表」，值為 "timeline"／"pace"。
-	// 存字串而非 bool，是因為這是「選其中一種呈現方式」而非開關，未來若再
-	// 加第三種呈現方式不需要改型別。空字串（舊資料/尚未設定）由讀取端視為
-	// "timeline"，不特別遷移既有資料。
-	ViewMode  string    `gorm:"column:view_mode;not null;default:timeline"`
+	ID        string    `gorm:"primaryKey;column:id"`
+	TripID    string    `gorm:"uniqueIndex;column:trip_id;not null"`
+	LinkToken string    `gorm:"uniqueIndex;column:link_token;not null"`
+	CreatedBy string    `gorm:"column:created_by;not null"`
+	Editable  bool      `gorm:"column:editable;not null;default:false"`
 	CreatedAt time.Time `gorm:"column:created_at;not null"`
 }
 

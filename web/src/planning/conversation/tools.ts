@@ -1,7 +1,7 @@
 // tools.ts — /plan-ai 對話窗給 onagent 用的兩個工具:
 // search_attraction(查詢任意地名,取得座標與鄰近候選)、add_attraction
 // (把查到的地點插入時間軸)。沿用專案既有的 sdk-proposals/defineTool
-// 模式(見 tripEntryAdd.ts/tripEntryList.ts 的既有寫法與完整設計說明),
+// 模式(見 sdk-proposals/defineTool.ts 的完整設計說明;原 tripEntryAdd.ts 等範例已移除),
 // 不是另起一套——parseArgs 負責把 unknown 的 raw args 轉成型別安全的
 // 形狀,handle 只處理已經型別安全的 args + ctx,兩者透過 defineTool 綁定
 // 不會不同步。
@@ -82,7 +82,7 @@ import type { PlanOperationNames } from '../timeline/operations'
 // AttractionStepsCtx — add_attraction 需要的 context:一個能讀取時間軸
 // 現況、並且插入新節點的口子。刻意不是完整的 planning/preview/Content state
 // (不含 isGenerating/following 等其餘 UI state),只暴露這個工具真正
-// 需要的最小介面,理由同 tripEntryAdd.ts 的 TripEntryAddCtx 設計說明。
+// 需要的最小介面,理由同原 tripEntryAdd.ts(已移除)的 TripEntryAddCtx 設計。
 //
 // addStop 是這裡唯一的寫入口——「機制跟介面由行程安排
 // 元件提供」:鏈結串列的構建、時間驗證、prevId/nextId 維護全部收在

@@ -11,7 +11,7 @@ import styles from './FloatingPanel.module.css'
 // 之上的卡片。
 //
 // 從 planning/member/desktop/Content.module.css 的 .panel/.left/.right/.close 抽成獨立元件
-// ——原本 panelMode 浮動卡片(trips/timeline/pace/geo-outline)與
+// ——原本 panelMode 浮動卡片(trips/timeline/geo-outline)與
 // 規劃面板各自在 planning/member/desktop/Content.tsx 內聯組出「外層 div +
 // 絕對定位疊加的關閉按鈕」,現在收斂成單一元件,呼叫端只需要決定
 // side/width 與要不要顯示 title/onClose。
@@ -24,7 +24,7 @@ export interface FloatingPanelProps {
   side: 'left' | 'right'
   width: number
   // height:'default' 對齊原本 .panel 的 top:12px/bottom:12px(trips/
-  // timeline/pace/geo-outline 等 panelMode 浮動卡片);'info' 對齊
+  // timeline/geo-outline 等 panelMode 浮動卡片);'info' 對齊
   // PlacePanel/AttractionInfoPanel 的高度(top:64px/bottom:16px,原
   // .infoPanelHeight),目前只有 planning/member/desktop/Content.tsx 包 planning/place/desktop/ResultList 的
   // 那個 FloatingPanel 用到。

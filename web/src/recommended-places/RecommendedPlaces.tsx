@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { Star, MapPin, ImageOff } from 'lucide-react'
 import styles from './RecommendedPlaces.module.css'
 
-// 推薦景點卡片(UI 試做,假資料展示用)。
+// 推薦景點卡片(UI 試做,假資料展示用)。目前僅有測試引用,原使用者 ChatScreen 已移除。
 //
-// 資料形狀對齊後端 want 工具 recommend_nearby(server/internal/wanttools/recommend_nearby.go)
+// 資料形狀對齊後端 recommend_nearby 工具(server/internal/onagenttools/recommend_nearby.go)
 // 目前回傳的欄位(name/address/lat/lng/rating/userRatingCount/primaryType)。
 // photoUrl、summary 兩個欄位後端還沒接(Places API New 的 photos / editorialSummary),
 // 先在型別上留好位置,UI 做好「沒有這兩個欄位時」的空狀態處理,之後後端補上就能直接吃。
@@ -20,7 +20,7 @@ export type RecommendedPlace = {
   summary?: string // 景點介紹文字,之後才有,先寫假範例
 }
 
-// primaryType(Google Places 英文代碼)→ 中文標籤,對照 recommend_nearby.go 的 categoryToPlaceType。
+// primaryType(Google Places 英文代碼)→ 中文標籤,對照 Google Places 的 type 代碼(原後端 categoryToPlaceType 對照表已隨 wanttools 移除)。
 const TYPE_LABELS: Record<string, string> = {
   tourist_attraction: '觀光景點',
   museum: '博物館',

@@ -121,29 +121,6 @@
   transform: translateX(20px);
 }
 
-/* 公開頁顯示模式（時間軸／配速表）分段按鈕 */
-.viewModeGroup {
-  display: flex;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid var(--ios-sep);
-}
-.viewModeBtn {
-  border: none;
-  background: var(--ios-bg);
-  color: var(--color-dark);
-  font-size: 13px;
-  padding: 6px 12px;
-  cursor: pointer;
-}
-.viewModeBtn:not(:first-child) {
-  border-left: 1px solid var(--ios-sep);
-}
-.viewModeBtnActive {
-  background: var(--ios-blue);
-  color: #fff;
-}
-
 /* 背景刻意寫死 #fff 而非 var(--ios-*)：QR code 需要穩定的黑白對比才能
    維持可掃描性，不能隨 app 的淺色／深色主題變動。 */
 .qrBox {

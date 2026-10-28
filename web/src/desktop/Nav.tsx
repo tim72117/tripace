@@ -1,16 +1,16 @@
 import { forwardRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
-  List, Layers, Activity, Route, BookOpen, PanelLeft, MessageSquareText,
+  List, Layers, Activity, BookOpen, PanelLeft,
 } from 'lucide-react'
 import { Timeline } from 'lucide-react'
 import type { ClientConfig } from '../api'
 import type { User } from '../user/types'
 import { DesktopUserMenu } from '../user/DesktopUserMenu'
 import {
-  type PanelMode, TIMELINE_ENABLED, PACE_ENABLED,
+  type PanelMode, TIMELINE_ENABLED,
   DEBUG_PANEL_ENABLED,
-  DEMO_ROUTE_EDITOR_ENABLED, DEMO_CHAT_ENABLED, PANEL_REGISTRY,
+  DEMO_ROUTE_EDITOR_ENABLED, PANEL_REGISTRY,
 } from '../DesktopShared'
 import styles from './Nav.module.css'
 
@@ -114,8 +114,8 @@ export const Nav = forwardRef<HTMLElement, NavProps>(function Nav(
           <Layers size={20} strokeWidth={1.8} />
           {expanded && <span className={styles.btnLabel}>規劃</span>}
         </button>
-        {/* TIMELINE_ENABLED/PACE_ENABLED:編譯時 feature flag(見
-            DesktopShared.tsx 對這兩個常數的說明),關閉時按鈕不渲染,
+        {/* TIMELINE_ENABLED:編譯時 feature flag(見
+            DesktopShared.tsx 對這個常數的說明),關閉時按鈕不渲染,
             isPanelMode 也不再承認對應字串,同理。 */}
         {TIMELINE_ENABLED && (() => {
           const disabled = !!PANEL_REGISTRY.timeline.requiresTrip && !activeTrip
@@ -131,16 +131,6 @@ export const Nav = forwardRef<HTMLElement, NavProps>(function Nav(
             </button>
           )
         })()}
-        {PACE_ENABLED && (
-          <button
-            className={panelMode === 'pace' ? `${styles.btn} ${styles.active}` : styles.btn}
-            onClick={() => onSelect('pace')}
-            title="路徑"
-          >
-            <Route size={20} strokeWidth={1.8} />
-            {expanded && <span className={styles.btnLabel}>路徑</span>}
-          </button>
-        )}
         {/* DEBUG_PANEL_ENABLED:編譯時 feature flag(見 DesktopShared.tsx
             對這個常數的說明),取代原本綁在網址參數 ?demo 底下的單一
             isDemo 開關——分隔線只在開啟時出現,避免試做項目跟正式功能
@@ -167,20 +157,6 @@ export const Nav = forwardRef<HTMLElement, NavProps>(function Nav(
           >
             <BookOpen size={20} strokeWidth={1.8} />
             {expanded && <span className={styles.btnLabel}>路徑編輯器(試做)</span>}
-          </button>
-        )}
-        {/* demo-chat:舊版對話框(走 tripace app 的 trip_entry_* 工具,
-            以批次表格呈現結果)——地圖規劃的對話視窗改成 AI 規劃時間軸
-            之後,這套保留成試做分頁,見 DesktopShared.tsx
-            DEMO_CHAT_ENABLED 的完整說明。 */}
-        {DEMO_CHAT_ENABLED && (
-          <button
-            className={panelMode === 'demo-chat' ? `${styles.btn} ${styles.btnDemo} ${styles.active}` : `${styles.btn} ${styles.btnDemo}`}
-            onClick={() => onSelect('demo-chat')}
-            title="舊版對話框(試做)"
-          >
-            <MessageSquareText size={20} strokeWidth={1.8} />
-            {expanded && <span className={styles.btnLabel}>舊版對話框(試做)</span>}
           </button>
         )}
       </div>

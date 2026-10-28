@@ -7,8 +7,7 @@ import styles from './Banner.module.css'
 // class .banner 被 4 處呼叫端各自用 className="banner" 重複引用,其中
 // AppCommon.tsx 的 ErrorBanner 與 PublicViewScreen.tsx 還各自重複貼了一份
 // 幾乎一模一樣的「msg 為 falsy 時回傳 null,否則外面包一個 AlertCircle
-// icon」邏輯與 inline style(marginRight/verticalAlign),PaceChart.tsx/
-// Timeline.tsx 則是呼叫端自己用 `{err && <div className="banner">...}`
+// icon」邏輯與 inline style(marginRight/verticalAlign),Timeline.tsx 則是呼叫端自己用 `{err && <div className="banner">...}`
 // 判斷、且不帶 icon——同一個「錯誤橫幅」的概念,實際上分裂成兩種手寫
 // 樣板,現在收斂成一個元件、一個 icon prop 決定要不要帶圖示。
 //
@@ -26,8 +25,7 @@ export interface BannerProps {
   // (非本來就熟悉 msg 這個縮寫的人)更明確。
   message: ReactNode | null | undefined | false
   // icon:是否在訊息前面帶 AlertCircle 圖示——AppCommon.tsx 的
-  // ErrorBanner/PublicViewScreen.tsx 原本就帶圖示,PaceChart.tsx/
-  // Timeline.tsx 原本不帶,兩種既有樣式都要保留,不能為了統一而讓其中一種
+  // ErrorBanner/PublicViewScreen.tsx 原本就帶圖示,Timeline.tsx 原本不帶,兩種既有樣式都要保留,不能為了統一而讓其中一種
   // 呼叫端的視覺跟著改變。預設 false(不帶圖示)——多數呼叫端(2/4)是
   // 不帶圖示的版本。
   icon?: boolean

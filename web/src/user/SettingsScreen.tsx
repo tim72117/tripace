@@ -15,7 +15,7 @@ import { ListRow } from '../components/ListRow'
 // SettingsScreen:手機版設定內容——從 PhoneScreens.tsx 拆成獨立檔案,只有
 // 這一個元件在用,不再跟 PublicViewScreen 共用同一個檔案。.section-title
 // 樣式沿用 base-ui.css 的全站共用 class,刻意不建立專屬 CSS Module——
-// 這個 class 是 ChatScreen 等多處畫面刻意共用的一套,拆成 CSS Module
+// 這個 class 是多處畫面(原含 ChatScreen,已移除)刻意共用的一套,拆成 CSS Module
 // 只會製造重複定義。.row 相關的清單列樣式已改用共用元件
 // components/ListRow.tsx 的 <ListRow>,不再是字串 className="row",
 // 見該檔案開頭的說明。

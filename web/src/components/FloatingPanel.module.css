@@ -57,7 +57,7 @@
    這裡重複定義 head/title/closeBtn 樣式。 */
 
 /* floatingCloseBtn:沒有標題文字時的關閉按鈕——絕對定位疊在卡片右上角,
-   供 panelMode 浮動卡片(trips/timeline/pace/geo-outline,內容元件各自
+   供 panelMode 浮動卡片(trips/timeline/geo-outline,內容元件各自
    有自己的 header 排版,不需要外殼再重複一份標題列)與 規劃面板
    (完全沒有標題文字)使用。視覺(尺寸/形狀/顏色/hover)跟 PanelHead 的
    .closeBtn 完全一致(同一個圓形關閉鈕,只是這裡沒有標題列可以掛,

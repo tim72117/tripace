@@ -531,7 +531,7 @@ function usePlanAiChatBridge(
     bridgeRef.current = bridge
     setStatus('connecting')
     // AgentBridge 沒有連線成功的 callback,用送出後短暫延遲樂觀顯示
-    // ready(對齊原型/useOnagentChatBridge.ts 的既有做法)。
+    // ready(對齊原型 useOnagentChatBridge.ts(已移除)的做法)。
     const t = window.setTimeout(() => setStatus('ready'), 500)
     return () => {
       window.clearTimeout(t)
@@ -638,8 +638,7 @@ function usePlanAiChatBridge(
 
 // TripPlanPage — /app 底下正式的「AI 安排行程」功能頁面。
 //
-// cfg 是必填(不像 pace/PaceChart.tsx 那樣把 cfg 設成選填、走訪客模式
-// 免登入假資料查詢路徑)——這是正式功能,操作的是真實使用者的行程資料,
+// cfg 是必填——這是正式功能,操作的是真實使用者的行程資料,
 // 不應該有「沒登入也能用」的路徑。onagent 對話部分原本(原型)用
 // GUEST_CFG 的地方,這裡全部改成用這裡傳入的 cfg。
 //

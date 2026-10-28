@@ -208,11 +208,9 @@ const ITEMS: {
   // 安排站點。構想稿已寫成 RoutePathPlanningPage.tsx(對應
   // 構想頁 /ideas/research-route-path-01 起的研究筆記,兩份內容
   // 同步),status 仍標 'draft'——這只是構想文案/發想稿,不是可互動的
-  // 完整雛形(不像構想一/三那樣有假資料卡片牆或面板可以點)。複用的既有
-  // 基礎:VITE_FEATURE_PACE 控制的「路徑」(配速表)功能
-  // (DesktopShared.tsx PACE_ENABLED、planning/member/phone/Content.tsx 的「路徑」rail
-  // 按鈕),實際運作在 web/src/pace/PaceRouteMap.tsx + 後端
-  // server/internal/api/pace_route.go(已串接 Google Routes API 算路徑)。
+  // 完整雛形(不像構想一/三那樣有假資料卡片牆或面板可以點)。原本參考的
+  // 既有「路徑」(配速表)功能(VITE_FEATURE_PACE、web/src/pace/PaceRouteMap.tsx、
+  // server/internal/api/pace_route.go)已整個移除,可從 git 歷史取回(移除前的最後一個 commit)。
   // 構想七——3 星:有明確差異化價值(沿路徑排行程,不是單點湊順序),且
   // 已確認 encodedPolyline 不能長期持久化(Google TOS 限制),代表落地
   // 時每次都要即時重算,複雜度比原本設想更高;文案構想已完整,但距離
@@ -222,7 +220,7 @@ const ITEMS: {
     title: '構想七：路徑機制（AI 參考旅遊路徑安排行程）',
     status: 'draft',
     priority: 1,
-    desc: '存放特定旅遊路徑，AI 排行程時參考路線沿途安排站點——核心問題/資料結構草案/後端角度/前端照片呈現兩種可能性（Google Places 相片 vs 引用部落格素材）的構想稿。複用既有 PaceRouteMap.tsx/pace_route.go（VITE_FEATURE_PACE「路徑」功能）。地圖基底的瀏覽方式延伸雛形見構想一附錄。',
+    desc: '存放特定旅遊路徑，AI 排行程時參考路線沿途安排站點——核心問題/資料結構草案/後端角度/前端照片呈現兩種可能性（Google Places 相片 vs 引用部落格素材）的構想稿。可參考已移除的 PaceRouteMap.tsx/pace_route.go（舊「路徑」功能，見 git 歷史）。地圖基底的瀏覽方式延伸雛形見構想一附錄。',
   },
   // 構想八——2026-10 新增,使用者明確確認「構想六是自建投放系統,
   // artifact 是用外部」:跟構想六(站內贊助版位,原生卡片,自己刻版型)

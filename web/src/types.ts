@@ -4,8 +4,8 @@
 // 這裡只留 Entry——被 timeline/planning/chat/trip 等幾乎所有領域
 // 共用的核心資料實體,沒有明確的單一功能歸屬,不適合搬進任何一個功能
 // 目錄。其餘型別已依領域拆分:Trip 見 trip/types.ts,User/TripRole/
-// Member/Profile/Me/AuthResponse 見 user/types.ts,Message 見
-// chat/types.ts,APIErrorBody(純 API 層錯誤格式,非業務型別)已併入
+// Member/Profile/Me/AuthResponse 見 user/types.ts,Message 原見
+// chat/types.ts(已移除),APIErrorBody(純 API 層錯誤格式,非業務型別)已併入
 // api.ts。
 
 // Entry 是主體:LLM 處理訊息後產出的「事件/條目」,承載所有結構化結果。

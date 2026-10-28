@@ -4,8 +4,7 @@ import styles from './DesktopLayoutShell.module.css'
 
 // DesktopLayoutShell:桌面版整體佈局的最外層 flex 容器(原全域字串 class
 // .desktop-layout,見 desktop-layout-shell.css 的既有說明)——收斂
-// planning/member/desktop/Content.tsx(登入後正式介面)、pace/PacePage.tsx(/demo/pace 公開
-// 分享頁)、trip/PublicViewScreen.tsx(旅程分享頁的桌面路徑分支)三處呼叫端
+// planning/member/desktop/PlanLayout.tsx(登入後正式介面)等呼叫端
 // 共用的同一組骨架 CSS,只是純容器,不涉及內容語意,children 插槽即可。
 //
 // 命名刻意叫 DesktopLayoutShell,不叫 planning/member/desktop/Content——planning/member/desktop/Content.tsx

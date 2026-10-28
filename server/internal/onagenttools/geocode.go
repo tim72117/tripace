@@ -3,7 +3,7 @@
 // 工具時,onagent 伺服器直接 POST 到這支端點,不經過任何瀏覽器分頁,回應在
 // 同一次 HTTP 往返內帶回結果。
 //
-// 沿用跟 want 工具舊版(wanttools/geocode.go)完全相同的 geo.Client +
+// 沿用舊 want 框架版本(wanttools 已移除,見 git 歷史)同樣的 geo.Client +
 // GOOGLE_PLACES_API_KEY 查詢模式——同一套底層 Google Places 呼叫、同樣的
 // 結果形狀,只是 transport/觸發方式不同(onagent HTTP dispatch,而非 want
 // 的行程內工具呼叫)。搬移時額外補上 want 舊版缺漏的空結果防呆(見下方
@@ -23,7 +23,7 @@ import (
 )
 
 // HandleGeocode executes the same "resolve place name to coordinates" flow
-// as wanttools.GeocodeTool.Call, but driven by onagent's dispatch request
+// as the legacy want-framework GeocodeTool (wanttools, removed; see git history), but driven by onagent's dispatch request
 // shape instead of want's types.ToolArguments, and returning directly in
 // the response body instead of via ctx.EmitToolResult.
 func HandleGeocode(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +46,7 @@ func HandleGeocode(w http.ResponseWriter, r *http.Request) {
 	apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 	client := geo.New(apiKey)
 
-	// 5s 對齊 want 舊版(wanttools/geocode.go)的逾時值——geocode 只是單次
+	// 5s 對齊舊 want 版本(wanttools 已移除)的逾時值——geocode 只是單次
 	// 地點解析,不像 recommend_nearby 還要再串一次 Nearby Search,不需要
 	// recommend_nearby 版本額外預留的 8s headroom。
 	gctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)

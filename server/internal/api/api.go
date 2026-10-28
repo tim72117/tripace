@@ -93,7 +93,7 @@ type Server struct {
 	// newGeoGeocodeClient 建立 handleGeoGeocode 專用的 geo.Client——預設
 	// geo.New(真的打 Google Places API,見該函式)。只有這支 handler 透過
 	// 這個可覆寫欄位取得 client(其餘 8 處呼叫端仍直接寫死 geo.New,見
-	// geo_outline.go/maintenance.go/entry_geocode.go 各自的呼叫點,這次
+	// geo_outline.go/maintenance.go 各自的呼叫點,這次
 	// 沒有一併重構——只有 handleGeoGeocode 的兩階段 bias/restrict 判斷
 	// 邏輯需要測試守住,不是每支 handler 都需要這個可測試性投資)。測試
 	// 用 newTestServerWithGeoClient(見 geo_outline_test.go)把這個欄位換成
@@ -499,7 +499,7 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 }
 
 // throttleGeoQueryByUser 是一批會觸發 Google API 呼叫的查詢端點
-// (handleGeocodeEntry/handleGeoGeocode/handleGeoPlaceDetails/
+// (handleGeoGeocode/handleGeoPlaceDetails/
 // handlePublicGeoPlaceSearch/handlePublicGeoAttractionSearch/
 // handlePublicGeoPlaceDetailsAny/handleMaintenanceGeocode)共用的
 // per-user 節流檢查——2026-10 使用者明確要求「後端自己的端點,加上每秒
@@ -753,56 +753,6 @@ func (c storePhotoCache) Trim(placeID string, maxWidthPx, fromIndex int) error {
 	return c.store.TrimCachedPhotos(placeID, maxWidthPx, fromIndex)
 }
 
-// NotifyEntriesUpdated 廣播 entries_updated 給指定行程的訂閱者(供 wanttools 呼叫)。
-func (s *Server) NotifyEntriesUpdated(tripID string) {
-	s.hub.Broadcast(tripID, map[string]any{"event": "entries_updated", "tripID": tripID})
-}
-
-// NotifyEntryUpdating 廣播 entry_updating(帶 entryID)給指定行程的訂閱者(供 wanttools 呼叫),
-// 讓前端在工具更新該條目期間顯示「更新中」動畫。
-func (s *Server) NotifyEntryUpdating(tripID, entryID string) {
-	s.hub.Broadcast(tripID, map[string]any{"event": "entry_updating", "tripID": tripID, "entryID": entryID})
-}
-
-// NotifyAskUser 廣播 ask_user(帶 askType/prompt)給指定行程的訂閱者(供 wanttools 呼叫),
-// 讓前端開啟對應 UI(如日期選擇器)請使用者補上缺失資訊。
-func (s *Server) NotifyAskUser(tripID, askType, prompt string) {
-	s.hub.Broadcast(tripID, map[string]any{"event": "ask_user", "tripID": tripID, "askType": askType, "prompt": prompt})
-}
-
-// NotifyAskChoice 廣播 ask_choice(帶 prompt/options)給指定行程的訂閱者(供 wanttools 呼叫),
-// 讓前端開啟選單 UI 請使用者從 options 中選一個。
-func (s *Server) NotifyAskChoice(tripID, prompt string, options []map[string]any) {
-	s.hub.Broadcast(tripID, map[string]any{"event": "ask_choice", "tripID": tripID, "prompt": prompt, "options": options})
-}
-
-// NotifyTaskCreated 廣播 task_created(帶 taskID/date/text/kind)給指定行程的訂閱者(供 wanttools 呼叫),
-// 讓前端在該日期下插入一張標示動作(新增/更新)的佔位卡。
-func (s *Server) NotifyTaskCreated(tripID string, taskID int, date, text, kind string) {
-	s.hub.Broadcast(tripID, map[string]any{
-		"event": "task_created", "tripID": tripID, "taskID": taskID, "date": date, "text": text, "kind": kind,
-	})
-}
-
-// NotifyTaskEntryReady 廣播 task_entry_ready(帶 taskID/entryID)給指定行程的訂閱者(供 wanttools 呼叫),
-// 讓前端把對應的佔位卡直接替換成正式條目卡。
-func (s *Server) NotifyTaskEntryReady(tripID string, taskID int, entryID string) {
-	s.hub.Broadcast(tripID, map[string]any{
-		"event": "task_entry_ready", "tripID": tripID, "taskID": taskID, "entryID": entryID,
-	})
-}
-
-// NotifyEntriesLoaded 廣播 entries_loaded(帶 entry_query 查到、轉換成前端
-// TripEntry 格式的條目清單)給指定行程的訂閱者(供 wanttools 的 entry_query
-// 工具呼叫),讓前端合併進旅程清單表格供使用者查看/編輯。entries 用
-// []map[string]any 而非具名型別,避免 api 套件為了此簽章反向依賴 wanttools
-// (見 wanttools.TripEntryPayload 的定義處)。
-func (s *Server) NotifyEntriesLoaded(tripID string, entries []map[string]any) {
-	s.hub.Broadcast(tripID, map[string]any{
-		"event": "entries_loaded", "tripID": tripID, "entries": entries,
-	})
-}
-
 // Routes 註冊路由(Go 1.22+ 的方法+路徑樣式)。
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
@@ -838,7 +788,6 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/trips/{id}/public-link", s.handleGetPublicLink)
 	mux.HandleFunc("DELETE /v1/trips/{id}/public-link", s.handleDeletePublicLink)
 	mux.HandleFunc("GET /v1/public/{token}", s.handlePublicView)
-	mux.HandleFunc("POST /v1/public/{token}/compute-route", s.handlePublicComputeRoute)
 
 	// 主題介紹頁(content_page.go)公開讀取——城市主題介紹頁(九份/京都/
 	// 台南等)本身的頁面會打這支,無需登入,只回傳 status=published 的
@@ -891,9 +840,6 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/blog/profile", s.handleBlogProfileGet)
 	mux.HandleFunc("POST /v1/blog/profile", s.handleBlogProfileSet)
 
-	// PaceRouteMap(web/src/PaceRouteMap.tsx,UI 試做用)展示頁的固定路線資料,
-	// 不需要登入(展示頁本身不需要身分),見 pace_route.go 的說明。
-	mux.HandleFunc("GET /v1/demo/pace-route", s.handlePaceRoute)
 
 	// cli-auth — CLI(cmd/cli)瀏覽器登入流程(`tripace-cli login --web`),
 	// 換回一個能通過下面 internalAuth 的 JWT。start/exchange 不需登入:
@@ -1050,8 +996,6 @@ func (s *Server) Routes() http.Handler {
 	internalMux.HandleFunc("PATCH /internal/entries/{id}", s.handleInternalUpdateEntry)
 	internalMux.HandleFunc("DELETE /internal/entries/{id}", s.handleInternalDeleteEntry)
 	internalMux.HandleFunc("PATCH /internal/entries/{id}/latlng", s.handleInternalSetLatLng)
-	internalMux.HandleFunc("POST /internal/entries/{id}/geocode", s.handleGeocodeEntry)
-	internalMux.HandleFunc("POST /internal/entries/compute-route", s.handleComputeRouteFromEntries)
 	internalMux.HandleFunc("DELETE /internal/trips/{id}/entries", s.handleInternalReset)
 	internalMux.HandleFunc("GET /internal/geo/attractions", s.handleGeoAttractions)
 	internalMux.HandleFunc("GET /internal/geo/attractions/nearby", s.handleGeoAttractionsNearby)
@@ -1427,9 +1371,8 @@ func (s *Server) handleResetTripData(w http.ResponseWriter, r *http.Request) {
 // TripEntry(web/src/clienttools/tripEntryTools.ts 的 {id, title, date, time,
 // note})與 web/tools/clienttools.yaml 的 trip_entry_add/trip_entry_update
 // 命名——這三個端點是給前端「儲存」按鈕呼叫的一般 REST API(逐筆
-// upsert),不經過 wanttools/want 那套 LLM 工具註冊機制,故欄位命名直接對齊
-// 前端型別即可,不需要跟 entry_query.go 的 TripEntryPayload 共用型別
-// (兩邊各自獨立、只是欄位剛好同名同義)。
+// upsert),不經過 LLM 工具註冊機制,故欄位命名直接對齊
+// 前端型別即可(舊 want 框架的 wanttools 已移除,見 git 歷史)。
 type tripEntryBody struct {
 	ID    string `json:"id,omitempty"`
 	Title string `json:"title"`

@@ -14,18 +14,11 @@
 //     PhotoURL/model.Attraction.PhotoURL 兩個 Go struct 欄位、store 層的
 //     UpdateAttractionPhoto、API 層自動查 Pexels 補圖與回寫的邏輯)一併
 //     移除。
-//   - place_details_cache.new_photo_count/google_photo_target_count——
-//     舊版漸進補圖機制(shouldAddGooglePlacePhoto/
-//     resetPhotoProgressOnTargetChange)靠這兩個計數器決定要不要補圖,
-//     但「已補張數追上目標值」後即使 photo_assets 裡的照片已經過期也
-//     永遠不會重新觸發(清水寺是實際踩到的案例)。新機制
-//     (photoCapForClickCount/decidePlacePhotoRefreshIndex,見
-//     server/internal/api/geo_outline.go 的完整說明)改成直接查
-//     photo_assets 的新鮮度狀態,不再需要這兩個計數器,連同它們的
-//     讀寫程式碼(store.UpdatePlacePhotoProgress/
-//     PlaceDetailsCacheRowExists/ListPlaceDetailsWithZeroPhotoTarget、
-//     adminconsole 的「Google 照片 target=0 核對」後台頁)都已經一併
-//     移除。
+//   - public_links.view_mode——公開連結的檢視模式(時間軸/配速表),隨
+//     「路徑」功能整個移除。
+//
+// (place_details_cache.new_photo_count/google_photo_target_count 兩欄
+// 已在先前執行完畢並從本工具移除,見 git 歷史。)
 //
 // GORM AutoMigrate 不會主動刪除資料庫裡已經不再對應任何 struct 欄位的
 // 舊欄位,這支工具就是補上「真正把欄位從 schema 砍掉」這最後一步。
@@ -88,8 +81,8 @@ func main() {
 
 	columns := []columnToDrop{
 		{table: "attractions", column: "photo_url"},
-		{table: "place_details_cache", column: "new_photo_count"},
-		{table: "place_details_cache", column: "google_photo_target_count"},
+		// 2026-10:公開連結的 view_mode(時間軸/配速表)隨「路徑」功能整個移除。
+		{table: "public_links", column: "view_mode"},
 	}
 
 	// -dry-run 時完全不連線資料庫——理由同 cmd/migrate-photo-assets 的

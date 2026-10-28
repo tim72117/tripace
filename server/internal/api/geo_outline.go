@@ -40,64 +40,6 @@ type hotelResponse struct {
 // 共用這個常數,兩處是同一種取捨。
 const maxPhotoResults = 3
 
-// photoCandidate 是「查完地點清單後,要不要幫這筆結果附加照片」這個下游
-// 共用步驟(見 fetchPhotosForCandidates)的中介輸入型別——geo.Place(Text
-// Search)與 geo.NearbyPlace(Nearby Search)欄位不完全相同(見兩者各自的
-// 完整說明),但這段照片查詢邏輯只需要 Name/PlaceID/PhotoRef 三個欄位就能
-// 執行,故收斂成這個共同形狀,呼叫端各自把自己的型別轉成這個中介形式
-// 再傳入,不需要為了共用這段邏輯而強迫兩個查詢結果型別本身趨同。
-type photoCandidate struct {
-	Name     string
-	PlaceID  string
-	PhotoRef string
-}
-
-// fetchPhotosForCandidates 是 handleGeoPlacesNearby 原本內嵌的照片查詢邏輯
-// 抽出來的共用函式,供 handleGeoPlacesNearby 與 handleGeoGeocode 共用——
-// 兩支端點都是「查完一批候選地點後,只想幫前幾筆附加照片」的形狀,邏輯
-// 本身原封不動(先試 Pexels,查無結果才 fallback Google Places 真實照片,
-// 兩者皆落地存 GCS),只是換了呼叫介面。
-//
-// 只有前 maxResults 筆會被查詢/填上 PhotoURL,其餘維持空字串——理由見
-// maxPhotoResults 的說明:逐筆下載照片是序列執行、無平行處理,是耗時的
-// 主要來源,故從候選清單一開始就截斷要查照片的筆數(不影響候選清單本身
-// 的筆數,只影響其中幾筆有圖)。單筆查詢失敗不影響其餘候選,也不視為
-// 整體失敗——理由同呼叫端既有的降級慣例。
-//
-// 回傳值是一個 map[候選在輸入 slice 中的 index]photoURL,只包含成功查到
-// 照片的筆數;呼叫端依自己的候選型別 index 對照回去、寫入各自回應型別的
-// PhotoURL 欄位,避免這支函式需要認識呼叫端的回應型別。
-//
-// 2026-10:目前沒有任何呼叫端(handleGeoPlacesNearby/handleGeoGeocode 已不在
-// 回應裡帶照片)。若確認不再需要,可以一併移除。
-func (s *Server) fetchPhotosForCandidates(ctx context.Context, candidates []photoCandidate, maxResults int, client *geo.Client) map[int]string {
-	photoURLs := make(map[int]string)
-	limit := len(candidates)
-	if limit > maxResults {
-		limit = maxResults
-	}
-	for i := 0; i < limit; i++ {
-		c := candidates[i]
-		var photoURL string
-		// 照片來源優先序:先試 Pexels(落地 GCS),查無結果才 fallback
-		// Google——理由見 maxPhotoResults 附近既有呼叫端的說明。
-		if client.PexelsClient() != nil {
-			if photo, ok, pErr := client.PexelsClient().Search(ctx, c.Name); pErr == nil && ok {
-				photoURL = s.landmarkPhotoURL(ctx, c.PlaceID, photo.ImageURL)
-			}
-		}
-		if photoURL == "" && c.PhotoRef != "" {
-			if dataURI, pErr := client.PhotoDataURI(ctx, c.PlaceID, c.PhotoRef, 200); pErr == nil {
-				photoURL = s.landmarkPhotoURLFromDataURI(ctx, c.PlaceID, dataURI)
-			}
-		}
-		if photoURL != "" {
-			photoURLs[i] = photoURL
-		}
-	}
-	return photoURLs
-}
-
 // fetchNearbyHotels 以指定中心座標做一次 Nearby Search 限定 lodging
 // 類型(不細分 hotel/hostel/inn 等子類,泛用即可涵蓋大部分住宿選項),
 // 只取前 maxPhotoResults 筆查照片。查詢失敗時回傳空陣列而非 error——
@@ -131,12 +73,7 @@ func (s *Server) fetchNearbyHotels(ctx context.Context, client *geo.Client, lat,
 			Lng:         h.Lng,
 			PrimaryType: h.PrimaryType,
 		}
-		if client.PexelsClient() != nil {
-			if photo, ok, pErr := client.PexelsClient().Search(ctx, h.Name); pErr == nil && ok {
-				hr.PhotoURL = s.landmarkPhotoURL(ctx, h.PlaceID, photo.ImageURL)
-			}
-		}
-		if hr.PhotoURL == "" && h.PhotoRef != "" {
+		if h.PhotoRef != "" {
 			// 單張圖片下載失敗不影響這筆飯店資料本身——只是沒有照片
 			// 可顯示,理由同分區地標圖的處理方式。
 			if photoURL, pErr := client.PhotoDataURI(ctx, h.PlaceID, h.PhotoRef, 200); pErr == nil {
@@ -325,10 +262,7 @@ func toAttractionResponses(in []geo.District) []attractionResponse {
 // 問題(規劃分頁很容易找不到地點)。Places Text Search 偏向地標/商家/
 // 觀光區查詢,且能回傳多筆候選(見下方 maxGeoGeocodeCandidates),讓
 // 使用者自己從地圖上標出來的候選點裡挑對的那一個,不用完全依賴系統
-// 猜中「使用者說的到底是哪個地方」。entry_geocode.go 的
-// handleGeocodeEntry 是另一支獨立端點,查詢情境是「橋樑/道路」這類
-// Places Text Search 支援較弱的地理要素,不受這次變更影響,仍沿用
-// Geocoding API(見該檔案的說明)。
+// 猜中「使用者說的到底是哪個地方」。
 //
 // maxGeoGeocodeCandidates:對齊 geo.Client.Search 的官方硬性上限(見該
 // 函式的說明)——不是額外的節流,單純把後端請求到的候選筆數上限跟
@@ -654,7 +588,7 @@ func (s *Server) listAttractionResponses(lat, lng, radiusMeters float64) ([]attr
 //     說明),不是這支端點獨有的邏輯,清理風險低但也沒有立即必要。
 //  2. 這支端點的「座標+半徑查詢範圍內的飯店」語意,適合日後暴露成 LLM
 //     可呼叫的工具(對齊 internal/onagenttools/geocode.go、
-//     internal/wanttools/recommend_nearby.go 的既有 BackendDispatch 模式
+//     internal/onagenttools/recommend_nearby.go 的既有 BackendDispatch 模式
 //     ——LLM 決定要幫使用者查「這附近有什麼飯店」時,直接呼叫這支端點
 //     形狀的邏輯最直覺,不需要重新設計參數)。若之後要接上,可以比照
 //     geocode.go 的寫法,在 internal/onagenttools 新增一個獨立的
@@ -1621,5 +1555,5 @@ func decidePlacePhotoRefreshIndexWithCount(clickCount int64, photoCount *int, ma
 // fetchGeoPlacesNearby,故視為死代碼一併清理(見 CHANGELOG)。
 // client.SearchNearby 本身不受影響、繼續保留——fetchNearbyHotels(供
 // handleGeoAttractionsNearby/handleGeoAttractions 使用)與
-// internal/wanttools、internal/onagenttools 的 recommend_nearby LLM 工具
+// internal/onagenttools 的 recommend_nearby LLM 工具
 // 仍是這個函式現存的呼叫端。

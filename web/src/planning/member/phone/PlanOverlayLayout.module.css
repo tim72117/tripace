@@ -8,7 +8,7 @@
    不攔截點擊,地圖拖曳與搜尋框等控制項仍可操作;TripPlanPage 在
    transparentBackground 模式下已把真正需要互動的子元素(卡片、composer)
    設回 auto(見 TripPlanPage.module.css .compactBottom)。
-   z-index: 2——蓋過地圖,低於 phone/Nav/PhoneSideTools 與各個 sheet。 */
+   z-index: 2——蓋過地圖,低於 phone/Nav 與各個 sheet。 */
 .overlay {
   position: absolute;
   inset: 0 0 var(--tab-bar-height, 0px) 0;
@@ -87,8 +87,7 @@
       DOM 內部,不是疊加)。
    2. 類別標籤列:第二排、置左對齊(使用者要求「搜尋標籤與搜尋欄加大
       間距」,top:76,跟搜尋框下緣留 16px 間距,原本只有 4px)。
-   3. 候選籃/清單按鈕:移到左側下方,跟 PhoneSideTools.tsx 的右側
-      demo/路徑小圖示同一套定位邏輯(見 candidateGroup 說明),不再
+   3. 候選籃/清單按鈕:移到左側下方(見 candidateGroup 說明),不再
       屬於這個由上到下的排列。
    4. 搜尋這個區域按鈕:類別標籤列下方再錯開,避免同一行擠在一起。 */
 .controlsSlot [class*='_citySearch_'] {

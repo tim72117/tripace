@@ -11,7 +11,7 @@ const GUEST_CFG: ClientConfig = { baseURL: BASE_URL, token: null }
 
 // SHOW_EXAMPLE_ITINERARIES_ENABLED——2026-10 新增,使用者明確要求「排
 // 好的行程清單,用參數控制要不要顯示範例,預設關閉」:同 DesktopShared.tsx
-// TIMELINE_ENABLED/PACE_ENABLED 那套編譯時 feature flag 機制(部署環境
+// TIMELINE_ENABLED 那套編譯時 feature flag 機制(部署環境
 // 變數,預設關閉,只在明確設為字串 "true" 時才啟用),不是另外發明一套
 // ——只是放在 itineraries/ 而非 DesktopShared.tsx,因為那個檔案服務的是 /app
 // 規劃 UI 的面板開關,跟這個獨立的範例行程展示頁(/itineraries)是不同

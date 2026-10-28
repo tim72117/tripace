@@ -42,7 +42,7 @@
 
 /* 登入後 App(planning/member/phone/Content.tsx/desktop/Content.tsx 及底下畫面)的深色模式
    token——掛載點是 App.tsx 的 .app-theme-root(見該檔案說明,只包住 /app
-   路由本身;/public/:token、/demo/pace 這類公開分享頁固定寫死
+   路由本身;/public/:token 這類公開分享頁固定寫死
    data-theme="light",不吃這裡的深色 token)。
 
    結構沿用 home/HomePage.css(原 KyotoExploreBloom.css)/LegalPage.css 已有
@@ -88,7 +88,7 @@
      視窗因為地址列收合/展開而露出的底部空隙)會看到一塊突兀的亮色。
      這裡直接覆寫 body 的 background 跟隨系統深色偏好——只有在 body 內
      實際掛了 .app-theme-root(即 /app 路由)時才生效,/public/:token、
-     /demo/pace、首頁等公開頁面各自用自己的 class(.kyoto-bloom/
+     首頁等公開頁面各自用自己的 class(.kyoto-bloom/
      .legal-bloom/.product-page)當深色 scope,不依賴 body 的
      background,不受這條規則影響。 */
   body:has(.app-theme-root:not([data-theme="light"])) {
@@ -200,8 +200,8 @@ body {
   font-size: 16px;
 }
 
-/* ChatScreen 的助理回答(react-markdown)可能渲染 <pre> 程式碼區塊,
-   MessageBubble.module.css 的 .text.markdown pre 只補了 background/padding,
+/* 助理回答(react-markdown,現由 planning/conversation/AskPage、planning/timeline/PlanTimelineView 渲染;
+   原 ChatScreen/MessageBubble 已移除)可能渲染 <pre> 程式碼區塊,
    margin/white-space/color 仍倚賴這裡的基底設定,不可搬移。 */
 pre {
   margin: 0;
@@ -214,8 +214,8 @@ pre {
    RecommendedPlacesModal)與 SettingsDialog 共用。原為 recommend_nearby
    查詢完成後彈出的 RecommendedPlacesModal 所用,對齊 .ask-user-backdrop
    的浮層模式但用置中卡片(內容是可捲動清單,不適合底部 sheet)。該彈窗
-   已移除(推薦景點改成掛在觸發它的訊息底下顯示,見 ChatScreen.tsx
-   MessageBubble),但這組樣式繼續由桌面版「設定」dialog(SettingsDialog)
+   已移除(推薦景點改成掛在觸發它的訊息底下顯示,原 ChatScreen/MessageBubble,
+   已移除),但這組樣式繼續由桌面版「設定」dialog(SettingsDialog)
    與旅程列表的分享/成員彈窗(planning/member/desktop/Content.tsx)沿用,故保留。 ---- */
 /* position: fixed(2026-10 修正,原為 absolute)——absolute 時 inset: 0
    是相對最近的 position: relative 祖先元素的「完整內容高度」,不是

@@ -28,7 +28,7 @@
      瀏覽器原生觸控手勢,含雙指縮放(pinch-zoom)與水平/垂直平移。原本
      靠各個 PhoneBottomSheet 呼叫端(地圖/清單/對話疊加層等)各自宣告
      touch-action,使用者實測發現逐一補的方式會漏(例如對話疊加層
-     ChatScreen、候選籃抽屜(現 planning/place/phone/CandidateList.tsx)都還能雙指
+     (原 ChatScreen,已移除)、候選籃抽屜(現 planning/place/phone/CandidateList.tsx)都還能雙指
      放大)——index.html 的 viewport user-scalable=no 只鎖住瀏覽器層級的
      整頁縮放手勢,不影響個別 DOM 元素能不能被瀏覽器辨識出獨立的
      pinch 手勢並觸發其他副作用,兩者是不同機制,只設定 viewport 不足夠。

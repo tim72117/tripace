@@ -48,7 +48,6 @@ CREATE TABLE public_links (
   link_token TEXT UNIQUE NOT NULL,  -- 短 ID (如 trip_abc123xyz)
   created_by TEXT NOT NULL,
   editable BOOLEAN NOT NULL DEFAULT false,   -- 訪客可否透過 AI 對話寫入(見「權限」)
-  view_mode TEXT NOT NULL DEFAULT 'timeline',-- 公開頁呈現方式:timeline / pace
   created_at TIMESTAMP NOT NULL,
   
   FOREIGN KEY (trip_id) REFERENCES trips(id),
@@ -103,7 +102,6 @@ Response:
   tripID: "trip_abc123xyz",
   tripName: "東京之旅 2026",
   editable: false,
-  viewMode: "timeline",
   entries: [ Entry, Entry, ... ]
 }
 ```
@@ -180,7 +178,7 @@ Response:
 
 - `editable` 欄位、DB 欄位、`POST`/`GET /v1/trips/{id}/public-link` 的讀寫 API 都還在，UI 開關也還能切換、還會被存下來。
 - 但**沒有任何後端路徑會讀這個旗標去做權限判斷**——切成 `editable = true` 不會讓任何人透過公開連結寫入行程，這個開關目前形同虛設。
-- 前端對話（`ChatScreen.tsx`）走 onagent 平台（`web/src/chat/useOnagentChatBridge.ts`），採全域單一連線（`APP_ID = 'tripace'`），不區分「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」——現在**沒有任何機制**能讓匿名訪客透過公開連結寫入行程，不論 `editable` 開關切成什麼。
+- 前端對話（`web/src/planning/panel/TripPlanPage.tsx`）走 onagent 平台（`AgentBridge`，app 為 `plan-ai-timeline`），採全域單一連線（`PLAN_AI_ONAGENT_APP_ID = 'plan-ai-timeline'`），不區分「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」——現在**沒有任何機制**能讓匿名訪客透過公開連結寫入行程，不論 `editable` 開關切成什麼。
 
 | | 唯讀連結 | editable 連結 |
 |---|---|---|
@@ -191,7 +189,7 @@ Response:
 | 有效期限 | 永久（除非刪除連結） | 永久（除非刪除連結） |
 | 有訪問紀錄可稽核 | 無 | 無 |
 
-**待辦**：若要讓公開連結支援匿名寫入協作，需要在 `useOnagentChatBridge`／onagent 的 dispatch 協定裡補上「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」這組上下文，並在 `internal/onagenttools` 對應的寫入類工具裡加入授權檢查——目前完全沒有這層機制。在此之前，`editable` 欄位與其讀寫 API/UI 開關維持保留、不移除。
+**待辦**：若要讓公開連結支援匿名寫入協作，需要在 `TripPlanPage` 的 `AgentBridge`／onagent 的 dispatch 協定裡補上「這次對話屬於哪個 trip、是否透過已 `editable` 的公開連結進入」這組上下文，並在 `internal/onagenttools` 對應的寫入類工具裡加入授權檢查——目前完全沒有這層機制。在此之前，`editable` 欄位與其讀寫 API/UI 開關維持保留、不移除。
 
 ---
 

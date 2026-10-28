@@ -32,7 +32,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
-    // tests/ 底下是 Playwright 的 E2E 測試(test:e2e:mockllm 腳本專用),
+    // tests/ 底下是 Playwright 的 E2E 測試(test:e2e:* 腳本專用),
     // 跟 Vitest 是不同框架、test.describe 語法互相衝突,必須排除,不能讓
     // Vitest 掃到那個目錄。admin/ 是獨立的另一個子專案(有自己的
     // node_modules),預設的 node_modules/** exclude 不會遞迴排除到子目錄

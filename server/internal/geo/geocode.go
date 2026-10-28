@@ -26,7 +26,7 @@ type GeocodeResult struct {
 	Lat              float64 `json:"lat"`
 	Lng              float64 `json:"lng"`
 	// PlaceID 是這筆結果對應的 Google Place ID(Geocoding API 回應本身就
-	// 附帶這個欄位,不需要另外查詢)——供呼叫端(handleGeocodeEntry)把
+	// 附帶這個欄位,不需要另外查詢)——供呼叫端把
 	// entry 的座標來源跟穩定的地點識別碼關聯起來,供之後跟 Places API
 	// 其他已快取資料比對用。
 	PlaceID string `json:"placeID,omitempty"`

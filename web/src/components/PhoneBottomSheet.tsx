@@ -455,8 +455,8 @@ export interface PhoneBottomSheetProps {
   // keepMounted:true 時 shouldRender 恆為 true,不論 open 值為何,不走
   // exitDurationMs 那套「延遲一段時間後才卸載」的邏輯——children 永遠
   // 留在 DOM 上,open 變 false 只用 translateY 位移到畫面外隱藏,不會被
-  // React 拔掉。用於呼叫端把某個需要維持連線/內部 state 的元件(例如
-  // ChatScreen,要避免每次開關對話都重新連線 WebSocket)直接放進
+  // React 拔掉。用於呼叫端把某個需要維持連線/內部 state 的元件(例如原
+  // ChatScreen[已移除],要避免每次開關對話都重新連線 WebSocket)直接放進
   // children 的情境——這樣不需要額外透過 React Portal 把該元件從別處
   // 投影進來(見 planning/member/phone/Content.tsx 對話疊加層原本的 mainChatSlotNode/
   // createPortal 設計),避免 portal 內容在 React 元件樹上跟這個元件是
@@ -560,7 +560,7 @@ export function PhoneBottomSheet({
   }, [open, exitDurationMs, keepMounted])
   // keepMounted 時 renderedChildren/renderedHead 恆讀取即時的 props,不用
   // lastContentRef 快照——children 從不因為 open 變化而被拔除,呼叫端
-  // (例如永遠掛載 ChatScreen 的對話疊加層)本身就會持續傳入同一份即時
+  // (例如原本永遠掛載 ChatScreen[已移除]的對話疊加層)本身就會持續傳入同一份即時
   // 內容,不需要快照機制(那是給「open 變 false 時呼叫端已經清空資料」
   // 的情境設計的,keepMounted 情境不適用)。
   const renderedHead = keepMounted || open ? head : lastContentRef.current.head
@@ -1137,7 +1137,7 @@ export function StackedSheet(
 }
 
 // PersistentSheet——children 需要永遠留在 React 樹上、不能被卸載的情境
-// (例如 ChatScreen 的 WebSocket 連線,見 keepMounted prop 原始的完整
+// (例如原 ChatScreen[已移除]的 WebSocket 連線,見 keepMounted prop 原始的完整
 // 說明)。固定帶 keepMounted,不接受 exitDurationMs——keepMounted 時
 // shouldRender 恆為 true,不會真的卸載,exitDurationMs 的延遲邏輯永遠
 // 不會被用到,乾脆不讓呼叫端傳入以免誤會這裡也有退場延遲可以調。

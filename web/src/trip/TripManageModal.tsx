@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { X, Copy, Check, Trash2 } from 'lucide-react'
 import QRCode from 'qrcode'
-import type { ClientConfig, PublicLinkViewMode } from '../api'
+import type { ClientConfig } from '../api'
 import * as api from '../api'
 import type { Trip } from './types'
 import type { TripRole, Member } from '../user/types'
@@ -13,7 +13,7 @@ import { List, ListRow } from '../components/ListRow'
 import styles from './TripManageModal.module.css'
 
 // TripManageModal:旅程管理彈窗,合併原本分開的 ShareModal(分享連結)與
-// MembersScreen(成員管理),再加上原本掛在 ChatScreen navbar 的 TripMenu
+// MembersScreen(成員管理),再加上原本掛在 ChatScreen(已移除)navbar 的 TripMenu
 // (開啟時自動進入)——三者都是「對某一個旅程的管理操作」,合併成單一
 // 入口(旅程列表每筆項目的「管理」按鈕,見 trip/desktop/TripList.tsx 的
 // onManage),取代原本三個分散的觸發點。
@@ -97,7 +97,6 @@ function ShareSection({
 }) {
   const [token, setToken] = useState<string | null>(null)
   const [editable, setEditable] = useState(false)
-  const [viewMode, setViewMode] = useState<PublicLinkViewMode>('timeline')
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -107,7 +106,7 @@ function ShareSection({
 
   useEffect(() => {
     api.getPublicLink(cfg, trip.id)
-      .then((r) => { setToken(r.linkToken); setEditable(r.editable); setViewMode(r.viewMode) })
+      .then((r) => { setToken(r.linkToken); setEditable(r.editable) })
       .catch(() => setToken(null))
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -126,10 +125,9 @@ function ShareSection({
     setLoading(true)
     setErr(null)
     try {
-      const r = await api.createPublicLink(cfg, trip.id, editable, viewMode)
+      const r = await api.createPublicLink(cfg, trip.id, editable)
       setToken(r.linkToken)
       setEditable(r.editable)
-      setViewMode(r.viewMode)
     } catch (e) {
       setErr(errMsg(e))
     } finally {
@@ -140,24 +138,9 @@ function ShareSection({
   const toggleEditable = async (val: boolean) => {
     setEditable(val)
     try {
-      const r = await api.createPublicLink(cfg, trip.id, val, viewMode)
+      const r = await api.createPublicLink(cfg, trip.id, val)
       setToken(r.linkToken)
       setEditable(r.editable)
-      setViewMode(r.viewMode)
-    } catch (e) {
-      setErr(errMsg(e))
-    }
-  }
-
-  const changeViewMode = async (val: PublicLinkViewMode) => {
-    setViewMode(val)
-    // 尚未建立連結時只更新本地狀態，等使用者按「建立公開連結」再一起送出。
-    if (!token) return
-    try {
-      const r = await api.createPublicLink(cfg, trip.id, editable, val)
-      setToken(r.linkToken)
-      setEditable(r.editable)
-      setViewMode(r.viewMode)
     } catch (e) {
       setErr(errMsg(e))
     }
@@ -223,7 +206,6 @@ function ShareSection({
                   <span className={styles.toggleSlider} />
                 </label>
               </div>
-              <ViewModePicker value={viewMode} onChange={changeViewMode} />
               <div className={styles.actionRow}>
                 <Button variant="danger" onClick={revoke}>
                   <Trash2 size={14} strokeWidth={1.8} style={{ marginRight: 6 }} />
@@ -247,7 +229,6 @@ function ShareSection({
                   <span className={styles.toggleSlider} />
                 </label>
               </div>
-              <ViewModePicker value={viewMode} onChange={changeViewMode} />
               <div className={styles.actionRow}>
                 <Button variant="primary" onClick={generate}>
                   建立公開連結
@@ -258,43 +239,6 @@ function ShareSection({
         </>
       )}
     </>
-  )
-}
-
-// ViewModePicker:公開頁要用「時間軸」還是「配速表」呈現——只是切換公開頁
-// 的呈現方式，跟上面「允許訪客新增行程」是完全獨立的兩個設定，不是同一顆
-// 開關的兩個狀態，所以用兩個分段按鈕而非沿用 .toggle 那顆開關樣式。
-// 配速表模式只有在行程內的地點本身帶有配速表專屬的 detail 結構（segment/
-// order 等）時才有內容可顯示——這是額外用 CLI／entry-update 手動標註的
-// 資料，不是分享彈窗這裡能自動產生的，選了配速表但行程沒有這類資料時，
-// 公開頁會顯示提示訊息而非空白或錯誤（見 PhoneScreens.tsx PublicViewScreen）。
-function ViewModePicker({
-  value,
-  onChange,
-}: {
-  value: PublicLinkViewMode
-  onChange: (v: PublicLinkViewMode) => void
-}) {
-  return (
-    <div className={styles.toggleRow}>
-      <span className={styles.toggleLabel}>公開頁顯示</span>
-      <div className={styles.viewModeGroup}>
-        <button
-          type="button"
-          className={value === 'timeline' ? `${styles.viewModeBtn} ${styles.viewModeBtnActive}` : styles.viewModeBtn}
-          onClick={() => onChange('timeline')}
-        >
-          時間軸
-        </button>
-        <button
-          type="button"
-          className={value === 'pace' ? `${styles.viewModeBtn} ${styles.viewModeBtnActive}` : styles.viewModeBtn}
-          onClick={() => onChange('pace')}
-        >
-          路徑
-        </button>
-      </div>
-    </div>
   )
 }
 

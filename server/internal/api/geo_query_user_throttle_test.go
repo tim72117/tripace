@@ -16,7 +16,7 @@ import (
 // rate_limited)。
 //
 // 這支測試直接呼叫 throttleGeoQueryByUser 本身,不經過任何真正的
-// handler(例如 handleGeocodeEntry)——這層節流只讀 Authorization
+// handler(例如 handleGeoGeocode)——這層節流只讀 Authorization
 // header 解析使用者身份(見 userFor)、操作記憶體內的
 // geoQueryUserRateLimiter,不需要真的打 Google API 或查資料庫,直接測
 // 這個函式最單純、也最快。

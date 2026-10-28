@@ -6,7 +6,7 @@
    .rp-map/.rp-map-error* 是跟 RecommendedPlacesMap.tsx 共用的既有全域
    樣式(不是這個檔案的東西,命名前綴長得像但完全是另一組),刻意不動、
    留在 styles.css。.empty 是全站共用的空狀態文字樣式(planning/member/desktop/Content.tsx/
-   ChatScreen.tsx/PhoneScreens.tsx/ShareModal.tsx 都有用),同樣刻意不搬。
+   PhoneScreens.tsx/ShareModal.tsx(原 ChatScreen.tsx 已移除) 都有用),同樣刻意不搬。
 
    沒有任何 class 需要 :global()——沒有其他檔案的 CSS 選擇器需要從外部
    偵測這裡的 class。

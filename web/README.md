@@ -65,14 +65,12 @@ src/
 ├── main.tsx         # 進入點,依 ?debug query 決定渲染 App 或 DebugApp
 ├── App.tsx          # 路由分派(/、/public/{token}、其餘走主應用畫面)+ iPhone 殼
 │                     # + 頻道列表/設定/登入頁 + 共用工具(Avatar/ErrorBanner/errMsg 等)
-├── ChatScreen.tsx    # 聊天頁(owner 發訊息、成員以自然語言查詢)+ 成員管理 + 分享彈窗
-├── Timeline.tsx      # 多軌時間軸渲染,ChatScreen 與公開分享頁共用
+├── Timeline.tsx      # 多軌時間軸渲染,規劃頁與公開分享頁共用
 ├── HomePage.tsx      # 首頁(根路徑 /,京都東山探索路線捲動視差敘事)
 ├── ProductPage.tsx   # 產品功能介紹頁(/product)
 ├── DebugApp.tsx      # ?debug 模式的替代進入點
 ├── DebugPanel.tsx    # 右側 debug panel,即時顯示每次 API 的原始 request/response
 ├── api.ts            # API client(攔截每次交易,計時、擷取原始 JSON)
-├── deviceDB.ts       # 裝置端訊息儲存(sql.js),與後端隔離
 ├── types.ts          # 與後端對齊的 TS 型別
 └── styles.css        # iOS 風格樣式
 ```

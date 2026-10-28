@@ -9,7 +9,7 @@ Web(`web/src`)、Admin SPA(`web/admin`)四個前端各自呼叫哪些端點、
 ```
 ┌─────────────┐     ┌─────────────┐     ┌──────────────┐
 │  iOS App    │     │  Web(/app)  │     │ Admin SPA    │
-│ (Tripace)   │     │ ChatScreen等 │     │ (web/admin)  │
+│ (Tripace)   │     │ TripPlanPage │     │ (web/admin)  │
 └──────┬──────┘     └──────┬──────┘     └──────┬───────┘
        │  /v1/*  (登入驗證,requireOwner/Editor/Member)  │
        └──────────────────┬──────────────────┘         │
@@ -69,7 +69,7 @@ middleware 要求 `Authorization: Bearer` 帶一把有效的 JWT(見下方「安
 > `POST /v1/trips/{id}/query`、`POST /v1/trips/{id}/assist`、
 > `POST /v1/public/{token}/assist` 三條路由已於
 > tripace 自家 want LLM 對話系統整套移除時一併刪除(前端對話改走 onagent
-> 平台,見 `web/src/chat/useOnagentChatBridge.ts`)——三者的權限檢查邏輯
+> 平台,見 `web/src/planning/panel/TripPlanPage.tsx` 的 `AgentBridge`)——三者的權限檢查邏輯
 > (`requireMember`/`requireEditor`/`info.Editable` 旗標)也隨之消失,不再是
 > 這份文件要描述的對象。onagent 平台自己觸發推論的路徑不經過 tripace 的
 > `/v1/*`,見下方新增的「三之一、`/onagent/*`」一節。
@@ -197,11 +197,12 @@ Admin SPA 是跨網域呼叫並帶 cookie(`credentials: 'include'`),不能沿用
   兩組路由的對應 handler 都呼叫**同一個** `tripsvc.Service` 方法,只是外層包的
   權限檢查不同。這代表底層資料操作邏輯只寫一份,不會因為呼叫路徑不同而有
   兩套實作互相漂移。
-- **`store.Store`**:所有 handler(含 `wanttools` 的 AI 工具)最終都經過同一個
-  `store` 存取層讀寫資料庫,`wanttools` 甚至不經過 HTTP,直接呼叫 `store`。
+- **`store.Store`**:所有 `/v1/*`、`/internal/*` handler 最終都經過同一個
+  `store` 存取層讀寫資料庫(舊 `wanttools` 直接呼叫 `store` 的 AI 工具已移除;
+  現行 `onagenttools` 的 geocode/recommend_nearby 不讀寫 `store`)。
 - **`Hub.Broadcast`**(`internal/api/hub.go`):`entries_updated` 等 WS 廣播事件,
-  不論觸發來源是 `/v1/*` handler、`/internal/*` handler、還是 `wanttools`
-  的 AI 工具,都呼叫同一個 `Hub.Broadcast`,前端不需要區分事件是誰觸發的。
+  不論觸發來源是 `/v1/*` handler 還是 `/internal/*` handler
+  (舊 `wanttools` 的 AI 工具也曾共用,已移除),都呼叫同一個 `Hub.Broadcast`,前端不需要區分事件是誰觸發的。
 
 ### 同一件事、兩條不同路徑各自實作(非共用,是重複)
 

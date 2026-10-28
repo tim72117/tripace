@@ -5,7 +5,7 @@ import type { RefObject } from 'react'
 // bottom sheet 如果是在功能列後面,標頭不會被遮蔽,也不用功能列改動
 // 高度,就要重新確認」「我要穩定根本的處理方式」):取代目前散落各處把
 // phone/Nav.module.css 的 .tab 高度(64px)當作寫死數字複製貼上的做法
-// (trip/phone/TripList.tsx/PhoneTimelineDrawer.tsx/PhoneSideTools.module.css/
+// (trip/phone/TripList.tsx/PhoneTimelineDrawer.tsx/
 // PlanPhoneView.module.css 都各自寫一份 64px,靠人工記得同步,每個檔案
 // 的註解都承認「調整這裡要一併同步那幾處」)——用 ResizeObserver 量測
 // 參照元素的真實 clientHeight,回傳值永遠反映瀏覽器實際算出來的高度,

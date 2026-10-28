@@ -3,17 +3,17 @@ import type { CSSProperties, ReactNode } from 'react'
 import styles from './Navbar.module.css'
 
 // Navbar:「頂部導覽列骨架該長什麼樣子」這組視覺規則的唯一共用實作——
-// 重構前,base-ui.css 的全域字串 class .navbar 被 OnagentBridgeDemo.tsx/
+// 重構前,base-ui.css 的全域字串 class .navbar 被 OnagentBridgeDemo.tsx(已移除)/
 // PublicViewScreen.tsx 兩處呼叫端用 className="navbar" 這種型別系統完全
 // 無法檢查的字串引用,巢狀選擇器 .navbar .title 也一樣只能靠字串
 // className="title" 命中,拼錯字或忘記包一層都不會被 tsc/lint 抓到。
 //
-// grep 全部呼叫端後確認:現存只有這兩處直接渲染 .navbar,兩處的 JSX
+// grep 全部呼叫端後確認:(當時)只有這兩處直接渲染 .navbar,兩處的 JSX
 // 結構完全一致——左右各放一個 `<span style={{ width: 36 }} />` 佔位
 // (目前都是空的,不放任何按鈕),中間是置中標題文字。沒有任何呼叫端
 // 用過 .navbar .icon-btn(IconButton 的 square prop 是為這個情境保留的
 // 尺寸規格,見該檔案的說明,但目前沒有人用),也沒有任何呼叫端用過
-// navbar-hidden 這個 modifier——ChatScreen.tsx 的註解「navbar 移除後」
+// navbar-hidden 這個 modifier——原 ChatScreen.tsx(已移除)的註解「navbar 移除後」
 // 指的是它自己不再渲染任何一種 navbar(改用 planning/member/phone/Content.tsx 的
 // MainNavBar/PhoneBottomSheet 的 SheetHead),不是「navbar 曾經用
 // hidden 狀態」,grep 全專案(含 .tsx/.css)找不到 navbar-hidden 除了

@@ -15,7 +15,7 @@ import styles from './DatePickerPopover.module.css'
 //
 // 配色跟隨 app 既有的暖色系 token(--ios-*/--color-*),不是套件預設的
 // 藍色系,也不是使用者原本參考截圖的深色主題——理由:這個 app 目前沒有
-// 深色模式機制(見 PaceChart.module.css 開頭對這件事的說明),日曆若
+// 深色模式機制,日曆若
 // 自成一套深色視覺會跟其餘元件(PlacePanel/desktop/ResultList 等)格格
 // 不入,故只沿用截圖的「月曆格線」佈局形式,配色改用專案既有色票。
 export function DatePickerPopover({

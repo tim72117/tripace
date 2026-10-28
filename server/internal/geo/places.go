@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/tim72117/tripace/internal/apigateway"
-	"github.com/tim72117/tripace/internal/pexels"
 )
 
 // defaultGateway 是這個 process 內所有 geo.Client(除非透過 NewWithGateway
@@ -355,7 +354,7 @@ type callerCtxKey struct{}
 
 // WithCaller 把「是誰觸發這次 Google API 呼叫」的識別字串放進 context,
 // 供 Gateway 記錄呼叫來源用(見 apigateway.CallLogger)。呼叫端(HTTP
-// handler/CLI 子命令/wanttools 工具)應該在呼叫任何 geo.Client 方法之前
+// handler/CLI 子命令/onagenttools 工具)應該在呼叫任何 geo.Client 方法之前
 // 呼叫這個函式包一次 ctx,例如
 // WithCaller(ctx, "handleGeoAttractionsNearby")——建議直接用 handler/
 // 子命令/工具的函式名稱當識別字串,方便日後對照程式碼找到呼叫點。
@@ -382,9 +381,9 @@ type pathCtxKey struct{}
 // "/internal/geo/attractions/nearby")。HTTP handler 通常直接傳
 // r.URL.Path;若該路由含路徑變數(如 {id}),應傳註冊時的 pattern 字串而
 // 非字面路徑,避免同一條路由因為不同 ID 被統計成一堆各自獨立的資料列
-// (見 entry_geocode.go/maintenance.go 呼叫端的說明)。未呼叫過這個函式
+// (見 maintenance.go 呼叫端的說明)。未呼叫過這個函式
 // 的 ctx,記錄時 path 欄位為空字串(例如 LLM 工具呼叫沒有對應的單一
-// REST path,見 wanttools 呼叫端的說明)——這是刻意的,不強行湊一個
+// REST path,見 onagenttools 呼叫端)——這是刻意的,不強行湊一個
 // 不準確的值。
 func WithPath(ctx context.Context, path string) context.Context {
 	return context.WithValue(ctx, pathCtxKey{}, path)
@@ -451,7 +450,7 @@ const districtFieldMask = "places.id,places.displayName,places.formattedAddress,
 // 注入。未注入(nil)時 fetchPhotoAsDataURI 照舊每次都直接向 Google 查詢,
 // 行為與加這層快取之前完全相同——這是刻意的漸進式設計,不是每個
 // geo.New() 呼叫端都需要接上快取(例如 cmd/cli 的一次性查詢、
-// wanttools 的 LLM 工具呼叫,重複查詢機率低,接上快取的效益不大)。
+// onagenttools 的 LLM 工具呼叫,重複查詢機率低,接上快取的效益不大)。
 //
 // 鍵是 placeID(穩定、不會過期的地點識別碼)+ photoIndex(該地點第幾張
 // 照片,0-based),不是 photo resource name(Google Maps Platform Terms
@@ -498,7 +497,6 @@ type Client struct {
 	gateway      requestDoer
 	cache        PhotoCache
 	detailsCache PlaceDetailsCache // 地點詳情文字快取,見 details_cache.go;nil 代表不快取
-	pexelsClient *pexels.Client
 }
 
 // New 建立 Client,使用整個 process 共用的預設 Gateway(見 defaultGateway
@@ -529,28 +527,6 @@ func NewWithGateway(apiKey string, gateway requestDoer) *Client {
 // 需要接上,不是每個 Client 都必須呼叫這個方法。
 func (c *Client) SetCache(cache PhotoCache) {
 	c.cache = cache
-}
-
-// SetPexelsClient 注入 Pexels 查詢用的 client(見 pexels.New)。供呼叫端
-// (api 層)在 geo.New() 之後呼叫——只有需要「照片優先用 Pexels、查無
-// 結果才 fallback 回 Google Places 真實照片」這種降低計費成本考量的
-// 查詢端點需要接上(見 SearchCityAttractions 的說明,以及
-// server/internal/api/geo_outline.go 的 handleGeoPlaceDetails)。不像
-// apiKey 是建構 Client 時的必要參數,這裡選擇事後注入的 setter 模式
-// (對齊 SetCache 的既有做法),避免 geo.New 的簽名為了這個只有少數
-// 呼叫端需要的功能而變動,牽動其餘呼叫端。
-func (c *Client) SetPexelsClient(client *pexels.Client) {
-	c.pexelsClient = client
-}
-
-// PexelsClient 回傳目前注入的 Pexels client(見 SetPexelsClient),未注入
-// 時為 nil。供套件外(api 層)在自己的照片來源優先序邏輯裡判斷是否已經
-// 注入、進而直接呼叫 pexels.Client.Search——理由同 handleGeoPlaceDetails
-// 的說明:該端點的照片優先序邏輯發生在拿到 GetPlaceDetails 結果之後,
-// 無法完全收在 geo 套件內部一次做完(不像 SearchCityAttractions 整段
-// 查詢流程都在套件內),故需要這個匯出的讀取入口。
-func (c *Client) PexelsClient() *pexels.Client {
-	return c.pexelsClient
 }
 
 // newPlacesSearchRequest 組一支 Places API (New) 的 POST 搜尋請求(Text
@@ -1012,13 +988,8 @@ func pickDistrictName(components []struct {
 // 建議 15~20(需要足夠樣本數才能形成有意義的分組,太少容易每區只有 1
 // 個點、重心失去平均的意義)。
 //
-// 每區代表性照片的來源優先序:若已透過 SetPexelsClient 注入 Pexels
-// client,優先用該區名稱查一張 Pexels 示意圖;查無結果、未注入、或
-// 查詢失敗,才 fallback 回原本的邏輯——取該區評分最高且有照片的地點,
-// 用其 Google Places 真實照片。這個順序是刻意的:Pexels 是免費/低成本
-// 的關鍵字比對圖庫,Google Places Photo Media 則按張數計費,先試前者
-// 能降低這支端點(每次查詢未建檔城市都會觸發)的 Google 呼叫成本,
-// 只有 Pexels 找不到示意圖時才退回較準確、但要付費的 Google 照片。
+// 每區代表性照片:取該區評分最高且有照片的地點,用其 Google Places 真實照片。
+// (原本有 Pexels 示意圖優先的來源,2026-10 已移除。)
 func (c *Client) SearchCityAttractions(ctx context.Context, query string, maxResults int) ([]District, error) {
 	if c.apiKey == "" {
 		return nil, ErrNoKey
@@ -1149,18 +1120,9 @@ func (c *Client) SearchCityAttractions(ctx context.Context, query string, maxRes
 			Summary:    g.landmarkSummary,
 		}
 
-		// 優先序見本函式開頭的說明:先試 Pexels(免費/低成本),查無
-		// 結果或未注入 pexelsClient 時才 fallback 回 Google Places 該區
-		// 代表性地標的真實照片。兩者皆失敗時這一區就是沒有圖可顯示,
-		// 不視為整體查詢失敗——理由同下方 fetchPhotoAsDataURI 錯誤處理
-		// 的既有說明,呼叫端(前端)已經預期這個欄位可能不存在(見
-		// District.LandmarkPhotoURL 的 omitempty)。
-		if c.pexelsClient != nil {
-			if photo, ok, err := c.pexelsClient.Search(ctx, query+" "+g.name); err == nil && ok {
-				d.LandmarkPhotoURL = photo.ImageURL
-				d.LandmarkName = g.name
-			}
-		}
+		// 兩者皆失敗時這一區就是沒有圖可顯示,不視為整體查詢失敗——理由同下方
+		// fetchPhotoAsDataURI 錯誤處理的既有說明,呼叫端(前端)已經預期這個
+		// 欄位可能不存在(見 District.LandmarkPhotoURL 的 omitempty)。
 		if d.LandmarkPhotoURL == "" && g.landmarkPhoto != "" {
 			// 圖片下載失敗(額度用盡、逾時等)不視為整體查詢失敗——
 			// 這一區只是沒有地標圖可顯示,不影響其餘分區資料,故忽略

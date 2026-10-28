@@ -2,7 +2,7 @@
 // 的 KeyboardShrinkGuard 拿來覆蓋 /app 路由根容器的高度(取代 CSS 的
 // 100dvh),讓根容器的實際高度跟著 iOS 虛擬鍵盤彈出即時縮小。
 //
-// 排查結論(手機真機實測,見 ChatScreen.tsx 曾經加過的除錯標籤與
+// 排查結論(手機真機實測,見原 ChatScreen.tsx(已移除)曾經加過的除錯標籤與
 // useKeyboardInset/useKeyboardInsetDebug 的排查歷史):
 //   - .composer(輸入框,position: absolute; bottom: 0)的位置數學上一直
 //     是對的,不需要調整——實測 offsetTop + visualViewport.height 恆等於

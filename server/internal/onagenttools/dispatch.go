@@ -1,5 +1,5 @@
 // Package onagenttools 收斂 onagent 平台 BackendDispatch 型工具的伺服器端
-// 執行邏輯——跟 internal/api 分開,理由同 internal/wanttools 跟 internal/api
+// 執行邏輯——跟 internal/api 分開,理由同舊 want 框架 wanttools(已移除,見 git 歷史)跟 internal/api
 // 分開的既有慣例:單一工具的業務邏輯(參數解析、驗證、實際查詢)不該混進
 // api package 裡跟一般 HTTP handler 並列,應該獨立成專屬套件,api 層只負責
 // 掛路由、轉發 request/response。
@@ -19,7 +19,7 @@
 //     簽章」)。針對 onagent 根本不會送的 header 寫驗證程式碼只會是永遠
 //     測不到的死碼。待辦:onagent 實際送出 X-Onagent-Signature 等 header
 //     後,再補上 HMAC 驗證。
-//   - 沿用跟對應 want 工具舊版(internal/wanttools/*.go)完全相同的底層
+//   - 沿用舊 want 框架版本(wanttools 已移除,見 git 歷史)同樣的底層
 //     查詢邏輯(同一套 geo.Client + GOOGLE_PLACES_API_KEY 呼叫、同樣的
 //     結果形狀),只是 transport/觸發方式不同(onagent HTTP dispatch,而非
 //     want 的行程內工具呼叫)。

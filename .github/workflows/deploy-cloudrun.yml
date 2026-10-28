@@ -101,18 +101,6 @@ jobs:
           echo "::add-mask::$LANDING_MAP_ID"
           echo "landing_map_id=$LANDING_MAP_ID" >> "$GITHUB_OUTPUT"
 
-      # onagent 平台(tripace app)的 apiKey,同上放 Secret Manager 而非
-      # GitHub Secrets(見 server/scripts/update-secret-manager.sh
-      # -cleanup-legacy-provider 附近的說明——這把 key 只顯示一次、重發會讓
-      # 舊 key 立刻失效,不支援現場申請,只能貼上既有值寫入 Secret Manager)。
-      - name: Read onagent app key from Secret Manager
-        if: github.event.inputs.skip_build != 'true'
-        id: onagent_key
-        run: |
-          KEY=$(gcloud secrets versions access latest --secret=VITE_ONAGENT_APP_KEY --project=${{ env.GCP_PROJECT_ID }})
-          echo "::add-mask::$KEY"
-          echo "key=$KEY" >> "$GITHUB_OUTPUT"
-
       # VITE_GOOGLE_OAUTH_CLIENT_ID:Google 登入(GSI 模式)用的 OAuth 用戶端
       # ID，見 Dockerfile 該 ARG 的說明。同 GOOGLE_MAPS_MAP_ID，不是機密但
       # 集中放 Secret Manager 管理。
@@ -125,13 +113,12 @@ jobs:
           echo "client_id=$CLIENT_ID" >> "$GITHUB_OUTPUT"
 
       # onagent 平台上「AI 規劃」功能(/app/plan-ai)專用的獨立 app
-      # (plan-ai-timeline)的 apiKey，跟上面的 VITE_ONAGENT_APP_KEY
-      # (tripace app)是完全不同的兩個 app、兩把互不相關的 key，見
+      # (plan-ai-timeline)的 apiKey，見
       # web/src/planning/panel/TripPlanPage.tsx PLAN_AI_ONAGENT_APP_ID 的完整
       # 說明。apiKey 只顯示一次、重發會讓舊 key 立刻失效，不支援現場申請，
       # 只能貼上既有值寫入 Secret Manager(見
       # server/scripts/update-secret-manager.sh 的 -plan-ai-onagent 選項)。
-      # 這個 app 的 URL 2026-09 起共用上面 tripace app 的 VITE_ONAGENT_URL
+      # 這個 app 的 URL 2026-09 起共用 VITE_ONAGENT_URL
       # (見下方 Build Docker image 步驟同一個 --build-arg)，不再有獨立的
       # 環境變數/secret。
       - name: Read plan-ai onagent app key from Secret Manager
@@ -149,7 +136,6 @@ jobs:
             --build-arg VITE_GOOGLE_MAPS_API_KEY=${{ steps.maps_key.outputs.key }} \
             --build-arg VITE_GOOGLE_MAPS_MAP_ID=${{ steps.maps_map_id.outputs.map_id }} \
             --build-arg VITE_GOOGLE_MAPS_LANDING_MAP_ID=${{ steps.maps_landing_map_id.outputs.landing_map_id }} \
-            --build-arg VITE_ONAGENT_APP_KEY=${{ steps.onagent_key.outputs.key }} \
             --build-arg VITE_ONAGENT_URL="https://onagents.dev" \
             --build-arg VITE_GOOGLE_OAUTH_CLIENT_ID=${{ steps.google_oauth_client_id.outputs.client_id }} \
             --build-arg VITE_PLAN_AI_ONAGENT_APP_KEY=${{ steps.plan_ai_onagent_key.outputs.key }} \

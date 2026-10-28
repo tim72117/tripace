@@ -21,8 +21,8 @@ export function TripList({
   activeTripID: string | null
   onOpen: (t: Trip) => void
   // onManage:旅程管理(分享連結/成員/開啟時自動進入,見
-  // TripManageModal.tsx)原本掛在 ChatScreen navbar 的三個分散入口,現在
-  // 規劃面板可能無 trip(見 ChatScreen.tsx trip prop 的說明),合併成單一
+  // TripManageModal.tsx)原本掛在 ChatScreen(已移除)navbar 的三個分散入口,現在
+  // 規劃面板可能無 trip,合併成單一
   // 動作移到旅程本來就存在的地方——旅程列表每一筆項目上。呼叫端
   // (planning/member/desktop/Content.tsx)負責開啟合併後的 TripManageModal。
   onManage: (t: Trip) => void

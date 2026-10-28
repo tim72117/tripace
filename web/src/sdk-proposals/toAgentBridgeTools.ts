@@ -19,7 +19,7 @@
 //   2. onToolResult 回呼(選用)——SDK 的 AgentBridgeOptions 沒有「每個工具
 //      呼叫完成後」的全域 hook(只有 onAssistantMessage/onError/
 //      onQuotaExceeded 這幾個跟單一工具呼叫無關的回呼),這個專案的呼叫端
-//      (OnagentBridgeDemo.tsx)需要在畫面上顯示「哪個工具被呼叫、結果是
+//      (原 OnagentBridgeDemo.tsx,已移除;目前如 /ai-plan 推論紀錄 debug 面板)需要在畫面上顯示「哪個工具被呼叫、結果是
 //      什麼」,故保留這個回呼機制,由這裡的轉接層在每次工具執行成功後補上
 //      這一段可觀測性,呼叫端不需要自己再包一層。
 //
@@ -28,7 +28,7 @@
 //
 //   new AgentBridge({
 //     ...,
-//     tools: toAgentBridgeTools([tripEntryAdd, tripEntryList], onagentToolContext),
+//     tools: toAgentBridgeTools([searchAttraction, addAttraction], onagentToolContext),
 //   })
 
 import { toToolRecord, type ToolHandler } from '@onagent/bridge'
@@ -45,7 +45,7 @@ import type { ClientTool } from './arrayTools'
 // 手寫一次同樣的查表邏輯。
 //
 // onToolResult(選用):每次工具執行成功後回報 { name, args, result },供呼叫端
-// 接自己的 log/UI(例如 OnagentBridgeDemo.tsx、/ai-plan 推論紀錄 debug 面板
+// 接自己的 log/UI(例如 /ai-plan 推論紀錄 debug 面板
 // 想在畫面上顯示「哪個工具被呼叫、結果是什麼」)。
 //
 // 2026-10 改成等 Promise resolve 後才回報(原本直接把 tool.handle 的回傳值

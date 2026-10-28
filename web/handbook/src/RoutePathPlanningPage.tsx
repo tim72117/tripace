@@ -10,7 +10,7 @@ import styles from './RoutePathPlanningPage.module.css'
 // 內容,但這裡的內容更偏長篇文案,改用章節(section)堆疊而非並排面板。
 //
 // 內容對齊已確認的既有基礎,不是憑空發想:
-// - 既有「路徑」功能(VITE_FEATURE_PACE):web/src/pace/PaceRouteMap.tsx
+// - 舊「路徑」功能(VITE_FEATURE_PACE,已移除,見 git 歷史):web/src/pace/PaceRouteMap.tsx
 //   (地圖畫 Polyline + 途經點 marker,真的在跑路徑規劃)+ 後端
 //   server/internal/api/pace_route.go 的 computeRouteByWaypoints()
 //   (已串接 Google Routes API)+ entry_geocode.go 的

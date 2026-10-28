@@ -13,7 +13,7 @@
 
 ## 桌面版版面
 
-桌面版**沒有常駐對話欄**：對話（`ChatScreen`）只透過地圖右上角搜尋框旁的 AI 按鈕以浮動小匡形式開啟，不佔用版面空間、不推擠地圖寬度。除了功能列／主顯示這組版面骨架，其餘全部是絕對定位疊在主顯示（`.desktop-main`）之上的漂浮卡片（四周留間距、圓角＋陰影，共用外殼元件 `FloatingPanel`／`PanelHead`，見 `web/src/components/FloatingPanel.tsx`／`web/src/components/PanelHead.tsx`），左緣一組、右緣一組，各自互斥顯示（同一側同時只會有一張）：
+桌面版**沒有常駐對話欄**：對話（`planning/panel/TripPlanPage.tsx`，onagent `plan-ai-timeline`）只透過地圖右上角搜尋框旁的 AI 按鈕以浮動小匡形式開啟，不佔用版面空間、不推擠地圖寬度。除了功能列／主顯示這組版面骨架，其餘全部是絕對定位疊在主顯示（`.desktop-main`）之上的漂浮卡片（四周留間距、圓角＋陰影，共用外殼元件 `FloatingPanel`／`PanelHead`，見 `web/src/components/FloatingPanel.tsx`／`web/src/components/PanelHead.tsx`），左緣一組、右緣一組，各自互斥顯示（同一側同時只會有一張）：
 
 | 正式用語 | 定位 | 介面用語（畫面顯示文字） | 介面/前端程式碼 |
 |---|---|---|---|
@@ -21,7 +21,7 @@
 | 主顯示 | 版面骨架 | 無獨立標題，固定顯示規劃地圖 | class `.desktop-main`（`desktop/Content.tsx`），固定顯示規劃地圖 `PlanMap`（`geo-planning/PlanMap.tsx`；原 `GeoOutlinePanel` 元件已刪除，只剩 `GeoOutlinePanel.module.css` 樣式檔） |
 | 對話按鈕 | 城市搜尋框膠囊左側 | tooltip／aria-label「開啟對話」 | `ExploreMap.tsx`，`Sparkles` 圖示按鈕，僅在 `onOpenChat` 存在時渲染 |
 | 城市搜尋框 | 地圖右上角，`top:16px; right:16px` | 輸入框＋搜尋按鈕（icon，`Search`/`Loader2`，非文字） | class `.citySearch`（`ExploreMap.tsx`），跟分類標籤（飯店/景點/餐廳）列彼此獨立、不共用同一行 |
-| 旅程列表／時間軸／配速表／行程 | 左緣，`.floating-panel-left`，寬度取自 `PANEL_REGISTRY[panelMode].width` | 依 `panelMode` 顯示：「旅程列表」（標題橫條）／「時間軸」（標題橫條）／配速表內容（無標題橫條）／「行程」（標題橫條，僅顯示「已排入行程」項目，不再有候選中清單）；共用關閉按鈕 tooltip「關閉」 | `trips→TripList`（`trip/desktop/TripList.tsx`）／`timeline→MultiTrackTimeline`（包在 `desktop-timeline-panel`）／`pace→PaceChart`／`geo-outline→CandidateList`（`geo-planning/desktop/CandidateList.tsx`；以上皆在 `desktop/Content.tsx` 以 `DesktopTripList`／`DesktopCandidateList` 別名引用），四種互斥、由 `panelMode` 決定 |
+| 旅程列表／時間軸／行程 | 左緣，`.floating-panel-left`，寬度取自 `PANEL_REGISTRY[panelMode].width` | 依 `panelMode` 顯示：「旅程列表」（標題橫條）／「時間軸」（標題橫條）／「行程」（標題橫條，僅顯示「已排入行程」項目，不再有候選中清單）；共用關閉按鈕 tooltip「關閉」 | `trips→TripList`（`trip/desktop/TripList.tsx`）／`timeline→MultiTrackTimeline`（包在 `desktop-timeline-panel`）／`geo-outline→CandidateList`（`geo-planning/desktop/CandidateList.tsx`；以上皆在 `desktop/Content.tsx` 以 `DesktopTripList`／`DesktopCandidateList` 別名引用），四種互斥、由 `panelMode` 決定 |
 | 搜尋結果清單 | 右緣，`.floating-panel-right`，`right:12px`，寬度 280px | 標題「搜尋結果」；飯店/推薦地點/搜尋結果（geocode）三種來源合併成單一清單，不分頁、不分段小標題 | `ResultList`（`web/src/geo-planning/desktop/ResultList.tsx`，`desktop/Content.tsx` 以別名 `DesktopResultList` 引用），結果型別統一為 `GeoSearchResult`（見下方「地理輪廓底圖」一節），只在觸發過查詢（點類別標籤／地標／「搜尋這個區域」／城市搜尋框）後才出現 |
 | 地點介紹卡 | 右緣，`top:64px`，避開常駐搜尋框；與下一列互斥 | 無標題橫條；關閉按鈕懸浮於卡片頂部照片右上角；「加入行程」按鈕（不串上旅程名稱） | `PlacePanel`（`web/src/geo-planning/PlacePanel.tsx`），飯店/推薦地點/搜尋結果/Google 原生 POI／行程候選項目／非主題點 attraction 共用；日期選擇改用 `DatePickerPopover`（`react-day-picker` 月曆浮動匡） |
 | 主題介紹卡 | 右緣，`top:64px`；與上一列互斥 | 無標題橫條；關閉按鈕懸浮於卡片頂部照片右上角；「附近景點」清單 | `AttractionInfoPanel`（`web/src/geo-planning/AttractionInfoPanel.tsx`），只有主題點（`isTheme`／`level===1`）點擊才開這張卡，非主題點改開地點介紹卡（見下方「地理輪廓底圖」一節） |
@@ -41,15 +41,13 @@
 | 主顯示（規劃地圖） | 無獨立標題，固定顯示規劃地圖 | `PlanPhoneView`（`web/src/geo-planning/PlanPhoneView.tsx`），唯一常駐主畫面，不再有可切換的分頁模式（規劃地圖已不再有獨立 feature flag，見下方「地理輪廓底圖」一節） | — | — |
 | 底部導覽列 | 「行程」「探索」「規劃」三顆按鈕，icon 下方各自顯示文字標籤（直向排列） | 螢幕下緣常駐的分頁列，各項目各自獨立開關疊加層，不是互斥分頁；`Nav`（`phone/Nav.tsx`，`phone/Content.tsx` 以別名 `PhoneNav` 引用），不需開抽屜即可見。原「AI 規劃」已改名「規劃」；「探索」原本是地圖左上角的按鈕、「行程」原本是地圖左下角浮動按鈕群組的一員，兩者皆已搬到底部導覽列 | — | — |
 | 旅程列表抽屜 | 標題「旅程列表」 | `TripList`（`web/src/trip/phone/TripList.tsx`，`phone/Content.tsx` 以別名 `PhoneTripList` 引用），由底部導覽列「行程」按鈕開關（尚未選定旅程時優先開啟此抽屜），每筆項目的「管理」按鈕開啟 `TripManageModal` | — | — |
-| 對話疊加層 | 標題為旅程名稱（未選旅程時顯示「Tripace」） | `phone/Content.tsx` 內建的 `PhoneBottomSheet`，由底部導覽列「規劃」按鈕開關（`chatSheetOpen`）；`ChatScreen` 直接放在 `PhoneBottomSheet` 的 `children` 裡，搭配該元件的 `keepMounted` prop 讓它即使關閉也不卸載（只用位移隱藏），避免 WebSocket 重新連線——原本改用 React Portal 投影達到同樣效果，但 portal 內容在 React 元件樹上跟 `PhoneBottomSheet` 是平行兄弟節點、導致觸控事件無法冒泡到拖曳手勢，故已改用 `keepMounted` 取代；不需先選旅程即可使用 | — | — |
-| 配速表疊加層 | 標題為旅程名稱（未選旅程時顯示「Tripace」） | `phone/Content.tsx` 內建的 `PhoneBottomSheet`，由右側工具列「路徑」按鈕開關（`paceSheetOpen`），內嵌 `PaceRouteMap`；跟對話不同，關閉時直接卸載（無需保持連線） | — | — |
-| 右側工具列 | （無文字，純圖示列） | 疊在畫面右下角的路徑／demo-* 小圖示群組；`PhoneSideTools`（`PhoneSideTools.tsx`），每個項目自帶 `onClick`（不再是統一切換分頁模式） | — | — |
+| 對話疊加層 | 標題為旅程名稱（未選旅程時顯示「Tripace」） | `phone/Content.tsx` 內建的 `PhoneBottomSheet`，由底部導覽列「規劃」按鈕開關（`chatSheetOpen`）；對話內容（`TripPlanPage`）直接放在 `PhoneBottomSheet` 的 `children` 裡，搭配該元件的 `keepMounted` prop 讓它即使關閉也不卸載（只用位移隱藏），避免 WebSocket 重新連線——原本改用 React Portal 投影達到同樣效果，但 portal 內容在 React 元件樹上跟 `PhoneBottomSheet` 是平行兄弟節點、導致觸控事件無法冒泡到拖曳手勢，故已改用 `keepMounted` 取代；不需先選旅程即可使用 | — | — |
 | 規劃地圖清單抽屜 | 標題「地點」 | `ResultList`（`web/src/geo-planning/phone/ResultList.tsx`），飯店/推薦地點/搜尋結果三種來源合併成單一清單（同桌面版 `geo-planning/desktop/ResultList.tsx`，不分頁）；觸發搜尋的同一刻即開啟並顯示載入中，不等查詢結果回來才開啟，但查到唯一解時清單不顯示、直接開啟地點介紹卡（見下一列） | — | — |
 | 地點介紹卡（手機版） | 由下往上滑入的 bottom sheet；「加入行程」按鈕 | `PlanPhoneInfoSheet`（`web/src/geo-planning/PlanPhoneInfoSheet.tsx`），未選定旅程時按「加入行程」會先引導切到旅程列表（`onOpenTrips`）；候選沒有排定日期時「加入行程」改開獨立的日期選擇 bottom sheet（見下方「日期選擇 sheet」），不再是卡片內部展開的區塊 | — | — |
 | 日期選擇 sheet（手機版） | 標題「選擇日期」；日期清單顯示既有排定日期＋「其他日期」按鈕；日曆為月曆格線 | 兩層獨立 bottom sheet：`PlanPhoneDatePickerSheet`（既有日期，直向可捲動清單）／`PlanPhoneDateCalendarSheet`（`DatePickerPopover` 月曆，同桌面版），行程完全沒有排定日期時跳過清單直接開日曆；由 `PlanPhoneView.tsx` 的 `sheetStack` 決定要開哪一層 | — | — |
 | 設定面板 | 設定 | `SettingsScreen`（`user/SettingsScreen.tsx`，改用共用容器 `PhoneBottomSheet`）／桌面版 `SettingsDialog`（`user/SettingsDialog.tsx`） | — | — |
 
-手機版 bottom sheet（旅程列表／對話／配速表／設定／規劃地圖清單抽屜／地點介紹卡／日期選擇 sheet）共用同一個外殼元件 `PhoneBottomSheet`（`web/src/components/PhoneBottomSheet.tsx`）——不區分模式，統一用 `snapPoints`（由大到小排序的「離螢幕頂部距離」陣列，單位 px）＋選填的 `minHeightPx`（收合段的固定高度）決定能滑到哪些段落、段落分別在哪：只給一個 `snapPoints` 值時退化成固定高度＋只能拖到底關閉；給多個值（或額外帶 `minHeightPx`）時在各段之間拖曳吸附。標題列共用 `SheetHead`（標題文字＋關閉鈕）。
+手機版 bottom sheet（旅程列表／對話／設定／規劃地圖清單抽屜／地點介紹卡／日期選擇 sheet）共用同一個外殼元件 `PhoneBottomSheet`（`web/src/components/PhoneBottomSheet.tsx`）——不區分模式，統一用 `snapPoints`（由大到小排序的「離螢幕頂部距離」陣列，單位 px）＋選填的 `minHeightPx`（收合段的固定高度）決定能滑到哪些段落、段落分別在哪：只給一個 `snapPoints` 值時退化成固定高度＋只能拖到底關閉；給多個值（或額外帶 `minHeightPx`）時在各段之間拖曳吸附。標題列共用 `SheetHead`（標題文字＋關閉鈕）。
 
 規劃地圖清單抽屜／地點介紹卡／日期選擇 sheet 這四層可以同時疊放（例如清單→介紹卡→日期清單→日曆最多四層），開關統一由 `PlanPhoneView.tsx` 的 `sheetStack`（`useSheetStack`，`web/src/components/useSheetStack.ts`）以堆疊（`push`／`replace`／`pop`／`closeAll`）管理，不再各自用獨立的 `useState`/布林值決定顯示與否——非頂層的 sheet 仍掛載但套用退縮視覺、停用手勢（`isTopmost`／`stackOffsetPx`）。地點介紹卡往下拖曳或收合到最小段時，堆疊中下一層（清單）會連動縮到最小段（`forceCollapsed`），鬆手/展開後恢復。
 
@@ -70,7 +68,6 @@
 | 旅程 | 旅程 | `Trip` / `TripRole`（`web/src/types.ts`，型別/變數名稱維持英文不變） | `model.Trip` / `tripRow`（`server/internal/store/entity.go`） | 表 `trips` |
 | 地點 | 地點 | `Entry`（`web/src/types.ts`） | `entryRow`（`server/internal/store/entity.go`） | 表 `entries` |
 | 時間軸 | 時間軸 | `MultiTrackTimeline`（`web/src/timeline/Timeline.tsx`） | — | — |
-| 路徑（配速表介面） | 配速表 | `PaceRouteMap`（`web/src/pace/PaceRouteMap.tsx`） | — | — |
 
 ## 地理輪廓底圖
 
