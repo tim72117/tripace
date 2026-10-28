@@ -52,8 +52,8 @@ func (s *Store) HasTable(table string) bool {
 // DropTable 真正執行 DROP TABLE table——不可逆的 schema 變更,同
 // DropColumn 的使用前提:呼叫端應先用 HasTable 確認仍存在、且已確認過
 // -dry-run 的輸出。涵蓋的表(對應的 Go struct 都已移除,AutoMigrate
-// 不會自動刪表):pexels_photo_cache、place_pexels_photos(Pexels 圖源
-// 2026-10 已停用,沒有任何讀寫端)。
+// 不會自動刪表):pexels_photo_cache、place_pexels_photos、admin_users、
+// admin_sessions、landmarks,都沒有任何讀寫端,見 cmd/migrate-drop-photo-url。
 func (s *Store) DropTable(table string) error {
 	return s.db.Migrator().DropTable(table)
 }

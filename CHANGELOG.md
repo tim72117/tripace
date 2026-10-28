@@ -2,6 +2,15 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.48.3 — 2026-10-28
+
+遷移工具涵蓋 Schema check 找到的 5 張遺留表。
+
+### 變更
+
+- `cmd/migrate-drop-photo-url` 的 `DROP TABLE` 清單新增 `admin_users`、`admin_sessions`（舊管理後台獨立登入，改 JWT + email 白名單後已無用，`admin_users` 含舊的 bcrypt 密碼雜湊）與 `landmarks`（景點表舊名，`attractions` 改名時沒有搬資料，舊表留在資料庫），連同既有的 `pexels_photo_cache`、`place_pexels_photos` 共 5 張。
+- 工具現涵蓋 3 個欄位（`attractions.photo_url`、`place_details_cache.photo_url`、`public_links.view_mode`）與這 5 張表；**資料庫尚未執行**，需以 `-dry-run=false` 傳參，workflow 會先備份（備份檔含舊管理員雜湊，注意 bucket 權限）。
+
 ## v0.48.2 — 2026-10-28
 
 Schema check 能列出資料庫裡「沒有對應 struct」的遺留表。

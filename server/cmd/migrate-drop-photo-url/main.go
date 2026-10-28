@@ -18,8 +18,9 @@
 //     「路徑」功能整個移除。
 //   - place_details_cache.photo_url——舊版快取的圖片網址,程式裡的 struct
 //     欄位早已移除(圖片來源改 photo_assets),但資料庫欄位當時沒有一併刪除。
-//   - 另外 DROP TABLE:pexels_photo_cache、place_pexels_photos(Pexels
-//     圖源已停用,沒有任何讀寫端)。
+//   - 另外 DROP TABLE 五張遺留表:pexels_photo_cache、place_pexels_photos、
+//     admin_users、admin_sessions、landmarks(都沒有 struct 對應也沒有
+//     任何讀寫端,見 main() 內 tables 的說明)。
 //
 // (place_details_cache.new_photo_count/google_photo_target_count 兩欄
 // 已在先前執行完畢並從本工具移除,見 git 歷史。)
@@ -90,9 +91,18 @@ func main() {
 		{table: "public_links", column: "view_mode"},
 	}
 
-	// tablesToDrop:Pexels 圖源 2026-10 停用後,對應的 Go struct 與讀寫程式碼
-	// 都已移除、沒有任何讀寫端的兩張表(AutoMigrate 不會自動刪表)。
-	tables := []string{"pexels_photo_cache", "place_pexels_photos"}
+	// tables:資料庫裡沒有任何 Go struct 對應、也沒有任何程式讀寫的遺留表
+	// (AutoMigrate 只建表、不會刪表;見 store.OrphanTables)。
+	//   - pexels_photo_cache/place_pexels_photos:Pexels 圖源 2026-10 停用。
+	//   - admin_users/admin_sessions:舊的管理後台獨立登入,admin 改 JWT+email
+	//     白名單(commit 10ded3d)後不再使用。
+	//   - landmarks:景點表的舊表名,Go 的表名改成 attractions(commit 50f690f)
+	//     時沒有 RenameTable/資料搬移,舊表留在資料庫。刪除前由 workflow 先備份。
+	tables := []string{
+		"pexels_photo_cache", "place_pexels_photos",
+		"admin_users", "admin_sessions",
+		"landmarks",
+	}
 
 	// -dry-run 時完全不連線資料庫——理由同 cmd/migrate-photo-assets 的
 	// 既有慣例:dry-run 應該是「連 DATABASE_URL 是否正確都還沒驗證」也能
