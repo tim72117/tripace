@@ -15,7 +15,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tim72117/tripace.git",
-    "directory": "web/partner-installer"
+    "directory": "packages/partner-installer"
   },
   "keywords": [
     "claude-code",

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/tim72117/tripace/internal/adminconsole"
+	"github.com/tim72117/tripace/internal/partnerconsole"
 	"github.com/tim72117/tripace/internal/api"
 	"github.com/tim72117/tripace/internal/apigateway"
 	"github.com/tim72117/tripace/internal/auth"
@@ -483,6 +484,15 @@ func main() {
 			log.Printf("管理後台已合併掛載於這支 binary(/admin/*,管理權限 email 白名單: %s)", adminBootstrapEmail)
 		}
 	}
+
+	// 廣告業主控制台(/partner/api/* 與 /partner/ 前端)直接併入主服務,與
+	// partner-cli、業主網頁共用主站網域;不需要另外部署 cmd/partnerserver。
+	// 身分驗證用同一把 signer(一般使用者 JWT),差別只在資料庫有沒有對應的
+	// 業主資料(見 partnerconsole 套件說明)。CORS 政策與 /admin/ 相同。
+	partnerMux := http.NewServeMux()
+	partnerconsole.NewHandler(signer, st).Register(partnerMux)
+	partnerMux.Handle("/partner/", partnerStaticHandler())
+	mux.Handle("/partner/", withAdminCORS(partnerMux))
 
 	mux.Handle("/", staticHandler(st))
 

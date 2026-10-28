@@ -45,6 +45,7 @@ server/migrate-photo-assets
 # admin-build,同一套「編譯時才產生,不進版控」的既有慣例)。
 server/cmd/server/web/dist/
 server/cmd/server/webadmin/dist/
+server/cmd/server/webpartner/dist/
 server/cmd/adminserver/web/dist/
 server/cmd/partnerserver/web/dist/
 

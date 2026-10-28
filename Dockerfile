@@ -106,6 +106,16 @@ RUN npm ci
 COPY web/admin/ ./
 RUN npm run build
 
+# ---- 階段 1c:build partner 業主控制台前端 ----
+# web/partner SPA(base: '/partner/'),之後複製進
+# server/cmd/server/webpartner/dist/(go:embed 目標),與 /partner/api/* 同機提供。
+FROM node:22-alpine AS partner-build
+WORKDIR /webpartner
+COPY web/partner/package.json web/partner/package-lock.json ./
+RUN npm ci
+COPY web/partner/ ./
+RUN npm run build
+
 # ---- 階段 2:編譯 Go ----
 FROM golang:1.26 AS build
 
@@ -121,9 +131,10 @@ COPY server/ /src/server/
 
 # 把兩個前端 dist 放到各自的 embed 路徑。用 rm -rf 先清掉 checked-in 的
 # placeholder index.html,避免殘留檔案混進真正的 build 產物。
-RUN rm -rf /src/server/cmd/server/web/dist/* /src/server/cmd/server/webadmin/dist/*
+RUN rm -rf /src/server/cmd/server/web/dist/* /src/server/cmd/server/webadmin/dist/* /src/server/cmd/server/webpartner/dist/*
 COPY --from=web-build /web/dist/. /src/server/cmd/server/web/dist/
 COPY --from=admin-build /webadmin/dist/. /src/server/cmd/server/webadmin/dist/
+COPY --from=partner-build /webpartner/dist/. /src/server/cmd/server/webpartner/dist/
 
 # 這裡是整個 build 流程裡唯一真正拿到前端 build 產物(而非 checked-in
 # 的 placeholder index.html,見上方 rm -rf 的說明)的時間點——

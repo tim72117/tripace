@@ -13,7 +13,7 @@ description: 協助廣告業主/聯盟行銷夥伴透過 partner-cli 登入 Trip
 
 ### 1. 檢查/取得 partner-cli
 
-`partner-cli` 執行檔在安裝這個 skill 時（`npx tripace-partner-cli-setup`）自動下載到 `${CLAUDE_SKILL_DIR}/bin/`，檔名依平台是 `partner-cli-windows-amd64.exe`、`partner-cli-darwin-amd64`、`partner-cli-darwin-arm64`、`partner-cli-linux-amd64`、`partner-cli-linux-arm64` 之一（只有目前所在平台那一個會存在，不是五個都有）。全域 PATH 上通常不會有 `partner-cli` 指令，**不要**直接執行裸指令 `partner-cli`，而是呼叫 `${CLAUDE_SKILL_DIR}/bin/` 底下對應目前平台的執行檔，例如：
+`partner-cli` 執行檔在安裝這個 skill 時（`npx @tripace/partner-claude-skill`）自動下載到 `${CLAUDE_SKILL_DIR}/bin/`，檔名依平台是 `partner-cli-windows-amd64.exe`、`partner-cli-darwin-amd64`、`partner-cli-darwin-arm64`、`partner-cli-linux-amd64`、`partner-cli-linux-arm64` 之一（只有目前所在平台那一個會存在，不是五個都有）。全域 PATH 上通常不會有 `partner-cli` 指令，**不要**直接執行裸指令 `partner-cli`，而是呼叫 `${CLAUDE_SKILL_DIR}/bin/` 底下對應目前平台的執行檔，例如：
 
 ```bash
 "${CLAUDE_SKILL_DIR}/bin/partner-cli-linux-amd64" campaign list
@@ -25,12 +25,12 @@ description: 協助廣告業主/聯盟行銷夥伴透過 partner-cli 登入 Trip
 
 > 以下與後續章節為了簡潔，一律直接寫 `partner-cli login`、`partner-cli campaign list` 等指令；實際執行時請替換成上一步判斷出來的完整路徑，例如 `${CLAUDE_SKILL_DIR}/bin/partner-cli-linux-amd64 login -email ... -password ...`，而不是直接執行裸指令 `partner-cli`。
 
-`partner-cli` 的登入身分**跟 Tripace 主站一般使用者帳號是同一套**（不是獨立的業主密碼系統）——業主必須先在 `https://tripace.shuttle.tools`（或本機開發環境）用 email/password 註冊過一般帳號，並由內部窗口透過 `tripace-cli partner-grant` 開通業主身分，才能用這支 CLI 操作：
+`partner-cli` 的登入身分**跟 Tripace 主站一般使用者帳號是同一套**（不是獨立的業主密碼系統）——業主必須先在 `https://tripace.io`（或本機開發環境）用 email/password 註冊過一般帳號，並由內部窗口透過 `tripace-cli partner-grant` 開通業主身分，才能用這支 CLI 操作：
 
 **優先用瀏覽器核准登入，不要請使用者把密碼貼進對話或指令裡**：
 
 ```bash
-partner-cli login -web -api <partnerserver URL> -main-api <主站 URL>
+partner-cli login -web -api https://tripace.io
 ```
 
 執行後會自動開啟瀏覽器到核准頁面（若沒有自動開啟，會印出網址讓使用者手動開），使用者在瀏覽器登入並按下核准，CLI 就會收到登入憑證。整個過程密碼不會經過終端機。`login` 沒給 `-email`/`-password` 時預設就是這個流程，`-web` 可以省略。5 分鐘內沒核准會逾時，重新執行即可。
@@ -38,14 +38,14 @@ partner-cli login -web -api <partnerserver URL> -main-api <主站 URL>
 只有使用者明確要求、或環境無法開瀏覽器時，才改用帳密登入：
 
 ```bash
-partner-cli login -email <email> -password <password> -api <partnerserver URL> -main-api <主站 URL>
+partner-cli login -email <email> -password <password> -api https://tripace.io
 ```
 
-- `-api`：partner 控制台後端（`partnerserver`）的 URL，正式環境與主站同源部署時，`-main-api` 可以省略（會自動退回等於 `-api`）。
-- `-main-api`：主站登入端點（`/v1/auth/login`、`/v1/cli-auth/*`）所在的 URL——只有 `partnerserver` 跟主站用不同網域/port 部署時才需要分開指定（例如本機開發環境常見 `partnerserver` 跑在 `:8083`、主站跑在 `:8080`，這時兩個旗標都要給）。
+- `-api`：partner 控制台後端的 URL。正式環境業主控制台與主站在同一台主機，直接用 `https://tripace.io`，不需要給 `-main-api`（會自動退回等於 `-api`）。
+- `-main-api`：主站登入端點（`/v1/auth/login`、`/v1/cli-auth/*`）所在的 URL。只有本機開發環境業主後端與主站跑在不同 port 時才需要分開指定，正式環境不用給。
 - `-console`：核准頁面所在的前端網址，只有本機開發前端跟主站 API 不同 origin 時才需要，正式環境不用給。
 
-**不確定 `-api`/`-main-api` 該填什麼時，優先詢問使用者這兩項服務目前部署在哪裡**，不要自行猜測網址。
+**正式環境一律用 `-api https://tripace.io`。** 使用者說的是本機或測試環境時，先問清楚網址，不要自行猜測。登入時若遇到網址被轉址（301/302）的錯誤，代表網址已搬家，請改用回應中指出的新網址。
 
 登入成功後，`partner-cli login` 會自動打一次 `/partner/api/me` 驗證這個帳號確實有業主身分：
 - 如果印出業主資訊（`id`/`name`/`status` 等），代表登入與業主身分驗證都成功，可以繼續後續操作。
@@ -212,7 +212,7 @@ partner-cli version
 
 1. 判斷目前平台，呼叫安裝時已下載到 `${CLAUDE_SKILL_DIR}/bin/partner-cli-<os>-<arch>[.exe]` 的執行檔；若目前平台沒有對應版本，告知使用者此 skill 目前沒有對應執行檔，不要自行編譯或安裝。
 2. 確認使用者已經有 Tripace 一般帳號、且已被內部窗口開通業主身分（`tripace-cli partner-grant`）——這不是 `partner-cli` 能自助完成的前置條件。
-3. 執行 `partner-cli login -email ... -password ... -api ... [-main-api ...]` 登入，確認回傳業主資訊而非錯誤訊息。
+3. 執行 `partner-cli login -web -api https://tripace.io` 登入，確認回傳業主資訊而非錯誤訊息。
 4. 執行 `partner-cli campaign create -name ...` 建立活動，記下回傳的 `id`。
 5. 執行 `partner-cli plan create -campaign <活動ID> -title ... -departure "日期|星期|團費" -highlight "..." ...` 建立方案（優先用結構化旗標或 `-detail-file`，欄位格式見第三節「detail 欄位的正確格式」），團費用帶格式字串、多個梯次就重複 `-departure`。
 6. 方案內容確認無誤後，執行 `partner-cli plan status -id <方案ID> -status published` 發布。
