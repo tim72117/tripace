@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/tim72117/tripace/internal/model"
 	"github.com/tim72117/tripace/internal/tripsvc"
@@ -50,9 +51,19 @@ func (c *httpClient) do(method, path string, body any) (map[string]any, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	var result map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
 		return nil, err
+	}
+	var result map[string]any
+	if err := json.Unmarshal(raw, &result); err != nil {
+		// 回應不是 JSON 物件(例如純文字 404、HTML 錯誤頁):把狀態碼與原文帶出來,
+		// 不要只丟一個看不出原因的解析錯誤。
+		text := strings.TrimSpace(string(raw))
+		if len(text) > 300 {
+			text = text[:300] + "…"
+		}
+		return nil, fmt.Errorf("伺服器回應不是 JSON(%s %s%s → HTTP %d): %s", method, c.base, path, resp.StatusCode, text)
 	}
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("server error %d: %v", resp.StatusCode, result)

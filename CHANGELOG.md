@@ -2,6 +2,16 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.47.2 — 2026-10-28
+
+修正 `tripace-cli` 全域旗標 `-api` 被部分指令忽略的問題。
+
+### 修正
+
+- **`partner-grant`、`geocode`、`notify` 現在會使用全域 `-api`**（`server/cmd/cli/main.go`、`partner.go`、`geocode.go`）：`main()` 會先把 `-api` 從參數剝掉再分派子命令，這三個指令卻各自寫死預設值，導致 `-api` 被默默忽略——`partner-grant` 一律打到 `http://localhost:8080`，`geocode`／`notify` 一律打到預設的正式站 `https://tripace.io`（`-api http://localhost:8080` 時 `notify` 會誤對正式站發通知）。`-api` 放在子指令前或後都有效。
+- **回應不是 JSON 時錯誤訊息改為顯示請求方法、網址、HTTP 狀態與原文**（`server/cmd/cli/http.go`），不再只回報 `cannot unmarshal number into Go value`。
+- 新增 `global_api_test.go`：編譯出實際的 binary 對假伺服器驗證上述三個指令、兩種旗標位置，共 6 個案例。
+
 ## v0.47.1 — 2026-10-28
 
 業主身分尚未開通時，回應明確說明該怎麼辦。

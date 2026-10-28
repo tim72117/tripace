@@ -345,13 +345,13 @@ func main() {
 		}
 		return
 	case "geocode":
-		cmdGeocode(args)
+		cmdGeocode(args, apiURL)
 		return
 	case "notify":
-		cmdNotify(args)
+		cmdNotify(args, apiURL)
 		return
 	case "partner-grant":
-		cmdPartnerGrant(args)
+		cmdPartnerGrant(args, apiURL)
 		return
 	case "-h", "--help", "help":
 		usage(args)
@@ -501,10 +501,10 @@ func cmdTripReset(c client, args []string) {
 	output(map[string]string{"status": "ok", "trip": *trip})
 }
 
-func cmdNotify(args []string) {
+func cmdNotify(args []string, defaultAPI string) {
 	fs := flag.NewFlagSet("notify", flag.ExitOnError)
 	trip := fs.String("trip", "", "行程 ID（必填）")
-	apiURL := fs.String("api", defaultAPIURL, "server base URL")
+	apiURL := fs.String("api", defaultAPI, "server base URL")
 	_ = fs.Parse(args)
 	if *trip == "" {
 		fatal("notify 需要 -trip")

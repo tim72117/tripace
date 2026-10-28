@@ -14,13 +14,13 @@ import (
 // 一條漏網之魚。副作用是現在需要先登入(`tripace-cli login --web`)才能
 // 使用這個子命令——之前只要本機 server/.env 有 GOOGLE_PLACES_API_KEY
 // 就能跑,現在跟其餘子命令一致改走 JWT 驗證的 /internal/* 路由。
-func cmdGeocode(args []string) {
+func cmdGeocode(args []string, defaultAPI string) {
 	fs := flag.NewFlagSet("geocode", flag.ExitOnError)
 	place := fs.String("place", "", "地點名稱（必填）")
 	region := fs.String("region", "", "國家代碼限制，如 jp / tw / cn（可選）")
 	maxN := fs.Int("n", 1, "回傳候選筆數（1-5，預設 1）")
 	entryID := fs.String("entry", "", "寫入座標的 entry ID（指定時取第一筆自動寫入）")
-	apiURLFlag := fs.String("api", defaultAPIURL, "server URL")
+	apiURLFlag := fs.String("api", defaultAPI, "server URL")
 	_ = fs.Parse(args)
 
 	if *place == "" && fs.NArg() > 0 {
