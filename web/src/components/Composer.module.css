@@ -82,6 +82,84 @@
    跟「可送出」狀態一樣讓使用者誤以為能點擊。兩邊呼叫端都需要:展示頁
    的假輸入框永遠停用,正式頁在 apiKeyMissing/urlMissing/isThinking 時
    也會停用。 */
+/* statusIcon——輸入框左側的狀態圖示。靜態時是安靜的灰色星芒;active(AI 推論中)時轉為強調色,
+   外圈出現旋轉的漸層光環,星芒做呼吸脈動。動畫只用 transform/opacity,不觸發版面重排。 */
+.statusIcon {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ios-gray);
+  transition: color 0.3s ease;
+}
+.statusRing {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  opacity: 0;
+  background: conic-gradient(from 0deg, transparent 0 40%, var(--color-accent) 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  transition: opacity 0.3s ease;
+}
+.statusGlyph {
+  position: relative;
+}
+.statusIcon[data-active='true'] {
+  color: var(--color-accent);
+}
+.statusIcon[data-active='true'] .statusRing {
+  opacity: 1;
+  animation: composerStatusSpin 1.2s linear infinite;
+}
+.statusIcon[data-active='true'] .statusGlyph {
+  animation: composerStatusPulse 1.6s ease-in-out infinite;
+}
+@keyframes composerStatusSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes composerStatusPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.82);
+    opacity: 0.7;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .statusIcon[data-active='true'] .statusRing,
+  .statusIcon[data-active='true'] .statusGlyph {
+    animation: none;
+  }
+}
+
+/* extraBtn——送出鈕旁邊的次要按鈕:同尺寸的圓形,但是淡底深色線條,視覺上比送出鈕次要。 */
+.extraBtn {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-dark);
+  border: 1px solid var(--ios-sep);
+  cursor: pointer;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.extraBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .sendBtn:disabled {
   opacity: 0.45;
   cursor: default;

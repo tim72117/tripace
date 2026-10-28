@@ -30,6 +30,61 @@ beforeEach(() => {
   localStorage.removeItem(PLAN_TIMELINE_STORAGE_KEY)
 })
 
+describe('replaceStop(換地點)', () => {
+  it('保留 id/順序/時間/備註,換掉地點並清掉舊地點的說明與座標', () => {
+    const { result } = renderHook(() => usePlanTimelineCore())
+    act(() => {
+      result.current.addStop(null, 'a', { type: 'stop', name: '赤崁樓', time: '09:00', desc: '舊說明', lat: 1, lng: 2, placeId: 'old', tags: ['古蹟'] })
+      result.current.addStop('a', 'b', { type: 'stop', name: '安平古堡', time: '11:00' })
+    })
+    act(() => {
+      result.current.setStopNote('a', '要預約', undefined)
+    })
+    let ok = false
+    act(() => {
+      ok = result.current.replaceStop('a', { placeId: 'new', name: '孔廟' })
+    })
+    expect(ok).toBe(true)
+    const node = getNode(result.current.timeline, 'a')!
+    expect(node).toMatchObject({ id: 'a', name: '孔廟', placeId: 'new', time: '09:00' })
+    expect(node.desc).toBeUndefined()
+    expect(node.lat).toBeUndefined()
+    expect(node.tags).toBeUndefined()
+    expect(node.note?.text).toBe('要預約')
+    expect(namesOf(result.current.timeline)).toEqual(['孔廟', '安平古堡'])
+  })
+
+  it('主題點/候選卡:換地點時一併清掉舊地點的子景點(attractions、places)', () => {
+    const { result } = renderHook(() => usePlanTimelineCore())
+    act(() => {
+      result.current.addStop(null, 'a', { type: 'stop', name: '舊主題點', placeId: 'old', attractions: ['lmk_1'], places: ['p1', 'p2'] })
+    })
+    act(() => {
+      result.current.replaceStop('a', { placeId: 'new', name: '新地點' })
+    })
+    const node = getNode(result.current.timeline, 'a')!
+    expect(node.attractions).toBeUndefined()
+    expect(node.places).toBeUndefined()
+    expect(node.placeId).toBe('new')
+  })
+
+  it('節點不存在或沒給 placeId 回 false,不改動', () => {
+    const { result } = renderHook(() => usePlanTimelineCore())
+    act(() => {
+      result.current.addStop(null, 'a', { type: 'stop', name: '赤崁樓' })
+    })
+    let r1 = true
+    let r2 = true
+    act(() => {
+      r1 = result.current.replaceStop('nope', { placeId: 'x' })
+      r2 = result.current.replaceStop('a', { placeId: '' })
+    })
+    expect(r1).toBe(false)
+    expect(r2).toBe(false)
+    expect(namesOf(result.current.timeline)).toEqual(['赤崁樓'])
+  })
+})
+
 describe('基本操作(無 store,純記憶體)', () => {
   it('插入節點後時間軸依序反映出來', () => {
     const { result } = renderHook(() => usePlanTimelineCore())
@@ -258,6 +313,26 @@ describe('插入後的背景查詢預設流程', () => {
     const node = getNode(result.current.timeline, 'a')
     expect(node).toMatchObject({ name: 'N-p1', desc: 'S-p1', lat: 10, lng: 20 })
     expect(result.current.nodeStatus.get('a')).toBeUndefined()
+  })
+
+  it('replaceStop 換地點:標 loading → 反查新地點寫回名稱/座標,並重算與上一站、下一站的交通', async () => {
+    const dataSource = fakeDataSource()
+    const { result } = renderHook(() => usePlanTimelineCore({ dataSource }))
+    act(() => {
+      result.current.addStop(null, 'a', withCoords('A', 1, 2))
+      result.current.addStop('a', 'b', withCoords('B', 3, 4))
+      result.current.addStop('b', 'c', withCoords('C', 5, 6))
+    })
+    await settle()
+    dataSource.transitEstimate.mockClear()
+    act(() => {
+      result.current.replaceStop('b', { placeId: 'p9', name: '新地點' })
+    })
+    expect(result.current.nodeStatusRef.current.get('b')?.loading).toBe(true)
+    expect(dataSource.placeDetails).toHaveBeenCalledWith('p9')
+    await settle()
+    expect(getNode(result.current.timeline, 'b')).toMatchObject({ name: 'N-p9', desc: 'S-p9', lat: 10, lng: 20 })
+    expect(dataSource.transitEstimate).toHaveBeenCalledTimes(2)
   })
 
   it('反查完成、座標落地後,與上一站之間的交通會重算', async () => {

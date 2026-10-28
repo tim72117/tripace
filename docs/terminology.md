@@ -68,6 +68,7 @@
 | 旅程 | 旅程 | `Trip` / `TripRole`（`web/src/types.ts`，型別/變數名稱維持英文不變） | `model.Trip` / `tripRow`（`server/internal/store/entity.go`） | 表 `trips` |
 | 地點 | 地點 | `Entry`（`web/src/types.ts`） | `entryRow`（`server/internal/store/entity.go`） | 表 `entries` |
 | 時間軸 | 時間軸 | `MultiTrackTimeline`（`web/src/timeline/Timeline.tsx`） | — | — |
+| 規劃旅程（前端） | 無獨立畫面（尚未有介面） | `PlanTrip`（`web/src/planning/trip/trips.ts`，索引存 `localStorage` 的 `tripace.planTrips`；`useTrips` hook 訂閱）。一趟規劃的容器：id、使用者取的名稱、自動標題、建立/最後編輯時間，底下掛一份規劃時間軸 `PlanTimeline`（天、站點、住宿，見 `planning/timeline/model.ts`）。與上面的「旅程」（後端 `Trip`、團隊協作）刻意分開、不接後端，之後整合再決定對應；第一次讀取時從舊的草稿索引與固定 key 那份行程播種，不改寫舊資料 | — | — |
 
 ## 地理輪廓底圖
 

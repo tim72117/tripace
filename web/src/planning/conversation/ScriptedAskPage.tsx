@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import type { AskPageCandidate, AskPageSelection } from './asktools'
 import type { PlanAiDataSource } from '../data/source'
 import { CandidateCard } from './CandidateCard'
+import { AskOptionList } from './AskOptionList'
 import styles from './AskPage.module.css'
 
 // ScriptedAskPage.tsx — 播放態專用的候選景點詢問頁,用來「置換」正式的
@@ -242,7 +243,7 @@ export function ScriptedAskPage({
         <div className={`${styles.closeBtn} ${styles.cornerBtnStatic}`} aria-hidden="true">
           <X size={20} strokeWidth={2.25} aria-hidden="true" />
         </div>
-        <div className={[styles.directionScroller, stacked ? styles.directionScrollerStacked : ''].filter(Boolean).join(' ')}>
+        <AskOptionList stacked={stacked}>
           {candidates.map((candidate) => {
             const checked = selected.includes(candidate.placeId)
             const picking = pickingId === candidate.placeId
@@ -265,7 +266,7 @@ export function ScriptedAskPage({
               </CandidateCard>
             )
           })}
-        </div>
+        </AskOptionList>
         <div className={styles.actions}>
           <div
             className={[

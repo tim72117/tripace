@@ -17,6 +17,8 @@ import { findTravelCityById, findTravelCountry, type TravelCity } from '../conve
 // CITY_ASK_LOADING_REASON/CITY_ASK_REASON——選完城市後前端自己開的景點選單沒有 LLM 提供的 reason,
 // 固定文案(使用者明確要求「用 選擇感興趣的景點」,不要「台北有哪些景點?」這種問句)。
 export const CITY_ASK_REASON = '選擇感興趣的景點'
+// PICKED_INTERESTS_PROMPT——選完感興趣景點後送給 AI 的固定一句話(預設流程與「選擇景點」按鈕共用)。
+export const PICKED_INTERESTS_PROMPT = '我已經選好感興趣的地點了,請幫我安排行程。'
 export function cityAskLoadingReason(city: TravelCity): string {
   return `正在查詢${city.name}的景點…`
 }
@@ -26,10 +28,29 @@ export function cityAskLoadingReason(city: TravelCity): string {
 // CITY_LOOKUP_LOADING_MIN_MS,避免剛出現就被換掉。
 export const CITY_LOOKUP_LOADING_DELAY_MS = 150
 export const CITY_LOOKUP_LOADING_MIN_MS = 300
-// CITY_LOOKUP_TIMEOUT_MS——景點查詢的逾時(2026-10):後端或網路一直不回時,不讓使用者卡在查詢中。逾時視同「無結果」,
-// 走同一條收尾(收起詢問頁回到時間軸),並 abort 傳給 searchCityAttractions 的 signal;逾時後晚到的回應一律丟棄。
-// 15 秒:附近景點查詢正常在 1–3 秒內回來,含 Google Nearby 補點的慢情況也遠低於此,留足餘裕又不至於讓人乾等太久。
-export const CITY_LOOKUP_TIMEOUT_MS = 15_000
+// 景點查詢沒有逾時(使用者明確要求「不要逾時」):後端或網路一直不回時停在查詢中,使用者可按右上角「不用了」關閉
+// (關閉會中止進行中的請求,晚到的結果一律丟棄)。
+
+// ===== 統一啟動(startAsk)=====
+// StartAskInput——啟動參數:既有的詢問頁輸入(candidates/explore/country/city/transport/text),再加一種 search:
+// 由前端自己查候選(沿用「查詢中」外殼與中止),查完才換成候選頁。選完拿得到名稱(探查模式拿不到)。
+export type StartAskInput =
+  | AskPageInput
+  | { search: (signal: AbortSignal) => Promise<AskPageCandidate[]>; reason?: string }
+
+// AskSelectedCandidate——onDone 收到的選擇;name 只有候選頁(candidates/search)查得到。
+export interface AskSelectedCandidate extends AskPageSelection {
+  name?: string
+}
+
+// StartAskOptions——onDone/onCancel 跟著「這一次詢問」的生命週期:選了至少一個 → onDone;關閉、不用了、被其他方式結束
+// (例如用輸入框送出文字)→ onCancel;兩者最多呼叫一個、一次。有給 onDone 時不再走預設的後續
+// (記選擇後送「請幫我安排行程」),但仍會寫入 userSelectionRef,讓 AI 之後能用 get_user_selection 查。
+export interface StartAskOptions {
+  input: StartAskInput
+  onDone?: (selected: AskSelectedCandidate[]) => void
+  onCancel?: () => void
+}
 
 export interface AskPageFlowOptions {
   bridge: Pick<
@@ -37,7 +58,7 @@ export interface AskPageFlowOptions {
     'askPageInput' | 'openAskPage' | 'handleAskPageDone' | 'replaceAskPage' | 'advanceAskPage' | 'pendingId'
   >
   // searchCityAttractions——選完城市後查該城市附近的觀光候選(TripPlanPage 接 fetchPlanAiAttractionSearch)。
-  // signal——逾時或使用者在查詢中按關閉時會 abort;實作可以轉給 fetch 中止請求(不轉也沒關係,結果晚到會被丟棄)。
+  // signal——使用者在查詢中按關閉時會 abort;實作可以轉給 fetch 中止請求(不轉也沒關係,結果晚到會被丟棄)。
   searchCityAttractions: (city: TravelCity, signal: AbortSignal) => Promise<AskPageCandidate[]>
   // sendPrompt——「使用者送出一句話」的唯一入口(usePlanAiChatBridge.sendPrompt:conversationID 延續、
   // 推論中併發保護、錯誤訊息)。回傳 true 代表已送出。
@@ -72,6 +93,8 @@ export function useAskPageFlow({
   // cityLookupHoldRef——選完城市、查詢中還沒顯示的那段時間(最多 CITY_LOOKUP_LOADING_DELAY_MS),城市頁仍在畫面上、
   // 仍是同一個等待;記下那個等待的 id,期間同一個畫面送上來的 onDone/onBack(連點、改點別的城市、按不用了)一律
   // 忽略,不會觸發第二次查詢。等待的 id 一變(被別的方式結束、或已換成查詢中/候選),保護自動失效。
+  // sessionRef——startAsk 開的那一次詢問(等待 id + 選完時的候選名稱);id 與目前等待不同代表已過期,一律忽略。
+  const sessionRef = useRef<{ id: number; names: Map<string, string> } | null>(null)
   const cityLookupHoldRef = useRef<number | null>(null)
   const isHeldByCityLookup = useCallback(
     () => cityLookupHoldRef.current !== null && cityLookupHoldRef.current === pendingId(),
@@ -112,8 +135,27 @@ export function useAskPageFlow({
       if (isHeldByCityLookup()) return
       const input = askPageInput
 
+      // startAsk 開的詢問:自訂結束,不走下面依輸入形狀決定的預設後續。
+      const session = sessionRef.current
+      if (session && session.id === pendingId()) {
+        if ('candidates' in input || 'explore' in input) {
+          session.names = new Map(
+            ('candidates' in input ? input.candidates : []).flatMap((c) => (c.name ? [[c.placeId, c.name] as const] : [])),
+          )
+          if (selected.length > 0) {
+            userSelectionRef.current = {
+              kind: 'attractions',
+              items: selected.map((sel) => ({ placeId: sel.placeId, attractionId: sel.attractionId, name: session.names.get(sel.placeId) })),
+              selectedAt: new Date().toISOString(),
+            }
+          }
+        }
+        resolveAskPage(selected)
+        return
+      }
+
       // 查詢中按右上角關閉(onDone([])):結束等待之外,也中止進行中的查詢(之後晚到的結果本來就會因等待 id 不同被丟棄,
-      // 這裡是不讓請求白白跑完、逾時計時器也一併清掉)。
+      // 這裡是不讓請求白白跑完、計時器也一併清掉)。
       if ('candidates' in input && input.loading) activeLookupRef.current?.()
 
       // 選完城市要「不關閉詢問頁、立刻顯示查詢中」(見下方),所以不在這裡先 resolve。
@@ -165,7 +207,7 @@ export function useAskPageFlow({
       // 其餘排程規則交給 thought.md(使用者明確要求「不要有其他指示」)。一個都沒選(「不用了」)不送。
       if ('candidates' in input || 'explore' in input) {
         if (selected.length === 0) return
-        void sendPromptRef.current('我已經選好感興趣的地點了,請幫我安排行程。')
+        void sendPromptRef.current(PICKED_INTERESTS_PROMPT)
         return
       }
 
@@ -212,16 +254,14 @@ export function useAskPageFlow({
       const controller = new AbortController()
       let loadingTimer: ReturnType<typeof setTimeout> | null = null
       let minTimer: ReturnType<typeof setTimeout> | null = null
-      let timeoutTimer: ReturnType<typeof setTimeout> | null = null
       const finish = () => {
         if (activeLookupRef.current === cancelFlow) activeLookupRef.current = null
       }
-      // cancelFlow——清掉這次流程的所有計時器(150ms 延遲顯示、300ms 最短顯示、逾時)並 abort 請求。
+      // cancelFlow——清掉這次流程的所有計時器(150ms 延遲顯示、300ms 最短顯示)並 abort 請求。
       const cancelFlow = () => {
         cancelled = true
         cancel(loadingTimer)
         cancel(minTimer)
-        cancel(timeoutTimer)
         releaseHold()
         controller.abort()
         finish()
@@ -261,8 +301,6 @@ export function useAskPageFlow({
 
       const settle = (candidates: AskPageCandidate[]) => {
         if (cancelled || outcome) return
-        cancel(timeoutTimer)
-        timeoutTimer = null
         outcome = { candidates }
         if (loadingPendingId !== null) {
           applyAfterLoading()
@@ -281,14 +319,6 @@ export function useAskPageFlow({
         void advanceAskPage(selected, { candidates, reason: CITY_ASK_REASON, back })
       }
 
-      // 逾時:視同無結果(settle([]) 走跟查無結果同一條收尾),並中止請求;之後晚到的回應因 outcome 已定而被忽略。
-      timeoutTimer = schedule(() => {
-        timeoutTimer = null
-        if (cancelled || outcome) return
-        controller.abort()
-        settle([])
-      }, CITY_LOOKUP_TIMEOUT_MS)
-
       void (async () => {
         let candidates: AskPageCandidate[] = []
         try {
@@ -296,7 +326,7 @@ export function useAskPageFlow({
         } catch {
           candidates = []
         }
-        // 已逾時、使用者已關閉或返回(abort):不再處理這次結果。
+        // 使用者已關閉或返回(abort):不再處理這次結果。
         if (controller.signal.aborted) return
         settle(candidates)
       })()
@@ -307,7 +337,7 @@ export function useAskPageFlow({
   // handleAskPageBack——「返回上一層」:不是結束詢問,原地換回上一層(replaceAskPage 不動等待,之後在上一層照常選擇時
   // 由 handleAskPageDone 結束這個等待並往下開)。依目前的 input 決定回哪:
   //   - 景點候選/查詢中(input.back 有值,2026-10 新增):換回當時的城市頁(back.city 原樣重現,城市頁自己的返回仍在)。
-  //     進行中的景點查詢一併中止(activeLookupRef:清掉 150ms 延遲顯示、300ms 最短顯示、逾時計時器並 abort),
+  //     進行中的景點查詢一併中止(activeLookupRef:清掉 150ms 延遲顯示、300ms 最短顯示計時器並 abort),
   //     晚到的結果不會再把候選塞回。已記下的城市選擇(userSelectionRef)不清,使用者重選城市時會被覆蓋。
   //   - 城市頁:換回國家頁(countryIds 原樣重現選國家當時的篩選)。2026-10 修正:原本走 openAskPage,但城市頁本身
   //     還在等待中,openAskPage 的不搶佔保護直接忽略這次呼叫,按了沒反應。
@@ -366,5 +396,50 @@ export function useAskPageFlow({
     sendText(queued)
   }, [isThinking, sendText])
 
-  return { handleAskPageDone, handleAskPageBack, submitAskPageText }
+  // startAsk——統一的啟動入口:帶入啟動參數(input)與結束回呼(onDone/onCancel)。回傳 false 代表已有詢問頁在等待,這次沒開
+  // (與 openAskPage「不搶佔」的規則一致),回呼不會被呼叫。
+  const startAsk = useCallback(
+    ({ input, onDone, onCancel }: StartAskOptions): boolean => {
+      if (pendingId() !== null) return false
+      const searchSource = 'search' in input ? input : null
+      const openInput: AskPageInput = searchSource
+        ? { candidates: [], reason: searchSource.reason, loading: true }
+        : (input as AskPageInput)
+      const ended = openAskPage(openInput)
+      const id = pendingId()
+      if (id === null) return false
+      const session = { id, names: new Map<string, string>() }
+      sessionRef.current = session
+      const controller = new AbortController()
+
+      // 詢問結束(不論用哪種方式)才會 resolve:中止進行中的查詢,再依結果呼叫回呼。
+      void ended.then((selected) => {
+        controller.abort()
+        if (sessionRef.current === session) sessionRef.current = null
+        if (selected.length > 0) {
+          onDone?.(selected.map((sel) => ({ ...sel, name: session.names.get(sel.placeId) })))
+        } else {
+          onCancel?.()
+        }
+      })
+
+      if (searchSource) {
+        const alive = () => !controller.signal.aborted && pendingId() === id
+        searchSource
+          .search(controller.signal)
+          .then((candidates) => {
+            if (!alive()) return
+            if (candidates.length === 0) resolveAskPage([])
+            else replaceAskPage({ candidates, reason: searchSource.reason })
+          })
+          .catch(() => {
+            if (alive()) resolveAskPage([])
+          })
+      }
+      return true
+    },
+    [openAskPage, pendingId, replaceAskPage, resolveAskPage, schedule, cancel],
+  )
+
+  return { handleAskPageDone, handleAskPageBack, submitAskPageText, startAsk }
 }

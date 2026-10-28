@@ -38,6 +38,10 @@ export interface PlanOperations {
   setStopTime: (stopId: string, newTime: string) => boolean
   // setStopNote——把備註寫在既有節點自己身上;找不到節點回 anchor_not_found。insertedId 是 anchorId 本身。
   setStopNote: (anchorId: string, text: string, category: string | undefined) => InsertAfterResult
+  // replaceStop——把某一站換成另一個地點:保留這一站的 id、所在天與順序、時間、停留時長與備註,換掉地點(placeId、名稱)
+  // 並清掉舊地點的說明/座標/交通/標籤/縮圖/子景點(attractions、places),接著走與插入後相同的背景查詢補回新地點資料(卡片回到「查詢中」),
+  // 座標落地後重算它與下一站的交通。節點不存在或不是 stop、存檔失敗回 false。
+  replaceStop: (stopId: string, place: { placeId: string; name?: string }) => boolean
   // retryStop——重新查詢某一站的地點資料(卡片的「重試」)。
   retryStop: (stopId: string) => void
   addDay: (atDay: number | undefined) => AddDayResult

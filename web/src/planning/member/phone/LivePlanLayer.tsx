@@ -1,7 +1,8 @@
 import { lazy, Suspense } from 'react'
 import type { ClientConfig } from '../../../api'
 import { getPlanAiApiDataSource } from '../../data/api'
-import { localStoragePlanTimelineStore } from '../../timeline/storage'
+import { NEW_TRIP_DRAFT_ENABLED } from '../../../DesktopShared'
+import { useActiveTripStore } from '../../trip/useActiveTripStore'
 import type { LivePlanLayerContract } from '../../shared/layerContracts'
 
 // PlanPanelContent:「AI 規劃」正式功能頁(TripPlanPage 加兩邊共同的設定)——lazy 載入,理由同 planning/member/desktop/LivePlanLayer.tsx:
@@ -29,12 +30,20 @@ export function LivePlanLayer({
   selectedStopId,
   tripPlanProps,
 }: LivePlanLayerProps) {
+  // 時間軸存在「使用中那一趟行程」底下(見 planning/trip);tripId 當 key,切換/新增行程時面板整個重新掛載。
+  const { tripId, store, startNewTrip } = useActiveTripStore()
+  const handleNewTrip = () => {
+    if (startNewTrip()) tripPlanProps.onSelectedStopChange(null)
+  }
   return (
     <Suspense fallback={null}>
       <PlanPanelContent
+        key={tripId}
         cfg={cfg}
         dataSource={getPlanAiApiDataSource(cfg)}
-        store={localStoragePlanTimelineStore}
+        store={store}
+        // 「新行程」按鈕只在 NEW_TRIP_DRAFT_ENABLED(VITE_FEATURE_NEW_TRIP_DRAFT,預設關)開啟時提供。
+        onNewDraft={NEW_TRIP_DRAFT_ENABLED ? handleNewTrip : undefined}
         selectedStopId={selectedStopId}
         {...tripPlanProps}
       />

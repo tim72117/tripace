@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useStableCallback } from '../../hooks/useStableCallback'
 import type { MapHandle } from './NativeMapBase'
 import type { ResolvedTheme } from '../../theme'
@@ -10,6 +10,9 @@ import {
 } from './draw/useSharedDrawLayer'
 import type { LatLng } from './draw/types'
 import type { RouteLineSegment } from './draw/layers/routeLineLayer'
+import type { GeoSearchResult } from '../../api'
+import { itemKey } from '../explore/selectedKey'
+import type { AskMapView } from '../conversation/askMapView'
 import type { HoverTransitPair } from './marker/planStops'
 import type { PlanStopMarker } from './marker/planStops'
 
@@ -68,6 +71,8 @@ export interface PlanMapSharedProps {
   currentPosition?: LatLng | null
   // theme:只收明確的 'dark' | 'light'(傳給 NativeMapBase 的 colorScheme 只能在建圖時設定,預設日夜切換時重建;登入後的 PlanMap 傳 rebuildOnThemeChange=false 不重建);三態的 Theme 先經 hooks/useResolvedTheme 解析。
   theme?: ResolvedTheme
+  // askMapView:詢問頁(選擇感興趣景點/更換地點)的候選點,畫成搜尋結果標記(見 conversation/askMapView.ts)。沒傳或空就不畫。
+  askMapView?: AskMapView
 }
 
 // AttractionGlowSource——各入口「光暈資料從哪來」的獨立 hook 共同的回傳形狀(2026-10-23):
@@ -78,6 +83,58 @@ export interface PlanMapSharedProps {
 export interface AttractionGlowSource {
   attractionGlow: AttractionGlowInput
   controls?: ReactNode
+}
+
+// mergeAskMapView——把詢問頁候選點(askMapView,見 conversation/askMapView.ts)併進搜尋結果標記的輸入:
+// 候選是 kind 'place' 的結果,已勾選的併進 candidateKeys(畫勾選徽章),點標記切換勾選(onToggle)。
+// 沒有候選點時原樣回傳 searchResults(不改身分)。
+export function mergeAskMapView(searchResults: SearchResultsInput | undefined, ask: AskMapView | undefined): SearchResultsInput | undefined {
+  if (!ask || ask.results.length === 0) return searchResults
+  const selected = new Set(ask.selectedPlaceIds)
+  const candidateKeys = new Set(searchResults?.candidateKeys)
+  for (const r of ask.results) {
+    if (r.placeId && selected.has(r.placeId)) candidateKeys.add(itemKey('place', r))
+  }
+  const askSet = new Set<GeoSearchResult>(ask.results)
+  return {
+    results: [...(searchResults?.results ?? []), ...ask.results],
+    selectedKey: searchResults?.selectedKey,
+    hoverKey: searchResults?.hoverKey,
+    candidateKeys,
+    onSelect: (r) => {
+      if (askSet.has(r)) {
+        if (r.placeId) ask.onToggle?.(r.placeId)
+        return
+      }
+      searchResults?.onSelect?.(r)
+    },
+  }
+}
+
+// ASK_FIT_DEBOUNCE_MS——候選點座標常是陸續查到的(沒自帶座標的要等詳細資料),點集合每變動一次就立刻對焦會讓鏡頭連跳好幾下;
+// 等這段時間內沒有新變動再對焦一次。
+export const ASK_FIT_DEBOUNCE_MS = 300
+
+// useFitToAskPoints——詢問頁候選點出現(或換了一批)時把鏡頭調到能看見全部;只有勾選變動不動鏡頭。單點只平移不縮放。
+// 點集合穩定 ASK_FIT_DEBOUNCE_MS 後才動作(見該常數)。
+export function useFitToAskPoints(mapRef: React.RefObject<google.maps.Map | null>, mapReady: boolean, results: GeoSearchResult[]) {
+  const pointsKey = results.map((r) => `${r.placeId}|${r.lat}|${r.lng}`).join(',')
+  useEffect(() => {
+    if (!mapReady || results.length === 0) return
+    const timer = window.setTimeout(() => {
+      const map = mapRef.current
+      if (!map) return
+      if (results.length === 1) {
+        map.panTo({ lat: results[0].lat, lng: results[0].lng })
+        return
+      }
+      const bounds = new google.maps.LatLngBounds()
+      results.forEach((r) => bounds.extend({ lat: r.lat, lng: r.lng }))
+      map.fitBounds(bounds, 64)
+    }, ASK_FIT_DEBOUNCE_MS)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, pointsKey])
 }
 
 const NO_STOPS: PlanStopMarker[] = []
@@ -102,6 +159,7 @@ export function usePlanMapDrawing({
   tripEntries,
   searchResults,
   attractionGlow,
+  askMapView,
 }: PlanMapSharedProps & {
   mapRef: React.RefObject<google.maps.Map | null>
   mapReady: boolean
@@ -110,6 +168,22 @@ export function usePlanMapDrawing({
   searchResults?: SearchResultsInput
   attractionGlow?: AttractionGlowInput
 }) {
+  // 依賴拆開寫:searchResults 在呼叫端是每次渲染新建的物件,身分不穩,但裡面的 results/鍵值才是穩定的;
+  // 以它整個物件當依賴會讓併入後的結果每次渲染都換新、統一繪製層跟著重算。
+  const srResults = searchResults?.results
+  const srSelectedKey = searchResults?.selectedKey
+  const srHoverKey = searchResults?.hoverKey
+  const srCandidateKeys = searchResults?.candidateKeys
+  const srOnSelect = searchResults?.onSelect
+  const mergedSearchResults = useMemo(
+    () => mergeAskMapView(
+      searchResults ?? (srResults ? { results: srResults } : undefined),
+      askMapView,
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [srResults, srSelectedKey, srHoverKey, srCandidateKeys, srOnSelect, askMapView],
+  )
+  useFitToAskPoints(mapRef, mapReady, askMapView?.results ?? [])
   return useSharedDrawLayer({
     mapRef,
     mapReady,
@@ -125,7 +199,7 @@ export function usePlanMapDrawing({
     },
     routeSegments,
     tripEntries,
-    searchResults,
+    searchResults: mergedSearchResults,
     attractionGlow,
   })
 }

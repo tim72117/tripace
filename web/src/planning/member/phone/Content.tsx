@@ -111,7 +111,7 @@ export function Content(props: ContentProps) {
   // 都寫同一個 state,不會出現兩邊各自高亮不同站。
   // 狀態本身(站點、選取、hover、轉乘配對與 TripPlanPage 的四個回呼)在共用的 planning/timeline/usePlanStopsState,
   // 登入後桌面(planning/member/desktop/Content)同樣使用。
-  const { stops, routeSegments, selectedStopId, hoverStopId, hoverTransitPair, setSelectedStopId, tripPlanProps } = usePlanStopsState()
+  const { stops, routeSegments, selectedStopId, hoverStopId, hoverTransitPair, askMapView, setSelectedStopId, tripPlanProps } = usePlanStopsState()
   // exploreActive/exploreTrigger:2026-10「探索」標籤從疊在地圖左上角
   // 搬到底部常駐功能列(使用者明確要求),這兩個 state 是這個元件與
   // PlanPhoneView.tsx 之間的橋接——exploreActive 是 PlanMap.tsx
@@ -294,7 +294,7 @@ export function Content(props: ContentProps) {
     { key: 'plan-ai', icon: Sparkles, title: '規劃', active: chatSheetOpen, onClick: () => setChatSheetOpen((v) => !v), beta: true },
   ]
   // visibleStopsView:傳給地圖的站點檢視,規劃面板關閉時整組遮蔽(桌面、手機共用,見 maskPlanStopsView)。
-  const visibleStopsView = maskPlanStopsView({ stops, selectedStopId, hoverStopId, hoverTransitPair }, chatSheetOpen)
+  const visibleStopsView = maskPlanStopsView({ stops, selectedStopId, hoverStopId, hoverTransitPair, askMapView }, chatSheetOpen)
 
   return (
     <>

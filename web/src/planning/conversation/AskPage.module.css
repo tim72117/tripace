@@ -362,6 +362,23 @@
   border-color: var(--ios-blue);
   box-shadow: 0 0 0 2px var(--ios-blue);
 }
+/* directionBadge——候選卡左上角的小標記(例如「已在行程」)。深色半透明底加白字,疊在照片上也讀得清楚;
+   不收事件(pointer-events: none),不影響點卡片勾選。 */
+.directionBadge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 1;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(20, 20, 19, 0.7);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
 .directionCheck {
   position: absolute;
   top: 6px;

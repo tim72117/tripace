@@ -90,9 +90,9 @@ describe('maskPlanStopsView', () => {
     expect(maskPlanStopsView(view, true)).toBe(view)
   })
 
-  it('面板關閉:站點、選取、hover、轉乘配對整組遮蔽,且每次是同一個(身分穩定)', () => {
+  it('面板關閉:站點、選取、hover、轉乘配對、詢問頁候選點整組遮蔽,且每次是同一個(身分穩定)', () => {
     const hidden = maskPlanStopsView(view, false)
-    expect(hidden).toEqual({ stops: [], selectedStopId: null, hoverStopId: null, hoverTransitPair: null })
+    expect(hidden).toEqual({ stops: [], selectedStopId: null, hoverStopId: null, hoverTransitPair: null, askMapView: { results: [], selectedPlaceIds: [] } })
     expect(maskPlanStopsView(view, false)).toBe(hidden)
   })
 })

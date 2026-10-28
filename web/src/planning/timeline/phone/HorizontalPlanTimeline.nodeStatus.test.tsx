@@ -22,13 +22,13 @@ const stopCard = (c: HTMLElement) => {
   return cards[0]
 }
 
-// expectLoadingCard——查詢中的卡:照片橫幅位置是 photoBannerPlaceholder 內一塊骨架,站名/描述各一條骨架(卡片直屬子元素),
+// expectLoadingCard——查詢中的卡:照片橫幅位置是 photoBannerPlaceholder 內一塊骨架,站名/描述各一條骨架(卡片內層 .cardSlide 的直屬子元素),
 // 沒有 FramedImage、沒有真實名稱/描述。
 function expectLoadingCard(card: HTMLElement) {
   const banner = card.querySelector<HTMLElement>(`.${styles.photoBannerPlaceholder}`)!
   expect(banner).not.toBeNull()
   expect(statusSkeletons(banner)).toHaveLength(1)
-  expect(Array.from(card.children).filter((el) => el.getAttribute('data-skeleton') === 'block')).toHaveLength(2)
+  expect(Array.from(card.querySelector(`.${styles.cardSlide}`)!.children).filter((el) => el.getAttribute('data-skeleton') === 'block')).toHaveLength(2)
   expect(card.querySelector(`.${styles.photoBanner}, [data-status], img`)).toBeNull()
   expect(card.querySelector(`.${styles.name}, .${styles.desc}`)).toBeNull()
 }

@@ -352,6 +352,42 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}): Plan
     [setTimeline, setStatus, isStopGone, isUnmounted, timelineRef],
   )
 
+  // replaceStop — 換地點(見 PlanOperations.replaceStop)。節點原地更新、不經過 removeStop/addStop,所以 id、順序、時間不變,
+  // 也沒有淡出/插入動畫;之後走 followUpStop(placeId 有值且沒座標 → 反查地點、落地後重算交通)。
+  const replaceStop = useCallback(
+    (stopId: string, place: { placeId: string; name?: string }): boolean => {
+      const node = getNode(timelineRef.current, stopId)
+      if (!node || node.type !== 'stop' || !place.placeId) return false
+      onBeforeMutateRef.current?.()
+      const patch: Partial<PlanNodeData> = {
+        placeId: place.placeId,
+        name: place.name,
+        desc: undefined,
+        lat: undefined,
+        lng: undefined,
+        transitFromPrev: undefined,
+        tags: undefined,
+        thumbBg: undefined,
+        thumbIcon: undefined,
+        // 主題點/候選卡底下的子景點屬於舊地點,換地點後不該留著。
+        attractions: undefined,
+        places: undefined,
+      }
+      const committed = commitTimeline<boolean>(
+        (current) => ({ next: updateNode(current, stopId, patch), result: true }),
+        () => false,
+      )
+      if (!committed) return false
+      // 下一站的交通是以舊座標算的,先清掉,座標落地後由 refreshTransitAround 重算(連同下一站)。
+      const next = nextStopOf(timelineRef.current, stopId)
+      if (next) setTimeline((prev) => updateNode(prev, next.id, { transitFromPrev: undefined }))
+      const updated = getNode(timelineRef.current, stopId)
+      if (updated) followUpStop(stopId, updated)
+      return true
+    },
+    [commitTimeline, followUpStop, setTimeline, timelineRef],
+  )
+
   // 掛載後自動重試(選項 retryFailedOnMount):空依賴、只跑一次——是「掛載時的補救」不是持續監看,
   // 否則一個持續失敗的站點會變成無限重試迴圈。Strict Mode 的二次 effect 以 ref 擋下。
   const retriedOnMountRef = useRef(false)
@@ -549,6 +585,7 @@ export function usePlanTimelineCore(options: PlanTimelineCoreOptions = {}): Plan
     removeStop,
     setStopTime,
     retryStop,
+    replaceStop,
     addDay,
     moveDay,
     setLodging,

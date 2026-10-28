@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { HoverTransitPair } from '../map/marker/planStops'
 import type { PlanStopMarker } from '../map/marker/planStops'
 import type { RouteSegment } from './segments'
+import { EMPTY_ASK_MAP_VIEW, type AskMapView } from '../conversation/askMapView'
 
 // PlanSelection——「使用者現在在看哪一站」這組檢視狀態(選取、hover)。
 //
@@ -46,6 +47,8 @@ export function useReportedStops(selection: Pick<PlanSelection, 'setSelectedStop
   const [stops, setStops] = useState<PlanStopMarker[]>([])
   const [routeSegments, setRouteSegments] = useState<RouteSegment[]>([])
   const [hoverTransitPair, setHoverTransitPair] = useState<HoverTransitPair | null>(null)
+  // askMapView——詢問頁候選點(選擇感興趣景點/更換地點)的地圖檢視,由 TripPlanPage 經 onAskMapViewChange 回報,入口併進地圖的搜尋結果標記。
+  const [askMapView, setAskMapView] = useState<AskMapView>(EMPTY_ASK_MAP_VIEW)
 
   const { setSelectedStopId, setHoverStopId } = selection
   const tripPlanProps = useMemo(
@@ -55,11 +58,12 @@ export function useReportedStops(selection: Pick<PlanSelection, 'setSelectedStop
       onSelectedStopChange: setSelectedStopId,
       onHoverStopChange: setHoverStopId,
       onHoverTransitChange: setHoverTransitPair,
+      onAskMapViewChange: setAskMapView,
     }),
     [setSelectedStopId, setHoverStopId],
   )
 
-  return { stops, routeSegments, hoverTransitPair, tripPlanProps }
+  return { stops, routeSegments, hoverTransitPair, askMapView, tripPlanProps }
 }
 
 // maskPlanStopsView——面板(規劃面板)關閉時,遮蔽要傳給地圖的站點檢視(2026-10 從登入後手機 planning/member/phone/Content 與桌面
@@ -75,9 +79,11 @@ export interface PlanStopsViewProps {
   selectedStopId: string | null
   hoverStopId: string | null
   hoverTransitPair: HoverTransitPair | null
+  // askMapView——詢問頁候選點;面板關閉時一併遮蔽。選填(沒有消費端的呼叫可以不傳)。
+  askMapView?: AskMapView
 }
 
-const HIDDEN_VIEW: PlanStopsViewProps = { stops: [], selectedStopId: null, hoverStopId: null, hoverTransitPair: null }
+const HIDDEN_VIEW: PlanStopsViewProps = { stops: [], selectedStopId: null, hoverStopId: null, hoverTransitPair: null, askMapView: EMPTY_ASK_MAP_VIEW }
 
 export function maskPlanStopsView(view: PlanStopsViewProps, visible: boolean): PlanStopsViewProps {
   return visible ? view : HIDDEN_VIEW
@@ -85,7 +91,11 @@ export function maskPlanStopsView(view: PlanStopsViewProps, visible: boolean): P
 
 // PlanPanelStopsProps:useReportedStops 回傳的 tripPlanProps 的型別——規劃面板(PlanPanelContent / TripPlanPage)把站點、
 // 連線段、選取、hover、轉乘配對回報給入口用的五個回呼,各入口的 LivePlanLayer 用它當 prop 型別。
-export type PlanPanelStopsProps = ReturnType<typeof useReportedStops>['tripPlanProps']
+// onAskMapViewChange 是選填:不是每個消費端都畫詢問頁候選點(見 conversation/askMapView.ts),測試與簡化入口可以不傳。
+type ReportedTripPlanProps = ReturnType<typeof useReportedStops>['tripPlanProps']
+export type PlanPanelStopsProps = Omit<ReportedTripPlanProps, 'onAskMapViewChange'> & {
+  onAskMapViewChange?: ReportedTripPlanProps['onAskMapViewChange']
+}
 
 // PlanPanelStopsBinding——三個入口的 LivePlanLayer(/ai-plan、登入後手機、登入後桌面)共同的「站點檢視接線」props:
 // 受控的 selectedStopId(時間軸卡片與地圖圓點共用同一份選取,雙向同步)加四個回報回呼(tripPlanProps)。

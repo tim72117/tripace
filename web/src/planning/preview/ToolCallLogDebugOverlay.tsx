@@ -8,21 +8,23 @@
 // 自己註冊給 SDK 的 tool handler 外面包一層記錄,見 toAgentBridgeTools
 // 的 onToolResult 參數)。
 //
-// 固定在畫面左下角、可捲動、半透明深色底——跟既有兩個 debug 疊圖共用
-// 同一種「疊在畫面上、不擋互動核心區域」的視覺語言,但刻意選左下角
-// (SafeAreaDebugOverlay 的面板在右側,避免兩者互相遮擋)。
+// 可捲動、半透明深色底——跟既有兩個 debug 疊圖共用同一種「疊在畫面上、
+// 不擋互動核心區域」的視覺語言。position: fixed、z-index 高於版面,要由頁面最外層渲染(不放在地圖背景
+// 裡,否則會被前景的時間軸/面板蓋住)。桌面固定在左下角(SafeAreaDebugOverlay 的面板在右側,避免互相遮擋);
+// 手機底部是時間軸與輸入框,改放在畫面上方、寬度撐滿,高度較矮。
 import type { ToolCallLogEntry } from '../panel/TripPlanPage'
+import { useIsDesktop } from '../../hooks/useIsDesktop'
 
 export function ToolCallLogDebugOverlay({ log }: { log: ToolCallLogEntry[] }) {
+  const isDesktop = useIsDesktop()
   return (
     <div
       style={{
-        position: 'absolute',
-        left: 12,
-        bottom: 12,
-        zIndex: 30,
-        width: 320,
-        maxHeight: '50vh',
+        position: 'fixed',
+        zIndex: 2000,
+        ...(isDesktop
+          ? { left: 12, bottom: 12, width: 320, maxHeight: '50vh' }
+          : { left: 8, right: 8, top: 64, maxHeight: '30vh' }),
         overflowY: 'auto',
         background: 'rgba(20, 20, 19, 0.88)',
         color: '#fff',

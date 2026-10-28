@@ -13,6 +13,7 @@ import { outlineBindingFrom, useMapState } from '../../member/useMapState'
 import outlineMapStyles from '../Panel.module.css'
 import { usePlanningState } from '../../member/usePlanningState'
 import type { GeoCandidate } from '../../place/candidateHelpers'
+import type { AskMapView } from '../../conversation/askMapView'
 import type { PlaceInfoContent } from '../../place/PlacePanel'
 import { PlanPhoneInfoSheet } from './PlanPhoneInfoSheet'
 import { PlanPhoneDatePickerSheet } from './PlanPhoneDatePickerSheet'
@@ -163,6 +164,7 @@ export function PlanPhoneView({
   selectedStopId,
   hoverStopId,
   hoverTransitPair,
+  askMapView,
   onStopClick,
   routeSegments,
   safeAreaRef,
@@ -239,6 +241,8 @@ export function PlanPhoneView({
   selectedStopId?: string | null
   hoverStopId?: string | null
   hoverTransitPair?: { fromId: string; toId: string } | null
+  // askMapView:詢問頁候選點,原樣轉給 PlanMap(見 PlanMapSharedProps.askMapView)。
+  askMapView?: AskMapView
   onStopClick?: (id: string) => void
   // routeSegments:站點之間的連線段,原封不動轉給 PlanMap;由入口依 ROUTE_LINE_ENABLED 決定要不要傳。
   routeSegments?: RouteLineSegment[]
@@ -576,6 +580,7 @@ export function PlanPhoneView({
           selectedStopId={selectedStopId}
           hoverStopId={hoverStopId}
           hoverTransitPair={hoverTransitPair}
+          askMapView={askMapView}
           routeSegments={routeSegments}
           onStopClick={onStopClick}
           onActiveCategoryChange={(category) => onExploreActiveChange?.(category === EXPLORE_CATEGORY)}

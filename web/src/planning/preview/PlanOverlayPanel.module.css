@@ -238,7 +238,7 @@
    詢問匡的陰影(0 8px 28px,往下偏移)拿掉——留著會投在接縫與輸入列上,看起來仍是兩塊。
    背景各自保留(半透明詢問匡在上、實色輸入列在下),接縫的深淺差由輸入列上邊框(--ios-sep)承接。
 
-   已知:VITE_FEATURE_NEW_TRIP_DRAFT 開啟時,「新行程」按鈕(TripPlanPage 的 .newDraftBtn)在 .page 的文件流裡位於
+   已知:VITE_FEATURE_NEW_TRIP_DRAFT 開啟時,「新行程」按鈕(已搬進輸入框旁,原 .newDraftBtn 在 .page 的文件流裡位於
    時間軸與輸入列插槽之間,會夾在已拼接的兩塊中間;目前未處理,待決定按鈕位置。 */
 @supports selector(:has(*)) {
   @media (max-width: 767px) {

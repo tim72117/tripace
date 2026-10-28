@@ -80,6 +80,9 @@ const PLACE_CATEGORY_GLYPHS: Record<string, string> = {
 // 分辨「這是搜尋查到的第幾筆候選」,不需要另外對照清單);hotel/place
 // 才會疊 candidateBadgeSvg(候選籃已加入標記——geocode 純定位用途,不能
 // 加入候選籃,見 api.ts GeoSearchResult 的說明)。
+// ASK_CANDIDATE_CATEGORY——詢問頁候選點的 category 標記(askMapView.ts 的 askPointToSearchResult 帶上),標記用專屬外觀。
+export const ASK_CANDIDATE_CATEGORY = 'ask_candidate'
+
 export function searchResultMarkerContent(
   result: { kind: 'hotel' | 'place' | 'geocode'; category?: string },
   selected: boolean,
@@ -95,6 +98,18 @@ export function searchResultMarkerContent(
           '<circle cx="10" cy="10" r="4" fill="#5A8A6A"/>'
         : '<circle cx="10" cy="10" r="5" fill="#5A8A6A" stroke="#FDFCFA" stroke-width="1.5"/>') +
       (candidate ? candidateBadgeSvg(16.5, 3.5) : '') +
+      '</svg>'
+    return svgStringToElement(svg)
+  }
+  // 詢問頁候選點(選擇感興趣景點/更換地點,見 conversation/askMapView.ts):單純的圓點,顏色(青藍)與其他標記
+  // (靛藍地點、森綠飯店、紫色定位、暖橘行程)都不同。未勾選:小圓點加白色細描邊;已勾選(candidate):加大並加粗白色外圈;
+  // 選中/hover 再大一階。不放圖案,靠大小與外圈表達狀態。
+  if (result.kind === 'place' && result.category === ASK_CANDIDATE_CATEGORY) {
+    const picked = candidate
+    const size = selected ? 26 : picked ? 22 : 16
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 24 24">' +
+      '<circle cx="12" cy="12" r="' + (picked || selected ? 9 : 10) + '" fill="#12A5B5" stroke="#FDFCFA" stroke-width="' + (picked || selected ? 4 : 2.5) + '"/>' +
       '</svg>'
     return svgStringToElement(svg)
   }

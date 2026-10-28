@@ -32,6 +32,8 @@ export interface CandidateCardProps {
   stacked?: boolean
   // onToggle——點擊時呼叫。as="div" 時忽略。
   onToggle?: () => void
+  // badge——左上角的小標記文字(例如「已在行程」)。
+  badge?: string
   as?: 'button' | 'div'
   // className——額外附加在卡片根節點的 class(播放態特效用)。
   className?: string
@@ -46,6 +48,7 @@ export function CandidateCard({
   checked,
   stacked,
   onToggle,
+  badge,
   as = 'button',
   className,
   children,
@@ -83,6 +86,7 @@ export function CandidateCard({
       <span className={[styles.directionLabel, stacked ? styles.directionLabelStacked : ''].filter(Boolean).join(' ')}>
         {loading ? '查詢中…' : (name ?? '未命名地點')}
       </span>
+      {badge && <span className={styles.directionBadge}>{badge}</span>}
       {checked && <Check size={14} strokeWidth={3} className={styles.directionCheck} />}
       {children}
     </>

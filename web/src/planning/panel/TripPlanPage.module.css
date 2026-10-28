@@ -241,44 +241,6 @@
 /* Header 相關樣式(.header/.headerInner/.headerRight/.statusPill/
    .statusDot*)已整個移除,原因見 TripPlanPage.tsx 對應位置的說明。 */
 
-/* newDraftBtn——「新行程」按鈕(2026-10 新增,見 TripPlanPage.tsx
-   onNewDraft prop 的完整說明)。目前唯一的呼叫情境是
-   horizontalTimeline && onNewDraft 同時成立,而這只會發生在 compact 模式
-   下(見該 prop 的完整說明,唯一呼叫端 LivePlanLayer.tsx 永遠傳
-   compact)——不採用全頁版 .composer 那套 position: sticky 相對外層
-   <main> 定位(那套機制只在「捲動權收在外層 <main>」的全頁版成立,見
-   .composer 基礎規則與 .compact .composer 覆寫的完整說明:compact 模式
-   下 sticky 沒有正確的捲動祖先可以依附)。改成單純的 flex 版面語意,
-   對齊 .compact .composer 本身「flex: none + margin-bottom」的既有做法
-   ——這顆按鈕在 JSX 裡本來就是 composer 的上一個手足元素,flex column
-   容器(.page)會自然把它排在 composer 正上方,不需要額外定位。
-   視覺語言比照 .composer 本身的卡片 token(圓角膠囊、同一組 --ios-*
-   配色),但縮小一號、置中,不搶走 composer 本身的視覺焦點——這是次要
-   動作,不是主要的對話輸入入口。 */
-.newDraftBtn {
-  flex: none;
-  align-self: center;
-  margin-bottom: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: fit-content;
-  background: var(--ios-card);
-  border: 1px solid var(--ios-sep);
-  border-radius: 999px;
-  color: var(--color-dark);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 8px 16px;
-  box-shadow: 0 8px 20px -10px rgba(61, 53, 48, 0.28);
-  cursor: pointer;
-  z-index: 5;
-}
-.newDraftBtn:hover {
-  background: var(--ios-active);
-}
-
 /* ---------- Composer ---------- */
 
 /* composer——這裡只留「定位」(貼底、寬度、z-index),膠囊外觀(背景/

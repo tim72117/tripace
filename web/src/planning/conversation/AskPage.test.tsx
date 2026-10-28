@@ -567,6 +567,93 @@ describe('AskPage 右上角關閉鈕(取代操作列的「不用了」)', () => 
     expect(onDone).toHaveBeenCalledWith([])
   })
 
+  it('confirmViaComposer:沒有「確認選擇」按鈕;勾選時回報目前選擇,取消勾選/離開頁面時回報更新', async () => {
+    const user = userEvent.setup()
+    const onSelectionChange = vi.fn()
+    const { container, unmount } = render(
+      <AskPage
+        dataSource={makeDataSource()}
+        input={{ candidates: [{ placeId: 'p1', name: '赤崁樓' }, { placeId: 'p2', name: '孔廟' }] }}
+        onDone={() => {}}
+        confirmViaComposer
+        onSelectionChange={onSelectionChange}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /確認選擇/ })).toBeNull()
+    expect(container.querySelector(`.${styles.actions}`)).toBeNull()
+    await user.click(await screen.findByRole('button', { name: /赤崁樓/ }))
+    expect(onSelectionChange).toHaveBeenLastCalledWith([expect.objectContaining({ placeId: 'p1' })])
+    await user.click(await screen.findByRole('button', { name: /孔廟/ }))
+    expect(onSelectionChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({ placeId: 'p1' }),
+      expect.objectContaining({ placeId: 'p2' }),
+    ])
+    await user.click(await screen.findByRole('button', { name: /赤崁樓/ }))
+    expect(onSelectionChange).toHaveBeenLastCalledWith([expect.objectContaining({ placeId: 'p2' })])
+    unmount()
+    expect(onSelectionChange).toHaveBeenLastCalledWith([])
+  })
+
+  it('地圖點:候選自帶座標的回報;沒座標的等 placeDetails 補上;toggle 可從外部切換勾選;卸載時清空', async () => {
+    const user = userEvent.setup()
+    const onMapPointsChange = vi.fn()
+    const onSelectionChange = vi.fn()
+    const onToggleReady = vi.fn()
+    const placeDetails = vi.fn(async (placeId: string) =>
+      placeId === 'p2' ? { found: true, name: '孔廟', lat: 22.98, lng: 120.21 } : { found: false },
+    )
+    const { unmount } = render(
+      <AskPage
+        dataSource={makeDataSource({ placeDetails })}
+        input={{ candidates: [{ placeId: 'p1', name: '赤崁樓', lat: 22.99, lng: 120.2 }, { placeId: 'p2', name: '孔廟' }] }}
+        onDone={() => {}}
+        confirmViaComposer
+        onSelectionChange={onSelectionChange}
+        onMapPointsChange={onMapPointsChange}
+        onToggleReady={onToggleReady}
+      />,
+    )
+    await screen.findByRole('button', { name: /赤崁樓/ })
+    await waitFor(() =>
+      expect(onMapPointsChange).toHaveBeenLastCalledWith([
+        { placeId: 'p1', name: '赤崁樓', lat: 22.99, lng: 120.2 },
+        { placeId: 'p2', name: '孔廟', lat: 22.98, lng: 120.21 },
+      ]),
+    )
+    const toggle = onToggleReady.mock.calls[0][0] as (placeId: string) => void
+    expect(typeof toggle).toBe('function')
+    await user.click(await screen.findByRole('button', { name: /赤崁樓/ }))
+    expect(onSelectionChange).toHaveBeenLastCalledWith([expect.objectContaining({ placeId: 'p1' })])
+    await waitFor(() => {
+      toggle('p2')
+      expect(onSelectionChange).toHaveBeenLastCalledWith([
+        expect.objectContaining({ placeId: 'p1' }),
+        expect.objectContaining({ placeId: 'p2' }),
+      ])
+    })
+    unmount()
+    expect(onMapPointsChange).toHaveBeenLastCalledWith([])
+    expect(onToggleReady).toHaveBeenLastCalledWith(null)
+  })
+
+  it('badgedPlaceIds:在清單內的候選卡顯示「已在行程」,其餘沒有;不影響勾選', async () => {
+    const user = userEvent.setup()
+    render(
+      <AskPage
+        dataSource={makeDataSource()}
+        input={{ candidates: [{ placeId: 'p1', name: '赤崁樓' }, { placeId: 'p2', name: '孔廟' }] }}
+        onDone={() => {}}
+        badgedPlaceIds={new Set(['p1'])}
+      />,
+    )
+    const c1 = await screen.findByRole('button', { name: /赤崁樓/ })
+    const c2 = await screen.findByRole('button', { name: /孔廟/ })
+    expect(c1.textContent).toContain('已在行程')
+    expect(c2.textContent).not.toContain('已在行程')
+    await user.click(c1)
+    expect(c1.getAttribute('aria-pressed')).toBe('true')
+  })
+
   it('景點查詢中(explore 查詢中):沿用既有行為,沒有關閉鈕也沒有操作列', () => {
     const searchNearby = vi.fn(() => new Promise<never>(() => {}))
     const { container } = render(

@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useState } from 'react'
 import { PlanPanelContent } from '../panel/PlanPanelContent'
+import { NEW_TRIP_DRAFT_ENABLED } from '../../DesktopShared'
 import type { ToolCallLogEntry } from '../panel/TripPlanPage'
 import type { LivePlanLayerContract } from '../shared/layerContracts'
 import { useGuestClientConfig } from '../shared/config'
 import { BASE_URL } from '../../AppCommon'
-import { NEW_TRIP_DRAFT_ENABLED } from '../../DesktopShared'
 // createDraftPlanTimelineStore/startNewDraft——「新行程」按鈕(見
 // NEW_TRIP_DRAFT_ENABLED 的完整說明,定義在 DesktopShared.tsx,跟
 // TIME_DRAG_ENABLED 等既有 feature flag 放在同一個共用檔案)的資料層,
@@ -174,11 +174,8 @@ export function LivePlanLayer({ selectedStopId, tripPlanProps, onPanToStop, onTo
       //   推論態(這裡)      createPlanAiPublicDataSource /public/*
       //   /app              createPlanAiApiDataSource    /internal/*
       dataSource={publicDataSource}
-      // onNewDraft——見 TripPlanPage.tsx 該 prop 的完整說明。只在
-      // NEW_TRIP_DRAFT_ENABLED(DesktopShared.tsx)開啟時傳,關閉時維持
-      // undefined——TripPlanPage 沒收到這個 callback 就不會渲染「新行程」
-      // 按鈕,不需要在這裡另外包一層條件判斷要不要渲染什麼 UI,呼叫端
-      // 只需要決定要不要給它這個能力。
+      // onNewDraft——見 TripPlanPage.tsx 該 prop 的完整說明:輸入框旁的「新行程」按鈕。只在 NEW_TRIP_DRAFT_ENABLED
+      // (DesktopShared.tsx,VITE_FEATURE_NEW_TRIP_DRAFT,預設關)開啟時傳;沒收到這個 callback,TripPlanPage 就不渲染按鈕。
       onNewDraft={NEW_TRIP_DRAFT_ENABLED ? handleNewDraft : undefined}
       selectedStopId={selectedStopId}
       onPanToStop={onPanToStop}

@@ -28,6 +28,13 @@ import styles from './Composer.module.css'
 //     這個元件不知道、也不需要知道文字是真的使用者輸入還是模擬出來的。
 //   - 表單送出的業務邏輯(sendPrompt/onagent 呼叫)——onSubmit 由呼叫端
 //     自己決定要做什麼,這個元件只負責在使用者按下送出時呼叫它。
+export interface ComposerExtraButton {
+  label: string
+  icon: ReactNode
+  onClick: () => void
+  disabled?: boolean
+}
+
 export interface ComposerProps {
   // value/onChange——受控輸入框。展示頁傳入 typedPrompt(唯讀假動畫進度)
   // 時不需要 onChange(readOnly 時使用者改不了值,但 React 仍要求受控
@@ -77,6 +84,11 @@ export interface ComposerProps {
   sendButtonAriaLabel?: string
   sendButtonClassName?: string
   inputWrapClassName?: string
+  // extraButton——送出鈕旁邊的次要按鈕(例如「新行程」「選擇景點」),可傳單一個或陣列,依序顯示在送出鈕左側。disabled 時淡化、不可點。
+  extraButton?: ComposerExtraButton | ComposerExtraButton[]
+  // statusIcon——輸入框左側的狀態圖示(星芒);active 為 true(例如 AI 推論中)時帶旋轉光環與脈動特效,
+  // 否則是安靜的靜態圖示。純裝飾(aria-hidden),不改變輸入行為;prefers-reduced-motion 時只換色、不動。
+  statusIcon?: { active: boolean }
   // inputRowClassName——疊加在 <form>(輸入框+送出鈕所在的那一列)上。
   // 展示頁需要用這個疊加 justify-content: center(hideInput 時 <form>
   // 只剩送出鈕一個子元素,預設 flex-start 會貼左,見
@@ -105,11 +117,14 @@ export function Composer({
   sendButtonAriaLabel = '送出',
   sendButtonClassName,
   inputWrapClassName,
+  extraButton,
+  statusIcon,
   inputRowClassName,
   hideInput = false,
   className,
 }: ComposerProps) {
   const stopMode = busy && !!onStop && !disabled
+  const extraButtons = extraButton ? (Array.isArray(extraButton) ? extraButton : [extraButton]) : []
   return (
     // data-composer-part="root"——跨 CSS Module 的穩定掛點:手機版詢問匡與輸入列融合
     // (planning/preview/PlanOverlayPanel.module.css .fuse)用它找輸入列根節點,不依賴 DOM 層數。不帶任何樣式。
@@ -128,6 +143,15 @@ export function Composer({
             onSubmit?.()
           }}
         >
+          {statusIcon && (
+            <span className={styles.statusIcon} data-active={statusIcon.active ? 'true' : 'false'} aria-hidden="true">
+              <span className={styles.statusRing} />
+              <svg className={styles.statusGlyph} width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2.5l2.1 6.4 6.4 2.1-6.4 2.1L12 19.5l-2.1-6.4-6.4-2.1 6.4-2.1L12 2.5z" />
+                <path d="M19 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z" opacity="0.7" />
+              </svg>
+            </span>
+          )}
           {!hideInput && (
             <div className={[styles.inputWrap, inputWrapClassName].filter(Boolean).join(' ')}>
               <input
@@ -142,6 +166,19 @@ export function Composer({
               />
             </div>
           )}
+          {extraButtons.map((btn) => (
+            <button
+              key={btn.label}
+              type="button"
+              aria-label={btn.label}
+              title={btn.label}
+              className={styles.extraBtn}
+              disabled={disabled || btn.disabled}
+              onClick={btn.onClick}
+            >
+              {btn.icon}
+            </button>
+          ))}
           <button
             type={stopMode ? 'button' : 'submit'}
             aria-label={stopMode ? '停止' : sendButtonAriaLabel}

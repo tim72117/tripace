@@ -127,7 +127,7 @@ export function Content(props: ContentProps) {
   // 「只在規劃面板開啟時顯示」),而不是加清除 effect:那樣會讓「關閉規劃面板」
   // 多出一次不必要的 state 寫入與重渲染,重新開啟時還要等 TripPlanPage
   // 重新回報才會出現圓點,中間有一瞬間的空窗。
-  const { stops, routeSegments, selectedStopId, hoverStopId, hoverTransitPair, setSelectedStopId, tripPlanProps } = usePlanStopsState()
+  const { stops, routeSegments, selectedStopId, hoverStopId, hoverTransitPair, askMapView, setSelectedStopId, tripPlanProps } = usePlanStopsState()
   // hoverStopId:滑鼠正懸停在哪一張站點卡上(2026-10 新增,使用者
   // 明確要求「滑鼠移動到介紹卡時,地圖圓加強顯示」)。命名用 hover* 而非
   // hovered*,對齊 PlanMap 既有的 hoverKey。
@@ -538,7 +538,7 @@ export function Content(props: ContentProps) {
   )
 
   // visibleStopsView:傳給地圖的站點檢視,規劃面板關閉時整組遮蔽(桌面、手機共用,見 maskPlanStopsView)。
-  const visibleStopsView = maskPlanStopsView({ stops, selectedStopId, hoverStopId, hoverTransitPair }, planPanelVisible)
+  const visibleStopsView = maskPlanStopsView({ stops, selectedStopId, hoverStopId, hoverTransitPair, askMapView }, planPanelVisible)
 
   // nav:最左側導覽列(desktop/Nav),交給容器 PlanLayout 排在主顯示區之前。
   const nav = (

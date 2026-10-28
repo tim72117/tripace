@@ -11,7 +11,7 @@ import type { PlanAiDataSource } from '../data/source'
 import type { TravelCity } from '../conversation/travelRegionData'
 import { Composer } from '../../components/Composer'
 import { composerModeFor, routeComposerSubmit } from './composerMode'
-import { CITY_LOOKUP_LOADING_DELAY_MS, CITY_LOOKUP_LOADING_MIN_MS, CITY_LOOKUP_TIMEOUT_MS, useAskPageFlow } from './useAskPageFlow'
+import { CITY_LOOKUP_LOADING_DELAY_MS, CITY_LOOKUP_LOADING_MIN_MS, useAskPageFlow } from './useAskPageFlow'
 
 const dataSource = {
   placeDetails: vi.fn().mockResolvedValue({ found: false }),
@@ -29,9 +29,10 @@ interface HarnessProps {
   onBridge?: (bridge: ReturnType<typeof useAskPageBridge<AskPageInput>>) => void
   // 測試要檢查 get_user_selection 讀到的紀錄(userSelectionRef)。
   onSelectionRef?: (ref: { current: UserSelectionRecord | null }) => void
+  onStartAsk?: (startAsk: ReturnType<typeof useAskPageFlow>['startAsk']) => void
 }
 
-function Harness({ search = async () => [], sendPrompt = async () => true, isThinking = false, onAskPageTextNotSent, onBridge, onSelectionRef, composer = false }: HarnessProps) {
+function Harness({ search = async () => [], sendPrompt = async () => true, isThinking = false, onAskPageTextNotSent, onBridge, onSelectionRef, composer = false, onStartAsk }: HarnessProps) {
   const bridge = useAskPageBridge<AskPageInput>({ candidates: [] })
   onBridge?.(bridge)
   const userSelectionRef = useRef<UserSelectionRecord | null>(null)
@@ -48,6 +49,7 @@ function Harness({ search = async () => [], sendPrompt = async () => true, isThi
       setChatInput((current) => (current.trim() ? current : text))
     },
   })
+  onStartAsk?.(flow.startAsk)
   const mode = composerModeFor({ isThinking, ask: bridge.showAskPage ? bridge.askPageInput : null })
   return (
     <>
@@ -202,7 +204,6 @@ describe('選完城市 → (查詢中)→ 景點候選', () => {
   it('門檻常數', () => {
     expect(CITY_LOOKUP_LOADING_DELAY_MS).toBe(150)
     expect(CITY_LOOKUP_LOADING_MIN_MS).toBe(300)
-    expect(CITY_LOOKUP_TIMEOUT_MS).toBe(15_000)
   })
 
   it('快回應(50ms):城市頁直接換成景點候選,從未出現查詢中,時間軸也從未出現', async () => {
@@ -339,7 +340,7 @@ describe('選完城市 → (查詢中)→ 景點候選', () => {
     expect(title()).toBe('這段要怎麼移動?')
   })
 
-  // searchAbortable——ms 毫秒後回應,並記下收到的 AbortSignal(檢查關閉/逾時有沒有中止請求)。
+  // searchAbortable——ms 毫秒後回應,並記下收到的 AbortSignal(檢查關閉有沒有中止請求)。
   function searchAbortable(ms: number, result: AskPageCandidate[] = CANDIDATES) {
     const signals: AbortSignal[] = []
     const fn = vi.fn(
@@ -400,54 +401,100 @@ describe('選完城市 → (查詢中)→ 景點候選', () => {
     expect(selection()).toMatchObject({ kind: 'attractions', items: [{ placeId: 'p1', name: '赤崁樓' }] })
   })
 
-  it(`逾時(${CITY_LOOKUP_TIMEOUT_MS}ms 未回):視同無結果收起詢問頁回到時間軸,並中止請求`, async () => {
-    const { fn, signals } = searchAbortable(CITY_LOOKUP_TIMEOUT_MS + 5000)
+  describe('startAsk(統一啟動:啟動參數 + 結束回呼)', () => {
+    function setup(props: HarnessProps = {}) {
+      let start!: ReturnType<typeof useAskPageFlow>['startAsk']
+      let selectionRef!: { current: UserSelectionRecord | null }
+      const utils = render(<Harness {...props} onStartAsk={(f) => { start = f }} onSelectionRef={(r) => { selectionRef = r }} />)
+      return { ...utils, start: () => start, selection: () => selectionRef.current }
+    }
+
+    it('candidates 輸入:選完只呼叫 onDone(帶名稱),不送預設的「請幫我安排行程」,選擇仍寫入 userSelectionRef', async () => {
+      const sendPrompt = vi.fn(async () => true)
+      const onDone = vi.fn()
+      const { start, selection } = setup({ sendPrompt })
+      act(() => {
+        start()({ input: { candidates: [{ placeId: 'p1', name: '安平古堡' }], reason: '選擇要換成的地點' }, onDone })
+      })
+      await advance(20)
+      fireEvent.click(screen.getByRole('button', { name: /安平古堡/ }))
+      fireEvent.click(screen.getByRole('button', { name: /確認選擇/ }))
+      await advance(20)
+      expect(onDone).toHaveBeenCalledTimes(1)
+      expect(onDone).toHaveBeenCalledWith([expect.objectContaining({ placeId: 'p1', name: '安平古堡' })])
+      expect(sendPrompt).not.toHaveBeenCalled()
+      expect(selection()).toMatchObject({ kind: 'attractions', items: [{ placeId: 'p1', name: '安平古堡' }] })
+    })
+
+    it('search 輸入:先顯示查詢中,查完換成候選;關閉(不用了)呼叫 onCancel 且中止查詢', async () => {
+      const signals: AbortSignal[] = []
+      const search = (signal: AbortSignal) => {
+        signals.push(signal)
+        return new Promise<AskPageCandidate[]>((resolve) => setTimeout(() => resolve([{ placeId: 'p1', name: '孔廟' }]), 100))
+      }
+      const onDone = vi.fn()
+      const onCancel = vi.fn()
+      const { start } = setup()
+      act(() => {
+        start()({ input: { search, reason: '選擇要換成的地點' }, onDone, onCancel })
+      })
+      await advance(20)
+      expect(screen.queryByRole('button', { name: /孔廟/ })).toBeNull()
+      await advance(150)
+      expect(screen.getByRole('button', { name: /孔廟/ })).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: '不用了' }))
+      await advance(20)
+      expect(onCancel).toHaveBeenCalledTimes(1)
+      expect(onDone).not.toHaveBeenCalled()
+      expect(signals[0].aborted).toBe(true)
+    })
+
+    it('search 無結果:收起詢問頁並呼叫 onCancel', async () => {
+      const onCancel = vi.fn()
+      const { start } = setup()
+      act(() => {
+        start()({ input: { search: async () => [], reason: 'x' }, onCancel })
+      })
+      await advance(50)
+      expect(screen.getByTestId('timeline')).toBeTruthy()
+      expect(onCancel).toHaveBeenCalledTimes(1)
+    })
+
+    it('已有詢問頁在等待時回傳 false,不搶佔、不呼叫回呼;結束後回呼只對自己那一次有效', async () => {
+      const onDone = vi.fn()
+      const { start } = setup()
+      let first = false
+      let second = true
+      act(() => {
+        first = start()({ input: { candidates: [{ placeId: 'p1', name: '孔廟' }] }, onDone })
+        second = start()({ input: { candidates: [{ placeId: 'p2', name: '赤崁樓' }] }, onDone })
+      })
+      expect(first).toBe(true)
+      expect(second).toBe(false)
+      await advance(20)
+      expect(screen.queryByRole('button', { name: /赤崁樓/ })).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: '不用了' }))
+      await advance(20)
+      expect(onDone).not.toHaveBeenCalled()
+    })
+  })
+
+  it('沒有逾時:查詢很久沒回時一直停在查詢中,回來後照常換成候選', async () => {
+    const { fn, signals } = searchAbortable(10 * 60_000)
     const { bridge } = renderWithBridge({ search: fn })
     openTaiwanCities(bridge)
     fireEvent.click(screen.getByRole('button', { name: '台南' }))
     await advance(200)
     expect(title()).toBe(LOADING_TITLE)
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(CITY_LOOKUP_TIMEOUT_MS - 200 - 20)
+      await vi.advanceTimersByTimeAsync(5 * 60_000)
     })
     expect(title()).toBe(LOADING_TITLE)
     expect(signals[0].aborted).toBe(false)
-    await advance(40)
-    expect(screen.getByTestId('timeline')).toBeTruthy()
-    expect(signals[0].aborted).toBe(true)
-  })
-
-  it('逾時後晚到的回應被忽略:不塞回候選,也不蓋掉之後開的詢問頁', async () => {
-    const { bridge } = renderWithBridge({ search: searchAfter(CITY_LOOKUP_TIMEOUT_MS + 3000) })
-    openTaiwanCities(bridge)
-    fireEvent.click(screen.getByRole('button', { name: '台南' }))
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(CITY_LOOKUP_TIMEOUT_MS + 10)
-    })
-    expect(screen.getByTestId('timeline')).toBeTruthy()
-    act(() => {
-      void bridge().openAskPage({ transport: ['walk'] })
-    })
-    expect(title()).toBe('這段要怎麼移動?')
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5000)
-    })
-    expect(title()).toBe('這段要怎麼移動?')
-    expect(screen.queryByText('選擇感興趣的景點')).toBeNull()
-  })
-
-  it('快回應不受逾時影響:候選照常顯示,之後過了逾時時間也不會被收起', async () => {
-    const { fn, signals } = searchAbortable(50)
-    const { bridge } = renderWithBridge({ search: fn })
-    openTaiwanCities(bridge)
-    fireEvent.click(screen.getByRole('button', { name: '台南' }))
-    await advance(200)
-    expect(title()).toBe('選擇感興趣的景點')
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(CITY_LOOKUP_TIMEOUT_MS + 1000)
+      await vi.advanceTimersByTimeAsync(5 * 60_000 + 1000)
     })
     expect(title()).toBe('選擇感興趣的景點')
-    expect(signals[0].aborted).toBe(false)
   })
 
   // 2026-10:景點候選頁(含查詢中)由城市頁選完城市進來時可以返回城市頁(replaceAskPage 原地換回,不結束等待)。

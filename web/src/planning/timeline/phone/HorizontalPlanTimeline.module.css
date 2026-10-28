@@ -304,6 +304,9 @@
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  /* user-select: none——滑鼠左右拖曳換卡(見 useSwipeReveal.ts)時不要選到文字。 */
+  user-select: none;
+  -webkit-user-select: none;
   /* height——見上方 --horizontal-timeline-card-height 的完整說明:
      軌道本身固定高度,不依賴內部卡片撐起來。 */
   height: var(--horizontal-timeline-card-height);
@@ -547,6 +550,80 @@
   flex: 0 0 auto;
   width: 16px;
   scroll-snap-align: none;
+}
+
+/* ===== 上滑露出操作列(見 useSwipeReveal.ts)===== */
+/* .swipeCard——一般站點卡。原本 .card 的內距/縱向排版搬到內層 .cardSlide,讓整個卡片內容能一起
+   往上位移;外層 .card 只負責外框(固定高度、圓角、overflow: hidden 裁切)與底部的操作列。
+   touch-action: pan-x——水平拖曳照常由瀏覽器捲動卡片列,垂直拖曳交給 JS 手勢判斷。 */
+.swipeCard {
+  --swipe-bar-height: 68px; /* 與 swipeReveal.ts 的 SWIPE_BAR_HEIGHT 一致 */
+  padding: 0;
+  gap: 0;
+  touch-action: pan-x;
+}
+
+.cardSlide {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px 16px;
+  background: var(--ios-card);
+  border-radius: inherit;
+  transform: translateY(calc(var(--swipe-r, 0px) * -1));
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+/* 拖曳中:跟手,不要過渡動畫(由 hook 在垂直手勢期間設 data-swiping)。 */
+.cardSlide[data-swiping] {
+  transition: none;
+}
+
+.swipeBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  height: var(--swipe-bar-height);
+  display: flex;
+  background: var(--ios-bg);
+}
+
+.swipeAction {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: none;
+  border-left: 1px solid var(--ios-sep);
+  background: transparent;
+  color: var(--ios-blue);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.swipeAction:first-child {
+  border-left: none;
+}
+.swipeAction:active {
+  background: var(--ios-active);
+}
+.swipeActionDanger {
+  color: var(--ios-red);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cardSlide {
+    transition: none;
+  }
 }
 
 .card:focus-visible {

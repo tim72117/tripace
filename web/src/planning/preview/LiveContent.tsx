@@ -101,7 +101,7 @@ function LiveContentInner() {
   const { currentPosition } = useCurrentLocation({ wanted: true })
   const stopsVisible = true
   const visibleStopsView = maskPlanStopsView(
-    { stops: live.stops, selectedStopId, hoverStopId, hoverTransitPair: live.hoverTransitPair },
+    { stops: live.stops, selectedStopId, hoverStopId, hoverTransitPair: live.hoverTransitPair, askMapView: live.askMapView },
     stopsVisible,
   )
   // expandedThemeId——PlanMap 回報目前展開的主題點,這個頁面目前沒有
@@ -174,11 +174,18 @@ function LiveContentInner() {
             onPan={mapSafeArea.panToWithinSafeArea}
             resetView={{ center: CENTER, zoom: ZOOM }}
           />
-          <ToolCallLogDebugOverlay log={toolCallLog} />
         </Suspense>
       )}
     </>
   )
+
+  // 推論紀錄面板放在頁面最外層(不在 mapBackground 裡):mapBackground 在版面元件的最底層,前景的時間軸/面板會蓋住它;
+  // 放這裡也不會隨寬度切換版面而被卸載重掛。
+  const toolCallLogOverlay = DEBUG_SAFE_AREA ? (
+    <Suspense fallback={null}>
+      <ToolCallLogDebugOverlay log={toolCallLog} />
+    </Suspense>
+  ) : null
 
   const wideDebugOverlay = DEBUG_SAFE_AREA && isWide ? (
     <Suspense fallback={null}>
@@ -204,6 +211,7 @@ function LiveContentInner() {
       </PlanDataProvider>
     </OverlayLayout>
     </PlanLayout>
+    {toolCallLogOverlay}
     {lightboxPhotos && (
       <Lightbox
         photos={lightboxPhotos.photos}

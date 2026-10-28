@@ -56,6 +56,7 @@ export function PlanMap({
   onStopClick,
   routeSegments,
   currentPosition,
+  askMapView,
   liveLayersEnabled = false,
   attractionDataSource,
   onExpandedThemeIdChange,
@@ -80,6 +81,7 @@ export function PlanMap({
     onStopClick,
     routeSegments,
     attractionGlow,
+    askMapView,
   })
   const expandedChange = useStableCallback((id: string | null) => onExpandedThemeIdChange?.(id))
   useEffect(() => {

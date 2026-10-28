@@ -2,9 +2,17 @@
 // 不傳 horizontalTimeline(由 PlanPanelContent 依螢幕決定)、受控 selectedStopId 與四個回報回呼。
 // mock 掉 PlanPanelContent,只驗證它收到什麼。
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { act, render, waitFor } from '@testing-library/react'
 import { getPlanAiApiDataSource } from '../../data/api'
-import { localStoragePlanTimelineStore } from '../../timeline/storage'
+import { PLAN_TIMELINE_STORAGE_KEY } from '../../timeline/storage'
+import { LEGACY_TRIP_ID, listTrips } from '../../trip/trips'
+
+const flags = vi.hoisted(() => ({ newTrip: true }))
+vi.mock('../../../DesktopShared', () => ({
+  get NEW_TRIP_DRAFT_ENABLED() {
+    return flags.newTrip
+  },
+}))
 
 let received: Record<string, unknown> = {}
 vi.mock('../../panel/PlanPanelContent', () => ({
@@ -27,6 +35,8 @@ const tripPlanProps = {
 
 beforeEach(() => {
   received = {}
+  flags.newTrip = true
+  localStorage.clear()
 })
 
 describe('LivePlanLayer(登入後手機版)', () => {
@@ -34,7 +44,11 @@ describe('LivePlanLayer(登入後手機版)', () => {
     render(<LivePlanLayer cfg={cfg} selectedStopId="s1" tripPlanProps={tripPlanProps} />)
     await waitFor(() => expect(received.cfg).toBe(cfg))
     expect(received.dataSource).toBe(getPlanAiApiDataSource(cfg))
-    expect(received.store).toBe(localStoragePlanTimelineStore)
+    // 時間軸存在使用中的行程底下;還沒有任何行程時是 legacy 行程,時間軸 key 就是原本固定的那一份。
+    const store = received.store as { saveTimeline: (t: unknown, rev: number) => number | null }
+    store.saveTimeline({ days: [{ id: 'd', nodes: [{ id: 'n', type: 'stop', name: '赤崁樓' }] }] }, 0)
+    expect(localStorage.getItem(PLAN_TIMELINE_STORAGE_KEY)).not.toBeNull()
+    expect(listTrips().map((t) => t.id)).toEqual([LEGACY_TRIP_ID])
     expect('conversationStore' in received).toBe(false) // 對話純記憶體,不再傳 store
     expect('horizontalTimeline' in received).toBe(false)
     expect(received.selectedStopId).toBe('s1')
@@ -44,5 +58,38 @@ describe('LivePlanLayer(登入後手機版)', () => {
     render(<LivePlanLayer cfg={cfg} selectedStopId={null} tripPlanProps={tripPlanProps} />)
     await waitFor(() => expect(received.cfg).toBe(cfg))
     for (const k of Object.keys(tripPlanProps) as (keyof typeof tripPlanProps)[]) expect(received[k]).toBe(tripPlanProps[k])
+  })
+})
+
+describe('LivePlanLayer(登入後手機版)的新行程' , () => {
+  const renderLayer = () =>
+    render(<LivePlanLayer cfg={cfg} selectedStopId={null} tripPlanProps={tripPlanProps} />)
+
+  it('目前這一趟是空的:onNewDraft 不建立新行程', async () => {
+    renderLayer()
+    await waitFor(() => expect(received.onNewDraft).toBeTypeOf('function'))
+    ;(received.onNewDraft as () => void)()
+    expect(listTrips()).toEqual([])
+  })
+
+  it('目前這一趟有內容:onNewDraft 建立新行程並切過去(面板以新的 key 重新掛載),清掉選取', async () => {
+    renderLayer()
+    await waitFor(() => expect(received.onNewDraft).toBeTypeOf('function'))
+    const store = received.store as { saveTimeline: (t: unknown, rev: number) => number | null }
+    store.saveTimeline({ days: [{ id: 'd', nodes: [{ id: 'n', type: 'stop', name: '赤崁樓' }] }] }, 0)
+    tripPlanProps.onSelectedStopChange.mockClear()
+    act(() => {
+      ;(received.onNewDraft as () => void)()
+    })
+    expect(tripPlanProps.onSelectedStopChange).toHaveBeenCalledWith(null)
+    expect(listTrips()).toHaveLength(2)
+    await waitFor(() => expect((received.store as object)).not.toBe(store))
+  })
+
+  it('功能開關(NEW_TRIP_DRAFT_ENABLED)關閉時不傳 onNewDraft,面板就不會渲染「新行程」按鈕', async () => {
+    flags.newTrip = false
+    renderLayer()
+    await waitFor(() => expect(received.cfg).toBe(cfg))
+    expect(received.onNewDraft).toBeUndefined()
   })
 })

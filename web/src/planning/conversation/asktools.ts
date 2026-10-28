@@ -79,6 +79,10 @@ export interface AskPageCandidate {
   placeId: string
   name?: string
   summary?: string
+  // lat/lng——選填:候選自帶的座標(前端查附近景點時一併帶上),用來在地圖上畫候選點(見 askMapView.ts);
+  // 沒帶時由候選頁背景查完整資料(placeDetails)後補上。
+  lat?: number
+  lng?: number
 }
 
 // AskPageExplore——2026-10 新增(使用者明確要求「open_ask_page 輸入

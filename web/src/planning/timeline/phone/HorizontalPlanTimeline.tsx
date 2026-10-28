@@ -1,6 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useSwipeReveal } from './useSwipeReveal'
 import { listNodes, lodgingSpanLabel, lodgingsOf, lodgingsStartingOnDay, stopLookupFailed, withDay, type PlanLodging, type PlanNode, type PlanTimeline, type NoteInfo, type PlanThemeChild, type TransitInfo } from '../model'
 import type { AskPageInput, AskPageSelection } from '../../conversation/asktools'
+import type { AskMapPoint } from '../../conversation/askMapView'
 import { AskPage } from '../../conversation/AskPage'
 import { nodeStatusOf, type NodeStatusMap } from '../status'
 import { DEFAULT_NOTE_CATEGORY, NOTE_CATEGORY_META, TRANSIT_MODE_CHOICES } from '../presentation'
@@ -115,6 +117,9 @@ export interface HorizontalPlanTimelineProps {
   // 省略時不會渲染這顆按鈕,對齊 onRemoveStop 的既有選填慣例——桌面版
   // PlanTimelineView.tsx 不受影響(這個元件本來就只給手機版用)。
   onPanToStop?: (stopId: string) => void
+  // onReplaceStop——選填:上滑露出的操作列多一顆「更換地點」,點擊時呼叫並傳入這個節點的 id。
+  // 實際怎麼換由呼叫端決定(TripPlanPage 目前是把需求送給 AI 對話)。省略時不渲染這顆按鈕。
+  onReplaceStop?: (stopId: string) => void
   // onSetStopTransitMode——選填:點擊卡片頂部的交通資訊列(.transitRow)
   // 彈出一個簡易選單讓使用者切換交通方式,選了之後呼叫並傳入這個節點的
   // id(到達站,對齊 TransitInfo 掛在到達站自己身上的既有設計)與選定的
@@ -219,6 +224,14 @@ export interface HorizontalPlanTimelineProps {
   // 元件——那會讓推論態的打包結果夾帶展示用的程式碼。交出渲染權,
   // 它只需要知道「這塊空間要放詢問頁」。
   renderAskPage?: () => ReactNode
+  // askPageConfirmViaComposer/onAskPageSelectionChange——原樣轉傳給內部的 AskPage(見 AskPage 的 confirmViaComposer):
+  // 景點候選頁不顯示「確認選擇」按鈕,改由呼叫端的輸入匡送出鈕確認。只對內部預設的 AskPage 有效(renderAskPage 置換時不適用)。
+  askPageConfirmViaComposer?: boolean
+  onAskPageSelectionChange?: (selected: AskPageSelection[]) => void
+  // onAskPageMapPointsChange/onAskPageToggleReady——同上,原樣轉傳給內部 AskPage(見 AskPage 的 onMapPointsChange/onToggleReady)。
+  onAskPageMapPointsChange?: (points: AskMapPoint[]) => void
+  onAskPageToggleReady?: (toggle: ((placeId: string) => void) | null) => void
+  askPageBadgedPlaceIds?: ReadonlySet<string>
   // onRetryStop——地點資料查詢失敗的站點上顯示「重試」按鈕,語意同
   // PlanTimelineView 的同名 prop(見該處的完整說明)。
   //
@@ -470,6 +483,7 @@ export function HorizontalPlanTimeline({
   onHeightChange,
   onRemoveStop,
   onPanToStop,
+  onReplaceStop,
   onSetStopTransitMode,
   isGenerating = false,
   focusLatest = false,
@@ -479,6 +493,11 @@ export function HorizontalPlanTimeline({
   onAskPageBack,
   askPageInput,
   renderAskPage,
+  askPageConfirmViaComposer,
+  onAskPageSelectionChange,
+  onAskPageMapPointsChange,
+  onAskPageToggleReady,
+  askPageBadgedPlaceIds,
   onRetryStop,
   nodeStatus,
   stackedLayout = false,
@@ -568,6 +587,8 @@ export function HorizontalPlanTimeline({
 
   const scrollerRef = useRef<HTMLDivElement | null>(null)
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+  // swipe——圖卡往上滑、卡片內下方露出操作列(更換地點/刪除),見 useSwipeReveal.ts。
+  const swipe = useSwipeReveal(cardRefs, scrollerRef)
   // dayTransition——跨日過渡的連續進度(使用者明確要求「不要用快速滑入
   // 的動畫,使用跟卡片同步進場,也就是當天最後張卡開始往左滑時,軸線
   // 也跟著移動,滑到第二天第一張卡為中心時,軸線滑動結束」)。
@@ -1222,6 +1243,11 @@ export function HorizontalPlanTimeline({
             input={askPageInput ?? { candidates: [] }}
             onDone={handleAskPageDone}
             onBack={onAskPageBack}
+            confirmViaComposer={askPageConfirmViaComposer}
+            onSelectionChange={onAskPageSelectionChange}
+            onMapPointsChange={onAskPageMapPointsChange}
+            onToggleReady={onAskPageToggleReady}
+            badgedPlaceIds={askPageBadgedPlaceIds}
           />
         )
       ) : (
@@ -1229,7 +1255,11 @@ export function HorizontalPlanTimeline({
         className={styles.scroller}
         ref={scrollerRef}
         onScroll={handleScroll}
-        onPointerDown={handleUserDragStart}
+        onPointerDown={(e) => {
+          handleUserDragStart()
+          swipe.onPointerDown(e)
+        }}
+        onClickCapture={swipe.onClickCapture}
         onPointerUp={handleUserDragEnd}
         onPointerCancel={handleUserDragEnd}
       >
@@ -1417,6 +1447,9 @@ export function HorizontalPlanTimeline({
               )
             }
 
+            // swipeEnabled——有可露出的操作(更換地點/刪除)、且不是還在查詢的骨架卡才啟用上滑手勢。
+            const swipeEnabled = !!(onRemoveStop || onReplaceStop) && !status.loading
+            const swipeOpen = swipe.openId === node.id
             return (
               <div
                 key={node.id}
@@ -1435,18 +1468,61 @@ export function HorizontalPlanTimeline({
                 // 選中樣式是多餘的視覺雜訊。isSelected 這個值保留,仍然
                 // 驅動 aria-current(可及性,螢幕閱讀器需要知道目前選取
                 // 哪一張,跟視覺呈現是獨立的兩件事)。
-                className={`${styles.card} ${justMounted ? styles.cardSlideIn : ''} ${isSingleCard ? styles.singleCard : ''} ${isEdgeCard ? styles.edgeCard : ''}`}
+                className={`${styles.card} ${styles.swipeCard} ${justMounted ? styles.cardSlideIn : ''} ${isSingleCard ? styles.singleCard : ''} ${isEdgeCard ? styles.edgeCard : ''}`}
                 role="button"
                 tabIndex={0}
                 aria-current={isSelected ? 'true' : undefined}
+                data-swipe-id={swipeEnabled ? node.id : undefined}
                 onClick={() => handleSelect(node.id)}
                 onKeyDown={(e) => {
+                  if (swipeEnabled) swipe.onKeyDown(node.id, e)
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault()
                     handleSelect(node.id)
                   }
                 }}
               >
+                {/* swipeBar——往上滑時露出的操作列(見 useSwipeReveal.ts)。在 .cardSlide 後面
+                    疊底,.cardSlide 往上位移後才看得到;收合時 aria-hidden 且按鈕不可聚焦。 */}
+                {swipeEnabled && (
+                  <div className={styles.swipeBar} data-swipe-bar aria-hidden={!swipeOpen}>
+                    {onReplaceStop && (
+                      <button
+                        type="button"
+                        className={styles.swipeAction}
+                        tabIndex={swipeOpen ? 0 : -1}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          swipe.close()
+                          onReplaceStop(node.id)
+                        }}
+                      >
+                        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M4 8h14l-3-3M20 16H6l3 3" />
+                        </svg>
+                        更換地點
+                      </button>
+                    )}
+                    {onRemoveStop && (
+                      <button
+                        type="button"
+                        className={`${styles.swipeAction} ${styles.swipeActionDanger}`}
+                        tabIndex={swipeOpen ? 0 : -1}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          swipe.close()
+                          onRemoveStop(node.id)
+                        }}
+                      >
+                        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+                        </svg>
+                        刪除
+                      </button>
+                    )}
+                  </div>
+                )}
+                <div className={styles.cardSlide} data-swipe-slide>
                 {/* photoBanner——景點照片(見 PlanNodeData.googlePhotoUrls
                     的完整說明:真實 Google Places 查詢回來的照片),對齊
                     縱向版 PlanTimelineView 的既有用法,但這裡改成卡片頂部
@@ -1776,6 +1852,7 @@ export function HorizontalPlanTimeline({
                     )}
                   </>
                 )}
+                </div>
               </div>
             )
           })}

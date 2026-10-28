@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Loader2, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
+import type { AskMapPoint } from './askMapView'
 import type { PlanAiDataSource } from '../data/source'
 import { AskShell } from './AskShell'
 import { SkeletonBlock, SkeletonRegion } from '../../components/Skeleton'
@@ -113,6 +114,8 @@ interface CandidateDetails {
   summary?: string
   photoUrl?: string
   attractionId?: string
+  lat?: number
+  lng?: number
   loading: boolean
 }
 
@@ -147,6 +150,17 @@ export interface AskPageProps {
   // 省略時維持原本的橫向捲動,對齊既有呼叫端(/ai-plan 手機版、尚未
   // 接上這個 prop 的其他呼叫點)不需要改動就能繼續運作。
   stacked?: boolean
+  // confirmViaComposer——景點候選頁不顯示「確認選擇」按鈕,改由呼叫端用下方輸入匡的送出鈕確認:候選頁把目前勾選的
+  // 項目經 onSelectionChange 回報(離開候選頁時回報空陣列),呼叫端在使用者按送出時用這份選擇呼叫 onDone。
+  // 省略時維持原本的「確認選擇」按鈕(沒有輸入匡的呼叫端,例如展示頁)。
+  confirmViaComposer?: boolean
+  onSelectionChange?: (selected: AskPageSelection[]) => void
+  // onMapPointsChange/onToggleReady——候選頁把「有座標的候選點」回報給呼叫端畫在地圖上(見 askMapView.ts);離開候選頁時回報
+  // 空陣列/null。onToggleReady 交出「切換某個候選的勾選」函式,讓點地圖標記等同點該張候選卡。
+  onMapPointsChange?: (points: AskMapPoint[]) => void
+  onToggleReady?: (toggle: ((placeId: string) => void) | null) => void
+  // badgedPlaceIds——候選卡要加「已在行程」標記的 placeId(例如更換地點時,已經排在行程裡的地點)。
+  badgedPlaceIds?: ReadonlySet<string>
 }
 
 // AskPage——外層只負責「換步驟時的轉場」(內容滑入 + 手機版面板高度過渡):判斷前進或返回的方向,用 display: contents 的外殼標出
@@ -220,7 +234,7 @@ export function AskPage(props: AskPageProps) {
   )
 }
 
-function AskPageContent({ dataSource, input, onDone, onBack, stacked }: AskPageProps) {
+function AskPageContent({ dataSource, input, onDone, onBack, stacked, confirmViaComposer, onSelectionChange, onMapPointsChange, onToggleReady, badgedPlaceIds }: AskPageProps) {
   // text 模式(見上方檔頭「第四輪」的完整說明):純文字對話氣泡,沒有
   // 候選卡片/選取/確認這些互動,跟其餘模式的渲染邏輯完全不共用,在這裡
   // 直接短路回傳,不進外殼的 .bubble/.question/.actions 結構(文字氣泡
@@ -263,7 +277,20 @@ function AskPageContent({ dataSource, input, onDone, onBack, stacked }: AskPageP
     return <TransportPanel modes={input.transport} reason={input.reason} onDone={onDone} stacked={stacked} />
   }
 
-  return <CandidatesPanel dataSource={dataSource} input={input} onDone={onDone} onBack={onBack} stacked={stacked} />
+  return (
+    <CandidatesPanel
+      dataSource={dataSource}
+      input={input}
+      onDone={onDone}
+      onBack={onBack}
+      stacked={stacked}
+      confirmViaComposer={confirmViaComposer}
+      onSelectionChange={onSelectionChange}
+      onMapPointsChange={onMapPointsChange}
+      onToggleReady={onToggleReady}
+      badgedPlaceIds={badgedPlaceIds}
+    />
+  )
 }
 
 // CandidatesPanel——感興趣地點:候選景點照片卡片,可複選,「確認選擇」
@@ -276,6 +303,11 @@ function CandidatesPanel({
   onDone,
   onBack,
   stacked,
+  confirmViaComposer,
+  onSelectionChange,
+  onMapPointsChange,
+  onToggleReady,
+  badgedPlaceIds,
 }: {
   dataSource: PlanAiDataSource
   input:
@@ -284,6 +316,11 @@ function CandidatesPanel({
   onDone: (selected: AskPageSelection[]) => void
   onBack?: () => void
   stacked?: boolean
+  confirmViaComposer?: boolean
+  onSelectionChange?: (selected: AskPageSelection[]) => void
+  onMapPointsChange?: (points: AskMapPoint[]) => void
+  onToggleReady?: (toggle: ((placeId: string) => void) | null) => void
+  badgedPlaceIds?: ReadonlySet<string>
 }) {
   const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>([])
   // candidates——這個元件實際要顯示的候選清單,explore 模式下由
@@ -385,6 +422,8 @@ function CandidatesPanel({
               summary: result.found ? result.summary : candidate.summary,
               photoUrl: result.found ? result.googlePhotoUrls?.[0] : undefined,
               attractionId: result.found ? result.attractionId : undefined,
+              lat: result.found ? result.lat : undefined,
+              lng: result.found ? result.lng : undefined,
               loading: false,
             })
             return next
@@ -408,6 +447,57 @@ function CandidatesPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidates, dataSource])
 
+  // confirmViaComposer:把目前勾選回報給呼叫端(含已查到的 attractionId);離開候選頁(卸載)時回報空陣列。
+  const onSelectionChangeRef = useRef(onSelectionChange)
+  useEffect(() => {
+    onSelectionChangeRef.current = onSelectionChange
+  })
+  useEffect(() => {
+    if (!confirmViaComposer) return
+    onSelectionChangeRef.current?.(
+      selectedPlaceIds.map((placeId) => ({ placeId, attractionId: details.get(placeId)?.attractionId })),
+    )
+  }, [confirmViaComposer, selectedPlaceIds, details])
+  useEffect(
+    () => () => {
+      if (confirmViaComposer) onSelectionChangeRef.current?.([])
+    },
+    [confirmViaComposer],
+  )
+
+  // 地圖點:候選自帶座標優先,否則用背景查到的詳細資料座標;有座標的才畫。離開候選頁(卸載)時回報空陣列。
+  const onMapPointsChangeRef = useRef(onMapPointsChange)
+  const onToggleReadyRef = useRef(onToggleReady)
+  useEffect(() => {
+    onMapPointsChangeRef.current = onMapPointsChange
+    onToggleReadyRef.current = onToggleReady
+  })
+  useEffect(() => {
+    if (!onMapPointsChangeRef.current) return
+    const points: AskMapPoint[] = []
+    for (const c of candidates) {
+      const d = details.get(c.placeId)
+      const lat = c.lat ?? d?.lat
+      const lng = c.lng ?? d?.lng
+      if (lat == null || lng == null) continue
+      points.push({ placeId: c.placeId, name: d?.name ?? c.name ?? c.placeId, lat, lng })
+    }
+    onMapPointsChangeRef.current(points)
+  }, [candidates, details])
+  useEffect(
+    () => () => {
+      onMapPointsChangeRef.current?.([])
+    },
+    [],
+  )
+  // toggleRef 永遠指向最新的 toggleCandidate;交給呼叫端的函式身分固定(掛載時交出、卸載時收回)。
+  const toggleRef = useRef<(placeId: string) => void>(() => {})
+  toggleRef.current = toggleCandidate
+  useEffect(() => {
+    onToggleReadyRef.current?.((placeId) => toggleRef.current(placeId))
+    return () => onToggleReadyRef.current?.(null)
+  }, [])
+
   function handleConfirm() {
     const selected: AskPageSelection[] = selectedPlaceIds.map((placeId) => ({
       placeId,
@@ -425,7 +515,7 @@ function CandidatesPanel({
   // 選完城市後的「查詢中」({ loading: true })也走同一個外殼——同一個步驟、同一個 CandidatesPanel,查完換成候選時
   // .wrap/.bubble/標題/卡片列容器沿用同一批 DOM(標題文字換掉、骨架換成卡片,不重新滑入),只有按鈕列是新出現的。
   // 選完城市的查詢中(input.loading)有右上角關閉鈕(2026-10:查詢掛住時原本只能等,現在可以「不用了」以 onDone([]) 結束,
-  // 語意同其他頁的關閉;逾時另見 useAskPageFlow 的 CITY_LOOKUP_TIMEOUT_MS)。explore 查詢中沿用既有行為,不給關閉鈕。
+  // 語意同其他頁的關閉;查詢本身沒有逾時,見 useAskPageFlow)。explore 查詢中沿用既有行為,不給關閉鈕。
   // role="status":讀屏會唸出查詢中,查完換成候選標題時也會唸出新的文字。
   // 查詢中與候選兩個分支都回傳同一個 <AskShell>(同型別、同位置),React 沿用同一批 DOM 與 AskShell 內的 hover 鎖定狀態。
   if (loading) {
@@ -466,14 +556,16 @@ function CandidatesPanel({
       // 操作列只有「確認選擇」。2026-10:原本的「我要直接說明」按鈕(展開說明面板)已移除,改由下方輸入匡直接說明
       // (詢問頁開著時輸入匡不鎖、提示文字引導,見 planning/panel/composerMode.ts)。
       actions={
-        <button
-          type="button"
-          className={`${styles.optionBtn} ${styles.directionConfirm}`}
-          disabled={selectedPlaceIds.length === 0}
-          onClick={handleConfirm}
-        >
-          {selectedPlaceIds.length > 0 ? `確認選擇(${selectedPlaceIds.length})` : '確認選擇'}
-        </button>
+        confirmViaComposer ? undefined : (
+          <button
+            type="button"
+            className={`${styles.optionBtn} ${styles.directionConfirm}`}
+            disabled={selectedPlaceIds.length === 0}
+            onClick={handleConfirm}
+          >
+            {selectedPlaceIds.length > 0 ? `確認選擇(${selectedPlaceIds.length})` : '確認選擇'}
+          </button>
+        )
       }
     >
       <AskOptionList stacked={stacked}>
@@ -487,6 +579,7 @@ function CandidatesPanel({
               photoUrl={detail?.photoUrl}
               checked={selectedPlaceIds.includes(candidate.placeId)}
               stacked={stacked}
+              badge={badgedPlaceIds?.has(candidate.placeId) ? '已在行程' : undefined}
               onToggle={() => toggleCandidate(candidate.placeId)}
             />
           )

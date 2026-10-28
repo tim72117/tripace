@@ -7,6 +7,7 @@ import { geocodeCandidateToSearchResult } from '../../api'
 import { Hotel, Loader2, MapPin, Search, Sparkles, UtensilsCrossed } from 'lucide-react'
 import { ExploreTagButton, SearchThisAreaButton } from '../explore/ExploreControls'
 import type { GeoSelectedKey } from '../explore/selectedKey'
+import type { AskMapView } from '../conversation/askMapView'
 import { isSubmitEnter } from '../../AppCommon'
 import type { ResolvedTheme } from '../../theme'
 import { useFitToGeocodeResults } from './useFitToGeocodeResults'
@@ -94,6 +95,7 @@ export function PlanMap({
   candidateKeys,
   hoverKey,
   geocodeCandidates: geocodeCandidatesProp,
+  askMapView,
   theme,
   children,
 }: {
@@ -226,6 +228,8 @@ export function PlanMap({
   // geocodeCandidates:搜尋結果的唯一持有者在呼叫端(城市搜尋框、類別標籤、「搜尋這個區域」
   // 三個入口都收斂到此);畫成可點擊 marker 並 fitBounds。空陣列 = 沒有待確認候選。
   geocodeCandidates?: GeoGeocodeCandidate[]
+  // askMapView:詢問頁候選點(見 PlanMapSharedProps.askMapView),併進搜尋結果標記畫出來。
+  askMapView?: AskMapView
   // theme:深色/淺色偏好,建圖時決定 colorScheme(只能在建圖當下設定)。
   // 這裡傳 rebuildOnThemeChange={false},建圖後主題改變不重建地圖。預設跟隨系統。
   theme?: ResolvedTheme
@@ -332,6 +336,7 @@ export function PlanMap({
     // 行程 entry 旗子與搜尋結果標記只有登入後有資料,/ai-plan 不傳。
     tripEntries: { entries: tripEntries, selectedKey, hoverKey },
     searchResults: { results: searchResults, selectedKey, hoverKey, candidateKeys, onSelect: onSearchResultSelect },
+    askMapView,
     // 景點區域光暈:詳情與照片走 exploreDataSource(登入版實例,打 /internal)。
     attractionGlow: {
       attractions,

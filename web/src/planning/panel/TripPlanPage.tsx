@@ -20,7 +20,9 @@ import {
   type AskPageSelection,
 } from '../conversation/asktools'
 import { useAskPageBridge } from '../conversation/useAskPageBridge'
-import { useAskPageFlow } from './useAskPageFlow'
+import { buildAskMapView, type AskMapPoint, type AskMapView } from '../conversation/askMapView'
+import { PICK_ASK_REASON, REPLACE_ASK_REASON, candidatesFromAttractions, nearbyAskInput, pickBaseStop, shouldConfirmFromComposer } from './askStarters'
+import { PICKED_INTERESTS_PROMPT, useAskPageFlow } from './useAskPageFlow'
 import { lodgingMapMarkers, resolveMapChildren } from '../timeline/resolved'
 import { useResolvedRefs } from '../data/PlanDataProvider'
 import { refreshTransitForStop } from '../timeline/transit'
@@ -48,6 +50,7 @@ import { ComposerPortal } from './ComposerPortal'
 import { COMPOSER_PLACEHOLDER_UNAVAILABLE, composerModeFor, routeComposerSubmit } from './composerMode'
 import { ComposerSlotContext } from '../shared/overlayDom'
 import {
+  getNode,
   getTimeDragBounds,
   insertAfter,
   listNodes,
@@ -777,6 +780,9 @@ export function TripPlanPage(props: {
   // 上,地圖上讓連接的兩個點都顯示 hover 狀態,並用虛線做連線」。跟
   // onHoverStopChange 同一種轉發模式,不存成這個元件自己的 state。
   onHoverTransitChange?: (pair: { fromId: string; toId: string } | null) => void
+  // onAskMapViewChange——詢問頁(選擇感興趣景點、更換地點)的候選點與勾選回報,給入口畫在地圖上(見 conversation/askMapView.ts);
+  // 詢問頁關閉或換頁時回報空檢視。選填:不傳就不回報。
+  onAskMapViewChange?: (view: AskMapView) => void
   // onToolCallLogChange——見 ToolCallLogEntry 的完整說明:AI 推論過程中
   // 每次工具呼叫的紀錄,隨 usePlanAiChatBridge 內部 state 累積而變動,
   // 跟 onStopsChange/onRouteSegmentsChange 同一種「資料可能由多條路徑
@@ -911,7 +917,7 @@ export function TripPlanPage(props: {
   const {
     cfg, compact, visible = true, scrollContainerRef, onPanToStop, onStopsChange, onRouteSegmentsChange, dataSource,
     selectedStopId: controlledSelectedStopId, onSelectedStopChange,
-    onHoverStopChange, onHoverTransitChange, onSendPromptReady, onToolCallLogChange,
+    onHoverStopChange, onHoverTransitChange, onAskMapViewChange, onSendPromptReady, onToolCallLogChange,
     store,
     transparentBackground = false,
     hideEmptyState = false,
@@ -971,6 +977,7 @@ export function TripPlanPage(props: {
     setStopTime,
     resyncFromStorage,
     retryStop,
+    replaceStop,
     setTimeline,
   } = usePlanTimelineCore({
     store,
@@ -1228,18 +1235,40 @@ export function TripPlanPage(props: {
   }, [planAiChat.toolCallLog, reportToolCallLog])
 
   const [chatInput, setChatInput] = useState('')
+  // askSelection——景點候選頁目前勾選的項目(AskPage confirmViaComposer 回報)。輸入框空白時按送出鈕就是「確認選擇」。
+  const [askSelection, setAskSelection] = useState<AskPageSelection[]>([])
+  // askPoints/askToggleRef——候選頁回報的地圖點與「切換勾選」函式;與 askSelection 合成 AskMapView 回報給入口(見 onAskMapViewChange)。
+  const [askPoints, setAskPoints] = useState<AskMapPoint[]>([])
+  // markInItinerary——「更換地點」的詢問頁開著時為 true:候選裡已經排在行程中的地點加「已在行程」標記(結束時由 startAsk 的回呼清掉)。
+  // searchNearbyCandidates——以座標查附近觀光地點,轉成詢問頁候選(選完城市那一步同樣的類型篩選)。
+  const searchNearbyCandidates = async (lat: number, lng: number, excludePlaceId?: string) => {
+    const { attractions } = await fetchPlanAiAttractionSearch(cfg, lat, lng, CITY_ATTRACTION_TYPES)
+    return candidatesFromAttractions(attractions, excludePlaceId)
+  }
+  const [markInItinerary, setMarkInItinerary] = useState(false)
+  const itineraryPlaceIds = useMemo(() => new Set(allNodes.flatMap((n) => (n.type === 'stop' && n.placeId ? [n.placeId] : []))), [allNodes])
+  const badgedPlaceIds = markInItinerary ? itineraryPlaceIds : undefined
+  const askToggleRef = useRef<((placeId: string) => void) | null>(null)
+  const setAskToggle = useCallback((toggle: ((placeId: string) => void) | null) => {
+    askToggleRef.current = toggle
+  }, [])
+  const askToggle = useCallback((placeId: string) => askToggleRef.current?.(placeId), [])
+  const reportAskMapView = useStableCallback((view: AskMapView) => { onAskMapViewChange?.(view) })
+  useEffect(() => {
+    reportAskMapView(buildAskMapView(askPoints, askSelection.map((s) => s.placeId), askToggle))
+  }, [askPoints, askSelection, askToggle, reportAskMapView])
 
   // 詢問頁「使用者操作之後」的串接(選完國家 → 城市、選完城市 → 查景點、選完景點 → 請 AI 排行程、返回上一層、
   // 詢問頁開著時用下方輸入匡直接說明)——見 useAskPageFlow.ts 的完整說明(2026-10 從這裡抽出去,才能單獨測試)。
   // 詢問頁開著時從輸入匡送出的文字(submitAskPageText)最後沒送出去(後端拒絕、網路錯誤)時放回輸入框(輸入框已有內容
   // 就不覆蓋),使用者不用重打;推論中則由 useAskPageFlow 先記下、這一輪結束後自動送出(見該檔案 submitAskPageText 的說明)。
-  const { handleAskPageDone, handleAskPageBack, submitAskPageText } = useAskPageFlow({
+  const { handleAskPageDone, handleAskPageBack, submitAskPageText, startAsk } = useAskPageFlow({
     bridge: askPageBridge,
     searchCityAttractions: async (city) => {
       const { attractions } = await fetchPlanAiAttractionSearch(cfg, city.lat, city.lng, CITY_ATTRACTION_TYPES)
       return attractions
         .filter((a) => !!a.placeId)
-        .map((a) => ({ placeId: a.placeId!, name: a.name, summary: a.summary }))
+        .map((a) => ({ placeId: a.placeId!, name: a.name, summary: a.summary, lat: a.lat, lng: a.lng }))
     },
     sendPrompt: planAiChat.sendPrompt,
     isThinking: planAiChat.isThinking,
@@ -1600,6 +1629,11 @@ export function TripPlanPage(props: {
           askPageInput={askPageInput}
           onAskPageDone={handleAskPageDone}
           onAskPageBack={handleAskPageBack}
+          askPageConfirmViaComposer
+          onAskPageSelectionChange={setAskSelection}
+          onAskPageMapPointsChange={setAskPoints}
+          onAskPageToggleReady={setAskToggle}
+          askPageBadgedPlaceIds={badgedPlaceIds}
           // onRetryStop——手機版橫向時間軸也要有重試入口(review 發現:
           // /app 手機版走的是這條路徑,原本拿不到按鈕)。
           onRetryStop={retryStop}
@@ -1618,6 +1652,29 @@ export function TripPlanPage(props: {
           onSelectStop={selectStop}
           onRemoveStop={removeStop}
           onPanToStop={resolvePhonePanToStop(onPanToStop, panToStopId)}
+          // onReplaceStop——上滑操作列的「更換地點」:用統一入口 startAsk 開「選擇感興趣的景點」詢問頁——以這一站座標查附近觀光
+          // 地點(排除這一站自己,類型篩選同選城市那一步);沒有座標就退回探查模式用站名。選完由 onDone 直接
+          // replaceStop(保留這一站的時間與順序,只換地點;選了多個只取第一個)。選擇一樣寫入 userSelectionRef。
+          // AI 思考中、已有詢問頁開著或對話不可用時不提供(AI 正在改行程時不該同時被前端改)。
+          onReplaceStop={
+            planAiChat.isThinking || showAskPage || planAiChat.apiKeyMissing || planAiChat.urlMissing
+              ? undefined
+              : (stopId) => {
+                  const node = getNode(timeline, stopId)
+                  if (!node) return
+                  const input = nearbyAskInput({ node, reason: REPLACE_ASK_REASON, search: (lat, lng) => searchNearbyCandidates(lat, lng, node.placeId) })
+                  if (!input) return
+                  const started = startAsk({
+                    input,
+                    onDone: ([picked]) => {
+                      setMarkInItinerary(false)
+                      if (picked) replaceStop(stopId, { placeId: picked.placeId, name: picked.name })
+                    },
+                    onCancel: () => setMarkInItinerary(false),
+                  })
+                  if (started) setMarkInItinerary(true)
+                }
+          }
           onSetStopTransitMode={
             TRANSIT_MODE_SELECT_ENABLED
               ? (stopId, mode) => refreshTransitForStop({ stopId, dataSource: planAiDataSource, setTimeline, getTimeline: () => timelineRef.current, forceMode: mode })
@@ -1645,6 +1702,11 @@ export function TripPlanPage(props: {
           onDone={handleAskPageDone}
           onBack={handleAskPageBack}
           stacked={isWide}
+          confirmViaComposer
+          onSelectionChange={setAskSelection}
+          onMapPointsChange={setAskPoints}
+          onToggleReady={setAskToggle}
+          badgedPlaceIds={badgedPlaceIds}
         />
       ) : (
       <PlanTimelineView
@@ -1736,26 +1798,6 @@ export function TripPlanPage(props: {
       />
       )}
 
-      {/* newDraftBtn——「新行程」按鈕(見 onNewDraft prop 的完整說明)。
-          只在 horizontalTimeline(交接後手機版橫向時間軸)且呼叫端有傳
-          onNewDraft 時才渲染——/app、planning/member/desktop/Content.tsx
-          的規劃面板都不受影響,見該 prop 的完整說明。放在 composer
-          正上方,對齊使用者明確要求的「對話輸入匣上方」位置。 */}
-      {horizontalTimeline && onNewDraft && (
-        <button
-          type="button"
-          className={styles.newDraftBtn}
-          onClick={onNewDraft}
-          aria-label="開始新行程"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          新行程
-        </button>
-      )}
-
       <ComposerPortal
         slot={composerSlot}
         wrapperClassName={[compact ? styles.compact : '', styles.inSlot].filter(Boolean).join(' ')}
@@ -1789,7 +1831,13 @@ export function TripPlanPage(props: {
           className={styles.composer}
           value={chatInput}
           onChange={setChatInput}
-          placeholder={planAiChat.apiKeyMissing || planAiChat.urlMissing ? COMPOSER_PLACEHOLDER_UNAVAILABLE : composerMode.placeholder}
+          placeholder={
+            planAiChat.apiKeyMissing || planAiChat.urlMissing
+              ? COMPOSER_PLACEHOLDER_UNAVAILABLE
+              : showAskPage && askSelection.length > 0
+                ? `按送出確認選擇(${askSelection.length})`
+                : composerMode.placeholder
+          }
           // urlMissing——見 PLAN_AI_ONAGENT_WS_URL 的完整說明:跟
           // apiKeyMissing 一樣視為「對話功能目前無法使用」,一起鎖定
           // 輸入框。
@@ -1798,10 +1846,66 @@ export function TripPlanPage(props: {
           // (composerMode.busy 為 false),此時送出鈕是一般的送出、沒有停止鈕。
           busy={composerMode.busy}
           onStop={planAiChat.stopPrompt}
+          // extraButton——「選擇景點」:開啟選擇感興趣景點的詢問頁。行程是空的 → 從國家頁開始(與一開始相同的流程);
+          // 已有站點 → 以目前選中的那一站(沒選就用最後一站)為中心查附近觀光地點,選完請 AI 排進行程。
+          // AI 思考中、已有詢問頁開著或對話不可用時停用。
+          // statusIcon——輸入框左側的星芒圖示:AI 推論中帶旋轉光環與脈動特效,平時是安靜的靜態圖示。
+          statusIcon={{ active: planAiChat.isThinking }}
+          extraButton={[
+            ...(onNewDraft
+              ? [
+                  {
+                    label: '新行程',
+                    icon: (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                    ),
+                    // AI 思考中不建立新行程(推論還在寫目前這一份)。
+                    disabled: planAiChat.isThinking,
+                    onClick: onNewDraft,
+                  },
+                ]
+              : []),
+            {
+            label: '選擇景點',
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11Z" />
+                <circle cx="12" cy="10" r="2.5" />
+              </svg>
+            ),
+            disabled: planAiChat.isThinking || showAskPage || planAiChat.apiKeyMissing || planAiChat.urlMissing,
+            onClick: () => {
+              const base = pickBaseStop(allNodes, selectedStopId ? getNode(timeline, selectedStopId) : undefined)
+              const input = base ? nearbyAskInput({ node: base, reason: PICK_ASK_REASON, search: (lat, lng) => searchNearbyCandidates(lat, lng) }) : null
+              if (!input) {
+                void openAskPage({ country: {} })
+                return
+              }
+              // 已經在行程裡的候選加「已在行程」標記(不阻擋選取),詢問頁結束時關掉。
+              const started = startAsk({
+                input,
+                onDone: () => {
+                  setMarkInItinerary(false)
+                  void planAiChat.sendPrompt(PICKED_INTERESTS_PROMPT)
+                },
+                onCancel: () => setMarkInItinerary(false),
+              })
+              if (started) setMarkInItinerary(true)
+            },
+            },
+          ]}
           onSubmit={() => {
             // routeComposerSubmit(見 composerMode.ts):空白或鎖住時不處理(即使按鈕已換成停止,form 仍可能
             // 被 Enter 鍵觸發 submit,這裡是跟 busy 對齊的第二道防線,理由同 sendPrompt 內部的併發保護說明)。
             const route = routeComposerSubmit(chatInput, composerMode)
+            // 景點候選頁有勾選、輸入框空白:送出鈕 = 確認選擇(與按「確認選擇」相同,走 handleAskPageDone)。
+            if (shouldConfirmFromComposer({ route, text: chatInput, showAskPage, selectionCount: askSelection.length })) {
+              handleAskPageDone(askSelection)
+              return
+            }
             if (route === 'ignore') return
             if (route === 'askPage') {
               // 詢問頁開著:先清空輸入框,沒送出去時由 onAskPageTextNotSent 放回。

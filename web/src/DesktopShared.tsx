@@ -79,19 +79,15 @@ export const ROUTE_LINE_ENABLED = import.meta.env.VITE_FEATURE_ROUTE_LINE === 't
 // 編譯時 feature flag 機制,預設關閉,只在明確設為字串 "true" 時才啟用。
 export const TRANSIT_MODE_SELECT_ENABLED = import.meta.env.VITE_FEATURE_TRANSIT_MODE_SELECT === 'true'
 
-// NEW_TRIP_DRAFT_ENABLED——/ai-plan 展示頁交接後手機版對話區,composer
-// 上方「新行程」按鈕的開關(2026-10 新增,見 planning/preview/
-// LivePlanLayer.tsx 的完整說明:點擊後把目前草稿歸檔進行程清單、開始
-// 一份全新的空白草稿,舊草稿保留在 planning/timeline/drafts.ts 管理
-// 的清單裡,供未來「叫出舊行程清單」UI 使用——這一輪只做「新增」這個
-// 動作本身)。
+// NEW_TRIP_DRAFT_ENABLED——輸入框旁「新行程」按鈕的開關(2026-10 新增)。範圍:/ai-plan/live 展示頁(舊草稿機制,見
+// planning/preview/LivePlanLayer.tsx)與登入後 /app 桌面、手機(前端 Trip,見 planning/trip 與 member/*/LivePlanLayer.tsx):
+// 點擊後開始一份全新的空白行程,舊的保留在儲存裡(目前還沒有叫出舊行程的介面)。
 //
 // 同 TIME_DRAG_ENABLED/ROUTE_LINE_ENABLED/
 // TRANSIT_MODE_SELECT_ENABLED 一套編譯時 feature flag 機制,預設關閉,
-// 只在明確設為字串 "true" 時才啟用——這是全新功能,資料層(多份草稿)
+// 只在明確設為字串 "true" 時才啟用——這是全新功能,資料層(多份行程)
 // 還沒有被實際使用驗證過,先用 flag 包住,可以只在特定環境開啟觀察
-// 效果,不需要重新部署就能整個關掉。flag 關閉時這顆「新行程」按鈕完全
-// 不會渲染,不是渲染了但點了沒反應。
+// 效果。flag 關閉時這顆「新行程」按鈕完全不會渲染,不是渲染了但點了沒反應。
 export const NEW_TRIP_DRAFT_ENABLED = import.meta.env.VITE_FEATURE_NEW_TRIP_DRAFT === 'true'
 
 // DEBUG_PANEL_ENABLED:原本綁在網址參數 ?demo(見 main.tsx 的 isDemo)
