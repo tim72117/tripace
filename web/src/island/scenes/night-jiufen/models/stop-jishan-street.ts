@@ -1,4 +1,4 @@
-import type { Model3D, Part, Vec3 } from '../three/model';
+import type { Model3D, Part, Vec3 } from '../../../three/model';
 
 // 第一站「壱 基山街」：九份最熱鬧的老街一段。
 // 設計意圖：街道沿 X 軸延伸（模型 X 範圍 -0.5~0.5 = 街長），街面在 Z=0，旅人沿街面中線走。

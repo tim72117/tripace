@@ -1,7 +1,22 @@
+import { lazy, Suspense } from 'react'
 import { OverlayShell, type OverlayClassNames } from '../../shared/OverlayShell'
+import { isLayoutDebugEnabled } from '../../../layoutDebugFlag'
 import type { AiPlanOverlayLayoutProps } from '../overlayLayoutProps'
 import styles from '../PlanOverlayLayout.module.css'
 import panelStyles from '../PlanOverlayPanel.module.css'
+
+// 除錯疊圖(?debugSafeArea=1,見 layoutDebugFlag.ts)——2026-10 新增,
+// 跟登入後手機版(planning/member/phone/PlanOverlayLayout.tsx)同一套
+// 做法、同檔名放不同目錄(見該檔案的完整說明)。先前 /ai-plan 只有
+// SafeAreaDebugOverlay(地圖安全區,常數/投影計算)跟 WideLayoutDebugOverlay
+// (wide 版面,用 planOverlayGeometry.ts 的寫死常數對照畫框線)兩個疊圖,
+// 手機版跟桌面疊加版(768–1023px)完全沒有對應的版面骨架疊圖——這兩種
+// 裝置的版面大多是 flex 動態撐出來的,沒有常數可以對照,只能跟登入後
+// 一樣改用 getBoundingClientRect()+ResizeObserver 即時量測實際 DOM
+// 範圍(見 LayoutDebugOverlay.tsx 的完整說明)。
+const LayoutDebugOverlay = lazy(() =>
+  import('./LayoutDebugOverlay').then((m) => ({ default: m.LayoutDebugOverlay })),
+)
 
 // PlanOverlayLayout(/ai-plan 手機版,planning/preview/phone/)——「地圖加疊加 UI」外殼。
 //
@@ -43,6 +58,7 @@ export function PlanOverlayLayout({
   children,
 }: PlanOverlayLayoutProps) {
   const classNames = passThrough ? PASS_THROUGH_CLASS_NAMES : CLASS_NAMES
+  const debug = isLayoutDebugEnabled(window.location.search)
   return (
     <OverlayShell
       classNames={classNames}
@@ -51,6 +67,15 @@ export function PlanOverlayLayout({
       safeAreaRef={safeAreaRef}
       overlayStart={<div className={panelStyles.navSpacer} aria-hidden="true" />}
       composer={composer}
+      overlayEnd={
+        debug
+          ? ({ overlayEl, panelEl, composerSlotEl }) => (
+              <Suspense fallback={null}>
+                <LayoutDebugOverlay overlayEl={overlayEl} panelEl={panelEl} composerEl={composerSlotEl} />
+              </Suspense>
+            )
+          : undefined
+      }
     >
       {children}
     </OverlayShell>

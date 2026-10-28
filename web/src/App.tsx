@@ -101,12 +101,16 @@ const AiItinerariesRoute = lazy(() => import('./itineraries/AiItinerariesRoute')
 // 要求做成獨立頁面、地圖沿用 itineraries 的滿版地圖),公開頁,整個功能
 // 在 momiji-front/ 這個獨立目錄。伺服器端 static.go knownRoutePatterns
 // 也要有 /momiji-front,否則正式環境直接重新整理會 404。
-// IslandPage:夜遊九份島(2026-10 新增,由 island-demo 搬進 src 轉為正式)——部落客文章「夜遊九份」
-// 生成的互動 3D 旅遊小島(完整版),公開頁,整個功能在 island/ 這個獨立目錄,three 在獨立 lazy chunk。
+// IslandPage:互動 3D 旅遊小島(2026-10 新增,由 island-demo 搬進 src 轉為正式;預設場景是部落客文章「夜遊九份」,
+// 場景註冊表見 island/scenes/registry.ts)(完整版),公開頁,整個功能在 island/ 這個獨立目錄,three 在獨立 lazy chunk。
 // 伺服器端 static.go knownRoutePatterns 與 seo_meta.go 也要有 /island,否則正式環境直接重新整理會 404 / 沒有專屬 SEO。
 const IslandPage = lazy(() => import('./island/IslandPage').then((m) => ({ default: m.IslandPage })))
 const MomijiFrontPage = lazy(() => import('./momiji-front/MomijiFrontPage').then((m) => ({ default: m.MomijiFrontPage })))
 const PlanAiSimPage = lazy(() => import('./planning/preview/Content').then((m) => ({ default: m.Content })))
+// PlanAiLivePage——/ai-plan 的推論態,路由 /ai-plan/live(見
+// planning/preview/LiveContent.tsx 開頭的完整說明)。2026-10 從
+// PlanAiSimPage 內部用 state 切換拆成獨立路由。
+const PlanAiLivePage = lazy(() => import('./planning/preview/LiveContent').then((m) => ({ default: m.LiveContent })))
 // BlogArticlePage:部落客發文正式頁面(2026-10 從主題介紹頁內容規格化
 // 試做轉正,見 handbook 構想頁 /ideas/product-direction-5-publishing-tool(原產品方向腦力激盪文件)
 // 「發文工具產品線」的完整說明;原始規格設計見 docs/
@@ -241,6 +245,11 @@ export function App() {
               新增 /plan-ai 忘了同步這份白名單,導致正式環境該路徑直接
               404(即使前端路由本身定義正確),這是實際發生過的教訓。 */}
           <Route path="/ai-plan" element={<PlanAiSimPage />} />
+          {/* /ai-plan/live:推論態,見 planning/preview/LiveContent.tsx
+              開頭的完整說明與上方 PlanAiLivePage 的 lazy import 註解。
+              同樣務必同步 server/cmd/server/static.go 的
+              knownRoutePatterns(見上方 /ai-plan 的既有教訓)。 */}
+          <Route path="/ai-plan/live" element={<PlanAiLivePage />} />
           {/* /itineraries(清單)與 /itineraries/:id(詳細頁):精選行程
               展示(2026-10 頁面文案從「AI 排好的範例行程」改名,見上方
               AiItinerariesRoute import 處的完整說明),公開頁。2026-10
@@ -269,9 +278,10 @@ export function App() {
           {/* /momiji-front:紅葉前線視覺示意頁(見 MomijiFrontPage import
               處的說明),static.go knownRoutePatterns 要同步有這條。 */}
           <Route path="/momiji-front" element={<MomijiFrontPage />} />
-          {/* /island:夜遊九份島(見 IslandPage import 處的說明),static.go knownRoutePatterns
-              與 seo_meta.go 要同步有這條。 */}
+          {/* /island 與 /island/:sceneId:互動旅遊島(見 IslandPage import 處的說明),/island 是預設場景
+              (夜遊九份),其餘場景用 /island/<id>;static.go knownRoutePatterns 與 seo_meta.go 要同步有這兩條。 */}
           <Route path="/island" element={<IslandPage />} />
+          <Route path="/island/:sceneId" element={<IslandPage />} />
           {/* /u/:handle/:slug:部落客發文正式頁面(2026-10,見
               BlogArticlePage.tsx 開頭說明)——不再是固定讀單一 slug 的
               demo 路徑,改依網址路徑參數(作者 handle + 文章 slug)渲染

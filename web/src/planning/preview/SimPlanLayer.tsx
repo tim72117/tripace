@@ -8,11 +8,11 @@ import styles from './Content.module.css'
 
 // SimPlanLayer(/ai-plan 模擬態,planning/preview/)——第 4 層(規劃面板接線)的模擬態呼叫端。
 //
-// /ai-plan 在第 4 層有兩個呼叫端,渲染在同一個位置(PlanOverlayLayout 的 children),由 Content 依 handedOver 擇一:
-//   - 推論態:LivePlanLayer(真實 AI 對話與時間軸,TripPlanPage);
-//   - 模擬態:這個元件(交接前播放固定劇本的時間軸;桌面 PlanTimelineView、手機 HorizontalPlanTimeline,
+// /ai-plan 在第 4 層有兩個呼叫端,分屬兩個獨立路由(2026-10 起不再同一元件內切換):
+//   - 推論態:LivePlanLayer(真實 AI 對話與時間軸,TripPlanPage),由 LiveContent 掛載(/ai-plan/live);
+//   - 模擬態:這個元件,由 Content 掛載(/ai-plan,播放固定劇本的時間軸;桌面 PlanTimelineView、手機 HorizontalPlanTimeline,
 //     劇本播到詢問頁時改渲染 ScriptedAskPage)。
-// 原本這段行內寫在 Content.tsx,現在抽成獨立元件,Content 只剩 <SimPlanLayer … /> 與 <LivePlanLayer … /> 二選一。
+// 原本這段行內寫在 Content.tsx,現在抽成獨立元件,Content 只剩 <SimPlanLayer … />,LiveContent 只剩 <LivePlanLayer … />。
 //
 // 這個元件是「呈現層」:劇本播放、站點檢視、捲動跟隨、拖拉改時間等狀態與 hook 仍由 Content 持有(usePlanSimSocket、
 // useSimulatedStopsView 等,地圖也要讀同一份站點),這裡只負責把它們畫出來。所以它的 props 是 Content 傳下來的狀態與

@@ -85,6 +85,34 @@ export function validateLayout(layout: IslandLayout, modelNames: ReadonlySet<str
     }
   })
 
+  const tr = layout.terrain
+  if (tr) {
+    const fin = (path: string, ...ns: number[]) => { if (!ns.every(Number.isFinite)) err(path, '必須是有限數字') }
+    if (tr.ramp) fin('terrain.ramp', tr.ramp.y0, tr.ramp.y1, ...tr.ramp.from, ...tr.ramp.to)
+    tr.features?.forEach((f, i) => {
+      const path = `terrain.features[${i}]`
+      if (f.kind === 'bump') {
+        fin(path, f.x, f.z, f.rx, f.rz, f.height, f.rot ?? 0)
+        if (!(f.rx > 0 && f.rz > 0)) err(path, 'bump 的 rx、rz 必須 > 0')
+      } else {
+        if (f.points.length < 1) err(path, 'ridge 至少 1 個點')
+        fin(path, f.halfWidth, ...f.points.flat())
+        if (!(f.halfWidth > 0)) err(path, 'ridge 的 halfWidth 必須 > 0')
+      }
+    })
+    if (tr.noise && !(tr.noise.scale > 0)) err('terrain.noise.scale', 'scale 必須 > 0')
+    if (tr.cell !== undefined && !(tr.cell >= 0.5 && tr.cell <= 6)) err('terrain.cell', 'cell 必須在 0.5~6 之間(太小會讓網格剖分過慢)')
+    tr.pads?.forEach((p, i) => {
+      if (p.outline.length < 3) err(`terrain.pads[${i}].outline`, '平台輪廓至少 3 個點')
+      else {
+        if (selfIntersects(p.outline)) err(`terrain.pads[${i}].outline`, '平台輪廓自交')
+        if (p.outline.some(([x, z]) => !pointInPolygon(x, z, layout.outline))) warn(`terrain.pads[${i}].outline`, '平台有頂點超出島的輪廓')
+      }
+      if (!Number.isFinite(p.y) || p.blend < 0) err(`terrain.pads[${i}]`, 'y 必須是有限數字、blend 不可為負')
+      if (p.color !== undefined && !HEX.test(p.color)) err(`terrain.pads[${i}].color`, `顏色格式錯誤: ${p.color}`)
+    })
+  }
+
   if (layout.path.points.length < 2) err('path.points', '步道至少 2 個點')
   layout.path.points.forEach(([x, z], i) => {
     if (!pointInPolygon(x, z, layout.outline)) warn(`path.points[${i}]`, '步道點在島外')

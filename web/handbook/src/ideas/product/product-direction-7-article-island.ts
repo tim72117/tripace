@@ -175,7 +175,7 @@ export const PRODUCT_DIRECTION_7: IdeaDoc = {
   source: [
     'docs/island/implementation-plan.md(實作計劃與玩法發想原文)',
     'docs/island/visual-plan.md(視覺規劃)',
-    'web/src/island/data/night-jiufen.json(島所用的真實文章資料)',
+    'web/src/island/scenes/night-jiufen/article.json(島所用的真實文章資料)',
     'https://puma.taipei/heart-island(參考對象,只取做法)',
   ],
 }

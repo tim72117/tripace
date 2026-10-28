@@ -2,6 +2,58 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.46.0 — 2026-10-28
+
+這一版有四組改動：①`/ai-plan` 播放態與推論態拆成兩個獨立路由（新增 `/ai-plan/live`），備註（note）改成卡片內固定高度橫列，並新增手機版／桌面疊加版的版面骨架除錯疊圖與 AI 工具呼叫紀錄面板；②廣告業主自助控制台與投放系統（新後端服務、新前端、`SponsoredPlanCard`）；③`/island` 重構成場景化（`/island/:sceneId`、探索模式、連續地形）；④草稿清單加入標題與最後編輯時間。**資料庫新增三張表 `partners`、`campaigns`、`ad_plans`（啟動時 AutoMigrate 自動建立，既有表無欄位增刪，不需手動遷移）；環境變數新增 `VITE_FEATURE_ISLAND_SAMPLE`（前端，預設關閉）、`VITE_PARTNER_API_URL`、`VITE_MAIN_API_URL`（`web/partner`）、partnerserver 的 `PORT`、`DATABASE_URL`；localStorage 新增 `tripace_partner_token`（草稿 key `tripace.planTimeline.drafts` 不變、舊資料相容）；LLM 工具、yaml、thought 皆不變（不需重推 onagent）；新的 npm 相依只在 `web/partner`、`web/partner-installer`，主站 `package.json`、`go.mod` 無變動。**
+
+> **內部不相容變更**（0.x 階段依版號慣例升 minor）：
+>
+> - `/ai-plan` 不再在同一個元件內用 `handedOver` 切換推論態：`planning/preview/Content.tsx` 現在只是播放態，推論態在 `planning/preview/LiveContent.tsx`（路由 `/ai-plan/live`）。交接用 `navigate`，不傳任何狀態。`SimComposerProps` 移除 `handedOver`、`userPrompt`、`setUserPrompt`。
+> - `sdk-proposals/toAgentBridgeTools.ts`：回傳的 handler 一律變成 async，`onToolResult` 收到的是 await 之後的實際結果（原本可能是 pending 的 Promise）。
+> - `HorizontalPlanTimeline`（手機橫向時間軸）移除外層全寬 `.noteBanner` 與 `selectedNote`/`selectedNoteMeta`，備註改為每張卡內的 `.cardNoteRow`；`--horizontal-timeline-card-height` 由 300px 改 322px，連動安全區 `bottom` 由 454px 改 476px（`planning/preview/PlanOverlayPanel.module.css`、`planning/member/phone/PlanOverlayLayout.module.css`）。
+> - 舊版 `timeline/Timeline.tsx` 移除 CSS 類別 `.expandSummary`，備註改為常駐的 `.noteRow`。
+> - `/island`：`island/seo.ts`（`SEO_TITLE`、`SEO_DESCRIPTION`）與 `seo.test.ts` 刪除，改由 `scenes/night-jiufen/index.ts` 的 `seo` 與 `scenes/seo.test.ts` 取代；`data/night-jiufen.json`、`data/layout.ts`、`models/stop-*.ts` 搬到 `scenes/night-jiufen/`；移除匯出 `MODELS`、`ISLAND_SOURCE`、`ISLAND_BYLINE`；HUD 的 `setTouring`、`onTourEnd` 與 `IslandApp.startTour` 移除，**自動導覽（28 秒）整個移除**，改為「探索」模式；`mountIsland(root, search, data, sceneOpts)` 簽名改變，`loadIslandData(sceneId)` 與 `createMini` 改為 async。
+> - handbook：`HandbookIndex` 的 props 由無參數改為必填 `mode`；根路徑 `/` 由雛形列表改為分類首頁，原雛形列表在 `/category/prototypes`、系統文件在 `/category/system-docs`。
+
+### 新增
+
+- **`/ai-plan/live`（推論態獨立路由）**（`planning/preview/LiveContent.tsx`、`web/src/App.tsx`、`server/cmd/server/static.go` 的 `knownRoutePatterns`、`seo_meta.go`）：不接收播放態任何狀態，掛載後整頁重新初始化（地圖重建一次）。播放態按「讓我試看看」經 `liveHandoverUrl.ts` 的 `buildLiveHandoverUrl` 導過來，保留 `embedded`、`debugSafeArea` 等網址參數、去掉 `skipDemo`。SEO：專案沒有 noindex 機制，只用 canonical 指向 `/ai-plan`。
+- **手機版推論態「移動到此」按鈕**：`TripPlanPage` 只有收到 `onPanToStop` 時才把 `panToStopId` 傳給手機橫向時間軸（`resolvePhonePanToStop`），`/app` 手機版沒有該 callback 所以不顯示。
+- **版面骨架除錯疊圖（`?debugSafeArea=1`）**：`planning/preview/phone/LayoutDebugOverlay.tsx`、`desktop/LayoutDebugOverlay.tsx`，做法同登入後（`getBoundingClientRect` 即時量測 + `ResizeObserver`），經 `OverlayShell` 新增的 `overlayEnd` render prop 與 `desktop/PlanOverlayPanel` 新增的 `onPanelElChange`、`onComposerElChange` 取得節點。
+- **AI 工具呼叫紀錄面板**（`ToolCallLogDebugOverlay.tsx`、`TripPlanPage` 的 `onToolCallLogChange`、`LivePlanLayer` 透傳）：只有呼叫端傳了 `onToolCallLogChange` 才收集，最多保留最近 200 筆，id 用遞增計數器。
+- **備註（note）卡片內固定高度橫列**：桌面 `PlanTimelineView` 的 `.stopNoteRow`（交通備註維持獨立一列）、手機版 `.cardNoteRow`、舊版 `Timeline.tsx` 的 `.noteRow`（展開時換行顯示全文），以及兩個 `renderStopCard` 插槽卡（`renderItineraryStopCard`、`renderOnsenAutumnStopCard`，原本完全不顯示備註）。過長以省略號截斷，文字元素帶 `title` 全文。
+- **handbook**：`public/marker-layers.html` 的 `/ai-plan` 結構圖拆成播放態／推論態各手機與桌面共四張，頁首標籤（全部／播放態／推論態／登入後）切換，選擇記在網址 hash；四個入口的「統一繪製層」卡只留各自差異（實心白框＝多掛或特別的層、虛線框＝不掛），共同的七層明細抽到 `public/unified-draw-layer.html`（路由 `/unified-draw-layer`，`UnifiedDrawLayerPage.tsx`），點卡開啟。構想文件新增選填欄位 `IdeaDoc.scale?: 'small'` 與構想 `maintenance-02`（感興趣點改用 `searchResultLayer` 繪製，標 `small`）。
+- **廣告業主自助控制台與投放系統**：後端 `server/cmd/partnerserver`（掛 `/partner/`）、`server/internal/partnerconsole`（`/partner/api/*`：me、placements、campaigns CRUD 與 status、plans CRUD 與 status）；主站公開端點 `GET /public/ad-plans?placement=`、`POST /internal/maintenance/partners`；CLI `tripace-cli partner-grant -email -name`；`server/cmd/partner-cli`、`web/partner-installer`（`@tripace/partner-claude-skill`）、`Dockerfile.partner`、兩個手動觸發的 release workflow；前端 `web/partner`；主站 `SponsoredPlanCard` 掛在九份、京都、台南、台南赤崁四個城市頁（placement 為頁面 slug）；埋點新增 `sponsored_plan_click`。業主帳號要用 `partner-grant` 手動開通，沒有自助申請。
+- **`/island` 場景化**：`/island/:sceneId`（`/island` 為預設場景夜遊九份，不存在的 id 與 `/island/night-jiufen` 都導回 `/island`）、`scenes/` 模組（`registry.ts`、`types.ts`、`useIslandScene.ts`…）、HUD 場景切換選單、實驗場景 `sample-islet`（`VITE_FEATURE_ISLAND_SAMPLE=true` 才存在）、第一人稱探索模式（`three/explorer.ts`、`logic/walk.ts`…）、連續高度場地形（`logic/heightfield.ts`、`three/terrainField.ts`，取代 `terraces`/`slopes`）、新模型 `landmark-sheng-ping-theater`；伺服器 `static.go` 路由放寬為 `^/island(/[a-z0-9]+(-[a-z0-9]+)*)?$`、`seo_meta.go` 新增 `seoPathAliases`。設計文件 `docs/refactor-island-terrain-2026-10.md`。
+- **草稿清單標題與最後編輯時間**（`planning/timeline/drafts.ts`）：每筆草稿多 `title`（取前兩個站名，超過兩站加「⋯等」，沒有站名為「新行程」）與 `updatedAt`；`saveTimeline` 存檔成功後 `touchDraft`，草稿一編輯就進清單；新增 `deriveDraftTitle`、`sortDraftsByRecent`、`touchDraft`。舊資料（只有 `id`、`createdAt`）讀取時自動補值，不需遷移；「叫出舊行程清單」的畫面尚未實作。
+- handbook 分類首頁：`HandbookHome`、`categories.ts`、`/category/{id}`、`system-maintenance` 群組與構想 `maintenance-01`。
+
+### 修改
+
+- `SafeAreaDebugOverlay`：修正容器尚未掛載時不會補算（框線完全不出現）的時序問題，改用重試（上限 2 秒）加 `ResizeObserver`；`?debugSafeArea=1` 不再強制停止播放態劇本。
+- `/ai-plan` 播放態 `Content.tsx` 大幅瘦身（移除 `handedOver`、live 站點檢視、定位、光暈相關程式，兩個 `useFirstStopAutoPan` 合併為一個）；`.composerCta` 改為 `.composerCta.composerCta`，避免與 `components/Composer.module.css` 的 `.sendBtn` 因 CSS 打包順序互相覆寫。
+- 手機版橫向卡片的關閉與「移動到此」按鈕改放右上角並排（線條圖示，圖示大小不變，觸控熱區用 `::after` 擴大 10px）。
+- 九份頁（`JiufenPage`）新增 `SponsoredPlanCard`（placement `jiufen`）；KKday 聯盟卡片在 v0.45.0 已移除，期間因合併重新出現後再次移除，相對 v0.45.1 無新的版位移除。
+- `HeroIsland.tsx` 補 `await createMini` 並在卸載時 dispose；封面鏡頭依畫面比例拉遠（`fitCoverToAspect`）。
+- 文件與註解依新架構更新：`docs/terminology.md`、handbook `PlanDataFlowPage.tsx` 的「播放態／推論態」改述為兩個獨立路由（移除 `handedOver` 說法），`SimPlanLayer`、`LivePlanLayer`、`LiveContent`、`useSimulatedStopsView`、`HorizontalPlanTimeline`、`PlanTimelineView` 等檔的過時註解同步修正；`docs/research-plan-actions-inventory-2026-10.md`、`docs/research-timeline-core-comparison-2026-10.md` 是帶日期的研究快照，仍描述 `handedOver`，視為歷史紀錄未改。
+- handbook 十餘個頁面的返回連結改指 `/category/system-docs`；`web/vite.config.ts` 的測試環境設 `VITE_FEATURE_ISLAND_SAMPLE='true'`（dev 設定不變）。
+
+### 測試
+
+- 新增：`liveHandoverUrl.test.ts`、`panel/toolCallLog.test.tsx`、`sdk-proposals/toAgentBridgeTools.test.ts`、`timeline/Timeline.note.test.tsx`、`itineraries/stopCardNote.test.tsx`、`seo_meta_test.go` 的 `/ai-plan/live` 與 island 別名測試、`partnerconsole_test`、`partner_tenant_isolation_test`、`partner-cli/detail_test`，以及 island 的 `IslandPage`、`scenes/registry`、`heightfield`、`walk`、`explorer` 等測試；`crud.testutils.tsx` 的 `shownNote` 跟著新的備註位置調整。
+- 完整 `npm test`：244 個檔案、2525 個測試通過（3 個略過）；`go test ./cmd/server/...` 通過。
+
+### 已知未處理
+
+- `LiveContent`、兩個 `LayoutDebugOverlay`、`web/partner`、`SponsoredPlanCard` 沒有自動化測試；`PlanTimelineView`、`HorizontalPlanTimeline` 的備註 `title` 沒有獨立測試。手機觸控裝置看不到 `title` 提示，長備註在手機版與桌面直向卡片仍只能看到截斷的單行。
+- 手機版卡片 322px 與安全區 476px 只在 500px 寬的視窗實測過（卡片 322px、安全區底邊距容器頂 11px），390px 寬未量；`marker-layers.html` 裡手動排版的標註文字只在 700px 寬看過。
+- `/ai-plan/live` 沒有 noindex（專案無此機制）；`sortDraftsByRecent` 目前沒有呼叫端。
+- `/island/<任何合法 id>` 伺服器一律回 200，不存在的 id 靠前端導回，爬蟲看不到 404；新增場景要手動在 `seoMetaByPath` 加條目；導覽結束的過肩鏡頭、街燈未做。
+- 廣告：活動只看 status、不依起訖日自動切換；partnerserver 需另建 Cloud Run 服務與路由（程式碼內沒有部署設定）。
+- 443de40 的 commit 訊息寫「修正部落格 Title 死欄位」，但差異裡沒有對應的程式變更（v0.45.1 時就沒有該欄位），本版不列入修改。
+- `docs/attraction-theme-points-2026-09.md` 記載紅葉景點 86 筆「只寫入本機、尚未推正式站」，與 v0.45.1 CHANGELOG「已用 `attraction sync` 推到正式站」說法不一致，未查證；清邁段落（2 個主題點、10 個精選點）也只是文件，尚未寫入資料庫。
+- `handbook/dist/` 是舊的 build 產物，下次 build 才會更新。
+
 ## v0.45.1 — 2026-10-27
 
 紅葉前線的賞楓景點新增 11 個精選行程連結（原本只有定山溪），行程靜態檔改放 `example/momiji/` 子目錄；每份新行程的左側「相關資訊」區塊帶「紅葉前線」連結。**無資料庫結構變更；環境變數、網址參數、localStorage key、LLM 工具、yaml、thought 皆不變（不需重推 onagent）；無新的 npm 相依；無不相容變更**（`example/` 內的行程檔搬了位置，但都經 `registry.ts` 的 glob 載入，沒有程式直接匯入這些檔案的路徑）。

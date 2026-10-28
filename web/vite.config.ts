@@ -27,6 +27,8 @@ export default defineConfig({
     host: true,
   },
   test: {
+    // 範例小島(island 的實驗場景)的 feature flag:測試要涵蓋它(所有已登記場景的整合驗證、場景切換測試)
+    env: { VITE_FEATURE_ISLAND_SAMPLE: 'true' },
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],

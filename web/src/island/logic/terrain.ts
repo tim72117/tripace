@@ -6,6 +6,7 @@
 // 避免各處各算一套。
 import type { IslandLayout } from '../data/layoutTypes'
 import { pointInPolygon } from './geometry'
+import { heightFieldAt } from './heightfield'
 
 export type Slope = NonNullable<IslandLayout['slopes']>[number]
 
@@ -20,7 +21,9 @@ export function slopeHeightAt(s: Pick<Slope, 'from' | 'to' | 'y0' | 'y1'>, x: nu
   return s.y0 + (s.y1 - s.y0) * t
 }
 
-export function heightAt(layout: Pick<IslandLayout, 'topY' | 'terraces' | 'slopes'>, x: number, z: number): number {
+// 有 layout.terrain(連續高度場)時由它決定,夾在 topY 以上;否則用舊的疊層階地與斜坡。
+export function heightAt(layout: Pick<IslandLayout, 'topY' | 'terraces' | 'slopes' | 'terrain'>, x: number, z: number): number {
+  if (layout.terrain) return Math.max(layout.topY, heightFieldAt(layout.terrain, x, z))
   let h = layout.topY
   for (const t of layout.terraces ?? []) {
     if (t.y > h && pointInPolygon(x, z, t.outline)) h = t.y

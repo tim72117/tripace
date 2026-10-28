@@ -45,9 +45,10 @@
    stacked(frameless,首頁)模式、steps.length === 0 時顯示,渲染在
    caption 插槽裡(跟文字同層、在單一圓形遮罩之上),但用絕對定位放到
    時間軸那塊區域:containing block 是 .screen(position: relative),
-   貼底、高度對應卡片軌道 300px(HorizontalPlanTimeline.module.css
+   貼底、高度對應卡片軌道 322px(HorizontalPlanTimeline.module.css
    --horizontal-timeline-card-height,該變數定義在那個元件自己身上,
-   這裡讀不到,所以寫死同一個數字),底部留 12px 對齊軌道實際位置
+   這裡讀不到,所以寫死同一個數字,2026-10 第三輪隨 note 搬回卡片內部
+   同步從 300px 調整),底部留 12px 對齊軌道實際位置
    (實測軌道 y 532~832、畫面底 844)。
    顏色讀 --caption-soft-fg/--caption-shadow(定義在 ScrollPlanDemo.
    module.css 的 .stickyFrameless,自訂屬性會跨 CSS Module 繼承):遮罩
@@ -63,7 +64,7 @@
   left: 0;
   right: 0;
   bottom: 12px;
-  height: 300px;
+  height: 322px;
   display: flex;
   align-items: center;
   justify-content: center;

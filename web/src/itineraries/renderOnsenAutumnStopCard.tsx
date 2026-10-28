@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { PlanNode } from '../planning/timeline/model'
 import type { StopCardRenderContext } from '../planning/timeline/PlanTimelineView'
+import { DEFAULT_NOTE_CATEGORY, NOTE_STYLES } from '../planning/timeline/presentation'
 import { MAPLE_LEAF_PATH, MAPLE_STEM_PATH } from './mapleLeafPath'
 import { FramedImage } from '../components/FramedImage'
 import type { FramedImageStatus } from '../components/FramedImage'
@@ -133,6 +134,24 @@ export function createRenderOnsenAutumnStopCard() {
           </div>
           <div className={styles.name}>{step.name}</div>
           {step.desc && <div className={styles.desc}>{step.desc}</div>}
+          {/* note——比照 PlanTimelineView.tsx 預設卡片的 .stopNoteRow
+              (見該處完整說明):卡片內部下方固定高度一個橫列,2026-10
+              新增,這套主題卡先前完全沒有渲染 note,接上這個插槽的
+              jozankei-1day 行程因此永久看不到備註。 */}
+          {step.note && (
+            <div className={styles.noteRow}>
+              <div
+                className={styles.noteBar}
+                style={{ background: (NOTE_STYLES[step.note.category ?? ''] ?? NOTE_STYLES[DEFAULT_NOTE_CATEGORY]).color }}
+              />
+              <div className={styles.noteText} title={step.note.text}>
+                <span style={{ marginRight: 4 }}>
+                  {(NOTE_STYLES[step.note.category ?? ''] ?? NOTE_STYLES[DEFAULT_NOTE_CATEGORY]).noteIcon}
+                </span>
+                {step.note.text}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )

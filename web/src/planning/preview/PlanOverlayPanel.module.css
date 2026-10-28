@@ -73,7 +73,8 @@
    只在手機版渲染(桌面版是右側縱向側欄,版面語意不同)。
 
    bottom——底部被橫向時間軸 + composer 佔用的高度:
-     卡片 300px(--horizontal-timeline-card-height)
+     卡片 322px(--horizontal-timeline-card-height,2026-10 第三輪隨 note
+       搬回卡片內部從 300px 調整)
    + 日期列 20px + gap 10px
    + .wrap 的 padding 12px(上)+ 4px(下)
    + .wrap 的 padding-bottom 12px(2026-10 第三輪,composer 搬出絕對定位
@@ -91,13 +92,13 @@
      說明:max(20px, env(safe-area-inset-bottom)) 取保守下限 20px 估算,
      真正有安全區的裝置上這個值會更大,代表安全區留白比估算值更寬裕,
      不會讓地圖安全可視區誤判成比實際更大)
-   = 454px。 */
+   = 476px。 */
 .safeArea {
   position: absolute;
   top: 72px;
   left: 0;
   right: 0;
-  bottom: 454px;
+  bottom: 476px;
   visibility: hidden;
   pointer-events: none;
 }

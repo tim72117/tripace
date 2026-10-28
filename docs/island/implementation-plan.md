@@ -7,7 +7,7 @@
 > |---|---|
 > | `web/island-demo/src/logic/`、`three/`、`models/`、`mini/`、`ui/` | `web/src/island/logic/`、`three/`、`models/`、`mini/`、`ui/` |
 > | `web/island-demo/src/island/`(`layoutTypes.ts`、`layout.ts`) | `web/src/island/data/` |
-> | `web/island-demo/docs/source-night-jiufen.json` | `web/src/island/data/night-jiufen.json` |
+> | `web/island-demo/docs/source-night-jiufen.json` | `web/src/island/scenes/night-jiufen/article.json`(2026-10 場景化後的位置) |
 > | `web/island-demo/docs/*.md`(本文與同系列文件) | `docs/island/*.md` |
 > | `island-demo/index.html`(完整版)、`mini.html`(縮小版試作頁) | 完整版改成路由 `/island`(`web/src/island/IslandPage.tsx`);縮小版試作頁已移除,縮小版只用在首頁 hero(`web/src/home/heroIsland/`) |
 > | `main.ts`、`mini/main.ts`(進入點) | `web/src/island/mountIsland.ts` 與 `IslandPage.tsx` |

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { PlanPanelContent } from '../panel/PlanPanelContent'
+import type { ToolCallLogEntry } from '../panel/TripPlanPage'
 import type { LivePlanLayerContract } from '../shared/layerContracts'
 import { useGuestClientConfig } from '../shared/config'
 import { BASE_URL } from '../../AppCommon'
@@ -34,13 +35,13 @@ import { createDraftPlanTimelineStore, startNewDraft } from '../timeline/drafts'
 // 2. 交接後地圖沒有跟著走——已完成:見下方 onStopsChange/
 //    onSelectedStopChange/onHoverStopChange 三個 props,原樣轉呼叫給
 //    TripPlanPage 同名 prop(現況:selectedStopId 受控加 tripPlanProps
-//    四個回呼,見 LivePlanLayerProps),由外層 planning/preview/Content 以
+//    四個回呼,見 LivePlanLayerProps),由外層 planning/preview/LiveContent 以
 //    planning/timeline/usePlanStopsState 的 usePlanStopsState 接住(推論態的站點
-//    檢視),handedOver 為 true 時餵給地圖圖層,為 false 則用
-//    useSimulatedStopsView 的模擬態資料。
+//    檢視)餵給地圖圖層(模擬態的 useSimulatedStopsView 資料在
+//    Content,屬於另一個路由)。
 //
 // 3. 沒有回到模擬的路徑
-//    handedOver 是單向的,按下去就回不去。目前沒有需求,但如果要做,
+//    交接(navigate 到 /ai-plan/live)是單向的,按下去就回不去。目前沒有需求,但如果要做,
 //    注意模擬的腳本播放是一次性的(usePlanSimSocket 的 start 參數),
 //    重播需要另外設計。
 // ─────────────────────────────────────────────────────────────
@@ -76,11 +77,15 @@ import { createDraftPlanTimelineStore, startNewDraft } from '../timeline/drafts'
 // 登入後的兩個 LivePlanLayer 則由入口傳進來(一定有 token)。這是授權策略的差別,不合併。
 // onPanToStop——選填:點時間軸站點卡時,把該站座標交給入口平移地圖(桌面版;手機的橫向時間軸沒有點卡片平移,
 // 平移走卡片角落的「移動到此」按鈕)。沒傳就點卡片只選取、不平移。
+// onToolCallLogChange——見 TripPlanPage.tsx 同名 prop(ToolCallLogEntry)的
+// 完整說明:AI 推論過程工具呼叫紀錄,原樣透傳,給 /ai-plan 的 debugSafeArea
+// 疊圖面板顯示用。選填,/app 等其他呼叫端不傳就沒有任何額外開銷。
 export type LivePlanLayerProps = LivePlanLayerContract & {
   onPanToStop?: (stop: { lat: number; lng: number }) => void
+  onToolCallLogChange?: (log: ToolCallLogEntry[]) => void
 }
 
-export function LivePlanLayer({ selectedStopId, tripPlanProps, onPanToStop }: LivePlanLayerProps) {
+export function LivePlanLayer({ selectedStopId, tripPlanProps, onPanToStop, onToolCallLogChange }: LivePlanLayerProps) {
   // activeDraftId——null 代表「還在用舊的固定單一草稿」(/app 共用的
   // localStoragePlanTimelineStore,見下方 store 的完整說明),非 null
   // 代表使用者已經按過至少一次「新行程」,目前指向 planning/timeline/drafts.ts
@@ -177,6 +182,7 @@ export function LivePlanLayer({ selectedStopId, tripPlanProps, onPanToStop }: Li
       onNewDraft={NEW_TRIP_DRAFT_ENABLED ? handleNewDraft : undefined}
       selectedStopId={selectedStopId}
       onPanToStop={onPanToStop}
+      onToolCallLogChange={onToolCallLogChange}
       {...tripPlanProps}
     />
   )

@@ -33,6 +33,9 @@ var knownRoutePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`^/device$`),
 	regexp.MustCompile(`^/demo/pace$`),
 	regexp.MustCompile(`^/ai-plan$`),
+	// /ai-plan/live:推論態,見 web/src/planning/preview/LiveContent.tsx
+	// 開頭的完整說明(2026-10 從 /ai-plan 內部 handedOver 切換拆成獨立路由)。
+	regexp.MustCompile(`^/ai-plan/live$`),
 	// /itineraries(清單)與 /itineraries/:id(詳細頁):精選行程展示
 	// (2026-10 頁面文案從「AI 排好的範例行程」改名,見 web/src/App.tsx
 	// AiItinerariesRoute import 處的完整說明),公開頁。2026-10 使用者
@@ -43,9 +46,11 @@ var knownRoutePatterns = []*regexp.Regexp{
 	// MomijiFrontPage import 處與 web/src/momiji-front/MomijiFrontPage.tsx
 	// 的完整說明),公開頁、不需要登入。
 	regexp.MustCompile(`^/momiji-front$`),
-	// /island:夜遊九份島(2026-10 新增,由部落客文章生成的互動 3D 旅遊小島,見 web/src/App.tsx
-	// IslandPage import 處與 web/src/island/IslandPage.tsx 的完整說明),公開頁、不需要登入。
-	regexp.MustCompile(`^/island$`),
+	// /island 與 /island/:sceneId:互動 3D 旅遊小島(2026-10 新增,由部落客文章生成,見 web/src/App.tsx
+	// IslandPage import 處與 web/src/island/IslandPage.tsx 的完整說明),公開頁、不需要登入。/island 是預設場景
+	// (夜遊九份),其餘場景是 /island/<id>(id 是小寫英數與連字號,見 web/src/island/scenes/registry.ts);
+	// 場景 id 是否存在由前端判斷(不存在會導回 /island),這裡不列舉,新增場景不需要改這條。
+	regexp.MustCompile(`^/island(/[a-z0-9]+(-[a-z0-9]+)*)?$`),
 	// /u/:handle/:slug:部落客發文正式頁面(2026-10,見 web/src/App.tsx
 	// 對應路由與 web/src/blog/BlogArticlePage.tsx 的完整說明)——取代原本
 	// 固定的 /demo/theme-page demo 路徑。

@@ -742,13 +742,15 @@ export function PlanTimelineView({
               // 多畫一列交通卡,key 加 "transit-" 前綴避免跟下面 stop
               // 本身的 key(p.id)衝突。
               const transit = p.transitFromPrev
-              // note——這個節點自己的備註(見 model.ts NoteInfo
-              // 的完整說明),掛在這張 stop 卡片自己身上的欄位,渲染時在
-              // 卡片「之後」多畫一列(使用者明確要求「note 的出現位置在
-              // 景點下面」,2026-10 從卡片之前調整到之後)。
+              // note——這個節點自己的備註(見 model.ts NoteInfo 的完整
+              // 說明),掛在這張 stop 卡片自己身上的欄位。渲染在卡片內部
+              // 下方、固定高度的一個橫列(.stopNoteRow,見 renderStopNote
+              // 定義處的完整說明;2026-10 第二次調整——原本是卡片之後
+              // 獨立多畫一整條時間軸 row,使用者明確要求改成卡片內部)。
               const note = p.note
               const noteStyle = note ? NOTE_STYLES[note.category ?? ''] ?? NOTE_STYLES[DEFAULT_NOTE_CATEGORY] : null
-              // renderNoteRow——站點備註與交通備註共用同一種「一列文字+色條」的版型。
+              // renderNoteRow——交通備註專用,維持獨立一整條時間軸 row
+              // (交通備註不屬於任何卡片,沒有「卡片內部」可以放)。
               const renderNoteRow = (text: string, style: { color: string; noteIcon: string }) => (
                 <div className={`${styles.row} ${styles.noteRow}`}>
                   <div className={`${styles.noteLeft} ${mountedClass} ${justMounted ? styles.noteFade : ''}`}>
@@ -765,6 +767,21 @@ export function PlanTimelineView({
                   <div />
                 </div>
               )
+              // renderStopNote——站點備註,卡片內部下方固定高度一個橫列
+              // (.stopNoteRow,見 CSS 的完整說明)。沒有備註時仍回傳佔位
+              // 元素(null 的話整塊不渲染,高度塌縮)——使用者只要求「固定
+              // 高度」,這個元件沒有像手機版舊版 .noteBanner 那樣「只顯示目前
+              // 選中站點」的切換需求,每張卡片各自獨立顯示/不顯示自己的
+              // 備註,沒有備註時卡片本身就不需要多留白。
+              const renderStopNote = () =>
+                note && noteStyle ? (
+                  <div className={styles.stopNoteRow}>
+                    <div className={styles.stopNoteBar} style={{ background: noteStyle.color }} />
+                    <div className={styles.stopNoteText} title={note.text}>
+                      <span style={{ marginRight: 4 }}>{noteStyle.noteIcon}</span>{note.text}
+                    </div>
+                  </div>
+                ) : null
               return (
                 <Fragment key={p.id}>
                   {transit && (
@@ -1161,6 +1178,7 @@ export function PlanTimelineView({
                                     ))}
                                   </div>
                                 )}
+                                {renderStopNote()}
                               </div>
                               {/* onRemoveStop——選填,見該 prop 的完整說明。
                                   stopPropagation 避免冒泡觸發卡片本身的
@@ -1185,10 +1203,6 @@ export function PlanTimelineView({
                       </div>
                     )
                   })()}
-                  {/* note——使用者明確要求「note 的出現位置在景點下面」,
-                      改到 stop 卡片之後渲染(原本在卡片之前,2026-10 這次
-                      調整)。 */}
-                  {note && noteStyle && renderNoteRow(note.text, noteStyle)}
                 </Fragment>
               )
             }

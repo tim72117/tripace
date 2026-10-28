@@ -55,11 +55,11 @@
 
 ## /ai-plan 展示頁三階段
 
-`/ai-plan`（`home/plan-ai-sim/Content.tsx`）與首頁/`/product` 的手機展示框，圍繞同一套「AI 排行程」敘事分成三個不同的畫面/狀態，彼此不是同一件事，容易在討論時混用——正式定調如下：
+`/ai-plan`（`planning/preview/Content.tsx`）、`/ai-plan/live`（`planning/preview/LiveContent.tsx`）與首頁/`/product` 的手機展示框，圍繞同一套「AI 排行程」敘事分成三個不同的畫面/狀態，彼此不是同一件事，容易在討論時混用——正式定調如下：
 
 - **小展示**：首頁（`ScrollPlanDemo.tsx`）與 `/product` 功能介紹頁（`FeatureShowcase.tsx`）裡的手機外框展示（`AiPlanPhoneDemo.tsx` 包著 `AiPlanPhoneDemoScreen.tsx`），固定 390×844 尺寸、不接受真正互動（`pointer-events: none`，整支手機是連到 `/ai-plan` 的 `<Link>`）。讀同一份固定劇本（`planSimScript.ts`），但推進節奏依呼叫端而異：首頁用 `createPlanSimScrollSource`（捲動位置驅動），`/product` 用 `createPlanSimFakeSource`（計時器自動播完）。版面骨架是獨立的 `PhoneDemoLayout`（`web/src/home/PhoneDemoLayout.tsx`），不跟下面兩階段共用。
-- **播放態**：`/ai-plan` 完整展示頁（`home/plan-ai-sim/Content.tsx`）裡 `handedOver === false` 的階段，同樣播放 `planSimScript.ts` 固定劇本（用 `createPlanSimFakeSource`，計時器自動播完），但是整頁、允許地圖縮放拖曳、有真正的詢問框（`AskPage.tsx`）互動。版面骨架是 `PlanLayout`（`web/src/home/plan-ai-sim/PlanLayout.tsx`），內部包著 `PlanOverlayPanel`。
-- **推論態**：使用者在播放態按下「讓我試看看」交接後，`handedOver` 轉 `true` 的階段，整段模擬畫面換成 `LivePlanLayer`（內部掛載 `/app` 正式頁的 `TripPlanPage`），接上真實 onagent AI 對話——**完全不讀 `planSimScript.ts`**，沒有固定劇本，是真正的即時推論。版面骨架仍是同一個 `PlanLayout`，只是 `passThrough` 模式。
+- **播放態**：`/ai-plan` 完整展示頁（`planning/preview/Content.tsx`），同樣播放 `planSimScript.ts` 固定劇本（用 `createPlanSimFakeSource`，計時器自動播完），但是整頁、允許地圖縮放拖曳、有真正的詢問框（`AskPage.tsx`）互動。版面骨架是 `PlanLayout`（`web/src/planning/preview/PlanLayout.tsx`），內部包著 `PlanOverlayPanel`。純模擬，不接真實 AI。
+- **推論態**：獨立路由 `/ai-plan/live`（`planning/preview/LiveContent.tsx`）。使用者在播放態按下「讓我試看看」後 `navigate('/ai-plan/live')`（網址 search 經 `liveHandoverUrl.ts` 保留，`skipDemo` 除外），兩頁互不傳狀態（不再用 `handedOver` 在同一個元件內切換）。整頁掛載 `LivePlanLayer`（內部掛載 `/app` 正式頁的 `TripPlanPage`），接上真實 onagent AI 對話——**完全不讀 `planSimScript.ts`**，沒有固定劇本，是真正的即時推論。版面骨架仍是同一個 `PlanLayout`，只是 `passThrough` 模式。
 
 判斷原則：講「固定劇本播放」時用小展示或播放態（依是否為整頁/可互動判斷是哪一個）；講「真實 AI 對話」時一律是推論態，三者不要混用同一個詞籠統帶過。
 

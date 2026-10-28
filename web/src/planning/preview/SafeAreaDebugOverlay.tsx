@@ -58,13 +58,33 @@ export function SafeAreaDebugOverlay({
     const map = mapRef.current
     if (!map) return
 
-    const recalc = () => {
+    // observedElRef——目前 ResizeObserver 正在盯的節點(見下方
+    // ensureObserving 的完整說明),用來判斷 safeAreaElRef.current 換了
+    // 新節點時要不要重新 observe,不是每次 recalc 都重建 observer。
+    let observedEl: Element | null = null
+    const resizeObserver = new ResizeObserver(recalc)
+    // retryTimer——見 ensureObserving 的完整說明。
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+    let retries = 0
+    const MAX_RETRIES = 20
+
+    function recalc() {
       const safeAreaEl = safeAreaElRef.current
-      const projection = map.getProjection()
-      const currentZoom = map.getZoom()
-      const center = map.getCenter()
+      const projection = map!.getProjection()
+      const currentZoom = map!.getZoom()
+      const center = map!.getCenter()
       if (!safeAreaEl || !projection || currentZoom == null || !center) {
         setSolution(null)
+        // 2026-10 修正(使用者回報「播放態框線完全沒有繪製」查出的真實
+        // bug,比先前以為的「交接時節點換掉沒重算」更根本):這個 effect
+        // 只在 mapReady 翻 true 的那一刻跑一次,若當下 safeAreaEl 還是
+        // null(容器尚未完成掛載/排版,常發生在地圖比版面骨架更早準備好
+        // 的時候),原本直接放棄、之後只能靠使用者手動拖曳/縮放地圖觸發
+        // bounds_changed/idle 才會「意外」補算一次,框線因此一直不出現。
+        // 改成短延時重試:容器還沒掛上就排一次 ensureObserving 稍後
+        // 再試,直到量到為止或達到重試上限(見 ensureObserving;量到之後
+        // 由 ResizeObserver 接手,不再需要這個重試)。
+        ensureObserving()
         return
       }
       setZoom(currentZoom)
@@ -73,7 +93,7 @@ export function SafeAreaDebugOverlay({
           target,
           currentCenter: { lat: center.lat(), lng: center.lng() },
           zoom: currentZoom,
-          mapRect: map.getDiv().getBoundingClientRect(),
+          mapRect: map!.getDiv().getBoundingClientRect(),
           safeRect: safeAreaEl.getBoundingClientRect(),
           projectToPoint: (latLng) => projection.fromLatLngToPoint(new google.maps.LatLng(latLng.lat, latLng.lng)),
           projectToLatLng: (point) => {
@@ -82,6 +102,40 @@ export function SafeAreaDebugOverlay({
           },
         }),
       )
+      ensureObserving()
+    }
+
+    // ensureObserving——見上方 recalc 內「容器尚未掛載」情況的完整說明,
+    // 同時也是「節點換掉後要換 observe 對象」的既有修正(safeAreaElRef
+    // 是 ref object,identity 全程不變,.current 指向的 DOM 節點換掉
+    // 例如 /ai-plan 從播放態交接到推論態,PlanLayout 兩側是各自獨立
+    // 寫出的 JSX 子樹,安全區容器整個被卸載重新掛載成新節點,完全不會
+    // 觸發這個 effect 重跑)。兩種情況合併成同一個函式:
+    //   - safeAreaEl 還不存在 → 排一次 100ms 後重試 recalc,直到存在
+    //     為止(地圖/劇本首次掛載,安全區容器通常一兩個 tick 內就緒)。
+    //   - safeAreaEl 存在但換了新節點(或還沒 observe 過)→ 換 observer
+    //     盯新節點,節點尺寸一變就重算,不用等下一次地圖事件。
+    //
+    // 重試有上限(MAX_RETRIES × 100ms = 2 秒):768–1023px 的桌面疊加版面
+    // 沒有安全區節點(見 desktop/PlanOverlayLayout.tsx),ref 永遠是 null,
+    // 不設上限會在開著 ?debugSafeArea 期間每 100ms 空轉一次。超過上限就
+    // 停止輪詢,之後地圖事件(bounds_changed/idle/resize)呼叫 recalc 時
+    // 若節點已出現,仍會量到並重置計數,不會因此永久失效。
+    function ensureObserving() {
+      const el = safeAreaElRef.current
+      if (!el) {
+        if (retryTimer == null && retries < MAX_RETRIES) {
+          retries += 1
+          retryTimer = setTimeout(() => { retryTimer = null; recalc() }, 100)
+        }
+        return
+      }
+      retries = 0
+      if (el !== observedEl) {
+        if (observedEl) resizeObserver.unobserve(observedEl)
+        resizeObserver.observe(el)
+        observedEl = el
+      }
     }
 
     recalc()
@@ -95,6 +149,8 @@ export function SafeAreaDebugOverlay({
       l1.remove()
       l2.remove()
       window.removeEventListener('resize', recalc)
+      resizeObserver.disconnect()
+      if (retryTimer != null) clearTimeout(retryTimer)
     }
   }, [mapReady, mapRef, safeAreaElRef, target])
 

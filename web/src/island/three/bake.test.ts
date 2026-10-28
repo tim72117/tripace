@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { bakeModel } from './bake'
 import type { Model3D } from './model'
 
-const mods = import.meta.glob<Model3D>('../models/*.ts', { eager: true, import: 'default' })
+const mods = import.meta.glob<Model3D>(['../models/*.ts', '../scenes/*/models/*.ts'], { eager: true, import: 'default' })
 const entries = Object.entries(mods).map(([p, m]) => [p.replace(/^.*\/(.+)\.ts$/, '$1'), m] as const)
 
 describe('全部模型都能烘焙(三種索引/非索引形狀混合不會讓 mergeGeometries 回 null)', () => {

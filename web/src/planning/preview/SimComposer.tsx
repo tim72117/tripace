@@ -3,19 +3,15 @@ import styles from './Content.module.css'
 
 // SimComposer(/ai-plan 模擬態,planning/preview/)——模擬層的輸入列(composer 插槽的內容)。
 //
-// 與 SimPlanLayer 一起是 /ai-plan 模擬態在第 4 層的呼叫端:Content 依 handedOver,模擬態渲染 SimPlanLayer 並把這個元件
-// 當 composer 傳給 PlanOverlayLayout;推論態的輸入框則由 LivePlanLayer 內的 TripPlanPage 經 ComposerSlotContext portal
-// 進同一個插槽。這個元件是展示用的假輸入膠囊(假打字動畫唯讀,排完後變「讓我試看看」按鈕),狀態由 Content 持有。
-// 這個元件只在模擬態(!handedOver)渲染,所以沒有「交接後變成真的輸入框」的分支(先前留著的 handedOver 分支永遠到不了,已移除)。
+// 2026-10 起這個頁面(Content.tsx)固定只是播放態,推論態已拆到獨立路由
+// LiveContent.tsx(見該檔案開頭的完整說明),所以這個元件也不再需要
+// 「交接後變成真的輸入框」這個分支的任何痕跡——它永遠是展示用的假輸入
+// 膠囊(假打字動畫唯讀,排完後變「讓我試看看」按鈕,點擊後 navigate 到
+// /ai-plan/live),狀態由 Content 持有。
 export interface SimComposerProps {
   composerCollapsed: boolean
   typedPrompt: string
   handover: () => void
-  // handedOver/userPrompt/setUserPrompt——已不使用:Content.tsx 目前仍會傳入(不在這次修改範圍),保留成選填只為相容,
-  // 之後清 Content.tsx 時一併移除。
-  handedOver?: boolean
-  userPrompt?: string
-  setUserPrompt?: (value: string) => void
 }
 
 export function SimComposer({ composerCollapsed, typedPrompt, handover }: SimComposerProps) {

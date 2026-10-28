@@ -1,4 +1,4 @@
-import type { Model3D, Part } from '../three/model';
+import type { Model3D, Part } from '../../../three/model';
 
 // 第四站「肆 阿妹茶樓」：九份最有名的樓閣式茶樓，也是整趟夜遊的終點與島的視覺頂點。
 // 設計意圖：

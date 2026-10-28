@@ -160,16 +160,17 @@
 /* safeArea——看不見的「地圖主顯示區」洞(共同 DOM 骨架)。absolute 以 .overlay 為基準,不佔版面、不收事件,
    以 safeAreaRef 量測(PlanMap 的 panTarget 平移會把目標放在這個矩形中心,見 usePanTarget)。
    範圍 = 沒被搜尋框與底部面板蓋住的地圖,數字對齊 /ai-plan 手機版(planning/preview/PlanOverlayPanel.module.css 的
-   .safeArea,bottom 的 454px 是橫向時間軸 + 輸入列的估算,推導見該處):
+   .safeArea,bottom 的 476px 是橫向時間軸 + 輸入列的估算,推導見該處;2026-10 第三輪隨卡片高度從 300px→322px
+   調整,從 454px 一併改成 476px):
    top 120px——讓開頂端的搜尋框(top 12 + 高 48)與下一排類別標籤(top 76,約 32 高),/ai-plan 是讓開導覽列的 72px;
-   bottom 454px——.overlay 本身已經讓開 phone/Nav,所以不必再加 tab bar 高度。
+   bottom 476px——.overlay 本身已經讓開 phone/Nav,所以不必再加 tab bar 高度。
    規劃面板關閉(.overlay[hidden])時這個節點沒有面積,panMapTo 視為沒有安全區,直接 panTo。 */
 .safeArea {
   position: absolute;
   top: 120px;
   left: 0;
   right: 0;
-  bottom: 454px;
+  bottom: 476px;
   visibility: hidden;
   pointer-events: none;
 }

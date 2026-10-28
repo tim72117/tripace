@@ -1,4 +1,4 @@
-import type { Model3D, Part, Vec3 } from '../three/model';
+import type { Model3D, Part, Vec3 } from '../../../three/model';
 
 // 第三站「参 輕便路散步」：從豎崎路往阿妹茶樓方向的安靜緩坡小路。
 // 設計意圖：

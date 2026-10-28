@@ -318,6 +318,61 @@ func TestApplySEOMeta_IslandPageHasOwnSEOMeta(t *testing.T) {
 	}
 }
 
+// /island/:sceneId 是合法前端路由(場景 id 是否存在由前端判斷),不該被當成過期路由回 404;
+// 多一層路徑、或 id 含大寫/底線的不是。
+func TestIsKnownRoute_IslandScenePaths(t *testing.T) {
+	for _, p := range []string{"/island", "/island/night-jiufen", "/island/kyoto", "/island/a1-b2"} {
+		if !isKnownRoute(p) {
+			t.Errorf("%s 應該是合法路由", p)
+		}
+	}
+	for _, p := range []string{"/island/", "/island/Night", "/island/a_b", "/island/a/b", "/island/-a", "/islands"} {
+		if isKnownRoute(p) {
+			t.Errorf("%s 不該是合法路由", p)
+		}
+	}
+}
+
+// /island/night-jiufen 是預設場景的 id 網址(前端會導回 /island):伺服器端要輸出跟 /island 一樣的 SEO 標籤,
+// 不該退回首頁的 title 與 canonical。
+func TestApplySEOMeta_IslandDefaultSceneAliasUsesIslandMeta(t *testing.T) {
+	html := readRealIndexHTML(t)
+
+	out := string(applySEOMeta(html, "/island/night-jiufen", nil))
+	meta := seoMetaByPath["/island"]
+
+	if !strings.Contains(out, "<title>"+meta.title+"</title>") {
+		t.Error("/island/night-jiufen 的輸出沒有包含 /island 的 <title>")
+	}
+	if !strings.Contains(out, `<link rel="canonical" href="https://tripace.io/island" />`) {
+		t.Error("/island/night-jiufen 的 canonical 應該指向 /island")
+	}
+}
+
+// /ai-plan/live 是交接後的推論頁:有自己的 title,但 canonical 指向 /ai-plan,不和模擬頁搶索引;
+// 既有 /ai-plan 的 canonical 不受影響。
+func TestApplySEOMeta_AiPlanLiveCanonicalPointsToAiPlan(t *testing.T) {
+	html := readRealIndexHTML(t)
+
+	out := string(applySEOMeta(html, "/ai-plan/live", nil))
+	meta := seoMetaByPath["/ai-plan/live"]
+
+	if !strings.Contains(out, "<title>"+meta.title+"</title>") {
+		t.Error("/ai-plan/live 的輸出沒有包含自己的 <title>")
+	}
+	if !strings.Contains(out, `<link rel="canonical" href="https://tripace.io/ai-plan" />`) {
+		t.Error("/ai-plan/live 的 canonical 應該指向 /ai-plan")
+	}
+	if meta.title == seoMetaByPath["/ai-plan"].title {
+		t.Error("/ai-plan/live 的 title 不該和 /ai-plan 相同")
+	}
+
+	plain := string(applySEOMeta(html, "/ai-plan", nil))
+	if !strings.Contains(plain, "<title>"+seoMetaByPath["/ai-plan"].title+"</title>") {
+		t.Error("/ai-plan 的 <title> 不應受影響")
+	}
+}
+
 // 端對端驗證:透過真正的 http.Handler(staticHandler(),不是直接呼叫
 // applySEOMeta)送出真實 HTTP 請求,確認整條路徑(含 Content-Type header
 // 設定、200 狀態碼)都正確串起來,不是只有 applySEOMeta 這個函式本身

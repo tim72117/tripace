@@ -3,7 +3,6 @@
 // 重點:views[i].index 是「站點在清單中的索引」,glowPerStop 以這個索引為鍵。若某一站沒有建築被跳過,
 // 後面站點的亮度仍必須對到自己的索引,不能因為 views 少一個而往前錯位。
 import { describe, expect, it, vi } from 'vitest'
-import * as THREE from 'three'
 import type { IslandStop } from '../logic/articleToIsland'
 import type { Model3D } from './model'
 import { buildStops } from './stops'
@@ -42,21 +41,13 @@ describe('buildStops 的站點索引', () => {
     expect(s.views[1].labelEl.classList.contains('is-selected')).toBe(true)
   })
 
-  it('點選命中回傳站點索引(不是 views 的順序);點到空處回 -1;點標籤觸發 onLabelClick(索引)', () => {
+  it('點標籤觸發 onLabelClick(站點索引,不是 views 的順序);標籤只有序號與站名,沒有時間;建築模型本身不可點選', () => {
     const clicked = vi.fn()
     const s = buildStops([stop(0, true), stop(1, false), stop(2, true)], { lamp: LAMP }, flat, clicked)
-    const scene = new THREE.Scene().add(s.group)
-    scene.updateMatrixWorld(true)
-    const cam = new THREE.PerspectiveCamera(40, 1, 0.1, 200)
-    cam.position.set(20, 0, 15)
-    cam.lookAt(20, 0, 0)
-    cam.updateMatrixWorld(true)
-    const rc = new THREE.Raycaster()
-    rc.setFromCamera(new THREE.Vector2(0, 0), cam) // 看向 x=20 的站(索引 2)
-    expect(s.pick(rc)).toBe(2)
-    rc.setFromCamera(new THREE.Vector2(0.99, 0.99), cam)
-    expect(s.pick(rc)).toBe(-1)
     s.views[1].labelEl.click()
     expect(clicked).toHaveBeenCalledWith(2)
+    expect(s.views[1].labelEl.querySelector('em')).toBeNull()
+    expect(s.views[1].labelEl.textContent).not.toMatch(/\d{1,2}:\d{2}/)
+    expect('pick' in s).toBe(false)
   })
 })

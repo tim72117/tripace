@@ -341,9 +341,18 @@ function MainCard({
           <span className={styles.mainTitle}>{entry.title}</span>
         </div>
         {entry.location && <div className={styles.entryLoc}><PinIcon /> {entry.location}</div>}
+        {/* noteRow——卡片內部下方固定高度一個橫列,常駐顯示(2026-10 新增,
+            使用者明確要求「note 移動到圖卡內部下方的一個橫列,固定高度」,
+            比照 planning/timeline/PlanTimelineView.tsx 的 .stopNoteRow;
+            原本在 .cardExpand 收合區塊裡,點擊卡片才看得到,改成跟標題/
+            地點同層常駐顯示)。 */}
+        {entry.note && (
+          <div className={`${styles.noteRow}${open ? ` ${styles.noteRowOpen}` : ''}`}>
+            <span className={styles.noteText} title={entry.note}>{entry.note}</span>
+          </div>
+        )}
         <div className={`${styles.cardExpand}${open ? ` ${styles.open}` : ''}`}>
           <div className={styles.cardExpandInner}>
-            {entry.note && <div className={styles.expandSummary}>{entry.note}</div>}
             <div className={styles.expandRow}>
               <span className={styles.expandLabel}>開始</span>
               <span>{entry.start ? (entry.startTime ? `${entry.start} ${entry.startTime}` : entry.start) : '—'}</span>
@@ -408,9 +417,14 @@ function SubCard({
             {(entry.tags ?? []).map(t => <span key={t} className={styles.entryTag}>#{t}</span>)}
           </div>
         )}
+        {/* noteRow——理由同 MainCard,見該處的完整說明。 */}
+        {entry.note && (
+          <div className={`${styles.noteRow}${open ? ` ${styles.noteRowOpen}` : ''}`}>
+            <span className={styles.noteText} title={entry.note}>{entry.note}</span>
+          </div>
+        )}
         <div className={`${styles.cardExpand}${open ? ` ${styles.open}` : ''}`}>
           <div className={styles.cardExpandInner}>
-            {entry.note && <div className={styles.expandSummary}>{entry.note}</div>}
             {entry.start && <div className={styles.expandRow}>
               <span className={styles.expandLabel}>開始</span>
               <span>{entry.startTime ? `${entry.start} ${entry.startTime}` : entry.start}</span>

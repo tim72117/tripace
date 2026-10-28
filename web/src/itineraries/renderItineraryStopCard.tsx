@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { PlanNode } from '../planning/timeline/model'
 import type { StopCardRenderContext } from '../planning/timeline/PlanTimelineView'
+import { DEFAULT_NOTE_CATEGORY, NOTE_STYLES } from '../planning/timeline/presentation'
 import { FramedImage } from '../components/FramedImage'
 import styles from './renderItineraryStopCard.module.css'
 
@@ -62,6 +63,22 @@ export function createRenderItineraryStopCard(isPlayful: boolean) {
           <div className={styles.stopMeta}>{step.duration} · {step.kind}</div>
           <div className={styles.stopName}>{step.name}</div>
           {step.desc && <div className={styles.stopDesc}>{step.desc}</div>}
+          {/* note——比照 PlanTimelineView.tsx 預設卡片的 .stopNoteRow
+              (見該處完整說明):卡片內部下方固定高度一個橫列。 */}
+          {step.note && (
+            <div className={styles.stopNoteRow}>
+              <div
+                className={styles.stopNoteBar}
+                style={{ background: (NOTE_STYLES[step.note.category ?? ''] ?? NOTE_STYLES[DEFAULT_NOTE_CATEGORY]).color }}
+              />
+              <div className={styles.stopNoteText} title={step.note.text}>
+                <span style={{ marginRight: 4 }}>
+                  {(NOTE_STYLES[step.note.category ?? ''] ?? NOTE_STYLES[DEFAULT_NOTE_CATEGORY]).noteIcon}
+                </span>
+                {step.note.text}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )

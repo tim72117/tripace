@@ -18,7 +18,7 @@ import { useResolvedRefs } from '../data/PlanDataProvider'
 //
 // SimulatedStopsView——模擬態的站點檢視實例:站點(從劇本的時間軸投影出來,有座標的 stop 節點)、連線段
 // (routeSegments,有交通膠囊的那一段才畫,planning/timeline/segments.ts,與推論態同一個規則)加自己持有的選取。
-// 形狀與推論態(usePlanStopsState)的站點、連線段、選取欄位相同,Content 依 handedOver 擇一使用。
+// 形狀與推論態(usePlanStopsState)的站點、連線段、選取欄位相同,模擬態只由 Content(/ai-plan)使用,推論態由 LiveContent(/ai-plan/live)使用。
 export type SimulatedStopsView = { stops: PlanStopMarker[]; routeSegments: RouteSegment[] } & PlanSelection
 
 export function useSimulatedStopsView(

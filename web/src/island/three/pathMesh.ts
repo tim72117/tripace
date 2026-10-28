@@ -5,6 +5,7 @@
 import * as THREE from 'three'
 import type { IslandLayout } from '../data/layoutTypes'
 import type { PathCurve } from '../logic/pathCurve'
+import { buildPathProfile } from '../logic/pathProfile'
 
 export type PathMesh = {
   mesh: THREE.Mesh
@@ -37,21 +38,8 @@ export function buildPathMesh(
   heightAt: (x: number, z: number) => number,
   controlY?: ReadonlyArray<number>,
 ): PathMesh {
-  const ctrlArcs = controlY && controlY.length === layout.path.points.length
-    ? layout.path.points.map(([x, z]) => curve.nearestArc(x, z))
-    : null
-  const profileY = (s: number, x: number, z: number): number => {
-    if (!ctrlArcs || !controlY) return heightAt(x, z)
-    if (s <= ctrlArcs[0]) return controlY[0]
-    for (let i = 0; i < ctrlArcs.length - 1; i++) {
-      if (s <= ctrlArcs[i + 1]) {
-        const span = ctrlArcs[i + 1] - ctrlArcs[i]
-        const t = span <= 0 ? 1 : (s - ctrlArcs[i]) / span
-        return controlY[i] + (controlY[i + 1] - controlY[i]) * t
-      }
-    }
-    return controlY[controlY.length - 1]
-  }
+  const profile = buildPathProfile(layout.path.points, curve, heightAt, controlY)
+  const profileY = (s: number, x: number, z: number): number => profile.at(s, x, z)
   const half = layout.path.width / 2
   const step = 1 // 每 1 格取一個樣
   const n = Math.max(2, Math.ceil(curve.length / step))
@@ -63,8 +51,9 @@ export function buildPathMesh(
     arcs.push(s)
     ys.push(profileY(s, p.x, p.z))
   }
-  // 移動平均(半徑 3 個樣本)把落差變緩坡
-  const R = 3
+  // 移動平均(半徑 3 個樣本)把「由地形推出」的高度落差變緩坡。有 controlY 時剖面本身就是分段線性、已經是緩坡,
+  // 不再平滑:平滑會把平台接下坡石階的轉折削低(例如基山街 9.4 接豎崎路下坡),路面就離開地面與踏面。
+  const R = profile.hasControl ? 0 : 3
   const smooth = ys.map((_, i) => {
     let sum = 0, cnt = 0
     for (let k = -R; k <= R; k++) { const j = i + k; if (j >= 0 && j <= n) { sum += ys[j]; cnt++ } }

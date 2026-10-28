@@ -401,7 +401,7 @@ export function PlanDataFlowPage() {
             模擬態的 <code className={styles.code}>stops</code> 是從 <code className={styles.code}>PlanTimeline</code> 單向投影出來的(只留有座標的 stop，
             丟掉備註、交通；主題點的子景點小點與旅館點由 <code className={styles.code}>useResolvedRefs</code> 以識別碼向 <code className={styles.code}>PlanDataProvider</code> 的共用 store 執行時查回，查不到就沒有點，見下方「讀取層」)；推論態與登入後的 <code className={styles.code}>stops</code> 則由規劃面板(<code className={styles.code}>TripPlanPage</code>)
             經 <code className={styles.code}>tripPlanProps</code> 的四個回呼回報上來。兩種實例形狀相同，
-            <code className={styles.code}>Content</code> 依 <code className={styles.code}>handedOver</code> 擇一使用。
+            模擬態由 <code className={styles.code}>Content</code>(/ai-plan)使用，推論態由 <code className={styles.code}>LiveContent</code>(/ai-plan/live)使用，兩頁各自持有自己那一份。
           </p>
           <p className={styles.caption}>
             <strong>為什麼叫「領域層」不叫「資料層」</strong>(2026-10 改名)：
@@ -562,7 +562,7 @@ export function PlanDataFlowPage() {
             <code className={styles.code}>public.ts</code> 訪客版、<code className={styles.code}>fake.ts</code> 假資料、
             <code className={styles.code}>dedupe.ts</code> 請求層去重)。識別碼解析改成每個入口在根部包一次
             <code className={styles.code}>PlanDataProvider</code>(登入後：<code className={styles.code}>member/phone</code>、
-            <code className={styles.code}>member/desktop</code> 的 Content；/ai-plan：模擬態整棵在假資料 Provider 底下、交接後換訪客版；
+            <code className={styles.code}>member/desktop</code> 的 Content；/ai-plan：模擬態整棵在假資料 Provider 底下、/ai-plan/live 推論態用訪客版；
             行程詳情頁：<code className={styles.code}>AiItineraryDetailPage</code>)，消費端(時間軸、地圖投影、行程詳情頁)用
             <code className={styles.code}>useResolvedRefs</code> 向同一個 store 取。它取代了原本
             <code className={styles.code}>useResolvedNodeRefs</code> 的三層快取(去重快取、模組層 promise 快取、每個 hook 實例的 state)；
@@ -600,7 +600,7 @@ export function PlanDataFlowPage() {
                 <td>交接時</td>
                 <td>靠「換掉實例」的副作用隱含清空，讀程式碼看不出來</td>
                 <td>明確呼叫 <code className={styles.code}>selection.clear()</code></td>
-                <td>整個實例換掉(<code className={styles.code}>handedOver ? live : simulated</code>)，新實例初值就是 null，沒有 <code className={styles.code}>clear</code></td>
+                <td>整個換頁(navigate 到 <code className={styles.code}>/ai-plan/live</code>，<code className={styles.code}>LiveContent</code> 重新掛載)，新實例初值就是 null，沒有 <code className={styles.code}>clear</code></td>
               </tr>
               <tr>
                 <td>替換來源但保留現況</td>
@@ -612,7 +612,7 @@ export function PlanDataFlowPage() {
                 <td>來源狀態怎麼切換</td>
                 <td>實例當 state 存快照</td>
                 <td>實例當 state 存快照，靠兩個 effect 在 stops 變動時同步(漏同步就是「真實推論沒有地圖點」那次 bug)</td>
-                <td>兩個 hook 都無條件呼叫，用 <code className={styles.code}>handedOver</code> 擇一，沒有快照也沒有同步 effect</td>
+                <td>兩個 hook 分屬兩個獨立頁面(<code className={styles.code}>Content</code> 只呼叫模擬態、<code className={styles.code}>LiveContent</code> 只呼叫推論態)，沒有快照也沒有同步 effect</td>
               </tr>
               <tr>
                 <td>與登入後的關係</td>
@@ -680,12 +680,12 @@ export function PlanDataFlowPage() {
         <div className={styles.section}>
           <h2 className={styles.sectionTitle}>四個入口的接法</h2>
           <p className={styles.lead}>
-            /ai-plan(手機與桌面共用同一個 <code className={styles.code}>Content</code>)、登入後手機、登入後桌面，
+            /ai-plan(手機與桌面共用同一個 <code className={styles.code}>Content</code>，推論態是獨立路由 /ai-plan/live 的 <code className={styles.code}>LiveContent</code>)、登入後手機、登入後桌面，
             每個入口都是同一組分層(<code className={styles.code}>Content</code> → <code className={styles.code}>PlanLayout</code> →
             <code className={styles.code}>PlanOverlayLayout</code> → <code className={styles.code}>LivePlanLayer</code> →
             <code className={styles.code}>PlanMap</code>)，同名元件放在 <code className={styles.code}>planning/preview/</code>、
             <code className={styles.code}>planning/member/phone/</code>、<code className={styles.code}>planning/member/desktop/</code>。/ai-plan 的第 4 層有兩個呼叫端：
-            推論態是 <code className={styles.code}>LivePlanLayer</code>，模擬態(交接前)是 <code className={styles.code}>SimPlanLayer</code>；
+            推論態是 <code className={styles.code}>LivePlanLayer</code>(由 <code className={styles.code}>LiveContent</code> 掛載)，模擬態是 <code className={styles.code}>SimPlanLayer</code>(由 <code className={styles.code}>Content</code> 掛載)，兩者分屬不同路由；
             行程詳情頁(<code className={styles.code}>itineraries/</code>)也用同一組分層，但沒有第 4 層。
             下表只列跟資料流有關的差異；完整對照見 <code className={styles.code}>public/marker-layers.html</code>。
           </p>
@@ -763,7 +763,7 @@ export function PlanDataFlowPage() {
           <div className={styles.note}>
             <span className={styles.noteTitle}>三個 Content 沒有整合測試</span>
             <code className={styles.code}>planning/preview/Content.tsx</code>、<code className={styles.code}>planning/member/phone/Content.tsx</code>、
-            <code className={styles.code}>planning/member/desktop/Content.tsx</code> 是各入口的狀態擁有者，交接、首站平移、目前位置、站點遮蔽的接線
+            <code className={styles.code}>planning/member/desktop/Content.tsx</code> 是各入口的狀態擁有者(/ai-plan 另有 <code className={styles.code}>planning/preview/LiveContent.tsx</code>)，交接、首站平移、目前位置、站點遮蔽的接線
             只靠子層的單元測試守住(例如 <code className={styles.code}>PlanPhoneView.mapWiring.test.tsx</code>)。
             這一層是這次重構最容易靜默回歸的地方。
           </div>

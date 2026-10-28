@@ -1,6 +1,7 @@
 import { CTA_AFTER_STOPS, usePlanSimSocket } from './usePlanSimSocket'
 import { useSimulatedStopsView } from './useSimulatedStopsView'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { listNodes } from '../timeline/model'
 import { ROUTE_LINE_ENABLED } from '../../DesktopShared'
 import { useThemeToggle } from '../../hooks/useThemeToggle'
@@ -9,14 +10,11 @@ import { trackEvent } from '../../analytics'
 import { getPlanAiPublicDataSource } from '../data/public'
 import { planAiFakeDataSource } from '../data/fake'
 import { PlanDataProvider } from '../data/PlanDataProvider'
-import { getPlanAiApiDataSource } from '../data/api'
 import { BASE_URL } from '../../AppCommon'
 import { PlanMap } from './PlanMap'
-import { maskPlanStopsView, usePlanStopsState } from '../timeline/usePlanStopsState'
-import { useGuestClientConfig } from '../shared/config'
-import { useCurrentLocation } from './useCurrentLocation'
+import { buildLiveHandoverUrl } from './liveHandoverUrl'
+import { maskPlanStopsView } from '../timeline/usePlanStopsState'
 import { createPlanSimFakeSource } from './planSimFakeSource'
-import { LivePlanLayer } from './LivePlanLayer'
 import { SimPlanLayer } from './SimPlanLayer'
 import { SimComposer } from './SimComposer'
 import { PlanLayout } from './PlanLayout'
@@ -53,6 +51,9 @@ const SafeAreaDebugOverlay = lazy(() =>
 const WideLayoutDebugOverlay = lazy(() =>
   import('./WideLayoutDebugOverlay').then((m) => ({ default: m.WideLayoutDebugOverlay })),
 )
+// ToolCallLogDebugOverlay——不在這裡渲染:這個頁面(播放態)是純前端
+// 假劇本,不經過任何 AI 工具呼叫,移到 LiveContent.tsx(推論態,見該
+// 檔案的完整說明)顯示才有意義。
 import { useMapSafeArea } from '../map/useMapSafeArea'
 import { useDesktopStopPan, usePhoneStopPan, useStopCardClick } from '../map/useStopPan'
 import { useFirstStopAutoPan } from '../map/useFirstStopAutoPan'
@@ -105,9 +106,17 @@ const DEBUG_TARGET = { lat: 23.0009, lng: 120.2024 }
 // 真正的地點名稱/簡介/照片,這是「把 place_id 串到前端、前端用 id 呼叫
 // 端點顯示景點」這個需求的具體落地,不是後端直接把完整資料內嵌進訊息裡。
 //
-// 播放態(handedOver 為 false)是純模擬展示(見下方「模擬」相關說明),
-// 不接真實 AI/LLM;使用者按下「讓我試看看」交接(handedOver 為 true)後,
-// 改渲染 LivePlanLayer(複用 /app 的 TripPlanPage,連真實 AI,見該檔檔頭)。
+// 這個頁面是純模擬展示(見下方「模擬」相關說明),不接真實 AI/LLM;
+// 使用者按下「讓我試看看」(見 handover 的完整說明)後 navigate 到
+// /ai-plan/live(LiveContent.tsx,複用 /app 的 TripPlanPage,連真實
+// AI)。
+//
+// 2026-10 從同一元件內用 handedOver 三元運算子切換,改成兩個真正獨立
+// 的路由(使用者明確要求「把播放態跟推論態頁面分離乾淨,明確的用不同
+// 畫面掛載,不要用條件做切換了」「對話跟資料都不用傳遞」):交接不再是
+// 同一個元件內部替換子樹,而是整頁導覽過去,LiveContent 自己重新初始化
+// 一份狀態,不接收任何從這裡傳過去的參數。
+//
 // 路由 /ai-plan(見 App.tsx),獨立於 /app 底下的正式導覽系統之外(不走
 // planning/member/desktop/Content.tsx、planning/member/phone/Content.tsx 那套 panelMode 機制)。日後若要把
 // 播放態換成真實來源,只需要把 usePlanSimSocket 換成真正的 agent 推論 WS
@@ -172,12 +181,11 @@ function shouldSkipDemo(): boolean {
   return new URLSearchParams(window.location.search).get('skipDemo') === '1'
 }
 
-// 推論態的站點檢視實例是 planning/timeline/usePlanStopsState(與登入後手機、桌面同一個 hook);模擬態是 ./useSimulatedStopsView.ts。
-
-// Content——/ai-plan 的入口。資料存取層在這裡(根部)決定:模擬態整棵子樹(useSimulatedStopsView 的地圖投影與
-// SimPlanLayer 的時間軸視圖)包在假資料的 PlanDataProvider 底下,兩者共用同一個 store,同一個 id 只查一次;
-// 交接後的推論態子樹(LivePlanLayer)換成公開版的 Provider(見 ContentInner 的 handedOver 分支),換資料來源實例
-// 時自然換一份全新的 store,不沿用模擬態的假資料。
+// Content——/ai-plan 的入口,純播放態(見檔頭的完整說明:推論態已拆到
+// LiveContent.tsx、路由 /ai-plan/live)。資料存取層在這裡(根部)決定:
+// 整棵子樹(useSimulatedStopsView 的地圖投影與 SimPlanLayer 的時間軸
+// 視圖)包在假資料的 PlanDataProvider 底下,共用同一個 store,同一個 id
+// 只查一次。
 export function Content() {
   return (
     <PlanDataProvider dataSource={planAiFakeDataSource}>
@@ -341,14 +349,8 @@ function ContentInner() {
   // usePlanAiChatBridge(接真實 onagent 對話)與對應的 getStepsForBridge/
   // addNoteToTimeline 橋接函式,使用者明確要求這個頁面的輸入框改為
   // 純展示、不接受真的輸入,整條 onagent 對話路徑已一併移除。
-  // DEBUG_SAFE_AREA 開啟時傳 false,不建立來源、不播放——驗證中心點
-  // 計算時畫面上不該有東西在動(見該常數的完整說明)。沒帶那個 URL
-  // 參數時這個判斷恆為 false,播放行為跟平常完全一樣。
-  // handedOver——是否已交接給推論態(單向,見 handover)。宣告在 usePlanSimSocket 之前:交接後要讓模擬停止播放
-  // (下方傳給它的 start 帶 !handedOver),否則劇本計時器繼續對已清空的時間軸插入站點與備註(code review 發現)。
-  const [handedOver, setHandedOver] = useState(false)
   const { timeline, nodeStatus, messages, isGenerating, timelineRef, setStopTime, clearTimeline, clearConversation, latestInsertedStopIdRef, retryStop } = usePlanSimSocket(
-    DEBUG_SAFE_AREA ? false : promptTyped && !handedOver,
+    promptTyped,
     createPlanSimSource,
   )
   const stopCount = useMemo(() => listNodes(timeline).filter((s) => s.type === 'stop').length, [timeline])
@@ -360,42 +362,34 @@ function ContentInner() {
   // 回報(見下方 expandedThemeId state)。這裡只需要把 children 資訊帶進站點
   // 投影(view.stops 的 children)。
 
-  // 兩個站點檢視實例,交接時整個換掉(使用者明確要求「先不要管模擬,模擬就用自己的實例,統一推論態跟登入後」):
-  //   simulated  模擬態:播放劇本時的站點與選取,全部由 useSimulatedStopsView 自己持有,不與其他實例共用任何狀態
-  //   live       推論態:usePlanStopsState,與登入後手機、桌面是同一個 hook——站點、選取、hover、轉乘配對與
-  //              TripPlanPage 的四個回報回呼(tripPlanProps)一次持有
-  // 兩個 hook 都無條件呼叫(React hooks 規則:呼叫次數與順序不能依條件變動)。handedOver 決定現在用哪一個實例,
-  // 不再另外存一份來源快照(舊的 planSource state 要靠兩個 effect 在 stops 變動時同步,漏同步就是「真實推論沒有
-  // 地圖點」那次 bug 的根源;現在是衍生值,沒有同步問題)。
-  const simulated = useSimulatedStopsView(timeline, latestInsertedStopIdRef)
-  const live = usePlanStopsState()
-  const view = handedOver ? live : simulated
+  // view——這個頁面固定只有模擬態(見檔頭的完整說明:推論態已拆到
+  // LiveContent.tsx),站點與選取全部由 useSimulatedStopsView 自己
+  // 持有,不與其他實例共用任何狀態。
+  const view = useSimulatedStopsView(timeline, latestInsertedStopIdRef)
 
-  // handover——「交接」:清掉模擬的時間軸,改用推論態的實例(live)。選取不需要另外清空——live 是全新的實例
-  // (初值 null),模擬態的選取整個被換掉。
+  const navigate = useNavigate()
+  // handover——「讓我試看看」:清掉模擬的時間軸與對話,navigate 到
+  // /ai-plan/live(LiveContent.tsx,見該檔案的完整說明)。
   //
-  // 2026-10 改動(使用者明確要求「按鈕按下去不能進入 app,是要替換掉時間軸層」):原本這顆按鈕是 navigate('/app')
-  // 跳到正式功能頁,現在留在同一頁替換內容——模擬的時間軸清空,換成讓使用者自己描述需求的介面。理由是連續性:使用者
-  // 剛看完一段「AI 自動排行程」的展示,當下最想做的是「換我試試看」,跳轉到另一個頁面(還可能撞上登入牆)會把那個
-  // 當下打斷。
+  // 2026-10 改動(使用者明確要求「把播放態跟推論態頁面分離乾淨,明確的
+  // 用不同畫面掛載,不要用條件做切換了」「對話跟資料都不用傳遞」):
+  // 原本是在同一元件內 setHandedOver(true) 替換時間軸層(更早之前則是
+  // navigate('/app') 跳到正式功能頁);改成真的 navigate 到一個獨立路由
+  // ,但仍然不是 navigate('/app')——/ai-plan/live 複用 TripPlanPage,
+  // 跟 /app 一樣連真實 AI,但不需要登入、不走 /app 的正式導覽系統,理由
+  // 同原本「不要撞上登入牆打斷連續性」的既有考量。
   //
-  // 單向、不可逆——交接後沒有「回到模擬」的路徑(見 LivePlanLayer.tsx 檔頭 TODO 第 3 點:模擬的腳本播放是一次性的,
-  // 重播需要另外設計)。
+  // 仍然清掉模擬的時間軸/對話(雖然 LiveContent 掛載後不會讀這份
+  // 狀態,但這個元件本身可能因為瀏覽器「上一頁」等操作重新顯示,清乾淨
+  // 比較保險)。
   const handover = useCallback(() => {
     clearTimeline()
-    // 對話一併清空(對應清空時間軸):展示劇本的訊息不能留給使用者以為是自己的對話。
     clearConversation()
-    setHandedOver(true)
-  }, [clearTimeline, clearConversation])
+    navigate(buildLiveHandoverUrl(window.location.search))
+  }, [clearTimeline, clearConversation, navigate])
 
   // skipDemo——見 shouldSkipDemo 的完整說明:網址帶 ?skipDemo=1 時,
-  // 掛載後立即呼叫 handover() 跳過劇本播放。用 ref 記錄「已經觸發過」
-  // 而非只靠依賴陣列,是因為 handover 本身的參照會隨 clearTimeline
-  // 改變而重新產生(見上方 useCallback 依賴陣列)——若直接把
-  // handover 放進 effect 依賴陣列,每次 handover 參照變動都會讓這個
-  // effect 重新執行,對已經交接過的頁面重複呼叫 handover()(雖然
-  // handover 本身冪等、不會造成實際問題,但語意上這個 effect 应该只在
-  // 「掛載時」判斷一次,不該隨 handover 參照變動反覆觸發)。
+  // 掛載後立即呼叫 handover() 跳過劇本播放,直接 navigate 到推論態。
   const skipDemoTriggeredRef = useRef(false)
   useEffect(() => {
     if (skipDemoTriggeredRef.current) return
@@ -430,49 +424,26 @@ function ContentInner() {
   // 明確要求「如果移動範圍在可視區就用 panTo,以外則用 fitBounds」)。
   const mapSafeArea = useMapSafeArea(mapHandle.mapRef)
 
-  // selectedStopId/setSelectedStopId——讀寫目前使用中的實例(view):交接前是模擬態自己的,交接後是推論態的
-  // (與登入後同一個 hook),呼叫端(下方傳給地圖的 selectedStopId、JSX 裡 panToStop 等)不需要知道差異。
-  //
-  // 2026-10 移除右上角小地圖功能前,這個狀態同時也驅動小地圖 panTo+
-  // 放大(見 panToStop),拿掉地圖後這裡純粹只剩「點了哪張卡片」的視覺
-  // 回饋,不影響其餘行為。2026-10 地圖換成真實互動地圖(NativeMapBase)
-  // 後,這個狀態重新驅動地圖圓點強調(下方傳給 PlanMap 的
-  // selectedStopId),回到原本「選取會連動地圖」的語意,只是不做 pan/放大
-  // (panToStop 維持不變,只設定這個狀態)。
+  // selectedStopId/setSelectedStopId——讀寫目前使用中的實例(view,模擬態)。
   const { selectedStopId, hoverStopId, setSelectedStopId, setHoverStopId } = view
 
   // 地圖上的圖層由地圖元件 PlanMap 掛(與登入後的 PlanMap 同一個層級,見 PlanMap.tsx 的說明):
-  // 統一繪製層(行程站點圓點含主題點展開、目前位置藍點、轉乘虛線、整條路線)與光暈。這頁只持有狀態、
+  // 統一繪製層(行程站點圓點含主題點展開、轉乘虛線、整條路線)。這頁只持有狀態、
   // 傳 prop:站點的選取與 hover 由這頁的狀態持有(完全受控),點圓點經 onStopClick 寫回同一個
-  // selectedStopId;座標由推論態才取得的定位而來(已授權才有,推論態以外為 null,藍點不畫)。選取時
-  // 不自動平移:這頁的平移由安全區機制負責(見下方 panToStop),不要同時啟用兩套。轉乘虛線的
-  // hoverTransitPair 來自推論態(live.hoverTransitPair,模擬態不會回報);連線段(view.routeSegments,有交通膠囊的那一段才畫)由 ROUTE_LINE_ENABLED 控制要不要傳(下方 PlanMap 的 routeSegments)。
-  const { currentPosition } = useCurrentLocation({ wanted: handedOver })
+  // selectedStopId。選取時不自動平移:這頁的平移由安全區機制負責(見下方 panToStop),不要同時啟用兩套。
+  // 這個頁面是純模擬展示(見檔頭的完整說明),不查定位、不畫目前位置藍點、不接光暈圖層
+  // (這些都是推論態才有的,見 LiveContent.tsx)、hoverTransitPair 恆為 undefined(模擬態不會回報);
+  // 連線段(view.routeSegments,有交通膠囊的那一段才畫)由 ROUTE_LINE_ENABLED 控制要不要傳(下方 PlanMap 的 routeSegments)。
   // visibleStopsView:傳給地圖的站點檢視,與登入後手機、桌面同一個規則——不該畫的時候傳空檢視(空陣列,圖層自己會清掉
   // marker;選取、hover、轉乘配對一起遮蔽),見 maskPlanStopsView。這頁的規劃面板不收起,站點隨時都該顯示,所以
   // 可見條件恆為 true;條件留在呼叫處,日後這頁有會蓋住地圖或收起面板的狀態時,只改這個值。
   const stopsVisible = true
   const visibleStopsView = maskPlanStopsView(
-    { stops: view.stops, selectedStopId, hoverStopId, hoverTransitPair: live.hoverTransitPair },
+    { stops: view.stops, selectedStopId, hoverStopId, hoverTransitPair: null },
     stopsVisible,
   )
   // expandedThemeId:PlanMap 回報目前展開的主題點(選中有 children 的站點),平移判斷會用。
   const [expandedThemeId, setExpandedThemeId] = useState<string | null>(null)
-
-  // 推論態才有的地圖圖層(2026-10,使用者明確要求把登入後地圖的「景點區域光暈」
-  // 「目前位置藍點」加進 /ai-plan)。播放態是首頁展示用的劇本,不查資料、不碰定位,
-  // 所以兩者都只在 handedOver 為 true 時啟用。各自的邏輯在 mapLayers/ 下,這裡只接線。
-  //
-  // layerCfg:兩個圖層查資料用的設定。token 從 localStorage 讀(與
-  // LivePlanLayer 共用 useGuestClientConfig);讀不到就當訪客(圖層內部會改走免登入端點)。
-  const layerCfg = useGuestClientConfig()
-  // attractionDataSource:光暈查附近景點區域用的資料存取層實例(2026-10,使用者明確要求「光暈查詢共用,
-  // 端點應該是有不同的資料存取層實例」)。有 token 用登入版(打 /internal)、沒有用訪客版(打免登入的
-  // /public);挑哪一個是這一層的事,PlanMap 與光暈 hook 都不看登入狀態。
-  const attractionDataSource = layerCfg.token ? getPlanAiApiDataSource(layerCfg) : getPlanAiPublicDataSource(layerCfg.baseURL)
-  // 目前位置藍點:只在瀏覽器已授權定位時靜默取得,不主動跳出授權提示
-  // (見 useCurrentLocation.ts 檔頭)。要讓新訪客也能看到藍點,需要另外加
-  // 一顆定位按鈕呼叫它回傳的 request(),這是待決定的產品項目,先不做。
 
   // expandedThemeChildren——expandedThemeId 目前展開的主題點的子景點(執行時解析結果,已帶座標):
   // 節點本身只存 id(attractions/places),座標由站點投影(view.stops 的 children)
@@ -481,23 +452,16 @@ function ContentInner() {
 
   // 站點平移兩件事分開(都在 planning/map:useFirstStopAutoPan.ts、useStopPan.ts):
   //   首站自動平移 useFirstStopAutoPan  只有手機(桌面的鏡頭統一只由點選圖卡移動);平移用 mapSafeArea.panToWithinSafeArea(依安全區算中心)
-  //   卡片「移動到此」 usePhoneStopPan   只分手機與桌面;這頁只有手機有(桌面側欄沒有這顆按鈕),產生的 panToStopId 注入 LivePlanLayer
-  // 首站自動平移:模擬態與推論態各一個實例,各自一次性(latch 不跨實例,交接後推論態的第一站仍會平移,與登入後一致)。
-  // 桌面點選圖卡(useDesktopStopPan)任何狀態都平移(模擬態、推論態、wide 與非 wide);非 wide 的疊加版面(768–1023px)
-  // 沒有安全區節點,panToWithinSafeArea 退回直接 panTo。手機的「移動到此」仍只在模擬態啟用(推論態的選取不搶鏡頭)。
+  //   卡片「移動到此」 usePhoneStopPan   只分手機與桌面;這頁只有手機有(桌面側欄沒有這顆按鈕)
+  // 桌面點選圖卡(useDesktopStopPan)任何狀態都平移(wide 與非 wide);非 wide 的疊加版面(768–1023px)
+  // 沒有安全區節點,panToWithinSafeArea 退回直接 panTo。
   const firstStopPanAllowed = !isDesktop
   // 地圖加疊加 UI 的外殼依螢幕擇一(三個實體同名同介面,見 overlayLayoutProps.ts):≥1024px 側欄、768–1023px 疊加、其餘手機。
   const OverlayLayout = isWide ? WidePlanOverlayLayout : isDesktop ? DesktopPlanOverlayLayout : PhonePlanOverlayLayout
   const mapPanReady = mapHandle.mapReady && !!mapHandle.mapRef.current
   useFirstStopAutoPan({
-    stops: simulated.stops,
-    enabled: !handedOver && firstStopPanAllowed,
-    ready: mapPanReady,
-    pan: mapSafeArea.panToWithinSafeArea,
-  })
-  useFirstStopAutoPan({
-    stops: live.stops,
-    enabled: handedOver && firstStopPanAllowed,
+    stops: view.stops,
+    enabled: firstStopPanAllowed,
     ready: mapPanReady,
     pan: mapSafeArea.panToWithinSafeArea,
   })
@@ -506,7 +470,7 @@ function ContentInner() {
     mapReady: mapHandle.mapReady,
     stops: view.stops,
     expandedChildren: expandedThemeChildren,
-    enabled: !isDesktop && !handedOver,
+    enabled: !isDesktop,
     panToWithinSafeArea: mapSafeArea.panToWithinSafeArea,
   })
 
@@ -535,11 +499,6 @@ function ContentInner() {
   //
   // 只進不退(setComposerCollapsed(true) 重複寫入同值不觸發重渲染):
   // 切換之後後續站點繼續插入時,按鈕不該閃回箭頭送出鈕。
-  // userPrompt——交接之後使用者自己打的內容。跟 typedPrompt(假打字
-  // 動畫的進度)是兩個獨立的 state:後者是展示用的、唯讀,前者才是
-  // 真的使用者輸入。
-  const [userPrompt, setUserPrompt] = useState('')
-
   const [composerCollapsed, setComposerCollapsed] = useState(false)
   const wasGeneratingRef = useRef(false)
   useEffect(() => {
@@ -667,12 +626,12 @@ function ContentInner() {
   // 定位,放進哪個 DOM 位置不影響視覺,純粹是程式碼組織上收進插槽。
   // 2026-10 使用者明確要求「展示頁面不要功能介紹按鈕」——移除原本的
   // 「功能介紹」CTA(連到 /product),只留登入。
-  // pageLabel 只在播放態顯示(2026-10,使用者明確要求「ai-plan 進入推論態後
-  // 不要顯示左上角台南兩日遊」):「台南兩日遊」是播放態劇本的主題名稱,
-  // 交接後(handedOver)使用者排的是自己的行程,繼續掛著劇本的標題會誤導。
+  // pageLabel——「台南兩日遊」是這個頁面(純播放態,見檔頭說明)劇本的
+  // 主題名稱,固定顯示;推論態已拆到獨立路由 LiveContent.tsx,那邊沒有
+  // 這個劇本主題概念,不需要再用 handedOver 判斷要不要顯示。
   const navButtons = (
     <>
-    <SiteNavBrand pageLabel={handedOver ? undefined : '台南兩日遊'} />
+    <SiteNavBrand pageLabel="台南兩日遊" />
     <SiteNavThemeToggle dark={dark} onToggle={toggleTheme} />
     <SiteNavCta href="/app" onClick={() => trackEvent('landing_cta_click', { page: 'plan-ai-sim', position: 'nav' })}>登入</SiteNavCta>
     </>
@@ -688,13 +647,9 @@ function ContentInner() {
         mapId={SIMPLE_MAP_ID}
         theme={dark ? 'dark' : 'light'}
         {...visibleStopsView}
-        // 連線段:四個入口共用 ROUTE_LINE_ENABLED 控制(見 DesktopShared.tsx);這頁沒有切換入口,flag 開啟就傳
-        // (模擬態與推論態各自的實例都提供 routeSegments,與 stops 同一個來源切換)。
+        // 連線段:四個入口共用 ROUTE_LINE_ENABLED 控制(見 DesktopShared.tsx)。
         routeSegments={ROUTE_LINE_ENABLED ? view.routeSegments : undefined}
         onStopClick={setSelectedStopId}
-        currentPosition={currentPosition}
-        liveLayersEnabled={handedOver}
-        attractionDataSource={attractionDataSource}
         onExpandedThemeIdChange={setExpandedThemeId}
         onHandleChange={handleMapHandleChange}
       />
@@ -729,67 +684,47 @@ function ContentInner() {
   return (
     <>
     {/* PlanLayout——版面骨架(根容器+地圖背景+上方 nav+既有的
-        PlanOverlayPanel),見該元件開頭的完整設計理由。時間軸層的二選一
-        (模擬 vs 真實 AI,見下方 handedOver 判斷的完整說明)決定要傳哪組
-        passThrough/composer/children,layout 本身不關心這個決策。 */}
-    {handedOver ? (
-      <PlanLayout embedded={embedded} theme={theme} nav={navButtons} debugOverlay={wideDebugOverlay}>
-      <OverlayLayout
-        mapBackground={mapBackground}
-        safeAreaRef={mapSafeArea.safeAreaElRef}
-        passThrough
-      >
-        {/* 推論態:公開版資料存取層(訪客 /public/*,與 LivePlanLayer 傳給 TripPlanPage 的是同一個共用實例),見 Content 的說明。 */}
-        <PlanDataProvider dataSource={askPageDataSource}>
-          <LivePlanLayer selectedStopId={selectedStopId} tripPlanProps={live.tripPlanProps} onPanToStop={isDesktop ? panDesktopToStop : undefined} />
-        </PlanDataProvider>
-      </OverlayLayout>
-      </PlanLayout>
-    ) : (
-      <PlanLayout embedded={embedded} theme={theme} nav={navButtons} debugOverlay={wideDebugOverlay}>
-      <OverlayLayout
-        mapBackground={mapBackground}
-        safeAreaRef={mapSafeArea.safeAreaElRef}
-        composer={
-          <SimComposer
-            composerCollapsed={composerCollapsed}
-            handedOver={handedOver}
-            typedPrompt={typedPrompt}
-            userPrompt={userPrompt}
-            setUserPrompt={setUserPrompt}
-            handover={handover}
-          />
-        }
-      >
-      <SimPlanLayer
-        isDesktop={isDesktop}
-        timeline={timeline}
-        nodeStatus={nodeStatus}
-        messages={messages}
-        isGenerating={isGenerating}
-        emptyStateMessage={emptyStateMessage}
-        timelineRef={timelineRef}
-        setStopTime={setStopTime}
-        retryStop={retryStop}
-        showAskPage={showAskPage}
-        askPageInput={askPageInput}
-        handleAskPageDone={handleAskPageDone}
-        renderScriptedAskPage={renderScriptedAskPage}
-        selectedStopId={selectedStopId}
-        setSelectedStopId={setSelectedStopId}
-        setHoverStopId={setHoverStopId}
-        panToStop={panToStop}
-        panToStopId={panToStopId}
-        scrollRef={scrollRef}
-        handleScroll={handleScroll}
-        showJumpPill={showJumpPill}
-        jumpToLatest={jumpToLatest}
-        mountedIdsRef={mountedIdsRef}
-        setLightboxPhotos={setLightboxPhotos}
-      />
-      </OverlayLayout>
-      </PlanLayout>
-    )}
+        PlanOverlayPanel),見該元件開頭的完整設計理由。 */}
+    <PlanLayout embedded={embedded} theme={theme} nav={navButtons} debugOverlay={wideDebugOverlay}>
+    <OverlayLayout
+      mapBackground={mapBackground}
+      safeAreaRef={mapSafeArea.safeAreaElRef}
+      composer={
+        <SimComposer
+          composerCollapsed={composerCollapsed}
+          typedPrompt={typedPrompt}
+          handover={handover}
+        />
+      }
+    >
+    <SimPlanLayer
+      isDesktop={isDesktop}
+      timeline={timeline}
+      nodeStatus={nodeStatus}
+      messages={messages}
+      isGenerating={isGenerating}
+      emptyStateMessage={emptyStateMessage}
+      timelineRef={timelineRef}
+      setStopTime={setStopTime}
+      retryStop={retryStop}
+      showAskPage={showAskPage}
+      askPageInput={askPageInput}
+      handleAskPageDone={handleAskPageDone}
+      renderScriptedAskPage={renderScriptedAskPage}
+      selectedStopId={selectedStopId}
+      setSelectedStopId={setSelectedStopId}
+      setHoverStopId={setHoverStopId}
+      panToStop={panToStop}
+      panToStopId={panToStopId}
+      scrollRef={scrollRef}
+      handleScroll={handleScroll}
+      showJumpPill={showJumpPill}
+      jumpToLatest={jumpToLatest}
+      mountedIdsRef={mountedIdsRef}
+      setLightboxPhotos={setLightboxPhotos}
+    />
+    </OverlayLayout>
+    </PlanLayout>
     {lightboxPhotos && (
       <Lightbox
         photos={lightboxPhotos.photos}

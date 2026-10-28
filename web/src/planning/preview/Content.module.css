@@ -211,7 +211,7 @@
 
 /* inputRow——planning/preview/Content.tsx 透過 inputRowClassName 疊加這個
    class 到共用元件 Composer 的 <form> 上。justify-content: center:
-   「讓我試看看」出現時(composerCollapsed 且未 handedOver)輸入框整個
+   「讓我試看看」出現時(composerCollapsed)輸入框整個
    從 DOM 移除(見 planning/preview/Content.tsx hideInput 處的完整說明),
    這個 <form> 此時只剩送出鈕一個子元素,預設的 flex-start 會讓它貼齊
    左側(跟輸入框原本左對齊的視覺習慣一致,但使用者明確要求「按鈕置
@@ -248,7 +248,24 @@
    width:100% 撐滿 composer 可用寬度(見上方 .sendBtn 基準值的完整
    說明),不是像 hero-cta 那樣由左右 padding 本身撐開寬度,兩者的左右
    padding 語意不同,沿用原本數值。 */
-.composerCta {
+/* .composerCta.composerCta(而非單獨 .composerCta)——2026-10 修正(拆分
+   播放態/推論態路由時實機發現的真實 bug):這個 class 疊加在共用元件
+   Composer.tsx 渲染出的同一顆 <button> 上,跟它自己的 .sendBtn(定義在
+   components/Composer.module.css,width: 36px、flex: 0 0 auto——注意
+   不是這個檔案上面那個同名但不同模組的 .sendBtn,CSS Module 下兩者是
+   完全不同的 hash class,只是巧合同名)同時生效。兩個 class selector
+   的 specificity 原本相同,誰覆寫誰取決於兩份 CSS Module 在最終打包
+   結果裡的插入順序——而這個順序由 Vite 依 JS import 圖決定,不是穩定
+   的視覺層疊關係,一旦呼叫端(Content.tsx)的 import 結構變動(例如
+   這次新增/移除其他 import),就可能讓 components/Composer.module.css
+   的 .sendBtn 規則排到後面覆寫掉這裡的 width: 100%,按鈕整個縮回
+   36px 圓形小鈕、文字被壓成直排。把同一個 class 重複寫兩次
+   (.composerCta.composerCta)能把 specificity 提高到兩個 class、同時
+   不依賴任何外部模組的 class 名稱(CSS Module 轉換後兩次都會是同一個
+   本地 hash class),不管打包順序為何都穩定勝過單一 class 的 .sendBtn,
+   不像先前誤寫成 .sendBtn.composerCta 那樣意外繫結到這個檔案自己的
+   .sendBtn(完全是另一個不相干的規則)。 */
+.composerCta.composerCta {
   max-width: 420px;
   width: 100%;
   min-width: 0;

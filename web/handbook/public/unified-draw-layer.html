@@ -1,0 +1,330 @@
+<title>統一繪製層:七層總覽</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* 這份是 marker-layers.html 四個入口小卡「統一繪製層」的共用詳細說明,
+     2026-10 抽成獨立子頁——四個入口原本各自重複一份七層明細,只有少數
+     幾行真的因入口而異(保留在各自的小卡裡),共同的部分集中在這裡,
+     四個小卡點擊後開到這一頁。樣式與配色沿用 marker-layers.html 同一份。 */
+  :root {
+    --bg: #f5f6f7;
+    --fg: #1d2530;
+    --muted: #5b6673;
+    --line: #c9d0d8;
+    --box: #ffffff;
+    --box2: #eef1f4;
+    --ai: #0f766e;
+    --ai-soft: #d7efec;
+    --app: #b45309;
+    --app-soft: #f8e6cf;
+    --warn: #b42318;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12171d;
+      --fg: #e6ebf0;
+      --muted: #97a3b0;
+      --line: #36414e;
+      --box: #1b222b;
+      --box2: #232c37;
+      --ai: #4fd1c5;
+      --ai-soft: #17332f;
+      --app: #f0a24b;
+      --app-soft: #3a2a14;
+      --warn: #ff8a7a;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12171d;
+    --fg: #e6ebf0;
+    --muted: #97a3b0;
+    --line: #36414e;
+    --box: #1b222b;
+    --box2: #232c37;
+    --ai: #4fd1c5;
+    --ai-soft: #17332f;
+    --app: #f0a24b;
+    --app-soft: #3a2a14;
+    --warn: #ff8a7a;
+    color-scheme: dark;
+  }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    line-height: 1.6;
+    padding-block: 28px 56px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  main { max-width: 1320px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 6px; text-wrap: balance; }
+  h2 { font-size: 16px; margin: 0 0 4px; }
+  .lede { color: var(--muted); margin: 0 0 22px; max-width: 80ch; }
+  .back { display: inline-block; margin-bottom: 18px; color: var(--muted); font-size: 13px; text-decoration: none; }
+  .back:hover { color: var(--fg); }
+  .panel { background: var(--box2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 10px 8px; min-width: 0; }
+  .panel p { margin: 0 0 10px; color: var(--muted); font-size: 13px; max-width: 100ch; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 99px; margin-right: 6px; }
+  .tag.ai { background: var(--ai-soft); color: var(--ai); }
+  .tag.app { background: var(--app-soft); color: var(--app); }
+  .scroll { overflow-x: auto; }
+  svg { display: block; width: 100%; height: auto; min-width: 420px; font-size: 13px; color: var(--fg); }
+  svg text { fill: var(--fg); }
+  svg .m { fill: var(--muted); font-size: 12px; }
+  svg .b { font-weight: 700; }
+  .box { fill: var(--box); stroke: var(--line); stroke-width: 1.2; }
+  .ai-box { fill: var(--ai-soft); stroke: var(--ai); stroke-width: 1.4; }
+  .app-box { fill: var(--app-soft); stroke: var(--app); stroke-width: 1.4; }
+  .eff { fill: var(--box); stroke: var(--line); stroke-width: 1; }
+  .ln { stroke: var(--fg); stroke-width: 1.4; fill: none; }
+  .ln-ai { stroke: var(--ai); stroke-width: 1.6; fill: none; }
+  .ln-app { stroke: var(--app); stroke-width: 1.6; fill: none; }
+  .back-ai { stroke: var(--ai); stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; }
+  .back-app { stroke: var(--app); stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; }
+  code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; background: var(--box2); padding: 0 4px; border-radius: 3px; overflow-wrap: anywhere; }
+  .theme-toggle {
+    position: fixed;
+    top: max(12px, env(safe-area-inset-top, 0px));
+    right: max(12px, env(safe-area-inset-right, 0px));
+    z-index: 10;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: var(--box);
+    color: var(--fg);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+  }
+  .theme-toggle:hover { background: var(--box2); }
+  .theme-toggle:focus-visible { outline: 2px solid var(--ai); outline-offset: 2px; }
+</style>
+
+<button type="button" id="theme-toggle" class="theme-toggle" aria-label="切換日夜模式"></button>
+
+<main>
+  <a class="back" href="marker-layers.html">← 回「地圖繪製層:四個入口的架構與掛入方式」</a>
+  <h1>統一繪製層:七層總覽</h1>
+  <p class="lede">四個入口(/ai-plan 手機/桌面、登入後手機/桌面)小卡裡「統一繪製層」只標出跟其他入口不同的地方(掛了哪幾層、有沒有額外開關),共同的七層明細與宿主架構集中在這一頁。</p>
+
+  <section class="panel">
+    <h2><span class="tag app">新架構</span>統一繪製層:功能層組合在同一個宿主裡</h2>
+    <p>地圖上原生繪製的東西(marker、圓圈、線)由同一層管理。功能層是純函式,只把資料轉成「要畫什麼」;宿主 useMapDrawLayer 負責組合、依 id 比對、畫出、疊放順序、地圖重建後重掛與清理。程式在 <code>planning/map/draw/</code>(原 geo-planning/mapDrawLayer/)。功能層共七個,在 planning/map/draw/layers/:planStopLayer(行程站點圓點)、currentLocationLayer(藍點)、routeLineLayer(整條路線)、transitHoverLineLayer(轉乘 hover 虛線)、tripEntryLayer(行程 entry 旗子)、searchResultLayer(搜尋結果標記)、attractionGlowLayer(景點光暈),全部由共用子層 useSharedDrawLayer 組合;原本只給 itineraries 詳情頁的 routePolylineLayer 已在 2026-10-24 併入 routeLineLayer;attractionGlowSupport.ts 是光暈的支援檔(照片排程與標籤避讓的 hook),不是功能層。七個共用功能層加宿主呼叫與強調色讀取（useAccentColor）收在共用子層 useSharedDrawLayer，呼叫它的接線處有四個：登入後的 PlanMap（planning/map/PlanMap.tsx）、/ai-plan 的 PlanMap（planning/preview/PlanMap.tsx）、行程詳情頁的 PlanMap（itineraries/PlanMap.tsx，站點圓點走 planStopLayer、連線走共同的 routeSegments prop）三者都經 planning/map/planMapShared.ts 的 usePlanMapDrawing；首頁展示頁 InteractiveExploreMap 直接呼叫，只傳 attractionGlow。useSharedDrawLayer 仍保留選填的 extraLayers，但目前沒有接線處傳。宿主支援 marker、circle、polyline、overlay 四種繪製項目；marker 一律用 AdvancedMarkerElement，所以掛宿主的地圖都必須帶 mapId（行程詳情頁用 SIMPLE_MAP_ID）。2026-10-24 補充：planStopLayer 的點除了站點與主題點，現在也畫旅館（PlanStopMarker.lodging，床 glyph，不參與 routeLineLayer 的線段）；主題點的子景點小點與旅館點的座標都來自執行時解析結果（planning/data 的共用 store，經 PlanDataProvider.tsx 的 useResolvedRefs 取用），不是節點上的快照；三個連線功能層改畫弧線加光暈（routeArc.ts、routeStyle.ts）。</p>
+    <div class="scroll">
+      <svg viewBox="0 0 1210 1012" role="img" aria-label="統一繪製層:七個功能層(共用子層 useSharedDrawLayer 組合 planStopLayer、currentLocationLayer、transitHoverLineLayer、routeLineLayer、tripEntryLayer、searchResultLayer、attractionGlowLayer;routePolylineLayer 已併入 routeLineLayer)由四個接線處使用:登入後 PlanMap、/ai-plan 的 PlanMap、行程詳情頁、home/InteractiveExploreMap 都經過共用子層交給 useMapDrawLayer,再畫在 NativeMapBase 建立的 google.maps.Map 上;地圖上方另有各入口自己的 UI 疊加層"><defs>
+<marker id="d1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#5b6673"/></marker>
+<marker id="d2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b45309"/></marker>
+</defs>
+<text class="m" x="20" y="16">功能層(純函式)</text>
+<text class="m" x="232" y="16">接線處</text>
+<rect class="eff" x="20" y="26" width="200" height="46" rx="4"/>
+<text x="30" y="44">(已移除)routePolylineLayer</text>
+<text class="m" x="30" y="60">2026-10-24 併入 routeLineLayer</text>
+<text class="m" x="20" y="84">↓ 以下 7 個由共用子層組合</text>
+<rect class="eff" x="20" y="94" width="200" height="46" rx="4"/>
+<text x="30" y="112">planStopLayer</text>
+<text class="m" x="30" y="128">站點、旅館、選取 → 圓點三態</text>
+<rect class="eff" x="20" y="148" width="200" height="46" rx="4"/>
+<text x="30" y="166">currentLocationLayer</text>
+<text class="m" x="30" y="182">position → 藍點 marker</text>
+<rect class="eff" x="20" y="202" width="200" height="46" rx="4"/>
+<text x="30" y="220">routeLineLayer</text>
+<text class="m" x="30" y="236">stops、enabled → 弧線(略過旅館)</text>
+<rect class="eff" x="20" y="256" width="200" height="46" rx="4"/>
+<text x="30" y="274">transitHoverLineLayer</text>
+<text class="m" x="30" y="290">hover 的兩站 → 弧線圓點虛線</text>
+<rect class="eff" x="20" y="310" width="200" height="46" rx="4"/>
+<text x="30" y="328">tripEntryLayer</text>
+<text class="m" x="30" y="344">entries、選取 → 旗子</text>
+<rect class="eff" x="20" y="364" width="200" height="46" rx="4"/>
+<text x="30" y="382">searchResultLayer</text>
+<text class="m" x="30" y="398">results → 搜尋結果標記</text>
+<rect class="eff" x="20" y="418" width="200" height="46" rx="4"/>
+<text x="30" y="436">attractionGlowLayer</text>
+<text class="m" x="30" y="452">attractions → 光暈 overlay</text>
+<text class="m" x="20" y="488">每個功能層回傳 FeatureLayer:</text>
+<text class="m" x="20" y="504">固定的 id 加 Drawable 清單;</text>
+<text class="m" x="20" y="520">沒有東西要畫就回空陣列</text>
+<rect class="box" x="232" y="26" width="280" height="106" rx="6"/>
+<text class="b" x="242" y="46">AiItineraryDetailPageMapView</text>
+<text class="m" x="242" y="64">itineraries 頁,經共用子層</text>
+<text class="m" x="242" y="80">站點走 planStopLayer;連線走共同的</text>
+<text class="m" x="242" y="96">routeSegments prop(routeLineLayer)</text>
+<text class="m" x="242" y="112">地圖一律帶 mapId(simple 樣式)</text>
+<path class="ln" d="M220,49 H232" marker-end="url(#d1)"/>
+<path class="ln-app" d="M512,120 H542" marker-end="url(#d2)"/>
+<rect class="app-box" x="232" y="148" width="280" height="192" rx="6"/>
+<text class="b" x="242" y="166">PlanMap(planning/map/)</text>
+<text class="m" x="242" y="182">登入後手機版與桌面,吃 prop:</text>
+<text class="m" x="242" y="198">座標 ← currentPosition</text>
+<text class="m" x="242" y="214">站點與選取 ← 呼叫端狀態</text>
+<text class="m" x="242" y="230">連線段 ← routeSegments(開關決定傳不傳)</text>
+<text class="m" x="242" y="246">tripEntries、searchResults</text>
+<text class="m" x="242" y="262">(登入後才有資料)</text>
+<text class="m" x="242" y="278">attractions → attractionGlow:</text>
+<text class="m" x="242" y="294">useExploreQueries 查,資料存取層</text>
+<text class="m" x="242" y="310">登入版(打 /internal)</text>
+<text class="m" x="242" y="326">theme ← prop</text>
+<rect class="ai-box" x="232" y="352" width="280" height="128" rx="6"/>
+<text class="b" x="242" y="370">PlanMap(planning/preview/)</text>
+<text class="m" x="242" y="386">/ai-plan 推論態;Content 只傳 prop,</text>
+<text class="m" x="242" y="402">圖層 hook 由 PlanMap 自己呼叫</text>
+<text class="m" x="242" y="418">座標 ← useCurrentLocation</text>
+<text class="m" x="242" y="434">站點 ← view.stops</text>
+<text class="m" x="242" y="450">光暈:按「探索」才查(useExploreQueries</text>
+<text class="m" x="242" y="466">+ ExploreControls,僅推論態)</text>
+<rect class="box" x="232" y="492" width="280" height="128" rx="6"/>
+<text class="b" x="242" y="510">InteractiveExploreMap(home/)</text>
+<text class="m" x="242" y="526">首頁展示地圖,直接呼叫 useSharedDrawLayer</text>
+<text class="m" x="242" y="542">只傳 attractionGlow(訪客版 /public)</text>
+<text class="m" x="242" y="558">hiddenAttractionId ← 手機 openThemeId</text>
+<text class="m" x="242" y="574">focusedAttractionId、</text>
+<text class="m" x="242" y="590">themePhotoOnlyWhenFocused、</text>
+<text class="m" x="242" y="606">focusedThemeId(時間軸聚焦用)</text>
+<rect class="app-box" x="542" y="108" width="236" height="594" rx="6"/>
+<text class="b" x="552" y="128">useSharedDrawLayer</text>
+<text class="m" x="552" y="146">三個接線處共用的部分:</text>
+<rect class="eff" x="552" y="154" width="216" height="40" rx="4"/>
+<text x="560" y="171">useAccentColor</text>
+<text class="m" x="560" y="187">讀 --color-accent,傳給功能層</text>
+<text class="m" x="552" y="210">功能層(傳了才畫):</text>
+<rect class="eff" x="552" y="218" width="216" height="40" rx="4"/>
+<text x="560" y="235">行程站點功能層</text>
+<text class="m" x="560" y="251">planStopLayer</text>
+<rect class="eff" x="552" y="262" width="216" height="40" rx="4"/>
+<text x="560" y="279">藍點功能層</text>
+<text class="m" x="560" y="295">currentLocationLayer</text>
+<rect class="eff" x="552" y="306" width="216" height="40" rx="4"/>
+<text x="560" y="323">轉乘虛線功能層</text>
+<text class="m" x="560" y="339">transitHoverLineLayer</text>
+<rect class="eff" x="552" y="350" width="216" height="40" rx="4"/>
+<text x="560" y="367">連線功能層(一段一條)</text>
+<text class="m" x="560" y="383">routeLineLayer</text>
+<rect class="eff" x="552" y="394" width="216" height="40" rx="4"/>
+<text x="560" y="411">行程 entry 旗子(登入後)</text>
+<text class="m" x="560" y="427">tripEntryLayer</text>
+<rect class="eff" x="552" y="438" width="216" height="40" rx="4"/>
+<text x="560" y="455">搜尋結果標記(登入後)</text>
+<text class="m" x="560" y="471">searchResultLayer</text>
+<rect class="eff" x="552" y="482" width="216" height="40" rx="4"/>
+<text x="560" y="499">景點光暈 overlay</text>
+<text class="m" x="560" y="515">attractionGlowLayer</text>
+<text class="m" x="552" y="538">extraLayers:接線處額外的功能層(目前沒人傳),</text>
+<text class="m" x="552" y="554">(行程詳情頁 2026-10-24 起也不傳)</text>
+<rect class="eff" x="552" y="568" width="216" height="40" rx="4"/>
+<text x="560" y="585">呼叫宿主 useMapDrawLayer</text>
+<text class="m" x="560" y="601">組合上列功能層後交給宿主</text>
+<rect class="eff" x="552" y="616" width="216" height="76" rx="4"/>
+<text x="560" y="633">useAttractionGlowEffects</text>
+<text class="m" x="560" y="649">attractionGlowSupport:</text>
+<text class="m" x="560" y="665">照片查詢、標籤避讓;必須宣告在</text>
+<text class="m" x="560" y="681">useMapDrawLayer 之後</text>
+<path class="ln-app" d="M512,180 H542" marker-end="url(#d2)"/>
+<path class="ln-app" d="M512,384 H542" marker-end="url(#d2)"/>
+<path class="ln-app" d="M512,524 H542" marker-end="url(#d2)"/>
+<path class="ln-app" d="M778,330 H806" marker-end="url(#d2)"/>
+<rect class="app-box" x="806" y="84" width="200" height="392" rx="6"/>
+<text class="b" x="816" y="104">useMapDrawLayer</text>
+<text class="m" x="816" y="122">吃 layers 與地圖 handle</text>
+<rect class="eff" x="816" y="130" width="180" height="40" rx="4"/>
+<text x="824" y="147">composeLayers</text>
+<text class="m" x="824" y="163">id 加功能層前綴,免衝突</text>
+<rect class="eff" x="816" y="178" width="180" height="40" rx="4"/>
+<text x="824" y="195">diffDrawables</text>
+<text class="m" x="824" y="211">只看資料:新增、更新、移除</text>
+<rect class="eff" x="816" y="226" width="180" height="104" rx="4"/>
+<text x="824" y="243">畫出與原地更新</text>
+<text class="m" x="824" y="259">marker、circle、</text>
+<text class="m" x="824" y="275">polyline、overlay(四種)</text>
+<text class="m" x="824" y="291">overlay:create、update、</text>
+<text class="m" x="824" y="307">onCreate、onDispose,</text>
+<text class="m" x="824" y="323">讓光暈拿到實例</text>
+<rect class="eff" x="816" y="338" width="180" height="40" rx="4"/>
+<text x="824" y="355">地圖重建(mapVersion)</text>
+<text class="m" x="824" y="371">舊的全部清掉,重掛新地圖</text>
+<rect class="eff" x="816" y="386" width="180" height="40" rx="4"/>
+<text x="824" y="403">內容更新帶前一個狀態</text>
+<text class="m" x="824" y="419">供進場動畫判斷</text>
+<rect class="eff" x="816" y="434" width="180" height="32" rx="4"/>
+<text x="824" y="451">疊放順序只查 GROUP_Z</text>
+<path class="ln-app" d="M1006,170 H1044" marker-end="url(#d2)"/>
+<text class="m" x="1016" y="162">畫出</text>
+<rect class="box" x="1044" y="26" width="150" height="450" rx="6"/>
+<text class="b" x="1054" y="46">google.maps.Map</text>
+<text class="m" x="1054" y="68">NativeMapBase 建立</text>
+<text class="m" x="1054" y="100">handle:</text>
+<text class="m" x="1054" y="116">mapRef</text>
+<text class="m" x="1054" y="132">mapReady</text>
+<text class="m" x="1054" y="148">mapVersion</text>
+<text class="m" x="1054" y="180">handle 交給接線處,</text>
+<text class="m" x="1054" y="196">再傳進宿主</text>
+<text class="b" x="20" y="736">UI 疊加層(蓋在地圖上方;三個入口各一個 PlanOverlayLayout,共用 OverlayShell 的 data-slot 骨架,見 marker-layers.html)</text>
+<path class="ln" d="M1119,748 V478" marker-end="url(#d1)"/>
+<text class="m" x="1127" y="740">疊在地圖上方</text>
+<rect class="ai-box" x="20" y="748" width="370" height="128" rx="6"/>
+<text class="b" x="30" y="766">/ai-plan:PlanOverlayLayout</text>
+<text x="30" y="782">map-layer:放 PlanMap;探索鈕直接畫在裡面</text>
+<text x="30" y="798">手機:OverlayShell,controls-slot 是空的,</text>
+<text x="30" y="814">overlay &gt; panel:導覽佔位 72px、時間軸、輸入列</text>
+<text class="m" x="30" y="830">手機 safe-area:top 72、bottom 454</text>
+<text class="m" x="30" y="846">桌面側欄:無 controls-slot;wide 才有 safe-area</text>
+<text class="m" x="30" y="862">(top 72、right 560、bottom 86),useMapSafeArea 讀它</text>
+<rect class="app-box" x="415" y="748" width="370" height="128" rx="6"/>
+<text class="b" x="425" y="766">登入後手機:PlanOverlayLayout</text>
+<text x="425" y="782">map-layer:放 PlanPhoneView(內含 PlanMap)</text>
+<text x="425" y="798">controls-slot:搜尋框、類別標籤、頭像(portal)</text>
+<text x="425" y="814">overlay &gt; panel:規劃面板、輸入列;底部讓開 tab bar</text>
+<text class="m" x="425" y="830">safe-area:top 120、bottom 454,有使用端:</text>
+<text class="m" x="425" y="846">經 PlanPhoneView 傳進 PlanMap,由 usePanTarget 置中</text>
+<rect class="app-box" x="810" y="748" width="370" height="128" rx="6"/>
+<text class="b" x="820" y="766">登入後桌面:PlanOverlayLayout(member/desktop/)</text>
+<text x="820" y="782">map-layer:放 PlanMap;沒有 controls-slot</text>
+<text x="820" y="798">(搜尋框、標籤原地畫在 PlanMap 內)</text>
+<text x="820" y="814">overlay &gt; panel:右側 560px 透明側欄(top 72)</text>
+<text class="m" x="820" y="830">搜尋結果側欄開啟時 panel 左移(right 364)</text>
+<text class="m" x="820" y="846">safe-area:top 72、right 560(左移時 924),點圖卡平移的目標</text>
+<text class="m" x="820" y="862">鏡頭由 usePanTarget 落在安全區中心</text>
+<rect class="box" x="20" y="900" width="1160" height="98" rx="6"/>
+<text class="b" x="34" y="920">疊放順序表 GROUP_Z(marker 數字越大越上面;線只和線比較;數值集中在 zOrder.ts)</text>
+<text class="m" x="34" y="938">藍點 1 &lt; 搜尋結果 10 &lt; 行程 entry 20 &lt; 子景點小點 25 &lt; 站點 30 &lt; 定位結果與選中站點 998 &lt; hover 站點、選中的搜尋結果與 entry 999</text>
+<text class="m" x="34" y="954">線:連線光暈 38 &lt; 連線 40 &lt; 轉乘虛線 50</text>
+<text class="m" x="34" y="972">景點光暈:overlay 繪製項目,GROUP_Z 值是 5,但 overlay 不讀它(疊放由 OverlayView 的 pane 決定),只為表完整</text>
+<text class="m" x="34" y="988">照片查詢與標籤避讓在 attractionGlowSupport.ts(useAttractionGlowEffects),attractionGlowLayer 是純函式,只宣告 overlay</text></svg>
+    </div>
+  </section>
+</main>
+
+<script>
+  // 日夜切換:做法與 marker-layers.html 同一份(各自獨立存 localStorage key,
+  // 互不影響)。
+  (function () {
+    var root = document.documentElement
+    var btn = document.getElementById('theme-toggle')
+    var KEY = 'unified-draw-layer.theme'
+    var mq = window.matchMedia('(prefers-color-scheme: dark)')
+    function effective() { return root.getAttribute('data-theme') || (mq.matches ? 'dark' : 'light') }
+    function render() {
+      var dark = effective() === 'dark'
+      var label = dark ? '切換成日間模式' : '切換成夜間模式'
+      btn.textContent = dark ? '☀' : '☾'
+      btn.setAttribute('aria-label', label)
+      btn.title = label
+    }
+    try {
+      var saved = localStorage.getItem(KEY)
+      if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved)
+    } catch (e) {}
+    btn.addEventListener('click', function () {
+      var next = effective() === 'dark' ? 'light' : 'dark'
+      root.setAttribute('data-theme', next)
+      try { localStorage.setItem(KEY, next) } catch (e) {}
+      render()
+    })
+    if (mq.addEventListener) mq.addEventListener('change', render)
+    render()
+  })()
+</script>

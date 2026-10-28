@@ -25,7 +25,7 @@ import { lodgingMapMarkers, resolveMapChildren } from '../timeline/resolved'
 import { useResolvedRefs } from '../data/PlanDataProvider'
 import { refreshTransitForStop } from '../timeline/transit'
 import { usePlanTimelineCore } from '../timeline/usePlanTimelineCore'
-import { useStopCardClick } from '../map/useStopPan'
+import { useStopCardClick, resolveStopPanTarget } from '../map/useStopPan'
 import { AskPage } from '../conversation/AskPage'
 import { PlanTimelineView } from '../timeline/PlanTimelineView'
 import { usePlanConversation } from '../conversation/usePlanConversation'
@@ -148,6 +148,31 @@ const PLAN_AI_ONAGENT_WS_URL = PLAN_AI_ONAGENT_HTTP_URL ? PLAN_AI_ONAGENT_HTTP_U
 
 export type PlanAiChatStatus = 'connecting' | 'ready' | 'closed'
 
+// ToolCallLogEntry——見 usePlanAiChatBridge 內 toolCallLog state 的完整
+// 說明:AI 推論過程中每次工具呼叫的紀錄,給外層(onToolCallLogChange prop)
+// 回報用。獨立命名成模組層級型別,而非寫在 hook 內部當行內匿名型別,
+// 是因為 TripPlanPageProps 的 onToolCallLogChange 也需要引用同一個形狀。
+export type ToolCallLogEntry = { id: string; name: string; args: Record<string, unknown>; result: unknown; at: number }
+
+// 工具呼叫紀錄上限:只保留最近這麼多筆,避免長對話記憶體無限增長。
+export const MAX_TOOL_CALL_LOG = 200
+// 模組層級遞增計數器產生 id(不用 crypto.randomUUID:http 區網 IP 等非安全環境不存在,會在 onToolResult 丟錯)。
+let toolCallSeq = 0
+// appendToolCallLog——把一筆工具呼叫結果附加到紀錄尾端,超過上限時丟掉最舊的。
+export function appendToolCallLog(
+  log: ToolCallLogEntry[],
+  info: { name: string; args: Record<string, unknown>; result: unknown },
+): ToolCallLogEntry[] {
+  const next = [...log, { id: `tool-call-${++toolCallSeq}`, at: Date.now(), ...info }]
+  return next.length > MAX_TOOL_CALL_LOG ? next.slice(next.length - MAX_TOOL_CALL_LOG) : next
+}
+
+// resolvePhonePanToStop——手機版時間軸以 onPanToStop 是否有值決定顯示「移動到此」按鈕,
+// 所以呼叫端沒提供 onPanToStop 時必須傳 undefined,不能固定傳函式(否則按鈕顯示卻點了沒反應)。
+export function resolvePhonePanToStop<F>(onPanToStop: unknown, panToStopId: F): F | undefined {
+  return onPanToStop ? panToStopId : undefined
+}
+
 // usePlanAiChatBridge — 連上 plan-ai-timeline 這個 onagent app,註冊
 // search_attraction/add_attraction 等工具(見 conversation/tools.ts),讓
 // 對話框輸入的文字能真的驅動 LLM 推論、呼叫工具、把結果異動進時間軸。
@@ -251,6 +276,9 @@ function usePlanAiChatBridge(
   // appendMessage——把一則訊息寫進獨立的對話狀態(planning/conversation/usePlanConversation.ts)。AI 的純文字回覆、
   // onError 與 sendPrompt 失敗的連線錯誤訊息都走這裡,不再插入時間軸節點(訊息只依發生順序、沒有位置)。
   appendMessage: (message: PlanMessage) => void,
+  // collectToolCallLog——呼叫端是否有人讀 toolCallLog(傳了 onToolCallLogChange 才為 true)。
+  // false 時不傳 onToolResult 給 toAgentBridgeTools、也不 setState。
+  collectToolCallLog: boolean,
 ) {
   const apiKey = import.meta.env.VITE_PLAN_AI_ONAGENT_APP_KEY as string | undefined
   const [status, setStatus] = useState<PlanAiChatStatus>('connecting')
@@ -275,6 +303,15 @@ function usePlanAiChatBridge(
   useEffect(() => {
     isThinkingRef.current = isThinking
   }, [isThinking])
+  // toolCallLog——AI 推論過程中每次工具呼叫的紀錄(工具名稱/參數/回傳值),
+  // 給 /ai-plan 的 debugSafeArea 疊圖面板顯示用(見 toAgentBridgeTools 的
+  // onToolResult 參數的完整說明:@onagent/bridge SDK 本身不提供工具呼叫
+  // 層級的回呼,只能在我們自己註冊給 SDK 的 tool handler 外面包一層)。
+  // 只有呼叫端傳了 onToolCallLogChange(collectToolCallLog=true)才收集,
+  // 且最多保留最近 MAX_TOOL_CALL_LOG 筆(見 appendToolCallLog)。
+  const [toolCallLog, setToolCallLog] = useState<ToolCallLogEntry[]>([])
+  const recordToolCall = (info: { name: string; args: Record<string, unknown>; result: unknown }) =>
+    setToolCallLog((log) => appendToolCallLog(log, info))
   const bridgeRef = useRef<AgentBridge | null>(null)
   // bridgeEpoch/sendSeqRef——「停止」用(見 stopPrompt):AgentBridge 沒有取消單次推論的協議(只有 prompt 與 close),
   // 所以停止的做法是丟棄這次推論——關掉目前的連線(推論中的工具呼叫與回覆不再進來)並用 bridgeEpoch 觸發 effect 重連;
@@ -436,8 +473,12 @@ function usePlanAiChatBridge(
         // onPlacesFound——search_attraction 查到候選時寫進景點池(見
         // planning/conversation/attractionPoolStore.ts 的完整說明),之後 LLM 用
         // get_attraction_pool 就能把 placeId 對照成名稱。
-        ...toAgentBridgeTools(createAttractionToolsList(cfg, (places) => attractionPool.put(places)), ctx),
-        ...toAgentBridgeTools(createAskPageToolsList(), askPageCtx),
+        //
+        // onToolResult(第三個參數)——見上方 toolCallLog 的完整說明,兩份
+        // 工具表共用同一個記錄 callback,append 進同一份陣列(依呼叫完成
+        // 順序排列,不分工具表來源)。
+        ...toAgentBridgeTools(createAttractionToolsList(cfg, (places) => attractionPool.put(places)), ctx, collectToolCallLog ? recordToolCall : undefined),
+        ...toAgentBridgeTools(createAskPageToolsList(), askPageCtx, collectToolCallLog ? recordToolCall : undefined),
       },
       // onAssistantMessage/onError——把文字寫進獨立的對話狀態(planning/conversation/messages.ts,
       // 2026-10-24 起不再是時間軸裡的 message 節點:對話有自己的狀態、只在記憶體,訊息只依發生順序、沒有所在天或站點),
@@ -591,6 +632,7 @@ function usePlanAiChatBridge(
     isThinking,
     sendPrompt,
     stopPrompt,
+    toolCallLog,
   }
 }
 
@@ -736,6 +778,14 @@ export function TripPlanPage(props: {
   // 上,地圖上讓連接的兩個點都顯示 hover 狀態,並用虛線做連線」。跟
   // onHoverStopChange 同一種轉發模式,不存成這個元件自己的 state。
   onHoverTransitChange?: (pair: { fromId: string; toId: string } | null) => void
+  // onToolCallLogChange——見 ToolCallLogEntry 的完整說明:AI 推論過程中
+  // 每次工具呼叫的紀錄,隨 usePlanAiChatBridge 內部 state 累積而變動,
+  // 跟 onStopsChange/onRouteSegmentsChange 同一種「資料可能由多條路徑
+  // 變動,沒有單一事件可掛」的回報模式(用 useEffect 監聽,不是事件驅動)。
+  // 給 /ai-plan 的 debugSafeArea 疊圖面板顯示用,呼叫端通常不需要這個
+  // callback,不傳就不會有任何額外開銷(toolCallLog 本身在 hook 內部
+  // 照樣持續收集,只是沒有人讀)。
+  onToolCallLogChange?: (log: ToolCallLogEntry[]) => void
   // onSendPromptReady——2026-10 新增:把這個實例內部的 sendPrompt(見
   // usePlanAiChatBridge 同名函式的完整說明:送出一句話進既有的 onagent
   // 對話/時間軸機制,效果等同使用者自己在輸入框打字送出)函式參照交給
@@ -862,7 +912,7 @@ export function TripPlanPage(props: {
   const {
     cfg, compact, visible = true, scrollContainerRef, onPanToStop, onStopsChange, onRouteSegmentsChange, dataSource,
     selectedStopId: controlledSelectedStopId, onSelectedStopChange,
-    onHoverStopChange, onHoverTransitChange, onSendPromptReady,
+    onHoverStopChange, onHoverTransitChange, onSendPromptReady, onToolCallLogChange,
     store,
     transparentBackground = false,
     hideEmptyState = false,
@@ -1157,6 +1207,7 @@ export function TripPlanPage(props: {
     openAskPage,
     resolveAskPage,
     appendMessage,
+    !!onToolCallLogChange,
   )
 
   // reportSendPromptReady——見 onSendPromptReady 參數的完整說明,
@@ -1168,6 +1219,14 @@ export function TripPlanPage(props: {
   useEffect(() => {
     reportSendPromptReady(planAiChat.sendPrompt)
   }, [planAiChat.sendPrompt, reportSendPromptReady])
+
+  // reportToolCallLog——見 onToolCallLogChange 參數的完整說明,
+  // useStableCallback 包一層,理由同上方 reportSendPromptReady/
+  // reportStops:呼叫端若傳 inline 箭頭函式,不能讓它進 effect 依賴陣列。
+  const reportToolCallLog = useStableCallback((log: ToolCallLogEntry[]) => { onToolCallLogChange?.(log) })
+  useEffect(() => {
+    reportToolCallLog(planAiChat.toolCallLog)
+  }, [planAiChat.toolCallLog, reportToolCallLog])
 
   const [chatInput, setChatInput] = useState('')
 
@@ -1318,6 +1377,29 @@ export function TripPlanPage(props: {
   // 實作在 planning/map/useStopPan.ts 的 useStopCardClick(/ai-plan 模擬態共用同一份)。沒有座標的節點(查詢中的
   // 佔位卡)點了不該有任何反應,連高亮都不做。
   const panToStop = useStopCardClick({ select: selectStop, pan: onPanToStop })
+
+  // panToStopId——手機版橫向時間軸(HorizontalPlanTimeline)的「移動到此」
+  // 按鈕專用,見該元件 onPanToStop prop 的完整說明。那個按鈕傳回的是
+  // stopId(卡片本身已經靠點擊/onSelectStop 處理選取,按鈕只負責平移),
+  // 跟上面 panToStop(縱向版用,點整張卡片=選取+平移合一)收的參數形狀
+  // 不同,所以需要各自一份,不是共用同一個函式。
+  //
+  // 2026-10 補上(原本這個按鈕在推論態手機版完全沒接上,見該元件說明):
+  // 用 mapStops 查座標(跟地圖圓點、縱向版共用同一份衍生資料),查不到
+  // 就略過(理由同 resolveStopPanTarget 的既有說明)。mapStops 的 children
+  // 是巢狀掛在各自站點底下,這裡攤平成一份給 resolveStopPanTarget 查。
+  const panToStopId = useCallback(
+    (stopId: string) => {
+      if (!onPanToStop) return
+      const target = resolveStopPanTarget(
+        stopId,
+        mapStops,
+        mapStops.flatMap((s) => (s as { children?: { id: string; lat: number; lng: number }[] }).children ?? []),
+      )
+      if (target) onPanToStop(target)
+    },
+    [onPanToStop, mapStops],
+  )
 
   // getScroller——「回到最新」整套機制(自動捲到底/跟隨判斷/事件監聽)
   // 共用的捲動容器取得函式。
@@ -1536,6 +1618,7 @@ export function TripPlanPage(props: {
           // 就沒有滑鼠 hover 這件事,對齊該元件檔頭說明)。
           onSelectStop={selectStop}
           onRemoveStop={removeStop}
+          onPanToStop={resolvePhonePanToStop(onPanToStop, panToStopId)}
           onSetStopTransitMode={
             TRANSIT_MODE_SELECT_ENABLED
               ? (stopId, mode) => refreshTransitForStop({ stopId, dataSource: planAiDataSource, setTimeline, getTimeline: () => timelineRef.current, forceMode: mode })

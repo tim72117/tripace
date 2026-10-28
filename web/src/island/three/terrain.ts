@@ -10,6 +10,7 @@ import { mulberry32 } from '../logic/rng'
 import { delaunay } from '../logic/delaunay'
 import { polygonCentroid, pointInPolygon } from '../logic/geometry'
 import { slopeHeightAt, type Slope } from '../logic/terrain'
+import { fieldTerrainGeometry } from './terrainField'
 
 const STONE_WALL = '#8a8478'
 
@@ -204,16 +205,26 @@ export function buildTerrain(layout: IslandLayout, heightAt: (x: number, z: numb
   const group = new THREE.Group()
   const { palette, outline, topY, thickness } = layout
 
+  // 島底岩石
+  const under = new THREE.Mesh(undersideGeometry(outline, topY - thickness, thickness * 2.2, 7), flat(palette.dirt, { roughness: 1 }))
+  under.castShadow = true
+  group.add(under)
+
+  if (layout.terrain) {
+    // 連續地形:頂面網格 + 切片土層側壁(沒有階地與斜坡的疊層,也不需要平的島體頂面)
+    const { top, wall } = fieldTerrainGeometry(layout, heightAt)
+    for (const g of [top, wall]) {
+      const m = new THREE.Mesh(g, flat('#ffffff', { vertexColors: true }))
+      m.receiveShadow = true
+      m.castShadow = true
+      group.add(m)
+    }
+  } else {
   // 島體:頂面草地、側面泥土
   const body = new THREE.Mesh(extrudePolygon(outline, thickness, topY), [flat(palette.grass), flat(palette.dirt)])
   body.receiveShadow = true
   body.castShadow = true
   group.add(body)
-
-  // 島底岩石
-  const under = new THREE.Mesh(undersideGeometry(outline, topY - thickness, thickness * 2.2, 7), flat(palette.dirt, { roughness: 1 }))
-  under.castShadow = true
-  group.add(under)
 
   // 階地:每塊往下多埋一點避免 z-fighting;頂面草色、側面是擋土石牆
   for (const t of layout.terraces ?? []) {
@@ -236,6 +247,8 @@ export function buildTerrain(layout: IslandLayout, heightAt: (x: number, z: numb
     mesh.castShadow = true
     group.add(mesh)
   }
+
+  } // end 舊的階地/斜坡島體
 
   // 河:沿中線的帶狀網格,略低於地面,用滾動的條紋貼圖做流動感
   let water: THREE.Mesh | null = null

@@ -61,7 +61,7 @@ export function HeroIsland({ dark, onUnavailable }: { dark: boolean; onUnavailab
         // 動態載入:three、模型與版面都在這個 chunk,載入排程之前不會下載
         const { createMini } = await import('../../island/mini/loadMini')
         if (disposed) return
-        const island = createMini({
+        const island = await createMini({
           container: box,
           theme: darkRef.current ? 'dark' : 'light',
           reducedMotion: mode === 'still',
@@ -74,6 +74,7 @@ export function HeroIsland({ dark, onUnavailable }: { dark: boolean; onUnavailab
             void create()
           },
         })
+        if (disposed) { island.dispose(); return } // 場景資料載入期間元件已卸載
         islandRef.current = island
         requestAnimationFrame(() => { if (!disposed) setReady(true) }) // 第一幀畫完才淡入
         sync()

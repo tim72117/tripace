@@ -291,7 +291,9 @@
    共用同一個數字來源,.card 的 height 也改成讀這個變數,避免兩處各自
    寫一次 300px 之後改一邊忘了改另一邊而悄悄脫鉤)。 */
 :root {
-  --horizontal-timeline-card-height: 300px;
+  /* 322px——見 .card 內的完整說明(2026-10 第三輪,note 搬回卡片內部後
+     補上的高度預算)。 */
+  --horizontal-timeline-card-height: 322px;
 }
 
 /* ===== 卡片橫向捲動列 ===== */
@@ -353,18 +355,21 @@
      加上 -webkit-line-clamp),確保不管內容多寡,卡片本身的外觀尺寸
      永遠一致,不會因為某張卡片描述特別短或站名特別長而跟其他卡片對不
      齊。
-     2026-10(第二輪,使用者回報「卡片太高了」):備註(note)已經改放到
-     外層全寬的 .noteBanner(見該 class 的完整說明),不再佔卡片內部
-     空間,第一版 400px 估算時仍把備註那塊算進去,現在重新抓「120px
-     照片橫幅 + padding(14+16=30px) + timeRange 單行(約18px) + name
-     最多兩行(約48px) + desc 最多兩行(約39px) + gap 三段間距(約18px)
-     + transitRow 可能出現的單行(約16px)」加總約 290px,抓一點緩衝
-     收斂到 300px——不是從某個精確公式反推,這個數字之後若要調整內容
-     區塊的字級/行數限制,需要一併回來檢查這裡夠不夠。
+     2026-10(第二輪,使用者回報「卡片太高了」):備註(note)當時改放到
+     外層全寬的 .noteBanner,不再佔卡片內部空間,第一版 400px 估算時
+     仍把備註那塊算進去,重新抓「120px 照片橫幅 + padding(14+16=30px)
+     + timeRange 單行(約18px) + name 最多兩行(約48px) + desc 最多兩行
+     (約39px) + gap 三段間距(約18px) + transitRow 可能出現的單行
+     (約16px)」加總約 290px,抓一點緩衝收斂到 300px。
      2026-10(第六輪):改讀 --horizontal-timeline-card-height 這個共用
      變數(見該處的完整說明),不再自己寫死 300px——跟 .scroller/
      .scrollerTrack 的高度基準改成同一個數字來源,避免之後只改一邊
-     忘了改另一邊而悄悄脫鉤。數值本身沒有變。 */
+     忘了改另一邊而悄悄脫鉤。數值本身沒有變。
+     2026-10(第三輪,使用者明確要求 note 改回「卡片內部下方的一個
+     橫列」):備註搬回卡片內部(.cardNoteRow,固定 18px + margin-top
+     4px = 22px),290px 的預算需要補上這段才不會被 overflow:hidden
+     裁掉——300px 原本的緩衝(約 10px)不夠放一整行備註,改成 322px
+     (290 + 22 + 原本約 10px 緩衝,四捨五入)。 */
   height: var(--horizontal-timeline-card-height);
   overflow: hidden;
   scroll-snap-align: center;
@@ -597,18 +602,29 @@
   padding: 2px 9px;
 }
 
-/* removeBtn——卡片右上角的刪除按鈕,2026-10 新增(見
-   HorizontalPlanTimeline.tsx onRemoveStop prop 的完整說明)。視覺語言
-   對齊縱向版 PlanTimelineView.module.css 的 .stopRemoveBtn(同一種
-   「平時淡化、hover/focus 才轉為顯眼紅色」的危險操作慣例),疊在
-   .dayBadge 的對側角落(右上),理由同該處的完整說明——半透明深色底色
-   跟 .dayBadge 共用同一個視覺語言(都可能疊在照片上,需要跟各種照片
-   底色有對比),不是縱向版那種疊在純色卡片背景上的淡灰底色。 */
-.removeBtn {
+/* cardActions——關閉與「移動到此」兩顆按鈕的並排容器,2026-10 改版
+   (見 HorizontalPlanTimeline.tsx 該處的完整說明:使用者明確要求兩顆
+   按鈕放在一起,原本 panToBtn 疊在左下角、removeBtn 疊在右上角各自
+   獨立定位,改成同一個容器、疊在右上角,取代原本 .removeBtn 自己的
+   絕對定位角落)。疊在 .dayBadge 的對側角落(右上),理由同舊版
+   .removeBtn 的既有說明。 */
+.cardActions {
   position: absolute;
   top: 10px;
   right: 10px;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* removeBtn/panToBtn——視覺語言完全一致(同一種半透明深色圓形小按鈕,
+   對齊縱向版 PlanTimelineView.module.css 的 .stopRemoveBtn:平時淡化、
+   hover/focus 才轉為顯眼提示色),疊在照片上也要維持對比。兩者改成
+   .cardActions 底下的相對定位元素,不再各自對卡片絕對定位。 */
+.removeBtn,
+.panToBtn {
+  position: relative;
   width: 24px;
   height: 24px;
   padding: 0;
@@ -630,41 +646,21 @@
   background: #c0392b;
   opacity: 1;
 }
-
-/* panToBtn——卡片左下角的「移動到此」按鈕,2026-10 新增(見
-   HorizontalPlanTimeline.tsx onPanToStop prop 的完整說明)。視覺語言
-   對齊 .removeBtn(同一種半透明深色圓形小按鈕,疊在照片上也要維持
-   對比),疊在卡片左下角——.dayBadge 在左上、.removeBtn 在右上、
-   .photoBannerCount 在照片橫幅右下角,左下角是唯一還空著的角落。
-   bottom 用固定像素而非跟 .removeBtn 一樣貼齊卡片邊緣,是因為卡片
-   底部留白(padding-bottom: 16px,見 .card 的完整說明)比頂部窄,直接
-   貼齊會讓按鈕視覺上快要溢出卡片邊界。 */
-.panToBtn {
-  position: absolute;
-  bottom: 14px;
-  left: 14px;
-  z-index: 1;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: none;
-  border-radius: 999px;
-  background: rgba(20, 20, 19, 0.65);
-  color: #fff;
-  font-size: 13px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  opacity: 0.85;
-  transition: opacity 0.15s, background 0.15s, transform 0.15s;
-}
+/* panToBtn 的 hover/focus 刻意不換色(不用 iOS 藍等強調色),理由同
+   使用者要求「無顏色 icon」——跟 .removeBtn 一樣維持中性深色圓底,
+   只在 hover/focus 提高不透明度做回饋,不改變色相。 */
 .panToBtn:hover,
 .panToBtn:focus-visible {
-  background: var(--ios-blue);
   opacity: 1;
-  transform: scale(1.06);
+}
+/* 觸控熱區用 ::after 向外擴一圈,不放大 icon 本身的視覺大小——避免
+   手指誤觸緊鄰的照片橫幅(見 .photoBanner),熱區比可視按鈕大、但
+   按鈕看起來還是原本的 24px。 */
+.removeBtn::after,
+.panToBtn::after {
+  content: '';
+  position: absolute;
+  inset: -10px;
 }
 
 /* ===== 景點照片橫幅 ===== */
@@ -1038,36 +1034,33 @@
 }
 
 /* ===== 備註（依分類上色+線條圖示） ===== */
-/* noteBanner——2026-10(第四輪,使用者明確要求「橫向的 note 放在時間軸
-   跟圖片卡中間的區域」):全寬備註區,夾在 .ruler(時間尺)跟 .scroller
-   (卡片列)之間,顯示目前選中那一站的備註(見 HorizontalPlanTimeline.tsx
-   selectedNote/selectedNoteMeta 的完整說明),取代原本「每張卡片各自
-   顯示自己的備註」的做法。固定高度(跟先前 .noteRowPlaceholder 同一個
-   數值來源:單行文字高度+上下留白),不管選中站點有沒有備註都維持同一個
-   高度,避免卡片列隨選中狀態切換而整體上下跳動。 */
-.noteBanner {
-  height: 34px;
-  padding: 0 16px;
+/* cardNoteRow——卡片內部下方的備註橫列(2026-10 第二次調整,比照桌面版
+   PlanTimelineView.tsx 的 .stopNoteRow:使用者明確要求從「整個元件外層
+   一塊全寬、只顯示目前選中那一站」改成「卡片內部,每張卡各自顯示/不
+   顯示自己的備註」。固定高度、單行截斷,不隨文字內容撐高卡片(卡片
+   本身是固定 height,見 .card 的完整說明)。 */
+.cardNoteRow {
+  height: 18px;
+  margin-top: 4px;
   display: flex;
   align-items: center;
-}
-
-.noteBannerContent {
-  display: flex;
-  align-items: flex-start;
   gap: 6px;
   font-size: 12.5px;
   line-height: 1.4;
+  overflow: hidden;
 }
 
 .noteIcon {
   display: inline-flex;
   flex: none;
-  margin-top: 1px;
 }
 
 .noteText {
   color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 /* ===== 對話泡泡(agentBubble)===== */
@@ -1080,8 +1073,8 @@
    蓋住的問題(見 .wrap 的 padding-bottom 完整說明)。放在 .ruler 之後
    (時間軸上方)、.scroller 之前(卡片列),對齊「泡泡緊貼在卡片列正
    上方」的既有視覺位置,不是插在卡片列中間或最下面。
-   沒有訊息時整個不渲染(不留佔位),理由同 .noteBanner 相反的設計
-   取捨——那個是「沒有備註也占位,避免下方內容上下跳動」,這裡刻意
+   沒有訊息時整個不渲染(不留佔位),與 .cardNoteRow 相反的設計
+   取捨——那個是「沒有備註也占位,避免卡片內容上下跳動」,這裡刻意
    相反:泡泡本來就是偶發性出現的浮動內容,用 gap(見 .wrap 的
    gap: 10px)讓它出現時自然插入、消失時自然收合,不需要固定佔位。 */
 .agentBubbleRow {

@@ -29,8 +29,8 @@ const ZOOM_OUT_ENABLED = false
 // 層,時間軸要共用相同的,只有資料層不一樣」。這裡新增的進階互動 props
 // (onRemoveStop/onSetStopTransitMode)全部選填,型別直接對齊
 // planning/timeline/PlanTimelineView.tsx 同名 prop 的用法,理由同該檔案對應
-// prop 的既有說明:模擬層(planning/preview/Content.tsx 的 handedOver === false
-// 分支)完全不傳這些 prop,外觀與行為不變;只有 TripPlanPage.tsx 的
+// prop 的既有說明:模擬層(planning/preview/Content.tsx 的 /ai-plan
+// 播放態)完全不傳這些 prop,外觀與行為不變;只有 TripPlanPage.tsx 的
 // horizontalTimeline 分支會傳入真正接上 removeStop/
 // refreshTransitForStop 的實作。
 //
@@ -54,7 +54,7 @@ const ZOOM_OUT_ENABLED = false
 // 邏輯(時間尺計算、雙向連動、scroll-snap)落地成真正吃 PlanNode[] 的
 // TypeScript 元件,不是沿用試做裡的寫死假資料。
 //
-// 只負責模擬層(handedOver === false)的手機版畫面——桌面版與交接後的
+// 只負責模擬層(/ai-plan 播放態)的手機版畫面——桌面版與交接後的
 // 真實層(LivePlanLayer)完全不受影響,繼續走 PlanTimelineView,見
 // planning/preview/Content.tsx 呼叫處的完整說明。
 //
@@ -549,17 +549,6 @@ export function HorizontalPlanTimeline({
   // 骨架卡。
   const isSingleCard = stops.length === 1
 
-  // selectedNote/selectedNoteMeta——2026-10(使用者明確要求「橫向的
-  // note 放在時間軸跟圖片卡中間的區域」):備註從「每張卡片各自顯示
-  // 自己的備註」改成「整個元件外層一塊全寬的備註區,顯示目前選中那
-  // 一站的備註」,位置在 .ruler(時間尺)跟 .scroller(卡片列)之間。
-  // 這裡只找出目前選中節點的 note,實際渲染在 .ruler 之後。
-  const selectedNote = useMemo(
-    () => stops.find((s) => s.id === selectedStopId)?.note ?? null,
-    [stops, selectedStopId],
-  )
-  const selectedNoteMeta = useMemo(() => (selectedNote ? resolveNoteMeta(selectedNote) : null), [selectedNote])
-
   // effectiveDimmed——見 HorizontalPlanTimelineProps.dimmed 的完整
   // 說明:呼叫端明確傳入時以外部值為準,否則預設不淡化。
   //
@@ -1042,21 +1031,6 @@ export function HorizontalPlanTimeline({
       className={`${styles.wrap} ${effectiveDimmed ? styles.wrapDimmed : ''} ${stackedLayout ? styles.wrapStacked : ''}`}
       ref={setWrapElement}
     >
-      {/* selectedNoteBanner——全寬備註區,2026-10 使用者明確要求「移動到
-          時間軸的軸線上方」,從原本夾在時間尺(.ruler)跟卡片列
-          (.scroller)之間,移到時間尺之前(見 selectedNote/selectedNoteMeta
-          的完整說明)。沒有備註時渲染一個等高的透明佔位(維持固定版面
-          高度,不讓下方內容隨選中站點有沒有備註而上下跳動——跟卡片固定
-          height 的理由一致)。 */}
-      <div className={styles.noteBanner}>
-        {selectedNote && selectedNoteMeta ? (
-          <div className={styles.noteBannerContent} style={{ color: selectedNoteMeta.colorVar }}>
-            <span className={styles.noteIcon}><NoteIcon kind={selectedNoteMeta.icon} /></span>
-            <span className={styles.noteText}>{selectedNote.text}</span>
-          </div>
-        ) : null}
-      </div>
-
       {/* 2026-10 使用者明確要求「呼吸點,放在時間軸的軸線上」:原本
           呼吸點放在卷軸列(.scroller)尾端、跟卡片同排,改成插進這條
           時間尺軌道(.rulerTrack)裡,表達「還在排下一段時間」的語意
@@ -1571,48 +1545,58 @@ export function HorizontalPlanTimeline({
 
                 {showDayBadge && <span className={styles.dayBadge}>Day {day}</span>}
 
-                {/* onRemoveStop——選填,見該 prop 的完整說明。視覺風格
-                    對齊縱向版 PlanTimelineView.tsx 的 .stopRemoveBtn
-                    (卡片右上角淡化小圓按鈕,hover/focus 時才轉為顯眼的
-                    紅色危險操作提示)——這裡疊在 .dayBadge 的對側角落
-                    (右上),不會跟它或 .photoBannerCount(右下)互相
-                    遮擋。stopPropagation 避免冒泡觸發卡片本身的
-                    onClick(handleSelect 會捲動選取,跟刪除是不相關的
-                    操作),理由同縱向版同名按鈕的既有說明。 */}
-                {onRemoveStop && (
-                  <button
-                    type="button"
-                    className={styles.removeBtn}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onRemoveStop(node.id)
-                    }}
-                    aria-label={`移除「${node.name ?? '這一站'}」`}
-                  >
-                    ✕
-                  </button>
-                )}
-
-                {/* onPanToStop——2026-10 新增(使用者明確要求「選擇圖卡
-                    時不要移動地圖中心,標誌地點就好,另外做一個 icon,
-                    移動到該點」),見該 prop 的完整說明。疊在卡片左下角
-                    (.dayBadge 在左上、.removeBtn 在右上、
-                    .photoBannerCount 在照片橫幅右下角,左下角是唯一還
-                    空著的角落)。stopPropagation 理由同 .removeBtn——
-                    這是獨立於「選取這張卡」之外的另一個動作,點了不該
-                    連帶觸發 handleSelect。 */}
-                {onPanToStop && (
-                  <button
-                    type="button"
-                    className={styles.panToBtn}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onPanToStop(node.id)
-                    }}
-                    aria-label={`在地圖上移動到「${node.name ?? '這一站'}」`}
-                  >
-                    📍
-                  </button>
+                {/* cardActions——關閉與「移動到此」兩顆按鈕並排放在卡片
+                    右上角(2026-10 改版:原本 panToBtn 疊在左下角,
+                    使用者明確要求「放在關閉按鈕旁邊」)。兩者視覺風格
+                    完全對齊(同樣的半透明深色圓底+白色線條 icon,見
+                    .removeBtn/.panToBtn 的完整說明),用 flex 排列、
+                    中間留一點間距,不會互相遮擋,也不會跟 .dayBadge
+                    (左上)、.photoBannerCount(右下)衝突。 */}
+                {(onRemoveStop || onPanToStop) && (
+                  <div className={styles.cardActions}>
+                    {/* onPanToStop——2026-10 新增(使用者明確要求「選擇
+                        圖卡時不要移動地圖中心,標誌地點就好,另外做一個
+                        icon,移動到該點」),見該 prop 的完整說明。
+                        stopPropagation 理由同 onRemoveStop——這是獨立於
+                        「選取這張卡」之外的另一個動作,點了不該連帶
+                        觸發 handleSelect。icon 用單色線條 SVG(不用
+                        emoji,視覺語言對齊 onRemoveStop 的 ✕ 文字符號)。 */}
+                    {onPanToStop && (
+                      <button
+                        type="button"
+                        className={styles.panToBtn}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onPanToStop(node.id)
+                        }}
+                        aria-label={`在地圖上移動到「${node.name ?? '這一站'}」`}
+                      >
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11Z" />
+                          <circle cx="12" cy="10" r="2.5" />
+                        </svg>
+                      </button>
+                    )}
+                    {/* onRemoveStop——選填,見該 prop 的完整說明。視覺
+                        風格對齊縱向版 PlanTimelineView.tsx 的
+                        .stopRemoveBtn(同一種「平時淡化、hover/focus
+                        才轉為顯眼紅色」的危險操作慣例)。stopPropagation
+                        避免冒泡觸發卡片本身的 onClick(handleSelect 會
+                        捲動選取,跟刪除是不相關的操作)。 */}
+                    {onRemoveStop && (
+                      <button
+                        type="button"
+                        className={styles.removeBtn}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onRemoveStop(node.id)
+                        }}
+                        aria-label={`移除「${node.name ?? '這一站'}」`}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
                 )}
 
                 {transit && (() => {
@@ -1777,6 +1761,19 @@ export function HorizontalPlanTimeline({
                       className={styles.themeChildren}
                       onSelect={(child) => onSelectThemeChild?.(node.id, child)}
                     />
+                    {/* cardNoteRow——這張卡片自己的備註(2026-10 第二次
+                        調整:原本是整個元件外層一塊全寬的 .noteBanner,
+                        只顯示目前選中那一站,使用者明確要求比照桌面版
+                        改成「卡片內部下方的一個橫列」,每張卡各自顯示/
+                        不顯示自己的備註。固定高度、單行截斷,不隨文字
+                        內容撐高卡片(卡片本身是固定 height,見 .card 的
+                        完整說明)。 */}
+                    {node.note && (
+                      <div className={styles.cardNoteRow} style={{ color: resolveNoteMeta(node.note).colorVar }}>
+                        <span className={styles.noteIcon}><NoteIcon kind={resolveNoteMeta(node.note).icon} /></span>
+                        <span className={styles.noteText} title={node.note.text}>{node.note.text}</span>
+                      </div>
+                    )}
                   </>
                 )}
               </div>

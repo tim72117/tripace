@@ -236,11 +236,35 @@
   color: var(--ios-gray);
   flex: 0 0 32px;
 }
-.expandSummary {
+/* noteRow——卡片內部下方固定高度一個橫列,常駐顯示(2026-10 新增,使用者
+   明確要求「note 移動到圖卡內部下方的一個橫列,固定高度」,比照
+   planning/timeline/PlanTimelineView.module.css 的 .stopNoteRow;原本是
+   .expandSummary,在 .cardExpand 收合區塊裡,點擊卡片才看得到)。固定
+   高度、單行截斷,不隨文字內容撐高卡片。 */
+.noteRow {
+  height: 20px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+/* 卡片展開時取消固定高度與單行省略,可換行顯示備註全文。 */
+.noteRowOpen {
+  height: auto;
+  overflow: visible;
+}
+.noteRowOpen .noteText {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+.noteText {
   font-size: 13px;
   color: #3a3a3c;
-  line-height: 1.6;
-  margin-bottom: 4px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 /* 卡片展開後的「編輯」入口:小巧、不搶眼,只有 cfg(owner)存在時才會渲染。 */
 .editBtn {

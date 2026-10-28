@@ -32,9 +32,19 @@ interface PlanOverlayPanelProps {
   passThrough?: boolean
   composer?: ReactNode
   children: ReactNode
+  // onPanelElChange/onComposerElChange——2026-10 新增,給除錯疊圖
+  // (desktop/LayoutDebugOverlay.tsx,見該檔案的完整說明)量測用。這個
+  // 版面沒有像手機版 OverlayShell 那樣的 overlay 包裹容器,panel 跟
+  // composerSlot 是直接掛在 PlanLayout .container 底下的手足節點,疊圖
+  // 需要靠呼叫端把這兩個 DOM 節點回報出去才能量。用 ref callback 而非
+  // useState 回傳——這個元件不需要為了「給外部用」而多存一份 state,
+  // composerSlot 本身已經有一份 state 是給 ComposerSlotContext 用的
+  // (理由不同,不合併)。選填,不開 debug 的呼叫端不傳,沒有任何開銷。
+  onPanelElChange?: (el: HTMLDivElement | null) => void
+  onComposerElChange?: (el: HTMLDivElement | null) => void
 }
 
-export function PlanOverlayPanel({ passThrough = false, composer, children }: PlanOverlayPanelProps) {
+export function PlanOverlayPanel({ passThrough = false, composer, children, onPanelElChange, onComposerElChange }: PlanOverlayPanelProps) {
   const [composerSlot, setComposerSlot] = useState<HTMLDivElement | null>(null)
 
   return (
@@ -42,10 +52,18 @@ export function PlanOverlayPanel({ passThrough = false, composer, children }: Pl
       <div
         {...slotAttr(OVERLAY_SLOT.panel)}
         className={passThrough ? `${styles.panel} ${styles.passThrough}` : styles.panel}
+        ref={onPanelElChange}
       >
         {children}
       </div>
-      <div {...slotAttr(OVERLAY_SLOT.composerSlot)} className={styles.composerSlot} ref={setComposerSlot}>
+      <div
+        {...slotAttr(OVERLAY_SLOT.composerSlot)}
+        className={styles.composerSlot}
+        ref={(el) => {
+          setComposerSlot(el)
+          onComposerElChange?.(el)
+        }}
+      >
         {composer}
       </div>
     </ComposerSlotContext.Provider>

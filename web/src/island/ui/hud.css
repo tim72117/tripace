@@ -45,6 +45,23 @@
 .island-root .cta:hover {
   filter: brightness(1.08);
 }
+.island-root .scene-switch {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  padding: 5px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  backdrop-filter: blur(12px);
+}
+.island-root .scene-switch .scene-btn {
+  border-radius: 999px;
+  padding: 6px 12px;
+}
 .island-root .controls {
   position: absolute;
   left: 50%;
@@ -77,17 +94,6 @@
   background: var(--accent);
   color: #2a1a00;
   border-color: transparent;
-}
-.island-root .btn-play {
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border-radius: 50%;
-  font-size: 15px;
-  background: var(--accent);
-  color: #2a1a00;
-  border: 0;
-  flex: none;
 }
 .island-root .time {
   flex: 1;
@@ -210,11 +216,6 @@
   font-size: 11px;
   font-weight: 700;
 }
-.island-root .stop-label em {
-  font-style: normal;
-  color: var(--muted);
-  font-size: 11px;
-}
 .island-root .stop-label.is-active {
   border-color: var(--accent);
 }
@@ -222,9 +223,6 @@
   background: var(--accent);
   color: #2a1a00;
   transform: translateY(-8px) scale(1.06);
-}
-.island-root .stop-label.is-selected em {
-  color: rgba(42, 26, 0, 0.7);
 }
 .island-root .issues {
   position: absolute;
@@ -261,6 +259,13 @@
   line-height: 1.7;
 }
 @media (max-width: 700px) {
+  .island-root .scene-switch {
+    top: 56px; /* 讓出左上角的站台品牌字 */
+    left: 12px;
+    transform: none;
+    max-width: calc(100% - 24px);
+    overflow-x: auto;
+  }
   .island-root .cta {
     top: auto;
     bottom: 96px;
@@ -292,3 +297,60 @@
     transition: none;
   }
 }
+
+/* 探索模式:搖桿(觸控裝置)與操作提示 */
+.island-root .stick {
+  position: absolute;
+  left: max(18px, env(safe-area-inset-left));
+  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 96px);
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  backdrop-filter: blur(12px);
+  touch-action: none;
+  display: grid;
+  place-items: center;
+}
+.island-root .stick[hidden] { display: none; }
+.island-root .stick-knob {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.9;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.island-root .explore-hint {
+  position: absolute;
+  left: 50%;
+  top: 64px;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.island-root .explore-hint[hidden] { display: none; }
+@media (max-width: 700px) {
+  .island-root .explore-hint { top: 104px; white-space: normal; max-width: calc(100% - 24px); text-align: center; }
+}
+
+/* 場景載入中/失敗的覆蓋層(IslandPage 在 .island-root 之外、同層,內容由 React 管) */
+.island-page .island-status {
+  position: fixed; inset: 0; z-index: 2;
+  display: grid; place-content: center; justify-items: center; gap: 14px;
+  background: #14112a; color: #fff7ea; text-align: center; padding: 24px;
+  font-size: 15px; line-height: 1.7;
+}
+.island-page .island-status button {
+  appearance: none; border: 1px solid rgba(255, 193, 90, 0.5); background: rgba(255, 255, 255, 0.08);
+  color: inherit; font: inherit; padding: 8px 18px; border-radius: 999px; cursor: pointer;
+}
+.island-page .island-status button:hover { background: rgba(255, 255, 255, 0.16); }

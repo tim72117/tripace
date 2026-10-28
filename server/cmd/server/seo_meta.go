@@ -134,8 +134,9 @@ func buildSeoMetaByPath(baseURL string) map[string]seoMeta {
 			image:       "",
 		},
 		// /island:夜遊九份島(2026-10 新增)。頁面主體是 WebGL 3D 場景,沒有自己的代表圖,image 留空沿用 defaultImage。
-		// title/description 必須跟 web/src/island/seo.ts 的 SEO_TITLE / SEO_DESCRIPTION 逐字相同(那邊只負責 <title>
-		// 與頁面文字摘要,其餘標籤以這裡為唯一事實來源);web/src/island/seo.test.ts 會直接讀這個檔案比對。
+		// title/description 必須跟 web/src/island/scenes/night-jiufen/index.ts 的 seo 逐字相同(那邊只負責 <title>
+		// 與頁面文字摘要,其餘標籤以這裡為唯一事實來源);web/src/island/scenes/seo.test.ts 會直接讀這個檔案比對。
+		// 其他場景(/island/<id>)照同樣方式在這裡加自己的條目。
 		"/island": {
 			title:       "夜遊九份島——把一篇遊記變成一座會亮燈的島 | Tripace",
 			description: "傍晚上山，看九份的紅燈籠沿著石階一盞一盞亮起。這是依據部落客遊記〈夜遊九份〉做成的低多邊形小島，可以旋轉、拖動時間、逐站閱讀，並下載附署名的分享圖。",
@@ -148,7 +149,25 @@ func buildSeoMetaByPath(baseURL string) map[string]seoMeta {
 			canonical:   baseURL + "/ai-plan",
 			image:       "",
 		},
+		// /ai-plan/live:真實 AI 推論頁(從 /ai-plan 播放態按「讓我試看看」交接過來的功能頁)。專案沒有 noindex/robots
+		// 機制,所以只用 canonical 指向 /ai-plan,把索引權重留給模擬頁、避免兩頁搶同一組關鍵字;title/description
+		// 沿用 /ai-plan 的精神,但註明這是互動推論頁。
+		"/ai-plan/live": {
+			title:       "AI 安排行程——互動推論頁，輸入需求即時排出時間軸 | Tripace",
+			description: "這是 Tripace AI 規劃行程的互動推論頁：輸入想去的地方與天數，AI 即時把景點排進每日時間軸，交通方式與停留時間自動補上。想先看看效果，可前往 AI 安排行程模擬頁。",
+			canonical:   baseURL + "/ai-plan",
+			image:       "",
+		},
 	}
+}
+
+// seoPathAliases——「同一頁的另一個網址」對應到 seoMetaByPath 的正規路徑,讓它們輸出同一份 SEO 標籤
+// (含指向正規網址的 canonical)。/island/night-jiufen 是預設場景的 id 網址:前端會把它導回 /island
+// (同一場景只有一個網址),但爬蟲或舊連結直接打到伺服器時,不該拿到首頁的 title 與 canonical。
+// 新增場景(/island/<id>)請在 seoMetaByPath 加自己的條目(title/description 與前端 scenes/<id>/index.ts 逐字相同),
+// 不用在這裡登記。
+var seoPathAliases = map[string]string{
+	"/island/night-jiufen": "/island",
 }
 
 // seoMetaByPath 在套件初始化時用當下的環境變數組好一次——跟先前寫死的
@@ -491,6 +510,9 @@ func heroPhotoImageURL(photo model.UploadedPhoto) string {
 // 一次,限制次數是額外的保險,避免未來不小心在別處重複出現同樣文字時
 // 被誤取代。
 func applySEOMeta(html []byte, path string, st *store.Store) []byte {
+	if canonical, aliased := seoPathAliases[path]; aliased {
+		path = canonical
+	}
 	meta, ok := seoMetaByPath[path]
 	if !ok {
 		// st 可能是 nil(例如測試情境,見 seo_meta_test.go 既有呼叫端

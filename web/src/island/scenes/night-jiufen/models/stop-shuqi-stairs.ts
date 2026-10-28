@@ -1,4 +1,4 @@
-import type { Model3D, Part } from '../three/model';
+import type { Model3D, Part } from '../../../three/model';
 
 // 第二站「弐 豎崎路石階」：九份最經典的畫面——長長的石階往上，兩旁紅燈籠一盞接一盞。
 // 設計意圖：

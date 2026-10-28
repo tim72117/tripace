@@ -121,11 +121,19 @@ describe('slopeGeometry 峭壁(crag)', () => {
 })
 
 describe('slopeGeometry 峭壁 密合度(沒有裂縫)', () => {
-  // 實際佈局的斜坡(五邊形 + 60° + crag):每條邊必須被兩個三角形共用,只有最底邊(floorY)只用一次
+  // 代表性的斜坡(凸五邊形 + 60° + crag,即舊九份版面的山壁形狀;九份現在改用連續地形,但斜坡仍是引擎支援的舊版資料):
+  // 每條邊必須被兩個三角形共用,只有最底邊(floorY)只用一次
   const key = (p: number[]) => p.map((n) => Math.round(n * 1e4)).join(',')
-  it('實際佈局的斜坡是密閉的:除底邊外每條邊恰好被 2 個三角形共用', async () => {
-    const { ISLAND_LAYOUT } = await import('../data/layout')
-    const sl = ISLAND_LAYOUT.slopes![0]
+  it('代表性的斜坡是密閉的:除底邊外每條邊恰好被 2 個三角形共用', () => {
+    const run = 4
+    const sl = {
+      outline: [[-30, -20], [-15, -30], [0, -33], [15, -30], [30, -20]] as Pt[],
+      from: [0, -18] as Pt,
+      to: [0, -18 - run] as Pt,
+      y0: 6,
+      y1: 6 + run * Math.tan(Math.PI / 3),
+      crag: { seed: 11, amp: 0.55, detail: 3, rockColor: '#8f8372' },
+    }
     const floorY = -0.25
     const edges = new Map<string, number>()
     for (const t of triangles(slopeGeometry(sl, floorY))) {

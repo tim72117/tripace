@@ -228,14 +228,10 @@ export const verticalAdapter: ViewAdapter = {
   revealStop: () => {},
   shownTime: (c, name) => verticalRow(c, name).querySelector(cls(vStyles.stopTimeText))?.textContent ?? null,
   shownNote: (c, name) => {
-    // 備註列畫在卡片列之後(同一個 Fragment 內的下一個 noteRow)。
-    let el = verticalRow(c, name).nextElementSibling
-    while (el && !el.hasAttribute('data-tl-node')) {
-      const note = el.querySelector(cls(vStyles.noteText))
-      if (note) return (note.textContent ?? '').trim()
-      el = el.nextElementSibling
-    }
-    return null
+    // 備註畫在卡片內部下方的固定高度橫列(.stopNoteText,見
+    // PlanTimelineView.tsx renderStopNote 的完整說明)。
+    const note = verticalRow(c, name).querySelector(cls(vStyles.stopNoteText))
+    return note ? (note.textContent ?? '').trim() : null
   },
   shownTransit: (c, name) => verticalTransitRow(c, name)?.querySelector(cls(vStyles.transitPill))?.textContent ?? null,
   openTransitMenu: (c, name) => {
@@ -265,8 +261,11 @@ export const horizontalAdapter: ViewAdapter = {
     return c.querySelector(cls(hStyles.rulerSegmentTime))?.textContent ?? null
   },
   shownNote: (c, name) => {
-    assertHorizontalSelected(c, name)
-    return c.querySelector(cls(hStyles.noteText))?.textContent ?? null
+    // 備註畫在這張卡片內部下方的固定高度橫列(.cardNoteRow,見
+    // HorizontalPlanTimeline.tsx 的完整說明),不再是整個元件外層只
+    // 顯示目前選中站點的全域 .noteBanner,改讀這張卡片自己底下的
+    // .noteText,不需要先確認它是不是目前選中的卡片。
+    return horizontalCard(c, name).querySelector(cls(hStyles.noteText))?.textContent ?? null
   },
   shownTransit: (c, name) => horizontalCard(c, name).querySelector(cls(hStyles.transitRow))?.textContent ?? null,
   openTransitMenu: (c, name) => {

@@ -5,7 +5,7 @@ import { DEFAULT_LANTERN_OPTS, lanternGlowAt, lanternJitter, lanternOrder, LANTE
 import { buildPathCurve } from './pathCurve'
 import { mulberry32 } from './rng'
 import { MAX_RAISE, resolveScatter } from './scatterResolve'
-import { cameraAt, coverKey, tourKeyframes } from './tour'
+import { cameraAt, coverKey, fitCoverToAspect, tourKeyframes } from './tour'
 import { polygonArea, selfIntersects, validateLayout } from './validateLayout'
 
 const SQ: Pt[] = [[-20, -20], [20, -20], [20, 20], [-20, 20]]
@@ -211,20 +211,9 @@ describe('版面驗證', () => {
   })
 })
 
-import { timeAt } from './tour'
 import { phaseName } from './phase'
 
-describe('導覽時間與時段', () => {
-  it('timeAt:端點、中點、夾住', () => {
-    const t = [1000, 1050, 1110, 1200]
-    expect(timeAt(t, 0)).toBe(1000)
-    expect(timeAt(t, 1)).toBe(1200)
-    expect(timeAt(t, 1 / 3)).toBeCloseTo(1050)
-    expect(timeAt(t, 0.5)).toBeCloseTo(1080)
-    expect(timeAt(t, -2)).toBe(1000)
-    expect(timeAt(t, 9)).toBe(1200)
-    expect(timeAt([5], 0.5)).toBe(5)
-  })
+describe('時段名稱', () => {
   it('phaseName:各時段邊界', () => {
     expect(phaseName(12 * 60)).toBe('白天')
     expect(phaseName(16 * 60 + 30)).toBe('午後')
@@ -251,5 +240,28 @@ describe('displayableStops(HUD 與場景共用的站點清單)', () => {
     expect(displayableStops(all, models)).toEqual(all)
     expect(displayableStops([st('a', null)], models)).toEqual([])
     expect(all).toHaveLength(2)
+  })
+})
+
+describe('fitCoverToAspect(封面依畫面比例拉遠)', () => {
+  const k = { pos: [16, 46, 76] as [number, number, number], target: [-1, 8, 0] as [number, number, number] }
+  const dist = (c: typeof k) => Math.hypot(c.pos[0] - c.target[0], c.pos[1] - c.target[1], c.pos[2] - c.target[2])
+  it('畫面越窄距離越遠,方向與目標不變', () => {
+    const wide = fitCoverToAspect(k, 46, 32, 1.8, 170)
+    const tall = fitCoverToAspect(k, 46, 32, 0.87, 170)
+    expect(dist(tall)).toBeGreaterThan(dist(wide))
+    expect(tall.target).toEqual(k.target)
+    const dir = (c: typeof k) => c.pos.map((v, i) => (v - c.target[i]) / dist(c))
+    dir(tall).forEach((v, i) => expect(v).toBeCloseTo(dir(k)[i], 6))
+  })
+  it('距離只會變遠不會變近;最遠不超過上限;很寬的畫面維持原距離', () => {
+    expect(dist(fitCoverToAspect(k, 46, 32, 10, 170))).toBeCloseTo(dist(k), 6)
+    expect(dist(fitCoverToAspect(k, 46, 32, 0.3, 120))).toBeLessThanOrEqual(120 + 1e-6)
+    expect(dist(fitCoverToAspect(k, 46, 32, 0.3, 50))).toBeCloseTo(dist(k), 6) // 上限比原距離還小時不縮回來
+  })
+  it('拉遠後整座島的寬度放得進畫面', () => {
+    const c = fitCoverToAspect(k, 46, 32, 1.2, 170)
+    const visibleHalfW = dist(c) * Math.tan((32 * Math.PI) / 360) * 1.2
+    expect(visibleHalfW).toBeGreaterThanOrEqual(46 * 1.1 - 1e-6)
   })
 })

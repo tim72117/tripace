@@ -45,11 +45,17 @@ import type { ClientTool } from './arrayTools'
 // 手寫一次同樣的查表邏輯。
 //
 // onToolResult(選用):每次工具執行成功後回報 { name, args, result },供呼叫端
-// 接自己的 log/UI(例如 OnagentBridgeDemo.tsx 想在畫面上顯示「哪個工具被
-// 呼叫、結果是什麼」)。錯誤(handle 拋出例外)不吞、不過這個回呼——直接
-// 往外 throw,交給 AgentBridge 既有的 try/catch 轉成 tool_result 的
-// { ok: false, error } 回報,同 defineTool 的既有取捨,不重新發明錯誤處理
-// 路徑。
+// 接自己的 log/UI(例如 OnagentBridgeDemo.tsx、/ai-plan 推論紀錄 debug 面板
+// 想在畫面上顯示「哪個工具被呼叫、結果是什麼」)。
+//
+// 2026-10 改成等 Promise resolve 後才回報(原本直接把 tool.handle 的回傳值
+// ——可能是個還沒解開的 Promise——原樣塞給 onToolResult,呼叫端拿到的
+// result 永遠是 `Promise { <pending> }` 而不是實際內容,對「顯示推論紀錄」
+// 這種用途沒有意義,必須先 await 完才回報)。
+//
+// 錯誤(handle 拋出例外或 reject)不吞、不過這個回呼——直接往外 throw,
+// 交給 AgentBridge 既有的 try/catch 轉成 tool_result 的 { ok: false, error }
+// 回報,同 defineTool 的既有取捨,不重新發明錯誤處理路徑。
 export function toAgentBridgeTools<Ctx>(
   tools: ClientTool<Ctx>[],
   ctx: Ctx,
@@ -57,8 +63,8 @@ export function toAgentBridgeTools<Ctx>(
 ): Record<string, ToolHandler> {
   const boundTools = tools.map((tool) => ({
     name: tool.name,
-    handle: ((args: Record<string, unknown>) => {
-      const toolResult = tool.handle(args, ctx)
+    handle: (async (args: Record<string, unknown>) => {
+      const toolResult = await tool.handle(args, ctx)
       onToolResult?.({ name: tool.name, args, result: toolResult })
       return toolResult
     }) as ToolHandler,

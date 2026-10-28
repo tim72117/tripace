@@ -16,7 +16,6 @@ export type StopView = {
   glowMats: Array<{ m: THREE.MeshStandardMaterial; base: number }>
   label: CSS2DObject
   labelEl: HTMLElement
-  proxy: THREE.Mesh
   center: THREE.Vector3 // 建築包圍盒中心(世界)
   topY: number
 }
@@ -25,7 +24,6 @@ export type Stops = {
   group: THREE.Group
   views: StopView[]
   update(time: number, glowPerStop: ReadonlyArray<number>, activeIndex: number, selectedIndex: number): void
-  pick(raycaster: THREE.Raycaster): number
 }
 
 // buildStops——stops 必須是「島上實際顯示的站」(先用 logic/articleToIsland 的 displayableStops 過濾),
@@ -68,28 +66,19 @@ export function buildStops(
 
     const box = new THREE.Box3().setFromObject(root)
     const center = box.getCenter(new THREE.Vector3())
-    const size = box.getSize(new THREE.Vector3())
 
-    // 隱形碰撞代理:Raycaster 不看材質可見性,用一個包圍盒大小的透明方塊當點選目標
-    const proxy = new THREE.Mesh(
-      new THREE.BoxGeometry(size.x, size.y, size.z),
-      new THREE.MeshBasicMaterial({ visible: false }),
-    )
-    proxy.position.copy(center)
-    proxy.userData.stopIndex = index
-    group.add(proxy)
-
-    // 標籤
+    // 標籤:選站的唯一入口(點建築模型不會選站,見 IslandApp 的點擊處理);只顯示序號與站名,不顯示時間
+    // (時間在日夜自動滾動下與畫面無關,示意時間只在資訊卡裡)
     const el = document.createElement('button')
     el.className = 'stop-label'
     el.type = 'button'
-    el.innerHTML = `<span class="stop-label-idx">${stop.index || index + 1}</span><span class="stop-label-name">${stop.name}</span><em>${stop.time}</em>`
+    el.innerHTML = `<span class="stop-label-idx">${stop.index || index + 1}</span><span class="stop-label-name">${stop.name}</span>`
     el.addEventListener('click', (e) => { e.stopPropagation(); onLabelClick(index) })
     const label = new CSS2DObject(el)
     label.position.set(center.x, box.max.y + 1.2, center.z)
     group.add(label)
 
-    views.push({ index, stop, root, built, glowMats, label, labelEl: el, proxy, center, topY: box.max.y })
+    views.push({ index, stop, root, built, glowMats, label, labelEl: el, center, topY: box.max.y })
   })
 
   return {
@@ -104,10 +93,6 @@ export function buildStops(
         v.labelEl.classList.toggle('is-active', v.index === activeIndex)
         v.labelEl.classList.toggle('is-selected', v.index === selectedIndex)
       }
-    },
-    pick(raycaster) {
-      const hits = raycaster.intersectObjects(views.map((v) => v.proxy), false)
-      return hits.length ? (hits[0].object.userData.stopIndex as number) : -1
     },
   }
 }

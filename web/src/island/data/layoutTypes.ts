@@ -18,6 +18,8 @@ export type Placement = {
   // 貼著斜坡:物件的「上方」先繞 X、Z 軸傾斜(弧度,Euler XZ),再繞自己的上方轉 rotY。有填就視為刻意放在坡面上,
   // 不做「腳印等高」檢查。例如 60° 峭壁面朝 +z:[Math.PI / 3, 0]。
   tilt?: [number, number]
+  // 腳底高度 y 是刻意指定的(例如石階模型的原點在最低一階、坡面比它高),不要被「y 低於地面就改成地面高度」修正掉。
+  keepY?: boolean
 }
 
 // StopAnchor:部落客文章的一站在島上的位置與外觀。stopId 對應文章 stop 區塊的 id
@@ -52,6 +54,32 @@ export type LightKey = {
 // 注意:heightAt(物件貼地用)不含這個起伏,畫面上的岩面最多比 heightAt 高 amp;輪廓建議是凸形(見 validateLayout)。
 export type SlopeCrag = { seed: number; amp: number; detail: number; rockColor?: string }
 
+// ---- 連續地形(高度場)----
+// 有 layout.terrain 時,地面高度由它決定(取代 terraces/slopes 的疊層):
+//   高度 = ramp + Σ features(bump/ridge) + noise,最後依序套用 pads(削平的平台)。
+// 實作在 logic/heightfield.ts(純函式,heightAt 的唯一來源),網格在 three/terrainField.ts。
+export type RampSpec = { from: Pt; to: Pt; y0: number; y1: number } // 沿 from→to 線性升高的基底斜面(兩端外夾住)
+export type BumpSpec = { kind: 'bump'; x: number; z: number; rx: number; rz: number; rot?: number; height: number } // 平滑隆起(height<0 = 窪地)
+export type RidgeSpec = { kind: 'ridge'; points: Array<[number, number, number]>; halfWidth: number } // 沿折線的山脊,[x, z, 該點的脊高]
+export type PadSpec = { outline: Pt[]; y: number; blend: number; color?: string } // 削平平台:內部高度 = y,外圍 blend 格平滑接回
+export type NoiseSpec = { amp: number; scale: number; seed: number } // 低頻起伏(振幅 amp,特徵尺寸 scale 格)
+export type TerrainSpec = {
+  ramp?: RampSpec
+  features?: Array<BumpSpec | RidgeSpec>
+  noise?: NoiseSpec
+  pads?: PadSpec[]
+  cell?: number // 地表網格邊長(預設 2 格;越小越細也越慢)
+  // 地表顏色:草色取 palette.grass/grassAlt(隨高度漸變);beach 是低處(beachY 以下)、rock 是陡坡、soil 是側面土層(由上往下)
+  colors?: { beach?: string; beachY?: number; rock?: string; soil?: string[] }
+}
+
+// 鏡頭覆蓋:不填就由引擎依島半徑推算(封面從南偏西、各站從站點東南上方看)。連續地形的島形狀不是圓,建議手寫。
+export type LayoutCameraKey = { pos: [number, number, number]; target: [number, number, number] }
+export type LayoutCamera = {
+  cover?: LayoutCameraKey
+  stops?: Array<LayoutCameraKey | null> // 依「島上顯示的第 i 站」對應;null/缺 = 用預設
+}
+
 export type IslandLayout = {
   // 島的輪廓(頂視圖多邊形,順時針),島體會由它擠出成一塊厚地。
   outline: Pt[]
@@ -62,6 +90,10 @@ export type IslandLayout = {
   // slopes:斜面(山坡)。每塊是頂視圖多邊形,地面高度沿 from→to 方向線性從 y0 升到 y1(方向線外夾在兩端)。
   // 與階地並列:任一點的高度取階地與斜坡裡最高者。兩端建議等於相鄰階地的高度,才不會有縫。
   slopes?: Array<{ outline: Pt[]; from: Pt; to: Pt; y0: number; y1: number; color?: string; crag?: SlopeCrag }>
+  // terrain:連續地形(高度場),有填就取代 terraces/slopes 決定地面高度與地表網格(見上方 TerrainSpec)。
+  // topY 仍是「最低地面」:高度場低於 topY 的地方一律夾在 topY(海岸的底)。
+  terrain?: TerrainSpec
+  camera?: LayoutCamera
   // sea:島外(或島邊低處)的海面,選填;九份的遠景是海,夜晚有海面反光。
   sea?: { y: number; color: string }
   thickness: number // 島的厚度(泥土層深度),島底可以參差
