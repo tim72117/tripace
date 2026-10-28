@@ -6,13 +6,15 @@
 import * as THREE from 'three'
 import type { IslandLayout, Pt } from '../data/layoutTypes'
 import { delaunay } from '../logic/delaunay'
+import { fbmAt } from '../logic/heightfield'
+import { sampledHeight, surfaceMetrics, surfaceWeights } from '../logic/terrainShade'
 import { pointInPolygon } from '../logic/geometry'
 import { mulberry32 } from '../logic/rng'
 
 const DEFAULT_CELL = 2
 const DEFAULT_SOIL = ['#7a5a3e', '#6a4d36', '#5a4331', '#4a382a']
 const DEFAULT_ROCK = '#8a7f6f'
-const STEEP = 0.72 // 法線 y 分量低於這個(約 44° 以上)視為陡坡;太高會讓雜訊的小稜面零星變成岩色
+const SHADE_SEED = 31 // 著色用雜訊的種子(只影響顏色,不影響形狀)
 
 export type FieldTerrainGeometry = { top: THREE.BufferGeometry; wall: THREE.BufferGeometry }
 
@@ -82,6 +84,7 @@ export function fieldSurfacePoints(layout: Pick<IslandLayout, 'outline' | 'terra
 export function fieldTerrainGeometry(layout: IslandLayout, heightAt: (x: number, z: number) => number): FieldTerrainGeometry {
   const t = layout.terrain!
   const { palette, outline, topY, thickness } = layout
+  if (outline.length < 3) throw new Error(`地形輪廓至少需要 3 個點(目前 ${outline.length} 個)`)
   const floorY = topY - thickness
   const grass = new THREE.Color(palette.grass)
   const grassHigh = new THREE.Color(palette.grassAlt)
@@ -90,6 +93,13 @@ export function fieldTerrainGeometry(layout: IslandLayout, heightAt: (x: number,
   const beachY = t.colors?.beachY ?? topY + 0.5
   const soil = (t.colors?.soil ?? DEFAULT_SOIL).map((c) => new THREE.Color(c))
   const padColors = (t.pads ?? []).map((p) => (p.color ? new THREE.Color(p.color) : null))
+  const dirtC = new THREE.Color(palette.dirt)
+  const dryC = new THREE.Color(palette.grassAlt).lerp(beach, 0.35)
+  const grassDark = new THREE.Color(palette.grass).multiplyScalar(0.82)
+  const eps = (t.cell ?? DEFAULT_CELL) * 0.6 // 坡度/曲率的差分步長:略比格距小,讀得到網格能表現的起伏
+  const bx = outline.map((p) => p[0]), bz = outline.map((p) => p[1])
+  // 著色用的高度格網(步長 = eps,差分的取樣點剛好落在格點上);外留 2×eps 邊,差分在輪廓邊緣也讀得到
+  const shadeH = sampledHeight(heightAt, Math.min(...bx), Math.max(...bx), Math.min(...bz), Math.max(...bz), eps, eps * 2.2)
 
   const { points, ring } = fieldSurfacePoints(layout)
   const ys = points.map(([x, z]) => heightAt(x, z)) // 每個點只算一次高度(三角形共用頂點)
@@ -109,19 +119,29 @@ export function fieldTerrainGeometry(layout: IslandLayout, heightAt: (x: number,
     // 法線朝上
     const ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2])
     if (ny < 0) [b, c] = [c, b]
-    const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2]
-    const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2]
-    const nx = uy * vz - uz * vy, nyy = uz * vx - ux * vz, nz = ux * vy - uy * vx
-    const up = Math.abs(nyy) / (Math.hypot(nx, nyy, nz) || 1)
     const hMid = (a[1] + b[1] + c[1]) / 3
 
     let padIdx = -1
     ;(t.pads ?? []).forEach((p, i) => { if (padColors[i] && pointInPolygon(cx, cz, p.outline)) padIdx = i })
+    let ao = 1
     if (padIdx >= 0) color.copy(padColors[padIdx]!)
-    else if (up < STEEP) color.copy(rock)
-    else if (hMid < beachY) color.copy(beach)
-    else color.copy(grass).lerp(grassHigh, Math.min(1, Math.max(0, (hMid - topY) / Math.max(1, peak - topY))))
-    color.multiplyScalar(0.9 + hashRnd(a[0] + b[0] + c[0], a[2] + b[2] + c[2], 4) * 0.2)
+    else {
+      // 坡度與曲率取自高度場(不是三角形法線),著色與網格疏密無關
+      const w = surfaceWeights(surfaceMetrics(shadeH, cx, cz, eps), fbmAt(cx, cz, SHADE_SEED, 7, 2))
+      ao = w.ao
+      // 草:隨高度漸變,再用低頻雜訊疊出深淺斑塊
+      const patch = fbmAt(cx, cz, SHADE_SEED + 11, 9, 3)
+      color.copy(grass).lerp(grassHigh, Math.min(1, Math.max(0, (hMid - topY) / Math.max(1, peak - topY))))
+      color.lerp(patch > 0 ? grassHigh : grassDark, Math.abs(patch) * 0.55)
+      color.lerp(dryC, w.dry).lerp(dirtC, w.dirt)
+      // 低處沙灘:邊界隨雜訊彎曲,不呈一條等高線
+      const shore = THREE.MathUtils.smoothstep(beachY + fbmAt(cx, cz, SHADE_SEED + 23, 5, 2) * 0.45 - hMid, 0, 0.35)
+      color.lerp(beach, shore)
+      // 岩石:依高度分層(地層)的明暗條紋
+      const strata = 1 + 0.07 * Math.sin(hMid * 2.6 + fbmAt(cx, cz, SHADE_SEED + 37, 4, 2) * 2)
+      color.lerp(rock.clone().multiplyScalar(strata), w.rock * (1 - shore))
+    }
+    color.multiplyScalar(ao * (0.92 + hashRnd(a[0] + b[0] + c[0], a[2] + b[2] + c[2], 4) * 0.16))
 
     pos.push(...a, ...b, ...c)
     for (let k = 0; k < 3; k++) col.push(color.r, color.g, color.b)

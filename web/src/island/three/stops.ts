@@ -7,6 +7,7 @@ import * as THREE from 'three'
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import type { IslandStop } from '../logic/articleToIsland'
 import { animateModel, buildModel, type BuiltModel, type Model3D } from './model'
+import { LANTERN_GLOW_BASE, buildStopLanterns, collectLanternAnchors } from './stopLanterns'
 
 export type StopView = {
   index: number
@@ -55,6 +56,7 @@ export function buildStops(
       const mat = mesh.material as THREE.MeshStandardMaterial
       if (mat.emissive && mat.emissive.getHex() !== 0) {
         const c = mat.clone()
+        delete c.userData.sharedResource // 複本由這個站點自己擁有(clone 會連 userData 一起複製),卸載時要釋放
         mesh.material = c
         glowMats.push({ m: c, base: mat.emissiveIntensity || 0.6 })
       }
@@ -63,6 +65,13 @@ export function buildStops(
       if (Math.max(size.x, size.y, size.z) < 0.5) mesh.castShadow = false
     })
     group.add(root)
+
+    // 建築 GLB 裡的燈籠錨點(lantern_*)→ 用實例畫燈籠(見 stopLanterns.ts);發光燈身一起收進 glowMats,隨站點亮度連動
+    const lanterns = buildStopLanterns(collectLanternAnchors(root))
+    if (lanterns) {
+      group.add(lanterns.group)
+      glowMats.push({ m: lanterns.bodyMaterial, base: LANTERN_GLOW_BASE })
+    }
 
     const box = new THREE.Box3().setFromObject(root)
     const center = box.getCenter(new THREE.Vector3())

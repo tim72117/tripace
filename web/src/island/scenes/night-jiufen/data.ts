@@ -1,6 +1,7 @@
 // data.ts——「夜遊九份」場景的重資料(版面、文章、專屬模型載入器)。只由 index.ts 動態 import,
 // 進到這個場景才下載;不要從別處靜態 import(會把版面與文章拉進首屏或別的場景)。
 import article from './article.json'
+import teahouseUrl from './assets/amei-teahouse.glb?url'
 import { ISLAND_LAYOUT, PATH_POINT_Y } from './layout'
 import type { ArticleSource } from '../../logic/articleToIsland'
 import type { Model3D } from '../../three/model'
@@ -13,6 +14,9 @@ const scene: SceneModule = {
   byline: { name: 'tim72117', handle: 'tim72117', articleUrl: '/u/tim72117/night-jiufen' },
   pathPointY: PATH_POINT_Y,
   modelLoaders: import.meta.glob<Model3D>('./models/*.ts', { import: 'default' }),
+  // 阿妹茶樓的高細節版(Blender 腳本 tools/blender/amei_teahouse.py 產出,約 11 公尺寬的主體 → 縮成宣告式版的 1 單位寬,
+  // 所以版面裡的 scale 7 不用改)
+  glbModels: { 'stop-amei-teahouse': { url: teahouseUrl, unit: 1 / 11 } },
 }
 
 export default scene

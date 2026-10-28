@@ -17,13 +17,17 @@ export function disposeMaterial(m: THREE.Material): void {
   m.dispose()
 }
 
+// 標了 userData.sharedResource 的幾何/材質(GLB 的,見 glbLoader.ts)由 registry 快取擁有,這裡不釋放。
+const isShared = (r: { userData?: Record<string, unknown> } | undefined) => !!r?.userData?.sharedResource
+
 export function disposeObject(root: THREE.Object3D): void {
   root.traverse((obj) => {
     const o = obj as THREE.Mesh
-    o.geometry?.dispose()
+    if (!isShared(o.geometry)) o.geometry?.dispose()
     const mat = o.material as THREE.Material | THREE.Material[] | undefined
-    if (Array.isArray(mat)) mat.forEach(disposeMaterial)
-    else if (mat) disposeMaterial(mat)
+    const disposeOwned = (m: THREE.Material) => { if (!isShared(m)) disposeMaterial(m) }
+    if (Array.isArray(mat)) mat.forEach(disposeOwned)
+    else if (mat) disposeOwned(mat)
     if ((obj as THREE.InstancedMesh).isInstancedMesh) (obj as THREE.InstancedMesh).dispose() // 釋放 instanceMatrix / instanceColor
   })
 }

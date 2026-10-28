@@ -1,6 +1,6 @@
-# island——互動 3D 旅遊小島(部落客文章 → 低多邊形小島)
+# island——互動 3D 旅遊小島(部落客文章 → 3D 小島)
 
-由部落客文章生成的低多邊形小島(three.js)。引擎不綁特定島:**一座島 = 一個場景**(`scenes/<id>/`),由 `scenes/registry.ts` 登記,
+由部落客文章生成的 3D 小島(three.js)。**目前的低多邊形平面著色只是初始試做**,目標是更精細、更像真實的地形與建物(寫實程度待定);下面提到「低多邊形」的地方都是指現況。引擎不綁特定島:**一座島 = 一個場景**(`scenes/<id>/`),由 `scenes/registry.ts` 登記,
 見 [scenes/README.md](scenes/README.md)。目前的場景:預設的「夜遊九份」(平台上的真實文章,4 站,傍晚到夜晚、紅燈籠沿步道一盞一盞亮起),
 另有受 feature flag `VITE_FEATURE_ISLAND_SAMPLE=true` 控制的「範例小島」(`sample-islet`,驗證場景切換用,預設關閉:沒有切換連結、網址也不存在)。兩個使用處:
 
@@ -34,6 +34,16 @@ npx tsc -b
 - `logic/`:純邏輯與測試,`integration.test.ts` 用真實版面+文章+全部模型做整合驗證。
 - `three/`:渲染層(島體、步道、天空、海面、站點、散落物實例化、燈籠、旅人、粒子、鏡頭、截圖)。`model.ts` 是宣告式模型格式(複本自 imagine 專案)。
 - `models/`:跨場景共用的低多邊形模型(裝飾、親子旅人);**按需載入**,場景只載入版面實際用到的(`scenes/modelIds.ts`)。
+- **高細節 GLB 模型(選用)**:宣告式模型之外,一個模型 id 可以另外有 Blender 腳本產出的 GLB(目前只有夜遊九份的阿妹茶樓,
+  腳本在 `web/tools/blender/amei_teahouse.py`,資產在 `scenes/night-jiufen/assets/`)。場景在 `data.ts` 的 `glbModels` 登記
+  `{ url, unit }`(unit 把公尺縮成宣告式版的尺度,所以版面的 scale 不用改);`scenes/registry.ts` 的 `load`(完整版)載入後掛到
+  同 id 模型的 `glb` 欄位,`buildModel` 有 `glb` 就畫它。**載入失敗不會壞**:沿用宣告式版當後備。首頁縮小版用 `loadBase`,
+  不載入 GLB。GLB 的發光強度載入時除以 `EMISSIVE_DIVISOR`(`three/glbLoader.ts`),才能配合 `stops.ts` 的日夜連動基準。
+  建模流程與即時預覽見 `web/tools/blender/` 與 `web/tools/model-preview/`。
+  - **載入規則**:單一 GLB 失敗或逾時(`GLB_TIMEOUT_MS` = 30 秒)就沿用宣告式版,且這次完整版結果**不快取**,下次 `load` 會重新嘗試,不必整頁重整;全部成功才快取。載入自己 `fetch` 再 `parseAsync`(不用 `loadAsync`:three 的 FileLoader 以網址記錄進行中請求,同步丟例外會讓同網址的重試永遠卡住)。
+  - **每個網格只能有一個材質**:`prepareGlbScene` 遇到多材質網格直接丟錯(`stops.ts` 的日夜發光、`bake.ts`、`colliders.ts` 都假設單一材質);`prepareGlbScene` 冪等。GLB 的幾何與材質標記 `userData.sharedResource`,場景卸載時 `disposeObject` 跳過(由 registry 快取擁有,不用每次進出重傳 GPU)。
+  - **燈籠是錨點**:GLB 裡的 `lantern_*` 空節點只標位置,`three/stopLanterns.ts` 讀出來用兩個 InstancedMesh 畫燈籠(燈身發光材質由 `stops.ts` 收進 `glowMats`,隨站點亮度日夜連動);沒有 GLB(退回宣告式版)時就沒有這批燈籠。
+  - **碰撞用宣告式版**:GLB 每個材質合併成一個網格,逐網格取包圍盒會變成整棟大小的隱形牆,所以 `colliders.ts` 有宣告式 `parts` 時一律用它,宣告式沒有內容才退回 GLB。
 - `scenes/`:場景。`registry.ts` 註冊表(網址、載入、快取、預載)、`types.ts` 契約、`night-jiufen/`(`index.ts` 輕量描述、`data.ts` 版面與文章與載入器、`layout.ts`、`article.json`、`models/` 專屬站點模型)、`sample-islet/`(實驗場景,feature flag)、`useIslandScene.ts`(載入狀態與防競態)。
 - `data/`:`layoutTypes.ts` 是版面資料契約(各場景的 `layout.ts` 依它填資料)。
 - `mini/`:縮小版(`MiniIsland.ts`、`groundPools.ts`、`loadMini.ts`)。

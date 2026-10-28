@@ -1,3 +1,4 @@
+import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 import type { IslandLayout } from '../data/layoutTypes'
 import { heightAt } from '../logic/terrain'
@@ -72,5 +73,36 @@ describe('fieldTerrainGeometry', () => {
       if (Math.abs(cx) < 3 && cz > -1 && cz < 3) { padTris++; expect(c[i]).toBeGreaterThan(0.3); expect(c[i]).toBeLessThan(0.42) } // 平台色 #a39a7a 的紅通道(轉成 three 的線性色彩空間約 0.37)× 亮度抖動 0.9~1.1;草色只有約 0.16
     }
     expect(padTris).toBeGreaterThan(0)
+  })
+})
+
+describe('fieldTerrainGeometry 的著色與邊界', () => {
+  it('輪廓少於 3 個點:丟出清楚的錯誤(不是讓 Infinity 變成 NaN 顏色)', () => {
+    const bad = { ...layout, outline: [[0, 0], [1, 1]] } as unknown as IslandLayout
+    expect(() => fieldTerrainGeometry(bad, () => 0)).toThrow(/至少需要 3 個點/)
+    expect(() => fieldTerrainGeometry({ ...layout, outline: [] } as unknown as IslandLayout, () => 0)).toThrow(/至少需要 3 個點/)
+  })
+  it('頂面與側壁的位置、頂點色全部是有限數(沒有 NaN)', () => {
+    const { top, wall } = fieldTerrainGeometry(layout, h)
+    for (const g of [top, wall]) {
+      for (const name of ['position', 'color'] as const) {
+        const arr = g.getAttribute(name).array as Float32Array
+        expect(arr.every((v) => Number.isFinite(v))).toBe(true)
+      }
+    }
+  })
+  it('陡坡偏向岩色:同一份版面,把整體坡度拉陡後頂面平均顏色更接近岩石色', () => {
+    const rock = new THREE.Color('#8a7f6f')
+    const avgDistToRock = (heightFn: (x: number, z: number) => number) => {
+      const { top } = fieldTerrainGeometry({ ...layout, terrain: { ...layout.terrain!, pads: [] } } as unknown as IslandLayout, heightFn)
+      const c = top.getAttribute('color').array as Float32Array
+      let sum = 0
+      let n = 0
+      for (let i = 0; i < c.length; i += 3) { sum += Math.hypot(c[i] - rock.r, c[i + 1] - rock.g, c[i + 2] - rock.b); n++ }
+      return sum / n
+    }
+    const gentle = (x: number, z: number) => 0.02 * x + 0.02 * z
+    const steep = (x: number, z: number) => 1.6 * x + 1.2 * z
+    expect(avgDistToRock(steep)).toBeLessThan(avgDistToRock(gentle))
   })
 })

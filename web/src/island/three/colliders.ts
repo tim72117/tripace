@@ -21,7 +21,9 @@ export const BAND_HI = 1.8
 const MIN_THICKNESS = 0.12
 
 export function placementPolys(model: Model3D, p: ColliderPlacement): Poly[] {
-  const built = buildModel(model)
+  // 高細節 GLB 是「每個材質合併成一個網格」,逐網格取包圍盒會讓藤蔓、屋簷、台階各變成整棟大小的實心方塊(隱形牆)。
+  // 所以有宣告式版本(parts)時,碰撞一律用它(輪廓是設計好的近似);只有宣告式沒有內容時才退回 GLB。
+  const built = buildModel(model.glb && model.parts.length > 0 ? { ...model, glb: undefined } : model)
   built.root.position.set(p.x, p.y, p.z)
   built.root.rotation.y = p.rotY ?? 0
   built.root.scale.setScalar(p.scale ?? 1)

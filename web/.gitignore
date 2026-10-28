@@ -20,3 +20,11 @@ scripts/record/output
 # dev server 的輸出轉存檔(背景執行 vite 時 > vite-dev.log 產生)——
 # 每次重跑都會覆寫,只是本機除錯用的即時日誌,不應提交進版控。
 vite-dev.log
+
+# tools/model-preview 監看的建模輸出(Blender 匯出的 WIP GLB)——每次重跑腳本都會覆寫;
+# 定稿的模型要另外放進專案資產位置,不從這裡提交。
+tools/blender/out/
+
+# Blender 腳本(Python)執行時產生的快取
+__pycache__/
+*.pyc

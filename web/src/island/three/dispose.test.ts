@@ -56,4 +56,16 @@ describe('disposeObject', () => {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(), m)
     expect(mesh.material).toBe(m)
   })
+
+  it('標了 userData.sharedResource 的幾何/材質(GLB 的)不釋放;自己擁有的照常釋放', () => {
+    const sharedG = counted(new THREE.BoxGeometry())
+    sharedG.x.userData.sharedResource = true
+    const sharedM = counted(new THREE.MeshStandardMaterial())
+    sharedM.x.userData.sharedResource = true
+    const ownG = counted(new THREE.BoxGeometry())
+    const ownM = counted(new THREE.MeshStandardMaterial())
+    disposeObject(new THREE.Group().add(new THREE.Mesh(sharedG.x, sharedM.x), new THREE.Mesh(ownG.x, ownM.x)))
+    expect([sharedG.count(), sharedM.count()]).toEqual([0, 0])
+    expect([ownG.count(), ownM.count()]).toEqual([1, 1])
+  })
 })

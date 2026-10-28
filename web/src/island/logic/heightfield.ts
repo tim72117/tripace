@@ -61,6 +61,19 @@ export function noiseAt(n: NoiseSpec, x: number, z: number): number {
   return (v * 2 - 1) * n.amp
 }
 
+// 多頻率疊加(fbm),範圍約 [-1, 1]:第 i 層頻率 ×lacunarity、振幅 ×gain,各層 seed 不同;
+// 著色用它讓岩石邊界、草色斑塊不呈單一頻率的規則起伏(高度場本身也可用同一個函式)。
+export function fbmAt(x: number, z: number, seed: number, scale: number, octaves = 3, lacunarity = 2, gain = 0.5): number {
+  let sum = 0, amp = 1, norm = 0, sc = scale
+  for (let o = 0; o < octaves; o++) {
+    sum += noiseAt({ scale: sc, amp: 1, seed: seed + o * 101 }, x, z) * amp
+    norm += amp
+    amp *= gain
+    sc /= lacunarity
+  }
+  return sum / norm
+}
+
 function distToPolygonEdge(x: number, z: number, poly: ReadonlyArray<Pt>): number {
   let best = Infinity
   for (let i = 0; i < poly.length; i++) {

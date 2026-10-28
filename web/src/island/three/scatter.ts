@@ -57,7 +57,7 @@ export function buildScatter(
     const jitter = list.map((p, i) => 0.94 + mulberry32((p.seed ?? i) * 31 + 5)() * 0.12)
 
     for (const solid of baked.solids) {
-      const mat = new THREE.MeshStandardMaterial({ color: solid.color, flatShading: true, roughness: 0.88, metalness: 0 })
+      const mat = new THREE.MeshStandardMaterial({ color: solid.color, flatShading: !solid.smooth, roughness: solid.rough ?? 0.88, metalness: solid.metal ?? 0 })
       const mesh = new THREE.InstancedMesh(solid.geo, mat, matrices.length)
       const c = new THREE.Color()
       matrices.forEach((m, i) => { mesh.setMatrixAt(i, m); mesh.setColorAt(i, c.setScalar(jitter[i])) })

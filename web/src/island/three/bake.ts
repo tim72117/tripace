@@ -8,7 +8,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { buildModel, type Model3D } from './model'
 
-export type BakedSolid = { color: THREE.Color; geo: THREE.BufferGeometry }
+export type BakedSolid = { color: THREE.Color; geo: THREE.BufferGeometry; smooth: boolean; rough?: number; metal?: number }
 export type BakedLamps = {
   geo: THREE.BufferGeometry // 合併後的燈幾何,頂點色 = 燈亮時的顏色
   centers: THREE.Vector3[] // 每個燈部件的中心(模型空間),光暈用
@@ -31,7 +31,7 @@ function merge(list: THREE.BufferGeometry[]): THREE.BufferGeometry {
 export function bakeModel(model: Model3D): BakedModel {
   const built = buildModel(model)
   built.root.updateMatrixWorld(true)
-  const byColor = new Map<string, { color: THREE.Color; geos: THREE.BufferGeometry[] }>()
+  const byColor = new Map<string, { color: THREE.Color; smooth: boolean; rough?: number; metal?: number; geos: THREE.BufferGeometry[] }>()
   const lampGeos: THREE.BufferGeometry[] = []
   const centers: THREE.Vector3[] = []
   const box = new THREE.Box3()
@@ -51,15 +51,17 @@ export function bakeModel(model: Model3D): BakedModel {
       lampGeos.push(g)
       centers.push(g.boundingBox!.getCenter(new THREE.Vector3()))
     } else {
-      const key = mat.color.getHexString()
-      const entry = byColor.get(key) ?? { color: mat.color.clone(), geos: [] }
+      // 同色但著色方式或材質不同的部件要分開成不同組(平滑與平面、不同粗糙度不能共用一個材質)
+      const ex = (mat.userData.explicit ?? {}) as { smooth?: boolean; rough?: number; metal?: number }
+      const key = `${mat.color.getHexString()}|${ex.smooth ? 's' : ''}|${ex.rough ?? ''}|${ex.metal ?? ''}`
+      const entry = byColor.get(key) ?? { color: mat.color.clone(), smooth: !!ex.smooth, rough: ex.rough, metal: ex.metal, geos: [] }
       entry.geos.push(g)
       byColor.set(key, entry)
     }
   })
 
   return {
-    solids: [...byColor.values()].map(({ color, geos }) => ({ color, geo: merge(geos) })),
+    solids: [...byColor.values()].map(({ color, geos, smooth, rough, metal }) => ({ color, geo: merge(geos), smooth, rough, metal })),
     lamps: lampGeos.length ? { geo: merge(lampGeos), centers } : null,
     height: Number.isFinite(box.max.y) ? box.max.y : 1,
   }

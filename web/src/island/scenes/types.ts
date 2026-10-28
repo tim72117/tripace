@@ -10,6 +10,9 @@ import type { IslandLayout } from '../data/layoutTypes'
 import type { ArticleSource, Byline } from '../logic/articleToIsland'
 import type { Model3D } from '../three/model'
 
+// GlbSource——某個模型 id 的高細節 GLB 版本:url 是資產網址(Vite 的 ?url 匯入),unit 見 three/model.ts 的 GlbAttachment。
+export type GlbSource = { url: string; unit: number };
+
 export type SceneSeo = { title: string; description: string }
 
 export type SceneInfo = {
@@ -31,9 +34,12 @@ export type SceneModule = {
   pathPointY: number[]
   // 場景專屬模型的載入器(import.meta.glob 的結果,鍵為路徑、值為動態 import)
   modelLoaders: Record<string, () => Promise<Model3D>>
+  // 高細節版 GLB(選用):模型 id → GLB。完整版載入後掛到同 id 的宣告式模型上;載入失敗就用宣告式後備,不會壞。
+  // 首頁縮小版不載入(用 loadBase),省下首頁的流量。
+  glbModels?: Record<string, GlbSource>
 }
 
 // 載入完成、可直接交給引擎的場景資料:models 只含這個版面實際用到的模型。
-export type SceneData = Omit<SceneModule, 'modelLoaders'> & { models: Record<string, Model3D> }
+export type SceneData = Omit<SceneModule, 'modelLoaders' | 'glbModels'> & { models: Record<string, Model3D> }
 
 export type SceneDef = SceneInfo & { load: () => Promise<SceneModule> }
