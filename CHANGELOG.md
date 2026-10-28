@@ -2,6 +2,16 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.47.3 — 2026-10-28
+
+開通業主身分時 `name` 改為選填。
+
+### 變更
+
+- **`POST /internal/maintenance/partners` 與 `tripace-cli partner-grant` 的 `name` 改為選填**（`internal/api/maintenance.go`、`cmd/cli/partner.go`）：只有 `email` 必填，缺少時回 400「email 為必填」；沒給 `name` 時用 email 當業主顯示名稱。向下相容，原本有給 `name` 的呼叫行為不變。
+- 公開的 `packages/partner-installer/README.md` 不再提內部指令 `tripace-cli partner-grant`。
+- 新增 `maintenance_partner_grant_test.go`（不給 name、重複開通 409、查無使用者 404、缺 email 400）與 CLI binary 測試（不給 `-name` 可送出）。
+
 ## v0.47.2 — 2026-10-28
 
 修正 `tripace-cli` 全域旗標 `-api` 被部分指令忽略的問題。

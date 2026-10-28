@@ -16,15 +16,12 @@ import "flag"
 func cmdPartnerGrant(args []string, defaultAPI string) {
 	fs := flag.NewFlagSet("partner-grant", flag.ExitOnError)
 	email := fs.String("email", "", "既有 Tripace 使用者的 email（必填）")
-	name := fs.String("name", "", "業主對外顯示名稱（必填，例如公司/品牌名）")
+	name := fs.String("name", "", "業主對外顯示名稱（選填，例如公司/品牌名；沒給時用 email）")
 	apiURLFlag := fs.String("api", defaultAPI, "server URL")
 	_ = fs.Parse(args)
 
 	if *email == "" {
 		fatal("partner-grant 需要 -email")
-	}
-	if *name == "" {
-		fatal("partner-grant 需要 -name")
 	}
 
 	c := newHTTPClient(*apiURLFlag)

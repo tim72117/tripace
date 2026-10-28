@@ -65,3 +65,18 @@ func TestGlobalAPIFlagReachesGlobalCommands(t *testing.T) {
 		}
 	}
 }
+
+// partner-grant 的 -name 選填:不給也要能送出(只帶 email)。
+func TestPartnerGrantNameIsOptional(t *testing.T) {
+	bin := buildCLI(t)
+	srv, got := newFakeServer(t)
+	withToken(t, srv.URL, "tok")
+
+	out, err := exec.Command(bin, "-api", srv.URL, "partner-grant", "-email", "a@b.c").CombinedOutput()
+	if err != nil {
+		t.Fatalf("不給 -name 不該失敗: %v\n%s", err, out)
+	}
+	if got.path != "/internal/maintenance/partners" || got.body["email"] != "a@b.c" {
+		t.Fatalf("請求內容不對: path=%q body=%v", got.path, got.body)
+	}
+}

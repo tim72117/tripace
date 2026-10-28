@@ -875,7 +875,7 @@ func (s *Server) handleMaintenanceFieldMaskSet(w http.ResponseWriter, r *http.Re
 }
 
 // POST /internal/maintenance/partners
-// Body: {"email": "既有 Tripace 使用者的 email", "name": "業主對外顯示名稱"}
+// Body: {"email": "既有 Tripace 使用者的 email", "name": "業主對外顯示名稱(選填,預設用 email)"}
 //
 // 供 tripace-cli 的 partner-grant 指令使用——把一個既有的一般 Tripace
 // 使用者帳號標記為廣告業主/聯盟行銷夥伴身分(見 store.partnerRow、
@@ -903,9 +903,13 @@ func (s *Server) handleMaintenancePartnerGrant(w http.ResponseWriter, r *http.Re
 	}
 	email := strings.TrimSpace(strings.ToLower(in.Email))
 	name := strings.TrimSpace(in.Name)
-	if email == "" || name == "" {
-		writeErr(w, http.StatusBadRequest, "invalid_input", "email、name 皆為必填")
+	if email == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "email 為必填")
 		return
+	}
+	// name 選填:沒給時用 email 當業主顯示名稱,之後可再改。
+	if name == "" {
+		name = email
 	}
 
 	user, _, err := s.store.FindUserByEmail(email)
